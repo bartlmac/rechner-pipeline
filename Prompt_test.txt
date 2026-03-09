@@ -1,0 +1,105 @@
+---
+
+## Kontext
+
+Ich arbeite an der Migration eines Excel-basierten Tarifrechners (inkl. VBA-Logik) nach Python.
+
+In meinem Workflow werden automatisch folgende Artefakte erzeugt:
+
+* ein Python-Testskript (`test_run.py`), das eine Tarifberechnung ausführt und Ergebnisse per `print` ausgibt
+* eine oder mehrere CSV-Dateien (`*_table_values.csv`) mit vollständigen Erwartungswerten  (z. B. aus Excel exportiert)
+* eine oder mehrere JSON-Dateien (`*_scalar.json`) mit einzelnen Erwartungswerten  (Skalare)
+* mehrere Python-Module mit der eigentlichen Rechenlogik
+
+---
+
+## Aufgabe
+
+Erstelle ein neues Python-Skript **`test_run_advanced.py`**, das als vollständiger Regressionstest für diesen Workflow dient.
+
+---
+
+## Allgemeines Ziel
+
+Das Skript soll:
+
+* dieselbe Berechnung ausführen wie `test_run.py`
+* alle verfügbaren Ergebnisse vollständig testen (nicht nur Stichproben)
+* die Resultate mit den automatisch erzeugten CSV- und JSON-Erwartungswerten vergleichen
+
+---
+
+## Verzeichnisstruktur (fest vorgegeben)
+
+* Dieses neue Skript heißt: `test_run_advanced.py`
+* Es liegt im Ordner: `generated/`
+* Alle CSV- und JSON-Dateien liegen im Ordner: `info_from_excel/`
+* Alle Python-Dateien (`actuarial.py`, `commutation.py`, `inputs.py`, `params.py`, `test_run.py`) liegen gemeinsam im Ordner: `generated/`
+
+---
+
+## 1. Skalare (JSON)
+
+* Vergleiche alle numerischen Erwartungswerte
+* Vergleich: Rundung auf 4 Nachkommastellen
+* Ausgabe: berechnet / erwartet / PASS–FAIL
+
+---
+
+## 2. Matrix / Verlauf (CSV)
+
+* CSV enthält eine vollständige Ergebnismatrix
+* Die Berechnung liefert eine entsprechende Liste von Dictionaries
+
+### Regeln für Zuordnung
+
+* Feld- und Spaltennamen sind **case-sensitiv**
+* Namen, die sich nur durch Groß-/Kleinschreibung unterscheiden, sind **semantisch verschieden** (z. B. `Axn` ≠ `axn`)
+* Die Zuordnung darf Namensvarianten berücksichtigen (z. B. unterschiedliche Schreibweisen/Trennzeichen wie `Axn` vs. `A_xn`), **sofern dabei die Groß-/Kleinschreibung nicht “glattgezogen” wird** und keine semantisch verschiedenen Größen vermischt werden.
+
+---
+
+## 3. Vergleich
+
+* Numerischer Vergleich über `round(value, 4)`
+* Abweichungen müssen eindeutig (Index + Feldname) identifizierbar sein
+
+---
+
+## 4. Reporting
+
+Ausgabe:
+
+* getestete Skalare
+* vollständige Matrixvergleiche
+* Summary (Tests, Abweichungen, nicht zuordenbare Felder)
+
+---
+
+## Ziel
+
+Robuster Regressionstest für die Excel → Python Migration.
+
+---
+
+--- 
+## PIPELINE_META
+{{PIPELINE_META}}
+
+## INPUT_FILES
+{{INPUT_FILES}}
+---
+
+## Output-Format (zwingend einzuhalten)
+
+Der erzeugte Code MUSS exakt in folgendem Blockformat ausgegeben werden, damit er automatisch extrahiert werden kann:
+
+```
+===FILE_START: test_run_advanced.py===
+<DATEIINHALT>
+===FILE_END: test_run_advanced.py===
+```
+
+Bitte gib **nur diesen Codeblock** aus, ohne zusätzliche Erklärungen.
+
+---
