@@ -1,3 +1,72 @@
+# Rechenkernentwicklung mit KI – Methodik, Leitplanken und Proof of Concept
+
+## Vision
+
+Dieses Repository ist ein technischer und methodischer Arbeitsraum für die Frage, wie **KI und perspektivisch Agentensysteme die Rechenkernentwicklung sinnvoll unterstützen können**.
+
+Im Zentrum steht nicht die Entwicklung eines unmittelbar einsetzbaren Standardtools, sondern der Aufbau eines **nachvollziehbaren, aktuarisch geführten Vorgehensmodells**. Wir wollen verstehen, wie sich fachliche Anforderungen, technische Umsetzung, Qualitätssicherung und menschliche Kontrolle in einem KI-gestützten Entwicklungsprozess sinnvoll zusammendenken lassen.
+
+Dabei leiten uns insbesondere folgende Grundideen:
+
+- **Methodik vor Produkt**: Ziel ist ein belastbares Vorgehen mit klaren Leitplanken, nicht ein universelles Toolversprechen.
+- **End-to-End statt Einzelautomation**: Der Mehrwert entsteht im Zusammenspiel von Analyse, Kontextaufbereitung, Generierung, Review, Test, Dokumentation und Iteration.
+- **Aktuarinnen und Aktuare in zentraler Rolle**: Fachliche Steuerung, Bewertung und Freigabe bleiben menschliche Kernaufgaben.
+- **Whitebox-Prinzip**: Nachvollziehbarkeit, Prüfbarkeit, Reproduzierbarkeit und kontrollierte Verbesserung sind für diesen Kontext essenziell.
+- **Pragmatischer Proof of Concept**: Wir wollen konkret zeigen, was heute bereits belastbar funktioniert, wo Grenzen liegen und welche Leitplanken notwendig sind.
+
+Die langfristige Perspektive ist ein **methodischer Referenzrahmen für KI-gestützte Rechenkernentwicklung**: ein Ansatz, der technische Experimente, fachliche Verantwortung und Governance zusammenführt und damit Orientierung für weitere Anwendungen geben kann.
+
+## Was ist unser MVP?
+
+Unser aktuelles **Minimum Viable Product (MVP)** ist ein **End-to-End-funktionierender Proof of Concept**, mit dem sich ein KI-gestützter Entwicklungsablauf für Rechenlogik praktisch erproben und bewerten lässt.
+
+Das MVP umfasst insbesondere:
+
+- eine **durchgängige Pipeline** zur strukturierten Extraktion relevanter Artefakte,
+- die **gezielte Aufbereitung von Kontext** für LLM-basierte Verarbeitung,
+- die **Generierung von Code und Tests** in kontrollierten Schritten,
+- einfache **Qualitäts- und Vergleichsmechanismen** zur Validierung der Ergebnisse,
+- einen ersten **agentischen Orchestrierungsansatz** für wiederholbare Abläufe,
+- sowie ein technisches Gerüst, an dem Fragen zu Rollen, Prüfpunkten, Fehlerschleifen und Governance konkret untersucht werden können.
+
+Der Zweck des MVP ist damit:
+
+1. die **Machbarkeit** eines durchgängigen KI-gestützten Ablaufs zu zeigen,
+2. **Stärken und Grenzen** heutiger Modelle sichtbar zu machen,
+3. Anforderungen an **Leitplanken, Qualitätssicherung und Human Oversight** herauszuarbeiten,
+4. und eine belastbare Grundlage für die weitere methodische Arbeit zu schaffen.
+
+## Weitere Entwicklungssprünge
+
+Mögliche Entwicklungssprünge über das heutige MVP hinaus sind:
+
+### 1. Robustere End-to-End-Pipeline
+- bessere Zerlegung komplexer fachlicher Logik in verarbeitbare Arbeitspakete,
+- stabilere Wiederholbarkeit der Ergebnisse,
+- systematischeres Retry-, Debug- und Review-Verhalten.
+
+### 2. Ausbau der Qualitätssicherung
+- stärkere Testabdeckung,
+- strukturierte Golden-Master-Vergleiche,
+- automatische Konsistenzprüfungen zwischen Artefakten, generiertem Code und Testergebnissen.
+
+### 3. Explainability und Governance
+- sauberer Artefaktbezug,
+- bessere Dokumentation der Herleitung,
+- klar definierte menschliche Freigabepunkte,
+- nachvollziehbare Protokollierung von Entscheidungen und Iterationen.
+
+### 4. Agentische Zusammenarbeit spezialisierter Komponenten
+- Trennung von Rollen wie Extraktion, Analyse, Code-Generierung, Test-Generierung, Review und Fehlerdiagnostik,
+- explizite Orchestrierung dieser Rollen in einer kontrollierten Pipeline.
+
+### 5. Erweiterung des Anwendungsbereichs
+- Übertragbarkeit auf weitere fachliche Kontexte,
+- perspektivisch Verknüpfung mit angrenzenden Fragestellungen wie ETL, Mapping, Verifikation und Dokumentation,
+- Nutzung als methodischer Referenzrahmen für weitere KI-Use-Cases im Aktuariat.
+
+---
+
 # TarifRechner Pipeline
 
 Dieses Projekt orchestriert eine zweistufige Pipeline:
@@ -68,3 +137,88 @@ Hinweis:
   - Excel Einstellungen: Datei -> Optionen -> Trust Center -> Einstellungen für das Trust Center -> Einstellungen für Makros -> „Zugriff auf das VBA-Projektobjektmodell vertrauen“
   - Python-Pakete: `pywin32`, `pandas`, `openai`
 - Für LLM-Schritte muss `OPENAI_API_KEY` gesetzt sein.
+
+## Vorschlag für das Vorgehen
+
+Für die weitere Arbeit an diesem Repository bietet sich ein bewusst zweigleisiges Vorgehen an:
+
+### 1. Technische Weiterentwicklung des Proof of Concept
+Das bestehende Repository wird schrittweise so weiterentwickelt, dass der End-to-End-Ablauf robuster, besser testbar und methodisch aussagekräftiger wird. Ziel ist ein sauberer Demonstrator mit klaren Prüfpunkten und reproduzierbaren Ergebnissen.
+
+### 2. Methodische Verdichtung der Erkenntnisse
+Parallel zur technischen Arbeit werden die gewonnenen Erfahrungen systematisch verdichtet:
+- Welche Aufgaben eignen sich heute bereits gut für KI-Unterstützung?
+- Wo liegen die Grenzen aktueller Modelle?
+- Welche Rollen übernehmen Aktuarinnen und Aktuare sinnvoll in einem KI-gestützten Entwicklungsprozess?
+- Welche Governance-, Freigabe- und Dokumentationsanforderungen sind notwendig?
+
+### 3. Iterative Validierung an konkreten Teilproblemen
+Anstatt früh einen universellen Zielzustand anzunehmen, sollten einzelne Arbeitsschritte gezielt verbessert und immer wieder an konkreten fachlichen Fällen überprüft werden. So entsteht ein belastbares methodisches Bild aus realen Iterationen.
+
+### 4. Enge Verzahnung von Technik und Fachlichkeit
+Die technische Entwicklung sollte laufend mit fachlicher Bewertung gekoppelt bleiben. Relevante Kriterien sind dabei insbesondere:
+- fachliche Korrektheit,
+- Reproduzierbarkeit,
+- Nachvollziehbarkeit,
+- Testbarkeit,
+- Wartbarkeit,
+- und die klare Verteilung von Verantwortung zwischen Mensch und KI.
+
+## Nächste Schritte
+
+### Kurzfristig
+- Vision und Zielbild im Team abstimmen.
+- Scope des MVP explizit festhalten.
+- Qualitätskriterien für „funktioniert“ vs. „fachlich belastbar“ definieren.
+- Bestehende Pipeline an den wichtigsten Schwachstellen stabilisieren.
+- Rollenbild für Human-in-the-Loop, Review und Freigabe konkretisieren.
+
+### Mittelfristig
+- Agentische Zerlegung einzelner Arbeitsschritte weiter ausarbeiten.
+- Test- und Vergleichslogik ausbauen.
+- Explainability-Elemente und Artefaktbezug verbessern.
+- Übertragbarkeit auf weitere fachliche Beispiele prüfen.
+- Schnittstellen zu angrenzenden Themen wie ETL und Verifikation konkretisieren.
+
+### Perspektivisch
+- Methodik und Leitplanken dokumentieren.
+- Ergebnisse in der Fachcommunity diskutieren.
+- Prüfen, welche Bausteine sich später standardisieren oder offen bereitstellen lassen.
+
+## Roadmap für die nächsten 24 Monate
+
+### Phase 1: Konsolidierung des Proof of Concept (0–6 Monate)
+- gemeinsames Zielbild schärfen,
+- MVP klar abgrenzen,
+- Repository bereinigen und stabilisieren,
+- wichtigste End-to-End-Strecke reproduzierbar machen,
+- erste methodische Lessons Learned dokumentieren.
+
+### Phase 2: Ausbau von QS, Rollen und Orchestrierung (6–12 Monate)
+- Test-Gates und Vergleichsmechanismen ausbauen,
+- explizite Review- und Freigabeschritte definieren,
+- agentische Rollenbilder konkretisieren,
+- Fehler- und Eskalationslogik verbessern,
+- erste belastbare Aussagen zu Grenzen und Erfolgsfaktoren formulieren.
+
+### Phase 3: Übertragbarkeit und methodische Verdichtung (12–18 Monate)
+- weitere fachliche Beispiele heranziehen,
+- Übertragbarkeit auf andere Kontexte prüfen,
+- Brücke zu angrenzenden Use Cases wie ETL-Verifikation schlagen,
+- methodische Leitplanken konsolidieren,
+- Governance- und Explainability-Aspekte systematisieren.
+
+### Phase 4: Konsolidiertes Rahmenwerk und Ausblick (18–24 Monate)
+- einen konsistenten methodischen Rahmen für KI-gestützte Rechenkernentwicklung formulieren,
+- Bausteine für Dokumentation, Review und QS standardisieren,
+- offene Punkte für weitergehende Forschung oder Tooling identifizieren,
+- bewerten, welche Teile künftig in Richtung wiederverwendbarer Referenzbausteine weiterentwickelt werden können.
+
+## Einordnung der Roadmap
+
+Die Roadmap ist bewusst **methodisch** und nicht als klassischer Produktentwicklungsplan formuliert. Sie soll helfen,
+- technische Experimente zu fokussieren,
+- Ergebnisse fachlich einzuordnen,
+- und aus einem funktionierenden Proof of Concept schrittweise ein belastbares Vorgehensmodell zu entwickeln.
+
+Eine spätere Produktisierung einzelner Bausteine ist denkbar, steht derzeit aber nicht im Mittelpunkt. Vorrang hat die Entwicklung eines klaren methodischen Rahmens, der technische Machbarkeit, fachliche Verantwortung und kontrollierten KI-Einsatz zusammenführt.
