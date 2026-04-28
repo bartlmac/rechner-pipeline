@@ -33,6 +33,23 @@
 
 $ErrorActionPreference = "Stop"
 
+# --------------------------------
+# Logging
+# --------------------------------
+# Alles in eine Logdatei mitschneiden, damit Fehler nachvollziehbar sind
+# (auch wenn das Konsolenfenster scrollt oder geschlossen wird).
+$logDir  = Join-Path $env:USERPROFILE "ki-lab"
+if (-not (Test-Path $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+}
+$logFile = Join-Path $logDir ("setup-{0:yyyyMMdd-HHmmss}.log" -f (Get-Date))
+try {
+    Start-Transcript -Path $logFile -Force | Out-Null
+    Write-Host "Logdatei: $logFile" -ForegroundColor DarkGray
+} catch {
+    Write-Host "Hinweis: Transcript konnte nicht gestartet werden ($_)." -ForegroundColor Yellow
+}
+
 function Write-Step($msg) {
     Write-Host ""
     Write-Host "=== $msg ===" -ForegroundColor Cyan
@@ -113,8 +130,11 @@ Refresh-Path
 # --------------------------------
 # 5. VS Code installieren
 # --------------------------------
+# --source winget zwingend, sonst durchsucht winget zusaetzlich msstore und
+# kann bei Cert-Problemen mit msstore (0x8a15005e) abbrechen / Source-Auswahl
+# erzwingen.
 Write-Step "VS Code installieren"
-winget install -e --id Microsoft.VisualStudioCode --silent `
+winget install -e --id Microsoft.VisualStudioCode --source winget --silent `
     --accept-package-agreements `
     --accept-source-agreements
 Refresh-Path
@@ -123,10 +143,10 @@ Refresh-Path
 # 6. git + gh installieren
 # --------------------------------
 Write-Step "git und gh installieren"
-winget install -e --id Git.Git --silent `
+winget install -e --id Git.Git --source winget --silent `
     --accept-package-agreements `
     --accept-source-agreements
-winget install -e --id GitHub.cli --silent `
+winget install -e --id GitHub.cli --source winget --silent `
     --accept-package-agreements `
     --accept-source-agreements
 Refresh-Path
@@ -298,3 +318,6 @@ Write-Host "  - Smoke-Test:"
 Write-Host "      cd $repoBase\portxlpy-seminar-2026-02-eaa"
 Write-Host "      pytest"
 Write-Host "  - Alle Repos liegen unter: $repoBase"
+Write-Host "  - Logdatei: $logFile"
+
+try { Stop-Transcript | Out-Null } catch {}
