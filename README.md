@@ -1,5 +1,32 @@
 # Rechenkernentwicklung mit KI – Methodik, Leitplanken und Proof of Concept
 
+> **Status:** öffentlicher Proof of Concept. Begleitender Arbeitsraum eines DAV-Projekts unter der AG Bestandsmigration. Vorgängerprojekt: [portxlpy](https://github.com/bartlmac/portxlpy) (handwerklicher und industrieller Workflow nebeneinander).
+
+## Schnellstart
+
+Voraussetzungen: **Windows mit installiertem Microsoft Excel**, **Python 3.13**, und ein gültiger **`OPENAI_API_KEY`**.
+
+```powershell
+git clone https://github.com/bartlmac/rechner-pipeline.git
+cd rechner-pipeline
+
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+
+copy .env.example .env
+# OPENAI_API_KEY in .env eintragen
+
+python pipeline.py            # klassischer Lauf
+python agentic_pipeline.py    # LangGraph-Variante mit Quality-Gates
+```
+
+Einmalige Excel-Einstellung: **Datei → Optionen → Trust Center → Einstellungen für das Trust Center → Einstellungen für Makros → „Zugriff auf das VBA-Projektobjektmodell vertrauen"**.
+
+> **Hinweis zur Plattform:** Die Pipeline nutzt aktuell `pywin32` und ist dadurch auf Windows + Excel beschränkt. Eine plattformneutrale Extraktionsschiene (z. B. via `openpyxl`) ist Teil der weiteren Arbeit.
+
+> **Hinweis zu den Beispieldaten:** `Tarifrechner_KLV.xlsm` und `Tarifrechner_Pipeline.pptx` sind synthetische Lehrbeispiele ohne realen Kundenbezug.
+
 ## Vision
 
 Dieses Repository ist ein technischer und methodischer Arbeitsraum für die Frage, wie **KI und perspektivisch Agentensysteme die Rechenkernentwicklung sinnvoll unterstützen können**.
@@ -135,8 +162,13 @@ Hinweis:
 - Voraussetzungen für den Export:
   - Windows + installiertes Microsoft Excel
   - Excel Einstellungen: Datei -> Optionen -> Trust Center -> Einstellungen für das Trust Center -> Einstellungen für Makros -> „Zugriff auf das VBA-Projektobjektmodell vertrauen“
-  - Python-Pakete: `pywin32`, `pandas`, `openai`
-- Für LLM-Schritte muss `OPENAI_API_KEY` gesetzt sein.
+  - Python-Pakete laut `requirements.txt` (`openai`, `pandas`, `pywin32`, `langgraph`)
+- Für LLM-Schritte muss `OPENAI_API_KEY` gesetzt sein (siehe `.env.example`).
+- Die generierten Verzeichnisse `generated/` und `info_from_excel/` werden bei jedem Lauf neu erzeugt und sind nicht zu pflegen.
+
+## Strukturelles Refactor (parallel)
+
+In einem separaten Branch (`refactor/structure`) wird ein strukturelles Refactor des Repositories vorbereitet (Paketierung, Modulgrenzen entlang der Pipeline-Phasen, Trennung öffentlicher und interner API). Der Stand auf `main` ist bewusst der **lauffähige Demonstrator**. Hinweise zum Refactor-Branch sind willkommen — gerne als Issue oder Kommentar.
 
 ## Vorschlag für das Vorgehen
 
@@ -222,3 +254,11 @@ Die Roadmap ist bewusst **methodisch** und nicht als klassischer Produktentwickl
 - und aus einem funktionierenden Proof of Concept schrittweise ein belastbares Vorgehensmodell zu entwickeln.
 
 Eine spätere Produktisierung einzelner Bausteine ist denkbar, steht derzeit aber nicht im Mittelpunkt. Vorrang hat die Entwicklung eines klaren methodischen Rahmens, der technische Machbarkeit, fachliche Verantwortung und kontrollierten KI-Einsatz zusammenführt.
+
+## Mitwirken
+
+Issues, Diskussionsanstöße und Pull Requests sind willkommen. Details siehe [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Lizenz
+
+Veröffentlicht unter der [MIT-Lizenz](LICENSE).
