@@ -117,6 +117,11 @@ Write-Host "winget ok." -ForegroundColor Green
 # vorgebaute Wheels fuer cryptography, pywin32, etc. - keine VS Build Tools
 # / Rust-Toolchain noetig. Auf ARM64 laeuft x86_64-Python via Prism-Emulation
 # (Windows 11), Performance ausreichend fuer das KI-Lab.
+#
+# WICHTIG: Auf ARM64-Hardware respektiert winget '--architecture x64' bei
+# Python.Python.3.13 nicht zuverlaessig (Manifest-Issue) - daher laden wir
+# den x86_64-Installer dort direkt von python.org. Auf x86_64-Hardware
+# bleibt der winget-Pfad.
 Write-Step "Python 3 installieren"
 $hwArch = $env:PROCESSOR_ARCHITECTURE
 Write-Host "Hardware-Architektur: $hwArch" -ForegroundColor DarkGray
@@ -131,9 +136,9 @@ try {
     }
 } catch {}
 
-# Wenn ARM64-Python auf ARM64-Hardware schon da ist: deinstallieren, damit
-# wir x86_64-Python sauber neu installieren koennen.
-if ($pythonOk -and ($pythonArch -match "ARM") -and ($hwArch -eq "ARM64")) {
+# Wenn ARM64-Python schon da ist: deinstallieren, damit wir x86_64-Python
+# sauber neu installieren koennen.
+if ($pythonOk -and ($pythonArch -match "ARM")) {
     Write-Host "ARM64-Python gefunden ($pythonArch) - wird durch x86_64-Python ersetzt." -ForegroundColor Yellow
     try {
         winget uninstall -e --id Python.Python.3.13 --silent
@@ -145,11 +150,30 @@ if ($pythonOk -and ($pythonArch -match "ARM") -and ($hwArch -eq "ARM64")) {
 }
 
 if (-not $pythonOk) {
-    Write-Host "Installiere Python 3.13 (x86_64)..." -ForegroundColor Yellow
-    winget install -e --id Python.Python.3.13 --source winget --architecture x64 --silent `
-        --accept-package-agreements `
-        --accept-source-agreements `
-        --override "InstallAllUsers=0 PrependPath=1 Include_test=0"
+    if ($hwArch -eq "ARM64") {
+        # Direktdownload von python.org, weil winget --architecture x64
+        # bei diesem Manifest nicht zuverlaessig greift.
+        $pyVer    = "3.13.0"
+        $pyUrl    = "https://www.python.org/ftp/python/$pyVer/python-$pyVer-amd64.exe"
+        $pyInst   = Join-Path $env:TEMP "python-$pyVer-amd64.exe"
+        Write-Host "Lade x86_64-Python-Installer von python.org ($pyVer)..." -ForegroundColor Yellow
+        try {
+            Invoke-WebRequest -Uri $pyUrl -OutFile $pyInst -UseBasicParsing
+            Write-Host "Installiere Python (silent, x86_64)..." -ForegroundColor Yellow
+            Start-Process -Wait -FilePath $pyInst -ArgumentList @(
+                "/quiet","InstallAllUsers=0","PrependPath=1","Include_test=0"
+            )
+        } catch {
+            Write-Host "FEHLER beim python.org-Direktinstall: $_" -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host "Installiere Python 3.13 (x86_64) via winget..." -ForegroundColor Yellow
+        winget install -e --id Python.Python.3.13 --source winget --architecture x64 --silent `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --override "InstallAllUsers=0 PrependPath=1 Include_test=0"
+    }
 } else {
     Write-Host "Python bereits installiert: $version ($pythonArch)" -ForegroundColor Green
 }
