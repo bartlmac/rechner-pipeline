@@ -65,8 +65,9 @@ class PipelineRunner:
         self.repo_root = repo_root
         self.options = options
         self.excel_path = excel_path or (repo_root / "Tarifrechner_KLV.xlsm")
-        self.prompt_main = repo_root / "Promt_excel_to_py.txt"
-        self.prompt_test = repo_root / "Prompt_test.txt"
+        self.prompts_dir = repo_root / "prompts" / "v1"
+        self.prompt_main = self.prompts_dir / "excel_to_py.txt"
+        self.prompt_test = self.prompts_dir / "test_advanced.txt"
         self.out_dir = repo_root / GENERATED_SUBDIR_NAME
         self.manifest_path = self.out_dir / "export_manifest.json"
         self.generated_dir = repo_root / "generated"
