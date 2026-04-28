@@ -168,7 +168,7 @@ Hinweis:
 
 ## Strukturelles Refactor (parallel)
 
-In einem separaten Branch (`refactor/structure`) wird ein strukturelles Refactor des Repositories vorbereitet (Paketierung, Modulgrenzen entlang der Pipeline-Phasen, Trennung öffentlicher und interner API). Der Stand auf `main` ist bewusst der **lauffähige Demonstrator**. Hinweise zum Refactor-Branch sind willkommen — gerne als Issue oder Kommentar.
+In einem separaten Branch — [`refactor/structure`](https://github.com/bartlmac/rechner-pipeline/tree/refactor/structure) — wird ein strukturelles Refactor des Repositories vorbereitet (Paketierung unter `src/rechner_pipeline/`, Modulgrenzen entlang der Pipeline-Phasen, öffentliche Stage-API auf dem Runner, versionierte Prompts unter `prompts/v1/`, Demo-Artefakte unter `examples/`, `pyproject.toml` und Test-Skelett). Der Stand auf `main` ist bewusst der **lauffähige Demonstrator**. Hinweise zum Refactor-Branch sind willkommen — gerne als [Issue](https://github.com/bartlmac/rechner-pipeline/issues) oder Kommentar.
 
 ## Vorschlag für das Vorgehen
 
