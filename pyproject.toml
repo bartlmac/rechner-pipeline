@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rechner-pipeline"
+version = "0.1.0"
+description = "Methodischer Referenzrahmen für KI-gestützte Rechenkernentwicklung (Excel → Python via LLM, agentisch orchestriert)"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.13"
+authors = [
+    { name = "Bartlomiej Maciaga" },
+    { name = "Arno Rasch" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "openai",
+    "pandas",
+    "langgraph",
+    "pywin32; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+[project.scripts]
+rechner-pipeline = "rechner_pipeline.cli:main"
+rechner-pipeline-agentic = "rechner_pipeline.cli:agentic_main"
+
+[project.urls]
+Homepage = "https://github.com/bartlmac/rechner-pipeline"
+Issues = "https://github.com/bartlmac/rechner-pipeline/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
