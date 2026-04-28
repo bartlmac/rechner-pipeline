@@ -64,7 +64,7 @@ class PipelineRunner:
     ) -> None:
         self.repo_root = repo_root
         self.options = options
-        self.excel_path = excel_path or (repo_root / "Tarifrechner_KLV.xlsm")
+        self.excel_path = excel_path or (repo_root / "examples" / "Tarifrechner_KLV.xlsm")
         self.prompts_dir = repo_root / "prompts" / "v1"
         self.prompt_main = self.prompts_dir / "excel_to_py.txt"
         self.prompt_test = self.prompts_dir / "test_advanced.txt"

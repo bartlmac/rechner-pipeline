@@ -25,7 +25,7 @@ Einmalige Excel-Einstellung: **Datei → Optionen → Trust Center → Einstellu
 
 > **Hinweis zur Plattform:** Die Pipeline nutzt aktuell `pywin32` und ist dadurch auf Windows + Excel beschränkt. Eine plattformneutrale Extraktionsschiene (z. B. via `openpyxl`) ist Teil der weiteren Arbeit.
 
-> **Hinweis zu den Beispieldaten:** `Tarifrechner_KLV.xlsm` und `Tarifrechner_Pipeline.pptx` sind synthetische Lehrbeispiele ohne realen Kundenbezug.
+> **Hinweis zu den Beispieldaten:** Demo-Artefakte liegen unter `examples/`. `Tarifrechner_KLV.xlsm` und `Tarifrechner_Pipeline.pptx` sind synthetische Lehrbeispiele ohne realen Kundenbezug.
 
 ## Vision
 
