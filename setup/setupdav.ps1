@@ -20,7 +20,9 @@
 #   5. Python-Pakete:
 #        Basis (Use Cases 1+2): xlwings, openpyxl, pandas, pytest, oletools
 #        Agentisch (Use Case 3): openai, pywin32, langgraph
-#          - auf ARM64 uebersprungen (cryptography hat keine win_arm64-Wheels)
+#      Python wird immer als x86_64 installiert (auf ARM64-Hardware via
+#      Windows-Prism-Emulation), weil mehrere transitive Abhaengigkeiten
+#      (z. B. cryptography) keine win_arm64-Wheels haben.
 #   6. VS Code Python Extension
 #   7. Excel Trust-Center: Makros aktivieren (VBAWarnings=1) + VBA-Zugriff (AccessVBOM=1)
 #   8. KI-Lab-Repos clonen nach %USERPROFILE%\ki-lab\repos\
@@ -109,23 +111,47 @@ if (!(Get-Command winget -ErrorAction SilentlyContinue)) {
 Write-Host "winget ok." -ForegroundColor Green
 
 # --------------------------------
-# 4. Python 3.13 installieren
+# 4. Python 3.13 installieren (immer x86_64)
 # --------------------------------
+# Auch auf ARM64-Hardware installieren wir x86_64-Python: dadurch gibt es
+# vorgebaute Wheels fuer cryptography, pywin32, etc. - keine VS Build Tools
+# / Rust-Toolchain noetig. Auf ARM64 laeuft x86_64-Python via Prism-Emulation
+# (Windows 11), Performance ausreichend fuer das KI-Lab.
 Write-Step "Python 3 installieren"
-$pythonOk = $false
+$hwArch = $env:PROCESSOR_ARCHITECTURE
+Write-Host "Hardware-Architektur: $hwArch" -ForegroundColor DarkGray
+
+$pythonOk   = $false
+$pythonArch = ""
 try {
-    $version = python --version 2>$null
-    if ($version -match "Python 3") { $pythonOk = $true }
+    $version = & python --version 2>$null
+    if ($version -match "Python 3") {
+        $pythonOk   = $true
+        $pythonArch = (& python -c "import platform; print(platform.machine())" 2>$null).Trim()
+    }
 } catch {}
 
+# Wenn ARM64-Python auf ARM64-Hardware schon da ist: deinstallieren, damit
+# wir x86_64-Python sauber neu installieren koennen.
+if ($pythonOk -and ($pythonArch -match "ARM") -and ($hwArch -eq "ARM64")) {
+    Write-Host "ARM64-Python gefunden ($pythonArch) - wird durch x86_64-Python ersetzt." -ForegroundColor Yellow
+    try {
+        winget uninstall -e --id Python.Python.3.13 --silent
+    } catch {
+        Write-Host "  Hinweis: Deinstallation lieferte einen Fehler ($_) - Skript versucht trotzdem die Neuinstallation." -ForegroundColor Yellow
+    }
+    $pythonOk = $false
+    Refresh-Path
+}
+
 if (-not $pythonOk) {
-    Write-Host "Installiere Python 3.13..." -ForegroundColor Yellow
-    winget install -e --id Python.Python.3.13 --source winget --silent `
+    Write-Host "Installiere Python 3.13 (x86_64)..." -ForegroundColor Yellow
+    winget install -e --id Python.Python.3.13 --source winget --architecture x64 --silent `
         --accept-package-agreements `
         --accept-source-agreements `
         --override "InstallAllUsers=0 PrependPath=1 Include_test=0"
 } else {
-    Write-Host "Python bereits installiert: $version" -ForegroundColor Green
+    Write-Host "Python bereits installiert: $version ($pythonArch)" -ForegroundColor Green
 }
 Refresh-Path
 
@@ -174,36 +200,14 @@ python -m pip install --upgrade pip setuptools wheel
 # 9. Python-Pakete installieren
 # --------------------------------
 # Bewusst ungepinnte Liste, nur was die Demos tatsaechlich brauchen:
-#   Basis (Use Cases 1+2 handwerklich + industriell):
-#     xlwings, openpyxl, pandas, pytest
-#     oletools (importiert in vba_to_text.py - VBA-Extraktion Bartek-Industrial)
-#   Agentisch (Use Case 3, langgraph + openai):
-#     openai, pywin32, langgraph - werden auf ARM64 uebersprungen, weil
-#     transitive Abhaengigkeit "cryptography" keine win_arm64-Wheels hat
-#     (braeuchte VS Build Tools / Rust). Use Case 3 laeuft am Stand
-#     ohnehin nur auf den x86_64-Laptops von Bartek/Arno.
-
-# Architektur ueber Python ermitteln (zaehlt die Python-Architektur, nicht die Hardware -
-# x86_64-Python auf ARM64-Hardware ist via Prism-Emulation auch moeglich).
-$pyArch = "AMD64"
-try {
-    $pyArch = (& python -c "import platform; print(platform.machine())" 2>$null).Trim()
-} catch {}
-$isArm = ($pyArch -match "ARM")
-Write-Host "Python-Architektur: $pyArch" -ForegroundColor DarkGray
-
-Write-Step "Python-Pakete installieren (Basis)"
-python -m pip install xlwings openpyxl pandas pytest oletools
-
-if ($isArm) {
-    Write-Host ""
-    Write-Host "ARM64 erkannt - Use-Case-(3)-Pakete werden uebersprungen:" -ForegroundColor Yellow
-    Write-Host "  openai, pywin32, langgraph (cryptography hat keine win_arm64-Wheels)." -ForegroundColor Yellow
-    Write-Host "  Use Cases 1, 2, 4 funktionieren trotzdem." -ForegroundColor Yellow
-} else {
-    Write-Step "Python-Pakete installieren (Use Case 3 agentisch)"
-    python -m pip install openai pywin32 langgraph
-}
+#   Basis (Use Cases 1+2):       xlwings, openpyxl, pandas, pytest, oletools
+#   Agentisch (Use Case 3):      openai, pywin32, langgraph
+# Python ist x86_64 (siehe Schritt 4), daher pre-built Wheels fuer alle
+# transitive Abhaengigkeiten verfuegbar - auch auf ARM64-Hardware.
+Write-Step "Python-Pakete installieren"
+python -m pip install `
+    xlwings openpyxl pandas pytest oletools `
+    openai pywin32 langgraph
 
 # --------------------------------
 # 10. VS Code Python Extension
@@ -290,19 +294,13 @@ if (!(Get-Command git -ErrorAction SilentlyContinue)) {
     # Seminar-Repos absichtlich nicht via -r installieren, da deren requirements.txt
     # gepinnte Versionen und nicht-genutzte Pakete (junit2html, pytest-html) enthalten -
     # die Basis aus Schritt 9 reicht.
-    # Auf ARM64 ueberspringen, weil cryptography (transitiv ueber langgraph)
-    # keine win_arm64-Wheels hat.
-    if ($isArm) {
-        Write-Host "    rechner-pipeline\requirements.txt: uebersprungen (ARM64)." -ForegroundColor Yellow
-    } else {
-        $rpReq = Join-Path $repoBase "rechner-pipeline\requirements.txt"
-        if (Test-Path $rpReq) {
-            Write-Host "    pip install -r rechner-pipeline\requirements.txt" -ForegroundColor Yellow
-            try {
-                python -m pip install -r $rpReq
-            } catch {
-                Write-Host "    pip install -r requirements.txt fehlgeschlagen ($_)." -ForegroundColor Yellow
-            }
+    $rpReq = Join-Path $repoBase "rechner-pipeline\requirements.txt"
+    if (Test-Path $rpReq) {
+        Write-Host "    pip install -r rechner-pipeline\requirements.txt" -ForegroundColor Yellow
+        try {
+            python -m pip install -r $rpReq
+        } catch {
+            Write-Host "    pip install -r requirements.txt fehlgeschlagen ($_)." -ForegroundColor Yellow
         }
     }
 }
