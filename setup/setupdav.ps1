@@ -17,8 +17,10 @@
 #   2. Python-App-Aliase deaktivieren (python.exe / python3.exe Reparse-Points entfernen)
 #   3. Python 3.13 + VS Code per winget installieren (falls fehlt)
 #   4. git und gh per winget installieren
-#   5. Python-Pakete: xlwings, openpyxl, pandas, pytest, oletools,
-#      openai, pywin32, langgraph
+#   5. Python-Pakete:
+#        Basis (Use Cases 1+2): xlwings, openpyxl, pandas, pytest, oletools
+#        Agentisch (Use Case 3): openai, pywin32, langgraph
+#          - auf ARM64 uebersprungen (cryptography hat keine win_arm64-Wheels)
 #   6. VS Code Python Extension
 #   7. Excel Trust-Center: Makros aktivieren (VBAWarnings=1) + VBA-Zugriff (AccessVBOM=1)
 #   8. KI-Lab-Repos clonen nach %USERPROFILE%\ki-lab\repos\
@@ -171,18 +173,37 @@ python -m pip install --upgrade pip setuptools wheel
 # --------------------------------
 # 9. Python-Pakete installieren
 # --------------------------------
-Write-Step "Python-Pakete installieren"
 # Bewusst ungepinnte Liste, nur was die Demos tatsaechlich brauchen:
-#   - Seminar-Repos (handwerklich + industriell, Use Cases 1+2):
-#       xlwings, openpyxl, pandas, pytest
-#       oletools (importiert in vba_to_text.py - VBA-Extraktion Bartek-Industrial)
-#   - rechner-pipeline (agentisch, Use Case 3):
-#       openai, pywin32, langgraph
-# junit2html / pytest-html aus den Seminar-requirements.txt sind nicht importiert
-# und werden hier weggelassen (HTML-Report-Komfort, fuer KI-Lab nicht noetig).
-python -m pip install `
-    xlwings openpyxl pandas pytest oletools `
-    openai pywin32 langgraph
+#   Basis (Use Cases 1+2 handwerklich + industriell):
+#     xlwings, openpyxl, pandas, pytest
+#     oletools (importiert in vba_to_text.py - VBA-Extraktion Bartek-Industrial)
+#   Agentisch (Use Case 3, langgraph + openai):
+#     openai, pywin32, langgraph - werden auf ARM64 uebersprungen, weil
+#     transitive Abhaengigkeit "cryptography" keine win_arm64-Wheels hat
+#     (braeuchte VS Build Tools / Rust). Use Case 3 laeuft am Stand
+#     ohnehin nur auf den x86_64-Laptops von Bartek/Arno.
+
+# Architektur ueber Python ermitteln (zaehlt die Python-Architektur, nicht die Hardware -
+# x86_64-Python auf ARM64-Hardware ist via Prism-Emulation auch moeglich).
+$pyArch = "AMD64"
+try {
+    $pyArch = (& python -c "import platform; print(platform.machine())" 2>$null).Trim()
+} catch {}
+$isArm = ($pyArch -match "ARM")
+Write-Host "Python-Architektur: $pyArch" -ForegroundColor DarkGray
+
+Write-Step "Python-Pakete installieren (Basis)"
+python -m pip install xlwings openpyxl pandas pytest oletools
+
+if ($isArm) {
+    Write-Host ""
+    Write-Host "ARM64 erkannt - Use-Case-(3)-Pakete werden uebersprungen:" -ForegroundColor Yellow
+    Write-Host "  openai, pywin32, langgraph (cryptography hat keine win_arm64-Wheels)." -ForegroundColor Yellow
+    Write-Host "  Use Cases 1, 2, 4 funktionieren trotzdem." -ForegroundColor Yellow
+} else {
+    Write-Step "Python-Pakete installieren (Use Case 3 agentisch)"
+    python -m pip install openai pywin32 langgraph
+}
 
 # --------------------------------
 # 10. VS Code Python Extension
@@ -269,13 +290,19 @@ if (!(Get-Command git -ErrorAction SilentlyContinue)) {
     # Seminar-Repos absichtlich nicht via -r installieren, da deren requirements.txt
     # gepinnte Versionen und nicht-genutzte Pakete (junit2html, pytest-html) enthalten -
     # die Basis aus Schritt 9 reicht.
-    $rpReq = Join-Path $repoBase "rechner-pipeline\requirements.txt"
-    if (Test-Path $rpReq) {
-        Write-Host "    pip install -r rechner-pipeline\requirements.txt" -ForegroundColor Yellow
-        try {
-            python -m pip install -r $rpReq
-        } catch {
-            Write-Host "    pip install -r requirements.txt fehlgeschlagen ($_)." -ForegroundColor Yellow
+    # Auf ARM64 ueberspringen, weil cryptography (transitiv ueber langgraph)
+    # keine win_arm64-Wheels hat.
+    if ($isArm) {
+        Write-Host "    rechner-pipeline\requirements.txt: uebersprungen (ARM64)." -ForegroundColor Yellow
+    } else {
+        $rpReq = Join-Path $repoBase "rechner-pipeline\requirements.txt"
+        if (Test-Path $rpReq) {
+            Write-Host "    pip install -r rechner-pipeline\requirements.txt" -ForegroundColor Yellow
+            try {
+                python -m pip install -r $rpReq
+            } catch {
+                Write-Host "    pip install -r requirements.txt fehlgeschlagen ($_)." -ForegroundColor Yellow
+            }
         }
     }
 }
