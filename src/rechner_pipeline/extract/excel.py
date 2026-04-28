@@ -10,14 +10,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import win32com.client  # type: ignore
 
-from scalar_table_extractor import extract_all_pairs_in_info_dir
+from rechner_pipeline.extract.scalar_table import extract_all_pairs_in_info_dir
 
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-EXCEL_PATH = SCRIPT_DIR / "TARIFRECHNER_KLV.xlsm"
 GENERATED_SUBDIR_NAME = "info_from_excel"
-generated_dir = SCRIPT_DIR / GENERATED_SUBDIR_NAME
-generated_dir.mkdir(parents=True, exist_ok=True)
 
 _INVALID_FS_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1F]+')
 _XL_A1 = 1
@@ -512,8 +508,8 @@ def compress_exported_csvs(sheet_csv_paths: List[Path], out_dir: Path) -> Dict[s
 
 
 def export_excel_infos(
-    excel_path: Path = EXCEL_PATH,
-    out_dir: Path = generated_dir,
+    excel_path: Path,
+    out_dir: Path,
     save_manifest_json: bool = True,
 ) -> Dict[str, Any]:
     if not excel_path.exists():
@@ -601,5 +597,3 @@ def export_excel_infos(
             pass
 
 
-def main() -> None:
-    export_excel_infos(EXCEL_PATH, generated_dir, save_manifest_json=True)

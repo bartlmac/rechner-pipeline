@@ -1,30 +1,58 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Backward-compatible facade for the extractor modules.
+Deprecated.
 
-This module keeps the previous public API stable while delegating to:
-- excel_exporter.py
-- llm_output_extractor.py
-- scalar_table_extractor.py
+Diese Top-Level-Fassade existiert nur noch als rückwärtskompatible Brücke
+auf die kanonischen Module unter ``rechner_pipeline``. Bitte direkt importieren:
+
+- ``from rechner_pipeline.extract.excel import export_excel_infos, GENERATED_SUBDIR_NAME``
+- ``from rechner_pipeline.generate.output import (
+    extract_files_from_text, safe_write, write_extracted_files_to_generated_dir,
+  )``
+- ``from rechner_pipeline.extract.scalar_table import (
+    extract_all_pairs_in_info_dir, extract_one_pair, extract_one_pair_from_values,
+  )``
 """
 
 from __future__ import annotations
 
-from excel_exporter import EXCEL_PATH, GENERATED_SUBDIR_NAME, export_excel_infos
-from llm_output_extractor import (
-    extract_files_from_text,
-    safe_write,
-    write_extracted_files_to_generated_dir,
+import sys
+from pathlib import Path
+from warnings import warn
+
+
+def _ensure_src_on_path() -> None:
+    src = Path(__file__).resolve().parent / "src"
+    if src.is_dir() and str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+
+
+_ensure_src_on_path()
+
+warn(
+    "matrix_extractor ist deprecated; importiere direkt aus rechner_pipeline.*",
+    DeprecationWarning,
+    stacklevel=2,
 )
-from scalar_table_extractor import (
+
+from rechner_pipeline.extract.excel import (  # noqa: E402
+    GENERATED_SUBDIR_NAME,
+    export_excel_infos,
+)
+from rechner_pipeline.extract.scalar_table import (  # noqa: E402
     extract_all_pairs_in_info_dir,
     extract_one_pair,
     extract_one_pair_from_values,
 )
+from rechner_pipeline.generate.output import (  # noqa: E402
+    extract_files_from_text,
+    safe_write,
+    write_extracted_files_to_generated_dir,
+)
+
 
 __all__ = [
-    "EXCEL_PATH",
     "GENERATED_SUBDIR_NAME",
     "export_excel_infos",
     "extract_files_from_text",
@@ -34,11 +62,3 @@ __all__ = [
     "extract_one_pair",
     "extract_one_pair_from_values",
 ]
-
-
-def main() -> None:
-    export_excel_infos()
-
-
-if __name__ == "__main__":
-    main()

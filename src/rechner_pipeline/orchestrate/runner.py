@@ -1,3 +1,11 @@
+"""
+Klassischer Pipeline-Runner ohne LangGraph.
+
+Public API der Stufen ``prepare_manifest``, ``run_main_llm``, ``run_test_llm``
+und ``run_compare`` ist bewusst öffentlich, damit der ``agentic`` Wrapper
+sie als Service-Aufrufe verwenden kann (statt private Underscore-Methoden).
+"""
+
 from __future__ import annotations
 
 import json
@@ -8,11 +16,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
-from llm_client import build_openai_client
-from manifest_model import ExportManifest
-from prompt_builder import apply_placeholders, build_stuffed_inputs, read_text, write_text
-
-import matrix_extractor as mx
+from rechner_pipeline.context.prompt_builder import (
+    apply_placeholders,
+    build_stuffed_inputs,
+    read_text,
+    write_text,
+)
+from rechner_pipeline.extract.excel import GENERATED_SUBDIR_NAME, export_excel_infos
+from rechner_pipeline.generate.client import build_openai_client
+from rechner_pipeline.generate.output import write_extracted_files_to_generated_dir
+from rechner_pipeline.models.manifest import ExportManifest
 
 
 _TEST_BLOCK_RE = re.compile(
@@ -43,37 +56,44 @@ class PipelineOptions:
 
 
 class PipelineRunner:
-    def __init__(self, script_dir: Path, options: PipelineOptions) -> None:
-        self.script_dir = script_dir
+    def __init__(
+        self,
+        repo_root: Path,
+        options: PipelineOptions,
+        excel_path: Path | None = None,
+    ) -> None:
+        self.repo_root = repo_root
         self.options = options
-        self.prompt_main = script_dir / "Promt_excel_to_py.txt"
-        self.prompt_test = script_dir / "Prompt_test.txt"
-        self.out_dir = script_dir / mx.GENERATED_SUBDIR_NAME
+        self.excel_path = excel_path or (repo_root / "Tarifrechner_KLV.xlsm")
+        self.prompt_main = repo_root / "Promt_excel_to_py.txt"
+        self.prompt_test = repo_root / "Prompt_test.txt"
+        self.out_dir = repo_root / GENERATED_SUBDIR_NAME
         self.manifest_path = self.out_dir / "export_manifest.json"
-        self.generated_dir = script_dir / "generated"
+        self.generated_dir = repo_root / "generated"
         self.test_py_path = self.generated_dir / "test_run_advanced.py"
         self.client = build_openai_client()
 
     def run(self) -> None:
-        self._assert_required_files()
-        manifest = self._load_or_export_manifest()
+        self.assert_required_files()
+        manifest = self.prepare_manifest()
         if not self.options.skip_main_llm:
-            self._run_main_llm(manifest)
+            self.run_main_llm(manifest)
         if not self.options.skip_test_llm:
-            self._run_test_llm(manifest)
+            self.run_test_llm(manifest)
         if not self.options.skip_compare_run:
-            self._run_compare()
+            self.run_compare()
         print("[DONE]")
 
-    def _assert_required_files(self) -> None:
+    def assert_required_files(self) -> None:
         for path in [self.prompt_main, self.prompt_test]:
             if not path.exists():
                 raise FileNotFoundError(f"Missing: {path}")
 
-    def _load_or_export_manifest(self) -> ExportManifest:
+    def prepare_manifest(self) -> ExportManifest:
         if not self.options.skip_export:
-            manifest_dict = mx.export_excel_infos(
-                excel_path=mx.EXCEL_PATH,
+            self.out_dir.mkdir(parents=True, exist_ok=True)
+            manifest_dict = export_excel_infos(
+                excel_path=self.excel_path,
                 out_dir=self.out_dir,
                 save_manifest_json=True,
             )
@@ -89,7 +109,7 @@ class PipelineRunner:
             raise RuntimeError("manifest['llm_inputs'] is empty.")
         return manifest
 
-    def _run_main_llm(self, manifest: ExportManifest) -> None:
+    def run_main_llm(self, manifest: ExportManifest) -> None:
         prompt_template = read_text(self.prompt_main)
         stuffed_inputs = build_stuffed_inputs(
             base_dir=self.out_dir,
@@ -114,7 +134,7 @@ class PipelineRunner:
             },
         )
 
-        debug_prompt_path = self.script_dir / "DEBUG_first_llm_prompt.txt"
+        debug_prompt_path = self.repo_root / "DEBUG_first_llm_prompt.txt"
         write_text(debug_prompt_path, final_prompt)
         print("\n[DEBUG] First LLM prompt written to:")
         print(debug_prompt_path)
@@ -126,7 +146,7 @@ class PipelineRunner:
             reasoning={"effort": self.options.reasoning_effort},
         )
         llm_output = resp.output_text
-        written = mx.write_extracted_files_to_generated_dir(llm_output, self.script_dir)
+        written = write_extracted_files_to_generated_dir(llm_output, self.repo_root)
         if written == 0:
             raise RuntimeError(
                 "No files extracted from LLM output (missing FILE_START/FILE_END blocks)."
@@ -149,7 +169,7 @@ class PipelineRunner:
         test_inputs.extend([path for path in core_py if path.exists()])
         return test_inputs
 
-    def _run_test_llm(self, manifest: ExportManifest) -> None:
+    def run_test_llm(self, manifest: ExportManifest) -> None:
         del manifest  # reserved for future metadata extensions
         prompt_template = read_text(self.prompt_test)
         test_inputs = self._build_test_inputs()
@@ -157,7 +177,7 @@ class PipelineRunner:
         scalar_json = [p for p in test_inputs if p.name.endswith("_scalar.json")]
 
         stuffed_inputs = build_stuffed_inputs(
-            base_dir=self.script_dir,
+            base_dir=self.repo_root,
             files=test_inputs,
             max_chars_per_file=self.options.test_max_chars_per_file,
             max_total_chars=self.options.test_max_total_chars,
@@ -179,7 +199,7 @@ class PipelineRunner:
             },
         )
 
-        debug_prompt_path = self.script_dir / "DEBUG_second_llm_prompt.txt"
+        debug_prompt_path = self.repo_root / "DEBUG_second_llm_prompt.txt"
         write_text(debug_prompt_path, final_prompt)
         print("\n[DEBUG] Second LLM prompt written to:")
         print(debug_prompt_path)
@@ -196,7 +216,7 @@ class PipelineRunner:
             raise RuntimeError("Could not find test_run_advanced.py block in LLM output.")
         write_text(self.test_py_path, extracted)
 
-    def _run_compare(self) -> None:
+    def run_compare(self) -> None:
         if not self.test_py_path.exists():
             raise FileNotFoundError(f"Missing test file: {self.test_py_path}")
         subprocess.run(

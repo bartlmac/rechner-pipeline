@@ -105,38 +105,32 @@ Die generierten Ordner `generated/` und `info_from_excel/` sind Laufzeit-Outputs
 
 ## Projektstruktur
 
-- `pipeline.py`
-  - Dünner CLI-Einstiegspunkt.
-  - Parst Argumente und startet den Runner.
+```
+src/rechner_pipeline/
+├── extract/        # Phase 1: deterministische Excel-Extraktion
+│   ├── excel.py            (Sheets, VBA, Name Manager, Formel-Kompression)
+│   └── scalar_table.py     (*_scalar.json und *_table_values.csv)
+├── context/        # Phase 2: Prompt-Aufbereitung
+│   └── prompt_builder.py   (Stuffing, Truncation, Placeholder)
+├── generate/       # Phase 3: LLM-Aufruf + Output-Extraktion
+│   ├── client.py           (OpenAI-Client, OPENAI_API_KEY-Validierung)
+│   └── output.py           (===FILE_START===…===FILE_END===-Blöcke)
+├── qa/             # Phase 4: Qualitätssicherung (Platzhalter)
+├── orchestrate/    # Phase 5: Orchestrierung
+│   ├── runner.py           (PipelineRunner mit öffentlicher Stage-API)
+│   └── agentic.py          (LangGraph-Wrapper, Quality-Gates, Human-Review)
+├── models/
+│   └── manifest.py         (ExportManifest)
+└── cli.py                  (main(), agentic_main())
+```
 
-- `pipeline_core.py`
-  - Orchestriert den Ablauf (`export -> main_llm -> test_llm -> compare`).
-  - Verwaltet Prompt-Bau, LLM-Aufrufe und Debug-Prompts.
+Top-Level liegen weiterhin (rückwärtskompatibel):
 
-- `matrix_extractor.py`
-  - Rückwärtskompatible Fassade.
-  - Re-exportiert die bisherigen öffentlichen Funktionen/Konstanten.
+- `pipeline.py` — Wrapper, ruft `rechner_pipeline.cli.main` auf.
+- `agentic_pipeline.py` — Wrapper, ruft `rechner_pipeline.cli.agentic_main` auf.
+- `matrix_extractor.py` — deprecated; re-exportiert die kanonischen Symbole.
 
-- `excel_exporter.py`
-  - Excel-Export (Sheets, VBA, Name Manager).
-  - Formel-Komprimierung.
-  - Erzeugung des Export-Manifests.
-
-- `scalar_table_extractor.py`
-  - Ableitung von `*_scalar.json` und `*_table_values.csv` aus komprimierten CSVs.
-
-- `llm_output_extractor.py`
-  - Extraktion von `===FILE_START=== ... ===FILE_END===` Blöcken.
-  - Sicheres Schreiben nach `generated/`.
-
-- `prompt_builder.py`
-  - Prompt-Template-Hilfen (Datei-Stuffing, Placeholder-Ersetzung, Trunkierung).
-
-- `llm_client.py`
-  - Aufbau und Validierung des OpenAI-Clients (`OPENAI_API_KEY`).
-
-- `manifest_model.py`
-  - Typisiertes Manifest-Modell (`ExportManifest`) inkl. `from_dict`/`to_dict`.
+Über `pip install -e .` werden zusätzlich die Console-Scripts `rechner-pipeline` und `rechner-pipeline-agentic` registriert.
 
 ## Lauf (Beispiel)
 
