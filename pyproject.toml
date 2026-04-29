@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Methodischer Referenzrahmen für KI-gestützte Rechenkernentwicklung (Excel → Python via LLM, agentisch orchestriert)"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 authors = [
     { name = "Bartlomiej Maciaga" },
     { name = "Arno Rasch" },
@@ -18,19 +18,31 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
 ]
-dependencies = [
-    "openai",
-    "pandas",
-    "langgraph",
-    "pywin32; sys_platform == 'win32'",
-]
+dependencies = []
 
 [project.optional-dependencies]
+llm = [
+    "openai>=1.68,<2",
+]
+export = [
+    "pandas>=2.2,<3",
+    "pywin32>=306,<400; sys_platform == 'win32'",
+]
+agentic = [
+    "langgraph>=0.2,<2",
+]
 dev = [
-    "pytest>=8",
+    "pytest>=8.0,<9",
+]
+all = [
+    "openai>=1.68,<2",
+    "pandas>=2.2,<3",
+    "pywin32>=306,<400; sys_platform == 'win32'",
+    "langgraph>=0.2,<2",
 ]
 
 [project.scripts]

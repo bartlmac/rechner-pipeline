@@ -15,13 +15,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from rechner_pipeline.orchestrate.agentic import (
-    AgenticOptions,
-    AgenticState,
-    build_graph,
-)
-from rechner_pipeline.orchestrate.runner import PipelineOptions, PipelineRunner
-
 
 def _add_common_options(ap: argparse.ArgumentParser) -> None:
     ap.add_argument(
@@ -32,7 +25,10 @@ def _add_common_options(ap: argparse.ArgumentParser) -> None:
     ap.add_argument(
         "--excel",
         default=None,
-        help="Pfad zur Excel-Quelldatei (Default: <repo_root>/Tarifrechner_KLV.xlsm)",
+        help=(
+            "Pfad zur Excel-Quelldatei; relative Pfade werden gegen das "
+            "Repo-Root aufgelöst (Default: examples/Tarifrechner_KLV.xlsm)"
+        ),
     )
 
     ap.add_argument("--skip_export", action="store_true")
@@ -50,9 +46,19 @@ def _add_common_options(ap: argparse.ArgumentParser) -> None:
         default="medium",
         choices=["low", "medium", "high"],
     )
+    ap.add_argument(
+        "--strict_manifest_warnings",
+        action="store_true",
+        help=(
+            "Behandle als strict_error markierte Manifest-Warnungen als "
+            "Pipeline-Fehler."
+        ),
+    )
 
 
-def _options_from_namespace(ns: argparse.Namespace) -> PipelineOptions:
+def _options_from_namespace(ns: argparse.Namespace):
+    from rechner_pipeline.orchestrate.runner import PipelineOptions
+
     return PipelineOptions(
         model=ns.model,
         skip_export=ns.skip_export,
@@ -64,6 +70,7 @@ def _options_from_namespace(ns: argparse.Namespace) -> PipelineOptions:
         test_max_chars_per_file=ns.test_max_chars_per_file,
         test_max_total_chars=ns.test_max_total_chars,
         reasoning_effort=ns.reasoning_effort,
+        strict_manifest_warnings=ns.strict_manifest_warnings,
     )
 
 
@@ -73,15 +80,27 @@ def _resolve_repo_root(repo_root: Path | None = None) -> Path:
     return Path.cwd()
 
 
+def _resolve_excel_path(excel_arg: str | None, repo_root: Path) -> Path | None:
+    if not excel_arg:
+        return None
+    excel_path = Path(excel_arg)
+    if excel_path.is_absolute():
+        return excel_path
+    return repo_root / excel_path
+
+
 def main(repo_root: Path | None = None) -> None:
     ap = argparse.ArgumentParser(prog="rechner-pipeline")
     _add_common_options(ap)
     ns = ap.parse_args()
 
+    from rechner_pipeline.orchestrate.runner import PipelineRunner
+
+    resolved_repo_root = _resolve_repo_root(repo_root)
     options = _options_from_namespace(ns)
-    excel_path = Path(ns.excel) if ns.excel else None
+    excel_path = _resolve_excel_path(ns.excel, resolved_repo_root)
     runner = PipelineRunner(
-        repo_root=_resolve_repo_root(repo_root),
+        repo_root=resolved_repo_root,
         options=options,
         excel_path=excel_path,
     )
@@ -96,6 +115,11 @@ def agentic_main(repo_root: Path | None = None) -> None:
     ap.add_argument("--fail_on_human_review", action="store_true")
     ns = ap.parse_args()
 
+    from rechner_pipeline.orchestrate.agentic import AgenticOptions, build_graph
+    from rechner_pipeline.orchestrate.dossier import write_run_dossier
+    from rechner_pipeline.orchestrate.runner import PipelineRunner
+
+    resolved_repo_root = _resolve_repo_root(repo_root)
     pipeline_options = _options_from_namespace(ns)
     args = AgenticOptions(
         pipeline=pipeline_options,
@@ -105,12 +129,16 @@ def agentic_main(repo_root: Path | None = None) -> None:
     )
 
     app = build_graph()
-    initial_state: AgenticState = {
-        "repo_root": str(_resolve_repo_root(repo_root)),
-        "excel_path": ns.excel or "",
+    excel_path = _resolve_excel_path(ns.excel, resolved_repo_root)
+    initial_state = {
+        "repo_root": str(resolved_repo_root),
+        "excel_path": str(excel_path) if excel_path else "",
         "options": args.pipeline,
         "step_status": {},
         "errors": [],
+        "diagnostics": [],
+        "repair_contexts": {},
+        "repair_artifacts": {},
         "retries": {
             "_max_main": args.max_retries_main,
             "_max_test": args.max_retries_test,
@@ -119,9 +147,30 @@ def agentic_main(repo_root: Path | None = None) -> None:
     }
 
     final_state = app.invoke(initial_state)
+    runner = PipelineRunner(
+        repo_root=resolved_repo_root,
+        options=args.pipeline,
+        excel_path=excel_path,
+    )
     if final_state.get("human_review_required"):
+        dossier_path = write_run_dossier(
+            runner,
+            manifest=final_state.get("manifest"),
+            run_status="human_review_required",
+            human_review_required=True,
+            agentic_state=final_state,
+        )
+        print(f"[DOSSIER] {dossier_path}")
         if args.fail_on_human_review:
             raise RuntimeError("Pipeline ended in HUMAN_REVIEW_REQUIRED.")
         print("[DONE_WITH_HUMAN_REVIEW]")
         return
+    dossier_path = write_run_dossier(
+        runner,
+        manifest=final_state.get("manifest"),
+        run_status="completed",
+        human_review_required=False,
+        agentic_state=final_state,
+    )
+    print(f"[DOSSIER] {dossier_path}")
     print("[DONE]")

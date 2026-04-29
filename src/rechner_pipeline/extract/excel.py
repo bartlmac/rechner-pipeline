@@ -7,11 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
-import win32com.client  # type: ignore
-
-from rechner_pipeline.extract.scalar_table import extract_all_pairs_in_info_dir
-
 
 GENERATED_SUBDIR_NAME = "info_from_excel"
 
@@ -19,6 +14,51 @@ _INVALID_FS_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1F]+')
 _XL_A1 = 1
 _A1_RE = re.compile(r"(\$?)([A-Z]{1,3})(\$?)(\d+)$")
 _SHEET_A1_RE = re.compile(r"((?:'[^']+'|[A-Za-z0-9_]+)!)?(\$?[A-Z]{1,3}\$?\d+)")
+
+
+def _manifest_warning(
+    *,
+    code: str,
+    stage: str,
+    message: str,
+    strict_error: bool,
+    path: Path | str = "",
+    details: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "code": code,
+        "stage": stage,
+        "message": message,
+        "strict_error": strict_error,
+    }
+    if path:
+        out["path"] = str(path)
+    if details:
+        out["details"] = details
+    return out
+
+
+def _import_pandas() -> Any:
+    try:
+        import pandas as pd  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "pandas is required for Excel metadata compression. "
+            "Install the export dependencies first, e.g. `pip install -e '.[export]'`."
+        ) from exc
+    return pd
+
+
+def _dispatch_excel_application() -> Any:
+    try:
+        import win32com.client  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "pywin32 is required for Excel COM export and is only available on Windows. "
+            "Install the Windows export dependencies first, e.g. "
+            "`pip install -e '.[export]'`."
+        ) from exc
+    return win32com.client.DispatchEx("Excel.Application")
 
 
 def safe_filename(name: str, max_len: int = 180) -> str:
@@ -121,13 +161,27 @@ def export_all_sheets(wb, out_dir: Path) -> List[Path]:
     return exported
 
 
-def export_vba_modules_to_txt(wb, out_dir: Path) -> List[Path]:
+def export_vba_modules_to_txt(
+    wb,
+    out_dir: Path,
+    warnings: List[Dict[str, Any]] | None = None,
+) -> List[Path]:
     vba_dir = out_dir / "vba"
     vba_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         vbproj = wb.VBProject
     except Exception as exc:
+        if warnings is not None:
+            warnings.append(
+                _manifest_warning(
+                    code="export.vba_access_unavailable",
+                    stage="export",
+                    message="Cannot access VBProject; VBA modules were not exported.",
+                    strict_error=True,
+                    details={"exception": str(exc)},
+                )
+            )
         print(
             "[WARN] Cannot access VBProject.\n"
             "Enable in Excel:\n"
@@ -149,6 +203,17 @@ def export_vba_modules_to_txt(wb, out_dir: Path) -> List[Path]:
             line_count = int(code_module.CountOfLines)
             code = code_module.Lines(1, line_count) if line_count > 0 else ""
         except Exception as exc:
+            if warnings is not None:
+                warnings.append(
+                    _manifest_warning(
+                        code="export.vba_module_read_failed",
+                        stage="export",
+                        message=f"Could not read VBA module '{comp_name}' completely.",
+                        strict_error=True,
+                        path=vba_dir / f"{safe_filename(comp_name)}.txt",
+                        details={"module": comp_name, "exception": str(exc)},
+                    )
+                )
             code = f"' [ERROR reading code for {comp_name}] {exc}\n"
 
         if code is None or str(code).strip() == "":
@@ -390,6 +455,8 @@ def choose_label(
 
 
 def compress_sheet_csv_with_labels(in_path: Path, out_path: Path, sep: str = ";") -> bool:
+    pd = _import_pandas()
+
     df = pd.read_csv(in_path, sep=sep, dtype=str, keep_default_na=False)
     required = ["Blatt", "Adresse", "Formel", "Wert"]
     for c in required:
@@ -481,7 +548,11 @@ def compress_sheet_csv_with_labels(in_path: Path, out_path: Path, sep: str = ";"
     return True
 
 
-def compress_exported_csvs(sheet_csv_paths: List[Path], out_dir: Path) -> Dict[str, str]:
+def compress_exported_csvs(
+    sheet_csv_paths: List[Path],
+    out_dir: Path,
+    warnings: List[Dict[str, Any]] | None = None,
+) -> Dict[str, str]:
     del out_dir
     replacements: Dict[str, str] = {}
     for csv_path in sheet_csv_paths:
@@ -503,6 +574,17 @@ def compress_exported_csvs(sheet_csv_paths: List[Path], out_dir: Path) -> Dict[s
             else:
                 print(f"[SKIP] No formulas in: {csv_path.name} -> no compressed CSV generated")
         except Exception as exc:
+            if warnings is not None:
+                warnings.append(
+                    _manifest_warning(
+                        code="export.compression_failed",
+                        stage="export",
+                        message=f"Compression failed for {csv_path.name}; uncompressed CSV remains available.",
+                        strict_error=True,
+                        path=csv_path,
+                        details={"exception": str(exc)},
+                    )
+                )
             print(f"[WARN] Compression failed for {csv_path.name}: {exc}")
     return replacements
 
@@ -518,7 +600,7 @@ def export_excel_infos(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    excel = win32com.client.DispatchEx("Excel.Application")
+    excel = _dispatch_excel_application()
     excel.Visible = False
     excel.DisplayAlerts = False
     excel.AskToUpdateLinks = False
@@ -532,10 +614,12 @@ def export_excel_infos(
             AddToMru=False,
         )
 
+        warnings: List[Dict[str, Any]] = []
+
         sheet_csvs = export_all_sheets(wb, out_dir)
-        vba_txts = export_vba_modules_to_txt(wb, out_dir)
+        vba_txts = export_vba_modules_to_txt(wb, out_dir, warnings=warnings)
         nm_csv = export_name_manager_to_csv(wb, out_dir)
-        replacements = compress_exported_csvs(sheet_csvs, out_dir)
+        replacements = compress_exported_csvs(sheet_csvs, out_dir, warnings=warnings)
 
         llm_sheet_csvs: List[Path] = []
         for p in sheet_csvs:
@@ -563,10 +647,16 @@ def export_excel_infos(
             "replacements": replacements,
             "llm_inputs": [str(p) for p in llm_inputs],
             "all_outputs": [str(p) for p in sorted(all_outputs_set, key=lambda x: str(x))],
+            "warnings": warnings,
+            "prompt_runs": [],
+            "output_hashes": [],
         }
 
         print("\n[INFO] Extracting scalars and table values from compressed metadata...")
-        extract_all_pairs_in_info_dir(out_dir)
+        from rechner_pipeline.extract.scalar_table import extract_all_pairs_in_info_dir
+
+        scalar_warnings = extract_all_pairs_in_info_dir(out_dir)
+        warnings.extend(scalar_warnings)
         scalar_files = sorted(out_dir.glob("*_scalar.json"), key=lambda p: p.name)
         table_files = sorted(out_dir.glob("*_table_values.csv"), key=lambda p: p.name)
         for p in scalar_files + table_files:
@@ -595,5 +685,3 @@ def export_excel_infos(
             excel.Quit()
         except Exception:
             pass
-
-

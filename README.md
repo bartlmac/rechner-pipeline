@@ -4,7 +4,9 @@
 
 ## Schnellstart
 
-Voraussetzungen: **Windows mit installiertem Microsoft Excel**, **Python 3.13**, und ein gültiger **`OPENAI_API_KEY`**.
+Voraussetzungen für einen vollständigen Demo-Lauf: **Windows mit installiertem
+Microsoft Excel**, **Python 3.12 oder neuer**, und ein gültiger
+**`OPENAI_API_KEY`**.
 
 ```powershell
 git clone https://github.com/bartlmac/rechner-pipeline.git
@@ -20,6 +22,48 @@ copy .env.example .env
 python pipeline.py            # klassischer Lauf
 python agentic_pipeline.py    # LangGraph-Variante mit Quality-Gates
 ```
+
+`requirements.txt` ist bewusst nur ein dünner Verweis auf
+`pyproject.toml`: Es installiert das Paket editable mit allen
+Laufzeit-Extras (`llm`, `export`, `agentic`). Die Paket- und
+Versionsstrategie wird dadurch an einer Stelle gepflegt.
+
+Die Pipeline lädt beim ersten LLM-Schritt automatisch die Datei `.env` aus dem
+Repository-Root. Bereits gesetzte echte Umgebungsvariablen haben Vorrang vor
+Werten aus `.env`.
+
+Ohne weitere Angabe nutzt die Pipeline die Demo-Arbeitsmappe
+`examples/Tarifrechner_KLV.xlsm`. Eine andere Excel-Quelldatei kann mit
+`--excel` angegeben werden:
+
+```powershell
+python pipeline.py --excel examples/Tarifrechner_KLV.xlsm
+python agentic_pipeline.py --excel examples/Tarifrechner_KLV.xlsm
+```
+
+Relative `--excel`-Pfade werden gegen das Repository-Root aufgelöst. Absolute
+Pfade sind ebenfalls möglich.
+
+Das Exportmanifest `info_from_excel/export_manifest.json` enthält neben den
+Exportpfaden auch strukturierte Warnungen, Prompt-Metadaten mit SHA-256-Hashes
+und Output-Hashes. Mit `--strict_manifest_warnings` werden Warnungen als Fehler
+behandelt, die Kontext verlieren oder Reproduzierbarkeit beeinträchtigen:
+fehlender VBA-Zugriff, fehlgeschlagene VBA-Modul-Lesung, fehlgeschlagene
+CSV-Kompression, fehlende Wertquellen oder fehlgeschlagene
+Scalar/Table-Extraktion sowie Prompt-Trunkierung durch Datei- oder
+Gesamtlimits.
+
+Vor der Ausführung generierter Tests führt die Pipeline zusätzlich eine
+statische Sicherheitsprüfung für generierten Python-Code aus. Sie blockiert
+gefährliche Imports, Dateisystem- und Netzwerkzugriffe, Subprocess-Aufrufe
+sowie `eval`/`exec`; das Ergebnis steht in
+`generated/static_security_report.json`.
+
+Nach jedem klassischen Lauf und nach jedem agentischen Abschluss schreibt die
+Pipeline ein Review-/Run-Dossier nach `generated/run_dossier.json`. Es bündelt
+Manifest-Zusammenfassung, Prompt- und Output-Hashes, erzeugte Dateien,
+Testsummary, Manifest-Warnungen und abgeleitete offene Annahmen für die
+menschliche Kontrolle.
 
 Einmalige Excel-Einstellung: **Datei → Optionen → Trust Center → Einstellungen für das Trust Center → Einstellungen für Makros → „Zugriff auf das VBA-Projektobjektmodell vertrauen"**.
 
@@ -115,8 +159,10 @@ src/rechner_pipeline/
 ├── generate/       # Phase 3: LLM-Aufruf + Output-Extraktion
 │   ├── client.py           (OpenAI-Client, OPENAI_API_KEY-Validierung)
 │   └── output.py           (===FILE_START===…===FILE_END===-Blöcke)
-├── qa/             # Phase 4: Qualitätssicherung (Platzhalter)
+├── qa/             # Phase 4: Qualitätssicherung und Security-Gates
+│   └── security.py         (statische Prüfung generierter Python-Dateien)
 ├── orchestrate/    # Phase 5: Orchestrierung
+│   ├── dossier.py          (Review-/Run-Dossier für Human Control)
 │   ├── runner.py           (PipelineRunner mit öffentlicher Stage-API)
 │   └── agentic.py          (LangGraph-Wrapper, Quality-Gates, Human-Review)
 ├── models/
@@ -128,15 +174,47 @@ Top-Level liegen weiterhin (rückwärtskompatibel):
 
 - `pipeline.py` — Wrapper, ruft `rechner_pipeline.cli.main` auf.
 - `agentic_pipeline.py` — Wrapper, ruft `rechner_pipeline.cli.agentic_main` auf.
-- `matrix_extractor.py` — deprecated; re-exportiert die kanonischen Symbole.
+- `matrix_extractor.py` — deprecated; lädt Re-Exports lazy aus den kanonischen
+  Modulen. Der Import der Fassade bleibt plattformneutral; der tatsächliche
+  Excel-Export über `export_excel_infos` benötigt weiterhin die
+  Exportabhängigkeiten (`pandas`, Windows + `pywin32` + Excel).
 
 Über `pip install -e .` werden zusätzlich die Console-Scripts `rechner-pipeline` und `rechner-pipeline-agentic` registriert.
+
+## Installation und Abhängigkeiten
+
+Die zentrale Abhängigkeitsdefinition liegt in `pyproject.toml`.
+Die Extras verwenden sinnvolle Mindestversionen und grenzen ungetestete
+Major-Upgrades aus. Die Basisinstallation bleibt absichtlich schlank:
+
+```powershell
+pip install -e .
+```
+
+Damit sind Paketimporte, CLI-Hilfe und reine Hilfsfunktionen ohne OpenAI,
+Pandas, pywin32 oder LangGraph nutzbar. Für ausführbare Pipeline-Läufe werden
+Extras kombiniert:
+
+```powershell
+pip install -e ".[llm]"                    # OpenAI Responses API
+pip install -e ".[export]"                 # Excel-Export, pandas + pywin32 auf Windows
+pip install -e ".[llm,export]"             # klassische Pipeline
+pip install -e ".[llm,export,agentic]"     # klassische und agentische Pipeline
+pip install -e ".[all]"                    # alle Laufzeit-Extras
+pip install -e ".[all,dev]"                # Laufzeit plus Tests
+```
+
+`pywin32` ist mit einem Windows-Plattformmarker versehen. Auf anderen
+Plattformen lassen sich Basisinstallation, CLI-Hilfe und Tests für reine
+Hilfsfunktionen ausführen; der tatsächliche Excel-COM-Export benötigt weiterhin
+Windows, Microsoft Excel und das Extra `export`.
 
 ## Lauf (Beispiel)
 
 ```powershell
 python pipeline.py --help
 python pipeline.py
+python pipeline.py --excel examples/Tarifrechner_KLV.xlsm
 python agentic_pipeline.py --help
 python agentic_pipeline.py --max_retries_main 1 --max_retries_test 1
 ```
@@ -145,19 +223,23 @@ python agentic_pipeline.py --max_retries_main 1 --max_retries_test 1
 
 - `agentic_pipeline.py`
   - Graph-basierte Orchestrierung fuer denselben Kernablauf (`prepare -> main_llm -> test_llm -> compare`).
-  - Enthaelt Quality-Gates mit begrenzten Retries und Human-Review-Handoff.
+  - Enthaelt Quality-Gates mit begrenzten Repair-Schritten, strukturierten Diagnoseartefakten und Human-Review-Handoff.
+  - Schreibt agentische Fehlerdiagnosen nach `generated/agentic_diagnostics.json` und Repair-Kontexte nach `generated/agentic_repair_context_*.json`.
+  - Schreibt wie der klassische Lauf ein Review-/Run-Dossier nach `generated/run_dossier.json`.
   - Verwendet weiterhin die bestehende Business-Logik aus `PipelineRunner`.
 
 Hinweis:
-- Fuer den agentischen Einstieg wird `langgraph` benoetigt.
+- Fuer den agentischen Einstieg wird das Extra `agentic` benoetigt.
 
 ## Wichtige Hinweise
 
 - Voraussetzungen für den Export:
   - Windows + installiertes Microsoft Excel
   - Excel Einstellungen: Datei -> Optionen -> Trust Center -> Einstellungen für das Trust Center -> Einstellungen für Makros -> „Zugriff auf das VBA-Projektobjektmodell vertrauen“
-  - Python-Pakete laut `requirements.txt` (`openai`, `pandas`, `pywin32`, `langgraph`)
-- Für LLM-Schritte muss `OPENAI_API_KEY` gesetzt sein (siehe `.env.example`).
+  - Python-Pakete laut `pyproject.toml`, für den Schnellstart installiert über `pip install -r requirements.txt`
+- Für LLM-Schritte muss `OPENAI_API_KEY` gesetzt sein; entweder als echte
+  Umgebungsvariable oder in der automatisch geladenen Datei `.env` im
+  Repository-Root (siehe `.env.example`).
 - Die generierten Verzeichnisse `generated/` und `info_from_excel/` werden bei jedem Lauf neu erzeugt und sind nicht zu pflegen.
 
 ## Strukturelles Refactor (parallel)

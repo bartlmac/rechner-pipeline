@@ -17,4 +17,6 @@ Standardmäßig nutzt die Pipeline die Excel-Datei aus diesem Verzeichnis:
 python pipeline.py --excel examples/Tarifrechner_KLV.xlsm
 ```
 
-Der `--excel`-Parameter ist optional; ohne Angabe wird `examples/Tarifrechner_KLV.xlsm` (relativ zum Repo-Root) verwendet.
+Der `--excel`-Parameter ist optional; ohne Angabe wird
+`examples/Tarifrechner_KLV.xlsm` relativ zum Repo-Root verwendet. Auch
+explizite relative `--excel`-Pfade werden gegen das Repo-Root aufgelöst.
