@@ -34,3 +34,7 @@ generated/
 info_from_excel/
 DEBUG_first_llm_prompt.txt
 DEBUG_second_llm_prompt.txt
+
+# Personal Claude Code overrides
+CLAUDE.local.md
+.claude/
