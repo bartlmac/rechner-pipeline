@@ -35,6 +35,15 @@ info_from_excel/
 runs/
 DEBUG_*.txt
 
+# Local agent coordination state
+agent-comm.db
+agent-comm.db-shm
+agent-comm.db-wal
+
+# Local setup / dependency tooling
+.pip-cache/
+.python-version
+
 # Personal Claude Code overrides
 CLAUDE.local.md
 .claude/
