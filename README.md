@@ -238,7 +238,7 @@ setzt den nativen Ollama-Kontext auf 65K Tokens. Ohne explizites
 Lokaler Testlauf mit einem installierten Ollama-Modell:
 
 ```bash
-OLLAMA_MODEL="dein-lokales-modell"
+OLLAMA_MODEL="dein-lokales-modell"  # Beispiel: batiai/qwen3.6-27b:q4
 ollama pull "$OLLAMA_MODEL"
 ollama serve
 ```
@@ -257,6 +257,38 @@ Der Lauf nutzt dann das explizit angegebene Ollama-Modell und den in `.env`
 gesetzten 65K-Kontext. Ein vollständiger agentischer Lauf mit lokalem Modell
 kann je nach Hardware, Modell und Retry-Anzahl deutlich länger als eine Stunde
 dauern.
+
+Beispiel für den lokalen Qwen-Lauf, der in dieser Arbeitsumgebung verwendet
+wurde:
+
+```bash
+ollama pull batiai/qwen3.6-27b:q4
+ollama serve
+```
+
+In `.env`:
+
+```env
+OPENAI_API_KEY=ollama
+OPENAI_BASE_URL=http://127.0.0.1:11434/v1
+OLLAMA_NUM_CTX=65536
+```
+
+Start im Repository:
+
+```bash
+. .venv/bin/activate
+python agentic_pipeline.py \
+  --provider openai \
+  --model batiai/qwen3.6-27b:q4 \
+  --test-mode fixed \
+  --max_retries_main 2 \
+  --reasoning_effort low
+```
+
+Falls das Modell lokal unter einem anderen Ollama-Tag installiert ist, muss nur
+der Wert hinter `--model` angepasst werden; die Pipeline selbst bleibt
+provider- und modellagnostisch.
 
 ```bash
 pip install -e ".[anthropic]"
