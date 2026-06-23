@@ -12,6 +12,7 @@ requires-python = ">=3.11"
 authors = [
     { name = "Bartlomiej Maciaga" },
     { name = "Arno Rasch" },
+    { name = "Albrecht Brehm" },
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

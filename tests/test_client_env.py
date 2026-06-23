@@ -47,14 +47,16 @@ def test_load_env_file_sets_missing_values_without_overriding(monkeypatch, tmp_p
 
 def test_build_openai_client_loads_key_from_env_file(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     env_path = tmp_path / ".env"
     env_path.write_text('OPENAI_API_KEY="from-dotenv"\n', encoding="utf-8")
 
     fake_openai = types.ModuleType("openai")
 
     class FakeOpenAI:
-        def __init__(self, api_key=None):
+        def __init__(self, api_key=None, base_url=None):
             self.api_key = api_key
+            self.base_url = base_url
 
     fake_openai.OpenAI = FakeOpenAI
     monkeypatch.setitem(sys.modules, "openai", fake_openai)
@@ -63,7 +65,39 @@ def test_build_openai_client_loads_key_from_env_file(monkeypatch, tmp_path: Path
 
     assert isinstance(client, FakeOpenAI)
     assert client.api_key == "from-dotenv"
+    assert client.base_url is None
     assert os.environ["OPENAI_API_KEY"] == "from-dotenv"
+
+
+def test_build_openai_client_passes_base_url_from_env_file(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join(
+            [
+                'OPENAI_API_KEY="from-dotenv"',
+                "OPENAI_BASE_URL=https://api.openai.com/v1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    fake_openai = types.ModuleType("openai")
+
+    class FakeOpenAI:
+        def __init__(self, api_key=None, base_url=None):
+            self.api_key = api_key
+            self.base_url = base_url
+
+    fake_openai.OpenAI = FakeOpenAI
+    monkeypatch.setitem(sys.modules, "openai", fake_openai)
+
+    client = build_openai_client(env_path=env_path)
+
+    assert isinstance(client, FakeOpenAI)
+    assert client.api_key == "from-dotenv"
+    assert client.base_url == "https://api.openai.com/v1"
 
 
 def test_pipeline_runner_does_not_build_openai_client_on_init(monkeypatch, tmp_path: Path):

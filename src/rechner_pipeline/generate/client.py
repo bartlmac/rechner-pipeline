@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
+from urllib.request import Request, urlopen
 
 
 def load_env_file(env_path: Path) -> None:
@@ -70,6 +73,7 @@ def resolve_api_key(key_name: str, env_path: Path | None = None) -> str:
 
 def build_openai_client(env_path: Path | None = None) -> Any:
     api_key = resolve_api_key("OPENAI_API_KEY", env_path)
+    base_url = os.getenv("OPENAI_BASE_URL")
 
     try:
         from openai import OpenAI  # type: ignore
@@ -78,7 +82,10 @@ def build_openai_client(env_path: Path | None = None) -> Any:
             "Missing LLM dependency. Run: pip install -e '.[llm]'"
         ) from exc
 
-    return OpenAI(api_key=api_key)
+    kwargs: dict[str, Any] = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    return OpenAI(**kwargs)
 
 
 def build_anthropic_client(env_path: Path | None = None) -> Any:
@@ -133,6 +140,9 @@ def build_llm_client(provider: str, env_path: Path | None = None) -> Any:
 # reasoning_effort -> Extended-Thinking-Budget (Tokens) fuer Anthropic.
 # 0 = Thinking deaktiviert (Anthropic verlangt sonst budget_tokens >= 1024).
 _ANTHROPIC_THINKING_BUDGET = {"low": 0, "medium": 4096, "high": 12288}
+_OLLAMA_NATIVE_REQUEST_TIMEOUT_SECONDS = 600
+_OLLAMA_NATIVE_MAX_RESPONSE_BYTES = 16 * 1024 * 1024
+_OLLAMA_NATIVE_SUPPORTED_SCHEMES = {"http", "https"}
 
 
 def _anthropic_response_text(resp: Any) -> str:
@@ -146,6 +156,116 @@ def _anthropic_response_text(resp: Any) -> str:
         if getattr(block, "type", None) == "text":
             parts.append(getattr(block, "text", ""))
     return "".join(parts)
+
+
+def _is_local_ollama_base_url(base_url: Any) -> bool:
+    parsed = urlparse(str(base_url))
+    host = (parsed.hostname or "").lower()
+    return host in {"127.0.0.1", "localhost", "::1"} and parsed.port == 11434
+
+
+def _ollama_chat_url(base_url: Any) -> str:
+    parsed = urlparse(str(base_url))
+    scheme = parsed.scheme or "http"
+    if scheme not in _OLLAMA_NATIVE_SUPPORTED_SCHEMES:
+        raise RuntimeError(
+            "Ollama native chat requires an http or https base URL; "
+            f"got scheme {scheme!r}."
+        )
+    return urlunparse((scheme, parsed.netloc, "/api/chat", "", "", ""))
+
+
+def _require_positive_int(name: str, value: Any) -> int:
+    if type(value) is not int or value <= 0:
+        raise RuntimeError(f"{name} must be a positive integer.")
+    return value
+
+
+def _positive_int_env(name: str) -> int | None:
+    raw = os.getenv(name)
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be a positive integer.") from exc
+    if value <= 0:
+        raise RuntimeError(f"{name} must be a positive integer.")
+    return value
+
+
+def _ollama_native_chat(
+    *,
+    base_url: Any,
+    model: str,
+    prompt: str,
+    max_output_tokens: int,
+) -> str:
+    options = {"num_predict": max_output_tokens}
+    num_ctx = _positive_int_env("OLLAMA_NUM_CTX")
+    if num_ctx is not None:
+        options["num_ctx"] = num_ctx
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+        # Qwen reasoning models can spend the full OpenAI-compatible response
+        # budget in the reasoning channel. Ollama's native API can disable it.
+        "think": False,
+        "options": options,
+    }
+    body = json.dumps(payload).encode("utf-8")
+    req = Request(
+        _ollama_chat_url(base_url),
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=_OLLAMA_NATIVE_REQUEST_TIMEOUT_SECONDS) as resp:
+            raw_data = resp.read(_OLLAMA_NATIVE_MAX_RESPONSE_BYTES + 1)
+    except Exception as exc:
+        raise RuntimeError("Ollama native chat request failed.") from exc
+    if len(raw_data) > _OLLAMA_NATIVE_MAX_RESPONSE_BYTES:
+        raise RuntimeError(
+            "Ollama native chat response exceeded "
+            f"{_OLLAMA_NATIVE_MAX_RESPONSE_BYTES} bytes."
+        )
+    try:
+        data = json.loads(raw_data.decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError("Ollama native chat response was not valid JSON.") from exc
+
+    message = data.get("message")
+    text = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(text, str):
+        raise RuntimeError("Ollama native chat response did not contain text.")
+    if data.get("done_reason") == "length":
+        raise RuntimeError(
+            "Ollama response was truncated at max_output_tokens "
+            f"({max_output_tokens}). Partial generated code is unsafe to use. Increase "
+            "--max_output_tokens and re-run."
+        )
+    return text
+
+
+def _openai_response_text(resp: Any) -> str:
+    output_text = getattr(resp, "output_text", None)
+    if output_text:
+        return output_text
+
+    parts: list[str] = []
+    for item in getattr(resp, "output", None) or []:
+        if getattr(item, "type", None) != "message":
+            continue
+        for block in getattr(item, "content", None) or []:
+            text = getattr(block, "text", None)
+            if isinstance(text, str):
+                parts.append(text)
+    if parts:
+        return "".join(parts)
+    raise RuntimeError("OpenAI response did not contain extractable output text.")
 
 
 def generate_completion(
@@ -164,16 +284,28 @@ def generate_completion(
     Budget. Beide Pfade liefern denselben Text-Vertrag wie zuvor
     ``resp.output_text``.
     """
+    max_output_tokens = _require_positive_int("max_output_tokens", max_output_tokens)
+
     if provider == "replay":
         return client.next_output()
 
     if provider == "openai":
+        base_url = getattr(client, "base_url", None)
+        if base_url is not None and _is_local_ollama_base_url(base_url):
+            return _ollama_native_chat(
+                base_url=base_url,
+                model=model,
+                prompt=prompt,
+                max_output_tokens=max_output_tokens,
+            )
+
         resp = client.responses.create(
             model=model,
             input=prompt,
             reasoning={"effort": reasoning_effort},
+            max_output_tokens=max_output_tokens,
         )
-        return resp.output_text
+        return _openai_response_text(resp)
 
     if provider == "anthropic":
         thinking_budget = _ANTHROPIC_THINKING_BUDGET.get(reasoning_effort, 0)

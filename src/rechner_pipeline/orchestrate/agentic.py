@@ -31,6 +31,24 @@ from rechner_pipeline.qa.security import StaticSecurityError
 
 StepStatus = Literal["pending", "ok", "skipped", "error"]
 Decision = Literal["continue", "repair", "human_review", "finish"]
+_TEXT_EXCERPT_LIMIT = 4000
+_REPAIR_TEXT_LIMIT = 1200
+_REPAIR_LIST_LIMIT = 20
+_REPAIR_LOG_LINE_LIMIT = 300
+_REPAIR_PROMPT_RUN_LIMIT = 3
+_PROMPT_ARTIFACT_NAMES = {"main_prompt.txt", "test_prompt.txt"}
+_EXPORT_MANIFEST_ARTIFACT = "export_manifest.json"
+_TEST_RUN_RESULT_ARTIFACT = "test_run_advanced_result.json"
+_REPAIR_LOG_MARKERS = (
+    "ABWEICHUNG:",
+    "ERROR",
+    "FAILED",
+    "Traceback",
+    "Exception",
+    "RESULT:",
+    "Abweichungen:",
+    "returncode",
+)
 
 
 class AgenticState(TypedDict, total=False):
@@ -83,7 +101,7 @@ def _read_json_artifact(path: Path) -> Any:
         return {"read_error": f"{exc.__class__.__name__}: {exc}"}
 
 
-def _read_text_excerpt(path: Path, limit: int = 4000) -> str:
+def _read_text_excerpt(path: Path, limit: int = _TEXT_EXCERPT_LIMIT) -> str:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except Exception as exc:
@@ -137,7 +155,13 @@ def _diagnostic_artifacts(runner: PipelineRunner, step: str) -> List[Dict[str, A
             if step == "main_llm"
             else wflog.run_dir() / "test_prompt.txt"
         )
+        debug_output = (
+            wflog.run_dir() / "main_output.txt"
+            if step == "main_llm"
+            else wflog.run_dir() / "test_output.txt"
+        )
         paths.append(debug_prompt)
+        paths.append(debug_output)
     if step in {"test_llm", "compare"}:
         paths.append(runner.test_py_path)
     return [_artifact_record(path) for path in paths]
@@ -198,12 +222,121 @@ def _latest_diagnostic(state: AgenticState) -> Dict[str, Any] | None:
     return diagnostics[-1]
 
 
+def _short_text(value: Any, limit: int = _REPAIR_TEXT_LIMIT) -> str:
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n... <truncated>"
+
+
+def _interesting_log_lines(text: str) -> List[str]:
+    lines = [
+        line
+        for line in text.splitlines()
+        if any(marker in line for marker in _REPAIR_LOG_MARKERS)
+    ]
+    if not lines:
+        lines = text.splitlines()[:_REPAIR_LIST_LIMIT]
+    return [
+        _short_text(line, _REPAIR_LOG_LINE_LIMIT)
+        for line in lines[:_REPAIR_LIST_LIMIT]
+    ]
+
+
+def _summarize_manifest_input_file(item: Any) -> Dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    return {
+        "label": item.get("label"),
+        "included_chars": item.get("included_chars"),
+        "truncated": item.get("truncated"),
+    }
+
+
+def _summarize_manifest_prompt_run(run: Any) -> Dict[str, Any] | None:
+    if not isinstance(run, dict):
+        return None
+
+    input_files = []
+    for item in run.get("input_files", [])[:_REPAIR_LIST_LIMIT]:
+        summarized = _summarize_manifest_input_file(item)
+        if summarized is not None:
+            input_files.append(summarized)
+    return {
+        "stage": run.get("stage"),
+        "prompt_chars": run.get("prompt_chars"),
+        "total_limit_reached": run.get("total_limit_reached"),
+        "input_files": input_files,
+    }
+
+
+def _summarize_export_manifest(value: Dict[str, Any]) -> Dict[str, Any]:
+    prompt_runs = []
+    for run in value.get("prompt_runs", [])[-_REPAIR_PROMPT_RUN_LIMIT:]:
+        summarized = _summarize_manifest_prompt_run(run)
+        if summarized is not None:
+            prompt_runs.append(summarized)
+    return {
+        "warnings": value.get("warnings", [])[:_REPAIR_LIST_LIMIT],
+        "prompt_runs": prompt_runs,
+        "llm_inputs_count": len(value.get("llm_inputs", [])),
+    }
+
+
+def _summarize_test_run_result(value: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "status": value.get("status"),
+        "returncode": value.get("returncode"),
+        "stdout_relevant_lines": _interesting_log_lines(value.get("stdout", "")),
+        "stderr_relevant_lines": _interesting_log_lines(value.get("stderr", "")),
+    }
+
+
+def _summarize_json_artifact(path: str, value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+
+    artifact_name = Path(path).name
+    if artifact_name == _EXPORT_MANIFEST_ARTIFACT:
+        return _summarize_export_manifest(value)
+    if artifact_name == _TEST_RUN_RESULT_ARTIFACT:
+        return _summarize_test_run_result(value)
+    return value
+
+
+def _summarize_repair_artifact(record: Dict[str, Any]) -> Dict[str, Any]:
+    summary: Dict[str, Any] = {
+        "path": record.get("path"),
+        "exists": record.get("exists", False),
+    }
+    if not summary["exists"]:
+        return summary
+
+    path = str(record.get("path") or "")
+    name = Path(path).name
+    if "json" in record:
+        summary["json_summary"] = _summarize_json_artifact(path, record["json"])
+    elif "text_excerpt" in record:
+        if name in _PROMPT_ARTIFACT_NAMES:
+            summary["text_note"] = (
+                "Prompt omitted from repair context; the current prompt is "
+                "already included separately."
+            )
+        else:
+            summary["text_excerpt"] = _short_text(record["text_excerpt"])
+    return summary
+
+
 def _format_repair_context(diagnostic: Dict[str, Any]) -> str:
     focused = {
         "failed_step": diagnostic.get("step"),
         "category": diagnostic.get("category"),
         "exception": diagnostic.get("exception"),
-        "artifacts": diagnostic.get("artifacts", []),
+        "artifacts": [
+            _summarize_repair_artifact(record)
+            for record in diagnostic.get("artifacts", [])
+            if isinstance(record, dict)
+        ],
     }
     return json.dumps(focused, ensure_ascii=False, indent=2)
 

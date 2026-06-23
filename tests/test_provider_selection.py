@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.generate.client import (
+    _OLLAMA_NATIVE_REQUEST_TIMEOUT_SECONDS,
     build_anthropic_client,
     build_llm_client,
     generate_completion,
@@ -23,6 +24,25 @@ class _FakeResponse:
         self.output_text = text
 
 
+class _FakeResponseBlock:
+    def __init__(self, block_type: str, text: str | None = None) -> None:
+        self.type = block_type
+        if text is not None:
+            self.text = text
+
+
+class _FakeResponseItem:
+    def __init__(self, item_type: str, content: list | None = None) -> None:
+        self.type = item_type
+        self.content = content or []
+
+
+class _FakeStructuredResponse:
+    def __init__(self, output_text: str, output: list) -> None:
+        self.output_text = output_text
+        self.output = output
+
+
 class _FakeResponses:
     def __init__(self, captured: dict) -> None:
         self._captured = captured
@@ -33,9 +53,11 @@ class _FakeResponses:
 
 
 class _FakeOpenAIClient:
-    def __init__(self) -> None:
+    def __init__(self, base_url: str | None = None) -> None:
         self.captured: dict = {}
         self.responses = _FakeResponses(self.captured)
+        if base_url is not None:
+            self.base_url = base_url
 
 
 class _FakeBlock:
@@ -106,6 +128,269 @@ def test_generate_completion_openai_uses_responses_api():
     assert client.captured["model"] == "gpt-5.2"
     assert client.captured["input"] == "PROMPT"
     assert client.captured["reasoning"] == {"effort": "medium"}
+    assert client.captured["max_output_tokens"] == 16_000
+
+
+def test_generate_completion_openai_extracts_structured_text_when_output_text_empty():
+    client = _FakeOpenAIClient()
+    client.responses.create = lambda **kwargs: _FakeStructuredResponse(
+        "",
+        [
+            _FakeResponseItem("reasoning", [_FakeResponseBlock("summary_text", "skip")]),
+            _FakeResponseItem(
+                "message",
+                [
+                    _FakeResponseBlock("output_text", "OPENAI_"),
+                    _FakeResponseBlock("text", "OUTPUT"),
+                ],
+            ),
+        ],
+    )
+
+    out = generate_completion(
+        client,
+        provider="openai",
+        model="gpt-5.2",
+        prompt="PROMPT",
+        reasoning_effort="medium",
+        max_output_tokens=16_000,
+    )
+
+    assert out == "OPENAI_OUTPUT"
+
+
+def test_generate_completion_openai_empty_text_raises():
+    client = _FakeOpenAIClient()
+    client.responses.create = lambda **kwargs: _FakeStructuredResponse(
+        "",
+        [_FakeResponseItem("reasoning", [_FakeResponseBlock("summary_text", "skip")])],
+    )
+
+    with pytest.raises(RuntimeError, match="extractable output text"):
+        generate_completion(
+            client,
+            provider="openai",
+            model="gpt-5.2",
+            prompt="PROMPT",
+            reasoning_effort="medium",
+            max_output_tokens=16_000,
+        )
+
+
+def test_generate_completion_local_ollama_uses_native_chat(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("OLLAMA_NUM_CTX", "65536")
+
+    class FakeHTTPResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, size=-1):
+            return b'{"message": {"content": "OLLAMA_OUTPUT"}, "done_reason": "stop"}'
+
+    def fake_urlopen(req, timeout=None):
+        seen["url"] = req.full_url
+        seen["body"] = req.data
+        seen["timeout"] = timeout
+        return FakeHTTPResponse()
+
+    monkeypatch.setattr("rechner_pipeline.generate.client.urlopen", fake_urlopen)
+    client = _FakeOpenAIClient(base_url="http://127.0.0.1:11434/v1")
+
+    out = generate_completion(
+        client,
+        provider="openai",
+        model="local-test-model:latest",
+        prompt="PROMPT",
+        reasoning_effort="low",
+        max_output_tokens=123,
+    )
+
+    assert out == "OLLAMA_OUTPUT"
+    assert seen["url"] == "http://127.0.0.1:11434/api/chat"
+    assert seen["timeout"] == _OLLAMA_NATIVE_REQUEST_TIMEOUT_SECONDS
+    assert b'"think": false' in seen["body"]
+    assert b'"model": "local-test-model:latest"' in seen["body"]
+    assert b'"num_predict": 123' in seen["body"]
+    assert b'"num_ctx": 65536' in seen["body"]
+    assert b'"messages": [{"role": "user", "content": "PROMPT"}]' in seen["body"]
+
+
+def test_generate_completion_local_ollama_omits_context_when_not_configured(monkeypatch):
+    seen = {}
+    monkeypatch.delenv("OLLAMA_NUM_CTX", raising=False)
+
+    class FakeHTTPResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, size=-1):
+            return b'{"message": {"content": "OLLAMA_OUTPUT"}, "done_reason": "stop"}'
+
+    def fake_urlopen(req, timeout=None):
+        seen["body"] = req.data
+        return FakeHTTPResponse()
+
+    monkeypatch.setattr("rechner_pipeline.generate.client.urlopen", fake_urlopen)
+    client = _FakeOpenAIClient(base_url="http://127.0.0.1:11434/v1")
+
+    generate_completion(
+        client,
+        provider="openai",
+        model="local-test-model:latest",
+        prompt="PROMPT",
+        reasoning_effort="low",
+        max_output_tokens=123,
+    )
+
+    assert b'"num_ctx"' not in seen["body"]
+
+
+def test_generate_completion_local_ollama_truncation_with_nonempty_text_raises(
+    monkeypatch,
+):
+    class FakeHTTPResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, size=-1):
+            return b'{"message": {"content": "partial"}, "done_reason": "length"}'
+
+    monkeypatch.setattr(
+        "rechner_pipeline.generate.client.urlopen",
+        lambda req, timeout=None: FakeHTTPResponse(),
+    )
+    client = _FakeOpenAIClient(base_url="http://localhost:11434/v1")
+
+    with pytest.raises(RuntimeError, match="truncated"):
+        generate_completion(
+            client,
+            provider="openai",
+            model="local-test-model:latest",
+            prompt="PROMPT",
+            reasoning_effort="low",
+            max_output_tokens=123,
+        )
+
+
+def test_generate_completion_local_ollama_empty_truncation_raises(monkeypatch):
+    class FakeHTTPResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, size=-1):
+            return b'{"message": {"content": ""}, "done_reason": "length"}'
+
+    monkeypatch.setattr(
+        "rechner_pipeline.generate.client.urlopen",
+        lambda req, timeout=None: FakeHTTPResponse(),
+    )
+    client = _FakeOpenAIClient(base_url="http://localhost:11434/v1")
+
+    with pytest.raises(RuntimeError, match="truncated"):
+        generate_completion(
+            client,
+            provider="openai",
+            model="local-test-model:latest",
+            prompt="PROMPT",
+            reasoning_effort="low",
+            max_output_tokens=123,
+        )
+
+
+@pytest.mark.parametrize("max_output_tokens", [0, -1, "123", 1.5, True])
+def test_generate_completion_rejects_invalid_max_output_tokens(max_output_tokens):
+    client = _FakeOpenAIClient()
+
+    with pytest.raises(RuntimeError, match="max_output_tokens must be a positive integer"):
+        generate_completion(
+            client,
+            provider="openai",
+            model="gpt-5.2",
+            prompt="PROMPT",
+            reasoning_effort="low",
+            max_output_tokens=max_output_tokens,
+        )
+
+
+def test_generate_completion_local_ollama_oversized_response_raises(monkeypatch):
+    max_response_bytes = 8
+
+    class FakeHTTPResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, size=-1):
+            assert size == max_response_bytes + 1
+            return b"x" * size
+
+    monkeypatch.setattr(
+        "rechner_pipeline.generate.client._OLLAMA_NATIVE_MAX_RESPONSE_BYTES",
+        max_response_bytes,
+    )
+    monkeypatch.setattr(
+        "rechner_pipeline.generate.client.urlopen",
+        lambda req, timeout=None: FakeHTTPResponse(),
+    )
+    client = _FakeOpenAIClient(base_url="http://localhost:11434/v1")
+
+    with pytest.raises(RuntimeError, match="response exceeded"):
+        generate_completion(
+            client,
+            provider="openai",
+            model="local-test-model:latest",
+            prompt="PROMPT",
+            reasoning_effort="low",
+            max_output_tokens=123,
+        )
+
+
+def test_generate_completion_local_ollama_unsupported_url_scheme_raises(monkeypatch):
+    def fail_urlopen(*args, **kwargs):
+        raise AssertionError("urlopen must not be called for unsupported URL schemes")
+
+    monkeypatch.setattr("rechner_pipeline.generate.client.urlopen", fail_urlopen)
+    client = _FakeOpenAIClient(base_url="file://localhost:11434/v1")
+
+    with pytest.raises(RuntimeError, match="http or https"):
+        generate_completion(
+            client,
+            provider="openai",
+            model="local-test-model:latest",
+            prompt="PROMPT",
+            reasoning_effort="low",
+            max_output_tokens=123,
+        )
+
+
+def test_generate_completion_local_ollama_invalid_num_ctx_raises(monkeypatch):
+    monkeypatch.setenv("OLLAMA_NUM_CTX", "invalid")
+    client = _FakeOpenAIClient(base_url="http://localhost:11434/v1")
+
+    with pytest.raises(RuntimeError, match="OLLAMA_NUM_CTX"):
+        generate_completion(
+            client,
+            provider="openai",
+            model="local-test-model:latest",
+            prompt="PROMPT",
+            reasoning_effort="low",
+            max_output_tokens=123,
+        )
 
 
 def test_generate_completion_anthropic_concatenates_text_blocks():

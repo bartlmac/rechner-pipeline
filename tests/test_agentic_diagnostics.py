@@ -5,6 +5,7 @@ from pathlib import Path
 
 from rechner_pipeline.models.manifest import ExportManifest
 from rechner_pipeline.orchestrate.agentic import (
+    _format_repair_context,
     _record_error,
     gate_after_compare_node,
     gate_after_main_node,
@@ -124,6 +125,62 @@ def test_repair_node_creates_context_artifact_for_failed_main_step(tmp_path: Pat
     assert payload["target_step"] == "main_llm"
     assert payload["source_step"] == "main_llm"
     assert '"failed_step": "main_llm"' in update["repair_contexts"]["main_llm"]
+
+
+def test_repair_context_summarizes_large_artifacts() -> None:
+    diagnostic = {
+        "step": "compare",
+        "category": "test",
+        "exception": {"type": "RuntimeError", "message": "Regression failed"},
+        "artifacts": [
+            {
+                "path": "/repo/info_from_excel/export_manifest.json",
+                "exists": True,
+                "json": {
+                    "warnings": [],
+                    "llm_inputs": [f"input_{i}" for i in range(100)],
+                    "prompt_runs": [
+                        {
+                            "stage": "main_llm",
+                            "prompt_chars": 88_000,
+                            "total_limit_reached": False,
+                            "input_files": [
+                                {
+                                    "label": "huge.csv",
+                                    "included_chars": 50_000,
+                                    "truncated": False,
+                                    "raw": "x" * 10_000,
+                                }
+                            ],
+                        }
+                    ],
+                    "output_hashes": [{"path": f"file_{i}", "sha256": "x" * 64} for i in range(100)],
+                },
+            },
+            {
+                "path": "/repo/generated/test_run_advanced_result.json",
+                "exists": True,
+                "json": {
+                    "status": "failed",
+                    "returncode": 1,
+                    "stdout": "noise\n" * 1000 + "ABWEICHUNG: Kalkulation:BJB erwartet=1 berechnet=2\n",
+                    "stderr": "",
+                },
+            },
+            {
+                "path": "/tmp/run/main_prompt.txt",
+                "exists": True,
+                "text_excerpt": "prompt text should not be repeated " * 1000,
+            },
+        ],
+    }
+
+    context = _format_repair_context(diagnostic)
+
+    assert len(context) < 5000
+    assert "ABWEICHUNG: Kalkulation:BJB" in context
+    assert "prompt text should not be repeated" not in context
+    assert "output_hashes" not in context
 
 
 def test_main_llm_node_passes_repair_context_to_runner(

@@ -6,6 +6,8 @@
 
 Voraussetzungen für einen vollständigen Demo-Lauf: **Python 3.11 oder neuer**
 und ein gültiger LLM-API-Key (`OPENAI_API_KEY` **oder** `ANTHROPIC_API_KEY`).
+Optional kann statt eines Cloud-Providers ein lokal laufendes Ollama-Modell
+über die OpenAI-kompatible API genutzt werden.
 Die Excel-Extraktion läuft standardmäßig **plattformneutral ohne Microsoft
 Excel** (openpyxl + oletools) und damit auf Windows, macOS und Linux. Das
 Legacy-Backend über Excel-COM (`--export-backend com`) bleibt für Windows
@@ -21,7 +23,7 @@ pip install -r requirements.txt
 
 cp .env.example .env          # API-Key bzw. *_FILE-Pointer eintragen (s. u.)
 
-python pipeline.py                          # OpenAI (Default)
+python pipeline.py                          # OpenAI-kompatibler Provider (Default)
 python pipeline.py --provider anthropic     # Anthropic (Claude)
 python agentic_pipeline.py                  # LangGraph-Variante mit Quality-Gates
 ```
@@ -217,14 +219,44 @@ pip install -e ".[all]"                    # alle Laufzeit-Extras
 pip install -e ".[all,dev]"                # Laufzeit plus Tests
 ```
 
-### LLM-Provider wählen (OpenAI oder Anthropic)
+### LLM-Provider wählen (OpenAI, Ollama oder Anthropic)
 
-Standardprovider ist OpenAI. Über `--provider anthropic` läuft die
+Standardprovider ist OpenAI-kompatibel und nutzt standardmäßig
+das Modell `gpt-5.2`. Über `--provider anthropic` läuft die
 LLM-Generierung stattdessen gegen die Anthropic-Messages-API (Claude). Der
 Modellname wird je Provider sinnvoll vorbelegt (`openai` → `gpt-5.2`,
 `anthropic` → `claude-sonnet-4-6`) und ist über `--model` überschreibbar.
 `--reasoning_effort` steuert bei Anthropic das Extended-Thinking-Budget
 (`low` = aus, `medium`/`high` = wachsendes Budget).
+
+Für lokale Ollama-Läufe kann `.env.example` nach `.env` kopiert und der
+kommentierte Ollama-Block aktiviert werden. `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`
+routet den OpenAI-Provider auf die lokale Ollama-API; `OLLAMA_NUM_CTX=65536`
+setzt den nativen Ollama-Kontext auf 65K Tokens. Ohne explizites
+`OPENAI_BASE_URL` wird keine lokale Ollama-Route gesetzt.
+
+Lokaler Testlauf mit einem installierten Ollama-Modell:
+
+```bash
+OLLAMA_MODEL="dein-lokales-modell"
+ollama pull "$OLLAMA_MODEL"
+ollama serve
+```
+
+In einem zweiten Terminal im Repository:
+
+```bash
+. .venv/bin/activate
+cp .env.example .env
+# In .env den Ollama-Block aktivieren.
+OLLAMA_MODEL="dein-lokales-modell"
+python agentic_pipeline.py --provider openai --model "$OLLAMA_MODEL" --test-mode fixed --max_retries_main 2 --reasoning_effort low
+```
+
+Der Lauf nutzt dann das explizit angegebene Ollama-Modell und den in `.env`
+gesetzten 65K-Kontext. Ein vollständiger agentischer Lauf mit lokalem Modell
+kann je nach Hardware, Modell und Retry-Anzahl deutlich länger als eine Stunde
+dauern.
 
 ```bash
 pip install -e ".[anthropic]"

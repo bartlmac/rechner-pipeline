@@ -42,7 +42,7 @@ def _add_common_options(ap: argparse.ArgumentParser) -> None:
         "--max_output_tokens",
         type=int,
         default=32_000,
-        help="Max. Output-Tokens (nur Anthropic; OpenAI Responses ignoriert dies)",
+        help="Max. Output-Tokens fuer LLM-Antworten",
     )
     ap.add_argument(
         "--excel",
