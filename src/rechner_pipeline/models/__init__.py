@@ -1,0 +1,1 @@
+"""Typisierte Datenmodelle (Manifest, …)."""

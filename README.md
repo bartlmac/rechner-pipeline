@@ -4,28 +4,84 @@
 
 ## Schnellstart
 
-Voraussetzungen: **Windows mit installiertem Microsoft Excel**, **Python 3.13**, und ein gültiger **`OPENAI_API_KEY`**.
+Voraussetzungen für einen vollständigen Demo-Lauf: **Python 3.11 oder neuer**
+und ein gültiger LLM-API-Key (`OPENAI_API_KEY` **oder** `ANTHROPIC_API_KEY`).
+Die Excel-Extraktion läuft standardmäßig **plattformneutral ohne Microsoft
+Excel** (openpyxl + oletools) und damit auf Windows, macOS und Linux. Das
+Legacy-Backend über Excel-COM (`--export-backend com`) bleibt für Windows
+verfügbar.
 
-```powershell
+```bash
 git clone https://github.com/bartlmac/rechner-pipeline.git
 cd rechner-pipeline
 
 python -m venv .venv
-.venv\Scripts\activate
+. .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-copy .env.example .env
-# OPENAI_API_KEY in .env eintragen
+cp .env.example .env          # API-Key bzw. *_FILE-Pointer eintragen (s. u.)
 
-python pipeline.py            # klassischer Lauf
-python agentic_pipeline.py    # LangGraph-Variante mit Quality-Gates
+python pipeline.py                          # OpenAI (Default)
+python pipeline.py --provider anthropic     # Anthropic (Claude)
+python agentic_pipeline.py                  # LangGraph-Variante mit Quality-Gates
 ```
 
-Einmalige Excel-Einstellung: **Datei → Optionen → Trust Center → Einstellungen für das Trust Center → Einstellungen für Makros → „Zugriff auf das VBA-Projektobjektmodell vertrauen"**.
+`requirements.txt` ist bewusst nur ein dünner Verweis auf
+`pyproject.toml`: Es installiert das Paket editable mit allen
+Laufzeit-Extras (`llm`, `export`, `agentic`). Die Paket- und
+Versionsstrategie wird dadurch an einer Stelle gepflegt.
 
-> **Hinweis zur Plattform:** Die Pipeline nutzt aktuell `pywin32` und ist dadurch auf Windows + Excel beschränkt. Eine plattformneutrale Extraktionsschiene (z. B. via `openpyxl`) ist Teil der weiteren Arbeit.
+Die Pipeline lädt beim ersten LLM-Schritt automatisch die Datei `.env` aus dem
+Repository-Root. Bereits gesetzte echte Umgebungsvariablen haben Vorrang vor
+Werten aus `.env`.
 
-> **Hinweis zu den Beispieldaten:** `Tarifrechner_KLV.xlsm` und `Tarifrechner_Pipeline.pptx` sind synthetische Lehrbeispiele ohne realen Kundenbezug.
+Ohne weitere Angabe nutzt die Pipeline die Demo-Arbeitsmappe
+`examples/Tarifrechner_KLV.xlsm`. Eine andere Excel-Quelldatei kann mit
+`--excel` angegeben werden:
+
+```powershell
+python pipeline.py --excel examples/Tarifrechner_KLV.xlsm
+python agentic_pipeline.py --excel examples/Tarifrechner_KLV.xlsm
+```
+
+Relative `--excel`-Pfade werden gegen das Repository-Root aufgelöst. Absolute
+Pfade sind ebenfalls möglich.
+
+Das Exportmanifest `info_from_excel/export_manifest.json` enthält neben den
+Exportpfaden auch strukturierte Warnungen, Prompt-Metadaten mit SHA-256-Hashes
+und Output-Hashes. Mit `--strict_manifest_warnings` werden Warnungen als Fehler
+behandelt, die Kontext verlieren oder Reproduzierbarkeit beeinträchtigen:
+fehlender VBA-Zugriff, fehlgeschlagene VBA-Modul-Lesung, fehlgeschlagene
+CSV-Kompression, fehlende Wertquellen oder fehlgeschlagene
+Scalar/Table-Extraktion sowie Prompt-Trunkierung durch Datei- oder
+Gesamtlimits.
+
+Vor der Ausführung generierter Tests führt die Pipeline zusätzlich eine
+statische Sicherheitsprüfung für generierten Python-Code aus. Sie blockiert
+gefährliche Imports, Dateisystem- und Netzwerkzugriffe, Subprocess-Aufrufe
+sowie `eval`/`exec`; das Ergebnis steht in
+`generated/static_security_report.json`.
+
+Nach jedem klassischen Lauf und nach jedem agentischen Abschluss schreibt die
+Pipeline ein Review-/Run-Dossier nach `generated/run_dossier.json`. Es bündelt
+Manifest-Zusammenfassung, Prompt- und Output-Hashes, erzeugte Dateien,
+Testsummary, Manifest-Warnungen und abgeleitete offene Annahmen für die
+menschliche Kontrolle.
+
+> **Hinweis zur Plattform:** Die Extraktion läuft standardmäßig
+> plattformneutral ohne Microsoft Excel (Backend `openpyxl`: Zellformeln +
+> gecachte Werte und Defined Names via openpyxl, VBA-Quellcode via
+> `oletools.olevba`). Damit ist die Pipeline auf Windows, macOS und Linux
+> lauffähig. Das frühere COM-Backend bleibt als `--export-backend com`
+> erhalten (nur Windows + installiertes Excel; einmalige Einstellung dort:
+> **Datei → Optionen → Trust Center → Makroeinstellungen → „Zugriff auf das
+> VBA-Projektobjektmodell vertrauen"**).
+>
+> Der Excel-freie Pfad liest die von Excel zuletzt **gespeicherten** (gecachten)
+> Zellwerte statt live neu zu rechnen — für statische, berechnet gespeicherte
+> Arbeitsmappen äquivalent und reproduzierbarer.
+
+> **Hinweis zu den Beispieldaten:** Demo-Artefakte liegen unter `examples/`. `Tarifrechner_KLV.xlsm` und `Tarifrechner_Pipeline.pptx` sind synthetische Lehrbeispiele ohne realen Kundenbezug.
 
 ## Vision
 
@@ -105,44 +161,113 @@ Die generierten Ordner `generated/` und `info_from_excel/` sind Laufzeit-Outputs
 
 ## Projektstruktur
 
-- `pipeline.py`
-  - Dünner CLI-Einstiegspunkt.
-  - Parst Argumente und startet den Runner.
+```
+src/rechner_pipeline/
+├── extract/        # Phase 1: deterministische Excel-Extraktion
+│   ├── excel.py            (Sheets, VBA, Name Manager, Formel-Kompression)
+│   └── scalar_table.py     (*_scalar.json und *_table_values.csv)
+├── context/        # Phase 2: Prompt-Aufbereitung
+│   └── prompt_builder.py   (Stuffing, Truncation, Placeholder)
+├── generate/       # Phase 3: LLM-Aufruf + Output-Extraktion
+│   ├── client.py           (OpenAI-Client, OPENAI_API_KEY-Validierung)
+│   └── output.py           (===FILE_START===…===FILE_END===-Blöcke)
+├── qa/             # Phase 4: Qualitätssicherung und Security-Gates
+│   └── security.py         (statische Prüfung generierter Python-Dateien)
+├── orchestrate/    # Phase 5: Orchestrierung
+│   ├── dossier.py          (Review-/Run-Dossier für Human Control)
+│   ├── runner.py           (PipelineRunner mit öffentlicher Stage-API)
+│   └── agentic.py          (LangGraph-Wrapper, Quality-Gates, Human-Review)
+├── models/
+│   └── manifest.py         (ExportManifest)
+└── cli.py                  (main(), agentic_main())
+```
 
-- `pipeline_core.py`
-  - Orchestriert den Ablauf (`export -> main_llm -> test_llm -> compare`).
-  - Verwaltet Prompt-Bau, LLM-Aufrufe und Debug-Prompts.
+Top-Level liegen weiterhin (rückwärtskompatibel):
 
-- `matrix_extractor.py`
-  - Rückwärtskompatible Fassade.
-  - Re-exportiert die bisherigen öffentlichen Funktionen/Konstanten.
+- `pipeline.py` — Wrapper, ruft `rechner_pipeline.cli.main` auf.
+- `agentic_pipeline.py` — Wrapper, ruft `rechner_pipeline.cli.agentic_main` auf.
+- `matrix_extractor.py` — deprecated; lädt Re-Exports lazy aus den kanonischen
+  Modulen. Der Import der Fassade bleibt plattformneutral; der tatsächliche
+  Excel-Export über `export_excel_infos` benötigt weiterhin die
+  Exportabhängigkeiten (`pandas`, Windows + `pywin32` + Excel).
 
-- `excel_exporter.py`
-  - Excel-Export (Sheets, VBA, Name Manager).
-  - Formel-Komprimierung.
-  - Erzeugung des Export-Manifests.
+Über `pip install -e .` werden zusätzlich die Console-Scripts `rechner-pipeline` und `rechner-pipeline-agentic` registriert.
 
-- `scalar_table_extractor.py`
-  - Ableitung von `*_scalar.json` und `*_table_values.csv` aus komprimierten CSVs.
+## Installation und Abhängigkeiten
 
-- `llm_output_extractor.py`
-  - Extraktion von `===FILE_START=== ... ===FILE_END===` Blöcken.
-  - Sicheres Schreiben nach `generated/`.
+Die zentrale Abhängigkeitsdefinition liegt in `pyproject.toml`.
+Die Extras verwenden sinnvolle Mindestversionen und grenzen ungetestete
+Major-Upgrades aus. Die Basisinstallation bleibt absichtlich schlank:
 
-- `prompt_builder.py`
-  - Prompt-Template-Hilfen (Datei-Stuffing, Placeholder-Ersetzung, Trunkierung).
+```powershell
+pip install -e .
+```
 
-- `llm_client.py`
-  - Aufbau und Validierung des OpenAI-Clients (`OPENAI_API_KEY`).
+Damit sind Paketimporte, CLI-Hilfe und reine Hilfsfunktionen ohne OpenAI,
+Pandas, pywin32 oder LangGraph nutzbar. Für ausführbare Pipeline-Läufe werden
+Extras kombiniert:
 
-- `manifest_model.py`
-  - Typisiertes Manifest-Modell (`ExportManifest`) inkl. `from_dict`/`to_dict`.
+```powershell
+pip install -e ".[llm]"                    # OpenAI Responses API
+pip install -e ".[anthropic]"              # Anthropic Messages API (Claude)
+pip install -e ".[export]"                 # Excel-frei: openpyxl + oletools + pandas (pywin32 nur auf Windows)
+pip install -e ".[llm,export]"             # klassische Pipeline
+pip install -e ".[llm,export,agentic]"     # klassische und agentische Pipeline
+pip install -e ".[all]"                    # alle Laufzeit-Extras
+pip install -e ".[all,dev]"                # Laufzeit plus Tests
+```
+
+### LLM-Provider wählen (OpenAI oder Anthropic)
+
+Standardprovider ist OpenAI. Über `--provider anthropic` läuft die
+LLM-Generierung stattdessen gegen die Anthropic-Messages-API (Claude). Der
+Modellname wird je Provider sinnvoll vorbelegt (`openai` → `gpt-5.2`,
+`anthropic` → `claude-sonnet-4-6`) und ist über `--model` überschreibbar.
+`--reasoning_effort` steuert bei Anthropic das Extended-Thinking-Budget
+(`low` = aus, `medium`/`high` = wachsendes Budget).
+
+```bash
+pip install -e ".[anthropic]"
+# ANTHROPIC_API_KEY als echte Umgebungsvariable oder in .env (Repo-Root) setzen
+python pipeline.py --provider anthropic
+python pipeline.py --provider anthropic --model claude-opus-4-8 --reasoning_effort high
+```
+
+Der `.env`-Loader behandelt `ANTHROPIC_API_KEY` genauso wie `OPENAI_API_KEY`:
+echte Umgebungsvariablen haben Vorrang vor `.env`-Werten.
+
+### Secrets über Pointer-Datei (empfohlen)
+
+Damit der API-Key nicht in `.env` oder einer persistenten Host-Variable
+liegt, unterstützt der Loader die `*_FILE`-Konvention: Der Key wird in eine
+restriktiv berechtigte Datei außerhalb des Repos gelegt, und `.env` enthält
+nur den **Pointer** darauf. Der Key wird zur Laufzeit direkt an den
+SDK-Konstruktor übergeben und landet nicht in `os.environ`.
+
+```bash
+# Secret-Datei mit eingeschränktem Zugriff anlegen
+install -m 600 /dev/null ~/.secrets/anthropic_api_key
+printf '%s' 'sk-ant-...' > ~/.secrets/anthropic_api_key
+
+# .env enthält nur den Pointer, kein Geheimnis:
+#   ANTHROPIC_API_KEY_FILE=/home/<user>/.secrets/anthropic_api_key
+```
+
+Auflösungsreihenfolge je Key: (1) echte Umgebungsvariable `<KEY>`,
+(2) `<KEY>_FILE` → Inhalt der Pointer-Datei. Gilt für `OPENAI_API_KEY` und
+`ANTHROPIC_API_KEY` gleichermaßen.
+
+`pywin32` ist mit einem Windows-Plattformmarker versehen. Auf anderen
+Plattformen lassen sich Basisinstallation, CLI-Hilfe und Tests für reine
+Hilfsfunktionen ausführen; der tatsächliche Excel-COM-Export benötigt weiterhin
+Windows, Microsoft Excel und das Extra `export`.
 
 ## Lauf (Beispiel)
 
 ```powershell
 python pipeline.py --help
 python pipeline.py
+python pipeline.py --excel examples/Tarifrechner_KLV.xlsm
 python agentic_pipeline.py --help
 python agentic_pipeline.py --max_retries_main 1 --max_retries_test 1
 ```
@@ -151,19 +276,83 @@ python agentic_pipeline.py --max_retries_main 1 --max_retries_test 1
 
 - `agentic_pipeline.py`
   - Graph-basierte Orchestrierung fuer denselben Kernablauf (`prepare -> main_llm -> test_llm -> compare`).
-  - Enthaelt Quality-Gates mit begrenzten Retries und Human-Review-Handoff.
+  - Enthaelt Quality-Gates mit begrenzten Repair-Schritten, strukturierten Diagnoseartefakten und Human-Review-Handoff.
+  - Schreibt agentische Fehlerdiagnosen nach `generated/agentic_diagnostics.json` und Repair-Kontexte nach `generated/agentic_repair_context_*.json`.
+  - Schreibt wie der klassische Lauf ein Review-/Run-Dossier nach `generated/run_dossier.json`.
   - Verwendet weiterhin die bestehende Business-Logik aus `PipelineRunner`.
 
 Hinweis:
-- Fuer den agentischen Einstieg wird `langgraph` benoetigt.
+- Fuer den agentischen Einstieg wird das Extra `agentic` benoetigt.
+
+## Workflow-Log (`RP_WFLOG`)
+
+Standardmaessig laeuft die Pipeline technisch/still. Mit der Umgebungsvariable
+`RP_WFLOG=1` schaltet man einen **menschen-lesbaren Workflow-Log** ein, der den
+tatsaechlichen Verlauf je agentischer Iteration zeigt — ausschliesslich aus den
+echten Lauf-Artefakten, nichts ist fest verdrahtet:
+
+- **Auslesen:** ausgelesene Tabellenblaetter und VBA-Module.
+- **Erzeugen:** Groesse des an das Modell gesendeten Prompts (und ob er einen
+  Korrektur-Kontext enthaelt), die erzeugten Dateien mit Zeilenzahl, sowie in
+  der ersten Iteration ein echter Code-Auszug der Rechenlogik aus
+  `actuarial.py` (inkl. der vom Modell dokumentierten Excel-Korrespondenz, z. B.
+  `Excel K5 / VBA-Name B_xt`).
+- **Validieren:** die tatsaechlichen Abweichungen gegen den Golden-Master und —
+  bei bestandenem Lauf — die skalaren Excel-Sollwerte aus `*_scalar.json`.
+
+```bash
+RP_WFLOG=1 python agentic_pipeline.py --provider anthropic --test-mode fixed --max_retries_main 2
+```
+
+Damit das Repo-Root sauber bleibt, schreibt jeder Lauf alle Artefakte in ein
+eigenes, mit **Zeitstempel** versehenes Verzeichnis `runs/<zeitstempel>/`
+(gitignored) — aufeinanderfolgende Laeufe (z. B. echt vs. Replay) ueberschreiben
+sich also nicht. Der Log wird dort **mitgeschrieben**, sodass sich ein Lauf ohne
+erneuten (kostenpflichtigen) API-Aufruf wieder ansehen laesst:
+
+```bash
+ls runs/
+cat runs/<zeitstempel>/workflow_log.txt
+```
+
+Im Lauf-Verzeichnis liegen daneben die vollstaendigen Prompts jeder Iteration
+(`prompt_iteration_<n>.txt`, erster Prompt vs. Korrektur-Prompt) sowie — bei
+echten Laeufen — das automatisch wegsicherte Replay-Set unter `fixtures/`
+(siehe „Eigene Replay-Sets" in `demo_fixtures/README.md`). Mit `RP_WFLOG_FILE`
+laesst sich ein fester Pfad fuer die Mitschrift erzwingen, mit `RP_RUN_DIR` die
+Basis der Lauf-Verzeichnisse. Der Umfang aufgelisteter Namen ist ueber
+`RP_WFLOG_MAX_ITEMS` begrenzbar (Default 12; ueberzaehlige als `(+N)`).
+
+## Kostenfreie Vorfuehrung (`--provider replay`)
+
+Mit dem Replay-Provider laesst sich der **echte** Pipeline-Workflow inkl.
+agentischer Korrekturschleife **kostenfrei und wiederholbar** vorfuehren — ohne
+API-Aufruf. Statt das Modell zu rufen, gibt der Provider vorbereitete
+Modell-Ausgaben aus einem Verzeichnis (`RP_REPLAY_DIR`) in Reihenfolge zurueck.
+Die mitgelieferten Fixtures unter `demo_fixtures/` lassen gezielt Skalare im
+Vertrag weg, sodass echte Abweichungen entstehen, die die Schleife real
+korrigiert (2 -> 1 -> 0):
+
+```bash
+RP_WFLOG=1 RP_REPLAY_DIR=demo_fixtures \
+  python agentic_pipeline.py --provider replay --test-mode fixed --max_retries_main 2
+```
+
+Details zu den Fixtures: `demo_fixtures/README.md`.
 
 ## Wichtige Hinweise
 
 - Voraussetzungen für den Export:
-  - Windows + installiertes Microsoft Excel
-  - Excel Einstellungen: Datei -> Optionen -> Trust Center -> Einstellungen für das Trust Center -> Einstellungen für Makros -> „Zugriff auf das VBA-Projektobjektmodell vertrauen“
-  - Python-Pakete laut `requirements.txt` (`openai`, `pandas`, `pywin32`, `langgraph`)
-- Für LLM-Schritte muss `OPENAI_API_KEY` gesetzt sein (siehe `.env.example`).
+  - **Default (`openpyxl`):** plattformneutral, kein Excel — nur die Pakete
+    aus dem `export`-Extra (`openpyxl`, `oletools`, `pandas`).
+  - **Legacy (`--export-backend com`):** Windows + installiertes Microsoft
+    Excel; einmalige Excel-Einstellung: Datei -> Optionen -> Trust Center ->
+    Makroeinstellungen -> „Zugriff auf das VBA-Projektobjektmodell vertrauen“.
+  - Python-Pakete laut `pyproject.toml`, für den Schnellstart installiert über `pip install -r requirements.txt`
+- Für LLM-Schritte muss je nach Provider `OPENAI_API_KEY` bzw.
+  `ANTHROPIC_API_KEY` gesetzt sein — als echte Umgebungsvariable, in der
+  automatisch geladenen Datei `.env` im Repo-Root, oder via `*_FILE`-Pointer
+  auf eine Secret-Datei (siehe „Secrets über Pointer-Datei").
 - Die generierten Verzeichnisse `generated/` und `info_from_excel/` werden bei jedem Lauf neu erzeugt und sind nicht zu pflegen.
 
 ## Strukturelles Refactor (parallel)

@@ -1,4 +1,3 @@
-openai
-pandas
-pywin32
-langgraph
+# Runtime install for the full demo pipeline.
+# Dependency versions and platform markers are maintained in pyproject.toml.
+-e .[all]

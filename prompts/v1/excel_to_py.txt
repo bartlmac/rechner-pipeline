@@ -166,6 +166,34 @@ Identifiziere aus den Inputs:
   * zeigt deterministisches Verhalten
   * bei fehlenden Tafeln: sauberes Scheitern
 
+* **Pflicht-Schnittstelle (Golden-Master-Contract):** `test_run.py` **muss**
+  zusätzlich folgende Funktion exponieren — ein **fester, externer**
+  Validierungs-Harness ruft sie auf:
+
+  ```python
+  def golden_master_outputs() -> dict:
+      """Berechnete Werte für den Golden-Master-Vergleich.
+      Namen IDENTISCH zu den Erwartungsdateien (siehe INPUT_FILES:
+      *_scalar.json-Schlüssel und *_table_values.csv-Spaltenköpfe)."""
+      return {
+          "scalars": {"<prefix>": {"<name>": <float>, ...}},
+          "tables":  {"<prefix>": [ {"<spalte>": <float>, ...}, ... ]},
+      }
+  ```
+
+  * `<prefix>` = Dateiname-Präfix der Erwartungsdateien (z. B. `Kalkulation`).
+  * `scalars`: je `<prefix>_scalar.json` ein Dict {Skalarname → berechneter Wert}.
+  * **Vollständigkeit (kritisch):** `scalars[<prefix>]` MUSS **jeden** als
+    Einzelwert benannten Skalar enthalten (jedes Label mit `Anzahl_Zellen = 1`
+    in der komprimierten CSV bzw. jeder Skalar-Name im Name-Manager) — **auch
+    abgeleitete Raten/Parameter** (z. B. `ratzu`), **nicht nur** die
+    aktuariellen Zielgrößen. Ein fehlender erwarteter Skalar lässt die
+    Golden-Master-Validierung fehlschlagen.
+  * `tables`: je `<prefix>_table_values.csv` eine Liste von Zeilen-Dicts in
+    Zeilenreihenfolge; Schlüssel = Spaltenköpfe (case-sensitiv; Trennzeichen-
+    Varianten wie `A_xn`/`Axn` erlaubt, Groß-/Kleinschreibung NICHT glätten).
+  * Die Werte stammen aus **derselben** Berechnung wie der übrige `test_run.py`.
+
 ---
 
 ## **PIPELINE_META**

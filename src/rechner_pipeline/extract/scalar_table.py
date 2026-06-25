@@ -5,10 +5,19 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
-
 RANGE_RE = re.compile(r"^\$?([A-Z]+)\$?(\d+)\s*:\s*\$?([A-Z]+)\$?(\d+)$")
 CELL_RE = re.compile(r"^\$?([A-Z]+)\$?(\d+)$")
+
+
+def _import_pandas() -> Any:
+    try:
+        import pandas as pd  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "pandas is required for scalar and table extraction. "
+            "Install the export dependencies first, e.g. `pip install -e '.[export]'`."
+        ) from exc
+    return pd
 
 
 def col_to_num(col: str) -> int:
@@ -54,15 +63,21 @@ def try_float(x: Any) -> Any:
 
 
 def load_address_values(path: Path) -> Dict[str, Any]:
+    pd = _import_pandas()
+
     df = pd.read_csv(path)
     return {str(r["Adresse"]).strip(): try_float(r["Wert"]) for _, r in df.iterrows()}
 
 
-def load_compressed(path: Path) -> pd.DataFrame:
+def load_compressed(path: Path):
+    pd = _import_pandas()
+
     return pd.read_csv(path, sep=";")
 
 
 def load_sheet_values(path: Path) -> Dict[str, Any]:
+    pd = _import_pandas()
+
     df = pd.read_csv(path, sep=";", dtype=str, keep_default_na=False)
     if "Adresse" not in df.columns or "Wert" not in df.columns:
         raise ValueError(f"Missing required columns in {path.name}: need 'Adresse' and 'Wert'")
@@ -104,6 +119,8 @@ def detect_left_index_column(
 
 
 def extract_one_pair_from_values(fv: Dict[str, Any], comp_csv: Path, out_dir: Path, prefix: str) -> None:
+    pd = _import_pandas()
+
     cp = load_compressed(comp_csv)
 
     scalars: Dict[str, Any] = {}
@@ -165,7 +182,8 @@ def extract_one_pair(addr_csv: Path, comp_csv: Path, out_dir: Path, prefix: str)
     extract_one_pair_from_values(fv, comp_csv, out_dir, prefix)
 
 
-def extract_all_pairs_in_info_dir(info_dir: Path) -> None:
+def extract_all_pairs_in_info_dir(info_dir: Path) -> List[Dict[str, Any]]:
+    warnings: List[Dict[str, Any]] = []
     compressed = {p.stem.replace("_compressed", ""): p for p in info_dir.glob("*_compressed.csv")}
     address_values = {
         p.stem.replace("_address_values", ""): p for p in info_dir.glob("*_address_values.csv")
@@ -183,6 +201,19 @@ def extract_all_pairs_in_info_dir(info_dir: Path) -> None:
         elif prefix in sheet_csv:
             addr_path = sheet_csv[prefix]
         else:
+            warnings.append(
+                {
+                    "code": "export.scalar_table_value_source_missing",
+                    "stage": "export",
+                    "message": (
+                        f"No value source for prefix '{prefix}'; scalar/table "
+                        "values were not extracted for this sheet."
+                    ),
+                    "strict_error": True,
+                    "path": str(comp_path),
+                    "details": {"prefix": prefix},
+                }
+            )
             print(
                 f"[SKIP] No value source for prefix '{prefix}': "
                 f"need {prefix}_address_values.csv or {prefix}.csv"
@@ -191,4 +222,17 @@ def extract_all_pairs_in_info_dir(info_dir: Path) -> None:
         try:
             extract_one_pair(addr_path, comp_path, info_dir, prefix)
         except Exception as exc:
+            warnings.append(
+                {
+                    "code": "export.scalar_table_extraction_failed",
+                    "stage": "export",
+                    "message": (
+                        f"Failed extracting scalar/table values for prefix '{prefix}'."
+                    ),
+                    "strict_error": True,
+                    "path": str(comp_path),
+                    "details": {"prefix": prefix, "exception": str(exc)},
+                }
+            )
             print(f"[WARN] Failed extracting for prefix '{prefix}': {exc}")
+    return warnings
