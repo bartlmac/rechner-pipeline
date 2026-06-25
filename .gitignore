@@ -38,3 +38,6 @@ DEBUG_*.txt
 # Personal Claude Code overrides
 CLAUDE.local.md
 .claude/
+
+# Lokale, nicht eingecheckte Dokumentation (Notizen, Walkthroughs, Spickzettel)
+docs-local/
