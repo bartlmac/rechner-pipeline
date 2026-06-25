@@ -100,11 +100,29 @@ Report + Exit-Code. **Das ist zugleich das unabhängige Orakel.**
 - **Contract** in `prompts/v1/excel_to_py.txt` ergänzt (Pflicht-Funktion in
   `test_run.py`).
 - **Runner:** `--test-mode {fixed,llm}` (Default `fixed`). `fixed` überspringt
-  die Test-LLM-Stufe und führt den festen Harness via `fs_confine` aus (kein
-  statisches Gate, da reviewter Code). `llm` = bisheriges Verhalten (Fallback).
+  die Test-LLM-Stufe und führt den festen Harness via `fs_confine` aus. `llm` =
+  bisheriges Verhalten (Fallback). **(Korrigiert 2026-06-25, s. Nachtrag.)**
 - **Tests:** Vergleichs-Engine (synthetisch) + Fixed-Mode-Integration (Subprozess).
 - **Noch offen:** Contract mit Alexander bestätigen; 1 bezahlter Lauf, in dem der
   generierte Rechenkern `golden_master_outputs()` implementiert; offene Punkte §6.
+
+## 9. Nachtrag 2026-06-25 — Security-Annahme korrigiert (Review-Finding F1)
+
+Die ursprüngliche Annahme „im `fixed`-Modus kein statisches Gate nötig, da
+reviewter Code" (§3c, §8) war **zu eng** und ist korrigiert. Der feste Harness
+ist zwar reviewt, **importiert und führt zur Laufzeit aber das untrusted
+`generated/test_run.py` aus** (`golden_master.main()` macht `import test_run`).
+Das Laufzeit-Confinement `fs_confine` deckt nur `open`/`glob` ab, nicht
+`os.system`/`subprocess`/Netz — ein bösartiger Top-Level-Befehl im generierten
+Contract lief dadurch im `fixed`-Modus ungeprüft durch.
+
+**Behebung (Sitzung 2026-06-15 freigegeben, umgesetzt 2026-06-25):** `run_compare`
+prüft die generierten `*.py` jetzt **auch im `fixed`-Modus** statisch, bevor der
+Harness sie ausführt (der reviewte Harness liegt in `src/`, außerhalb von
+`generated/`, und wird nicht gescannt). Damit gilt: statisches Gate auf den
+Rechenkern **immer** vor Ausführung, unabhängig vom Testmodus. Offen als
+Follow-up (kein Merge-Blocker): `fs_confine` zusätzlich um Laufzeit-Block für
+`subprocess`/`os.system`/`socket` erweitern (Defense-in-depth, vgl. CR-004).
 
 ## 7. Empfehlung
 
