@@ -4,9 +4,13 @@ Laufzeit-Confinement für ausgeführten, generierten Code (Compare-Stufe).
 Ergänzt das statische Security-Gate (:mod:`rechner_pipeline.qa.security`) um die
 *Orts*-Beschränkung, die statisch nicht entscheidbar ist: ``open`` und
 ``glob``/``iglob`` dürfen nur Pfade **unterhalb eines Wurzelverzeichnisses**
-(``repo_root``) berühren. Schreib-/Netz-/Subprocess-Zugriffe sind bereits
-statisch verboten; hier wird zusätzlich jeder Lesezugriff außerhalb des Repos
-zur Laufzeit hart abgewiesen.
+(``repo_root``) berühren; Schreibzugriffe werden hart abgewiesen, und jeder
+Lesezugriff außerhalb des Repos ebenfalls. Zusätzlich (Defense-in-depth, vgl.
+Review-Finding F1) werden ``subprocess``-, Shell-(``os.system``/``os.popen``)-
+und Netz-(``socket``)-Aufrufe **auch zur Laufzeit** abgewiesen — das statische
+Gate verbietet sie bereits im generierten Code, der Laufzeit-Block greift
+idiom-unabhängig, falls ein Aufruf das statische Gate umgeht. Eine echte
+OS-Sandbox (seccomp/Container) bleibt der robustere Weg (CR-004).
 
 Aufruf als Launcher::
 
@@ -26,6 +30,46 @@ import runpy
 import sys
 
 _WRITE_FLAGS = ("w", "a", "x", "+")
+
+
+def _blocked(label: str):
+    """Erzeuge einen Ersatz, der jeden Aufruf hart abweist."""
+
+    def _raise(*_args, **_kwargs):
+        raise PermissionError(f"fs-confine: {label} is blocked")
+
+    return _raise
+
+
+def _install_exec_guards() -> None:
+    """Defense-in-depth: Subprocess-/Shell-/Netz-Aufrufe zur Laufzeit abweisen.
+
+    Das statische Security-Gate (:mod:`rechner_pipeline.qa.security`) blockiert
+    diese Aufrufe bereits im generierten Code; hier wird der Schutz idiom-
+    unabhaengig auch zur Laufzeit erzwungen, falls ein Aufruf das statische Gate
+    umgeht (vgl. Review-Finding F1 / CR-002 Nachtrag). Eine echte OS-Sandbox
+    (seccomp/Container) bleibt der robustere Weg (CR-004); dies ist eine
+    fokussierte In-Process-Schranke gegen die haeufigsten Pfade
+    (``os.system``/``os.popen``, ``subprocess.Popen`` inkl. ``run``/``call``/
+    ``check_*``, ``socket.socket``).
+    """
+    os.system = _blocked("os.system")  # type: ignore[assignment]
+    if hasattr(os, "popen"):
+        os.popen = _blocked("os.popen")  # type: ignore[assignment]
+    try:
+        import subprocess
+
+        # run/call/check_output/check_call instanziieren intern Popen -> ein
+        # Patch auf Popen deckt alle High-Level-Helfer mit ab.
+        subprocess.Popen = _blocked("subprocess.Popen")  # type: ignore[assignment]
+    except Exception:
+        pass
+    try:
+        import socket
+
+        socket.socket = _blocked("socket.socket")  # type: ignore[assignment]
+    except Exception:
+        pass
 
 
 def _is_under(root: str, path: object) -> bool:
@@ -65,6 +109,8 @@ def install(root: str) -> None:
     builtins.open = guarded_open
     _glob.glob = guarded_glob
     _glob.iglob = guarded_iglob
+
+    _install_exec_guards()
 
 
 def main(argv: list[str] | None = None) -> None:
