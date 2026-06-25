@@ -98,7 +98,13 @@ class Report:
 
     @property
     def ok(self) -> bool:
-        return not self.deviations
+        # Eine erwartete Tabellenspalte mit Daten, die nicht zugeordnet werden
+        # kann, landet in unmatched_columns (nur befuellt, wenn die Spalte Daten
+        # traegt -> col_has_data) und MUSS den Report fehlschlagen lassen; sonst
+        # koennten ganze fachliche Spalten ungeprueft als "bestanden" gelten.
+        # Skalar-Vergleich ist davon unberuehrt (fehlende Skalare zaehlen ueber
+        # deviations).
+        return not self.deviations and not self.unmatched_columns
 
     def render(self) -> str:
         lines = [

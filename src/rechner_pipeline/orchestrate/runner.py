@@ -544,10 +544,27 @@ class PipelineRunner:
         from rechner_pipeline.qa import fs_confine
 
         if self.options.test_mode == "fixed":
-            # Fester, reviewter Golden-Master-Harness (kein LLM-Output -> keine
-            # statische Security-Prüfung nötig); siehe dev/CR-002.
+            # Der feste Golden-Master-Harness ist reviewt -- ABER er importiert
+            # und führt das untrusted generated/test_run.py aus (golden_master.main
+            # macht `import test_run`). Das Laufzeit-Confinement (fs_confine) deckt
+            # nur open/glob ab, nicht os.system/subprocess/Netz. Daher müssen die
+            # generierten *.py auch im fixed-Modus vor der Ausführung statisch
+            # geprüft werden (der Harness in src/ liegt außerhalb von generated/
+            # und wird nicht gescannt). Siehe dev/CR-002 (Annahme "fixed = kein
+            # Gate" war zu eng).
             from rechner_pipeline.qa import golden_master
 
+            if not (self.generated_dir / "test_run.py").exists():
+                raise FileNotFoundError(
+                    f"Missing contract file: {self.generated_dir / 'test_run.py'}"
+                )
+            try:
+                self.run_static_security_check()
+            except StaticSecurityError as exc:
+                raise RuntimeError(
+                    "Static security check blocked generated code execution. "
+                    f"Structured report written to {self.static_security_report_path}"
+                ) from exc
             harness_file = golden_master.__file__
         else:
             # Legacy: pro Lauf LLM-generierter Test -> erst statisch prüfen.

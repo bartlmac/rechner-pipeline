@@ -80,14 +80,22 @@ def _import_vba_parser() -> Any:
     return VBA_Parser
 
 
-def export_one_sheet(ws_formula, ws_value, sheet_name: str, out_dir: Path) -> Optional[Path]:
+def export_one_sheet(
+    ws_formula, ws_value, sheet_name: str, out_dir: Path
+) -> Tuple[Optional[Path], int]:
     """Schreibe eine Sheet-CSV im Schema ``Blatt;Adresse;Formel;Wert``.
 
     ``ws_formula`` liefert Formeln/Literale, ``ws_value`` die gecachten Werte
     derselben Zellen. Leere Zellen (weder Formel noch Wert) werden uebersprungen.
+
+    Rueckgabe: ``(csv_pfad_oder_None, anzahl_formeln_ohne_gecachten_wert)``. Der
+    Zaehler erfasst Formelzellen, deren gecachter Wert fehlt (Mappe vermutlich
+    unberechnet gespeichert) -- der Aufrufer kann daraus eine Manifest-Warnung
+    ableiten.
     """
     out_path = out_dir / f"{safe_filename(sheet_name)}.csv"
     wrote_any = False
+    formula_without_cache = 0
 
     with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter=";")
@@ -106,6 +114,11 @@ def export_one_sheet(ws_formula, ws_value, sheet_name: str, out_dir: Path) -> Op
                 if is_empty_text(formula_txt) and is_empty_text(value_txt):
                     continue
 
+                # Formel vorhanden, aber kein gecachter Wert -> Mappe wurde
+                # vermutlich unberechnet gespeichert; der Erwartungswert fehlt.
+                if formula_txt.startswith("=") and is_empty_text(value_txt):
+                    formula_without_cache += 1
+
                 # Absolute A1-Adresse ($K$6) wie der COM-Pfad. Wichtig: der
                 # nachgelagerte Scalar-/Table-Extraktor schlägt Werte über die
                 # $-Form nach -- ohne $ blieben alle Erwartungswerte null.
@@ -119,20 +132,50 @@ def export_one_sheet(ws_formula, ws_value, sheet_name: str, out_dir: Path) -> Op
             print(f"[OK] Sheet had no Formel/Wert anywhere -> CSV removed: {sheet_name}")
         except Exception:
             print(f"[OK] Sheet had no Formel/Wert anywhere -> CSV kept: {out_path}")
-            return out_path
-        return None
+            return out_path, formula_without_cache
+        return None, formula_without_cache
 
     print(f"[OK] Sheet exported (openpyxl): {sheet_name} -> {out_path}")
-    return out_path
+    return out_path, formula_without_cache
 
 
-def export_all_sheets(wb_formula, wb_value, out_dir: Path) -> List[Path]:
+def export_all_sheets(
+    wb_formula,
+    wb_value,
+    out_dir: Path,
+    warnings: List[Dict[str, Any]] | None = None,
+) -> List[Path]:
+    """Exportiere alle Blätter; sammle nebenbei Formelzellen ohne gecachten Wert.
+
+    Wird ``warnings`` uebergeben und es fehlen gecachte Werte, wird EINE
+    strukturierte Manifest-Warnung (``strict_error=True``) abgesetzt -- mit
+    Hinweis auf ``--export-backend com`` bzw. vorheriges Berechnen/Speichern.
+    """
     exported: List[Path] = []
+    missing_cache: Dict[str, int] = {}
     for ws_formula in wb_formula.worksheets:
         ws_value = wb_value[ws_formula.title]
-        p = export_one_sheet(ws_formula, ws_value, str(ws_formula.title), out_dir)
+        p, n = export_one_sheet(ws_formula, ws_value, str(ws_formula.title), out_dir)
         if p is not None and p.exists():
             exported.append(p)
+        if n:
+            missing_cache[str(ws_formula.title)] = n
+
+    if warnings is not None and missing_cache:
+        warnings.append(
+            _manifest_warning(
+                code="export.formula_cache_missing",
+                stage="export",
+                message=(
+                    "Formelzellen ohne gecachten Wert gefunden (Mappe vermutlich "
+                    "unberechnet gespeichert). Erwartungswerte koennen fehlen -- "
+                    "Mappe vorher in Excel berechnen+speichern oder "
+                    "--export-backend com verwenden."
+                ),
+                strict_error=True,
+                details={"sheets": missing_cache, "total": sum(missing_cache.values())},
+            )
+        )
     return exported
 
 
@@ -286,7 +329,7 @@ def export_raw(
     wb_formula = openpyxl.load_workbook(excel_path, data_only=False, read_only=False)
     wb_value = openpyxl.load_workbook(excel_path, data_only=True, read_only=False)
     try:
-        sheet_csvs = export_all_sheets(wb_formula, wb_value, out_dir)
+        sheet_csvs = export_all_sheets(wb_formula, wb_value, out_dir, warnings=warnings)
         nm_csv = export_name_manager_to_csv(wb_formula, wb_value, out_dir)
     finally:
         wb_formula.close()

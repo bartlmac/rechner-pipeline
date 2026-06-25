@@ -95,6 +95,49 @@ def test_export_all_sheets_csv_schema(tmp_path: Path):
     assert "$A$2" not in by_addr
 
 
+def test_export_warns_on_formula_without_cached_value(tmp_path: Path):
+    openpyxl = pytest.importorskip("openpyxl")
+    from rechner_pipeline.extract.openpyxl_backend import export_all_sheets
+
+    xlsx = tmp_path / "wb.xlsx"
+    _make_workbook(xlsx)  # B2 = "=B1+1" ohne gecachten Wert (frisches WB)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    wbf, wbv = _load_pair(xlsx)
+    warnings: list = []
+    csvs = export_all_sheets(wbf, wbv, out_dir, warnings=warnings)
+
+    assert len(csvs) == 1  # Rückgabetyp bleibt List[Path]
+    assert len(warnings) == 1
+    w = warnings[0]
+    assert w["code"] == "export.formula_cache_missing"
+    assert w["strict_error"] is True
+    assert w["details"]["total"] >= 1
+    assert "Blatt1" in w["details"]["sheets"]
+
+
+def test_no_cache_warning_when_no_formulas(tmp_path: Path):
+    openpyxl = pytest.importorskip("openpyxl")
+    from rechner_pipeline.extract.openpyxl_backend import export_all_sheets
+
+    xlsx = tmp_path / "literals.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Blatt1"
+    ws["A1"] = "Label"
+    ws["B1"] = 5
+    wb.save(xlsx)
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    wbf, wbv = _load_pair(xlsx)
+    warnings: list = []
+    export_all_sheets(wbf, wbv, out_dir, warnings=warnings)
+
+    assert warnings == []  # nur Literale -> keine Formel-ohne-Cache-Warnung
+
+
 def test_export_name_manager_resolves_single_cell_value(tmp_path: Path):
     pytest.importorskip("openpyxl")
     from rechner_pipeline.extract.openpyxl_backend import export_name_manager_to_csv

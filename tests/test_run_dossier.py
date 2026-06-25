@@ -125,11 +125,47 @@ def test_run_dossier_bundles_manifest_hashes_files_tests_and_assumptions(
         for item in payload["generated_files"]
     )
     assert payload["test_summary"]["status"] == "passed"
+    options = payload["run"]["options"]
+    assert options["provider"] == "openai"
+    assert options["export_backend"] == "openpyxl"
+    assert options["test_mode"] == "llm"
+    assert options["max_output_tokens"] == 32_000
     assert payload["warnings"][0]["code"] == "prompt.file_truncated"
     assert any(
         item["code"] == "manifest_warning.prompt.file_truncated"
         for item in payload["open_assumptions"]
     )
+
+
+def test_run_dossier_records_provider_backend_and_test_mode(tmp_path: Path) -> None:
+    # Auch Nicht-Default-Werte der neuen Laufoptionen muessen ins Dossier wandern,
+    # damit ein Lauf (OpenAI/Anthropic, openpyxl/COM, fixed/llm) rekonstruierbar ist.
+    runner = PipelineRunner(
+        repo_root=tmp_path,
+        options=_options(
+            provider="anthropic",
+            export_backend="com",
+            test_mode="fixed",
+            max_output_tokens=8000,
+        ),
+    )
+    manifest = _manifest(tmp_path)
+    runner.manifest_path.write_text(
+        json.dumps(manifest.to_dict(), indent=2),
+        encoding="utf-8",
+    )
+
+    dossier_path = write_run_dossier(
+        runner,
+        manifest=manifest,
+        run_status="completed",
+    )
+
+    options = json.loads(dossier_path.read_text(encoding="utf-8"))["run"]["options"]
+    assert options["provider"] == "anthropic"
+    assert options["export_backend"] == "com"
+    assert options["test_mode"] == "fixed"
+    assert options["max_output_tokens"] == 8000
 
 
 def test_classic_run_writes_dossier_when_compare_fails(tmp_path: Path) -> None:

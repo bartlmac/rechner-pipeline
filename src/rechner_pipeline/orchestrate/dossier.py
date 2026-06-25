@@ -49,6 +49,10 @@ def _options_dict(options: Any) -> Dict[str, Any]:
         "test_max_total_chars",
         "reasoning_effort",
         "strict_manifest_warnings",
+        "provider",
+        "max_output_tokens",
+        "export_backend",
+        "test_mode",
     )
     return {key: getattr(options, key) for key in keys if hasattr(options, key)}
 
