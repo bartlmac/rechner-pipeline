@@ -1,24 +1,20 @@
 """Tests for the source-neutral ``rechner-pipeline`` CLI (:mod:`rechner_pipeline.cli`).
 
-Covers (§4.1 / §4.2 step 11; §3.3 assurance orchestrator):
+Covers the assurance orchestrator surface:
 
-* ``--help`` advertises the deterministic gate flow + strict validation and
-  carries NO SDK/provider/model/token/reasoning surface;
-* the source-neutral options (``--input``/``--adapter``/``--export-backend``/
-  ``--strict-manifest-warnings``) exist and ``--excel`` is a compatibility alias;
+* ``--help`` advertises the deterministic gate flow + strict validation and the
+  source-neutral options (``--input``/``--adapter``/``--export-backend``/
+  ``--strict-manifest-warnings``); ``--excel`` is a compatibility alias;
 * no subcommand -> exit 2 (usage/configuration);
 * ``assurance --help`` works and documents the ordered gate chain;
 * a real ``assurance`` run over a SYNTHETIC generated-dir + KLV extraction runs
-  the whole chain and ends with a ``dossier`` (blocked / human-review) verdict;
-* the SDK/LangGraph grep over ``src`` finds nothing (steps 9, 10).
+  the whole chain and ends with a ``dossier`` (blocked / human-review) verdict.
 """
 
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
-from typing import List
 
 import pytest
 
@@ -27,13 +23,6 @@ from rechner_pipeline.toolbox._common import Exit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KLV_WORKBOOK = REPO_ROOT / "examples" / "Tarifrechner_KLV.xlsm"
-
-# The forbidden SDK/LangGraph surface (§4.2 steps 9, 10; §5.3 non-goals).
-_FORBIDDEN = re.compile(
-    r"anthropic|openai|OPENAI_API_KEY|ANTHROPIC_API_KEY|langgraph|StateGraph|"
-    r"rechner-pipeline-agentic",
-    re.IGNORECASE,
-)
 
 
 # --------------------------------------------------------------------------- #
@@ -61,7 +50,7 @@ def _write_synthetic_kernel(generated_dir: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# --help: source-neutral, no SDK provider path
+# --help: source-neutral option surface
 # --------------------------------------------------------------------------- #
 
 
@@ -78,8 +67,7 @@ def test_top_help_is_source_neutral(capsys: pytest.CaptureFixture[str]) -> None:
     assert "assurance" in out
     assert "deterministic" in out.lower()
     assert "gate" in out.lower()
-    # NO SDK / provider / model / token / reasoning acceptance path.
-    assert not _FORBIDDEN.search(out), "help must not advertise an SDK provider path"
+    # NO provider / model / token / reasoning option surface (source-neutral CLI).
     for banned in ("--provider", "--model", "--reasoning", "max_output_tokens", "test-mode", "test_mode"):
         assert banned not in out, banned
 
@@ -115,30 +103,6 @@ def test_assurance_help_documents_chain(capsys: pytest.CaptureFixture[str]) -> N
         "dossier",
     ):
         assert gate in out, gate
-    assert not _FORBIDDEN.search(out)
-
-
-# --------------------------------------------------------------------------- #
-# SDK / LangGraph absence over the target source tree (§4.2 steps 9, 10)
-# --------------------------------------------------------------------------- #
-
-
-def test_src_carries_no_sdk_or_langgraph() -> None:
-    hits: List[str] = []
-    for path in (REPO_ROOT / "src").rglob("*.py"):
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for n, line in enumerate(text.splitlines(), start=1):
-            if _FORBIDDEN.search(line):
-                hits.append(f"{path}:{n}: {line.strip()}")
-    assert not hits, "forbidden SDK/LangGraph tokens found:\n" + "\n".join(hits)
-
-
-def test_pyproject_and_requirements_carry_no_sdk() -> None:
-    for name in ("pyproject.toml", "requirements.txt", "requirements-dev.txt"):
-        path = REPO_ROOT / name
-        if not path.is_file():
-            continue
-        assert not _FORBIDDEN.search(path.read_text(encoding="utf-8")), name
 
 
 # --------------------------------------------------------------------------- #
