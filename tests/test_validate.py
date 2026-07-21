@@ -273,8 +273,8 @@ def test_cmd_disk_failure_exit_20(tmp_path: Path) -> None:
 def test_cmd_fileblock_valid_exit_0(tmp_path: Path) -> None:
     resp = tmp_path / "resp.txt"
     resp.write_text(_text_response(), encoding="utf-8")
-    result = _run(["--repo-root", str(tmp_path), "--generated-dir", "g",
-                   "--info-dir", "x", "--file-block-response", str(resp)])
+    result = _run(["--repo-root", str(tmp_path), "--generated-dir", str(tmp_path / "g"),
+                   "--info-dir", str(tmp_path / "x"), "--file-block-response", str(resp)])
     assert result.exit_code == Exit.OK
     assert result.summary["resolution_mode"] == "file_block"
 
@@ -282,21 +282,21 @@ def test_cmd_fileblock_valid_exit_0(tmp_path: Path) -> None:
 def test_cmd_fileblock_failure_exit_20(tmp_path: Path) -> None:
     resp = tmp_path / "resp.txt"
     resp.write_text(_text_response(prefix="garbage\n"), encoding="utf-8")
-    result = _run(["--repo-root", str(tmp_path), "--generated-dir", "g",
-                   "--info-dir", "x", "--file-block-response", str(resp)])
+    result = _run(["--repo-root", str(tmp_path), "--generated-dir", str(tmp_path / "g"),
+                   "--info-dir", str(tmp_path / "x"), "--file-block-response", str(resp)])
     assert result.exit_code == Exit.FILE_CONTRACT
     assert _error_codes(result) == ["outer_text"]
 
 
-def test_cmd_missing_required_arg_exit_2() -> None:
-    result = _run(["--repo-root", ".", "--generated-dir", "g"])
+def test_cmd_missing_required_arg_exit_2(tmp_path: Path) -> None:
+    result = _run(["--repo-root", str(tmp_path), "--generated-dir", str(tmp_path / "g")])
     assert result.exit_code == Exit.USAGE
     assert any(e["code"] == "missing_arg" for e in result.to_dict()["errors"])
 
 
 def test_cmd_missing_response_file_exit_2(tmp_path: Path) -> None:
-    result = _run(["--repo-root", str(tmp_path), "--generated-dir", "g",
-                   "--info-dir", "x", "--file-block-response", str(tmp_path / "nope.txt")])
+    result = _run(["--repo-root", str(tmp_path), "--generated-dir", str(tmp_path / "g"),
+                   "--info-dir", str(tmp_path / "x"), "--file-block-response", str(tmp_path / "nope.txt")])
     assert result.exit_code == Exit.USAGE
     assert _error_codes(result) == ["missing_response"]
 

@@ -11,7 +11,6 @@ __pycache__/
 # Scratch / agent fixture dirs
 .tmp/
 .verify/
-g/
 agent-comm.db*
 
 # Regenerable pipeline run artifacts (produced by `extract` / `assurance`)
