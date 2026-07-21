@@ -1,0 +1,61 @@
+Public Function Act_ax_k(Alter As Integer, Sex As String, Tafel As String, Zins As Double, k As Integer, Optional GebJahr As Integer, Optional Rentenbeginnalter As Integer, Optional Schicht As Integer = 1) As Double
+   If k > 0 Then
+      Act_ax_k = Act_Nx(Alter, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht) / Act_Dx(Alter, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht) - Act_Abzugsglied(k, Zins)
+   Else
+      Act_ax_k = 0
+   End If
+End Function
+
+Public Function Act_axn_k(Alter As Integer, n As Integer, Sex As String, Tafel As String, Zins As Double, k As Integer, Optional GebJahr As Integer, Optional Rentenbeginnalter As Integer, Optional Schicht As Integer = 1) As Double
+   If k > 0 Then
+      Act_axn_k = (Act_Nx(Alter, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht) - Act_Nx(Alter + n, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht)) / Act_Dx(Alter, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht) - Act_Abzugsglied(k, Zins) * (1 - Act_Dx(Alter + n, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht) / Act_Dx(Alter, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht))
+   Else
+      Act_axn_k = 0
+   End If
+End Function
+
+Public Function Act_nax_k(Alter As Integer, n As Integer, Sex As String, Tafel As String, Zins As Double, k As Integer, Optional GebJahr As Integer, Optional Rentenbeginnalter As Integer, Optional Schicht As Integer = 1) As Double
+   If k > 0 Then
+      Act_nax_k = Act_Dx(Alter + n, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht) / Act_Dx(Alter, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht) * Act_ax_k(Alter + n, Sex, Tafel, Zins, k, GebJahr, Rentenbeginnalter, Schicht)
+   Else
+      Act_nax_k = 0
+   End If
+End Function
+
+Public Function Act_nGrAx(Alter As Integer, n As Integer, Sex As String, Tafel As String, Zins As Double, Optional GebJahr As Integer, Optional Rentenbeginnalter As Integer, Optional Schicht As Integer = 1) As Double
+   Act_nGrAx = (Act_Mx(Alter, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht) - Act_Mx(Alter + n, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht)) / Act_Dx(Alter, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht)
+
+End Function
+
+Public Function Act_nGrEx(Alter As Integer, n As Integer, Sex As String, Tafel As String, Zins As Double, Optional GebJahr As Integer, Optional Rentenbeginnalter As Integer, Optional Schicht As Integer = 1) As Double
+   Act_nGrEx = Act_Dx(Alter + n, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht) / Act_Dx(Alter, Sex, Tafel, Zins, GebJahr, Rentenbeginnalter, Schicht)
+
+End Function
+
+Public Function Act_ag_k(g As Integer, Zins As Double, k As Integer) As Double
+   Dim v As Double
+   v = 1 / (1 + Zins)
+   If k > 0 Then
+      If Zins > 0 Then
+         Act_ag_k = (1 - v ^ g) / (1 - v) - Act_Abzugsglied(k, Zins) * (1 - v ^ g)
+      Else
+         Act_ag_k = g
+      End If
+   Else
+      Act_ag_k = 0
+   End If
+End Function
+
+
+Public Function Act_Abzugsglied(k As Integer, Zins As Double) As Double
+   ' Abzugsglied
+   Dim l As Integer
+   Act_Abzugsglied = 0
+   If k > 0 Then
+      For l = 0 To k - 1
+         Act_Abzugsglied = Act_Abzugsglied + l / k / (1 + l / k * Zins)
+      Next l
+      Act_Abzugsglied = Act_Abzugsglied * (1 + Zins) / k
+   End If
+
+End Function
