@@ -135,8 +135,8 @@ def _run():
     except Exception as exc:  # noqa: BLE001
         _emit({{"error": "engine", "code": "engine_unavailable",
                "message": "Hypothesis is declared but not importable: %s. The gate "
-                          "fails rather than downgrading to a weaker random loop "
-                          "(§3.5)." % exc}})
+                          "fails rather than downgrading to a weaker random loop"
+                          "." % exc}})
         raise SystemExit(0)
 
     # (2) Install runtime confinement (G4) — read-only under repo_root, no writes,
@@ -275,7 +275,7 @@ def _run(argv: Optional[List[str]] = None) -> ToolboxResult:
             exit_code=Exit.USAGE,
             paths=paths,
             errors=[_err("usage", f"qa_contract not found: {qa_contract_path}")],
-            repair_hints=["Provide a readable qa_contract.json (see §6.8.6)."],
+            repair_hints=["Provide a readable qa_contract.json."],
         )
     try:
         contract_data = json.loads(qa_contract_path.read_text(encoding="utf-8"))
@@ -287,7 +287,7 @@ def _run(argv: Optional[List[str]] = None) -> ToolboxResult:
             exit_code=Exit.USAGE,
             paths=paths,
             errors=[_err("usage", f"qa_contract is not valid JSON: {exc}")],
-            repair_hints=["The qa_contract must be a UTF-8 JSON object (§6.8.6)."],
+            repair_hints=["The qa_contract must be a UTF-8 JSON object."],
         )
     contract = QaContract.from_dict(contract_data)
     contract_errors = contract.validate()
@@ -301,7 +301,7 @@ def _run(argv: Optional[List[str]] = None) -> ToolboxResult:
             summary=summary_base,
             errors=[_err("contract_invalid", e) for e in contract_errors],
             repair_hints=[
-                "Fix the qa_contract.json so it satisfies the §6.8.6 schema "
+                "Fix the qa_contract.json so it satisfies the schema "
                 "(product_type, interest_basis, timing_convention, "
                 "function_mappings, non-empty tiers_enabled).",
             ],
@@ -453,7 +453,7 @@ def _run(argv: Optional[List[str]] = None) -> ToolboxResult:
             "weaker random loop.",
             "applicability": "Declare the missing convention/mapping/product/interest/"
             "timing in qa_contract.json. Unknown applicability is a failure, not a "
-            "skip (§3.5 line 1761).",
+            "skip.",
             "runtime": "The generated kernel raised while a property was evaluated; "
             "fix the kernel so the mapped functions are callable over the age domain.",
         }.get(err_kind, "See message and fix the qa_contract or generated kernel.")

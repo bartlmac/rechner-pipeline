@@ -327,8 +327,8 @@ Run the full deterministic acceptance chain with the 'assurance' subcommand:
   extract -> validate -> security -> conventions -> golden_master ->
   algebraic -> roundtrip -> dossier
 
-Strict validation: every gate fails fast with a standard non-zero exit code
-(§3.3); a non-zero exit is BLOCKING and is never downgraded to a warning.
+Strict validation: every gate fails fast with a standard non-zero exit code;
+a non-zero exit is BLOCKING and is never downgraded to a warning.
 """
 
 
@@ -398,7 +398,7 @@ Stop/continue policy:
     skipped, but 'dossier' still runs to record an honest blocked verdict.
   * security..roundtrip are CONTINUE-ON-FAIL so one run yields the full picture.
   * the aggregate exit code is the dossier exit code (else the first blocking
-    prerequisite failure). Non-zero is BLOCKING (§3.3).
+    prerequisite failure). Non-zero is BLOCKING.
 
 NOTE: 'assurance' does NOT generate the six deliverables — that is the agent's
 job (build-vergleichsrechenkern). It runs the gates over --generated-dir.
@@ -445,7 +445,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """Console entry point. Returns a process exit code.
 
     With no subcommand, prints the source-neutral usage (deterministic gate flow
-    + strict validation) and exits 2 (usage/configuration, §3.3) so the operator
+    + strict validation) and exits 2 (usage/configuration) so the operator
     is pointed at 'assurance' or the toolbox commands. With 'assurance', runs the
     full gate chain and returns the aggregate exit code.
     """

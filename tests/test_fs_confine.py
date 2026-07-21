@@ -132,7 +132,7 @@ def test_confine_blocks_socket_and_subprocess(tmp_path: Path, confine):
 
 
 def test_confine_blocks_os_system_popen_and_popen_class(tmp_path: Path, confine):
-    """Explicit coverage (ported from the SDK-era hardening) for the exec paths
+    """Explicit coverage for the exec paths
     generated code uses most: os.system / os.popen and a direct subprocess.Popen
     (subprocess.run is covered above). Guards against a future refactor silently
     dropping these names from the block list without a test going red."""

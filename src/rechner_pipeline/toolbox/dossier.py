@@ -201,7 +201,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                 "message": (
                     f"expectation_coverage is {expectation_coverage!r}; a non-full "
                     "coverage run requires a recorded human-review or QA-contract "
-                    "policy approval (§3.4/§6.7)."
+                    "policy approval."
                 ),
                 "approved": False,
                 "human_review_required": True,

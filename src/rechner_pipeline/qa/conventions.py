@@ -150,7 +150,7 @@ _TUPLE_ANNOTATIONS = {"tuple", "Tuple"}
 
 #: Canonical rule registry: id -> human description.
 RULES: Dict[str, str] = {
-    "disallowed_edge": "Import edge not in the allowed production import graph (§6.7).",
+    "disallowed_edge": "Import edge not in the allowed production import graph.",
     "circular_import": "Modules form an import cycle.",
     "function_local_import": "Import statement nested inside a function/method body.",
     "try_except_importerror": "try/except ImportError optional-import trick.",

@@ -1,4 +1,4 @@
-"""Tests for the ``validate`` toolbox command (gate G1) and the ported
+"""Tests for the ``validate`` toolbox command (gate G1) and the
 six-file output validator (:mod:`rechner_pipeline.generate.output`).
 
 Both resolution modes are exercised against the same contract:
@@ -98,7 +98,7 @@ def _error_codes(result) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
-# generate.output unit tests (ported AS-IS contract)
+# generate.output unit tests (six-file output contract)
 # --------------------------------------------------------------------------- #
 
 

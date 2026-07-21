@@ -1,4 +1,4 @@
-"""Generation-side helpers ported from the AS-IS pipeline.
+"""Generation-side helpers for the deterministic pipeline.
 
 Currently this package hosts the six-file output validator semantics
 (:mod:`rechner_pipeline.generate.output`) reused by the ``validate`` gate (G1).

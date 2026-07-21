@@ -126,7 +126,7 @@ class InterestBasis:
             raise ApplicabilityError(
                 "interest_unknown",
                 "interest_basis.annual_effective_rate is required (declared "
-                "annual effective interest, §3.5 line 1758)",
+                "annual effective interest)",
             )
         i = interest_basis["annual_effective_rate"]
         if not isinstance(i, (int, float)) or isinstance(i, bool):
@@ -359,7 +359,7 @@ def require_engine(property_engine: Dict[str, Any]) -> Tuple[Any, str, int]:
         raise EngineUnavailableError(
             "engine_unavailable",
             f"Hypothesis is declared but not importable: {exc}. The gate fails "
-            f"rather than downgrading to a weaker random loop (§3.5).",
+            f"rather than downgrading to a weaker random loop.",
         )
     installed = getattr(hypothesis, "__version__", "")
     pinned = str(engine.get("version", "")).strip()
@@ -371,7 +371,7 @@ def require_engine(property_engine: Dict[str, Any]) -> Tuple[Any, str, int]:
         raise EngineUnavailableError(
             "engine_version_mismatch",
             f"contract pins hypothesis=={pinned} but {installed} is installed; "
-            f"versions must agree (§3.5 line 1765).",
+            f"versions must agree.",
         )
     max_examples = int(engine.get("max_examples", 200))
     if max_examples <= 0:
@@ -412,8 +412,7 @@ def assert_mappings_present(tier: str, function_mappings: Dict[str, str]) -> Non
         raise ApplicabilityError(
             "missing_mapping",
             f"tier {tier!r} requires function_mappings {missing} which are not "
-            f"declared; unknown applicability is a failure, not a skip "
-            f"(§3.5 line 1761).",
+            f"declared; unknown applicability is a failure, not a skip.",
         )
 
 
@@ -427,8 +426,7 @@ def _omega(terminal_age_policy: Dict[str, Any]) -> int:
     if "omega" not in policy:
         raise ApplicabilityError(
             "terminal_age_unknown",
-            "terminal_age_policy.omega is required (explicit terminal-age policy, "
-            "§3.5 line 1756)",
+            "terminal_age_policy.omega is required (explicit terminal-age policy)",
         )
     return int(policy["omega"])
 
@@ -467,7 +465,7 @@ def _q_omega(terminal_age_policy: Dict[str, Any]) -> float:
             raise ApplicabilityError(
                 "terminal_age_unknown",
                 f"terminal_age_policy.mode={mode!r} is not recognised; supported "
-                f"modes are {list(SUPPORTED_TERMINAL_MODES)} (§3.5 line 1756)",
+                f"modes are {list(SUPPORTED_TERMINAL_MODES)}",
             )
         if mode == TERMINAL_MODE_Q_OMEGA_IS_ONE:
             return 1.0
@@ -476,7 +474,7 @@ def _q_omega(terminal_age_policy: Dict[str, Any]) -> float:
             raise ApplicabilityError(
                 "terminal_age_unknown",
                 "terminal_age_policy.mode='explicit' requires terminal_age_policy."
-                "q_omega to be declared (§3.5 line 1756)",
+                "q_omega to be declared",
             )
         return float(policy["q_omega"])
 
@@ -487,7 +485,7 @@ def _q_omega(terminal_age_policy: Dict[str, Any]) -> float:
         "terminal_age_unknown",
         "no explicit terminal-age policy declared: terminal_age_policy must set "
         "either 'q_omega' or 'mode' (\"q_omega_is_one\"|\"explicit\"); unknown "
-        "terminal applicability is a failure, not a silent skip (§3.5 line 1756).",
+        "terminal applicability is a failure, not a silent skip.",
     )
 
 
@@ -792,8 +790,7 @@ def _check_present_value(
             "timing_unknown",
             f"present-value identities are stated for timing {list(SUPPORTED_PV_TIMING)} "
             f"but the contract declares timing_convention={timing_convention!r}; "
-            f"applying the wrong identity is worse than skipping it (risk note "
-            f"line 1861) — failing fast.",
+            f"applying the wrong identity is worse than skipping it — failing fast.",
         )
     v, d = basis.v, basis.d
 
@@ -850,7 +847,7 @@ def _check_product(tr, kernel, tol, omega, product_type, run_identity, st) -> No
             "product_unknown",
             f"product_specific tier enabled but product_type={product_type!r} is not "
             f"a recognised net-premium product; cannot select net-premium identities "
-            f"without declaring the product (§3.5 line 1761).",
+            f"without declaring the product.",
         )
 
     # Net premium definition: P = PV_benefits / PV_premium_annuity.
