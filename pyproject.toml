@@ -8,11 +8,14 @@ version = "0.1.0"
 description = "Full-agentic, CLI-driven Excel-to-Python actuarial migration pipeline (foundation layer)."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Proprietary" }
+license = { file = "LICENSE" }
 authors = [
     { name = "Bartlomiej Maciaga" },
     { name = "Arno Rasch" },
     { name = "Albrecht Brehm"},
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
 ]
 
 # Runtime dependencies. Pinned to exact versions actually installed from public pypi.org.
@@ -30,6 +33,10 @@ dev = [
 
 [project.scripts]
 rechner-pipeline = "rechner_pipeline.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/bartlmac/rechner-pipeline"
+Issues = "https://github.com/bartlmac/rechner-pipeline/issues"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

@@ -123,6 +123,29 @@ def test_FIX_zero_comparison_is_visible():
     assert r.compared_anything is False  # ... but nothing was actually validated
 
 
+def test_compare_unmatched_empty_column_stays_ok():
+    """col_has_data-Guard (ported): an unmatched expected column WITHOUT data must
+    not flip ``ok`` — otherwise every empty decorative column would false-red the
+    gate and drive agentic repair loops into pointless iterations."""
+    expected = _expected(header=["Ghost"], rows=[{"Ghost": ""}, {"Ghost": ""}])
+    computed = {"scalars": {}, "tables": {"Kalkulation": [{"axn": 1.5}, {"axn": 2.5}]}}
+    r = compare(expected, computed)
+    assert r.ok
+    assert r.unmatched_columns == []
+
+
+def test_compare_scalar_names_exact_no_normalization():
+    """Project decision (see memory project-skalar-namens-transformation): scalar
+    keys are NOT normalized. Source name ``B_xt`` and contract name ``Bxt`` are
+    distinct -> missing computed value -> deviation (a real data-model mapping the
+    agentic loop must converge, not a silent pass)."""
+    expected = _expected(scalars={"B_xt": 0.5})
+    computed = {"scalars": {"Kalkulation": {"Bxt": 0.5}}, "tables": {}}
+    r = compare(expected, computed)
+    assert not r.ok
+    assert any("B_xt" in d for d in r.deviations)
+
+
 # --------------------------------------------------------------------------- #
 # 3. End-to-end command through fs_confine — the four mandated fixtures
 # --------------------------------------------------------------------------- #
