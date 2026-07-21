@@ -1,120 +1,161 @@
-# rechner-pipeline
+# Rechenkernentwicklung mit KI – Methodik, Leitplanken und Proof of Concept
 
-Full-agentic, CLI-driven Excel-to-Python actuarial migration pipeline.
+> **Status:** öffentlicher Proof of Concept. Begleitender Arbeitsraum eines
+> DAV-Projekts unter der AG Bestandsmigration. Vorgängerprojekt:
+> [portxlpy](https://github.com/bartlmac/portxlpy).
 
-This repository contains the deterministic acceptance layer for migrating an
-Excel/VBA actuarial *Tarifrechner* into a six-file pure-Python comparison
-kernel. The agent writes and repairs the kernel; this package extracts inputs,
-runs gates, and produces the mechanical acceptance dossier. See `MIGRATION.md`
-for the full architecture history and specification.
+Dieses Repository migriert einen Excel/VBA-Tarifrechner **1:1 in einen reinen
+Python-Rechenkern** (sechs Dateien) und weist die funktionale Äquivalenz gegen
+ein unabhängiges Golden-Master-Orakel nach. Ein **Coding-Agent** (Codex- oder
+Claude-CLI) schreibt und repariert den Rechenkern; dieses Paket ist die
+**deterministische, SDK-freie Abnahme-Schicht**: es extrahiert die Eingaben,
+fährt eine Kette von Prüf-Gates und erzeugt ein nachvollziehbares Abnahme-Dossier.
 
-## Usage
+## Vision
 
-`rechner-pipeline` is a **deterministic, SDK-free** acceptance CLI. It runs the
-gate suite that decides whether an already-generated comparison kernel is
-acceptable. Code generation and self-repair are owned by the migration *agent*
-(a CLI skill — see `build-vergleichsrechenkern`), **not** by this tool: there is
-no model / provider / token / reasoning surface and no LLM acceptance path.
+Dieses Repository ist ein technischer und methodischer Arbeitsraum für die Frage,
+wie **KI und Agentensysteme die Rechenkernentwicklung sinnvoll unterstützen
+können**. Im Zentrum steht nicht ein fertiges Standardtool, sondern ein
+**nachvollziehbares, aktuarisch geführtes Vorgehensmodell** — wie fachliche
+Anforderungen, technische Umsetzung, Qualitätssicherung und menschliche Kontrolle
+in einem KI-gestützten Entwicklungsprozess zusammenwirken.
 
-## Setup
+Leitideen:
 
-Use a local virtual environment and install the pinned development dependencies:
+- **Methodik vor Produkt** — ein belastbares Vorgehen mit klaren Leitplanken,
+  kein universelles Toolversprechen.
+- **End-to-End statt Einzelautomation** — Wert entsteht im Zusammenspiel von
+  Analyse, Kontextaufbereitung, Generierung, Review, Test, Dokumentation und
+  Iteration.
+- **Aktuarinnen und Aktuare in zentraler Rolle** — fachliche Steuerung, Bewertung
+  und Freigabe bleiben menschliche Kernaufgaben.
+- **Whitebox-Prinzip** — Nachvollziehbarkeit, Prüfbarkeit, Reproduzierbarkeit und
+  kontrollierte Verbesserung sind essenziell.
+
+Die langfristige Perspektive ist ein **methodischer Referenzrahmen für
+KI-gestützte Rechenkernentwicklung**, der technische Experimente, fachliche
+Verantwortung und Governance zusammenführt.
+
+## Ansatz: Agent generiert, deterministische Schicht nimmt ab
+
+Die Verantwortung ist klar getrennt:
+
+- **Generierung und Selbstkorrektur** besitzt ein externer Coding-Agent (Codex-
+  oder Claude-CLI) über die Skill `build-vergleichsrechenkern`. Der Agent schreibt
+  den Rechenkern und repariert ihn anhand der Gate-Rückmeldungen, bis er besteht.
+- **Abnahme** besitzt dieses Paket — rein deterministisch. Es gibt **keine**
+  Modell-, Provider-, Token- oder Reasoning-Fläche und keinen LLM-Pfad in der
+  Abnahme. Die Prüfung ist damit unabhängig von der (probabilistischen)
+  Generierung und selbst nachvollziehbar.
+
+Diese Trennung ist bewusst: das probabilistische Schreiben und das deterministische
+Prüfen sind zwei verschiedene Dinge, und nur die Prüfung entscheidet über die
+Annahme.
+
+## Die Gate-Kette (`assurance`)
+
+Der Befehl `assurance` fährt die deterministische Prüf-Kette **in Reihenfolge**
+über einen bereits generierten Rechenkern und endet mit einem `dossier`-Verdikt.
+Er enthält selbst keine Gate-Logik, sondern ruft die einzelnen Toolbox-Gates auf
+und aggregiert deren Ergebnisse:
 
 ```
+extract → validate → security → conventions → golden_master → algebraic → roundtrip → dossier
+```
+
+- **extract** — deterministische Extraktion der Excel-Artefakte (Zellformeln +
+  gecachte Werte + Defined Names via openpyxl, VBA via `oletools.olevba`) sowie
+  der Skalar-/Tabellen-Erwartungswerte.
+- **validate** — der Sechs-Datei-Contract des Rechenkerns.
+- **security** — statische Prüfung des generierten Codes (blockt Netz, Subprozess,
+  dynamische Ausführung, schreibende/gefährliche Aufrufe).
+- **conventions** — Architektur-/Namenskonventionen des Kerns.
+- **golden_master** — Vergleich der berechneten Werte gegen die aus dem Excel
+  extrahierten Erwartungswerte (unabhängiges Orakel).
+- **algebraic** — property-based Prüfung aktuarieller Identitäten gegen einen
+  deklarativen `qa_contract.json` (Sterblichkeits-, Kommutations- und
+  Barwert-Identitäten); geprüft mit Hypothesis. Übersprungen ohne `--qa-contract`.
+- **roundtrip** — Roundtrip-/Konsistenzprüfungen.
+- **dossier** — aggregiert die Gate-Ergebnisse zum Abnahme-Verdikt.
+
+Jedes Gate schreibt sein Ergebnis als einzelnes JSON auf stdout und eine
+`<command>.gate.json`-Ledger-Datei in den gemeinsamen `--diagnostics-dir`.
+`extract` und `validate` sind Voraussetzungen; schlägt eine fehl, werden die
+QA-Gates übersprungen, `dossier` läuft aber weiter und protokolliert ein ehrliches
+blockiertes Verdikt. `security`..`roundtrip` laufen **continue-on-fail**, damit
+ein Lauf das vollständige Bild liefert. Ein Nicht-Null-Exit ist **blockierend**
+und wird nie zu einer Warnung abgeschwächt.
+
+## Schnellstart
+
+Voraussetzung: **Python 3.11 oder neuer**. Kein LLM-Key nötig — die Abnahme ist
+SDK-frei.
+
+```bash
+git clone https://github.com/bartlmac/rechner-pipeline.git
+cd rechner-pipeline
+
+python -m venv .venv
+. .venv/bin/activate                 # Windows: .venv\Scripts\activate
 python -m pip install -e ".[dev]"
 ```
 
-On Windows, use the venv interpreter path where appropriate:
+Voller Abnahme-Lauf über einen bereits generierten Rechenkern:
 
-```
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
-```
-
-On POSIX shells:
-
-```
-.venv/bin/python -m pip install -e ".[dev]"
-```
-
-### Source-neutral options
-
-```
-rechner-pipeline --input <path> [--adapter auto|excel]
-                 [--export-backend openpyxl|com] [--strict-manifest-warnings]
-```
-
-* `--input <path>` — the source document to migrate (source-neutral; Excel
-  today, with an adapter seam for future sources). `--excel <path>` is retained
-  as a backward-compatible **alias** for `--input`.
-* `--adapter auto|excel` — input adapter (default `auto`).
-* `--export-backend openpyxl|com` — extraction backend; `openpyxl` is the
-  deterministic, platform-neutral default. `com` needs Windows + Excel.
-* `--strict-manifest-warnings` — treat `strict_error` manifest warnings as
-  blocking failures.
-
-Strict validation: every gate fails fast with a standard non-zero exit code
-(§3.3). A non-zero exit is **blocking** and is never downgraded to a warning.
-
-### `assurance` — the gate orchestrator
-
-`assurance` runs the full deterministic gate suite **in order** over an
-already-generated kernel and ends with a `dossier` acceptance verdict. It does
-not contain gate logic and does not generate the six deliverables — it invokes
-the existing `python -m rechner_pipeline.toolbox.<command>` gates and aggregates
-their results.
-
-```
-rechner-pipeline assurance --repo-root . --input <wb> \
+```bash
+rechner-pipeline assurance --repo-root . --input examples/Tarifrechner_KLV.xlsm \
     --generated-dir <gen> --info-dir <info> --diagnostics-dir <diag> \
-    [--qa-contract <path>] [--max-attempts N] [--adapter auto|excel] \
+    [--qa-contract qa_contract.json] [--adapter auto|excel] \
     [--export-backend openpyxl|com] [--strict-manifest-warnings]
 ```
 
-Chain: `extract → validate → security → conventions → golden_master →
-algebraic → roundtrip → dossier`. All gates share one `--diagnostics-dir`; each
-writes its single JSON result to stdout and a `<command>.gate.json` ledger entry
-into that dir, which `dossier` aggregates into the final verdict.
+Quell-neutrale Optionen: `--input <pfad>` (Excel heute, Adapter-Naht für weitere
+Quellen; `--excel` bleibt als kompatibler Alias). `--adapter auto|excel`.
+`--export-backend openpyxl|com` — `openpyxl` ist der plattformneutrale Default
+(Windows/macOS/Linux, ohne Microsoft Excel); `com` benötigt Windows + Excel.
+`--strict-manifest-warnings` behandelt `strict_error`-Manifest-Warnungen als
+blockierend.
 
-Stop/continue policy:
+Jedes Gate ist auch einzeln lauffähig:
 
-* `extract` and `validate` are **prerequisites**; if either fails the QA gates
-  are skipped, but `dossier` still runs to record an honest blocked verdict.
-* `security`..`roundtrip` are **continue-on-fail** so one run yields the full
-  gate picture.
-* `algebraic` is **skipped** when no `--qa-contract` is supplied
-  (unknown-applicability without a product contract); `dossier` then reports
-  `G6` as missing.
-* the aggregate exit code is the `dossier` exit code (else the first blocking
-  prerequisite failure).
-
-### Deterministic toolbox (direct)
-
-Each gate is also runnable directly:
-
-```
+```bash
 python -m rechner_pipeline.toolbox.<command> [flags]
 ```
 
-### Agent workflow surfaces
+## Sicherheit und Reproduzierbarkeit
 
-Claude CLI remains supported through `.claude/skills/`. Codex CLI is supported
-through the repository `AGENTS.md` plus mirrored repo skills in `.agents/skills/`.
-The Codex skill copies are tested for byte-for-byte parity with the Claude skill
-bodies so one workflow does not silently drift from the other.
+- **Statisches Gate** (`security`) prüft den generierten Code vor jeder
+  Ausführung.
+- **Laufzeit-Confinement** (`qa/fs_confine.py`): der Golden-Master-/Roundtrip-Lauf
+  führt den generierten Code in einem Subprozess aus, in dem Schreiben, Lesen
+  außerhalb des Repos, Netz (`socket`), Subprozesse (`subprocess`, `os.system`)
+  und schreibende `os`-Primitive hart abgewiesen werden.
+- **Unabhängiges Orakel**: die Erwartungswerte stammen deterministisch aus dem
+  Excel, nicht vom Modell; der Vergleichs-Harness ist reviewter Code.
+- **Gepinnte Abhängigkeiten** (openpyxl/oletools/pandas, exakt) für
+  reproduzierbare Läufe.
 
-The portable baseline is local files plus plain Python commands. There is no
-`rechner_pipeline.toolbox.mcp_stdio` module and no supported MCP/RPC path in the
-current codebase.
+## Agenten-Anbindung
 
-### No SDK / LangGraph in the target execution path
+Claude-CLI wird über `.claude/skills/` unterstützt, Codex-CLI über die
+`AGENTS.md` im Repo-Root plus gespiegelte Skills unter `.agents/skills/`. Die
+Codex-Kopien werden auf Parität mit den Claude-Skill-Bodies getestet, damit ein
+Workflow nicht still vom anderen abweicht. Die portable Basis ist: lokale Dateien
+plus einfache Python-Kommandos — kein MCP/RPC-Pfad.
 
-The target carries **no** Python LLM SDK or LangGraph orchestration in `src/`.
-Verify with:
+## Beispieldaten
 
-```
-rg -n -i "anthropic|openai|OPENAI_API_KEY|ANTHROPIC_API_KEY|langgraph|StateGraph|rechner-pipeline-agentic" src pyproject.toml
-```
+Demo-Artefakte liegen unter `examples/` (`Tarifrechner_KLV.xlsm`,
+`Tarifrechner_FLV_v1.xlsm` u. a.). Es sind **synthetische Lehrbeispiele** ohne
+realen Kundenbezug.
 
-This should return **no matches** for active target code/config. The CLI exposes
-only the deterministic gate suite; generation/repair is the agent's
-responsibility.
+## Mitwirken
+
+Beiträge laufen über GitHub-Collaborators auf Vertrauensbasis; siehe
+`CONTRIBUTING.md` und `AGENTS.md`. **Arbeitsweise am gemeinsamen Branch:** klonen
+und lokal arbeiten, **kein direkter Push** in den gemeinsamen Branch — Änderungen
+werden nach Absprache übernommen.
+
+## Lizenz
+
+MIT — siehe `LICENSE`.
