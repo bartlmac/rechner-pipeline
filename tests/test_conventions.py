@@ -1,10 +1,10 @@
 """Tests for the architecture / import-convention gate (G3): AST engine rules +
 the ``conventions`` toolbox command.
 
-Covers the §6.7 allowed-import-graph enforcement (only ``actuarial -> commutation``
+Covers the allowed-import-graph enforcement (only ``actuarial -> commutation``
 among the actuarial layers; the back-edge and every other disallowed edge fail),
 circular imports, function-local imports, ``try/except ImportError``,
-``TYPE_CHECKING`` tricks, conservative ``lru_cache`` hashability, and the §3.3
+``TYPE_CHECKING`` tricks, conservative ``lru_cache`` hashability, and the
 toolbox contract for the command (single JSON stdout object, exit 22, ledger).
 """
 

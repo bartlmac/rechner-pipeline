@@ -1,6 +1,4 @@
-"""Algebraic / property-test engine — gate **G6** (§3.5 lines 1754-1761, §3.3
-row line 1690, §6.8.6 ``qa_contract.json`` lines 2781-2789, §3.5 G6 line 1748,
-risk note lines 1861-1862).
+"""Algebraic / property-test engine — gate **G6**.
 
 This module is the Excel-*independent* falsification gate. Where golden-master
 (G5) only proves the generated kernel reproduces the *values it observed in the
@@ -12,11 +10,9 @@ product / interest / timing convention, regardless of any cached workbook value.
 **Hypothesis is mandatory.** The contract's ``property_engine`` declares
 ``hypothesis`` and a pinned version. If Hypothesis cannot be imported, or the
 installed version does not match the pinned one, the gate **fails** (exit 31) —
-it never downgrades to a weaker hand-rolled random loop (§3.5 line 1765, risk
-note line 1862).
+it never downgrades to a weaker hand-rolled random loop.
 
-**Unknown applicability is a failure, never a silent skip** (§3.5 line 1761,
-line 1748, line 1690). Every enabled tier declares the conventions and function
+**Unknown applicability is a failure, never a silent skip.** Every enabled tier declares the conventions and function
 mappings it needs. If a needed mapping/convention/product/interest/timing
 declaration is absent, the tier (and therefore the gate) fails fast with a
 structured reason. A tier is never silently marked inapplicable.
@@ -92,7 +88,7 @@ TIER_OPTIONAL_MAPPINGS: Dict[str, Tuple[str, ...]] = {
 class ApplicabilityError(Exception):
     """Raised when the contract cannot declare a needed convention / mapping /
     product / interest / timing for an enabled tier. Maps to exit 31 — NEVER a
-    silent skip (§3.5 line 1761)."""
+    silent skip."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -111,7 +107,7 @@ class InterestBasis:
 
     ``v = 1/(1+i)`` (one-year discount), ``d = i/(1+i) = 1 - v`` (annual
     discount rate / rate of discount). These are the conventions the PV
-    identities (``A_x + d·ä_x = 1`` etc.) are stated under (§3.5 line 1758).
+    identities (``A_x + d·ä_x = 1`` etc.) are stated under.
     """
 
     i: float
@@ -152,7 +148,7 @@ class InterestBasis:
 #: Timing conventions the PV identities above are stated for. Only the
 #: annuity-due immediate-whole-life form is asserted by the universal PV tier;
 #: any other declared timing makes the PV identities *unknown applicability*
-#: (we will not silently apply the wrong identity — risk note line 1861).
+#: (we will not silently apply the wrong identity).
 SUPPORTED_PV_TIMING: Tuple[str, ...] = ("annuity_due",)
 
 
@@ -212,7 +208,7 @@ def resolve_mappings(
     A mapping whose module or attribute cannot be resolved raises
     :class:`ApplicabilityError` (``mapping_unresolved``): the contract declared a
     function the generated kernel does not actually provide, which is exactly the
-    "unknown applicability / missing function mapping" failure (§3.3 line 1690).
+    "unknown applicability / missing function mapping" failure.
     """
     import_module = importer or importlib.import_module
     funcs: Dict[str, Callable[..., Any]] = {}
@@ -334,8 +330,7 @@ class AlgebraicReport:
 class EngineUnavailableError(Exception):
     """Raised when the declared property engine (Hypothesis) is unavailable or
     its installed version does not match the pinned contract version. Maps to
-    exit 31 — the gate fails rather than downgrading to a weak random loop
-    (§3.5 line 1765, risk note line 1862)."""
+    exit 31 — the gate fails rather than downgrading to a weak random loop."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -371,7 +366,7 @@ def require_engine(property_engine: Dict[str, Any]) -> Tuple[Any, str, int]:
     # A pinned, concrete version must match the installed one exactly. Placeholder
     # text (e.g. the spec's "<pinned-from-Artifactory-or-absent>") or an absent
     # version means "use whatever reviewed Hypothesis is installed", but a
-    # CONCRETE mismatch is a hard failure (recorded versions must agree, §3.5).
+    # CONCRETE mismatch is a hard failure (recorded versions must agree).
     if pinned and not pinned.startswith("<") and pinned != installed:
         raise EngineUnavailableError(
             "engine_version_mismatch",
@@ -452,7 +447,7 @@ SUPPORTED_TERMINAL_MODES: Tuple[str, ...] = (
 def _q_omega(terminal_age_policy: Dict[str, Any]) -> float:
     """Resolve the REQUIRED terminal mortality value ``q(omega)``.
 
-    The contract must declare an explicit terminal-age policy (§3.5 line 1756) —
+    The contract must declare an explicit terminal-age policy —
     the mortality tier may not silently skip ``q(omega) == q_omega`` when it is
     absent. The policy is declared by EITHER:
 
@@ -546,7 +541,7 @@ def run_checks(
     )
 
     # Deterministic settings: fixed seed + no DB so reruns are stable (a gate must
-    # be rerunnable, §3.5 "rerunnable acceptance"). Function-scoped deadline off
+    # be rerunnable). Function-scoped deadline off
     # because the generated kernel may be slow on first import.
     base_settings = settings(
         max_examples=max_examples,

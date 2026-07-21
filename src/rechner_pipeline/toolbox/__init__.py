@@ -1,4 +1,4 @@
-"""Deterministic toolbox: non-interactive gate command modules (§3.3).
+"""Deterministic toolbox: non-interactive gate command modules.
 
 Each command is a plain ``python -m rechner_pipeline.toolbox.<command>`` module.
 The shared contract lives in :mod:`rechner_pipeline.toolbox._common`.

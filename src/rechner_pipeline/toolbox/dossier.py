@@ -1,25 +1,25 @@
-"""``dossier`` toolbox command — gate G8 (dossier-completeness, §3.5).
+"""``dossier`` toolbox command — gate G8 (dossier-completeness).
 
     python -m rechner_pipeline.toolbox.dossier \
         --repo-root . --generated-dir generated --info-dir info_from_excel \
         --diagnostics-dir runs/<run-id> --status completed
 
-This is the mechanical-acceptance gate. It reads the §6.8.2 gate-result ledger
+This is the mechanical-acceptance gate. It reads the gate-result ledger
 entries that the other gate commands wrote into ``--diagnostics-dir``
 (``<command>.gate.json`` files), aggregates them into:
 
-* ``<diagnostics-dir>/qa_report.json`` (§6.8.3) — the computed acceptance
+* ``<diagnostics-dir>/qa_report.json`` — the computed acceptance
   record, and
-* ``<diagnostics-dir>/run_dossier.json`` (§6.8.4) — the upgraded
+* ``<diagnostics-dir>/run_dossier.json`` — the
   ``schema_version=2`` provenance dossier,
 
 and decides mechanical acceptance. Acceptance is computed by
 :meth:`schemas.QaReport.compute_accepted` (every ``required`` gate ``passed`` AND
 no blocking warning AND no unapproved open assumption). G8 is **blocking
 (exit 40)** when a gate result is missing, a required hash is missing, an open
-assumption is unapproved, or a required gate did not pass (§3.3 dossier row).
+assumption is unapproved, or a required gate did not pass.
 
-stdout is exactly one JSON object (the §6.8.1 common result); all logs go to
+stdout is exactly one JSON object (the common result); all logs go to
 stderr. The two acceptance artifacts are written to ``--diagnostics-dir`` (never
 into ``--generated-dir``, whose six-file contract G1 validate re-checks) and
 referenced from the result ``paths``.
@@ -142,7 +142,7 @@ def _load_input_bundle(generated_dir: Path, info_dir: Path) -> Dict[str, Any]:
     ):
         obj = _read_json_object(candidate)
         if obj is not None:
-            # Keep only the coverage-block subset (§6.8.5) if a full bundle.
+            # Keep only the coverage-block subset if a full bundle.
             return obj
     return {}
 
@@ -164,7 +164,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     log(f"dossier: repo_root={repo_root}")
     log(f"dossier: diagnostics_dir={diagnostics_dir} generated_dir={generated_dir}")
 
-    # ----- gate-result ledger (§6.8.2) -------------------------------------- #
+    # ----- gate-result ledger ----------------------------------------------- #
     entries, read_errors = provenance.load_gate_ledger(diagnostics_dir)
     log(f"dossier: loaded {len(entries)} ledger entries, {len(read_errors)} unreadable")
 
@@ -190,8 +190,8 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         repo_root / QA_CONTRACT_NAME, repo_root
     )
 
-    # Coverage that is not "full" is itself an unapproved open assumption (§6.8.5,
-    # §3.4): a zero-comparison run can never masquerade as validated.
+    # Coverage that is not "full" is itself an unapproved open assumption:
+    # a zero-comparison run can never masquerade as validated.
     if expectation_coverage != "full" and not any(
         a.get("code") == "coverage.not_full" for a in open_assumptions
     ):
@@ -215,7 +215,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     dep_versions = provenance.dependency_versions()
     blocking_warnings = provenance._blocking_warnings_from_ledger(entries)
 
-    # ----- qa_report.json (§6.8.3) ------------------------------------------ #
+    # ----- qa_report.json --------------------------------------------------- #
     qa_report = provenance.build_qa_report(
         run_id=run_id,
         entries=entries,
@@ -250,7 +250,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     qa_report_path = diagnostics_dir / QA_REPORT_NAME
     provenance.write_json(qa_report_path, qa_report.to_dict())
 
-    # ----- run_dossier.json v2 (§6.8.4) ------------------------------------- #
+    # ----- run_dossier.json v2 ---------------------------------------------- #
     qa_report_record = provenance.path_record(qa_report_path, base=repo_root)
     full_dossier, delta = provenance.build_run_dossier_v2(
         qa_report=qa_report,
@@ -309,7 +309,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         "dependency_versions": dep_versions,
     }
 
-    # ----- G8 blocking checks (§3.5) ---------------------------------------- #
+    # ----- G8 blocking checks ----------------------------------------------- #
     blockers = provenance.evaluate_blockers(
         entries=entries,
         read_errors=read_errors,

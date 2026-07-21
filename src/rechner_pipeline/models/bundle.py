@@ -1,4 +1,4 @@
-"""``InputBundle`` and the coverage metadata block (§6.5, §6.8.5).
+"""``InputBundle`` and the coverage metadata block.
 
 The bundle contract is source-neutral but intentionally ``info_from_excel``-shaped
 so existing downstream consumers keep reading the same files. The bundle wraps an
@@ -20,18 +20,18 @@ __all__ = [
     "InputBundle",
 ]
 
-#: Bundle metadata contract version (§6.5).
+#: Bundle metadata contract version.
 CONTRACT_VERSION = "info_from_excel.v1"
 
-#: Legal ``expectation_coverage`` literals (§6.5 / §6.8.5).
+#: Legal ``expectation_coverage`` literals.
 EXPECTATION_COVERAGE_VALUES: tuple[str, ...] = ("full", "sparse", "none")
 
 
 @dataclass
 class CoverageDetail:
-    """The auditable coverage breakdown embedded in §6.8.5.
+    """The auditable coverage breakdown embedded in the coverage block.
 
-    Makes the §3.4 coverage decision auditable so a zero-comparison run can never
+    Makes the coverage decision auditable so a zero-comparison run can never
     masquerade as a validated one.
     """
 
@@ -72,9 +72,9 @@ class CoverageDetail:
 
 @dataclass
 class InputBundle:
-    """Source-neutral input bundle wrapping an :class:`ExportManifest` (§6.5).
+    """Source-neutral input bundle wrapping an :class:`ExportManifest`.
 
-    ``manifest`` is optional so the lightweight coverage block (§6.8.5) embedded
+    ``manifest`` is optional so the lightweight coverage block embedded
     in ``run_dossier.input_bundle`` can be (de)serialized on its own.
     """
 
@@ -88,10 +88,10 @@ class InputBundle:
     warnings: List[ManifestWarning] = field(default_factory=list)
     manifest: Optional[ExportManifest] = None
 
-    # -- coverage block (§6.8.5): the audit subset embedded in the dossier --- #
+    # -- coverage block: the audit subset embedded in the dossier ---------- #
 
     def coverage_block(self) -> Dict[str, Any]:
-        """Return the §6.8.5 ``input_bundle`` coverage block.
+        """Return the ``input_bundle`` coverage block.
 
         This is the subset echoed by ``extract``'s result summary and embedded as
         ``run_dossier.input_bundle``. It deliberately omits the in-memory manifest.

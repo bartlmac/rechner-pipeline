@@ -1,15 +1,15 @@
-"""Golden-master gate tests (G5) + the §2.6 false-acceptance fix.
+"""Golden-master gate tests (G5) + the false-acceptance fix.
 
 Three layers:
 
-1. **Compare engine** (:mod:`rechner_pipeline.qa.golden_master`): the original
-   AS-IS semantics that must be preserved (rounding, separator-insensitive but
+1. **Compare engine** (:mod:`rechner_pipeline.qa.golden_master`): the core
+   semantics that must be preserved (rounding, separator-insensitive but
    case-sensitive column matching, null-soll skipping).
 2. **Regression of the fix**: an unmatched expected column now fails
-   (``Report.ok is False``) where the AS-IS code passed; a zero-comparison run is
-   flagged via ``compared_anything is False``.
+   (``Report.ok is False``) even though it records no deviation; a
+   zero-comparison run is flagged via ``compared_anything is False``.
 3. **End-to-end command** (:mod:`rechner_pipeline.toolbox.golden_master`): the
-   four mandated fixtures (match -> 0, mismatch -> 30, unmatched column -> 30,
+   four fixtures (match -> 0, mismatch -> 30, unmatched column -> 30,
    zero-comparison -> 31) run through fs_confine on a synthetic generated kernel.
 """
 
@@ -24,7 +24,7 @@ from rechner_pipeline.toolbox._common import Exit
 
 
 # --------------------------------------------------------------------------- #
-# 1. Compare engine — preserved AS-IS semantics
+# 1. Compare engine — preserved semantics
 # --------------------------------------------------------------------------- #
 
 
@@ -92,28 +92,28 @@ def test_compare_4decimal_rounding_tolerance():
 
 
 # --------------------------------------------------------------------------- #
-# 2. Regression of the §2.6 false-acceptance fix (engine level)
+# 2. Regression of the false-acceptance fix (engine level)
 # --------------------------------------------------------------------------- #
 
 
 def test_FIX_unmatched_expected_column_now_fails():
-    """AS-IS: an unmatched expected column with data was recorded but ``ok`` was
-    still True (false-green). NEW: it makes ``ok`` False."""
+    """An unmatched expected column with data records no deviation but must make
+    ``ok`` False (previously such a column left ``ok`` True — a false-green)."""
     expected = _expected(header=["Axn"], rows=[{"Axn": "1.5"}])
     computed = {"scalars": {}, "tables": {"Kalkulation": [{"axn": 1.5}]}}  # case-mismatch
     r = compare(expected, computed)
 
     assert "Kalkulation:Axn" in r.unmatched_columns
     assert r.table_cells_tested == 0
-    # AS-IS verdict was `not r.deviations` == True; that would have been a pass.
-    assert r.deviations == []  # still no "deviation" entry — proving the AS-IS pass
+    # A verdict based only on `not r.deviations` would be True here — a pass.
+    assert r.deviations == []  # still no "deviation" entry — the false-pass condition
     # NEW verdict folds in unmatched_columns:
     assert r.ok is False
 
 
 def test_FIX_zero_comparison_is_visible():
     """A run with no expectations compares nothing; ``compared_anything`` is False
-    so the command can refuse full-acceptance (AS-IS reported it as passed)."""
+    so the command can refuse full-acceptance (otherwise it would report a pass)."""
     expected = {"scalars": {}, "tables": {}}
     computed = {"scalars": {}, "tables": {}}
     r = compare(expected, computed)
@@ -124,7 +124,7 @@ def test_FIX_zero_comparison_is_visible():
 
 
 def test_compare_unmatched_empty_column_stays_ok():
-    """col_has_data-Guard (ported): an unmatched expected column WITHOUT data must
+    """col_has_data guard: an unmatched expected column WITHOUT data must
     not flip ``ok`` — otherwise every empty decorative column would false-red the
     gate and drive agentic repair loops into pointless iterations."""
     expected = _expected(header=["Ghost"], rows=[{"Ghost": ""}, {"Ghost": ""}])

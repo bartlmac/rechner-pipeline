@@ -1,15 +1,15 @@
 """Tests for the ``dossier`` toolbox command (G8) and the provenance writer.
 
-Covers (§4.2 step 13 verification):
+Covers:
 
 * a synthetic ledger with all required gates ``passed`` -> ``qa_report.json`` +
   ``run_dossier.json`` produced, decision ``accepted``, exit 0;
 * a ledger with one required gate ``failed`` -> not accepted, exit 40;
 * schema validation fails when ``export_backend`` / a gate result / a required
   hash is omitted;
-* the real dependency versions are recorded (python 3.12.x, not the §6.8
+* the real dependency versions are recorded (the running python, not a hardcoded
   ``3.11.x`` placeholder);
-* the §3.3 stdout contract (one JSON object, blocking exit codes).
+* the stdout contract (one JSON object, blocking exit codes).
 """
 
 from __future__ import annotations
@@ -159,12 +159,12 @@ def test_accepted_full_ledger(tmp_path: Path) -> None:
     assert not (generated / dossier_cmd.QA_REPORT_NAME).exists()
     assert not (generated / dossier_cmd.RUN_DOSSIER_NAME).exists()
 
-    # qa_report.json (§6.8.3)
+    # qa_report.json
     assert qa_report["decision"] == "accepted"
     assert qa_report["accepted"] is True
     assert len(qa_report["gates"]) == len(provenance.REQUIRED_GATES)
     assert qa_report["generated_file_hashes"]  # non-empty
-    # Real dependency versions, NOT the §6.8 "3.11.x" placeholder.
+    # Real dependency versions, NOT a hardcoded "3.11.x" placeholder.
     assert qa_report["dependency_versions"]["python"].startswith("3.")
     assert qa_report["dependency_versions"]["python"] != "3.11.x"
     assert qa_report["dependency_versions"]["python"] == ".".join(
@@ -172,7 +172,7 @@ def test_accepted_full_ledger(tmp_path: Path) -> None:
     )
     assert "openpyxl" in qa_report["dependency_versions"]
 
-    # run_dossier.json v2 (§6.8.4)
+    # run_dossier.json v2
     assert run_dossier["schema_version"] == 2
     assert run_dossier["run"]["options"]["export_backend"] == "openpyxl"
     assert run_dossier["run"]["options"]["provider"] == "claude"
@@ -228,7 +228,7 @@ def test_one_required_gate_failed_blocks(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 3. Missing required gate (Wave-2 not authored) blocks acceptance
+# 3. Missing required gate (not authored) blocks acceptance
 # --------------------------------------------------------------------------- #
 
 
@@ -241,7 +241,7 @@ def test_missing_wave2_gate_blocks(tmp_path: Path) -> None:
     _seed_input_bundle(generated, coverage="full")
     _seed_dossier_input(generated)
 
-    # Only the Wave-1 gates exist; conventions/algebraic/roundtrip are absent.
+    # Only the base gates exist; conventions/algebraic/roundtrip are absent.
     for gate, command in provenance.ALL_GATES:
         if command in ("conventions", "algebraic", "roundtrip"):
             continue
@@ -263,20 +263,20 @@ def test_missing_wave2_gate_blocks(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 4. Schema-omission verification (§4.2 step 13)
+# 4. Schema-omission verification
 # --------------------------------------------------------------------------- #
 
 
 def test_schema_fails_when_export_backend_omitted() -> None:
     """run_dossier v2 with no provider/options recorded still needs cli.name; a
     dossier that omits the required ``export_backend`` option leaves the v2
-    delta incomplete relative to the §6.8.4 option set — the orchestrator must
+    delta incomplete relative to the expected option set — the orchestrator must
     supply it. We assert the OPTION_KEYS contract names it and that a delta
     missing ``run.cli.name`` (the structural anchor) fails validation."""
     delta = RunDossierV2Delta(run_cli={}, options_extra={"provider": "claude"})
     errors = delta.validate()
     assert any("run.cli.name" in e for e in errors)
-    # The §6.8.4 option set explicitly includes export_backend.
+    # The expected option set explicitly includes export_backend.
     assert "export_backend" in RunDossierV2Delta.OPTION_KEYS
 
 
@@ -401,7 +401,7 @@ def test_max_attempts_exhausted_forces_human_review(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 6. stdout purity contract (§3.3) end-to-end through run_command
+# 6. stdout purity contract end-to-end through run_command
 # --------------------------------------------------------------------------- #
 
 

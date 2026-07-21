@@ -1,30 +1,23 @@
-"""Provenance writer for the TARGET acceptance dossier (G8, §6.8.3/§6.8.4).
+"""Provenance writer for the acceptance dossier (gate G8).
 
-This is the MIGRATED + UPGRADED descendant of the AS-IS
-``rechner_pipeline.orchestrate.dossier`` (§4.1, §6.4). The AS-IS module wrote a
-``schema_version=1`` dossier directly from a ``PipelineRunner`` and an
-``ExportManifest``. In the TARGET full-agentic architecture the CLI agent owns
-generation/repair and the deterministic toolbox owns acceptance, so this module
-is reshaped into **pure aggregation functions** that the ``dossier`` toolbox
-command (:mod:`rechner_pipeline.toolbox.dossier`) drives:
+The CLI agent owns generation/repair and the deterministic toolbox owns
+acceptance, so this module provides **pure aggregation functions** that the
+``dossier`` toolbox command (:mod:`rechner_pipeline.toolbox.dossier`) drives:
 
-* :func:`load_gate_ledger` — read the §6.8.2 gate-result ledger JSONs that the
-  other gate commands wrote into ``--diagnostics-dir``.
+* :func:`load_gate_ledger` — read the gate-result ledger JSONs that the other
+  gate commands wrote into ``--diagnostics-dir``.
 * :func:`dependency_versions` — record the **real** interpreter and library
-  versions (python 3.12.x, openpyxl, oletools, pandas, hypothesis), never the
-  §6.8 placeholder ``"3.11.x"``.
-* :func:`build_qa_report` — aggregate the ledger into the §6.8.3
-  ``qa_report.json`` and compute acceptance via
-  :meth:`schemas.QaReport.compute_accepted`.
-* :func:`build_run_dossier_v2` — build the §6.8.4 upgraded ``run_dossier.json``
-  (``schema_version=2``) by layering the v2 delta onto an AS-IS-shaped base.
+  versions (python 3.12.x, openpyxl, oletools, pandas, hypothesis).
+* :func:`build_qa_report` — aggregate the ledger into ``qa_report.json`` and
+  compute acceptance via :meth:`schemas.QaReport.compute_accepted`.
+* :func:`build_run_dossier_v2` — build the upgraded ``run_dossier.json``
+  (``schema_version=2``) by layering the v2 delta onto a v1-shaped base.
 * :func:`evaluate_blockers` — the G8 blocking checks (missing gate result,
   missing hashes, unapproved open assumptions, required gate not passed).
 
 All builders return :mod:`rechner_pipeline.models.schemas` dataclasses so the
 caller can call ``.validate()`` before serializing. Nothing here writes stdout;
-the toolbox command owns I/O. ``write_json`` is a small UTF-8 writer kept for
-parity with the AS-IS ``write_run_dossier`` ergonomics.
+the toolbox command owns I/O. ``write_json`` is a small UTF-8 writer.
 """
 
 from __future__ import annotations
@@ -63,14 +56,14 @@ __all__ = [
 
 
 # --------------------------------------------------------------------------- #
-# Gate catalogue (§3.5 G0–G8). ``required`` follows §3.5: every acceptance gate
-# is required. Wave-2 gates (conventions/algebraic/roundtrip) may legitimately
-# be absent because they have not been authored yet; they are still REQUIRED, so
-# a missing entry honestly blocks full acceptance (see ``evaluate_blockers``).
+# Gate catalogue (G0–G8). Every acceptance gate is required. The
+# conventions/algebraic/roundtrip gates may legitimately be absent because they
+# have not been authored yet; they are still REQUIRED, so a missing entry
+# honestly blocks full acceptance (see ``evaluate_blockers``).
 # --------------------------------------------------------------------------- #
 
-#: Canonical gate id -> command name. The order is the §3.5 G0..G7 acceptance
-#: order (G8 is this dossier command itself and never appears in its own ledger).
+#: Canonical gate id -> command name. The order is the G0..G7 acceptance order
+#: (G8 is this dossier command itself and never appears in its own ledger).
 ALL_GATES: Tuple[Tuple[str, str], ...] = (
     ("G0.extraction-manifest", "extract"),
     ("G1.file-contract", "validate"),
@@ -81,9 +74,9 @@ ALL_GATES: Tuple[Tuple[str, str], ...] = (
     ("G7.roundtrips", "roundtrip"),
 )
 
-#: The gates that must be ``passed`` for mechanical acceptance (§3.5). All of
-#: them are required; this is exported so gate authors and the end-to-end author
-#: share one list.
+#: The gates that must be ``passed`` for mechanical acceptance. All of them are
+#: required; this is exported so gate authors and the end-to-end author share
+#: one list.
 REQUIRED_GATES: Tuple[str, ...] = tuple(gate for gate, _ in ALL_GATES)
 
 #: Filename convention for a gate-result ledger entry written into
@@ -93,8 +86,8 @@ REQUIRED_GATES: Tuple[str, ...] = tuple(gate for gate, _ in ALL_GATES)
 GATE_LEDGER_SUFFIX = GATE_LEDGER_SUFFIX  # noqa: PLW0127 — re-export, see import above
 
 #: Dependency distributions whose versions are recorded in
-#: ``qa_report.dependency_versions`` (§6.8.3, with the placeholder corrected to
-#: real values). ``python`` is added separately from :data:`platform`.
+#: ``qa_report.dependency_versions``. ``python`` is added separately from
+#: :data:`platform`.
 _RECORDED_DISTRIBUTIONS: Tuple[str, ...] = (
     "openpyxl",
     "oletools",
@@ -104,17 +97,17 @@ _RECORDED_DISTRIBUTIONS: Tuple[str, ...] = (
 
 
 def utc_now() -> str:
-    """UTC ISO-8601 timestamp (parity with the AS-IS ``_utc_now``)."""
+    """UTC ISO-8601 timestamp."""
     return datetime.now(timezone.utc).isoformat()
 
 
 # --------------------------------------------------------------------------- #
-# PathRecord (§6.4 shape: {path, exists} + bytes/sha256 when an existing file)
+# PathRecord (shape: {path, exists} + bytes/sha256 when an existing file)
 # --------------------------------------------------------------------------- #
 
 
 def path_record(path: Path, *, base: Optional[Path] = None) -> Dict[str, Any]:
-    """Return the §6.4/§6.8.4 ``PathRecord`` for *path*.
+    """Return the ``PathRecord`` for *path*.
 
     ``path`` is emitted repo-relative when *base* is given and *path* is inside
     it, so dossiers stay portable; otherwise the path string is used as-is.
@@ -133,14 +126,14 @@ def path_record(path: Path, *, base: Optional[Path] = None) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# Gate-result ledger (§6.8.2) loading
+# Gate-result ledger loading
 # --------------------------------------------------------------------------- #
 
 
 def load_gate_ledger(
     diagnostics_dir: Path,
 ) -> Tuple[List[GateLedgerEntry], List[Dict[str, Any]]]:
-    """Load all §6.8.2 gate-result ledger entries from *diagnostics_dir*.
+    """Load all gate-result ledger entries from *diagnostics_dir*.
 
     Reads every ``*<GATE_LEDGER_SUFFIX>`` file (``<command>.gate.json``), sorted
     by filename for determinism. Returns ``(entries, read_errors)`` where each
@@ -172,17 +165,17 @@ def load_gate_ledger(
 
 
 # --------------------------------------------------------------------------- #
-# Real dependency versions (§6.8.3 — correct the "3.11.x" placeholder)
+# Real dependency versions
 # --------------------------------------------------------------------------- #
 
 
 def dependency_versions() -> Dict[str, Any]:
-    """Record the REAL interpreter + library versions (§6.8.3).
+    """Record the REAL interpreter + library versions.
 
-    Unlike the §6.8 example payload (``"python": "3.11.x"``) this records the
-    actual running interpreter (e.g. ``3.12.4``) and the installed distribution
-    versions for openpyxl/oletools/pandas/hypothesis. A distribution that is not
-    installed is recorded as ``null`` (honest absence) rather than guessed.
+    Records the actual running interpreter (e.g. ``3.12.4``) and the installed
+    distribution versions for openpyxl/oletools/pandas/hypothesis. A
+    distribution that is not installed is recorded as ``null`` (honest absence)
+    rather than guessed.
     """
     versions: Dict[str, Any] = {"python": platform.python_version()}
     for dist in _RECORDED_DISTRIBUTIONS:
@@ -194,7 +187,7 @@ def dependency_versions() -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# Generated-file hashing (§6.8.3 generated_file_hashes / §6.8.4 generated_files)
+# Generated-file hashing (generated_file_hashes / generated_files)
 # --------------------------------------------------------------------------- #
 
 
@@ -202,7 +195,7 @@ def hash_generated_files(
     generated_dir: Path, *, repo_root: Path
 ) -> List[Dict[str, Any]]:
     """Return sorted ``[{path, bytes, sha256}]`` for every file under
-    *generated_dir*, with repo-relative ``path`` keys (§6.8.3)."""
+    *generated_dir*, with repo-relative ``path`` keys."""
     records: List[Dict[str, Any]] = []
     if not generated_dir.exists():
         return records
@@ -220,7 +213,7 @@ def hash_generated_files(
 
 
 # --------------------------------------------------------------------------- #
-# qa_report.json (§6.8.3)
+# qa_report.json
 # --------------------------------------------------------------------------- #
 
 
@@ -230,7 +223,7 @@ def _blocking_warnings_from_ledger(
     """Collect strict-error warnings surfaced by gates into blocking warnings.
 
     A gate may record ``summary.warnings`` (list of warning objects). Any with
-    ``strict_error == True`` becomes a blocking warning (§6.8.3 acceptance rule).
+    ``strict_error == True`` becomes a blocking warning per the acceptance rule.
     """
     blocking: List[Dict[str, Any]] = []
     for entry in entries:
@@ -255,7 +248,7 @@ def build_qa_report(
     tafeln_xml_canonical_sha256: Optional[str] = None,
     created_at: Optional[str] = None,
 ) -> QaReport:
-    """Aggregate the ledger into a §6.8.3 :class:`QaReport`.
+    """Aggregate the ledger into a :class:`QaReport`.
 
     ``accepted`` and ``decision`` are *computed*, never supplied:
     ``compute_accepted()`` is the single source of truth (every required gate
@@ -297,7 +290,7 @@ def build_qa_report(
 
 
 # --------------------------------------------------------------------------- #
-# Upgraded run_dossier.json (schema_version=2, §6.8.4)
+# Upgraded run_dossier.json (schema_version=2)
 # --------------------------------------------------------------------------- #
 
 
@@ -315,11 +308,11 @@ def build_run_dossier_v2(
     generated_files: Optional[List[Dict[str, Any]]] = None,
     created_at: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], RunDossierV2Delta]:
-    """Build the §6.8.4 upgraded ``run_dossier.json`` (schema_version=2).
+    """Build the upgraded ``run_dossier.json`` (schema_version=2).
 
-    Returns ``(full_dossier_dict, delta)``. The full dict is the AS-IS §6.4
-    structure (preserved keys) with the v2 delta layered on. The *delta* is
-    returned separately so the caller can ``delta.validate()`` the new keys.
+    Returns ``(full_dossier_dict, delta)``. The full dict is the v1 structure
+    (preserved keys) with the v2 delta layered on. The *delta* is returned
+    separately so the caller can ``delta.validate()`` the new keys.
     """
     as_is_base: Dict[str, Any] = {
         "schema_version": 1,
@@ -346,7 +339,7 @@ def build_run_dossier_v2(
     )
 
     full = delta.merge_into(as_is_base)
-    # Re-attach the preserved AS-IS provenance keys that ``merge_into`` does not
+    # Re-attach the preserved v1 provenance keys that ``merge_into`` does not
     # know about (it only manages the v2 delta surface).
     full["created_at"] = as_is_base["created_at"]
     full["open_assumptions"] = as_is_base["open_assumptions"]
@@ -356,7 +349,7 @@ def build_run_dossier_v2(
 
 
 # --------------------------------------------------------------------------- #
-# G8 blocking checks (§3.5: missing gate result / hashes / unapproved
+# G8 blocking checks (missing gate result / hashes / unapproved
 # assumptions / required gate not passed)
 # --------------------------------------------------------------------------- #
 
@@ -370,12 +363,11 @@ def evaluate_blockers(
 ) -> List[Dict[str, Any]]:
     """Return the list of G8 blocking errors (empty == nothing blocks at G8).
 
-    Each error is ``{"code", "message", ...}``. Blocking conditions (§3.3 row,
-    §3.5 G8):
+    Each error is ``{"code", "message", ...}``. Blocking conditions (gate G8):
 
     * ``ledger.read_error`` — a ledger file could not be parsed.
-    * ``gate.missing`` — a REQUIRED gate has no ledger entry (covers Wave-2 gates
-      not yet authored; recorded honestly so acceptance is blocked).
+    * ``gate.missing`` — a REQUIRED gate has no ledger entry (covers gates not
+      yet authored; recorded honestly so acceptance is blocked).
     * ``gate.duplicate`` — two ledger entries claim the same gate id.
     * ``gate.not_passed`` — a REQUIRED gate's ledger status is not ``passed``.
     * ``hashes.missing`` — a passed gate recorded no ``input_hashes``, or no
@@ -470,7 +462,7 @@ def evaluate_blockers(
 
 
 # --------------------------------------------------------------------------- #
-# Small UTF-8 writer (parity with AS-IS write_run_dossier ergonomics)
+# Small UTF-8 writer
 # --------------------------------------------------------------------------- #
 
 

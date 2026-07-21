@@ -1,9 +1,9 @@
 """Tests for the shared toolbox foundation (:mod:`rechner_pipeline.toolbox._common`).
 
-Covers the two wave-1b hardening fixes:
+Covers two hardening fixes:
 
 * Fix 1 — :func:`_common.write_gate_ledger` writes a valid ``<command>.gate.json``
-  §6.8.2 ledger entry that ``orchestrate.dossier``'s loader reads back and lists
+  ledger entry that ``orchestrate.dossier``'s loader reads back and lists
   in ``gates_present`` (on both the pass and fail paths).
 * Fix 2 — UTF-8 stdout: a command whose result carries a BOM / non-cp1252 char
   emits valid UTF-8 JSON on stdout (decodable, ``json.loads``-able) with the
@@ -60,7 +60,7 @@ def test_write_gate_ledger_entry_is_schema_valid(tmp_path: Path) -> None:
     payload = json.loads(out.read_text(encoding="utf-8"))
     entry = GateLedgerEntry.from_dict(payload)
     assert entry.validate() == []
-    # §6.8.2 field mapping.
+    # Ledger entry field mapping.
     assert entry.gate == "G5.golden-master"
     assert entry.command == "golden_master"
     assert entry.gate_version == "1.0.0"

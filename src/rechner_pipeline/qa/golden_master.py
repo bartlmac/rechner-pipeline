@@ -19,11 +19,11 @@ Die Vergleichs-Engine selbst ist idiom-stabil und unabhängig von der
 LLM-gewählten Implementierung -- sie ordnet ausschließlich über die Namen in
 den Erwartungsdateien zu.
 
-**Migrationsfix (§2.6 / §4.2 Schritt 6).** Die AS-IS-Engine wertete
-``Report.ok`` nur über ``deviations`` aus und ignorierte ``unmatched_columns``;
-zudem konnte ein Lauf ohne jeden Vergleich ("zero comparison") fälschlich als
-bestanden ("false green") gemeldet werden. Beide Falsch-Akzeptanzen sind hier
-behoben:
+**Vermeidung von Falsch-Akzeptanzen.** Die Engine wertet ``Report.ok`` nicht
+nur über ``deviations`` aus, sondern berücksichtigt auch ``unmatched_columns``;
+zudem wird ein Lauf ohne jeden Vergleich ("zero comparison") nicht fälschlich
+als bestanden ("false green") gemeldet. Beide Falsch-Akzeptanzen sind hier
+vermieden:
 
 * Jede erwartete Spalte mit Daten, die im berechneten Output nicht zugeordnet
   werden kann, ist jetzt eine **harte Abweichung** (``Report.ok`` ist False).
@@ -111,13 +111,13 @@ class Report:
 
     @property
     def ok(self) -> bool:
-        """Gate-Verdikt OHNE die AS-IS-Falsch-Akzeptanz.
+        """Gate-Verdikt ohne Falsch-Akzeptanz.
 
-        FIX (§2.6): Eine erwartete Spalte mit Daten, die nicht zugeordnet werden
-        kann, ist eine harte Abweichung. Der AS-IS-Code prüfte nur
-        ``self.deviations`` und ließ ``unmatched_columns`` durchrutschen
-        (false-green). ``ok`` ist jetzt nur True, wenn weder echte Abweichungen
-        noch nicht zugeordnete erwartete Spalten vorliegen.
+        Eine erwartete Spalte mit Daten, die nicht zugeordnet werden kann, ist
+        eine harte Abweichung: Neben ``self.deviations`` werden auch
+        ``unmatched_columns`` berücksichtigt, damit sie nicht durchrutschen
+        (false-green). ``ok`` ist nur True, wenn weder echte Abweichungen noch
+        nicht zugeordnete erwartete Spalten vorliegen.
 
         Hinweis: Die Null-Vergleichs-Coverage (``compared_anything``) wird hier
         bewusst NICHT eingerechnet -- der ``golden_master``-Befehl behandelt sie
@@ -131,7 +131,7 @@ class Report:
 
         Ein Lauf mit ``compared_anything == False`` hat keine numerische
         Validierung geleistet (z. B. keine Erwartungsdateien vorhanden) und darf
-        laut §2.6 NICHT als vollwertiger Golden-Master akzeptiert werden.
+        NICHT als vollwertiger Golden-Master akzeptiert werden.
         """
         return (self.scalars_tested + self.table_cells_tested) > 0
 

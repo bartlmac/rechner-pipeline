@@ -9,10 +9,10 @@ Usage::
         --adapter excel \\
         --export-backend openpyxl
 
-This is the source-neutral entry to the deterministic toolbox (§3.3, §4.2 steps
-1-3 & 12). It selects an :class:`~rechner_pipeline.adapters.base.InputAdapter`,
-cleans stale derived files from the out-dir so a re-run cannot inherit stale
-``_compressed.csv`` / ``_scalar.json`` / ``_table_values.csv`` (§4.2 step 3), runs
+This is the source-neutral entry to the deterministic toolbox. It selects an
+:class:`~rechner_pipeline.adapters.base.InputAdapter`, cleans stale derived files
+from the out-dir so a re-run cannot inherit stale ``_compressed.csv`` /
+``_scalar.json`` / ``_table_values.csv``, runs
 the adapter, and emits the InputBundle coverage block, manifest path, artifact
 counts, expectation coverage, warnings, and hashes as exactly one JSON object on
 stdout.
@@ -50,7 +50,7 @@ from rechner_pipeline.toolbox._common import (
 GATE_VERSION = "1.0.0"
 COMMAND = "extract"
 
-#: Derived-artifact suffixes that must not survive a re-run (§4.2 step 3). These
+#: Derived-artifact suffixes that must not survive a re-run. These
 #: are regenerated deterministically from the raw sheet CSVs; a stale copy left
 #: in the out-dir would be silently reused (``compress_exported_csvs`` reuses an
 #: existing ``_compressed.csv``) or globbed (``extract_all_pairs_in_info_dir``).
@@ -68,7 +68,7 @@ def _error(code: str, message: str, **extra) -> dict:
 
 
 def _clean_stale_derived(out_dir: Path) -> List[str]:
-    """Remove stale derived files from ``out_dir`` before extraction (§4.2 step 3).
+    """Remove stale derived files from ``out_dir`` before extraction.
 
     Returns the repo-agnostic names of files that were removed. Only the
     deterministically-regenerated derived artifacts are removed; raw sheet CSVs,
@@ -150,7 +150,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     backend = args.export_backend or "openpyxl"
     strict = bool(args.strict_manifest_warnings)
 
-    # Resolve the diagnostics dir for the §6.8.2 gate ledger. Default to
+    # Resolve the diagnostics dir for the gate ledger. Default to
     # <out-dir>/diagnostics (the other gates' convention); falls back to the
     # cwd diagnostics dir when no out-dir is available (early usage errors).
     if args.diagnostics_dir:
@@ -226,7 +226,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
             repair_hints=["Use --adapter excel for an Excel workbook."],
         ))
 
-    # Clean/staged extraction (§4.2 step 3): drop stale derived files so a re-run
+    # Clean/staged extraction: drop stale derived files so a re-run
     # cannot inherit a stale _compressed.csv / _scalar.json / _table_values.csv.
     out_dir.mkdir(parents=True, exist_ok=True)
     removed = _clean_stale_derived(out_dir)
@@ -319,7 +319,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         log(f"hashing failed: {exc}")
         output_hashes = {}
 
-    # input_hashes: the genuine extraction INPUT — the source workbook (§6.8.2).
+    # input_hashes: the genuine extraction INPUT — the source workbook.
     # G0's ledger needs a non-empty input_hashes or dossier raises hashes.missing.
     # Keyed repo-relative (falls back to its own string when outside repo-root).
     try:
@@ -345,7 +345,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     }
 
     # Persist the InputBundle (incl. expectation_coverage + coverage block) as
-    # ``<out-dir>/input_bundle.json`` (§6.8.5). The dossier reads this path to
+    # ``<out-dir>/input_bundle.json``. The dossier reads this path to
     # learn the real expectation_coverage AUTOMATICALLY — without it, coverage
     # defaults to "none" and a false ``coverage.not_full`` open assumption blocks
     # acceptance. The coverage block (not the full bundle) is written so it does

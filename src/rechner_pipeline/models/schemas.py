@@ -1,20 +1,20 @@
-"""Typed builders/validators for the §6.8 TARGET acceptance JSON schemas.
+"""Typed builders/validators for the acceptance JSON schemas.
 
 Covers:
 
-* §6.8.1 — common toolbox result object (:class:`CommonResult`)
-* §6.8.2 — gate-result ledger entry (:class:`GateLedgerEntry`)
-* §6.8.3 — ``qa_report.json`` aggregate (:class:`QaReport`)
-* §6.8.4 — upgraded ``run_dossier.json`` v2 delta (:class:`RunDossierV2Delta`)
-* §6.8.6 — ``qa_contract.json`` algebraic-gate contract (:class:`QaContract`)
+* common toolbox result object (:class:`CommonResult`)
+* gate-result ledger entry (:class:`GateLedgerEntry`)
+* ``qa_report.json`` aggregate (:class:`QaReport`)
+* upgraded ``run_dossier.json`` v2 delta (:class:`RunDossierV2Delta`)
+* ``qa_contract.json`` algebraic-gate contract (:class:`QaContract`)
 
 Each class is a plain ``dataclass`` with ``to_dict`` / ``from_dict`` and a
 ``validate(obj) -> list[error]`` (no external schema library). ``validate`` runs
 on the dataclass instance and returns human-readable error strings; an empty list
 means the object satisfies the schema.
 
-The common-result object here is a *schema view* of §6.8.1 used for
-serialization round-trips; the live toolbox emitter is
+The common-result object here is a *schema view* of the common toolbox result
+used for serialization round-trips; the live toolbox emitter is
 :class:`rechner_pipeline.toolbox._common.ToolboxResult`. Both produce the same
 field set.
 """
@@ -28,7 +28,7 @@ from rechner_pipeline.models.manifest import FileHashRecord, ManifestWarning
 
 # Single source of truth for status values and exit codes lives in ``_common``
 # (the live toolbox contract). Import — never re-declare — them here so the
-# schema view and the emitter can never diverge (§3.3 / §6.8.1).
+# schema view and the emitter can never diverge.
 from rechner_pipeline.toolbox._common import (
     SCHEMA_VERSION,
     STANDARD_EXIT_CODES as _STANDARD_EXIT_CODES,
@@ -75,13 +75,13 @@ def _hashmap_errors(prefix: str, mapping: Any) -> List[str]:
 
 
 # --------------------------------------------------------------------------- #
-# §6.8.1 Common toolbox result object
+# Common toolbox result object
 # --------------------------------------------------------------------------- #
 
 
 @dataclass
 class CommonResult:
-    """§6.8.1 common toolbox result (schema view)."""
+    """Common toolbox result (schema view)."""
 
     command: str
     gate_version: str
@@ -155,7 +155,7 @@ class CommonResult:
             errors.append(f"status must be one of {STATUS_VALUES}, got {self.status!r}")
         if self.exit_code not in _STANDARD_EXIT_CODES:
             errors.append(f"exit_code {self.exit_code} is not a standard exit code")
-        # status mirrors exit code (§6.8.1): 0 <-> passed, non-zero <-> not passed.
+        # status mirrors exit code: 0 <-> passed, non-zero <-> not passed.
         if (self.exit_code == 0) != (self.status == "passed"):
             errors.append("status must mirror exit_code (0 <-> passed)")
         if not isinstance(self.paths, dict):
@@ -172,13 +172,13 @@ class CommonResult:
 
 
 # --------------------------------------------------------------------------- #
-# §6.8.2 Gate-result ledger entry
+# Gate-result ledger entry
 # --------------------------------------------------------------------------- #
 
 
 @dataclass
 class GateLedgerEntry:
-    """§6.8.2 gate-result ledger entry; one per gate execution."""
+    """Gate-result ledger entry; one per gate execution."""
 
     gate: str
     command: str
@@ -245,13 +245,13 @@ class GateLedgerEntry:
 
 
 # --------------------------------------------------------------------------- #
-# §6.8.3 qa_report.json
+# qa_report.json
 # --------------------------------------------------------------------------- #
 
 
 @dataclass
 class QaReport:
-    """§6.8.3 ``qa_report.json`` mechanical acceptance aggregate.
+    """``qa_report.json`` mechanical acceptance aggregate.
 
     ``accepted`` is computed, not supplied: ``accepted == every required gate has
     status==passed AND no strict_error warning AND no unapproved open assumption``.
@@ -275,7 +275,7 @@ class QaReport:
     schema_version: int = SCHEMA_VERSION
 
     def compute_accepted(self) -> bool:
-        """Derive acceptance from the populated fields (§6.8.3)."""
+        """Derive acceptance from the populated fields."""
         all_required_passed = all(
             entry.get("status") == "passed"
             for entry in self.gates
@@ -353,7 +353,7 @@ class QaReport:
             errors.append("attempts_used must be non-negative")
         if self.max_attempts < 0:
             errors.append("max_attempts must be non-negative")
-        # Consistency between decision and accepted (§6.8.3).
+        # Consistency between decision and accepted.
         if self.accepted and self.decision != "accepted":
             errors.append("accepted=true requires decision=='accepted'")
         if not self.accepted and self.decision == "accepted":
@@ -378,18 +378,18 @@ class QaReport:
 
 
 # --------------------------------------------------------------------------- #
-# §6.8.4 Upgraded run_dossier.json (v2) delta
+# Upgraded run_dossier.json (v2) delta
 # --------------------------------------------------------------------------- #
 
 
 @dataclass
 class RunDossierV2Delta:
-    """The §6.8.4 TARGET *delta* over the AS-IS ``run_dossier.json`` (§6.4).
+    """The *delta* over the base ``run_dossier.json`` structure.
 
     Represents only the new/added keys: the bumped ``schema_version`` (2), the
     extended ``run.options`` provenance, ``run.cli``, ``qa_report``,
     ``gate_results``, ``attempts``, and ``input_bundle``. The full v2 dossier is
-    the AS-IS structure merged with this delta (see :meth:`merge_into`).
+    the base structure merged with this delta (see :meth:`merge_into`).
     """
 
     schema_version: int = 2
@@ -400,7 +400,7 @@ class RunDossierV2Delta:
     attempts: List[Dict[str, Any]] = field(default_factory=list)
     input_bundle: Dict[str, Any] = field(default_factory=dict)
 
-    #: The new option keys added by §6.8.4 over the AS-IS option set.
+    #: The new option keys added over the base option set.
     OPTION_KEYS: tuple[str, ...] = (
         "provider",
         "max_output_tokens",
@@ -442,8 +442,8 @@ class RunDossierV2Delta:
         )
 
     def merge_into(self, as_is: Dict[str, Any]) -> Dict[str, Any]:
-        """Produce the full v2 dossier by layering this delta onto an AS-IS
-        dossier dict (§6.4). The AS-IS dict is not mutated."""
+        """Produce the full v2 dossier by layering this delta onto a base
+        dossier dict. The base dict is not mutated."""
         merged = dict(as_is)
         merged["schema_version"] = self.schema_version
         run = dict(merged.get("run") or {})
@@ -486,13 +486,13 @@ class RunDossierV2Delta:
 
 
 # --------------------------------------------------------------------------- #
-# §6.8.6 qa_contract.json
+# qa_contract.json
 # --------------------------------------------------------------------------- #
 
 
 @dataclass
 class QaContract:
-    """§6.8.6 ``qa_contract.json`` — the algebraic/property gate (G6) contract."""
+    """``qa_contract.json`` — the algebraic/property gate (G6) contract."""
 
     product_type: str
     interest_basis: Dict[str, Any]

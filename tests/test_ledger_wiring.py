@@ -1,4 +1,4 @@
-"""Tests for the gate-result ledger wiring of the wave-1 gate commands.
+"""Tests for the gate-result ledger wiring of the gate commands.
 
 The reviewer found that ``extract`` (G0), ``validate`` (G1) and ``security``
 (G2) did not emit the ``<command>.gate.json`` ledger entries that ``dossier``
@@ -7,7 +7,7 @@ that all three commands:
 
 * accept ``--diagnostics-dir`` (previously ``extract``/``validate`` rejected it
   with argparse exit 2);
-* write a §6.8.2 ``<command>.gate.json`` ledger entry into that dir on BOTH the
+* write a ``<command>.gate.json`` ledger entry into that dir on BOTH the
   pass and fail paths;
 * produce entries that round-trip through
   :func:`rechner_pipeline.orchestrate.dossier.load_gate_ledger` with no read

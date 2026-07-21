@@ -1,8 +1,8 @@
 """Round-trip + validation tests for the foundation data models.
 
-Proves each schema serializes -> validates -> deserializes, that the AS-IS
-``ExportManifest`` reproduces the §6.4 JSON shape, and that ``_common`` honors the
-§3.3 contract (single JSON stdout object, exit codes, request-json reader).
+Proves each schema serializes -> validates -> deserializes, that
+``ExportManifest`` reproduces its expected JSON shape, and that ``_common``
+honors its contract (single JSON stdout object, exit codes, request-json reader).
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from rechner_pipeline.toolbox import _common
 
 
 # --------------------------------------------------------------------------- #
-# ExportManifest §6.4 shape
+# ExportManifest shape
 # --------------------------------------------------------------------------- #
 
 
@@ -94,7 +94,7 @@ def test_export_manifest_roundtrip_and_shape():
     manifest = _sample_manifest()
     data = manifest.to_dict()
 
-    # Top-level §6.4 keys all present.
+    # Top-level keys all present.
     expected_keys = {
         "out_dir",
         "sheet_csvs",
@@ -113,7 +113,7 @@ def test_export_manifest_roundtrip_and_shape():
     assert isinstance(data["out_dir"], str)
     assert all(isinstance(p, str) for p in data["sheet_csvs"])
 
-    # Nested record shapes per §6.4.
+    # Nested record shapes.
     warning = data["warnings"][0]
     assert warning["strict_error"] is True
     assert warning["path"] == "info_from_excel/big.csv"
@@ -175,7 +175,7 @@ def test_manifest_names_manager_none_serializes_empty_string():
 
 
 # --------------------------------------------------------------------------- #
-# InputBundle §6.5 / §6.8.5
+# InputBundle
 # --------------------------------------------------------------------------- #
 
 
@@ -204,7 +204,7 @@ def test_input_bundle_roundtrip_and_validate():
     reloaded = InputBundle.from_dict(json.loads(json.dumps(data)))
     assert reloaded.to_dict() == data
 
-    # Coverage block (§6.8.5) carries the audit subset.
+    # Coverage block carries the audit subset.
     block = bundle.coverage_block()
     assert block["expectation_coverage"] == "full"
     assert block["coverage_detail"]["table_cells_expected"] == 264
@@ -224,7 +224,7 @@ def test_input_bundle_rejects_bad_coverage():
 
 
 # --------------------------------------------------------------------------- #
-# §6.8.1 CommonResult
+# CommonResult
 # --------------------------------------------------------------------------- #
 
 
@@ -263,7 +263,7 @@ def test_common_result_rejects_nonstandard_exit_code():
 
 
 # --------------------------------------------------------------------------- #
-# §6.8.2 GateLedgerEntry
+# GateLedgerEntry
 # --------------------------------------------------------------------------- #
 
 
@@ -288,7 +288,7 @@ def test_gate_ledger_entry_roundtrip_and_validate():
 
 
 # --------------------------------------------------------------------------- #
-# §6.8.3 QaReport
+# QaReport
 # --------------------------------------------------------------------------- #
 
 
@@ -348,7 +348,7 @@ def test_qa_report_accepted_true_with_failed_decision_invalid():
 
 
 # --------------------------------------------------------------------------- #
-# §6.8.4 RunDossierV2Delta
+# RunDossierV2Delta
 # --------------------------------------------------------------------------- #
 
 
@@ -375,7 +375,7 @@ def test_run_dossier_v2_delta_roundtrip_and_merge():
     assert reloaded.to_dict() == data
     assert reloaded.validate() == []
 
-    # Merge onto an AS-IS dossier (§6.4) bumps version + adds keys.
+    # Merge onto a base dossier bumps version + adds keys.
     as_is = {
         "schema_version": 1,
         "run": {"status": "passed", "options": {"model": "x"}},
@@ -383,10 +383,10 @@ def test_run_dossier_v2_delta_roundtrip_and_merge():
     }
     merged = delta.merge_into(as_is)
     assert merged["schema_version"] == 2
-    assert merged["run"]["options"]["model"] == "x"  # AS-IS preserved
+    assert merged["run"]["options"]["model"] == "x"  # base preserved
     assert merged["run"]["options"]["provider"] == "claude"  # delta added
     assert merged["run"]["cli"]["name"] == "claude"
-    assert merged["warnings"] == []  # AS-IS structure preserved
+    assert merged["warnings"] == []  # base structure preserved
     assert as_is["schema_version"] == 1  # not mutated
 
 
@@ -398,7 +398,7 @@ def test_run_dossier_v2_delta_rejects_bad_provider():
 
 
 # --------------------------------------------------------------------------- #
-# §6.8.6 QaContract
+# QaContract
 # --------------------------------------------------------------------------- #
 
 
@@ -433,7 +433,7 @@ def test_qa_contract_requires_tiers():
 
 
 # --------------------------------------------------------------------------- #
-# _common contract (§3.3)
+# _common contract
 # --------------------------------------------------------------------------- #
 
 
@@ -464,7 +464,7 @@ def test_common_build_result_status_derived_from_exit():
     )
     assert failed.status == "failed"
 
-    # errors / repair_hints always present (§6.8.1).
+    # errors / repair_hints always present.
     out = passed.to_dict()
     assert out["errors"] == []
     assert out["repair_hints"] == []
@@ -505,7 +505,7 @@ def test_common_invalid_status_rejected():
 
 
 # --------------------------------------------------------------------------- #
-# Guardrails (wave0): run_command stdout purity, human-review, hash_files base
+# Guardrails: run_command stdout purity, human-review, hash_files base
 # --------------------------------------------------------------------------- #
 
 

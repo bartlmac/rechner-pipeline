@@ -4,14 +4,14 @@ This CLI is **deterministic and SDK-free**. It contains no LLM provider,
 model, token, reasoning, or ``test_mode=llm`` surface: code generation and
 self-repair are owned by the *agent* (the Claude/Copilot/Codex/OpenCode skill,
 per ``build-vergleichsrechenkern``), while this CLI exposes only the
-deterministic acceptance machinery — the §3.3 toolbox gate suite.
+deterministic acceptance machinery — the deterministic toolbox gate suite.
 
 Two things are offered:
 
 * a top-level source-neutral surface (``--input``, ``--adapter``,
   ``--export-backend``, ``--strict-manifest-warnings``) that documents the
   deterministic gate flow and strict validation behaviour; and
-* the ``assurance`` subcommand — the Wave-4 end-to-end gate orchestrator. It
+* the ``assurance`` subcommand — the end-to-end gate orchestrator. It
   runs the existing toolbox gate commands IN ORDER over an already-generated
   ``--generated-dir`` and ends with a ``dossier`` acceptance verdict. It does
   NOT contain any gate logic itself and does NOT generate the six deliverables
@@ -47,7 +47,7 @@ from rechner_pipeline.toolbox import (
 PROG = "rechner-pipeline"
 
 # --------------------------------------------------------------------------- #
-# The ordered gate chain (§4.2 steps; §3.3 toolbox).
+# The ordered gate chain (extract -> ... -> dossier; deterministic toolbox).
 #
 # Each entry is (name, module-main, argv-builder). The argv-builder maps the
 # shared assurance inputs onto the exact flags that gate command accepts — the
@@ -230,7 +230,7 @@ def _run_assurance(ns: argparse.Namespace) -> int:
     and finishes with ``dossier`` (the acceptance verdict). The aggregate exit
     code is the dossier exit code if it ran, else the first blocking prerequisite
     failure — so a non-zero ``assurance`` exit is always honest and never a
-    downgraded warning (§3.3).
+    downgraded warning.
     """
     config = _AssuranceConfig(ns)
 

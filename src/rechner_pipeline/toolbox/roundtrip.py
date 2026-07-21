@@ -1,15 +1,14 @@
 """``roundtrip`` toolbox command — gate **G7** (XML / extraction / recomputation
-stability). §3.3 row line 1691; §3.5 G7 line 1749; roundtrip paragraph line 1763;
-§6.7 ``tafeln.xml`` rules lines 2595-2610.
+stability).
 
 Thin CLI wrapper over :mod:`rechner_pipeline.qa.roundtrip`. It wires flags,
-hashes, the §6.8.2 gate ledger, and the single-JSON-stdout result; all logic
+hashes, the gate ledger, and the single-JSON-stdout result; all logic
 lives in the engine. Three blocking checks (any failure -> exit ``32`` =
 :attr:`Exit.ROUNDTRIP`):
 
 1. ``tafeln.xml`` is a canonical fixed point of parse -> serialize -> parse
    (same canonical object AND same SHA-256); duplicate ages / ``qx`` outside
-   ``[0, 1]`` / non-finite ``qx`` fail (§6.7).
+   ``[0, 1]`` / non-finite ``qx`` fail.
 2. Re-running extraction (read-only import of
    :class:`rechner_pipeline.adapters.excel.ExcelAdapter`) twice into a
    deterministic staging location under ``--repo-root`` yields stable MATERIAL
@@ -18,7 +17,7 @@ lives in the engine. Three blocking checks (any failure -> exit ``32`` =
    golden_master / :mod:`rechner_pipeline.qa.fs_confine` execution pattern) yields
    an identical canonical output hash; non-determinism fails.
 
-Flags: ``--repo-root --generated-dir --info-dir --diagnostics-dir`` (the §3.3
+Flags: ``--repo-root --generated-dir --info-dir --diagnostics-dir`` (the
 required set) plus ``--input`` (the extraction source document needed for check 2)
 and the standard ``--request-json``. Every mergeable flag uses ``default=None`` so
 ``--request-json`` can supply it.
@@ -317,7 +316,7 @@ def _run(argv: Optional[List[str]]) -> ToolboxResult:
 
 
 def main(argv: Optional[List[str]] = None) -> ToolboxResult:
-    """Run the roundtrip gate and emit the §6.8.2 ledger on BOTH paths.
+    """Run the roundtrip gate and emit the ledger on BOTH paths.
 
     The ledger write is a disk-only side artifact (never stdout) and is
     best-effort: a write failure is logged to stderr and never masks the verdict.

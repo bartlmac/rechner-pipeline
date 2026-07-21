@@ -3,7 +3,7 @@
 Three layers:
 
 1. **Engine unit tests** (:mod:`rechner_pipeline.qa.roundtrip`): the canonical
-   ``tafeln.xml`` parse/serialize fixed point, the §6.7 validation rules
+   ``tafeln.xml`` parse/serialize fixed point, the validation rules
    (duplicate age, qx out of [0, 1], non-finite qx), and the recompute /
    re-extraction stability checks.
 2. **Command end-to-end** (:mod:`rechner_pipeline.toolbox.roundtrip`): the
@@ -175,7 +175,7 @@ def test_high_precision_qx_serialization_is_exact_fixpoint():
 
 def test_genuinely_non_canonical_still_fails(tmp_path: Path):
     """A genuinely invalid table (duplicate age / qx out of range / non-finite)
-    must still FAIL — the precision fix must not weaken §6.7 validation."""
+    must still FAIL — the precision fix must not weaken validation."""
     cases = {
         "duplicate_age": '<tafeln><table name="M"><entry age="0" qx="0.1"/><entry age="0" qx="0.2"/></table></tafeln>',
         "invalid_qx": '<tafeln><table name="M"><entry age="0" qx="1.5"/></table></tafeln>',

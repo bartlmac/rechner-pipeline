@@ -1,7 +1,7 @@
 """Tests for the ``extract`` toolbox command and the Excel input adapter.
 
-These exercise the migrated extraction subsystem end-to-end against the synthetic
-KLV workbook, plus the §4.2-step-3 clean/staged extraction guard, the blocking
+These exercise the extraction subsystem end-to-end against the synthetic
+KLV workbook, plus the clean/staged extraction guard, the blocking
 exit-10 failure modes, and the COM fail-fast contract.
 """
 
@@ -110,13 +110,13 @@ def test_scalar_json_shape(tmp_path: Path):
     out_dir = tmp_path / "klv_info"
     _run(out_dir)
     scalars = json.loads((out_dir / "Kalkulation_scalar.json").read_text(encoding="utf-8"))
-    # Exact key set from the synthetic KLV workbook (§2.2.11).
+    # Exact key set from the synthetic KLV workbook.
     assert set(scalars) == {"Bxt", "BJB", "BZB", "Pxt", "ratzu"}
     assert scalars["ratzu"] == 0.05
 
 
 def test_addresses_are_absolute_dollar_form(tmp_path: Path):
-    """The scalar/table lookups depend on $A$1 addresses (§2.2.3 caveat)."""
+    """The scalar/table lookups depend on $A$1 absolute addresses."""
     out_dir = tmp_path / "klv_info"
     _run(out_dir)
     first_rows = (out_dir / "Kalkulation.csv").read_text(encoding="utf-8").splitlines()[1:4]
@@ -126,7 +126,7 @@ def test_addresses_are_absolute_dollar_form(tmp_path: Path):
 
 
 # --------------------------------------------------------------------------- #
-# §4.2 step 3 — clean/staged extraction: stale derived files must not survive
+# Clean/staged extraction: stale derived files must not survive
 # --------------------------------------------------------------------------- #
 
 

@@ -1,8 +1,5 @@
 """``algebraic`` toolbox command — gate **G6** (algebraic / property tests).
 
-§3.3 row line 1690; §3.5 G6 line 1748 + tiers lines 1754-1761; §6.8.6
-``qa_contract.json`` lines 2781-2789; risk notes lines 1861-1862.
-
 This command is the thin CLI wrapper over the Hypothesis-driven property-test
 engine in :mod:`rechner_pipeline.qa.algebraic`. It:
 
@@ -19,11 +16,11 @@ engine in :mod:`rechner_pipeline.qa.algebraic`. It:
 4. Maps the outcome:
    * Engine unavailable / version mismatch → exit ``31`` (never downgrade).
    * Unknown applicability (missing mapping / convention / product / interest /
-     timing, unknown tier) → exit ``31`` (NEVER a silent skip, §3.5 line 1761).
+     timing, unknown tier) → exit ``31`` (NEVER a silent skip).
    * A property counterexample → exit ``31`` with the falsifying example.
    * All enabled tiers pass → exit ``0``.
 
-``--strict`` is accepted per the §3.3 flag list. Because unknown applicability is
+``--strict`` is accepted as a standard flag. Because unknown applicability is
 *always* a hard failure in this gate (it is the whole point of G6), ``--strict``
 does not relax anything; it is recorded and additionally rejects a contract that
 enables no product tier for a declared net-premium product type (a likely
@@ -532,7 +529,7 @@ def _run(argv: Optional[List[str]] = None) -> ToolboxResult:
 
 
 def main(argv: Optional[List[str]] = None) -> ToolboxResult:
-    """Run the algebraic gate and emit the §6.8.2 ledger on BOTH pass and fail."""
+    """Run the algebraic gate and emit the gate ledger on BOTH pass and fail."""
     started_at = utc_now()
     result = _run(argv)
 

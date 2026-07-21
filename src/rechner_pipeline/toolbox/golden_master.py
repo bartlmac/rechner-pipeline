@@ -1,5 +1,5 @@
 """``golden_master`` toolbox command — gate **G5** (golden-master) + **G4**
-(runtime confinement). §3.3 row line 1689; §3.5 G4+G5; §4.1 disposition.
+(runtime confinement).
 
 Imports the generated ``generated/test_run.py`` kernel, calls
 ``golden_master_outputs()``, and compares the computed scalars/tables against the
@@ -24,26 +24,26 @@ fails the reviewed static rules.
 within the repo root, no writes, no reads outside the repo root, and no
 socket/subprocess at runtime. Confinement is installed in a child process
 (``fs_confine.main``) whose working directory is ``generated/`` exactly as the
-AS-IS ``run_compare`` contract requires; the child emits the structured
+``run_compare`` contract requires; the child emits the structured
 comparison result as one JSON object on its stdout, which the parent reads.
-fs_confine is defense-in-depth, NOT a formal OS sandbox (§2.6): the real trust
+fs_confine is defense-in-depth, NOT a formal OS sandbox: the real trust
 model is G2 (static) + G4 (runtime confine) + subprocess isolation combined.
 
-**Gate ledger (§6.8.2).** On BOTH the pass and fail paths, when a
+**Gate ledger.** On BOTH the pass and fail paths, when a
 ``--diagnostics-dir`` is given, a ``golden_master.gate.json`` ledger entry is
 written via :func:`rechner_pipeline.toolbox._common.write_gate_ledger` so the
 ``dossier`` gate (G8) can aggregate the run. The ledger is a side artifact — it is
 never leaked to stdout (stdout stays exactly one JSON result object).
 
-**False-acceptance fix (§2.6 / §4.2 step 6).** Two AS-IS false-green paths are
+**False-acceptance fix.** Two false-green paths are
 closed here:
 
 1. **Unmatched expected columns fail.** An expected scalar/table column with data
-   that the generated output does not provide is a blocking deviation. The fixed
+   that the generated output does not provide is a blocking deviation. The
    :pyattr:`Report.ok` already folds ``unmatched_columns`` into the verdict, so a
    non-empty ``unmatched_columns`` yields exit ``30``.
 2. **Zero-comparison runs are not full-acceptance.** A run that compared *zero*
-   scalars and *zero* table cells performed no numeric validation. Per §2.6 it is
+   scalars and *zero* table cells performed no numeric validation. It is
    sparse/none coverage, never full golden equivalence, so it is routed to a
    human-review terminal state via ``human_review_result(reason="coverage")``
    (exit ``31``), not a pass.
@@ -101,7 +101,7 @@ _END = "@@GM_JSON_END@@"
 # engine, and prints the structured Report between the begin/end markers.
 #
 # NOTE: ``info_from_excel`` MUST be under the confinement root (the repo root),
-# which it is by the AS-IS layout (``repo_root/info_from_excel``); reads of it are
+# which it is by the repo layout (``repo_root/info_from_excel``); reads of it are
 # therefore allowed by fs_confine. The child reads ``sys.argv[1]`` for info_dir.
 _CHILD_SOURCE = r'''
 import json
@@ -261,7 +261,7 @@ def _run(argv: Optional[List[str]] = None) -> ToolboxResult:
     input_hashes = hash_files(input_files, base=repo_root, missing_ok=True)
 
     # --- G2 PRECONDITION: refuse to execute code that fails static security. ---
-    # Layered design (§3.5): the static AST scanner (G2) runs BEFORE the kernel is
+    # Layered design: the static AST scanner (G2) runs BEFORE the kernel is
     # imported/executed. fs_confine (G4) is defense-in-depth, not the first line of
     # defense — so even if an orchestrator skipped G2, we never execute unsafe code.
     generated_py = sorted(generated_dir.glob("*.py"))
@@ -477,7 +477,7 @@ def _run(argv: Optional[List[str]] = None) -> ToolboxResult:
 
 def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     """Run the golden-master gate and, on BOTH the pass and fail paths, emit the
-    §6.8.2 gate-result ledger entry (``golden_master.gate.json``) into the
+    gate-result ledger entry (``golden_master.gate.json``) into the
     ``--diagnostics-dir`` when one is given.
 
     The ledger write is a side artifact: it goes to disk only and is NEVER written

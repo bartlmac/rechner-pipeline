@@ -1,4 +1,4 @@
-"""``ExcelAdapter`` — zero-behavior-change Excel input adapter (§3.4).
+"""``ExcelAdapter`` — zero-behavior-change Excel input adapter.
 
 This adapter is a thin wrapper around the current Excel extraction subsystem
 (``rechner_pipeline.extract.excel.export_excel_infos``). It:
@@ -46,10 +46,11 @@ def _manifest_from_export_dict(data: Dict[str, Any]) -> ExportManifest:
     """Rebuild an :class:`ExportManifest` from the extractor dict using ``Path``.
 
     The extractor returns path *strings*. ``ExportManifest.from_dict`` would also
-    accept strings, but to honour the wave0 byte-compat caveat we construct every
-    path field from :class:`pathlib.Path` objects explicitly here. This keeps the
-    in-memory manifest's path objects consistent with the OS-native separators
-    that the extractor already wrote into the artifacts on disk.
+    accept strings, but to preserve byte-for-byte compatibility with the
+    artifacts on disk we construct every path field from :class:`pathlib.Path`
+    objects explicitly here. This keeps the in-memory manifest's path objects
+    consistent with the OS-native separators that the extractor already wrote
+    into the artifacts on disk.
     """
     nm = data.get("names_manager_csv") or ""
     return ExportManifest(
@@ -109,7 +110,7 @@ def _count_table_cells(table_files: List[Path]) -> int:
 
 
 def _build_coverage_detail(out_dir: Path, manifest: ExportManifest) -> CoverageDetail:
-    """Compute the §6.8.5 coverage breakdown from on-disk artifacts (read-only)."""
+    """Compute the coverage breakdown from on-disk artifacts (read-only)."""
     scalar_files = sorted(out_dir.glob("*_scalar.json"), key=lambda p: p.name)
     table_files = sorted(out_dir.glob("*_table_values.csv"), key=lambda p: p.name)
     scalar_keys_expected, scalar_keys_numeric = _count_scalar_keys(scalar_files)
@@ -145,7 +146,7 @@ def _classify_coverage(detail: CoverageDetail) -> str:
 
 
 class ExcelAdapter(InputAdapter):
-    """Zero-behavior wrapper over ``export_excel_infos`` (§3.4)."""
+    """Zero-behavior wrapper over ``export_excel_infos``."""
 
     adapter_id = "excel"
 
