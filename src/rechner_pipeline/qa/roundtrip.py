@@ -1,6 +1,5 @@
-"""Roundtrip / hash-stability engine — gate **G7** (MIGRATION.md §3.3 row line
-1691, §3.5 G7 line 1749, roundtrip paragraph line 1763, §6.7 mortality-table /
-``tafeln.xml`` rules lines 2595-2610).
+"""Roundtrip / hash-stability engine — gate **G7** (reproducibility gate,
+covering the mortality-table / ``tafeln.xml`` rules).
 
 G7 is the *reproducibility* gate: it proves that the calculator's deterministic
 artifacts are stable across serialization, re-extraction, and recomputation. It
@@ -14,7 +13,7 @@ Three independent checks (any failure is blocking, exit ``32`` upstream):
    canonical object AND the SAME SHA-256. The canonical serialization is fully
    deterministic (sorted tables, ages ascending, fixed float repr, sorted
    attributes, LF newlines, no trailing whitespace), so a stable input is a
-   fixed point of ``parse -> serialize``. Per §6.7 the data is validated as it
+   fixed point of ``parse -> serialize``. The data is validated as it
    is canonicalized: **duplicate ages**, a ``qx`` **outside [0, 1]**, or a
    **non-finite** ``qx`` is a hard failure (the agent must never fabricate or
    smuggle an invalid mortality curve through the roundtrip).
@@ -106,7 +105,7 @@ def _canon_float(value: float) -> str:
     the unique shortest decimal string that parses back to the *identical* IEEE-
     754 double — so ``float(_canon_float(x)) == x`` for every finite ``x`` and the
     serialization is a TRUE fixpoint at full precision (no 12-decimal truncation
-    that would corrupt a faithfully-extracted high-precision DAV table, §6.7).
+    that would corrupt a faithfully-extracted high-precision DAV table).
     The result is normalized to plain (non-exponent) decimal notation so the on-
     disk spelling is platform-stable and human-auditable; ``repr`` only emits
     exponents far outside the qx domain ``[0, 1]``, so this is purely defensive.
@@ -187,7 +186,7 @@ def parse_tafeln(xml_text: str) -> CanonicalTafeln:
         </tafeln>
 
     An empty ``<tafeln></tafeln>`` is a valid canonical object with zero tables
-    (the AS-IS placeholder file). Raises :class:`RoundtripError` on malformed
+    (an empty placeholder file). Raises :class:`RoundtripError` on malformed
     XML, a missing required attribute, a non-integer age, a **duplicate age**
     within a table, or a ``qx`` that is non-finite or outside ``[0, 1]``.
     """
@@ -373,7 +372,7 @@ def check_tafeln_canonical(tafeln_path: Path) -> TafelnResult:
 # Check 2 — re-extraction material-hash stability
 # --------------------------------------------------------------------------- #
 #
-# The "material" artifacts are the source-neutral semantic surface (§3.4 table):
+# The "material" artifacts are the source-neutral semantic surface:
 # raw sheet CSVs, the compressed CSVs, scalar JSONs, table-value CSVs, the names
 # manager, and source-logic text. The manifest JSON is excluded because it
 # records absolute machine-specific paths (its hash would differ by staging dir,
@@ -638,7 +637,7 @@ def check_recompute_stable(
     an identical canonical output hash.
 
     Each repeat launches ``python fs_confine.py <repo_root> <child> <info_dir>``
-    with cwd == *generated_dir* (the AS-IS run_compare contract), exactly as the
+    with cwd == *generated_dir* (the run_compare contract), exactly as the
     golden_master gate does, so the kernel runs read-only under *repo_root*.
     ``info_dir`` MUST be under *repo_root* (the caller validates this) so the
     confined child may read its expectation files. A child import/contract/

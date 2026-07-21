@@ -1,8 +1,8 @@
-"""``ExportManifest`` and supporting records (byte-compatible AS-IS port).
+"""``ExportManifest`` and supporting records.
 
-This is a faithful port of the original ``rechner_pipeline.models.manifest`` so
-that ``ExportManifest.to_dict()`` reproduces the AS-IS JSON shape from §6.4 of
-MIGRATION.md exactly. Do not change field names, ordering, or omission rules.
+Defines the export manifest and its supporting records. ``ExportManifest.to_dict()``
+produces the canonical manifest JSON shape. Do not change field names, ordering, or
+omission rules, as consumers depend on the exact structure.
 """
 
 from __future__ import annotations

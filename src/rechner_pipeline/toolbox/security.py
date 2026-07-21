@@ -1,5 +1,4 @@
-"""`security` toolbox command -- gate **G2** (static security, MIGRATION.md §3.3,
-§3.5 G2).
+"""`security` toolbox command -- gate **G2** (static security).
 
 Statically scans every ``*.py`` file under ``--generated-dir`` (AST only, the
 target code is never imported or executed) and BLOCKS (exit ``21``) on any
@@ -8,7 +7,7 @@ full violation list; a human-readable JSON report is also written into
 ``--diagnostics-dir``.
 
 The actual rule set lives in :mod:`rechner_pipeline.qa.security` -- this command
-is a thin CLI wrapper that obeys the §3.3 toolbox contract (single JSON stdout
+is a thin CLI wrapper that obeys the toolbox contract (single JSON stdout
 object, stderr logs, standard exit codes, mergeable ``--request-json``).
 
 Usage::
@@ -103,7 +102,7 @@ def main(argv: Optional[List[str]] = None):
     request = read_request_json(args.request_json)
     merge_request_into_args(args, request)
 
-    # Resolve the diagnostics dir for the §6.8.2 gate ledger. Default to
+    # Resolve the diagnostics dir for the gate ledger. Default to
     # <generated-dir> (this gate already writes its security report there);
     # falls back to the cwd diagnostics dir for the early usage error.
     if args.diagnostics_dir:

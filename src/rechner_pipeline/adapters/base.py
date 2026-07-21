@@ -1,4 +1,4 @@
-"""Pluggable input-adapter seam (§3.4 of MIGRATION.md).
+"""Pluggable input-adapter seam.
 
 Every adapter turns one source document into the same filesystem bundle under
 ``info_from_excel\\`` and returns an :class:`~rechner_pipeline.models.bundle.InputBundle`

@@ -1,6 +1,6 @@
 """``validate`` toolbox command — gate G1 (six-file output contract).
 
-Enforces MIGRATION.md §3.5 G1 / §2.3.5: exactly the six expected files, exact
+Enforces the six-file output contract: exactly the six expected files, exact
 order, no path components, no duplicate blocks, no outer FILE-block text (text
 path), every ``*.py`` compiles, and ``test_run.py`` exposes a schema-correct
 ``golden_master_outputs()`` (static precheck — the code is never executed here;
@@ -11,8 +11,8 @@ Two resolution modes (both enforce the same contract):
 * **direct-file-edit (primary)** — no ``--file-block-response``: validate the
   six files already on disk in ``--generated-dir``.
 * **file-block (secondary)** — ``--file-block-response <path>``: parse the
-  ``===FILE_START: <name>===`` / ``===FILE_END: <name>===`` blocks (grammar
-  §6.3) from the given text file and validate them.
+  ``===FILE_START: <name>===`` / ``===FILE_END: <name>===`` blocks from the
+  given text file and validate them.
 
 Blocking failures exit ``20`` (``Exit.FILE_CONTRACT``) with a structured error
 list so the agent can repair without parsing prose. Usage/config errors (missing
@@ -137,7 +137,7 @@ def main(argv: Optional[List[str]] = None):
     request = read_request_json(args.request_json)
     args = merge_request_into_args(args, request)
 
-    # Resolve the diagnostics dir for the §6.8.2 gate ledger. Default to
+    # Resolve the diagnostics dir for the gate ledger. Default to
     # <generated-dir>/diagnostics (the other gates' convention); falls back to
     # the cwd diagnostics dir when no generated-dir is available (usage errors).
     if args.diagnostics_dir:

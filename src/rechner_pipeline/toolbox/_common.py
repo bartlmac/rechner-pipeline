@@ -1,4 +1,4 @@
-"""Shared deterministic-toolbox contract (§3.3 of MIGRATION.md).
+"""Shared deterministic-toolbox contract.
 
 Every gate command (`python -m rechner_pipeline.toolbox.<command>`) imports this
 module to obey one contract:
@@ -9,7 +9,7 @@ module to obey one contract:
 * Inputs are explicit flags; an optional ``--request-json -`` reads one UTF-8
   JSON request object from stdin and coexists with explicit flags
   (:func:`read_request_json`, :func:`add_request_json_arg`).
-* The result object carries the common fields from §3.3 / §6.8.1.
+* The result object carries the common contract fields.
 * SHA-256 helpers (:func:`file_sha256`, :func:`text_sha256`, :func:`hash_files`)
   feed ``input_hashes`` / ``output_hashes``.
 
@@ -70,19 +70,19 @@ __all__ = [
 # Schema / status constants
 # --------------------------------------------------------------------------- #
 
-#: Schema version stamped on every toolbox result object (§6.8.1).
+#: Schema version stamped on every toolbox result object.
 SCHEMA_VERSION: int = 1
 
 STATUS_PASSED = "passed"
 STATUS_FAILED = "failed"
 STATUS_HUMAN_REVIEW = "human_review_required"
 
-#: The only legal ``status`` values (§3.3).
+#: The only legal ``status`` values.
 STATUSES: tuple[str, ...] = (STATUS_PASSED, STATUS_FAILED, STATUS_HUMAN_REVIEW)
 
 
 # --------------------------------------------------------------------------- #
-# Standard exit codes (§3.3). Exit 0 means the selected gate passed.
+# Standard exit codes. Exit 0 means the selected gate passed.
 # --------------------------------------------------------------------------- #
 
 
@@ -103,7 +103,7 @@ class Exit:
     INTERNAL = 50  # internal toolbox error
 
 
-#: Mapping of every standard exit code (name -> int), per §3.3. Includes the
+#: Mapping of every standard exit code (name -> int). Includes the
 #: full blocking set {2,10,20,21,22,30,31,32,40,50}.
 EXIT: Dict[str, int] = {
     "OK": Exit.OK,
@@ -128,24 +128,24 @@ STANDARD_EXIT_CODES: frozenset[int] = frozenset({Exit.OK, *BLOCKING_EXIT_CODES})
 
 
 # --------------------------------------------------------------------------- #
-# Human-review terminal-state exit codes (§6.7 / §6.8.3)
+# Human-review terminal-state exit codes
 # --------------------------------------------------------------------------- #
 #
 # A human-review handoff is a *blocking, non-zero* terminal state: ``status`` is
 # set to ``human_review_required`` while the process exit stays non-zero so the
-# orchestrating skill cannot downgrade it to a warning (§3.3, §6.7). §6.8.3 names
-# two mandatory human-review triggers and we map each to the standard exit code
-# whose category it belongs to (§3.3), so the 8 command authors cannot diverge:
+# orchestrating skill cannot downgrade it to a warning. There are two mandatory
+# human-review triggers and we map each to the standard exit code whose category
+# it belongs to, so the command authors cannot diverge:
 #
 #   * ``"dossier"``  -> 40 (Exit.DOSSIER):   acceptance / dossier handoff — the
 #       ``dossier`` gate (G8) decides mechanical acceptance and is where an
 #       exhausted ``max_attempts`` run or an unresolved acceptance question
-#       lands. 40 is the dossier/provenance category in §3.3.
+#       lands. 40 is the dossier/provenance category.
 #   * ``"coverage"`` -> 31 (Exit.ALGEBRAIC): sparse/none expectation-coverage or
 #       missing-mortality-table handoff — these surface in the algebraic /
 #       unknown-applicability gate (G6). 31 is the
-#       "algebraic/property/unknown-applicability" category in §3.3, which is the
-#       reviewer's chosen mapping for a sparse-coverage handoff.
+#       "algebraic/property/unknown-applicability" category, which is the chosen
+#       mapping for a sparse-coverage handoff.
 #
 #: Canonical ``reason -> exit code`` mapping for human-review terminal states.
 HUMAN_REVIEW_EXIT_CODES: Dict[str, int] = {
@@ -168,7 +168,7 @@ def repo_root() -> Path:
 
 
 # --------------------------------------------------------------------------- #
-# Gate-result ledger filename suffix (§6.8.2) — single source of truth
+# Gate-result ledger filename suffix — single source of truth
 # --------------------------------------------------------------------------- #
 #
 # Circular-import decision: ``_common`` is the lowest module in the import graph
@@ -190,7 +190,7 @@ def utc_now() -> str:
 
 
 def status_for_exit(exit_code: int) -> str:
-    """Map an exit code to the mirrored ``status`` (§6.8.1).
+    """Map an exit code to the mirrored ``status``.
 
     ``0`` -> ``passed``; any non-zero code -> ``failed``. A command that ends in
     a human-review handoff must set ``status`` explicitly to
@@ -429,17 +429,17 @@ def run_command(
 
 
 # --------------------------------------------------------------------------- #
-# Common result object (§6.8.1)
+# Common result object
 # --------------------------------------------------------------------------- #
 
 
 @dataclass
 class ToolboxResult:
-    """The common JSON-stdout result every toolbox command returns (§6.8.1).
+    """The common JSON-stdout result every toolbox command returns.
 
     Required fields are always serialized; optional fields
     (``errors``, ``repair_hints``, ``warnings``, ``metrics``, ``diagnostics_path``)
-    are omitted only when empty/unset. Per §6.8.1, ``errors`` and ``repair_hints``
+    are omitted only when empty/unset. ``errors`` and ``repair_hints``
     are *always present* (possibly empty) so the agent can repair without parsing
     prose; pass ``always_repairable=True`` (default) to enforce that.
     """
@@ -486,7 +486,7 @@ class ToolboxResult:
             out["metrics"] = dict(self.metrics)
         if self.warnings:
             out["warnings"] = list(self.warnings)
-        # errors / repair_hints are always present per §6.8.1 unless opted out.
+        # errors / repair_hints are always present unless opted out.
         if self.always_repairable or self.errors:
             out["errors"] = list(self.errors)
         if self.always_repairable or self.repair_hints:
@@ -558,10 +558,10 @@ def human_review_result(
     diagnostics_path: Optional[str] = None,
     always_repairable: bool = True,
 ) -> ToolboxResult:
-    """Build a human-review terminal-state result (§6.7 / §6.8.3).
+    """Build a human-review terminal-state result.
 
     Sets ``status="human_review_required"`` AND a consistent **blocking non-zero**
-    exit code together so the 8 command authors cannot diverge. ``reason`` selects
+    exit code together so the command authors cannot diverge. ``reason`` selects
     the canonical exit code from :data:`HUMAN_REVIEW_EXIT_CODES`:
 
     * ``"dossier"``  -> 40 (:attr:`Exit.DOSSIER`): acceptance / dossier handoff,
@@ -614,7 +614,7 @@ def add_request_json_arg(parser: Any) -> None:
 
     Value ``-`` means "read one UTF-8 JSON request object from stdin". A path is
     also accepted for convenience. Explicit flags remain available alongside it
-    (Windows shell reliability, §3.3).
+    (Windows shell reliability).
     """
     parser.add_argument(
         "--request-json",
@@ -719,7 +719,7 @@ def hash_files(
 
 
 # --------------------------------------------------------------------------- #
-# Gate-result ledger writer (§6.8.2) — called by every gate command on BOTH the
+# Gate-result ledger writer — called by every gate command on BOTH the
 # pass and fail paths so ``dossier`` (G8) can aggregate the run.
 # --------------------------------------------------------------------------- #
 
@@ -755,7 +755,7 @@ def write_gate_ledger(
     gate: Optional[str] = None,
     required: Optional[bool] = None,
 ) -> Path:
-    """Write a §6.8.2 gate-result ledger entry for *result* and return its path.
+    """Write a gate-result ledger entry for *result* and return its path.
 
     Builds a :class:`rechner_pipeline.models.schemas.GateLedgerEntry` from a
     :class:`ToolboxResult` (mapping ``command``/``gate``, ``gate_version``,
@@ -776,8 +776,8 @@ def write_gate_ledger(
         result: the command's :class:`ToolboxResult`.
         diagnostics_dir: directory the ``dossier`` loader globs; created if absent.
         repo_root: reserved for repo-relative provenance (currently unused beyond
-            being accepted for a stable call contract across the parallel wave).
-        attempt: 1-based attempt index (§6.8.2 ``attempt``).
+            being accepted for a stable call contract).
+        attempt: 1-based attempt index.
         started_at / ended_at: ISO-8601 UTC timestamps; default to ``utc_now()``.
         command_line: the argv that ran the gate, recorded in ``summary`` when given.
         gate / required: explicit overrides; otherwise derived from
@@ -792,7 +792,7 @@ def write_gate_ledger(
 
     resolved_gate = gate or result.gate or command_to_gate.get(result.command, "")
     if not resolved_gate:
-        # Last-resort: a gate id is mandatory in §6.8.2; fall back to the command
+        # Last-resort: a gate id is mandatory; fall back to the command
         # name so the entry still validates and is honestly attributable.
         resolved_gate = result.command
 
@@ -805,7 +805,7 @@ def write_gate_ledger(
     ended = ended_at or started
 
     # Merge the result summary with the schema-fixed extras under ``summary`` so
-    # nothing is lost while keeping the §6.8.2 field set intact.
+    # nothing is lost while keeping the ledger field set intact.
     summary: Dict[str, Any] = dict(result.summary)
     summary.setdefault("exit_code", result.exit_code)
     summary.setdefault("ended_at", ended)

@@ -1,9 +1,9 @@
 """Tests for the static security gate (G2): scanner rules + toolbox command.
 
-Covers the AS-IS rule set (preserved verbatim) plus the EXTENSION families
-required by MIGRATION.md §3.5 G2 (nondeterministic time/random/environment,
-swallowed exceptions, generated-test self-approval) and the §3.3 toolbox
-contract for the `security` command (single JSON stdout object, exit 21).
+Covers the core scanner rule set plus the extended rule families
+(nondeterministic time/random/environment, swallowed exceptions,
+generated-test self-approval) and the toolbox contract for the `security`
+command (single JSON stdout object, exit 21).
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ def _categories(src: str, name: str = "x.py") -> set[str]:
 
 
 # --------------------------------------------------------------------------- #
-# AS-IS rules (preserved verbatim behavior)
+# Core scanner rules
 # --------------------------------------------------------------------------- #
 
 
@@ -128,7 +128,7 @@ def test_reports_syntax_errors() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# EXTENSION: nondeterministic (time / random / environment)
+# Rule family: nondeterministic (time / random / environment)
 # --------------------------------------------------------------------------- #
 
 
@@ -177,7 +177,7 @@ def test_allows_deterministic_datetime_construction() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# EXTENSION: swallowed exceptions
+# Rule family: swallowed exceptions
 # --------------------------------------------------------------------------- #
 
 
@@ -213,7 +213,7 @@ def test_allows_narrow_except_doing_work() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# EXTENSION: generated-test self-approval
+# Rule family: generated-test self-approval
 # --------------------------------------------------------------------------- #
 
 
@@ -258,7 +258,7 @@ def test_raise_for_violations() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Toolbox command contract (§3.3)
+# Toolbox command contract
 # --------------------------------------------------------------------------- #
 
 

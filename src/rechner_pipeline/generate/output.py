@@ -1,9 +1,8 @@
-"""Six-file output contract validator (G1) — ported from the AS-IS pipeline.
+"""Six-file output contract validator (G1).
 
 This module is the single source of truth for the **deterministic** main-output
-contract that gate G1 (``rechner_pipeline.toolbox.validate``) enforces. It ports
-the AS-IS semantics from ``rechner-pipeline``'s ``generate/output.py`` (the
-authoritative FILE-block grammar of MIGRATION.md §6.3) and adds a *static*
+contract that gate G1 (``rechner_pipeline.toolbox.validate``) enforces. It
+defines the authoritative FILE-block grammar and adds a *static*
 ``golden_master_outputs()`` schema precheck so G1 can flag a broken calculation
 contract before G4 (runtime confinement) / G5 (golden master) ever import the
 generated code.
@@ -32,7 +31,7 @@ from typing import List, Optional, Tuple
 
 
 # --------------------------------------------------------------------------- #
-# Contract constants (MIGRATION.md §6.3 / §2.3.5). Order is load-bearing.
+# Contract constants. Order is load-bearing.
 # --------------------------------------------------------------------------- #
 
 #: Expected main-output files, in their **exact required order**. This tuple is
@@ -60,8 +59,8 @@ GOLDEN_MASTER_FUNC = "golden_master_outputs"
 #: (the fixed harness shape ``{"scalars": ..., "tables": ...}``).
 GOLDEN_MASTER_REQUIRED_KEYS: Tuple[str, ...] = ("scalars", "tables")
 
-#: Authoritative FILE-block grammar (MIGRATION.md §6.3). Multiline + dotall so a
-#: block spans lines; the closing tag must repeat the opening ``name``.
+#: Authoritative FILE-block grammar. Multiline + dotall so a block spans lines;
+#: the closing tag must repeat the opening ``name``.
 PATTERN = re.compile(
     r"^===FILE_START:[ \t]*(?P<name>[^=\r\n]+?)[ \t]*===[ \t]*(?:\r?\n)"
     r"(?P<content>.*?)"
@@ -115,7 +114,7 @@ class ValidationResult:
 
 
 def extract_files_from_text(text: str) -> List[Tuple[str, str]]:
-    """Return ``(name, content)`` pairs; only the name is stripped (§6.3)."""
+    """Return ``(name, content)`` pairs; only the name is stripped."""
     out: List[Tuple[str, str]] = []
     for match in PATTERN.finditer(text):
         name = match.group("name").strip()
@@ -129,7 +128,7 @@ def _format_names(names) -> str:
 
 
 def _outer_text_error(text: str) -> Optional[ValidationError]:
-    """Reject any non-whitespace outside recognized FILE blocks (§2.3.5 step 1)."""
+    """Reject any non-whitespace outside recognized FILE blocks."""
     cursor = 0
     extra_parts: List[str] = []
     for match in PATTERN.finditer(text):
@@ -157,7 +156,7 @@ def _outer_text_error(text: str) -> Optional[ValidationError]:
 
 def _name_errors(names: List[str]) -> List[ValidationError]:
     """Validate names against the contract; stop at the first failing *category*
-    in the same order as the AS-IS validator (§2.3.5 steps 2–6)."""
+    (path components -> duplicates -> file set -> order)."""
     errors: List[ValidationError] = []
 
     if not names:
@@ -237,7 +236,7 @@ def _name_errors(names: List[str]) -> List[ValidationError]:
 
 
 # --------------------------------------------------------------------------- #
-# Compile check (no execution) — §2.3.5 step 7
+# Compile check (no execution)
 # --------------------------------------------------------------------------- #
 
 
@@ -268,7 +267,7 @@ def _compile_errors(items: List[Tuple[str, str]]) -> Tuple[List[ValidationError]
 
 
 # --------------------------------------------------------------------------- #
-# golden_master_outputs() static schema precheck — §3.5 G1 / G5 contract
+# golden_master_outputs() static schema precheck — G1 / G5 contract
 # --------------------------------------------------------------------------- #
 
 
@@ -419,10 +418,9 @@ def validate_items(
     """Apply the full contract to ``(name, content)`` items.
 
     ``outer_text_error`` is supplied only by the text-response path (the
-    on-disk path has no surrounding text to check). Checks run in the AS-IS
-    order: outer text -> names/order -> compile -> golden-master schema. The
-    first failing *category* short-circuits later categories, mirroring the
-    AS-IS validator's fail-fast behavior.
+    on-disk path has no surrounding text to check). Checks run in the order:
+    outer text -> names/order -> compile -> golden-master schema. The first
+    failing *category* short-circuits later categories (fail-fast).
     """
     if outer_text_error is not None:
         return ValidationResult(ok=False, errors=[outer_text_error])
@@ -522,13 +520,13 @@ def validate_files_on_disk(generated_dir: Path) -> ValidationResult:
 
 
 # --------------------------------------------------------------------------- #
-# Back-compat thin wrappers (raise the AS-IS exception) — kept so existing call
+# Thin wrappers (raise :class:`OutputValidationError`) — kept so existing call
 # sites / tests that expect the raising API continue to work.
 # --------------------------------------------------------------------------- #
 
 
 def validate_main_output_files(text: str) -> List[Tuple[str, str]]:
-    """AS-IS-compatible API: validate text, raise :class:`OutputValidationError`
+    """Raising API: validate text, raise :class:`OutputValidationError`
     on the first failing category, else return the extracted items."""
     result = validate_main_output_text(text)
     if not result.ok:

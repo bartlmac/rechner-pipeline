@@ -1,6 +1,5 @@
 """`conventions` toolbox command -- gate **G3** (architecture / import
-conventions, MIGRATION.md §3.3 ``conventions`` row, §3.5 G3, §6.7 lines
-2568-2587).
+conventions).
 
 Statically scans every ``*.py`` file under ``--generated-dir`` (AST only -- the
 target code is never imported or executed) and BLOCKS (exit ``22``) on any
@@ -20,7 +19,7 @@ analysis, the cache audit, and the circularity result. A human-readable JSON
 report is also written into ``--diagnostics-dir``.
 
 The rule set lives in :mod:`rechner_pipeline.qa.conventions`; this command is a
-thin CLI wrapper obeying the §3.3 toolbox contract (single JSON stdout object,
+thin CLI wrapper obeying the toolbox contract (single JSON stdout object,
 stderr logs, standard exit codes, mergeable ``--request-json``).
 
 Usage::
@@ -97,7 +96,7 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="allowlist",
         default=None,
         help="Optional JSON file mapping module -> [extra allowed import targets]; "
-        "merged ADDITIVELY into the §6.7 allowed import graph.",
+        "merged ADDITIVELY into the allowed import graph.",
     )
     parser.add_argument(
         "--diagnostics-dir",
@@ -122,7 +121,7 @@ def _apply_allowlist(allowlist_path: Path) -> None:
     """Additively merge an allowlist file into :data:`ALLOWED_IMPORTS` in place.
 
     The file is ``{module: [extra allowed targets]}``. We only ADD edges (never
-    remove the §6.7 baseline) so the gate cannot be weakened below spec; an
+    remove the baseline) so the gate cannot be weakened below spec; an
     operator can only widen it for a justified exception.
     """
     data = json.loads(allowlist_path.read_text(encoding="utf-8"))
@@ -149,7 +148,7 @@ def main(argv: Optional[List[str]] = None):
         diagnostics_dir = Path.cwd() / "diagnostics"
 
     def _finalize(result: ToolboxResult) -> ToolboxResult:
-        """Write the §6.8.2 gate ledger (side artifact) before returning.
+        """Write the gate ledger (side artifact) before returning.
 
         Called on BOTH pass and fail paths; a ledger-write failure is logged and
         swallowed so it can never mask the real command result.

@@ -1,14 +1,12 @@
 """Static AST security gate for LLM-generated calculation code (gate **G2**).
 
-This module is the migrated + EXTENDED static security scanner (MIGRATION.md
-§2.4 lines 1155-1204, §3.5 G2, disposition §4.1 "security.py MIGRATE"). It scans
-generated Python *statically* (AST only -- it never imports or executes the
-target code, MIGRATION.md §2.6) and reports every violation as
-``file:line:column`` + rule id (``category``/``symbol``) + ``message``.
+This module is a static security scanner. It scans generated Python
+*statically* (AST only -- it never imports or executes the target code) and
+reports every violation as ``file:line:column`` + rule id
+(``category``/``symbol``) + ``message``.
 
-The AS-IS rule set (network/subprocess/dynamic-exec/write-I/O/filesystem) is
-preserved verbatim. On top of it this gate adds three EXTENSION rule families
-required by §3.5 G2 / §3.3 ``security`` row:
+The base rule set covers network/subprocess/dynamic-exec/write-I/O/filesystem
+access. On top of it this gate adds three further rule families:
 
 * ``nondeterministic`` -- time / random / environment-dependent calculation
   paths (``random``, ``time``, ``datetime.now``/``utcnow``/``today``,
@@ -39,12 +37,12 @@ from pathlib import Path
 from typing import Iterable
 
 
-#: Bumped from the AS-IS implicit "1.0.0" to reflect the EXTENSION rule families.
+#: Version of this gate; the "2.0.0" reflects the full rule set below.
 GATE_VERSION = "2.0.0"
 
 
 # --------------------------------------------------------------------------- #
-# AS-IS rules (preserved verbatim from rechner-pipeline qa/security.py)
+# Base rules (network/subprocess/dynamic-exec/write-I/O/filesystem)
 # --------------------------------------------------------------------------- #
 
 DANGEROUS_IMPORT_ROOTS = {
@@ -135,7 +133,7 @@ DANGEROUS_CALL_PREFIXES = {
 
 
 # --------------------------------------------------------------------------- #
-# EXTENSION rules (beyond AS-IS, required by §3.5 G2)
+# Determinism / robustness rules
 # --------------------------------------------------------------------------- #
 
 #: Import roots that make a calculation non-deterministic (time / RNG / entropy /
@@ -372,9 +370,9 @@ class _SecurityVisitor(ast.NodeVisitor):
         return True  # nicht-literaler Modus -> konservativ als Schreiben werten
 
     def _check_call(self, node: ast.Call, name: str) -> None:
-        # EXTENSION: time/random/environment calls are blocked even when their
-        # import root is otherwise allowed (datetime, os) -- check before the
-        # SAFE_CALL_NAMES short-circuit so os.getenv is never accidentally safe.
+        # Time/random/environment calls are blocked even when their import root
+        # is otherwise allowed (datetime, os) -- check before the SAFE_CALL_NAMES
+        # short-circuit so os.getenv is never accidentally safe.
         nd_reason = NONDETERMINISTIC_CALL_NAMES.get(name)
         if nd_reason:
             self._add(
@@ -384,8 +382,8 @@ class _SecurityVisitor(ast.NodeVisitor):
                 message=f"Call is blocked because it introduces {nd_reason}.",
             )
             return
-        # EXTENSION: a final-attribute method like `.now()`/`.utcnow()` on an
-        # unknown receiver (e.g. `dt.now()` after `from datetime import datetime
+        # A final-attribute method like `.now()`/`.utcnow()` on an unknown
+        # receiver (e.g. `dt.now()` after `from datetime import datetime
         # as dt`) -- alias resolution already rewrites the head, but guard the
         # tail too for receivers we cannot statically resolve.
         attr_tail = name.rsplit(".", 1)[-1]
@@ -446,8 +444,8 @@ class _SecurityVisitor(ast.NodeVisitor):
             )
             return
 
-        # EXTENSION: any call into a nondeterministic root (random.*, secrets.*,
-        # uuid.*, time.*) is non-deterministic, not just the named ones above.
+        # Any call into a nondeterministic root (random.*, secrets.*, uuid.*,
+        # time.*) is non-deterministic, not just the named ones above.
         nd_root_reason = NONDETERMINISTIC_IMPORT_ROOTS.get(root)
         if nd_root_reason and "." in name:
             self._add(
@@ -475,7 +473,7 @@ class _SecurityVisitor(ast.NodeVisitor):
                     )
         self.generic_visit(node)
 
-    # -- swallowed exceptions (EXTENSION) ---------------------------------- #
+    # -- swallowed exceptions ---------------------------------------------- #
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
         if self._is_swallowing(node):
@@ -538,7 +536,7 @@ class _SecurityVisitor(ast.NodeVisitor):
         )
         return only_trivial
 
-    # -- generated-test self-approval (EXTENSION) -------------------------- #
+    # -- generated-test self-approval -------------------------------------- #
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         if self._is_self_approving_test(node):

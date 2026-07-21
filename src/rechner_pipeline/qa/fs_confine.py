@@ -1,7 +1,6 @@
 """
 Laufzeit-Confinement für ausgeführten, generierten Code (Compare-Stufe, Gate
-**G4**, MIGRATION.md §2.4 Zeilen 1242-1261, §3.5 G4 Zeile 1746, §2.6
-Risikoregister Zeilen 1545-1569).
+**G4**).
 
 Ergänzt das statische Security-Gate (:mod:`rechner_pipeline.qa.security`, G2) um
 die *Orts*- und *Modus*-Beschränkung, die statisch nicht vollständig entscheidbar
@@ -9,7 +8,7 @@ ist: jeder Datei-Lesezugriff darf nur Pfade **unterhalb eines Wurzelverzeichniss
 (``repo_root``) berühren, Schreibzugriffe sind überall verboten, und
 Netz-/Subprozess-Zugriffe werden zur Laufzeit hart abgewiesen.
 
-**Defense-in-depth, KEINE OS-Sandbox (§2.6).** Dieses Modul ist eine zusätzliche
+**Defense-in-depth, KEINE OS-Sandbox.** Dieses Modul ist eine zusätzliche
 Laufzeit-Schutzschicht, die dem generierten Code NICHT vertraut. Es ist KEIN
 formaler Betriebssystem-Sandkasten: ein hinreichend entschlossener Angreifer mit
 nativem Code (ctypes, kompilierte C-Extensions, Manipulation von Low-Level-File-

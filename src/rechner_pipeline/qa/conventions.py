@@ -1,15 +1,15 @@
 """Static AST architecture / import-convention gate (gate **G3**).
 
-This module is the pure-AST engine behind the ``conventions`` toolbox command
-(MIGRATION.md §3.3 ``conventions`` row, §3.5 G3, §6.7 "complete allowed import
-graph (MANDATORY)" lines 2568-2587). It scans the generated calculation code
-*statically* (AST only -- it never imports or executes the target code) and
-BLOCKS (exit ``22``) on any architecture / convention violation.
+This module is the pure-AST engine behind the ``conventions`` toolbox command.
+It enforces the complete allowed production import graph (mandatory) and scans
+the generated calculation code *statically* (AST only -- it never imports or
+executes the target code), BLOCKING (exit ``22``) on any architecture /
+convention violation.
 
 Enforced rules (all blocking, category ids in :data:`RULES`):
 
 * ``disallowed_edge`` -- an inter-module import edge that is not in the allowed
-  production import graph (§6.7). The only permitted inter-layer edge involving
+  production import graph. The only permitted inter-layer edge involving
   the actuarial layers is ``actuarial.py -> commutation.py``;
   ``commutation.py -> actuarial.py`` (the back-edge) and every other
   table-forbidden edge fail.
@@ -55,7 +55,7 @@ GATE_VERSION = "1.0.0"
 
 
 # --------------------------------------------------------------------------- #
-# Allowed production import graph (§6.7 lines 2568-2587) -- authoritative
+# Allowed production import graph -- authoritative
 # --------------------------------------------------------------------------- #
 #
 # The six generated files are ``inputs.py``, ``params.py``, ``commutation.py``,
@@ -129,8 +129,8 @@ _UNHASHABLE_ANNOTATIONS = {
 #: here -- a tuple is hashable ONLY if every element type is provably hashable,
 #: so it is handled structurally in :func:`_is_provably_hashable_annotation`. A
 #: *bare* ``tuple``/``Tuple`` (no element types) has unknown element
-#: hashability and therefore FAILS (conservative, per spec §6.7 "unknown
-#: lru_cache hashability fails").
+#: hashability and therefore FAILS (conservative: unknown lru_cache hashability
+#: fails).
 _HASHABLE_ANNOTATIONS = {
     "int",
     "float",
@@ -718,7 +718,7 @@ def scan_conventions(items: Iterable[Tuple[str, str]]) -> ConventionsReport:
 
     graph = build_import_graph(module_imports)
 
-    # -- allowed-edge check (§6.7) ----------------------------------------- #
+    # -- allowed-edge check ------------------------------------------------- #
     layer_edges: List[Dict[str, object]] = []
     for mi in module_imports:
         allowed = ALLOWED_IMPORTS.get(mi.module)
