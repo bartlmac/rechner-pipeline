@@ -1,275 +1,476 @@
-"""
-Konsolidierte CLI-Eintrittspunkte.
+"""Source-neutral console entry point for ``rechner-pipeline``.
 
-``main()`` startet den klassischen ``PipelineRunner``.
-``agentic_main()`` startet die LangGraph-orchestrierte Variante mit
-Quality-Gates und Human-Review-Handoff.
+This CLI is **deterministic and SDK-free**. It contains no LLM provider,
+model, token, reasoning, or ``test_mode=llm`` surface: code generation and
+self-repair are owned by the *agent* (the Claude/Copilot/Codex/OpenCode skill,
+per ``build-vergleichsrechenkern``), while this CLI exposes only the
+deterministic acceptance machinery — the §3.3 toolbox gate suite.
 
-Beide werden als Console-Scripts in ``pyproject.toml`` registriert
-und sind zusätzlich über die Wrapper ``pipeline.py`` und
-``agentic_pipeline.py`` im Repo-Root aufrufbar (rückwärtskompatibel).
+Two things are offered:
+
+* a top-level source-neutral surface (``--input``, ``--adapter``,
+  ``--export-backend``, ``--strict-manifest-warnings``) that documents the
+  deterministic gate flow and strict validation behaviour; and
+* the ``assurance`` subcommand — the Wave-4 end-to-end gate orchestrator. It
+  runs the existing toolbox gate commands IN ORDER over an already-generated
+  ``--generated-dir`` and ends with a ``dossier`` acceptance verdict. It does
+  NOT contain any gate logic itself and does NOT generate the six deliverables
+  (that is the agent's job); it only drives and aggregates the gates.
+
+Console script: ``rechner-pipeline = rechner_pipeline.cli:main`` (pyproject).
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+from typing import Callable, List, Optional, Sequence
+
+# The deterministic toolbox gate commands. Each exposes ``main(argv) ->
+# ToolboxResult`` and is wrapped by ``run_command`` so that invoking it emits
+# exactly one JSON object on stdout and returns the standard exit code. We
+# import their ``main`` functions and run them through ``run_command`` so the
+# orchestrator REUSES the existing gate implementations (no second gate path).
+from rechner_pipeline.toolbox import _common
+from rechner_pipeline.toolbox import (
+    algebraic as _algebraic,
+    conventions as _conventions,
+    dossier as _dossier,
+    extract as _extract,
+    golden_master as _golden_master,
+    roundtrip as _roundtrip,
+    security as _security,
+    validate as _validate,
+)
+
+PROG = "rechner-pipeline"
+
+# --------------------------------------------------------------------------- #
+# The ordered gate chain (§4.2 steps; §3.3 toolbox).
+#
+# Each entry is (name, module-main, argv-builder). The argv-builder maps the
+# shared assurance inputs onto the exact flags that gate command accepts — the
+# gates do NOT share one uniform flag set (e.g. ``extract`` takes ``--out-dir``,
+# ``security``/``conventions`` take only ``--generated-dir``/``--diagnostics-dir``),
+# so each builder adapts the shared inputs to the real, EXISTING command flags.
+# --------------------------------------------------------------------------- #
 
 
-_DEFAULT_MODEL_BY_PROVIDER = {
-    "openai": "gpt-5.2",
-    "anthropic": "claude-sonnet-4-6",
-    "replay": "replay",
-}
+class _GateSpec:
+    __slots__ = ("name", "main", "build_argv", "stop_on_fail", "skip_when")
+
+    def __init__(
+        self,
+        name: str,
+        main: Callable[[Optional[List[str]]], object],
+        build_argv: Callable[["_AssuranceConfig"], List[str]],
+        *,
+        stop_on_fail: bool,
+        skip_when: Optional[Callable[["_AssuranceConfig"], Optional[str]]] = None,
+    ) -> None:
+        self.name = name
+        self.main = main
+        self.build_argv = build_argv
+        self.stop_on_fail = stop_on_fail
+        # Returns a human reason string to skip the gate, or None to run it.
+        self.skip_when = skip_when
 
 
-def _add_common_options(ap: argparse.ArgumentParser) -> None:
-    ap.add_argument(
-        "--provider",
-        default="openai",
-        choices=["openai", "anthropic", "replay"],
-        help="LLM-Provider (Default: openai; 'replay' = vorbereitete Ausgaben aus RP_REPLAY_DIR)",
-    )
-    ap.add_argument(
-        "--model",
-        default=None,
-        help=(
-            "Modellname. Default je Provider: openai=gpt-5.2, "
-            "anthropic=claude-sonnet-4-6"
+def _gate_specs() -> List[_GateSpec]:
+    """The gate chain in execution order (extract -> ... -> dossier).
+
+    Stop/continue policy (documented, see ``assurance --help``):
+
+    * ``extract`` and ``validate`` are PREREQUISITES — if either fails, the
+      downstream gates cannot run meaningfully (no bundle / no compilable
+      kernel), so the chain STOPS immediately and ``dossier`` is still run last
+      to record the partial, blocked verdict.
+    * every QA gate (``security`` .. ``roundtrip``) is CONTINUE-ON-FAIL: a
+      failure is recorded in its ``*.gate.json`` ledger and the chain keeps
+      going so the operator gets the FULL gate picture in one run, exactly as
+      the dossier expects (it aggregates every gate result).
+    * ``dossier`` ALWAYS runs last and produces the final mechanical-acceptance
+      verdict by aggregating the ledger written by the preceding gates.
+    """
+    return [
+        _GateSpec("extract", _extract.main, _argv_extract, stop_on_fail=True),
+        _GateSpec("validate", _validate.main, _argv_validate, stop_on_fail=True),
+        _GateSpec("security", _security.main, _argv_security, stop_on_fail=False),
+        _GateSpec("conventions", _conventions.main, _argv_conventions, stop_on_fail=False),
+        _GateSpec("golden_master", _golden_master.main, _argv_golden_master, stop_on_fail=False),
+        _GateSpec(
+            "algebraic",
+            _algebraic.main,
+            _argv_algebraic,
+            stop_on_fail=False,
+            # The algebraic gate (G6) is unknown-applicability without a product
+            # QA contract; per the spec --qa-contract is optional on assurance.
+            # When absent we SKIP it honestly (dossier then reports G6 missing)
+            # rather than emit a bare usage error into the chain.
+            skip_when=lambda c: (
+                None if c.qa_contract else "no --qa-contract supplied"
+            ),
         ),
+        _GateSpec("roundtrip", _roundtrip.main, _argv_roundtrip, stop_on_fail=False),
+        _GateSpec("dossier", _dossier.main, _argv_dossier, stop_on_fail=False),
+    ]
+
+
+class _AssuranceConfig:
+    """Resolved inputs shared by every gate in the chain."""
+
+    def __init__(self, ns: argparse.Namespace) -> None:
+        self.repo_root = str(Path(ns.repo_root).resolve())
+        self.input = str(Path(ns.input).resolve()) if ns.input else None
+        self.generated_dir = str(Path(ns.generated_dir).resolve())
+        self.info_dir = str(Path(ns.info_dir).resolve())
+        self.diagnostics_dir = str(Path(ns.diagnostics_dir).resolve())
+        self.adapter = ns.adapter
+        self.export_backend = ns.export_backend
+        self.strict_manifest_warnings = bool(ns.strict_manifest_warnings)
+        self.qa_contract = str(Path(ns.qa_contract).resolve()) if ns.qa_contract else None
+        self.max_attempts = ns.max_attempts
+
+
+# --- per-gate argv builders (adapt shared inputs to each command's real flags) #
+
+
+def _argv_extract(c: _AssuranceConfig) -> List[str]:
+    # extract writes the InputBundle into the info dir (its ``--out-dir``).
+    argv = [
+        "--repo-root", c.repo_root,
+        "--input", c.input or "",
+        "--out-dir", c.info_dir,
+        "--adapter", c.adapter,
+        "--export-backend", c.export_backend,
+        "--diagnostics-dir", c.diagnostics_dir,
+    ]
+    if c.strict_manifest_warnings:
+        argv.append("--strict-manifest-warnings")
+    return argv
+
+
+def _argv_validate(c: _AssuranceConfig) -> List[str]:
+    # validate (G1) MUST receive the shared --diagnostics-dir; otherwise its
+    # ledger defaults to <generated-dir>/diagnostics and dossier (which scans the
+    # shared dir) reports G1 'gate.missing'. It also pollutes --generated-dir.
+    return [
+        "--repo-root", c.repo_root,
+        "--generated-dir", c.generated_dir,
+        "--info-dir", c.info_dir,
+        "--diagnostics-dir", c.diagnostics_dir,
+    ]
+
+
+def _argv_security(c: _AssuranceConfig) -> List[str]:
+    return ["--generated-dir", c.generated_dir, "--diagnostics-dir", c.diagnostics_dir]
+
+
+def _argv_conventions(c: _AssuranceConfig) -> List[str]:
+    return ["--generated-dir", c.generated_dir, "--diagnostics-dir", c.diagnostics_dir]
+
+
+def _argv_golden_master(c: _AssuranceConfig) -> List[str]:
+    return [
+        "--repo-root", c.repo_root,
+        "--generated-dir", c.generated_dir,
+        "--info-dir", c.info_dir,
+        "--diagnostics-dir", c.diagnostics_dir,
+    ]
+
+
+def _argv_algebraic(c: _AssuranceConfig) -> List[str]:
+    argv = [
+        "--repo-root", c.repo_root,
+        "--generated-dir", c.generated_dir,
+        "--info-dir", c.info_dir,
+        "--diagnostics-dir", c.diagnostics_dir,
+    ]
+    if c.qa_contract:
+        argv += ["--qa-contract", c.qa_contract]
+    return argv
+
+
+def _argv_roundtrip(c: _AssuranceConfig) -> List[str]:
+    argv = [
+        "--repo-root", c.repo_root,
+        "--generated-dir", c.generated_dir,
+        "--info-dir", c.info_dir,
+        "--diagnostics-dir", c.diagnostics_dir,
+    ]
+    # G7 check 2 (re-extraction stability) needs the original source document.
+    if c.input:
+        argv += ["--input", c.input]
+    return argv
+
+
+def _argv_dossier(c: _AssuranceConfig) -> List[str]:
+    return [
+        "--repo-root", c.repo_root,
+        "--generated-dir", c.generated_dir,
+        "--info-dir", c.info_dir,
+        "--diagnostics-dir", c.diagnostics_dir,
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# assurance orchestrator
+# --------------------------------------------------------------------------- #
+
+
+def _run_assurance(ns: argparse.Namespace) -> int:
+    """Run the full gate chain in order and return an aggregate exit code.
+
+    Each gate is executed through ``rechner_pipeline.toolbox._common.run_command``
+    so it behaves EXACTLY as ``python -m rechner_pipeline.toolbox.<cmd>`` would:
+    it emits its single JSON result object on stdout, writes its ``*.gate.json``
+    ledger into the shared ``--diagnostics-dir``, and returns its standard exit
+    code. ``assurance`` reads each exit code, applies the stop/continue policy,
+    and finishes with ``dossier`` (the acceptance verdict). The aggregate exit
+    code is the dossier exit code if it ran, else the first blocking prerequisite
+    failure — so a non-zero ``assurance`` exit is always honest and never a
+    downgraded warning (§3.3).
+    """
+    config = _AssuranceConfig(ns)
+
+    # Ensure the shared dirs exist so each gate's ledger lands in one place.
+    Path(config.diagnostics_dir).mkdir(parents=True, exist_ok=True)
+    Path(config.info_dir).mkdir(parents=True, exist_ok=True)
+
+    specs = _gate_specs()
+    results: list[tuple[str, int]] = []
+    dossier_exit: Optional[int] = None
+    stopped_early = False
+
+    _log(f"assurance: repo_root={config.repo_root}")
+    _log(f"assurance: input={config.input}")
+    _log(f"assurance: generated_dir={config.generated_dir}")
+    _log(f"assurance: info_dir={config.info_dir}")
+    _log(f"assurance: diagnostics_dir={config.diagnostics_dir}")
+    _log(f"assurance: max_attempts={config.max_attempts}")
+
+    for spec in specs:
+        is_dossier = spec.name == "dossier"
+
+        if stopped_early and not is_dossier:
+            # A prerequisite failed: skip the QA gates but still reach dossier so
+            # the partial run produces an honest blocked verdict.
+            _log(f"assurance: SKIP {spec.name} (prerequisite failed)")
+            continue
+
+        if spec.skip_when is not None:
+            reason = spec.skip_when(config)
+            if reason:
+                _log(f"assurance: SKIP {spec.name} ({reason})")
+                continue
+
+        argv = spec.build_argv(config)
+        _log(f"assurance: --> {spec.name}")
+        # run_command emits the gate's single JSON object on stdout and returns
+        # its standard exit code. We do not reimplement any gate logic.
+        exit_code = _common.run_command(spec.main, argv)
+        results.append((spec.name, exit_code))
+        _log(f"assurance: <-- {spec.name} exit={exit_code}")
+
+        if is_dossier:
+            dossier_exit = exit_code
+            continue
+
+        if exit_code != _common.Exit.OK and spec.stop_on_fail:
+            _log(
+                f"assurance: prerequisite gate {spec.name!r} failed (exit {exit_code}); "
+                "stopping the QA chain and running dossier to record the blocked verdict."
+            )
+            stopped_early = True
+
+    # Aggregate exit code: dossier verdict if it ran; else the first blocking
+    # prerequisite failure; else OK.
+    if dossier_exit is not None:
+        aggregate = dossier_exit
+    else:
+        aggregate = next(
+            (code for _name, code in results if code != _common.Exit.OK),
+            _common.Exit.OK,
+        )
+
+    summary = ", ".join(f"{name}={code}" for name, code in results)
+    _log(f"assurance: gate results: {summary}")
+    _log(f"assurance: aggregate exit={aggregate}")
+    return aggregate
+
+
+# --------------------------------------------------------------------------- #
+# argument parsing
+# --------------------------------------------------------------------------- #
+
+
+_TOP_DESCRIPTION = """\
+Deterministic, SDK-free actuarial migration acceptance CLI.
+
+This tool runs the DETERMINISTIC gate suite that decides whether an
+already-generated comparison kernel is acceptable. Code generation and
+self-repair are owned by the migration AGENT (a CLI skill), NOT by this tool:
+there is no model/provider/token/reasoning surface and no LLM acceptance path.
+
+Source-neutral inputs:
+  --input PATH                 source document to extract (Excel today; the
+                               adapter seam keeps other sources future-proof)
+  --adapter auto|excel         input adapter (default: auto)
+  --export-backend openpyxl|com
+                               extraction backend (default: openpyxl, the
+                               deterministic platform-neutral baseline; 'com'
+                               needs Windows + Excel)
+  --strict-manifest-warnings   treat strict_error manifest warnings as blocking
+
+Run the full deterministic acceptance chain with the 'assurance' subcommand:
+  extract -> validate -> security -> conventions -> golden_master ->
+  algebraic -> roundtrip -> dossier
+
+Strict validation: every gate fails fast with a standard non-zero exit code
+(§3.3); a non-zero exit is BLOCKING and is never downgraded to a warning.
+"""
+
+
+def _build_top_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=PROG,
+        description=_TOP_DESCRIPTION,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument(
-        "--max_output_tokens",
-        type=int,
-        default=32_000,
-        help="Max. Output-Tokens (nur Anthropic; OpenAI Responses ignoriert dies)",
+
+    # Source-neutral top-level options (informational surface + future direct
+    # extract; the heavy lifting is the deterministic toolbox / 'assurance').
+    parser.add_argument(
+        "--input",
+        dest="input",
+        default=None,
+        help="Path to the source document to migrate (source-neutral).",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--excel",
+        dest="excel",
         default=None,
-        help=(
-            "Pfad zur Excel-Quelldatei; relative Pfade werden gegen das "
-            "Repo-Root aufgelöst (Default: examples/Tarifrechner_KLV.xlsm)"
-        ),
+        help="Compatibility ALIAS for --input (a source Excel workbook).",
     )
-
-    ap.add_argument(
+    parser.add_argument(
+        "--adapter",
+        dest="adapter",
+        default="auto",
+        choices=["auto", "excel"],
+        help="Input adapter (default: auto).",
+    )
+    parser.add_argument(
         "--export-backend",
         dest="export_backend",
         default="openpyxl",
         choices=["openpyxl", "com"],
         help=(
-            "Excel-Extraktions-Backend: openpyxl (Default, plattformneutral, "
-            "ohne Excel) oder com (Legacy, nur Windows + Excel)"
+            "Extraction backend: openpyxl (default, deterministic, no Excel) or "
+            "com (Windows + Excel only)."
         ),
     )
-
-    ap.add_argument(
-        "--test-mode",
-        dest="test_mode",
-        default="fixed",
-        choices=["fixed", "llm"],
-        help=(
-            "Validierung: fixed (Default, fester reviewter Golden-Master-Harness; "
-            "Rechenkern muss golden_master_outputs() liefern) oder llm (Legacy, "
-            "Test pro Lauf vom LLM generiert)"
-        ),
-    )
-
-    ap.add_argument("--skip_export", action="store_true")
-    ap.add_argument("--skip_main_llm", action="store_true")
-    ap.add_argument("--skip_test_llm", action="store_true")
-    ap.add_argument("--skip_compare_run", action="store_true")
-
-    ap.add_argument("--main_max_chars_per_file", type=int, default=500_000)
-    ap.add_argument("--main_max_total_chars", type=int, default=2_500_000)
-    ap.add_argument("--test_max_chars_per_file", type=int, default=500_000)
-    ap.add_argument("--test_max_total_chars", type=int, default=2_500_000)
-
-    ap.add_argument(
-        "--reasoning_effort",
-        default="medium",
-        choices=["low", "medium", "high"],
-    )
-    ap.add_argument(
-        "--strict_manifest_warnings",
+    parser.add_argument(
+        "--strict-manifest-warnings",
+        dest="strict_manifest_warnings",
         action="store_true",
-        help=(
-            "Behandle als strict_error markierte Manifest-Warnungen als "
-            "Pipeline-Fehler."
-        ),
+        help="Treat strict_error manifest warnings as blocking failures.",
     )
 
+    subparsers = parser.add_subparsers(dest="subcommand", metavar="<command>")
+    _add_assurance_subparser(subparsers)
+    return parser
 
-def _options_from_namespace(ns: argparse.Namespace):
-    from rechner_pipeline.orchestrate.runner import PipelineOptions
 
-    model = ns.model or _DEFAULT_MODEL_BY_PROVIDER[ns.provider]
+_ASSURANCE_DESCRIPTION = """\
+Run the full deterministic gate suite IN ORDER over an already-generated kernel.
 
-    return PipelineOptions(
-        model=model,
-        skip_export=ns.skip_export,
-        skip_main_llm=ns.skip_main_llm,
-        skip_test_llm=ns.skip_test_llm,
-        skip_compare_run=ns.skip_compare_run,
-        main_max_chars_per_file=ns.main_max_chars_per_file,
-        main_max_total_chars=ns.main_max_total_chars,
-        test_max_chars_per_file=ns.test_max_chars_per_file,
-        test_max_total_chars=ns.test_max_total_chars,
-        reasoning_effort=ns.reasoning_effort,
-        strict_manifest_warnings=ns.strict_manifest_warnings,
-        provider=ns.provider,
-        max_output_tokens=ns.max_output_tokens,
-        export_backend=ns.export_backend,
-        test_mode=ns.test_mode,
+Chain (each step invokes the EXISTING toolbox command; no gate logic lives here):
+  extract -> validate -> security -> conventions -> golden_master ->
+  algebraic -> roundtrip -> dossier
+
+All gates share one --diagnostics-dir; each writes its single JSON result to
+stdout and its <command>.gate.json ledger into that dir. 'dossier' aggregates
+the ledger into the final mechanical-acceptance verdict and runs last.
+
+Stop/continue policy:
+  * extract and validate are PREREQUISITES; if either fails the QA gates are
+    skipped, but 'dossier' still runs to record an honest blocked verdict.
+  * security..roundtrip are CONTINUE-ON-FAIL so one run yields the full picture.
+  * the aggregate exit code is the dossier exit code (else the first blocking
+    prerequisite failure). Non-zero is BLOCKING (§3.3).
+
+NOTE: 'assurance' does NOT generate the six deliverables — that is the agent's
+job (build-vergleichsrechenkern). It runs the gates over --generated-dir.
+"""
+
+
+def _add_assurance_subparser(subparsers: argparse._SubParsersAction) -> None:
+    ap = subparsers.add_parser(
+        "assurance",
+        help="Run the full deterministic gate suite and produce the dossier verdict.",
+        description=_ASSURANCE_DESCRIPTION,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    ap.add_argument("--repo-root", dest="repo_root", default=".",
+                    help="Repository root (default: .).")
+    ap.add_argument("--input", dest="input", default=None,
+                    help="Source document to extract (passed to the extract gate).")
+    ap.add_argument("--generated-dir", dest="generated_dir", required=True,
+                    help="Directory holding the already-generated kernel files.")
+    ap.add_argument("--info-dir", dest="info_dir", required=True,
+                    help="InputBundle dir (extract writes here; gates read it).")
+    ap.add_argument("--diagnostics-dir", dest="diagnostics_dir", required=True,
+                    help="Shared dir for every gate's <command>.gate.json ledger.")
+    ap.add_argument("--qa-contract", dest="qa_contract", default=None,
+                    help="Optional QA contract for the algebraic gate.")
+    ap.add_argument("--max-attempts", dest="max_attempts", type=int, default=4,
+                    help="Bounded-repair budget recorded for the run (default: 4).")
+    ap.add_argument("--adapter", dest="adapter", default="auto",
+                    choices=["auto", "excel"], help="Input adapter (default: auto).")
+    ap.add_argument("--export-backend", dest="export_backend", default="openpyxl",
+                    choices=["openpyxl", "com"], help="Extraction backend (default: openpyxl).")
+    ap.add_argument("--strict-manifest-warnings", dest="strict_manifest_warnings",
+                    action="store_true",
+                    help="Treat strict_error manifest warnings as blocking.")
+    ap.set_defaults(_handler=_run_assurance)
 
 
-def _resolve_repo_root(repo_root: Path | None = None) -> Path:
-    if repo_root is not None:
-        return repo_root
-    return Path.cwd()
+def _log(message: str) -> None:
+    """Human log to stderr (stdout is reserved for the gates' JSON)."""
+    print(message, file=sys.stderr)
 
 
-def _resolve_excel_path(excel_arg: str | None, repo_root: Path) -> Path | None:
-    if not excel_arg:
-        return None
-    excel_path = Path(excel_arg)
-    if excel_path.is_absolute():
-        return excel_path
-    return repo_root / excel_path
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Console entry point. Returns a process exit code.
+
+    With no subcommand, prints the source-neutral usage (deterministic gate flow
+    + strict validation) and exits 2 (usage/configuration, §3.3) so the operator
+    is pointed at 'assurance' or the toolbox commands. With 'assurance', runs the
+    full gate chain and returns the aggregate exit code.
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+
+    parser = _build_top_parser()
+    ns = parser.parse_args(list(argv))
+
+    # Compatibility alias: --excel fills --input when --input was not given.
+    if getattr(ns, "excel", None) and not getattr(ns, "input", None):
+        ns.input = ns.excel
+
+    handler = getattr(ns, "_handler", None)
+    if handler is not None:
+        return handler(ns)
+
+    # No subcommand: deterministic-CLI usage, no SDK acceptance path advertised.
+    parser.print_help(sys.stderr)
+    _log("")
+    _log("No subcommand given. Run 'rechner-pipeline assurance --help' for the "
+         "deterministic gate orchestrator, or invoke a single gate via "
+         "'python -m rechner_pipeline.toolbox.<command>'.")
+    return _common.Exit.USAGE
 
 
-def main(repo_root: Path | None = None) -> None:
-    ap = argparse.ArgumentParser(prog="rechner-pipeline")
-    _add_common_options(ap)
-    ns = ap.parse_args()
-
-    from rechner_pipeline.orchestrate.runner import PipelineRunner
-
-    resolved_repo_root = _resolve_repo_root(repo_root)
-    options = _options_from_namespace(ns)
-    from rechner_pipeline.orchestrate import wflog
-    wflog.set_demo(options.provider == "replay")
-    excel_path = _resolve_excel_path(ns.excel, resolved_repo_root)
-    runner = PipelineRunner(
-        repo_root=resolved_repo_root,
-        options=options,
-        excel_path=excel_path,
-    )
-    runner.run()
-
-
-def _print_summary_card(final_state, repo_root: Path) -> None:
-    """Kompakte Abschluss-Karte am Lauf-Ende (nur bei RP_WFLOG)."""
-    import json
-
-    from rechner_pipeline.orchestrate import wflog
-
-    if not wflog.enabled():
-        return
-
-    conv = []
-    cpath = wflog.run_dir() / "convergence.csv"
-    if cpath.exists():
-        for line in cpath.read_text(encoding="utf-8").splitlines():
-            parts = line.split(";")
-            if len(parts) == 3:
-                conv.append(parts)  # (n, Abweichungen, geprüft)
-
-    iters = len(conv)
-    seq = " -> ".join(d for _, d, _ in conv) if conv else "-"
-    tested = conv[-1][2] if conv else "0"
-    manifest = final_state.get("manifest")
-    n_sheets = len(manifest.sheet_csvs) if manifest else 0
-    n_scalars = 0
-    for p in (repo_root / "info_from_excel").glob("*_scalar.json"):
-        try:
-            n_scalars += len(json.loads(p.read_text(encoding="utf-8")))
-        except (OSError, ValueError):
-            pass
-    passed = (
-        not final_state.get("human_review_required")
-        and final_state.get("step_status", {}).get("compare") == "ok"
-    )
-
-    wflog.rule("Zusammenfassung")
-    wflog.detail(f"Migriert: {n_sheets} Blatt/Blätter, {n_scalars} Skalare, {tested} Werte validiert")
-    wflog.detail(f"Iterationen: {iters}  (Abweichungen je Runde: {seq})")
-    wflog.detail(f"Laufzeit: {wflog.elapsed():.0f} s")
-    if passed:
-        wflog.ok("BESTANDEN — Rechenkern reproduziert die Excel-Werte")
-    else:
-        wflog.fail("nicht bestanden / Human-Review erforderlich")
-
-
-def agentic_main(repo_root: Path | None = None) -> None:
-    ap = argparse.ArgumentParser(prog="rechner-pipeline-agentic")
-    _add_common_options(ap)
-    ap.add_argument("--max_retries_main", type=int, default=1)
-    ap.add_argument("--max_retries_test", type=int, default=1)
-    ap.add_argument("--fail_on_human_review", action="store_true")
-    ns = ap.parse_args()
-
-    from rechner_pipeline.orchestrate.agentic import AgenticOptions, build_graph
-    from rechner_pipeline.orchestrate.dossier import write_run_dossier
-    from rechner_pipeline.orchestrate.runner import PipelineRunner
-
-    resolved_repo_root = _resolve_repo_root(repo_root)
-    pipeline_options = _options_from_namespace(ns)
-    from rechner_pipeline.orchestrate import wflog
-    wflog.set_demo(pipeline_options.provider == "replay")
-    args = AgenticOptions(
-        pipeline=pipeline_options,
-        max_retries_main=max(0, ns.max_retries_main),
-        max_retries_test=max(0, ns.max_retries_test),
-        fail_on_human_review=ns.fail_on_human_review,
-    )
-
-    app = build_graph()
-    excel_path = _resolve_excel_path(ns.excel, resolved_repo_root)
-    initial_state = {
-        "repo_root": str(resolved_repo_root),
-        "excel_path": str(excel_path) if excel_path else "",
-        "options": args.pipeline,
-        "step_status": {},
-        "errors": [],
-        "diagnostics": [],
-        "repair_contexts": {},
-        "repair_artifacts": {},
-        "retries": {
-            "_max_main": args.max_retries_main,
-            "_max_test": args.max_retries_test,
-        },
-        "human_review_required": False,
-    }
-
-    final_state = app.invoke(initial_state)
-    _print_summary_card(final_state, resolved_repo_root)
-    runner = PipelineRunner(
-        repo_root=resolved_repo_root,
-        options=args.pipeline,
-        excel_path=excel_path,
-    )
-    if final_state.get("human_review_required"):
-        dossier_path = write_run_dossier(
-            runner,
-            manifest=final_state.get("manifest"),
-            run_status="human_review_required",
-            human_review_required=True,
-            agentic_state=final_state,
-        )
-        print(f"[DOSSIER] {dossier_path}")
-        if args.fail_on_human_review:
-            raise RuntimeError("Pipeline ended in HUMAN_REVIEW_REQUIRED.")
-        print("[DONE_WITH_HUMAN_REVIEW]")
-        return
-    dossier_path = write_run_dossier(
-        runner,
-        manifest=final_state.get("manifest"),
-        run_status="completed",
-        human_review_required=False,
-        agentic_state=final_state,
-    )
-    print(f"[DOSSIER] {dossier_path}")
-    print("[DONE]")
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main(sys.argv[1:]))

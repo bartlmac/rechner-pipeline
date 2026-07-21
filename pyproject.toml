@@ -5,66 +5,37 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rechner-pipeline"
 version = "0.1.0"
-description = "Methodischer Referenzrahmen für KI-gestützte Rechenkernentwicklung (Excel → Python via LLM, agentisch orchestriert)"
+description = "Full-agentic, CLI-driven Excel-to-Python actuarial migration pipeline (foundation layer)."
 readme = "README.md"
-license = { file = "LICENSE" }
 requires-python = ">=3.11"
+license = { text = "Proprietary" }
 authors = [
     { name = "Bartlomiej Maciaga" },
     { name = "Arno Rasch" },
+    { name = "Albrecht Brehm"},
 ]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Scientific/Engineering",
+
+# Runtime dependencies. Pinned to exact versions actually installed from public pypi.org.
+dependencies = [
+    "openpyxl==3.1.5",
+    "oletools==0.60.2",
+    "pandas==2.3.3",
 ]
-dependencies = []
 
 [project.optional-dependencies]
-llm = [
-    "openai>=1.68,<2",
-]
-anthropic = [
-    "anthropic>=0.40,<1",
-]
-export = [
-    "pandas>=2.2,<3",
-    "openpyxl>=3.1,<4",
-    "oletools>=0.60,<1",
-    "pywin32>=306,<400; sys_platform == 'win32'",
-]
-agentic = [
-    "langgraph>=0.2,<2",
-]
 dev = [
-    "pytest>=8.0,<9",
-]
-all = [
-    "openai>=1.68,<2",
-    "anthropic>=0.40,<1",
-    "pandas>=2.2,<3",
-    "openpyxl>=3.1,<4",
-    "oletools>=0.60,<1",
-    "pywin32>=306,<400; sys_platform == 'win32'",
-    "langgraph>=0.2,<2",
+    "pytest==8.4.2",
+    "hypothesis==6.155.5",
 ]
 
 [project.scripts]
 rechner-pipeline = "rechner_pipeline.cli:main"
-rechner-pipeline-agentic = "rechner_pipeline.cli:agentic_main"
 
-[project.urls]
-Homepage = "https://github.com/bartlmac/rechner-pipeline"
-Issues = "https://github.com/bartlmac/rechner-pipeline/issues"
+[tool.setuptools]
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"

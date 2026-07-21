@@ -14,6 +14,12 @@ from rechner_pipeline.generate.output import (
 
 
 def _valid_content(filename: str) -> str:
+    if filename == "test_run.py":
+        return (
+            '"""Generated test_run.py."""\n\n'
+            "def golden_master_outputs():\n"
+            '    return {"scalars": {}, "tables": {}}\n'
+        )
     if filename.endswith(".py"):
         return f'"""Generated {filename}."""\nVALUE = {filename!r}\n'
     return "<tafeln></tafeln>\n"

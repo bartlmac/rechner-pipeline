@@ -1,3 +1,23 @@
-# Runtime install for the full demo pipeline.
-# Dependency versions and platform markers are maintained in pyproject.toml.
--e .[all]
+# Runtime dependencies — exact pins as installed from public pypi.org.
+# Python: scoop python 3.12.4 (project requires-python >= 3.11).
+# Direct deps:
+openpyxl==3.1.5
+oletools==0.60.2
+pandas==2.3.3
+# Transitive deps (pinned for reproducibility):
+cffi==2.0.0
+colorama==0.4.6
+colorclass==2.2.2
+cryptography==49.0.0
+easygui==0.98.3
+et_xmlfile==2.0.0
+msoffcrypto-tool==6.0.0
+numpy==2.4.6
+olefile==0.47
+pcodedmp==1.2.6
+pycparser==3.0
+python-dateutil==2.9.0.post0
+pytz==2026.2
+six==1.17.0
+tzdata==2026.2
+win_unicode_console==0.5

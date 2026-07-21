@@ -1,3 +1,10 @@
+"""``ExportManifest`` and supporting records (byte-compatible AS-IS port).
+
+This is a faithful port of the original ``rechner_pipeline.models.manifest`` so
+that ``ExportManifest.to_dict()`` reproduces the AS-IS JSON shape from §6.4 of
+MIGRATION.md exactly. Do not change field names, ordering, or omission rules.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,10 +14,12 @@ from typing import Any, Dict, Iterable, List
 
 
 def text_sha256(text: str) -> str:
+    """SHA-256 hex digest of a UTF-8 string."""
     return sha256(text.encode("utf-8")).hexdigest()
 
 
 def file_sha256(path: Path) -> str:
+    """SHA-256 hex digest of a file's bytes (streamed in 1 MiB chunks)."""
     h = sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):

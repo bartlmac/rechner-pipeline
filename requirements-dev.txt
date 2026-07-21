@@ -1,0 +1,12 @@
+# Dev/test dependencies — exact pins as installed from public pypi.org.
+# Install runtime deps first: pip install -r requirements.txt
+-r requirements.txt
+pytest==8.4.2
+hypothesis==6.155.5
+# Transitive dev deps (pinned for reproducibility):
+iniconfig==2.3.0
+packaging==26.2
+pluggy==1.6.0
+Pygments==2.20.0
+pyparsing==3.3.2
+sortedcontainers==2.4.0

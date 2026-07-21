@@ -1,12 +1,4 @@
-"""
-rechner_pipeline — KI-gestützte Excel-zu-Python-Migration mit agentischer Orchestrierung.
-
-Pipeline-Phasen entsprechen der README:
-
-    extract → context → generate → qa → orchestrate
-
-Eintrittspunkte (CLI): siehe ``rechner_pipeline.cli``.
-"""
+"""rechner_pipeline: full-agentic Excel-to-Python actuarial migration pipeline."""
 
 from __future__ import annotations
 

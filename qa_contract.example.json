@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "product_type": "endowment_net_premium",
+  "interest_basis": { "annual_effective_rate": 0.025, "v": "1/(1+i)", "d": "i/(1+i)" },
+  "timing_convention": "annuity_due",
+  "terminal_age_policy": { "omega": 121, "mode": "q_omega_is_one", "q_omega": 1.0 },
+  "function_mappings": {
+    "qx": "commutation.qx",
+    "px": "commutation.px",
+    "lx": "commutation.lx",
+    "Dx": "commutation.Dx",
+    "Nx": "commutation.Nx",
+    "Cx": "commutation.Cx",
+    "Mx": "commutation.Mx",
+    "Ax": "actuarial.Ax",
+    "aex": "actuarial.aex",
+    "net_premium": "actuarial.net_premium",
+    "pv_benefits": "actuarial.pv_benefits",
+    "pv_premiums": "actuarial.pv_premiums"
+  },
+  "tiers_enabled": [
+    "mortality_invariants",
+    "commutation_identities",
+    "present_value_identities",
+    "product_specific"
+  ],
+  "tolerances": { "rel_tol": 1e-9, "abs_tol": 1e-12 },
+  "property_engine": { "name": "hypothesis", "version": "<pinned-from-Artifactory-or-absent>", "max_examples": 200 }
+}

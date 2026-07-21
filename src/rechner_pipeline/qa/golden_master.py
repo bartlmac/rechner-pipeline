@@ -18,6 +18,19 @@ Namen identisch zu den Erwartungsdateien liefert::
 Die Vergleichs-Engine selbst ist idiom-stabil und unabhängig von der
 LLM-gewählten Implementierung -- sie ordnet ausschließlich über die Namen in
 den Erwartungsdateien zu.
+
+**Migrationsfix (§2.6 / §4.2 Schritt 6).** Die AS-IS-Engine wertete
+``Report.ok`` nur über ``deviations`` aus und ignorierte ``unmatched_columns``;
+zudem konnte ein Lauf ohne jeden Vergleich ("zero comparison") fälschlich als
+bestanden ("false green") gemeldet werden. Beide Falsch-Akzeptanzen sind hier
+behoben:
+
+* Jede erwartete Spalte mit Daten, die im berechneten Output nicht zugeordnet
+  werden kann, ist jetzt eine **harte Abweichung** (``Report.ok`` ist False).
+* ``Report.compared_anything`` macht sichtbar, ob überhaupt ein Skalar oder
+  eine Tabellenzelle verglichen wurde. Der ``golden_master``-Befehl wertet das
+  als Coverage-Frage (sparse/none) aus und akzeptiert einen Null-Vergleich
+  nicht als vollwertigen Golden-Master.
 """
 
 from __future__ import annotations
@@ -98,13 +111,29 @@ class Report:
 
     @property
     def ok(self) -> bool:
-        # Eine erwartete Tabellenspalte mit Daten, die nicht zugeordnet werden
-        # kann, landet in unmatched_columns (nur befuellt, wenn die Spalte Daten
-        # traegt -> col_has_data) und MUSS den Report fehlschlagen lassen; sonst
-        # koennten ganze fachliche Spalten ungeprueft als "bestanden" gelten.
-        # Skalar-Vergleich ist davon unberuehrt (fehlende Skalare zaehlen ueber
-        # deviations).
+        """Gate-Verdikt OHNE die AS-IS-Falsch-Akzeptanz.
+
+        FIX (§2.6): Eine erwartete Spalte mit Daten, die nicht zugeordnet werden
+        kann, ist eine harte Abweichung. Der AS-IS-Code prüfte nur
+        ``self.deviations`` und ließ ``unmatched_columns`` durchrutschen
+        (false-green). ``ok`` ist jetzt nur True, wenn weder echte Abweichungen
+        noch nicht zugeordnete erwartete Spalten vorliegen.
+
+        Hinweis: Die Null-Vergleichs-Coverage (``compared_anything``) wird hier
+        bewusst NICHT eingerechnet -- der ``golden_master``-Befehl behandelt sie
+        als Coverage-/Human-Review-Frage (exit 31), nicht als Abweichung.
+        """
         return not self.deviations and not self.unmatched_columns
+
+    @property
+    def compared_anything(self) -> bool:
+        """True, wenn mindestens ein Skalar oder eine Tabellenzelle verglichen wurde.
+
+        Ein Lauf mit ``compared_anything == False`` hat keine numerische
+        Validierung geleistet (z. B. keine Erwartungsdateien vorhanden) und darf
+        laut §2.6 NICHT als vollwertiger Golden-Master akzeptiert werden.
+        """
+        return (self.scalars_tested + self.table_cells_tested) > 0
 
     def render(self) -> str:
         lines = [
