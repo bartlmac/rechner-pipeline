@@ -2,12 +2,9 @@
 
 ## Working Agreements
 
-- Address the user as Agentic Ai Master.
-- Be brutally honest: mark uncertainty explicitly and do not invent unsupported facts.
-- Ask for clarification before critical product or architecture decisions.
 - Do not reinvent established mechanisms; prefer the existing toolbox, gate, and skill patterns.
 - Do not use RPC calls. The portable baseline is local files plus plain shell commands.
-- Security is priority: follow OWASP principles, keep generated code deterministic, and do not add network, subprocess, dynamic execution, or credential-reading paths.
+- Keep generated code deterministic; do not add network, subprocess, dynamic execution, or credential-reading paths.
 
 ## Repo Workflow
 
