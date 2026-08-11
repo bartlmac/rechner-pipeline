@@ -11,6 +11,11 @@ Claude-CLI) schreibt und repariert den Rechenkern; dieses Paket ist die
 **deterministische, SDK-freie Abnahme-Schicht**: es extrahiert die Eingaben,
 fährt eine Kette von Prüf-Gates und erzeugt ein nachvollziehbares Abnahme-Dossier.
 
+Ergänzend liefert das **Bestandsdaten-Modul** synthetische, fortschreibbare
+Bestände, deren Datenmodell stromabwärts des Rechenkern-Contracts liegt.
+Zusammen ergibt das das vollständige, laufende Beispiel der Methodik:
+**Rechenkern + Bestand + Assurance**.
+
 ## Vision
 
 Dieses Repository ist ein technischer und methodischer Arbeitsraum für die Frage,
@@ -35,6 +40,16 @@ Leitideen:
 Die langfristige Perspektive ist ein **methodischer Referenzrahmen für
 KI-gestützte Rechenkernentwicklung**, der technische Experimente, fachliche
 Verantwortung und Governance zusammenführt.
+
+Konkretes Zielbild (Stand August 2026): Das Repo demonstriert den vollen
+Lebenszyklus an einem laufenden Beispiel — der KLV-Kern ist der erste
+beispielhafte **Zielrechenkern**, das Bestandsdaten-Modul liefert die
+**Datenbasis, die genau dieser Kern verarbeiten kann** (inkl.
+Stichtags-Fortschreibung), und die Assurance-Schicht nimmt beides mechanisch
+ab. Die nächste Ausbaustufe ist das **Migrations-Vorgehen**: den Kern um eine
+neue Tarifgeneration erweitern, den Bestand in ein ggf. abweichendes
+Datenmodell überführen und die Datenmodell-Transformation als eigene,
+agentisch unterstützte Migrationsaufgabe etablieren.
 
 ## Ansatz: Agent generiert, deterministische Schicht nimmt ab
 
@@ -135,6 +150,59 @@ python -m rechner_pipeline.toolbox.<command> [flags]
 - **Gepinnte Abhängigkeiten** (openpyxl/oletools/pandas, exakt) für
   reproduzierbare Läufe.
 
+## Bestandsdaten: synthetischer, fortschreibbarer Bestand
+
+Das Modul `rechner_pipeline.bestand` erzeugt synthetische KLV-Bestände als
+**echten Input für den Zielrechenkern** — committeter, reviewter,
+deterministischer Code (wie die Abnahme-Schicht; im Gegensatz zum
+agent-generierten Kern). Fachliche Referenz ist eine R-Toolchain aus dem
+DAV-Kontext (Bestandserzeugung + Zeitscheiben); die Implementierung ist eine
+eigenständige Neuentwicklung, keine Portierung.
+
+Prinzipien:
+
+- **Schema stromabwärts des Kerns:** `models/bestand.py` definiert das
+  Portfolio-Schema als statischen Anker. Die Vertragsfelder entsprechen 1:1 dem
+  `ModelPoint`-Contract des generierten Kerns; `model_point_kwargs` und
+  `render_inputs_py` machen die Kopplung ausführbar (sie erzeugen das
+  `inputs.py` für den Kern-Aufruf).
+- **Der Generator rechnet nichts:** Prämien, Barwerte und Reserven liefert
+  ausschließlich der generierte Rechenkern — pro Vertrag ein Kind-Prozess
+  unter Laufzeit-Confinement mit vorgeschaltetem Security-Scan
+  (`bestand/kernlauf.py`).
+- **Deterministisch reproduzierbar:** Seed in der TOML-Config, je
+  Tarifgeneration ein eigener Zufallsstrom (eine neue Generation ändert
+  frühere Verträge nicht); die Parquet-Ausgabe ist byte-reproduzierbar
+  (Golden-Master per SHA-256).
+- **Realistische Abhängigkeiten:** konfigurierbare Randverteilungen je Merkmal
+  plus Gauß-Copula mit Spearman-Rangkorrelationen (ohne scipy). Nicht
+  realisierbare Korrelations-Kombinationen sind ein Config-Fehler, keine
+  stille Reparatur.
+- **Fortschreibung als Zeitscheibe:** ein Stichtag *filtert* den Bestand und
+  *leitet ab* (Alter mit 6-Monats-Rundung, abgelaufene/verbleibende Monate mit
+  der Invariante `months_exp + months_rem == 12 · duration`); Stammdaten
+  bleiben unangetastet.
+
+Verwendung:
+
+```python
+import datetime as dt
+from rechner_pipeline.bestand.config import load_config
+from rechner_pipeline.bestand.generator import generate
+from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+from rechner_pipeline.bestand.parquet_io import write_portfolio
+
+config = load_config("examples/bestand_klv.toml")   # 2 KLV-Generationen
+portfolio = generate(config)                        # seed-deterministisch
+write_portfolio(portfolio, "bestand.parquet")
+scheibe = zeitscheibe(portfolio, dt.date(2012, 1, 1))
+```
+
+Geprüft wird über die Test-Suite (Schema-Validierung, Verteilungs-Sanity-
+Bänder, Zeitscheiben-Invarianten, Kern-Roundtrip gegen einen vorhandenen
+generierten Kern); die Formalisierung als eigene Toolbox-Gates ist der
+nächste Ausbauschritt.
+
 ## Agenten-Anbindung
 
 Claude-CLI wird über `.claude/skills/` unterstützt, Codex-CLI über die
@@ -146,8 +214,8 @@ plus einfache Python-Kommandos — kein MCP/RPC-Pfad.
 ## Beispieldaten
 
 Demo-Artefakte liegen unter `examples/` (`Tarifrechner_KLV.xlsm`,
-`Tarifrechner_FLV_v1.xlsm` u. a.). Es sind **synthetische Lehrbeispiele** ohne
-realen Kundenbezug.
+`Tarifrechner_FLV_v1.xlsm`, Bestands-Konfiguration `bestand_klv.toml` u. a.).
+Es sind **synthetische Lehrbeispiele** ohne realen Kundenbezug.
 
 ## Mitwirken
 
