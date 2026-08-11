@@ -22,6 +22,23 @@ def test_example_config_loads_and_validates():
                                      "premium_duration", "sum_insured", "zahlweise"}
 
 
+def test_tarif_stellschrauben_defaults_und_vollstaendige_generation_fields():
+    """Nicht konfigurierte Stellschrauben tragen die Kernel-Defaults, und
+    generation_fields() deckt den vollen GENERATION_FIELDS-Contract ab."""
+    from rechner_pipeline.models.bestand import GENERATION_FIELDS
+
+    gen = load_config(EXAMPLE).generationen[0]
+    fields = gen.generation_fields()
+    assert set(fields) == set(GENERATION_FIELDS)
+    assert fields["stoab_satz"] == 0.01
+    assert fields["stoab_min"] == 50.0
+    assert fields["stoab_max"] == 150.0
+    assert fields["zillmer_dauer"] == 5
+    assert (fields["ratzu_zw2"], fields["ratzu_zw4"], fields["ratzu_zw12"]) == (
+        0.02, 0.03, 0.05,
+    )
+
+
 def test_missing_distribution_is_an_error(tmp_path: Path):
     toml = """
 [meta]

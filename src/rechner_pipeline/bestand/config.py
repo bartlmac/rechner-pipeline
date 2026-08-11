@@ -24,7 +24,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Tuple
 
-from rechner_pipeline.models.bestand import GENERATION_FIELDS
+from rechner_pipeline.models.bestand import GENERATION_FIELD_DEFAULTS, GENERATION_FIELDS
+
+_D = GENERATION_FIELD_DEFAULTS  # Kernel-Defaults der Tarif-Stellschrauben
 
 #: Attributes every generation must configure a distribution for.
 REQUIRED_MERKMALE: Tuple[str, ...] = (
@@ -147,6 +149,14 @@ class TarifGeneration:
     policy_fee: float = 0.0
     min_alter_flex: int = 0
     min_rlz_flex: int = 0
+    # Tarifwerk-Stellschrauben; Defaults = Kernel-Defaults (Blattwerte):
+    stoab_satz: float = _D["stoab_satz"]
+    stoab_min: float = _D["stoab_min"]
+    stoab_max: float = _D["stoab_max"]
+    zillmer_dauer: int = _D["zillmer_dauer"]
+    ratzu_zw2: float = _D["ratzu_zw2"]
+    ratzu_zw4: float = _D["ratzu_zw4"]
+    ratzu_zw12: float = _D["ratzu_zw12"]
     verteilungen: Dict[str, VerteilungsSpec] = field(default_factory=dict)
     korrelationen: List[Korrelation] = field(default_factory=list)
 
@@ -174,6 +184,15 @@ class TarifGeneration:
             errors.append(f"{prefix}: zins <= -100%")
         if not self.tafel:
             errors.append(f"{prefix}: tafel fehlt")
+        if self.stoab_min > self.stoab_max:
+            errors.append(f"{prefix}: stoab_min > stoab_max")
+        if self.stoab_satz < 0:
+            errors.append(f"{prefix}: stoab_satz < 0")
+        if self.zillmer_dauer <= 0:
+            errors.append(f"{prefix}: zillmer_dauer <= 0")
+        for name in ("ratzu_zw2", "ratzu_zw4", "ratzu_zw12"):
+            if getattr(self, name) < 0:
+                errors.append(f"{prefix}: {name} < 0")
         for merkmal in REQUIRED_MERKMALE:
             if merkmal not in self.verteilungen:
                 errors.append(f"{prefix}: verteilung fuer {merkmal} fehlt")
@@ -282,6 +301,13 @@ def load_config(path: Path) -> BestandConfig:
                 policy_fee=float(g.get("policy_fee", 0.0)),
                 min_alter_flex=int(g.get("min_alter_flex", 0)),
                 min_rlz_flex=int(g.get("min_rlz_flex", 0)),
+                stoab_satz=float(g.get("stoab_satz", _D["stoab_satz"])),
+                stoab_min=float(g.get("stoab_min", _D["stoab_min"])),
+                stoab_max=float(g.get("stoab_max", _D["stoab_max"])),
+                zillmer_dauer=int(g.get("zillmer_dauer", _D["zillmer_dauer"])),
+                ratzu_zw2=float(g.get("ratzu_zw2", _D["ratzu_zw2"])),
+                ratzu_zw4=float(g.get("ratzu_zw4", _D["ratzu_zw4"])),
+                ratzu_zw12=float(g.get("ratzu_zw12", _D["ratzu_zw12"])),
                 verteilungen=verteilungen,
                 korrelationen=korrelationen,
             )

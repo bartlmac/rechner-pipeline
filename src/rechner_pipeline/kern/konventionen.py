@@ -37,12 +37,17 @@ def excel_round(value: float, ndigits: int = ROUND_DIGITS) -> float:
         return float(Decimal(repr(value)).quantize(quantum, rounding=ROUND_HALF_UP))
 
 
-def installment_surcharge(zw: int) -> float:
-    """``ratzu`` (Kalkulation!E12): =IF(zw=2,2%,IF(zw=4,3%,IF(zw=12,5%,0)))."""
-    if zw == 2:
-        return 0.02
-    if zw == 4:
-        return 0.03
-    if zw == 12:
-        return 0.05
-    return 0.0
+#: Ratenzuschlag-Staffel des KLV-Blatts (Zelle E12) — Default-Tarifwerk.
+KLV_RATZU_STAFFEL = {2: 0.02, 4: 0.03, 12: 0.05}
+
+
+def installment_surcharge(zw: int, staffel: dict | None = None) -> float:
+    """``ratzu`` (Kalkulation!E12): =IF(zw=2,2%,IF(zw=4,3%,IF(zw=12,5%,0))).
+
+    Die Staffel ist Tarifwerk, keine Kern-Konvention: ohne Argument gilt die
+    Blatt-Staffel :data:`KLV_RATZU_STAFFEL`; ein Produkt/Tarif kann seine
+    eigene Staffel übergeben (unbekannte Zahlweise -> 0.0, wie das Blatt).
+    """
+    if staffel is None:
+        staffel = KLV_RATZU_STAFFEL
+    return staffel.get(zw, 0.0)

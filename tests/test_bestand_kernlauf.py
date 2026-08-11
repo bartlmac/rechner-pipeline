@@ -13,6 +13,8 @@ import pytest
 
 from rechner_pipeline.bestand.kernlauf import (
     KERNEL_FILES,
+    KernlaufError,
+    berechne_vertrag,
     fortschreibungswerte,
     run_kernel_for_contract,
 )
@@ -53,6 +55,21 @@ def test_model_point_kwargs_covers_contract():
     assert kwargs["x"] == 45 and kwargs["n"] == 30 and kwargs["t"] == 20
     assert kwargs["sum_insured"] == 100000.0 and kwargs["zw"] == 12
     assert kwargs["tafel"] == "DAV1994_T"
+    # Tarif-Stellschrauben fehlen in _GENERATION -> Kernel-Defaults (Blattwerte):
+    assert kwargs["stoab_max"] == 150.0 and kwargs["zillmer_dauer"] == 5
+    # Explizit gesetzte Stellschraube gewinnt gegen den Default:
+    kwargs2 = model_point_kwargs(_ROW, dict(_GENERATION, stoab_max=200.0))
+    assert kwargs2["stoab_max"] == 200.0
+
+
+def test_berechne_vertrag_in_process_ueber_stabilen_kern():
+    outputs = berechne_vertrag(_ROW, _GENERATION)
+    assert set(outputs) == {"scalars", "tables"}
+    scalars = outputs["scalars"]["Kalkulation"]
+    assert {"Bxt", "BJB", "BZB", "Pxt", "ratzu"} <= set(scalars)
+    assert len(outputs["tables"]["Kalkulation"]) == 51
+    werte = fortschreibungswerte(outputs, months_exp=61)
+    assert werte["jahr"] == 5 and werte["skalare"]["BJB"] == scalars["BJB"]
 
 
 def test_render_inputs_py_is_valid_python_with_default():
@@ -80,6 +97,17 @@ def test_fortschreibungswerte_picks_contract_year():
     assert werte["skalare"] == {"BJB": 1.0}
     with pytest.raises(Exception):
         fortschreibungswerte(outputs, months_exp=12 * 99)
+
+
+def test_fortschreibungswerte_mehrdeutiger_prefix_ist_fehler():
+    outputs = {
+        "scalars": {"A": {"s": 1.0}, "B": {"s": 2.0}},
+        "tables": {"A": [{"k": 0.0}], "B": [{"k": 0.0}]},
+    }
+    with pytest.raises(KernlaufError, match="Mehrdeutig"):
+        fortschreibungswerte(outputs, months_exp=0)
+    werte = fortschreibungswerte(outputs, months_exp=0, prefix="B")
+    assert werte["skalare"] == {"s": 2.0}
 
 
 _kernel_missing = not all((KERNEL_DIR / f).is_file() for f in KERNEL_FILES)
@@ -111,3 +139,21 @@ def test_kernel_run_varies_with_contract():
     a = outputs_a["scalars"]["Kalkulation"]["BJB"]
     b = outputs_b["scalars"]["Kalkulation"]["BJB"]
     assert a != b  # anderer Vertrag -> andere Beitragswerte
+
+
+@pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter generated/")
+def test_in_process_pfad_paritaet_mit_subprozess_kernel():
+    """Parity-Gate: stabiler Kern (in-process) == transienter Kernel (Subprozess).
+
+    Beleg fuer die kuenftige Umstellung der Fortschreibung auf
+    ``berechne_vertrag`` — beide Pfade liefern fuer denselben Vertrag
+    denselben Contract-Output (JSON-Roundtrip-Genauigkeit).
+    """
+    import json as _json
+
+    for row in (_ROW, dict(_ROW, entry_age=30, sex="F", sum_insured=50000.0)):
+        subprozess = run_kernel_for_contract(
+            row, _GENERATION, repo_root=REPO_ROOT, kernel_dir=KERNEL_DIR
+        )
+        in_process = _json.loads(_json.dumps(berechne_vertrag(row, _GENERATION)))
+        assert in_process == subprozess

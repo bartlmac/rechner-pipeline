@@ -24,18 +24,22 @@ Design rules (project decisions):
 
 from __future__ import annotations
 
+import dataclasses as _dc
 import datetime as _dt
 from typing import Any, Dict, List, Mapping, Tuple
+
+from rechner_pipeline.kern.model_point import ModelPoint as _KernModelPoint
 
 # --------------------------------------------------------------------------- #
 # Kernel ModelPoint contract
 # --------------------------------------------------------------------------- #
 
-#: The kernel's ``inputs.ModelPoint`` field surface (name -> python type name).
+#: The kernel's ``ModelPoint`` field surface (name -> python type name).
 #: Contract fields per the KLV kernel generated 2026-07-22; provenance: the
 #: workbook's defined names (x=B4, Sex=B5, n=B6, t=B7, VS=B8, zw=B9, Zins=E4,
 #: Tafel=E5, alpha=E6, beta1=E7, gamma1=E8, gamma2=E9, gamma3=E10, k=E11,
-#: MinAlterFlex=H4, MinRLZFlex=H5).
+#: MinAlterFlex=H4, MinRLZFlex=H5) plus the tariff knobs lifted from the
+#: sheet's formula literals (Stornoabschlag, Zillmer-Dauer, ratzu-Staffel E12).
 MODEL_POINT_FIELDS: Tuple[Tuple[str, str], ...] = (
     ("x", "int"),
     ("sex", "str"),
@@ -53,6 +57,13 @@ MODEL_POINT_FIELDS: Tuple[Tuple[str, str], ...] = (
     ("policy_fee", "float"),
     ("min_alter_flex", "int"),
     ("min_rlz_flex", "int"),
+    ("stoab_satz", "float"),
+    ("stoab_min", "float"),
+    ("stoab_max", "float"),
+    ("zillmer_dauer", "int"),
+    ("ratzu_zw2", "float"),
+    ("ratzu_zw4", "float"),
+    ("ratzu_zw12", "float"),
 )
 
 #: Kernel fields that vary per contract (come from the portfolio row).
@@ -62,7 +73,17 @@ CONTRACT_FIELDS: Tuple[str, ...] = ("x", "sex", "n", "t", "sum_insured", "zw")
 GENERATION_FIELDS: Tuple[str, ...] = (
     "zins", "tafel", "alpha", "beta1", "gamma1", "gamma2", "gamma3",
     "policy_fee", "min_alter_flex", "min_rlz_flex",
+    "stoab_satz", "stoab_min", "stoab_max", "zillmer_dauer",
+    "ratzu_zw2", "ratzu_zw4", "ratzu_zw12",
 )
+
+#: Defaults of the kernel's defaulted (tariff-knob) fields — sourced from the
+#: ModelPoint SSOT so a generation config may omit them (sheet behaviour).
+GENERATION_FIELD_DEFAULTS: Dict[str, Any] = {
+    f.name: f.default
+    for f in _dc.fields(_KernModelPoint)
+    if f.default is not _dc.MISSING
+}
 
 #: Allowed values for enum-like columns (module tuples, repo idiom).
 SEX_VALUES: Tuple[str, ...] = ("M", "F")
@@ -190,7 +211,10 @@ def model_point_kwargs(row: Mapping[str, Any], generation: Mapping[str, Any]) ->
     """Join one portfolio row with its tariff generation into ModelPoint kwargs.
 
     ``generation`` must provide the :data:`GENERATION_FIELDS`; the row provides
-    the :data:`CONTRACT_FIELDS` (with portfolio column names).
+    the :data:`CONTRACT_FIELDS` (with portfolio column names). Tariff knobs
+    absent from ``generation`` fall back to the kernel defaults
+    (:data:`GENERATION_FIELD_DEFAULTS`) — the result always covers the full
+    contract.
     """
     kwargs: Dict[str, Any] = {
         "x": int(row["entry_age"]),
@@ -201,7 +225,12 @@ def model_point_kwargs(row: Mapping[str, Any], generation: Mapping[str, Any]) ->
         "zw": int(row["zahlweise"]),
     }
     for name in GENERATION_FIELDS:
-        kwargs[name] = generation[name]
+        if name in generation:
+            kwargs[name] = generation[name]
+        elif name in GENERATION_FIELD_DEFAULTS:
+            kwargs[name] = GENERATION_FIELD_DEFAULTS[name]
+        else:
+            raise KeyError(f"Generation-Feld fehlt ohne Default: {name}")
     return kwargs
 
 

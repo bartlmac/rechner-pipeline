@@ -32,6 +32,15 @@ class MissingMortalityTableError(NotImplementedError):
     """Die angeforderte Sterbetafel fehlt in ``tafeln.xml``."""
 
 
+class TafelBereichError(ValueError):
+    """Eine Rechnung erreicht Alter mit D_x = 0 (Tafel erschöpft).
+
+    Sprechender Domänenfehler statt ``ZeroDivisionError``: betrifft nur
+    Modellpunkte, deren Verlaufshorizont über das letzte Alter mit lebenden
+    Beständen hinausläuft (z. B. DAV1994_T: l_x = 0 ab Alter 101).
+    """
+
+
 def _load_tables() -> Dict[str, Dict[int, float]]:
     """``tafeln.xml`` (Paket-Daten) nach ``{name: {alter: qx}}`` parsen."""
     text = (resources.files("rechner_pipeline.kern") / "tafeln.xml").read_text(
@@ -51,9 +60,21 @@ def _load_tables() -> Dict[str, Dict[int, float]]:
 _TABLES = _load_tables()
 
 
+def _tafel_key(sex: str, tafel: str) -> str:
+    """Tafel-Id in ``tafeln.xml`` auflösen.
+
+    Exakter Tafelname gewinnt (macht geschlechtsunabhängige Tafeln — Unisex —
+    ohne Kern-Änderung möglich, sobald ``tafeln.xml`` eine solche enthält);
+    sonst VBA-treues Suffix ``Act_qx``: nicht-"M" -> Frauentafel.
+    """
+    if tafel in _TABLES:
+        return tafel
+    return tafel + "_" + ("M" if sex.upper() == "M" else "F")
+
+
 def qx_vector(sex: str, tafel: str) -> List[float]:
-    """qx-Liste für Alter 0..MAX_ALTER (VBA ``Act_qx``: nicht-"M" -> Frauentafel)."""
-    key = tafel + "_" + ("M" if sex.upper() == "M" else "F")
+    """qx-Liste für Alter 0..MAX_ALTER (Auflösung siehe :func:`_tafel_key`)."""
+    key = _tafel_key(sex, tafel)
     table = _TABLES.get(key)
     if table is None:
         raise MissingMortalityTableError(
@@ -162,12 +183,17 @@ def _build(sex: str, tafel: str, zins: float) -> Kommutation:
     )
 
 
-_CACHE: Dict[Tuple[str, str, float], Kommutation] = {}
+_CACHE: Dict[Tuple[str, float], Kommutation] = {}
 
 
 def fuer(sex: str, tafel: str, zins: float) -> Kommutation:
-    """Kommutation für eine Rechnungsbasis — deterministisch gecacht."""
-    key = (("M" if sex.upper() == "M" else "F"), tafel, float(zins))
+    """Kommutation für eine Rechnungsbasis — deterministisch gecacht.
+
+    Cache-Schlüssel ist die AUFGELÖSTE Tafel (:func:`_tafel_key`): zwei
+    Geschlechter auf einer Unisex-Tafel teilen sich dieselbe Basis.
+    """
+    sex_norm = "M" if sex.upper() == "M" else "F"
+    key = (_tafel_key(sex_norm, tafel), float(zins))
     if key not in _CACHE:
-        _CACHE[key] = _build(key[0], tafel, float(zins))
+        _CACHE[key] = _build(sex_norm, tafel, float(zins))
     return _CACHE[key]
