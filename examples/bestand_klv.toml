@@ -1,0 +1,149 @@
+# Beispiel-Konfiguration Bestandsdaten-Modul: KLV in zwei Tarifgenerationen.
+# Eigene, synthetische Parametrierung (Lehrbeispiel, keine realen Werte).
+# Struktur-Semantik nach der DAV-Referenz-Toolchain; Werte sind unsere eigenen.
+
+[meta]
+seed = 20260811
+beschreibung = "Synthetischer KLV-Bestand, zwei Generationen (Lehrbeispiel)"
+
+# --------------------------------------------------------------------------
+# Generation 1: klassisches KLV-Geschaeft der 1990er (DAV1994_T, hoher Zins)
+# --------------------------------------------------------------------------
+[[generation]]
+name = "KLV-1994"
+gueltig_von = 1994-07-01
+gueltig_bis = 2004-12-31
+sample_size = 600
+max_endalter = 85
+zins = 0.04
+tafel = "DAV1994_T"
+alpha = 0.025
+beta1 = 0.025
+gamma1 = 0.0008
+gamma2 = 0.00125
+gamma3 = 0.0025
+policy_fee = 24.0
+min_alter_flex = 60
+min_rlz_flex = 5
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 36.0
+sd = 11.0
+min = 18.0
+max = 60.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.55, 0.45]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30, 35]
+probs = [0.10, 0.15, 0.30, 0.20, 0.20, 0.05]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30]
+probs = [0.15, 0.20, 0.35, 0.15, 0.15]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 10.9
+sdlog = 0.55
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [12, 1, 4, 2]
+probs = [0.80, 0.10, 0.06, 0.04]
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.45
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "sum_insured"
+rho = 0.20
+
+[[generation.korrelation]]
+var_i = "duration"
+var_j = "premium_duration"
+rho = 0.65
+
+# --------------------------------------------------------------------------
+# Generation 2: KLV-Neugeschaeft ab 2005 (DAV2008_T, abgesenkter Zins)
+# --------------------------------------------------------------------------
+[[generation]]
+name = "KLV-2008"
+gueltig_von = 2005-01-01
+gueltig_bis = 2015-12-31
+sample_size = 400
+max_endalter = 85
+zins = 0.0225
+tafel = "DAV2008_T"
+alpha = 0.025
+beta1 = 0.025
+gamma1 = 0.0008
+gamma2 = 0.00125
+gamma3 = 0.0025
+policy_fee = 30.0
+min_alter_flex = 60
+min_rlz_flex = 5
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 40.0
+sd = 12.0
+min = 18.0
+max = 62.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.50, 0.50]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30]
+probs = [0.15, 0.20, 0.35, 0.20, 0.10]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25]
+probs = [0.20, 0.25, 0.40, 0.15]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 11.2
+sdlog = 0.5
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [12, 1, 4, 2]
+probs = [0.85, 0.07, 0.05, 0.03]
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.40
+
+[[generation.korrelation]]
+var_i = "duration"
+var_j = "premium_duration"
+rho = 0.60
+
+# --------------------------------------------------------------------------
+# Plausibilitaets-Baender fuer das Sanity-Gate
+# --------------------------------------------------------------------------
+[plausibilitaet]
+entry_age = [18, 64]
+duration = [5, 40]
+premium_duration = [5, 35]
+sum_insured = [1000, 2000000]
