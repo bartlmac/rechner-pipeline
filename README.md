@@ -5,16 +5,22 @@
 > [portxlpy](https://github.com/bartlmac/portxlpy).
 
 Dieses Repository migriert einen Excel/VBA-Tarifrechner **1:1 in einen reinen
-Python-Rechenkern** (sechs Dateien) und weist die funktionale Äquivalenz gegen
-ein unabhängiges Golden-Master-Orakel nach. Ein **Coding-Agent** (Codex- oder
-Claude-CLI) schreibt und repariert den Rechenkern; dieses Paket ist die
-**deterministische, SDK-freie Abnahme-Schicht**: es extrahiert die Eingaben,
-fährt eine Kette von Prüf-Gates und erzeugt ein nachvollziehbares Abnahme-Dossier.
+Python-Rechenkern** und weist die funktionale Äquivalenz gegen ein
+unabhängiges Golden-Master-Orakel nach. Die Migration leistet ein
+**Coding-Agent** (Codex- oder Claude-CLI) — als **einmaliger
+Übersetzungsakt**; dieses Paket ist die **deterministische, SDK-freie
+Abnahme-Schicht**: es extrahiert die Eingaben, fährt eine Kette von
+Prüf-Gates und erzeugt ein nachvollziehbares Abnahme-Dossier.
 
-Ergänzend liefert das **Bestandsdaten-Modul** synthetische, fortschreibbare
-Bestände, deren Datenmodell stromabwärts des Rechenkern-Contracts liegt.
-Zusammen ergibt das das vollständige, laufende Beispiel der Methodik:
-**Rechenkern + Bestand + Assurance**.
+Das Ergebnis der Migration lebt als **stabiler, versionierter Rechenkern**
+(`rechner_pipeline.kern`) im Repo weiter — Software zusammen mit Bestand und
+Tests, die sich im Betrieb nicht verändert. Das **Bestandsdaten-Modul**
+liefert dazu synthetische, fortschreibbare Bestände, deren Datenmodell 1:1
+auf dem Kern-Contract liegt. Zusammen ergibt das das vollständige, laufende
+Beispiel der Methodik: **Rechenkern + Bestand + Assurance** — und die Bühne
+für den eigentlichen Anwendungsfall: das KI-System baut **marginale
+Änderungen** in den stabilen Kern ein (neue Tarifgeneration, neues Produkt)
+und bindet neu zu migrierende Bestände über Datentransformationen an.
 
 ## Vision
 
@@ -41,15 +47,17 @@ Die langfristige Perspektive ist ein **methodischer Referenzrahmen für
 KI-gestützte Rechenkernentwicklung**, der technische Experimente, fachliche
 Verantwortung und Governance zusammenführt.
 
-Konkretes Zielbild (Stand August 2026): Das Repo demonstriert den vollen
-Lebenszyklus an einem laufenden Beispiel — der KLV-Kern ist der erste
-beispielhafte **Zielrechenkern**, das Bestandsdaten-Modul liefert die
-**Datenbasis, die genau dieser Kern verarbeiten kann** (inkl.
-Stichtags-Fortschreibung), und die Assurance-Schicht nimmt beides mechanisch
-ab. Die nächste Ausbaustufe ist das **Migrations-Vorgehen**: den Kern um eine
-neue Tarifgeneration erweitern, den Bestand in ein ggf. abweichendes
-Datenmodell überführen und die Datenmodell-Transformation als eigene,
-agentisch unterstützte Migrationsaufgabe etablieren.
+Konkretes Zielbild (Stand August 2026): **stabiler Kern + marginale
+KI-Änderungen.** Der KLV-Kern ist nach dem einmaligen agentischen
+Übersetzungsakt eine stabile, versionierte Komponente; das
+Bestandsdaten-Modul liefert die **Datenbasis, die genau dieser Kern
+verarbeiten kann**, und wird per Ereignis-Fortschreibung über die Zeit
+entwickelt. Auf dieser Basis entsteht der eigentliche
+Migrations-Anwendungsfall: das KI-System erweitert den Kern um eine neue
+Tarifgeneration oder ein neues Produkt, bindet den neu zu migrierenden
+Bestand über eine **Datenmodell-Transformation** an, und die
+Assurance-Schicht nimmt die **Änderung** mechanisch ab (Regression:
+Bestehendes bleibt, Neues stimmt).
 
 ## Ansatz: Agent generiert, deterministische Schicht nimmt ab
 
@@ -150,6 +158,30 @@ python -m rechner_pipeline.toolbox.<command> [flags]
 - **Gepinnte Abhängigkeiten** (openpyxl/oletools/pandas, exakt) für
   reproduzierbare Läufe.
 
+## Der stabile Rechenkern (`rechner_pipeline.kern`)
+
+Die Promotion des am 22.07.2026 agentisch migrierten und mechanisch
+angenommenen KLV-Kerns (Golden-Master 617/617) in versionierte Software —
+formeltreu (Excel-/VBA-Semantik inkl. 16-stelliger Excel-Rundung), aber mit
+**parametrisierter API** statt der Bindung an einen festen Modellpunkt:
+
+```python
+import dataclasses
+from rechner_pipeline.kern import KLV_DEFAULT, berechne
+
+ergebnis = berechne(KLV_DEFAULT)              # Golden-Master-Referenzvertrag
+mp = dataclasses.replace(KLV_DEFAULT, x=30, sex="F", zins=0.0225, tafel="DAV2008_T")
+ergebnis2 = berechne(mp)                      # beliebiger Modellpunkt, in-process
+```
+
+Kommutationswerte werden je Rechnungsbasis (Geschlecht, Tafel, Zins) gebaut
+und gecacht; fehlende Tafeln führen zu einem harten Fehler (kein erfundenes
+qx). Die Parität zum angenommenen Migrationsergebnis ist testseitig verankert
+(617/617 gegen die extrahierten Erwartungswerte, geprüft mit der
+Golden-Master-Engine der Abnahme-Schicht). Der transiente Migrationspfad
+(`generated/` + Gates) bleibt daneben bestehen — für künftige einmalige
+Übersetzungen weiterer Produkte.
+
 ## Bestandsdaten: synthetischer, fortschreibbarer Bestand
 
 Das Modul `rechner_pipeline.bestand` erzeugt synthetische KLV-Bestände als
@@ -167,9 +199,10 @@ Prinzipien:
   `render_inputs_py` machen die Kopplung ausführbar (sie erzeugen das
   `inputs.py` für den Kern-Aufruf).
 - **Der Generator rechnet nichts:** Prämien, Barwerte und Reserven liefert
-  ausschließlich der generierte Rechenkern — pro Vertrag ein Kind-Prozess
-  unter Laufzeit-Confinement mit vorgeschaltetem Security-Scan
-  (`bestand/kernlauf.py`).
+  ausschließlich der Rechenkern — der stabile Kern (`rechner_pipeline.kern`)
+  direkt in-process; frisch agentisch generierte (noch nicht promotete)
+  Kerne über den abgesicherten Kind-Prozess-Pfad (`bestand/kernlauf.py`:
+  Laufzeit-Confinement + vorgeschalteter Security-Scan).
 - **Deterministisch reproduzierbar:** Seed in der TOML-Config, je
   Tarifgeneration ein eigener Zufallsstrom (eine neue Generation ändert
   frühere Verträge nicht); die Parquet-Ausgabe ist byte-reproduzierbar

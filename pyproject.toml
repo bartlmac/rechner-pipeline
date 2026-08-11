@@ -43,6 +43,9 @@ Issues = "https://github.com/bartlmac/rechner-pipeline/issues"
 [tool.setuptools]
 package-dir = { "" = "src" }
 
+[tool.setuptools.package-data]
+"rechner_pipeline.kern" = ["tafeln.xml"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

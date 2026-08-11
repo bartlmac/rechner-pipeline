@@ -1,13 +1,13 @@
-"""Portfolio schema for the Bestandsdaten module — the static schema anchor.
+"""Portfolio schema for the Bestandsdaten module — tightly coupled to the kernel.
 
-The target kernel is a transient artifact (``generated/``, produced per run by
-the CLI agent); its input surface (``inputs.ModelPoint``) exists nowhere
-statically. This module IS the static anchor: it defines the portfolio
-(Bestand) schema whose per-contract fields map 1:1 onto the kernel's
-``ModelPoint`` contract fields, plus portfolio identity and time axis. The
-kernel-generation skill is expected to keep its ``inputs.ModelPoint``
-compatible with :data:`MODEL_POINT_FIELDS` (coupling decided 2026-08-11:
-Bestand is real kernel input, tightly coupled).
+Defines the portfolio (Bestand) schema whose per-contract fields map 1:1 onto
+the stable kernel's :class:`rechner_pipeline.kern.ModelPoint` contract, plus
+portfolio identity and time axis (coupling decided 2026-08-11: Bestand is real
+kernel input). Since the kernel promotion (stable, versioned software in
+``rechner_pipeline.kern``), the kernel's ``ModelPoint`` is the contract SSOT;
+:data:`MODEL_POINT_FIELDS` is the Bestand-side mirror, kept identical by a
+consistency test (``tests/test_kern.py``). Transient, agent-generated kernels
+(``generated/``, migration path) must satisfy the same field list.
 
 Design rules (project decisions):
 
