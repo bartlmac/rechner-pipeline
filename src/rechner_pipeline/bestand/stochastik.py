@@ -55,6 +55,12 @@ def q_normal_trunc(u: np.ndarray, mean: float, sd: float, lo: float, hi: float) 
     """Truncated normal via CDF-window remapping (exact, no rejection)."""
     dist = NormalDist(mean, sd)
     f_lo, f_hi = dist.cdf(lo), dist.cdf(hi)
+    if f_hi - f_lo < 1e-12:
+        raise ValueError(
+            "normal_trunc: Truncation-Fenster liegt numerisch zu weit im "
+            f"Verteilungs-Tail (CDF-Masse {f_hi - f_lo:.2e} zwischen "
+            f"[{lo}, {hi}] bei mean={mean}, sd={sd})"
+        )
     u_mapped = f_lo + _clip_u(u) * (f_hi - f_lo)
     return np.array([dist.inv_cdf(float(v)) for v in _clip_u(u_mapped)], dtype=float)
 

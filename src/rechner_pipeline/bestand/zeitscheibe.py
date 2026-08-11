@@ -29,9 +29,9 @@ def months_between(d1: _dt.date, d2: _dt.date) -> int:
 def derived_age(entry_age: int, months_exp: int) -> int:
     """Attained age with the reference's 6-month rounding.
 
-    ``round((months_exp + 1) / 12 - eps)``: six completed months round down,
-    seven round up. The epsilon puts exact halves below the round-half-even
-    threshold, mirroring the reference implementation.
+    ``round((months_exp + 1) / 12 - eps)``: five completed months round down,
+    six completed months round up (the +1/eps construction puts the boundary
+    between five and six months, mirroring the reference implementation).
     """
     return int(entry_age + round((months_exp + 1) / 12 - 1e-12))
 
@@ -61,8 +61,14 @@ def zeitscheibe(df: pd.DataFrame, stichtag: _dt.date) -> pd.DataFrame:
     months_exp = [
         months_between(s.date(), stichtag) for s in aktiv["insurance_start"]
     ]
+    # Restmonate als Ceiling: volle Monate + 1 nur bei angebrochenem Monat
+    # (Tag-genau; bei Stichtag auf dem Monatsersten — der Datums-Konvention
+    # des Moduls — gibt es keinen Teilmonat). Invariante fuer jeden Stichtag:
+    # months_exp + months_rem == 12 * duration.
     months_rem = [
-        months_between(stichtag, e.date()) + 1 for e in aktiv["insurance_end"]
+        months_between(stichtag, e.date())
+        + (0 if e.date().day == stichtag.day else 1)
+        for e in aktiv["insurance_end"]
     ]
     age = [
         derived_age(int(a), m) for a, m in zip(aktiv["entry_age"], months_exp)

@@ -163,6 +163,11 @@ class TarifGeneration:
             errors.append(f"{prefix}: gueltig_von >= gueltig_bis")
         if self.sample_size <= 0:
             errors.append(f"{prefix}: sample_size <= 0")
+        if self.sample_size > 1_000_000:
+            errors.append(
+                f"{prefix}: sample_size > 1_000_000 (police_id-Nummernkreis je "
+                "Generation ist 10 Mio; Obergrenze schuetzt vor Kollisionen)"
+            )
         if not 0 < self.max_endalter <= 121:
             errors.append(f"{prefix}: max_endalter ausserhalb (0, 121]")
         if self.zins <= -1.0:
@@ -181,6 +186,22 @@ class TarifGeneration:
             if key in seen:
                 errors.append(f"{prefix}: korrelation {key} doppelt")
             seen.add(key)
+        # Die Korrelations-Kombination muss als Matrix realisierbar sein —
+        # sonst wuerde die PSD-Reparatur der Copula die konfigurierten Werte
+        # stillschweigend (bis ~Faktor 2) verfaelschen. Nicht-PSD = Config-Fehler.
+        if self.korrelationen and not any("korrelation" in e for e in errors):
+            import numpy as np
+
+            from rechner_pipeline.bestand.stochastik import build_corr_matrix
+
+            matrix = build_corr_matrix(CORRELATABLE, self.korrelationen)
+            min_eig = float(np.linalg.eigvalsh((matrix + matrix.T) / 2.0).min())
+            if min_eig < -1e-8:
+                errors.append(
+                    f"{prefix}: Korrelations-Kombination nicht realisierbar "
+                    f"(Matrix nicht positiv semidefinit, min. Eigenwert {min_eig:.3f}) "
+                    "— rhos abschwaechen oder Paare entfernen"
+                )
         return errors
 
 
@@ -266,11 +287,12 @@ def load_config(path: Path) -> BestandConfig:
             )
         )
 
-    plausibilitaet = {
-        str(m): (float(b[0]), float(b[1]))
-        for m, b in raw.get("plausibilitaet", {}).items()
-        if isinstance(b, (list, tuple)) and len(b) == 2
-    }
+    plausibilitaet: Dict[str, Tuple[float, float]] = {}
+    for m, b in raw.get("plausibilitaet", {}).items():
+        if isinstance(b, (list, tuple)) and len(b) == 2:
+            plausibilitaet[str(m)] = (float(b[0]), float(b[1]))
+        else:
+            errors.append(f"plausibilitaet {m}: Band muss Liste [min, max] sein")
 
     config = BestandConfig(
         seed=int(meta.get("seed", 0)),
@@ -279,5 +301,5 @@ def load_config(path: Path) -> BestandConfig:
         plausibilitaet=plausibilitaet,
     )
     if errors:
-        raise ValueError("Config-Datumsfehler: " + "; ".join(errors))
+        raise ValueError("Config-Ladefehler: " + "; ".join(errors))
     return config

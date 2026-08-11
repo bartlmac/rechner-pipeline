@@ -79,6 +79,19 @@ def test_sanity_detects_violation(portfolio):
     assert errors  # Beispielbestand hat Alter ausserhalb dieses engen Bandes
 
 
+def test_date_consistency_validated(portfolio):
+    """Review-Fix: validate_portfolio erkennt Datumsfelder, die nicht zu den
+    Jahresfeldern passen."""
+    import pandas as pd
+
+    kaputt = portfolio.copy()
+    kaputt.loc[kaputt.index[0], "insurance_end"] = (
+        kaputt.loc[kaputt.index[0], "insurance_end"] + pd.DateOffset(years=1)
+    )
+    errors = validate_portfolio(kaputt)
+    assert any("insurance_end != insurance_start + duration" in e for e in errors)
+
+
 def test_parquet_write_is_byte_deterministic(portfolio, tmp_path):
     p1 = write_portfolio(portfolio, tmp_path / "a.parquet")
     p2 = write_portfolio(portfolio, tmp_path / "b.parquet")

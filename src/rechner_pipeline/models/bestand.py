@@ -166,6 +166,18 @@ def validate_portfolio(df: Any) -> List[str]:
         if not (df[col].dt.day == 1).all():
             errors.append(f"{col}: nicht auf Monatsersten normalisiert")
 
+    # Datumsfelder muessen zu den Jahresfeldern konsistent sein (Monatszaehlung,
+    # da alle Daten auf dem Monatsersten liegen).
+    def _monat(col: str):
+        return df[col].dt.year * 12 + df[col].dt.month
+
+    if not (_monat("insurance_end") - _monat("insurance_start") == 12 * df["duration"]).all():
+        errors.append("insurance_end != insurance_start + duration Jahre")
+    if not (_monat("payment_end") - _monat("insurance_start") == 12 * df["premium_duration"]).all():
+        errors.append("payment_end != insurance_start + premium_duration Jahre")
+    if not (_monat("insurance_start") - _monat("date_of_birth") == 12 * df["entry_age"]).all():
+        errors.append("date_of_birth passt nicht zu entry_age (Monatszaehlung)")
+
     return errors
 
 

@@ -48,6 +48,27 @@ def test_zeitscheibe_selects_only_active_contracts(portfolio):
     assert set(spaeter["police_id"]).isdisjoint(set(scheibe["police_id"]))
 
 
+def test_months_exp_plus_rem_equals_contract_months(portfolio):
+    """Review-Fix: konsistente Semantik fuer JEDEN Stichtag —
+    months_exp (Floor) + months_rem (Ceiling) == 12 * duration."""
+    for stichtag in (dt.date(2012, 1, 1), dt.date(2012, 1, 15)):
+        scheibe = zeitscheibe(portfolio, stichtag)
+        summe = scheibe["months_exp"] + scheibe["months_rem"]
+        assert (summe == 12 * scheibe["duration"]).all(), stichtag
+
+
+def test_months_rem_at_contract_start_equals_full_term(portfolio):
+    """Review-Fix (Off-by-one): am Starttag hat der Vertrag genau seine
+    Gesamtmonate als Rest, nicht Gesamtmonate + 1."""
+    row = portfolio.iloc[0]
+    stichtag = row["insurance_start"].date()
+    scheibe = zeitscheibe(portfolio, stichtag)
+    treffer = scheibe[scheibe["police_id"] == row["police_id"]]
+    assert len(treffer) == 1
+    assert int(treffer.iloc[0]["months_exp"]) == 0
+    assert int(treffer.iloc[0]["months_rem"]) == 12 * int(row["duration"])
+
+
 def test_zeitscheibe_derives_consistent_fields(portfolio):
     stichtag = dt.date(2010, 6, 30)
     scheibe = zeitscheibe(portfolio, stichtag)

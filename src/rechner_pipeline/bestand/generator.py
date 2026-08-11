@@ -101,7 +101,7 @@ def _generate_generation(
 
     df = pd.DataFrame(
         {
-            "police_id": np.arange(1, n + 1, dtype=np.int64) + (gen_index + 1) * 100_000,
+            "police_id": np.arange(1, n + 1, dtype=np.int64) + (gen_index + 1) * 10_000_000,
             "tarif_generation": np.full(n, gen.name, dtype=object),
             "status_id": np.ones(n, dtype=np.int64),
             "status_code": np.full(n, "POL", dtype=object),
@@ -133,4 +133,9 @@ def generate(config: BestandConfig) -> pd.DataFrame:
     df = pd.concat(frames, ignore_index=True)
     df = df[list(STAMM_NAMES)].astype(stamm_dtypes())
     df = df.sort_values("police_id", kind="stable").reset_index(drop=True)
+    if df["police_id"].duplicated().any():
+        raise ValueError(
+            "police_id-Kollision zwischen Generationen — Nummernkreis verletzt "
+            "(sample_size-Obergrenze der Config umgangen?)"
+        )
     return df

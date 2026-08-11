@@ -43,6 +43,14 @@ def test_empirical_discrete_frequencies_follow_probs():
     assert 0.78 < share_a < 0.82
 
 
+def test_normal_trunc_far_tail_window_raises():
+    """Review-Fix: Fenster ohne CDF-Masse darf keine konstanten Werte
+    ausserhalb [min, max] liefern, sondern muss hart fehlschlagen."""
+    u = _rng().random(10)
+    with pytest.raises(ValueError, match="Truncation-Fenster"):
+        q_normal_trunc(u, mean=0.0, sd=1000.0, lo=50000.0, hi=100000.0)
+
+
 def test_transform_applies_negative_rounding():
     u = _rng().random(500)
     x = transform(u, "lognormal", {"meanlog": 10.9, "sdlog": 0.55, "round": -3})
