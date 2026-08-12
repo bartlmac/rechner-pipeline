@@ -15,7 +15,11 @@ import datetime as _dt
 
 import pandas as pd
 
-from rechner_pipeline.models.bestand import STAMM_NAMES, ZEITSCHEIBEN_NAMES
+from rechner_pipeline.models.bestand import (
+    AKTIVE_STATUS,
+    STAMM_NAMES,
+    ZEITSCHEIBEN_NAMES,
+)
 
 
 def months_between(d1: _dt.date, d2: _dt.date) -> int:
@@ -40,9 +44,11 @@ def zeitscheibe(df: pd.DataFrame, stichtag: _dt.date) -> pd.DataFrame:
     """Cut the portfolio state at ``stichtag`` (pure function, no mutation).
 
     Selection: contract already begun (``insurance_start <= stichtag``), not
-    yet expired (``insurance_end > stichtag``), and only status rows known at
-    the date (``status_date <= stichtag``; youngest per police). Derivation:
-    ``age``, ``months_exp``, ``months_rem`` plus the ``stichtag`` column.
+    yet expired (``insurance_end > stichtag``), only status rows known at
+    the date (``status_date <= stichtag``; youngest per police), and the
+    youngest status must be in-force (POL/PEX — a lapsed/dead contract drops
+    out of every later slice). Derivation: ``age``, ``months_exp``,
+    ``months_rem`` plus the ``stichtag`` column.
     """
     ts = pd.Timestamp(stichtag)
     aktiv = df[
@@ -50,13 +56,16 @@ def zeitscheibe(df: pd.DataFrame, stichtag: _dt.date) -> pd.DataFrame:
         & (df["insurance_end"] > ts)
         & (df["status_date"] <= ts)
     ]
-    # Juengster Statussatz je Police vor dem Stichtag (Stufe 1: genau einer).
+    # Juengster Statussatz je Police vor dem Stichtag; bei Datums-Gleichstand
+    # gewinnt die hoehere status_id (stabile Sortierung, Historie ist so
+    # aufgebaut). Nur in-force-Status bleiben in der Scheibe.
     aktiv = (
         aktiv.sort_values(["police_id", "status_date"], kind="stable")
         .groupby("police_id", as_index=False, sort=False)
         .tail(1)
         .reset_index(drop=True)
     )
+    aktiv = aktiv[aktiv["status_code"].isin(AKTIVE_STATUS)].reset_index(drop=True)
 
     months_exp = [
         months_between(s.date(), stichtag) for s in aktiv["insurance_start"]

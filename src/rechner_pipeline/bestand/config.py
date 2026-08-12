@@ -225,11 +225,36 @@ class TarifGeneration:
 
 
 @dataclass
+class EreignisConfig:
+    """Annual event rates of the Fortschreibung (Ereignis-Engine).
+
+    All-zero defaults mean: no stochastic events, only the deterministic
+    Ablauf. ``tod_faktor`` scales the first-order qx of the tariff basis
+    (1.0 = table mortality; 0.0 = no death simulation).
+    """
+
+    storno_rate: float = 0.0
+    pex_rate: float = 0.0
+    tod_faktor: float = 0.0
+
+    def validate(self) -> List[str]:
+        errors: List[str] = []
+        if not 0.0 <= self.storno_rate < 1.0:
+            errors.append("ereignisse: storno_rate ausserhalb [0, 1)")
+        if not 0.0 <= self.pex_rate < 1.0:
+            errors.append("ereignisse: pex_rate ausserhalb [0, 1)")
+        if self.tod_faktor < 0.0:
+            errors.append("ereignisse: tod_faktor < 0")
+        return errors
+
+
+@dataclass
 class BestandConfig:
     seed: int
     beschreibung: str
     generationen: List[TarifGeneration]
     plausibilitaet: Dict[str, Tuple[float, float]] = field(default_factory=dict)
+    ereignisse: EreignisConfig = field(default_factory=EreignisConfig)
 
     def validate(self) -> List[str]:
         errors: List[str] = []
@@ -245,6 +270,7 @@ class BestandConfig:
         for merkmal, band in self.plausibilitaet.items():
             if len(band) != 2 or float(band[0]) >= float(band[1]):
                 errors.append(f"plausibilitaet {merkmal}: Band muss (min, max) mit min < max sein")
+        errors.extend(self.ereignisse.validate())
         return errors
 
 
@@ -320,11 +346,19 @@ def load_config(path: Path) -> BestandConfig:
         else:
             errors.append(f"plausibilitaet {m}: Band muss Liste [min, max] sein")
 
+    e: Mapping[str, Any] = raw.get("ereignisse", {})
+    ereignisse = EreignisConfig(
+        storno_rate=float(e.get("storno_rate", 0.0)),
+        pex_rate=float(e.get("pex_rate", 0.0)),
+        tod_faktor=float(e.get("tod_faktor", 0.0)),
+    )
+
     config = BestandConfig(
         seed=int(meta.get("seed", 0)),
         beschreibung=str(meta.get("beschreibung", "")),
         generationen=generationen,
         plausibilitaet=plausibilitaet,
+        ereignisse=ereignisse,
     )
     if errors:
         raise ValueError("Config-Ladefehler: " + "; ".join(errors))

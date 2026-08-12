@@ -87,7 +87,15 @@ GENERATION_FIELD_DEFAULTS: Dict[str, Any] = {
 
 #: Allowed values for enum-like columns (module tuples, repo idiom).
 SEX_VALUES: Tuple[str, ...] = ("M", "F")
-STATUS_CODE_VALUES: Tuple[str, ...] = ("POL",)  # Stufe 1: aktive Vertraege
+#: Full status enum of the Fortschreibung (Ereignis-Engine): POL = active
+#: premium-paying, PEX = active paid-up, STO/TOD/ABL = terminal.
+STATUS_CODE_VALUES: Tuple[str, ...] = ("POL", "PEX", "STO", "TOD", "ABL")
+#: The generator's base portfolio carries only active POL rows.
+BASIS_STATUS: Tuple[str, ...] = ("POL",)
+#: Statuses that count as in-force at a reporting date.
+AKTIVE_STATUS: Tuple[str, ...] = ("POL", "PEX")
+#: Terminal statuses: nothing may follow them in a Statushistorie.
+TERMINALE_STATUS: Tuple[str, ...] = ("STO", "TOD", "ABL")
 ZAHLWEISE_VALUES: Tuple[int, ...] = (1, 2, 4, 12)
 
 # --------------------------------------------------------------------------- #
@@ -122,8 +130,30 @@ ZEITSCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("months_rem", "int64"),
 )
 
+#: Statushistorie of the Fortschreibung: follow-up status rows per contract
+#: (the base POL row lives in the Stamm; history rows start at status_id 2).
+STATUS_HISTORIE_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("status_id", "int64"),
+    ("status_code", "object"),
+    ("status_date", "datetime64[ns]"),
+)
+
+#: Ereignis-Ledger: one row per booked event with its kernel-computed amount.
+LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("tarif_generation", "object"),
+    ("ereignis", "object"),          # status_code of the event
+    ("vertragsjahr", "int64"),       # booked anniversary (completed years)
+    ("status_date", "datetime64[ns]"),
+    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung
+    ("betrag", "float64"),
+)
+
 STAMM_NAMES: Tuple[str, ...] = tuple(n for n, _ in STAMM_SPALTEN)
 ZEITSCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in ZEITSCHEIBEN_SPALTEN)
+STATUS_HISTORIE_NAMES: Tuple[str, ...] = tuple(n for n, _ in STATUS_HISTORIE_SPALTEN)
+LEDGER_NAMES: Tuple[str, ...] = tuple(n for n, _ in LEDGER_SPALTEN)
 
 
 def stamm_dtypes() -> Dict[str, str]:
@@ -158,8 +188,8 @@ def validate_portfolio(df: Any) -> List[str]:
         errors.append("police_id nicht eindeutig")
     if not df["sex"].isin(SEX_VALUES).all():
         errors.append(f"sex ausserhalb {SEX_VALUES}")
-    if not df["status_code"].isin(STATUS_CODE_VALUES).all():
-        errors.append(f"status_code ausserhalb {STATUS_CODE_VALUES}")
+    if not df["status_code"].isin(BASIS_STATUS).all():
+        errors.append(f"status_code ausserhalb {BASIS_STATUS} (Basisbestand: nur POL)")
     if not df["zahlweise"].isin(ZAHLWEISE_VALUES).all():
         errors.append(f"zahlweise ausserhalb {ZAHLWEISE_VALUES}")
 
@@ -199,6 +229,61 @@ def validate_portfolio(df: Any) -> List[str]:
     if not (_monat("insurance_start") - _monat("date_of_birth") == 12 * df["entry_age"]).all():
         errors.append("date_of_birth passt nicht zu entry_age (Monatszaehlung)")
 
+    return errors
+
+
+def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
+    """Validate a Statushistorie against its base portfolio (error-list idiom).
+
+    A history holds only follow-up statuses (the POL row lives in the Stamm):
+    per police consecutive ``status_id`` starting at 2 in ``status_date``
+    order, at most one PEX, at most one terminal status — and the terminal
+    one is last. An empty history is valid.
+    """
+    errors: List[str] = []
+    cols = list(historie.columns)
+    if cols != list(STATUS_HISTORIE_NAMES):
+        errors.append(
+            f"historie: Spalten {cols} != erwartet {list(STATUS_HISTORIE_NAMES)}"
+        )
+        return errors
+    for name, dtype in STATUS_HISTORIE_SPALTEN:
+        actual = str(historie[name].dtype)
+        if actual != dtype:
+            errors.append(f"historie {name}: dtype {actual}, erwartet {dtype}")
+    if len(historie) == 0:
+        return errors
+
+    folge_status = tuple(s for s in STATUS_CODE_VALUES if s not in BASIS_STATUS)
+    if not historie["status_code"].isin(folge_status).all():
+        errors.append(f"historie: status_code ausserhalb {folge_status}")
+    unbekannt = set(historie["police_id"]) - set(stamm["police_id"])
+    if unbekannt:
+        errors.append(f"historie: police_id unbekannt: {sorted(unbekannt)[:5]}")
+    if not (historie["status_date"].dt.day == 1).all():
+        errors.append("historie: status_date nicht auf Monatsersten normalisiert")
+
+    grenzen = stamm.set_index("police_id")[["insurance_start", "insurance_end"]]
+    for police_id, gruppe in historie.groupby("police_id", sort=False):
+        g = gruppe.sort_values("status_date", kind="stable")
+        prefix = f"historie police {police_id}"
+        if list(g["status_id"]) != list(range(2, 2 + len(g))):
+            errors.append(f"{prefix}: status_id nicht fortlaufend ab 2")
+        codes = list(g["status_code"])
+        terminal = [c for c in codes if c in TERMINALE_STATUS]
+        if len(terminal) > 1:
+            errors.append(f"{prefix}: mehr als ein terminaler Status")
+        elif terminal and codes[-1] not in TERMINALE_STATUS:
+            errors.append(f"{prefix}: Status nach terminalem Status")
+        if codes.count("PEX") > 1:
+            errors.append(f"{prefix}: PEX mehrfach")
+        if police_id in grenzen.index:
+            start = grenzen.loc[police_id, "insurance_start"]
+            ende = grenzen.loc[police_id, "insurance_end"]
+            if (g["status_date"] <= start).any():
+                errors.append(f"{prefix}: status_date vor/auf insurance_start")
+            if (g["status_date"] > ende).any():
+                errors.append(f"{prefix}: status_date nach insurance_end")
     return errors
 
 

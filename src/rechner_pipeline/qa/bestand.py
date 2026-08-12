@@ -64,14 +64,24 @@ def zeitscheiben_invarianten(
         errors.append(f"zeitscheibe: erfundene police_ids {sorted(unbekannt)[:5]}")
         return errors
 
+    # Vergleichsschluessel ist die Statuszeile (police_id, status_id): die
+    # Basis darf mehrere Statuszeilen je Police tragen (Statushistorie der
+    # Fortschreibung); die Scheibe waehlt genau eine davon aus.
     stamm = list(STAMM_NAMES)
-    basis_idx = basis.set_index("police_id")
-    scheibe_idx = scheibe.set_index("police_id")
-    basis_sel = basis_idx.loc[scheibe_idx.index, [c for c in stamm if c != "police_id"]]
-    scheibe_sel = scheibe_idx[[c for c in stamm if c != "police_id"]]
-    if not basis_sel.equals(scheibe_sel):
-        diff_cols = [
-            c for c in basis_sel.columns if not basis_sel[c].equals(scheibe_sel[c])
-        ]
+    key = ["police_id", "status_id"]
+    if basis.duplicated(subset=key).any():
+        errors.append("zeitscheibe: Basis hat doppelte (police_id, status_id)")
+        return errors
+    merged = scheibe[stamm].merge(
+        basis[stamm], on=key, how="left", suffixes=("", "_basis"), indicator=True
+    )
+    if (merged["_merge"] != "both").any():
+        errors.append("zeitscheibe: Statuszeile (police_id, status_id) nicht in Basis")
+        return errors
+    diff_cols = [
+        c for c in stamm
+        if c not in key and not merged[c].equals(merged[f"{c}_basis"])
+    ]
+    if diff_cols:
         errors.append(f"zeitscheibe: Stammfelder veraendert: {diff_cols}")
     return errors

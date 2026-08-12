@@ -147,3 +147,12 @@ entry_age = [18, 64]
 duration = [5, 40]
 premium_duration = [5, 35]
 sum_insured = [1000, 2000000]
+
+# --------------------------------------------------------------------------
+# Ereignis-Engine: jaehrliche Raten der Fortschreibung (Statushistorie).
+# tod_faktor skaliert die Tafel-qx erster Ordnung der jeweiligen Tarifbasis.
+# --------------------------------------------------------------------------
+[ereignisse]
+storno_rate = 0.03
+pex_rate = 0.01
+tod_faktor = 1.0
