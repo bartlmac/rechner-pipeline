@@ -85,10 +85,15 @@ class KLV:
     contract_prefix = "Kalkulation"  # Blattname des Quell-Workbooks
     model_point_cls = ModelPoint
 
-    def __init__(self, mp: ModelPoint) -> None:
+    def __init__(self, mp: ModelPoint, barwerte=None) -> None:
+        """``barwerte`` erlaubt ein alternatives Rechenrückgrat mit dem
+        ``Barwerte``-Interface (z. B. ``ZustandsBarwerte`` für die
+        Toleranz-Überleitung); Default ist die Kommutations-Schiene —
+        der Golden-Master-Pfad, solange der Serving-Wechsel nicht
+        abgenommen ist."""
         self.mp = mp
         self.kom = kommutation.fuer(mp.sex, mp.tafel, mp.zins)
-        self.bw = Barwerte(self.kom, mp.zins)
+        self.bw = barwerte if barwerte is not None else Barwerte(self.kom, mp.zins)
         self._scalar_cache: Dict[str, float] = {}
         self._zeilen_cache: Dict[int, Verlaufszeile] = {}
 

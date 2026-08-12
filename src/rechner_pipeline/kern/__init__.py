@@ -17,11 +17,22 @@ für die KI-Evolution geschnitten. Die Formeln selbst sind unverändert
 
 Schichten::
 
-    konventionen  Radix, Excel-Rundung, Endalter (unterste Rechenschicht)
-    kommutation   Kommutationsspalten je Basis (Sex/Tafel/Zins), gecacht
-    barwerte      generische Barwert-Bausteine (VBA mBarwerte), produktfrei
-    produkte/     Produkt-Registry; KLV-Zielgrößen in produkte/klv.py
-    rechenkern    Fassade Rechenkern(mp) + berechne(mp, produkt="klv")
+    konventionen    Radix, Excel-Rundung, Endalter (unterste Rechenschicht)
+    kommutation     Kommutationsspalten je Basis (Sex/Tafel/Zins), gecacht
+    barwerte        generische Barwert-Bausteine (VBA mBarwerte), produktfrei
+    zustandsmodell  (Semi-)Markov-Rechenrückgrat + ZustandsBarwerte
+                    (2-Zustands-Fall, gleiches Interface wie barwerte)
+    produkte/       Produkt-Registry; KLV-Zielgrößen in produkte/klv.py
+    rechenkern      Fassade Rechenkern(mp) + berechne(mp, produkt="klv")
+
+Rechenrückgrat (Beschluss 2026-08-12): Das Zustandsmodell ist das
+Ziel-Rückgrat des Monolithen (KLV = 2-Zustands-Spezialfall, künftige
+Produkte = Konfigurationen). Der Serving-Wechsel des KLV-Produkts ist ein
+governierter Schritt: Abnahme über die Toleranz-Überleitung
+(:mod:`rechner_pipeline.qa.ueberleitung`, Kreuz-Modell-Gate beider
+Schienen); bis dahin rechnet KLV auf der Kommutations-Schiene
+(Golden-Master-Pfad), danach bleibt die Kommutation dauerhaft als
+Kreuz-Check-Schiene erhalten.
 
 Öffentliche API::
 
@@ -62,6 +73,7 @@ from rechner_pipeline.kern.kommutation import (
 from rechner_pipeline.kern.konventionen import excel_round, installment_surcharge
 from rechner_pipeline.kern.model_point import KLV_DEFAULT, KLVModelPoint, ModelPoint
 from rechner_pipeline.kern.barwerte import Barwerte
+from rechner_pipeline.kern.zustandsmodell import Zustandsmodell, ZustandsBarwerte
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
     Verlaufszeile,
@@ -74,7 +86,10 @@ from rechner_pipeline.kern.rechenkern import (
 #: 1.0.1 = Domänengrenze: Verlaufszeilen nur im blattfest verankerten
 #: Bereich 0..50 (Fail-fast statt unbelegter Werte ausserhalb des
 #: Golden-Master-/Anker-Bereichs; Rechenwerte unverändert, 617/617 + Anker).
-__version__ = "1.0.1"
+#: 1.1.0 = Zustandsmodell-Rückgrat (Semi-Markov-Engine + ZustandsBarwerte,
+#: additiv; Serving unverändert Kommutation — Wechsel nach Abnahme der
+#: Toleranz-Überleitung, qa/ueberleitung).
+__version__ = "1.1.0"
 
 __all__ = [
     "ModelPoint",
@@ -83,6 +98,8 @@ __all__ = [
     "Rechenkern",
     "berechne",
     "Barwerte",
+    "Zustandsmodell",
+    "ZustandsBarwerte",
     "Verlaufszeile",
     "Kommutation",
     "MissingMortalityTableError",

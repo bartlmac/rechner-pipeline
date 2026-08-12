@@ -1,0 +1,267 @@
+"""Zustandsmodell (Semi-Markov) — das allgemeine Rechenrückgrat des Monolithen.
+
+Beschluss 2026-08-12 (Bartek, operative Entscheidung, gedeckt vom
+Team-Beschluss „monolithischer, möglichst flexibler Kern"): Das
+Zustandsmodell ist das Ziel-Rückgrat der Personenversicherungsmathematik in
+diesem Kern — KLV ist sein 2-Zustands-Spezialfall (aktiv/tot), BU/Pflege
+werden Konfigurationen (Zustände x Übergänge x Tafeln), keine neuen Engines.
+
+Mathematischer Rahmen:
+
+* Zustandsraum S (klein, benannte Zustände); jährliche Übergänge mit
+  Wahrscheinlichkeiten ``uebergang(von, nach, alter, dauer)``. Der Verbleib
+  im Zustand ist das Residuum ``1 - Summe der Wegzüge`` (fail-fast, wenn die
+  Wegzüge 1 übersteigen).
+* Semi-Markov über Zustandsraum-Erweiterung: ``dauer`` ist die Zahl voller
+  Jahre im aktuellen Zustand, gekappt bei ``max_dauer`` (Select-Perioden-
+  Prinzip der DAV-Tafeln); ``max_dauer=0`` ist der homogene Markov-Fall.
+* Zahlungen: vorschüssig auf Zuständen (``zahlung_zustand(zustand, jahr)``)
+  und nachschüssig auf Übergängen (``zahlung_uebergang(von, nach, jahr)``,
+  fällig am Jahresende des Übergangsjahres). Diskontierung mit konstantem
+  Rechnungszins.
+* Bewertung über Thiele-Rückwärtsrekursion (:meth:`Zustandsmodell.barwert`);
+  die Vorwärts-Zustandsverteilung (:meth:`Zustandsmodell.verteilung`) dient
+  als unabhängiger Selbsttest (Vorwärts- == Rückwärtsbewertung, testseitig
+  verankert).
+
+Abgrenzung zur Kommutations-Schiene (:mod:`rechner_pipeline.kern.barwerte`):
+Die Kommutation ist die geschlossene Summenform des 2-Zustands-Falls mit den
+Excel-Rundungsartefakten des migrierten Quell-Workbooks. Das Zustandsmodell
+rechnet dieselbe Mathematik ohne diese Artefakte — Abweichungen sind reine
+Rundungsreihenfolgen-Differenzen und werden über die Toleranz-Überleitung
+(:mod:`rechner_pipeline.qa.ueberleitung`) klassifiziert und abgenommen.
+Bis zur Abnahme des Serving-Wechsels bleibt die Kommutations-Schiene der
+Golden-Master-Pfad; danach bleibt sie dauerhaft als Kreuz-Check-Schiene.
+
+Stdlib-only (bewusst kein numpy): kleine Zustandsräume, deterministische
+Reihenfolgen.
+"""
+
+from __future__ import annotations
+
+from typing import Callable, Dict, Optional, Tuple
+
+from rechner_pipeline.kern.konventionen import MAX_ALTER
+from rechner_pipeline.kern.kommutation import Kommutation
+
+#: Signatur der Übergangswahrscheinlichkeiten: (von, nach, alter, dauer) -> p.
+UebergangsFunktion = Callable[[str, str, int, int], float]
+
+
+class Zustandsmodell:
+    """Bewertung von Zahlungsströmen auf einem (Semi-)Markov-Zustandsraum."""
+
+    def __init__(
+        self,
+        zustaende: Tuple[str, ...],
+        zins: float,
+        uebergang: UebergangsFunktion,
+        *,
+        max_dauer: int = 0,
+    ) -> None:
+        if len(zustaende) != len(set(zustaende)) or not zustaende:
+            raise ValueError(f"Zustände nicht eindeutig oder leer: {zustaende}")
+        if max_dauer < 0:
+            raise ValueError("max_dauer < 0")
+        self.zustaende = tuple(zustaende)
+        self.zins = zins
+        self.v = 1.0 / (1.0 + zins)
+        self.uebergang = uebergang
+        self.max_dauer = max_dauer
+
+    def _wegzuege(self, von: str, alter: int, dauer: int) -> Dict[str, float]:
+        """Übergänge aus ``von`` heraus plus Verbleib als Residuum."""
+        p: Dict[str, float] = {}
+        summe = 0.0
+        for nach in self.zustaende:
+            if nach == von:
+                continue
+            w = self.uebergang(von, nach, alter, dauer)
+            if w < 0.0:
+                raise ValueError(
+                    f"Übergang {von}->{nach} (Alter {alter}, Dauer {dauer}): "
+                    f"Wahrscheinlichkeit {w} < 0"
+                )
+            if w > 0.0:
+                p[nach] = w
+                summe += w
+        if summe > 1.0 + 1e-12:
+            raise ValueError(
+                f"Wegzüge aus {von} (Alter {alter}, Dauer {dauer}) "
+                f"summieren auf {summe} > 1"
+            )
+        p[von] = max(0.0, 1.0 - summe)
+        return p
+
+    def _folgedauer(self, von: str, nach: str, dauer: int) -> int:
+        if nach != von:
+            return 0
+        return min(dauer + 1, self.max_dauer)
+
+    def barwert(
+        self,
+        startzustand: str,
+        alter0: int,
+        horizont: int,
+        zahlung_zustand: Optional[Callable[[str, int], float]] = None,
+        zahlung_uebergang: Optional[Callable[[str, str, int], float]] = None,
+        *,
+        start_dauer: int = 0,
+    ) -> float:
+        """Barwert über ``horizont`` Jahre (Thiele-Rückwärtsrekursion).
+
+        Vorschüssige Zustandszahlungen in den Jahren ``0..horizont-1`` und
+        nachschüssige Übergangszahlungen am Ende des jeweiligen Jahres,
+        diskontiert auf den Beginn von Jahr 0.
+        """
+        if startzustand not in self.zustaende:
+            raise ValueError(f"Unbekannter Startzustand {startzustand!r}")
+        zz = zahlung_zustand or (lambda zustand, jahr: 0.0)
+        zu = zahlung_uebergang or (lambda von, nach, jahr: 0.0)
+
+        naechste: Dict[Tuple[str, int], float] = {}
+        for jahr in range(horizont - 1, -1, -1):
+            aktuelle: Dict[Tuple[str, int], float] = {}
+            for zustand in self.zustaende:
+                for dauer in range(0, self.max_dauer + 1):
+                    p = self._wegzuege(zustand, alter0 + jahr, dauer)
+                    zukunft = 0.0
+                    for nach, w in p.items():
+                        if w == 0.0:
+                            continue
+                        beitrag = naechste.get(
+                            (nach, self._folgedauer(zustand, nach, dauer)), 0.0
+                        )
+                        if nach != zustand:
+                            beitrag += zu(zustand, nach, jahr)
+                        zukunft += w * beitrag
+                    aktuelle[(zustand, dauer)] = (
+                        zz(zustand, jahr) + self.v * zukunft
+                    )
+            naechste = aktuelle
+        return naechste.get((startzustand, start_dauer), 0.0)
+
+    def verteilung(
+        self, startzustand: str, alter0: int, jahre: int, *, start_dauer: int = 0
+    ) -> Dict[Tuple[str, int], float]:
+        """Zustandsverteilung nach ``jahre`` Jahren (Vorwärts-Selbsttest)."""
+        aktuell: Dict[Tuple[str, int], float] = {(startzustand, start_dauer): 1.0}
+        for jahr in range(jahre):
+            naechste: Dict[Tuple[str, int], float] = {}
+            for (zustand, dauer), masse in aktuell.items():
+                if masse == 0.0:
+                    continue
+                for nach, w in self._wegzuege(zustand, alter0 + jahr, dauer).items():
+                    if w == 0.0:
+                        continue
+                    ziel = (nach, self._folgedauer(zustand, nach, dauer))
+                    naechste[ziel] = naechste.get(ziel, 0.0) + masse * w
+            aktuell = naechste
+        return aktuell
+
+
+class ZustandsBarwerte:
+    """Barwert-Bausteine auf dem Zustandsmodell — Interface wie ``Barwerte``.
+
+    Der 2-Zustands-Spezialfall (aktiv/tot) auf derselben Tafelbasis: die
+    qx kommen aus der :class:`~rechner_pipeline.kern.kommutation.Kommutation`
+    (fail-fast Tafelzugriff), NICHT deren gerundete Kommutationsspalten —
+    Überlebenswahrscheinlichkeiten sind reine (1-qx)-Produkte. Gegenüber der
+    Kommutations-Schiene weichen die Werte nur um Rundungsreihenfolgen ab
+    (Toleranz-Überleitung: :mod:`rechner_pipeline.qa.ueberleitung`).
+    """
+
+    AKTIV = "aktiv"
+    TOT = "tot"
+
+    def __init__(self, kom: Kommutation, zins: float) -> None:
+        self.kom = kom
+        self.zins = zins
+        self.modell = Zustandsmodell(
+            (self.AKTIV, self.TOT), zins, self._uebergang
+        )
+        self._axn_cache: Dict[Tuple[int, int, int], float] = {}
+
+    def _uebergang(self, von: str, nach: str, alter: int, dauer: int) -> float:
+        if von == self.AKTIV and nach == self.TOT:
+            return self.kom.qx_at(alter)
+        return 0.0
+
+    def _nur_aktiv(self, zustand: str, jahr: int) -> float:
+        return 1.0 if zustand == self.AKTIV else 0.0
+
+    def _todesfall(self, von: str, nach: str, jahr: int) -> float:
+        return 1.0 if nach == self.TOT else 0.0
+
+    def abzugsglied(self, k: int) -> float:
+        """Unterjähriges Korrekturglied — Formel identisch zu ``Barwerte``."""
+        if k <= 0:
+            return 0.0
+        zins = self.zins
+        total = 0.0
+        for step in range(0, k):
+            total += (step / k) / (1.0 + (step / k) * zins)
+        return total * (1.0 + zins) / k
+
+    def axn_k(self, age: int, term: int, k: int = 1) -> float:
+        """Temporäre vorschüssige Rente (Zustands-Annuität auf ``aktiv``)."""
+        if k <= 0:
+            return 0.0
+        key = (age, term, k)
+        cached = self._axn_cache.get(key)
+        if cached is not None:
+            return cached
+        annuitaet = self.modell.barwert(
+            self.AKTIV, age, term, zahlung_zustand=self._nur_aktiv
+        )
+        value = annuitaet - self.abzugsglied(k) * (1.0 - self.nGrEx(age, term))
+        self._axn_cache[key] = value
+        return value
+
+    def ax_k(self, age: int, k: int = 1) -> float:
+        """Lebenslange vorschüssige Rente."""
+        if k <= 0:
+            return 0.0
+        return self.aex(age) - self.abzugsglied(k)
+
+    def nGrAx(self, age: int, term: int) -> float:
+        """Temporäre Todesfallversicherung (Übergangszahlung aktiv->tot)."""
+        return self.modell.barwert(
+            self.AKTIV, age, term, zahlung_uebergang=self._todesfall
+        )
+
+    def nGrEx(self, age: int, term: int) -> float:
+        """Erlebensfallversicherung: Zahlung bei Erleben des Jahres ``term``."""
+        return self.modell.barwert(
+            self.AKTIV,
+            age,
+            term + 1,
+            zahlung_zustand=lambda zustand, jahr: (
+                1.0 if zustand == self.AKTIV and jahr == term else 0.0
+            ),
+        )
+
+    def endowment_benefit_pv(self, age: int, term: int) -> float:
+        """Gemischte Versicherung: Todesfall- plus Erlebensfall-Barwert."""
+        return self.nGrAx(age, term) + self.nGrEx(age, term)
+
+    # ----------------------------------------------------------------- #
+    # Whole-life-Bausteine (Äquivalenzprinzip-Referenz, algebraische Gates).
+    # ----------------------------------------------------------------- #
+
+    def Ax(self, age: int) -> float:
+        return self.nGrAx(age, MAX_ALTER + 1 - age)
+
+    def aex(self, age: int) -> float:
+        return self.modell.barwert(
+            self.AKTIV, age, MAX_ALTER + 1 - age, zahlung_zustand=self._nur_aktiv
+        )
+
+    def pv_benefits(self, age: int) -> float:
+        return self.Ax(age)
+
+    def pv_premiums(self, age: int) -> float:
+        return self.aex(age)
+
+    def net_premium(self, age: int) -> float:
+        return self.pv_benefits(age) / self.pv_premiums(age)
