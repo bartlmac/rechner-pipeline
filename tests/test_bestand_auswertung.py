@@ -129,7 +129,7 @@ def test_auswertungs_verlauf_pex_pfad_deterministisch(config):
 
     cfg = copy.copy(config)
     cfg.ereignisse = EreignisConfig(pex_rate=0.999999)  # PEX im Vertragsjahr 1
-    historie, _ = fortschreiben(stamm, cfg, dt.date(2035, 1, 1))
+    historie, _, *_ = fortschreiben(stamm, cfg, dt.date(2035, 1, 1))
     stichtag = dt.date(2020, 1, 1)  # Vertragsjahr 9, beitragsfrei seit Jahr 1
     reihe = auswertungs_verlauf(stamm, historie, cfg, [stichtag])
     kern = _kern(stamm.iloc[0], config)
@@ -143,7 +143,7 @@ def test_auswertungs_verlauf_pex_pfad_deterministisch(config):
 
 
 def test_auswertungs_verlauf_beispielbestand(portfolio, config, fortschreibung):
-    historie, _ = fortschreibung
+    historie, _, *_ = fortschreibung
     stichtage = [dt.date(2015, 1, 1), dt.date(2025, 1, 1)]
     reihe = auswertungs_verlauf(portfolio, historie, config, stichtage)
     assert [r["stichtag"] for r in reihe] == [s.isoformat() for s in stichtage]

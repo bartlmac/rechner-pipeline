@@ -254,12 +254,16 @@ class EreignisConfig:
 
     All-zero defaults mean: no stochastic events, only the deterministic
     Ablauf. ``tod_faktor`` scales the first-order qx of the tariff basis
-    (1.0 = table mortality; 0.0 = no death simulation).
+    (1.0 = table mortality; 0.0 = no death simulation). ``erh_rate`` is the
+    annual acceptance probability of the dynamische Erhoehung (creates a new
+    Erhoehungsscheibe of ``erh_prozent`` of the current total sum insured).
     """
 
     storno_rate: float = 0.0
     pex_rate: float = 0.0
     tod_faktor: float = 0.0
+    erh_rate: float = 0.0
+    erh_prozent: float = 0.0
 
     def validate(self) -> List[str]:
         errors: List[str] = []
@@ -269,6 +273,12 @@ class EreignisConfig:
             errors.append("ereignisse: pex_rate ausserhalb [0, 1)")
         if self.tod_faktor < 0.0:
             errors.append("ereignisse: tod_faktor < 0")
+        if not 0.0 <= self.erh_rate < 1.0:
+            errors.append("ereignisse: erh_rate ausserhalb [0, 1)")
+        if self.erh_prozent < 0.0:
+            errors.append("ereignisse: erh_prozent < 0")
+        if self.erh_rate > 0.0 and self.erh_prozent == 0.0:
+            errors.append("ereignisse: erh_rate > 0 verlangt erh_prozent > 0")
         return errors
 
 
@@ -375,6 +385,8 @@ def load_config(path: Path) -> BestandConfig:
         storno_rate=float(e.get("storno_rate", 0.0)),
         pex_rate=float(e.get("pex_rate", 0.0)),
         tod_faktor=float(e.get("tod_faktor", 0.0)),
+        erh_rate=float(e.get("erh_rate", 0.0)),
+        erh_prozent=float(e.get("erh_prozent", 0.0)),
     )
 
     config = BestandConfig(

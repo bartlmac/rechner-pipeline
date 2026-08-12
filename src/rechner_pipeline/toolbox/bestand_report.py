@@ -66,6 +66,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         ),
     )
     parser.add_argument(
+        "--scheiben",
+        default=None,
+        help="Erhoehungsscheiben-Parquet (nur zusammen mit --historie/--ledger).",
+    )
+    parser.add_argument(
         "--stichtage",
         default=None,
         help="Kommagetrennte ISO-Daten; Default: Jahresraster über die Vertragslaufzeiten.",
@@ -90,7 +95,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             file=sys.stderr,
         )
         return 2
-    historie = ledger = None
+    if ns.scheiben and not ns.historie:
+        print(
+            "bestand_report: --scheiben nur zusammen mit --historie/--ledger",
+            file=sys.stderr,
+        )
+        return 2
+    historie = ledger = scheiben = None
     if ns.historie:
         for name, pfad in (("Historie", ns.historie), ("Ledger", ns.ledger)):
             if not Path(pfad).is_file():
@@ -98,6 +109,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return 2
         historie = read_portfolio(Path(ns.historie))
         ledger = read_portfolio(Path(ns.ledger))
+        if ns.scheiben:
+            if not Path(ns.scheiben).is_file():
+                print(f"bestand_report: Scheiben nicht gefunden: {ns.scheiben}", file=sys.stderr)
+                return 2
+            scheiben = read_portfolio(Path(ns.scheiben))
 
     config = None
     if ns.config:
@@ -122,6 +138,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         historie=historie,
         ledger=ledger,
         config=config,
+        scheiben=scheiben,
     )
     if ns.out:
         out_path = Path(ns.out)

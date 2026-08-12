@@ -156,3 +156,5 @@ sum_insured = [1000, 2000000]
 storno_rate = 0.03
 pex_rate = 0.01
 tod_faktor = 1.0
+erh_rate = 0.3
+erh_prozent = 0.05

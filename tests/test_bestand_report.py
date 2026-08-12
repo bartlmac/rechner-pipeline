@@ -122,7 +122,7 @@ def test_ereignis_kennzahlen_summen_und_jahresreihe(fortschreibung):
         ereignisse_je_jahr,
     )
 
-    _, ledger = fortschreibung
+    _, ledger, *_ = fortschreibung
     summen = ereignis_summen(ledger)
     assert [s["ereignis"] for s in summen] == [
         c for c in EREIGNIS_REIHENFOLGE if (ledger["ereignis"] == c).any()
@@ -142,7 +142,7 @@ def test_status_verlauf_zaehlt_pol_und_pex(portfolio, fortschreibung):
     from rechner_pipeline.bestand.kennzahlen import status_verlauf
     from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
 
-    historie, _ = fortschreibung
+    historie, _, *_ = fortschreibung
     sicht = bestand_mit_historie(portfolio, historie)
     stichtag = dt.date(2020, 1, 1)
     reihe = status_verlauf(sicht, [stichtag])
@@ -152,7 +152,7 @@ def test_status_verlauf_zaehlt_pol_und_pex(portfolio, fortschreibung):
 
 
 def test_render_mit_historie_zeigt_abgangssichten(portfolio, fortschreibung):
-    historie, ledger = fortschreibung
+    historie, ledger, *_ = fortschreibung
     stichtage = [dt.date(j, 1, 1) for j in range(2005, 2031, 5)]
     ohne = report.render_html(portfolio, stichtage=stichtage)
     mit = report.render_html(
@@ -172,7 +172,7 @@ def test_render_mit_historie_zeigt_abgangssichten(portfolio, fortschreibung):
 
 
 def test_render_historie_ohne_ledger_ist_fehler(portfolio, fortschreibung):
-    historie, ledger = fortschreibung
+    historie, ledger, *_ = fortschreibung
     with pytest.raises(ValueError, match="gehoeren zusammen"):
         report.render_html(portfolio, historie=historie)
     with pytest.raises(ValueError, match="gehoeren zusammen"):
@@ -180,7 +180,7 @@ def test_render_historie_ohne_ledger_ist_fehler(portfolio, fortschreibung):
 
 
 def test_render_mit_config_zeigt_aktuarielle_kennzahlen(portfolio, config, fortschreibung):
-    historie, ledger = fortschreibung
+    historie, ledger, *_ = fortschreibung
     stichtage = [dt.date(j, 1, 1) for j in range(2010, 2031, 10)]
     mit = report.render_html(
         portfolio, stichtage=stichtage, historie=historie, ledger=ledger, config=config
@@ -205,7 +205,7 @@ def test_render_ohne_ereignisse_im_horizont(portfolio, config):
     from rechner_pipeline.bestand.ereignisse import fortschreiben
 
     frueh = portfolio["insurance_start"].min().date()
-    historie, ledger = fortschreiben(portfolio, config, frueh)
+    historie, ledger, *_ = fortschreiben(portfolio, config, frueh)
     assert len(ledger) == 0
     html = report.render_html(
         portfolio,
@@ -243,14 +243,15 @@ def test_cli_bad_stichtag_exits_2(portfolio, tmp_path):
 
 
 def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
-    historie, ledger = fortschreibung
+    historie, ledger, scheiben = fortschreibung
     parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
     h = write_portfolio(historie, tmp_path / "h.parquet")
     l = write_portfolio(ledger, tmp_path / "l.parquet")
+    s = write_portfolio(scheiben, tmp_path / "s.parquet")
     out = tmp_path / "bericht.html"
     code = cli.main(
         ["--portfolio", str(parquet), "--out", str(out),
-         "--historie", str(h), "--ledger", str(l),
+         "--historie", str(h), "--ledger", str(l), "--scheiben", str(s),
          "--config", str(EXAMPLE),
          "--stichtage", "2010-01-01,2020-01-01,2030-01-01"]
     )
@@ -258,9 +259,14 @@ def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
     text = out.read_text(encoding="utf-8")
     assert "Fortschreibung und Abgänge" in text
     assert "Aktuarielle Kennzahlen je Stichtag" in text
+    assert "Dynamische Erhöhung (ERH)" in text
     # Nur eines von beiden ist ein Fehler:
     assert cli.main(
         ["--portfolio", str(parquet), "--historie", str(h)]
+    ) == 2
+    # Scheiben ohne Historie ist ein Fehler:
+    assert cli.main(
+        ["--portfolio", str(parquet), "--scheiben", str(s)]
     ) == 2
     # Fehlende Config-Datei ist ein Fehler:
     assert cli.main(

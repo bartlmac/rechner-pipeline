@@ -143,17 +143,35 @@ STATUS_HISTORIE_SPALTEN: Tuple[Tuple[str, str], ...] = (
 LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("police_id", "int64"),
     ("tarif_generation", "object"),
-    ("ereignis", "object"),          # status_code of the event
+    ("ereignis", "object"),          # status_code of the event, or ERH (GeVo)
     ("vertragsjahr", "int64"),       # booked anniversary (completed years)
     ("status_date", "datetime64[ns]"),
-    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung
+    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung
     ("betrag", "float64"),
+)
+
+#: Erhoehungsscheiben (dynamische Erhoehung): each row is an own layer of a
+#: contract, actuarially an own model point (Schichtungsprinzip). The base
+#: layer (Grundscheibe) is the Stamm row itself; Scheiben start at id 1.
+#: Column names deliberately mirror the Stamm contract fields so the kernel
+#: coupling (:func:`model_point_kwargs`) works on a Scheibe row directly
+#: (sex/zahlweise/tarif_generation come from the Stamm, contract level).
+SCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("scheiben_id", "int64"),          # 1, 2, ... je Police (0 = Grundscheibe im Stamm)
+    ("erhoehung_jahr", "int64"),       # Vertragsjahr der Erhoehung (Jahrestag)
+    ("erhoehung_datum", "datetime64[ns]"),
+    ("entry_age", "int64"),            # Alter bei Erhoehung -> ModelPoint.x
+    ("duration", "int64"),             # Restlaufzeit -> ModelPoint.n
+    ("premium_duration", "int64"),     # Rest-Beitragsdauer -> ModelPoint.t
+    ("sum_insured", "float64"),        # Erhoehungssumme -> ModelPoint.sum_insured
 )
 
 STAMM_NAMES: Tuple[str, ...] = tuple(n for n, _ in STAMM_SPALTEN)
 ZEITSCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in ZEITSCHEIBEN_SPALTEN)
 STATUS_HISTORIE_NAMES: Tuple[str, ...] = tuple(n for n, _ in STATUS_HISTORIE_SPALTEN)
 LEDGER_NAMES: Tuple[str, ...] = tuple(n for n, _ in LEDGER_SPALTEN)
+SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
 
 
 def stamm_dtypes() -> Dict[str, str]:
@@ -289,6 +307,61 @@ def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
                 errors.append(f"{prefix}: status_date vor/auf insurance_start")
             if (g["status_date"] > ende).any():
                 errors.append(f"{prefix}: status_date nach insurance_end")
+    return errors
+
+
+def validate_scheiben(stamm: Any, scheiben: Any) -> List[str]:
+    """Validate Erhoehungsscheiben against their base contracts (error list).
+
+    Per police: consecutive ``scheiben_id`` starting at 1 in
+    ``erhoehung_jahr`` order; each Scheibe must be arithmetically consistent
+    with its Hauptvertrag (age at increase, remaining terms, anniversary
+    date) and carry a positive Erhoehungssumme. Empty Scheiben are valid.
+    """
+    errors: List[str] = []
+    cols = list(scheiben.columns)
+    if cols != list(SCHEIBEN_NAMES):
+        errors.append(f"scheiben: Spalten {cols} != erwartet {list(SCHEIBEN_NAMES)}")
+        return errors
+    for name, dtype in SCHEIBEN_SPALTEN:
+        actual = str(scheiben[name].dtype)
+        if actual != dtype:
+            errors.append(f"scheiben {name}: dtype {actual}, erwartet {dtype}")
+    if len(scheiben) == 0:
+        return errors
+
+    unbekannt = set(scheiben["police_id"]) - set(stamm["police_id"])
+    if unbekannt:
+        errors.append(f"scheiben: police_id unbekannt: {sorted(unbekannt)[:5]}")
+        return errors
+    if (scheiben["sum_insured"] <= 0).any():
+        errors.append("scheiben: sum_insured <= 0")
+    if not (scheiben["erhoehung_datum"].dt.day == 1).all():
+        errors.append("scheiben: erhoehung_datum nicht auf Monatsersten normalisiert")
+
+    haupt = stamm.set_index("police_id")
+    for police_id, gruppe in scheiben.groupby("police_id", sort=False):
+        g = gruppe.sort_values("erhoehung_jahr", kind="stable")
+        prefix = f"scheiben police {police_id}"
+        if list(g["scheiben_id"]) != list(range(1, 1 + len(g))):
+            errors.append(f"{prefix}: scheiben_id nicht fortlaufend ab 1")
+        h = haupt.loc[police_id]
+        x, n, t = int(h["entry_age"]), int(h["duration"]), int(h["premium_duration"])
+        start = h["insurance_start"]
+        for _, s in g.iterrows():
+            j = int(s["erhoehung_jahr"])
+            if not 0 < j < t:
+                errors.append(f"{prefix}: erhoehung_jahr {j} ausserhalb (0, t)")
+                continue
+            if int(s["entry_age"]) != x + j:
+                errors.append(f"{prefix}: entry_age != Hauptvertrag-Alter + {j}")
+            if int(s["duration"]) != n - j:
+                errors.append(f"{prefix}: duration != Restlaufzeit {n - j}")
+            if int(s["premium_duration"]) != t - j:
+                errors.append(f"{prefix}: premium_duration != Rest-Beitragsdauer {t - j}")
+            erwartet = _dt.date(start.year + j, start.month, 1)
+            if s["erhoehung_datum"].date() != erwartet:
+                errors.append(f"{prefix}: erhoehung_datum != Jahrestag {erwartet}")
     return errors
 
 

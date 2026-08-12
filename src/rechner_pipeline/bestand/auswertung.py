@@ -89,16 +89,53 @@ def _pex_jahre(stamm: pd.DataFrame, historie: pd.DataFrame) -> Dict[int, int]:
     }
 
 
+def _scheiben_kerne(
+    stamm: pd.DataFrame,
+    scheiben: pd.DataFrame,
+    config: BestandConfig,
+) -> Dict[int, List[Dict[str, Any]]]:
+    """police_id -> Erhoehungsscheiben mit eigenem Rechenkern (Schichtungsprinzip)."""
+    generationen = {g.name: g.generation_fields() for g in config.generationen}
+    haupt = stamm.set_index("police_id")
+    je_police: Dict[int, List[Dict[str, Any]]] = {}
+    for s in scheiben.to_dict("records"):
+        pid = int(s["police_id"])
+        h = haupt.loc[pid]
+        row = {
+            "entry_age": s["entry_age"],
+            "sex": h["sex"],
+            "duration": s["duration"],
+            "premium_duration": s["premium_duration"],
+            "sum_insured": s["sum_insured"],
+            "zahlweise": h["zahlweise"],
+        }
+        kern = Rechenkern(
+            ModelPoint(**model_point_kwargs(row, generationen[str(h["tarif_generation"])]))
+        )
+        je_police.setdefault(pid, []).append(
+            {
+                "erh_jahr": int(s["erhoehung_jahr"]),
+                "erh_datum": s["erhoehung_datum"],
+                "kern": kern,
+            }
+        )
+    return je_police
+
+
 def auswertungs_verlauf(
     stamm: pd.DataFrame,
     historie: Optional[pd.DataFrame],
     config: BestandConfig,
     stichtage: List[_dt.date],
+    scheiben: Optional[pd.DataFrame] = None,
 ) -> List[Dict[str, Any]]:
     """Aggregierte aktuarielle Kennzahlen je Stichtag (in-force-Bestand).
 
     ``historie`` darf None sein (reiner Basisbestand ohne Ereignisse) —
-    dann sind alle Vertraege beitragspflichtig. Deterministisch: die
+    dann sind alle Vertraege beitragspflichtig. ``scheiben`` (dynamische
+    Erhoehungen) gehen ab ihrem Erhoehungstermin in die Summen ein; nach
+    einer Beitragsfreistellung laeuft jede Scheibe mit ihrem eigenen
+    Jahresversatz beitragsfrei weiter. Deterministisch: die
     Summationsreihenfolge folgt der Zeitscheiben-Sortierung.
     """
     if historie is not None and len(historie) > 0:
@@ -108,6 +145,11 @@ def auswertungs_verlauf(
         sicht = stamm
         pex_jahre = {}
     kerne = _kerne_je_police(stamm, config)
+    scheiben_je_police: Dict[int, List[Dict[str, Any]]] = (
+        _scheiben_kerne(stamm, scheiben, config)
+        if scheiben is not None and len(scheiben) > 0
+        else {}
+    )
 
     reihe: List[Dict[str, Any]] = []
     for stichtag in stichtage:
@@ -123,14 +165,26 @@ def auswertungs_verlauf(
         for pid, months_exp, status in zip(
             scheibe["police_id"], scheibe["months_exp"], scheibe["status_code"]
         ):
+            pid = int(pid)
             pex_jahr = None
             if status == "PEX":
-                if int(pid) not in pex_jahre:
+                if pid not in pex_jahre:
                     raise ValueError(
                         f"police {pid}: PEX-Status ohne PEX-Zeile in der Historie"
                     )
-                pex_jahr = pex_jahre[int(pid)]
-            werte = vertragswerte(kerne[int(pid)], int(months_exp), pex_jahr)
+                pex_jahr = pex_jahre[pid]
+            werte = vertragswerte(kerne[pid], int(months_exp), pex_jahr)
+            # Erhoehungsscheiben des Vertrags, die am Stichtag existieren —
+            # jede mit ihrem Jahresversatz (PEX-Jahr entsprechend versetzt):
+            for s in scheiben_je_police.get(pid, ()):
+                if s["erh_datum"].date() > stichtag:
+                    continue
+                monate_s = months_between(s["erh_datum"].date(), stichtag)
+                pex_s = None if pex_jahr is None else pex_jahr - s["erh_jahr"]
+                werte_s = vertragswerte(s["kern"], monate_s, pex_s)
+                werte["deckungskapital"] += werte_s["deckungskapital"]
+                werte["rueckkaufswert"] += werte_s["rueckkaufswert"]
+                werte["vs_bfr"] += werte_s["vs_bfr"]
             agg["deckungskapital"] += werte["deckungskapital"]
             if werte["status"] == "PEX":
                 agg["deckungskapital_bfr"] += werte["deckungskapital"]

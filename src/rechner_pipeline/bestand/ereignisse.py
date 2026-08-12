@@ -14,12 +14,21 @@ Model (Stufe 1, annual):
 * Per policy year, hierarchical competing risks on the active track:
   death (first-order qx of the tariff basis, scaled by ``tod_faktor``),
   then lapse (``storno_rate``, only while ``j+1 < n``), then paid-up
-  conversion (``pex_rate``, only while premiums are still due, ``j+1 < t``).
+  conversion (``pex_rate``, only while premiums are still due, ``j+1 < t``),
+  then dynamische Erhoehung (``erh_rate``, premium-paying track only).
   After PEX the contract stays exposed to death and maturity only (no lapse
   of paid-up contracts in Stufe 1 — the sheet defines no RKW_bfr rule).
-* Amounts from the kernel: STO pays the row's RKW, PEX fixes the paid-up sum
-  ``VS_bfr``, TOD pays the sum insured (or the paid-up sum after PEX), ABL
-  pays the endowment benefit at ``insurance_end``.
+* Dynamische Erhoehung (Schichtungsprinzip): an accepted Erhoehung creates a
+  new Scheibe — actuarially an own model point on the SAME tariff generation
+  (entry age = current age, terms = remaining terms, sum =
+  ``erh_prozent`` of the current total sum insured, compounding). The
+  contract state does not change (no Statushistorie row); the GeVo is
+  recorded in the Ledger and the Scheibe in the Scheiben table. All later
+  amounts aggregate over Grundscheibe + Erhoehungsscheiben.
+* Amounts from the kernel, summed over all Scheiben of the contract: STO
+  pays the rows' RKW, PEX fixes the paid-up sums ``VS_bfr``, TOD pays the
+  total sum insured (or the total paid-up sum after PEX), ABL pays the
+  endowment benefit at ``insurance_end``.
 * Determinism: one PCG64 substream per contract,
   ``SeedSequence([seed, EREIGNIS_STREAM, police_id])`` — adding contracts
   never shifts another contract's events, and extending the horizon ``bis``
@@ -32,16 +41,19 @@ Model (Stufe 1, annual):
   comparable as long as their event histories agree (e.g. the lapse set at
   storno_rate=0.02 is a subset of the one at 0.03).
 
-Outputs: a Statushistorie (follow-up status rows, schema
-:data:`~rechner_pipeline.models.bestand.STATUS_HISTORIE_SPALTEN`) and an
+Outputs (:class:`Fortschreibung`): a Statushistorie (follow-up status rows,
+schema :data:`~rechner_pipeline.models.bestand.STATUS_HISTORIE_SPALTEN`), an
 Ereignis-Ledger with the kernel-computed amounts (schema
-:data:`~rechner_pipeline.models.bestand.LEDGER_SPALTEN`).
+:data:`~rechner_pipeline.models.bestand.LEDGER_SPALTEN`) and the
+Erhoehungsscheiben (schema
+:data:`~rechner_pipeline.models.bestand.SCHEIBEN_SPALTEN`).
 """
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as _dt
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, Dict, List, Mapping, NamedTuple, Tuple
 
 import numpy as np
 import pandas as pd
@@ -50,6 +62,7 @@ from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.models.bestand import (
     LEDGER_SPALTEN,
+    SCHEIBEN_SPALTEN,
     STAMM_NAMES,
     STATUS_HISTORIE_SPALTEN,
     model_point_kwargs,
@@ -68,18 +81,60 @@ class EreignisError(ValueError):
     """Raised when the portfolio and config do not fit the simulation."""
 
 
+class Fortschreibung(NamedTuple):
+    """Ergebnis von :func:`fortschreiben` (drei deterministische Tabellen)."""
+
+    historie: pd.DataFrame
+    ledger: pd.DataFrame
+    scheiben: pd.DataFrame
+
+
 def _add_years(d: _dt.date, years: int) -> _dt.date:
     return _dt.date(d.year + years, d.month, 1)
 
 
-def _leere_frames() -> Tuple[pd.DataFrame, pd.DataFrame]:
-    historie = pd.DataFrame(
-        {name: pd.Series(dtype=dtype) for name, dtype in STATUS_HISTORIE_SPALTEN}
-    )
-    ledger = pd.DataFrame(
-        {name: pd.Series(dtype=dtype) for name, dtype in LEDGER_SPALTEN}
-    )
-    return historie, ledger
+def _leerer_frame(spalten) -> pd.DataFrame:
+    return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in spalten})
+
+
+class _Vertrag:
+    """Grundscheibe + Erhoehungsscheiben eines Vertrags (Schichtungsprinzip).
+
+    Kapselt die Aggregation der Kern-Betraege ueber alle Scheiben; jede
+    Scheibe rechnet auf ihrem eigenen Modellpunkt, das Vertragsjahr einer
+    Scheibe ist um ihr Erhoehungsjahr versetzt.
+    """
+
+    def __init__(self, mp: ModelPoint) -> None:
+        self.grund_mp = mp
+        self.grund = Rechenkern(mp)
+        self.scheiben: List[Tuple[int, float, Rechenkern]] = []  # (jahr, vs, kern)
+
+    def gesamt_vs(self) -> float:
+        return self.grund_mp.sum_insured + sum(vs for _, vs, _ in self.scheiben)
+
+    def erhoehe(self, jahr: int, vs: float) -> ModelPoint:
+        mp = dataclasses.replace(
+            self.grund_mp,
+            x=self.grund_mp.x + jahr,
+            n=self.grund_mp.n - jahr,
+            t=self.grund_mp.t - jahr,
+            sum_insured=vs,
+        )
+        self.scheiben.append((jahr, vs, Rechenkern(mp)))
+        return mp
+
+    def rkw(self, jahr: int) -> float:
+        return self.grund.verlaufszeile(jahr).rkw + sum(
+            kern.verlaufszeile(jahr - erh_jahr).rkw
+            for erh_jahr, _, kern in self.scheiben
+        )
+
+    def beitragsfreie_summe(self, a0: int) -> float:
+        return self.grund.beitragsfreie_summe(a0) + sum(
+            kern.beitragsfreie_summe(a0 - erh_jahr)
+            for erh_jahr, _, kern in self.scheiben
+        )
 
 
 def _simuliere_vertrag(
@@ -88,21 +143,21 @@ def _simuliere_vertrag(
     ereignisse,
     seed: int,
     bis: _dt.date,
-) -> List[Dict[str, Any]]:
-    """Simulate one contract; returns booked events (chronological)."""
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Simulate one contract; returns (booked events, Erhoehungsscheiben)."""
     police_id = int(row["police_id"])
     start = pd.Timestamp(row["insurance_start"]).date()
     n = int(row["duration"])
     t = int(row["premium_duration"])
     x = int(row["entry_age"])
-    vs = float(row["sum_insured"])
 
-    kern = Rechenkern(ModelPoint(**model_point_kwargs(row, generation_fields)))
+    vertrag = _Vertrag(ModelPoint(**model_point_kwargs(row, generation_fields)))
     rng = np.random.Generator(
         np.random.PCG64(np.random.SeedSequence([seed, EREIGNIS_STREAM, police_id]))
     )
 
     events: List[Dict[str, Any]] = []
+    scheiben: List[Dict[str, Any]] = []
 
     def buche(code: str, jahr: int, art: str, betrag: float) -> None:
         events.append(
@@ -117,6 +172,7 @@ def _simuliere_vertrag(
         )
 
     beitragsfrei_ab: int | None = None
+    pex_summe = 0.0
     horizont_erreicht = False
 
     for j in range(n):
@@ -132,42 +188,63 @@ def _simuliere_vertrag(
         # 1. Tod im Vertragsjahr j (Tafel-qx der Tarifbasis, skaliert);
         #    bei tod_faktor 0 wird die Tafel nicht angefasst:
         if ereignisse.tod_faktor > 0.0:
-            qx = min(1.0, kern.kom.qx_at(x + j) * ereignisse.tod_faktor)
+            qx = min(1.0, vertrag.grund.kom.qx_at(x + j) * ereignisse.tod_faktor)
         else:
             qx = 0.0
         if rng.random() < qx:
             if beitragsfrei_ab is None:
-                buche("TOD", j + 1, "Todesfallleistung", vs)
+                buche("TOD", j + 1, "Todesfallleistung", vertrag.gesamt_vs())
             else:
-                buche(
-                    "TOD", j + 1, "Todesfallleistung",
-                    kern.beitragsfreie_summe(beitragsfrei_ab),
-                )
-            return events
+                buche("TOD", j + 1, "Todesfallleistung", pex_summe)
+            return events, scheiben
 
         if beitragsfrei_ab is None:
             # 2. Storno (nur beitragspflichtig, nicht im Ablaufjahr):
             if j + 1 < n and rng.random() < ereignisse.storno_rate:
-                buche("STO", j + 1, "RKW", kern.verlaufszeile(j + 1).rkw)
-                return events
+                buche("STO", j + 1, "RKW", vertrag.rkw(j + 1))
+                return events, scheiben
             # 3. Beitragsfreistellung (nur solange Beitraege laufen):
             if j + 1 < t and rng.random() < ereignisse.pex_rate:
                 beitragsfrei_ab = j + 1
-                buche("PEX", j + 1, "VS_bfr", kern.beitragsfreie_summe(j + 1))
+                pex_summe = vertrag.beitragsfreie_summe(j + 1)
+                buche("PEX", j + 1, "VS_bfr", pex_summe)
+        if beitragsfrei_ab is None:
+            # 4. Dynamische Erhoehung (nur beitragspflichtig, solange
+            #    Beitraege laufen): neue Scheibe, kein Statuswechsel.
+            if j + 1 < t and rng.random() < ereignisse.erh_rate:
+                betrag = ereignisse.erh_prozent * vertrag.gesamt_vs()
+                mp_s = vertrag.erhoehe(j + 1, betrag)
+                scheiben.append(
+                    {
+                        "police_id": police_id,
+                        "scheiben_id": len(vertrag.scheiben),
+                        "erhoehung_jahr": j + 1,
+                        "erhoehung_datum": pd.Timestamp(_add_years(start, j + 1)),
+                        "entry_age": mp_s.x,
+                        "duration": mp_s.n,
+                        "premium_duration": mp_s.t,
+                        "sum_insured": mp_s.sum_insured,
+                    }
+                )
+                buche("ERH", j + 1, "VS_erhoehung", betrag)
 
     if not horizont_erreicht:
         # Ablauf: alle n Jahre ueberlebt und insurance_end <= bis.
         if beitragsfrei_ab is None:
-            buche("ABL", n, "Ablaufleistung", vs)
+            buche("ABL", n, "Ablaufleistung", vertrag.gesamt_vs())
         else:
-            buche("ABL", n, "Ablaufleistung", kern.beitragsfreie_summe(beitragsfrei_ab))
-    return events
+            buche("ABL", n, "Ablaufleistung", pex_summe)
+    return events, scheiben
 
 
 def fortschreiben(
     stamm: pd.DataFrame, config: BestandConfig, bis: _dt.date
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Roll the base portfolio forward to ``bis``: Statushistorie + Ledger.
+) -> Fortschreibung:
+    """Roll the base portfolio forward to ``bis``.
+
+    Returns :class:`Fortschreibung` — Statushistorie (state changes only;
+    a dynamische Erhoehung changes no state), Ereignis-Ledger (every GeVo
+    incl. ERH) and the created Erhoehungsscheiben.
 
     ``stamm`` is the generator's base portfolio (one POL row per contract);
     the event rates come from ``config.ereignisse``, the amounts from the
@@ -204,6 +281,7 @@ def fortschreiben(
     generationen = {g.name: g.generation_fields() for g in config.generationen}
 
     alle_events: List[Dict[str, Any]] = []
+    alle_scheiben: List[Dict[str, Any]] = []
     for row in stamm.to_dict("records"):
         name = str(row["tarif_generation"])
         if name not in generationen:
@@ -212,9 +290,8 @@ def fortschreiben(
                 f"(bekannt: {sorted(generationen)})"
             )
         try:
-            alle_events.extend(
-                _simuliere_vertrag(row, generationen[name], config.ereignisse,
-                                   config.seed, bis)
+            events, scheiben = _simuliere_vertrag(
+                row, generationen[name], config.ereignisse, config.seed, bis
             )
         except EreignisError:
             raise
@@ -222,25 +299,30 @@ def fortschreiben(
             raise EreignisError(
                 f"police {row['police_id']}: {type(exc).__name__}: {exc}"
             ) from exc
+        alle_events.extend(events)
+        alle_scheiben.extend(scheiben)
+
+    if alle_scheiben:
+        scheiben_df = (
+            pd.DataFrame(alle_scheiben)
+            .astype(dict(SCHEIBEN_SPALTEN))
+            .sort_values(["police_id", "scheiben_id"], kind="stable")
+            .reset_index(drop=True)[[n for n, _ in SCHEIBEN_SPALTEN]]
+        )
+    else:
+        scheiben_df = _leerer_frame(SCHEIBEN_SPALTEN)
 
     if not alle_events:
-        return _leere_frames()
+        return Fortschreibung(
+            _leerer_frame(STATUS_HISTORIE_SPALTEN),
+            _leerer_frame(LEDGER_SPALTEN),
+            scheiben_df,
+        )
 
     ereignisse = pd.DataFrame(alle_events).sort_values(
         ["police_id", "vertragsjahr"], kind="stable"
     )
-    # status_id je Police fortlaufend ab 2 (Basis-POL im Stamm ist 1).
-    ereignisse["status_id"] = ereignisse.groupby("police_id").cumcount() + 2
-
     generation_je_police = stamm.set_index("police_id")["tarif_generation"]
-    historie = pd.DataFrame(
-        {
-            "police_id": ereignisse["police_id"].astype("int64"),
-            "status_id": ereignisse["status_id"].astype("int64"),
-            "status_code": ereignisse["status_code"].astype(object),
-            "status_date": pd.to_datetime(ereignisse["status_date"]),
-        }
-    ).reset_index(drop=True)
     ledger = pd.DataFrame(
         {
             "police_id": ereignisse["police_id"].astype("int64"),
@@ -254,7 +336,24 @@ def fortschreiben(
             "betrag": ereignisse["betrag"].astype("float64"),
         }
     ).reset_index(drop=True)
-    return historie, ledger
+
+    # Statushistorie = nur Zustandswechsel; ERH aendert den Zustand nicht.
+    zustaende = ereignisse[ereignisse["status_code"] != "ERH"].copy()
+    if len(zustaende) == 0:
+        return Fortschreibung(
+            _leerer_frame(STATUS_HISTORIE_SPALTEN), ledger, scheiben_df
+        )
+    # status_id je Police fortlaufend ab 2 (Basis-POL im Stamm ist 1).
+    zustaende["status_id"] = zustaende.groupby("police_id").cumcount() + 2
+    historie = pd.DataFrame(
+        {
+            "police_id": zustaende["police_id"].astype("int64"),
+            "status_id": zustaende["status_id"].astype("int64"),
+            "status_code": zustaende["status_code"].astype(object),
+            "status_date": pd.to_datetime(zustaende["status_date"]),
+        }
+    ).reset_index(drop=True)
+    return Fortschreibung(historie, ledger, scheiben_df)
 
 
 def bestand_mit_historie(

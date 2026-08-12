@@ -92,8 +92,8 @@ def _mit_raten(config, **raten):
 
 def test_fortschreiben_ist_deterministisch(portfolio, config):
     bis = dt.date(2035, 1, 1)
-    h1, l1 = fortschreiben(portfolio, config, bis)
-    h2, l2 = fortschreiben(portfolio, config, bis)
+    h1, l1, *_ = fortschreiben(portfolio, config, bis)
+    h2, l2, *_ = fortschreiben(portfolio, config, bis)
     pd.testing.assert_frame_equal(h1, h2)
     pd.testing.assert_frame_equal(l1, l2)
     assert len(h1) > 0
@@ -103,8 +103,8 @@ def test_fortschreiben_ist_deterministisch(portfolio, config):
 
 def test_horizont_erweiterung_haelt_praefix_konstant(portfolio, config):
     frueh = dt.date(2015, 1, 1)
-    h_frueh, l_frueh = fortschreiben(portfolio, config, frueh)
-    h_spaet, l_spaet = fortschreiben(portfolio, config, dt.date(2030, 1, 1))
+    h_frueh, l_frueh, *_ = fortschreiben(portfolio, config, frueh)
+    h_spaet, l_spaet, *_ = fortschreiben(portfolio, config, dt.date(2030, 1, 1))
     praefix_h = h_spaet[h_spaet["status_date"] <= pd.Timestamp(frueh)].reset_index(
         drop=True
     )
@@ -120,8 +120,8 @@ def test_substream_je_vertrag_unabhaengig_vom_bestand(config):
     b = {"police_id": 10000002, "start": dt.date(2007, 9, 1), "x": 35, "n": 30, "t": 25}
     cfg = _mit_raten(config, storno_rate=0.5, pex_rate=0.2, tod_faktor=1.0)
     bis = dt.date(2035, 1, 1)
-    _, ledger_allein = fortschreiben(_mini_stamm(a), cfg, bis)
-    _, ledger_beide = fortschreiben(_mini_stamm(a, b), cfg, bis)
+    _, ledger_allein, *_ = fortschreiben(_mini_stamm(a), cfg, bis)
+    _, ledger_beide, *_ = fortschreiben(_mini_stamm(a, b), cfg, bis)
     nur_a = ledger_beide[ledger_beide["police_id"] == a["police_id"]].reset_index(
         drop=True
     )
@@ -145,7 +145,7 @@ def test_sicherer_tod_zahlt_versicherungssumme(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 30, "t": 20}
     )
     cfg = _mit_raten(config, tod_faktor=1e12)
-    historie, ledger = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    historie, ledger, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     assert list(historie["status_code"]) == ["TOD"]
     assert list(historie["status_id"]) == [2]
     assert historie["status_date"].iloc[0] == pd.Timestamp(dt.date(2011, 6, 1))
@@ -159,7 +159,7 @@ def test_sicheres_storno_zahlt_rkw_aus_dem_kern(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 30, "t": 20}
     )
     cfg = _mit_raten(config, storno_rate=0.999999)
-    historie, ledger = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    historie, ledger, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     assert list(historie["status_code"]) == ["STO"]
     kern = _kern_fuer(stamm.iloc[0], config)
     assert ledger["betrag"].iloc[0] == kern.verlaufszeile(1).rkw
@@ -171,7 +171,7 @@ def test_pex_fixiert_vs_bfr_und_ablauf_zahlt_sie_aus(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
     )
     cfg = _mit_raten(config, pex_rate=0.999999)
-    historie, ledger = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    historie, ledger, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     assert list(historie["status_code"]) == ["PEX", "ABL"]
     assert list(historie["status_id"]) == [2, 3]
     kern = _kern_fuer(stamm.iloc[0], config)
@@ -189,7 +189,7 @@ def test_tod_schlaegt_storno_und_pex(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 30, "t": 20}
     )
     cfg = _mit_raten(config, storno_rate=0.999999, pex_rate=0.999999, tod_faktor=1e12)
-    historie, ledger = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    historie, ledger, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     assert list(historie["status_code"]) == ["TOD"]
     assert ledger["betrag"].iloc[0] == 100000.0  # beitragspflichtig: volle VS
 
@@ -200,7 +200,7 @@ def test_ohne_raten_nur_deterministischer_ablauf(config):
         {"police_id": 10000002, "start": dt.date(2000, 3, 1), "x": 40, "n": 40, "t": 30},
     )
     cfg = _mit_raten(config)  # alle Raten 0
-    historie, ledger = fortschreiben(stamm, cfg, dt.date(2035, 1, 1))
+    historie, ledger, *_ = fortschreiben(stamm, cfg, dt.date(2035, 1, 1))
     # Vertrag 1 laeuft 2030 ab (<= bis), Vertrag 2 erst 2040 (> bis: kein Event).
     assert list(historie["police_id"]) == [10000001]
     assert list(historie["status_code"]) == ["ABL"]
@@ -223,7 +223,7 @@ def test_unbekannte_tarifgeneration_ist_fehler(config):
 
 
 def test_statushistorie_validiert_gegen_stamm(portfolio, config):
-    historie, _ = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
+    historie, _, *_ = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
     assert list(historie.columns) == list(STATUS_HISTORIE_NAMES)
     assert validate_statushistorie(portfolio, historie) == []
 
@@ -231,7 +231,7 @@ def test_statushistorie_validiert_gegen_stamm(portfolio, config):
 def test_tod_nach_pex_zahlt_beitragsfreie_summe(portfolio, config):
     """Statistische Abdeckung im Beispielbestand: jeder Tod nach PEX zahlt
     exakt die bei PEX fixierte beitragsfreie Summe."""
-    _, ledger = fortschreiben(portfolio, config, dt.date(2045, 1, 1))
+    _, ledger, *_ = fortschreiben(portfolio, config, dt.date(2045, 1, 1))
     pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")["betrag"]
     tod_nach_pex = ledger[
         (ledger["ereignis"].isin(["TOD", "ABL"]))
@@ -247,7 +247,7 @@ def test_zeitscheibe_laesst_terminale_vertraege_fallen(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 30, "t": 20}
     )
     cfg = _mit_raten(config, tod_faktor=1e12)  # TOD am 2011-06-01
-    historie, _ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    historie, _, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     sicht = bestand_mit_historie(stamm, historie)
     davor = zeitscheibe(sicht, dt.date(2011, 5, 1))
     danach = zeitscheibe(sicht, dt.date(2011, 6, 1))
@@ -261,7 +261,7 @@ def test_zeitscheibe_behaelt_beitragsfreie_vertraege(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
     )
     cfg = _mit_raten(config, pex_rate=0.999999)  # PEX am 2011-06-01
-    historie, _ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    historie, _, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     sicht = bestand_mit_historie(stamm, historie)
     scheibe = zeitscheibe(sicht, dt.date(2015, 1, 1))
     assert list(scheibe["police_id"]) == [10000001]
@@ -272,7 +272,7 @@ def test_zeitscheibe_behaelt_beitragsfreie_vertraege(config):
 
 
 def test_zeitscheiben_invarianten_gelten_auch_mit_historie(portfolio, config):
-    historie, _ = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
+    historie, _, *_ = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
     sicht = bestand_mit_historie(portfolio, historie)
     scheibe = zeitscheibe(sicht, dt.date(2020, 7, 1))
     assert zeitscheiben_invarianten(sicht, scheibe) == []
@@ -283,7 +283,7 @@ def test_bestand_mit_historie_wiederholt_stammdaten_bytegleich(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
     )
     cfg = _mit_raten(config, pex_rate=0.999999)
-    historie, _ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    historie, _, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     sicht = bestand_mit_historie(stamm, historie)
     assert len(sicht) == 3  # POL + PEX + ABL
     stammfelder = [
@@ -294,10 +294,135 @@ def test_bestand_mit_historie_wiederholt_stammdaten_bytegleich(config):
         assert sicht[spalte].nunique() == 1, spalte
 
 
+# --------------------------------------------------------------------------- #
+# Dynamische Erhoehungen (Scheiben)
+# --------------------------------------------------------------------------- #
+
+
+def test_sichere_erhoehung_erzeugt_scheiben_mit_zinseszins(config):
+    from rechner_pipeline.models.bestand import validate_scheiben
+
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
+    )
+    cfg = _mit_raten(config, erh_rate=0.999999, erh_prozent=0.05)
+    historie, ledger, scheiben = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    # Jede Annahme erhoeht um 5% der aktuellen Gesamt-VS (Zinseszins),
+    # solange Beitraege laufen (j+1 < t): Scheiben in den Jahren 1..14.
+    assert list(scheiben["erhoehung_jahr"]) == list(range(1, 15))
+    assert list(scheiben["scheiben_id"]) == list(range(1, 15))
+    for k, betrag in enumerate(scheiben["sum_insured"]):
+        assert betrag == pytest.approx(100000.0 * 0.05 * 1.05 ** k, rel=1e-12)
+    # Scheiben-Konsistenz gegen den Hauptvertrag:
+    assert validate_scheiben(stamm, scheiben) == []
+    # ERH ist GeVo, kein Statuswechsel — Historie kennt nur den Ablauf:
+    assert list(historie["status_code"]) == ["ABL"]
+    # Ablauf zahlt die Gesamt-VS ueber alle Scheiben:
+    abl = ledger[ledger["ereignis"] == "ABL"]["betrag"].iloc[0]
+    assert abl == pytest.approx(100000.0 * 1.05 ** 14, rel=1e-12)
+    # Ledger fuehrt die ERH-GeVos:
+    assert (ledger["ereignis"] == "ERH").sum() == 14
+    assert set(ledger[ledger["ereignis"] == "ERH"]["betrag_art"]) == {"VS_erhoehung"}
+
+
+@pytest.fixture(scope="module")
+def beispiel_lauf(portfolio, config):
+    return fortschreiben(portfolio, config, dt.date(2045, 1, 1))
+
+
+def test_abgangsbetraege_summieren_ueber_scheiben(portfolio, config, beispiel_lauf):
+    """Statistische Abdeckung im Beispielbestand: STO/PEX nach Erhoehungen
+    zahlen exakt die Summe der Kern-Betraege ueber alle Scheiben."""
+    _, ledger, scheiben = beispiel_lauf
+    haupt = portfolio.set_index("police_id")
+    generationen = {g.name: g.generation_fields() for g in config.generationen}
+
+    def kerne(pid):
+        h = haupt.loc[pid]
+        gen = generationen[str(h["tarif_generation"])]
+        grund = Rechenkern(ModelPoint(**model_point_kwargs(h, gen)))
+        eigene = scheiben[scheiben["police_id"] == pid]
+        s_kerne = []
+        for s in eigene.to_dict("records"):
+            row = {
+                "entry_age": s["entry_age"], "sex": h["sex"],
+                "duration": s["duration"], "premium_duration": s["premium_duration"],
+                "sum_insured": s["sum_insured"], "zahlweise": h["zahlweise"],
+            }
+            s_kerne.append(
+                (int(s["erhoehung_jahr"]), Rechenkern(ModelPoint(**model_point_kwargs(row, gen))))
+            )
+        return grund, s_kerne
+
+    mit_scheiben = set(scheiben["police_id"])
+    geprueft = {"STO": 0, "PEX": 0}
+    for zeile in ledger[ledger["ereignis"].isin(["STO", "PEX"])].to_dict("records"):
+        pid = int(zeile["police_id"])
+        if pid not in mit_scheiben or geprueft[zeile["ereignis"]] >= 3:
+            continue
+        a = int(zeile["vertragsjahr"])
+        grund, s_kerne = kerne(pid)
+        relevante = [(j, k) for j, k in s_kerne if j < a]
+        if not relevante:
+            continue
+        if zeile["ereignis"] == "STO":
+            erwartet = grund.verlaufszeile(a).rkw + sum(
+                k.verlaufszeile(a - j).rkw for j, k in relevante
+            )
+        else:
+            erwartet = grund.beitragsfreie_summe(a) + sum(
+                k.beitragsfreie_summe(a - j) for j, k in relevante
+            )
+        assert zeile["betrag"] == erwartet, (pid, zeile["ereignis"])
+        geprueft[zeile["ereignis"]] += 1
+    assert geprueft["STO"] >= 1 and geprueft["PEX"] >= 1  # Pfade sind abgedeckt
+
+
+def test_auswertung_beruecksichtigt_scheiben(config):
+    from rechner_pipeline.bestand.auswertung import auswertungs_verlauf
+
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
+    )
+    cfg = _mit_raten(config, erh_rate=0.999999, erh_prozent=0.05)
+    historie, _, scheiben = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    stichtag = dt.date(2020, 1, 1)
+    ohne = auswertungs_verlauf(stamm, historie, cfg, [stichtag])
+    mit = auswertungs_verlauf(stamm, historie, cfg, [stichtag], scheiben=scheiben)
+    assert mit[0]["deckungskapital"] > ohne[0]["deckungskapital"]
+    assert mit[0]["rueckkaufswert"] > ohne[0]["rueckkaufswert"]
+
+
+def test_scheiben_parquet_roundtrip(tmp_path, beispiel_lauf):
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+
+    _, _, scheiben = beispiel_lauf
+    assert len(scheiben) > 0
+    pfad = write_portfolio(scheiben, tmp_path / "scheiben.parquet")
+    pd.testing.assert_frame_equal(read_portfolio(pfad), scheiben)
+
+
+def test_validate_scheiben_findet_inkonsistenzen(config):
+    from rechner_pipeline.models.bestand import validate_scheiben
+
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
+    )
+    cfg = _mit_raten(config, erh_rate=0.999999, erh_prozent=0.05)
+    _, _, scheiben = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    kaputt = scheiben.copy()
+    kaputt.loc[kaputt.index[0], "entry_age"] = 99
+    fehler = validate_scheiben(stamm, kaputt)
+    assert any("entry_age" in f for f in fehler)
+
+
 def test_ereignis_config_validierung():
     assert EreignisConfig().validate() == []
     fehler = EreignisConfig(storno_rate=1.0, pex_rate=-0.1, tod_faktor=-1.0).validate()
     assert len(fehler) == 3
+    assert EreignisConfig(erh_rate=0.3).validate() == [
+        "ereignisse: erh_rate > 0 verlangt erh_prozent > 0"
+    ]
 
 
 def test_beispiel_config_laedt_ereignisse(config):
@@ -330,7 +455,7 @@ def test_fortschreiben_lehnt_nicht_basisbestand_ab(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
     )
     cfg = _mit_raten(config, pex_rate=0.999999)
-    historie, _ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    historie, _, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     sicht = bestand_mit_historie(stamm, historie)
     with pytest.raises(EreignisError, match="Basisbestand"):
         fortschreiben(sicht[sicht["status_code"] == "PEX"], cfg, dt.date(2045, 1, 1))
@@ -360,8 +485,8 @@ def test_fortschreiben_normalisiert_bis_timestamp(config):
         {"police_id": 10000001, "start": dt.date(2000, 3, 1), "x": 40, "n": 30, "t": 25}
     )
     cfg = _mit_raten(config)
-    _, ledger_date = fortschreiben(stamm, cfg, dt.date(2035, 1, 1))
-    _, ledger_ts = fortschreiben(stamm, cfg, pd.Timestamp("2035-01-01"))
+    _, ledger_date, *_ = fortschreiben(stamm, cfg, dt.date(2035, 1, 1))
+    _, ledger_ts, *_ = fortschreiben(stamm, cfg, pd.Timestamp("2035-01-01"))
     pd.testing.assert_frame_equal(ledger_date, ledger_ts)
 
 
@@ -378,7 +503,7 @@ def test_kern_fehler_traegt_police_kontext(config):
         fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     # Mit abgeschalteter Todes-Simulation wird die Tafel nicht angefasst:
     ohne_tod = _mit_raten(config)
-    historie, ledger = fortschreiben(stamm, ohne_tod, dt.date(2045, 1, 1))
+    historie, ledger, *_ = fortschreiben(stamm, ohne_tod, dt.date(2045, 1, 1))
     assert list(historie["status_code"]) == ["ABL"]
 
 
@@ -391,15 +516,15 @@ def test_rate_null_und_winzige_rate_ziehen_gleiche_draws(config):
     bis = dt.date(2040, 1, 1)
     basis = _mit_raten(config, storno_rate=0.0, pex_rate=0.01, tod_faktor=1.0)
     winzig = _mit_raten(config, storno_rate=1e-300, pex_rate=0.01, tod_faktor=1.0)
-    _, ledger_basis = fortschreiben(stamm, basis, bis)
-    _, ledger_winzig = fortschreiben(stamm, winzig, bis)
+    _, ledger_basis, *_ = fortschreiben(stamm, basis, bis)
+    _, ledger_winzig, *_ = fortschreiben(stamm, winzig, bis)
     pd.testing.assert_frame_equal(ledger_basis, ledger_winzig)
 
 
 def test_ledger_und_historie_sind_parquet_persistierbar(tmp_path, portfolio, config):
     from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 
-    historie, ledger = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
+    historie, ledger, *_ = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
     h_pfad = write_portfolio(historie, tmp_path / "historie.parquet")
     l_pfad = write_portfolio(ledger, tmp_path / "ledger.parquet")
     h_zurueck = read_portfolio(h_pfad)

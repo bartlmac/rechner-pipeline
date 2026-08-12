@@ -223,6 +223,13 @@ Prinzipien:
   Zufallsstrom je Vertrag; ein längerer Horizont ändert frühere Ereignisse
   nicht, Läufe verschiedener Raten sind pfadweise vergleichbar (Common
   Random Numbers).
+- **Dynamische Erhöhungen (Schichtungsprinzip):** eine angenommene Erhöhung
+  erzeugt eine neue Scheibe — aktuariell ein eigener Modellpunkt auf
+  derselben Tarifgeneration (Eintrittsalter = aktuelles Alter, Laufzeiten =
+  Restlaufzeiten, Summe = konfigurierter Prozentsatz der aktuellen
+  Gesamt-VS). Der Vertragszustand ändert sich nicht; der GeVo steht im
+  Ledger, die Scheibe in der Scheiben-Tabelle, und alle späteren Beträge
+  summieren über Grund- und Erhöhungsscheiben.
 - **Aktuarielle Auswertungen (`bestand/auswertung.py`):** Deckungskapital
   und Rückkaufswert je Stichtag über den ganzen Bestand — in-process über
   `Rechenkern.zustand_am`, nach Beitragsfreistellung über die beitragsfreie

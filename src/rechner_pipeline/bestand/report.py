@@ -60,8 +60,9 @@ _RC = {
 #: Feste Generationen-Farben (deterministisch, unabhängig von der Zeichenreihenfolge).
 _FARBEN = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b")
 
-#: Feste Ereignis-Farben (PEX/STO/TOD/ABL — Reihenfolge wie EREIGNIS_REIHENFOLGE).
+#: Feste Ereignis-Farben (Reihenfolge wie EREIGNIS_REIHENFOLGE).
 _EREIGNIS_FARBEN = {
+    "ERH": "#17becf",
     "PEX": "#9467bd",
     "STO": "#ff7f0e",
     "TOD": "#d62728",
@@ -220,6 +221,7 @@ def render_html(
     historie: Optional[pd.DataFrame] = None,
     ledger: Optional[pd.DataFrame] = None,
     config: Optional[BestandConfig] = None,
+    scheiben: Optional[pd.DataFrame] = None,
 ) -> str:
     """Rendert den vollständigen Bericht als selbst-enthaltenes HTML.
 
@@ -236,6 +238,10 @@ def render_html(
         raise ValueError(
             "historie und ledger gehoeren zusammen (ein fortschreiben-Lauf) — "
             "entweder beide angeben oder keines"
+        )
+    if scheiben is not None and historie is None:
+        raise ValueError(
+            "scheiben nur zusammen mit historie/ledger (ein fortschreiben-Lauf)"
         )
     if stichtage is None:
         stichtage = jahresraster(df)
@@ -269,7 +275,9 @@ def render_html(
             svg_ereignisse = _chart_ereignisse_je_jahr(ereignisse_je_jahr(ledger))
         reihe_ausw: List[Dict[str, Any]] = []
         if config is not None:
-            reihe_ausw = auswertungs_verlauf(df, historie, config, stichtage)
+            reihe_ausw = auswertungs_verlauf(
+                df, historie, config, stichtage, scheiben=scheiben
+            )
             svg_dk = _chart_deckungskapital(reihe_ausw)
 
     zeilen = []
