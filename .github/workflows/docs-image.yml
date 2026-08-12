@@ -1,0 +1,31 @@
+# Baut und veroeffentlicht die Doku-Engine als optionales ghcr-Image —
+# die Toolchain (Quarto/Pandoc/Typst) bleibt aus den Repo-Dependencies
+# heraus (Beschluss 2026-08-12). Laeuft nur bei Aenderungen an der Engine.
+name: docs-image
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/engine/**"]
+  workflow_dispatch:
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: docs/engine
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/rechner-pipeline-docs:latest
+            ghcr.io/${{ github.repository_owner }}/rechner-pipeline-docs:quarto-1.6.42

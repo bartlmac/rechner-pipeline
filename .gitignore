@@ -40,3 +40,8 @@ DEBUG_*.txt
 .idea/
 .DS_Store
 Thumbs.db
+
+# Doku-Engine-Renderings (Quellen sind die Markdown-Dateien)
+docs/**/*.pdf
+docs/**/*.typ
+docs/**/*_files/
