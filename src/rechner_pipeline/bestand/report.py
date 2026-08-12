@@ -255,6 +255,15 @@ def render_html(
             "waeren die aktuariellen Kennzahlen systematisch zu niedrig "
             "(Ledger-Betraege enthalten die Scheiben bereits)"
         )
+    if ledger is not None:
+        fremd = set(ledger["police_id"]) - set(df["police_id"])
+        if fremd:
+            raise ValueError(
+                f"Ledger referenziert Policen ausserhalb des Bestands: "
+                f"{sorted(fremd)[:5]} — bei Neuzugaengen den Gesamtbestand "
+                "uebergeben (mit_zugaengen(stamm, zugaenge)), sonst waere der "
+                "Bericht in sich widerspruechlich"
+            )
     if stichtage is None:
         stichtage = jahresraster(df)
     generationen = generationsnamen(df)
@@ -348,7 +357,10 @@ def render_html(
 <div class="charts">{svg_status}{svg_ereignisse}</div>
 {summen_tabelle}
 <p>Der Bestandsverlauf oben ist abgangsbereinigt: stornierte, gestorbene und
-abgelaufene Verträge verlassen den Bestand am Buchungstag. Beitragsfreie
+abgelaufene Verträge verlassen den Bestand am Buchungstag. Neuzugänge (ZUG)
+treten mit ihrem Versicherungsbeginn ein; ihr Betrag in der Tabelle ist die
+Versicherungssumme des Zugangs (Bestandsvolumen, kein Zahlungsstrom).
+Beitragsfreie
 Verträge (PEX) bleiben in-force und gehen mit ihrer ursprünglichen
 Versicherungssumme in den Verlauf ein; die bei Beitragsfreistellung
 fixierten beitragsfreien Summen (VS_bfr) zeigt die Tabelle. Die Spalte

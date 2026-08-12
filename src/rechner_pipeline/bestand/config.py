@@ -175,6 +175,11 @@ class TarifGeneration:
         prefix = f"generation {self.name or '?'}"
         if self.gueltig_von >= self.gueltig_bis:
             errors.append(f"{prefix}: gueltig_von >= gueltig_bis")
+        if self.gueltig_bis.year > 2200:
+            errors.append(
+                f"{prefix}: gueltig_bis nach 2200 (Zeitachse: pandas-Timestamps "
+                "enden 2262; Vertragsenden muessen darstellbar bleiben)"
+            )
         if self.sample_size <= 0:
             errors.append(f"{prefix}: sample_size <= 0")
         if self.sample_size > 1_000_000:

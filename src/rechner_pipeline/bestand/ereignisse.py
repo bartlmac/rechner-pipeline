@@ -301,8 +301,9 @@ def fortschreiben(
 
     ``stamm`` is the generator's base portfolio (one POL row per contract);
     the event rates come from ``config.ereignisse``, the amounts from the
-    stable kernel. Pure function of (stamm, config, bis) — seed-deterministic,
-    the Stamm itself is never mutated. Fail-fast guards: only POL base rows
+    stable kernel. Pure function of (stamm, config, bis, neuzugang_ab) —
+    seed-deterministic, the Stamm itself is never mutated. Fail-fast
+    guards: only POL base rows
     (a Zeitscheibe or Historie view fed back in is an error — the engine
     would re-simulate it from insurance_start), unique positive police_id,
     valid event rates, durations within the sheet-anchored 0..50 range.
@@ -332,15 +333,22 @@ def fortschreiben(
         )
     bis = pd.Timestamp(bis).date()
 
-    if neuzugang_ab is not None:
+    hat_neuzugang = any(g.neuzugang_pro_jahr > 0 for g in config.generationen)
+    if neuzugang_ab is not None and hat_neuzugang:
         neuzugang_ab = pd.Timestamp(neuzugang_ab).date()
+        if neuzugang_ab > bis:
+            raise EreignisError(
+                f"neuzugang_ab {neuzugang_ab.isoformat()} liegt nach dem "
+                f"Horizont bis {bis.isoformat()} (vertauschte Argumente?)"
+            )
         if len(stamm) and (
             stamm["insurance_start"] > pd.Timestamp(neuzugang_ab)
         ).any():
             raise EreignisError(
                 "Basisbestand enthaelt Vertraege mit Beginn nach dem "
                 f"Referenzstichtag {neuzugang_ab.isoformat()} — Neuzugang wuerde "
-                "den Zeitraum doppelt besiedeln (ein Erzeuger je Zeitfenster)"
+                "den Zeitraum doppelt besiedeln (ein Erzeuger je Zeitfenster). "
+                "Basisbestand mit generate(config, bis=Referenzstichtag) erzeugen"
             )
         from rechner_pipeline.bestand.generator import neuzugaenge
 
@@ -351,10 +359,15 @@ def fortschreiben(
                 f"Neuzugang-police_ids kollidieren mit dem Basisbestand: "
                 f"{sorted(ueberschneidung)[:5]}"
             )
-        if len(zugaenge) and int(zugaenge["duration"].max()) > 50:
+        zu_lang = zugaenge[zugaenge["duration"] > 50]
+        if len(zu_lang):
+            generationen_namen = sorted(set(zu_lang["tarif_generation"]))
             raise EreignisError(
-                "Neuzugang mit duration > 50: ausserhalb des blattfest "
-                "verankerten Verlaufsbereichs des Kerns"
+                f"Neuzugang mit duration > 50 (max {int(zu_lang['duration'].max())}, "
+                f"{len(zu_lang)} Vertraege, Generation {generationen_namen}, "
+                f"z. B. police {int(zu_lang['police_id'].iloc[0])}): ausserhalb "
+                "des blattfest verankerten Verlaufsbereichs des Kerns — "
+                "duration-Verteilung bzw. max_endalter der Config begrenzen"
             )
     else:
         zugaenge = _leerer_frame(STAMM_SPALTEN)
@@ -485,7 +498,9 @@ def bestand_mit_historie(
     unbekannt = set(historie["police_id"]) - set(stamm["police_id"])
     if unbekannt:
         raise EreignisError(
-            f"historie: police_id unbekannt: {sorted(unbekannt)[:5]}"
+            f"historie: police_id unbekannt: {sorted(unbekannt)[:5]} — "
+            "bei Neuzugaengen den Gesamtbestand uebergeben "
+            "(mit_zugaengen(stamm, zugaenge))"
         )
     if len(historie) == 0:
         return stamm.copy().reset_index(drop=True)

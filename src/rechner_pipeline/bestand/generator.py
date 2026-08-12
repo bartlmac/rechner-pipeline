@@ -12,6 +12,12 @@ kernel via :func:`rechner_pipeline.bestand.kernlauf.berechne_vertrag`).
 Determinism: one master seed from the config; every generation draws from its
 own child stream ``PCG64(SeedSequence([seed, generation_index]))``, so adding
 a generation never changes the contracts of earlier generations.
+
+Seed discipline: NEVER seed anything with the bare master seed —
+``SeedSequence(seed)`` is bit-identical to ``SeedSequence([seed, 0])``
+(trailing-zero normalization), i.e. the stream of generation 0. New stream
+families need their own distinct constant (Neuzugang: ``NEUZUGANG_STREAM``,
+Ereignis-Engine: 424242).
 """
 
 from __future__ import annotations
@@ -167,13 +173,18 @@ def neuzugaenge(
 
     Je Generation und Kalenderjahr werden ``neuzugang_pro_jahr`` Vertraege
     aus einem eigenen Substream gezogen (Attribute wie im Batch-Generator,
-    Beginn gleichverteilt ueber die Monatsersten des Jahres innerhalb des
-    Gueltigkeitsfensters). Draws sind horizontunabhaengig: pro Jahr wird
-    immer der volle Jahrgang gezogen und erst danach auf ``(von, bis]``
+    Beginn gleichverteilt ueber ALLE Monatsersten des Kalenderjahres).
+    Draws sind horizont- und fensterunabhaengig: pro Jahrgang wird immer
+    voll gezogen und erst danach auf Gueltigkeitsfenster und ``(von, bis]``
     gefiltert — dadurch ist der Neuzugang bei Horizont-Erweiterung ein
-    Praefix (fruehere Zugaenge aendern sich nicht) und die police_ids sind
-    jahrgangsstabil.
+    Praefix (fruehere Zugaenge aendern sich nicht), die police_ids sind
+    jahrgangsstabil, und Rand-Jahrgaenge tragen anteilig weniger Volumen
+    (gleiche Monatsdichte wie volle Jahrgaenge, konsistent zum Batch).
     """
+    fehler = config.validate()
+    if fehler:
+        raise ValueError("Config ungueltig: " + "; ".join(fehler))
+    von_ts, bis_ts = pd.Timestamp(von), pd.Timestamp(bis)
     frames: List[pd.DataFrame] = []
     for idx, gen in enumerate(config.generationen):
         anzahl = gen.neuzugang_pro_jahr
@@ -184,35 +195,46 @@ def neuzugaenge(
         )
         fenster_bis = gen.gueltig_bis.year * 12 + (gen.gueltig_bis.month - 1)
         for jahr in range(gen.gueltig_von.year, gen.gueltig_bis.year + 1):
-            # Waehlbare Monatserste dieses Jahrgangs (horizontUNabhaengig):
             erster = max(fenster_von, jahr * 12)
             letzter = min(fenster_bis, jahr * 12 + 11)
             if erster > letzter:
                 continue
-            rng = np.random.Generator(
-                np.random.PCG64(
-                    np.random.SeedSequence([config.seed, NEUZUGANG_STREAM, idx, jahr])
-                )
-            )
-            attribute = _ziehe_attribute(gen, rng, anzahl)
-            monate = rng.integers(erster, letzter + 1, size=anzahl)
-            starts = [_month_first(int(m) // 12, int(m) % 12 + 1) for m in monate]
+            # Jahrgaenge ohne Schnitt mit (von, bis] draw-neutral ueberspringen
+            # (eigener Substream je Jahr — fremde Jahre brauchen keine Draws):
+            if (
+                pd.Timestamp(_month_first(letzter // 12, letzter % 12 + 1)) <= von_ts
+                or pd.Timestamp(_month_first(erster // 12, erster % 12 + 1)) > bis_ts
+            ):
+                continue
+            # Nummernkreis-Guard VOR den Draws (jahrgangsstabile Offsets):
             offset = _NEUZUGANG_ID_OFFSET + (jahr - gen.gueltig_von.year) * anzahl
             if offset + anzahl >= 8_000_000:
                 raise ValueError(
                     f"generation {gen.name}: Neuzugang-Nummernkreis erschoepft "
                     "(neuzugang_pro_jahr x Jahrgaenge zu gross)"
                 )
+            rng = np.random.Generator(
+                np.random.PCG64(
+                    np.random.SeedSequence([config.seed, NEUZUGANG_STREAM, idx, jahr])
+                )
+            )
+            attribute = _ziehe_attribute(gen, rng, anzahl)
+            # Ueber ALLE 12 Monatserste des Jahres ziehen (fensterunabhaengig):
+            monate = rng.integers(jahr * 12, jahr * 12 + 12, size=anzahl)
+            starts = [_month_first(int(m) // 12, int(m) % 12 + 1) for m in monate]
             police_ids = (
                 np.arange(1, anzahl + 1, dtype=np.int64)
                 + (idx + 1) * 10_000_000
                 + offset
             )
             frame = _baue_frame(gen, attribute, starts, police_ids)
-            # Erst NACH dem Ziehen auf das Fenster (von, bis] filtern —
+            # Erst NACH dem Ziehen filtern (Gueltigkeitsfenster + Horizont) —
             # verworfene Draws halten das Praefix stabil.
-            maske = (frame["insurance_start"] > pd.Timestamp(von)) & (
-                frame["insurance_start"] <= pd.Timestamp(bis)
+            im_fenster = (monate >= erster) & (monate <= letzter)
+            maske = (
+                im_fenster
+                & (frame["insurance_start"] > von_ts)
+                & (frame["insurance_start"] <= bis_ts)
             )
             frames.append(frame[maske])
     if not frames:
@@ -224,8 +246,18 @@ def neuzugaenge(
     return df.sort_values("police_id", kind="stable").reset_index(drop=True)
 
 
-def generate(config: BestandConfig) -> pd.DataFrame:
-    """Generate the full portfolio for all configured tariff generations."""
+def generate(
+    config: BestandConfig, bis: _dt.date | None = None
+) -> pd.DataFrame:
+    """Generate the full portfolio for all configured tariff generations.
+
+    ``bis`` (Referenzstichtag) macht den Generator zur Batch-Auswertung des
+    Zugangs-Stroms bis zu diesem Datum: gezogen wird identisch (draw-then-
+    filter), behalten werden nur Vertraege mit ``insurance_start <= bis`` —
+    das Ergebnis ist die exakte Teilmenge des vollen Laufs. Zusammen mit
+    ``fortschreiben(..., neuzugang_ab=bis)`` besiedelt so genau ein Erzeuger
+    jedes Zeitfenster. Ohne ``bis`` unveraendert der volle Bestand.
+    """
     errors = config.validate()
     if errors:
         raise ValueError("Config ungueltig: " + "; ".join(errors))
@@ -234,6 +266,8 @@ def generate(config: BestandConfig) -> pd.DataFrame:
         for idx, gen in enumerate(config.generationen)
     ]
     df = pd.concat(frames, ignore_index=True)
+    if bis is not None:
+        df = df[df["insurance_start"] <= pd.Timestamp(bis)]
     df = df[list(STAMM_NAMES)].astype(stamm_dtypes())
     df = df.sort_values("police_id", kind="stable").reset_index(drop=True)
     if df["police_id"].duplicated().any():

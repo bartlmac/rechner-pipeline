@@ -103,7 +103,9 @@ def _scheiben_kerne(
         if pid not in haupt.index:
             raise ValueError(
                 f"scheiben: police_id {pid} unbekannt im Bestand — "
-                "Scheiben und Bestand stammen nicht aus demselben Lauf"
+                "bei Neuzugaengen den Gesamtbestand uebergeben "
+                "(mit_zugaengen(stamm, zugaenge)), sonst stammen Scheiben und "
+                "Bestand nicht aus demselben Lauf"
             )
         h = haupt.loc[pid]
         row = {

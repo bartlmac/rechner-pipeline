@@ -143,10 +143,10 @@ STATUS_HISTORIE_SPALTEN: Tuple[Tuple[str, str], ...] = (
 LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("police_id", "int64"),
     ("tarif_generation", "object"),
-    ("ereignis", "object"),          # status_code of the event, or ERH (GeVo)
-    ("vertragsjahr", "int64"),       # booked anniversary (completed years)
+    ("ereignis", "object"),          # status_code of the event, or ERH/ZUG (GeVo)
+    ("vertragsjahr", "int64"),       # booked anniversary (completed years; ZUG: 0)
     ("status_date", "datetime64[ns]"),
-    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung
+    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS (ZUG)
     ("betrag", "float64"),
 )
 

@@ -254,17 +254,21 @@ import datetime as dt
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
-from rechner_pipeline.bestand.ereignisse import fortschreiben
+from rechner_pipeline.bestand.ereignisse import fortschreiben, mit_zugaengen
 from rechner_pipeline.bestand.auswertung import auswertungs_verlauf
 from rechner_pipeline.bestand.parquet_io import write_portfolio
 
 config = load_config("examples/bestand_klv.toml")   # 2 KLV-Generationen
-portfolio = generate(config)                        # seed-deterministisch
-write_portfolio(portfolio, "bestand.parquet")
-scheibe = zeitscheibe(portfolio, dt.date(2012, 1, 1))
-historie, ledger, scheiben = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
-kennzahlen = auswertungs_verlauf(portfolio, historie, config,
-                                 [dt.date(2020, 1, 1)], scheiben=scheiben)
+referenz = dt.date(2010, 1, 1)
+portfolio = generate(config, bis=referenz)          # Batch bis Referenzstichtag
+ergebnis = fortschreiben(portfolio, config, dt.date(2035, 1, 1),
+                         neuzugang_ab=referenz)     # GeVo-Strom danach
+bestand = mit_zugaengen(portfolio, ergebnis.zugaenge)
+write_portfolio(bestand, "bestand.parquet")
+scheibe = zeitscheibe(bestand, dt.date(2012, 1, 1))
+kennzahlen = auswertungs_verlauf(bestand, ergebnis.historie, config,
+                                 [dt.date(2020, 1, 1)],
+                                 scheiben=ergebnis.scheiben)
 ```
 
 Geprüft wird über die Test-Suite (Schema-Validierung, Verteilungs-Sanity-

@@ -176,6 +176,110 @@ def test_ohne_neuzugang_bleibt_alles_beim_alten(config):
     assert "ZUG" not in set(ergebnis.ledger["ereignis"])
 
 
+def test_generate_mit_referenzstichtag_ist_exakte_teilmenge(config):
+    """Review-Fix (HOCH): generate(config, bis=REF) = Batch-Auswertung des
+    Zugangs-Stroms bis REF — draw-then-filter, exakte Teilmenge des vollen
+    Laufs."""
+    from rechner_pipeline.bestand.generator import generate
+
+    voll = generate(config)
+    beschnitten = generate(config, bis=REF)
+    erwartet = voll[voll["insurance_start"] <= pd.Timestamp(REF)].reset_index(
+        drop=True
+    )
+    pd.testing.assert_frame_equal(beschnitten, erwartet)
+    assert 0 < len(beschnitten) < len(voll)
+
+
+def test_ein_config_workflow_funktioniert_ende_zu_ende(config):
+    """Der dokumentierte Hauptpfad mit EINER Config: Batch bis REF,
+    Fortschreibung mit Neuzugang danach — ohne Guard-Konflikt."""
+    from rechner_pipeline.bestand.generator import generate
+
+    basis = generate(config, bis=REF)
+    ergebnis = fortschreiben(basis, config, dt.date(2014, 1, 1), neuzugang_ab=REF)
+    assert len(ergebnis.zugaenge) > 0
+    bestand = mit_zugaengen(basis, ergebnis.zugaenge)
+    assert validate_portfolio(bestand) == []
+    # Alle Ledger-Policen liegen im Gesamtbestand:
+    assert set(ergebnis.ledger["police_id"]) <= set(bestand["police_id"])
+
+
+def test_neuzugang_ab_ohne_konfigurierten_neuzugang_ist_noop(config):
+    """Review-Fix: npj ueberall 0 -> neuzugang_ab wirkt wie None (kein
+    irrefuehrender Doppelbesiedelungs-Fehler)."""
+    cfg = copy.deepcopy(config)
+    for g in cfg.generationen:
+        g.neuzugang_pro_jahr = 0
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2012, 3, 1), "x": 40, "n": 20,
+         "t": 15, "tarif_generation": "KLV-1994"}
+    )
+    # Start nach REF, aber Feature aus -> kein Guard, identisch zu None:
+    ergebnis = fortschreiben(stamm, cfg, dt.date(2014, 1, 1), neuzugang_ab=REF)
+    assert len(ergebnis.zugaenge) == 0
+
+
+def test_neuzugang_ab_nach_horizont_ist_fehler(config):
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2000, 3, 1), "x": 40, "n": 30,
+         "t": 25, "tarif_generation": "KLV-1994"}
+    )
+    with pytest.raises(EreignisError, match="vertauschte Argumente"):
+        fortschreiben(stamm, config, dt.date(2008, 1, 1), neuzugang_ab=REF)
+
+
+def test_kaputte_config_wird_in_neuzugaenge_validiert(config):
+    from rechner_pipeline.bestand.config import TarifGeneration
+
+    cfg = copy.deepcopy(config)
+    cfg.generationen.append(
+        TarifGeneration(
+            name="KAPUTT", gueltig_von=dt.date(2005, 1, 1),
+            gueltig_bis=dt.date(2015, 12, 31), sample_size=10,
+            max_endalter=85, neuzugang_pro_jahr=5,
+        )
+    )
+    with pytest.raises(ValueError, match="Config ungueltig"):
+        neuzugaenge(cfg, REF, dt.date(2014, 1, 1))
+
+
+def test_randjahrgang_traegt_anteiliges_volumen():
+    """Review-Fix: Rand-Jahrgaenge ziehen ueber alle 12 Monate und verwerfen
+    ausserfensterige Draws — gleiche Monatsdichte wie volle Jahrgaenge."""
+    cfg = copy.deepcopy(load_config(EXAMPLE))
+    cfg.generationen[0].neuzugang_pro_jahr = 240  # KLV-1994: ab 1994-07-01
+    von = dt.date(1994, 1, 1)
+    zugaenge = neuzugaenge(cfg, von, dt.date(1996, 12, 31))
+    je_jahr = zugaenge["insurance_start"].dt.year.value_counts()
+    # 1994 hat nur 6 waehlbare Monate (Jul-Dez): erwartet ~120 statt 240.
+    assert je_jahr.get(1995, 0) > 200
+    assert 60 < je_jahr.get(1994, 0) < 180
+    # Keine Starts vor dem Gueltigkeitsfenster:
+    assert (zugaenge["insurance_start"] >= pd.Timestamp(dt.date(1994, 7, 1))).all()
+
+
+def test_report_lehnt_ledger_mit_fremden_policen_ab(config):
+    from rechner_pipeline.bestand import report
+    from rechner_pipeline.bestand.generator import generate
+
+    basis = generate(config, bis=REF)
+    ergebnis = fortschreiben(basis, config, dt.date(2014, 1, 1), neuzugang_ab=REF)
+    with pytest.raises(ValueError, match="Gesamtbestand"):
+        report.render_html(
+            basis, historie=ergebnis.historie, ledger=ergebnis.ledger
+        )
+    # Mit Gesamtbestand rendert der Bericht und weist die Zugaenge aus:
+    bestand = mit_zugaengen(basis, ergebnis.zugaenge)
+    html = report.render_html(
+        bestand,
+        stichtage=[dt.date(2012, 1, 1)],
+        historie=ergebnis.historie,
+        ledger=ergebnis.ledger,
+    )
+    assert "Neuzugang (ZUG)" in html
+
+
 def test_config_validierung_neuzugang(config):
     kaputt = copy.deepcopy(config)
     kaputt.generationen[0].neuzugang_pro_jahr = -1
