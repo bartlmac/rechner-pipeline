@@ -4,20 +4,21 @@ Project decision (Leo/Bartek 2026-08-11): every calculated quantity — premium,
 present values, reserve at a reporting date — comes EXCLUSIVELY from the
 kernel; the Bestandsdaten module carries no actuarial formulas of its own.
 
-Two evaluation paths:
+Two evaluation paths (governance decision 2026-08-12):
 
 * :func:`berechne_vertrag` — the STANDARD path against the stable, promoted
   kernel (:mod:`rechner_pipeline.kern`): in-process ``berechne(mp)``, no
-  subprocess (measured ~90x faster per contract). This is what the
-  Fortschreibung and the Ereignis-Engine use.
+  subprocess and no confinement — the promoted kernel is reviewed,
+  version-anchored repo code (measured ~90x faster per contract; bit-parity
+  of both paths is test-anchored). This is what the Fortschreibung and the
+  Ereignis-Engine use.
 * :func:`run_kernel_for_contract` — the migration path for TRANSIENT,
   freshly generated kernels (``generated/``) that bind to ``inputs.DEFAULT``
   at import time: one confined child process per contract (copy kernel to a
   scratch dir, render ``inputs.py`` via
   :func:`rechner_pipeline.models.bestand.render_inputs_py`, static security
   scan, execute under :mod:`rechner_pipeline.qa.fs_confine`). Unreviewed
-  generated code keeps its confinement; the promoted kernel is reviewed
-  repo code and needs none.
+  generated code keeps its confinement.
 """
 
 from __future__ import annotations
@@ -71,6 +72,10 @@ def berechne_vertrag(
     :class:`~rechner_pipeline.kern.model_point.ModelPoint` and returns
     ``berechne(mp)`` in the golden-master contract shape — same format as
     :func:`run_kernel_for_contract`, without subprocess or scratch files.
+
+    The output is reporting-date independent (a pure function of the model
+    point): a Fortschreibung over several Stichtage calls this ONCE per
+    contract and indexes per Stichtag via :func:`fortschreibungswerte`.
     """
     mp = ModelPoint(**model_point_kwargs(row, generation_fields))
     return berechne(mp)

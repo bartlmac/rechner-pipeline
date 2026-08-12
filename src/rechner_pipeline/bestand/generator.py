@@ -6,8 +6,8 @@ Spearman correlations from the TOML config, dependence via Gaussian copula
 portfolio DataFrame (:mod:`rechner_pipeline.models.bestand`).
 
 The generator computes NOTHING actuarial: no premiums, no present values, no
-reserves (project decision — calculated quantities come from the target
-kernel via :mod:`rechner_pipeline.bestand.kernlauf`).
+reserves (project decision — calculated quantities come from the stable
+kernel via :func:`rechner_pipeline.bestand.kernlauf.berechne_vertrag`).
 
 Determinism: one master seed from the config; every generation draws from its
 own child stream ``PCG64(SeedSequence([seed, generation_index]))``, so adding
