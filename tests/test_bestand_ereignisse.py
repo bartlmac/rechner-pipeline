@@ -366,9 +366,9 @@ def test_abgangsbetraege_summieren_ueber_scheiben(portfolio, config, beispiel_la
         if not relevante:
             continue
         if zeile["ereignis"] == "STO":
-            erwartet = grund.verlaufszeile(a).rkw + sum(
-                k.verlaufszeile(a - j).rkw for j, k in relevante
-            )
+            from rechner_pipeline.bestand.ereignisse import vertrags_rkw
+
+            erwartet = vertrags_rkw(grund, relevante, a)
         else:
             erwartet = grund.beitragsfreie_summe(a) + sum(
                 k.beitragsfreie_summe(a - j) for j, k in relevante
@@ -414,6 +414,64 @@ def test_validate_scheiben_findet_inkonsistenzen(config):
     kaputt.loc[kaputt.index[0], "entry_age"] = 99
     fehler = validate_scheiben(stamm, kaputt)
     assert any("entry_age" in f for f in fehler)
+    # NaN in der Erhoehungssumme wird explizit gefangen:
+    nan_scheiben = scheiben.copy()
+    nan_scheiben.loc[nan_scheiben.index[0], "sum_insured"] = float("nan")
+    assert any("NaN" in f for f in validate_scheiben(stamm, nan_scheiben))
+
+
+def test_validate_scheiben_cross_check_gegen_historie(config):
+    """Review-Fix: Scheiben nach PEX/terminalem Status (Tabellen-Mismatch)
+    werden mit uebergebener Historie erkannt."""
+    from rechner_pipeline.models.bestand import validate_scheiben
+
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
+    )
+    cfg = _mit_raten(config, erh_rate=0.999999, erh_prozent=0.05)
+    _, _, scheiben = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    # Fremde Historie: PEX am zweiten Jahrestag — Scheiben ab Jahr 2 liegen
+    # nicht mehr strikt davor:
+    fremde_historie = pd.DataFrame(
+        {
+            "police_id": pd.Series([10000001], dtype="int64"),
+            "status_id": pd.Series([2], dtype="int64"),
+            "status_code": pd.Series(["PEX"], dtype=object),
+            "status_date": pd.to_datetime([dt.date(2012, 6, 1)]),
+        }
+    )
+    fehler = validate_scheiben(stamm, scheiben, historie=fremde_historie)
+    assert any("nicht strikt vor" in f for f in fehler)
+    # Mit der eigenen (leeren bzw. konsistenten) Historie: kein Fehler.
+    assert validate_scheiben(stamm, scheiben, historie=None) == []
+
+
+def test_erh_rate_null_und_winzig_ziehen_gleiche_draws(config):
+    """Review-Fix: auch der vierte (ERH-)Draw wird bei Rate 0 verbraucht —
+    die Null-Baseline bleibt pfadweise vergleichbar."""
+    a = {"police_id": 10000001, "start": dt.date(2005, 4, 1), "x": 40, "n": 30, "t": 25}
+    b = {"police_id": 10000002, "start": dt.date(2007, 9, 1), "x": 35, "n": 30, "t": 25}
+    stamm = _mini_stamm(a, b)
+    bis = dt.date(2040, 1, 1)
+    basis = _mit_raten(config, storno_rate=0.02, pex_rate=0.01, tod_faktor=1.0,
+                       erh_rate=0.0, erh_prozent=0.0)
+    winzig = _mit_raten(config, storno_rate=0.02, pex_rate=0.01, tod_faktor=1.0,
+                        erh_rate=1e-300, erh_prozent=0.05)
+    _, ledger_basis, *_ = fortschreiben(stamm, basis, bis)
+    _, ledger_winzig, *_ = fortschreiben(stamm, winzig, bis)
+    pd.testing.assert_frame_equal(ledger_basis, ledger_winzig)
+
+
+def test_scheiben_praefix_bei_horizont_erweiterung(portfolio, config):
+    """Review-Fix: auch die Scheiben-Tabelle ist bei bis-Erweiterung ein
+    Praefix (fruehere Erhoehungen aendern sich nicht)."""
+    frueh = dt.date(2015, 1, 1)
+    _, _, s_frueh = fortschreiben(portfolio, config, frueh)
+    _, _, s_spaet = fortschreiben(portfolio, config, dt.date(2030, 1, 1))
+    praefix = s_spaet[s_spaet["erhoehung_datum"] <= pd.Timestamp(frueh)].reset_index(
+        drop=True
+    )
+    pd.testing.assert_frame_equal(praefix, s_frueh)
 
 
 def test_ereignis_config_validierung():

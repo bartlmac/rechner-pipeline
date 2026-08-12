@@ -180,10 +180,11 @@ def test_render_historie_ohne_ledger_ist_fehler(portfolio, fortschreibung):
 
 
 def test_render_mit_config_zeigt_aktuarielle_kennzahlen(portfolio, config, fortschreibung):
-    historie, ledger, *_ = fortschreibung
+    historie, ledger, scheiben = fortschreibung
     stichtage = [dt.date(j, 1, 1) for j in range(2010, 2031, 10)]
     mit = report.render_html(
-        portfolio, stichtage=stichtage, historie=historie, ledger=ledger, config=config
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger,
+        config=config, scheiben=scheiben,
     )
     assert "Aktuarielle Kennzahlen je Stichtag" in mit
     assert "Deckungskapital" in mit and "Rückkaufswert" in mit
@@ -196,9 +197,21 @@ def test_render_mit_config_zeigt_aktuarielle_kennzahlen(portfolio, config, forts
     assert "Aktuarielle Kennzahlen je Stichtag" in basis
     # Determinismus:
     nochmal = report.render_html(
-        portfolio, stichtage=stichtage, historie=historie, ledger=ledger, config=config
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger,
+        config=config, scheiben=scheiben,
     )
     assert mit == nochmal
+
+
+def test_render_erh_ledger_ohne_scheiben_ist_fehler(portfolio, config, fortschreibung):
+    """Review-Fix: ERH im Ledger + aktuarielle Kennzahlen ohne Scheiben
+    waeren still zu niedrig — fail-fast statt widerspruechlicher Bericht."""
+    historie, ledger, scheiben = fortschreibung
+    assert (ledger["ereignis"] == "ERH").any()
+    with pytest.raises(ValueError, match="ERH"):
+        report.render_html(
+            portfolio, historie=historie, ledger=ledger, config=config
+        )
 
 
 def test_render_ohne_ereignisse_im_horizont(portfolio, config):
@@ -267,6 +280,11 @@ def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
     # Scheiben ohne Historie ist ein Fehler:
     assert cli.main(
         ["--portfolio", str(parquet), "--scheiben", str(s)]
+    ) == 2
+    # Scheiben ohne Config ist ein Fehler (wuerden still ignoriert):
+    assert cli.main(
+        ["--portfolio", str(parquet), "--historie", str(h), "--ledger", str(l),
+         "--scheiben", str(s)]
     ) == 2
     # Fehlende Config-Datei ist ein Fehler:
     assert cli.main(

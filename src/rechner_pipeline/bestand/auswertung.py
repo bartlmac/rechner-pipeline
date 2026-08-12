@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig
-from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+from rechner_pipeline.bestand.ereignisse import bestand_mit_historie, vertrags_rkw
 from rechner_pipeline.bestand.zeitscheibe import months_between, zeitscheibe
 from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.models.bestand import model_point_kwargs
@@ -100,6 +100,11 @@ def _scheiben_kerne(
     je_police: Dict[int, List[Dict[str, Any]]] = {}
     for s in scheiben.to_dict("records"):
         pid = int(s["police_id"])
+        if pid not in haupt.index:
+            raise ValueError(
+                f"scheiben: police_id {pid} unbekannt im Bestand — "
+                "Scheiben und Bestand stammen nicht aus demselben Lauf"
+            )
         h = haupt.loc[pid]
         row = {
             "entry_age": s["entry_age"],
@@ -175,16 +180,35 @@ def auswertungs_verlauf(
                 pex_jahr = pex_jahre[pid]
             werte = vertragswerte(kerne[pid], int(months_exp), pex_jahr)
             # Erhoehungsscheiben des Vertrags, die am Stichtag existieren —
-            # jede mit ihrem Jahresversatz (PEX-Jahr entsprechend versetzt):
-            for s in scheiben_je_police.get(pid, ()):
-                if s["erh_datum"].date() > stichtag:
-                    continue
-                monate_s = months_between(s["erh_datum"].date(), stichtag)
-                pex_s = None if pex_jahr is None else pex_jahr - s["erh_jahr"]
-                werte_s = vertragswerte(s["kern"], monate_s, pex_s)
-                werte["deckungskapital"] += werte_s["deckungskapital"]
-                werte["rueckkaufswert"] += werte_s["rueckkaufswert"]
-                werte["vs_bfr"] += werte_s["vs_bfr"]
+            # jede mit ihrem Jahresversatz (PEX-Jahr entsprechend versetzt).
+            aktive = [
+                s for s in scheiben_je_police.get(pid, ())
+                if s["erh_datum"].date() <= stichtag
+            ]
+            if aktive and pex_jahr is None:
+                jahr = int(months_exp) // 12
+                for s in aktive:
+                    werte["deckungskapital"] += (
+                        s["kern"].verlaufszeile(jahr - s["erh_jahr"]).drx_bpfl
+                    )
+                # Stornoabschlag-Grenzen gelten je Vertrag, nicht je Scheibe:
+                werte["rueckkaufswert"] = vertrags_rkw(
+                    kerne[pid], [(s["erh_jahr"], s["kern"]) for s in aktive], jahr
+                )
+            elif aktive:
+                jahr = int(months_exp) // 12
+                for s in aktive:
+                    pex_s = pex_jahr - s["erh_jahr"]
+                    if pex_s <= 0:
+                        raise ValueError(
+                            f"police {pid}: Scheibe aus Vertragsjahr "
+                            f"{s['erh_jahr']} liegt nicht vor der "
+                            f"Beitragsfreistellung (Jahr {pex_jahr})"
+                        )
+                    werte["deckungskapital"] += s["kern"].reserve_beitragsfrei(
+                        pex_s, jahr - s["erh_jahr"]
+                    )
+                    werte["vs_bfr"] += s["kern"].beitragsfreie_summe(pex_s)
             agg["deckungskapital"] += werte["deckungskapital"]
             if werte["status"] == "PEX":
                 agg["deckungskapital_bfr"] += werte["deckungskapital"]

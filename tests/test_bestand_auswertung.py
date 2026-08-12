@@ -158,6 +158,82 @@ def test_auswertungs_verlauf_beispielbestand(portfolio, config, fortschreibung):
     assert nochmal == reihe
 
 
+def test_auswertung_pex_versatz_der_scheiben(config):
+    """Review-Fix-Verankerung: Scheiben laufen nach PEX mit ihrem eigenen
+    Jahresversatz beitragsfrei weiter (hand-konstruiertes, validiertes Paar)."""
+    import dataclasses
+
+    from rechner_pipeline.models.bestand import validate_scheiben, validate_statushistorie
+
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
+    )
+    scheiben = pd.DataFrame(
+        {
+            "police_id": pd.Series([10000001], dtype="int64"),
+            "scheiben_id": pd.Series([1], dtype="int64"),
+            "erhoehung_jahr": pd.Series([2], dtype="int64"),
+            "erhoehung_datum": pd.to_datetime([dt.date(2012, 6, 1)]),
+            "entry_age": pd.Series([47], dtype="int64"),
+            "duration": pd.Series([18], dtype="int64"),
+            "premium_duration": pd.Series([13], dtype="int64"),
+            "sum_insured": pd.Series([5000.0], dtype="float64"),
+        }
+    )
+    historie = pd.DataFrame(
+        {
+            "police_id": pd.Series([10000001], dtype="int64"),
+            "status_id": pd.Series([2], dtype="int64"),
+            "status_code": pd.Series(["PEX"], dtype=object),
+            "status_date": pd.to_datetime([dt.date(2013, 6, 1)]),  # PEX Jahr 3
+        }
+    )
+    assert validate_scheiben(stamm, scheiben, historie=historie) == []
+    assert validate_statushistorie(stamm, historie) == []
+
+    stichtag = dt.date(2016, 1, 1)  # Vertragsjahr 5, Scheibenjahr 3
+    reihe = auswertungs_verlauf(stamm, historie, config, [stichtag], scheiben=scheiben)
+    grund = _kern(stamm.iloc[0], config)
+    scheiben_kern = Rechenkern(
+        dataclasses.replace(grund.mp, x=47, n=18, t=13, sum_insured=5000.0)
+    )
+    erwartet_dk = grund.reserve_beitragsfrei(3, 5) + scheiben_kern.reserve_beitragsfrei(1, 3)
+    erwartet_vs = grund.beitragsfreie_summe(3) + scheiben_kern.beitragsfreie_summe(1)
+    assert reihe[0]["deckungskapital"] == pytest.approx(erwartet_dk, rel=1e-12)
+    assert reihe[0]["vs_bfr"] == pytest.approx(erwartet_vs, rel=1e-12)
+    assert reihe[0]["rueckkaufswert"] == 0.0
+
+    # Scheibe im/nach dem PEX-Jahr: fail-fast statt stiller Unsinn.
+    kaputt = scheiben.copy()
+    kaputt.loc[0, "erhoehung_jahr"] = 3
+    kaputt.loc[0, "erhoehung_datum"] = pd.Timestamp(dt.date(2013, 6, 1))
+    kaputt.loc[0, "entry_age"] = 48
+    kaputt.loc[0, "duration"] = 17
+    kaputt.loc[0, "premium_duration"] = 12
+    with pytest.raises(ValueError, match="nicht vor der Beitragsfreistellung"):
+        auswertungs_verlauf(stamm, historie, config, [stichtag], scheiben=kaputt)
+
+
+def test_scheiben_fremder_polizzen_sind_fehler(config):
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
+    )
+    fremd = pd.DataFrame(
+        {
+            "police_id": pd.Series([99999999], dtype="int64"),
+            "scheiben_id": pd.Series([1], dtype="int64"),
+            "erhoehung_jahr": pd.Series([1], dtype="int64"),
+            "erhoehung_datum": pd.to_datetime([dt.date(2011, 6, 1)]),
+            "entry_age": pd.Series([46], dtype="int64"),
+            "duration": pd.Series([19], dtype="int64"),
+            "premium_duration": pd.Series([14], dtype="int64"),
+            "sum_insured": pd.Series([5000.0], dtype="float64"),
+        }
+    )
+    with pytest.raises(ValueError, match="99999999"):
+        auswertungs_verlauf(stamm, None, config, [dt.date(2016, 1, 1)], scheiben=fremd)
+
+
 def test_unbekannte_generation_ist_fehler(config):
     stamm = _mini_stamm(
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 30,

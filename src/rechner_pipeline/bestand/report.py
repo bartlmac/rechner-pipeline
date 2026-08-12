@@ -243,6 +243,17 @@ def render_html(
         raise ValueError(
             "scheiben nur zusammen mit historie/ledger (ein fortschreiben-Lauf)"
         )
+    if (
+        config is not None
+        and ledger is not None
+        and scheiben is None
+        and (ledger["ereignis"] == "ERH").any()
+    ):
+        raise ValueError(
+            "Ledger enthaelt dynamische Erhoehungen (ERH) — ohne scheiben "
+            "waeren die aktuariellen Kennzahlen systematisch zu niedrig "
+            "(Ledger-Betraege enthalten die Scheiben bereits)"
+        )
     if stichtage is None:
         stichtage = jahresraster(df)
     generationen = generationsnamen(df)
@@ -339,8 +350,11 @@ def render_html(
 abgelaufene Verträge verlassen den Bestand am Buchungstag. Beitragsfreie
 Verträge (PEX) bleiben in-force und gehen mit ihrer ursprünglichen
 Versicherungssumme in den Verlauf ein; die bei Beitragsfreistellung
-fixierten beitragsfreien Summen (VS_bfr) zeigt die Tabelle. Alle Beträge
-stammen aus dem stabilen Rechenkern.</p>"""
+fixierten beitragsfreien Summen (VS_bfr) zeigt die Tabelle. Die Spalte
+"Σ Versicherungssumme" im Bestandsverlauf führt die Grundscheiben-Summen;
+die durch dynamische Erhöhungen hinzugekommenen Summen zeigt die
+ERH-Zeile der Tabelle, die aktuariellen Kennzahlen enthalten die Scheiben
+vollständig. Alle Beträge stammen aus dem stabilen Rechenkern.</p>"""
         else:
             fortschreibung_zeile = "<li>Fortschreibung: keine Ereignisse im Horizont</li>"
             ereignis_html = (

@@ -35,11 +35,17 @@ Model (Stufe 1, annual):
   keeps all earlier events identical (consistent prefix).
 * Draw contract (Common Random Numbers): per simulated policy year the draw
   order is FIXED and config-independent — death draw, then (premium-paying
-  track) lapse draw while ``j+1 < n``, then PEX draw while ``j+1 < t``.
-  Rates act only as thresholds; a rate of 0 still consumes its draw. Runs
-  of different configs on the same portfolio are therefore pathwise
-  comparable as long as their event histories agree (e.g. the lapse set at
-  storno_rate=0.02 is a subset of the one at 0.03).
+  track) lapse draw while ``j+1 < n``, then PEX draw while ``j+1 < t``,
+  then ERH draw while ``j+1 < t``. The ERH draw is skipped in the PEX year
+  itself and never drawn after PEX (outcome-dependent divergence, see
+  below). Rates act only as thresholds; a rate of 0 still consumes its
+  draw. Runs of different configs on the same portfolio are therefore
+  pathwise comparable as long as their event histories agree (e.g. the
+  lapse set at storno_rate=0.02 is a subset of the one at 0.03).
+* Stornoabschlag bei Scheiben: die Tarif-Grenzen (stoab_min/max) gelten je
+  VERTRAG, nicht je Scheibe — der Abzug wird einmal auf die Gesamtwerte
+  gerechnet (:func:`vertrags_rkw`); fuer Vertraege ohne Scheiben ist das
+  bit-identisch zur Kern-Verlaufszeile.
 
 Outputs (:class:`Fortschreibung`): a Statushistorie (follow-up status rows,
 schema :data:`~rechner_pipeline.models.bestand.STATUS_HISTORIE_SPALTEN`), an
@@ -97,6 +103,36 @@ def _leerer_frame(spalten) -> pd.DataFrame:
     return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in spalten})
 
 
+def vertrags_rkw(
+    grund: Rechenkern, scheiben: List[Tuple[int, Rechenkern]], jahr: int
+) -> float:
+    """Vertragsweiter Rueckkaufswert ueber Grund- und Erhoehungsscheiben.
+
+    Die Stornoabschlag-Grenzen des Tarifwerks (stoab_min/max) sind je
+    VERTRAG kalibriert: der Abzug wird einmal auf die Gesamtwerte gerechnet
+    (satz * (Gesamt-VS - Gesamt-Deckungsrueckstellung), begrenzt), nicht je
+    Scheibe — sonst wuerde die Untergrenze je Scheibe binden und der
+    Gesamtabzug mit der Scheibenzahl wachsen. Fuer Vertraege ohne Scheiben
+    ist das Ergebnis bit-identisch zur RKW-Spalte der Kern-Verlaufszeile.
+    """
+    zeilen = [grund.verlaufszeile(jahr)] + [
+        kern.verlaufszeile(jahr - erh_jahr) for erh_jahr, kern in scheiben
+    ]
+    mrv = 0.0
+    for z in zeilen:
+        mrv += z.vx_mrv
+    if grund.produkt.ist_flex_phase(jahr):
+        stoab = 0.0
+    else:
+        mp = grund.mp
+        vs = mp.sum_insured + sum(kern.mp.sum_insured for _, kern in scheiben)
+        dr = 0.0
+        for z in zeilen:
+            dr += z.drx_bpfl
+        stoab = min(mp.stoab_max, max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+    return max(0.0, mrv - stoab)
+
+
 class _Vertrag:
     """Grundscheibe + Erhoehungsscheiben eines Vertrags (Schichtungsprinzip).
 
@@ -125,9 +161,8 @@ class _Vertrag:
         return mp
 
     def rkw(self, jahr: int) -> float:
-        return self.grund.verlaufszeile(jahr).rkw + sum(
-            kern.verlaufszeile(jahr - erh_jahr).rkw
-            for erh_jahr, _, kern in self.scheiben
+        return vertrags_rkw(
+            self.grund, [(erh_jahr, kern) for erh_jahr, _, kern in self.scheiben], jahr
         )
 
     def beitragsfreie_summe(self, a0: int) -> float:

@@ -310,13 +310,17 @@ def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
     return errors
 
 
-def validate_scheiben(stamm: Any, scheiben: Any) -> List[str]:
+def validate_scheiben(stamm: Any, scheiben: Any, historie: Any = None) -> List[str]:
     """Validate Erhoehungsscheiben against their base contracts (error list).
 
     Per police: consecutive ``scheiben_id`` starting at 1 in
     ``erhoehung_jahr`` order; each Scheibe must be arithmetically consistent
     with its Hauptvertrag (age at increase, remaining terms, anniversary
-    date) and carry a positive Erhoehungssumme. Empty Scheiben are valid.
+    date) and carry a positive Erhoehungssumme. With ``historie`` the
+    cross-run invariant is checked too: every Erhoehung lies strictly
+    before the contract's Beitragsfreistellung or terminal status (the
+    engine can never produce anything else — this catches mixed-up table
+    pairs). Empty Scheiben are valid.
     """
     errors: List[str] = []
     cols = list(scheiben.columns)
@@ -334,10 +338,32 @@ def validate_scheiben(stamm: Any, scheiben: Any) -> List[str]:
     if unbekannt:
         errors.append(f"scheiben: police_id unbekannt: {sorted(unbekannt)[:5]}")
         return errors
-    if (scheiben["sum_insured"] <= 0).any():
+    # NaN-Vergleiche sind immer False — fehlende Summen explizit fangen.
+    if scheiben["sum_insured"].isna().any():
+        errors.append("scheiben: fehlende Werte (NaN) in sum_insured")
+    elif (scheiben["sum_insured"] <= 0).any():
         errors.append("scheiben: sum_insured <= 0")
     if not (scheiben["erhoehung_datum"].dt.day == 1).all():
         errors.append("scheiben: erhoehung_datum nicht auf Monatsersten normalisiert")
+
+    if historie is not None and len(historie) > 0:
+        # Cross-Check gegen die Statushistorie desselben Laufs: jede
+        # Erhoehung liegt strikt vor PEX bzw. terminalem Status.
+        grenz_status = ("PEX",) + TERMINALE_STATUS
+        grenzen_hist = (
+            historie[historie["status_code"].isin(grenz_status)]
+            .groupby("police_id")["status_date"]
+            .min()
+        )
+        for police_id, gruppe in scheiben.groupby("police_id", sort=False):
+            if police_id in grenzen_hist.index:
+                grenze = grenzen_hist.loc[police_id]
+                if (gruppe["erhoehung_datum"] >= grenze).any():
+                    errors.append(
+                        f"scheiben police {police_id}: Erhoehung nicht strikt "
+                        f"vor Beitragsfreistellung/terminalem Status "
+                        f"({grenze.date()}) — Tabellen aus demselben Lauf?"
+                    )
 
     haupt = stamm.set_index("police_id")
     for police_id, gruppe in scheiben.groupby("police_id", sort=False):

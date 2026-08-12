@@ -101,6 +101,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if ns.scheiben and not ns.config:
+        print(
+            "bestand_report: --scheiben verlangt --config (Scheiben wirken "
+            "nur in den aktuariellen Kennzahlen)",
+            file=sys.stderr,
+        )
+        return 2
     historie = ledger = scheiben = None
     if ns.historie:
         for name, pfad in (("Historie", ns.historie), ("Ledger", ns.ledger)):
@@ -130,6 +137,16 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
 
     df = read_portfolio(portfolio_path)
+    if scheiben is not None:
+        from rechner_pipeline.models.bestand import validate_scheiben
+
+        fehler = validate_scheiben(df, scheiben, historie=historie)
+        if fehler:
+            print(
+                f"bestand_report: Scheiben ungueltig: {'; '.join(fehler[:3])}",
+                file=sys.stderr,
+            )
+            return 2
     html = render_html(
         df,
         stichtage=stichtage,

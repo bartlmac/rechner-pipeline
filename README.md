@@ -252,9 +252,9 @@ config = load_config("examples/bestand_klv.toml")   # 2 KLV-Generationen
 portfolio = generate(config)                        # seed-deterministisch
 write_portfolio(portfolio, "bestand.parquet")
 scheibe = zeitscheibe(portfolio, dt.date(2012, 1, 1))
-historie, ledger = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
+historie, ledger, scheiben = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
 kennzahlen = auswertungs_verlauf(portfolio, historie, config,
-                                 [dt.date(2020, 1, 1)])
+                                 [dt.date(2020, 1, 1)], scheiben=scheiben)
 ```
 
 Geprüft wird über die Test-Suite (Schema-Validierung, Verteilungs-Sanity-
