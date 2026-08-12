@@ -182,6 +182,20 @@ Golden-Master-Engine der Abnahme-Schicht). Der transiente Migrationspfad
 (`generated/` + Gates) bleibt daneben bestehen — für künftige einmalige
 Übersetzungen weiterer Produkte.
 
+**Rechenrückgrat (seit Kern 2.0.0): ein (Semi-)Markov-Zustandsmodell**
+(`kern/zustandsmodell.py`) — benannte Zustände, jährliche Übergänge,
+Bewertung per Thiele-Rückwärtsrekursion, Dauerabhängigkeit über
+Zustandsraum-Erweiterung (Select-Perioden-Prinzip). KLV ist der
+2-Zustands-Spezialfall (aktiv/tot) hinter demselben Barwerte-Interface;
+künftige Produkte (z. B. Berufsunfähigkeit mit Invalidisierung/
+Reaktivierung) sind Konfigurationen dieser Engine, keine neuen Engines.
+Der Wechsel des produktiven Pfads von der Kommutations- auf die
+Zustandsmodell-Schiene wurde über eine **Toleranz-Überleitung** abgenommen
+(`qa/ueberleitung.py`: 6.170 Werte über 10 Modellpunkte, keine Abweichung
+außerhalb der Rundungsklasse, maximal 4e-13 relativ); die
+Kommutations-Schiene bleibt dauerhaft als Kreuz-Check erhalten, und die
+617/617-Parität gilt unverändert.
+
 ## Bestandsdaten: synthetischer, fortschreibbarer Bestand
 
 Das Modul `rechner_pipeline.bestand` erzeugt synthetische KLV-Bestände als
@@ -244,8 +258,29 @@ Prinzipien:
   und Rückkaufswert je Stichtag über den ganzen Bestand — in-process über
   `Rechenkern.zustand_am`, nach Beitragsfreistellung über die beitragsfreie
   Reserve. Der Bestandsbericht (`toolbox/bestand_report`, optional mit
-  `--historie`/`--ledger`/`--config`) zeigt Abgangs-Sichten und
-  Reserveverläufe.
+  `--historie`/`--ledger`/`--scheiben`/`--config`) zeigt Abgangs-Sichten
+  und Reserveverläufe.
+- **Ein-Befehl-Workflow:** `toolbox/bestand_fortschreibung` fährt den
+  ganzen GeVo-Strom (erzeugen bis Referenzstichtag, fortschreiben bis
+  Horizont) und schreibt alle Tabellen als Parquet; das Gate
+  `toolbox/bestand_validate` (B1) prüft Bestand, Statushistorie,
+  Erhöhungsscheiben und Plausibilitäts-Bänder im Toolbox-Contract
+  (JSON-stdout, Gate-Ledger).
+
+## Dokumente: Tarifpläne und Doku-Engine
+
+Die Produkttarifpläne liegen als Markdown unter `docs/tarifplaene/`
+(versionierbar und reviewbar wie Code; die ursprünglichen DOCX bleiben als
+Pipeline-Input-Fixtures in `examples/`). Gerendert wird über die
+**Doku-Engine** — ein gepinnter Quarto/Typst/Pandoc-Container
+(`docs/engine/`, optional als Image über ghcr, GitHub-Workflow
+`docs-image.yml`), damit keine Dokument-Toolchain in die
+Python-Dependencies wandert:
+
+```bash
+docs/engine/render.sh                 # alle Tarifplaene nach PDF (Typst)
+IMAGE=local docs/engine/render.sh     # ohne ghcr: Engine lokal bauen
+```
 
 Verwendung:
 
