@@ -25,8 +25,20 @@ EXAMPLE = REPO_ROOT / "examples" / "bestand_klv.toml"
 
 
 @pytest.fixture(scope="module")
-def portfolio():
-    return generate(load_config(EXAMPLE))
+def config():
+    return load_config(EXAMPLE)
+
+
+@pytest.fixture(scope="module")
+def portfolio(config):
+    return generate(config)
+
+
+@pytest.fixture(scope="module")
+def fortschreibung(portfolio, config):
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+
+    return fortschreiben(portfolio, config, dt.date(2035, 1, 1))
 
 
 # --------------------------------------------------------------------------- #
@@ -99,6 +111,90 @@ def test_html_has_no_meta_commentary(html):
 
 
 # --------------------------------------------------------------------------- #
+# Ereignis-/Abgangs-Sichten
+# --------------------------------------------------------------------------- #
+
+
+def test_ereignis_kennzahlen_summen_und_jahresreihe(fortschreibung):
+    from rechner_pipeline.bestand.kennzahlen import (
+        EREIGNIS_REIHENFOLGE,
+        ereignis_summen,
+        ereignisse_je_jahr,
+    )
+
+    _, ledger = fortschreibung
+    summen = ereignis_summen(ledger)
+    assert [s["ereignis"] for s in summen] == [
+        c for c in EREIGNIS_REIHENFOLGE if (ledger["ereignis"] == c).any()
+    ]
+    for s in summen:
+        rows = ledger[ledger["ereignis"] == s["ereignis"]]
+        assert s["anzahl"] == len(rows)
+        assert s["summe_betrag"] == pytest.approx(float(rows["betrag"].sum()))
+    reihe = ereignisse_je_jahr(ledger)
+    jahre = [r["jahr"] for r in reihe]
+    assert jahre == list(range(jahre[0], jahre[-1] + 1))  # lueckenlos
+    assert sum(sum(r[c] for c in EREIGNIS_REIHENFOLGE) for r in reihe) == len(ledger)
+
+
+def test_status_verlauf_zaehlt_pol_und_pex(portfolio, fortschreibung):
+    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+    from rechner_pipeline.bestand.kennzahlen import status_verlauf
+    from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+
+    historie, _ = fortschreibung
+    sicht = bestand_mit_historie(portfolio, historie)
+    stichtag = dt.date(2020, 1, 1)
+    reihe = status_verlauf(sicht, [stichtag])
+    scheibe = zeitscheibe(sicht, stichtag)
+    assert reihe[0]["POL"] + reihe[0]["PEX"] == len(scheibe)
+    assert reihe[0]["PEX"] > 0  # Beispielraten erzeugen Beitragsfreistellungen
+
+
+def test_render_mit_historie_zeigt_abgangssichten(portfolio, fortschreibung):
+    historie, ledger = fortschreibung
+    stichtage = [dt.date(j, 1, 1) for j in range(2005, 2031, 5)]
+    ohne = report.render_html(portfolio, stichtage=stichtage)
+    mit = report.render_html(
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger
+    )
+    assert "Fortschreibung und Abgänge" in mit
+    assert "Beitragsfreistellung (PEX)" in mit
+    assert "Storno (STO)" in mit
+    assert "abgangsbereinigt" in mit
+    assert "Fortschreibung und Abgänge" not in ohne  # Default unverändert
+    assert mit.count("<svg") == ohne.count("<svg") + 2
+    # Determinismus auch mit Historie:
+    nochmal = report.render_html(
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger
+    )
+    assert mit == nochmal
+
+
+def test_render_historie_ohne_ledger_ist_fehler(portfolio, fortschreibung):
+    historie, ledger = fortschreibung
+    with pytest.raises(ValueError, match="gehoeren zusammen"):
+        report.render_html(portfolio, historie=historie)
+    with pytest.raises(ValueError, match="gehoeren zusammen"):
+        report.render_html(portfolio, ledger=ledger)
+
+
+def test_render_ohne_ereignisse_im_horizont(portfolio, config):
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+
+    frueh = portfolio["insurance_start"].min().date()
+    historie, ledger = fortschreiben(portfolio, config, frueh)
+    assert len(ledger) == 0
+    html = report.render_html(
+        portfolio,
+        stichtage=[dt.date(2010, 1, 1)],
+        historie=historie,
+        ledger=ledger,
+    )
+    assert "Keine Ereignisse im Berichtszeitraum" in html
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 
@@ -122,3 +218,23 @@ def test_cli_missing_portfolio_exits_2(tmp_path):
 def test_cli_bad_stichtag_exits_2(portfolio, tmp_path):
     parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
     assert cli.main(["--portfolio", str(parquet), "--stichtage", "kein-datum"]) == 2
+
+
+def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
+    historie, ledger = fortschreibung
+    parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
+    h = write_portfolio(historie, tmp_path / "h.parquet")
+    l = write_portfolio(ledger, tmp_path / "l.parquet")
+    out = tmp_path / "bericht.html"
+    code = cli.main(
+        ["--portfolio", str(parquet), "--out", str(out),
+         "--historie", str(h), "--ledger", str(l),
+         "--stichtage", "2010-01-01,2020-01-01,2030-01-01"]
+    )
+    assert code == 0
+    text = out.read_text(encoding="utf-8")
+    assert "Fortschreibung und Abgänge" in text
+    # Nur eines von beiden ist ein Fehler:
+    assert cli.main(
+        ["--portfolio", str(parquet), "--historie", str(h)]
+    ) == 2

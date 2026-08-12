@@ -9,7 +9,11 @@ Usage::
 
     python -m rechner_pipeline.toolbox.bestand_report \\
         --portfolio bestand.parquet --out bericht.html \\
+        [--historie historie.parquet --ledger ledger.parquet] \\
         [--stichtage 2005-01-01,2010-01-01] [--titel "KLV-Bestand"]
+
+``--historie``/``--ledger`` (beide zusammen, ein ``fortschreiben``-Lauf)
+schalten die Ereignis-/Abgangs-Sichten frei.
 """
 
 from __future__ import annotations
@@ -44,6 +48,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--portfolio", required=True, help="Pfad zur Parquet-Datei.")
     parser.add_argument("--out", default=None, help="Zieldatei (Default: stdout).")
     parser.add_argument(
+        "--historie",
+        default=None,
+        help="Statushistorie-Parquet (nur zusammen mit --ledger).",
+    )
+    parser.add_argument(
+        "--ledger",
+        default=None,
+        help="Ereignis-Ledger-Parquet (nur zusammen mit --historie).",
+    )
+    parser.add_argument(
         "--stichtage",
         default=None,
         help="Kommagetrennte ISO-Daten; Default: Jahresraster über die Vertragslaufzeiten.",
@@ -61,12 +75,30 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"bestand_report: {exc}", file=sys.stderr)
         return 2
 
+    if (ns.historie is None) != (ns.ledger is None):
+        print(
+            "bestand_report: --historie und --ledger gehoeren zusammen "
+            "(ein fortschreiben-Lauf)",
+            file=sys.stderr,
+        )
+        return 2
+    historie = ledger = None
+    if ns.historie:
+        for name, pfad in (("Historie", ns.historie), ("Ledger", ns.ledger)):
+            if not Path(pfad).is_file():
+                print(f"bestand_report: {name} nicht gefunden: {pfad}", file=sys.stderr)
+                return 2
+        historie = read_portfolio(Path(ns.historie))
+        ledger = read_portfolio(Path(ns.ledger))
+
     df = read_portfolio(portfolio_path)
     html = render_html(
         df,
         stichtage=stichtage,
         titel=ns.titel,
         quelle_hash=portfolio_hash(portfolio_path),
+        historie=historie,
+        ledger=ledger,
     )
     if ns.out:
         out_path = Path(ns.out)

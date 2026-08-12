@@ -50,3 +50,81 @@ def verlauf(df: pd.DataFrame, stichtage: List[_dt.date]) -> List[Dict[str, Any]]
 def generationsnamen(df: pd.DataFrame) -> List[str]:
     """Alle Tarifgenerationen im Bestand, stabil sortiert."""
     return sorted(str(v) for v in df["tarif_generation"].unique())
+
+
+# --------------------------------------------------------------------------- #
+# Ereignis-Kennzahlen (Fortschreibung: Statushistorie + Ledger)
+# --------------------------------------------------------------------------- #
+
+#: Feste fachliche Reihenfolge der Ereignisse in Tabellen und Grafiken.
+EREIGNIS_REIHENFOLGE = ("PEX", "STO", "TOD", "ABL")
+
+#: Klartext je Ereignis-Code (Berichts-Beschriftung).
+EREIGNIS_LABELS = {
+    "PEX": "Beitragsfreistellung",
+    "STO": "Storno",
+    "TOD": "Tod",
+    "ABL": "Ablauf",
+}
+
+
+def ereignis_summen(ledger: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Anzahl und Betragssumme je Ereignisart (feste Reihenfolge).
+
+    ``betrag_art`` ist je Ereignis einheitlich (RKW, VS_bfr, ...); Ereignisse
+    ohne Vorkommen werden ausgelassen.
+    """
+    summen: List[Dict[str, Any]] = []
+    for code in EREIGNIS_REIHENFOLGE:
+        rows = ledger[ledger["ereignis"] == code]
+        if len(rows) == 0:
+            continue
+        summen.append(
+            {
+                "ereignis": code,
+                "label": EREIGNIS_LABELS[code],
+                "anzahl": int(len(rows)),
+                "betrag_art": str(rows["betrag_art"].iloc[0]),
+                "summe_betrag": float(rows["betrag"].sum()),
+            }
+        )
+    return summen
+
+
+def ereignisse_je_jahr(ledger: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Ereigniszählung je Kalenderjahr (aufsteigend, lückenlos)."""
+    if len(ledger) == 0:
+        return []
+    jahre = ledger["status_date"].dt.year
+    von, bis = int(jahre.min()), int(jahre.max())
+    reihe: List[Dict[str, Any]] = []
+    for jahr in range(von, bis + 1):
+        im_jahr = ledger[jahre == jahr]
+        eintrag: Dict[str, Any] = {"jahr": jahr}
+        for code in EREIGNIS_REIHENFOLGE:
+            eintrag[code] = int((im_jahr["ereignis"] == code).sum())
+        reihe.append(eintrag)
+    return reihe
+
+
+def status_verlauf(
+    sicht: pd.DataFrame, stichtage: List[_dt.date]
+) -> List[Dict[str, Any]]:
+    """In-force-Bestand je Stichtag, aufgeteilt nach Status (POL/PEX).
+
+    ``sicht`` ist die Mehrzeilen-Sicht aus
+    :func:`rechner_pipeline.bestand.ereignisse.bestand_mit_historie`; die
+    Zeitscheibe wählt je Police den jüngsten in-force-Status.
+    """
+    reihe: List[Dict[str, Any]] = []
+    for stichtag in stichtage:
+        scheibe = zeitscheibe(sicht, stichtag)
+        counts = scheibe["status_code"].value_counts()
+        reihe.append(
+            {
+                "stichtag": stichtag.isoformat(),
+                "POL": int(counts.get("POL", 0)),
+                "PEX": int(counts.get("PEX", 0)),
+            }
+        )
+    return reihe

@@ -6,9 +6,15 @@ Abhängigkeit Alter↔Laufzeit (macht die Copula-Parametrisierung sichtbar) und
 eine Kennzahlen-Tabelle. Alle Grafiken sind Inline-SVG — eine Datei, kein
 Werkzeug beim Empfänger nötig.
 
+Mit Statushistorie und Ereignis-Ledger (Fortschreibung, optional) zeigt der
+Bericht zusätzlich die Ereignis-/Abgangs-Sichten: der Bestandsverlauf wird
+abgangsbereinigt (Zeitscheiben auf der Mehrzeilen-Sicht), dazu kommen der
+in-force-Bestand nach Status (beitragspflichtig/beitragsfrei), die
+Ereignisse je Kalenderjahr und die Betragssummen je Ereignisart.
+
 Determinismus (Golden-Master-fähig): fester ``svg.hashsalt``, Schriften als
 Pfade (``svg.fonttype='path'``), ``metadata={'Date': None}`` beim Export,
-explizite Sortierungen — gleiche Parquet-Datei ergibt den byte-identischen
+explizite Sortierungen — gleiche Parquet-Dateien ergeben den byte-identischen
 Bericht (bei gepinntem matplotlib).
 """
 
@@ -25,14 +31,20 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402  (Backend muss vor pyplot stehen)
 import pandas as pd  # noqa: E402
 
+from rechner_pipeline.bestand.ereignisse import bestand_mit_historie  # noqa: E402
 from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
+    EREIGNIS_LABELS,
+    EREIGNIS_REIHENFOLGE,
+    ereignis_summen,
+    ereignisse_je_jahr,
     generationsnamen,
     jahresraster,
+    status_verlauf,
     verlauf,
 )
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe  # noqa: E402
 
-REPORT_VERSION = "1.0.0"
+REPORT_VERSION = "1.1.0"
 
 _RC = {
     "svg.hashsalt": "rechner-pipeline-bestand",
@@ -45,6 +57,17 @@ _RC = {
 
 #: Feste Generationen-Farben (deterministisch, unabhängig von der Zeichenreihenfolge).
 _FARBEN = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b")
+
+#: Feste Ereignis-Farben (PEX/STO/TOD/ABL — Reihenfolge wie EREIGNIS_REIHENFOLGE).
+_EREIGNIS_FARBEN = {
+    "PEX": "#9467bd",
+    "STO": "#ff7f0e",
+    "TOD": "#d62728",
+    "ABL": "#2ca02c",
+}
+
+#: Status-Farben der in-force-Sicht.
+_STATUS_FARBEN = {"POL": "#1f77b4", "PEX": "#9467bd"}
 
 
 def _farbe(index: int) -> str:
@@ -130,6 +153,42 @@ def _chart_scatter_alter_laufzeit(df: pd.DataFrame, generationen: List[str]) -> 
     return _svg(fig)
 
 
+def _chart_status_verlauf(reihe: List[Dict[str, Any]]) -> str:
+    x = list(range(len(reihe)))
+    labels = [r["stichtag"][:4] for r in reihe]
+    fig, ax = plt.subplots()
+    unten = [0] * len(reihe)
+    for status, label in (("POL", "beitragspflichtig (POL)"), ("PEX", "beitragsfrei (PEX)")):
+        werte = [r[status] for r in reihe]
+        ax.bar(x, werte, bottom=unten, label=label,
+               color=_STATUS_FARBEN[status], width=0.8)
+        unten = [u + w for u, w in zip(unten, werte)]
+    schritt = max(1, len(x) // 12)
+    ax.set_xticks(x[::schritt], labels[::schritt])
+    ax.set_ylabel("in-force-Verträge")
+    ax.set_xlabel("Stichtag (1.1. des Jahres)")
+    ax.legend(loc="upper right", fontsize=8)
+    return _svg(fig)
+
+
+def _chart_ereignisse_je_jahr(reihe: List[Dict[str, Any]]) -> str:
+    x = list(range(len(reihe)))
+    labels = [str(r["jahr"]) for r in reihe]
+    fig, ax = plt.subplots()
+    unten = [0] * len(reihe)
+    for code in EREIGNIS_REIHENFOLGE:
+        werte = [r[code] for r in reihe]
+        ax.bar(x, werte, bottom=unten, label=f"{EREIGNIS_LABELS[code]} ({code})",
+               color=_EREIGNIS_FARBEN[code], width=0.8)
+        unten = [u + w for u, w in zip(unten, werte)]
+    schritt = max(1, len(x) // 12)
+    ax.set_xticks(x[::schritt], labels[::schritt])
+    ax.set_ylabel("Ereignisse")
+    ax.set_xlabel("Kalenderjahr")
+    ax.legend(loc="upper right", fontsize=8)
+    return _svg(fig)
+
+
 # --------------------------------------------------------------------------- #
 # Report
 # --------------------------------------------------------------------------- #
@@ -140,17 +199,33 @@ def render_html(
     stichtage: Optional[List[_dt.date]] = None,
     titel: str = "Bestandsbericht",
     quelle_hash: Optional[str] = None,
+    historie: Optional[pd.DataFrame] = None,
+    ledger: Optional[pd.DataFrame] = None,
 ) -> str:
-    """Rendert den vollständigen Bericht als selbst-enthaltenes HTML."""
+    """Rendert den vollständigen Bericht als selbst-enthaltenes HTML.
+
+    ``historie``/``ledger`` (beide zusammen, aus demselben
+    ``fortschreiben``-Lauf) schalten die Ereignis-/Abgangs-Sichten frei;
+    der Bestandsverlauf rechnet dann auf der abgangsbereinigten
+    Mehrzeilen-Sicht statt auf dem Basisbestand.
+    """
+    if (historie is None) != (ledger is None):
+        raise ValueError(
+            "historie und ledger gehoeren zusammen (ein fortschreiben-Lauf) — "
+            "entweder beide angeben oder keines"
+        )
     if stichtage is None:
         stichtage = jahresraster(df)
     generationen = generationsnamen(df)
-    reihe = verlauf(df, stichtage)
+    # Mit Historie rechnen Verlauf und Zeitscheiben abgangsbereinigt auf der
+    # Mehrzeilen-Sicht; Strukturbilder je Vertrag bleiben auf dem Basisbestand.
+    bestand = bestand_mit_historie(df, historie) if historie is not None else df
+    reihe = verlauf(bestand, stichtage)
     # Strukturbild am Bestands-Hoechststand (erster Maximums-Stichtag —
     # deterministisch und aussagekraeftiger als der duenne Bestandsauslauf).
     hoechststand = max(reihe, key=lambda r: (r["vertraege"], -reihe.index(r)))
     struktur_stichtag = _dt.date.fromisoformat(hoechststand["stichtag"])
-    scheibe = zeitscheibe(df, struktur_stichtag)
+    scheibe = zeitscheibe(bestand, struktur_stichtag)
 
     with plt.rc_context(_RC):
         svg_vertraege = _chart_verlauf_vertraege(reihe, generationen)
@@ -165,6 +240,10 @@ def render_html(
             scheibe, "sum_insured", "Versicherungssummen", "Summe", 20, generationen
         )
         svg_scatter = _chart_scatter_alter_laufzeit(df, generationen)
+        svg_status = svg_ereignisse = ""
+        if historie is not None and len(ledger) > 0:
+            svg_status = _chart_status_verlauf(status_verlauf(bestand, stichtage))
+            svg_ereignisse = _chart_ereignisse_je_jahr(ereignisse_je_jahr(ledger))
 
     zeilen = []
     for r in reihe:
@@ -194,6 +273,46 @@ def render_html(
         else ""
     )
 
+    fortschreibung_zeile = ""
+    ereignis_html = ""
+    if historie is not None:
+        summen = ereignis_summen(ledger)
+        if summen:
+            letzter = ledger["status_date"].max().date().isoformat()
+            fortschreibung_zeile = (
+                f"<li>Fortschreibung: {len(ledger)} Ereignisse "
+                f"(letztes am {letzter})</li>"
+            )
+            summen_zeilen = "".join(
+                f"<tr><td>{s['label']} ({s['ereignis']})</td>"
+                f"<td class='num'>{s['anzahl']}</td>"
+                f"<td>{s['betrag_art']}</td>"
+                f"<td class='num'>{_zahl(s['summe_betrag'], 2)}</td></tr>"
+                for s in summen
+            )
+            summen_tabelle = (
+                "<table><thead><tr><th>Ereignis</th><th>Anzahl</th>"
+                "<th>Betrag-Art</th><th>Σ Betrag</th></tr></thead><tbody>"
+                + summen_zeilen
+                + "</tbody></table>"
+            )
+            ereignis_html = f"""
+<h2>Fortschreibung und Abgänge</h2>
+<div class="charts">{svg_status}{svg_ereignisse}</div>
+{summen_tabelle}
+<p>Der Bestandsverlauf oben ist abgangsbereinigt: stornierte, gestorbene und
+abgelaufene Verträge verlassen den Bestand am Buchungstag. Beitragsfreie
+Verträge (PEX) bleiben in-force und gehen mit ihrer ursprünglichen
+Versicherungssumme in den Verlauf ein; die bei Beitragsfreistellung
+fixierten beitragsfreien Summen (VS_bfr) zeigt die Tabelle. Alle Beträge
+stammen aus dem stabilen Rechenkern.</p>"""
+        else:
+            fortschreibung_zeile = "<li>Fortschreibung: keine Ereignisse im Horizont</li>"
+            ereignis_html = (
+                "\n<h2>Fortschreibung und Abgänge</h2>"
+                "<p>Keine Ereignisse im Berichtszeitraum.</p>"
+            )
+
     return f"""<!doctype html>
 <html lang="de">
 <head>
@@ -218,11 +337,13 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 <li>Tarifgenerationen: {", ".join(generationen)}</li>
 <li>Vertragszeitraum: {zeitraum}</li>
 <li>Stichtage: {len(stichtage)} ({stichtage[0].isoformat()} bis {stichtage[-1].isoformat()})</li>
+{fortschreibung_zeile}
 {quelle}
 </ul>
 
 <h2>Bestandsverlauf</h2>
 <div class="charts">{svg_vertraege}{svg_summe}</div>
+{ereignis_html}
 
 <h2>Bestandsstruktur am {struktur_stichtag.isoformat()} (Höchststand: {hoechststand["vertraege"]} Verträge)</h2>
 <div class="charts">{svg_alter}{svg_laufzeit}{svg_summen}</div>
