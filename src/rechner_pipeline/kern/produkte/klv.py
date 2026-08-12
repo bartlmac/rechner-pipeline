@@ -23,10 +23,10 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 from rechner_pipeline.kern import kommutation
-from rechner_pipeline.kern.barwerte import Barwerte
 from rechner_pipeline.kern.kommutation import TafelBereichError
 from rechner_pipeline.kern.konventionen import installment_surcharge
 from rechner_pipeline.kern.model_point import ModelPoint
+from rechner_pipeline.kern.zustandsmodell import ZustandsBarwerte
 
 #: Verlaufswerte-Zeilen (Blattzeilen 16..66 -> Vertragsjahre 0..50, blattfest).
 #: Teil des Golden-Master-Contracts (612 Tabellenzellen = 12 Spalten x 51 Zeilen).
@@ -87,13 +87,18 @@ class KLV:
 
     def __init__(self, mp: ModelPoint, barwerte=None) -> None:
         """``barwerte`` erlaubt ein alternatives Rechenrückgrat mit dem
-        ``Barwerte``-Interface (z. B. ``ZustandsBarwerte`` für die
-        Toleranz-Überleitung); Default ist die Kommutations-Schiene —
-        der Golden-Master-Pfad, solange der Serving-Wechsel nicht
-        abgenommen ist."""
+        ``Barwerte``-Interface. Produktiver Default ist seit der
+        abgenommenen Toleranz-Überleitung (kern 2.0.0, Bartek 2026-08-12;
+        6170 Werte, 0 abweichend, max. 4e-13 relativ) das
+        Zustandsmodell-Rückgrat; die Kommutations-Schiene bleibt als
+        Kreuz-Check-Schiene erhalten (``qa/ueberleitung`` injiziert beide
+        explizit)."""
         self.mp = mp
         self.kom = kommutation.fuer(mp.sex, mp.tafel, mp.zins)
-        self.bw = barwerte if barwerte is not None else Barwerte(self.kom, mp.zins)
+        self.bw = (
+            barwerte if barwerte is not None
+            else ZustandsBarwerte(self.kom, mp.zins)
+        )
         self._scalar_cache: Dict[str, float] = {}
         self._zeilen_cache: Dict[int, Verlaufszeile] = {}
 

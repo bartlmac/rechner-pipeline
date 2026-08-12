@@ -25,14 +25,15 @@ Schichten::
     produkte/       Produkt-Registry; KLV-Zielgrößen in produkte/klv.py
     rechenkern      Fassade Rechenkern(mp) + berechne(mp, produkt="klv")
 
-Rechenrückgrat (Beschluss 2026-08-12): Das Zustandsmodell ist das
-Ziel-Rückgrat des Monolithen (KLV = 2-Zustands-Spezialfall, künftige
-Produkte = Konfigurationen). Der Serving-Wechsel des KLV-Produkts ist ein
-governierter Schritt: Abnahme über die Toleranz-Überleitung
-(:mod:`rechner_pipeline.qa.ueberleitung`, Kreuz-Modell-Gate beider
-Schienen); bis dahin rechnet KLV auf der Kommutations-Schiene
-(Golden-Master-Pfad), danach bleibt die Kommutation dauerhaft als
-Kreuz-Check-Schiene erhalten.
+Rechenrückgrat (Beschluss 2026-08-12): Das Zustandsmodell ist das Rückgrat
+des Monolithen (KLV = 2-Zustands-Spezialfall, künftige Produkte =
+Konfigurationen). Der Wechsel des produktiven KLV-Pfads von der
+Kommutations- auf die Zustandsmodell-Schiene wurde per Toleranz-Überleitung
+abgenommen (Bartek, 2026-08-12: 6170 Werte über 10 Modellpunkte, 0
+außerhalb der Rundungsklasse, max. 4e-13 relativ) — seither rechnet KLV
+produktiv auf dem Zustandsmodell. Die Kommutations-Schiene bleibt dauerhaft
+als Kreuz-Check-Schiene erhalten
+(:mod:`rechner_pipeline.qa.ueberleitung` injiziert beide explizit).
 
 Öffentliche API::
 
@@ -87,9 +88,13 @@ from rechner_pipeline.kern.rechenkern import (
 #: Bereich 0..50 (Fail-fast statt unbelegter Werte ausserhalb des
 #: Golden-Master-/Anker-Bereichs; Rechenwerte unverändert, 617/617 + Anker).
 #: 1.1.0 = Zustandsmodell-Rückgrat (Semi-Markov-Engine + ZustandsBarwerte,
-#: additiv; Serving unverändert Kommutation — Wechsel nach Abnahme der
-#: Toleranz-Überleitung, qa/ueberleitung).
-__version__ = "1.1.0"
+#: additiv; produktiver Pfad unverändert Kommutation).
+#: 2.0.0 = Wechsel des produktiven KLV-Pfads auf das Zustandsmodell
+#: (abgenommene Toleranz-Überleitung: 6170 Werte, 0 abweichend, max.
+#: 4e-13 relativ; Anker-Fixtures mit Begründung neu eingefroren;
+#: 617/617-Excel-Fixtures unverändert grün — compare rundet auf 4
+#: Nachkommastellen, die Differenzen liegen bei 1e-13).
+__version__ = "2.0.0"
 
 __all__ = [
     "ModelPoint",

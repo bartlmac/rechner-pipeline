@@ -54,13 +54,16 @@ def test_klv_auf_zustandsmodell_liefert_gleichen_contract_shape():
     assert list(zeilen[0]) == list(klassisch.verlaufswerte()[0])
 
 
-def test_default_pfad_bleibt_kommutation():
-    """Serving-Wechsel ist NICHT vollzogen: ohne Injektion rechnet KLV auf
-    der Kommutations-Schiene (Golden-Master-Pfad; Wechsel erst nach
-    Abnahme des Überleitungs-Reports)."""
+def test_default_pfad_ist_zustandsmodell():
+    """Der Wechsel des produktiven Pfads ist vollzogen (Abnahme 2026-08-12):
+    ohne Injektion rechnet KLV auf dem Zustandsmodell-Rückgrat; die
+    Kommutations-Schiene bleibt als injizierbare Kreuz-Check-Schiene."""
     from rechner_pipeline.kern.barwerte import Barwerte
 
-    assert isinstance(KLV(KLV_DEFAULT).bw, Barwerte)
+    assert isinstance(KLV(KLV_DEFAULT).bw, ZustandsBarwerte)
+    kom = fuer(KLV_DEFAULT.sex, KLV_DEFAULT.tafel, KLV_DEFAULT.zins)
+    injiziert = KLV(KLV_DEFAULT, barwerte=Barwerte(kom, KLV_DEFAULT.zins))
+    assert isinstance(injiziert.bw, Barwerte)
 
 
 def test_ueberleitung_meldet_echte_abweichungen():

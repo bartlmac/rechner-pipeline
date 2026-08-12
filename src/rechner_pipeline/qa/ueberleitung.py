@@ -27,6 +27,7 @@ import dataclasses
 from typing import Any, Dict, Iterable, List
 
 from rechner_pipeline.kern import kommutation
+from rechner_pipeline.kern.barwerte import Barwerte
 from rechner_pipeline.kern.model_point import ModelPoint
 from rechner_pipeline.kern.produkte.klv import KLV
 from rechner_pipeline.kern.zustandsmodell import ZustandsBarwerte
@@ -98,7 +99,9 @@ def ueberleitung_klv(
     for mp_index, mp in enumerate(modellpunkte):
         anzahl_mps += 1
         kom = kommutation.fuer(mp.sex, mp.tafel, mp.zins)
-        klassisch = KLV(mp)
+        # Beide Schienen EXPLIZIT injizieren — das Gate ist unabhaengig davon,
+        # welche Schiene gerade der produktive Default ist.
+        klassisch = KLV(mp, barwerte=Barwerte(kom, mp.zins))
         zustand = KLV(mp, barwerte=ZustandsBarwerte(kom, mp.zins))
         for name, a in klassisch.scalars().items():
             vergleiche(mp_index, mp, f"scalar {name}", a, zustand.scalars()[name])

@@ -143,17 +143,26 @@ def test_kernel_run_varies_with_contract():
 
 @pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter generated/")
 def test_in_process_pfad_paritaet_mit_subprozess_kernel():
-    """Parity-Gate: stabiler Kern (in-process) == transienter Kernel (Subprozess).
+    """Parity-Gate: stabiler Kern (in-process) vs. transienter Kernel (Subprozess).
 
-    Beleg fuer die kuenftige Umstellung der Fortschreibung auf
-    ``berechne_vertrag`` — beide Pfade liefern fuer denselben Vertrag
-    denselben Contract-Output (JSON-Roundtrip-Genauigkeit).
+    Der transiente Migrations-Kernel rechnet auf der Kommutations-Schiene;
+    der stabile Kern seit 2.0.0 produktiv auf dem Zustandsmodell (Wechsel
+    per Toleranz-Ueberleitung abgenommen). Der Vergleich laeuft daher in
+    der Rundungsklasse der Ueberleitung statt bit-exakt.
     """
-    import json as _json
-
     for row in (_ROW, dict(_ROW, entry_age=30, sex="F", sum_insured=50000.0)):
         subprozess = run_kernel_for_contract(
             row, _GENERATION, repo_root=REPO_ROOT, kernel_dir=KERNEL_DIR
         )
-        in_process = _json.loads(_json.dumps(berechne_vertrag(row, _GENERATION)))
-        assert in_process == subprozess
+        in_process = berechne_vertrag(row, _GENERATION)
+        for prefix, scalars in subprozess["scalars"].items():
+            for name, wert in scalars.items():
+                assert in_process["scalars"][prefix][name] == pytest.approx(
+                    wert, rel=1e-9, abs=1e-9
+                ), (prefix, name)
+        for prefix, rows in subprozess["tables"].items():
+            for j, zeile in enumerate(rows):
+                for spalte, wert in zeile.items():
+                    assert in_process["tables"][prefix][j][spalte] == pytest.approx(
+                        wert, rel=1e-9, abs=1e-9
+                    ), (prefix, j, spalte)
