@@ -162,6 +162,11 @@ def _build(sex: str, tafel: str, zins: float) -> Kommutation:
     for i in range(0, omega + 1):
         dx[i] = excel_round(lx[i] * (v ** i))
 
+    # VBA-treu bleiben tx[omega]/cx[omega] unbefuellt (Tote im Endalter 123
+    # fehlen strukturell in Mx). Fuer die ausgelieferten Tafeln ist das
+    # folgenlos (lx[123] = 0); die Zustandsmodell-Schiene modelliert das
+    # Endalter vollstaendig — dokumentierte gemeinsame Blindstelle des
+    # Kreuz-Modell-Gates (qa/ueberleitung).
     cx = [0.0] * (omega + 1)
     for i in range(0, omega):
         cx[i] = excel_round(tx[i] * (v ** (i + 1)))

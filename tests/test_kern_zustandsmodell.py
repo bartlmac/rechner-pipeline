@@ -219,9 +219,55 @@ def test_pass_cache_wird_ueber_instanzen_geteilt(basen):
     assert zweite._pass("tod", 65) is _PASS_CACHE[key]  # geteilt, kein Neubau
 
 
-def test_zustandsbarwerte_tafelgrenze_wie_kommutation(basen):
+def test_zustandsbarwerte_tafelgrenze_fail_fast(basen):
+    """Review-Fix: jenseits der Tafel-Erschoepfung (Dx = 0, DAV1994 ab 101)
+    faellt das Zustandsmodell wie die klassische Domaene schnell — statt
+    stiller bedingter Werte, wo die Kommutation ZeroDivisionError warf."""
+    from rechner_pipeline.kern.kommutation import TafelBereichError
+
     _, zustand = basen
-    # Whole-life am hoechsten Alter rechnet; jenseits der Tafel fail-fast:
-    assert zustand.Ax(MAX_ALTER) >= 0.0
+    # Letztes Alter mit Dx > 0 auf DAV1994_T (M): 100 — rechnet:
+    assert zustand.Ax(100) > 0.0
+    assert zustand.aex(100) >= 1.0
+    # Tafel erschoepft (Dx = 0): sprechender Domaenenfehler:
+    for aufruf in (
+        lambda: zustand.Ax(105),
+        lambda: zustand.aex(105),
+        lambda: zustand.net_premium(105),
+        lambda: zustand.nGrEx(MAX_ALTER, 1),
+        lambda: zustand.axn_k(101, 5, 1),
+    ):
+        with pytest.raises(TafelBereichError):
+            aufruf()
+    # Jenseits MAX_ALTER: Bereichsfehler wie die Kommutation:
     with pytest.raises(IndexError):
-        zustand.nGrEx(MAX_ALTER, 1)
+        zustand.nGrEx(100, 24)  # hoechstes Alter 124
+
+
+def test_start_dauer_und_verteilung_fail_fast():
+    """Review-Fix: ungueltige Start-Parameter waren stille Nuller."""
+    modell = _zwei_zustaende(0.1)
+    with pytest.raises(ValueError, match="start_dauer"):
+        modell.barwert("aktiv", 40, 3, lambda z, j: 1.0, start_dauer=3)
+    with pytest.raises(ValueError, match="start_dauer"):
+        modell.barwert_verlauf("aktiv", 40, 3, lambda z, j: 1.0, start_dauer=-1)
+    with pytest.raises(ValueError, match="start_dauer"):
+        modell.verteilung("aktiv", 40, 2, start_dauer=7)
+    with pytest.raises(ValueError, match="Startzustand"):
+        modell.verteilung("gibtsnicht", 40, 2)
+
+
+def test_wegzuege_epsilon_fenster_wird_renormiert():
+    """Review-Fix: Wegzugsummen in (1, 1+1e-12] werden renormiert statt
+    still Gesamtmasse > 1 zu akzeptieren."""
+    w = 0.5 + 2.5e-13
+    modell = Zustandsmodell(
+        ("a", "b", "c"), 0.0,
+        lambda von, nach, alter, dauer: w if von == "a" else 0.0,
+    )
+    masse = sum(modell.verteilung("a", 40, 1).values())
+    assert masse == pytest.approx(1.0, abs=1e-15)
+    barwert = modell.barwert(
+        "a", 40, 1, zahlung_uebergang=lambda von, nach, jahr: 1.0
+    )
+    assert barwert <= 1.0 + 1e-15

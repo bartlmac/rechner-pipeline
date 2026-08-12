@@ -155,14 +155,20 @@ def test_in_process_pfad_paritaet_mit_subprozess_kernel():
             row, _GENERATION, repo_root=REPO_ROOT, kernel_dir=KERNEL_DIR
         )
         in_process = berechne_vertrag(row, _GENERATION)
+        # Symmetrie: gleiche Prefixe, Skalare, Zeilenzahlen und Spalten.
+        assert set(in_process["scalars"]) == set(subprozess["scalars"])
+        assert set(in_process["tables"]) == set(subprozess["tables"])
         for prefix, scalars in subprozess["scalars"].items():
+            assert set(in_process["scalars"][prefix]) == set(scalars)
             for name, wert in scalars.items():
                 assert in_process["scalars"][prefix][name] == pytest.approx(
-                    wert, rel=1e-9, abs=1e-9
+                    wert, rel=1e-12, abs=1e-10
                 ), (prefix, name)
         for prefix, rows in subprozess["tables"].items():
+            assert len(in_process["tables"][prefix]) == len(rows)
             for j, zeile in enumerate(rows):
+                assert set(in_process["tables"][prefix][j]) == set(zeile)
                 for spalte, wert in zeile.items():
                     assert in_process["tables"][prefix][j][spalte] == pytest.approx(
-                        wert, rel=1e-9, abs=1e-9
+                        wert, rel=1e-12, abs=1e-10
                     ), (prefix, j, spalte)

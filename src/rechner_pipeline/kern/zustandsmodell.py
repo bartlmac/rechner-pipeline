@@ -29,9 +29,12 @@ Die Kommutation ist die geschlossene Summenform des 2-Zustands-Falls mit den
 Excel-Rundungsartefakten des migrierten Quell-Workbooks. Das Zustandsmodell
 rechnet dieselbe Mathematik ohne diese Artefakte — Abweichungen sind reine
 Rundungsreihenfolgen-Differenzen und werden über die Toleranz-Überleitung
-(:mod:`rechner_pipeline.qa.ueberleitung`) klassifiziert und abgenommen.
-Bis zur Abnahme des Serving-Wechsels bleibt die Kommutations-Schiene der
-Golden-Master-Pfad; danach bleibt sie dauerhaft als Kreuz-Check-Schiene.
+(:mod:`rechner_pipeline.qa.ueberleitung`) klassifiziert. Der Wechsel des
+produktiven KLV-Pfads auf diese Schiene wurde am 2026-08-12 abgenommen
+(kern 2.0.0); die Kommutation bleibt dauerhaft als Kreuz-Check-Schiene.
+Die klassische Tafel-Domäne gilt unverändert: Anker-Alter mit Dx = 0
+(Tafel erschöpft) sind fail-fast (:class:`TafelBereichError`) statt
+stiller bedingter Werte.
 
 Stdlib-only (bewusst kein numpy): kleine Zustandsräume, deterministische
 Reihenfolgen.
@@ -42,7 +45,7 @@ from __future__ import annotations
 from typing import Callable, Dict, Optional, Tuple
 
 from rechner_pipeline.kern.konventionen import MAX_ALTER
-from rechner_pipeline.kern.kommutation import Kommutation
+from rechner_pipeline.kern.kommutation import Kommutation, TafelBereichError
 
 #: Signatur der Übergangswahrscheinlichkeiten: (von, nach, alter, dauer) -> p.
 UebergangsFunktion = Callable[[str, str, int, int], float]
@@ -90,13 +93,33 @@ class Zustandsmodell:
                 f"Wegzüge aus {von} (Alter {alter}, Dauer {dauer}) "
                 f"summieren auf {summe} > 1"
             )
-        p[von] = max(0.0, 1.0 - summe)
+        if summe > 1.0:
+            # Float-Epsilon-Fenster (1, 1+1e-12]: renormieren statt still
+            # Gesamtmasse > 1 zu akzeptieren (Review-Fix; im 2-Zustands-Fall
+            # mit summe = qx <= 1 nie erreicht).
+            for nach in p:
+                p[nach] /= summe
+            p[von] = 0.0
+            return p
+        p[von] = 1.0 - summe
         return p
 
     def _folgedauer(self, von: str, nach: str, dauer: int) -> int:
         if nach != von:
             return 0
         return min(dauer + 1, self.max_dauer)
+
+    def _pruefe_start(self, startzustand: str, start_dauer: int) -> None:
+        """Fail-fast für Start-Parameter (Review-Fix: vorher lieferte ein
+        ungültiges ``start_dauer`` still den Barwert 0.0 — für künftige
+        Select-Konfigurationen wie BU ein stiller Reserven-Nuller)."""
+        if startzustand not in self.zustaende:
+            raise ValueError(f"Unbekannter Startzustand {startzustand!r}")
+        if not 0 <= start_dauer <= self.max_dauer:
+            raise ValueError(
+                f"start_dauer {start_dauer} ausserhalb 0..{self.max_dauer} "
+                "(Dauer beim Aufrufer auf max_dauer kappen — Select-Periode)"
+            )
 
     def barwert(
         self,
@@ -114,8 +137,7 @@ class Zustandsmodell:
         nachschüssige Übergangszahlungen am Ende des jeweiligen Jahres,
         diskontiert auf den Beginn von Jahr 0.
         """
-        if startzustand not in self.zustaende:
-            raise ValueError(f"Unbekannter Startzustand {startzustand!r}")
+        self._pruefe_start(startzustand, start_dauer)
         zz = zahlung_zustand or (lambda zustand, jahr: 0.0)
         zu = zahlung_uebergang or (lambda von, nach, jahr: 0.0)
 
@@ -141,8 +163,7 @@ class Zustandsmodell:
         Rekursionsschritt läuft. Grundlage des Spalten-Cachings in
         :class:`ZustandsBarwerte`; ``werte[horizont] == 0.0``.
         """
-        if startzustand not in self.zustaende:
-            raise ValueError(f"Unbekannter Startzustand {startzustand!r}")
+        self._pruefe_start(startzustand, start_dauer)
         zz = zahlung_zustand or (lambda zustand, jahr: 0.0)
         zu = zahlung_uebergang or (lambda von, nach, jahr: 0.0)
         return self._rueckwaerts(
@@ -181,6 +202,7 @@ class Zustandsmodell:
         self, startzustand: str, alter0: int, jahre: int, *, start_dauer: int = 0
     ) -> Dict[Tuple[str, int], float]:
         """Zustandsverteilung nach ``jahre`` Jahren (Vorwärts-Selbsttest)."""
+        self._pruefe_start(startzustand, start_dauer)
         aktuell: Dict[Tuple[str, int], float] = {(startzustand, start_dauer): 1.0}
         for jahr in range(jahre):
             naechste: Dict[Tuple[str, int], float] = {}
@@ -264,6 +286,24 @@ class ZustandsBarwerte:
             return self.kom.qx_at(alter)
         return 0.0
 
+    def _pruefe_domaene(self, age: int, hoechstes_alter: int) -> None:
+        """Klassische Tafel-Domäne der Kommutations-Schiene durchsetzen.
+
+        Review-Fix: jenseits der Tafel-Erschöpfung (Dx = 0, z. B. DAV1994_T
+        ab Alter 101) lieferte das Zustandsmodell stille bedingte Werte, wo
+        die Kommutation fail-fast war (ZeroDivisionError im Dx-Nenner) —
+        die Schienen wären dort nicht austauschbar. Jetzt: sprechender
+        :class:`TafelBereichError` am Anker-Alter; das höchste referenzierte
+        Alter läuft durch denselben Bereichs-Check wie die Kommutation
+        (IndexError jenseits MAX_ALTER).
+        """
+        if self.kom.Dx_at(age) == 0.0:
+            raise TafelBereichError(
+                f"Alter {age}: Dx = 0 in {self.kom.tafel} (Tafel erschöpft) — "
+                "bedingte Barwerte sind dort nicht definiert"
+            )
+        self.kom.Dx_at(hoechstes_alter)
+
     def _nur_aktiv(self, zustand: str, jahr: int) -> float:
         return 1.0 if zustand == self.AKTIV else 0.0
 
@@ -288,6 +328,7 @@ class ZustandsBarwerte:
         cached = self._axn_cache.get(key)
         if cached is not None:
             return cached
+        self._pruefe_domaene(age, age + term)
         annuitaet = self._pass("annuitaet", age + term)[age]
         value = annuitaet - self.abzugsglied(k) * (1.0 - self.nGrEx(age, term))
         self._axn_cache[key] = value
@@ -301,10 +342,12 @@ class ZustandsBarwerte:
 
     def nGrAx(self, age: int, term: int) -> float:
         """Temporäre Todesfallversicherung (Übergangszahlung aktiv->tot)."""
+        self._pruefe_domaene(age, age + term)
         return self._pass("tod", age + term)[age]
 
     def nGrEx(self, age: int, term: int) -> float:
         """Erlebensfallversicherung: Zahlung bei Erleben des Jahres ``term``."""
+        self._pruefe_domaene(age, age + term)
         return self._pass("erleben", age + term)[age]
 
     def endowment_benefit_pv(self, age: int, term: int) -> float:
@@ -316,9 +359,11 @@ class ZustandsBarwerte:
     # ----------------------------------------------------------------- #
 
     def Ax(self, age: int) -> float:
-        return self.nGrAx(age, MAX_ALTER + 1 - age)
+        self._pruefe_domaene(age, age)
+        return self._pass("tod", MAX_ALTER + 1)[age]
 
     def aex(self, age: int) -> float:
+        self._pruefe_domaene(age, age)
         return self._pass("annuitaet", MAX_ALTER + 1)[age]
 
     def pv_benefits(self, age: int) -> float:

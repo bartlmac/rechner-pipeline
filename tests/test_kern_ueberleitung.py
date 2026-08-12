@@ -33,14 +33,39 @@ def test_ueberleitung_klv_gate_bestanden():
     ausserhalb der Rundungsklasse; die maximale signifikante relative
     Abweichung liegt Groessenordnungen unter der Toleranz."""
     bericht = ueberleitung_klv(standard_modellpunkte(KLV_DEFAULT))
-    assert bericht["modellpunkte"] == 10
-    assert bericht["werte_verglichen"] == 10 * (5 + 12 * VERLAUFSJAHRE)
+    assert bericht["modellpunkte"] == 16
+    assert bericht["werte_verglichen"] == 16 * (5 + 12 * VERLAUFSJAHRE)
     assert sum(bericht["klassen"].values()) == bericht["werte_verglichen"]
     assert bericht["abweichende"] == []
     assert bericht["bestanden"]
-    # Reine Rundungsreihenfolgen-Differenz: weit unter der Toleranz.
+    # Reine Rundungsreihenfolgen-Differenz: weit unter der Toleranz (rtol 1e-11).
     assert bericht["max_relative_abweichung"] < 1e-11
     assert bericht["klassen"]["exakt"] > 0 and bericht["klassen"]["rundung"] > 0
+
+
+def test_klassifizierung_skaliert_mit_versicherungssumme():
+    """Review-Fix: das atol skaliert mit der VS — Ausloeschungs-Residuen
+    grosser Vertraege sind Rundung, kein False-Positive-Gate-Fehler."""
+    import dataclasses
+
+    gross = dataclasses.replace(KLV_DEFAULT, sum_insured=1e9)
+    bericht = ueberleitung_klv([gross])
+    assert bericht["bestanden"], bericht["abweichende"][:3]
+    assert bericht["max_relative_abweichung"] < 1e-11
+
+
+def test_default_liefert_exakt_die_zustandsmodell_werte():
+    """Review-Fix-Verankerung: das Gate prueft die Schienen-Aequivalenz,
+    nicht den Default — diese Wert-Pruefung bindet den produktiven Default
+    bit-exakt an die Zustandsmodell-Schiene (zusaetzlich zu den Ankern)."""
+    from rechner_pipeline.kern import berechne
+
+    mp = KLV_DEFAULT
+    kom = fuer(mp.sex, mp.tafel, mp.zins)
+    injiziert = KLV(mp, barwerte=ZustandsBarwerte(kom, mp.zins))
+    produktiv = berechne(mp)
+    assert produktiv["scalars"]["Kalkulation"] == injiziert.scalars()
+    assert produktiv["tables"]["Kalkulation"] == injiziert.verlaufswerte()
 
 
 def test_klv_auf_zustandsmodell_liefert_gleichen_contract_shape():

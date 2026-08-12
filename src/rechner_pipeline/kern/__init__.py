@@ -59,7 +59,10 @@ Abnahme-Protokoll für marginale Kern-Änderungen:
    ``tests/fixtures/kern_klv/``) MUSS grün bleiben; diese Fixtures zu
    ändern ist verboten (sie sind die Quelle der Wahrheit der Migration).
 2. Die Charakterisierungs-Anker (``tests/fixtures/kern_anker/``) frieren
-   das Verhalten weiterer Modellpunkte ein. Ein Diff dort ist erlaubt,
+   das Verhalten weiterer Modellpunkte ein — sie sind seit dem
+   Backbone-Wechsel die EINZIGE Voll-Präzisions-Verankerung des
+   produktiven Pfads (die Überleitung prüft nur die Schienen-Äquivalenz,
+   der Golden Master nur 4 Nachkommastellen). Ein Diff dort ist erlaubt,
    braucht aber eine fachliche Begründung und wird mit der Änderung
    zusammen committet (bewusste Abnahme statt stiller Drift).
 3. ``__version__`` wird bei jeder fachlichen Änderung angehoben und die
