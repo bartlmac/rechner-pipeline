@@ -215,6 +215,20 @@ Prinzipien:
   *leitet ab* (Alter mit 6-Monats-Rundung, abgelaufene/verbleibende Monate mit
   der Invariante `months_exp + months_rem == 12 · duration`); Stammdaten
   bleiben unangetastet.
+- **Ereignis-Engine (`bestand/ereignisse.py`):** die Fortschreibung als
+  Statushistorie — Storno, Tod, Beitragsfreistellung (PEX) und Ablauf werden
+  jährlich auf Vertragsjahrestagen simuliert (konfigurierbare Raten,
+  Tod nach Tafel-qx). Jeder Betrag (Rückkaufswert, beitragsfreie Summe,
+  Leistungen) kommt in-process aus dem stabilen Kern. Deterministisch: ein
+  Zufallsstrom je Vertrag; ein längerer Horizont ändert frühere Ereignisse
+  nicht, Läufe verschiedener Raten sind pfadweise vergleichbar (Common
+  Random Numbers).
+- **Aktuarielle Auswertungen (`bestand/auswertung.py`):** Deckungskapital
+  und Rückkaufswert je Stichtag über den ganzen Bestand — in-process über
+  `Rechenkern.zustand_am`, nach Beitragsfreistellung über die beitragsfreie
+  Reserve. Der Bestandsbericht (`toolbox/bestand_report`, optional mit
+  `--historie`/`--ledger`/`--config`) zeigt Abgangs-Sichten und
+  Reserveverläufe.
 
 Verwendung:
 
@@ -223,12 +237,17 @@ import datetime as dt
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+from rechner_pipeline.bestand.ereignisse import fortschreiben
+from rechner_pipeline.bestand.auswertung import auswertungs_verlauf
 from rechner_pipeline.bestand.parquet_io import write_portfolio
 
 config = load_config("examples/bestand_klv.toml")   # 2 KLV-Generationen
 portfolio = generate(config)                        # seed-deterministisch
 write_portfolio(portfolio, "bestand.parquet")
 scheibe = zeitscheibe(portfolio, dt.date(2012, 1, 1))
+historie, ledger = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
+kennzahlen = auswertungs_verlauf(portfolio, historie, config,
+                                 [dt.date(2020, 1, 1)])
 ```
 
 Geprüft wird über die Test-Suite (Schema-Validierung, Verteilungs-Sanity-

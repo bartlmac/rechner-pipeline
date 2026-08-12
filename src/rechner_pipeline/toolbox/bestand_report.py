@@ -58,6 +58,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Ereignis-Ledger-Parquet (nur zusammen mit --historie).",
     )
     parser.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "Bestand-Config (TOML) fuer die aktuariellen Kennzahlen — dieselbe, "
+            "mit der Bestand und Fortschreibung erzeugt wurden."
+        ),
+    )
+    parser.add_argument(
         "--stichtage",
         default=None,
         help="Kommagetrennte ISO-Daten; Default: Jahresraster über die Vertragslaufzeiten.",
@@ -91,6 +99,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         historie = read_portfolio(Path(ns.historie))
         ledger = read_portfolio(Path(ns.ledger))
 
+    config = None
+    if ns.config:
+        config_path = Path(ns.config)
+        if not config_path.is_file():
+            print(f"bestand_report: Config nicht gefunden: {config_path}", file=sys.stderr)
+            return 2
+        from rechner_pipeline.bestand.config import load_config
+
+        config = load_config(config_path)
+        fehler = config.validate()
+        if fehler:
+            print(f"bestand_report: Config ungueltig: {'; '.join(fehler)}", file=sys.stderr)
+            return 2
+
     df = read_portfolio(portfolio_path)
     html = render_html(
         df,
@@ -99,6 +121,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         quelle_hash=portfolio_hash(portfolio_path),
         historie=historie,
         ledger=ledger,
+        config=config,
     )
     if ns.out:
         out_path = Path(ns.out)

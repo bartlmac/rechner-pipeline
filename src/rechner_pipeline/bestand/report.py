@@ -31,6 +31,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402  (Backend muss vor pyplot stehen)
 import pandas as pd  # noqa: E402
 
+from rechner_pipeline.bestand.auswertung import auswertungs_verlauf  # noqa: E402
+from rechner_pipeline.bestand.config import BestandConfig  # noqa: E402
 from rechner_pipeline.bestand.ereignisse import bestand_mit_historie  # noqa: E402
 from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
     EREIGNIS_LABELS,
@@ -44,7 +46,7 @@ from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
 )
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe  # noqa: E402
 
-REPORT_VERSION = "1.1.0"
+REPORT_VERSION = "1.2.0"
 
 _RC = {
     "svg.hashsalt": "rechner-pipeline-bestand",
@@ -171,6 +173,22 @@ def _chart_status_verlauf(reihe: List[Dict[str, Any]]) -> str:
     return _svg(fig)
 
 
+def _chart_deckungskapital(reihe: List[Dict[str, Any]]) -> str:
+    x = list(range(len(reihe)))
+    labels = [r["stichtag"][:4] for r in reihe]
+    fig, ax = plt.subplots()
+    bpfl = [(r["deckungskapital"] - r["deckungskapital_bfr"]) / 1e6 for r in reihe]
+    bfr = [r["deckungskapital_bfr"] / 1e6 for r in reihe]
+    ax.bar(x, bpfl, label="beitragspflichtig", color=_STATUS_FARBEN["POL"], width=0.8)
+    ax.bar(x, bfr, bottom=bpfl, label="beitragsfrei", color=_STATUS_FARBEN["PEX"], width=0.8)
+    schritt = max(1, len(x) // 12)
+    ax.set_xticks(x[::schritt], labels[::schritt])
+    ax.set_ylabel("Deckungskapital (Mio.)")
+    ax.set_xlabel("Stichtag (1.1. des Jahres)")
+    ax.legend(loc="upper right", fontsize=8)
+    return _svg(fig)
+
+
 def _chart_ereignisse_je_jahr(reihe: List[Dict[str, Any]]) -> str:
     x = list(range(len(reihe)))
     labels = [str(r["jahr"]) for r in reihe]
@@ -201,13 +219,18 @@ def render_html(
     quelle_hash: Optional[str] = None,
     historie: Optional[pd.DataFrame] = None,
     ledger: Optional[pd.DataFrame] = None,
+    config: Optional[BestandConfig] = None,
 ) -> str:
     """Rendert den vollständigen Bericht als selbst-enthaltenes HTML.
 
     ``historie``/``ledger`` (beide zusammen, aus demselben
     ``fortschreiben``-Lauf) schalten die Ereignis-/Abgangs-Sichten frei;
     der Bestandsverlauf rechnet dann auf der abgangsbereinigten
-    Mehrzeilen-Sicht statt auf dem Basisbestand.
+    Mehrzeilen-Sicht statt auf dem Basisbestand. ``config`` (die
+    Bestand-Config mit den Tarifgenerationen) schaltet zusätzlich die
+    aktuariellen Kennzahlen frei (Deckungskapital, Rückkaufswert — Werte
+    in-process aus dem stabilen Kern); sie muss dieselbe sein, mit der
+    Bestand und Fortschreibung erzeugt wurden.
     """
     if (historie is None) != (ledger is None):
         raise ValueError(
@@ -240,10 +263,14 @@ def render_html(
             scheibe, "sum_insured", "Versicherungssummen", "Summe", 20, generationen
         )
         svg_scatter = _chart_scatter_alter_laufzeit(df, generationen)
-        svg_status = svg_ereignisse = ""
+        svg_status = svg_ereignisse = svg_dk = ""
         if historie is not None and len(ledger) > 0:
             svg_status = _chart_status_verlauf(status_verlauf(bestand, stichtage))
             svg_ereignisse = _chart_ereignisse_je_jahr(ereignisse_je_jahr(ledger))
+        reihe_ausw: List[Dict[str, Any]] = []
+        if config is not None:
+            reihe_ausw = auswertungs_verlauf(df, historie, config, stichtage)
+            svg_dk = _chart_deckungskapital(reihe_ausw)
 
     zeilen = []
     for r in reihe:
@@ -313,6 +340,33 @@ stammen aus dem stabilen Rechenkern.</p>"""
                 "<p>Keine Ereignisse im Berichtszeitraum.</p>"
             )
 
+    auswertung_html = ""
+    if config is not None:
+        ausw_zeilen = "".join(
+            f"<tr><td>{r['stichtag']}</td><td class='num'>{r['vertraege']}</td>"
+            f"<td class='num'>{_zahl(r['deckungskapital'])}</td>"
+            f"<td class='num'>{_zahl(r['deckungskapital_bfr'])}</td>"
+            f"<td class='num'>{_zahl(r['rueckkaufswert'])}</td>"
+            f"<td class='num'>{_zahl(r['vs_bfr'])}</td></tr>"
+            for r in reihe_ausw
+            if r["vertraege"] > 0
+        )
+        ausw_tabelle = (
+            "<table><thead><tr><th>Stichtag</th><th>Verträge</th>"
+            "<th>Σ Deckungskapital</th><th>davon beitragsfrei</th>"
+            "<th>Σ Rückkaufswert (bpfl.)</th><th>Σ VS_bfr (fixiert)</th>"
+            "</tr></thead><tbody>" + ausw_zeilen + "</tbody></table>"
+        )
+        auswertung_html = f"""
+<h2>Aktuarielle Kennzahlen je Stichtag</h2>
+<div class="charts">{svg_dk}</div>
+{ausw_tabelle}
+<p>Alle Werte kommen in-process aus dem stabilen Rechenkern.
+Deckungskapital: beitragspflichtig die Deckungsrückstellung kDRx_bpfl,
+nach Beitragsfreistellung die beitragsfreie Reserve (VS_bfr mal kVx_bfr).
+Rückkaufswert nur auf dem beitragspflichtigen Track (das Quell-Blatt
+definiert keine Rückkaufsregel für beitragsfreie Verträge).</p>"""
+
     return f"""<!doctype html>
 <html lang="de">
 <head>
@@ -344,6 +398,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 <h2>Bestandsverlauf</h2>
 <div class="charts">{svg_vertraege}{svg_summe}</div>
 {ereignis_html}
+{auswertung_html}
 
 <h2>Bestandsstruktur am {struktur_stichtag.isoformat()} (Höchststand: {hoechststand["vertraege"]} Verträge)</h2>
 <div class="charts">{svg_alter}{svg_laufzeit}{svg_summen}</div>

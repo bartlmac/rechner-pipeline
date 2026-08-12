@@ -179,6 +179,28 @@ def test_render_historie_ohne_ledger_ist_fehler(portfolio, fortschreibung):
         report.render_html(portfolio, ledger=ledger)
 
 
+def test_render_mit_config_zeigt_aktuarielle_kennzahlen(portfolio, config, fortschreibung):
+    historie, ledger = fortschreibung
+    stichtage = [dt.date(j, 1, 1) for j in range(2010, 2031, 10)]
+    mit = report.render_html(
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger, config=config
+    )
+    assert "Aktuarielle Kennzahlen je Stichtag" in mit
+    assert "Deckungskapital" in mit and "Rückkaufswert" in mit
+    ohne = report.render_html(
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger
+    )
+    assert "Aktuarielle Kennzahlen" not in ohne
+    # Auch ohne Historie (reiner Basisbestand) rendert die Sektion:
+    basis = report.render_html(portfolio, stichtage=stichtage, config=config)
+    assert "Aktuarielle Kennzahlen je Stichtag" in basis
+    # Determinismus:
+    nochmal = report.render_html(
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger, config=config
+    )
+    assert mit == nochmal
+
+
 def test_render_ohne_ereignisse_im_horizont(portfolio, config):
     from rechner_pipeline.bestand.ereignisse import fortschreiben
 
@@ -229,12 +251,18 @@ def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
     code = cli.main(
         ["--portfolio", str(parquet), "--out", str(out),
          "--historie", str(h), "--ledger", str(l),
+         "--config", str(EXAMPLE),
          "--stichtage", "2010-01-01,2020-01-01,2030-01-01"]
     )
     assert code == 0
     text = out.read_text(encoding="utf-8")
     assert "Fortschreibung und Abgänge" in text
+    assert "Aktuarielle Kennzahlen je Stichtag" in text
     # Nur eines von beiden ist ein Fehler:
     assert cli.main(
         ["--portfolio", str(parquet), "--historie", str(h)]
+    ) == 2
+    # Fehlende Config-Datei ist ein Fehler:
+    assert cli.main(
+        ["--portfolio", str(parquet), "--config", str(tmp_path / "fehlt.toml")]
     ) == 2
