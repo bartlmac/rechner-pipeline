@@ -119,6 +119,38 @@ class Zustandsmodell:
         zz = zahlung_zustand or (lambda zustand, jahr: 0.0)
         zu = zahlung_uebergang or (lambda von, nach, jahr: 0.0)
 
+        return self._rueckwaerts(
+            startzustand, alter0, horizont, zz, zu, start_dauer, sammeln=False
+        )
+
+    def barwert_verlauf(
+        self,
+        startzustand: str,
+        alter0: int,
+        horizont: int,
+        zahlung_zustand: Optional[Callable[[str, int], float]] = None,
+        zahlung_uebergang: Optional[Callable[[str, str, int], float]] = None,
+        *,
+        start_dauer: int = 0,
+    ) -> list:
+        """Wie :meth:`barwert`, liefert aber den Wert zu JEDEM Jahresbeginn.
+
+        ``werte[j]`` ist der Barwert des Restproblems ab Jahr ``j`` (Alter
+        ``alter0 + j``, Zahlungen weiterhin an absoluten Jahren) —
+        bit-identisch zum Einzelaufruf über denselben Suffix, weil derselbe
+        Rekursionsschritt läuft. Grundlage des Spalten-Cachings in
+        :class:`ZustandsBarwerte`; ``werte[horizont] == 0.0``.
+        """
+        if startzustand not in self.zustaende:
+            raise ValueError(f"Unbekannter Startzustand {startzustand!r}")
+        zz = zahlung_zustand or (lambda zustand, jahr: 0.0)
+        zu = zahlung_uebergang or (lambda von, nach, jahr: 0.0)
+        return self._rueckwaerts(
+            startzustand, alter0, horizont, zz, zu, start_dauer, sammeln=True
+        )
+
+    def _rueckwaerts(self, startzustand, alter0, horizont, zz, zu, start_dauer, sammeln):
+        werte = [0.0] * (horizont + 1) if sammeln else None
         naechste: Dict[Tuple[str, int], float] = {}
         for jahr in range(horizont - 1, -1, -1):
             aktuelle: Dict[Tuple[str, int], float] = {}
@@ -139,6 +171,10 @@ class Zustandsmodell:
                         zz(zustand, jahr) + self.v * zukunft
                     )
             naechste = aktuelle
+            if sammeln:
+                werte[jahr] = aktuelle.get((startzustand, start_dauer), 0.0)
+        if sammeln:
+            return werte
         return naechste.get((startzustand, start_dauer), 0.0)
 
     def verteilung(
@@ -160,6 +196,14 @@ class Zustandsmodell:
         return aktuell
 
 
+#: Spalten-Cache der 2-Zustands-Pässe je Basis (Analogon zum
+#: Kommutations-Spaltenapparat, aber ohne Excel-Rundung): ein
+#: Rückwärts-Pass je (Basis, Zahlungsart, Endalter) liefert die Werte für
+#: ALLE Startalter — bit-identisch zu Einzelaufrufen (gleiche
+#: Suffix-Rekursion). Unbegrenzt wie kommutation._CACHE.
+_PASS_CACHE: Dict[Tuple, list] = {}
+
+
 class ZustandsBarwerte:
     """Barwert-Bausteine auf dem Zustandsmodell — Interface wie ``Barwerte``.
 
@@ -169,6 +213,10 @@ class ZustandsBarwerte:
     Überlebenswahrscheinlichkeiten sind reine (1-qx)-Produkte. Gegenüber der
     Kommutations-Schiene weichen die Werte nur um Rundungsreihenfolgen ab
     (Toleranz-Überleitung: :mod:`rechner_pipeline.qa.ueberleitung`).
+
+    Performance über Spalten-Pässe: je (Basis, Zahlungsart, Endalter) läuft
+    die Thiele-Rekursion genau einmal (:meth:`Zustandsmodell.barwert_verlauf`)
+    und bedient alle Startalter aus dem Cache.
     """
 
     AKTIV = "aktiv"
@@ -181,6 +229,35 @@ class ZustandsBarwerte:
             (self.AKTIV, self.TOT), zins, self._uebergang
         )
         self._axn_cache: Dict[Tuple[int, int, int], float] = {}
+        self._basis = (kom.sex, kom.tafel, kom.zins, zins)
+
+    def _pass(self, art: str, endalter: int) -> list:
+        """Wertespalte einer Zahlungsart bis ``endalter`` (gecacht je Basis)."""
+        key = (self._basis, art, endalter)
+        werte = _PASS_CACHE.get(key)
+        if werte is not None:
+            return werte
+        if art == "annuitaet":
+            werte = self.modell.barwert_verlauf(
+                self.AKTIV, 0, endalter, zahlung_zustand=self._nur_aktiv
+            )
+        elif art == "tod":
+            werte = self.modell.barwert_verlauf(
+                self.AKTIV, 0, endalter, zahlung_uebergang=self._todesfall
+            )
+        elif art == "erleben":
+            werte = self.modell.barwert_verlauf(
+                self.AKTIV,
+                0,
+                endalter + 1,
+                zahlung_zustand=lambda zustand, jahr: (
+                    1.0 if zustand == self.AKTIV and jahr == endalter else 0.0
+                ),
+            )
+        else:  # pragma: no cover - interne Nutzung
+            raise ValueError(f"Unbekannte Zahlungsart {art!r}")
+        _PASS_CACHE[key] = werte
+        return werte
 
     def _uebergang(self, von: str, nach: str, alter: int, dauer: int) -> float:
         if von == self.AKTIV and nach == self.TOT:
@@ -211,9 +288,7 @@ class ZustandsBarwerte:
         cached = self._axn_cache.get(key)
         if cached is not None:
             return cached
-        annuitaet = self.modell.barwert(
-            self.AKTIV, age, term, zahlung_zustand=self._nur_aktiv
-        )
+        annuitaet = self._pass("annuitaet", age + term)[age]
         value = annuitaet - self.abzugsglied(k) * (1.0 - self.nGrEx(age, term))
         self._axn_cache[key] = value
         return value
@@ -226,20 +301,11 @@ class ZustandsBarwerte:
 
     def nGrAx(self, age: int, term: int) -> float:
         """Temporäre Todesfallversicherung (Übergangszahlung aktiv->tot)."""
-        return self.modell.barwert(
-            self.AKTIV, age, term, zahlung_uebergang=self._todesfall
-        )
+        return self._pass("tod", age + term)[age]
 
     def nGrEx(self, age: int, term: int) -> float:
         """Erlebensfallversicherung: Zahlung bei Erleben des Jahres ``term``."""
-        return self.modell.barwert(
-            self.AKTIV,
-            age,
-            term + 1,
-            zahlung_zustand=lambda zustand, jahr: (
-                1.0 if zustand == self.AKTIV and jahr == term else 0.0
-            ),
-        )
+        return self._pass("erleben", age + term)[age]
 
     def endowment_benefit_pv(self, age: int, term: int) -> float:
         """Gemischte Versicherung: Todesfall- plus Erlebensfall-Barwert."""
@@ -253,9 +319,7 @@ class ZustandsBarwerte:
         return self.nGrAx(age, MAX_ALTER + 1 - age)
 
     def aex(self, age: int) -> float:
-        return self.modell.barwert(
-            self.AKTIV, age, MAX_ALTER + 1 - age, zahlung_zustand=self._nur_aktiv
-        )
+        return self._pass("annuitaet", MAX_ALTER + 1)[age]
 
     def pv_benefits(self, age: int) -> float:
         return self.Ax(age)

@@ -189,6 +189,36 @@ def test_zustandsbarwerte_nGrEx_ist_reines_ueberlebensprodukt(basen):
     assert zustand.nGrEx(x, term) == pytest.approx(produkt * v ** term, rel=1e-12)
 
 
+def test_spalten_pass_ist_bitidentisch_zum_einzelaufruf(basen):
+    """Der Spalten-Cache liefert exakt die Werte der Einzelrekursion:
+    barwert_verlauf[j] eines Passes == barwert des Restproblems (gleiche
+    Suffix-Rekursion, bit-identisch)."""
+    _, zustand = basen
+    modell = zustand.modell
+    endalter = 80
+    pass_werte = modell.barwert_verlauf(
+        "aktiv", 0, endalter, zahlung_zustand=zustand._nur_aktiv
+    )
+    for age in (30, 45, 60, 79):
+        einzeln = modell.barwert(
+            "aktiv", age, endalter - age, zahlung_zustand=zustand._nur_aktiv
+        )
+        assert pass_werte[age] == einzeln  # bitgleich, nicht nur approx
+
+
+def test_pass_cache_wird_ueber_instanzen_geteilt(basen):
+    from rechner_pipeline.kern.kommutation import fuer
+    from rechner_pipeline.kern.zustandsmodell import _PASS_CACHE
+
+    _, zustand = basen
+    zustand.nGrAx(45, 20)  # fuellt den Pass (Basis, "tod", 65)
+    key = (zustand._basis, "tod", 65)
+    assert key in _PASS_CACHE
+    kom = fuer(KLV_DEFAULT.sex, KLV_DEFAULT.tafel, KLV_DEFAULT.zins)
+    zweite = ZustandsBarwerte(kom, KLV_DEFAULT.zins)
+    assert zweite._pass("tod", 65) is _PASS_CACHE[key]  # geteilt, kein Neubau
+
+
 def test_zustandsbarwerte_tafelgrenze_wie_kommutation(basen):
     _, zustand = basen
     # Whole-life am hoechsten Alter rechnet; jenseits der Tafel fail-fast:
