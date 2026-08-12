@@ -184,6 +184,30 @@ class TarifGeneration:
             errors.append(f"{prefix}: zins <= -100%")
         if not self.tafel:
             errors.append(f"{prefix}: tafel fehlt")
+        else:
+            # max_endalter muss vor der Tafel-Erschoepfung liegen (Dx = 0),
+            # sonst kann ein voll validiertes Setup Vertraege erzeugen, deren
+            # Fortschreibung im Kern an Dx=0 scheitert.
+            from rechner_pipeline.kern import MissingMortalityTableError
+            from rechner_pipeline.kern.kommutation import fuer
+
+            try:
+                grenze = min(
+                    max(a for a in range(len(kom.dx)) if kom.dx[a] > 0.0)
+                    for kom in (
+                        fuer("M", self.tafel, self.zins),
+                        fuer("F", self.tafel, self.zins),
+                    )
+                )
+            except MissingMortalityTableError as exc:
+                errors.append(f"{prefix}: {exc}")
+            else:
+                if self.max_endalter > grenze:
+                    errors.append(
+                        f"{prefix}: max_endalter {self.max_endalter} liegt hinter "
+                        f"der Tafel-Erschoepfung von {self.tafel} "
+                        f"(letztes Alter mit Dx > 0: {grenze})"
+                    )
         if self.stoab_min > self.stoab_max:
             errors.append(f"{prefix}: stoab_min > stoab_max")
         if self.stoab_satz < 0:

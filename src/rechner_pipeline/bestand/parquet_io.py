@@ -19,10 +19,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from rechner_pipeline.models.bestand import (
+    LEDGER_NAMES,
+    LEDGER_SPALTEN,
     STAMM_NAMES,
     STAMM_SPALTEN,
     ZEITSCHEIBEN_SPALTEN,
 )
+
+#: All persistable table families share one name->dtype map (Statushistorie
+#: columns are a subset of the Stamm columns, dtypes are consistent).
+_DTYPE_MAP = dict(STAMM_SPALTEN) | dict(ZEITSCHEIBEN_SPALTEN) | dict(LEDGER_SPALTEN)
 
 _ARROW_TYPES = {
     "int64": pa.int64(),
@@ -33,17 +39,20 @@ _ARROW_TYPES = {
 
 
 def _schema_for(columns: List[str]) -> pa.schema:
-    dtype_map = dict(STAMM_SPALTEN) | dict(ZEITSCHEIBEN_SPALTEN)
     fields = []
     for name in columns:
-        if name not in dtype_map:
+        if name not in _DTYPE_MAP:
             raise ValueError(f"Unbekannte Portfolio-Spalte: {name}")
-        fields.append(pa.field(name, _ARROW_TYPES[dtype_map[name]], nullable=False))
+        fields.append(pa.field(name, _ARROW_TYPES[_DTYPE_MAP[name]], nullable=False))
     return pa.schema(fields)
 
 
 def write_portfolio(df: pd.DataFrame, path: Path) -> Path:
-    """Write a portfolio (base or Zeitscheibe) deterministically to Parquet."""
+    """Write a table deterministically to Parquet.
+
+    Supports the portfolio families (base portfolio, Zeitscheibe,
+    Statushistorie — column subsets of the Stamm) and the Ereignis-Ledger.
+    """
     columns = list(df.columns)
     schema = _schema_for(columns)
     arrays = []
@@ -63,15 +72,16 @@ def write_portfolio(df: pd.DataFrame, path: Path) -> Path:
 
 
 def read_portfolio(path: Path) -> pd.DataFrame:
-    """Read a portfolio back with canonical pandas dtypes."""
+    """Read a table back with canonical pandas dtypes and column order."""
     table = pq.read_table(path)
     df = table.to_pandas()
-    dtype_map = dict(STAMM_SPALTEN) | dict(ZEITSCHEIBEN_SPALTEN)
     for name in df.columns:
-        if dtype_map.get(name) == "datetime64[ns]":
+        if _DTYPE_MAP.get(name) == "datetime64[ns]":
             df[name] = pd.to_datetime(df[name])
-        elif dtype_map.get(name) is not None:
-            df[name] = df[name].astype(dtype_map[name])
+        elif _DTYPE_MAP.get(name) is not None:
+            df[name] = df[name].astype(_DTYPE_MAP[name])
+    if set(df.columns) == set(LEDGER_NAMES):
+        return df[list(LEDGER_NAMES)]
     ordered = [c for c in list(STAMM_NAMES) + [n for n, _ in ZEITSCHEIBEN_SPALTEN] if c in df.columns]
     return df[ordered]
 

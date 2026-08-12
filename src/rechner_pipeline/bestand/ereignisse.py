@@ -24,6 +24,13 @@ Model (Stufe 1, annual):
   ``SeedSequence([seed, EREIGNIS_STREAM, police_id])`` — adding contracts
   never shifts another contract's events, and extending the horizon ``bis``
   keeps all earlier events identical (consistent prefix).
+* Draw contract (Common Random Numbers): per simulated policy year the draw
+  order is FIXED and config-independent — death draw, then (premium-paying
+  track) lapse draw while ``j+1 < n``, then PEX draw while ``j+1 < t``.
+  Rates act only as thresholds; a rate of 0 still consumes its draw. Runs
+  of different configs on the same portfolio are therefore pathwise
+  comparable as long as their event histories agree (e.g. the lapse set at
+  storno_rate=0.02 is a subset of the one at 0.03).
 
 Outputs: a Statushistorie (follow-up status rows, schema
 :data:`~rechner_pipeline.models.bestand.STATUS_HISTORIE_SPALTEN`) and an
@@ -50,6 +57,10 @@ from rechner_pipeline.models.bestand import (
 
 #: SeedSequence-Konstante: separates event streams from the generator's
 #: generation streams ([seed, gen_index]) — never reuse for other purposes.
+#: Separation assumptions (SeedSequence normalizes trailing zeros, so
+#: [seed, X] == [seed, X, 0]): police_id must be > 0 (enforced in
+#: :func:`fortschreiben`; the generator issues >= 10_000_001) and gen_index
+#: stays small — a third stream family needs a NEW distinct constant.
 EREIGNIS_STREAM = 424242
 
 
@@ -114,9 +125,17 @@ def _simuliere_vertrag(
             horizont_erreicht = True
             break
 
-        # 1. Tod im Vertragsjahr j (Tafel-qx der Tarifbasis, skaliert):
-        qx = min(1.0, kern.kom.qx_at(x + j) * ereignisse.tod_faktor)
-        if qx > 0.0 and rng.random() < qx:
+        # Feste Draw-Reihenfolge je Jahr (Raten sind nur Schwellen, siehe
+        # Modul-Docstring): eine Rate von 0 verbraucht ihren Draw trotzdem —
+        # sonst waeren Laeufe verschiedener Configs nicht pfadweise
+        # vergleichbar (Common Random Numbers, Rate-0-Baseline).
+        # 1. Tod im Vertragsjahr j (Tafel-qx der Tarifbasis, skaliert);
+        #    bei tod_faktor 0 wird die Tafel nicht angefasst:
+        if ereignisse.tod_faktor > 0.0:
+            qx = min(1.0, kern.kom.qx_at(x + j) * ereignisse.tod_faktor)
+        else:
+            qx = 0.0
+        if rng.random() < qx:
             if beitragsfrei_ab is None:
                 buche("TOD", j + 1, "Todesfallleistung", vs)
             else:
@@ -128,15 +147,11 @@ def _simuliere_vertrag(
 
         if beitragsfrei_ab is None:
             # 2. Storno (nur beitragspflichtig, nicht im Ablaufjahr):
-            if j + 1 < n and ereignisse.storno_rate > 0.0 and (
-                rng.random() < ereignisse.storno_rate
-            ):
+            if j + 1 < n and rng.random() < ereignisse.storno_rate:
                 buche("STO", j + 1, "RKW", kern.verlaufszeile(j + 1).rkw)
                 return events
             # 3. Beitragsfreistellung (nur solange Beitraege laufen):
-            if j + 1 < t and ereignisse.pex_rate > 0.0 and (
-                rng.random() < ereignisse.pex_rate
-            ):
+            if j + 1 < t and rng.random() < ereignisse.pex_rate:
                 beitragsfrei_ab = j + 1
                 buche("PEX", j + 1, "VS_bfr", kern.beitragsfreie_summe(j + 1))
 
@@ -157,11 +172,35 @@ def fortschreiben(
     ``stamm`` is the generator's base portfolio (one POL row per contract);
     the event rates come from ``config.ereignisse``, the amounts from the
     stable kernel. Pure function of (stamm, config, bis) — seed-deterministic,
-    the Stamm itself is never mutated.
+    the Stamm itself is never mutated. Fail-fast guards: only POL base rows
+    (a Zeitscheibe or Historie view fed back in is an error — the engine
+    would re-simulate it from insurance_start), unique positive police_id,
+    valid event rates, durations within the sheet-anchored 0..50 range.
     """
     fehlend = [c for c in STAMM_NAMES if c not in stamm.columns]
     if fehlend:
         raise EreignisError(f"Stamm-Spalten fehlen: {fehlend}")
+    konfig_fehler = config.ereignisse.validate()
+    if konfig_fehler:
+        raise EreignisError("; ".join(konfig_fehler))
+    if len(stamm) and not (
+        (stamm["status_code"] == "POL").all() & (stamm["status_id"] == 1).all()
+    ):
+        raise EreignisError(
+            "Stamm ist kein Basisbestand (nur status_code POL mit status_id 1): "
+            "Zeitscheiben oder Historie-Sichten koennen nicht erneut "
+            "fortgeschrieben werden — die Engine simuliert ab insurance_start"
+        )
+    if stamm["police_id"].duplicated().any():
+        raise EreignisError("police_id nicht eindeutig")
+    if len(stamm) and int(stamm["police_id"].min()) <= 0:
+        raise EreignisError("police_id <= 0 (Substream-Konvention verlangt > 0)")
+    if len(stamm) and int(stamm["duration"].max()) > 50:
+        raise EreignisError(
+            "duration > 50: ausserhalb des blattfest verankerten "
+            "Verlaufsbereichs des Kerns (Vertragsjahre 0..50)"
+        )
+    bis = pd.Timestamp(bis).date()
     generationen = {g.name: g.generation_fields() for g in config.generationen}
 
     alle_events: List[Dict[str, Any]] = []
@@ -172,10 +211,17 @@ def fortschreiben(
                 f"police {row['police_id']}: Tarifgeneration {name!r} nicht in Config "
                 f"(bekannt: {sorted(generationen)})"
             )
-        alle_events.extend(
-            _simuliere_vertrag(row, generationen[name], config.ereignisse,
-                               config.seed, bis)
-        )
+        try:
+            alle_events.extend(
+                _simuliere_vertrag(row, generationen[name], config.ereignisse,
+                                   config.seed, bis)
+            )
+        except EreignisError:
+            raise
+        except Exception as exc:
+            raise EreignisError(
+                f"police {row['police_id']}: {type(exc).__name__}: {exc}"
+            ) from exc
 
     if not alle_events:
         return _leere_frames()

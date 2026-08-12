@@ -305,3 +305,132 @@ def test_beispiel_config_laedt_ereignisse(config):
     assert config.ereignisse.pex_rate == 0.01
     assert config.ereignisse.tod_faktor == 1.0
     assert config.validate() == []
+
+
+def test_fehlende_ereignisse_sektion_liefert_nur_ablauf_defaults(tmp_path):
+    quelle = EXAMPLE.read_text(encoding="utf-8")
+    ohne = quelle[: quelle.index("[ereignisse]")]
+    p = tmp_path / "ohne_ereignisse.toml"
+    p.write_text(ohne, encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.ereignisse == EreignisConfig()
+    assert cfg.validate() == []
+
+
+# --------------------------------------------------------------------------- #
+# Review-Fixes: Eingangs-Haertung und Draw-Disziplin
+# --------------------------------------------------------------------------- #
+
+
+def test_fortschreiben_lehnt_nicht_basisbestand_ab(config):
+    """Review-Fix (HOCH): Scheiben/Historie-Sichten duerfen nicht erneut
+    fortgeschrieben werden — die Engine wuerde ab insurance_start neu
+    simulieren und z. B. Storno nach PEX buchen."""
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
+    )
+    cfg = _mit_raten(config, pex_rate=0.999999)
+    historie, _ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    sicht = bestand_mit_historie(stamm, historie)
+    with pytest.raises(EreignisError, match="Basisbestand"):
+        fortschreiben(sicht[sicht["status_code"] == "PEX"], cfg, dt.date(2045, 1, 1))
+
+
+def test_fortschreiben_lehnt_kaputte_eingaben_ab(config):
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 30, "t": 20}
+    )
+    with pytest.raises(EreignisError, match="nicht eindeutig"):
+        fortschreiben(pd.concat([stamm, stamm]), config, dt.date(2020, 1, 1))
+    stamm_null = stamm.assign(police_id=pd.Series([0], dtype="int64"))
+    with pytest.raises(EreignisError, match="police_id <= 0"):
+        fortschreiben(stamm_null, config, dt.date(2020, 1, 1))
+    cfg = _mit_raten(config, storno_rate=1.5)
+    with pytest.raises(EreignisError, match="storno_rate"):
+        fortschreiben(stamm, cfg, dt.date(2020, 1, 1))
+    lang = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 20, "n": 60, "t": 40}
+    )
+    with pytest.raises(EreignisError, match="duration > 50"):
+        fortschreiben(lang, config, dt.date(2020, 1, 1))
+
+
+def test_fortschreiben_normalisiert_bis_timestamp(config):
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2000, 3, 1), "x": 40, "n": 30, "t": 25}
+    )
+    cfg = _mit_raten(config)
+    _, ledger_date = fortschreiben(stamm, cfg, dt.date(2035, 1, 1))
+    _, ledger_ts = fortschreiben(stamm, cfg, pd.Timestamp("2035-01-01"))
+    pd.testing.assert_frame_equal(ledger_date, ledger_ts)
+
+
+def test_kern_fehler_traegt_police_kontext(config):
+    """Review-Fix: Kern-Fehler (z. B. Tafel ueber MAX_ALTER hinaus) nennen
+    die ausloesende Police."""
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 120, "n": 10, "t": 5}
+    )
+    # Winziger Faktor: der Vertrag ueberlebt sicher bis zur Tafelgrenze,
+    # qx_at(124) wirft dann IndexError — gewrappt mit Police-Kontext.
+    cfg = _mit_raten(config, tod_faktor=1e-12)
+    with pytest.raises(EreignisError, match="police 10000001"):
+        fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    # Mit abgeschalteter Todes-Simulation wird die Tafel nicht angefasst:
+    ohne_tod = _mit_raten(config)
+    historie, ledger = fortschreiben(stamm, ohne_tod, dt.date(2045, 1, 1))
+    assert list(historie["status_code"]) == ["ABL"]
+
+
+def test_rate_null_und_winzige_rate_ziehen_gleiche_draws(config):
+    """Review-Fix (Common Random Numbers): eine Rate von 0 verbraucht ihren
+    Draw trotzdem — die Null-Baseline ist pfadweise vergleichbar."""
+    a = {"police_id": 10000001, "start": dt.date(2005, 4, 1), "x": 40, "n": 30, "t": 25}
+    b = {"police_id": 10000002, "start": dt.date(2007, 9, 1), "x": 35, "n": 30, "t": 25}
+    stamm = _mini_stamm(a, b)
+    bis = dt.date(2040, 1, 1)
+    basis = _mit_raten(config, storno_rate=0.0, pex_rate=0.01, tod_faktor=1.0)
+    winzig = _mit_raten(config, storno_rate=1e-300, pex_rate=0.01, tod_faktor=1.0)
+    _, ledger_basis = fortschreiben(stamm, basis, bis)
+    _, ledger_winzig = fortschreiben(stamm, winzig, bis)
+    pd.testing.assert_frame_equal(ledger_basis, ledger_winzig)
+
+
+def test_ledger_und_historie_sind_parquet_persistierbar(tmp_path, portfolio, config):
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+
+    historie, ledger = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
+    h_pfad = write_portfolio(historie, tmp_path / "historie.parquet")
+    l_pfad = write_portfolio(ledger, tmp_path / "ledger.parquet")
+    h_zurueck = read_portfolio(h_pfad)
+    l_zurueck = read_portfolio(l_pfad)
+    pd.testing.assert_frame_equal(h_zurueck, historie)
+    pd.testing.assert_frame_equal(l_zurueck, ledger)
+
+
+def test_validate_portfolio_faengt_nan(portfolio):
+    from rechner_pipeline.models.bestand import validate_portfolio
+
+    kaputt = portfolio.copy()
+    kaputt.loc[kaputt.index[0], "sum_insured"] = float("nan")
+    fehler = validate_portfolio(kaputt)
+    assert any("NaN" in f for f in fehler)
+
+
+def test_max_endalter_hinter_tafelgrenze_ist_config_fehler(config):
+    import copy
+
+    kaputt = copy.deepcopy(config)
+    kaputt.generationen[0].max_endalter = 110  # DAV1994_T: Dx = 0 ab Alter 101
+    fehler = kaputt.validate()
+    assert any("Tafel-Erschoepfung" in f for f in fehler)
+
+
+def test_kern_verlaufszeile_ausserhalb_blattbereich_faellt_schnell():
+    from rechner_pipeline.kern import KLV_DEFAULT
+
+    kern = Rechenkern(KLV_DEFAULT)
+    with pytest.raises(ValueError, match="0..50"):
+        kern.verlaufszeile(51)
+    with pytest.raises(ValueError, match="0..50"):
+        kern.verlaufszeile(-1)

@@ -71,7 +71,10 @@ from rechner_pipeline.kern.rechenkern import (
 #: Kern-Version (Abnahme-Anker für marginale Änderungen, siehe Docstring).
 #: 1.0.0 = Promotion 2026-08-11 des am 2026-07-22 migrierten Kerns
 #: inklusive Skalierungs-Refactoring (verhaltensgleich, 617/617).
-__version__ = "1.0.0"
+#: 1.0.1 = Domänengrenze: Verlaufszeilen nur im blattfest verankerten
+#: Bereich 0..50 (Fail-fast statt unbelegter Werte ausserhalb des
+#: Golden-Master-/Anker-Bereichs; Rechenwerte unverändert, 617/617 + Anker).
+__version__ = "1.0.1"
 
 __all__ = [
     "ModelPoint",

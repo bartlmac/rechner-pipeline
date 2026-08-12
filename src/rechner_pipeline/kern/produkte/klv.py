@@ -176,7 +176,17 @@ class KLV:
         )
 
     def verlaufszeile(self, a: int) -> Verlaufszeile:
-        """Verlaufswerte-Zeile für Vertragsjahr ``a`` — typisiert, gecacht."""
+        """Verlaufswerte-Zeile für Vertragsjahr ``a`` — typisiert, gecacht.
+
+        Nur der blattfest verankerte Bereich 0..50 ist definiert; außerhalb
+        gibt es keinen Golden-Master- oder Anker-Beleg, deshalb Fail-fast
+        statt unbelegter Werte.
+        """
+        if not 0 <= a < VERLAUFSJAHRE:
+            raise ValueError(
+                f"Vertragsjahr {a} ausserhalb des blattfest verankerten "
+                f"Verlaufsbereichs 0..{VERLAUFSJAHRE - 1}"
+            )
         if a in self._zeilen_cache:
             return self._zeilen_cache[a]
         mp = self.mp

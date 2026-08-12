@@ -194,6 +194,11 @@ def validate_portfolio(df: Any) -> List[str]:
         errors.append(f"zahlweise ausserhalb {ZAHLWEISE_VALUES}")
 
     num = df[["entry_age", "duration", "premium_duration", "sum_insured"]]
+    # NaN-Vergleiche sind immer False — fehlende Werte muessen explizit
+    # geprueft werden, sonst passieren sie jede Bandpruefung.
+    nan_spalten = [c for c in num.columns if num[c].isna().any()]
+    if nan_spalten:
+        errors.append(f"fehlende Werte (NaN) in {nan_spalten}")
     if (num["entry_age"] < 0).any():
         errors.append("entry_age negativ")
     if (num["duration"] <= 0).any():
