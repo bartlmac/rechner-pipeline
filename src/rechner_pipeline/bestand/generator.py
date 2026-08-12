@@ -28,7 +28,7 @@ from rechner_pipeline.bestand.stochastik import (
     correlated_uniforms,
     transform,
 )
-from rechner_pipeline.models.bestand import STAMM_NAMES, stamm_dtypes
+from rechner_pipeline.models.bestand import STAMM_NAMES, STAMM_SPALTEN, stamm_dtypes
 
 #: Fixed draw order of copula columns — part of the determinism contract.
 COPULA_ORDER = ("entry_age", "sex", "duration", "premium_duration", "sum_insured")
@@ -53,12 +53,14 @@ def _draw_insurance_start(
     return [_month_first(int(m) // 12, int(m) % 12 + 1) for m in months]
 
 
-def _generate_generation(
-    gen: TarifGeneration, gen_index: int, master_seed: int
-) -> pd.DataFrame:
-    rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence([master_seed, gen_index])))
-    n = gen.sample_size
+def _ziehe_attribute(
+    gen: TarifGeneration, rng: np.random.Generator, n: int
+) -> Dict[str, np.ndarray]:
+    """Vertragsattribute ziehen (Copula-Block, dann Zahlweise — feste Reihenfolge).
 
+    Wird von Batch-Generator und Neuzugang identisch genutzt; die
+    rng-Aufrufreihenfolge ist Teil des Determinismus-Contracts.
+    """
     # 1) Correlated uniforms for the copula attributes (fixed column order),
     #    then the marginal transform per configured distribution.
     corr = build_corr_matrix(COPULA_ORDER, gen.korrelationen)
@@ -90,35 +92,136 @@ def _generate_generation(
     sum_insured = np.asarray(drawn["sum_insured"], dtype=np.float64)
     sum_insured = np.maximum(sum_insured, 1000.0)
 
-    sex = np.asarray([str(v) for v in drawn["sex"]], dtype=object)
-    zahlweise = np.asarray([int(v) for v in zahlweise_raw], dtype=np.int64)
+    return {
+        "entry_age": entry_age,
+        "duration": duration,
+        "premium_duration": premium_duration,
+        "sum_insured": sum_insured,
+        "sex": np.asarray([str(v) for v in drawn["sex"]], dtype=object),
+        "zahlweise": np.asarray([int(v) for v in zahlweise_raw], dtype=np.int64),
+    }
 
-    # 4) Time axis (month-first convention).
-    starts = _draw_insurance_start(rng, gen, n)
+
+def _baue_frame(
+    gen: TarifGeneration,
+    attribute: Dict[str, np.ndarray],
+    starts: List[_dt.date],
+    police_ids: np.ndarray,
+) -> pd.DataFrame:
+    """POL-Basiszeilen aus Attributen, Startdaten und Nummern zusammensetzen."""
+    n = len(starts)
+    entry_age = attribute["entry_age"]
+    duration = attribute["duration"]
+    premium_duration = attribute["premium_duration"]
     birth = [_add_years(s, -int(a)) for s, a in zip(starts, entry_age)]
     ins_end = [_add_years(s, int(d)) for s, d in zip(starts, duration)]
     pay_end = [_add_years(s, int(t)) for s, t in zip(starts, premium_duration)]
-
-    df = pd.DataFrame(
+    return pd.DataFrame(
         {
-            "police_id": np.arange(1, n + 1, dtype=np.int64) + (gen_index + 1) * 10_000_000,
+            "police_id": police_ids,
             "tarif_generation": np.full(n, gen.name, dtype=object),
             "status_id": np.ones(n, dtype=np.int64),
             "status_code": np.full(n, "POL", dtype=object),
             "status_date": pd.to_datetime(starts),
-            "sex": sex,
+            "sex": attribute["sex"],
             "date_of_birth": pd.to_datetime(birth),
             "entry_age": entry_age,
             "duration": duration,
             "premium_duration": premium_duration,
-            "sum_insured": sum_insured,
-            "zahlweise": zahlweise,
+            "sum_insured": attribute["sum_insured"],
+            "zahlweise": attribute["zahlweise"],
             "insurance_start": pd.to_datetime(starts),
             "insurance_end": pd.to_datetime(ins_end),
             "payment_end": pd.to_datetime(pay_end),
         }
     )
-    return df
+
+
+def _generate_generation(
+    gen: TarifGeneration, gen_index: int, master_seed: int
+) -> pd.DataFrame:
+    rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence([master_seed, gen_index])))
+    n = gen.sample_size
+    attribute = _ziehe_attribute(gen, rng, n)
+    # 4) Time axis (month-first convention) — drawn AFTER the attributes,
+    #    identical rng call order as before the refactoring.
+    starts = _draw_insurance_start(rng, gen, n)
+    police_ids = np.arange(1, n + 1, dtype=np.int64) + (gen_index + 1) * 10_000_000
+    return _baue_frame(gen, attribute, starts, police_ids)
+
+
+#: SeedSequence-Konstante der Neuzugangs-Stroeme ([seed, NEUZUGANG_STREAM,
+#: gen_index, kalenderjahr]) — getrennt von Generator ([seed, gen_index])
+#: und Ereignis-Engine ([seed, 424242, police_id]).
+NEUZUGANG_STREAM = 771177
+
+#: police_id-Offset der Neuzugaenge innerhalb des Generations-Nummernkreises
+#: (Batch belegt 1..1_000_000).
+_NEUZUGANG_ID_OFFSET = 2_000_000
+
+
+def neuzugaenge(
+    config: BestandConfig, von: _dt.date, bis: _dt.date
+) -> pd.DataFrame:
+    """Simulierter Neuzugang: POL-Basiszeilen mit Beginn in ``(von, bis]``.
+
+    Je Generation und Kalenderjahr werden ``neuzugang_pro_jahr`` Vertraege
+    aus einem eigenen Substream gezogen (Attribute wie im Batch-Generator,
+    Beginn gleichverteilt ueber die Monatsersten des Jahres innerhalb des
+    Gueltigkeitsfensters). Draws sind horizontunabhaengig: pro Jahr wird
+    immer der volle Jahrgang gezogen und erst danach auf ``(von, bis]``
+    gefiltert — dadurch ist der Neuzugang bei Horizont-Erweiterung ein
+    Praefix (fruehere Zugaenge aendern sich nicht) und die police_ids sind
+    jahrgangsstabil.
+    """
+    frames: List[pd.DataFrame] = []
+    for idx, gen in enumerate(config.generationen):
+        anzahl = gen.neuzugang_pro_jahr
+        if anzahl <= 0:
+            continue
+        fenster_von = gen.gueltig_von.year * 12 + (gen.gueltig_von.month - 1) + (
+            1 if gen.gueltig_von.day > 1 else 0
+        )
+        fenster_bis = gen.gueltig_bis.year * 12 + (gen.gueltig_bis.month - 1)
+        for jahr in range(gen.gueltig_von.year, gen.gueltig_bis.year + 1):
+            # Waehlbare Monatserste dieses Jahrgangs (horizontUNabhaengig):
+            erster = max(fenster_von, jahr * 12)
+            letzter = min(fenster_bis, jahr * 12 + 11)
+            if erster > letzter:
+                continue
+            rng = np.random.Generator(
+                np.random.PCG64(
+                    np.random.SeedSequence([config.seed, NEUZUGANG_STREAM, idx, jahr])
+                )
+            )
+            attribute = _ziehe_attribute(gen, rng, anzahl)
+            monate = rng.integers(erster, letzter + 1, size=anzahl)
+            starts = [_month_first(int(m) // 12, int(m) % 12 + 1) for m in monate]
+            offset = _NEUZUGANG_ID_OFFSET + (jahr - gen.gueltig_von.year) * anzahl
+            if offset + anzahl >= 8_000_000:
+                raise ValueError(
+                    f"generation {gen.name}: Neuzugang-Nummernkreis erschoepft "
+                    "(neuzugang_pro_jahr x Jahrgaenge zu gross)"
+                )
+            police_ids = (
+                np.arange(1, anzahl + 1, dtype=np.int64)
+                + (idx + 1) * 10_000_000
+                + offset
+            )
+            frame = _baue_frame(gen, attribute, starts, police_ids)
+            # Erst NACH dem Ziehen auf das Fenster (von, bis] filtern —
+            # verworfene Draws halten das Praefix stabil.
+            maske = (frame["insurance_start"] > pd.Timestamp(von)) & (
+                frame["insurance_start"] <= pd.Timestamp(bis)
+            )
+            frames.append(frame[maske])
+    if not frames:
+        return pd.DataFrame(
+            {name: pd.Series(dtype=dtype) for name, dtype in STAMM_SPALTEN}
+        )
+    df = pd.concat(frames, ignore_index=True)
+    df = df[list(STAMM_NAMES)].astype(stamm_dtypes())
+    return df.sort_values("police_id", kind="stable").reset_index(drop=True)
 
 
 def generate(config: BestandConfig) -> pd.DataFrame:

@@ -62,6 +62,7 @@ _FARBEN = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b")
 
 #: Feste Ereignis-Farben (Reihenfolge wie EREIGNIS_REIHENFOLGE).
 _EREIGNIS_FARBEN = {
+    "ZUG": "#1f77b4",
     "ERH": "#17becf",
     "PEX": "#9467bd",
     "STO": "#ff7f0e",

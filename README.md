@@ -229,7 +229,17 @@ Prinzipien:
   Restlaufzeiten, Summe = konfigurierter Prozentsatz der aktuellen
   Gesamt-VS). Der Vertragszustand ändert sich nicht; der GeVo steht im
   Ledger, die Scheibe in der Scheiben-Tabelle, und alle späteren Beträge
-  summieren über Grund- und Erhöhungsscheiben.
+  summieren über Grund- und Erhöhungsscheiben (Stornoabschlag-Grenzen
+  gelten je Vertrag, nicht je Scheibe).
+- **Neuzugang als GeVo-Strom:** die Bestandsentwicklung ist ein einziger
+  Strom datierter Geschäftsvorfälle — der Generator ist seine
+  Batch-Auswertung bis zum Referenzstichtag, `fortschreiben(...,
+  neuzugang_ab=...)` setzt denselben Erzeuger inkrementell fort
+  (`neuzugang_pro_jahr` je Generation, eigener Zufallsstrom je
+  Kalenderjahr). Neue Verträge erhalten einen ZUG-Ledger-Eintrag und
+  werden ab Beginn mitsimuliert; ein längerer Horizont ändert frühere
+  Zugänge nicht, und pro Zeitfenster schreibt genau ein Erzeuger
+  (Doppelzählungs-Guard).
 - **Aktuarielle Auswertungen (`bestand/auswertung.py`):** Deckungskapital
   und Rückkaufswert je Stichtag über den ganzen Bestand — in-process über
   `Rechenkern.zustand_am`, nach Beitragsfreistellung über die beitragsfreie

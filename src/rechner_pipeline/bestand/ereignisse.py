@@ -70,6 +70,7 @@ from rechner_pipeline.models.bestand import (
     LEDGER_SPALTEN,
     SCHEIBEN_SPALTEN,
     STAMM_NAMES,
+    STAMM_SPALTEN,
     STATUS_HISTORIE_SPALTEN,
     model_point_kwargs,
 )
@@ -88,11 +89,17 @@ class EreignisError(ValueError):
 
 
 class Fortschreibung(NamedTuple):
-    """Ergebnis von :func:`fortschreiben` (drei deterministische Tabellen)."""
+    """Ergebnis von :func:`fortschreiben` (vier deterministische Tabellen).
+
+    ``zugaenge`` sind die waehrend der Fortschreibung entstandenen
+    Neuzugaenge (POL-Basiszeilen); der Gesamtbestand fuer Zeitscheibe,
+    Auswertung und Bericht ist :func:`mit_zugaengen` (stamm, zugaenge).
+    """
 
     historie: pd.DataFrame
     ledger: pd.DataFrame
     scheiben: pd.DataFrame
+    zugaenge: pd.DataFrame
 
 
 def _add_years(d: _dt.date, years: int) -> _dt.date:
@@ -273,13 +280,24 @@ def _simuliere_vertrag(
 
 
 def fortschreiben(
-    stamm: pd.DataFrame, config: BestandConfig, bis: _dt.date
+    stamm: pd.DataFrame,
+    config: BestandConfig,
+    bis: _dt.date,
+    *,
+    neuzugang_ab: _dt.date | None = None,
 ) -> Fortschreibung:
     """Roll the base portfolio forward to ``bis``.
 
     Returns :class:`Fortschreibung` — Statushistorie (state changes only;
     a dynamische Erhoehung changes no state), Ereignis-Ledger (every GeVo
-    incl. ERH) and the created Erhoehungsscheiben.
+    incl. ERH/ZUG), the created Erhoehungsscheiben and the Neuzugaenge.
+
+    ``neuzugang_ab`` (Referenzstichtag) schaltet den simulierten Neuzugang
+    frei: neue Vertraege mit Beginn in ``(neuzugang_ab, bis]`` entstehen aus
+    :func:`rechner_pipeline.bestand.generator.neuzugaenge` (Volumen je
+    Generation: ``neuzugang_pro_jahr``), erhalten einen ZUG-Ledger-Eintrag
+    und werden ab ihrem Beginn mitsimuliert. Der Basisbestand darf dann
+    keine Vertraege nach dem Referenzstichtag enthalten (Doppelzaehlung).
 
     ``stamm`` is the generator's base portfolio (one POL row per contract);
     the event rates come from ``config.ereignisse``, the amounts from the
@@ -313,11 +331,55 @@ def fortschreiben(
             "Verlaufsbereichs des Kerns (Vertragsjahre 0..50)"
         )
     bis = pd.Timestamp(bis).date()
+
+    if neuzugang_ab is not None:
+        neuzugang_ab = pd.Timestamp(neuzugang_ab).date()
+        if len(stamm) and (
+            stamm["insurance_start"] > pd.Timestamp(neuzugang_ab)
+        ).any():
+            raise EreignisError(
+                "Basisbestand enthaelt Vertraege mit Beginn nach dem "
+                f"Referenzstichtag {neuzugang_ab.isoformat()} — Neuzugang wuerde "
+                "den Zeitraum doppelt besiedeln (ein Erzeuger je Zeitfenster)"
+            )
+        from rechner_pipeline.bestand.generator import neuzugaenge
+
+        zugaenge = neuzugaenge(config, neuzugang_ab, bis)
+        ueberschneidung = set(zugaenge["police_id"]) & set(stamm["police_id"])
+        if ueberschneidung:
+            raise EreignisError(
+                f"Neuzugang-police_ids kollidieren mit dem Basisbestand: "
+                f"{sorted(ueberschneidung)[:5]}"
+            )
+        if len(zugaenge) and int(zugaenge["duration"].max()) > 50:
+            raise EreignisError(
+                "Neuzugang mit duration > 50: ausserhalb des blattfest "
+                "verankerten Verlaufsbereichs des Kerns"
+            )
+    else:
+        zugaenge = _leerer_frame(STAMM_SPALTEN)
+
     generationen = {g.name: g.generation_fields() for g in config.generationen}
 
     alle_events: List[Dict[str, Any]] = []
     alle_scheiben: List[Dict[str, Any]] = []
-    for row in stamm.to_dict("records"):
+    # Zugangs-GeVos: ein ZUG-Ledger-Eintrag je Neuzugang (kein Statuswechsel —
+    # die POL-Basiszeile ist der Zugangs-Satz selbst).
+    for zugang in zugaenge.to_dict("records"):
+        alle_events.append(
+            {
+                "police_id": int(zugang["police_id"]),
+                "status_code": "ZUG",
+                "vertragsjahr": 0,
+                "status_date": pd.Timestamp(zugang["insurance_start"]),
+                "betrag_art": "VS",
+                "betrag": float(zugang["sum_insured"]),
+            }
+        )
+    gesamt = (
+        pd.concat([stamm, zugaenge], ignore_index=True) if len(zugaenge) else stamm
+    )
+    for row in gesamt.to_dict("records"):
         name = str(row["tarif_generation"])
         if name not in generationen:
             raise EreignisError(
@@ -352,12 +414,13 @@ def fortschreiben(
             _leerer_frame(STATUS_HISTORIE_SPALTEN),
             _leerer_frame(LEDGER_SPALTEN),
             scheiben_df,
+            zugaenge,
         )
 
     ereignisse = pd.DataFrame(alle_events).sort_values(
         ["police_id", "vertragsjahr"], kind="stable"
     )
-    generation_je_police = stamm.set_index("police_id")["tarif_generation"]
+    generation_je_police = gesamt.set_index("police_id")["tarif_generation"]
     ledger = pd.DataFrame(
         {
             "police_id": ereignisse["police_id"].astype("int64"),
@@ -372,11 +435,12 @@ def fortschreiben(
         }
     ).reset_index(drop=True)
 
-    # Statushistorie = nur Zustandswechsel; ERH aendert den Zustand nicht.
-    zustaende = ereignisse[ereignisse["status_code"] != "ERH"].copy()
+    # Statushistorie = nur Zustandswechsel; ERH aendert den Zustand nicht,
+    # ZUG ist die POL-Basiszeile selbst (liegt in zugaenge).
+    zustaende = ereignisse[~ereignisse["status_code"].isin(("ERH", "ZUG"))].copy()
     if len(zustaende) == 0:
         return Fortschreibung(
-            _leerer_frame(STATUS_HISTORIE_SPALTEN), ledger, scheiben_df
+            _leerer_frame(STATUS_HISTORIE_SPALTEN), ledger, scheiben_df, zugaenge
         )
     # status_id je Police fortlaufend ab 2 (Basis-POL im Stamm ist 1).
     zustaende["status_id"] = zustaende.groupby("police_id").cumcount() + 2
@@ -388,7 +452,25 @@ def fortschreiben(
             "status_date": pd.to_datetime(zustaende["status_date"]),
         }
     ).reset_index(drop=True)
-    return Fortschreibung(historie, ledger, scheiben_df)
+    return Fortschreibung(historie, ledger, scheiben_df, zugaenge)
+
+
+def mit_zugaengen(stamm: pd.DataFrame, zugaenge: pd.DataFrame) -> pd.DataFrame:
+    """Gesamtbestand = Basisbestand + Neuzugaenge (POL-Basiszeilen).
+
+    Das Ergebnis ist der Bestand fuer Zeitscheibe, Auswertung und Bericht;
+    es erfuellt denselben Basis-Contract wie der Generator-Output
+    (validate_portfolio-konform, eindeutige police_ids).
+    """
+    if len(zugaenge) == 0:
+        return stamm.copy().reset_index(drop=True)
+    beide = pd.concat([stamm, zugaenge], ignore_index=True)
+    if beide["police_id"].duplicated().any():
+        raise EreignisError("police_id-Kollision zwischen Bestand und Neuzugang")
+    return (
+        beide.sort_values("police_id", kind="stable")
+        .reset_index(drop=True)[list(STAMM_NAMES)]
+    )
 
 
 def bestand_mit_historie(

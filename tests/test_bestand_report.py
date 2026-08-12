@@ -180,7 +180,7 @@ def test_render_historie_ohne_ledger_ist_fehler(portfolio, fortschreibung):
 
 
 def test_render_mit_config_zeigt_aktuarielle_kennzahlen(portfolio, config, fortschreibung):
-    historie, ledger, scheiben = fortschreibung
+    historie, ledger, scheiben, *_ = fortschreibung
     stichtage = [dt.date(j, 1, 1) for j in range(2010, 2031, 10)]
     mit = report.render_html(
         portfolio, stichtage=stichtage, historie=historie, ledger=ledger,
@@ -206,7 +206,7 @@ def test_render_mit_config_zeigt_aktuarielle_kennzahlen(portfolio, config, forts
 def test_render_erh_ledger_ohne_scheiben_ist_fehler(portfolio, config, fortschreibung):
     """Review-Fix: ERH im Ledger + aktuarielle Kennzahlen ohne Scheiben
     waeren still zu niedrig — fail-fast statt widerspruechlicher Bericht."""
-    historie, ledger, scheiben = fortschreibung
+    historie, ledger, scheiben, *_ = fortschreibung
     assert (ledger["ereignis"] == "ERH").any()
     with pytest.raises(ValueError, match="ERH"):
         report.render_html(
@@ -256,7 +256,7 @@ def test_cli_bad_stichtag_exits_2(portfolio, tmp_path):
 
 
 def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
-    historie, ledger, scheiben = fortschreibung
+    historie, ledger, scheiben, *_ = fortschreibung
     parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
     h = write_portfolio(historie, tmp_path / "h.parquet")
     l = write_portfolio(ledger, tmp_path / "l.parquet")

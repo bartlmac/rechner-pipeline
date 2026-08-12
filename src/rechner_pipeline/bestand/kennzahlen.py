@@ -57,11 +57,12 @@ def generationsnamen(df: pd.DataFrame) -> List[str]:
 # --------------------------------------------------------------------------- #
 
 #: Feste fachliche Reihenfolge der Ereignisse in Tabellen und Grafiken
-#: (ERH ist ein Zugangs-GeVo ohne Statuswechsel, daher vorangestellt).
-EREIGNIS_REIHENFOLGE = ("ERH", "PEX", "STO", "TOD", "ABL")
+#: (ZUG/ERH sind Zugangs-GeVos ohne Statuswechsel, daher vorangestellt).
+EREIGNIS_REIHENFOLGE = ("ZUG", "ERH", "PEX", "STO", "TOD", "ABL")
 
 #: Klartext je Ereignis-Code (Berichts-Beschriftung).
 EREIGNIS_LABELS = {
+    "ZUG": "Neuzugang",
     "ERH": "Dynamische Erhöhung",
     "PEX": "Beitragsfreistellung",
     "STO": "Storno",

@@ -158,3 +158,8 @@ pex_rate = 0.01
 tod_faktor = 1.0
 erh_rate = 0.3
 erh_prozent = 0.05
+
+# Neuzugang je Kalenderjahr (Fortschreibung ab Referenzstichtag, siehe
+# bestand.ereignisse.fortschreiben(neuzugang_ab=...)); 0 = aus. Wirkt nur
+# im Gueltigkeitsfenster der Generation.
+# neuzugang_pro_jahr = 40

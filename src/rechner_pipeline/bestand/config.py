@@ -138,6 +138,10 @@ class TarifGeneration:
     gueltig_bis: _dt.date
     sample_size: int
     max_endalter: int
+    #: Simulierter Neuzugang je Kalenderjahr (Fortschreibung ab
+    #: Referenzstichtag); 0 = kein Neuzugang. Wirkt nur innerhalb des
+    #: Gueltigkeitsfensters der Generation.
+    neuzugang_pro_jahr: int = 0
     # Kernel-Tarifparameter (GENERATION_FIELDS des ModelPoint-Contracts):
     zins: float = 0.0
     tafel: str = ""
@@ -178,6 +182,8 @@ class TarifGeneration:
                 f"{prefix}: sample_size > 1_000_000 (police_id-Nummernkreis je "
                 "Generation ist 10 Mio; Obergrenze schuetzt vor Kollisionen)"
             )
+        if not 0 <= self.neuzugang_pro_jahr <= 10_000:
+            errors.append(f"{prefix}: neuzugang_pro_jahr ausserhalb [0, 10000]")
         if not 0 < self.max_endalter <= 121:
             errors.append(f"{prefix}: max_endalter ausserhalb (0, 121]")
         if self.zins <= -1.0:
@@ -351,6 +357,7 @@ def load_config(path: Path) -> BestandConfig:
                 gueltig_bis=_to_date(g.get("gueltig_bis"), "gueltig_bis", errors),
                 sample_size=int(g.get("sample_size", 0)),
                 max_endalter=int(g.get("max_endalter", 85)),
+                neuzugang_pro_jahr=int(g.get("neuzugang_pro_jahr", 0)),
                 zins=float(g.get("zins", 0.0)),
                 tafel=str(g.get("tafel", "")),
                 alpha=float(g.get("alpha", 0.0)),
