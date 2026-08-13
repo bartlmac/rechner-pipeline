@@ -225,6 +225,7 @@ def auswertungs_verlauf(
             "bu_jahresrente": 0.0,
             "bu_jahresrente_laufend": 0.0,
             "deckungskapital_bu": 0.0,
+            "deckungskapital_anwaerter": 0.0,
         }
         for pid, months_exp, status in zip(
             scheibe["police_id"], scheibe["months_exp"], scheibe["status_code"]
@@ -252,6 +253,7 @@ def auswertungs_verlauf(
                     agg["deckungskapital_bu"] += reserve
                 else:
                     reserve = produkt.reserve_aktiv(jahr)
+                    agg["deckungskapital_anwaerter"] += reserve
                 agg["deckungskapital"] += reserve
                 continue
             pex_jahr = None

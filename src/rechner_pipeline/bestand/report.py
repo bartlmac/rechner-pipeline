@@ -610,10 +610,28 @@ Fortschreibungs-Horizont vollständig abdeckt. {pruefsatz}</p>"""
     "laufende Jahresrente (Mio.)", _BU_FARBEN["rentner"])}</div>
 <div class="charts">{_chart_bu_summe(aktiv, "deckungskapital",
     "Deckungskapital gesamt (Mio.)", "#2ca02c")}</div>
+<div class="charts">{_chart_bu_summe(aktiv, "deckungskapital_anwaerter",
+    "Deckungskapital Anwärter (Mio.)", _BU_FARBEN["anwaerter"])}</div>
+<div class="charts">{_chart_bu_summe(aktiv, "deckungskapital_bu",
+    "Deckungskapital Leistungsbezug (Mio.)", _BU_FARBEN["rentner"])}</div>
 <table><thead><tr><th>Stichtag</th><th>BU-Verträge</th>
 <th>davon im Leistungsbezug</th><th>Σ versicherte Jahresrente</th>
 <th>Σ laufende Jahresrente</th><th>Σ Deckungskapital</th>
 <th>davon Leistungsbezug</th></tr></thead><tbody>{bu_zeilen}</tbody></table>"""
+        bu_generationen = [
+            g for g in (config.generationen if config is not None else ())
+            if g.produkt == "bu"
+        ]
+        if bu_generationen:
+            g = bu_generationen[0]
+            bu_grundlagen = (
+                f"Invalidisierung {g.tafel_i}, Aktivensterblichkeit "
+                f"{g.tafel_aktiv}, Reaktivierung {g.tafel_ri}, "
+                f"Invalidensterblichkeit {g.tafel_ti}; Rechnungszins "
+                f"{g.zins:.2%}".replace(".", ",")
+            )
+        else:
+            bu_grundlagen = "siehe Tarifgeneration des Bestands"
         bu_pruefsatz = (
             "Die Identität Anfangsbestand + Zugang − Abgang = Endbestand gilt "
             "in jedem Jahr, je Track, in Stück und Jahresrente (Gate-geprüft)."
@@ -652,10 +670,7 @@ Invalidensterblichkeit) — dieselben Ausscheideordnungen, mit denen der Kern
 Beiträge und Reserven bewertet. Reserven: im Anwärterstand die
 Aktivenreserve, im Leistungsbezug die Invalidenreserve mit der Dauer seit
 Rentenbeginn.</p>
-<p><strong>Hinweis zu den Rechnungsgrundlagen:</strong> Invalidisierung,
-Reaktivierung und Invalidensterblichkeit sind synthetische Platzhalter
-(SYNTH_BU_*), keine DAV-Tafeln; die Aktivensterblichkeit ist DAV 2008 T.
-Die Zahlen zeigen die Mechanik, keine marktfähige Tarifierung.</p>"""
+<p><strong>Rechnungsgrundlagen:</strong> {bu_grundlagen}.</p>"""
 
     auswertung_html = ""
     if config is not None:

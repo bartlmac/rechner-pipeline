@@ -557,8 +557,10 @@ def test_reiner_bu_bestand_laeuft_durch_gate_und_bericht(config, portfolio, tmp_
     assert "Berufsunfähigkeit: Bestand und Bewegung" in html
     assert "Leistungsbezieher" in html
     assert "WARNUNG" not in html
-    # Der Hinweis auf die synthetischen Grundlagen darf nie verloren gehen:
-    assert "synthetische Platzhalter" in html
+    # Die Rechnungsgrundlagen stehen im Bericht (Stichtags-Angabe aus der
+    # Config, keine Entwicklungsgeschichte):
+    assert "Rechnungsgrundlagen" in html
+    assert config.generationen[0].tafel_i in html
     # Determinismus:
     assert html == report.render_html(
         portfolio, stichtage=[dt.date(2015, 1, 1), dt.date(2030, 1, 1)],
