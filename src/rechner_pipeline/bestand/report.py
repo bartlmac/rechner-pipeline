@@ -500,11 +500,33 @@ def _grundlagen_html(
     annahmen = "; ".join(
         annahme_text(n, titel) for n, titel in spec["annahmen"]
     )
+    # Neugeschaefts-Annahme: eine zentrale Prognose-Setzung — ohne sie
+    # laesst sich nicht beurteilen, ob ein fallender Bestand Abwicklung
+    # oder Marktentwicklung ist.
+    vertrieb = [g for g in generationen if g.neuzugang_pro_jahr > 0]
+    if vertrieb:
+        letzte = max(g.gueltig_bis for g in vertrieb)
+        volumen = ", ".join(
+            f"{g.name} {g.neuzugang_pro_jahr} Verträge/Jahr bis "
+            f"{g.gueltig_bis.isoformat()}"
+            for g in vertrieb
+        )
+        neugeschaeft = (
+            f"{volumen}. Nach dem {letzte.isoformat()} nimmt die Projektion "
+            "kein Neugeschäft mehr an — der Bestand läuft ab da ab "
+            "(Abwicklung)."
+        )
+    else:
+        neugeschaeft = (
+            "kein Neugeschäft — die Projektion zeigt die reine Abwicklung "
+            "des Bestands (Run-off)."
+        )
     return f"""
 <p><strong>Rechnungsgrundlagen</strong> (Bewertung, erste Ordnung):</p>
 <ul>{zeilen}</ul>
 <p><strong>Erfahrungsannahmen</strong> (Fortschreibung, dritte Ordnung):
-{annahmen}.</p>"""
+{annahmen}.</p>
+<p><strong>Neugeschäft</strong> (Prognose-Annahme): {neugeschaeft}</p>"""
 
 
 def _nachweisung_html(
