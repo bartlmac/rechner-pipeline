@@ -110,6 +110,160 @@ def ereignisse_je_jahr(ledger: pd.DataFrame) -> List[Dict[str, Any]]:
     return reihe
 
 
+def _nur_produkt(bestand, historie, ledger, produkt: str):
+    """Bestand, Historie und Ledger auf ein Produkt einschraenken."""
+    if "produkt" not in bestand.columns:
+        return bestand, historie, ledger
+    gefiltert = bestand[bestand["produkt"] == produkt]
+    if len(gefiltert) == len(bestand):
+        return bestand, historie, ledger
+    ids = set(gefiltert["police_id"])
+    return (
+        gefiltert.reset_index(drop=True),
+        historie[historie["police_id"].isin(ids)].reset_index(drop=True),
+        ledger[ledger["police_id"].isin(ids)].reset_index(drop=True),
+    )
+
+
+def bu_bewegungskonto(
+    bestand: pd.DataFrame,
+    historie: pd.DataFrame,
+    ledger: pd.DataFrame,
+    bis: Any = None,
+) -> List[Dict[str, Any]]:
+    """Bewegung des BU-Bestands je Kalenderjahr (Nachweisungs-Struktur).
+
+    Gegenstück zu :func:`bewegungskonto` für das zweite Produkt. Die
+    Nachweisung trennt hier nicht beitragspflichtig/beitragsfrei, sondern
+    **Anwärter** (``anwaerter``, Zustand POL) und **Leistungsbezieher**
+    (``rentner``, Zustand BU) — die Aufteilung, die auch die Bilanz
+    kennt. Bezugsgröße ist in beiden Tracks die versicherte
+    JAHRESRENTE (nicht die Versicherungssumme), Maße sind Stück und
+    Jahresrente.
+
+    GeVo-Mapping: Zugang aus den Versicherungsbeginnen (die POL-Basiszeile
+    ist der Zugangs-Satz), Invalidisierung (``INV``) ist eine Umbuchung
+    Anwärter -> Rentner, Reaktivierung (``REA``) die Rückbuchung,
+    ``TOD``/``ABL`` sind Abgänge aus dem Track, in dem der Vertrag zuletzt
+    stand. Weil die Jahresrente je Vertrag konstant ist (keine Scheiben,
+    keine Leistungsdynamik im Beispielprodukt), gilt die Identität
+    Anfang + Zugang - Abgang = Ende exakt — je Jahr, Track und Maß.
+
+    ``bis`` ist wie bei :func:`bewegungskonto` der Fortschreibungs-Horizont:
+    nur vollständig simulierte Jahre werden ausgewiesen.
+    """
+    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+    from rechner_pipeline.bestand.zeitscheibe import zeitscheibe as _zeitscheibe
+
+    fremd = set(ledger["police_id"]) - set(bestand["police_id"])
+    if fremd:
+        raise ValueError(
+            f"Ledger referenziert Policen ausserhalb des Bestands: "
+            f"{sorted(fremd)[:5]} — bei Neuzugaengen den Gesamtbestand "
+            "uebergeben (mit_zugaengen(stamm, zugaenge))"
+        )
+    bestand, historie, ledger = _nur_produkt(bestand, historie, ledger, "bu")
+    if len(bestand) == 0:
+        return []
+    sicht = bestand_mit_historie(bestand, historie)
+    renten = bestand.set_index("police_id")["bu_rente"]
+
+    def bestand_am(stichtag: _dt.date) -> Dict[str, Dict[str, float]]:
+        scheibe = _zeitscheibe(sicht, stichtag)
+        anwaerter = scheibe[scheibe["status_code"] == "POL"]
+        rentner = scheibe[scheibe["status_code"] == "BU"]
+        return {
+            track: {
+                "stueck": int(len(teil)),
+                "summe": float(sum(renten.loc[p] for p in teil["police_id"])),
+            }
+            for track, teil in (("anwaerter", anwaerter), ("rentner", rentner))
+        }
+
+    von = int((bestand["insurance_start"] - pd.Timedelta(days=1)).dt.year.min())
+    letzt = int(bestand["insurance_end"].dt.year.max())
+    jahre = range(von, letzt + 1)
+    if bis is not None:
+        grenze = pd.Timestamp(bis)
+        jahre = [j for j in jahre if pd.Timestamp(_dt.date(j + 1, 1, 1)) <= grenze]
+
+    konto: List[Dict[str, Any]] = []
+    for jahr in jahre:
+        anfang = bestand_am(_dt.date(jahr, 1, 1))
+        ende = bestand_am(_dt.date(jahr + 1, 1, 1))
+        von_ts = pd.Timestamp(_dt.date(jahr, 1, 1))
+        bis_ts = pd.Timestamp(_dt.date(jahr + 1, 1, 1))
+        periode = ledger[
+            (ledger["status_date"] > von_ts) & (ledger["status_date"] <= bis_ts)
+        ]
+
+        def posten(zeilen: pd.DataFrame) -> Dict[str, float]:
+            return {
+                "stueck": int(len(zeilen)),
+                "summe": float(sum(renten.loc[p] for p in zeilen["police_id"])),
+            }
+
+        zug = bestand[
+            (bestand["insurance_start"] > von_ts)
+            & (bestand["insurance_start"] <= bis_ts)
+        ]
+        inv = periode[periode["ereignis"] == "INV"]
+        rea = periode[periode["ereignis"] == "REA"]
+        terminal = periode[periode["ereignis"].isin(("TOD", "ABL"))]
+        # Der Track eines Abgangs ist der Zustand VOR dem Abgang: der
+        # Ledger-Betrag ist genau dann die (endende) Jahresrente, wenn der
+        # Vertrag im Leistungsbezug stand — Tod/Ablauf als Anwaerter zahlen 0.
+        aus_bezug = terminal["betrag"] > 0.0
+        zeile: Dict[str, Any] = {
+            "jahr": int(jahr),
+            "anwaerter": {
+                "anfang": anfang["anwaerter"],
+                "zugang_neuzugang": posten(zug),
+                "zugang_reaktivierung": posten(rea),
+                "abgang_tod": posten(terminal[(terminal["ereignis"] == "TOD") & ~aus_bezug]),
+                "abgang_ablauf": posten(terminal[(terminal["ereignis"] == "ABL") & ~aus_bezug]),
+                "umbuchung_leistungsbezug": posten(inv),
+                "ende": ende["anwaerter"],
+            },
+            "rentner": {
+                "anfang": anfang["rentner"],
+                "zugang_invalidisierung": posten(inv),
+                "abgang_reaktivierung": posten(rea),
+                "abgang_tod": posten(terminal[(terminal["ereignis"] == "TOD") & aus_bezug]),
+                "abgang_ablauf": posten(terminal[(terminal["ereignis"] == "ABL") & aus_bezug]),
+                "ende": ende["rentner"],
+            },
+        }
+
+        def identitaet(track: Dict[str, Dict[str, float]], zu: List[str], ab: List[str]):
+            ok = {}
+            for mass in ("stueck", "summe"):
+                bewegungen = [track[p][mass] for p in zu] + [-track[p][mass] for p in ab]
+                soll = track["anfang"][mass] + sum(bewegungen)
+                brutto = (
+                    abs(track["anfang"][mass]) + abs(track["ende"][mass])
+                    + sum(abs(x) for x in bewegungen)
+                )
+                toleranz = 0.0 if mass == "stueck" else max(1e-6, 1e-9 * brutto)
+                ok[mass] = abs(soll - track["ende"][mass]) <= toleranz
+            return ok
+
+        zeile["identitaet"] = {
+            "anwaerter": identitaet(
+                zeile["anwaerter"],
+                ["zugang_neuzugang", "zugang_reaktivierung"],
+                ["abgang_tod", "abgang_ablauf", "umbuchung_leistungsbezug"],
+            ),
+            "rentner": identitaet(
+                zeile["rentner"],
+                ["zugang_invalidisierung"],
+                ["abgang_reaktivierung", "abgang_tod", "abgang_ablauf"],
+            ),
+        }
+        konto.append(zeile)
+    return konto
+
+
 def bewegungskonto(
     bestand: pd.DataFrame,
     historie: pd.DataFrame,
@@ -156,6 +310,10 @@ def bewegungskonto(
             f"{sorted(fremd)[:5]} — bei Neuzugaengen den Gesamtbestand "
             "uebergeben (mit_zugaengen(stamm, zugaenge))"
         )
+    # Gemischte Bestaende: dieses Konto fuehrt die KLV-Nachweisung
+    # (Bezugsgroesse Versicherungssumme); BU laeuft ueber
+    # :func:`bu_bewegungskonto` mit der Jahresrente.
+    bestand, historie, ledger = _nur_produkt(bestand, historie, ledger, "klv")
     sicht = bestand_mit_historie(bestand, historie)
     stamm_vs = bestand.set_index("police_id")["sum_insured"]
 

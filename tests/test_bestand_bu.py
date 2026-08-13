@@ -364,3 +364,167 @@ def test_bu_vertrag_mit_unbekannter_generation_ist_fehler(config):
     )
     with pytest.raises(EreignisError, match="GIBTS-NICHT"):
         fortschreiben(stamm, config, dt.date(2020, 1, 1))
+
+
+# --------------------------------------------------------------------------- #
+# Auswertung und Bewegungsrechnung
+# --------------------------------------------------------------------------- #
+
+
+def test_auswertung_liefert_bu_kennzahlen(config, portfolio, monkeypatch):
+    """Reserven aus dem Kern: Anwaerter- bzw. Invalidenreserve je nach
+    Zustand am Stichtag, dazu die versicherte Jahresrente als
+    Bezugsgroesse."""
+    from rechner_pipeline.bestand.auswertung import auswertungs_verlauf
+
+    def uebergang(self, von, nach, alter, dauer):
+        return 1.0 if (von == AKTIV and nach == BU_ZUSTAND and alter == 40) else 0.0
+
+    monkeypatch.setattr(BU, "_uebergang", uebergang)
+    stamm = _bu_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 1, 1), "x": 40, "n": 20,
+         "rente": 12000.0}
+    )
+    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    reihe = auswertungs_verlauf(
+        stamm, erg.historie, config,
+        [dt.date(2010, 1, 1), dt.date(2015, 1, 1), dt.date(2031, 1, 1)],
+    )
+    anfang, im_bezug, nach_ablauf = reihe
+
+    # Anwaerter am Vertragsbeginn: Reserve 0 (Aequivalenzprinzip).
+    assert anfang["bu_vertraege"] == 1
+    assert anfang["bu_leistungsbezug"] == 0
+    assert anfang["bu_jahresrente"] == 12000.0
+    assert anfang["bu_jahresrente_laufend"] == 0.0
+    assert anfang["deckungskapital"] == pytest.approx(0.0, abs=1e-9)
+
+    # Im Leistungsbezug: laufende Rente und positive Invalidenreserve.
+    assert im_bezug["bu_leistungsbezug"] == 1
+    assert im_bezug["bu_jahresrente_laufend"] == 12000.0
+    assert im_bezug["deckungskapital_bu"] > 0.0
+    assert im_bezug["deckungskapital"] == pytest.approx(im_bezug["deckungskapital_bu"])
+
+    # Nach Ablauf ist der Bestand leer.
+    assert nach_ablauf["bu_vertraege"] == 0
+    assert nach_ablauf["vertraege"] == 0
+
+
+def test_auswertung_bu_dauer_folgt_der_historie(config, monkeypatch):
+    """Die Invalidenreserve haengt von der Dauer im Leistungsbezug ab
+    (Semi-Markov) — die Engine liefert sie aus der Statushistorie."""
+    from rechner_pipeline.bestand.auswertung import auswertungs_verlauf
+
+    def uebergang(self, von, nach, alter, dauer):
+        return 1.0 if (von == AKTIV and nach == BU_ZUSTAND and alter == 40) else 0.0
+
+    monkeypatch.setattr(BU, "_uebergang", uebergang)
+    stamm = _bu_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 1, 1), "x": 40, "n": 20}
+    )
+    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    # BU-Beginn ist der 2011-01-01; die Dauer waechst mit jedem Jahr.
+    produkt = BU(BUModelPoint(**bu_model_point_kwargs(
+        stamm.iloc[0], config.generationen[0].bu_generation_fields()
+    )))
+    for jahre_im_bezug in (0, 1, 3):
+        stichtag = dt.date(2011 + jahre_im_bezug, 1, 1)
+        ist = auswertungs_verlauf(stamm, erg.historie, config, [stichtag])[0]
+        erwartet = produkt.reserve_bu(1 + jahre_im_bezug, jahre_im_bezug)
+        assert ist["deckungskapital_bu"] == pytest.approx(erwartet)
+
+
+def test_bu_bewegungskonto_identitaeten(portfolio, config):
+    from rechner_pipeline.bestand.kennzahlen import bu_bewegungskonto
+
+    bis = dt.date(2060, 1, 1)
+    erg = fortschreiben(portfolio, config, bis)
+    konto = bu_bewegungskonto(portfolio, erg.historie, erg.ledger, bis=bis)
+    assert len(konto) > 30
+    for zeile in konto:
+        for track, oks in zeile["identitaet"].items():
+            for mass, ok in oks.items():
+                assert ok, f"{zeile['jahr']} {track}/{mass}"
+    # Verkettung: Ende eines Jahres ist Anfang des naechsten.
+    for a, b in zip(konto, konto[1:]):
+        assert a["anwaerter"]["ende"] == b["anwaerter"]["anfang"]
+        assert a["rentner"]["ende"] == b["rentner"]["anfang"]
+    # Stueck-Abgleich gegen den Ledger (Umbuchungen und Abgaenge):
+    for code, positionen in (
+        ("INV", [("rentner", "zugang_invalidisierung")]),
+        ("REA", [("anwaerter", "zugang_reaktivierung")]),
+        ("TOD", [("anwaerter", "abgang_tod"), ("rentner", "abgang_tod")]),
+        ("ABL", [("anwaerter", "abgang_ablauf"), ("rentner", "abgang_ablauf")]),
+    ):
+        soll = int((erg.ledger["ereignis"] == code).sum())
+        ist = sum(z[t][p]["stueck"] for z in konto for t, p in positionen)
+        assert ist == soll, code
+
+
+def test_bu_bewegung_umbuchung_handrechnung(config, monkeypatch):
+    from rechner_pipeline.bestand.kennzahlen import bu_bewegungskonto
+
+    def uebergang(self, von, nach, alter, dauer):
+        if von == AKTIV and nach == BU_ZUSTAND:
+            return 1.0 if alter == 40 else 0.0
+        if von == BU_ZUSTAND and nach == AKTIV:
+            return 1.0 if alter == 42 else 0.0
+        return 0.0
+
+    monkeypatch.setattr(BU, "_uebergang", uebergang)
+    stamm = _bu_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 7, 1), "x": 40, "n": 20,
+         "rente": 12000.0}
+    )
+    bis = dt.date(2040, 1, 1)
+    erg = fortschreiben(stamm, config, bis)
+    konto = {z["jahr"]: z for z in bu_bewegungskonto(stamm, erg.historie, erg.ledger, bis=bis)}
+
+    # 2011: Invalidisierung (Jahrestag 2011-07-01) — Umbuchung
+    # Anwaerter -> Rentner.
+    inv = konto[2011]
+    assert inv["anwaerter"]["umbuchung_leistungsbezug"] == {"stueck": 1, "summe": 12000.0}
+    assert inv["anwaerter"]["ende"] == {"stueck": 0, "summe": 0.0}
+    assert inv["rentner"]["zugang_invalidisierung"] == {"stueck": 1, "summe": 12000.0}
+    assert inv["rentner"]["ende"] == {"stueck": 1, "summe": 12000.0}
+    # 2013: Reaktivierung — Rueckbuchung (Alter 42 im Vertragsjahr 2).
+    rea = konto[2013]
+    assert rea["rentner"]["abgang_reaktivierung"] == {"stueck": 1, "summe": 12000.0}
+    assert rea["rentner"]["ende"] == {"stueck": 0, "summe": 0.0}
+    assert rea["anwaerter"]["zugang_reaktivierung"] == {"stueck": 1, "summe": 12000.0}
+    assert rea["anwaerter"]["ende"] == {"stueck": 1, "summe": 12000.0}
+    # 2030: Ablauf aus dem Anwaerterstand.
+    abl = konto[2030]
+    assert abl["anwaerter"]["abgang_ablauf"] == {"stueck": 1, "summe": 12000.0}
+    assert abl["anwaerter"]["ende"] == {"stueck": 0, "summe": 0.0}
+
+
+def test_klv_bewegungskonto_ignoriert_bu_vertraege():
+    """Gemischter Bestand: jede Nachweisung fuehrt nur ihr Produkt (die
+    Bezugsgroessen Versicherungssumme und Jahresrente sind nicht
+    addierbar)."""
+    import copy
+
+    from rechner_pipeline.bestand.kennzahlen import bewegungskonto, bu_bewegungskonto
+
+    klv = load_config(KLV_EXAMPLE)
+    bu = load_config(BU_EXAMPLE)
+    gemischt = copy.deepcopy(klv)
+    gemischt.generationen = [klv.generationen[1], bu.generationen[0]]
+    gemischt.ereignisse = klv.ereignisse
+    df = generate(gemischt)
+    bis = dt.date(2035, 1, 1)
+    erg = fortschreiben(df, gemischt, bis)
+
+    klv_konto = bewegungskonto(df, erg.historie, erg.ledger, erg.scheiben, bis=bis)
+    bu_konto = bu_bewegungskonto(df, erg.historie, erg.ledger, bis=bis)
+    assert klv_konto and bu_konto
+    for konto in (klv_konto, bu_konto):
+        for zeile in konto:
+            for oks in zeile["identitaet"].values():
+                assert all(oks.values()), zeile["jahr"]
+    # Stueckzahlen trennen sauber: die Summe der Zugaenge beider Konten
+    # ist die Zahl der Vertraege im Bestand.
+    klv_zug = sum(z["bpfl"]["zugang_neuzugang"]["stueck"] for z in klv_konto)
+    bu_zug = sum(z["anwaerter"]["zugang_neuzugang"]["stueck"] for z in bu_konto)
+    assert klv_zug + bu_zug == len(df)

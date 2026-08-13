@@ -28,7 +28,7 @@ from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.ereignisse import bestand_mit_historie, vertrags_rkw
 from rechner_pipeline.bestand.zeitscheibe import months_between, zeitscheibe
 from rechner_pipeline.kern import ModelPoint, Rechenkern
-from rechner_pipeline.models.bestand import model_point_kwargs
+from rechner_pipeline.models.bestand import bu_model_point_kwargs, model_point_kwargs
 
 
 def vertragswerte(
@@ -65,6 +65,8 @@ def _kerne_je_police(
     generationen = {g.name: g.generation_fields() for g in config.generationen}
     kerne: Dict[int, Rechenkern] = {}
     for row in stamm.to_dict("records"):
+        if str(row.get("produkt", "klv")) != "klv":
+            continue
         name = str(row["tarif_generation"])
         if name not in generationen:
             raise ValueError(
@@ -75,6 +77,50 @@ def _kerne_je_police(
             ModelPoint(**model_point_kwargs(row, generationen[name]))
         )
     return kerne
+
+
+def _bu_produkte_je_police(stamm: pd.DataFrame, config: BestandConfig) -> Dict[int, Any]:
+    """police_id -> BU-Produktinstanz (nur fuer BU-Vertraege)."""
+    from rechner_pipeline.kern.produkte.bu import BU, BUModelPoint
+
+    grundlagen = {
+        g.name: g.bu_generation_fields()
+        for g in config.generationen
+        if g.produkt == "bu"
+    }
+    produkte: Dict[int, Any] = {}
+    for row in stamm.to_dict("records"):
+        if str(row.get("produkt", "klv")) != "bu":
+            continue
+        name = str(row["tarif_generation"])
+        if name not in grundlagen:
+            raise ValueError(
+                f"police {row['police_id']}: BU-Tarifgeneration {name!r} nicht "
+                f"in Config (bekannt: {sorted(grundlagen)})"
+            )
+        produkte[int(row["police_id"])] = BU(
+            BUModelPoint(**bu_model_point_kwargs(row, grundlagen[name]))
+        )
+    return produkte
+
+
+def _bu_phasenbeginne(historie: pd.DataFrame) -> Dict[int, List[_dt.date]]:
+    """police_id -> Datumsstempel der Uebergaenge in den Leistungsbezug.
+
+    Weil die Statushistorie strikt zwischen Anwaerterstand und
+    Leistungsbezug alterniert, ist der juengste BU-Stempel vor einem
+    Stichtag genau der Beginn der dort laufenden Leistungsphase — daraus
+    folgt die BU-Dauer (volle Jahre) fuer :meth:`BU.reserve_bu`.
+    """
+    if historie is None or len(historie) == 0:
+        return {}
+    bu = historie[historie["status_code"] == "BU"]
+    beginne: Dict[int, List[_dt.date]] = {}
+    for pid, datum in zip(bu["police_id"], bu["status_date"]):
+        beginne.setdefault(int(pid), []).append(datum.date())
+    for liste in beginne.values():
+        liste.sort()
+    return beginne
 
 
 def _pex_jahre(stamm: pd.DataFrame, historie: pd.DataFrame) -> Dict[int, int]:
@@ -152,6 +198,11 @@ def auswertungs_verlauf(
         sicht = stamm
         pex_jahre = {}
     kerne = _kerne_je_police(stamm, config)
+    bu_produkte = _bu_produkte_je_police(stamm, config)
+    bu_beginne = _bu_phasenbeginne(historie)
+    bu_renten = (
+        stamm.set_index("police_id")["bu_rente"] if len(bu_produkte) else None
+    )
     scheiben_je_police: Dict[int, List[Dict[str, Any]]] = (
         _scheiben_kerne(stamm, scheiben, config)
         if scheiben is not None and len(scheiben) > 0
@@ -168,11 +219,41 @@ def auswertungs_verlauf(
             "deckungskapital_bfr": 0.0,
             "rueckkaufswert": 0.0,
             "vs_bfr": 0.0,
+            # BU-Groessen (0, solange der Bestand keine BU-Vertraege fuehrt):
+            "bu_vertraege": 0,
+            "bu_leistungsbezug": 0,
+            "bu_jahresrente": 0.0,
+            "bu_jahresrente_laufend": 0.0,
+            "deckungskapital_bu": 0.0,
         }
         for pid, months_exp, status in zip(
             scheibe["police_id"], scheibe["months_exp"], scheibe["status_code"]
         ):
             pid = int(pid)
+            if pid in bu_produkte:
+                # BU: Reserve aus dem Zustandsmodell — im Anwaerterstand die
+                # Aktivenreserve, im Leistungsbezug die Invalidenreserve mit
+                # der Dauer seit Rentenbeginn (Semi-Markov).
+                produkt = bu_produkte[pid]
+                jahr = int(months_exp) // 12
+                rente = float(bu_renten.loc[pid])
+                agg["bu_vertraege"] += 1
+                agg["bu_jahresrente"] += rente
+                if status == "BU":
+                    beginne = [d for d in bu_beginne.get(pid, ()) if d <= stichtag]
+                    if not beginne:
+                        raise ValueError(
+                            f"police {pid}: Status BU ohne BU-Zeile in der Historie"
+                        )
+                    dauer = months_between(beginne[-1], stichtag) // 12
+                    reserve = produkt.reserve_bu(jahr, dauer)
+                    agg["bu_leistungsbezug"] += 1
+                    agg["bu_jahresrente_laufend"] += rente
+                    agg["deckungskapital_bu"] += reserve
+                else:
+                    reserve = produkt.reserve_aktiv(jahr)
+                agg["deckungskapital"] += reserve
+                continue
             pex_jahr = None
             if status == "PEX":
                 if pid not in pex_jahre:

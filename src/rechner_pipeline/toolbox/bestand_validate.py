@@ -204,13 +204,20 @@ def main(argv: Optional[List[str]] = None):
         # Bewegungs-Identitaeten (BaFin-Nachweisungs-Struktur): Anfang +
         # Zugang - Abgang = Endbestand je Jahr, Track und Mass — eine
         # Verletzung ist ein Engine-/Datenfehler.
-        from rechner_pipeline.bestand.kennzahlen import bewegungskonto
+        from rechner_pipeline.bestand.kennzahlen import (
+            bewegungskonto,
+            bu_bewegungskonto,
+        )
 
+        konto: List[dict] = []
         try:
             konto = bewegungskonto(portfolio, historie, ledger, scheiben, bis=bis)
+            # Gemischte Bestaende fuehren zwei Nachweisungen (KLV mit
+            # Versicherungssumme, BU mit Jahresrente); beide Identitaeten
+            # sind harte Gate-Bedingungen.
+            konto = konto + bu_bewegungskonto(portfolio, historie, ledger, bis=bis)
         except ValueError as exc:
             errors.append({"code": "ledger", "message": str(exc)})
-            konto = []
         geprueft["bewegungsjahre"] = len(konto)
         for zeile in konto:
             for track, oks in zeile["identitaet"].items():
