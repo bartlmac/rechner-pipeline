@@ -191,8 +191,9 @@ Zustandsraum-Erweiterung (Select-Perioden-Prinzip). KLV ist der
 weitere Produkte sind Konfigurationen dieser Engine, keine neuen Engines —
 als erstes Beispiel ist **Berufsunfähigkeit** implementiert
 (`kern/produkte/bu.py`: drei Zustände aktiv/bu/tot, Select-Tafeln mit
-Dauerabhängigkeit; die BU-Tafeln sind klar gekennzeichnete synthetische
-Platzhalter, bis lizenzgeklärte DAV-Tafeln vorliegen).
+Dauerabhängigkeit) — gerechnet auf den **DAV-1997-I-Ausscheideordnungen**
+(Invalidisierung, Aktivensterblichkeit, Reaktivierung und
+Invalidensterblichkeit, je Geschlecht).
 Der Wechsel des produktiven Pfads von der Kommutations- auf die
 Zustandsmodell-Schiene wurde über eine **Toleranz-Überleitung** abgenommen
 (`qa/ueberleitung.py`: Abnahme-Lauf 6.170 Werte über 10 Modellpunkte, keine

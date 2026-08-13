@@ -110,25 +110,42 @@ def _load_tables():
 _TABLES, _SELECT_TABLES = _load_tables()
 
 
-def select_tafel(name: str) -> Mapping[Tuple[int, int], float]:
+def _select_key(name: str, sex: str | None) -> str:
+    """Select-Tafel-Id auflösen — wie :func:`_tafel_key` für Sterbetafeln.
+
+    Exakter Name gewinnt (geschlechtsunabhängige Tafeln wie die
+    synthetischen Platzhalter); sonst entscheidet das Suffix ``_M``/``_F``
+    (geschlechtsabhängige Tafeln wie die DAV-Ausscheideordnungen). Ohne
+    ``sex`` bleibt es beim exakten Namen — dann muss die Tafel unisex sein.
+    """
+    if name in _SELECT_TABLES or sex is None:
+        return name
+    return name + "_" + ("M" if sex.upper() == "M" else "F")
+
+
+def select_tafel(
+    name: str, sex: str | None = None
+) -> Mapping[Tuple[int, int], float]:
     """Select-Tafel ``{(alter, dauer): wert}`` — fail-fast wenn unbekannt.
 
     Rückgabe ist eine unveränderliche Sicht (MappingProxy) auf die
     Prozess-globalen Tafeldaten — Aufrufer können sie nicht mutieren
-    (Anker-Bit-Exaktheit).
+    (Anker-Bit-Exaktheit). ``sex`` löst geschlechtsabhängige Tafeln auf
+    (siehe :func:`_select_key`).
     """
-    tafel = _SELECT_TABLES.get(name)
+    key = _select_key(name, sex)
+    tafel = _SELECT_TABLES.get(key)
     if tafel is None:
         raise MissingMortalityTableError(
-            f"Select-Tafel {name!r} fehlt in tafeln.xml; es wird keine "
+            f"Select-Tafel {key!r} fehlt in tafeln.xml; es wird keine "
             "Ausscheideordnung erfunden"
         )
     return MappingProxyType(tafel)
 
 
-def select_max_dauer(name: str) -> int:
+def select_max_dauer(name: str, sex: str | None = None) -> int:
     """Höchste tabulierte Dauer einer Select-Tafel (Select-Periode)."""
-    return max(dauer for _, dauer in select_tafel(name))
+    return max(dauer for _, dauer in select_tafel(name, sex))
 
 
 def _tafel_key(sex: str, tafel: str) -> str:

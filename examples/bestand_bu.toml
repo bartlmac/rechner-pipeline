@@ -1,11 +1,11 @@
 # Beispiel-Konfiguration Bestandsdaten-Modul: selbstaendige Berufsunfaehigkeit.
 # Eigene, synthetische Parametrierung (Lehrbeispiel, keine realen Werte).
 #
-# WICHTIG (Tafel-Provenienz): Die Rechnungsgrundlagen der Invalidisierung,
-# Reaktivierung und Invalidensterblichkeit sind SYNTHETISCHE Platzhalter
-# (SYNTH_BU_*, quelle="synthetisch" in tafeln.xml) — KEINE DAV-Tafeln. Sie
-# zeigen die Mechanik, nicht eine marktfaehige Tarifierung. Die
-# Aktivensterblichkeit ist DAV 2008 T.
+# Rechnungsgrundlagen: DAV 1997 I (Invalidisierung, Aktivensterblichkeit,
+# Reaktivierung und Invalidensterblichkeit als Select-Tafeln mit
+# Select-Periode 5, je Geschlecht) — unveraendert uebernommen.
+# Gueltigkeitsgrenze: ab Alter 70 setzt die Tafel die Invalidisierung auf 1;
+# max_endalter muss darunter bleiben (die Config prueft das).
 #
 # Fachliches Modell des BU-Beispielprodukts (kern/produkte/bu.py): drei
 # Zustaende (aktiv / bu / tot), jaehrliche BU-Rente waehrend des
@@ -29,20 +29,20 @@ produkt = "bu"
 gueltig_von = 2000-01-01
 gueltig_bis = 2015-12-31
 sample_size = 800
-# Endalter 67: das Produkt endet mit dem Rentenalter; die synthetische
-# Invalidisierungstafel fuehrt jenseits 66 ohnehin keine Werte.
+# Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
+# fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
 max_endalter = 67
 neuzugang_pro_jahr = 30
 zins = 0.0175
 # Rechnungsgrundlagen (BU): Aktivensterblichkeit, Invalidisierung,
 # Reaktivierung (Select), Invalidensterblichkeit (Select).
-tafel_aktiv = "DAV2008_T"
-tafel_i = "SYNTH_BU_I"
-tafel_ri = "SYNTH_BU_RI"
-tafel_ti = "SYNTH_BU_TI"
+tafel_aktiv = "DAV1997_TAA"
+tafel_i = "DAV1997_I"
+tafel_ri = "DAV1997_RI"
+tafel_ti = "DAV1997_TI"
 zuschlag = 0.05
 # tafel = Sterbetafel-Feld des KLV-Contracts; bei BU fuehrt tafel_aktiv.
-tafel = "DAV2008_T"
+tafel = "DAV1997_TAA"
 
 [generation.verteilungen.entry_age]
 typ = "normal_trunc"

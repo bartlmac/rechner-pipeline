@@ -7,12 +7,15 @@ format:
 ---
 
 > Tarifplan des **Zielrechenkerns** für das BU-Beispielprodukt
-> (`kern/produkte/bu.py`). **WICHTIG:** Die mitgelieferten
-> Ausscheideordnungen `SYNTH_BU_I/RI/TI` sind **synthetische
-> Platzhalter** (glatte, plausible Verläufe) — keine DAV-Tafeln. Vor
-> produktivem Einsatz sind die DAV-BU-Ausscheideordnungen (DAV 1997
-> I/RI/TI bzw. aktuellere) zu beschaffen und mit Provenienz in
-> `tafeln.xml` einzupflegen; das Select-Tafelformat ist dafür bereit.
+> (`kern/produkte/bu.py`). Rechnungsgrundlagen sind seit 2026-08-13 die
+> **DAV 1997 I**: `DAV1997_I` (Invalidisierung), `DAV1997_TAA`
+> (Aktivensterblichkeit), `DAV1997_RI` (Reaktivierung) und `DAV1997_TI`
+> (Invalidensterblichkeit) — die beiden letzten als Select-Tafeln mit
+> Select-Periode 5, alle je Geschlecht und unverändert übernommen.
+> **Gültigkeitsgrenze:** ab Alter 70 führt die Tafel die Invalidisierung
+> als 1; als Übergangswahrscheinlichkeit ist sie dort zusammen mit der
+> Aktivensterblichkeit unbrauchbar, die Engine bricht fail-fast ab. Für
+> Deckungen bis Endalter 67 ist der Bereich unerreichbar.
 
 # Produktbeschreibung
 
@@ -99,14 +102,21 @@ $R = 12\,000$, $i = 1{,}75\,\%$.
 # Verankerung und Abnahme
 
 Charakterisierungs-Anker `anker_bu_beispiel.json` (volle
-Float-Präzision, Provenienz „synthetische Tafeln"); Engine-Selbsttest
+Float-Präzision, Provenienz „DAV 1997 I"); Engine-Selbsttest
 Vorwärts- gegen Rückwärtsbewertung auf der echten BU-Konfiguration.
 Änderungen folgen dem Abnahme-Protokoll des Kerns.
 
 # Vorgesehene Erweiterungen
 
-Echte DAV-Ausscheideordnungen (mit Provenienz), Karenzzeit,
-Leistungsdynamik und Beitragsdynamik, Kostenstruktur ($\alpha/\beta/\gamma$
-statt Pauschalzuschlag), BU-GeVos in der Ereignis-Engine
-(Invalidisierung/Reaktivierung als Statuswechsel), unterjährige
-Zahlweise, Rückkauf-/Beitragsfreistellungsregeln.
+Karenzzeit, Leistungsdynamik und Beitragsdynamik, Kostenstruktur
+($\alpha/\beta/\gamma$ statt Pauschalzuschlag), unterjährige Zahlweise,
+Rückkauf-/Beitragsfreistellungsregeln. **Erledigt:** echte
+DAV-Ausscheideordnungen (2026-08-13) und die BU-GeVos der Ereignis-Engine
+(Invalidisierung/Reaktivierung als Statuswechsel, siehe Bestandsmodul).
+
+Offener Punkt zur Prämienstruktur: bei konstanter Nettoprämie über die
+volle Laufzeit wird die Anwärterreserve in den letzten Vertragsjahren
+leicht negativ (der Wert einer Invalidisierung fällt mit der Restlaufzeit
+schneller, als das Invalidisierungsrisiko steigt). Rechnerisch korrekt
+($V(0) = V(n) = 0$), bilanziell nicht ansetzbar — Feinschliff der
+Produktdefinition ist bewusst zurückgestellt.

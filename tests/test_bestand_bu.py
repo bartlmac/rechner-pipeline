@@ -651,7 +651,7 @@ def test_dauer_wird_bei_der_select_periode_gekappt(config, monkeypatch):
     max_dauer = config.generationen[0].bu_generation_fields()
     from rechner_pipeline.kern.kommutation import select_max_dauer
 
-    grenze = select_max_dauer(max_dauer["tafel_ri"])
+    grenze = select_max_dauer(max_dauer["tafel_ri"], "M")
     # Dauer zaehlt bis zur Select-Periode hoch und bleibt dann stehen:
     assert max(dauern) == grenze
     assert dauern.count(grenze) > 1

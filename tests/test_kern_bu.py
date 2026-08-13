@@ -41,8 +41,10 @@ def test_aequivalenzprinzip_anfangsreserve_null(produkt):
 
 def test_reserven_fachlich_plausibel(produkt):
     """BU-Reserve = im Wesentlichen Rentenbarwert, weit über Aktiven-Reserve;
-    am Ablauf sind beide 0."""
-    assert produkt.reserve_bu(10, 0) > 50 * produkt.reserve_aktiv(10) > 0
+    am Ablauf sind beide 0. (Mit den DAV-Grundlagen traegt die
+    Anwaerterreserve deutlich mehr als mit den frueheren Platzhaltern —
+    der Groessenordnungs-Abstand bleibt.)"""
+    assert produkt.reserve_bu(10, 0) > 10 * produkt.reserve_aktiv(10) > 0
     assert produkt.reserve_aktiv(BU_BEISPIEL.n) == 0.0
     assert produkt.reserve_bu(BU_BEISPIEL.n, 0) == 0.0
 
@@ -116,23 +118,44 @@ def test_fehlende_tafeln_fail_fast():
         zu_alt.nettobeitrag()
 
 
-def test_synthetische_tafeln_sind_konsistent():
-    """Datenqualität der Beispieltafeln: vollständig, Wegzugsummen <= 1
-    in BEIDEN Zuständen (Review-Fix: der aktiv-Zustand fehlte — und war
-    an den qx=1-Endaltern der Aktiventafeln tatsächlich verletzt)."""
+def test_dav_tafeln_sind_im_deckungsbereich_konsistent():
+    """Datenqualität der DAV-1997-I-Grundlagen im nutzbaren Altersbereich:
+    Select-Gitter vollständig, Wegzugsummen <= 1 in beiden Zuständen.
+
+    Der nutzbare Bereich endet bei Alter 69: ab 70 setzt die Tafel die
+    Invalidisierung per Konvention auf 1, dort ist die Summe der Wegzüge
+    aus dem Anwärterstand grösser als 1 (siehe folgender Test)."""
     from rechner_pipeline.kern import kommutation as k
 
-    ri = select_tafel(BU_BEISPIEL.tafel_ri)
-    ti = select_tafel(BU_BEISPIEL.tafel_ti)
-    max_d = select_max_dauer(BU_BEISPIEL.tafel_ri)
-    assert max_d == 5
+    for sex in ("M", "F"):
+        ri = select_tafel(BU_BEISPIEL.tafel_ri, sex)
+        ti = select_tafel(BU_BEISPIEL.tafel_ti, sex)
+        assert select_max_dauer(BU_BEISPIEL.tafel_ri, sex) == 5
+        assert select_max_dauer(BU_BEISPIEL.tafel_ti, sex) == 5
+        for alter in range(0, 124):
+            for dauer in range(0, 6):
+                summe = ri[(alter, dauer)] + ti[(alter, dauer)]
+                assert 0.0 <= summe <= 1.0, (sex, alter, dauer, summe)
+        i_werte = k.qx_vector(sex, BU_BEISPIEL.tafel_i)
+        qa = k.qx_vector(sex, BU_BEISPIEL.tafel_aktiv)
+        for alter in range(0, 70):
+            assert qa[alter] + i_werte[alter] <= 1.0, (sex, alter)
+
+
+def test_synthetische_platzhalter_bleiben_konsistent():
+    """Die früheren SYNTH_BU_*-Tafeln bleiben als geschlechtsunabhängiges
+    Select-Beispiel im Tafelwerk (kein Produkt legt sie mehr vor) — ihre
+    Datenqualität bleibt geprüft, inklusive des Review-Fixes am
+    aktiv-Zustand."""
+    from rechner_pipeline.kern import kommutation as k
+
+    ri = select_tafel("SYNTH_BU_RI")
+    ti = select_tafel("SYNTH_BU_TI")
+    assert select_max_dauer("SYNTH_BU_RI") == 5
     for alter in range(0, 124):
-        for dauer in range(0, max_d + 1):
-            summe = ri[(alter, dauer)] + ti[(alter, dauer)]
-            assert 0.0 <= summe <= 1.0, (alter, dauer, summe)
-    # aktiv-Zustand: q_aktiv + i <= 1 fuer ALLE Aktiventafeln x Geschlechter
-    # (inkl. der qx=1-Endalter):
-    i_werte = k.qx_vector("M", BU_BEISPIEL.tafel_i)
+        for dauer in range(0, 6):
+            assert 0.0 <= ri[(alter, dauer)] + ti[(alter, dauer)] <= 1.0
+    i_werte = k.qx_vector("M", "SYNTH_BU_I")
     for tafel in ("DAV1994_T", "DAV2008_T"):
         for sex in ("M", "F"):
             qa = k.qx_vector(sex, tafel)
@@ -140,17 +163,19 @@ def test_synthetische_tafeln_sind_konsistent():
                 assert qa[alter] + i_werte[alter] <= 1.0, (tafel, sex, alter)
 
 
-def test_endalter_bis_tafelgrenze_rechenbar():
-    """Review-Fix-Verankerung: mit dem Datenfix (i = 0 ausserhalb des
-    Erwerbsalters) gilt die dokumentierte Grenze x + n - 1 <= 123 real —
-    vorher crashte jeder Horizont ab Alter 119 (qx=1 der Aktiventafel
-    plus i-Floor ergab Wegzugsumme 1.0001)."""
-    hohes_endalter = BU(dataclasses.replace(BU_BEISPIEL, x=60, n=64))
-    assert hohes_endalter.nettobeitrag() > 0.0  # Horizont bis Alter 123
-    # Start ausserhalb des Erwerbsalters: keine Invalidisierungschance ->
-    # fail-fast "nicht tarifierbar" statt Beitrag 0:
-    with pytest.raises(ValueError, match="keine Leistungsmoeglichkeit"):
-        BU(dataclasses.replace(BU_BEISPIEL, x=93, n=30)).nettobeitrag()
+def test_gueltigkeitsgrenze_der_dav_tafel_ist_fail_fast():
+    """Ab Alter 70 führt die DAV 1997 I die Invalidisierung als 1 — als
+    Übergangswahrscheinlichkeit zusammen mit der Aktivensterblichkeit
+    unbrauchbar. Die Engine bricht dort hart ab, statt still zu
+    renormieren; darunter ist alles rechenbar."""
+    bis_69 = BU(dataclasses.replace(BU_BEISPIEL, x=40, n=29))   # Alter 40..68
+    assert bis_69.nettobeitrag() > 0.0
+    with pytest.raises(ValueError, match="summieren auf"):
+        BU(dataclasses.replace(BU_BEISPIEL, x=40, n=32)).nettobeitrag()
+    # Start jenseits des Erwerbsalters: keine Leistungsmoeglichkeit ->
+    # fail-fast "nicht tarifierbar" statt Beitrag 0.
+    with pytest.raises(ValueError, match="keine Leistungsmoeglichkeit|summieren auf"):
+        BU(dataclasses.replace(BU_BEISPIEL, x=69, n=1)).nettobeitrag()
 
 
 def test_nicht_tarifierbare_und_ungueltige_modellpunkte():

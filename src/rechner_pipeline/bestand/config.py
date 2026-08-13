@@ -176,10 +176,10 @@ class TarifGeneration:
     ratzu_zw12: float = _D["ratzu_zw12"]
     # BU-Rechnungsgrundlagen (nur fuer produkt = "bu"; Defaults = die des
     # BU-Beispielprodukts, siehe kern/produkte/bu.py):
-    tafel_aktiv: str = "DAV2008_T"
-    tafel_i: str = "SYNTH_BU_I"
-    tafel_ri: str = "SYNTH_BU_RI"
-    tafel_ti: str = "SYNTH_BU_TI"
+    tafel_aktiv: str = "DAV1997_TAA"
+    tafel_i: str = "DAV1997_I"
+    tafel_ri: str = "DAV1997_RI"
+    tafel_ti: str = "DAV1997_TI"
     zuschlag: float = 0.05
     verteilungen: Dict[str, VerteilungsSpec] = field(default_factory=dict)
     korrelationen: List[Korrelation] = field(default_factory=list)
@@ -329,17 +329,39 @@ class TarifGeneration:
             )
         try:
             for sex in ("M", "F"):
-                qx_vector(sex, self.tafel_i)
+                i_vektor = qx_vector(sex, self.tafel_i)
+                q_vektor = qx_vector(sex, self.tafel_aktiv)
+                # Markov-Grenze: die Wegzuege aus dem Anwaerterstand duerfen
+                # sich nicht auf mehr als 1 summieren. Die DAV 1997 I setzt
+                # die Invalidisierung ab Alter 70 auf 1 (Konvention) — ein
+                # zu hohes max_endalter fuehrt sonst erst zur Laufzeit zum
+                # Abbruch der Zustandsmodell-Engine.
+                letztes_alter = self.max_endalter - 1
+                verletzt = [
+                    a for a in range(0, letztes_alter + 1)
+                    if i_vektor[a] + q_vektor[a] > 1.0
+                ]
+                if verletzt:
+                    errors.append(
+                        f"{prefix}: Invalidisierung + Aktivensterblichkeit > 1 "
+                        f"({sex}, Alter {verletzt[0]}..{verletzt[-1]}) — "
+                        f"max_endalter {self.max_endalter} reicht in einen "
+                        "Bereich, den die Tafel nicht als Uebergangs-"
+                        "wahrscheinlichkeiten fuehrt"
+                    )
         except MissingMortalityTableError as exc:
             errors.append(f"{prefix}: Invalidisierungstafel: {exc}")
+        # Select-Tafeln je Geschlecht aufloesen (die DAV-Ausscheideordnungen
+        # sind geschlechtsabhaengig, die synthetischen Platzhalter unisex).
         dauern = {}
         for feld in ("tafel_ri", "tafel_ti"):
             name = getattr(self, feld)
-            try:
-                select_tafel(name)
-                dauern[feld] = select_max_dauer(name)
-            except MissingMortalityTableError as exc:
-                errors.append(f"{prefix}: {feld}: {exc}")
+            for sex in ("M", "F"):
+                try:
+                    select_tafel(name, sex)
+                    dauern[feld] = select_max_dauer(name, sex)
+                except MissingMortalityTableError as exc:
+                    errors.append(f"{prefix}: {feld} ({sex}): {exc}")
         if len(dauern) == 2 and dauern["tafel_ri"] != dauern["tafel_ti"]:
             errors.append(
                 f"{prefix}: Select-Perioden ungleich (tafel_ri "
@@ -471,10 +493,10 @@ def load_config(path: Path) -> BestandConfig:
                 ratzu_zw2=float(g.get("ratzu_zw2", _D["ratzu_zw2"])),
                 ratzu_zw4=float(g.get("ratzu_zw4", _D["ratzu_zw4"])),
                 ratzu_zw12=float(g.get("ratzu_zw12", _D["ratzu_zw12"])),
-                tafel_aktiv=str(g.get("tafel_aktiv", "DAV2008_T")),
-                tafel_i=str(g.get("tafel_i", "SYNTH_BU_I")),
-                tafel_ri=str(g.get("tafel_ri", "SYNTH_BU_RI")),
-                tafel_ti=str(g.get("tafel_ti", "SYNTH_BU_TI")),
+                tafel_aktiv=str(g.get("tafel_aktiv", "DAV1997_TAA")),
+                tafel_i=str(g.get("tafel_i", "DAV1997_I")),
+                tafel_ri=str(g.get("tafel_ri", "DAV1997_RI")),
+                tafel_ti=str(g.get("tafel_ti", "DAV1997_TI")),
                 zuschlag=float(g.get("zuschlag", 0.05)),
                 verteilungen=verteilungen,
                 korrelationen=korrelationen,

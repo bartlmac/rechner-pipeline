@@ -20,12 +20,19 @@ Fachliches Modell (bewusst einfach gehaltenes Beispielprodukt):
   Rente * Leistungsbarwert`` (beide ab Zustand ``aktiv`` gerechnet); per
   Konstruktion ist die Anfangsreserve V_aktiv(0) = 0.
 
-WICHTIG (Tafel-Provenienz): Die mitgelieferten ``SYNTH_BU_*``-Tafeln sind
-SYNTHETISCHE Platzhalter (glatte, plausible Verläufe) für das
-Beispielprodukt — KEINE DAV-Tafeln. Für den produktiven Einsatz sind die
-DAV-BU-Ausscheideordnungen (DAV 1997 I/RI/TI bzw. aktuellere) zu beschaffen
-und mit Provenienz in ``tafeln.xml`` einzupflegen; das Tafelformat
-(Select-Tafeln mit ``dauer``-Attribut) ist dafür vorbereitet.
+Tafel-Provenienz: Rechnungsgrundlagen sind seit 2026-08-13 die **DAV 1997 I**
+(``DAV1997_I`` Invalidisierung, ``DAV1997_TAA`` Aktivensterblichkeit,
+``DAV1997_RI`` Reaktivierung und ``DAV1997_TI`` Invalidensterblichkeit als
+Select-Tafeln mit Select-Periode 5, je Geschlecht) — von Bartek bereitgestellt
+und unverändert übernommen. Die früheren ``SYNTH_BU_*``-Platzhalter bleiben
+als geschlechtsunabhängiges Select-Beispiel im Tafelwerk, werden aber von
+keinem Produkt mehr vorbelegt.
+
+Gültigkeitsgrenze der Tafel: ab Alter 70 setzt die DAV 1997 I die
+Invalidisierung auf 1; zusammen mit der Aktivensterblichkeit übersteigt die
+Summe der Wegzüge dann 1, und die Zustandsmodell-Engine bricht fail-fast ab.
+Für BU-Deckungen mit Endalter bis 67 ist der Bereich unerreichbar; die
+Bestands-Config prüft die Grenze zusätzlich beim Laden.
 """
 
 from __future__ import annotations
@@ -51,10 +58,10 @@ class BUModelPoint:
     n: int                 # Versicherungs- = Beitragsdauer in Jahren
     bu_rente: float        # jaehrliche BU-Rente
     zins: float            # Rechnungszins
-    tafel_aktiv: str = "DAV2008_T"     # Aktivensterblichkeit
-    tafel_i: str = "SYNTH_BU_I"        # Invalidisierung (Alterstafel)
-    tafel_ri: str = "SYNTH_BU_RI"      # Reaktivierung (Select-Tafel)
-    tafel_ti: str = "SYNTH_BU_TI"      # Invalidensterblichkeit (Select-Tafel)
+    tafel_aktiv: str = "DAV1997_TAA"   # Aktivensterblichkeit
+    tafel_i: str = "DAV1997_I"         # Invalidisierung (Alterstafel)
+    tafel_ri: str = "DAV1997_RI"       # Reaktivierung (Select-Tafel)
+    tafel_ti: str = "DAV1997_TI"       # Invalidensterblichkeit (Select-Tafel)
     zuschlag: float = 0.05             # Brutto = Netto * (1 + zuschlag)
 
 
@@ -87,15 +94,15 @@ class BU:
             alter: wert
             for alter, wert in enumerate(kommutation.qx_vector(mp.sex, mp.tafel_i))
         }
-        self._ri = select_tafel(mp.tafel_ri)
-        self._ti = select_tafel(mp.tafel_ti)
+        self._ri = select_tafel(mp.tafel_ri, mp.sex)
+        self._ti = select_tafel(mp.tafel_ti, mp.sex)
         # Ungleiche Select-Perioden waeren still verworfene Tafeldaten
         # (Ultimate-Bereich der laengeren Tafel bliebe unerreichbar) —
         # fail-fast statt stiller min()-Kappung (Review-Fix). Ein
         # DAV-Import mit ungleichen Perioden braucht eine bewusste
         # Produkt-Erweiterung.
-        ri_dauer = select_max_dauer(mp.tafel_ri)
-        ti_dauer = select_max_dauer(mp.tafel_ti)
+        ri_dauer = select_max_dauer(mp.tafel_ri, mp.sex)
+        ti_dauer = select_max_dauer(mp.tafel_ti, mp.sex)
         if ri_dauer != ti_dauer:
             raise ValueError(
                 f"Select-Perioden ungleich: {mp.tafel_ri} = {ri_dauer}, "
