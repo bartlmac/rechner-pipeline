@@ -129,7 +129,8 @@ Voller Abnahme-Lauf über einen bereits generierten Rechenkern:
 rechner-pipeline assurance --repo-root . --input examples/Tarifrechner_KLV.xlsm \
     --generated-dir <gen> --info-dir <info> --diagnostics-dir <diag> \
     [--qa-contract qa_contract.json] [--adapter auto|excel] \
-    [--export-backend openpyxl|com] [--strict-manifest-warnings]
+    [--export-backend openpyxl|com] [--strict-manifest-warnings] \
+    [--max-attempts N]
 ```
 
 Quell-neutrale Optionen: `--input <pfad>` (Excel heute, Adapter-Naht für weitere
@@ -155,8 +156,8 @@ python -m rechner_pipeline.toolbox.<command> [flags]
   und schreibende `os`-Primitive hart abgewiesen werden.
 - **Unabhängiges Orakel**: die Erwartungswerte stammen deterministisch aus dem
   Excel, nicht vom Modell; der Vergleichs-Harness ist reviewter Code.
-- **Gepinnte Abhängigkeiten** (openpyxl/oletools/pandas, exakt) für
-  reproduzierbare Läufe.
+- **Gepinnte Abhängigkeiten** (openpyxl/oletools/pandas/pyarrow/matplotlib,
+  exakt) für reproduzierbare Läufe.
 
 ## Der stabile Rechenkern (`rechner_pipeline.kern`)
 
@@ -187,14 +188,18 @@ Golden-Master-Engine der Abnahme-Schicht). Der transiente Migrationspfad
 Bewertung per Thiele-Rückwärtsrekursion, Dauerabhängigkeit über
 Zustandsraum-Erweiterung (Select-Perioden-Prinzip). KLV ist der
 2-Zustands-Spezialfall (aktiv/tot) hinter demselben Barwerte-Interface;
-künftige Produkte (z. B. Berufsunfähigkeit mit Invalidisierung/
-Reaktivierung) sind Konfigurationen dieser Engine, keine neuen Engines.
+weitere Produkte sind Konfigurationen dieser Engine, keine neuen Engines —
+als erstes Beispiel ist **Berufsunfähigkeit** implementiert
+(`kern/produkte/bu.py`: drei Zustände aktiv/bu/tot, Select-Tafeln mit
+Dauerabhängigkeit; die BU-Tafeln sind klar gekennzeichnete synthetische
+Platzhalter, bis lizenzgeklärte DAV-Tafeln vorliegen).
 Der Wechsel des produktiven Pfads von der Kommutations- auf die
 Zustandsmodell-Schiene wurde über eine **Toleranz-Überleitung** abgenommen
-(`qa/ueberleitung.py`: 6.170 Werte über 10 Modellpunkte, keine Abweichung
-außerhalb der Rundungsklasse, maximal 4e-13 relativ); die
-Kommutations-Schiene bleibt dauerhaft als Kreuz-Check erhalten, und die
-617/617-Parität gilt unverändert.
+(`qa/ueberleitung.py`: Abnahme-Lauf 6.170 Werte über 10 Modellpunkte, keine
+Abweichung außerhalb der Rundungsklasse, maximal 4e-13 relativ; der
+dauerhafte Kreuz-Check fährt heute einen Standard-Sweep über 16
+Modellpunkte); die Kommutations-Schiene bleibt dauerhaft als Kreuz-Check
+erhalten, und die 617/617-Parität gilt unverändert.
 
 ## Bestandsdaten: synthetischer, fortschreibbarer Bestand
 
@@ -278,21 +283,6 @@ Prinzipien:
   die Bewegungs-Identitäten im Toolbox-Contract (JSON-stdout,
   Gate-Ledger).
 
-## Dokumente: Tarifpläne und Doku-Engine
-
-Die Produkttarifpläne liegen als Markdown unter `docs/tarifplaene/`
-(versionierbar und reviewbar wie Code; die ursprünglichen DOCX bleiben als
-Pipeline-Input-Fixtures in `examples/`). Gerendert wird über die
-**Doku-Engine** — ein gepinnter Quarto/Typst/Pandoc-Container
-(`docs/engine/`, optional als Image über ghcr, GitHub-Workflow
-`docs-image.yml`), damit keine Dokument-Toolchain in die
-Python-Dependencies wandert:
-
-```bash
-docs/engine/render.sh                 # alle Tarifplaene nach PDF (Typst)
-IMAGE=local docs/engine/render.sh     # ohne ghcr: Engine lokal bauen
-```
-
 Verwendung:
 
 ```python
@@ -317,10 +307,39 @@ kennzahlen = auswertungs_verlauf(bestand, ergebnis.historie, config,
                                  scheiben=ergebnis.scheiben)
 ```
 
+Simulierter Neuzugang (`neuzugang_ab`) wirkt nur, wenn `neuzugang_pro_jahr`
+je Generation gesetzt ist — in der Beispiel-Config ist die Zeile bewusst
+auskommentiert (Default 0, der Aufruf ist dann ein No-op).
+
 Geprüft wird über die Test-Suite (Schema-Validierung, Verteilungs-Sanity-
-Bänder, Zeitscheiben-Invarianten, Kern-Roundtrip gegen einen vorhandenen
-generierten Kern); die Formalisierung als eigene Toolbox-Gates ist der
-nächste Ausbauschritt.
+Bänder, Zeitscheiben-Invarianten, Kern-Roundtrip) und über das
+Toolbox-Gate `bestand_validate` (B1, siehe oben); als eigene Gate-CLIs
+stehen noch `bestand_golden` (Parquet-Byte-Hash bei festem Seed) und
+`bestand_zeitscheibe` (Invarianten) aus.
+
+## Dokumente: Tarifpläne und Doku-Engine
+
+Tarifplan-Dokumente leben in zwei getrennten Welten:
+
+- **Zielkern-Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): neu
+  verfasste, versionierbare Fachdokumente in der Mathematik des Kerns
+  (Zustandsmodell, Thiele-Rekursion, GeVo-Katalog mit Betragsformeln) —
+  keine Konversionen der Quell-Dokumente.
+- **Migrationsstaging** (`toolbox/tarifplan_staging`): die DOCX-Tarifpläne
+  der Quellsysteme (`examples/Mitteilung_143_*.docx`) sind
+  Migrationsartefakte; das Kommando extrahiert sie deterministisch und
+  stdlib-only nach strukturiertem JSON (`migrationsstaging/`, gitignored)
+  — maschinenlesbar für den Migrations-Anwendungsfall, nicht hübsch.
+
+Gerendert werden die Zielkern-Tarifpläne über die **Doku-Engine** — ein
+gepinnter Quarto/Typst/Pandoc-Container (`docs/engine/`, optional als
+Image über ghcr, GitHub-Workflow `docs-image.yml`), damit keine
+Dokument-Toolchain in die Python-Dependencies wandert:
+
+```bash
+docs/engine/render.sh                 # alle Tarifplaene nach PDF (Typst)
+IMAGE=local docs/engine/render.sh     # ohne ghcr: Engine lokal bauen
+```
 
 ## Agenten-Anbindung
 
