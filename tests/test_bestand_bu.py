@@ -87,7 +87,7 @@ def _bu_stamm(*vertraege: dict) -> pd.DataFrame:
 
 
 def test_bu_bestand_erfuellt_den_contract(portfolio, config):
-    assert len(portfolio) == config.generationen[0].sample_size
+    assert len(portfolio) == sum(g.sample_size for g in config.generationen)
     assert validate_portfolio(portfolio) == []
     assert set(portfolio["produkt"]) == {"bu"}
     # Produktfuehrende Leistungsspalte ist die Jahresrente:
@@ -108,7 +108,7 @@ def test_klv_bestand_bleibt_produkt_klv():
     """Der Diskriminator ist rueckwaertskompatibel: ohne produkt-Angabe
     in der TOML bleibt eine Generation KLV."""
     klv = load_config(KLV_EXAMPLE)
-    assert [g.produkt for g in klv.generationen] == ["klv", "klv"]
+    assert all(g.produkt == "klv" for g in klv.generationen)
     df = generate(klv)
     assert set(df["produkt"]) == {"klv"}
     assert (df["bu_rente"] == 0.0).all()

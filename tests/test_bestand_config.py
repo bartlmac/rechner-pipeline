@@ -14,7 +14,15 @@ def test_example_config_loads_and_validates():
     config = load_config(EXAMPLE)
     assert config.validate() == []
     assert config.seed == 20260811
-    assert [g.name for g in config.generationen] == ["KLV-1994", "KLV-2008"]
+    namen = [g.name for g in config.generationen]
+    # Die Generationen folgen den Hoechstrechnungszins-Stufen und sind
+    # zeitlich lueckenlos aneinandergereiht; die juengste verkauft weiter.
+    assert namen[0] == "KLV-1994" and len(namen) >= 2
+    assert namen == sorted(namen)
+    for vorher, danach in zip(config.generationen, config.generationen[1:]):
+        assert vorher.gueltig_bis < danach.gueltig_von
+        assert danach.zins <= vorher.zins
+    assert config.generationen[-1].neuzugang_pro_jahr > 0
     gen = config.generationen[0]
     assert gen.tafel == "DAV1994_T"
     assert gen.generation_fields()["zins"] == 0.04

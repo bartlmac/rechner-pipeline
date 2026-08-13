@@ -1,10 +1,12 @@
-# Beispiel-Konfiguration Bestandsdaten-Modul: KLV in zwei Tarifgenerationen.
+# Beispiel-Konfiguration Bestandsdaten-Modul: KLV in vier Tarifgenerationen.
+# Die Generationen folgen den Hoechstrechnungszins-Stufen; die juengste
+# verkauft weiter (Neugeschaeft ueber den Stichtag hinaus).
 # Eigene, synthetische Parametrierung (Lehrbeispiel, keine realen Werte).
 # Struktur-Semantik nach der DAV-Referenz-Toolchain; Werte sind unsere eigenen.
 
 [meta]
 seed = 20260811
-beschreibung = "Synthetischer KLV-Bestand, zwei Generationen (Lehrbeispiel)"
+beschreibung = "Synthetischer KLV-Bestand, vier Generationen (Lehrbeispiel)"
 
 # --------------------------------------------------------------------------
 # Generation 1: klassisches KLV-Geschaeft der 1990er (DAV1994_T, hoher Zins)
@@ -81,8 +83,8 @@ rho = 0.65
 [[generation]]
 name = "KLV-2008"
 gueltig_von = 2008-01-01
-gueltig_bis = 2015-12-31
-sample_size = 400
+gueltig_bis = 2016-12-31
+sample_size = 300
 max_endalter = 85
 zins = 0.0225
 tafel = "DAV2008_T"
@@ -140,6 +142,134 @@ var_j = "premium_duration"
 rho = 0.60
 
 # --------------------------------------------------------------------------
+# Generation 3: Hoechstrechnungszins 0,9 % (2017-2021)
+# --------------------------------------------------------------------------
+[[generation]]
+name = "KLV-2017"
+gueltig_von = 2017-01-01
+gueltig_bis = 2021-12-31
+sample_size = 250
+max_endalter = 85
+zins = 0.009
+tafel = "DAV2008_T"
+alpha = 0.025
+beta1 = 0.025
+gamma1 = 0.0008
+gamma2 = 0.00125
+gamma3 = 0.0025
+policy_fee = 30.0
+min_alter_flex = 60
+min_rlz_flex = 5
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 40.0
+sd = 12.0
+min = 18.0
+max = 62.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.50, 0.50]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30]
+probs = [0.15, 0.20, 0.35, 0.20, 0.10]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25]
+probs = [0.20, 0.25, 0.40, 0.15]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 11.2
+sdlog = 0.5
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [12, 1, 4, 2]
+probs = [0.85, 0.07, 0.05, 0.03]
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.40
+
+[[generation.korrelation]]
+var_i = "duration"
+var_j = "premium_duration"
+rho = 0.60
+
+# --------------------------------------------------------------------------
+# Generation 4: laufendes Neugeschaeft, Hoechstrechnungszins 0,25 %
+# --------------------------------------------------------------------------
+[[generation]]
+name = "KLV-2022"
+gueltig_von = 2022-01-01
+gueltig_bis = 2035-12-31
+sample_size = 150
+neuzugang_pro_jahr = 40
+max_endalter = 85
+zins = 0.0025
+tafel = "DAV2008_T"
+alpha = 0.025
+beta1 = 0.025
+gamma1 = 0.0008
+gamma2 = 0.00125
+gamma3 = 0.0025
+policy_fee = 30.0
+min_alter_flex = 60
+min_rlz_flex = 5
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 40.0
+sd = 12.0
+min = 18.0
+max = 62.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.50, 0.50]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30]
+probs = [0.15, 0.20, 0.35, 0.20, 0.10]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25]
+probs = [0.20, 0.25, 0.40, 0.15]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 11.2
+sdlog = 0.5
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [12, 1, 4, 2]
+probs = [0.85, 0.07, 0.05, 0.03]
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.40
+
+[[generation.korrelation]]
+var_i = "duration"
+var_j = "premium_duration"
+rho = 0.60
+# --------------------------------------------------------------------------
 # Plausibilitaets-Baender fuer das Sanity-Gate
 # --------------------------------------------------------------------------
 [plausibilitaet]
@@ -162,4 +292,3 @@ erh_prozent = 0.05
 # Neuzugang je Kalenderjahr (Fortschreibung ab Referenzstichtag, siehe
 # bestand.ereignisse.fortschreiben(neuzugang_ab=...)); 0 = aus. Wirkt nur
 # im Gueltigkeitsfenster der Generation.
-# neuzugang_pro_jahr = 40

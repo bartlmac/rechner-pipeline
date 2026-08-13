@@ -18,21 +18,20 @@
 
 [meta]
 seed = 20260813
-beschreibung = "Synthetischer BU-Bestand, eine Generation (Lehrbeispiel)"
+beschreibung = "Synthetischer BU-Bestand, zwei Generationen (Lehrbeispiel)"
 
 # --------------------------------------------------------------------------
-# BU-Geschaeft 2000-2015 (DAV2008_T Aktive + synthetische BU-Tafeln)
+# BU-Geschaeft 2000-2016 (DAV 1997 I)
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2000"
 produkt = "bu"
 gueltig_von = 2000-01-01
-gueltig_bis = 2015-12-31
-sample_size = 800
+gueltig_bis = 2016-12-31
+sample_size = 500
 # Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
 # fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
 max_endalter = 67
-neuzugang_pro_jahr = 30
 zins = 0.0175
 # Rechnungsgrundlagen (BU): Aktivensterblichkeit, Invalidisierung,
 # Reaktivierung (Select), Invalidensterblichkeit (Select).
@@ -81,6 +80,66 @@ var_i = "entry_age"
 var_j = "bu_rente"
 rho = 0.30
 
+# --------------------------------------------------------------------------
+# BU-Neugeschaeft ab 2017 (Hoechstrechnungszins 0,9 %), verkauft weiter
+# --------------------------------------------------------------------------
+[[generation]]
+name = "BU-2017"
+produkt = "bu"
+gueltig_von = 2017-01-01
+gueltig_bis = 2035-12-31
+sample_size = 300
+neuzugang_pro_jahr = 30
+# Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
+# fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
+max_endalter = 67
+zins = 0.009
+# Rechnungsgrundlagen (BU): Aktivensterblichkeit, Invalidisierung,
+# Reaktivierung (Select), Invalidensterblichkeit (Select).
+tafel_aktiv = "DAV1997_TAA"
+tafel_i = "DAV1997_I"
+tafel_ri = "DAV1997_RI"
+tafel_ti = "DAV1997_TI"
+zuschlag = 0.05
+# tafel = Sterbetafel-Feld des KLV-Contracts; bei BU fuehrt tafel_aktiv.
+tafel = "DAV1997_TAA"
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 33.0
+sd = 8.0
+min = 20.0
+max = 55.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.58, 0.42]
+
+# Laufzeit bis Endalter: kuerzere Vertraege sind die Ausnahme (die Kappung
+# auf max_endalter - entry_age wirkt zusaetzlich im Generator).
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [15, 20, 25, 30, 35]
+probs = [0.10, 0.20, 0.30, 0.30, 0.10]
+
+# Versicherte BU-Jahresrente (Bezugsgroesse der Nachweisung).
+[generation.verteilungen.bu_rente]
+typ = "lognormal"
+meanlog = 9.4
+sdlog = 0.35
+round = -2
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.55
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "bu_rente"
+rho = 0.30
 # --------------------------------------------------------------------------
 # Plausibilitaets-Baender fuer das Sanity-Gate (B1)
 # --------------------------------------------------------------------------

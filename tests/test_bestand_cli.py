@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.toolbox import bestand_fortschreibung as fs_cli
 from rechner_pipeline.toolbox._common import run_command
@@ -36,7 +37,10 @@ def test_fortschreibung_cli_schreibt_alle_tabellen(lauf):
     }
     bestand = read_portfolio(lauf / "bestand.parquet")
     ledger = read_portfolio(lauf / "ledger.parquet")
-    assert len(bestand) == 1000 and len(ledger) > 0
+    erwartet = sum(
+        g.sample_size for g in load_config(EXAMPLE).generationen
+    )
+    assert len(bestand) == erwartet and len(ledger) > 0
     # Ohne --neuzugang-ab: keine Zugaenge, gesamt == basis.
     assert len(read_portfolio(lauf / "zugaenge.parquet")) == 0
 
@@ -92,7 +96,9 @@ def test_gate_b1_passed_und_ledger(lauf, tmp_path, capsys):
     assert code == 0
     assert ergebnis["status"] == "passed"
     assert ergebnis["summary"]["all_passed"] is True
-    assert ergebnis["summary"]["portfolio_zeilen"] == 1000
+    assert ergebnis["summary"]["portfolio_zeilen"] == sum(
+        g.sample_size for g in load_config(EXAMPLE).generationen
+    )
     assert (diagnostics / "bestand_validate.gate.json").is_file()
 
 

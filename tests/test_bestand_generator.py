@@ -43,8 +43,8 @@ def test_portfolio_passes_schema_validation(portfolio):
 def test_portfolio_sizes_and_generations(config, portfolio):
     assert len(portfolio) == sum(g.sample_size for g in config.generationen)
     counts = portfolio["tarif_generation"].value_counts()
-    assert counts["KLV-1994"] == 600
-    assert counts["KLV-2008"] == 400
+    for gen in config.generationen:
+        assert counts[gen.name] == gen.sample_size
 
 
 def test_configured_correlation_shows_in_data(portfolio):
