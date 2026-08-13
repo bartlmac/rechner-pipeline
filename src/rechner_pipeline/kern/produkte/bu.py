@@ -65,7 +65,7 @@ class BUModelPoint:
     zuschlag: float = 0.05             # Brutto = Netto * (1 + zuschlag)
 
 
-#: Beispiel-Modellpunkt des BU-Beispielprodukts (synthetische Tafeln!).
+#: Beispiel-Modellpunkt des BU-Beispielprodukts (DAV 1997 I).
 BU_BEISPIEL = BUModelPoint(x=35, sex="M", n=30, bu_rente=12000.0, zins=0.0175)
 
 AKTIV = "aktiv"

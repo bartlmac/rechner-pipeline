@@ -24,8 +24,16 @@ def jahresraster(df: pd.DataFrame) -> List[_dt.date]:
     return [_dt.date(jahr, 1, 1) for jahr in range(von, bis + 1)]
 
 
-def stichtags_kennzahlen(scheibe: pd.DataFrame, stichtag: _dt.date) -> Dict[str, Any]:
-    """Kennzahlen einer Zeitscheibe (leere Scheibe ergibt Nullwerte)."""
+def stichtags_kennzahlen(
+    scheibe: pd.DataFrame, stichtag: _dt.date, leistung: str = "sum_insured"
+) -> Dict[str, Any]:
+    """Kennzahlen einer Zeitscheibe (leere Scheibe ergibt Nullwerte).
+
+    ``leistung`` waehlt die produktfuehrende Leistungsspalte
+    (:data:`~rechner_pipeline.models.bestand.LEISTUNGSSPALTE`): bei einem
+    BU-Bestand traegt ``sum_insured`` strukturell 0, die Bezugsgroesse ist
+    dort ``bu_rente``. ``summe_vs`` fuehrt die gewaehlte Spalte.
+    """
     n = int(len(scheibe))
     generationen = {
         str(name): int(anzahl)
@@ -36,16 +44,18 @@ def stichtags_kennzahlen(scheibe: pd.DataFrame, stichtag: _dt.date) -> Dict[str,
     return {
         "stichtag": stichtag.isoformat(),
         "vertraege": n,
-        "summe_vs": float(scheibe["sum_insured"].sum()) if n else 0.0,
+        "summe_vs": float(scheibe[leistung].sum()) if n else 0.0,
         "mittel_alter": float(scheibe["age"].mean()) if n else 0.0,
         "mittel_restlaufzeit_jahre": float(scheibe["months_rem"].mean() / 12.0) if n else 0.0,
         "generationen": generationen,
     }
 
 
-def verlauf(df: pd.DataFrame, stichtage: List[_dt.date]) -> List[Dict[str, Any]]:
+def verlauf(
+    df: pd.DataFrame, stichtage: List[_dt.date], leistung: str = "sum_insured"
+) -> List[Dict[str, Any]]:
     """Kennzahlen-Reihe über eine Stichtagsliste (Bestandsverlauf)."""
-    return [stichtags_kennzahlen(zeitscheibe(df, s), s) for s in stichtage]
+    return [stichtags_kennzahlen(zeitscheibe(df, s), s, leistung) for s in stichtage]
 
 
 def generationsnamen(df: pd.DataFrame) -> List[str]:

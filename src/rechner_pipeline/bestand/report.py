@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+import html as _html
 import io
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -96,6 +97,26 @@ _STATUS_LABELS = (
     ("PEX", "beitragsfrei (PEX)"),
     ("BU", "im Leistungsbezug (BU)"),
 )
+
+
+def _leistungssicht(df: pd.DataFrame) -> Tuple[str, str]:
+    """Produktfuehrende Leistungsspalte des Bestands und ihre Bezeichnung.
+
+    Ein reiner BU-Bestand fuehrt seine Leistung in ``bu_rente``;
+    ``sum_insured`` ist dort strukturell 0 und wuerde als Verlauf,
+    Histogramm und Kennzahlen-Spalte drei leere Sichten ergeben. Bei
+    gemischten Bestaenden bleibt es bei der Versicherungssumme (die
+    Groessen sind nicht addierbar) — der Titel sagt dann, worauf sie sich
+    bezieht.
+    """
+    if "produkt" not in df.columns:
+        return "sum_insured", "Versicherungssumme"
+    produkte = set(df["produkt"])
+    if produkte == {"bu"}:
+        return "bu_rente", "versicherte Jahresrente"
+    if "bu" in produkte:
+        return "sum_insured", "Versicherungssumme (Kapitalversicherung)"
+    return "sum_insured", "Versicherungssumme"
 
 
 def _farbe(index: int) -> str:
@@ -178,7 +199,7 @@ def _chart_verlauf_vertraege(reihe: List[Dict[str, Any]], generationen: List[str
     return _svg(fig)
 
 
-def _chart_verlauf_summe(reihe: List[Dict[str, Any]]) -> str:
+def _chart_verlauf_summe(reihe: List[Dict[str, Any]], label: str) -> str:
     x = list(range(len(reihe)))
     labels = [r["stichtag"][:4] for r in reihe]
     werte = [r["summe_vs"] / 1e6 for r in reihe]
@@ -186,7 +207,7 @@ def _chart_verlauf_summe(reihe: List[Dict[str, Any]]) -> str:
     ax.plot(x, werte, marker="o", markersize=3, color=_FARBEN[0])
     schritt = max(1, len(x) // 12)
     ax.set_xticks(x[::schritt], labels[::schritt])
-    ax.set_ylabel("Versicherungssumme (Mio.)")
+    ax.set_ylabel(f"{label} (Mio.)")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
     return _svg(fig)
 
@@ -256,46 +277,6 @@ def _chart_deckungskapital(reihe: List[Dict[str, Any]]) -> str:
     ax.legend(loc="upper right", fontsize=8)
     return _svg(fig)
 
-
-#: Zustands-Farben der BU-Sichten.
-_BU_FARBEN = {"anwaerter": "#1f77b4", "rentner": "#d62728"}
-
-
-def _chart_bu_zustand(
-    konto: List[Dict[str, Any]], track: str, ylabel: str
-) -> str:
-    """Bestand EINES BU-Zustands je Jahresende.
-
-    Bewusst getrennte Grafiken je Zustand: Anwärter und Leistungsbezieher
-    unterscheiden sich um Größenordnungen, in einer gemeinsamen Skala wäre
-    der Leistungsbestand nicht mehr ablesbar.
-    """
-    x = list(range(len(konto)))
-    labels = [str(z["jahr"]) for z in konto]
-    fig, ax = plt.subplots(figsize=(8.0, 2.6))
-    ax.bar(x, [z[track]["ende"]["stueck"] for z in konto],
-           color=_BU_FARBEN[track], width=0.8)
-    schritt = max(1, len(x) // 12)
-    ax.set_xticks(x[::schritt], labels[::schritt])
-    ax.set_ylabel(ylabel)
-    ax.set_xlabel("Kalenderjahr")
-    return _svg(fig)
-
-
-def _chart_bu_summe(
-    reihe: List[Dict[str, Any]], schluessel: str, ylabel: str, farbe: str
-) -> str:
-    """Eine aggregierte BU-Größe je Stichtag (Summen sind vergleichbar)."""
-    x = list(range(len(reihe)))
-    labels = [r["stichtag"][:4] for r in reihe]
-    fig, ax = plt.subplots(figsize=(8.0, 2.6))
-    ax.plot(x, [r[schluessel] / 1e6 for r in reihe], marker="o",
-            markersize=3, color=farbe)
-    schritt = max(1, len(x) // 12)
-    ax.set_xticks(x[::schritt], labels[::schritt])
-    ax.set_ylabel(ylabel)
-    ax.set_xlabel("Stichtag (1.1. des Jahres)")
-    return _svg(fig)
 
 
 def _chart_ereignisse_je_jahr(reihe: List[Dict[str, Any]]) -> str:
@@ -420,7 +401,7 @@ NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
             f"{g.tafel_i} (Invalidisierung), {g.tafel_aktiv} "
             f"(Aktivensterblichkeit), {g.tafel_ri} (Reaktivierung), "
             f"{g.tafel_ti} (Invalidensterblichkeit), Rechnungszins "
-            f"{g.zins:.2%}"
+            f"{_prozent(g.zins)}"
         ),
         "vorhanden": lambda df: "produkt" in df.columns
         and (df["produkt"] == "bu").any(),
@@ -460,9 +441,64 @@ def _stichtags_position(
 ) -> Optional[float]:
     """x-Position der Stichtagslinie zwischen den Jahresbalken."""
     jahre = [z["jahr"] for z in konto]
-    if not jahre or stichtag.year <= jahre[0] or stichtag.year > jahre[-1] + 1:
+    if not jahre:
+        return None
+    if stichtag.year <= jahre[0]:
+        # Vor dem Bestand: alles ist Prognose — die Linie steht am linken
+        # Rand, wie die Trennzeile ganz oben in der Tabelle.
+        return -0.5
+    if stichtag.year not in jahre:
+        # Am oder hinter dem Horizont (bzw. in einer Luecke der
+        # ausgewiesenen Jahre): alles Historie — dieselbe Lesart wie die
+        # Tabelle, die dort keine Trennzeile setzt.
         return None
     return jahre.index(stichtag.year) - 0.5
+
+
+def _neugeschaeft_html(
+    konto: List[Dict[str, Any]],
+    spec: Dict[str, Any],
+    stichtag: Optional[_dt.date],
+) -> str:
+    """Zugangs-Annahme der Prognose — abgelesen aus dem Konto.
+
+    Bewusst NICHT aus der Konfiguration abgeleitet: ob ein Lauf
+    überhaupt Neuzugang simuliert hat, entscheidet der Aufruf der
+    Fortschreibung, nicht die Konfiguration. Eine Aussage aus der
+    Konfiguration könnte deshalb der Zugangszeile derselben Tabelle
+    widersprechen. Gelesen wird, was im Konto steht.
+    """
+    if stichtag is None:
+        return ""
+    track = spec["tracks"][0][0]
+    prognose = [z for z in konto if z["jahr"] >= stichtag.year]
+    mit_zugang = [
+        z["jahr"] for z in prognose if z[track]["zugang_neuzugang"]["stueck"]
+    ]
+    if not prognose:
+        return ""
+    if not mit_zugang:
+        satz = (
+            "Die Projektion enthält keinen Zugang: der Bestand läuft ab dem "
+            "Stichtag ab (Abwicklung)."
+        )
+    else:
+        letztes = max(mit_zugang)
+        stueck = sum(
+            z[track]["zugang_neuzugang"]["stueck"] for z in prognose
+        )
+        rest = [z["jahr"] for z in prognose if z["jahr"] > letztes]
+        nachsatz = (
+            f" Ab {letztes + 1} kommt kein Zugang mehr hinzu — der Bestand "
+            "läuft danach ab."
+            if rest else
+            " Der Ausweis endet mit dem Projektionshorizont."
+        )
+        satz = (
+            f"Die Projektion enthält {stueck} Zugänge, letztmals im Jahr "
+            f"{letztes}.{nachsatz}"
+        )
+    return f"<p><strong>Zugang in der Prognose:</strong> {satz}</p>"
 
 
 def _grundlagen_html(
@@ -482,51 +518,49 @@ def _grundlagen_html(
     if not generationen:
         return ""
     zeilen = "".join(
-        f"<li>{g.name} ({g.gueltig_von.isoformat()} bis "
-        f"{g.gueltig_bis.isoformat()}): {spec['grundlagen'](g)}</li>"
+        f"<li>{_html.escape(g.name)} ({g.gueltig_von.isoformat()} bis "
+        f"{g.gueltig_bis.isoformat()}): {_html.escape(spec['grundlagen'](g))}</li>"
         for g in generationen
     )
 
     def annahme_text(name: str, titel: str) -> str:
+        """Eine Annahme in Worten — die affine Form vollständig.
+
+        Der additive Teil darf nicht verschwinden: ``a`` und ``b`` können
+        gleichzeitig wirken, und die Simulation wendet beide an.
+        """
         annahme = getattr(config.annahmen, name)
-        if annahme.b == 0.0 and annahme.a == 0.0:
-            return f"{titel} findet nicht statt"
-        if annahme.b == 0.0:
-            return f"{titel} {_prozent(annahme.a)} p. a."
-        if annahme.a == 0.0 and annahme.b == 1.0:
-            return f"{titel} wie Rechnungsgrundlage"
-        return f"{titel} Rechnungsgrundlage × {_dezimal(annahme.b)}"
+        a, b = annahme.a, annahme.b
+        if a == 0.0 and b == 0.0:
+            text = f"{titel} findet nicht statt"
+        elif b == 0.0:
+            text = f"{titel} {_prozent(a)} p. a."
+        elif a == 0.0:
+            text = (
+                f"{titel} wie Rechnungsgrundlage" if b == 1.0
+                else f"{titel} Rechnungsgrundlage × {_dezimal(b)}"
+            )
+        else:
+            faktor = (
+                "Rechnungsgrundlage" if b == 1.0
+                else f"Rechnungsgrundlage × {_dezimal(b)}"
+            )
+            text = f"{titel} {faktor} zuzüglich {_prozent(a)} p. a."
+        if name == "erhoehung" and (a > 0.0 or b > 0.0):
+            # Die Rate sagt, WIE OFT erhoeht wird; die Hoehe steht
+            # daneben und waere sonst mit ihr verwechselbar.
+            text += f" (Erhöhung um je {_prozent(config.annahmen.erh_prozent)})"
+        return text
 
     annahmen = "; ".join(
         annahme_text(n, titel) for n, titel in spec["annahmen"]
     )
-    # Neugeschaefts-Annahme: eine zentrale Prognose-Setzung — ohne sie
-    # laesst sich nicht beurteilen, ob ein fallender Bestand Abwicklung
-    # oder Marktentwicklung ist.
-    vertrieb = [g for g in generationen if g.neuzugang_pro_jahr > 0]
-    if vertrieb:
-        letzte = max(g.gueltig_bis for g in vertrieb)
-        volumen = ", ".join(
-            f"{g.name} {g.neuzugang_pro_jahr} Verträge/Jahr bis "
-            f"{g.gueltig_bis.isoformat()}"
-            for g in vertrieb
-        )
-        neugeschaeft = (
-            f"{volumen}. Nach dem {letzte.isoformat()} nimmt die Projektion "
-            "kein Neugeschäft mehr an — der Bestand läuft ab da ab "
-            "(Abwicklung)."
-        )
-    else:
-        neugeschaeft = (
-            "kein Neugeschäft — die Projektion zeigt die reine Abwicklung "
-            "des Bestands (Run-off)."
-        )
     return f"""
 <p><strong>Rechnungsgrundlagen</strong> (Bewertung, erste Ordnung):</p>
 <ul>{zeilen}</ul>
 <p><strong>Erfahrungsannahmen</strong> (Fortschreibung, dritte Ordnung):
-{annahmen}.</p>
-<p><strong>Neugeschäft</strong> (Prognose-Annahme): {neugeschaeft}</p>"""
+{annahmen.rstrip(".")}.</p>
+"""
 
 
 def _nachweisung_html(
@@ -588,7 +622,8 @@ def _nachweisung_html(
             )
             zeilen.append(f"<tr><td>{z['jahr']}</td>{zellen}</tr>")
         return (
-            f"<table><thead>{kopf}</thead><tbody>{''.join(zeilen)}</tbody></table>"
+            f"<div class=\"breit\"><table><thead>{kopf}</thead>"
+            f"<tbody>{''.join(zeilen)}</tbody></table></div>"
         )
 
     bloecke = []
@@ -610,6 +645,7 @@ def _nachweisung_html(
 <p>Struktur nach der BaFin-Nachweisung zur Bestandsbewegung; Bezugsgröße ist
 die {spec['bezug']}. {spec['erlaeuterung']} {pruefsatz}</p>
 {_grundlagen_html(spec, config)}
+{_neugeschaeft_html(relevant, spec, stichtag)}
 {"".join(bloecke)}"""
 
 
@@ -677,7 +713,8 @@ def render_html(
     # Mit Historie rechnen Verlauf und Zeitscheiben abgangsbereinigt auf der
     # Mehrzeilen-Sicht; Strukturbilder je Vertrag bleiben auf dem Basisbestand.
     bestand = bestand_mit_historie(df, historie) if historie is not None else df
-    reihe = verlauf(bestand, stichtage)
+    leistung, leistung_label = _leistungssicht(df)
+    reihe = verlauf(bestand, stichtage, leistung)
     # Strukturbild am Bestands-Hoechststand (erster Maximums-Stichtag —
     # deterministisch und aussagekraeftiger als der duenne Bestandsauslauf).
     hoechststand = max(reihe, key=lambda r: (r["vertraege"], -reihe.index(r)))
@@ -686,7 +723,7 @@ def render_html(
 
     with plt.rc_context(_RC):
         svg_vertraege = _chart_verlauf_vertraege(reihe, generationen)
-        svg_summe = _chart_verlauf_summe(reihe)
+        svg_summe = _chart_verlauf_summe(reihe, leistung_label)
         svg_alter = _chart_histogramm(
             scheibe, "age", f"Alter am {struktur_stichtag.isoformat()}", "Alter", 20, generationen
         )
@@ -694,7 +731,7 @@ def render_html(
             scheibe, "duration", "Laufzeiten", "Jahre", 15, generationen
         )
         svg_summen = _chart_histogramm(
-            scheibe, "sum_insured", "Versicherungssummen", "Summe", 20, generationen
+            scheibe, leistung, leistung_label, leistung_label, 20, generationen
         )
         svg_scatter = _chart_scatter_alter_laufzeit(df, generationen)
         svg_status = svg_ereignisse = svg_dk = ""
@@ -710,7 +747,9 @@ def render_html(
 
     zeilen = []
     for r in reihe:
-        gen_mix = ", ".join(f"{g}: {n}" for g, n in r["generationen"].items()) or "—"
+        gen_mix = ", ".join(
+            f"{_html.escape(str(g))}: {n}" for g, n in r["generationen"].items()
+        ) or "—"
         zeilen.append(
             f"<tr><td>{r['stichtag']}</td><td class='num'>{r['vertraege']}</td>"
             f"<td class='num'>{_zahl(r['summe_vs'])}</td>"
@@ -720,7 +759,7 @@ def render_html(
         )
     tabelle = (
         "<table><thead><tr><th>Stichtag</th><th>Verträge</th>"
-        "<th>Σ Versicherungssumme</th><th>Ø Alter</th><th>Ø Restlaufzeit (J.)</th>"
+        f"<th>Σ {leistung_label}</th><th>Ø Alter</th><th>Ø Restlaufzeit (J.)</th>"
         "<th>Generationen</th></tr></thead><tbody>"
         + "".join(zeilen)
         + "</tbody></table>"
@@ -742,6 +781,16 @@ def render_html(
         if stichtag is not None else ""
     )
     fortschreibung_zeile = ""
+    klv_hinweis = (
+        "Beitragsfreie Verträge (PEX) bleiben in-force und gehen mit ihrer "
+        "ursprünglichen Versicherungssumme in den Verlauf ein; die bei "
+        "Beitragsfreistellung fixierten beitragsfreien Summen (VS_bfr) zeigt "
+        f"die Tabelle. Die Spalte \"Σ {leistung_label}\" im Bestandsverlauf "
+        "führt die Grundscheiben-Summen; die durch dynamische Erhöhungen "
+        "hinzugekommenen Summen zeigt die ERH-Zeile der Tabelle, die "
+        "aktuariellen Kennzahlen enthalten die Scheiben vollständig. "
+        if leistung == "sum_insured" else ""
+    )
     ereignis_html = ""
     if historie is not None:
         summen = ereignis_summen(ledger)
@@ -772,14 +821,7 @@ def render_html(
 abgelaufene Verträge verlassen den Bestand am Buchungstag. Neuzugänge (ZUG)
 treten mit ihrem Versicherungsbeginn ein; ihr Betrag in der Tabelle ist die
 Versicherungssumme des Zugangs (Bestandsvolumen, kein Zahlungsstrom).
-Beitragsfreie
-Verträge (PEX) bleiben in-force und gehen mit ihrer ursprünglichen
-Versicherungssumme in den Verlauf ein; die bei Beitragsfreistellung
-fixierten beitragsfreien Summen (VS_bfr) zeigt die Tabelle. Die Spalte
-"Σ Versicherungssumme" im Bestandsverlauf führt die Grundscheiben-Summen;
-die durch dynamische Erhöhungen hinzugekommenen Summen zeigt die
-ERH-Zeile der Tabelle, die aktuariellen Kennzahlen enthalten die Scheiben
-vollständig. Alle Beträge stammen aus dem stabilen Rechenkern.</p>"""
+{klv_hinweis}Alle Beträge stammen aus dem stabilen Rechenkern.</p>"""
         else:
             fortschreibung_zeile = "<li>Fortschreibung: keine Ereignisse im Horizont</li>"
             ereignis_html = (
@@ -858,10 +900,10 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 </style>
 </head>
 <body>
-<h1>{titel}</h1>
+<h1>{_html.escape(titel)}</h1>
 <ul>
 <li>Verträge gesamt: {len(df)}</li>
-<li>Tarifgenerationen: {", ".join(generationen)}</li>
+<li>Tarifgenerationen: {", ".join(_html.escape(g) for g in generationen)}</li>
 <li>Vertragszeitraum: {zeitraum}</li>
 {stichtag_zeile}
 <li>Stichtage: {len(stichtage)} ({stichtage[0].isoformat()} bis {stichtage[-1].isoformat()})</li>

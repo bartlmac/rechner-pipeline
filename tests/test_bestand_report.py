@@ -419,3 +419,104 @@ def test_cli_stichtag(portfolio, fortschreibung, tmp_path):
     assert cli.main([
         "--portfolio", str(parquet), "--stichtag", "kein-datum",
     ]) == 2
+
+
+def test_stichtag_am_horizont_und_ausserhalb(portfolio, config, fortschreibung):
+    """Review-Fix: ein Stichtag genau am Fortschreibungs-Horizont liess den
+    Lauf mit ValueError abbrechen (das Konto endet bei bis.year - 1, die
+    Chart-Position suchte das Jahr trotzdem in der Liste)."""
+    historie, ledger, scheiben, *_ = fortschreibung
+    kw = dict(historie=historie, ledger=ledger, scheiben=scheiben,
+              stichtage=[dt.date(2020, 1, 1)])
+    for stichtag, erwartet_trennung in (
+        (dt.date(2035, 1, 1), False),   # am Horizont: alles Historie
+        (dt.date(1990, 1, 1), True),    # vor dem Bestand: alles Prognose
+        (dt.date(2050, 1, 1), False),   # weit dahinter
+        (dt.date(2026, 1, 1), True),    # mittendrin: Trennung
+    ):
+        html = report.render_html(
+            portfolio, bis=dt.date(2035, 1, 1), stichtag=stichtag, **kw
+        )
+        assert ("ab hier Prognose" in html) is erwartet_trennung, stichtag
+
+
+def test_neugeschaeft_wird_aus_den_daten_abgeleitet(portfolio, config):
+    """Review-Fix: die Zugangs-Aussage kam aus der Config und konnte der
+    Zugangszeile derselben Tabelle widersprechen (ein Lauf ohne
+    neuzugang_ab hat kein simuliertes Neugeschaeft, die Config sagt aber
+    eins zu). Jetzt wird sie aus dem Konto gelesen."""
+    from rechner_pipeline.bestand.ereignisse import fortschreiben, mit_zugaengen
+    from rechner_pipeline.bestand.generator import generate
+
+    ref = dt.date(2026, 1, 1)
+    bis = dt.date(2045, 1, 1)
+    basis = generate(config, bis=ref)
+
+    mit = fortschreiben(basis, config, bis, neuzugang_ab=ref)
+    html_mit = report.render_html(
+        mit_zugaengen(basis, mit.zugaenge), historie=mit.historie,
+        ledger=mit.ledger, scheiben=mit.scheiben, config=config,
+        bis=bis, stichtag=ref, stichtage=[ref],
+    )
+    assert "Die Projektion enthält" in html_mit
+    assert f"{len(mit.zugaenge)} Zugänge" in html_mit
+
+    # Derselbe Basisbestand ohne simulierten Neuzugang: der Bericht darf
+    # kein Neugeschaeft behaupten.
+    ohne = fortschreiben(basis, config, bis)
+    html_ohne = report.render_html(
+        basis, historie=ohne.historie, ledger=ohne.ledger,
+        scheiben=ohne.scheiben, config=config, bis=bis, stichtag=ref,
+        stichtage=[ref],
+    )
+    assert "keinen Zugang" in html_ohne and "Abwicklung" in html_ohne
+
+
+def test_annahmen_text_zeigt_die_volle_affine_form(portfolio, config, fortschreibung):
+    """Review-Fix: der additive Teil verschwand, sobald auch b wirkte."""
+    import copy
+
+    from rechner_pipeline.bestand.config import Annahme, Annahmen
+
+    historie, ledger, scheiben, *_ = fortschreibung
+    cfg = copy.copy(config)
+    cfg.annahmen = Annahmen(
+        tod=Annahme(a=0.005, b=0.8),          # beide Teile wirksam
+        storno=Annahme(a=0.03, b=0.0),
+        erhoehung=Annahme(a=0.3, b=0.0),
+        erh_prozent=0.05,
+    )
+    html = report.render_html(
+        portfolio, historie=historie, ledger=ledger, scheiben=scheiben,
+        config=cfg, bis=dt.date(2035, 1, 1), stichtage=[dt.date(2026, 1, 1)],
+    )
+    assert "Rechnungsgrundlage × 0,80 zuzüglich 0,50 % p. a." in html
+    assert "Storno 3,00 % p. a." in html
+    # Die Hoehe der Erhoehung steht neben ihrer Wahrscheinlichkeit:
+    assert "Erhöhung um je 5,00 %" in html
+
+
+def test_bu_bericht_fuehrt_die_jahresrente_als_leistungsspalte():
+    """Review-Fix: der Kopfteil war auf sum_insured verdrahtet — bei einem
+    BU-Bestand drei Sichten, die strukturell null sind."""
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+    from rechner_pipeline.bestand.generator import generate
+
+    cfg = load_config(REPO_ROOT / "examples" / "bestand_bu.toml")
+    df = generate(cfg, bis=dt.date(2026, 1, 1))
+    erg = fortschreiben(df, cfg, dt.date(2050, 1, 1))
+    html = report.render_html(
+        df, historie=erg.historie, ledger=erg.ledger, config=cfg,
+        bis=dt.date(2050, 1, 1), stichtage=[dt.date(2020, 1, 1)],
+    )
+    assert "Σ versicherte Jahresrente" in html
+    assert "Σ Versicherungssumme" not in html
+    # Die Kennzahlen-Spalte traegt echte Werte (nicht strukturell 0):
+    import re
+
+    zeile = re.search(
+        r"<h2>Kennzahlen je Stichtag</h2>.*?<tbody><tr>(.*?)</tr>", html, re.S
+    )
+    werte = re.findall(r">([\d.,]+)<", zeile.group(1))
+    assert float(werte[2].replace(".", "").replace(",", ".")) > 0
