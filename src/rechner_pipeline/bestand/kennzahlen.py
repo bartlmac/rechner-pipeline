@@ -314,6 +314,8 @@ def bewegungskonto(
     # (Bezugsgroesse Versicherungssumme); BU laeuft ueber
     # :func:`bu_bewegungskonto` mit der Jahresrente.
     bestand, historie, ledger = _nur_produkt(bestand, historie, ledger, "klv")
+    if len(bestand) == 0:
+        return []   # reiner BU-Bestand: die KLV-Nachweisung ist leer
     sicht = bestand_mit_historie(bestand, historie)
     stamm_vs = bestand.set_index("police_id")["sum_insured"]
 

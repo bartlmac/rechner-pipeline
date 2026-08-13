@@ -528,3 +528,55 @@ def test_klv_bewegungskonto_ignoriert_bu_vertraege():
     klv_zug = sum(z["bpfl"]["zugang_neuzugang"]["stueck"] for z in klv_konto)
     bu_zug = sum(z["anwaerter"]["zugang_neuzugang"]["stueck"] for z in bu_konto)
     assert klv_zug + bu_zug == len(df)
+
+
+def test_reiner_bu_bestand_laeuft_durch_gate_und_bericht(config, portfolio, tmp_path):
+    """End-to-End-Fund: bei einem Bestand OHNE KLV-Vertraege lief das
+    KLV-Bewegungskonto auf einen leeren Frame (NaN beim Jahresraster) und
+    riss Gate B1 mit — die leere Nachweisung ist der Normalfall eines
+    reinen BU-Bestands, kein Fehler."""
+    from rechner_pipeline.bestand.kennzahlen import bewegungskonto, bu_bewegungskonto
+
+    bis = dt.date(2050, 1, 1)
+    erg = fortschreiben(portfolio, config, bis)
+    assert bewegungskonto(portfolio, erg.historie, erg.ledger, bis=bis) == []
+    assert len(bu_bewegungskonto(portfolio, erg.historie, erg.ledger, bis=bis)) > 30
+
+    from rechner_pipeline.bestand import report
+
+    html = report.render_html(
+        portfolio, stichtage=[dt.date(2015, 1, 1), dt.date(2030, 1, 1)],
+        historie=erg.historie, ledger=erg.ledger, config=config, bis=bis,
+    )
+    assert "Berufsunfähigkeit: Bestand und Bewegung" in html
+    assert "Leistungsbezieher" in html
+    assert "WARNUNG" not in html
+    # Der Hinweis auf die synthetischen Grundlagen darf nie verloren gehen:
+    assert "synthetische Platzhalter" in html
+    # Determinismus:
+    assert html == report.render_html(
+        portfolio, stichtage=[dt.date(2015, 1, 1), dt.date(2030, 1, 1)],
+        historie=erg.historie, ledger=erg.ledger, config=config, bis=bis,
+    )
+
+
+def test_bu_neuzugang_wird_mitsimuliert(config):
+    """Die Beispiel-Config hat neuzugang_pro_jahr; BU-Zugaenge muessen
+    denselben Weg gehen wie KLV-Zugaenge (ZUG-GeVo mit der Jahresrente)."""
+    from rechner_pipeline.bestand.ereignisse import mit_zugaengen
+
+    ref = dt.date(2010, 1, 1)
+    basis = generate(config, bis=ref)
+    erg = fortschreiben(basis, config, dt.date(2020, 1, 1), neuzugang_ab=ref)
+    assert len(erg.zugaenge) > 0
+    assert set(erg.zugaenge["produkt"]) == {"bu"}
+    zug = erg.ledger[erg.ledger["ereignis"] == "ZUG"]
+    assert len(zug) == len(erg.zugaenge)
+    # Zugangs-Betrag ist die versicherte Jahresrente, nicht die (leere) VS:
+    assert set(zug["betrag_art"]) == {"BU_Jahresrente"}
+    erwartet = erg.zugaenge.set_index("police_id")["bu_rente"]
+    for _, zeile in zug.iterrows():
+        assert zeile["betrag"] == erwartet.loc[zeile["police_id"]]
+    gesamt = mit_zugaengen(basis, erg.zugaenge)
+    assert validate_portfolio(gesamt) == []
+    assert validate_statushistorie(gesamt, erg.historie) == []

@@ -316,3 +316,22 @@ def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
     assert cli.main(
         ["--portfolio", str(parquet), "--config", str(tmp_path / "fehlt.toml")]
     ) == 2
+
+
+def test_svg_ids_sind_inhaltsbasiert_und_stabil():
+    """Regression: matplotlib leitet Clip-Pfad- und Marker-Ids teils aus
+    Objektadressen ab (id(obj)) — zwei Renderings derselben Grafik waeren
+    dann nicht byte-identisch. Der Bericht normalisiert sie inhaltsbasiert."""
+    import re
+
+    roh = '<path clip-path="url(#pd425d0d61f)"/><use xlink:href="#m1a2b3c4d5e"/>'
+    stabil = report._stabile_ids(roh)
+    assert stabil == report._stabile_ids(roh)
+    assert "pd425d0d61f" not in stabil and "m1a2b3c4d5e" not in stabil
+    # Praefix bleibt erhalten (Clip-Pfad p..., Marker m...), Ids eindeutig:
+    ids = re.findall(r"#([mp][0-9a-f]+)", stabil)
+    assert len(ids) == len(set(ids)) == 2
+    assert ids[0].startswith("p") and ids[1].startswith("m")
+    # Anderer Inhalt -> anderes Praefix (keine Kollision zwischen Grafiken):
+    anders = report._stabile_ids('<path clip-path="url(#pd425d0d61f)"/>')
+    assert anders != stabil

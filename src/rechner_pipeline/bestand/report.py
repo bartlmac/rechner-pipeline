@@ -16,14 +16,17 @@ beitragspflichtig/beitragsfrei, mit geprüfter Bestands-Identität).
 
 Determinismus (Golden-Master-fähig): fester ``svg.hashsalt``, Schriften als
 Pfade (``svg.fonttype='path'``), ``metadata={'Date': None}`` beim Export,
-explizite Sortierungen — gleiche Parquet-Dateien ergeben den byte-identischen
-Bericht (bei gepinntem matplotlib).
+explizite Sortierungen, inhaltsbasierte Clip-Pfad-Ids (matplotlib leitet
+sie sonst aus Objektadressen ab) — gleiche Parquet-Dateien ergeben den
+byte-identischen Bericht (bei gepinntem matplotlib).
 """
 
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
 import io
+import re
 from typing import Any, Dict, List, Optional
 
 import matplotlib
@@ -40,6 +43,7 @@ from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
     EREIGNIS_LABELS,
     EREIGNIS_REIHENFOLGE,
     bewegungskonto,
+    bu_bewegungskonto,
     ereignis_summen,
     ereignisse_je_jahr,
     generationsnamen,
@@ -49,7 +53,7 @@ from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
 )
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe  # noqa: E402
 
-REPORT_VERSION = "1.3.0"
+REPORT_VERSION = "1.4.0"
 
 _RC = {
     "svg.hashsalt": "rechner-pipeline-bestand",
@@ -81,12 +85,42 @@ def _farbe(index: int) -> str:
     return _FARBEN[index % len(_FARBEN)]
 
 
+#: matplotlib-Ids in SVG-Defs: Clip-Pfade (``pXXXXXXXXXX``) und
+#: Marker-/Glyph-Pfade (``mXXXXXXXXXX``).
+_ID_MUSTER = re.compile(r"\b([mp])[0-9a-f]{10}\b")
+
+
+def _stabile_ids(svg: str) -> str:
+    """Clip-Pfad-Ids deterministisch machen.
+
+    matplotlib bildet die Ids von Clip-Pfaden und Markern teils ueber
+    ``id(obj)``, also die Speicheradresse des Objekts — dieselbe Grafik
+    bekommt dann bei jedem Rendern andere Ids, und der Bericht waere nicht
+    byte-identisch reproduzierbar (Golden-Master-Anspruch des Moduls). Ohne
+    diese Normalisierung faellt das nur nicht auf, solange eine Grafik
+    zufaellig ohne solche Defs auskommt. Wir ersetzen sie
+    durch Ids aus dem Inhalt: ein Praefix aus dem Hash der id-freien Grafik
+    plus laufende Nummer in Auftretensreihenfolge.
+    """
+    roh = _ID_MUSTER.sub("__id__", svg)
+    stamm = hashlib.sha256(roh.encode("utf-8")).hexdigest()[:6]
+    ersetzt: Dict[str, str] = {}
+
+    def _ersetze(treffer) -> str:
+        alt = treffer.group(0)
+        if alt not in ersetzt:
+            ersetzt[alt] = f"{treffer.group(1)}{stamm}{len(ersetzt):04d}"
+        return ersetzt[alt]
+
+    return _ID_MUSTER.sub(_ersetze, svg)
+
+
 def _svg(fig) -> str:
     buf = io.StringIO()
     fig.savefig(buf, format="svg", metadata={"Date": None}, bbox_inches="tight")
     plt.close(fig)
     text = buf.getvalue()
-    return text[text.index("<svg") :]
+    return _stabile_ids(text[text.index("<svg") :])
 
 
 def _zahl(value: float, dezimal: int = 0) -> str:
@@ -191,6 +225,41 @@ def _chart_deckungskapital(reihe: List[Dict[str, Any]]) -> str:
     ax.set_ylabel("Deckungskapital (Mio.)")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
     ax.legend(loc="upper right", fontsize=8)
+    return _svg(fig)
+
+
+def _chart_bu_bestand(konto: List[Dict[str, Any]]) -> str:
+    """BU-Bestand je Jahresende, getrennt nach Anwaertern und Rentnern."""
+    x = list(range(len(konto)))
+    labels = [str(z["jahr"]) for z in konto]
+    fig, ax = plt.subplots()
+    anwaerter = [z["anwaerter"]["ende"]["stueck"] for z in konto]
+    rentner = [z["rentner"]["ende"]["stueck"] for z in konto]
+    ax.bar(x, anwaerter, label="Anwärter", color="#1f77b4", width=0.8)
+    ax.bar(x, rentner, bottom=anwaerter, label="Leistungsbezieher",
+           color="#d62728", width=0.8)
+    schritt = max(1, len(x) // 12)
+    ax.set_xticks(x[::schritt], labels[::schritt])
+    ax.set_ylabel("BU-Verträge (Jahresende)")
+    ax.set_xlabel("Kalenderjahr")
+    ax.legend(loc="upper right", fontsize=8)
+    return _svg(fig)
+
+
+def _chart_bu_renten(reihe: List[Dict[str, Any]]) -> str:
+    """Versicherte und laufende Jahresrente je Stichtag."""
+    x = list(range(len(reihe)))
+    labels = [r["stichtag"][:4] for r in reihe]
+    fig, ax = plt.subplots()
+    ax.plot(x, [r["bu_jahresrente"] / 1e6 for r in reihe], marker="o",
+            markersize=3, color="#1f77b4", label="versicherte Jahresrente")
+    ax.plot(x, [r["bu_jahresrente_laufend"] / 1e6 for r in reihe], marker="o",
+            markersize=3, color="#d62728", label="davon laufend (Leistungsbezug)")
+    schritt = max(1, len(x) // 12)
+    ax.set_xticks(x[::schritt], labels[::schritt])
+    ax.set_ylabel("Jahresrente (Mio.)")
+    ax.set_xlabel("Stichtag (1.1. des Jahres)")
+    ax.legend(fontsize=8)
     return _svg(fig)
 
 
@@ -445,6 +514,103 @@ beitragspflichtig mit der Gesamt-VS, Zugang beitragsfrei mit der
 beitragsfreien Summe). Ausgewiesen sind nur Jahre, die der
 Fortschreibungs-Horizont vollständig abdeckt. {pruefsatz}</p>"""
 
+    # ------------------------------------------------------------------ #
+    # Berufsunfaehigkeit: eigene Nachweisung (Bezugsgroesse Jahresrente)
+    # ------------------------------------------------------------------ #
+    bu_html = ""
+    ist_bu = "produkt" in df.columns and (df["produkt"] == "bu").any()
+    if ist_bu and historie is not None and bis is not None:
+        bu_konto = bu_bewegungskonto(df, historie, ledger, bis=bis)
+        bu_relevant = [
+            z for z in bu_konto
+            if z["anwaerter"]["anfang"]["stueck"] or z["anwaerter"]["ende"]["stueck"]
+            or z["rentner"]["anfang"]["stueck"] or z["rentner"]["ende"]["stueck"]
+        ]
+        bu_ok = all(
+            ok for z in bu_konto for oks in z["identitaet"].values() for ok in oks.values()
+        )
+
+        def _bu_tabelle(mass: str) -> str:
+            kopf = (
+                "<tr><th rowspan='2'>Jahr</th>"
+                "<th colspan='6'>Anwärter</th>"
+                "<th colspan='5'>Leistungsbezieher</th></tr>"
+                "<tr><th>Anfang</th><th>+Zugang</th><th>+Reakt.</th><th>−Tod</th>"
+                "<th>−Ablauf</th><th>−&rarr;Bezug</th>"
+                "<th>Anfang</th><th>+Inval.</th><th>−Reakt.</th><th>−Tod/Abl.</th>"
+                "<th>Ende</th></tr>"
+            )
+            zeilen = []
+            for z in bu_relevant:
+                a, r = z["anwaerter"], z["rentner"]
+                werte = [
+                    a["anfang"][mass], a["zugang_neuzugang"][mass],
+                    a["zugang_reaktivierung"][mass], a["abgang_tod"][mass],
+                    a["abgang_ablauf"][mass], a["umbuchung_leistungsbezug"][mass],
+                    r["anfang"][mass], r["zugang_invalidisierung"][mass],
+                    r["abgang_reaktivierung"][mass],
+                    r["abgang_tod"][mass] + r["abgang_ablauf"][mass],
+                    r["ende"][mass],
+                ]
+                zellen = "".join(
+                    f"<td class='num'>{_zahl(w) if mass == 'summe' else int(w)}</td>"
+                    for w in werte
+                )
+                zeilen.append(f"<tr><td>{z['jahr']}</td>{zellen}</tr>")
+            return f"<table><thead>{kopf}</thead><tbody>{''.join(zeilen)}</tbody></table>"
+
+        bu_charts = _chart_bu_bestand(bu_relevant) if bu_relevant else ""
+        bu_kennzahlen = ""
+        if config is not None:
+            bu_zeilen = "".join(
+                f"<tr><td>{r['stichtag']}</td><td class='num'>{r['bu_vertraege']}</td>"
+                f"<td class='num'>{r['bu_leistungsbezug']}</td>"
+                f"<td class='num'>{_zahl(r['bu_jahresrente'])}</td>"
+                f"<td class='num'>{_zahl(r['bu_jahresrente_laufend'])}</td>"
+                f"<td class='num'>{_zahl(r['deckungskapital'])}</td>"
+                f"<td class='num'>{_zahl(r['deckungskapital_bu'])}</td></tr>"
+                for r in reihe_ausw
+                if r["bu_vertraege"] > 0
+            )
+            bu_kennzahlen = (
+                f"<div class=\"charts\">{_chart_bu_renten([r for r in reihe_ausw if r['bu_vertraege'] > 0])}</div>"
+                "<table><thead><tr><th>Stichtag</th><th>BU-Verträge</th>"
+                "<th>davon im Leistungsbezug</th><th>Σ versicherte Jahresrente</th>"
+                "<th>Σ laufende Jahresrente</th><th>Σ Deckungskapital</th>"
+                "<th>davon Leistungsbezug</th></tr></thead><tbody>"
+                + bu_zeilen + "</tbody></table>"
+            )
+        bu_pruefsatz = (
+            "Die Identität Anfangsbestand + Zugang − Abgang = Endbestand gilt "
+            "in jedem Jahr, je Track, in Stück und Jahresrente (Gate-geprüft)."
+            if bu_ok else
+            "WARNUNG: Bewegungs-Identität verletzt — Daten inkonsistent."
+        )
+        bu_html = f"""
+<h2>Berufsunfähigkeit: Bestand und Bewegung</h2>
+<div class="charts">{bu_charts}</div>
+<p>Die BU-Nachweisung wird getrennt von der Kapitalversicherung geführt:
+Bezugsgröße ist die versicherte <em>Jahresrente</em>, nicht die
+Versicherungssumme — beide sind nicht addierbar. Getrennt werden
+<em>Anwärter</em> (Zustand POL) und <em>Leistungsbezieher</em> (Zustand BU);
+die Invalidisierung ist eine Umbuchung zwischen beiden Tracks, die
+Reaktivierung die Rückbuchung. {bu_pruefsatz}</p>
+<h3>Stück</h3>
+{_bu_tabelle("stueck")}
+<h3>Versicherte Jahresrente</h3>
+{_bu_tabelle("summe")}
+{bu_kennzahlen}
+<p>Die Übergänge der Fortschreibung kommen aus den Rechnungsgrundlagen des
+Produkts (Invalidisierung, Reaktivierung, Aktiven- und
+Invalidensterblichkeit) — dieselben Ausscheideordnungen, mit denen der Kern
+Beiträge und Reserven bewertet. Reserven: im Anwärterstand die
+Aktivenreserve, im Leistungsbezug die Invalidenreserve mit der Dauer seit
+Rentenbeginn.</p>
+<p><strong>Hinweis zu den Rechnungsgrundlagen:</strong> Invalidisierung,
+Reaktivierung und Invalidensterblichkeit sind synthetische Platzhalter
+(SYNTH_BU_*), keine DAV-Tafeln; die Aktivensterblichkeit ist DAV 2008 T.
+Die Zahlen zeigen die Mechanik, keine marktfähige Tarifierung.</p>"""
+
     auswertung_html = ""
     if config is not None:
         ausw_zeilen = "".join(
@@ -504,6 +670,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 <div class="charts">{svg_vertraege}{svg_summe}</div>
 {ereignis_html}
 {bewegung_html}
+{bu_html}
 {auswertung_html}
 
 <h2>Bestandsstruktur am {struktur_stichtag.isoformat()} (Höchststand: {hoechststand["vertraege"]} Verträge)</h2>
