@@ -72,13 +72,22 @@ _EREIGNIS_FARBEN = {
     "ZUG": "#1f77b4",
     "ERH": "#17becf",
     "PEX": "#9467bd",
+    "INV": "#8c564b",
+    "REA": "#bcbd22",
     "STO": "#ff7f0e",
     "TOD": "#d62728",
     "ABL": "#2ca02c",
 }
 
-#: Status-Farben der in-force-Sicht.
-_STATUS_FARBEN = {"POL": "#1f77b4", "PEX": "#9467bd"}
+#: Status-Farben der in-force-Sicht (BU = Leistungsbezug).
+_STATUS_FARBEN = {"POL": "#1f77b4", "PEX": "#9467bd", "BU": "#d62728"}
+
+#: Beschriftung der in-force-Status in fester Reihenfolge.
+_STATUS_LABELS = (
+    ("POL", "beitragspflichtig (POL)"),
+    ("PEX", "beitragsfrei (PEX)"),
+    ("BU", "im Leistungsbezug (BU)"),
+)
 
 
 def _farbe(index: int) -> str:
@@ -199,8 +208,10 @@ def _chart_status_verlauf(reihe: List[Dict[str, Any]]) -> str:
     labels = [r["stichtag"][:4] for r in reihe]
     fig, ax = plt.subplots()
     unten = [0] * len(reihe)
-    for status, label in (("POL", "beitragspflichtig (POL)"), ("PEX", "beitragsfrei (PEX)")):
-        werte = [r[status] for r in reihe]
+    for status, label in _STATUS_LABELS:
+        werte = [r.get(status, 0) for r in reihe]
+        if not any(werte):
+            continue   # Status kommt im Bestand nicht vor
         ax.bar(x, werte, bottom=unten, label=label,
                color=_STATUS_FARBEN[status], width=0.8)
         unten = [u + w for u, w in zip(unten, werte)]
@@ -269,7 +280,9 @@ def _chart_ereignisse_je_jahr(reihe: List[Dict[str, Any]]) -> str:
     fig, ax = plt.subplots()
     unten = [0] * len(reihe)
     for code in EREIGNIS_REIHENFOLGE:
-        werte = [r[code] for r in reihe]
+        werte = [r.get(code, 0) for r in reihe]
+        if not any(werte):
+            continue   # GeVo-Art kommt im Bestand nicht vor
         ax.bar(x, werte, bottom=unten, label=f"{EREIGNIS_LABELS[code]} ({code})",
                color=_EREIGNIS_FARBEN[code], width=0.8)
         unten = [u + w for u, w in zip(unten, werte)]

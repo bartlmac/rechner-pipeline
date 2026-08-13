@@ -25,13 +25,28 @@ from rechner_pipeline.models.bestand import STAMM_NAMES, ZEITSCHEIBEN_NAMES
 def sanity_check(
     df: pd.DataFrame, baender: Dict[str, Tuple[float, float]]
 ) -> List[str]:
-    """Check numeric columns against configured (min, max) plausibility bands."""
+    """Check numeric columns against configured (min, max) plausibility bands.
+
+    Die produktfuehrenden Leistungsspalten (``sum_insured`` bei KLV,
+    ``bu_rente`` bei BU) werden nur auf den Vertraegen ihres Produkts
+    geprueft: die jeweils andere Spalte ist per Schema-Invariante strikt 0
+    und wuerde in einem gemischten Bestand jedes Untergrenzen-Band reissen.
+    """
+    from rechner_pipeline.models.bestand import LEISTUNGSSPALTE
+
+    produkt_je_spalte = {spalte: produkt for produkt, spalte in LEISTUNGSSPALTE.items()}
     errors: List[str] = []
     for merkmal, (lo, hi) in sorted(baender.items()):
         if merkmal not in df.columns:
             errors.append(f"sanity {merkmal}: Spalte fehlt")
             continue
-        col = df[merkmal]
+        teil = df
+        produkt = produkt_je_spalte.get(merkmal)
+        if produkt is not None and "produkt" in df.columns:
+            teil = df[df["produkt"] == produkt]
+            if len(teil) == 0:
+                continue   # Produkt im Bestand nicht vertreten
+        col = teil[merkmal]
         actual_min, actual_max = float(col.min()), float(col.max())
         if actual_min < lo:
             errors.append(f"sanity {merkmal}: min {actual_min} < Band-Minimum {lo}")

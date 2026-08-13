@@ -56,15 +56,15 @@ SUPPORTED_TYPES: Tuple[str, ...] = (
 )
 
 #: Attributes allowed in the correlation matrix (transformed via latent
-#: normal; categorical attributes work like the reference does gender).
-CORRELATABLE: Tuple[str, ...] = (
-    "entry_age",
-    "sex",
-    "duration",
-    "premium_duration",
-    "sum_insured",
-    "bu_rente",
-)
+#: normal; categorical attributes work like the reference does gender) —
+#: je Produkt genau die Merkmale seiner Zugreihenfolge. Ein Paar ausserhalb
+#: davon waere im Generator ein nackter KeyError.
+CORRELATABLE_JE_PRODUKT: Dict[str, Tuple[str, ...]] = {
+    "klv": ("entry_age", "sex", "duration", "premium_duration", "sum_insured"),
+    "bu": ("entry_age", "sex", "duration", "bu_rente"),
+}
+#: Rueckwaertskompatibler Alias (KLV-Merkmale).
+CORRELATABLE: Tuple[str, ...] = CORRELATABLE_JE_PRODUKT["klv"]
 
 
 @dataclass
@@ -125,11 +125,14 @@ class Korrelation:
     var_j: str
     rho: float
 
-    def validate(self) -> List[str]:
+    def validate(self, erlaubt: Tuple[str, ...] = CORRELATABLE) -> List[str]:
         errors: List[str] = []
         for v in (self.var_i, self.var_j):
-            if v not in CORRELATABLE:
-                errors.append(f"korrelation {self.var_i}/{self.var_j}: {v} nicht korrelierbar")
+            if v not in erlaubt:
+                errors.append(
+                    f"korrelation {self.var_i}/{self.var_j}: {v} nicht "
+                    f"korrelierbar (erlaubt: {list(erlaubt)})"
+                )
         if self.var_i == self.var_j:
             errors.append(f"korrelation {self.var_i}: var_i == var_j")
         if not -1.0 < float(self.rho) < 1.0:
@@ -265,8 +268,9 @@ class TarifGeneration:
         for spec in self.verteilungen.values():
             errors.extend(f"{prefix}: {e}" for e in spec.validate())
         seen = set()
+        korrelierbar = CORRELATABLE_JE_PRODUKT.get(self.produkt, CORRELATABLE)
         for korr in self.korrelationen:
-            errors.extend(f"{prefix}: {e}" for e in korr.validate())
+            errors.extend(f"{prefix}: {e}" for e in korr.validate(korrelierbar))
             key = tuple(sorted((korr.var_i, korr.var_j)))
             if key in seen:
                 errors.append(f"{prefix}: korrelation {key} doppelt")
@@ -279,7 +283,7 @@ class TarifGeneration:
 
             from rechner_pipeline.bestand.stochastik import build_corr_matrix
 
-            matrix = build_corr_matrix(CORRELATABLE, self.korrelationen)
+            matrix = build_corr_matrix(korrelierbar, self.korrelationen)
             min_eig = float(np.linalg.eigvalsh((matrix + matrix.T) / 2.0).min())
             if min_eig < -1e-8:
                 errors.append(
@@ -301,6 +305,28 @@ class TarifGeneration:
         errors: List[str] = []
         if self.zuschlag < 0.0:
             errors.append(f"{prefix}: zuschlag < 0")
+        # Der Generator kappt die Laufzeit auf max_endalter - entry_age;
+        # bei entry_age = max_endalter - 1 entsteht zwingend ein
+        # Einjahresvertrag. Im Jahresmodell beginnt die BU-Rente aber
+        # fruehestens am Jahrestag 1 — ein solcher Vertrag hat
+        # Leistungsbarwert 0 und ist nicht tarifierbar (BU.netto_rate
+        # wirft). Die Alters-Obergrenze muss also mindestens zwei Jahre
+        # unter dem Endalter liegen.
+        spec = self.verteilungen.get("entry_age")
+        max_alter = None
+        if spec is not None:
+            if spec.typ == "normal_trunc" and "max" in spec.params:
+                max_alter = int(float(spec.params["max"]))
+            elif spec.typ == "empirical_discrete" and spec.params.get("values"):
+                max_alter = int(max(float(v) for v in spec.params["values"]))
+        if max_alter is not None and max_alter > self.max_endalter - 2:
+            errors.append(
+                f"{prefix}: entry_age bis {max_alter} laesst bei "
+                f"max_endalter {self.max_endalter} Vertraege mit Laufzeit 1 zu "
+                "— die BU-Rente beginnt fruehestens am Jahrestag 1, solche "
+                "Vertraege sind nicht tarifierbar (entry_age-Obergrenze auf "
+                f"{self.max_endalter - 2} senken oder max_endalter anheben)"
+            )
         try:
             for sex in ("M", "F"):
                 qx_vector(sex, self.tafel_i)

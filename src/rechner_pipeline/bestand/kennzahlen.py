@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+from rechner_pipeline.models.bestand import AKTIVE_STATUS
 
 
 def jahresraster(df: pd.DataFrame) -> List[_dt.date]:
@@ -58,13 +59,15 @@ def generationsnamen(df: pd.DataFrame) -> List[str]:
 
 #: Feste fachliche Reihenfolge der Ereignisse in Tabellen und Grafiken
 #: (ZUG/ERH sind Zugangs-GeVos ohne Statuswechsel, daher vorangestellt).
-EREIGNIS_REIHENFOLGE = ("ZUG", "ERH", "PEX", "STO", "TOD", "ABL")
+EREIGNIS_REIHENFOLGE = ("ZUG", "ERH", "PEX", "INV", "REA", "STO", "TOD", "ABL")
 
 #: Klartext je Ereignis-Code (Berichts-Beschriftung).
 EREIGNIS_LABELS = {
     "ZUG": "Neuzugang",
     "ERH": "Dynamische Erhöhung",
     "PEX": "Beitragsfreistellung",
+    "INV": "Invalidisierung",
+    "REA": "Reaktivierung",
     "STO": "Storno",
     "TOD": "Tod",
     "ABL": "Ablauf",
@@ -72,25 +75,32 @@ EREIGNIS_LABELS = {
 
 
 def ereignis_summen(ledger: pd.DataFrame) -> List[Dict[str, Any]]:
-    """Anzahl und Betragssumme je Ereignisart (feste Reihenfolge).
+    """Anzahl und Betragssumme je Ereignisart und Betrags-Art.
 
-    ``betrag_art`` ist je Ereignis einheitlich (RKW, VS_bfr, ...); Ereignisse
-    ohne Vorkommen werden ausgelassen.
+    Gruppiert wird nach (Ereignis, ``betrag_art``) — NICHT nur nach
+    Ereignis: seit dem zweiten Produkt tragen dieselben Codes zweierlei
+    Bezugsgrößen (KLV zahlt Todesfall-/Ablaufleistung in Versicherungssumme,
+    BU führt die betroffene Jahresrente). Eine gemeinsame Summe wäre eine
+    stille Vermischung nicht addierbarer Größen unter dem Label der ersten
+    Zeile. Reihenfolge: fachliche Ereignisfolge, darin die Betrags-Arten
+    alphabetisch (deterministisch); Ereignisse ohne Vorkommen entfallen.
     """
     summen: List[Dict[str, Any]] = []
     for code in EREIGNIS_REIHENFOLGE:
         rows = ledger[ledger["ereignis"] == code]
         if len(rows) == 0:
             continue
-        summen.append(
-            {
-                "ereignis": code,
-                "label": EREIGNIS_LABELS[code],
-                "anzahl": int(len(rows)),
-                "betrag_art": str(rows["betrag_art"].iloc[0]),
-                "summe_betrag": float(rows["betrag"].sum()),
-            }
-        )
+        for art in sorted(set(rows["betrag_art"])):
+            teil = rows[rows["betrag_art"] == art]
+            summen.append(
+                {
+                    "ereignis": code,
+                    "label": EREIGNIS_LABELS[code],
+                    "anzahl": int(len(teil)),
+                    "betrag_art": str(art),
+                    "summe_betrag": float(teil["betrag"].sum()),
+                }
+            )
     return summen
 
 
@@ -271,7 +281,13 @@ def bewegungskonto(
     scheiben: Any = None,
     bis: Any = None,
 ) -> List[Dict[str, Any]]:
-    """Bestandsbewegung je Kalenderjahr in der Struktur der BaFin-Nachweisung.
+    """Bestandsbewegung der KAPITALVERSICHERUNG je Kalenderjahr.
+
+    Struktur der BaFin-Nachweisung; seit dem zweiten Produkt ist dies die
+    KLV-Nachweisung (Bezugsgröße Versicherungssumme) — BU läuft über
+    :func:`bu_bewegungskonto` mit der Jahresrente, weil beide Größen nicht
+    addierbar sind. Ein Bestand ohne KLV-Verträge liefert hier eine leere
+    Liste (nicht etwa einen Fehler).
 
     Beschluss 2026-08-13: Anfangsbestand + Zugang - Abgang = Endbestand,
     getrennt nach beitragspflichtig (``bpfl``) und beitragsfrei (``bfr``),
@@ -474,7 +490,12 @@ def bewegungskonto(
 def status_verlauf(
     sicht: pd.DataFrame, stichtage: List[_dt.date]
 ) -> List[Dict[str, Any]]:
-    """In-force-Bestand je Stichtag, aufgeteilt nach Status (POL/PEX).
+    """In-force-Bestand je Stichtag, aufgeteilt nach Status.
+
+    Gezählt werden ALLE in-force-Status (POL beitragspflichtig, PEX
+    beitragsfrei, BU im Leistungsbezug) — die Summe der Zähler ist damit
+    immer die Zahl der Verträge in der Zeitscheibe. Ein fehlender Zähler
+    hätte Leistungsbezieher still unterschlagen.
 
     ``sicht`` ist die Mehrzeilen-Sicht aus
     :func:`rechner_pipeline.bestand.ereignisse.bestand_mit_historie`; die
@@ -484,11 +505,8 @@ def status_verlauf(
     for stichtag in stichtage:
         scheibe = zeitscheibe(sicht, stichtag)
         counts = scheibe["status_code"].value_counts()
-        reihe.append(
-            {
-                "stichtag": stichtag.isoformat(),
-                "POL": int(counts.get("POL", 0)),
-                "PEX": int(counts.get("PEX", 0)),
-            }
-        )
+        eintrag: Dict[str, Any] = {"stichtag": stichtag.isoformat()}
+        for status in AKTIVE_STATUS:
+            eintrag[status] = int(counts.get(status, 0))
+        reihe.append(eintrag)
     return reihe

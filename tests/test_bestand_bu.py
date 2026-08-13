@@ -294,10 +294,16 @@ def test_realisation_trifft_die_modellverteilung(config):
     for (zustand, _dauer), masse in verteilung.items():
         erwartet[zustand] += masse
 
+    # Toleranz aus der BINOMIALEN Streuung sqrt(N*p*(1-p)) — die
+    # Poisson-Naeherung sqrt(soll) ist bei grossem p um Groessenordnungen
+    # zu weit (Review-Fix: echte Prozessfehler blieben gruen).
+    n = len(stamm)
     for zustand, ist in ((AKTIV, aktiv), (BU_ZUSTAND, im_bezug), (TOT, tot)):
-        soll = erwartet[zustand] * len(stamm)
-        assert abs(ist - soll) <= max(12.0, 4.0 * soll ** 0.5), (
-            f"{zustand}: simuliert {ist}, Modell {soll:.1f}"
+        p_soll = erwartet[zustand]
+        soll = p_soll * n
+        sigma = (n * p_soll * (1.0 - p_soll)) ** 0.5
+        assert abs(ist - soll) <= max(6.0, 4.0 * sigma), (
+            f"{zustand}: simuliert {ist}, Modell {soll:.1f} (sigma {sigma:.1f})"
         )
 
 
@@ -580,3 +586,173 @@ def test_bu_neuzugang_wird_mitsimuliert(config):
     gesamt = mit_zugaengen(basis, erg.zugaenge)
     assert validate_portfolio(gesamt) == []
     assert validate_statushistorie(gesamt, erg.historie) == []
+
+
+# --------------------------------------------------------------------------- #
+# Review-Fixes
+# --------------------------------------------------------------------------- #
+
+
+def test_semi_markov_dauer_steuert_die_uebergaenge(config, monkeypatch):
+    """Review-Fix: die Dauer-Fortschreibung im Leistungsbezug war von
+    keinem Test gehalten. Geprueft wird beides: Dauer zaehlt hoch, solange
+    der Zustand bleibt, und faellt bei jedem Wechsel auf 0 zurueck."""
+    gesehen = []
+
+    def uebergang(self, von, nach, alter, dauer):
+        if von == AKTIV and nach == BU_ZUSTAND:
+            # Invalidisierung im ersten Jahr und (nach Reaktivierung) im
+            # Vertragsjahr 8 — so entstehen zwei Leistungsphasen.
+            return 1.0 if alter in (40, 47) else 0.0
+        if von == BU_ZUSTAND and nach == AKTIV:
+            gesehen.append((alter, dauer))
+            return 1.0 if dauer == 2 else 0.0   # Reaktivierung nach 2 Jahren
+        return 0.0
+
+    monkeypatch.setattr(BU, "_uebergang", uebergang)
+    stamm = _bu_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 3, 1), "x": 40, "n": 20}
+    )
+    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+
+    assert list(erg.ledger["ereignis"]) == ["INV", "REA", "INV", "REA", "ABL"]
+    # Erste Phase: INV am Jahrestag 1 (2011), Reaktivierung nach Dauer 2 —
+    # abgefragt wird mit Dauer 0, 1, 2, der Wechsel faellt ins Jahr 2014.
+    daten = list(erg.ledger["status_date"])
+    assert daten[0] == pd.Timestamp(dt.date(2011, 3, 1))
+    assert daten[1] == pd.Timestamp(dt.date(2014, 3, 1))
+    # Zweite Phase startet mit Dauer 0 (Ruecksetzung beim Wechsel):
+    assert daten[2] == pd.Timestamp(dt.date(2018, 3, 1))
+    assert daten[3] == pd.Timestamp(dt.date(2021, 3, 1))
+    # Die abgefragten Dauern beider Phasen zaehlen jeweils bei 0 los:
+    erste = [d for a, d in gesehen if a < 47]
+    zweite = [d for a, d in gesehen if a >= 47]
+    assert erste[:3] == [0, 1, 2]
+    assert zweite[:3] == [0, 1, 2]
+
+
+def test_dauer_wird_bei_der_select_periode_gekappt(config, monkeypatch):
+    """Oberhalb der Select-Periode bleibt die Dauer auf ihrem Maximum —
+    genau wie im Zustandsmodell (_folgedauer)."""
+    dauern = []
+
+    def uebergang(self, von, nach, alter, dauer):
+        if von == AKTIV and nach == BU_ZUSTAND:
+            return 1.0 if alter == 40 else 0.0
+        if von == BU_ZUSTAND:
+            dauern.append(dauer)
+        return 0.0
+
+    monkeypatch.setattr(BU, "_uebergang", uebergang)
+    stamm = _bu_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 3, 1), "x": 40, "n": 20}
+    )
+    fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    max_dauer = config.generationen[0].bu_generation_fields()
+    from rechner_pipeline.kern.kommutation import select_max_dauer
+
+    grenze = select_max_dauer(max_dauer["tafel_ri"])
+    # Dauer zaehlt bis zur Select-Periode hoch und bleibt dann stehen:
+    assert max(dauern) == grenze
+    assert dauern.count(grenze) > 1
+
+
+def test_ereignis_summen_trennt_bezugsgroessen():
+    """Review-Fix: TOD/ABL gibt es in beiden Produkten mit verschiedenen
+    Bezugsgroessen (Versicherungssumme vs. Jahresrente) — eine gemeinsame
+    Summe waere eine stille Vermischung."""
+    import copy
+
+    from rechner_pipeline.bestand.kennzahlen import ereignis_summen
+
+    klv = load_config(KLV_EXAMPLE)
+    bu = load_config(BU_EXAMPLE)
+    gemischt = copy.deepcopy(klv)
+    gemischt.generationen = [klv.generationen[1], bu.generationen[0]]
+    gemischt.ereignisse = klv.ereignisse
+    df = generate(gemischt)
+    erg = fortschreiben(df, gemischt, dt.date(2035, 1, 1))
+
+    summen = ereignis_summen(erg.ledger)
+    tod = [s for s in summen if s["ereignis"] == "TOD"]
+    assert len(tod) == 2, "Todesfaelle beider Produkte muessen getrennt stehen"
+    arten = {s["betrag_art"] for s in tod}
+    assert arten == {"Todesfallleistung", "BU_Jahresrente"}
+    # Jede Zeile summiert nur ihre eigene Bezugsgroesse:
+    for s in tod:
+        rows = erg.ledger[
+            (erg.ledger["ereignis"] == "TOD")
+            & (erg.ledger["betrag_art"] == s["betrag_art"])
+        ]
+        assert s["anzahl"] == len(rows)
+        assert s["summe_betrag"] == pytest.approx(float(rows["betrag"].sum()))
+    # Die BU-GeVos erscheinen ueberhaupt (fehlten in EREIGNIS_REIHENFOLGE):
+    assert "INV" in {s["ereignis"] for s in summen}
+    # Vollstaendigkeit: keine Ledger-Zeile faellt aus der Uebersicht.
+    assert sum(s["anzahl"] for s in summen) == len(erg.ledger)
+
+
+def test_status_verlauf_zaehlt_den_leistungsbezug(config, portfolio):
+    """Review-Fix: BU ist ein in-force-Status; die Status-Reihe muss ihn
+    fuehren, sonst unterschlaegt sie Vertraege."""
+    from rechner_pipeline.bestand.kennzahlen import status_verlauf
+    from rechner_pipeline.bestand.zeitscheibe import zeitscheibe as _zs
+
+    erg = fortschreiben(portfolio, config, dt.date(2050, 1, 1))
+    sicht = bestand_mit_historie(portfolio, erg.historie)
+    stichtage = [dt.date(j, 1, 1) for j in (2015, 2025, 2035)]
+    reihe = status_verlauf(sicht, stichtage)
+    for zeile, stichtag in zip(reihe, stichtage):
+        scheibe = _zs(sicht, stichtag)
+        # Summe der Statuszaehler == Zahl der in-force-Vertraege:
+        assert zeile["POL"] + zeile["PEX"] + zeile["BU"] == len(scheibe)
+    assert any(z["BU"] > 0 for z in reihe)
+
+
+def test_produkt_muss_zur_generation_passen(config):
+    """Review-Fix: eine KLV-Zeile auf einer BU-Generation lief still mit
+    fremden Rechnungsgrundlagen durch."""
+    stamm = _bu_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 5, 1), "x": 40, "n": 20}
+    )
+    kaputt = stamm.copy()
+    kaputt.loc[kaputt.index[0], "produkt"] = "klv"
+    with pytest.raises(EreignisError, match="passt nicht zur Tarifgeneration"):
+        fortschreiben(kaputt, config, dt.date(2020, 1, 1))
+
+
+def test_korrelation_auf_fremdem_merkmal_ist_config_fehler():
+    """Review-Fix: CORRELATABLE war produktblind — eine Korrelation auf
+    sum_insured in einer BU-Generation kam durch die Validierung und
+    starb im Generator an einem nackten KeyError."""
+    import copy
+
+    from rechner_pipeline.bestand.config import Korrelation
+
+    cfg = copy.deepcopy(load_config(BU_EXAMPLE))
+    cfg.generationen[0].korrelationen.append(
+        Korrelation(var_i="entry_age", var_j="sum_insured", rho=0.3)
+    )
+    fehler = cfg.validate()
+    assert any("sum_insured" in f and "nicht korrelierbar" in f for f in fehler)
+
+
+def test_bu_config_faengt_nicht_tarifierbare_endalter():
+    """Review-Fix: entry_age bis max_endalter - 1 erzeugt zwingend
+    Einjahresvertraege, die im Jahresmodell keine Leistung tragen koennen."""
+    import copy
+
+    cfg = copy.deepcopy(load_config(BU_EXAMPLE))
+    cfg.generationen[0].verteilungen["entry_age"].params["max"] = 66.0
+    fehler = cfg.validate()
+    assert any("nicht tarifierbar" in f for f in fehler)
+
+
+def test_historie_validierung_ohne_produktspalte(config, portfolio):
+    """Review-Fix: ein Bestand ohne produkt-Spalte (Parquet aus einem Lauf
+    vor der Produkt-Einfuehrung) darf keine KeyError-Exception ausloesen —
+    Gate B1 waere sonst internal_error statt Contract-Fehler."""
+    erg = fortschreiben(portfolio, config, dt.date(2030, 1, 1))
+    alt = portfolio.drop(columns=["produkt"])
+    fehler = validate_statushistorie(alt, erg.historie)
+    assert isinstance(fehler, list)   # kein KeyError

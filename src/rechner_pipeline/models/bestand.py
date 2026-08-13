@@ -164,10 +164,15 @@ STATUS_HISTORIE_SPALTEN: Tuple[Tuple[str, str], ...] = (
 LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("police_id", "int64"),
     ("tarif_generation", "object"),
-    ("ereignis", "object"),          # status_code of the event, or ERH/ZUG (GeVo)
+    # GeVo-Code: meist der resultierende status_code, faellt aber davon ab,
+    # wo der GeVo einen ANDEREN Zustand herstellt (INV -> BU, REA -> POL)
+    # oder gar keinen (ERH/ZUG).
+    ("ereignis", "object"),          # PEX|STO|TOD|ABL|ERH|ZUG|INV|REA
     ("vertragsjahr", "int64"),       # booked anniversary (completed years; ZUG: 0)
     ("status_date", "datetime64[ns]"),
-    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS (ZUG)
+    # Bezugsgroesse des Betrags — je Produkt verschieden: KLV fuehrt
+    # Versicherungssummen/Rueckkaufswerte, BU die betroffene Jahresrente.
+    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS (ZUG) | BU_Jahresrente
     ("betrag", "float64"),
 )
 
@@ -333,7 +338,15 @@ def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
         errors.append("historie: status_date nicht auf Monatsersten normalisiert")
 
     grenzen = stamm.set_index("police_id")[["insurance_start", "insurance_end"]]
-    produkt_je_police = stamm.set_index("police_id")["produkt"]
+    # Altbestaende (Parquet vor der Produkt-Einfuehrung) haben die Spalte
+    # nicht; validate_portfolio meldet das praezise, hier darf es keinen
+    # KeyError geben — sonst endet Gate B1 als internal_error statt als
+    # Contract-Fehler.
+    produkt_je_police = (
+        stamm.set_index("police_id")["produkt"]
+        if "produkt" in stamm.columns
+        else None
+    )
     for police_id, gruppe in historie.groupby("police_id", sort=False):
         g = gruppe.sort_values("status_date", kind="stable")
         prefix = f"historie police {police_id}"
@@ -350,7 +363,11 @@ def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
         # Produktfremde Status sind ein harter Fehler (PEX gehoert zu KLV,
         # der Leistungsbezug BU zu BU) — sonst liefe eine vertauschte
         # Tabelle still durch die Auswertung.
-        produkt = str(produkt_je_police.get(police_id, "klv"))
+        produkt = (
+            str(produkt_je_police.get(police_id, "klv"))
+            if produkt_je_police is not None
+            else "klv"
+        )
         erlaubt = PRODUKT_STATUS.get(produkt, ())
         fremd = sorted({c for c in codes if c not in erlaubt})
         if fremd:

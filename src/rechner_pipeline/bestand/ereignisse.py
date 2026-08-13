@@ -510,6 +510,7 @@ def fortschreiben(
         for g in config.generationen
         if g.produkt == "bu"
     }
+    produkt_je_generation = {g.name: g.produkt for g in config.generationen}
 
     alle_events: List[Dict[str, Any]] = []
     alle_scheiben: List[Dict[str, Any]] = []
@@ -538,8 +539,19 @@ def fortschreiben(
                 f"police {row['police_id']}: Tarifgeneration {name!r} nicht in Config "
                 f"(bekannt: {sorted(generationen)})"
             )
+        # Produkt des Vertrags und Produkt seiner Generation muessen
+        # zusammenpassen — sonst liefe die Zeile mit fremden
+        # Rechnungsgrundlagen still durch Engine und Auswertung (eine
+        # BU-Generation traegt z.B. keine KLV-Kosten).
+        produkt = str(row.get("produkt", "klv"))
+        if produkt_je_generation.get(name) != produkt:
+            raise EreignisError(
+                f"police {row['police_id']}: produkt {produkt!r} passt nicht "
+                f"zur Tarifgeneration {name!r} (produkt "
+                f"{produkt_je_generation.get(name)!r})"
+            )
         try:
-            if str(row.get("produkt", "klv")) == "bu":
+            if produkt == "bu":
                 # BU: Uebergaenge aus den Rechnungsgrundlagen des Produkts
                 # (Storno/Beitragsfreistellung/Erhoehung kennt das
                 # Beispielprodukt nicht — die [ereignisse]-Raten der Config
