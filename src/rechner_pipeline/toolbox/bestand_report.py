@@ -10,10 +10,15 @@ Usage::
     python -m rechner_pipeline.toolbox.bestand_report \\
         --portfolio bestand.parquet --out bericht.html \\
         [--historie historie.parquet --ledger ledger.parquet] \\
+        [--scheiben scheiben.parquet] [--config bestand_klv.toml] \\
+        [--bis 2035-01-01] \\
         [--stichtage 2005-01-01,2010-01-01] [--titel "KLV-Bestand"]
 
 ``--historie``/``--ledger`` (beide zusammen, ein ``fortschreiben``-Lauf)
-schalten die Ereignis-/Abgangs-Sichten frei.
+schalten die Ereignis-/Abgangs-Sichten frei; ``--config`` zusaetzlich die
+aktuariellen Kennzahlen, ``--bis`` (der Fortschreibungs-Horizont) die
+Bestandsbewegung in Nachweisungs-Struktur. ``--scheiben`` ist Pflicht,
+sobald der Ledger dynamische Erhoehungen enthaelt.
 """
 
 from __future__ import annotations

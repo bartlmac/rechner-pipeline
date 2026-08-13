@@ -115,7 +115,6 @@ def bewegungskonto(
     historie: pd.DataFrame,
     ledger: pd.DataFrame,
     scheiben: Any = None,
-    jahre: Any = None,
     bis: Any = None,
 ) -> List[Dict[str, Any]]:
     """Bestandsbewegung je Kalenderjahr in der Struktur der BaFin-Nachweisung.
@@ -129,7 +128,11 @@ def bewegungskonto(
     (inkl. Erhöhungsscheiben) bzw. beitragsfreie Summen — nicht die
     Auszahlungsbeträge des Ledgers. Dadurch gelten die Identitäten exakt
     und werden je Jahr, Track und Maß mitgeliefert (``identitaet``) —
-    das Gate B1 prüft sie hart.
+    das Gate B1 prüft sie hart (Stück exakt, Summen mit einer relativ zum
+    Bruttovolumen skalierten Toleranz gegen Float-Akkumulationsrauschen).
+    Inkonsistente Eingaben (Ledger-Policen außerhalb des Bestands, doppelte
+    PEX-Zeilen, PEX-Status ohne PEX-Ledger-Zeile) sind ein sofortiger
+    ``ValueError`` — sie wären sonst stille Falschzählungen.
 
     ``bestand`` ist der GESAMTbestand (inkl. Neuzugängen, vgl.
     ``mit_zugaengen``); Periode eines Jahres J ist ``(1.1.J, 1.1.J+1]``
@@ -146,11 +149,32 @@ def bewegungskonto(
     from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
     from rechner_pipeline.bestand.zeitscheibe import zeitscheibe as _zeitscheibe
 
+    fremd = set(ledger["police_id"]) - set(bestand["police_id"])
+    if fremd:
+        raise ValueError(
+            f"Ledger referenziert Policen ausserhalb des Bestands: "
+            f"{sorted(fremd)[:5]} — bei Neuzugaengen den Gesamtbestand "
+            "uebergeben (mit_zugaengen(stamm, zugaenge))"
+        )
     sicht = bestand_mit_historie(bestand, historie)
     stamm_vs = bestand.set_index("police_id")["sum_insured"]
 
     pex_zeilen = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")
+    if pex_zeilen.index.has_duplicates:
+        doppelt = sorted(pex_zeilen.index[pex_zeilen.index.duplicated()])[:5]
+        raise ValueError(
+            f"Ledger enthaelt mehrere PEX-Zeilen je Police: {doppelt} — "
+            "eine Police kann nur einmal beitragsfrei gestellt werden"
+        )
     pex_summen = pex_zeilen["betrag"]
+    pex_status = set(historie.loc[historie["status_code"] == "PEX", "police_id"])
+    ohne_ledger = sorted(pex_status - set(pex_summen.index))[:5]
+    if ohne_ledger:
+        raise ValueError(
+            f"Historie hat PEX-Status ohne PEX-Ledger-Zeile: {ohne_ledger} — "
+            "Historie und Ledger stammen nicht aus demselben "
+            "fortschreiben-Lauf"
+        )
 
     scheiben_je_police: Dict[int, List] = {}
     if scheiben is not None and len(scheiben):
@@ -182,16 +206,18 @@ def bewegungskonto(
             },
         }
 
-    if jahre is None:
-        von = int(bestand["insurance_start"].dt.year.min())
-        letzt = int(bestand["insurance_end"].dt.year.max())
-        jahre = range(von, letzt + 1)
-        if bis is not None:
-            grenze = pd.Timestamp(bis)
-            jahre = [
-                j for j in jahre
-                if pd.Timestamp(_dt.date(j + 1, 1, 1)) <= grenze
-            ]
+    # Beginn genau am 1.1.J gehoert per Periodenkonvention (1.1.J-1, 1.1.J]
+    # zur Periode J-1 — der Rasterstart rechnet deshalb einen Tag zurueck,
+    # sonst erschiene ein 1.1.-Zugang des fruehesten Jahres nie als Zugang.
+    von = int((bestand["insurance_start"] - pd.Timedelta(days=1)).dt.year.min())
+    letzt = int(bestand["insurance_end"].dt.year.max())
+    jahre = range(von, letzt + 1)
+    if bis is not None:
+        grenze = pd.Timestamp(bis)
+        jahre = [
+            j for j in jahre
+            if pd.Timestamp(_dt.date(j + 1, 1, 1)) <= grenze
+        ]
 
     konto: List[Dict[str, Any]] = []
     for jahr in jahre:
@@ -255,12 +281,19 @@ def bewegungskonto(
 
         def identitaet(track: Dict[str, Dict[str, float]], zu: List[str], ab: List[str]):
             ok = {}
-            for mass, toleranz in (("stueck", 0.0), ("summe", 1e-6)):
-                soll = (
-                    track["anfang"][mass]
-                    + sum(track[p][mass] for p in zu)
-                    - sum(track[p][mass] for p in ab)
+            for mass in ("stueck", "summe"):
+                bewegungen = [track[p][mass] for p in zu] + [-track[p][mass] for p in ab]
+                soll = track["anfang"][mass] + sum(bewegungen)
+                # Stueck exakt; Summen mit Toleranz relativ zum Bruttovolumen:
+                # Anfang/Ende summieren dieselben Gleitkommazahlen in anderer
+                # Reihenfolge als die Zu-/Abgaenge, der Akkumulationsfehler
+                # waechst mit der Bestandssumme (1e-9 relativ liegt Groessen-
+                # ordnungen ueber dem Float-Rauschen und unter jeder realen VS).
+                brutto = (
+                    abs(track["anfang"][mass]) + abs(track["ende"][mass])
+                    + sum(abs(x) for x in bewegungen)
                 )
+                toleranz = 0.0 if mass == "stueck" else max(1e-6, 1e-9 * brutto)
                 ok[mass] = abs(soll - track["ende"][mass]) <= toleranz
             return ok
 

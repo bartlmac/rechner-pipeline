@@ -388,7 +388,8 @@ vollständig. Alle Beträge stammen aus dem stabilen Rechenkern.</p>"""
         relevant = [
             z for z in konto
             if z["bpfl"]["anfang"]["stueck"] or z["bpfl"]["ende"]["stueck"]
-            or z["bpfl"]["zugang_neuzugang"]["stueck"] or z["bfr"]["ende"]["stueck"]
+            or z["bpfl"]["zugang_neuzugang"]["stueck"]
+            or z["bfr"]["anfang"]["stueck"] or z["bfr"]["ende"]["stueck"]
         ]
         alle_ok = all(
             ok for z in konto for oks in z["identitaet"].values() for ok in oks.values()

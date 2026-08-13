@@ -130,6 +130,30 @@ def test_gate_b1_bewegungsidentitaet(lauf, tmp_path, capsys):
     assert run_command(gate_cli.main, basis + ["--bis", "2020-01-01"]) == 2
     capsys.readouterr()
 
+    # ERH im Ledger ohne --scheiben: Usage-Fehler statt falscher
+    # Bewegungs-Verletzungen (Review-Fix — die Bestandssummen waeren ohne
+    # Scheiben systematisch zu niedrig):
+    ohne_scheiben = [a for a in basis if "scheiben" not in a]
+    code = run_command(gate_cli.main, ohne_scheiben + [
+        "--ledger", str(lauf / "ledger.parquet"), "--bis", "2020-01-01",
+    ])
+    ergebnis = json.loads(capsys.readouterr().out)
+    assert code == 2
+    assert any("ERH" in e["message"] for e in ergebnis["errors"])
+
+    # Inkonsistenter Ledger (PEX-Zeile fehlt): Contract-Fehler 20 mit
+    # Fehlercode ledger, kein KeyError/Exit 50 (Review-Fix):
+    pex = ledger[ledger["ereignis"] == "PEX"]
+    inkonsistent = ledger.drop(index=pex.index[:1]).reset_index(drop=True)
+    pfad2 = write_portfolio(inkonsistent, tmp_path / "ledger_ohne_pex.parquet")
+    code = run_command(gate_cli.main, basis + [
+        "--ledger", str(pfad2), "--bis", "2020-01-01",
+    ])
+    ergebnis = json.loads(capsys.readouterr().out)
+    assert code == 20
+    assert any(e["code"] == "ledger" for e in ergebnis["errors"])
+    assert any("PEX-Ledger-Zeile" in e["message"] for e in ergebnis["errors"])
+
 
 def test_gate_b1_findet_verletzungen(lauf, tmp_path, capsys):
     kaputt = read_portfolio(lauf / "bestand.parquet")

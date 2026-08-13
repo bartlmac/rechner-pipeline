@@ -14,6 +14,12 @@ Validates the Bestandsdaten tables against their schemas and invariants
 * Plausibilitaets-Baender (``--config``, optional): Sanity-Bänder aus der
   TOML gegen den Bestand (``sanity_check``); die Config selbst wird
   mitvalidiert.
+* Bewegungs-Identitaeten (``--ledger`` + ``--bis``, optional; ``--bis`` =
+  Fortschreibungs-Horizont des Producer-Laufs): Anfang + Zugang - Abgang =
+  Endbestand je Kalenderjahr, Track (bpfl/bfr) und Mass (Stueck/Summe) via
+  ``kennzahlen.bewegungskonto``; enthaelt der Ledger Erhoehungen (ERH),
+  ist ``--scheiben`` Pflicht (ohne Scheiben waeren die Bestandssummen
+  systematisch zu niedrig und die Pruefung falsch-positiv).
 
 Blocking failures exit ``20`` (``Exit.FILE_CONTRACT``) with the error list
 of the engines (repair happens data-side, not prose-side). Usage errors
@@ -25,6 +31,7 @@ Run via::
     python -m rechner_pipeline.toolbox.bestand_validate \\
         --portfolio lauf/bestand_gesamt.parquet \\
         [--historie lauf/historie.parquet] [--scheiben lauf/scheiben.parquet] \\
+        [--ledger lauf/ledger.parquet --bis 2035-01-01] \\
         [--config examples/bestand_klv.toml] [--diagnostics-dir diagnostics]
 """
 
@@ -181,13 +188,29 @@ def main(argv: Optional[List[str]] = None):
         geprueft["scheiben_zeilen"] = int(len(scheiben))
         for meldung in validate_scheiben(portfolio, scheiben, historie=historie):
             errors.append({"code": "scheiben", "message": meldung})
+    if (
+        ledger is not None
+        and scheiben is None
+        and (ledger["ereignis"] == "ERH").any()
+    ):
+        return _usage([{
+            "code": "missing_arg",
+            "message": "Ledger enthaelt dynamische Erhoehungen (ERH) — "
+            "--scheiben ist erforderlich, sonst sind die Bestandssummen "
+            "systematisch zu niedrig und die Bewegungs-Identitaet "
+            "falsch-positiv verletzt",
+        }])
     if ledger is not None and historie is not None and not errors:
         # Bewegungs-Identitaeten (BaFin-Nachweisungs-Struktur): Anfang +
         # Zugang - Abgang = Endbestand je Jahr, Track und Mass — eine
         # Verletzung ist ein Engine-/Datenfehler.
         from rechner_pipeline.bestand.kennzahlen import bewegungskonto
 
-        konto = bewegungskonto(portfolio, historie, ledger, scheiben, bis=bis)
+        try:
+            konto = bewegungskonto(portfolio, historie, ledger, scheiben, bis=bis)
+        except ValueError as exc:
+            errors.append({"code": "ledger", "message": str(exc)})
+            konto = []
         geprueft["bewegungsjahre"] = len(konto)
         for zeile in konto:
             for track, oks in zeile["identitaet"].items():

@@ -215,3 +215,110 @@ def test_voller_lauf_identitaeten_und_verkettung(config):
         soll = int((fenster["ereignis"] == code).sum())
         ist = sum(z[t][p]["stueck"] for z in konto for t, p in positionen)
         assert ist == soll, code
+
+
+# --------------------------------------------------------------------------- #
+# Review-Fixes: Randjahr, Fail-fast, Toleranz-Skalierung, Berichts-Zeilen
+# --------------------------------------------------------------------------- #
+
+
+def test_zugang_am_ersten_januar_wird_ausgewiesen(config):
+    """Review-Fix: Beginn genau am 1.1.J gehoert zur Periode J-1 — das
+    Raster startet einen Tag frueher, sonst fehlt der Zugang still."""
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 1, 1), "x": 40, "n": 10, "t": 10}
+    )
+    cfg = _mit_raten(config)
+    historie, ledger, *_ = fortschreiben(stamm, cfg, dt.date(2021, 1, 1))
+    konto = bewegungskonto(stamm, historie, ledger, bis=dt.date(2021, 1, 1))
+    assert konto[0]["jahr"] == 2009
+    assert konto[0]["bpfl"]["zugang_neuzugang"] == {"stueck": 1, "summe": 100000.0}
+    assert sum(z["bpfl"]["zugang_neuzugang"]["stueck"] for z in konto) == 1
+    assert _alle_identitaeten_ok(konto)
+
+
+def test_fail_fast_bei_inkonsistentem_ledger(config):
+    """Review-Fix: inkonsistente Eingaben sind sprechende ValueErrors,
+    keine KeyError-Abstuerze (Gate: Contract-Fehler statt Exit 50)."""
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
+    )
+    cfg = _mit_raten(config, pex_rate=0.999999)
+    historie, ledger, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+
+    fremd = ledger.copy()
+    fremd.loc[fremd.index[0], "police_id"] = 99999999
+    with pytest.raises(ValueError, match="ausserhalb des Bestands"):
+        bewegungskonto(stamm, historie, fremd, bis=dt.date(2045, 1, 1))
+
+    pex = ledger[ledger["ereignis"] == "PEX"]
+    doppelt = pd.concat([ledger, pex], ignore_index=True)
+    with pytest.raises(ValueError, match="mehrere PEX-Zeilen"):
+        bewegungskonto(stamm, historie, doppelt, bis=dt.date(2045, 1, 1))
+
+    ohne_pex = ledger.drop(index=pex.index).reset_index(drop=True)
+    with pytest.raises(ValueError, match="ohne PEX-Ledger-Zeile"):
+        bewegungskonto(stamm, historie, ohne_pex, bis=dt.date(2045, 1, 1))
+
+
+def test_summen_toleranz_skaliert_mit_grossbestand():
+    """Review-Fix: feste atol 1e-6 brach ab Gesamt-VS ~1e9 an blossem
+    Float-Akkumulationsrauschen (andere Summationsreihenfolge Anfang/Ende
+    vs. Zu-/Abgaenge). Exakt konsistenter 20k-Bestand muss gruen sein."""
+    import numpy as np
+
+    from rechner_pipeline.models.bestand import (
+        LEDGER_SPALTEN,
+        STATUS_HISTORIE_SPALTEN,
+    )
+
+    rng = np.random.default_rng(7)
+    n = 20_000
+    vs = np.round(rng.uniform(10_000, 500_000, n), 2)
+    stamm = _mini_stamm(*[
+        {
+            "police_id": 10000001 + i,
+            "start": dt.date(2000 + i % 20, 1 + i % 12, 1),
+            "x": 40,
+            "n": 30,
+            "t": 25,
+            "vs": float(vs[i]),
+        }
+        for i in range(n)
+    ])
+    leer_h = pd.DataFrame({
+        name: pd.Series(dtype=dtype) for name, dtype in STATUS_HISTORIE_SPALTEN
+    })
+    leer_l = pd.DataFrame({
+        name: pd.Series(dtype=dtype) for name, dtype in LEDGER_SPALTEN
+    })
+    konto = bewegungskonto(stamm, leer_h, leer_l, bis=dt.date(2025, 1, 1))
+    assert float(stamm["sum_insured"].sum()) > 1e9
+    assert _alle_identitaeten_ok(konto)
+
+
+def test_report_zeigt_letztes_bfr_jahr_und_warnung_bei_bruch(config):
+    """Review-Fixes: (a) das Jahr des letzten beitragsfreien Abgangs
+    erscheint in den Bewegungstabellen (bfr-Anfang im Zeilenfilter);
+    (b) der WARNUNG-Pfad ist erreichbar, wenn die Identitaet bricht."""
+    from rechner_pipeline.bestand import report
+
+    stamm = _mini_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
+    )
+    cfg = _mit_raten(config, pex_rate=0.999999)  # PEX 2011, ABL 2030 (bfr)
+    historie, ledger, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    stichtage = [dt.date(2015, 1, 1)]
+    html = report.render_html(
+        stamm, stichtage=stichtage, historie=historie, ledger=ledger,
+        bis=dt.date(2045, 1, 1),
+    )
+    assert "<tr><td>2030</td>" in html
+    assert "WARNUNG" not in html
+
+    ohne_abl = ledger[ledger["ereignis"] != "ABL"].reset_index(drop=True)
+    kaputt = report.render_html(
+        stamm, stichtage=stichtage, historie=historie, ledger=ohne_abl,
+        bis=dt.date(2045, 1, 1),
+    )
+    assert "WARNUNG" in kaputt
