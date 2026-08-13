@@ -1,0 +1,96 @@
+# Beispiel-Konfiguration Bestandsdaten-Modul: selbstaendige Berufsunfaehigkeit.
+# Eigene, synthetische Parametrierung (Lehrbeispiel, keine realen Werte).
+#
+# WICHTIG (Tafel-Provenienz): Die Rechnungsgrundlagen der Invalidisierung,
+# Reaktivierung und Invalidensterblichkeit sind SYNTHETISCHE Platzhalter
+# (SYNTH_BU_*, quelle="synthetisch" in tafeln.xml) — KEINE DAV-Tafeln. Sie
+# zeigen die Mechanik, nicht eine marktfaehige Tarifierung. Die
+# Aktivensterblichkeit ist DAV 2008 T.
+#
+# Fachliches Modell des BU-Beispielprodukts (kern/produkte/bu.py): drei
+# Zustaende (aktiv / bu / tot), jaehrliche BU-Rente waehrend des
+# Leistungsbezugs mit impliziter Beitragsbefreiung, Beitraege ueber die
+# volle Versicherungsdauer, keine Karenzzeit, keine Leistungsdynamik.
+# Die Ereignis-Engine simuliert genau die Uebergaenge, die der Kern
+# bewertet — Invalidisierung, Reaktivierung, Tod, Ablauf; Storno,
+# Beitragsfreistellung und dynamische Erhoehung kennt das Produkt nicht
+# (die [ereignisse]-Raten wirken daher nur auf KLV-Generationen).
+
+[meta]
+seed = 20260813
+beschreibung = "Synthetischer BU-Bestand, eine Generation (Lehrbeispiel)"
+
+# --------------------------------------------------------------------------
+# BU-Geschaeft 2000-2015 (DAV2008_T Aktive + synthetische BU-Tafeln)
+# --------------------------------------------------------------------------
+[[generation]]
+name = "BU-2000"
+produkt = "bu"
+gueltig_von = 2000-01-01
+gueltig_bis = 2015-12-31
+sample_size = 800
+# Endalter 67: das Produkt endet mit dem Rentenalter; die synthetische
+# Invalidisierungstafel fuehrt jenseits 66 ohnehin keine Werte.
+max_endalter = 67
+neuzugang_pro_jahr = 30
+zins = 0.0175
+# Rechnungsgrundlagen (BU): Aktivensterblichkeit, Invalidisierung,
+# Reaktivierung (Select), Invalidensterblichkeit (Select).
+tafel_aktiv = "DAV2008_T"
+tafel_i = "SYNTH_BU_I"
+tafel_ri = "SYNTH_BU_RI"
+tafel_ti = "SYNTH_BU_TI"
+zuschlag = 0.05
+# tafel = Sterbetafel-Feld des KLV-Contracts; bei BU fuehrt tafel_aktiv.
+tafel = "DAV2008_T"
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 33.0
+sd = 8.0
+min = 20.0
+max = 55.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.58, 0.42]
+
+# Laufzeit bis Endalter: kuerzere Vertraege sind die Ausnahme (die Kappung
+# auf max_endalter - entry_age wirkt zusaetzlich im Generator).
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [15, 20, 25, 30, 35]
+probs = [0.10, 0.20, 0.30, 0.30, 0.10]
+
+# Versicherte BU-Jahresrente (Bezugsgroesse der Nachweisung).
+[generation.verteilungen.bu_rente]
+typ = "lognormal"
+meanlog = 9.4
+sdlog = 0.35
+round = -2
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.55
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "bu_rente"
+rho = 0.30
+
+# --------------------------------------------------------------------------
+# Plausibilitaets-Baender fuer das Sanity-Gate (B1)
+# --------------------------------------------------------------------------
+[plausibilitaet]
+entry_age = [20, 55]
+duration = [10, 40]
+bu_rente = [1200, 200000]
+
+# --------------------------------------------------------------------------
+# Ereignisraten: fuer BU-Generationen ohne Wirkung (die Uebergaenge kommen
+# aus den Rechnungsgrundlagen des Produkts). Bewusst leer gelassen.
+# --------------------------------------------------------------------------
+[ereignisse]

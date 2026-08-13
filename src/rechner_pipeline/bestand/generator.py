@@ -39,6 +39,19 @@ from rechner_pipeline.models.bestand import STAMM_NAMES, STAMM_SPALTEN, stamm_dt
 #: Fixed draw order of copula columns — part of the determinism contract.
 COPULA_ORDER = ("entry_age", "sex", "duration", "premium_duration", "sum_insured")
 
+#: Draw order je Produkt: BU zieht die versicherte Jahresrente statt
+#: Versicherungssumme und kennt weder eigene Beitragsdauer noch Zahlweise
+#: (Beitraege laufen ueber die volle Laufzeit, jaehrlich) — die
+#: KLV-Reihenfolge bleibt unveraendert (Determinismus-Contract).
+COPULA_ORDER_JE_PRODUKT = {
+    "klv": COPULA_ORDER,
+    "bu": ("entry_age", "sex", "duration", "bu_rente"),
+}
+
+#: Fachliche Mindest-Jahresrente eines BU-Vertrags (Gegenstueck zur
+#: Mindest-Versicherungssumme von 1.000 bei KLV).
+MIN_BU_RENTE = 1200.0
+
 
 def _month_first(year: int, month: int) -> _dt.date:
     return _dt.date(year, month, 1)
@@ -65,8 +78,12 @@ def _ziehe_attribute(
     """Vertragsattribute ziehen (Copula-Block, dann Zahlweise — feste Reihenfolge).
 
     Wird von Batch-Generator und Neuzugang identisch genutzt; die
-    rng-Aufrufreihenfolge ist Teil des Determinismus-Contracts.
+    rng-Aufrufreihenfolge ist Teil des Determinismus-Contracts. Fuer
+    BU-Generationen gilt eine eigene, kuerzere Zugreihenfolge
+    (:data:`COPULA_ORDER_JE_PRODUKT`) — der KLV-Pfad bleibt bit-identisch.
     """
+    if gen.produkt == "bu":
+        return _ziehe_bu_attribute(gen, rng, n)
     # 1) Correlated uniforms for the copula attributes (fixed column order),
     #    then the marginal transform per configured distribution.
     corr = build_corr_matrix(COPULA_ORDER, gen.korrelationen)
@@ -103,8 +120,45 @@ def _ziehe_attribute(
         "duration": duration,
         "premium_duration": premium_duration,
         "sum_insured": sum_insured,
+        "bu_rente": np.zeros(n, dtype=np.float64),
         "sex": np.asarray([str(v) for v in drawn["sex"]], dtype=object),
         "zahlweise": np.asarray([int(v) for v in zahlweise_raw], dtype=np.int64),
+    }
+
+
+def _ziehe_bu_attribute(
+    gen: TarifGeneration, rng: np.random.Generator, n: int
+) -> Dict[str, np.ndarray]:
+    """Attribute einer BU-Generation (Alter, Sex, Laufzeit, Jahresrente).
+
+    Das BU-Beispielprodukt zahlt Beitraege ueber die volle Versicherungsdauer
+    und kennt nur Jahreszahlung — ``premium_duration`` und ``zahlweise``
+    werden daher nicht gezogen, sondern fachlich gesetzt (und von
+    ``validate_portfolio`` so erzwungen).
+    """
+    order = COPULA_ORDER_JE_PRODUKT["bu"]
+    corr = build_corr_matrix(order, gen.korrelationen)
+    u = correlated_uniforms(rng, corr, n)
+    drawn: Dict[str, np.ndarray] = {}
+    for k, merkmal in enumerate(order):
+        spec = gen.verteilungen[merkmal]
+        drawn[merkmal] = transform(u[:, k], spec.typ, spec.params)
+
+    entry_age = np.asarray(np.rint(drawn["entry_age"].astype(float)), dtype=np.int64)
+    entry_age = np.clip(entry_age, 18, gen.max_endalter - 1)
+    duration = np.asarray(np.rint(drawn["duration"].astype(float)), dtype=np.int64)
+    duration = np.clip(duration, 1, None)
+    duration = np.minimum(duration, gen.max_endalter - entry_age)
+    duration = np.maximum(duration, 1)
+    bu_rente = np.maximum(np.asarray(drawn["bu_rente"], dtype=np.float64), MIN_BU_RENTE)
+    return {
+        "entry_age": entry_age,
+        "duration": duration,
+        "premium_duration": duration.copy(),   # Beitragsdauer = Laufzeit
+        "sum_insured": np.zeros(n, dtype=np.float64),
+        "bu_rente": bu_rente,
+        "sex": np.asarray([str(v) for v in drawn["sex"]], dtype=object),
+        "zahlweise": np.ones(n, dtype=np.int64),
     }
 
 
@@ -126,6 +180,7 @@ def _baue_frame(
         {
             "police_id": police_ids,
             "tarif_generation": np.full(n, gen.name, dtype=object),
+            "produkt": np.full(n, gen.produkt, dtype=object),
             "status_id": np.ones(n, dtype=np.int64),
             "status_code": np.full(n, "POL", dtype=object),
             "status_date": pd.to_datetime(starts),
@@ -135,6 +190,7 @@ def _baue_frame(
             "duration": duration,
             "premium_duration": premium_duration,
             "sum_insured": attribute["sum_insured"],
+            "bu_rente": attribute["bu_rente"],
             "zahlweise": attribute["zahlweise"],
             "insurance_start": pd.to_datetime(starts),
             "insurance_end": pd.to_datetime(ins_end),

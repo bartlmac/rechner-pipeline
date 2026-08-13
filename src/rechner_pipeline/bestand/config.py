@@ -9,8 +9,8 @@ simulation/plausibility) with our own parameter values.
 Layout (see ``examples/bestand_klv.toml``)::
 
     [meta]                      seed, beschreibung
-    [[generation]]              KLV tariff generation (validity window, zins,
-                                tafel, cost loadings, sample_size, ...)
+    [[generation]]              tariff generation (validity window, produkt,
+                                zins, tafel(n), cost loadings, sample_size, ...)
     [generation.verteilungen.<merkmal>]   distribution spec per attribute
     [[generation.korrelation]]  pairwise Spearman rank correlations
     [plausibilitaet]            value bands for the sanity gate
@@ -24,19 +24,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Tuple
 
-from rechner_pipeline.models.bestand import GENERATION_FIELD_DEFAULTS, GENERATION_FIELDS
+from rechner_pipeline.models.bestand import (
+    BU_GENERATION_FIELDS,
+    GENERATION_FIELD_DEFAULTS,
+    GENERATION_FIELDS,
+    PRODUKT_VALUES,
+)
 
 _D = GENERATION_FIELD_DEFAULTS  # Kernel-Defaults der Tarif-Stellschrauben
 
-#: Attributes every generation must configure a distribution for.
-REQUIRED_MERKMALE: Tuple[str, ...] = (
-    "entry_age",
-    "sex",
-    "duration",
-    "premium_duration",
-    "sum_insured",
-    "zahlweise",
-)
+#: Attributes every generation must configure a distribution for — je Produkt
+#: (BU zieht die Jahresrente statt Versicherungssumme; Beitragsdauer und
+#: Zahlweise sind beim BU-Beispielprodukt fachlich festgelegt).
+REQUIRED_MERKMALE_JE_PRODUKT: Dict[str, Tuple[str, ...]] = {
+    "klv": ("entry_age", "sex", "duration", "premium_duration", "sum_insured", "zahlweise"),
+    "bu": ("entry_age", "sex", "duration", "bu_rente"),
+}
+#: Rueckwaertskompatibler Alias (KLV-Merkmale).
+REQUIRED_MERKMALE: Tuple[str, ...] = REQUIRED_MERKMALE_JE_PRODUKT["klv"]
 
 #: Distribution types implemented without scipy (project decision 2026-08-11:
 #: full takeover of the reference generation incl. copula, lean dependencies).
@@ -58,6 +63,7 @@ CORRELATABLE: Tuple[str, ...] = (
     "duration",
     "premium_duration",
     "sum_insured",
+    "bu_rente",
 )
 
 
@@ -138,6 +144,10 @@ class TarifGeneration:
     gueltig_bis: _dt.date
     sample_size: int
     max_endalter: int
+    #: Produkt der Generation (Kern-Registry-Kennung, vgl. PRODUKT_VALUES).
+    #: "klv" = Kapitallebensversicherung (Default, Bestandsaufbau Stufe 1),
+    #: "bu" = Berufsunfaehigkeit (Zustandsmodell-Konfiguration).
+    produkt: str = "klv"
     #: Simulierter Neuzugang je Kalenderjahr (Fortschreibung ab
     #: Referenzstichtag); 0 = kein Neuzugang. Wirkt nur innerhalb des
     #: Gueltigkeitsfensters der Generation.
@@ -161,12 +171,26 @@ class TarifGeneration:
     ratzu_zw2: float = _D["ratzu_zw2"]
     ratzu_zw4: float = _D["ratzu_zw4"]
     ratzu_zw12: float = _D["ratzu_zw12"]
+    # BU-Rechnungsgrundlagen (nur fuer produkt = "bu"; Defaults = die des
+    # BU-Beispielprodukts, siehe kern/produkte/bu.py):
+    tafel_aktiv: str = "DAV2008_T"
+    tafel_i: str = "SYNTH_BU_I"
+    tafel_ri: str = "SYNTH_BU_RI"
+    tafel_ti: str = "SYNTH_BU_TI"
+    zuschlag: float = 0.05
     verteilungen: Dict[str, VerteilungsSpec] = field(default_factory=dict)
     korrelationen: List[Korrelation] = field(default_factory=list)
 
     def generation_fields(self) -> Dict[str, Any]:
         """The kernel-side tariff parameters (joined into ModelPoint kwargs)."""
         return {name: getattr(self, name) for name in GENERATION_FIELDS}
+
+    def bu_generation_fields(self) -> Dict[str, Any]:
+        """Die BU-Rechnungsgrundlagen (fuer BUModelPoint-kwargs)."""
+        return {name: getattr(self, name) for name in BU_GENERATION_FIELDS}
+
+    def required_merkmale(self) -> Tuple[str, ...]:
+        return REQUIRED_MERKMALE_JE_PRODUKT.get(self.produkt, REQUIRED_MERKMALE)
 
     def validate(self) -> List[str]:
         errors: List[str] = []
@@ -191,9 +215,16 @@ class TarifGeneration:
             errors.append(f"{prefix}: neuzugang_pro_jahr ausserhalb [0, 10000]")
         if not 0 < self.max_endalter <= 121:
             errors.append(f"{prefix}: max_endalter ausserhalb (0, 121]")
+        if self.produkt not in PRODUKT_VALUES:
+            errors.append(f"{prefix}: produkt {self.produkt!r} ausserhalb {list(PRODUKT_VALUES)}")
         if self.zins <= -1.0:
             errors.append(f"{prefix}: zins <= -100%")
-        if not self.tafel:
+        if self.produkt == "bu":
+            errors.extend(self._validate_bu(prefix))
+        # Ausscheideordnung des Sterblichkeits-Risikos: bei KLV die
+        # Tarif-Tafel, bei BU die Aktivensterblichkeit.
+        sterbetafel = self.tafel_aktiv if self.produkt == "bu" else self.tafel
+        if not sterbetafel:
             errors.append(f"{prefix}: tafel fehlt")
         else:
             # max_endalter muss vor der Tafel-Erschoepfung liegen (Dx = 0),
@@ -206,8 +237,8 @@ class TarifGeneration:
                 grenze = min(
                     max(a for a in range(len(kom.dx)) if kom.dx[a] > 0.0)
                     for kom in (
-                        fuer("M", self.tafel, self.zins),
-                        fuer("F", self.tafel, self.zins),
+                        fuer("M", sterbetafel, self.zins),
+                        fuer("F", sterbetafel, self.zins),
                     )
                 )
             except MissingMortalityTableError as exc:
@@ -216,7 +247,7 @@ class TarifGeneration:
                 if self.max_endalter > grenze:
                     errors.append(
                         f"{prefix}: max_endalter {self.max_endalter} liegt hinter "
-                        f"der Tafel-Erschoepfung von {self.tafel} "
+                        f"der Tafel-Erschoepfung von {sterbetafel} "
                         f"(letztes Alter mit Dx > 0: {grenze})"
                     )
         if self.stoab_min > self.stoab_max:
@@ -228,7 +259,7 @@ class TarifGeneration:
         for name in ("ratzu_zw2", "ratzu_zw4", "ratzu_zw12"):
             if getattr(self, name) < 0:
                 errors.append(f"{prefix}: {name} < 0")
-        for merkmal in REQUIRED_MERKMALE:
+        for merkmal in self.required_merkmale():
             if merkmal not in self.verteilungen:
                 errors.append(f"{prefix}: verteilung fuer {merkmal} fehlt")
         for spec in self.verteilungen.values():
@@ -256,6 +287,39 @@ class TarifGeneration:
                     f"(Matrix nicht positiv semidefinit, min. Eigenwert {min_eig:.3f}) "
                     "— rhos abschwaechen oder Paare entfernen"
                 )
+        return errors
+
+    def _validate_bu(self, prefix: str) -> List[str]:
+        """BU-Rechnungsgrundlagen pruefen (Tafeln ladbar, Perioden stimmig)."""
+        from rechner_pipeline.kern.kommutation import (
+            MissingMortalityTableError,
+            qx_vector,
+            select_max_dauer,
+            select_tafel,
+        )
+
+        errors: List[str] = []
+        if self.zuschlag < 0.0:
+            errors.append(f"{prefix}: zuschlag < 0")
+        try:
+            for sex in ("M", "F"):
+                qx_vector(sex, self.tafel_i)
+        except MissingMortalityTableError as exc:
+            errors.append(f"{prefix}: Invalidisierungstafel: {exc}")
+        dauern = {}
+        for feld in ("tafel_ri", "tafel_ti"):
+            name = getattr(self, feld)
+            try:
+                select_tafel(name)
+                dauern[feld] = select_max_dauer(name)
+            except MissingMortalityTableError as exc:
+                errors.append(f"{prefix}: {feld}: {exc}")
+        if len(dauern) == 2 and dauern["tafel_ri"] != dauern["tafel_ti"]:
+            errors.append(
+                f"{prefix}: Select-Perioden ungleich (tafel_ri "
+                f"{dauern['tafel_ri']}, tafel_ti {dauern['tafel_ti']}) — "
+                "das BU-Produkt verlangt eine gemeinsame Periode"
+            )
         return errors
 
 
@@ -362,6 +426,7 @@ def load_config(path: Path) -> BestandConfig:
                 gueltig_bis=_to_date(g.get("gueltig_bis"), "gueltig_bis", errors),
                 sample_size=int(g.get("sample_size", 0)),
                 max_endalter=int(g.get("max_endalter", 85)),
+                produkt=str(g.get("produkt", "klv")),
                 neuzugang_pro_jahr=int(g.get("neuzugang_pro_jahr", 0)),
                 zins=float(g.get("zins", 0.0)),
                 tafel=str(g.get("tafel", "")),
@@ -380,6 +445,11 @@ def load_config(path: Path) -> BestandConfig:
                 ratzu_zw2=float(g.get("ratzu_zw2", _D["ratzu_zw2"])),
                 ratzu_zw4=float(g.get("ratzu_zw4", _D["ratzu_zw4"])),
                 ratzu_zw12=float(g.get("ratzu_zw12", _D["ratzu_zw12"])),
+                tafel_aktiv=str(g.get("tafel_aktiv", "DAV2008_T")),
+                tafel_i=str(g.get("tafel_i", "SYNTH_BU_I")),
+                tafel_ri=str(g.get("tafel_ri", "SYNTH_BU_RI")),
+                tafel_ti=str(g.get("tafel_ti", "SYNTH_BU_TI")),
+                zuschlag=float(g.get("zuschlag", 0.05)),
                 verteilungen=verteilungen,
                 korrelationen=korrelationen,
             )

@@ -87,15 +87,28 @@ GENERATION_FIELD_DEFAULTS: Dict[str, Any] = {
 
 #: Allowed values for enum-like columns (module tuples, repo idiom).
 SEX_VALUES: Tuple[str, ...] = ("M", "F")
+#: Produkte des Bestands (Diskriminator je Vertrag; Kern-Registry-Kennungen).
+#: Das Produkt entscheidet, welche Leistungsspalte fuehrt (KLV:
+#: ``sum_insured``, BU: ``bu_rente``), welcher ModelPoint gebaut wird und
+#: welche Zustaende die Ereignis-Engine simuliert.
+PRODUKT_VALUES: Tuple[str, ...] = ("klv", "bu")
 #: Full status enum of the Fortschreibung (Ereignis-Engine): POL = active
-#: premium-paying, PEX = active paid-up, STO/TOD/ABL = terminal.
-STATUS_CODE_VALUES: Tuple[str, ...] = ("POL", "PEX", "STO", "TOD", "ABL")
+#: premium-paying, PEX = active paid-up (KLV), BU = active, drawing the
+#: disability annuity (BU), STO/TOD/ABL = terminal.
+STATUS_CODE_VALUES: Tuple[str, ...] = ("POL", "PEX", "BU", "STO", "TOD", "ABL")
 #: The generator's base portfolio carries only active POL rows.
 BASIS_STATUS: Tuple[str, ...] = ("POL",)
 #: Statuses that count as in-force at a reporting date.
-AKTIVE_STATUS: Tuple[str, ...] = ("POL", "PEX")
+AKTIVE_STATUS: Tuple[str, ...] = ("POL", "PEX", "BU")
 #: Terminal statuses: nothing may follow them in a Statushistorie.
 TERMINALE_STATUS: Tuple[str, ...] = ("STO", "TOD", "ABL")
+#: Status-Codes, die nur bei einem bestimmten Produkt vorkommen duerfen
+#: (Beitragsfreistellung ist KLV-Fachlichkeit, der BU-Leistungsbezug
+#: BU-Fachlichkeit) — die Historien-Validierung prueft das je Police.
+PRODUKT_STATUS: Dict[str, Tuple[str, ...]] = {
+    "klv": ("PEX",) + TERMINALE_STATUS,
+    "bu": ("BU", "POL") + TERMINALE_STATUS,
+}
 ZAHLWEISE_VALUES: Tuple[int, ...] = (1, 2, 4, 12)
 
 # --------------------------------------------------------------------------- #
@@ -107,6 +120,7 @@ ZAHLWEISE_VALUES: Tuple[int, ...] = (1, 2, 4, 12)
 STAMM_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("police_id", "int64"),
     ("tarif_generation", "object"),
+    ("produkt", "object"),           # klv | bu (Kern-Registry-Kennung)
     ("status_id", "int64"),
     ("status_code", "object"),
     ("status_date", "datetime64[ns]"),
@@ -114,13 +128,20 @@ STAMM_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("date_of_birth", "datetime64[ns]"),
     ("entry_age", "int64"),          # -> ModelPoint.x
     ("duration", "int64"),           # -> ModelPoint.n
-    ("premium_duration", "int64"),   # -> ModelPoint.t
-    ("sum_insured", "float64"),      # -> ModelPoint.sum_insured
-    ("zahlweise", "int64"),          # -> ModelPoint.zw
+    ("premium_duration", "int64"),   # -> ModelPoint.t (BU: == duration)
+    ("sum_insured", "float64"),      # KLV: -> ModelPoint.sum_insured (BU: 0)
+    ("bu_rente", "float64"),         # BU: -> BUModelPoint.bu_rente (KLV: 0)
+    ("zahlweise", "int64"),          # -> ModelPoint.zw (BU: 1)
     ("insurance_start", "datetime64[ns]"),
     ("insurance_end", "datetime64[ns]"),
     ("payment_end", "datetime64[ns]"),
 )
+
+#: Die produktfuehrende Leistungsspalte (Bezugsgroesse der Nachweisung):
+#: Versicherungssumme bei KLV, versicherte Jahresrente bei BU. Getrennte
+#: Spalten statt einer umgedeuteten — sonst summierten Auswertungen still
+#: Versicherungssummen und Jahresrenten zusammen.
+LEISTUNGSSPALTE: Dict[str, str] = {"klv": "sum_insured", "bu": "bu_rente"}
 
 #: Columns derived per Zeitscheibe (never part of the generated base portfolio).
 ZEITSCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
@@ -206,12 +227,14 @@ def validate_portfolio(df: Any) -> List[str]:
         errors.append("police_id nicht eindeutig")
     if not df["sex"].isin(SEX_VALUES).all():
         errors.append(f"sex ausserhalb {SEX_VALUES}")
+    if not df["produkt"].isin(PRODUKT_VALUES).all():
+        errors.append(f"produkt ausserhalb {PRODUKT_VALUES}")
     if not df["status_code"].isin(BASIS_STATUS).all():
         errors.append(f"status_code ausserhalb {BASIS_STATUS} (Basisbestand: nur POL)")
     if not df["zahlweise"].isin(ZAHLWEISE_VALUES).all():
         errors.append(f"zahlweise ausserhalb {ZAHLWEISE_VALUES}")
 
-    num = df[["entry_age", "duration", "premium_duration", "sum_insured"]]
+    num = df[["entry_age", "duration", "premium_duration", "sum_insured", "bu_rente"]]
     # NaN-Vergleiche sind immer False — fehlende Werte muessen explizit
     # geprueft werden, sonst passieren sie jede Bandpruefung.
     nan_spalten = [c for c in num.columns if num[c].isna().any()]
@@ -225,8 +248,32 @@ def validate_portfolio(df: Any) -> List[str]:
         errors.append("premium_duration <= 0")
     if (df["premium_duration"] > df["duration"]).any():
         errors.append("premium_duration > duration")
-    if (num["sum_insured"] <= 0).any():
-        errors.append("sum_insured <= 0")
+
+    # Produktabhaengige Leistungs-Invarianten: genau die Spalte des Produkts
+    # traegt die versicherte Leistung, die andere ist strikt 0 — eine
+    # vertauschte Spalte waere sonst eine stille Falschbewertung.
+    klv = df[df["produkt"] == "klv"]
+    bu = df[df["produkt"] == "bu"]
+    if len(klv):
+        if (klv["sum_insured"] <= 0).any():
+            errors.append("klv: sum_insured <= 0")
+        if (klv["bu_rente"] != 0.0).any():
+            errors.append("klv: bu_rente != 0 (KLV fuehrt die Versicherungssumme)")
+    if len(bu):
+        if (bu["bu_rente"] <= 0).any():
+            errors.append("bu: bu_rente <= 0")
+        if (bu["sum_insured"] != 0.0).any():
+            errors.append("bu: sum_insured != 0 (BU fuehrt die Jahresrente)")
+        if (bu["premium_duration"] != bu["duration"]).any():
+            errors.append(
+                "bu: premium_duration != duration (das BU-Beispielprodukt "
+                "zahlt Beitraege ueber die volle Versicherungsdauer)"
+            )
+        if (bu["zahlweise"] != 1).any():
+            errors.append(
+                "bu: zahlweise != 1 (das BU-Beispielprodukt kennt nur "
+                "Jahreszahlung)"
+            )
 
     start = df["insurance_start"]
     if (df["insurance_end"] <= start).any():
@@ -277,9 +324,8 @@ def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
     if len(historie) == 0:
         return errors
 
-    folge_status = tuple(s for s in STATUS_CODE_VALUES if s not in BASIS_STATUS)
-    if not historie["status_code"].isin(folge_status).all():
-        errors.append(f"historie: status_code ausserhalb {folge_status}")
+    if not historie["status_code"].isin(STATUS_CODE_VALUES).all():
+        errors.append(f"historie: status_code ausserhalb {STATUS_CODE_VALUES}")
     unbekannt = set(historie["police_id"]) - set(stamm["police_id"])
     if unbekannt:
         errors.append(f"historie: police_id unbekannt: {sorted(unbekannt)[:5]}")
@@ -287,6 +333,7 @@ def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
         errors.append("historie: status_date nicht auf Monatsersten normalisiert")
 
     grenzen = stamm.set_index("police_id")[["insurance_start", "insurance_end"]]
+    produkt_je_police = stamm.set_index("police_id")["produkt"]
     for police_id, gruppe in historie.groupby("police_id", sort=False):
         g = gruppe.sort_values("status_date", kind="stable")
         prefix = f"historie police {police_id}"
@@ -300,6 +347,26 @@ def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
             errors.append(f"{prefix}: Status nach terminalem Status")
         if codes.count("PEX") > 1:
             errors.append(f"{prefix}: PEX mehrfach")
+        # Produktfremde Status sind ein harter Fehler (PEX gehoert zu KLV,
+        # der Leistungsbezug BU zu BU) — sonst liefe eine vertauschte
+        # Tabelle still durch die Auswertung.
+        produkt = str(produkt_je_police.get(police_id, "klv"))
+        erlaubt = PRODUKT_STATUS.get(produkt, ())
+        fremd = sorted({c for c in codes if c not in erlaubt})
+        if fremd:
+            errors.append(f"{prefix}: Status {fremd} nicht zulaessig fuer Produkt {produkt}")
+        elif produkt == "bu":
+            # BU wechselt zwischen Anwaerter (POL) und Leistungsbezug (BU)
+            # beliebig oft, aber strikt alternierend — zwei gleiche
+            # Zustaende hintereinander waeren ein Engine-Fehler.
+            zustand = "POL"
+            for code in codes:
+                if code in TERMINALE_STATUS:
+                    break
+                if code == zustand:
+                    errors.append(f"{prefix}: Statuswechsel {code} -> {code} (nicht alternierend)")
+                    break
+                zustand = code
         if police_id in grenzen.index:
             start = grenzen.loc[police_id, "insurance_start"]
             ende = grenzen.loc[police_id, "insurance_end"]
@@ -420,6 +487,36 @@ def model_point_kwargs(row: Mapping[str, Any], generation: Mapping[str, Any]) ->
             kwargs[name] = GENERATION_FIELD_DEFAULTS[name]
         else:
             raise KeyError(f"Generation-Feld fehlt ohne Default: {name}")
+    return kwargs
+
+
+#: BU-Kernfelder, die aus der Tarifgeneration (Config) kommen — Gegenstueck
+#: zu :data:`GENERATION_FIELDS` fuer das zweite Produkt.
+BU_GENERATION_FIELDS: Tuple[str, ...] = (
+    "zins", "tafel_aktiv", "tafel_i", "tafel_ri", "tafel_ti", "zuschlag",
+)
+
+
+def bu_model_point_kwargs(
+    row: Mapping[str, Any], generation: Mapping[str, Any]
+) -> Dict[str, Any]:
+    """Join one BU portfolio row with its generation into BUModelPoint kwargs.
+
+    Gegenstueck zu :func:`model_point_kwargs` fuer das BU-Produkt: der
+    Vertrag liefert Eintrittsalter, Geschlecht, Laufzeit und die versicherte
+    Jahresrente, die Generation die Rechnungsgrundlagen (Zins, die vier
+    Ausscheideordnungen, Kostenzuschlag).
+    """
+    kwargs: Dict[str, Any] = {
+        "x": int(row["entry_age"]),
+        "sex": str(row["sex"]),
+        "n": int(row["duration"]),
+        "bu_rente": float(row["bu_rente"]),
+    }
+    for name in BU_GENERATION_FIELDS:
+        if name not in generation:
+            raise KeyError(f"BU-Generation-Feld fehlt: {name}")
+        kwargs[name] = generation[name]
     return kwargs
 
 
