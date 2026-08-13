@@ -71,6 +71,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Erhoehungsscheiben-Parquet (nur zusammen mit --historie/--ledger).",
     )
     parser.add_argument(
+        "--bis",
+        default=None,
+        help=(
+            "Fortschreibungs-Horizont (ISO-Datum, dasselbe wie beim "
+            "fortschreiben-Lauf) — schaltet die Bestandsbewegung in "
+            "Nachweisungs-Struktur frei (nur mit --historie/--ledger)."
+        ),
+    )
+    parser.add_argument(
         "--stichtage",
         default=None,
         help="Kommagetrennte ISO-Daten; Default: Jahresraster über die Vertragslaufzeiten.",
@@ -101,13 +110,19 @@ def main(argv: Optional[List[str]] = None) -> int:
             file=sys.stderr,
         )
         return 2
-    if ns.scheiben and not ns.config:
-        print(
-            "bestand_report: --scheiben verlangt --config (Scheiben wirken "
-            "nur in den aktuariellen Kennzahlen)",
-            file=sys.stderr,
-        )
-        return 2
+    bis = None
+    if ns.bis:
+        if not ns.historie:
+            print(
+                "bestand_report: --bis nur zusammen mit --historie/--ledger",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            bis = _dt.date.fromisoformat(ns.bis)
+        except ValueError as exc:
+            print(f"bestand_report: Ungueltiges --bis-Datum: {exc}", file=sys.stderr)
+            return 2
     historie = ledger = scheiben = None
     if ns.historie:
         for name, pfad in (("Historie", ns.historie), ("Ledger", ns.ledger)):
@@ -147,16 +162,21 @@ def main(argv: Optional[List[str]] = None) -> int:
                 file=sys.stderr,
             )
             return 2
-    html = render_html(
-        df,
-        stichtage=stichtage,
-        titel=ns.titel,
-        quelle_hash=portfolio_hash(portfolio_path),
-        historie=historie,
-        ledger=ledger,
-        config=config,
-        scheiben=scheiben,
-    )
+    try:
+        html = render_html(
+            df,
+            stichtage=stichtage,
+            titel=ns.titel,
+            quelle_hash=portfolio_hash(portfolio_path),
+            historie=historie,
+            ledger=ledger,
+            config=config,
+            scheiben=scheiben,
+            bis=bis,
+        )
+    except ValueError as exc:
+        print(f"bestand_report: {exc}", file=sys.stderr)
+        return 2
     if ns.out:
         out_path = Path(ns.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)

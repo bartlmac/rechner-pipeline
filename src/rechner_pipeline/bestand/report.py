@@ -10,7 +10,9 @@ Mit Statushistorie und Ereignis-Ledger (Fortschreibung, optional) zeigt der
 Bericht zusätzlich die Ereignis-/Abgangs-Sichten: der Bestandsverlauf wird
 abgangsbereinigt (Zeitscheiben auf der Mehrzeilen-Sicht), dazu kommen der
 in-force-Bestand nach Status (beitragspflichtig/beitragsfrei), die
-Ereignisse je Kalenderjahr und die Betragssummen je Ereignisart.
+Ereignisse je Kalenderjahr, die Betragssummen je Ereignisart und die
+Bestandsbewegung in Nachweisungs-Struktur (Stück und Versicherungssumme,
+beitragspflichtig/beitragsfrei, mit geprüfter Bestands-Identität).
 
 Determinismus (Golden-Master-fähig): fester ``svg.hashsalt``, Schriften als
 Pfade (``svg.fonttype='path'``), ``metadata={'Date': None}`` beim Export,
@@ -37,6 +39,7 @@ from rechner_pipeline.bestand.ereignisse import bestand_mit_historie  # noqa: E4
 from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
     EREIGNIS_LABELS,
     EREIGNIS_REIHENFOLGE,
+    bewegungskonto,
     ereignis_summen,
     ereignisse_je_jahr,
     generationsnamen,
@@ -46,7 +49,7 @@ from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
 )
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe  # noqa: E402
 
-REPORT_VERSION = "1.2.0"
+REPORT_VERSION = "1.3.0"
 
 _RC = {
     "svg.hashsalt": "rechner-pipeline-bestand",
@@ -223,6 +226,7 @@ def render_html(
     ledger: Optional[pd.DataFrame] = None,
     config: Optional[BestandConfig] = None,
     scheiben: Optional[pd.DataFrame] = None,
+    bis: Optional[_dt.date] = None,
 ) -> str:
     """Rendert den vollständigen Bericht als selbst-enthaltenes HTML.
 
@@ -233,7 +237,11 @@ def render_html(
     Bestand-Config mit den Tarifgenerationen) schaltet zusätzlich die
     aktuariellen Kennzahlen frei (Deckungskapital, Rückkaufswert — Werte
     in-process aus dem stabilen Kern); sie muss dieselbe sein, mit der
-    Bestand und Fortschreibung erzeugt wurden.
+    Bestand und Fortschreibung erzeugt wurden. ``bis`` (der
+    Fortschreibungs-Horizont, dasselbe Datum wie beim ``fortschreiben``-Lauf)
+    schaltet die Bestandsbewegung in Nachweisungs-Struktur frei — ohne den
+    Horizont ließe sich nicht entscheiden, welche Jahre vollständig
+    simuliert sind.
     """
     if (historie is None) != (ledger is None):
         raise ValueError(
@@ -244,17 +252,6 @@ def render_html(
         raise ValueError(
             "scheiben nur zusammen mit historie/ledger (ein fortschreiben-Lauf)"
         )
-    if (
-        config is not None
-        and ledger is not None
-        and scheiben is None
-        and (ledger["ereignis"] == "ERH").any()
-    ):
-        raise ValueError(
-            "Ledger enthaelt dynamische Erhoehungen (ERH) — ohne scheiben "
-            "waeren die aktuariellen Kennzahlen systematisch zu niedrig "
-            "(Ledger-Betraege enthalten die Scheiben bereits)"
-        )
     if ledger is not None:
         fremd = set(ledger["police_id"]) - set(df["police_id"])
         if fremd:
@@ -264,6 +261,16 @@ def render_html(
                 "uebergeben (mit_zugaengen(stamm, zugaenge)), sonst waere der "
                 "Bericht in sich widerspruechlich"
             )
+    if (
+        ledger is not None
+        and scheiben is None
+        and (ledger["ereignis"] == "ERH").any()
+    ):
+        raise ValueError(
+            "Ledger enthaelt dynamische Erhoehungen (ERH) — ohne scheiben "
+            "waeren aktuarielle Kennzahlen und Bewegungs-Summen systematisch "
+            "zu niedrig (Betraege enthalten die Scheiben bereits)"
+        )
     if stichtage is None:
         stichtage = jahresraster(df)
     generationen = generationsnamen(df)
@@ -375,6 +382,68 @@ vollständig. Alle Beträge stammen aus dem stabilen Rechenkern.</p>"""
                 "<p>Keine Ereignisse im Berichtszeitraum.</p>"
             )
 
+    bewegung_html = ""
+    if historie is not None and bis is not None and len(ledger) > 0:
+        konto = bewegungskonto(df, historie, ledger, scheiben, bis=bis)
+        relevant = [
+            z for z in konto
+            if z["bpfl"]["anfang"]["stueck"] or z["bpfl"]["ende"]["stueck"]
+            or z["bpfl"]["zugang_neuzugang"]["stueck"] or z["bfr"]["ende"]["stueck"]
+        ]
+        alle_ok = all(
+            ok for z in konto for oks in z["identitaet"].values() for ok in oks.values()
+        )
+
+        def _bewegungstabelle(mass: str, dezimal: int) -> str:
+            zeilen_html = []
+            for z in relevant:
+                b, f = z["bpfl"], z["bfr"]
+                werte = [
+                    b["anfang"][mass], b["zugang_neuzugang"][mass],
+                    b["zugang_erhoehung"][mass], b["abgang_storno"][mass],
+                    b["abgang_tod"][mass], b["abgang_ablauf"][mass],
+                    b["umbuchung_beitragsfrei"][mass], b["ende"][mass],
+                    f["anfang"][mass], f["zugang_umbuchung"][mass],
+                    f["abgang_tod"][mass], f["abgang_ablauf"][mass], f["ende"][mass],
+                ]
+                zellen = "".join(
+                    f"<td class='num'>{_zahl(w, dezimal) if mass == 'summe' else int(w)}</td>"
+                    for w in werte
+                )
+                zeilen_html.append(f"<tr><td>{z['jahr']}</td>{zellen}</tr>")
+            kopf = (
+                "<tr><th rowspan='2'>Jahr</th>"
+                "<th colspan='8'>beitragspflichtig</th>"
+                "<th colspan='5'>beitragsfrei</th></tr>"
+                "<tr><th>Anfang</th><th>+Zugang</th><th>+Erh.</th><th>−Storno</th>"
+                "<th>−Tod</th><th>−Ablauf</th><th>−&rarr;bfr</th><th>Ende</th>"
+                "<th>Anfang</th><th>+&larr;bpfl</th><th>−Tod</th><th>−Ablauf</th>"
+                "<th>Ende</th></tr>"
+            )
+            return f"<table><thead>{kopf}</thead><tbody>{''.join(zeilen_html)}</tbody></table>"
+
+        pruefsatz = (
+            "Die Identität Anfangsbestand + Zugang − Abgang = Endbestand gilt "
+            "in jedem Jahr, je Track, in Stück und Summe (Gate-geprüft)."
+            if alle_ok else
+            "WARNUNG: Bewegungs-Identität verletzt — Daten inkonsistent "
+            "(Gate B1 schlägt fehl)."
+        )
+        bewegung_html = f"""
+<h2>Bestandsbewegung (Nachweisungs-Struktur)</h2>
+<h3>Stück</h3>
+{_bewegungstabelle("stueck", 0)}
+<h3>Versicherungssumme</h3>
+{_bewegungstabelle("summe", 0)}
+<p>Struktur nach der BaFin-Nachweisung zur Bestandsbewegung: Zugang aus
+Versicherungsbeginnen (die POL-Basiszeile ist der Zugangs-GeVo) und
+dynamischen Erhöhungen (nur Summe); Abgang mit den abgehenden
+Versicherungssummen (inklusive Erhöhungsscheiben), nicht den
+Auszahlungsbeträgen; Beitragsfreistellung als Umbuchung (Abgang
+beitragspflichtig mit der Gesamt-VS, Zugang beitragsfrei mit der
+beitragsfreien Summe). Ausgewiesen sind nur Jahre, die der
+Fortschreibungs-Horizont vollständig abdeckt. {pruefsatz}</p>"""
+
     auswertung_html = ""
     if config is not None:
         ausw_zeilen = "".join(
@@ -433,6 +502,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 <h2>Bestandsverlauf</h2>
 <div class="charts">{svg_vertraege}{svg_summe}</div>
 {ereignis_html}
+{bewegung_html}
 {auswertung_html}
 
 <h2>Bestandsstruktur am {struktur_stichtag.isoformat()} (Höchststand: {hoechststand["vertraege"]} Verträge)</h2>

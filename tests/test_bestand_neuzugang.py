@@ -276,8 +276,12 @@ def test_report_lehnt_ledger_mit_fremden_policen_ab(config):
         stichtage=[dt.date(2012, 1, 1)],
         historie=ergebnis.historie,
         ledger=ergebnis.ledger,
+        scheiben=ergebnis.scheiben,
+        bis=dt.date(2014, 1, 1),
     )
     assert "Neuzugang (ZUG)" in html
+    assert "Bestandsbewegung (Nachweisungs-Struktur)" in html
+    assert "WARNUNG" not in html
 
 
 def test_config_validierung_neuzugang(config):

@@ -69,6 +69,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--historie", default=None, help="Statushistorie-Parquet (optional).")
     parser.add_argument("--scheiben", default=None, help="Erhoehungsscheiben-Parquet (optional).")
     parser.add_argument(
+        "--ledger", default=None,
+        help="Ereignis-Ledger-Parquet (optional; mit --historie und --bis: "
+        "Bewegungs-Identitaeten).",
+    )
+    parser.add_argument(
+        "--bis", default=None,
+        help="Fortschreibungs-Horizont (ISO-Datum, dasselbe wie beim "
+        "fortschreiben-Lauf; Pflicht mit --ledger).",
+    )
+    parser.add_argument(
         "--config", dest="config", default=None,
         help="Bestand-Config (TOML) fuer die Plausibilitaets-Baender (optional).",
     )
@@ -117,8 +127,28 @@ def main(argv: Optional[List[str]] = None):
 
     if not args.portfolio:
         return _usage([{"code": "missing_arg", "message": "--portfolio ist erforderlich"}])
+    bis = None
+    if args.ledger and not (args.historie and args.bis):
+        return _usage([{
+            "code": "missing_arg",
+            "message": "--ledger verlangt --historie und --bis (Horizont des "
+            "fortschreiben-Laufs — nur vollstaendig simulierte Jahre sind "
+            "identitaets-pruefbar)",
+        }])
+    if args.bis:
+        if not args.ledger:
+            return _usage([{
+                "code": "missing_arg",
+                "message": "--bis nur zusammen mit --ledger",
+            }])
+        try:
+            import datetime as _dt
+
+            bis = _dt.date.fromisoformat(args.bis)
+        except ValueError as exc:
+            return _usage([{"code": "bad_arg", "message": f"Ungueltiges --bis-Datum: {exc}"}])
     eingaben = {"portfolio": Path(args.portfolio)}
-    for name in ("historie", "scheiben", "config"):
+    for name in ("historie", "scheiben", "ledger", "config"):
         wert = getattr(args, name)
         if wert:
             eingaben[name] = Path(wert)
@@ -136,6 +166,7 @@ def main(argv: Optional[List[str]] = None):
     portfolio = read_portfolio(eingaben["portfolio"])
     historie = read_portfolio(eingaben["historie"]) if "historie" in eingaben else None
     scheiben = read_portfolio(eingaben["scheiben"]) if "scheiben" in eingaben else None
+    ledger = read_portfolio(eingaben["ledger"]) if "ledger" in eingaben else None
 
     errors: List[dict] = []
     geprueft: Dict[str, int] = {"portfolio_zeilen": int(len(portfolio))}
@@ -150,6 +181,25 @@ def main(argv: Optional[List[str]] = None):
         geprueft["scheiben_zeilen"] = int(len(scheiben))
         for meldung in validate_scheiben(portfolio, scheiben, historie=historie):
             errors.append({"code": "scheiben", "message": meldung})
+    if ledger is not None and historie is not None and not errors:
+        # Bewegungs-Identitaeten (BaFin-Nachweisungs-Struktur): Anfang +
+        # Zugang - Abgang = Endbestand je Jahr, Track und Mass — eine
+        # Verletzung ist ein Engine-/Datenfehler.
+        from rechner_pipeline.bestand.kennzahlen import bewegungskonto
+
+        konto = bewegungskonto(portfolio, historie, ledger, scheiben, bis=bis)
+        geprueft["bewegungsjahre"] = len(konto)
+        for zeile in konto:
+            for track, oks in zeile["identitaet"].items():
+                for mass, ok in oks.items():
+                    if not ok:
+                        errors.append({
+                            "code": "bewegung",
+                            "message": (
+                                f"Jahr {zeile['jahr']} {track}/{mass}: "
+                                "Anfang + Zugang - Abgang != Endbestand"
+                            ),
+                        })
     if "config" in eingaben:
         try:
             config = load_config(eingaben["config"])

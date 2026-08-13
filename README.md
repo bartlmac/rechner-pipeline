@@ -258,14 +258,25 @@ Prinzipien:
   und Rückkaufswert je Stichtag über den ganzen Bestand — in-process über
   `Rechenkern.zustand_am`, nach Beitragsfreistellung über die beitragsfreie
   Reserve. Der Bestandsbericht (`toolbox/bestand_report`, optional mit
-  `--historie`/`--ledger`/`--scheiben`/`--config`) zeigt Abgangs-Sichten
-  und Reserveverläufe.
+  `--historie`/`--ledger`/`--scheiben`/`--config`/`--bis`) zeigt
+  Abgangs-Sichten und Reserveverläufe.
+- **Bestandsbewegung (Nachweisungs-Struktur):**
+  `kennzahlen.bewegungskonto` führt die Bewegung je Kalenderjahr in der
+  Struktur der BaFin-Nachweisungen zur Bestandsbewegung — getrennt nach
+  beitragspflichtig/beitragsfrei, jeweils Stück und Versicherungssumme.
+  Abgänge werden zu Versicherungssummen (inklusive Erhöhungsscheiben)
+  geführt, die Beitragsfreistellung als Umbuchung zwischen den Tracks;
+  dadurch gilt die Identität Anfangsbestand + Zugang - Abgang =
+  Endbestand exakt. Der Bericht rendert die Tabellen mit `--bis` (dem
+  Fortschreibungs-Horizont — nur vollständig simulierte Jahre sind
+  ausweisbar), das Gate B1 prüft die Identitäten hart.
 - **Ein-Befehl-Workflow:** `toolbox/bestand_fortschreibung` fährt den
   ganzen GeVo-Strom (erzeugen bis Referenzstichtag, fortschreiben bis
   Horizont) und schreibt alle Tabellen als Parquet; das Gate
   `toolbox/bestand_validate` (B1) prüft Bestand, Statushistorie,
-  Erhöhungsscheiben und Plausibilitäts-Bänder im Toolbox-Contract
-  (JSON-stdout, Gate-Ledger).
+  Erhöhungsscheiben, Plausibilitäts-Bänder und (mit `--ledger --bis`)
+  die Bewegungs-Identitäten im Toolbox-Contract (JSON-stdout,
+  Gate-Ledger).
 
 ## Dokumente: Tarifpläne und Doku-Engine
 

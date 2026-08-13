@@ -152,11 +152,12 @@ def test_status_verlauf_zaehlt_pol_und_pex(portfolio, fortschreibung):
 
 
 def test_render_mit_historie_zeigt_abgangssichten(portfolio, fortschreibung):
-    historie, ledger, *_ = fortschreibung
+    historie, ledger, scheiben, *_ = fortschreibung
     stichtage = [dt.date(j, 1, 1) for j in range(2005, 2031, 5)]
     ohne = report.render_html(portfolio, stichtage=stichtage)
     mit = report.render_html(
-        portfolio, stichtage=stichtage, historie=historie, ledger=ledger
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger,
+        scheiben=scheiben, bis=dt.date(2035, 1, 1),
     )
     assert "Fortschreibung und Abgänge" in mit
     assert "Beitragsfreistellung (PEX)" in mit
@@ -164,9 +165,18 @@ def test_render_mit_historie_zeigt_abgangssichten(portfolio, fortschreibung):
     assert "abgangsbereinigt" in mit
     assert "Fortschreibung und Abgänge" not in ohne  # Default unverändert
     assert mit.count("<svg") == ohne.count("<svg") + 2
+    # Bestandsbewegung nur mit Horizont; Identitaet auf gesunden Daten ok:
+    assert "Bestandsbewegung (Nachweisungs-Struktur)" in mit
+    assert "WARNUNG" not in mit
+    ohne_bis = report.render_html(
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger,
+        scheiben=scheiben,
+    )
+    assert "Bestandsbewegung" not in ohne_bis
     # Determinismus auch mit Historie:
     nochmal = report.render_html(
-        portfolio, stichtage=stichtage, historie=historie, ledger=ledger
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger,
+        scheiben=scheiben, bis=dt.date(2035, 1, 1),
     )
     assert mit == nochmal
 
@@ -189,7 +199,8 @@ def test_render_mit_config_zeigt_aktuarielle_kennzahlen(portfolio, config, forts
     assert "Aktuarielle Kennzahlen je Stichtag" in mit
     assert "Deckungskapital" in mit and "Rückkaufswert" in mit
     ohne = report.render_html(
-        portfolio, stichtage=stichtage, historie=historie, ledger=ledger
+        portfolio, stichtage=stichtage, historie=historie, ledger=ledger,
+        scheiben=scheiben,
     )
     assert "Aktuarielle Kennzahlen" not in ohne
     # Auch ohne Historie (reiner Basisbestand) rendert die Sektion:
@@ -265,7 +276,7 @@ def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
     code = cli.main(
         ["--portfolio", str(parquet), "--out", str(out),
          "--historie", str(h), "--ledger", str(l), "--scheiben", str(s),
-         "--config", str(EXAMPLE),
+         "--config", str(EXAMPLE), "--bis", "2035-01-01",
          "--stichtage", "2010-01-01,2020-01-01,2030-01-01"]
     )
     assert code == 0
@@ -273,6 +284,7 @@ def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
     assert "Fortschreibung und Abgänge" in text
     assert "Aktuarielle Kennzahlen je Stichtag" in text
     assert "Dynamische Erhöhung (ERH)" in text
+    assert "Bestandsbewegung" in text
     # Nur eines von beiden ist ein Fehler:
     assert cli.main(
         ["--portfolio", str(parquet), "--historie", str(h)]
@@ -281,10 +293,24 @@ def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
     assert cli.main(
         ["--portfolio", str(parquet), "--scheiben", str(s)]
     ) == 2
-    # Scheiben ohne Config ist ein Fehler (wuerden still ignoriert):
+    # ERH im Ledger ohne Scheiben: Engine-Guard, sauber als Exit 2:
+    assert cli.main(
+        ["--portfolio", str(parquet), "--historie", str(h), "--ledger", str(l)]
+    ) == 2
+    # Scheiben ohne Config sind gueltig (Bewegungs-Summen brauchen sie):
+    ohne_config = tmp_path / "ohne_config.html"
     assert cli.main(
         ["--portfolio", str(parquet), "--historie", str(h), "--ledger", str(l),
-         "--scheiben", str(s)]
+         "--scheiben", str(s), "--bis", "2035-01-01", "--out", str(ohne_config)]
+    ) == 0
+    assert "Bestandsbewegung" in ohne_config.read_text(encoding="utf-8")
+    # --bis nur mit --historie/--ledger; ungueltiges Datum ist ein Fehler:
+    assert cli.main(
+        ["--portfolio", str(parquet), "--bis", "2035-01-01"]
+    ) == 2
+    assert cli.main(
+        ["--portfolio", str(parquet), "--historie", str(h), "--ledger", str(l),
+         "--bis", "kein-datum"]
     ) == 2
     # Fehlende Config-Datei ist ein Fehler:
     assert cli.main(
