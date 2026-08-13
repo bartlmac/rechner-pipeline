@@ -1,5 +1,5 @@
 {
- "charakterisierung": "BU-Beispielprodukt auf SYNTHETISCHEN Platzhalter-Tafeln (SYNTH_BU_*, KEINE DAV-Tafeln — echte DAV-BU-Ausscheideordnungen sind zu beschaffen). Kern 2.0.x, Zustandsmodell-Konfiguration mit Select-Tafeln. Volle Float-Praezision; Zweck: Verhaltensgleichheit bei Refactorings und bewusste Abnahme kuenftiger Aenderungen.",
+ "charakterisierung": "BU-Beispielprodukt auf SYNTHETISCHEN Platzhalter-Tafeln (SYNTH_BU_*, KEINE DAV-Tafeln). Neu eingefroren nach Review-Datenfix 2026-08-13: Invalidisierung ausserhalb des Erwerbsalters (18-66) = 0 statt Floor 1e-4 — behebt Wegzugsummen > 1 an den qx=1-Endaltern der Aktiventafeln. Volle Float-Praezision.",
  "ergebnis": {
   "scalars": {
    "BU": {

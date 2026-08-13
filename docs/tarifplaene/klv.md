@@ -157,8 +157,9 @@ Jahrestag $a{+}1$); jeder Betrag kommt aus dem Kern:
 # Gültigkeitsgrenzen
 
 * Verlaufswerte sind blattfest für $a \in [0, 50]$ verankert
-  (Golden-Master-Contract, 612 Zellen); Laufzeiten $n > 50$ sind nicht
-  tarifierbar.
+  (Golden-Master-Contract, 612 Zellen). Der Kern rechnet Skalare auch
+  für $n > 50$ (der Verlauf bleibt bei 51 Zeilen); die Bestand-Engine
+  weist Laufzeiten $n > 50$ ab.
 * Tafelbereich: Anker-Alter mit $D_x = 0$ (Tafel erschöpft, z. B.
   DAV 1994 T ab Alter 101) sind fail-fast; kein Alter über 123.
 * Kein Storno beitragsfreier Verträge (keine RKW-Regel definiert).

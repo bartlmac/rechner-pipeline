@@ -23,7 +23,8 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from importlib import resources
-from typing import Dict, List, Tuple
+from types import MappingProxyType
+from typing import Dict, List, Mapping, Tuple
 
 from rechner_pipeline.kern.konventionen import MAX_ALTER, RADIX, excel_round
 
@@ -60,16 +61,48 @@ def _load_tables():
     for table in root.findall("table"):
         name = table.get("name")
         if table.get("select_max") is not None:
+            select_max = int(table.get("select_max"))
             by_key: Dict[Tuple[int, int], float] = {}
             for entry in table.findall("entry"):
-                by_key[(int(entry.get("age")), int(entry.get("dauer")))] = float(
-                    entry.get("qx")
+                if entry.get("dauer") is None:
+                    raise ValueError(
+                        f"Select-Tafel {name!r}: Eintrag ohne dauer-Attribut"
+                    )
+                key = (int(entry.get("age")), int(entry.get("dauer")))
+                if key in by_key:
+                    raise ValueError(f"Select-Tafel {name!r}: Duplikat {key}")
+                by_key[key] = float(entry.get("qx"))
+            # Vollstaendiges Gitter + Attribut-Konsistenz fail-fast beim Laden
+            # (nicht erst mitten in der Thiele-Rekursion):
+            daten_max = max(d for _, d in by_key)
+            if daten_max != select_max:
+                raise ValueError(
+                    f"Select-Tafel {name!r}: select_max={select_max} passt "
+                    f"nicht zu den Daten (max. Dauer {daten_max})"
+                )
+            fehlend = [
+                (a, d)
+                for a in range(0, MAX_ALTER + 1)
+                for d in range(0, select_max + 1)
+                if (a, d) not in by_key
+            ]
+            if fehlend:
+                raise ValueError(
+                    f"Select-Tafel {name!r}: Gitterluecken, z. B. {fehlend[:3]}"
                 )
             select_tables[name] = by_key
         else:
             by_age: Dict[int, float] = {}
             for entry in table.findall("entry"):
-                by_age[int(entry.get("age"))] = float(entry.get("qx"))
+                if entry.get("dauer") is not None:
+                    raise ValueError(
+                        f"Tafel {name!r}: dauer-Eintrag ohne select_max-Attribut "
+                        "— Select-Tafeln muessen als solche deklariert sein"
+                    )
+                age = int(entry.get("age"))
+                if age in by_age:
+                    raise ValueError(f"Tafel {name!r}: Duplikat Alter {age}")
+                by_age[age] = float(entry.get("qx"))
             tables[name] = by_age
     return tables, select_tables
 
@@ -77,15 +110,20 @@ def _load_tables():
 _TABLES, _SELECT_TABLES = _load_tables()
 
 
-def select_tafel(name: str) -> Dict[Tuple[int, int], float]:
-    """Select-Tafel ``{(alter, dauer): wert}`` — fail-fast wenn unbekannt."""
+def select_tafel(name: str) -> Mapping[Tuple[int, int], float]:
+    """Select-Tafel ``{(alter, dauer): wert}`` — fail-fast wenn unbekannt.
+
+    Rückgabe ist eine unveränderliche Sicht (MappingProxy) auf die
+    Prozess-globalen Tafeldaten — Aufrufer können sie nicht mutieren
+    (Anker-Bit-Exaktheit).
+    """
     tafel = _SELECT_TABLES.get(name)
     if tafel is None:
         raise MissingMortalityTableError(
             f"Select-Tafel {name!r} fehlt in tafeln.xml; es wird keine "
             "Ausscheideordnung erfunden"
         )
-    return tafel
+    return MappingProxyType(tafel)
 
 
 def select_max_dauer(name: str) -> int:

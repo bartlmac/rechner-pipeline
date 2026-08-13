@@ -74,6 +74,12 @@ class BU:
     model_point_cls = BUModelPoint
 
     def __init__(self, mp: BUModelPoint) -> None:
+        if mp.bu_rente <= 0.0:
+            raise ValueError(f"bu_rente {mp.bu_rente} <= 0")
+        if mp.zuschlag < 0.0:
+            raise ValueError(f"zuschlag {mp.zuschlag} < 0")
+        if mp.n < 1:
+            raise ValueError(f"n {mp.n} < 1")
         self.mp = mp
         # Ausscheideordnungen (fail-fast bei fehlenden Tafeln):
         self._qa = kommutation.fuer(mp.sex, mp.tafel_aktiv, mp.zins)
@@ -83,10 +89,22 @@ class BU:
         }
         self._ri = select_tafel(mp.tafel_ri)
         self._ti = select_tafel(mp.tafel_ti)
-        select_dauer = min(select_max_dauer(mp.tafel_ri), select_max_dauer(mp.tafel_ti))
+        # Ungleiche Select-Perioden waeren still verworfene Tafeldaten
+        # (Ultimate-Bereich der laengeren Tafel bliebe unerreichbar) —
+        # fail-fast statt stiller min()-Kappung (Review-Fix). Ein
+        # DAV-Import mit ungleichen Perioden braucht eine bewusste
+        # Produkt-Erweiterung.
+        ri_dauer = select_max_dauer(mp.tafel_ri)
+        ti_dauer = select_max_dauer(mp.tafel_ti)
+        if ri_dauer != ti_dauer:
+            raise ValueError(
+                f"Select-Perioden ungleich: {mp.tafel_ri} = {ri_dauer}, "
+                f"{mp.tafel_ti} = {ti_dauer} — Tafeln auf eine gemeinsame "
+                "Periode bringen"
+            )
         self.modell = Zustandsmodell(
             (AKTIV, BU_ZUSTAND, TOT), mp.zins, self._uebergang,
-            max_dauer=select_dauer,
+            max_dauer=ri_dauer,
         )
         self._scalar_cache: Dict[str, float] = {}
         self._verlauf_cache: Dict[str, list] = {}
@@ -127,16 +145,17 @@ class BU:
     def _praemien_zahlung(zustand: str, jahr: int) -> float:
         return 1.0 if zustand == AKTIV else 0.0
 
-    def _verlauf(self, art: str, startzustand: str) -> list:
-        """Wertespalte je (Zahlungsart, Startzustand), gecacht je Instanz."""
-        key = f"{art}:{startzustand}"
+    def _verlauf(self, art: str, startzustand: str, start_dauer: int = 0) -> list:
+        """Wertespalte je (Zahlungsart, Startzustand, Startdauer), gecacht."""
+        key = f"{art}:{startzustand}:{start_dauer}"
         werte = self._verlauf_cache.get(key)
         if werte is None:
             zahlung = (
                 self._bu_rente_zahlung if art == "leistung" else self._praemien_zahlung
             )
             werte = self.modell.barwert_verlauf(
-                startzustand, self.mp.x, self.mp.n, zahlung_zustand=zahlung
+                startzustand, self.mp.x, self.mp.n,
+                zahlung_zustand=zahlung, start_dauer=start_dauer,
             )
             self._verlauf_cache[key] = werte
         return werte
@@ -160,7 +179,14 @@ class BU:
             raise ValueError(
                 f"Prämienbarwert {praemienbarwert} <= 0 — Modellpunkt nicht tarifierbar"
             )
-        return self.leistungsbarwert() / praemienbarwert
+        leistungsbarwert = self.leistungsbarwert()
+        if leistungsbarwert <= 0.0:
+            raise ValueError(
+                "Leistungsbarwert <= 0 — im Jahresmodell beginnt die BU-Rente "
+                f"fruehestens am Jahrestag 1; n = {self.mp.n} bietet keine "
+                "Leistungsmoeglichkeit (nicht tarifierbar)"
+            )
+        return leistungsbarwert / praemienbarwert
 
     def nettobeitrag(self) -> float:
         return self._cached("Nettobeitrag", lambda: self.mp.bu_rente * self.netto_rate())
@@ -189,20 +215,24 @@ class BU:
     def reserve_bu(self, a: int, dauer: int = 0) -> float:
         """Deckungsrückstellung im Vertragsjahr ``a``, Zustand ``bu``.
 
-        ``dauer`` = volle Jahre in BU (Select-Dauer, gekappt auf die
-        Select-Periode der Tafeln — der Anschlusspunkt der Ereignis-Engine
-        für BU-Bestände).
+        ``dauer`` = volle Jahre in BU. Fachliche Grenze (Review-Fix):
+        frühester BU-Eintritt ist das Jahresende von Jahr 0, also gilt
+        ``dauer <= a - 1`` (``a = 0`` nur als hypothetischer Eintrittswert
+        mit ``dauer = 0``); unmögliche Kombinationen sind fail-fast statt
+        still plausibler Werte. Oberhalb der Select-Periode wird auf deren
+        Ultimate-Stufe gekappt — der Anschlusspunkt der Ereignis-Engine
+        für BU-Bestände.
         """
         self._pruefe_jahr(a)
+        if dauer < 0 or dauer > max(0, a - 1):
+            raise ValueError(
+                f"BU-Dauer {dauer} im Vertragsjahr {a} fachlich unmoeglich "
+                "(fruehester BU-Eintritt: Jahresende von Jahr 0 -> "
+                "dauer <= a - 1)"
+            )
         dauer = min(dauer, self.modell.max_dauer)
-        leistung = self.modell.barwert_verlauf(
-            BU_ZUSTAND, self.mp.x, self.mp.n,
-            zahlung_zustand=self._bu_rente_zahlung, start_dauer=dauer,
-        )[a]
-        praemie = self.modell.barwert_verlauf(
-            BU_ZUSTAND, self.mp.x, self.mp.n,
-            zahlung_zustand=self._praemien_zahlung, start_dauer=dauer,
-        )[a]
+        leistung = self._verlauf("leistung", BU_ZUSTAND, dauer)[a]
+        praemie = self._verlauf("praemie", BU_ZUSTAND, dauer)[a]
         return self.mp.bu_rente * leistung - self.nettobeitrag() * praemie
 
     def _pruefe_jahr(self, a: int) -> None:

@@ -48,6 +48,33 @@ def _text(element: ET.Element) -> str:
     return "".join(teile)
 
 
+def _zellen_text(zelle: ET.Element) -> str:
+    """Zellentext mit Zeilenumbruechen zwischen Absaetzen/inneren Tabellen
+    (Review-Fix: vorher klebten Mehrfach-Absaetze und verschachtelte
+    Tabellen separatorlos aneinander)."""
+    teile = [
+        _text(kind)
+        for kind in zelle
+        if kind.tag in (f"{_W}p", f"{_W}tbl")
+    ]
+    return "\n".join(teil.strip() for teil in teile if teil.strip())
+
+
+def _inhalts_kinder(container: ET.Element) -> List[ET.Element]:
+    """Direkte Inhalts-Elemente inkl. Entpacken von w:sdt-Containern
+    (Content Controls, Inhaltsverzeichnisse — Review-Fix: deren Absaetze
+    und Tabellen fielen vorher stillschweigend weg)."""
+    kinder: List[ET.Element] = []
+    for kind in container:
+        if kind.tag == f"{_W}sdt":
+            inhalt = kind.find(f"{_W}sdtContent")
+            if inhalt is not None:
+                kinder.extend(_inhalts_kinder(inhalt))
+        else:
+            kinder.append(kind)
+    return kinder
+
+
 def _stil(absatz: ET.Element) -> str:
     stil = absatz.find(f"{_W}pPr/{_W}pStyle")
     return stil.get(f"{_W}val", "") if stil is not None else ""
@@ -68,6 +95,8 @@ def extrahiere(docx_pfad: Path) -> Dict[str, Any]:
             pass
 
     body = dokument.find(f"{_W}body")
+    if body is None:
+        raise ET.ParseError("document.xml ohne w:body")
     absaetze: List[Dict[str, Any]] = []
     tabellen: List[Dict[str, Any]] = []
     # Formeln GLOBAL einsammeln (OMML steckt bei Tabellen-Layouts der
@@ -78,19 +107,19 @@ def extrahiere(docx_pfad: Path) -> Dict[str, Any]:
         if (inhalt := _text(formel))
     ]
 
-    for kind in body:
+    for kind in _inhalts_kinder(body):
         if kind.tag == f"{_W}p":
             text = _text(kind)
             if text.strip():
                 absaetze.append({"stil": _stil(kind), "text": text.strip()})
         elif kind.tag == f"{_W}tbl":
+            # Leere Zeilen bleiben erhalten — die Zeilen-Indizes entsprechen
+            # der Quelltabelle (Review-Fix).
             zeilen: List[List[str]] = []
             for zeile in kind.findall(f"{_W}tr"):
-                zellen = [
-                    _text(zelle).strip() for zelle in zeile.findall(f"{_W}tc")
-                ]
-                if any(zellen):
-                    zeilen.append(zellen)
+                zeilen.append(
+                    [_zellen_text(zelle) for zelle in zeile.findall(f"{_W}tc")]
+                )
             tabellen.append({"index": len(tabellen), "zeilen": zeilen})
 
     return {
@@ -102,7 +131,10 @@ def extrahiere(docx_pfad: Path) -> Dict[str, Any]:
         "formeln": formeln,
         "hinweis": (
             "Migrationsartefakt-Staging: strukturierte Rohdaten fuer die "
-            "Migration, kein Zielkern-Tarifplan (siehe docs/tarifplaene/)."
+            "Migration, kein Zielkern-Tarifplan (siehe docs/tarifplaene/). "
+            "Formel-Inhalte (OMML) stehen in 'formeln' UND unmarkiert im "
+            "Absatz-/Zellentext (m:t-Runs); eine positionsgenaue "
+            "Formel-Zuordnung ist bewusst nicht Teil dieser Stufe."
         ),
     }
 

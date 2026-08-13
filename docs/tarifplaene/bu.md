@@ -82,11 +82,19 @@ $R = 12\,000$, $i = 1{,}75\,\%$.
 
 # Gültigkeitsgrenzen
 
-* Alter $x + n - 1 \le 123$ (Tafelbereich, fail-fast).
-* Select-Dauern werden auf die Select-Periode der Tafeln gekappt
-  (Beispieltafeln: 5 Jahre).
+* Alter $x + n - 1 \le 123$ (Tafelbereich, fail-fast); die
+  Invalidisierung ist außerhalb des Erwerbsalters (18–66) null — ein
+  Modellpunkt ohne jede Leistungsmöglichkeit (Leistungsbarwert 0, z. B.
+  Start nach dem Erwerbsalter oder $n = 1$ im Jahresmodell) ist
+  fail-fast „nicht tarifierbar".
+* Reserven im Zustand `bu`: fachliche Grenze $d \le a - 1$ (frühester
+  BU-Eintritt am Ende von Jahr 0; unmögliche Kombinationen fail-fast);
+  oberhalb der Select-Periode wird auf deren Ultimate-Stufe gekappt
+  (Beispieltafeln: 5 Jahre). Ungleiche Select-Perioden von RI/TI sind
+  fail-fast (sonst blieben Tafeldaten still unbenutzt).
 * Wegzugsummen je Zustand müssen $\le 1$ sein (Engine fail-fast;
-  Datenprüfung der Tafeln testseitig verankert).
+  Datenprüfung beider Zustände über alle Aktiventafeln testseitig
+  verankert).
 
 # Verankerung und Abnahme
 
