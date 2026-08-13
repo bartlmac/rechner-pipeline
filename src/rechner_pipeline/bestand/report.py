@@ -9,10 +9,18 @@ Werkzeug beim Empfänger nötig.
 Mit Statushistorie und Ereignis-Ledger (Fortschreibung, optional) zeigt der
 Bericht zusätzlich die Ereignis-/Abgangs-Sichten: der Bestandsverlauf wird
 abgangsbereinigt (Zeitscheiben auf der Mehrzeilen-Sicht), dazu kommen der
-in-force-Bestand nach Status (beitragspflichtig/beitragsfrei), die
-Ereignisse je Kalenderjahr, die Betragssummen je Ereignisart und die
-Bestandsbewegung in Nachweisungs-Struktur (Stück und Versicherungssumme,
-beitragspflichtig/beitragsfrei, mit geprüfter Bestands-Identität).
+in-force-Bestand nach Status, die Ereignisse je Kalenderjahr und die
+Betragssummen je Ereignisart.
+
+Die **Bestandsbewegung** wird für beide Produkte nach EINEM Muster
+ausgewiesen (:data:`NACHWEISUNGEN`): je Nachweisung zwei Träger-Bestände
+mit einer Umbuchung dazwischen, je Träger eine Grafik und zwei
+Bewegungstabellen (Stück und Bezugsgröße). Es unterscheiden sich nur die
+Bezeichnungen und die Bezugsgröße — Versicherungssumme bei der
+Kapitalversicherung, versicherte Jahresrente bei der Berufsunfähigkeit
+(nicht addierbar, deshalb getrennte Nachweisungen). Mit ``stichtag`` wird
+jede Reihe in **Historie** (Bestandsaufbau bis zum Stichtag) und
+**Prognose** (Entwicklung danach) geteilt.
 
 Determinismus (Golden-Master-fähig): fester ``svg.hashsalt``, Schriften als
 Pfade (``svg.fonttype='path'``), ``metadata={'Date': None}`` beim Export,
@@ -27,7 +35,7 @@ import datetime as _dt
 import hashlib
 import io
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
 
@@ -53,7 +61,7 @@ from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
 )
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe  # noqa: E402
 
-REPORT_VERSION = "1.5.0"
+REPORT_VERSION = "2.0.0"
 
 _RC = {
     "svg.hashsalt": "rechner-pipeline-bestand",
@@ -130,6 +138,16 @@ def _svg(fig) -> str:
     plt.close(fig)
     text = buf.getvalue()
     return _stabile_ids(text[text.index("<svg") :])
+
+
+def _prozent(value: float, dezimal: int = 2) -> str:
+    """Prozentwert mit deutschem Dezimalkomma."""
+    return f"{value * 100:.{dezimal}f}".replace(".", ",") + " %"
+
+
+def _dezimal(value: float, dezimal: int = 2) -> str:
+    """Dezimalzahl mit deutschem Komma (Faktoren, Quoten)."""
+    return f"{value:.{dezimal}f}".replace(".", ",")
 
 
 def _zahl(value: float, dezimal: int = 0) -> str:
@@ -305,6 +323,274 @@ def _chart_ereignisse_je_jahr(reihe: List[Dict[str, Any]]) -> str:
 # --------------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------------- #
+# Nachweisungen (Bestandsbewegung) — produktübergreifend gleich aufgebaut
+# --------------------------------------------------------------------------- #
+
+#: Eine Nachweisung je Produkt. Beide Bewegungskonten haben dieselbe Form:
+#: zwei Träger-Bestände, zwischen denen eine Umbuchung läuft, je Position
+#: Stück und eine Bezugsgröße. Nur Bezeichnungen und Bezugsgröße
+#: unterscheiden sich — Versicherungssumme bei der Kapitalversicherung,
+#: versicherte Jahresrente bei der Berufsunfähigkeit (nicht addierbar,
+#: deshalb getrennte Nachweisungen).
+NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
+    {
+        "produkt": "klv",
+        "titel": "Kapitalversicherung",
+        "bezug": "Versicherungssumme",
+        "erlaeuterung": (
+            "Zugang aus den Versicherungsbeginnen (die POL-Basiszeile ist der "
+            "Zugangs-Geschäftsvorfall) und aus dynamischen Erhöhungen (nur "
+            "Summe, kein Stück); Abgänge mit den abgehenden "
+            "Versicherungssummen einschließlich Erhöhungsscheiben, nicht mit "
+            "den Auszahlungsbeträgen. Die Beitragsfreistellung ist eine "
+            "Umbuchung: der beitragspflichtige Bestand verliert die "
+            "Gesamt-Versicherungssumme, der beitragsfreie gewinnt die "
+            "beitragsfreie Summe."
+        ),
+        "tracks": (
+            ("bpfl", "Beitragspflichtiger Bestand", (
+                ("anfang", "Anfang"),
+                ("zugang_neuzugang", "+ Zugang"),
+                ("zugang_erhoehung", "+ Erhöhung"),
+                ("abgang_storno", "− Storno"),
+                ("abgang_tod", "− Tod"),
+                ("abgang_ablauf", "− Ablauf"),
+                ("umbuchung_beitragsfrei", "− beitragsfrei gestellt"),
+                ("ende", "Ende"),
+            )),
+            ("bfr", "Beitragsfreier Bestand", (
+                ("anfang", "Anfang"),
+                ("zugang_umbuchung", "+ beitragsfrei gestellt"),
+                ("abgang_tod", "− Tod"),
+                ("abgang_ablauf", "− Ablauf"),
+                ("ende", "Ende"),
+            )),
+        ),
+        "annahmen": (
+            ("tod", "Sterblichkeit"),
+            ("storno", "Storno"),
+            ("beitragsfreistellung", "Beitragsfreistellung"),
+            ("erhoehung", "dynamische Erhöhung"),
+        ),
+        "grundlagen": lambda g: f"{g.tafel}, Rechnungszins {_prozent(g.zins)}",
+        "vorhanden": lambda df: "produkt" not in df.columns
+        or (df["produkt"] == "klv").any(),
+        "konto": lambda df, h, l, s, bis: bewegungskonto(df, h, l, s, bis=bis),
+        "farben": {"bpfl": "#1f77b4", "bfr": "#9467bd"},
+    },
+    {
+        "produkt": "bu",
+        "titel": "Berufsunfähigkeit",
+        "bezug": "versicherte Jahresrente",
+        "erlaeuterung": (
+            "Getrennt werden Anwärter (beitragszahlend, ohne Leistungsbezug) "
+            "und Leistungsbezieher. Die Invalidisierung ist eine Umbuchung "
+            "zwischen beiden Beständen, die Reaktivierung die Rückbuchung; "
+            "Tod und Ablauf gehen aus dem Bestand ab, in dem der Vertrag "
+            "zuletzt stand. Beide Bestände werden einzeln ausgewiesen — sie "
+            "unterscheiden sich um Größenordnungen."
+        ),
+        "tracks": (
+            ("anwaerter", "Anwärter", (
+                ("anfang", "Anfang"),
+                ("zugang_neuzugang", "+ Zugang"),
+                ("zugang_reaktivierung", "+ Reaktivierung"),
+                ("abgang_tod", "− Tod"),
+                ("abgang_ablauf", "− Ablauf"),
+                ("umbuchung_leistungsbezug", "− in Leistungsbezug"),
+                ("ende", "Ende"),
+            )),
+            ("rentner", "Leistungsbezieher", (
+                ("anfang", "Anfang"),
+                ("zugang_invalidisierung", "+ Invalidisierung"),
+                ("abgang_reaktivierung", "− Reaktivierung"),
+                ("abgang_tod", "− Tod"),
+                ("abgang_ablauf", "− Ablauf"),
+                ("ende", "Ende"),
+            )),
+        ),
+        "annahmen": (
+            ("invalidisierung", "Invalidisierung"),
+            ("reaktivierung", "Reaktivierung"),
+            ("aktivensterblichkeit", "Aktivensterblichkeit"),
+            ("invalidensterblichkeit", "Invalidensterblichkeit"),
+        ),
+        "grundlagen": lambda g: (
+            f"{g.tafel_i} (Invalidisierung), {g.tafel_aktiv} "
+            f"(Aktivensterblichkeit), {g.tafel_ri} (Reaktivierung), "
+            f"{g.tafel_ti} (Invalidensterblichkeit), Rechnungszins "
+            f"{g.zins:.2%}"
+        ),
+        "vorhanden": lambda df: "produkt" in df.columns
+        and (df["produkt"] == "bu").any(),
+        "konto": lambda df, h, l, s, bis: bu_bewegungskonto(df, h, l, bis=bis),
+        "farben": {"anwaerter": "#1f77b4", "rentner": "#d62728"},
+    },
+)
+
+
+def _chart_track(
+    konto: List[Dict[str, Any]], track: str, ylabel: str, farbe: str,
+    stichtag: Optional[_dt.date],
+) -> str:
+    """Bestand EINES Trägers je Jahresende, mit Stichtags-Trennung.
+
+    Je Träger eine eigene Grafik: die Bestände unterscheiden sich um
+    Größenordnungen, in gemeinsamer Skala wäre der kleinere nicht mehr
+    ablesbar.
+    """
+    x = list(range(len(konto)))
+    labels = [str(z["jahr"]) for z in konto]
+    fig, ax = plt.subplots(figsize=(8.0, 2.6))
+    ax.bar(x, [z[track]["ende"]["stueck"] for z in konto], color=farbe, width=0.8)
+    if stichtag is not None:
+        grenze = _stichtags_position(konto, stichtag)
+        if grenze is not None:
+            ax.axvline(grenze, color="#333333", linewidth=1.0, linestyle="--")
+    schritt = max(1, len(x) // 12)
+    ax.set_xticks(x[::schritt], labels[::schritt])
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel("Kalenderjahr")
+    return _svg(fig)
+
+
+def _stichtags_position(
+    konto: List[Dict[str, Any]], stichtag: _dt.date
+) -> Optional[float]:
+    """x-Position der Stichtagslinie zwischen den Jahresbalken."""
+    jahre = [z["jahr"] for z in konto]
+    if not jahre or stichtag.year <= jahre[0] or stichtag.year > jahre[-1] + 1:
+        return None
+    return jahre.index(stichtag.year) - 0.5
+
+
+def _grundlagen_html(
+    spec: Dict[str, Any], config: Optional[BestandConfig]
+) -> str:
+    """Rechnungsgrundlagen und wirksame Erfahrungsannahmen der Nachweisung.
+
+    Stichtags-Angabe, keine Entwicklungsgeschichte: was gilt, nicht was
+    sich geändert hat. Die Bewertung läuft auf den Rechnungsgrundlagen
+    (erste Ordnung), die Fortschreibung auf den Erfahrungsannahmen
+    (dritte Ordnung) — beides wird hier nebeneinander genannt, damit der
+    Unterschied im Bericht sichtbar ist.
+    """
+    if config is None:
+        return ""
+    generationen = [g for g in config.generationen if g.produkt == spec["produkt"]]
+    if not generationen:
+        return ""
+    zeilen = "".join(
+        f"<li>{g.name} ({g.gueltig_von.isoformat()} bis "
+        f"{g.gueltig_bis.isoformat()}): {spec['grundlagen'](g)}</li>"
+        for g in generationen
+    )
+
+    def annahme_text(name: str, titel: str) -> str:
+        annahme = getattr(config.annahmen, name)
+        if annahme.b == 0.0 and annahme.a == 0.0:
+            return f"{titel} findet nicht statt"
+        if annahme.b == 0.0:
+            return f"{titel} {_prozent(annahme.a)} p. a."
+        if annahme.a == 0.0 and annahme.b == 1.0:
+            return f"{titel} wie Rechnungsgrundlage"
+        return f"{titel} Rechnungsgrundlage × {_dezimal(annahme.b)}"
+
+    annahmen = "; ".join(
+        annahme_text(n, titel) for n, titel in spec["annahmen"]
+    )
+    return f"""
+<p><strong>Rechnungsgrundlagen</strong> (Bewertung, erste Ordnung):</p>
+<ul>{zeilen}</ul>
+<p><strong>Erfahrungsannahmen</strong> (Fortschreibung, dritte Ordnung):
+{annahmen}.</p>"""
+
+
+def _nachweisung_html(
+    konto: List[Dict[str, Any]],
+    spec: Dict[str, Any],
+    stichtag: Optional[_dt.date],
+    config: Optional[BestandConfig],
+) -> str:
+    """Eine vollständige Nachweisung: je Träger Grafik und Bewegung.
+
+    Mit ``stichtag`` wird jede Tabelle an genau einer Stelle geteilt:
+    darüber die Historie (Bestandsaufbau bis zum Stichtag), darunter die
+    Prognose. Die Zahlen selbst sind dieselben — die Trennung sagt, welcher
+    Teil beobachtet und welcher projiziert ist.
+    """
+    relevant = [
+        z for z in konto
+        if any(
+            z[track]["anfang"]["stueck"] or z[track]["ende"]["stueck"]
+            for track, _t, _p in spec["tracks"]
+        )
+    ]
+    if not relevant:
+        return ""
+    alle_ok = all(
+        ok for z in konto for oks in z["identitaet"].values() for ok in oks.values()
+    )
+    pruefsatz = (
+        "Die Identität Anfangsbestand + Zugang − Abgang = Endbestand gilt in "
+        f"jedem Jahr, je Bestand, in Stück und {spec['bezug']} (Gate-geprüft)."
+        if alle_ok else
+        "WARNUNG: Bewegungs-Identität verletzt — Daten inkonsistent "
+        "(Gate B1 schlägt fehl)."
+    )
+
+    def tabelle(track: str, positionen, mass: str) -> str:
+        kopf = "<tr><th>Jahr</th>" + "".join(
+            f"<th>{titel}</th>" for _pos, titel in positionen
+        ) + "</tr>"
+        spalten = len(positionen) + 1
+        zeilen: List[str] = []
+        getrennt = False
+        for z in relevant:
+            if (
+                stichtag is not None and not getrennt
+                and z["jahr"] >= stichtag.year
+            ):
+                zeilen.append(
+                    f"<tr class='grenze'><td colspan='{spalten}'>"
+                    f"Stichtag {stichtag.isoformat()} — ab hier Prognose"
+                    "</td></tr>"
+                )
+                getrennt = True
+            zellen = "".join(
+                "<td class='num'>"
+                f"{_zahl(z[track][pos][mass]) if mass == 'summe' else int(z[track][pos][mass])}"
+                "</td>"
+                for pos, _titel in positionen
+            )
+            zeilen.append(f"<tr><td>{z['jahr']}</td>{zellen}</tr>")
+        return (
+            f"<table><thead>{kopf}</thead><tbody>{''.join(zeilen)}</tbody></table>"
+        )
+
+    bloecke = []
+    for track, track_titel, positionen in spec["tracks"]:
+        chart = _chart_track(
+            relevant, track, f"{track_titel} (Jahresende)",
+            spec["farben"][track], stichtag,
+        )
+        bloecke.append(f"""
+<h3>{track_titel}</h3>
+<div class="charts">{chart}</div>
+<p>Bewegung in Stück:</p>
+{tabelle(track, positionen, "stueck")}
+<p>Bewegung in {spec['bezug']}:</p>
+{tabelle(track, positionen, "summe")}""")
+
+    return f"""
+<h2>Bestandsbewegung: {spec['titel']}</h2>
+<p>Struktur nach der BaFin-Nachweisung zur Bestandsbewegung; Bezugsgröße ist
+die {spec['bezug']}. {spec['erlaeuterung']} {pruefsatz}</p>
+{_grundlagen_html(spec, config)}
+{"".join(bloecke)}"""
+
+
 def render_html(
     df: pd.DataFrame,
     stichtage: Optional[List[_dt.date]] = None,
@@ -315,6 +601,7 @@ def render_html(
     config: Optional[BestandConfig] = None,
     scheiben: Optional[pd.DataFrame] = None,
     bis: Optional[_dt.date] = None,
+    stichtag: Optional[_dt.date] = None,
 ) -> str:
     """Rendert den vollständigen Bericht als selbst-enthaltenes HTML.
 
@@ -329,7 +616,10 @@ def render_html(
     Fortschreibungs-Horizont, dasselbe Datum wie beim ``fortschreiben``-Lauf)
     schaltet die Bestandsbewegung in Nachweisungs-Struktur frei — ohne den
     Horizont ließe sich nicht entscheiden, welche Jahre vollständig
-    simuliert sind.
+    simuliert sind. ``stichtag`` (der Referenzstichtag des Bestands) teilt
+    die Nachweisungen in **Historie** (Bestandsaufbau bis zum Stichtag) und
+    **Prognose** (Entwicklung danach) — in den Tabellen als Trennzeile, in
+    den Grafiken als senkrechte Linie.
     """
     if (historie is None) != (ledger is None):
         raise ValueError(
@@ -424,6 +714,11 @@ def render_html(
         else ""
     )
 
+    stichtag_zeile = (
+        f"<li>Referenzstichtag: {stichtag.isoformat()} — bis dahin Historie, "
+        "danach Prognose</li>"
+        if stichtag is not None else ""
+    )
     fortschreibung_zeile = ""
     ereignis_html = ""
     if historie is not None:
@@ -470,223 +765,26 @@ vollständig. Alle Beträge stammen aus dem stabilen Rechenkern.</p>"""
                 "<p>Keine Ereignisse im Berichtszeitraum.</p>"
             )
 
-    bewegung_html = ""
+    # ------------------------------------------------------------------ #
+    # Bestandsbewegung in Nachweisungs-Struktur — EINE Darstellung fuer
+    # beide Produkte. Die Konten haben dieselbe Form (zwei Traeger-Bestaende
+    # mit einer Umbuchung dazwischen); es unterscheiden sich nur die
+    # Bezeichnungen und die Bezugsgroesse (Versicherungssumme gegen
+    # Jahresrente). Mit ``stichtag`` wird jede Reihe in Historie und
+    # Prognose geteilt.
+    # ------------------------------------------------------------------ #
+    nachweisungen: List[str] = []
     if historie is not None and bis is not None and len(ledger) > 0:
-        konto = bewegungskonto(df, historie, ledger, scheiben, bis=bis)
-        relevant = [
-            z for z in konto
-            if z["bpfl"]["anfang"]["stueck"] or z["bpfl"]["ende"]["stueck"]
-            or z["bpfl"]["zugang_neuzugang"]["stueck"]
-            or z["bfr"]["anfang"]["stueck"] or z["bfr"]["ende"]["stueck"]
-        ]
-        alle_ok = all(
-            ok for z in konto for oks in z["identitaet"].values() for ok in oks.values()
-        )
-
-        def _bewegungstabelle(mass: str, dezimal: int) -> str:
-            zeilen_html = []
-            for z in relevant:
-                b, f = z["bpfl"], z["bfr"]
-                werte = [
-                    b["anfang"][mass], b["zugang_neuzugang"][mass],
-                    b["zugang_erhoehung"][mass], b["abgang_storno"][mass],
-                    b["abgang_tod"][mass], b["abgang_ablauf"][mass],
-                    b["umbuchung_beitragsfrei"][mass], b["ende"][mass],
-                    f["anfang"][mass], f["zugang_umbuchung"][mass],
-                    f["abgang_tod"][mass], f["abgang_ablauf"][mass], f["ende"][mass],
-                ]
-                zellen = "".join(
-                    f"<td class='num'>{_zahl(w, dezimal) if mass == 'summe' else int(w)}</td>"
-                    for w in werte
-                )
-                zeilen_html.append(f"<tr><td>{z['jahr']}</td>{zellen}</tr>")
-            kopf = (
-                "<tr><th rowspan='2'>Jahr</th>"
-                "<th colspan='8'>beitragspflichtig</th>"
-                "<th colspan='5'>beitragsfrei</th></tr>"
-                "<tr><th>Anfang</th><th>+Zugang</th><th>+Erh.</th><th>−Storno</th>"
-                "<th>−Tod</th><th>−Ablauf</th><th>−&rarr;bfr</th><th>Ende</th>"
-                "<th>Anfang</th><th>+&larr;bpfl</th><th>−Tod</th><th>−Ablauf</th>"
-                "<th>Ende</th></tr>"
+        for spec in NACHWEISUNGEN:
+            if not spec["vorhanden"](df):
+                continue
+            konto = spec["konto"](df, historie, ledger, scheiben, bis)
+            if not konto:
+                continue
+            nachweisungen.append(
+                _nachweisung_html(konto, spec, stichtag, config)
             )
-            return f"<table><thead>{kopf}</thead><tbody>{''.join(zeilen_html)}</tbody></table>"
-
-        pruefsatz = (
-            "Die Identität Anfangsbestand + Zugang − Abgang = Endbestand gilt "
-            "in jedem Jahr, je Track, in Stück und Summe (Gate-geprüft)."
-            if alle_ok else
-            "WARNUNG: Bewegungs-Identität verletzt — Daten inkonsistent "
-            "(Gate B1 schlägt fehl)."
-        )
-        bewegung_html = f"""
-<h2>Bestandsbewegung (Nachweisungs-Struktur)</h2>
-<h3>Stück</h3>
-{_bewegungstabelle("stueck", 0)}
-<h3>Versicherungssumme</h3>
-{_bewegungstabelle("summe", 0)}
-<p>Struktur nach der BaFin-Nachweisung zur Bestandsbewegung: Zugang aus
-Versicherungsbeginnen (die POL-Basiszeile ist der Zugangs-GeVo) und
-dynamischen Erhöhungen (nur Summe); Abgang mit den abgehenden
-Versicherungssummen (inklusive Erhöhungsscheiben), nicht den
-Auszahlungsbeträgen; Beitragsfreistellung als Umbuchung (Abgang
-beitragspflichtig mit der Gesamt-VS, Zugang beitragsfrei mit der
-beitragsfreien Summe). Ausgewiesen sind nur Jahre, die der
-Fortschreibungs-Horizont vollständig abdeckt. {pruefsatz}</p>"""
-
-    # ------------------------------------------------------------------ #
-    # Berufsunfaehigkeit: eigene Nachweisung (Bezugsgroesse Jahresrente)
-    # ------------------------------------------------------------------ #
-    bu_html = ""
-    ist_bu = "produkt" in df.columns and (df["produkt"] == "bu").any()
-    if ist_bu and historie is not None and bis is not None:
-        bu_konto = bu_bewegungskonto(df, historie, ledger, bis=bis)
-        bu_relevant = [
-            z for z in bu_konto
-            if z["anwaerter"]["anfang"]["stueck"] or z["anwaerter"]["ende"]["stueck"]
-            or z["rentner"]["anfang"]["stueck"] or z["rentner"]["ende"]["stueck"]
-        ]
-        bu_ok = all(
-            ok for z in bu_konto for oks in z["identitaet"].values() for ok in oks.values()
-        )
-
-        #: Je Zustand eine eigene Tabelle mit genau seinen Positionen —
-        #: eine gemeinsame Tabelle beider Zustände hätte 13 Spalten und
-        #: wäre nicht mehr lesbar.
-        BU_POSITIONEN = {
-            "anwaerter": (
-                ("anfang", "Anfang"),
-                ("zugang_neuzugang", "+ Zugang"),
-                ("zugang_reaktivierung", "+ Reaktivierung"),
-                ("abgang_tod", "− Tod"),
-                ("abgang_ablauf", "− Ablauf"),
-                ("umbuchung_leistungsbezug", "− in Leistungsbezug"),
-                ("ende", "Ende"),
-            ),
-            "rentner": (
-                ("anfang", "Anfang"),
-                ("zugang_invalidisierung", "+ Invalidisierung"),
-                ("abgang_reaktivierung", "− Reaktivierung"),
-                ("abgang_tod", "− Tod"),
-                ("abgang_ablauf", "− Ablauf"),
-                ("ende", "Ende"),
-            ),
-        }
-
-        def _bu_tabelle(track: str, mass: str) -> str:
-            positionen = BU_POSITIONEN[track]
-            kopf = "<tr><th>Jahr</th>" + "".join(
-                f"<th>{titel}</th>" for _, titel in positionen
-            ) + "</tr>"
-            zeilen = []
-            for z in bu_relevant:
-                zellen = "".join(
-                    f"<td class='num'>"
-                    f"{_zahl(z[track][pos][mass]) if mass == 'summe' else int(z[track][pos][mass])}"
-                    "</td>"
-                    for pos, _ in positionen
-                )
-                zeilen.append(f"<tr><td>{z['jahr']}</td>{zellen}</tr>")
-            return f"<table><thead>{kopf}</thead><tbody>{''.join(zeilen)}</tbody></table>"
-        bu_kennzahlen = ""
-        if config is not None:
-            aktiv = [r for r in reihe_ausw if r["bu_vertraege"] > 0]
-            bu_zeilen = "".join(
-                f"<tr><td>{r['stichtag']}</td><td class='num'>{r['bu_vertraege']}</td>"
-                f"<td class='num'>{r['bu_leistungsbezug']}</td>"
-                f"<td class='num'>{_zahl(r['bu_jahresrente'])}</td>"
-                f"<td class='num'>{_zahl(r['bu_jahresrente_laufend'])}</td>"
-                f"<td class='num'>{_zahl(r['deckungskapital'])}</td>"
-                f"<td class='num'>{_zahl(r['deckungskapital_bu'])}</td></tr>"
-                for r in aktiv
-            )
-            # Aggregierte Groessen bleiben in einer Grafik (Summen sind
-            # vergleichbar); je Zustand getrennt nur dort, wo die
-            # Groessenordnungen auseinanderfallen.
-            bu_kennzahlen = f"""
-<h3>Aktuarielle Kennzahlen je Stichtag</h3>
-<div class="charts">{_chart_bu_summe(aktiv, "bu_jahresrente",
-    "versicherte Jahresrente (Mio.)", _BU_FARBEN["anwaerter"])}</div>
-<div class="charts">{_chart_bu_summe(aktiv, "bu_jahresrente_laufend",
-    "laufende Jahresrente (Mio.)", _BU_FARBEN["rentner"])}</div>
-<div class="charts">{_chart_bu_summe(aktiv, "deckungskapital",
-    "Deckungskapital gesamt (Mio.)", "#2ca02c")}</div>
-<div class="charts">{_chart_bu_summe(aktiv, "deckungskapital_anwaerter",
-    "Deckungskapital Anwärter (Mio.)", _BU_FARBEN["anwaerter"])}</div>
-<div class="charts">{_chart_bu_summe(aktiv, "deckungskapital_bu",
-    "Deckungskapital Leistungsbezug (Mio.)", _BU_FARBEN["rentner"])}</div>
-<table><thead><tr><th>Stichtag</th><th>BU-Verträge</th>
-<th>davon im Leistungsbezug</th><th>Σ versicherte Jahresrente</th>
-<th>Σ laufende Jahresrente</th><th>Σ Deckungskapital</th>
-<th>davon Leistungsbezug</th></tr></thead><tbody>{bu_zeilen}</tbody></table>"""
-        bu_generationen = [
-            g for g in (config.generationen if config is not None else ())
-            if g.produkt == "bu"
-        ]
-        if bu_generationen:
-            g = bu_generationen[0]
-            bu_grundlagen = (
-                f"Invalidisierung {g.tafel_i}, Aktivensterblichkeit "
-                f"{g.tafel_aktiv}, Reaktivierung {g.tafel_ri}, "
-                f"Invalidensterblichkeit {g.tafel_ti}; Rechnungszins "
-                f"{g.zins:.2%}".replace(".", ",")
-            )
-        else:
-            bu_grundlagen = "siehe Tarifgeneration des Bestands"
-        def _annahme_text(name: str, titel: str) -> str:
-            annahme = getattr(config.annahmen, name) if config is not None else None
-            if annahme is None or (annahme.a == 0.0 and annahme.b == 1.0):
-                return f"{titel} unverändert"
-            if annahme.b == 0.0:
-                return f"{titel} {annahme.a:.1%}".replace(".", ",")
-            return f"{titel} × {annahme.b:.2f}".replace(".", ",")
-
-        bu_annahmen = ", ".join(
-            _annahme_text(n, titel) for n, titel in (
-                ("invalidisierung", "Invalidisierung"),
-                ("reaktivierung", "Reaktivierung"),
-                ("aktivensterblichkeit", "Aktivensterblichkeit"),
-                ("invalidensterblichkeit", "Invalidensterblichkeit"),
-            )
-        )
-        bu_pruefsatz = (
-            "Die Identität Anfangsbestand + Zugang − Abgang = Endbestand gilt "
-            "in jedem Jahr, je Track, in Stück und Jahresrente (Gate-geprüft)."
-            if bu_ok else
-            "WARNUNG: Bewegungs-Identität verletzt — Daten inkonsistent."
-        )
-        bu_html = f"""
-<h2>Berufsunfähigkeit: Bestand und Bewegung</h2>
-<p>Die BU-Nachweisung wird getrennt von der Kapitalversicherung geführt:
-Bezugsgröße ist die versicherte <em>Jahresrente</em>, nicht die
-Versicherungssumme — beide sind nicht addierbar. Getrennt werden
-<em>Anwärter</em> (Zustand POL) und <em>Leistungsbezieher</em> (Zustand BU);
-die Invalidisierung ist eine Umbuchung zwischen beiden Tracks, die
-Reaktivierung die Rückbuchung. Bestandszahlen und Bewegung werden je
-Zustand ausgewiesen — die beiden Bestände unterscheiden sich um
-Größenordnungen, eine gemeinsame Darstellung wäre nicht ablesbar.
-{bu_pruefsatz}</p>
-
-<h3>Anwärter</h3>
-<div class="charts">{_chart_bu_zustand(bu_relevant, "anwaerter", "Anwärter (Jahresende)") if bu_relevant else ""}</div>
-<p>Bewegung in Stück:</p>
-{_bu_tabelle("anwaerter", "stueck")}
-<p>Bewegung in versicherter Jahresrente:</p>
-{_bu_tabelle("anwaerter", "summe")}
-
-<h3>Leistungsbezieher</h3>
-<div class="charts">{_chart_bu_zustand(bu_relevant, "rentner", "Leistungsbezieher (Jahresende)") if bu_relevant else ""}</div>
-<p>Bewegung in Stück:</p>
-{_bu_tabelle("rentner", "stueck")}
-<p>Bewegung in laufender Jahresrente:</p>
-{_bu_tabelle("rentner", "summe")}
-{bu_kennzahlen}
-<p>Die Übergänge der Fortschreibung leiten sich aus denselben vier
-Ausscheideordnungen ab wie die Bewertung, werden aber über die
-<em>Erfahrungsannahmen</em> geführt: {bu_annahmen}. Die Bewertung selbst
-bleibt unverändert auf den Rechnungsgrundlagen — im Anwärterstand die
-Aktivenreserve, im Leistungsbezug die Invalidenreserve mit der Dauer seit
-Rentenbeginn.</p>
-<p><strong>Rechnungsgrundlagen:</strong> {bu_grundlagen}.</p>"""
+    bewegung_html = "\n".join(nachweisungen)
 
     auswertung_html = ""
     if config is not None:
@@ -726,6 +824,9 @@ h1, h2 {{ border-bottom: 1px solid #ddd; padding-bottom: .3rem; }}
 table {{ border-collapse: collapse; width: 100%; font-size: .78rem; table-layout: auto; }}
 /* Breite Nachweisungs-Tabellen bleiben lesbar: eigener Scroll-Bereich */
 .breit {{ overflow-x: auto; }}
+/* Trennung Historie / Prognose am Stichtag */
+tr.grenze td {{ background: #eee; font-weight: 600; text-align: center;
+  border-top: 2px solid #333; border-bottom: 2px solid #333; }}
 th, td {{ border: 1px solid #ddd; padding: .3rem .5rem; text-align: left; }}
 td.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
 thead {{ background: #f5f5f5; }}
@@ -740,6 +841,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 <li>Verträge gesamt: {len(df)}</li>
 <li>Tarifgenerationen: {", ".join(generationen)}</li>
 <li>Vertragszeitraum: {zeitraum}</li>
+{stichtag_zeile}
 <li>Stichtage: {len(stichtage)} ({stichtage[0].isoformat()} bis {stichtage[-1].isoformat()})</li>
 {fortschreibung_zeile}
 {quelle}
@@ -749,7 +851,6 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 <div class="charts">{svg_vertraege}{svg_summe}</div>
 {ereignis_html}
 {bewegung_html}
-{bu_html}
 {auswertung_html}
 
 <h2>Bestandsstruktur am {struktur_stichtag.isoformat()} (Höchststand: {hoechststand["vertraege"]} Verträge)</h2>

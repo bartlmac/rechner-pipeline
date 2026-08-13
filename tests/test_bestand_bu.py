@@ -612,8 +612,10 @@ def test_reiner_bu_bestand_laeuft_durch_gate_und_bericht(config, portfolio, tmp_
         portfolio, stichtage=[dt.date(2015, 1, 1), dt.date(2030, 1, 1)],
         historie=erg.historie, ledger=erg.ledger, config=config, bis=bis,
     )
-    assert "Berufsunfähigkeit: Bestand und Bewegung" in html
-    assert "Leistungsbezieher" in html
+    assert "Bestandsbewegung: Berufsunfähigkeit" in html
+    assert "Anwärter" in html and "Leistungsbezieher" in html
+    # Reiner BU-Bestand: keine KLV-Nachweisung im Bericht.
+    assert "Bestandsbewegung: Kapitalversicherung" not in html
     assert "WARNUNG" not in html
     # Die Rechnungsgrundlagen stehen im Bericht (Stichtags-Angabe aus der
     # Config, keine Entwicklungsgeschichte):

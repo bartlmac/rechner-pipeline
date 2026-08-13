@@ -11,13 +11,14 @@ Usage::
         --portfolio bestand.parquet --out bericht.html \\
         [--historie historie.parquet --ledger ledger.parquet] \\
         [--scheiben scheiben.parquet] [--config bestand_klv.toml] \\
-        [--bis 2035-01-01] \\
+        [--bis 2035-01-01] [--stichtag 2026-01-01] \\
         [--stichtage 2005-01-01,2010-01-01] [--titel "KLV-Bestand"]
 
 ``--historie``/``--ledger`` (beide zusammen, ein ``fortschreiben``-Lauf)
 schalten die Ereignis-/Abgangs-Sichten frei; ``--config`` zusaetzlich die
 aktuariellen Kennzahlen, ``--bis`` (der Fortschreibungs-Horizont) die
-Bestandsbewegung in Nachweisungs-Struktur. ``--scheiben`` ist Pflicht,
+Bestandsbewegung in Nachweisungs-Struktur, ``--stichtag`` deren Teilung in
+Historie und Prognose. ``--scheiben`` ist Pflicht,
 sobald der Ledger dynamische Erhoehungen enthaelt.
 """
 
@@ -85,6 +86,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         ),
     )
     parser.add_argument(
+        "--stichtag",
+        default=None,
+        help=(
+            "Referenzstichtag (ISO-Datum): teilt die Nachweisungen in "
+            "Historie (bis zum Stichtag) und Prognose (danach)."
+        ),
+    )
+    parser.add_argument(
         "--stichtage",
         default=None,
         help="Kommagetrennte ISO-Daten; Default: Jahresraster über die Vertragslaufzeiten.",
@@ -115,6 +124,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             file=sys.stderr,
         )
         return 2
+    stichtag = None
+    if ns.stichtag:
+        try:
+            stichtag = _dt.date.fromisoformat(ns.stichtag)
+        except ValueError as exc:
+            print(f"bestand_report: Ungueltiges --stichtag-Datum: {exc}", file=sys.stderr)
+            return 2
     bis = None
     if ns.bis:
         if not ns.historie:
@@ -178,6 +194,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             config=config,
             scheiben=scheiben,
             bis=bis,
+            stichtag=stichtag,
         )
     except ValueError as exc:
         print(f"bestand_report: {exc}", file=sys.stderr)

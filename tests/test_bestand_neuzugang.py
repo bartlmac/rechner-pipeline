@@ -282,7 +282,7 @@ def test_report_lehnt_ledger_mit_fremden_policen_ab(config):
         bis=dt.date(2014, 1, 1),
     )
     assert "Neuzugang (ZUG)" in html
-    assert "Bestandsbewegung (Nachweisungs-Struktur)" in html
+    assert "Bestandsbewegung: Kapitalversicherung" in html
     assert "WARNUNG" not in html
 
 

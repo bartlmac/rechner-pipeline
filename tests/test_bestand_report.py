@@ -164,9 +164,12 @@ def test_render_mit_historie_zeigt_abgangssichten(portfolio, fortschreibung):
     assert "Storno (STO)" in mit
     assert "abgangsbereinigt" in mit
     assert "Fortschreibung und Abgänge" not in ohne  # Default unverändert
-    assert mit.count("<svg") == ohne.count("<svg") + 2
+    # Zusaetzliche Grafiken: Status- und Ereignisverlauf plus je eine je
+    # Traeger-Bestand der Nachweisung (beitragspflichtig, beitragsfrei).
+    assert mit.count("<svg") == ohne.count("<svg") + 4
     # Bestandsbewegung nur mit Horizont; Identitaet auf gesunden Daten ok:
-    assert "Bestandsbewegung (Nachweisungs-Struktur)" in mit
+    assert "Bestandsbewegung: Kapitalversicherung" in mit
+    assert "Beitragspflichtiger Bestand" in mit and "Beitragsfreier Bestand" in mit
     assert "WARNUNG" not in mit
     ohne_bis = report.render_html(
         portfolio, stichtage=stichtage, historie=historie, ledger=ledger,
@@ -335,3 +338,84 @@ def test_svg_ids_sind_inhaltsbasiert_und_stabil():
     # Anderer Inhalt -> anderes Praefix (keine Kollision zwischen Grafiken):
     anders = report._stabile_ids('<path clip-path="url(#pd425d0d61f)"/>')
     assert anders != stabil
+
+
+# --------------------------------------------------------------------------- #
+# Vereinheitlichte Nachweisung: Historie und Prognose
+# --------------------------------------------------------------------------- #
+
+
+def test_stichtag_teilt_die_nachweisung_in_historie_und_prognose(
+    portfolio, config, fortschreibung
+):
+    """Ein Bericht, zwei Perioden: der Referenzstichtag trennt den
+    beobachteten Bestandsaufbau von der Projektion."""
+    historie, ledger, scheiben, *_ = fortschreibung
+    stichtag = dt.date(2026, 1, 1)
+    kw = dict(historie=historie, ledger=ledger, scheiben=scheiben,
+              config=config, bis=dt.date(2035, 1, 1),
+              stichtage=[dt.date(2020, 1, 1), dt.date(2030, 1, 1)])
+
+    mit = report.render_html(portfolio, stichtag=stichtag, **kw)
+    ohne = report.render_html(portfolio, **kw)
+
+    assert f"Stichtag {stichtag.isoformat()} — ab hier Prognose" in mit
+    assert "Referenzstichtag" in mit
+    assert "ab hier Prognose" not in ohne
+    # Genau EINE Trennstelle je Bewegungstabelle (zwei Traeger-Bestaende
+    # mal Stueck und Summe), nicht je Zeile:
+    assert mit.count("ab hier Prognose") == 4
+    # Determinismus bleibt:
+    assert mit == report.render_html(portfolio, stichtag=stichtag, **kw)
+
+
+def test_beide_produkte_teilen_dieselbe_nachweisungs_struktur(config):
+    """KLV und BU werden gleich aufgebaut ausgewiesen — je Traeger-Bestand
+    eine Grafik und zwei Bewegungstabellen (Stueck, Bezugsgroesse)."""
+    import copy
+
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+
+    bu = load_config(REPO_ROOT / "examples" / "bestand_bu.toml")
+    gemischt = copy.deepcopy(config)
+    gemischt.generationen = [config.generationen[-1], bu.generationen[0]]
+    gemischt.annahmen = bu.annahmen
+    df = generate(gemischt)
+    bis = dt.date(2040, 1, 1)
+    erg = fortschreiben(df, gemischt, bis)
+    html = report.render_html(
+        df, historie=erg.historie, ledger=erg.ledger, scheiben=erg.scheiben,
+        config=gemischt, bis=bis, stichtag=dt.date(2026, 1, 1),
+        stichtage=[dt.date(2026, 1, 1)],
+    )
+    # Beide Nachweisungen, jede mit ihren zwei Traeger-Bestaenden:
+    assert "Bestandsbewegung: Kapitalversicherung" in html
+    assert "Bestandsbewegung: Berufsunfähigkeit" in html
+    for ueberschrift in ("Beitragspflichtiger Bestand", "Beitragsfreier Bestand",
+                         "Anwärter", "Leistungsbezieher"):
+        assert f"<h3>{ueberschrift}</h3>" in html
+    # Bezugsgroessen bleiben getrennt benannt:
+    assert "Bewegung in Versicherungssumme:" in html
+    assert "Bewegung in versicherte Jahresrente:" in html
+    # Rechnungsgrundlagen und Erfahrungsannahmen stehen je Nachweisung:
+    assert html.count("<strong>Rechnungsgrundlagen</strong>") == 2
+    assert html.count("<strong>Erfahrungsannahmen</strong>") == 2
+
+
+def test_cli_stichtag(portfolio, fortschreibung, tmp_path):
+    historie, ledger, scheiben, *_ = fortschreibung
+    parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
+    h = write_portfolio(historie, tmp_path / "h.parquet")
+    l = write_portfolio(ledger, tmp_path / "l.parquet")
+    s = write_portfolio(scheiben, tmp_path / "s.parquet")
+    out = tmp_path / "b.html"
+    assert cli.main([
+        "--portfolio", str(parquet), "--historie", str(h), "--ledger", str(l),
+        "--scheiben", str(s), "--bis", "2035-01-01", "--stichtag", "2026-01-01",
+        "--out", str(out),
+    ]) == 0
+    assert "ab hier Prognose" in out.read_text(encoding="utf-8")
+    assert cli.main([
+        "--portfolio", str(parquet), "--stichtag", "kein-datum",
+    ]) == 2
