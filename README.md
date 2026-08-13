@@ -265,6 +265,16 @@ Prinzipien:
   Reserve. Der Bestandsbericht (`toolbox/bestand_report`, optional mit
   `--historie`/`--ledger`/`--scheiben`/`--config`/`--bis`) zeigt
   Abgangs-Sichten und Reserveverläufe.
+- **Zwei Produkte im Bestand:** Verträge tragen einen Produkt-Diskriminator
+  (`produkt` = `klv` | `bu`) und die produktführende Leistungsspalte
+  (Versicherungssumme bzw. versicherte Jahresrente). Für **BU** simuliert
+  die Ereignis-Engine genau den Zustandsprozess, den der Kern bewertet —
+  Invalidisierung, Reaktivierung, Tod und Ablauf mit den
+  Übergangswahrscheinlichkeiten der vier Ausscheideordnungen, nicht mit
+  Konfigurationsraten. Die Statushistorie wechselt dabei strikt
+  alternierend zwischen Anwärterstand und Leistungsbezug; Reserven kommen
+  aus dem Kern (Aktiven- bzw. Invalidenreserve mit der Dauer seit
+  Rentenbeginn). Beispiel-Config: `examples/bestand_bu.toml`.
 - **Bestandsbewegung (Nachweisungs-Struktur):**
   `kennzahlen.bewegungskonto` führt die Bewegung je Kalenderjahr in der
   Struktur der BaFin-Nachweisungen zur Bestandsbewegung — getrennt nach
@@ -272,9 +282,11 @@ Prinzipien:
   Abgänge werden zu Versicherungssummen (inklusive Erhöhungsscheiben)
   geführt, die Beitragsfreistellung als Umbuchung zwischen den Tracks;
   dadurch gilt die Identität Anfangsbestand + Zugang - Abgang =
-  Endbestand exakt. Der Bericht rendert die Tabellen mit `--bis` (dem
-  Fortschreibungs-Horizont — nur vollständig simulierte Jahre sind
-  ausweisbar), das Gate B1 prüft die Identitäten hart.
+  Endbestand exakt. BU wird als **eigene Nachweisung** geführt (Anwärter
+  und Leistungsbezieher, Bezugsgröße Jahresrente) — Versicherungssummen und
+  Jahresrenten sind nicht addierbar. Der Bericht rendert die Tabellen mit
+  `--bis` (dem Fortschreibungs-Horizont — nur vollständig simulierte Jahre
+  sind ausweisbar), das Gate B1 prüft beide Identitäten hart.
 - **Ein-Befehl-Workflow:** `toolbox/bestand_fortschreibung` fährt den
   ganzen GeVo-Strom (erzeugen bis Referenzstichtag, fortschreiben bis
   Horizont) und schreibt alle Tabellen als Parquet; das Gate
