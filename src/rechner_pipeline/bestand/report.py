@@ -53,7 +53,7 @@ from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
 )
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe  # noqa: E402
 
-REPORT_VERSION = "1.4.0"
+REPORT_VERSION = "1.5.0"
 
 _RC = {
     "svg.hashsalt": "rechner-pipeline-bestand",
@@ -239,38 +239,44 @@ def _chart_deckungskapital(reihe: List[Dict[str, Any]]) -> str:
     return _svg(fig)
 
 
-def _chart_bu_bestand(konto: List[Dict[str, Any]]) -> str:
-    """BU-Bestand je Jahresende, getrennt nach Anwaertern und Rentnern."""
+#: Zustands-Farben der BU-Sichten.
+_BU_FARBEN = {"anwaerter": "#1f77b4", "rentner": "#d62728"}
+
+
+def _chart_bu_zustand(
+    konto: List[Dict[str, Any]], track: str, ylabel: str
+) -> str:
+    """Bestand EINES BU-Zustands je Jahresende.
+
+    Bewusst getrennte Grafiken je Zustand: Anwärter und Leistungsbezieher
+    unterscheiden sich um Größenordnungen, in einer gemeinsamen Skala wäre
+    der Leistungsbestand nicht mehr ablesbar.
+    """
     x = list(range(len(konto)))
     labels = [str(z["jahr"]) for z in konto]
-    fig, ax = plt.subplots()
-    anwaerter = [z["anwaerter"]["ende"]["stueck"] for z in konto]
-    rentner = [z["rentner"]["ende"]["stueck"] for z in konto]
-    ax.bar(x, anwaerter, label="Anwärter", color="#1f77b4", width=0.8)
-    ax.bar(x, rentner, bottom=anwaerter, label="Leistungsbezieher",
-           color="#d62728", width=0.8)
+    fig, ax = plt.subplots(figsize=(8.0, 2.6))
+    ax.bar(x, [z[track]["ende"]["stueck"] for z in konto],
+           color=_BU_FARBEN[track], width=0.8)
     schritt = max(1, len(x) // 12)
     ax.set_xticks(x[::schritt], labels[::schritt])
-    ax.set_ylabel("BU-Verträge (Jahresende)")
+    ax.set_ylabel(ylabel)
     ax.set_xlabel("Kalenderjahr")
-    ax.legend(loc="upper right", fontsize=8)
     return _svg(fig)
 
 
-def _chart_bu_renten(reihe: List[Dict[str, Any]]) -> str:
-    """Versicherte und laufende Jahresrente je Stichtag."""
+def _chart_bu_summe(
+    reihe: List[Dict[str, Any]], schluessel: str, ylabel: str, farbe: str
+) -> str:
+    """Eine aggregierte BU-Größe je Stichtag (Summen sind vergleichbar)."""
     x = list(range(len(reihe)))
     labels = [r["stichtag"][:4] for r in reihe]
-    fig, ax = plt.subplots()
-    ax.plot(x, [r["bu_jahresrente"] / 1e6 for r in reihe], marker="o",
-            markersize=3, color="#1f77b4", label="versicherte Jahresrente")
-    ax.plot(x, [r["bu_jahresrente_laufend"] / 1e6 for r in reihe], marker="o",
-            markersize=3, color="#d62728", label="davon laufend (Leistungsbezug)")
+    fig, ax = plt.subplots(figsize=(8.0, 2.6))
+    ax.plot(x, [r[schluessel] / 1e6 for r in reihe], marker="o",
+            markersize=3, color=farbe)
     schritt = max(1, len(x) // 12)
     ax.set_xticks(x[::schritt], labels[::schritt])
-    ax.set_ylabel("Jahresrente (Mio.)")
+    ax.set_ylabel(ylabel)
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
-    ax.legend(fontsize=8)
     return _svg(fig)
 
 
@@ -543,38 +549,47 @@ Fortschreibungs-Horizont vollständig abdeckt. {pruefsatz}</p>"""
             ok for z in bu_konto for oks in z["identitaet"].values() for ok in oks.values()
         )
 
-        def _bu_tabelle(mass: str) -> str:
-            kopf = (
-                "<tr><th rowspan='2'>Jahr</th>"
-                "<th colspan='6'>Anwärter</th>"
-                "<th colspan='5'>Leistungsbezieher</th></tr>"
-                "<tr><th>Anfang</th><th>+Zugang</th><th>+Reakt.</th><th>−Tod</th>"
-                "<th>−Ablauf</th><th>−&rarr;Bezug</th>"
-                "<th>Anfang</th><th>+Inval.</th><th>−Reakt.</th><th>−Tod/Abl.</th>"
-                "<th>Ende</th></tr>"
-            )
+        #: Je Zustand eine eigene Tabelle mit genau seinen Positionen —
+        #: eine gemeinsame Tabelle beider Zustände hätte 13 Spalten und
+        #: wäre nicht mehr lesbar.
+        BU_POSITIONEN = {
+            "anwaerter": (
+                ("anfang", "Anfang"),
+                ("zugang_neuzugang", "+ Zugang"),
+                ("zugang_reaktivierung", "+ Reaktivierung"),
+                ("abgang_tod", "− Tod"),
+                ("abgang_ablauf", "− Ablauf"),
+                ("umbuchung_leistungsbezug", "− in Leistungsbezug"),
+                ("ende", "Ende"),
+            ),
+            "rentner": (
+                ("anfang", "Anfang"),
+                ("zugang_invalidisierung", "+ Invalidisierung"),
+                ("abgang_reaktivierung", "− Reaktivierung"),
+                ("abgang_tod", "− Tod"),
+                ("abgang_ablauf", "− Ablauf"),
+                ("ende", "Ende"),
+            ),
+        }
+
+        def _bu_tabelle(track: str, mass: str) -> str:
+            positionen = BU_POSITIONEN[track]
+            kopf = "<tr><th>Jahr</th>" + "".join(
+                f"<th>{titel}</th>" for _, titel in positionen
+            ) + "</tr>"
             zeilen = []
             for z in bu_relevant:
-                a, r = z["anwaerter"], z["rentner"]
-                werte = [
-                    a["anfang"][mass], a["zugang_neuzugang"][mass],
-                    a["zugang_reaktivierung"][mass], a["abgang_tod"][mass],
-                    a["abgang_ablauf"][mass], a["umbuchung_leistungsbezug"][mass],
-                    r["anfang"][mass], r["zugang_invalidisierung"][mass],
-                    r["abgang_reaktivierung"][mass],
-                    r["abgang_tod"][mass] + r["abgang_ablauf"][mass],
-                    r["ende"][mass],
-                ]
                 zellen = "".join(
-                    f"<td class='num'>{_zahl(w) if mass == 'summe' else int(w)}</td>"
-                    for w in werte
+                    f"<td class='num'>"
+                    f"{_zahl(z[track][pos][mass]) if mass == 'summe' else int(z[track][pos][mass])}"
+                    "</td>"
+                    for pos, _ in positionen
                 )
                 zeilen.append(f"<tr><td>{z['jahr']}</td>{zellen}</tr>")
             return f"<table><thead>{kopf}</thead><tbody>{''.join(zeilen)}</tbody></table>"
-
-        bu_charts = _chart_bu_bestand(bu_relevant) if bu_relevant else ""
         bu_kennzahlen = ""
         if config is not None:
+            aktiv = [r for r in reihe_ausw if r["bu_vertraege"] > 0]
             bu_zeilen = "".join(
                 f"<tr><td>{r['stichtag']}</td><td class='num'>{r['bu_vertraege']}</td>"
                 f"<td class='num'>{r['bu_leistungsbezug']}</td>"
@@ -582,17 +597,23 @@ Fortschreibungs-Horizont vollständig abdeckt. {pruefsatz}</p>"""
                 f"<td class='num'>{_zahl(r['bu_jahresrente_laufend'])}</td>"
                 f"<td class='num'>{_zahl(r['deckungskapital'])}</td>"
                 f"<td class='num'>{_zahl(r['deckungskapital_bu'])}</td></tr>"
-                for r in reihe_ausw
-                if r["bu_vertraege"] > 0
+                for r in aktiv
             )
-            bu_kennzahlen = (
-                f"<div class=\"charts\">{_chart_bu_renten([r for r in reihe_ausw if r['bu_vertraege'] > 0])}</div>"
-                "<table><thead><tr><th>Stichtag</th><th>BU-Verträge</th>"
-                "<th>davon im Leistungsbezug</th><th>Σ versicherte Jahresrente</th>"
-                "<th>Σ laufende Jahresrente</th><th>Σ Deckungskapital</th>"
-                "<th>davon Leistungsbezug</th></tr></thead><tbody>"
-                + bu_zeilen + "</tbody></table>"
-            )
+            # Aggregierte Groessen bleiben in einer Grafik (Summen sind
+            # vergleichbar); je Zustand getrennt nur dort, wo die
+            # Groessenordnungen auseinanderfallen.
+            bu_kennzahlen = f"""
+<h3>Aktuarielle Kennzahlen je Stichtag</h3>
+<div class="charts">{_chart_bu_summe(aktiv, "bu_jahresrente",
+    "versicherte Jahresrente (Mio.)", _BU_FARBEN["anwaerter"])}</div>
+<div class="charts">{_chart_bu_summe(aktiv, "bu_jahresrente_laufend",
+    "laufende Jahresrente (Mio.)", _BU_FARBEN["rentner"])}</div>
+<div class="charts">{_chart_bu_summe(aktiv, "deckungskapital",
+    "Deckungskapital gesamt (Mio.)", "#2ca02c")}</div>
+<table><thead><tr><th>Stichtag</th><th>BU-Verträge</th>
+<th>davon im Leistungsbezug</th><th>Σ versicherte Jahresrente</th>
+<th>Σ laufende Jahresrente</th><th>Σ Deckungskapital</th>
+<th>davon Leistungsbezug</th></tr></thead><tbody>{bu_zeilen}</tbody></table>"""
         bu_pruefsatz = (
             "Die Identität Anfangsbestand + Zugang − Abgang = Endbestand gilt "
             "in jedem Jahr, je Track, in Stück und Jahresrente (Gate-geprüft)."
@@ -601,17 +622,29 @@ Fortschreibungs-Horizont vollständig abdeckt. {pruefsatz}</p>"""
         )
         bu_html = f"""
 <h2>Berufsunfähigkeit: Bestand und Bewegung</h2>
-<div class="charts">{bu_charts}</div>
 <p>Die BU-Nachweisung wird getrennt von der Kapitalversicherung geführt:
 Bezugsgröße ist die versicherte <em>Jahresrente</em>, nicht die
 Versicherungssumme — beide sind nicht addierbar. Getrennt werden
 <em>Anwärter</em> (Zustand POL) und <em>Leistungsbezieher</em> (Zustand BU);
 die Invalidisierung ist eine Umbuchung zwischen beiden Tracks, die
-Reaktivierung die Rückbuchung. {bu_pruefsatz}</p>
-<h3>Stück</h3>
-{_bu_tabelle("stueck")}
-<h3>Versicherte Jahresrente</h3>
-{_bu_tabelle("summe")}
+Reaktivierung die Rückbuchung. Bestandszahlen und Bewegung werden je
+Zustand ausgewiesen — die beiden Bestände unterscheiden sich um
+Größenordnungen, eine gemeinsame Darstellung wäre nicht ablesbar.
+{bu_pruefsatz}</p>
+
+<h3>Anwärter</h3>
+<div class="charts">{_chart_bu_zustand(bu_relevant, "anwaerter", "Anwärter (Jahresende)") if bu_relevant else ""}</div>
+<p>Bewegung in Stück:</p>
+{_bu_tabelle("anwaerter", "stueck")}
+<p>Bewegung in versicherter Jahresrente:</p>
+{_bu_tabelle("anwaerter", "summe")}
+
+<h3>Leistungsbezieher</h3>
+<div class="charts">{_chart_bu_zustand(bu_relevant, "rentner", "Leistungsbezieher (Jahresende)") if bu_relevant else ""}</div>
+<p>Bewegung in Stück:</p>
+{_bu_tabelle("rentner", "stueck")}
+<p>Bewegung in laufender Jahresrente:</p>
+{_bu_tabelle("rentner", "summe")}
 {bu_kennzahlen}
 <p>Die Übergänge der Fortschreibung kommen aus den Rechnungsgrundlagen des
 Produkts (Invalidisierung, Reaktivierung, Aktiven- und
@@ -659,7 +692,9 @@ definiert keine Rückkaufsregel für beitragsfreie Verträge).</p>"""
 <style>
 body {{ font-family: system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }}
 h1, h2 {{ border-bottom: 1px solid #ddd; padding-bottom: .3rem; }}
-table {{ border-collapse: collapse; width: 100%; font-size: .85rem; }}
+table {{ border-collapse: collapse; width: 100%; font-size: .78rem; table-layout: auto; }}
+/* Breite Nachweisungs-Tabellen bleiben lesbar: eigener Scroll-Bereich */
+.breit {{ overflow-x: auto; }}
 th, td {{ border: 1px solid #ddd; padding: .3rem .5rem; text-align: left; }}
 td.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
 thead {{ background: #f5f5f5; }}
