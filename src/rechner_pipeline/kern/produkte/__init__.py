@@ -9,7 +9,9 @@ Klasse mit dem Contract
 * Konstruktor ``Produkt(mp)``;
 * Methoden ``scalars() -> dict`` und ``verlaufswerte() -> list[dict]``.
 
-Stufe 1 kennt genau ein Produkt (KLV). Ein neues Produkt registriert sich
+Registrierte Produkte: KLV (2-Zustands-Fall, migriert aus dem
+Quell-Workbook) und BU (Beispielprodukt, reine Zustandsmodell-
+Konfiguration mit Select-Tafeln). Ein neues Produkt registriert sich
 hier — ``berechne(mp, produkt=...)`` findet es über die Kennung.
 """
 
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 from typing import Dict, Type
 
+from rechner_pipeline.kern.produkte.bu import BU
 from rechner_pipeline.kern.produkte.klv import KLV
 
 
@@ -24,7 +27,7 @@ class UnbekanntesProduktError(KeyError):
     """Die angeforderte Produkt-Kennung ist nicht registriert."""
 
 
-PRODUKTE: Dict[str, Type] = {KLV.kennung: KLV}
+PRODUKTE: Dict[str, Type] = {KLV.kennung: KLV, BU.kennung: BU}
 
 
 def hole(kennung: str) -> Type:

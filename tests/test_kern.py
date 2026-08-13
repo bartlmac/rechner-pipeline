@@ -68,13 +68,16 @@ def test_charakterisierungs_anker_bleiben_exakt(pfad):
     """Eingefrorene berechne()-Ergebnisse weiterer Modellpunkte (bit-exakt).
 
     Die Anker sind NICHT Excel-verifiziert (anders als kern_klv/); sie nageln
-    das Kern-Verhalten auf den sonst ungetesteten Zweigen numerisch fest.
-    Ein Diff hier ist eine Verhaltensänderung und braucht eine bewusste,
-    fachlich begründete Abnahme (siehe kern/__init__-Docstring).
+    das Kern-Verhalten auf den sonst ungetesteten Zweigen numerisch fest —
+    seit dem Backbone-Wechsel sind sie die Voll-Präzisions-Verankerung des
+    produktiven Pfads. Ein Diff hier ist eine Verhaltensänderung und braucht
+    eine bewusste, fachlich begründete Abnahme (kern/__init__-Docstring).
+    Anker anderer Produkte tragen ein ``produkt``-Feld (Registry-Dispatch).
     """
     data = json.loads(pfad.read_text(encoding="utf-8"))
-    mp = ModelPoint(**data["model_point"])
-    assert berechne(mp) == data["ergebnis"]
+    produkt = data.get("produkt", "klv")
+    mp = hole(produkt).model_point_cls(**data["model_point"])
+    assert berechne(mp, produkt=produkt) == data["ergebnis"]
 
 
 # --------------------------------------------------------------------------- #

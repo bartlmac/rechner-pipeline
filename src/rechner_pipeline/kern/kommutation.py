@@ -41,23 +41,56 @@ class TafelBereichError(ValueError):
     """
 
 
-def _load_tables() -> Dict[str, Dict[int, float]]:
-    """``tafeln.xml`` (Paket-Daten) nach ``{name: {alter: qx}}`` parsen."""
+def _load_tables():
+    """``tafeln.xml`` (Paket-Daten) parsen.
+
+    Rückgabe: (Alterstafeln ``{name: {alter: qx}}``, Select-Tafeln
+    ``{name: {(alter, dauer): wert}}``). Select-Tafeln (Einträge mit
+    ``dauer``-Attribut, Tabellen-Attribut ``select_max``) tragen
+    dauerabhängige Ausscheidewahrscheinlichkeiten — das
+    Select-Perioden-Prinzip der DAV-Tafeln (z. B. Reaktivierung/
+    Invalidensterblichkeit nach BU-Dauer).
+    """
     text = (resources.files("rechner_pipeline.kern") / "tafeln.xml").read_text(
         encoding="utf-8"
     )
     root = ET.fromstring(text)
     tables: Dict[str, Dict[int, float]] = {}
+    select_tables: Dict[str, Dict[Tuple[int, int], float]] = {}
     for table in root.findall("table"):
         name = table.get("name")
-        by_age: Dict[int, float] = {}
-        for entry in table.findall("entry"):
-            by_age[int(entry.get("age"))] = float(entry.get("qx"))
-        tables[name] = by_age
-    return tables
+        if table.get("select_max") is not None:
+            by_key: Dict[Tuple[int, int], float] = {}
+            for entry in table.findall("entry"):
+                by_key[(int(entry.get("age")), int(entry.get("dauer")))] = float(
+                    entry.get("qx")
+                )
+            select_tables[name] = by_key
+        else:
+            by_age: Dict[int, float] = {}
+            for entry in table.findall("entry"):
+                by_age[int(entry.get("age"))] = float(entry.get("qx"))
+            tables[name] = by_age
+    return tables, select_tables
 
 
-_TABLES = _load_tables()
+_TABLES, _SELECT_TABLES = _load_tables()
+
+
+def select_tafel(name: str) -> Dict[Tuple[int, int], float]:
+    """Select-Tafel ``{(alter, dauer): wert}`` — fail-fast wenn unbekannt."""
+    tafel = _SELECT_TABLES.get(name)
+    if tafel is None:
+        raise MissingMortalityTableError(
+            f"Select-Tafel {name!r} fehlt in tafeln.xml; es wird keine "
+            "Ausscheideordnung erfunden"
+        )
+    return tafel
+
+
+def select_max_dauer(name: str) -> int:
+    """Höchste tabulierte Dauer einer Select-Tafel (Select-Periode)."""
+    return max(dauer for _, dauer in select_tafel(name))
 
 
 def _tafel_key(sex: str, tafel: str) -> str:
