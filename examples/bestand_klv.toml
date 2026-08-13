@@ -12,7 +12,7 @@ beschreibung = "Synthetischer KLV-Bestand, zwei Generationen (Lehrbeispiel)"
 [[generation]]
 name = "KLV-1994"
 gueltig_von = 1994-07-01
-gueltig_bis = 2004-12-31
+gueltig_bis = 2007-12-31
 sample_size = 600
 max_endalter = 85
 zins = 0.04
@@ -80,7 +80,7 @@ rho = 0.65
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2008"
-gueltig_von = 2005-01-01
+gueltig_von = 2008-01-01
 gueltig_bis = 2015-12-31
 sample_size = 400
 max_endalter = 85
