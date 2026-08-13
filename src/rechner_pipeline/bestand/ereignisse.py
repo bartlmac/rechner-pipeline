@@ -72,6 +72,7 @@ from rechner_pipeline.models.bestand import (
     STAMM_NAMES,
     STAMM_SPALTEN,
     STATUS_HISTORIE_SPALTEN,
+    bu_model_point_kwargs,
     model_point_kwargs,
 )
 
@@ -82,6 +83,17 @@ from rechner_pipeline.models.bestand import (
 #: :func:`fortschreiben`; the generator issues >= 10_000_001) and gen_index
 #: stays small — a third stream family needs a NEW distinct constant.
 EREIGNIS_STREAM = 424242
+
+#: Betrags-Art der BU-GeVos: die von diesem Geschaeftsvorfall betroffene
+#: versicherte Jahresrente (Bezugsgroesse der Nachweisung) — bei
+#: Invalidisierung die beginnende, bei Reaktivierung/Tod/Ablauf aus dem
+#: Leistungsbezug die endende Rente. Das Beispielprodukt zahlt weder
+#: Todesfall- noch Erlebensfallleistung; solche GeVos tragen 0.
+BU_BETRAG_ART = "BU_Jahresrente"
+
+#: Sentinel fuer "Argument nicht gesetzt" (None ist ein gueltiger Wert:
+#: GeVos ohne Zustandswechsel).
+_KEIN_ARGUMENT = object()
 
 
 class EreignisError(ValueError):
@@ -179,6 +191,35 @@ class _Vertrag:
         )
 
 
+def _event(
+    police_id: int,
+    ereignis: str,
+    jahr: int,
+    datum: _dt.date,
+    art: str,
+    betrag: float,
+    status_code: Any = _KEIN_ARGUMENT,
+) -> Dict[str, Any]:
+    """Ein gebuchter GeVo.
+
+    ``ereignis`` ist der GeVo-Code des Ledgers, ``status_code`` der
+    resultierende Vertragszustand der Statushistorie. Bei den meisten
+    GeVos sind beide gleich; sie fallen auseinander, wo der GeVo einen
+    ANDEREN Zustand herstellt (Reaktivierung ``REA`` -> ``POL``,
+    Invalidisierung ``INV`` -> ``BU``) oder gar keinen Zustandswechsel
+    bewirkt (``ERH``/``ZUG`` -> ``None``).
+    """
+    return {
+        "police_id": police_id,
+        "ereignis": ereignis,
+        "status_code": ereignis if status_code is _KEIN_ARGUMENT else status_code,
+        "vertragsjahr": jahr,
+        "status_date": pd.Timestamp(datum),
+        "betrag_art": art,
+        "betrag": float(betrag),
+    }
+
+
 def _simuliere_vertrag(
     row: Mapping[str, Any],
     generation_fields: Mapping[str, Any],
@@ -201,16 +242,11 @@ def _simuliere_vertrag(
     events: List[Dict[str, Any]] = []
     scheiben: List[Dict[str, Any]] = []
 
-    def buche(code: str, jahr: int, art: str, betrag: float) -> None:
+    def buche(
+        code: str, jahr: int, art: str, betrag: float, status: Any = _KEIN_ARGUMENT
+    ) -> None:
         events.append(
-            {
-                "police_id": police_id,
-                "status_code": code,
-                "vertragsjahr": jahr,
-                "status_date": pd.Timestamp(_add_years(start, jahr)),
-                "betrag_art": art,
-                "betrag": float(betrag),
-            }
+            _event(police_id, code, jahr, _add_years(start, jahr), art, betrag, status)
         )
 
     beitragsfrei_ab: int | None = None
@@ -268,7 +304,7 @@ def _simuliere_vertrag(
                         "sum_insured": mp_s.sum_insured,
                     }
                 )
-                buche("ERH", j + 1, "VS_erhoehung", betrag)
+                buche("ERH", j + 1, "VS_erhoehung", betrag, status=None)
 
     if not horizont_erreicht:
         # Ablauf: alle n Jahre ueberlebt und insurance_end <= bis.
@@ -277,6 +313,102 @@ def _simuliere_vertrag(
         else:
             buche("ABL", n, "Ablaufleistung", pex_summe)
     return events, scheiben
+
+
+def _simuliere_bu_vertrag(
+    row: Mapping[str, Any],
+    generation_fields: Mapping[str, Any],
+    seed: int,
+    bis: _dt.date,
+) -> List[Dict[str, Any]]:
+    """Simuliere einen BU-Vertrag; liefert die gebuchten GeVos.
+
+    Der Zustandsprozess ist GENAU der, den der Kern bewertet: die
+    Übergangswahrscheinlichkeiten kommen aus dem Produkt
+    (:meth:`rechner_pipeline.kern.produkte.bu.BU._uebergang`, also aus den
+    vier Ausscheideordnungen), nicht aus Config-Raten. Realisation und
+    Reservierung fahren damit auf derselben Fachlichkeit.
+
+    Gitter und Konventionen wie beim KLV-Pfad: Vertragsjahr ``j`` läuft von
+    Jahrestag ``j`` bis ``j+1``, Ereignisse werden am Jahrestag ``j+1``
+    gebucht, Alter im Jahr ``j`` ist ``x + j`` (identisch zur
+    Jahresindizierung des Zustandsmodells). Die BU-Dauer (volle Jahre im
+    Leistungsbezug) wird wie in der Engine bei der Select-Periode gekappt.
+
+    Draw-Contract: EIN Uniform-Draw je simuliertem Vertragsjahr, Schwellen
+    in fester Reihenfolge — aus ``aktiv`` erst Invalidisierung, dann Tod;
+    aus ``bu`` erst Reaktivierung, dann Tod. Das ist exakt die
+    Multinomialziehung der Übergangsmatrix des Jahres.
+    """
+    from rechner_pipeline.kern.produkte.bu import (
+        AKTIV,
+        BU,
+        BU_ZUSTAND,
+        TOT as TOT_ZUSTAND,
+        BUModelPoint,
+    )
+
+    police_id = int(row["police_id"])
+    start = pd.Timestamp(row["insurance_start"]).date()
+    n = int(row["duration"])
+    x = int(row["entry_age"])
+    rente = float(row["bu_rente"])
+
+    produkt = BU(BUModelPoint(**bu_model_point_kwargs(row, generation_fields)))
+    max_dauer = produkt.modell.max_dauer
+    rng = np.random.Generator(
+        np.random.PCG64(np.random.SeedSequence([seed, EREIGNIS_STREAM, police_id]))
+    )
+
+    events: List[Dict[str, Any]] = []
+
+    def buche(ereignis: str, jahr: int, betrag: float, status: Any) -> None:
+        events.append(
+            _event(
+                police_id, ereignis, jahr, _add_years(start, jahr),
+                BU_BETRAG_ART, betrag, status,
+            )
+        )
+
+    zustand = AKTIV
+    dauer = 0
+    horizont_erreicht = False
+
+    for j in range(n):
+        if _add_years(start, j + 1) > bis:
+            horizont_erreicht = True
+            break
+        alter = x + j
+        u = rng.random()
+        if zustand == AKTIV:
+            p_inv = produkt._uebergang(AKTIV, BU_ZUSTAND, alter, 0)
+            p_tod = produkt._uebergang(AKTIV, TOT_ZUSTAND, alter, 0)
+            if u < p_inv:
+                # Invalidisierung: die BU-Rente beginnt (Beitragsbefreiung
+                # ist im Produkt implizit — Beitraege laufen nur in aktiv).
+                buche("INV", j + 1, rente, "BU")
+                zustand, dauer = BU_ZUSTAND, 0
+            elif u < p_inv + p_tod:
+                buche("TOD", j + 1, 0.0, "TOD")
+                return events
+        else:
+            p_rea = produkt._uebergang(BU_ZUSTAND, AKTIV, alter, dauer)
+            p_tod = produkt._uebergang(BU_ZUSTAND, TOT_ZUSTAND, alter, dauer)
+            if u < p_rea:
+                # Reaktivierung: die Rente endet, der Vertrag ist wieder
+                # Anwaerter (und wieder beitragspflichtig).
+                buche("REA", j + 1, rente, "POL")
+                zustand, dauer = AKTIV, 0
+            elif u < p_rea + p_tod:
+                buche("TOD", j + 1, rente, "TOD")
+                return events
+            else:
+                dauer = min(dauer + 1, max_dauer)
+
+    if not horizont_erreicht:
+        # Ablauf: die Rente endet spaetestens mit dem Vertrag.
+        buche("ABL", n, rente if zustand == BU_ZUSTAND else 0.0, "ABL")
+    return events
 
 
 def fortschreiben(
@@ -373,21 +505,28 @@ def fortschreiben(
         zugaenge = _leerer_frame(STAMM_SPALTEN)
 
     generationen = {g.name: g.generation_fields() for g in config.generationen}
+    bu_generationen = {
+        g.name: g.bu_generation_fields()
+        for g in config.generationen
+        if g.produkt == "bu"
+    }
 
     alle_events: List[Dict[str, Any]] = []
     alle_scheiben: List[Dict[str, Any]] = []
     # Zugangs-GeVos: ein ZUG-Ledger-Eintrag je Neuzugang (kein Statuswechsel —
     # die POL-Basiszeile ist der Zugangs-Satz selbst).
     for zugang in zugaenge.to_dict("records"):
+        ist_bu = str(zugang.get("produkt", "klv")) == "bu"
         alle_events.append(
-            {
-                "police_id": int(zugang["police_id"]),
-                "status_code": "ZUG",
-                "vertragsjahr": 0,
-                "status_date": pd.Timestamp(zugang["insurance_start"]),
-                "betrag_art": "VS",
-                "betrag": float(zugang["sum_insured"]),
-            }
+            _event(
+                int(zugang["police_id"]),
+                "ZUG",
+                0,
+                pd.Timestamp(zugang["insurance_start"]).date(),
+                BU_BETRAG_ART if ist_bu else "VS",
+                float(zugang["bu_rente"] if ist_bu else zugang["sum_insured"]),
+                status_code=None,
+            )
         )
     gesamt = (
         pd.concat([stamm, zugaenge], ignore_index=True) if len(zugaenge) else stamm
@@ -400,9 +539,19 @@ def fortschreiben(
                 f"(bekannt: {sorted(generationen)})"
             )
         try:
-            events, scheiben = _simuliere_vertrag(
-                row, generationen[name], config.ereignisse, config.seed, bis
-            )
+            if str(row.get("produkt", "klv")) == "bu":
+                # BU: Uebergaenge aus den Rechnungsgrundlagen des Produkts
+                # (Storno/Beitragsfreistellung/Erhoehung kennt das
+                # Beispielprodukt nicht — die [ereignisse]-Raten der Config
+                # wirken nur auf KLV-Generationen).
+                events = _simuliere_bu_vertrag(
+                    row, bu_generationen[name], config.seed, bis
+                )
+                scheiben = []
+            else:
+                events, scheiben = _simuliere_vertrag(
+                    row, generationen[name], config.ereignisse, config.seed, bis
+                )
         except EreignisError:
             raise
         except Exception as exc:
@@ -440,7 +589,7 @@ def fortschreiben(
             "tarif_generation": ereignisse["police_id"]
             .map(generation_je_police)
             .astype(object),
-            "ereignis": ereignisse["status_code"].astype(object),
+            "ereignis": ereignisse["ereignis"].astype(object),
             "vertragsjahr": ereignisse["vertragsjahr"].astype("int64"),
             "status_date": pd.to_datetime(ereignisse["status_date"]),
             "betrag_art": ereignisse["betrag_art"].astype(object),
@@ -449,8 +598,10 @@ def fortschreiben(
     ).reset_index(drop=True)
 
     # Statushistorie = nur Zustandswechsel; ERH aendert den Zustand nicht,
-    # ZUG ist die POL-Basiszeile selbst (liegt in zugaenge).
-    zustaende = ereignisse[~ereignisse["status_code"].isin(("ERH", "ZUG"))].copy()
+    # ZUG ist die POL-Basiszeile selbst (liegt in zugaenge) — beide tragen
+    # status_code None. Bei INV/REA faellt der GeVo-Code vom Zielzustand
+    # auseinander (INV -> BU, REA -> POL).
+    zustaende = ereignisse[ereignisse["status_code"].notna()].copy()
     if len(zustaende) == 0:
         return Fortschreibung(
             _leerer_frame(STATUS_HISTORIE_SPALTEN), ledger, scheiben_df, zugaenge
