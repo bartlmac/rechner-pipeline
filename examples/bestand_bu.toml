@@ -11,10 +11,11 @@
 # Zustaende (aktiv / bu / tot), jaehrliche BU-Rente waehrend des
 # Leistungsbezugs mit impliziter Beitragsbefreiung, Beitraege ueber die
 # volle Versicherungsdauer, keine Karenzzeit, keine Leistungsdynamik.
-# Die Ereignis-Engine simuliert genau die Uebergaenge, die der Kern
-# bewertet — Invalidisierung, Reaktivierung, Tod, Ablauf; Storno,
-# Beitragsfreistellung und dynamische Erhoehung kennt das Produkt nicht
-# (die [ereignisse]-Raten wirken daher nur auf KLV-Generationen).
+# Die Ereignis-Engine simuliert die Uebergaenge des Produkts —
+# Invalidisierung, Reaktivierung, Tod, Ablauf —, gefuehrt ueber die
+# Erfahrungsannahmen unter [annahmen]; die Bewertung bleibt auf erster
+# Ordnung. Storno, Beitragsfreistellung und dynamische Erhoehung kennt das
+# Produkt nicht, ihre Annahmen wirken nur auf KLV-Generationen.
 
 [meta]
 seed = 20260813

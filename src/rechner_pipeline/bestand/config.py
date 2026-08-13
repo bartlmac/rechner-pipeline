@@ -417,8 +417,9 @@ class Annahme:
         return errors
 
 
-#: Die Ereignisarten der Fortschreibung mit ihrer Rechnungsgrundlage.
-#: ``None`` = keine erste Ordnung vorhanden (reine Erfahrungsgröße).
+#: Die Ereignisarten der Fortschreibung — Name und fachliche Einordnung
+#: (der Text nennt, ob es zu der Art ueberhaupt eine Rechnungsgrundlage
+#: erster Ordnung gibt). Die Reihenfolge ist die Ausgabereihenfolge.
 ANNAHME_FELDER: Tuple[Tuple[str, str], ...] = (
     ("tod", "Sterblichkeit des Versicherten (KLV: Todesfallleistung)"),
     ("storno", "Storno (keine Rechnungsgrundlage)"),

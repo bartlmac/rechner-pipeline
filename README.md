@@ -269,10 +269,11 @@ Prinzipien:
 - **Zwei Produkte im Bestand:** Verträge tragen einen Produkt-Diskriminator
   (`produkt` = `klv` | `bu`) und die produktführende Leistungsspalte
   (Versicherungssumme bzw. versicherte Jahresrente). Für **BU** simuliert
-  die Ereignis-Engine genau den Zustandsprozess, den der Kern bewertet —
-  Invalidisierung, Reaktivierung, Tod und Ablauf mit den
-  Übergangswahrscheinlichkeiten der vier Ausscheideordnungen, nicht mit
-  Konfigurationsraten. Die Statushistorie wechselt dabei strikt
+  die Ereignis-Engine denselben Zustandsprozess, den der Kern bewertet —
+  Invalidisierung, Reaktivierung, Tod und Ablauf aus den vier
+  Ausscheideordnungen, nicht aus freien Raten; die Wahrscheinlichkeiten
+  der Simulation laufen dabei über die Erfahrungsannahmen (nächster
+  Punkt), die Bewertung unverändert auf erster Ordnung. Die Statushistorie wechselt dabei strikt
   alternierend zwischen Anwärterstand und Leistungsbezug; Reserven kommen
   aus dem Kern (Aktiven- bzw. Invalidenreserve mit der Dauer seit
   Rentenbeginn). Beispiel-Config: `examples/bestand_bu.toml`.

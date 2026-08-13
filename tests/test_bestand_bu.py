@@ -1,14 +1,16 @@
 """BU im Bestand: Erzeugung, Zustandsprozess, Kopplung an den Kern.
 
-Der Kern der Sache (Beschluss 2026-08-13): die Ereignis-Engine simuliert
-für BU GENAU den Prozess, den der Kern bewertet — die Übergänge kommen aus
-den vier Ausscheideordnungen des Produkts, nicht aus Config-Raten. Der
-Monte-Carlo-Abgleich gegen ``Zustandsmodell.verteilung`` ist deshalb ein
-echter Kopplungstest und keine Statistik-Kosmetik.
+Der Kern der Sache: die Ereignis-Engine simuliert für BU den Prozess der
+vier Ausscheideordnungen des Produkts (nicht freie Raten), geführt über
+die Erfahrungsannahmen dritter Ordnung — während die Bewertung
+unverändert auf erster Ordnung rechnet. Der Monte-Carlo-Abgleich prüft
+gegen ein Zustandsmodell DERSELBEN Ordnung wie die Simulation; die
+Zuordnung der Annahmen zu den Übergängen ist separat verankert.
 """
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 from pathlib import Path
 
@@ -46,6 +48,25 @@ def config():
 @pytest.fixture(scope="module")
 def portfolio(config):
     return generate(config)
+
+
+def _ohne_marge(config):
+    """Config mit Identitaets-Annahmen (annahme = erste Ordnung).
+
+    Die forcierten Pfad-Tests patchen ``BU._uebergang`` auf 1.0, um einen
+    Uebergang sicher zu machen. Mit den Margen der Beispiel-Config
+    (invalidisierung b = 0,8) waere er nur noch zu 80 % sicher — die Tests
+    setzen die Annahmen deshalb explizit auf die Identitaet.
+    """
+    from rechner_pipeline.bestand.config import Annahme, Annahmen
+
+    angepasst = copy.copy(config)
+    eins = Annahme(a=0.0, b=1.0)
+    angepasst.annahmen = Annahmen(
+        invalidisierung=eins, reaktivierung=eins,
+        aktivensterblichkeit=eins, invalidensterblichkeit=eins,
+    )
+    return angepasst
 
 
 def _bu_stamm(*vertraege: dict) -> pd.DataFrame:
@@ -163,7 +184,7 @@ def test_invalidisierung_und_reaktivierung_als_gevos(config, monkeypatch):
     stamm = _bu_stamm(
         {"police_id": 10000001, "start": dt.date(2010, 5, 1), "x": 40, "n": 20}
     )
-    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    erg = fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
 
     assert list(erg.ledger["ereignis"]) == ["INV", "REA", "ABL"]
     assert list(erg.historie["status_code"]) == ["BU", "POL", "ABL"]
@@ -189,7 +210,7 @@ def test_tod_im_leistungsbezug_beendet_die_rente(config, monkeypatch):
     stamm = _bu_stamm(
         {"police_id": 10000001, "start": dt.date(2010, 5, 1), "x": 40, "n": 20}
     )
-    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    erg = fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
     assert list(erg.ledger["ereignis"]) == ["INV", "TOD"]
     # Tod aus dem Leistungsbezug beendet die laufende Rente (Bezugsgroesse),
     # Tod aus dem Anwaerterstand betrifft keine Rente:
@@ -205,7 +226,7 @@ def test_tod_als_anwaerter_zahlt_nichts(config, monkeypatch):
     stamm = _bu_stamm(
         {"police_id": 10000001, "start": dt.date(2010, 5, 1), "x": 40, "n": 20}
     )
-    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    erg = fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
     assert list(erg.ledger["ereignis"]) == ["TOD"]
     assert list(erg.ledger["betrag"]) == [0.0]
 
@@ -218,7 +239,7 @@ def test_ablauf_im_leistungsbezug_beendet_die_rente(config, monkeypatch):
     stamm = _bu_stamm(
         {"police_id": 10000001, "start": dt.date(2010, 5, 1), "x": 40, "n": 20}
     )
-    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    erg = fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
     assert list(erg.ledger["ereignis"]) == ["INV", "ABL"]
     # Rente laeuft bis zum Ablauf und endet mit ihm:
     assert list(erg.ledger["betrag"]) == [12000.0, 12000.0]
@@ -235,7 +256,7 @@ def test_zeitscheibe_kennt_den_leistungsbezug(config, monkeypatch):
     stamm = _bu_stamm(
         {"police_id": 10000001, "start": dt.date(2010, 5, 1), "x": 40, "n": 20}
     )
-    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    erg = fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
     sicht = bestand_mit_historie(stamm, erg.historie)
     # Vor der Invalidisierung Anwaerter, danach im Leistungsbezug — beides
     # in-force (AKTIVE_STATUS), der Ablauf beendet den Bestand.
@@ -416,9 +437,9 @@ def test_auswertung_liefert_bu_kennzahlen(config, portfolio, monkeypatch):
         {"police_id": 10000001, "start": dt.date(2010, 1, 1), "x": 40, "n": 20,
          "rente": 12000.0}
     )
-    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    erg = fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
     reihe = auswertungs_verlauf(
-        stamm, erg.historie, config,
+        stamm, erg.historie, _ohne_marge(config),
         [dt.date(2010, 1, 1), dt.date(2015, 1, 1), dt.date(2031, 1, 1)],
     )
     anfang, im_bezug, nach_ablauf = reihe
@@ -453,14 +474,14 @@ def test_auswertung_bu_dauer_folgt_der_historie(config, monkeypatch):
     stamm = _bu_stamm(
         {"police_id": 10000001, "start": dt.date(2010, 1, 1), "x": 40, "n": 20}
     )
-    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    erg = fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
     # BU-Beginn ist der 2011-01-01; die Dauer waechst mit jedem Jahr.
     produkt = BU(BUModelPoint(**bu_model_point_kwargs(
         stamm.iloc[0], config.generationen[0].bu_generation_fields()
     )))
     for jahre_im_bezug in (0, 1, 3):
         stichtag = dt.date(2011 + jahre_im_bezug, 1, 1)
-        ist = auswertungs_verlauf(stamm, erg.historie, config, [stichtag])[0]
+        ist = auswertungs_verlauf(stamm, erg.historie, _ohne_marge(config), [stichtag])[0]
         erwartet = produkt.reserve_bu(1 + jahre_im_bezug, jahre_im_bezug)
         assert ist["deckungskapital_bu"] == pytest.approx(erwartet)
 
@@ -508,7 +529,7 @@ def test_bu_bewegung_umbuchung_handrechnung(config, monkeypatch):
          "rente": 12000.0}
     )
     bis = dt.date(2040, 1, 1)
-    erg = fortschreiben(stamm, config, bis)
+    erg = fortschreiben(stamm, _ohne_marge(config), bis)
     konto = {z["jahr"]: z for z in bu_bewegungskonto(stamm, erg.historie, erg.ledger, bis=bis)}
 
     # 2011: Invalidisierung (Jahrestag 2011-07-01) — Umbuchung
@@ -652,7 +673,7 @@ def test_semi_markov_dauer_steuert_die_uebergaenge(config, monkeypatch):
     stamm = _bu_stamm(
         {"police_id": 10000001, "start": dt.date(2010, 3, 1), "x": 40, "n": 20}
     )
-    erg = fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    erg = fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
 
     assert list(erg.ledger["ereignis"]) == ["INV", "REA", "INV", "REA", "ABL"]
     # Erste Phase: INV am Jahrestag 1 (2011), Reaktivierung nach Dauer 2 —
@@ -686,7 +707,7 @@ def test_dauer_wird_bei_der_select_periode_gekappt(config, monkeypatch):
     stamm = _bu_stamm(
         {"police_id": 10000001, "start": dt.date(2010, 3, 1), "x": 40, "n": 20}
     )
-    fortschreiben(stamm, config, dt.date(2040, 1, 1))
+    fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
     max_dauer = config.generationen[0].bu_generation_fields()
     from rechner_pipeline.kern.kommutation import select_max_dauer
 
@@ -844,13 +865,35 @@ def test_annahmen_wirken_auf_die_simulation_nicht_auf_die_bewertung(config):
     # Die Marge schlaegt sichtbar durch (deutlich mehr als Zufallsrauschen):
     assert mit_marge < ohne_marge * 0.8
 
-    # Die Bewertung ist davon unberuehrt: derselbe Modellpunkt, derselbe
-    # Beitrag — egal welche Erfahrungsannahmen gelten.
-    grundlagen = config.generationen[0].bu_generation_fields()
-    beitrag = BU(BUModelPoint(x=35, sex="M", n=25, bu_rente=12000.0, **grundlagen))
-    assert beitrag.nettobeitrag() == pytest.approx(
-        BU(BUModelPoint(x=35, sex="M", n=25, bu_rente=12000.0, **grundlagen)).nettobeitrag()
+    # Die BEWERTUNG ist davon unberuehrt. Der Beleg muss die Annahmen
+    # wirklich variieren — sonst pruefte er f(X) == f(X) und bliebe auch
+    # dann gruen, wenn eine Annahme in Beitrag oder Reserve durchschlaegt.
+    # Gemessen wird deshalb ueber denselben Weg, den die Auswertung geht
+    # (Kernwerte aus dem Bestand), unter zwei sehr verschiedenen
+    # Annahmen-Saetzen.
+    from rechner_pipeline.bestand.auswertung import auswertungs_verlauf
+
+    def bewertung(invalidisierung_b):
+        cfg = copy.copy(config)
+        cfg.annahmen = Annahmen(invalidisierung=Annahme(a=0.0, b=invalidisierung_b))
+        reihe = auswertungs_verlauf(
+            stamm, None, cfg, [dt.date(2010, 1, 1)]
+        )[0]
+        produkt = BU(BUModelPoint(**bu_model_point_kwargs(
+            stamm.iloc[0], cfg.generationen[0].bu_generation_fields()
+        )))
+        return produkt.nettobeitrag(), reihe["deckungskapital"]
+
+    ohne = bewertung(1.0)
+    stark = bewertung(0.2)     # drastisch andere Erfahrungsannahme
+    assert ohne[0] == pytest.approx(stark[0], rel=1e-12), (
+        "Nettobeitrag haengt an den Erfahrungsannahmen — die Bewertung "
+        "muss auf erster Ordnung bleiben"
     )
+    assert ohne[1] == pytest.approx(stark[1], rel=1e-12), (
+        "Deckungskapital haengt an den Erfahrungsannahmen"
+    )
+    assert ohne[0] > 0.0
 
 
 def test_annahme_transformiert_keine_tafelgrenze_weg(config):
@@ -867,7 +910,7 @@ def test_annahme_transformiert_keine_tafelgrenze_weg(config):
     assert any("Invalidisierung + Aktivensterblichkeit > 1" in f for f in fehler)
 
 
-def test_klv_tod_annahme_wirkt_auf_die_tafel(config_klv=None):
+def test_klv_tod_annahme_wirkt_auf_die_tafel():
     """KLV: die Sterblichkeitsannahme ist eine Marge auf der Tafel-qx
     erster Ordnung — b = 0 heisst 'kein Tod', b = 1 'Tafel unveraendert'."""
     import copy
@@ -893,3 +936,67 @@ def test_klv_tod_annahme_wirkt_auf_die_tafel(config_klv=None):
     voll = tote(1.0)
     assert voll > 0
     assert tote(0.5) < voll               # Marge senkt die Sterblichkeit
+
+
+def test_bu_uebergang_ordnet_jede_ausscheideordnung_richtig_zu(config):
+    """Review-Fix: Monte-Carlo-Referenz und Engine teilen sich
+    ``bu_uebergang`` — eine vertauschte Zuordnung waere dort unsichtbar.
+    Dieser Test haelt die Zuordnung einzeln fest, mit vier unterscheidbaren
+    Annahmen."""
+    from rechner_pipeline.bestand.config import Annahme, Annahmen
+    from rechner_pipeline.bestand.ereignisse import bu_uebergang
+
+    produkt = BU(BUModelPoint(x=40, sex="M", n=20, bu_rente=12000.0,
+                              **config.generationen[0].bu_generation_fields()))
+    annahmen = Annahmen(
+        invalidisierung=Annahme(a=0.0, b=2.0),
+        aktivensterblichkeit=Annahme(a=0.0, b=3.0),
+        reaktivierung=Annahme(a=0.0, b=4.0),
+        invalidensterblichkeit=Annahme(a=0.0, b=5.0),
+    )
+    ue = bu_uebergang(produkt, annahmen)
+    for von, nach, faktor in (
+        (AKTIV, BU_ZUSTAND, 2.0),
+        (AKTIV, TOT, 3.0),
+        (BU_ZUSTAND, AKTIV, 4.0),
+        (BU_ZUSTAND, TOT, 5.0),
+    ):
+        roh = produkt._uebergang(von, nach, 40, 0)
+        assert roh > 0.0, (von, nach)
+        assert ue(von, nach, 40, 0) == pytest.approx(min(1.0, faktor * roh)), (von, nach)
+    # Nicht modellierte Uebergaenge bleiben 0 (Verbleib ist Residuum):
+    assert ue(TOT, AKTIV, 40, 0) == 0.0
+
+
+def test_zu_grosse_marge_reisst_die_markov_grenze(config):
+    """Review-Fix: die einzelne Annahme wird auf [0,1] geklemmt, die SUMME
+    konkurrierender Risiken blieb ungeschuetzt. Ohne Guard haette die
+    Ziehung das letzte Risiko still gestutzt — und die Simulation liefe auf
+    einer anderen Verteilung als das gleichnamige Zustandsmodell."""
+    from rechner_pipeline.bestand.config import Annahme, Annahmen
+
+    stamm = _bu_stamm(
+        {"police_id": 10000001, "start": dt.date(2010, 1, 1), "x": 35, "n": 25}
+    )
+    cfg = copy.copy(config)
+    cfg.annahmen = Annahmen(
+        invalidisierung=Annahme(a=0.6, b=1.0),
+        aktivensterblichkeit=Annahme(a=0.6, b=1.0),
+    )
+    with pytest.raises(EreignisError, match="Markov-Grenze|summieren auf"):
+        fortschreiben(stamm, cfg, dt.date(2026, 1, 1))
+
+    # Dasselbe Annahmen-Set im Zustandsmodell des Kerns: derselbe Befund —
+    # Simulation und Referenzmodell sind sich jetzt einig.
+    from rechner_pipeline.bestand.ereignisse import bu_uebergang
+    from rechner_pipeline.kern.zustandsmodell import Zustandsmodell
+
+    produkt = BU(BUModelPoint(**bu_model_point_kwargs(
+        stamm.iloc[0], cfg.generationen[0].bu_generation_fields()
+    )))
+    modell = Zustandsmodell(
+        (AKTIV, BU_ZUSTAND, TOT), cfg.generationen[0].zins,
+        bu_uebergang(produkt, cfg.annahmen), max_dauer=produkt.modell.max_dauer,
+    )
+    with pytest.raises(ValueError, match="summieren auf"):
+        modell.verteilung(AKTIV, 35, 5)

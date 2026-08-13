@@ -632,6 +632,22 @@ Fortschreibungs-Horizont vollständig abdeckt. {pruefsatz}</p>"""
             )
         else:
             bu_grundlagen = "siehe Tarifgeneration des Bestands"
+        def _annahme_text(name: str, titel: str) -> str:
+            annahme = getattr(config.annahmen, name) if config is not None else None
+            if annahme is None or (annahme.a == 0.0 and annahme.b == 1.0):
+                return f"{titel} unverändert"
+            if annahme.b == 0.0:
+                return f"{titel} {annahme.a:.1%}".replace(".", ",")
+            return f"{titel} × {annahme.b:.2f}".replace(".", ",")
+
+        bu_annahmen = ", ".join(
+            _annahme_text(n, titel) for n, titel in (
+                ("invalidisierung", "Invalidisierung"),
+                ("reaktivierung", "Reaktivierung"),
+                ("aktivensterblichkeit", "Aktivensterblichkeit"),
+                ("invalidensterblichkeit", "Invalidensterblichkeit"),
+            )
+        )
         bu_pruefsatz = (
             "Die Identität Anfangsbestand + Zugang − Abgang = Endbestand gilt "
             "in jedem Jahr, je Track, in Stück und Jahresrente (Gate-geprüft)."
@@ -664,10 +680,10 @@ Größenordnungen, eine gemeinsame Darstellung wäre nicht ablesbar.
 <p>Bewegung in laufender Jahresrente:</p>
 {_bu_tabelle("rentner", "summe")}
 {bu_kennzahlen}
-<p>Die Übergänge der Fortschreibung kommen aus den Rechnungsgrundlagen des
-Produkts (Invalidisierung, Reaktivierung, Aktiven- und
-Invalidensterblichkeit) — dieselben Ausscheideordnungen, mit denen der Kern
-Beiträge und Reserven bewertet. Reserven: im Anwärterstand die
+<p>Die Übergänge der Fortschreibung leiten sich aus denselben vier
+Ausscheideordnungen ab wie die Bewertung, werden aber über die
+<em>Erfahrungsannahmen</em> geführt: {bu_annahmen}. Die Bewertung selbst
+bleibt unverändert auf den Rechnungsgrundlagen — im Anwärterstand die
 Aktivenreserve, im Leistungsbezug die Invalidenreserve mit der Dauer seit
 Rentenbeginn.</p>
 <p><strong>Rechnungsgrundlagen:</strong> {bu_grundlagen}.</p>"""

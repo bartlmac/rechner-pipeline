@@ -324,6 +324,29 @@ def _simuliere_vertrag(
     return events, scheiben
 
 
+def _pruefe_wegzuege(
+    police_id: int, zustand: str, alter: int, dauer: int, summe: float
+) -> None:
+    """Markov-Bedingung nach der Transformation: die Wegzuege aus einem
+    Zustand duerfen sich nicht auf mehr als 1 summieren.
+
+    Die einzelne Annahme wird auf [0, 1] geklemmt, die SUMME konkurrierender
+    Risiken bleibt davon ungeschuetzt — eine zu grosse Marge (b) koennte
+    sie ueber 1 heben. Die kumulierten Schwellen der Ziehung wuerden das
+    letzte Risiko dann still stutzen, und die Simulation liefe auf einer
+    anderen Verteilung als das gleichnamige Zustandsmodell (das hier
+    fail-fast abbricht). Deshalb dieselbe Grenze wie in
+    :meth:`rechner_pipeline.kern.zustandsmodell.Zustandsmodell._wegzuege`.
+    """
+    if summe > 1.0 + 1e-12:
+        raise EreignisError(
+            f"police {police_id}: transformierte Wegzuege aus {zustand} "
+            f"(Alter {alter}, Dauer {dauer}) summieren auf {summe} > 1 — "
+            "die Erfahrungsannahmen heben die Uebergangswahrscheinlichkeiten "
+            "ueber die Markov-Grenze (b zu gross)"
+        )
+
+
 def bu_uebergang(produkt, annahmen):
     """Übergangsfunktion des BU-Zustandsprozesses auf Erfahrungsannahmen.
 
@@ -426,6 +449,7 @@ def _simuliere_bu_vertrag(
         if zustand == AKTIV:
             p_inv = uebergang(AKTIV, BU_ZUSTAND, alter, 0)
             p_tod = uebergang(AKTIV, TOT_ZUSTAND, alter, 0)
+            _pruefe_wegzuege(police_id, AKTIV, alter, 0, p_inv + p_tod)
             if u < p_inv:
                 # Invalidisierung: die BU-Rente beginnt (Beitragsbefreiung
                 # ist im Produkt implizit — Beitraege laufen nur in aktiv).
@@ -437,6 +461,7 @@ def _simuliere_bu_vertrag(
         else:
             p_rea = uebergang(BU_ZUSTAND, AKTIV, alter, dauer)
             p_tod = uebergang(BU_ZUSTAND, TOT_ZUSTAND, alter, dauer)
+            _pruefe_wegzuege(police_id, BU_ZUSTAND, alter, dauer, p_rea + p_tod)
             if u < p_rea:
                 # Reaktivierung: die Rente endet, der Vertrag ist wieder
                 # Anwaerter (und wieder beitragspflichtig).
@@ -595,10 +620,11 @@ def fortschreiben(
             )
         try:
             if produkt == "bu":
-                # BU: Uebergaenge aus den Rechnungsgrundlagen des Produkts
+                # BU: Uebergaenge aus den Rechnungsgrundlagen des
+                # Produkts, transformiert durch die Erfahrungsannahmen
                 # (Storno/Beitragsfreistellung/Erhoehung kennt das
-                # Beispielprodukt nicht — die [ereignisse]-Raten der Config
-                # wirken nur auf KLV-Generationen).
+                # Beispielprodukt nicht; die zugehoerigen Annahmen wirken
+                # daher nur auf KLV-Generationen).
                 events = _simuliere_bu_vertrag(
                     row, bu_generationen[name], config.annahmen, config.seed, bis
                 )
