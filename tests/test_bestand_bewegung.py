@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from rechner_pipeline.bestand.config import EreignisConfig, load_config
+from rechner_pipeline.bestand.config import Annahme, Annahmen, load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.kennzahlen import bewegungskonto
@@ -65,8 +65,25 @@ def _mini_stamm(*vertraege: dict) -> pd.DataFrame:
 
 
 def _mit_raten(config, **raten):
+    """Forcierte Erfahrungsannahmen (3. Ordnung) fuer einzelne Pfade.
+
+    Kurzform fuer die Tests: ``storno_rate=0.99`` setzt die Annahme
+    ``storno = a 0.99, b 0``; ``tod_faktor=2`` setzt ``tod = a 0, b 2``
+    (Marge auf der Tafel erster Ordnung). Nicht genannte Ereignisse
+    bleiben auf 0.
+    """
     angepasst = copy.copy(config)
-    angepasst.ereignisse = EreignisConfig(**raten)
+    felder = {}
+    for name, wert in raten.items():
+        if name == "erh_prozent":
+            felder["erh_prozent"] = wert
+        elif name == "tod_faktor":
+            felder["tod"] = Annahme(a=0.0, b=wert)
+        else:
+            ziel = {"storno_rate": "storno", "pex_rate": "beitragsfreistellung",
+                    "erh_rate": "erhoehung"}[name]
+            felder[ziel] = Annahme(a=wert, b=0.0)
+    angepasst.annahmen = Annahmen(**felder)
     return angepasst
 
 

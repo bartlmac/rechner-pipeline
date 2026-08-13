@@ -14,6 +14,8 @@ Layout (see ``examples/bestand_klv.toml``)::
     [generation.verteilungen.<merkmal>]   distribution spec per attribute
     [[generation.korrelation]]  pairwise Spearman rank correlations
     [plausibilitaet]            value bands for the sanity gate
+    [annahmen]                  Erfahrungsannahmen (3. Ordnung) je Ereignisart
+                                als affine Transformation der ersten Ordnung
 """
 
 from __future__ import annotations
@@ -371,37 +373,108 @@ class TarifGeneration:
         return errors
 
 
-@dataclass
-class EreignisConfig:
-    """Annual event rates of the Fortschreibung (Ereignis-Engine).
+@dataclass(frozen=True)
+class Annahme:
+    """Eine Erfahrungsannahme (3. Ordnung) als affine Transformation.
 
-    All-zero defaults mean: no stochastic events, only the deterministic
-    Ablauf. ``tod_faktor`` scales the first-order qx of the tariff basis
-    (1.0 = table mortality; 0.0 = no death simulation). ``erh_rate`` is the
-    annual acceptance probability of the dynamische Erhoehung (creates a new
-    Erhoehungsscheibe of ``erh_prozent`` of the current total sum insured).
+    Alle Ereignisannahmen der Fortschreibung entstehen nach EINER Regel
+    aus den Rechnungsgrundlagen erster Ordnung::
+
+        annahme(x) = a + b * x        (geklemmt auf [0, 1])
+
+    Dabei ist ``x`` die Wahrscheinlichkeit erster Ordnung des Ereignisses.
+    Der multiplikative Teil ``b`` rechnet die Sicherheitsmarge heraus — und
+    zwar richtungsrichtig: bei belastenden Ausscheideordnungen (Tod mit
+    Todesfallleistung, Invalidisierung) ist die erste Ordnung vorsichtig
+    HOCH, also ``b < 1``; bei entlastenden (Reaktivierung) vorsichtig
+    NIEDRIG, also ``b > 1``. Der additive Teil ``a`` trägt Ereignisse, für
+    die es gar keine Rechnungsgrundlage gibt (Storno, Beitragsfreistellung,
+    dynamische Erhöhung): dort ist ``b = 0`` und ``a`` die Rate selbst.
+
+    Der Default ``a = 0, b = 1`` bedeutet „Annahme = Rechnungsgrundlage".
+
+    WICHTIG: Diese Schicht verändert NUR die Simulation des Bestands, nie
+    die Bewertung. Beiträge und Reserven rechnet der Kern unverändert auf
+    erster Ordnung — die Trennung ist der Zweck der Schicht. Ebenso gilt:
+    eine Annahme darf keine Gültigkeitsgrenze einer Tafel wegtransformieren
+    (die Grenzprüfungen laufen auf der untransformierten Tafel).
     """
 
-    storno_rate: float = 0.0
-    pex_rate: float = 0.0
-    tod_faktor: float = 0.0
-    erh_rate: float = 0.0
+    a: float = 0.0
+    b: float = 1.0
+
+    def __call__(self, erste_ordnung: float) -> float:
+        return min(1.0, max(0.0, self.a + self.b * erste_ordnung))
+
+    def validate(self, name: str) -> List[str]:
+        errors: List[str] = []
+        if self.a < 0.0:
+            errors.append(f"annahmen {name}: a < 0")
+        if self.b < 0.0:
+            errors.append(f"annahmen {name}: b < 0")
+        if self.a >= 1.0:
+            errors.append(f"annahmen {name}: a >= 1 (jedes Jahr sicheres Ereignis)")
+        return errors
+
+
+#: Die Ereignisarten der Fortschreibung mit ihrer Rechnungsgrundlage.
+#: ``None`` = keine erste Ordnung vorhanden (reine Erfahrungsgröße).
+ANNAHME_FELDER: Tuple[Tuple[str, str], ...] = (
+    ("tod", "Sterblichkeit des Versicherten (KLV: Todesfallleistung)"),
+    ("storno", "Storno (keine Rechnungsgrundlage)"),
+    ("beitragsfreistellung", "Beitragsfreistellung (keine Rechnungsgrundlage)"),
+    ("erhoehung", "dynamische Erhoehung (keine Rechnungsgrundlage)"),
+    ("invalidisierung", "Invalidisierung (BU)"),
+    ("reaktivierung", "Reaktivierung (BU)"),
+    ("aktivensterblichkeit", "Sterblichkeit im Anwaerterstand (BU)"),
+    ("invalidensterblichkeit", "Sterblichkeit im Leistungsbezug (BU)"),
+)
+
+
+@dataclass
+class Annahmen:
+    """Erfahrungsannahmen (3. Ordnung) der Fortschreibung.
+
+    Eine eigene Annahmenschicht neben den Rechnungsgrundlagen erster
+    Ordnung (Tarifkalkulation) und den Bewertungsannahmen zweiter Ordnung
+    (Bilanz, Ueberschussbeteiligung): sie beschreibt, wie sich der Bestand
+    in der Modellwelt TATSAECHLICH entwickelt. Jede Ereignisart ist eine
+    :class:`Annahme` — dieselbe affine Regel fuer alle, auch dort, wo es
+    keine erste Ordnung gibt (dann ``b = 0``).
+
+    ``erh_prozent`` ist keine Wahrscheinlichkeit, sondern die HOEHE der
+    dynamischen Erhoehung (Anteil der aktuellen Versicherungssumme) und
+    bleibt daher ein einfacher Wert.
+    """
+
+    # Default je Ereignisart ist die NULL-Annahme (a = 0, b = 0): eine
+    # nicht konfigurierte Ereignisart findet nicht statt. Das ist bewusst
+    # nicht die Identitaet (b = 1) — eine fehlende Annahme ist keine
+    # Annahme, und ein stillschweigend simuliertes Ereignis waere die
+    # gefaehrlichere Voreinstellung. Wer die erste Ordnung unveraendert
+    # uebernehmen will, schreibt sie hin: ``tod = { a = 0.0, b = 1.0 }``
+    # (im TOML genuegt ``tod = { a = 0.0 }``, denn dort ist b = 1 der
+    # Default der EINZELNEN Annahme).
+    tod: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    storno: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    beitragsfreistellung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    erhoehung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    invalidisierung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    reaktivierung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    aktivensterblichkeit: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    invalidensterblichkeit: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     erh_prozent: float = 0.0
 
     def validate(self) -> List[str]:
         errors: List[str] = []
-        if not 0.0 <= self.storno_rate < 1.0:
-            errors.append("ereignisse: storno_rate ausserhalb [0, 1)")
-        if not 0.0 <= self.pex_rate < 1.0:
-            errors.append("ereignisse: pex_rate ausserhalb [0, 1)")
-        if self.tod_faktor < 0.0:
-            errors.append("ereignisse: tod_faktor < 0")
-        if not 0.0 <= self.erh_rate < 1.0:
-            errors.append("ereignisse: erh_rate ausserhalb [0, 1)")
+        for name, _ in ANNAHME_FELDER:
+            errors.extend(getattr(self, name).validate(name))
         if self.erh_prozent < 0.0:
-            errors.append("ereignisse: erh_prozent < 0")
-        if self.erh_rate > 0.0 and self.erh_prozent == 0.0:
-            errors.append("ereignisse: erh_rate > 0 verlangt erh_prozent > 0")
+            errors.append("annahmen: erh_prozent < 0")
+        if self.erhoehung.a > 0.0 and self.erh_prozent == 0.0:
+            errors.append(
+                "annahmen: erhoehung mit Rate > 0 verlangt erh_prozent > 0"
+            )
         return errors
 
 
@@ -411,7 +484,7 @@ class BestandConfig:
     beschreibung: str
     generationen: List[TarifGeneration]
     plausibilitaet: Dict[str, Tuple[float, float]] = field(default_factory=dict)
-    ereignisse: EreignisConfig = field(default_factory=EreignisConfig)
+    annahmen: Annahmen = field(default_factory=Annahmen)
 
     def validate(self) -> List[str]:
         errors: List[str] = []
@@ -427,7 +500,7 @@ class BestandConfig:
         for merkmal, band in self.plausibilitaet.items():
             if len(band) != 2 or float(band[0]) >= float(band[1]):
                 errors.append(f"plausibilitaet {merkmal}: Band muss (min, max) mit min < max sein")
-        errors.extend(self.ereignisse.validate())
+        errors.extend(self.annahmen.validate())
         return errors
 
 
@@ -510,21 +583,55 @@ def load_config(path: Path) -> BestandConfig:
         else:
             errors.append(f"plausibilitaet {m}: Band muss Liste [min, max] sein")
 
-    e: Mapping[str, Any] = raw.get("ereignisse", {})
-    ereignisse = EreignisConfig(
-        storno_rate=float(e.get("storno_rate", 0.0)),
-        pex_rate=float(e.get("pex_rate", 0.0)),
-        tod_faktor=float(e.get("tod_faktor", 0.0)),
-        erh_rate=float(e.get("erh_rate", 0.0)),
-        erh_prozent=float(e.get("erh_prozent", 0.0)),
+    # Die frühere [ereignisse]-Sektion ist durch [annahmen] abgelöst (die
+    # Raten sind dort der a-Teil, tod_faktor der b-Teil). Sprechend
+    # abweisen statt still ignorieren — sonst liefe eine alte Config mit
+    # lauter Null-Annahmen durch.
+    if "ereignisse" in raw:
+        errors.append(
+            "[ereignisse] wird nicht mehr gelesen — die Erfahrungsannahmen "
+            "stehen jetzt unter [annahmen] als affine Transformation der "
+            "ersten Ordnung (annahme = a + b * erste_ordnung): aus "
+            "storno_rate = 0.03 wird storno = { a = 0.03, b = 0.0 }, aus "
+            "tod_faktor = 1.0 wird tod = { a = 0.0, b = 1.0 }"
+        )
+
+    roh_annahmen: Mapping[str, Any] = raw.get("annahmen", {})
+    annahme_kwargs: Dict[str, Any] = {}
+    for name, _zweck in ANNAHME_FELDER:
+        eintrag = roh_annahmen.get(name)
+        if eintrag is None:
+            continue
+        if not isinstance(eintrag, Mapping):
+            errors.append(
+                f"annahmen {name}: erwartet Tabelle {{ a = ..., b = ... }}"
+            )
+            continue
+        unbekannt = sorted(set(eintrag) - {"a", "b"})
+        if unbekannt:
+            errors.append(f"annahmen {name}: unbekannte Schluessel {unbekannt}")
+            continue
+        annahme_kwargs[name] = Annahme(
+            a=float(eintrag.get("a", 0.0)), b=float(eintrag.get("b", 1.0))
+        )
+    fremde = sorted(
+        set(roh_annahmen) - {n for n, _ in ANNAHME_FELDER} - {"erh_prozent"}
     )
+    if fremde:
+        errors.append(
+            f"annahmen: unbekannte Ereignisarten {fremde} "
+            f"(bekannt: {[n for n, _ in ANNAHME_FELDER]})"
+        )
+    if "erh_prozent" in roh_annahmen:
+        annahme_kwargs["erh_prozent"] = float(roh_annahmen["erh_prozent"])
+    annahmen = Annahmen(**annahme_kwargs)
 
     config = BestandConfig(
         seed=int(meta.get("seed", 0)),
         beschreibung=str(meta.get("beschreibung", "")),
         generationen=generationen,
         plausibilitaet=plausibilitaet,
-        ereignisse=ereignisse,
+        annahmen=annahmen,
     )
     if errors:
         raise ValueError("Config-Ladefehler: " + "; ".join(errors))

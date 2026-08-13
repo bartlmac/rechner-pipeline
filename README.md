@@ -276,6 +276,17 @@ Prinzipien:
   alternierend zwischen Anwärterstand und Leistungsbezug; Reserven kommen
   aus dem Kern (Aktiven- bzw. Invalidenreserve mit der Dauer seit
   Rentenbeginn). Beispiel-Config: `examples/bestand_bu.toml`.
+- **Erfahrungsannahmen (3. Ordnung):** die Fortschreibung würfelt nicht
+  aus den Rechnungsgrundlagen, sondern aus einer eigenen Annahmenschicht.
+  Jede Ereigniswahrscheinlichkeit entsteht nach einer Regel aus der ersten
+  Ordnung — `annahme = a + b · erste_ordnung`. Der Faktor `b` rechnet die
+  Sicherheitsmarge heraus, und zwar richtungsrichtig (bei belastenden
+  Ausscheideordnungen `b < 1`, bei entlastenden wie der Reaktivierung
+  `b > 1`); Ereignisse ohne Rechnungsgrundlage — Storno,
+  Beitragsfreistellung, dynamische Erhöhung — tragen ihre Rate in `a` bei
+  `b = 0`. Die **Bewertung bleibt unberührt**: Beiträge und Reserven
+  rechnet der Kern unverändert auf erster Ordnung. Konfiguriert wird das
+  je Bestand unter `[annahmen]`.
 - **Bestandsbewegung (Nachweisungs-Struktur):**
   `kennzahlen.bewegungskonto` führt die Bewegung je Kalenderjahr in der
   Struktur der BaFin-Nachweisungen zur Bestandsbewegung — getrennt nach

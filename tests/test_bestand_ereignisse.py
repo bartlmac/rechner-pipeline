@@ -7,13 +7,19 @@ Beispiel-Raten ueber den generierten Bestand.
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from rechner_pipeline.bestand.config import EreignisConfig, load_config
+from rechner_pipeline.bestand.config import (
+    ANNAHME_FELDER,
+    Annahme,
+    Annahmen,
+    load_config,
+)
 from rechner_pipeline.bestand.ereignisse import (
     EreignisError,
     bestand_mit_historie,
@@ -80,10 +86,25 @@ def _mini_stamm(*vertraege: dict) -> pd.DataFrame:
 
 
 def _mit_raten(config, **raten):
-    import copy
+    """Forcierte Erfahrungsannahmen (3. Ordnung) fuer einzelne Pfade.
 
+    Kurzform fuer die Tests: ``storno_rate=0.99`` setzt die Annahme
+    ``storno = a 0.99, b 0``; ``tod_faktor=2`` setzt ``tod = a 0, b 2``
+    (Marge auf der Tafel erster Ordnung). Nicht genannte Ereignisse
+    bleiben auf 0.
+    """
     angepasst = copy.copy(config)
-    angepasst.ereignisse = EreignisConfig(**raten)
+    felder = {}
+    for name, wert in raten.items():
+        if name == "erh_prozent":
+            felder["erh_prozent"] = wert
+        elif name == "tod_faktor":
+            felder["tod"] = Annahme(a=0.0, b=wert)
+        else:
+            ziel = {"storno_rate": "storno", "pex_rate": "beitragsfreistellung",
+                    "erh_rate": "erhoehung"}[name]
+            felder[ziel] = Annahme(a=wert, b=0.0)
+    angepasst.annahmen = Annahmen(**felder)
     return angepasst
 
 
@@ -476,30 +497,79 @@ def test_scheiben_praefix_bei_horizont_erweiterung(portfolio, config):
     pd.testing.assert_frame_equal(praefix, s_frueh)
 
 
-def test_ereignis_config_validierung():
-    assert EreignisConfig().validate() == []
-    fehler = EreignisConfig(storno_rate=1.0, pex_rate=-0.1, tod_faktor=-1.0).validate()
+def test_annahmen_validierung():
+    """Erfahrungsannahmen (3. Ordnung): affine Parameter muessen
+    plausibel sein."""
+    assert Annahmen().validate() == []
+    fehler = Annahmen(
+        storno=Annahme(a=1.0, b=0.0),
+        beitragsfreistellung=Annahme(a=-0.1, b=0.0),
+        tod=Annahme(a=0.0, b=-1.0),
+    ).validate()
     assert len(fehler) == 3
-    assert EreignisConfig(erh_rate=0.3).validate() == [
-        "ereignisse: erh_rate > 0 verlangt erh_prozent > 0"
+    assert Annahmen(erhoehung=Annahme(a=0.3, b=0.0)).validate() == [
+        "annahmen: erhoehung mit Rate > 0 verlangt erh_prozent > 0"
     ]
 
 
-def test_beispiel_config_laedt_ereignisse(config):
-    assert config.ereignisse.storno_rate == 0.03
-    assert config.ereignisse.pex_rate == 0.01
-    assert config.ereignisse.tod_faktor == 1.0
+def test_annahme_ist_affine_transformation():
+    """annahme = a + b * erste_ordnung, geklemmt auf [0, 1]."""
+    # Ereignis MIT Rechnungsgrundlage: b rechnet die Marge heraus.
+    assert Annahme(a=0.0, b=0.8)(0.05) == pytest.approx(0.04)
+    # Entlastende Ausscheideordnung: b > 1 hebt die erste Ordnung an.
+    assert Annahme(a=0.0, b=1.25)(0.06) == pytest.approx(0.075)
+    # Ereignis OHNE Rechnungsgrundlage: b = 0, die Rate steht in a.
+    assert Annahme(a=0.03, b=0.0)(0.0) == 0.03
+    assert Annahme(a=0.03, b=0.0)(0.9) == 0.03   # erste Ordnung wirkt nicht
+    # Identitaet und Klemmung:
+    assert Annahme()(0.0123) == 0.0123
+    assert Annahme(a=0.0, b=2.0)(0.7) == 1.0
+    assert Annahme(a=0.0, b=1.0)(0.0) == 0.0
+
+
+def test_beispiel_config_laedt_annahmen(config):
+    """Die Beispiel-Config traegt die Erfahrungsannahmen in affiner Form."""
+    a = config.annahmen
+    assert a.storno == Annahme(a=0.03, b=0.0)
+    assert a.beitragsfreistellung == Annahme(a=0.01, b=0.0)
+    # Tod: Marge auf der Tafel erster Ordnung.
+    assert a.tod.a == 0.0 and 0.0 < a.tod.b <= 1.0
     assert config.validate() == []
 
 
-def test_fehlende_ereignisse_sektion_liefert_nur_ablauf_defaults(tmp_path):
+def test_fehlende_annahmen_sektion_liefert_nur_ablauf(tmp_path):
+    """Ohne [annahmen] findet kein stochastisches Ereignis statt — eine
+    fehlende Annahme ist keine Annahme (insbesondere nicht: erste
+    Ordnung unveraendert)."""
     quelle = EXAMPLE.read_text(encoding="utf-8")
-    ohne = quelle[: quelle.index("[ereignisse]")]
-    p = tmp_path / "ohne_ereignisse.toml"
+    ohne = quelle[: quelle.index("[annahmen]")]
+    p = tmp_path / "ohne_annahmen.toml"
     p.write_text(ohne, encoding="utf-8")
     cfg = load_config(p)
-    assert cfg.ereignisse == EreignisConfig()
+    assert cfg.annahmen == Annahmen()
     assert cfg.validate() == []
+    for name, _zweck in ANNAHME_FELDER:
+        assert getattr(cfg.annahmen, name)(0.5) == 0.0
+
+
+def test_alte_ereignisse_sektion_wird_sprechend_abgewiesen(tmp_path):
+    """Eine Config im alten Format darf nicht still mit Null-Annahmen
+    durchlaufen."""
+    quelle = EXAMPLE.read_text(encoding="utf-8")
+    alt = quelle[: quelle.index("[annahmen]")] + "[ereignisse]\nstorno_rate = 0.03\n"
+    p = tmp_path / "alt.toml"
+    p.write_text(alt, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"\[ereignisse\] wird nicht mehr gelesen"):
+        load_config(p)
+
+
+def test_unbekannte_annahme_ist_ladefehler(tmp_path):
+    quelle = EXAMPLE.read_text(encoding="utf-8")
+    kaputt = quelle + '\nfantasie = { a = 0.1 }\n'
+    p = tmp_path / "kaputt.toml"
+    p.write_text(kaputt, encoding="utf-8")
+    with pytest.raises(ValueError, match="unbekannte Ereignisarten"):
+        load_config(p)
 
 
 # --------------------------------------------------------------------------- #
@@ -531,7 +601,7 @@ def test_fortschreiben_lehnt_kaputte_eingaben_ab(config):
     with pytest.raises(EreignisError, match="police_id <= 0"):
         fortschreiben(stamm_null, config, dt.date(2020, 1, 1))
     cfg = _mit_raten(config, storno_rate=1.5)
-    with pytest.raises(EreignisError, match="storno_rate"):
+    with pytest.raises(EreignisError, match="annahmen storno"):
         fortschreiben(stamm, cfg, dt.date(2020, 1, 1))
     lang = _mini_stamm(
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 20, "n": 60, "t": 40}

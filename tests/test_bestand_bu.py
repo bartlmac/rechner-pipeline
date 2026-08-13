@@ -15,15 +15,17 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from rechner_pipeline.bestand.config import load_config
+from rechner_pipeline.bestand.config import Annahmen, load_config
 from rechner_pipeline.bestand.ereignisse import (
     EreignisError,
     bestand_mit_historie,
+    bu_uebergang,
     fortschreiben,
 )
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
 from rechner_pipeline.kern.produkte.bu import AKTIV, BU, BU_ZUSTAND, TOT, BUModelPoint
+from rechner_pipeline.kern.zustandsmodell import Zustandsmodell
 from rechner_pipeline.models.bestand import (
     STAMM_SPALTEN,
     bu_model_point_kwargs,
@@ -248,12 +250,13 @@ def test_zeitscheibe_kennt_den_leistungsbezug(config, monkeypatch):
 
 
 def test_realisation_trifft_die_modellverteilung(config):
-    """Monte-Carlo-Abgleich: die simulierte Zustandsverteilung nach 20
-    Jahren stimmt mit ``Zustandsmodell.verteilung`` ueberein.
+    """Monte-Carlo-Abgleich gegen die Zustandsverteilung der
+    ERFAHRUNGSANNAHMEN (3. Ordnung).
 
-    Das ist der Beleg, dass Ereignis-Engine und Kern denselben Prozess
-    fahren — nicht nur zufaellig aehnliche. Toleranz grosszuegig (endliche
-    Stichprobe), aber die Groessenordnung ist eindeutig.
+    Beleg, dass die Ereignis-Engine genau den Prozess zieht, den die
+    Annahmenschicht beschreibt — nicht nur zufaellig aehnliche Haeufigkeiten.
+    Toleranz aus der binomialen Streuung; verifiziert scharf genug, dass
+    vertauschte Uebergangs-Schwellen den Test rot machen.
     """
     jahre = 20
     x, n = 35, jahre
@@ -286,12 +289,22 @@ def test_realisation_trifft_die_modellverteilung(config):
     )
     aktiv = len(stamm) - tot - im_bezug
 
+    # Referenz ist ein Zustandsmodell auf DERSELBEN Ordnung wie die
+    # Simulation: die Erfahrungsannahmen (3. Ordnung) ueber den
+    # Ausscheideordnungen des Produkts. Gegen die Bewertungsgrundlage
+    # (1. Ordnung) zu pruefen waere seit der Annahmenschicht falsch —
+    # Simulation und Bewertung duerfen bewusst auseinanderfallen.
     produkt = BU(BUModelPoint(**bu_model_point_kwargs(
         stamm.iloc[0], config.generationen[0].bu_generation_fields()
     )))
-    verteilung = produkt.modell.verteilung(AKTIV, x, jahre)
+    modell = Zustandsmodell(
+        (AKTIV, BU_ZUSTAND, TOT),
+        config.generationen[0].zins,
+        bu_uebergang(produkt, config.annahmen),
+        max_dauer=produkt.modell.max_dauer,
+    )
     erwartet = {AKTIV: 0.0, BU_ZUSTAND: 0.0, TOT: 0.0}
-    for (zustand, _dauer), masse in verteilung.items():
+    for (zustand, _dauer), masse in modell.verteilung(AKTIV, x, jahre).items():
         erwartet[zustand] += masse
 
     # Toleranz aus der BINOMIALEN Streuung sqrt(N*p*(1-p)) — die
@@ -334,7 +347,19 @@ def test_gemischter_bestand_simuliert_beide_produkte():
     bu = load_config(BU_EXAMPLE)
     gemischt = copy.deepcopy(klv)
     gemischt.generationen = [klv.generationen[1], bu.generationen[0]]
-    gemischt.ereignisse = klv.ereignisse
+    # Erfahrungsannahmen beider Produkte zusammenfuehren (KLV-Ereignisse
+    # aus der KLV-Config, BU-Uebergaenge aus der BU-Config):
+    gemischt.annahmen = Annahmen(
+        tod=klv.annahmen.tod,
+        storno=klv.annahmen.storno,
+        beitragsfreistellung=klv.annahmen.beitragsfreistellung,
+        erhoehung=klv.annahmen.erhoehung,
+        erh_prozent=klv.annahmen.erh_prozent,
+        invalidisierung=bu.annahmen.invalidisierung,
+        reaktivierung=bu.annahmen.reaktivierung,
+        aktivensterblichkeit=bu.annahmen.aktivensterblichkeit,
+        invalidensterblichkeit=bu.annahmen.invalidensterblichkeit,
+    )
     assert gemischt.validate() == []
 
     df = generate(gemischt)
@@ -517,7 +542,19 @@ def test_klv_bewegungskonto_ignoriert_bu_vertraege():
     bu = load_config(BU_EXAMPLE)
     gemischt = copy.deepcopy(klv)
     gemischt.generationen = [klv.generationen[1], bu.generationen[0]]
-    gemischt.ereignisse = klv.ereignisse
+    # Erfahrungsannahmen beider Produkte zusammenfuehren (KLV-Ereignisse
+    # aus der KLV-Config, BU-Uebergaenge aus der BU-Config):
+    gemischt.annahmen = Annahmen(
+        tod=klv.annahmen.tod,
+        storno=klv.annahmen.storno,
+        beitragsfreistellung=klv.annahmen.beitragsfreistellung,
+        erhoehung=klv.annahmen.erhoehung,
+        erh_prozent=klv.annahmen.erh_prozent,
+        invalidisierung=bu.annahmen.invalidisierung,
+        reaktivierung=bu.annahmen.reaktivierung,
+        aktivensterblichkeit=bu.annahmen.aktivensterblichkeit,
+        invalidensterblichkeit=bu.annahmen.invalidensterblichkeit,
+    )
     df = generate(gemischt)
     bis = dt.date(2035, 1, 1)
     erg = fortschreiben(df, gemischt, bis)
@@ -671,7 +708,19 @@ def test_ereignis_summen_trennt_bezugsgroessen():
     bu = load_config(BU_EXAMPLE)
     gemischt = copy.deepcopy(klv)
     gemischt.generationen = [klv.generationen[1], bu.generationen[0]]
-    gemischt.ereignisse = klv.ereignisse
+    # Erfahrungsannahmen beider Produkte zusammenfuehren (KLV-Ereignisse
+    # aus der KLV-Config, BU-Uebergaenge aus der BU-Config):
+    gemischt.annahmen = Annahmen(
+        tod=klv.annahmen.tod,
+        storno=klv.annahmen.storno,
+        beitragsfreistellung=klv.annahmen.beitragsfreistellung,
+        erhoehung=klv.annahmen.erhoehung,
+        erh_prozent=klv.annahmen.erh_prozent,
+        invalidisierung=bu.annahmen.invalidisierung,
+        reaktivierung=bu.annahmen.reaktivierung,
+        aktivensterblichkeit=bu.annahmen.aktivensterblichkeit,
+        invalidensterblichkeit=bu.annahmen.invalidensterblichkeit,
+    )
     df = generate(gemischt)
     erg = fortschreiben(df, gemischt, dt.date(2035, 1, 1))
 
@@ -758,3 +807,89 @@ def test_historie_validierung_ohne_produktspalte(config, portfolio):
     alt = portfolio.drop(columns=["produkt"])
     fehler = validate_statushistorie(alt, erg.historie)
     assert isinstance(fehler, list)   # kein KeyError
+
+
+# --------------------------------------------------------------------------- #
+# Erfahrungsannahmen (3. Ordnung)
+# --------------------------------------------------------------------------- #
+
+
+def test_annahmen_wirken_auf_die_simulation_nicht_auf_die_bewertung(config):
+    """Der Zweck der Annahmenschicht: die Realisation folgt der dritten
+    Ordnung, Beitraege und Reserven bleiben auf der ersten."""
+    import copy
+
+    from rechner_pipeline.bestand.config import Annahme, Annahmen
+
+    stamm = _bu_stamm(*[
+        {"police_id": 10000001 + i, "start": dt.date(2000, 1, 1), "x": 35, "n": 25}
+        for i in range(3000)
+    ])
+    bis = dt.date(2026, 1, 1)
+
+    def lauf(invalidisierung_b):
+        cfg = copy.copy(config)
+        cfg.annahmen = Annahmen(
+            invalidisierung=Annahme(a=0.0, b=invalidisierung_b),
+            reaktivierung=Annahme(a=0.0, b=1.0),
+            aktivensterblichkeit=Annahme(a=0.0, b=1.0),
+            invalidensterblichkeit=Annahme(a=0.0, b=1.0),
+        )
+        erg = fortschreiben(stamm, cfg, bis)
+        return int((erg.ledger["ereignis"] == "INV").sum())
+
+    ohne_marge = lauf(1.0)      # Annahme = Rechnungsgrundlage
+    mit_marge = lauf(0.6)       # 40 % Sicherheitsmarge herausgerechnet
+    assert ohne_marge > 0
+    # Die Marge schlaegt sichtbar durch (deutlich mehr als Zufallsrauschen):
+    assert mit_marge < ohne_marge * 0.8
+
+    # Die Bewertung ist davon unberuehrt: derselbe Modellpunkt, derselbe
+    # Beitrag — egal welche Erfahrungsannahmen gelten.
+    grundlagen = config.generationen[0].bu_generation_fields()
+    beitrag = BU(BUModelPoint(x=35, sex="M", n=25, bu_rente=12000.0, **grundlagen))
+    assert beitrag.nettobeitrag() == pytest.approx(
+        BU(BUModelPoint(x=35, sex="M", n=25, bu_rente=12000.0, **grundlagen)).nettobeitrag()
+    )
+
+
+def test_annahme_transformiert_keine_tafelgrenze_weg(config):
+    """Eine Erfahrungsannahme darf eine Gueltigkeitsgrenze der Tafel nicht
+    aufheben: ab Alter 70 fuehrt die DAV 1997 I die Invalidisierung als 1
+    (Tafelende, keine Wahrscheinlichkeit). Mit b < 1 saehe der Bereich
+    rechnerisch gueltig aus — die Grenzpruefung laeuft deshalb auf der
+    UNtransformierten Tafel."""
+    import copy
+
+    kaputt = copy.deepcopy(config)
+    kaputt.generationen[0].max_endalter = 72
+    fehler = kaputt.validate()
+    assert any("Invalidisierung + Aktivensterblichkeit > 1" in f for f in fehler)
+
+
+def test_klv_tod_annahme_wirkt_auf_die_tafel(config_klv=None):
+    """KLV: die Sterblichkeitsannahme ist eine Marge auf der Tafel-qx
+    erster Ordnung — b = 0 heisst 'kein Tod', b = 1 'Tafel unveraendert'."""
+    import copy
+
+    from rechner_pipeline.bestand.config import Annahme, Annahmen, load_config
+    from rechner_pipeline.bestand.ereignisse import fortschreiben as fs
+
+    klv = load_config(KLV_EXAMPLE)
+    from tests.test_bestand_ereignisse import _mini_stamm
+
+    stamm = _mini_stamm(*[
+        {"police_id": 10000001 + i, "start": dt.date(2000, 3, 1), "x": 55,
+         "n": 25, "t": 20}
+        for i in range(2000)
+    ])
+
+    def tote(b):
+        cfg = copy.copy(klv)
+        cfg.annahmen = Annahmen(tod=Annahme(a=0.0, b=b))
+        return int((fs(stamm, cfg, dt.date(2025, 1, 1)).ledger["ereignis"] == "TOD").sum())
+
+    assert tote(0.0) == 0                 # keine Annahme -> kein Ereignis
+    voll = tote(1.0)
+    assert voll > 0
+    assert tote(0.5) < voll               # Marge senkt die Sterblichkeit

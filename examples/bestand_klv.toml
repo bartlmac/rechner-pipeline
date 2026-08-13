@@ -279,16 +279,21 @@ premium_duration = [5, 35]
 sum_insured = [1000, 2000000]
 
 # --------------------------------------------------------------------------
-# Ereignis-Engine: jaehrliche Raten der Fortschreibung (Statushistorie).
-# tod_faktor skaliert die Tafel-qx erster Ordnung der jeweiligen Tarifbasis.
+# Erfahrungsannahmen (3. Ordnung) der Fortschreibung.
+#
+# Jede Ereigniswahrscheinlichkeit entsteht nach EINER Regel aus der
+# Rechnungsgrundlage erster Ordnung:  annahme = a + b * erste_ordnung.
+#   * Ereignisse MIT Rechnungsgrundlage (Tod): b rechnet die
+#     Sicherheitsmarge heraus. Bei Todesfallleistung ist die erste Ordnung
+#     vorsichtig hoch, also b < 1.
+#   * Ereignisse OHNE Rechnungsgrundlage (Storno, Beitragsfreistellung,
+#     dynamische Erhoehung): b = 0, die Rate steht in a.
+# Die BEWERTUNG bleibt unberuehrt — Beitraege und Reserven rechnet der Kern
+# auf erster Ordnung.
 # --------------------------------------------------------------------------
-[ereignisse]
-storno_rate = 0.03
-pex_rate = 0.01
-tod_faktor = 1.0
-erh_rate = 0.3
+[annahmen]
+tod = { a = 0.0, b = 0.8 }
+storno = { a = 0.03, b = 0.0 }
+beitragsfreistellung = { a = 0.01, b = 0.0 }
+erhoehung = { a = 0.30, b = 0.0 }
 erh_prozent = 0.05
-
-# Neuzugang je Kalenderjahr (Fortschreibung ab Referenzstichtag, siehe
-# bestand.ereignisse.fortschreiben(neuzugang_ab=...)); 0 = aus. Wirkt nur
-# im Gueltigkeitsfenster der Generation.

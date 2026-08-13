@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from rechner_pipeline.bestand.config import EreignisConfig, load_config
+from rechner_pipeline.bestand.config import Annahme, Annahmen, load_config
 from rechner_pipeline.bestand.ereignisse import (
     EreignisError,
     fortschreiben,
@@ -129,7 +129,7 @@ def test_neuzugaenge_werden_mitsimuliert(config):
          "t": 25, "tarif_generation": "KLV-1994"}
     )
     cfg = copy.copy(config)
-    cfg.ereignisse = EreignisConfig(tod_faktor=1e12)  # sicherer Tod im Jahr 1
+    cfg.annahmen = Annahmen(tod=Annahme(a=0.0, b=1e12))  # sicherer Tod im Jahr 1
     ergebnis = fortschreiben(stamm, cfg, dt.date(2020, 1, 1), neuzugang_ab=REF)
     zugang_ids = set(ergebnis.zugaenge["police_id"])
     assert zugang_ids

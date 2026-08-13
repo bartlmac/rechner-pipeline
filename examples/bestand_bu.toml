@@ -149,7 +149,20 @@ duration = [10, 40]
 bu_rente = [1200, 200000]
 
 # --------------------------------------------------------------------------
-# Ereignisraten: fuer BU-Generationen ohne Wirkung (die Uebergaenge kommen
-# aus den Rechnungsgrundlagen des Produkts). Bewusst leer gelassen.
+# Erfahrungsannahmen (3. Ordnung) der Fortschreibung.
+#
+# Jede Uebergangswahrscheinlichkeit entsteht aus der Rechnungsgrundlage
+# erster Ordnung:  annahme = a + b * erste_ordnung. Die Richtung der
+# Sicherheitsmarge steckt in b:
+#   * invalidisierung: erste Ordnung vorsichtig HOCH  -> b < 1
+#   * reaktivierung:   erste Ordnung vorsichtig NIEDRIG -> b > 1
+#   * aktivensterblichkeit (Tod im Anwaerterstand entlastet den Versicherer)
+#     und invalidensterblichkeit: hier vorerst ohne Marge (b = 1).
+# Storno, Beitragsfreistellung und dynamische Erhoehung kennt das
+# BU-Beispielprodukt nicht; ihre Annahmen bleiben auf 0.
 # --------------------------------------------------------------------------
-[ereignisse]
+[annahmen]
+invalidisierung = { a = 0.0, b = 0.8 }
+reaktivierung = { a = 0.0, b = 1.25 }
+aktivensterblichkeit = { a = 0.0, b = 1.0 }
+invalidensterblichkeit = { a = 0.0, b = 1.0 }

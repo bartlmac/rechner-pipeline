@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from rechner_pipeline.bestand.auswertung import (
     auswertungs_verlauf,
     vertragswerte,
 )
-from rechner_pipeline.bestand.config import EreignisConfig, load_config
+from rechner_pipeline.bestand.config import Annahme, Annahmen, load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
@@ -130,7 +131,7 @@ def test_auswertungs_verlauf_pex_pfad_deterministisch(config):
     import copy
 
     cfg = copy.copy(config)
-    cfg.ereignisse = EreignisConfig(pex_rate=0.999999)  # PEX im Vertragsjahr 1
+    cfg.annahmen = Annahmen(beitragsfreistellung=Annahme(a=0.999999, b=0.0))  # PEX im Vertragsjahr 1
     historie, _, *_ = fortschreiben(stamm, cfg, dt.date(2035, 1, 1))
     stichtag = dt.date(2020, 1, 1)  # Vertragsjahr 9, beitragsfrei seit Jahr 1
     reihe = auswertungs_verlauf(stamm, historie, cfg, [stichtag])

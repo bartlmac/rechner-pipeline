@@ -11,11 +11,20 @@ Model (Stufe 1, annual):
   module dates). Policy year ``j`` spans anniversary ``j`` to ``j+1``; events
   of year ``j`` are booked at anniversary ``j+1`` — matching the kernel's
   Verlaufszeilen (``a`` = completed contract years).
+* Erfahrungsannahmen (3. Ordnung): JEDE Ereigniswahrscheinlichkeit der
+  Simulation entsteht aus der ersten Ordnung ueber eine affine
+  Transformation ``a + b * x``
+  (:class:`~rechner_pipeline.bestand.config.Annahme`). Fuer Ereignisse mit
+  Rechnungsgrundlage (Tod, Invalidisierung, Reaktivierung,
+  Invalidensterblichkeit) rechnet ``b`` die Sicherheitsmarge heraus; fuer
+  Ereignisse ohne (Storno, Beitragsfreistellung, dynamische Erhoehung) ist
+  ``b = 0`` und ``a`` die Rate selbst. Die BEWERTUNG bleibt davon
+  unberuehrt — Beitraege und Reserven rechnet der Kern auf erster Ordnung.
 * Per policy year, hierarchical competing risks on the active track:
-  death (first-order qx of the tariff basis, scaled by ``tod_faktor``),
-  then lapse (``storno_rate``, only while ``j+1 < n``), then paid-up
-  conversion (``pex_rate``, only while premiums are still due, ``j+1 < t``),
-  then dynamische Erhoehung (``erh_rate``, premium-paying track only).
+  death (Annahme ``tod`` auf der Tafel-qx der Tarifbasis), then lapse
+  (Annahme ``storno``, only while ``j+1 < n``), then paid-up conversion
+  (Annahme ``beitragsfreistellung``, while ``j+1 < t``), then dynamische
+  Erhoehung (Annahme ``erhoehung``, premium-paying track only).
   After PEX the contract stays exposed to death and maturity only (no lapse
   of paid-up contracts in Stufe 1 — the sheet defines no RKW_bfr rule).
 * Dynamische Erhoehung (Schichtungsprinzip): an accepted Erhoehung creates a
@@ -223,7 +232,7 @@ def _event(
 def _simuliere_vertrag(
     row: Mapping[str, Any],
     generation_fields: Mapping[str, Any],
-    ereignisse,
+    annahmen,
     seed: int,
     bis: _dt.date,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -263,13 +272,13 @@ def _simuliere_vertrag(
         # Modul-Docstring): eine Rate von 0 verbraucht ihren Draw trotzdem —
         # sonst waeren Laeufe verschiedener Configs nicht pfadweise
         # vergleichbar (Common Random Numbers, Rate-0-Baseline).
-        # 1. Tod im Vertragsjahr j (Tafel-qx der Tarifbasis, skaliert);
-        #    bei tod_faktor 0 wird die Tafel nicht angefasst:
-        if ereignisse.tod_faktor > 0.0:
-            qx = min(1.0, vertrag.grund.kom.qx_at(x + j) * ereignisse.tod_faktor)
-        else:
-            qx = 0.0
-        if rng.random() < qx:
+        # 1. Tod im Vertragsjahr j: Erfahrungsannahme auf der Tafel-qx
+        #    erster Ordnung der Tarifbasis. Bei b = 0 wird die Tafel gar
+        #    nicht angefasst (Tafelgrenzen bleiben unberuehrt).
+        qx_erste_ordnung = (
+            vertrag.grund.kom.qx_at(x + j) if annahmen.tod.b else 0.0
+        )
+        if rng.random() < annahmen.tod(qx_erste_ordnung):
             if beitragsfrei_ab is None:
                 buche("TOD", j + 1, "Todesfallleistung", vertrag.gesamt_vs())
             else:
@@ -278,19 +287,19 @@ def _simuliere_vertrag(
 
         if beitragsfrei_ab is None:
             # 2. Storno (nur beitragspflichtig, nicht im Ablaufjahr):
-            if j + 1 < n and rng.random() < ereignisse.storno_rate:
+            if j + 1 < n and rng.random() < annahmen.storno(0.0):
                 buche("STO", j + 1, "RKW", vertrag.rkw(j + 1))
                 return events, scheiben
             # 3. Beitragsfreistellung (nur solange Beitraege laufen):
-            if j + 1 < t and rng.random() < ereignisse.pex_rate:
+            if j + 1 < t and rng.random() < annahmen.beitragsfreistellung(0.0):
                 beitragsfrei_ab = j + 1
                 pex_summe = vertrag.beitragsfreie_summe(j + 1)
                 buche("PEX", j + 1, "VS_bfr", pex_summe)
         if beitragsfrei_ab is None:
             # 4. Dynamische Erhoehung (nur beitragspflichtig, solange
             #    Beitraege laufen): neue Scheibe, kein Statuswechsel.
-            if j + 1 < t and rng.random() < ereignisse.erh_rate:
-                betrag = ereignisse.erh_prozent * vertrag.gesamt_vs()
+            if j + 1 < t and rng.random() < annahmen.erhoehung(0.0):
+                betrag = annahmen.erh_prozent * vertrag.gesamt_vs()
                 mp_s = vertrag.erhoehe(j + 1, betrag)
                 scheiben.append(
                     {
@@ -315,19 +324,52 @@ def _simuliere_vertrag(
     return events, scheiben
 
 
+def bu_uebergang(produkt, annahmen):
+    """Übergangsfunktion des BU-Zustandsprozesses auf Erfahrungsannahmen.
+
+    Legt die Erfahrungsschicht (3. Ordnung) über die vier
+    Ausscheideordnungen des Produkts: jede Übergangswahrscheinlichkeit
+    erster Ordnung wird durch ihre :class:`~rechner_pipeline.bestand.config.Annahme`
+    transformiert. Die Simulation der Fortschreibung nutzt genau diese
+    Funktion — sie ist damit auch der Ansatzpunkt, um die simulierte
+    Zustandsverteilung gegen ein Modell derselben Ordnung zu prüfen
+    (statt gegen die Bewertungsgrundlage erster Ordnung).
+    """
+    from rechner_pipeline.kern.produkte.bu import AKTIV, BU_ZUSTAND, TOT
+
+    zuordnung = {
+        (AKTIV, BU_ZUSTAND): annahmen.invalidisierung,
+        (AKTIV, TOT): annahmen.aktivensterblichkeit,
+        (BU_ZUSTAND, AKTIV): annahmen.reaktivierung,
+        (BU_ZUSTAND, TOT): annahmen.invalidensterblichkeit,
+    }
+
+    def uebergang(von: str, nach: str, alter: int, dauer: int) -> float:
+        annahme = zuordnung.get((von, nach))
+        if annahme is None:
+            return 0.0
+        return annahme(produkt._uebergang(von, nach, alter, dauer))
+
+    return uebergang
+
+
 def _simuliere_bu_vertrag(
     row: Mapping[str, Any],
     generation_fields: Mapping[str, Any],
+    annahmen,
     seed: int,
     bis: _dt.date,
 ) -> List[Dict[str, Any]]:
     """Simuliere einen BU-Vertrag; liefert die gebuchten GeVos.
 
-    Der Zustandsprozess ist GENAU der, den der Kern bewertet: die
+    Der Zustandsprozess ist derselbe, den der Kern bewertet — die
     Übergangswahrscheinlichkeiten kommen aus dem Produkt
     (:meth:`rechner_pipeline.kern.produkte.bu.BU._uebergang`, also aus den
-    vier Ausscheideordnungen), nicht aus Config-Raten. Realisation und
-    Reservierung fahren damit auf derselben Fachlichkeit.
+    vier Ausscheideordnungen), nicht aus freien Raten. Darüber liegt die
+    Erfahrungsschicht (:class:`~rechner_pipeline.bestand.config.Annahmen`):
+    sie transformiert jede Übergangswahrscheinlichkeit affin, sodass die
+    Simulation auf dritter Ordnung läuft, während die Bewertung
+    unverändert auf erster bleibt.
 
     Gitter und Konventionen wie beim KLV-Pfad: Vertragsjahr ``j`` läuft von
     Jahrestag ``j`` bis ``j+1``, Ereignisse werden am Jahrestag ``j+1``
@@ -355,6 +397,7 @@ def _simuliere_bu_vertrag(
     rente = float(row["bu_rente"])
 
     produkt = BU(BUModelPoint(**bu_model_point_kwargs(row, generation_fields)))
+    uebergang = bu_uebergang(produkt, annahmen)
     max_dauer = produkt.modell.max_dauer
     rng = np.random.Generator(
         np.random.PCG64(np.random.SeedSequence([seed, EREIGNIS_STREAM, police_id]))
@@ -381,8 +424,8 @@ def _simuliere_bu_vertrag(
         alter = x + j
         u = rng.random()
         if zustand == AKTIV:
-            p_inv = produkt._uebergang(AKTIV, BU_ZUSTAND, alter, 0)
-            p_tod = produkt._uebergang(AKTIV, TOT_ZUSTAND, alter, 0)
+            p_inv = uebergang(AKTIV, BU_ZUSTAND, alter, 0)
+            p_tod = uebergang(AKTIV, TOT_ZUSTAND, alter, 0)
             if u < p_inv:
                 # Invalidisierung: die BU-Rente beginnt (Beitragsbefreiung
                 # ist im Produkt implizit — Beitraege laufen nur in aktiv).
@@ -392,8 +435,8 @@ def _simuliere_bu_vertrag(
                 buche("TOD", j + 1, 0.0, "TOD")
                 return events
         else:
-            p_rea = produkt._uebergang(BU_ZUSTAND, AKTIV, alter, dauer)
-            p_tod = produkt._uebergang(BU_ZUSTAND, TOT_ZUSTAND, alter, dauer)
+            p_rea = uebergang(BU_ZUSTAND, AKTIV, alter, dauer)
+            p_tod = uebergang(BU_ZUSTAND, TOT_ZUSTAND, alter, dauer)
             if u < p_rea:
                 # Reaktivierung: die Rente endet, der Vertrag ist wieder
                 # Anwaerter (und wieder beitragspflichtig).
@@ -432,7 +475,7 @@ def fortschreiben(
     keine Vertraege nach dem Referenzstichtag enthalten (Doppelzaehlung).
 
     ``stamm`` is the generator's base portfolio (one POL row per contract);
-    the event rates come from ``config.ereignisse``, the amounts from the
+    the event assumptions come from ``config.annahmen``, the amounts from the
     stable kernel. Pure function of (stamm, config, bis, neuzugang_ab) —
     seed-deterministic, the Stamm itself is never mutated. Fail-fast
     guards: only POL base rows
@@ -443,7 +486,7 @@ def fortschreiben(
     fehlend = [c for c in STAMM_NAMES if c not in stamm.columns]
     if fehlend:
         raise EreignisError(f"Stamm-Spalten fehlen: {fehlend}")
-    konfig_fehler = config.ereignisse.validate()
+    konfig_fehler = config.annahmen.validate()
     if konfig_fehler:
         raise EreignisError("; ".join(konfig_fehler))
     if len(stamm) and not (
@@ -557,12 +600,12 @@ def fortschreiben(
                 # Beispielprodukt nicht — die [ereignisse]-Raten der Config
                 # wirken nur auf KLV-Generationen).
                 events = _simuliere_bu_vertrag(
-                    row, bu_generationen[name], config.seed, bis
+                    row, bu_generationen[name], config.annahmen, config.seed, bis
                 )
                 scheiben = []
             else:
                 events, scheiben = _simuliere_vertrag(
-                    row, generationen[name], config.ereignisse, config.seed, bis
+                    row, generationen[name], config.annahmen, config.seed, bis
                 )
         except EreignisError:
             raise
