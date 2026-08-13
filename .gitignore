@@ -45,3 +45,6 @@ Thumbs.db
 docs/**/*.pdf
 docs/**/*.typ
 docs/**/*_files/
+
+# Migrationsstaging (extrahierte Migrationsartefakte, lauf-spezifisch)
+migrationsstaging/
