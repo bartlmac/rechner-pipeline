@@ -211,16 +211,20 @@ def baue_generation(
         diskrepanzen.extend(konflikte)
         unisex = gemergt["unisex"]
 
-    # Quellnamen-Mapping vereinen; Konflikt ist ein harter Befund.
+    # Quellnamen-Mapping vereinen. Das ist Dokumentation der fremden
+    # Benennungslogik, kein Fachwert: abweichende Formulierungen werden
+    # als sortierte Vereinigung erhalten (sichtbar, nicht entschieden) —
+    # die P2-Maschinerie gilt den Werten, nicht den Notizen.
     quellnamen: Dict[str, str] = {}
     for fragment in fragmente:
         for quellname, ziel in fragment.quellnamen.items():
-            if quellnamen.get(quellname, ziel) != ziel:
-                raise BefuellungsFehler(
-                    f"{gen_id}: Quellname {quellname!r} auf zwei Ziele "
-                    f"gemappt ({quellnamen[quellname]!r} vs. {ziel!r})"
+            vorhanden = quellnamen.get(quellname)
+            if vorhanden is None:
+                quellnamen[quellname] = ziel
+            elif ziel not in vorhanden.split(" | "):
+                quellnamen[quellname] = " | ".join(
+                    sorted(set(vorhanden.split(" | ")) | {ziel})
                 )
-            quellnamen[quellname] = ziel
 
     registriert = {
         q["datei"]: q["sha256"] for q in register.get("quellen", [])

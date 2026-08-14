@@ -195,3 +195,19 @@ def test_gate_usage_ohne_fall(tmp_path: Path):
 
     result = main(["--diagnostics-dir", str(tmp_path / "diag")])
     assert result.exit_code == 2
+
+
+def test_quellnamen_divergenz_wird_vereint_nicht_entschieden(fall: Path):
+    """Quellnamen-Mappings sind Dokumentation: kosmetisch abweichende
+    Formulierungen zweier Agenten bleiben beide sichtbar erhalten."""
+    a = _fragment("meldung.docx", "tarifmeldung", zins=0.0175)
+    a.quellnamen = {"StoAb": "parameter:stoab_satz/min/max"}
+    b = _fragment("rechner.xlsm", "tarifrechner", zins=0.0175)
+    b.quellnamen = {"StoAb": "parameter:stoab_satz|min|max", "k": "parameter:policy_fee"}
+    gen, _ = baue_generation(
+        "tg2012", [a, b], _register(fall), {0: "x", 1: "y"}, ZEIT,
+    )
+    assert gen.quellnamen["k"] == "parameter:policy_fee"
+    assert set(gen.quellnamen["StoAb"].split(" | ")) == {
+        "parameter:stoab_satz/min/max", "parameter:stoab_satz|min|max",
+    }
