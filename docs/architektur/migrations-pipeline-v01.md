@@ -110,9 +110,10 @@ Wege ist eine Team-Entscheidung nach Fall 1 (Fragerunde F2).
   die uebrigen fuenf Zellen brauchen weitere Erwartungswerte
   (zusaetzliche Modellpunkte vom Lieferanten oder COM-Neuberechnung) —
   Gate O3 weist das Komplement aus.
-* Die ratzu-Staffel-Extraktion aus IF-Formeltexten ist LLM-Urteil ohne
-  deterministischen Rueck-Check (stichprobenverifiziert; ein
-  Formel-Parser waere der saubere Weg).
+* Der deterministische Formel-Rueck-Check (quellen/formeln.py, in Gate
+  O1 verankert) deckt die IF-Staffeln; andere Formelformen prueft er
+  fail-fast als "nicht pruefbar" — ein breiterer Formel-Parser bleibt
+  offen.
 * Kein Graph-Store, keine Embeddings, keine BU-/FLV-/Renten-Klassen in
   der T-Box (kommen mit ihren Faellen ueber G-T), kein Legacy-Code-
   Vorverdichter, keine Bestandsdaten-Quelle in Stufe 1 (Quelltyp ist im
