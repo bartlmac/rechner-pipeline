@@ -58,6 +58,17 @@ TEXTE: Dict[str, str] = {
         "Stichtagswerte, keine Zeitraum-Aggregate: Bestand und Reserven am "
         "jeweiligen Stichtag, gerechnet aus dem stabilen Rechenkern."
     ),
+    "beitraege": (
+        "Stichtagswerte des laufenden Beitrags, keine Zeitraum-Summen. "
+        "BJB ist der tarifliche Jahres-Bruttobeitrag, BZB der Zahlbeitrag "
+        "einer Rate — hier auf das Jahr hochgerechnet und damit "
+        "einschließlich Ratenzuschlag und Stückkosten. Nicht enthalten "
+        "sind Verträge, die keinen Beitrag mehr zahlen: beitragsfrei "
+        "gestellte (PEX), solche mit abgelaufener Beitragszahlungsdauer "
+        "und BU-Verträge im Leistungsbezug (Beitragsbefreiung). "
+        "Beitragsvolumen ist über die Versicherungsarten addierbar — "
+        "anders als die versicherten Leistungen."
+    ),
     "lesart": (
         "Aggregierte Zahlen beziehen sich auf den im Abschnittstitel "
         "genannten Zeitraum; Stichtagswerte sind als solche gekennzeichnet. "

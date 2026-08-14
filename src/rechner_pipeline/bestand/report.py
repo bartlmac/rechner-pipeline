@@ -298,6 +298,30 @@ def _chart_deckungskapital(reihe: List[Dict[str, Any]]) -> str:
 
 
 
+def _chart_beitraege(reihe: List[Dict[str, Any]], mit_bu: bool) -> str:
+    """Beitragsvolumen je Stichtag, gestapelt nach Versicherungsart.
+
+    Anders als das versicherte Volumen sind Beitraege ueber die Arten
+    addierbar — beides sind Zahlungen in Euro je Jahr. Deshalb hier eine
+    gemeinsame Darstellung mit sichtbarem Anteil je Art.
+    """
+    x = list(range(len(reihe)))
+    labels = [r["stichtag"][:4] for r in reihe]
+    fig, ax = plt.subplots()
+    klv = [r["bzb_jahr"] / 1e6 for r in reihe]
+    ax.bar(x, klv, label="Kapitalversicherung", color=_FARBEN[0], width=0.8)
+    if mit_bu:
+        bu = [r["bu_beitrag"] / 1e6 for r in reihe]
+        ax.bar(x, bu, bottom=klv, label="Berufsunfähigkeit",
+               color=_FARBEN[1], width=0.8)
+    schritt = max(1, len(x) // 12)
+    ax.set_xticks(x[::schritt], labels[::schritt])
+    ax.set_ylabel("Beitragsvolumen p. a. (Mio.)")
+    ax.set_xlabel("Stichtag (1.1. des Jahres)")
+    ax.legend(loc="upper right", fontsize=8)
+    return _svg(fig)
+
+
 def _chart_ereignisse_je_jahr(reihe: List[Dict[str, Any]]) -> str:
     x = list(range(len(reihe)))
     labels = [str(r["jahr"]) for r in reihe]
@@ -804,7 +828,7 @@ def render_html(
 <div class="charts">{''.join(bilder)}</div>
 <div class="charts">{scatter}</div>""")
         struktur_html = "".join(struktur_bloecke)
-        svg_status = svg_ereignisse = svg_dk = ""
+        svg_status = svg_ereignisse = svg_dk = svg_beitrag = ""
         if historie is not None and len(ledger) > 0:
             svg_status = _chart_status_verlauf(status_verlauf(bestand, stichtage))
             svg_ereignisse = _chart_ereignisse_je_jahr(
@@ -816,6 +840,10 @@ def render_html(
                 df, historie, config, stichtage, scheiben=scheiben
             )
             svg_dk = _chart_deckungskapital(reihe_ausw)
+            svg_beitrag = _chart_beitraege(
+                [r for r in reihe_ausw if r["vertraege"] > 0],
+                any(r["bu_vertraege"] for r in reihe_ausw),
+            )
 
     # Je Versicherungsart eine eigene Volumen-Spalte — dieselbe Trennung
     # wie in den Grafiken; die Vertragszahl bleibt die Gesamtzahl.
@@ -968,6 +996,27 @@ stabilen Rechenkern.</p>"""
             "<th>Σ Rückkaufswert (bpfl.)</th><th>Σ VS_bfr (fixiert)</th>"
             "</tr></thead><tbody>" + ausw_zeilen + "</tbody></table>"
         )
+        # Beitraege in eigener Tabelle statt als weitere Spalten: die
+        # Kennzahlen-Tabelle traegt Bestandsgroessen, hier stehen die
+        # Zahlungen — und acht Spalten waeren nicht mehr lesbar.
+        mit_bu = any(r["bu_vertraege"] for r in reihe_ausw)
+        bu_kopf = "<th>Σ Bruttobeitrag (BU-Anwärter)</th>" if mit_bu else ""
+        beitrag_zeilen = "".join(
+            f"<tr><td>{r['stichtag']}</td>"
+            f"<td class='num'>{_zahl(r['bjb'])}</td>"
+            f"<td class='num'>{_zahl(r['bzb_jahr'])}</td>"
+            + (f"<td class='num'>{_zahl(r['bu_beitrag'])}</td>" if mit_bu else "")
+            + f"<td class='num'>{_zahl(r['bzb_jahr'] + r['bu_beitrag'])}</td></tr>"
+            for r in reihe_ausw
+            if r["vertraege"] > 0
+        )
+        beitrag_tabelle = (
+            "<table><thead><tr><th>Stichtag</th>"
+            "<th>Σ Jahresbeitrag (BJB, KLV)</th>"
+            "<th>Σ Zahlbeitrag p. a. (BZB, KLV)</th>"
+            f"{bu_kopf}<th>Σ Beitragsvolumen p. a.</th>"
+            "</tr></thead><tbody>" + beitrag_zeilen + "</tbody></table>"
+        )
         auswertung_html = f"""
 <h2>Aktuarielle Kennzahlen je Stichtag, {ausw_zeitraum}</h2>
 <div class="charts">{svg_dk}</div>
@@ -976,7 +1025,12 @@ stabilen Rechenkern.</p>"""
 Deckungskapital: beitragspflichtig die Deckungsrückstellung kDRx_bpfl,
 nach Beitragsfreistellung die beitragsfreie Reserve (VS_bfr mal kVx_bfr).
 Rückkaufswert nur auf dem beitragspflichtigen Track (das Quell-Blatt
-definiert keine Rückkaufsregel für beitragsfreie Verträge).</p>"""
+definiert keine Rückkaufsregel für beitragsfreie Verträge).</p>
+
+<h3>Beiträge</h3>
+<div class="charts">{svg_beitrag}</div>
+{beitrag_tabelle}
+<p>{TEXTE["beitraege"]}</p>"""
 
     return f"""<!doctype html>
 <html lang="de">

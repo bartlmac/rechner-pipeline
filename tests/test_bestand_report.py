@@ -620,3 +620,94 @@ def test_volumen_verlauf_steht_je_versicherungsart(gemischter_bestand):
     assert werte["klv"] != werte["bu"]
     assert report._zahl(werte["klv"]) in html
     assert report._zahl(werte["bu"]) in html
+
+
+# --------------------------------------------------------------------------- #
+# Praemien-Kennzahlen
+# --------------------------------------------------------------------------- #
+
+
+def test_beitraege_nur_von_zahlenden_vertraegen(config):
+    """BJB/BZB zaehlen nur, wo auch gezahlt wird: nicht nach
+    Beitragsfreistellung und nicht nach Ablauf der Beitragszahlungsdauer."""
+    from rechner_pipeline.bestand.auswertung import beitraege
+    from rechner_pipeline.kern import ModelPoint, Rechenkern
+
+    g = config.generationen[-1].generation_fields()
+    mp = ModelPoint(x=40, sex="M", n=30, t=20, sum_insured=100_000.0, zw=12, **g)
+    kern = Rechenkern(mp)
+
+    im_beitrag = beitraege(kern, 10)
+    assert im_beitrag["bjb"] == pytest.approx(
+        mp.sum_insured * kern.gross_premium_rate()
+    )
+    # Der Zahlbeitrag traegt Ratenzuschlag und Stueckkosten, ist also hoeher:
+    assert im_beitrag["bzb_jahr"] > im_beitrag["bjb"]
+    assert im_beitrag["bzb_jahr"] == pytest.approx(
+        kern.gross_payable_premium() * mp.zw
+    )
+    # Letztes Beitragsjahr zahlt, das erste danach nicht mehr:
+    assert beitraege(kern, mp.t - 1)["bjb"] > 0
+    assert beitraege(kern, mp.t) == {"bjb": 0.0, "bzb_jahr": 0.0}
+
+
+def test_beitragsvolumen_im_bericht(gemischter_bestand):
+    """Die Beitragssicht steht im Bericht und stimmt mit den Kennzahlen
+    ueberein; beitragsfreie Vertraege senken sie."""
+    from rechner_pipeline.bestand.auswertung import auswertungs_verlauf
+
+    df, cfg, erg, bis = gemischter_bestand
+    stichtage = [dt.date(2026, 1, 1), dt.date(2035, 1, 1)]
+    reihe = auswertungs_verlauf(
+        df, erg.historie, cfg, stichtage, scheiben=erg.scheiben
+    )
+    html = report.render_html(
+        df, historie=erg.historie, ledger=erg.ledger, scheiben=erg.scheiben,
+        config=cfg, bis=bis, stichtag=dt.date(2026, 1, 1), stichtage=stichtage,
+    )
+    assert "<h3>Beiträge</h3>" in html
+    assert "Σ Jahresbeitrag (BJB, KLV)" in html
+    assert "Σ Bruttobeitrag (BU-Anwärter)" in html
+    for r in reihe:
+        assert r["bjb"] > 0 and r["bu_beitrag"] > 0
+        assert r["bzb_jahr"] > r["bjb"]        # Ratenzuschlag und Stueckkosten
+        assert report._zahl(r["bjb"]) in html
+        assert report._zahl(r["bzb_jahr"] + r["bu_beitrag"]) in html
+
+
+def test_beitragssumme_gegen_nachrechnung_ueber_die_zeitscheibe(
+    portfolio, config, fortschreibung
+):
+    """Kontrollrechnung: die aggregierte Beitragssumme entspricht der
+    Summe ueber die beitragspflichtigen Vertraege der Zeitscheibe —
+    beitragsfrei gestellte zaehlen nicht mit."""
+    from rechner_pipeline.bestand.auswertung import (
+        auswertungs_verlauf,
+        beitraege,
+    )
+    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+    from rechner_pipeline.kern import ModelPoint, Rechenkern
+    from rechner_pipeline.models.bestand import model_point_kwargs
+
+    historie, ledger, scheiben, *_ = fortschreibung
+    stichtag = dt.date(2030, 1, 1)
+    # Ohne Scheiben rechnen, damit die Nachrechnung die Grundvertraege
+    # trifft (Scheiben haben eigene Modellpunkte):
+    ohne_erh = scheiben.iloc[0:0]
+    reihe = auswertungs_verlauf(
+        portfolio, historie, config, [stichtag], scheiben=ohne_erh
+    )
+    scheibe = zeitscheibe(bestand_mit_historie(portfolio, historie), stichtag)
+    assert (scheibe["status_code"] == "PEX").any(), "Fixture ohne PEX"
+
+    felder = {g.name: g.generation_fields() for g in config.generationen}
+    erwartet = 0.0
+    for row in scheibe.to_dict("records"):
+        if row["status_code"] != "POL":
+            continue          # beitragsfrei: kein Beitrag
+        kern = Rechenkern(
+            ModelPoint(**model_point_kwargs(row, felder[row["tarif_generation"]]))
+        )
+        erwartet += beitraege(kern, int(row["months_exp"]) // 12)["bjb"]
+    assert erwartet > 0
+    assert reihe[0]["bjb"] == pytest.approx(erwartet)

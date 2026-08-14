@@ -59,6 +59,26 @@ def vertragswerte(
     }
 
 
+def beitraege(kern: Rechenkern, jahr: int) -> Dict[str, float]:
+    """Jahresbeitrag und Beitragsvolumen eines Vertrags im Vertragsjahr ``jahr``.
+
+    ``bjb`` ist der tarifliche Jahres-Bruttobeitrag (BJB = VS * Bxt),
+    ``bzb_jahr`` das im Jahr tatsaechlich gezahlte Volumen: der Zahlbeitrag
+    einer Rate mal Zahlweise, also einschliesslich Ratenzuschlag und
+    Stueckkosten (BZB * zw). Beide sind Null, sobald die
+    Beitragszahlungsdauer abgelaufen ist (``jahr >= t``) — ein Vertrag in
+    der beitragsfreien Restlaufzeit steht weiter im Bestand, zahlt aber
+    nicht mehr. Ohne diese Grenze waere die Beitragssumme systematisch zu
+    hoch.
+    """
+    if jahr >= kern.mp.t:
+        return {"bjb": 0.0, "bzb_jahr": 0.0}
+    return {
+        "bjb": kern.gross_annual_premium(),
+        "bzb_jahr": kern.gross_payable_premium() * kern.mp.zw,
+    }
+
+
 def _kerne_je_police(
     stamm: pd.DataFrame, config: BestandConfig
 ) -> Dict[int, Rechenkern]:
@@ -226,6 +246,12 @@ def auswertungs_verlauf(
             "bu_jahresrente_laufend": 0.0,
             "deckungskapital_bu": 0.0,
             "deckungskapital_anwaerter": 0.0,
+            # Beitragsgroessen: nur beitragspflichtige Vertraege innerhalb
+            # ihrer Beitragszahlungsdauer; beitragsfreie (PEX) und BU-Ver-
+            # traege im Leistungsbezug (Beitragsbefreiung) zahlen nicht.
+            "bjb": 0.0,
+            "bzb_jahr": 0.0,
+            "bu_beitrag": 0.0,
         }
         for pid, months_exp, status in zip(
             scheibe["police_id"], scheibe["months_exp"], scheibe["status_code"]
@@ -254,6 +280,11 @@ def auswertungs_verlauf(
                 else:
                     reserve = produkt.reserve_aktiv(jahr)
                     agg["deckungskapital_anwaerter"] += reserve
+                    # Beitragszahlung nur im Anwaerterstand (die implizite
+                    # Beitragsbefreiung des Leistungsfalls steckt im Profil);
+                    # Beitrags- = Versicherungsdauer.
+                    if jahr < produkt.mp.n:
+                        agg["bu_beitrag"] += produkt.bruttobeitrag()
                 agg["deckungskapital"] += reserve
                 continue
             pex_jahr = None
@@ -270,12 +301,22 @@ def auswertungs_verlauf(
                 s for s in scheiben_je_police.get(pid, ())
                 if s["erh_datum"].date() <= stichtag
             ]
+            if pex_jahr is None:
+                # Jede Erhoehungsscheibe ist ein eigener Modellpunkt mit
+                # eigenem Beitrag — ohne sie waere das Beitragsvolumen so
+                # zu niedrig wie das Deckungskapital ohne Scheiben.
+                bt = beitraege(kerne[pid], int(months_exp) // 12)
+                agg["bjb"] += bt["bjb"]
+                agg["bzb_jahr"] += bt["bzb_jahr"]
             if aktive and pex_jahr is None:
                 jahr = int(months_exp) // 12
                 for s in aktive:
                     werte["deckungskapital"] += (
                         s["kern"].verlaufszeile(jahr - s["erh_jahr"]).drx_bpfl
                     )
+                    bt = beitraege(s["kern"], jahr - s["erh_jahr"])
+                    agg["bjb"] += bt["bjb"]
+                    agg["bzb_jahr"] += bt["bzb_jahr"]
                 # Stornoabschlag-Grenzen gelten je Vertrag, nicht je Scheibe:
                 werte["rueckkaufswert"] = vertrags_rkw(
                     kerne[pid], [(s["erh_jahr"], s["kern"]) for s in aktive], jahr
