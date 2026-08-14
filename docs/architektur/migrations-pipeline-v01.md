@@ -121,7 +121,31 @@ Wege ist eine Team-Entscheidung nach Fall 1 (Fragerunde F2).
   Fall-Arbeitsbereich — die Versionierung echter Faelle ausserhalb des
   Repos ist ADR-002-Zielbild, in v0.1 nicht ausgebaut.
 
-## 9 Verweise
+## 9 Wissensverteilung: wo das Migrations-Know-how lebt
+
+Das System wird nicht "trainiert" — sein Wissen ist verteilt auf vier
+Schichten, jede versioniert, jede mit eigener Aenderungs-Disziplin:
+
+| Schicht | Traegt | Ort | Aendert sich durch |
+|---|---|---|---|
+| Deterministischer Code | das Verfahren selbst: Vorverdichtung, Merge, Konfliktbildung, Coverage, Struktur-Urteil, Projektion, Tafel-Ableitung, Vergleich, Gates | `quellen/`, `ontologie/`, `spez/`, `gates/` | Commits unter Test-Pflicht |
+| Contracts & T-Box | WAS zu extrahieren ist (QuellFragment-Schema, generiert), was Pflicht ist (PFLICHT_PARAMETER), wohin es mappt (ModelPoint-Felder) | `ontologie/tbox.py`, `ontologie/befuellung.py` | Gate G-T (T-Box-Aenderung, Mensch) |
+| Skills (Agenten-Anweisungen) | WIE die probabilistischen Schritte urteilen: Extraktionsregeln je Quelltyp, das systematische Vorgehen eines Falls, Abbruchkriterien | `.claude/skills/` + `.agents/skills/` (Paritaet test-tragend): `migrationsfall-durchfuehren` (Runbook), `extrahiere-quellfragment` (Stage-1-Agent), daneben `build-vergleichsrechenkern` (Sechs-Datei-Kern) | Commits; der Skill-Stand (Git-SHA) gehoert in den Akteur-String der Provenienz (P1) |
+| Praezedenzfall | WIE ein fertiges Ergebnis aussieht: A-Box, Spez, Fachspez, Diskrepanzen, Gate-Ledger des Falls KLV TG2012->TG2015 | `faelle/klv-tg2015` (lokal; echte Faelle ausserhalb des Repos) | jeder abgeschlossene Fall wird Referenz des naechsten |
+
+Die Verteilungsregel dahinter: Wissen, das GELTEN muss, wandert in Code
+und Contracts (erzwungen); Wissen, das URTEILEN anleitet, in Skills
+(versioniert, in der Provenienz zitiert); Wissen, das ZEIGT, in den
+Praezedenzfall. Fachliche Zuordnung der von einer Migration verlangten
+Faehigkeiten: Quelldatenverarbeitung = Vorverdichter + Extraktions-Skill
++ Formel-Rueck-Check; Konsistenzchecks = Merge/Diskrepanzen + Gates
+O1/O3 + Kreuzproben des Tafel-Imports; Transformation/Mapping = T-Box
+(Feldnamen SIND das Mapping) + quellnamen-Erfassung + Spez-Projektion;
+Coding = fuer Parametrierungs-Faelle NICHT vorgesehen (Erweiterungs-
+stellen waeren der benannte Ort, mit eigenem Skill, sobald ein Fall sie
+braucht); Testing/Abnahme = Gate-Kette + Suite + menschliche Gates.
+
+## 10 Verweise
 
 ADR-001 (Repo-Zielstruktur), ADR-002 (Fall-Arbeitsbereich), ADR-003
 (Pydantic fuer die Ontologie-Schicht). Entscheidungsgrundlage: die

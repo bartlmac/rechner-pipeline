@@ -32,3 +32,4 @@
 - Headless repo work: `codex exec --cd . --sandbox workspace-write --ask-for-approval on-request "..."`.
 - For kernel generation, invoke `$build-vergleichsrechenkern` or ask for `build-vergleichsrechenkern`.
 - For new toolbox gates, invoke `$author-rechner-toolbox-gate`.
+- For a full migration case through the ontology pipeline, invoke `$migrationsfall-durchfuehren`; its Stage-1 extraction agents follow `$extrahiere-quellfragment`.

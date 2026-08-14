@@ -23,6 +23,14 @@ def test_codex_repo_skills_match_claude_skills() -> None:
             ".claude/skills/author-rechner-toolbox-gate/SKILL.md",
             ".agents/skills/author-rechner-toolbox-gate/SKILL.md",
         ),
+        (
+            ".claude/skills/migrationsfall-durchfuehren/SKILL.md",
+            ".agents/skills/migrationsfall-durchfuehren/SKILL.md",
+        ),
+        (
+            ".claude/skills/extrahiere-quellfragment/SKILL.md",
+            ".agents/skills/extrahiere-quellfragment/SKILL.md",
+        ),
     )
     for claude_rel, codex_rel in pairs:
         assert _read(codex_rel) == _read(claude_rel), codex_rel
@@ -41,3 +49,18 @@ def test_per_cli_notes_do_not_advertise_missing_mcp_module() -> None:
     assert "Codex CLI — VERIFIED repo-skill target" in text
     assert "rechner_pipeline.gates.mcp_stdio" not in text
     assert "No toolbox MCP adapter exists" in text
+
+
+def test_migrations_skills_nennen_die_tragenden_regeln() -> None:
+    """Das Stage-1-Know-how ist versioniertes Repo-Artefakt, kein
+    Session-Prompt: die Kernregeln muessen im Skill stehen."""
+    extraktion = _read(".claude/skills/extrahiere-quellfragment/SKILL.md")
+    assert "GENAU EINE Quelle" in extraktion
+    assert "nicht_belegt" in extraktion
+    assert "model_json_schema" in extraktion          # Schema generiert, nie kopiert
+    assert "KEINE Vorschrift" in extraktion           # unisex-Regel
+    runbook = _read(".claude/skills/migrationsfall-durchfuehren/SKILL.md")
+    assert "vorlaeufig=True" in runbook
+    assert "gate_entscheid" in runbook
+    assert "faelle/klv-tg2015" in runbook             # Referenzfall
+    assert "STOPP" in runbook                         # Abbruchkriterien
