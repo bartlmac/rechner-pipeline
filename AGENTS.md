@@ -21,6 +21,7 @@
 - Create a case workspace and register sources (the pipeline operates on a case, not on repo dirs; `examples/` is demo material, not an input channel):
   `python -m rechner_pipeline.fall anlegen --fall faelle/demo-klv`
   `python -m rechner_pipeline.fall registrieren --fall faelle/demo-klv --datei examples/Tarifrechner_KLV_TG2012.xlsm`
+- Migration pipeline (ontology as the only stage interface; see docs/architektur/migrations-pipeline-v01.md): `python -m rechner_pipeline.gates.abox_validate --fall <fall>` (O1), `python -m rechner_pipeline.gates.generation_golden --fall <fall> --generation <id>` (O3), `python -m rechner_pipeline.quellen.tafel_import`, `python -m rechner_pipeline.ontologie.entscheide` and `python -m rechner_pipeline.gates.gate_entscheid` (human gates, P9 snapshots). Agents never resolve discrepancies as final; provisional resolutions carry `vorlaeufig=true` and block human acceptance.
 - Run full deterministic acceptance after generated files exist:
   `python -m rechner_pipeline.cli assurance --repo-root . --fall faelle/demo-klv --quelle Tarifrechner_KLV_TG2012.xlsm --qa-contract qa_contract.json --adapter excel`.
   Direct-dir flags (`--input --generated-dir --info-dir --diagnostics-dir`) remain available and override case defaults.

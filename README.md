@@ -369,6 +369,42 @@ Toolbox-Gate `bestand_validate` (B1, siehe oben); als eigene Gate-CLIs
 stehen noch `bestand_golden` (Parquet-Byte-Hash bei festem Seed) und
 `bestand_zeitscheibe` (Invarianten) aus.
 
+## Migrations-Pipeline: Ontologie als Stage-Interface
+
+Der Hauptanwendungsfall — eine neue Tarifgeneration aus heterogenen
+Quellen in den Kern integrieren — läuft seit v0.1 über eine Ontologie
+als einziges Interface zwischen den Stufen (Architektur:
+`docs/architektur/migrations-pipeline-v01.md`). Kein Agent einer
+späteren Stufe liest Rohquellen einer früheren; jede Aussage trägt
+Provenienz (Quelle + SHA-256 + Fundstelle + Akteur), Widersprüche
+zwischen Quellen sind Modellobjekte mit beiden Lesarten, und die
+Auflösung ist ein benannter menschlicher Vorgang.
+
+Der Ablauf am Fall (verkürzt; Details im Architektur-Dokument):
+
+```bash
+# Stufe 1: Quellen registrieren, vorverdichten, A-Box fuellen
+python -m rechner_pipeline.fall anlegen --fall faelle/mein-fall
+python -m rechner_pipeline.fall registrieren --fall faelle/mein-fall --datei <quelle>
+python -m rechner_pipeline.gates.abox_validate --fall faelle/mein-fall       # Gate O1
+
+# Gate G-1 (Mensch): Fachspez lesen, Diskrepanzen entscheiden, Snapshot
+python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ...     --wert ... --entscheider ... --begruendung ...
+python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate G-1     --entscheid angenommen --entscheider ... --begruendung ...
+
+# Stufe 2: Tafel-Import und Abnahme gegen den Quell-Rechner
+python -m rechner_pipeline.quellen.tafel_import --fall ... --generation klv/tgX
+python -m rechner_pipeline.gates.generation_golden --fall ... --generation klv/tgX  # Gate O3
+```
+
+Präzedenzfall KLV TG2012 -> TG2015: Struktur-Urteil "Parametrierung"
+maschinell berechnet, Unisex 70/30 als abgeleitete Mischtafel (keine
+Kern-Formeländerung), Golden Master 616 Werte gegen den gelieferten
+Rechner mit 0 Abweichungen — und die Pipeline fand dabei echte
+Widersprüche zwischen Tarifmeldung und Rechner, die als
+Diskrepanz-Objekte im menschlichen Gate landen statt still
+entschieden zu werden.
+
 ## Dokumente: Tarifpläne und Doku-Engine
 
 Tarifplan-Dokumente leben in zwei getrennten Welten:
