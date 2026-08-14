@@ -46,6 +46,13 @@ import matplotlib.pyplot as plt  # noqa: E402  (Backend muss vor pyplot stehen)
 import pandas as pd  # noqa: E402
 
 from rechner_pipeline.bestand.auswertung import auswertungs_verlauf  # noqa: E402
+from rechner_pipeline.bestand.berichtstexte import (  # noqa: E402
+    STRUKTUR_MERKMALE,
+    TEXTE,
+    kopfzeilen,
+    produkt_gruppen,
+    teilbestand,
+)
 from rechner_pipeline.bestand.config import BestandConfig  # noqa: E402
 from rechner_pipeline.bestand.ereignisse import bestand_mit_historie  # noqa: E402
 from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
@@ -718,22 +725,42 @@ def render_html(
     # Strukturbild am Bestands-Hoechststand (erster Maximums-Stichtag —
     # deterministisch und aussagekraeftiger als der duenne Bestandsauslauf).
     hoechststand = max(reihe, key=lambda r: (r["vertraege"], -reihe.index(r)))
-    struktur_stichtag = _dt.date.fromisoformat(hoechststand["stichtag"])
+    # Struktur am Referenzstichtag (sonst am Bestands-Hoechststand): der
+    # Bericht ist ein Stichtagsbericht, und beide Darstellungen muessen
+    # denselben Schnitt zeigen.
+    struktur_stichtag = stichtag or _dt.date.fromisoformat(
+        hoechststand["stichtag"]
+    )
     scheibe = zeitscheibe(bestand, struktur_stichtag)
 
     with plt.rc_context(_RC):
         svg_vertraege = _chart_verlauf_vertraege(reihe, generationen)
         svg_summe = _chart_verlauf_summe(reihe, leistung_label)
-        svg_alter = _chart_histogramm(
-            scheibe, "age", f"Alter am {struktur_stichtag.isoformat()}", "Alter", 20, generationen
-        )
-        svg_laufzeit = _chart_histogramm(
-            scheibe, "duration", "Laufzeiten", "Jahre", 15, generationen
-        )
-        svg_summen = _chart_histogramm(
-            scheibe, leistung, leistung_label, leistung_label, 20, generationen
-        )
-        svg_scatter = _chart_scatter_alter_laufzeit(df, generationen)
+        # Struktur je Versicherungsart: Eintrittsalter, Laufzeit und
+        # versicherte Leistung sind je Art anders definiert (Summe gegen
+        # Jahresrente) und in einer gemeinsamen Grafik nicht vergleichbar.
+        struktur_bloecke: List[str] = []
+        for gruppe in produkt_gruppen(df):
+            teil_df = teilbestand(df, gruppe["produkt"])
+            teil_scheibe = teilbestand(scheibe, gruppe["produkt"])
+            gens = generationsnamen(teil_df)
+            if len(teil_scheibe) == 0:
+                continue
+            bilder = []
+            for spalte, label in STRUKTUR_MERKMALE:
+                if spalte == "leistung":
+                    spalte, label = gruppe["leistung"], gruppe["leistung_label"]
+                elif spalte == "age":
+                    label = f"Alter am {struktur_stichtag.isoformat()}"
+                bilder.append(
+                    _chart_histogramm(teil_scheibe, spalte, label, label, 20, gens)
+                )
+            scatter = _chart_scatter_alter_laufzeit(teil_df, gens)
+            struktur_bloecke.append(f"""
+<h3>{gruppe['titel']}</h3>
+<div class="charts">{''.join(bilder)}</div>
+<div class="charts">{scatter}</div>""")
+        struktur_html = "".join(struktur_bloecke)
         svg_status = svg_ereignisse = svg_dk = ""
         if historie is not None and len(ledger) > 0:
             svg_status = _chart_status_verlauf(status_verlauf(bestand, stichtage))
@@ -775,6 +802,13 @@ def render_html(
         else ""
     )
 
+    kopf_html = "\n".join(
+        f"<li>{_html.escape(z)}</li>"
+        for z in kopfzeilen(df, generationen, stichtage, stichtag, bis, quelle_hash)
+    )
+    stichtag_absatz = (
+        f"<p>{TEXTE['stichtag']}</p>" if stichtag is not None else ""
+    )
     stichtag_zeile = (
         f"<li>Referenzstichtag: {stichtag.isoformat()} — bis dahin Historie, "
         "danach Prognose</li>"
@@ -813,19 +847,22 @@ def render_html(
                 + summen_zeilen
                 + "</tbody></table>"
             )
+            gevo_von = int(ledger["status_date"].dt.year.min())
+            gevo_bis = int(ledger["status_date"].dt.year.max())
+            gevo_zeitraum = f"{gevo_von} bis {gevo_bis}"
             ereignis_html = f"""
-<h2>Fortschreibung und Abgänge</h2>
+<h2>Geschäftsvorfälle {gevo_zeitraum}</h2>
 <div class="charts">{svg_status}{svg_ereignisse}</div>
 {summen_tabelle}
-<p>Der Bestandsverlauf oben ist abgangsbereinigt: stornierte, gestorbene und
-abgelaufene Verträge verlassen den Bestand am Buchungstag. Neuzugänge (ZUG)
-treten mit ihrem Versicherungsbeginn ein; ihr Betrag in der Tabelle ist die
-Versicherungssumme des Zugangs (Bestandsvolumen, kein Zahlungsstrom).
-{klv_hinweis}Alle Beträge stammen aus dem stabilen Rechenkern.</p>"""
+<p>{TEXTE["gevo"].format(zeitraum=gevo_zeitraum)} Der Bestandsverlauf ist
+abgangsbereinigt: stornierte, gestorbene und abgelaufene Verträge verlassen
+den Bestand am Buchungstag. {klv_hinweis}Alle Beträge stammen aus dem
+stabilen Rechenkern.</p>"""
         else:
             fortschreibung_zeile = "<li>Fortschreibung: keine Ereignisse im Horizont</li>"
             ereignis_html = (
-                "\n<h2>Fortschreibung und Abgänge</h2>"
+                f"\n<h2>Geschäftsvorfälle {stichtage[0].year} bis "
+                f"{stichtage[-1].year}</h2>"
                 "<p>Keine Ereignisse im Berichtszeitraum.</p>"
             )
 
@@ -851,6 +888,13 @@ Versicherungssumme des Zugangs (Bestandsvolumen, kein Zahlungsstrom).
     bewegung_html = "\n".join(nachweisungen)
 
     auswertung_html = ""
+    # Zeitraum der tatsaechlich ausgewiesenen Zeilen (nicht der ganzen
+    # Stichtagsliste) — sonst nennt der Titel Jahre ohne Bestand.
+    mit_bestand = [r for r in reihe if r["vertraege"] > 0]
+    ausw_zeitraum = (
+        f"{mit_bestand[0]['stichtag'][:4]} bis {mit_bestand[-1]['stichtag'][:4]}"
+        if mit_bestand else f"{stichtage[0].year} bis {stichtage[-1].year}"
+    )
     if config is not None:
         ausw_zeilen = "".join(
             f"<tr><td>{r['stichtag']}</td><td class='num'>{r['vertraege']}</td>"
@@ -868,7 +912,7 @@ Versicherungssumme des Zugangs (Bestandsvolumen, kein Zahlungsstrom).
             "</tr></thead><tbody>" + ausw_zeilen + "</tbody></table>"
         )
         auswertung_html = f"""
-<h2>Aktuarielle Kennzahlen je Stichtag</h2>
+<h2>Aktuarielle Kennzahlen je Stichtag, {ausw_zeitraum}</h2>
 <div class="charts">{svg_dk}</div>
 {ausw_tabelle}
 <p>Alle Werte kommen in-process aus dem stabilen Rechenkern.
@@ -902,37 +946,31 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 <body>
 <h1>{_html.escape(titel)}</h1>
 <ul>
-<li>Verträge gesamt: {len(df)}</li>
-<li>Tarifgenerationen: {", ".join(_html.escape(g) for g in generationen)}</li>
-<li>Vertragszeitraum: {zeitraum}</li>
-{stichtag_zeile}
-<li>Stichtage: {len(stichtage)} ({stichtage[0].isoformat()} bis {stichtage[-1].isoformat()})</li>
-{fortschreibung_zeile}
-{quelle}
+{kopf_html}
 </ul>
+{stichtag_absatz}
 
 <h2>Bestandsverlauf</h2>
 <div class="charts">{svg_vertraege}{svg_summe}</div>
-{ereignis_html}
+<p>{TEXTE["verlauf"]}</p>
+
+<h2>Bestandsstruktur am {struktur_stichtag.isoformat()}</h2>
+<p>{TEXTE["struktur"]}</p>
+{struktur_html}
 {bewegung_html}
+{ereignis_html}
+
+<h2>Kennzahlen je Stichtag, {ausw_zeitraum}</h2>
+{tabelle}
+<p>{TEXTE["kennzahlen"]}</p>
 {auswertung_html}
 
-<h2>Bestandsstruktur am {struktur_stichtag.isoformat()} (Höchststand: {hoechststand["vertraege"]} Verträge)</h2>
-<div class="charts">{svg_alter}{svg_laufzeit}{svg_summen}</div>
-
-<h2>Merkmals-Abhängigkeit</h2>
-<div class="charts">{svg_scatter}</div>
-<p>Das Streudiagramm zeigt die konfigurierte Rangkorrelation zwischen
-Eintrittsalter und Laufzeit (Gauß-Copula): ältere Eintrittsalter gehen mit
-kürzeren Laufzeiten einher.</p>
-
-<h2>Kennzahlen je Stichtag</h2>
-{tabelle}
+<h2>Zur Lesart</h2>
+<p>{TEXTE["lesart"]}</p>
 
 <footer>
 Erzeugt mit <code>python -m rechner_pipeline.toolbox.bestand_report</code>
-(Version {REPORT_VERSION}). Das Rendering ist deterministisch: dieselbe
-Parquet-Datei ergibt den byte-identischen Bericht.
+(Version {REPORT_VERSION}).
 </footer>
 </body>
 </html>

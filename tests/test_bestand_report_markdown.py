@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 from pathlib import Path
+from typing import List, Tuple
 
 import pytest
 
@@ -180,3 +181,70 @@ def test_bildpfade_liegen_neben_dem_dokument(lauf, tmp_path):
     # Jede erzeugte Grafik wird auch referenziert (keine Waisen):
     erzeugt = {p.name for p in ziel.glob("*.png")}
     assert erzeugt == set(referenzen)
+
+
+# --------------------------------------------------------------------------- #
+# Beide Darstellungen zeigen denselben Bericht
+# --------------------------------------------------------------------------- #
+
+
+def _abschnitte_html(html: str) -> List[Tuple[int, str]]:
+    return [
+        (int(m.group(1)), re.sub(r"<[^>]+>", "", m.group(2)).strip())
+        for m in re.finditer(r"<h([23])>(.*?)</h\1>", html, re.S)
+    ]
+
+
+def _abschnitte_md(text: str) -> List[Tuple[int, str]]:
+    return [
+        (len(m.group(1)) , m.group(2).strip())
+        for m in re.finditer(r"^(#{2,3}) (.+)$", text, re.M)
+    ]
+
+
+def test_beide_darstellungen_haben_dieselbe_gliederung(lauf, tmp_path):
+    """Kern der Drift-Sicherung: HTML und Markdown sind zwei Darstellungen
+    EINES Berichts. Weichen ihre Abschnitte voneinander ab, ist der
+    Bericht auseinandergelaufen — genau das ist hier schon passiert und
+    soll nicht wieder passieren."""
+    from rechner_pipeline.bestand import report
+
+    cfg, bestand, erg = lauf
+    kw = dict(historie=erg.historie, ledger=erg.ledger, scheiben=erg.scheiben,
+              config=cfg, bis=BIS, stichtag=STICHTAG)
+    html = report.render_html(bestand, **kw)
+    md = render_markdown(bestand, bild_dir=tmp_path, **kw)
+
+    h_titel = [t for _e, t in _abschnitte_html(html)]
+    m_titel = [t for _e, t in _abschnitte_md(md)]
+    assert h_titel == m_titel, (
+        "Abschnitte weichen ab:\n"
+        f"  nur HTML: {[t for t in h_titel if t not in m_titel]}\n"
+        f"  nur MD:   {[t for t in m_titel if t not in h_titel]}"
+    )
+    # Auch die Ebenen (h2/h3 gegen ##/###) muessen uebereinstimmen:
+    assert _abschnitte_html(html) == _abschnitte_md(md)
+
+
+def test_struktur_wird_je_versicherungsart_gezeigt(lauf, tmp_path):
+    """Eintrittsalter, Laufzeit und versicherte Leistung sind je Art anders
+    definiert (Versicherungssumme gegen Jahresrente) — eine gemeinsame
+    Darstellung waere nicht lesbar."""
+    from rechner_pipeline.bestand import report
+
+    cfg, bestand, erg = lauf
+    kw = dict(historie=erg.historie, ledger=erg.ledger, scheiben=erg.scheiben,
+              config=cfg, bis=BIS, stichtag=STICHTAG)
+    md = render_markdown(bestand, bild_dir=tmp_path, **kw)
+    html = report.render_html(bestand, **kw)
+
+    for text in (md, html):
+        # Unter der Struktur stehen beide Versicherungsarten als eigene
+        # Unterabschnitte:
+        assert "Kapitalversicherung" in text and "Berufsunfähigkeit" in text
+    # Je Art vier Grafiken (drei Merkmale und die Copula):
+    for produkt in ("klv", "bu"):
+        bilder = sorted(p.name for p in tmp_path.glob(f"*_{produkt}_*.png"))
+        merkmale = [b for b in bilder if "copula" in b or "age" in b
+                    or "duration" in b or "insured" in b or "rente" in b]
+        assert len(merkmale) == 4, (produkt, bilder)

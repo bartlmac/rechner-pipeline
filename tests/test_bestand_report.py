@@ -159,11 +159,11 @@ def test_render_mit_historie_zeigt_abgangssichten(portfolio, fortschreibung):
         portfolio, stichtage=stichtage, historie=historie, ledger=ledger,
         scheiben=scheiben, bis=dt.date(2035, 1, 1),
     )
-    assert "Fortschreibung und Abgänge" in mit
+    assert "Geschäftsvorfälle" in mit
     assert "Beitragsfreistellung (PEX)" in mit
     assert "Storno (STO)" in mit
     assert "abgangsbereinigt" in mit
-    assert "Fortschreibung und Abgänge" not in ohne  # Default unverändert
+    assert "Geschäftsvorfälle" not in ohne  # Default unverändert
     # Zusaetzliche Grafiken: Status- und Ereignisverlauf plus je eine je
     # Traeger-Bestand der Nachweisung (beitragspflichtig, beitragsfrei).
     assert mit.count("<svg") == ohne.count("<svg") + 4
@@ -284,7 +284,7 @@ def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
     )
     assert code == 0
     text = out.read_text(encoding="utf-8")
-    assert "Fortschreibung und Abgänge" in text
+    assert "Geschäftsvorfälle" in text
     assert "Aktuarielle Kennzahlen je Stichtag" in text
     assert "Dynamische Erhöhung (ERH)" in text
     assert "Bestandsbewegung" in text
@@ -516,7 +516,8 @@ def test_bu_bericht_fuehrt_die_jahresrente_als_leistungsspalte():
     import re
 
     zeile = re.search(
-        r"<h2>Kennzahlen je Stichtag</h2>.*?<tbody><tr>(.*?)</tr>", html, re.S
+        r"<h2>Kennzahlen je Stichtag[^<]*</h2>.*?<tbody><tr>(.*?)</tr>",
+        html, re.S,
     )
     werte = re.findall(r">([\d.,]+)<", zeile.group(1))
     assert float(werte[2].replace(".", "").replace(",", ".")) > 0

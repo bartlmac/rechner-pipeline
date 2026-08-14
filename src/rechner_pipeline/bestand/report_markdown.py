@@ -32,6 +32,13 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from rechner_pipeline.bestand.auswertung import auswertungs_verlauf  # noqa: E402
+from rechner_pipeline.bestand.berichtstexte import (  # noqa: E402
+    STRUKTUR_MERKMALE,
+    TEXTE,
+    kopfzeilen,
+    produkt_gruppen,
+    teilbestand,
+)
 from rechner_pipeline.bestand.config import BestandConfig  # noqa: E402
 from rechner_pipeline.bestand.ereignisse import bestand_mit_historie  # noqa: E402
 from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
@@ -143,24 +150,102 @@ def render_markdown(
     # ---------------------------------------------------------------- #
     # Kopf: was der Bericht zeigt
     # ---------------------------------------------------------------- #
-    kopfzeilen = [
-        f"- Verträge im Bestand: {len(df)}",
-        f"- Tarifgenerationen: {', '.join(generationen)}",
-        f"- Berichtszeitraum: {_zeitraum(jahre_von, jahre_bis)}",
-    ]
+    teile += [
+        f"- {z}"
+        for z in kopfzeilen(df, generationen, stichtage, stichtag, bis)
+    ] + [""]
     if stichtag is not None:
-        kopfzeilen.append(
-            f"- Referenzstichtag: {stichtag.isoformat()} — bis dahin "
-            "Historie, danach Prognose"
-        )
-    if bis is not None:
-        kopfzeilen.append(f"- Projektionshorizont: {bis.isoformat()}")
-    teile += kopfzeilen + [""]
+        teile += [TEXTE["stichtag"], ""]
 
     with plt.rc_context(_RC):
-        # ------------------------------------------------------------ #
-        # Nachweisungen je Produkt
-        # ------------------------------------------------------------ #
+        # ---------------------------------------------------------- #
+        # Bestandsverlauf
+        # ---------------------------------------------------------- #
+        x = list(range(len(reihe)))
+        labels = [r["stichtag"][:4] for r in reihe]
+        schritt = max(1, len(x) // 12)
+        grenze = None
+        if stichtag is not None:
+            grenze = next(
+                (i for i, r in enumerate(reihe)
+                 if r["stichtag"] >= stichtag.isoformat()), None
+            )
+        fig, ax = plt.subplots(figsize=(8.0, 2.8))
+        unten = [0] * len(reihe)
+        for gi, gen in enumerate(generationen):
+            werte = [r["generationen"].get(gen, 0) for r in reihe]
+            ax.bar(x, werte, bottom=unten, label=gen,
+                   color=_farbe_zyklisch(gi), width=0.8)
+            unten = [u + w for u, w in zip(unten, werte)]
+        if grenze is not None:
+            ax.axvline(grenze - 0.5, color="#333333", linewidth=1.0, linestyle="--")
+        ax.set_xticks(x[::schritt], labels[::schritt])
+        ax.set_ylabel("in-force-Verträge")
+        ax.legend(fontsize=7)
+        verlauf_bild = _speichere(fig, bild("verlauf"))
+        teile.append(
+            f"\n## Bestandsverlauf\n\n"
+            f"![In-force-Bestand je Stichtag]({verlauf_bild})\n\n"
+            + TEXTE["verlauf"]
+        )
+
+        # ---------------------------------------------------------- #
+        # Bestandsstruktur je Versicherungsart
+        # ---------------------------------------------------------- #
+        struktur_stichtag = stichtag or _dt.date.fromisoformat(
+            max(reihe, key=lambda r: r["vertraege"])["stichtag"]
+        )
+        scheibe = zeitscheibe(sicht, struktur_stichtag)
+        bloecke = []
+        for gruppe in produkt_gruppen(df):
+            teil_df = teilbestand(df, gruppe["produkt"])
+            teil_scheibe = teilbestand(scheibe, gruppe["produkt"])
+            if len(teil_scheibe) == 0:
+                continue
+            gens = generationsnamen(teil_df)
+            bilder = []
+            for spalte, label in STRUKTUR_MERKMALE:
+                if spalte == "leistung":
+                    spalte, label = gruppe["leistung"], gruppe["leistung_label"]
+                elif spalte == "age":
+                    label = f"Alter am {struktur_stichtag.isoformat()}"
+                fig, ax = plt.subplots(figsize=(4.4, 2.8))
+                daten = [
+                    teil_scheibe.loc[
+                        teil_scheibe["tarif_generation"] == g, spalte
+                    ].to_numpy(float)
+                    for g in gens
+                ]
+                ax.hist(daten, bins=20, stacked=True, label=gens,
+                        color=[_farbe_zyklisch(i) for i in range(len(gens))])
+                ax.set_xlabel(label)
+                ax.set_ylabel("Verträge")
+                ax.legend(fontsize=6)
+                datei = _speichere(
+                    fig, bild(f"{gruppe['produkt']}_{spalte}")
+                )
+                bilder.append(f"![{label}]({datei})")
+            fig, ax = plt.subplots(figsize=(5.4, 3.2))
+            for gi, gen in enumerate(gens):
+                rows = teil_df[teil_df["tarif_generation"] == gen]
+                ax.scatter(rows["entry_age"], rows["duration"], s=7, alpha=0.35,
+                           color=_farbe_zyklisch(gi), label=gen, edgecolors="none")
+            ax.set_xlabel("Eintrittsalter")
+            ax.set_ylabel("Laufzeit (Jahre)")
+            ax.legend(fontsize=7)
+            copula = _speichere(fig, bild(f"{gruppe['produkt']}_copula"))
+            bloecke.append(
+                f"\n### {gruppe['titel']}\n\n" + "\n\n".join(bilder)
+                + f"\n\n![Eintrittsalter und Laufzeit]({copula})"
+            )
+        teile.append(
+            f"\n## Bestandsstruktur am {struktur_stichtag.isoformat()}\n\n"
+            + TEXTE["struktur"] + "\n" + "".join(bloecke)
+        )
+
+        # ---------------------------------------------------------- #
+        # Nachweisungen und Geschaeftsvorfaelle
+        # ---------------------------------------------------------- #
         if historie is not None and bis is not None and len(ledger) > 0:
             for spec in NACHWEISUNGEN:
                 if not spec["vorhanden"](df):
@@ -172,7 +257,6 @@ def render_markdown(
                     _nachweisung_md(konto, spec, stichtag, config, bild, bild_praefix)
                 )
 
-            # Geschäftsvorfälle mit Zeitraum
             gevo_von = int(ledger["status_date"].dt.year.min())
             gevo_bis = int(ledger["status_date"].dt.year.max())
             summen = ereignis_summen(ledger)
@@ -190,90 +274,39 @@ def render_markdown(
                         for s in summen
                     ],
                 )
-                + "\n\nDie Anzahl ist die Summe über den gesamten "
-                f"Berichtszeitraum ({_zeitraum(gevo_von, gevo_bis)}), nicht "
-                "ein Jahreswert."
+                + "\n\n"
+                + TEXTE["gevo"].format(zeitraum=_zeitraum(gevo_von, gevo_bis))
             )
 
-        # ------------------------------------------------------------ #
-        # Bestandsverlauf und Struktur
-        # ------------------------------------------------------------ #
-        x = list(range(len(reihe)))
-        labels = [r["stichtag"][:4] for r in reihe]
-        schritt = max(1, len(x) // 12)
-        grenze = None
-        if stichtag is not None:
-            grenze = next(
-                (i for i, r in enumerate(reihe)
-                 if r["stichtag"] >= stichtag.isoformat()), None
-            )
-
-        fig, ax = plt.subplots(figsize=(8.0, 2.8))
-        unten = [0] * len(reihe)
-        for gi, gen in enumerate(generationen):
-            werte = [r["generationen"].get(gen, 0) for r in reihe]
-            ax.bar(x, werte, bottom=unten, label=gen,
-                   color=_farbe_zyklisch(gi), width=0.8)
-            unten = [u + w for u, w in zip(unten, werte)]
-        if grenze is not None:
-            ax.axvline(grenze - 0.5, color="#333333", linewidth=1.0, linestyle="--")
-        ax.set_xticks(x[::schritt], labels[::schritt])
-        ax.set_ylabel("in-force-Verträge")
-        ax.legend(fontsize=7)
-        verlauf_bild = _speichere(fig, bild("verlauf"))
-
-        struktur_stichtag = stichtag or _dt.date.fromisoformat(
-            max(reihe, key=lambda r: r["vertraege"])["stichtag"]
-        )
-        scheibe = zeitscheibe(sicht, struktur_stichtag)
-        struktur_bilder = []
-        for spalte, name, xlabel in (
-            ("age", "alter", f"Alter am {struktur_stichtag.isoformat()}"),
-            ("duration", "laufzeit", "Laufzeit (Jahre)"),
-            (leistung, "leistung", leistung_label),
-        ):
-            fig, ax = plt.subplots(figsize=(4.4, 2.8))
-            daten = [
-                scheibe.loc[scheibe["tarif_generation"] == g, spalte].to_numpy(float)
-                for g in generationen
-            ]
-            ax.hist(daten, bins=20, stacked=True, label=generationen,
-                    color=[_farbe_zyklisch(i) for i in range(len(generationen))])
-            ax.set_xlabel(xlabel)
-            ax.set_ylabel("Verträge")
-            ax.legend(fontsize=6)
-            struktur_bilder.append((_speichere(fig, bild(name)), xlabel))
-
-        fig, ax = plt.subplots(figsize=(5.4, 3.2))
-        for gi, gen in enumerate(generationen):
-            rows = df[df["tarif_generation"] == gen]
-            ax.scatter(rows["entry_age"], rows["duration"], s=7, alpha=0.35,
-                       color=_farbe_zyklisch(gi), label=gen, edgecolors="none")
-        ax.set_xlabel("Eintrittsalter")
-        ax.set_ylabel("Laufzeit (Jahre)")
-        ax.legend(fontsize=7)
-        copula_bild = _speichere(fig, bild("copula"))
-
-        struktur = "\n\n".join(
-            f"![{label}]({datei})" for datei, label in struktur_bilder
-        )
-        teile.append(f"""
-## Bestandsverlauf und Struktur
-
-![In-force-Bestand je Stichtag, gestapelt nach Tarifgeneration]({verlauf_bild})
-
-Struktur des Bestands am {struktur_stichtag.isoformat()}:
-
-{struktur}
-
-Die Merkmale sind nicht unabhängig gezogen: eine Gauß-Copula bildet die
-konfigurierten Rangkorrelationen ab.
-
-![Eintrittsalter und Laufzeit]({copula_bild})""")
-
-        # ------------------------------------------------------------ #
+        # ---------------------------------------------------------- #
         # Aktuarielle Kennzahlen
-        # ------------------------------------------------------------ #
+        # ---------------------------------------------------------- #
+        # Zeitraum der ausgewiesenen Zeilen (nicht der ganzen
+        # Stichtagsliste) — identisch zur HTML-Darstellung.
+        mit_bestand = [r for r in reihe if r["vertraege"] > 0]
+        zeitraum = (
+            _zeitraum(mit_bestand[0]["stichtag"][:4],
+                      mit_bestand[-1]["stichtag"][:4])
+            if mit_bestand else _zeitraum(jahre_von, jahre_bis)
+        )
+        teiler, einheit, stellen = einheit_fuer([r["summe_vs"] for r in reihe])
+        teile.append(
+            f"\n## Kennzahlen je Stichtag, {zeitraum}\n\n"
+            + _tabelle(
+                ["Stichtag", "Verträge", f"Σ {leistung_label} ({einheit})",
+                 "Ø Alter", "Ø Restlaufzeit (J.)"],
+                [
+                    [r["stichtag"], str(r["vertraege"]),
+                     zahl(r["summe_vs"] / teiler, stellen),
+                     zahl(r["mittel_alter"], 1),
+                     zahl(r["mittel_restlaufzeit_jahre"], 1)]
+                    for r in reihe
+                    if r["vertraege"] > 0 and int(r["stichtag"][:4]) % 5 == 0
+                ],
+            )
+            + "\n\n" + TEXTE["kennzahlen"]
+        )
+
         if config is not None:
             ausw = auswertungs_verlauf(df, historie, config, stichtage,
                                        scheiben=scheiben)
@@ -281,16 +314,12 @@ konfigurierten Rangkorrelationen ab.
             if aktiv:
                 teile.append(_kennzahlen_md(aktiv, reihe, leistung_label, df))
 
-    teile.append(f"""
-## Zur Lesart
-
-Beträge sind je Tabelle auf eine gemeinsame Einheit skaliert; die Einheit
-steht im Spaltenkopf. Aggregierte Zahlen (Anzahlen, Summen) beziehen sich
-auf den im Abschnittstitel genannten Zeitraum.
-
-Erzeugt mit `python -m rechner_pipeline.toolbox.bestand_report --format md`
-(Berichtsversion {REPORT_VERSION}). Das Rendering ist deterministisch:
-dieselben Eingabedateien ergeben denselben Bericht.""")
+    teile.append(
+        "\n## Zur Lesart\n\n"
+        + TEXTE["lesart_betraege"] + " " + TEXTE["lesart"]
+        + "\n\nErzeugt mit `python -m rechner_pipeline.toolbox.bestand_report "
+        f"--format md` (Berichtsversion {REPORT_VERSION})."
+    )
     return "\n".join(teile) + "\n"
 
 
@@ -450,12 +479,11 @@ def _kennzahlen_md(
              zahl(r["rueckkaufswert"] / teiler, stellen)]
             for r in auswahl
         ]
-    von, bis = auswahl[0]["stichtag"][:4], auswahl[-1]["stichtag"][:4]
+    von, bis = ausw[0]["stichtag"][:4], ausw[-1]["stichtag"][:4]
     return (
         f"\n## Aktuarielle Kennzahlen je Stichtag, {_zeitraum(von, bis)}\n\n"
         + _tabelle(kopf, zeilen)
-        + "\n\nStichtagswerte (kein Zeitraum-Aggregat): Bestand und Reserven "
-        "am jeweiligen 1. Januar, gerechnet aus dem stabilen Rechenkern."
+        + "\n\n" + TEXTE["kennzahlen"]
     )
 
 
