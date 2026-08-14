@@ -158,7 +158,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     elif args.out_dir:
         diagnostics_dir = Path(args.out_dir) / "diagnostics"
     else:
-        diagnostics_dir = Path.cwd() / "diagnostics"
+        diagnostics_dir = Path.cwd() / "runs" / "diagnostics"
 
     def _finalize(result: ToolboxResult) -> ToolboxResult:
         """Write the gate-result ledger entry (side artifact) before returning.

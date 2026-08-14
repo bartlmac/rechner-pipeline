@@ -13,7 +13,11 @@ __pycache__/
 .verify/
 agent-comm.db*
 
-# Regenerable pipeline run artifacts (produced by `extract` / `assurance`)
+# EIN Laufverzeichnis fuer alle regenerierbaren Lauf-Artefakte
+# (Extraktion, generierter Kern, Gate-Ledger, Staging, Berichte)
+runs/
+# Alt-Pfade (vor der runs/-Konsolidierung 2026-08-14); bleiben ignoriert,
+# bis lokale Arbeitskopien bereinigt sind
 info_from_excel/
 diagnostics/
 generated/
@@ -31,8 +35,7 @@ CLAUDE.local.md
 # Lokale, nicht eingecheckte Dokumentation (Notizen, Walkthroughs, Spickzettel)
 docs-local/
 
-# Legacy SDK-Pipeline run-Artefakte / Debug-Dumps (relevant im geparkten Branch)
-runs/
+# Debug-Dumps
 DEBUG_*.txt
 
 # IDE / OS
@@ -42,12 +45,7 @@ DEBUG_*.txt
 Thumbs.db
 
 # Doku-Engine-Renderings (Quellen sind die Markdown-Dateien)
-# Berichts-Ausgaben (regenerierbar aus Bestand + Config):
-output/
-
 docs/**/*.pdf
 docs/**/*.typ
 docs/**/*_files/
 
-# Migrationsstaging (extrahierte Migrationsartefakte, lauf-spezifisch)
-migrationsstaging/

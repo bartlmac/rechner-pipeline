@@ -180,7 +180,7 @@ und gecacht; fehlende Tafeln führen zu einem harten Fehler (kein erfundenes
 qx). Die Parität zum angenommenen Migrationsergebnis ist testseitig verankert
 (617/617 gegen die extrahierten Erwartungswerte, geprüft mit der
 Golden-Master-Engine der Abnahme-Schicht). Der transiente Migrationspfad
-(`generated/` + Gates) bleibt daneben bestehen — für künftige einmalige
+(`runs/generated` + Gates) bleibt daneben bestehen — für künftige einmalige
 Übersetzungen weiterer Produkte.
 
 **Rechenrückgrat (seit Kern 2.0.0): ein (Semi-)Markov-Zustandsmodell**
@@ -356,10 +356,10 @@ Tarifplan-Dokumente leben in zwei getrennten Welten:
   verfasste, versionierbare Fachdokumente in der Mathematik des Kerns
   (Zustandsmodell, Thiele-Rekursion, GeVo-Katalog mit Betragsformeln) —
   keine Konversionen der Quell-Dokumente.
-- **Migrationsstaging** (`toolbox/tarifplan_staging`): die DOCX-Tarifpläne
+- **Migrationsstaging** (`quellen/tarifplan_staging`): die DOCX-Tarifpläne
   der Quellsysteme (`examples/Mitteilung_143_*.docx`) sind
   Migrationsartefakte; das Kommando extrahiert sie deterministisch und
-  stdlib-only nach strukturiertem JSON (`migrationsstaging/`, gitignored)
+  stdlib-only nach strukturiertem JSON (`runs/migrationsstaging/`, gitignored)
   — maschinenlesbar für den Migrations-Anwendungsfall, nicht hübsch.
 
 Gerendert werden die Zielkern-Tarifpläne über die **Doku-Engine** — ein

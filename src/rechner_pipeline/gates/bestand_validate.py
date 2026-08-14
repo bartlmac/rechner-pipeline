@@ -106,7 +106,7 @@ def main(argv: Optional[List[str]] = None):
     args = merge_request_into_args(args, request)
 
     diagnostics_dir = (
-        Path(args.diagnostics_dir) if args.diagnostics_dir else Path.cwd() / "diagnostics"
+        Path(args.diagnostics_dir) if args.diagnostics_dir else Path.cwd() / "runs" / "diagnostics"
     )
 
     def _finalize(result):

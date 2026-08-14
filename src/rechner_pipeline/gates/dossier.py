@@ -88,10 +88,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def _resolve_paths(args: argparse.Namespace) -> Tuple[Path, Path, Path, Path]:
     repo_root = Path(args.repo_root or ".").resolve()
     generated_dir = (
-        Path(args.generated_dir) if args.generated_dir else repo_root / "generated"
+        Path(args.generated_dir) if args.generated_dir else repo_root / "runs" / "generated"
     )
     info_dir = (
-        Path(args.info_dir) if args.info_dir else repo_root / "info_from_excel"
+        Path(args.info_dir) if args.info_dir else repo_root / "runs" / "info_from_excel"
     )
     diagnostics_dir = (
         Path(args.diagnostics_dir)

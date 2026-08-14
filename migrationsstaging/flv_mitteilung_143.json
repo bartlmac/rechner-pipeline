@@ -1,0 +1,1179 @@
+{
+ "quelle": "examples/Mitteilung_143_FLV_v1.docx",
+ "quelle_sha256": "33a45a1ea2aae8c7d0da0f076eddfbc3f4032f3cb15de95f26f4ff5063cfff4e",
+ "metadaten": {
+  "creator": "Dirk Nötzel"
+ },
+ "absaetze": [],
+ "tabellen": [
+  {
+   "index": 0,
+   "zeilen": [
+    [
+     "Für den Neuzugang offen ab:",
+     "01.07.2000"
+    ],
+    [
+     "Datum der Erstmitteilung:",
+     "01.06.2020"
+    ],
+    [
+     "1",
+     "Allgemeines",
+     ""
+    ],
+    [
+     "1.1",
+     "Tarifgruppe",
+     "FLV"
+    ],
+    [
+     "",
+     "[X]  Einzeltarif",
+     ""
+    ],
+    [
+     "",
+     "[X]  Kollektivtarif",
+     ""
+    ],
+    [
+     "",
+     "[X]  Haustarif",
+     ""
+    ],
+    [
+     "1.2",
+     "Tarifbezeichnung",
+     "FLV1_2000"
+    ],
+    [
+     "1.3",
+     "Tarifbeschreibung:",
+     "Fondsgebundene Lebensversicherung auf den Todes- und Erlebensfall für Männer bzw. Frauen.Die Fondsgebundene Lebensversicherung nach dem Tarif FLV1_2000 bietet Versicherungsschutz unter unmittelbarer Beteiligung an der Wertentwicklung der / des Investmentfonds. Die Beiträge werden nach dem in Ziffer 7 festgelegten Verfahren in Anlage- und Kostenanteile zerlegt. Die Anlageanteile der Beiträge werden in einer selbständigen Abteilung des Deckungsstocks (Anlagestock) angelegt. Der Anlagestock wird in Anteilen der vom Kunden ausgewählten Fonds angelegt. Ein Ausgabeaufschlag wird nicht erhoben. Die Anlageanteile bilden das Deckungskapital. Dem Deckungskapital werden monatlich die Risikobeiträge entnommen. Die Wertentwicklung des Anlagestocks bestimmt die Versicherungsleistungen.Erlebt die versicherte Person den Ablauf der Versicherungsdauer, erhält der Anspruchsberechtigte eine Leistung in Höhe der insgesamt gutgeschriebenen Anteileinheiten (Deckungskapital). Bei Tod der versicherten Person während der Versicherungsdauer wird das Deckungskapital zzgl. 5% der Beitragssumme, mindestens die vereinbarte Mindesttodesfallsumme erbracht. Die Mindesttodesfallsumme beträgt je nach Wahl zwischen 60% und 400% der Beitragssumme.Alle Leistungen erfolgen in Geld, nicht als Naturalleistung."
+    ],
+    [
+     "1.4",
+     "Vereinbarung von Optionen und Leistungsausschlüssen"
+    ],
+    [
+     "",
+     "Dynamik:",
+     "Beitragssteigerung in einem festen Prozentsatz von mindestens 3% und höchstens 10% jährlich.Die letzte Dynamisierung erfolgt ein Jahr vor Ablauf der Beitragszahlungsdauer."
+    ],
+    [
+     "",
+     "Flexible Abrufphase:",
+     "Bei Versicherungen mit laufender Beitragszahlung, einer Versicherungsdauer von mindestens 10 Jahren und einem Endalter von mindestens 60 Jahren kann der Versicherungsnehmer den Ablauf der Versicherung um bis zu 5 Jahre vorziehen (Abrufphase). In der Abrufphase wird kein Stornoabzug erhoben."
+    ],
+    [
+     "",
+     "Auf Antrag können folgende Zusatzversicherungen eingeschlossen werden:keine"
+    ],
+    [
+     "1.5",
+     "Gesundheitsprüfung",
+     ""
+    ],
+    [
+     "",
+     "[X]  mit GP",
+     ""
+    ],
+    [
+     "",
+     "[  ]  ohne GP",
+     ""
+    ],
+    [
+     "",
+     "Erläuterungen: -"
+    ],
+    [
+     "1.6",
+     "Prämienzahlung",
+     ""
+    ],
+    [
+     "",
+     "[X]  durchgehend",
+     ""
+    ],
+    [
+     "",
+     "[  ]  abgekürzt",
+     ""
+    ],
+    [
+     "",
+     "[  ]  einmalig",
+     ""
+    ],
+    [
+     "",
+     "[  ]  variabel",
+     ""
+    ],
+    [
+     "1.7",
+     "Überschussbeteiligung (inkl. Beteiligung an den BWR)"
+    ],
+    [
+     "",
+     "[X]  ja, für weitere Informationen siehe Ziffer 4"
+    ],
+    [
+     "",
+     "[  ]  nein"
+    ],
+    [
+     "1.8",
+     "Der Versicherer verzichtet ganz oder teilweise auf seine Rechte gemäß § 163 VVG"
+    ],
+    [
+     "",
+     "[X]  nein"
+    ],
+    [
+     "",
+     "[  ]  ja"
+    ]
+   ]
+  },
+  {
+   "index": 1,
+   "zeilen": [
+    [
+     "2",
+     "Begrenzungen"
+    ],
+    [
+     "",
+     "Mindestbeitragssumme:",
+     "",
+     ""
+    ],
+    [
+     "",
+     "beitragspflichtig:",
+     "3.000 EUR",
+     "beitragsfrei:",
+     "3.000 EUR"
+    ],
+    [
+     "",
+     "Mindestprämienrate:",
+     "25 EUR",
+     "",
+     ""
+    ],
+    [
+     "",
+     "Mindesteintrittsalter:",
+     "14 Jahre",
+     "",
+     ""
+    ],
+    [
+     "",
+     "Mindestversicherungsdauer:",
+     "5 Jahre",
+     "Höchstversicherungsdauer:",
+     "70 Jahre"
+    ],
+    [
+     "",
+     "Höchstendalter:",
+     "85 Jahre",
+     "",
+     ""
+    ]
+   ]
+  },
+  {
+   "index": 2,
+   "zeilen": [
+    [
+     "3",
+     "Tafeln und Kalkulationsbasis"
+    ],
+    [
+     "3.1",
+     "Prämienberechnung"
+    ],
+    [
+     "",
+     "Rechnungszins:",
+     "--"
+    ],
+    [
+     "",
+     "Ausscheideordnung:",
+     "Sterbewahrscheinlichkeiten der Sterbetafel DAV 1994 T"
+    ],
+    [
+     "",
+     "",
+     "(Anlage 1)"
+    ],
+    [
+     "",
+     "Der Versicherungsnehmer zahlt laufende Beiträge (Monatsbeiträge, Vierteljahresbeiträge, Halbjahresbeiträge oder Jahresbeiträge).Die Beiträge werden als gleichbleibende Beiträge in EUR fest vereinbart; sie werden zu Beginn eines jeden Beitragszahlungsabschnitts fällig. Die Beitragszahlung endet, wenn der Versicherte stirbt oder die Beitragszahlungsdauer abläuft."
+    ],
+    [
+     "",
+     "Berücksichtigung unterschiedlicher Zahlungsweisen:Es werden keine Ratenzuschläge erhoben."
+    ],
+    [
+     "",
+     "Zuschlag für Optionen und Nachlass für Leistungsausschlüsse: – entfällt –"
+    ],
+    [
+     "3.2",
+     "Deckungskapitalberechnung"
+    ],
+    [
+     "",
+     "Es werden die Rechnungsgrundlagen gemäß 2.1 benutzt:"
+    ],
+    [
+     "",
+     "[X]  ja"
+    ],
+    [
+     "",
+     "[  ]  nein, es gibt folgende Abweichungen"
+    ],
+    [
+     "",
+     "Bemerkungen:Das Deckungskapital ergibt sich aus der Ansammlung der Teile des Beitrags, die nicht zur Deckung der rechnungsmäßigen Kosten und der rechnungsmäßigen Sterblichkeit verwendet werden.Der EUR-Gegenwert des in Fondsanteilen geführten Deckungskapitals (Zeitwert des Deckungskapitals) ergibt sich durch Multiplikation der Zahl der Fondsanteile mit dem Fondswert zum Stichtag. Als Stichtag gilt jeweils der 1. Börsentag des Monats."
+    ]
+   ]
+  },
+  {
+   "index": 3,
+   "zeilen": [
+    [
+     "4",
+     "Kostenzuschläge",
+     ""
+    ],
+    [
+     "4.1",
+     "Prämienberechnung",
+     ""
+    ],
+    [
+     "",
+     "a",
+     "der Bruttobeitragssumme (gleichmäßig verteilt auf 2 Jahre)"
+    ],
+    [
+     "",
+     "b",
+     "des Bruttobeitrages"
+    ],
+    [
+     "4.2",
+     "Deckungskapitalberechnung"
+    ],
+    [
+     "",
+     "g1",
+     "des Deckungskapitals monatlich in der beitragspflichtigen Zeit"
+    ],
+    [
+     "",
+     "g2",
+     "des Deckungskapitals monatlich in der beitragsfreien Zeit"
+    ],
+    [
+     "",
+     "κ",
+     "Stückkosten monatlich"
+    ],
+    [
+     "4.3",
+     "Konkrete Kostenparameter"
+    ],
+    [
+     "",
+     "Parameter",
+     "Einzeltarif",
+     "Kollektivtarif",
+     "Haustarif"
+    ],
+    [
+     "",
+     "a",
+     "40‰",
+     "20‰",
+     "5‰"
+    ],
+    [
+     "",
+     "b",
+     "5%",
+     "2,5%",
+     "2%"
+    ],
+    [
+     "",
+     "g1",
+     "0,4‰",
+     "0,3‰",
+     "0,3‰"
+    ],
+    [
+     "",
+     "g2",
+     "0,6‰",
+     "0,5‰",
+     "0,5‰"
+    ],
+    [
+     "",
+     "κ",
+     "1€",
+     "1€",
+     "0€"
+    ]
+   ]
+  },
+  {
+   "index": 4,
+   "zeilen": [
+    [
+     "5",
+     "Rückkaufswert und beitragsfreie Leistung"
+    ],
+    [
+     "5.1",
+     "Rückkaufswert RKW:"
+    ],
+    [
+     "",
+     "Ein Mindestrückkaufswert wird nicht gewährt."
+    ],
+    [
+     "",
+     "Als Rückkaufswert RKW wird das Deckungskapital DKk+ zum Zeitpunkt k des Rückkaufs abzüglich eines Stornoabschlages (% der Summe der ausstehenden Beiträge) gezahlt. In der Abrufphase entfällt der Abzug."
+    ],
+    [
+     "",
+     "RKWk=max0;DKk+ -StoAbk"
+    ],
+    [
+     "",
+     "StoAbk=StoSatz⋅n-k⋅B⋅zwk vor Beginn Abrufphase und beitragspflichtig0k in Abrufphase oder beitragsfreiStoSatz=2%Einzeltarif, Kollektivtarif0%Haustarif"
+    ],
+    [
+     "",
+     "Bei unterjährigem Rückkauf wird der Stornoabzug unter Berücksichtigung des Zeitpunktes k zum letzten Jahrestag berechnet."
+    ],
+    [
+     "5.2",
+     "Prämienfreie Leistung:"
+    ],
+    [
+     "",
+     "Im Falle einer Beitragsfreistellung wird das Deckungskapital (DK) zum Zeitpunkt der Beitragsfreistellung um einen Stornoabschlag reduziert:"
+    ],
+    [
+     "",
+     "bfrDKk+=max0;DKk+ -StoAbk"
+    ],
+    [
+     "",
+     "StoAbk siehe 5.1"
+    ],
+    [
+     "",
+     "Die Todesfallleistung wird auf Grundlage der bis zur Beitragsfreistellung tatsächlich gezahlten Beiträge (BSbfr) und der vereinbarten Prozentsätze für MTS und MRS berechnet:"
+    ],
+    [
+     "",
+     "beitragsfreie Mindesttodesfallsumme:",
+     "MTkbfr=MTproz⋅BSbfr"
+    ],
+    [
+     "",
+     "beitragsfreie Mindestrisikosumme:",
+     "MRkbfr=0,05⋅BSbfr"
+    ]
+   ]
+  },
+  {
+   "index": 5,
+   "zeilen": [
+    [
+     "6",
+     "Überschussbeteiligung"
+    ],
+    [
+     "",
+     "Bestandsgruppe (gemäß Anlage 1, Abschnitt D BerVersV):",
+     "131"
+    ],
+    [
+     "6.1",
+     "Zusammensetzung",
+     ""
+    ],
+    [
+     "",
+     "Risikoüberschussanteil:",
+     "in % des RisikobeitragesBeispiel-Deklaration: 5%"
+    ],
+    [
+     "",
+     "Kostenüberschussanteil:",
+     "in % des Bruttobeitrags (β-Kostenüberschuss)Beispiel-Deklaration: 1%"
+    ],
+    [
+     "",
+     "",
+     "In % des Deckungskapitals (γ-Kostenüberschuss)Beispiel-Deklaration: 0,01%"
+    ],
+    [
+     "",
+     "Wartezeit:",
+     "keine"
+    ],
+    [
+     "6.2",
+     "Verwendungsmöglichkeiten"
+    ],
+    [
+     "",
+     "Verrechnung mit dem Risikobeitrag und den Kostenanteilen"
+    ]
+   ]
+  },
+  {
+   "index": 6,
+   "zeilen": [
+    [
+     "7",
+     "Formeln",
+     ""
+    ],
+    [
+     "7.1",
+     "Zusammenstellung der Bezeichnungen und Grundformeln"
+    ],
+    [
+     "",
+     "x, y",
+     "rechnungsmäßiges Eintrittsalter der versicherten Person (berechnet nach Geburtsjahresmethode)"
+    ],
+    [
+     "",
+     "n",
+     "Versicherungsdauer"
+    ],
+    [
+     "",
+     "m",
+     "Beitragszahlungsdauer"
+    ],
+    [
+     "",
+     "zw",
+     "Zahlungsweise (zw = 1, 2, 4, 12)"
+    ],
+    [
+     "",
+     "B",
+     "Bruttobeitrag je Zahlungsweise"
+    ],
+    [
+     "",
+     "BS",
+     "Bruttobeitragssumme (BS = B × zw × m)"
+    ],
+    [
+     "",
+     "k",
+     "abgelaufene Versicherungsjahre"
+    ],
+    [
+     "",
+     "t",
+     "abgelaufene Monate im Versicherungsjahr"
+    ],
+    [
+     "",
+     "Tk,t",
+     "Todesfallleistung nach k Jahren und t Monaten"
+    ],
+    [
+     "",
+     "DKk,t-",
+     "Deckungskapital nach k Jahren und t Monaten vor Zuführung des Anlagebeitrages"
+    ],
+    [
+     "",
+     "DKk,t+",
+     "Deckungskapital nach k Jahren und t Monaten nach Zuführung des Anlagebeitrages"
+    ],
+    [
+     "",
+     "qx, qy",
+     "Sterbewahrscheinlichkeit"
+    ],
+    [
+     "",
+     "MTS%",
+     "Prozentsatz (60%-400%) der Beitragssumme zur Bestimmung der Mindesttodesfallsumme"
+    ],
+    [
+     "",
+     "ükβ, ükγ",
+     "Kostenüberschussanteilsätze"
+    ],
+    [
+     "",
+     "ükRis",
+     "Risikoüberschussanteilsatz"
+    ],
+    [
+     "",
+     "f=1,…,h",
+     "die dem Vertrag zugrundeliegenden Fonds"
+    ],
+    [
+     "",
+     "bf",
+     "Aufteilungsprozentsatz auf die einzelnen Fonds"
+    ],
+    [
+     "",
+     "wk,tf",
+     "Rücknahmepreis des Fonds f zum Zeitpunkt (k,t)"
+    ],
+    [
+     "7.1",
+     "Beitragszerlegung",
+     ""
+    ],
+    [
+     "",
+     "Der je Zahlungstermin fällige Beitrag B ist in EUR festgesetzt. Er setzt sich zusammen aus dem Anlagebeitrag Pk,tA und dem Kostenbeitrag Pk,tK."
+    ],
+    [
+     "7.1.1",
+     "Kostenbeitrag:",
+     ""
+    ],
+    [
+     "",
+     "Pk,tK=α2⋅zw⋅BS+β⋅ Bk<2 und Monat mit Beitragsfälligkeitβ⋅ Bk≥2 und Monat mit Beitragsfälligkeit0Monat ohne Beitragsfälligkeit"
+    ],
+    [
+     "7.1.2",
+     "Anlagebeitrag:",
+     ""
+    ],
+    [
+     "",
+     "Pk,tA= B-Pk,tK+ÜkβMonat mit Beitragsfälligkeit0Monat ohne Beitragsfälligkeit"
+    ],
+    [
+     "",
+     "mit Ükβ=ükβ⋅B   (β-Kostenüberschuss)"
+    ],
+    [
+     "7.2",
+     "Deckungskapitalberechnung"
+    ],
+    [
+     "",
+     "Das Deckungskapital in Fondsanteilen pro Fonds f wird monatlich für den nach k Jahren und t Monaten beginnenden Versicherungsmonat wie folgt berechnet. Dabei werden der Anlagebeitrag und die Überschüsse investiert und Kosten sowie Risikobeitrag entnommen."
+    ],
+    [
+     "",
+     "DK0,0-=0"
+    ],
+    [
+     "",
+     "DKk,t+=DKk,t-+bf⋅Pk,tA-Px,k,tR-Kk,tγ-κ+Ük,tRis+Ük,tγwk,t-1f"
+    ],
+    [
+     "",
+     "Das Deckungskapital pro Fonds f in EUR ergibt sich aus"
+    ],
+    [
+     "",
+     "EURDKk,t+=DKk,t+⋅wk,tf"
+    ],
+    [
+     "",
+     "EURDKk,t-=DKk,t-⋅wk,tf"
+    ],
+    [
+     "",
+     "mit",
+     ""
+    ],
+    [
+     "",
+     "Risikobeitrag:Px,k,tR=112⋅qx+k⋅max(MT-EURDKk,t--Pk,tA;MR)"
+    ],
+    [
+     "",
+     "mit MT=MTS%⋅BS und MR=0,05⋅BS"
+    ],
+    [
+     "",
+     "Verwaltungskosten: Kk,tγ=EURDKk,t-⋅γ1während der BeitragszahlungsdauerEURDKk,t-⋅γ2sonst"
+    ],
+    [
+     "",
+     "γ-Kostenüberschuss: Ük,tγ=EURDKk,t-⋅ükγ"
+    ],
+    [
+     "",
+     "Risikoüberschuss: Ük,tRis=Px,k,tRis⋅ükRis"
+    ],
+    [
+     "7.3",
+     "Todesfallleistung"
+    ],
+    [
+     "",
+     "Bei Tod im nach k Jahren und t Monaten beginnenden Versicherungsmonat wird folgende Todesfallleistung fällig:"
+    ],
+    [
+     "",
+     "Tk,t=max(MT;EURDKk,t-+MR)"
+    ]
+   ]
+  },
+  {
+   "index": 7,
+   "zeilen": [
+    [
+     "",
+     "Anlage 1"
+    ],
+    [
+     "",
+     "Sterbetafel DAV 1994 T"
+    ]
+   ]
+  },
+  {
+   "index": 8,
+   "zeilen": [
+    [
+     "x/y",
+     "qx",
+     "qy",
+     "",
+     "x/y",
+     "qx",
+     "qy"
+    ],
+    [
+     "0",
+     "0,011687",
+     "0,009003",
+     "",
+     "51",
+     "0,007485",
+     "0,003728"
+    ],
+    [
+     "1",
+     "0,001008",
+     "0,000867",
+     "",
+     "52",
+     "0,008302",
+     "0,004066"
+    ],
+    [
+     "2",
+     "0,000728",
+     "0,000624",
+     "",
+     "53",
+     "0,009215",
+     "0,004450"
+    ],
+    [
+     "3",
+     "0,000542",
+     "0,000444",
+     "",
+     "54",
+     "0,010195",
+     "0,004862"
+    ],
+    [
+     "4",
+     "0,000473",
+     "0,000345",
+     "",
+     "55",
+     "0,011236",
+     "0,005303"
+    ],
+    [
+     "5",
+     "0,000452",
+     "0,000307",
+     "",
+     "56",
+     "0,012340",
+     "0,005777"
+    ],
+    [
+     "6",
+     "0,000433",
+     "0,000293",
+     "",
+     "57",
+     "0,013519",
+     "0,006302"
+    ],
+    [
+     "7",
+     "0,000408",
+     "0,000283",
+     "",
+     "58",
+     "0,014784",
+     "0,006884"
+    ],
+    [
+     "8",
+     "0,000379",
+     "0,000275",
+     "",
+     "59",
+     "0,016150",
+     "0,007530"
+    ],
+    [
+     "9",
+     "0,000352",
+     "0,000268",
+     "",
+     "60",
+     "0,017625",
+     "0,008240"
+    ],
+    [
+     "10",
+     "0,000334",
+     "0,000261",
+     "",
+     "61",
+     "0,019223",
+     "0,009022"
+    ],
+    [
+     "11",
+     "0,000331",
+     "0,000260",
+     "",
+     "62",
+     "0,020956",
+     "0,009884"
+    ],
+    [
+     "12",
+     "0,000340",
+     "0,000267",
+     "",
+     "63",
+     "0,022833",
+     "0,010839"
+    ],
+    [
+     "13",
+     "0,000371",
+     "0,000281",
+     "",
+     "64",
+     "0,024858",
+     "0,011889"
+    ],
+    [
+     "14",
+     "0,000451",
+     "0,000307",
+     "",
+     "65",
+     "0,027073",
+     "0,013054"
+    ],
+    [
+     "15",
+     "0,000593",
+     "0,000353",
+     "",
+     "66",
+     "0,029552",
+     "0,014371"
+    ],
+    [
+     "16",
+     "0,000792",
+     "0,000416",
+     "",
+     "67",
+     "0,032350",
+     "0,015874"
+    ],
+    [
+     "17",
+     "0,001040",
+     "0,000480",
+     "",
+     "68",
+     "0,035632",
+     "0,017667"
+    ],
+    [
+     "18",
+     "0,001298",
+     "0,000537",
+     "",
+     "69",
+     "0,039224",
+     "0,019657"
+    ],
+    [
+     "19",
+     "0,001437",
+     "0,000560",
+     "",
+     "70",
+     "0,043127",
+     "0,021861"
+    ],
+    [
+     "20",
+     "0,001476",
+     "0,000560",
+     "",
+     "71",
+     "0,047400",
+     "0,024344"
+    ],
+    [
+     "21",
+     "0,001476",
+     "0,000560",
+     "",
+     "72",
+     "0,052110",
+     "0,027191"
+    ],
+    [
+     "22",
+     "0,001476",
+     "0,000560",
+     "",
+     "73",
+     "0,057472",
+     "0,030576"
+    ],
+    [
+     "23",
+     "0,001476",
+     "0,000560",
+     "",
+     "74",
+     "0,063440",
+     "0,034504"
+    ],
+    [
+     "24",
+     "0,001476",
+     "0,000560",
+     "",
+     "75",
+     "0,070039",
+     "0,039030"
+    ],
+    [
+     "25",
+     "0,001476",
+     "0,000560",
+     "",
+     "76",
+     "0,077248",
+     "0,044184"
+    ],
+    [
+     "26",
+     "0,001476",
+     "0,000560",
+     "",
+     "77",
+     "0,085073",
+     "0,050014"
+    ],
+    [
+     "27",
+     "0,001476",
+     "0,000581",
+     "",
+     "78",
+     "0,093534",
+     "0,056574"
+    ],
+    [
+     "28",
+     "0,001476",
+     "0,000612",
+     "",
+     "79",
+     "0,102662",
+     "0,063921"
+    ],
+    [
+     "29",
+     "0,001476",
+     "0,000645",
+     "",
+     "80",
+     "0,112477",
+     "0,072101"
+    ],
+    [
+     "30",
+     "0,001476",
+     "0,000689",
+     "",
+     "81",
+     "0,122995",
+     "0,081151"
+    ],
+    [
+     "31",
+     "0,001476",
+     "0,000735",
+     "",
+     "82",
+     "0,134231",
+     "0,091096"
+    ],
+    [
+     "32",
+     "0,001489",
+     "0,000783",
+     "",
+     "83",
+     "0,146212",
+     "0,101970"
+    ],
+    [
+     "33",
+     "0,001551",
+     "0,000833",
+     "",
+     "84",
+     "0,158964",
+     "0,113798"
+    ],
+    [
+     "34",
+     "0,001641",
+     "0,000897",
+     "",
+     "85",
+     "0,172512",
+     "0,126628"
+    ],
+    [
+     "35",
+     "0,001747",
+     "0,000971",
+     "",
+     "86",
+     "0,186896",
+     "0,140479"
+    ],
+    [
+     "36",
+     "0,001869",
+     "0,001057",
+     "",
+     "87",
+     "0,202185",
+     "0,155379"
+    ],
+    [
+     "37",
+     "0,002007",
+     "0,001156",
+     "",
+     "88",
+     "0,218413",
+     "0,171325"
+    ],
+    [
+     "38",
+     "0,002167",
+     "0,001267",
+     "",
+     "89",
+     "0,235597",
+     "0,188318"
+    ],
+    [
+     "39",
+     "0,002354",
+     "0,001390",
+     "",
+     "90",
+     "0,253691",
+     "0,206375"
+    ],
+    [
+     "40",
+     "0,002569",
+     "0,001524",
+     "",
+     "91",
+     "0,272891",
+     "0,225558"
+    ],
+    [
+     "41",
+     "0,002823",
+     "0,001672",
+     "",
+     "92",
+     "0,293142",
+     "0,245839"
+    ],
+    [
+     "42",
+     "0,003087",
+     "0,001812",
+     "",
+     "93",
+     "0,314638",
+     "0,267270"
+    ],
+    [
+     "43",
+     "0,003387",
+     "0,001964",
+     "",
+     "94",
+     "0,337739",
+     "0,289983"
+    ],
+    [
+     "44",
+     "0,003726",
+     "0,002126",
+     "",
+     "95",
+     "0,362060",
+     "0,314007"
+    ],
+    [
+     "45",
+     "0,004100",
+     "0,002295",
+     "",
+     "96",
+     "0,388732",
+     "0,340119"
+    ],
+    [
+     "46",
+     "0,004522",
+     "0,002480",
+     "",
+     "97",
+     "0,419166",
+     "0,367388"
+    ],
+    [
+     "47",
+     "0,004983",
+     "0,002676",
+     "",
+     "98",
+     "0,452008",
+     "0,397027"
+    ],
+    [
+     "48",
+     "0,005508",
+     "0,002902",
+     "",
+     "99",
+     "0,486400",
+     "0,428748"
+    ],
+    [
+     "49",
+     "0,006094",
+     "0,003151",
+     "",
+     "100",
+     "1,000000",
+     "1,000000"
+    ],
+    [
+     "50",
+     "0,006751",
+     "0,003425",
+     "",
+     "",
+     "",
+     ""
+    ]
+   ]
+  },
+  {
+   "index": 9,
+   "zeilen": [
+    [
+     "",
+     "Anlage 2"
+    ],
+    [
+     "",
+     "Informationen zu den Investmentfonds"
+    ],
+    [
+     "",
+     "Die Anlage der Beiträge kann jeweils in einen der folgenden Investmentfonds erfolgen."
+    ],
+    [
+     "",
+     "Fondsgesellschaft",
+     "ISIN",
+     "Name"
+    ],
+    [
+     "",
+     "…",
+     "…",
+     "…"
+    ],
+    [
+     "",
+     "Fondswechsel"
+    ],
+    [
+     "",
+     "Ein Fondswechsel kann während der Vertragslaufzeit jederzeit beantragt werden. Für einen Fondswechsel wird keine Gebühr erhoben."
+    ]
+   ]
+  }
+ ],
+ "formeln": [],
+ "hinweis": "Migrationsartefakt-Staging: strukturierte Rohdaten fuer die Migration, kein Zielkern-Tarifplan (siehe docs/tarifplaene/)."
+}

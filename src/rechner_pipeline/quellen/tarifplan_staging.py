@@ -5,7 +5,7 @@ migrierenden Bestaenden (DOCX der Quellsysteme) sind MIGRATIONSARTEFAKTE.
 Sie gehoeren nicht in die Zielkern-Dokumentation (dort leben neu verfasste
 Tarifplaene in der Mathematik des Kerns, ``docs/tarifplaene/``), sondern in
 ein maschinenlesbares Staging: dieses Kommando extrahiert die Inhalte eines
-DOCX strukturiert nach JSON (``migrationsstaging/``) — nicht fuer Menschen
+DOCX strukturiert nach JSON (``runs/migrationsstaging/``) — nicht fuer Menschen
 formatiert, sondern als Datenvorbereitung fuer die Migration (Abgleich mit
 Geschaeftsplan/Quellsystem, spaeterer Migrations-Contract).
 
@@ -19,7 +19,7 @@ Usage::
 
     python -m rechner_pipeline.quellen.tarifplan_staging \\
         --docx examples/Mitteilung_143_KLV_v3.docx \\
-        --out migrationsstaging/klv_mitteilung_143.json
+        --out runs/migrationsstaging/klv_mitteilung_143.json
 """
 
 from __future__ import annotations
@@ -148,7 +148,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         ),
     )
     parser.add_argument("--docx", required=True, help="Quell-DOCX (Migrationsartefakt).")
-    parser.add_argument("--out", required=True, help="Ziel-JSON (migrationsstaging/...).")
+    parser.add_argument("--out", required=True, help="Ziel-JSON (runs/migrationsstaging/...).")
     ns = parser.parse_args(argv)
 
     docx_pfad = Path(ns.docx)

@@ -27,7 +27,7 @@ JSON diagnostics, and repair — all inside one CLI session. Acceptance is mecha
 ## Read-only input sources
 
 Read only the artifacts the extraction toolbox produced under the bundle directory
-(default `info_from_excel\`). **Never** read the original `.xlsm`/`.docx` directly and
+(default `runs/info_from_excel\`). **Never** read the original `.xlsm`/`.docx` directly and
 **never** write into the bundle:
 
 - raw sheet CSVs `<prefix>.csv` (`Blatt;Adresse;Formel;Wert`),

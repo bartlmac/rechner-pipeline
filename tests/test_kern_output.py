@@ -130,8 +130,8 @@ def test_validate_main_output_rejects_outer_text() -> None:
 
 
 def test_write_validated_main_output_writes_only_after_validation(tmp_path: Path) -> None:
-    generated_dir = tmp_path / "generated"
-    generated_dir.mkdir()
+    generated_dir = tmp_path / "runs" / "generated"
+    generated_dir.mkdir(parents=True)
     stale_file = generated_dir / "inputs.py"
     stale_file.write_text("STALE = True\n", encoding="utf-8")
 

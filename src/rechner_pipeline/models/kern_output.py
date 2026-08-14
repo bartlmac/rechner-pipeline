@@ -543,7 +543,7 @@ def write_validated_main_output_to_generated_dir(text: str, repo_root: Path) -> 
     the preferred target workflow.
     """
     items = validate_main_output_files(text)
-    generated_dir = Path(repo_root) / "generated"
+    generated_dir = Path(repo_root) / "runs" / "generated"
     generated_dir.mkdir(parents=True, exist_ok=True)
     for filename, content in items:
         (generated_dir / filename).write_text(content, encoding="utf-8")

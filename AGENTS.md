@@ -19,7 +19,7 @@
 - Install for development: `python -m pip install -e ".[dev]"`.
 - Run tests: `python -m pytest`.
 - Run full deterministic acceptance after generated files exist:
-  `python -m rechner_pipeline.cli assurance --repo-root . --input examples/Tarifrechner_KLV.xlsm --generated-dir generated --info-dir info_from_excel --diagnostics-dir diagnostics --qa-contract qa_contract.json --adapter excel`.
+  `python -m rechner_pipeline.cli assurance --repo-root . --input examples/Tarifrechner_KLV.xlsm --generated-dir runs/generated --info-dir runs/info_from_excel --diagnostics-dir runs/diagnostics --qa-contract qa_contract.json --adapter excel`.
 
 ## Codex Entry Points
 

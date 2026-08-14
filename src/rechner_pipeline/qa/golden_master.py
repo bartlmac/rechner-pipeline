@@ -246,7 +246,7 @@ def load_expected(info_dir: Path) -> Dict[str, Any]:
 def main() -> None:
     generated = Path.cwd()
     repo_root = generated.parent
-    info_dir = repo_root / "info_from_excel"
+    info_dir = repo_root / "runs" / "info_from_excel"
 
     sys.path.insert(0, str(generated))
     try:
