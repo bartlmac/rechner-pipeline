@@ -60,14 +60,18 @@ TEXTE: Dict[str, str] = {
     ),
     "beitraege": (
         "Stichtagswerte des laufenden Beitrags, keine Zeitraum-Summen. "
-        "BJB ist der tarifliche Jahres-Bruttobeitrag, BZB der Zahlbeitrag "
-        "einer Rate — hier auf das Jahr hochgerechnet und damit "
-        "einschließlich Ratenzuschlag und Stückkosten. Nicht enthalten "
-        "sind Verträge, die keinen Beitrag mehr zahlen: beitragsfrei "
-        "gestellte (PEX), solche mit abgelaufener Beitragszahlungsdauer "
-        "und BU-Verträge im Leistungsbezug (Beitragsbefreiung). "
-        "Beitragsvolumen ist über die Versicherungsarten addierbar — "
-        "anders als die versicherten Leistungen."
+        "Zwei Größen werden unterschieden: der Σ Jahresbeitrag ist der "
+        "tarifliche Bruttobeitrag für ein Jahr (BJB), das Σ "
+        "Beitragsvolumen p. a. ist der tatsächlich gezahlte Betrag eines "
+        "Jahres — also einschließlich Ratenzuschlag für unterjährige "
+        "Zahlweise und Stückkosten (BZB mal Zahlweise). Beim "
+        "BU-Beispielprodukt fallen beide zusammen: es kennt weder "
+        "unterjährige Zahlweise noch Stückkosten. Nicht enthalten sind "
+        "Verträge, die keinen Beitrag mehr zahlen: beitragsfrei gestellte "
+        "(PEX), solche mit abgelaufener Beitragszahlungsdauer und "
+        "BU-Verträge im Leistungsbezug (Beitragsbefreiung). Beiträge sind "
+        "über die Versicherungsarten addierbar — anders als die "
+        "versicherten Leistungen."
     ),
     "lesart": (
         "Aggregierte Zahlen beziehen sich auf den im Abschnittstitel "

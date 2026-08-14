@@ -999,23 +999,39 @@ stabilen Rechenkern.</p>"""
         # Beitraege in eigener Tabelle statt als weitere Spalten: die
         # Kennzahlen-Tabelle traegt Bestandsgroessen, hier stehen die
         # Zahlungen — und acht Spalten waeren nicht mehr lesbar.
+        # Einheitliche Benennung ueber beide Versicherungsarten: EIN Begriff
+        # je Groesse, die Art steht als Zusatz. Zwei Groessen werden
+        # unterschieden — der tarifliche Jahresbeitrag und das tatsaechlich
+        # gezahlte Volumen (mit Ratenzuschlag und Stueckkosten).
         mit_bu = any(r["bu_vertraege"] for r in reihe_ausw)
-        bu_kopf = "<th>Σ Bruttobeitrag (BU-Anwärter)</th>" if mit_bu else ""
+        if mit_bu:
+            beitrag_kopf = (
+                "<th>Σ Jahresbeitrag (Kapitalversicherung)</th>"
+                "<th>Σ Jahresbeitrag (Berufsunfähigkeit)</th>"
+                "<th>Σ Jahresbeitrag gesamt</th>"
+                "<th>Σ Beitragsvolumen p. a.</th>"
+            )
+        else:
+            beitrag_kopf = (
+                "<th>Σ Jahresbeitrag</th><th>Σ Beitragsvolumen p. a.</th>"
+            )
         beitrag_zeilen = "".join(
             f"<tr><td>{r['stichtag']}</td>"
             f"<td class='num'>{_zahl(r['bjb'])}</td>"
-            f"<td class='num'>{_zahl(r['bzb_jahr'])}</td>"
-            + (f"<td class='num'>{_zahl(r['bu_beitrag'])}</td>" if mit_bu else "")
+            + (
+                f"<td class='num'>{_zahl(r['bu_beitrag'])}</td>"
+                f"<td class='num'>{_zahl(r['bjb'] + r['bu_beitrag'])}</td>"
+                if mit_bu else ""
+            )
             + f"<td class='num'>{_zahl(r['bzb_jahr'] + r['bu_beitrag'])}</td></tr>"
             for r in reihe_ausw
             if r["vertraege"] > 0
         )
         beitrag_tabelle = (
             "<table><thead><tr><th>Stichtag</th>"
-            "<th>Σ Jahresbeitrag (BJB, KLV)</th>"
-            "<th>Σ Zahlbeitrag p. a. (BZB, KLV)</th>"
-            f"{bu_kopf}<th>Σ Beitragsvolumen p. a.</th>"
-            "</tr></thead><tbody>" + beitrag_zeilen + "</tbody></table>"
+            f"{beitrag_kopf}</tr></thead><tbody>"
+            + beitrag_zeilen
+            + "</tbody></table>"
         )
         auswertung_html = f"""
 <h2>Aktuarielle Kennzahlen je Stichtag, {ausw_zeitraum}</h2>

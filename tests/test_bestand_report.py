@@ -666,8 +666,11 @@ def test_beitragsvolumen_im_bericht(gemischter_bestand):
         config=cfg, bis=bis, stichtag=dt.date(2026, 1, 1), stichtage=stichtage,
     )
     assert "<h3>Beiträge</h3>" in html
-    assert "Σ Jahresbeitrag (BJB, KLV)" in html
-    assert "Σ Bruttobeitrag (BU-Anwärter)" in html
+    # Ein Begriff je Groesse, die Versicherungsart als Zusatz:
+    assert "Σ Jahresbeitrag (Kapitalversicherung)" in html
+    assert "Σ Jahresbeitrag (Berufsunfähigkeit)" in html
+    assert "Σ Jahresbeitrag gesamt" in html
+    assert "Σ Beitragsvolumen p. a." in html
     for r in reihe:
         assert r["bjb"] > 0 and r["bu_beitrag"] > 0
         assert r["bzb_jahr"] > r["bjb"]        # Ratenzuschlag und Stueckkosten
