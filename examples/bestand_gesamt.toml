@@ -1,0 +1,433 @@
+# Beispiel-Konfiguration: GESAMTBESTAND eines Lebensversicherers.
+#
+# Ein Bestand, zwei Versicherungsarten — so, wie ein Unternehmen ihn
+# fuehrt: getrennt sind die NACHWEISUNGEN (Bezugsgroesse Versicherungssumme
+# gegen Jahresrente, nicht addierbar), nicht der Bestand. Ein Lauf ueber
+# diese Config erzeugt daher EINEN Bestand und EINEN Bericht mit beiden
+# Nachweisungen.
+#
+# Kapitallebensversicherung: vier Generationen entlang der
+# Hoechstrechnungszins-Stufen (4,0 / 2,25 / 0,9 / 0,25 %).
+# Berufsunfaehigkeit: zwei Generationen (1,75 / 0,9 %), Rechnungsgrundlagen
+# DAV 1997 I. Die jeweils juengste Generation ist im Vertrieb.
+#
+# Eigene, synthetische Parametrierung (Lehrbeispiel, keine realen Werte).
+
+[meta]
+seed = 20260814
+beschreibung = "Synthetischer Gesamtbestand: KLV (4 Generationen) und BU (2 Generationen)"
+
+# --------------------------------------------------------------------------
+# Generation 1: klassisches KLV-Geschaeft der 1990er (DAV1994_T, hoher Zins)
+# --------------------------------------------------------------------------
+[[generation]]
+name = "KLV-1994"
+gueltig_von = 1994-07-01
+gueltig_bis = 2007-12-31
+sample_size = 600
+max_endalter = 85
+zins = 0.04
+tafel = "DAV1994_T"
+alpha = 0.025
+beta1 = 0.025
+gamma1 = 0.0008
+gamma2 = 0.00125
+gamma3 = 0.0025
+policy_fee = 24.0
+min_alter_flex = 60
+min_rlz_flex = 5
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 36.0
+sd = 11.0
+min = 18.0
+max = 60.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.55, 0.45]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30, 35]
+probs = [0.10, 0.15, 0.30, 0.20, 0.20, 0.05]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30]
+probs = [0.15, 0.20, 0.35, 0.15, 0.15]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 10.9
+sdlog = 0.55
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [12, 1, 4, 2]
+probs = [0.80, 0.10, 0.06, 0.04]
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.45
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "sum_insured"
+rho = 0.20
+
+[[generation.korrelation]]
+var_i = "duration"
+var_j = "premium_duration"
+rho = 0.65
+
+# --------------------------------------------------------------------------
+# Generation 2: KLV-Neugeschaeft ab 2005 (DAV2008_T, abgesenkter Zins)
+# --------------------------------------------------------------------------
+[[generation]]
+name = "KLV-2008"
+gueltig_von = 2008-01-01
+gueltig_bis = 2016-12-31
+sample_size = 300
+max_endalter = 85
+zins = 0.0225
+tafel = "DAV2008_T"
+alpha = 0.025
+beta1 = 0.025
+gamma1 = 0.0008
+gamma2 = 0.00125
+gamma3 = 0.0025
+policy_fee = 30.0
+min_alter_flex = 60
+min_rlz_flex = 5
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 40.0
+sd = 12.0
+min = 18.0
+max = 62.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.50, 0.50]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30]
+probs = [0.15, 0.20, 0.35, 0.20, 0.10]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25]
+probs = [0.20, 0.25, 0.40, 0.15]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 11.2
+sdlog = 0.5
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [12, 1, 4, 2]
+probs = [0.85, 0.07, 0.05, 0.03]
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.40
+
+[[generation.korrelation]]
+var_i = "duration"
+var_j = "premium_duration"
+rho = 0.60
+
+# --------------------------------------------------------------------------
+# Generation 3: Hoechstrechnungszins 0,9 % (2017-2021)
+# --------------------------------------------------------------------------
+[[generation]]
+name = "KLV-2017"
+gueltig_von = 2017-01-01
+gueltig_bis = 2021-12-31
+sample_size = 250
+max_endalter = 85
+zins = 0.009
+tafel = "DAV2008_T"
+alpha = 0.025
+beta1 = 0.025
+gamma1 = 0.0008
+gamma2 = 0.00125
+gamma3 = 0.0025
+policy_fee = 30.0
+min_alter_flex = 60
+min_rlz_flex = 5
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 40.0
+sd = 12.0
+min = 18.0
+max = 62.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.50, 0.50]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30]
+probs = [0.15, 0.20, 0.35, 0.20, 0.10]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25]
+probs = [0.20, 0.25, 0.40, 0.15]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 11.2
+sdlog = 0.5
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [12, 1, 4, 2]
+probs = [0.85, 0.07, 0.05, 0.03]
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.40
+
+[[generation.korrelation]]
+var_i = "duration"
+var_j = "premium_duration"
+rho = 0.60
+
+# --------------------------------------------------------------------------
+# Generation 4: laufendes Neugeschaeft, Hoechstrechnungszins 0,25 %
+# --------------------------------------------------------------------------
+[[generation]]
+name = "KLV-2022"
+gueltig_von = 2022-01-01
+gueltig_bis = 2035-12-31
+sample_size = 150
+neuzugang_pro_jahr = 40
+max_endalter = 85
+zins = 0.0025
+tafel = "DAV2008_T"
+alpha = 0.025
+beta1 = 0.025
+gamma1 = 0.0008
+gamma2 = 0.00125
+gamma3 = 0.0025
+policy_fee = 30.0
+min_alter_flex = 60
+min_rlz_flex = 5
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 40.0
+sd = 12.0
+min = 18.0
+max = 62.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.50, 0.50]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30]
+probs = [0.15, 0.20, 0.35, 0.20, 0.10]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25]
+probs = [0.20, 0.25, 0.40, 0.15]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 11.2
+sdlog = 0.5
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [12, 1, 4, 2]
+probs = [0.85, 0.07, 0.05, 0.03]
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.40
+
+[[generation.korrelation]]
+var_i = "duration"
+var_j = "premium_duration"
+rho = 0.60
+# --------------------------------------------------------------------------
+# BU-Geschaeft 2000-2016 (DAV 1997 I)
+# --------------------------------------------------------------------------
+[[generation]]
+name = "BU-2000"
+produkt = "bu"
+gueltig_von = 2000-01-01
+gueltig_bis = 2016-12-31
+sample_size = 500
+# Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
+# fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
+max_endalter = 67
+zins = 0.0175
+# Rechnungsgrundlagen (BU): Aktivensterblichkeit, Invalidisierung,
+# Reaktivierung (Select), Invalidensterblichkeit (Select).
+tafel_aktiv = "DAV1997_TAA"
+tafel_i = "DAV1997_I"
+tafel_ri = "DAV1997_RI"
+tafel_ti = "DAV1997_TI"
+zuschlag = 0.05
+# tafel = Sterbetafel-Feld des KLV-Contracts; bei BU fuehrt tafel_aktiv.
+tafel = "DAV1997_TAA"
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 33.0
+sd = 8.0
+min = 20.0
+max = 55.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.58, 0.42]
+
+# Laufzeit bis Endalter: kuerzere Vertraege sind die Ausnahme (die Kappung
+# auf max_endalter - entry_age wirkt zusaetzlich im Generator).
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [15, 20, 25, 30, 35]
+probs = [0.10, 0.20, 0.30, 0.30, 0.10]
+
+# Versicherte BU-Jahresrente (Bezugsgroesse der Nachweisung).
+[generation.verteilungen.bu_rente]
+typ = "lognormal"
+meanlog = 9.4
+sdlog = 0.35
+round = -2
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.55
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "bu_rente"
+rho = 0.30
+
+# --------------------------------------------------------------------------
+# BU-Neugeschaeft ab 2017 (Hoechstrechnungszins 0,9 %), verkauft weiter
+# --------------------------------------------------------------------------
+[[generation]]
+name = "BU-2017"
+produkt = "bu"
+gueltig_von = 2017-01-01
+gueltig_bis = 2035-12-31
+sample_size = 300
+neuzugang_pro_jahr = 30
+# Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
+# fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
+max_endalter = 67
+zins = 0.009
+# Rechnungsgrundlagen (BU): Aktivensterblichkeit, Invalidisierung,
+# Reaktivierung (Select), Invalidensterblichkeit (Select).
+tafel_aktiv = "DAV1997_TAA"
+tafel_i = "DAV1997_I"
+tafel_ri = "DAV1997_RI"
+tafel_ti = "DAV1997_TI"
+zuschlag = 0.05
+# tafel = Sterbetafel-Feld des KLV-Contracts; bei BU fuehrt tafel_aktiv.
+tafel = "DAV1997_TAA"
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 33.0
+sd = 8.0
+min = 20.0
+max = 55.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.58, 0.42]
+
+# Laufzeit bis Endalter: kuerzere Vertraege sind die Ausnahme (die Kappung
+# auf max_endalter - entry_age wirkt zusaetzlich im Generator).
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [15, 20, 25, 30, 35]
+probs = [0.10, 0.20, 0.30, 0.30, 0.10]
+
+# Versicherte BU-Jahresrente (Bezugsgroesse der Nachweisung).
+[generation.verteilungen.bu_rente]
+typ = "lognormal"
+meanlog = 9.4
+sdlog = 0.35
+round = -2
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.55
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "bu_rente"
+rho = 0.30
+# --------------------------------------------------------------------------
+# Plausibilitaets-Baender fuer das Sanity-Gate (B1).
+# Die produktfuehrenden Leistungsspalten werden je Produkt geprueft
+# (sum_insured bei KLV, bu_rente bei BU) — die jeweils andere ist
+# strukturell 0.
+# --------------------------------------------------------------------------
+[plausibilitaet]
+entry_age = [18, 64]
+duration = [5, 40]
+premium_duration = [5, 35]
+sum_insured = [1000, 2000000]
+bu_rente = [1200, 200000]
+
+# --------------------------------------------------------------------------
+# Erfahrungsannahmen (3. Ordnung) beider Versicherungsarten.
+#
+# annahme = a + b * erste_ordnung. Der Faktor b rechnet die
+# Sicherheitsmarge richtungsrichtig heraus (belastend b < 1, entlastend
+# b > 1); Ereignisse ohne Rechnungsgrundlage tragen ihre Rate in a.
+# Die Bewertung bleibt unberuehrt auf erster Ordnung.
+# --------------------------------------------------------------------------
+[annahmen]
+# Kapitallebensversicherung
+tod = { a = 0.0, b = 0.8 }
+storno = { a = 0.03, b = 0.0 }
+beitragsfreistellung = { a = 0.01, b = 0.0 }
+erhoehung = { a = 0.30, b = 0.0 }
+erh_prozent = 0.05
+# Berufsunfaehigkeit
+invalidisierung = { a = 0.0, b = 0.8 }
+reaktivierung = { a = 0.0, b = 1.25 }
+aktivensterblichkeit = { a = 0.0, b = 1.0 }
+invalidensterblichkeit = { a = 0.0, b = 1.0 }

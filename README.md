@@ -263,9 +263,17 @@ Prinzipien:
 - **Aktuarielle Auswertungen (`bestand/auswertung.py`):** Deckungskapital
   und Rückkaufswert je Stichtag über den ganzen Bestand — in-process über
   `Rechenkern.zustand_am`, nach Beitragsfreistellung über die beitragsfreie
-  Reserve. Der Bestandsbericht (`toolbox/bestand_report`, optional mit
-  `--historie`/`--ledger`/`--scheiben`/`--config`/`--bis`) zeigt
-  Abgangs-Sichten und Reserveverläufe.
+  Reserve. Der Bestandsbericht (`toolbox/bestand_report`) zeigt
+  Abgangs-Sichten, Nachweisungen und Reserveverläufe — in zwei
+  Ausgabeformen aus **einem** Berichtsinhalt: `--format html` (eine
+  selbst-enthaltene Datei mit Inline-SVG) und `--format md` (Markdown mit
+  PNG-Grafiken für die Doku-Engine, druckgerecht mit skalierten Einheiten).
+  `--stichtag` teilt die Nachweisungen in Historie und Prognose.
+- **Ein Bestand, mehrere Versicherungsarten:** ein Unternehmen führt
+  einen Bestand; getrennt sind die *Nachweisungen*, nicht der Bestand.
+  `examples/bestand_gesamt.toml` konfiguriert entsprechend beide
+  Versicherungsarten in einem Bestand — ein Lauf, ein Bericht mit beiden
+  Nachweisungen.
 - **Zwei Produkte im Bestand:** Verträge tragen einen Produkt-Diskriminator
   (`produkt` = `klv` | `bu`) und die produktführende Leistungsspalte
   (Versicherungssumme bzw. versicherte Jahresrente). Für **BU** simuliert
