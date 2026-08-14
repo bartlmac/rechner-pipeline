@@ -343,18 +343,30 @@ def loese_diskrepanz_auf(
     # Erst ALLE Ziele bestimmen, dann atomar anwenden: eine Mutation vor
     # der letzten Pruefung hinterliesse bei einem Fehler einen halben
     # Zustand (Diskrepanz aufgeloest, Aussage noch widerspruechlich).
+    # Ziele finden sich ueber die Referenz (diskrepanz_id) ODER ueber die
+    # Adresse (knoten, feld) — nach einer VORLAEUFIGEN Aufloesung traegt
+    # die Aussage keine Referenz mehr, die Neuentscheidung (G-1) muss die
+    # Adresse treffen.
     ziele: List[Tuple[Dict[str, Aussage], str]] = []
     unisex_ziele: List[Any] = []
     for gen in abox.generationen:
         for zelle in gen.zellen:
+            zellen_knoten = f"{gen.id}/{zelle.id}"
             for feld, aussage in zelle.parameter.items():
-                if aussage.diskrepanz_id == diskrepanz_id:
+                if aussage.diskrepanz_id == diskrepanz_id or (
+                    zellen_knoten == diskrepanz.knoten
+                    and feld == diskrepanz.feld
+                ):
                     ziele.append((zelle.parameter, feld))
-        if gen.unisex is not None and gen.unisex.diskrepanz_id == diskrepanz_id:
+        if gen.unisex is not None and (
+            gen.unisex.diskrepanz_id == diskrepanz_id
+            or (gen.id == diskrepanz.knoten and diskrepanz.feld == "unisex")
+        ):
             unisex_ziele.append(gen)
     if not ziele and not unisex_ziele:
         raise BefuellungsFehler(
-            f"{diskrepanz_id}: keine Aussage referenziert die Diskrepanz"
+            f"{diskrepanz_id}: keine Aussage referenziert die Diskrepanz "
+            "und die Adresse (knoten, feld) trifft nichts"
         )
 
     abox.diskrepanzen[index] = diskrepanz.model_copy(update={

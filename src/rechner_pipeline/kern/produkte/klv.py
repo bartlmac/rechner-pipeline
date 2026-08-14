@@ -15,6 +15,8 @@ Zwei Sichten auf eine Verlaufszeile:
   Fortschreibung); Feldnamen sind Python-Namen.
 * :meth:`Verlaufszeile.als_blattzeile` — die Golden-Master-View mit den
   Blatt-Keys (inkl. ``"flex. Phase"``); Wert-für-Wert identisch.
+
+Knoten: klv
 """
 
 from __future__ import annotations

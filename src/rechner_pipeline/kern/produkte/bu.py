@@ -33,6 +33,8 @@ Invalidisierung auf 1; zusammen mit der Aktivensterblichkeit übersteigt die
 Summe der Wegzüge dann 1, und die Zustandsmodell-Engine bricht fail-fast ab.
 Für BU-Deckungen mit Endalter bis 67 ist der Bereich unerreichbar; die
 Bestands-Config prüft die Grenze zusätzlich beim Laden.
+
+Knoten: bu
 """
 
 from __future__ import annotations

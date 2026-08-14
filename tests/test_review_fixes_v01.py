@@ -193,12 +193,14 @@ def test_aufloesung_ohne_treffer_laesst_diskrepanz_unangetastet(tmp_path: Path):
                               frag("rechner.xlsm", "tarifrechner", 0.03)],
                      register, ["a", "b"], ZEIT)
     [d] = abox.diskrepanzen
-    # Referenz kuenstlich kappen: keine Aussage zeigt mehr auf die Diskrepanz
-    abox.generationen[0].zellen[0].parameter["beta1"] = belegt(0.03, [prov()])
-    with pytest.raises(BefuellungsFehler, match="keine Aussage"):
-        loese_diskrepanz_auf(abox, d.id, 0.03, "x", "y", ZEIT)
-    assert abox.diskrepanzen[0].status == "offen"    # NICHT halb aufgeloest
-    assert abox.diskrepanzen[0].entscheidung is None
+    # Treffer-lose Diskrepanz: weder Referenz noch Adresse existiert
+    abox.diskrepanzen.append(Diskrepanz(
+        id="klv/tg2012/zelle:x#gamma1", knoten="klv/tg2012/zelle:x",
+        feld="gamma1", lesarten=_lesarten()))
+    with pytest.raises(BefuellungsFehler, match="trifft nichts"):
+        loese_diskrepanz_auf(abox, "klv/tg2012/zelle:x#gamma1", 1, "x", "y", ZEIT)
+    assert abox.diskrepanzen[1].status == "offen"    # NICHT halb aufgeloest
+    assert abox.diskrepanzen[1].entscheidung is None
 
 
 def test_vorlaeufige_aufloesung_traegt_flag(tmp_path: Path):
