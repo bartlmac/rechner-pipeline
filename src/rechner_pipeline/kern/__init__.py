@@ -97,7 +97,12 @@ from rechner_pipeline.kern.rechenkern import (
 #: 4e-13 relativ; Anker-Fixtures mit Begründung neu eingefroren;
 #: 617/617-Excel-Fixtures unverändert grün — compare rundet auf 4
 #: Nachkommastellen, die Differenzen liegen bei 1e-13).
-__version__ = "2.0.0"
+#: 2.1.0 = Rechnungsgrundlagen erweitert (Migrationsfall KLV TG2015):
+#: DAV2008_T_R/NR je Geschlecht (Import aus dem Quell-Rechner, Provenienz
+#: im XML) plus abgeleitete Unisex-Mischtafeln *_U70 (VBA-Mischformel als
+#: Daten-Ableitung; kein Formel-Code geaendert). Bestehende Tafeln und
+#: Anker unveraendert.
+__version__ = "2.1.0"
 
 __all__ = [
     "ModelPoint",
