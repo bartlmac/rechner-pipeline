@@ -3,9 +3,17 @@
 #
 #   docs/engine/render.sh [datei.md ...]
 #
-# Ohne Argumente werden alle Tarifplaene gerendert. Ausgaben landen neben den
-# Quellen (docs/**/**.pdf, gitignored). Nutzt das ghcr-Image der Engine;
-# Fallback: lokaler Build aus docs/engine/Dockerfile (IMAGE=local).
+# Ohne Argumente werden alle Tarifplaene gerendert. Mit Argument jede
+# Markdown-Datei des Repos — insbesondere Bestandsberichte:
+#
+#   python -m rechner_pipeline.toolbox.bestand_report --format md \
+#       --out output/working/bericht.md ...        # Markdown + PNG-Grafiken
+#   docs/engine/render.sh output/working/bericht.md
+#
+# Relative Bildpfade loest Quarto relativ zur Quelldatei auf; die Grafiken
+# muessen also neben dem Markdown liegen (Default von --format md).
+# Ausgaben landen neben den Quellen (gitignored). Nutzt das ghcr-Image der
+# Engine; Fallback: lokaler Build aus docs/engine/Dockerfile (IMAGE=local).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

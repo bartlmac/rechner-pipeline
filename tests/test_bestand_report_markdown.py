@@ -158,3 +158,25 @@ def test_cli_format_md(lauf, tmp_path):
     assert cli.main([
         "--portfolio", str(pfade["portfolio"]), "--format", "md",
     ]) == 2
+
+
+def test_bildpfade_liegen_neben_dem_dokument(lauf, tmp_path):
+    """Die Doku-Engine loest relative Bildpfade zur Quelldatei auf — die
+    Grafiken muessen also neben dem Markdown liegen und ohne Verzeichnis
+    referenziert sein. (Der frueher genutzte externe Renderer fand sie
+    nicht, im PDF blieben nur die Bildunterschriften.)"""
+    cfg, bestand, erg = lauf
+    ziel = tmp_path / "unterordner"
+    text = render_markdown(
+        bestand, bild_dir=ziel, bild_praefix="bericht",
+        historie=erg.historie, ledger=erg.ledger, scheiben=erg.scheiben,
+        config=cfg, bis=BIS, stichtag=STICHTAG,
+    )
+    referenzen = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", text)
+    assert referenzen
+    for name in referenzen:
+        assert "/" not in name and not name.startswith("."), name
+        assert (ziel / name).is_file(), name
+    # Jede erzeugte Grafik wird auch referenziert (keine Waisen):
+    erzeugt = {p.name for p in ziel.glob("*.png")}
+    assert erzeugt == set(referenzen)

@@ -374,6 +374,19 @@ docs/engine/render.sh                 # alle Tarifplaene nach PDF (Typst)
 IMAGE=local docs/engine/render.sh     # ohne ghcr: Engine lokal bauen
 ```
 
+Dieselbe Engine rendert auch Bestandsberichte — der Weg zum PDF bleibt
+damit vollständig im Repo (keine externe Dokument-Pipeline):
+
+```bash
+python -m rechner_pipeline.toolbox.bestand_report --format md \
+    --portfolio <lauf>/bestand_gesamt.parquet \
+    --historie <lauf>/historie.parquet --ledger <lauf>/ledger.parquet \
+    --scheiben <lauf>/scheiben.parquet --config examples/bestand_gesamt.toml \
+    --bis 2060-01-01 --stichtag 2026-01-01 \
+    --out output/working/bestandsbericht.md
+docs/engine/render.sh output/working/bestandsbericht.md
+```
+
 ## Agenten-Anbindung
 
 Claude-CLI wird über `.claude/skills/` unterstützt, Codex-CLI über die

@@ -42,6 +42,9 @@ DEBUG_*.txt
 Thumbs.db
 
 # Doku-Engine-Renderings (Quellen sind die Markdown-Dateien)
+# Berichts-Ausgaben (regenerierbar aus Bestand + Config):
+output/
+
 docs/**/*.pdf
 docs/**/*.typ
 docs/**/*_files/
