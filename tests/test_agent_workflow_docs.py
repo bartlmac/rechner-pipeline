@@ -39,5 +39,5 @@ def test_root_agents_md_documents_codex_without_breaking_claude() -> None:
 def test_per_cli_notes_do_not_advertise_missing_mcp_module() -> None:
     text = _read(".claude/skills/build-vergleichsrechenkern/per-cli-notes.md")
     assert "Codex CLI — VERIFIED repo-skill target" in text
-    assert "rechner_pipeline.toolbox.mcp_stdio" not in text
+    assert "rechner_pipeline.gates.mcp_stdio" not in text
     assert "No toolbox MCP adapter exists" in text

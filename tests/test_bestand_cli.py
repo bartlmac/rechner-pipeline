@@ -10,9 +10,9 @@ import pytest
 
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
-from rechner_pipeline.toolbox import bestand_fortschreibung as fs_cli
-from rechner_pipeline.toolbox._common import run_command
-from rechner_pipeline.toolbox import bestand_validate as gate_cli
+from rechner_pipeline.bestand import cli_fortschreibung as fs_cli
+from rechner_pipeline.gates._common import run_command
+from rechner_pipeline.gates import bestand_validate as gate_cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO_ROOT / "examples" / "bestand_klv.toml"

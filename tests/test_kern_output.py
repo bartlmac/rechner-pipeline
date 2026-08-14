@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.generate.output import (
+from rechner_pipeline.models.kern_output import (
     EXPECTED_MAIN_OUTPUT_FILES,
     OutputValidationError,
     extract_files_from_text,

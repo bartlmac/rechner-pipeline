@@ -8,7 +8,7 @@ Three layers:
 2. **Regression of the fix**: an unmatched expected column now fails
    (``Report.ok is False``) even though it records no deviation; a
    zero-comparison run is flagged via ``compared_anything is False``.
-3. **End-to-end command** (:mod:`rechner_pipeline.toolbox.golden_master`): the
+3. **End-to-end command** (:mod:`rechner_pipeline.gates.golden_master`): the
    four fixtures (match -> 0, mismatch -> 30, unmatched column -> 30,
    zero-comparison -> 31) run through fs_confine on a synthetic generated kernel.
 """
@@ -19,8 +19,8 @@ import json
 from pathlib import Path
 
 from rechner_pipeline.qa.golden_master import _norm_colname, compare
-from rechner_pipeline.toolbox import golden_master as gm_cmd
-from rechner_pipeline.toolbox._common import Exit
+from rechner_pipeline.gates import golden_master as gm_cmd
+from rechner_pipeline.gates._common import Exit
 
 
 # --------------------------------------------------------------------------- #
@@ -333,7 +333,7 @@ def test_e2e_g4_runtime_confinement_blocks_outside_read(tmp_path: Path):
 def test_e2e_ledger_written_on_pass(tmp_path: Path):
     """write_gate_ledger is invoked on the pass path; golden_master.gate.json is
     written into --diagnostics-dir and is loadable by the dossier loader."""
-    from rechner_pipeline.orchestrate.dossier import load_gate_ledger
+    from rechner_pipeline.gates.orchestrate.dossier import load_gate_ledger
 
     kernel = (
         "def golden_master_outputs():\n"
@@ -366,7 +366,7 @@ def test_e2e_ledger_written_on_pass(tmp_path: Path):
 
 def test_e2e_ledger_written_on_fail(tmp_path: Path):
     """write_gate_ledger is invoked on the fail path too (deviation -> exit 30)."""
-    from rechner_pipeline.orchestrate.dossier import load_gate_ledger
+    from rechner_pipeline.gates.orchestrate.dossier import load_gate_ledger
 
     kernel = (
         "def golden_master_outputs():\n"

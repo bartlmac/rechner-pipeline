@@ -1,7 +1,7 @@
 """Six-file output contract validator (G1).
 
 This module is the single source of truth for the **deterministic** main-output
-contract that gate G1 (``rechner_pipeline.toolbox.validate``) enforces. It
+contract that gate G1 (``rechner_pipeline.gates.validate``) enforces. It
 defines the authoritative FILE-block grammar and adds a *static*
 ``golden_master_outputs()`` schema precheck so G1 can flag a broken calculation
 contract before G4 (runtime confinement) / G5 (golden master) ever import the

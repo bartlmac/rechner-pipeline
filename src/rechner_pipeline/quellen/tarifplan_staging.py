@@ -17,7 +17,7 @@ Zeitstempel; der SHA-256 der Quelle ist Teil des Outputs).
 
 Usage::
 
-    python -m rechner_pipeline.toolbox.tarifplan_staging \\
+    python -m rechner_pipeline.quellen.tarifplan_staging \\
         --docx examples/Mitteilung_143_KLV_v3.docx \\
         --out migrationsstaging/klv_mitteilung_143.json
 """
@@ -141,7 +141,7 @@ def extrahiere(docx_pfad: Path) -> Dict[str, Any]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.tarifplan_staging",
+        prog="python -m rechner_pipeline.quellen.tarifplan_staging",
         description=(
             "Migrationsartefakt (DOCX-Tarifplan) strukturiert nach JSON "
             "extrahieren. Producer, kein Gate."

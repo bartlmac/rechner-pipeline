@@ -7,7 +7,7 @@ self-contained HTML file for a non-technical (actuarial) audience.
 
 Usage::
 
-    python -m rechner_pipeline.toolbox.bestand_report \\
+    python -m rechner_pipeline.bestand.cli_report \\
         --portfolio bestand.parquet --out bericht.html \\
         [--historie historie.parquet --ledger ledger.parquet] \\
         [--scheiben scheiben.parquet] [--config bestand_klv.toml] \\
@@ -45,7 +45,7 @@ def _parse_stichtage(raw: Optional[str]) -> Optional[List[_dt.date]]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.bestand_report",
+        prog="python -m rechner_pipeline.bestand.cli_report",
         description=(
             "Deterministischer Bestandsbericht (HTML mit Inline-Grafiken) aus "
             "einer Portfolio-Parquet-Datei. Read-only, kein Gate."

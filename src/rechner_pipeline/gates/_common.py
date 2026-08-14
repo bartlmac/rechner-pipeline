@@ -1,6 +1,6 @@
 """Shared deterministic-toolbox contract.
 
-Every gate command (`python -m rechner_pipeline.toolbox.<command>`) imports this
+Every gate command (`python -m rechner_pipeline.gates.<command>`) imports this
 module to obey one contract:
 
 * **stdout is exactly one JSON object and nothing else.** All human logs go to
@@ -203,7 +203,7 @@ def status_for_exit(exit_code: int) -> str:
 # stderr logging
 # --------------------------------------------------------------------------- #
 
-_LOGGER_NAME = "rechner_pipeline.toolbox"
+_LOGGER_NAME = "rechner_pipeline.gates"
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
@@ -329,7 +329,7 @@ def run_command(
 ) -> int:
     """Run a toolbox command body with a hard stdout-purity guarantee.
 
-    This is the entry point every ``python -m rechner_pipeline.toolbox.<command>``
+    This is the entry point every ``python -m rechner_pipeline.gates.<command>``
     ``__main__`` block should call::
 
         if __name__ == "__main__":
@@ -735,7 +735,7 @@ def _gate_catalogue() -> Tuple[Dict[str, str], Tuple[str, ...]]:
     caller falls back to ``required=True`` (honest: an unknown gate still blocks).
     """
     try:
-        from rechner_pipeline.orchestrate import dossier as _dossier
+        from rechner_pipeline.gates.orchestrate import dossier as _dossier
 
         command_to_gate = {command: gate for gate, command in _dossier.ALL_GATES}
         return command_to_gate, tuple(_dossier.REQUIRED_GATES)

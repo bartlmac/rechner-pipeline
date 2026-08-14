@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from rechner_pipeline.toolbox import report
+from rechner_pipeline.gates import report
 
 
 # --------------------------------------------------------------------------- #

@@ -32,8 +32,8 @@ from typing import Callable, List, Optional, Sequence
 # exactly one JSON object on stdout and returns the standard exit code. We
 # import their ``main`` functions and run them through ``run_command`` so the
 # orchestrator REUSES the existing gate implementations (no second gate path).
-from rechner_pipeline.toolbox import _common
-from rechner_pipeline.toolbox import (
+from rechner_pipeline.gates import _common
+from rechner_pipeline.gates import (
     algebraic as _algebraic,
     conventions as _conventions,
     dossier as _dossier,
@@ -222,8 +222,8 @@ def _argv_dossier(c: _AssuranceConfig) -> List[str]:
 def _run_assurance(ns: argparse.Namespace) -> int:
     """Run the full gate chain in order and return an aggregate exit code.
 
-    Each gate is executed through ``rechner_pipeline.toolbox._common.run_command``
-    so it behaves EXACTLY as ``python -m rechner_pipeline.toolbox.<cmd>`` would:
+    Each gate is executed through ``rechner_pipeline.gates._common.run_command``
+    so it behaves EXACTLY as ``python -m rechner_pipeline.gates.<cmd>`` would:
     it emits its single JSON result object on stdout, writes its ``*.gate.json``
     ledger into the shared ``--diagnostics-dir``, and returns its standard exit
     code. ``assurance`` reads each exit code, applies the stop/continue policy,
@@ -468,7 +468,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     _log("")
     _log("No subcommand given. Run 'rechner-pipeline assurance --help' for the "
          "deterministic gate orchestrator, or invoke a single gate via "
-         "'python -m rechner_pipeline.toolbox.<command>'.")
+         "'python -m rechner_pipeline.gates.<command>'.")
     return _common.Exit.USAGE
 
 

@@ -27,7 +27,7 @@ import csv
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from rechner_pipeline.extract.excel import (
+from rechner_pipeline.quellen.extract.excel import (
     _manifest_warning,
     excel_value_to_text,
     is_empty_text,

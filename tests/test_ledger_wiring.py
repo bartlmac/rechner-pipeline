@@ -10,7 +10,7 @@ that all three commands:
 * write a ``<command>.gate.json`` ledger entry into that dir on BOTH the
   pass and fail paths;
 * produce entries that round-trip through
-  :func:`rechner_pipeline.orchestrate.dossier.load_gate_ledger` with no read
+  :func:`rechner_pipeline.gates.orchestrate.dossier.load_gate_ledger` with no read
   errors and the correct gate ids (G0/G1/G2);
 * keep stdout JSON-pure — the ledger is a side artifact to disk, written by the
   command body, separate from the single stdout JSON emitted by ``run_command``.
@@ -30,12 +30,12 @@ from typing import Iterable
 
 import pytest
 
-from rechner_pipeline.generate.output import EXPECTED_MAIN_OUTPUT_FILES
-from rechner_pipeline.orchestrate.dossier import load_gate_ledger
-from rechner_pipeline.toolbox import extract as extract_cmd
-from rechner_pipeline.toolbox import security as security_cmd
-from rechner_pipeline.toolbox import validate as validate_cmd
-from rechner_pipeline.toolbox._common import GATE_LEDGER_SUFFIX
+from rechner_pipeline.models.kern_output import EXPECTED_MAIN_OUTPUT_FILES
+from rechner_pipeline.gates.orchestrate.dossier import load_gate_ledger
+from rechner_pipeline.gates import extract as extract_cmd
+from rechner_pipeline.gates import security as security_cmd
+from rechner_pipeline.gates import validate as validate_cmd
+from rechner_pipeline.gates._common import GATE_LEDGER_SUFFIX
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KLV = REPO_ROOT / "examples" / "Tarifrechner_KLV.xlsm"

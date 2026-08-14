@@ -43,7 +43,7 @@ Read only the artifacts the extraction toolbox produced under the bundle directo
 
 ## Work order (deterministic loop)
 
-All gate commands run via `.venv\Scripts\python.exe -m rechner_pipeline.toolbox.<cmd>`.
+All gate commands run via `.venv\Scripts\python.exe -m rechner_pipeline.gates.<cmd>`.
 **Pass one shared `--diagnostics-dir <dir>` to every command** so each gate writes its
 `<command>.gate.json` ledger entry into the same directory that `dossier` later aggregates.
 Pass `--repo-root` and (where accepted) `--info-dir`/`--generated-dir` consistently; the
@@ -54,7 +54,7 @@ are blocked).
    adapter, and `max_attempts`. Any missing source, unsupported adapter, or invalid path
    **fails immediately** — these are not generation opportunities (see *Acceptance*).
 2. **Extract.**
-   `python -m rechner_pipeline.toolbox.extract --repo-root <root> --input <source> --out-dir <bundle> [--adapter auto|excel] [--export-backend openpyxl|com] [--strict-manifest-warnings] --diagnostics-dir <dir>`.
+   `python -m rechner_pipeline.gates.extract --repo-root <root> --input <source> --out-dir <bundle> [--adapter auto|excel] [--export-backend openpyxl|com] [--strict-manifest-warnings] --diagnostics-dir <dir>`.
    Stop on non-zero exit.
 3. **Read the bundle** per *Read-only input sources*. Inspect `export_manifest.json` first
    for `llm_inputs`, warnings, and `expectation_coverage`. If `expectation_coverage` is

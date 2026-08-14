@@ -15,7 +15,7 @@ means the object satisfies the schema.
 
 The common-result object here is a *schema view* of the common toolbox result
 used for serialization round-trips; the live toolbox emitter is
-:class:`rechner_pipeline.toolbox._common.ToolboxResult`. Both produce the same
+:class:`rechner_pipeline.gates._common.ToolboxResult`. Both produce the same
 field set.
 """
 
@@ -29,7 +29,7 @@ from rechner_pipeline.models.manifest import FileHashRecord, ManifestWarning
 # Single source of truth for status values and exit codes lives in ``_common``
 # (the live toolbox contract). Import — never re-declare — them here so the
 # schema view and the emitter can never diverge.
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates._common import (
     SCHEMA_VERSION,
     STANDARD_EXIT_CODES as _STANDARD_EXIT_CODES,
     STATUSES as STATUS_VALUES,

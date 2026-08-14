@@ -6,7 +6,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from rechner_pipeline.toolbox import tarifplan_staging as staging
+from rechner_pipeline.quellen import tarifplan_staging as staging
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KLV_DOCX = REPO_ROOT / "examples" / "Mitteilung_143_KLV_v3.docx"

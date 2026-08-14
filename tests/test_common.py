@@ -1,4 +1,4 @@
-"""Tests for the shared toolbox foundation (:mod:`rechner_pipeline.toolbox._common`).
+"""Tests for the shared toolbox foundation (:mod:`rechner_pipeline.gates._common`).
 
 Covers two hardening fixes:
 
@@ -19,8 +19,8 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.models.schemas import GateLedgerEntry
-from rechner_pipeline.orchestrate import dossier as provenance
-from rechner_pipeline.toolbox import _common
+from rechner_pipeline.gates.orchestrate import dossier as provenance
+from rechner_pipeline.gates import _common
 
 
 # --------------------------------------------------------------------------- #

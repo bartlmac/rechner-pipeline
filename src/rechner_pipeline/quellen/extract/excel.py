@@ -650,7 +650,7 @@ def export_excel_infos(
     warnings: List[Dict[str, Any]] = []
 
     if backend == "openpyxl":
-        from rechner_pipeline.extract.openpyxl_backend import export_raw
+        from rechner_pipeline.quellen.extract.openpyxl_backend import export_raw
 
         sheet_csvs, vba_txts, nm_csv = export_raw(excel_path, out_dir, warnings)
     elif backend == "com":
@@ -694,7 +694,7 @@ def export_excel_infos(
     }
 
     print("\n[INFO] Extracting scalars and table values from compressed metadata...")
-    from rechner_pipeline.extract.scalar_table import extract_all_pairs_in_info_dir
+    from rechner_pipeline.quellen.extract.scalar_table import extract_all_pairs_in_info_dir
 
     scalar_warnings = extract_all_pairs_in_info_dir(out_dir)
     warnings.extend(scalar_warnings)

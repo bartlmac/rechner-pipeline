@@ -21,8 +21,8 @@ The verdict it shows is whatever ``dossier`` decided.
 
 Usage::
 
-    python -m rechner_pipeline.toolbox.report --diagnostics-dir diagnostics
-    python -m rechner_pipeline.toolbox.report --diagnostics-dir diagnostics --out bericht.md
+    python -m rechner_pipeline.gates.report --diagnostics-dir diagnostics
+    python -m rechner_pipeline.gates.report --diagnostics-dir diagnostics --out bericht.md
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from rechner_pipeline.orchestrate.dossier import ALL_GATES
+from rechner_pipeline.gates.orchestrate.dossier import ALL_GATES
 
 #: Renderer version, shown in the footer so reports state how they were made.
 REPORT_VERSION = "1.0.0"
@@ -290,7 +290,7 @@ def render(run: Dict[str, Any], *, diagnostics_dir_name: str) -> str:
     out("---")
     out("")
     out(
-        f"Erzeugt mit `python -m rechner_pipeline.toolbox.report` "
+        f"Erzeugt mit `python -m rechner_pipeline.gates.report` "
         f"(Version {REPORT_VERSION}) aus `{diagnostics_dir_name}/`. "
         f"Das Rendering ist deterministisch: gleiche Ledger-Dateien ergeben "
         f"einen byte-identischen Bericht. Maschinenlesbares Original: "
@@ -307,7 +307,7 @@ def render(run: Dict[str, Any], *, diagnostics_dir_name: str) -> str:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.report",
+        prog="python -m rechner_pipeline.gates.report",
         description=(
             "Deterministisches Markdown-Rendering eines assurance-Laufs aus "
             "dem Diagnostics-Ledger (read-only, kein Gate)."

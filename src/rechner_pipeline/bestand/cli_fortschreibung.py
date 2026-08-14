@@ -10,7 +10,7 @@ decided workflow (ein GeVo-Strom, ein Erzeuger)::
 
 Usage::
 
-    python -m rechner_pipeline.toolbox.bestand_fortschreibung \\
+    python -m rechner_pipeline.bestand.cli_fortschreibung \\
         --config examples/bestand_klv.toml --bis 2035-01-01 \\
         [--portfolio bestand.parquet]           # sonst: aus der Config erzeugt \\
         [--neuzugang-ab 2010-01-01] --out-dir lauf/
@@ -48,7 +48,7 @@ def _datum(raw: str, name: str) -> _dt.date:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.bestand_fortschreibung",
+        prog="python -m rechner_pipeline.bestand.cli_fortschreibung",
         description=(
             "Bestand erzeugen/laden und als GeVo-Strom fortschreiben "
             "(Ereignisse, Erhoehungen, Neuzugang). Producer, kein Gate."

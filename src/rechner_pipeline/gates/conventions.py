@@ -24,7 +24,7 @@ stderr logs, standard exit codes, mergeable ``--request-json``).
 
 Usage::
 
-    python -m rechner_pipeline.toolbox.conventions \
+    python -m rechner_pipeline.gates.conventions \
         --generated-dir generated --diagnostics-dir generated/diagnostics
 """
 
@@ -44,7 +44,7 @@ from rechner_pipeline.qa.conventions import (
     scan_conventions_paths,
     write_conventions_report,
 )
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
     add_request_json_arg,
@@ -82,7 +82,7 @@ _REPAIR_HINTS = {
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.conventions",
+        prog="python -m rechner_pipeline.gates.conventions",
         description="Architecture / import-convention gate (G3) for generated Python.",
     )
     parser.add_argument(

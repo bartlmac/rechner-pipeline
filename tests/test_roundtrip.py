@@ -6,7 +6,7 @@ Three layers:
    ``tafeln.xml`` parse/serialize fixed point, the validation rules
    (duplicate age, qx out of [0, 1], non-finite qx), and the recompute /
    re-extraction stability checks.
-2. **Command end-to-end** (:mod:`rechner_pipeline.toolbox.roundtrip`): the
+2. **Command end-to-end** (:mod:`rechner_pipeline.gates.roundtrip`): the
    mandated fixtures — a stable canonical run -> exit 0, an invalid ``tafeln.xml``
    -> exit 32, a non-deterministic kernel -> exit 32, a G2 violation -> exit 21,
    and usage errors -> exit 2.
@@ -26,8 +26,8 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.qa import roundtrip as engine
-from rechner_pipeline.toolbox import roundtrip as rt_cmd
-from rechner_pipeline.toolbox._common import Exit
+from rechner_pipeline.gates import roundtrip as rt_cmd
+from rechner_pipeline.gates._common import Exit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KLV = REPO_ROOT / "examples" / "Tarifrechner_KLV.xlsm"
@@ -396,7 +396,7 @@ def test_e2e_corrupt_input_clean_exit_with_ledger(tmp_path: Path):
     bare ``zipfile.BadZipFile`` (an ``Exception``, not ``RuntimeError``). The gate
     must NOT crash to exit 50 / a bare traceback; it returns a CLEAN blocking
     result (exit 10 = extraction failure) WITH the ledger written."""
-    from rechner_pipeline.orchestrate.dossier import load_gate_ledger
+    from rechner_pipeline.gates.orchestrate.dossier import load_gate_ledger
 
     repo, gen, info = _setup_e2e(tmp_path, tafeln=_VALID_TAFELN, kernel=_DET_KERNEL)
     diag = repo / "diagnostics"
@@ -450,7 +450,7 @@ def test_e2e_missing_tafeln_exits_32(tmp_path: Path):
 
 @requires_klv
 def test_ledger_written_and_loadable_on_pass(tmp_path: Path):
-    from rechner_pipeline.orchestrate.dossier import load_gate_ledger
+    from rechner_pipeline.gates.orchestrate.dossier import load_gate_ledger
 
     repo, gen, info = _setup_e2e(tmp_path, tafeln=_VALID_TAFELN, kernel=_DET_KERNEL)
     diag = repo / "diagnostics"
@@ -472,7 +472,7 @@ def test_ledger_written_and_loadable_on_pass(tmp_path: Path):
 
 @requires_klv
 def test_ledger_written_on_fail(tmp_path: Path):
-    from rechner_pipeline.orchestrate.dossier import load_gate_ledger
+    from rechner_pipeline.gates.orchestrate.dossier import load_gate_ledger
 
     bad = '<tafeln><table name="M"><entry age="0" qx="9"/></table></tafeln>'
     repo, gen, info = _setup_e2e(tmp_path, tafeln=bad, kernel=_DET_KERNEL)

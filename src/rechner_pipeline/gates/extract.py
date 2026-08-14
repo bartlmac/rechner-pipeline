@@ -2,7 +2,7 @@
 
 Usage::
 
-    python -m rechner_pipeline.toolbox.extract \\
+    python -m rechner_pipeline.gates.extract \\
         --repo-root . \\
         --input examples/Tarifrechner_KLV.xlsm \\
         --out-dir .tmp/klv_info \\
@@ -10,7 +10,7 @@ Usage::
         --export-backend openpyxl
 
 This is the source-neutral entry to the deterministic toolbox. It selects an
-:class:`~rechner_pipeline.adapters.base.InputAdapter`, cleans stale derived files
+:class:`~rechner_pipeline.quellen.adapters.base.InputAdapter`, cleans stale derived files
 from the out-dir so a re-run cannot inherit stale ``_compressed.csv`` /
 ``_scalar.json`` / ``_table_values.csv``, runs
 the adapter, and emits the InputBundle coverage block, manifest path, artifact
@@ -30,10 +30,10 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from rechner_pipeline.adapters.base import InputAdapter
-from rechner_pipeline.adapters.excel import ExcelAdapter, ExcelAdapterError
+from rechner_pipeline.quellen.adapters.base import InputAdapter
+from rechner_pipeline.quellen.adapters.excel import ExcelAdapter, ExcelAdapterError
 from rechner_pipeline.models.bundle import InputBundle
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
     add_request_json_arg,
@@ -102,7 +102,7 @@ def _select_adapter(adapter: str, source: Path, backend: str) -> InputAdapter:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.extract",
+        prog="python -m rechner_pipeline.gates.extract",
         description="Extract one source document into the info_from_excel bundle.",
     )
     # Every mergeable flag uses default=None so --request-json can supply it.

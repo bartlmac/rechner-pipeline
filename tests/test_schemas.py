@@ -30,7 +30,7 @@ from rechner_pipeline.models.schemas import (
     QaReport,
     RunDossierV2Delta,
 )
-from rechner_pipeline.toolbox import _common
+from rechner_pipeline.gates import _common
 
 
 # --------------------------------------------------------------------------- #

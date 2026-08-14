@@ -143,7 +143,7 @@ blockierend.
 Jedes Gate ist auch einzeln lauffähig:
 
 ```bash
-python -m rechner_pipeline.toolbox.<command> [flags]
+python -m rechner_pipeline.gates.<command> [flags]
 ```
 
 ## Sicherheit und Reproduzierbarkeit

@@ -2,7 +2,7 @@
 
 The CLI agent owns generation/repair and the deterministic toolbox owns
 acceptance, so this module provides **pure aggregation functions** that the
-``dossier`` toolbox command (:mod:`rechner_pipeline.toolbox.dossier`) drives:
+``dossier`` toolbox command (:mod:`rechner_pipeline.gates.dossier`) drives:
 
 * :func:`load_gate_ledger` — read the gate-result ledger JSONs that the other
   gate commands wrote into ``--diagnostics-dir``.
@@ -37,7 +37,7 @@ from rechner_pipeline.models.schemas import GateLedgerEntry, QaReport, RunDossie
 # lowest module in the import graph). Import — never re-declare — it here so the
 # writer (``_common.write_gate_ledger``) and this loader can never diverge. This
 # is the non-circular direction (orchestrate.dossier -> toolbox._common).
-from rechner_pipeline.toolbox._common import GATE_LEDGER_SUFFIX
+from rechner_pipeline.gates._common import GATE_LEDGER_SUFFIX
 
 __all__ = [
     "REQUIRED_GATES",
@@ -81,7 +81,7 @@ REQUIRED_GATES: Tuple[str, ...] = tuple(gate for gate, _ in ALL_GATES)
 
 #: Filename convention for a gate-result ledger entry written into
 #: ``--diagnostics-dir``: ``<command>.gate.json`` (e.g. ``golden_master.gate.json``).
-#: Re-exported from :data:`rechner_pipeline.toolbox._common.GATE_LEDGER_SUFFIX`
+#: Re-exported from :data:`rechner_pipeline.gates._common.GATE_LEDGER_SUFFIX`
 #: (the single source of truth) so ``provenance.GATE_LEDGER_SUFFIX`` stays valid.
 GATE_LEDGER_SUFFIX = GATE_LEDGER_SUFFIX  # noqa: PLW0127 — re-export, see import above
 

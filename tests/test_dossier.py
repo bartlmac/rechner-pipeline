@@ -23,9 +23,9 @@ import pytest
 
 from rechner_pipeline.models import schemas
 from rechner_pipeline.models.schemas import GateLedgerEntry, QaReport, RunDossierV2Delta
-from rechner_pipeline.orchestrate import dossier as provenance
-from rechner_pipeline.toolbox import _common
-from rechner_pipeline.toolbox import dossier as dossier_cmd
+from rechner_pipeline.gates.orchestrate import dossier as provenance
+from rechner_pipeline.gates import _common
+from rechner_pipeline.gates import dossier as dossier_cmd
 
 
 # --------------------------------------------------------------------------- #

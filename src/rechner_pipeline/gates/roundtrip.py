@@ -10,7 +10,7 @@ lives in the engine. Three blocking checks (any failure -> exit ``32`` =
    (same canonical object AND same SHA-256); duplicate ages / ``qx`` outside
    ``[0, 1]`` / non-finite ``qx`` fail.
 2. Re-running extraction (read-only import of
-   :class:`rechner_pipeline.adapters.excel.ExcelAdapter`) twice into a
+   :class:`rechner_pipeline.quellen.adapters.excel.ExcelAdapter`) twice into a
    deterministic staging location under ``--repo-root`` yields stable MATERIAL
    artifact hashes; material drift fails.
 3. Repeated ``test_run.golden_master_outputs()`` in FRESH processes (reusing the
@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from rechner_pipeline.qa import roundtrip as engine
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
     add_request_json_arg,
@@ -61,7 +61,7 @@ def _err(code: str, message: str) -> Dict[str, str]:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.roundtrip",
+        prog="python -m rechner_pipeline.gates.roundtrip",
         description="Roundtrip / hash-stability gate (G7).",
     )
     # Every mergeable flag uses default=None so --request-json can supply it.
@@ -334,7 +334,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                 repo_root=Path(repo_root_path) if repo_root_path else None,
                 started_at=started_at,
                 ended_at=utc_now(),
-                command_line=["python", "-m", f"rechner_pipeline.toolbox.{COMMAND}"]
+                command_line=["python", "-m", f"rechner_pipeline.gates.{COMMAND}"]
                 + list(argv or []),
             )
         except Exception as exc:  # noqa: BLE001 — ledger is a side artifact

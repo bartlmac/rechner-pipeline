@@ -18,7 +18,7 @@ from rechner_pipeline.bestand.kennzahlen import (
 )
 from rechner_pipeline.bestand.parquet_io import write_portfolio
 from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
-from rechner_pipeline.toolbox import bestand_report as cli
+from rechner_pipeline.bestand import cli_report as cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO_ROOT / "examples" / "bestand_klv.toml"

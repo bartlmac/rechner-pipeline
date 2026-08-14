@@ -12,7 +12,7 @@ object, stderr logs, standard exit codes, mergeable ``--request-json``).
 
 Usage::
 
-    python -m rechner_pipeline.toolbox.security \
+    python -m rechner_pipeline.gates.security \
         --generated-dir generated --diagnostics-dir generated/diagnostics
 """
 
@@ -30,7 +30,7 @@ from rechner_pipeline.qa.security import (
     scan_python_paths,
     write_security_report,
 )
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
     add_request_json_arg,
@@ -67,7 +67,7 @@ _REPAIR_HINTS = {
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.security",
+        prog="python -m rechner_pipeline.gates.security",
         description="Static security gate (G2) for LLM-generated Python.",
     )
     parser.add_argument(

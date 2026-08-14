@@ -57,7 +57,7 @@ def test_openpyxl_matches_com_golden_master(tmp_path: Path):
     if not EXAMPLE.exists():
         pytest.skip("Beispiel-Workbook nicht vorhanden")
 
-    from rechner_pipeline.extract.openpyxl_backend import export_raw
+    from rechner_pipeline.quellen.extract.openpyxl_backend import export_raw
 
     warnings: list = []
     export_raw(EXAMPLE, tmp_path, warnings)

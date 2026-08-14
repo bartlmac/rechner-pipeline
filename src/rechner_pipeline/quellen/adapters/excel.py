@@ -1,7 +1,7 @@
 """``ExcelAdapter`` — zero-behavior-change Excel input adapter.
 
 This adapter is a thin wrapper around the current Excel extraction subsystem
-(``rechner_pipeline.extract.excel.export_excel_infos``). It:
+(``rechner_pipeline.quellen.extract.excel.export_excel_infos``). It:
 
 * runs ``export_excel_infos`` with the selected backend (``openpyxl`` default or
   ``com``), writing the byte-identical ``info_from_excel`` artifacts;
@@ -23,8 +23,8 @@ import csv
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from rechner_pipeline.adapters.base import InputAdapter
-from rechner_pipeline.extract.excel import GENERATED_SUBDIR_NAME, export_excel_infos
+from rechner_pipeline.quellen.adapters.base import InputAdapter
+from rechner_pipeline.quellen.extract.excel import GENERATED_SUBDIR_NAME, export_excel_infos
 from rechner_pipeline.models.bundle import (
     CONTRACT_VERSION,
     CoverageDetail,

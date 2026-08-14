@@ -28,7 +28,7 @@ other gates.
 
 Run via::
 
-    python -m rechner_pipeline.toolbox.bestand_validate \\
+    python -m rechner_pipeline.gates.bestand_validate \\
         --portfolio lauf/bestand_gesamt.parquet \\
         [--historie lauf/historie.parquet] [--scheiben lauf/scheiben.parquet] \\
         [--ledger lauf/ledger.parquet --bis 2035-01-01] \\
@@ -50,7 +50,7 @@ from rechner_pipeline.models.bestand import (
     validate_statushistorie,
 )
 from rechner_pipeline.qa.bestand import sanity_check
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates._common import (
     Exit,
     add_request_json_arg,
     build_result,
@@ -69,7 +69,7 @@ GATE_VERSION = "1.0.0"
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.bestand_validate",
+        prog="python -m rechner_pipeline.gates.bestand_validate",
         description="Gate B1: Bestandsdaten-Tabellen gegen Schema und Invarianten pruefen.",
     )
     parser.add_argument("--portfolio", default=None, help="Bestand-Parquet (Pflicht).")

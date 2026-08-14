@@ -6,7 +6,7 @@ Two layers:
    fail-fast (unknown tier, missing mapping, unsupported timing/product,
    unresolvable mapping), engine availability (Hypothesis mandatory, version
    match), and a full pass/counterexample run against an in-process toy kernel.
-2. **End-to-end command** (:mod:`rechner_pipeline.toolbox.algebraic`): the
+2. **End-to-end command** (:mod:`rechner_pipeline.gates.algebraic`): the
    mandated fixtures run through the static-security precondition (G2) and the
    confined child (G4): a matching toy kernel -> exit 0; a broken identity ->
    exit 31 with a counterexample; a missing mapping and an unknown-applicability
@@ -24,9 +24,9 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.qa import algebraic as eng
-from rechner_pipeline.toolbox import algebraic as alg_cmd
-from rechner_pipeline.toolbox._common import Exit
-from rechner_pipeline.orchestrate.dossier import load_gate_ledger
+from rechner_pipeline.gates import algebraic as alg_cmd
+from rechner_pipeline.gates._common import Exit
+from rechner_pipeline.gates.orchestrate.dossier import load_gate_ledger
 
 
 # --------------------------------------------------------------------------- #
@@ -611,7 +611,7 @@ def test_cmd_security_precondition_blocks_unsafe_kernel(tmp_path: Path):
 def test_cmd_stdout_is_single_json_object(tmp_path: Path, capsysbinary=None):
     """run_command must emit exactly one JSON object on stdout."""
     _write_toy(tmp_path)
-    from rechner_pipeline.toolbox._common import run_command
+    from rechner_pipeline.gates._common import run_command
 
     import io
     buf = io.StringIO()

@@ -1,5 +1,5 @@
 """Tests for the ``validate`` toolbox command (gate G1) and the
-six-file output validator (:mod:`rechner_pipeline.generate.output`).
+six-file output validator (:mod:`rechner_pipeline.models.kern_output`).
 
 Both resolution modes are exercised against the same contract:
 
@@ -17,15 +17,15 @@ from typing import Dict, Iterable
 
 import pytest
 
-from rechner_pipeline.generate.output import (
+from rechner_pipeline.models.kern_output import (
     EXPECTED_MAIN_OUTPUT_FILES,
     OutputValidationError,
     validate_files_on_disk,
     validate_main_output_files,
     validate_main_output_text,
 )
-from rechner_pipeline.toolbox import validate as validate_cmd
-from rechner_pipeline.toolbox._common import Exit
+from rechner_pipeline.gates import validate as validate_cmd
+from rechner_pipeline.gates._common import Exit
 
 
 # --------------------------------------------------------------------------- #
@@ -317,7 +317,7 @@ def test_cmd_stdout_is_single_json_object(tmp_path: Path, capsys) -> None:
     """run_command must emit exactly one JSON object on stdout."""
     import json
     gen = _write_generated(tmp_path)
-    from rechner_pipeline.toolbox._common import run_command
+    from rechner_pipeline.gates._common import run_command
     code = run_command(
         validate_cmd.main,
         ["--repo-root", str(tmp_path), "--generated-dir", str(gen),

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.extract.excel import export_excel_infos
-from rechner_pipeline.extract.openpyxl_backend import _strip_vba_attribute_lines
+from rechner_pipeline.quellen.extract.excel import export_excel_infos
+from rechner_pipeline.quellen.extract.openpyxl_backend import _strip_vba_attribute_lines
 
 
 # --- Pure-Logik (ohne optionale Deps) --------------------------------------
@@ -71,7 +71,7 @@ def _load_pair(path: Path):
 
 def test_export_all_sheets_csv_schema(tmp_path: Path):
     openpyxl = pytest.importorskip("openpyxl")
-    from rechner_pipeline.extract.openpyxl_backend import export_all_sheets
+    from rechner_pipeline.quellen.extract.openpyxl_backend import export_all_sheets
 
     xlsx = tmp_path / "wb.xlsx"
     _make_workbook(xlsx)
@@ -97,7 +97,7 @@ def test_export_all_sheets_csv_schema(tmp_path: Path):
 
 def test_export_warns_on_formula_without_cached_value(tmp_path: Path):
     openpyxl = pytest.importorskip("openpyxl")
-    from rechner_pipeline.extract.openpyxl_backend import export_all_sheets
+    from rechner_pipeline.quellen.extract.openpyxl_backend import export_all_sheets
 
     xlsx = tmp_path / "wb.xlsx"
     _make_workbook(xlsx)  # B2 = "=B1+1" ohne gecachten Wert (frisches WB)
@@ -119,7 +119,7 @@ def test_export_warns_on_formula_without_cached_value(tmp_path: Path):
 
 def test_no_cache_warning_when_no_formulas(tmp_path: Path):
     openpyxl = pytest.importorskip("openpyxl")
-    from rechner_pipeline.extract.openpyxl_backend import export_all_sheets
+    from rechner_pipeline.quellen.extract.openpyxl_backend import export_all_sheets
 
     xlsx = tmp_path / "literals.xlsx"
     wb = openpyxl.Workbook()
@@ -140,7 +140,7 @@ def test_no_cache_warning_when_no_formulas(tmp_path: Path):
 
 def test_export_name_manager_resolves_single_cell_value(tmp_path: Path):
     pytest.importorskip("openpyxl")
-    from rechner_pipeline.extract.openpyxl_backend import export_name_manager_to_csv
+    from rechner_pipeline.quellen.extract.openpyxl_backend import export_name_manager_to_csv
 
     xlsx = tmp_path / "wb.xlsx"
     _make_workbook(xlsx)
@@ -167,7 +167,7 @@ def test_export_name_manager_resolves_single_cell_value(tmp_path: Path):
 def test_export_raw_against_example_workbook(tmp_path: Path):
     pytest.importorskip("openpyxl")
     pytest.importorskip("oletools")
-    from rechner_pipeline.extract.openpyxl_backend import export_raw
+    from rechner_pipeline.quellen.extract.openpyxl_backend import export_raw
 
     example = Path(__file__).resolve().parents[1] / "examples" / "Tarifrechner_KLV.xlsm"
     if not example.exists():

@@ -1096,7 +1096,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 <p>{TEXTE["lesart"]}</p>
 
 <footer>
-Erzeugt mit <code>python -m rechner_pipeline.toolbox.bestand_report</code>
+Erzeugt mit <code>python -m rechner_pipeline.bestand.cli_report</code>
 (Version {REPORT_VERSION}).
 </footer>
 </body>

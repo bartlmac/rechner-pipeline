@@ -19,7 +19,7 @@ Three independent checks (any failure is blocking, exit ``32`` upstream):
    smuggle an invalid mortality curve through the roundtrip).
 
 2. :func:`check_reextraction_stable` — re-running the extraction engine
-   (:class:`rechner_pipeline.adapters.excel.ExcelAdapter`) twice into a
+   (:class:`rechner_pipeline.quellen.adapters.excel.ExcelAdapter`) twice into a
    deterministic staging location *under* ``--repo-root`` must produce identical
    hashes for the MATERIAL artifacts (the semantic surface: raw sheet CSVs,
    ``*_compressed.csv``, ``*_scalar.json``, ``*_table_values.csv``,
@@ -35,7 +35,7 @@ Three independent checks (any failure is blocking, exit ``32`` upstream):
    noise) is non-deterministic and fails.
 
 This module contains no CLI/ledger wiring — that lives in
-:mod:`rechner_pipeline.toolbox.roundtrip`.
+:mod:`rechner_pipeline.gates.roundtrip`.
 """
 
 from __future__ import annotations
@@ -436,7 +436,7 @@ def check_reextraction_stable(
     """
     # Imported here at engine scope (read-only use of the extract engine, never
     # edited). The adapter writes the byte-identical info_from_excel bundle.
-    from rechner_pipeline.adapters.excel import ExcelAdapter, ExcelAdapterError
+    from rechner_pipeline.quellen.adapters.excel import ExcelAdapter, ExcelAdapterError
 
     if not source_path.is_file():
         return ReextractionResult(

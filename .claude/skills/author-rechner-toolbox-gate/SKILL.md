@@ -1,7 +1,7 @@
 ---
 name: author-rechner-toolbox-gate
 description: >-
-  Author a deterministic toolbox gate command (python -m rechner_pipeline.toolbox.<cmd>)
+  Author a deterministic toolbox gate command (python -m rechner_pipeline.gates.<cmd>)
   for the agentic-rechner-pipeline. Trigger when adding/editing a gate (e.g. conventions/G3,
   algebraic/G6, roundtrip/G7) or any command that must obey the §3.3 single-JSON-stdout contract,
   emit a §6.8.2 .gate.json ledger, and use standard exit codes. Skip for: non-toolbox code, the
@@ -15,7 +15,7 @@ A gate is a thin CLI wrapper over a `qa/`-engine. Gate logic lives in `qa/*`; th
 ## Mandatory skeleton (stdout purity is a MECHANISM — never `print`/`emit_result` yourself)
 ```python
 from typing import List, Optional
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates._common import (
     Exit, ToolboxResult, build_result, human_review_result, log, hash_files,
     add_request_json_arg, read_request_json, merge_request_into_args,
     run_command, write_gate_ledger, utc_now,
@@ -81,4 +81,4 @@ Write `<command>.gate.json` via `write_gate_ledger` on BOTH pass AND fail paths 
 - Scalar names match case-sensitive, NO separator normalization; only table columns get leniency (strip `_`/space/`.`, still case-sensitive).
 
 ## Verification expectation
-Build `.tmp/` fixtures and run the command for real (`.venv\Scripts\python.exe -m rechner_pipeline.toolbox.<cmd> ...`). Prove the pass path AND each distinct failure mode (usage→2, your gate's blocking code, coverage→31 if applicable). Confirm: stdout is EXACTLY one parseable JSON object (`json.load` OK, 1 line); `<command>.gate.json` written on pass and fail and loadable via `orchestrate.dossier.load_gate_ledger` (`read_errors == []`); shell exit code equals the JSON `exit_code`. Keep `pytest tests/` green; add a `tests/test_<command>.py`. Clean up `.tmp/`.
+Build `.tmp/` fixtures and run the command for real (`.venv\Scripts\python.exe -m rechner_pipeline.gates.<cmd> ...`). Prove the pass path AND each distinct failure mode (usage→2, your gate's blocking code, coverage→31 if applicable). Confirm: stdout is EXACTLY one parseable JSON object (`json.load` OK, 1 line); `<command>.gate.json` written on pass and fail and loadable via `orchestrate.dossier.load_gate_ledger` (`read_errors == []`); shell exit code equals the JSON `exit_code`. Keep `pytest tests/` green; add a `tests/test_<command>.py`. Clean up `.tmp/`.

@@ -44,7 +44,7 @@ from typing import Any, Dict, List, Optional
 
 from rechner_pipeline.models.schemas import QaContract
 from rechner_pipeline.qa.security import scan_python_paths, security_report
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
     add_request_json_arg,
@@ -543,7 +543,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                 repo_root=Path(repo_root_path) if repo_root_path else None,
                 started_at=started_at,
                 ended_at=utc_now(),
-                command_line=["python", "-m", f"rechner_pipeline.toolbox.{COMMAND}"]
+                command_line=["python", "-m", f"rechner_pipeline.gates.{COMMAND}"]
                 + list(argv or []),
             )
         except Exception as exc:  # noqa: BLE001 — ledger is a side artifact

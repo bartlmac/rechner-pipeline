@@ -17,13 +17,13 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.orchestrate.dossier import load_gate_ledger
+from rechner_pipeline.gates.orchestrate.dossier import load_gate_ledger
 from rechner_pipeline.qa.conventions import (
     GATE_VERSION,
     scan_conventions,
 )
-from rechner_pipeline.toolbox import conventions as conventions_cmd
-from rechner_pipeline.toolbox._common import Exit, run_command
+from rechner_pipeline.gates import conventions as conventions_cmd
+from rechner_pipeline.gates._common import Exit, run_command
 
 
 # --------------------------------------------------------------------------- #

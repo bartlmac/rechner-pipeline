@@ -20,7 +20,7 @@ inputs, unreadable response file) exit ``2`` (``Exit.USAGE``).
 
 Run via::
 
-    python -m rechner_pipeline.toolbox.validate \
+    python -m rechner_pipeline.gates.validate \
         --repo-root . --generated-dir generated --info-dir info_from_excel \
         [--file-block-response response.txt]
 """
@@ -32,14 +32,14 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from rechner_pipeline.generate.output import (
+from rechner_pipeline.models.kern_output import (
     EXPECTED_MAIN_OUTPUT_FILES,
     PYTHON_MAIN_OUTPUT_FILES,
     ValidationResult,
     validate_files_on_disk,
     validate_main_output_text,
 )
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
     add_request_json_arg,
@@ -78,7 +78,7 @@ _REPAIR_HINTS = {
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.validate",
+        prog="python -m rechner_pipeline.gates.validate",
         description="Gate G1: validate the six-file generated-output contract.",
     )
     # Mergeable flags use default=None so --request-json can fill them.

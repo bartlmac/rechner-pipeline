@@ -12,7 +12,7 @@
 - Generation and repair are owned by the outer CLI agent. Acceptance is owned by `python -m rechner_pipeline.cli assurance` and the toolbox gates.
 - Use the repo-scoped Codex skills in `.agents/skills/` when running Codex. Keep them behaviorally identical to the corresponding `.claude/skills/` files unless a deliberate cross-CLI difference is documented and tested.
 - Keep Claude CLI support intact. Do not move, rename, or weaken `.claude/skills/`.
-- Do not document or depend on `rechner_pipeline.toolbox.mcp_stdio`; no such module exists. Do not add MCP/RPC workflow paths for this pipeline.
+- Do not document or depend on `rechner_pipeline.gates.mcp_stdio`; no such module exists. Do not add MCP/RPC workflow paths for this pipeline.
 
 ## Common Commands
 

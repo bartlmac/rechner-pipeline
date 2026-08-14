@@ -1,6 +1,6 @@
 """``dossier`` toolbox command — gate G8 (dossier-completeness).
 
-    python -m rechner_pipeline.toolbox.dossier \
+    python -m rechner_pipeline.gates.dossier \
         --repo-root . --generated-dir generated --info-dir info_from_excel \
         --diagnostics-dir runs/<run-id> --status completed
 
@@ -33,8 +33,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline.models import schemas
-from rechner_pipeline.orchestrate import dossier as provenance
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates.orchestrate import dossier as provenance
+from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
     add_request_json_arg,
@@ -67,7 +67,7 @@ DOSSIER_INPUT_NAME = "dossier_input.json"
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m rechner_pipeline.toolbox.dossier",
+        prog="python -m rechner_pipeline.gates.dossier",
         description="Aggregate gate-result ledger entries into qa_report.json + "
         "run_dossier.json and decide mechanical acceptance (G8).",
     )

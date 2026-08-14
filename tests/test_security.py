@@ -22,8 +22,8 @@ from rechner_pipeline.qa.security import (
     scan_python_source,
     security_report,
 )
-from rechner_pipeline.toolbox import security as security_cmd
-from rechner_pipeline.toolbox._common import Exit, run_command
+from rechner_pipeline.gates import security as security_cmd
+from rechner_pipeline.gates._common import Exit, run_command
 
 
 def _symbols(src: str, name: str = "x.py") -> set[str]:

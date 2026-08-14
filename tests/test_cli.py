@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline import cli
-from rechner_pipeline.toolbox._common import Exit
+from rechner_pipeline.gates._common import Exit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KLV_WORKBOOK = REPO_ROOT / "examples" / "Tarifrechner_KLV.xlsm"

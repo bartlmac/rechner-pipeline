@@ -31,7 +31,7 @@ model is G2 (static) + G4 (runtime confine) + subprocess isolation combined.
 
 **Gate ledger.** On BOTH the pass and fail paths, when a
 ``--diagnostics-dir`` is given, a ``golden_master.gate.json`` ledger entry is
-written via :func:`rechner_pipeline.toolbox._common.write_gate_ledger` so the
+written via :func:`rechner_pipeline.gates._common.write_gate_ledger` so the
 ``dossier`` gate (G8) can aggregate the run. The ledger is a side artifact — it is
 never leaked to stdout (stdout stays exactly one JSON result object).
 
@@ -66,7 +66,7 @@ from typing import Any, Dict, List, Optional
 
 from rechner_pipeline.qa import fs_confine
 from rechner_pipeline.qa.security import scan_python_paths, security_report
-from rechner_pipeline.toolbox._common import (
+from rechner_pipeline.gates._common import (
     Exit,
     add_request_json_arg,
     build_result,
@@ -495,7 +495,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                 result,
                 diagnostics_dir,
                 repo_root=Path(repo_root_path) if repo_root_path else None,
-                command_line=["python", "-m", f"rechner_pipeline.toolbox.{COMMAND}"]
+                command_line=["python", "-m", f"rechner_pipeline.gates.{COMMAND}"]
                 + list(argv or []),
             )
         except Exception as exc:  # noqa: BLE001 — ledger is a side artifact

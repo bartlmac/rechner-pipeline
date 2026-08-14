@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.adapters.excel import ExcelAdapter
-from rechner_pipeline.toolbox import extract as extract_cmd
+from rechner_pipeline.quellen.adapters.excel import ExcelAdapter
+from rechner_pipeline.gates import extract as extract_cmd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KLV = REPO_ROOT / "examples" / "Tarifrechner_KLV.xlsm"
