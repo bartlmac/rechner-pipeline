@@ -134,7 +134,7 @@ Demo-Fall instanziieren lässt — kein Eingangskanal:
 ```bash
 python -m rechner_pipeline.fall anlegen --fall faelle/demo-klv
 python -m rechner_pipeline.fall registrieren --fall faelle/demo-klv \
-    --datei examples/Tarifrechner_KLV.xlsm
+    --datei examples/Tarifrechner_KLV_TG2012.xlsm
 python -m rechner_pipeline.fall status --fall faelle/demo-klv
 ```
 
@@ -144,7 +144,7 @@ landen unter `abgeleitet/`):
 
 ```bash
 rechner-pipeline assurance --repo-root . \
-    --fall faelle/demo-klv --quelle Tarifrechner_KLV.xlsm \
+    --fall faelle/demo-klv --quelle Tarifrechner_KLV_TG2012.xlsm \
     [--qa-contract qa_contract.json] [--adapter auto|excel] \
     [--export-backend openpyxl|com] [--strict-manifest-warnings] \
     [--max-attempts N]
@@ -404,7 +404,7 @@ plus einfache Python-Kommandos — kein MCP/RPC-Pfad.
 
 ## Beispieldaten
 
-Demo-Artefakte liegen unter `examples/` (`Tarifrechner_KLV.xlsm`,
+Demo-Artefakte liegen unter `examples/` (`Tarifrechner_KLV_TG2012.xlsm`,
 `Tarifrechner_FLV_v1.xlsm`, Bestands-Konfiguration `bestand_klv.toml` u. a.).
 Es sind **synthetische Lehrbeispiele** ohne realen Kundenbezug.
 

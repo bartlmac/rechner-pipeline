@@ -38,7 +38,7 @@ from rechner_pipeline.gates import validate as validate_cmd
 from rechner_pipeline.gates._common import GATE_LEDGER_SUFFIX
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-KLV = REPO_ROOT / "examples" / "Tarifrechner_KLV.xlsm"
+KLV = REPO_ROOT / "examples" / "Tarifrechner_KLV_TG2012.xlsm"
 
 
 # --------------------------------------------------------------------------- #

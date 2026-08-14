@@ -77,7 +77,7 @@ def _seed_input_bundle(generated_dir: Path, coverage: str = "full") -> None:
     bundle = {
         "contract_version": "info_from_excel.v1",
         "adapter_id": "excel",
-        "source_path": r"C:\x\Tarifrechner_KLV.xlsm",
+        "source_path": r"C:\x\Tarifrechner_KLV_TG2012.xlsm",
         "manifest_path": "info_from_excel/export_manifest.json",
         "expectation_coverage": coverage,
         "coverage_detail": {"scalar_files": 3, "table_cells_expected": 264},

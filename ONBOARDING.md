@@ -26,7 +26,7 @@ Python tool only extracts, validates, and accepts. Generation/repair = agent; ac
 **Accept an already-generated kernel (one command, the KLV worked example):**
 ```
 python -m rechner_pipeline.cli assurance \
-    --repo-root . --input examples/Tarifrechner_KLV.xlsm \
+    --repo-root . --input examples/Tarifrechner_KLV_TG2012.xlsm \
     --generated-dir generated --info-dir info_from_excel \
     --diagnostics-dir diagnostics --qa-contract qa_contract.json --adapter excel
 ```

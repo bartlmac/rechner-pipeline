@@ -18,7 +18,7 @@ Zeitstempel; der SHA-256 der Quelle ist Teil des Outputs).
 Usage::
 
     python -m rechner_pipeline.quellen.tarifplan_staging \\
-        --docx examples/Mitteilung_143_KLV_v3.docx \\
+        --docx examples/Mitteilung_143_KLV_TG2012.docx \\
         --out runs/migrationsstaging/klv_mitteilung_143.json
 """
 

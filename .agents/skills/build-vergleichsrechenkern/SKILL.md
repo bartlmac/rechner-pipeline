@@ -102,7 +102,7 @@ aggregate exit code is the dossier verdict, exit 0 = `accepted`, 40 = `human_rev
 ```
 .venv\Scripts\python.exe -m rechner_pipeline.cli assurance ^
     --repo-root . ^
-    --input examples\Tarifrechner_KLV.xlsm ^
+    --input examples\Tarifrechner_KLV_TG2012.xlsm ^
     --generated-dir generated ^
     --info-dir info_from_excel ^
     --diagnostics-dir diagnostics ^
@@ -126,7 +126,7 @@ repairing a specific failure; `assurance` is the full-suite driver.
 | `qa_contract.json` | `--qa-contract` | The authored QA contract for G6 (`algebraic`). Lives at **repo root** (outside `--generated-dir`), e.g. `--qa-contract qa_contract.json`. |
 | `diagnostics/` | `--diagnostics-dir` | Shared ledger dir every gate writes its `<command>.gate.json` into; `dossier` aggregates it AND writes `qa_report.json` + `run_dossier.json` here (never into `generated/`). |
 
-Keep `--input <source>` (the original workbook, e.g. `examples\Tarifrechner_KLV.xlsm`)
+Keep `--input <source>` (the original workbook, e.g. `examples\Tarifrechner_KLV_TG2012.xlsm`)
 available after extraction — G7 (`roundtrip`) re-extracts it for its stability check.
 
 ## Output contract (hard-validated)

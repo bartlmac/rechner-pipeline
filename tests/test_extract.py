@@ -16,7 +16,7 @@ from rechner_pipeline.quellen.adapters.excel import ExcelAdapter
 from rechner_pipeline.gates import extract as extract_cmd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-KLV = REPO_ROOT / "examples" / "Tarifrechner_KLV.xlsm"
+KLV = REPO_ROOT / "examples" / "Tarifrechner_KLV_TG2012.xlsm"
 
 pytestmark = pytest.mark.skipif(not KLV.exists(), reason="KLV example workbook missing")
 
@@ -92,7 +92,7 @@ def test_klv_extract_full_coverage(tmp_path: Path):
     # input_hashes carries the genuine extraction input (the source workbook), so
     # G0's ledger never has an empty input_hashes -> no dossier 'hashes.missing'.
     assert out["input_hashes"]
-    assert any(k.endswith("Tarifrechner_KLV.xlsm") for k in out["input_hashes"])
+    assert any(k.endswith("Tarifrechner_KLV_TG2012.xlsm") for k in out["input_hashes"])
     for key in out["input_hashes"]:
         assert not key.startswith(str(REPO_ROOT))
 

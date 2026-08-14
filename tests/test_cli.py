@@ -22,7 +22,7 @@ from rechner_pipeline import cli
 from rechner_pipeline.gates._common import Exit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-KLV_WORKBOOK = REPO_ROOT / "examples" / "Tarifrechner_KLV.xlsm"
+KLV_WORKBOOK = REPO_ROOT / "examples" / "Tarifrechner_KLV_TG2012.xlsm"
 
 
 # --------------------------------------------------------------------------- #

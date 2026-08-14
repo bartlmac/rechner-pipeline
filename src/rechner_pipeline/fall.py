@@ -26,7 +26,7 @@ Kommandos (ein JSON-Objekt auf stdout, Log auf stderr)::
     python -m rechner_pipeline.fall anlegen --fall faelle/demo-klv \
         [--beschreibung TEXT]
     python -m rechner_pipeline.fall registrieren --fall faelle/demo-klv \
-        --datei examples/Tarifrechner_KLV.xlsm [--als NAME]
+        --datei examples/Tarifrechner_KLV_TG2012.xlsm [--als NAME]
     python -m rechner_pipeline.fall status --fall faelle/demo-klv
 
 ``assurance --fall <pfad> --quelle <name>`` faehrt die Gate-Kette auf

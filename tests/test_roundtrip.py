@@ -14,7 +14,7 @@ Three layers:
    loadable by the dossier loader.
 
 The re-extraction check needs an Excel workbook; the repo ships
-``examples/Tarifrechner_KLV.xlsm``. Tests that exercise check 2/3 end-to-end use
+``examples/Tarifrechner_KLV_TG2012.xlsm``. Tests that exercise check 2/3 end-to-end use
 it and are skipped if it (or openpyxl) is unavailable.
 """
 
@@ -30,7 +30,7 @@ from rechner_pipeline.gates import roundtrip as rt_cmd
 from rechner_pipeline.gates._common import Exit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-KLV = REPO_ROOT / "examples" / "Tarifrechner_KLV.xlsm"
+KLV = REPO_ROOT / "examples" / "Tarifrechner_KLV_TG2012.xlsm"
 
 _VALID_TAFELN = (
     '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -310,7 +310,7 @@ def _setup_e2e(tmp_path: Path, *, tafeln: str, kernel: str):
 
 
 requires_klv = pytest.mark.skipif(
-    not KLV.is_file(), reason="examples/Tarifrechner_KLV.xlsm not available"
+    not KLV.is_file(), reason="examples/Tarifrechner_KLV_TG2012.xlsm not available"
 )
 
 

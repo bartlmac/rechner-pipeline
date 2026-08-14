@@ -181,7 +181,7 @@ def test_manifest_names_manager_none_serializes_empty_string():
 
 def test_input_bundle_roundtrip_and_validate():
     bundle = InputBundle(
-        source_path=r"C:\x\Tarifrechner_KLV.xlsm",
+        source_path=r"C:\x\Tarifrechner_KLV_TG2012.xlsm",
         adapter_id="excel",
         out_dir="info_from_excel",
         manifest_path="info_from_excel/export_manifest.json",

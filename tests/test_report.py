@@ -46,7 +46,7 @@ def _make_diagnostics(tmp_path: Path, *, accepted: bool = True, with_roundtrip: 
     _write(diag / "extract.gate.json", {
         "gate": "G0.extraction-manifest", "command": "extract", "status": "passed",
         "summary": {"input_bundle": {
-            "source_path": "/repo/examples/Tarifrechner_KLV.xlsm",
+            "source_path": "/repo/examples/Tarifrechner_KLV_TG2012.xlsm",
             "expectation_coverage": "full",
             "coverage_detail": {"scalar_keys_expected": 5, "table_cells_expected": 612},
         }},
@@ -118,7 +118,7 @@ def test_same_ledger_in_other_location_renders_identically(tmp_path: Path):
 
 def test_report_core_facts(tmp_path: Path):
     md = _render(_make_diagnostics(tmp_path))
-    assert "# Abnahmebericht — Tarifrechner_KLV.xlsm" in md
+    assert "# Abnahmebericht — Tarifrechner_KLV_TG2012.xlsm" in md
     assert "**Verdikt: ANGENOMMEN**" in md
     assert "| G5.golden-master | golden_master | bestanden |" in md
     assert "612 Tabellenzellen" in md

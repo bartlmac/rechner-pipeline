@@ -4,7 +4,7 @@ Usage::
 
     python -m rechner_pipeline.gates.extract \\
         --repo-root . \\
-        --input examples/Tarifrechner_KLV.xlsm \\
+        --input examples/Tarifrechner_KLV_TG2012.xlsm \\
         --out-dir .tmp/klv_info \\
         --adapter excel \\
         --export-backend openpyxl

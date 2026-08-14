@@ -7,7 +7,7 @@ KI-System baut künftig marginale Änderungen ein (neue Tarifgeneration,
 neues Produkt); die Assurance nimmt Änderungen ab.
 
 Provenienz: Dieses Paket ist die Promotion des am 2026-07-22 agentisch aus
-``examples/Tarifrechner_KLV.xlsm`` migrierten und mechanisch angenommenen
+``examples/Tarifrechner_KLV_TG2012.xlsm`` migrierten und mechanisch angenommenen
 Kerns (assurance ACCEPTED, Golden-Master 617/617) — der einmalige
 Übersetzungsakt der Migrationsmethode. Beim Promoten wurde die Bindung an
 einen festen Modellpunkt (``inputs.DEFAULT``) durch eine **parametrisierte

@@ -14,7 +14,7 @@ from rechner_pipeline.qa.extraction_diff import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "golden_master_com"
-EXAMPLE = REPO_ROOT / "examples" / "Tarifrechner_KLV.xlsm"
+EXAMPLE = REPO_ROOT / "examples" / "Tarifrechner_KLV_TG2012.xlsm"
 
 
 # --- Pure-Logik (ohne optionale Deps) --------------------------------------
