@@ -264,11 +264,9 @@ Prinzipien:
   und Rückkaufswert je Stichtag über den ganzen Bestand — in-process über
   `Rechenkern.zustand_am`, nach Beitragsfreistellung über die beitragsfreie
   Reserve. Der Bestandsbericht (`toolbox/bestand_report`) zeigt
-  Abgangs-Sichten, Nachweisungen und Reserveverläufe — in zwei
-  Ausgabeformen aus **einem** Berichtsinhalt: `--format html` (eine
-  selbst-enthaltene Datei mit Inline-SVG) und `--format md` (Markdown mit
-  PNG-Grafiken für die Doku-Engine, druckgerecht mit skalierten Einheiten).
-  `--stichtag` teilt die Nachweisungen in Historie und Prognose.
+  Abgangs-Sichten, Nachweisungen und Reserveverläufe als eine
+  selbst-enthaltene HTML-Datei (Inline-SVG, kein Werkzeug beim Empfänger
+  nötig). `--stichtag` teilt die Nachweisungen in Historie und Prognose.
 - **Ein Bestand, mehrere Versicherungsarten:** ein Unternehmen führt
   einen Bestand; getrennt sind die *Nachweisungen*, nicht der Bestand.
   `examples/bestand_gesamt.toml` konfiguriert entsprechend beide
@@ -374,18 +372,6 @@ docs/engine/render.sh                 # alle Tarifplaene nach PDF (Typst)
 IMAGE=local docs/engine/render.sh     # ohne ghcr: Engine lokal bauen
 ```
 
-Dieselbe Engine rendert auch Bestandsberichte — der Weg zum PDF bleibt
-damit vollständig im Repo (keine externe Dokument-Pipeline):
-
-```bash
-python -m rechner_pipeline.toolbox.bestand_report --format md \
-    --portfolio <lauf>/bestand_gesamt.parquet \
-    --historie <lauf>/historie.parquet --ledger <lauf>/ledger.parquet \
-    --scheiben <lauf>/scheiben.parquet --config examples/bestand_gesamt.toml \
-    --bis 2060-01-01 --stichtag 2026-01-01 \
-    --out output/working/bestandsbericht.md
-docs/engine/render.sh output/working/bestandsbericht.md
-```
 
 ## Agenten-Anbindung
 

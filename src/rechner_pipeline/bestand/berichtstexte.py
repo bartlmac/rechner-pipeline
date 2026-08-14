@@ -1,14 +1,9 @@
-"""Gliederung und Textbausteine des Bestandsberichts — EINE Quelle.
+"""Gliederung und Textbausteine des Bestandsberichts.
 
-Der Bericht erscheint in zwei Darstellungen (HTML für den Bildschirm,
-Markdown/PDF für den Druck). Beide sollen denselben Bericht zeigen und
-nicht zwei ähnliche: Gliederung, Überschriften und Erläuterungen stehen
-deshalb hier und nicht in den Renderern. Die Renderer setzen nur das
-Markup und lösen die formatabhängigen Teile (Inline-SVG gegen PNG-Datei,
-Zahlformatierung) auf.
-
-Ein Test hält die Übereinstimmung fest: beide Formate müssen dieselben
-Abschnitte in derselben Reihenfolge erzeugen.
+Überschriften, Reihenfolge und Erläuterungen stehen hier und nicht im
+Renderer: der Bericht ist eine fachliche Aussage, das HTML nur seine
+Darstellung. Wer den Aufbau ändern will, ändert :data:`ABSCHNITTE` und
+:data:`TEXTE` — nicht das Markup.
 """
 
 from __future__ import annotations
@@ -20,7 +15,7 @@ import pandas as pd
 
 #: Reihenfolge und Überschriften der Abschnitte. Der Bericht führt vom
 #: Bestand über seine Struktur zu Bewegung, Geschäftsvorfällen und
-#: Bewertung — dieselbe Reihenfolge in beiden Darstellungen.
+#: Bewertung.
 ABSCHNITTE: Tuple[Tuple[str, str], ...] = (
     ("verlauf", "Bestandsverlauf"),
     ("struktur", "Bestandsstruktur"),

@@ -12,7 +12,6 @@ Usage::
         [--historie historie.parquet --ledger ledger.parquet] \\
         [--scheiben scheiben.parquet] [--config bestand_klv.toml] \\
         [--bis 2035-01-01] [--stichtag 2026-01-01] \\
-        [--format html|md] [--bild-dir <dir>] \\
         [--stichtage 2005-01-01,2010-01-01] [--titel "KLV-Bestand"]
 
 ``--historie``/``--ledger`` (beide zusammen, ein ``fortschreiben``-Lauf)
@@ -99,21 +98,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=None,
         help="Kommagetrennte ISO-Daten; Default: Jahresraster über die Vertragslaufzeiten.",
     )
-    parser.add_argument(
-        "--format", dest="format", choices=("html", "md"), default="html",
-        help=(
-            "Ausgabeform: html (selbst-enthalten, Inline-SVG) oder md "
-            "(Markdown mit PNG-Grafiken fuer die Doku-Engine)."
-        ),
-    )
-    parser.add_argument(
-        "--bild-dir", dest="bild_dir", default=None,
-        help=(
-            "Zielverzeichnis der PNG-Grafiken bei --format md "
-            "(Default: Verzeichnis von --out; die Grafiken werden relativ "
-            "referenziert)."
-        ),
-    )
     parser.add_argument("--titel", default="Bestandsbericht")
     ns = parser.parse_args(argv)
 
@@ -199,39 +183,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                 file=sys.stderr,
             )
             return 2
-    if ns.format == "md":
-        if not ns.out:
-            print(
-                "bestand_report: --format md verlangt --out (die Grafiken "
-                "werden neben die Datei geschrieben)",
-                file=sys.stderr,
-            )
-            return 2
-        out_path = Path(ns.out)
-        bild_dir = Path(ns.bild_dir) if ns.bild_dir else out_path.parent
-        from rechner_pipeline.bestand.report_markdown import render_markdown
-
-        try:
-            text = render_markdown(
-                df,
-                bild_dir=bild_dir,
-                bild_praefix=out_path.stem,
-                stichtage=stichtage,
-                titel=ns.titel,
-                historie=historie,
-                ledger=ledger,
-                config=config,
-                scheiben=scheiben,
-                bis=bis,
-                stichtag=stichtag,
-            )
-        except ValueError as exc:
-            print(f"bestand_report: {exc}", file=sys.stderr)
-            return 2
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(text, encoding="utf-8", newline="\n")
-        return 0
-
     try:
         html = render_html(
             df,
