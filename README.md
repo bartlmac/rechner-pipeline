@@ -123,15 +123,36 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
-Voller Abnahme-Lauf über einen bereits generierten Rechenkern:
+Ein Migrationsfall lebt in einem **Fall-Arbeitsbereich** (das Repo ist
+das System, nicht der Datenraum): `eingang/` hält die registrierten
+Quellen (unter ihrem Namen abgelegt, schreibgeschützt, mit SHA-256 im
+Register `eingang.json` verzeichnet und vor jedem Lauf dagegen geprüft;
+nie still überschrieben — hier beginnt die Provenance-Kette), `abgeleitet/` alles
+Regenerierbare. `examples/` ist Demo-Material, aus dem sich ein
+Demo-Fall instanziieren lässt — kein Eingangskanal:
 
 ```bash
-rechner-pipeline assurance --repo-root . --input examples/Tarifrechner_KLV.xlsm \
-    --generated-dir <gen> --info-dir <info> --diagnostics-dir <diag> \
+python -m rechner_pipeline.fall anlegen --fall faelle/demo-klv
+python -m rechner_pipeline.fall registrieren --fall faelle/demo-klv \
+    --datei examples/Tarifrechner_KLV.xlsm
+python -m rechner_pipeline.fall status --fall faelle/demo-klv
+```
+
+Voller Abnahme-Lauf über einen bereits generierten Rechenkern — auf dem
+Fall (Eingang wird vor dem Lauf gegen das Register geprüft; Ausgaben
+landen unter `abgeleitet/`):
+
+```bash
+rechner-pipeline assurance --repo-root . \
+    --fall faelle/demo-klv --quelle Tarifrechner_KLV.xlsm \
     [--qa-contract qa_contract.json] [--adapter auto|excel] \
     [--export-backend openpyxl|com] [--strict-manifest-warnings] \
     [--max-attempts N]
 ```
+
+Die direkten Verzeichnis-Flags (`--input --generated-dir <gen>
+--info-dir <info> --diagnostics-dir <diag>`) bleiben verfügbar und
+übersteuern die Fall-Ableitung (Entwickler-Kurzweg).
 
 Quell-neutrale Optionen: `--input <pfad>` (Excel heute, Adapter-Naht für weitere
 Quellen; `--excel` bleibt als kompatibler Alias). `--adapter auto|excel`.

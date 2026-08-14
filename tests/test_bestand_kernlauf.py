@@ -1,6 +1,6 @@
 """Kernel coupling: ModelPoint mapping, inputs.py rendering, confined kernel run.
 
-The end-to-end tests need a generated kernel (``generated/``, transient) and
+The end-to-end tests need a generated kernel (``runs/generated``, transient) and
 skip honestly when none is present.
 """
 
@@ -25,7 +25,7 @@ from rechner_pipeline.models.bestand import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-KERNEL_DIR = REPO_ROOT / "generated"
+KERNEL_DIR = REPO_ROOT / "runs" / "generated"
 
 _ROW = {
     "entry_age": 45,
@@ -113,7 +113,7 @@ def test_fortschreibungswerte_mehrdeutiger_prefix_ist_fehler():
 _kernel_missing = not all((KERNEL_DIR / f).is_file() for f in KERNEL_FILES)
 
 
-@pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter generated/")
+@pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter runs/generated")
 def test_kernel_run_for_default_contract_returns_contract_shape():
     outputs = run_kernel_for_contract(
         _ROW, _GENERATION, repo_root=REPO_ROOT, kernel_dir=KERNEL_DIR
@@ -127,7 +127,7 @@ def test_kernel_run_for_default_contract_returns_contract_shape():
     assert werte["jahr"] == 5
 
 
-@pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter generated/")
+@pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter runs/generated")
 def test_kernel_run_varies_with_contract():
     outputs_a = run_kernel_for_contract(
         _ROW, _GENERATION, repo_root=REPO_ROOT, kernel_dir=KERNEL_DIR
@@ -141,7 +141,7 @@ def test_kernel_run_varies_with_contract():
     assert a != b  # anderer Vertrag -> andere Beitragswerte
 
 
-@pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter generated/")
+@pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter runs/generated")
 def test_in_process_pfad_paritaet_mit_subprozess_kernel():
     """Parity-Gate: stabiler Kern (in-process) vs. transienter Kernel (Subprozess).
 

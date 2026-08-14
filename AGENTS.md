@@ -18,8 +18,12 @@
 
 - Install for development: `python -m pip install -e ".[dev]"`.
 - Run tests: `python -m pytest`.
+- Create a case workspace and register sources (the pipeline operates on a case, not on repo dirs; `examples/` is demo material, not an input channel):
+  `python -m rechner_pipeline.fall anlegen --fall faelle/demo-klv`
+  `python -m rechner_pipeline.fall registrieren --fall faelle/demo-klv --datei examples/Tarifrechner_KLV.xlsm`
 - Run full deterministic acceptance after generated files exist:
-  `python -m rechner_pipeline.cli assurance --repo-root . --input examples/Tarifrechner_KLV.xlsm --generated-dir runs/generated --info-dir runs/info_from_excel --diagnostics-dir runs/diagnostics --qa-contract qa_contract.json --adapter excel`.
+  `python -m rechner_pipeline.cli assurance --repo-root . --fall faelle/demo-klv --quelle Tarifrechner_KLV.xlsm --qa-contract qa_contract.json --adapter excel`.
+  Direct-dir flags (`--input --generated-dir --info-dir --diagnostics-dir`) remain available and override case defaults.
 
 ## Codex Entry Points
 

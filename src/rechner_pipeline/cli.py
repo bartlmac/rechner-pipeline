@@ -219,6 +219,71 @@ def _argv_dossier(c: _AssuranceConfig) -> List[str]:
 # --------------------------------------------------------------------------- #
 
 
+def _resolve_fall_defaults(ns: argparse.Namespace) -> Optional[str]:
+    """Map a Fall-Arbeitsbereich onto the chain inputs (explicit flags win).
+
+    Returns an error message (usage/integrity) or None. ``--fall`` is
+    always validated as a real workspace and its Eingang is always
+    integrity-checked BEFORE anything runs — also when an explicit
+    ``--input`` is given, because the run still writes into that
+    workspace and its dossier would claim the case as its context.
+    """
+    if ns.fall is None:
+        if ns.quelle is not None:
+            return "--quelle setzt --fall voraus"
+        fehlend = [flag for flag, wert in (
+            ("--generated-dir", ns.generated_dir),
+            ("--info-dir", ns.info_dir),
+            ("--diagnostics-dir", ns.diagnostics_dir),
+        ) if wert is None]
+        if fehlend:
+            return ("ohne --fall sind erforderlich: " + ", ".join(fehlend))
+        return None
+    from rechner_pipeline import fall as fall_mod
+
+    fall_pfad = Path(ns.fall)
+    v = fall_mod.verzeichnisse(fall_pfad)
+    try:
+        # Kein Lauf auf einem Pfad, der kein Arbeitsbereich ist: sonst
+        # entstuende unter beliebigen Verzeichnissen ein Pseudo-Fall.
+        fall_mod.status(fall_pfad)
+        if ns.quelle is not None:
+            quelle = fall_mod.eingang_datei(fall_pfad, ns.quelle)
+            if ns.input is None:
+                ns.input = str(quelle)
+        elif ns.input is None:
+            return ("--fall braucht --quelle NAME (registrierte "
+                    "Eingangsdatei) oder ein explizites --input")
+        else:
+            fehler = fall_mod.pruefen(fall_pfad)
+            if fehler:
+                return ("Eingang verletzt das Register — kein Lauf auf "
+                        "unklarem Eingang: " + "; ".join(fehler))
+    except fall_mod.FallFehler as exc:
+        return str(exc)
+    if ns.generated_dir is None:
+        ns.generated_dir = str(v["generated_dir"])
+    if ns.info_dir is None:
+        ns.info_dir = str(v["info_dir"])
+    if ns.diagnostics_dir is None:
+        ns.diagnostics_dir = str(v["diagnostics_dir"])
+    # Die Gate-Kette verlangt, dass der InputBundle-Ordner unter
+    # --repo-root liegt (G5/G7 brechen sonst mitten im Lauf ab). Lieber
+    # hier fail-fast mit einer Anweisung als ein halb gelaufener Fall.
+    repo_root = Path(ns.repo_root).resolve()
+    info_dir = Path(ns.info_dir).resolve()
+    if repo_root not in info_dir.parents and info_dir != repo_root:
+        return (
+            f"Fall-Arbeitsbereich liegt ausserhalb von --repo-root "
+            f"({info_dir} nicht unter {repo_root}) — die Gate-Kette "
+            "verlangt den InputBundle-Ordner unterhalb der Repo-Wurzel "
+            "(G5/G7). Bis das aufgeloest ist: --repo-root auf ein "
+            "Verzeichnis setzen, das den Fall enthaelt, oder den Fall "
+            "unterhalb der Repo-Wurzel anlegen."
+        )
+    return None
+
+
 def _run_assurance(ns: argparse.Namespace) -> int:
     """Run the full gate chain in order and return an aggregate exit code.
 
@@ -232,6 +297,10 @@ def _run_assurance(ns: argparse.Namespace) -> int:
     failure — so a non-zero ``assurance`` exit is always honest and never a
     downgraded warning.
     """
+    fehler = _resolve_fall_defaults(ns)
+    if fehler is not None:
+        _log(f"assurance: {fehler}")
+        return 2
     config = _AssuranceConfig(ns)
 
     # Ensure the shared dirs exist so each gate's ledger lands in one place.
@@ -414,14 +483,24 @@ def _add_assurance_subparser(subparsers: argparse._SubParsersAction) -> None:
     )
     ap.add_argument("--repo-root", dest="repo_root", default=".",
                     help="Repository root (default: .).")
+    ap.add_argument("--fall", dest="fall", default=None,
+                    help="Fall-Arbeitsbereich (see rechner_pipeline.fall): input "
+                         "comes from its registered eingang/, outputs go to "
+                         "abgeleitet/. Explicit flags below override.")
+    ap.add_argument("--quelle", dest="quelle", default=None,
+                    help="Name of the registered eingang file to extract "
+                         "(requires --fall; integrity-checked before the run).")
     ap.add_argument("--input", dest="input", default=None,
                     help="Source document to extract (passed to the extract gate).")
-    ap.add_argument("--generated-dir", dest="generated_dir", required=True,
-                    help="Directory holding the already-generated kernel files.")
-    ap.add_argument("--info-dir", dest="info_dir", required=True,
-                    help="InputBundle dir (extract writes here; gates read it).")
-    ap.add_argument("--diagnostics-dir", dest="diagnostics_dir", required=True,
-                    help="Shared dir for every gate's <command>.gate.json ledger.")
+    ap.add_argument("--generated-dir", dest="generated_dir", default=None,
+                    help="Directory holding the already-generated kernel files "
+                         "(required unless --fall is given).")
+    ap.add_argument("--info-dir", dest="info_dir", default=None,
+                    help="InputBundle dir (extract writes here; gates read it; "
+                         "required unless --fall is given).")
+    ap.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None,
+                    help="Shared dir for every gate's <command>.gate.json ledger "
+                         "(required unless --fall is given).")
     ap.add_argument("--qa-contract", dest="qa_contract", default=None,
                     help="Optional QA contract for the algebraic gate.")
     ap.add_argument("--max-attempts", dest="max_attempts", type=int, default=4,

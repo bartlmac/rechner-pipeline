@@ -6,6 +6,7 @@ Architektur-Dokumente und Entscheidungen (ADRs) des Gesamtsystems
 ## Inhalt
 
 - [ADR-001: Repo-Zielstruktur entlang der Migrations-Pipeline](adr-001-repo-zielstruktur.md)
+- [ADR-002: Fall-Arbeitsbereich — das Repo ist das System, nicht der Datenraum](adr-002-fall-arbeitsbereich.md)
 
 ## In Arbeit
 

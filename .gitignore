@@ -16,6 +16,9 @@ agent-comm.db*
 # EIN Laufverzeichnis fuer alle regenerierbaren Lauf-Artefakte
 # (Extraktion, generierter Kern, Gate-Ledger, Staging, Berichte)
 runs/
+# Fall-Arbeitsbereiche (lokale Demo-Faelle; echte Faelle liegen ausserhalb
+# des Repos — eingang/ ist dort NICHT regenerierbar, siehe ADR-002)
+faelle/
 # Alt-Pfade (vor der runs/-Konsolidierung 2026-08-14); bleiben ignoriert,
 # bis lokale Arbeitskopien bereinigt sind
 info_from_excel/
