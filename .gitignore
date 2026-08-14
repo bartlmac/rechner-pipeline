@@ -21,6 +21,8 @@ runs/
 info_from_excel/
 diagnostics/
 generated/
+migrationsstaging/
+output/
 
 # Local CLI settings (skills under .claude/skills/ ARE tracked)
 .claude/settings.local.json
