@@ -84,6 +84,67 @@ EREIGNIS_LABELS = {
 }
 
 
+def ledger_mit_bestandszugang(
+    bestand: pd.DataFrame, ledger: pd.DataFrame
+) -> pd.DataFrame:
+    """Ledger, ergaenzt um die Zugaenge des Ausgangsbestands.
+
+    Die Engine schreibt eine ZUG-Zeile nur fuer *simulierte* Neuzugaenge:
+    die Vertraege des Ausgangsbestands existieren bei Simulationsbeginn
+    bereits und bekommen keine. Fuer eine Ereignis-Sicht ueber den
+    gesamten Berichtszeitraum ist das eine Luecke mit falscher Aussage —
+    alle uebrigen Ereignisse erscheinen ueber den ganzen Zeitraum, der
+    Zugang erst ab dem ersten Neugeschaeftsjahr, als haette der Bestand
+    davor keinen Zugang gehabt. Das Bewegungskonto leitet den Zugang
+    deshalb aus ``insurance_start`` ab; diese Funktion holt dieselbe
+    Ableitung fuer Ereignis-Tabelle und -Grafik nach.
+
+    Betrag und Betrags-Art sind die der jeweiligen Versicherungsart
+    (Versicherungssumme bzw. Jahresrente), wie sie die Engine fuer ihre
+    eigenen Zugaenge schreibt.
+    """
+    from rechner_pipeline.bestand.ereignisse import BU_BETRAG_ART
+
+    schon_gebucht = (
+        set(ledger.loc[ledger["ereignis"] == "ZUG", "police_id"])
+        if len(ledger) else set()
+    )
+    fehlend = bestand[~bestand["police_id"].isin(schon_gebucht)]
+    if len(fehlend) == 0:
+        return ledger
+    ist_bu = (
+        fehlend["produkt"] == "bu"
+        if "produkt" in fehlend.columns
+        else pd.Series(False, index=fehlend.index)
+    )
+    zugaenge = pd.DataFrame(
+        {
+            "police_id": fehlend["police_id"].to_numpy(),
+            "tarif_generation": fehlend["tarif_generation"].to_numpy(),
+            "ereignis": "ZUG",
+            "vertragsjahr": 0,
+            "status_date": fehlend["insurance_start"].to_numpy(),
+            "betrag_art": [
+                BU_BETRAG_ART if b else "VS" for b in ist_bu
+            ],
+            "betrag": (
+                fehlend["bu_rente"].where(ist_bu, fehlend["sum_insured"])
+                if "bu_rente" in fehlend.columns
+                else fehlend["sum_insured"]
+            ).to_numpy(float),
+        }
+    )
+    if len(ledger) == 0:
+        return zugaenge.sort_values(
+            ["status_date", "police_id"]
+        ).reset_index(drop=True)
+    return (
+        pd.concat([ledger, zugaenge[ledger.columns]], ignore_index=True)
+        .sort_values(["status_date", "police_id"])
+        .reset_index(drop=True)
+    )
+
+
 def ereignis_summen(ledger: pd.DataFrame) -> List[Dict[str, Any]]:
     """Anzahl und Betragssumme je Ereignisart und Betrags-Art.
 

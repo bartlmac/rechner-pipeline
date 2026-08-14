@@ -64,6 +64,7 @@ from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
     ereignisse_je_jahr,
     generationsnamen,
     jahresraster,
+    ledger_mit_bestandszugang,
     status_verlauf,
     verlauf,
 )
@@ -206,16 +207,27 @@ def _chart_verlauf_vertraege(reihe: List[Dict[str, Any]], generationen: List[str
     return _svg(fig)
 
 
-def _chart_verlauf_summe(reihe: List[Dict[str, Any]], label: str) -> str:
+def _chart_verlauf_summe(
+    reihe: List[Dict[str, Any]], label: str, titel: str = ""
+) -> str:
+    """Verlauf des versicherten Volumens EINER Versicherungsart.
+
+    Je Art getrennt, weil die Bezugsgroessen nicht dieselben sind
+    (Versicherungssumme gegen Jahresrente) — eine gemeinsame Kurve waere
+    entweder eine Summe nicht addierbarer Groessen oder, schlimmer, eine
+    Kurve nur der einen Art unter dem Titel des Gesamtbestands.
+    """
     x = list(range(len(reihe)))
     labels = [r["stichtag"][:4] for r in reihe]
     werte = [r["summe_vs"] / 1e6 for r in reihe]
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(5.0, 3.4))
     ax.plot(x, werte, marker="o", markersize=3, color=_FARBEN[0])
     schritt = max(1, len(x) // 12)
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel(f"{label} (Mio.)")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
+    if titel:
+        ax.set_title(titel, fontsize=10)
     return _svg(fig)
 
 
@@ -722,6 +734,16 @@ def render_html(
     bestand = bestand_mit_historie(df, historie) if historie is not None else df
     leistung, leistung_label = _leistungssicht(df)
     reihe = verlauf(bestand, stichtage, leistung)
+    # Volumen-Verlauf je Versicherungsart. Die Vertragszahl ist ueber die
+    # Arten addierbar, das versicherte Volumen nicht — bei gemischtem
+    # Bestand stuende sonst eine reine KLV-Kurve neben einem Balken ueber
+    # alle Vertraege, ohne dass die Darstellung das sagt.
+    volumen_reihen = [
+        dict(gruppe, reihe=verlauf(
+            teilbestand(bestand, gruppe["produkt"]), stichtage, gruppe["leistung"]
+        ))
+        for gruppe in produkt_gruppen(df)
+    ]
     # Strukturbild am Bestands-Hoechststand (erster Maximums-Stichtag —
     # deterministisch und aussagekraeftiger als der duenne Bestandsauslauf).
     hoechststand = max(reihe, key=lambda r: (r["vertraege"], -reihe.index(r)))
@@ -732,10 +754,31 @@ def render_html(
         hoechststand["stichtag"]
     )
     scheibe = zeitscheibe(bestand, struktur_stichtag)
+    # Ereignis-Sicht auf dem um die Bestands-Zugaenge ergaenzten Ledger:
+    # die Engine bucht ZUG nur fuer Neuzugaenge, die Vertraege des
+    # Ausgangsbestands sind zum Simulationsbeginn schon da. Ohne die
+    # Ergaenzung zeigte die Grafik alle Abgaenge ueber den ganzen
+    # Zeitraum, den Zugang aber erst ab dem ersten Neugeschaeftsjahr.
+    # Ein leerer Ledger bleibt leer: dass die Fortschreibung im Horizont
+    # nichts gebucht hat, ist die Aussage des Abschnitts — sie soll nicht
+    # von einer Zugangsliste verdeckt werden.
+    gevo_ledger = (
+        ledger_mit_bestandszugang(df, ledger)
+        if historie is not None and ledger is not None and len(ledger) > 0
+        else ledger
+    )
 
     with plt.rc_context(_RC):
         svg_vertraege = _chart_verlauf_vertraege(reihe, generationen)
-        svg_summe = _chart_verlauf_summe(reihe, leistung_label)
+        mehrere_arten = len(volumen_reihen) > 1
+        svg_summe = "".join(
+            _chart_verlauf_summe(
+                v["reihe"],
+                v["leistung_label"],
+                v["titel"] if mehrere_arten else "",
+            )
+            for v in volumen_reihen
+        )
         # Struktur je Versicherungsart: Eintrittsalter, Laufzeit und
         # versicherte Leistung sind je Art anders definiert (Summe gegen
         # Jahresrente) und in einer gemeinsamen Grafik nicht vergleichbar.
@@ -764,7 +807,9 @@ def render_html(
         svg_status = svg_ereignisse = svg_dk = ""
         if historie is not None and len(ledger) > 0:
             svg_status = _chart_status_verlauf(status_verlauf(bestand, stichtage))
-            svg_ereignisse = _chart_ereignisse_je_jahr(ereignisse_je_jahr(ledger))
+            svg_ereignisse = _chart_ereignisse_je_jahr(
+                ereignisse_je_jahr(gevo_ledger)
+            )
         reihe_ausw: List[Dict[str, Any]] = []
         if config is not None:
             reihe_ausw = auswertungs_verlauf(
@@ -772,21 +817,33 @@ def render_html(
             )
             svg_dk = _chart_deckungskapital(reihe_ausw)
 
+    # Je Versicherungsart eine eigene Volumen-Spalte — dieselbe Trennung
+    # wie in den Grafiken; die Vertragszahl bleibt die Gesamtzahl.
     zeilen = []
-    for r in reihe:
+    for i, r in enumerate(reihe):
         gen_mix = ", ".join(
             f"{_html.escape(str(g))}: {n}" for g, n in r["generationen"].items()
         ) or "—"
+        volumen = "".join(
+            f"<td class='num'>{_zahl(v['reihe'][i]['summe_vs'])}</td>"
+            for v in volumen_reihen
+        )
         zeilen.append(
             f"<tr><td>{r['stichtag']}</td><td class='num'>{r['vertraege']}</td>"
-            f"<td class='num'>{_zahl(r['summe_vs'])}</td>"
+            f"{volumen}"
             f"<td class='num'>{_zahl(r['mittel_alter'], 1)}</td>"
             f"<td class='num'>{_zahl(r['mittel_restlaufzeit_jahre'], 1)}</td>"
             f"<td>{gen_mix}</td></tr>"
         )
+    volumen_kopf = "".join(
+        f"<th>Σ {_html.escape(v['leistung_label'])}"
+        + (f" ({_html.escape(v['titel'])})" if len(volumen_reihen) > 1 else "")
+        + "</th>"
+        for v in volumen_reihen
+    )
     tabelle = (
         "<table><thead><tr><th>Stichtag</th><th>Verträge</th>"
-        f"<th>Σ {leistung_label}</th><th>Ø Alter</th><th>Ø Restlaufzeit (J.)</th>"
+        f"{volumen_kopf}<th>Ø Alter</th><th>Ø Restlaufzeit (J.)</th>"
         "<th>Generationen</th></tr></thead><tbody>"
         + "".join(zeilen)
         + "</tbody></table>"
@@ -827,12 +884,12 @@ def render_html(
     )
     ereignis_html = ""
     if historie is not None:
-        summen = ereignis_summen(ledger)
+        summen = ereignis_summen(gevo_ledger)
         if summen:
-            letzter = ledger["status_date"].max().date().isoformat()
+            letzter = gevo_ledger["status_date"].max().date().isoformat()
             fortschreibung_zeile = (
-                f"<li>Fortschreibung: {len(ledger)} Ereignisse "
-                f"(letztes am {letzter})</li>"
+                f"<li>Geschäftsvorfälle: {len(gevo_ledger)} "
+                f"(letzter am {letzter})</li>"
             )
             summen_zeilen = "".join(
                 f"<tr><td>{s['label']} ({s['ereignis']})</td>"
@@ -847,8 +904,8 @@ def render_html(
                 + summen_zeilen
                 + "</tbody></table>"
             )
-            gevo_von = int(ledger["status_date"].dt.year.min())
-            gevo_bis = int(ledger["status_date"].dt.year.max())
+            gevo_von = int(gevo_ledger["status_date"].dt.year.min())
+            gevo_bis = int(gevo_ledger["status_date"].dt.year.max())
             gevo_zeitraum = f"{gevo_von} bis {gevo_bis}"
             ereignis_html = f"""
 <h2>Geschäftsvorfälle {gevo_zeitraum}</h2>

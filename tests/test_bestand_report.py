@@ -41,6 +41,22 @@ def fortschreibung(portfolio, config):
     return fortschreiben(portfolio, config, dt.date(2035, 1, 1))
 
 
+@pytest.fixture(scope="module")
+def gemischter_bestand(config):
+    """Ein Bestand mit beiden Versicherungsarten (KLV und BU)."""
+    import copy
+
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+
+    bu = load_config(REPO_ROOT / "examples" / "bestand_bu.toml")
+    gemischt = copy.deepcopy(config)
+    gemischt.generationen = [config.generationen[-1], bu.generationen[0]]
+    gemischt.annahmen = bu.annahmen
+    df = generate(gemischt)
+    bis = dt.date(2040, 1, 1)
+    return df, gemischt, fortschreiben(df, gemischt, bis), bis
+
+
 # --------------------------------------------------------------------------- #
 # Kennzahlen
 # --------------------------------------------------------------------------- #
@@ -521,3 +537,86 @@ def test_bu_bericht_fuehrt_die_jahresrente_als_leistungsspalte():
     )
     werte = re.findall(r">([\d.,]+)<", zeile.group(1))
     assert float(werte[2].replace(".", "").replace(",", ".")) > 0
+
+
+# --------------------------------------------------------------------------- #
+# Zugaenge der Historie und Volumen je Versicherungsart
+# --------------------------------------------------------------------------- #
+
+
+def test_zugaenge_des_ausgangsbestands_fehlen_in_der_ereignis_sicht_nicht(
+    portfolio, fortschreibung
+):
+    """Die Engine bucht ZUG nur fuer Neuzugaenge — der Ausgangsbestand ist
+    zum Simulationsbeginn schon da. In einer Ereignis-Sicht ueber den
+    ganzen Zeitraum sagte das etwas Falsches: alle Abgaenge ab dem ersten
+    Vertragsjahr, der Zugang erst ab dem Neugeschaeftsjahr."""
+    from rechner_pipeline.bestand.ereignisse import mit_zugaengen
+    from rechner_pipeline.bestand.kennzahlen import (
+        ereignis_summen,
+        ereignisse_je_jahr,
+        ledger_mit_bestandszugang,
+    )
+
+    erg = fortschreibung
+    gesamt = mit_zugaengen(portfolio, erg.zugaenge)
+    roh = ereignisse_je_jahr(erg.ledger)
+    voll = ereignisse_je_jahr(ledger_mit_bestandszugang(gesamt, erg.ledger))
+
+    # Ohne Ergaenzung zeigt die Sicht nur die simulierten Neuzugaenge ...
+    assert sum(r["ZUG"] for r in roh) == len(erg.zugaenge) < len(gesamt)
+    # ... mit Ergaenzung ist jeder Vertrag genau einmal zugegangen, und der
+    # Zugang beginnt im ersten Jahr des Berichtszeitraums.
+    assert sum(r["ZUG"] for r in voll) == len(gesamt)
+    assert min(r["jahr"] for r in voll if r["ZUG"]) == min(r["jahr"] for r in voll)
+    # Betrag und Bezugsgroesse bleiben die der Engine (hier: KLV):
+    zug = [s for s in ereignis_summen(
+        ledger_mit_bestandszugang(gesamt, erg.ledger)) if s["ereignis"] == "ZUG"]
+    assert [s["betrag_art"] for s in zug] == ["VS"]
+    assert zug[0]["summe_betrag"] == pytest.approx(
+        float(gesamt["sum_insured"].sum())
+    )
+
+
+def test_leerer_ledger_bleibt_leer(portfolio, config):
+    """Dass die Fortschreibung nichts gebucht hat, ist die Aussage des
+    Abschnitts — sie darf nicht von einer Zugangsliste verdeckt werden."""
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+
+    frueh = portfolio["insurance_start"].min().date()
+    historie, ledger, *_ = fortschreiben(portfolio, config, frueh)
+    html = report.render_html(
+        portfolio, stichtage=[dt.date(2010, 1, 1)],
+        historie=historie, ledger=ledger,
+    )
+    assert "Keine Ereignisse im Berichtszeitraum" in html
+
+
+def test_volumen_verlauf_steht_je_versicherungsart(gemischter_bestand):
+    """Versicherungssumme und Jahresrente sind nicht addierbar: eine
+    gemeinsame Kurve waere entweder eine falsche Summe oder — wie zuvor —
+    die reine KLV-Kurve neben einem Balken ueber alle Vertraege."""
+    df, cfg, erg, bis = gemischter_bestand
+    html = report.render_html(
+        df, historie=erg.historie, ledger=erg.ledger, scheiben=erg.scheiben,
+        config=cfg, bis=bis, stichtag=dt.date(2026, 1, 1),
+        stichtage=[dt.date(2026, 1, 1), dt.date(2030, 1, 1)],
+    )
+    # Je Art eine Volumen-Spalte, beide benannt:
+    assert "Σ Versicherungssumme (Kapitalversicherung)" in html
+    assert "Σ versicherte Jahresrente (Berufsunfähigkeit)" in html
+    # Jede Spalte fuehrt ihren Teilbestand, nicht den Gesamtbestand:
+    from rechner_pipeline.bestand.berichtstexte import teilbestand
+    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+
+    bestand = bestand_mit_historie(df, erg.historie)
+    werte = {
+        produkt: verlauf(
+            teilbestand(bestand, produkt), [dt.date(2026, 1, 1)], spalte
+        )[0]["summe_vs"]
+        for produkt, spalte in (("klv", "sum_insured"), ("bu", "bu_rente"))
+    }
+    assert werte["klv"] > 0 and werte["bu"] > 0
+    assert werte["klv"] != werte["bu"]
+    assert report._zahl(werte["klv"]) in html
+    assert report._zahl(werte["bu"]) in html

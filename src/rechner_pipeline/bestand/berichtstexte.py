@@ -31,7 +31,10 @@ TEXTE: Dict[str, str] = {
     "verlauf": (
         "In-force-Bestand je Stichtag, gestapelt nach Tarifgeneration. "
         "Abgänge (Storno, Tod, Ablauf) verlassen den Bestand am Buchungstag; "
-        "Zugänge treten mit ihrem Versicherungsbeginn ein."
+        "Zugänge treten mit ihrem Versicherungsbeginn ein. Die Vertragszahl "
+        "ist die des Gesamtbestands; das versicherte Volumen steht je "
+        "Versicherungsart getrennt, weil Versicherungssumme und Jahresrente "
+        "nicht addierbar sind."
     ),
     "struktur": (
         "Die Struktur wird je Versicherungsart getrennt gezeigt: "
@@ -44,7 +47,12 @@ TEXTE: Dict[str, str] = {
         "Die Anzahl ist die Summe über den gesamten Berichtszeitraum "
         "({zeitraum}), kein Jahreswert. Die Bezugsgröße des Betrags "
         "unterscheidet sich je Geschäftsvorfall und Versicherungsart; "
-        "Beträge verschiedener Bezugsgrößen stehen deshalb getrennt."
+        "Beträge verschiedener Bezugsgrößen stehen deshalb getrennt. "
+        "Der Zugang enthält auch die Verträge des Ausgangsbestands — mit "
+        "ihrem Versicherungsbeginn als Zugangszeitpunkt, wie im "
+        "Bewegungskonto. Sonst begänne die Zugangsreihe erst beim "
+        "simulierten Neugeschäft, während alle Abgänge über den ganzen "
+        "Zeitraum ausgewiesen sind."
     ),
     "kennzahlen": (
         "Stichtagswerte, keine Zeitraum-Aggregate: Bestand und Reserven am "
