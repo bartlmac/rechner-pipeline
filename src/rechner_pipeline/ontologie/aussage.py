@@ -21,9 +21,10 @@ nicht konstruiert werden.
 from __future__ import annotations
 
 import enum
-from typing import List, Optional, Union
+import math
+from typing import List, Optional, Tuple, Union
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 #: JSON-faehige Wertetypen. bool VOR int (sonst frisst int die bools).
 Wert = Union[bool, int, float, str]
@@ -48,13 +49,30 @@ class Provenienz(BaseModel):
     erhoben_am: str = Field(min_length=1)  # ISO-8601 UTC
 
 
-class Lesart(BaseModel):
-    """Eine von mehreren Lesarten (bei mehrdeutig/widerspruechlich)."""
+def _pruefe_endlich(wert: Optional[Wert]) -> Optional[Wert]:
+    """NaN/Inf sind keine fachlichen Werte — fail-fast am Eingang.
 
-    model_config = ConfigDict(extra="forbid")
+    Ein NaN wuerde jede Wertegleichheit verfehlen (NaN != NaN) und damit
+    eine Diskrepanz erzeugen, die sich nie aufloesen laesst.
+    """
+    if isinstance(wert, float) and not math.isfinite(wert):
+        raise ValueError(f"nicht-endlicher Wert {wert!r} ist keine Aussage")
+    return wert
+
+
+class Lesart(BaseModel):
+    """Eine von mehreren Lesarten (bei mehrdeutig/widerspruechlich).
+
+    Tupel statt Listen: eine Lesart ist nach Konstruktion unveraenderlich
+    — nachtraegliche Listen-Mutation wuerde die Validierung umgehen.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     wert: Wert
-    provenienz: List[Provenienz] = Field(min_length=1)
+    provenienz: Tuple[Provenienz, ...] = Field(min_length=1)
+
+    _endlich = field_validator("wert")(_pruefe_endlich)
 
 
 class Aussage(BaseModel):
@@ -63,11 +81,15 @@ class Aussage(BaseModel):
     zustand: Zustand = Zustand.NICHT_BELEGT
     wert: Optional[Wert] = None
     konfidenz: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    provenienz: List[Provenienz] = Field(default_factory=list)
+    #: Tupel statt Listen (auch hier): .append() wuerde validate_assignment
+    #: umgehen — unveraenderlich nach Konstruktion.
+    provenienz: Tuple[Provenienz, ...] = Field(default_factory=tuple)
     #: Nur bei mehrdeutig/widerspruechlich: die konkurrierenden Lesarten.
-    lesarten: List[Lesart] = Field(default_factory=list)
+    lesarten: Tuple[Lesart, ...] = Field(default_factory=tuple)
     #: Bei widerspruechlich: Verweis auf das Diskrepanz-Objekt (P2).
     diskrepanz_id: Optional[str] = None
+
+    _endlich = field_validator("wert")(_pruefe_endlich)
 
     @model_validator(mode="after")
     def _konsistenz(self) -> "Aussage":

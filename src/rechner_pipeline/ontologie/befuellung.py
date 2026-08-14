@@ -21,15 +21,16 @@ persistierte Fragmente.
 
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from rechner_pipeline.ontologie.aussage import (
     Aussage,
     Provenienz,
     Wert,
     Zustand,
+    _pruefe_endlich,
     belegt,
     nicht_belegt,
 )
@@ -54,6 +55,8 @@ class FragmentWert(BaseModel):
     wert: Wert
     fundstelle: str = Field(min_length=1)
     konfidenz: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+    _endlich = field_validator("wert")(_pruefe_endlich)
 
 
 class FragmentZelle(BaseModel):
@@ -164,13 +167,30 @@ def baue_generation(
         for i, f in enumerate(fragmente)
     ]
 
-    # Je Zellen-ID und Quelle ein Feld->Aussage-Dict aufbauen.
+    # Je Zellen-ID und Quelle ein Feld->Aussage-Dict aufbauen. Die
+    # Auspraegungs-SCHLUESSEL jeder Fragment-Zelle muessen exakt die
+    # vereinten Dimensionen sein — die Zellen-ID kodiert nur die WERTE,
+    # ein anders gekeytes Fragment wuerde sonst still in eine fremde
+    # Zelle gemergt (Identitaetskorruption mit falscher Provenienz).
+    dimension_ids = {d.id for d in dimensionen}
     je_zelle: Dict[str, List[Dict[str, Aussage]]] = {}
     auspraegungen_je_zelle: Dict[str, Dict[str, str]] = {}
     for i, fragment in enumerate(fragmente):
         fabrik = fabriken[i]
         for zelle in fragment.zellen:
+            if set(zelle.auspraegungen) != dimension_ids:
+                raise BefuellungsFehler(
+                    f"{gen_id}: Fragment {fragment.quelle_datei!r} keyt "
+                    f"eine Zelle mit {sorted(zelle.auspraegungen)} statt "
+                    f"der Dimensionen {sorted(dimension_ids)} — die Zelle "
+                    "waere nicht identifizierbar"
+                )
             zid = zellen_segment(zelle.auspraegungen)
+            if auspraegungen_je_zelle.get(zid, zelle.auspraegungen) != zelle.auspraegungen:
+                raise BefuellungsFehler(
+                    f"{gen_id}/{zid}: Auspraegungs-Kollision "
+                    f"({auspraegungen_je_zelle[zid]} vs. {zelle.auspraegungen})"
+                )
             auspraegungen_je_zelle.setdefault(zid, zelle.auspraegungen)
             felder: Dict[str, Aussage] = {
                 feld: belegt(
@@ -289,6 +309,7 @@ def loese_diskrepanz_auf(
     entscheider: str,
     begruendung: str,
     entschieden_am: str,
+    vorlaeufig: bool = False,
 ) -> ABox:
     """Menschliche Aufloesung anwenden: Diskrepanz + Aussage nachziehen.
 
@@ -299,10 +320,12 @@ def loese_diskrepanz_auf(
     """
     from rechner_pipeline.ontologie.diskrepanz import Entscheidung
 
-    kandidaten = [d for d in abox.diskrepanzen if d.id == diskrepanz_id]
+    kandidaten = [
+        (i, d) for i, d in enumerate(abox.diskrepanzen) if d.id == diskrepanz_id
+    ]
     if not kandidaten:
         raise BefuellungsFehler(f"Diskrepanz {diskrepanz_id!r} unbekannt")
-    [diskrepanz] = kandidaten
+    [(index, diskrepanz)] = kandidaten
     if diskrepanz.status == "aufgeloest":
         raise BefuellungsFehler(f"{diskrepanz_id}: bereits aufgeloest")
     passende = [
@@ -315,32 +338,37 @@ def loese_diskrepanz_auf(
             f"({[l.wert for l in diskrepanz.lesarten]}) — die Aufloesung "
             "waehlt zwischen den Quellen, sie erfindet keinen Wert"
         )
-    [lesart] = passende[:1]
+    lesart = passende[0]
 
-    diskrepanz.status = "aufgeloest"
-    diskrepanz.entscheidung = Entscheidung(
-        entscheider=entscheider,
-        begruendung=begruendung,
-        gewaehlter_wert=lesart.wert,
-        entschieden_am=entschieden_am,
-    )
-
-    getroffen = 0
+    # Erst ALLE Ziele bestimmen, dann atomar anwenden: eine Mutation vor
+    # der letzten Pruefung hinterliesse bei einem Fehler einen halben
+    # Zustand (Diskrepanz aufgeloest, Aussage noch widerspruechlich).
+    ziele: List[Tuple[Dict[str, Aussage], str]] = []
+    unisex_ziele: List[Any] = []
     for gen in abox.generationen:
-        ziele: List[Tuple[Dict[str, Aussage], str]] = [
-            (zelle.parameter, feld)
-            for zelle in gen.zellen
-            for feld, aussage in zelle.parameter.items()
-            if aussage.diskrepanz_id == diskrepanz_id
-        ]
+        for zelle in gen.zellen:
+            for feld, aussage in zelle.parameter.items():
+                if aussage.diskrepanz_id == diskrepanz_id:
+                    ziele.append((zelle.parameter, feld))
         if gen.unisex is not None and gen.unisex.diskrepanz_id == diskrepanz_id:
-            gen.unisex = belegt(lesart.wert, list(lesart.provenienz))
-            getroffen += 1
-        for parameter, feld in ziele:
-            parameter[feld] = belegt(lesart.wert, list(lesart.provenienz))
-            getroffen += 1
-    if getroffen == 0:
+            unisex_ziele.append(gen)
+    if not ziele and not unisex_ziele:
         raise BefuellungsFehler(
             f"{diskrepanz_id}: keine Aussage referenziert die Diskrepanz"
         )
+
+    abox.diskrepanzen[index] = diskrepanz.model_copy(update={
+        "status": "aufgeloest",
+        "entscheidung": Entscheidung(
+            entscheider=entscheider,
+            begruendung=begruendung,
+            gewaehlter_wert=lesart.wert,
+            entschieden_am=entschieden_am,
+            vorlaeufig=vorlaeufig,
+        ),
+    })
+    for parameter, feld in ziele:
+        parameter[feld] = belegt(lesart.wert, list(lesart.provenienz))
+    for gen in unisex_ziele:
+        gen.unisex = belegt(lesart.wert, list(lesart.provenienz))
     return abox

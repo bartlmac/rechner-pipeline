@@ -15,6 +15,7 @@ der Quellen im Eingang-Register des Falls (P1 bis zur Wurzel).
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -63,24 +64,32 @@ def validate_abox(
     bekannte_diskrepanzen = {d.id for d in abox.diskrepanzen}
     referenzierte: set = set()
 
+    def _pruefe_widerspruch(knoten: str, feld: str, aussage) -> None:
+        if aussage.zustand is Zustand.WIDERSPRUECHLICH:
+            referenzierte.add(aussage.diskrepanz_id)
+            if aussage.diskrepanz_id not in bekannte_diskrepanzen:
+                fehler.append(
+                    f"{knoten}/{feld}: widerspruechlich, aber "
+                    f"Diskrepanz {aussage.diskrepanz_id!r} fehlt"
+                )
+
     for gen in abox.generationen:
         for zelle in gen.zellen:
             knoten = f"{gen.id}/{zelle.id}"
             for feld, aussage in zelle.parameter.items():
-                if aussage.zustand is Zustand.WIDERSPRUECHLICH:
-                    referenzierte.add(aussage.diskrepanz_id)
-                    if aussage.diskrepanz_id not in bekannte_diskrepanzen:
-                        fehler.append(
-                            f"{knoten}/{feld}: widerspruechlich, aber "
-                            f"Diskrepanz {aussage.diskrepanz_id!r} fehlt"
-                        )
-        if gen.unisex is not None and gen.unisex.zustand is Zustand.BELEGT:
-            wert = str(gen.unisex.wert)
-            if not (wert.startswith("U") and wert[1:].isdigit()
-                    and 0 <= int(wert[1:]) <= 100):
-                fehler.append(
-                    f"{gen.id}: unisex {wert!r} ist kein 'U<0..100>'"
-                )
+                _pruefe_widerspruch(knoten, feld, aussage)
+        if gen.unisex is not None:
+            # Auch die unisex-Aussage traegt Widersprueche wie jedes
+            # andere Feld — sie ist kein Sonderweg an der Pruefung vorbei.
+            _pruefe_widerspruch(gen.id, "unisex", gen.unisex)
+            if gen.unisex.zustand is Zustand.BELEGT:
+                wert = str(gen.unisex.wert)
+                # ASCII-strikt: isdigit() akzeptiert auch Unicode-Ziffern
+                # (z. B. hochgestellte), int() dann nicht — Crash statt Befund.
+                if not re.fullmatch(r"U\d{1,3}", wert) or int(wert[1:]) > 100:
+                    fehler.append(
+                        f"{gen.id}: unisex {wert!r} ist kein 'U<0..100>'"
+                    )
 
     for d in abox.diskrepanzen:
         if d.status == "offen" and d.id not in referenzierte:

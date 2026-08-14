@@ -56,14 +56,27 @@ def test_unisex_ableitung_ist_die_vba_formel_mit_kappung():
         leite_unisex_ab({0: 0.1}, {0: 0.1, 1: 0.2}, 0.7)
 
 
+def _voll(qx: float) -> dict:
+    """Vollstaendiger Vektor 0..MAX_ALTER (Einfuege-Vorbedingung)."""
+    from rechner_pipeline.kern.konventionen import MAX_ALTER
+
+    return {alter: qx for alter in range(0, MAX_ALTER + 1)}
+
+
 def test_einfuegen_ist_deterministisch_und_konfliktfrei(tmp_path: Path):
+    from rechner_pipeline.kern.konventionen import MAX_ALTER
+
     xml = tmp_path / "tafeln.xml"
+    alt_eintraege = "\n".join(
+        f'    <entry age="{a}" qx="0.01" />' for a in range(0, MAX_ALTER + 1)
+    )
     xml.write_text(
         "<?xml version='1.0' encoding='UTF-8'?>\n<tafeln>\n"
-        '  <table name="ALT">\n    <entry age="0" qx="0.01" />\n  </table>\n'
+        f'  <table name="ALT">\n{alt_eintraege}\n  </table>\n'
+        '  <table name="SEL">\n    <entry age="0" dauer="0" qx="0.5" />\n  </table>\n'
         "</tafeln>\n", encoding="utf-8",
     )
-    neu = {"NEU_B": {0: 0.2}, "NEU_A": {0: 0.1}}
+    neu = {"NEU_B": _voll(0.2), "NEU_A": _voll(0.1)}
     prov = {n: f"Provenienz {n}" for n in neu}
     eingefuegt = fuege_tafeln_ein(xml, neu, prov)
     assert eingefuegt == ["NEU_A", "NEU_B"]          # sortiert
@@ -74,8 +87,19 @@ def test_einfuegen_ist_deterministisch_und_konfliktfrei(tmp_path: Path):
     assert fuege_tafeln_ein(xml, neu, prov) == []
     assert xml.read_text(encoding="utf-8") == inhalt1
     # Wert-Konflikt ist hart (kein stiller Overwrite):
+    konflikt = dict(_voll(0.01)); konflikt[0] = 0.02
     with pytest.raises(TafelImportFehler, match="kein stiller Overwrite"):
-        fuege_tafeln_ein(xml, {"ALT": {0: 0.02}}, {"ALT": "x"})
+        fuege_tafeln_ein(xml, {"ALT": konflikt}, {"ALT": "x"})
+    # Namens-Kollision mit einer Select-Tafel ist hart:
+    with pytest.raises(TafelImportFehler, match="Select-Tafel"):
+        fuege_tafeln_ein(xml, {"SEL": _voll(0.3)}, {"SEL": "x"})
+    # Unvollstaendige Tafel landet nie im XML:
+    with pytest.raises(TafelImportFehler, match="fehlen"):
+        fuege_tafeln_ein(xml, {"KURZ": {0: 0.1}}, {"KURZ": "x"})
+    # Obermengen-Vektor wird nicht still verworfen:
+    ober = dict(_voll(0.01)); ober[MAX_ALTER + 1] = 0.5
+    with pytest.raises(TafelImportFehler, match="eigener Vorgang"):
+        fuege_tafeln_ein(xml, {"ALT": ober}, {"ALT": "x"})
 
 
 def test_kern_fuehrt_die_tg2015_tafeln_mit_korrekter_mischung():
@@ -106,5 +130,9 @@ def test_gate_o3_tg2015_golden_master_besteht():
     assert result.summary["werte_verglichen"] >= 600
     assert result.summary["abweichungen"] == 0
     assert result.summary["modellpunkt"]["tafel"] == "DAV2008_T_NR_U70"
-    # Nicht zuordenbare Erwartungsreste sind AUSGEWIESEN, nicht verschwiegen:
-    assert "Tafel" in result.summary["erwartung_uebersprungen"]
+    # Parametrische Erwartungen (Zins, Tafel) werden gegen die Spez
+    # geprueft; nur die Label-Heuristik-Reste bleiben — AUSGEWIESEN:
+    assert set(result.summary["parameter_geprueft"]) == {"Zins", "Tafel"}
+    assert result.summary["erwartung_uebersprungen"] == ["0", "12"]
+    # Ehrlichkeit der Abdeckung: 5 Zellen ohne Erwartungswerte stehen da.
+    assert len(result.summary["zellen_ohne_erwartungswerte"]) == 5

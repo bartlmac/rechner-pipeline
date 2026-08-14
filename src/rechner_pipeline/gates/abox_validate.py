@@ -142,7 +142,19 @@ def main(argv: Optional[List[str]] = None):
             input_hashes=input_hashes,
         ))
 
-    register = json.loads(register_pfad.read_text(encoding="utf-8"))
+    try:
+        register = json.loads(register_pfad.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        return _finalize(build_result(
+            command="abox_validate",
+            gate=GATE,
+            gate_version=GATE_VERSION,
+            exit_code=Exit.FILE_CONTRACT,
+            errors=[{"code": "register",
+                     "message": f"eingang.json unlesbar: {exc}"}],
+            paths={"fall": str(fall), "abox": str(abox_datei)},
+            input_hashes=input_hashes,
+        ))
     for meldung in validate_abox(abox, register):
         errors.append({"code": "abox", "message": meldung})
 
@@ -190,6 +202,12 @@ def main(argv: Optional[List[str]] = None):
         "diskrepanzen_offen": bericht["diskrepanzen_offen"],
         "diskrepanzen_aufgeloest": sum(
             1 for d in abox.diskrepanzen if d.status == "aufgeloest"
+        ),
+        # Vorlaeufige (Agenten-)Aufloesungen tragen Stage 2/3, aber kein
+        # menschliches Gate: hier sichtbar, geblockt wird im P9-Snapshot.
+        "entscheidungen_vorlaeufig": sorted(
+            d.id for d in abox.diskrepanzen
+            if d.entscheidung is not None and d.entscheidung.vorlaeufig
         ),
         "vollstaendig": bericht["vollstaendig"],
     }

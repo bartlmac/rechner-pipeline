@@ -56,7 +56,9 @@ GATE_VERSION = "0.1.0"
 SKALAR_CONTRACT = ("Bxt", "BJB", "BZB", "Pxt")
 
 #: Erwartungs-Skalare, die Parametrierung sind (gegen die Spez geprueft).
-PARAMETER_SKALARE = {"Zins": "zins"}
+#: "Tafel" nennt die BASIS (ohne Unisex-Suffix) — die Pruefung beruecksichtigt
+#: die Ableitungsregel der Spez.
+PARAMETER_SKALARE = {"Zins": "zins", "Tafel": "tafel"}
 
 
 def _lese_names(names_csv: Path) -> Dict[str, str]:
@@ -76,12 +78,21 @@ def _modellpunkt_eingaben(namen: Dict[str, str]) -> Dict[str, Any]:
             f"Names-Manager ohne Modellpunkt-Eingaben {fehlend} — der "
             "Beispiel-Modellpunkt ist nicht ableitbar"
         )
+    def _zahl(name: str, wandler) -> Any:
+        try:
+            return wandler(float(namen[name]))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Names-Manager: Eingabe {name}={namen[name]!r} ist nicht "
+                f"numerisch ({exc})"
+            ) from exc
+
     return {
-        "x": int(float(namen["x"])),
-        "n": int(float(namen["n"])),
-        "t": int(float(namen["t"])),
-        "sum_insured": float(namen["VS"]),
-        "zw": int(float(namen["zw"])),
+        "x": _zahl("x", int),
+        "n": _zahl("n", int),
+        "t": _zahl("t", int),
+        "sum_insured": _zahl("VS", float),
+        "zw": _zahl("zw", int),
         "sex_roh": namen["Sex"],
         "status": namen.get("Status", ""),
         "tarifart": namen.get("Tarifart", ""),
@@ -161,7 +172,43 @@ def main(argv: Optional[List[str]] = None):
 
     from rechner_pipeline.spez.validierung import lade_spez
 
-    spez = lade_spez(fall, args.generation)
+    def _contract_fehler(code: str, message: str):
+        return _finalize(build_result(
+            command="generation_golden", gate=GATE, gate_version=GATE_VERSION,
+            exit_code=Exit.GOLDEN_MASTER,
+            errors=[{"code": code, "message": message}],
+            paths={"fall": str(fall), "spez": str(spez_datei)},
+        ))
+
+    try:
+        spez = lade_spez(fall, args.generation)
+    except Exception as exc:  # Schema-Bruch der Spez ist ein Gate-Befund
+        return _contract_fehler("spez", f"Spez unlesbar: {exc}")
+
+    # Die Spez ist Projektion der A-Box — ohne diese Pruefung koennte eine
+    # editierte Spez eine eigene Wahrheit in den Golden Master tragen.
+    from rechner_pipeline.ontologie.abox import abox_pfad, lade as lade_abox
+
+    if abox_pfad(fall).is_file():
+        try:
+            abox = lade_abox(fall)
+        except Exception as exc:
+            return _contract_fehler("abox", f"A-Box unlesbar: {exc}")
+        from rechner_pipeline.spez.validierung import validate_spez
+
+        spez_fehler = validate_spez(spez, abox)
+        if spez_fehler:
+            return _contract_fehler(
+                "spez_projektion",
+                "Spez ist keine gueltige Projektion der A-Box: "
+                + "; ".join(spez_fehler[:5]),
+            )
+    else:
+        return _contract_fehler(
+            "abox", f"A-Box fehlt ({abox_pfad(fall)}) — ohne A-Box ist die "
+            "Spez nicht als Projektion pruefbar",
+        )
+
     namen = _lese_names(names_csv)
     try:
         eingaben = _modellpunkt_eingaben(namen)
@@ -172,29 +219,49 @@ def main(argv: Optional[List[str]] = None):
     from rechner_pipeline.kern import ModelPoint, Rechenkern
 
     mp_felder: Dict[str, Any] = dict(zelle.model_point)
+    # 21: unbekannte Spez-Felder sind ein Contract-Befund, kein Crash.
+    import dataclasses
+
+    bekannte_mp_felder = {f.name for f in dataclasses.fields(ModelPoint)}
+    fest = {"x", "sex", "n", "t", "sum_insured", "zw"}
+    unbekannt = sorted(set(mp_felder) - (bekannte_mp_felder - fest))
+    if unbekannt:
+        return _contract_fehler(
+            "model_point",
+            f"Spez-Zelle traegt Felder ausserhalb des ModelPoint-Contracts "
+            f"bzw. Kollisionen mit Vertragsfeldern: {unbekannt}",
+        )
     sex = eingaben["sex_roh"]
     if sex.upper() not in ("M", "F"):
         # Unisex-Kennung (z. B. U70): die Tafel der Spez-Zelle ist bereits
         # die abgeleitete Mischtafel (exakter Name gewinnt in der
         # Kern-Aufloesung) — das Geschlecht ist fuer die Sterblichkeit
-        # dann bedeutungslos und wird kanonisch auf "M" gesetzt.
-        sex = "M"
+        # dann bedeutungslos. Kanonisierung VBA-treu: nicht-"M" -> "F".
+        sex = "F"
     mp = ModelPoint(
         x=eingaben["x"], sex=sex, n=eingaben["n"], t=eingaben["t"],
         sum_insured=eingaben["sum_insured"], zw=eingaben["zw"],
         **{k: v for k, v in mp_felder.items()},
     )
-    kern = Rechenkern(mp)
-
-    berechnete_skalare = {
-        "Bxt": kern.gross_premium_rate(),
-        "BJB": kern.gross_annual_premium(),
-        "BZB": kern.gross_payable_premium(),
-        "Pxt": kern.net_premium_rate(),
-    }
+    try:
+        kern = Rechenkern(mp)
+        berechnete_skalare = {
+            "Bxt": kern.gross_premium_rate(),
+            "BJB": kern.gross_annual_premium(),
+            "BZB": kern.gross_payable_premium(),
+            "Pxt": kern.net_premium_rate(),
+        }
+    except Exception as exc:  # Kern-Fehler ist ein GM-Befund MIT Ledger
+        return _contract_fehler("kern", f"Kern-Rechnung scheitert: {exc}")
 
     expected = load_expected(vorverdichtung)
     erwartete_skalare = expected["scalars"].get("Kalkulation", {})
+    # Der GM-Loader floatet alle Skalare (Strings -> None); fuer die
+    # PARAMETER-Pruefungen (Tafel!) brauchen wir die Rohwerte.
+    roh_skalare: Dict[str, Any] = {}
+    roh_pfad = vorverdichtung / "Kalkulation_scalar.json"
+    if roh_pfad.is_file():
+        roh_skalare = json.loads(roh_pfad.read_text(encoding="utf-8"))
     # Erwartungs-Skalare dreiteilen: Rechenergebnis / Parametrierung /
     # nicht zuordenbar (AUSGEWIESEN, nie still verworfen).
     parameter_pruefungen: List[dict] = []
@@ -203,24 +270,45 @@ def main(argv: Optional[List[str]] = None):
     for name, wert in erwartete_skalare.items():
         if name in SKALAR_CONTRACT:
             gefilterte_erwartung[name] = wert
-        elif name in PARAMETER_SKALARE and wert is not None:
+        elif name in PARAMETER_SKALARE:
+            wert = roh_skalare.get(name, wert)
+            if wert is None:
+                uebersprungen.append(name)
+                continue
             feld = PARAMETER_SKALARE[name]
             soll = zelle.model_point.get(feld)
+            if feld == "tafel":
+                # Erwartung nennt die BASIS; die Spez traegt den finalen
+                # Namen (Basis + ggf. Unisex-Ableitung).
+                erwartet_final = (
+                    f"{wert}_{spez.unisex}" if spez.unisex else str(wert)
+                )
+                ok = soll == erwartet_final
+            else:
+                ok = (soll is not None
+                      and round(float(soll), ROUND_DECIMALS)
+                      == round(float(wert), ROUND_DECIMALS))
             parameter_pruefungen.append({
                 "name": name, "feld": feld,
-                "erwartet": wert, "spez": soll,
-                "ok": (soll is not None
-                       and round(float(soll), ROUND_DECIMALS)
-                       == round(float(wert), ROUND_DECIMALS)),
+                "erwartet": wert, "spez": soll, "ok": ok,
             })
         else:
             uebersprungen.append(name)
 
     zeilen_erwartet = expected["tables"].get("Kalkulation")
     anzahl_zeilen = len(zeilen_erwartet[1]) if zeilen_erwartet else 0
-    berechnete_tabelle = [
-        kern.verlaufszeile(k).als_blattzeile() for k in range(anzahl_zeilen)
-    ]
+    if anzahl_zeilen == 0:
+        return _contract_fehler(
+            "coverage",
+            "keine Verlaufswerte-Erwartung in der Vorverdichtung — ein "
+            "Skalar-only-Vergleich waere kein Golden Master",
+        )
+    try:
+        berechnete_tabelle = [
+            kern.verlaufszeile(k).als_blattzeile() for k in range(anzahl_zeilen)
+        ]
+    except Exception as exc:
+        return _contract_fehler("kern", f"Verlaufswerte scheitern: {exc}")
 
     report = compare(
         {"scalars": {"Kalkulation": gefilterte_erwartung},
@@ -230,18 +318,13 @@ def main(argv: Optional[List[str]] = None):
     )
 
     errors: List[dict] = []
-    for zeile in report.scalar_rows:
-        prefix, name, erwartet, berechnet, status = zeile
-        if status not in ("ok", "kein-soll"):
-            errors.append({
-                "code": "skalar",
-                "message": f"{name}: erwartet={erwartet} berechnet={berechnet}",
-            })
+    # deviations traegt Skalar- UND Tabellen-Abweichungen — eine zweite
+    # Schleife ueber scalar_rows wuerde doppelt zaehlen.
     for abweichung in report.deviations:
-        errors.append({"code": "tabelle", "message": abweichung})
+        errors.append({"code": "golden_master", "message": abweichung})
     for spalte in report.unmatched_columns:
         errors.append({
-            "code": "tabelle",
+            "code": "golden_master",
             "message": f"erwartete Spalte nicht zuordenbar: {spalte}",
         })
     for pruefung in parameter_pruefungen:
@@ -259,9 +342,17 @@ def main(argv: Optional[List[str]] = None):
             "message": "Null-Vergleich — nichts verglichen ist nicht bestanden",
         })
 
+    andere_zellen = sorted(
+        z.knoten for z in spez.zellen if z.knoten != zelle.knoten
+    )
     summary = {
         "generation": args.generation,
         "zelle": zelle.knoten,
+        # Ehrlichkeit der Abdeckung: der Quell-Rechner liefert EINEN
+        # Beispiel-Modellpunkt; die uebrigen Zellen sind NICHT
+        # GM-verglichen und stehen hier ausdruecklich.
+        "zellen_gesamt": len(spez.zellen),
+        "zellen_ohne_erwartungswerte": andere_zellen,
         "modellpunkt": {k: eingaben[k] for k in
                         ("x", "n", "t", "sum_insured", "zw")}
         | {"sex": eingaben["sex_roh"], "status": eingaben["status"],
@@ -281,7 +372,13 @@ def main(argv: Optional[List[str]] = None):
                "vorverdichtung": str(vorverdichtung)},
         summary=summary,
         input_hashes=hash_files(
-            [names_csv, spez_datei],
+            [
+                names_csv,
+                spez_datei,
+                vorverdichtung / "Kalkulation_scalar.json",
+                vorverdichtung / "Kalkulation_table_values.csv",
+                Path(__file__).resolve().parent.parent / "kern" / "tafeln.xml",
+            ],
             base=Path(args.repo_root).resolve() if args.repo_root else None,
             missing_ok=True,
         ),

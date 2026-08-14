@@ -18,7 +18,14 @@ from rechner_pipeline.ontologie.aussage import Lesart, Wert
 
 
 class Entscheidung(BaseModel):
-    """Die menschliche Aufloesung einer Diskrepanz (P9-Baustein)."""
+    """Die Aufloesung einer Diskrepanz (P9-Baustein).
+
+    ``vorlaeufig=True`` kennzeichnet eine Arbeits-Aufloesung (z. B. eines
+    Agenten fuer einen Golden-Master-Lauf): sie darf Stage 2/3 tragen,
+    aber KEIN menschliches Gate passieren — der P9-Snapshot verweigert
+    die Abnahme, solange vorlaeufige Entscheidungen existieren. So kann
+    der vorlaeufige Zustand nicht still zum Dauerzustand werden (P2/P4).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -26,6 +33,7 @@ class Entscheidung(BaseModel):
     begruendung: str = Field(min_length=1)
     gewaehlter_wert: Wert
     entschieden_am: str = Field(min_length=1)  # ISO-8601 UTC
+    vorlaeufig: bool = False
 
 
 class Diskrepanz(BaseModel):
@@ -36,7 +44,7 @@ class Diskrepanz(BaseModel):
     id: str = Field(min_length=1)
     knoten: str = Field(min_length=1)
     feld: str = Field(min_length=1)
-    lesarten: List[Lesart] = Field(min_length=2)
+    lesarten: List[Lesart] = Field(min_length=2)   # Lesart selbst ist frozen
     status: Literal["offen", "aufgeloest"] = "offen"
     entscheidung: Optional[Entscheidung] = None
 

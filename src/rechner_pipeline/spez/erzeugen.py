@@ -68,6 +68,18 @@ def _pruefe_vorbedingungen(abox: ABox, gen: Tarifgeneration) -> None:
                     f"{gen.id}/{zelle.id}/{feld}: offene Diskrepanz "
                     f"{aussage.diskrepanz_id}"
                 )
+        # Auch OPTIONALE Parameter duerfen nicht ungeklaert sein: belegt
+        # wird projiziert, nicht_belegt entfaellt bewusst (Kern-Default),
+        # aber mehrdeutig/widerspruechlich still zu verwerfen waere eine
+        # stille Entscheidung (P2/P3).
+        for feld, aussage in zelle.parameter.items():
+            if feld in PFLICHT_PARAMETER:
+                continue
+            if aussage.zustand not in (Zustand.BELEGT, Zustand.NICHT_BELEGT):
+                probleme.append(
+                    f"{gen.id}/{zelle.id}/{feld} (optional): "
+                    f"{aussage.zustand.value}"
+                )
     if gen.unisex is not None and gen.unisex.zustand is not Zustand.BELEGT:
         probleme.append(f"{gen.id}/unisex: {gen.unisex.zustand.value}")
     if probleme:
@@ -109,22 +121,29 @@ def strukturvergleich(
                 "neue Merkmalsdimensionen (nur Parametrierungs-Aufloesung, "
                 "kein Kern-Konzept): " + ", ".join(neue_dimensionen)
             )
-        # Parameter-Aenderungen: je Pflichtfeld gegen die Referenzzelle(n).
-        ref_werte = {
-            feld: {_wert(z, feld) for z in referenz.zellen
-                   if feld in z.parameter}
-            for feld in PFLICHT_PARAMETER
-        }
+        # Parameter-Aenderungen: je Pflichtfeld die WERTEMENGEN beider
+        # Generationen symmetrisch vergleichen (nur belegte Aussagen —
+        # die Referenz kann Luecken haben, aus None urteilt man nicht).
+        # "Geaendert" heisst: mindestens ein Wert der einen Seite hat
+        # keinen toleranz-gleichen Partner auf der anderen.
+        def _belegte_werte(zellen, feld):
+            return [
+                z.parameter[feld].wert for z in zellen
+                if feld in z.parameter
+                and z.parameter[feld].zustand is Zustand.BELEGT
+            ]
+
         for feld in PFLICHT_PARAMETER:
-            neu_werte = {
-                _wert(z, feld) for z in neu.zellen if feld in z.parameter
-            }
-            if not ref_werte.get(feld):
+            neu_werte = _belegte_werte(neu.zellen, feld)
+            ref_w = _belegte_werte(referenz.zellen, feld)
+            if not ref_w or not neu_werte:
                 continue
-            if not any(
-                werte_gleich(a, b)
-                for a in neu_werte for b in ref_werte[feld]
-            ) or len(neu_werte) > 1:
+            symmetrisch = all(
+                any(werte_gleich(a, b) for b in ref_w) for a in neu_werte
+            ) and all(
+                any(werte_gleich(b, a) for a in neu_werte) for b in ref_w
+            )
+            if not symmetrisch:
                 geaenderte.append(feld)
         if geaenderte:
             begruendung.append(

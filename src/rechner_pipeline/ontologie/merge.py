@@ -68,10 +68,14 @@ def merge_aussagen(
 
     # Lesarten nach Wertegleichheit gruppieren (deterministisch, in
     # Reihenfolge der Fragmente — die ist die Quellen-Reihenfolge).
+    # Mitgliedschaft verlangt Gleichheit mit ALLEN Gruppenmitgliedern:
+    # werte_gleich ist an der Toleranzgrenze nicht transitiv, und ein
+    # Wert, der nur zu einem Teil der Gruppe passt, ist ein Konflikt,
+    # keine Bestaetigung.
     gruppen: List[List[Aussage]] = []
     for f in belegte:
         for gruppe in gruppen:
-            if werte_gleich(gruppe[0].wert, f.wert):
+            if all(werte_gleich(mitglied.wert, f.wert) for mitglied in gruppe):
                 gruppe.append(f)
                 break
         else:

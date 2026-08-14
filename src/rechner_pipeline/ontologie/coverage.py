@@ -38,7 +38,11 @@ def coverage_generation(gen: Tarifgeneration) -> Dict[str, Any]:
     """Pflichtfeld-Abdeckung einer Generation, je Zelle und gesamt."""
     arten_je_datei = {q.datei: q.art for q in gen.quellen}
     zellen: Dict[str, Any] = {}
+    # fehlt_in_extraktion ist ein EIGENER Zaehler: "gesucht, nicht da"
+    # (nicht_belegt, aktive Agenten-Aussage) und "nie erwaehnt" (der
+    # gefaehrliche stille Fall) duerfen im Aggregat nicht verschmelzen.
     zaehler = {z.value: 0 for z in Zustand}
+    zaehler["fehlt_in_extraktion"] = 0
     for zelle in gen.zellen:
         felder: Dict[str, Any] = {}
         for feld in PFLICHT_PARAMETER:
@@ -47,7 +51,7 @@ def coverage_generation(gen: Tarifgeneration) -> Dict[str, Any]:
                 # Nicht einmal als nicht_belegt erfasst: die Extraktion
                 # hat das Feld uebersehen — genau der stille Fall.
                 felder[feld] = {"zustand": "fehlt_in_extraktion", "quellen": "-"}
-                zaehler[Zustand.NICHT_BELEGT.value] += 1
+                zaehler["fehlt_in_extraktion"] += 1
                 continue
             felder[feld] = {
                 "zustand": aussage.zustand.value,

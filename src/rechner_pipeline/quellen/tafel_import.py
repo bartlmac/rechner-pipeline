@@ -58,9 +58,22 @@ def lese_tafel_vektoren(tafeln_csv: Path) -> Dict[str, Dict[int, float]]:
                 continue
             m = re.match(r"^\$([A-Z]+)\$(\d+)$", zeile[1])
             if m:
-                zellen[(m.group(1), int(m.group(2)))] = zeile[3]
+                schluessel = (m.group(1), int(m.group(2)))
+                if schluessel in zellen and zellen[schluessel] != zeile[3]:
+                    raise TafelImportFehler(
+                        f"{tafeln_csv.name}: Zelladresse "
+                        f"{m.group(0)} doppelt mit verschiedenen Werten"
+                    )
+                zellen[schluessel] = zeile[3]
 
     spalten = sorted({s for (s, z) in zellen if z == 3 and s != "A"})
+    kopfnamen = [zellen[(s, 3)] for s in spalten]
+    if len(set(kopfnamen)) != len(kopfnamen):
+        doppelt = sorted({n for n in kopfnamen if kopfnamen.count(n) > 1})
+        raise TafelImportFehler(
+            f"{tafeln_csv.name}: doppelte Vektornamen {doppelt} — der "
+            "Gewinner hinge an der Spaltenreihenfolge"
+        )
     alter_zeilen = sorted(z for (s, z) in zellen if s == "A" and z >= 4)
     vektoren: Dict[str, Dict[int, float]] = {}
     for spalte in spalten:
@@ -92,13 +105,23 @@ def leite_unisex_ab(
     }
 
 
-def _lade_bestehende(tafeln_xml: Path) -> Dict[str, Dict[int, float]]:
+def _lade_bestehende(
+    tafeln_xml: Path,
+) -> Tuple[Dict[str, Dict[int, float]], set]:
+    """Alterstafeln (mit Werten) und ALLE vergebenen Tafelnamen.
+
+    Die Namensmenge enthaelt auch Select-Tafeln: eine neue Alterstafel
+    unter dem Namen einer bestehenden Select-Tafel waere sonst ein
+    unbemerktes Namens-Duplikat im XML.
+    """
     import xml.etree.ElementTree as ET
 
     root = ET.fromstring(tafeln_xml.read_text(encoding="utf-8"))
     bestehende: Dict[str, Dict[int, float]] = {}
+    alle_namen: set = set()
     for table in root.findall("table"):
         name = table.get("name")
+        alle_namen.add(name)
         eintraege = {
             int(e.get("age")): float(e.get("qx"))
             for e in table.findall("entry")
@@ -106,7 +129,7 @@ def _lade_bestehende(tafeln_xml: Path) -> Dict[str, Dict[int, float]]:
         }
         if eintraege:
             bestehende[name] = eintraege
-    return bestehende
+    return bestehende, alle_namen
 
 
 def _pruefe_wertgleich(
@@ -139,13 +162,36 @@ def fuege_tafeln_ein(
     Bestands — bestehende Zeilen bleiben byte-identisch, der Diff zeigt
     nur die Ergaenzung).
     """
-    bestehende = _lade_bestehende(tafeln_xml)
+    bestehende, alle_namen = _lade_bestehende(tafeln_xml)
     konflikte: List[str] = []
     einzufuegen: Dict[str, Dict[int, float]] = {}
     for name in sorted(neue):
+        # Vollstaendigkeit: eine Tafel ohne durchgehende Alter 0..MAX_ALTER
+        # landet nicht in den Rechnungsgrundlagen (der Kern wuerde erst
+        # beim Rechnen fail-fasten, die Luecke laege aber dauerhaft im XML).
+        fehlende_alter = sorted(set(range(0, MAX_ALTER + 1)) - set(neue[name]))
+        if fehlende_alter:
+            raise TafelImportFehler(
+                f"Tafel {name!r}: Alter {fehlende_alter[:5]}"
+                f"{'…' if len(fehlende_alter) > 5 else ''} fehlen "
+                f"(erwartet 0..{MAX_ALTER})"
+            )
         if name in bestehende:
             konflikte.extend(_pruefe_wertgleich(name, neue[name], bestehende[name]))
+            mehr = sorted(set(neue[name]) - set(bestehende[name]))
+            if mehr:
+                konflikte.append(
+                    f"Tafel {name!r}: Quelle traegt zusaetzliche Alter "
+                    f"{mehr[:5]}{'…' if len(mehr) > 5 else ''} — eine "
+                    "Tafel-Erweiterung ist ein eigener Vorgang, kein Import"
+                )
             continue  # wertgleich vorhanden: nichts zu tun
+        if name in alle_namen:
+            konflikte.append(
+                f"Tafel {name!r}: Name ist im XML bereits vergeben "
+                "(Select-Tafel) — Namens-Duplikat"
+            )
+            continue
         einzufuegen[name] = neue[name]
     if konflikte:
         raise TafelImportFehler("; ".join(konflikte[:5]))
@@ -234,11 +280,21 @@ def importiere_fuer_spez(
     # Kreuzprobe: Vektoren, die Quelle UND Kern fuehren, muessen wertgleich
     # sein — auch wenn die Spez sie nicht anfordert (stiller Drift der
     # Rechnungsgrundlagen zwischen Generationen waere sonst unsichtbar).
-    bestehende = _lade_bestehende(tafeln_xml)
+    bestehende, _ = _lade_bestehende(tafeln_xml)
     kreuzprobe = sorted(set(vektoren) & set(bestehende))
     konflikte: List[str] = []
     for name in kreuzprobe:
         konflikte.extend(_pruefe_wertgleich(name, vektoren[name], bestehende[name]))
+    # Auch die ABLEITUNGEN gegen einen etwaigen Bestand pruefen — im
+    # dry-run genauso wie scharf (sonst meldet der Trockenlauf
+    # "wertgleich vorhanden", ohne je verglichen zu haben).
+    vorhanden_wertgleich: List[str] = []
+    for name in sorted(set(neue) & set(bestehende)):
+        abweichungen = _pruefe_wertgleich(name, neue[name], bestehende[name])
+        if abweichungen:
+            konflikte.extend(abweichungen)
+        else:
+            vorhanden_wertgleich.append(name)
     if konflikte:
         raise TafelImportFehler("; ".join(konflikte[:5]))
 
@@ -251,7 +307,7 @@ def importiere_fuer_spez(
         "quelle": quelle_datei,
         "angefordert": sorted(neue),
         "eingefuegt": eingefuegt,
-        "bereits_vorhanden_wertgleich": sorted(set(neue) & set(bestehende)),
+        "bereits_vorhanden_wertgleich": vorhanden_wertgleich,
         "kreuzprobe_wertgleich": kreuzprobe,
         "tafeln_xml": str(tafeln_xml),
         "dry_run": dry_run,

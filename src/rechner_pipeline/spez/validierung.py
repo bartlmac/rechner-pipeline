@@ -19,7 +19,7 @@ from typing import List, Set
 
 from rechner_pipeline.ontologie.aussage import Zustand
 from rechner_pipeline.ontologie.merge import werte_gleich
-from rechner_pipeline.ontologie.tbox import ABox
+from rechner_pipeline.ontologie.tbox import ABox, PFLICHT_PARAMETER
 from rechner_pipeline.spez.schema import TarifSpez
 
 SPEZ_DATEI = "spez.json"
@@ -73,10 +73,20 @@ def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
         return fehler
 
     ableitungen = {a.name: a for a in spez.tafel_ableitungen}
+    benutzte_ableitungen: set = set()
     for zid, spez_zelle in sorted(spez_zellen.items()):
         abox_zelle = abox_zellen[zid]
         if spez_zelle.knoten != f"{gen.id}/{zid}":
             fehler.append(f"{zid}: Knoten {spez_zelle.knoten!r} falsch gebaut")
+        # Rueckrichtung (Vollstaendigkeit): jedes Pflichtfeld der T-Box
+        # muss in der Spez stehen — ein geloeschtes Feld liesse den Kern
+        # sonst still mit seinem Default rechnen.
+        for pflicht in PFLICHT_PARAMETER:
+            if pflicht not in spez_zelle.model_point:
+                fehler.append(
+                    f"{gen.id}/{zid}/{pflicht}: Pflichtfeld fehlt in der "
+                    "Spez — der Kern wuerde still mit dem Default rechnen"
+                )
         for feld, wert in spez_zelle.model_point.items():
             aussage = abox_zelle.parameter.get(feld)
             if aussage is None or aussage.zustand is not Zustand.BELEGT:
@@ -96,11 +106,23 @@ def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
                         f"{gen.id}/{zid}/tafel: Spez {wert!r}, erwartet "
                         f"{erwartet!r} (A-Box-Basis {aussage.wert!r})"
                     )
-                elif spez.unisex and wert not in ableitungen:
-                    fehler.append(
-                        f"{gen.id}/{zid}/tafel: Unisex-Tafel {wert!r} ohne "
-                        "Ableitungsregel in der Spez"
-                    )
+                elif spez.unisex:
+                    if wert not in ableitungen:
+                        fehler.append(
+                            f"{gen.id}/{zid}/tafel: Unisex-Tafel {wert!r} "
+                            "ohne Ableitungsregel in der Spez"
+                        )
+                    else:
+                        benutzte_ableitungen.add(wert)
+                        ableitung = ableitungen[wert]
+                        basis = str(aussage.wert)
+                        if (ableitung.basis_m != f"{basis}_M"
+                                or ableitung.basis_f != f"{basis}_F"):
+                            fehler.append(
+                                f"Tafel-Ableitung {wert}: Basen "
+                                f"{ableitung.basis_m}/{ableitung.basis_f} "
+                                f"passen nicht zur A-Box-Basis {basis!r}"
+                            )
             elif not werte_gleich(wert, aussage.wert):
                 fehler.append(
                     f"{gen.id}/{zid}/{feld}: Spez {wert!r} != A-Box "
@@ -108,6 +130,11 @@ def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
                 )
 
     for ableitung in spez.tafel_ableitungen:
+        if ableitung.name not in benutzte_ableitungen:
+            fehler.append(
+                f"Tafel-Ableitung {ableitung.name}: keine Zelle nutzt sie "
+                "(verwaiste Ableitung)"
+            )
         erwartet_anteil = (
             int(spez.unisex[1:]) / 100.0 if spez.unisex else None
         )
