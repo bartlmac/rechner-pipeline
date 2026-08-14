@@ -50,6 +50,16 @@ _FELD_LABELS = {
 }
 
 
+def _md(wert) -> str:
+    """Zellinhalt Markdown-tabellensicher machen (Pipes, Zeilenumbrueche).
+
+    Werte und Begruendungen stammen aus Quellen und Agenten — ein ``|``
+    oder Zeilenumbruch darin wuerde die G-1-Tabellen zerlegen.
+    """
+    text = str(wert)
+    return text.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+
 def fachspez_pfad(fall: Path, generation: str) -> Path:
     name = generation.replace("/", "-")
     return fall / "abgeleitet" / "fachspez" / f"{name}.md"
@@ -145,9 +155,14 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
     z.append("")
     for zelle in spez.zellen:
         abox_zelle = next(
-            az for az in gen.zellen
-            if f"{gen.id}/{az.id}" == zelle.knoten
+            (az for az in gen.zellen
+             if f"{gen.id}/{az.id}" == zelle.knoten), None,
         )
+        if abox_zelle is None:
+            raise ValueError(
+                f"Fachspez: Spez-Zelle {zelle.knoten!r} hat keine "
+                "A-Box-Entsprechung — erst validate_spez klaeren"
+            )
         titel = ", ".join(
             f"{k}={v}" for k, v in sorted(zelle.auspraegungen.items())
         ) or "einheitlich (keine Differenzierung)"
@@ -167,12 +182,12 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
             wert = zelle.model_point[feld]
             if aussage is not None and aussage.zustand is Zustand.BELEGT:
                 z.append(
-                    f"| {label} (`{feld}`) | {wert} "
+                    f"| {label} (`{feld}`) | {_md(wert)} "
                     f"| {_quellenlage(aussage, arten)} "
-                    f"| {_fundstellen(aussage)} |"
+                    f"| {_md(_fundstellen(aussage))} |"
                 )
             else:
-                z.append(f"| {label} (`{feld}`) | {wert} | ? | ? |")
+                z.append(f"| {label} (`{feld}`) | {_md(wert)} | ? | ? |")
         z.append("")
 
     z.append("## 6 Coverage (Pflichtumfang der T-Box)")
@@ -191,7 +206,8 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
     z.append("## 7 Diskrepanzen zwischen den Quellen")
     z.append("")
     relevante = [
-        d for d in abox.diskrepanzen if d.knoten.startswith(gen.id)
+        d for d in abox.diskrepanzen
+        if d.knoten == gen.id or d.knoten.startswith(gen.id + "/")
     ]
     if not relevante:
         z.append("Keine.")
@@ -200,14 +216,14 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
         z.append("|---|---|---|---|")
         for d in relevante:
             lesarten = " vs. ".join(
-                f"{l.wert} ({_quellenlage(l, arten)})" for l in d.lesarten
+                f"{_md(l.wert)} ({_quellenlage(l, arten)})" for l in d.lesarten
             )
             if d.entscheidung is None:
                 entscheid = "OFFEN"
             else:
                 e = d.entscheidung
                 entscheid = (
-                    f"{e.gewaehlter_wert} — {e.entscheider}"
+                    f"{_md(e.gewaehlter_wert)} — {_md(e.entscheider)}"
                     + (" **[VORLAEUFIG — G-1-Entscheidung steht aus]**"
                        if e.vorlaeufig else "")
                 )
@@ -260,7 +276,7 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
         z.append("| Quellname | Zielfeld |")
         z.append("|---|---|")
         for name in sorted(gen.quellnamen):
-            z.append(f"| {name} | `{gen.quellnamen[name]}` |")
+            z.append(f"| {_md(name)} | `{_md(gen.quellnamen[name])}` |")
     else:
         z.append("Keines erfasst.")
     z.append("")

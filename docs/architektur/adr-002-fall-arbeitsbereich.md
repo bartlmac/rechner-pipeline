@@ -23,9 +23,17 @@ Arbeitsbereich mit zwei strikt getrennten Zonen:
   fall.json                  faelle/ im Repo ist nur der gitignorierte
   eingang.json               Default fuer lokale Demo-Faelle
   eingang/                   registrierte Quellen — NICHT regenerierbar
+  entscheide/                P9-Snapshots menschlicher Gates — NICHT
+                             regenerierbar (wie der Eingang)
   abgeleitet/                alles Regenerierbare
     info_from_excel/  generated/  diagnostics/  berichte/
+    abox/  spez/  fachspez/
 ```
+
+Einschraenkung in v0.1: ``abgeleitet/abox/abox.json`` traegt nach dem
+Gate G-1 auch die menschlichen Diskrepanz-Entscheidungen und ist damit
+nicht mehr frei regenerierbar — bis die Entscheidungs-Wiederanwendung
+aus den P9-Snapshots gebaut ist, gilt: abox.json nicht loeschen.
 
 - **Eingang:** Quellen werden registriert (`fall registrieren`) —
   unter ihrem Namen schreibgeschuetzt abgelegt, mit SHA-256, Herkunft

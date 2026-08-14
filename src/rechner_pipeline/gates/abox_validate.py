@@ -192,7 +192,29 @@ def main(argv: Optional[List[str]] = None):
             ),
         })
 
+    # Deterministischer Rueck-Check LLM-gelesener Formel-Staffeln (P4):
+    # nur ausfuehrbar, wo die Vorverdichtung des Falls vorliegt; der
+    # Pruefumfang steht im Summary — 0 geprueft ist sichtbar, nicht gruen.
+    from rechner_pipeline.quellen.formeln import pruefe_ratzu_staffeln
+
+    formel_checks: Dict[str, object] = {}
+    for gen in abox.generationen:
+        gen_name = gen.id.rsplit("/", 1)[-1].upper()
+        csv_pfad = (fall / "abgeleitet" / "vorverdichtung"
+                    / f"xlsm-{gen_name}" / "Kalkulation.csv")
+        if not csv_pfad.is_file():
+            # Keine Vorverdichtung im Fall (z. B. synthetische A-Box):
+            # nicht pruefbar ist ein AUSGEWIESENER Zustand, kein Fehler
+            # und kein stilles Gruen.
+            formel_checks[gen.id] = "nicht_pruefbar"
+            continue
+        check_fehler, geprueft = pruefe_ratzu_staffeln(fall, gen.id)
+        formel_checks[gen.id] = geprueft
+        for meldung in check_fehler:
+            errors.append({"code": "formel_check", "message": meldung})
+
     summary: Dict[str, object] = {
+        "formel_checks_geprueft": formel_checks,
         "generationen": [g.id for g in abox.generationen],
         "zellen": sum(len(g.zellen) for g in abox.generationen),
         "belegt_quoten": {

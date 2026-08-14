@@ -29,17 +29,28 @@ def test_if_staffel_parser_liest_prozent_und_default():
 def test_if_staffel_parser_ist_fail_fast():
     with pytest.raises(FormelCheckFehler, match="erwartet 'zw'"):
         lese_if_staffel("=IF(alter=2,2%,0)", "zw")
-    with pytest.raises(FormelCheckFehler, match="keine IF-Staffel"):
+    with pytest.raises(FormelCheckFehler, match="IF-Staffel"):
         lese_if_staffel("=A1*B1", "zw")
     with pytest.raises(FormelCheckFehler, match="doppelt"):
         lese_if_staffel("=IF(zw=2,2%,IF(zw=2,3%,0))", "zw")
     with pytest.raises(FormelCheckFehler, match="Default"):
-        lese_if_staffel("=IF(zw=2,2%,IF(zw=4,3%", "zw")
+        lese_if_staffel("=IF(zw=2,2%,IF(zw=4,3%,abc", "zw")
+    # Wrapper-/Praefix-Formeln werden NICHT still als Staffel gelesen:
+    with pytest.raises(FormelCheckFehler, match="beginnt nicht mit IF"):
+        lese_if_staffel("=2*IF(zw=2,2%,0)", "zw")
+    with pytest.raises(FormelCheckFehler, match="nicht vollstaendig"):
+        lese_if_staffel("=IF(zw=2,2%,IF(OR(zw=4),3%,0))", "zw")
+    with pytest.raises(FormelCheckFehler, match="unparsebarer Zahlwert"):
+        lese_if_staffel("=IF(zw=2,2.3.4,0)", "zw")
 
 
 @pytest.mark.skipif(not FALL.is_dir(), reason="kein Fall-Arbeitsbereich")
 def test_ratzu_extraktion_des_falls_haelt_dem_rueckcheck_stand():
     """Die LLM-gelesenen Staffeln (18 Werte: 3 zw x 6 Zellen) stimmen
     mit den deterministisch geparsten Formeln ueberein."""
-    assert pruefe_ratzu_staffeln(FALL, "klv/tg2015") == []
-    assert pruefe_ratzu_staffeln(FALL, "klv/tg2012") == []
+    fehler, geprueft = pruefe_ratzu_staffeln(FALL, "klv/tg2015")
+    assert fehler == []
+    assert geprueft == 18                       # 3 zw x 6 Zellen
+    # Auch TG2012 fuehrt eine Staffel-Formel (eine Zelle, 3 zw-Werte):
+    fehler, geprueft = pruefe_ratzu_staffeln(FALL, "klv/tg2012")
+    assert fehler == [] and geprueft == 3

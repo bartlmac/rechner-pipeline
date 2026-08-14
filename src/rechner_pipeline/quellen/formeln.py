@@ -32,9 +32,12 @@ class FormelCheckFehler(ValueError):
 
 
 def _zahl(roh: str) -> float:
-    if roh.endswith("%"):
-        return float(roh[:-1]) / 100.0
-    return float(roh)
+    try:
+        if roh.endswith("%"):
+            return float(roh[:-1]) / 100.0
+        return float(roh)
+    except ValueError as exc:
+        raise FormelCheckFehler(f"unparsebarer Zahlwert {roh!r}") from exc
 
 
 def lese_if_staffel(formel: str, variable: str) -> Tuple[Dict[int, float], float]:
@@ -43,10 +46,22 @@ def lese_if_staffel(formel: str, variable: str) -> Tuple[Dict[int, float], float
     Rueckgabe: (``{schluessel: wert}``, Default-Wert). Fail-fast, wenn
     die Formel eine andere Variable prueft oder die Form nicht passt.
     """
+    # Streng: die Formel MUSS mit der Staffel beginnen — Praefix- oder
+    # Wrapper-Formeln (=2*IF(...), =ROUND(IF(...))) wuerden sonst still
+    # als reine Staffel gelesen.
+    rumpf = formel.lstrip("=").lstrip()
+    if not rumpf.startswith("IF("):
+        raise FormelCheckFehler(
+            f"keine reine IF-Staffel (beginnt nicht mit IF): {formel!r}"
+        )
     zweige = list(_ZWEIG.finditer(formel))
     if not zweige:
         raise FormelCheckFehler(
             f"keine IF-Staffel ueber {variable!r} erkennbar: {formel!r}"
+        )
+    if rumpf.upper().count("IF(") != len(zweige):
+        raise FormelCheckFehler(
+            f"IF-Zweige nicht vollstaendig parsebar: {formel!r}"
         )
     staffel: Dict[int, float] = {}
     for zweig in zweige:
@@ -79,27 +94,31 @@ def _lese_zellen(kalkulation_csv: Path) -> Dict[str, Tuple[str, str]]:
 
 def pruefe_ratzu_staffeln(
     fall: Path, generation: str
-) -> List[str]:
+) -> Tuple[List[str], int]:
     """A-Box-Ratenzuschlaege gegen die IF-Formeln nachpruefen (leer = ok).
 
     Liest je Tarifart-Spalte der Parameter-Matrix die ratzu-Formel aus
     der Vorverdichtung, parst die Staffel deterministisch und vergleicht
-    mit den ``ratzu_zw*``-Aussagen der A-Box-Zellen. Generationen ohne
-    Formel-Staffel (TG2012: Festwerte) melden nichts.
+    mit den ``ratzu_zw*``-Aussagen der A-Box-Zellen. Rueckgabe:
+    ``(fehler, geprueft)`` — der Zaehler unterscheidet "alles gruen"
+    von "nichts war pruefbar" (Generationen mit Festwerten statt
+    Staffel-Formeln liefern ``geprueft == 0``; der Aufrufer entscheidet,
+    was das bedeutet).
     """
     from rechner_pipeline.ontologie.abox import lade
     from rechner_pipeline.ontologie.aussage import Zustand
+    from rechner_pipeline.ontologie.merge import werte_gleich
 
     gen_name = generation.rsplit("/", 1)[-1].upper()
     csv_pfad = (fall / "abgeleitet" / "vorverdichtung"
                 / f"xlsm-{gen_name}" / "Kalkulation.csv")
     if not csv_pfad.is_file():
-        return [f"{generation}: Vorverdichtung fehlt ({csv_pfad})"]
+        return [f"{generation}: Vorverdichtung fehlt ({csv_pfad})"], 0
     zellen = _lese_zellen(csv_pfad)
     abox = lade(fall)
     gen = next((g for g in abox.generationen if g.id == generation), None)
     if gen is None:
-        return [f"{generation}: nicht in der A-Box"]
+        return [f"{generation}: nicht in der A-Box"], 0
 
     fehler: List[str] = []
     geprueft = 0
@@ -135,13 +154,10 @@ def pruefe_ratzu_staffeln(
                         f"{gen.id}/{zelle.id}/{feld}: Formel {adresse} "
                         f"kennt zw={zw} nicht"
                     )
-                elif staffel[zw] != aussage.wert:
+                elif not werte_gleich(staffel[zw], aussage.wert):
                     fehler.append(
                         f"{gen.id}/{zelle.id}/{feld}: Agent las "
                         f"{aussage.wert!r}, Formel {adresse} sagt "
                         f"{staffel[zw]!r}"
                     )
-    if geprueft == 0 and not fehler:
-        # Ehrlich ausweisen statt still gruen: nichts war pruefbar.
-        return []
-    return fehler
+    return fehler, geprueft

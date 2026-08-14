@@ -44,7 +44,7 @@ def baue_index(src: Path) -> Dict[str, object]:
         rel = str(pfad.relative_to(src.parent))
         try:
             baum = ast.parse(pfad.read_text(encoding="utf-8"))
-        except SyntaxError:
+        except (SyntaxError, UnicodeDecodeError):
             unannotiert.append(rel)
             continue
         doc = ast.get_docstring(baum) or ""
@@ -54,7 +54,9 @@ def baue_index(src: Path) -> Dict[str, object]:
             continue
         for zeile in treffer:
             for knoten in [k.strip() for k in zeile.split(",") if k.strip()]:
-                knoten_zu_modulen.setdefault(knoten, []).append(rel)
+                module = knoten_zu_modulen.setdefault(knoten, [])
+                if rel not in module:          # Doppel-Annotation dedupen
+                    module.append(rel)
     module_zu_knoten = {
         modul: sorted(
             k for k, module in knoten_zu_modulen.items() if modul in module
@@ -89,7 +91,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"code_index: kein Verzeichnis: {src}", file=sys.stderr)
         return 2
     index = baue_index(src)
-    drift = drift_report(index, ["klv"])
+    # Familien aus der T-Box ableiten, nicht hart kodieren.
+    import typing
+
+    from rechner_pipeline.ontologie.tbox import Tarifgeneration
+
+    familien = list(typing.get_args(
+        Tarifgeneration.model_fields["familie"].annotation
+    ))
+    drift = drift_report(index, familien)
     print(json.dumps(
         {**index, "drift": drift}, ensure_ascii=False, indent=2,
         sort_keys=True,

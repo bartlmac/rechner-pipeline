@@ -79,6 +79,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     entschieden: List[str] = []
     try:
         if args.alle_vorlaeufigen:
+            if args.diskrepanz or args.wert is not None:
+                print("entscheide: --alle-vorlaeufigen schliesst "
+                      "--diskrepanz/--wert aus (still ignorieren waere "
+                      "eine halbe Anweisung)", file=sys.stderr)
+                return 2
             if not args.quelle:
                 print("entscheide: --alle-vorlaeufigen braucht --quelle",
                       file=sys.stderr)
@@ -134,6 +139,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         "verbleibend_vorlaeufig": sorted(
             d.id for d in abox.diskrepanzen
             if d.entscheidung is not None and d.entscheidung.vorlaeufig
+        ),
+        # OFFENE Diskrepanzen ebenfalls ausweisen: --alle-vorlaeufigen
+        # beruehrt sie nicht, und der Bediener soll nicht "alles
+        # erledigt" lesen, wenn Ungeloestes bleibt.
+        "verbleibend_offen": sorted(
+            d.id for d in abox.diskrepanzen if d.status == "offen"
         ),
     }, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
