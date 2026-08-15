@@ -91,6 +91,36 @@ def validate_abox(
                         f"{gen.id}: unisex {wert!r} ist kein 'U<0..100>'"
                     )
 
+    # Fachliche Wertebereiche (P5-Minimum; Systempruefung Befund 19).
+    # Grobe Plausibilitaet, kein Tarifwissen: Verletzungen sind fast
+    # sicher Extraktions- oder Einheitenfehler (Prozent vs. Promille).
+    _BEREICHE = {
+        "zins": (0.0, 0.10), "alpha": (0.0, 0.10), "beta1": (0.0, 0.20),
+        "gamma1": (0.0, 0.05), "gamma2": (0.0, 0.05), "gamma3": (0.0, 0.05),
+        "stoab_satz": (0.0, 0.10),
+    }
+    for gen in abox.generationen:
+        for zelle in gen.zellen:
+            werte = {
+                feld: a.wert for feld, a in zelle.parameter.items()
+                if a.zustand is Zustand.BELEGT
+                and isinstance(a.wert, (int, float))
+                and not isinstance(a.wert, bool)
+            }
+            for feld, (lo, hi) in _BEREICHE.items():
+                if feld in werte and not (lo <= werte[feld] <= hi):
+                    fehler.append(
+                        f"{gen.id}/{zelle.id}/{feld}: {werte[feld]!r} "
+                        f"ausserhalb des plausiblen Bereichs [{lo}, {hi}] "
+                        "— Einheiten pruefen (Prozent/Promille)"
+                    )
+            if ("stoab_min" in werte and "stoab_max" in werte
+                    and werte["stoab_min"] > werte["stoab_max"]):
+                fehler.append(
+                    f"{gen.id}/{zelle.id}: stoab_min > stoab_max "
+                    f"({werte['stoab_min']} > {werte['stoab_max']})"
+                )
+
     for d in abox.diskrepanzen:
         if d.status == "offen" and d.id not in referenzierte:
             fehler.append(

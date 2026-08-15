@@ -55,6 +55,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--fall", required=True)
     parser.add_argument("--entscheider", required=True)
     parser.add_argument("--begruendung", required=True)
+    parser.add_argument(
+        "--rolle", required=True, choices=["mensch"],
+        help="Endgueltige Aufloesungen sind Menschen vorbehalten; "
+        "Agenten nutzen die API mit vorlaeufig=True.",
+    )
     parser.add_argument("--diskrepanz", default=None,
                         help="ID (<knoten>#<feld>); alternativ --alle-vorlaeufigen.")
     parser.add_argument("--wert", default=None,
@@ -166,9 +171,14 @@ def _ersetze_vorlaeufig(abox, diskrepanz_id: str) -> None:
                     f"{d.entscheidung.entscheider if d.entscheidung else '?'} "
                     "— wird nie ueberschrieben"
                 )
-            abox.diskrepanzen[i] = d.model_copy(
-                update={"status": "offen", "entscheidung": None}
-            )
+            abox.diskrepanzen[i] = d.model_copy(update={
+                "status": "offen",
+                "entscheidung": None,
+                # Die ersetzte vorlaeufige Entscheidung bleibt Teil der
+                # Nachweiskette (append-only), sie wird nie vernichtet.
+                "entscheidungs_historie": [*d.entscheidungs_historie,
+                                           d.entscheidung],
+            })
         return
     raise BefuellungsFehler(f"Diskrepanz {diskrepanz_id!r} unbekannt")
 

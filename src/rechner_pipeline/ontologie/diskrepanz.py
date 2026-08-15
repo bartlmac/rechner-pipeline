@@ -47,6 +47,10 @@ class Diskrepanz(BaseModel):
     lesarten: List[Lesart] = Field(min_length=2)   # Lesart selbst ist frozen
     status: Literal["offen", "aufgeloest"] = "offen"
     entscheidung: Optional[Entscheidung] = None
+    #: Append-only: ersetzte (vorlaeufige) Entscheidungen bleiben
+    #: nachvollziehbar — der Weg vorlaeufig -> endgueltig ist Teil der
+    #: Nachweiskette, kein Overwrite (Systempruefung Befund 24).
+    entscheidungs_historie: List[Entscheidung] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _konsistenz(self) -> "Diskrepanz":

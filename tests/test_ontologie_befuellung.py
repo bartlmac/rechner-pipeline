@@ -59,7 +59,7 @@ def test_uebereinstimmende_quellen_vereinen_belege(fall: Path):
     rechner = _fragment("rechner.xlsm", "tarifrechner", zins=0.0175, beta1=0.03)
     gen, diskrepanzen = baue_generation(
         "tg2012", [meldung, rechner], _register(fall),
-        {0: "agent-meldung", 1: "agent-rechner"}, ZEIT,
+        {0: "test/agent-meldung@abc1234", 1: "test/agent-rechner@abc1234"}, ZEIT,
     )
     assert not diskrepanzen
     zins = gen.zellen[0].parameter["zins"]
@@ -67,14 +67,14 @@ def test_uebereinstimmende_quellen_vereinen_belege(fall: Path):
     # Provenienz traegt den echten Hash aus dem Eingang-Register:
     register_hashes = {q["datei"]: q["sha256"] for q in _register(fall)["quellen"]}
     assert zins.provenienz[0].quelle_sha256 == register_hashes["meldung.docx"]
-    assert zins.provenienz[0].akteur == "agent-meldung"
+    assert zins.provenienz[0].akteur == "test/agent-meldung@abc1234"
 
 
 def test_widerspruch_wird_diskrepanz_nicht_overwrite(fall: Path):
     meldung = _fragment("meldung.docx", "tarifmeldung", beta1=0.025)
     rechner = _fragment("rechner.xlsm", "tarifrechner", beta1=0.03)
     gen, diskrepanzen = baue_generation(
-        "tg2012", [meldung, rechner], _register(fall), {0: "a", 1: "b"}, ZEIT,
+        "tg2012", [meldung, rechner], _register(fall), {0: "test/extraktion@abc1234", 1: "test/extraktion-b@abc1234"}, ZEIT,
     )
     [d] = diskrepanzen
     assert d.status == "offen"
@@ -88,7 +88,7 @@ def test_gesucht_nicht_gefunden_ist_nicht_belegt(fall: Path):
     rechner = _fragment("rechner.xlsm", "tarifrechner", zins=0.0175)
     rechner.nicht_belegt = ["stoab_satz"]
     gen, _ = baue_generation(
-        "tg2012", [rechner], _register(fall), {0: "a"}, ZEIT,
+        "tg2012", [rechner], _register(fall), {0: "test/extraktion@abc1234"}, ZEIT,
     )
     assert gen.zellen[0].parameter["stoab_satz"].zustand is Zustand.NICHT_BELEGT
     # Nie erwaehnte Felder stehen NICHT drin (Coverage: fehlt_in_extraktion):
@@ -98,7 +98,7 @@ def test_gesucht_nicht_gefunden_ist_nicht_belegt(fall: Path):
 def test_unregistrierte_quelle_ist_fail_fast(fall: Path):
     fremd = _fragment("fremd.xlsm", "tarifrechner", zins=0.01)
     with pytest.raises(BefuellungsFehler, match="nicht registriert"):
-        baue_generation("tg2012", [fremd], _register(fall), {0: "a"}, ZEIT)
+        baue_generation("tg2012", [fremd], _register(fall), {0: "test/extraktion@abc1234"}, ZEIT)
 
 
 def test_dimensions_konflikt_ist_kein_merge_fall(fall: Path):
@@ -112,14 +112,14 @@ def test_dimensions_konflikt_ist_kein_merge_fall(fall: Path):
         auspraegungen=["einzel", "kollektiv", "haus"])]
     b.zellen[0].auspraegungen = {"tarifart": "einzel"}
     with pytest.raises(BefuellungsFehler, match="Merkmalsraum-Konflikte"):
-        baue_generation("tg2012", [a, b], _register(fall), {0: "a", 1: "b"}, ZEIT)
+        baue_generation("tg2012", [a, b], _register(fall), {0: "test/extraktion@abc1234", 1: "test/extraktion-b@abc1234"}, ZEIT)
 
 
 def test_aufloesung_waehlt_lesart_und_zieht_aussage_nach(fall: Path):
     meldung = _fragment("meldung.docx", "tarifmeldung", beta1=0.025)
     rechner = _fragment("rechner.xlsm", "tarifrechner", beta1=0.03)
     abox = baue_abox(
-        str(fall), [meldung, rechner], _register(fall), ["a", "b"], ZEIT,
+        str(fall), [meldung, rechner], _register(fall), ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT,
     )
     [d] = abox.diskrepanzen
     with pytest.raises(BefuellungsFehler, match="keine der Lesarten"):
@@ -151,10 +151,14 @@ def _gate(fall: Path):
 def test_gate_gruen_bei_vollstaendiger_abox(fall: Path):
     from rechner_pipeline.ontologie.tbox import PFLICHT_PARAMETER
 
-    voll = {feld: 1.0 for feld in PFLICHT_PARAMETER}
-    voll["tafel"] = "DAV2008_T"
+    voll = {
+        "zins": 0.0175, "tafel": "DAV2008_T", "alpha": 0.025, "beta1": 0.03,
+        "gamma1": 0.001, "gamma2": 0.00125, "gamma3": 0.0025,
+        "policy_fee": 12.0, "stoab_satz": 0.005, "stoab_min": 50.0,
+        "stoab_max": 150.0, "min_alter_flex": 60, "min_rlz_flex": 5,
+    }
     rechner = _fragment("rechner.xlsm", "tarifrechner", **voll)
-    abox = baue_abox(str(fall), [rechner], _register(fall), ["a"], ZEIT)
+    abox = baue_abox(str(fall), [rechner], _register(fall), ["test/extraktion@abc1234"], ZEIT)
     speichere(abox, fall)
     result = _gate(fall)
     assert result.exit_code == 0
@@ -167,7 +171,7 @@ def test_gate_blockt_luecken_und_offene_diskrepanzen(fall: Path):
     meldung = _fragment("meldung.docx", "tarifmeldung", beta1=0.025)
     rechner = _fragment("rechner.xlsm", "tarifrechner", beta1=0.03)
     abox = baue_abox(
-        str(fall), [meldung, rechner], _register(fall), ["a", "b"], ZEIT,
+        str(fall), [meldung, rechner], _register(fall), ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT,
     )
     speichere(abox, fall)
     result = _gate(fall)
@@ -179,7 +183,7 @@ def test_gate_blockt_luecken_und_offene_diskrepanzen(fall: Path):
 
 def test_gate_blockt_manipulierten_eingang(fall: Path):
     rechner = _fragment("rechner.xlsm", "tarifrechner", zins=0.0175)
-    abox = baue_abox(str(fall), [rechner], _register(fall), ["a"], ZEIT)
+    abox = baue_abox(str(fall), [rechner], _register(fall), ["test/extraktion@abc1234"], ZEIT)
     # A-Box behauptet einen anderen Quell-Hash als das Register:
     abox.generationen[0].quellen[0] = abox.generationen[0].quellen[0].model_copy(
         update={"sha256": "f" * 64}
@@ -205,7 +209,7 @@ def test_quellnamen_divergenz_wird_vereint_nicht_entschieden(fall: Path):
     b = _fragment("rechner.xlsm", "tarifrechner", zins=0.0175)
     b.quellnamen = {"StoAb": "parameter:stoab_satz|min|max", "k": "parameter:policy_fee"}
     gen, _ = baue_generation(
-        "tg2012", [a, b], _register(fall), {0: "x", 1: "y"}, ZEIT,
+        "tg2012", [a, b], _register(fall), {0: "test/extraktion@abc1234", 1: "test/extraktion-b@abc1234"}, ZEIT,
     )
     assert gen.quellnamen["k"] == "parameter:policy_fee"
     assert set(gen.quellnamen["StoAb"].split(" | ")) == {

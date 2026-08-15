@@ -144,6 +144,12 @@ def main(argv: Optional[List[str]] = None):
                         choices=["angenommen", "abgelehnt"])
     parser.add_argument("--entscheider", default=None)
     parser.add_argument("--begruendung", default=None)
+    parser.add_argument(
+        "--rolle", default=None, choices=["mensch", "agent"],
+        help="Wer entscheidet. Agenten duerfen NUR ablehnen "
+        "(dokumentierter Zwischenstand) — die Annahme eines "
+        "menschlichen Gates ist Menschen vorbehalten.",
+    )
     parser.add_argument("--repo-root", dest="repo_root", default=".")
     parser.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None)
     add_request_json_arg(parser)
@@ -195,6 +201,15 @@ def main(argv: Optional[List[str]] = None):
                       + ", ".join(GUELTIGE_GATES) + ")")
     if args.entscheid not in ("angenommen", "abgelehnt"):
         return _usage(f"unbekannter Entscheid {args.entscheid!r}")
+    if args.rolle not in ("mensch", "agent"):
+        return _usage("--rolle mensch|agent ist erforderlich (Agenten "
+                      "koennen nur ablehnen)")
+    if args.rolle == "agent" and args.entscheid == "angenommen":
+        return _usage(
+            "Rolle 'agent' darf nicht annehmen — die Annahme eines "
+            "menschlichen Gates ist Menschen vorbehalten (P2/P4); "
+            "Agenten dokumentieren Zwischenstaende als Ablehnung"
+        )
     if not (fall / "eingang.json").is_file():
         return _usage(f"kein Fall-Arbeitsbereich: {fall}")
 
@@ -266,6 +281,67 @@ def main(argv: Optional[List[str]] = None):
                 "rechner_pipeline.ontologie.entscheide)",
             )
 
+        # Gate-Vorbedingungen (Systempruefung Befund 1): die Annahme
+        # RECHNET ihre Voraussetzungen — sie glaubt sie nicht.
+        abox_hash = _sha256_datei(abox_pfad(fall))
+        diagnostics = fall / "abgeleitet" / "diagnostics"
+
+        def _ledger_gruen_und_verankert(name: str, anzeige: str):
+            pfad = diagnostics / f"{name}.gate.json"
+            if not pfad.is_file():
+                return f"{anzeige} ist nie gelaufen ({pfad.name} fehlt)"
+            daten = json.loads(pfad.read_text(encoding="utf-8"))
+            if daten.get("status") != "passed":
+                return f"{anzeige} ist nicht gruen (status={daten.get('status')!r})"
+            hashes = set((daten.get("input_hashes") or {}).values())
+            if abox_hash not in hashes:
+                return (
+                    f"{anzeige} lief auf einem ANDEREN A-Box-Stand "
+                    "(input_hash weicht ab) — Gate neu fahren"
+                )
+            return None
+
+        problem = _ledger_gruen_und_verankert(
+            "abox_validate", "Gate O1 (abox_validate)"
+        )
+        if problem:
+            return _sperre("vorbedingung", f"Annahme verweigert: {problem}")
+
+        if args.gate == "G-2":
+            problem = _ledger_gruen_und_verankert(
+                "generation_golden", "Gate O3 (generation_golden)"
+            )
+            if problem:
+                return _sperre("vorbedingung", f"Annahme verweigert: {problem}")
+            # Geltender G-1-Annahme-Snapshot auf DIESEM A-Box-Stand.
+            verzeichnis_g1 = entscheide_verzeichnis(fall)
+            g1_snapshots = {}
+            for pfad in sorted(verzeichnis_g1.glob("G-1-*.json")):
+                daten = json.loads(pfad.read_text(encoding="utf-8"))
+                g1_snapshots[daten.get("snapshot_sha256", pfad.name)] = daten
+            referenziert_g1 = {
+                v for d in g1_snapshots.values()
+                for v in d.get("vorgaenger", [])
+            }
+            geltende_g1 = [
+                d for sha, d in g1_snapshots.items()
+                if sha not in referenziert_g1
+            ]
+            passend = [
+                d for d in geltende_g1
+                if d.get("entscheid") == "angenommen"
+                and d.get("artefakt_hashes", {}).get(
+                    "abgeleitet/abox/abox.json") == abox_hash
+            ]
+            if not passend:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: kein geltender G-1-ANNAHME-"
+                    "Snapshot auf dem aktuellen A-Box-Stand — G-2 nimmt "
+                    "denselben Stand ab, den G-1 gesehen hat, oder gar "
+                    "keinen",
+                )
+
     verzeichnis = entscheide_verzeichnis(fall)
     verzeichnis.mkdir(parents=True, exist_ok=True)
     bestehende = {}
@@ -286,6 +362,7 @@ def main(argv: Optional[List[str]] = None):
         "gate": args.gate,
         "entscheid": args.entscheid,
         "entscheider": args.entscheider,
+        "rolle": args.rolle,
         "begruendung": args.begruendung,
         "fall": str(fall),
         "artefakt_hashes": _artefakt_hashes(fall, ausser_gate=args.gate),
@@ -337,6 +414,7 @@ def main(argv: Optional[List[str]] = None):
             "gate": args.gate,
             "entscheid": args.entscheid,
             "entscheider": args.entscheider,
+            "rolle": args.rolle,
             "snapshot_sha256": inhalt_hash,
             "vorgaenger": len(vorgaenger),
             "artefakte": len(snapshot["artefakt_hashes"]),

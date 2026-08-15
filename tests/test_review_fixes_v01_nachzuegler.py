@@ -23,6 +23,12 @@ from rechner_pipeline.spez.validierung import speichere_spez
 
 ZEIT = "2026-08-15T10:00:00+00:00"
 TAFELN = {"DAV2008_T_M", "DAV2008_T_F"}
+PLAUSIBEL = {
+    "zins": 0.0175, "tafel": "DAV2008_T", "alpha": 0.025, "beta1": 0.03,
+    "gamma1": 0.001, "gamma2": 0.00125, "gamma3": 0.0025,
+    "policy_fee": 12.0, "stoab_satz": 0.005, "stoab_min": 50.0,
+    "stoab_max": 150.0, "min_alter_flex": 60, "min_rlz_flex": 5,
+}
 
 
 def _fall(tmp_path: Path) -> Path:
@@ -41,7 +47,7 @@ def _register(f: Path) -> dict:
 
 def _frag(datei: str, art: str, generation: str = "tg2012", **override):
     parameter = {feld: FragmentWert(
-        wert=1.0 if feld != "tafel" else "DAV2008_T",
+        wert=PLAUSIBEL[feld],
         fundstelle=f"{datei}:{feld}") for feld in PFLICHT_PARAMETER}
     for feld, wert in override.items():
         parameter[feld] = FragmentWert(wert=wert, fundstelle=f"{datei}:{feld}")
@@ -65,10 +71,10 @@ def test_p9_annahme_blockt_offene_diskrepanzen_fuer_jedes_gate(
     abox = baue_abox(str(f), [
         _frag("meldung.docx", "tarifmeldung", beta1=0.025),
         _frag("rechner.xlsm", "tarifrechner", beta1=0.03),
-    ], _register(f), ["a", "b"], ZEIT)
+    ], _register(f), ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT)
     speichere(abox, f)                                # Diskrepanz bleibt OFFEN
     result = main(["--fall", str(f), "--gate", gate,
-                   "--entscheid", "angenommen", "--entscheider", "X",
+                   "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
     assert any(e["code"] == "offen" for e in result.errors)
@@ -81,7 +87,7 @@ def test_p9_annahme_verlangt_die_abox(tmp_path: Path):
 
     f = _fall(tmp_path)
     result = main(["--fall", str(f), "--gate", "G-2",
-                   "--entscheid", "angenommen", "--entscheider", "X",
+                   "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
     assert any(e["code"] == "abox" for e in result.errors)
@@ -90,7 +96,7 @@ def test_p9_annahme_verlangt_die_abox(tmp_path: Path):
     pfad.parent.mkdir(parents=True)
     pfad.write_text("{kaputt", encoding="utf-8")
     result = main(["--fall", str(f), "--gate", "G-2",
-                   "--entscheid", "angenommen", "--entscheider", "X",
+                   "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
     assert any("unlesbar" in e["message"] for e in result.errors)
@@ -115,13 +121,13 @@ def test_p9_manipulierter_eingang_blockt_annahme(tmp_path: Path):
 
     f = _fall(tmp_path)
     abox = baue_abox(str(f), [_frag("rechner.xlsm", "tarifrechner")],
-                     _register(f), ["a"], ZEIT)
+                     _register(f), ["test/extraktion@abc1234"], ZEIT)
     speichere(abox, f)
     kopie = f / "eingang" / "rechner.xlsm"
     kopie.chmod(0o644)
     kopie.write_bytes(b"drift")
     result = main(["--fall", str(f), "--gate", "G-1",
-                   "--entscheid", "angenommen", "--entscheider", "X",
+                   "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
     assert any(e["code"] == "eingang" for e in result.errors)
@@ -135,11 +141,11 @@ def test_p9_idempotenz_und_vorgaenger_kette(tmp_path: Path):
 
     f = _fall(tmp_path)
     abox = baue_abox(str(f), [_frag("rechner.xlsm", "tarifrechner")],
-                     _register(f), ["a"], ZEIT)
+                     _register(f), ["test/extraktion@abc1234"], ZEIT)
     speichere(abox, f)
     argv = ["--fall", str(f), "--gate", "G-1", "--entscheid", "abgelehnt",
-            "--entscheider", "X", "--begruendung", "Zwischenstand",
-            "--repo-root", "."]
+            "--rolle", "mensch", "--entscheider", "X",
+            "--begruendung", "Zwischenstand", "--repo-root", "."]
     erster = main(argv)
     assert erster.exit_code == 0
     zweiter = main(argv)                       # identischer Entscheid
@@ -149,7 +155,7 @@ def test_p9_idempotenz_und_vorgaenger_kette(tmp_path: Path):
     assert len(snapshots) == 1                 # NICHT zwei Dateien
     # Neuer, anderer Entscheid pinnt den ersten als Vorgaenger:
     dritter = main(["--fall", str(f), "--gate", "G-1",
-                    "--entscheid", "abgelehnt", "--entscheider", "X",
+                    "--entscheid", "abgelehnt", "--rolle", "mensch", "--entscheider", "X",
                     "--begruendung", "Anderer Grund", "--repo-root", "."])
     assert dritter.exit_code == 0
     neu = json.loads(Path(dritter.paths["snapshot"]).read_text(encoding="utf-8"))
@@ -165,7 +171,7 @@ def test_p9_artefakt_hashes_umfassen_eingang_spez_und_snapshots(tmp_path: Path):
 
     f = _fall(tmp_path)
     abox = baue_abox(str(f), [_frag("rechner.xlsm", "tarifrechner")],
-                     _register(f), ["a"], ZEIT)
+                     _register(f), ["test/extraktion@abc1234"], ZEIT)
     speichere(abox, f)
     spez = baue_spez(abox, "klv/tg2012", vorhandene_tafeln=TAFELN)
     speichere_spez(spez, f)
@@ -191,7 +197,7 @@ def test_adress_aufloesung_trifft_nur_die_adressierte_zelle(tmp_path: Path):
     def frag(datei, art, beta_einzel, beta_haus):
         def zelle(t, beta):
             parameter = {feld: FragmentWert(
-                wert=1.0 if feld != "tafel" else "DAV2008_T",
+                wert=PLAUSIBEL[feld],
                 fundstelle=f"{datei}:{t}:{feld}") for feld in PFLICHT_PARAMETER}
             parameter["beta1"] = FragmentWert(wert=beta, fundstelle=f"{datei}:{t}")
             return FragmentZelle(auspraegungen={"tarifart": t},
@@ -207,7 +213,7 @@ def test_adress_aufloesung_trifft_nur_die_adressierte_zelle(tmp_path: Path):
         "tg2015",
         [frag("meldung.docx", "tarifmeldung", 0.025, 0.01),
          frag("rechner.xlsm", "tarifrechner", 0.03, 0.0)],
-        _register(f), {0: "a", 1: "b"}, ZEIT,
+        _register(f), {0: "test/extraktion@abc1234", 1: "test/extraktion-b@abc1234"}, ZEIT,
     )
     abox = ABox(fall=str(f), generationen=[gen], diskrepanzen=diskrepanzen)
     assert len(diskrepanzen) == 2              # beide Zellen kollidieren
@@ -228,7 +234,7 @@ def test_fachspez_escapet_pipes_und_prueft_abschnitte(tmp_path: Path):
     abox = baue_abox(str(f), [
         _frag("meldung.docx", "tarifmeldung", beta1=0.025),
         _frag("rechner.xlsm", "tarifrechner", beta1=0.03),
-    ], _register(f), ["a", "b"], ZEIT)
+    ], _register(f), ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT)
     loese_diskrepanz_auf(
         abox, abox.diskrepanzen[0].id, 0.03,
         "agent | mit Pipe", "Grund | mit Pipe\nund Umbruch", ZEIT,

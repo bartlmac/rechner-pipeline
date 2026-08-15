@@ -158,6 +158,20 @@ def main(argv: Optional[List[str]] = None):
     for meldung in validate_abox(abox, register):
         errors.append({"code": "abox", "message": meldung})
 
+    # Ketten-Pruefung: die A-Box muss aus ihren Fragmenten folgen
+    # (Systempruefung Befund 45 — eine direkt editierte A-Box passierte
+    # sonst alle Gates). "keine_fragmente" ist ein ausgewiesener
+    # Zustand (synthetische A-Box), kein stilles Gruen.
+    from rechner_pipeline.ontologie.kette import pruefe_kette
+
+    ketten_befunde = pruefe_kette(fall)
+    kette_status = "geprueft"
+    if ketten_befunde == ["keine_fragmente"]:
+        kette_status = "keine_fragmente"
+    else:
+        for meldung in ketten_befunde:
+            errors.append({"code": "kette", "message": meldung})
+
     bericht = coverage_bericht(abox)
     coverage_pfad = abox_datei.parent / COVERAGE_DATEI
     coverage_pfad.write_text(
@@ -214,6 +228,7 @@ def main(argv: Optional[List[str]] = None):
             errors.append({"code": "formel_check", "message": meldung})
 
     summary: Dict[str, object] = {
+        "kette": kette_status,
         "formel_checks_geprueft": formel_checks,
         "generationen": [g.id for g in abox.generationen],
         "zellen": sum(len(g.zellen) for g in abox.generationen),

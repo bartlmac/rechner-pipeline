@@ -115,7 +115,7 @@ def test_fremd_gekeyte_fragmentzelle_ist_hart(tmp_path: Path):
                               parameter={"zins": FragmentWert(wert=0.02, fundstelle="y")})],
     )
     with pytest.raises(BefuellungsFehler, match="nicht identifizierbar"):
-        baue_generation("tg2015", [a, b], register, {0: "a", 1: "b"}, ZEIT)
+        baue_generation("tg2015", [a, b], register, {0: "test/extraktion@abc1234", 1: "test/extraktion-b@abc1234"}, ZEIT)
 
 
 # --- Finding 3: fehlt_in_extraktion ist ein EIGENER Zaehler ----------------
@@ -191,7 +191,7 @@ def test_aufloesung_ohne_treffer_laesst_diskrepanz_unangetastet(tmp_path: Path):
 
     abox = baue_abox(str(f), [frag("m.docx", "tarifmeldung", 0.025),
                               frag("rechner.xlsm", "tarifrechner", 0.03)],
-                     register, ["a", "b"], ZEIT)
+                     register, ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT)
     [d] = abox.diskrepanzen
     # Treffer-lose Diskrepanz: weder Referenz noch Adresse existiert
     abox.diskrepanzen.append(Diskrepanz(
@@ -217,7 +217,7 @@ def test_vorlaeufige_aufloesung_traegt_flag(tmp_path: Path):
 
     abox = baue_abox(str(f), [frag("m.docx", "tarifmeldung", 0.025),
                               frag("rechner.xlsm", "tarifrechner", 0.03)],
-                     register, ["a", "b"], ZEIT)
+                     register, ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT)
     loese_diskrepanz_auf(abox, abox.diskrepanzen[0].id, 0.03,
                          "agent (vorlaeufig)", "GM-Zweck", ZEIT, vorlaeufig=True)
     assert abox.diskrepanzen[0].entscheidung.vorlaeufig is True

@@ -22,6 +22,12 @@ from rechner_pipeline.spez.fachspez import erzeuge_fachspez, speichere_fachspez
 from rechner_pipeline.spez.validierung import speichere_spez
 
 ZEIT = "2026-08-15T09:00:00+00:00"
+PLAUSIBEL = {
+    "zins": 0.0175, "tafel": "DAV2008_T", "alpha": 0.025, "beta1": 0.03,
+    "gamma1": 0.001, "gamma2": 0.00125, "gamma3": 0.0025,
+    "policy_fee": 12.0, "stoab_satz": 0.005, "stoab_min": 50.0,
+    "stoab_max": 150.0, "min_alter_flex": 60, "min_rlz_flex": 5,
+}
 
 
 @pytest.fixture()
@@ -37,7 +43,7 @@ def fall_mit_konflikt(tmp_path: Path):
 
     def frag(datei, art, beta1):
         parameter = {feld: FragmentWert(
-            wert=1.0 if feld != "tafel" else "DAV2008_T", fundstelle=f"{datei}:x")
+            wert=PLAUSIBEL[feld], fundstelle=f"{datei}:x")
             for feld in PFLICHT_PARAMETER}
         parameter["beta1"] = FragmentWert(wert=beta1, fundstelle=f"{datei}:beta1")
         return QuellFragment(generation="tg2012", quelle_datei=datei,
@@ -46,7 +52,7 @@ def fall_mit_konflikt(tmp_path: Path):
 
     abox = baue_abox(str(f), [frag("meldung.docx", "tarifmeldung", 0.025),
                               frag("rechner.xlsm", "tarifrechner", 0.03)],
-                     register, ["a", "b"], ZEIT)
+                     register, ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT)
     [d] = abox.diskrepanzen
     loese_diskrepanz_auf(abox, d.id, 0.03, "agent (vorlaeufig)", "GM-Zweck",
                          ZEIT, vorlaeufig=True)
@@ -74,13 +80,13 @@ def test_p9_annahme_blockt_bei_vorlaeufigen(fall_mit_konflikt):
 
     f, *_ = fall_mit_konflikt
     result = main(["--fall", str(f), "--gate", "G-1",
-                   "--entscheid", "angenommen", "--entscheider", "Bartek",
+                   "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "Bartek",
                    "--begruendung", "ok", "--repo-root", "."])
     assert result.exit_code == 20
     assert any("vorlaeufig" in e["code"] for e in result.errors)
     # Ablehnung ist jederzeit snapshotbar:
     result = main(["--fall", str(f), "--gate", "G-1",
-                   "--entscheid", "abgelehnt", "--entscheider", "Bartek",
+                   "--entscheid", "abgelehnt", "--rolle", "mensch", "--entscheider", "Bartek",
                    "--begruendung", "Zins offen", "--repo-root", "."])
     assert result.exit_code == 0
     snapshot = json.loads(
@@ -98,7 +104,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
 
     f, _, _, d_id = fall_mit_konflikt
     rc = entscheide([
-        "--fall", str(f), "--diskrepanz", d_id, "--wert", "0.025",
+        "--fall", str(f), "--rolle", "mensch", "--diskrepanz", d_id, "--wert", "0.025",
         "--entscheider", "Bartek",
         "--begruendung", "Meldung ist die eingereichte Fassung",
     ])
@@ -114,14 +120,26 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
     assert abox.generationen[0].zellen[0].parameter["beta1"].wert == 0.025
     # Eine endgueltige Entscheidung ist nicht erneut ueberschreibbar:
     rc = entscheide([
-        "--fall", str(f), "--diskrepanz", d_id, "--wert", "0.03",
+        "--fall", str(f), "--rolle", "mensch", "--diskrepanz", d_id, "--wert", "0.03",
         "--entscheider", "X", "--begruendung", "y",
     ])
     assert rc == 1
     assert "nie ueberschrieben" in capsys.readouterr().err
+    # Vorbedingung der Annahme: Gate O1 muss auf DIESEM Stand gruen sein.
+    from rechner_pipeline.gates.abox_validate import main as o1
+
+    result = p9(["--fall", str(f), "--gate", "G-1",
+                 "--entscheid", "angenommen", "--rolle", "mensch",
+                 "--entscheider", "Bartek",
+                 "--begruendung", "Alle Diskrepanzen entschieden",
+                 "--repo-root", "."])
+    assert result.exit_code == 20                    # O1 fehlt noch
+    assert any(e["code"] == "vorbedingung" for e in result.errors)
+    assert o1(["--fall", str(f)]).exit_code == 0
     # Jetzt darf P9 annehmen:
     result = p9(["--fall", str(f), "--gate", "G-1",
-                 "--entscheid", "angenommen", "--entscheider", "Bartek",
+                 "--entscheid", "angenommen", "--rolle", "mensch",
+                 "--entscheider", "Bartek",
                  "--begruendung", "Alle Diskrepanzen entschieden",
                  "--repo-root", "."])
     assert result.exit_code == 0
@@ -132,7 +150,7 @@ def test_entscheide_alle_vorlaeufigen_nach_quelle(fall_mit_konflikt, capsys):
 
     f, *_ = fall_mit_konflikt
     rc = entscheide([
-        "--fall", str(f), "--alle-vorlaeufigen",
+        "--fall", str(f), "--rolle", "mensch", "--alle-vorlaeufigen",
         "--quelle", "rechner.xlsm", "--entscheider", "Bartek",
         "--begruendung", "Dirk bestaetigt den Rechner-Stand",
     ])

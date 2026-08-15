@@ -145,6 +145,11 @@ class Tarifgeneration(BaseModel):
     #: erfasst, nicht normalisiert weggeworfen), z. B. "StoAb_rel" ->
     #: "parameter:stoab_satz". F1-Anforderung der Fragerunde.
     quellnamen: Dict[str, str] = Field(default_factory=dict)
+    #: Beobachtungen der Extraktions-Agenten, die kein Schemafeld haben
+    #: (z. B. Tarifsubstanz ausserhalb des Pflichtumfangs wie beta0) —
+    #: sie gehoeren ins G-1-Dokument, nicht in den Papierkorb des Merge
+    #: (Systempruefung Befunde 9/30).
+    anmerkungen: List[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _konsistenz(self) -> "Tarifgeneration":

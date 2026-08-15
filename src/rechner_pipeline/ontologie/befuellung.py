@@ -21,6 +21,8 @@ persistierte Fragmente.
 
 from __future__ import annotations
 
+import re
+
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -95,6 +97,22 @@ class BefuellungsFehler(ValueError):
     """Fachlicher Fehler beim Bauen der A-Box (fail-fast)."""
 
 
+#: Akteur-Konvention (P1): <modell>/<skill-oder-werkzeug>@<git-sha-kurz>,
+#: optional mit +verifikation-Zusatz vor dem @. ERZWUNGEN, nicht Prosa —
+#: die Systempruefung fand die Konvention im Praezedenzfall verletzt.
+_AKTEUR_MUSTER = re.compile(r"^[a-z0-9.-]+/[a-z0-9_+:.-]+@[0-9a-f]{7,40}$")
+
+
+def pruefe_akteur(akteur: str) -> str:
+    if not _AKTEUR_MUSTER.match(akteur):
+        raise BefuellungsFehler(
+            f"Akteur {akteur!r} verletzt die Konvention "
+            "<modell>/<skill>@<git-sha-kurz> — der Anweisungsstand ist "
+            "Teil der Nachweiskette (P1)"
+        )
+    return akteur
+
+
 def _provenienz_fabrik(
     fragment: QuellFragment,
     register: dict,
@@ -163,7 +181,9 @@ def baue_generation(
     dimensionen = _vereine_dimensionen(fragmente)
 
     fabriken = [
-        _provenienz_fabrik(f, register, akteur_je_fragment[i], erhoben_am)
+        _provenienz_fabrik(
+            f, register, pruefe_akteur(akteur_je_fragment[i]), erhoben_am
+        )
         for i, f in enumerate(fragmente)
     ]
 
@@ -258,6 +278,10 @@ def baue_generation(
         for f in fragmente
     ]
 
+    anmerkungen = [
+        f"[{f.quelle_datei}] {a}"
+        for f in fragmente for a in f.anmerkungen
+    ]
     generation = Tarifgeneration(
         id=gen_id,
         name=name.upper(),
@@ -267,6 +291,7 @@ def baue_generation(
         zellen=zellen,
         unisex=unisex,
         quellnamen=quellnamen,
+        anmerkungen=anmerkungen,
     )
     return generation, diskrepanzen
 
