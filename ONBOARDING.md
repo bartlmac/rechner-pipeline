@@ -1,10 +1,21 @@
 # ONBOARDING — agentic-rechner-pipeline
 
 ## 1. What this is
-A **CLI-agnostic, full-agentic** pipeline that migrates an Excel/VBA *Tarifrechner* 1:1 into a
-six-file pure-Python *Vergleichsrechenkern*, then proves it with a **deterministic gate suite**.
-There is **no LLM SDK in the codebase** — the CLI agent (you, via a skill) *is* the model; the
-Python tool only extracts, validates, and accepts. Generation/repair = agent; acceptance = code.
+Two connected systems, **no LLM SDK in the codebase** (the CLI agent *is* the model;
+Python code extracts, validates, computes, and accepts):
+
+1. **Migration pipeline (the main path):** heterogeneous sources (Tarifmeldung DOCX,
+   Tarifrechner XLSM) -> ontology (T-Box/A-Box with per-statement provenance and
+   discrepancy objects) -> Tarif-Spez -> parametrized stable kernel -> golden-master
+   acceptance against the source calculator, with human gates (G-1/G-2) and immutable
+   decision snapshots. Read `docs/architektur/migrations-pipeline-v01.md` first,
+   then the role catalog `docs/architektur/skill-architektur.md`.
+2. **Six-file comparison kernel (legacy path):** 1:1 migration of one workbook into
+   a standalone kernel, proven by the deterministic G0-G8 gate suite (`assurance`).
+
+Layer map and structure decisions: `docs/architektur/adr-001-repo-zielstruktur.md`.
+A migration case lives in a **Fall-Arbeitsbereich** (`python -m rechner_pipeline.fall`,
+ADR-002) — `examples/` is demo material, NOT an input channel.
 
 ## 2. Setup
 - Python **>=3.11**, fresh **`.venv`**, **public pypi.org only** (no Artifactory), pinned deps.
@@ -20,22 +31,22 @@ Python tool only extracts, validates, and accepts. Generation/repair = agent; ac
   ```
   .venv/bin/python -m pip install -e ".[dev]"
   ```
-  Runtime: `openpyxl==3.1.5`, `oletools==0.60.2`, `pandas==2.3.3`. Dev: `pytest==8.4.2`, `hypothesis==6.155.5`.
+  Runtime (pinned): `openpyxl`, `oletools`, `pandas`, `pyarrow`, `matplotlib`, `pydantic` — see `pyproject.toml`. Dev: `pytest`, `hypothesis`.
 
 ## 3. Run it
 **Accept an already-generated kernel (one command, the KLV worked example):**
 ```
 python -m rechner_pipeline.cli assurance \
     --repo-root . --input examples/Tarifrechner_KLV_TG2012.xlsm \
-    --generated-dir generated --info-dir info_from_excel \
-    --diagnostics-dir diagnostics --qa-contract qa_contract.json --adapter excel
+    --generated-dir runs/generated --info-dir runs/info_from_excel \
+    --diagnostics-dir runs/diagnostics --qa-contract qa_contract.json --adapter excel
 ```
 Runs the chain `extract → validate → security → conventions → golden_master → algebraic →
 roundtrip → dossier` over one shared `--diagnostics-dir`; aggregate exit code = dossier verdict
 (**0 = accepted**, 40 = human_review_required). KLV is accepted hands-off & idempotent.
 
 **(Re)generate a kernel:** invoke the **`build-vergleichsrechenkern`** skill (the agent reads the
-`info_from_excel/` bundle, writes the six files, drives the gates to acceptance). KLV facts:
+`runs/info_from_excel/` bundle, writes the six files, drives the gates to acceptance). KLV facts:
 interest 1.75%, mortality `DAV1994_T_M`, ω=100; expectations = 5 scalars (`Bxt, BJB, BZB, Pxt, ratzu`)
 + 612 table cells, coverage `full`.
 
@@ -60,10 +71,10 @@ or run `codex exec --cd . --sandbox workspace-write --ask-for-approval on-reques
 Exit 2 = usage, 50 = internal. A non-zero exit is **blocking**, never downgraded to a warning.
 
 ## 5. Layout (all relative to `--repo-root .`)
-- **`info_from_excel/`** — the extraction *bundle* (CSVs, `*_scalar.json`, `*_table_values.csv`,
+- **`runs/info_from_excel/`** — the extraction *bundle* (CSVs, `*_scalar.json`, `*_table_values.csv`,
   `names_manager.csv`, `vba/*.txt`, `export_manifest.json`, `input_bundle.json`). MUST live **under repo root**.
-- **`generated/`** — **EXACTLY six files**: `inputs.py, params.py, tafeln.xml, commutation.py, actuarial.py, test_run.py`. Nothing else.
-- **`diagnostics/`** — shared ledger dir: one `<command>.gate.json` per gate + `qa_report.json` + `run_dossier.json`.
+- **`runs/generated/`** — **EXACTLY six files**: `inputs.py, params.py, tafeln.xml, commutation.py, actuarial.py, test_run.py`. Nothing else.
+- **`runs/diagnostics/`** — shared ledger dir: one `<command>.gate.json` per gate + `qa_report.json` + `run_dossier.json`.
 - **`qa_contract.json`** — at **repo root**, NOT in `generated/` (a 7th file fails G1). Passed via `--qa-contract`.
 
 ## 6. Extend it

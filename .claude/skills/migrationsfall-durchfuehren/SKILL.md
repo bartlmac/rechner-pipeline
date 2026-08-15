@@ -71,9 +71,12 @@ Vorgang fuer den Menschen, kein Overwrite.
    Anmerkungen) gegen die Vorverdichtung nachpruefen; Korrekturen im
    Fragment mit Anmerkung dokumentieren, Akteur um `+verifikation`
    ergaenzen.
-4. Merge (deterministisch): `ontologie.befuellung.baue_abox` ueber alle
-   Fragmente; `ontologie.abox.speichere`. Widersprueche werden dabei
-   Diskrepanz-Objekte — das ist erwuenscht, nicht zu verhindern.
+4. Merge (deterministisch, MIT Ledger): `fragmente/akteure.json`
+   schreiben ({"<fragment>.json": "<modell>/<skill>@<git-sha>"}), dann
+   `python -m rechner_pipeline.gates.abox_merge --fall faelle/<fall> --repo-root .`
+   — NIE baue_abox von Hand fuer einen echten Fall: der Merge-Ledger
+   bindet die A-Box an die Fragmente, Gate O1 rechnet die Kette nach.
+   Widersprueche werden Diskrepanz-Objekte — erwuenscht.
 5. Gate O1: `python -m rechner_pipeline.gates.abox_validate --fall faelle/<fall> --repo-root .`
    Blockt bei Coverage-Luecken und offenen Diskrepanzen. Fuer den
    Weiterbau duerfen Diskrepanzen VORLAEUFIG zur Rechner-Lesart
@@ -86,9 +89,13 @@ Vorgang fuer den Menschen, kein Overwrite.
 Vorlegen: `abgeleitet/fachspez/<gen>.md` (Generator:
 `spez.fachspez.speichere_fachspez`), Diskrepanzenliste, Coverage.
 Der Mensch entscheidet mit
-`python -m rechner_pipeline.ontologie.entscheide ...` und snapshottet mit
-`python -m rechner_pipeline.gates.gate_entscheid --gate G-1 ...`.
-Die Annahme blockt automatisch bei offenen/vorlaeufigen Diskrepanzen.
+`python -m rechner_pipeline.ontologie.entscheide --rolle mensch ...` und
+snapshottet mit `python -m rechner_pipeline.gates.gate_entscheid
+--gate G-1 --rolle mensch ...`. Als Agent darfst du AUSSCHLIESSLICH
+ablehnen (--rolle agent, dokumentierter Zwischenstand). Die Annahme
+rechnet ihre Vorbedingungen: O1 gruen und auf dem aktuellen
+A-Box-Stand verankert; G-2 verlangt zusaetzlich O3 gruen+verankert und
+einen geltenden G-1-Annahme-Snapshot desselben Stands.
 
 ### Stufe 2 — A-Box -> Spez -> Kern
 

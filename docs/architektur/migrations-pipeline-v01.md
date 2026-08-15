@@ -1,9 +1,11 @@
 # Migrations-Pipeline v0.1: Ontologie als Stage-Interface
 
-Stand: 2026-08-15, umgesetzt und am Migrationsfall KLV TG2012 -> TG2015
-abgenommen (Gate O3: 616 Werte gegen den Quell-Rechner, 0 Abweichungen).
-Dieses Dokument beschreibt Architektur UND Ist-Stand — was v0.1 bewusst
-nicht kann, steht in Abschnitt 8.
+Stand: 2026-08-15. Am Migrationsfall KLV TG2012 -> TG2015 MECHANISCH
+abgenommen (Gate O3: 616 Werte gegen den Quell-Rechner, 0 Abweichungen);
+die MENSCHLICHEN Gates G-1/G-2 des Falls stehen aus (8 vorlaeufige
+Diskrepanz-Aufloesungen warten auf die fachliche Entscheidung). Dieses
+Dokument beschreibt Architektur UND Ist-Stand — was v0.1 bewusst nicht
+kann, steht in Abschnitt 8. Die Prinzipien in Vollform: prinzipien.md.
 
 ## 1 Idee
 
@@ -91,7 +93,9 @@ Merkmalsdimensionen (Tarifart, Raucherstatus), neun geaenderten
 Parametern und sechs Tafel-Anforderungen. Die Unisex-Vorgabe U70 wurde
 zur abgeleiteten Mischtafel (`qx = min(1, 0.7*qx_M + 0.3*qx_F)`,
 Double-Arithmetik VBA-treu) — NULL Kern-Formelaenderung, weil die exakte
-Tafelnamens-Aufloesung des Kerns genau dafuer vorgesehen war.
+Tafelnamens-Aufloesung des Kerns genau dafuer vorgesehen war. U70 ist
+eine KALKULATIONS-Vorgabe (alle Vertraege werden unisex bewertet); das
+Geschlecht bleibt Bestandsmerkmal ohne Tarifwirkung.
 Nebenbefund der Pipeline: Meldung und Rechner widersprechen sich real
 (Rechnungszins 1,25 % gegen 1,75 %; beta1 Haustarif 1,0 % gegen 0) —
 als Diskrepanz-Objekte erfasst, vorlaeufig zur Rechner-Lesart geloest
@@ -120,7 +124,28 @@ Wege ist eine Team-Entscheidung nach Fall 1 (Fragerunde F2).
   Schema vorgesehen).
 * Fall-Artefakte (A-Box, Spez, Entscheide) liegen im gitignorierten
   Fall-Arbeitsbereich — die Versionierung echter Faelle ausserhalb des
-  Repos ist ADR-002-Zielbild, in v0.1 nicht ausgebaut.
+  Repos ist ADR-002-Zielbild, in v0.1 nicht ausgebaut. Die
+  Nachweiskette endet damit an einem Einzelplatz (Systempruefung 21):
+  ein geteilter, versionierter Fall-Speicher ist Team-Entscheidung.
+* Das Struktur-Urteil arbeitet INNERHALB einer menschlich vorgegebenen
+  Produktfamilie: es kann Parametrierung von Erweiterung unterscheiden,
+  aber 'neue Produktfamilie' nicht selbst feststellen — die T-Box
+  kennt kein Leistungsversprechen/Zahlungsprofil (Systempruefung 5/29).
+  Kommt mit Fall 2 (Risiko/Rente zwingen Zahlungsprofile in T-Box und
+  Spez — die 'gebundene Spez' der D2-Entscheidung ist erst zur Haelfte
+  gebaut: Zustandsraum, Zahlungsprofile, GeVo-Katalog fehlen).
+* Gate O3 nimmt strukturell die RECHNER-Lesart ab (der GM reproduziert
+  den Quell-Rechner). Entscheidet G-1 fachlich GEGEN den Rechner
+  (z. B. Zins 1,25 % der Meldung), braucht die Abnahme korrigierte
+  Erwartungswerte des Lieferanten — diesen Pfad gibt es noch nicht
+  (Systempruefung 23).
+* Die 1M-LOC-Mechanik (feingranulare Knoten, Test-Knoten-Bindung,
+  Code-Karte, berechneter Aenderungs-Impact mit selektiven Gates) ist
+  als Konvention angelegt (Knoten-Annotation, Index), aber NICHT
+  gebaut — heute traegt der Index Familien-Granularitaet
+  (Systempruefung 6/13/28).
+* P10 ist fuer Extraktions-Agenten instruiert (Skill), nicht technisch
+  erzwungen (kein Sandbox-Zwang auf die Vorverdichtung).
 
 ## 9 Wissensverteilung: wo das Migrations-Know-how lebt
 
