@@ -31,6 +31,22 @@ def test_codex_repo_skills_match_claude_skills() -> None:
             ".claude/skills/extrahiere-quellfragment/SKILL.md",
             ".agents/skills/extrahiere-quellfragment/SKILL.md",
         ),
+        (
+            ".claude/skills/entwickle-im-zielsystem/SKILL.md",
+            ".agents/skills/entwickle-im-zielsystem/SKILL.md",
+        ),
+        (
+            ".claude/skills/teste-adversarial/SKILL.md",
+            ".agents/skills/teste-adversarial/SKILL.md",
+        ),
+        (
+            ".claude/skills/dokumentiere-system/SKILL.md",
+            ".agents/skills/dokumentiere-system/SKILL.md",
+        ),
+        (
+            ".claude/skills/bereite-fachkonflikt-auf/SKILL.md",
+            ".agents/skills/bereite-fachkonflikt-auf/SKILL.md",
+        ),
     )
     for claude_rel, codex_rel in pairs:
         assert _read(codex_rel) == _read(claude_rel), codex_rel
@@ -64,3 +80,33 @@ def test_migrations_skills_nennen_die_tragenden_regeln() -> None:
     assert "gate_entscheid" in runbook
     assert "faelle/klv-tg2015" in runbook             # Referenzfall
     assert "STOPP" in runbook                         # Abbruchkriterien
+
+
+def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
+    """Die Skill-Architektur lebt: jeder Rollen-Skill traegt Auftrag UND
+    Grenze; die nicht verhandelbaren Kerne sind verankert."""
+    entwickler = _read(".claude/skills/entwickle-im-zielsystem/SKILL.md")
+    assert "NICHT verhandelbar" in entwickler
+    assert "Schichtenkarte" in entwickler
+    assert "Knoten-Annotation" in entwickler
+    assert "Don't ship without tests" in entwickler
+    assert "STOPP-Kriterien" in entwickler
+    tester = _read(".claude/skills/teste-adversarial/SKILL.md")
+    assert "WIDERLEGT" in tester
+    assert "Mutations-Denken" in tester
+    assert "f(x)==f(x)" in tester
+    doku = _read(".claude/skills/dokumentiere-system/SKILL.md")
+    assert "Generiert schlaegt handgeschrieben" in doku
+    assert "EIN Zuhause" in doku
+    konflikt = _read(".claude/skills/bereite-fachkonflikt-auf/SKILL.md")
+    assert "du entscheidest NICHT" in konflikt
+    assert "vorlaeufig=True" in konflikt
+    assert "Auswirkungsanalyse" in konflikt
+    # Rollen-Katalog und Skills bleiben synchron:
+    katalog = _read("docs/architektur/skill-architektur.md")
+    for name in ("migrationsfall-durchfuehren", "extrahiere-quellfragment",
+                 "entwickle-im-zielsystem", "teste-adversarial",
+                 "dokumentiere-system", "bereite-fachkonflikt-auf",
+                 "build-vergleichsrechenkern", "author-rechner-toolbox-gate"):
+        assert name in katalog, name
+        assert Path(f".claude/skills/{name}/SKILL.md").is_file(), name

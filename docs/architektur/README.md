@@ -6,6 +6,7 @@ Architektur-Dokumente und Entscheidungen (ADRs) des Gesamtsystems
 ## Inhalt
 
 - [Migrations-Pipeline v0.1: Ontologie als Stage-Interface](migrations-pipeline-v01.md)
+- [Skill-Architektur: die Agenten-Rollen des Gesamtsystems](skill-architektur.md)
 - [ADR-001: Repo-Zielstruktur entlang der Migrations-Pipeline](adr-001-repo-zielstruktur.md)
 - [ADR-002: Fall-Arbeitsbereich — das Repo ist das System, nicht der Datenraum](adr-002-fall-arbeitsbereich.md)
 - [ADR-003: Pydantic fuer T-Box und A-Box](adr-003-pydantic-fuer-ontologie.md)

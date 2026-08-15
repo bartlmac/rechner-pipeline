@@ -33,3 +33,4 @@
 - For kernel generation, invoke `$build-vergleichsrechenkern` or ask for `build-vergleichsrechenkern`.
 - For new toolbox gates, invoke `$author-rechner-toolbox-gate`.
 - For a full migration case through the ontology pipeline, invoke `$migrationsfall-durchfuehren`; its Stage-1 extraction agents follow `$extrahiere-quellfragment`.
+- For implementation work in `src/`/`tests/`, follow `$entwickle-im-zielsystem` (the architecture rules there are non-negotiable). Quality-assure finished blocks with `$teste-adversarial`; documentation follows `$dokumentiere-system`; fachliche Konflikte are PREPARED with `$bereite-fachkonflikt-auf` and DECIDED by humans. Role catalog: `docs/architektur/skill-architektur.md`.
