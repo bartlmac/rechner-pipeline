@@ -1,6 +1,6 @@
 """CLI-Befehle des Bestandsmoduls: bestand_fortschreibung (Producer) + Gate B1.
 
-Knoten: klv
+Knoten: klv, bu
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from rechner_pipeline.gates import bestand_validate as gate_cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO_ROOT / "examples" / "bestand_klv.toml"
+GEMISCHT = REPO_ROOT / "examples" / "bestand_gesamt.toml"
 
 
 @pytest.fixture()
@@ -84,6 +85,70 @@ def test_fortschreibung_cli_usage_fehler(tmp_path):
     assert fs_cli.main(
         ["--config", str(EXAMPLE), "--bis", "kein-datum", "--out-dir", str(tmp_path)]
     ) == 2
+
+
+@pytest.fixture()
+def lauf_gemischt(tmp_path):
+    """CLI-Lauf auf dem GEMISCHTEN Beispielbestand (KLV + BU).
+
+    Gate B1 prueft beide Nachweisungen als harte Bedingung; auf einem
+    reinen KLV-Bestand laeuft der BU-Zweig leer durch und belegt nichts.
+    """
+    out = tmp_path / "lauf_gemischt"
+    code = fs_cli.main(
+        ["--config", str(GEMISCHT), "--bis", "2020-01-01", "--out-dir", str(out)]
+    )
+    assert code == 0
+    return out
+
+
+def test_gate_b1_prueft_die_bu_nachweisung(lauf_gemischt, tmp_path, capsys):
+    """Der BU-Zweig des Gates mit echten BU-Daten.
+
+    Ohne diesen Lauf war ``bu_bewegungskonto`` im Gate zwar aufgerufen,
+    aber auf leerem Bestand: ein Fehler in der BU-Identitaet (Anwaerter/
+    Rentner, Bezugsgroesse Jahresrente) waere unentdeckt geblieben.
+    """
+    from rechner_pipeline.bestand.kennzahlen import bu_bewegungskonto
+
+    basis = [
+        "--portfolio", str(lauf_gemischt / "bestand_gesamt.parquet"),
+        "--historie", str(lauf_gemischt / "historie.parquet"),
+        "--scheiben", str(lauf_gemischt / "scheiben.parquet"),
+        "--diagnostics-dir", str(tmp_path / "diag_gemischt"),
+    ]
+    code = run_command(gate_cli.main, basis + [
+        "--ledger", str(lauf_gemischt / "ledger.parquet"), "--bis", "2020-01-01",
+    ])
+    ergebnis = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert ergebnis["summary"]["all_passed"] is True
+
+    # Der BU-Zweig traegt wirklich Zeilen bei (sonst prueft der Test nichts):
+    portfolio = read_portfolio(lauf_gemischt / "bestand_gesamt.parquet")
+    historie = read_portfolio(lauf_gemischt / "historie.parquet")
+    ledger = read_portfolio(lauf_gemischt / "ledger.parquet")
+    bu_zeilen = bu_bewegungskonto(portfolio, historie, ledger,
+                                  bis=dt.date(2020, 1, 1))
+    assert len(bu_zeilen) > 0
+    assert ergebnis["summary"]["bewegungsjahre"] > len(bu_zeilen)
+    # Anwaerter/Rentner statt bpfl/bfr — die BU-eigene Nachweisung:
+    assert set(bu_zeilen[0]["identitaet"]) == {"anwaerter", "rentner"}
+
+    # Manipulation NUR im BU-Teil: eine Invalidisierung entfernen. Die
+    # KLV-Identitaet bleibt heil, das Gate muss trotzdem fallen.
+    bu_ids = set(portfolio[portfolio["produkt"] == "bu"]["police_id"])
+    inv = ledger[(ledger["ereignis"] == "INV")
+                 & (ledger["police_id"].isin(bu_ids))]
+    assert len(inv) > 0, "Beispielbestand ohne INV — Test waere wirkungslos"
+    kaputt = ledger.drop(index=inv.index[:1]).reset_index(drop=True)
+    pfad = write_portfolio(kaputt, tmp_path / "ledger_bu_kaputt.parquet")
+    code = run_command(gate_cli.main, basis + [
+        "--ledger", str(pfad), "--bis", "2020-01-01",
+    ])
+    ergebnis = json.loads(capsys.readouterr().out)
+    assert code == 20
+    assert any(e["code"] == "bewegung" for e in ergebnis["errors"])
 
 
 def test_gate_b1_passed_und_ledger(lauf, tmp_path, capsys):

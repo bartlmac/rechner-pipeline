@@ -1,4 +1,10 @@
-"""Bewegungskonto (BaFin-Nachweisungs-Struktur): Handrechnungen + Identitäten.
+"""KLV-Bewegungskonto (BaFin-Nachweisungs-Struktur): Handrechnungen + Identitäten.
+
+Diese Datei deckt die KLV-Nachweisung ab: Tracks beitragspflichtig/
+beitragsfrei, Bezugsgroesse Versicherungssumme. Die BU-Nachweisung ist
+eine EIGENE Groesse (Tracks Anwaerter/Rentner, Bezugsgroesse
+Jahresrente) und liegt in ``test_bestand_bu.py`` — der Dateiname hier
+sagt das jetzt, statt Produktneutralitaet zu suggerieren.
 
 Die Handrechnungs-Tests treiben einzelne GeVo-Pfade deterministisch (Raten
 0 bzw. nahe 1, Muster wie in test_bestand_ereignisse); der End-to-End-Test

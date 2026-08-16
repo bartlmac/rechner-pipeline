@@ -302,7 +302,8 @@ def test_pfadformen_liefern_dasselbe_ergebnis():
         ergebnis = berechne_impact([form], *args)
         assert ergebnis["tests"] == referenz["tests"], form
         assert ergebnis["konservativ"] == [], form
-    assert len(referenz["tests"]) == 5
+    # Die Referenz muss selektiv sein, sonst prueft der Vergleich nichts:
+    assert 0 < len(referenz["tests"]) < len(baue_test_bindung(TESTS)["bindung"])
 
 
 def test_fremder_absolutpfad_ist_konservativ():
@@ -338,8 +339,11 @@ def test_import_kante_bleibt_nicht_transitiv():
     bu.py 5 -> 21 Tests. Der Showcase muss selektiv bleiben."""
     ergebnis = berechne_impact(
         ["src/rechner_pipeline/kern/produkte/bu.py"], *_repo_args())
-    assert len(ergebnis["tests"]) == 5
-    assert "test_bestand_ereignisse.py" not in ergebnis["tests"]
+    # Transitiv waeren es 21+ von 46; die Selektion bleibt eine Handvoll.
+    assert len(ergebnis["tests"]) <= 10
+    for rein_klv in ("test_bestand_ereignisse.py", "test_bestand_bewegung_klv.py",
+                     "test_kern.py", "test_tafel_import.py"):
+        assert rein_klv not in ergebnis["tests"], rein_klv
 
 
 def test_konservativ_behaelt_direkt_geaenderte_testdatei():
@@ -460,7 +464,6 @@ def test_weitere_lader_weisen_die_restluecke_aus():
     ergebnis = berechne_impact(
         ["src/rechner_pipeline/kern/produkte/bu.py"], *_repo_args())
     assert ergebnis["konservativ"] == []
-    assert len(ergebnis["tests"]) == 5
     assert "test_kern.py" in ergebnis["weitere_lader"]
     assert not set(ergebnis["tests"]) & set(ergebnis["weitere_lader"])
 
