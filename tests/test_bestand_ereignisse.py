@@ -681,11 +681,13 @@ def test_max_endalter_hinter_tafelgrenze_ist_config_fehler(config):
     assert any("Tafel-Erschoepfung" in f for f in fehler)
 
 
-def test_kern_verlaufszeile_ausserhalb_blattbereich_faellt_schnell():
+def test_kern_verlaufszeile_kennt_keinen_blattdeckel_mehr():
+    """Kern 3.0.0: der Verlauf endet an Modellpunkt bzw. Tafel-
+    Erschoepfung, nicht mehr an Zeile 50 des historischen Excel-Blatts."""
     from rechner_pipeline.kern import KLV_DEFAULT
 
     kern = Rechenkern(KLV_DEFAULT)
-    with pytest.raises(ValueError, match="0..50"):
-        kern.verlaufszeile(51)
-    with pytest.raises(ValueError, match="0..50"):
+    zeile = kern.verlaufszeile(51)  # vor 3.0.0: ValueError "0..50"
+    assert zeile.jahr == 51
+    with pytest.raises(ValueError, match="negativ"):
         kern.verlaufszeile(-1)

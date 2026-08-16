@@ -711,7 +711,7 @@ def test_dauer_wird_bei_der_select_periode_gekappt(config, monkeypatch):
     )
     fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
     max_dauer = config.generationen[0].bu_generation_fields()
-    from rechner_pipeline.kern.kommutation import select_max_dauer
+    from rechner_pipeline.kern.tafeln import select_max_dauer
 
     grenze = select_max_dauer(max_dauer["tafel_ri"], "M")
     # Dauer zaehlt bis zur Select-Periode hoch und bleibt dann stehen:

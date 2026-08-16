@@ -24,15 +24,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List
 
-from rechner_pipeline.kern import kommutation
-from rechner_pipeline.kern.kommutation import TafelBereichError
+from rechner_pipeline.kern import tafeln
+from rechner_pipeline.kern.tafeln import TafelBereichError
 from rechner_pipeline.kern.konventionen import installment_surcharge
 from rechner_pipeline.kern.model_point import ModelPoint
 from rechner_pipeline.kern.zustandsmodell import ZustandsBarwerte
 
-#: Verlaufswerte-Zeilen (Blattzeilen 16..66 -> Vertragsjahre 0..50, blattfest).
-#: Teil des Golden-Master-Contracts (612 Tabellenzellen = 12 Spalten x 51 Zeilen).
-VERLAUFSJAHRE = 51
+#: Default-Verlaufshorizont: bis Vertragsende (Vertragsjahre 0..n).
+#: Jenseits von n sind die Zeilen ueber die Blattregeln definiert
+#: (Reserven/RKW 0, flexible Phase) — der Kern rechnet sie auf Anfrage
+#: bis zur Tafel-Erschoepfung (fail-fast), ein blattfester 0..50-Deckel
+#: existiert seit 3.0.0 nicht mehr (Beschluss Bartek 2026-08-16).
 
 #: Golden-Master-View-Spalten (Blatt-Keys) — einzige Definitionsstelle.
 VERLAUFSWERTE_SPALTEN = (
@@ -85,6 +87,10 @@ class KLV:
 
     kennung = "klv"
     contract_prefix = "Kalkulation"  # Blattname des Quell-Workbooks
+    # Vergleichsfenster des historischen Sechs-Datei-Contracts (Zeilen
+    # 0..50 des Quell-Verlaufsblatts) — Eigenschaft der Vergleichs-View
+    # in ``berechne``, KEIN Kern-Anker.
+    contract_verlauf_bis: int | None = 50
     model_point_cls = ModelPoint
 
     def __init__(self, mp: ModelPoint, barwerte=None) -> None:
@@ -96,10 +102,10 @@ class KLV:
         Kreuz-Check-Schiene erhalten (``qa/ueberleitung`` injiziert beide
         explizit)."""
         self.mp = mp
-        self.kom = kommutation.fuer(mp.sex, mp.tafel, mp.zins)
+        self.basis = tafeln.basis(mp.sex, mp.tafel)
         self.bw = (
             barwerte if barwerte is not None
-            else ZustandsBarwerte(self.kom, mp.zins)
+            else ZustandsBarwerte(self.basis, mp.zins)
         )
         self._scalar_cache: Dict[str, float] = {}
         self._zeilen_cache: Dict[int, Verlaufszeile] = {}
@@ -190,26 +196,18 @@ class KLV:
     def verlaufszeile(self, a: int) -> Verlaufszeile:
         """Verlaufswerte-Zeile für Vertragsjahr ``a`` — typisiert, gecacht.
 
-        Nur der blattfest verankerte Bereich 0..50 ist definiert; außerhalb
-        gibt es keinen Golden-Master- oder Anker-Beleg, deshalb Fail-fast
-        statt unbelegter Werte.
+        Definiert fuer a >= 0 bis zur Tafel-Erschoepfung; jenseits von n
+        greifen die Ablaufregeln (Reserven/RKW 0, flexible Phase).
         """
-        if not 0 <= a < VERLAUFSJAHRE:
-            raise ValueError(
-                f"Vertragsjahr {a} ausserhalb des blattfest verankerten "
-                f"Verlaufsbereichs 0..{VERLAUFSJAHRE - 1}"
-            )
+        if a < 0:
+            raise ValueError(f"Vertragsjahr {a} negativ")
         if a in self._zeilen_cache:
             return self._zeilen_cache[a]
         mp = self.mp
         x, n, t, vs = mp.x, mp.n, mp.t, mp.sum_insured
         xa = x + a
-        if self.kom.Dx_at(xa) == 0.0:
-            raise TafelBereichError(
-                f"Modellpunkt x={x}: Vertragsjahr {a} erreicht Alter {xa} mit "
-                f"Dx=0 in {mp.tafel} — Verlaufswerte "
-                f"(blattfest 0..{VERLAUFSJAHRE - 1}) nicht berechenbar"
-            )
+        # Tafel-Domaene fail-fast (Erschoepfung, MAX_ALTER):
+        self.basis.pruefe_alter(min(xa, x + min(a, n)), xa)
 
         pxt = self.net_premium_rate()
         bjb = self.gross_annual_premium()
@@ -269,9 +267,15 @@ class KLV:
         """Verlaufswerte-Zeile als Golden-Master-View (Blatt-Keys)."""
         return self.verlaufszeile(a).als_blattzeile()
 
-    def verlaufswerte(self) -> List[Dict[str, float]]:
-        """Alle Verlaufswerte-Zeilen (Vertragsjahre 0..50, blattfest)."""
-        return [self.reserve_row(jahr) for jahr in range(0, VERLAUFSJAHRE)]
+    def verlaufswerte(self, bis: int | None = None) -> List[Dict[str, float]]:
+        """Verlaufswerte-Zeilen (Default: Vertragsjahre 0..n).
+
+        ``bis`` erlaubt laengere Sichten (z. B. den 51-Zeilen-Contract des
+        Sechs-Datei-Vergleichskerns) — der Horizont ist Sache des
+        Aufrufers, nicht des Kerns.
+        """
+        horizont = self.mp.n if bis is None else bis
+        return [self.reserve_row(jahr) for jahr in range(0, horizont + 1)]
 
     # ----------------------------------------------------------------- #
     # Ereignis-Anschlüsse (Stichtag, Beitragsfreistellung) — additiv, die

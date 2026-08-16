@@ -14,7 +14,7 @@ Ratenzuschlag-Staffel) standen im Quell-Workbook als Formel-Literale im Blatt
 (Verlaufswerte-Zeilen bzw. E12). Sie sind hier als Felder mit den Blattwerten
 als Default gehoben: eine neue Tarifgeneration ist damit eine reine
 Parametrierung des Modellpunkts, keine Formeländerung. Defaults unverändert
-lassen == Blattverhalten (Golden-Master 617/617).
+lassen == Verhalten des Quell-Workbooks (historischer Übersetzungsbeleg).
 """
 
 from __future__ import annotations

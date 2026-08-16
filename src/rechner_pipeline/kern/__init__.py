@@ -1,82 +1,63 @@
-"""Der stabile KLV-Rechenkern — versionierte Software, parametrisierte API.
+"""Der stabile Rechenkern — Thiele-/Zustandsmodell-Welt, parametrisierte API.
 
-Beschluss 2026-08-11 (Bartek/Leo): Der Rechenkern ist keine transiente,
-pro Lauf neu generierte Ausgabe mehr, sondern **stabile, versionierte
-Software** — ein Stück Software zusammen mit dem Bestand und Tests. Das
-KI-System baut künftig marginale Änderungen ein (neue Tarifgeneration,
-neues Produkt); die Assurance nimmt Änderungen ab.
+Beschluss 2026-08-11 (Bartek/Leo): Der Rechenkern ist stabile,
+versionierte Software; das KI-System baut marginale Aenderungen ein
+(neue Tarifgeneration = Parametrierung, neues Produkt = Konfiguration
+des Rueckgrats), die Abnahme-Gates nehmen sie ab.
 
-Provenienz: Dieses Paket ist die Promotion des am 2026-07-22 agentisch aus
-``examples/Tarifrechner_KLV_TG2012.xlsm`` migrierten und mechanisch angenommenen
-Kerns (assurance ACCEPTED, Golden-Master 617/617) — der einmalige
-Übersetzungsakt der Migrationsmethode. Beim Promoten wurde die Bindung an
-einen festen Modellpunkt (``inputs.DEFAULT``) durch eine **parametrisierte
-API** ersetzt; das anschließende Skalierungs-Refactoring hat die Schichten
-für die KI-Evolution geschnitten. Die Formeln selbst sind unverändert
-(Excel-/VBA-treu, 16-stellige Excel-Rundung).
+Beschluss 2026-08-16 (Bartek): Der Kern ist vollstaendig in der
+Zustandsmodell-Welt — die historische Excel-Paritaet (617/617) war die
+EINMALIGE Abnahme des Uebersetzungsakts und ist KEIN Anker des Kerns
+mehr; die klassischen Kommutationsspalten sind kein Bestandteil des
+Kerns, sondern leben als separater Zweitkern
+(:mod:`rechner_pipeline.kommutationskern`) ausschliesslich fuer die
+Kreuz-Rechenschiene der QA.
 
 Schichten::
 
-    konventionen    Radix, Excel-Rundung, Endalter (unterste Rechenschicht)
-    kommutation     Kommutationsspalten je Basis (Sex/Tafel/Zins), gecacht
-    barwerte        generische Barwert-Bausteine (VBA mBarwerte), produktfrei
-    zustandsmodell  (Semi-)Markov-Rechenrückgrat + ZustandsBarwerte
-                    (2-Zustands-Fall, gleiches Interface wie barwerte)
-    produkte/       Produkt-Registry; KLV-Zielgrößen in produkte/klv.py
-    rechenkern      Fassade Rechenkern(mp) + berechne(mp, produkt="klv")
+    konventionen    Rundung, Endalter, Zahlweise-Staffel (unterste Schicht)
+    tafeln          Rechnungsgrundlagen: tafeln.xml, Tafelbasis (reine qx),
+                    Erschoepfungs-Domaene, Select-Tafeln
+    zustandsmodell  (Semi-)Markov-Rueckgrat: Thiele-Rueckwaertsrekursion,
+                    ZustandsBarwerte (Barwert-Bausteine auf dem Rueckgrat)
+    produkte/       Produkt-Registry; Zielgroessen in produkte/<produkt>.py
+    rechenkern      Fassade Rechenkern(mp) + berechne(mp, produkt=...)
 
-Rechenrückgrat (Beschluss 2026-08-12): Das Zustandsmodell ist das Rückgrat
-des Monolithen (KLV = 2-Zustands-Spezialfall, künftige Produkte =
-Konfigurationen). Der Wechsel des produktiven KLV-Pfads von der
-Kommutations- auf die Zustandsmodell-Schiene wurde per Toleranz-Überleitung
-abgenommen (Bartek, 2026-08-12: 6170 Werte über 10 Modellpunkte, 0
-außerhalb der Rundungsklasse, max. 4e-13 relativ) — seither rechnet KLV
-produktiv auf dem Zustandsmodell. Die Kommutations-Schiene bleibt dauerhaft
-als Kreuz-Check-Schiene erhalten
-(:mod:`rechner_pipeline.qa.ueberleitung` injiziert beide explizit).
+Oeffentliche API::
 
-Öffentliche API::
+    from rechner_pipeline.kern import ModelPoint, Rechenkern, berechne
 
-    from rechner_pipeline.kern import ModelPoint, KLV_DEFAULT, Rechenkern, berechne
+Namensschema (Provenienz-Prinzip): Fachgroessen mit Quell-Provenienz
+behalten den Quellnamen (``Bxt``, ``kVx_MRV``, ``axn_k``) — der Name IST
+der Herkunftsbeleg; Ablauf-/Strukturnamen sind deutsch.
 
-    ergebnis = berechne(KLV_DEFAULT)          # {"scalars": ..., "tables": ...}
-    kern = Rechenkern(mp)                     # feinere Zugriffe (reserve_row,
-                                              # zustand_am, beitragsfreie_summe)
+Abnahme-Protokoll fuer Kern-Aenderungen:
 
-Namensschema (Provenienz-Prinzip):
-
-* Fachgrößen mit Blatt-/VBA-Provenienz behalten den QUELLNAMEN — ``axn_k``,
-  ``nGrAx``, ``abzugsglied``, Output-Keys ``Bxt``/``Pxt``/``kVx_MRV``/
-  ``"flex. Phase"``. Das ist keine Inkonsistenz, sondern Migrations-Gold:
-  der Name IST der Beleg der Herkunft.
-* Ablauf-/Struktur-Namen (Klassen, neue Operationen) sind deutsch
-  (``Rechenkern``, ``berechne``, ``verlaufszeile``, ``zustand_am``).
-* Die Golden-Master-View (dict-Keys, Fixture-Namen) wird NIE umbenannt.
-
-Abnahme-Protokoll für marginale Kern-Änderungen:
-
-1. ``pytest tests/test_kern.py`` — die Excel-Parität (617/617 gegen
-   ``tests/fixtures/kern_klv/``) MUSS grün bleiben; diese Fixtures zu
-   ändern ist verboten (sie sind die Quelle der Wahrheit der Migration).
-2. Die Charakterisierungs-Anker (``tests/fixtures/kern_anker/``) frieren
-   das Verhalten weiterer Modellpunkte ein — sie sind seit dem
-   Backbone-Wechsel die EINZIGE Voll-Präzisions-Verankerung des
-   produktiven Pfads (die Überleitung prüft nur die Schienen-Äquivalenz,
-   der Golden Master nur 4 Nachkommastellen). Ein Diff dort ist erlaubt,
-   braucht aber eine fachliche Begründung und wird mit der Änderung
-   zusammen committet (bewusste Abnahme statt stiller Drift).
-3. ``__version__`` wird bei jeder fachlichen Änderung angehoben und die
-   Änderung im Commit begründet (Tarifgeneration/Produkt/Fix).
+1. Die Charakterisierungs-Anker (``tests/fixtures/kern_anker/``) frieren
+   das Verhalten repraesentativer Modellpunkte in VOLLER Float-Praezision
+   ein — sie sind die Regressions-Verankerung des Kerns. Ein Diff dort
+   braucht eine fachliche Begruendung im selben Commit (bewusste Abnahme
+   statt stiller Drift).
+2. Die Toleranz-Ueberleitung (:mod:`rechner_pipeline.qa.ueberleitung`)
+   gegen den separaten Kommutationskern muss in der Rundungsklasse
+   bleiben — zwei unabhaengige Rechenwege, eine Toleranz.
+3. Die algebraischen Eigenschaften (qa_contract, Hypothesis) muessen
+   halten.
+4. Je MIGRATIONSFALL gilt der Generations-Golden-Master (Gate O3):
+   der Kern, parametriert ueber die Tarif-Spez, reproduziert die
+   Erwartungswerte des jeweiligen QUELL-Rechners — das ist Fall-Abnahme,
+   kein Kern-Anker.
+5. ``__version__`` wird bei jeder fachlichen Aenderung angehoben und im
+   Commit begruendet.
 """
 
-from rechner_pipeline.kern.kommutation import (
-    Kommutation,
-    MissingMortalityTableError,
-    TafelBereichError,
-)
 from rechner_pipeline.kern.konventionen import excel_round, installment_surcharge
 from rechner_pipeline.kern.model_point import KLV_DEFAULT, KLVModelPoint, ModelPoint
-from rechner_pipeline.kern.barwerte import Barwerte
+from rechner_pipeline.kern.tafeln import (
+    MissingMortalityTableError,
+    TafelBereichError,
+    Tafelbasis,
+)
 from rechner_pipeline.kern.zustandsmodell import Zustandsmodell, ZustandsBarwerte
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
@@ -84,25 +65,17 @@ from rechner_pipeline.kern.rechenkern import (
     berechne,
 )
 
-#: Kern-Version (Abnahme-Anker für marginale Änderungen, siehe Docstring).
-#: 1.0.0 = Promotion 2026-08-11 des am 2026-07-22 migrierten Kerns
-#: inklusive Skalierungs-Refactoring (verhaltensgleich, 617/617).
-#: 1.0.1 = Domänengrenze: Verlaufszeilen nur im blattfest verankerten
-#: Bereich 0..50 (Fail-fast statt unbelegter Werte ausserhalb des
-#: Golden-Master-/Anker-Bereichs; Rechenwerte unverändert, 617/617 + Anker).
-#: 1.1.0 = Zustandsmodell-Rückgrat (Semi-Markov-Engine + ZustandsBarwerte,
-#: additiv; produktiver Pfad unverändert Kommutation).
-#: 2.0.0 = Wechsel des produktiven KLV-Pfads auf das Zustandsmodell
-#: (abgenommene Toleranz-Überleitung: 6170 Werte, 0 abweichend, max.
-#: 4e-13 relativ; Anker-Fixtures mit Begründung neu eingefroren;
-#: 617/617-Excel-Fixtures unverändert grün — compare rundet auf 4
-#: Nachkommastellen, die Differenzen liegen bei 1e-13).
-#: 2.1.0 = Rechnungsgrundlagen erweitert (Migrationsfall KLV TG2015):
-#: DAV2008_T_R/NR je Geschlecht (Import aus dem Quell-Rechner, Provenienz
-#: im XML) plus abgeleitete Unisex-Mischtafeln *_U70 (VBA-Mischformel als
-#: Daten-Ableitung; kein Formel-Code geaendert). Bestehende Tafeln und
-#: Anker unveraendert.
-__version__ = "2.1.0"
+#: Kern-Version (Abnahme-Anker, siehe Docstring).
+#: 1.x/2.x = Migrations- und Backbone-Aera (Historie in Git).
+#: 3.0.0 = Zielbild-Schnitt (Beschluss Bartek 2026-08-16): Kern
+#: vollstaendig in der Zustandsmodell-Welt; Kommutation als separater
+#: Zweitkern (rechner_pipeline.kommutationskern) nur noch Kreuzschiene;
+#: Excel-Paritaet 617/617 als Kern-Anker entfernt (sie war die einmalige
+#: Abnahme des Uebersetzungsakts); Tafel-Schicht eigenstaendig
+#: (kern/tafeln.py, Erschoepfungs-Domaene rein aus qx); Verlaufswerte
+#: modellpunktgetrieben statt blattfest 0..50. Rechenwerte unveraendert
+#: (reiner Schnitt: qx-Pfad identisch, Anker gruen).
+__version__ = "3.0.0"
 
 __all__ = [
     "ModelPoint",
@@ -110,11 +83,10 @@ __all__ = [
     "KLV_DEFAULT",
     "Rechenkern",
     "berechne",
-    "Barwerte",
     "Zustandsmodell",
     "ZustandsBarwerte",
     "Verlaufszeile",
-    "Kommutation",
+    "Tafelbasis",
     "MissingMortalityTableError",
     "TafelBereichError",
     "excel_round",

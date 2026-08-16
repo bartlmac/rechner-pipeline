@@ -20,7 +20,6 @@ from rechner_pipeline.kern.model_point import KLV_DEFAULT, ModelPoint
 from rechner_pipeline.kern.produkte import hole
 from rechner_pipeline.kern.produkte.klv import (
     KLV,
-    VERLAUFSJAHRE,
     VERLAUFSWERTE_SPALTEN,
     Verlaufszeile,
 )
@@ -28,7 +27,6 @@ from rechner_pipeline.kern.produkte.klv import (
 __all__ = [
     "Rechenkern",
     "berechne",
-    "VERLAUFSJAHRE",
     "VERLAUFSWERTE_SPALTEN",
     "Verlaufszeile",
 ]
@@ -41,7 +39,7 @@ class Rechenkern:
         self.mp = mp
         self.produkt = KLV(mp)
         self.bw = self.produkt.bw
-        self.kom = self.produkt.kom
+        self.basis = self.produkt.basis
 
     # -- Barwerte (generische Schicht) --------------------------------- #
 
@@ -125,5 +123,13 @@ def berechne(mp: ModelPoint = KLV_DEFAULT, produkt: str = "klv") -> Dict[str, Di
     instanz = cls(mp)
     return {
         "scalars": {cls.contract_prefix: instanz.scalars()},
-        "tables": {cls.contract_prefix: instanz.verlaufswerte()},
+        # Das Verlaufsfenster ist Produkt-Contract (KLV: 0..50 aus dem
+        # historischen Sechs-Datei-Vergleichskern, BU: 0..n) — Eigenschaft
+        # dieser Vergleichs-View, KEIN Kern-Anker (Kern 3.0.0: der Verlauf
+        # selbst ist modellpunktgetrieben).
+        "tables": {
+            cls.contract_prefix: instanz.verlaufswerte(
+                bis=cls.contract_verlauf_bis
+            )
+        },
     }

@@ -10,7 +10,8 @@ format:
 > 2.0.0). Das Produkt ist in der Mathematik des Kerns beschrieben
 > (Zustandsmodell, Thiele-Rekursion); die Gliederung ist für alle
 > Produkte des Kerns dieselbe. Historische Provenienz: einmalige
-> Migration aus dem Quell-Workbook (Golden-Master 617/617); Quellnamen
+> Migration aus dem Quell-Workbook (Übersetzungsbeleg: 617/617 am
+> 22.07.2026 — historisch, kein laufender Anker); Quellnamen
 > der Größen (`Bxt`, `kVx_MRV`, …) sind bewusst erhalten
 > (Provenienz-Prinzip).
 
@@ -57,8 +58,10 @@ optional von der Verweildauer $d$ im Zustand ab (Semi-Markov über
 Zustandsraum-Erweiterung); der Verbleib ist stets das Residuum. Für
 dieses Produkt entfällt die Dauerabhängigkeit.
 
-Die klassische Kommutations-Schiene bleibt als permanente
-Kreuz-Check-Schiene erhalten (Toleranz-Überleitung, `qa/ueberleitung`).
+Die klassische Kommutations-Schiene lebt als separater Zweitkern
+(`rechner_pipeline.kommutationskern`) ausschließlich für den
+Kreuz-Check weiter (Toleranz-Überleitung, `qa/ueberleitung`); sie ist
+kein Bestandteil des Zielkerns.
 
 # 4 Zahlungsprofile
 
@@ -176,12 +179,15 @@ Tarifgeneration ist eine Parametrierung, keine Formeländerung:
 
 # 9 Gültigkeitsgrenzen
 
-* Verlaufswerte sind blattfest für $a \in [0, 50]$ verankert
-  (Golden-Master-Contract, 612 Zellen). Der Kern rechnet Skalare auch
-  für $n > 50$ (der Verlauf bleibt bei 51 Zeilen); die Bestand-Engine
-  weist Laufzeiten $n > 50$ ab.
-* Tafelbereich: Alter mit $D_x = 0$ (Tafel erschöpft, z. B. DAV 1994 T
-  ab Alter 101) sind fail-fast; kein Alter über 123.
+* Der Verlauf ist modellpunktgetrieben ($a \in [0, n]$; seit Kern
+  3.0.0 kein 51-Zeilen-Blattdeckel mehr). Das Fenster $[0, 50]$ bleibt
+  als expliziter Vergleichs-Contract der `berechne()`-View erhalten
+  (Zeilenformat des Quell-Verlaufsblatts, `contract_verlauf_bis`).
+  Die Bestand-Engine hält ein eigenes konservatives Fenster und weist
+  Laufzeiten $n > 50$ ab.
+* Tafelbereich: Alter ab der Tafel-Erschöpfung (erstes Alter nach
+  $q_x \ge 1$, z. B. DAV 1994 T ab Alter 101) sind fail-fast; kein
+  Alter über 123.
 * Wegzugsummen je Zustand müssen $\le 1$ sein (Engine fail-fast).
 * Kein Storno beitragsfreier Verträge (keine RKW-Regel definiert).
 
@@ -197,10 +203,12 @@ davon unberührt.
 
 # 11 Verankerung und Abnahme
 
-617/617-Excel-Parität (Migrationsbeleg, 4 Nachkommastellen),
 Charakterisierungs-Anker in voller Float-Präzision (Voll-Präzisions-
-Verankerung des produktiven Pfads), Toleranz-Überleitung beider
-Rechenschienen (`qa/ueberleitung`). Änderungen folgen dem
+Verankerung des produktiven Pfads), Toleranz-Überleitung gegen den
+separaten Kommutations-Zweitkern (`qa/ueberleitung`), je Migrationsfall
+Gate O3 gegen den Quell-Rechner. Die einmalige 617/617-Excel-Parität
+(22.07.2026, 4 Nachkommastellen) ist der historische Übersetzungsbeleg,
+kein laufender Anker. Änderungen folgen dem
 Abnahme-Protokoll des Kerns (`kern/__init__`).
 
 # 12 Vorgesehene Erweiterungen

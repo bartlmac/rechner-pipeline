@@ -276,7 +276,7 @@ def _simuliere_vertrag(
         #    erster Ordnung der Tarifbasis. Bei b = 0 wird die Tafel gar
         #    nicht angefasst (Tafelgrenzen bleiben unberuehrt).
         qx_erste_ordnung = (
-            vertrag.grund.kom.qx_at(x + j) if annahmen.tod.b else 0.0
+            vertrag.grund.basis.qx_at(x + j) if annahmen.tod.b else 0.0
         )
         if rng.random() < annahmen.tod(qx_erste_ordnung):
             if beitragsfrei_ab is None:
@@ -506,7 +506,7 @@ def fortschreiben(
     guards: only POL base rows
     (a Zeitscheibe or Historie view fed back in is an error — the engine
     would re-simulate it from insurance_start), unique positive police_id,
-    valid event rates, durations within the sheet-anchored 0..50 range.
+    valid event rates, durations within the engine's 0..50 window.
     """
     fehlend = [c for c in STAMM_NAMES if c not in stamm.columns]
     if fehlend:
@@ -528,8 +528,10 @@ def fortschreiben(
         raise EreignisError("police_id <= 0 (Substream-Konvention verlangt > 0)")
     if len(stamm) and int(stamm["duration"].max()) > 50:
         raise EreignisError(
-            "duration > 50: ausserhalb des blattfest verankerten "
-            "Verlaufsbereichs des Kerns (Vertragsjahre 0..50)"
+            "duration > 50: ausserhalb des Verlaufsfensters der "
+            "Bestand-Engine (Vertragsjahre 0..50; eigene konservative "
+            "Grenze — der Kern selbst rechnet seit 3.0.0 bis zur "
+            "Tafel-Erschoepfung)"
         )
     bis = pd.Timestamp(bis).date()
 
@@ -566,7 +568,7 @@ def fortschreiben(
                 f"Neuzugang mit duration > 50 (max {int(zu_lang['duration'].max())}, "
                 f"{len(zu_lang)} Vertraege, Generation {generationen_namen}, "
                 f"z. B. police {int(zu_lang['police_id'].iloc[0])}): ausserhalb "
-                "des blattfest verankerten Verlaufsbereichs des Kerns — "
+                "des Verlaufsfensters der Bestand-Engine (0..50) — "
                 "duration-Verteilung bzw. max_endalter der Config begrenzen"
             )
     else:

@@ -42,8 +42,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List
 
-from rechner_pipeline.kern import kommutation
-from rechner_pipeline.kern.kommutation import (
+from rechner_pipeline.kern import tafeln
+from rechner_pipeline.kern.tafeln import (
     MissingMortalityTableError,
     select_max_dauer,
     select_tafel,
@@ -80,6 +80,7 @@ class BU:
 
     kennung = "bu"
     contract_prefix = "BU"
+    contract_verlauf_bis: int | None = None  # modellpunktgetrieben (0..n)
     model_point_cls = BUModelPoint
 
     def __init__(self, mp: BUModelPoint) -> None:
@@ -91,10 +92,10 @@ class BU:
             raise ValueError(f"n {mp.n} < 1")
         self.mp = mp
         # Ausscheideordnungen (fail-fast bei fehlenden Tafeln):
-        self._qa = kommutation.fuer(mp.sex, mp.tafel_aktiv, mp.zins)
+        self._qa = tafeln.basis(mp.sex, mp.tafel_aktiv)
         self._i = {
             alter: wert
-            for alter, wert in enumerate(kommutation.qx_vector(mp.sex, mp.tafel_i))
+            for alter, wert in enumerate(tafeln.qx_vector(mp.sex, mp.tafel_i))
         }
         self._ri = select_tafel(mp.tafel_ri, mp.sex)
         self._ti = select_tafel(mp.tafel_ti, mp.sex)
@@ -260,12 +261,12 @@ class BU:
             "Praemienbarwert": self.praemienbarwert(),
         }
 
-    def verlaufswerte(self) -> List[Dict[str, float]]:
+    def verlaufswerte(self, bis: int | None = None) -> List[Dict[str, float]]:
         return [
             {
                 "jahr": float(a),
                 "V_aktiv": self.reserve_aktiv(a),
                 "V_bu": self.reserve_bu(a, 0),
             }
-            for a in range(0, self.mp.n + 1)
+            for a in range(0, (self.mp.n if bis is None else bis) + 1)
         ]

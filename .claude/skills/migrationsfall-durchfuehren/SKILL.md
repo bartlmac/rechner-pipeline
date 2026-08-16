@@ -110,7 +110,7 @@ einen geltenden G-1-Annahme-Snapshot desselben Stands.
 3. Kern-Aenderungen: eine neue Generation ist PARAMETRIERUNG — kein
    Formel-Code. Neue Tafeln in `kern/tafeln.xml` sind eine fachliche
    Aenderung: Kern-`__version__` anheben, Abnahme-Protokoll des Kerns
-   einhalten (bestehende Anker/617-Paritaet muessen gruen bleiben).
+   einhalten (bestehende Charakterisierungs-Anker muessen gruen bleiben).
 
 ### Stufe 3 — Abnahme
 
@@ -132,4 +132,4 @@ einen geltenden G-1-Annahme-Snapshot desselben Stands.
   widersprechen sich).
 - Tafel-Konflikt (wertverschieden bei gleichem Namen) oder
   Eingang-Integritaetsverletzung.
-- Eine bestehende Kern-Verankerung (Anker, 617/617) wird rot.
+- Eine bestehende Kern-Verankerung (Charakterisierungs-Anker) wird rot.

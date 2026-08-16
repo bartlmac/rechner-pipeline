@@ -232,18 +232,20 @@ class TarifGeneration:
         if not sterbetafel:
             errors.append(f"{prefix}: tafel fehlt")
         else:
-            # max_endalter muss vor der Tafel-Erschoepfung liegen (Dx = 0),
-            # sonst kann ein voll validiertes Setup Vertraege erzeugen, deren
-            # Fortschreibung im Kern an Dx=0 scheitert.
+            # max_endalter muss vor der Tafel-Erschoepfung liegen, sonst
+            # kann ein voll validiertes Setup Vertraege erzeugen, deren
+            # Fortschreibung im Kern an der Tafelgrenze scheitert.
             from rechner_pipeline.kern import MissingMortalityTableError
-            from rechner_pipeline.kern.kommutation import fuer
+            from rechner_pipeline.kern.konventionen import MAX_ALTER
+            from rechner_pipeline.kern.tafeln import basis as tafelbasis
 
             try:
                 grenze = min(
-                    max(a for a in range(len(kom.dx)) if kom.dx[a] > 0.0)
-                    for kom in (
-                        fuer("M", sterbetafel, self.zins),
-                        fuer("F", sterbetafel, self.zins),
+                    (b.erschoepft - 1 if b.erschoepft is not None
+                     else MAX_ALTER)
+                    for b in (
+                        tafelbasis("M", sterbetafel),
+                        tafelbasis("F", sterbetafel),
                     )
                 )
             except MissingMortalityTableError as exc:
@@ -297,7 +299,7 @@ class TarifGeneration:
 
     def _validate_bu(self, prefix: str) -> List[str]:
         """BU-Rechnungsgrundlagen pruefen (Tafeln ladbar, Perioden stimmig)."""
-        from rechner_pipeline.kern.kommutation import (
+        from rechner_pipeline.kern.tafeln import (
             MissingMortalityTableError,
             qx_vector,
             select_max_dauer,

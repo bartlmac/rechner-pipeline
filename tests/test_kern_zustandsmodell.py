@@ -5,8 +5,9 @@ from __future__ import annotations
 import pytest
 
 from rechner_pipeline.kern import KLV_DEFAULT
-from rechner_pipeline.kern.barwerte import Barwerte
-from rechner_pipeline.kern.kommutation import fuer
+from rechner_pipeline.kommutationskern.barwerte import Barwerte
+from rechner_pipeline.kommutationskern.kommutation import fuer
+from rechner_pipeline.kern import tafeln
 from rechner_pipeline.kern.konventionen import MAX_ALTER
 from rechner_pipeline.kern.zustandsmodell import Zustandsmodell, ZustandsBarwerte
 
@@ -150,14 +151,17 @@ def test_wegzuege_ueber_eins_und_negative_sind_fehler():
 @pytest.fixture(scope="module")
 def basen():
     kom = fuer(KLV_DEFAULT.sex, KLV_DEFAULT.tafel, KLV_DEFAULT.zins)
-    return Barwerte(kom, KLV_DEFAULT.zins), ZustandsBarwerte(kom, KLV_DEFAULT.zins)
+    return Barwerte(kom, KLV_DEFAULT.zins), ZustandsBarwerte(tafeln.basis(KLV_DEFAULT.sex, KLV_DEFAULT.tafel), KLV_DEFAULT.zins)
 
 
 def test_zustandsbarwerte_deckt_barwerte_interface(basen):
     klassisch, zustand = basen
     fehlend = [
         name for name in dir(klassisch)
-        if not name.startswith("_") and not hasattr(zustand, name)
+        # "kom" ist der interne Kommutations-Handle des Zweitkerns,
+        # kein Teil des aktuariellen Barwerte-Interfaces (Kern 3.0.0).
+        if not name.startswith("_") and name != "kom"
+        and not hasattr(zustand, name)
     ]
     assert fehlend == []
 
@@ -184,7 +188,7 @@ def test_zustandsbarwerte_nGrEx_ist_reines_ueberlebensprodukt(basen):
     x, term = KLV_DEFAULT.x, 20
     produkt = 1.0
     for j in range(term):
-        produkt *= 1.0 - zustand.kom.qx_at(x + j)
+        produkt *= 1.0 - zustand.basis.qx_at(x + j)
     v = 1.0 / (1.0 + KLV_DEFAULT.zins)
     assert zustand.nGrEx(x, term) == pytest.approx(produkt * v ** term, rel=1e-12)
 
@@ -207,7 +211,7 @@ def test_spalten_pass_ist_bitidentisch_zum_einzelaufruf(basen):
 
 
 def test_pass_cache_wird_ueber_instanzen_geteilt(basen):
-    from rechner_pipeline.kern.kommutation import fuer
+    from rechner_pipeline.kommutationskern.kommutation import fuer
     from rechner_pipeline.kern.zustandsmodell import _PASS_CACHE
 
     _, zustand = basen
@@ -215,7 +219,7 @@ def test_pass_cache_wird_ueber_instanzen_geteilt(basen):
     key = (zustand._basis, "tod", 65)
     assert key in _PASS_CACHE
     kom = fuer(KLV_DEFAULT.sex, KLV_DEFAULT.tafel, KLV_DEFAULT.zins)
-    zweite = ZustandsBarwerte(kom, KLV_DEFAULT.zins)
+    zweite = ZustandsBarwerte(tafeln.basis(KLV_DEFAULT.sex, KLV_DEFAULT.tafel), KLV_DEFAULT.zins)
     assert zweite._pass("tod", 65) is _PASS_CACHE[key]  # geteilt, kein Neubau
 
 
@@ -223,7 +227,7 @@ def test_zustandsbarwerte_tafelgrenze_fail_fast(basen):
     """Review-Fix: jenseits der Tafel-Erschoepfung (Dx = 0, DAV1994 ab 101)
     faellt das Zustandsmodell wie die klassische Domaene schnell — statt
     stiller bedingter Werte, wo die Kommutation ZeroDivisionError warf."""
-    from rechner_pipeline.kern.kommutation import TafelBereichError
+    from rechner_pipeline.kern.tafeln import TafelBereichError
 
     _, zustand = basen
     # Letztes Alter mit Dx > 0 auf DAV1994_T (M): 100 — rechnet:

@@ -29,7 +29,7 @@ mit `gates.gate_entscheid` (P9).
 |---|---|---|
 | Extraktionsfehler | eine Lesart haelt der Nachpruefung gegen die eigene Quelle nicht stand (falsche Zeile, falscher Satzteil, Normalisierungsfehler) | KEIN Fachkonflikt: Fragment korrigieren, Anmerkung dokumentieren, Akteur um `+verifikation` ergaenzen, neu mergen |
 | Echter Quell-Widerspruch | beide Lesarten sind in ihrer Quelle woertlich belegt | Dossier (unten) |
-| Verankerungs-Konflikt | Anker/GM/617-Paritaet weicht nach einer Aenderung ab | erst Eigenfehler ausschliessen; sonst Dossier mit Wert-Diff und Ursachenanalyse (Abnahme-Protokoll des Kerns gilt) |
+| Verankerungs-Konflikt | Anker- oder Gate-O3-Verankerung weicht nach einer Aenderung ab | erst Eigenfehler ausschliessen; sonst Dossier mit Wert-Diff und Ursachenanalyse (Abnahme-Protokoll des Kerns gilt) |
 | Modell-Spannung | die T-Box kann einen Sachverhalt nicht ausdruecken (fehlendes Feld, fehlende Klasse) | G-T-Vorlage: Aenderungsvorschlag als Artefakt, kein stilles Einbauen |
 
 ## Schritt 2: Beide Lesarten VERIFIZIEREN

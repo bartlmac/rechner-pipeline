@@ -45,7 +45,7 @@ from __future__ import annotations
 from typing import Callable, Dict, Optional, Tuple
 
 from rechner_pipeline.kern.konventionen import MAX_ALTER
-from rechner_pipeline.kern.kommutation import Kommutation, TafelBereichError
+from rechner_pipeline.kern.tafeln import Tafelbasis, TafelBereichError
 
 #: Signatur der Übergangswahrscheinlichkeiten: (von, nach, alter, dauer) -> p.
 UebergangsFunktion = Callable[[str, str, int, int], float]
@@ -229,11 +229,11 @@ _PASS_CACHE: Dict[Tuple, list] = {}
 class ZustandsBarwerte:
     """Barwert-Bausteine auf dem Zustandsmodell — Interface wie ``Barwerte``.
 
-    Der 2-Zustands-Spezialfall (aktiv/tot) auf derselben Tafelbasis: die
-    qx kommen aus der :class:`~rechner_pipeline.kern.kommutation.Kommutation`
-    (fail-fast Tafelzugriff), NICHT deren gerundete Kommutationsspalten —
-    Überlebenswahrscheinlichkeiten sind reine (1-qx)-Produkte. Gegenüber der
-    Kommutations-Schiene weichen die Werte nur um Rundungsreihenfolgen ab
+    Der 2-Zustands-Spezialfall (aktiv/tot) auf einer
+    :class:`~rechner_pipeline.kern.tafeln.Tafelbasis` (reine qx, fail-fast
+    Tafelzugriff) — Ueberlebenswahrscheinlichkeiten sind reine
+    (1-qx)-Produkte, ohne Kommutations-Ableitungen. Der separate
+    Kommutationskern dient nur der Kreuz-Schiene
     (Toleranz-Überleitung: :mod:`rechner_pipeline.qa.ueberleitung`).
 
     Performance über Spalten-Pässe: je (Basis, Zahlungsart, Endalter) läuft
@@ -244,14 +244,14 @@ class ZustandsBarwerte:
     AKTIV = "aktiv"
     TOT = "tot"
 
-    def __init__(self, kom: Kommutation, zins: float) -> None:
-        self.kom = kom
+    def __init__(self, basis: Tafelbasis, zins: float) -> None:
+        self.basis = basis
         self.zins = zins
         self.modell = Zustandsmodell(
             (self.AKTIV, self.TOT), zins, self._uebergang
         )
         self._axn_cache: Dict[Tuple[int, int, int], float] = {}
-        self._basis = (kom.sex, kom.tafel, kom.zins, zins)
+        self._basis = (*basis.key, zins)
 
     def _pass(self, art: str, endalter: int) -> list:
         """Wertespalte einer Zahlungsart bis ``endalter`` (gecacht je Basis)."""
@@ -283,26 +283,19 @@ class ZustandsBarwerte:
 
     def _uebergang(self, von: str, nach: str, alter: int, dauer: int) -> float:
         if von == self.AKTIV and nach == self.TOT:
-            return self.kom.qx_at(alter)
+            return self.basis.qx_at(alter)
         return 0.0
 
     def _pruefe_domaene(self, age: int, hoechstes_alter: int) -> None:
-        """Klassische Tafel-Domäne der Kommutations-Schiene durchsetzen.
+        """Tafel-Domaene durchsetzen (fail-fast).
 
-        Review-Fix: jenseits der Tafel-Erschöpfung (Dx = 0, z. B. DAV1994_T
-        ab Alter 101) lieferte das Zustandsmodell stille bedingte Werte, wo
-        die Kommutation fail-fast war (ZeroDivisionError im Dx-Nenner) —
-        die Schienen wären dort nicht austauschbar. Jetzt: sprechender
-        :class:`TafelBereichError` am Anker-Alter; das höchste referenzierte
-        Alter läuft durch denselben Bereichs-Check wie die Kommutation
-        (IndexError jenseits MAX_ALTER).
+        Jenseits der Tafel-Erschoepfung (ab dem ersten Alter nach qx = 1,
+        z. B. DAV1994_T ab Alter 101) sind bedingte Barwerte nicht
+        definiert — sprechender :class:`TafelBereichError` statt stiller
+        bedingter Werte; das hoechste referenzierte Alter laeuft durch
+        den Tafelbereichs-Check.
         """
-        if self.kom.Dx_at(age) == 0.0:
-            raise TafelBereichError(
-                f"Alter {age}: Dx = 0 in {self.kom.tafel} (Tafel erschöpft) — "
-                "bedingte Barwerte sind dort nicht definiert"
-            )
-        self.kom.Dx_at(hoechstes_alter)
+        self.basis.pruefe_alter(age, hoechstes_alter)
 
     def _nur_aktiv(self, zustand: str, jahr: int) -> float:
         return 1.0 if zustand == self.AKTIV else 0.0

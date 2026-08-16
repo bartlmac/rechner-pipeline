@@ -105,7 +105,7 @@ def test_einfuegen_ist_deterministisch_und_konfliktfrei(tmp_path: Path):
 def test_kern_fuehrt_die_tg2015_tafeln_mit_korrekter_mischung():
     """Integration: die importierten R/NR-Vektoren und die U70-Ableitungen
     liegen in den Paket-Rechnungsgrundlagen; die Mischung stimmt je Alter."""
-    from rechner_pipeline.kern import kommutation
+    from rechner_pipeline.kern import tafeln as kommutation
 
     for basis in ("DAV2008_T_R", "DAV2008_T_NR"):
         qx_m = kommutation.qx_vector("M", basis)

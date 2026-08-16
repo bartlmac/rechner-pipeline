@@ -57,8 +57,8 @@ STOPP, Vorschlag formulieren, Mensch entscheidet.
    rechner_pipeline.ontologie.code_index` muss drift-frei bleiben.
    Fundstellen sind ableitbar, nicht suchbar: erst Index, dann exakte
    Symbolsuche, Volltext ist Fallback.
-5. **Kern-Abnahme-Protokoll** (kern/__init__): 617/617-Paritaet und
-   Anker sind unantastbar; Anker-Aenderung nur mit fachlicher
+5. **Kern-Abnahme-Protokoll** (kern/__init__): die
+   Charakterisierungs-Anker sind unantastbar; Anker-Aenderung nur mit fachlicher
    Begruendung im selben Commit; `__version__` bei fachlicher Aenderung
    anheben; tafeln.xml nur ueber den Import-Weg mit Provenienz.
 6. **Don't ship without tests:** vor JEDEM Commit volle Suite
@@ -96,7 +96,7 @@ STOPP, Vorschlag formulieren, Mensch entscheidet.
 ## STOPP-Kriterien (Mensch fragen)
 
 - Eine Regel oben muesste gebrochen werden, um die Aufgabe zu erfuellen.
-- Eine bestehende Verankerung (Anker, 617/617, GM) wird rot und die
+- Eine bestehende Verankerung (Anker, Gate O3 eines Falls) wird rot und die
   Ursache ist nicht ein offensichtlicher eigener Fehler.
 - Ein Schichten-/Zustaendigkeitsschnitt muesste sich aendern.
 - Eine neue Dependency, ein neues Top-Level-Verzeichnis, eine Aenderung

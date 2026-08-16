@@ -39,9 +39,9 @@ class SpezFehler(ValueError):
 
 def kern_tafeln() -> Set[str]:
     """Die Tafeln (xml-Ebene), die der Kern heute fuehrt."""
-    from rechner_pipeline.kern import kommutation
+    from rechner_pipeline.kern import tafeln
 
-    return set(kommutation._TABLES)  # noqa: SLF001 — bewusste Introspektion
+    return set(tafeln.verfuegbare_tafeln())
 
 
 def _generation(abox: ABox, gen_id: str) -> Tarifgeneration:

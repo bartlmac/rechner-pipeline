@@ -11,8 +11,13 @@ from __future__ import annotations
 import pytest
 
 from rechner_pipeline.kern import KLV_DEFAULT
-from rechner_pipeline.kern.kommutation import fuer
-from rechner_pipeline.kern.produkte.klv import KLV, VERLAUFSJAHRE
+from rechner_pipeline.kommutationskern.kommutation import fuer
+from rechner_pipeline.kern.produkte.klv import KLV
+from rechner_pipeline.kern import tafeln
+
+#: Vergleichsfenster der Ueberleitung (0..50) — Eigenschaft des
+#: Kreuz-Checks, seit Kern 3.0.0 KEIN Kern-Anker mehr.
+VERLAUFSJAHRE = 51
 from rechner_pipeline.kern.zustandsmodell import ZustandsBarwerte
 from rechner_pipeline.qa.ueberleitung import (
     _klassifiziere,
@@ -61,20 +66,23 @@ def test_default_liefert_exakt_die_zustandsmodell_werte():
     from rechner_pipeline.kern import berechne
 
     mp = KLV_DEFAULT
-    kom = fuer(mp.sex, mp.tafel, mp.zins)
-    injiziert = KLV(mp, barwerte=ZustandsBarwerte(kom, mp.zins))
+    injiziert = KLV(mp, barwerte=ZustandsBarwerte(
+        tafeln.basis(mp.sex, mp.tafel), mp.zins))
     produktiv = berechne(mp)
     assert produktiv["scalars"]["Kalkulation"] == injiziert.scalars()
-    assert produktiv["tables"]["Kalkulation"] == injiziert.verlaufswerte()
+    assert produktiv["tables"]["Kalkulation"] == injiziert.verlaufswerte(bis=50)
 
 
 def test_klv_auf_zustandsmodell_liefert_gleichen_contract_shape():
     mp = KLV_DEFAULT
-    kom = fuer(mp.sex, mp.tafel, mp.zins)
-    zustand = KLV(mp, barwerte=ZustandsBarwerte(kom, mp.zins))
+    zustand = KLV(mp, barwerte=ZustandsBarwerte(
+        tafeln.basis(mp.sex, mp.tafel), mp.zins))
     klassisch = KLV(mp)
     assert set(zustand.scalars()) == set(klassisch.scalars())
-    zeilen = zustand.verlaufswerte()
+    # Kern 3.0.0: Default-Horizont ist der Modellpunkt (0..n), das
+    # 51-Zeilen-Fenster nur noch expliziter Vergleichs-Contract.
+    assert len(zustand.verlaufswerte()) == mp.n + 1
+    zeilen = zustand.verlaufswerte(bis=50)
     assert len(zeilen) == VERLAUFSJAHRE
     assert list(zeilen[0]) == list(klassisch.verlaufswerte()[0])
 
@@ -83,7 +91,7 @@ def test_default_pfad_ist_zustandsmodell():
     """Der Wechsel des produktiven Pfads ist vollzogen (Abnahme 2026-08-12):
     ohne Injektion rechnet KLV auf dem Zustandsmodell-Rückgrat; die
     Kommutations-Schiene bleibt als injizierbare Kreuz-Check-Schiene."""
-    from rechner_pipeline.kern.barwerte import Barwerte
+    from rechner_pipeline.kommutationskern.barwerte import Barwerte
 
     assert isinstance(KLV(KLV_DEFAULT).bw, ZustandsBarwerte)
     kom = fuer(KLV_DEFAULT.sex, KLV_DEFAULT.tafel, KLV_DEFAULT.zins)
@@ -99,9 +107,9 @@ def test_ueberleitung_meldet_echte_abweichungen():
             return super().nGrAx(age, term) * 1.001
 
     mp = KLV_DEFAULT
-    kom = fuer(mp.sex, mp.tafel, mp.zins)
     klassisch = KLV(mp)
-    kaputt = KLV(mp, barwerte=Verfaelscht(kom, mp.zins))
+    kaputt = KLV(mp, barwerte=Verfaelscht(
+        tafeln.basis(mp.sex, mp.tafel), mp.zins))
     abweichung = abs(
         klassisch.scalars()["Bxt"] - kaputt.scalars()["Bxt"]
     ) / klassisch.scalars()["Bxt"]

@@ -174,6 +174,7 @@ braucht); Testing/Abnahme = Gate-Kette + Suite + menschliche Gates.
 ## 10 Verweise
 
 ADR-001 (Repo-Zielstruktur), ADR-002 (Fall-Arbeitsbereich), ADR-003
-(Pydantic fuer die Ontologie-Schicht). Entscheidungsgrundlage: die
+(Pydantic fuer die Ontologie-Schicht), ADR-004 (Thiele-Kern ohne
+Excel-Anker; Kommutation als separater Zweitkern). Entscheidungsgrundlage: die
 Architektur-Fragerunde (D1-D4, F1-F3; privat dokumentiert, Ergebnisse
 in diesen ADRs).

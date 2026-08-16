@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Dict, Tuple
 
-from rechner_pipeline.kern.kommutation import Kommutation
+from rechner_pipeline.kommutationskern.kommutation import Kommutation
 
 
 class Barwerte:

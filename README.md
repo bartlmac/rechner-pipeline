@@ -182,10 +182,14 @@ python -m rechner_pipeline.gates.<command> [flags]
 
 ## Der stabile Rechenkern (`rechner_pipeline.kern`)
 
-Die Promotion des am 22.07.2026 agentisch migrierten und mechanisch
-angenommenen KLV-Kerns (Golden-Master 617/617) in versionierte Software —
-formeltreu (Excel-/VBA-Semantik inkl. 16-stelliger Excel-Rundung), aber mit
-**parametrisierter API** statt der Bindung an einen festen Modellpunkt:
+Der Zielrechenkern ist seit Version 3.0.0 vollständig in der
+Zustandsmodell-Welt formuliert (Thiele-Rekursion auf reinen
+Ausscheidewahrscheinlichkeiten). Historische Provenienz: die einmalige
+agentische Migration aus dem Quell-Workbook (22.07.2026, damals mit
+617/617-Excel-Parität abgenommen) — das ist der Übersetzungsbeleg,
+kein laufender Anker. Formeltreu zur Quell-Semantik (inkl. 16-stelliger
+Excel-Rundung), aber mit **parametrisierter API** statt der Bindung an
+einen festen Modellpunkt:
 
 ```python
 import dataclasses
@@ -196,11 +200,12 @@ mp = dataclasses.replace(KLV_DEFAULT, x=30, sex="F", zins=0.0225, tafel="DAV2008
 ergebnis2 = berechne(mp)                      # beliebiger Modellpunkt, in-process
 ```
 
-Kommutationswerte werden je Rechnungsbasis (Geschlecht, Tafel, Zins) gebaut
-und gecacht; fehlende Tafeln führen zu einem harten Fehler (kein erfundenes
-qx). Die Parität zum angenommenen Migrationsergebnis ist testseitig verankert
-(617/617 gegen die extrahierten Erwartungswerte, geprüft mit der
-Golden-Master-Engine der Abnahme-Schicht). Der transiente Migrationspfad
+Tafelbasen (reine qx-Vektoren samt Erschöpfungsgrenze) werden je
+(Geschlecht, Tafel) gebaut und gecacht (`kern/tafeln.py`); fehlende Tafeln
+führen zu einem harten Fehler (kein erfundenes qx). Verankert ist der Kern
+über Charakterisierungs-Anker in voller Float-Präzision; die fachliche
+Abnahme je Migrationsfall läuft über Gate O3 gegen den jeweiligen
+Quell-Rechner. Der transiente Migrationspfad
 (`runs/generated` + Gates) bleibt daneben bestehen — für künftige einmalige
 Übersetzungen weiterer Produkte.
 
@@ -220,8 +225,9 @@ Zustandsmodell-Schiene wurde über eine **Toleranz-Überleitung** abgenommen
 (`qa/ueberleitung.py`: Abnahme-Lauf 6.170 Werte über 10 Modellpunkte, keine
 Abweichung außerhalb der Rundungsklasse, maximal 4e-13 relativ; der
 dauerhafte Kreuz-Check fährt heute einen Standard-Sweep über 16
-Modellpunkte); die Kommutations-Schiene bleibt dauerhaft als Kreuz-Check
-erhalten, und die 617/617-Parität gilt unverändert.
+Modellpunkte). Die Kommutations-Schiene lebt seit Kern 3.0.0 als
+**separater Zweitkern** (`rechner_pipeline.kommutationskern`) ausschließlich
+für diesen Kreuz-Check weiter — Bestandteil des Zielkerns ist sie nicht mehr.
 
 ## Bestandsdaten: synthetischer, fortschreibbarer Bestand
 

@@ -1,11 +1,13 @@
-"""Der stabile KLV-Rechenkern: Golden-Master-Parität, Parametrisierung, Contract.
+"""Der stabile KLV-Rechenkern: Verankerung, Parametrisierung, Contract.
 
-Der Kern ist die Promotion des am 2026-07-22 agentisch migrierten und
-angenommenen Kerns (617/617). Diese Tests verankern:
+Kern 3.0.0 (Beschluss 2026-08-16): die einmalige Excel-Paritaets-Abnahme
+(617/617 am 2026-07-22) ist Geschichte des Uebersetzungsakts, kein
+Kern-Anker mehr — Fall-Abnahmen laufen ueber Gate O3 je Migrationsfall.
+Diese Tests verankern stattdessen:
 
-1. **Parität**: ``berechne(KLV_DEFAULT)`` reproduziert exakt die aus dem
-   Quell-Workbook extrahierten Erwartungswerte (Fixtures) — geprüft mit der
-   Golden-Master-Engine der Abnahme-Schicht selbst.
+1. **Verankerung**: Charakterisierungs-Anker (bit-exakte ``berechne()``-
+   Ergebnisse) und bekannte Skalare nageln das Kern-Verhalten fest; ein
+   Diff braucht eine bewusste, fachlich begruendete Abnahme.
 2. **Parametrisierung**: andere Modellpunkte (Alter, Geschlecht, Zins, Tafel)
    rechnen ohne Prozess-Substitution — die frühere ``DEFAULT``-Bindung ist weg.
 3. **Contract-Konsistenz**: ``ModelPoint`` und die Bestandsschema-Sicht
@@ -28,30 +30,17 @@ from rechner_pipeline.kern import (
     TafelBereichError,
     berechne,
 )
-from rechner_pipeline.kern import kommutation
-from rechner_pipeline.kern.kommutation import fuer
+from rechner_pipeline.kern import tafeln
+from rechner_pipeline.kommutationskern.kommutation import fuer
 from rechner_pipeline.kern.produkte import UnbekanntesProduktError, hole
 from rechner_pipeline.kern.produkte.klv import KLV, VERLAUFSWERTE_SPALTEN
 from rechner_pipeline.models.bestand import MODEL_POINT_FIELDS, model_point_kwargs
-from rechner_pipeline.qa.golden_master import compare, load_expected
-
-FIXTURES = Path(__file__).resolve().parent / "fixtures" / "kern_klv"
 ANKER = Path(__file__).resolve().parent / "fixtures" / "kern_anker"
 
 
 # --------------------------------------------------------------------------- #
-# 1. Golden-Master-Paritaet (617/617)
+# 1. Verankerung (Anker + bekannte Skalare)
 # --------------------------------------------------------------------------- #
-
-
-def test_default_model_point_reproduces_golden_master_exactly():
-    expected = load_expected(FIXTURES)
-    report = compare(expected, berechne(KLV_DEFAULT))
-    assert report.deviations == []
-    assert report.unmatched_columns == []
-    assert report.ok
-    assert report.scalars_tested == 5
-    assert report.table_cells_tested == 612  # 5 + 612 = 617/617
 
 
 def test_scalar_values_known_anchors():
@@ -67,7 +56,7 @@ def test_scalar_values_known_anchors():
 def test_charakterisierungs_anker_bleiben_exakt(pfad):
     """Eingefrorene berechne()-Ergebnisse weiterer Modellpunkte (bit-exakt).
 
-    Die Anker sind NICHT Excel-verifiziert (anders als kern_klv/); sie nageln
+    Die Anker sind kernintern (nicht extern verifiziert); sie nageln
     das Kern-Verhalten auf den sonst ungetesteten Zweigen numerisch fest —
     seit dem Backbone-Wechsel sind sie die Voll-Präzisions-Verankerung des
     produktiven Pfads. Ein Diff hier ist eine Verhaltensänderung und braucht
@@ -103,12 +92,15 @@ def test_other_interest_basis_and_table():
     assert len(ergebnis["tables"]["Kalkulation"]) == 51
 
 
-def test_kommutation_cache_reuses_basis():
-    a = fuer("M", "DAV1994_T", 0.0175)
-    b = fuer("M", "DAV1994_T", 0.0175)
-    assert a is b
-    c = fuer("F", "DAV1994_T", 0.0175)
-    assert c is not a
+def test_basis_caches_reuse_instanzen():
+    # Kern: Tafelbasis-Cache (zinsfrei, je aufgeloestem Tafelnamen)
+    a = tafeln.basis("M", "DAV1994_T")
+    assert tafeln.basis("M", "DAV1994_T") is a
+    assert tafeln.basis("F", "DAV1994_T") is not a
+    # Zweitkern: Kommutations-Cache (je Tafel UND Zins)
+    k = fuer("M", "DAV1994_T", 0.0175)
+    assert fuer("M", "DAV1994_T", 0.0175) is k
+    assert fuer("F", "DAV1994_T", 0.0175) is not k
 
 
 def test_missing_table_fails_fast():
@@ -145,9 +137,9 @@ def test_tarif_stellschrauben_wirken():
 
 
 def test_tafel_erschoepfung_wirft_domaenenfehler():
-    """x >= 51 auf DAV1994_T (lx=0 ab Alter 101): sprechender Fehler statt
-    ZeroDivisionError — die blattfesten 51 Verlaufsjahre sind unberechenbar."""
-    with pytest.raises(TafelBereichError, match="Dx=0"):
+    """x=60, n=20 auf DAV1994_T (qx=1 ab Alter 100): sprechender Fehler —
+    jenseits der Erschoepfung traegt die Tafel keine bedingten Barwerte."""
+    with pytest.raises(TafelBereichError, match="erschoepft"):
         berechne(dataclasses.replace(KLV_DEFAULT, x=60, n=20, t=15))
     # x=50 erreicht hoechstens Alter 100 und bleibt berechenbar:
     ok = berechne(dataclasses.replace(KLV_DEFAULT, x=50, n=20, t=15))
@@ -163,13 +155,13 @@ def test_unbekanntes_produkt_fail_fast():
 def test_unisex_tafel_wird_exakt_aufgeloest(monkeypatch):
     """Exakter Tafelname gewinnt vor dem Sex-Suffix (Unisex-faehig)."""
     monkeypatch.setitem(
-        kommutation._TABLES, "TESTUNI", {a: 0.1 for a in range(0, 124)}
+        tafeln._TABLES, "TESTUNI", {a: 0.1 for a in range(0, 124)}
     )
-    assert kommutation._tafel_key("M", "TESTUNI") == "TESTUNI"
-    assert kommutation._tafel_key("F", "TESTUNI") == "TESTUNI"
-    assert kommutation._tafel_key("M", "DAV1994_T") == "DAV1994_T_M"
-    assert kommutation._tafel_key("F", "DAV1994_T") == "DAV1994_T_F"
-    assert kommutation.qx_vector("F", "TESTUNI")[0] == 0.1
+    assert tafeln._tafel_key("M", "TESTUNI") == "TESTUNI"
+    assert tafeln._tafel_key("F", "TESTUNI") == "TESTUNI"
+    assert tafeln._tafel_key("M", "DAV1994_T") == "DAV1994_T_M"
+    assert tafeln._tafel_key("F", "DAV1994_T") == "DAV1994_T_F"
+    assert tafeln.qx_vector("F", "TESTUNI")[0] == 0.1
 
 
 # --------------------------------------------------------------------------- #

@@ -1,9 +1,9 @@
 """Toleranz-Überleitung zweier Rechenrückgrate (Kreuz-Modell-Gate).
 
-Schiene C der Golden-Master-Strategie: zwei unabhängige Rechenwege müssen
-bis auf definierte Toleranz übereinstimmen. Konkret hier: die
-Kommutations-Schiene (Golden-Master-Pfad, 617/617 gegen das Quell-Workbook)
-gegen das Zustandsmodell-Rückgrat
+Zwei unabhängige Rechenwege müssen bis auf definierte Toleranz
+übereinstimmen: der SEPARATE Kommutationskern
+(:mod:`rechner_pipeline.kommutationskern` — kein Bestandteil des
+Zielkerns) gegen das Zustandsmodell-Rückgrat des Kerns
 (:mod:`rechner_pipeline.kern.zustandsmodell`). Jeder verglichene Wert wird
 klassifiziert:
 
@@ -31,10 +31,11 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Dict, Iterable, List
 
-from rechner_pipeline.kern import kommutation
-from rechner_pipeline.kern.barwerte import Barwerte
+from rechner_pipeline.kommutationskern import kommutation
+from rechner_pipeline.kommutationskern.barwerte import Barwerte
 from rechner_pipeline.kern.model_point import ModelPoint
 from rechner_pipeline.kern.produkte.klv import KLV
+from rechner_pipeline.kern import tafeln
 from rechner_pipeline.kern.zustandsmodell import ZustandsBarwerte
 
 #: Toleranz der Rundungsklasse (relative + absolute Komponente). Die
@@ -120,11 +121,12 @@ def ueberleitung_klv(
         # Beide Schienen EXPLIZIT injizieren — das Gate ist unabhaengig davon,
         # welche Schiene gerade der produktive Default ist.
         klassisch = KLV(mp, barwerte=Barwerte(kom, mp.zins))
-        zustand = KLV(mp, barwerte=ZustandsBarwerte(kom, mp.zins))
+        zustand = KLV(mp, barwerte=ZustandsBarwerte(
+            tafeln.basis(mp.sex, mp.tafel), mp.zins))
         for name, a in klassisch.scalars().items():
             vergleiche(mp_index, mp, atol_mp, f"scalar {name}", a, zustand.scalars()[name])
         for jahr, (zeile_a, zeile_b) in enumerate(
-            zip(klassisch.verlaufswerte(), zustand.verlaufswerte())
+            zip(klassisch.verlaufswerte(bis=50), zustand.verlaufswerte(bis=50))
         ):
             for spalte, a in zeile_a.items():
                 vergleiche(
@@ -151,8 +153,9 @@ def standard_modellpunkte(basis: ModelPoint) -> List[ModelPoint]:
     Deckt beide Tafeln, beide Geschlechter, Zahlweisen, Grenzfälle t=n,
     junge/alte Eintrittsalter, die Hochalter-Region auf DAV2008 (bis Alter
     119, nahe der Tafelgrenze), Zins-Extreme und grosse Versicherungssummen
-    ab (alle im rechenbaren Tafelbereich; DAV1994 ist durch das blattfeste
-    51-Zeilen-Fenster strukturell bei x=50 gedeckelt).
+    ab (alle im rechenbaren Tafelbereich; DAV1994 ist durch das
+    51-Zeilen-Vergleichsfenster der Ueberleitung strukturell bei x=50
+    gedeckelt).
     """
     r = dataclasses.replace
     return [

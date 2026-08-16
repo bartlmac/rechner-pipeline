@@ -6,7 +6,7 @@ import dataclasses
 
 import pytest
 
-from rechner_pipeline.kern.kommutation import (
+from rechner_pipeline.kern.tafeln import (
     MissingMortalityTableError,
     select_max_dauer,
     select_tafel,
@@ -74,7 +74,7 @@ def test_reserve_bu_fachlich_unmoegliche_dauer_fail_fast(produkt):
 def test_select_perioden_mismatch_fail_fast(monkeypatch):
     """Review-Fix: ungleiche Select-Perioden -> Fehler statt still
     verworfener Tafeldaten der laengeren Tafel."""
-    from rechner_pipeline.kern import kommutation as k
+    from rechner_pipeline.kern import tafeln as k
 
     lang = {
         (alter, dauer): 0.01
@@ -125,7 +125,7 @@ def test_dav_tafeln_sind_im_deckungsbereich_konsistent():
     Der nutzbare Bereich endet bei Alter 69: ab 70 setzt die Tafel die
     Invalidisierung per Konvention auf 1, dort ist die Summe der Wegzüge
     aus dem Anwärterstand grösser als 1 (siehe folgender Test)."""
-    from rechner_pipeline.kern import kommutation as k
+    from rechner_pipeline.kern import tafeln as k
 
     for sex in ("M", "F"):
         ri = select_tafel(BU_BEISPIEL.tafel_ri, sex)
@@ -147,7 +147,7 @@ def test_synthetische_platzhalter_bleiben_konsistent():
     Select-Beispiel im Tafelwerk (kein Produkt legt sie mehr vor) — ihre
     Datenqualität bleibt geprüft, inklusive des Review-Fixes am
     aktiv-Zustand."""
-    from rechner_pipeline.kern import kommutation as k
+    from rechner_pipeline.kern import tafeln as k
 
     ri = select_tafel("SYNTH_BU_RI")
     ti = select_tafel("SYNTH_BU_TI")
