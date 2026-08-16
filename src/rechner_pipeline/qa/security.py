@@ -26,6 +26,8 @@ Public surface used by the toolbox command and tests:
 * :class:`SecurityViolation`, :class:`StaticSecurityError`
 * :func:`security_report`, :func:`write_security_report`, :func:`raise_for_violations`
 * :data:`GATE_VERSION`, :data:`RULES` (the canonical id -> description map)
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

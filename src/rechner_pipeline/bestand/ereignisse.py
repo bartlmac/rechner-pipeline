@@ -62,6 +62,8 @@ Ereignis-Ledger with the kernel-computed amounts (schema
 :data:`~rechner_pipeline.models.bestand.LEDGER_SPALTEN`) and the
 Erhoehungsscheiben (schema
 :data:`~rechner_pipeline.models.bestand.SCHEIBEN_SPALTEN`).
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

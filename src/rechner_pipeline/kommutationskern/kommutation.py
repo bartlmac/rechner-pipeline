@@ -6,6 +6,8 @@ exakt nach dem VBA-Modul ``mGWerte`` des historischen Quell-Workbooks
 existiert als unabhaengiger zweiter Rechenweg fuer die
 Toleranz-Ueberleitung (qa/ueberleitung). Tafeldaten kommen aus
 :mod:`rechner_pipeline.kern.tafeln` — fail-fast, keine erfundenen qx.
+
+Knoten: klv
 """
 
 from __future__ import annotations

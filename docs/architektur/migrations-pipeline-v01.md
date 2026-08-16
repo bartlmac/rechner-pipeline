@@ -139,11 +139,15 @@ Wege ist eine Team-Entscheidung nach Fall 1 (Fragerunde F2).
   (z. B. Zins 1,25 % der Meldung), braucht die Abnahme korrigierte
   Erwartungswerte des Lieferanten — diesen Pfad gibt es noch nicht
   (Systempruefung 23).
-* Die 1M-LOC-Mechanik (feingranulare Knoten, Test-Knoten-Bindung,
-  Code-Karte, berechneter Aenderungs-Impact mit selektiven Gates) ist
-  als Konvention angelegt (Knoten-Annotation, Index), aber NICHT
-  gebaut — heute traegt der Index Familien-Granularitaet
-  (Systempruefung 6/13/28).
+* Die 1M-LOC-Mechanik ist seit ADR-005 gebaut: hierarchische Knoten
+  (`familie[/generation]`, Wurzel validiert), Test-Knoten-Bindung
+  (jede Testdatei, drift-geprueft), nachrechenbare Schichtenkarte
+  (`ontologie.code_karte`, inkl. ADR-004-Zweitkern-Regel) und
+  berechneter Aenderungs-Impact (`ontologie.impact`, Lineage-Selektion,
+  konservativ bei jeder Unsicherheit). NOCH NICHT gebaut: Tafel-/
+  Zellen-Granularitaet der Daten und die Verdrahtung als selektive
+  Gates — CI und Vor-Commit fahren weiter die volle Suite
+  (Systempruefung 6/13/28, Rest-Ausloeser Fall 2).
 * P10 ist fuer Extraktions-Agenten instruiert (Skill), nicht technisch
   erzwungen (kein Sandbox-Zwang auf die Vorverdichtung).
 
@@ -175,6 +179,7 @@ braucht); Testing/Abnahme = Gate-Kette + Suite + menschliche Gates.
 
 ADR-001 (Repo-Zielstruktur), ADR-002 (Fall-Arbeitsbereich), ADR-003
 (Pydantic fuer die Ontologie-Schicht), ADR-004 (Thiele-Kern ohne
-Excel-Anker; Kommutation als separater Zweitkern). Entscheidungsgrundlage: die
+Excel-Anker; Kommutation als separater Zweitkern), ADR-005
+(Knoten-Hierarchie, Test-Bindung, Code-Karte, Impact). Entscheidungsgrundlage: die
 Architektur-Fragerunde (D1-D4, F1-F3; privat dokumentiert, Ergebnisse
 in diesen ADRs).

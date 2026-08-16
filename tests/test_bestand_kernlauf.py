@@ -2,6 +2,8 @@
 
 The end-to-end tests need a generated kernel (``runs/generated``, transient) and
 skip honestly when none is present.
+
+Knoten: klv
 """
 
 from __future__ import annotations

@@ -1,4 +1,7 @@
-"""Stage 1: Fragment -> A-Box (deterministischer Merge) + Gate O1."""
+"""Stage 1: Fragment -> A-Box (deterministischer Merge) + Gate O1.
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

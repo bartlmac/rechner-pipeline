@@ -1,4 +1,7 @@
-"""Systempruefungs-Fixes: Merge-Ledger-Kette, Gate-Vorbedingungen, Rollen."""
+"""Systempruefungs-Fixes: Merge-Ledger-Kette, Gate-Vorbedingungen, Rollen.
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

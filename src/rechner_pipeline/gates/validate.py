@@ -23,6 +23,8 @@ Run via::
     python -m rechner_pipeline.gates.validate \
         --repo-root . --generated-dir generated --info-dir info_from_excel \
         [--file-block-response response.txt]
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

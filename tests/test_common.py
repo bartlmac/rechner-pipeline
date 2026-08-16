@@ -8,6 +8,8 @@ Covers two hardening fixes:
 * Fix 2 — UTF-8 stdout: a command whose result carries a BOM / non-cp1252 char
   emits valid UTF-8 JSON on stdout (decodable, ``json.loads``-able) with the
   correct exit code — never a ``UnicodeEncodeError`` / empty stdout.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

@@ -4,6 +4,8 @@ Alle Funktionen sind deterministisch und frei von I/O und Darstellung; der
 Renderer (:mod:`rechner_pipeline.bestand.report`) konsumiert nur die hier
 berechneten Strukturen. Sortierungen sind überall explizit, damit das
 Rendering byte-reproduzierbar bleibt.
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

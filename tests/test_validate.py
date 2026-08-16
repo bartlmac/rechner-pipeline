@@ -8,6 +8,8 @@ Both resolution modes are exercised against the same contract:
 
 The command is driven in-process via ``main(argv) -> ToolboxResult`` so we can
 assert on the structured ``exit_code`` / ``errors`` without spawning a process.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

@@ -4,6 +4,8 @@ Das Gate ist die Abnahme-Grundlage für den Serving-Wechsel des KLV-Produkts
 auf das Zustandsmodell-Rückgrat: alle Golden-Contract-Werte beider Schienen
 müssen je Modellpunkt in der Rundungsklasse liegen (|a-b| <= atol +
 rtol*max(|a|,|b|)); jede echte Abweichung ist ein Gate-Fehler.
+
+Knoten: klv
 """
 
 from __future__ import annotations

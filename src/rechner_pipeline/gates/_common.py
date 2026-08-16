@@ -14,6 +14,8 @@ module to obey one contract:
   feed ``input_hashes`` / ``output_hashes``.
 
 This module contains **no gate logic** — only the contract surface.
+
+Knoten: klv, system/assurance
 """
 
 from __future__ import annotations

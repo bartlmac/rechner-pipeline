@@ -29,6 +29,8 @@ under-declaration). The default (non-strict) behaviour is already fail-fast.
 JSON stdout summary: selected tiers, identities checked, total cases, and any
 counterexamples. Blocking exit code is ``31`` (:attr:`Exit.ALGEBRAIC`). Writes an
 ``algebraic.gate.json`` ledger on BOTH the pass and fail paths.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

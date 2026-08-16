@@ -6,6 +6,8 @@ Belegen. Kein stiller Overwrite, keine Mehrheitsentscheidung durch ein
 Modell. Die Aufloesung ist ein expliziter Vorgang mit Verantwortlichem
 und Begruendung; erst sie macht aus dem Widerspruch wieder eine
 belegte Aussage.
+
+Knoten: klv
 """
 
 from __future__ import annotations

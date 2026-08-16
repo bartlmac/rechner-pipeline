@@ -1,4 +1,7 @@
-"""Generator: determinism, schema conformance, correlations, Parquet golden."""
+"""Generator: determinism, schema conformance, correlations, Parquet golden.
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

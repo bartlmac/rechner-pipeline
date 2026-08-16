@@ -3,6 +3,8 @@
 Covers the in-process guard installation (open/glob filtering) and the launcher
 path used by the golden-master command: a confined child that attempts a file
 write must be blocked.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

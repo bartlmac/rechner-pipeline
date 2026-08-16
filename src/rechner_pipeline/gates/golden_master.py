@@ -51,6 +51,8 @@ closed here:
 JSON stdout summary: scalars tested/skipped, table cells tested, deviation count
 (and first deviations), unmatched columns, and the computed-output hash.
 Blocking exit code on mismatch is ``30`` (:attr:`Exit.GOLDEN_MASTER`).
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

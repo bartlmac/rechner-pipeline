@@ -3,6 +3,8 @@
 Die forcierten Tests treiben einzelne Ereignispfade deterministisch (Raten
 0 bzw. nahe 1 / tod_faktor extrem); der End-to-End-Test laeuft mit den
 Beispiel-Raten ueber den generierten Bestand.
+
+Knoten: klv
 """
 
 from __future__ import annotations

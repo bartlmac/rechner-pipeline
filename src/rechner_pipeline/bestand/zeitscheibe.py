@@ -7,6 +7,8 @@ quantities anew (age with 6-month rounding, elapsed/remaining months). All
 Stamm columns pass through byte-identically; the Zeitscheiben gate enforces
 that invariant. Calculated quantities (reserves at the date, ...) are NOT
 computed here — they come from the stable kernel (:func:`.kernlauf.berechne_vertrag`).
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

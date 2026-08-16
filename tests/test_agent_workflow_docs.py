@@ -1,4 +1,7 @@
-"""Regression tests for checked-in agent workflow instructions."""
+"""Regression tests for checked-in agent workflow instructions.
+
+Knoten: system/skills
+"""
 
 from __future__ import annotations
 

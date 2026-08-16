@@ -1,3 +1,8 @@
+"""Excel-Extraktions-Frontend der Assurance-Kette (Backend-Dispatch).
+
+Knoten: system/assurance
+"""
+
 from __future__ import annotations
 
 import csv

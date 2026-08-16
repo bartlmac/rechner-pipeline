@@ -10,6 +10,8 @@ Covers:
 * the real dependency versions are recorded (the running python, not a hardcoded
   ``3.11.x`` placeholder);
 * the stdout contract (one JSON object, blocking exit codes).
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

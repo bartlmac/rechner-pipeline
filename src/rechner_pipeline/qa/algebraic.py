@@ -38,6 +38,8 @@ read-only under G4), and the parent (``toolbox.algebraic``) runs the static
 security gate (G2) over the generated dir *before* the child is ever launched.
 This module therefore contains only pure check logic + a small contract model; it
 performs no I/O and imports nothing from the toolbox layer.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

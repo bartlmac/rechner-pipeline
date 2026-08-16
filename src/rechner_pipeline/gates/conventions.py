@@ -26,6 +26,8 @@ Usage::
 
     python -m rechner_pipeline.gates.conventions \
         --generated-dir generated --diagnostics-dir generated/diagnostics
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

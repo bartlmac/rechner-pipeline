@@ -15,6 +15,8 @@ This adapter is a thin wrapper around the current Excel extraction subsystem
 
 It never rewrites, normalizes, or adds fields to the Excel artifacts themselves —
 the extractor remains the byte-for-byte source of truth.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

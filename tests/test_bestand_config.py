@@ -1,4 +1,7 @@
-"""Config loading + validation for the Bestandsdaten module."""
+"""Config loading + validation for the Bestandsdaten module.
+
+Knoten: klv, bu
+"""
 
 from __future__ import annotations
 

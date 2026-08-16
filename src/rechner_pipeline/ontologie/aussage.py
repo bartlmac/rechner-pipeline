@@ -16,6 +16,8 @@ eigenes Objekt mit
 Die Validierungsregeln sind Teil der Datenstruktur (Pydantic-
 Validatoren), nicht Konvention: eine "belegte" Aussage ohne Beleg kann
 nicht konstruiert werden.
+
+Knoten: klv
 """
 
 from __future__ import annotations

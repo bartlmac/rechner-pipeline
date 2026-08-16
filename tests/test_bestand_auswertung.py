@@ -1,4 +1,7 @@
-"""Aktuarielle Auswertungen: Kern-Treue der Werte, Aggregation, PEX-Pfad."""
+"""Aktuarielle Auswertungen: Kern-Treue der Werte, Aggregation, PEX-Pfad.
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

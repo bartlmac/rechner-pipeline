@@ -10,6 +10,8 @@ Die Kreuz-Objekt-Constraints laufen im Repo-Idiom
 ``validate() -> List[str]`` AUF den Pydantic-Objekten (P5): Pydantic
 traegt Struktur, dieser Code die Fachregeln — inklusive der Verankerung
 der Quellen im Eingang-Register des Falls (P1 bis zur Wurzel).
+
+Knoten: klv
 """
 
 from __future__ import annotations

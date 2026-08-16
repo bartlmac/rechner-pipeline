@@ -9,6 +9,8 @@ Covers the assurance orchestrator surface:
 * ``assurance --help`` works and documents the ordered gate chain;
 * a real ``assurance`` run over a SYNTHETIC generated-dir + KLV extraction runs
   the whole chain and ends with a ``dossier`` (blocked / human-review) verdict.
+
+Knoten: system/cli
 """
 
 from __future__ import annotations

@@ -27,6 +27,8 @@ Pfade (``svg.fonttype='path'``), ``metadata={'Date': None}`` beim Export,
 explizite Sortierungen, inhaltsbasierte Clip-Pfad-Ids (matplotlib leitet
 sie sonst aus Objektadressen ab) — gleiche Parquet-Dateien ergeben den
 byte-identischen Bericht (bei gepinntem matplotlib).
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

@@ -5,6 +5,8 @@ Generator ist die Batch-Auswertung bis zum Referenzstichtag, der Neuzugang
 setzt denselben Erzeuger inkrementell fort (Substream je Generation und
 Kalenderjahr, jahrgangsstabile police_ids, Filterung statt horizontabhaengiger
 Draws).
+
+Knoten: klv
 """
 
 from __future__ import annotations

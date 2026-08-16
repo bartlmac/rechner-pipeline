@@ -4,6 +4,8 @@ Covers the core scanner rule set plus the extended rule families
 (nondeterministic time/random/environment, swallowed exceptions,
 generated-test self-approval) and the toolbox contract for the `security`
 command (single JSON stdout object, exit 21).
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

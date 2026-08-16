@@ -1,4 +1,7 @@
-"""Migrationsstaging: DOCX-Extraktion — Determinismus, Struktur, Fehlerpfade."""
+"""Migrationsstaging: DOCX-Extraktion — Determinismus, Struktur, Fehlerpfade.
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

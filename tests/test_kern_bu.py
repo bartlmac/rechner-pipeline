@@ -1,4 +1,7 @@
-"""BU-Beispielprodukt: Äquivalenz, Select-Semantik, Registry, Fail-fast."""
+"""BU-Beispielprodukt: Äquivalenz, Select-Semantik, Registry, Fail-fast.
+
+Knoten: bu
+"""
 
 from __future__ import annotations
 

@@ -33,6 +33,8 @@ Kommandos (ein JSON-Objekt auf stdout, Log auf stderr)::
 einem Fall: Eingang wird vor dem Lauf gegen das Register geprueft
 (Integritaets-Gate), die Ausgabe-Verzeichnisse liegen unter
 ``abgeleitet/``.
+
+Knoten: system/fall
 """
 
 from __future__ import annotations

@@ -1,3 +1,8 @@
+"""Skalar-/Tabellen-Ableitung aus Extraktions-Rohdaten (Assurance-Kette).
+
+Knoten: system/assurance
+"""
+
 from __future__ import annotations
 
 import json

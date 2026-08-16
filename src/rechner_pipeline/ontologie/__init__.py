@@ -11,6 +11,8 @@ Pflichtumfang je Tarif (:mod:`.coverage`, P6).
 
 Kein Agent einer spaeteren Stufe liest Rohquellen einer frueheren:
 Stage 2 und 3 konsumieren ausschliesslich die A-Box.
+
+Knoten: klv
 """
 
 from rechner_pipeline.ontologie.aussage import (  # noqa: F401

@@ -1,4 +1,7 @@
-"""Bestandsbericht: Kennzahlen-Korrektheit, Determinismus, CLI."""
+"""Bestandsbericht: Kennzahlen-Korrektheit, Determinismus, CLI.
+
+Knoten: klv, bu
+"""
 
 from __future__ import annotations
 

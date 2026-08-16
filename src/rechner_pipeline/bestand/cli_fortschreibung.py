@@ -19,6 +19,8 @@ Outputs in ``--out-dir``: ``bestand.parquet`` (Basis; nur ohne --portfolio),
 ``historie.parquet``, ``ledger.parquet``, ``scheiben.parquet``,
 ``zugaenge.parquet`` und ``bestand_gesamt.parquet`` (Basis + Neuzugaenge —
 der Bestand fuer Zeitscheibe/Auswertung/``bestand_report``).
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

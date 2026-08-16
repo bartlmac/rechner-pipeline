@@ -1,4 +1,7 @@
-"""Stage 2: Spez-Schema, Struktur-Urteil, Projektion, Spez-gegen-A-Box."""
+"""Stage 2: Spez-Schema, Struktur-Urteil, Projektion, Spez-gegen-A-Box.
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

@@ -4,6 +4,8 @@ Die Handrechnungs-Tests treiben einzelne GeVo-Pfade deterministisch (Raten
 0 bzw. nahe 1, Muster wie in test_bestand_ereignisse); der End-to-End-Test
 prüft die Bestands-Identität Anfang + Zugang - Abgang = Endbestand über den
 vollen Beispiel-Lauf, je Jahr, Track (bpfl/bfr) und Maß (Stück/Summe).
+
+Knoten: klv
 """
 
 from __future__ import annotations

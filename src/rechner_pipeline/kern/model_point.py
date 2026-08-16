@@ -15,6 +15,8 @@ Ratenzuschlag-Staffel) standen im Quell-Workbook als Formel-Literale im Blatt
 als Default gehoben: eine neue Tarifgeneration ist damit eine reine
 Parametrierung des Modellpunkts, keine Formeländerung. Defaults unverändert
 lassen == Verhalten des Quell-Workbooks (historischer Übersetzungsbeleg).
+
+Knoten: klv
 """
 
 from __future__ import annotations

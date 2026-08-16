@@ -8,6 +8,8 @@ je Zelle und Pflichtfeld der Zustand, je Feld die Quellenlage
 
 Reine Berechnung, deterministisch, JSON-faehig — der Bericht ist ein
 Gate-Artefakt, keine Prosa.
+
+Knoten: klv
 """
 
 from __future__ import annotations

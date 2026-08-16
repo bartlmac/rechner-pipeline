@@ -19,6 +19,8 @@ unveraendert, weil das Datei- und Spaltenschema identisch ist.
 statische, in Excel berechnete Arbeitsmappen ist das aequivalent und sogar
 reproduzierbarer (keine Excel-Versions-Varianz). Wurde eine Mappe nie
 berechnet/gespeichert, koennen gecachte Werte fehlen.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

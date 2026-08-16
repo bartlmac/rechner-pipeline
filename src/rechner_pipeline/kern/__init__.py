@@ -49,6 +49,8 @@ Abnahme-Protokoll fuer Kern-Aenderungen:
    kein Kern-Anker.
 5. ``__version__`` wird bei jeder fachlichen Aenderung angehoben und im
    Commit begruendet.
+
+Knoten: klv, bu
 """
 
 from rechner_pipeline.kern.konventionen import excel_round, installment_surcharge

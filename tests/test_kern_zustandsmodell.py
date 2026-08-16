@@ -1,4 +1,7 @@
-"""Zustandsmodell-Engine: Handrechnungen, Selbsttest, Semi-Markov, Interface."""
+"""Zustandsmodell-Engine: Handrechnungen, Selbsttest, Semi-Markov, Interface.
+
+Knoten: klv, bu
+"""
 
 from __future__ import annotations
 

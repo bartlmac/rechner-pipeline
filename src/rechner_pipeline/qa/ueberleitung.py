@@ -24,6 +24,8 @@ Anker-Fixtures). Bekannte gemeinsame blinde Stelle beider Schienen: die
 letzte Tafelzelle (Kommutation füllt tx/cx am Endalter 123 nie; für die
 ausgelieferten Tafeln ist die Differenz exakt 0, weil lx dort bereits 0
 ist).
+
+Knoten: klv
 """
 
 from __future__ import annotations

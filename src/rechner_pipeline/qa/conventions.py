@@ -40,6 +40,8 @@ Public surface used by the toolbox command and tests:
 * :func:`conventions_report`, :func:`write_conventions_report`
 * :data:`GATE_VERSION`, :data:`RULES`, :data:`ALLOWED_IMPORTS`,
   :data:`PRODUCTION_MODULES`
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

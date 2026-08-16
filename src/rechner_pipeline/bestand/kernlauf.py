@@ -19,6 +19,8 @@ Two evaluation paths (governance decision 2026-08-12):
   :func:`rechner_pipeline.models.bestand.render_inputs_py`, static security
   scan, execute under :mod:`rechner_pipeline.qa.fs_confine`). Unreviewed
   generated code keeps its confinement.
+
+Knoten: klv
 """
 
 from __future__ import annotations

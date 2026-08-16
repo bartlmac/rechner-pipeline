@@ -1,4 +1,7 @@
-"""Regressionstests zum Nachzuegler-Review (P9-Haertung, Generator, Index)."""
+"""Regressionstests zum Nachzuegler-Review (P9-Haertung, Generator, Index).
+
+Knoten: klv, system/architektur
+"""
 
 from __future__ import annotations
 

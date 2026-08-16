@@ -411,6 +411,26 @@ Widersprüche zwischen Tarifmeldung und Rechner, die als
 Diskrepanz-Objekte im menschlichen Gate landen statt still
 entschieden zu werden.
 
+**Die Ontologie indexiert auch den Code** (ADR-005): Module und
+Testdateien deklarieren ihre Knoten (`Knoten: klv/tg2015`) im
+Docstring — dieselben IDs wie A-Box und Gates. Daraus werden drei
+Werkzeuge gespeist, alle deterministisch und generiert:
+
+```bash
+python -m rechner_pipeline.ontologie.code_index --tests tests   # Knoten <-> Modul/Test, Drift
+python -m rechner_pipeline.ontologie.code_karte                 # Import-Graph vs. Schichtenkarte
+git diff --name-only | python -m rechner_pipeline.ontologie.impact
+```
+
+Der Impact ist berechnet, nicht gepflegt: Knoten der Änderung,
+Lineage-Verwandtschaft der Testbindungen (`klv` ~ `klv/tg2015`, aber
+`klv/tg2012` !~ `klv/tg2015`) und direkte Import-Kanten der Tests; wo
+etwas unsicher ist, ist die Antwort konservativ die volle Suite mit
+ausgewiesenem Grund. Er nennt auch die Migrationsfälle, deren
+Generationen betroffen sind. Das ist ein Informationswerkzeug — CI und
+die Regel "vor jedem Commit die volle Suite" bleiben unberührt; die
+Mechanik existiert, bevor der Skalenschmerz eintritt.
+
 ## Dokumente: Tarifpläne und Doku-Engine
 
 Tarifplan-Dokumente leben in zwei getrennten Welten:

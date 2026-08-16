@@ -17,6 +17,8 @@ Extraktion ist der gefaehrliche Fehler).
 
 Dieses Modul ist SDK-frei: es kennt keine Modelle, nur deren
 persistierte Fragmente.
+
+Knoten: klv
 """
 
 from __future__ import annotations

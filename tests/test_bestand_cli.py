@@ -1,4 +1,7 @@
-"""CLI-Befehle des Bestandsmoduls: bestand_fortschreibung (Producer) + Gate B1."""
+"""CLI-Befehle des Bestandsmoduls: bestand_fortschreibung (Producer) + Gate B1.
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

@@ -11,6 +11,8 @@ Three layers:
 3. **End-to-end command** (:mod:`rechner_pipeline.gates.golden_master`): the
    four fixtures (match -> 0, mismatch -> 30, unmatched column -> 30,
    zero-comparison -> 31) run through fs_confine on a synthetic generated kernel.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

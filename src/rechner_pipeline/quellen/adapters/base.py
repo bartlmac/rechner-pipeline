@@ -8,6 +8,8 @@ document type.
 The :class:`ExcelAdapter` is a zero-behavior-change wrapper around the current
 Excel extraction (``export_excel_infos``). Future adapters (Word, etc.) implement
 the same ABC and emit an Excel-shaped bundle with explicit expectation coverage.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

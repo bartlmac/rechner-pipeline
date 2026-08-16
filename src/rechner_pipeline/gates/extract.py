@@ -20,6 +20,8 @@ stdout.
 Blocking failures all exit 10 (extraction / InputBundle failure): missing source,
 unsupported adapter, unavailable dependency, a tripped strict manifest warning,
 an invalid manifest, or an empty ``llm_inputs``.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

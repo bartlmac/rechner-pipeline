@@ -1,4 +1,7 @@
-"""Fall-Arbeitsbereich: Anlegen, Eingang-Register, Integritaet, CLI-Naht."""
+"""Fall-Arbeitsbereich: Anlegen, Eingang-Register, Integritaet, CLI-Naht.
+
+Knoten: system/fall
+"""
 
 from __future__ import annotations
 

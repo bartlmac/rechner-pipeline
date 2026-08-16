@@ -10,6 +10,8 @@ ohne Bindung an einen festen Modellpunkt. Die Schichten:
 * :class:`Rechenkern` — die stabile öffentliche Fassade über beiden (bisherige
   Methodensignaturen unverändert);
 * :func:`berechne` — Golden-Master-Contract-Ergebnis über die Registry.
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

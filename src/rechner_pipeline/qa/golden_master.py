@@ -31,6 +31,8 @@ vermieden:
   eine Tabellenzelle verglichen wurde. Der ``golden_master``-Befehl wertet das
   als Coverage-Frage (sparse/none) aus und akzeptiert einen Null-Vergleich
   nicht als vollwertigen Golden-Master.
+
+Knoten: klv, system/assurance
 """
 
 from __future__ import annotations

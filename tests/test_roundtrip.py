@@ -16,6 +16,8 @@ Three layers:
 The re-extraction check needs an Excel workbook; the repo ships
 ``examples/Tarifrechner_KLV_TG2012.xlsm``. Tests that exercise check 2/3 end-to-end use
 it and are skipped if it (or openpyxl) is unavailable.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

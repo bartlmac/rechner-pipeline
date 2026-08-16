@@ -12,6 +12,8 @@ Diese Tests verankern stattdessen:
    rechnen ohne Prozess-Substitution — die frühere ``DEFAULT``-Bindung ist weg.
 3. **Contract-Konsistenz**: ``ModelPoint`` und die Bestandsschema-Sicht
    ``MODEL_POINT_FIELDS`` bleiben deckungsgleich.
+
+Knoten: klv
 """
 
 from __future__ import annotations

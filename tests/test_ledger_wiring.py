@@ -18,6 +18,8 @@ that all three commands:
 The commands are driven in-process via ``main(argv) -> ToolboxResult`` so the
 structured result and the on-disk ledger can be asserted without spawning a
 process.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

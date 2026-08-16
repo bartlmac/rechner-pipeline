@@ -13,6 +13,8 @@ Registrierte Produkte: KLV (2-Zustands-Fall, migriert aus dem
 Quell-Workbook) und BU (Beispielprodukt, reine Zustandsmodell-
 Konfiguration mit Select-Tafeln). Ein neues Produkt registriert sich
 hier — ``berechne(mp, produkt=...)`` findet es über die Kennung.
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

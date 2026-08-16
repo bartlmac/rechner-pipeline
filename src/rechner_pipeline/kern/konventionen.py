@@ -7,6 +7,8 @@ Ratenzuschlag ``installment_surcharge`` (Zelle E12). Modellpunkt-abhängige
 Größen (Zins, Diskont) leben NICHT hier — sie werden je Rechnung aus dem
 :class:`~rechner_pipeline.kern.model_point.ModelPoint` abgeleitet
 (parametrisierte API statt Modul-Konstanten).
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

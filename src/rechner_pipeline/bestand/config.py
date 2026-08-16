@@ -16,6 +16,8 @@ Layout (see ``examples/bestand_klv.toml``)::
     [plausibilitaet]            value bands for the sanity gate
     [annahmen]                  Erfahrungsannahmen (3. Ordnung) je Ereignisart
                                 als affine Transformation der ersten Ordnung
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

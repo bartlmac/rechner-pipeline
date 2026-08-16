@@ -16,6 +16,8 @@ Zahlenvergleich mit relativer Toleranz: Meldung und Rechner runden
 verschieden (0,0008 vs. 0,08 %); ein Rundungsartefakt ist kein
 fachlicher Widerspruch. Die Toleranz ist bewusst eng (1e-9 relativ)
 — echte Parameterabweichungen liegen Groessenordnungen darueber.
+
+Knoten: klv
 """
 
 from __future__ import annotations

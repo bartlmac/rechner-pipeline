@@ -3,6 +3,8 @@
 Ein Test je Finding-Klasse; die Docstrings nennen den Befund. Zweck:
 die Mutation, die das Review als unentdeckbar nachgewiesen hat, faellt
 ab jetzt rot aus.
+
+Knoten: klv
 """
 
 from __future__ import annotations

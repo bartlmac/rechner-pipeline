@@ -3,6 +3,8 @@
 Proves each schema serializes -> validates -> deserializes, that
 ``ExportManifest`` reproduces its expected JSON shape, and that ``_common``
 honors its contract (single JSON stdout object, exit codes, request-json reader).
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

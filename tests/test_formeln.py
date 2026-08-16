@@ -1,4 +1,7 @@
-"""Deterministischer Rueck-Check der IF-Staffeln (P4 auf Formelwerte)."""
+"""Deterministischer Rueck-Check der IF-Staffeln (P4 auf Formelwerte).
+
+Knoten: klv/tg2012, klv/tg2015
+"""
 
 from __future__ import annotations
 

@@ -18,6 +18,8 @@ Two things are offered:
   (that is the agent's job); it only drives and aggregates the gates.
 
 Console script: ``rechner-pipeline = rechner_pipeline.cli:main`` (pyproject).
+
+Knoten: system/cli
 """
 
 from __future__ import annotations

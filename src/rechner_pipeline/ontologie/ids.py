@@ -12,6 +12,8 @@ oder ``klv/tg2015/zelle:einzel,nichtraucher`` (Parametrierungszelle).
 Segmente sind klein geschrieben; Zellen-IDs sortieren ihre
 Auspraegungen nach Dimensions-ID, damit dieselbe Zelle immer dieselbe
 ID traegt.
+
+Knoten: klv
 """
 
 from __future__ import annotations

@@ -6,6 +6,8 @@ from explicit arrays with an explicit Arrow schema (no pandas metadata blob,
 which would embed library versions), a fixed compression codec, and pyarrow
 is pinned exactly in ``pyproject.toml``. Date columns are stored as
 ``date32``, the natural Parquet type for calendar dates.
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

@@ -23,6 +23,8 @@ Usage::
 
     python -m rechner_pipeline.gates.report --diagnostics-dir diagnostics
     python -m rechner_pipeline.gates.report --diagnostics-dir diagnostics --out bericht.md
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

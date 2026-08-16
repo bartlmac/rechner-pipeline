@@ -18,6 +18,8 @@ Seed discipline: NEVER seed anything with the bare master seed —
 (trailing-zero normalization), i.e. the stream of generation 0. New stream
 families need their own distinct constant (Neuzugang: ``NEUZUGANG_STREAM``,
 Ereignis-Engine: 424242).
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

@@ -1,4 +1,7 @@
-"""Zeitscheibe: month arithmetic, 6-month age rounding, selection, invariants."""
+"""Zeitscheibe: month arithmetic, 6-month age rounding, selection, invariants.
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

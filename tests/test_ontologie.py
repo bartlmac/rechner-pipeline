@@ -1,4 +1,7 @@
-"""Ontologie-Kern: Aussagen-Invarianten, Merge (P2), A-Box, Coverage (P6)."""
+"""Ontologie-Kern: Aussagen-Invarianten, Merge (P2), A-Box, Coverage (P6).
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

@@ -12,6 +12,7 @@ Architektur-Dokumente und Entscheidungen (ADRs) des Gesamtsystems
 - [ADR-002: Fall-Arbeitsbereich — das Repo ist das System, nicht der Datenraum](adr-002-fall-arbeitsbereich.md)
 - [ADR-003: Pydantic fuer T-Box und A-Box](adr-003-pydantic-fuer-ontologie.md)
 - [ADR-004: Der Zielkern ist Thiele-Welt — Excel-Paritaet ist Uebersetzungsbeleg, kein Anker](adr-004-thiele-kern-ohne-excel-anker.md)
+- [ADR-005: Knoten-Hierarchie, Test-Bindung, Code-Karte und berechneter Impact](adr-005-knoten-hierarchie-und-impact.md)
 
 Die Pakete `rechner_pipeline.ontologie` und `rechner_pipeline.spez`
 setzen die Pipeline um; ihr Zusammenspiel und der Praezedenzfall

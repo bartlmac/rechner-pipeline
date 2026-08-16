@@ -6,6 +6,8 @@ among the actuarial layers; the back-edge and every other disallowed edge fail),
 circular imports, function-local imports, ``try/except ImportError``,
 ``TYPE_CHECKING`` tricks, conservative ``lru_cache`` hashability, and the
 toolbox contract for the command (single JSON stdout object, exit 22, ledger).
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

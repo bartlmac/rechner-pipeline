@@ -1,4 +1,7 @@
-"""Distribution transforms and Gaussian copula (no scipy)."""
+"""Distribution transforms and Gaussian copula (no scipy).
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

@@ -39,6 +39,8 @@ ersetzen — ``io.open`` muss eigenständig gepatcht werden, sonst umgeht
 gefährlichen ``os.*``-Dateisystem-Primitive (``os.open``/``write``/``read``/
 ``remove``/``unlink``/``rename``/``replace``/``mkdir``/...) und die Netz-/
 Subprozess-Module direkt an ihrem Definitionsort umhüllt.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

@@ -3,6 +3,8 @@
 These exercise the extraction subsystem end-to-end against the synthetic
 KLV workbook, plus the clean/staged extraction guard, the blocking
 exit-10 failure modes, and the COM fail-fast contract.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

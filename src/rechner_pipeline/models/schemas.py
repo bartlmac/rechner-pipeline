@@ -17,6 +17,8 @@ The common-result object here is a *schema view* of the common toolbox result
 used for serialization round-trips; the live toolbox emitter is
 :class:`rechner_pipeline.gates._common.ToolboxResult`. Both produce the same
 field set.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

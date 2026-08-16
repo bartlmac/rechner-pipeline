@@ -3,6 +3,8 @@
 Defines the export manifest and its supporting records. ``ExportManifest.to_dict()``
 produces the canonical manifest JSON shape. Do not change field names, ordering, or
 omission rules, as consumers depend on the exact structure.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

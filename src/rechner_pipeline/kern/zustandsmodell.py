@@ -38,6 +38,8 @@ stiller bedingter Werte.
 
 Stdlib-only (bewusst kein numpy): kleine Zustandsräume, deterministische
 Reihenfolgen.
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

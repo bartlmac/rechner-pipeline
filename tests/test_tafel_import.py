@@ -1,4 +1,7 @@
-"""Tafel-Import: CSV-Vektoren, Unisex-Ableitung, Konflikt-Schutz, Kern-Integration."""
+"""Tafel-Import: CSV-Vektoren, Unisex-Ableitung, Konflikt-Schutz, Kern-Integration.
+
+Knoten: klv/tg2015
+"""
 
 from __future__ import annotations
 

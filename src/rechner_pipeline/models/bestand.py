@@ -20,6 +20,8 @@ Design rules (project decisions):
   parameters (zins, tafel, cost loadings ...) live in the TOML config and are
   joined into a full ``ModelPoint`` only when the kernel is invoked
   (:func:`model_point_kwargs`).
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

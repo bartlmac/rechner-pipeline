@@ -10,6 +10,8 @@ Abhaengigkeit laeuft nur QA -> kommutationskern.
 
 Die Tafeldaten kommen aus der Rechnungsgrundlagen-Schicht des Zielkerns
 (:mod:`rechner_pipeline.kern.tafeln`) — eine Wahrheit, zwei Rechenwege.
+
+Knoten: klv
 """
 
 from rechner_pipeline.kommutationskern.kommutation import (  # noqa: F401

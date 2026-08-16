@@ -12,6 +12,8 @@ Two layers:
    exit 31 with a counterexample; a missing mapping and an unknown-applicability
    contract -> exit 31 with a reason; a usage error -> exit 2. Confirms the
    ledger is written and loadable and that stdout is exactly one JSON object.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

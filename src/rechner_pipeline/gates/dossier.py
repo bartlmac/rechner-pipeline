@@ -23,6 +23,8 @@ stdout is exactly one JSON object (the common result); all logs go to
 stderr. The two acceptance artifacts are written to ``--diagnostics-dir`` (never
 into ``--generated-dir``, whose six-file contract G1 validate re-checks) and
 referenced from the result ``paths``.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

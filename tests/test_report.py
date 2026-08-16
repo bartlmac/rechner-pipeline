@@ -2,6 +2,8 @@
 
 The renderer is a pure function of the diagnostics ledger: same input files ->
 byte-identical Markdown. It is read-only and not a gate.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

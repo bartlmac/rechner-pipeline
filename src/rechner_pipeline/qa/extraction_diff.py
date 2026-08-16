@@ -9,6 +9,8 @@ spalten im Name-Manager).
 
 Genutzt als Golden-Master-Harness: ist der materielle Befund leer, sind beide
 Backends funktional aequivalent — die verbleibenden Diffs sind reine Form.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

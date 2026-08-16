@@ -1,3 +1,6 @@
+"""Knoten: system/assurance
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

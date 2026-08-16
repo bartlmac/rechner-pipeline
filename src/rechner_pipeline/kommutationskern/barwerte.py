@@ -6,6 +6,8 @@ den KLV-Zielgrößen (:mod:`rechner_pipeline.kern.produkte.klv`). Die Formeln
 sind unverändert aus dem promoteten Kern übernommen (Code-Motion, identische
 Operationsreihenfolge); ``axn_k`` ist je Instanz memoisiert — pure Funktion,
 der gecachte Wert ist bitgleich mit jedem Neuaufruf.
+
+Knoten: klv
 """
 
 from __future__ import annotations

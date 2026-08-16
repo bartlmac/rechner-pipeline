@@ -1,4 +1,7 @@
-"""Fachspez-Generator (P7), P9-Snapshot, Entscheide-CLI, Code-Index (D4)."""
+"""Fachspez-Generator (P7), P9-Snapshot, Entscheide-CLI, Code-Index (D4).
+
+Knoten: klv
+"""
 
 from __future__ import annotations
 

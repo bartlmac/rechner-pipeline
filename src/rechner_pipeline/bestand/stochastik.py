@@ -10,6 +10,8 @@ implemented (would need scipy) and are rejected at config validation.
 
 Determinism: all randomness flows through one ``numpy.random.Generator``
 passed in by the caller; no global RNG, no time-based state.
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

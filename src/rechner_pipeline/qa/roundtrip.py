@@ -36,6 +36,8 @@ Three independent checks (any failure is blocking, exit ``32`` upstream):
 
 This module contains no CLI/ledger wiring — that lives in
 :mod:`rechner_pipeline.gates.roundtrip`.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

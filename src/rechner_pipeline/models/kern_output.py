@@ -19,6 +19,8 @@ Neither path **executes** generated code. Python files are checked with
 :func:`compile` / :mod:`ast`; the ``golden_master_outputs()`` shape is checked by
 parsing ``test_run.py``'s AST. Executing the calculation core is the job of G4
 (runtime confinement) and G5 (golden master).
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

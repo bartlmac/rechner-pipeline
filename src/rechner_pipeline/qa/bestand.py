@@ -11,6 +11,8 @@ Three check families, all returning error lists (repo idiom; empty = pass):
 
 Formalization as toolbox gate CLIs (ledger entries, exit codes) is the
 planned Stufe-2 step, following the toolbox/_common pattern.
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

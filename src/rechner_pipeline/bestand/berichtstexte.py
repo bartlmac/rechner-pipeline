@@ -4,6 +4,8 @@
 Renderer: der Bericht ist eine fachliche Aussage, das HTML nur seine
 Darstellung. Wer den Aufbau ändern will, ändert :data:`ABSCHNITTE` und
 :data:`TEXTE` — nicht das Markup.
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

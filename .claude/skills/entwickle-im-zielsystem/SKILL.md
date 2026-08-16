@@ -20,7 +20,12 @@ aufsichtsnah abgenommen wird. Die Architektur ist NICHT verhandelbar:
 was ihr widerspricht, wird nicht "pragmatisch" eingebaut, sondern als
 Architekturfrage gestoppt und vorgelegt.
 
-## Schichtenkarte — wo Code hingehoert (ADR-001)
+## Schichtenkarte — wo Code hingehoert (ADR-001, ADR-005)
+
+Verbindlich ist die nachrechenbare Fassung: `SCHICHT_ERLAUBT` in
+`ontologie/code_karte.py`, geprueft durch
+`python -m rechner_pipeline.ontologie.code_karte`. Diese Tabelle
+ist ihre Lesefassung und muss mit ihr uebereinstimmen.
 
 | Schicht | Traegt | Tabu |
 |---|---|---|
@@ -32,7 +37,9 @@ Architekturfrage gestoppt und vorgelegt.
 | `bestand/` | synthetische Bestaende, Fortschreibung, Bericht | Kern-Umgehungen (Betraege kommen aus dem Kern) |
 | `models/` | paketuebergreifende Datenvertraege | Verhaltenslogik |
 | `qa/` | deterministische Vergleichs-Engines (Golden Master, Ueberleitung, Diff) | LLM-Pfade |
+| `kommutationskern/` | separater Zweitkern (Kommutation, klassische Barwerte) NUR fuer den Kreuz-Check | jeder Konsument ausser `qa/` — der Zielkern rechnet ohne Kommutation (ADR-004) |
 | `fall.py` | Fall-Arbeitsbereich (Eingang unantastbar, ADR-002) | Aufraeumlogik fuer `eingang/` oder `entscheide/` |
+| `cli.py` | Kommandozeilen-Einstieg (assurance-Kette, Fall-Flags) | Fach- oder Pruflogik |
 
 Neuer Code, der in keine Schicht passt, ist ein Architekturbefund —
 STOPP, Vorschlag formulieren, Mensch entscheidet.
@@ -52,11 +59,19 @@ STOPP, Vorschlag formulieren, Mensch entscheidet.
    `validate(...) -> List[str]` (leer = ok) bzw. Pydantic-Validatoren
    in der Ontologie-/Spez-Schicht (ADR-003 zieht die Grenze). Prosa
    validiert nichts.
-4. **Knoten-Annotation (D4):** fachtragende Module deklarieren
-   `Knoten: <id>` im Modul-Docstring; `python -m
-   rechner_pipeline.ontologie.code_index` muss drift-frei bleiben.
-   Fundstellen sind ableitbar, nicht suchbar: erst Index, dann exakte
-   Symbolsuche, Volltext ist Fallback.
+4. **Knoten-Annotation (D4, ADR-005):** fachtragende Module UND
+   Testmodule deklarieren `Knoten: <id>` im Modul-Docstring
+   (hierarchisch: `familie[/generation]`; Code bindet an die groebste
+   Ebene, die er fachlich traegt, Tests so fein wie ihr Gegenstand);
+   `python -m rechner_pipeline.ontologie.code_index --tests tests`
+   muss drift-frei bleiben, `python -m
+   rechner_pipeline.ontologie.code_karte` befundfrei (Schicht-
+   Allowlist — eine neue Kante zwischen Schichten ist eine
+   Architektur-Entscheidung). Impact einer Aenderung: `git diff
+   --name-only | python -m rechner_pipeline.ontologie.impact`
+   (informativ; committet wird nach VOLLER Suite). Fundstellen sind
+   ableitbar, nicht suchbar: erst Index, dann exakte Symbolsuche,
+   Volltext ist Fallback.
 5. **Kern-Abnahme-Protokoll** (kern/__init__): die
    Charakterisierungs-Anker sind unantastbar; Anker-Aenderung nur mit fachlicher
    Begruendung im selben Commit; `__version__` bei fachlicher Aenderung

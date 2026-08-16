@@ -33,6 +33,8 @@ Run via::
         [--historie lauf/historie.parquet] [--scheiben lauf/scheiben.parquet] \\
         [--ledger lauf/ledger.parquet --bis 2035-01-01] \\
         [--config examples/bestand_klv.toml] [--diagnostics-dir diagnostics]
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

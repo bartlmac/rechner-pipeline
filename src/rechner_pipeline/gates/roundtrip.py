@@ -26,6 +26,8 @@ The JSON stdout summary emits the ``tafeln.xml`` canonical hash, the re-extracti
 hash comparison, and the repeated-output hash comparison. The ledger
 (``roundtrip.gate.json``) is written on BOTH the pass and fail paths and is a
 disk-only side artifact — stdout stays exactly one JSON object.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

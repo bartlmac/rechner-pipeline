@@ -20,6 +20,8 @@ Usage::
     python -m rechner_pipeline.quellen.tarifplan_staging \\
         --docx examples/Mitteilung_143_KLV_TG2012.docx \\
         --out runs/migrationsstaging/klv_mitteilung_143.json
+
+Knoten: klv
 """
 
 from __future__ import annotations

@@ -15,6 +15,8 @@ the Bestandsbericht. It computes NOTHING actuarial of its own:
 Efficiency follows the documented reuse convention: one
 :class:`~rechner_pipeline.kern.Rechenkern` per contract, indexed per
 Stichtag (its Verlaufszeilen are cached per instance).
+
+Knoten: klv, bu
 """
 
 from __future__ import annotations

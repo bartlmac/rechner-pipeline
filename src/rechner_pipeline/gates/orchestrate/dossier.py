@@ -18,6 +18,8 @@ acceptance, so this module provides **pure aggregation functions** that the
 All builders return :mod:`rechner_pipeline.models.schemas` dataclasses so the
 caller can call ``.validate()`` before serializing. Nothing here writes stdout;
 the toolbox command owns I/O. ``write_json`` is a small UTF-8 writer.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations

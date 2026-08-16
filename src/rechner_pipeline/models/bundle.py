@@ -4,6 +4,8 @@ The bundle contract is source-neutral but intentionally ``info_from_excel``-shap
 so existing downstream consumers keep reading the same files. The bundle wraps an
 :class:`~rechner_pipeline.models.manifest.ExportManifest` and adds adapter-level
 metadata plus the explicit expectation-coverage decision.
+
+Knoten: system/assurance
 """
 
 from __future__ import annotations
