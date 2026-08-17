@@ -23,6 +23,7 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import datetime as _dt
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -144,6 +145,12 @@ class Korrelation:
         return errors
 
 
+#: Knoten-ID-Form (identisch zur Segment-Konvention in ontologie.ids;
+#: bewusst lokal dupliziert — bestand importiert ontologie nicht, die
+#: Schichtenkarte laesst diese Kante nicht zu).
+_KNOTEN_ID = re.compile(r"^[a-z0-9_]+(/[a-z0-9_]+)+$")
+
+
 @dataclass
 class TarifGeneration:
     name: str
@@ -155,6 +162,13 @@ class TarifGeneration:
     #: "klv" = Kapitallebensversicherung (Default, Bestandsaufbau Stufe 1),
     #: "bu" = Berufsunfaehigkeit (Zustandsmodell-Konfiguration).
     produkt: str = "klv"
+    #: Ontologie-Knoten dieser Generation (Pflicht): dieselbe ID-Konvention
+    #: wie A-Box und Gate O3 (familie/generation, z. B. "klv/demo_1994" fuer
+    #: synthetische, "klv/tg2015" fuer migrierte Generationen). Jede
+    #: Generation, die der Bestand rechnet, ist damit ein Knoten der
+    #: Ontologie — keine Parametrierung am System vorbei. Die Wurzel muss
+    #: dem Produkt entsprechen.
+    knoten: str = ""
     #: Simulierter Neuzugang je Kalenderjahr (Fortschreibung ab
     #: Referenzstichtag); 0 = kein Neuzugang. Wirkt nur innerhalb des
     #: Gueltigkeitsfensters der Generation.
@@ -213,6 +227,25 @@ class TarifGeneration:
             )
         if self.sample_size <= 0:
             errors.append(f"{prefix}: sample_size <= 0")
+        if not self.knoten:
+            errors.append(
+                f"{prefix}: knoten fehlt — jede Generation traegt ihre "
+                "Ontologie-Knoten-ID (familie/generation, z. B. "
+                f"'{self.produkt}/demo_2000'; migrierte Generationen die "
+                "ID ihres Migrationsfalls)"
+            )
+        elif not _KNOTEN_ID.match(self.knoten):
+            errors.append(
+                f"{prefix}: knoten {self.knoten!r} ist keine gueltige "
+                "Knoten-ID (Segmente aus Kleinbuchstaben/Ziffern/'_', "
+                "mindestens familie/generation)"
+            )
+        elif self.knoten.split("/", 1)[0] != self.produkt:
+            errors.append(
+                f"{prefix}: knoten {self.knoten!r} hat die Wurzel "
+                f"{self.knoten.split('/', 1)[0]!r}, das Produkt ist aber "
+                f"{self.produkt!r} — die Knoten-Wurzel ist die Produktfamilie"
+            )
         if self.sample_size > 1_000_000:
             errors.append(
                 f"{prefix}: sample_size > 1_000_000 (police_id-Nummernkreis je "
@@ -553,6 +586,7 @@ def load_config(path: Path) -> BestandConfig:
                 sample_size=int(g.get("sample_size", 0)),
                 max_endalter=int(g.get("max_endalter", 85)),
                 produkt=str(g.get("produkt", "klv")),
+                knoten=str(g.get("knoten", "")),
                 neuzugang_pro_jahr=int(g.get("neuzugang_pro_jahr", 0)),
                 zins=float(g.get("zins", 0.0)),
                 tafel=str(g.get("tafel", "")),

@@ -70,6 +70,12 @@ TEST_PREFIX = "tests/"
 #: ist eine Praezisions-Erlaubnis, kein Filter.
 DATEN_BINDUNG: Dict[str, str] = {
     SRC_PREFIX + "kern/tafeln.xml": "rechner_pipeline/kern/tafeln.py",
+    # Beispiel-Configs parametrieren den Bestand (und tragen die
+    # Ontologie-Knoten ihrer Generationen) — eine Aenderung wirkt wie
+    # eine Aenderung an der Config-Schicht:
+    "examples/bestand_klv.toml": "rechner_pipeline/bestand/config.py",
+    "examples/bestand_bu.toml": "rechner_pipeline/bestand/config.py",
+    "examples/bestand_gesamt.toml": "rechner_pipeline/bestand/config.py",
 }
 
 #: Doku-/Vertrags-Pfade, die an einen Knoten gebunden sind (test-tragend).

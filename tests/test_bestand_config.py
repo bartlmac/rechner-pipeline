@@ -56,6 +56,7 @@ def test_missing_distribution_is_an_error(tmp_path: Path):
 seed = 1
 [[generation]]
 name = "G"
+knoten = "klv/demo_test"
 gueltig_von = 2000-01-01
 gueltig_bis = 2001-01-01
 sample_size = 10
@@ -82,6 +83,7 @@ def test_unsupported_type_and_bad_rho_rejected(tmp_path: Path):
 seed = 1
 [[generation]]
 name = "G"
+knoten = "klv/demo_test"
 gueltig_von = 2000-01-01
 gueltig_bis = 2001-01-01
 sample_size = 10
@@ -136,6 +138,7 @@ _BASE_GEN = """
 seed = 1
 [[generation]]
 name = "G"
+knoten = "klv/demo_test"
 gueltig_von = 2000-01-01
 gueltig_bis = 2001-01-01
 sample_size = {sample_size}
@@ -213,3 +216,107 @@ entry_age = [18, 30, 60]
     p.write_text(toml, encoding="utf-8")
     with pytest.raises(ValueError, match="plausibilitaet entry_age"):
         load_config(p)
+
+
+# --------------------------------------------------------------------------- #
+# Ontologie-Bindung der Generationen (Integritaet: keine Parametrierung
+# am System vorbei — jede gerechnete Generation ist ein Knoten)
+# --------------------------------------------------------------------------- #
+
+
+def _generation_kwargs(**override):
+    import datetime as dt
+
+    basis = dict(
+        name="G", knoten="klv/demo_test",
+        gueltig_von=dt.date(2000, 1, 1), gueltig_bis=dt.date(2010, 12, 31),
+        sample_size=10, max_endalter=85, zins=0.02, tafel="DAV2008_T",
+        alpha=0.025, beta1=0.025, gamma1=0.0008, gamma2=0.00125,
+        gamma3=0.0025, policy_fee=24.0, min_alter_flex=60, min_rlz_flex=5,
+    )
+    basis.update(override)
+    return basis
+
+
+def test_generation_ohne_knoten_ist_ungueltig():
+    from rechner_pipeline.bestand.config import TarifGeneration
+
+    fehler = TarifGeneration(**_generation_kwargs(knoten="")).validate()
+    assert any("knoten fehlt" in f for f in fehler)
+
+
+def test_knoten_form_und_wurzel_werden_geprueft():
+    from rechner_pipeline.bestand.config import TarifGeneration
+
+    # Form: mindestens familie/generation, nur [a-z0-9_]
+    fehler = TarifGeneration(**_generation_kwargs(knoten="klv")).validate()
+    assert any("keine gueltige Knoten-ID" in f for f in fehler)
+    fehler = TarifGeneration(
+        **_generation_kwargs(knoten="klv/KLV-1994")).validate()
+    assert any("keine gueltige Knoten-ID" in f for f in fehler)
+    # Wurzel muss die Produktfamilie sein:
+    fehler = TarifGeneration(
+        **_generation_kwargs(knoten="bu/demo_2000")).validate()
+    assert any("Knoten-Wurzel ist die Produktfamilie" in f for f in fehler)
+    # ... und eine migrierte ID ist genauso zulaessig wie eine Demo-ID
+    # (die Minimal-Generation hat keine Verteilungen — geprueft wird nur,
+    # dass KEIN knoten-Befund dabei ist):
+    fehler = TarifGeneration(
+        **_generation_kwargs(knoten="klv/tg2015")).validate()
+    assert not [f for f in fehler if "noten" in f]
+
+
+def test_beispiel_configs_tragen_knoten_konsistent():
+    """Gleicher Knoten => gleiche Rechnungsgrundlagen, ueber ALLE
+    Beispiel-Configs hinweg. Sonst gaebe es zwei Wahrheiten unter einer ID."""
+    from rechner_pipeline.bestand.config import GENERATION_FIELDS, load_config
+
+    gesehen = {}
+    for datei in ("bestand_klv.toml", "bestand_bu.toml", "bestand_gesamt.toml"):
+        cfg = load_config(REPO_ROOT / "examples" / datei)
+        assert cfg.validate() == [], datei
+        for g in cfg.generationen:
+            assert g.knoten, f"{datei}: {g.name} ohne Knoten"
+            felder = {f: getattr(g, f) for f in GENERATION_FIELDS}
+            felder["produkt"] = g.produkt
+            if g.knoten in gesehen:
+                assert gesehen[g.knoten] == (g.name, felder), (
+                    f"Knoten {g.knoten} traegt in {datei} andere "
+                    "Rechnungsgrundlagen als in einer anderen Config"
+                )
+            gesehen[g.knoten] = (g.name, felder)
+    assert set(gesehen) == {
+        "klv/demo_1994", "klv/demo_2008", "klv/demo_2017", "klv/demo_2022",
+        "bu/demo_2000", "bu/demo_2017",
+    }
+
+
+def test_tarifplan_dokumentiert_die_demo_generationen():
+    """P7-Drift-Schutz: die Paragraf-13-Tabellen der Tarifplaene muessen
+    den Configs entsprechen — der Tarifplan darf nichts anderes behaupten
+    als das, was der Bestand rechnet."""
+    from rechner_pipeline.bestand.config import load_config
+
+    cfg = load_config(REPO_ROOT / "examples" / "bestand_gesamt.toml")
+    klv_md = (REPO_ROOT / "docs" / "tarifplaene" / "klv.md").read_text("utf-8")
+    bu_md = (REPO_ROOT / "docs" / "tarifplaene" / "bu.md").read_text("utf-8")
+    for g in cfg.generationen:
+        doc = klv_md if g.produkt == "klv" else bu_md
+        if g.produkt == "klv":
+            zeile = (
+                f"| `{g.knoten}` | {g.name} | "
+                f"{g.gueltig_von:%Y-%m}–{g.gueltig_bis:%Y-%m} | "
+                f"{g.zins:.2%} | {g.tafel} | {g.alpha} | {g.beta1} | "
+                f"{g.gamma1}/{g.gamma2}/{g.gamma3} | {g.policy_fee:.0f} |"
+            )
+        else:
+            zeile = (
+                f"| `{g.knoten}` | {g.name} | "
+                f"{g.gueltig_von:%Y-%m}–{g.gueltig_bis:%Y-%m} | "
+                f"{g.zins:.2%} | {g.tafel_aktiv}/{g.tafel_i}/"
+                f"{g.tafel_ri}/{g.tafel_ti} | {g.zuschlag} |"
+            )
+        assert zeile in doc, (
+            f"Tarifplan-Paragraf 13 veraltet fuer {g.knoten} — erwartete "
+            f"Zeile:\n{zeile}"
+        )

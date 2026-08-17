@@ -26,6 +26,7 @@ beschreibung = "Synthetischer BU-Bestand, zwei Generationen (Lehrbeispiel)"
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2000"
+knoten = "bu/demo_2000"  # synthetische Demo-Generation (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2000-01-01
 gueltig_bis = 2016-12-31
@@ -86,6 +87,7 @@ rho = 0.30
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2017"
+knoten = "bu/demo_2017"  # synthetische Demo-Generation (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2017-01-01
 gueltig_bis = 2035-12-31
