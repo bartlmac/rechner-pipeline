@@ -70,7 +70,10 @@ python -m rechner_pipeline.gates.generation_golden --fall faelle/demo-klv \
 ```
 python -m rechner_pipeline.bestand.cli_fortschreibung \
     --config examples/bestand_gesamt.toml --bis 2020-01-01 --out-dir runs/bestand
-python -m rechner_pipeline.bestand.cli_report --lauf runs/bestand --out runs/berichte
+python -m rechner_pipeline.bestand.cli_report --portfolio runs/bestand/bestand_gesamt.parquet \
+    --historie runs/bestand/historie.parquet --ledger runs/bestand/ledger.parquet \
+    --scheiben runs/bestand/scheiben.parquet --config examples/bestand_gesamt.toml \
+    --bis 2020-01-01 --out runs/berichte/bestandsbericht.html
 ```
 
 **Navigate the codebase** (fundstellen are derived, not searched — ADR-005):
