@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from rechner_pipeline.ontologie.code_index import (
     baue_index,
     baue_test_bindung,
@@ -569,3 +571,98 @@ def test_landkarte_vorlage_ist_teil_des_generators():
     text = VORLAGE.read_text(encoding="utf-8")
     assert PLATZHALTER in text
     assert "<title>" in text
+
+
+# --------------------------------------------------------------------------- #
+# Graph-Export: das Zeichnen macht fremdes Werkzeug (Mermaid/DOT/GraphML)
+# --------------------------------------------------------------------------- #
+
+
+def _graph(umfang="schichten", auswahl=None):
+    from rechner_pipeline.ontologie.landkarte import graph
+
+    return graph(baue_karte(SRC), baue_index(SRC), umfang, auswahl)
+
+
+def test_graph_ausschnitte_bleiben_zeichenbar():
+    """Im Zielbild gibt es kein Bild 'der Codebasis'. Alle drei
+    Ausschnitte wachsen mit der Struktur, nicht mit der Codemenge."""
+    for umfang, auswahl in (("schichten", None), ("knoten", None),
+                            ("modul", "kern"), ("modul", "bu")):
+        knoten, kanten, titel = _graph(umfang, auswahl)
+        assert 0 < len(knoten) <= 60, (umfang, auswahl, len(knoten))
+        namen = {n for n, _ in knoten}
+        for von, nach, _ in kanten:
+            assert von in namen and nach in namen
+
+
+def test_graph_verweigert_unlesbare_sichten():
+    """Fail-fast statt Knaeuel: zu grosser Ausschnitt ist ein Fehler mit
+    Ausweg in der Meldung."""
+    from rechner_pipeline.ontologie.landkarte import graph
+
+    with pytest.raises(ValueError, match="unlesbar"):
+        graph(baue_karte(SRC), baue_index(SRC), "modul", "gates",
+              max_knoten=5)
+    with pytest.raises(ValueError, match="weder Knoten noch Schicht"):
+        graph(baue_karte(SRC), baue_index(SRC), "modul", "gibtsnicht")
+
+
+def test_knotensicht_erfindet_keine_familien_abhaengigkeit():
+    """Ein Rueckgrat-Modul (Knoten 'klv, bu') macht KLV nicht von BU
+    abhaengig — beide stehen darauf. Eine Kante entsteht nur bei einem
+    echten Uebergang."""
+    _, kanten, _ = _graph("knoten")
+    paare = {(v, n) for v, n, _ in kanten}
+    assert ("klv", "bu") not in paare
+    assert ("bu", "klv") not in paare
+    assert paare, "die Knotensicht sollte echte Uebergaenge zeigen"
+
+
+def test_export_formate_sind_wohlgeformt_und_deterministisch():
+    from xml.etree import ElementTree
+
+    from rechner_pipeline.ontologie.landkarte import (
+        als_dot, als_graphml, als_mermaid,
+    )
+
+    knoten, kanten, titel = _graph("modul", "kern")
+    mermaid, dot, graphml = (f(knoten, kanten, titel)
+                             for f in (als_mermaid, als_dot, als_graphml))
+    # Deterministisch (gleiche Eingabe -> gleicher Text):
+    assert als_mermaid(knoten, kanten, titel) == mermaid
+    # Mermaid: Zeilenumbruch als <br/>, kein roher Umbruch im Label
+    assert mermaid.startswith("%%") and "flowchart TD" in mermaid
+    for zeile in mermaid.splitlines():
+        assert zeile.count('"') % 2 == 0
+    # DOT: geschlossene Klammer, ein Pfeil je Kante
+    assert dot.rstrip().endswith("}") and dot.count("->") == len(kanten)
+    # GraphML: wohlgeformtes XML mit passender Knoten-/Kantenzahl
+    baum = ElementTree.fromstring(graphml)
+    ns = "{http://graphml.graphdrawing.org/xmlns}"
+    assert len(baum.findall(f".//{ns}node")) == len(knoten)
+    assert len(baum.findall(f".//{ns}edge")) == len(kanten)
+
+
+def test_landkarte_doku_ist_nicht_veraltet():
+    """docs/architektur/landkarte.md traegt erzeugte Diagramme — diese
+    Pruefung verhindert, dass die Seite etwas anderes behauptet als der
+    Code sagt."""
+    import re
+
+    from rechner_pipeline.ontologie.landkarte import als_mermaid
+
+    seite = (REPO / "docs" / "architektur" / "landkarte.md")
+    bloecke = re.findall(r"```mermaid\n(.*?)```", seite.read_text("utf-8"),
+                         re.DOTALL)
+    erwartet = [
+        als_mermaid(*_graph("schichten")),
+        als_mermaid(*_graph("knoten")),
+        als_mermaid(*_graph("modul", "kern")),
+    ]
+    assert len(bloecke) == len(erwartet), "Diagrammzahl weicht ab"
+    for ist, soll in zip(bloecke, erwartet):
+        assert ist.strip() == soll.strip(), (
+            "landkarte.md ist veraltet — neu erzeugen mit "
+            "'python -m rechner_pipeline.ontologie.landkarte --format "
+            "mermaid ...'")

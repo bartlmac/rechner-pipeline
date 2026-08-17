@@ -17,3 +17,5 @@ Architektur-Dokumente und Entscheidungen (ADRs) des Gesamtsystems
 Die Pakete `rechner_pipeline.ontologie` und `rechner_pipeline.spez`
 setzen die Pipeline um; ihr Zusammenspiel und der Praezedenzfall
 TG2012 -> TG2015 stehen im Pipeline-Dokument.
+
+Generierte Sicht: [Landkarte des Zielsystems](landkarte.md) (Diagramme aus dem Code, drift-geprueft).

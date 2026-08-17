@@ -156,6 +156,183 @@ def sammle(
     }
 
 
+# --------------------------------------------------------------------------- #
+# Graph-Export in Standardformate — das Zeichnen macht fremdes Werkzeug
+# --------------------------------------------------------------------------- #
+
+
+#: Obergrenze fuer eine zeichenbare Sicht. Darueber ist jedes Bild ein
+#: Knaeuel — dann ist nicht das Werkzeug schuld, sondern der Ausschnitt.
+MAX_KNOTEN = 60
+
+
+def graph(
+    karte: Dict[str, object],
+    index: Optional[Dict[str, object]] = None,
+    umfang: str = "schichten",
+    auswahl: Optional[str] = None,
+    max_knoten: int = MAX_KNOTEN,
+) -> tuple:
+    """Knoten und Kanten einer ZEICHENBAREN Sicht (deterministisch sortiert).
+
+    Im Zielbild (~1 Mio. Zeilen) gibt es kein Bild "der Codebasis" — es
+    gibt begrenzte Ausschnitte. Die drei, die mitwachsen:
+
+    * ``schichten`` — der Ueberblick. Eine Schicht ist ein Knoten, die
+      Kante traegt die Zahl der Import-Beziehungen. Waechst mit der
+      Zahl der Schichten, nicht mit der Codemenge.
+    * ``knoten`` — die FACHLICHE Sicht: ein Ontologie-Knoten je Kasten,
+      Kanten sind aggregierte Abhaengigkeiten zwischen ihnen. Das ist
+      die Sicht, die bei 1 Mio. Zeilen noch eine Seite fuellt statt
+      einer Wand.
+    * ``modul`` mit ``auswahl`` — hinein in EINEN Knoten (``klv/tg2015``)
+      oder EINE Schicht (``kern``). Begrenzt durch die Groesse des
+      Gegenstands, nicht des Systems.
+
+    Ueberschreitet die Sicht ``max_knoten``, ist das ein Fehler mit
+    Ausweg in der Meldung — kein unlesbares Bild.
+    """
+    module = karte["module"]
+
+    if umfang == "schichten":
+        groesse: Dict[str, int] = {}
+        for daten in module.values():
+            groesse[daten["schicht"]] = groesse.get(daten["schicht"], 0) + 1
+        knoten = [(s, f"{s}\n{n} Module") for s, n in sorted(groesse.items())]
+        gewicht: Dict[tuple, int] = {}
+        for kante in karte["kanten"]:
+            von = module[kante["von"]]["schicht"]
+            nach = module[kante["nach"]]["schicht"]
+            if von != nach:
+                gewicht[(von, nach)] = gewicht.get((von, nach), 0) + 1
+        kanten = [(v, n, str(g)) for (v, n), g in sorted(gewicht.items())]
+        titel = "Schichten"
+
+    elif umfang == "knoten":
+        if index is None:
+            raise ValueError("umfang 'knoten' braucht den Code-Index")
+        m2k: Dict[str, List[str]] = index["module"]
+        anzahl: Dict[str, int] = {}
+        for modul, ks in m2k.items():
+            for k in ks:
+                anzahl[k] = anzahl.get(k, 0) + 1
+        knoten = [
+            (k, f"{k}\n{n} Module") for k, n in sorted(anzahl.items())
+        ]
+        # Eine Kante a -> b entsteht NUR, wenn der Uebergang echt ist:
+        # das importierende Modul traegt a und nicht b, das importierte
+        # traegt b und nicht a. Sonst liegt die Abhaengigkeit innerhalb
+        # eines geteilten Knotens — ein Rueckgrat-Modul (klv, bu) macht
+        # KLV nicht von BU abhaengig, beide stehen darauf.
+        gewicht = {}
+        for kante in karte["kanten"]:
+            von_k = set(m2k.get(kante["von"], ()))
+            nach_k = set(m2k.get(kante["nach"], ()))
+            for a in sorted(von_k - nach_k):
+                for b in sorted(nach_k - von_k):
+                    gewicht[(a, b)] = gewicht.get((a, b), 0) + 1
+        kanten = [(v, n, str(g)) for (v, n), g in sorted(gewicht.items())]
+        titel = "Fachknoten"
+
+    elif umfang == "modul":
+        if not auswahl:
+            raise ValueError(
+                "umfang 'modul' braucht --knoten <id> oder --schicht <name>")
+        if index is not None and auswahl in index["knoten"]:
+            drin = sorted(index["knoten"][auswahl])
+        else:
+            drin = sorted(
+                m for m, d in module.items() if d["schicht"] == auswahl)
+        if not drin:
+            bekannt = sorted({d["schicht"] for d in module.values()})
+            raise ValueError(
+                f"{auswahl!r} ist weder Knoten noch Schicht "
+                f"(Schichten: {', '.join(bekannt)})"
+            )
+        knoten = [(m, Path(m).stem) for m in drin]
+        innen = set(drin)
+        kanten = sorted(
+            (k["von"], k["nach"], "")
+            for k in karte["kanten"]
+            if k["von"] in innen and k["nach"] in innen
+            and k["von"] != k["nach"]
+        )
+        titel = auswahl
+    else:
+        raise ValueError(
+            f"unbekannter Umfang {umfang!r} (schichten|knoten|modul)")
+
+    if len(knoten) > max_knoten:
+        raise ValueError(
+            f"Sicht {titel!r} haette {len(knoten)} Kaesten (Grenze "
+            f"{max_knoten}) — ein Bild dieser Groesse ist unlesbar. "
+            "Engeren Ausschnitt waehlen: --umfang knoten fuer die "
+            "fachliche Sicht, oder --umfang modul --auswahl <knoten-id>."
+        )
+    return knoten, kanten, titel
+
+
+def _kennung(name: str) -> str:
+    """Graph-taugliche Kennung aus einem Modulpfad/Schichtnamen."""
+    sicher = "".join(c if c.isalnum() else "_" for c in name)
+    return sicher if sicher[:1].isalpha() else "n" + sicher
+
+
+def als_mermaid(knoten, kanten, titel: str) -> str:
+    """Mermaid-Flowchart — GitHub zeichnet das direkt in Markdown."""
+    zeilen = [f"%% {titel} — erzeugt von ontologie.landkarte",
+              "flowchart TD"]
+    for name, beschriftung in knoten:
+        text = beschriftung.replace("\n", "<br/>")
+        zeilen.append(f'    {_kennung(name)}["{text}"]')
+    for von, nach, marke in kanten:
+        pfeil = f"-- {marke} -->" if marke else "-->"
+        zeilen.append(f"    {_kennung(von)} {pfeil} {_kennung(nach)}")
+    return "\n".join(zeilen) + "\n"
+
+
+def als_dot(knoten, kanten, titel: str) -> str:
+    """Graphviz-DOT — Eingabe fuer dot, Gephi und viele andere."""
+    zeilen = [f'digraph "{titel}" {{', "  rankdir=TB;",
+              '  node [shape=box, fontname="Helvetica"];']
+    for name, beschriftung in knoten:
+        text = beschriftung.replace("\n", "\\n")   # DOT-Zeilenumbruch
+        zeilen.append(f'  {_kennung(name)} [label="{text}"];')
+    for von, nach, marke in kanten:
+        zusatz = f' [label="{marke}"]' if marke else ""
+        zeilen.append(f"  {_kennung(von)} -> {_kennung(nach)}{zusatz};")
+    zeilen.append("}")
+    return "\n".join(zeilen) + "\n"
+
+
+def als_graphml(knoten, kanten, titel: str) -> str:
+    """GraphML — Eingabe fuer Gephi, yEd, Neo4j-Import."""
+    from xml.sax.saxutils import escape, quoteattr
+
+    zeilen = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<graphml xmlns="http://graphml.graphdrawing.org/xmlns">',
+        '  <key id="d0" for="node" attr.name="label" attr.type="string"/>',
+        '  <key id="d1" for="edge" attr.name="gewicht" attr.type="string"/>',
+        f"  <graph id={quoteattr(titel)} edgedefault=\"directed\">",
+    ]
+    for name, beschriftung in knoten:
+        zeilen.append(
+            f"    <node id={quoteattr(name)}>"
+            f"<data key=\"d0\">"
+            f"{escape(beschriftung.replace(chr(10), ' '))}</data></node>")
+    for i, (von, nach, marke) in enumerate(kanten):
+        zeilen.append(
+            f'    <edge id="e{i}" source={quoteattr(von)} '
+            f"target={quoteattr(nach)}>"
+            f"<data key=\"d1\">{escape(marke)}</data></edge>")
+    zeilen += ["  </graph>", "</graphml>"]
+    return "\n".join(zeilen) + "\n"
+
+
+FORMATE = {"mermaid": als_mermaid, "dot": als_dot, "graphml": als_graphml}
+
+
 def rendere(daten: Dict[str, object], stand: str = "") -> str:
     """Vorlage mit den Daten fuellen (eine selbsttragende HTML-Datei)."""
     vorlage = VORLAGE.read_text(encoding="utf-8")
@@ -194,6 +371,26 @@ def main(argv: Optional[List[str]] = None) -> int:
              "Ausgabe reproduzierbar ist",
     )
     parser.add_argument("--repo-root", dest="repo_root", default=None)
+    parser.add_argument(
+        "--format", dest="format", default="html",
+        choices=["html", *sorted(FORMATE)],
+        help="html = die Seite; mermaid/dot/graphml = Graph-Text fuer "
+             "fremde Zeichenwerkzeuge (GitHub, Graphviz, Gephi, yEd)",
+    )
+    parser.add_argument(
+        "--umfang", default="schichten",
+        choices=["schichten", "knoten", "modul"],
+        help="Ausschnitt des Graphen: schichten (Ueberblick), knoten "
+             "(fachliche Sicht), modul (in EINEN Knoten/eine Schicht "
+             "hinein, mit --auswahl)",
+    )
+    parser.add_argument(
+        "--auswahl", default=None,
+        help="Knoten-ID (klv/tg2015) oder Schichtname (kern) fuer "
+             "--umfang modul",
+    )
+    parser.add_argument("--max-knoten", dest="max_knoten",
+                        type=int, default=MAX_KNOTEN)
     args = parser.parse_args(argv)
 
     src, tests = Path(args.src), Path(args.tests)
@@ -201,6 +398,29 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"landkarte: --src {src} und --tests {tests} muessen "
               "Verzeichnisse sein", file=sys.stderr)
         return 2
+
+    if args.format != "html":
+        from rechner_pipeline.ontologie.code_index import baue_index
+        from rechner_pipeline.ontologie.code_karte import baue_karte
+
+        try:
+            knoten, kanten, titel = graph(
+                baue_karte(src), baue_index(src),
+                args.umfang, args.auswahl, args.max_knoten,
+            )
+        except ValueError as exc:
+            print(f"landkarte: {exc}", file=sys.stderr)
+            return 2
+        ziel = Path(args.out)
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        ziel.write_text(
+            FORMATE[args.format](knoten, kanten, titel), encoding="utf-8")
+        print(json.dumps({
+            "datei": str(ziel), "format": args.format, "titel": titel,
+            "kaesten": len(knoten), "kanten": len(kanten),
+        }, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+
     daten = sammle(
         src, tests, Path(args.faelle), args.szenario or None,
         Path(args.repo_root) if args.repo_root else None,

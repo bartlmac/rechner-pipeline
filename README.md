@@ -420,8 +420,16 @@ Werkzeuge gespeist, alle deterministisch und generiert:
 python -m rechner_pipeline.ontologie.code_index --tests tests   # Knoten <-> Modul/Test, Drift
 python -m rechner_pipeline.ontologie.code_karte                 # Import-Graph vs. Schichtenkarte
 git diff --name-only | python -m rechner_pipeline.ontologie.impact
-python -m rechner_pipeline.ontologie.landkarte --out landkarte.html  # Sicht zum Vorfuehren
+python -m rechner_pipeline.ontologie.landkarte --out landkarte.html   # Seite zum Vorfuehren
+python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang knoten --out k.mmd
 ```
+
+Das Zeichnen des Graphen machen Standardwerkzeuge: `--format mermaid`
+(GitHub zeichnet es direkt, siehe `docs/architektur/landkarte.md`), `--format dot`
+(Graphviz) oder `--format graphml` (Gephi, yEd, Graph-Store). Entscheidend ist der
+Ausschnitt, nicht das Format: `--umfang schichten|knoten|modul --auswahl <knoten|schicht>`.
+Über 60 Kästen verweigert der Generator das Bild — bei einer Million Zeilen gibt es
+kein Bild "der Codebasis", nur begrenzte Sichten.
 
 Der Impact ist berechnet, nicht gepflegt: Knoten der Änderung,
 Lineage-Verwandtschaft der Testbindungen (`klv` ~ `klv/tg2015`, aber

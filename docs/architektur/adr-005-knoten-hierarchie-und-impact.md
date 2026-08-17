@@ -161,7 +161,19 @@ Cytoscape.js, vis-network/pyvis, Mermaid, viz.js.
   koennen weder eine Generation (``klv/tg2015``) noch ein
   Migrationsfall-Gate (O3) benennen. Als Ergaenzung gegen die
   dokumentierte Verhaltens-Restluecke bleiben sie denkbar.
-- **Visualisierung**: keine Layout-Engine. Graphviz braucht ein
+- **Visualisierung**: das ZEICHNEN macht fremdes Werkzeug. Der
+  Generator gibt den Graphen als **Mermaid** (GitHub zeichnet es direkt
+  in Markdown), **DOT** (Graphviz) und **GraphML** (Gephi, yEd,
+  Graph-Store-Import) aus — wir schreiben keine Layout-Logik.
+  Entscheidend fuer das Zielbild ist nicht das Format, sondern der
+  AUSSCHNITT: bei ~1 Mio. Zeilen gibt es kein Bild "der Codebasis".
+  Drei Ausschnitte wachsen mit der Struktur statt mit der Codemenge —
+  Schichten-Ueberblick, fachliche Knotensicht, und der Blick in EINEN
+  Knoten. Ueber 60 Kaesten verweigert der Generator das Bild und nennt
+  den engeren Weg (fail-fast statt Knaeuel). In der Knotensicht
+  entsteht eine Kante nur bei einem echten Uebergang: ein
+  Rueckgrat-Modul mit `klv, bu` macht KLV nicht von BU abhaengig.
+- **Keine Layout-Engine im Repo.** Graphviz braucht ein
   System-Binary (gegen die Multiplattform-Regel); kraftbasierte
   Layouts (D3, vis-network, pyvis) sind nicht reproduzierbar und damit
   nicht diffbar; Cytoscape scheitert an der Graphgroesse, nicht an
