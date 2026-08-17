@@ -123,6 +123,58 @@ muss vorfuehrbar sein, bevor er eintritt.
   Alternative — Selektion ueber die volle Import-Schliessung — wurde
   gemessen und verworfen (siehe unten).
 
+## Warum Eigenbau und nicht ein fertiges Werkzeug
+
+Geprueft (2026-08-17, auf Nachfrage des Maintainers) gegen den
+Werkzeugbestand: import-linter/grimp, tach, pytest-archon, PyTestArch,
+ruff (TID251), deptry, pytest-testmon, pytest --last-failed,
+tree-sitter, jedi/parso, pyan3, code2flow, Graphviz/pydeps, D3,
+Cytoscape.js, vis-network/pyvis, Mermaid, viz.js.
+
+- **Parsing**: Pythons ``ast`` bleibt. Es ist der Parser, den CPython
+  selbst benutzt, also fuer unseren Ein-Sprachen-Fall genauer als
+  tree-sitter und ohne kompilierte Grammatik. tree-sitter waere fuer
+  ALTSYSTEM-Quellen (VBA, COBOL) interessant — dort haelt der Kern
+  unsere Randbedingungen, die verfuegbaren Grammatiken aber nicht;
+  erneut pruefen, wenn Stage 1 solche Quellen wirklich liest.
+- **Schichtregeln**: ``import-linter`` (2.13, ueber ``grimp``) ist die
+  echte Ueberschneidung mit ``code_karte``. Zwei Punkte sprachen gegen
+  einen Wechsel JETZT, keiner davon gegen das Werkzeug an sich:
+  (1) Sein ``forbidden``-Vertrag wertet TRANSITIVE Erreichbarkeit —
+  ``cli`` "importiert" darin ``models``, weil ``gates`` es tut. Unsere
+  Allowlist meint direkte Nachbarschaft (``cli`` darf ``gates``
+  benutzen, und was ``gates`` intern braucht, ist dessen Sache). Beide
+  Semantiken sind vertretbar, aber es sind verschiedene Fragen.
+  (2) Die ILLUSTRATIONEN im Report (welche Beispielkette gezeigt wird)
+  schwanken zwischen identischen Laeufen; die URTEILE selbst sind
+  stabil (nachgemessen: drei ``--no-cache``-Laeufe, Verdikt-Block
+  byte-identisch, 11 kept / 1 broken). Fuer unseren Gate-Contract
+  hiesse das: Urteil hashen, nicht den Fliesstext.
+  Der Rest unserer Regeln (Zweitkern-Regel, SDK-Namensfamilien,
+  dynamische Importe) liesse sich nur teilweise abbilden.
+- **Ergaenzen statt ersetzen** (Kandidaten fuer spaeter, kein
+  Umbau vor dem Push): ``ruff`` TID251 fuer verbotene Importe,
+  ``deptry`` fuer unbenutzte/undeklarierte Abhaengigkeiten.
+- **Test-Selektion**: coverage-basierte Werkzeuge (``pytest-testmon``)
+  beantworten eine andere Frage als wir — welche Tests den Code
+  AUSFUEHREN, nicht welchen FACHKNOTEN eine Aenderung betrifft. Sie
+  koennen weder eine Generation (``klv/tg2015``) noch ein
+  Migrationsfall-Gate (O3) benennen. Als Ergaenzung gegen die
+  dokumentierte Verhaltens-Restluecke bleiben sie denkbar.
+- **Visualisierung**: keine Layout-Engine. Graphviz braucht ein
+  System-Binary (gegen die Multiplattform-Regel); kraftbasierte
+  Layouts (D3, vis-network, pyvis) sind nicht reproduzierbar und damit
+  nicht diffbar; Cytoscape scheitert an der Graphgroesse, nicht an
+  unseren Regeln. ``ontologie/landkarte`` rendert deshalb Tabellen,
+  Matrix und Listen in EINE selbsttragende HTML-Datei, ohne neue
+  Abhaengigkeit und byte-stabil.
+
+Der unvermeidbare Eigenanteil ist die ONTOLOGIE-BINDUNG: kein
+Fremdwerkzeug kennt ``klv/tg2015`` als Fachknoten oder kann sagen,
+welcher Migrationsfall und welches Gate O3 nach einer Aenderung neu zu
+fahren ist. Genau diese Kopplung von Codebasis und A-Box ist die
+Architekturhypothese — sie ist domaenenspezifisch und bleibt es.
+
 ## Verworfene Alternativen
 
 - **Embeddings-/Vektor-Suchindex**: zweite, nicht auditierbare

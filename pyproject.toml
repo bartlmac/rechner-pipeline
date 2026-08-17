@@ -46,6 +46,7 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.package-data]
 "rechner_pipeline.kern" = ["tafeln.xml"]
+"rechner_pipeline.ontologie" = ["landkarte_vorlage.html"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

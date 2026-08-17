@@ -420,6 +420,7 @@ Werkzeuge gespeist, alle deterministisch und generiert:
 python -m rechner_pipeline.ontologie.code_index --tests tests   # Knoten <-> Modul/Test, Drift
 python -m rechner_pipeline.ontologie.code_karte                 # Import-Graph vs. Schichtenkarte
 git diff --name-only | python -m rechner_pipeline.ontologie.impact
+python -m rechner_pipeline.ontologie.landkarte --out landkarte.html  # Sicht zum Vorfuehren
 ```
 
 Der Impact ist berechnet, nicht gepflegt: Knoten der Änderung,

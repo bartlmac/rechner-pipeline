@@ -480,3 +480,92 @@ def test_schichtentabelle_des_skills_deckt_die_regelschichten():
         if s != "__init__" and f"`{s}/`" not in text and f"`{s}.py`" not in text
     ]
     assert fehlend == []
+
+
+# --------------------------------------------------------------------------- #
+# Landkarte: der Generator der HTML-Sicht (ADR-005)
+# --------------------------------------------------------------------------- #
+
+
+def test_landkarte_ist_deterministisch(tmp_path: Path):
+    """Gleicher Repo-Stand -> byte-identische Datei. Ohne das waere die
+    Landkarte nicht diffbar und als Beleg wertlos."""
+    from rechner_pipeline.ontologie.landkarte import main as landkarte
+
+    a, b = tmp_path / "a.html", tmp_path / "b.html"
+    for ziel in (a, b):
+        assert landkarte(["--out", str(ziel), "--src", str(SRC),
+                          "--tests", str(TESTS), "--faelle",
+                          str(tmp_path / "keine")]) == 0
+    assert a.read_bytes() == b.read_bytes()
+    # ... und der Stand-Text ist der einzige bewusste Freiheitsgrad:
+    c = tmp_path / "c.html"
+    landkarte(["--out", str(c), "--src", str(SRC), "--tests", str(TESTS),
+               "--faelle", str(tmp_path / "keine"), "--stand", "probe-sha"])
+    assert c.read_bytes() != a.read_bytes()
+    assert "probe-sha" in c.read_text(encoding="utf-8")
+
+
+def test_landkarte_ist_selbsttragend(tmp_path: Path):
+    """Keine externe Ressource: die Datei muss offline funktionieren
+    (die Artifact-Umgebung blockt Fremdhosts ohnehin hart)."""
+    import re
+
+    from rechner_pipeline.ontologie.landkarte import main as landkarte
+
+    ziel = tmp_path / "lk.html"
+    landkarte(["--out", str(ziel), "--src", str(SRC), "--tests", str(TESTS),
+               "--faelle", str(tmp_path / "keine")])
+    text = ziel.read_text(encoding="utf-8")
+    assert not re.search(r'(src|href)\s*=\s*["\']https?://', text)
+    assert "<script src" not in text and "<link " not in text
+
+
+def test_landkarte_traegt_die_echten_werkzeug_ergebnisse(tmp_path: Path):
+    """Die Seite behauptet nichts Eigenes: ihre Zahlen sind die der
+    Werkzeuge."""
+    from rechner_pipeline.ontologie.landkarte import sammle
+
+    daten = sammle(SRC, TESTS, tmp_path / "keine", repo_root=REPO)
+    karte = baue_karte(SRC)
+    assert daten["gesamt"]["module"] == len(karte["module"])
+    assert daten["gesamt"]["kanten"] == len(karte["kanten"])
+    assert daten["knoten"] == baue_index(SRC)["knoten"]
+    assert daten["test_bindung"] == baue_test_bindung(TESTS)["bindung"]
+    # Je Knoten ein Szenario plus der konservative Fall:
+    titel = [s["titel"] for s in daten["szenarien"]]
+    assert len(titel) == len(daten["knoten"]) + 1
+    assert any("Fail-safe" in t for t in titel)
+    # Das konservative Szenario zieht wirklich die volle Suite:
+    fail_safe = [s for s in daten["szenarien"] if "Fail-safe" in s["titel"]][0]
+    assert fail_safe["konservativ"]
+    assert len(fail_safe["tests"]) == len(daten["test_bindung"])
+
+
+def test_landkarte_szenario_ueberschreibbar(tmp_path: Path):
+    from rechner_pipeline.ontologie.landkarte import sammle
+
+    daten = sammle(SRC, TESTS, tmp_path / "keine",
+                   ["src/rechner_pipeline/kern/produkte/bu.py"], REPO)
+    [szenario] = daten["szenarien"]
+    assert szenario["knoten"] == ["bu"]
+    assert "test_kern_bu.py" in szenario["tests"]
+
+
+def test_landkarte_meldet_fehlende_verzeichnisse(tmp_path: Path):
+    from rechner_pipeline.ontologie.landkarte import main as landkarte
+
+    assert landkarte(["--out", str(tmp_path / "x.html"),
+                      "--src", str(tmp_path / "fehlt"),
+                      "--tests", str(TESTS)]) == 2
+
+
+def test_landkarte_vorlage_ist_teil_des_generators():
+    """Die Vorlage liegt im Paket (package-data) und traegt den
+    Platzhalter — sonst erzeugt der Generator eine leere Seite."""
+    from rechner_pipeline.ontologie.landkarte import PLATZHALTER, VORLAGE
+
+    assert VORLAGE.is_file()
+    text = VORLAGE.read_text(encoding="utf-8")
+    assert PLATZHALTER in text
+    assert "<title>" in text

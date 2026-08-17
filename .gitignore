@@ -54,3 +54,5 @@ docs/**/*.pdf
 docs/**/*.typ
 docs/**/*_files/
 
+# Erzeugte Landkarte (Generator: ontologie.landkarte)
+landkarte.html

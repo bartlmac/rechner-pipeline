@@ -1,0 +1,570 @@
+<title>Knoten, Karte, Impact — wie die Codebasis indexiert ist</title>
+<style>
+  :root {
+    --grund: #F7F8F6;
+    --flaeche: #FFFFFF;
+    --tinte: #171C19;
+    --gedaempft: #64706A;
+    --linie: #DCE2DC;
+    --akzent: #0E7C7B;
+    --akzent-flach: #E2F0EF;
+    --warn: #A85916;
+    --warn-flach: #F7EADF;
+    --schrift: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+    --spalte: 68ch;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --grund: #10130F;
+      --flaeche: #171B17;
+      --tinte: #E6EBE5;
+      --gedaempft: #93A099;
+      --linie: #2A312B;
+      --akzent: #4FBDB3;
+      --akzent-flach: #16302E;
+      --warn: #D89552;
+      --warn-flach: #2E2418;
+    }
+  }
+  :root[data-theme="dark"] {
+    --grund: #10130F;
+    --flaeche: #171B17;
+    --tinte: #E6EBE5;
+    --gedaempft: #93A099;
+    --linie: #2A312B;
+    --akzent: #4FBDB3;
+    --akzent-flach: #16302E;
+    --warn: #D89552;
+    --warn-flach: #2E2418;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--grund);
+    color: var(--tinte);
+    font-family: var(--schrift);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .huelle { max-width: 1080px; margin: 0 auto; padding: 0 28px 100px; }
+  .spalte { max-width: var(--spalte); }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -0.02em; }
+  h1 { font-size: clamp(2.1rem, 5vw, 3.1rem); line-height: 1.08; font-weight: 700; }
+  h2 { font-size: 1.55rem; line-height: 1.2; font-weight: 650; }
+  h3 { font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
+  p { margin: 0; }
+  a { color: var(--akzent); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--gedaempft);
+  }
+
+  header.kopf {
+    padding: 76px 0 44px;
+    border-bottom: 1px solid var(--linie);
+    display: flex; flex-direction: column; gap: 22px;
+  }
+  .lead { font-size: 1.2rem; line-height: 1.5; color: var(--gedaempft); max-width: 58ch; }
+
+  .zahlen {
+    display: grid; gap: 1px; margin-top: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    background: var(--linie); border: 1px solid var(--linie);
+  }
+  .zahl { background: var(--flaeche); padding: 16px 18px; display: flex; flex-direction: column; gap: 3px; }
+  .zahl b { font-size: 1.75rem; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+  .zahl span { font-size: 0.79rem; color: var(--gedaempft); }
+
+  section { padding-top: 62px; display: flex; flex-direction: column; gap: 20px; }
+  section > .spalte + .spalte { margin-top: -6px; }
+
+  code, .id {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--akzent-flach);
+    color: var(--akzent);
+    padding: 1px 5px;
+    border-radius: 3px;
+    word-break: break-word;
+  }
+  .tafel code, .tafel .id { background: none; padding: 0; }
+
+  .tafel {
+    background: var(--flaeche);
+    border: 1px solid var(--linie);
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 18px;
+    overflow-x: auto;
+  }
+  .tafel-kopf { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; }
+  .tafel-kopf p { font-size: 0.88rem; color: var(--gedaempft); max-width: 62ch; }
+
+  /* Knotenbaum */
+  .baum { display: flex; flex-direction: column; gap: 2px; font-family: var(--mono); font-size: 0.85rem; }
+  .ast { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px dashed var(--linie); }
+  .ast:last-child { border-bottom: none; }
+  .ast.kind { padding-left: 26px; }
+  .ast .name { color: var(--akzent); font-weight: 600; }
+  .ast .meta { color: var(--gedaempft); font-size: 0.92em; font-family: var(--schrift); }
+
+  /* Matrix */
+  table { border-collapse: collapse; font-size: 0.8rem; font-family: var(--mono); }
+  th, td { border: 1px solid var(--linie); padding: 6px 8px; text-align: center; font-weight: 400; }
+  th.zeile { text-align: right; color: var(--gedaempft); white-space: nowrap; }
+  thead th { color: var(--gedaempft); font-size: 0.72rem; letter-spacing: 0.04em; }
+  td.erlaubt { background: var(--akzent-flach); color: var(--akzent); font-variant-numeric: tabular-nums; }
+  td.leer { color: var(--linie); }
+  td.selbst { background: var(--linie); color: var(--gedaempft); }
+  td.regel { outline: 2px solid var(--warn); outline-offset: -2px; }
+
+  /* Impact-Demo */
+  .demo { display: grid; gap: 24px; grid-template-columns: minmax(220px, 300px) 1fr; align-items: start; }
+  @media (max-width: 780px) { .demo { grid-template-columns: 1fr; } }
+  .szenarien { display: flex; flex-direction: column; gap: 6px; }
+  .szenario {
+    font: inherit; font-size: 0.88rem; text-align: left; cursor: pointer;
+    background: none; color: var(--tinte);
+    border: 1px solid var(--linie); border-left: 3px solid var(--linie);
+    padding: 9px 12px; display: flex; flex-direction: column; gap: 2px;
+    transition: border-color .12s, background .12s;
+  }
+  .szenario:hover { border-color: var(--gedaempft); }
+  .szenario[aria-pressed="true"] { border-left-color: var(--akzent); background: var(--akzent-flach); }
+  .szenario[aria-pressed="true"].kons { border-left-color: var(--warn); background: var(--warn-flach); }
+  .szenario small { font-family: var(--mono); font-size: 0.76rem; color: var(--gedaempft); }
+  .szenario:focus-visible { outline: 2px solid var(--akzent); outline-offset: 2px; }
+
+  .ergebnis { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .ergebnis-kopf { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: baseline; }
+  .quote { font-size: 2.1rem; font-weight: 650; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+  .quote em { font-style: normal; color: var(--gedaempft); font-weight: 400; font-size: 1rem; letter-spacing: 0; }
+  .knotenzeile { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip {
+    font-family: var(--mono); font-size: 0.71rem; padding: 3px 7px;
+    border: 1px solid var(--linie); color: var(--gedaempft); background: var(--flaeche);
+    transition: background .12s, color .12s, border-color .12s;
+  }
+  .chip.an { background: var(--akzent); border-color: var(--akzent); color: var(--flaeche); }
+  .chip.an.kons { background: var(--warn); border-color: var(--warn); }
+  .chip.lader { border-style: dashed; border-color: var(--akzent); color: var(--akzent); }
+  .legende { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.76rem; color: var(--gedaempft); }
+  .legende span { display: inline-flex; align-items: center; gap: 5px; }
+  .muster { width: 14px; height: 12px; border: 1px solid var(--linie); display: inline-block; }
+  .muster.an { background: var(--akzent); border-color: var(--akzent); }
+  .muster.lader { border-style: dashed; border-color: var(--akzent); }
+
+  .notiz {
+    font-size: 0.84rem; color: var(--gedaempft);
+    border-left: 2px solid var(--warn); padding: 6px 0 6px 12px;
+  }
+  .notiz.gut { border-left-color: var(--akzent); }
+
+  ul.liste { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 9px; }
+  ul.liste li::marker { color: var(--gedaempft); }
+
+  .grenzen { display: grid; gap: 1px; background: var(--linie); border: 1px solid var(--linie); }
+  .grenze { background: var(--flaeche); padding: 16px 18px; display: flex; flex-direction: column; gap: 5px; }
+  .grenze b { font-size: 0.93rem; }
+  .grenze span { font-size: 0.85rem; color: var(--gedaempft); }
+
+  footer { margin-top: 68px; padding-top: 22px; border-top: 1px solid var(--linie); font-size: 0.82rem; color: var(--gedaempft); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="huelle">
+  <header class="kopf">
+    <span class="eyebrow" id="kopf-stand">Rechner-Pipeline · ADR-005</span>
+    <h1>Die Ontologie ist der Index der Codebasis</h1>
+    <p class="lead">
+      Drei Fragen — wo lebt ein Fachthema, wer testet es, was muss nach einer
+      Änderung laufen — beantwortet dasselbe Knotensystem, das schon A-Box,
+      Spezifikation und Gates tragen. Nicht durch Suchen, sondern durch
+      Nachschlagen. Diese Seite zeigt den Stand am echten Repository.
+    </p>
+    <div class="zahlen">
+      <div class="zahl"><b id="z-module">·</b><span>Module in <code>src/</code></span></div>
+      <div class="zahl"><b id="z-zeilen">·</b><span>Zeilen Code</span></div>
+      <div class="zahl"><b id="z-kanten">·</b><span>Import-Kanten</span></div>
+      <div class="zahl"><b id="z-tests">·</b><span>Testmodule, alle gebunden</span></div>
+    </div>
+  </header>
+
+  <section>
+    <span class="eyebrow">1 — Das Prinzip</span>
+    <h2>Ein Schlüssel für Fachlichkeit und Code</h2>
+    <div class="spalte" style="display:flex; flex-direction:column; gap:14px;">
+      <p>
+        Ein <b>Knoten</b> ist ein Fachgegenstand: eine Produktfamilie
+        (<span class="id">klv</span>), eine Tarifgeneration
+        (<span class="id">klv/tg2015</span>), später eine Zelle. Dieselben
+        Bezeichner benennen die Generation in der A-Box eines Migrationsfalls
+        und im Gate O3. Neu ist, dass auch der <b>Code</b> sie trägt: jedes
+        fachtragende Modul und jede Testdatei deklarieren ihre Knoten in einer
+        Zeile im Modul-Docstring.
+      </p>
+      <p>
+        Daraus wird der Index <i>generiert</i> — er wird nie von Hand gepflegt,
+        und er meldet Drift in beide Richtungen: ein Fachknoten ohne
+        Implementierungsort ebenso wie eine Testdatei ohne Bindung. Ein
+        Graph-Store wäre eine ableitbare Projektion davon; die Quelle bleibt
+        die Ontologie.
+      </p>
+      <p>
+        Die Bindungsregel ist bewusst asymmetrisch: <b>Code bindet an die
+        gröbste Ebene, die er fachlich trägt</b> — eine neue Tarifgeneration
+        ist Parametrierung, kein Code, deshalb bleibt Produktcode
+        familiengebunden. <b>Tests und Daten binden so fein wie ihr
+        Gegenstand</b>: die Tafel-Import-Prüfung gehört zu
+        <span class="id">klv/tg2015</span>, nicht zu KLV im Ganzen.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">2 — Knoten</span>
+    <h2>Was heute im Index steht</h2>
+    <div class="tafel">
+      <div class="tafel-kopf">
+        <h3>Knoten und ihre Module</h3>
+        <p>Generiert aus den Docstrings. Eingerückt: die Generations-Ebene — heute
+           tragen sie Tests und Falldaten, noch kein Code.</p>
+      </div>
+      <div class="baum" id="baum"></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">3 — Test-Knoten-Bindung</span>
+    <h2>Jede Testdatei erklärt, was sie verankert</h2>
+    <div class="spalte">
+      <p>
+        Ohne Bindung könnte die Impact-Berechnung einen Test nur noch
+        konservativ einplanen — deshalb ist eine ungebundene Testdatei ein
+        Drift-Befund, kein stiller Zustand. Die Bindung ist Code, also
+        reviewbar; sie ist nicht beweisbar, und genau deshalb läuft in der
+        CI weiterhin die volle Suite.
+      </p>
+    </div>
+    <div class="tafel">
+      <div class="tafel-kopf">
+        <h3>46 Testmodule nach Knoten</h3>
+        <p>Gruppiert nach Bindung. Mehrfachbindungen erscheinen mehrfach.</p>
+      </div>
+      <div id="bindung" style="display:flex; flex-direction:column; gap:14px;"></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">4 — Code-Karte</span>
+    <h2>Die Schichtenkarte rechnet nach, statt zu mahnen</h2>
+    <div class="spalte">
+      <p>
+        Die Karte parst jedes Modul statisch und prüft eine deklarative
+        Erlaubnisliste: Welche Schicht darf aus welcher importieren? Eine neue
+        Kante zwischen Schichten wird damit zu einer bewussten
+        Architektur-Entscheidung statt zu einem Nebeneffekt. Zwei Regeln sind
+        besonders geschützt: der Zielkern darf den Kommutations-Zweitkern
+        nicht berühren (ADR-004, umrandet), und <code>src/</code> bleibt
+        SDK-frei.
+      </p>
+    </div>
+    <div class="tafel">
+      <div class="tafel-kopf">
+        <h3>Erlaubnismatrix — Zeile importiert Spalte</h3>
+        <p>Zahl = tatsächlich vorhandene Modulkanten. Gefüllt ohne Zahl: erlaubt,
+           aber ungenutzt. Leer: verboten, ein Import dort ist ein Befund.</p>
+      </div>
+      <div style="overflow-x:auto;"><table id="matrix"></table></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">5 — Impact, live</span>
+    <h2>Was muss nach dieser Änderung laufen?</h2>
+    <div class="spalte">
+      <p>
+        Wählen Sie eine Änderung. Die Auswahl unten ist gerechnet, nicht
+        gepflegt: aus den Knoten der geänderten Module, der
+        Lineage-Verwandtschaft der Testbindungen und den direkten
+        Import-Kanten der Tests. Wo etwas unsicher ist, wird die volle Suite
+        eingeplant — mit ausgewiesenem Grund.
+      </p>
+    </div>
+    <div class="tafel">
+      <div class="demo">
+        <div class="szenarien" id="szenarien" role="group" aria-label="Änderungsszenarien"></div>
+        <div class="ergebnis">
+          <div class="ergebnis-kopf">
+            <div class="quote"><span id="q-zahl">·</span> <em id="q-text">von 46 Testmodulen</em></div>
+            <div class="knotenzeile" id="q-knoten"></div>
+          </div>
+          <div class="chips" id="chips"></div>
+          <div class="legende">
+            <span><i class="muster an"></i> selektiert — läuft</span>
+            <span><i class="muster lader"></i> lädt das Modul, ist fachlich nicht betroffen</span>
+            <span><i class="muster"></i> nicht betroffen</span>
+          </div>
+          <div id="q-notizen" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">6 — Der Nutzen bei Maßstab</span>
+    <h2>Warum das den Schmerz beherrschbar macht</h2>
+    <div class="spalte">
+      <p style="margin-bottom:14px;">
+        Heute braucht niemand Selektion: die volle Suite läuft in gut einer
+        Minute. Der Punkt ist ein anderer — die Mechanik existiert und ist
+        vorführbar, bevor sie gebraucht wird. Was sie bei einer Codebasis
+        mit einer Million Zeilen leistet:
+      </p>
+      <ul class="liste">
+        <li>
+          <b>Kontext bleibt klein.</b> Ein Agent, der eine Fachfrage bearbeitet,
+          sucht nicht über die ganze Codebasis, sondern schlägt den Knoten nach
+          und liest dessen Module. Sein Kontextbedarf hängt an der Größe eines
+          Knotens, nicht an der Größe des Systems.
+        </li>
+        <li>
+          <b>Prüfaufwand skaliert mit der Änderung, nicht mit dem Bestand.</b>
+          Eine BU-Formeländerung zieht heute fünf statt 46 Testmodulen nach
+          sich. Dasselbe Verhältnis auf eine Suite von Stunden angewandt ist
+          der Unterschied zwischen einer Rückmeldung in Minuten und einer am
+          nächsten Tag.
+        </li>
+        <li>
+          <b>Regeln erodieren nicht still.</b> Schichtverstöße, verbotene
+          Abhängigkeiten und SDK-Importe fallen beim Nachrechnen auf — auch
+          wenn sie über dynamische Importe eingeschleust werden. Bei zehn
+          Mitwirkenden und einer Million Zeilen ist das der einzige Weg, wie
+          eine Architektur eine Architektur bleibt.
+        </li>
+        <li>
+          <b>Fachliche Abnahme wird adressierbar.</b> Der Impact nennt nicht
+          nur Tests, sondern auch die Migrationsfälle, deren Generationen
+          betroffen sind — welches Gate O3 also erneut zu fahren ist.
+        </li>
+      </ul>
+    </div>
+    <div class="tafel" style="gap:0; padding:0;">
+      <div class="grenzen">
+        <div class="grenze">
+          <b>Selektion ist ein Werkzeug, kein Gate</b>
+          <span>Die Berechnung liefert Information (Exit-Code 0). CI und die
+            Regel „vor jedem Commit die volle Suite“ bleiben unverändert. Die
+            Umstellung auf selektive Gates ist ein eigener, späterer Beschluss —
+            sie braucht Vertrauen in die Bindungsqualität, das erst durch
+            Beobachtung entsteht.</span>
+        </div>
+        <div class="grenze">
+          <b>Daten binden auf Dateiebene</b>
+          <span>Dass die U70-Mischtafel ein tg2015-Artefakt ist, sieht die
+            Dateiebene nicht: eine Änderung an <code>tafeln.xml</code> trifft
+            KLV und BU gemeinsam. Tafel- und Zellen-Granularität ist der
+            nächste Schritt, Auslöser ist Fall 2.</span>
+        </div>
+        <div class="grenze">
+          <b>Statik hat Grenzen</b>
+          <span>Registry-Dispatch und Methodenaufrufe löst die Karte nicht auf.
+            Für die Schichtregeln ist das folgenlos — Importe sind vollständig
+            erfasst, dynamische eingeschlossen —, für die Symbolsicht ist es
+            eine Untergrenze.</span>
+        </div>
+        <div class="grenze">
+          <b>Entdeckung ist garantiert, Vollständigkeit nicht</b>
+          <span>Erzwungen ist: jedes geänderte Modul wird von mindestens einem
+            selektierten Test geladen — sonst fällt die Auswahl auf die volle
+            Suite. Ein Import-Bruch kann also nicht unsichtbar bleiben. Nicht
+            garantiert ist die vollständige Liste aller Tests, die brechen
+            könnten; die gestrichelt markierten stehen deshalb im Ergebnis.</span>
+        </div>
+        <div class="grenze">
+          <b>Eine falsche Bindung bleibt eine falsche Bindung</b>
+          <span>Bindet jemand einen Test an einen fremden Knoten, verschwindet
+            er aus der Selektion. Dagegen stehen Review (die Bindung ist Code)
+            und die volle Suite in der CI — nicht der Anspruch, dass das System
+            es selbst beweisen könnte.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Erzeugt aus dem Repository-Stand <span id="f-stand">·</span> mit
+    <code>python -m rechner_pipeline.ontologie.landkarte</code> ·
+    Werkzeuge: <code>ontologie.code_index</code>, <code>ontologie.code_karte</code>,
+    <code>ontologie.impact</code> · Entscheidungsgrundlage ADR-005
+  </footer>
+</div>
+
+<script>
+const D = __DATEN__;
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+
+/* Kennzahlen */
+$("z-module").textContent = D.gesamt.module;
+$("z-zeilen").textContent = D.gesamt.zeilen.toLocaleString("de-DE");
+$("z-kanten").textContent = D.gesamt.kanten;
+$("z-tests").textContent = D.gesamt.tests;
+$("f-stand").textContent = D.gesamt.module + " Module / " + D.gesamt.tests + " Testmodule";
+if (D.stand) $("kopf-stand").textContent += " · " + D.stand;
+
+/* Knotenbaum: Wurzeln mit Modulzahl, Kinder aus Testbindungen */
+const kinder = {};
+Object.values(D.test_bindung).flat().forEach((k) => {
+  if (k.includes("/")) {
+    const w = k.split("/")[0];
+    if (D.knoten[w] || w === "klv" || w === "bu") (kinder[w] = kinder[w] || new Set()).add(k);
+  }
+});
+const baum = $("baum");
+Object.keys(D.knoten).sort().forEach((k) => {
+  if (k.includes("/") && (D.knoten[k.split("/")[0]] || kinder[k.split("/")[0]])) return;
+  const zeile = el("div", "ast");
+  zeile.append(el("span", "name", k));
+  const module = D.knoten[k] || [];
+  zeile.append(el("span", "meta", module.length + " Module"));
+  const tests = Object.entries(D.test_bindung).filter(([, ks]) => ks.includes(k)).length;
+  if (tests) zeile.append(el("span", "meta", tests + " Testmodule"));
+  baum.append(zeile);
+  (kinder[k] ? [...kinder[k]].sort() : []).forEach((kind) => {
+    const kz = el("div", "ast kind");
+    kz.append(el("span", "name", "└ " + kind));
+    const kt = Object.entries(D.test_bindung).filter(([, ks]) => ks.includes(kind)).map(([n]) => n);
+    kz.append(el("span", "meta", kt.join(", ")));
+    const f = Object.entries(D.faelle || {}).filter(([, gs]) => gs.includes(kind)).map(([n]) => n);
+    if (f.length) kz.append(el("span", "meta", "Fall: " + f.join(", ")));
+    baum.append(kz);
+  });
+});
+
+/* Test-Bindungen gruppiert */
+const gruppen = {};
+Object.entries(D.test_bindung).forEach(([datei, ks]) => {
+  ks.forEach((k) => (gruppen[k] = gruppen[k] || []).push(datei));
+});
+const bind = $("bindung");
+Object.keys(gruppen).sort().forEach((k) => {
+  const block = el("div");
+  block.style.cssText = "display:flex; flex-direction:column; gap:6px;";
+  const kopf = el("div");
+  kopf.style.cssText = "display:flex; gap:10px; align-items:baseline;";
+  kopf.append(el("span", "id", k), el("span", "meta", gruppen[k].length + " Testmodule"));
+  kopf.lastChild.style.cssText = "font-size:0.8rem; color:var(--gedaempft);";
+  const chips = el("div", "chips");
+  gruppen[k].sort().forEach((t) => chips.append(el("span", "chip", t.replace(/^test_|\.py$/g, ""))));
+  block.append(kopf, chips);
+  bind.append(block);
+});
+
+/* Erlaubnismatrix */
+const schichten = Object.keys(D.erlaubt).filter((s) => s !== "__init__").sort();
+const matrix = $("matrix");
+const thead = el("thead");
+const kopfzeile = el("tr");
+kopfzeile.append(el("th", "zeile", ""));
+schichten.forEach((s) => kopfzeile.append(el("th", null, s)));
+thead.append(kopfzeile);
+const tbody = el("tbody");
+schichten.forEach((von) => {
+  const tr = el("tr");
+  tr.append(el("th", "zeile", von));
+  schichten.forEach((nach) => {
+    const anzahl = D.schicht_kanten[von + ">" + nach] || 0;
+    let td;
+    if (von === nach) {
+      td = el("td", "selbst", "·");
+    } else if ((D.erlaubt[von] || []).includes(nach)) {
+      td = el("td", "erlaubt", anzahl ? String(anzahl) : "");
+    } else {
+      td = el("td", "leer", "");
+    }
+    if (von === "kern" && nach === "kommutationskern") {
+      td.classList.add("regel");
+      td.title = "ADR-004: der Zielkern rechnet ohne Kommutation";
+    }
+    tr.append(td);
+  });
+  tbody.append(tr);
+});
+matrix.append(thead, tbody);
+
+/* Impact-Demo */
+const alleTests = Object.keys(D.test_bindung).sort();
+const szBox = $("szenarien");
+const chipBox = $("chips");
+alleTests.forEach((t) => {
+  const c = el("span", "chip", t.replace(/^test_|\.py$/g, ""));
+  c.dataset.datei = t;
+  chipBox.append(c);
+});
+
+function zeige(index) {
+  const s = D.szenarien[index];
+  const kons = s.konservativ.length > 0;
+  [...szBox.children].forEach((b, i) => {
+    b.setAttribute("aria-pressed", String(i === index));
+    b.classList.toggle("kons", D.szenarien[i].konservativ.length > 0);
+  });
+  const menge = new Set(s.tests);
+  const lader = new Set(s.weitere_lader || []);
+  [...chipBox.children].forEach((c) => {
+    const an = menge.has(c.dataset.datei);
+    c.classList.toggle("an", an);
+    c.classList.toggle("kons", an && kons);
+    c.classList.toggle("lader", !an && lader.has(c.dataset.datei));
+  });
+  $("q-zahl").textContent = s.tests.length;
+  $("q-text").textContent = "von " + alleTests.length + " Testmodulen"
+    + (kons ? " — konservativ, volle Suite" : "");
+  const kn = $("q-knoten");
+  kn.replaceChildren();
+  if (s.knoten.length) {
+    kn.append(el("span", "eyebrow", "Knoten"));
+    s.knoten.forEach((k) => kn.append(el("span", "id", k)));
+  }
+  const notizen = $("q-notizen");
+  notizen.replaceChildren();
+  s.konservativ.forEach((k) => notizen.append(el("div", "notiz", k)));
+  s.faelle.forEach((g) =>
+    notizen.append(el("div", "notiz gut", "Gate O3 erneut fahren: Generation " + g)));
+  s.hinweise.filter((h) => h.includes("Import-Kante") || h.includes("Daten-Bindung"))
+    .forEach((h) => notizen.append(el("div", "notiz gut", h)));
+  if ((s.weitere_lader || []).length) {
+    notizen.append(el("div", "notiz",
+      s.weitere_lader.length + " weitere Testmodule laden das geänderte Modul, "
+      + "sind fachlich aber nicht betroffen. Ein Import-Bruch fiele trotzdem auf "
+      + "(garantiert), ein reiner Verhaltens-Bruch erst in der vollen Suite."));
+  }
+}
+
+D.szenarien.forEach((s, i) => {
+  const b = el("button", "szenario");
+  b.type = "button";
+  b.setAttribute("aria-pressed", "false");
+  b.append(el("span", null, s.titel));
+  b.append(el("small", null, s.dateien[0].replace("src/rechner_pipeline/", "")));
+  b.addEventListener("click", () => zeige(i));
+  szBox.append(b);
+});
+zeige(0);
+</script>
