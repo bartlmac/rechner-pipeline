@@ -29,27 +29,23 @@ dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 flowchart TD
     n__init__["__init__<br/>1 Module"]
     bestand["bestand<br/>14 Module"]
-    cli["cli<br/>1 Module"]
     fall["fall<br/>1 Module"]
-    gates["gates<br/>18 Module"]
+    gates["gates<br/>8 Module"]
     kern["kern<br/>9 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
-    models["models<br/>6 Module"]
+    models["models<br/>5 Module"]
     ontologie["ontologie<br/>15 Module"]
-    qa["qa<br/>10 Module"]
+    qa["qa<br/>4 Module"]
     quellen["quellen<br/>11 Module"]
     spez["spez<br/>5 Module"]
     bestand -- 8 --> kern
     bestand -- 10 --> models
-    bestand -- 2 --> qa
-    cli -- 1 --> fall
-    cli -- 9 --> gates
     gates -- 3 --> bestand
     gates -- 1 --> fall
     gates -- 1 --> kern
-    gates -- 9 --> models
+    gates -- 4 --> models
     gates -- 8 --> ontologie
-    gates -- 8 --> qa
+    gates -- 2 --> qa
     gates -- 3 --> quellen
     gates -- 1 --> spez
     kommutationskern -- 2 --> kern
@@ -59,7 +55,6 @@ flowchart TD
     qa -- 4 --> kern
     qa -- 2 --> kommutationskern
     qa -- 1 --> models
-    qa -- 1 --> quellen
     quellen -- 1 --> kern
     quellen -- 4 --> models
     quellen -- 3 --> ontologie
@@ -81,17 +76,13 @@ flowchart TD
     bu["bu<br/>22 Module"]
     klv["klv<br/>52 Module"]
     system_architektur["system/architektur<br/>4 Module"]
-    system_assurance["system/assurance<br/>27 Module"]
-    system_cli["system/cli<br/>1 Module"]
+    system_assurance["system/assurance<br/>11 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 1 --> system_assurance
-    klv -- 3 --> system_assurance
+    klv -- 1 --> system_assurance
     klv -- 1 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
-    system_cli -- 1 --> klv
-    system_cli -- 9 --> system_assurance
-    system_cli -- 1 --> system_fall
 ```
 
 ## 3 Der Zielrechenkern von innen

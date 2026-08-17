@@ -311,7 +311,7 @@ def test_pfadformen_liefern_dasselbe_ergebnis():
 def test_fremder_absolutpfad_ist_konservativ():
     ergebnis = berechne_impact(["/anderswo/projekt/modul.py"], *_repo_args())
     assert any("nicht repo-relativ" in k for k in ergebnis["konservativ"])
-    assert len(ergebnis["tests"]) == 46
+    assert ergebnis["tests"] == sorted(baue_test_bindung(TESTS)["bindung"])
 
 
 def test_normalisiere_grenzfaelle():
@@ -365,7 +365,8 @@ def test_artefakte_ohne_bindung_sind_konservativ():
     ):
         ergebnis = berechne_impact([datei], *_repo_args())
         assert any(muster in k for k in ergebnis["konservativ"]), datei
-        assert len(ergebnis["tests"]) == 46, datei
+        assert ergebnis["tests"] == sorted(
+            baue_test_bindung(TESTS)["bindung"]), datei
 
 
 def test_skill_katalog_ist_an_system_skills_gebunden():

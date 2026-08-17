@@ -726,23 +726,67 @@ def hash_files(
 # --------------------------------------------------------------------------- #
 
 
+
+#: Die Gates dieses Systems: (Gate-Id, Kommando-Name). Frueher fuehrte
+#: der Assurance-Orchestrator diese Liste fuer die Portierungs-Kette;
+#: seit deren Ausserbetriebnahme sind es die Gates der Migrations- und
+#: Bestandsseite, die einzeln laufen.
+def load_gate_ledger(
+    diagnostics_dir: Path,
+) -> Tuple[List["GateLedgerEntry"], List[Dict[str, Any]]]:
+    """Load all gate-result ledger entries from *diagnostics_dir*.
+
+    Reads every ``*<GATE_LEDGER_SUFFIX>`` file (``<command>.gate.json``), sorted
+    by filename for determinism. Returns ``(entries, read_errors)`` where each
+    ``read_errors`` item is ``{"path", "error"}`` for a file that could not be
+    parsed as a JSON object. Parse failures do not raise — the caller turns them
+    into blocking dossier errors.
+    """
+    from rechner_pipeline.models.schemas import GateLedgerEntry
+
+    entries: List["GateLedgerEntry"] = []
+    read_errors: List[Dict[str, Any]] = []
+    if not diagnostics_dir.exists():
+        return entries, read_errors
+    for path in sorted(diagnostics_dir.glob(f"*{GATE_LEDGER_SUFFIX}"), key=str):
+        if not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001 — surface as a structured read error
+            read_errors.append(
+                {"path": str(path), "error": f"{type(exc).__name__}: {exc}"}
+            )
+            continue
+        if not isinstance(payload, dict):
+            read_errors.append(
+                {"path": str(path), "error": "ledger entry is not a JSON object"}
+            )
+            continue
+        entries.append(GateLedgerEntry.from_dict(payload))
+    return entries, read_errors
+
+
+ALL_GATES: Tuple[Tuple[str, str], ...] = (
+    ("G0.extraction-manifest", "extract"),
+    ("O0.abox-merge", "abox_merge"),
+    ("O1.abox-validate", "abox_validate"),
+    ("O3.generation-golden", "generation_golden"),
+    ("P9.gate-entscheid", "gate_entscheid"),
+    ("B1.bestand-validate", "bestand_validate"),
+)
+
 def _gate_catalogue() -> Tuple[Dict[str, str], Tuple[str, ...]]:
     """Return ``(command -> gate-id, required-gate-ids)`` from the dossier.
 
-    Imported lazily (inside the call) so ``_common`` — the lowest module in the
-    import graph — never imports ``orchestrate.dossier`` at module load and the
-    chain stays acyclic. By the time any gate command calls
-    :func:`write_gate_ledger` at runtime, ``orchestrate.dossier`` is fully
-    importable. If the import fails for any reason the catalogue is empty and the
-    caller falls back to ``required=True`` (honest: an unknown gate still blocks).
+    Der Katalog steht seit der Ausserbetriebnahme des Portierungspfads
+    hier statt in einem Orchestrator: es gibt keine feste Kette mehr,
+    die abgearbeitet wird, sondern einzelne Gates, die je Vorgang
+    aufgerufen werden. Ein Gate, das hier fehlt, gilt als ``required``
+    — ehrlicher als es stillschweigend als optional zu behandeln.
     """
-    try:
-        from rechner_pipeline.gates.orchestrate import dossier as _dossier
-
-        command_to_gate = {command: gate for gate, command in _dossier.ALL_GATES}
-        return command_to_gate, tuple(_dossier.REQUIRED_GATES)
-    except Exception:  # noqa: BLE001 — never let provenance break a gate command
-        return {}, ()
+    return ({command: gate for gate, command in ALL_GATES},
+            tuple(gate for gate, _ in ALL_GATES))
 
 
 def write_gate_ledger(
@@ -799,7 +843,10 @@ def write_gate_ledger(
         resolved_gate = result.command
 
     if required is None:
-        resolved_required = resolved_gate in required_gates if required_gates else True
+        # Jedes Gate blockt. Ein unbekanntes erst recht — ein Gate
+        # stillschweigend als optional zu fuehren waere die gefaehrlichere
+        # Annahme (P2: keine stillen Zustaende).
+        resolved_required = True
     else:
         resolved_required = required
 

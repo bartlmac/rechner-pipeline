@@ -151,65 +151,6 @@ def test_cli_konflikt_ist_exit_1(tmp_path: Path, quelle: Path, capsys) -> None:
     assert "Eingangs-Konflikt" in capsys.readouterr().err
 
 
-def test_assurance_fall_naht(tmp_path: Path, quelle: Path) -> None:
-    """--fall setzt Input und Verzeichnisse; explizite Flags gewinnen;
-    Integritaet wird VOR dem Lauf geprueft."""
-    import argparse
-
-    from rechner_pipeline.cli import _resolve_fall_defaults
-
-    f = tmp_path / "fall"
-    anlegen(f)
-    registrieren(f, quelle)
-
-    def ns(**kw):
-        basis = dict(fall=None, quelle=None, input=None, generated_dir=None,
-                     info_dir=None, diagnostics_dir=None,
-                     repo_root=str(tmp_path))
-        basis.update(kw)
-        return argparse.Namespace(**basis)
-
-    # Ohne --fall: die drei Verzeichnisse sind Pflicht.
-    fehler = _resolve_fall_defaults(ns())
-    assert fehler is not None and "--generated-dir" in fehler
-    # --quelle ohne --fall ist ein Usage-Fehler:
-    assert _resolve_fall_defaults(ns(quelle="x")) is not None
-
-    # Mit --fall + --quelle: alles abgeleitet.
-    n = ns(fall=str(f), quelle=quelle.name)
-    assert _resolve_fall_defaults(n) is None
-    v = verzeichnisse(f)
-    assert n.input == str(v["eingang"] / quelle.name)
-    assert n.generated_dir == str(v["generated_dir"])
-    assert n.info_dir == str(v["info_dir"])
-    assert n.diagnostics_dir == str(v["diagnostics_dir"])
-
-    # Explizite Flags gewinnen — jeder der vier Werte einzeln geprueft,
-    # sonst waeren drei der vier Guards mutationsblind:
-    eigen_input = tmp_path / "eigenes.xlsm"
-    eigen_input.write_bytes(b"eigen")
-    for feld, wert in (
-        ("input", str(eigen_input)),
-        ("generated_dir", str(tmp_path / "g")),
-        ("info_dir", str(tmp_path / "i")),
-        ("diagnostics_dir", str(tmp_path / "d")),
-    ):
-        n2 = ns(fall=str(f), quelle=quelle.name, **{feld: wert})
-        assert _resolve_fall_defaults(n2) is None, feld
-        assert getattr(n2, feld) == wert, feld
-
-    # Unregistrierte Quelle: Fehler VOR dem Lauf.
-    assert "nicht registriert" in _resolve_fall_defaults(
-        ns(fall=str(f), quelle="fremd.xlsm")
-    )
-
-    # Manipulierter Eingang: kein Lauf.
-    kopie = v["eingang"] / quelle.name
-    kopie.chmod(0o644)
-    kopie.write_bytes(b"drift")
-    assert "unklarem Eingang" in _resolve_fall_defaults(
-        ns(fall=str(f), quelle=quelle.name)
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -369,78 +310,7 @@ def test_defekter_oder_fehlender_fall_ergibt_meldung_statt_traceback(
     assert "unlesbar" in capsys.readouterr().err
 
 
-def test_assurance_fall_ohne_quelle_prueft_trotzdem(
-    tmp_path: Path, quelle: Path
-) -> None:
-    """--fall mit explizitem --input darf die Vor-Lauf-Pruefung nicht
-    umgehen: der Lauf schreibt in den Arbeitsbereich und beansprucht ihn."""
-    import argparse
-
-    from rechner_pipeline.cli import _resolve_fall_defaults
-
-    def ns(**kw):
-        basis = dict(fall=None, quelle=None, input=None, generated_dir=None,
-                     info_dir=None, diagnostics_dir=None, repo_root=str(tmp_path))
-        basis.update(kw)
-        return argparse.Namespace(**basis)
-
-    f = tmp_path / "fall"
-    anlegen(f)
-    registrieren(f, quelle)
-    extern = tmp_path / "extern.xlsm"
-    extern.write_bytes(b"extern")
-
-    assert _resolve_fall_defaults(ns(fall=str(f), input=str(extern))) is None
-    kopie = f / "eingang" / quelle.name
-    kopie.chmod(0o644)
-    kopie.write_bytes(b"drift")
-    fehler = _resolve_fall_defaults(ns(fall=str(f), input=str(extern)))
-    assert fehler is not None and "unklarem Eingang" in fehler
-
-    # Ein Pfad ohne Arbeitsbereich wird nicht still zu einem Pseudo-Fall:
-    kein_fall = tmp_path / "kein-fall"
-    fehler = _resolve_fall_defaults(ns(fall=str(kein_fall), input=str(extern)))
-    assert fehler is not None and "kein Fall-Arbeitsbereich" in fehler
-    assert not kein_fall.exists()
 
 
-def test_assurance_fall_ausserhalb_repo_root_ist_fail_fast(
-    tmp_path: Path, quelle: Path
-) -> None:
-    """Die Gate-Kette verlangt den InputBundle-Ordner unter --repo-root;
-    ohne diese Pruefung braeche der Lauf erst mitten in G5/G7 ab."""
-    import argparse
-
-    from rechner_pipeline.cli import _resolve_fall_defaults
-
-    f = tmp_path / "aussen" / "fall"
-    anlegen(f)
-    registrieren(f, quelle)
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    n = argparse.Namespace(
-        fall=str(f), quelle=quelle.name, input=None, generated_dir=None,
-        info_dir=None, diagnostics_dir=None, repo_root=str(repo),
-    )
-    fehler = _resolve_fall_defaults(n)
-    assert fehler is not None and "ausserhalb von --repo-root" in fehler
 
 
-def test_assurance_fall_end_to_end_ueber_cli_main(tmp_path: Path) -> None:
-    """Die --fall-Naht wird ueber cli.main gefahren: ein Lauf auf unklarem
-    Eingang endet mit Usage-Exit, bevor irgendein Gate startet."""
-    from rechner_pipeline import cli
-
-    f = tmp_path / "fall"
-    anlegen(f)
-    q = tmp_path / "Quelle.xlsm"
-    q.write_bytes(b"nicht wirklich excel")
-    registrieren(f, q)
-    kopie = f / "eingang" / "Quelle.xlsm"
-    kopie.chmod(0o644)
-    kopie.write_bytes(b"manipuliert")
-
-    rc = cli.main(["assurance", "--repo-root", str(tmp_path),
-                   "--fall", str(f), "--quelle", "Quelle.xlsm"])
-    assert rc == 2                                   # Usage/Vor-Lauf-Abbruch
-    assert not (f / "abgeleitet" / "diagnostics").exists()

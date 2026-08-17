@@ -3,6 +3,11 @@
 Status: akzeptiert (Bartek, 2026-08-14). Umgesetzt:
 `rechner_pipeline.fall` + `assurance --fall`.
 
+> **Teilweise abgeloest durch [ADR-006](adr-006-portierung-ausser-betrieb.md)**
+> (2026-08-17): Den Befehl `assurance --fall` gibt es nicht mehr. Der
+> Fall-Arbeitsbereich und seine Regeln gelten unveraendert; die Gates
+> operieren einzeln auf dem Fall (`--fall <pfad>`).
+
 ## Kontext
 
 Bisher formulierten README und AGENTS.md den Einstieg als

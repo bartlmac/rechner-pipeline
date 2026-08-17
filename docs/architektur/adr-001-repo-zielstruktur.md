@@ -4,6 +4,12 @@ Status: akzeptiert (Bartek, 2026-08-14). Umgesetzt in zwei Commits
 (src-Schnitt, runs/-Konsolidierung) vor dem Push des Branches
 `feat/bestandsdaten-modul`.
 
+> **Teilweise abgeloest durch [ADR-006](adr-006-portierung-ausser-betrieb.md)**
+> (2026-08-17): `gates/orchestrate/`, `models/kern_output.py` und die
+> `assurance`-Kette gibt es nicht mehr. Der Schichtenschnitt selbst gilt
+> unveraendert; verbindlich ist heute `SCHICHT_ERLAUBT` in
+> `ontologie/code_karte.py` (ADR-005).
+
 ## Kontext
 
 Das Repo wird zur Plattform fuer KI-gestuetzte Bestandsmigrationen

@@ -26,7 +26,6 @@ gehoert dann in ein Gate oder einen Validator.
 | Qualitaetssicherung | `teste-adversarial` | Bloecke adversarial reviewen (Finden -> Widerlegen -> Fixen -> Regressionstest) und die Test-Disziplin tragen (Mutations-Denken, unabhaengige Kontrollrechnung) | Findings ungeprueft uebernehmen; gruene Suiten als Beleg fuer Vollstaendigkeit lesen |
 | Dokumentation | `dokumentiere-system` | Doku unter den Repo-Regeln (generiert schlaegt handgeschrieben, ein Zuhause je Typ, ADR-Format, Ehrlichkeits-Abschnitte) | Inhalte doppeln (Drift); Grenzen beschoenigen |
 | Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen RECHNEN, Entscheidungs-Dossier + Empfehlung liefern, dann STOPP | entscheiden (auch nicht "offensichtliche" Faelle); Quellen-Hierarchie festlegen |
-| Kern-Uebersetzung (Alt-Pfad) | `build-vergleichsrechenkern` | Sechs-Datei-Vergleichskern 1:1 aus einer Quellmappe, Gate-Kette bis zur mechanischen Abnahme | Zielkern-Aenderungen; Gate-Logik |
 | Gate-Autorenschaft | `author-rechner-toolbox-gate` | neue Pruef-CLIs unter dem Ledger-/Exit-Contract | Fachlogik ausserhalb des Pruefens |
 
 ## Zusammenspiel (wer uebergibt an wen)

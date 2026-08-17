@@ -21,7 +21,6 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.models.schemas import GateLedgerEntry
-from rechner_pipeline.gates.orchestrate import dossier as provenance
 from rechner_pipeline.gates import _common
 
 
@@ -82,7 +81,7 @@ def test_write_gate_ledger_roundtrips_into_gates_present(tmp_path: Path) -> None
     result = _golden_master_result(status="passed", exit_code=_common.Exit.OK)
     _common.write_gate_ledger(result, tmp_path)
 
-    entries, read_errors = provenance.load_gate_ledger(tmp_path)
+    entries, read_errors = _common.load_gate_ledger(tmp_path)
     assert read_errors == []
     assert len(entries) == 1
     gates_present = sorted({e.gate for e in entries})
@@ -103,7 +102,7 @@ def test_write_gate_ledger_failed_path(tmp_path: Path) -> None:
     assert entry.summary["exit_code"] == _common.Exit.GOLDEN_MASTER
     assert entry.summary["errors"][0]["code"] == "gm.mismatch"
 
-    entries, read_errors = provenance.load_gate_ledger(tmp_path)
+    entries, read_errors = _common.load_gate_ledger(tmp_path)
     assert read_errors == []
     assert sorted({e.gate for e in entries}) == ["G5.golden-master"]
 
@@ -111,14 +110,14 @@ def test_write_gate_ledger_failed_path(tmp_path: Path) -> None:
 def test_write_gate_ledger_derives_gate_from_command(tmp_path: Path) -> None:
     """When result.gate is unset, the gate id is derived from the catalogue."""
     result = _common.build_result(
-        command="validate",  # -> G1.file-contract in ALL_GATES
+        command="extract",  # -> G1.file-contract in ALL_GATES
         gate_version="1.0.0",
         exit_code=_common.Exit.OK,
         input_hashes={"generated/x.py": "c" * 64},
     )
     out = _common.write_gate_ledger(result, tmp_path)
     entry = GateLedgerEntry.from_dict(json.loads(out.read_text(encoding="utf-8")))
-    assert entry.gate == "G1.file-contract"
+    assert entry.gate == "G0.extraction-manifest"
     assert entry.required is True
     assert entry.validate() == []
 

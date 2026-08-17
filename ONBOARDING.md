@@ -1,109 +1,111 @@
-# ONBOARDING — agentic-rechner-pipeline
+# ONBOARDING — rechner-pipeline
 
 ## 1. What this is
-Two connected systems, **no LLM SDK in the codebase** (the CLI agent *is* the model;
-Python code extracts, validates, computes, and accepts):
+A system for **life-insurance portfolio migration**, with **no LLM SDK in the
+codebase** (the CLI agent *is* the model; Python code pre-digests, validates,
+computes and accepts):
 
-1. **Migration pipeline (the main path):** heterogeneous sources (Tarifmeldung DOCX,
-   Tarifrechner XLSM) -> ontology (T-Box/A-Box with per-statement provenance and
-   discrepancy objects) -> Tarif-Spez -> parametrized stable kernel -> golden-master
-   acceptance against the source calculator, with human gates (G-1/G-2) and immutable
-   decision snapshots. Read `docs/architektur/migrations-pipeline-v01.md` first,
-   then the role catalog `docs/architektur/skill-architektur.md`.
-2. **Six-file comparison kernel (legacy path):** 1:1 migration of one workbook into
-   a standalone kernel, proven by the deterministic G0-G8 gate suite (`assurance`).
+1. **The target kernel** (`rechner_pipeline.kern`, version 3.0.0): a stable,
+   versioned calculation kernel formulated entirely in the state-model world
+   (semi-Markov backbone, Thiele recursion on pure decrement probabilities).
+   Two products — endowment (KLV) and disability (BU) — are *configurations*
+   of that backbone, not separate engines. Commutation values live in a
+   **separate second kernel** used only as a cross-check rail (ADR-004).
+2. **The portfolio module** (`rechner_pipeline.bestand`): synthetic,
+   forward-projectable portfolios that the target kernel can compute directly.
+   Every amount comes from the kernel; the module carries no actuarial
+   formulas of its own.
+3. **The migration pipeline** (the main path): heterogeneous sources
+   (Tarifmeldung DOCX, Tarifrechner XLSM) -> ontology (T-Box/A-Box with
+   per-statement provenance and discrepancy objects) -> Tarif-Spez ->
+   parametrized kernel -> acceptance against the source calculator, with human
+   gates (G-1/G-2/G-T) and immutable decision snapshots.
 
-Layer map and structure decisions: `docs/architektur/adr-001-repo-zielstruktur.md`.
-A migration case lives in a **Fall-Arbeitsbereich** (`python -m rechner_pipeline.fall`,
-ADR-002) — `examples/` is demo material, NOT an input channel.
+Read `docs/architektur/migrations-pipeline-v01.md` first, then the role catalog
+`docs/architektur/skill-architektur.md`, then the five ADRs in
+`docs/architektur/`.
+
+**Historical note:** the project started from a one-time *translation act* — a
+coding agent ported an Excel/VBA calculator into a six-file Python kernel,
+accepted by a deterministic gate chain (617/617 values, 2026-07-22). That proof
+is complete. The porting machinery was retired on 2026-08-17 and is preserved
+on branch `parked/portierung-excel` / tag `portierung-excel-2026-08`. New
+generations are **parametrization**; new products come through the T-Box
+(gate G-T) — not by translating another workbook.
+
+A migration case lives in a **Fall-Arbeitsbereich** (`python -m
+rechner_pipeline.fall`, ADR-002) — `examples/` is demo material, NOT an input
+channel.
 
 ## 2. Setup
-- Python **>=3.11**, fresh **`.venv`**, **public pypi.org only** (no Artifactory), pinned deps.
-- Install from repo root:
-  ```
-  python -m pip install -e ".[dev]"
-  ```
-- Windows venv form:
-  ```
-  .venv\Scripts\python.exe -m pip install -e ".[dev]"
-  ```
-- POSIX venv form:
-  ```
-  .venv/bin/python -m pip install -e ".[dev]"
-  ```
-  Runtime (pinned): `openpyxl`, `oletools`, `pandas`, `pyarrow`, `matplotlib`, `pydantic` — see `pyproject.toml`. Dev: `pytest`, `hypothesis`.
+Python **3.11+**. No LLM key needed.
+```
+python -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"      # Windows: .venv\Scripts\python
+```
+Runtime (pinned): `openpyxl`, `oletools`, `pandas`, `pyarrow`, `matplotlib`,
+`pydantic` — see `pyproject.toml`. Dev: `pytest`, `hypothesis`.
 
 ## 3. Run it
-**Accept an already-generated kernel (one command, the KLV worked example):**
+**Create a case and register its sources** (the input channel; sources are
+stored read-only with SHA-256 in `eingang.json` and checked before every run):
 ```
-python -m rechner_pipeline.cli assurance \
-    --repo-root . --input examples/Tarifrechner_KLV_TG2012.xlsm \
-    --generated-dir runs/generated --info-dir runs/info_from_excel \
-    --diagnostics-dir runs/diagnostics --qa-contract qa_contract.json --adapter excel
+python -m rechner_pipeline.fall anlegen --fall faelle/demo-klv
+python -m rechner_pipeline.fall registrieren --fall faelle/demo-klv \
+    --datei examples/Tarifrechner_KLV_TG2012.xlsm
+python -m rechner_pipeline.fall status --fall faelle/demo-klv
 ```
-Runs the chain `extract → validate → security → conventions → golden_master → algebraic →
-roundtrip → dossier` over one shared `--diagnostics-dir`; aggregate exit code = dossier verdict
-(**0 = accepted**, 40 = human_review_required). KLV is accepted hands-off & idempotent.
 
-**(Re)generate a kernel:** invoke the **`build-vergleichsrechenkern`** skill (the agent reads the
-`runs/info_from_excel/` bundle, writes the six files, drives the gates to acceptance). KLV facts:
-interest 1.75%, mortality `DAV1994_T_M`, ω=100; expectations = 5 scalars (`Bxt, BJB, BZB, Pxt, ratzu`)
-+ 612 table cells, coverage `full`.
+**Pre-digest a source, then run the ontology gates:**
+```
+python -m rechner_pipeline.gates.extract --repo-root . \
+    --input faelle/demo-klv/eingang/Tarifrechner_KLV_TG2012.xlsm \
+    --out-dir faelle/demo-klv/abgeleitet/vorverdichtung/xlsm-TG2012 --adapter excel
+python -m rechner_pipeline.gates.abox_validate --fall faelle/demo-klv --repo-root .
+python -m rechner_pipeline.gates.generation_golden --fall faelle/demo-klv \
+    --generation klv/tg2015 --repo-root .
+```
 
-**Agent surfaces:** Claude CLI uses `.claude/skills/build-vergleichsrechenkern/SKILL.md`.
-Codex CLI uses the root `AGENTS.md` plus `.agents/skills/build-vergleichsrechenkern/SKILL.md`.
-Those skill bodies are intentionally mirrored and covered by tests. Start Codex at repo root
-or run `codex exec --cd . --sandbox workspace-write --ask-for-approval on-request "..."`.
+**Generate a portfolio and its report:**
+```
+python -m rechner_pipeline.bestand.cli_fortschreibung \
+    --config examples/bestand_gesamt.toml --bis 2020-01-01 --out-dir runs/bestand
+python -m rechner_pipeline.bestand.cli_report --lauf runs/bestand --out runs/berichte
+```
 
-## 4. The gates (each: `python -m rechner_pipeline.toolbox.<cmd>`, or run all via `assurance`)
-| Gate | Proves | Exit | Command |
-|---|---|---|---|
-| G0 extract | manifest + bundle, byte-identical extraction, coverage | 10 | `extract` |
-| G1 validate | exactly six files, right order, compiles, GM schema | 20 | `validate` |
-| G2 security | static AST: no net/subprocess/exec/RNG/time/write-IO | 21 | `security` |
-| G3 conventions | allowed import graph only, no cycles/local-import, cache hashable | 22 | `conventions` |
-| G4 confinement | kernel runs read-only-under-root (inside G5/G7, not standalone) | 30/32 | (in golden_master/roundtrip) |
-| G5 golden_master | computed scalars/tables == extracted expectations (4-dec) | 30 | `golden_master` |
-| G6 algebraic | Hypothesis actuarial identities hold (load-bearing for accuracy) | 31 | `algebraic` |
-| G7 roundtrip | tafeln canonical fixpoint + re-extract + recompute stable | 32 | `roundtrip` |
-| G8 dossier | aggregates all `.gate.json` ledgers → mechanical accept/block | 40 | `dossier` |
+**Navigate the codebase** (fundstellen are derived, not searched — ADR-005):
+```
+python -m rechner_pipeline.ontologie.code_index --tests tests   # node <-> module/test
+python -m rechner_pipeline.ontologie.code_karte                 # layer rules
+git diff --name-only | python -m rechner_pipeline.ontologie.impact
+python -m rechner_pipeline.ontologie.landkarte --out landkarte.html
+```
 
-Exit 2 = usage, 50 = internal. A non-zero exit is **blocking**, never downgraded to a warning.
+## 4. The gates
+Each gate is one command, writes one JSON to stdout plus a
+`<command>.gate.json` ledger into `--diagnostics-dir`. A non-zero exit is
+**blocking** and is never softened into a warning.
 
-## 5. Layout (all relative to `--repo-root .`)
-- **`runs/info_from_excel/`** — the extraction *bundle* (CSVs, `*_scalar.json`, `*_table_values.csv`,
-  `names_manager.csv`, `vba/*.txt`, `export_manifest.json`, `input_bundle.json`). MUST live **under repo root**.
-- **`runs/generated/`** — **EXACTLY six files**: `inputs.py, params.py, tafeln.xml, commutation.py, actuarial.py, test_run.py`. Nothing else.
-- **`runs/diagnostics/`** — shared ledger dir: one `<command>.gate.json` per gate + `qa_report.json` + `run_dossier.json`.
-- **`qa_contract.json`** — at **repo root**, NOT in `generated/` (a 7th file fails G1). Passed via `--qa-contract`.
+| Gate | Command | Proves |
+|---|---|---|
+| G0 | `gates.extract` | deterministic pre-digest of a source workbook (formulas, cached values, defined names via openpyxl; VBA via `oletools.olevba`) |
+| O0 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
+| O1 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
+| O3 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values |
+| P9 | `gates.gate_entscheid` | immutable snapshots of the human gates (G-1, G-2, G-T); agents may only reject |
+| B1 | `gates.bestand_validate` | portfolio schema and movement identities per year, track and measure |
 
-## 6. Extend it
-- **New gate:** use the **`author-rechner-toolbox-gate`** skill — thin `toolbox/<cmd>.py` wrapper over a
-  `qa/<engine>.py`; `main()`+`run_command` skeleton, `default=None` mergeable flags, `write_gate_ledger`
-  on BOTH pass & fail, standard exit code + status mirroring. Add it to `REQUIRED_GATES`/`ALL_GATES` in
-  `orchestrate/dossier.py` and to the `assurance` chain.
-- **New input adapter:** implement the `InputAdapter → InputBundle` seam (`adapters/base.py`; `adapters/excel.py`
-  `ExcelAdapter` is the zero-behavior reference). Wire it into `--adapter`. **Word is the future case**; today
-  `--adapter` accepts only `auto|excel`.
-- **Acceptance requires:** every required gate `passed` under recorded versions/hashes, coverage `full`,
-  no blocking (`strict_error`) manifest warning, no unapproved open assumption. `dossier` decides — never self-assessment.
-
-## 7. Gotchas
-- **Generated code is constrained** (enforced by G2/G3/G4, so the kernel must obey): no network/subprocess/
-  `eval`/`exec`/dynamic-import/write-IO/`random`/`time`/`os.environ`; only edge between compute layers is
-  `actuarial.py → commutation.py`; `@lru_cache` only with strictly-hashable args (bare `tuple`/`Tuple` FAILS —
-  use `Tuple[int, ...]`); GM scalar keys byte-match `*_scalar.json` (case-sensitive, no normalization);
-  `qx` extracted faithfully into `tafeln.xml` (full precision OK), missing table → raise + `human_review_required`.
-- **`qa_contract.json` lives at repo root**, never in `generated/`.
-- **`--info-dir` must be under `--repo-root`** or the confined golden_master/roundtrip children can't read
-  expectations (exit 30 `confinement_failure`).
-- **Supply `--qa-contract` for real acceptance** — omitting it skips G6 and `dossier` blocks on `gate.missing`.
-- `roundtrip` (G7) needs `--input <original workbook>` for its re-extraction check — keep the source path available.
-- fs_confine (G4) is **defense-in-depth, not an OS sandbox**; trust = G2 static + G4 confine + subprocess isolation.
-
-## 8. Status
-**COMPLETE & SOUND** (final review verdict). Current verification: **287 passed, 1 skipped**.
-KLV kernel **accepted** hands-off & idempotent (assurance exit 0, dossier accepted, coverage
-full; green proven real — anti-overfit + 1:1 VBA port).
-Explicitly **future**: a Word input adapter (seam exists, not implemented). No MCP/RPC seam exists
-today; use the plain Python toolbox commands.
+## 5. Non-negotiables
+- **Deterministic and SDK-free** in `src/`: no network, no subprocess, no
+  dynamic execution; same input -> same output; sorted serialization.
+- **Fail-fast, never silent**: no silent overwrite, no silent default. Doubt is
+  a named state (`nicht_belegt`/`mehrdeutig`/`widerspruechlich`) or a hard
+  error whose message names the way out.
+- **Agents never decide** contradictions between sources. Provisional
+  resolutions carry `vorlaeufig=true` and block every human acceptance.
+- **Nodes** (`Knoten: klv/tg2015`) in every module and test docstring; the same
+  IDs as the A-Box and gate O3. `code_index` must stay drift-free,
+  `code_karte` finding-free.
+- **Full suite before every commit** (`.venv/bin/python -m pytest`). The impact
+  tool is informational; CI runs everything.
+- Dependencies pinned exactly, new ones only via ADR. Push is the human's job.

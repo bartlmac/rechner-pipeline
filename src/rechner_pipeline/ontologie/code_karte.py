@@ -63,7 +63,6 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
               "spez", "bestand", "fall"},            # Pruef-CLIs lesen alles;
     #                                                  fall: Gates operieren
     #                                                  auf Faellen (ADR-002)
-    "cli": {"gates", "fall"},
     "fall": set(),
     "__init__": set(),                               # Paketwurzel
 }

@@ -5,9 +5,8 @@ description: >-
   Stufe 2 A-Box->Spez->Kern-Parametrierung, Stufe 3 Golden-Master-Abnahme), including the
   human gates G-1/G-2 and their P9 snapshots. Trigger when the user asks to migrate a new
   Tarifgeneration or product delivery (Tarifmeldung + Tarifrechner) into the kernel, to
-  "einen Migrationsfall durchfuehren/anlegen", or names this skill. Skip for: building the
-  six-file comparison kernel (use build-vergleichsrechenkern), authoring gates (use
-  author-rechner-toolbox-gate), or pure read/analysis questions.
+  "einen Migrationsfall durchfuehren/anlegen", or names this skill. Skip for: authoring gates (use
+  author-rechner-toolbox-gate) or pure read/analysis questions.
 ---
 
 # Einen Migrationsfall durchfuehren

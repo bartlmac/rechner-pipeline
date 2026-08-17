@@ -14,20 +14,16 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.bestand.kernlauf import (
-    KERNEL_FILES,
     KernlaufError,
     berechne_vertrag,
     fortschreibungswerte,
-    run_kernel_for_contract,
 )
 from rechner_pipeline.models.bestand import (
     MODEL_POINT_FIELDS,
     model_point_kwargs,
-    render_inputs_py,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-KERNEL_DIR = REPO_ROOT / "runs" / "generated"
 
 _ROW = {
     "entry_age": 45,
@@ -74,18 +70,8 @@ def test_berechne_vertrag_in_process_ueber_stabilen_kern():
     assert werte["jahr"] == 5 and werte["skalare"]["BJB"] == scalars["BJB"]
 
 
-def test_render_inputs_py_is_valid_python_with_default():
-    source = render_inputs_py(model_point_kwargs(_ROW, _GENERATION))
-    namespace: dict = {}
-    exec(compile(source, "inputs.py", "exec"), namespace)  # noqa: S102 - Testcode
-    default = namespace["DEFAULT"]
-    assert default.x == 45 and default.sex == "M" and default.zins == 0.0175
-    assert default.policy_fee == 24.0
 
 
-def test_render_inputs_py_rejects_missing_fields():
-    with pytest.raises(ValueError, match="ModelPoint-Felder fehlen"):
-        render_inputs_py({"x": 1})
 
 
 def test_fortschreibungswerte_picks_contract_year():
@@ -110,67 +96,3 @@ def test_fortschreibungswerte_mehrdeutiger_prefix_ist_fehler():
         fortschreibungswerte(outputs, months_exp=0)
     werte = fortschreibungswerte(outputs, months_exp=0, prefix="B")
     assert werte["skalare"] == {"s": 2.0}
-
-
-_kernel_missing = not all((KERNEL_DIR / f).is_file() for f in KERNEL_FILES)
-
-
-@pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter runs/generated")
-def test_kernel_run_for_default_contract_returns_contract_shape():
-    outputs = run_kernel_for_contract(
-        _ROW, _GENERATION, repo_root=REPO_ROOT, kernel_dir=KERNEL_DIR
-    )
-    assert set(outputs) == {"scalars", "tables"}
-    scalars = outputs["scalars"]["Kalkulation"]
-    assert {"Bxt", "BJB", "BZB", "Pxt", "ratzu"} <= set(scalars)
-    rows = outputs["tables"]["Kalkulation"]
-    assert len(rows) >= 30  # mind. ein Eintrag je Vertragsjahr
-    werte = fortschreibungswerte(outputs, months_exp=61)
-    assert werte["jahr"] == 5
-
-
-@pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter runs/generated")
-def test_kernel_run_varies_with_contract():
-    outputs_a = run_kernel_for_contract(
-        _ROW, _GENERATION, repo_root=REPO_ROOT, kernel_dir=KERNEL_DIR
-    )
-    row_b = dict(_ROW, entry_age=30, sum_insured=50000.0)
-    outputs_b = run_kernel_for_contract(
-        row_b, _GENERATION, repo_root=REPO_ROOT, kernel_dir=KERNEL_DIR
-    )
-    a = outputs_a["scalars"]["Kalkulation"]["BJB"]
-    b = outputs_b["scalars"]["Kalkulation"]["BJB"]
-    assert a != b  # anderer Vertrag -> andere Beitragswerte
-
-
-@pytest.mark.skipif(_kernel_missing, reason="kein generierter Kernel unter runs/generated")
-def test_in_process_pfad_paritaet_mit_subprozess_kernel():
-    """Parity-Gate: stabiler Kern (in-process) vs. transienter Kernel (Subprozess).
-
-    Der transiente Migrations-Kernel rechnet auf der Kommutations-Schiene;
-    der stabile Kern seit 2.0.0 produktiv auf dem Zustandsmodell (Wechsel
-    per Toleranz-Ueberleitung abgenommen). Der Vergleich laeuft daher in
-    der Rundungsklasse der Ueberleitung statt bit-exakt.
-    """
-    for row in (_ROW, dict(_ROW, entry_age=30, sex="F", sum_insured=50000.0)):
-        subprozess = run_kernel_for_contract(
-            row, _GENERATION, repo_root=REPO_ROOT, kernel_dir=KERNEL_DIR
-        )
-        in_process = berechne_vertrag(row, _GENERATION)
-        # Symmetrie: gleiche Prefixe, Skalare, Zeilenzahlen und Spalten.
-        assert set(in_process["scalars"]) == set(subprozess["scalars"])
-        assert set(in_process["tables"]) == set(subprozess["tables"])
-        for prefix, scalars in subprozess["scalars"].items():
-            assert set(in_process["scalars"][prefix]) == set(scalars)
-            for name, wert in scalars.items():
-                assert in_process["scalars"][prefix][name] == pytest.approx(
-                    wert, rel=1e-12, abs=1e-10
-                ), (prefix, name)
-        for prefix, rows in subprozess["tables"].items():
-            assert len(in_process["tables"][prefix]) == len(rows)
-            for j, zeile in enumerate(rows):
-                assert set(in_process["tables"][prefix][j]) == set(zeile)
-                for spalte, wert in zeile.items():
-                    assert in_process["tables"][prefix][j][spalte] == pytest.approx(
-                        wert, rel=1e-12, abs=1e-10
-                    ), (prefix, j, spalte)

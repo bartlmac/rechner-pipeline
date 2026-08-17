@@ -539,39 +539,3 @@ def bu_model_point_kwargs(
     return kwargs
 
 
-def render_inputs_py(kwargs: Mapping[str, Any]) -> str:
-    """Render a kernel-compatible ``inputs.py`` for one contract.
-
-    Used by the kernel-based Fortschreibung: the (transient) kernel binds to
-    ``inputs.DEFAULT`` at import time, so per-contract evaluation runs in a
-    fresh child process whose ``inputs.py`` is generated from the portfolio
-    row. This function IS the executable form of the schema coupling.
-    """
-    missing = [n for n, _ in MODEL_POINT_FIELDS if n not in kwargs]
-    if missing:
-        raise ValueError(f"ModelPoint-Felder fehlen: {missing}")
-    lines = [
-        '"""Auto-generated kernel inputs for one portfolio contract."""',
-        "",
-        "from dataclasses import dataclass",
-        "",
-        "",
-        "@dataclass(frozen=True)",
-        "class ModelPoint:",
-    ]
-    for name, typ in MODEL_POINT_FIELDS:
-        lines.append(f"    {name}: {typ}")
-    lines.append("")
-    lines.append("")
-    args = []
-    for name, typ in MODEL_POINT_FIELDS:
-        value = kwargs[name]
-        rendered = repr(str(value)) if typ == "str" else repr(
-            int(value) if typ == "int" else float(value)
-        )
-        args.append(f"    {name}={rendered},")
-    lines.append("DEFAULT = ModelPoint(")
-    lines.extend(args)
-    lines.append(")")
-    lines.append("")
-    return "\n".join(lines)
