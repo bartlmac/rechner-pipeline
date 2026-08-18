@@ -21,7 +21,7 @@ Regeln:
 Producer-CLI (kein Gate)::
 
     python -m rechner_pipeline.quellen.tafel_import \\
-        --fall faelle/klv-tg2015 --generation klv/tg2015 \\
+        --fall faelle/baldrian-klv-tg2015 --generation klv/tg2015 \\
         [--tafeln-xml src/rechner_pipeline/kern/tafeln.xml] [--dry-run]
 
 Knoten: klv

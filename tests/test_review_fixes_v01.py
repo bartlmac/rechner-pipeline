@@ -356,10 +356,10 @@ def test_validate_spez_findet_geloeschtes_pflichtfeld():
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-FALL = REPO_ROOT / "faelle" / "klv-tg2015"
+FALL = REPO_ROOT / "faelle" / "baldrian-klv-tg2015"
 
 
-@pytest.mark.skipif(not FALL.is_dir(), reason="kein Fall-Arbeitsbereich faelle/klv-tg2015")
+@pytest.mark.skipif(not FALL.is_dir(), reason="kein Fall-Arbeitsbereich faelle/baldrian-klv-tg2015")
 def test_gate_o3_blockt_ohne_verlaufswerte(tmp_path: Path):
     import shutil
 
@@ -377,7 +377,7 @@ def test_gate_o3_blockt_ohne_verlaufswerte(tmp_path: Path):
     assert json.loads(ledger.read_text(encoding="utf-8"))["status"] == "failed"
 
 
-@pytest.mark.skipif(not FALL.is_dir(), reason="kein Fall-Arbeitsbereich faelle/klv-tg2015")
+@pytest.mark.skipif(not FALL.is_dir(), reason="kein Fall-Arbeitsbereich faelle/baldrian-klv-tg2015")
 def test_gate_o3_blockt_manipulierte_spez(tmp_path: Path):
     """Die Spez ist Projektion: eine editierte Spez traegt keinen GM."""
     import shutil

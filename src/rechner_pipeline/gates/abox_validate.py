@@ -17,7 +17,7 @@ neben die A-Box gelegt (deterministisch, diffbar).
 
 Run via::
 
-    python -m rechner_pipeline.gates.abox_validate --fall faelle/klv-tg2015 \\
+    python -m rechner_pipeline.gates.abox_validate --fall faelle/baldrian-klv-tg2015 \\
         [--diagnostics-dir DIR] [--repo-root .]
 
 Knoten: klv

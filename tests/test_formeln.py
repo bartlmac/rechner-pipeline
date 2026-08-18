@@ -16,7 +16,7 @@ from rechner_pipeline.quellen.formeln import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-FALL = REPO_ROOT / "faelle" / "klv-tg2015"
+FALL = REPO_ROOT / "faelle" / "baldrian-klv-tg2015"
 
 
 def test_if_staffel_parser_liest_prozent_und_default():

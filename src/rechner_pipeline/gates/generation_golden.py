@@ -20,7 +20,7 @@ Blocking failures exit ``30`` (``Exit.GOLDEN_MASTER``); Usage exit ``2``.
 Run via::
 
     python -m rechner_pipeline.gates.generation_golden \\
-        --fall faelle/klv-tg2015 --generation klv/tg2015 [--repo-root .]
+        --fall faelle/baldrian-klv-tg2015 --generation klv/tg2015 [--repo-root .]
 
 Knoten: klv
 """

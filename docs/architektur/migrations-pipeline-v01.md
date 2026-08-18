@@ -161,7 +161,7 @@ Schichten, jede versioniert, jede mit eigener Aenderungs-Disziplin:
 | Deterministischer Code | das Verfahren selbst: Vorverdichtung, Merge, Konfliktbildung, Coverage, Struktur-Urteil, Projektion, Tafel-Ableitung, Vergleich, Gates | `quellen/`, `ontologie/`, `spez/`, `gates/` | Commits unter Test-Pflicht |
 | Contracts & T-Box | WAS zu extrahieren ist (QuellFragment-Schema, generiert), was Pflicht ist (PFLICHT_PARAMETER), wohin es mappt (ModelPoint-Felder) | `ontologie/tbox.py`, `ontologie/befuellung.py` | Gate G-T (T-Box-Aenderung, Mensch) |
 | Skills (Agenten-Anweisungen) | WIE die probabilistischen Schritte urteilen: Extraktionsregeln je Quelltyp, das systematische Vorgehen eines Falls, Abbruchkriterien | `.claude/skills/` + `.agents/skills/` (Paritaet test-tragend): `migrationsfall-durchfuehren` (Runbook), `extrahiere-quellfragment` (Stage-1-Agent) | Commits; der Skill-Stand (Git-SHA) gehoert in den Akteur-String der Provenienz (P1) |
-| Praezedenzfall | WIE ein fertiges Ergebnis aussieht: A-Box, Spez, Fachspez, Diskrepanzen, Gate-Ledger des Falls KLV TG2012->TG2015 | `faelle/klv-tg2015` (lokal; echte Faelle ausserhalb des Repos) | jeder abgeschlossene Fall wird Referenz des naechsten |
+| Praezedenzfall | WIE ein fertiges Ergebnis aussieht: A-Box, Spez, Fachspez, Diskrepanzen, Gate-Ledger des Falls KLV TG2012->TG2015 | `faelle/baldrian-klv-tg2015` (lokal; echte Faelle ausserhalb des Repos) | jeder abgeschlossene Fall wird Referenz des naechsten |
 
 Die Verteilungsregel dahinter: Wissen, das GELTEN muss, wandert in Code
 und Contracts (erzwungen); Wissen, das URTEILEN anleitet, in Skills

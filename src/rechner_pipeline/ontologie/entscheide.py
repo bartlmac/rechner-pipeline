@@ -9,7 +9,7 @@ revidierbar, nicht durch Ueberschreiben.
 
 Run via::
 
-    python -m rechner_pipeline.ontologie.entscheide --fall faelle/klv-tg2015 \\
+    python -m rechner_pipeline.ontologie.entscheide --fall faelle/baldrian-klv-tg2015 \\
         --diskrepanz "klv/tg2015/zelle:nichtraucher,einzel#zins" \\
         --wert 0.0175 --entscheider "Bartek" \\
         --begruendung "Dirk bestaetigt: Rechner-Stand gilt, Meldung wird korrigiert"

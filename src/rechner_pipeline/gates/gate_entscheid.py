@@ -26,7 +26,7 @@ aufraeumbaren ``abgeleitet/``-Zone.
 
 Run via::
 
-    python -m rechner_pipeline.gates.gate_entscheid --fall faelle/klv-tg2015 \\
+    python -m rechner_pipeline.gates.gate_entscheid --fall faelle/baldrian-klv-tg2015 \\
         --gate G-1 --entscheid angenommen --entscheider "Bartek" \\
         --begruendung "..." [--repo-root .]
 

@@ -17,7 +17,7 @@ from rechner_pipeline.quellen.tafel_import import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-FALL = REPO_ROOT / "faelle" / "klv-tg2015"
+FALL = REPO_ROOT / "faelle" / "baldrian-klv-tg2015"
 
 
 def _csv(tmp_path: Path, zeilen: str) -> Path:
@@ -121,7 +121,7 @@ def test_kern_fuehrt_die_tg2015_tafeln_mit_korrekter_mischung():
             assert qx_u[alter] == erwartet, (basis, alter)
 
 
-@pytest.mark.skipif(not FALL.is_dir(), reason="kein Fall-Arbeitsbereich faelle/klv-tg2015")
+@pytest.mark.skipif(not FALL.is_dir(), reason="kein Fall-Arbeitsbereich faelle/baldrian-klv-tg2015")
 def test_gate_o3_tg2015_golden_master_besteht():
     """DER v0.1-Test: Kern (Spez-parametriert) reproduziert Dirks
     TG2015-Excel — 4 Skalare + komplette Verlaufswerte-Tabelle."""

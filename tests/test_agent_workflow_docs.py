@@ -72,7 +72,7 @@ def test_migrations_skills_nennen_die_tragenden_regeln() -> None:
     runbook = _read(".claude/skills/migrationsfall-durchfuehren/SKILL.md")
     assert "vorlaeufig=True" in runbook
     assert "gate_entscheid" in runbook
-    assert "faelle/klv-tg2015" in runbook             # Referenzfall
+    assert "faelle/baldrian-klv-tg2015" in runbook             # Referenzfall
     assert "STOPP" in runbook                         # Abbruchkriterien
 
 
