@@ -23,6 +23,7 @@ from rechner_pipeline.kern.produkte import hole
 from rechner_pipeline.kern.produkte.klv import (
     KLV,
     VERLAUFSWERTE_SPALTEN,
+    Monatsreserve,
     Verlaufszeile,
 )
 
@@ -30,6 +31,7 @@ __all__ = [
     "Rechenkern",
     "berechne",
     "VERLAUFSWERTE_SPALTEN",
+    "Monatsreserve",
     "Verlaufszeile",
 ]
 
@@ -111,6 +113,12 @@ class Rechenkern:
 
     def reserve_beitragsfrei(self, a0: int, a: int) -> float:
         return self.produkt.reserve_beitragsfrei(a0, a)
+
+    def monatsreserve(self, monate: int) -> Monatsreserve:
+        return self.produkt.monatsreserve(monate)
+
+    def monatsreserve_beitragsfrei(self, a0: int, monate: int) -> float:
+        return self.produkt.monatsreserve_beitragsfrei(a0, monate)
 
 
 def berechne(mp: ModelPoint = KLV_DEFAULT, produkt: str = "klv") -> Dict[str, Dict]:

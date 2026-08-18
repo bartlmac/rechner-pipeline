@@ -62,6 +62,7 @@ from rechner_pipeline.kern.tafeln import (
 )
 from rechner_pipeline.kern.zustandsmodell import Zustandsmodell, ZustandsBarwerte
 from rechner_pipeline.kern.rechenkern import (
+    Monatsreserve,
     Rechenkern,
     Verlaufszeile,
     berechne,
@@ -88,6 +89,7 @@ __all__ = [
     "Zustandsmodell",
     "ZustandsBarwerte",
     "Verlaufszeile",
+    "Monatsreserve",
     "Tafelbasis",
     "MissingMortalityTableError",
     "TafelBereichError",

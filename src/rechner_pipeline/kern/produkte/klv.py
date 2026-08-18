@@ -82,6 +82,28 @@ class Verlaufszeile:
         }
 
 
+@dataclass(frozen=True)
+class Monatsreserve:
+    """Reserven an einem Monats-Stichtag zwischen zwei Vertragsjahrestagen.
+
+    Bilanzierungskonvention: die Betragsgrößen der Jahrestage ``a`` und
+    ``a+1`` werden mit dem Monatsanteil ``u = restmonate/12`` linear
+    gemischt (unterjährige Interpolation). Stornoabschlag und
+    Rückkaufswert werden aus den INTERPOLIERTEN Beträgen neu gerechnet;
+    das Regelwerk (flexible Phase, Ablauf) folgt dem angebrochenen
+    Vertragsjahr ``a``. Bei ``restmonate == 0`` sind alle Werte
+    bit-identisch zur Jahrestagszeile.
+    """
+
+    monate: int          # volle Monate seit Versicherungsbeginn
+    jahr: int            # angebrochenes Vertragsjahr a = monate // 12
+    monatsanteil: float  # u = (monate % 12) / 12
+    drx_bpfl: float      # Betrag (Deckungsrückstellung, beitragspfl. Track)
+    vx_mrv: float        # Betrag (inkl. Zillmer-Tilgung) — Bilanzgröße
+    stoab: float         # Stornoabschlag auf Basis der interpolierten DR
+    rkw: float           # max(0, vx_mrv - stoab)
+
+
 class KLV:
     """KLV-Zielgrößen für genau einen Modellpunkt (Kalkulations-Blatt)."""
 
@@ -293,6 +315,64 @@ class KLV:
     def beitragsfreie_summe(self, a0: int) -> float:
         """VS_bfr bei Beitragsfreistellung am Ende von Vertragsjahr ``a0``."""
         return self.verlaufszeile(a0).vs_bfr
+
+    def monatsreserve(self, monate: int) -> Monatsreserve:
+        """Reserven nach ``monate`` vollen Monaten — unterjährig interpoliert.
+
+        Linear zwischen den Vertragsjahrestagen ``a = monate // 12`` und
+        ``a+1`` (Monatsanteil ``u = restmonate/12``); StoAb/RKW werden aus
+        der interpolierten DR neu gerechnet (Regeln des Jahres ``a``).
+        Definiert für ``0 <= monate <= 12*n`` — nach Ablauf gibt es keine
+        Reserve mehr (fail fast statt stiller Null).
+        """
+        monate = int(monate)
+        if monate < 0:
+            raise ValueError(f"Monats-Stichtag {monate} negativ")
+        if monate > 12 * self.mp.n:
+            raise ValueError(
+                f"Monats-Stichtag {monate} liegt nach dem Ablauf "
+                f"(n = {self.mp.n} Jahre)"
+            )
+        a, rest = divmod(monate, 12)
+        u = rest / 12.0
+        za = self.verlaufszeile(a)
+        if rest == 0:
+            dr, mrv = za.drx_bpfl, za.vx_mrv
+        else:
+            zb = self.verlaufszeile(a + 1)
+            dr = (1.0 - u) * za.drx_bpfl + u * zb.drx_bpfl
+            mrv = (1.0 - u) * za.vx_mrv + u * zb.vx_mrv
+        stoab = self.stornoabzug(a, dr)
+        return Monatsreserve(
+            monate=monate, jahr=a, monatsanteil=u,
+            drx_bpfl=dr, vx_mrv=mrv, stoab=stoab,
+            rkw=max(0.0, mrv - stoab),
+        )
+
+    def monatsreserve_beitragsfrei(self, a0: int, monate: int) -> float:
+        """Beitragsfreie Reserve am Monats-Stichtag (PEX in Jahr ``a0``).
+
+        Die bei Beitragsfreistellung fixierte Summe ``VS_bfr(a0)`` läuft
+        auf dem beitragsfreien Reservesatz weiter; der Satz wird wie in
+        :meth:`monatsreserve` linear zwischen den Jahrestagen gemischt.
+        """
+        monate = int(monate)
+        if monate < 12 * a0:
+            raise ValueError(
+                f"Monats-Stichtag {monate} vor der Beitragsfreistellung "
+                f"(a0 = {a0})"
+            )
+        if monate > 12 * self.mp.n:
+            raise ValueError(
+                f"Monats-Stichtag {monate} liegt nach dem Ablauf "
+                f"(n = {self.mp.n} Jahre)"
+            )
+        a, rest = divmod(monate, 12)
+        u = rest / 12.0
+        satz = self.verlaufszeile(a).vx_bfr
+        if rest:
+            satz = (1.0 - u) * satz + u * self.verlaufszeile(a + 1).vx_bfr
+        return self.beitragsfreie_summe(a0) * satz
 
     def reserve_beitragsfrei(self, a0: int, a: int) -> float:
         """Reserve im Jahr ``a`` eines ab ``a0`` beitragsfreien Vertrags.
