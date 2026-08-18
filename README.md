@@ -1,117 +1,182 @@
-# Rechenkernentwicklung mit KI – Methodik, Leitplanken und Proof of Concept
+# Rechner-Pipeline — agentische Bestandsmigration Leben
 
-> **Status:** öffentlicher Proof of Concept. Begleitender Arbeitsraum eines
-> DAV-Projekts unter der AG Bestandsmigration. Vorgängerprojekt:
-> [portxlpy](https://github.com/bartlmac/portxlpy).
+> **Status:** öffentlicher Prototyp, lauffähig Ende-zu-Ende. Begleitender
+> Arbeitsraum eines DAV-Projekts unter der AG Bestandsmigration.
+> Vorgängerprojekt: [portxlpy](https://github.com/bartlmac/portxlpy).
 
-Dieses Repository baut ein **zielbildfähiges System für die
-Bestandsmigration Leben**: einen stabilen, versionierten Python-Rechenkern,
-einen fortschreibbaren Bestand, der genau auf ihm liegt, und eine
-ontologiegetriebene Pipeline, die neue Tarifgenerationen aus den Quellen
-eines Lieferanten in den Kern bringt — mit menschlichen Entscheidungen an
-genau den Stellen, an denen Quellen sich widersprechen.
+## Was dieses Repository ist
 
-Am Anfang stand ein **einmaliger Übersetzungsakt**: ein Coding-Agent hat
-einen Excel/VBA-Tarifrechner nach Python übersetzt, und eine
-deterministische Gate-Kette hat die funktionale Äquivalenz nachgewiesen
-(617 von 617 Werten, 22.07.2026). Dieser Nachweis ist erbracht und
-abgeschlossen. Die Portierungs-Maschinerie ist seit dem 17.08.2026 nicht
-mehr Teil des Systems (Branch `parked/portierung-excel`, Tag
-`portierung-excel-2026-08`): Neue Generationen sind **Parametrierung**,
-neue Produkte kommen über die T-Box — nicht über die Übersetzung einer
-weiteren Arbeitsmappe.
+Ein **agentisches System für die Bestandsmigration Leben und die
+Entwicklung des zugehörigen Rechenkerns**. Es löst zwei eng verzahnte
+Aufgaben:
 
-Das Ergebnis der Migration lebt als **stabiler, versionierter Rechenkern**
-(`rechner_pipeline.kern`) im Repo weiter — Software zusammen mit Bestand und
-Tests, die sich im Betrieb nicht verändert. Das **Bestandsdaten-Modul**
-liefert dazu synthetische, fortschreibbare Bestände, deren Datenmodell 1:1
-auf dem Kern-Contract liegt. Zusammen ergibt das das vollständige, laufende
-Beispiel der Methodik: **Rechenkern + Bestand + Assurance** — und die Bühne
-für den eigentlichen Anwendungsfall: das KI-System baut **marginale
-Änderungen** in den stabilen Kern ein (neue Tarifgeneration, neues Produkt)
-und bindet neu zu migrierende Bestände über Datentransformationen an.
+1. **Migration:** fremde Tarifgenerationen samt Bestand aus heterogenen
+   Lieferungen (Tarifrechner, Tarifmeldung, Bestandsabzüge) in ein
+   Zielsystem übernehmen — nachvollziehbar, mit menschlichen
+   Entscheidungen an genau den Stellen, an denen Quellen sich
+   widersprechen oder das Zielsystem erweitert werden muss.
+2. **Rechenkern-Entwicklung:** der Zielkern wird mit KI-Unterstützung
+   weiterentwickelt — unter einer Architektur, die Korrektheit erzwingt
+   statt erhofft.
 
-## Vision
+Die Arbeitsteilung ist der Kern der Methodik:
 
-Dieses Repository ist ein technischer und methodischer Arbeitsraum für die Frage,
-wie **KI und Agentensysteme die Rechenkernentwicklung sinnvoll unterstützen
-können**. Im Zentrum steht nicht ein fertiges Standardtool, sondern ein
-**nachvollziehbares, aktuarisch geführtes Vorgehensmodell** — wie fachliche
-Anforderungen, technische Umsetzung, Qualitätssicherung und menschliche Kontrolle
-in einem KI-gestützten Entwicklungsprozess zusammenwirken.
+- **Agenten schlagen vor** — als versionierte Rollen (Skills): Quellen
+  extrahieren, Bestandsdaten-Mappings vorschlagen, Konflikte
+  aufbereiten, Code unter den Architekturregeln entwickeln. Ein Agent
+  einer späteren Stufe liest nie die Rohquelle einer früheren.
+- **Deterministischer Code entscheidet** — Zusammenführung, Vergleich,
+  Abdeckung, Transformation, Abnahmerechnung. In `src/` gibt es keine
+  Modell-, Provider- oder Token-Fläche und keinen LLM-Pfad in einer
+  Prüfung.
+- **Menschen entscheiden fachlich** — Widersprüche zwischen Quellen
+  werden Objekte mit beiden Lesarten, nie stille Annahmen; jede
+  Abnahme ist ein menschliches Gate mit unveränderlichem Snapshot.
 
-Leitideen:
+## Architektur
 
-- **Methodik vor Produkt** — ein belastbares Vorgehen mit klaren Leitplanken,
-  kein universelles Toolversprechen.
-- **End-to-End statt Einzelautomation** — Wert entsteht im Zusammenspiel von
-  Analyse, Kontextaufbereitung, Generierung, Review, Test, Dokumentation und
-  Iteration.
-- **Aktuarinnen und Aktuare in zentraler Rolle** — fachliche Steuerung, Bewertung
-  und Freigabe bleiben menschliche Kernaufgaben.
-- **Whitebox-Prinzip** — Nachvollziehbarkeit, Prüfbarkeit, Reproduzierbarkeit und
-  kontrollierte Verbesserung sind essenziell.
+**Schichten** (Import-Regeln maschinell erzwungen,
+`ontologie/code_karte`):
 
-Die langfristige Perspektive ist ein **methodischer Referenzrahmen für
-KI-gestützte Rechenkernentwicklung**, der technische Experimente, fachliche
-Verantwortung und Governance zusammenführt.
+```
+quellen  ->  ontologie  ->  spez  ->  kern  ->  bestand  ->  qa  ->  gates
+             (T-Box/A-Box)          (Zielkern)  (GeVo-Strom)        (Abnahme)
+```
 
-Konkretes Zielbild (Stand August 2026): **stabiler Kern + marginale
-KI-Änderungen.** Der KLV-Kern ist nach dem einmaligen agentischen
-Übersetzungsakt eine stabile, versionierte Komponente; das
-Bestandsdaten-Modul liefert die **Datenbasis, die genau dieser Kern
-verarbeiten kann**, und wird per Ereignis-Fortschreibung über die Zeit
-entwickelt. Auf dieser Basis entsteht der eigentliche
-Migrations-Anwendungsfall: das KI-System erweitert den Kern um eine neue
-Tarifgeneration oder ein neues Produkt, bindet den neu zu migrierenden
-Bestand über eine **Datenmodell-Transformation** an, und die
-Assurance-Schicht nimmt die **Änderung** mechanisch ab (Regression:
-Bestehendes bleibt, Neues stimmt).
+- `quellen/`: deterministische Vorverdichter je Quelltyp (Excel-Mappen,
+  DOCX-Meldungen, CSV-Bestandsabzüge) — Agenten lesen nie Rohdateien.
+- `ontologie/`: die T-Box (was eine Tarifgeneration ausmacht) und je
+  Fall eine A-Box, in der **jede Aussage Provenienz trägt** (Quelle,
+  SHA-256, Fundstelle, Akteur). Widersprüche sind Diskrepanz-Objekte.
+  Dazu die Datentransformation (Quell-Datenmodell -> Ziel-Ontologie:
+  der Agent schlägt das Mapping vor, Code validiert und wendet an,
+  Unklarheit blockiert bis zur menschlichen Entscheidung) und der
+  **Code-Index**: Module und Tests deklarieren ihren Fachknoten
+  (`Knoten: klv/tg2015`), daraus werden Impact, Schichtenprüfung und
+  Landkarten-Sichten **berechnet** statt gepflegt — ausgelegt auf ein
+  Zielbild von einer Million Codezeilen, in dem es kein Bild "der
+  Codebasis" mehr gibt, nur begrenzte Ausschnitte
+  (`docs/architektur/landkarte.md`).
+- `spez/`: die abgenommene Lesart einer Generation als Parametrierung
+  des Kerns — samt maschinell berechnetem Struktur-Urteil
+  (Parametrierung vs. neues Produkt).
+- `kern/`: der Zielrechenkern (unten).
+- `bestand/`: der fortschreibbare Bestand auf dem Kern (unten).
+- `qa/` und `gates/`: Abnahmerechnungen und blockierende Prüf-Gates.
 
-## Ansatz: Agent schlägt vor, deterministischer Code entscheidet
+**Ablauf eines Migrationsfalls** (Details:
+`docs/architektur/migrations-pipeline-v01.md`): Fall-Arbeitsbereich
+anlegen und Quellen registrieren (`eingang/` mit SHA-256-Register, nie
+still überschrieben — hier beginnt die Provenienzkette) -> je Quelle
+Vorverdichtung und Agenten-Extraktion -> deterministischer Merge zur
+A-Box -> Diskrepanzen als Entscheidungs-Dossier an den Menschen
+(Gate G-1) -> Spez -> parametrierter Kern -> Abnahme gegen die
+Lieferung (Gate O3, Bestandsabzugs-Abgleich) -> Transformation und
+Übernahme des Bestands -> **Migrationsabnahme über zwei Stichtage**:
+Deckungskapital am Migrations- und am Folgestichtag plus die
+Geschäftsvorfälle dazwischen, gegen die gelieferten Erwartungswerte
+(`qa/migrationssuite`), zusammengefasst im HTML-Abnahmebericht
+(`gates/abnahmebericht`) mit Bestandsberichten vor/nach — als Vorlage
+für das menschliche Gate G-2.
 
-Die Verantwortung ist klar getrennt, und diese Trennung ist der Kern der
-Methodik:
+Braucht die Migration eine **Code-Änderung** (Berechnungskatalog,
+Bewertung, Produktdefinition), läuft sie als kleines, knotengebundenes
+Inkrement auf dem einen Trunk — Landung nur mit grüner Gesamt-Suite
+einschließlich der Anker aller anderen Fälle (ADR-007: parallele
+Migrationen in einem Kern).
 
-- **Vorschlagen** dürfen LLM-Agenten: sie lesen je eine vorverdichtete
-  Quelle und liefern ein strukturiertes Fragment. Sie sehen nie die
-  Rohquelle einer früheren Stufe und nie die Lesart einer anderen Quelle.
-- **Entscheiden** tut deterministischer Code: Zusammenführung, Vergleich,
-  Abdeckung, Struktur-Urteil, Abnahme. Es gibt **keine** Modell-,
-  Provider-, Token- oder Reasoning-Fläche in `src/` und keinen LLM-Pfad in
-  einer Prüfung.
-- **Fachlich entscheiden** tun Menschen: Widersprüche zwischen Quellen
-  werden zu Objekten, nicht zu stillen Annahmen. Ein Agent darf sie
-  vorläufig auflösen, um weiterrechnen zu können — das blockiert jede
-  Abnahme, bis ein Mensch entschieden hat.
+Die Agenten-Rollen samt Grenzen stehen im Katalog
+`docs/architektur/skill-architektur.md`; Architektur-Entscheidungen als
+ADRs unter `docs/architektur/`.
 
 ## Die Prüf-Gates
 
-Es gibt keine feste Kette mehr, die in einem Rutsch läuft, sondern einzelne
-Gates, die je Vorgang aufgerufen werden. Jedes schreibt sein Ergebnis als
-ein JSON auf stdout und eine `<command>.gate.json`-Ledger-Datei in den
-`--diagnostics-dir`; ein Nicht-Null-Exit ist **blockierend** und wird nie
-zu einer Warnung abgeschwächt.
+Jedes Gate schreibt ein JSON auf stdout und ein Ledger in den
+Diagnostics-Ordner; ein Nicht-Null-Exit ist **blockierend** und wird
+nie zur Warnung abgeschwächt.
 
 | Gate | Kommando | Prüft |
 |---|---|---|
-| G0 | `gates.extract` | deterministische Vorverdichtung einer Quellmappe (Zellformeln, gecachte Werte, Defined Names via openpyxl; VBA via `oletools.olevba`) |
-| O0 | `gates.abox_merge` | Zusammenführung der Extraktions-Fragmente zur A-Box, mit Ketten-Ledger |
-| O1 | `gates.abox_validate` | A-Box gegen T-Box, Abdeckung, Wertebereiche, Formel-Rück-Check, Ketten-Nachrechnung |
-| O3 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte des Quell-Rechners |
+| G0 | `gates.extract` | deterministische Vorverdichtung einer Quellmappe (Formeln, Werte, Namen, VBA) |
+| O0 | `gates.abox_merge` | Zusammenführung der Extraktions-Fragmente zur A-Box |
+| O1 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
+| O3 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung |
 | P9 | `gates.gate_entscheid` | unveränderliche Snapshots der menschlichen Gates (G-1, G-2, G-T) |
-| B1 | `gates.bestand_validate` | Bestandsschema, Bewegungs-Identitäten je Jahr, Track und Maß |
+| B1 | `gates.bestand_validate` | Bestandsschema und Bewegungs-Identitäten je Jahr, Track und Maß |
 
-Die aktuariellen Identitäten, die früher das Gate G6 gegen einen
-generierten Kern prüfte, prüfen heute Hypothesis-Tests gegen den Zielkern
-(`tests/test_kern_algebraisch.py`): Schranken für `q_x`, die
-Barwert-Bilanz `A_x + d·ä_x = 1`, beide Rekursionen und das
-Äquivalenzprinzip — Excel-unabhängig, wie zuvor.
+Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
+(`tests/test_kern_algebraisch.py`: qx-Schranken, Barwert-Bilanz
+`A + d·ä = 1`, Rekursionen, Äquivalenzprinzip) — unabhängig von jeder
+Quell-Lieferung.
+
+## Die Beispielartefakte: die PLV-Fiktion
+
+Vorgeführt wird das System an der fiktiven **Pfefferminzia
+Lebensversicherung (PLV)**: der Zielkern ist der PLV-Kern, der Bestand
+der PLV-Bestand, und Migrationsfälle übernehmen fremde Bestände in die
+PLV. `examples/` ist der Datenraum dieser Fiktion (synthetische
+Tarifrechner, Tarifmeldungen, Bestands-Konfigurationen — Lehrbeispiele
+ohne realen Kundenbezug), kein Eingangskanal.
+
+**Der Rechenkern** (`rechner_pipeline.kern`): KLV und
+Berufsunfähigkeit auf einem gemeinsamen (Semi-)Markov-Zustandsmodell
+mit Thiele-Rückwärtsrekursion; Tafelwerk als reine qx-Vektoren mit
+harten Erschöpfungsgrenzen; Monatsreserven für Bilanz-Stichtage
+(unterjährige Interpolation) und vertragsweite Bewertung dynamischer
+Erhöhungsscheiben. Eine neue Tarifgeneration ist eine
+**Parametrierung** über den Modellpunkt, kein neuer Code:
+
+```python
+import dataclasses
+from rechner_pipeline.kern import KLV_DEFAULT, berechne
+
+ergebnis = berechne(KLV_DEFAULT)
+mp = dataclasses.replace(KLV_DEFAULT, x=30, sex="F", zins=0.0225,
+                         tafel="DAV2008_T")
+ergebnis2 = berechne(mp)
+```
+
+Die klassische Kommutationsrechnung lebt als **separater Zweitkern**
+(`rechner_pipeline.kommutationskern`) ausschließlich für den
+Kreuz-Check (`qa/ueberleitung`) — sie ist kein Bestandteil des
+Zielkerns.
+
+**Die Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): die
+Fachdokumente des Zielkerns in seiner eigenen Mathematik
+(Zustandsmodell, GeVo-Katalog mit Betragsformeln, Stellschrauben,
+Gültigkeitsgrenzen), gerendert über eine gepinnte Doku-Engine
+(`docs/engine/`).
+
+**Der Bestand** (`rechner_pipeline.bestand`): synthetische,
+deterministisch reproduzierbare Bestände, deren Datenmodell 1:1 auf dem
+Kern-Contract liegt. Die Entwicklung über die Zeit ist ein einziger
+Strom datierter Geschäftsvorfälle (Neuzugang, Storno, Tod,
+Beitragsfreistellung, dynamische Erhöhungen als eigene Scheiben,
+Ablauf); jeder Betrag kommt aus dem Kern, die Eintrittsraten aus einer
+eigenen Annahmenschicht (3. Ordnung), und das Bewegungskonto führt die
+Identität Anfangsbestand + Zugang − Abgang = Endbestand exakt in der
+Struktur der BaFin-Nachweisungen. Der Bestandsbericht rendert das als
+selbst-enthaltene HTML-Seite:
+
+```bash
+python -m rechner_pipeline.bestand.cli_fortschreibung --config examples/bestand_gesamt.toml ...
+python -m rechner_pipeline.bestand.cli_report --portfolio <parquet> --out bericht.html ...
+```
+
+**Die Migrationsfälle** (`faelle/`, lokale Arbeitsbereiche, nicht
+eingecheckt): je Fall die registrierten Quellen, die A-Box mit
+Provenienz, die menschlichen Entscheide (append-only) und alle
+abgeleiteten Artefakte bis zum Abnahmebericht. Der erste durchgängige
+Fall übernimmt einen KLV-Bestand (Tarifgeneration TG2015) eines
+fiktiven abgebenden Unternehmens in die PLV — inklusive der
+Datentransformation aus einem fremden Datenmodell und der
+Zwei-Stichtags-Abnahme.
 
 ## Schnellstart
 
-Voraussetzung: **Python 3.11 oder neuer**. Kein LLM-Key nötig — die Abnahme ist
-SDK-frei.
+Voraussetzung: **Python 3.11 oder neuer**. Kein LLM-Key nötig — das
+Paket ist SDK-frei; Agenten arbeiten über ihre CLIs (unten) auf dem
+Repo.
 
 ```bash
 git clone https://github.com/bartlmac/rechner-pipeline.git
@@ -120,354 +185,62 @@ cd rechner-pipeline
 python -m venv .venv
 . .venv/bin/activate                 # Windows: .venv\Scripts\activate
 python -m pip install -e ".[dev]"
+python -m pytest                     # volle Suite
 ```
 
-Ein Migrationsfall lebt in einem **Fall-Arbeitsbereich** (das Repo ist
-das System, nicht der Datenraum): `eingang/` hält die registrierten
-Quellen (unter ihrem Namen abgelegt, schreibgeschützt, mit SHA-256 im
-Register `eingang.json` verzeichnet und vor jedem Lauf dagegen geprüft;
-nie still überschrieben — hier beginnt die Provenance-Kette), `abgeleitet/` alles
-Regenerierbare. Die Artefakte dieses Arbeitsraums gehören der
-**Pfefferminzia Lebensversicherung (PLV)** — dem fiktiven Unternehmen,
-an dem das System vorgeführt wird: der Zielkern ist der PLV-Kern, der
-Bestand der PLV-Bestand, und Migrationsfälle übernehmen fremde Bestände
-in die PLV. `examples/` ist der Datenraum dieser Fiktion (synthetische
-Quellen und Configs) — kein Eingangskanal:
+Einen Fall anlegen und die Pipeline fahren:
 
 ```bash
-python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012
-python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
-    --datei examples/Tarifrechner_KLV_TG2012.xlsm
-python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
-```
-
-Der Migrationsfall selbst läuft über die Ontologie-Pipeline (Abschnitt
-weiter unten); die Gates operieren jeweils auf dem Fall:
-
-```bash
-python -m rechner_pipeline.gates.abox_validate --fall faelle/klv-tg2012 --repo-root .
-python -m rechner_pipeline.gates.generation_golden --fall faelle/klv-tg2012 \
-    --generation klv/tg2015 --repo-root .
-```
-
-## Sicherheit und Reproduzierbarkeit
-
-- **Statisches Gate** (`security`) prüft den generierten Code vor jeder
-  Ausführung.
-- **Laufzeit-Confinement** (`qa/fs_confine.py`): der Golden-Master-/Roundtrip-Lauf
-  führt den generierten Code in einem Subprozess aus, in dem Schreiben, Lesen
-  außerhalb des Repos, Netz (`socket`), Subprozesse (`subprocess`, `os.system`)
-  und schreibende `os`-Primitive hart abgewiesen werden.
-- **Unabhängiges Orakel**: die Erwartungswerte stammen deterministisch aus dem
-  Excel, nicht vom Modell; der Vergleichs-Harness ist reviewter Code.
-- **Gepinnte Abhängigkeiten** (openpyxl/oletools/pandas/pyarrow/matplotlib,
-  exakt) für reproduzierbare Läufe.
-
-## Der stabile Rechenkern (`rechner_pipeline.kern`)
-
-Der Zielrechenkern ist seit Version 3.0.0 vollständig in der
-Zustandsmodell-Welt formuliert (Thiele-Rekursion auf reinen
-Ausscheidewahrscheinlichkeiten). Historische Provenienz: die einmalige
-agentische Migration aus dem Quell-Workbook (22.07.2026, damals mit
-617/617-Excel-Parität abgenommen) — das ist der Übersetzungsbeleg,
-kein laufender Anker. Formeltreu zur Quell-Semantik (inkl. 16-stelliger
-Excel-Rundung), aber mit **parametrisierter API** statt der Bindung an
-einen festen Modellpunkt:
-
-```python
-import dataclasses
-from rechner_pipeline.kern import KLV_DEFAULT, berechne
-
-ergebnis = berechne(KLV_DEFAULT)              # Golden-Master-Referenzvertrag
-mp = dataclasses.replace(KLV_DEFAULT, x=30, sex="F", zins=0.0225, tafel="DAV2008_T")
-ergebnis2 = berechne(mp)                      # beliebiger Modellpunkt, in-process
-```
-
-Tafelbasen (reine qx-Vektoren samt Erschöpfungsgrenze) werden je
-(Geschlecht, Tafel) gebaut und gecacht (`kern/tafeln.py`); fehlende Tafeln
-führen zu einem harten Fehler (kein erfundenes qx). Verankert ist der Kern
-über Charakterisierungs-Anker in voller Float-Präzision; die fachliche
-Abnahme je Migrationsfall läuft über Gate O3 gegen den jeweiligen
-Quell-Rechner. Der transiente Migrationspfad
-(`runs/generated` + Gates) bleibt daneben bestehen — für künftige einmalige
-Übersetzungen weiterer Produkte.
-
-**Rechenrückgrat (seit Kern 2.0.0): ein (Semi-)Markov-Zustandsmodell**
-(`kern/zustandsmodell.py`) — benannte Zustände, jährliche Übergänge,
-Bewertung per Thiele-Rückwärtsrekursion, Dauerabhängigkeit über
-Zustandsraum-Erweiterung (Select-Perioden-Prinzip). KLV ist der
-2-Zustands-Spezialfall (aktiv/tot) hinter demselben Barwerte-Interface;
-weitere Produkte sind Konfigurationen dieser Engine, keine neuen Engines —
-als erstes Beispiel ist **Berufsunfähigkeit** implementiert
-(`kern/produkte/bu.py`: drei Zustände aktiv/bu/tot, Select-Tafeln mit
-Dauerabhängigkeit) — gerechnet auf den **DAV-1997-I-Ausscheideordnungen**
-(Invalidisierung, Aktivensterblichkeit, Reaktivierung und
-Invalidensterblichkeit, je Geschlecht).
-Der Wechsel des produktiven Pfads von der Kommutations- auf die
-Zustandsmodell-Schiene wurde über eine **Toleranz-Überleitung** abgenommen
-(`qa/ueberleitung.py`: Abnahme-Lauf 6.170 Werte über 10 Modellpunkte, keine
-Abweichung außerhalb der Rundungsklasse, maximal 4e-13 relativ; der
-dauerhafte Kreuz-Check fährt heute einen Standard-Sweep über 16
-Modellpunkte). Die Kommutations-Schiene lebt seit Kern 3.0.0 als
-**separater Zweitkern** (`rechner_pipeline.kommutationskern`) ausschließlich
-für diesen Kreuz-Check weiter — Bestandteil des Zielkerns ist sie nicht mehr.
-
-## Bestandsdaten: synthetischer, fortschreibbarer Bestand
-
-Das Modul `rechner_pipeline.bestand` erzeugt synthetische KLV-Bestände als
-**echten Input für den Zielrechenkern** — committeter, reviewter,
-deterministischer Code (wie die Abnahme-Schicht; im Gegensatz zum
-agent-generierten Kern). Fachliche Referenz ist eine R-Toolchain aus dem
-DAV-Kontext (Bestandserzeugung + Zeitscheiben); die Implementierung ist eine
-eigenständige Neuentwicklung, keine Portierung.
-
-Prinzipien:
-
-- **Schema stromabwärts des Kerns:** `models/bestand.py` definiert das
-  Portfolio-Schema als statischen Anker. Die Vertragsfelder entsprechen 1:1 dem
-  `ModelPoint`-Contract des generierten Kerns; `model_point_kwargs` und
-  `render_inputs_py` machen die Kopplung ausführbar (sie erzeugen das
-  `inputs.py` für den Kern-Aufruf).
-- **Der Generator rechnet nichts:** Prämien, Barwerte und Reserven liefert
-  ausschließlich der Rechenkern — der stabile Kern (`rechner_pipeline.kern`)
-  direkt in-process; frisch agentisch generierte (noch nicht promotete)
-  Kerne über den abgesicherten Kind-Prozess-Pfad (`bestand/kernlauf.py`:
-  Laufzeit-Confinement + vorgeschalteter Security-Scan).
-- **Deterministisch reproduzierbar:** Seed in der TOML-Config, je
-  Tarifgeneration ein eigener Zufallsstrom (eine neue Generation ändert
-  frühere Verträge nicht); die Parquet-Ausgabe ist byte-reproduzierbar
-  (Golden-Master per SHA-256).
-- **Realistische Abhängigkeiten:** konfigurierbare Randverteilungen je Merkmal
-  plus Gauß-Copula mit Spearman-Rangkorrelationen (ohne scipy). Nicht
-  realisierbare Korrelations-Kombinationen sind ein Config-Fehler, keine
-  stille Reparatur.
-- **Fortschreibung als Zeitscheibe:** ein Stichtag *filtert* den Bestand und
-  *leitet ab* (Alter mit 6-Monats-Rundung, abgelaufene/verbleibende Monate mit
-  der Invariante `months_exp + months_rem == 12 · duration`); Stammdaten
-  bleiben unangetastet.
-- **Ereignis-Engine (`bestand/ereignisse.py`):** die Fortschreibung als
-  Statushistorie — Storno, Tod, Beitragsfreistellung (PEX) und Ablauf werden
-  jährlich auf Vertragsjahrestagen simuliert (konfigurierbare Raten,
-  Tod nach Tafel-qx). Jeder Betrag (Rückkaufswert, beitragsfreie Summe,
-  Leistungen) kommt in-process aus dem stabilen Kern. Deterministisch: ein
-  Zufallsstrom je Vertrag; ein längerer Horizont ändert frühere Ereignisse
-  nicht, Läufe verschiedener Raten sind pfadweise vergleichbar (Common
-  Random Numbers).
-- **Dynamische Erhöhungen (Schichtungsprinzip):** eine angenommene Erhöhung
-  erzeugt eine neue Scheibe — aktuariell ein eigener Modellpunkt auf
-  derselben Tarifgeneration (Eintrittsalter = aktuelles Alter, Laufzeiten =
-  Restlaufzeiten, Summe = konfigurierter Prozentsatz der aktuellen
-  Gesamt-VS). Der Vertragszustand ändert sich nicht; der GeVo steht im
-  Ledger, die Scheibe in der Scheiben-Tabelle, und alle späteren Beträge
-  summieren über Grund- und Erhöhungsscheiben (Stornoabschlag-Grenzen
-  gelten je Vertrag, nicht je Scheibe).
-- **Neuzugang als GeVo-Strom:** die Bestandsentwicklung ist ein einziger
-  Strom datierter Geschäftsvorfälle — der Generator ist seine
-  Batch-Auswertung bis zum Referenzstichtag, `fortschreiben(...,
-  neuzugang_ab=...)` setzt denselben Erzeuger inkrementell fort
-  (`neuzugang_pro_jahr` je Generation, eigener Zufallsstrom je
-  Kalenderjahr). Neue Verträge erhalten einen ZUG-Ledger-Eintrag und
-  werden ab Beginn mitsimuliert; ein längerer Horizont ändert frühere
-  Zugänge nicht, und pro Zeitfenster schreibt genau ein Erzeuger
-  (Doppelzählungs-Guard).
-- **Aktuarielle Auswertungen (`bestand/auswertung.py`):** Deckungskapital
-  und Rückkaufswert je Stichtag über den ganzen Bestand — in-process über
-  `Rechenkern.zustand_am`, nach Beitragsfreistellung über die beitragsfreie
-  Reserve. Der Bestandsbericht (`toolbox/bestand_report`) zeigt
-  Abgangs-Sichten, Nachweisungen und Reserveverläufe als eine
-  selbst-enthaltene HTML-Datei (Inline-SVG, kein Werkzeug beim Empfänger
-  nötig). `--stichtag` teilt die Nachweisungen in Historie und Prognose.
-- **Ein Bestand, mehrere Versicherungsarten:** ein Unternehmen führt
-  einen Bestand; getrennt sind die *Nachweisungen*, nicht der Bestand.
-  `examples/bestand_gesamt.toml` konfiguriert entsprechend beide
-  Versicherungsarten in einem Bestand — ein Lauf, ein Bericht mit beiden
-  Nachweisungen.
-- **Zwei Produkte im Bestand:** Verträge tragen einen Produkt-Diskriminator
-  (`produkt` = `klv` | `bu`) und die produktführende Leistungsspalte
-  (Versicherungssumme bzw. versicherte Jahresrente). Für **BU** simuliert
-  die Ereignis-Engine denselben Zustandsprozess, den der Kern bewertet —
-  Invalidisierung, Reaktivierung, Tod und Ablauf aus den vier
-  Ausscheideordnungen, nicht aus freien Raten; die Wahrscheinlichkeiten
-  der Simulation laufen dabei über die Erfahrungsannahmen (nächster
-  Punkt), die Bewertung unverändert auf erster Ordnung. Die Statushistorie wechselt dabei strikt
-  alternierend zwischen Anwärterstand und Leistungsbezug; Reserven kommen
-  aus dem Kern (Aktiven- bzw. Invalidenreserve mit der Dauer seit
-  Rentenbeginn). Beispiel-Config: `examples/bestand_bu.toml`.
-- **Erfahrungsannahmen (3. Ordnung):** die Fortschreibung würfelt nicht
-  aus den Rechnungsgrundlagen, sondern aus einer eigenen Annahmenschicht.
-  Jede Ereigniswahrscheinlichkeit entsteht nach einer Regel aus der ersten
-  Ordnung — `annahme = a + b · erste_ordnung`. Der Faktor `b` rechnet die
-  Sicherheitsmarge heraus, und zwar richtungsrichtig (bei belastenden
-  Ausscheideordnungen `b < 1`, bei entlastenden wie der Reaktivierung
-  `b > 1`); Ereignisse ohne Rechnungsgrundlage — Storno,
-  Beitragsfreistellung, dynamische Erhöhung — tragen ihre Rate in `a` bei
-  `b = 0`. Die **Bewertung bleibt unberührt**: Beiträge und Reserven
-  rechnet der Kern unverändert auf erster Ordnung. Konfiguriert wird das
-  je Bestand unter `[annahmen]`.
-- **Bestandsbewegung (Nachweisungs-Struktur):**
-  `kennzahlen.bewegungskonto` führt die Bewegung je Kalenderjahr in der
-  Struktur der BaFin-Nachweisungen zur Bestandsbewegung — getrennt nach
-  beitragspflichtig/beitragsfrei, jeweils Stück und Versicherungssumme.
-  Abgänge werden zu Versicherungssummen (inklusive Erhöhungsscheiben)
-  geführt, die Beitragsfreistellung als Umbuchung zwischen den Tracks;
-  dadurch gilt die Identität Anfangsbestand + Zugang - Abgang =
-  Endbestand exakt. BU wird als **eigene Nachweisung** geführt (Anwärter
-  und Leistungsbezieher, Bezugsgröße Jahresrente) — Versicherungssummen und
-  Jahresrenten sind nicht addierbar. Der Bericht rendert die Tabellen mit
-  `--bis` (dem Fortschreibungs-Horizont — nur vollständig simulierte Jahre
-  sind ausweisbar), das Gate B1 prüft beide Identitäten hart.
-- **Ein-Befehl-Workflow:** `toolbox/bestand_fortschreibung` fährt den
-  ganzen GeVo-Strom (erzeugen bis Referenzstichtag, fortschreiben bis
-  Horizont) und schreibt alle Tabellen als Parquet; das Gate
-  `toolbox/bestand_validate` (B1) prüft Bestand, Statushistorie,
-  Erhöhungsscheiben, Plausibilitäts-Bänder und (mit `--ledger --bis`)
-  die Bewegungs-Identitäten im Toolbox-Contract (JSON-stdout,
-  Gate-Ledger).
-
-Verwendung:
-
-```python
-import datetime as dt
-from rechner_pipeline.bestand.config import load_config
-from rechner_pipeline.bestand.generator import generate
-from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
-from rechner_pipeline.bestand.ereignisse import fortschreiben, mit_zugaengen
-from rechner_pipeline.bestand.auswertung import auswertungs_verlauf
-from rechner_pipeline.bestand.parquet_io import write_portfolio
-
-config = load_config("examples/bestand_klv.toml")   # 2 KLV-Generationen
-referenz = dt.date(2010, 1, 1)
-portfolio = generate(config, bis=referenz)          # Batch bis Referenzstichtag
-ergebnis = fortschreiben(portfolio, config, dt.date(2035, 1, 1),
-                         neuzugang_ab=referenz)     # GeVo-Strom danach
-bestand = mit_zugaengen(portfolio, ergebnis.zugaenge)
-write_portfolio(bestand, "bestand.parquet")
-scheibe = zeitscheibe(bestand, dt.date(2012, 1, 1))
-kennzahlen = auswertungs_verlauf(bestand, ergebnis.historie, config,
-                                 [dt.date(2020, 1, 1)],
-                                 scheiben=ergebnis.scheiben)
-```
-
-Simulierter Neuzugang (`neuzugang_ab`) wirkt nur, wenn `neuzugang_pro_jahr`
-je Generation gesetzt ist — in der Beispiel-Config ist die Zeile bewusst
-auskommentiert (Default 0, der Aufruf ist dann ein No-op).
-
-Geprüft wird über die Test-Suite (Schema-Validierung, Verteilungs-Sanity-
-Bänder, Zeitscheiben-Invarianten, Kern-Roundtrip) und über das
-Toolbox-Gate `bestand_validate` (B1, siehe oben); als eigene Gate-CLIs
-stehen noch `bestand_golden` (Parquet-Byte-Hash bei festem Seed) und
-`bestand_zeitscheibe` (Invarianten) aus.
-
-## Migrations-Pipeline: Ontologie als Stage-Interface
-
-Der Hauptanwendungsfall — eine neue Tarifgeneration aus heterogenen
-Quellen in den Kern integrieren — läuft seit v0.1 über eine Ontologie
-als einziges Interface zwischen den Stufen (Architektur:
-`docs/architektur/migrations-pipeline-v01.md`). Kein Agent einer
-späteren Stufe liest Rohquellen einer früheren; jede Aussage trägt
-Provenienz (Quelle + SHA-256 + Fundstelle + Akteur), Widersprüche
-zwischen Quellen sind Modellobjekte mit beiden Lesarten, und die
-Auflösung ist ein benannter menschlicher Vorgang.
-
-Der Ablauf am Fall (verkürzt; Details im Architektur-Dokument):
-
-```bash
-# Stufe 1: Quellen registrieren, vorverdichten, A-Box fuellen
 python -m rechner_pipeline.fall anlegen --fall faelle/mein-fall
 python -m rechner_pipeline.fall registrieren --fall faelle/mein-fall --datei <quelle>
-python -m rechner_pipeline.gates.abox_validate --fall faelle/mein-fall       # Gate O1
+python -m rechner_pipeline.fall status --fall faelle/mein-fall
 
-# Gate G-1 (Mensch): Fachspez lesen, Diskrepanzen entscheiden, Snapshot
-python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ...     --wert ... --entscheider ... --begruendung ...
-python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate G-1     --entscheid angenommen --entscheider ... --begruendung ...
+python -m rechner_pipeline.gates.abox_validate --fall faelle/mein-fall --repo-root .   # O1
+python -m rechner_pipeline.quellen.tafel_import --fall faelle/mein-fall --generation klv/tgX
+python -m rechner_pipeline.gates.generation_golden --fall faelle/mein-fall \
+    --generation klv/tgX --repo-root .                                                 # O3
 
-# Stufe 2: Tafel-Import und Abnahme gegen den Quell-Rechner
-python -m rechner_pipeline.quellen.tafel_import --fall ... --generation klv/tgX
-python -m rechner_pipeline.gates.generation_golden --fall ... --generation klv/tgX  # Gate O3
+# menschliche Gates:
+python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ... \
+    --wert ... --entscheider ... --begruendung ...
+python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate G-1 \
+    --entscheid angenommen --entscheider ... --begruendung ...
 ```
 
-Präzedenzfall KLV TG2012 -> TG2015: Struktur-Urteil "Parametrierung"
-maschinell berechnet, Unisex 70/30 als abgeleitete Mischtafel (keine
-Kern-Formeländerung), Golden Master 616 Werte gegen den gelieferten
-Rechner mit 0 Abweichungen — und die Pipeline fand dabei echte
-Widersprüche zwischen Tarifmeldung und Rechner, die als
-Diskrepanz-Objekte im menschlichen Gate landen statt still
-entschieden zu werden.
-
-**Die Ontologie indexiert auch den Code** (ADR-005): Module und
-Testdateien deklarieren ihre Knoten (`Knoten: klv/tg2015`) im
-Docstring — dieselben IDs wie A-Box und Gates. Daraus werden drei
-Werkzeuge gespeist, alle deterministisch und generiert:
+Die Code-Ontologie navigiert und begrenzt Änderungen:
 
 ```bash
-python -m rechner_pipeline.ontologie.code_index --tests tests   # Knoten <-> Modul/Test, Drift
-python -m rechner_pipeline.ontologie.code_karte                 # Import-Graph vs. Schichtenkarte
+python -m rechner_pipeline.ontologie.code_index --tests tests    # Knoten <-> Modul/Test, Drift
+python -m rechner_pipeline.ontologie.code_karte                  # Import-Graph vs. Schichtenkarte
 git diff --name-only | python -m rechner_pipeline.ontologie.impact
-python -m rechner_pipeline.ontologie.landkarte --out landkarte.html   # Seite zum Vorfuehren
 python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang knoten --out k.mmd
 ```
 
-Das Zeichnen des Graphen machen Standardwerkzeuge: `--format mermaid`
-(GitHub zeichnet es direkt, siehe `docs/architektur/landkarte.md`), `--format dot`
-(Graphviz) oder `--format graphml` (Gephi, yEd, Graph-Store). Entscheidend ist der
-Ausschnitt, nicht das Format: `--umfang schichten|knoten|modul --auswahl <knoten|schicht>`.
-Über 60 Kästen verweigert der Generator das Bild — bei einer Million Zeilen gibt es
-kein Bild "der Codebasis", nur begrenzte Sichten.
+## Reproduzierbarkeit und Verlässlichkeit
 
-Der Impact ist berechnet, nicht gepflegt: Knoten der Änderung,
-Lineage-Verwandtschaft der Testbindungen (`klv` ~ `klv/tg2015`, aber
-`klv/tg2012` !~ `klv/tg2015`) und direkte Import-Kanten der Tests; wo
-etwas unsicher ist, ist die Antwort konservativ die volle Suite mit
-ausgewiesenem Grund. Er nennt auch die Migrationsfälle, deren
-Generationen betroffen sind. Das ist ein Informationswerkzeug — CI und
-die Regel "vor jedem Commit die volle Suite" bleiben unberührt; die
-Mechanik existiert, bevor der Skalenschmerz eintritt.
-
-## Dokumente: Tarifpläne und Doku-Engine
-
-Tarifplan-Dokumente leben in zwei getrennten Welten:
-
-- **Zielkern-Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): neu
-  verfasste, versionierbare Fachdokumente in der Mathematik des Kerns
-  (Zustandsmodell, Thiele-Rekursion, GeVo-Katalog mit Betragsformeln) —
-  keine Konversionen der Quell-Dokumente.
-- **Migrationsstaging** (`quellen/tarifplan_staging`): die DOCX-Tarifpläne
-  der Quellsysteme (`examples/Mitteilung_143_*.docx`) sind
-  Migrationsartefakte; das Kommando extrahiert sie deterministisch und
-  stdlib-only nach strukturiertem JSON (`runs/migrationsstaging/`, gitignored)
-  — maschinenlesbar für den Migrations-Anwendungsfall, nicht hübsch.
-
-Gerendert werden die Zielkern-Tarifpläne über die **Doku-Engine** — ein
-gepinnter Quarto/Typst/Pandoc-Container (`docs/engine/`, optional als
-Image über ghcr, GitHub-Workflow `docs-image.yml`), damit keine
-Dokument-Toolchain in die Python-Dependencies wandert:
-
-```bash
-docs/engine/render.sh                 # alle Tarifplaene nach PDF (Typst)
-IMAGE=local docs/engine/render.sh     # ohne ghcr: Engine lokal bauen
-```
-
+- **Deterministisch:** gleiche Eingaben ergeben byte-identische
+  Artefakte (Extrakte, Berichte, Parquet-Bestände, Landkarten); Seeds
+  stehen in Configs, nie im Code.
+- **SDK-frei:** keine Modell-Abhängigkeit im Paket; die Erwartungswerte
+  jeder Abnahme stammen aus der Lieferung, nie vom Modell.
+- **Fail fast:** fehlende Tafeln, verletzte Schichtregeln, Bausteine
+  ohne Ontologie-Knoten und Register-Abweichungen im Fall-Eingang sind
+  harte Fehler, keine Warnungen.
+- **Gepinnte Abhängigkeiten** für reproduzierbare Läufe.
 
 ## Agenten-Anbindung
 
-Claude-CLI wird über `.claude/skills/` unterstützt, Codex-CLI über die
-`AGENTS.md` im Repo-Root plus gespiegelte Skills unter `.agents/skills/`. Die
-Codex-Kopien werden auf Parität mit den Claude-Skill-Bodies getestet, damit ein
-Workflow nicht still vom anderen abweicht. Die portable Basis ist: lokale Dateien
-plus einfache Python-Kommandos — kein MCP/RPC-Pfad.
-
-## Beispieldaten
-
-Demo-Artefakte liegen unter `examples/` (`Tarifrechner_KLV_TG2012.xlsm`,
-`Tarifrechner_FLV_v1.xlsm`, Bestands-Konfiguration `bestand_klv.toml` u. a.).
-Es sind **synthetische Lehrbeispiele** ohne realen Kundenbezug.
+Claude-CLI wird über `.claude/skills/` unterstützt, Codex-CLI über
+`AGENTS.md` plus gespiegelte Skills unter `.agents/skills/`; die
+Spiegel-Parität ist test-erzwungen. Die portable Basis ist: lokale
+Dateien plus einfache Python-Kommandos — kein MCP/RPC-Pfad.
 
 ## Mitwirken
 
 Beiträge laufen über GitHub-Collaborators auf Vertrauensbasis; siehe
-`CONTRIBUTING.md` und `AGENTS.md`. **Arbeitsweise am gemeinsamen Branch:** klonen
-und lokal arbeiten, **kein direkter Push** in den gemeinsamen Branch — Änderungen
-werden nach Absprache übernommen.
+`CONTRIBUTING.md` und `AGENTS.md`. **Arbeitsweise am gemeinsamen
+Branch:** klonen und lokal arbeiten, kein direkter Push in den
+gemeinsamen Branch — Änderungen werden nach Absprache übernommen.
 
 ## Lizenz
 
