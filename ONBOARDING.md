@@ -87,7 +87,7 @@ python -m rechner_pipeline.bestand.cli_report --portfolio runs/bestand/bestand_g
 python -m rechner_pipeline.ontologie.code_index --tests tests   # node <-> module/test
 python -m rechner_pipeline.ontologie.code_karte                 # layer rules
 git diff --name-only | python -m rechner_pipeline.ontologie.impact
-python -m rechner_pipeline.ontologie.landkarte --out landkarte.html
+python -m rechner_pipeline.ontologie.landkarte --out runs/landkarte.html
 ```
 
 ## 4. The gates

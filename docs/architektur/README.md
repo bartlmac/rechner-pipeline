@@ -1,7 +1,10 @@
 # Architektur
 
-Architektur-Dokumente und Entscheidungen (ADRs) des Gesamtsystems
-"Rechenkern-Entwicklung mit KI, Fokus Bestandsmigration Leben".
+Architektur-Dokumente und Entscheidungen (ADRs) des **Systems** —
+des agentischen KI-Systems für Bestandsmigration und
+Rechenkern-Entwicklung. Die Fachdokumente des Beispiel-Rechenkerns
+(des Illustrationsobjekts, PLV-Fiktion) liegen getrennt davon unter
+`docs/tarifplaene/`.
 
 ## Inhalt
 

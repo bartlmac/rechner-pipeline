@@ -9,7 +9,6 @@ Diese Artefakte sind **synthetische Lehrbeispiele**. Sie enthalten keine realen 
 - `Tarifrechner_KLV.xlsm` — KLV-Demo-Tarifrechner mit zwei Arbeitsblättern (`Kalkulation`, `Tafeln`) und VBA-Modulen. Standard-Eingabedatei für die Pipeline.
 - `Tarifrechner_FLV_v1.xlsm` — fondsgebundener Demo-Tarifrechner (FLV), zweites Quell-Workbook für ein neues Inkrement. Lauf via `--excel examples/Tarifrechner_FLV_v1.xlsm`.
 - `Mitteilung_143_FLV_v1.docx` — Begleitdokument (Produkt-Mitteilung) zum FLV-Beispiel. Reine Ablage; fliesst noch nicht in die Pipeline ein, wird als eigenes Inkrement ausgebaut.
-- `Tarifrechner_Pipeline.pptx` — kurzer Foliensatz, der die Pipeline-Stufen visualisiert (Begleitmaterial).
 
 ## Verwendung
 

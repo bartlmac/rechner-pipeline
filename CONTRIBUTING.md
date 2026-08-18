@@ -1,6 +1,9 @@
 # Mitwirken
 
-Dieses Repository ist ein **methodischer Referenzrahmen** für KI-gestützte Rechenkernentwicklung — kein Produkt, sondern ein offener Arbeitsraum, in dem wir Vorgehen, Leitplanken und Werkzeuge gemeinsam erproben. Beiträge, Rückfragen und Diskussionsanstöße sind ausdrücklich willkommen.
+Dieses Repository ist ein offener Arbeitsraum für ein **agentisches
+System zur Bestandsmigration Leben und zur Entwicklung des Rechenkerns**
+(siehe `README.md`) — kein Produkt. Beiträge, Rückfragen und
+Diskussionsanstöße sind ausdrücklich willkommen.
 
 ## Wie ihr beitragen könnt
 
@@ -10,25 +13,29 @@ Dieses Repository ist ein **methodischer Referenzrahmen** für KI-gestützte Rec
 
 ## Stilrichtlinien
 
-- Code in Englisch, Dokumentation primär in Deutsch.
-- Pipeline muss reproduzierbar end-to-end laufen.
-- LLM-Prompts sind versionierte Artefakte, keine Wegwerf-Strings.
-- Beispielartefakte (Excel-Rechner, Tafeln, Bestands-Configs der fiktiven Pfefferminzia LV) müssen synthetisch sein — keine echten Kunden- oder Bestandsdaten.
+- Code in Englisch, Dokumentation primär in Deutsch; reiner Text ohne
+  Emojis/Icons.
+- Alles muss reproduzierbar end-to-end laufen (volle Test-Suite vor
+  jedem Commit).
+- Agenten-Anweisungen (`AGENTS.md`, die Skills unter `.claude/skills/`
+  und `.agents/skills/`) sind versionierte Artefakte, keine
+  Wegwerf-Prompts; die Spiegel-Parität ist test-erzwungen.
+- Beispielartefakte (Excel-Rechner, Tafeln, Bestands-Configs der
+  fiktiven Pfefferminzia LV) müssen synthetisch sein — keine echten
+  Kunden- oder Bestandsdaten. Keine Klarnamen von Personen in
+  eingecheckten Dateien oder Commit-Botschaften.
 
 ## Lokale Konfiguration
 
-- Die zentrale Python-Konfiguration liegt in `pyproject.toml`.
-  `requirements.txt` verweist nur auf `pip install -e ".[all]"` für den
-  vollständigen Beispiel-Lauf.
-- Für reine CLI-/Import- und Hilfsfunktionstests genügt `pip install -e .`.
-  Für klassische Pipeline-Läufe `pip install -e ".[llm,export]"`, für die
-  agentische Variante zusätzlich `agentic`, und für Tests `dev`.
-- Secrets werden nicht eingecheckt. Für lokale Läufe kann `.env.example` nach
-  `.env` kopiert und dort `OPENAI_API_KEY` gesetzt werden.
-- Die Pipeline lädt `.env` aus dem Repository-Root erst beim ersten LLM-Schritt.
-  Echte Umgebungsvariablen behalten Vorrang vor Einträgen in `.env`.
-- CLI-Hilfe, Importtests und deterministische Hilfsfunktionen müssen ohne
-  `OPENAI_API_KEY` und ohne `.env` lauffähig bleiben.
+- Die zentrale Python-Konfiguration liegt in `pyproject.toml`
+  (Abhängigkeits-Bereiche plus `[dev]`-Extra für die Test-Toolchain).
+  `requirements.txt` und `requirements-dev.txt` sind die exakt
+  gepinnten Stände für reproduzierbare Installationen.
+- Standard-Setup: `python -m venv .venv`, aktivieren,
+  `python -m pip install -e ".[dev]"`, dann `python -m pytest`.
+- Das Paket ist SDK-frei: kein LLM-Key, keine `.env`, keine
+  Provider-Konfiguration. Agenten arbeiten über ihre CLIs auf dem Repo
+  (siehe `AGENTS.md`).
 
 ## Kontakt
 

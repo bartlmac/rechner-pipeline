@@ -1,5 +1,5 @@
 # Runtime dependencies — exact pins as installed from public pypi.org.
-# Python: scoop python 3.12.4 (project requires-python >= 3.11).
+# Pins captured under CPython 3.12; project requires-python >= 3.11.
 # Direct deps:
 openpyxl==3.1.5
 oletools==0.60.2
