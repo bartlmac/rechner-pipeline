@@ -68,14 +68,18 @@ python -m rechner_pipeline.gates.generation_golden --fall faelle/klv-tg2012 \
     --generation klv/tg2015 --repo-root .
 ```
 
-**Generate a portfolio and its report:**
+**Generate a portfolio and its report.** Two DIFFERENT dates: `--bis` is
+the simulation horizon (how far events are projected), `--stichtag` only
+marks the history/projection boundary in the report. Setting `--bis` to
+"today" silently kills the projection — everything beyond the reference
+date then degenerates to planned new business:
 ```
 python -m rechner_pipeline.bestand.cli_fortschreibung \
-    --config examples/bestand_gesamt.toml --bis 2020-01-01 --out-dir runs/bestand
+    --config examples/bestand_gesamt.toml --bis 2046-01-01 --out-dir runs/bestand
 python -m rechner_pipeline.bestand.cli_report --portfolio runs/bestand/bestand_gesamt.parquet \
     --historie runs/bestand/historie.parquet --ledger runs/bestand/ledger.parquet \
     --scheiben runs/bestand/scheiben.parquet --config examples/bestand_gesamt.toml \
-    --bis 2020-01-01 --out runs/berichte/bestandsbericht.html
+    --bis 2046-01-01 --stichtag 2026-01-01 --out runs/berichte/bestandsbericht.html
 ```
 
 **Navigate the codebase** (fundstellen are derived, not searched — ADR-005):
