@@ -21,8 +21,8 @@ uebergibt ihn selbst (``--stand``).
 
 Run via::
 
-    python -m rechner_pipeline.ontologie.landkarte --out landkarte.html
-    python -m rechner_pipeline.ontologie.landkarte --out x.html \\
+    python -m rechner_pipeline.ontologie.landkarte --out runs/landkarte.html
+    python -m rechner_pipeline.ontologie.landkarte --out runs/x.html \\
         --szenario src/rechner_pipeline/kern/produkte/bu.py --stand "v0.1"
 
 Knoten: system/architektur

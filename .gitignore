@@ -4,44 +4,29 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .hypothesis/
-
-# Virtual environment
 .venv/
 
 # Scratch / agent fixture dirs
 .tmp/
-.verify/
-agent-comm.db*
 
 # EIN Laufverzeichnis fuer alle regenerierbaren Lauf-Artefakte
-# (Extraktion, generierter Kern, Gate-Ledger, Staging, Berichte)
-runs/
+# (Extraktion, Gate-Ledger, Staging, Berichte)
+/runs/
 # Fall-Arbeitsbereiche (lokale Demo-Faelle; echte Faelle liegen ausserhalb
 # des Repos — eingang/ ist dort NICHT regenerierbar, siehe ADR-002)
-faelle/
-# Alt-Pfade (vor der runs/-Konsolidierung 2026-08-14); bleiben ignoriert,
-# bis lokale Arbeitskopien bereinigt sind
-info_from_excel/
-diagnostics/
-generated/
-migrationsstaging/
-output/
+/faelle/
+# Artefakt-Simulationen der Showcase-Faelle (Regie-Bereich, ausserhalb
+# des Systems)
+/simulation/
 
-# Local CLI settings (skills under .claude/skills/ ARE tracked)
+# Lokale Overrides und private Notizen (.claude/skills/ bleibt getrackt)
 .claude/settings.local.json
-
-# Secrets
-.env
-.env.*
-
-# Personal Claude Code overrides (CLAUDE.local.md is private; .claude/skills/ stays tracked)
 CLAUDE.local.md
-
-# Lokale, nicht eingecheckte Dokumentation (Notizen, Walkthroughs, Spickzettel)
 docs-local/
 
-# Debug-Dumps
-DEBUG_*.txt
+# Secrets (Schutznetz — das Paket ist SDK-frei und braucht keine .env)
+.env
+.env.*
 
 # IDE / OS
 .vscode/
@@ -53,9 +38,3 @@ Thumbs.db
 docs/**/*.pdf
 docs/**/*.typ
 docs/**/*_files/
-
-# Erzeugte Landkarte (Generator: ontologie.landkarte)
-landkarte.html
-
-# Einmalige Artefakt-Simulationen (Plan P2, Baldrian) — ausserhalb des Systems
-simulation/
