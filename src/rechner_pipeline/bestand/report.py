@@ -194,7 +194,28 @@ def _zahl(value: float, dezimal: int = 0) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _chart_verlauf_vertraege(reihe: List[Dict[str, Any]], generationen: List[str]) -> str:
+def _zeichne_stichtagsgrenze(
+    ax, jahre: List[int], stichtag: Optional[_dt.date], zwischen: bool = False
+) -> None:
+    """Die Historie/Prognose-Grenze als gestrichelte Linie — ueberall gleich.
+
+    ``zwischen=True`` fuer Kalenderjahr-Balken (die Grenze faellt ZWISCHEN
+    das letzte Historien- und das erste Prognosejahr); sonst liegt sie AUF
+    dem Stichtags-Tick (Zeitscheibe am 1.1. = Ende der Historie). Gleiche
+    Optik wie im Bewegungskonto, damit jede Zeitachse dieselbe Lesart hat.
+    """
+    if stichtag is None or not jahre:
+        return
+    if stichtag.year <= jahre[0] or stichtag.year not in jahre:
+        return
+    pos = jahre.index(stichtag.year) - (0.5 if zwischen else 0.0)
+    ax.axvline(pos, color="#333333", linewidth=1.0, linestyle="--")
+
+
+def _chart_verlauf_vertraege(
+    reihe: List[Dict[str, Any]], generationen: List[str],
+    stichtag: Optional[_dt.date] = None,
+) -> str:
     x = list(range(len(reihe)))
     labels = [r["stichtag"][:4] for r in reihe]
     fig, ax = plt.subplots()
@@ -209,11 +230,13 @@ def _chart_verlauf_vertraege(reihe: List[Dict[str, Any]], generationen: List[str
     ax.set_ylabel("aktive Verträge")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
     ax.legend(loc="upper right", fontsize=8)
+    _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag)
     return _svg(fig)
 
 
 def _chart_verlauf_summe(
-    reihe: List[Dict[str, Any]], label: str, titel: str = ""
+    reihe: List[Dict[str, Any]], label: str, titel: str = "",
+    stichtag: Optional[_dt.date] = None,
 ) -> str:
     """Verlauf des versicherten Volumens EINER Versicherungsart.
 
@@ -234,6 +257,7 @@ def _chart_verlauf_summe(
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
     if titel:
         ax.set_title(titel, fontsize=10)
+    _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag)
     return _svg(fig)
 
 
@@ -267,7 +291,9 @@ def _chart_scatter_alter_laufzeit(df: pd.DataFrame, generationen: List[str]) -> 
     return _svg(fig)
 
 
-def _chart_status_verlauf(reihe: List[Dict[str, Any]]) -> str:
+def _chart_status_verlauf(
+    reihe: List[Dict[str, Any]], stichtag: Optional[_dt.date] = None
+) -> str:
     x = list(range(len(reihe)))
     labels = [r["stichtag"][:4] for r in reihe]
     fig, ax = plt.subplots()
@@ -285,10 +311,13 @@ def _chart_status_verlauf(reihe: List[Dict[str, Any]]) -> str:
     ax.set_ylabel("in-force-Verträge")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
     ax.legend(loc="upper right", fontsize=8)
+    _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag)
     return _svg(fig)
 
 
-def _chart_deckungskapital(reihe: List[Dict[str, Any]]) -> str:
+def _chart_deckungskapital(
+    reihe: List[Dict[str, Any]], stichtag: Optional[_dt.date] = None
+) -> str:
     x = list(range(len(reihe)))
     labels = [r["stichtag"][:4] for r in reihe]
     fig, ax = plt.subplots()
@@ -302,11 +331,15 @@ def _chart_deckungskapital(reihe: List[Dict[str, Any]]) -> str:
     ax.set_ylabel("Deckungskapital (Mio.)")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
     ax.legend(loc="upper right", fontsize=8)
+    _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag)
     return _svg(fig)
 
 
 
-def _chart_beitraege(reihe: List[Dict[str, Any]], mit_bu: bool) -> str:
+def _chart_beitraege(
+    reihe: List[Dict[str, Any]], mit_bu: bool,
+    stichtag: Optional[_dt.date] = None,
+) -> str:
     """Beitragsvolumen je Stichtag, gestapelt nach Versicherungsart.
 
     Anders als das versicherte Volumen sind Beitraege ueber die Arten
@@ -328,10 +361,13 @@ def _chart_beitraege(reihe: List[Dict[str, Any]], mit_bu: bool) -> str:
     ax.set_ylabel("Beitragsvolumen p. a. (Mio.)")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
     ax.legend(loc="upper right", fontsize=8)
+    _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag)
     return _svg(fig)
 
 
-def _chart_ereignisse_je_jahr(reihe: List[Dict[str, Any]]) -> str:
+def _chart_ereignisse_je_jahr(
+    reihe: List[Dict[str, Any]], stichtag: Optional[_dt.date] = None
+) -> str:
     x = list(range(len(reihe)))
     labels = [str(r["jahr"]) for r in reihe]
     fig, ax = plt.subplots()
@@ -349,6 +385,8 @@ def _chart_ereignisse_je_jahr(reihe: List[Dict[str, Any]]) -> str:
     ax.set_ylabel("Ereignisse")
     ax.set_xlabel("Kalenderjahr")
     ax.legend(loc="upper right", fontsize=8)
+    _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag,
+                             zwischen=True)
     return _svg(fig)
 
 
@@ -853,13 +891,15 @@ def render_html(
     )
 
     with plt.rc_context(_RC):
-        svg_vertraege = _chart_verlauf_vertraege(reihe, generationen)
+        svg_vertraege = _chart_verlauf_vertraege(reihe, generationen,
+                                                 stichtag=stichtag)
         mehrere_arten = len(volumen_reihen) > 1
         svg_summe = "".join(
             _chart_verlauf_summe(
                 v["reihe"],
                 v["leistung_label"],
                 v["titel"] if mehrere_arten else "",
+                stichtag=stichtag,
             )
             for v in volumen_reihen
         )
@@ -890,19 +930,21 @@ def render_html(
         struktur_html = "".join(struktur_bloecke)
         svg_status = svg_ereignisse = svg_dk = svg_beitrag = ""
         if historie is not None and len(ledger) > 0:
-            svg_status = _chart_status_verlauf(status_verlauf(bestand, stichtage))
+            svg_status = _chart_status_verlauf(
+                status_verlauf(bestand, stichtage), stichtag=stichtag)
             svg_ereignisse = _chart_ereignisse_je_jahr(
-                ereignisse_je_jahr(gevo_ledger)
+                ereignisse_je_jahr(gevo_ledger), stichtag=stichtag
             )
         reihe_ausw: List[Dict[str, Any]] = []
         if config is not None:
             reihe_ausw = auswertungs_verlauf(
                 df, historie, config, stichtage, scheiben=scheiben
             )
-            svg_dk = _chart_deckungskapital(reihe_ausw)
+            svg_dk = _chart_deckungskapital(reihe_ausw, stichtag=stichtag)
             svg_beitrag = _chart_beitraege(
                 [r for r in reihe_ausw if r["vertraege"] > 0],
                 any(r["bu_vertraege"] for r in reihe_ausw),
+                stichtag=stichtag,
             )
 
     # Je Versicherungsart eine eigene Volumen-Spalte — dieselbe Trennung

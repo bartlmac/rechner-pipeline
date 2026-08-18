@@ -78,6 +78,13 @@ TEXTE: Dict[str, str] = {
     "lesart": (
         "Aggregierte Zahlen beziehen sich auf den im Abschnittstitel "
         "genannten Zeitraum; Stichtagswerte sind als solche gekennzeichnet. "
+        "Zwei Daten steuern den Bericht: der Simulationshorizont (wie weit "
+        "Geschäftsvorfälle gerechnet sind) und der Referenzstichtag (die "
+        "Grenze zwischen Historie und Prognose, in allen Zeitachsen als "
+        "gestrichelte Linie). Alle Diagramme enden am Simulationshorizont — "
+        "jenseits davon sind Tod und Storno nicht gerechnet, eine Kurve "
+        "dort wäre keine Prognose, sondern eine Überzeichnung des Bestands. "
+        "Rechts der Stichtagslinie ist alles Projektion desselben Modells. "
         "Das Rendering ist deterministisch: dieselben Eingabedateien ergeben "
         "denselben Bericht."
     ),
