@@ -36,8 +36,10 @@ generations are **parametrization**; new products come through the T-Box
 A migration case lives in a **Fall-Arbeitsbereich** (`python -m
 rechner_pipeline.fall`, ADR-002). The artifacts of this workspace belong to
 **Pfefferminzia Lebensversicherung (PLV)** — the fictitious insurer the
-system is demonstrated on; `examples/` is that fiction's data room
-(synthetic sources and configs), NOT an input channel.
+system is demonstrated on. `configs/` holds the PLV portfolio
+configurations (TOML, suite-loaded); `tests/fixtures/` holds synthetic
+source workbooks for the extraction tests. Case sources come from
+outside — there is no repo-level input channel.
 
 ## 2. Setup
 Python **3.11+**. No LLM key needed.
@@ -54,7 +56,7 @@ stored read-only with SHA-256 in `eingang.json` and checked before every run):
 ```
 python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012
 python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
-    --datei examples/Tarifrechner_KLV_TG2012.xlsm
+    --datei tests/fixtures/Tarifrechner_KLV_TG2012.xlsm
 python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
 ```
 
@@ -75,10 +77,10 @@ marks the history/projection boundary in the report. Setting `--bis` to
 date then degenerates to planned new business:
 ```
 python -m rechner_pipeline.bestand.cli_fortschreibung \
-    --config examples/bestand_gesamt.toml --bis 2046-01-01 --out-dir runs/bestand
+    --config configs/bestand_gesamt.toml --bis 2046-01-01 --out-dir runs/bestand
 python -m rechner_pipeline.bestand.cli_report --portfolio runs/bestand/bestand_gesamt.parquet \
     --historie runs/bestand/historie.parquet --ledger runs/bestand/ledger.parquet \
-    --scheiben runs/bestand/scheiben.parquet --config examples/bestand_gesamt.toml \
+    --scheiben runs/bestand/scheiben.parquet --config configs/bestand_gesamt.toml \
     --bis 2046-01-01 --stichtag 2026-01-01 --out runs/berichte/bestandsbericht.html
 ```
 

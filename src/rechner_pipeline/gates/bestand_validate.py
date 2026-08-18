@@ -32,7 +32,7 @@ Run via::
         --portfolio lauf/bestand_gesamt.parquet \\
         [--historie lauf/historie.parquet] [--scheiben lauf/scheiben.parquet] \\
         [--ledger lauf/ledger.parquet --bis 2035-01-01] \\
-        [--config examples/bestand_klv.toml] [--diagnostics-dir diagnostics]
+        [--config configs/bestand_klv.toml] [--diagnostics-dir diagnostics]
 
 Knoten: klv, bu
 """

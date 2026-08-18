@@ -24,7 +24,7 @@ from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
 from rechner_pipeline.bestand import cli_report as cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = REPO_ROOT / "examples" / "bestand_klv.toml"
+EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
 
 
 @pytest.fixture(scope="module")
@@ -51,7 +51,7 @@ def gemischter_bestand(config):
 
     from rechner_pipeline.bestand.ereignisse import fortschreiben
 
-    bu = load_config(REPO_ROOT / "examples" / "bestand_bu.toml")
+    bu = load_config(REPO_ROOT / "configs" / "bestand_bu.toml")
     gemischt = copy.deepcopy(config)
     gemischt.generationen = [config.generationen[-1], bu.generationen[0]]
     gemischt.annahmen = bu.annahmen
@@ -399,7 +399,7 @@ def test_beide_produkte_teilen_dieselbe_nachweisungs_struktur(config):
     from rechner_pipeline.bestand.config import load_config
     from rechner_pipeline.bestand.ereignisse import fortschreiben
 
-    bu = load_config(REPO_ROOT / "examples" / "bestand_bu.toml")
+    bu = load_config(REPO_ROOT / "configs" / "bestand_bu.toml")
     gemischt = copy.deepcopy(config)
     gemischt.generationen = [config.generationen[-1], bu.generationen[0]]
     gemischt.annahmen = bu.annahmen
@@ -525,7 +525,7 @@ def test_bu_bericht_fuehrt_die_jahresrente_als_leistungsspalte():
     from rechner_pipeline.bestand.ereignisse import fortschreiben
     from rechner_pipeline.bestand.generator import generate
 
-    cfg = load_config(REPO_ROOT / "examples" / "bestand_bu.toml")
+    cfg = load_config(REPO_ROOT / "configs" / "bestand_bu.toml")
     df = generate(cfg, bis=dt.date(2026, 1, 1))
     erg = fortschreiben(df, cfg, dt.date(2050, 1, 1))
     html = report.render_html(

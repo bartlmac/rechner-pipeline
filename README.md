@@ -114,9 +114,11 @@ Quell-Lieferung.
 Vorgeführt wird das System an der fiktiven **Pfefferminzia
 Lebensversicherung (PLV)**: der Zielkern ist der PLV-Kern, der Bestand
 der PLV-Bestand, und Migrationsfälle übernehmen fremde Bestände in die
-PLV. `examples/` ist der Datenraum dieser Fiktion (synthetische
-Tarifrechner, Tarifmeldungen, Bestands-Konfigurationen — Lehrbeispiele
-ohne realen Kundenbezug), kein Eingangskanal.
+PLV. Alle Artefakte der Fiktion sind synthetisch, ohne realen
+Kundenbezug: `configs/` hält die Bestands-Konfigurationen der PLV
+(TOML, von Suite und Berichten geladen), `tests/fixtures/` synthetische
+Quellmappen für die Extraktions-Tests. Einen Eingangskanal im Repo gibt
+es nicht — Fall-Quellen kommen von außen.
 
 **Der Rechenkern** (`rechner_pipeline.kern`): KLV und
 Berufsunfähigkeit auf einem gemeinsamen (Semi-)Markov-Zustandsmodell
@@ -159,7 +161,7 @@ Struktur der BaFin-Nachweisungen. Der Bestandsbericht rendert das als
 selbst-enthaltene HTML-Seite:
 
 ```bash
-python -m rechner_pipeline.bestand.cli_fortschreibung --config examples/bestand_gesamt.toml ...
+python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml ...
 python -m rechner_pipeline.bestand.cli_report --portfolio <parquet> --out bericht.html ...
 ```
 

@@ -1,6 +1,6 @@
 # Golden-Master: COM-Extraktion (Referenz)
 
-Roh-Extraktion von `examples/Tarifrechner_KLV_TG2012.xlsm` über das **COM-Backend**
+Roh-Extraktion von `tests/fixtures/Tarifrechner_KLV_TG2012.xlsm` über das **COM-Backend**
 (`--export-backend com`, Windows + Microsoft Excel + pywin32). Dient als
 Referenz für `tests/test_golden_master_com.py`, das den plattformneutralen
 `openpyxl`-Default gegen diese Werte prüft.

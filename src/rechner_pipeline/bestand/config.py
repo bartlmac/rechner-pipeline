@@ -6,7 +6,7 @@ schema library. The category structure follows the DAV reference toolchain's
 parameter semantics (tariff master data, distributions, correlations,
 simulation/plausibility) with our own parameter values.
 
-Layout (see ``examples/bestand_klv.toml``)::
+Layout (see ``configs/bestand_klv.toml``)::
 
     [meta]                      seed, beschreibung
     [[generation]]              tariff generation (validity window, produkt,

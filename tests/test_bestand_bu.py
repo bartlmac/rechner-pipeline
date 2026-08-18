@@ -38,8 +38,8 @@ from rechner_pipeline.models.bestand import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-BU_EXAMPLE = REPO_ROOT / "examples" / "bestand_bu.toml"
-KLV_EXAMPLE = REPO_ROOT / "examples" / "bestand_klv.toml"
+BU_EXAMPLE = REPO_ROOT / "configs" / "bestand_bu.toml"
+KLV_EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
 
 
 @pytest.fixture(scope="module")

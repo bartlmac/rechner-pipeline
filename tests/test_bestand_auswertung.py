@@ -24,7 +24,7 @@ from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.models.bestand import STAMM_SPALTEN, model_point_kwargs
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = REPO_ROOT / "examples" / "bestand_klv.toml"
+EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
 
 
 @pytest.fixture(scope="module")

@@ -12,7 +12,7 @@ from pathlib import Path
 from rechner_pipeline.quellen import tarifplan_staging as staging
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-KLV_DOCX = REPO_ROOT / "examples" / "Mitteilung_143_KLV_TG2012.docx"
+KLV_DOCX = REPO_ROOT / "tests" / "fixtures" / "Mitteilung_143_KLV_TG2012.docx"
 
 _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _M = "http://schemas.openxmlformats.org/officeDocument/2006/math"

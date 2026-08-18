@@ -43,9 +43,11 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   registered sources under a SHA-256 register (never silently
   overwritten — the provenance chain starts here), `abgeleitet/` holds
   everything regenerable, `entscheide/` holds append-only human
-  decisions. `examples/` is the data room of Pfefferminzia LV (PLV),
-  the fictitious insurer this workspace demonstrates the system on —
-  not an input channel.
+  decisions. The system is demonstrated on the fictitious insurer
+  Pfefferminzia LV (PLV); `configs/` holds its portfolio configurations
+  (TOML, suite-loaded), `tests/fixtures/` holds synthetic source
+  workbooks for extraction tests. There is no `examples/` directory
+  and no repo-level input channel — case sources come from outside.
 - **Docs have one home each:** architecture and ADRs in
   `docs/architektur/`, Tarifplaene in `docs/tarifplaene/`, team agent
   instructions here, private notes in `docs-local/` (never read those

@@ -11,7 +11,7 @@ decided workflow (ein GeVo-Strom, ein Erzeuger)::
 Usage::
 
     python -m rechner_pipeline.bestand.cli_fortschreibung \\
-        --config examples/bestand_klv.toml --bis 2035-01-01 \\
+        --config configs/bestand_klv.toml --bis 2035-01-01 \\
         [--portfolio bestand.parquet]           # sonst: aus der Config erzeugt \\
         [--neuzugang-ab 2010-01-01] --out-dir lauf/
 

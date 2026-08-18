@@ -172,7 +172,7 @@ def test_export_raw_against_example_workbook(tmp_path: Path):
     pytest.importorskip("oletools")
     from rechner_pipeline.quellen.extract.openpyxl_backend import export_raw
 
-    example = Path(__file__).resolve().parents[1] / "examples" / "Tarifrechner_KLV_TG2012.xlsm"
+    example = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "Tarifrechner_KLV_TG2012.xlsm"
     if not example.exists():
         pytest.skip("Beispiel-Workbook nicht vorhanden")
 

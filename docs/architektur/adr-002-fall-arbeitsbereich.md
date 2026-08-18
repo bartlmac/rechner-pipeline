@@ -57,7 +57,11 @@ aus den P9-Snapshots gebaut ist, gilt: abox.json nicht loeschen.
   uebersteuern (Entwickler-Kurzweg).
 - **`examples/` ist Demo-Material:** oeffentliche Beispielquellen, aus
   denen sich ein Demo-Fall instanziieren laesst, plus Test-Fixtures.
-  Kein Eingangskanal.
+  Kein Eingangskanal. *(Nachtrag 2026-08-19: `examples/` wurde
+  aufgeloest — Bestands-Konfigurationen nach `configs/`,
+  Extraktions-Fixtures nach `tests/fixtures/`, historische
+  Quelldokumente aus dem Repo entfernt. Die Kein-Eingangskanal-Regel
+  gilt unveraendert.)*
 
 ## Konsequenzen
 

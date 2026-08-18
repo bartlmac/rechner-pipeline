@@ -35,7 +35,7 @@ from rechner_pipeline.gates import extract as extract_cmd
 from rechner_pipeline.gates._common import GATE_LEDGER_SUFFIX, load_gate_ledger
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-KLV = REPO_ROOT / "examples" / "Tarifrechner_KLV_TG2012.xlsm"
+KLV = REPO_ROOT / "tests" / "fixtures" / "Tarifrechner_KLV_TG2012.xlsm"
 
 
 # --------------------------------------------------------------------------- #

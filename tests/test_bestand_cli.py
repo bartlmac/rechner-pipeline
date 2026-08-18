@@ -18,8 +18,8 @@ from rechner_pipeline.gates._common import run_command
 from rechner_pipeline.gates import bestand_validate as gate_cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = REPO_ROOT / "examples" / "bestand_klv.toml"
-GEMISCHT = REPO_ROOT / "examples" / "bestand_gesamt.toml"
+EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
+GEMISCHT = REPO_ROOT / "configs" / "bestand_gesamt.toml"
 
 
 @pytest.fixture()

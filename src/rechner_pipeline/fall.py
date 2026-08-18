@@ -17,16 +17,16 @@ getrennten Zonen:
 
 Im echten Einsatz liegt der Arbeitsbereich ausserhalb des Repos (der
 Pfad ist frei waehlbar); ``faelle/`` im Repo ist nur der gitignorierte
-Default fuer lokale Demo-Faelle. ``examples/`` ist Demo-Material, aus
-dem sich ein Demo-Fall instanziieren laesst — kein Input-Verzeichnis
-des Systems.
+Default fuer lokale Demo-Faelle. Fall-Quellen kommen von aussen (die
+Lieferung des abgebenden Unternehmens); ``tests/fixtures/`` haelt
+synthetische Quellmappen fuer Tests und Demo-Faelle.
 
 Kommandos (ein JSON-Objekt auf stdout, Log auf stderr)::
 
     python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012 \
         [--beschreibung TEXT]
     python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
-        --datei examples/Tarifrechner_KLV_TG2012.xlsm [--als NAME]
+        --datei tests/fixtures/Tarifrechner_KLV_TG2012.xlsm [--als NAME]
     python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
 
 ``assurance --fall <pfad> --quelle <name>`` faehrt die Gate-Kette auf
