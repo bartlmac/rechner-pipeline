@@ -696,6 +696,49 @@ die {spec['bezug']}. {spec['erlaeuterung']} {pruefsatz}</p>
 {"".join(bloecke)}"""
 
 
+def _generationen_uebersicht_html(
+    config: Optional[BestandConfig], df: "pd.DataFrame"
+) -> str:
+    """Die Tarifgenerationen als Lesehilfe VOR allen Zahlen.
+
+    Ohne diese Tafel bleibt jede Generations-Legende ein Ratespiel:
+    der Leser sieht "KLV-2008", aber nie Fenster, Zins und Tafel.
+    Der Knoten macht die Herkunft sichtbar — PLV-eigene Generationen
+    tragen plv_, migrierte die ID ihres Migrationsfalls (so bleibt ein
+    uebernommener Bestand im Bericht differenzierbar).
+    """
+    if config is None:
+        return ""
+    anzahl = df["tarif_generation"].value_counts()
+    zeilen = []
+    for g in config.generationen:
+        tafeln = (g.tafel if g.produkt == "klv"
+                  else f"{g.tafel_aktiv} (+I/RI/TI)")
+        zeilen.append(
+            "<tr>"
+            f"<td><code>{_html.escape(g.knoten)}</code></td>"
+            f"<td>{_html.escape(g.name)}</td>"
+            f"<td>{_html.escape(g.produkt.upper())}</td>"
+            f"<td>{g.gueltig_von:%Y-%m}&#8211;{g.gueltig_bis:%Y-%m}</td>"
+            f"<td class=\"num\">{g.zins:.2%}</td>"
+            f"<td>{_html.escape(tafeln)}</td>"
+            f"<td class=\"num\">{int(anzahl.get(g.name, 0))}</td>"
+            "</tr>"
+        )
+    return (
+        "\n<h2>Tarifgenerationen</h2>\n"
+        "<p>Jede Generation ist ein Knoten der Ontologie (Praefix "
+        "<code>plv_</code>: eigene Generation der Pfefferminzia LV; "
+        "migrierte Generationen tragen die ID ihres Migrationsfalls). "
+        "Der Rechnungszins folgt dem H&#246;chstrechnungszins ihres "
+        "Verkaufsfensters.</p>\n"
+        "<table><thead><tr><th>Knoten</th><th>Name</th><th>Produkt</th>"
+        "<th>Verkauf</th><th>Zins</th><th>Tafel</th>"
+        "<th>Vertr&#228;ge</th></tr></thead><tbody>"
+        + "".join(zeilen) + "</tbody></table>\n"
+    )
+
+
 def render_html(
     df: pd.DataFrame,
     stichtage: Optional[List[_dt.date]] = None,
@@ -898,6 +941,7 @@ def render_html(
     stichtag_absatz = (
         f"<p>{TEXTE['stichtag']}</p>" if stichtag is not None else ""
     )
+    generationen_html = _generationen_uebersicht_html(config, df)
     stichtag_zeile = (
         f"<li>Referenzstichtag: {stichtag.isoformat()} — bis dahin Historie, "
         "danach Prognose</li>"
@@ -1080,7 +1124,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 {kopf_html}
 </ul>
 {stichtag_absatz}
-
+{generationen_html}
 <h2>Bestandsverlauf</h2>
 <div class="charts">{svg_vertraege}{svg_summe}</div>
 <p>{TEXTE["verlauf"]}</p>
