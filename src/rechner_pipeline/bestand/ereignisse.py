@@ -76,7 +76,7 @@ import numpy as np
 import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig
-from rechner_pipeline.kern import ModelPoint, Rechenkern
+from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.models.bestand import (
     LEDGER_SPALTEN,
     SCHEIBEN_SPALTEN,
@@ -180,13 +180,9 @@ class _Vertrag:
         return self.grund_mp.sum_insured + sum(vs for _, vs, _ in self.scheiben)
 
     def erhoehe(self, jahr: int, vs: float) -> ModelPoint:
-        mp = dataclasses.replace(
-            self.grund_mp,
-            x=self.grund_mp.x + jahr,
-            n=self.grund_mp.n - jahr,
-            t=self.grund_mp.t - jahr,
-            sum_insured=vs,
-        )
+        # Scheiben-Regel des Tarifwerks (inkl. gamma1-Bezugsgroesse
+        # GrundVS) zentral im Kern: erhoehungs_scheibe.
+        mp = erhoehungs_scheibe(self.grund_mp, jahr, vs)
         self.scheiben.append((jahr, vs, Rechenkern(mp)))
         return mp
 

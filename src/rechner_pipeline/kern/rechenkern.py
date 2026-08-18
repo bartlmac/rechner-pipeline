@@ -16,7 +16,8 @@ Knoten: klv, bu
 
 from __future__ import annotations
 
-from typing import Dict, List
+import dataclasses
+from typing import Dict, List, Sequence, Tuple
 
 from rechner_pipeline.kern.model_point import KLV_DEFAULT, ModelPoint
 from rechner_pipeline.kern.produkte import hole
@@ -30,6 +31,8 @@ from rechner_pipeline.kern.produkte.klv import (
 __all__ = [
     "Rechenkern",
     "berechne",
+    "erhoehungs_scheibe",
+    "vertrags_monatsreserve",
     "VERLAUFSWERTE_SPALTEN",
     "Monatsreserve",
     "Verlaufszeile",
@@ -119,6 +122,67 @@ class Rechenkern:
 
     def monatsreserve_beitragsfrei(self, a0: int, monate: int) -> float:
         return self.produkt.monatsreserve_beitragsfrei(a0, monate)
+
+
+def erhoehungs_scheibe(mp: ModelPoint, jahr: int, vs: float) -> ModelPoint:
+    """Modellpunkt einer dynamischen Erhöhungsscheibe (Tarifwerk-Regel).
+
+    Eigene Scheibe mit versetzten Dauern (x+jahr, n-jahr, t-jahr) und der
+    Erhöhungssumme. Die Bezugsgröße für ``gamma1`` bleibt die GrundVS
+    (Tarifmitteilung, Bemerkung zur Kostentabelle): Erhöhungen erhöhen
+    die beitragsbezogenen Verwaltungskosten NICHT — die Grundscheibe
+    trägt γ1 bereits vollständig, die Erhöhungsscheibe trägt keins.
+    """
+    if not 0 < jahr < mp.t:
+        raise ValueError(
+            f"Erhöhung im Jahr {jahr}: nur auf dem beitragspflichtigen "
+            f"Track möglich (0 < jahr < t = {mp.t})"
+        )
+    return dataclasses.replace(
+        mp, x=mp.x + jahr, n=mp.n - jahr, t=mp.t - jahr,
+        sum_insured=vs, gamma1=0.0,
+    )
+
+
+def vertrags_monatsreserve(
+    grund: Rechenkern,
+    scheiben: Sequence[Tuple[int, Rechenkern]],
+    monate: int,
+) -> Monatsreserve:
+    """Vertragsweite Monatsreserve über Grund- und Erhöhungsscheiben.
+
+    Reserven (DR, MRV) sind die Summe der Scheibenwerte, jede Scheibe an
+    ihrem versetzten Monats-Stichtag. Die Stornoabschlag-Grenzen des
+    Tarifwerks gelten je VERTRAG: einmal auf die Gesamtwerte gerechnet,
+    nicht je Scheibe (vgl. den vertragsweiten RKW der Fortschreibung).
+    Ohne Scheiben ist das Ergebnis identisch zu
+    :meth:`Rechenkern.monatsreserve`.
+    """
+    teile: List[Tuple[int, Rechenkern]] = [(0, grund)] + list(scheiben)
+    dr = mrv = 0.0
+    for erh_jahr, kern in teile:
+        versetzt = monate - 12 * erh_jahr
+        if versetzt < 0:
+            raise ValueError(
+                f"Erhöhungsscheibe aus Jahr {erh_jahr} existiert am "
+                f"Monats-Stichtag {monate} noch nicht"
+            )
+        reserve = kern.monatsreserve(versetzt)
+        dr += reserve.drx_bpfl
+        mrv += reserve.vx_mrv
+    mp = grund.mp
+    a = monate // 12
+    if a > mp.n or grund.produkt.ist_flex_phase(a):
+        stoab = 0.0
+    else:
+        vs = sum(kern.mp.sum_insured for _, kern in teile)
+        stoab = min(mp.stoab_max,
+                    max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+    return Monatsreserve(
+        monate=monate, jahr=a, monatsanteil=(monate % 12) / 12.0,
+        drx_bpfl=dr, vx_mrv=mrv, stoab=stoab,
+        rkw=max(0.0, mrv - stoab),
+    )
 
 
 def berechne(mp: ModelPoint = KLV_DEFAULT, produkt: str = "klv") -> Dict[str, Dict]:

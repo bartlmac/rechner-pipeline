@@ -66,6 +66,8 @@ from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
     Verlaufszeile,
     berechne,
+    erhoehungs_scheibe,
+    vertrags_monatsreserve,
 )
 
 #: Kern-Version (Abnahme-Anker, siehe Docstring).
@@ -90,6 +92,8 @@ __all__ = [
     "ZustandsBarwerte",
     "Verlaufszeile",
     "Monatsreserve",
+    "erhoehungs_scheibe",
+    "vertrags_monatsreserve",
     "Tafelbasis",
     "MissingMortalityTableError",
     "TafelBereichError",

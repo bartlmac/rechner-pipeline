@@ -2,9 +2,9 @@
 
 Die Erwartungswerte der grünen Pfade werden hier aus dem Kern selbst
 erzeugt und centgerundet (wie eine reale Lieferung liefert) — geprüft
-wird die Urteils-Mechanik: Toleranzen, GeVo-Tracks (STO/TOD/PEX),
-Konsistenz-Befunde der Lieferung und die ehrliche Systemgrenze
-(ERH -> nicht_pruefbar, nie bestanden).
+wird die Urteils-Mechanik: Toleranzen, GeVo-Tracks (STO/TOD/PEX und
+die vertragsweite Scheiben-Bewertung nach ERH) sowie die
+Konsistenz-Befunde der Lieferung.
 
 Knoten: klv
 """
@@ -16,7 +16,12 @@ from typing import Any, Dict, Optional, Tuple
 
 import pytest
 
-from rechner_pipeline.kern import KLV_DEFAULT, Rechenkern
+from rechner_pipeline.kern import (
+    KLV_DEFAULT,
+    Rechenkern,
+    erhoehungs_scheibe,
+    vertrags_monatsreserve,
+)
 from rechner_pipeline.qa.migrationssuite import (
     GeVoErwartung,
     VertragsPruefung,
@@ -49,7 +54,7 @@ def _pruefung(
 
 def test_ohne_gevos_bestanden() -> None:
     urteil = pruefe_vertrag(_pruefung())
-    assert urteil["bestanden"] and not urteil["nicht_pruefbar"]
+    assert urteil["bestanden"], urteil["befunde"]
     groessen = [p["groesse"] for p in urteil["pruefungen"]]
     assert groessen == ["dk_stichtag_1", "dk_stichtag_2"]
 
@@ -100,13 +105,26 @@ def test_pex_unterjaehrig_ist_befund() -> None:
     assert any("Vertragsjahrestag" in b for b in urteil["befunde"])
 
 
-def test_erh_ist_nicht_pruefbar_nie_bestanden() -> None:
-    gevos = (GeVoErwartung("ERH", 12 * 10, 5000.0),)
-    urteil = pruefe_vertrag(_pruefung(gevos=gevos))
-    assert urteil["nicht_pruefbar"] and not urteil["bestanden"]
-    assert any("Erhöhungsscheiben" in b for b in urteil["befunde"])
-    # Kein DK-2-Vergleich auf falscher (scheibenloser) Basis:
-    assert all(p["groesse"] != "dk_stichtag_2" for p in urteil["pruefungen"])
+def test_erh_wird_vertragsweit_geprueft() -> None:
+    a, s_neu = 10, 5000.0
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a, s_neu))
+    dk2 = round(vertrags_monatsreserve(KERN, [(a, scheibe)], S2).vx_mrv, 2)
+    gevos = (GeVoErwartung("ERH", 12 * a, s_neu),)
+    urteil = pruefe_vertrag(_pruefung(dk2=dk2, gevos=gevos))
+    assert urteil["bestanden"], urteil["befunde"]
+    # Ohne Scheibenberuecksichtigung schluege der Vergleich fehl:
+    falsch = round(KERN.monatsreserve(S2).vx_mrv, 2)
+    urteil2 = pruefe_vertrag(_pruefung(dk2=falsch, gevos=gevos))
+    assert not urteil2["bestanden"]
+
+
+def test_erh_befunde() -> None:
+    unterjaehrig = pruefe_vertrag(_pruefung(
+        gevos=(GeVoErwartung("ERH", S1 + 1, 5000.0),)))
+    assert any("Vertragsjahrestag" in b for b in unterjaehrig["befunde"])
+    ohne_summe = pruefe_vertrag(_pruefung(
+        gevos=(GeVoErwartung("ERH", 12 * 10, None),)))
+    assert any("ohne Erhöhungssumme" in b for b in ohne_summe["befunde"])
 
 
 def test_gevo_ausserhalb_der_stichtage_ist_befund() -> None:
@@ -117,12 +135,10 @@ def test_gevo_ausserhalb_der_stichtage_ist_befund() -> None:
 
 
 def test_bestand_zusammenfassung() -> None:
-    erh = GeVoErwartung("ERH", 12 * 10, 5000.0)
     ergebnis = pruefe_bestand([
         _pruefung(),
-        _pruefung(dk1=1.0),
-        dataclasses.replace(_pruefung(gevos=(erh,)), police_id="P-3"),
+        dataclasses.replace(_pruefung(dk1=1.0), police_id="P-2"),
     ])
     assert (ergebnis["anzahl"], ergebnis["bestanden"],
-            ergebnis["fehlgeschlagen"], ergebnis["nicht_pruefbar"]) == (3, 1, 1, 1)
+            ergebnis["fehlgeschlagen"]) == (2, 1, 1)
     assert not ergebnis["suite_bestanden"]

@@ -10,6 +10,7 @@ Knoten: klv
 from __future__ import annotations
 
 import copy
+import dataclasses
 import datetime as dt
 from pathlib import Path
 
@@ -374,9 +375,11 @@ def test_abgangsbetraege_summieren_ueber_scheiben(portfolio, config, beispiel_la
                 "duration": s["duration"], "premium_duration": s["premium_duration"],
                 "sum_insured": s["sum_insured"], "zahlweise": h["zahlweise"],
             }
-            s_kerne.append(
-                (int(s["erhoehung_jahr"]), Rechenkern(ModelPoint(**model_point_kwargs(row, gen))))
-            )
+            # Scheiben-Regel des Tarifwerks: gamma1-Bezugsgroesse ist die
+            # GrundVS — die Erhoehungsscheibe traegt kein gamma1.
+            mp = dataclasses.replace(
+                ModelPoint(**model_point_kwargs(row, gen)), gamma1=0.0)
+            s_kerne.append((int(s["erhoehung_jahr"]), Rechenkern(mp)))
         return grund, s_kerne
 
     mit_scheiben = set(scheiben["police_id"])
