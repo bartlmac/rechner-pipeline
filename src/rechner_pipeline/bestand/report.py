@@ -806,6 +806,12 @@ def render_html(
         )
     if stichtage is None:
         stichtage = jahresraster(df)
+        if bis is not None:
+            # Kein Chart jenseits des Simulationshorizonts: dort scheiden
+            # Vertraege nur noch durch planmaessigen Ablauf aus (Tod/Storno
+            # sind nicht mehr simuliert) — das waere keine Prognose, sondern
+            # eine systematische Ueberzeichnung des Bestands.
+            stichtage = [s for s in stichtage if s <= bis] or stichtage[:1]
     generationen = generationsnamen(df)
     # Mit Historie rechnen Verlauf und Zeitscheiben abgangsbereinigt auf der
     # Mehrzeilen-Sicht; Strukturbilder je Vertrag bleiben auf dem Basisbestand.
