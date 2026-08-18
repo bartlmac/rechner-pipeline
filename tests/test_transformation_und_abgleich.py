@@ -254,3 +254,59 @@ def test_beta1_fall_wird_ebenfalls_belegt():
     ], belege)
     assert urteil["automatisch_aufloesbar"] is True
     assert urteil["gewaehlter_wert"] == 0.01
+
+
+# --------------------------------------------------------------------------- #
+# P5: Vorverdichter (Spaltenprofil) und Skill-Verankerung
+# --------------------------------------------------------------------------- #
+
+
+def test_bestand_profil_ist_deterministisch_und_typisiert(tmp_path):
+    from rechner_pipeline.quellen.bestand_profil import baue_profil
+
+    csv_datei = tmp_path / "abzug.csv"
+    csv_datei.write_text(
+        "POLNR;BEGINN;ERLSUMME;RK;STORNO_KZ\n"
+        "7000001;01.06.2015;87000;NR;\n"
+        "7000002;01.02.2016;66000;R;S\n",
+        encoding="utf-8")
+    profil = baue_profil(csv_datei)
+    assert profil == baue_profil(csv_datei)          # deterministisch
+    spalten = {s["name"]: s for s in profil["spalten"]}
+    assert spalten["POLNR"]["typ"] == "ganzzahl"
+    assert spalten["BEGINN"]["typ"] == "datum"
+    assert spalten["RK"]["beispiele"] == ["NR", "R"]
+    assert spalten["RK"]["beispiele_vollstaendig"] is True
+    assert spalten["STORNO_KZ"]["leeranteil"] == 0.5
+    assert profil["zeilen"] == 2 and len(profil["quelle_sha256"]) == 64
+
+
+def test_bestand_profil_faellt_bei_doppelten_spalten(tmp_path):
+    from rechner_pipeline.quellen.bestand_profil import baue_profil
+
+    csv_datei = tmp_path / "abzug.csv"
+    csv_datei.write_text("A;B;A\n1;2;3\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="doppelte Spaltennamen"):
+        baue_profil(csv_datei)
+
+
+def test_transformations_skill_ist_verankert():
+    """Skill-Paritaet und die nicht verhandelbaren Kerne des neuen Skills."""
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    claude = (repo / ".claude/skills/transformiere-quellbestand/SKILL.md"
+              ).read_text(encoding="utf-8")
+    codex = (repo / ".agents/skills/transformiere-quellbestand/SKILL.md"
+             ).read_text(encoding="utf-8")
+    assert claude == codex                            # Paritaet
+    assert "ERFINDEST nichts" in claude
+    assert "OffenerKonflikt" in claude
+    assert "G-T" in claude
+    assert "Abbruchkriterien" in claude
+    konflikt = (repo / ".claude/skills/bereite-fachkonflikt-auf/SKILL.md"
+                ).read_text(encoding="utf-8")
+    assert "Bestandsabzug-Abgleich" in konflikt
+    assert "NIEMALS automatisch" in konflikt
+    assert konflikt == (repo / ".agents/skills/bereite-fachkonflikt-auf/"
+                        "SKILL.md").read_text(encoding="utf-8")

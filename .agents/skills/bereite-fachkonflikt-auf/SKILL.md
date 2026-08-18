@@ -75,3 +75,23 @@ Dann uebergeben. Keine endgueltige Aufloesung, kein Nachfassen der
 Entscheidung in eigener Autoritaet — auch nicht bei "offensichtlichen"
 Faellen: offensichtlich ist ein Urteil, und Urteile sind hier
 menschlich.
+
+## Bestandsabzug-Abgleich (wenn ein Abzug der Quelle vorliegt)
+
+Liegt im Fall ein transformierter Bestandsabzug mit rechnerischen
+Werten (Beitrag, Deckungskapital), gehoert er in JEDES Dossier einer
+Parameter-Diskrepanz: `qa/abzugsabgleich.gleiche_ab` rechnet beide
+Lesarten ueber die Abzug-Vertraege und liefert das Urteil samt beider
+Residuen.
+
+- **Rechner-Lesart verworfen, Meldungs-Lesart belegt**: deterministisch
+  belegt — die Aufloesung darf OHNE Menschen erfolgen (Code auf
+  Evidenz, keine LLM-Entscheidung; P2/P4 intakt). Sie wird im
+  Migrationsprotokoll festgehalten und in der Fachspez als eigene
+  Kategorie berichtet.
+- **Meldungs-Lesart verworfen**: NIEMALS automatisch. Fehler in der
+  Tarifmeldung sind aufsichtsrechtlich relevant — dein Dossier legt den
+  Beleg bei, die Bestaetigung und Berichtspflicht liegen IMMER beim
+  Menschen (Regel Bartek 2026-08-18).
+- **Kein eindeutiger Beleg** (beide passen, keine passt, keine
+  Belege): das Dossier weist es aus, der Konflikt bleibt beim Menschen.
