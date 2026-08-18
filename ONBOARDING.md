@@ -22,7 +22,7 @@ computes and accepts):
    gates (G-1/G-2/G-T) and immutable decision snapshots.
 
 Read `docs/architektur/migrations-pipeline-v01.md` first, then the role catalog
-`docs/architektur/skill-architektur.md`, then the five ADRs in
+`docs/architektur/skill-architektur.md`, then the six ADRs in
 `docs/architektur/`.
 
 **Historical note:** the project started from a one-time *translation act* — a
