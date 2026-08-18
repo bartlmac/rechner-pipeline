@@ -123,7 +123,7 @@ def test_kern_fuehrt_die_tg2015_tafeln_mit_korrekter_mischung():
 
 @pytest.mark.skipif(not FALL.is_dir(), reason="kein Fall-Arbeitsbereich faelle/baldrian-klv-tg2015")
 def test_gate_o3_tg2015_golden_master_besteht():
-    """DER v0.1-Test: Kern (Spez-parametriert) reproduziert Dirks
+    """DER v0.1-Test: Kern (Spez-parametriert) reproduziert das gelieferte
     TG2015-Excel — 4 Skalare + komplette Verlaufswerte-Tabelle."""
     from rechner_pipeline.gates.generation_golden import main
 

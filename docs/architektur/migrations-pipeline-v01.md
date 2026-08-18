@@ -86,7 +86,7 @@ Erwartungswerte, uebersprungene Erwartungsreste).
 
 ## 6 Der Praezedenzfall TG2012 -> TG2015
 
-Dirks Vorgabe — "erkennen, dass der neue Rechner strukturell zum alten
+Die fachliche Vorgabe — "erkennen, dass der neue Rechner strukturell zum alten
 passt, und integrieren statt duplizieren" — ist als BERECHNETES
 StrukturUrteil umgesetzt: `parametrierung`, mit zwei neuen
 Merkmalsdimensionen (Tarifart, Raucherstatus), neun geaenderten

@@ -61,7 +61,7 @@ knotengebundener Inkremente, nie ein langlebiger Branch.
 
 - Automatisierte CI (z. B. GitHub Actions) mit derselben Regel:
   Landung nur mit Gesamt-Suite plus fallübergreifenden Gates — die
-  Integration der O-Gates in die Team-Abnahme ist mit Albrecht
+  Integration der O-Gates in die Team-Abnahme ist im Team
   abzustimmen (Rollen-Katalog: Release-/Merge-Vorbereitung).
 - Knoten-Lebenszyklus (ADR-007 Regel 4): Status
   `in_migration`/`abgenommen` je Generation-Knoten, sobald in der

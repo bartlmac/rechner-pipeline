@@ -155,7 +155,7 @@ def test_entscheide_alle_vorlaeufigen_nach_quelle(fall_mit_konflikt, capsys):
     rc = entscheide([
         "--fall", str(f), "--rolle", "mensch", "--alle-vorlaeufigen",
         "--quelle", "rechner.xlsm", "--entscheider", "Bartek",
-        "--begruendung", "Dirk bestaetigt den Rechner-Stand",
+        "--begruendung", "Fachverantwortlicher bestaetigt den Rechner-Stand",
     ])
     assert rc == 0
     abox = lade(f)

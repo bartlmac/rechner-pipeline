@@ -35,7 +35,7 @@ BACKBONE = "kern.klv/kommutation+zustandsmodell"
 class StrukturUrteil(BaseModel):
     """Das BERECHNETE Urteil: Integration oder neues Produkt (F1/D2).
 
-    Dirks Kernvorgabe an den Workflow — "erkennen, dass der neue
+    Die fachliche Kernvorgabe an den Workflow — "erkennen, dass der neue
     Rechner strukturell zum alten passt, und integrieren statt
     duplizieren" — ist genau dieses Objekt: deterministisch abgeleitet
     aus dem A-Box-Vergleich, nicht behauptet.

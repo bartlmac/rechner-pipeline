@@ -12,7 +12,7 @@ Run via::
     python -m rechner_pipeline.ontologie.entscheide --fall faelle/baldrian-klv-tg2015 \\
         --diskrepanz "klv/tg2015/zelle:nichtraucher,einzel#zins" \\
         --wert 0.0175 --entscheider "Bartek" \\
-        --begruendung "Dirk bestaetigt: Rechner-Stand gilt, Meldung wird korrigiert"
+        --begruendung "Fachverantwortlicher bestaetigt: Rechner-Stand gilt, Meldung wird korrigiert"
 
     # oder alle auf einmal derselben Lesart-Quelle folgend:
     ... --alle-vorlaeufigen --quelle Tarifrechner_KLV_TG2015.xlsm ...

@@ -89,7 +89,7 @@ STOPP, Vorschlag formulieren, Mensch entscheidet.
    (WARUM vor WAS), Schluss "Generated with Claude Code"; Push macht
    der Mensch.
 9. **AGENTS.md und `.claude/skills/`-Namen** sind team-geteilte
-   Vertraege (Albrecht): Inhalte nachziehen ja, umbenennen/schwaechen
+   Vertraege (Team): Inhalte nachziehen ja, umbenennen/schwaechen
    nein; `.claude`/`.agents`-Paritaet ist test-tragend.
 
 ## Arbeitsweise
