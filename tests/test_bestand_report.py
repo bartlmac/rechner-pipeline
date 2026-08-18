@@ -178,11 +178,14 @@ def test_render_mit_historie_zeigt_abgangssichten(portfolio, fortschreibung):
         portfolio, stichtage=stichtage, historie=historie, ledger=ledger,
         scheiben=scheiben, bis=dt.date(2035, 1, 1),
     )
-    assert "Geschäftsvorfälle" in mit
+    assert "<h2>Geschäftsvorfälle" in mit
     assert "Beitragsfreistellung (PEX)" in mit
     assert "Storno (STO)" in mit
     assert "abgangsbereinigt" in mit
-    assert "Geschäftsvorfälle" not in ohne  # Default unverändert
+    # Default unveraendert: keine GeVo-SEKTION. Die Probe zielt auf die
+    # H2-Ueberschrift — das blosse Wort steht inzwischen auch im
+    # Lesart-Text jedes Berichts.
+    assert "<h2>Geschäftsvorfälle" not in ohne
     # Zusaetzliche Grafiken: Status- und Ereignisverlauf plus je eine je
     # Traeger-Bestand der Nachweisung (beitragspflichtig, beitragsfrei).
     assert mit.count("<svg") == ohne.count("<svg") + 4
