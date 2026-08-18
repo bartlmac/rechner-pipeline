@@ -14,6 +14,7 @@ Architektur-Dokumente und Entscheidungen (ADRs) des Gesamtsystems
 - [ADR-004: Der Zielkern ist Thiele-Welt — Excel-Paritaet ist Uebersetzungsbeleg, kein Anker](adr-004-thiele-kern-ohne-excel-anker.md)
 - [ADR-005: Knoten-Hierarchie, Test-Bindung, Code-Karte und berechneter Impact](adr-005-knoten-hierarchie-und-impact.md)
 - [ADR-006: Der Portierungs-Anwendungsfall wird ausser Betrieb genommen](adr-006-portierung-ausser-betrieb.md)
+- [ADR-007: Parallele Migrationen in einem Kern — Trunk, knotengebundene Inkremente, Knoten-Lebenszyklus](adr-007-parallele-migrationen-ein-kern.md)
 
 Die Pakete `rechner_pipeline.ontologie` und `rechner_pipeline.spez`
 setzen die Pipeline um; ihr Zusammenspiel und der Praezedenzfall
