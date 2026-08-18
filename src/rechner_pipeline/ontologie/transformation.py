@@ -1,0 +1,236 @@
+"""Transformations-Spec: Quell-Datenmodell -> Ziel-Ontologie (Plan P5).
+
+Die grosse Migrationsaufgabe VOR der Migration: ein gelieferter
+Bestandsabzug spricht das Datenmodell des abgebenden Unternehmens
+(Feldnamen, Kodierungen, Formate). Die Uebersetzung in unsere
+Ontologie ist selbst ein Migrationsartefakt mit Provenienz:
+
+* Der AGENT (Skill ``transformiere-quellbestand``) schlaegt das Mapping
+  vor — das ist die semantische Leistung (er erkennt, dass "ERLSUMME"
+  unsere Versicherungssumme ist). Er ERFINDET nichts: jedes Mapping
+  traegt eine Begruendung, Unklarheit wird ein offener Konflikt.
+* DETERMINISTISCH sind Pruefung und Anwendung (dieses Modul): jedes
+  Ziel-Pflichtfeld gedeckt, jede Quellspalte gemappt oder mit Grund
+  ausgelassen, Kodierungen vollstaendig, Berechnungen nur aus dem
+  benannten Katalog. Ein Wert, den das Mapping nicht abbildet, ist ein
+  Befund je Zeile — nie ein stiller Default (P2).
+* Offene Konflikte (z. B. eine undokumentierte Spalte) blockieren die
+  Anwendung, bis ein MENSCH sie entschieden hat — die Entscheidung
+  wird Teil der Spec (append-only im Fall-Artefakt).
+
+Knoten: klv
+"""
+
+from __future__ import annotations
+
+import datetime as _dt
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
+
+from pydantic import BaseModel, ConfigDict, Field
+
+#: Ziel-Pflichtfelder eines transformierten Bestandsabzugs — die
+#: Vertragsseite des Kern-Contracts plus Abgleichswerte. Bewusst NICHT
+#: die Generation-Felder (Zins, Kosten): die kommen aus der Spez des
+#: Migrationsfalls, nie aus dem Abzug.
+ZIEL_PFLICHT: Tuple[str, ...] = (
+    "police_id", "beginn", "entry_age", "duration", "premium_duration",
+    "sum_insured", "zahlweise", "status", "tarifart",
+)
+#: Optionale Zielfelder (Abgleichswerte und Herkunfts-Extras).
+ZIEL_OPTIONAL: Tuple[str, ...] = (
+    "vertragsjahre_am_stichtag", "brutto_jahresbeitrag",
+    "brutto_zahlbeitrag", "deckungskapital", "geburtsdatum",
+)
+
+
+def _parse_datum(wert: str) -> _dt.date:
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+        try:
+            return _dt.datetime.strptime(wert.strip(), fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f"kein bekanntes Datumsformat: {wert!r}")
+
+
+def _alter_aus_daten(zeile: Dict[str, Any], quellen: List[str]) -> int:
+    geb, beginn = _parse_datum(zeile[quellen[0]]), _parse_datum(zeile[quellen[1]])
+    alter = beginn.year - geb.year - (
+        1 if (beginn.month, beginn.day) < (geb.month, geb.day) else 0)
+    if not 0 <= alter <= 123:
+        raise ValueError(f"berechnetes Alter {alter} unplausibel")
+    return alter
+
+
+def _jahre_aus_daten(zeile: Dict[str, Any], quellen: List[str]) -> int:
+    von, bis = _parse_datum(zeile[quellen[0]]), _parse_datum(zeile[quellen[1]])
+    jahre = bis.year - von.year - (
+        1 if (bis.month, bis.day) < (von.month, von.day) else 0)
+    if jahre <= 0:
+        raise ValueError(f"berechnete Dauer {jahre} <= 0")
+    return jahre
+
+
+def _datum_iso(zeile: Dict[str, Any], quellen: List[str]) -> str:
+    return _parse_datum(zeile[quellen[0]]).isoformat()
+
+
+def _zahl(zeile: Dict[str, Any], quellen: List[str]) -> float:
+    roh = str(zeile[quellen[0]]).strip().replace(".", "").replace(",", ".") \
+        if "," in str(zeile[quellen[0]]) else str(zeile[quellen[0]]).strip()
+    return float(roh)
+
+
+def _ganzzahl(zeile: Dict[str, Any], quellen: List[str]) -> int:
+    return int(str(zeile[quellen[0]]).strip())
+
+
+#: Katalog der zulaessigen Berechnungen — der Agent WAEHLT, Code RECHNET.
+#: Ein Mapping mit unbekannter Berechnung faellt in der Validierung.
+BERECHNUNGEN: Dict[str, Callable[[Dict[str, Any], List[str]], Any]] = {
+    "alter_aus_geburtsdatum_und_beginn": _alter_aus_daten,
+    "jahre_aus_datumsdifferenz": _jahre_aus_daten,
+    "datum_nach_iso": _datum_iso,
+    "zahl": _zahl,
+    "ganzzahl": _ganzzahl,
+}
+
+
+class FeldMapping(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: Zielfeld — leer NUR bei nicht_uebernommen (dort gibt es keins).
+    ziel: str = ""
+    typ: Literal["direkt", "kodierung", "berechnung", "nicht_uebernommen"]
+    #: Quellspalten (1 bei direkt/kodierung; >=1 bei berechnung; bei
+    #: nicht_uebernommen genau die ausgelassene Spalte, ziel = "").
+    quellen: List[str] = Field(min_length=0)
+    kodierung: Dict[str, Any] = Field(default_factory=dict)
+    berechnung: str = ""
+    begruendung: str = Field(min_length=1)
+
+
+class OffenerKonflikt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    quellspalte: str
+    frage: str = Field(min_length=1)
+    #: Menschliche Entscheidung (None = offen, blockiert die Anwendung).
+    entscheidung: Optional[str] = None
+    entscheider: str = ""
+
+
+class TransformationsSpec(BaseModel):
+    """Das Mapping als Fall-Artefakt — agentenerzeugt, code-geprueft."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    quelle_datei: str = Field(min_length=1)
+    quelle_sha256: str = Field(min_length=64, max_length=64)
+    akteur: str = Field(min_length=1)          # <modell>/<skill>@<git-sha>
+    erhoben_am: str = Field(min_length=1)
+    felder: List[FeldMapping] = Field(min_length=1)
+    offene_konflikte: List[OffenerKonflikt] = Field(default_factory=list)
+    anmerkungen: List[str] = Field(default_factory=list)
+
+
+def validate_spec(
+    spec: TransformationsSpec, quellspalten: List[str]
+) -> List[str]:
+    """Beidseitige Abdeckung und Katalogtreue (leer = anwendbar)."""
+    fehler: List[str] = []
+    ziele = [f.ziel for f in spec.felder if f.typ != "nicht_uebernommen"]
+    for pflicht in ZIEL_PFLICHT:
+        if pflicht not in ziele:
+            fehler.append(
+                f"Zielfeld {pflicht!r} ist nicht gedeckt — jedes "
+                "Pflichtfeld braucht ein Mapping"
+            )
+    for ziel in ziele:
+        if ziel not in ZIEL_PFLICHT + ZIEL_OPTIONAL:
+            fehler.append(
+                f"unbekanntes Zielfeld {ziel!r} — die Ziel-Ontologie "
+                "kennt es nicht (Erweiterung waere Gate G-T)"
+            )
+        if ziele.count(ziel) > 1:
+            fehler.append(f"Zielfeld {ziel!r} ist mehrfach gemappt")
+    benutzte = {q for f in spec.felder for q in f.quellen}
+    konflikt_spalten = {k.quellspalte for k in spec.offene_konflikte}
+    for spalte in quellspalten:
+        if spalte not in benutzte and spalte not in konflikt_spalten:
+            fehler.append(
+                f"Quellspalte {spalte!r} ist weder gemappt noch als "
+                "nicht_uebernommen begruendet noch als Konflikt offen — "
+                "keine stillen Auslassungen (P2)"
+            )
+    for f in spec.felder:
+        if f.typ != "nicht_uebernommen" and not f.ziel:
+            fehler.append(
+                f"Mapping ohne Zielfeld (typ={f.typ}, quellen={f.quellen})"
+            )
+        if f.typ == "nicht_uebernommen" and f.ziel:
+            fehler.append(
+                f"nicht_uebernommen traegt ein Zielfeld {f.ziel!r} — "
+                "entweder mappen oder auslassen, nicht beides"
+            )
+        if f.typ == "berechnung" and f.berechnung not in BERECHNUNGEN:
+            fehler.append(
+                f"{f.ziel}: unbekannte Berechnung {f.berechnung!r} "
+                f"(Katalog: {', '.join(sorted(BERECHNUNGEN))})"
+            )
+        if f.typ in ("direkt", "kodierung") and len(f.quellen) != 1:
+            fehler.append(f"{f.ziel}: {f.typ} braucht genau EINE Quellspalte")
+        if f.typ == "kodierung" and not f.kodierung:
+            fehler.append(f"{f.ziel}: kodierung ohne Wertetabelle")
+        for q in f.quellen:
+            if q not in quellspalten:
+                fehler.append(
+                    f"{f.ziel}: Quellspalte {q!r} existiert nicht in der "
+                    "Lieferung"
+                )
+    for k in spec.offene_konflikte:
+        if k.entscheidung is None:
+            fehler.append(
+                f"offener Konflikt zu Spalte {k.quellspalte!r}: {k.frage} "
+                "— MENSCHLICHE Entscheidung noetig, Anwendung blockiert"
+            )
+    return fehler
+
+
+def wende_an(
+    spec: TransformationsSpec, zeilen: List[Dict[str, Any]]
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Das geprueste Mapping deterministisch anwenden.
+
+    Befunde je Zeile (unbekannter Kodierungswert, unparsbare Daten)
+    brechen NICHT den Lauf, sondern werden gesammelt zurueckgegeben —
+    der Aufrufer entscheidet, ob er mit Luecken weiterarbeitet. Eine
+    Zeile mit Befund wird NICHT ausgegeben (keine halb transformierten
+    Vertraege).
+    """
+    ergebnis: List[Dict[str, Any]] = []
+    befunde: List[str] = []
+    for i, zeile in enumerate(zeilen, start=1):
+        ziel: Dict[str, Any] = {}
+        fehler_in_zeile = False
+        for f in spec.felder:
+            if f.typ == "nicht_uebernommen":
+                continue
+            try:
+                if f.typ == "direkt":
+                    ziel[f.ziel] = zeile[f.quellen[0]]
+                elif f.typ == "kodierung":
+                    roh = str(zeile[f.quellen[0]]).strip()
+                    if roh not in f.kodierung:
+                        raise ValueError(
+                            f"Wert {roh!r} fehlt in der Kodierung "
+                            f"({sorted(f.kodierung)})"
+                        )
+                    ziel[f.ziel] = f.kodierung[roh]
+                else:
+                    ziel[f.ziel] = BERECHNUNGEN[f.berechnung](zeile, f.quellen)
+            except (KeyError, ValueError) as exc:
+                befunde.append(f"Zeile {i}, Feld {f.ziel}: {exc}")
+                fehler_in_zeile = True
+        if not fehler_in_zeile:
+            ergebnis.append(ziel)
+    return ergebnis, befunde
