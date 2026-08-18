@@ -46,8 +46,12 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   decisions. The system is demonstrated on the fictitious insurer
   Pfefferminzia LV (PLV); `configs/` holds its portfolio configurations
   (TOML, suite-loaded), `tests/fixtures/` holds synthetic source
-  workbooks for extraction tests. There is no `examples/` directory
-  and no repo-level input channel — case sources come from outside.
+  workbooks for extraction tests, and `lieferungen/` ships the showcase
+  deliveries of fictitious ceding insurers (freight to register into a
+  case, possibly with deliberate errors — finding them is the
+  demonstration). There is no implicit input channel: nothing reads
+  `lieferungen/` automatically; sources enter a case only through
+  explicit registration.
 - **Docs have one home each:** architecture and ADRs in
   `docs/architektur/`, Tarifplaene in `docs/tarifplaene/`, team agent
   instructions here, private notes in `docs-local/` (never read those

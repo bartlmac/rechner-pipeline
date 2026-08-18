@@ -38,8 +38,10 @@ rechner_pipeline.fall`, ADR-002). The artifacts of this workspace belong to
 **Pfefferminzia Lebensversicherung (PLV)** — the fictitious insurer the
 system is demonstrated on. `configs/` holds the PLV portfolio
 configurations (TOML, suite-loaded); `tests/fixtures/` holds synthetic
-source workbooks for the extraction tests. Case sources come from
-outside — there is no repo-level input channel.
+source workbooks for the extraction tests; `lieferungen/` ships the
+showcase deliveries of fictitious ceding insurers. There is no
+implicit input channel — sources enter a case only through explicit
+registration (below).
 
 ## 2. Setup
 Python **3.11+**. No LLM key needed.
@@ -73,6 +75,27 @@ the source without touching the register; the same name with different
 content is a hard conflict showing both hashes — there is no silent
 overwrite. If a delivery genuinely replaces an earlier one, set up a
 fresh case (or archive the old one under `faelle/archiv/`).
+
+**Run the showcase migration.** `lieferungen/baldrian/` ships the
+delivery of the fictitious insurer Baldrian Leben — the three inputs of
+a real portfolio migration (faulty tariff calculator, tariff
+notification, portfolio data delivery with two reporting dates and a
+GeVo protocol). Register it into a fresh case:
+```
+python -m rechner_pipeline.fall anlegen --fall faelle/baldrian
+for f in lieferungen/baldrian/*.xlsm lieferungen/baldrian/*.docx lieferungen/baldrian/*.csv; do
+  python -m rechner_pipeline.fall registrieren --fall faelle/baldrian --datei "$f"
+done
+python -m rechner_pipeline.fall status --fall faelle/baldrian
+```
+From here the pipeline stages run through the agent skills
+(`migrationsfall-durchfuehren` orchestrates; see the role catalog in
+`docs/architektur/skill-architektur.md`): pre-digestion and extraction
+per source, merge into the A-Box, discrepancies to the human gate G-1,
+transformation of the portfolio extract, Spez, acceptance gates, and
+the two-reporting-date migration suite with its HTML acceptance report
+for gate G-2. The deliveries may contain deliberate errors and
+source-system quirks — finding them IS the demonstration.
 
 **Pre-digest a source, then run the ontology gates:**
 ```

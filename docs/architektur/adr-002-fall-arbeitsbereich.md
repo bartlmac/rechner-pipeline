@@ -60,8 +60,12 @@ aus den P9-Snapshots gebaut ist, gilt: abox.json nicht loeschen.
   Kein Eingangskanal. *(Nachtrag 2026-08-19: `examples/` wurde
   aufgeloest — Bestands-Konfigurationen nach `configs/`,
   Extraktions-Fixtures nach `tests/fixtures/`, historische
-  Quelldokumente aus dem Repo entfernt. Die Kein-Eingangskanal-Regel
-  gilt unveraendert.)*
+  Quelldokumente aus dem Repo entfernt. Neu ist `lieferungen/`:
+  versioniertes Frachtgut der Showcase-Migrationen, damit jeder Clone
+  eine Migration selbst durchfuehren kann. Die Kein-Eingangskanal-Regel
+  gilt unveraendert — kein Code liest `lieferungen/` implizit, in einen
+  Fall gelangt eine Lieferung nur ueber die ausdrueckliche
+  Registrierung.)*
 
 ## Konsequenzen
 

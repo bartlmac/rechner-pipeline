@@ -117,8 +117,12 @@ der PLV-Bestand, und Migrationsfälle übernehmen fremde Bestände in die
 PLV. Alle Artefakte der Fiktion sind synthetisch, ohne realen
 Kundenbezug: `configs/` hält die Bestands-Konfigurationen der PLV
 (TOML, von Suite und Berichten geladen), `tests/fixtures/` synthetische
-Quellmappen für die Extraktions-Tests. Einen Eingangskanal im Repo gibt
-es nicht — Fall-Quellen kommen von außen.
+Quellmappen für die Extraktions-Tests, und `lieferungen/` das Frachtgut
+der Showcase-Migrationen — die Lieferung eines fiktiven abgebenden
+Unternehmens, mit der jeder die Migration selbst durchführen kann
+(`ONBOARDING.md`, Abschnitt 3). Einen impliziten Eingangskanal gibt es
+nicht: In einen Fall gelangt eine Lieferung nur über die ausdrückliche
+Registrierung.
 
 **Der Rechenkern** (`rechner_pipeline.kern`): KLV und
 Berufsunfähigkeit auf einem gemeinsamen (Semi-)Markov-Zustandsmodell
@@ -169,10 +173,11 @@ python -m rechner_pipeline.bestand.cli_report --portfolio <parquet> --out berich
 eingecheckt): je Fall die registrierten Quellen, die A-Box mit
 Provenienz, die menschlichen Entscheide (append-only) und alle
 abgeleiteten Artefakte bis zum Abnahmebericht. Der erste durchgängige
-Fall übernimmt einen KLV-Bestand (Tarifgeneration TG2015) eines
-fiktiven abgebenden Unternehmens in die PLV — inklusive der
-Datentransformation aus einem fremden Datenmodell und der
-Zwei-Stichtags-Abnahme.
+Fall übernimmt den KLV-Bestand (Tarifgeneration TG2015) der fiktiven
+**Baldrian Leben** in die PLV — inklusive der Datentransformation aus
+einem fremden Datenmodell und der Zwei-Stichtags-Abnahme; die
+Lieferung dazu liegt unter `lieferungen/baldrian/` zum
+Selbst-Durchführen.
 
 ## Schnellstart
 
