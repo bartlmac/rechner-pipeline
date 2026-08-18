@@ -203,7 +203,8 @@ def _chart_verlauf_vertraege(reihe: List[Dict[str, Any]], generationen: List[str
         werte = [r["generationen"].get(gen, 0) for r in reihe]
         ax.bar(x, werte, bottom=unten, label=gen, color=_farbe(gi), width=0.8)
         unten = [u + w for u, w in zip(unten, werte)]
-    schritt = max(1, len(x) // 12)
+    schritt = max(1, -(-len(x) // 8))   # hoechstens ~8 Labels,
+    #                                  sonst ueberlappen Jahreszahlen
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel("aktive Verträge")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
@@ -226,7 +227,8 @@ def _chart_verlauf_summe(
     werte = [r["summe_vs"] / 1e6 for r in reihe]
     fig, ax = plt.subplots(figsize=(5.0, 3.4))
     ax.plot(x, werte, marker="o", markersize=3, color=_FARBEN[0])
-    schritt = max(1, len(x) // 12)
+    schritt = max(1, -(-len(x) // 8))   # hoechstens ~8 Labels,
+    #                                  sonst ueberlappen Jahreszahlen
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel(f"{label} (Mio.)")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
@@ -277,7 +279,8 @@ def _chart_status_verlauf(reihe: List[Dict[str, Any]]) -> str:
         ax.bar(x, werte, bottom=unten, label=label,
                color=_STATUS_FARBEN[status], width=0.8)
         unten = [u + w for u, w in zip(unten, werte)]
-    schritt = max(1, len(x) // 12)
+    schritt = max(1, -(-len(x) // 8))   # hoechstens ~8 Labels,
+    #                                  sonst ueberlappen Jahreszahlen
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel("in-force-Verträge")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
@@ -293,7 +296,8 @@ def _chart_deckungskapital(reihe: List[Dict[str, Any]]) -> str:
     bfr = [r["deckungskapital_bfr"] / 1e6 for r in reihe]
     ax.bar(x, bpfl, label="beitragspflichtig", color=_STATUS_FARBEN["POL"], width=0.8)
     ax.bar(x, bfr, bottom=bpfl, label="beitragsfrei", color=_STATUS_FARBEN["PEX"], width=0.8)
-    schritt = max(1, len(x) // 12)
+    schritt = max(1, -(-len(x) // 8))   # hoechstens ~8 Labels,
+    #                                  sonst ueberlappen Jahreszahlen
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel("Deckungskapital (Mio.)")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
@@ -318,7 +322,8 @@ def _chart_beitraege(reihe: List[Dict[str, Any]], mit_bu: bool) -> str:
         bu = [r["bu_beitrag"] / 1e6 for r in reihe]
         ax.bar(x, bu, bottom=klv, label="Berufsunfähigkeit",
                color=_FARBEN[1], width=0.8)
-    schritt = max(1, len(x) // 12)
+    schritt = max(1, -(-len(x) // 8))   # hoechstens ~8 Labels,
+    #                                  sonst ueberlappen Jahreszahlen
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel("Beitragsvolumen p. a. (Mio.)")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
@@ -338,7 +343,8 @@ def _chart_ereignisse_je_jahr(reihe: List[Dict[str, Any]]) -> str:
         ax.bar(x, werte, bottom=unten, label=f"{EREIGNIS_LABELS[code]} ({code})",
                color=_EREIGNIS_FARBEN[code], width=0.8)
         unten = [u + w for u, w in zip(unten, werte)]
-    schritt = max(1, len(x) // 12)
+    schritt = max(1, -(-len(x) // 8))   # hoechstens ~8 Labels,
+    #                                  sonst ueberlappen Jahreszahlen
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel("Ereignisse")
     ax.set_xlabel("Kalenderjahr")
@@ -476,7 +482,8 @@ def _chart_track(
         grenze = _stichtags_position(konto, stichtag)
         if grenze is not None:
             ax.axvline(grenze, color="#333333", linewidth=1.0, linestyle="--")
-    schritt = max(1, len(x) // 12)
+    schritt = max(1, -(-len(x) // 8))   # hoechstens ~8 Labels,
+    #                                  sonst ueberlappen Jahreszahlen
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel(ylabel)
     ax.set_xlabel("Kalenderjahr")
