@@ -4,8 +4,10 @@ Die Entscheidungsvorlage der menschlichen Migrationsabnahme, aus drei
 deterministischen Bausteinen:
 
 1. Abnahmetests der Migrationssuite (``qa/migrationssuite``):
-   Deckungskapital an ZWEI Stichtagen plus GeVo-Beträge dazwischen,
-   je Vertrag mit Residuen; Fehlschläge und Befunde vollständig.
+   Deckungskapital an ZWEI Stichtagen plus GeVo-Beträge dazwischen —
+   als Zusammenfassung je Prüfgröße UND als vollständige
+   Einzelvergleichs-Tabelle (jeder Vertrag, jeder Wert, jedes
+   Residuum); Fehlschläge und Befunde gesondert.
 2. Transformations-Tabelle (``ontologie/transformation``): das
    fachlich abzunehmende Mapping Quellfeld -> Zielfeld samt
    Begründungen und (entschiedenen) Konflikten.
@@ -126,6 +128,25 @@ def baue_bericht(
     teile.append("<table><tr><th>Prüfgröße</th><th>Anzahl</th><th>OK</th>"
                  "<th>max. |Residuum|</th></tr>")
     teile.extend(_pruefgroessen_zeilen(suite))
+    teile.append("</table>")
+
+    teile.append("<h2>Einzelvergleiche (alle Werte)</h2>")
+    teile.append(
+        "<p>Je Vertrag und Prüfgröße: der vom Zielsystem gerechnete Wert "
+        "gegen den gelieferten Erwartungswert.</p>")
+    teile.append("<table><tr><th>Police</th><th>Prüfgröße</th>"
+                 "<th>Zielsystem</th><th>Lieferung</th><th>Residuum</th>"
+                 "<th>Urteil</th></tr>")
+    for urteil in suite["vertraege"]:
+        for p in urteil["pruefungen"]:
+            marke = ("<td class='gruen'>OK</td>" if p["ok"]
+                     else "<td class='rot'>FEHLER</td>")
+            teile.append(
+                f"<tr><td>{_e(urteil['police_id'])}</td>"
+                f"<td>{_e(p['groesse'])}</td>"
+                f"<td class='zahl'>{p['system']:.2f}</td>"
+                f"<td class='zahl'>{p['erwartet']:.2f}</td>"
+                f"<td class='zahl'>{p['residuum']:.4f}</td>{marke}</tr>")
     teile.append("</table>")
 
     teile.append("<h2>Fehlschläge und Befunde</h2>")

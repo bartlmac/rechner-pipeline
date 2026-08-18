@@ -79,6 +79,11 @@ def test_gruener_bericht_mit_allen_abschnitten(tmp_path) -> None:
     assert "entschieden (bartek): storniert" in text
     assert "vor/index.html" in text and "nach/index.html" in text
     assert "Keine." in text                          # keine Fehlschlaege
+    # Einzelvergleiche: jeder Wert erscheint als echte Zahl im Bericht
+    assert "Einzelvergleiche (alle Werte)" in text
+    dk1 = KERN.monatsreserve(S1).vx_mrv
+    assert f"{dk1:.2f}" in text
+    assert text.count("<td class='gruen'>OK</td>") == 4  # 2 Vertraege x 2 DK
 
 
 def test_roter_bericht_weist_fehlschlaege_und_befunde_aus() -> None:
@@ -93,6 +98,7 @@ def test_roter_bericht_weist_fehlschlaege_und_befunde_aus() -> None:
     assert "2 von 3 Verträgen FEHLGESCHLAGEN" in text
     assert "P-2" in text and "-500.00" in text
     assert "Befund:" in text and "keinen Abgang" in text
+    assert "<td class='rot'>FEHLER</td>" in text      # Einzelvergleichs-Marke
 
 
 def test_gevo_pruefgroessen_erscheinen_gruppiert() -> None:
