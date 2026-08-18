@@ -85,7 +85,8 @@ def test_export_all_sheets_csv_schema(tmp_path: Path):
     csvs = export_all_sheets(wbf, wbv, out_dir)
 
     assert len(csvs) == 1
-    rows = list(csv.reader(csvs[0].open(encoding="utf-8"), delimiter=";"))
+    with csvs[0].open(encoding="utf-8") as f:
+        rows = list(csv.reader(f, delimiter=";"))
     assert rows[0] == ["Blatt", "Adresse", "Formel", "Wert"]
 
     by_addr = {r[1]: r for r in rows[1:]}
@@ -154,7 +155,8 @@ def test_export_name_manager_resolves_single_cell_value(tmp_path: Path):
     nm_csv = export_name_manager_to_csv(wbf, wbv, out_dir)
     assert nm_csv is not None
 
-    rows = list(csv.reader(nm_csv.open(encoding="utf-8"), delimiter=";"))
+    with nm_csv.open(encoding="utf-8") as f:
+        rows = list(csv.reader(f, delimiter=";"))
     header = rows[0]
     assert header[0] == "Name" and header[6] == "ValueEvaluated"
     by_name = {r[0]: dict(zip(header, r)) for r in rows[1:]}

@@ -36,7 +36,7 @@ Nicht verhandelbar (P1-P10, Kurzform):
 
 ## Referenzfall
 
-`faelle/baldrian-klv-tg2015` ist der Praezedenzfall: die Baldrian Leben
+`faelle/archiv/baldrian-klv-tg2015` ist der Praezedenzfall: die Baldrian Leben
 (fiktives abgebendes Unternehmen) liefert Tarifmeldung und Tarifrechner,
 die PLV uebernimmt den KLV-Bestand (TG2012 -> TG2015). Bei Unsicherheit ueber Artefakt-Formate dort
 nachsehen — nicht raten. Das G-1-Dokument dieses Falls

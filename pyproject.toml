@@ -50,3 +50,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    "error",
+    # oletools 0.60.2 (exakt gepinnt) nutzt Legacy-pyparsing-APIs; nur diese
+    # real auftretende Fremdbibliotheks-Warnung wird modul-/kategorie-genau
+    # ignoriert — alles andere ist ein Testfehler.
+    'ignore::pyparsing.warnings.PyparsingDeprecationWarning:oletools\.olevba',
+]

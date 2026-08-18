@@ -16,7 +16,9 @@ from rechner_pipeline.quellen.formeln import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-FALL = REPO_ROOT / "faelle" / "baldrian-klv-tg2015"
+# Eingefrorener Vorlauf-Fall als lokales Regressions-Fixture; skipt sauber,
+# wo faelle/ fehlt (z.B. frischer Clone).
+FALL = REPO_ROOT / "faelle" / "archiv" / "baldrian-klv-tg2015"
 
 
 def test_if_staffel_parser_liest_prozent_und_default():
@@ -47,7 +49,7 @@ def test_if_staffel_parser_ist_fail_fast():
         lese_if_staffel("=IF(zw=2,2.3.4,0)", "zw")
 
 
-@pytest.mark.skipif(not FALL.is_dir(), reason="kein Fall-Arbeitsbereich")
+@pytest.mark.skipif(not FALL.is_dir(), reason="kein Archiv-Fall faelle/archiv/baldrian-klv-tg2015")
 def test_ratzu_extraktion_des_falls_haelt_dem_rueckcheck_stand():
     """Die LLM-gelesenen Staffeln (18 Werte: 3 zw x 6 Zellen) stimmen
     mit den deterministisch geparsten Formeln ueberein."""
