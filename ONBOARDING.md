@@ -51,14 +51,28 @@ Runtime (pinned): `openpyxl`, `oletools`, `pandas`, `pyarrow`, `matplotlib`,
 `pydantic` — see `pyproject.toml`. Dev: `pytest`, `hypothesis`.
 
 ## 3. Run it
-**Create a case and register its sources** (the input channel; sources are
-stored read-only with SHA-256 in `eingang.json` and checked before every run):
+**Create a case and register its sources.** Registration is the ONLY
+way into a case — never copy files into `eingang/` by hand. The command
+takes the delivery wherever it landed (download folder, scp target),
+copies it into `eingang/` (optionally renamed via `--als`), records
+SHA-256, origin path and size in the `eingang.json` register, and sets
+the copy read-only. Every later statement in the case traces back to
+these hashes — the provenance chain starts here:
 ```
 python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012
 python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
     --datei tests/fixtures/Tarifrechner_KLV_TG2012.xlsm
 python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
 ```
+`status` (and every pipeline run) checks the register against the file
+system in both directions: a registered file that is missing or whose
+content deviates from its hash is a hard error, and so is any
+hand-copied file without a register entry. Re-registering the same
+content reports `bereits_registriert`; a lost copy is restored from
+the source without touching the register; the same name with different
+content is a hard conflict showing both hashes — there is no silent
+overwrite. If a delivery genuinely replaces an earlier one, set up a
+fresh case (or archive the old one under `faelle/archiv/`).
 
 **Pre-digest a source, then run the ontology gates:**
 ```
