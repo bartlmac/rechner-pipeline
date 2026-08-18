@@ -18,9 +18,9 @@
 
 - Install for development: `python -m pip install -e ".[dev]"`.
 - Run tests: `python -m pytest`.
-- Create a case workspace and register sources (the pipeline operates on a case, not on repo dirs; `examples/` is demo material, not an input channel):
-  `python -m rechner_pipeline.fall anlegen --fall faelle/demo-klv`
-  `python -m rechner_pipeline.fall registrieren --fall faelle/demo-klv --datei examples/Tarifrechner_KLV_TG2012.xlsm`
+- Create a case workspace and register sources (the pipeline operates on a case, not on repo dirs; `examples/` is the data room of Pfefferminzia LV (PLV), the fictitious insurer this workspace demonstrates the system on — not an input channel):
+  `python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012`
+  `python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 --datei examples/Tarifrechner_KLV_TG2012.xlsm`
 - Migration pipeline (ontology as the only stage interface; see docs/architektur/migrations-pipeline-v01.md): `python -m rechner_pipeline.gates.abox_validate --fall <fall>` (O1), `python -m rechner_pipeline.gates.generation_golden --fall <fall> --generation <id>` (O3), `python -m rechner_pipeline.quellen.tafel_import`, `python -m rechner_pipeline.ontologie.entscheide` and `python -m rechner_pipeline.gates.gate_entscheid` (human gates, P9 snapshots). Agents never resolve discrepancies as final; provisional resolutions carry `vorlaeufig=true` and block human acceptance.
 - Navigate and scope changes via the ontology index (ADR-005; fundstellen are derived, not searched): `python -m rechner_pipeline.ontologie.code_index --tests tests` (node <-> module/test, drift), `python -m rechner_pipeline.ontologie.code_karte` (import graph vs. layer allowlist, ADR-004 rule, SDK ban), `git diff --name-only | python -m rechner_pipeline.ontologie.impact` (which tests and which case gates a change touches). The impact tool is informational — CI and the pre-commit rule still run the FULL suite. `python -m rechner_pipeline.ontologie.landkarte --out landkarte.html` renders the same data as one self-contained HTML page (deterministic, no new dependency) for review and demonstration.
 - Pre-digest a source workbook for a case: `python -m rechner_pipeline.gates.extract --repo-root . --input faelle/<fall>/eingang/<datei> --out-dir faelle/<fall>/abgeleitet/vorverdichtung/xlsm-<GEN> --adapter excel`.

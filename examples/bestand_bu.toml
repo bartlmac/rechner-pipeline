@@ -19,14 +19,14 @@
 
 [meta]
 seed = 20260813
-beschreibung = "Synthetischer BU-Bestand, zwei Generationen (Lehrbeispiel)"
+beschreibung = "Pfefferminzia LV (PLV): BU-Bestand, zwei Generationen (Lehrbeispiel)"
 
 # --------------------------------------------------------------------------
 # BU-Geschaeft 2000-2016 (DAV 1997 I)
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2000"
-knoten = "bu/demo_2000"  # synthetische Demo-Generation (Ontologie-Knoten)
+knoten = "bu/plv_2000"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2000-01-01
 gueltig_bis = 2016-12-31
@@ -87,7 +87,7 @@ rho = 0.30
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2017"
-knoten = "bu/demo_2017"  # synthetische Demo-Generation (Ontologie-Knoten)
+knoten = "bu/plv_2017"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2017-01-01
 gueltig_bis = 2035-12-31

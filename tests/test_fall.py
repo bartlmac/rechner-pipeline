@@ -32,7 +32,7 @@ def quelle(tmp_path: Path) -> Path:
 
 
 def test_anlegen_erzeugt_layout_und_ueberschreibt_nie(tmp_path: Path) -> None:
-    f = tmp_path / "faelle" / "demo"
+    f = tmp_path / "faelle" / "plv"
     ergebnis = anlegen(f, beschreibung="Testfall")
     assert ergebnis["angelegt"] is True
     assert (f / "fall.json").is_file()
@@ -40,7 +40,7 @@ def test_anlegen_erzeugt_layout_und_ueberschreibt_nie(tmp_path: Path) -> None:
     assert (f / "eingang").is_dir()
     assert (f / "abgeleitet").is_dir()
     manifest = json.loads((f / "fall.json").read_text(encoding="utf-8"))
-    assert manifest["name"] == "demo"
+    assert manifest["name"] == "plv"
     assert manifest["beschreibung"] == "Testfall"
     with pytest.raises(FallFehler, match="existiert bereits"):
         anlegen(f)

@@ -163,8 +163,8 @@ class TarifGeneration:
     #: "bu" = Berufsunfaehigkeit (Zustandsmodell-Konfiguration).
     produkt: str = "klv"
     #: Ontologie-Knoten dieser Generation (Pflicht): dieselbe ID-Konvention
-    #: wie A-Box und Gate O3 (familie/generation, z. B. "klv/demo_1994" fuer
-    #: synthetische, "klv/tg2015" fuer migrierte Generationen). Jede
+    #: wie A-Box und Gate O3 (familie/generation, z. B. "klv/plv_1994" fuer
+    #: PLV-eigene, "klv/tg2015" fuer migrierte Generationen). Jede
     #: Generation, die der Bestand rechnet, ist damit ein Knoten der
     #: Ontologie — keine Parametrierung am System vorbei. Die Wurzel muss
     #: dem Produkt entsprechen.
@@ -231,7 +231,7 @@ class TarifGeneration:
             errors.append(
                 f"{prefix}: knoten fehlt — jede Generation traegt ihre "
                 "Ontologie-Knoten-ID (familie/generation, z. B. "
-                f"'{self.produkt}/demo_2000'; migrierte Generationen die "
+                f"'{self.produkt}/plv_2000'; migrierte Generationen die "
                 "ID ihres Migrationsfalls)"
             )
         elif not _KNOTEN_ID.match(self.knoten):

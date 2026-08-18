@@ -6,14 +6,14 @@
 
 [meta]
 seed = 20260811
-beschreibung = "Synthetischer KLV-Bestand, vier Generationen (Lehrbeispiel)"
+beschreibung = "Pfefferminzia LV (PLV): KLV-Bestand, vier Generationen (Lehrbeispiel)"
 
 # --------------------------------------------------------------------------
 # Generation 1: klassisches KLV-Geschaeft der 1990er (DAV1994_T, hoher Zins)
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-1994"
-knoten = "klv/demo_1994"  # synthetische Demo-Generation (Ontologie-Knoten)
+knoten = "klv/plv_1994"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 1994-07-01
 gueltig_bis = 2007-12-31
 sample_size = 600
@@ -83,7 +83,7 @@ rho = 0.65
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2008"
-knoten = "klv/demo_2008"  # synthetische Demo-Generation (Ontologie-Knoten)
+knoten = "klv/plv_2008"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2008-01-01
 gueltig_bis = 2016-12-31
 sample_size = 300
@@ -148,7 +148,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2017"
-knoten = "klv/demo_2017"  # synthetische Demo-Generation (Ontologie-Knoten)
+knoten = "klv/plv_2017"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2017-01-01
 gueltig_bis = 2021-12-31
 sample_size = 250
@@ -213,7 +213,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2022"
-knoten = "klv/demo_2022"  # synthetische Demo-Generation (Ontologie-Knoten)
+knoten = "klv/plv_2022"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2022-01-01
 gueltig_bis = 2035-12-31
 sample_size = 150

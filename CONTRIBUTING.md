@@ -13,13 +13,13 @@ Dieses Repository ist ein **methodischer Referenzrahmen** für KI-gestützte Rec
 - Code in Englisch, Dokumentation primär in Deutsch.
 - Pipeline muss reproduzierbar end-to-end laufen.
 - LLM-Prompts sind versionierte Artefakte, keine Wegwerf-Strings.
-- Demo- und Beispielartefakte (Excel-Rechner, Tafeln) müssen synthetisch sein — keine echten Kunden- oder Bestandsdaten.
+- Beispielartefakte (Excel-Rechner, Tafeln, Bestands-Configs der fiktiven Pfefferminzia LV) müssen synthetisch sein — keine echten Kunden- oder Bestandsdaten.
 
 ## Lokale Konfiguration
 
 - Die zentrale Python-Konfiguration liegt in `pyproject.toml`.
   `requirements.txt` verweist nur auf `pip install -e ".[all]"` für den
-  vollständigen Demo-Lauf.
+  vollständigen Beispiel-Lauf.
 - Für reine CLI-/Import- und Hilfsfunktionstests genügt `pip install -e .`.
   Für klassische Pipeline-Läufe `pip install -e ".[llm,export]"`, für die
   agentische Variante zusätzlich `agentic`, und für Tests `dev`.

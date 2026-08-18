@@ -174,10 +174,11 @@ def test_code_index_findet_annotationen_und_drift(tmp_path: Path):
     assert index["knoten"] == {"klv": ["paket/a.py"]}
     assert index["module"] == {"paket/a.py": ["klv"]}
     assert index["unannotiert"] == ["paket/b.py"]
-    assert drift_report(index, ["klv"]) == []
-    assert drift_report(index, ["klv", "bu"]) == [
-        "Familie 'bu': kein annotiertes Modul (Knoten ohne Code)"
-    ]
+    # Beschluss 2026-08-18: ein unannotiertes Modul ist HARTER Drift
+    # (kein Baustein ohne ontologischen Knoten), nicht Bestandsaufnahme.
+    befunde = drift_report(index, ["klv"])
+    assert any("paket/b.py: keine Knoten-Annotation" in b for b in befunde)
+    assert any("Familie 'bu'" in b for b in drift_report(index, ["klv", "bu"]))
 
 
 def test_code_index_des_repos_hat_keinen_drift():

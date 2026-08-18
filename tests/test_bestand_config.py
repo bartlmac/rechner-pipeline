@@ -56,7 +56,7 @@ def test_missing_distribution_is_an_error(tmp_path: Path):
 seed = 1
 [[generation]]
 name = "G"
-knoten = "klv/demo_test"
+knoten = "klv/plv_test"
 gueltig_von = 2000-01-01
 gueltig_bis = 2001-01-01
 sample_size = 10
@@ -83,7 +83,7 @@ def test_unsupported_type_and_bad_rho_rejected(tmp_path: Path):
 seed = 1
 [[generation]]
 name = "G"
-knoten = "klv/demo_test"
+knoten = "klv/plv_test"
 gueltig_von = 2000-01-01
 gueltig_bis = 2001-01-01
 sample_size = 10
@@ -138,7 +138,7 @@ _BASE_GEN = """
 seed = 1
 [[generation]]
 name = "G"
-knoten = "klv/demo_test"
+knoten = "klv/plv_test"
 gueltig_von = 2000-01-01
 gueltig_bis = 2001-01-01
 sample_size = {sample_size}
@@ -228,7 +228,7 @@ def _generation_kwargs(**override):
     import datetime as dt
 
     basis = dict(
-        name="G", knoten="klv/demo_test",
+        name="G", knoten="klv/plv_test",
         gueltig_von=dt.date(2000, 1, 1), gueltig_bis=dt.date(2010, 12, 31),
         sample_size=10, max_endalter=85, zins=0.02, tafel="DAV2008_T",
         alpha=0.025, beta1=0.025, gamma1=0.0008, gamma2=0.00125,
@@ -256,7 +256,7 @@ def test_knoten_form_und_wurzel_werden_geprueft():
     assert any("keine gueltige Knoten-ID" in f for f in fehler)
     # Wurzel muss die Produktfamilie sein:
     fehler = TarifGeneration(
-        **_generation_kwargs(knoten="bu/demo_2000")).validate()
+        **_generation_kwargs(knoten="bu/plv_2000")).validate()
     assert any("Knoten-Wurzel ist die Produktfamilie" in f for f in fehler)
     # ... und eine migrierte ID ist genauso zulaessig wie eine Demo-ID
     # (die Minimal-Generation hat keine Verteilungen — geprueft wird nur,
@@ -286,12 +286,12 @@ def test_beispiel_configs_tragen_knoten_konsistent():
                 )
             gesehen[g.knoten] = (g.name, felder)
     assert set(gesehen) == {
-        "klv/demo_1994", "klv/demo_2008", "klv/demo_2017", "klv/demo_2022",
-        "bu/demo_2000", "bu/demo_2017",
+        "klv/plv_1994", "klv/plv_2008", "klv/plv_2017", "klv/plv_2022",
+        "bu/plv_2000", "bu/plv_2017",
     }
 
 
-def test_tarifplan_dokumentiert_die_demo_generationen():
+def test_tarifplan_dokumentiert_die_plv_generationen():
     """P7-Drift-Schutz: die Paragraf-13-Tabellen der Tarifplaene muessen
     den Configs entsprechen — der Tarifplan darf nichts anderes behaupten
     als das, was der Bestand rechnet."""

@@ -127,22 +127,26 @@ das System, nicht der Datenraum): `eingang/` hält die registrierten
 Quellen (unter ihrem Namen abgelegt, schreibgeschützt, mit SHA-256 im
 Register `eingang.json` verzeichnet und vor jedem Lauf dagegen geprüft;
 nie still überschrieben — hier beginnt die Provenance-Kette), `abgeleitet/` alles
-Regenerierbare. `examples/` ist Demo-Material, aus dem sich ein
-Demo-Fall instanziieren lässt — kein Eingangskanal:
+Regenerierbare. Die Artefakte dieses Arbeitsraums gehören der
+**Pfefferminzia Lebensversicherung (PLV)** — dem fiktiven Unternehmen,
+an dem das System vorgeführt wird: der Zielkern ist der PLV-Kern, der
+Bestand der PLV-Bestand, und Migrationsfälle übernehmen fremde Bestände
+in die PLV. `examples/` ist der Datenraum dieser Fiktion (synthetische
+Quellen und Configs) — kein Eingangskanal:
 
 ```bash
-python -m rechner_pipeline.fall anlegen --fall faelle/demo-klv
-python -m rechner_pipeline.fall registrieren --fall faelle/demo-klv \
+python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012
+python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
     --datei examples/Tarifrechner_KLV_TG2012.xlsm
-python -m rechner_pipeline.fall status --fall faelle/demo-klv
+python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
 ```
 
 Der Migrationsfall selbst läuft über die Ontologie-Pipeline (Abschnitt
 weiter unten); die Gates operieren jeweils auf dem Fall:
 
 ```bash
-python -m rechner_pipeline.gates.abox_validate --fall faelle/demo-klv --repo-root .
-python -m rechner_pipeline.gates.generation_golden --fall faelle/demo-klv \
+python -m rechner_pipeline.gates.abox_validate --fall faelle/klv-tg2012 --repo-root .
+python -m rechner_pipeline.gates.generation_golden --fall faelle/klv-tg2012 \
     --generation klv/tg2015 --repo-root .
 ```
 

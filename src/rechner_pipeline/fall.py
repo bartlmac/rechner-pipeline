@@ -23,11 +23,11 @@ des Systems.
 
 Kommandos (ein JSON-Objekt auf stdout, Log auf stderr)::
 
-    python -m rechner_pipeline.fall anlegen --fall faelle/demo-klv \
+    python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012 \
         [--beschreibung TEXT]
-    python -m rechner_pipeline.fall registrieren --fall faelle/demo-klv \
+    python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
         --datei examples/Tarifrechner_KLV_TG2012.xlsm [--als NAME]
-    python -m rechner_pipeline.fall status --fall faelle/demo-klv
+    python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
 
 ``assurance --fall <pfad> --quelle <name>`` faehrt die Gate-Kette auf
 einem Fall: Eingang wird vor dem Lauf gegen das Register geprueft

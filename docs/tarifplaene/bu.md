@@ -188,17 +188,17 @@ Karenzzeit, Leistungsdynamik und Beitragsdynamik, Kostenstruktur
 Rückkauf- und Beitragsfreistellungsregeln — jeweils als GeVo-Formeln in
 Abschnitt 7 zu ergänzen, bevor sie implementiert werden.
 
-# 13 Synthetische Demo-Generationen (Bestandsmodul)
+# 13 PLV-Bestandsgenerationen
 
-Der Beispielbestand rechnet zwei **synthetische** BU-Generationen —
-keine migrierten Tarife, keine A-Box, keine Quell-Provenienz. Jede
-trägt ihre Ontologie-Knoten-ID (Pflichtfeld `knoten`; Konvention wie im
-KLV-Tarifplan, § 13):
+Die beiden BU-Bestandsgenerationen der Pfefferminzia LV (fiktives
+Unternehmen dieses Arbeitsraums, siehe KLV-Tarifplan § 13) sind
+konstruiert und tragen ihre Ontologie-Knoten-ID (Pflichtfeld `knoten`;
+Präfix `plv_` = PLV-eigene Generation ohne Migrationsfall):
 
 | Knoten | Name | gültig | Zins | Tafeln (aktiv/i/ri/ti) | Zuschlag |
 |---|---|---|---|---|---|
-| `bu/demo_2000` | BU-2000 | 2000-01–2016-12 | 1.75% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 |
-| `bu/demo_2017` | BU-2017 | 2017-01–2035-12 | 0.90% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 |
+| `bu/plv_2000` | BU-2000 | 2000-01–2016-12 | 1.75% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 |
+| `bu/plv_2017` | BU-2017 | 2017-01–2035-12 | 0.90% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 |
 
-Diese Tabelle ist test-verankert gegen die Config: weicht sie ab, fällt
-die Suite.
+Diese Tabelle ist test-verankert gegen die Config: weicht sie ab,
+fällt die Suite.

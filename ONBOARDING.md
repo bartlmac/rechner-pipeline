@@ -34,8 +34,10 @@ generations are **parametrization**; new products come through the T-Box
 (gate G-T) — not by translating another workbook.
 
 A migration case lives in a **Fall-Arbeitsbereich** (`python -m
-rechner_pipeline.fall`, ADR-002) — `examples/` is demo material, NOT an input
-channel.
+rechner_pipeline.fall`, ADR-002). The artifacts of this workspace belong to
+**Pfefferminzia Lebensversicherung (PLV)** — the fictitious insurer the
+system is demonstrated on; `examples/` is that fiction's data room
+(synthetic sources and configs), NOT an input channel.
 
 ## 2. Setup
 Python **3.11+**. No LLM key needed.
@@ -50,19 +52,19 @@ Runtime (pinned): `openpyxl`, `oletools`, `pandas`, `pyarrow`, `matplotlib`,
 **Create a case and register its sources** (the input channel; sources are
 stored read-only with SHA-256 in `eingang.json` and checked before every run):
 ```
-python -m rechner_pipeline.fall anlegen --fall faelle/demo-klv
-python -m rechner_pipeline.fall registrieren --fall faelle/demo-klv \
+python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012
+python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
     --datei examples/Tarifrechner_KLV_TG2012.xlsm
-python -m rechner_pipeline.fall status --fall faelle/demo-klv
+python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
 ```
 
 **Pre-digest a source, then run the ontology gates:**
 ```
 python -m rechner_pipeline.gates.extract --repo-root . \
-    --input faelle/demo-klv/eingang/Tarifrechner_KLV_TG2012.xlsm \
-    --out-dir faelle/demo-klv/abgeleitet/vorverdichtung/xlsm-TG2012 --adapter excel
-python -m rechner_pipeline.gates.abox_validate --fall faelle/demo-klv --repo-root .
-python -m rechner_pipeline.gates.generation_golden --fall faelle/demo-klv \
+    --input faelle/klv-tg2012/eingang/Tarifrechner_KLV_TG2012.xlsm \
+    --out-dir faelle/klv-tg2012/abgeleitet/vorverdichtung/xlsm-TG2012 --adapter excel
+python -m rechner_pipeline.gates.abox_validate --fall faelle/klv-tg2012 --repo-root .
+python -m rechner_pipeline.gates.generation_golden --fall faelle/klv-tg2012 \
     --generation klv/tg2015 --repo-root .
 ```
 

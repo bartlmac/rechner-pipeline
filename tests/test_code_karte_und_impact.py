@@ -667,3 +667,19 @@ def test_landkarte_doku_ist_nicht_veraltet():
             "landkarte.md ist veraltet — neu erzeugen mit "
             "'python -m rechner_pipeline.ontologie.landkarte --format "
             "mermaid ...'")
+
+
+def test_module_ohne_knoten_sind_harter_drift(tmp_path: Path):
+    """Beschluss 2026-08-18: kein Baustein ohne ontologischen Knoten.
+    Ein unannotiertes Modul ist ein Befund, kein Bestandslisten-Eintrag —
+    nur reine Paket-__init__ ohne Fachverhalten sind ausgenommen."""
+    _schreibe(tmp_path / "paket" / "modul.py", "WERT = 1\n")
+    _schreibe(tmp_path / "paket" / "__init__.py", "")
+    index = baue_index(tmp_path / "paket")
+    befunde = drift_report(index, [])
+    assert any("modul.py: keine Knoten-Annotation" in b for b in befunde)
+    assert not any("__init__.py" in b for b in befunde)
+    # Annotiert -> kein Befund:
+    _schreibe(tmp_path / "paket" / "modul.py",
+              '"""M.\n\nKnoten: klv\n"""\nWERT = 1\n')
+    assert drift_report(baue_index(tmp_path / "paket"), []) == []

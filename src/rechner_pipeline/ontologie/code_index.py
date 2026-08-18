@@ -13,9 +13,11 @@ bidirektionalen Index (nie handgepflegt) und meldet Drift:
 * Testmodule ohne Knoten-Bindung — jede Testdatei erklaert, welchen
   Fachknoten sie verankert; das ist die Grundlage der
   Impact-Berechnung (``ontologie.impact``),
-* Module ohne Knoten-Annotation — als Bestandsaufnahme ausgewiesen
-  (die technische Rueckgrat-Schicht steht bewusst ausserhalb des
-  ontologischen Schnitts und ist hier gelistet, nicht verboten).
+* Module ohne Knoten-Annotation — ein HARTER Befund fuer jedes
+  Modul ausser ``__init__.py`` (Beschluss Bartek 2026-08-18: kein
+  Rechenkern-Baustein ohne ontologischen Knoten; Paket-Initialisierer
+  ohne eigenes Fachverhalten sind die einzige Ausnahme und bleiben als
+  Bestandsaufnahme gelistet).
 
 Knoten-IDs sind hierarchisch (``familie[/generation[/zelle]]``,
 ``ontologie.ids.knoten_id``): Code bindet an die groebste Ebene, die er
@@ -154,6 +156,13 @@ def drift_report(
                     f"Knoten {k!r}: unbekannte Wurzel {wurzel!r} "
                     f"(erlaubt: {', '.join(wurzeln)})"
                 )
+    for modul in index.get("unannotiert", []):
+        if not modul.endswith("__init__.py"):
+            befunde.append(
+                f"Modul {modul}: keine Knoten-Annotation — kein Baustein "
+                "ohne ontologischen Knoten (Zeile 'Knoten: <id>' im "
+                "Modul-Docstring ergaenzen)"
+            )
     if test_bindung is not None:
         for name in test_bindung["ohne_bindung"]:
             befunde.append(

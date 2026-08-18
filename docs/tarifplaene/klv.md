@@ -217,26 +217,27 @@ Beitragsreduktion, Wiederinkraftsetzung, monatsgenaues Ereignisgitter,
 Überschussbeteiligung — jeweils als GeVo-Formeln in Abschnitt 7 zu
 ergänzen, bevor sie implementiert werden.
 
-# 13 Synthetische Demo-Generationen (Bestandsmodul)
+# 13 PLV-Bestandsgenerationen
 
-Der Beispielbestand (`examples/bestand_*.toml`) rechnet vier
-**synthetische** KLV-Generationen. Sie sind KEINE migrierten Tarife —
-es gibt zu ihnen keinen Migrationsfall, keine A-Box und keine
-Quell-Provenienz; ihre Rechnungsgrundlagen sind für einen realistisch
-geschichteten Demo-Bestand gewählt. Damit sie trotzdem nicht am System
-vorbei existieren, trägt jede eine **Ontologie-Knoten-ID** (Pflichtfeld
-`knoten` der Bestand-Config, dieselbe Konvention wie A-Box und Gate O3;
-Wurzel = Produktfamilie, Präfix `demo_` = synthetisch):
+Die **Pfefferminzia Lebensversicherung (PLV)** ist das fiktive
+Unternehmen dieses Arbeitsraums: Zielkern und Bestand gehören ihr,
+Migrationsfälle übernehmen fremde Bestände in die PLV. Ihre vier
+KLV-Bestandsgenerationen sind konstruiert (kein Migrationsfall, keine
+Quell-Provenienz) und tragen — wie jede Generation, die das System
+rechnet — eine **Ontologie-Knoten-ID** (Pflichtfeld `knoten` der
+Bestand-Config, dieselbe Konvention wie A-Box und Gate O3; Wurzel =
+Produktfamilie, Präfix `plv_` = PLV-eigene Generation ohne
+Migrationsfall):
 
 | Knoten | Name | gültig | Zins | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2/3}$ | $\kappa$ |
 |---|---|---|---|---|---|---|---|---|
-| `klv/demo_1994` | KLV-1994 | 1994-07–2007-12 | 4.00% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 |
-| `klv/demo_2008` | KLV-2008 | 2008-01–2016-12 | 2.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/demo_2017` | KLV-2017 | 2017-01–2021-12 | 0.90% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/demo_2022` | KLV-2022 | 2022-01–2035-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
+| `klv/plv_1994` | KLV-1994 | 1994-07–2007-12 | 4.00% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 |
+| `klv/plv_2008` | KLV-2008 | 2008-01–2016-12 | 2.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
+| `klv/plv_2017` | KLV-2017 | 2017-01–2021-12 | 0.90% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
+| `klv/plv_2022` | KLV-2022 | 2022-01–2035-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
 
-Migrierte Generationen (z. B. `klv/tg2015`) kommen erst nach ihrer
-fachlichen Abnahme (G-1/G-2) in eine Bestand-Config — dann mit der ID
-ihres Migrationsfalls und der durch Gate O3 geprüften Parametrierung.
-Diese Tabelle ist test-verankert gegen die Config: weicht sie ab, fällt
-die Suite.
+Migrierte Generationen kommen erst nach ihrer fachlichen Abnahme
+(G-1/G-2) in eine Bestand-Config — dann mit der Knoten-ID ihres
+Migrationsfalls (z. B. `klv/tg2015`) und der durch Gate O3 geprüften
+Parametrierung. Diese Tabelle ist test-verankert gegen die Config:
+weicht sie ab, fällt die Suite.
