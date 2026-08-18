@@ -37,7 +37,10 @@ REF = dt.date(2010, 1, 1)
 @pytest.fixture(scope="module")
 def config():
     cfg = copy.deepcopy(load_config(EXAMPLE))
-    cfg.generationen[1].neuzugang_pro_jahr = 20  # KLV-2008 (2005-2015)
+    # Namenswahl statt Index: die PLV-Generationenleiter darf wachsen,
+    # ohne dass dieser Test still eine andere Generation trifft.
+    gen = next(g for g in cfg.generationen if g.name == "KLV-2008")
+    gen.neuzugang_pro_jahr = 20  # Fenster 2008-01..2011-12
     return cfg
 
 
@@ -82,15 +85,17 @@ def test_neuzugaenge_liegen_im_fenster_und_gueltigkeitsraum(config):
     starts = zugaenge["insurance_start"]
     assert (starts > pd.Timestamp(REF)).all()
     assert (starts <= pd.Timestamp(bis)).all()
-    # Nur KLV-2008 hat Neuzugang konfiguriert; Fenster 2005..2015:
+    # Nur KLV-2008 hat Neuzugang konfiguriert; Fenster 2008..2011:
     assert set(zugaenge["tarif_generation"]) == {"KLV-2008"}
     # Nummernkreis: Offset 2 Mio im Generations-Block, disjunkt vom Batch:
     assert (zugaenge["police_id"] > 2 * 10_000_000 + 2_000_000).all()
     assert not zugaenge["police_id"].duplicated().any()
-    # Volle Jahrgaenge im Fenster tragen den konfigurierten Jahres-Zugang:
+    # Voller Jahrgang im Fenster traegt den konfigurierten Jahres-Zugang;
+    # nach dem Fensterende (2011-12) entsteht KEIN Zugang mehr:
     je_jahr = starts.dt.year.value_counts()
-    for jahr in (2011, 2012, 2013):
-        assert je_jahr.get(jahr, 0) == 20
+    assert je_jahr.get(2011, 0) == 20
+    for jahr in (2012, 2013):
+        assert je_jahr.get(jahr, 0) == 0
 
 
 def test_neuzugang_praefix_konstanz(config):
