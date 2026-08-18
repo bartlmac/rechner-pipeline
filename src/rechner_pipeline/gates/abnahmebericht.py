@@ -99,6 +99,7 @@ def baue_bericht(
     stichtag_2: str,
     suite: Dict[str, Any],
     spec: Optional[TransformationsSpec] = None,
+    transformation_ergebnis: Optional[Dict[str, Any]] = None,
     bestandsbericht_vor: Optional[str] = None,
     bestandsbericht_nach: Optional[str] = None,
 ) -> str:
@@ -194,6 +195,22 @@ def baue_bericht(
                 teile.append(
                     f"<li><b>{_e(k.quellspalte)}</b>: {_e(k.frage)} — "
                     f"{status}</li>")
+            teile.append("</ul>")
+
+    if transformation_ergebnis is not None:
+        te = transformation_ergebnis
+        teile.append("<h3>Transformationsergebnis (Anwendung des Mappings)"
+                     "</h3>")
+        befunde = list(te.get("befunde", []))
+        klasse = "gruen" if not befunde else "rot"
+        teile.append(
+            f"<p>Quellzeilen: <b>{int(te['zeilen_quelle']):d}</b> — "
+            f"transformiert: <b>{int(te['zeilen_ziel']):d}</b> — "
+            f"Zeilen mit Befund (nicht ausgegeben): "
+            f"<span class='{klasse}'>{len(befunde):d}</span></p>")
+        if befunde:
+            teile.append("<ul>")
+            teile.extend(f"<li>{_e(b)}</li>" for b in befunde)
             teile.append("</ul>")
 
     if bestandsbericht_vor or bestandsbericht_nach:

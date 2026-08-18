@@ -66,7 +66,11 @@ def test_gruener_bericht_mit_allen_abschnitten(tmp_path) -> None:
     pfad = schreibe_bericht(
         tmp_path / "bericht.html", titel="Abnahme Testfall",
         stichtag_1="2026-01-01", stichtag_2="2027-01-01", suite=suite,
-        spec=_spec(), bestandsbericht_vor="vor/index.html",
+        spec=_spec(),
+        transformation_ergebnis={
+            "zeilen_quelle": 500, "zeilen_ziel": 498,
+            "befunde": ["Zeile 7, Feld status: Wert 'X' fehlt"]},
+        bestandsbericht_vor="vor/index.html",
         bestandsbericht_nach="nach/index.html",
     )
     text = pfad.read_text(encoding="utf-8")
@@ -77,6 +81,9 @@ def test_gruener_bericht_mit_allen_abschnitten(tmp_path) -> None:
     assert "NR -&gt; nichtraucher" in text          # Kodierung, escaped
     assert "&lt;Tarif rechnet unisex&gt;" in text   # HTML-Escaping
     assert "entschieden (bartek): storniert" in text
+    assert "Transformationsergebnis" in text
+    assert "<b>500</b>" in text and "<b>498</b>" in text
+    assert "Wert &#x27;X&#x27; fehlt" in text or "Wert 'X' fehlt" in text
     assert "vor/index.html" in text and "nach/index.html" in text
     assert "Keine." in text                          # keine Fehlschlaege
     # Einzelvergleiche: jeder Wert erscheint als echte Zahl im Bericht
