@@ -28,6 +28,8 @@ gehoert dann in ein Gate oder einen Validator.
 | Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (G-T) |
 | Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen RECHNEN, Entscheidungs-Dossier + Empfehlung liefern, dann STOPP | entscheiden (auch nicht "offensichtliche" Faelle); Quellen-Hierarchie festlegen |
 | Gate-Autorenschaft | `author-rechner-toolbox-gate` | neue Pruef-CLIs unter dem Ledger-/Exit-Contract | Fachlogik ausserhalb des Pruefens |
+| Migrations-Abnahme | `pruefe-migrationsabnahme` | deterministische Abnahmepruefung ueber zwei Stichtage (Migrationssuite, GeVo-Vergleich, Mapping-Tabelle, Bestandsberichte vor/nach) als G-2-Vorlage aufbereiten | abnehmen (Mensch, G-2); Werte selbst rechnen; Toleranzen aufweichen; Erwartungswerte "korrigieren" |
+| Migrations-CI | `integriere-migrationsinkrement` | Code-Aenderungen waehrend laufender Migrationen als kleine knotengebundene Inkremente integrieren (ADR-007: Impact, Gesamt-Suite inkl. aller Faelle, benanntes Staging) | langlebige Branches oder Kern-Forks; Landung ohne falluebergreifenden Beweis; Rueckgrat ohne Koordination; Push (Mensch) |
 
 ## Zusammenspiel (wer uebergibt an wen)
 
@@ -59,7 +61,7 @@ als eigener Skill mit demselben Muster:
 | Erweiterungsstellen implementieren | erste Spez mit offener Erweiterungsstelle (freie Implementierung am benannten Ort, unter entwickle-im-zielsystem plus fallweisen Regeln) |
 | Bestandsdaten-Extraktion | erster Fall mit Bestandsabzug als Quelle (Schema-Profiling-Vorverdichter plus Extraktions-Skill-Erweiterung) |
 | Legacy-Code-Analyse | erster Fall mit Quellsystem-Code (AST/Callgraph-Vorverdichter, Terminologie-Lokalisierung, dort auch Embeddings-Freigabe) |
-| Release-/Merge-Vorbereitung | Integration der O-Gates in die Team-Abnahme (nach F2-Beschluss mit Albrecht) |
+| Release-/Merge-Vorbereitung | Grundregeln seit 2026-08-18 in `integriere-migrationsinkrement`; offen bleibt die Integration der O-Gates in die Team-Abnahme (nach F2-Beschluss mit Albrecht) |
 
 ## Pflege-Regeln
 

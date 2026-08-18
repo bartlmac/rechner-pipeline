@@ -46,6 +46,14 @@ def test_codex_repo_skills_match_claude_skills() -> None:
             ".claude/skills/bereite-fachkonflikt-auf/SKILL.md",
             ".agents/skills/bereite-fachkonflikt-auf/SKILL.md",
         ),
+        (
+            ".claude/skills/pruefe-migrationsabnahme/SKILL.md",
+            ".agents/skills/pruefe-migrationsabnahme/SKILL.md",
+        ),
+        (
+            ".claude/skills/integriere-migrationsinkrement/SKILL.md",
+            ".agents/skills/integriere-migrationsinkrement/SKILL.md",
+        ),
     )
     for claude_rel, codex_rel in pairs:
         assert _read(codex_rel) == _read(claude_rel), codex_rel
@@ -96,11 +104,22 @@ def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
     assert "du entscheidest NICHT" in konflikt
     assert "vorlaeufig=True" in konflikt
     assert "Auswirkungsanalyse" in konflikt
+    abnahme = _read(".claude/skills/pruefe-migrationsabnahme/SKILL.md")
+    assert "du rechnest NIE selbst" in abnahme
+    assert "G-2" in abnahme
+    assert "NIE" in abnahme and "aufgeweicht" in abnahme   # Toleranzen
+    assert "Golden-Master-Tests" in abnahme                # Ausbau-Anker
+    ci = _read(".claude/skills/integriere-migrationsinkrement/SKILL.md")
+    assert "ADR-007" in ci
+    assert "Branch je INKREMENT" in ci
+    assert "Push macht der Mensch" in ci
+    assert "git add -A" in ci
     # Rollen-Katalog und Skills bleiben synchron:
     katalog = _read("docs/architektur/skill-architektur.md")
     for name in ("migrationsfall-durchfuehren", "extrahiere-quellfragment",
                  "entwickle-im-zielsystem", "teste-adversarial",
                  "dokumentiere-system", "bereite-fachkonflikt-auf",
-                 "author-rechner-toolbox-gate"):
+                 "author-rechner-toolbox-gate", "pruefe-migrationsabnahme",
+                 "integriere-migrationsinkrement"):
         assert name in katalog, name
         assert Path(f".claude/skills/{name}/SKILL.md").is_file(), name
