@@ -1,7 +1,6 @@
 # Rechner-Pipeline — agentische Bestandsmigration Leben
 
-> **Status:** öffentlicher Prototyp, lauffähig Ende-zu-Ende. Begleitender
-> Arbeitsraum eines DAV-Projekts unter der AG Bestandsmigration.
+> **Status:** öffentlicher Prototyp, lauffähig Ende-zu-Ende.
 > Vorgängerprojekt: [portxlpy](https://github.com/bartlmac/portxlpy).
 > Was der aktuelle Stand kann, was er bewusst noch nicht kann und was
 > sich zuletzt geändert hat: [`CHANGELOG.md`](CHANGELOG.md).

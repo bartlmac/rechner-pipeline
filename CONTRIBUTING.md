@@ -55,4 +55,4 @@ Diskussionsanstöße sind ausdrücklich willkommen.
 
 ## Kontakt
 
-Issues sind der bevorzugte Weg. Für die fachliche Einbettung im DAV-Kontext: Projekt der DAV-AG Bestandsmigration.
+Issues sind der bevorzugte Weg.
