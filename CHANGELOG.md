@@ -97,10 +97,9 @@ einen vorgeführten Stand zitierbar.
   Prosa.
 * **ADR-006 (17.08.): Der Portierungs-Anwendungsfall geht außer
   Betrieb** — die G0-G8-Kette des Sechs-Datei-Vergleichskerns, der
-  `assurance`-Orchestrator und der zugehörige Skill entfallen;
-  konserviert auf Branch `parked/portierung-excel` (Tag
-  `portierung-excel-2026-08`). Erhalten bleiben `gates.extract` und der
-  Ledger-Mechanismus.
+  `assurance`-Orchestrator und der zugehörige Skill entfallen; der
+  Stand ist beim Maintainer archiviert (kein veröffentlichter Branch).
+  Erhalten bleiben `gates.extract` und der Ledger-Mechanismus.
 * **ADR-007 (18.08.): Parallele Migrationen in einem Kern** — ein Trunk
   statt Kern-Forks oder langlebiger Branches; die Trennung leistet die
   Ontologie, nicht Git. Inkremente landen klein und beweisen bei jeder

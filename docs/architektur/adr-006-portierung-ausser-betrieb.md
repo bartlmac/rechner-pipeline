@@ -2,7 +2,11 @@
 
 Status: akzeptiert (Bartek, 2026-08-17). Umgesetzt: Entfernung aus dem
 Hauptzweig; konserviert auf Branch `parked/portierung-excel`, Tag
-`portierung-excel-2026-08`.
+`portierung-excel-2026-08`. *(Nachtrag 2026-08-19: Branch und Tag
+wurden vor der Veröffentlichung aus dem Arbeits-Repo entfernt — sie
+zeigten in die klarnamen-bereinigte Vorgänger-Historie. Das Konservat
+liegt vollständig im nicht veröffentlichten Archiv des Maintainers,
+als Git-Bundle.)*
 
 ## Kontext
 
@@ -109,9 +113,10 @@ Groesse, die es nicht gibt.
   mehr gibt (`orchestrate/`, `kern_output`, `assurance --fall`). Sie
   werden NICHT umgeschrieben — ein ADR ist Protokoll, kein Handbuch —,
   sondern tragen einen Ablösungsvermerk auf dieses ADR.
-* Rueckweg: `git checkout parked/portierung-excel` bzw. der Tag. Sollte
-  ein kuenftiger Fall doch eine Uebersetzung brauchen, ist der Stand
-  vollstaendig und lauffaehig konserviert.
+* Rueckweg: der konservierte Stand ist vollstaendig und lauffaehig im
+  Archiv des Maintainers erhalten (Git-Bundle, siehe Nachtrag oben).
+  Sollte ein kuenftiger Fall doch eine Uebersetzung brauchen, laesst
+  er sich von dort wiederherstellen.
 
 ## Verworfene Alternative
 

@@ -28,8 +28,8 @@ Read `docs/architektur/migrations-pipeline-v01.md` first, then the role catalog
 **Historical note:** the project started from a one-time *translation act* — a
 coding agent ported an Excel/VBA calculator into a six-file Python kernel,
 accepted by a deterministic gate chain (617/617 values, 2026-07-22). That proof
-is complete. The porting machinery was retired on 2026-08-17 and is preserved
-on branch `parked/portierung-excel` / tag `portierung-excel-2026-08`.
+is complete. The porting machinery was retired on 2026-08-17; the retired
+state is archived by the maintainer (not a published branch).
 
 What replaces it is NOT "every migration is parametrization". That
 reading was explicitly corrected in ADR-007: a generation the target
