@@ -221,7 +221,7 @@ ergänzen, bevor sie implementiert werden.
 
 Die **Pfefferminzia Lebensversicherung (PLV)** ist das fiktive
 Unternehmen dieses Arbeitsraums: Zielkern und Bestand gehören ihr,
-Migrationsfälle übernehmen fremde Bestände in die PLV. Ihre vier
+Migrationsfälle übernehmen fremde Bestände in die PLV. Ihre neun
 KLV-Bestandsgenerationen sind konstruiert (kein Migrationsfall, keine
 Quell-Provenienz) und tragen — wie jede Generation, die das System
 rechnet — eine **Ontologie-Knoten-ID** (Pflichtfeld `knoten` der

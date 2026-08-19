@@ -1,21 +1,17 @@
-"""Tests for the gate-result ledger wiring of the gate commands.
+"""Ledger wiring of the ``extract`` (G0) gate command.
 
-The reviewer found that ``extract`` (G0), ``validate`` (G1) and ``security``
-(G2) did not emit the ``<command>.gate.json`` ledger entries that ``dossier``
-(G8) aggregates — so ``gates_present`` never counted them. This module asserts
-that all three commands:
+Current scope: ``extract`` is the only gate command covered here. The
+module asserts that it
 
-* accept ``--diagnostics-dir`` (previously ``extract``/``validate`` rejected it
-  with argparse exit 2);
-* write a ``<command>.gate.json`` ledger entry into that dir on BOTH the
-  pass and fail paths;
-* produce entries that round-trip through
-  :func:`rechner_pipeline.gates.orchestrate.dossier.load_gate_ledger` with no read
-  errors and the correct gate ids (G0/G1/G2);
-* keep stdout JSON-pure — the ledger is a side artifact to disk, written by the
-  command body, separate from the single stdout JSON emitted by ``run_command``.
+* accepts ``--diagnostics-dir``;
+* writes an ``extract.gate.json`` ledger entry into that dir on BOTH the
+  pass and the fail path, carrying the gate id ``G0.extraction-manifest``
+  and the matching status;
+* keeps stdout JSON-pure — the ledger is a side artifact to disk, written by
+  the command body, separate from the single stdout JSON emitted by
+  ``run_command``.
 
-The commands are driven in-process via ``main(argv) -> ToolboxResult`` so the
+The command is driven in-process via ``main(argv) -> ToolboxResult`` so the
 structured result and the on-disk ledger can be asserted without spawning a
 process.
 

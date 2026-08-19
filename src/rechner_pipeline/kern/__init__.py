@@ -1,6 +1,6 @@
 """Der stabile Rechenkern — Thiele-/Zustandsmodell-Welt, parametrisierte API.
 
-Beschluss 2026-08-11 (Bartek/Leo): Der Rechenkern ist stabile,
+Beschluss Projektleitung/Aktuariat 2026-08-11: Der Rechenkern ist stabile,
 versionierte Software; das KI-System baut marginale Aenderungen ein
 (neue Tarifgeneration = Parametrierung, neues Produkt = Konfiguration
 des Rueckgrats), die Abnahme-Gates nehmen sie ab.

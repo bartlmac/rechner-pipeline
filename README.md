@@ -114,8 +114,11 @@ Quell-Lieferung.
 Vorgeführt wird das System an der fiktiven **Pfefferminzia
 Lebensversicherung (PLV)**: der Zielkern ist der PLV-Kern, der Bestand
 der PLV-Bestand, und Migrationsfälle übernehmen fremde Bestände in die
-PLV. Alle Artefakte der Fiktion sind synthetisch, ohne realen
-Kundenbezug: `configs/` hält die Bestands-Konfigurationen der PLV
+PLV. Die Artefakte der Fiktion enthalten keine echten Vertrags-,
+Kunden- oder Bestandsdaten; Struktur und Rechnungsgrundlagen sind aus
+realen Vorlagen abgeleitet, Unternehmen und Bestände sind frei
+erfunden (zu den Rechnungsgrundlagen siehe `NOTICE.md`):
+`configs/` hält die Bestands-Konfigurationen der PLV
 (TOML, von Suite und Berichten geladen), `tests/fixtures/` synthetische
 Quellmappen für die Extraktions-Tests, und `lieferungen/` das Frachtgut
 der Showcase-Migrationen — die Lieferung eines fiktiven abgebenden
@@ -209,10 +212,16 @@ python -m rechner_pipeline.gates.generation_golden --fall faelle/mein-fall \
 
 # menschliche Gates:
 python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ... \
-    --wert ... --entscheider ... --begruendung ...
+    --wert ... --entscheider ... --begruendung ... --rolle mensch
 python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate G-1 \
-    --entscheid angenommen --entscheider ... --begruendung ...
+    --entscheid angenommen --entscheider ... --begruendung ... --rolle mensch
 ```
+
+`--rolle` ist bei beiden Kommandos Pflicht (ohne das Flag brechen sie
+mit Exit-Code 2 ab) und trägt die Grenze zwischen Mensch und Agent:
+endgültige Diskrepanz-Auflösungen sind Menschen vorbehalten, und ein
+Agent (`--rolle agent`) kann ein menschliches Gate nur **ablehnen**,
+nie annehmen.
 
 Die Code-Ontologie navigiert und begrenzt Änderungen:
 
@@ -252,3 +261,11 @@ gemeinsamen Branch — Änderungen werden nach Absprache übernommen.
 ## Lizenz
 
 MIT — siehe `LICENSE`.
+
+**Drittmaterial:** Die MIT-Lizenz deckt den Code und die hier selbst
+verfassten Dokumente. Die Tafelvektoren in
+`src/rechner_pipeline/kern/tafeln.xml` enthalten Sterbe- und
+Ausscheidetafeln der Deutschen Aktuarvereinigung (DAV) — Werke Dritter,
+deren Nutzungsrechte beim jeweiligen Rechteinhaber liegen und von
+Anwendern selbst zu klären sind. Welche Vektoren betroffen sind, woher
+sie stammen und was rechtlich noch offen ist, steht in `NOTICE.md`.

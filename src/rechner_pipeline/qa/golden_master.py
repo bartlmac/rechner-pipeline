@@ -1,23 +1,24 @@
 """
-Fester Golden-Master-Harness (reviewter Code, NICHT LLM-generiert).
+Die Vergleichs-Engine des Golden Master (reviewter Repo-Code).
 
-Validiert den generierten Rechenkern gegen die deterministisch aus dem Excel
-extrahierten Erwartungswerte (``info_from_excel/*_scalar.json`` und
-``*_table_values.csv``). Ersetzt den bisher pro Lauf LLM-generierten
-``test_run_advanced.py`` (siehe ``dev/CR-002-fixed-golden-master-harness.md``).
+Sie haelt berechnete Werte gegen deterministisch extrahierte
+Erwartungswerte (``*_scalar.json`` und ``*_table_values.csv``) und
+liefert das Urteil als :class:`Report`. Heutiger Nutzer ist Gate O3
+(:mod:`rechner_pipeline.gates.generation_golden`), das damit den
+parametrierten Zielkern gegen den Quell-Rechner eines Migrationsfalls
+haelt (ADR-006).
 
-**Contract:** Der generierte Rechenkern muss in ``test_run.py`` eine Funktion
-``golden_master_outputs() -> dict`` exponieren, die die berechneten Werte mit
-Namen identisch zu den Erwartungsdateien liefert::
+Dieses Modul fuehrt keinen fremden Code aus und laedt nichts nach: es
+bekommt Erwartung und Berechnung als Datenstrukturen::
 
     {
       "scalars": {"<prefix>": {"<name>": <float>, ...}},
       "tables":  {"<prefix>": [ {"<spalte>": <float>, ...}, ... ]},
     }
 
-Die Vergleichs-Engine selbst ist idiom-stabil und unabhängig von der
-LLM-gewählten Implementierung -- sie ordnet ausschließlich über die Namen in
-den Erwartungsdateien zu.
+Die Zuordnung laeuft ausschliesslich ueber die Namen in den
+Erwartungsdateien — die Engine ist damit unabhaengig davon, wer die
+berechneten Werte erzeugt hat.
 
 **Vermeidung von Falsch-Akzeptanzen.** Die Engine wertet ``Report.ok`` nicht
 nur über ``deviations`` aus, sondern berücksichtigt auch ``unmatched_columns``;
@@ -28,9 +29,9 @@ vermieden:
 * Jede erwartete Spalte mit Daten, die im berechneten Output nicht zugeordnet
   werden kann, ist jetzt eine **harte Abweichung** (``Report.ok`` ist False).
 * ``Report.compared_anything`` macht sichtbar, ob überhaupt ein Skalar oder
-  eine Tabellenzelle verglichen wurde. Der ``golden_master``-Befehl wertet das
-  als Coverage-Frage (sparse/none) aus und akzeptiert einen Null-Vergleich
-  nicht als vollwertigen Golden-Master.
+  eine Tabellenzelle verglichen wurde. Gate O3 wertet das als eigene
+  Coverage-Frage aus und akzeptiert einen Null-Vergleich nicht als
+  bestandenen Golden-Master.
 
 Knoten: klv, system/assurance
 """
@@ -39,7 +40,6 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -122,8 +122,8 @@ class Report:
         nicht zugeordnete erwartete Spalten vorliegen.
 
         Hinweis: Die Null-Vergleichs-Coverage (``compared_anything``) wird hier
-        bewusst NICHT eingerechnet -- der ``golden_master``-Befehl behandelt sie
-        als Coverage-/Human-Review-Frage (exit 31), nicht als Abweichung.
+        bewusst NICHT eingerechnet -- das aufrufende Gate behandelt sie als
+        eigene Coverage-Frage, nicht als Abweichung.
         """
         return not self.deviations and not self.unmatched_columns
 
@@ -240,37 +240,3 @@ def load_expected(info_dir: Path) -> Dict[str, Any]:
         "scalars": load_expected_scalars(info_dir),
         "tables": load_expected_tables(info_dir),
     }
-
-
-# --- Launcher (wird von run_compare via fs_confine ausgeführt) -------------
-
-
-def main() -> None:
-    generated = Path.cwd()
-    repo_root = generated.parent
-    info_dir = repo_root / "runs" / "info_from_excel"
-
-    sys.path.insert(0, str(generated))
-    try:
-        import test_run  # generierter Rechenkern
-    except Exception as exc:
-        print(f"[FAIL] Konnte generierten Rechenkern (test_run) nicht importieren: {exc}")
-        raise SystemExit(2)
-
-    if not hasattr(test_run, "golden_master_outputs"):
-        print(
-            "[FAIL] Contract verletzt: test_run.golden_master_outputs() fehlt. "
-            "Der Rechenkern muss berechnete Werte über diese Funktion liefern "
-            "(siehe dev/CR-002)."
-        )
-        raise SystemExit(3)
-
-    computed = test_run.golden_master_outputs()
-    expected = load_expected(info_dir)
-    report = compare(expected, computed)
-    print(report.render())
-    raise SystemExit(0 if report.ok else 1)
-
-
-if __name__ == "__main__":  # pragma: no cover
-    main()

@@ -20,10 +20,14 @@ Diskussionsanstöße sind ausdrücklich willkommen.
 - Agenten-Anweisungen (`AGENTS.md`, die Skills unter `.claude/skills/`
   und `.agents/skills/`) sind versionierte Artefakte, keine
   Wegwerf-Prompts; die Spiegel-Parität ist test-erzwungen.
-- Beispielartefakte (Excel-Rechner, Tafeln, Bestands-Configs der
-  fiktiven Pfefferminzia LV) müssen synthetisch sein — keine echten
+- Beispielartefakte (Excel-Rechner, Bestandsabzüge, Bestands-Configs
+  der fiktiven Pfefferminzia LV) müssen synthetisch sein — keine echten
   Kunden- oder Bestandsdaten. Keine Klarnamen von Personen in
-  eingecheckten Dateien oder Commit-Botschaften.
+  eingecheckten Dateien oder Commit-Botschaften. Für die
+  Rechnungsgrundlagen gilt das ausdrücklich **nicht**: die
+  Tafelvektoren in `src/rechner_pipeline/kern/tafeln.xml` sind
+  teilweise Drittmaterial (DAV-Tafeln) — siehe `NOTICE.md`, bevor dort
+  etwas ergänzt wird.
 
 ## Lokale Konfiguration
 

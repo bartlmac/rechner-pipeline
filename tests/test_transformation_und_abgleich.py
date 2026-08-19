@@ -2,10 +2,13 @@
 
 Verankert die beiden Migrations-Maschinerien VOR ihrem ersten echten
 Einsatz (Baldrian-Fall): das Mapping ist beidseitig geprueft und
-deterministisch angewandt; der Abgleich belegt eine Rechner-Falsch-
-Lesart automatisch, verweigert aber jede automatische Aufloesung,
-sobald die MELDUNG die verworfene Quelle ist (harte Regel Bartek
-2026-08-18) oder der Beleg nicht eindeutig ist.
+deterministisch angewandt; der Abgleich loest eine Diskrepanz nur dann
+automatisch auf, wenn die Belege genau EINE Lesart stuetzen und die
+verworfene Lesart NICHT aus der Meldung stammt (harte Regel der
+Projektleitung 2026-08-18). Sonst bleibt die Aufloesung beim Menschen.
+
+Die Zahlen der Testfaelle sind Mechanik-Beispiele, keine Aussage ueber
+die Aufloesung eines konkreten Migrationsfalls.
 
 Knoten: klv
 
@@ -122,8 +125,8 @@ def test_offener_konflikt_blockiert_bis_zur_menschlichen_entscheidung():
     # ... entschieden ist der Konflikt kein Blocker mehr:
     spec = _spec(offene_konflikte=[OffenerKonflikt(
         quellspalte="STORNO_KZ", frage="was bedeutet 'S'?",
-        entscheidung="'S' = Stundung; wird nicht uebernommen, im "
-                     "Protokoll ausgewiesen", entscheider="Bartek")])
+        entscheidung="<entschieden durch den Menschen>",
+        entscheider="Bartek")])
     assert validate_spec(spec, QUELLSPALTEN + ["STORNO_KZ"]) == []
 
 
@@ -166,7 +169,8 @@ def test_unbekannter_kodierungswert_verwirft_die_zeile_laut():
 
 
 def _belege(feld: str, wahrer_wert, anzahl: int = 3):
-    """Abzug-Belege aus dem Kern selbst erzeugen — mit der WAHREN Lesart.
+    """Abzug-Belege aus dem Kern erzeugen — mit der im Testfall als
+    zutreffend gesetzten Lesart.
 
     Kontrollrechnung gegen unabhaengigen Pfad: die Belege entstehen
     ueber ``berechne`` (Golden-Master-View), der Abgleich rechnet
@@ -194,7 +198,12 @@ def _belege(feld: str, wahrer_wert, anzahl: int = 3):
 
 
 def test_abgleich_belegt_rechnerfehler_automatisch():
-    """Der Demo-Kernfall: Meldung 1,25 % (wahr), Rechner 1,75 % (falsch)."""
+    """Genau eine Lesart passt zu den Belegen -> automatische Aufloesung.
+
+    Die verworfene Lesart stammt aus dem Rechner; das Protokoll fuehrt
+    beide Residuen. Welcher Wert in einem echten Fall der richtige ist,
+    sagt dieser Test nicht — er prueft die Urteilslogik.
+    """
     belege = _belege("zins", 0.0125)
     urteil = gleiche_ab("zins", [
         Lesart(0.0125, "tarifmeldung"),
@@ -212,7 +221,7 @@ def test_abgleich_belegt_rechnerfehler_automatisch():
 
 def test_meldungsfehler_bleibt_immer_beim_menschen():
     """Harte Regel: verworfene MELDUNGS-Lesart -> nie automatisch."""
-    belege = _belege("zins", 0.0175)           # hier ist der RECHNER wahr
+    belege = _belege("zins", 0.0175)           # Belege stuetzen den Rechner
     urteil = gleiche_ab("zins", [
         Lesart(0.0125, "tarifmeldung"),
         Lesart(0.0175, "tarifrechner"),
@@ -246,7 +255,7 @@ def test_ohne_belege_kein_urteil():
 
 
 def test_beta1_fall_wird_ebenfalls_belegt():
-    """Der zweite Demo-Fall: beta1 Haus — Meldung 1,0 %, Rechner 0."""
+    """Dieselbe Mechanik an einem zweiten Feld (Kostensatz statt Zins)."""
     belege = _belege("beta1", 0.01)
     urteil = gleiche_ab("beta1", [
         Lesart(0.01, "tarifmeldung"),

@@ -1,5 +1,20 @@
 # Migrations-Pipeline v0.1: Ontologie als Stage-Interface
 
+> **Teilweise ueberholt (Stand des Dokuments: 2026-08-15).** Es
+> beschreibt den Stand VOR
+> [ADR-006](adr-006-portierung-ausser-betrieb.md) (Portierung ausser
+> Betrieb) und [ADR-007](adr-007-parallele-migrationen-ein-kern.md)
+> (parallele Migrationen in einem Kern). Ueberholt sind insbesondere:
+> die G0-G8-Abnahmekette des Sechs-Datei-Vergleichskerns (Abschnitt 7)
+> — sie existiert nicht mehr, heute gibt es nur noch die Gates
+> `extract`, `abox_merge`, `abox_validate`, `generation_golden`,
+> `gate_entscheid`, `bestand_validate` und `abnahmebericht`; die
+> Aussage, in Stufe 1 gebe es keine Bestandsdaten-Quelle (Abschnitt 8);
+> der Skill-Zuschnitt (Abschnitt 9); und die ADR-Liste (Abschnitt 10).
+> Die Prinzipien, die Stufenlogik und die Objektmodelle gelten
+> unveraendert. Aktueller Rollen-Katalog:
+> [skill-architektur.md](skill-architektur.md).
+
 Stand: 2026-08-15. Am Migrationsfall KLV TG2012 -> TG2015 MECHANISCH
 abgenommen (Gate O3: 616 Werte gegen den Quell-Rechner, 0 Abweichungen);
 die MENSCHLICHEN Gates G-1/G-2 des Falls stehen aus (8 vorlaeufige
@@ -108,6 +123,13 @@ teilen nur den Ledger-Mechanismus (`gates/_common`). Die G-Kette bleibt
 der Abnahme-Weg des Sechs-Datei-Vergleichskerns; die Integration beider
 Wege ist eine Team-Entscheidung nach Fall 1 (Fragerunde F2).
 
+**Ueberholt seit ADR-006:** die G0-G8-Kette und der
+Sechs-Datei-Vergleichskern sind ausser Betrieb — `gates.validate`,
+`gates.security` und `gates.dossier` gibt es nicht mehr; erhalten
+blieben nur `gates.extract` (G0) und der Ledger-Mechanismus. Die
+Frage der Integration beider Wege hat sich damit erledigt: es gibt nur
+noch den O-/P9-Weg auf dem stabilen Zielkern.
+
 ## 8 Bewusst nicht in v0.1
 
 * GM deckt die BEISPIEL-Zelle des Quell-Rechners (einzel/nichtraucher);
@@ -122,6 +144,10 @@ Wege ist eine Team-Entscheidung nach Fall 1 (Fragerunde F2).
   der T-Box (kommen mit ihren Faellen ueber G-T), kein Legacy-Code-
   Vorverdichter, keine Bestandsdaten-Quelle in Stufe 1 (Quelltyp ist im
   Schema vorgesehen).
+  UEBERHOLT, soweit es die Bestandsdaten betrifft: den Quelltyp
+  Bestandsabzug/CSV gibt es inzwischen als eigenen Vorverdichter
+  (`quellen/bestand_profil.py`), auf dem der Skill
+  `transformiere-quellbestand` arbeitet.
 * Fall-Artefakte (A-Box, Spez, Entscheide) liegen im gitignorierten
   Fall-Arbeitsbereich — die Versionierung echter Faelle ausserhalb des
   Repos ist ADR-002-Zielbild, in v0.1 nicht ausgebaut. Die
@@ -163,6 +189,13 @@ Schichten, jede versioniert, jede mit eigener Aenderungs-Disziplin:
 | Skills (Agenten-Anweisungen) | WIE die probabilistischen Schritte urteilen: Extraktionsregeln je Quelltyp, das systematische Vorgehen eines Falls, Abbruchkriterien | `.claude/skills/` + `.agents/skills/` (Paritaet test-tragend): `migrationsfall-durchfuehren` (Runbook), `extrahiere-quellfragment` (Stage-1-Agent) | Commits; der Skill-Stand (Git-SHA) gehoert in den Akteur-String der Provenienz (P1) |
 | Praezedenzfall | WIE ein fertiges Ergebnis aussieht: A-Box, Spez, Fachspez, Diskrepanzen, Gate-Ledger des Falls KLV TG2012->TG2015 | `faelle/baldrian-klv-tg2015` (lokal; echte Faelle ausserhalb des Repos) | jeder abgeschlossene Fall wird Referenz des naechsten |
 
+UEBERHOLT ist die Skill-Zeile in ihrem Umfang: aus den zwei genannten
+Skills sind inzwischen zehn geworden (Extraktion, Runbook, Transformation
+des Quellbestands, Konfliktaufbereitung, Migrationsabnahme, Entwicklung
+im Zielsystem, Gate-Autorenschaft, Inkrement-Integration, Doku,
+adversariales Testen). Verbindlicher Katalog mit Rollen und Grenzen:
+[skill-architektur.md](skill-architektur.md).
+
 Die Verteilungsregel dahinter: Wissen, das GELTEN muss, wandert in Code
 und Contracts (erzwungen); Wissen, das URTEILEN anleitet, in Skills
 (versioniert, in der Provenienz zitiert); Wissen, das ZEIGT, in den
@@ -180,6 +213,11 @@ braucht); Testing/Abnahme = Gate-Kette + Suite + menschliche Gates.
 ADR-001 (Repo-Zielstruktur), ADR-002 (Fall-Arbeitsbereich), ADR-003
 (Pydantic fuer die Ontologie-Schicht), ADR-004 (Thiele-Kern ohne
 Excel-Anker; Kommutation als separater Zweitkern), ADR-005
-(Knoten-Hierarchie, Test-Bindung, Code-Karte, Impact). Entscheidungsgrundlage: die
+(Knoten-Hierarchie, Test-Bindung, Code-Karte, Impact). Hinzugekommen
+seit Redaktionsschluss dieses Dokuments — und fuer den heutigen Stand
+massgeblich: ADR-006 (Portierungs-Anwendungsfall ausser Betrieb; die
+G-Kette entfaellt) und ADR-007 (parallele Migrationen in einem Kern;
+knotengebundene Inkremente auf einem Trunk). Es sind damit sieben ADRs.
+Entscheidungsgrundlage: die
 Architektur-Fragerunde (D1-D4, F1-F3; privat dokumentiert, Ergebnisse
 in diesen ADRs).

@@ -97,15 +97,22 @@ the two-reporting-date migration suite with its HTML acceptance report
 for gate G-2. The deliveries may contain deliberate errors and
 source-system quirks — finding them IS the demonstration.
 
-**Pre-digest a source, then run the ontology gates:**
+**Pre-digest a source (gate G0):**
 ```
 python -m rechner_pipeline.gates.extract --repo-root . \
     --input faelle/klv-tg2012/eingang/Tarifrechner_KLV_TG2012.xlsm \
     --out-dir faelle/klv-tg2012/abgeleitet/vorverdichtung/xlsm-TG2012 --adapter excel
-python -m rechner_pipeline.gates.abox_validate --fall faelle/klv-tg2012 --repo-root .
-python -m rechner_pipeline.gates.generation_golden --fall faelle/klv-tg2012 \
-    --generation klv/tg2015 --repo-root .
 ```
+The ontology gates cannot follow directly on a fresh case: O1
+(`gates.abox_validate`) validates an A-Box, and O3
+(`gates.generation_golden`) validates a Tarif-Spez — neither exists
+yet. The A-Box is produced by the Stage-1 extraction agents plus the
+deterministic merge (`gates.abox_merge`), and the Spez is projected
+from the accepted A-Box. Calling O1 or O3 on a bare case fails with
+exit 2 **by design**: no silent default, the error names what is
+missing. Run them the way `migrationsfall-durchfuehren` does — after
+the stage that produces their input, and with the same `--generation`
+the case actually carries.
 
 **Generate a portfolio and its report.** Two DIFFERENT dates: `--bis` is
 the simulation horizon (how far events are projected), `--stichtag` only
@@ -140,7 +147,7 @@ Each gate is one command, writes one JSON to stdout plus a
 | O0 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
 | O1 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
 | O3 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values |
-| P9 | `gates.gate_entscheid` | immutable snapshots of the human gates (G-1, G-2, G-T); agents may only reject |
+| P9 | `gates.gate_entscheid` | immutable snapshots of the human gates (G-1, G-2, G-T); `--rolle mensch\|agent` is mandatory (exit 2 without it) and agents may only reject |
 | B1 | `gates.bestand_validate` | portfolio schema and movement identities per year, track and measure |
 
 ## 5. Non-negotiables
@@ -155,5 +162,10 @@ Each gate is one command, writes one JSON to stdout plus a
   IDs as the A-Box and gate O3. `code_index` must stay drift-free,
   `code_karte` finding-free.
 - **Full suite before every commit** (`.venv/bin/python -m pytest`). The impact
-  tool is informational; CI runs everything.
+  tool is informational — it never narrows what has to run. CI
+  (`.github/workflows/tests.yml`) runs the full suite on every push and
+  pull request; case-bound tests skip honestly there, because the
+  runner has no `faelle/` workspace. In a fresh clone expect the same:
+  the suite is green with those tests skipped; locally, with a case
+  workspace present, they run for real and must stay green.
 - Dependencies pinned exactly, new ones only via ADR. Push is the human's job.

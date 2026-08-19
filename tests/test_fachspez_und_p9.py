@@ -78,6 +78,26 @@ def test_fachspez_traegt_herkunft_und_vorlaeufig_warnung(fall_mit_konflikt):
     assert speichere_fachspez(spez, abox, f).read_text(encoding="utf-8") == text
 
 
+def test_fachspez_druckt_anmerkungen_der_abox(fall_mit_konflikt):
+    """Beobachtungen ohne Schemafeld erreichen den G-1-Leser (T-Box)."""
+    f, abox, spez, _ = fall_mit_konflikt
+    ueberschrift = "## 11 Anmerkungen der Extraktion (ohne Schemafeld)"
+    # Ohne Anmerkungen bleibt der Abschnitt stehen — Abwesenheit ist
+    # selbst eine Aussage, kein weggelassener Abschnitt.
+    abschnitt = erzeuge_fachspez(spez, abox).split(ueberschrift)[1]
+    assert "keine" in abschnitt
+
+    gen = abox.generationen[0]
+    gen.anmerkungen.extend([
+        "[meldung.docx] beta0 = 0,5 % genannt, kein Pflichtfeld",
+        "[rechner.xlsm] Tafelname in Blatt 2 abweichend geschrieben",
+    ])
+    abschnitt = erzeuge_fachspez(spez, abox).split(ueberschrift)[1]
+    for anmerkung in gen.anmerkungen:
+        assert anmerkung in abschnitt
+    assert "menschlich zu wuerdigen" in abschnitt
+
+
 def test_p9_annahme_blockt_bei_vorlaeufigen(fall_mit_konflikt):
     from rechner_pipeline.gates.gate_entscheid import main
 

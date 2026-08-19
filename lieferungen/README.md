@@ -2,7 +2,9 @@
 
 Frachtgut der Showcase-Migrationen: je Verzeichnis die Lieferung eines
 fiktiven abgebenden Unternehmens, mit der jeder eine Migration selbst
-durchführen kann. Alles synthetisch, ohne realen Kundenbezug — und die
+durchführen kann. Die Lieferungen enthalten keine echten Vertrags-,
+Kunden- oder Bestandsdaten; Unternehmen und Bestände sind frei erfunden
+(zu den Rechnungsgrundlagen siehe `NOTICE.md`) — und die
 Lieferungen können (gewollt) Fehler und Eigenheiten enthalten: genau
 die soll die Pipeline finden.
 

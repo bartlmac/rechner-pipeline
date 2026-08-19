@@ -51,9 +51,9 @@ min_alter_flex, min_rlz_flex. Optional: zillmer_dauer, ratzu_zw2/4/12.
    Keine Rohquellen, kein Vorwissen ueber die andere Quelle oder
    Generation, nichts aus anderen Faellen uebertragen.
 2. Jede Aussage braucht eine EXAKTE Fundstelle: Zelladresse wie
-   `Kalkulation!$G$7` (CSV-Spalte Adresse plus Blattname) bzw. beim
-   Meldungs-JSON ein Pfad wie `tabellen[2].zeilen[3]` oder
-   `formeln[7]`.
+   `<Blatt>!$G$7` (CSV-Spalte Adresse plus Blattname, also der
+   TATSAECHLICHE Blattname der Quelle) bzw. beim Meldungs-JSON ein
+   Pfad wie `tabellen[2].zeilen[3]` oder `formeln[7]`.
 3. Was die Quelle fuer ein Pflichtfeld NICHT hergibt, kommt in
    `nicht_belegt` — nichts raten, nichts ergaenzen. "Gesucht, nicht
    gefunden" ist eine Aussage; Schweigen ist der Fehler, den die
@@ -75,12 +75,21 @@ min_alter_flex, min_rlz_flex. Optional: zillmer_dauer, ratzu_zw2/4/12.
    fuer Beobachtungen, die kein Schemafeld haben (z. B. ein
    Kostenparameter, den der ModelPoint nicht kennt) — NICHT der Ort
    fuer Werte, die in `parameter` gehoeren.
+8. Weicht ein Blatt-, Bereichs- oder Namensmanager-Name der Quelle vom
+   Zielsystem ab, gehoert er nach `quellnamen`. Das ist eine Aussage
+   ueber das Quellsystem, kein Formatierungsdetail — der Abgleich
+   spaeterer Stufen haengt daran.
 
 ## Quelltyp-Hinweise
 
-**Tarifrechner (Vorverdichtung `xlsm-<GEN>/`):** Lies
-`Kalkulation.csv` (Format `Blatt;Adresse;Formel;Wert`) und
-`names_manager.csv`. Achtung Parameter-Matrix: fuehrt der Rechner
+**Tarifrechner (Vorverdichtung `xlsm-<GEN>/`):** Lies die Blatt-CSVs
+`<Blatt>.csv` (Format `Blatt;Adresse;Formel;Wert`) und
+`names_manager.csv`. Die Dateien sind nach dem BLATTNAMEN der Mappe
+benannt; welche es gibt, steht in `export_manifest.json`
+(`sheet_csvs`) — der Blattname kann im Quellsystem anders heissen als
+im Praezedenzfall (z. B. `Tarifrechnung` statt `Kalkulation`). Nimm
+keinen Namen als gegeben an, sieh im Manifest bzw. im Verzeichnis
+nach. Achtung Parameter-Matrix: fuehrt der Rechner
 Tarifvarianten in Spalten (Spaltenkoepfe als Auspraegungen, wirksame
 Werte per XLOOKUP), dann extrahiere JE VARIANTEN-SPALTE aus der Matrix
 — die sichtbare Wertespalte zeigt nur die aktuelle Beispiel-Eingabe.

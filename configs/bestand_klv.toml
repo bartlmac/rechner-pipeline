@@ -1,4 +1,4 @@
-# Beispiel-Konfiguration Bestandsdaten-Modul: KLV in vier Tarifgenerationen.
+# Beispiel-Konfiguration Bestandsdaten-Modul: KLV in neun Tarifgenerationen.
 # Die Generationen folgen den Hoechstrechnungszins-Stufen; die juengste
 # verkauft weiter (Neugeschaeft ueber den Stichtag hinaus).
 # Eigene, synthetische Parametrierung (Lehrbeispiel, keine realen Werte).
@@ -6,10 +6,11 @@
 
 [meta]
 seed = 20260811
-beschreibung = "Pfefferminzia LV (PLV): KLV-Bestand, vier Generationen (Lehrbeispiel)"
+beschreibung = "Pfefferminzia LV (PLV): KLV-Bestand, neun Generationen (Lehrbeispiel)"
 
 # --------------------------------------------------------------------------
-# Generation 1: klassisches KLV-Geschaeft der 1990er (DAV1994_T, hoher Zins)
+# Generation 1: KLV-1994, Verkauf 1994-07-01 bis 2000-06-30
+# Rechnungszins 4,0 %, Tafel DAV1994_T
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-1994"
@@ -79,7 +80,8 @@ var_j = "premium_duration"
 rho = 0.65
 
 # --------------------------------------------------------------------------
-# Generation 2: KLV-Neugeschaeft ab 2005 (DAV2008_T, abgesenkter Zins)
+# Generation 2: KLV-2000, Verkauf 2000-07-01 bis 2003-12-31
+# Rechnungszins 3,25 %, Tafel DAV1994_T
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2000"
@@ -144,7 +146,8 @@ var_j = "premium_duration"
 rho = 0.60
 
 # --------------------------------------------------------------------------
-# Generation 3: Hoechstrechnungszins 0,9 % (2017-2021)
+# Generation 3: KLV-2004, Verkauf 2004-01-01 bis 2006-12-31
+# Rechnungszins 2,75 %, Tafel DAV1994_T
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2004"
@@ -209,7 +212,8 @@ var_j = "premium_duration"
 rho = 0.60
 
 # --------------------------------------------------------------------------
-# Generation 3: Hoechstrechnungszins 0,9 % (2017-2021)
+# Generation 4: KLV-2007, Verkauf 2007-01-01 bis 2007-12-31
+# Rechnungszins 2,25 %, Tafel DAV1994_T
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2007"
@@ -274,7 +278,8 @@ var_j = "premium_duration"
 rho = 0.60
 
 # --------------------------------------------------------------------------
-# Generation 3: Hoechstrechnungszins 0,9 % (2017-2021)
+# Generation 5: KLV-2008, Verkauf 2008-01-01 bis 2011-12-31
+# Rechnungszins 2,25 %, Tafel DAV2008_T
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2008"
@@ -339,7 +344,8 @@ var_j = "premium_duration"
 rho = 0.60
 
 # --------------------------------------------------------------------------
-# Generation 3: Hoechstrechnungszins 0,9 % (2017-2021)
+# Generation 6: KLV-2012, Verkauf 2012-01-01 bis 2014-12-31
+# Rechnungszins 1,75 %, Tafel DAV2008_T
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2012"
@@ -404,7 +410,8 @@ var_j = "premium_duration"
 rho = 0.60
 
 # --------------------------------------------------------------------------
-# Generation 3: Hoechstrechnungszins 0,9 % (2017-2021)
+# Generation 7: KLV-2015, Verkauf 2015-01-01 bis 2016-12-31
+# Rechnungszins 1,25 %, Tafel DAV2008_T
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2015"
@@ -469,7 +476,8 @@ var_j = "premium_duration"
 rho = 0.60
 
 # --------------------------------------------------------------------------
-# Generation 3: Hoechstrechnungszins 0,9 % (2017-2021)
+# Generation 8: KLV-2017, Verkauf 2017-01-01 bis 2021-12-31
+# Rechnungszins 0,9 %, Tafel DAV2008_T
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2017"
@@ -534,7 +542,8 @@ var_j = "premium_duration"
 rho = 0.60
 
 # --------------------------------------------------------------------------
-# Generation 4: laufendes Neugeschaeft, Hoechstrechnungszins 0,25 %
+# Generation 9: KLV-2022, Verkauf 2022-01-01 bis 2035-12-31
+# Rechnungszins 0,25 %, Tafel DAV2008_T
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2022"

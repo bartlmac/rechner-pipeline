@@ -109,9 +109,15 @@ def kopfzeilen(
     bis: Optional[_dt.date],
     quelle_hash: Optional[str] = None,
 ) -> List[str]:
-    """Die Kopfangaben des Berichts (Klartext, ohne Markup)."""
+    """Die Kopfangaben des Berichts (Klartext, ohne Markup).
+
+    Die Vertragszahl ist die Zeilenzahl der Datei, also die ganze
+    Kohorte einschließlich längst abgegangener Verträge — nicht der
+    In-force-Bestand eines Stichtags. Der steht je Stichtag im
+    Bestandsverlauf und in den aktuariellen Kennzahlen.
+    """
     zeilen = [
-        f"Verträge im Bestand: {len(df)}",
+        f"Verträge in der Datei (Kohorte inkl. Abgängen): {len(df)}",
         f"Tarifgenerationen: {', '.join(generationen)}",
         f"Berichtszeitraum: {stichtage[0].year} bis {stichtage[-1].year}",
     ]

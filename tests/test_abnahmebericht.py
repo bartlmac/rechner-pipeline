@@ -57,7 +57,8 @@ def _spec() -> TransformationsSpec:
         ],
         offene_konflikte=[OffenerKonflikt(
             quellspalte="STORNO_KZ", frage="Bedeutung von 'S'?",
-            entscheidung="storniert", entscheider="bartek")],
+            entscheidung="<entschieden durch den Menschen>",
+            entscheider="bartek")],
     )
 
 
@@ -80,7 +81,8 @@ def test_gruener_bericht_mit_allen_abschnitten(tmp_path) -> None:
     assert "POLNR" in text and "police_id" in text
     assert "NR -&gt; nichtraucher" in text          # Kodierung, escaped
     assert "&lt;Tarif rechnet unisex&gt;" in text   # HTML-Escaping
-    assert "entschieden (bartek): storniert" in text
+    assert ("entschieden (bartek): "
+            "&lt;entschieden durch den Menschen&gt;") in text
     assert "Transformationsergebnis" in text
     assert "<b>500</b>" in text and "<b>498</b>" in text
     assert "Wert &#x27;X&#x27; fehlt" in text or "Wert 'X' fehlt" in text

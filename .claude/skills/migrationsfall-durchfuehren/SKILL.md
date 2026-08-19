@@ -38,10 +38,20 @@ Nicht verhandelbar (P1-P10, Kurzform):
 
 `faelle/archiv/baldrian-klv-tg2015` ist der Praezedenzfall: die Baldrian Leben
 (fiktives abgebendes Unternehmen) liefert Tarifmeldung und Tarifrechner,
-die PLV uebernimmt den KLV-Bestand (TG2012 -> TG2015). Bei Unsicherheit ueber Artefakt-Formate dort
-nachsehen — nicht raten. Das G-1-Dokument dieses Falls
-(`abgeleitet/fachspez/klv-tg2015.md`) zeigt, wie das Ergebnis von
-Stufe 1+2 aussehen muss.
+die PLV uebernimmt den KLV-Bestand (TG2012 -> TG2015).
+
+Er dient AUSSCHLIESSLICH als Formvorlage: Artefakt-FORMATE und
+Verzeichnisstruktur nachschlagen, also wie ein Fragment, eine Spez oder
+ein G-1-Dokument aufgebaut ist. Werte, Lesarten, Zuordnungen oder
+Entscheidungen einer anderen Migration werden NIE uebernommen — jeder
+Fall wird aus seinen eigenen Quellen belegt, auch wenn er dieselbe
+Generation betrifft. Ein Wert, den du nicht in deiner Quelle gefunden
+hast, gehoert nach `nicht_belegt`, nicht aus dem Archiv abgeschrieben.
+
+Untersagt der Auftraggeber den Zugriff auf archivierte Faelle, gilt
+das Verbot ohne Ausnahme — auch fuer Formatfragen. Dann die Formate aus
+dem generierten Schema (`model_json_schema()`) und den Docstrings der
+beteiligten Module ableiten und im Zweifel den Menschen fragen.
 
 ## Ablauf
 

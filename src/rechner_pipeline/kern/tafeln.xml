@@ -1,4 +1,9 @@
 <?xml version='1.0' encoding='UTF-8'?>
+<!-- Drittmaterial: Sterbe- und Ausscheidetafeln der Deutschen
+     Aktuarvereinigung (DAV) sind Werke Dritter und NICHT von der
+     MIT-Lizenz dieses Repositoriums gedeckt. Die Nutzungsrechte liegen
+     beim jeweiligen Rechteinhaber und sind von Anwendern selbst zu
+     klaeren. Einzelheiten und Herkunft je Vektor: NOTICE.md. -->
 <tafeln>
   <table name="DAV1994_T_F">
     <entry age="0" qx="0.009003" />

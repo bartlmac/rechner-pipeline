@@ -1,8 +1,9 @@
 """Kernel-based evaluation of portfolio contracts (Fortschreibung support).
 
-Project decision (Leo/Bartek 2026-08-11): every calculated quantity — premium,
-present values, reserve at a reporting date — comes EXCLUSIVELY from the
-kernel; the Bestandsdaten module carries no actuarial formulas of its own.
+Project decision (Projektleitung/Aktuariat 2026-08-11): every calculated
+quantity — premium, present values, reserve at a reporting date — comes
+EXCLUSIVELY from the kernel; the Bestandsdaten module carries no actuarial
+formulas of its own.
 
 :func:`berechne_vertrag` evaluates one contract against the stable, promoted
 kernel (:mod:`rechner_pipeline.kern`) in-process: no subprocess, no

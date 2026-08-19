@@ -280,6 +280,27 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
     else:
         z.append("Keines erfasst.")
     z.append("")
+
+    z.append("## 11 Anmerkungen der Extraktion (ohne Schemafeld)")
+    z.append("")
+    anmerkungen = list(getattr(gen, "anmerkungen", None) or [])
+    if anmerkungen:
+        for a in anmerkungen:
+            z.append(f"- {_md(a)}")
+        z.append("")
+        z.append(
+            "Diese Beobachtungen der Extraktion haben KEIN Schemafeld — "
+            "sie sind weder belegt noch widerlegt und deshalb menschlich "
+            "zu wuerdigen (Herkunft in eckigen Klammern, soweit erfasst)."
+        )
+    else:
+        z.append("keine")
+        z.append("")
+        z.append(
+            "Auch die Abwesenheit ist eine Aussage: die Extraktion hat "
+            "nichts ausserhalb des Schemas festgehalten."
+        )
+    z.append("")
     return "\n".join(z) + "\n"
 
 

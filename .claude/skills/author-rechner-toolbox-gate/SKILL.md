@@ -10,7 +10,7 @@ description: >-
 
 # Authoring a rechner-pipeline toolbox gate
 
-A gate is a thin CLI wrapper over a `qa/`-engine. Gate logic lives in `qa/*`; the command wires flags, hashes, ledger, and the single JSON result. Model it on `toolbox/security.py` / `toolbox/golden_master.py`.
+A gate is a thin CLI wrapper over a `qa/`-engine. Gate logic lives in `qa/*`; the command wires flags, hashes, ledger, and the single JSON result. Model it on `src/rechner_pipeline/gates/generation_golden.py` / `src/rechner_pipeline/gates/bestand_validate.py`.
 
 ## Mandatory skeleton (stdout purity is a MECHANISM — never `print`/`emit_result` yourself)
 ```python
@@ -74,7 +74,6 @@ Write `<command>.gate.json` via `write_gate_ledger` on BOTH pass AND fail paths 
 ## Hard gotchas (one line each)
 - `ExportManifest` must be built from `Path`, not `str`, or `to_dict()` mixes `/` and `\` (byte-compat break) — never round-trip a string-built manifest.
 - `--info-dir` MUST live under `--repo-root` — else the confined child's expectation reads are blocked (`confinement_failure`, exit 30), not a clear usage error.
-- fs_confine (G4) is defense-in-depth (pure-Python monkeypatch), NOT an OS sandbox — native/ctypes code can defeat it. Trust model = G2 static + G4 confine + subprocess isolation.
 - `golden_master` runs G2 (`qa.security.scan_python_paths`) STATICALLY over `*.py` BEFORE executing any kernel; a violation → refuse, exit 21. A new gate that executes generated code must do the same.
 - `_eq4` compares to 4 decimals (absolute) — hides relative drift on small actuarial values, so G6 (algebraic) is load-bearing; never treat a green G5 as proof of relative accuracy.
 - Clean/stage output dirs before a run (remove stale `*_compressed.csv`/`*_scalar.json`/`*_table_values.csv` derived files) so a re-run can't glob a stale artifact.
