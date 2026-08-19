@@ -113,7 +113,25 @@ def _artefakt_hashes(fall: Path, ausser_gate: str = "") -> Dict[str, str]:
 
 
 def _git_stand(repo_root: Path) -> Dict[str, str]:
-    """Setup-Provenienz: der Git-Stand des Systems (P1)."""
+    """Setup-Provenienz: der Git-Stand des Systems (P1).
+
+    Die EINZIGE Stelle in ``src/`` mit einem Subprozess — bewusst und
+    eng begrenzt (Systempruefung Befund F22). Die Nicht-Verhandelbare
+    "kein Netz, kein Subprozess, keine dynamische Ausfuehrung" gilt dem
+    RECHEN- und BEWERTUNGSPFAD: Rechenkern, Gates und Auswertungen
+    duerfen ihr Ergebnis nicht aus der Umgebung holen. Hier wird nichts
+    gerechnet und nichts bewertet — hier wird nur PROTOKOLLIERT, auf
+    welchem Systemstand ein Mensch entschieden hat, mit drei
+    lesenden git-Aufrufen ohne Netz.
+
+    Ein Nachbau ueber ``.git/HEAD`` waere kein Gewinn: er kann ``dirty``
+    nicht ermitteln und muesste packed-refs und detached HEAD selbst
+    parsen — ungetesteter Parser-Code an der Stelle, die die
+    Nachweiskette traegt. Faellt git aus, ist der Stand ``unbekannt``
+    (benannter Zustand, kein stiller Default), und der Snapshot bleibt
+    schreibbar. Verankert in ``tests/test_fachspez_und_p9.py::
+    test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt``.
+    """
     stand: Dict[str, str] = {}
     for name, argv in (
         ("commit", ["git", "rev-parse", "HEAD"]),
@@ -211,7 +229,12 @@ def main(argv: Optional[List[str]] = None):
             "Agenten dokumentieren Zwischenstaende als Ablehnung"
         )
     if not (fall / "eingang.json").is_file():
-        return _usage(f"kein Fall-Arbeitsbereich: {fall}")
+        return _usage(
+            f"kein Fall-Arbeitsbereich: {fall} (anlegen mit: python -m "
+            f"rechner_pipeline.fall anlegen --fall {fall}, dann je Quelle "
+            f"python -m rechner_pipeline.fall registrieren --fall {fall} "
+            "--datei <quelle>)"
+        )
 
     def _sperre(code: str, message: str):
         return _finalize(build_result(
@@ -241,11 +264,18 @@ def main(argv: Optional[List[str]] = None):
         if eingangs_fehler:
             return _sperre("eingang", "Annahme verweigert — Eingang "
                            "verletzt das Register: "
-                           + "; ".join(eingangs_fehler[:5]))
+                           + "; ".join(eingangs_fehler[:5])
+                           + " (Lage zeigen mit: python -m "
+                           f"rechner_pipeline.fall status --fall {fall}; eine "
+                           "verlorene Kopie stellt python -m "
+                           f"rechner_pipeline.fall registrieren --fall {fall} "
+                           "--datei <quelle> wieder her)")
         if not abox_pfad(fall).is_file():
             return _sperre(
                 "abox", f"Annahme verweigert: keine A-Box ({abox_pfad(fall)}) "
-                "— ohne Stage 1 gibt es nichts abzunehmen",
+                "— ohne Stage 1 gibt es nichts abzunehmen (Fragmente je "
+                "Quelle extrahieren, dann zusammenfuehren mit: python -m "
+                f"rechner_pipeline.gates.abox_merge --fall {fall})",
             )
         try:
             abox = lade(fall)
@@ -286,30 +316,43 @@ def main(argv: Optional[List[str]] = None):
         abox_hash = _sha256_datei(abox_pfad(fall))
         diagnostics = fall / "abgeleitet" / "diagnostics"
 
-        def _ledger_gruen_und_verankert(name: str, anzeige: str):
+        def _ledger_gruen_und_verankert(name: str, anzeige: str, kommando: str):
+            # Jede Rueckgabe nennt das Kommando, das den fehlenden Eingang
+            # herstellt — eine Sperre ohne Ausweg ist eine halbe Meldung.
             pfad = diagnostics / f"{name}.gate.json"
             if not pfad.is_file():
-                return f"{anzeige} ist nie gelaufen ({pfad.name} fehlt)"
+                return (f"{anzeige} ist nie gelaufen ({pfad.name} fehlt) — "
+                        f"nachholen mit: {kommando}")
             daten = json.loads(pfad.read_text(encoding="utf-8"))
             if daten.get("status") != "passed":
-                return f"{anzeige} ist nicht gruen (status={daten.get('status')!r})"
+                return (f"{anzeige} ist nicht gruen "
+                        f"(status={daten.get('status')!r}) — Befund beheben, "
+                        f"dann erneut: {kommando}")
             hashes = set((daten.get("input_hashes") or {}).values())
             if abox_hash not in hashes:
                 return (
                     f"{anzeige} lief auf einem ANDEREN A-Box-Stand "
-                    "(input_hash weicht ab) — Gate neu fahren"
+                    f"(input_hash weicht ab) — Gate neu fahren: {kommando}"
                 )
             return None
 
         problem = _ledger_gruen_und_verankert(
-            "abox_validate", "Gate O1 (abox_validate)"
+            "abox_validate", "Gate O1 (abox_validate)",
+            "python -m rechner_pipeline.gates.abox_validate "
+            f"--fall {fall} --repo-root {args.repo_root}",
         )
         if problem:
             return _sperre("vorbedingung", f"Annahme verweigert: {problem}")
 
         if args.gate == "G-2":
+            # Die Generation wird nicht geraten, sondern aus der A-Box
+            # genommen — der Hinweis soll kopierbar sein.
+            generationen = "|".join(g.id for g in abox.generationen) or "<generation>"
             problem = _ledger_gruen_und_verankert(
-                "generation_golden", "Gate O3 (generation_golden)"
+                "generation_golden", "Gate O3 (generation_golden)",
+                "python -m rechner_pipeline.gates.generation_golden "
+                f"--fall {fall} --generation {generationen} "
+                f"--repo-root {args.repo_root}",
             )
             if problem:
                 return _sperre("vorbedingung", f"Annahme verweigert: {problem}")
@@ -339,7 +382,10 @@ def main(argv: Optional[List[str]] = None):
                     "Annahme verweigert: kein geltender G-1-ANNAHME-"
                     "Snapshot auf dem aktuellen A-Box-Stand — G-2 nimmt "
                     "denselben Stand ab, den G-1 gesehen hat, oder gar "
-                    "keinen",
+                    "keinen (G-1 auf diesem Stand entscheiden mit: python -m "
+                    "rechner_pipeline.gates.gate_entscheid --fall "
+                    f"{fall} --gate G-1 --entscheid angenommen --rolle mensch "
+                    "--entscheider <name> --begruendung <text>)",
                 )
 
     verzeichnis = entscheide_verzeichnis(fall)

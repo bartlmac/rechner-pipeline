@@ -25,9 +25,12 @@ Diskussionsanstöße sind ausdrücklich willkommen.
   verfügbar** sein — keine echten Kunden- oder Bestandsdaten. Das gilt
   auch für die Rechnungsgrundlagen: die Tafelvektoren in
   `src/rechner_pipeline/kern/tafeln.xml` sind veröffentlichte
-  DAV-Tafeln bzw. synthetische Vektoren; die Herkunft steht je Vektor
-  als Kommentar in der Datei. Keine Klarnamen von Personen in
-  eingecheckten Dateien oder Commit-Botschaften.
+  DAV-Tafeln bzw. synthetische Vektoren. Die Herkunft steht bei den
+  meisten Vektoren in der Datei (Provenienz-Kommentar oder
+  `quelle`-Attribut); vier Vektoren aus dem Anfangsbestand des Kerns
+  (DAV1994_T_F/M, DAV2008_T_F/M) tragen sie noch nicht — beim Ergänzen
+  gilt: neue Vektoren nur mit Herkunftsangabe. Keine Klarnamen von
+  Personen in eingecheckten Dateien oder Commit-Botschaften.
 
 ## Lokale Konfiguration
 

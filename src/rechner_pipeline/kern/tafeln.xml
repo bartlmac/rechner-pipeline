@@ -1,7 +1,9 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!-- Rechnungsgrundlagen: veroeffentlichte DAV-Tafeln bzw. synthetische
-     Vektoren. Die Herkunft steht je Vektor als Kommentar bzw. im
-     quelle-Attribut. -->
+     Vektoren. Herkunft je Vektor als Provenienz-Kommentar oder
+     quelle-Attribut; die vier Vektoren aus dem Anfangsbestand des Kerns
+     (DAV1994_T_F/M, DAV2008_T_F/M) tragen sie noch nicht. Neue Vektoren
+     nur MIT Herkunftsangabe. -->
 <tafeln>
   <table name="DAV1994_T_F">
     <entry age="0" qx="0.009003" />

@@ -2,7 +2,11 @@
 # Suite laeuft auf jedem Push und Pull Request. Fall-abhaengige Tests
 # skippen ehrlich (kein faelle/-Arbeitsbereich im Runner) — vier Tests,
 # darunter der einzige Ende-zu-Ende-Beleg fuer Gate O3; siehe
-# ONBOARDING.md Abschnitt 5.
+# ONBOARDING.md Abschnitt 5. Deshalb laeuft pytest mit `-rs`: ein Skip,
+# den niemand im Protokoll sieht, ist ein stiller Default. Mit `-rs`
+# steht in JEDEM CI-Lauf namentlich, welcher Anker nicht gelaufen ist
+# (Systempruefung F21/F46) — die Zahl "gruene Suite" bleibt damit
+# lesbar als "N bestanden, 4 ausgewiesen uebersprungen".
 #
 # Installation ueber die Pin-Dateien, NICHT ueber pip install -e ".[dev]":
 # pyproject pinnt nur die direkten Abhaengigkeiten, das Transitive loeste
@@ -26,4 +30,4 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pip install -e . --no-deps
-      - run: python -m pytest -q
+      - run: python -m pytest -q -rs

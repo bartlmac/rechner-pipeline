@@ -295,4 +295,5 @@ MIT — siehe `LICENSE`.
 
 Die Rechnungsgrundlagen (`src/rechner_pipeline/kern/tafeln.xml`) sind
 veröffentlichte DAV-Tafeln bzw. synthetische Vektoren; die Herkunft
-steht je Vektor als Kommentar in der Datei.
+steht bei den meisten Vektoren in der Datei selbst (siehe
+`CONTRIBUTING.md`).

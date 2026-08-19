@@ -1,10 +1,20 @@
 """Migrations-Testsuite: Zwei-Stichtags-Prüfung (qa/migrationssuite).
 
-Die Erwartungswerte der grünen Pfade werden hier aus dem Kern selbst
-erzeugt und centgerundet (wie eine reale Lieferung liefert) — geprüft
-wird die Urteils-Mechanik: Toleranzen, GeVo-Tracks (STO/TOD/PEX und
-die vertragsweite Scheiben-Bewertung nach ERH) sowie die
-Konsistenz-Befunde der Lieferung.
+EHRLICHKEIT ÜBER DIE ERWARTUNGSQUELLE: Die Erwartungswerte der grünen
+Pfade stammen aus DEMSELBEN Kern, den die Suite rechnet (centgerundet,
+wie eine reale Lieferung sie führt). Diese Tests können deshalb keinen
+Rechenfehler des Kerns finden — das leisten der Golden Master und die
+Fall-Anker. Geprüft wird hier das URTEIL: Toleranzgrenzen, Auswahl des
+Tracks (aktiv / beitragsfrei / abgegangen / Scheiben nach ERH), die
+Befundtexte der Lieferungs-Inkonsistenzen sowie Vollständigkeit,
+Duplikate und ausgewiesene Prüflücken.
+
+Wo dieses Verfahren NICHT trägt — bei der Urteilslogik selbst — steht
+die Erwartung unabhängig vom Kern: Toleranzgrenzen werden aus
+REL_TOL/ABS_TOL gerechnet, Leistungshöhen aus der Tarifwerk-Regel
+(Summe der Versicherungssummen), und jede grüne Behauptung hat eine
+Kontrolle daneben, die mit dem falschen Track oder dem falschen Betrag
+fehlschlagen MUSS.
 
 Knoten: klv
 """
@@ -12,6 +22,7 @@ Knoten: klv
 from __future__ import annotations
 
 import dataclasses
+import math
 from typing import Any, Dict, Optional, Tuple
 
 import pytest
@@ -22,6 +33,7 @@ from rechner_pipeline.kern import (
     erhoehungs_scheibe,
     vertrags_monatsreserve,
 )
+from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 from rechner_pipeline.qa.migrationssuite import (
     GeVoErwartung,
     VertragsPruefung,
@@ -254,3 +266,338 @@ def test_bestand_zusammenfassung() -> None:
     assert (ergebnis["anzahl"], ergebnis["bestanden"],
             ergebnis["fehlgeschlagen"]) == (2, 1, 1)
     assert not ergebnis["suite_bestanden"]
+
+
+# --------------------------------------------------------------------------- #
+# Die Toleranzgrenze selbst — Erwartung aus REL_TOL/ABS_TOL gerechnet,
+# nicht aus dem Kern. Ohne diese Tests koennte die Grenze beliebig
+# verschoben werden, ohne dass ein Test rot wird.
+# --------------------------------------------------------------------------- #
+
+
+def test_relative_toleranzgrenze_traegt_und_schneidet() -> None:
+    """Knapp innerhalb besteht, knapp ausserhalb faellt — relativ.
+
+    Zusammen mit :func:`test_absolute_untergrenze_traegt_kleine_betraege`
+    klemmt dieser Test die Größenordnung von REL_TOL fest: bei rund
+    36 TEUR muss die RELATIVE Schranke greifen, bei rund 3,8 TEUR die
+    ABSOLUTE. Ein Aufweichen von REL_TOL um Größenordnungen (etwa
+    zurück auf 5e-4) verletzt die zweite Bedingung und färbt die Suite
+    rot — genau das soll es.
+    """
+    dk = KERN.monatsreserve(S1).vx_mrv
+    assert REL_TOL * dk > ABS_TOL, "hier muss die RELATIVE Schranke greifen"
+    innen = pruefe_vertrag(_pruefung(dk1=dk * (1.0 - 0.9 * REL_TOL)))
+    assert innen["pruefungen"][0]["ok"]
+    aussen = pruefe_vertrag(_pruefung(dk1=dk * (1.0 - 1.5 * REL_TOL)))
+    assert not aussen["pruefungen"][0]["ok"]
+    assert not aussen["bestanden"]
+
+
+def test_absolute_untergrenze_traegt_kleine_betraege() -> None:
+    """Bei kleinen Betraegen entscheidet ABS_TOL, nicht REL_TOL.
+
+    Die Cent-Rundung der Lieferung ist ein ABSOLUTER Fehler; sie muss
+    von ABS_TOL getragen werden und nicht von einer weit gespannten
+    relativen Toleranz (siehe Modulkopf von ``qa/abzugsabgleich``).
+    """
+    monate = 13
+    dk = KERN.monatsreserve(monate).vx_mrv
+    assert REL_TOL * dk < ABS_TOL, "hier muss die ABSOLUTE Schranke greifen"
+
+    def _urteil(erwartet: float) -> Dict[str, Any]:
+        return pruefe_vertrag(VertragsPruefung(
+            police_id="P-KLEIN", model_point=MP,
+            monate_stichtag_1=monate, monate_stichtag_2=S2,
+            dk_erwartet_1=erwartet,
+            dk_erwartet_2=round(KERN.monatsreserve(S2).vx_mrv, 2),
+        ))
+
+    assert _urteil(dk + 0.5 * ABS_TOL)["pruefungen"][0]["ok"]
+    assert not _urteil(dk + 1.5 * ABS_TOL)["pruefungen"][0]["ok"]
+
+
+# --------------------------------------------------------------------------- #
+# Bruttojahresbeitrag: die zweite Pruefachse (Auftrag 19.08.)
+# --------------------------------------------------------------------------- #
+
+
+def test_gelieferter_jahresbeitrag_wird_geprueft() -> None:
+    v = dataclasses.replace(
+        _pruefung(), bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))
+    urteil = pruefe_vertrag(v)
+    assert urteil["bestanden"], urteil["befunde"]
+    assert [p["groesse"] for p in urteil["pruefungen"]] == [
+        "dk_stichtag_1", "bjb_stichtag_1", "dk_stichtag_2"]
+    assert urteil["nicht_geprueft"] == []
+    # Kontrolle: ein anderer Jahresbeitrag darf NICHT durchgehen.
+    falsch = dataclasses.replace(v, bjb_erwartet_1=v.bjb_erwartet_1 + 100.0)
+    assert not pruefe_vertrag(falsch)["bestanden"]
+
+
+def test_jahresbeitrag_ist_null_nach_ende_der_beitragszahlung() -> None:
+    """Beitragsfrei durch Zeitablauf: die Abzuege fuehren JBRUTTO 0,00.
+
+    Erwartung NICHT aus dem Kern, sondern aus der Lieferungssemantik
+    (nachgeprueft am gelieferten Abzug: JBRUTTO ist genau dann 0,00,
+    wenn ``monate >= 12 * t``). Der Kern-Jahresbeitrag des
+    Grundvertrags bleibt daneben ungleich null — genau deshalb muss die
+    Suite den Track kennen.
+    """
+    monate = 12 * KLV_DEFAULT.t + 1
+    v = VertragsPruefung(
+        police_id="P-BEITRAGSFREI-ZEIT", model_point=MP,
+        monate_stichtag_1=monate, monate_stichtag_2=monate + 12,
+        dk_erwartet_1=round(KERN.monatsreserve(monate).vx_mrv, 2),
+        dk_erwartet_2=round(KERN.monatsreserve(monate + 12).vx_mrv, 2),
+        bjb_erwartet_1=0.0,
+    )
+    assert pruefe_vertrag(v)["bestanden"]
+    assert KERN.gross_annual_premium() > 0.0
+    # Kontrolle: der Jahresbeitrag der Beitragsphase ist hier falsch.
+    falsch = dataclasses.replace(
+        v, bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))
+    assert not pruefe_vertrag(falsch)["bestanden"]
+
+
+def test_altersversatz_faellt_am_beitrag_auf_wo_das_deckungskapital_schweigt(
+) -> None:
+    """Warum der Jahresbeitrag mitgeprueft wird (Auftrag 19.08.).
+
+    Quellsysteme koennen das Eintrittsalter nach der
+    Kalenderjahresmethode fuehren; gegen das vollendete Alter des
+    Zielsystems ist das ein Versatz von einem Jahr. Bei kurzer
+    Beitragszahlungsdauer verschiebt dieser Versatz das
+    Deckungskapital kaum — der Bruttojahresbeitrag reagiert um
+    Groessenordnungen staerker. Beide Kennzahlen werden hier gerechnet
+    und gegeneinander gestellt; die Aussage haengt an keiner Toleranz.
+    """
+    richtig = dataclasses.replace(KLV_DEFAULT, x=35, n=20, t=15)
+    versetzt = dataclasses.replace(richtig, x=36)
+    k_r, k_v = Rechenkern(richtig), Rechenkern(versetzt)
+    dk_rel = abs(k_v.monatsreserve(S1).vx_mrv - k_r.monatsreserve(S1).vx_mrv
+                 ) / k_r.monatsreserve(S1).vx_mrv
+    bjb_rel = abs(k_v.gross_annual_premium() - k_r.gross_annual_premium()
+                  ) / k_r.gross_annual_premium()
+    assert bjb_rel > 10 * dk_rel
+    # Unter der bis zum 19.08. geltenden Toleranz (5e-4) war der Versatz
+    # im Deckungskapital unsichtbar, im Jahresbeitrag nicht:
+    assert dk_rel < 5e-4 < bjb_rel
+
+    # Und die Suite faellt darauf herein, solange nur das
+    # Deckungskapital geliefert ist — mit Jahresbeitrag nicht:
+    lieferung = dict(
+        police_id="P-VERSATZ", model_point=dataclasses.asdict(versetzt),
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=round(k_r.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(k_r.monatsreserve(S2).vx_mrv, 2),
+    )
+    nur_dk = pruefe_vertrag(VertragsPruefung(**lieferung))
+    assert math.isclose(
+        nur_dk["pruefungen"][0]["system"], nur_dk["pruefungen"][0]["erwartet"],
+        rel_tol=5e-4, abs_tol=ABS_TOL), "alte Toleranz haette das gedeckt"
+    mit_bjb = pruefe_vertrag(VertragsPruefung(
+        **lieferung, bjb_erwartet_1=round(k_r.gross_annual_premium(), 2)))
+    assert not mit_bjb["bestanden"]
+    schlecht = [p["groesse"] for p in mit_bjb["pruefungen"] if not p["ok"]]
+    assert "bjb_stichtag_1" in schlecht
+
+
+def test_fehlender_jahresbeitrag_ist_eine_ausgewiesene_luecke() -> None:
+    """Nicht geliefert heisst nicht geprueft — und wird gesagt."""
+    ergebnis = pruefe_bestand([_pruefung()], erwartete_anzahl=1)
+    assert ergebnis["suite_bestanden"]                 # kein Fehlschlag ...
+    assert ergebnis["vollstaendig_geprueft"] is False  # ... aber auch nicht
+    assert ergebnis["vertraege"][0]["nicht_geprueft"] == ["bjb_stichtag_1"]
+    assert any("bjb_stichtag_1" in l and "NICHT geprüft" in l
+               for l in ergebnis["pruefluecken"]), ergebnis["pruefluecken"]
+    # Mit geliefertem Beitrag verschwindet die Luecke:
+    voll = pruefe_bestand(
+        [dataclasses.replace(
+            _pruefung(), bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))],
+        erwartete_anzahl=1)
+    assert voll["pruefluecken"] == [] and voll["vollstaendig_geprueft"]
+
+
+# --------------------------------------------------------------------------- #
+# Die Pruefmenge: Vollstaendigkeit und Duplikate
+# --------------------------------------------------------------------------- #
+
+
+def test_unvollstaendige_pruefmenge_ist_keine_bestandene_abnahme() -> None:
+    ergebnis = pruefe_bestand(
+        [_pruefung(), dataclasses.replace(_pruefung(), police_id="P-2")],
+        erwartete_anzahl=500)
+    assert ergebnis["bestanden"] == 2 and ergebnis["fehlgeschlagen"] == 0
+    assert ergebnis["suite_bestanden"] is False
+    assert len(ergebnis["mengenbefunde"]) == 1
+    assert "498 Verträge fehlen" in ergebnis["mengenbefunde"][0]
+    assert ergebnis["erwartete_anzahl"] == 500
+
+
+def test_zu_viele_vertraege_sind_ebenfalls_ein_mengenbefund() -> None:
+    ergebnis = pruefe_bestand(
+        [_pruefung(), dataclasses.replace(_pruefung(), police_id="P-2")],
+        erwartete_anzahl=1)
+    assert ergebnis["suite_bestanden"] is False
+    assert "1 Verträge zu viel" in ergebnis["mengenbefunde"][0]
+
+
+def test_doppelte_policennummer_ist_ein_harter_befund() -> None:
+    """Derselbe Vertrag dreimal ist kein dreifacher Beleg."""
+    ergebnis = pruefe_bestand([_pruefung()] * 3, erwartete_anzahl=3)
+    assert ergebnis["anzahl"] == 3 and ergebnis["fehlgeschlagen"] == 0
+    assert ergebnis["suite_bestanden"] is False       # trotz 3 von 3 bestanden
+    assert len(ergebnis["mengenbefunde"]) == 1
+    assert "'P-1'" in ergebnis["mengenbefunde"][0]
+    assert "3-mal" in ergebnis["mengenbefunde"][0]
+    # Ohne Duplikat ist die Menge sauber:
+    sauber = pruefe_bestand(
+        [_pruefung(), dataclasses.replace(_pruefung(), police_id="P-2")],
+        erwartete_anzahl=2)
+    assert sauber["mengenbefunde"] == [] and sauber["suite_bestanden"]
+
+
+def test_ohne_erwartete_anzahl_ist_die_vollstaendigkeit_eine_luecke() -> None:
+    ergebnis = pruefe_bestand([_pruefung()])
+    assert ergebnis["erwartete_anzahl"] is None
+    assert ergebnis["mengenbefunde"] == []            # kein Befund ...
+    assert any("Vollständigkeit" in l for l in ergebnis["pruefluecken"])
+    assert ergebnis["vollstaendig_geprueft"] is False  # ... aber eine Luecke
+
+
+# --------------------------------------------------------------------------- #
+# Track-Auswahl: Erhoehungsscheiben in Leistung und Bewertung
+# --------------------------------------------------------------------------- #
+
+
+def test_tod_nach_erhoehung_zahlt_die_summe_beider_scheiben() -> None:
+    """Leistungshoehe aus der Tarifwerk-Regel, nicht aus dem Kern.
+
+    S^ges ist die Summe der Versicherungssummen — eine Addition, die
+    dieser Test selbst ausfuehrt. Ein Kern, der die Scheibe vergaesse,
+    faellt hier auf.
+    """
+    a, s_neu = 10, 5000.0
+    vs_ges = float(KLV_DEFAULT.sum_insured) + s_neu
+    gevos = (GeVoErwartung("ERH", 12 * a, s_neu),
+             GeVoErwartung("TOD", 12 * a + 3, vs_ges))
+    urteil = pruefe_vertrag(_pruefung(gevos=gevos, dk2_fehlt=True))
+    assert urteil["bestanden"], urteil["befunde"]
+    assert any(p["groesse"].startswith("gevo_tod") and p["ok"]
+               for p in urteil["pruefungen"])
+    # Kontrolle: ohne die Scheibe ist die Todesfallleistung zu klein.
+    ohne = (gevos[0], GeVoErwartung("TOD", 12 * a + 3,
+                                    float(KLV_DEFAULT.sum_insured)))
+    assert not pruefe_vertrag(
+        _pruefung(gevos=ohne, dk2_fehlt=True))["bestanden"]
+
+
+def test_pex_nach_erhoehung_versetzt_den_jahrestag_der_scheibe() -> None:
+    """Jede Scheibe zaehlt ab IHREM Jahrestag (pex_jahr - erh_jahr)."""
+    a_erh, a_pex, s_neu = 8, 10, 5000.0
+    # Beide Jahrestage muessen zwischen die Stichtage passen:
+    m1, m2 = 12 * 7 + 5, 12 * 11 + 5
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a_erh, s_neu))
+    s_bfr = round(KERN.beitragsfreie_summe(a_pex)
+                  + scheibe.beitragsfreie_summe(a_pex - a_erh), 2)
+    gevos = (GeVoErwartung("ERH", 12 * a_erh, s_neu),
+             GeVoErwartung("PEX", 12 * a_pex, s_bfr))
+    dk2 = round(
+        KERN.monatsreserve_beitragsfrei(a_pex, m2)
+        + scheibe.monatsreserve_beitragsfrei(a_pex - a_erh, m2 - 12 * a_erh),
+        2)
+
+    def _urteil(gevos_: Tuple[GeVoErwartung, ...]) -> Dict[str, Any]:
+        return pruefe_vertrag(VertragsPruefung(
+            police_id="P-ERH-PEX", model_point=MP,
+            monate_stichtag_1=m1, monate_stichtag_2=m2,
+            dk_erwartet_1=round(KERN.monatsreserve(m1).vx_mrv, 2),
+            dk_erwartet_2=dk2, gevos=gevos_))
+
+    urteil = _urteil(gevos)
+    assert urteil["bestanden"], urteil["befunde"]
+    # Kontrolle: OHNE den Versatz (Scheibe am Jahrestag des
+    # Grundvertrags bewertet) stimmt die beitragsfreie Summe nicht.
+    ohne_versatz = round(KERN.beitragsfreie_summe(a_pex)
+                         + scheibe.beitragsfreie_summe(a_pex), 2)
+    assert ohne_versatz != s_bfr
+    assert not _urteil(
+        (gevos[0], GeVoErwartung("PEX", 12 * a_pex, ohne_versatz)))["bestanden"]
+
+
+# --------------------------------------------------------------------------- #
+# Anfangszustand: am Migrationsstichtag bereits beitragsfrei
+# --------------------------------------------------------------------------- #
+
+
+def _beitragsfrei_pruefung(a0: int, **override) -> VertragsPruefung:
+    """Prüfauftrag eines am Migrationsstichtag beitragsfreien Vertrags.
+
+    Die Erwartungswerte werden nur berechnet, wenn der Testfall sie
+    nicht selbst setzt — sonst laege der Kern-Aufruf VOR der Prüfung,
+    die er auslösen soll.
+    """
+    basis: Dict[str, Any] = dict(
+        police_id="P-BFR", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        bjb_erwartet_1=0.0, beitragsfrei_seit_jahr=a0,
+    )
+    basis.update(override)
+    if "dk_erwartet_1" not in basis:
+        basis["dk_erwartet_1"] = round(
+            KERN.monatsreserve_beitragsfrei(a0, basis["monate_stichtag_1"]), 2)
+    if "dk_erwartet_2" not in basis:
+        basis["dk_erwartet_2"] = round(
+            KERN.monatsreserve_beitragsfrei(a0, basis["monate_stichtag_2"]), 2)
+    return VertragsPruefung(**basis)
+
+
+def test_bereits_beitragsfreier_vertrag_laeuft_auf_dem_bfr_track() -> None:
+    a0 = 5
+    urteil = pruefe_vertrag(_beitragsfrei_pruefung(a0))
+    assert urteil["bestanden"], urteil["befunde"]
+    # Kontrolle: der beitragspflichtige Track ergibt andere Werte —
+    # ein Vertrag, der als aktiv bewertet wuerde, faellt durch.
+    aktiv_1 = round(KERN.monatsreserve(S1).vx_mrv, 2)
+    assert aktiv_1 != round(KERN.monatsreserve_beitragsfrei(a0, S1), 2)
+    assert not pruefe_vertrag(
+        _beitragsfrei_pruefung(a0, dk_erwartet_1=aktiv_1))["bestanden"]
+    # ... und beitragsfrei heisst: kein Jahresbeitrag.
+    assert not pruefe_vertrag(_beitragsfrei_pruefung(
+        a0, bjb_erwartet_1=round(KERN.gross_annual_premium(), 2)
+    ))["bestanden"]
+
+
+def test_beitragsfreistellung_nach_dem_stichtag_ist_kein_anfangszustand(
+) -> None:
+    """Der Fehler nennt den Ausweg: als PEX-GeVo liefern."""
+    zu_spaet = _beitragsfrei_pruefung(
+        S1 // 12 + 1, dk_erwartet_1=1.0, dk_erwartet_2=1.0)
+    with pytest.raises(ValueError, match="als PEX-GeVo liefern"):
+        pruefe_vertrag(zu_spaet)
+    with pytest.raises(ValueError, match="kein Vertragsjahr"):
+        pruefe_vertrag(_beitragsfrei_pruefung(
+            0, dk_erwartet_1=1.0, dk_erwartet_2=1.0))
+    # Die Suite macht daraus den Befund GENAU DIESES Vertrags:
+    ergebnis = pruefe_bestand([zu_spaet], erwartete_anzahl=1)
+    assert ergebnis["fehlgeschlagen"] == 1
+    assert any("als PEX-GeVo liefern" in b
+               for b in ergebnis["vertraege"][0]["befunde"])
+
+
+def test_zweite_beitragsfreistellung_ist_ein_befund() -> None:
+    urteil = pruefe_vertrag(_beitragsfrei_pruefung(
+        5, gevos=(GeVoErwartung("PEX", 12 * 10, 1000.0),)))
+    assert not urteil["bestanden"]
+    assert any("bereits seit Jahr 5 beitragsfrei" in b
+               for b in urteil["befunde"]), urteil["befunde"]
+
+
+def test_erhoehung_nach_bereits_erfolgter_beitragsfreistellung_ist_befund(
+) -> None:
+    urteil = pruefe_vertrag(_beitragsfrei_pruefung(
+        5, gevos=(GeVoErwartung("ERH", 12 * 10, 5000.0),)))
+    assert not urteil["bestanden"]
+    assert any("nur auf dem beitragspflichtigen Track" in b
+               for b in urteil["befunde"]), urteil["befunde"]

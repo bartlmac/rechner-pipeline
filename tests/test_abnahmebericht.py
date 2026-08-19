@@ -1,10 +1,14 @@
 """Migrationsabnahmebericht (gates/abnahmebericht): G-2-Vorlage als HTML.
 
 Die Suite-Urteile kommen aus der echten Migrationssuite (Kern-eigene,
-centgerundete Erwartungen); geprüft wird die Berichts-Mechanik:
-Verdikt, Prüfgrößen-Zusammenfassung, vollständige Fehlschläge/Befunde,
-Mapping-Tabelle, Bestandsbericht-Verweise, Determinismus und
-HTML-Escaping.
+centgerundete Erwartungen). Diese Tests können deshalb KEINEN
+Rechenfehler finden — der Bericht rechnet auch keinen Wert. Geprüft
+wird die Berichts-Mechanik: Verdikt, Prüfgrößen-Zusammenfassung,
+vollständige Fehlschläge/Befunde, Befunde der Prüfmenge und
+ausgewiesene Prüflücken, Mapping-Tabelle, Bestandsbericht-Verweise,
+Determinismus und HTML-Escaping. Die Erwartungen an das URTEIL (welches
+Verdikt, welcher Exit-Code, was im Bericht stehen MUSS) sind vom Kern
+unabhängig.
 
 Dazu das Kommando (Toolbox-Gate-Vertrag): genau EIN JSON auf stdout,
 ``abnahmebericht.gate.json`` auf JEDEM Pfad, Standard-Exit-Codes
@@ -134,6 +138,50 @@ def test_gevo_pruefgroessen_erscheinen_gruppiert() -> None:
     text = baue_bericht(titel="t", stichtag_1="s1", stichtag_2="s2",
                         suite=pruefe_bestand([v]))
     assert "gevo_sto" in text
+
+
+def test_bericht_weist_pruefluecken_neben_dem_gruenen_verdikt_aus() -> None:
+    """Grün heißt nicht lückenlos — und der Bericht sagt es.
+
+    Ohne gelieferten Jahresbeitrag ist die Prüfung unvollständig. Das
+    Verdikt bleibt grün (kein Fehlschlag), muss die Lücke aber neben
+    sich stehen haben, sonst liest ein Gremium eine Urkunde über eine
+    Prüfung, die so nie stattgefunden hat.
+    """
+    suite = pruefe_bestand([_pruefung("P-1")])
+    text = baue_bericht(titel="t", stichtag_1="s1", stichtag_2="s2",
+                        suite=suite)
+    assert "ALLE ABNAHMETESTS BESTANDEN (1 von 1 Verträgen)" in text
+    assert "PRÜFLÜCKE(N)" in text
+    assert "Prüflücken (was NICHT geprüft wurde)" in text
+    assert "bjb_stichtag_1" in text
+    assert "nicht angegeben" in text            # keine erwartete Vertragszahl
+
+    # Mit vollständiger Lieferung verschwindet der Lückenblock:
+    voll = pruefe_bestand(
+        [dataclasses.replace(
+            _pruefung("P-1"),
+            bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))],
+        erwartete_anzahl=1)
+    text_voll = baue_bericht(titel="t", stichtag_1="s1", stichtag_2="s2",
+                             suite=voll)
+    assert "PRÜFLÜCKE(N)" not in text_voll
+    assert "Keine — jede Prüfgröße war geliefert." in text_voll
+    assert "bjb_stichtag_1" in text_voll        # als Prüfgröße, nicht als Lücke
+
+
+def test_bericht_weist_mengenbefunde_aus() -> None:
+    """Unvollständige oder doppelte Prüfmenge: rot, mit Begründung."""
+    suite = pruefe_bestand([_pruefung("P-1"), _pruefung("P-1")],
+                           erwartete_anzahl=500)
+    text = baue_bericht(titel="t", stichtag_1="s1", stichtag_2="s2",
+                        suite=suite)
+    assert "Prüfmenge (Vollständigkeit und Duplikate)" in text
+    assert "0 von 2 Verträgen FEHLGESCHLAGEN" in text
+    assert "2 Befund(e) der Prüfmenge" in text
+    assert "498 Verträge fehlen" in text
+    assert "2-mal" in text and "P-1" in text
+    assert "ALLE ABNAHMETESTS BESTANDEN" not in text
 
 
 def test_bericht_ist_deterministisch() -> None:
@@ -271,11 +319,78 @@ def test_kommando_weist_frisierte_zusammenfassung_zurueck(tmp_path) -> None:
     assert _ledger(tmp_path / "diagnostics").status == "failed"
 
 
+def test_kommando_blockiert_bei_befund_der_pruefmenge(tmp_path) -> None:
+    """Alle Verträge bestanden, aber die Menge stimmt nicht -> rot."""
+    pfad = tmp_path / "suite.json"
+    pfad.write_text(json.dumps(pruefe_bestand(
+        [_pruefung("P-1"), _pruefung("P-2")], erwartete_anzahl=500)),
+        encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, pfad))
+
+    assert (result.exit_code, result.status) == (Exit.GOLDEN_MASTER, "failed")
+    assert result.summary["fehlgeschlagen"] == 0      # kein Vertrag ist schuld
+    assert result.summary["mengenbefunde"] == 1
+    assert result.summary["erwartete_anzahl"] == 500
+    codes = [e["code"] for e in result.errors]
+    assert codes[0] == "mengenbefund"
+    assert "498 Verträge fehlen" in result.errors[0]["message"]
+
+
+def test_kommando_traegt_die_pruefluecken_in_den_ledger(tmp_path) -> None:
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    result = main(_basis_argv(tmp_path, suite_pfad))
+    assert result.exit_code == Exit.OK                # Lücke blockiert nicht
+    assert result.summary["vollstaendig_geprueft"] is False
+    assert any("bjb_stichtag_1" in l for l in result.summary["pruefluecken"])
+    eintrag = _ledger(tmp_path / "diagnostics")
+    assert eintrag.summary["vollstaendig_geprueft"] is False
+
+
+def test_kommando_weist_suite_ohne_mengenangaben_zurueck(tmp_path) -> None:
+    """Ein Suite-JSON ohne die Mengen-Felder ist ein Contract-Bruch.
+
+    Sonst könnte ein altes oder von Hand gebautes Ergebnis eine Vorlage
+    erzeugen, in der Vollständigkeit und Prüflücken schlicht fehlen.
+    """
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    for feld in ("erwartete_anzahl", "mengenbefunde", "pruefluecken",
+                 "vollstaendig_geprueft"):
+        del daten[feld]
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert result.exit_code == Exit.FILE_CONTRACT
+    meldungen = " ".join(e["message"] for e in result.errors)
+    for feld in ("erwartete_anzahl", "mengenbefunde", "pruefluecken",
+                 "vollstaendig_geprueft"):
+        assert feld in meldungen
+    assert not (tmp_path / "berichte" / "abnahme.html").exists()
+
+
+def test_kommando_weist_frisierte_luecken_zurueck(tmp_path) -> None:
+    """``vollstaendig_geprueft`` muss zu den Lücken passen."""
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    assert daten["pruefluecken"]                      # es GIBT Lücken ...
+    daten["vollstaendig_geprueft"] = True             # ... behauptet wird nein
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert result.exit_code == Exit.FILE_CONTRACT
+    assert "vollstaendig_geprueft" in result.errors[0]["message"]
+
+
 def test_kommando_weist_leere_pruefmenge_zurueck(tmp_path) -> None:
     suite_pfad = tmp_path / "leer.json"
     suite_pfad.write_text(json.dumps({
         "anzahl": 0, "bestanden": 0, "fehlgeschlagen": 0,
-        "suite_bestanden": True, "vertraege": []}), encoding="utf-8")
+        "suite_bestanden": True, "erwartete_anzahl": 0,
+        "mengenbefunde": [], "pruefluecken": [],
+        "vollstaendig_geprueft": True, "vertraege": []}), encoding="utf-8")
     result = main(_basis_argv(tmp_path, suite_pfad))
     assert result.exit_code == Exit.FILE_CONTRACT
     assert "leere" in result.errors[0]["message"]

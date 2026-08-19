@@ -4,10 +4,12 @@ Die Entscheidungsvorlage der menschlichen Migrationsabnahme, aus drei
 deterministischen Bausteinen:
 
 1. Abnahmetests der Migrationssuite (``qa/migrationssuite``):
-   Deckungskapital an ZWEI Stichtagen plus GeVo-Beträge dazwischen —
-   als Zusammenfassung je Prüfgröße UND als vollständige
+   Deckungskapital an ZWEI Stichtagen, Bruttojahresbeitrag am
+   Migrationsstichtag und GeVo-Beträge dazwischen — als
+   Zusammenfassung je Prüfgröße UND als vollständige
    Einzelvergleichs-Tabelle (jeder Vertrag, jeder Wert, jedes
-   Residuum); Fehlschläge und Befunde gesondert.
+   Residuum); Fehlschläge, Befunde, Befunde der PRÜFMENGE
+   (Vollständigkeit, Duplikate) und PRÜFLÜCKEN gesondert.
 2. Transformations-Tabelle (``ontologie/transformation``): das
    fachlich abzunehmende Mapping Quellfeld -> Zielfeld samt
    Begründungen und (entschiedenen) Konflikten.
@@ -27,8 +29,12 @@ AB — es stellt fest, ob die deterministische Migrationssuite ohne
 Fehlschlag geurteilt hat, und legt die Entscheidungsvorlage als
 Fall-Artefakt mit Provenienz (Eingabe-Hashes) ab. Die Abnahme bleibt
 Gate G-2 beim Menschen (``gates/gate_entscheid``); ein
-Exit-Code ``0`` heißt "Vorlage vollständig und ohne Fehlschlag",
-nicht "abgenommen".
+Exit-Code ``0`` heißt "ohne Fehlschlag und ohne Befund der Prüfmenge",
+nicht "abgenommen" — und auch nicht "lückenlos geprüft": PRÜFLÜCKEN
+der Suite (nicht gelieferte Erwartungswerte, fehlende erwartete
+Vertragszahl) blockieren nicht, stehen aber im Verdikt, im Bericht und
+in der Zusammenfassung des Ledgers. Was nicht geprüft wurde, wird
+ausgewiesen, nie verschwiegen.
 
 Die Suite-Urteile kommen als JSON herein — genau das, was
 :func:`rechner_pipeline.qa.migrationssuite.pruefe_bestand` zurückgibt
@@ -162,19 +168,52 @@ def baue_bericht(
         f"<p>Migrationsstichtag: <b>{_e(stichtag_1)}</b> — "
         f"Folgestichtag: <b>{_e(stichtag_2)}</b></p>",
     ]
+    mengenbefunde = list(suite["mengenbefunde"])
+    pruefluecken = list(suite["pruefluecken"])
     if suite["suite_bestanden"]:
+        zusatz = ("" if not pruefluecken
+                  else f" — MIT {len(pruefluecken)} PRÜFLÜCKE(N), s. u.")
         teile.append(
             f"<p class='gruen'>ALLE ABNAHMETESTS BESTANDEN "
             f"({suite['bestanden']:.0f} von {suite['anzahl']:.0f} "
-            "Verträgen).</p>")
+            f"Verträgen){zusatz}.</p>")
     else:
         teile.append(
             f"<p class='rot'>{suite['fehlgeschlagen']:.0f} von "
-            f"{suite['anzahl']:.0f} Verträgen FEHLGESCHLAGEN.</p>")
+            f"{suite['anzahl']:.0f} Verträgen FEHLGESCHLAGEN"
+            + (f", {len(mengenbefunde)} Befund(e) der Prüfmenge"
+               if mengenbefunde else "") + ".</p>")
     teile.append(
         "<p class='hinweis'>Maschinelle Prüfaussage der deterministischen "
         "Migrationssuite. Die ABNAHME ist eine menschliche Entscheidung "
         "(Gate G-2) auf Grundlage dieses Berichts.</p>")
+
+    # Die Klammer um die Menge: geprüft ist nur, was auch drin war.
+    teile.append("<h2>Prüfmenge (Vollständigkeit und Duplikate)</h2>")
+    erwartet = suite["erwartete_anzahl"]
+    teile.append(
+        f"<p>Geprüfte Verträge: <b>{suite['anzahl']:.0f}</b> — erwartete "
+        "Vertragszahl der Lieferung: <b>"
+        + (f"{int(erwartet):d}" if erwartet is not None
+           else "nicht angegeben") + "</b></p>")
+    if mengenbefunde:
+        teile.append("<table><tr><th>Befund der Prüfmenge</th></tr>")
+        teile.extend(f"<tr><td class='rot'>{_e(b)}</td></tr>"
+                     for b in mengenbefunde)
+        teile.append("</table>")
+    else:
+        teile.append("<p>Keine Befunde der Prüfmenge.</p>")
+
+    teile.append("<h2>Prüflücken (was NICHT geprüft wurde)</h2>")
+    if pruefluecken:
+        teile.append(
+            "<p class='hinweis'>Zu diesen Größen lag kein Erwartungswert "
+            "vor. Sie sind WEDER bestanden NOCH fehlgeschlagen — sie sind "
+            "ungeprüft und beim Lesen des Verdikts abzuziehen.</p><ul>")
+        teile.extend(f"<li>{_e(l)}</li>" for l in pruefluecken)
+        teile.append("</ul>")
+    else:
+        teile.append("<p>Keine — jede Prüfgröße war geliefert.</p>")
 
     teile.append("<h2>Abnahmetests je Prüfgröße</h2>")
     teile.append("<table><tr><th>Prüfgröße</th><th>Anzahl</th><th>OK</th>"
@@ -309,9 +348,15 @@ def _suite_fehler(daten: Any) -> List[str]:
         return ["Suite-Ergebnis ist kein JSON-Objekt"]
     fehler: List[str] = []
     for feld in ("anzahl", "bestanden", "fehlgeschlagen", "suite_bestanden",
-                 "vertraege"):
+                 "erwartete_anzahl", "mengenbefunde", "pruefluecken",
+                 "vollstaendig_geprueft", "vertraege"):
         if feld not in daten:
             fehler.append(f"Feld {feld!r} fehlt")
+    if fehler:
+        return fehler
+    for feld in ("mengenbefunde", "pruefluecken"):
+        if not isinstance(daten[feld], list):
+            fehler.append(f"Feld {feld!r} ist keine Liste")
     if fehler:
         return fehler
     vertraege = daten["vertraege"]
@@ -328,11 +373,13 @@ def _suite_fehler(daten: Any) -> List[str]:
         if not isinstance(u, dict):
             fehler.append(f"{wo} ist kein Objekt")
             continue
-        for feld in ("police_id", "bestanden", "befunde", "pruefungen"):
+        for feld in ("police_id", "bestanden", "befunde", "pruefungen",
+                     "nicht_geprueft"):
             if feld not in u:
                 fehler.append(f"{wo}: Feld {feld!r} fehlt")
-        if not isinstance(u.get("befunde"), list):
-            fehler.append(f"{wo}: 'befunde' ist keine Liste")
+        for feld in ("befunde", "nicht_geprueft"):
+            if feld in u and not isinstance(u[feld], list):
+                fehler.append(f"{wo}: {feld!r} ist keine Liste")
         pruefungen = u.get("pruefungen")
         if not isinstance(pruefungen, list):
             fehler.append(f"{wo}: 'pruefungen' ist keine Liste")
@@ -367,10 +414,16 @@ def _suite_fehler(daten: Any) -> List[str]:
         fehler.append(
             f"'fehlgeschlagen' ({daten['fehlgeschlagen']}) passt nicht zu "
             f"{n - n_ok} fehlgeschlagenen Urteilen")
-    if bool(daten["suite_bestanden"]) != (n_ok == n):
+    ohne_mengenbefund = not daten["mengenbefunde"]
+    if bool(daten["suite_bestanden"]) != (n_ok == n and ohne_mengenbefund):
         fehler.append(
             f"'suite_bestanden' ({daten['suite_bestanden']}) passt nicht zu "
-            f"{n_ok} von {n} bestandenen Urteilen")
+            f"{n_ok} von {n} bestandenen Urteilen und "
+            f"{len(daten['mengenbefunde'])} Befund(en) der Prüfmenge")
+    if bool(daten["vollstaendig_geprueft"]) != (not daten["pruefluecken"]):
+        fehler.append(
+            f"'vollstaendig_geprueft' ({daten['vollstaendig_geprueft']}) "
+            f"passt nicht zu {len(daten['pruefluecken'])} Prüflücke(n)")
     return fehler
 
 
@@ -574,20 +627,27 @@ def main(argv: Optional[List[str]] = None):
          for p in u["pruefungen"]), default=0.0)
     summary = {
         "anzahl": suite["anzahl"],
+        "erwartete_anzahl": suite["erwartete_anzahl"],
         "bestanden": suite["bestanden"],
         "fehlgeschlagen": suite["fehlgeschlagen"],
         "suite_bestanden": bool(suite["suite_bestanden"]),
         "befunde": befunde_gesamt,
+        "mengenbefunde": len(suite["mengenbefunde"]),
         "pruefungen": pruefungen_gesamt,
         "max_residuum": max_residuum,
         "mapping_tabelle": spec is not None,
+        # Was NICHT geprueft wurde, steht neben dem Urteil (P2).
+        "vollstaendig_geprueft": bool(suite["vollstaendig_geprueft"]),
+        "pruefluecken": list(suite["pruefluecken"]),
         # Ausdruecklich: dieses Kommando nimmt nichts ab.
         "abnahme": "offen — Gate G-2 (Mensch, gates/gate_entscheid)",
     }
 
     if suite["suite_bestanden"] and befunde_gesamt == 0:
         log(f"{COMMAND}: Vorlage ohne Fehlschlag ({summary['bestanden']} von "
-            f"{summary['anzahl']} Vertraegen) -> {bericht_pfad}")
+            f"{summary['anzahl']} Vertraegen, "
+            f"{len(suite['pruefluecken'])} Pruefluecke(n)) -> "
+            f"{bericht_pfad}")
         return _finalize(build_result(
             command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
             exit_code=Exit.OK, paths=paths, summary=summary,
@@ -596,6 +656,9 @@ def main(argv: Optional[List[str]] = None):
         ))
 
     errors = [
+        {"code": "mengenbefund", "message": m}
+        for m in suite["mengenbefunde"]
+    ] + [
         {"code": "abnahmetest", "message":
          f"{u['police_id']} / {p['groesse']}: System {p['system']:.2f} "
          f"gegen Lieferung {p['erwartet']:.2f} (Residuum "
@@ -615,7 +678,8 @@ def main(argv: Optional[List[str]] = None):
                        f"{bericht_pfad}",
         }]
     log(f"{COMMAND}: {summary['fehlgeschlagen']} von {summary['anzahl']} "
-        f"Vertraegen fehlgeschlagen, {befunde_gesamt} Befund(e) -> "
+        f"Vertraegen fehlgeschlagen, {befunde_gesamt} Befund(e), "
+        f"{summary['mengenbefunde']} Befund(e) der Pruefmenge -> "
         f"{bericht_pfad}")
     return _finalize(build_result(
         command=COMMAND, gate=GATE, gate_version=GATE_VERSION,

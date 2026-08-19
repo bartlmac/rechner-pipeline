@@ -10,6 +10,16 @@ Projektleitung 2026-08-18). Sonst bleibt die Aufloesung beim Menschen.
 Die Zahlen der Testfaelle sind Mechanik-Beispiele, keine Aussage ueber
 die Aufloesung eines konkreten Migrationsfalls.
 
+EHRLICHKEIT UEBER DIE ERWARTUNGSQUELLE (Abgleich-Haelfte): Die Belege
+der Abgleich-Tests entstehen ueber ``berechne`` — denselben Kern, den
+der Abgleich intern rechnet. Ein Rechenfehler des Kerns faellt hier
+also NICHT auf; das leisten Golden Master und Fall-Anker. Geprueft
+wird die URTEILSLOGIK: wann automatisch aufgeloest werden darf, wann
+die Beleglage zu duenn ist, wann ein Ausreisser keine Verwerfung ist
+und welcher Beleg als schlechtester benannt wird. Diese Erwartungen
+sind vom Kern unabhaengig — sie folgen aus den Schwellwerten und aus
+der Konstruktion des jeweiligen Belegsatzes.
+
 Knoten: klv
 
 """
@@ -29,9 +39,12 @@ from rechner_pipeline.ontologie.transformation import (
     wende_an,
 )
 from rechner_pipeline.qa.abzugsabgleich import (
+    MIND_BELEGE,
+    VERWERFUNGS_QUOTE,
     Lesart,
     VertragsBeleg,
     gleiche_ab,
+    pruefe_lesart,
 )
 
 SHA = "b" * 64
@@ -365,6 +378,122 @@ def test_ohne_belege_kein_urteil():
     ], [])
     assert urteil["automatisch_aufloesbar"] is False
     assert "keine Belege" in urteil["begruendung"]
+
+
+def test_beleglage_steht_in_jedem_urteil():
+    """Anteil stuetzender Belege je Lesart — Grundlage jeder Begruendung."""
+    belege = _belege("zins", 0.0125)
+    urteil = gleiche_ab("zins", [
+        Lesart(0.0125, "tarifmeldung"), Lesart(0.0175, "tarifrechner"),
+    ], belege)
+    gewinner = next(u for u in urteil["urteile"] if u["passt"])
+    verlierer = next(u for u in urteil["urteile"] if not u["passt"])
+    assert gewinner["geprueft"] == 6          # 3 Vertraege x 2 Werte
+    assert gewinner["quote_stuetzend"] == 1.0
+    assert verlierer["quote_verletzt"] == 1.0
+    assert verlierer["verletzende_belege"][0].startswith("700000")
+    assert "100.0%" in urteil["begruendung"]
+
+
+def test_ein_ausreisser_kippt_das_urteil_nicht_stillschweigend():
+    """Ein einzelner abweichender Beleg -> Mensch MIT Beleglage.
+
+    Die wahre Lesart wird durch 5 von 6 Werten getragen; ein Wert ist
+    verfaelscht. Das Urteil bleibt beim Menschen (keine Lesart passt
+    lueckenlos) — aber die Begruendung muss sagen, dass es an EINEM
+    Beleg liegt, sonst ist sie fuer eine Entscheidung wertlos.
+    """
+    belege = _belege("zins", 0.0125)
+    verfaelscht = dataclasses.replace(
+        belege[0],
+        erwartet={**belege[0].erwartet,
+                  "kVx_MRV": belege[0].erwartet["kVx_MRV"] * 1.05})
+    urteil = gleiche_ab("zins", [
+        Lesart(0.0125, "tarifmeldung"), Lesart(0.0175, "tarifrechner"),
+    ], [verfaelscht] + belege[1:])
+    assert urteil["automatisch_aufloesbar"] is False
+    assert urteil["menschlich_erforderlich"] is True
+    wahre = next(u for u in urteil["urteile"] if u["wert"] == 0.0125)
+    assert (wahre["verletzt"], wahre["geprueft"]) == (1, 6)
+    assert wahre["quote_stuetzend"] == pytest.approx(5 / 6)
+    assert wahre["verletzende_belege"] == ["7000000/kVx_MRV"]
+    assert "83.3%" in urteil["begruendung"]
+    assert "7000000/kVx_MRV" in urteil["begruendung"]
+
+
+def test_duenne_beleglage_loest_nicht_automatisch_auf():
+    """Ein einziger Belegwert ist kein Bestandsbeweis."""
+    beleg = _belege("zins", 0.0125, anzahl=1)[0]
+    einzeln = dataclasses.replace(
+        beleg, erwartet={"BJB": beleg.erwartet["BJB"]})
+    urteil = gleiche_ab("zins", [
+        Lesart(0.0125, "tarifmeldung"), Lesart(0.0175, "tarifrechner"),
+    ], [einzeln])
+    assert urteil["urteile"][0]["geprueft"] == 1 < MIND_BELEGE
+    assert urteil["urteile"][0]["passt"] is True     # genau eine Lesart passt
+    assert urteil["automatisch_aufloesbar"] is False
+    assert urteil["menschlich_erforderlich"] is True
+    assert "zu duenn" in urteil["begruendung"]
+
+
+def test_vereinzelt_verletzte_gegenlesart_ist_keine_verwerfung():
+    """Die Gegenlesart muss BREIT verworfen sein, nicht punktuell.
+
+    ``policy_fee`` wirkt nur auf den Zahlbeitrag BZB — von drei
+    Belegwerten je Vertrag verletzt die falsche Lesart also genau
+    einen. Ein Drittel der Belege ist keine Verwerfung: ohne die
+    Schranke wuerde hier automatisch entschieden, obwohl zwei Drittel
+    der Lieferung zwischen den Lesarten gar nicht unterscheiden.
+    """
+    belege = []
+    for i, (x, n, t) in enumerate([(35, 20, 15), (45, 25, 20), (30, 30, 30)]):
+        params = dataclasses.asdict(
+            dataclasses.replace(KLV_DEFAULT, x=x, n=n, t=t, policy_fee=24.0))
+        ergebnis = berechne(type(KLV_DEFAULT)(**params))
+        belege.append(VertragsBeleg(
+            police_id=f"700000{i}", model_point=params, vertragsjahr=5,
+            erwartet={
+                "BJB": ergebnis["scalars"]["Kalkulation"]["BJB"],
+                "BZB": ergebnis["scalars"]["Kalkulation"]["BZB"],
+                "kVx_MRV": ergebnis["tables"]["Kalkulation"][5]["kVx_MRV"],
+            }))
+    urteil = gleiche_ab("policy_fee", [
+        Lesart(24.0, "tarifmeldung"), Lesart(0.0, "tarifrechner"),
+    ], belege)
+    gewinner = next(u for u in urteil["urteile"] if u["wert"] == 24.0)
+    verlierer = next(u for u in urteil["urteile"] if u["wert"] == 0.0)
+    assert gewinner["passt"] and gewinner["geprueft"] == 9
+    assert verlierer["verletzt"] == 3                 # nur die BZB-Werte
+    assert verlierer["quote_verletzt"] == pytest.approx(1 / 3)
+    assert verlierer["quote_verletzt"] < VERWERFUNGS_QUOTE
+    assert urteil["automatisch_aufloesbar"] is False
+    assert urteil["menschlich_erforderlich"] is True
+    assert "Ausreisser" in urteil["begruendung"]
+
+
+def test_schlechtester_beleg_ist_der_schlimmste_VERLETZENDE():
+    """Ein nicht verletzender Vergleich darf den Ausreisser nicht decken.
+
+    Die relative Abweichung wird gegen ``max(|soll|, 1.0)`` gemessen.
+    Bei einer Groesse unter 1 (Beitragsrate ``Bxt``) faellt sie dadurch
+    gross aus, ohne je die Toleranz zu verletzen — waehrend der
+    tatsaechlich verletzende Betragswert eine viel kleinere relative
+    Abweichung hat. Der benannte Beleg muss der verletzende sein.
+    """
+    beleg = _belege("zins", 0.0125, anzahl=1)[0]
+    params = dict(beleg.model_point)
+    ergebnis = berechne(type(KLV_DEFAULT)(**params))
+    bxt = ergebnis["scalars"]["Kalkulation"]["Bxt"]
+    bjb = ergebnis["scalars"]["Kalkulation"]["BJB"]
+    gemischt = dataclasses.replace(beleg, erwartet={
+        "Bxt": bxt + 1e-3,      # grosse rel. Abweichung, aber innerhalb ABS_TOL
+        "BJB": bjb + 0.05,      # kleine rel. Abweichung, aber verletzend
+    })
+    urteil = pruefe_lesart("zins", Lesart(0.0125, "tarifmeldung"), [gemischt])
+    assert urteil["verletzt"] == 1
+    assert urteil["schlechtester_beleg"] == f"{beleg.police_id}/BJB"
+    assert urteil["max_relative_abweichung"] > \
+        urteil["max_relative_abweichung_verletzt"]
 
 
 def test_beta1_fall_wird_ebenfalls_belegt():

@@ -248,3 +248,55 @@ def test_gate_b1_usage(tmp_path, capsys):
     ergebnis = json.loads(capsys.readouterr().out)
     assert code == 2
     assert any(e["code"] == "missing_arg" for e in ergebnis["errors"])
+
+
+def test_gate_b1_nennt_den_erzeuger_wenn_der_eingang_fehlt(tmp_path, capsys):
+    """Nicht-Verhandelbare: ein harter Fehler nennt den Weg hinaus.
+
+    Fehlt der Eingang von B1, genuegt 'Datei nicht gefunden' nicht — die
+    Meldung muss das Kommando tragen, das die Datei herstellt
+    (Systempruefung F6). Geprueft fuer beide Einstiegsfaelle: gar kein
+    --portfolio und ein --portfolio, das es nicht gibt.
+    """
+    def _hinweise(argv):
+        run_command(gate_cli.main, argv + ["--diagnostics-dir", str(tmp_path)])
+        return json.loads(capsys.readouterr().out)
+
+    for argv in ([], ["--portfolio", str(tmp_path / "gibt_es_nicht.parquet")]):
+        ergebnis = _hinweise(argv)
+        assert ergebnis["exit_code"] == 2
+        texte = " ".join(h["hint"] for h in ergebnis["repair_hints"])
+        assert "rechner_pipeline.bestand.cli_fortschreibung" in texte
+        # Das Kommando ist nur brauchbar, wenn es seine Pflichtargumente
+        # und das erzeugte Artefakt mitnennt:
+        for teil in ("--config", "--bis", "--out-dir", "bestand_gesamt.parquet"):
+            assert teil in texte, teil
+
+
+def test_gate_b1_akzeptiert_beginne_nach_dem_horizont(lauf, tmp_path, capsys):
+    """--bis ist der Fortschreibungs-HORIZONT, kein Stichtag.
+
+    Der Basis-Erzeuger besiedelt das volle Verkaufsfenster jeder
+    Generation in einem Batch; Vertragsbeginne nach --bis sind deshalb
+    Datenmodell, nicht Datenfehler (Systempruefung F3, geprueft und
+    widerlegt). Der Test haelt das fest: wer B1 um die Invariante
+    'max(insurance_start) <= --bis' erweitert, macht diesen Lauf rot.
+    """
+    portfolio = read_portfolio(lauf / "bestand_gesamt.parquet")
+    horizont = dt.date(2020, 1, 1)
+    spaeter = (portfolio["insurance_start"].dt.date > horizont).sum()
+    # Ohne diese Vorbedingung wuerde der Test nichts pruefen:
+    assert spaeter > 0, "Beispiel-Bestand traegt keine Beginne nach dem Horizont"
+
+    code = run_command(gate_cli.main, [
+        "--portfolio", str(lauf / "bestand_gesamt.parquet"),
+        "--historie", str(lauf / "historie.parquet"),
+        "--scheiben", str(lauf / "scheiben.parquet"),
+        "--ledger", str(lauf / "ledger.parquet"),
+        "--bis", horizont.isoformat(),
+        "--config", str(EXAMPLE),
+        "--diagnostics-dir", str(tmp_path / "diag"),
+    ])
+    ergebnis = json.loads(capsys.readouterr().out)
+    assert code == 0, ergebnis["errors"]
+    assert ergebnis["summary"]["all_passed"] is True

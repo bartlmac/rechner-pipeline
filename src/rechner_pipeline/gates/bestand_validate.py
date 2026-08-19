@@ -21,6 +21,23 @@ Validates the Bestandsdaten tables against their schemas and invariants
   ist ``--scheiben`` Pflicht (ohne Scheiben waeren die Bestandssummen
   systematisch zu niedrig und die Pruefung falsch-positiv).
 
+Was ``--bis`` NICHT ist (Systempruefung Befund F3, geprueft und widerlegt):
+``--bis`` ist der Fortschreibungs-HORIZONT des Producer-Laufs, kein
+Stichtag, zu dem der Bestand ausgewiesen wird. Vertragsbeginne NACH
+``--bis`` sind deshalb kein Widerspruch, sondern der Normalfall — der
+Basis-Erzeuger besiedelt das volle Verkaufsfenster jeder Generation in
+EINEM Batch (``configs/bestand_klv.toml`` und ``configs/bestand_gesamt.toml``
+tragen Beginne bis 2035-12, unabhaengig von ``--bis``), waehrend ``--bis``
+nur bestimmt, wie weit der GeVo-Strom projiziert wurde. B1 darf daraus
+also keine Invariante ``max(insurance_start) <= --bis`` machen: sie waere
+gegen jeden Beispiel-Bestand verletzt (bei ``--bis 2020-01-01`` in 241
+bzw. 494 Zeilen) und wuerde die Kohorte des Datenmodells fuer einen
+Datenfehler erklaeren. Aus demselben Grund prueft die Bewegungs-Identitaet
+nur vollstaendig simulierte Kalenderjahre. Die Stichtags-Sicht (welche
+Vertraege zaehlen zu einem Datum?) ist Sache des Berichts
+(``bestand.cli_report --stichtag``), nicht dieses Gates: B1 prueft den
+Datei-Contract.
+
 Blocking failures exit ``20`` (``Exit.FILE_CONTRACT``) with the error list
 of the engines (repair happens data-side, not prose-side). Usage errors
 exit ``2``. Writes the ``bestand_validate.gate.json`` ledger entry like the
@@ -67,6 +84,19 @@ from rechner_pipeline.gates._common import (
 
 GATE = "B1.bestand-contract"
 GATE_VERSION = "1.0.0"
+
+#: Der Weg hinaus, wenn der Eingang von B1 fehlt: ein Gate darf nicht nur
+#: melden, DASS etwas fehlt, es nennt das Kommando, das den Eingang
+#: herstellt (Nicht-Verhandelbare "fail fast, aber mit Ausweg").
+ERZEUGER_HINWEIS = {
+    "code": "bestand_erzeugen",
+    "hint": "Bestand erzeugen mit: python -m "
+    "rechner_pipeline.bestand.cli_fortschreibung --config <config>.toml "
+    "--bis <ISO-Datum> --out-dir <lauf>. Der Lauf schreibt "
+    "<lauf>/bestand_gesamt.parquet (--portfolio), historie.parquet, "
+    "ledger.parquet und scheiben.parquet; --bis ist derselbe Horizont, "
+    "den dieses Gate erwartet.",
+}
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -125,17 +155,21 @@ def main(argv: Optional[List[str]] = None):
             log(f"bestand_validate: gate-ledger write failed: {exc}")
         return result
 
-    def _usage(errors: List[dict]):
+    def _usage(errors: List[dict], repair_hints: Optional[List[dict]] = None):
         return _finalize(build_result(
             command="bestand_validate",
             gate=GATE,
             gate_version=GATE_VERSION,
             exit_code=Exit.USAGE,
             errors=errors,
+            repair_hints=repair_hints,
         ))
 
     if not args.portfolio:
-        return _usage([{"code": "missing_arg", "message": "--portfolio ist erforderlich"}])
+        return _usage(
+            [{"code": "missing_arg", "message": "--portfolio ist erforderlich"}],
+            [ERZEUGER_HINWEIS],
+        )
     bis = None
     if args.ledger and not (args.historie and args.bis):
         return _usage([{
@@ -163,10 +197,13 @@ def main(argv: Optional[List[str]] = None):
             eingaben[name] = Path(wert)
     fehlend = [str(p) for p in eingaben.values() if not p.is_file()]
     if fehlend:
-        return _usage([
-            {"code": "missing_input", "message": f"Datei nicht gefunden: {p}"}
-            for p in fehlend
-        ])
+        return _usage(
+            [
+                {"code": "missing_input", "message": f"Datei nicht gefunden: {p}"}
+                for p in fehlend
+            ],
+            [ERZEUGER_HINWEIS],
+        )
 
     paths = {name: str(p) for name, p in eingaben.items()}
     repo_root = Path(args.repo_root).resolve() if args.repo_root else None

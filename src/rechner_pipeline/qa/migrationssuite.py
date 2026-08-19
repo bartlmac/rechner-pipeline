@@ -2,25 +2,49 @@
 
 Der Beweis einer Bestandsmigration endet nicht beim Stichtags-Foto: Das
 Zielsystem muss den übernommenen Bestand auch FORTSCHREIBEN wie das
-Quellsystem. Diese Suite prüft deshalb je Vertrag drei Dinge gegen
+Quellsystem. Diese Suite prüft deshalb je Vertrag vier Dinge gegen
 gelieferte Erwartungswerte (typisch: zweiter Bestandsabzug des
 abgebenden Unternehmens plus GeVo-Protokoll des Zwischenzeitraums):
 
 1. Deckungskapital am Migrationsstichtag — die Bilanzgröße, unterjährig
    interpoliert (:class:`rechner_pipeline.kern.Monatsreserve`);
-2. die Beträge der Geschäftsvorfälle zwischen den Stichtagen
+2. Bruttojahresbeitrag am Migrationsstichtag, sofern geliefert
+   (``bjb_erwartet_1``) — siehe BEITRAG ALS ZWEITE PRÜFACHSE;
+3. die Beträge der Geschäftsvorfälle zwischen den Stichtagen
    (STO -> Rückkaufswert am Ereignismonat, TOD -> Versicherungssumme,
    PEX -> beitragsfreie Summe am Jahrestag, ABL -> Gesamt-VS bzw. nach
    Beitragsfreistellung die Summe der beitragsfreien Summen);
-3. Deckungskapital am Folgestichtag auf dem durch die GeVos bestimmten
+4. Deckungskapital am Folgestichtag auf dem durch die GeVos bestimmten
    Track (aktiv, beitragsfrei, abgegangen; nach einer dynamischen
    Erhöhung vertragsweit über Grund- und Erhöhungsscheiben —
    :func:`rechner_pipeline.kern.vertrags_monatsreserve`, Scheiben nach
    der Tarifwerk-Regel :func:`rechner_pipeline.kern.erhoehungs_scheibe`).
 
+BEITRAG ALS ZWEITE PRÜFACHSE: Das Deckungskapital allein ist ein
+stumpfes Instrument gegen Fehler in der PARAMETRIERUNG. Ein um ein Jahr
+versetztes Eintrittsalter (Kalenderjahresmethode der Quelle gegen
+vollendetes Alter des Ziels) verschiebt bei kurzer
+Beitragszahlungsdauer die Reserve oft nur um Bruchteile eines Cents —
+der Bruttojahresbeitrag reagiert auf dieselbe Verschiebung deutlich
+stärker, weil er direkt an der Beitragsrate ``Bxt(x, n, t)`` hängt.
+Deshalb wird der in jedem Bestandsabzug gelieferte Jahresbeitrag mit
+geprüft, wenn er im Prüfauftrag steht. Fehlt er, ist das eine
+AUSGEWIESENE LÜCKE (``nicht_geprueft`` je Vertrag,
+``pruefluecken``/``vollstaendig_geprueft`` in der Zusammenfassung) und
+kein stilles Bestehen: die Suite behauptet nie, geprüft zu haben, was
+ihr niemand gegeben hat.
+
+Der Systemwert des Beitrags ist ``0.0``, sobald die Beitragszahlung am
+Stichtag beendet ist (``monate >= 12 * t``) oder der Vertrag bereits
+beitragsfrei ist — genau so führen die Abzüge den Jahresbeitrag.
+
 Inkonsistenzen der Lieferung (GeVo außerhalb der Stichtage, Wert trotz
 Abgang, Abgang ohne GeVo, GeVo auf dem falschen Track) sind BEFUNDE je
-Vertrag, nie stille Lücken (P2).
+Vertrag, nie stille Lücken (P2). Fehler der PRÜFMENGE (fehlende
+Verträge, doppelte Policennummern) sind Befunde der Menge
+(``mengenbefunde``) — eine Abnahme über 400 von 500 Verträgen ist keine
+bestandene Abnahme, und ein dreimal gelieferter Vertrag ist kein
+dreifacher Beleg.
 
 Primitive Strukturen, kein Ontologie-Import — die Suite ist
 fallunabhängig; die Fall-Bindung (welche Lieferung, welche Lesart der
@@ -92,6 +116,19 @@ class VertragsPruefung:
 
     ``dk_erwartet_2`` ist ``None``, wenn der Vertrag laut Lieferung bis
     zum Folgestichtag abgegangen ist (STO/TOD).
+
+    ``bjb_erwartet_1`` ist der gelieferte Bruttojahresbeitrag am
+    MIGRATIONSSTICHTAG (Feld ``JBRUTTO`` der üblichen Abzüge; ``0.00``
+    für Verträge, deren Beitragszahlung beendet ist). ``None`` heißt
+    "nicht geliefert" und wird als Prüflücke ausgewiesen — nicht als
+    bestandene Prüfung.
+
+    ``beitragsfrei_seit_jahr`` ist der ANFANGSZUSTAND: das Vertragsjahr
+    einer Beitragsfreistellung, die schon VOR dem Migrationsstichtag
+    wirksam war. Dann laufen beide Stichtage auf dem beitragsfreien
+    Track und der Jahresbeitrag ist 0. Eine Beitragsfreistellung
+    ZWISCHEN den Stichtagen ist kein Anfangszustand, sondern ein
+    PEX-GeVo.
     """
 
     police_id: str
@@ -101,6 +138,8 @@ class VertragsPruefung:
     dk_erwartet_1: float
     dk_erwartet_2: Optional[float]
     gevos: Tuple[GeVoErwartung, ...] = field(default_factory=tuple)
+    bjb_erwartet_1: Optional[float] = None
+    beitragsfrei_seit_jahr: Optional[int] = None
 
 
 def _vergleich(groesse: str, system: float, erwartet: float) -> Dict[str, Any]:
@@ -143,12 +182,31 @@ def _bfr_gesamtsumme(
         for erh_jahr, k in scheiben)
 
 
+def _bjb_system(
+    kern: Rechenkern, monate: int, pex_jahr: Optional[int]
+) -> float:
+    """Bruttojahresbeitrag des Vertrags am Monats-Stichtag.
+
+    Nach dem Ende der Beitragszahlungsdauer (``monate >= 12 * t``) und
+    ab einer Beitragsfreistellung wird kein Beitrag mehr gezahlt: der
+    Systemwert ist dann ``0.0``, so wie die Bestandsabzüge das Feld
+    führen. Sonst der Jahresbeitrag des Grundvertrags
+    (``VS * Bxt``); Erhöhungsscheiben entstehen erst durch ERH-GeVos
+    NACH dem Migrationsstichtag und tragen hier deshalb nichts bei.
+    """
+    if pex_jahr is not None or monate >= 12 * kern.mp.t:
+        return 0.0
+    return kern.gross_annual_premium()
+
+
 def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     """Zwei-Stichtags-Urteil für einen Vertrag.
 
     Rückgabe: ``bestanden`` (alle Vergleiche innerhalb der Toleranz und
     kein Befund), ``befunde`` (Texte zu Lieferungs-Inkonsistenzen),
-    ``pruefungen`` (je Größe System-/Erwartungswert und Residuum).
+    ``pruefungen`` (je Größe System-/Erwartungswert und Residuum) und
+    ``nicht_geprueft`` (Größen, zu denen die Lieferung keinen
+    Erwartungswert trägt — ausgewiesene Lücke, kein Bestehen).
     """
     if v.monate_stichtag_2 <= v.monate_stichtag_1:
         raise ValueError(
@@ -159,14 +217,38 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     kern = Rechenkern(grund_mp)
     befunde: List[str] = []
     pruefungen: List[Dict[str, Any]] = []
+    nicht_geprueft: List[str] = []
 
-    pruefungen.append(_vergleich(
-        "dk_stichtag_1", kern.monatsreserve(v.monate_stichtag_1).vx_mrv,
-        v.dk_erwartet_1,
-    ))
+    # Anfangszustand: schon vor dem Migrationsstichtag beitragsfrei.
+    pex_jahr: Optional[int] = v.beitragsfrei_seit_jahr
+    if pex_jahr is not None:
+        if pex_jahr <= 0:
+            raise ValueError(
+                f"{v.police_id}: beitragsfrei_seit_jahr = {pex_jahr} ist "
+                "kein Vertragsjahr (> 0 erwartet)"
+            )
+        if 12 * pex_jahr > v.monate_stichtag_1:
+            raise ValueError(
+                f"{v.police_id}: Beitragsfreistellung in Jahr {pex_jahr} "
+                f"(Monat {12 * pex_jahr}) liegt nach dem Migrationsstichtag "
+                f"(Monat {v.monate_stichtag_1}) — als PEX-GeVo liefern, "
+                "nicht als Anfangszustand"
+            )
+        dk_1 = kern.monatsreserve_beitragsfrei(pex_jahr, v.monate_stichtag_1)
+    else:
+        dk_1 = kern.monatsreserve(v.monate_stichtag_1).vx_mrv
+    pruefungen.append(_vergleich("dk_stichtag_1", dk_1, v.dk_erwartet_1))
+
+    if v.bjb_erwartet_1 is not None:
+        pruefungen.append(_vergleich(
+            "bjb_stichtag_1",
+            _bjb_system(kern, v.monate_stichtag_1, pex_jahr),
+            v.bjb_erwartet_1,
+        ))
+    else:
+        nicht_geprueft.append("bjb_stichtag_1")
 
     terminal_monat: Optional[int] = None
-    pex_jahr: Optional[int] = None
     scheiben: List[Tuple[int, Rechenkern]] = []
     for g in sorted(v.gevos, key=lambda g: g.monate):
         if g.art not in GEVO_ARTEN:
@@ -258,6 +340,13 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     f"gevo_abl_monat_{g.monate}", betrag, g.betrag_erwartet,
                 ))
         else:  # PEX
+            if pex_jahr is not None:
+                befunde.append(
+                    f"PEX bei Monat {g.monate}: der Vertrag ist bereits seit "
+                    f"Jahr {pex_jahr} beitragsfrei — eine zweite "
+                    "Beitragsfreistellung gibt es nicht"
+                )
+                continue
             if g.monate % 12:
                 befunde.append(
                     f"PEX bei Monat {g.monate}: Beitragsfreistellung wirkt "
@@ -302,14 +391,67 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
         "bestanden": not befunde and all(p["ok"] for p in pruefungen),
         "befunde": befunde,
         "pruefungen": pruefungen,
+        "nicht_geprueft": nicht_geprueft,
     }
 
 
-def pruefe_bestand(vertraege: List[VertragsPruefung]) -> Dict[str, Any]:
+def _mengenbefunde(
+    vertraege: List[VertragsPruefung], erwartete_anzahl: Optional[int]
+) -> List[str]:
+    """Befunde der PRÜFMENGE: Vollständigkeit und Duplikate.
+
+    Beides sind Aussagen über die Menge, nicht über einen Vertrag —
+    und beide entwerten die Abnahme vollständig, wenn sie unbemerkt
+    bleiben: eine Suite über 400 von 500 Verträgen meldet sonst
+    "bestanden", und ein dreimal enthaltener Vertrag zählt dreifach in
+    jeder Quote.
+    """
+    befunde: List[str] = []
+    if erwartete_anzahl is not None and erwartete_anzahl != len(vertraege):
+        fehlend = erwartete_anzahl - len(vertraege)
+        richtung = (f"{fehlend} Verträge fehlen in der Prüfmenge"
+                    if fehlend > 0
+                    else f"{-fehlend} Verträge zu viel in der Prüfmenge")
+        befunde.append(
+            f"Vollständigkeit: {len(vertraege)} geprüfte Verträge gegen "
+            f"{erwartete_anzahl} erwartete — {richtung}. Prüfe die "
+            "Lieferung und die Transformation (verworfene Zeilen, Filter)."
+        )
+    zaehler: Dict[str, int] = {}
+    for v in vertraege:
+        zaehler[v.police_id] = zaehler.get(v.police_id, 0) + 1
+    for police_id, n in zaehler.items():
+        if n > 1:
+            befunde.append(
+                f"Policennummer {police_id!r} kommt {n}-mal in der "
+                "Prüfmenge vor — derselbe Vertrag wird mehrfach gezählt; "
+                "die Prüfmenge ist keine Bestandsmenge."
+            )
+    return befunde
+
+
+def pruefe_bestand(
+    vertraege: List[VertragsPruefung],
+    *,
+    erwartete_anzahl: Optional[int] = None,
+) -> Dict[str, Any]:
     """Suite über den ganzen Bestand: Urteile + Zusammenfassung.
 
     ``fehlgeschlagen`` zählt Verträge mit Toleranzverletzung oder
-    Lieferungs-Befund; bestanden ist die Suite nur ohne jeden Fehlschlag.
+    Lieferungs-Befund; bestanden ist die Suite nur ohne jeden Fehlschlag
+    UND ohne Befund der Prüfmenge (``mengenbefunde``).
+
+    PRÜFMENGE: ``erwartete_anzahl`` ist die aus der Lieferung bekannte
+    Vertragszahl (Zeilen des Bestandsabzugs). Wird sie übergeben, prüft
+    die Suite die Vollständigkeit; wird sie nicht übergeben, ist das
+    eine ausgewiesene Prüflücke — nicht etwa Vollständigkeit. Doppelte
+    Policennummern sind immer ein harter Befund.
+
+    PRÜFLÜCKEN: ``pruefluecken`` benennt, was die Suite MANGELS
+    Erwartungswerten nicht geprüft hat (fehlende Jahresbeiträge,
+    fehlende erwartete Vertragszahl); ``vollstaendig_geprueft`` ist nur
+    ohne jede Lücke wahr. Eine Lücke ist kein Fehlschlag — aber auch
+    kein Bestehen, und sie steht deshalb neben dem Urteil.
 
     LEERE PRÜFMENGE: harter Fehler statt eines ausgewiesenen
     Nicht-Bestehens. Ein ``suite_bestanden = False`` wäre die Aussage
@@ -353,12 +495,37 @@ def pruefe_bestand(vertraege: List[VertragsPruefung]) -> Dict[str, Any]:
                     f"({type(exc).__name__}): {exc}"
                 ],
                 "pruefungen": [],
+                # Abgebrochen heisst: NICHTS an diesem Vertrag geprueft.
+                "nicht_geprueft": ["dk_stichtag_1", "bjb_stichtag_1",
+                                   "dk_stichtag_2"],
             })
     n_ok = sum(1 for u in urteile if u["bestanden"])
+    mengenbefunde = _mengenbefunde(vertraege, erwartete_anzahl)
+
+    luecken_zaehler: Dict[str, int] = {}
+    for u in urteile:
+        for groesse in u["nicht_geprueft"]:
+            luecken_zaehler[groesse] = luecken_zaehler.get(groesse, 0) + 1
+    pruefluecken = [
+        f"{groesse}: bei {n} von {len(urteile)} Verträgen NICHT geprüft "
+        "(kein gelieferter Erwartungswert oder abgebrochene Prüfung)."
+        for groesse, n in sorted(luecken_zaehler.items())
+    ]
+    if erwartete_anzahl is None:
+        pruefluecken.append(
+            "Vollständigkeit: keine erwartete Vertragszahl übergeben "
+            "(erwartete_anzahl) — dass die Prüfmenge dem gelieferten "
+            "Bestand entspricht, ist NICHT geprüft."
+        )
+
     return {
         "anzahl": len(urteile),
         "bestanden": n_ok,
         "fehlgeschlagen": len(urteile) - n_ok,
-        "suite_bestanden": n_ok == len(urteile),
+        "suite_bestanden": n_ok == len(urteile) and not mengenbefunde,
+        "erwartete_anzahl": erwartete_anzahl,
+        "mengenbefunde": mengenbefunde,
+        "pruefluecken": pruefluecken,
+        "vollstaendig_geprueft": not pruefluecken,
         "vertraege": urteile,
     }

@@ -77,7 +77,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         abox = lade(fall)
     except Exception as exc:  # noqa: BLE001
-        print(f"entscheide: A-Box unlesbar: {exc}", file=sys.stderr)
+        # Eine Fehlermeldung nennt den Weg hinaus: die A-Box ist kein
+        # Handarbeitsartefakt, sie entsteht aus den Quellfragmenten.
+        print(
+            f"entscheide: A-Box unlesbar: {exc} — A-Box erzeugen bzw. "
+            "erneuern mit: python -m rechner_pipeline.gates.abox_merge "
+            f"--fall {fall} (die Fragmente unter "
+            f"{fall}/abgeleitet/abox/fragmente kommen aus der "
+            "Stufe-1-Extraktion je Quelle)",
+            file=sys.stderr,
+        )
         return 1
 
     jetzt = _jetzt()
