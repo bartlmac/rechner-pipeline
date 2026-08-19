@@ -21,22 +21,31 @@ Diskussionsanstöße sind ausdrücklich willkommen.
   und `.agents/skills/`) sind versionierte Artefakte, keine
   Wegwerf-Prompts; die Spiegel-Parität ist test-erzwungen.
 - Beispielartefakte (Excel-Rechner, Bestandsabzüge, Bestands-Configs
-  der fiktiven Pfefferminzia LV) müssen synthetisch sein — keine echten
-  Kunden- oder Bestandsdaten. Keine Klarnamen von Personen in
-  eingecheckten Dateien oder Commit-Botschaften. Für die
-  Rechnungsgrundlagen gilt das ausdrücklich **nicht**: die
-  Tafelvektoren in `src/rechner_pipeline/kern/tafeln.xml` sind
-  teilweise Drittmaterial (DAV-Tafeln) — siehe `NOTICE.md`, bevor dort
-  etwas ergänzt wird.
+  der fiktiven Pfefferminzia LV) müssen **synthetisch oder öffentlich
+  verfügbar** sein — keine echten Kunden- oder Bestandsdaten. Das gilt
+  auch für die Rechnungsgrundlagen: die Tafelvektoren in
+  `src/rechner_pipeline/kern/tafeln.xml` sind veröffentlichte
+  DAV-Tafeln bzw. synthetische Vektoren; die Herkunft steht je Vektor
+  als Kommentar in der Datei. Keine Klarnamen von Personen in
+  eingecheckten Dateien oder Commit-Botschaften.
 
 ## Lokale Konfiguration
 
-- Die zentrale Python-Konfiguration liegt in `pyproject.toml`
-  (Abhängigkeits-Bereiche plus `[dev]`-Extra für die Test-Toolchain).
-  `requirements.txt` und `requirements-dev.txt` sind die exakt
-  gepinnten Stände für reproduzierbare Installationen.
-- Standard-Setup: `python -m venv .venv`, aktivieren,
-  `python -m pip install -e ".[dev]"`, dann `python -m pytest`.
+- Die zentrale Python-Konfiguration liegt in `pyproject.toml`. Die
+  **direkten** Abhängigkeiten sind dort exakt gepinnt (plus
+  `[dev]`-Extra für die Test-Toolchain); alles Transitive löst pip auf.
+- `requirements.txt` / `requirements-dev.txt` pinnen zusätzlich die
+  transitive Hülle. Das ist der reproduzierbare Weg und der, den die CI
+  fährt:
+  `python -m pip install -r requirements-dev.txt`, dann
+  `python -m pip install -e . --no-deps`, dann `python -m pytest`.
+- Bequemer Weg für einen schnellen Blick: `python -m venv .venv`,
+  aktivieren, `python -m pip install -e ".[dev]"`, dann
+  `python -m pytest`. Achtung: Die Suite läuft mit
+  `filterwarnings = ["error"]` — eine neue Warnung in einer frisch
+  aufgelösten Fremdbibliothek färbt sie rot, ohne dass sich hier etwas
+  geändert hat. In dem Fall über die Pin-Dateien installieren und den
+  Unterschied als Befund melden, nicht die Warnungs-Strenge senken.
 - Das Paket ist SDK-frei: kein LLM-Key, keine `.env`, keine
   Provider-Konfiguration. Agenten arbeiten über ihre CLIs auf dem Repo
   (siehe `AGENTS.md`).

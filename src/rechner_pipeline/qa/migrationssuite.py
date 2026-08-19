@@ -10,7 +10,8 @@ abgebenden Unternehmens plus GeVo-Protokoll des Zwischenzeitraums):
    interpoliert (:class:`rechner_pipeline.kern.Monatsreserve`);
 2. die Beträge der Geschäftsvorfälle zwischen den Stichtagen
    (STO -> Rückkaufswert am Ereignismonat, TOD -> Versicherungssumme,
-   PEX -> beitragsfreie Summe am Jahrestag);
+   PEX -> beitragsfreie Summe am Jahrestag, ABL -> Gesamt-VS bzw. nach
+   Beitragsfreistellung die Summe der beitragsfreien Summen);
 3. Deckungskapital am Folgestichtag auf dem durch die GeVos bestimmten
    Track (aktiv, beitragsfrei, abgegangen; nach einer dynamischen
    Erhöhung vertragsweit über Grund- und Erhöhungsscheiben —
@@ -35,6 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline.kern import (
+    MissingMortalityTableError,
     ModelPoint,
     Rechenkern,
     erhoehungs_scheibe,
@@ -42,9 +44,31 @@ from rechner_pipeline.kern import (
 )
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 
-GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX")
+GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL")
 #: GeVo-Arten, die den Vertrag beenden (kein Wert am Folgestichtag).
-TERMINAL = ("STO", "TOD")
+TERMINAL = ("STO", "TOD", "ABL")
+
+#: Ausnahmen, die eine unplausible LIEFERUNG auslösen kann und die
+#: deshalb Befund GENAU EINES Vertrags werden (siehe
+#: :func:`pruefe_bestand`): Bereichs-/Plausibilitätsfehler des Kerns
+#: (``ValueError``, davon abgeleitet ``TafelBereichError``), ein
+#: Modellpunkt, der den Feld-Contract des Kerns verletzt (``TypeError``
+#: bei unbekanntem/fehlendem Feld, ``KeyError`` bei fehlendem Schlüssel),
+#: entartete Parameter (``ArithmeticError``: Division durch Null,
+#: Overflow) und eine gelieferte, im Zielsystem nicht hinterlegte
+#: Sterbetafel (``MissingMortalityTableError``).
+#: NICHT gefangen wird alles Übrige — ``AttributeError``, ``NameError``,
+#: ``IndexError``, ``AssertionError``, ``RecursionError``: diese Fehler
+#: kann kein Lieferdatum erzeugen, sie sind Defekte der Suite oder des
+#: Kerns. Sie müssen den Lauf abbrechen, statt sich als 500 gleich
+#: lautende "Befunde" zu tarnen.
+DATEN_AUSNAHMEN: Tuple[type, ...] = (
+    ValueError,
+    TypeError,
+    KeyError,
+    ArithmeticError,
+    MissingMortalityTableError,
+)
 
 
 @dataclass(frozen=True)
@@ -88,6 +112,35 @@ def _vergleich(groesse: str, system: float, erwartet: float) -> Dict[str, Any]:
         "residuum": system - erwartet,
         "ok": ok,
     }
+
+
+def _vs_gesamt(
+    grund_mp: ModelPoint, scheiben: List[Tuple[int, Rechenkern]]
+) -> float:
+    """Gesamt-Versicherungssumme des Vertrags (Grundvertrag + Scheiben).
+
+    Die Leistung von TOD und ABL des beitragspflichtigen Tracks
+    (Tarifplan klv.md, GeVo-Katalog: ``S^ges``).
+    """
+    return float(grund_mp.sum_insured) + sum(
+        k.mp.sum_insured for _, k in scheiben)
+
+
+def _bfr_gesamtsumme(
+    kern: Rechenkern, scheiben: List[Tuple[int, Rechenkern]], pex_jahr: int
+) -> float:
+    """Summe der beitragsfreien Summen über Grundvertrag und Scheiben.
+
+    Die bei der Beitragsfreistellung im Jahr ``pex_jahr`` fixierte
+    Vertragsleistung (Tarifplan klv.md, GeVo-Katalog: ``sum S^bfr_a``);
+    jede Erhöhungsscheibe zählt ab ihrem eigenen Jahrestag, daher der
+    Versatz ``pex_jahr - erh_jahr``. Sie ist ab der Beitragsfreistellung
+    konstant und damit zugleich die Ablauf-/Todesfallleistung des
+    beitragsfreien Tracks.
+    """
+    return kern.beitragsfreie_summe(pex_jahr) + sum(
+        k.beitragsfreie_summe(pex_jahr - erh_jahr)
+        for erh_jahr, k in scheiben)
 
 
 def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
@@ -176,11 +229,33 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
         elif g.art == "TOD":
             terminal_monat = g.monate
             if g.betrag_erwartet is not None:
-                vs_gesamt = float(grund_mp.sum_insured) + sum(
-                    k.mp.sum_insured for _, k in scheiben)
                 pruefungen.append(_vergleich(
-                    f"gevo_tod_monat_{g.monate}", vs_gesamt,
+                    f"gevo_tod_monat_{g.monate}",
+                    _vs_gesamt(grund_mp, scheiben),
                     g.betrag_erwartet,
+                ))
+        elif g.art == "ABL":
+            # Ablauf ist terminal und faellig GENAU am Ende der
+            # Versicherungsdauer (Tarifplan klv.md, GeVo-Katalog:
+            # "terminal bei a = n"). Ein ABL an einem anderen Monat ist
+            # kein Ablauf, sondern eine Lieferungs-Inkonsistenz.
+            ablauf_monat = 12 * grund_mp.n
+            if g.monate != ablauf_monat:
+                befunde.append(
+                    f"ABL bei Monat {g.monate}: Ablauf wird am Ende der "
+                    f"Versicherungsdauer fällig (Monat {ablauf_monat}, "
+                    f"n = {grund_mp.n} Jahre)"
+                )
+                continue
+            terminal_monat = g.monate
+            if g.betrag_erwartet is not None:
+                betrag = (
+                    _bfr_gesamtsumme(kern, scheiben, pex_jahr)
+                    if pex_jahr is not None
+                    else _vs_gesamt(grund_mp, scheiben)
+                )
+                pruefungen.append(_vergleich(
+                    f"gevo_abl_monat_{g.monate}", betrag, g.betrag_erwartet,
                 ))
         else:  # PEX
             if g.monate % 12:
@@ -191,11 +266,10 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                 continue
             pex_jahr = g.monate // 12
             if g.betrag_erwartet is not None:
-                summe = kern.beitragsfreie_summe(pex_jahr) + sum(
-                    k.beitragsfreie_summe(pex_jahr - erh_jahr)
-                    for erh_jahr, k in scheiben)
                 pruefungen.append(_vergleich(
-                    f"gevo_pex_monat_{g.monate}", summe, g.betrag_erwartet,
+                    f"gevo_pex_monat_{g.monate}",
+                    _bfr_gesamtsumme(kern, scheiben, pex_jahr),
+                    g.betrag_erwartet,
                 ))
 
     if terminal_monat is not None:
@@ -236,8 +310,50 @@ def pruefe_bestand(vertraege: List[VertragsPruefung]) -> Dict[str, Any]:
 
     ``fehlgeschlagen`` zählt Verträge mit Toleranzverletzung oder
     Lieferungs-Befund; bestanden ist die Suite nur ohne jeden Fehlschlag.
+
+    LEERE PRÜFMENGE: harter Fehler statt eines ausgewiesenen
+    Nicht-Bestehens. Ein ``suite_bestanden = False`` wäre die Aussage
+    "geprüft und durchgefallen" und würde einen Abnahmebericht über
+    null Verträge erzeugen ("0 von 0 fehlgeschlagen") — eine Urkunde
+    über nichts, die ein Gremium als Prüfaussage lesen kann. Tatsächlich
+    hat hier gar keine Prüfung stattgefunden; die Ursache liegt vor der
+    Suite (leere Lieferung, Transformation ohne Ausgabezeilen, falscher
+    Filter). Über ein Nichts gibt es kein ehrliches Urteil, nur einen
+    Abbruch, der auf die Ursache zeigt (P2: kein stiller Default).
+    ``pruefe_vertrag`` bleibt davon unberührt.
+
+    VERTRAGS-ISOLATION: eine Ausnahme aus :func:`pruefe_vertrag`, die
+    eine unplausible Lieferung erzeugt haben kann (:data:`DATEN_AUSNAHMEN`),
+    wird zum Befund GENAU DIESES Vertrags — der Lauf prüft die übrigen zu
+    Ende. Ein einzelner kranker Datensatz darf die Abnahme des ganzen
+    Bestands nicht in einen Traceback verwandeln; die Diagnose steht
+    dann im Bericht, bei der Police, an der sie hängt. Alle anderen
+    Ausnahmen (Defekte der Suite oder des Kerns) laufen ungefangen
+    durch — sie sollen sichtbar sein und nicht als Reihe von Befunden
+    verschwinden.
     """
-    urteile = [pruefe_vertrag(v) for v in vertraege]
+    if not vertraege:
+        raise ValueError(
+            "Migrations-Abnahmesuite ohne einen einzigen Vertrag: eine "
+            "leere Prüfmenge ist keine bestandene Abnahme. Prüfe die "
+            "Lieferung und die Transformation (wurden 0 Verträge "
+            "übernommen?) und rufe die Suite mit mindestens einem "
+            "Vertrag auf."
+        )
+    urteile: List[Dict[str, Any]] = []
+    for v in vertraege:
+        try:
+            urteile.append(pruefe_vertrag(v))
+        except DATEN_AUSNAHMEN as exc:
+            urteile.append({
+                "police_id": v.police_id,
+                "bestanden": False,
+                "befunde": [
+                    "Prüfung abgebrochen "
+                    f"({type(exc).__name__}): {exc}"
+                ],
+                "pruefungen": [],
+            })
     n_ok = sum(1 for u in urteile if u["bestanden"])
     return {
         "anzahl": len(urteile),

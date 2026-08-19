@@ -1,6 +1,6 @@
 # Skill-Architektur: die Agenten-Rollen des Gesamtsystems
 
-Stand: 2026-08-15. Die Skills sind das Betriebsmodell des Systems: sie
+Stand: 2026-08-19. Die Skills sind das Betriebsmodell des Systems: sie
 tragen das Urteils-Wissen der Agenten-Rollen, versioniert im Repo,
 CLI-neutral gespiegelt (`.claude/skills/` + `.agents/skills/`,
 Paritaet test-tragend), und ihr Git-Stand gehoert in die Provenienz
@@ -35,14 +35,23 @@ gehoert dann in ein Gate oder einen Validator.
 
 ```
 migrationsfall-durchfuehren
-  |- Stufe 1: n x extrahiere-quellfragment --> deterministischer Merge
+  |- Stufe 1 (Tarifparameter): n x extrahiere-quellfragment
+  |     --> deterministischer Merge
   |     Konflikt --> bereite-fachkonflikt-auf --> MENSCH (entscheide + G-1)
+  |- Stufe 1b (Bestandsabzug): quellen/bestand_profil (Code, Vorverdichtung)
+  |     --> transformiere-quellbestand --> TransformationsSpec
+  |     --> ontologie/transformation validate_spec + wende_an (Code)
+  |     offener Konflikt / fehlendes Zielfeld --> MENSCH (G-1 bzw. G-T)
   |- Stufe 2/3: Gates O1/O3; Kern-Aenderung noetig?
   |     Parametrierung: quellen/tafel_import (Code, kein Skill)
   |     mehr als Parametrierung: STOPP --> G-T-Vorlage --> MENSCH
   |         danach: entwickle-im-zielsystem (unter dem G-T-Beschluss)
+  |- Stufe 3b (uebernommener Bestand): pruefe-migrationsabnahme
+  |     (Gate B1, qa/migrationssuite, gates/abnahmebericht)
+  |     --> Abnahmebericht --> MENSCH (G-2)
   |- jeder Implementierungs-Block: entwickle-im-zielsystem
   |     Abschluss: teste-adversarial --> Fixes --> Regressionstests
+  |     waehrend laufender Faelle: integriere-migrationsinkrement
   '- Doku-Pflichten: dokumentiere-system (ADR, README, AGENTS)
 ```
 
@@ -59,7 +68,7 @@ als eigener Skill mit demselben Muster:
 |---|---|
 | T-Box-Erweiterung vorbereiten | erster Fall, den die T-Box nicht ausdrueckt (voraussichtlich FLV: neue Produktfamilie, G-T-Vorlage mit Klassen-Entwurf, Migrationsplan der A-Boxen, Testabdeckungs-Impact) |
 | Erweiterungsstellen implementieren | erste Spez mit offener Erweiterungsstelle (freie Implementierung am benannten Ort, unter entwickle-im-zielsystem plus fallweisen Regeln) |
-| Bestandsdaten-Extraktion | erster Fall mit Bestandsabzug als Quelle (Schema-Profiling-Vorverdichter plus Extraktions-Skill-Erweiterung) |
+| Bestandsabzug als Stufe-1-Quelle (QuellFragment) | erster Fall, der Vertragsdaten in die A-Box extrahieren muss — der Vorverdichter steht (`quellen/bestand_profil.py`) und der Weg in die Ziel-Ontologie ebenfalls (`transformiere-quellbestand` + `ontologie/transformation`); offen ist allein die Erweiterung von `extrahiere-quellfragment` um den Quelltyp Bestandsabzug |
 | Legacy-Code-Analyse | erster Fall mit Quellsystem-Code (AST/Callgraph-Vorverdichter, Terminologie-Lokalisierung, dort auch Embeddings-Freigabe) |
 | Release-/Merge-Vorbereitung | Grundregeln seit 2026-08-18 in `integriere-migrationsinkrement`; offen bleibt die Integration der O-Gates in die Team-Abnahme (nach F2-Beschluss im Team) |
 

@@ -29,9 +29,18 @@ Read `docs/architektur/migrations-pipeline-v01.md` first, then the role catalog
 coding agent ported an Excel/VBA calculator into a six-file Python kernel,
 accepted by a deterministic gate chain (617/617 values, 2026-07-22). That proof
 is complete. The porting machinery was retired on 2026-08-17 and is preserved
-on branch `parked/portierung-excel` / tag `portierung-excel-2026-08`. New
-generations are **parametrization**; new products come through the T-Box
-(gate G-T) — not by translating another workbook.
+on branch `parked/portierung-excel` / tag `portierung-excel-2026-08`.
+
+What replaces it is NOT "every migration is parametrization". That
+reading was explicitly corrected in ADR-007: a generation the target
+system already covers is parametrization over the model point — the
+precedent TG2012 -> TG2015 ran through without a single formula change.
+The **normal case is the opposite**: a ceded portfolio brings benefit
+features the kernel does not know yet, and the migration is an intensive,
+node-bound CODE extension of the one trunk (small increments, landing
+only with the full suite green including every other case's anchors,
+`integriere-migrationsinkrement`). New products come through the T-Box
+(gate G-T) — in either case not by translating another workbook.
 
 A migration case lives in a **Fall-Arbeitsbereich** (`python -m
 rechner_pipeline.fall`, ADR-002). The artifacts of this workspace belong to
@@ -49,8 +58,28 @@ Python **3.11+**. No LLM key needed.
 python -m venv .venv
 .venv/bin/python -m pip install -e ".[dev]"      # Windows: .venv\Scripts\python
 ```
-Runtime (pinned): `openpyxl`, `oletools`, `pandas`, `pyarrow`, `matplotlib`,
-`pydantic` — see `pyproject.toml`. Dev: `pytest`, `hypothesis`.
+This pins the **direct** dependencies exactly (`pyproject.toml`:
+`openpyxl`, `oletools`, `pandas`, `pyarrow`, `matplotlib`, `pydantic`;
+dev: `pytest`, `hypothesis`) and lets pip resolve everything transitive
+freely. Convenient, but not reproducible: a fresh upstream release can
+change the installed set from one day to the next, and because
+`filterwarnings = ["error"]` is on, a new warning in a third-party
+package turns the suite red without anything here having changed.
+
+For a **reproducible** install — the same set CI uses — go through the
+pin files instead:
+```
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pip install -e . --no-deps
+```
+`requirements.txt` / `requirements-dev.txt` pin the direct dependencies
+plus their transitive closure as installed from public pypi.org (verified
+under CPython 3.11 on 2026-08-19). Nine purely transitive packages
+(`annotated-types`, `contourpy`, `cycler`, `fonttools`, `kiwisolver`,
+`pillow`, `pydantic-core`, `typing-extensions`, `typing-inspection`) are
+still resolved by pip — the closure is tight, not hermetic. Use a lock
+tool if you need hermetic.
 
 ## 3. Run it
 **Create a case and register its sources.** Registration is the ONLY
@@ -80,22 +109,29 @@ fresh case (or archive the old one under `faelle/archiv/`).
 delivery of the fictitious insurer Baldrian Leben — the three inputs of
 a real portfolio migration (faulty tariff calculator, tariff
 notification, portfolio data delivery with two reporting dates and a
-GeVo protocol). Register it into a fresh case:
+GeVo protocol). Register it into a fresh case — the case is named
+`baldrian-uebernahme` throughout the docs, the skills and the ADRs, so
+keep that name:
 ```
-python -m rechner_pipeline.fall anlegen --fall faelle/baldrian
+python -m rechner_pipeline.fall anlegen --fall faelle/baldrian-uebernahme
 for f in lieferungen/baldrian/*.xlsm lieferungen/baldrian/*.docx lieferungen/baldrian/*.csv; do
-  python -m rechner_pipeline.fall registrieren --fall faelle/baldrian --datei "$f"
+  python -m rechner_pipeline.fall registrieren --fall faelle/baldrian-uebernahme --datei "$f"
 done
-python -m rechner_pipeline.fall status --fall faelle/baldrian
+python -m rechner_pipeline.fall status --fall faelle/baldrian-uebernahme
 ```
-From here the pipeline stages run through the agent skills
-(`migrationsfall-durchfuehren` orchestrates; see the role catalog in
+If that workspace already exists, `anlegen` stops with a hard error
+("Fall existiert bereits") instead of writing into it — by design, since
+`eingang/` is not regenerable (ADR-002). Pick another name or archive the
+old one under `faelle/archiv/`.
+
+The stages after registration run through the agent skills
+(`migrationsfall-durchfuehren` orchestrates; role catalog in
 `docs/architektur/skill-architektur.md`): pre-digestion and extraction
 per source, merge into the A-Box, discrepancies to the human gate G-1,
-transformation of the portfolio extract, Spez, acceptance gates, and
-the two-reporting-date migration suite with its HTML acceptance report
-for gate G-2. The deliveries may contain deliberate errors and
-source-system quirks — finding them IS the demonstration.
+transformation of the portfolio extract, Spez, acceptance gates, and the
+two-reporting-date migration suite with its HTML acceptance report for
+gate G-2. The deliveries may contain deliberate errors and source-system
+quirks — finding them IS the demonstration.
 
 **Pre-digest a source (gate G0):**
 ```
@@ -114,6 +150,23 @@ missing. Run them the way `migrationsfall-durchfuehren` does — after
 the stage that produces their input, and with the same `--generation`
 the case actually carries.
 
+**Where the deterministic walkthrough ends — read this before you get
+stuck.** `anlegen`, `registrieren`, `status` and the G0 pre-digestion
+above are plain Python: they run for anyone who cloned the repo, no key,
+no agent. What comes next does not. Extraction per source, the reading
+of the Tarifmeldung and the transformation proposal for the portfolio
+extract are **agent** steps (that is the point of the architecture — the
+model proposes, deterministic code decides), and G-1/G-2 are human
+decisions, not commands. So a walkthrough without an agent CLI ends
+here, with a non-zero exit that is the contract and not a broken
+install. To continue you need Claude Code or Codex in the repo root and
+the skills under `.claude/skills/` / `.agents/skills/`.
+
+What you CAN still exercise end-to-end on your own: the portfolio
+generator and its report (next), gate G0 on any workbook, the
+code-ontology tools, the tariff plans under `docs/tarifplaene/`, and the
+test suite.
+
 **Generate a portfolio and its report.** Two DIFFERENT dates: `--bis` is
 the simulation horizon (how far events are projected), `--stichtag` only
 marks the history/projection boundary in the report. Setting `--bis` to
@@ -127,6 +180,30 @@ python -m rechner_pipeline.bestand.cli_report --portfolio runs/bestand/bestand_g
     --scheiben runs/bestand/scheiben.parquet --config configs/bestand_gesamt.toml \
     --bis 2046-01-01 --stichtag 2026-01-01 --out runs/berichte/bestandsbericht.html
 ```
+**New business in this run: none — and that is deliberate.** The run
+above reports `3130 Basisvertraege, 0 Neuzugaenge`, and the zero is the
+one number that regularly gets misread. It does NOT mean the portfolio
+runs off from the reference date on: without `--neuzugang-ab`, the base
+generator populates each generation's full sales window in one batch, so
+the portfolio already carries the arrivals up to 2035 (255 of the 3130
+contracts start after 01.01.2026 — one generator per time window, never
+two). `neuzugang_pro_jahr` in the config is the rate of the OTHER
+generator, the one that emits new business as dated GeVo events during
+the projection; it takes effect only when the run declares the reference
+date at which the batch stops and the event stream takes over:
+```
+python -m rechner_pipeline.bestand.cli_fortschreibung \
+    --config configs/bestand_gesamt.toml --bis 2046-01-01 \
+    --neuzugang-ab 2026-01-01 --out-dir runs/bestand-nz
+```
+That run reports `2875 Basisvertraege, 695 Neuzugaenge` — same total
+order of magnitude, but arrivals after 01.01.2026 now come with a `ZUG`
+GeVo of their own in the ledger (695 of them, absent from the run above)
+instead of sitting in the base portfolio from the start. The
+documented run above stays without it because it is the reference run of
+the demo: its numbers appear in the portfolio report and in the
+before/after pair of the migration acceptance, and switching generators
+would move every one of them.
 
 **Navigate the codebase** (fundstellen are derived, not searched — ADR-005):
 ```
@@ -164,8 +241,19 @@ Each gate is one command, writes one JSON to stdout plus a
 - **Full suite before every commit** (`.venv/bin/python -m pytest`). The impact
   tool is informational — it never narrows what has to run. CI
   (`.github/workflows/tests.yml`) runs the full suite on every push and
-  pull request; case-bound tests skip honestly there, because the
-  runner has no `faelle/` workspace. In a fresh clone expect the same:
-  the suite is green with those tests skipped; locally, with a case
-  workspace present, they run for real and must stay green.
-- Dependencies pinned exactly, new ones only via ADR. Push is the human's job.
+  pull request.
+  **What "green" does not cover:** four tests are bound to a local,
+  gitignored case workspace (`faelle/archiv/baldrian-klv-tg2015`) and
+  skip wherever it is absent — in CI, in a fresh clone, and on any
+  machine that has not got that case: `test_formeln.py:52`,
+  `test_review_fixes_v01.py:364` and `:382`, `test_tafel_import.py:126`.
+  Among them is the only end-to-end proof of gate O3 (the parametrized
+  kernel against the delivered expectation values). A green run therefore
+  reads "... passed, 4 skipped" everywhere except on a machine carrying
+  that case — if you quote a green suite as evidence, say which of the
+  two you ran. Closing the gap properly means
+  a checked-in minimal fixture under `tests/fixtures/`, not a looser
+  assertion — it is an open item, not a solved one.
+- Direct dependencies pinned exactly (`pyproject.toml`), their transitive
+  closure pinned in `requirements*.txt` (section 2); new dependencies only
+  via ADR. Push is the human's job.

@@ -206,30 +206,42 @@ def main(argv: Optional[List[str]] = None):
             ),
         })
 
-    # Deterministischer Rueck-Check LLM-gelesener Formel-Staffeln (P4):
-    # nur ausfuehrbar, wo die Vorverdichtung des Falls vorliegt; der
-    # Pruefumfang steht im Summary — 0 geprueft ist sichtbar, nicht gruen.
+    # Deterministischer Rueck-Check LLM-gelesener Formel-Staffeln (P4).
+    # Das Kalkulationsblatt ermittelt der Check aus der Vorverdichtung
+    # selbst; welchen Zustand er erreicht hat, steht je Generation im
+    # Summary. Entscheidend ist die Trennung: "keine Vorverdichtung" ist
+    # ehrlich nicht pruefbar, "Vorverdichtung da, aber nichts war
+    # nachrechenbar" ist ein BEFUND und wird als Warnung sichtbar —
+    # frueher fiel beides zu einer stillen Null zusammen.
     from rechner_pipeline.quellen.formeln import pruefe_ratzu_staffeln
 
     formel_checks: Dict[str, object] = {}
+    warnungen: List[dict] = []
     for gen in abox.generationen:
-        gen_name = gen.id.rsplit("/", 1)[-1].upper()
-        csv_pfad = (fall / "abgeleitet" / "vorverdichtung"
-                    / f"xlsm-{gen_name}" / "Kalkulation.csv")
-        if not csv_pfad.is_file():
-            # Keine Vorverdichtung im Fall (z. B. synthetische A-Box):
-            # nicht pruefbar ist ein AUSGEWIESENER Zustand, kein Fehler
-            # und kein stilles Gruen.
-            formel_checks[gen.id] = "nicht_pruefbar"
-            continue
-        check_fehler, geprueft = pruefe_ratzu_staffeln(fall, gen.id)
-        formel_checks[gen.id] = geprueft
-        for meldung in check_fehler:
+        pruefung = pruefe_ratzu_staffeln(fall, gen.id)
+        eintrag: Dict[str, object] = {
+            "status": pruefung.status,
+            "geprueft": pruefung.geprueft,
+        }
+        if pruefung.blatt is not None:
+            eintrag["blatt"] = pruefung.blatt
+        if pruefung.befunde:
+            eintrag["befunde"] = list(pruefung.befunde)
+        formel_checks[gen.id] = eintrag
+        for meldung in pruefung.fehler:
             errors.append({"code": "formel_check", "message": meldung})
+        for meldung in pruefung.befunde:
+            warnungen.append({
+                "code": "formel_check_ausgefallen",
+                "message": (
+                    "Rueck-Check der Formel-Staffeln nicht durchgefuehrt, "
+                    f"obwohl die Vorverdichtung vorliegt: {meldung}"
+                ),
+            })
 
     summary: Dict[str, object] = {
         "kette": kette_status,
-        "formel_checks_geprueft": formel_checks,
+        "formel_checks": formel_checks,
         "generationen": [g.id for g in abox.generationen],
         "zellen": sum(len(g.zellen) for g in abox.generationen),
         "belegt_quoten": {
@@ -254,6 +266,7 @@ def main(argv: Optional[List[str]] = None):
         gate_version=GATE_VERSION,
         exit_code=Exit.FILE_CONTRACT if errors else Exit.OK,
         errors=errors,
+        warnings=warnungen,
         paths={
             "fall": str(fall),
             "abox": str(abox_datei),

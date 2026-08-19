@@ -48,6 +48,12 @@ from rechner_pipeline.gates._common import (
     write_gate_ledger,
 )
 from rechner_pipeline.qa.golden_master import ROUND_DECIMALS, compare, load_expected
+from rechner_pipeline.quellen.vorverdichtung import (
+    VorverdichtungFehler,
+    VorverdichtungFehlt,
+    lies_vorverdichtung,
+    verzeichnis_der_generation,
+)
 
 GATE = "O3.generation-golden-master"
 GATE_VERSION = "0.1.0"
@@ -160,8 +166,7 @@ def main(argv: Optional[List[str]] = None):
 
     if fall is None or not args.generation:
         return _usage("--fall und --generation sind erforderlich")
-    gen_name = args.generation.rsplit("/", 1)[-1].upper()
-    vorverdichtung = fall / "abgeleitet" / "vorverdichtung" / f"xlsm-{gen_name}"
+    vorverdichtung = verzeichnis_der_generation(fall, args.generation)
     names_csv = vorverdichtung / "names_manager.csv"
     from rechner_pipeline.spez.validierung import spez_pfad
 
@@ -254,12 +259,23 @@ def main(argv: Optional[List[str]] = None):
     except Exception as exc:  # Kern-Fehler ist ein GM-Befund MIT Ledger
         return _contract_fehler("kern", f"Kern-Rechnung scheitert: {exc}")
 
+    # Unter WELCHEM Praefix die Erwartungswerte liegen, entscheidet das
+    # Quellsystem (Blattname -> Dateistamm der abgeleiteten Artefakte).
+    # Hart verdrahtet war hier "Kalkulation"; ein anders benanntes Blatt
+    # lief damit in eine irrefuehrende Coverage-Meldung statt in den
+    # Vergleich (Review-Befund, dieselbe Ursache wie in Gate O1).
+    try:
+        blatt = lies_vorverdichtung(vorverdichtung).kalkulationsblatt
+    except (VorverdichtungFehlt, VorverdichtungFehler) as exc:
+        return _contract_fehler("vorverdichtung", str(exc))
+    praefix = blatt.stamm
+
     expected = load_expected(vorverdichtung)
-    erwartete_skalare = expected["scalars"].get("Kalkulation", {})
+    erwartete_skalare = expected["scalars"].get(praefix, {})
     # Der GM-Loader floatet alle Skalare (Strings -> None); fuer die
     # PARAMETER-Pruefungen (Tafel!) brauchen wir die Rohwerte.
     roh_skalare: Dict[str, Any] = {}
-    roh_pfad = vorverdichtung / "Kalkulation_scalar.json"
+    roh_pfad = vorverdichtung / f"{praefix}_scalar.json"
     if roh_pfad.is_file():
         roh_skalare = json.loads(roh_pfad.read_text(encoding="utf-8"))
     # Erwartungs-Skalare dreiteilen: Rechenergebnis / Parametrierung /
@@ -295,7 +311,7 @@ def main(argv: Optional[List[str]] = None):
         else:
             uebersprungen.append(name)
 
-    zeilen_erwartet = expected["tables"].get("Kalkulation")
+    zeilen_erwartet = expected["tables"].get(praefix)
     anzahl_zeilen = len(zeilen_erwartet[1]) if zeilen_erwartet else 0
     if anzahl_zeilen == 0:
         return _contract_fehler(
@@ -311,10 +327,10 @@ def main(argv: Optional[List[str]] = None):
         return _contract_fehler("kern", f"Verlaufswerte scheitern: {exc}")
 
     report = compare(
-        {"scalars": {"Kalkulation": gefilterte_erwartung},
-         "tables": {"Kalkulation": zeilen_erwartet} if zeilen_erwartet else {}},
-        {"scalars": {"Kalkulation": berechnete_skalare},
-         "tables": {"Kalkulation": berechnete_tabelle}},
+        {"scalars": {praefix: gefilterte_erwartung},
+         "tables": {praefix: zeilen_erwartet} if zeilen_erwartet else {}},
+        {"scalars": {praefix: berechnete_skalare},
+         "tables": {praefix: berechnete_tabelle}},
     )
 
     errors: List[dict] = []
@@ -348,6 +364,9 @@ def main(argv: Optional[List[str]] = None):
     summary = {
         "generation": args.generation,
         "zelle": zelle.knoten,
+        # Ermittelt, nicht angenommen: gegen WELCHES Quellblatt der
+        # Golden Master gefahren ist, gehoert in den Ledger.
+        "kalkulationsblatt": blatt.name,
         # Ehrlichkeit der Abdeckung: der Quell-Rechner liefert EINEN
         # Beispiel-Modellpunkt; die uebrigen Zellen sind NICHT
         # GM-verglichen und stehen hier ausdruecklich.
@@ -375,8 +394,8 @@ def main(argv: Optional[List[str]] = None):
             [
                 names_csv,
                 spez_datei,
-                vorverdichtung / "Kalkulation_scalar.json",
-                vorverdichtung / "Kalkulation_table_values.csv",
+                vorverdichtung / f"{praefix}_scalar.json",
+                vorverdichtung / f"{praefix}_table_values.csv",
                 Path(__file__).resolve().parent.parent / "kern" / "tafeln.xml",
             ],
             base=Path(args.repo_root).resolve() if args.repo_root else None,

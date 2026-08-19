@@ -23,11 +23,26 @@ keine Pruefung, sondern eine Tautologie ueber eine Groesse, die es nicht
 gibt. Die Kommutations-Identitaeten (D/N/C/M) gelten weiterhin, aber fuer
 den separaten Zweitkern — sie stehen deshalb hier bei ihm.
 
+Stufe 3 (Aequivalenzprinzip) trifft seit dieser Fassung den PRODUKTIVEN
+Beitragspfad: geprueft werden ``KLV.gross_premium_rate`` (Bxt) und
+``KLV.net_premium_rate`` (Pxt) — die Groessen, die Verlaufswerte,
+Reserven und Golden Master tragen. Die Gegenrechnung entsteht
+unabhaengig aus den Bausteinen des Kommutations-ZWEITKERNS (ADR-004);
+der Produktivpfad rechnet auf dem Zustandsmodell. Zuvor stand hier eine
+Identitaet ueber ``pv_benefits``/``pv_premiums``/``net_premium``, also
+ueber Whole-Life-Durchreicher, die kein Produkt aufruft und deren
+Nettobeitrag definitionsgemaess ihr eigener Quotient ist — eine
+Tautologie, die eine um den Faktor 7 verfaelschte A_x ueberlebte. Die
+Durchreicher bleiben (gemeinsamer Interface-Punkt des
+Zweitkern-Abgleichs), werden jetzt aber gegen den Zweitkern geprueft
+statt gegen sich selbst.
+
 Knoten: klv, bu
 """
 
 from __future__ import annotations
 
+import dataclasses
 import math
 
 import pytest
@@ -80,6 +95,27 @@ def _hoechstes_alter(bw: ZustandsBarwerte) -> int:
 @pytest.fixture(params=BASEN, ids=lambda b: f"{b[0]}-{b[1]}-{b[2]}")
 def bw(request) -> ZustandsBarwerte:
     return _barwerte(request.param)
+
+
+@pytest.fixture(params=BASEN, ids=lambda b: f"{b[0]}-{b[1]}-{b[2]}")
+def basis_spec(request):
+    """Dieselbe Rechnungsbasis als (sex, tafel, zins) — fuer Modellpunkte."""
+    return request.param
+
+
+def _zweitkern(sex: str, tafel: str, zins: float):
+    """Barwert-Bausteine des Kommutations-Zweitkerns (ADR-004).
+
+    Zweite, unabhaengige Implementierung derselben Rechnungsbasis: sie
+    geht ueber die Absterbeordnung l_x und die Kommutationszahlen
+    D/N/C/M, waehrend der Produktivpfad auf Uebergangswahrscheinlich-
+    keiten rechnet. Eine Gegenrechnung aus diesen Bausteinen ist damit
+    keine Umformung des geprueften Rumpfes.
+    """
+    from rechner_pipeline.kommutationskern.barwerte import Barwerte
+    from rechner_pipeline.kommutationskern.kommutation import fuer
+
+    return Barwerte(fuer(sex, tafel, zins), zins)
 
 
 # --------------------------------------------------------------------------- #
@@ -176,32 +212,125 @@ def test_versicherungs_rekursion(bw, alter):
 
 
 # --------------------------------------------------------------------------- #
-# Stufe 3: Produkt — das Aequivalenzprinzip
+# Stufe 3: Produkt — das Aequivalenzprinzip auf dem produktiven Beitragssatz
 # --------------------------------------------------------------------------- #
 
-
-@LANGSAM
-@given(alter=st.integers(min_value=18, max_value=70))
-def test_nettobeitrag_ist_barwertquotient(bw, alter):
-    """P = PV(Leistungen) / PV(Beitragsrente)."""
-    if alter + 10 > _hoechstes_alter(bw):
-        return
-    pvb, pvp = bw.pv_benefits(alter), bw.pv_premiums(alter)
-    if abs(pvp) <= ABS_TOL:
-        return                       # entartet an den Grenzaltern
-    assert _nah(bw.net_premium(alter), pvb / pvp)
+#: Alter, bis zu dem die l_x-Rekursion des Zweitkerns rechenbare Stellen
+#: hat. Darueber faellt l_x unter 1e-6 des Anfangsbestands (DAV2008_T:
+#: l_117 = 1.2e-07 gegen l_0 = 1e+05), und die Quotienten M_x/D_x beider
+#: Kerne driften um bis zu 1e-05 relativ — Ausloeschung im Zweitkern,
+#: kein Zielkern-Befund. Unterhalb der Grenze liegt die gemessene
+#: Abweichung bei <= 1e-13 relativ, also 1e+04 unter REL_TOL: die Grenze
+#: ist begruendet, nicht auf Gruen gestellt.
+ZWEITKERN_MAX_ALTER = 100
 
 
 @LANGSAM
-@given(alter=st.integers(min_value=18, max_value=70))
-def test_aequivalenzprinzip(bw, alter):
-    """PV(Leistungen) - P·PV(Beitraege) = 0 — der Kern des Tarifs."""
-    if alter + 10 > _hoechstes_alter(bw):
+@given(alter=st.integers(min_value=0, max_value=118))
+def test_whole_life_durchreicher_stimmen_mit_dem_zweitkern_ueberein(
+    basis_spec, alter
+):
+    """A_x, ae_x und A_x/ae_x gegen den Kommutations-Zweitkern.
+
+    ``pv_benefits``/``pv_premiums``/``net_premium`` sind der gemeinsame
+    Interface-Punkt beider Kerne (ADR-004); kein Produkt ruft sie auf.
+    Frueher stand hier ``net_premium == pv_benefits/pv_premiums`` — der
+    Methodenrumpf gegen sich selbst, also wahr fuer JEDE A_x. Jetzt
+    entscheidet ein zweiter, unabhaengig gebauter Kern.
+    """
+    bw = _barwerte(basis_spec)
+    if alter > min(_hoechstes_alter(bw), ZWEITKERN_MAX_ALTER):
         return
-    pvb, pvp = bw.pv_benefits(alter), bw.pv_premiums(alter)
-    saldo = pvb - bw.net_premium(alter) * pvp
-    assert _nah(saldo, 0.0) or abs(saldo) <= ABS_TOL + REL_TOL * abs(pvb), (
-        f"PV(Leistungen) - P·PV(Beitraege) = {saldo} != 0 bei x = {alter}")
+    zk = _zweitkern(*basis_spec)
+    assert _nah(bw.pv_benefits(alter), zk.pv_benefits(alter)), (
+        f"PV(Leistungen) weicht vom Zweitkern ab bei x = {alter}")
+    assert _nah(bw.pv_premiums(alter), zk.pv_premiums(alter)), (
+        f"PV(Beitragsrente) weicht vom Zweitkern ab bei x = {alter}")
+    assert _nah(bw.net_premium(alter), zk.net_premium(alter)), (
+        f"Whole-Life-Nettobeitrag weicht vom Zweitkern ab bei x = {alter}")
+
+
+@LANGSAM
+@given(
+    alter=st.integers(min_value=20, max_value=55),
+    n=st.integers(min_value=5, max_value=40),
+    t_roh=st.integers(min_value=1, max_value=40),
+)
+def test_aequivalenzprinzip_bruttobeitrag(basis_spec, alter, n, t_roh):
+    """Aequivalenzprinzip auf dem produktiven Bruttobeitragssatz Bxt.
+
+    Bxt·axt = Axn + gamma1·axt + gamma2·(axn-axt) + beta1·Bxt·axt
+              + alpha·t·Bxt
+
+    Das Aequivalenzprinzip des Tarifs auf der Groesse, die der Kern
+    wirklich ausliefert (``KLV.gross_premium_rate``, Skalar Bxt): der
+    Barwert der Beitraege deckt Leistungsbarwert, laufende Verwaltungs-
+    kosten (gamma1/gamma2), Inkassokosten (beta1) und die gezillmerten
+    Abschlusskosten (alpha·t). Die Gegenrechnung nimmt Axn/axn/axt aus
+    dem Kommutations-Zweitkern, nur Bxt kommt aus dem Produktivpfad —
+    eine falsche Beitragsformel kann den Saldo nicht mehr mitziehen.
+    """
+    t = min(t_roh, n)
+    sex, tafel, zins = basis_spec
+    grenze = min(_hoechstes_alter(_barwerte(basis_spec)), ZWEITKERN_MAX_ALTER)
+    if alter + n > grenze:
+        return
+    mp = dataclasses.replace(
+        KLV_DEFAULT, sex=sex, tafel=tafel, zins=zins, x=alter, n=n, t=t)
+    zk = _zweitkern(sex, tafel, zins)
+    axt, axn = zk.axn_k(alter, t, 1), zk.axn_k(alter, n, 1)
+    leistung = zk.endowment_benefit_pv(alter, n)
+
+    bxt = KLV(mp).gross_premium_rate()
+    einnahmen = bxt * axt
+    ausgaben = (
+        leistung
+        + mp.gamma1 * axt
+        + mp.gamma2 * (axn - axt)
+        + mp.beta1 * bxt * axt
+        + mp.alpha * t * bxt
+    )
+    _endlich("Bxt", bxt)
+    assert _nah(einnahmen, ausgaben), (
+        f"Aequivalenz verletzt bei x={alter}, n={n}, t={t}: "
+        f"Beitragsbarwert {einnahmen} != Ausgabenbarwert {ausgaben} "
+        f"(Saldo {einnahmen - ausgaben})")
+
+
+@LANGSAM
+@given(
+    alter=st.integers(min_value=20, max_value=55),
+    n=st.integers(min_value=5, max_value=40),
+    t_roh=st.integers(min_value=1, max_value=40),
+)
+def test_nettobeitrag_deckt_leistung_und_zillmerung(
+    basis_spec, alter, n, t_roh
+):
+    """Pxt·axt = Axn + alpha·t·Bxt — der gezillmerte Nettobeitrag.
+
+    Zweite produktive Groesse (``KLV.net_premium_rate``, Skalar Pxt):
+    sie traegt den Leistungsbarwert plus die ueber t Jahre gezillmerten
+    Abschlusskosten, aber keine laufenden Kosten. Bxt und Pxt kommen aus
+    dem Produktivpfad, Axn und axt aus dem Zweitkern.
+    """
+    t = min(t_roh, n)
+    sex, tafel, zins = basis_spec
+    grenze = min(_hoechstes_alter(_barwerte(basis_spec)), ZWEITKERN_MAX_ALTER)
+    if alter + n > grenze:
+        return
+    mp = dataclasses.replace(
+        KLV_DEFAULT, sex=sex, tafel=tafel, zins=zins, x=alter, n=n, t=t)
+    zk = _zweitkern(sex, tafel, zins)
+    axt = zk.axn_k(alter, t, 1)
+    leistung = zk.endowment_benefit_pv(alter, n)
+
+    produkt = KLV(mp)
+    pxt, bxt = produkt.net_premium_rate(), produkt.gross_premium_rate()
+    _endlich("Pxt", pxt)
+    assert _nah(pxt * axt, leistung + mp.alpha * t * bxt), (
+        f"Nettobeitrags-Aequivalenz verletzt bei x={alter}, n={n}, t={t}: "
+        f"Pxt·axt = {pxt * axt} != Axn + alpha·t·Bxt = "
+        f"{leistung + mp.alpha * t * bxt}")
 
 
 @LANGSAM
@@ -212,8 +341,6 @@ def test_leistung_skaliert_linear_mit_der_versicherungssumme(faktor):
     Kosten und Rundung koennen das brechen — deshalb auf dem NETTO-Teil
     geprueft, nicht auf dem Bruttobeitrag.
     """
-    import dataclasses
-
     basis = KLV(KLV_DEFAULT)
     gross = KLV(dataclasses.replace(
         KLV_DEFAULT, sum_insured=KLV_DEFAULT.sum_insured * faktor))

@@ -3,6 +3,8 @@
 > **Status:** öffentlicher Prototyp, lauffähig Ende-zu-Ende. Begleitender
 > Arbeitsraum eines DAV-Projekts unter der AG Bestandsmigration.
 > Vorgängerprojekt: [portxlpy](https://github.com/bartlmac/portxlpy).
+> Was der aktuelle Stand kann, was er bewusst noch nicht kann und was
+> sich zuletzt geändert hat: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Was dieses Repository ist
 
@@ -117,7 +119,7 @@ der PLV-Bestand, und Migrationsfälle übernehmen fremde Bestände in die
 PLV. Die Artefakte der Fiktion enthalten keine echten Vertrags-,
 Kunden- oder Bestandsdaten; Struktur und Rechnungsgrundlagen sind aus
 realen Vorlagen abgeleitet, Unternehmen und Bestände sind frei
-erfunden (zu den Rechnungsgrundlagen siehe `NOTICE.md`):
+erfunden:
 `configs/` hält die Bestands-Konfigurationen der PLV
 (TOML, von Suite und Berichten geladen), `tests/fixtures/` synthetische
 Quellmappen für die Extraktions-Tests, und `lieferungen/` das Frachtgut
@@ -132,8 +134,10 @@ Berufsunfähigkeit auf einem gemeinsamen (Semi-)Markov-Zustandsmodell
 mit Thiele-Rückwärtsrekursion; Tafelwerk als reine qx-Vektoren mit
 harten Erschöpfungsgrenzen; Monatsreserven für Bilanz-Stichtage
 (unterjährige Interpolation) und vertragsweite Bewertung dynamischer
-Erhöhungsscheiben. Eine neue Tarifgeneration ist eine
-**Parametrierung** über den Modellpunkt, kein neuer Code:
+Erhöhungsscheiben. Eine Tarifgeneration, deren Leistungsmerkmale der
+Kern bereits kennt, ist eine **Parametrierung** über den Modellpunkt —
+kein neuer Kern-Code für die Generation selbst (der Normalfall einer
+Migration ist das nicht, siehe oben und ADR-007):
 
 ```python
 import dataclasses
@@ -198,6 +202,24 @@ python -m pip install -e ".[dev]"
 python -m pytest                     # volle Suite
 ```
 
+Dieser Weg pinnt die **direkten** Abhängigkeiten exakt und lässt pip
+alles Transitive frei auflösen — bequem, aber nicht reproduzierbar. Wer
+denselben Paketstand will, den die CI fährt, installiert über die
+Pin-Dateien:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pip install -e . --no-deps
+```
+
+Die Suite endet mit vier Skips (`... passed, 4 skipped`): vier
+Regressionstests hängen an einem lokalen, nicht eingecheckten
+Fall-Arbeitsbereich
+(`faelle/archiv/baldrian-klv-tg2015`) und skippen überall dort, wo er
+fehlt — im frischen Clone, in der CI und auf jedem Rechner ohne diesen
+Fall. Darunter ist der einzige Ende-zu-Ende-Beleg für Gate O3. Details
+in `ONBOARDING.md`, Abschnitt 5.
+
 Einen Fall anlegen und die Pipeline fahren:
 
 ```bash
@@ -205,6 +227,9 @@ python -m rechner_pipeline.fall anlegen --fall faelle/mein-fall
 python -m rechner_pipeline.fall registrieren --fall faelle/mein-fall --datei <quelle>
 python -m rechner_pipeline.fall status --fall faelle/mein-fall
 
+# Dazwischen liegen die Agenten-Stufen (Vorverdichtung, Extraktion je
+# Quelle, Merge zur A-Box) — ohne sie enden O1 und O3 planmäßig mit
+# Exit 2 und nennen die fehlende Datei. Siehe ONBOARDING.md, Abschnitt 3.
 python -m rechner_pipeline.gates.abox_validate --fall faelle/mein-fall --repo-root .   # O1
 python -m rechner_pipeline.quellen.tafel_import --fall faelle/mein-fall --generation klv/tgX
 python -m rechner_pipeline.gates.generation_golden --fall faelle/mein-fall \
@@ -219,9 +244,10 @@ python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate G-1 \
 
 `--rolle` ist bei beiden Kommandos Pflicht (ohne das Flag brechen sie
 mit Exit-Code 2 ab) und trägt die Grenze zwischen Mensch und Agent:
-endgültige Diskrepanz-Auflösungen sind Menschen vorbehalten, und ein
-Agent (`--rolle agent`) kann ein menschliches Gate nur **ablehnen**,
-nie annehmen.
+`entscheide` nimmt ausschließlich `--rolle mensch` — endgültige
+Diskrepanz-Auflösungen sind Menschen vorbehalten. Bei `gate_entscheid`
+ist `--rolle agent` zulässig, ein Agent kann ein menschliches Gate damit
+aber nur **ablehnen**, nie annehmen.
 
 Die Code-Ontologie navigiert und begrenzt Änderungen:
 
@@ -242,7 +268,12 @@ python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang knoten 
 - **Fail fast:** fehlende Tafeln, verletzte Schichtregeln, Bausteine
   ohne Ontologie-Knoten und Register-Abweichungen im Fall-Eingang sind
   harte Fehler, keine Warnungen.
-- **Gepinnte Abhängigkeiten** für reproduzierbare Läufe.
+- **Gepinnte Abhängigkeiten:** die direkten exakt in `pyproject.toml`,
+  ihre transitive Hülle in `requirements.txt` /
+  `requirements-dev.txt` — das ist der Installationsweg für
+  reproduzierbare Läufe (Schnellstart oben) und der, den die CI fährt.
+  Der bequeme Weg `pip install -e ".[dev]"` löst das Transitive frei
+  auf und ist damit tagesabhängig.
 
 ## Agenten-Anbindung
 
@@ -262,10 +293,6 @@ gemeinsamen Branch — Änderungen werden nach Absprache übernommen.
 
 MIT — siehe `LICENSE`.
 
-**Drittmaterial:** Die MIT-Lizenz deckt den Code und die hier selbst
-verfassten Dokumente. Die Tafelvektoren in
-`src/rechner_pipeline/kern/tafeln.xml` enthalten Sterbe- und
-Ausscheidetafeln der Deutschen Aktuarvereinigung (DAV) — Werke Dritter,
-deren Nutzungsrechte beim jeweiligen Rechteinhaber liegen und von
-Anwendern selbst zu klären sind. Welche Vektoren betroffen sind, woher
-sie stammen und was rechtlich noch offen ist, steht in `NOTICE.md`.
+Die Rechnungsgrundlagen (`src/rechner_pipeline/kern/tafeln.xml`) sind
+veröffentlichte DAV-Tafeln bzw. synthetische Vektoren; die Herkunft
+steht je Vektor als Kommentar in der Datei.

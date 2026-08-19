@@ -52,6 +52,10 @@ def _spec(**override) -> TransformationsSpec:
                         quellen=["GEBDAT", "BEGINN"],
                         berechnung="alter_aus_geburtsdatum_und_beginn",
                         begruendung="Abzug traegt kein Alter, nur Daten"),
+            FeldMapping(ziel="sex", typ="kodierung", quellen=["GESCHL"],
+                        kodierung={"M": "M", "W": "F"},
+                        begruendung="Quelle schreibt M/W, der Kern-Contract "
+                                    "fuehrt M/F"),
             FeldMapping(ziel="duration", typ="berechnung", quellen=["n"],
                         berechnung="ganzzahl", begruendung="Jahre"),
             FeldMapping(ziel="premium_duration", typ="berechnung",
@@ -80,13 +84,13 @@ def _spec(**override) -> TransformationsSpec:
     return TransformationsSpec(**basis)
 
 
-QUELLSPALTEN = ["POLNR", "BEGINN", "GEBDAT", "n", "t", "ERLSUMME",
+QUELLSPALTEN = ["POLNR", "BEGINN", "GEBDAT", "GESCHL", "n", "t", "ERLSUMME",
                 "ZAHLW", "RK", "BGRP", "TARIF"]
 
 ZEILE = {
     "POLNR": "7000001", "BEGINN": "01.06.2015", "GEBDAT": "01.06.1976",
-    "n": "20", "t": "15", "ERLSUMME": "87000", "ZAHLW": "monatlich",
-    "RK": "NR", "BGRP": "K", "TARIF": "KLV15",
+    "GESCHL": "W", "n": "20", "t": "15", "ERLSUMME": "87000",
+    "ZAHLW": "monatlich", "RK": "NR", "BGRP": "K", "TARIF": "KLV15",
 }
 
 
@@ -152,6 +156,7 @@ def test_anwendung_ist_deterministisch_und_vollstaendig():
     assert v["zahlweise"] == 12
     assert v["status"] == "Nichtraucher" and v["tarifart"] == "Kollektiv"
     assert v["beginn"] == "2015-06-01"
+    assert v["sex"] == "F"                     # Quelle "W" -> Kern-Contract
     # Determinismus:
     assert wende_an(_spec(), [ZEILE]) == (ziel, [])
 
@@ -161,6 +166,114 @@ def test_unbekannter_kodierungswert_verwirft_die_zeile_laut():
     ziel, befunde = wende_an(_spec(), [ZEILE, kaputt])
     assert len(ziel) == 1                      # halbe Vertraege gibt es nicht
     assert any("'X'" in b and "Kodierung" in b for b in befunde)
+
+
+# --------------------------------------------------------------------------- #
+# Die Klammer Transformation -> Kern: das Geschlecht (Systempruefung 19.08.)
+# --------------------------------------------------------------------------- #
+
+
+def test_ziel_ontologie_deckt_den_kern_contract_vollstaendig():
+    """Jedes Vertragsfeld des Kern-Contracts hat ein Zielfeld.
+
+    ``models/bestand.CONTRACT_FIELDS`` fuehrt die Kern-Namen (x, sex, n,
+    t, sum_insured, zw), die Transformation die Portfolio-Namen — die
+    Uebersetzung steht in ``model_point_kwargs``. Fehlt hier eines, ist
+    ein transformierter Vertrag nicht rechenbar, ohne dass die
+    Spec-Pruefung es merkt (so gefunden fuer ``sex``).
+    """
+    from rechner_pipeline.models.bestand import CONTRACT_FIELDS
+    from rechner_pipeline.ontologie.transformation import ZIEL_PFLICHT
+
+    kern_zu_ziel = {"x": "entry_age", "sex": "sex", "n": "duration",
+                    "t": "premium_duration", "sum_insured": "sum_insured",
+                    "zw": "zahlweise"}
+    assert set(kern_zu_ziel) == set(CONTRACT_FIELDS)     # Uebersetzung aktuell
+    fehlend = [k for k, z in kern_zu_ziel.items() if z not in ZIEL_PFLICHT]
+    assert fehlend == [], f"Kern-Contract-Felder ohne Zielfeld: {fehlend}"
+
+
+def test_sex_zielwerte_sind_die_des_bestandskontrakts():
+    """Die Konstanten-Dopplung (Schichtenkarte) ist hier test-gebunden."""
+    from rechner_pipeline.models.bestand import SEX_VALUES
+    from rechner_pipeline.ontologie.transformation import SEX_ZIELWERTE
+
+    assert SEX_ZIELWERTE == SEX_VALUES
+
+
+def test_ungemapptes_geschlecht_faellt_als_pflichtfeld():
+    spec = _spec()
+    spec = TransformationsSpec(**{
+        **spec.model_dump(),
+        "felder": [f.model_dump() for f in spec.felder if f.ziel != "sex"],
+    })
+    fehler = validate_spec(spec, QUELLSPALTEN)
+    assert any("'sex' ist nicht gedeckt" in f for f in fehler), fehler
+
+
+def test_geschlechts_kodierung_auf_quellcodes_faellt():
+    """"W" durchreichen ist kein Fehler im Kern — sondern ein stiller.
+
+    ``kern/tafeln._tafel_key`` loest jedes Nicht-"M" zur Frauentafel auf.
+    Ein Mapping ``{"M": "M", "W": "W"}`` waere damit fuer Maenner falsch,
+    ohne je aufzufallen; die Spec-Pruefung muss es abfangen.
+    """
+    spec = _spec(felder=[
+        f if f.ziel != "sex" else FeldMapping(
+            ziel="sex", typ="kodierung", quellen=["GESCHL"],
+            kodierung={"M": "M", "W": "W"},
+            begruendung="Quellcodes durchgereicht")
+        for f in _spec().felder
+    ])
+    fehler = validate_spec(spec, QUELLSPALTEN)
+    assert any(f.startswith("sex: Kodierung") and "'W'" in f
+               for f in fehler), fehler
+
+
+def test_direkt_durchgereichtes_geschlecht_ausserhalb_m_f_ist_ein_befund():
+    """Auch ohne Kodierung endet ein Fremdwert nicht im Kern."""
+    spec = _spec(felder=[
+        f if f.ziel != "sex" else FeldMapping(
+            ziel="sex", typ="direkt", quellen=["GESCHL"],
+            begruendung="Quelle fuehrt bereits M/F")
+        for f in _spec().felder
+    ])
+    assert validate_spec(spec, QUELLSPALTEN) == []      # Spec ist zulaessig
+    ziel, befunde = wende_an(spec, [dict(ZEILE, GESCHL="F"),
+                                    dict(ZEILE, GESCHL="W")])
+    assert len(ziel) == 1 and ziel[0]["sex"] == "F"
+    assert len(befunde) == 1 and "Geschlecht 'W'" in befunde[0]
+
+
+def test_transformierte_zeile_baut_einen_kern_modelpoint():
+    """Die heute fehlende Klammer: Ausgabe -> ModelPoint -> Rechnung.
+
+    Kontrollrechnung gegen einen unabhaengigen Pfad: derselbe Vertrag
+    wird einmal ueber die Transformation und einmal direkt als
+    ModelPoint gebaut — beide muessen denselben Bruttojahresbeitrag
+    ergeben. Damit haengt die Transformation nachweisbar am Kern und
+    nicht nur an ihrem eigenen Feldnamen-Vokabular.
+    """
+    from rechner_pipeline.kern.model_point import ModelPoint
+    from rechner_pipeline.models.bestand import (
+        GENERATION_FIELDS, model_point_kwargs,
+    )
+
+    generation = {name: getattr(KLV_DEFAULT, name) for name in GENERATION_FIELDS}
+    ziel, befunde = wende_an(_spec(), [ZEILE])
+    assert befunde == []
+    mp = ModelPoint(**model_point_kwargs(ziel[0], generation))
+    assert (mp.x, mp.sex, mp.n, mp.t, mp.zw) == (39, "F", 20, 15, 12)
+    assert mp.sum_insured == 87000.0
+    erwartet = dataclasses.replace(
+        KLV_DEFAULT, x=39, sex="F", n=20, t=15, sum_insured=87000.0, zw=12)
+    assert berechne(mp)["scalars"]["Kalkulation"]["BJB"] == \
+        berechne(erwartet)["scalars"]["Kalkulation"]["BJB"]
+    # Das Geschlecht ist keine Kosmetik: dieselbe Police als "M" gerechnet
+    # ergibt einen anderen Beitrag (Tafel-Suffix _M/_F). Ein falsch
+    # gemapptes oder fehlendes Geschlecht verschiebt also Werte.
+    assert berechne(dataclasses.replace(erwartet, sex="M"))["scalars"][
+        "Kalkulation"]["BJB"] != berechne(mp)["scalars"]["Kalkulation"]["BJB"]
 
 
 # --------------------------------------------------------------------------- #
@@ -319,3 +432,121 @@ def test_transformations_skill_ist_verankert():
     assert "NIEMALS automatisch" in konflikt
     assert konflikt == (repo / ".agents/skills/bereite-fachkonflikt-auf/"
                         "SKILL.md").read_text(encoding="utf-8")
+
+
+def test_runbook_fuehrt_die_bestands_haelfte_der_pipeline():
+    """Das Orchestrierungs-Runbook kennt beide Haelften der Lieferung.
+
+    Die Bestandsmaschinerie (Spaltenprofil, Transformation, Abgleich,
+    Zwei-Stichtags-Abnahme, Abnahmebericht) existiert als Code und als
+    eigene Skills; ohne Einstieg im Runbook wird sie in einem echten
+    Fall schlicht nicht ausgefuehrt (Systempruefung 19.08.). Verankert
+    sind die Uebergaben, nicht die Formulierung.
+    """
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    runbook = (repo / ".claude/skills/migrationsfall-durchfuehren/SKILL.md"
+               ).read_text(encoding="utf-8")
+    assert runbook == (repo / ".agents/skills/migrationsfall-durchfuehren/"
+                       "SKILL.md").read_text(encoding="utf-8")      # Paritaet
+    for marke in ("Stufe 1b", "Stufe 3b",
+                  "rechner_pipeline.quellen.bestand_profil",
+                  "transformiere-quellbestand", "validate_spec", "wende_an",
+                  "qa.abzugsabgleich", "pruefe-migrationsabnahme",
+                  "rechner_pipeline.gates.bestand_validate",
+                  "qa.migrationssuite", "rechner_pipeline.gates.abnahmebericht",
+                  "rechner_pipeline.bestand.cli_report"):
+        assert marke in runbook, marke
+
+
+def test_runbook_und_architektur_nennen_die_formel_grenze():
+    """Die bewusste v0.1-Grenze steht dort, wo sie jemand liest.
+
+    Das QuellFragment traegt keine Formeln — ein Formelwiderspruch
+    zwischen Meldung und Rechner wird nie eine Diskrepanz. Diese Grenze
+    muss als ENTSCHEIDUNG lesbar sein (Architektur-Dokument) und im
+    Ablauf stehen (Runbook), sonst wird sie fuer ein Versehen gehalten.
+    """
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    runbook = (repo / ".claude/skills/migrationsfall-durchfuehren/SKILL.md"
+               ).read_text(encoding="utf-8")
+    architektur = (repo / "docs/architektur/migrations-pipeline-v01.md"
+                   ).read_text(encoding="utf-8")
+    assert "GRENZE DIESER STUFE" in runbook
+    assert "keine FORMELN" in runbook
+    assert "8.1" in runbook                       # Verweis auf die Begruendung
+    assert "### 8.1" in architektur
+    assert "Formelidentitaet" in architektur
+
+
+# --------------------------------------------------------------------------- #
+# Berechnungs-Katalog: die Stellen, an denen ein Mapping still falsch
+# werden kann. Der Katalog ist die einzige Rechenstelle der
+# Transformation — ohne diese Tests bleibt die Suite genau dort gruen,
+# wo eine Migration die Semantik der Quelle trifft (Systempruefung
+# 19.08.: Alterskorrektur, Dauerberechnung und Katalogtreue liessen sich
+# entfernen, ohne einen Test rot zu faerben).
+# --------------------------------------------------------------------------- #
+
+
+def _entry_age(gebdat: str, beginn: str) -> int:
+    """entry_age ueber den Katalog, nicht ueber eine Testrechnung."""
+    zeile = dict(ZEILE, GEBDAT=gebdat, BEGINN=beginn)
+    ziel, befunde = wende_an(_spec(), [zeile])
+    assert befunde == [], befunde
+    return ziel[0]["entry_age"]
+
+
+def test_entry_age_ist_das_vollendete_alter_nicht_die_jahresdifferenz():
+    """Geburtstag NACH dem Beginn im Jahr: ein Jahr weniger.
+
+    Die Jahresdifferenz allein waere 37 — der Katalog rechnet das
+    VOLLENDETE Alter (36). Genau diese Korrektur ist der Unterschied
+    zwischen Zielsystem-Konvention und der Kalenderjahresmethode, die
+    Quellsysteme fuehren koennen.
+    """
+    assert _entry_age("08.12.1979", "01.02.2016") == 36   # Geburtstag danach
+    assert _entry_age("08.01.1979", "01.02.2016") == 37   # Geburtstag davor
+    assert _entry_age("01.02.1979", "01.02.2016") == 37   # exakt am Beginn
+
+
+def test_jahre_aus_datumsdifferenz_rechnet_und_faellt_hart_aus():
+    """Die Dauerberechnung des Katalogs — inklusive ihrer Fehlergrenze."""
+    zeile = dict(ZEILE)
+    spec = TransformationsSpec(
+        quelle_datei="abzug.csv", quelle_sha256="cd" * 32,
+        akteur=AKTEUR, erhoben_am="2026-08-19",
+        felder=[
+            FeldMapping(ziel="duration", typ="berechnung",
+                        quellen=["BEGINN", "ABLAUF"],
+                        berechnung="jahre_aus_datumsdifferenz",
+                        begruendung="Laufzeit aus Beginn und Ablauf"),
+        ],
+    )
+    ziel, befunde = wende_an(spec, [dict(zeile, ABLAUF="01.06.2035")])
+    assert befunde == [] and ziel[0]["duration"] == 20
+    # Nicht-positive Dauer ist ein Befund je Zeile, kein stiller Wert:
+    ziel, befunde = wende_an(spec, [dict(zeile, ABLAUF="01.06.2015")])
+    assert ziel == [] and len(befunde) == 1
+    assert "duration" in befunde[0]
+
+
+def test_validate_spec_weist_unbekannte_berechnung_zurueck():
+    """Katalogtreue: der Agent WAEHLT, er erfindet keine Rechenregel.
+
+    Eine Quellkonvention, die der Katalog nicht kennt (z. B. eine
+    Kalenderjahres-Altersregel), muss als Befund auffallen — sonst
+    entstuende sie stillschweigend als nicht implementierte Absicht.
+    """
+    spec = _spec(felder=[
+        FeldMapping(ziel="entry_age", typ="berechnung",
+                    quellen=["GEBDAT", "BEGINN"],
+                    berechnung="alter_kalenderjahresmethode",
+                    begruendung="Quellkonvention des abgebenden Systems"),
+    ])
+    fehler = validate_spec(spec, QUELLSPALTEN)
+    assert any("alter_kalenderjahresmethode" in f and "Berechnung" in f
+               for f in fehler), fehler

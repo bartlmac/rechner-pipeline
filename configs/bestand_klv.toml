@@ -551,6 +551,12 @@ knoten = "klv/plv_2022"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2022-01-01
 gueltig_bis = 2035-12-31
 sample_size = 150
+# Wirkt NUR mit --neuzugang-ab: dann besiedelt der Batch-Erzeuger das
+# Verkaufsfenster bis zum Referenzstichtag (sample_size) und der
+# GeVo-Strom setzt danach mit diesem Jahressatz als ZUG fort. Ohne
+# --neuzugang-ab besiedelt der Batch das ganze Fenster (Ein Erzeuger je
+# Zeitfenster) und der Lauf meldet 0 Neuzugaenge — kein Run-off, nur ein
+# anderer Erzeuger. Siehe ONBOARDING.md Abschnitt 3.
 neuzugang_pro_jahr = 40
 max_endalter = 85
 zins = 0.0025

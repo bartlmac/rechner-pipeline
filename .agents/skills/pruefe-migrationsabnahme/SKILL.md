@@ -31,9 +31,15 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
   Ereignismonat, TOD → Summe, PEX → beitragsfreie Summe, ERH →
   vertragsweite Scheiben-Bewertung), Deckungskapital am Folgestichtag
   auf dem richtigen Track; Lieferungs-Inkonsistenzen werden Befunde.
-- `gates/abnahmebericht` — der Migrationsabnahmebericht (HTML):
-  Abnahmetests, GeVo-Vergleich, Transformations-Tabelle, Verweise auf
-  die Bestandsberichte vor/nach der Migration.
+- `python -m rechner_pipeline.gates.abnahmebericht` — der
+  Migrationsabnahmebericht (HTML): Abnahmetests, GeVo-Vergleich,
+  Transformations-Tabelle, Verweise auf die Bestandsberichte
+  vor/nach der Migration. Das Kommando nimmt das Suite-Ergebnis als
+  JSON entgegen, rendert den Bericht in den Fall, schreibt
+  `abnahmebericht.gate.json` in die Diagnostics und urteilt über den
+  Exit-Code: `0` Vorlage ohne Fehlschlag, `30` Abnahmetest
+  fehlgeschlagen oder Befund, `20` Suite-Ergebnis unlesbar oder
+  inkonsistent, `2` Aufruf unvollständig.
 - `bestand/cli_report` — Bestandsbericht VOR (Quellsicht des
   transformierten Bestands) und NACH der Migration (Zielsystem-Lauf):
   zwei Berichte zum visuellen Vergleich, Teil der Abnahme.
@@ -50,19 +56,44 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
   korrigierst keine Erwartungswerte und keine Lieferung — eine
   Abweichung ist ein Ergebnis, kein Hindernis.
 - Der Bericht ist die Entscheidungsvorlage; die Abnahme selbst ist
-  Gate G-2 (Mensch, Entscheid-Snapshot).
+  Gate G-2 (Mensch, Entscheid-Snapshot). Ein Exit-Code `0` des
+  Berichts-Kommandos heißt "Vorlage vollständig und ohne Fehlschlag",
+  NICHT "abgenommen" — die Abnahme wird mit `gates/gate_entscheid`
+  vom Menschen festgehalten.
 
 ## Ablauf
 
 1. Vollständigkeit prüfen: transformierter Bestand, Spez (Lesart),
    Folge-Abzug, GeVo-Protokoll, beide Stichtage. Fehlt etwas: STOPP.
 2. Je Vertrag den Prüfauftrag bauen (Modellpunkt aus Spez + Vertrag,
-   Monats-Stichtage, Erwartungswerte, GeVos) und
-   `qa.migrationssuite.pruefe_bestand` laufen lassen.
+   Monats-Stichtage, Erwartungswerte, GeVos),
+   `qa.migrationssuite.pruefe_bestand` laufen lassen und das
+   zurückgegebene Dict unverändert als JSON in den Fall schreiben
+   (`json.dump`, z. B. `abgeleitet/berichte/migrationssuite.json`).
+   Das JSON wird NIE von Hand nachgebessert — das Kommando in
+   Schritt 4 prüft die Zusammenfassung gegen die Einzelurteile und
+   bricht sonst mit `20` ab.
 3. Bestandsberichte vor/nach erzeugen (gleiche Parameter, gleicher
    Horizont — nur so ist der visuelle Vergleich fair).
-4. `gates/abnahmebericht` erzeugen; Fehlschläge und Befunde
-   vollständig ausweisen (keine Stichproben-Beschönigung).
+4. Bericht erzeugen und protokollieren:
+
+   ```
+   python -m rechner_pipeline.gates.abnahmebericht \
+       --fall faelle/<fall> \
+       --suite faelle/<fall>/abgeleitet/berichte/migrationssuite.json \
+       --titel "Migrationsabnahme <Fall>" \
+       --stichtag-1 <ISO> --stichtag-2 <ISO> \
+       [--spec <transformationsspec.json>] \
+       [--transformation-ergebnis <ergebnis.json>] \
+       [--bestandsbericht-vor <pfad>] [--bestandsbericht-nach <pfad>]
+   ```
+
+   Der Bericht landet unter `<fall>/abgeleitet/berichte/`, der
+   Ledger-Eintrag `abnahmebericht.gate.json` unter
+   `<fall>/abgeleitet/diagnostics/`. Fehlschläge und Befunde werden
+   vollständig ausgewiesen (keine Stichproben-Beschönigung); ein
+   roter Bericht wird geschrieben wie ein grüner — er IST das
+   Beweisstück.
 5. Ergebnis dem Menschen zur G-2-Entscheidung vorlegen, STOPP.
 
 ## Ausbau (geplant, hier verankern)

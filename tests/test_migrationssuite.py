@@ -32,6 +32,7 @@ from rechner_pipeline.qa.migrationssuite import (
 MP = dataclasses.asdict(KLV_DEFAULT)
 KERN = Rechenkern(KLV_DEFAULT)
 S1, S2 = 12 * 9 + 5, 12 * 10 + 5  # Stichtage mitten im Vertragsjahr
+ABLAUF = 12 * KLV_DEFAULT.n       # Ablaufmonat des Referenzvertrags (a = n)
 
 
 def _pruefung(
@@ -132,6 +133,117 @@ def test_gevo_ausserhalb_der_stichtage_ist_befund() -> None:
     urteil = pruefe_vertrag(_pruefung(gevos=gevos))
     assert not urteil["bestanden"]
     assert any("zwischen den Stichtagen" in b for b in urteil["befunde"])
+
+
+def _ablauf_pruefung(
+    gevos: Tuple[GeVoErwartung, ...],
+    dk2: Optional[float] = None,
+    s1: int = S1,
+) -> VertragsPruefung:
+    """Prüfauftrag mit Folgestichtag GENAU am Ablauf (a = n)."""
+    return VertragsPruefung(
+        police_id="P-ABL", model_point=MP,
+        monate_stichtag_1=s1, monate_stichtag_2=ABLAUF,
+        dk_erwartet_1=round(KERN.monatsreserve(s1).vx_mrv, 2),
+        dk_erwartet_2=dk2, gevos=gevos,
+    )
+
+
+def test_abl_terminal_mit_gesamtversicherungssumme() -> None:
+    """ABL zahlt S^ges und beendet den Vertrag (Tarifplan, GeVo-Katalog)."""
+    vs = float(KLV_DEFAULT.sum_insured)
+    urteil = pruefe_vertrag(_ablauf_pruefung(
+        (GeVoErwartung("ABL", ABLAUF, vs),)))
+    assert urteil["bestanden"], urteil["befunde"]
+    assert [p["groesse"] for p in urteil["pruefungen"]] == [
+        "dk_stichtag_1", f"gevo_abl_monat_{ABLAUF}"]
+    # Kontrollrechnung: ein anderer Betrag darf NICHT durchgehen.
+    falsch = pruefe_vertrag(_ablauf_pruefung(
+        (GeVoErwartung("ABL", ABLAUF, vs + 1000.0),)))
+    assert not falsch["bestanden"]
+
+
+def test_abl_summiert_die_erhoehungsscheiben() -> None:
+    a, s_neu = 10, 5000.0
+    gevos = (GeVoErwartung("ERH", 12 * a, s_neu),
+             GeVoErwartung("ABL", ABLAUF,
+                           float(KLV_DEFAULT.sum_insured) + s_neu))
+    urteil = pruefe_vertrag(_ablauf_pruefung(gevos))
+    assert urteil["bestanden"], urteil["befunde"]
+    # Ohne die Scheibe (nur GrundVS) schlüge die Ablaufleistung fehl:
+    ohne = (gevos[0], GeVoErwartung("ABL", ABLAUF,
+                                    float(KLV_DEFAULT.sum_insured)))
+    assert not pruefe_vertrag(_ablauf_pruefung(ohne))["bestanden"]
+
+
+def test_abl_nach_pex_zahlt_die_beitragsfreie_summe() -> None:
+    a0 = 15  # Beitragsfreistellung im beitragspflichtigen Track (a0 < t)
+    s_bfr = round(KERN.beitragsfreie_summe(a0), 2)
+    gevos = (GeVoErwartung("PEX", 12 * a0, s_bfr),
+             GeVoErwartung("ABL", ABLAUF, s_bfr))
+    urteil = pruefe_vertrag(_ablauf_pruefung(gevos, s1=12 * 14 + 5))
+    assert urteil["bestanden"], urteil["befunde"]
+    # Kontrolle: nach PEX ist NICHT mehr die GrundVS die Ablaufleistung.
+    mit_vs = (gevos[0], GeVoErwartung("ABL", ABLAUF,
+                                      float(KLV_DEFAULT.sum_insured)))
+    assert not pruefe_vertrag(
+        _ablauf_pruefung(mit_vs, s1=12 * 14 + 5))["bestanden"]
+
+
+def test_abl_mit_folgewert_ist_befund() -> None:
+    """Abgelaufen und trotzdem im Folgeabzug — Lieferung inkonsistent."""
+    urteil = pruefe_vertrag(_ablauf_pruefung(
+        (GeVoErwartung("ABL", ABLAUF, float(KLV_DEFAULT.sum_insured)),),
+        dk2=12345.67))
+    assert not urteil["bestanden"]
+    assert any("abgegangen" in b for b in urteil["befunde"])
+
+
+def test_abl_vor_dem_ablauf_ist_befund() -> None:
+    urteil = pruefe_vertrag(_pruefung(
+        gevos=(GeVoErwartung("ABL", S1 + 4,
+                             float(KLV_DEFAULT.sum_insured)),)))
+    assert not urteil["bestanden"]
+    assert any("Versicherungsdauer" in b for b in urteil["befunde"])
+
+
+def test_leere_pruefmenge_ist_keine_bestandene_abnahme() -> None:
+    with pytest.raises(ValueError, match="leere Prüfmenge"):
+        pruefe_bestand([])
+
+
+def test_ausnahme_eines_vertrags_bleibt_dessen_befund() -> None:
+    """Ein kranker Datensatz beendet den Lauf nicht, er wird sein Befund."""
+    kaputt = dataclasses.replace(
+        _pruefung(), police_id="P-2", monate_stichtag_2=ABLAUF + 12)
+    ergebnis = pruefe_bestand([
+        _pruefung(),
+        kaputt,
+        dataclasses.replace(_pruefung(), police_id="P-3"),
+    ])
+    assert (ergebnis["anzahl"], ergebnis["bestanden"],
+            ergebnis["fehlgeschlagen"]) == (3, 2, 1)
+    assert not ergebnis["suite_bestanden"]
+    urteil = [u for u in ergebnis["vertraege"] if u["police_id"] == "P-2"][0]
+    assert urteil["pruefungen"] == []
+    assert any("ValueError" in b and "nach dem Ablauf" in b
+               for b in urteil["befunde"]), urteil["befunde"]
+    # Die übrigen Verträge wurden zu Ende geprüft:
+    assert all(len(u["pruefungen"]) == 2 for u in ergebnis["vertraege"]
+               if u["police_id"] != "P-2")
+
+
+class _GeVoOhneMonat:
+    """Formfehler der Anbindung (kein Lieferdatum): Attribut fehlt."""
+
+    art = "TOD"
+
+
+def test_programmierfehler_bricht_den_lauf_ab() -> None:
+    """Kein blindes Fangen: was keine Lieferung erzeugen kann, fliegt."""
+    with pytest.raises(AttributeError):
+        pruefe_bestand([dataclasses.replace(
+            _pruefung(), gevos=(_GeVoOhneMonat(),))])
 
 
 def test_bestand_zusammenfassung() -> None:

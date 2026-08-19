@@ -177,6 +177,57 @@ noch den O-/P9-Weg auf dem stabilen Zielkern.
 * P10 ist fuer Extraktions-Agenten instruiert (Skill), nicht technisch
   erzwungen (kein Sandbox-Zwang auf die Vorverdichtung).
 
+### 8.1 Die A-Box traegt Parameter, keine Formeln — Formelidentitaet ist in v0.1 Menschensache
+
+Das ist die wichtigste bewusste Grenze der Version, weil sie leicht mit
+einem Versehen verwechselt wird. Sie ist keines.
+
+**Was der Contract traegt.** Ein `QuellFragment` fuehrt je Zelle
+`auspraegungen` und `parameter` — Zahlen und Zeichenketten, die in die
+Stellschrauben des Kern-ModelPoints muenden. Ein Feld fuer FORMELN gibt
+es nicht. Der Merge vergleicht folglich Parameterwerte: Rechnungszins
+gegen Rechnungszins, Kostensatz gegen Kostensatz. Zwei Quellen, die
+dieselbe Groesse nach VERSCHIEDENEN Formeln bestimmen, aber gleich
+parametrisiert sind, erzeugen keine Diskrepanz — und was keine
+Diskrepanz ist, kann kein Gate finden und kein Gate an G-1 vorlegen.
+
+**Was daraus folgt.** Gate O3 belegt, dass der Kern denselben Wertepfad
+liefert wie der Quell-Rechner (auf den Cent). Er belegt NICHT, dass die
+Tarifmeldung dieselbe Formel meint. Weicht die Meldung vom Rechner in
+der Formel ab, bleibt O3 gruen. Im Praezedenzfall TG2015 sind beim
+menschlichen Lesen genau solche Stellen aufgefallen — Ziffer 3.2 leitet
+die praemienfreie Leistung aus dem Rueckkaufswert (also nach
+Stornoabschlag) ab, waehrend Rechner und Kern
+`VS_bfr = kVx_MRV / kVx_bfr` rechnen; Ziffer 5.2.1 schreibt die
+normierte Reservepraemie mit `B_{x,n}`, waehrend Ziffer 3.1 und der
+Rechner mit `B_{x,t}` arbeiten. Gefunden hat das ein Mensch, nicht die
+Pipeline. Solche Stellen gehoeren als benannte Abweichung in die
+G-1-Vorlage, nicht in eine Fussnote.
+
+**Warum bewusst so entschieden.** Ein Formelvergleich zwischen der
+Meldung (OMML-Formeln in Word) und dem Rechner (Excel-Zellformeln) ist
+kein Zeichenketten-Vergleich, sondern eine Aequivalenzfrage ueber zwei
+verschiedene Sprachen mit verschiedenen Bezugsgroessen und
+Indexkonventionen. Ein halber Vergleich waere schlimmer als keiner: er
+produziert entweder Falsch-Alarme oder — gefaehrlicher — gruene Balken
+fuer eine Identitaet, die er nie geprueft hat. v0.1 nimmt deshalb die
+PARAMETRIERUNG maschinell ab und weist die Formelidentitaet
+ausdruecklich dem Menschen zu: Abnahme gegen den Tarifplan
+(`docs/tarifplaene/`) im Gate G-1. Der vorhandene deterministische
+Rueck-Check (`quellen/formeln.py`, in Gate O1) ist die einzige
+Ausnahme und beschreibt seinen Umfang selbst ehrlich: er prueft die
+IF-Staffeln des Rechners gegen die extrahierten Werte und meldet jede
+andere Formelform als "nicht pruefbar" — er vergleicht also innerhalb
+EINER Quelle, nicht zwischen zweien.
+
+**Ausbaupfad (nicht in v0.1).** Feld `formeln` im QuellFragment
+(Zeichenkette plus Fundstelle je Ziffer), dazu ein Gate, das die
+extrahierten Formeln je Ziffer gegen die Paragrafen des Tarifplans
+stellt. Das aendert den Contract und ist damit eine T-Box-Frage
+(Gate G-T). Ausloeser: der erste Fall, in dem der Quell-Rechner NICHT
+die abzunehmende Lesart ist — etwa eine Lieferung ohne Rechner oder
+eine G-1-Entscheidung gegen den Rechner.
+
 ## 9 Wissensverteilung: wo das Migrations-Know-how lebt
 
 Das System wird nicht "trainiert" — sein Wissen ist verteilt auf vier

@@ -17,8 +17,16 @@ from __future__ import annotations
 
 import csv
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
+
+from rechner_pipeline.quellen.vorverdichtung import (
+    VorverdichtungFehler,
+    VorverdichtungFehlt,
+    lies_vorverdichtung,
+    verzeichnis_der_generation,
+)
 
 _ZWEIG = re.compile(
     r"IF\(\s*(?P<var>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?P<schluessel>\d+)\s*,"
@@ -82,56 +90,113 @@ def lese_if_staffel(formel: str, variable: str) -> Tuple[Dict[int, float], float
     return staffel, _zahl(rest.group("default"))
 
 
-def _lese_zellen(kalkulation_csv: Path) -> Dict[str, Tuple[str, str]]:
-    """Zelladresse -> (Formel, Wert) aus einer Kalkulations-CSV."""
+def _lese_zellen(blatt_csv: Path, blattname: str) -> Dict[str, Tuple[str, str]]:
+    """Zelladresse -> (Formel, Wert) einer Blatt-CSV der Vorverdichtung."""
     zellen: Dict[str, Tuple[str, str]] = {}
-    with kalkulation_csv.open(encoding="utf-8") as f:
+    with blatt_csv.open(encoding="utf-8") as f:
         for zeile in csv.reader(f, delimiter=";"):
-            if len(zeile) >= 4 and zeile[0] == "Kalkulation":
+            if len(zeile) >= 4 and zeile[0] == blattname:
                 zellen[zeile[1]] = (zeile[2], zeile[3])
     return zellen
 
 
-def pruefe_ratzu_staffeln(
-    fall: Path, generation: str
-) -> Tuple[List[str], int]:
-    """A-Box-Ratenzuschlaege gegen die IF-Formeln nachpruefen (leer = ok).
+@dataclass(frozen=True)
+class FormelPruefung:
+    """Ergebnis des Rueck-Checks fuer EINE Generation.
+
+    ``status`` trennt die Lagen, die frueher alle als ``geprueft == 0``
+    bzw. ``nicht_pruefbar`` zusammenfielen und damit unsichtbar waren:
+
+    * ``nicht_pruefbar`` — es gibt keine Vorverdichtung (ehrlich nichts
+      nachzurechnen),
+    * ``keine_aussagen`` — Vorverdichtung da, aber die A-Box behauptet
+      keinen ratzu-Wert (nichts behauptet, nichts zu pruefen),
+    * ``geprueft`` — mindestens eine Formel wurde nachgerechnet,
+    * ``befund`` — Vorverdichtung UND Aussagen da, aber keine einzige
+      war nachrechenbar. Das ist der stille Ausfall, der frueher als
+      Null durchlief; der Grund steht in ``befunde`` (nicht
+      durchgefuehrt) bzw. in ``fehler`` (harte Verletzung).
+
+    ``fehler`` sind inhaltliche Verletzungen und gehoeren ins Gate als
+    Fehler; ``befunde`` sind ausgefallene Pruefungen und gehoeren ins
+    Gate als sichtbare Warnung — schweigen darf keine von beiden.
+    """
+
+    status: str
+    geprueft: int
+    fehler: Tuple[str, ...] = ()
+    befunde: Tuple[str, ...] = ()
+    blatt: Optional[str] = None
+
+
+def pruefe_ratzu_staffeln(fall: Path, generation: str) -> FormelPruefung:
+    """A-Box-Ratenzuschlaege gegen die IF-Formeln nachpruefen.
 
     Liest je Tarifart-Spalte der Parameter-Matrix die ratzu-Formel aus
     der Vorverdichtung, parst die Staffel deterministisch und vergleicht
-    mit den ``ratzu_zw*``-Aussagen der A-Box-Zellen. Rueckgabe:
-    ``(fehler, geprueft)`` — der Zaehler unterscheidet "alles gruen"
-    von "nichts war pruefbar" (Generationen mit Festwerten statt
-    Staffel-Formeln liefern ``geprueft == 0``; der Aufrufer entscheidet,
-    was das bedeutet).
+    mit den ``ratzu_zw*``-Aussagen der A-Box-Zellen.
+
+    Das Kalkulationsblatt wird aus der Vorverdichtung ERMITTELT
+    (:mod:`rechner_pipeline.quellen.vorverdichtung`), nicht angenommen:
+    ein hart verdrahteter Blattname liess den Check bei jedem
+    Quellsystem ausfallen, das sein Blatt anders nennt — unsichtbar,
+    weil das Gate gruen blieb.
     """
     from rechner_pipeline.ontologie.abox import lade
     from rechner_pipeline.ontologie.aussage import Zustand
     from rechner_pipeline.ontologie.merge import werte_gleich
 
-    gen_name = generation.rsplit("/", 1)[-1].upper()
-    csv_pfad = (fall / "abgeleitet" / "vorverdichtung"
-                / f"xlsm-{gen_name}" / "Kalkulation.csv")
-    if not csv_pfad.is_file():
-        return [f"{generation}: Vorverdichtung fehlt ({csv_pfad})"], 0
-    zellen = _lese_zellen(csv_pfad)
+    verzeichnis = verzeichnis_der_generation(fall, generation)
+    try:
+        vv = lies_vorverdichtung(verzeichnis)
+        blatt = vv.kalkulationsblatt
+    except VorverdichtungFehlt:
+        return FormelPruefung(status="nicht_pruefbar", geprueft=0)
+    except VorverdichtungFehler as exc:
+        # Vorverdichtung da, aber nicht auswertbar: KEIN stilles
+        # nicht_pruefbar — der Aufrufer muss das sehen.
+        return FormelPruefung(
+            status="befund", geprueft=0, befunde=(f"{generation}: {exc}",)
+        )
+    zellen = _lese_zellen(blatt.csv, blatt.name)
     abox = lade(fall)
     gen = next((g for g in abox.generationen if g.id == generation), None)
     if gen is None:
-        return [f"{generation}: nicht in der A-Box"], 0
+        return FormelPruefung(
+            status="befund",
+            geprueft=0,
+            fehler=(f"{generation}: nicht in der A-Box",),
+            blatt=blatt.name,
+        )
 
     fehler: List[str] = []
+    befunde: List[str] = []
+    aussagen = 0
     geprueft = 0
+    festwerte = 0
     for zelle in gen.zellen:
         for zw, feld in ((2, "ratzu_zw2"), (4, "ratzu_zw4"), (12, "ratzu_zw12")):
             aussage = zelle.parameter.get(feld)
             if aussage is None or aussage.zustand is not Zustand.BELEGT:
                 continue
+            aussagen += 1
+            praefix = f"{blatt.name}!"
             fundstellen = {
                 p.fundstelle.split("!")[-1]
                 for p in aussage.provenienz
-                if p.fundstelle.startswith("Kalkulation!")
+                if p.fundstelle.startswith(praefix)
             }
+            if not fundstellen:
+                # Die Aussage belegt sich nicht auf dem Kalkulationsblatt
+                # (andere Quelle oder anderes Blatt) — ausgewiesen, damit
+                # der ausgefallene Rueck-Check sichtbar bleibt.
+                fremde = sorted({p.fundstelle for p in aussage.provenienz})
+                befunde.append(
+                    f"{gen.id}/{zelle.id}/{feld}: keine Fundstelle auf dem "
+                    f"Kalkulationsblatt {blatt.name!r} — belegt mit "
+                    f"{fremde}"
+                )
+                continue
             for adresse in sorted(fundstellen):
                 eintrag = zellen.get(adresse)
                 if eintrag is None:
@@ -142,7 +207,12 @@ def pruefe_ratzu_staffeln(
                     continue
                 formel = eintrag[0]
                 if not formel.startswith("="):
-                    continue  # Festwert-Zelle: kein Staffel-Check noetig
+                    # Festwert-Zelle: es gibt keine Staffel zu parsen. Das
+                    # ist eine erwartbare Form, aber eben AUCH keine
+                    # Nachrechnung — gezaehlt, damit "nichts geprueft"
+                    # nicht als Erfolg gelesen wird.
+                    festwerte += 1
+                    continue
                 try:
                     staffel, _ = lese_if_staffel(formel, "zw")
                 except FormelCheckFehler as exc:
@@ -160,4 +230,23 @@ def pruefe_ratzu_staffeln(
                         f"{aussage.wert!r}, Formel {adresse} sagt "
                         f"{staffel[zw]!r}"
                     )
-    return fehler, geprueft
+
+    if geprueft:
+        status = "geprueft"
+    elif not aussagen:
+        status = "keine_aussagen"
+    else:
+        status = "befund"
+        if not befunde:
+            befunde.append(
+                f"{gen.id}: {aussagen} ratzu-Aussage(n), davon "
+                f"{festwerte} auf Festwert-Zellen des Blatts "
+                f"{blatt.name!r} — keine Staffel nachrechenbar"
+            )
+    return FormelPruefung(
+        status=status,
+        geprueft=geprueft,
+        fehler=tuple(fehler),
+        befunde=tuple(befunde),
+        blatt=blatt.name,
+    )

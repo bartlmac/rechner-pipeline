@@ -6,14 +6,30 @@ Verdikt, Prüfgrößen-Zusammenfassung, vollständige Fehlschläge/Befunde,
 Mapping-Tabelle, Bestandsbericht-Verweise, Determinismus und
 HTML-Escaping.
 
+Dazu das Kommando (Toolbox-Gate-Vertrag): genau EIN JSON auf stdout,
+``abnahmebericht.gate.json`` auf JEDEM Pfad, Standard-Exit-Codes
+(0 / 2 / 20 / 30), Fall-Vorgaben — und die Grenze, die das Kommando
+nicht überschreitet: es nimmt nicht ab (Gate G-2 bleibt beim Menschen).
+
 Knoten: klv
 """
 
 from __future__ import annotations
 
 import dataclasses
+import json
 
-from rechner_pipeline.gates.abnahmebericht import baue_bericht, schreibe_bericht
+from rechner_pipeline.gates._common import (
+    Exit,
+    load_gate_ledger,
+    run_command,
+)
+from rechner_pipeline.gates.abnahmebericht import (
+    GATE,
+    baue_bericht,
+    main,
+    schreibe_bericht,
+)
 from rechner_pipeline.kern import KLV_DEFAULT, Rechenkern
 from rechner_pipeline.ontologie.transformation import (
     FeldMapping,
@@ -125,3 +141,169 @@ def test_bericht_ist_deterministisch() -> None:
     args = dict(titel="t", stichtag_1="s1", stichtag_2="s2",
                 suite=suite, spec=_spec())
     assert baue_bericht(**args) == baue_bericht(**args)
+
+
+# --------------------------------------------------------------------- #
+# Das Kommando (Toolbox-Gate-Vertrag)
+# --------------------------------------------------------------------- #
+
+
+def _suite_datei(tmp_path, *pruefungen, name: str = "suite.json"):
+    """Suite-Ergebnis so ablegen, wie das Kommando es erwartet."""
+    pfad = tmp_path / name
+    pfad.write_text(
+        json.dumps(pruefe_bestand(list(pruefungen))), encoding="utf-8")
+    return pfad
+
+
+def _ledger(diagnostics_dir):
+    eintraege, lesefehler = load_gate_ledger(diagnostics_dir)
+    assert lesefehler == []
+    assert len(eintraege) == 1
+    return eintraege[0]
+
+
+def _basis_argv(tmp_path, suite_pfad):
+    return [
+        "--suite", str(suite_pfad), "--titel", "Abnahme Testfall",
+        "--stichtag-1", "2026-01-01", "--stichtag-2", "2027-01-01",
+        "--bericht", str(tmp_path / "berichte" / "abnahme.html"),
+        "--diagnostics-dir", str(tmp_path / "diagnostics"),
+    ]
+
+
+def test_kommando_gruen_schreibt_bericht_und_ledger(tmp_path) -> None:
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"), _pruefung("P-2"))
+    spec_pfad = tmp_path / "spec.json"
+    spec_pfad.write_text(_spec().model_dump_json(), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad)
+                  + ["--spec", str(spec_pfad),
+                     "--bestandsbericht-vor", "vor/index.html"])
+
+    assert (result.exit_code, result.status) == (Exit.OK, "passed")
+    assert result.gate == GATE
+    bericht = tmp_path / "berichte" / "abnahme.html"
+    text = bericht.read_text(encoding="utf-8")
+    assert "ALLE ABNAHMETESTS BESTANDEN (2 von 2" in text
+    assert "POLNR" in text and "vor/index.html" in text
+    # Provenienz: Eingaben UND Ausgabe gehasht (ein bestandenes Gate ohne
+    # input_hashes wuerde das Dossier blockieren).
+    assert result.input_hashes and str(suite_pfad) in str(result.input_hashes)
+    assert list(result.output_hashes) == [str(bericht)]
+    assert result.summary["bestanden"] == 2
+    assert result.summary["mapping_tabelle"] is True
+    # Das Kommando nimmt NICHT ab — die Entscheidung bleibt beim Menschen.
+    assert "G-2" in result.summary["abnahme"]
+
+    eintrag = _ledger(tmp_path / "diagnostics")
+    assert (eintrag.gate, eintrag.command) == (GATE, "abnahmebericht")
+    assert (eintrag.status, eintrag.summary["exit_code"]) == ("passed", 0)
+    assert eintrag.required is True
+    assert (tmp_path / "diagnostics" / "abnahmebericht.gate.json").is_file()
+
+
+def test_kommando_rot_blockiert_und_schreibt_den_bericht_trotzdem(
+        tmp_path) -> None:
+    suite_pfad = _suite_datei(
+        tmp_path, _pruefung("P-1"), _pruefung("P-2", dk1_versatz=500.0))
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert (result.exit_code, result.status) == (Exit.GOLDEN_MASTER, "failed")
+    # Gerade der rote Bericht ist das Beweisstueck fuer die G-2-Vorlage.
+    text = (tmp_path / "berichte" / "abnahme.html").read_text(encoding="utf-8")
+    assert "1 von 2 Verträgen FEHLGESCHLAGEN" in text
+    meldungen = [e["message"] for e in result.errors]
+    assert any("P-2" in m and "dk_stichtag_1" in m for m in meldungen)
+    assert result.repair_hints and "Toleranzen" in str(result.repair_hints)
+    assert _ledger(tmp_path / "diagnostics").status == "failed"
+
+
+def test_kommando_ohne_suite_ist_usage_mit_ledger(tmp_path) -> None:
+    result = main(["--titel", "T", "--stichtag-1", "a", "--stichtag-2", "b",
+                   "--bericht", str(tmp_path / "b.html"),
+                   "--diagnostics-dir", str(tmp_path / "diagnostics")])
+
+    assert (result.exit_code, result.status) == (Exit.USAGE, "failed")
+    assert "--suite" in result.errors[0]["message"]
+    assert not (tmp_path / "b.html").exists()
+    # Auch der Usage-Abbruch hinterlaesst eine Spur.
+    assert _ledger(tmp_path / "diagnostics").status == "failed"
+
+
+def test_kommando_ohne_zielpfad_nennt_den_ausweg(tmp_path) -> None:
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    result = main(["--suite", str(suite_pfad), "--titel", "T",
+                   "--stichtag-1", "a", "--stichtag-2", "b",
+                   "--diagnostics-dir", str(tmp_path / "diagnostics")])
+    assert result.exit_code == Exit.USAGE
+    meldung = result.errors[0]["message"]
+    assert "--bericht" in meldung and "--fall" in meldung
+
+
+def test_kommando_meldet_fehlende_suite_datei(tmp_path) -> None:
+    result = main(_basis_argv(tmp_path, tmp_path / "gibt_es_nicht.json"))
+    assert result.exit_code == Exit.USAGE
+    assert "gibt_es_nicht.json" in result.errors[0]["message"]
+
+
+def test_kommando_weist_frisierte_zusammenfassung_zurueck(tmp_path) -> None:
+    """Eine nachgebesserte Suite-Zusammenfassung ist ein Contract-Bruch.
+
+    Ohne diese Pruefung koennte ein von Hand auf ``suite_bestanden:
+    true`` gesetztes JSON eine gruene Urkunde ueber ein Urteil erzeugen,
+    das die Suite nie gefaellt hat.
+    """
+    suite_pfad = _suite_datei(
+        tmp_path, _pruefung("P-1"), _pruefung("P-2", dk1_versatz=500.0))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    daten["suite_bestanden"] = True
+    daten["bestanden"], daten["fehlgeschlagen"] = 2, 0
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert (result.exit_code, result.status) == (Exit.FILE_CONTRACT, "failed")
+    meldungen = " ".join(e["message"] for e in result.errors)
+    assert "suite_bestanden" in meldungen and "bestanden" in meldungen
+    assert not (tmp_path / "berichte" / "abnahme.html").exists()
+    assert _ledger(tmp_path / "diagnostics").status == "failed"
+
+
+def test_kommando_weist_leere_pruefmenge_zurueck(tmp_path) -> None:
+    suite_pfad = tmp_path / "leer.json"
+    suite_pfad.write_text(json.dumps({
+        "anzahl": 0, "bestanden": 0, "fehlgeschlagen": 0,
+        "suite_bestanden": True, "vertraege": []}), encoding="utf-8")
+    result = main(_basis_argv(tmp_path, suite_pfad))
+    assert result.exit_code == Exit.FILE_CONTRACT
+    assert "leere" in result.errors[0]["message"]
+
+
+def test_kommando_nutzt_die_fall_vorgaben(tmp_path) -> None:
+    fall = tmp_path / "fall"
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    result = main(["--fall", str(fall), "--suite", str(suite_pfad),
+                   "--titel", "T", "--stichtag-1", "a", "--stichtag-2", "b"])
+    assert result.exit_code == Exit.OK
+    bericht = fall / "abgeleitet" / "berichte" / "migrationsabnahme.html"
+    assert bericht.is_file()
+    assert result.paths["bericht"] == str(bericht)
+    assert (fall / "abgeleitet" / "diagnostics"
+            / "abnahmebericht.gate.json").is_file()
+
+
+def test_kommando_gibt_genau_ein_json_auf_stdout(tmp_path, capsys) -> None:
+    suite_pfad = _suite_datei(
+        tmp_path, _pruefung("P-1"), _pruefung("P-2", dk1_versatz=500.0))
+
+    rc = run_command(main, _basis_argv(tmp_path, suite_pfad))
+
+    ausgabe = capsys.readouterr().out
+    assert ausgabe.count("\n") == 1
+    daten = json.loads(ausgabe)
+    assert daten["command"] == "abnahmebericht" and daten["gate"] == GATE
+    assert daten["exit_code"] == rc == Exit.GOLDEN_MASTER
+    assert daten["status"] == "failed"
+    assert daten["schema_version"] == 1

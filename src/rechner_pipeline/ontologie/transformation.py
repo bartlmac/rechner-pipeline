@@ -32,10 +32,32 @@ from pydantic import BaseModel, ConfigDict, Field
 #: Vertragsseite des Kern-Contracts plus Abgleichswerte. Bewusst NICHT
 #: die Generation-Felder (Zins, Kosten): die kommen aus der Spez des
 #: Migrationsfalls, nie aus dem Abzug.
+#:
+#: ``sex`` ist PFLICHT, weil der Kern es zwingend fuehrt: es steht in
+#: ``models/bestand.CONTRACT_FIELDS``, ``model_point_kwargs`` liest
+#: ``row["sex"]`` ohne Default, und der ModelPoint hat kein Default-
+#: Geschlecht. Ein transformierter Vertrag ohne Geschlecht ist also nicht
+#: rechenbar — als optionales Feld wuerde die Luecke erst im Kern
+#: auffallen (KeyError), nicht in der Spec-Pruefung. Dass eine
+#: Tarifgeneration unisex rechnet, aendert daran nichts: Unisex macht das
+#: Geschlecht tarif-wirkungslos, nicht entbehrlich — der Bestand fuehrt es
+#: weiter fuer Nachweisung, Folgebewertung und spaetere geschlechts-
+#: abhaengige Generationen. Fehlt der Lieferung eine Geschlechtsspalte,
+#: ist das ein Befund fuer den Menschen (G-1), keine stille Auslassung.
 ZIEL_PFLICHT: Tuple[str, ...] = (
-    "police_id", "beginn", "entry_age", "duration", "premium_duration",
-    "sum_insured", "zahlweise", "status", "tarifart",
+    "police_id", "beginn", "entry_age", "sex", "duration",
+    "premium_duration", "sum_insured", "zahlweise", "status", "tarifart",
 )
+#: Zulaessige Zielwerte des Geschlechts. Spiegel von
+#: ``models/bestand.SEX_VALUES``: die Schichtenkarte laesst die Ontologie
+#: nicht auf ``models`` zugreifen, deshalb hier als eigene Konstante — die
+#: Gleichheit mit der SSOT ist test-gebunden
+#: (tests/test_transformation_und_abgleich.py). Notwendig, weil der Kern
+#: jedes Nicht-"M" still zur Frauentafel aufloest
+#: (``kern/tafeln._tafel_key``): ein durchgereichtes "W" waere kein
+#: Fehler, sondern ein stiller Default (P2).
+SEX_ZIELWERTE: Tuple[str, ...] = ("M", "F")
+
 #: Optionale Zielfelder (Abgleichswerte und Herkunfts-Extras).
 ZIEL_OPTIONAL: Tuple[str, ...] = (
     "vertragsjahre_am_stichtag", "brutto_jahresbeitrag",
@@ -181,6 +203,15 @@ def validate_spec(
             fehler.append(f"{f.ziel}: {f.typ} braucht genau EINE Quellspalte")
         if f.typ == "kodierung" and not f.kodierung:
             fehler.append(f"{f.ziel}: kodierung ohne Wertetabelle")
+        if f.ziel == "sex" and f.typ == "kodierung":
+            fremd = sorted({str(w) for w in f.kodierung.values()
+                            if str(w) not in SEX_ZIELWERTE})
+            if fremd:
+                fehler.append(
+                    f"sex: Kodierung bildet auf {fremd} ab — zulaessig sind "
+                    f"nur {list(SEX_ZIELWERTE)}; der Kern loest jeden "
+                    "anderen Wert still zur Frauentafel auf"
+                )
         for q in f.quellen:
             if q not in quellspalten:
                 fehler.append(
@@ -228,6 +259,15 @@ def wende_an(
                     ziel[f.ziel] = f.kodierung[roh]
                 else:
                     ziel[f.ziel] = BERECHNUNGEN[f.berechnung](zeile, f.quellen)
+                # Das Geschlecht ist die einzige Zielgroesse, deren falscher
+                # Wert im Kern NICHT auffaellt (Nicht-"M" -> Frauentafel).
+                # Deshalb hier ein Befund je Zeile statt eines stillen Werts.
+                if f.ziel == "sex" and str(ziel[f.ziel]) not in SEX_ZIELWERTE:
+                    raise ValueError(
+                        f"Geschlecht {ziel[f.ziel]!r} ist keiner der "
+                        f"Zielwerte {list(SEX_ZIELWERTE)} — Kodierung der "
+                        "Spec ergaenzen, nicht durchreichen"
+                    )
             except (KeyError, ValueError) as exc:
                 befunde.append(f"Zeile {i}, Feld {f.ziel}: {exc}")
                 fehler_in_zeile = True

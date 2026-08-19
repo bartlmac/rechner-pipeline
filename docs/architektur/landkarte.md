@@ -36,7 +36,7 @@ flowchart TD
     models["models<br/>5 Module"]
     ontologie["ontologie<br/>16 Module"]
     qa["qa<br/>6 Module"]
-    quellen["quellen<br/>12 Module"]
+    quellen["quellen<br/>13 Module"]
     spez["spez<br/>5 Module"]
     bestand -- 8 --> kern
     bestand -- 10 --> models
@@ -46,7 +46,7 @@ flowchart TD
     gates -- 4 --> models
     gates -- 9 --> ontologie
     gates -- 2 --> qa
-    gates -- 3 --> quellen
+    gates -- 4 --> quellen
     gates -- 1 --> spez
     kommutationskern -- 2 --> kern
     models -- 1 --> gates
@@ -56,7 +56,7 @@ flowchart TD
     qa -- 2 --> kommutationskern
     qa -- 1 --> models
     quellen -- 1 --> kern
-    quellen -- 4 --> models
+    quellen -- 5 --> models
     quellen -- 3 --> ontologie
     quellen -- 1 --> spez
     spez -- 1 --> kern
@@ -76,10 +76,10 @@ flowchart TD
     bu["bu<br/>22 Module"]
     klv["klv<br/>57 Module"]
     system_architektur["system/architektur<br/>4 Module"]
-    system_assurance["system/assurance<br/>11 Module"]
+    system_assurance["system/assurance<br/>12 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 1 --> system_assurance
-    klv -- 1 --> system_assurance
+    klv -- 3 --> system_assurance
     klv -- 1 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv

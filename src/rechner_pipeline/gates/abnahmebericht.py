@@ -19,16 +19,67 @@ ergeben byte-identisches HTML (keine Zeitstempel), und das Verdikt ist
 ausdrücklich eine maschinelle Prüfaussage — die Abnahme selbst ist
 Gate G-2 (Mensch, Entscheid-Snapshot).
 
+Als Kommando (``python -m rechner_pipeline.gates.abnahmebericht``) ist
+das Modul zugleich ein Toolbox-Gate nach dem Vertrag der übrigen Gates:
+EIN JSON auf stdout, ein ``abnahmebericht.gate.json``-Ledger in den
+Diagnostics-Ordner, Standard-Exit-Codes. Es NIMMT DIE MIGRATION NICHT
+AB — es stellt fest, ob die deterministische Migrationssuite ohne
+Fehlschlag geurteilt hat, und legt die Entscheidungsvorlage als
+Fall-Artefakt mit Provenienz (Eingabe-Hashes) ab. Die Abnahme bleibt
+Gate G-2 beim Menschen (``gates/gate_entscheid``); ein
+Exit-Code ``0`` heißt "Vorlage vollständig und ohne Fehlschlag",
+nicht "abgenommen".
+
+Die Suite-Urteile kommen als JSON herein — genau das, was
+:func:`rechner_pipeline.qa.migrationssuite.pruefe_bestand` zurückgibt
+(``json.dump``-fähige Primitive). Der Zusammenbau der Prüfaufträge
+(Modellpunkte aus der Spez, Erwartungswerte aus der Lieferung) bleibt
+Sache des Falls; das Kommando rendert, protokolliert und urteilt.
+
+Run via::
+
+    python -m rechner_pipeline.gates.abnahmebericht \\
+        --fall faelle/<fall> --suite <suite_ergebnis.json> \\
+        --titel "Migrationsabnahme <Fall>" \\
+        --stichtag-1 2026-01-01 --stichtag-2 2027-01-01 \\
+        [--spec <transformationsspec.json>] \\
+        [--transformation-ergebnis <ergebnis.json>] \\
+        [--bestandsbericht-vor vor/index.html] \\
+        [--bestandsbericht-nach nach/index.html] \\
+        [--bericht <ziel.html>] [--diagnostics-dir <dir>]
+
 Knoten: klv
 """
 
 from __future__ import annotations
 
+import argparse
 import html
+import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from rechner_pipeline.ontologie.transformation import TransformationsSpec
+from rechner_pipeline.gates._common import (
+    Exit,
+    add_request_json_arg,
+    build_result,
+    hash_files,
+    log,
+    merge_request_into_args,
+    read_request_json,
+    run_command,
+    utc_now,
+    write_gate_ledger,
+)
+
+COMMAND = "abnahmebericht"
+#: Kein Gate "G2": die Abnahme ist der MENSCHLICHE Gate G-2. Dieses
+#: Kommando erzeugt und protokolliert dessen Vorlage — der Gate-Name
+#: sagt das, damit ein Ledger-Leser die beiden nie verwechselt.
+GATE = "G2-vorlage.migrationsabnahme"
+GATE_VERSION = "1.0.0"
 
 _STIL = """
 body { font-family: sans-serif; margin: 2em; color: #222; }
@@ -235,3 +286,351 @@ def schreibe_bericht(pfad: Path, **kwargs: Any) -> Path:
     pfad.parent.mkdir(parents=True, exist_ok=True)
     pfad.write_text(baue_bericht(**kwargs), encoding="utf-8")
     return pfad
+
+
+# --------------------------------------------------------------------------- #
+# Kommando (Toolbox-Gate-Vertrag) — die Bibliotheks-API oben bleibt unberührt.
+# --------------------------------------------------------------------------- #
+
+#: Pflichtfelder eines Einzelvergleichs im Suite-Ergebnis.
+_PRUEFUNG_FELDER = ("groesse", "system", "erwartet", "residuum", "ok")
+
+
+def _suite_fehler(daten: Any) -> List[str]:
+    """Struktur- und Konsistenzfehler eines Suite-Ergebnis-JSON.
+
+    Geprüft wird nicht nur das Vorhandensein der Felder, sondern auch,
+    dass die Zusammenfassung zu den Einzelurteilen PASST: ein von Hand
+    nachgebessertes ``suite_bestanden`` würde sonst eine Urkunde über
+    ein Urteil erzeugen, das die Suite nie gefällt hat. Leere Liste =
+    verwendbar.
+    """
+    if not isinstance(daten, dict):
+        return ["Suite-Ergebnis ist kein JSON-Objekt"]
+    fehler: List[str] = []
+    for feld in ("anzahl", "bestanden", "fehlgeschlagen", "suite_bestanden",
+                 "vertraege"):
+        if feld not in daten:
+            fehler.append(f"Feld {feld!r} fehlt")
+    if fehler:
+        return fehler
+    vertraege = daten["vertraege"]
+    if not isinstance(vertraege, list):
+        return ["Feld 'vertraege' ist keine Liste"]
+    if not vertraege:
+        return [
+            "Suite-Ergebnis ohne einen einzigen Vertrag: eine leere "
+            "Prüfmenge ist keine bestandene Abnahme — prüfe Lieferung "
+            "und Transformation (wurden 0 Verträge übernommen?)"
+        ]
+    for i, u in enumerate(vertraege):
+        wo = f"vertraege[{i}]"
+        if not isinstance(u, dict):
+            fehler.append(f"{wo} ist kein Objekt")
+            continue
+        for feld in ("police_id", "bestanden", "befunde", "pruefungen"):
+            if feld not in u:
+                fehler.append(f"{wo}: Feld {feld!r} fehlt")
+        if not isinstance(u.get("befunde"), list):
+            fehler.append(f"{wo}: 'befunde' ist keine Liste")
+        pruefungen = u.get("pruefungen")
+        if not isinstance(pruefungen, list):
+            fehler.append(f"{wo}: 'pruefungen' ist keine Liste")
+            continue
+        for j, p in enumerate(pruefungen):
+            if not isinstance(p, dict):
+                fehler.append(f"{wo}.pruefungen[{j}] ist kein Objekt")
+                continue
+            for feld in _PRUEFUNG_FELDER:
+                if feld not in p:
+                    fehler.append(
+                        f"{wo}.pruefungen[{j}]: Feld {feld!r} fehlt")
+            for feld in ("system", "erwartet", "residuum"):
+                wert = p.get(feld)
+                if feld in p and (isinstance(wert, bool)
+                                  or not isinstance(wert, (int, float))):
+                    fehler.append(
+                        f"{wo}.pruefungen[{j}]: {feld!r} ist keine Zahl")
+    if fehler:
+        return fehler
+
+    n = len(vertraege)
+    n_ok = sum(1 for u in vertraege if u["bestanden"])
+    if daten["anzahl"] != n:
+        fehler.append(
+            f"'anzahl' ({daten['anzahl']}) passt nicht zu {n} Urteilen")
+    if daten["bestanden"] != n_ok:
+        fehler.append(
+            f"'bestanden' ({daten['bestanden']}) passt nicht zu {n_ok} "
+            "bestandenen Urteilen")
+    if daten["fehlgeschlagen"] != n - n_ok:
+        fehler.append(
+            f"'fehlgeschlagen' ({daten['fehlgeschlagen']}) passt nicht zu "
+            f"{n - n_ok} fehlgeschlagenen Urteilen")
+    if bool(daten["suite_bestanden"]) != (n_ok == n):
+        fehler.append(
+            f"'suite_bestanden' ({daten['suite_bestanden']}) passt nicht zu "
+            f"{n_ok} von {n} bestandenen Urteilen")
+    return fehler
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m rechner_pipeline.gates.abnahmebericht",
+        description=(
+            "Migrationsabnahmebericht rendern und protokollieren — die "
+            "Entscheidungsvorlage des MENSCHLICHEN Gates G-2, keine "
+            "Abnahme."
+        ),
+    )
+    parser.add_argument(
+        "--fall", default=None,
+        help="Fall-Arbeitsbereich; setzt die Vorgaben fuer --bericht und "
+        "--diagnostics-dir.")
+    parser.add_argument(
+        "--suite", default=None,
+        help="JSON-Ergebnis von qa.migrationssuite.pruefe_bestand (Pflicht).")
+    parser.add_argument("--titel", default=None, help="Berichtstitel (Pflicht).")
+    parser.add_argument(
+        "--stichtag-1", dest="stichtag_1", default=None,
+        help="Migrationsstichtag, ISO-Datum (Pflicht).")
+    parser.add_argument(
+        "--stichtag-2", dest="stichtag_2", default=None,
+        help="Folgestichtag, ISO-Datum (Pflicht).")
+    parser.add_argument(
+        "--spec", default=None,
+        help="TransformationsSpec als JSON (optional; Mapping-Tabelle).")
+    parser.add_argument(
+        "--transformation-ergebnis", dest="transformation_ergebnis",
+        default=None,
+        help="JSON der Mapping-Anwendung (zeilen_quelle/zeilen_ziel/befunde).")
+    parser.add_argument(
+        "--bestandsbericht-vor", dest="bestandsbericht_vor", default=None,
+        help="Verweis auf den Bestandsbericht VOR der Migration.")
+    parser.add_argument(
+        "--bestandsbericht-nach", dest="bestandsbericht_nach", default=None,
+        help="Verweis auf den Bestandsbericht NACH der Migration.")
+    parser.add_argument(
+        "--bericht", default=None,
+        help="Zielpfad des HTML-Berichts (Vorgabe mit --fall: "
+        "<fall>/abgeleitet/berichte/migrationsabnahme.html).")
+    parser.add_argument("--repo-root", dest="repo_root", default=None)
+    parser.add_argument(
+        "--diagnostics-dir", dest="diagnostics_dir", default=None,
+        help="Verzeichnis fuer den Gate-Ledger-Eintrag.")
+    add_request_json_arg(parser)
+    return parser
+
+
+def main(argv: Optional[List[str]] = None):
+    started_at = utc_now()
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    request = read_request_json(args.request_json)
+    args = merge_request_into_args(args, request)
+
+    fall = Path(args.fall) if args.fall else None
+    diagnostics_dir = (
+        Path(args.diagnostics_dir) if args.diagnostics_dir
+        else (fall / "abgeleitet" / "diagnostics" if fall
+              else Path.cwd() / "runs" / "diagnostics")
+    )
+
+    def _finalize(result):
+        try:
+            write_gate_ledger(
+                result, diagnostics_dir,
+                repo_root=Path(args.repo_root) if args.repo_root else None,
+                started_at=started_at, ended_at=utc_now(),
+                command_line=argv if argv is not None else sys.argv[1:],
+            )
+        except Exception as exc:  # noqa: BLE001 — Ledger maskiert nie das Urteil
+            log(f"{COMMAND}: gate-ledger write failed: {exc}")
+        return result
+
+    def _usage(message: str):
+        return _finalize(build_result(
+            command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+            exit_code=Exit.USAGE,
+            errors=[{"code": "usage", "message": message}],
+        ))
+
+    fehlende_flags = [
+        name for name, wert in (
+            ("--suite", args.suite), ("--titel", args.titel),
+            ("--stichtag-1", args.stichtag_1),
+            ("--stichtag-2", args.stichtag_2))
+        if not wert
+    ]
+    if fehlende_flags:
+        return _usage(f"erforderlich: {', '.join(fehlende_flags)}")
+    if not args.bericht and fall is None:
+        return _usage(
+            "Zielpfad des Berichts unbestimmt: --bericht angeben oder "
+            "--fall setzen (dann <fall>/abgeleitet/berichte/"
+            "migrationsabnahme.html)")
+
+    eingaben: Dict[str, Path] = {"suite": Path(args.suite)}
+    if args.spec:
+        eingaben["spec"] = Path(args.spec)
+    if args.transformation_ergebnis:
+        eingaben["transformation_ergebnis"] = Path(args.transformation_ergebnis)
+    fehlend = [str(p) for p in eingaben.values() if not p.is_file()]
+    if fehlend:
+        return _usage(f"Datei nicht gefunden: {'; '.join(fehlend)}")
+
+    bericht_pfad = (
+        Path(args.bericht) if args.bericht
+        else fall / "abgeleitet" / "berichte" / "migrationsabnahme.html"
+    )
+    paths = {name: str(p) for name, p in eingaben.items()}
+    paths["bericht"] = str(bericht_pfad)
+    if fall is not None:
+        paths["fall"] = str(fall)
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else None
+    input_hashes = hash_files(list(eingaben.values()), base=repo_root)
+
+    def _contract_fehler(code: str, meldungen: List[str], hinweis: str):
+        gezeigt = meldungen[:20]
+        if len(meldungen) > len(gezeigt):
+            gezeigt.append(
+                f"... und weitere {len(meldungen) - len(gezeigt)} von "
+                f"{len(meldungen)}")
+        return _finalize(build_result(
+            command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+            exit_code=Exit.FILE_CONTRACT, paths=paths,
+            input_hashes=input_hashes,
+            errors=[{"code": code, "message": m} for m in gezeigt],
+            repair_hints=[{"code": code, "hint": hinweis}],
+        ))
+
+    try:
+        suite = json.loads(eingaben["suite"].read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return _contract_fehler(
+            "suite_unlesbar", [f"{type(exc).__name__}: {exc}"],
+            "Suite-Ergebnis ist das JSON von "
+            "qa.migrationssuite.pruefe_bestand (json.dump des Rueckgabe-"
+            "Dicts); erneut erzeugen statt von Hand schreiben.")
+    struktur_fehler = _suite_fehler(suite)
+    if struktur_fehler:
+        return _contract_fehler(
+            "suite_contract", struktur_fehler,
+            "Das Suite-Ergebnis stammt unveraendert aus "
+            "qa.migrationssuite.pruefe_bestand; die Suite erneut laufen "
+            "lassen, statt die Zusammenfassung nachzubessern.")
+
+    spec = None
+    if "spec" in eingaben:
+        try:
+            spec = TransformationsSpec.model_validate_json(
+                eingaben["spec"].read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return _contract_fehler(
+                "spec_unlesbar", [f"{type(exc).__name__}: {exc}"],
+                "Die TransformationsSpec muss dem Schema von "
+                "ontologie.transformation.TransformationsSpec genuegen.")
+
+    transformation_ergebnis = None
+    if "transformation_ergebnis" in eingaben:
+        try:
+            transformation_ergebnis = json.loads(
+                eingaben["transformation_ergebnis"].read_text(
+                    encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return _contract_fehler(
+                "transformation_ergebnis_unlesbar",
+                [f"{type(exc).__name__}: {exc}"],
+                "Erwartet ein JSON-Objekt mit zeilen_quelle, zeilen_ziel "
+                "und befunde (Ausgabe von ontologie.transformation.wende_an).")
+        fehlende_felder = [
+            f for f in ("zeilen_quelle", "zeilen_ziel")
+            if not isinstance(transformation_ergebnis, dict)
+            or f not in transformation_ergebnis
+        ]
+        if fehlende_felder:
+            return _contract_fehler(
+                "transformation_ergebnis_contract",
+                [f"Feld {f!r} fehlt" for f in fehlende_felder],
+                "Erwartet ein JSON-Objekt mit zeilen_quelle, zeilen_ziel "
+                "und befunde (Ausgabe von ontologie.transformation.wende_an).")
+
+    # Der Bericht wird auf BEIDEN Pfaden geschrieben: gerade der rote
+    # Bericht ist das Beweisstueck, mit dem der Mensch entscheidet.
+    schreibe_bericht(
+        bericht_pfad, titel=args.titel,
+        stichtag_1=args.stichtag_1, stichtag_2=args.stichtag_2,
+        suite=suite, spec=spec,
+        transformation_ergebnis=transformation_ergebnis,
+        bestandsbericht_vor=args.bestandsbericht_vor,
+        bestandsbericht_nach=args.bestandsbericht_nach,
+    )
+    output_hashes = hash_files([bericht_pfad], base=repo_root)
+
+    befunde_gesamt = sum(len(u["befunde"]) for u in suite["vertraege"])
+    pruefungen_gesamt = sum(len(u["pruefungen"]) for u in suite["vertraege"])
+    max_residuum = max(
+        (abs(p["residuum"]) for u in suite["vertraege"]
+         for p in u["pruefungen"]), default=0.0)
+    summary = {
+        "anzahl": suite["anzahl"],
+        "bestanden": suite["bestanden"],
+        "fehlgeschlagen": suite["fehlgeschlagen"],
+        "suite_bestanden": bool(suite["suite_bestanden"]),
+        "befunde": befunde_gesamt,
+        "pruefungen": pruefungen_gesamt,
+        "max_residuum": max_residuum,
+        "mapping_tabelle": spec is not None,
+        # Ausdruecklich: dieses Kommando nimmt nichts ab.
+        "abnahme": "offen — Gate G-2 (Mensch, gates/gate_entscheid)",
+    }
+
+    if suite["suite_bestanden"] and befunde_gesamt == 0:
+        log(f"{COMMAND}: Vorlage ohne Fehlschlag ({summary['bestanden']} von "
+            f"{summary['anzahl']} Vertraegen) -> {bericht_pfad}")
+        return _finalize(build_result(
+            command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+            exit_code=Exit.OK, paths=paths, summary=summary,
+            input_hashes=input_hashes, output_hashes=output_hashes,
+            diagnostics_path=str(bericht_pfad),
+        ))
+
+    errors = [
+        {"code": "abnahmetest", "message":
+         f"{u['police_id']} / {p['groesse']}: System {p['system']:.2f} "
+         f"gegen Lieferung {p['erwartet']:.2f} (Residuum "
+         f"{p['residuum']:.4f})"}
+        for u in suite["vertraege"] for p in u["pruefungen"] if not p["ok"]
+    ] + [
+        {"code": "befund", "message": f"{u['police_id']}: {b}"}
+        for u in suite["vertraege"] for b in u["befunde"]
+    ]
+    if len(errors) > 50:
+        # Der Bericht weist ALLE aus; das JSON bleibt lesbar und nennt die
+        # Gesamtzahl, statt sie stillschweigend zu unterschlagen.
+        errors = errors[:50] + [{
+            "code": "gekuerzt",
+            "message": f"... und weitere {len(errors) - 50} von "
+                       f"{len(errors)}; vollstaendig im Bericht "
+                       f"{bericht_pfad}",
+        }]
+    log(f"{COMMAND}: {summary['fehlgeschlagen']} von {summary['anzahl']} "
+        f"Vertraegen fehlgeschlagen, {befunde_gesamt} Befund(e) -> "
+        f"{bericht_pfad}")
+    return _finalize(build_result(
+        command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+        exit_code=Exit.GOLDEN_MASTER, paths=paths, summary=summary,
+        input_hashes=input_hashes, output_hashes=output_hashes,
+        diagnostics_path=str(bericht_pfad), errors=errors,
+        repair_hints=[{
+            "code": "abnahme",
+            "hint": "Abweichungen und Befunde gehen unveraendert an den "
+            "Menschen (Gate G-2): weder Erwartungswerte noch Toleranzen "
+            "anpassen. Der Bericht unter 'bericht' weist jeden Einzelwert "
+            "aus.",
+        }],
+    ))
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(run_command(main))
