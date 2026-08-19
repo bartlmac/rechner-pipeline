@@ -23,6 +23,8 @@ from __future__ import annotations
 import dataclasses
 import json
 
+import pytest
+
 from rechner_pipeline.gates._common import (
     Exit,
     load_gate_ledger,
@@ -168,6 +170,29 @@ def test_bericht_weist_pruefluecken_neben_dem_gruenen_verdikt_aus() -> None:
     assert "PRÜFLÜCKE(N)" not in text_voll
     assert "Keine — jede Prüfgröße war geliefert." in text_voll
     assert "bjb_stichtag_1" in text_voll        # als Prüfgröße, nicht als Lücke
+
+
+def test_gruenes_verdikt_hat_genau_einen_schlusspunkt() -> None:
+    """Der Kopfsatz wird projiziert — kein doppelter Punkt nach "s. u.".
+
+    Der Lückenzusatz endet selbst auf einem Punkt; die Vorlage darf
+    keinen zweiten anhängen. Ohne Lücken muss der Satz dagegen sehr wohl
+    mit Punkt enden.
+    """
+    mit_luecke = baue_bericht(
+        titel="t", stichtag_1="s1", stichtag_2="s2",
+        suite=pruefe_bestand([_pruefung("P-1")]))
+    assert "s. u..." not in mit_luecke and "s. u..</p>" not in mit_luecke
+    assert "PRÜFLÜCKE(N), s. u.</p>" in mit_luecke
+
+    ohne_luecke = baue_bericht(
+        titel="t", stichtag_1="s1", stichtag_2="s2",
+        suite=pruefe_bestand(
+            [dataclasses.replace(
+                _pruefung("P-1"),
+                bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))],
+            erwartete_anzahl=1))
+    assert "(1 von 1 Verträgen).</p>" in ohne_luecke
 
 
 def test_bericht_weist_mengenbefunde_aus() -> None:
@@ -368,6 +393,42 @@ def test_kommando_weist_suite_ohne_mengenangaben_zurueck(tmp_path) -> None:
                  "vollstaendig_geprueft"):
         assert feld in meldungen
     assert not (tmp_path / "berichte" / "abnahme.html").exists()
+
+
+@pytest.mark.parametrize("wert", ["500", 4.7, True, [500]])
+def test_kommando_weist_falsche_erwartete_anzahl_zurueck(
+        tmp_path, wert) -> None:
+    """Falscher Typ ist ein Contract-Bruch, kein Absturz.
+
+    Der Bericht setzt die erwartete Vertragszahl als ganze Zahl
+    (``int(...)``): ein Text oder eine Liste liesse das Kommando mit
+    einem Traceback statt mit Exit 20 enden, ein Float schnitte still ab
+    (4.7 -> 4). Beides ist im Kopf einer Abnahme-Urkunde nicht
+    hinnehmbar.
+    """
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    daten["erwartete_anzahl"] = wert
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert (result.exit_code, result.status) == (Exit.FILE_CONTRACT, "failed")
+    assert "erwartete_anzahl" in result.errors[0]["message"]
+    assert not (tmp_path / "berichte" / "abnahme.html").exists()
+    assert _ledger(tmp_path / "diagnostics").status == "failed"
+
+
+def test_kommando_traegt_die_gelieferte_erwartete_anzahl(tmp_path) -> None:
+    """Die Gegenprobe: eine ganze Zahl und ``null`` bleiben zulaessig."""
+    pfad = tmp_path / "suite.json"
+    pfad.write_text(json.dumps(pruefe_bestand(
+        [_pruefung("P-1")], erwartete_anzahl=1)), encoding="utf-8")
+    result = main(_basis_argv(tmp_path, pfad))
+    assert result.exit_code == Exit.OK
+    assert result.summary["erwartete_anzahl"] == 1
+    text = (tmp_path / "berichte" / "abnahme.html").read_text(encoding="utf-8")
+    assert "<b>1</b>" in text
 
 
 def test_kommando_weist_frisierte_luecken_zurueck(tmp_path) -> None:

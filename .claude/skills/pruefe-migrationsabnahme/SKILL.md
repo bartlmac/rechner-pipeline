@@ -27,10 +27,14 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 
 - `qa/migrationssuite` — je Vertrag: Deckungskapital am
   Migrationsstichtag (Bilanzgröße = Monatsreserve, unterjährig
-  interpoliert), GeVo-Beträge zwischen den Stichtagen (STO → RKW am
-  Ereignismonat, TOD → Summe, PEX → beitragsfreie Summe, ERH →
+  interpoliert), Bruttojahresbeitrag am Migrationsstichtag (wenn
+  geliefert), GeVo-Beträge zwischen den Stichtagen (STO → RKW am
+  Ereignismonat, TOD und ABL → Gesamtsumme bzw. nach einer
+  Beitragsfreistellung die Summe der beitragsfreien Summen, ERH →
   vertragsweite Scheiben-Bewertung), Deckungskapital am Folgestichtag
   auf dem richtigen Track; Lieferungs-Inkonsistenzen werden Befunde.
+  Was die Suite mangels Erwartungswert nicht geprüft hat, steht als
+  `pruefluecken` neben dem Urteil — eine Lücke ist nie ein Bestehen.
 - `python -m rechner_pipeline.gates.abnahmebericht` — der
   Migrationsabnahmebericht (HTML): Abnahmetests, GeVo-Vergleich,
   Transformations-Tabelle, Verweise auf die Bestandsberichte
@@ -66,8 +70,20 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 1. Vollständigkeit prüfen: transformierter Bestand, Spez (Lesart),
    Folge-Abzug, GeVo-Protokoll, beide Stichtage. Fehlt etwas: STOPP.
 2. Je Vertrag den Prüfauftrag bauen (Modellpunkt aus Spez + Vertrag,
-   Monats-Stichtage, Erwartungswerte, GeVos),
-   `qa.migrationssuite.pruefe_bestand` laufen lassen und das
+   Monats-Stichtage, Erwartungswerte, GeVos). Zwei Größen liegen im
+   Bestandsabzug vor und werden DURCHGEREICHT — fehlen sie, weist der
+   Bericht dafür je eine Prüflücke aus:
+   - `bjb_erwartet_1` je `VertragsPruefung`: der gelieferte
+     Bruttojahresbeitrag am Migrationsstichtag (Beitragsspalte des
+     Abzugs, z. B. `JBRUTTO`; `0.00`, wo die Beitragszahlung beendet
+     oder der Vertrag beitragsfrei ist). Er ist die zweite Prüfachse
+     neben dem Deckungskapital: ein um ein Jahr versetztes
+     Eintrittsalter verschiebt die Reserve oft nur um Bruchteile eines
+     Cents, den Beitrag deutlich.
+   - `erwartete_anzahl=` an `pruefe_bestand`: die Zeilenzahl des
+     Bestandsabzugs. Ohne sie ist NICHT geprüft, dass die Prüfmenge
+     dem gelieferten Bestand entspricht.
+   Dann `qa.migrationssuite.pruefe_bestand` laufen lassen und das
    zurückgegebene Dict unverändert als JSON in den Fall schreiben
    (`json.dump`, z. B. `abgeleitet/berichte/migrationssuite.json`).
    Das JSON wird NIE von Hand nachgebessert — das Kommando in

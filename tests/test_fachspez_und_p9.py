@@ -1,5 +1,9 @@
 """Fachspez-Generator (P7), P9-Snapshot, Entscheide-CLI, Code-Index (D4).
 
+Hier haengt auch der Waechter ueber die EINE Subprozess-Ausnahme des
+Pakets (P9-Provenienz) und die oeffentliche Zusage, die sie benennt
+(ONBOARDING.md) — Regel und Zusage muessen zusammen rot werden koennen.
+
 Knoten: klv
 """
 
@@ -217,6 +221,138 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
     assert f"--fall {f}" in fehler["message"]
 
 
+#: Prozessstart AUSSERHALB von ``subprocess`` — anderer Weg, gleiche
+#: Wirkung. Exakte Attributnamen statt Praefix-Heuristik: der Waechter
+#: soll scharf bleiben (``os.path``, ``os.environ`` sind kein
+#: Prozessstart und duerfen ihn nicht ausloesen).
+OS_PROZESSSTART = (
+    "system", "popen",
+    "execl", "execle", "execlp", "execlpe",
+    "execv", "execve", "execvp", "execvpe",
+    "spawnl", "spawnle", "spawnlp", "spawnlpe",
+    "spawnv", "spawnve", "spawnvp", "spawnvpe",
+    "posix_spawn", "posix_spawnp",
+    "fork", "forkpty",
+)
+
+
+def _os_prozessstarts(baum: ast.Module) -> list:
+    """Prozessstarts ueber ``os`` in einem Modul (sortiert, leer = keiner).
+
+    Erfasst wird der Aufrufweg, nicht der Modulname: ``import os as _os``
+    bindet den Alias, ``from os import system`` das Symbol direkt.
+    """
+    alias_namen = {"os"}
+    treffer: list = []
+    for knoten in ast.walk(baum):
+        if isinstance(knoten, ast.Import):
+            for a in knoten.names:
+                if a.name == "os" and a.asname:
+                    alias_namen.add(a.asname)
+        elif isinstance(knoten, ast.ImportFrom):
+            if (knoten.module or "") == "os":
+                treffer.extend(
+                    f"os.{a.name}" for a in knoten.names
+                    if a.name in OS_PROZESSSTART
+                )
+    for knoten in ast.walk(baum):
+        if (isinstance(knoten, ast.Attribute)
+                and isinstance(knoten.value, ast.Name)
+                and knoten.value.id in alias_namen
+                and knoten.attr in OS_PROZESSSTART):
+            treffer.append(f"os.{knoten.attr}")
+    return sorted(treffer)
+
+
+def test_o3_hinweis_ist_je_generation_eine_kopierbare_zeile(tmp_path: Path):
+    """Ein Hinweis zum Kopieren muss sich kopieren lassen (Folgefund C11).
+
+    Bei mehreren Generationen ergab die Zusammensetzung mit ``|`` ein
+    ``--generation klv/tg2012|klv/tg2015`` — als Shell-Zeile eine Pipe,
+    also gerade kein uebernehmbares Kommando. Es gibt je Generation
+    eine eigene Zeile, denn O3 laeuft je Generation.
+    """
+    from rechner_pipeline.gates.abox_validate import main as o1
+    from rechner_pipeline.gates.gate_entscheid import main
+
+    f = tmp_path / "fall"
+    anlegen(f)
+    for name in ("rechner.xlsm", "meldung.docx"):
+        q = tmp_path / name
+        q.write_bytes(name.encode())
+        registrieren(f, q)
+    register = json.loads((f / "eingang.json").read_text(encoding="utf-8"))
+
+    def frag(datei, art, generation):
+        parameter = {feld: FragmentWert(
+            wert=PLAUSIBEL[feld], fundstelle=f"{datei}:x")
+            for feld in PFLICHT_PARAMETER}
+        return QuellFragment(generation=generation, quelle_datei=datei,
+                             quelle_art=art,
+                             zellen=[FragmentZelle(parameter=parameter)])
+
+    abox = baue_abox(
+        str(f),
+        [frag("meldung.docx", "tarifmeldung", "tg2012"),
+         frag("rechner.xlsm", "tarifrechner", "tg2015")],
+        register, ["test/extraktion@abc1234", "test/extraktion-b@abc1234"],
+        ZEIT,
+    )
+    speichere(abox, f)
+    assert [g.id for g in abox.generationen] == ["klv/tg2012", "klv/tg2015"]
+    assert o1(["--fall", str(f)]).exit_code == 0
+
+    result = main(["--fall", str(f), "--gate", "G-2", "--entscheid",
+                   "angenommen", "--rolle", "mensch", "--entscheider",
+                   "Bartek", "--begruendung", "ok", "--repo-root", "."])
+    assert result.exit_code == 20
+    [fehler] = result.errors
+    assert fehler["code"] == "vorbedingung"
+    meldung = fehler["message"]
+    # Keine Pipe, kein zusammengeklebtes Generations-Argument:
+    assert "|" not in meldung
+    zeilen = [z for z in meldung.splitlines()
+              if "rechner_pipeline.gates.generation_golden" in z]
+    assert len(zeilen) == 2
+    for generation, zeile in zip(("klv/tg2012", "klv/tg2015"), zeilen):
+        # Jede Zeile ist FÜR SICH ein vollstaendiges Kommando.
+        kommando = zeile[zeile.index("python -m"):]
+        assert kommando.startswith(
+            "python -m rechner_pipeline.gates.generation_golden ")
+        assert f"--generation {generation} " in kommando
+        assert f"--fall {f} " in kommando
+
+
+def test_abnahme_runbook_reicht_die_neuen_pruefgroessen_durch():
+    """Die Abnahmesuite prueft Jahresbeitrag und Vollstaendigkeit NUR,
+    wenn der Fall sie mitgibt — sonst weist jeder Abnahmebericht zwei
+    Pruefluecken aus (Folgefund C9). Das Runbook muss beides
+    durchreichen, unter den echten Feldnamen der Suite: der Test bindet
+    den Skill-Text an den Code-Contract, damit weder ein erfundener Name
+    noch eine Umbenennung im Code unbemerkt bleibt.
+    """
+    import dataclasses
+    import inspect
+
+    from rechner_pipeline.qa import migrationssuite
+
+    felder = {
+        feld.name
+        for feld in dataclasses.fields(migrationssuite.VertragsPruefung)
+    }
+    assert "bjb_erwartet_1" in felder
+    parameter = inspect.signature(migrationssuite.pruefe_bestand).parameters
+    assert "erwartete_anzahl" in parameter
+
+    repo = Path(__file__).resolve().parents[1]
+    for basis in (".claude", ".agents"):
+        for skill in ("pruefe-migrationsabnahme", "migrationsfall-durchfuehren"):
+            text = (repo / basis / "skills" / skill / "SKILL.md").read_text(
+                encoding="utf-8")
+            assert "bjb_erwartet_1" in text, (basis, skill)
+            assert "erwartete_anzahl" in text, (basis, skill)
+
+
 def test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt():
     """Genau EIN Subprozess in ``src/``: die Git-Provenienz des Snapshots.
 
@@ -226,6 +362,13 @@ def test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt():
     (Systempruefung F22). Diese Ausnahme ist damit genau eine — der Test
     faengt den naechsten Einzug, und er faengt auch die Umwidmung des
     vorhandenen Aufrufs auf ein beliebiges Kommando.
+
+    Ein Waechter, der nur ``subprocess`` kennt, waere ein halber: derselbe
+    Fremdprozess laesst sich ueber ``os.system``/``os.popen``/``os.exec*``
+    /``os.spawn*``/``os.fork`` starten. Diese Wege sind hier AUSNAHMSLOS
+    verboten — auch in ``gate_entscheid``, denn die eine gerechtfertigte
+    Ausnahme ist der geprueft-enge ``subprocess.run`` auf drei lesende
+    git-Aufrufe, kein zweiter Startweg daneben.
     """
     src = Path(__file__).resolve().parents[1] / "src" / "rechner_pipeline"
 
@@ -272,6 +415,24 @@ def test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt():
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
         ["git", "status", "--porcelain"],
     ]
+
+    # Kein Prozessstart am subprocess-Waechter vorbei (os.system & Co.):
+    ueber_os = {
+        name: starts for name, baum in baeume.items()
+        if (starts := _os_prozessstarts(baum))
+    }
+    assert ueber_os == {}
+
+    # Die oeffentliche Zusage muss die Ausnahme BENENNEN, statt sie zu
+    # verschweigen: ein grep auf "subprocess" darf ONBOARDING.md und
+    # src/ nicht gegeneinander stellen.
+    onboarding = (
+        Path(__file__).resolve().parents[1] / "ONBOARDING.md"
+    ).read_text(encoding="utf-8")
+    assert "no subprocess" in onboarding
+    assert "gates/gate_entscheid._git_stand" in onboarding
+    assert "exactly ONE subprocess exception" in onboarding
+    assert "test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt" in onboarding
 
 
 def test_entscheide_alle_vorlaeufigen_nach_quelle(fall_mit_konflikt, capsys):

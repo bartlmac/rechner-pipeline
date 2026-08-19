@@ -171,12 +171,14 @@ def baue_bericht(
     mengenbefunde = list(suite["mengenbefunde"])
     pruefluecken = list(suite["pruefluecken"])
     if suite["suite_bestanden"]:
-        zusatz = ("" if not pruefluecken
+        # Der Zusatz bringt seinen eigenen Schlusspunkt mit ("s. u."),
+        # sonst stünde im projizierten Kopfsatz ein doppelter Punkt.
+        zusatz = ("." if not pruefluecken
                   else f" — MIT {len(pruefluecken)} PRÜFLÜCKE(N), s. u.")
         teile.append(
             f"<p class='gruen'>ALLE ABNAHMETESTS BESTANDEN "
             f"({suite['bestanden']:.0f} von {suite['anzahl']:.0f} "
-            f"Verträgen){zusatz}.</p>")
+            f"Verträgen){zusatz}</p>")
     else:
         teile.append(
             f"<p class='rot'>{suite['fehlgeschlagen']:.0f} von "
@@ -357,6 +359,15 @@ def _suite_fehler(daten: Any) -> List[str]:
     for feld in ("mengenbefunde", "pruefluecken"):
         if not isinstance(daten[feld], list):
             fehler.append(f"Feld {feld!r} ist keine Liste")
+    # Die erwartete Vertragszahl wird im Bericht als ganze Zahl gesetzt
+    # (``int(...)``) und im Ledger gefuehrt: ein falscher Typ waere dort
+    # ein Absturz oder eine stille Abschneidung (4.7 -> 4) statt eines
+    # benannten Contract-Bruchs.
+    erwartet = daten["erwartete_anzahl"]
+    if erwartet is not None and (isinstance(erwartet, bool)
+                                 or not isinstance(erwartet, int)):
+        fehler.append(
+            "Feld 'erwartete_anzahl' ist weder eine ganze Zahl noch null")
     if fehler:
         return fehler
     vertraege = daten["vertraege"]

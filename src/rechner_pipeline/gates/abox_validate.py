@@ -209,10 +209,18 @@ def main(argv: Optional[List[str]] = None):
     # Deterministischer Rueck-Check LLM-gelesener Formel-Staffeln (P4).
     # Das Kalkulationsblatt ermittelt der Check aus der Vorverdichtung
     # selbst; welchen Zustand er erreicht hat, steht je Generation im
-    # Summary. Entscheidend ist die Trennung: "keine Vorverdichtung" ist
-    # ehrlich nicht pruefbar, "Vorverdichtung da, aber nichts war
-    # nachrechenbar" ist ein BEFUND und wird als Warnung sichtbar —
-    # frueher fiel beides zu einer stillen Null zusammen.
+    # Summary. Entscheidend sind die Trennungen, die frueher alle zu
+    # einer stillen Null zusammenfielen:
+    #
+    # * "gar keine Vorverdichtung" — der Check faellt VOLLSTAENDIG aus.
+    #   Kein Fehler (es liegt nichts vor, was falsch sein koennte), aber
+    #   eine Warnung mit dem extract-Kommando: ein Fall ohne
+    #   Vorverdichtung darf nicht aussehen wie einer, in dem es nichts
+    #   nachzurechnen gab,
+    # * "Vorverdichtung da, aber nichts war nachrechenbar" — BEFUND,
+    #   ebenfalls als Warnung sichtbar,
+    # * Aussagen ohne Rechner-Beleg (nur Tarifmeldung) — ausserhalb der
+    #   Zustaendigkeit des Checks: gezaehlt, nicht bemaengelt.
     from rechner_pipeline.quellen.formeln import pruefe_ratzu_staffeln
 
     formel_checks: Dict[str, object] = {}
@@ -225,8 +233,12 @@ def main(argv: Optional[List[str]] = None):
         }
         if pruefung.blatt is not None:
             eintrag["blatt"] = pruefung.blatt
+        if pruefung.ausserhalb:
+            eintrag["ausserhalb"] = pruefung.ausserhalb
         if pruefung.befunde:
             eintrag["befunde"] = list(pruefung.befunde)
+        if pruefung.hinweise:
+            eintrag["hinweise"] = list(pruefung.hinweise)
         formel_checks[gen.id] = eintrag
         for meldung in pruefung.fehler:
             errors.append({"code": "formel_check", "message": meldung})
@@ -236,6 +248,14 @@ def main(argv: Optional[List[str]] = None):
                 "message": (
                     "Rueck-Check der Formel-Staffeln nicht durchgefuehrt, "
                     f"obwohl die Vorverdichtung vorliegt: {meldung}"
+                ),
+            })
+        for meldung in pruefung.hinweise:
+            warnungen.append({
+                "code": "formel_check_ohne_vorverdichtung",
+                "message": (
+                    "Rueck-Check der Formel-Staffeln mangels "
+                    f"Vorverdichtung nicht durchgefuehrt: {meldung}"
                 ),
             })
 

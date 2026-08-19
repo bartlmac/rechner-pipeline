@@ -35,6 +35,8 @@ from rechner_pipeline.kern import (
 )
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 from rechner_pipeline.qa.migrationssuite import (
+    GEVO_ARTEN,
+    TERMINAL,
     GeVoErwartung,
     VertragsPruefung,
     pruefe_bestand,
@@ -491,6 +493,162 @@ def test_tod_nach_erhoehung_zahlt_die_summe_beider_scheiben() -> None:
                                     float(KLV_DEFAULT.sum_insured)))
     assert not pruefe_vertrag(
         _pruefung(gevos=ohne, dk2_fehlt=True))["bestanden"]
+
+
+def test_tod_nach_beitragsfreistellung_zahlt_die_beitragsfreie_summe() -> None:
+    """Nach PEX ist die Todesfallleistung ``sum S^bfr``, nicht ``S^ges``.
+
+    Tarifplan klv.md, GeVo-Katalog, Zeile TOD ("``S^ges`` bzw. nach PEX
+    ``sum S^bfr``"); die Bestand-Engine bucht denselben Betrag
+    (``bestand/ereignisse``: TOD zahlt ``pex_summe``, sobald der Vertrag
+    beitragsfrei ist). Ein Vergleich gegen die Gesamt-VS machte aus
+    dieser korrekten Lieferung einen Fehlschlag.
+    """
+    a0 = 10  # Jahrestag zwischen den Stichtagen (Monat 120)
+    s_bfr = round(KERN.beitragsfreie_summe(a0), 2)
+    gevos = (GeVoErwartung("PEX", 12 * a0, s_bfr),
+             GeVoErwartung("TOD", 12 * a0 + 2, s_bfr))
+    urteil = pruefe_vertrag(_pruefung(gevos=gevos, dk2_fehlt=True))
+    assert urteil["bestanden"], urteil["befunde"]
+    assert any(p["groesse"].startswith("gevo_tod") and p["ok"]
+               for p in urteil["pruefungen"])
+    # Kontrolle: die Gesamt-VS ist nach der Beitragsfreistellung NICHT
+    # mehr die Todesfallleistung — und muss durchfallen.
+    vs_ges = float(KLV_DEFAULT.sum_insured)
+    assert abs(s_bfr - vs_ges) > 1.0
+    mit_vs = (gevos[0], GeVoErwartung("TOD", 12 * a0 + 2, vs_ges))
+    assert not pruefe_vertrag(
+        _pruefung(gevos=mit_vs, dk2_fehlt=True))["bestanden"]
+
+
+def test_tod_nach_erh_und_pex_summiert_die_beitragsfreien_summen() -> None:
+    """Jede Scheibe zaehlt mit ihrer eigenen beitragsfreien Summe.
+
+    Leistungshoehe als Addition dieses Tests (Summe ueber Grundvertrag
+    und Scheibe, je ab IHREM Jahrestag), nicht als Kern-Aufruf der
+    Suite.
+    """
+    a_erh, a_pex, s_neu = 8, 10, 5000.0
+    m1, m2 = 12 * 7 + 5, 12 * 11 + 5
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a_erh, s_neu))
+    s_bfr = round(KERN.beitragsfreie_summe(a_pex)
+                  + scheibe.beitragsfreie_summe(a_pex - a_erh), 2)
+    gevos = (GeVoErwartung("ERH", 12 * a_erh, s_neu),
+             GeVoErwartung("PEX", 12 * a_pex, s_bfr),
+             GeVoErwartung("TOD", 12 * a_pex + 3, s_bfr))
+
+    def _urteil(gevos_: Tuple[GeVoErwartung, ...]) -> Dict[str, Any]:
+        return pruefe_vertrag(VertragsPruefung(
+            police_id="P-ERH-PEX-TOD", model_point=MP,
+            monate_stichtag_1=m1, monate_stichtag_2=m2,
+            dk_erwartet_1=round(KERN.monatsreserve(m1).vx_mrv, 2),
+            dk_erwartet_2=None, gevos=gevos_))
+
+    urteil = _urteil(gevos)
+    assert urteil["bestanden"], urteil["befunde"]
+    # Kontrolle: nur die beitragsfreie Summe des Grundvertrags ist zu
+    # klein — die Scheibe gehoert dazu.
+    ohne_scheibe = round(KERN.beitragsfreie_summe(a_pex), 2)
+    assert ohne_scheibe != s_bfr
+    assert not _urteil(
+        gevos[:2] + (GeVoErwartung("TOD", 12 * a_pex + 3, ohne_scheibe),)
+    )["bestanden"]
+
+
+def test_tod_bei_anfangs_beitragsfreiem_vertrag_zahlt_die_bfr_summe() -> None:
+    """Auch der Anfangszustand ``beitragsfrei_seit_jahr`` traegt die Regel."""
+    a0 = 5
+    s_bfr = round(KERN.beitragsfreie_summe(a0), 2)
+    urteil = pruefe_vertrag(_beitragsfrei_pruefung(
+        a0, dk_erwartet_2=None,
+        gevos=(GeVoErwartung("TOD", S1 + 3, s_bfr),)))
+    assert urteil["bestanden"], urteil["befunde"]
+    # Kontrolle: die Gesamt-VS faellt durch.
+    assert not pruefe_vertrag(_beitragsfrei_pruefung(
+        a0, dk_erwartet_2=None,
+        gevos=(GeVoErwartung("TOD", S1 + 3,
+                             float(KLV_DEFAULT.sum_insured)),)))["bestanden"]
+
+
+# --------------------------------------------------------------------------- #
+# Die Abgangsregel: TERMINAL steuert, es beschriftet nicht
+# --------------------------------------------------------------------------- #
+
+
+def _terminal_urteil(art: str, dk2: Optional[float]) -> Dict[str, Any]:
+    """Urteil ueber einen Vertrag mit genau einem GeVo dieser Art.
+
+    Der GeVo traegt keinen Betrag (nichts zu vergleichen) — geprueft
+    wird allein, ob die Art den Vertrag beendet.
+    """
+    if art == "ABL":
+        return pruefe_vertrag(_ablauf_pruefung(
+            (GeVoErwartung("ABL", ABLAUF),), dk2=dk2))
+    monate = 12 * 10 if art in ("PEX", "ERH") else S1 + 4
+    betrag = 5000.0 if art == "ERH" else None
+    return pruefe_vertrag(_pruefung(
+        dk2=dk2, dk2_fehlt=dk2 is None,
+        gevos=(GeVoErwartung(art, monate, betrag),)))
+
+
+@pytest.mark.parametrize("art", TERMINAL)
+def test_terminale_arten_beenden_den_vertrag(art: str) -> None:
+    """``TERMINAL`` IST die Abgangsregel, nicht ihre Beschriftung.
+
+    Wird eine Art aus der Tabelle gestrichen, wird der korrekt
+    abgegangene Vertrag zum Befund "kein Abgang" — dieser Test faellt
+    dann. Wird eine nicht-terminale Art aufgenommen, faellt
+    :func:`test_nicht_terminale_arten_beenden_den_vertrag_nicht`.
+    """
+    ohne_folgewert = _terminal_urteil(art, None)
+    assert ohne_folgewert["bestanden"], ohne_folgewert["befunde"]
+    mit_folgewert = _terminal_urteil(art, 12345.67)
+    assert not mit_folgewert["bestanden"]
+    assert any("abgegangen" in b for b in mit_folgewert["befunde"])
+
+
+@pytest.mark.parametrize(
+    "art", [a for a in GEVO_ARTEN if a not in TERMINAL])
+def test_nicht_terminale_arten_beenden_den_vertrag_nicht(art: str) -> None:
+    """PEX und ERH sind Statuswechsel bzw. Scheiben, kein Abgang."""
+    urteil = _terminal_urteil(art, None)
+    assert not urteil["bestanden"]
+    assert any("keinen Abgang" in b for b in urteil["befunde"]), urteil
+
+
+def test_terminaler_gevo_mit_befund_beendet_den_vertrag_nicht() -> None:
+    """Ein ABL zur falschen Zeit ist kein Ablauf, also auch kein Abgang."""
+    urteil = pruefe_vertrag(_pruefung(
+        dk2_fehlt=True,
+        gevos=(GeVoErwartung("ABL", S1 + 4,
+                             float(KLV_DEFAULT.sum_insured)),)))
+    assert not urteil["bestanden"]
+    assert any("Versicherungsdauer" in b for b in urteil["befunde"])
+    assert any("keinen Abgang" in b for b in urteil["befunde"]), urteil
+
+
+def test_abgang_ist_die_pruefung_der_abbruch_ist_die_luecke() -> None:
+    """Warum ``dk_stichtag_2`` nur im Abbruchpfad in ``nicht_geprueft`` steht.
+
+    Beim abgegangenen Vertrag ist das fehlende Deckungskapital am
+    Folgestichtag die gepruefte Aussage selbst (Abgang und Folgeabzug
+    passen zusammen). Nach einem Abbruch ist ueber den Vertrag dagegen
+    NICHTS bekannt — auch nicht, ob er abgegangen ist.
+    """
+    abgegangen = pruefe_bestand(
+        [_pruefung(dk2_fehlt=True,
+                   gevos=(GeVoErwartung("STO", S1 + 4),))],
+        erwartete_anzahl=1)
+    urteil = abgegangen["vertraege"][0]
+    assert urteil["bestanden"], urteil["befunde"]
+    assert urteil["nicht_geprueft"] == ["bjb_stichtag_1"]
+
+    kaputt = dataclasses.replace(
+        _pruefung(), police_id="P-ABBRUCH", monate_stichtag_2=ABLAUF + 12)
+    abbruch = pruefe_bestand([kaputt], erwartete_anzahl=1)["vertraege"][0]
+    assert not abbruch["bestanden"]
+    assert abbruch["nicht_geprueft"] == [
+        "dk_stichtag_1", "bjb_stichtag_1", "dk_stichtag_2"]
 
 
 def test_pex_nach_erhoehung_versetzt_den_jahrestag_der_scheibe() -> None:

@@ -157,8 +157,18 @@ Die Bestands-Tabellen verlangen mehr — `models/bestand.STAMM_SPALTEN`
 fuehrt zusaetzlich Generations- und Statusfelder (`tarif_generation`,
 `produkt`, `status_code`/`status_date`, die Datumsspalten). Die kommen
 aus der Spez des Falls und aus der Lieferung, NIE aus dem Mapping (der
-Abzug parametriert keine Generation). Geschrieben wird deterministisch
-mit `bestand/parquet_io.write_portfolio`. Dieser Zusammenbau ist heute
+Abzug parametriert keine Generation).
+
+Bereits beitragsfreie Vertraege — in einem uebernommenen Bestand IMMER
+enthalten — tragen im Stamm KEIN PEX: der Stamm fuehrt den Vertrag bei
+Beginn (`status_code` POL, `status_id` 1), die Beitragsfreistellung ist
+eine Zeile der Statushistorie (`status_id` 2, `status_date` = Datum der
+Beitragsfreistellung). Nur so finden Zeitscheibe und Auswertung den
+beitragsfreien Track und sein PEX-Jahr; ein PEX im Stamm weist Gate B1
+zurueck (`status_code ausserhalb ('POL',)`).
+
+Geschrieben wird deterministisch mit
+`bestand/parquet_io.write_portfolio`. Dieser Zusammenbau ist heute
 fallweiser Code und kein eigenes Modul: leg ihn als Skript in den
 Fall-Arbeitsbereich (`abgeleitet/skripte/`), damit er reproduzierbar
 und pruefbar bleibt, und weise ihn im G-1-Dossier aus.
@@ -220,11 +230,17 @@ selbst zu improvisieren:
    (Schema und Invarianten; Historie/Scheiben/Ledger optional
    mitgeben, wenn der Fall sie fuehrt.)
 2. Abnahmesuite je Vertrag: `qa.migrationssuite.pruefe_bestand` —
-   Deckungskapital am Migrationsstichtag, GeVo-Betraege zwischen den
-   Stichtagen, Deckungskapital am Folgestichtag auf dem richtigen
-   Track. Bibliotheks-Modul ohne CLI: die `VertragsPruefung`-Auftraege
-   baut der Abnahme-Skill aus den Fall-Artefakten. Toleranzen kommen
-   aus `qa` und werden NIE aufgeweicht.
+   Deckungskapital am Migrationsstichtag, Bruttojahresbeitrag am
+   Migrationsstichtag (`bjb_erwartet_1`, zweite Pruefachse gegen
+   Parametrierungsfehler), GeVo-Betraege zwischen den Stichtagen,
+   Deckungskapital am Folgestichtag auf dem richtigen Track; die
+   Zeilenzahl des Abzugs geht als `erwartete_anzahl` mit (sonst ist die
+   Vollstaendigkeit der Pruefmenge ungeprueft). Beides liegt im
+   Bestandsabzug vor und wird durchgereicht, sonst weist der Bericht
+   Pruefluecken aus. Bibliotheks-Modul ohne CLI: die
+   `VertragsPruefung`-Auftraege baut der Abnahme-Skill aus den
+   Fall-Artefakten. Toleranzen kommen aus `qa` und werden NIE
+   aufgeweicht.
 3. Bestandsberichte vor/nach mit denselben Parametern (nur so ist der
    Vergleich fair):
    `python -m rechner_pipeline.bestand.cli_report --portfolio <bestand>.parquet --stichtage <liste> --out <ziel>.html`

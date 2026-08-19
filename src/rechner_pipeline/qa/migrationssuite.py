@@ -11,8 +11,8 @@ abgebenden Unternehmens plus GeVo-Protokoll des Zwischenzeitraums):
 2. Bruttojahresbeitrag am Migrationsstichtag, sofern geliefert
    (``bjb_erwartet_1``) — siehe BEITRAG ALS ZWEITE PRÜFACHSE;
 3. die Beträge der Geschäftsvorfälle zwischen den Stichtagen
-   (STO -> Rückkaufswert am Ereignismonat, TOD -> Versicherungssumme,
-   PEX -> beitragsfreie Summe am Jahrestag, ABL -> Gesamt-VS bzw. nach
+   (STO -> Rückkaufswert am Ereignismonat, PEX -> beitragsfreie Summe am
+   Jahrestag, TOD und ABL -> Gesamt-VS bzw. nach einer
    Beitragsfreistellung die Summe der beitragsfreien Summen);
 4. Deckungskapital am Folgestichtag auf dem durch die GeVos bestimmten
    Track (aktiv, beitragsfrei, abgegangen; nach einer dynamischen
@@ -70,6 +70,9 @@ from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 
 GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL")
 #: GeVo-Arten, die den Vertrag beenden (kein Wert am Folgestichtag).
+#: :func:`pruefe_vertrag` bucht den Abgang AUSSCHLIESSLICH über diese
+#: Tabelle — wer eine Art hier streicht oder aufnimmt, ändert damit das
+#: Urteil (und nicht nur eine Beschriftung).
 TERMINAL = ("STO", "TOD", "ABL")
 
 #: Ausnahmen, die eine unplausible LIEFERUNG auslösen kann und die
@@ -182,6 +185,32 @@ def _bfr_gesamtsumme(
         for erh_jahr, k in scheiben)
 
 
+def _terminale_leistung(
+    kern: Rechenkern,
+    scheiben: List[Tuple[int, Rechenkern]],
+    pex_jahr: Optional[int],
+) -> float:
+    """Leistung eines terminalen Todes- oder Ablauffalls (TOD, ABL).
+
+    Der Tarifplan (klv.md, GeVo-Katalog) gibt beiden dieselbe Regel:
+    ``S^ges`` auf dem beitragspflichtigen Track, nach einer
+    Beitragsfreistellung dagegen die dort fixierte Summe der
+    beitragsfreien Summen ``sum S^bfr``. Genau so bucht es die
+    Bestand-Engine (``bestand/ereignisse``: TOD zahlt ``pex_summe``,
+    sobald der Vertrag beitragsfrei ist) — Prüfung und Fortschreibung
+    dürfen hier nicht auseinanderlaufen.
+
+    Der beitragsfreie Track kennt die Versicherungssumme des
+    beitragspflichtigen nicht mehr; gegen ``S^ges`` zu vergleichen
+    machte aus jeder korrekten Lieferung mit Beitragsfreistellung und
+    anschließendem Todesfall einen Fehlschlag — ein falsches Rot, das
+    wie ein Fund aussieht.
+    """
+    if pex_jahr is not None:
+        return _bfr_gesamtsumme(kern, scheiben, pex_jahr)
+    return _vs_gesamt(kern.mp, scheiben)
+
+
 def _bjb_system(
     kern: Rechenkern, monate: int, pex_jahr: Optional[int]
 ) -> float:
@@ -207,6 +236,18 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     ``pruefungen`` (je Größe System-/Erwartungswert und Residuum) und
     ``nicht_geprueft`` (Größen, zu denen die Lieferung keinen
     Erwartungswert trägt — ausgewiesene Lücke, kein Bestehen).
+
+    ABGEGANGENE VERTRÄGE — warum ``dk_stichtag_2`` dort WEDER verglichen
+    noch als Lücke geführt wird: Bei einem terminalen GeVo ist das
+    fehlende ``dk_erwartet_2`` kein fehlender Erwartungswert, sondern
+    die geprüfte Aussage selbst. Geprüft wird hier die Übereinstimmung
+    von Abgang und Folgeabzug, und sie ist bestanden; die beiden
+    Gegenfälle (Wert trotz Abgang, Abgang ohne GeVo) sind Befunde.
+    Anders im Abbruchpfad von :func:`pruefe_bestand`: dort ist über den
+    Vertrag NICHTS bekannt — auch nicht, ob er abgegangen ist — und
+    ``dk_stichtag_2`` steht deshalb in ``nicht_geprueft``. Die
+    Asymmetrie ist gewollt: einmal ist die Größe geprüft, einmal ist
+    sie ungeprüft.
     """
     if v.monate_stichtag_2 <= v.monate_stichtag_1:
         raise ValueError(
@@ -301,7 +342,6 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     "Verträge)"
                 )
                 continue
-            terminal_monat = g.monate
             if g.betrag_erwartet is not None:
                 pruefungen.append(_vergleich(
                     f"gevo_sto_monat_{g.monate}",
@@ -309,11 +349,10 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     g.betrag_erwartet,
                 ))
         elif g.art == "TOD":
-            terminal_monat = g.monate
             if g.betrag_erwartet is not None:
                 pruefungen.append(_vergleich(
                     f"gevo_tod_monat_{g.monate}",
-                    _vs_gesamt(grund_mp, scheiben),
+                    _terminale_leistung(kern, scheiben, pex_jahr),
                     g.betrag_erwartet,
                 ))
         elif g.art == "ABL":
@@ -329,15 +368,11 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     f"n = {grund_mp.n} Jahre)"
                 )
                 continue
-            terminal_monat = g.monate
             if g.betrag_erwartet is not None:
-                betrag = (
-                    _bfr_gesamtsumme(kern, scheiben, pex_jahr)
-                    if pex_jahr is not None
-                    else _vs_gesamt(grund_mp, scheiben)
-                )
                 pruefungen.append(_vergleich(
-                    f"gevo_abl_monat_{g.monate}", betrag, g.betrag_erwartet,
+                    f"gevo_abl_monat_{g.monate}",
+                    _terminale_leistung(kern, scheiben, pex_jahr),
+                    g.betrag_erwartet,
                 ))
         else:  # PEX
             if pex_jahr is not None:
@@ -360,6 +395,14 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     _bfr_gesamtsumme(kern, scheiben, pex_jahr),
                     g.betrag_erwartet,
                 ))
+
+        # Der Abgang wird an EINER Stelle gebucht, und zwar aus
+        # :data:`TERMINAL`. Bis hierher kommt nur ein GeVo, den die
+        # Zweige oben getragen haben (jeder Befund verlässt die Runde
+        # per ``continue``) — ein terminaler GeVo mit Befund beendet
+        # den Vertrag also nicht.
+        if g.art in TERMINAL:
+            terminal_monat = g.monate
 
     if terminal_monat is not None:
         if v.dk_erwartet_2 is not None:
@@ -472,7 +515,12 @@ def pruefe_bestand(
     dann im Bericht, bei der Police, an der sie hängt. Alle anderen
     Ausnahmen (Defekte der Suite oder des Kerns) laufen ungefangen
     durch — sie sollen sichtbar sein und nicht als Reihe von Befunden
-    verschwinden.
+    verschwinden. Ein abgebrochener Vertrag führt ALLE drei Prüfgrößen
+    als ``nicht_geprueft``, auch ``dk_stichtag_2``: nach dem Abbruch ist
+    über ihn nichts bekannt, nicht einmal ob er abgegangen ist. Der
+    regulär abgegangene Vertrag führt ``dk_stichtag_2`` dagegen NICHT
+    als Lücke — dort ist der Abgang die Prüfung (siehe
+    :func:`pruefe_vertrag`).
     """
     if not vertraege:
         raise ValueError(

@@ -345,14 +345,21 @@ def main(argv: Optional[List[str]] = None):
             return _sperre("vorbedingung", f"Annahme verweigert: {problem}")
 
         if args.gate == "G-2":
-            # Die Generation wird nicht geraten, sondern aus der A-Box
-            # genommen — der Hinweis soll kopierbar sein.
-            generationen = "|".join(g.id for g in abox.generationen) or "<generation>"
+            # Die Generationen werden nicht geraten, sondern aus der A-Box
+            # genommen — und JE GENERATION als eigene Zeile ausgegeben:
+            # ein zusammengesetztes "klv/tg2012|klv/tg2015" waere in der
+            # Shell eine Pipe und damit kein Kommando, das ein Bediener
+            # uebernehmen kann. O3 laeuft ohnehin je Generation.
+            generationen = [g.id for g in abox.generationen] or ["<generation>"]
+            o3_kommando = "\n".join(
+                "python -m rechner_pipeline.gates.generation_golden "
+                f"--fall {fall} --generation {generation} "
+                f"--repo-root {args.repo_root}"
+                for generation in generationen
+            )
             problem = _ledger_gruen_und_verankert(
                 "generation_golden", "Gate O3 (generation_golden)",
-                "python -m rechner_pipeline.gates.generation_golden "
-                f"--fall {fall} --generation {generationen} "
-                f"--repo-root {args.repo_root}",
+                o3_kommando,
             )
             if problem:
                 return _sperre("vorbedingung", f"Annahme verweigert: {problem}")

@@ -228,8 +228,17 @@ Each gate is one command, writes one JSON to stdout plus a
 | B1 | `gates.bestand_validate` | portfolio schema and movement identities per year, track and measure |
 
 ## 5. Non-negotiables
-- **Deterministic and SDK-free** in `src/`: no network, no subprocess, no
-  dynamic execution; same input -> same output; sorted serialization.
+- **Deterministic and SDK-free** in `src/`: no network, no dynamic execution,
+  no subprocess; same input -> same output; sorted serialization. There is
+  exactly ONE subprocess exception, and it is bounded by a test: the P9
+  snapshot (`gates/gate_entscheid._git_stand`) records the system state a
+  human decided on with three READING git calls (`rev-parse HEAD`,
+  `rev-parse --abbrev-ref HEAD`, `status --porcelain`) — it computes and
+  judges nothing, and if git is unavailable the state is the named value
+  `unbekannt`, never a silent default. Any further subprocess import, any
+  other command, and any process start via `os` turns
+  `tests/test_fachspez_und_p9.py::test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt`
+  red.
 - **Fail-fast, never silent**: no silent overwrite, no silent default. Doubt is
   a named state (`nicht_belegt`/`mehrdeutig`/`widerspruechlich`) or a hard
   error whose message names the way out.
