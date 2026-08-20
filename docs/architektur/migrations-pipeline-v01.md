@@ -66,9 +66,15 @@ Stufe 2  A-Box -> Spez -> Kern-Parametrierung
 Stufe 3  Abnahme
   Gate O3 (generation_golden): Kern (Spez-parametriert) gegen die aus dem
                   Quell-Rechner extrahierten Erwartungswerte; prueft vorab,
-                  dass die Spez gueltige Projektion der A-Box ist
-  Gate G-2 (Mensch): P9-Snapshot — verweigert Annahme, solange vorlaeufige
-                  Diskrepanz-Aufloesungen existieren
+                  dass die Spez gueltige Projektion der A-Box ist; schreibt
+                  je Generation einen inhaltsadressierten Beleg mit A-Box-
+                  und Systemstand
+  Gate G-2 (Mensch): P9-Snapshot — leitet Pflichtbelege aus Fall-Scope und
+                  Gate-DAG ab. Tarif: O1/G-1/O3. Bestand zusaetzlich:
+                  validierte Transformation -> B1 -> vollstaendige
+                  Zwei-Stichtags-Suite -> Vor-/Nachberichte und
+                  inhaltsadressierter Abnahmebericht-Scope-Beleg; alles auf
+                  demselben Eingangs-, A-Box-, System- und Stichtagsstand
 ```
 
 ## 3 Die tragenden Objekte
@@ -79,7 +85,7 @@ Stufe 3  Abnahme
 | `Diskrepanz` | beide Lesarten mit Belegen; Aufloesung nur als expliziter Vorgang (Entscheider, Begruendung, ggf. `vorlaeufig`) | P2 |
 | `Parametrierungszelle` | eine Merkmalskombination; Felder = exakt die Kern-ModelPoint-Stellschrauben; Zellen decken den Merkmalsraum EXAKT | P5, P6 |
 | `TarifSpez` | Parametrierung des Rueckgrats + StrukturUrteil + Tafel-Importe/-Ableitungen + benannte Erweiterungsstellen; validierbar als Projektion der A-Box (beide Richtungen) | D2 (SDD, gebunden) |
-| P9-Snapshot | Entscheid, Entscheider, Begruendung, SHA-256 aller Fall-Artefakte, Git-Stand des Systems; inhaltsadressiert, nie ueberschrieben | P9, P1 |
+| P9-Snapshot | Schema, Gate/Command/Version, Entscheid, Entscheider, Begruendung, SHA-256 aller Fall-Artefakte, Git-Stand und Vorgaenger; G-2 pinnt zusaetzlich Scope, DAG-Version und rollenbezogene Pflichtbelege; vollstaendig inhaltsadressiert, nie ueberschrieben; eine Annahme traegt eine HMAC-Freigabe aus einem extern verwahrten Schluessel | P9, P1 |
 
 ## 4 Deterministisch / LLM — die Trennlinie (P4)
 
@@ -267,8 +273,9 @@ Excel-Anker; Kommutation als separater Zweitkern), ADR-005
 (Knoten-Hierarchie, Test-Bindung, Code-Karte, Impact). Hinzugekommen
 seit Redaktionsschluss dieses Dokuments — und fuer den heutigen Stand
 massgeblich: ADR-006 (Portierungs-Anwendungsfall ausser Betrieb; die
-G-Kette entfaellt) und ADR-007 (parallele Migrationen in einem Kern;
-knotengebundene Inkremente auf einem Trunk). Es sind damit sieben ADRs.
+G-Kette entfaellt), ADR-007 (parallele Migrationen in einem Kern;
+knotengebundene Inkremente auf einem Trunk), ADR-008 (signierte
+P9-Freigaben) und ADR-009 (Fall-Scope und Gate-DAG).
 Entscheidungsgrundlage: die
 Architektur-Fragerunde (D1-D4, F1-F3; privat dokumentiert, Ergebnisse
 in diesen ADRs).

@@ -47,7 +47,7 @@ from rechner_pipeline.gates._common import (
 )
 
 GATE = "O1.abox-contract"
-GATE_VERSION = "0.1.0"
+GATE_VERSION = "0.2.0"
 
 COVERAGE_DATEI = "coverage.json"
 
@@ -123,10 +123,15 @@ def main(argv: Optional[List[str]] = None):
             for p in fehlend
         ])
 
-    repo_root = Path(args.repo_root).resolve() if args.repo_root else None
-    input_hashes = hash_files(
-        [register_pfad, abox_datei], base=repo_root, missing_ok=True
-    )
+    # Stabile Rollenschluessel statt zufaelliger absoluter Temp-Pfade: P9
+    # bindet O1 genau an diese beiden Eingaben und darf den A-Box-SHA nicht
+    # unter irgendeinem frei waehlbaren Hash-Key akzeptieren.
+    input_hashes = {
+        "eingang.json": hash_files([register_pfad], base=fall)["eingang.json"],
+        "abgeleitet/abox/abox.json": hash_files(
+            [abox_datei], base=fall
+        )["abgeleitet/abox/abox.json"],
+    }
 
     errors: List[dict] = []
     try:

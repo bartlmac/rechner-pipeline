@@ -24,7 +24,7 @@ synthetische Quellmappen fuer Tests und Demo-Faelle.
 Kommandos (ein JSON-Objekt auf stdout, Log auf stderr)::
 
     python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012 \
-        [--beschreibung TEXT]
+        --scope tarif [--beschreibung TEXT]
     python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
         --datei tests/fixtures/Tarifrechner_KLV_TG2012.xlsm [--als NAME]
     python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
@@ -53,9 +53,383 @@ SCHEMA_VERSION = 1
 FALL_MANIFEST = "fall.json"
 EINGANG_REGISTER = "eingang.json"
 
+#: Der Fall deklariert seinen fachlichen Umfang einmal im nicht regenerierbaren
+#: Manifest. G-2 darf daraus Pflichten ableiten; Dateiexistenz oder ein zufaellig
+#: vorhandener Bestandsbericht sind kein belastbarer Scope-Entscheid.
+FALL_SCOPE_SCHEMA_VERSION = 1
+GATE_DAG_VERSION = "1.0.0"
+FALL_SCOPES = ("tarif", "bestand")
+
+#: Maschinenlesbarer Gate-DAG. ``belegrolle`` ist der stabile Schluessel, unter
+#: dem G-2 den Nachweis pinnt. Welche Pflichten ein Scope hat, ergibt sich
+#: ausschliesslich aus den aktiven Knoten und Kanten, nicht aus einer zweiten
+#: handgeschriebenen Liste im Gate.
+GATE_DAG: Dict[str, Any] = {
+    "schema_version": 1,
+    "version": GATE_DAG_VERSION,
+    "ziel": "g2",
+    "knoten": {
+        "o1": {
+            "art": "gate",
+            "command": "abox_validate",
+            "belegrolle": "o1_ledger",
+            "scopes": ["tarif", "bestand"],
+        },
+        "g1": {
+            "art": "menschliches_gate",
+            "command": "gate_entscheid",
+            "belegrolle": "g1_snapshot",
+            "scopes": ["tarif", "bestand"],
+        },
+        "o3": {
+            "art": "gate",
+            "command": "generation_golden",
+            "belegrolle": "o3_belege",
+            "scopes": ["tarif", "bestand"],
+        },
+        "transformationsspec": {
+            "art": "artefakt",
+            "command": "ontologie.transformation.validate_spec",
+            "belegrolle": "transformationsspec",
+            "scopes": ["bestand"],
+        },
+        "transformationsergebnis": {
+            "art": "artefakt",
+            "command": "ontologie.transformation.wende_an",
+            "belegrolle": "transformationsergebnis",
+            "scopes": ["bestand"],
+        },
+        "b1": {
+            "art": "gate",
+            "command": "bestand_validate",
+            "belegrolle": "b1_ledger",
+            "scopes": ["bestand"],
+        },
+        "migrationssuite": {
+            "art": "pruefergebnis",
+            "command": "qa.migrationssuite.pruefe_bestand",
+            "belegrolle": "migrationssuite",
+            "scopes": ["bestand"],
+        },
+        "bestandsbericht_vor": {
+            "art": "bericht",
+            "command": "bestand.cli_report",
+            "belegrolle": "bestandsbericht_vor",
+            "scopes": ["bestand"],
+        },
+        "bestandsbericht_nach": {
+            "art": "bericht",
+            "command": "bestand.cli_report",
+            "belegrolle": "bestandsbericht_nach",
+            "scopes": ["bestand"],
+        },
+        "abnahmebericht": {
+            "art": "gate",
+            "command": "abnahmebericht",
+            "belegrolle": "abnahmebericht",
+            "scopes": ["bestand"],
+        },
+        "g2": {
+            "art": "menschliches_gate",
+            "command": "gate_entscheid",
+            "belegrolle": "g2_snapshot",
+            "scopes": ["tarif", "bestand"],
+        },
+    },
+    "kanten": [
+        {"von": "o1", "nach": "g1", "scopes": ["tarif", "bestand"]},
+        {"von": "g1", "nach": "o3", "scopes": ["tarif", "bestand"]},
+        {"von": "o3", "nach": "g2", "scopes": ["tarif", "bestand"]},
+        {"von": "g1", "nach": "transformationsspec", "scopes": ["bestand"]},
+        {
+            "von": "transformationsspec",
+            "nach": "transformationsergebnis",
+            "scopes": ["bestand"],
+        },
+        {"von": "transformationsergebnis", "nach": "b1", "scopes": ["bestand"]},
+        {"von": "b1", "nach": "migrationssuite", "scopes": ["bestand"]},
+        {
+            "von": "migrationssuite",
+            "nach": "abnahmebericht",
+            "scopes": ["bestand"],
+        },
+        {
+            "von": "transformationsspec",
+            "nach": "abnahmebericht",
+            "scopes": ["bestand"],
+        },
+        {
+            "von": "transformationsergebnis",
+            "nach": "abnahmebericht",
+            "scopes": ["bestand"],
+        },
+        {
+            "von": "bestandsbericht_vor",
+            "nach": "abnahmebericht",
+            "scopes": ["bestand"],
+        },
+        {
+            "von": "bestandsbericht_nach",
+            "nach": "abnahmebericht",
+            "scopes": ["bestand"],
+        },
+        {"von": "abnahmebericht", "nach": "g2", "scopes": ["bestand"]},
+    ],
+}
+
 
 class FallFehler(ValueError):
     """Fachlicher Fehler im Fall-Arbeitsbereich (kein Usage-Fehler)."""
+
+
+def scope_dokument(scope: str) -> Dict[str, Any]:
+    """Kanonische Scope-Deklaration fuer ``fall.json``."""
+    if scope not in FALL_SCOPES:
+        raise FallFehler(
+            f"unbekannter Fall-Scope {scope!r} — erlaubt: {', '.join(FALL_SCOPES)}"
+        )
+    return {
+        "schema_version": FALL_SCOPE_SCHEMA_VERSION,
+        "typ": scope,
+        "gate_dag_version": GATE_DAG_VERSION,
+    }
+
+
+def lade_scope(fall: Path) -> str:
+    """Den expliziten Fall-Scope streng aus dem Manifest laden.
+
+    Ein Altfall ohne Deklaration wird nicht still als Tarif- oder Bestandsfall
+    geraten. Er muss bewusst mit der richtigen Scope-Deklaration migriert
+    werden, bevor ein menschliches Gate angenommen werden kann.
+    """
+    manifest = _lade_json(fall / FALL_MANIFEST, "Fall-Manifest")
+    scope = manifest.get("scope")
+    felder = {"schema_version", "typ", "gate_dag_version"}
+    if not isinstance(scope, dict) or set(scope) != felder:
+        raise FallFehler(
+            "Fall-Manifest braucht scope mit exakt "
+            f"{sorted(felder)}; Scope bewusst als 'tarif' oder 'bestand' "
+            "deklarieren, nicht aus vorhandenen Artefakten raten"
+        )
+    if type(scope.get("schema_version")) is not int or scope[
+        "schema_version"
+    ] != FALL_SCOPE_SCHEMA_VERSION:
+        raise FallFehler(
+            f"scope.schema_version muss {FALL_SCOPE_SCHEMA_VERSION} sein"
+        )
+    typ = scope.get("typ")
+    if typ not in FALL_SCOPES:
+        raise FallFehler(
+            f"scope.typ {typ!r} ist ungueltig — erlaubt: {', '.join(FALL_SCOPES)}"
+        )
+    if scope.get("gate_dag_version") != GATE_DAG_VERSION:
+        raise FallFehler(
+            "scope.gate_dag_version passt nicht zum Systemstand: "
+            f"{scope.get('gate_dag_version')!r} statt {GATE_DAG_VERSION!r}"
+        )
+    return str(typ)
+
+
+def validate_gate_dag(dag: Any = GATE_DAG) -> List[str]:
+    """Struktur, Scope-Konsistenz und Zyklenfreiheit des Gate-DAG pruefen."""
+    if not isinstance(dag, dict):
+        return ["Gate-DAG ist kein Objekt"]
+    fehler: List[str] = []
+    kopf = {"schema_version", "version", "ziel", "knoten", "kanten"}
+    if set(dag) != kopf:
+        return [f"Gate-DAG muss exakt {sorted(kopf)} enthalten"]
+    if type(dag.get("schema_version")) is not int or dag[
+        "schema_version"
+    ] != 1:
+        fehler.append("Gate-DAG.schema_version muss 1 sein")
+    if dag.get("version") != GATE_DAG_VERSION:
+        fehler.append(f"Gate-DAG.version muss {GATE_DAG_VERSION!r} sein")
+    knoten = dag.get("knoten")
+    kanten = dag.get("kanten")
+    if not isinstance(knoten, dict) or not knoten:
+        return [*fehler, "Gate-DAG.knoten muss ein nichtleeres Objekt sein"]
+    ziel = dag.get("ziel")
+    if not isinstance(ziel, str) or not ziel or ziel not in knoten:
+        fehler.append("Gate-DAG.ziel ist kein deklarierter Knoten")
+    rollen: List[str] = []
+    for name, daten in knoten.items():
+        if not isinstance(name, str) or not name:
+            fehler.append("Gate-DAG enthaelt einen leeren Knoten-Namen")
+        if not isinstance(daten, dict) or set(daten) != {
+            "art", "command", "belegrolle", "scopes"
+        }:
+            fehler.append(f"Knoten {name!r} hat nicht den exakten Vertrag")
+            continue
+        for feld in ("art", "command", "belegrolle"):
+            if not isinstance(daten[feld], str) or not daten[feld]:
+                fehler.append(f"Knoten {name!r}.{feld} muss nichtleer sein")
+        if isinstance(daten["belegrolle"], str):
+            rollen.append(daten["belegrolle"])
+        scopes = daten["scopes"]
+        scopes_sind_strings = (
+            isinstance(scopes, list)
+            and bool(scopes)
+            and all(isinstance(scope, str) for scope in scopes)
+        )
+        if (
+            not scopes_sind_strings
+            or any(scope not in FALL_SCOPES for scope in scopes)
+            or len(scopes) != len(set(scopes))
+        ):
+            fehler.append(f"Knoten {name!r}.scopes ist ungueltig")
+    if len(rollen) != len(set(rollen)):
+        fehler.append("Gate-DAG.belegrollen muessen eindeutig sein")
+    if not isinstance(kanten, list):
+        return [*fehler, "Gate-DAG.kanten muss eine Liste sein"]
+    gesehen = set()
+    gueltige_kanten: List[Dict[str, Any]] = []
+    for i, kante in enumerate(kanten):
+        if not isinstance(kante, dict) or set(kante) != {"von", "nach", "scopes"}:
+            fehler.append(f"Kante {i} hat nicht den exakten Vertrag")
+            continue
+        von, nach = kante["von"], kante["nach"]
+        if (
+            not isinstance(von, str) or not von
+            or not isinstance(nach, str) or not nach
+            or von not in knoten or nach not in knoten or von == nach
+        ):
+            fehler.append(f"Kante {i} referenziert ungueltige Knoten")
+            continue
+        scopes = kante["scopes"]
+        scopes_sind_strings = (
+            isinstance(scopes, list)
+            and bool(scopes)
+            and all(isinstance(scope, str) for scope in scopes)
+        )
+        if (
+            not scopes_sind_strings
+            or any(scope not in FALL_SCOPES for scope in scopes)
+            or len(scopes) != len(set(scopes))
+        ):
+            fehler.append(f"Kante {i}.scopes ist ungueltig")
+            continue
+        von_daten = knoten[von]
+        nach_daten = knoten[nach]
+        von_scopes = (
+            von_daten.get("scopes", [])
+            if isinstance(von_daten, dict)
+            and isinstance(von_daten.get("scopes"), list)
+            else []
+        )
+        nach_scopes = (
+            nach_daten.get("scopes", [])
+            if isinstance(nach_daten, dict)
+            and isinstance(nach_daten.get("scopes"), list)
+            else []
+        )
+        if any(scope not in von_scopes or scope not in nach_scopes for scope in scopes):
+            fehler.append(f"Kante {i}.scopes passt nicht zu ihren Knoten")
+        schluessel = (von, nach, tuple(scopes))
+        if schluessel in gesehen:
+            fehler.append(f"Kante {i} ist dupliziert")
+        gesehen.add(schluessel)
+        gueltige_kanten.append(kante)
+
+    for scope in FALL_SCOPES:
+        aktive = {
+            name for name, daten in knoten.items()
+            if isinstance(daten, dict)
+            and isinstance(daten.get("scopes"), list)
+            and scope in daten["scopes"]
+        }
+        nachbarn = {
+            name: [
+                kante["nach"] for kante in gueltige_kanten
+                if scope in kante["scopes"]
+                and kante["von"] == name
+            ]
+            for name in aktive
+        }
+        zustand: Dict[str, int] = {}
+
+        def _besuche(name: str) -> None:
+            if zustand.get(name) == 1:
+                fehler.append(f"Gate-DAG enthaelt im Scope {scope!r} einen Zyklus")
+                return
+            if zustand.get(name) == 2:
+                return
+            zustand[name] = 1
+            for ziel in nachbarn.get(name, []):
+                _besuche(ziel)
+            zustand[name] = 2
+
+        for name in aktive:
+            _besuche(name)
+
+        # Jeder fuer den Scope deklarierte Knoten muss tatsaechlich in die
+        # G-2-Ableitung eingehen. Sonst koennte eine spaetere DAG-Erweiterung
+        # zwar eine Belegrolle deklarieren, sie aber durch eine vergessene
+        # Kante unbemerkt von der Abnahme ausschliessen.
+        if isinstance(ziel, str) and ziel in aktive:
+            rueckwaerts = {
+                name: [
+                    kante["von"] for kante in gueltige_kanten
+                    if scope in kante["scopes"] and kante["nach"] == name
+                ]
+                for name in aktive
+            }
+            erreicht = {ziel}
+            offen = [ziel]
+            while offen:
+                name = offen.pop()
+                for vorgaenger in rueckwaerts.get(name, []):
+                    if vorgaenger not in erreicht:
+                        erreicht.add(vorgaenger)
+                        offen.append(vorgaenger)
+            getrennt = sorted(aktive - erreicht)
+            if getrennt:
+                fehler.append(
+                    f"Gate-DAG-Knoten im Scope {scope!r} haben keinen Pfad "
+                    f"zum Ziel {ziel!r}: {getrennt}"
+                )
+    return fehler
+
+
+def g2_pflichtknoten(scope: str) -> List[str]:
+    """Transitive, topologisch stabile G-2-Vorfahren fuer *scope*.
+
+    Die Funktion ist der einzige Ableitungspfad fuer G-2-Pflichten. Sie
+    traversiert den deklarativen DAG rueckwaerts; neue Pflichtknoten werden
+    dadurch nicht in mehreren Gate-Implementierungen nachgetragen.
+    """
+    scope_dokument(scope)
+    dag_fehler = validate_gate_dag()
+    if dag_fehler:
+        raise FallFehler(
+            "zentraler Gate-DAG ist ungueltig: " + "; ".join(dag_fehler)
+        )
+    knoten = GATE_DAG["knoten"]
+    ziel = GATE_DAG["ziel"]
+    aktiv = {
+        name for name, daten in knoten.items() if scope in daten["scopes"]
+    }
+    kanten = [
+        kante for kante in GATE_DAG["kanten"]
+        if scope in kante["scopes"]
+        and kante["von"] in aktiv
+        and kante["nach"] in aktiv
+    ]
+    benoetigt = {ziel}
+    offen = [ziel]
+    while offen:
+        nach = offen.pop()
+        for kante in kanten:
+            if kante["nach"] != nach or kante["von"] in benoetigt:
+                continue
+            benoetigt.add(kante["von"])
+            offen.append(kante["von"])
+    return [name for name in knoten if name in benoetigt and name != ziel]
+
+
+def g2_belegrollen(scope: str) -> List[str]:
+    """Stabile Belegrollen der aus dem DAG abgeleiteten Pflichtknoten."""
+    return [GATE_DAG["knoten"][name]["belegrolle"]
+            for name in g2_pflichtknoten(scope)]
 
 
 def _pruefe_eingangsname(name: str) -> str:
@@ -136,7 +510,9 @@ def verzeichnisse(fall: Path) -> Dict[str, Path]:
     }
 
 
-def anlegen(fall: Path, beschreibung: str = "") -> Dict[str, Any]:
+def anlegen(
+    fall: Path, beschreibung: str = "", scope: str = "tarif"
+) -> Dict[str, Any]:
     """Arbeitsbereich anlegen; ein bestehender Fall wird nie ueberschrieben."""
     manifest = fall / FALL_MANIFEST
     register = fall / EINGANG_REGISTER
@@ -159,6 +535,7 @@ def anlegen(fall: Path, beschreibung: str = "") -> Dict[str, Any]:
             "die Herkunft der Quellen verlieren; Manifest von Hand "
             "ergaenzen oder anderen Pfad waehlen"
         )
+    scope_daten = scope_dokument(scope)
     v = verzeichnisse(fall)
     v["eingang"].mkdir(parents=True, exist_ok=True)
     v["abgeleitet"].mkdir(parents=True, exist_ok=True)
@@ -167,6 +544,7 @@ def anlegen(fall: Path, beschreibung: str = "") -> Dict[str, Any]:
         "name": fall.name,
         "beschreibung": beschreibung,
         "angelegt_am": _jetzt_utc(),
+        "scope": scope_daten,
     }
     _schreibe_json(manifest, daten)
     _schreibe_json(fall / EINGANG_REGISTER,
@@ -351,6 +729,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("anlegen", help="Arbeitsbereich anlegen.")
     p.add_argument("--fall", required=True, help="Pfad des Arbeitsbereichs.")
     p.add_argument("--beschreibung", default="", help="Freitext zum Fall.")
+    p.add_argument(
+        "--scope", choices=FALL_SCOPES, default="tarif",
+        help="Fachlicher Fall-Scope: tarif (Default) oder bestand.",
+    )
 
     p = sub.add_parser("registrieren", help="Quelle in den Eingang aufnehmen.")
     p.add_argument("--fall", required=True)
@@ -368,7 +750,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     fall = Path(args.fall)
     try:
         if args.kommando == "anlegen":
-            ergebnis = anlegen(fall, args.beschreibung)
+            ergebnis = anlegen(fall, args.beschreibung, args.scope)
         elif args.kommando == "registrieren":
             ergebnis = registrieren(fall, Path(args.datei), args.als)
         else:

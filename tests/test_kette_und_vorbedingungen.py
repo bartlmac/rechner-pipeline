@@ -28,6 +28,14 @@ PLAUSIBEL = {
 AKTEUR = "test/extrahiere-quellfragment@abc1234"
 
 
+def _freigabe_arg(fall: Path) -> list[str]:
+    schluessel = fall.parent / "p9-freigabe.key"
+    if not schluessel.exists():
+        schluessel.write_bytes(b"test-only-p9-authorization-key!" * 2)
+        schluessel.chmod(0o600)
+    return ["--freigabe-schluessel", str(schluessel)]
+
+
 def _fragment_json(datei: str, art: str, **override) -> dict:
     parameter = {
         feld: {"wert": PLAUSIBEL[feld], "fundstelle": f"{datei}:{feld}"}
@@ -155,7 +163,7 @@ def test_g2_verlangt_o3_und_geltenden_g1(fall_mit_fragmenten):
     assert o1(["--fall", str(f)]).exit_code == 0
 
     basis = ["--fall", str(f), "--rolle", "mensch", "--entscheider", "B",
-             "--begruendung", "x", "--repo-root", "."]
+             "--begruendung", "x", "--repo-root", ".", *_freigabe_arg(f)]
     # G-2 ohne O3:
     result = p9(["--gate", "G-2", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
@@ -188,7 +196,7 @@ def test_g1_annahme_verlangt_verankertes_o1(fall_mit_fragmenten):
     speichere(abox, f)
     result = p9(["--gate", "G-1", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
-    assert any("ANDEREN A-Box-Stand" in e["message"] for e in result.errors)
+    assert any("Provenienzvertrag" in e["message"] for e in result.errors)
 
 
 def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):

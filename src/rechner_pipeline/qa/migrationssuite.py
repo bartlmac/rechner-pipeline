@@ -55,6 +55,7 @@ Knoten: klv
 
 from __future__ import annotations
 
+import datetime as _dt
 import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -477,6 +478,9 @@ def pruefe_bestand(
     vertraege: List[VertragsPruefung],
     *,
     erwartete_anzahl: Optional[int] = None,
+    stichtag_1: Optional[str] = None,
+    stichtag_2: Optional[str] = None,
+    bestand_sha256: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Suite über den ganzen Bestand: Urteile + Zusammenfassung.
 
@@ -495,6 +499,12 @@ def pruefe_bestand(
     fehlende erwartete Vertragszahl); ``vollstaendig_geprueft`` ist nur
     ohne jede Lücke wahr. Eine Lücke ist kein Fehlschlag — aber auch
     kein Bestehen, und sie steht deshalb neben dem Urteil.
+
+    SCOPE-BINDUNG: Für einen Bestandsfall werden ``stichtag_1``,
+    ``stichtag_2`` und ``bestand_sha256`` gemeinsam übergeben. Die Suite
+    validiert und spiegelt sie in ihr Ergebnis; Teilangaben sind ein harter
+    Fehler. Ohne diese optionalen Angaben bleibt die Funktion fallunabhängig,
+    ihr Ergebnis ist aber kein G-2-Beleg eines Bestandsfalls.
 
     LEERE PRÜFMENGE: harter Fehler statt eines ausgewiesenen
     Nicht-Bestehens. Ein ``suite_bestanden = False`` wäre die Aussage
@@ -522,6 +532,26 @@ def pruefe_bestand(
     als Lücke — dort ist der Abgang die Prüfung (siehe
     :func:`pruefe_vertrag`).
     """
+    scope_werte = (stichtag_1, stichtag_2, bestand_sha256)
+    if any(wert is not None for wert in scope_werte):
+        if not all(isinstance(wert, str) and wert for wert in scope_werte):
+            raise ValueError(
+                "Suite-Scope-Bindung verlangt gemeinsam stichtag_1, "
+                "stichtag_2 und bestand_sha256"
+            )
+        try:
+            erster = _dt.date.fromisoformat(stichtag_1)
+            zweiter = _dt.date.fromisoformat(stichtag_2)
+        except ValueError as exc:
+            raise ValueError(f"Suite-Scope-Stichtag ist ungueltig: {exc}") from exc
+        if zweiter <= erster:
+            raise ValueError("Suite-Scope-Stichtag 2 muss nach Stichtag 1 liegen")
+        if (
+            len(bestand_sha256) != 64
+            or any(zeichen not in "0123456789abcdef" for zeichen in bestand_sha256)
+        ):
+            raise ValueError("Suite-Scope-bestand_sha256 ist kein SHA-256")
+
     if not vertraege:
         raise ValueError(
             "Migrations-Abnahmesuite ohne einen einzigen Vertrag: eine "
@@ -566,7 +596,7 @@ def pruefe_bestand(
             "Bestand entspricht, ist NICHT geprüft."
         )
 
-    return {
+    ergebnis = {
         "anzahl": len(urteile),
         "bestanden": n_ok,
         "fehlgeschlagen": len(urteile) - n_ok,
@@ -577,3 +607,10 @@ def pruefe_bestand(
         "vollstaendig_geprueft": not pruefluecken,
         "vertraege": urteile,
     }
+    if all(wert is not None for wert in scope_werte):
+        ergebnis.update({
+            "stichtag_1": stichtag_1,
+            "stichtag_2": stichtag_2,
+            "bestand_sha256": bestand_sha256,
+        })
+    return ergebnis

@@ -1,8 +1,9 @@
 # Durchsetzung statt Freiwilligkeit (Systempruefung Befund 35): die
 # Suite laeuft auf jedem Push und Pull Request. Fall-abhaengige Tests
-# skippen ehrlich (kein faelle/-Arbeitsbereich im Runner) — vier Tests,
-# darunter der einzige Ende-zu-Ende-Beleg fuer Gate O3; siehe
-# ONBOARDING.md Abschnitt 5. Deshalb laeuft pytest mit `-rs`: ein Skip,
+# skippen ehrlich (kein faelle/-Arbeitsbereich im Runner) — vier Tests des
+# archivierten TG2015-Szenarios. Der synthetische O3-zu-G-2-E2E-Test ist
+# davon unabhaengig verpflichtend; siehe ONBOARDING.md Abschnitt 5.
+# Deshalb laeuft pytest mit `-rs`: ein Skip,
 # den niemand im Protokoll sieht, ist ein stiller Default. Mit `-rs`
 # steht in JEDEM CI-Lauf namentlich, welcher Anker nicht gelaufen ist
 # (Systempruefung F21/F46) — die Zahl "gruene Suite" bleibt damit

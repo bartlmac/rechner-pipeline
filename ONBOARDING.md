@@ -22,7 +22,7 @@ computes and accepts):
    gates (G-1/G-2/G-T) and immutable decision snapshots.
 
 Read `docs/architektur/migrations-pipeline-v01.md` first, then the role catalog
-`docs/architektur/skill-architektur.md`, then the seven ADRs in
+`docs/architektur/skill-architektur.md`, then the ADRs in
 `docs/architektur/`.
 
 **Historical note:** the project started from a one-time *translation act* — a
@@ -90,7 +90,7 @@ SHA-256, origin path and size in the `eingang.json` register, and sets
 the copy read-only. Every later statement in the case traces back to
 these hashes — the provenance chain starts here:
 ```
-python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012
+python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012 --scope tarif
 python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
     --datei tests/fixtures/Tarifrechner_KLV_TG2012.xlsm
 python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
@@ -113,7 +113,7 @@ GeVo protocol). Register it into a fresh case — the case is named
 `baldrian-uebernahme` throughout the docs, the skills and the ADRs, so
 keep that name:
 ```
-python -m rechner_pipeline.fall anlegen --fall faelle/baldrian-uebernahme
+python -m rechner_pipeline.fall anlegen --fall faelle/baldrian-uebernahme --scope bestand
 for f in lieferungen/baldrian/*.xlsm lieferungen/baldrian/*.docx lieferungen/baldrian/*.csv; do
   python -m rechner_pipeline.fall registrieren --fall faelle/baldrian-uebernahme --datei "$f"
 done
@@ -223,21 +223,39 @@ Each gate is one command, writes one JSON to stdout plus a
 | G0 | `gates.extract` | deterministic pre-digest of a source workbook (formulas, cached values, defined names via openpyxl; VBA via `oletools.olevba`) |
 | O0 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
 | O1 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
-| O3 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values |
-| P9 | `gates.gate_entscheid` | immutable snapshots of the human gates (G-1, G-2, G-T); `--rolle mensch\|agent` is mandatory (exit 2 without it) and agents may only reject |
-| B1 | `gates.bestand_validate` | portfolio schema and movement identities per year, track and measure |
+| O3 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state |
+| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (G-1, G-2, G-T); accepted decisions require an externally held HMAC key, and G-2 derives its exact evidence roles from the declared case scope and gate DAG; agents may only reject |
+| B1 | `gates.bestand_validate` | portfolio contract and movement identities |
+| G2 template | `gates.abnahmebericht` | for scope `bestand`, validates and content-addresses B1, complete suite, transformation, before/after reports and HTML report on one input/A-Box/code/two-date state |
+
+An accepted P9 decision additionally requires
+`--freigabe-schluessel /secure/p9-approval.key`. The human operator keeps this
+file outside the case and outside agent access; it must contain at least 32
+cryptographically random bytes, have POSIX mode 0600, and exactly one hard
+link. Repeat the option with old keys first and the
+active signing key last when rotating. Key bytes and paths are never persisted.
+P9 revalidates the strict ledger/snapshot schemas, canonical content hash,
+full-hash filename, HMAC, predecessor existence, cycles, and the unique chain
+tip on every read (ADR-008).
+
+For G-2, `fall.json` also carries `scope.typ` (`tarif` or `bestand`) and the
+gate-DAG version. Missing declarations are never inferred from files. A tariff
+case requires no portfolio artifacts; a portfolio case requires the immutable
+scope proof written by `gates.abnahmebericht` (ADR-009).
 
 ## 5. Non-negotiables
 - **Deterministic and SDK-free** in `src/`: no network, no dynamic execution,
   no subprocess; same input -> same output; sorted serialization. There is
-  exactly ONE subprocess exception, and it is bounded by a test: the P9
-  snapshot (`gates/gate_entscheid._git_stand`) records the system state a
-  human decided on with three READING git calls (`rev-parse HEAD`,
+  exactly ONE subprocess exception, and it is bounded by a test: the shared
+  O3/P9 proof provenance (`gates/_provenienz._git_stand`) records the Git
+  state proved or decided on with three READING git calls (`rev-parse HEAD`,
   `rev-parse --abbrev-ref HEAD`, `status --porcelain`) — it computes and
-  judges nothing, and if git is unavailable the state is the named value
-  `unbekannt`, never a silent default. Any further subprocess import, any
+  judges nothing. A pure-Python SHA-256 over the installed package sources
+  distinguishes different dirty code states. If git is unavailable, its
+  fields carry the named value `unbekannt`, never a silent default. Any
+  further subprocess import, any
   other command, and any process start via `os` turns
-  `tests/test_fachspez_und_p9.py::test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt`
+  `tests/test_fachspez_und_p9.py::test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt`
   red.
 - **Fail-fast, never silent**: no silent overwrite, no silent default. Doubt is
   a named state (`nicht_belegt`/`mehrdeutig`/`widerspruechlich`) or a hard
@@ -256,13 +274,12 @@ Each gate is one command, writes one JSON to stdout plus a
   skip wherever it is absent — in CI, in a fresh clone, and on any
   machine that has not got that case: `test_formeln.py:52`,
   `test_review_fixes_v01.py:364` and `:382`, `test_tafel_import.py:126`.
-  Among them is the only end-to-end proof of gate O3 (the parametrized
-  kernel against the delivered expectation values). A green run therefore
-  reads "... passed, 4 skipped" everywhere except on a machine carrying
-  that case — if you quote a green suite as evidence, say which of the
-  two you ran. Closing the gap properly means
-  a checked-in minimal fixture under `tests/fixtures/`, not a looser
-  assertion — it is an open item, not a solved one.
+  A green run therefore reads "... passed, 4 skipped" everywhere except on
+  a machine carrying that archived case — if you quote a green suite as
+  evidence, say which of the two you ran. The mandatory synthetic
+  `tests/test_o3_g2_beweisvertrag.py` path independently runs real extraction,
+  O3 and G-2; the skipped tests still cover the separate archived TG2015
+  scenario and remain explicit rather than silently green.
 - Direct dependencies pinned exactly (`pyproject.toml`), their transitive
   closure pinned in `requirements*.txt` (section 2); new dependencies only
   via ADR. Push is the human's job.

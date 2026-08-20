@@ -42,8 +42,91 @@ def test_anlegen_erzeugt_layout_und_ueberschreibt_nie(tmp_path: Path) -> None:
     manifest = json.loads((f / "fall.json").read_text(encoding="utf-8"))
     assert manifest["name"] == "plv"
     assert manifest["beschreibung"] == "Testfall"
+    assert manifest["scope"] == {
+        "schema_version": 1,
+        "typ": "tarif",
+        "gate_dag_version": fall_mod.GATE_DAG_VERSION,
+    }
     with pytest.raises(FallFehler, match="existiert bereits"):
         anlegen(f)
+
+
+def test_gate_dag_leitet_scope_spezifische_g2_pflichten_ab(tmp_path: Path) -> None:
+    tarif = tmp_path / "tarif"
+    bestand = tmp_path / "bestand"
+    anlegen(tarif, scope="tarif")
+    anlegen(bestand, scope="bestand")
+
+    assert fall_mod.lade_scope(tarif) == "tarif"
+    assert fall_mod.lade_scope(bestand) == "bestand"
+    assert fall_mod.validate_gate_dag() == []
+    assert fall_mod.g2_belegrollen("tarif") == [
+        "o1_ledger", "g1_snapshot", "o3_belege",
+    ]
+    assert fall_mod.g2_belegrollen("bestand") == [
+        "o1_ledger", "g1_snapshot", "o3_belege", "transformationsspec",
+        "transformationsergebnis", "b1_ledger", "migrationssuite",
+        "bestandsbericht_vor", "bestandsbericht_nach", "abnahmebericht",
+    ]
+    # Der Vertrag ist ohne Python-Sonderobjekte als JSON publizierbar.
+    assert json.loads(json.dumps(fall_mod.GATE_DAG)) == fall_mod.GATE_DAG
+    ungueltig = tmp_path / "ungueltig"
+    with pytest.raises(FallFehler, match="unbekannter Fall-Scope"):
+        anlegen(ungueltig, scope="geraten")
+    assert not ungueltig.exists()
+
+
+@pytest.mark.parametrize(
+    ("aenderung", "erwartet"),
+    [
+        (lambda dag: dag.__setitem__("ziel", []), "Gate-DAG.ziel"),
+        (
+            lambda dag: dag["kanten"][0].__setitem__("von", {}),
+            "Kante 0 referenziert",
+        ),
+        (
+            lambda dag: dag["kanten"][0].__setitem__("nach", []),
+            "Kante 0 referenziert",
+        ),
+        (
+            lambda dag: dag["kanten"][0].__setitem__("scopes", 7),
+            "Kante 0.scopes",
+        ),
+        (
+            lambda dag: dag["knoten"]["o1"].__setitem__("scopes", [{}]),
+            "Knoten 'o1'.scopes",
+        ),
+        (
+            lambda dag: dag["knoten"]["o1"].__setitem__("scopes", 7),
+            "Knoten 'o1'.scopes",
+        ),
+        (
+            lambda dag: dag.__setitem__("schema_version", True),
+            "schema_version",
+        ),
+    ],
+)
+def test_gate_dag_validator_meldet_typfehler_statt_abzustuerzen(
+    aenderung, erwartet: str
+) -> None:
+    kaputt = json.loads(json.dumps(fall_mod.GATE_DAG))
+    aenderung(kaputt)
+    assert any(
+        erwartet in fehler for fehler in fall_mod.validate_gate_dag(kaputt)
+    )
+
+
+def test_gate_dag_validator_blockiert_abgetrennte_pflichtrolle() -> None:
+    kaputt = json.loads(json.dumps(fall_mod.GATE_DAG))
+    kaputt["kanten"] = [
+        kante for kante in kaputt["kanten"]
+        if kante["von"] != "bestandsbericht_vor"
+    ]
+
+    assert any(
+        "'bestandsbericht_vor'" in fehler and "keinen Pfad" in fehler
+        for fehler in fall_mod.validate_gate_dag(kaputt)
+    )
 
 
 def test_registrieren_hasht_schuetzt_und_ist_idempotent(
@@ -308,9 +391,3 @@ def test_defekter_oder_fehlender_fall_ergibt_meldung_statt_traceback(
     argv = [a.replace(str(tmp_path / "tippfehler"), str(f)) for a in argv]
     assert fall_mod.main(argv) == 1
     assert "unlesbar" in capsys.readouterr().err
-
-
-
-
-
-

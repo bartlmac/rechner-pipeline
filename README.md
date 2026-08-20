@@ -78,7 +78,10 @@ Deckungskapital am Migrations- und am Folgestichtag plus die
 Geschäftsvorfälle dazwischen, gegen die gelieferten Erwartungswerte
 (`qa/migrationssuite`), zusammengefasst im HTML-Abnahmebericht
 (`gates/abnahmebericht`) mit Bestandsberichten vor/nach — als Vorlage
-für das menschliche Gate G-2.
+für das menschliche Gate G-2. Der in `fall.json` deklarierte Scope und ein
+zentraler Gate-DAG unterscheiden dabei reine Tariffälle von Bestandsfällen:
+Nur der Bestands-Scope verlangt und bindet B1, Suite, Transformation sowie
+Vor-/Nach- und Abnahmebericht auf denselben Stand (ADR-009).
 
 Braucht die Migration eine **Code-Änderung** (Berechnungskatalog,
 Bewertung, Produktdefinition), läuft sie als kleines, knotengebundenes
@@ -101,9 +104,10 @@ nie zur Warnung abgeschwächt.
 | G0 | `gates.extract` | deterministische Vorverdichtung einer Quellmappe (Formeln, Werte, Namen, VBA) |
 | O0 | `gates.abox_merge` | Zusammenführung der Extraktions-Fragmente zur A-Box |
 | O1 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
-| O3 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung |
-| P9 | `gates.gate_entscheid` | unveränderliche Snapshots der menschlichen Gates (G-1, G-2, G-T) |
+| O3 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
+| P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (G-1, G-2, G-T); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, G-2 leitet die Scope-Pflichtbelege aus dem Gate-DAG ab |
 | B1 | `gates.bestand_validate` | Bestandsschema und Bewegungs-Identitäten je Jahr, Track und Maß |
+| G2-Vorlage | `gates.abnahmebericht` | bindet im Bestands-Scope B1, vollständige Suite, validierte Transformation und Vor-/Nachberichte auf Eingangs-, A-Box-, System- und Zwei-Stichtagsstand |
 
 Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
 (`tests/test_kern_algebraisch.py`: qx-Schranken, Barwert-Bilanz
@@ -216,13 +220,16 @@ Regressionstests hängen an einem lokalen, nicht eingecheckten
 Fall-Arbeitsbereich
 (`faelle/archiv/baldrian-klv-tg2015`) und skippen überall dort, wo er
 fehlt — im frischen Clone, in der CI und auf jedem Rechner ohne diesen
-Fall. Darunter ist der einzige Ende-zu-Ende-Beleg für Gate O3. Details
-in `ONBOARDING.md`, Abschnitt 5.
+Fall. Der verpflichtende synthetische Test
+`tests/test_o3_g2_beweisvertrag.py` fährt unabhängig davon echte
+Vorverdichtung, O3 und G-2; die Skips betreffen weiterhin das separate
+archivierte TG2015-Szenario. Details in `ONBOARDING.md`, Abschnitt 5.
 
 Einen Fall anlegen und die Pipeline fahren:
 
 ```bash
-python -m rechner_pipeline.fall anlegen --fall faelle/mein-fall
+python -m rechner_pipeline.fall anlegen --fall faelle/mein-fall --scope tarif
+# Für eine Bestandsübernahme stattdessen: --scope bestand
 python -m rechner_pipeline.fall registrieren --fall faelle/mein-fall --datei <quelle>
 python -m rechner_pipeline.fall status --fall faelle/mein-fall
 
@@ -238,7 +245,8 @@ python -m rechner_pipeline.gates.generation_golden --fall faelle/mein-fall \
 python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ... \
     --wert ... --entscheider ... --begruendung ... --rolle mensch
 python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate G-1 \
-    --entscheid angenommen --entscheider ... --begruendung ... --rolle mensch
+    --entscheid angenommen --entscheider ... --begruendung ... --rolle mensch \
+    --freigabe-schluessel /sicher/p9-freigabe.key
 ```
 
 `--rolle` ist bei beiden Kommandos Pflicht (ohne das Flag brechen sie
@@ -247,6 +255,17 @@ mit Exit-Code 2 ab) und trägt die Grenze zwischen Mensch und Agent:
 Diskrepanz-Auflösungen sind Menschen vorbehalten. Bei `gate_entscheid`
 ist `--rolle agent` zulässig, ein Agent kann ein menschliches Gate damit
 aber nur **ablehnen**, nie annehmen.
+
+Eine Annahme braucht zusätzlich `--freigabe-schluessel`. Die Datei wird vom
+Menschen ausserhalb des Falls und ausserhalb des Agentenzugriffs verwahrt,
+muss mindestens 32 kryptografisch zufällige Byte lang sein und unter POSIX
+Rechte 0600 sowie genau einen Hardlink besitzen. Das
+Flag kann bei einer Schluesselrotation wiederholt werden: alte Schluessel
+zuerst zum Pruefen der Historie, der letzte Schluessel signiert den neuen
+Snapshot. Weder Schluesselbytes noch Pfad werden in Snapshot oder Ledger
+gespeichert. P9 rechnet beim Lesen Schema, vollständigen Inhalts-Hash,
+Dateinamen, Freigabesignatur sowie Existenz, Zyklen und eindeutige Spitze der
+Vorgängerkette nach (ADR-008).
 
 Die Code-Ontologie navigiert und begrenzt Änderungen:
 

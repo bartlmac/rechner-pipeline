@@ -280,7 +280,11 @@ def test_gate_ledger_entry_roundtrip_and_validate():
         started_at="2026-06-18T00:00:00+00:00",
         input_hashes={"generated/actuarial.py": "a" * 64},
         diagnostics_path="runs/r1/conventions.diagnostics.json",
-        summary={"circular": False},
+        summary={
+            "circular": False,
+            "exit_code": 0,
+            "ended_at": "2026-06-18T00:00:01+00:00",
+        },
     )
     assert entry.validate() == []
     data = entry.to_dict()

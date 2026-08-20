@@ -18,6 +18,8 @@ Rechenkern-Entwicklung. Die Fachdokumente des Beispiel-Rechenkerns
 - [ADR-005: Knoten-Hierarchie, Test-Bindung, Code-Karte und berechneter Impact](adr-005-knoten-hierarchie-und-impact.md)
 - [ADR-006: Der Portierungs-Anwendungsfall wird ausser Betrieb genommen](adr-006-portierung-ausser-betrieb.md)
 - [ADR-007: Parallele Migrationen in einem Kern — Trunk, knotengebundene Inkremente, Knoten-Lebenszyklus](adr-007-parallele-migrationen-ein-kern.md)
+- [ADR-008: Signierte P9-Freigaben ausserhalb des Falls](adr-008-signierte-p9-freigaben.md)
+- [ADR-009: Fall-Scope und deklarativer Gate-DAG fuer G-2](adr-009-fall-scope-und-gate-dag.md)
 
 Die Pakete `rechner_pipeline.ontologie` und `rechner_pipeline.spez`
 setzen die Pipeline um; ihr Zusammenspiel und der Praezedenzfall

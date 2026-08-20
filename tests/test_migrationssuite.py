@@ -759,3 +759,28 @@ def test_erhoehung_nach_bereits_erfolgter_beitragsfreistellung_ist_befund(
     assert not urteil["bestanden"]
     assert any("nur auf dem beitragspflichtigen Track" in b
                for b in urteil["befunde"]), urteil["befunde"]
+
+
+def test_suite_schreibt_scope_bindung_nur_als_vollstaendigen_vertrag() -> None:
+    ergebnis = pruefe_bestand(
+        [_pruefung()],
+        erwartete_anzahl=1,
+        stichtag_1="2026-01-01",
+        stichtag_2="2027-01-01",
+        bestand_sha256="a" * 64,
+    )
+    assert {
+        name: ergebnis[name]
+        for name in ("stichtag_1", "stichtag_2", "bestand_sha256")
+    } == {
+        "stichtag_1": "2026-01-01",
+        "stichtag_2": "2027-01-01",
+        "bestand_sha256": "a" * 64,
+    }
+    with pytest.raises(ValueError, match="verlangt gemeinsam"):
+        pruefe_bestand([_pruefung()], stichtag_1="2026-01-01")
+    with pytest.raises(ValueError, match="muss nach"):
+        pruefe_bestand(
+            [_pruefung()], stichtag_1="2027-01-01", stichtag_2="2026-01-01",
+            bestand_sha256="a" * 64,
+        )

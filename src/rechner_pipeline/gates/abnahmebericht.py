@@ -36,6 +36,13 @@ Vertragszahl) blockieren nicht, stehen aber im Verdikt, im Bericht und
 in der Zusammenfassung des Ledgers. Was nicht geprüft wurde, wird
 ausgewiesen, nie verschwiegen.
 
+In einem als ``bestand`` deklarierten Fall ist das Kommando zugleich der
+deterministische Produzent des unveraenderlichen G-2-Scope-Belegs. Dann sind
+Spec, gebundenes Transformationsergebnis, gruener B1-Beleg, vollstaendige
+Suite und beide Bestandsberichte Pflicht. Der Scope-Beleg bindet sie und den
+HTML-Bericht gemeinsam an Eingangsregister, A-Box, Systemstand und beide
+Stichtage. Ein ``tarif``-Fall verlangt diese Bestandsartefakte nicht.
+
 Die Suite-Urteile kommen als JSON herein — genau das, was
 :func:`rechner_pipeline.qa.migrationssuite.pruefe_bestand` zurückgibt
 (``json.dump``-fähige Primitive). Der Zusammenbau der Prüfaufträge
@@ -48,10 +55,10 @@ Run via::
         --fall faelle/<fall> --suite <suite_ergebnis.json> \\
         --titel "Migrationsabnahme <Fall>" \\
         --stichtag-1 2026-01-01 --stichtag-2 2027-01-01 \\
-        [--spec <transformationsspec.json>] \\
-        [--transformation-ergebnis <ergebnis.json>] \\
-        [--bestandsbericht-vor vor/index.html] \\
-        [--bestandsbericht-nach nach/index.html] \\
+        --spec <transformationsspec.json> \\
+        --transformation-ergebnis <ergebnis.json> \\
+        --bestandsbericht-vor vor/index.html \\
+        --bestandsbericht-nach nach/index.html \\
         [--bericht <ziel.html>] [--diagnostics-dir <dir>]
 
 Knoten: klv
@@ -63,10 +70,12 @@ import argparse
 import html
 import json
 import sys
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from rechner_pipeline.ontologie.transformation import TransformationsSpec
+from rechner_pipeline import fall as fall_mod
+from rechner_pipeline.gates import bestand_validate
 from rechner_pipeline.gates._common import (
     Exit,
     add_request_json_arg,
@@ -79,13 +88,25 @@ from rechner_pipeline.gates._common import (
     utc_now,
     write_gate_ledger,
 )
+from rechner_pipeline.gates._fall_scope import (
+    SCOPE_BELEG_GATE_VERSION,
+    artefakt_eintrag,
+    bestands_belegrollen,
+    scope_bindung,
+    schreibe_scope_beleg,
+)
+from rechner_pipeline.models.schemas import GateLedgerEntry
+from rechner_pipeline.ontologie.transformation import (
+    TransformationsSpec,
+    validate_spec,
+)
 
 COMMAND = "abnahmebericht"
 #: Kein Gate "G2": die Abnahme ist der MENSCHLICHE Gate G-2. Dieses
 #: Kommando erzeugt und protokolliert dessen Vorlage — der Gate-Name
 #: sagt das, damit ein Ledger-Leser die beiden nie verwechselt.
 GATE = "G2-vorlage.migrationsabnahme"
-GATE_VERSION = "1.0.0"
+GATE_VERSION = SCOPE_BELEG_GATE_VERSION
 
 _STIL = """
 body { font-family: sans-serif; margin: 2em; color: #222; }
@@ -438,6 +459,180 @@ def _suite_fehler(daten: Any) -> List[str]:
     return fehler
 
 
+def _bestands_suite_fehler(
+    suite: Dict[str, Any],
+    *,
+    stichtag_1: str,
+    stichtag_2: str,
+    bestand_sha256: str,
+) -> List[str]:
+    """Zusaetzliche Bindung der Suite im deklarativen Bestands-Scope."""
+    fehler: List[str] = []
+    erwartet = {
+        "stichtag_1": stichtag_1,
+        "stichtag_2": stichtag_2,
+        "bestand_sha256": bestand_sha256,
+    }
+    for feld, wert in erwartet.items():
+        if suite.get(feld) != wert:
+            fehler.append(f"{feld!r} muss {wert!r} binden")
+    if type(suite.get("vollstaendig_geprueft")) is not bool:
+        fehler.append("'vollstaendig_geprueft' muss ein boolescher Wert sein")
+    elif not suite["vollstaendig_geprueft"]:
+        fehler.append(
+            "Bestands-Scope verlangt eine vollstaendig gepruefte "
+            "Migrationssuite ohne Pruefluecken"
+        )
+    return fehler
+
+
+def _transformation_fehler(
+    *,
+    fall: Path,
+    spec_pfad: Path,
+    spec: TransformationsSpec,
+    ergebnis: Any,
+) -> tuple[List[str], Optional[Path], Optional[str]]:
+    """Spec und Anwendung als geschlossene, B1-pruefbare Kette validieren."""
+    fehler: List[str] = []
+    felder = {
+        "schema_version", "spec_sha256", "quelle_sha256", "quellspalten",
+        "ziel_datei", "ziel_sha256", "zeilen_quelle", "zeilen_ziel", "befunde",
+    }
+    if not isinstance(ergebnis, dict) or set(ergebnis) != felder:
+        return ([f"Transformationsergebnis muss exakt {sorted(felder)} enthalten"],
+                None, None)
+    if type(ergebnis.get("schema_version")) is not int or ergebnis[
+        "schema_version"
+    ] != 1:
+        fehler.append("Transformationsergebnis.schema_version muss 1 sein")
+    spec_hash = sha256(spec_pfad.read_bytes()).hexdigest()
+    if ergebnis.get("spec_sha256") != spec_hash:
+        fehler.append("Transformationsergebnis bindet nicht den aktuellen Spec-SHA-256")
+    if ergebnis.get("quelle_sha256") != spec.quelle_sha256:
+        fehler.append("Transformationsergebnis und Spec binden verschiedene Quellen")
+
+    quellspalten = ergebnis.get("quellspalten")
+    if (
+        not isinstance(quellspalten, list) or not quellspalten
+        or any(not isinstance(wert, str) or not wert for wert in quellspalten)
+        or len(quellspalten) != len(set(quellspalten))
+    ):
+        fehler.append(
+            "Transformationsergebnis.quellspalten muss eine nichtleere, "
+            "duplikatfreie Stringliste sein"
+        )
+    else:
+        fehler.extend(validate_spec(spec, quellspalten))
+
+    for feld in ("zeilen_quelle", "zeilen_ziel"):
+        wert = ergebnis.get(feld)
+        if type(wert) is not int or wert < 0:
+            fehler.append(f"Transformationsergebnis.{feld} muss eine Zahl >= 0 sein")
+    befunde = ergebnis.get("befunde")
+    if not isinstance(befunde, list) or any(
+        not isinstance(wert, str) for wert in befunde
+    ):
+        fehler.append("Transformationsergebnis.befunde muss eine Stringliste sein")
+
+    ziel_roh = ergebnis.get("ziel_datei")
+    ziel: Optional[Path] = None
+    if (
+        not isinstance(ziel_roh, str) or not ziel_roh
+        or Path(ziel_roh).is_absolute() or ".." in Path(ziel_roh).parts
+    ):
+        fehler.append("Transformationsergebnis.ziel_datei ist kein sicherer Fallpfad")
+    else:
+        ziel = (fall / ziel_roh).resolve()
+        try:
+            ziel.relative_to(fall.resolve())
+        except ValueError:
+            fehler.append("Transformationsergebnis.ziel_datei verlaesst den Fall")
+            ziel = None
+        if ziel is not None and not ziel.is_file():
+            fehler.append(f"transformiertes Zielartefakt fehlt: {ziel_roh}")
+            ziel = None
+
+    ziel_hash: Optional[str] = None
+    if ziel is not None:
+        ziel_hash = sha256(ziel.read_bytes()).hexdigest()
+        if ergebnis.get("ziel_sha256") != ziel_hash:
+            fehler.append(
+                "Transformationsergebnis.ziel_sha256 weicht vom Zielartefakt ab"
+            )
+    elif not isinstance(ergebnis.get("ziel_sha256"), str):
+        fehler.append("Transformationsergebnis.ziel_sha256 fehlt")
+
+    try:
+        register = json.loads((fall / "eingang.json").read_text(encoding="utf-8"))
+        registriert = {
+            eintrag["datei"]: eintrag["sha256"] for eintrag in register["quellen"]
+            if isinstance(eintrag, dict)
+            and isinstance(eintrag.get("datei"), str)
+            and isinstance(eintrag.get("sha256"), str)
+        }
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        fehler.append(f"Eingangsregister fuer Transformationsquelle unlesbar: {exc}")
+    else:
+        if registriert.get(spec.quelle_datei) != spec.quelle_sha256:
+            fehler.append(
+                "TransformationsSpec.quelle_datei/quelle_sha256 bindet keine "
+                "aktuell registrierte Eingangsquelle"
+            )
+    return fehler, ziel, ziel_hash
+
+
+def _b1_fehler(
+    *,
+    ledger_pfad: Path,
+    fall: Path,
+    repo_root: Path,
+    ziel: Path,
+    ziel_sha256: str,
+    erwartetes_system: Dict[str, str],
+) -> List[str]:
+    """B1-Ledger strikt laden und alle von B1 gehashten Bytes nachrechnen."""
+    try:
+        payload = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+        entry = GateLedgerEntry.from_dict(payload)
+    except (OSError, UnicodeError, ValueError, TypeError) as exc:
+        return [f"B1-Ledger ungueltig: {exc}"]
+    fehler: List[str] = []
+    erwartet = {
+        "gate": bestand_validate.GATE,
+        "command": "bestand_validate",
+        "gate_version": bestand_validate.GATE_VERSION,
+        "required": True,
+        "status": "passed",
+    }
+    for feld, wert in erwartet.items():
+        if getattr(entry, feld) != wert:
+            fehler.append(f"B1-Ledger.{feld} ist {getattr(entry, feld)!r} statt {wert!r}")
+    if entry.summary.get("exit_code") != 0 or entry.summary.get("all_passed") is not True:
+        fehler.append("B1-Ledger traegt kein konsistentes gruenes Einzelurteil")
+    if entry.summary.get("system") != erwartetes_system:
+        fehler.append("B1-Ledger bindet nicht den aktuellen Systemstand")
+
+    ziel_gebunden = False
+    for name, erwartet_hash in entry.input_hashes.items():
+        roh = Path(name)
+        kandidaten = [roh] if roh.is_absolute() else [fall / roh, repo_root / roh]
+        vorhanden = next((pfad.resolve() for pfad in kandidaten if pfad.is_file()), None)
+        if vorhanden is None:
+            fehler.append(f"B1-Eingangsartefakt {name!r} fehlt")
+            continue
+        gefunden = sha256(vorhanden.read_bytes()).hexdigest()
+        if gefunden != erwartet_hash:
+            fehler.append(f"B1-Eingangsartefakt {name!r} hat einen anderen SHA-256")
+        if vorhanden == ziel.resolve() and erwartet_hash == ziel_sha256:
+            ziel_gebunden = True
+    if not ziel_gebunden:
+        fehler.append(
+            "B1-Ledger bindet das aktuelle transformierte Zielartefakt nicht"
+        )
+    return fehler
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.abnahmebericht",
@@ -475,6 +670,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--bestandsbericht-nach", dest="bestandsbericht_nach", default=None,
         help="Verweis auf den Bestandsbericht NACH der Migration.")
     parser.add_argument(
+        "--b1-ledger", dest="b1_ledger", default=None,
+        help="Gruenes B1-Ledger; im Bestands-Scope Default: "
+        "<fall>/abgeleitet/diagnostics/bestand_validate.gate.json.")
+    parser.add_argument(
         "--bericht", default=None,
         help="Zielpfad des HTML-Berichts (Vorgabe mit --fall: "
         "<fall>/abgeleitet/berichte/migrationsabnahme.html).")
@@ -493,7 +692,7 @@ def main(argv: Optional[List[str]] = None):
     request = read_request_json(args.request_json)
     args = merge_request_into_args(args, request)
 
-    fall = Path(args.fall) if args.fall else None
+    fall = Path(args.fall).resolve() if args.fall else None
     diagnostics_dir = (
         Path(args.diagnostics_dir) if args.diagnostics_dir
         else (fall / "abgeleitet" / "diagnostics" if fall
@@ -519,6 +718,14 @@ def main(argv: Optional[List[str]] = None):
             errors=[{"code": "usage", "message": message}],
         ))
 
+    fall_scope: Optional[str] = None
+    if fall is not None and (fall / fall_mod.FALL_MANIFEST).is_file():
+        try:
+            fall_scope = fall_mod.lade_scope(fall)
+        except fall_mod.FallFehler as exc:
+            return _usage(f"ungueltiger Fall-Scope: {exc}")
+    bestands_scope = fall_scope == "bestand"
+
     fehlende_flags = [
         name for name, wert in (
             ("--suite", args.suite), ("--titel", args.titel),
@@ -534,11 +741,40 @@ def main(argv: Optional[List[str]] = None):
             "--fall setzen (dann <fall>/abgeleitet/berichte/"
             "migrationsabnahme.html)")
 
+    if bestands_scope:
+        bestands_flags = [
+            name for name, wert in (
+                ("--spec", args.spec),
+                ("--transformation-ergebnis", args.transformation_ergebnis),
+                ("--bestandsbericht-vor", args.bestandsbericht_vor),
+                ("--bestandsbericht-nach", args.bestandsbericht_nach),
+            ) if not wert
+        ]
+        if bestands_flags:
+            return _usage(
+                "Bestands-Scope verlangt die DAG-Pflichtbelege: "
+                + ", ".join(bestands_flags)
+            )
+        if args.bestandsbericht_vor == args.bestandsbericht_nach:
+            return _usage(
+                "Bestands-Scope verlangt zwei verschiedene Vor-/Nachberichte"
+            )
+        if not args.b1_ledger:
+            args.b1_ledger = str(
+                fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
+            )
+
     eingaben: Dict[str, Path] = {"suite": Path(args.suite)}
     if args.spec:
         eingaben["spec"] = Path(args.spec)
     if args.transformation_ergebnis:
         eingaben["transformation_ergebnis"] = Path(args.transformation_ergebnis)
+    if bestands_scope:
+        eingaben.update({
+            "b1_ledger": Path(args.b1_ledger),
+            "bestandsbericht_vor": Path(args.bestandsbericht_vor),
+            "bestandsbericht_nach": Path(args.bestandsbericht_nach),
+        })
     fehlend = [str(p) for p in eingaben.values() if not p.is_file()]
     if fehlend:
         return _usage(f"Datei nicht gefunden: {'; '.join(fehlend)}")
@@ -551,8 +787,11 @@ def main(argv: Optional[List[str]] = None):
     paths["bericht"] = str(bericht_pfad)
     if fall is not None:
         paths["fall"] = str(fall)
-    repo_root = Path(args.repo_root).resolve() if args.repo_root else None
-    input_hashes = hash_files(list(eingaben.values()), base=repo_root)
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else Path.cwd().resolve()
+    hash_basis = fall if bestands_scope else (
+        repo_root if args.repo_root else None
+    )
+    input_hashes = hash_files(list(eingaben.values()), base=hash_basis)
 
     def _contract_fehler(code: str, meldungen: List[str], hinweis: str):
         gezeigt = meldungen[:20]
@@ -596,6 +835,9 @@ def main(argv: Optional[List[str]] = None):
                 "ontologie.transformation.TransformationsSpec genuegen.")
 
     transformation_ergebnis = None
+    transformations_ziel: Optional[Path] = None
+    transformations_ziel_hash: Optional[str] = None
+    gemeinsame_bindung: Optional[Dict[str, Any]] = None
     if "transformation_ergebnis" in eingaben:
         try:
             transformation_ergebnis = json.loads(
@@ -607,17 +849,78 @@ def main(argv: Optional[List[str]] = None):
                 [f"{type(exc).__name__}: {exc}"],
                 "Erwartet ein JSON-Objekt mit zeilen_quelle, zeilen_ziel "
                 "und befunde (Ausgabe von ontologie.transformation.wende_an).")
-        fehlende_felder = [
-            f for f in ("zeilen_quelle", "zeilen_ziel")
-            if not isinstance(transformation_ergebnis, dict)
-            or f not in transformation_ergebnis
-        ]
-        if fehlende_felder:
+        if bestands_scope:
+            assert fall is not None and spec is not None
+            transformation_fehler, transformations_ziel, transformations_ziel_hash = (
+                _transformation_fehler(
+                    fall=fall,
+                    spec_pfad=eingaben["spec"],
+                    spec=spec,
+                    ergebnis=transformation_ergebnis,
+                )
+            )
+            if transformation_fehler:
+                return _contract_fehler(
+                    "transformation_contract",
+                    transformation_fehler,
+                    "TransformationsSpec gegen die im Ergebnis gebundenen "
+                    "Quellspalten validieren, Ergebnis mit Quell-, Spec- und "
+                    "Ziel-SHA neu aus der deterministischen Anwendung schreiben.",
+                )
+        else:
+            fehlende_felder = [
+                f for f in ("zeilen_quelle", "zeilen_ziel")
+                if not isinstance(transformation_ergebnis, dict)
+                or f not in transformation_ergebnis
+            ]
+            if fehlende_felder:
+                return _contract_fehler(
+                    "transformation_ergebnis_contract",
+                    [f"Feld {f!r} fehlt" for f in fehlende_felder],
+                    "Erwartet ein JSON-Objekt mit zeilen_quelle, zeilen_ziel "
+                    "und befunde (Ausgabe von ontologie.transformation.wende_an).")
+
+    if bestands_scope:
+        assert fall is not None
+        assert transformations_ziel is not None
+        assert transformations_ziel_hash is not None
+        try:
+            gemeinsame_bindung = scope_bindung(
+                fall, repo_root, args.stichtag_1, args.stichtag_2
+            )
+        except fall_mod.FallFehler as exc:
             return _contract_fehler(
-                "transformation_ergebnis_contract",
-                [f"Feld {f!r} fehlt" for f in fehlende_felder],
-                "Erwartet ein JSON-Objekt mit zeilen_quelle, zeilen_ziel "
-                "und befunde (Ausgabe von ontologie.transformation.wende_an).")
+                "scope_bindung", [str(exc)],
+                "Eingang, A-Box und Scope-Deklaration vervollstaendigen.",
+            )
+        b1_fehler = _b1_fehler(
+            ledger_pfad=eingaben["b1_ledger"],
+            fall=fall,
+            repo_root=repo_root,
+            ziel=transformations_ziel,
+            ziel_sha256=transformations_ziel_hash,
+            erwartetes_system=gemeinsame_bindung["system"],
+        )
+        if b1_fehler:
+            return _contract_fehler(
+                "b1_contract",
+                b1_fehler,
+                "Gate B1 auf dem transformierten Zielartefakt und aktuellen "
+                "Begleitartefakten erneut ausfuehren.",
+            )
+        suite_scope_fehler = _bestands_suite_fehler(
+            suite,
+            stichtag_1=args.stichtag_1,
+            stichtag_2=args.stichtag_2,
+            bestand_sha256=transformations_ziel_hash,
+        )
+        if suite_scope_fehler:
+            return _contract_fehler(
+                "suite_scope_contract",
+                suite_scope_fehler,
+                "Migrationssuite vollstaendig auf genau dem transformierten "
+                "Bestand und den beiden Scope-Stichtagen neu ausfuehren.",
+            )
 
     # Der Bericht wird auf BEIDEN Pfaden geschrieben: gerade der rote
     # Bericht ist das Beweisstueck, mit dem der Mensch entscheidet.
@@ -629,7 +932,7 @@ def main(argv: Optional[List[str]] = None):
         bestandsbericht_vor=args.bestandsbericht_vor,
         bestandsbericht_nach=args.bestandsbericht_nach,
     )
-    output_hashes = hash_files([bericht_pfad], base=repo_root)
+    output_hashes = hash_files([bericht_pfad], base=fall if bestands_scope else repo_root)
 
     befunde_gesamt = sum(len(u["befunde"]) for u in suite["vertraege"])
     pruefungen_gesamt = sum(len(u["pruefungen"]) for u in suite["vertraege"])
@@ -653,8 +956,59 @@ def main(argv: Optional[List[str]] = None):
         # Ausdruecklich: dieses Kommando nimmt nichts ab.
         "abnahme": "offen — Gate G-2 (Mensch, gates/gate_entscheid)",
     }
+    if gemeinsame_bindung is not None:
+        summary["scope_bindung"] = gemeinsame_bindung
 
     if suite["suite_bestanden"] and befunde_gesamt == 0:
+        if bestands_scope:
+            assert fall is not None and gemeinsame_bindung is not None
+            try:
+                artefakte = {
+                    "b1_ledger": artefakt_eintrag(fall, eingaben["b1_ledger"]),
+                    "migrationssuite": artefakt_eintrag(fall, eingaben["suite"]),
+                    "transformationsspec": artefakt_eintrag(fall, eingaben["spec"]),
+                    "transformationsergebnis": artefakt_eintrag(
+                        fall, eingaben["transformation_ergebnis"]
+                    ),
+                    "bestandsbericht_vor": artefakt_eintrag(
+                        fall, eingaben["bestandsbericht_vor"]
+                    ),
+                    "bestandsbericht_nach": artefakt_eintrag(
+                        fall, eingaben["bestandsbericht_nach"]
+                    ),
+                    "abnahmebericht": artefakt_eintrag(fall, bericht_pfad),
+                }
+            except ValueError as exc:
+                return _contract_fehler(
+                    "scope_artefakt", [str(exc)],
+                    "Alle Bestands-Pflichtartefakte innerhalb des Falls ablegen.",
+                )
+            if set(artefakte) != set(bestands_belegrollen()):
+                return _contract_fehler(
+                    "gate_dag",
+                    ["interne Belegrollen weichen vom deklarativen Gate-DAG ab"],
+                    "Gate-DAG und Scope-Beleg-Erzeuger gemeinsam versionieren.",
+                )
+            try:
+                scope_beleg_pfad, scope_beleg = schreibe_scope_beleg(
+                    diagnostics_dir,
+                    bindung=gemeinsame_bindung,
+                    artefakte=artefakte,
+                )
+            except (OSError, ValueError) as exc:
+                return _contract_fehler(
+                    "scope_beleg", [str(exc)],
+                    "Alle Bestands-Pflichtartefakte innerhalb des Falls "
+                    "ablegen und den Scope-Beleg erneut erzeugen.",
+                )
+            paths["scope_beleg"] = str(scope_beleg_pfad)
+            summary["scope_beleg_sha256"] = scope_beleg["beleg_sha256"]
+            summary["pflichtbelege"] = {
+                rolle: eintrag["sha256"] for rolle, eintrag in artefakte.items()
+            }
+            output_hashes = hash_files(
+                [bericht_pfad, scope_beleg_pfad], base=fall
+            )
         log(f"{COMMAND}: Vorlage ohne Fehlschlag ({summary['bestanden']} von "
             f"{summary['anzahl']} Vertraegen, "
             f"{len(suite['pruefluecken'])} Pruefluecke(n)) -> "

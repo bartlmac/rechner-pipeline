@@ -763,17 +763,21 @@ def load_gate_ledger(
                 {"path": str(path), "error": "ledger entry is not a JSON object"}
             )
             continue
-        entries.append(GateLedgerEntry.from_dict(payload))
+        try:
+            entries.append(GateLedgerEntry.from_dict(payload))
+        except (TypeError, ValueError) as exc:
+            read_errors.append({"path": str(path), "error": str(exc)})
     return entries, read_errors
 
 
 ALL_GATES: Tuple[Tuple[str, str], ...] = (
     ("G0.extraction-manifest", "extract"),
     ("O0.abox-merge", "abox_merge"),
-    ("O1.abox-validate", "abox_validate"),
-    ("O3.generation-golden", "generation_golden"),
+    ("O1.abox-contract", "abox_validate"),
+    ("O3.generation-golden-master", "generation_golden"),
     ("P9.gate-entscheid", "gate_entscheid"),
-    ("B1.bestand-validate", "bestand_validate"),
+    ("B1.bestand-contract", "bestand_validate"),
+    ("G2-vorlage.migrationsabnahme", "abnahmebericht"),
 )
 
 def _gate_catalogue() -> Tuple[Dict[str, str], Tuple[str, ...]]:

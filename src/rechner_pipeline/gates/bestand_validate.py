@@ -81,6 +81,7 @@ from rechner_pipeline.gates._common import (
     utc_now,
     write_gate_ledger,
 )
+from rechner_pipeline.gates._provenienz import systemstand
 
 GATE = "B1.bestand-contract"
 GATE_VERSION = "1.0.0"
@@ -282,6 +283,8 @@ def main(argv: Optional[List[str]] = None):
             geprueft["sanity_baender"] = len(config.plausibilitaet)
 
     summary = {**geprueft, "all_passed": not errors}
+    if repo_root is not None:
+        summary["system"] = systemstand(repo_root)
 
     if not errors:
         log(f"bestand_validate: B1 PASSED ({geprueft})")
