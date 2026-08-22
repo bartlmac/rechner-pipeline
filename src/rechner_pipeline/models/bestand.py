@@ -236,6 +236,8 @@ def validate_portfolio(df: Any) -> List[str]:
         errors.append(f"sex ausserhalb {SEX_VALUES}")
     if not df["produkt"].isin(PRODUKT_VALUES).all():
         errors.append(f"produkt ausserhalb {PRODUKT_VALUES}")
+    if not (df["status_id"] == 1).all():
+        errors.append("status_id != 1 (Basisbestand)")
     if not df["status_code"].isin(BASIS_STATUS).all():
         errors.append(f"status_code ausserhalb {BASIS_STATUS} (Basisbestand: nur POL)")
     if not df["zahlweise"].isin(ZAHLWEISE_VALUES).all():
@@ -287,10 +289,16 @@ def validate_portfolio(df: Any) -> List[str]:
         errors.append("insurance_end <= insurance_start")
     if (df["payment_end"] <= start).any():
         errors.append("payment_end <= insurance_start")
-    if (df["status_date"] < start).any():
-        errors.append("status_date vor insurance_start")
+    if not (df["status_date"] == start).all():
+        errors.append("status_date != insurance_start (Basisbestand)")
     # Monatserster-Konvention (deterministische Jahres-/Monatsarithmetik).
-    for col in ("date_of_birth", "insurance_start", "insurance_end", "payment_end"):
+    for col in (
+        "status_date",
+        "date_of_birth",
+        "insurance_start",
+        "insurance_end",
+        "payment_end",
+    ):
         if not (df[col].dt.day == 1).all():
             errors.append(f"{col}: nicht auf Monatsersten normalisiert")
 
@@ -537,5 +545,4 @@ def bu_model_point_kwargs(
             raise KeyError(f"BU-Generation-Feld fehlt: {name}")
         kwargs[name] = generation[name]
     return kwargs
-
 

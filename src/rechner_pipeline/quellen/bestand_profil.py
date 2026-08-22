@@ -58,19 +58,35 @@ def baue_profil(pfad: Path, trenner: str = ";") -> Dict[str, Any]:
     """Spaltenprofil eines CSV-Abzugs (deterministisch, sortiert)."""
     roh = pfad.read_bytes()
     with pfad.open(encoding="utf-8", newline="") as f:
-        zeilen = list(csv.reader(f, delimiter=trenner))
-    if not zeilen:
-        raise ValueError(f"{pfad}: leere Datei — kein Profil ableitbar")
-    kopf, daten = zeilen[0], zeilen[1:]
-    if len(set(kopf)) != len(kopf):
-        doppelt = sorted({s for s in kopf if kopf.count(s) > 1})
-        raise ValueError(
-            f"{pfad}: doppelte Spaltennamen {doppelt} — ein Mapping "
-            "waere mehrdeutig, Lieferung klaeren"
-        )
+        reader = csv.reader(f, delimiter=trenner)
+        try:
+            kopf = next(reader)
+        except StopIteration:
+            raise ValueError(
+                f"{pfad}: leere Datei — kein Profil ableitbar"
+            ) from None
+        if len(set(kopf)) != len(kopf):
+            doppelt = sorted({s for s in kopf if kopf.count(s) > 1})
+            raise ValueError(
+                f"{pfad}: doppelte Spaltennamen {doppelt} — ein Mapping "
+                "waere mehrdeutig, Lieferung klaeren"
+            )
+        daten: List[List[str]] = []
+        while True:
+            zeilennummer = reader.line_num + 1
+            try:
+                zeile = next(reader)
+            except StopIteration:
+                break
+            if len(zeile) != len(kopf):
+                raise ValueError(
+                    f"{pfad}: CSV-Zeile {zeilennummer}: erwartete Feldzahl "
+                    f"{len(kopf)}, gefundene Feldzahl {len(zeile)}"
+                )
+            daten.append(zeile)
     spalten: List[Dict[str, Any]] = []
     for i, name in enumerate(kopf):
-        werte = [z[i] if i < len(z) else "" for z in daten]
+        werte = [z[i] for z in daten]
         distinct = sorted({w.strip() for w in werte if w.strip()})
         spalten.append({
             "name": name,

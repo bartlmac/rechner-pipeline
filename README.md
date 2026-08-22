@@ -77,11 +77,32 @@ Lieferung (Gate O3, Bestandsabzugs-Abgleich) -> Transformation und
 Deckungskapital am Migrations- und am Folgestichtag plus die
 Geschäftsvorfälle dazwischen, gegen die gelieferten Erwartungswerte
 (`qa/migrationssuite`), zusammengefasst im HTML-Abnahmebericht
-(`gates/abnahmebericht`) mit Bestandsberichten vor/nach — als Vorlage
-für das menschliche Gate G-2. Der in `fall.json` deklarierte Scope und ein
-zentraler Gate-DAG unterscheiden dabei reine Tariffälle von Bestandsfällen:
-Nur der Bestands-Scope verlangt und bindet B1, Suite, Transformation sowie
-Vor-/Nach- und Abnahmebericht auf denselben Stand (ADR-009).
+(`gates/abnahmebericht`) mit Transformationsspecifikation,
+Transformationsergebnis und Bestandsberichten vor/nach als Pflichtartefakte —
+als Vorlage für das menschliche Gate G-2. Prüflücken, Zeilenverlust,
+Transformationsbefunde oder nicht entschiedene Konflikte ergeben einen roten
+Kopfsatz, ein fehlgeschlagenes Ledger und einen blockierenden Exit-Code. Jede
+Eingabe-, Ausgabe- und Ledgerrolle muss dabei eine eigene Datei bezeichnen;
+Pfad- oder Hardlink-Aliase blockieren vor dem Rendern. Der in `fall.json`
+deklarierte Scope unterscheidet dabei reine Tariffälle von
+Bestandsfällen: Nur der Bestands-Scope verlangt und bindet B1, eine vollständig
+geprüfte Suite und den Abnahmebericht auf denselben Stand.
+`gates.transformation_anwenden.wende_an(spec, fall)` löst die Quelle anhand
+von `spec.quelle_datei` selbst über das
+Fallregister auf, liest die registrierte CSV und führt `validate_spec` gegen
+deren physischen Header aus; SHA-256 und Spalten müssen zur Spec passen. Ein
+frei übergebbarer Dateipfad ist damit kein Transformations-Eingang mehr.
+Berechnungen haben katalogspezifisch exakt einen oder zwei Operanden, und eine
+Konfliktentscheidung gilt nur mit nichtleerem Entscheid und Entscheider. Das
+persistierte Transformationsergebnis bindet Quell-, Spec- und Ziel-SHA-256,
+Quellspalten sowie Quell-/Zielzeilenzahl. Der Abnahmebericht liest die Quelle
+über `eingang.json` erneut und rechnet diese Bindungen nach; ohne diese
+physische Fallbindung bleibt auch ein ansonsten grüner Renderer-Aufruf
+ausdrücklich rot und nichtautoritativ. Im Bestands-Scope verlangt er als Ziel
+genau den von Suite und B1 geprüften Bestand. G-2 wiederholt diese Prüfung,
+verlangt Spec, Transformationsergebnis sowie Vor-/Nachbericht unter vier festen
+Pfad-/SHA-256-Rollen und rendert den Bericht aus den erneut gelesenen Inhalten
+zum Bytevergleich neu (ADR-009).
 
 Braucht die Migration eine **Code-Änderung** (Berechnungskatalog,
 Bewertung, Produktdefinition), läuft sie als kleines, knotengebundenes
@@ -97,7 +118,18 @@ ADRs unter `docs/architektur/`.
 
 Jedes Gate schreibt ein JSON auf stdout und ein Ledger in den
 Diagnostics-Ordner; ein Nicht-Null-Exit ist **blockierend** und wird
-nie zur Warnung abgeschwächt.
+nie zur Warnung abgeschwächt. Vor der fachlichen Arbeit ersetzt ein roter
+Startbeleg einen etwaigen Beleg des vorigen Laufs. Der Abschluss ersetzt
+diesen Startbeleg atomar durch das aktuelle Ergebnis. Eine unerwartete
+Exception bleibt damit als aktueller fehlgeschlagener Lauf sichtbar; scheitert
+das Schreiben des Abschlussbelegs, endet auch eine fachlich gruene Pruefung mit
+Exit 50 statt ohne aktuellen Beleg erfolgreich zu erscheinen.
+Fehlende Pflichtargumente und ungueltige Optionen liefern ebenfalls genau ein
+strukturiertes Fehler-JSON und ersetzen einen alten gruenen Beleg durch den
+aktuellen roten Lauf. Syntax- und `argparse`-Choice-Fehler verwenden Exit 2;
+fachlich kategorisierte fehlende Eingaben behalten den vom jeweiligen Gate
+definierten Fehlercode. `--help` bleibt ein erfolgreicher Aufruf mit Exit 0 und
+startet keinen Gate-Lauf.
 
 | Gate | Kommando | Prüft |
 |---|---|---|
@@ -105,9 +137,9 @@ nie zur Warnung abgeschwächt.
 | O0 | `gates.abox_merge` | Zusammenführung der Extraktions-Fragmente zur A-Box |
 | O1 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
 | O3 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
-| P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (G-1, G-2, G-T); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, G-2 leitet die Scope-Pflichtbelege aus dem Gate-DAG ab |
-| B1 | `gates.bestand_validate` | Bestandsschema und Bewegungs-Identitäten je Jahr, Track und Maß |
-| G2-Vorlage | `gates.abnahmebericht` | bindet im Bestands-Scope B1, vollständige Suite, validierte Transformation und Vor-/Nachberichte auf Eingangs-, A-Box-, System- und Zwei-Stichtagsstand |
+| P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (G-1, G-2, G-T); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, G-2 verlangt die zum Fall-Scope passenden Pflichtbelege |
+| B1 | `gates.bestand_validate` | physisches Parquet-Schema ohne unbekannte Spalten, Basisstatus (`1`/`POL` zum Versicherungsbeginn am Monatsersten) und Bewegungs-Identitäten je Jahr, Track und Maß |
+| G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |
 
 Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
 (`tests/test_kern_algebraisch.py`: qx-Schranken, Barwert-Bilanz
@@ -215,15 +247,14 @@ python -m pip install -r requirements-dev.txt
 python -m pip install -e . --no-deps
 ```
 
-Die Suite endet mit vier Skips (`... passed, 4 skipped`): vier
-Regressionstests hängen an einem lokalen, nicht eingecheckten
-Fall-Arbeitsbereich
-(`faelle/archiv/baldrian-klv-tg2015`) und skippen überall dort, wo er
-fehlt — im frischen Clone, in der CI und auf jedem Rechner ohne diesen
-Fall. Der verpflichtende synthetische Test
-`tests/test_o3_g2_beweisvertrag.py` fährt unabhängig davon echte
-Vorverdichtung, O3 und G-2; die Skips betreffen weiterhin das separate
-archivierte TG2015-Szenario. Details in `ONBOARDING.md`, Abschnitt 5.
+Die Pflicht-E2E-Tests laufen auch im frischen Clone ohne lokalen
+Fall-Arbeitsbereich. Das kleine anonymisierte Fixture unter
+`tests/fixtures/o3_g2_minimal/` bindet die synthetische Quell-XLSM mit ihrem
+vollen SHA-256. `tests/test_o3_fixture_e2e.py` materialisiert daraus pro Test
+einen temporaeren Fall und prueft echte Vorverdichtung, Formel-Rueckcheck und
+O3; `tests/test_o3_g2_beweisvertrag.py` fuehrt denselben Belegpfad bis G-2.
+Fehlt oder driftet das Fixture, wird die Suite rot statt den E2E-Pfad zu
+ueberspringen. Details in `ONBOARDING.md`, Abschnitt 5.
 
 Einen Fall anlegen und die Pipeline fahren:
 
@@ -248,6 +279,27 @@ python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate G-1 \
     --entscheid angenommen --entscheider ... --begruendung ... --rolle mensch \
     --freigabe-schluessel /sicher/p9-freigabe.key
 ```
+
+Parallele `fall registrieren`-Aufrufe desselben Falls werden über eine
+fallbezogene Dateisperre serialisiert. `eingang.json` wird erst nach dem
+vollständigen Schreiben und Synchronisieren einer temporären Datei atomar
+ersetzt; dadurch verlieren konkurrierende Read-Modify-Write-Abläufe keine
+Quellen und Leser sehen nie ein teilweise geschriebenes Register.
+
+Der Tafelimport akzeptiert nur eine vollstaendige Exportkette: Das
+`export_manifest.json` muss die registrierte XLSM sowie die konkrete
+`Tafeln.csv` mit ihren vollstaendigen SHA-256-Werten binden. Fehlende Manifeste,
+alte Exporte oder nachtraeglich veraenderte Blatt-CSVs blockieren bereits den
+`--dry-run`; in diesem Fall die registrierte XLSM erneut mit G0 extrahieren.
+G0 plant die Dateinamen aller Blatt- und Folgeartefakte vor dem ersten
+Blattexport kollisionsfrei. Treffen bereinigte Blattnamen oder reservierte
+Folgenamen aufeinander, erhaelt der spaetere Kandidat einen deterministischen
+`__<n>`-Suffix; `sheet_artifacts` im Exportmanifest bindet jeden
+Originalblattnamen an seinen tatsaechlichen Dateinamen. Der Tafelimport loest
+das Originalblatt `Tafeln` ueber genau diese Bindung auf.
+Zusaetzlich muessen alle Altersvektoren exakt die eindeutigen ganzzahligen Alter
+0 bis 123 tragen; jeder qx-Wert muss endlich sein und in `[0,1]` liegen. Diese
+Invarianten werden beim Import und erneut beim Laden des Kern-XML erzwungen.
 
 `--rolle` ist bei beiden Kommandos Pflicht (ohne das Flag brechen sie
 mit Exit-Code 2 ab) und trägt die Grenze zwischen Mensch und Agent:

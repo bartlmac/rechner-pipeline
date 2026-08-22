@@ -25,7 +25,6 @@ Knoten: klv
 
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path
@@ -35,25 +34,33 @@ from rechner_pipeline.ontologie.abox import abox_pfad, lade, validate_abox
 from rechner_pipeline.ontologie.coverage import coverage_bericht
 from rechner_pipeline.gates._common import (
     Exit,
+    GateArgumentParser,
+    GateCliContract,
     add_request_json_arg,
+    begin_gate_ledger_attempt,
     build_result,
+    finalize_gate_ledger,
     hash_files,
-    log,
-    merge_request_into_args,
-    read_request_json,
+    parse_gate_args,
     run_command,
     utc_now,
-    write_gate_ledger,
 )
 
 GATE = "O1.abox-contract"
-GATE_VERSION = "0.2.0"
+GATE_VERSION = "0.3.0"
+CLI_CONTRACT = GateCliContract(
+    command="abox_validate",
+    gate=GATE,
+    gate_version=GATE_VERSION,
+    diagnostics_from="fall",
+)
 
 COVERAGE_DATEI = "coverage.json"
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+def _build_parser() -> GateArgumentParser:
+    parser = GateArgumentParser(
+        gate_contract=CLI_CONTRACT,
         prog="python -m rechner_pipeline.gates.abox_validate",
         description=(
             "Gate O1: A-Box eines Falls gegen T-Box-Contract, "
@@ -78,9 +85,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None):
     started_at = utc_now()
     parser = _build_parser()
-    args = parser.parse_args(argv)
-    request = read_request_json(args.request_json)
-    args = merge_request_into_args(args, request)
+    args = parse_gate_args(parser, argv)
 
     fall = Path(args.fall) if args.fall else None
     diagnostics_dir = (
@@ -88,20 +93,20 @@ def main(argv: Optional[List[str]] = None):
         else (fall / "abgeleitet" / "diagnostics" if fall
               else Path.cwd() / "runs" / "diagnostics")
     )
+    ledger_start_fehler = begin_gate_ledger_attempt(
+        command="abox_validate",
+        gate=GATE,
+        gate_version=GATE_VERSION,
+        diagnostics_dir=diagnostics_dir,
+        repo_root=Path(args.repo_root) if args.repo_root else None,
+        started_at=started_at,
+        command_line=argv if argv is not None else sys.argv[1:],
+    )
+    if ledger_start_fehler is not None:
+        return ledger_start_fehler
 
     def _finalize(result):
-        try:
-            write_gate_ledger(
-                result,
-                diagnostics_dir,
-                repo_root=Path(args.repo_root) if args.repo_root else None,
-                started_at=started_at,
-                ended_at=utc_now(),
-                command_line=argv if argv is not None else sys.argv[1:],
-            )
-        except Exception as exc:  # noqa: BLE001 — Ledger maskiert nie das Gate
-            log(f"abox_validate: gate-ledger write failed: {exc}")
-        return result
+        return finalize_gate_ledger(result)
 
     def _usage(errors: List[dict]):
         return _finalize(build_result(

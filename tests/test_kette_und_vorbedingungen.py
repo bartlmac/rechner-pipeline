@@ -14,7 +14,7 @@ from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates.abox_merge import main as merge_cli
 from rechner_pipeline.gates.abox_validate import main as o1
 from rechner_pipeline.gates.gate_entscheid import main as p9
-from rechner_pipeline.ontologie import PFLICHT_PARAMETER
+from rechner_pipeline.ontologie import PFLICHT_PARAMETER, belegt
 from rechner_pipeline.ontologie.abox import abox_pfad, lade, speichere
 from rechner_pipeline.ontologie.befuellung import loese_diskrepanz_auf
 from rechner_pipeline.ontologie.kette import fragmente_ordner, pruefe_kette
@@ -126,6 +126,88 @@ def test_kette_akzeptiert_dokumentierte_aufloesung(fall_mit_fragmenten):
     speichere(abox, f)
     assert any("entspricht nicht dem entschiedenen Wert" in b
                for b in pruefe_kette(f))
+
+
+def test_o1_akzeptiert_beleg_der_gewaehlten_lesart(fall_mit_fragmenten):
+    f = fall_mit_fragmenten
+    merge_cli(["--fall", str(f)])
+    abox = lade(f)
+    [diskrepanz] = abox.diskrepanzen
+    gewaehlte_lesart = next(
+        lesart for lesart in diskrepanz.lesarten if lesart.wert == 0.03
+    )
+
+    loese_diskrepanz_auf(
+        abox, diskrepanz.id, 0.03, "agent (vorlaeufig)", "GM-Zweck",
+        "2026-08-15T12:00:00+00:00", vorlaeufig=True,
+    )
+    speichere(abox, f)
+
+    result = o1(["--fall", str(f)])
+    assert result.exit_code == 0
+    aussage = lade(f).generationen[0].zellen[0].parameter["beta1"]
+    assert aussage.provenienz == gewaehlte_lesart.provenienz
+
+
+def test_o1_lehnt_beleg_der_verworfenen_lesart_ab(fall_mit_fragmenten):
+    f = fall_mit_fragmenten
+    merge_cli(["--fall", str(f)])
+    abox = lade(f)
+    [diskrepanz] = abox.diskrepanzen
+    verworfene_lesart = next(
+        lesart for lesart in diskrepanz.lesarten if lesart.wert == 0.025
+    )
+    loese_diskrepanz_auf(
+        abox, diskrepanz.id, 0.03, "agent (vorlaeufig)", "GM-Zweck",
+        "2026-08-15T12:00:00+00:00", vorlaeufig=True,
+    )
+    zelle = abox.generationen[0].zellen[0]
+    zelle.parameter["beta1"] = belegt(
+        0.03, list(verworfene_lesart.provenienz)
+    )
+    speichere(abox, f)
+
+    result = o1(["--fall", str(f)])
+    assert result.exit_code == 20
+    assert any(
+        error["code"] == "kette"
+        and "kein Beleg aus einer Lesart mit dem entschiedenen Wert" in
+        error["message"]
+        for error in result.errors
+    )
+
+
+def test_o1_lehnt_zusaetzlichen_beleg_der_verworfenen_lesart_ab(
+    fall_mit_fragmenten,
+):
+    f = fall_mit_fragmenten
+    merge_cli(["--fall", str(f)])
+    abox = lade(f)
+    [diskrepanz] = abox.diskrepanzen
+    gewaehlte_lesart = next(
+        lesart for lesart in diskrepanz.lesarten if lesart.wert == 0.03
+    )
+    verworfene_lesart = next(
+        lesart for lesart in diskrepanz.lesarten if lesart.wert == 0.025
+    )
+    loese_diskrepanz_auf(
+        abox, diskrepanz.id, 0.03, "agent (vorlaeufig)", "GM-Zweck",
+        "2026-08-15T12:00:00+00:00", vorlaeufig=True,
+    )
+    zelle = abox.generationen[0].zellen[0]
+    zelle.parameter["beta1"] = belegt(
+        0.03,
+        list(gewaehlte_lesart.provenienz + verworfene_lesart.provenienz),
+    )
+    speichere(abox, f)
+
+    result = o1(["--fall", str(f)])
+    assert result.exit_code == 20
+    assert any(
+        error["code"] == "kette"
+        and "Beleg einer verworfenen Lesart" in error["message"]
+        for error in result.errors
+    )
 
 
 def test_kette_faengt_manipulierte_fragmente(fall_mit_fragmenten):

@@ -29,11 +29,13 @@ Schluesselmaterial liegt ausserhalb des frei editierbaren Falls und wird nie
 in Snapshot oder Ledger geschrieben. Damit kann der Fall seine eigene
 menschliche Freigabe nicht behaupten.
 
-G-2 leitet seine Pflichtbelegrollen aus dem zentralen Gate-DAG des expliziten
-Fall-Scopes ab. Ein Tariffall braucht O1, G-1 und O3; ein Bestandsfall
-zusaetzlich den inhaltsadressierten Abnahmebericht-Scope-Beleg fuer B1,
-vollstaendige Suite, Transformation sowie Vor-/Nachberichte desselben
-Eingangs-, A-Box-, System- und Zwei-Stichtagsstands.
+G-2 leitet seine Pflichtbelegrollen aus dem expliziten Fall-Scope ab. Ein
+Tariffall braucht O1, G-1 und O3; ein Bestandsfall zusaetzlich den
+gruenen B1-Beleg, die vollstaendige Suite und den Abnahmebericht desselben
+Eingangs-, A-Box-, System-, Bestands- und Zwei-Stichtagsstands. G-2 validiert
+diese drei Rollen auf dem aktuellen Stand erneut. Im Abnahme-Ledger verlangt
+es ausserdem die vier festen Renderer-Artefaktrollen, prueft ihre aktuellen
+Bytes und leitet das Berichtsverdikt aus den gebundenen Inhalten neu ab.
 
 Run via::
 
@@ -47,7 +49,6 @@ Knoten: klv
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import hmac
 import json
@@ -59,18 +60,21 @@ from typing import Dict, List, Mapping, Optional, Tuple
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.gates._common import (
     Exit,
+    GateArgumentParser,
+    GateCliContract,
     add_request_json_arg,
+    begin_gate_ledger_attempt,
     build_result,
-    log,
-    merge_request_into_args,
-    read_request_json,
+    finalize_gate_ledger,
+    parse_gate_args,
     run_command,
     utc_now,
-    write_gate_ledger,
 )
 from rechner_pipeline.gates._fall_scope import (
-    SCOPE_BELEG_GLOB,
-    pruefe_scope_beleg,
+    bestands_belegrollen,
+    pruefe_artefakt_eintrag,
+    scope_bindung,
+    validate_scope_bindung,
 )
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GLOB,
@@ -89,6 +93,14 @@ from rechner_pipeline.models.schemas import (
 
 GATE_VERSION = P9_GATE_VERSION
 GUELTIGE_GATES = ("G-1", "G-2", "G-T")
+CLI_CONTRACT = GateCliContract(
+    command="gate_entscheid",
+    gate="P9.?",
+    gate_version=GATE_VERSION,
+    diagnostics_from="fall",
+    decision_gate_choices=GUELTIGE_GATES,
+    sensitive_options=("freigabe_schluessel",),
+)
 FREIGABE_SCHLUESSEL_MIN_BYTES = 32
 
 
@@ -221,33 +233,29 @@ def _snapshot_dateiname(gate: str, snapshot_sha256: str) -> str:
 
 
 def _pruefe_g2_snapshot_semantik(snapshot: dict) -> List[str]:
-    """Den aus Scope und DAG abgeleiteten Inhalt einer G-2-Annahme pruefen.
+    """Den aus dem Scope abgeleiteten Inhalt einer G-2-Annahme pruefen.
 
     Das paketweite P9-Schema prueft die JSON-Form. Die fachliche Rollenmenge
-    lebt dagegen absichtlich nur im zentralen Fall-DAG und wird deshalb hier
-    auch beim LESEN eines bestehenden Snapshots erneut abgeleitet. Sonst
-    koennte ein formal gueltiger, signierter Snapshot eine deklarierte
-    Bestandsrolle auslassen und dennoch als gueltige P9-Historie erscheinen.
+    wird deshalb hier auch beim LESEN eines bestehenden Snapshots erneut aus
+    dem Scope-Vertrag abgeleitet. Sonst koennte ein formal gueltiger,
+    signierter Snapshot eine Bestandsrolle auslassen und dennoch als gueltige
+    P9-Historie erscheinen.
     """
     if snapshot.get("gate") != "G-2" or snapshot.get("entscheid") != "angenommen":
         return []
     fehler: List[str] = []
-    if snapshot.get("gate_dag_version") != fall_mod.GATE_DAG_VERSION:
-        fehler.append(
-            "gate_dag_version stimmt nicht mit dem zentralen Gate-DAG ueberein"
-        )
     scope = snapshot.get("fall_scope")
     try:
         erwartete_rollen = fall_mod.g2_belegrollen(scope)
     except fall_mod.FallFehler as exc:
-        fehler.append(f"G-2-Scope/DAG ist ungueltig: {exc}")
+        fehler.append(f"G-2-Scope ist ungueltig: {exc}")
         return fehler
     pflichtbelege = snapshot.get("pflichtbelege")
     if isinstance(pflichtbelege, dict) and set(pflichtbelege) != set(
         erwartete_rollen
     ):
         fehler.append(
-            "pflichtbelege enthaelt nicht exakt die aus Scope und Gate-DAG "
+            "pflichtbelege enthaelt nicht exakt die aus dem Scope "
             f"abgeleiteten Rollen {erwartete_rollen}"
         )
     o3_belege = snapshot.get("o3_belege")
@@ -426,6 +434,23 @@ def _redigiere_schluessel_argv(argv: List[str]) -> List[str]:
     return redigiert
 
 
+def _json_typ_und_wertgleich(links: object, rechts: object) -> bool:
+    """JSON-Werte ohne die Python-Gleichheit von ``True`` und ``1`` pruefen."""
+    if type(links) is not type(rechts):
+        return False
+    if isinstance(links, dict):
+        return set(links) == set(rechts) and all(
+            _json_typ_und_wertgleich(links[name], rechts[name])
+            for name in links
+        )
+    if isinstance(links, list):
+        return len(links) == len(rechts) and all(
+            _json_typ_und_wertgleich(linker, rechter)
+            for linker, rechter in zip(links, rechts)
+        )
+    return links == rechts
+
+
 def _o3_eingangsabweichungen(
     beleg: dict,
     fall: Path,
@@ -456,69 +481,385 @@ def _o3_eingangsabweichungen(
     return abweichungen
 
 
-def _passender_bestands_scope_beleg(
+def _passende_bestandsbelege(
     *,
     diagnostics: Path,
     fall: Path,
     eingang_sha256: str,
     abox_sha256: str,
     system: Mapping[str, str],
-) -> Tuple[Optional[dict], List[str]]:
-    """Genau einen aktuellen, artefaktintegeren Bestandsbeleg laden."""
-    dateien = sorted(diagnostics.glob(SCOPE_BELEG_GLOB))
-    if not dateien:
-        return None, [
-            "kein Bestands-Scope-Beleg vorhanden; Abnahmebericht mit allen "
-            "DAG-Pflichtartefakten auf dem aktuellen Stand neu erzeugen"
-        ]
-    geladene: List[Tuple[Path, dict]] = []
-    fehler: List[str] = []
-    for pfad in dateien:
-        daten, beleg_fehler = pruefe_scope_beleg(pfad)
-        fehler.extend(beleg_fehler)
-        if daten is not None:
-            geladene.append((pfad, daten))
-    if fehler:
-        return None, fehler
+    repo_root: Path,
+) -> Tuple[Optional[Dict[str, str]], List[str]]:
+    """B1, Suite und Abnahmebericht auf dem aktuellen Stand neu validieren."""
+    from rechner_pipeline.gates import abnahmebericht
 
-    aktuelle_basis = {
-        "scope": "bestand",
-        "gate_dag_version": fall_mod.GATE_DAG_VERSION,
-        "eingang_sha256": eingang_sha256,
-        "abox_sha256": abox_sha256,
-        "system": dict(system),
-    }
-    kandidaten = [
-        (pfad, daten) for pfad, daten in geladene
-        if all(daten["bindung"].get(feld) == wert
-               for feld, wert in aktuelle_basis.items())
-    ]
-    if not kandidaten:
+    ledger_pfad = diagnostics / "abnahmebericht.gate.json"
+    if not ledger_pfad.is_file():
         return None, [
-            "kein Bestands-Scope-Beleg bindet den aktuellen Eingangs-, "
-            "A-Box-, System- und DAG-Stand"
+            "gruener Abnahmebericht-Beleg fehlt: abnahmebericht.gate.json"
         ]
-
-    gueltig: List[dict] = []
-    for pfad, daten in kandidaten:
-        erwartet = {**aktuelle_basis, "stichtage": daten["bindung"]["stichtage"]}
-        geprueft, beleg_fehler = pruefe_scope_beleg(
-            pfad,
-            fall=fall,
-            erwartete_bindung=erwartet,
-            pruefe_artefakte=True,
+    try:
+        ledger = GateLedgerEntry.from_dict(
+            json.loads(ledger_pfad.read_text(encoding="utf-8"))
         )
-        fehler.extend(beleg_fehler)
-        if geprueft is not None:
-            gueltig.append(geprueft)
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return None, [f"Abnahmebericht-Ledger ungueltig: {exc}"]
+
+    fehler: List[str] = []
+    erwartet = {
+        "gate": abnahmebericht.GATE,
+        "command": abnahmebericht.COMMAND,
+        "gate_version": abnahmebericht.GATE_VERSION,
+        "required": True,
+        "status": "passed",
+    }
+    for feld, wert in erwartet.items():
+        if getattr(ledger, feld) != wert:
+            fehler.append(
+                f"Abnahmebericht-Ledger.{feld} ist "
+                f"{getattr(ledger, feld)!r} statt {wert!r}"
+            )
+    if ledger.summary.get("exit_code") != 0:
+        fehler.append("Abnahmebericht-Ledger traegt keinen gruenen Exit-Code")
+
+    bindung = ledger.summary.get("scope_bindung")
+    bindungs_fehler = validate_scope_bindung(bindung)
+    fehler.extend(bindungs_fehler)
+    if isinstance(bindung, dict) and not bindungs_fehler:
+        aktuelle_basis = {
+            "scope": "bestand",
+            "eingang_sha256": eingang_sha256,
+            "abox_sha256": abox_sha256,
+            "system": dict(system),
+        }
+        for feld, wert in aktuelle_basis.items():
+            if bindung.get(feld) != wert:
+                fehler.append(
+                    f"Abnahmebericht.scope_bindung.{feld} weicht vom "
+                    "aktuellen Fallstand ab"
+                )
+        try:
+            erwartet_bindung = scope_bindung(
+                fall,
+                repo_root,
+                bindung["stichtage"][0],
+                bindung["stichtage"][1],
+            )
+        except (fall_mod.FallFehler, KeyError, IndexError, TypeError) as exc:
+            fehler.append(f"Abnahmebericht-Scope-Bindung ungueltig: {exc}")
+        else:
+            if bindung != erwartet_bindung:
+                fehler.append(
+                    "Abnahmebericht bindet nicht den aktuellen Eingangs-, "
+                    "A-Box-, System- und Stichtagsstand"
+                )
+
+    belege = ledger.summary.get("bestandsbelege")
+    rollen = bestands_belegrollen()
+    if not isinstance(belege, dict) or set(belege) != set(rollen):
+        fehler.append(f"Abnahmebericht muss exakt die Bestandsbelege {rollen} binden")
+        return None, fehler
+
+    pfade: Dict[str, Path] = {}
+    hashes: Dict[str, str] = {}
+    for rolle in rollen:
+        pfad, artefakt_fehler = pruefe_artefakt_eintrag(
+            fall, rolle, belege[rolle]
+        )
+        fehler.extend(artefakt_fehler)
+        if pfad is not None:
+            pfade[rolle] = pfad
+            hashes[rolle] = belege[rolle]["sha256"]
+
+    renderer_belege = ledger.summary.get("renderer_artefakte")
+    renderer_rollen = abnahmebericht.renderer_artefaktrollen()
+    if (
+        not isinstance(renderer_belege, dict)
+        or set(renderer_belege) != set(renderer_rollen)
+    ):
+        fehler.append(
+            "Abnahmebericht muss exakt die Renderer-Artefakte "
+            f"{renderer_rollen} binden"
+        )
+        return None, fehler
+
+    renderer_pfade: Dict[str, Path] = {}
+    for rolle in renderer_rollen:
+        pfad, artefakt_fehler = pruefe_artefakt_eintrag(
+            fall, rolle, renderer_belege[rolle]
+        )
+        fehler.extend(artefakt_fehler)
+        if pfad is not None:
+            renderer_pfade[rolle] = pfad
+
+    input_eintraege = {
+        rolle: eintrag
+        for rolle, eintrag in {
+            "b1_ledger": belege["b1_ledger"],
+            "migrationssuite": belege["migrationssuite"],
+            **renderer_belege,
+        }.items()
+        if isinstance(eintrag, dict)
+        and set(eintrag) == {"pfad", "sha256"}
+        and isinstance(eintrag.get("pfad"), str)
+        and isinstance(eintrag.get("sha256"), str)
+    }
+    if len(input_eintraege) == 6:
+        pfadnamen = [eintrag["pfad"] for eintrag in input_eintraege.values()]
+        if len(set(pfadnamen)) != len(pfadnamen):
+            fehler.append(
+                "Abnahmebericht-Eingangsrollen muessen eindeutige Pfade binden"
+            )
+        erwartete_input_hashes = {
+            eintrag["pfad"]: eintrag["sha256"]
+            for eintrag in input_eintraege.values()
+        }
+        if ledger.input_hashes != erwartete_input_hashes:
+            fehler.append(
+                "Abnahmebericht-Ledger.input_hashes muss exakt B1, Suite und "
+                "alle vier Renderer-Artefaktrollen binden"
+            )
+
+    bericht_eintrag = belege["abnahmebericht"]
+    output_hashes = ledger.summary.get("output_hashes")
+    erwartete_output_hashes: Dict[str, str] = {}
+    if (
+        isinstance(bericht_eintrag, dict)
+        and set(bericht_eintrag) == {"pfad", "sha256"}
+        and isinstance(bericht_eintrag.get("pfad"), str)
+        and isinstance(bericht_eintrag.get("sha256"), str)
+    ):
+        erwartete_output_hashes[bericht_eintrag["pfad"]] = bericht_eintrag[
+            "sha256"
+        ]
+    if (
+        not isinstance(output_hashes, dict)
+        or not erwartete_output_hashes
+        or output_hashes != erwartete_output_hashes
+    ):
+        fehler.append(
+            "Abnahmebericht-Ledger.output_hashes bindet den HTML-Bericht nicht"
+        )
+    if len(input_eintraege) == 6 and erwartete_output_hashes:
+        rollenpfade = [
+            eintrag["pfad"] for eintrag in input_eintraege.values()
+        ] + list(erwartete_output_hashes)
+        if len(set(rollenpfade)) != len(rollenpfade):
+            fehler.append(
+                "Abnahmebericht-Eingabe- und Outputrollen muessen "
+                "eindeutige Pfade binden"
+            )
+    physische_rollen = {
+        **{
+            rolle: pfade[rolle]
+            for rolle in ("b1_ledger", "migrationssuite")
+            if rolle in pfade
+        },
+        **renderer_pfade,
+        **(
+            {"abnahmebericht": pfade["abnahmebericht"]}
+            if "abnahmebericht" in pfade else {}
+        ),
+    }
+    if len(physische_rollen) == 7:
+        kollisionen = abnahmebericht._pfadrollen_kollisionen(physische_rollen)
+        if kollisionen:
+            fehler.append(
+                "Abnahmebericht-Eingabe- und Outputrollen muessen physisch "
+                "verschiedene Dateien binden; Kollision: "
+                + "; ".join(kollisionen)
+            )
+    if "abnahmebericht" in pfade and ledger.diagnostics_path != str(
+        pfade["abnahmebericht"]
+    ):
+        fehler.append(
+            "Abnahmebericht-Ledger.diagnostics_path bindet den Bericht nicht"
+        )
+
+    suite: Optional[dict] = None
+    if "migrationssuite" in pfade:
+        try:
+            suite_roh = json.loads(
+                pfade["migrationssuite"].read_text(encoding="utf-8")
+            )
+            if isinstance(suite_roh, dict):
+                suite = suite_roh
+            else:
+                fehler.append("Migrationssuite ist kein JSON-Objekt")
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            fehler.append(f"Migrationssuite unlesbar: {exc}")
+
+    erzeugung = ledger.summary.get("bericht_erzeugung")
+    erzeugung_fuer_pruefung = erzeugung
+    spec_roh: object = None
+    spec: object = None
+    transformation: object = None
+    if "spec" in renderer_pfade:
+        try:
+            spec_roh = json.loads(
+                renderer_pfade["spec"].read_text(encoding="utf-8")
+            )
+            spec = abnahmebericht.TransformationsSpec.model_validate(spec_roh)
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            fehler.append(
+                f"Gebundene Transformationsspecifikation ungueltig: {exc}"
+            )
+    if "transformation_ergebnis" in renderer_pfade:
+        try:
+            transformation = json.loads(
+                renderer_pfade["transformation_ergebnis"].read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            fehler.append(f"Gebundenes Transformationsergebnis unlesbar: {exc}")
+        else:
+            fehler.extend(
+                abnahmebericht._transformation_ergebnis_fehler(transformation)
+            )
+
+    if isinstance(erzeugung, dict):
+        if not _json_typ_und_wertgleich(erzeugung.get("spec"), spec_roh):
+            fehler.append(
+                "Abnahmebericht-Erzeugung.spec stimmt nicht typ- und wertgenau "
+                "mit der gebundenen Transformationsspecifikation ueberein"
+            )
+        if not _json_typ_und_wertgleich(
+            erzeugung.get("transformation_ergebnis"), transformation
+        ):
+            fehler.append(
+                "Abnahmebericht-Erzeugung.transformation_ergebnis stimmt nicht "
+                "typ- und wertgenau mit dem gebundenen Transformationsergebnis "
+                "ueberein"
+            )
+        for rolle in ("bestandsbericht_vor", "bestandsbericht_nach"):
+            eintrag = renderer_belege[rolle]
+            if (
+                isinstance(eintrag, dict)
+                and erzeugung.get(rolle) != eintrag.get("pfad")
+            ):
+                fehler.append(
+                    f"Abnahmebericht-Erzeugung.{rolle} bindet nicht die "
+                    f"Renderer-Artefaktrolle {rolle}"
+                )
+        erzeugung_fuer_pruefung = dict(erzeugung)
+        erzeugung_fuer_pruefung["spec"] = spec_roh
+        erzeugung_fuer_pruefung["transformation_ergebnis"] = transformation
+        for rolle in ("bestandsbericht_vor", "bestandsbericht_nach"):
+            eintrag = renderer_belege[rolle]
+            if isinstance(eintrag, dict):
+                erzeugung_fuer_pruefung[rolle] = eintrag.get("pfad")
+
+    if suite is not None:
+        suite_fehler = abnahmebericht._suite_fehler(suite)
+        fehler.extend(suite_fehler)
+        if not suite_fehler:
+            if (
+                isinstance(spec, abnahmebericht.TransformationsSpec)
+                and isinstance(transformation, dict)
+                and "spec" in renderer_pfade
+            ):
+                transformations_fehler, _, _ = (
+                    abnahmebericht._transformationsvertrag_fehler(
+                        fall=fall,
+                        spec_pfad=renderer_pfade["spec"],
+                        spec=spec,
+                        ergebnis=transformation,
+                        suite=suite,
+                    )
+                )
+                fehler.extend(transformations_fehler)
+            suite_summary = abnahmebericht._suite_zusammenfassung(suite)
+            for feld, erwartet in suite_summary.items():
+                gefunden = ledger.summary.get(feld)
+                if type(gefunden) is not type(erwartet) or gefunden != erwartet:
+                    fehler.append(
+                        f"Abnahmebericht-Ledger.summary.{feld} stimmt nicht "
+                        "mit der neu berechneten Migrationssuite ueberein"
+                    )
+            if suite_summary["suite_bestanden"] is not True:
+                fehler.append("Migrationssuite ist nicht bestanden")
+            if (
+                spec is not None
+                and isinstance(transformation, dict)
+                and len(renderer_pfade) == len(renderer_rollen)
+                and not abnahmebericht._transformation_ergebnis_fehler(
+                    transformation
+                )
+            ):
+                abnahme_summary = abnahmebericht._abnahme_zusammenfassung(
+                    suite=suite,
+                    spec=spec,
+                    transformation_ergebnis=transformation,
+                    bestandsbericht_vor=renderer_belege[
+                        "bestandsbericht_vor"
+                    ]["pfad"],
+                    bestandsbericht_nach=renderer_belege[
+                        "bestandsbericht_nach"
+                    ]["pfad"],
+                    fall=fall,
+                )
+                for feld, erwartet in abnahme_summary.items():
+                    gefunden = ledger.summary.get(feld)
+                    if not _json_typ_und_wertgleich(gefunden, erwartet):
+                        fehler.append(
+                            f"Abnahmebericht-Ledger.summary.{feld} stimmt nicht "
+                            "mit den gebundenen Renderer-Artefakten ueberein"
+                        )
+        if isinstance(bindung, dict) and isinstance(
+            bindung.get("stichtage"), list
+        ):
+            stichtage = bindung["stichtage"]
+            if len(stichtage) == 2:
+                fehler.extend(
+                    abnahmebericht._bestands_suite_fehler(
+                        suite,
+                        stichtag_1=stichtage[0],
+                        stichtag_2=stichtage[1],
+                        erwartetes_system=dict(system),
+                    )
+                )
+                if "abnahmebericht" in pfade:
+                    fehler.extend(
+                        abnahmebericht._bericht_fehler(
+                            erzeugung=erzeugung_fuer_pruefung,
+                            suite=suite,
+                            bericht_pfad=pfade["abnahmebericht"],
+                            erwartete_stichtage=stichtage,
+                            fall=fall,
+                        )
+                    )
+        if "b1_ledger" in pfade:
+            fehler.extend(
+                abnahmebericht._b1_fehler(
+                    ledger_pfad=pfade["b1_ledger"],
+                    fall=fall,
+                    repo_root=repo_root,
+                    suite=suite,
+                    erwartetes_system=dict(system),
+                )
+            )
+    if ledger.summary.get("suite_bestanden") is not True:
+        fehler.append(
+            "Abnahmebericht-Ledger ist nicht auf einer gruenen Suite erzeugt"
+        )
+    if ledger.summary.get("vollstaendig_geprueft") is not True:
+        fehler.append("Abnahmebericht-Ledger ist nicht vollstaendig geprueft")
+    if ledger.summary.get("bericht_bestanden") is not True:
+        fehler.append("Abnahmebericht-Ledger traegt kein bestandenes Berichtsverdikt")
+    if ledger.summary.get("abnahmehindernisse") != []:
+        fehler.append("Abnahmebericht-Ledger traegt offene Abnahmehindernisse")
+
     if fehler:
         return None, fehler
-    if len(gueltig) != 1:
-        return None, [
-            "Bestands-Scope braucht genau einen eindeutigen aktuellen Beleg; "
-            f"gefunden: {len(gueltig)}"
-        ]
-    return gueltig[0], []
+    hashes["abnahmebericht"] = _sha256_datei(ledger_pfad)
+    return hashes, []
 
 
 def entscheide_verzeichnis(fall: Path) -> Path:
@@ -568,7 +909,8 @@ def _artefakt_hashes(fall: Path, ausser_gate: str = "") -> Dict[str, str]:
 
 def main(argv: Optional[List[str]] = None):
     started_at = utc_now()
-    parser = argparse.ArgumentParser(
+    parser = GateArgumentParser(
+        gate_contract=CLI_CONTRACT,
         prog="python -m rechner_pipeline.gates.gate_entscheid",
         description="P9-Snapshot eines menschlichen Gates schreiben.",
     )
@@ -598,9 +940,7 @@ def main(argv: Optional[List[str]] = None):
     parser.add_argument("--repo-root", dest="repo_root", default=".")
     parser.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None)
     add_request_json_arg(parser)
-    args = parser.parse_args(argv)
-    request = read_request_json(args.request_json)
-    args = merge_request_into_args(args, request)
+    args = parse_gate_args(parser, argv)
 
     fall = Path(args.fall).resolve() if args.fall else None
     diagnostics_dir = (
@@ -609,28 +949,33 @@ def main(argv: Optional[List[str]] = None):
               else Path.cwd() / "runs" / "diagnostics")
     )
 
+    ledger_gate = args.gate if args.gate in GUELTIGE_GATES else None
     ledger_command = (
-        f"gate_entscheid_{args.gate.lower().replace('-', '')}"
-        if args.gate else "gate_entscheid"
+        f"gate_entscheid_{ledger_gate.lower().replace('-', '')}"
+        if ledger_gate else "gate_entscheid"
     )
+    ledger_gate_id = f"P9.{ledger_gate or '?'}"
+    redigierte_command_line = _redigiere_schluessel_argv(
+        list(argv if argv is not None else sys.argv[1:])
+    )
+    ledger_start_fehler = begin_gate_ledger_attempt(
+        command=ledger_command,
+        gate=ledger_gate_id,
+        gate_version=GATE_VERSION,
+        diagnostics_dir=diagnostics_dir,
+        repo_root=Path(args.repo_root) if args.repo_root else None,
+        started_at=started_at,
+        command_line=redigierte_command_line,
+    )
+    if ledger_start_fehler is not None:
+        return ledger_start_fehler
 
     def _finalize(result):
-        try:
-            write_gate_ledger(
-                result, diagnostics_dir,
-                repo_root=Path(args.repo_root) if args.repo_root else None,
-                started_at=started_at, ended_at=utc_now(),
-                command_line=_redigiere_schluessel_argv(
-                    list(argv if argv is not None else sys.argv[1:])
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001
-            log(f"gate_entscheid: gate-ledger write failed: {exc}")
-        return result
+        return finalize_gate_ledger(result)
 
     def _usage(message: str):
         return _finalize(build_result(
-            command=ledger_command, gate=f"P9.{args.gate or '?'}",
+            command=ledger_command, gate=ledger_gate_id,
             gate_version=GATE_VERSION, exit_code=Exit.USAGE,
             errors=[{"code": "usage", "message": message}],
         ))
@@ -974,25 +1319,25 @@ def main(argv: Optional[List[str]] = None):
             pflichtbelege["g1_snapshot"] = [g1_spitze["snapshot_sha256"]]
 
             if fall_scope == "bestand":
-                scope_beleg, scope_fehler = _passender_bestands_scope_beleg(
+                bestandsbelege, bestands_fehler = _passende_bestandsbelege(
                     diagnostics=diagnostics,
                     fall=fall,
                     eingang_sha256=eingang_hash,
                     abox_sha256=abox_hash,
                     system=entscheid_systemstand,
+                    repo_root=repo_root,
                 )
-                if scope_fehler or scope_beleg is None:
+                if bestands_fehler or bestandsbelege is None:
                     return _sperre(
                         "vorbedingung",
-                        "Annahme verweigert: Bestands-Scope-Beleg verletzt "
-                        "den DAG-/Provenienzvertrag: "
-                        + "; ".join(scope_fehler[:5])
-                        + " — B1, vollstaendige Migrationssuite, validierte "
-                        "Transformation, Vor-/Nachberichte und Abnahmebericht "
+                        "Annahme verweigert: Bestandsbelege verletzen "
+                        "den Beleg-/Provenienzvertrag: "
+                        + "; ".join(bestands_fehler[:5])
+                        + " — B1, vollstaendige Migrationssuite und Abnahmebericht "
                         "auf demselben Stand neu erzeugen",
                     )
-                for rolle, eintrag in scope_beleg["artefakte"].items():
-                    pflichtbelege[rolle] = [eintrag["sha256"]]
+                for rolle, beleg_sha256 in bestandsbelege.items():
+                    pflichtbelege[rolle] = [beleg_sha256]
 
             erwartete_rollen = fall_mod.g2_belegrollen(fall_scope or "")
             if set(pflichtbelege) != set(erwartete_rollen):
@@ -1000,7 +1345,7 @@ def main(argv: Optional[List[str]] = None):
                 fremde_rollen = sorted(set(pflichtbelege) - set(erwartete_rollen))
                 return _sperre(
                     "vorbedingung",
-                    "Annahme verweigert: aus dem Gate-DAG abgeleitete "
+                    "Annahme verweigert: aus dem Fall-Scope abgeleitete "
                     f"Pflichtbelege unvollstaendig; fehlen={fehlende_rollen}, "
                     f"fremd={fremde_rollen}",
                 )
@@ -1043,7 +1388,6 @@ def main(argv: Optional[List[str]] = None):
     if args.gate == "G-2":
         kern_inhalt["o3_belege"] = o3_belege
         kern_inhalt["fall_scope"] = fall_scope
-        kern_inhalt["gate_dag_version"] = fall_mod.GATE_DAG_VERSION
         kern_inhalt["pflichtbelege"] = pflichtbelege
     # Idempotenz gegen den GELTENDEN Snapshot: derselbe Entscheid auf
     # demselben Stand wird gemeldet, nicht dupliziert. Ein INHALTLICH
@@ -1117,7 +1461,6 @@ def main(argv: Optional[List[str]] = None):
     if args.gate == "G-2":
         ergebnis_summary["o3_belege"] = o3_belege
         ergebnis_summary["fall_scope"] = fall_scope
-        ergebnis_summary["gate_dag_version"] = fall_mod.GATE_DAG_VERSION
         ergebnis_summary["pflichtbelege"] = pflichtbelege
     return _finalize(build_result(
         command=ledger_command, gate=f"P9.{args.gate}",

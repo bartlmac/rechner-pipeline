@@ -224,9 +224,9 @@ Each gate is one command, writes one JSON to stdout plus a
 | O0 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
 | O1 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
 | O3 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state |
-| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (G-1, G-2, G-T); accepted decisions require an externally held HMAC key, and G-2 derives its exact evidence roles from the declared case scope and gate DAG; agents may only reject |
+| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (G-1, G-2, G-T); accepted decisions require an externally held HMAC key, and G-2 requires the evidence roles for the declared case scope; agents may only reject |
 | B1 | `gates.bestand_validate` | portfolio contract and movement identities |
-| G2 template | `gates.abnahmebericht` | for scope `bestand`, validates and content-addresses B1, complete suite, transformation, before/after reports and HTML report on one input/A-Box/code/two-date state |
+| G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds B1, the suite and HTML report on one state |
 
 An accepted P9 decision additionally requires
 `--freigabe-schluessel /secure/p9-approval.key`. The human operator keeps this
@@ -238,10 +238,13 @@ P9 revalidates the strict ledger/snapshot schemas, canonical content hash,
 full-hash filename, HMAC, predecessor existence, cycles, and the unique chain
 tip on every read (ADR-008).
 
-For G-2, `fall.json` also carries `scope.typ` (`tarif` or `bestand`) and the
-gate-DAG version. Missing declarations are never inferred from files. A tariff
-case requires no portfolio artifacts; a portfolio case requires the immutable
-scope proof written by `gates.abnahmebericht` (ADR-009).
+For G-2, `fall.json` also carries `scope.typ` (`tarif` or `bestand`). Missing
+declarations are never inferred from files. A tariff case requires no portfolio
+artifacts; a portfolio case requires a green B1 ledger, complete suite and HTML
+report bound by the green `abnahmebericht` ledger. G-2 rehashes their current
+bytes, reruns the B1 engines, revalidates the suite, and deterministically
+rerenders the report for a byte comparison instead of trusting that editable
+ledger (ADR-009).
 
 ## 5. Non-negotiables
 - **Deterministic and SDK-free** in `src/`: no network, no dynamic execution,
@@ -268,18 +271,13 @@ scope proof written by `gates.abnahmebericht` (ADR-009).
 - **Full suite before every commit** (`.venv/bin/python -m pytest`). The impact
   tool is informational — it never narrows what has to run. CI
   (`.github/workflows/tests.yml`) runs the full suite on every push and
-  pull request.
-  **What "green" does not cover:** four tests are bound to a local,
-  gitignored case workspace (`faelle/archiv/baldrian-klv-tg2015`) and
-  skip wherever it is absent — in CI, in a fresh clone, and on any
-  machine that has not got that case: `test_formeln.py:52`,
-  `test_review_fixes_v01.py:364` and `:382`, `test_tafel_import.py:126`.
-  A green run therefore reads "... passed, 4 skipped" everywhere except on
-  a machine carrying that archived case — if you quote a green suite as
-  evidence, say which of the two you ran. The mandatory synthetic
-  `tests/test_o3_g2_beweisvertrag.py` path independently runs real extraction,
-  O3 and G-2; the skipped tests still cover the separate archived TG2015
-  scenario and remain explicit rather than silently green.
+  pull request. The mandatory `tests/test_o3_fixture_e2e.py` job uses the
+  versioned, anonymised `tests/fixtures/o3_g2_minimal/` data and performs real
+  extraction, formula checking and O3 from a fresh temporary case. The
+  positive path in `tests/test_o3_g2_beweisvertrag.py` continues through G-2
+  on the same fixture contract. Missing or hash-drifted fixture input is a
+  hard failure, never a skip. Local and real case workspaces under `faelle/`
+  remain gitignored and are not a prerequisite for a green suite.
 - Direct dependencies pinned exactly (`pyproject.toml`), their transitive
   closure pinned in `requirements*.txt` (section 2); new dependencies only
   via ADR. Push is the human's job.

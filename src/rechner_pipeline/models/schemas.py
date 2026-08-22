@@ -67,8 +67,8 @@ __all__ = [
 DECISION_VALUES: tuple[str, ...] = ("accepted", "human_review_required", "failed")
 EXPECTATION_COVERAGE_VALUES: tuple[str, ...] = ("full", "sparse", "none")
 GATE_VERSION_DEFAULT = "1.0.0"
-P9_SNAPSHOT_SCHEMA_VERSION = 3
-P9_GATE_VERSION = "0.4.0"
+P9_SNAPSHOT_SCHEMA_VERSION = 4
+P9_GATE_VERSION = "0.5.0"
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
 P9_GATES: tuple[str, ...] = ("G-1", "G-2", "G-T")
 
@@ -437,7 +437,7 @@ class P9Snapshot:
         expected_fields = set(cls._BASE_FIELDS)
         if gate == "G-2":
             expected_fields.update({
-                "o3_belege", "fall_scope", "gate_dag_version", "pflichtbelege",
+                "o3_belege", "fall_scope", "pflichtbelege",
             })
         if data.get("entscheid") == "angenommen":
             expected_fields.add("freigabe")
@@ -513,11 +513,6 @@ class P9Snapshot:
         if gate == "G-2":
             if data.get("fall_scope") not in ("tarif", "bestand"):
                 errors.append("fall_scope must be 'tarif' or 'bestand'")
-            if (
-                not isinstance(data.get("gate_dag_version"), str)
-                or not data["gate_dag_version"]
-            ):
-                errors.append("gate_dag_version must be a non-empty string")
             pflichtbelege = data.get("pflichtbelege")
             if not isinstance(pflichtbelege, dict):
                 errors.append("pflichtbelege must be an object")

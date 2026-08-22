@@ -26,7 +26,6 @@ Knoten: system/assurance
 
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path
@@ -37,25 +36,34 @@ from rechner_pipeline.quellen.adapters.excel import ExcelAdapter, ExcelAdapterEr
 from rechner_pipeline.models.bundle import InputBundle
 from rechner_pipeline.gates._common import (
     Exit,
+    GateArgumentParser,
+    GateCliContract,
     ToolboxResult,
     add_request_json_arg,
+    begin_gate_ledger_attempt,
     build_result,
+    finalize_gate_ledger,
     hash_files,
     log,
-    merge_request_into_args,
-    read_request_json,
+    parse_gate_args,
     run_command,
     utc_now,
-    write_gate_ledger,
 )
 
-GATE_VERSION = "1.0.0"
+GATE = "G0.extraction-manifest"
+GATE_VERSION = "1.1.0"
 COMMAND = "extract"
+CLI_CONTRACT = GateCliContract(
+    command=COMMAND,
+    gate=GATE,
+    gate_version=GATE_VERSION,
+    diagnostics_from="out_dir",
+)
 
 #: Derived-artifact suffixes that must not survive a re-run. These
 #: are regenerated deterministically from the raw sheet CSVs; a stale copy left
-#: in the out-dir would be silently reused (``compress_exported_csvs`` reuses an
-#: existing ``_compressed.csv``) or globbed (``extract_all_pairs_in_info_dir``).
+#: in the out-dir could otherwise still be globbed by
+#: ``extract_all_pairs_in_info_dir`` as part of the current run.
 _STALE_DERIVED_SUFFIXES: tuple[str, ...] = (
     "_compressed.csv",
     "_scalar.json",
@@ -102,8 +110,9 @@ def _select_adapter(adapter: str, source: Path, backend: str) -> InputAdapter:
     raise ExcelAdapterError(f"Unsupported adapter {adapter!r} (expected 'auto' or 'excel').")
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+def _build_parser() -> GateArgumentParser:
+    parser = GateArgumentParser(
+        gate_contract=CLI_CONTRACT,
         prog="python -m rechner_pipeline.gates.extract",
         description="Extract one source document into the info_from_excel bundle.",
     )
@@ -141,10 +150,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     started_at = utc_now()
     parser = _build_parser()
-    args = parser.parse_args(argv)
-
-    request = read_request_json(args.request_json)
-    merge_request_into_args(args, request)
+    args = parse_gate_args(parser, argv)
 
     # Defaults applied only after request merge (flags/request win over these).
     repo_root = Path(args.repo_root) if args.repo_root else Path.cwd()
@@ -161,29 +167,25 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         diagnostics_dir = Path(args.out_dir) / "diagnostics"
     else:
         diagnostics_dir = Path.cwd() / "runs" / "diagnostics"
+    ledger_start_error = begin_gate_ledger_attempt(
+        command=COMMAND,
+        gate=GATE,
+        gate_version=GATE_VERSION,
+        diagnostics_dir=diagnostics_dir,
+        repo_root=repo_root,
+        started_at=started_at,
+        command_line=argv if argv is not None else sys.argv[1:],
+    )
+    if ledger_start_error is not None:
+        return ledger_start_error
 
     def _finalize(result: ToolboxResult) -> ToolboxResult:
-        """Write the gate-result ledger entry (side artifact) before returning.
-
-        Called on BOTH pass and fail paths. A ledger-write failure must never
-        mask the real command result, so it is logged and swallowed.
-        """
-        try:
-            write_gate_ledger(
-                result,
-                diagnostics_dir,
-                repo_root=repo_root,
-                started_at=started_at,
-                ended_at=utc_now(),
-                command_line=argv if argv is not None else sys.argv[1:],
-            )
-        except Exception as exc:  # noqa: BLE001 — never let the ledger break the gate
-            log(f"extract: gate-ledger write failed: {exc}")
-        return result
+        return finalize_gate_ledger(result)
 
     if not args.input:
         return _finalize(build_result(
             command=COMMAND,
+            gate=GATE,
             gate_version=GATE_VERSION,
             exit_code=Exit.EXTRACTION,
             errors=[_error("missing_input", "--input is required")],
@@ -192,6 +194,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     if not args.out_dir:
         return _finalize(build_result(
             command=COMMAND,
+            gate=GATE,
             gate_version=GATE_VERSION,
             exit_code=Exit.EXTRACTION,
             errors=[_error("missing_out_dir", "--out-dir is required")],

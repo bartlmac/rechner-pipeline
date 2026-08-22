@@ -4,11 +4,16 @@
 from __future__ import annotations
 
 import csv
-from pathlib import Path
+import json
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
-from rechner_pipeline.quellen.extract.excel import export_excel_infos
+from rechner_pipeline.quellen.extract.excel import (
+    ExportArtifactTargetError,
+    export_excel_infos,
+    sheet_artifact_filenames,
+)
 from rechner_pipeline.quellen.extract.openpyxl_backend import _strip_vba_attribute_lines
 
 
@@ -43,6 +48,49 @@ def test_export_excel_infos_unknown_backend_raises(tmp_path: Path):
     fake.write_bytes(b"not really excel")
     with pytest.raises(ValueError, match="Unknown export backend"):
         export_excel_infos(fake, tmp_path / "out", backend="gnumeric")
+
+
+def test_sheet_artifact_names_cover_portable_and_derived_collisions():
+    assert sheet_artifact_filenames(
+        [
+            "Tarif",
+            "tarif",
+            "é",
+            "e\u0301",
+            "Tarif_table_values",
+            "names_manager",
+            "intern_compressed_name",
+        ]
+    ) == [
+        "Tarif.csv",
+        "tarif__2.csv",
+        "é.csv",
+        "e\u0301__2.csv",
+        "Tarif_table_values__2.csv",
+        "names_manager__2.csv",
+        "intern_compressed_name.csv",
+    ]
+    assert sheet_artifact_filenames(
+        [
+            "intern_compressed",
+            "intern_table_values",
+            "intern_address_values",
+            "intern_compressed_name",
+        ]
+    ) == [
+        "intern_compressed__2.csv",
+        "intern_table_values__2.csv",
+        "intern_address_values__2.csv",
+        "intern_compressed_name.csv",
+    ]
+
+    windows_reserved = sheet_artifact_filenames(
+        ["CON", "CON.txt", "AUX", "NUL", "COM1", "LPT9"]
+    )
+    assert not any(PureWindowsPath(name).is_reserved() for name in windows_reserved)
+    assert len(windows_reserved) == len(
+        {name.casefold() for name in windows_reserved}
+    )
 
 
 # --- openpyxl-abhaengig ----------------------------------------------------
@@ -140,6 +188,199 @@ def test_no_cache_warning_when_no_formulas(tmp_path: Path):
     export_all_sheets(wbf, wbv, out_dir, warnings=warnings)
 
     assert warnings == []  # nur Literale -> keine Formel-ohne-Cache-Warnung
+
+
+def test_colliding_cleaned_sheet_names_get_distinct_manifest_bound_artifacts(
+    tmp_path: Path,
+):
+    openpyxl = pytest.importorskip("openpyxl")
+    pytest.importorskip("oletools")
+    pytest.importorskip("pandas")
+
+    xlsx = tmp_path / "colliding.xlsx"
+    wb = openpyxl.Workbook()
+    first = wb.active
+    first.title = "Tarif<Alt"
+    first["A1"] = "first"
+    second = wb.create_sheet("Tarif>Alt")
+    second["A1"] = "second"
+    wb.save(xlsx)
+
+    out_dir = tmp_path / "out"
+    manifest = export_excel_infos(xlsx, out_dir, backend="openpyxl")
+
+    expected_binding = [
+        {"original_name": "Tarif<Alt", "file_name": "Tarif_Alt.csv"},
+        {"original_name": "Tarif>Alt", "file_name": "Tarif_Alt__2.csv"},
+    ]
+    assert manifest["sheet_artifacts"] == expected_binding
+    persisted = json.loads(
+        (out_dir / "export_manifest.json").read_text(encoding="utf-8")
+    )
+    assert persisted["sheet_artifacts"] == expected_binding
+
+    with (out_dir / "Tarif_Alt.csv").open(encoding="utf-8", newline="") as f:
+        first_rows = list(csv.reader(f, delimiter=";"))
+    with (out_dir / "Tarif_Alt__2.csv").open(
+        encoding="utf-8", newline=""
+    ) as f:
+        second_rows = list(csv.reader(f, delimiter=";"))
+    assert first_rows[1] == ["Tarif<Alt", "$A$1", "first", "first"]
+    assert second_rows[1] == ["Tarif>Alt", "$A$1", "second", "second"]
+
+
+def test_derived_artifact_cannot_overwrite_another_sheet_csv(tmp_path: Path):
+    openpyxl = pytest.importorskip("openpyxl")
+    pytest.importorskip("oletools")
+    pytest.importorskip("pandas")
+
+    xlsx = tmp_path / "derived-collision.xlsx"
+    wb = openpyxl.Workbook()
+    first = wb.active
+    first.title = "Tarif"
+    first["A1"] = "label"
+    first["B1"] = "=1+1"
+    second = wb.create_sheet("Tarif_table_values")
+    second["A1"] = "SECOND-SHEET-MARKER"
+    wb.save(xlsx)
+
+    out_dir = tmp_path / "out"
+    manifest = export_excel_infos(xlsx, out_dir, backend="openpyxl")
+
+    assert manifest["sheet_artifacts"] == [
+        {"original_name": "Tarif", "file_name": "Tarif.csv"},
+        {
+            "original_name": "Tarif_table_values",
+            "file_name": "Tarif_table_values__2.csv",
+        },
+    ]
+    with (out_dir / "Tarif_table_values__2.csv").open(
+        encoding="utf-8", newline=""
+    ) as f:
+        rows = list(csv.reader(f, delimiter=";"))
+    assert rows[1] == [
+        "Tarif_table_values",
+        "$A$1",
+        "SECOND-SHEET-MARKER",
+        "SECOND-SHEET-MARKER",
+    ]
+
+
+def test_names_manager_sheet_cannot_collide_with_special_export(tmp_path: Path):
+    openpyxl = pytest.importorskip("openpyxl")
+    pytest.importorskip("oletools")
+    pytest.importorskip("pandas")
+
+    xlsx = tmp_path / "names-manager-collision.xlsx"
+    wb = openpyxl.Workbook()
+    sheet = wb.active
+    sheet.title = "names_manager"
+    sheet["A1"] = "SHEET-MARKER"
+    wb.defined_names.add(
+        openpyxl.workbook.defined_name.DefinedName(
+            "meinWert",
+            attr_text="names_manager!$A$1",
+        )
+    )
+    wb.save(xlsx)
+
+    out_dir = tmp_path / "out"
+    manifest = export_excel_infos(xlsx, out_dir, backend="openpyxl")
+
+    assert manifest["sheet_artifacts"] == [
+        {"original_name": "names_manager", "file_name": "names_manager__2.csv"}
+    ]
+    with (out_dir / "names_manager__2.csv").open(
+        encoding="utf-8", newline=""
+    ) as f:
+        sheet_rows = list(csv.reader(f, delimiter=";"))
+    with (out_dir / "names_manager.csv").open(encoding="utf-8", newline="") as f:
+        manager_rows = list(csv.reader(f, delimiter=";"))
+    assert sheet_rows[1][0] == "names_manager"
+    assert sheet_rows[1][3] == "SHEET-MARKER"
+    assert manager_rows[0][0] == "Name"
+
+
+@pytest.mark.parametrize("link_art", ["symlink", "hardlink"])
+def test_sheet_export_rejects_preexisting_link_aliases_before_writing(
+    tmp_path: Path,
+    link_art: str,
+):
+    openpyxl = pytest.importorskip("openpyxl")
+    from rechner_pipeline.quellen.extract.openpyxl_backend import export_all_sheets
+
+    xlsx = tmp_path / "links.xlsx"
+    wb = openpyxl.Workbook()
+    first = wb.active
+    first.title = "Tarif<Alt"
+    first["A1"] = "first"
+    second = wb.create_sheet("Tarif>Alt")
+    second["A1"] = "second"
+    wb.save(xlsx)
+    wbf, wbv = _load_pair(xlsx)
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    victim = tmp_path / "victim.csv"
+    victim.write_text("UNCHANGED", encoding="utf-8")
+    targets = [out_dir / "Tarif_Alt.csv", out_dir / "Tarif_Alt__2.csv"]
+    try:
+        for target in targets:
+            if link_art == "symlink":
+                target.symlink_to(victim)
+            else:
+                target.hardlink_to(victim)
+    except OSError as exc:
+        pytest.skip(f"{link_art} is unavailable on this filesystem: {exc}")
+
+    with pytest.raises(ExportArtifactTargetError, match=link_art):
+        export_all_sheets(wbf, wbv, out_dir)
+
+    assert victim.read_text(encoding="utf-8") == "UNCHANGED"
+
+
+def test_sheet_export_does_not_follow_symlink_inserted_after_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    openpyxl = pytest.importorskip("openpyxl")
+    from rechner_pipeline.quellen.extract import openpyxl_backend
+
+    xlsx = tmp_path / "race.xlsx"
+    wb = openpyxl.Workbook()
+    first = wb.active
+    first.title = "Tarif<Alt"
+    first["A1"] = "first"
+    second = wb.create_sheet("Tarif>Alt")
+    second["A1"] = "second"
+    wb.save(xlsx)
+    wbf, wbv = _load_pair(xlsx)
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    victim = tmp_path / "victim.csv"
+    victim.write_text("UNCHANGED", encoding="utf-8")
+    second_target = out_dir / "Tarif_Alt__2.csv"
+    real_preflight = openpyxl_backend._ensure_safe_artifact_targets
+
+    def preflight_then_insert_symlink(path: Path, filenames) -> None:
+        real_preflight(path, filenames)
+        second_target.symlink_to(victim)
+
+    monkeypatch.setattr(
+        openpyxl_backend,
+        "_ensure_safe_artifact_targets",
+        preflight_then_insert_symlink,
+    )
+
+    exported = openpyxl_backend.export_all_sheets(wbf, wbv, out_dir)
+
+    assert victim.read_text(encoding="utf-8") == "UNCHANGED"
+    assert not second_target.is_symlink()
+    with second_target.open(encoding="utf-8", newline="") as f:
+        rows = list(csv.reader(f, delimiter=";"))
+    assert rows[1] == ["Tarif>Alt", "$A$1", "second", "second"]
+    assert exported[1] == second_target
 
 
 def test_export_name_manager_resolves_single_cell_value(tmp_path: Path):

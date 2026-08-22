@@ -87,6 +87,31 @@ def _ist_sdk(name: str) -> bool:
     )
 
 
+def _exakt_geschriebene_datei(src: Path, teile: List[str]) -> Optional[Path]:
+    """Datei nur bei exakt passenden Namen aller Pfadsegmente liefern.
+
+    ``Path.is_file()`` folgt der Semantik des Dateisystems und akzeptiert
+    deshalb auf ueblichen macOS-Volumes auch einen anders geschriebenen
+    Namen. Fuer Python-Modulnamen ist die Schreibweise dagegen Teil der
+    Identitaet. Die Verzeichnis-Eintraege tragen die tatsaechlichen Namen;
+    der segmentweise Vergleich macht die Aufloesung plattformunabhaengig.
+    """
+    aktuell = src
+    for teil in teile:
+        try:
+            treffer = next(
+                (eintrag for eintrag in aktuell.iterdir()
+                 if eintrag.name == teil),
+                None,
+            )
+        except OSError:
+            return None
+        if treffer is None:
+            return None
+        aktuell = treffer
+    return aktuell if aktuell.is_file() else None
+
+
 def _modulpfad(dotted: str, src: Path) -> Optional[str]:
     """``rechner_pipeline.kern.tafeln`` -> ``rechner_pipeline/kern/tafeln.py``.
 
@@ -96,12 +121,15 @@ def _modulpfad(dotted: str, src: Path) -> Optional[str]:
     teile = dotted.split(".")
     if teile[0] != PAKET:
         return None
-    rel = Path(*teile[1:])
-    kandidat = src / rel.with_suffix(".py") if teile[1:] else None
-    if kandidat is not None and kandidat.is_file():
+    kandidat = (
+        _exakt_geschriebene_datei(
+            src, [*teile[1:-1], f"{teile[-1]}.py"])
+        if teile[1:] else None
+    )
+    if kandidat is not None:
         return str(kandidat.relative_to(src.parent))
-    init = src / rel / "__init__.py"
-    if init.is_file():
+    init = _exakt_geschriebene_datei(src, [*teile[1:], "__init__.py"])
+    if init is not None:
         return str(init.relative_to(src.parent))
     return None
 

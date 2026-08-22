@@ -12,6 +12,8 @@ module to obey one contract:
 * The result object carries the common contract fields.
 * SHA-256 helpers (:func:`file_sha256`, :func:`text_sha256`, :func:`hash_files`)
   feed ``input_hashes`` / ``output_hashes``.
+* Gate ledgers use a red start marker and atomic final replacement, so a crash
+  or evidence-write failure can never leave a previous green run current.
 
 This module contains **no gate logic** — only the contract surface.
 
@@ -20,13 +22,16 @@ Knoten: klv, system/assurance
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import json
 import logging
 import os
 import sys
+import tempfile
 import traceback
 import warnings
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -51,6 +56,9 @@ __all__ = [
     "REPO_ROOT",
     "repo_root",
     "run_command",
+    "GateArgumentParser",
+    "GateCliContract",
+    "parse_gate_args",
     "emit_json",
     "emit_result",
     "get_logger",
@@ -63,6 +71,8 @@ __all__ = [
     "hash_files",
     "status_for_exit",
     "GATE_LEDGER_SUFFIX",
+    "begin_gate_ledger_attempt",
+    "finalize_gate_ledger",
     "write_gate_ledger",
     "force_utf8_stream",
     "utc_now",
@@ -316,6 +326,156 @@ MainCallable = Callable[
 ]
 
 
+@dataclass(frozen=True)
+class GateCliContract:
+    """Metadata needed to evidence an argument error before a gate starts.
+
+    ``argparse`` normally exits before a command body can resolve its ledger
+    directory.  Keeping the small amount of routing metadata on the parser
+    lets :func:`run_command` turn that early exit into the same structured
+    result and current red ledger used by later usage failures.
+    """
+
+    command: str
+    gate: str
+    gate_version: str
+    diagnostics_from: Optional[str] = None
+    decision_gate_choices: Tuple[str, ...] = ()
+    sensitive_options: Tuple[str, ...] = ()
+
+
+class GateArgumentError(ValueError):
+    """An ``argparse`` or request-JSON usage error of a gate command."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        contract: GateCliContract,
+        namespace: Optional[argparse.Namespace] = None,
+    ) -> None:
+        super().__init__(message)
+        self.contract = contract
+        self.namespace = namespace
+
+
+class GateArgumentParser(argparse.ArgumentParser):
+    """Argument parser whose failures are finalized by ``run_command``.
+
+    The inherited help action deliberately keeps its normal ``SystemExit(0)``
+    path.  Only parser errors are converted to :class:`GateArgumentError`.
+    """
+
+    def __init__(
+        self,
+        *args: Any,
+        gate_contract: GateCliContract,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.gate_contract = gate_contract
+
+    def error(self, message: str) -> None:
+        raise GateArgumentError(message, contract=self.gate_contract)
+
+
+def _argv_option(argv: List[str], dest: str) -> Optional[str]:
+    """Read the last simple store-option value without invoking argparse."""
+    option = "--" + dest.replace("_", "-")
+    found: Optional[str] = None
+    for index, token in enumerate(argv):
+        if token.startswith(option + "="):
+            found = token.split("=", 1)[1]
+        elif token == option and index + 1 < len(argv):
+            candidate = argv[index + 1]
+            if not candidate.startswith("--"):
+                found = candidate
+    return found
+
+
+def _argument_value(
+    error: GateArgumentError,
+    argv: List[str],
+    dest: str,
+) -> Optional[str]:
+    namespace = error.namespace
+    if namespace is not None:
+        value = getattr(namespace, dest, None)
+        if value is not None and not isinstance(value, (list, dict)):
+            return str(value)
+    return _argv_option(argv, dest)
+
+
+def _redact_argv(argv: List[str], sensitive_options: Tuple[str, ...]) -> List[str]:
+    """Redact values of configured CLI options before ledger persistence."""
+    redacted = list(argv)
+    for dest in sensitive_options:
+        option = "--" + dest.replace("_", "-")
+        hide_next = False
+        for index, token in enumerate(redacted):
+            if hide_next:
+                redacted[index] = "<extern-redigiert>"
+                hide_next = False
+            elif token == option:
+                hide_next = True
+            elif token.startswith(option + "="):
+                redacted[index] = option + "=<extern-redigiert>"
+    return redacted
+
+
+def _argument_error_result(
+    error: GateArgumentError,
+    argv: List[str],
+) -> "ToolboxResult":
+    """Persist and return the structured usage result for an early parse error."""
+    contract = error.contract
+    diagnostics_raw = _argument_value(error, argv, "diagnostics_dir")
+    if diagnostics_raw:
+        diagnostics_dir = Path(diagnostics_raw)
+    else:
+        parent_raw = (
+            _argument_value(error, argv, contract.diagnostics_from)
+            if contract.diagnostics_from
+            else None
+        )
+        if parent_raw and contract.diagnostics_from == "fall":
+            diagnostics_dir = Path(parent_raw) / "abgeleitet" / "diagnostics"
+        elif parent_raw and contract.diagnostics_from == "out_dir":
+            diagnostics_dir = Path(parent_raw) / "diagnostics"
+        else:
+            diagnostics_dir = Path.cwd() / "runs" / "diagnostics"
+
+    command = contract.command
+    gate = contract.gate
+    decision_gate = _argument_value(error, argv, "gate")
+    if decision_gate in contract.decision_gate_choices:
+        command = f"{command}_{decision_gate.lower().replace('-', '')}"
+        gate = f"P9.{decision_gate}"
+
+    result = build_result(
+        command=command,
+        gate=gate,
+        gate_version=contract.gate_version,
+        exit_code=Exit.USAGE,
+        errors=[{"code": "usage", "message": str(error)}],
+    )
+    ledger_start_error = begin_gate_ledger_attempt(
+        command=command,
+        gate=gate,
+        gate_version=contract.gate_version,
+        diagnostics_dir=diagnostics_dir,
+        repo_root=(
+            Path(repo_root_raw)
+            if (repo_root_raw := _argument_value(error, argv, "repo_root"))
+            else None
+        ),
+        command_line=_redact_argv(argv, contract.sensitive_options),
+    )
+    if ledger_start_error is not None:
+        return ledger_start_error
+    return finalize_gate_ledger(result)
+
+
 def _coerce_result(
     value: Union["ToolboxResult", Tuple["ToolboxResult", int]],
 ) -> "ToolboxResult":
@@ -365,6 +525,7 @@ def run_command(
 
     real_stdout = sys.stdout
     command_name = getattr(main_callable, "__module__", "toolbox").rsplit(".", 1)[-1]
+    command_argv = list(argv if argv is not None else sys.argv[1:])
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -374,14 +535,24 @@ def run_command(
             try:
                 with contextlib.redirect_stdout(sys.stderr):
                     result = _coerce_result(main_callable(argv))
+            except GateArgumentError as exc:
+                result = _argument_error_result(exc, command_argv)
             except SystemExit:
-                # argparse / explicit SystemExit: re-raise so the caller sees it.
+                # argparse --help / explicit SystemExit: keep its successful
+                # help path separate from the structured gate-result contract.
                 raise
             except BaseException as exc:  # noqa: BLE001 — convert to INTERNAL result
                 traceback.print_exc(file=sys.stderr)
+                active_attempt = _ACTIVE_GATE_LEDGER_ATTEMPT.get()
                 result = build_result(
-                    command=command_name,
-                    gate_version="0.0.0",
+                    command=(
+                        active_attempt.command if active_attempt else command_name
+                    ),
+                    gate=(active_attempt.gate if active_attempt else None),
+                    gate_version=(
+                        active_attempt.gate_version
+                        if active_attempt else "0.0.0"
+                    ),
                     status=STATUS_FAILED,
                     exit_code=Exit.INTERNAL,
                     errors=[
@@ -393,6 +564,15 @@ def run_command(
                     ],
                     repair_hints=[],
                 )
+                if active_attempt is not None:
+                    result = finalize_gate_ledger(result)
+
+            # A command that began a ledger attempt but returned without its
+            # gate-local finalizer must still replace the red start marker with
+            # the actual result. This is also a safety net for newly added
+            # early-return paths.
+            if _ACTIVE_GATE_LEDGER_ATTEMPT.get() is not None:
+                result = finalize_gate_ledger(result)
 
             # Emit the single JSON object INSIDE the protected region so any
             # emit failure (e.g. an encoding error :func:`emit_json` could not
@@ -663,6 +843,29 @@ def merge_request_into_args(args: Any, request: Mapping[str, Any]) -> Any:
     return args
 
 
+def parse_gate_args(
+    parser: GateArgumentParser,
+    argv: Optional[List[str]],
+) -> argparse.Namespace:
+    """Parse flags and the optional request object under the gate contract.
+
+    Parser failures and unreadable or malformed request JSON become one typed
+    usage error.  :func:`run_command` catches that error, writes the current red
+    gate ledger and emits exactly one structured result on stdout.  ``--help``
+    remains the parser's untouched successful ``SystemExit(0)`` path.
+    """
+    args = parser.parse_args(argv)
+    try:
+        request = read_request_json(args.request_json)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise GateArgumentError(
+            f"ungueltiges --request-json: {exc}",
+            contract=parser.gate_contract,
+            namespace=args,
+        ) from exc
+    return merge_request_into_args(args, request)
+
+
 # --------------------------------------------------------------------------- #
 # Hashing helpers for input_hashes / output_hashes
 # --------------------------------------------------------------------------- #
@@ -894,8 +1097,179 @@ def write_gate_ledger(
     diag_dir = Path(diagnostics_dir)
     diag_dir.mkdir(parents=True, exist_ok=True)
     out_path = diag_dir / f"{result.command}{GATE_LEDGER_SUFFIX}"
-    out_path.write_text(
-        json.dumps(entry.to_dict(), ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    payload = json.dumps(entry.to_dict(), ensure_ascii=False, indent=2) + "\n"
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{out_path.name}.", suffix=".tmp", dir=diag_dir
     )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            fd = -1
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, out_path)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        with contextlib.suppress(FileNotFoundError):
+            temp_path.unlink()
     return out_path
+
+
+@dataclass(frozen=True)
+class _GateLedgerAttempt:
+    """Write context for the one active gate invocation in this context."""
+
+    command: str
+    gate: str
+    gate_version: str
+    diagnostics_dir: Path
+    repo_root: Optional[Path]
+    started_at: str
+    command_line: Tuple[str, ...]
+
+
+_ACTIVE_GATE_LEDGER_ATTEMPT: ContextVar[Optional[_GateLedgerAttempt]] = ContextVar(
+    "active_gate_ledger_attempt", default=None
+)
+
+
+def _ledger_write_failure(
+    result: "ToolboxResult", exc: BaseException
+) -> "ToolboxResult":
+    """Turn an unavailable current ledger into a blocking gate result."""
+    return build_result(
+        command=result.command,
+        gate=result.gate,
+        gate_version=result.gate_version,
+        exit_code=Exit.INTERNAL,
+        paths=result.paths,
+        summary={
+            "gate_ledger_written": False,
+            "gate_result_status": result.status,
+            "gate_result_exit_code": result.exit_code,
+        },
+        input_hashes=result.input_hashes,
+        output_hashes=result.output_hashes,
+        errors=[
+            *result.errors,
+            {
+                "code": "gate_ledger",
+                "type": type(exc).__name__,
+                "message": f"Aktueller Gate-Beleg konnte nicht geschrieben werden: {exc}",
+            },
+        ],
+        repair_hints=result.repair_hints,
+        warnings=result.warnings,
+        metrics=result.metrics,
+        diagnostics_path=result.diagnostics_path,
+    )
+
+
+def begin_gate_ledger_attempt(
+    *,
+    command: str,
+    gate: str,
+    gate_version: str,
+    diagnostics_dir: Union[str, Path],
+    repo_root: Optional[Path] = None,
+    started_at: Optional[str] = None,
+    command_line: Optional[Iterable[str]] = None,
+) -> Optional["ToolboxResult"]:
+    """Invalidate an older latest ledger and persist a red start marker.
+
+    The marker is written before gate work that may raise unexpectedly. Thus a
+    crash can never leave the previous green ``<command>.gate.json`` as the
+    apparent current evidence. Failure to invalidate or write the marker is
+    itself a blocking INTERNAL result.
+    """
+    active = _ACTIVE_GATE_LEDGER_ATTEMPT.get()
+    if active is not None:
+        if (
+            active.command == command
+            and active.gate == gate
+            and active.gate_version == gate_version
+            and active.diagnostics_dir == Path(diagnostics_dir)
+        ):
+            return None
+        _ACTIVE_GATE_LEDGER_ATTEMPT.set(None)
+        return _ledger_write_failure(
+            build_result(
+                command=command,
+                gate=gate,
+                gate_version=gate_version,
+                exit_code=Exit.INTERNAL,
+            ),
+            RuntimeError(
+                f"Gate-Ledger-Lauf {active.command!r} ist noch aktiv"
+            ),
+        )
+    started = started_at or utc_now()
+    attempt = _GateLedgerAttempt(
+        command=command,
+        gate=gate,
+        gate_version=gate_version,
+        diagnostics_dir=Path(diagnostics_dir),
+        repo_root=repo_root,
+        started_at=started,
+        command_line=tuple(command_line or ()),
+    )
+    _ACTIVE_GATE_LEDGER_ATTEMPT.set(attempt)
+    marker = build_result(
+        command=command,
+        gate=gate,
+        gate_version=gate_version,
+        exit_code=Exit.INTERNAL,
+        summary={"gate_attempt_started": True},
+        errors=[{
+            "code": "gate_attempt_incomplete",
+            "message": "Gate-Lauf begonnen, aber noch nicht abgeschlossen",
+        }],
+    )
+    out_path = attempt.diagnostics_dir / f"{command}{GATE_LEDGER_SUFFIX}"
+    try:
+        attempt.diagnostics_dir.mkdir(parents=True, exist_ok=True)
+        if out_path.exists() or out_path.is_symlink():
+            out_path.unlink()
+        write_gate_ledger(
+            marker,
+            attempt.diagnostics_dir,
+            repo_root=attempt.repo_root,
+            started_at=attempt.started_at,
+            ended_at=utc_now(),
+            command_line=attempt.command_line,
+        )
+    except Exception as exc:  # noqa: BLE001 — evidence failure is the result
+        _ACTIVE_GATE_LEDGER_ATTEMPT.set(None)
+        log(f"{command}: gate-ledger start failed: {exc}")
+        return _ledger_write_failure(marker, exc)
+    return None
+
+
+def finalize_gate_ledger(result: "ToolboxResult") -> "ToolboxResult":
+    """Atomically replace the active marker with *result*.
+
+    A write failure never preserves a green command result: the caller gets an
+    INTERNAL failure, while the already persisted red marker remains current.
+    """
+    attempt = _ACTIVE_GATE_LEDGER_ATTEMPT.get()
+    if attempt is None:
+        return _ledger_write_failure(
+            result, RuntimeError("kein aktiver Gate-Ledger-Lauf")
+        )
+    try:
+        write_gate_ledger(
+            result,
+            attempt.diagnostics_dir,
+            repo_root=attempt.repo_root,
+            started_at=attempt.started_at,
+            ended_at=utc_now(),
+            command_line=attempt.command_line,
+        )
+    except Exception as exc:  # noqa: BLE001 — evidence failure is the result
+        log(f"{result.command}: gate-ledger write failed: {exc}")
+        return _ledger_write_failure(result, exc)
+    finally:
+        _ACTIVE_GATE_LEDGER_ATTEMPT.set(None)
+    return result

@@ -9,11 +9,15 @@ import datetime as dt
 import json
 from pathlib import Path
 
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.bestand import cli_fortschreibung as fs_cli
+from rechner_pipeline.gates import _common as gate_common
 from rechner_pipeline.gates._common import run_command
 from rechner_pipeline.gates import bestand_validate as gate_cli
 
@@ -170,6 +174,104 @@ def test_gate_b1_passed_und_ledger(lauf, tmp_path, capsys):
     assert (diagnostics / "bestand_validate.gate.json").is_file()
 
 
+def test_gate_b1_kaputtes_parquet_ersetzt_alten_gruenen_ledger(
+    lauf, tmp_path, capsys
+):
+    """Regression T6-12: Der bestaetigte B1-Crash darf nicht altgruen bleiben."""
+    diagnostics = tmp_path / "diag_crash_regression"
+    argv = [
+        "--portfolio", str(lauf / "bestand_gesamt.parquet"),
+        "--diagnostics-dir", str(diagnostics),
+    ]
+    assert run_command(gate_cli.main, argv) == 0
+    capsys.readouterr()
+    ledger_pfad = diagnostics / "bestand_validate.gate.json"
+    alter_ledger = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+    assert alter_ledger["status"] == "passed"
+
+    (lauf / "bestand_gesamt.parquet").write_bytes(b"kein Parquet")
+    code = run_command(gate_cli.main, argv)
+    ergebnis = json.loads(capsys.readouterr().out)
+    aktueller_ledger = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+
+    assert code == 20
+    assert ergebnis["status"] == "failed"
+    assert aktueller_ledger["status"] == "failed"
+    assert aktueller_ledger["started_at"] != alter_ledger["started_at"]
+    assert any(
+        error["code"] == "portfolio"
+        for error in aktueller_ledger["summary"]["errors"]
+    )
+
+
+def test_gate_b1_unerwartete_exception_schreibt_aktuellen_roten_ledger(
+    lauf, tmp_path, capsys, monkeypatch
+):
+    """Auch ein Fehler ausserhalb der B1-Contract-Faenger beendet den Versuch."""
+    diagnostics = tmp_path / "diag_unexpected"
+    argv = [
+        "--portfolio", str(lauf / "bestand_gesamt.parquet"),
+        "--diagnostics-dir", str(diagnostics),
+    ]
+    assert run_command(gate_cli.main, argv) == 0
+    capsys.readouterr()
+    ledger_pfad = diagnostics / "bestand_validate.gate.json"
+    alter_ledger = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+
+    def _crash(*args, **kwargs):
+        raise RuntimeError("erzwungener B1-Crash")
+
+    monkeypatch.setattr(gate_cli, "hash_files", _crash)
+    code = run_command(gate_cli.main, argv)
+    ergebnis = json.loads(capsys.readouterr().out)
+    aktueller_ledger = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+
+    assert code == 50
+    assert ergebnis["status"] == "failed"
+    assert ergebnis["errors"][0]["code"] == "internal_error"
+    assert aktueller_ledger["status"] == "failed"
+    assert aktueller_ledger["started_at"] != alter_ledger["started_at"]
+    assert aktueller_ledger["summary"]["errors"][0]["code"] == "internal_error"
+
+
+def test_gate_b1_ledger_schreibfehler_kann_nicht_gruen_enden(
+    lauf, tmp_path, capsys, monkeypatch
+):
+    """Der rote Startmarker bleibt, wenn der atomare Abschluss-Write scheitert."""
+    diagnostics = tmp_path / "diag_write_error"
+    argv = [
+        "--portfolio", str(lauf / "bestand_gesamt.parquet"),
+        "--diagnostics-dir", str(diagnostics),
+    ]
+    assert run_command(gate_cli.main, argv) == 0
+    capsys.readouterr()
+
+    echtes_ersetzen = gate_common.os.replace
+    aufrufe = 0
+
+    def _zweites_ersetzen_scheitert(*args, **kwargs):
+        nonlocal aufrufe
+        aufrufe += 1
+        if aufrufe == 2:
+            raise OSError("simulierter Ledger-Schreibfehler")
+        return echtes_ersetzen(*args, **kwargs)
+
+    monkeypatch.setattr(gate_common.os, "replace", _zweites_ersetzen_scheitert)
+    code = run_command(gate_cli.main, argv)
+    ergebnis = json.loads(capsys.readouterr().out)
+    ledger = json.loads(
+        (diagnostics / "bestand_validate.gate.json").read_text(encoding="utf-8")
+    )
+
+    assert aufrufe == 2
+    assert code == 50
+    assert ergebnis["status"] == "failed"
+    assert ergebnis["errors"][-1]["code"] == "gate_ledger"
+    assert ledger["status"] == "failed"
+    assert ledger["summary"]["errors"][0]["code"] == "gate_attempt_incomplete"
+    assert not list(diagnostics.glob(".*.tmp"))
+
+
 def test_gate_b1_bewegungsidentitaet(lauf, tmp_path, capsys):
     basis = [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
@@ -241,6 +343,89 @@ def test_gate_b1_findet_verletzungen(lauf, tmp_path, capsys):
     assert code == 20  # Exit.FILE_CONTRACT
     assert ergebnis["status"] == "failed"
     assert any(e["code"] == "portfolio" for e in ergebnis["errors"])
+
+
+@pytest.mark.parametrize(
+    "zusatzspalte",
+    [
+        pytest.param("unexpected_supplier_field", id="global-unbekannt"),
+        pytest.param("ereignis", id="fuer-portfolio-unbekannt"),
+    ],
+)
+def test_gate_b1_lehnt_unbekannte_physische_parquet_spalte_ab(
+    lauf, tmp_path, capsys, zusatzspalte
+):
+    quelle = lauf / "bestand.parquet"
+    tabelle = pq.read_table(quelle)
+    tabelle = tabelle.append_column(
+        zusatzspalte,
+        pa.array(["nicht_vertragsgemaess"] * tabelle.num_rows),
+    )
+    pfad = tmp_path / f"bestand_mit_{zusatzspalte}.parquet"
+    pq.write_table(tabelle, pfad, compression="zstd")
+
+    code = run_command(gate_cli.main, [
+        "--portfolio", str(pfad),
+        "--diagnostics-dir", str(tmp_path / f"diag_{zusatzspalte}"),
+    ])
+    ergebnis = json.loads(capsys.readouterr().out)
+
+    assert code == 20
+    assert ergebnis["status"] == "failed"
+    assert any(
+        e["code"] == "portfolio"
+        and "Unbekannte physische Parquet-Spalten" in e["message"]
+        and zusatzspalte in e["message"]
+        for e in ergebnis["errors"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "erwartete_meldung"),
+    [
+        pytest.param("status_id", "status_id != 1", id="status-id-ist-nicht-eins"),
+        pytest.param(
+            "status_code", "status_code ausserhalb", id="status-code-ist-nicht-pol"
+        ),
+        pytest.param(
+            "status_date",
+            "status_date != insurance_start",
+            id="statusdatum-ist-nicht-versicherungsbeginn",
+        ),
+        pytest.param(
+            "status_date_monatserster",
+            "status_date: nicht auf Monatsersten normalisiert",
+            id="statusdatum-ist-nicht-monatserster",
+        ),
+    ],
+)
+def test_gate_b1_prueft_jede_basisstatus_invariante(
+    lauf, tmp_path, capsys, mutation, erwartete_meldung
+):
+    bestand = read_portfolio(lauf / "bestand.parquet")
+    index = bestand.index[0]
+    if mutation == "status_id":
+        bestand.loc[index, "status_id"] = 99
+    elif mutation == "status_code":
+        bestand.loc[index, "status_code"] = "STO"
+    elif mutation == "status_date":
+        bestand.loc[index, "status_date"] += pd.DateOffset(months=7)
+    else:
+        bestand.loc[index, "status_date"] += pd.DateOffset(days=1)
+    pfad = write_portfolio(bestand, tmp_path / f"{mutation}.parquet")
+
+    code = run_command(gate_cli.main, [
+        "--portfolio", str(pfad),
+        "--diagnostics-dir", str(tmp_path / f"diag_{mutation}"),
+    ])
+    ergebnis = json.loads(capsys.readouterr().out)
+
+    assert code == 20
+    assert ergebnis["status"] == "failed"
+    assert any(
+        e["code"] == "portfolio" and erwartete_meldung in e["message"]
+        for e in ergebnis["errors"]
+    )
 
 
 def test_gate_b1_usage(tmp_path, capsys):

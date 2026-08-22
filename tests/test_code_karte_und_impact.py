@@ -67,6 +67,99 @@ def _schreibe(pfad: Path, text: str) -> None:
     pfad.write_text(text, encoding="utf-8")
 
 
+def _simuliere_case_insensitives_is_file(
+    monkeypatch: pytest.MonkeyPatch, wurzel: Path
+) -> None:
+    """Nur ``is_file`` wie ein case-insensitives Dateisystem behandeln.
+
+    Damit reproduzieren die Regressionen den macOS-Befund auch auf Linux.
+    Die echten Verzeichniseintraege behalten bewusst ihre Schreibweise.
+    """
+    original = Path.is_file
+
+    def case_insensitives_is_file(pfad: Path) -> bool:
+        if original(pfad):
+            return True
+        try:
+            teile = pfad.relative_to(wurzel).parts
+        except ValueError:
+            return False
+        aktuell = wurzel
+        for teil in teile:
+            try:
+                aktuell = next(
+                    eintrag for eintrag in aktuell.iterdir()
+                    if eintrag.name.casefold() == teil.casefold()
+                )
+            except (OSError, StopIteration):
+                return False
+        return original(aktuell)
+
+    monkeypatch.setattr(Path, "is_file", case_insensitives_is_file)
+
+
+def test_modulpfad_verlangt_exakte_schreibung_portabel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Der macOS-Finderfolg fuer falsch geschriebene Namen zaehlt nicht."""
+    from rechner_pipeline.ontologie.code_karte import _modulpfad
+
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "rechenkern.py", "class Rechenkern:\n    pass\n")
+    _simuliere_case_insensitives_is_file(monkeypatch, tmp_path)
+
+    assert _modulpfad("rechner_pipeline.kern.rechenkern", src) == (
+        "rechner_pipeline/kern/rechenkern.py"
+    )
+    assert _modulpfad("rechner_pipeline.kern.Rechenkern", src) is None
+    assert _modulpfad("rechner_pipeline.Kern.rechenkern", src) is None
+
+
+def test_namenskollisionen_erzeugen_keine_phantomkanten_und_rendern(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Rechenkern/rechenkern und ABox/abox bleiben Symbol/Modul-Paare."""
+    from rechner_pipeline.ontologie.landkarte import als_mermaid, graph
+
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "__init__.py", "Rechenkern = object\n")
+    _schreibe(src / "kern" / "rechenkern.py", "Rechenkern = object\n")
+    _schreibe(src / "ontologie" / "__init__.py", "ABox = object\n")
+    _schreibe(src / "ontologie" / "abox.py", "ABox = object\n")
+    _schreibe(
+        src / "gates" / "nutzer.py",
+        "from rechner_pipeline.kern import Rechenkern, rechenkern\n"
+        "from rechner_pipeline.ontologie import ABox, abox\n",
+    )
+    _simuliere_case_insensitives_is_file(monkeypatch, tmp_path)
+
+    karte = baue_karte(src)
+    module = set(karte["module"])
+    assert all(kante["nach"] in module for kante in karte["kanten"])
+    assert not any(
+        kante["nach"].endswith(("/Rechenkern.py", "/ABox.py"))
+        for kante in karte["kanten"]
+    )
+    kanten = {
+        (kante["von"], kante["nach"]): kante["symbole"]
+        for kante in karte["kanten"]
+    }
+    nutzer = "rechner_pipeline/gates/nutzer.py"
+    assert kanten[(nutzer, "rechner_pipeline/kern/__init__.py")] == [
+        "Rechenkern"
+    ]
+    assert kanten[(nutzer, "rechner_pipeline/kern/rechenkern.py")] == []
+    assert kanten[(nutzer, "rechner_pipeline/ontologie/__init__.py")] == [
+        "ABox"
+    ]
+    assert kanten[(nutzer, "rechner_pipeline/ontologie/abox.py")] == []
+
+    knoten, graph_kanten, titel = graph(karte, umfang="schichten")
+    gerendert = als_mermaid(knoten, graph_kanten, titel)
+    assert gerendert.startswith("%% Schichten")
+    assert "flowchart TD" in gerendert
+
+
 def test_karte_faengt_zweitkern_import_im_kern(tmp_path: Path):
     src = tmp_path / "rechner_pipeline"
     _schreibe(src / "kern" / "boese.py",

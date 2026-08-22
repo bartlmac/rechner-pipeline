@@ -57,10 +57,11 @@ einen vorgeführten Stand zitierbar.
 * **Gate O3 deckt die Beispielzelle** des Quell-Rechners
   (einzel/nichtraucher); die übrigen Zellen brauchen weitere
   Erwartungswerte vom Lieferanten. Das Komplement weist das Gate aus.
-* **Vier fallgebundene Tests skippen ohne lokalen Fall-Arbeitsbereich**
-  (`faelle/archiv/baldrian-klv-tg2015`) — darunter der einzige
-  Ende-zu-Ende-Beleg für Gate O3. In der CI und im frischen Clone
-  läuft er nicht mit; ein eingechecktes Minimal-Fixture ist offen.
+* **Das O3-/G-2-Pflicht-Fixture ist bewusst klein und synthetisch.** Es deckt
+  einen Modellpunkt und eine Ratenzuschlagsstaffel ab, nicht die sechs Zellen
+  des archivierten TG2015-Falls. Dafür laufen echte Vorverdichtung, O3 und
+  G-2 im frischen Clone verpflichtend; ein fehlendes oder hashabweichendes
+  Fixture ist ein Testfehler statt eines Skips.
 * **Der Knoten-Lebenszyklus** (`in_migration` / `abgenommen`, ADR-007
   Regel 4) ist in der T-Box noch nicht umgesetzt.
 * **Kein geteilter Fall-Speicher**: Fall-Artefakte (A-Box, Entscheide,

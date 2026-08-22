@@ -23,7 +23,12 @@ Knoten: klv
 
 from __future__ import annotations
 
+import csv
 import datetime as _dt
+import hashlib
+import io
+import re
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -116,6 +121,20 @@ BERECHNUNGEN: Dict[str, Callable[[Dict[str, Any], List[str]], Any]] = {
     "ganzzahl": _ganzzahl,
 }
 
+#: Jede Katalogfunktion hat einen expliziten Operandenvertrag. Ein blosses
+#: ``>= 1`` genuegt nicht: eine dritte Datumsspalte wuerde sonst deklariert,
+#: von der Implementierung aber still ignoriert; null Operanden fuehrten erst
+#: waehrend der Anwendung zu einem ``IndexError``.
+BERECHNUNGS_ARITAETEN: Dict[str, int] = {
+    "alter_aus_geburtsdatum_und_beginn": 2,
+    "jahre_aus_datumsdifferenz": 2,
+    "datum_nach_iso": 1,
+    "zahl": 1,
+    "ganzzahl": 1,
+}
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
 
 class FeldMapping(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -160,6 +179,11 @@ def validate_spec(
 ) -> List[str]:
     """Beidseitige Abdeckung und Katalogtreue (leer = anwendbar)."""
     fehler: List[str] = []
+    if not _SHA256_RE.fullmatch(spec.quelle_sha256):
+        fehler.append(
+            "quelle_sha256 muss ein vollstaendiger kleingeschriebener "
+            "SHA-256-Hexwert sein"
+        )
     ziele = [f.ziel for f in spec.felder if f.typ != "nicht_uebernommen"]
     for pflicht in ZIEL_PFLICHT:
         if pflicht not in ziele:
@@ -199,6 +223,13 @@ def validate_spec(
                 f"{f.ziel}: unbekannte Berechnung {f.berechnung!r} "
                 f"(Katalog: {', '.join(sorted(BERECHNUNGEN))})"
             )
+        if f.typ == "berechnung" and f.berechnung in BERECHNUNGS_ARITAETEN:
+            erwartet = BERECHNUNGS_ARITAETEN[f.berechnung]
+            if len(f.quellen) != erwartet:
+                fehler.append(
+                    f"{f.ziel}: Berechnung {f.berechnung!r} braucht genau "
+                    f"{erwartet} Quellspalte{'n' if erwartet != 1 else ''}"
+                )
         if f.typ in ("direkt", "kodierung") and len(f.quellen) != 1:
             fehler.append(f"{f.ziel}: {f.typ} braucht genau EINE Quellspalte")
         if f.typ == "kodierung" and not f.kodierung:
@@ -224,13 +255,68 @@ def validate_spec(
                 f"offener Konflikt zu Spalte {k.quellspalte!r}: {k.frage} "
                 "— MENSCHLICHE Entscheidung noetig, Anwendung blockiert"
             )
+        elif not k.entscheidung.strip():
+            fehler.append(
+                f"Konflikt zu Spalte {k.quellspalte!r} traegt eine leere "
+                "Entscheidung — Anwendung blockiert"
+            )
+        elif not k.entscheider.strip():
+            fehler.append(
+                f"Konflikt zu Spalte {k.quellspalte!r} ist ohne nichtleeren "
+                "menschlichen Entscheider markiert — Anwendung blockiert"
+            )
     return fehler
 
 
-def wende_an(
-    spec: TransformationsSpec, zeilen: List[Dict[str, Any]]
+def lese_transformationsquelle(
+    quelle_pfad: Path,
+    *,
+    trenner: str = ";",
+) -> Tuple[str, List[str], List[Dict[str, Any]]]:
+    """SHA-256, physischen Header und Zeilen derselben CSV-Bytes lesen.
+
+    Produzent und Abnahme verwenden bewusst denselben Parser. Andernfalls
+    koennte etwa ein duplizierter Header in der Anwendung anders aufgeloest
+    werden als in der nachgelagerten Beweispruefung.
+    """
+    quelle_pfad = Path(quelle_pfad)
+    roh = quelle_pfad.read_bytes()
+    try:
+        text = roh.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            f"Transformationsquelle {quelle_pfad} ist kein UTF-8-CSV: {exc}"
+        ) from exc
+    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=trenner)
+    quellspalten = list(reader.fieldnames or [])
+    if not quellspalten:
+        raise ValueError(
+            f"Transformationsquelle {quelle_pfad} hat keinen CSV-Header"
+        )
+    if len(quellspalten) != len(set(quellspalten)):
+        doppelt = sorted({s for s in quellspalten if quellspalten.count(s) > 1})
+        raise ValueError(
+            f"Transformationsquelle {quelle_pfad} hat doppelte Spalten "
+            f"{doppelt}"
+        )
+    return hashlib.sha256(roh).hexdigest(), quellspalten, list(reader)
+
+
+def _wende_registrierte_datei_an(
+    spec: TransformationsSpec,
+    quelle_pfad: Path,
+    *,
+    trenner: str = ";",
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Das geprueste Mapping deterministisch anwenden.
+    """Das Mapping auf einer bereits sicher aufgeloesten Quelle anwenden.
+
+    Diese schichtinterne Funktion ist bewusst nicht die Produzenten-API. Nur
+    ``gates.transformation_anwenden.wende_an`` darf sie nach der Aufloesung
+    ueber das Fallregister aufrufen. Sie liest die zu transformierenden Zeilen
+    selbst; dadurch kann der Orchestrator weder andere Zeilen noch selbst
+    behauptete Quellspalten unter dem Hash der Spec einschleusen. SHA-256 und
+    physischer CSV-Header werden vor der ersten Zielzeile geprueft und
+    ``validate_spec`` laeuft immer.
 
     Befunde je Zeile (unbekannter Kodierungswert, unparsbare Daten)
     brechen NICHT den Lauf, sondern werden gesammelt zurueckgegeben —
@@ -238,6 +324,24 @@ def wende_an(
     Zeile mit Befund wird NICHT ausgegeben (keine halb transformierten
     Vertraege).
     """
+    quelle_pfad = Path(quelle_pfad)
+    quelle_sha256, quellspalten, zeilen = lese_transformationsquelle(
+        quelle_pfad,
+        trenner=trenner,
+    )
+    vorbedingungen: List[str] = []
+    if quelle_sha256 != spec.quelle_sha256:
+        vorbedingungen.append(
+            "quelle_sha256 der Spec passt nicht zu den tatsaechlich "
+            f"transformierten Bytes ({quelle_sha256})"
+        )
+    vorbedingungen.extend(validate_spec(spec, quellspalten))
+    if vorbedingungen:
+        raise ValueError(
+            "TransformationsSpec ist fuer die tatsaechliche Quelle nicht "
+            "anwendbar: " + "; ".join(vorbedingungen)
+        )
+
     ergebnis: List[Dict[str, Any]] = []
     befunde: List[str] = []
     for i, zeile in enumerate(zeilen, start=1):

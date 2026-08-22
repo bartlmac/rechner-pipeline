@@ -24,6 +24,7 @@ from rechner_pipeline.models.manifest import (
     ManifestWarning,
     PromptInputRecord,
     PromptRecord,
+    SheetArtifactRecord,
 )
 from rechner_pipeline.models.schemas import (
     CommonResult,
@@ -89,6 +90,15 @@ def _sample_manifest() -> ExportManifest:
         output_hashes=[
             FileHashRecord(path="generated/inputs.py", bytes=1234, sha256="d" * 64)
         ],
+        source=FileHashRecord(
+            path="eingang/rechner.xlsm", bytes=4321, sha256="e" * 64
+        ),
+        sheet_artifacts=[
+            SheetArtifactRecord(
+                original_name="Kalkulation",
+                file_name="Kalkulation.csv",
+            )
+        ],
     )
 
 
@@ -100,6 +110,7 @@ def test_export_manifest_roundtrip_and_shape():
     expected_keys = {
         "out_dir",
         "sheet_csvs",
+        "sheet_artifacts",
         "vba_txts",
         "names_manager_csv",
         "replacements",
@@ -108,12 +119,16 @@ def test_export_manifest_roundtrip_and_shape():
         "warnings",
         "prompt_runs",
         "output_hashes",
+        "source",
     }
     assert set(data.keys()) == expected_keys
 
     # Paths serialize as strings.
     assert isinstance(data["out_dir"], str)
     assert all(isinstance(p, str) for p in data["sheet_csvs"])
+    assert data["sheet_artifacts"] == [
+        {"original_name": "Kalkulation", "file_name": "Kalkulation.csv"}
+    ]
 
     # Nested record shapes.
     warning = data["warnings"][0]
@@ -130,6 +145,11 @@ def test_export_manifest_roundtrip_and_shape():
         "path": "generated/inputs.py",
         "bytes": 1234,
         "sha256": "d" * 64,
+    }
+    assert data["source"] == {
+        "path": "eingang/rechner.xlsm",
+        "bytes": 4321,
+        "sha256": "e" * 64,
     }
 
     # Full round trip through JSON is idempotent. The dataclass declares Path

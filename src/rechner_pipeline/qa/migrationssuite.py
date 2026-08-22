@@ -32,7 +32,10 @@ geprüft, wenn er im Prüfauftrag steht. Fehlt er, ist das eine
 AUSGEWIESENE LÜCKE (``nicht_geprueft`` je Vertrag,
 ``pruefluecken``/``vollstaendig_geprueft`` in der Zusammenfassung) und
 kein stilles Bestehen: die Suite behauptet nie, geprüft zu haben, was
-ihr niemand gegeben hat.
+ihr niemand gegeben hat. Dasselbe gilt für den Erwartungsbetrag jedes
+betragsführenden GeVos (STO, TOD, ABL und PEX). Seine Zustandswirkung
+wird weiterhin geprüft, der ausgelassene Betragsvergleich aber als
+konkrete Größe ``gevo_<art>_monat_<n>`` ausgewiesen.
 
 Der Systemwert des Beitrags ist ``0.0``, sobald die Beitragszahlung am
 Stichtag beendet ist (``monate >= 12 * t``) oder der Vertrag bereits
@@ -70,6 +73,10 @@ from rechner_pipeline.kern import (
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 
 GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL")
+#: Diese Arten tragen einen eigenständig zu vergleichenden Leistungs-
+#: beziehungsweise Statuswechselbetrag. Fehlt er, darf ein zusätzlich
+#: erkannter Lieferungsbefund die konkrete Prüflücke nicht verdecken.
+BETRAGSPRUEFUNG_ARTEN = ("STO", "TOD", "ABL", "PEX")
 #: GeVo-Arten, die den Vertrag beenden (kein Wert am Folgestichtag).
 #: :func:`pruefe_vertrag` bucht den Abgang AUSSCHLIESSLICH über diese
 #: Tabelle — wer eine Art hier streicht oder aufnimmt, ändert damit das
@@ -106,7 +113,11 @@ class GeVoErwartung:
     ``monate`` sind die vollen Vertragsmonate am Wirkungszeitpunkt;
     ``betrag_erwartet`` ist der gelieferte GeVo-Betrag (STO: gezahlter
     Rückkaufswert, TOD: Todesfallleistung, PEX: beitragsfreie Summe,
-    ERH: Versicherungssumme der neuen Scheibe).
+    ERH: Versicherungssumme der neuen Scheibe). Fehlt er bei STO, TOD,
+    ABL oder PEX, bleibt die Zustandsprüfung möglich, aber der
+    Betragsvergleich ist eine ausgewiesene Prüflücke. Eine ERH kann ohne
+    Erhöhungssumme nicht konstruiert werden und bleibt deshalb wie bisher
+    ein Lieferungsbefund.
     """
 
     art: str
@@ -296,6 +307,10 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
         if g.art not in GEVO_ARTEN:
             befunde.append(f"unbekannte GeVo-Art {g.art!r}")
             continue
+        if g.art in BETRAGSPRUEFUNG_ARTEN and g.betrag_erwartet is None:
+            luecke = f"gevo_{g.art.lower()}_monat_{g.monate}"
+            if luecke not in nicht_geprueft:
+                nicht_geprueft.append(luecke)
         if not v.monate_stichtag_1 < g.monate <= v.monate_stichtag_2:
             befunde.append(
                 f"GeVo {g.art} bei Monat {g.monate} liegt nicht zwischen "
@@ -481,6 +496,7 @@ def pruefe_bestand(
     stichtag_1: Optional[str] = None,
     stichtag_2: Optional[str] = None,
     bestand_sha256: Optional[str] = None,
+    system: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Suite über den ganzen Bestand: Urteile + Zusammenfassung.
 
@@ -496,15 +512,17 @@ def pruefe_bestand(
 
     PRÜFLÜCKEN: ``pruefluecken`` benennt, was die Suite MANGELS
     Erwartungswerten nicht geprüft hat (fehlende Jahresbeiträge,
-    fehlende erwartete Vertragszahl); ``vollstaendig_geprueft`` ist nur
-    ohne jede Lücke wahr. Eine Lücke ist kein Fehlschlag — aber auch
-    kein Bestehen, und sie steht deshalb neben dem Urteil.
+    GeVo-Beträge oder erwartete Vertragszahl);
+    ``vollstaendig_geprueft`` ist nur ohne jede Lücke wahr. Eine Lücke
+    ist kein Fehlschlag — aber auch kein Bestehen, und sie steht deshalb
+    neben dem Urteil.
 
     SCOPE-BINDUNG: Für einen Bestandsfall werden ``stichtag_1``,
-    ``stichtag_2`` und ``bestand_sha256`` gemeinsam übergeben. Die Suite
-    validiert und spiegelt sie in ihr Ergebnis; Teilangaben sind ein harter
-    Fehler. Ohne diese optionalen Angaben bleibt die Funktion fallunabhängig,
-    ihr Ergebnis ist aber kein G-2-Beleg eines Bestandsfalls.
+    ``stichtag_2`` und ``bestand_sha256`` gemeinsam übergeben. Fuer einen
+    G-2-Beleg kommt der vom Aufrufer berechnete ``system``-Stand hinzu. Die
+    Suite validiert und spiegelt diese Angaben in ihr Ergebnis. Ohne sie bleibt
+    die Funktion fallunabhängig, ihr Ergebnis ist aber kein G-2-Beleg eines
+    Bestandsfalls.
 
     LEERE PRÜFMENGE: harter Fehler statt eines ausgewiesenen
     Nicht-Bestehens. Ein ``suite_bestanden = False`` wäre die Aussage
@@ -551,6 +569,21 @@ def pruefe_bestand(
             or any(zeichen not in "0123456789abcdef" for zeichen in bestand_sha256)
         ):
             raise ValueError("Suite-Scope-bestand_sha256 ist kein SHA-256")
+    if system is not None:
+        system_felder = {"commit", "branch", "dirty", "quellcode_sha256"}
+        if not isinstance(system, dict) or set(system) != system_felder:
+            raise ValueError(
+                "Suite-Scope-system muss exakt " + str(sorted(system_felder))
+                + " enthalten"
+            )
+        if any(not isinstance(wert, str) or not wert for wert in system.values()):
+            raise ValueError("Suite-Scope-system-Werte muessen nichtleer sein")
+        quellcode_hash = system["quellcode_sha256"]
+        if (
+            len(quellcode_hash) != 64
+            or any(zeichen not in "0123456789abcdef" for zeichen in quellcode_hash)
+        ):
+            raise ValueError("Suite-Scope-system.quellcode_sha256 ist kein SHA-256")
 
     if not vertraege:
         raise ValueError(
@@ -613,4 +646,6 @@ def pruefe_bestand(
             "stichtag_2": stichtag_2,
             "bestand_sha256": bestand_sha256,
         })
+    if system is not None:
+        ergebnis["system"] = dict(system)
     return ergebnis

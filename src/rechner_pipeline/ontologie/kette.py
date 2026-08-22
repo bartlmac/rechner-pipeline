@@ -80,18 +80,32 @@ def _vergleiche_aussage(
                 f"Wert {entscheidung.gewaehlter_wert!r}"
             )
             return
+        passende_lesarten = [
+            lesart for lesart in soll.lesarten
+            if werte_gleich(lesart.wert, entscheidung.gewaehlter_wert)
+        ]
         erlaubte_provenienzen = {
             p.model_dump_json()
-            for lesart in soll.lesarten for p in lesart.provenienz
+            for lesart in passende_lesarten for p in lesart.provenienz
         }
+        belegte_provenienzen = {
+            p.model_dump_json() for p in ist.provenienz
+        }
+        if not (belegte_provenienzen & erlaubte_provenienzen):
+            fehler.append(
+                f"{ort}: kein Beleg aus einer Lesart mit dem entschiedenen "
+                f"Wert {entscheidung.gewaehlter_wert!r} vorhanden"
+            )
+            return
         fremde = [
             p for p in ist.provenienz
             if p.model_dump_json() not in erlaubte_provenienzen
         ]
         if fremde:
             fehler.append(
-                f"{ort}: Provenienz stammt nicht aus den Lesarten der "
-                "Diskrepanz — eingeschleuster Beleg"
+                f"{ort}: Provenienz stammt aus keiner Lesart mit dem "
+                f"entschiedenen Wert {entscheidung.gewaehlter_wert!r} "
+                "— Beleg einer verworfenen Lesart oder eingeschleuster Beleg"
             )
         return
     fehler.append(

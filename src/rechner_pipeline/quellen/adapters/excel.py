@@ -22,17 +22,27 @@ Knoten: system/assurance
 from __future__ import annotations
 
 import csv
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from rechner_pipeline.quellen.adapters.base import InputAdapter
-from rechner_pipeline.quellen.extract.excel import GENERATED_SUBDIR_NAME, export_excel_infos
+from rechner_pipeline.quellen.extract.excel import (
+    GENERATED_SUBDIR_NAME,
+    ExportArtifactTargetError,
+    export_excel_infos,
+)
 from rechner_pipeline.models.bundle import (
     CONTRACT_VERSION,
     CoverageDetail,
     InputBundle,
 )
-from rechner_pipeline.models.manifest import ExportManifest, ManifestWarning
+from rechner_pipeline.models.manifest import (
+    ExportManifest,
+    FileHashRecord,
+    ManifestWarning,
+    SheetArtifactRecord,
+)
 
 __all__ = ["ExcelAdapter", "ExcelAdapterError", "GENERATED_SUBDIR_NAME"]
 
@@ -65,7 +75,19 @@ def _manifest_from_export_dict(data: Dict[str, Any]) -> ExportManifest:
         all_outputs=[Path(p) for p in data.get("all_outputs", [])],
         warnings=[ManifestWarning.from_dict(w) for w in data.get("warnings", [])],
         prompt_runs=[],
-        output_hashes=[],
+        output_hashes=[
+            FileHashRecord.from_dict(item)
+            for item in data.get("output_hashes", [])
+        ],
+        source=(
+            FileHashRecord.from_dict(data["source"])
+            if isinstance(data.get("source"), dict)
+            else None
+        ),
+        sheet_artifacts=[
+            SheetArtifactRecord.from_dict(item)
+            for item in data.get("sheet_artifacts", [])
+        ],
     )
 
 
@@ -172,12 +194,15 @@ class ExcelAdapter(InputAdapter):
 
         # Run the byte-identical extractor with the selected backend. This writes
         # the manifest JSON and all artifacts; we do not touch them afterwards.
-        manifest_dict = export_excel_infos(
-            source_path,
-            out_dir,
-            save_manifest_json=True,
-            backend=self.backend,
-        )
+        try:
+            manifest_dict = export_excel_infos(
+                source_path,
+                out_dir,
+                save_manifest_json=True,
+                backend=self.backend,
+            )
+        except ExportArtifactTargetError as exc:
+            raise ExcelAdapterError(str(exc)) from exc
 
         manifest = _manifest_from_export_dict(manifest_dict)
 
@@ -189,6 +214,21 @@ class ExcelAdapter(InputAdapter):
         for path in manifest.llm_inputs:
             if not Path(path).is_file():
                 errors.append(f"llm_input path does not exist: {path}")
+
+        artifact_names = [item.file_name for item in manifest.sheet_artifacts]
+        sheet_csv_names = [path.name for path in manifest.sheet_csvs]
+        if artifact_names != sheet_csv_names:
+            errors.append(
+                "manifest.sheet_artifacts must bind every sheet_csv in order"
+            )
+        if any(not item.original_name for item in manifest.sheet_artifacts):
+            errors.append("manifest.sheet_artifacts contains an empty original_name")
+        collision_keys = [
+            unicodedata.normalize("NFC", name).casefold()
+            for name in artifact_names
+        ]
+        if len(collision_keys) != len(set(collision_keys)):
+            errors.append("manifest.sheet_artifacts contains colliding file_name values")
 
         manifest_path = out_dir / "export_manifest.json"
         if not manifest_path.is_file():

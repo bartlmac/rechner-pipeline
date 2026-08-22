@@ -139,7 +139,12 @@ Quelle liest und beides an G-1 haengt.
    praeziser Frage — nie eine Annahme.
 3. Pruefen und anwenden (deterministisch, nie von Hand):
    `ontologie.transformation.validate_spec(spec, quellspalten)` muss
-   LEER sein, danach `wende_an(spec, zeilen)`. `wende_an` gibt
+   LEER sein, danach
+   `gates.transformation_anwenden.wende_an(spec, fall_pfad)`. `wende_an` loest
+   `spec.quelle_datei` selbst ueber das Fallregister auf, liest die zu
+   transformierenden Zeilen aus diesem registrierten Eingang und prueft
+   SHA-256 der Spec sowie deren physische
+   Quellspalten erneut und gibt
    `(zeilen, befunde)` zurueck und laesst jede Zeile mit Befund WEG —
    wer nur die Zeilen nimmt, migriert stillschweigend weniger
    Vertraege. Zaehle die Klammer laut: Zeilen im Abzug -> transformierte
@@ -206,9 +211,9 @@ validiert Snapshot-Schema, Vollhash-Dateiname, Freigabesignatur und die
 zyklenfreie Kette mit genau einer Spitze. G-2 verlangt zusaetzlich fuer exakt
 jede Generation der A-Box einen inhaltsadressierten gruenen O3-Beleg desselben
 A-Box- und Systemstands sowie einen geltenden signierten G-1-Annahme-Snapshot
-desselben Stands. Im Scope `bestand` kommen die aus dem zentralen Gate-DAG
-abgeleiteten Rollen fuer B1, vollstaendige Suite, Transformation sowie Vor-,
-Nach- und Abnahmebericht hinzu; ein Scope `tarif` verlangt sie nicht.
+   desselben Stands. Im Scope `bestand` kommen die Pflichtbelege fuer B1,
+   vollstaendige Suite und Abnahmebericht hinzu; ein Scope `tarif` verlangt
+   sie nicht.
 
 ### Stufe 2 — A-Box -> Spez -> Kern
 
@@ -261,33 +266,40 @@ selbst zu improvisieren:
    Zeilenzahl des Abzugs geht als `erwartete_anzahl` mit (sonst ist die
    Vollstaendigkeit der Pruefmenge ungeprueft). Beides liegt im
    Bestandsabzug vor und wird durchgereicht, sonst weist der Bericht
-   Pruefluecken aus. Bibliotheks-Modul ohne CLI: die
+   Pruefluecken aus und blockiert. Bibliotheks-Modul ohne CLI: die
    `VertragsPruefung`-Auftraege baut der Abnahme-Skill aus den
    Fall-Artefakten. Toleranzen kommen aus `qa` und werden NIE
    aufgeweicht. Das persistierte Suite-JSON bindet zusaetzlich
-   `stichtag_1`, `stichtag_2` und `bestand_sha256`; im Bestands-Scope muss
-   `vollstaendig_geprueft=true` sein.
+   `stichtag_1`, `stichtag_2`, `bestand_sha256` und den Systemstand; im
+   Bestands-Scope muss `vollstaendig_geprueft=true` sein.
 3. Bestandsberichte vor/nach mit denselben Parametern (nur so ist der
    Vergleich fair):
    `python -m rechner_pipeline.bestand.cli_report --portfolio <bestand>.parquet --stichtage <liste> --out <ziel>.html`
 4. Abnahmebericht als Entscheidungsvorlage (keine Abnahme):
    `python -m rechner_pipeline.gates.abnahmebericht --fall faelle/<fall> --suite <suite>.json --titel "..." --stichtag-1 <iso> --stichtag-2 <iso> --spec <transformation>.spec.json --transformation-ergebnis <ergebnis>.json --bestandsbericht-vor <pfad> --bestandsbericht-nach <pfad>`
+   Alle vier nach der Suite genannten Artefakte sind Pflicht. Zeilenverlust,
+   Transformationsbefunde und nicht entschiedene Konflikte erzeugen einen roten
+   Bericht und einen blockierenden Exit-Code. Suite, Pflichtartefakte,
+   HTML-Ausgabe und Gate-Ledger muessen paarweise verschiedene Dateien sein;
+   Pfad- und Hardlink-Aliase sind keine getrennten Belege.
    Ablage mit `--fall`:
    `<fall>/abgeleitet/berichte/migrationsabnahme.html`, Ledger unter
-   `<fall>/abgeleitet/diagnostics`. Auf dem gruenen Bestands-Pfad entsteht
-   dort zusaetzlich `abnahmebericht.<sha256>.beleg.json`. Der Beleg bindet
-   alle DAG-Rollen an Eingang, A-Box, System und beide Stichtage; ohne ihn
-   darf G-2 im Bestands-Scope nicht angenommen werden.
+   `<fall>/abgeleitet/diagnostics`. Das gruene
+   `abnahmebericht.gate.json` bindet B1, Suite und HTML-Bericht an Eingang,
+   A-Box, System, den von B1 benannten Bestand und beide Stichtage; ohne diese
+   konsistente Bindung darf G-2 im Bestands-Scope nicht angenommen werden.
 
 ### Gate G-2 (Mensch — hier STOPPST du wieder)
 
 `python -m rechner_pipeline.gates.gate_entscheid --gate G-2 --rolle mensch
 --freigabe-schluessel <externe-datei> ...`
 — uebergeben, nicht selbst entscheiden. G-2 liest den Scope aus `fall.json`
-und leitet seine exakte Pflichtbelegmenge aus dem Gate-DAG ab. Im
-Bestands-Scope werden Scope-Beleg und jedes von ihm gebundene Artefakt gegen
-die aktuellen Bytes nachgehasht. Vorgelegt wird alles vollstaendig, ohne
-Stichproben-Beschoenigung.
+und leitet seine exakte Pflichtbelegmenge aus dem Fall-Scope ab. Im
+Bestands-Scope werden das Abnahme-Ledger, jedes von ihm gebundene Artefakt und
+das von B1 benannte Portfolio gegen die aktuellen Bytes nachgehasht. B1 und
+Suite werden semantisch erneut validiert; der HTML-Bericht wird aus der Suite
+deterministisch neu gerendert und bytegenau verglichen. Vorgelegt wird alles
+vollstaendig, ohne Stichproben-Beschoenigung.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)
 

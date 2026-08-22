@@ -89,6 +89,54 @@ def test_select_perioden_mismatch_fail_fast(monkeypatch):
         BU(dataclasses.replace(BU_BEISPIEL, tafel_ti="SYNTH_BU_TI_LANG"))
 
 
+@pytest.mark.parametrize(
+    ("roh_qx", "muster"),
+    [
+        ("nan", "nicht endlich"),
+        ("1.000001", r"ausserhalb des Bereichs \[0, 1\]"),
+    ],
+)
+def test_select_tafel_qx_wird_beim_xml_laden_validiert(roh_qx, muster):
+    from rechner_pipeline.kern import tafeln as k
+    from rechner_pipeline.kern.konventionen import MAX_ALTER
+
+    eintraege = []
+    for alter in range(MAX_ALTER + 1):
+        qx = roh_qx if alter == 42 else "0.01"
+        eintraege.append(
+            f'    <entry age="{alter}" dauer="0" qx="{qx}" />'
+        )
+    text = (
+        '<tafeln>\n  <table name="SELECT_TEST" select_max="0">\n'
+        + "\n".join(eintraege)
+        + "\n  </table>\n</tafeln>\n"
+    )
+
+    with pytest.raises(ValueError, match=muster):
+        k._parse_tables(text)
+
+
+def test_select_tafel_altersgitter_ist_beim_xml_laden_exakt():
+    from rechner_pipeline.kern import tafeln as k
+    from rechner_pipeline.kern.konventionen import MAX_ALTER
+
+    eintraege = [
+        f'    <entry age="{alter}" dauer="0" qx="0.01" />'
+        for alter in range(MAX_ALTER + 1)
+    ]
+    eintraege.append(
+        f'    <entry age="{MAX_ALTER + 1}" dauer="0" qx="0.01" />'
+    )
+    text = (
+        '<tafeln>\n  <table name="SELECT_TEST" select_max="0">\n'
+        + "\n".join(eintraege)
+        + "\n  </table>\n</tafeln>\n"
+    )
+
+    with pytest.raises(ValueError, match="zusaetzlich.*124"):
+        k._parse_tables(text)
+
+
 def test_contract_shape_ueber_registry():
     ergebnis = berechne(BU_BEISPIEL, produkt="bu")
     assert set(ergebnis["scalars"]) == {"BU"}

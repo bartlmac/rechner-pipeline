@@ -5615,7 +5615,7 @@
     <entry age="123" dauer="4" qx="0" />
     <entry age="123" dauer="5" qx="0" />
   </table>
-  <!-- Provenienz: Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209...), Blatt Tafeln, Vektor DAV2008_T_NR_F; importiert via quellen.tafel_import -->
+  <!-- Provenienz: XLSM Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209a9eac753903b201153f1cd3f34f4af5fdf414bfaa92e8f5f), Exportmanifest (sha256 14778a5c4d8c5d95a2c559a35e936d80e0e2a6f196cbe72288e949fca6290a3c), Blatt-CSV Tafeln.csv (sha256 1ce920935ce25701ecf3a3af86e94da7552f5d44e39ee3e1cc0728a8d67af6c5), Blatt Tafeln, Vektor DAV2008_T_NR_F; importiert via quellen.tafel_import -->
   <table name="DAV2008_T_NR_F">
     <entry age="0" qx="0.005088" />
     <entry age="1" qx="0.000387" />
@@ -5742,7 +5742,7 @@
     <entry age="122" qx="1.0" />
     <entry age="123" qx="1.0" />
   </table>
-  <!-- Provenienz: Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209...), Blatt Tafeln, Vektor DAV2008_T_NR_M; importiert via quellen.tafel_import -->
+  <!-- Provenienz: XLSM Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209a9eac753903b201153f1cd3f34f4af5fdf414bfaa92e8f5f), Exportmanifest (sha256 14778a5c4d8c5d95a2c559a35e936d80e0e2a6f196cbe72288e949fca6290a3c), Blatt-CSV Tafeln.csv (sha256 1ce920935ce25701ecf3a3af86e94da7552f5d44e39ee3e1cc0728a8d67af6c5), Blatt Tafeln, Vektor DAV2008_T_NR_M; importiert via quellen.tafel_import -->
   <table name="DAV2008_T_NR_M">
     <entry age="0" qx="0.006113" />
     <entry age="1" qx="0.000423" />
@@ -5869,7 +5869,7 @@
     <entry age="122" qx="1.0" />
     <entry age="123" qx="1.0" />
   </table>
-  <!-- Abgeleitet: min(1, 0.7*qx[DAV2008_T_NR_M] + 0.30000000000000004*qx[DAV2008_T_NR_F]) je Alter (VBA-Mischformel U70); Basen aus Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209...); abgeleitet via quellen.tafel_import -->
+  <!-- Abgeleitet: min(1, 0.7*qx[DAV2008_T_NR_M] + 0.30000000000000004*qx[DAV2008_T_NR_F]) je Alter (VBA-Mischformel U70); Basen aus Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209a9eac753903b201153f1cd3f34f4af5fdf414bfaa92e8f5f) via Exportmanifest (sha256 14778a5c4d8c5d95a2c559a35e936d80e0e2a6f196cbe72288e949fca6290a3c) und Blatt-CSV Tafeln.csv (sha256 1ce920935ce25701ecf3a3af86e94da7552f5d44e39ee3e1cc0728a8d67af6c5); abgeleitet via quellen.tafel_import -->
   <table name="DAV2008_T_NR_U70">
     <entry age="0" qx="0.0058055" />
     <entry age="1" qx="0.0004122" />
@@ -5996,7 +5996,7 @@
     <entry age="122" qx="1.0" />
     <entry age="123" qx="1.0" />
   </table>
-  <!-- Provenienz: Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209...), Blatt Tafeln, Vektor DAV2008_T_R_F; importiert via quellen.tafel_import -->
+  <!-- Provenienz: XLSM Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209a9eac753903b201153f1cd3f34f4af5fdf414bfaa92e8f5f), Exportmanifest (sha256 14778a5c4d8c5d95a2c559a35e936d80e0e2a6f196cbe72288e949fca6290a3c), Blatt-CSV Tafeln.csv (sha256 1ce920935ce25701ecf3a3af86e94da7552f5d44e39ee3e1cc0728a8d67af6c5), Blatt Tafeln, Vektor DAV2008_T_R_F; importiert via quellen.tafel_import -->
   <table name="DAV2008_T_R_F">
     <entry age="0" qx="0.005506" />
     <entry age="1" qx="0.000419" />
@@ -6123,7 +6123,7 @@
     <entry age="122" qx="1.0" />
     <entry age="123" qx="1.0" />
   </table>
-  <!-- Provenienz: Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209...), Blatt Tafeln, Vektor DAV2008_T_R_M; importiert via quellen.tafel_import -->
+  <!-- Provenienz: XLSM Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209a9eac753903b201153f1cd3f34f4af5fdf414bfaa92e8f5f), Exportmanifest (sha256 14778a5c4d8c5d95a2c559a35e936d80e0e2a6f196cbe72288e949fca6290a3c), Blatt-CSV Tafeln.csv (sha256 1ce920935ce25701ecf3a3af86e94da7552f5d44e39ee3e1cc0728a8d67af6c5), Blatt Tafeln, Vektor DAV2008_T_R_M; importiert via quellen.tafel_import -->
   <table name="DAV2008_T_R_M">
     <entry age="0" qx="0.006615" />
     <entry age="1" qx="0.000458" />
@@ -6250,7 +6250,7 @@
     <entry age="122" qx="1.0" />
     <entry age="123" qx="1.0" />
   </table>
-  <!-- Abgeleitet: min(1, 0.7*qx[DAV2008_T_R_M] + 0.30000000000000004*qx[DAV2008_T_R_F]) je Alter (VBA-Mischformel U70); Basen aus Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209...); abgeleitet via quellen.tafel_import -->
+  <!-- Abgeleitet: min(1, 0.7*qx[DAV2008_T_R_M] + 0.30000000000000004*qx[DAV2008_T_R_F]) je Alter (VBA-Mischformel U70); Basen aus Tarifrechner_KLV_TG2015.xlsm (sha256 e9047bbab1b04209a9eac753903b201153f1cd3f34f4af5fdf414bfaa92e8f5f) via Exportmanifest (sha256 14778a5c4d8c5d95a2c559a35e936d80e0e2a6f196cbe72288e949fca6290a3c) und Blatt-CSV Tafeln.csv (sha256 1ce920935ce25701ecf3a3af86e94da7552f5d44e39ee3e1cc0728a8d67af6c5); abgeleitet via quellen.tafel_import -->
   <table name="DAV2008_T_R_U70">
     <entry age="0" qx="0.0062823" />
     <entry age="1" qx="0.0004463" />

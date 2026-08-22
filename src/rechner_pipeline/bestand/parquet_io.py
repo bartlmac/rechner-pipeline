@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Sequence
 
 import pandas as pd
 import pyarrow as pa
@@ -80,9 +80,26 @@ def write_portfolio(df: pd.DataFrame, path: Path) -> Path:
     return path
 
 
-def read_portfolio(path: Path) -> pd.DataFrame:
-    """Read a table back with canonical pandas dtypes and column order."""
+def read_portfolio(
+    path: Path,
+    *,
+    expected_columns: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
+    """Read a table back with canonical pandas dtypes and column order.
+
+    If ``expected_columns`` is supplied by a gate, the physical Parquet
+    columns are checked before conversion and canonical selection. Otherwise
+    columns unknown to every persistable portfolio family are still rejected.
+    """
     table = pq.read_table(path)
+    erlaubt = (
+        set(expected_columns) if expected_columns is not None else set(_DTYPE_MAP)
+    )
+    unbekannt = [name for name in table.column_names if name not in erlaubt]
+    if unbekannt:
+        raise ValueError(
+            f"Unbekannte physische Parquet-Spalten: {unbekannt}"
+        )
     df = table.to_pandas()
     for name in df.columns:
         if _DTYPE_MAP.get(name) == "datetime64[ns]":

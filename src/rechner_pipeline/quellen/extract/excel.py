@@ -7,18 +7,35 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
+import stat
+import tempfile
+import unicodedata
+from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path, PureWindowsPath
+from typing import Any, Dict, Iterable, Iterator, List, Optional, TextIO, Tuple
+
+from rechner_pipeline.models.manifest import file_sha256
 
 
 GENERATED_SUBDIR_NAME = "info_from_excel"
 
 _INVALID_FS_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1F]+')
+_RESERVED_SHEET_STEM_SUFFIXES = (
+    "_address_values",
+    "_compressed",
+    "_table_values",
+)
+_RESERVED_EXPORT_FILENAMES = ("names_manager.csv",)
 _XL_A1 = 1
 _A1_RE = re.compile(r"(\$?)([A-Z]{1,3})(\$?)(\d+)$")
 _SHEET_A1_RE = re.compile(r"((?:'[^']+'|[A-Za-z0-9_]+)!)?(\$?[A-Z]{1,3}\$?\d+)")
+
+
+class ExportArtifactTargetError(ValueError):
+    """Ein geplanter Exportpfad ist nicht als regulaere Einzeldatei sicher."""
 
 
 def _manifest_warning(
@@ -71,6 +88,119 @@ def safe_filename(name: str, max_len: int = 180) -> str:
     return (cleaned or "unnamed")[:max_len]
 
 
+def _artifact_collision_key(name: str) -> str:
+    return unicodedata.normalize("NFC", name).casefold()
+
+
+def _sheet_artifact_role_names(stem: str) -> Tuple[str, ...]:
+    return (
+        f"{stem}.csv",
+        f"{stem}_compressed.csv",
+        f"{stem}_scalar.json",
+        f"{stem}_table_values.csv",
+    )
+
+
+def _planned_sheet_output_filenames(sheet_csv_filenames: Iterable[str]) -> List[str]:
+    planned = list(_RESERVED_EXPORT_FILENAMES)
+    for filename in sheet_csv_filenames:
+        planned.extend(_sheet_artifact_role_names(Path(filename).stem))
+    return planned
+
+
+def _ensure_safe_artifact_targets(
+    out_dir: Path,
+    artifact_filenames: Iterable[str],
+) -> None:
+    """Lehne vorhandene Links/Sonderdateien vor dem ersten Blatt-Write ab."""
+    if out_dir.is_symlink():
+        raise ExportArtifactTargetError(
+            f"Export directory must not be a symlink: {out_dir}"
+        )
+    for filename in artifact_filenames:
+        path = out_dir / filename
+        if path.is_symlink():
+            raise ExportArtifactTargetError(
+                f"Export artifact target must not be a symlink: {path}"
+            )
+        try:
+            metadata = path.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ExportArtifactTargetError(
+                f"Export artifact target must be a regular file: {path}"
+            )
+        if metadata.st_nlink != 1:
+            raise ExportArtifactTargetError(
+                f"Export artifact target must not be a hardlink: {path}"
+            )
+
+
+@contextmanager
+def _atomic_text_artifact(
+    path: Path,
+    *,
+    newline: str = "",
+) -> Iterator[TextIO]:
+    """Schreibe ein Textartefakt ohne Link-Folge und publiziere es atomar."""
+    fd, temp_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", newline=newline, encoding="utf-8") as f:
+            fd = -1
+            yield f
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def sheet_artifact_filenames(sheet_names: List[str], max_len: int = 180) -> List[str]:
+    """Ordne Blattnamen kollisionsfreie, portable CSV-Dateinamen zu.
+
+    ``safe_filename`` ist absichtlich nicht injektiv: etwa ``Tarif<Alt`` und
+    ``Tarif>Alt`` werden beide zu ``Tarif_Alt``. Die Zuordnung wird deshalb
+    fuer die vollstaendige Blattliste vor dem ersten Write berechnet. Der erste
+    Kandidat behaelt den bisherigen Namen, weitere Kollisionen erhalten einen
+    deterministischen Zaehler. Unicode-Normalisierung und Gross-/Kleinschreibung
+    werden beim Vergleich ignoriert, damit die Zuordnung auch auf macOS und
+    Windows kollisionsfrei bleibt.
+    """
+    filenames: List[str] = []
+    used = {_artifact_collision_key(name) for name in _RESERVED_EXPORT_FILENAMES}
+    for sheet_name in sheet_names:
+        base = safe_filename(sheet_name, max_len=max_len)
+        if PureWindowsPath(f"{base}.csv").is_reserved():
+            base = f"_{base}"[:max_len]
+        counter = 1
+        while True:
+            suffix = "" if counter == 1 else f"__{counter}"
+            stem = base[: max_len - len(suffix)]
+            candidate_stem = f"{stem}{suffix}"
+            candidates = _sheet_artifact_role_names(candidate_stem)
+            candidate_keys = {_artifact_collision_key(name) for name in candidates}
+            reserved_suffix = candidate_stem.casefold().endswith(
+                _RESERVED_SHEET_STEM_SUFFIXES
+            )
+            if not reserved_suffix and candidate_keys.isdisjoint(used):
+                used.update(candidate_keys)
+                filenames.append(candidates[0])
+                break
+            counter += 1
+    return filenames
+
+
 def excel_value_to_text(v: Any) -> str:
     if v is None:
         return ""
@@ -112,13 +242,20 @@ def get_a1_address(cell) -> str:
         return str(cell.Address)
 
 
-def export_one_sheet(ws, out_dir: Path) -> Optional[Path]:
+def export_one_sheet(
+    ws,
+    out_dir: Path,
+    *,
+    artifact_filename: str | None = None,
+) -> Optional[Path]:
     sheet_name = str(ws.Name)
-    out_path = out_dir / f"{safe_filename(sheet_name)}.csv"
+    out_path = out_dir / (
+        artifact_filename or sheet_artifact_filenames([sheet_name])[0]
+    )
     bounds = usedrange_bounds(ws)
     wrote_any = False
 
-    with out_path.open("w", newline="", encoding="utf-8") as f:
+    with _atomic_text_artifact(out_path, newline="") as f:
         writer = csv.writer(f, delimiter=";")
         writer.writerow(["Blatt", "Adresse", "Formel", "Wert"])
 
@@ -158,9 +295,21 @@ def export_one_sheet(ws, out_dir: Path) -> Optional[Path]:
 
 
 def export_all_sheets(wb, out_dir: Path) -> List[Path]:
+    worksheets = list(wb.Worksheets)
+    artifact_filenames = sheet_artifact_filenames(
+        [str(ws.Name) for ws in worksheets]
+    )
+    _ensure_safe_artifact_targets(
+        out_dir,
+        _planned_sheet_output_filenames(artifact_filenames),
+    )
     exported: List[Path] = []
-    for ws in wb.Worksheets:
-        p = export_one_sheet(ws, out_dir)
+    for ws, artifact_filename in zip(worksheets, artifact_filenames):
+        p = export_one_sheet(
+            ws,
+            out_dir,
+            artifact_filename=artifact_filename,
+        )
         if p is not None and p.exists():
             exported.append(p)
     return exported
@@ -224,7 +373,8 @@ def export_vba_modules_to_txt(
         if code is None or str(code).strip() == "":
             continue
         out_path = vba_dir / f"{safe_filename(comp_name)}.txt"
-        out_path.write_text(str(code), encoding="utf-8", newline="\n")
+        with _atomic_text_artifact(out_path, newline="\n") as f:
+            f.write(str(code))
         exported.append(out_path)
         print(f"[OK] VBA exported: {comp_name} -> {out_path}")
 
@@ -306,7 +456,7 @@ def export_name_manager_to_csv(wb, out_dir: Path) -> Optional[Path]:
         print("[OK] Name Manager is empty -> no names_manager.csv generated")
         return None
 
-    with out_path.open("w", newline="", encoding="utf-8") as f:
+    with _atomic_text_artifact(out_path, newline="") as f:
         writer = csv.writer(f, delimiter=";")
         writer.writerow(
             [
@@ -549,7 +699,8 @@ def compress_sheet_csv_with_labels(in_path: Path, out_path: Path, sep: str = ";"
             df_blocks[c] = ""
 
     final = pd.concat([df_values[out_cols], df_blocks[out_cols]], ignore_index=True)
-    final.to_csv(out_path, sep=sep, index=False)
+    with _atomic_text_artifact(out_path, newline="") as f:
+        final.to_csv(f, sep=sep, index=False)
     return True
 
 
@@ -566,11 +717,6 @@ def compress_exported_csvs(
             continue
 
         out_path = csv_path.with_name(csv_path.stem + "_compressed.csv")
-        if out_path.exists():
-            replacements[str(csv_path)] = str(out_path)
-            print(f"[OK] Compressed already exists: {csv_path.name} -> {out_path.name} (reuse)")
-            continue
-
         try:
             written = compress_sheet_csv_with_labels(csv_path, out_path, sep=";")
             if written and out_path.exists():
@@ -592,6 +738,19 @@ def compress_exported_csvs(
                 )
             print(f"[WARN] Compression failed for {csv_path.name}: {exc}")
     return replacements
+
+
+def _exported_sheet_name(csv_path: Path) -> str:
+    """Lies den Originalblattnamen aus einem gerade erzeugten Blattartefakt."""
+    with csv_path.open(encoding="utf-8", newline="") as f:
+        reader = csv.reader(f, delimiter=";")
+        header = next(reader, None)
+        row = next(reader, None)
+    if header != ["Blatt", "Adresse", "Formel", "Wert"] or not row or not row[0]:
+        raise ValueError(
+            f"Exported sheet artifact {csv_path} does not bind an original sheet name."
+        )
+    return row[0]
 
 
 def _export_raw_com(
@@ -644,7 +803,9 @@ def export_excel_infos(
     * ``"com"`` -- Legacy via Excel-COM (nur Windows + installiertes Excel).
 
     Die nachgelagerte Verarbeitung (Komprimierung, Scalars, Manifest) ist
-    backend-unabhaengig.
+    backend-unabhaengig. Das Manifest traegt den Vollhash der Quellmappe und
+    jedes Exportartefakts, damit nachgelagerte Importe die konkreten Bytes
+    statt nur Dateinamen pruefen koennen.
     """
     if not excel_path.exists():
         raise FileNotFoundError(f"Excel file not found: {excel_path}")
@@ -688,6 +849,13 @@ def export_excel_infos(
     manifest: Dict[str, Any] = {
         "out_dir": str(out_dir),
         "sheet_csvs": [str(p) for p in sheet_csvs],
+        "sheet_artifacts": [
+            {
+                "original_name": _exported_sheet_name(p),
+                "file_name": p.name,
+            }
+            for p in sheet_csvs
+        ],
         "vba_txts": [str(p) for p in vba_txts],
         "names_manager_csv": str(nm_csv) if nm_csv is not None else "",
         "replacements": replacements,
@@ -696,6 +864,11 @@ def export_excel_infos(
         "warnings": warnings,
         "prompt_runs": [],
         "output_hashes": [],
+        "source": {
+            "path": str(excel_path),
+            "bytes": excel_path.stat().st_size,
+            "sha256": file_sha256(excel_path),
+        },
     }
 
     print("\n[INFO] Extracting scalars and table values from compressed metadata...")
@@ -707,17 +880,25 @@ def export_excel_infos(
     table_files = sorted(out_dir.glob("*_table_values.csv"), key=lambda p: p.name)
     for p in scalar_files + table_files:
         manifest["all_outputs"].append(str(p))
+    manifest["output_hashes"] = [
+        {
+            "path": str(p),
+            "bytes": p.stat().st_size,
+            "sha256": file_sha256(p),
+        }
+        for p in sorted(
+            {Path(p) for p in manifest["all_outputs"]}, key=lambda p: str(p)
+        )
+        if p.is_file()
+    ]
     print(f"[OK] Scalars generated: {len(scalar_files)}")
     print(f"[OK] Table values generated: {len(table_files)}")
     print(f"\n[DONE] Output written to: {out_dir}")
 
     if save_manifest_json:
         manifest_path = out_dir / "export_manifest.json"
-        manifest_path.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-            newline="\n",
-        )
+        with _atomic_text_artifact(manifest_path, newline="\n") as f:
+            f.write(json.dumps(manifest, ensure_ascii=False, indent=2))
         manifest["all_outputs"].append(str(manifest_path))
 
     return manifest

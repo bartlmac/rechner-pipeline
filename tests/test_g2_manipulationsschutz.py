@@ -255,7 +255,7 @@ def test_g2_lehnt_nichtskalaren_o3_beleg_kontrolliert_ab(
 @pytest.mark.parametrize(
     "ungueltiger_wert", [{}, []], ids=["objekt", "liste"]
 )
-def test_g2_lehnt_nichtskalaren_dag_pflichtbeleg_kontrolliert_ab(
+def test_g2_lehnt_nichtskalaren_scope_pflichtbeleg_kontrolliert_ab(
     tmp_path: Path, ungueltiger_wert: object
 ) -> None:
     fall, key, _ = _bereit_fuer_g2(tmp_path)
@@ -277,7 +277,7 @@ def test_g2_lehnt_nichtskalaren_dag_pflichtbeleg_kontrolliert_ab(
     assert "contains a non-SHA-256" in result.errors[0]["message"]
 
 
-def test_g2_lehnt_signierten_snapshot_mit_fehlender_dag_rolle_ab(
+def test_g2_lehnt_signierten_snapshot_mit_fehlender_scope_rolle_ab(
     tmp_path: Path,
 ) -> None:
     fall, key, _ = _bereit_fuer_g2(tmp_path)
@@ -292,7 +292,7 @@ def test_g2_lehnt_signierten_snapshot_mit_fehlender_dag_rolle_ab(
     )
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
     # Das paketweite JSON-Schema bleibt absichtlich generisch; die exakte
-    # Rollenmenge wird aus dem zentralen Gate-DAG beim Lesen abgeleitet.
+    # Rollenmenge wird aus dem Fall-Scope beim Lesen abgeleitet.
     assert P9Snapshot.validate_payload(daten) == []
     manipuliert = snapshot_pfad.with_name(
         gate_entscheid._snapshot_dateiname("G-2", daten["snapshot_sha256"])
@@ -305,7 +305,7 @@ def test_g2_lehnt_signierten_snapshot_mit_fehlender_dag_rolle_ab(
     assert result.exit_code == 20
     assert result.errors[0]["code"] == "snapshot"
     assert "nicht exakt" in result.errors[0]["message"]
-    assert "Scope und Gate-DAG" in result.errors[0]["message"]
+    assert "aus dem Scope" in result.errors[0]["message"]
 
 
 def test_g2_lehnt_fehlenden_vorgaenger_ab(tmp_path: Path) -> None:

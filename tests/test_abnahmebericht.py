@@ -20,8 +20,10 @@ Knoten: klv
 
 from __future__ import annotations
 
+import csv
 import dataclasses
 import json
+from pathlib import Path
 
 import pytest
 
@@ -34,6 +36,7 @@ from rechner_pipeline.gates.abnahmebericht import (
     GATE,
     baue_bericht,
     main,
+    renderer_artefaktrollen,
     schreibe_bericht,
 )
 from rechner_pipeline.kern import KLV_DEFAULT, Rechenkern
@@ -71,50 +74,126 @@ def _spec() -> TransformationsSpec:
         felder=[
             FeldMapping(ziel="police_id", typ="direkt", quellen=["POLNR"],
                         begruendung="eindeutige Nummer"),
+            FeldMapping(ziel="beginn", typ="direkt", quellen=["BEGINN"],
+                        begruendung="bereits im Zielformat"),
+            FeldMapping(ziel="entry_age", typ="direkt", quellen=["ALTER"],
+                        begruendung="Eintrittsalter"),
+            FeldMapping(ziel="sex", typ="direkt", quellen=["GESCHL"],
+                        begruendung="bereits M/F"),
+            FeldMapping(ziel="duration", typ="direkt", quellen=["n"],
+                        begruendung="Vertragsdauer"),
+            FeldMapping(ziel="premium_duration", typ="direkt", quellen=["t"],
+                        begruendung="Beitragsdauer"),
+            FeldMapping(ziel="sum_insured", typ="direkt", quellen=["SUMME"],
+                        begruendung="Versicherungssumme"),
+            FeldMapping(ziel="zahlweise", typ="direkt", quellen=["ZAHLW"],
+                        begruendung="Raten pro Jahr"),
             FeldMapping(ziel="status", typ="kodierung", quellen=["RK"],
                         kodierung={"NR": "nichtraucher", "R": "raucher"},
                         begruendung="Risikoklasse"),
-            FeldMapping(typ="nicht_uebernommen", quellen=["GESCHL"],
+            FeldMapping(ziel="tarifart", typ="direkt", quellen=["TARIFART"],
+                        begruendung="Bestandsgruppe"),
+            FeldMapping(typ="nicht_uebernommen", quellen=["IGNORIERT"],
                         begruendung="<Tarif rechnet unisex>"),
         ],
         offene_konflikte=[OffenerKonflikt(
             quellspalte="STORNO_KZ", frage="Bedeutung von 'S'?",
             entscheidung="<entschieden durch den Menschen>",
-            entscheider="bartek")],
+            entscheider="fachverantwortliche-rolle")],
     )
 
 
-def test_gruener_bericht_mit_allen_abschnitten(tmp_path) -> None:
-    suite = pruefe_bestand([_pruefung("P-1"), _pruefung("P-2")])
+def _vollstaendige_suite(*pruefungen: VertragsPruefung):
+    """Eine von den Berichtsartefakten unabhaengig vollstaendige Suite."""
+    vollstaendig = [
+        dataclasses.replace(
+            pruefung,
+            bjb_erwartet_1=round(KERN.gross_annual_premium(), 2),
+        )
+        for pruefung in pruefungen
+    ]
+    return pruefe_bestand(vollstaendig, erwartete_anzahl=len(vollstaendig))
+
+
+def _bericht_artefakte():
+    """Deklarative Artefakte fuer den bewusst roten Renderer-Pfad."""
+    return {
+        "spec": _spec(),
+        "transformation_ergebnis": {
+            "zeilen_quelle": 500,
+            "zeilen_ziel": 500,
+            "befunde": [],
+        },
+        "bestandsbericht_vor": "vor/index.html",
+        "bestandsbericht_nach": "nach/index.html",
+    }
+
+
+def _gebundene_bericht_artefakte(tmp_path, anzahl):
+    """Quellbeleg samt physisch registrierter CSV fuer positive Berichte."""
+    from rechner_pipeline.fall import anlegen, registrieren
+
+    spec = _spec()
+    quellspalten = []
+    for spalte in [
+        *(q for feld in spec.felder for q in feld.quellen),
+        *(konflikt.quellspalte for konflikt in spec.offene_konflikte),
+    ]:
+        if spalte not in quellspalten:
+            quellspalten.append(spalte)
+    lieferung = tmp_path / spec.quelle_datei
+    with lieferung.open("w", encoding="utf-8", newline="") as datei:
+        writer = csv.DictWriter(datei, fieldnames=quellspalten, delimiter=";")
+        writer.writeheader()
+        writer.writerows(
+            {spalte: f"wert-{index}" for spalte in quellspalten}
+            for index in range(anzahl)
+        )
+    fall = tmp_path / "fall"
+    anlegen(fall)
+    registrierung = registrieren(fall, lieferung)
+    spec.quelle_sha256 = registrierung["sha256"]
+    return fall, {
+        "spec": spec,
+        "transformation_ergebnis": {
+            "quelle_sha256": registrierung["sha256"],
+            "quellspalten": quellspalten,
+            "zeilen_quelle": anzahl,
+            "zeilen_ziel": anzahl,
+            "befunde": [],
+        },
+        "bestandsbericht_vor": "vor/index.html",
+        "bestandsbericht_nach": "nach/index.html",
+    }
+
+
+def test_fallloser_renderer_bleibt_rot_mit_allen_abschnitten(tmp_path) -> None:
+    suite = _vollstaendige_suite(_pruefung("P-1"), _pruefung("P-2"))
     pfad = schreibe_bericht(
         tmp_path / "bericht.html", titel="Abnahme Testfall",
         stichtag_1="2026-01-01", stichtag_2="2027-01-01", suite=suite,
-        spec=_spec(),
-        transformation_ergebnis={
-            "zeilen_quelle": 500, "zeilen_ziel": 498,
-            "befunde": ["Zeile 7, Feld status: Wert 'X' fehlt"]},
-        bestandsbericht_vor="vor/index.html",
-        bestandsbericht_nach="nach/index.html",
+        **_bericht_artefakte(),
     )
     text = pfad.read_text(encoding="utf-8")
-    assert "ALLE ABNAHMETESTS BESTANDEN (2 von 2" in text
+    assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
+    assert "ohne Fallbindung nicht autoritativ" in text
+    assert "ALLE ABNAHMETESTS BESTANDEN" not in text
     assert "menschliche Entscheidung" in text and "G-2" in text
     assert "dk_stichtag_1" in text and "dk_stichtag_2" in text
     assert "POLNR" in text and "police_id" in text
     assert "NR -&gt; nichtraucher" in text          # Kodierung, escaped
     assert "&lt;Tarif rechnet unisex&gt;" in text   # HTML-Escaping
-    assert ("entschieden (bartek): "
+    assert ("entschieden (fachverantwortliche-rolle): "
             "&lt;entschieden durch den Menschen&gt;") in text
     assert "Transformationsergebnis" in text
-    assert "<b>500</b>" in text and "<b>498</b>" in text
-    assert "Wert &#x27;X&#x27; fehlt" in text or "Wert 'X' fehlt" in text
+    assert text.count("<b>500</b>") >= 2
     assert "vor/index.html" in text and "nach/index.html" in text
     assert "Keine." in text                          # keine Fehlschlaege
     # Einzelvergleiche: jeder Wert erscheint als echte Zahl im Bericht
     assert "Einzelvergleiche (alle Werte)" in text
     dk1 = KERN.monatsreserve(S1).vx_mrv
     assert f"{dk1:.2f}" in text
-    assert text.count("<td class='gruen'>OK</td>") == 4  # 2 Vertraege x 2 DK
+    assert text.count("<td class='gruen'>OK</td>") == 6  # 2 x (2 DK + BJB)
 
 
 def test_roter_bericht_weist_fehlschlaege_und_befunde_aus() -> None:
@@ -142,57 +221,77 @@ def test_gevo_pruefgroessen_erscheinen_gruppiert() -> None:
     assert "gevo_sto" in text
 
 
-def test_bericht_weist_pruefluecken_neben_dem_gruenen_verdikt_aus() -> None:
-    """Grün heißt nicht lückenlos — und der Bericht sagt es.
-
-    Ohne gelieferten Jahresbeitrag ist die Prüfung unvollständig. Das
-    Verdikt bleibt grün (kein Fehlschlag), muss die Lücke aber neben
-    sich stehen haben, sonst liest ein Gremium eine Urkunde über eine
-    Prüfung, die so nie stattgefunden hat.
-    """
+def test_bericht_markiert_pruefluecken_im_kopf_als_nicht_bestanden() -> None:
+    """Eine Prüflücke darf nicht neben einem grünen Kopfsatz stehen."""
     suite = pruefe_bestand([_pruefung("P-1")])
     text = baue_bericht(titel="t", stichtag_1="s1", stichtag_2="s2",
-                        suite=suite)
-    assert "ALLE ABNAHMETESTS BESTANDEN (1 von 1 Verträgen)" in text
-    assert "PRÜFLÜCKE(N)" in text
+                        suite=suite, **_bericht_artefakte())
+    assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
+    assert "ALLE ABNAHMETESTS BESTANDEN" not in text
     assert "Prüflücken (was NICHT geprüft wurde)" in text
     assert "bjb_stichtag_1" in text
     assert "nicht angegeben" in text            # keine erwartete Vertragszahl
 
-    # Mit vollständiger Lieferung verschwindet der Lückenblock:
+    # Mit vollständiger Lieferung verschwindet die Lücke, aber ohne physische
+    # Fallbindung darf daraus weiterhin kein grüner Bericht werden:
     voll = pruefe_bestand(
         [dataclasses.replace(
             _pruefung("P-1"),
             bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))],
         erwartete_anzahl=1)
     text_voll = baue_bericht(titel="t", stichtag_1="s1", stichtag_2="s2",
-                             suite=voll)
-    assert "PRÜFLÜCKE(N)" not in text_voll
+                             suite=voll, **_bericht_artefakte())
+    assert "ALLE ABNAHMETESTS BESTANDEN" not in text_voll
+    assert "ohne Fallbindung nicht autoritativ" in text_voll
     assert "Keine — jede Prüfgröße war geliefert." in text_voll
     assert "bjb_stichtag_1" in text_voll        # als Prüfgröße, nicht als Lücke
 
 
-def test_gruenes_verdikt_hat_genau_einen_schlusspunkt() -> None:
-    """Der Kopfsatz wird projiziert — kein doppelter Punkt nach "s. u.".
-
-    Der Lückenzusatz endet selbst auf einem Punkt; die Vorlage darf
-    keinen zweiten anhängen. Ohne Lücken muss der Satz dagegen sehr wohl
-    mit Punkt enden.
-    """
-    mit_luecke = baue_bericht(
+def test_gruenes_verdikt_braucht_physisch_registrierte_quelle(tmp_path) -> None:
+    fall, artefakte = _gebundene_bericht_artefakte(tmp_path, 1)
+    gebunden = baue_bericht(
         titel="t", stichtag_1="s1", stichtag_2="s2",
-        suite=pruefe_bestand([_pruefung("P-1")]))
-    assert "s. u..." not in mit_luecke and "s. u..</p>" not in mit_luecke
-    assert "PRÜFLÜCKE(N), s. u.</p>" in mit_luecke
+        suite=_vollstaendige_suite(_pruefung("P-1")),
+        fall=fall, **artefakte)
+    assert "(1 von 1 Verträgen).</p>" in gebunden
 
-    ohne_luecke = baue_bericht(
+
+@pytest.mark.parametrize(
+    ("aenderung", "erwarteter_text"),
+    [
+        ("zeilenverlust", "2 Quellzeilen stehen nur 1 transformierte Zeile"),
+        ("transformationsbefund", "Zeile 2 kann nicht transformiert werden"),
+        ("offener_konflikt", "STORNO_KZ"),
+        ("fehlende_spec", "Transformationsspecifikation fehlt"),
+        ("fehlender_vorbericht", "Bestandsbericht VOR der Migration fehlt"),
+    ],
+)
+def test_bericht_zeigt_jedes_abnahmehindernis_rot(
+        aenderung, erwarteter_text) -> None:
+    artefakte = _bericht_artefakte()
+    if aenderung == "zeilenverlust":
+        artefakte["transformation_ergebnis"] = {
+            "zeilen_quelle": 2, "zeilen_ziel": 1, "befunde": []}
+    elif aenderung == "transformationsbefund":
+        artefakte["transformation_ergebnis"] = {
+            "zeilen_quelle": 2, "zeilen_ziel": 2,
+            "befunde": ["Zeile 2 kann nicht transformiert werden"]}
+    elif aenderung == "offener_konflikt":
+        spec = _spec()
+        spec.offene_konflikte[0].entscheidung = None
+        artefakte["spec"] = spec
+    elif aenderung == "fehlende_spec":
+        artefakte["spec"] = None
+    else:
+        artefakte["bestandsbericht_vor"] = None
+
+    text = baue_bericht(
         titel="t", stichtag_1="s1", stichtag_2="s2",
-        suite=pruefe_bestand(
-            [dataclasses.replace(
-                _pruefung("P-1"),
-                bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))],
-            erwartete_anzahl=1))
-    assert "(1 von 1 Verträgen).</p>" in ohne_luecke
+        suite=_vollstaendige_suite(_pruefung("P-1")), **artefakte)
+
+    assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
+    assert "ALLE ABNAHMETESTS BESTANDEN" not in text
+    assert erwarteter_text in text
 
 
 def test_bericht_weist_mengenbefunde_aus() -> None:
@@ -210,9 +309,9 @@ def test_bericht_weist_mengenbefunde_aus() -> None:
 
 
 def test_bericht_ist_deterministisch() -> None:
-    suite = pruefe_bestand([_pruefung("P-1")])
+    suite = _vollstaendige_suite(_pruefung("P-1"))
     args = dict(titel="t", stichtag_1="s1", stichtag_2="s2",
-                suite=suite, spec=_spec())
+                suite=suite, **_bericht_artefakte())
     assert baue_bericht(**args) == baue_bericht(**args)
 
 
@@ -242,23 +341,68 @@ def _basis_argv(tmp_path, suite_pfad):
         "--stichtag-1", "2026-01-01", "--stichtag-2", "2027-01-01",
         "--bericht", str(tmp_path / "berichte" / "abnahme.html"),
         "--diagnostics-dir", str(tmp_path / "diagnostics"),
+    ] + _pflicht_argv(tmp_path)
+
+
+def _pflicht_argv(tmp_path):
+    """Vier vorhandene Pflichtartefakte fuer einen erfolgreichen CLI-Lauf."""
+    spec_pfad = tmp_path / "spec.json"
+    transformation_pfad = tmp_path / "transformation.json"
+    vor_pfad = tmp_path / "vor" / "index.html"
+    nach_pfad = tmp_path / "nach" / "index.html"
+    spec_pfad.write_text(_spec().model_dump_json(), encoding="utf-8")
+    transformation_pfad.write_text(json.dumps({
+        "zeilen_quelle": 2, "zeilen_ziel": 2, "befunde": [],
+    }), encoding="utf-8")
+    vor_pfad.parent.mkdir(parents=True, exist_ok=True)
+    nach_pfad.parent.mkdir(parents=True, exist_ok=True)
+    vor_pfad.write_text("<html>vor</html>", encoding="utf-8")
+    nach_pfad.write_text("<html>nach</html>", encoding="utf-8")
+    return [
+        "--spec", str(spec_pfad),
+        "--transformation-ergebnis", str(transformation_pfad),
+        "--bestandsbericht-vor", str(vor_pfad),
+        "--bestandsbericht-nach", str(nach_pfad),
     ]
 
 
-def test_kommando_gruen_schreibt_bericht_und_ledger(tmp_path) -> None:
-    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"), _pruefung("P-2"))
+def _gebundene_plicht_argv(tmp_path, anzahl):
+    """CLI-Artefakte mit erneut pruefbarer registrierter Quellbindung."""
+    fall, artefakte = _gebundene_bericht_artefakte(tmp_path, anzahl)
     spec_pfad = tmp_path / "spec.json"
-    spec_pfad.write_text(_spec().model_dump_json(), encoding="utf-8")
+    transformation_pfad = tmp_path / "transformation.json"
+    vor_pfad = tmp_path / "vor" / "index.html"
+    nach_pfad = tmp_path / "nach" / "index.html"
+    spec_pfad.write_text(
+        artefakte["spec"].model_dump_json(), encoding="utf-8")
+    transformation_pfad.write_text(
+        json.dumps(artefakte["transformation_ergebnis"]), encoding="utf-8")
+    vor_pfad.parent.mkdir(parents=True, exist_ok=True)
+    nach_pfad.parent.mkdir(parents=True, exist_ok=True)
+    vor_pfad.write_text("<html>vor</html>", encoding="utf-8")
+    nach_pfad.write_text("<html>nach</html>", encoding="utf-8")
+    return fall, [
+        "--spec", str(spec_pfad),
+        "--transformation-ergebnis", str(transformation_pfad),
+        "--bestandsbericht-vor", str(vor_pfad),
+        "--bestandsbericht-nach", str(nach_pfad),
+    ]
 
-    result = main(_basis_argv(tmp_path, suite_pfad)
-                  + ["--spec", str(spec_pfad),
-                     "--bestandsbericht-vor", "vor/index.html"])
 
-    assert (result.exit_code, result.status) == (Exit.OK, "passed")
+def test_fallloses_kommando_schreibt_nur_roten_bericht_und_ledger(
+        tmp_path) -> None:
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(_vollstaendige_suite(
+        _pruefung("P-1"), _pruefung("P-2"))), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert (result.exit_code, result.status) == (Exit.GOLDEN_MASTER, "failed")
     assert result.gate == GATE
     bericht = tmp_path / "berichte" / "abnahme.html"
     text = bericht.read_text(encoding="utf-8")
-    assert "ALLE ABNAHMETESTS BESTANDEN (2 von 2" in text
+    assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
+    assert "ohne Fallbindung nicht autoritativ" in text
     assert "POLNR" in text and "vor/index.html" in text
     # Provenienz: Eingaben UND Ausgabe gehasht (ein bestandenes Gate ohne
     # input_hashes wuerde das Dossier blockieren).
@@ -266,14 +410,41 @@ def test_kommando_gruen_schreibt_bericht_und_ledger(tmp_path) -> None:
     assert list(result.output_hashes) == [str(bericht)]
     assert result.summary["bestanden"] == 2
     assert result.summary["mapping_tabelle"] is True
+    renderer_artefakte = result.summary["renderer_artefakte"]
+    assert set(renderer_artefakte) == set(renderer_artefaktrollen())
+    assert all(
+        result.input_hashes[eintrag["pfad"]] == eintrag["sha256"]
+        for eintrag in renderer_artefakte.values()
+    )
     # Das Kommando nimmt NICHT ab — die Entscheidung bleibt beim Menschen.
     assert "G-2" in result.summary["abnahme"]
 
     eintrag = _ledger(tmp_path / "diagnostics")
     assert (eintrag.gate, eintrag.command) == (GATE, "abnahmebericht")
-    assert (eintrag.status, eintrag.summary["exit_code"]) == ("passed", 0)
+    assert (eintrag.status, eintrag.summary["exit_code"]) == ("failed", 30)
     assert eintrag.required is True
     assert (tmp_path / "diagnostics" / "abnahmebericht.gate.json").is_file()
+
+
+def test_kommando_gruen_nur_mit_physisch_registrierter_quelle(tmp_path) -> None:
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(_vollstaendige_suite(
+        _pruefung("P-1"), _pruefung("P-2"))), encoding="utf-8")
+    fall, pflicht = _gebundene_plicht_argv(tmp_path, 2)
+
+    result = main([
+        "--fall", str(fall), "--suite", str(suite_pfad),
+        "--titel", "Abnahme Testfall",
+        "--stichtag-1", "2026-01-01", "--stichtag-2", "2027-01-01",
+        "--bericht", str(tmp_path / "berichte" / "abnahme.html"),
+        "--diagnostics-dir", str(tmp_path / "diagnostics"),
+        *pflicht,
+    ])
+
+    assert (result.exit_code, result.status) == (Exit.OK, "passed")
+    assert result.summary["bericht_bestanden"] is True
+    assert "ALLE ABNAHMETESTS BESTANDEN" in (
+        tmp_path / "berichte" / "abnahme.html").read_text(encoding="utf-8")
 
 
 def test_kommando_rot_blockiert_und_schreibt_den_bericht_trotzdem(
@@ -321,6 +492,243 @@ def test_kommando_meldet_fehlende_suite_datei(tmp_path) -> None:
     assert "gibt_es_nicht.json" in result.errors[0]["message"]
 
 
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--spec",
+        "--transformation-ergebnis",
+        "--bestandsbericht-vor",
+        "--bestandsbericht-nach",
+    ],
+)
+def test_kommando_blockiert_bei_fehlendem_pflichtartefakt(tmp_path, flag) -> None:
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    argv = _basis_argv(tmp_path, suite_pfad)
+    index = argv.index(flag)
+    del argv[index:index + 2]
+
+    result = main(argv)
+
+    assert (result.exit_code, result.status) == (Exit.USAGE, "failed")
+    assert flag in result.errors[0]["message"]
+    assert not (tmp_path / "berichte" / "abnahme.html").exists()
+
+
+def test_kommando_blockiert_bei_nicht_vorhandenem_pflichtartefakt(tmp_path) -> None:
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    argv = _basis_argv(tmp_path, suite_pfad)
+    argv[argv.index("--bestandsbericht-nach") + 1] = str(
+        tmp_path / "nach" / "fehlt.html")
+
+    result = main(argv)
+
+    assert (result.exit_code, result.status) == (Exit.USAGE, "failed")
+    assert "fehlt.html" in result.errors[0]["message"]
+
+
+@pytest.mark.parametrize(
+    "kollision",
+    [
+        "vor_nach_alias",
+        "vor_ausgabe_alias",
+        "spec_ausgabe_alias",
+        "spec_vor_alias",
+    ],
+)
+def test_kommando_blockiert_kanonisch_gleiche_berichtsrollen(
+        tmp_path, kollision) -> None:
+    """Keine Datei darf mehrere Pflicht- oder Ausgaberollen ersetzen."""
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    argv = _basis_argv(tmp_path, suite_pfad)
+    vor_alias = tmp_path / "vor" / ".." / "vor" / "index.html"
+    if kollision == "vor_nach_alias":
+        argv[argv.index("--bestandsbericht-nach") + 1] = str(vor_alias)
+    elif kollision == "vor_ausgabe_alias":
+        argv[argv.index("--bericht") + 1] = str(vor_alias)
+    elif kollision == "spec_ausgabe_alias":
+        argv[argv.index("--bericht") + 1] = argv[argv.index("--spec") + 1]
+    else:
+        argv[argv.index("--bestandsbericht-vor") + 1] = argv[
+            argv.index("--spec") + 1
+        ]
+
+    result = main(argv)
+
+    assert result.status == "failed"
+    assert result.exit_code != Exit.OK
+    assert "paarweise verschiedene Dateien" in result.errors[0]["message"]
+    bericht = Path(argv[argv.index("--bericht") + 1])
+    if bericht.exists():
+        assert "ALLE ABNAHMETESTS BESTANDEN" not in bericht.read_text(
+            encoding="utf-8"
+        )
+
+
+def test_kommando_blockiert_hardlink_zwischen_eingabe_und_ausgabe(
+        tmp_path) -> None:
+    """Verschiedene Pfade duerfen nicht dasselbe Dateiobjekt bezeichnen."""
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    argv = _basis_argv(tmp_path, suite_pfad)
+    spec_pfad = Path(argv[argv.index("--spec") + 1])
+    bericht_pfad = tmp_path / "berichte" / "abnahme.html"
+    bericht_pfad.parent.mkdir(parents=True, exist_ok=True)
+    bericht_pfad.hardlink_to(spec_pfad)
+
+    result = main(argv)
+
+    assert (result.status, result.exit_code) == ("failed", Exit.USAGE)
+    assert "paarweise verschiedene Dateien" in result.errors[0]["message"]
+    assert spec_pfad.read_text(encoding="utf-8") == _spec().model_dump_json()
+
+
+@pytest.mark.parametrize("kollision", ["bericht", "spec"])
+def test_kommando_blockiert_kollision_mit_eigenem_gate_ledger(
+        tmp_path, kollision) -> None:
+    """Das Ledger darf weder Bericht noch ein Pflichtartefakt ueberschreiben."""
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    argv = _basis_argv(tmp_path, suite_pfad)
+    ledger_pfad = tmp_path / "diagnostics" / "abnahmebericht.gate.json"
+    ledger_pfad.parent.mkdir(parents=True, exist_ok=True)
+    if kollision == "bericht":
+        argv[argv.index("--bericht") + 1] = str(ledger_pfad)
+    else:
+        ledger_pfad.write_text(_spec().model_dump_json(), encoding="utf-8")
+        argv[argv.index("--spec") + 1] = str(ledger_pfad)
+
+    result = main(argv)
+
+    assert (result.status, result.exit_code) == ("failed", Exit.USAGE)
+    assert "Gate-Ledger" in result.errors[0]["message"]
+    if kollision == "bericht":
+        assert not ledger_pfad.exists()
+    else:
+        assert ledger_pfad.read_text(encoding="utf-8") == _spec().model_dump_json()
+
+
+@pytest.mark.parametrize(
+    ("aenderung", "code", "meldung"),
+    [
+        ("zeilenverlust", "zeilenverlust", "2 Quellzeilen"),
+        ("transformationsbefund", "transformationsbefund", "Zeile 2"),
+        ("offener_konflikt", "offener_konflikt", "STORNO_KZ"),
+    ],
+)
+def test_kommando_blockiert_transformationshindernisse_sichtbar(
+        tmp_path, aenderung, code, meldung) -> None:
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    argv = _basis_argv(tmp_path, suite_pfad)
+    if aenderung == "offener_konflikt":
+        spec = _spec()
+        spec.offene_konflikte[0].entscheidung = None
+        (tmp_path / "spec.json").write_text(
+            spec.model_dump_json(), encoding="utf-8")
+    else:
+        transformation = {
+            "zeilen_quelle": 2,
+            "zeilen_ziel": 1 if aenderung == "zeilenverlust" else 2,
+            "befunde": (
+                ["Zeile 2 kann nicht transformiert werden"]
+                if aenderung == "transformationsbefund" else []
+            ),
+        }
+        (tmp_path / "transformation.json").write_text(
+            json.dumps(transformation), encoding="utf-8")
+
+    result = main(argv)
+
+    assert (result.exit_code, result.status) == (Exit.GOLDEN_MASTER, "failed")
+    assert code in [fehler["code"] for fehler in result.errors]
+    assert meldung in " ".join(fehler["message"] for fehler in result.errors)
+    assert result.summary["abnahmehindernisse"]
+    text = (tmp_path / "berichte" / "abnahme.html").read_text(encoding="utf-8")
+    assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
+    assert "ALLE ABNAHMETESTS BESTANDEN" not in text
+
+
+@pytest.mark.parametrize(
+    "transformation",
+    [
+        {"zeilen_quelle": 2, "zeilen_ziel": 2},
+        {"zeilen_quelle": True, "zeilen_ziel": 2, "befunde": []},
+        {"zeilen_quelle": 2, "zeilen_ziel": -1, "befunde": []},
+        {"zeilen_quelle": 2, "zeilen_ziel": 2, "befunde": "keine"},
+    ],
+)
+def test_kommando_weist_unpruefbares_transformationsergebnis_zurueck(
+        tmp_path, transformation) -> None:
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    argv = _basis_argv(tmp_path, suite_pfad)
+    (tmp_path / "transformation.json").write_text(
+        json.dumps(transformation), encoding="utf-8")
+
+    result = main(argv)
+
+    assert (result.exit_code, result.status) == (Exit.FILE_CONTRACT, "failed")
+    assert result.errors[0]["code"] == "transformation_ergebnis_contract"
+    assert not (tmp_path / "berichte" / "abnahme.html").exists()
+
+
+@pytest.mark.parametrize(
+    ("aenderung", "meldung"),
+    [
+        ("leere_entscheidung", "leere Entscheidung"),
+        ("leerer_entscheider", "ohne nichtleeren"),
+        ("ungueltiger_sha", "quelle_sha256"),
+        ("falsche_aritaet", "braucht genau 1 Quellspalte"),
+    ],
+)
+def test_kommando_fuehrt_validate_spec_vor_dem_rendern_aus(
+        tmp_path, aenderung, meldung) -> None:
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    argv = _basis_argv(tmp_path, suite_pfad)
+    spec = _spec()
+    if aenderung == "leere_entscheidung":
+        spec.offene_konflikte[0].entscheidung = "   "
+    elif aenderung == "leerer_entscheider":
+        spec.offene_konflikte[0].entscheider = ""
+    elif aenderung == "ungueltiger_sha":
+        spec.quelle_sha256 = "z" * 64
+    else:
+        spec.felder = [
+            (
+                FeldMapping(
+                    ziel="duration",
+                    typ="berechnung",
+                    quellen=[],
+                    berechnung="ganzzahl",
+                    begruendung="ungueltige Null-Arity",
+                )
+                if feld.ziel == "duration" else feld
+            )
+            for feld in spec.felder
+        ]
+    (tmp_path / "spec.json").write_text(
+        spec.model_dump_json(), encoding="utf-8")
+
+    result = main(argv)
+
+    assert (result.exit_code, result.status) == (Exit.FILE_CONTRACT, "failed")
+    assert result.errors[0]["code"] == "spec_contract"
+    assert meldung in " ".join(fehler["message"] for fehler in result.errors)
+    assert not (tmp_path / "berichte" / "abnahme.html").exists()
+
+
 def test_kommando_weist_frisierte_zusammenfassung_zurueck(tmp_path) -> None:
     """Eine nachgebesserte Suite-Zusammenfassung ist ein Contract-Bruch.
 
@@ -344,6 +752,107 @@ def test_kommando_weist_frisierte_zusammenfassung_zurueck(tmp_path) -> None:
     assert _ledger(tmp_path / "diagnostics").status == "failed"
 
 
+def test_kommando_weist_roten_einzelvergleich_unter_gruener_zusammenfassung_zurueck(
+        tmp_path) -> None:
+    """Ein roter atomarer Vergleich darf nicht als gruen umetikettiert werden."""
+    suite_pfad = _suite_datei(
+        tmp_path, _pruefung("P-1"), _pruefung("P-2", dk1_versatz=500.0))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    assert daten["vertraege"][1]["pruefungen"][0]["ok"] is False
+    daten["vertraege"][1]["pruefungen"][0]["ok"] = True
+    daten["vertraege"][1]["bestanden"] = True
+    daten["bestanden"], daten["fehlgeschlagen"] = 2, 0
+    daten["suite_bestanden"] = True
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert (result.exit_code, result.status) == (Exit.FILE_CONTRACT, "failed")
+    meldungen = " ".join(e["message"] for e in result.errors)
+    assert "vertraege[1]" in meldungen and "'ok'" in meldungen
+    assert "bestanden" in meldungen
+    assert "suite_bestanden" in meldungen
+    assert not (tmp_path / "berichte" / "abnahme.html").exists()
+
+
+def test_kommando_weist_gruenes_urteil_ohne_einzelpruefung_zurueck(
+        tmp_path) -> None:
+    """``all([])`` darf keine Urkunde ueber null Vergleiche begruenen."""
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    urteil = daten["vertraege"][0]
+    urteil["pruefungen"] = []
+    urteil["nicht_geprueft"] = []
+    daten["pruefluecken"] = []
+    daten["vollstaendig_geprueft"] = True
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert (result.exit_code, result.status) == (Exit.FILE_CONTRACT, "failed")
+    meldungen = " ".join(e["message"] for e in result.errors)
+    assert "bestanden" in meldungen and "Einzelprüfungen" in meldungen
+    assert not (tmp_path / "berichte" / "abnahme.html").exists()
+
+
+def test_kommando_weist_widerspruechliches_residuum_zurueck(tmp_path) -> None:
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    daten["vertraege"][0]["pruefungen"][0]["residuum"] += 1.0
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert (result.exit_code, result.status) == (Exit.FILE_CONTRACT, "failed")
+    assert "residuum" in " ".join(e["message"] for e in result.errors)
+    assert not (tmp_path / "berichte" / "abnahme.html").exists()
+
+
+def test_kommando_weist_nicht_darstellbare_json_ganzzahl_zurueck(
+        tmp_path) -> None:
+    """Ein syntaktisch gueltiger Riesen-Integer ist ein Contract-Fehler."""
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    daten["vertraege"][0]["pruefungen"][0]["system"] = 10 ** 400
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert (result.exit_code, result.status) == (Exit.FILE_CONTRACT, "failed")
+    assert "endliche Zahl" in " ".join(e["message"] for e in result.errors)
+
+
+@pytest.mark.parametrize(
+    ("feld", "wert"),
+    [("suite_bestanden", 1), ("vollstaendig_geprueft", 0)],
+)
+def test_kommando_weist_nicht_boolesche_suiteurteile_zurueck(
+        tmp_path, feld, wert) -> None:
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    daten[feld] = wert
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert (result.exit_code, result.status) == (Exit.FILE_CONTRACT, "failed")
+    assert feld in " ".join(e["message"] for e in result.errors)
+
+
+@pytest.mark.parametrize("feld", ["anzahl", "bestanden", "fehlgeschlagen"])
+def test_kommando_weist_nicht_ganzzahlige_zaehler_zurueck(
+        tmp_path, feld) -> None:
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    daten[feld] = True
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+
+    result = main(_basis_argv(tmp_path, suite_pfad))
+
+    assert (result.exit_code, result.status) == (Exit.FILE_CONTRACT, "failed")
+    assert feld in " ".join(e["message"] for e in result.errors)
+
+
 def test_kommando_blockiert_bei_befund_der_pruefmenge(tmp_path) -> None:
     """Alle Verträge bestanden, aber die Menge stimmt nicht -> rot."""
     pfad = tmp_path / "suite.json"
@@ -365,10 +874,14 @@ def test_kommando_blockiert_bei_befund_der_pruefmenge(tmp_path) -> None:
 def test_kommando_traegt_die_pruefluecken_in_den_ledger(tmp_path) -> None:
     suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
     result = main(_basis_argv(tmp_path, suite_pfad))
-    assert result.exit_code == Exit.OK                # Lücke blockiert nicht
+    assert (result.exit_code, result.status) == (Exit.GOLDEN_MASTER, "failed")
     assert result.summary["vollstaendig_geprueft"] is False
     assert any("bjb_stichtag_1" in l for l in result.summary["pruefluecken"])
+    assert "pruefluecke" in [fehler["code"] for fehler in result.errors]
+    text = (tmp_path / "berichte" / "abnahme.html").read_text(encoding="utf-8")
+    assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
     eintrag = _ledger(tmp_path / "diagnostics")
+    assert eintrag.status == "failed"
     assert eintrag.summary["vollstaendig_geprueft"] is False
 
 
@@ -422,9 +935,16 @@ def test_kommando_weist_falsche_erwartete_anzahl_zurueck(
 def test_kommando_traegt_die_gelieferte_erwartete_anzahl(tmp_path) -> None:
     """Die Gegenprobe: eine ganze Zahl und ``null`` bleiben zulaessig."""
     pfad = tmp_path / "suite.json"
-    pfad.write_text(json.dumps(pruefe_bestand(
-        [_pruefung("P-1")], erwartete_anzahl=1)), encoding="utf-8")
-    result = main(_basis_argv(tmp_path, pfad))
+    pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    fall, pflicht = _gebundene_plicht_argv(tmp_path, 1)
+    result = main([
+        "--fall", str(fall), "--suite", str(pfad), "--titel", "T",
+        "--stichtag-1", "2026-01-01", "--stichtag-2", "2027-01-01",
+        "--bericht", str(tmp_path / "berichte" / "abnahme.html"),
+        "--diagnostics-dir", str(tmp_path / "diagnostics"),
+        *pflicht,
+    ])
     assert result.exit_code == Exit.OK
     assert result.summary["erwartete_anzahl"] == 1
     text = (tmp_path / "berichte" / "abnahme.html").read_text(encoding="utf-8")
@@ -458,16 +978,46 @@ def test_kommando_weist_leere_pruefmenge_zurueck(tmp_path) -> None:
 
 
 def test_kommando_nutzt_die_fall_vorgaben(tmp_path) -> None:
-    fall = tmp_path / "fall"
-    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
-    result = main(["--fall", str(fall), "--suite", str(suite_pfad),
-                   "--titel", "T", "--stichtag-1", "a", "--stichtag-2", "b"])
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    fall, pflicht = _gebundene_plicht_argv(tmp_path, 1)
+    result = main([
+        "--fall", str(fall), "--suite", str(suite_pfad),
+        "--titel", "T", "--stichtag-1", "a", "--stichtag-2", "b",
+        *pflicht,
+    ])
     assert result.exit_code == Exit.OK
     bericht = fall / "abgeleitet" / "berichte" / "migrationsabnahme.html"
     assert bericht.is_file()
     assert result.paths["bericht"] == str(bericht)
     assert (fall / "abgeleitet" / "diagnostics"
             / "abnahmebericht.gate.json").is_file()
+
+
+def test_kommando_mit_fall_aber_ohne_registrierte_quelle_bleibt_rot(
+        tmp_path) -> None:
+    from rechner_pipeline.fall import anlegen
+
+    fall = tmp_path / "fall"
+    anlegen(fall)
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+
+    result = main([
+        "--fall", str(fall), "--suite", str(suite_pfad),
+        "--titel", "T", "--stichtag-1", "a", "--stichtag-2", "b",
+        *_pflicht_argv(tmp_path),
+    ])
+
+    assert (result.exit_code, result.status) == (Exit.GOLDEN_MASTER, "failed")
+    assert result.summary["bericht_bestanden"] is False
+    meldungen = " ".join(fehler["message"] for fehler in result.errors)
+    assert "nicht registriert" in meldungen
+    text = (fall / "abgeleitet" / "berichte" / "migrationsabnahme.html").read_text(
+        encoding="utf-8")
+    assert "ALLE ABNAHMETESTS BESTANDEN" not in text
 
 
 def test_kommando_gibt_genau_ein_json_auf_stdout(tmp_path, capsys) -> None:

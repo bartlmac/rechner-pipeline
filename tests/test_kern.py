@@ -110,6 +110,85 @@ def test_missing_table_fails_fast():
         berechne(dataclasses.replace(KLV_DEFAULT, tafel="DAV9999_T"))
 
 
+def _lade_synthetisches_tafel_xml(tmp_path, monkeypatch, eintraege):
+    xml = tmp_path / "tafeln.xml"
+    xml.write_text(
+        "<tafeln>\n  <table name=\"TEST\">\n"
+        + "\n".join(eintraege)
+        + "\n  </table>\n</tafeln>\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tafeln.resources, "files", lambda _paket: tmp_path)
+    return tafeln._load_tables()
+
+
+def _xml_alterseintraege(qx_bei=None):
+    from rechner_pipeline.kern.konventionen import MAX_ALTER
+
+    qx_bei = qx_bei or {}
+    return [
+        f'    <entry age="{alter}" qx="{qx_bei.get(alter, "0.01")}" />'
+        for alter in range(MAX_ALTER + 1)
+    ]
+
+
+def test_kern_xml_laden_akzeptiert_qx_grenzen(tmp_path, monkeypatch):
+    tables, select_tables = _lade_synthetisches_tafel_xml(
+        tmp_path,
+        monkeypatch,
+        _xml_alterseintraege({0: "0", 123: "1"}),
+    )
+    assert tables["TEST"][0] == 0.0
+    assert tables["TEST"][123] == 1.0
+    assert select_tables == {}
+
+
+@pytest.mark.parametrize(
+    ("roh_qx", "muster"),
+    [
+        ("nan", "nicht endlich"),
+        ("inf", "nicht endlich"),
+        ("-0.0000001", r"ausserhalb des Bereichs \[0, 1\]"),
+        ("1.0000001", r"ausserhalb des Bereichs \[0, 1\]"),
+    ],
+)
+def test_kern_xml_laden_lehnt_ungueltige_qx_ab(
+    tmp_path, monkeypatch, roh_qx, muster
+):
+    with pytest.raises(ValueError, match=muster):
+        _lade_synthetisches_tafel_xml(
+            tmp_path,
+            monkeypatch,
+            _xml_alterseintraege({42: roh_qx}),
+        )
+
+
+@pytest.mark.parametrize(
+    ("fall", "muster"),
+    [
+        ("dezimal", "nicht ganzzahlig"),
+        ("doppelt", "Duplikat Alter 42"),
+        ("fehlend", "Alter .*fehlen"),
+        ("zusaetzlich", "zusaetzliche Alter"),
+    ],
+)
+def test_kern_xml_laden_verlangt_exakte_eindeutige_ganzzahlalter(
+    tmp_path, monkeypatch, fall, muster
+):
+    eintraege = _xml_alterseintraege()
+    if fall == "dezimal":
+        eintraege[42] = eintraege[42].replace('age="42"', 'age="42.5"')
+    elif fall == "doppelt":
+        eintraege[43] = eintraege[43].replace('age="43"', 'age="42"')
+    elif fall == "fehlend":
+        eintraege.pop(42)
+    else:
+        eintraege.append('    <entry age="124" qx="0.01" />')
+
+    with pytest.raises(ValueError, match=muster):
+        _lade_synthetisches_tafel_xml(tmp_path, monkeypatch, eintraege)
+
+
 def test_reserve_row_shape_and_flex_phase():
     kern = Rechenkern(KLV_DEFAULT)
     row0 = kern.reserve_row(0)

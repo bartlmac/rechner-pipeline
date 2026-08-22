@@ -26,6 +26,7 @@ Knoten: klv
 
 from __future__ import annotations
 
+import csv
 import dataclasses
 
 import pytest
@@ -36,8 +37,8 @@ from rechner_pipeline.ontologie.transformation import (
     OffenerKonflikt,
     TransformationsSpec,
     validate_spec,
-    wende_an,
 )
+from rechner_pipeline.gates.transformation_anwenden import wende_an
 from rechner_pipeline.qa.abzugsabgleich import (
     MIND_BELEGE,
     VERWERFUNGS_QUOTE,
@@ -107,6 +108,34 @@ ZEILE = {
 }
 
 
+def _registriere_testquelle(tmp_path, spec, zeilen, *, quellspalten=None):
+    """CSV registrieren und ihren Fall fuer die Transformations-API liefern."""
+    nummer = len(list(tmp_path.glob("fall-*")))
+    lieferung = tmp_path / f"lieferung-{nummer}"
+    lieferung.mkdir()
+    quelle = lieferung / spec.quelle_datei
+    spalten = list(quellspalten or QUELLSPALTEN)
+    with quelle.open("w", encoding="utf-8", newline="") as datei:
+        writer = csv.DictWriter(
+            datei, fieldnames=spalten, delimiter=";", extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(zeilen)
+    from rechner_pipeline.fall import anlegen, registrieren
+
+    fall = tmp_path / f"fall-{nummer}"
+    anlegen(fall)
+    registrierung = registrieren(fall, quelle)
+    spec.quelle_sha256 = registrierung["sha256"]
+    return fall
+
+
+def _wende_testquelle(tmp_path, spec, zeilen, *, quellspalten=None):
+    """Die Transformations-API stets ueber den Fall selbst testen."""
+    fall = _registriere_testquelle(
+        tmp_path, spec, zeilen, quellspalten=quellspalten)
+    return wende_an(spec, fall)
+
+
 # --------------------------------------------------------------------------- #
 # P5: Spec-Validierung und Anwendung
 # --------------------------------------------------------------------------- #
@@ -143,8 +172,78 @@ def test_offener_konflikt_blockiert_bis_zur_menschlichen_entscheidung():
     spec = _spec(offene_konflikte=[OffenerKonflikt(
         quellspalte="STORNO_KZ", frage="was bedeutet 'S'?",
         entscheidung="<entschieden durch den Menschen>",
-        entscheider="Bartek")])
+        entscheider="fachverantwortliche-rolle")])
     assert validate_spec(spec, QUELLSPALTEN + ["STORNO_KZ"]) == []
+
+
+@pytest.mark.parametrize(
+    ("entscheidung", "entscheider", "meldung"),
+    [
+        ("", "fachverantwortliche-rolle", "leere Entscheidung"),
+        ("   ", "fachverantwortliche-rolle", "leere Entscheidung"),
+        ("fachlich entschieden", "", "ohne nichtleeren"),
+        ("fachlich entschieden", "   ", "ohne nichtleeren"),
+    ],
+)
+def test_leere_entscheidung_oder_entscheider_blockiert(
+        entscheidung, entscheider, meldung):
+    spec = _spec(offene_konflikte=[OffenerKonflikt(
+        quellspalte="STORNO_KZ",
+        frage="Bedeutung fachlich klaeren",
+        entscheidung=entscheidung,
+        entscheider=entscheider,
+    )])
+
+    fehler = validate_spec(spec, QUELLSPALTEN + ["STORNO_KZ"])
+
+    assert any(meldung in eintrag for eintrag in fehler), fehler
+
+
+@pytest.mark.parametrize("wert", ["z" * 64, "AB" * 32, "0" * 63 + "g"])
+def test_ungueltiger_sha256_blockiert(wert):
+    fehler = validate_spec(_spec(quelle_sha256=wert), QUELLSPALTEN)
+
+    assert any("quelle_sha256" in eintrag and "SHA-256" in eintrag
+               for eintrag in fehler), fehler
+
+
+@pytest.mark.parametrize(
+    ("berechnung", "quellen"),
+    [
+        ("alter_aus_geburtsdatum_und_beginn", ["GEBDAT"]),
+        ("alter_aus_geburtsdatum_und_beginn", ["GEBDAT", "BEGINN", "n"]),
+        ("jahre_aus_datumsdifferenz", ["BEGINN"]),
+        ("jahre_aus_datumsdifferenz", ["BEGINN", "GEBDAT", "n"]),
+        ("datum_nach_iso", []),
+        ("datum_nach_iso", ["BEGINN", "GEBDAT"]),
+        ("zahl", []),
+        ("zahl", ["ERLSUMME", "n"]),
+        ("ganzzahl", []),
+        ("ganzzahl", ["n", "t"]),
+    ],
+)
+def test_berechnungen_verlangen_ihre_exakte_aritaet(berechnung, quellen):
+    spec = _spec(felder=[FeldMapping(
+        ziel="entry_age",
+        typ="berechnung",
+        quellen=quellen,
+        berechnung=berechnung,
+        begruendung="adversarial falsche Operandenanzahl",
+    )])
+
+    fehler = validate_spec(spec, QUELLSPALTEN)
+
+    assert any(berechnung in eintrag and "braucht genau" in eintrag
+               for eintrag in fehler), fehler
+
+
+def test_jede_katalogberechnung_hat_einen_aritaetsvertrag():
+    from rechner_pipeline.ontologie.transformation import (
+        BERECHNUNGEN,
+        BERECHNUNGS_ARITAETEN,
+    )
+
+    assert set(BERECHNUNGEN) == set(BERECHNUNGS_ARITAETEN)
 
 
 def test_unbekanntes_zielfeld_ist_gt_grenze():
@@ -159,8 +258,10 @@ def test_unbekanntes_zielfeld_ist_gt_grenze():
     assert any("provisionssatz" in f and "G-T" in f for f in fehler)
 
 
-def test_anwendung_ist_deterministisch_und_vollstaendig():
-    ziel, befunde = wende_an(_spec(), [ZEILE])
+def test_anwendung_ist_deterministisch_und_vollstaendig(tmp_path):
+    spec = _spec()
+    fall = _registriere_testquelle(tmp_path, spec, [ZEILE])
+    ziel, befunde = wende_an(spec, fall)
     assert befunde == []
     [v] = ziel
     assert v["entry_age"] == 39                # 1976 -> 2015, Juni
@@ -171,14 +272,66 @@ def test_anwendung_ist_deterministisch_und_vollstaendig():
     assert v["beginn"] == "2015-06-01"
     assert v["sex"] == "F"                     # Quelle "W" -> Kern-Contract
     # Determinismus:
-    assert wende_an(_spec(), [ZEILE]) == (ziel, [])
+    assert wende_an(spec, fall) == (ziel, [])
 
 
-def test_unbekannter_kodierungswert_verwirft_die_zeile_laut():
+def test_unbekannter_kodierungswert_verwirft_die_zeile_laut(tmp_path):
     kaputt = dict(ZEILE, RK="X")
-    ziel, befunde = wende_an(_spec(), [ZEILE, kaputt])
+    ziel, befunde = _wende_testquelle(tmp_path, _spec(), [ZEILE, kaputt])
     assert len(ziel) == 1                      # halbe Vertraege gibt es nicht
     assert any("'X'" in b and "Kodierung" in b for b in befunde)
+
+
+def test_wende_an_blockiert_eine_nicht_validierte_spec(tmp_path):
+    spec = _spec(felder=[f for f in _spec().felder if f.ziel != "sum_insured"])
+
+    with pytest.raises(ValueError, match="sum_insured.*nicht gedeckt"):
+        _wende_testquelle(tmp_path, spec, [ZEILE])
+
+
+def test_wende_an_blockiert_nachtraeglich_veraenderte_quellbytes(tmp_path):
+    spec = _spec()
+    fall = _registriere_testquelle(tmp_path, spec, [ZEILE])
+    quelle = fall / "eingang" / spec.quelle_datei
+    quelle.chmod(0o600)
+    quelle.write_text(
+        quelle.read_text(encoding="utf-8").replace("87000", "99999"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Inhalt weicht vom Register ab"):
+        wende_an(spec, fall)
+
+
+def test_wende_an_prueft_die_physischen_quellspalten(tmp_path):
+    spec = _spec()
+    fehlende_summe = [spalte for spalte in QUELLSPALTEN if spalte != "ERLSUMME"]
+    with pytest.raises(ValueError, match="ERLSUMME.*existiert nicht"):
+        _wende_testquelle(
+            tmp_path, spec, [ZEILE], quellspalten=fehlende_summe)
+
+
+def test_wende_an_weist_eine_unregistrierte_datei_zurueck(tmp_path):
+    from rechner_pipeline.fall import anlegen
+
+    spec = _spec()
+    fall = tmp_path / "fall"
+    anlegen(fall)
+    unregistriert = fall / "eingang" / spec.quelle_datei
+    unregistriert.write_text("POLNR\n7000001\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="nicht registriert"):
+        wende_an(spec, fall)
+
+
+def test_wende_an_transformiert_den_vom_fall_geprueften_eingang(tmp_path):
+    spec = _spec()
+    fall = _registriere_testquelle(tmp_path, spec, [ZEILE])
+
+    ziel, befunde = wende_an(spec, fall)
+
+    assert befunde == []
+    assert [zeile["police_id"] for zeile in ziel] == ["7000001"]
 
 
 # --------------------------------------------------------------------------- #
@@ -243,7 +396,8 @@ def test_geschlechts_kodierung_auf_quellcodes_faellt():
                for f in fehler), fehler
 
 
-def test_direkt_durchgereichtes_geschlecht_ausserhalb_m_f_ist_ein_befund():
+def test_direkt_durchgereichtes_geschlecht_ausserhalb_m_f_ist_ein_befund(
+        tmp_path):
     """Auch ohne Kodierung endet ein Fremdwert nicht im Kern."""
     spec = _spec(felder=[
         f if f.ziel != "sex" else FeldMapping(
@@ -252,13 +406,16 @@ def test_direkt_durchgereichtes_geschlecht_ausserhalb_m_f_ist_ein_befund():
         for f in _spec().felder
     ])
     assert validate_spec(spec, QUELLSPALTEN) == []      # Spec ist zulaessig
-    ziel, befunde = wende_an(spec, [dict(ZEILE, GESCHL="F"),
-                                    dict(ZEILE, GESCHL="W")])
+    ziel, befunde = _wende_testquelle(
+        tmp_path,
+        spec,
+        [dict(ZEILE, GESCHL="F"), dict(ZEILE, GESCHL="W")],
+    )
     assert len(ziel) == 1 and ziel[0]["sex"] == "F"
     assert len(befunde) == 1 and "Geschlecht 'W'" in befunde[0]
 
 
-def test_transformierte_zeile_baut_einen_kern_modelpoint():
+def test_transformierte_zeile_baut_einen_kern_modelpoint(tmp_path):
     """Die heute fehlende Klammer: Ausgabe -> ModelPoint -> Rechnung.
 
     Kontrollrechnung gegen einen unabhaengigen Pfad: derselbe Vertrag
@@ -273,7 +430,7 @@ def test_transformierte_zeile_baut_einen_kern_modelpoint():
     )
 
     generation = {name: getattr(KLV_DEFAULT, name) for name in GENERATION_FIELDS}
-    ziel, befunde = wende_an(_spec(), [ZEILE])
+    ziel, befunde = _wende_testquelle(tmp_path, _spec(), [ZEILE])
     assert befunde == []
     mp = ModelPoint(**model_point_kwargs(ziel[0], generation))
     assert (mp.x, mp.sex, mp.n, mp.t, mp.zw) == (39, "F", 20, 15, 12)
@@ -541,6 +698,67 @@ def test_bestand_profil_faellt_bei_doppelten_spalten(tmp_path):
         baue_profil(csv_datei)
 
 
+@pytest.mark.parametrize(
+    ("daten", "zeilennummer", "gefunden"),
+    [
+        ("1\n", 2, 1),
+        ("1;2;3\n", 2, 3),
+        ("1;2\n3\n", 3, 1),
+    ],
+)
+def test_bestand_profil_faellt_bei_falscher_zeilenbreite(
+        tmp_path, daten, zeilennummer, gefunden):
+    from rechner_pipeline.quellen.bestand_profil import baue_profil
+
+    csv_datei = tmp_path / "abzug.csv"
+    csv_datei.write_text(f"A;B\n{daten}", encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        baue_profil(csv_datei)
+
+    meldung = str(exc_info.value)
+    assert f"CSV-Zeile {zeilennummer}" in meldung
+    assert "erwartete Feldzahl 2" in meldung
+    assert f"gefundene Feldzahl {gefunden}" in meldung
+
+
+def test_bestand_profil_zaehlt_gequoteten_trenner_als_ein_feld(tmp_path):
+    from rechner_pipeline.quellen.bestand_profil import baue_profil
+
+    csv_datei = tmp_path / "abzug.csv"
+    csv_datei.write_text(
+        'POLNR;HINWEIS\n7000001;"regulaer; gequotet"\n',
+        encoding="utf-8",
+    )
+
+    profil = baue_profil(csv_datei)
+
+    spalten = {spalte["name"]: spalte for spalte in profil["spalten"]}
+    assert profil["zeilen"] == 1
+    assert spalten["HINWEIS"]["beispiele"] == ["regulaer; gequotet"]
+
+
+def test_bestand_profil_cli_meldet_falsche_zeilenbreite(
+        tmp_path, capsys):
+    from rechner_pipeline.quellen.bestand_profil import main
+
+    csv_datei = tmp_path / "abzug.csv"
+    profil_datei = tmp_path / "profil.json"
+    csv_datei.write_text("A;B\n1;2;3\n", encoding="utf-8")
+
+    exit_code = main([
+        "--input", str(csv_datei),
+        "--out", str(profil_datei),
+    ])
+
+    ausgabe = capsys.readouterr()
+    assert exit_code == 20
+    assert ausgabe.out == ""
+    assert "CSV-Zeile 2" in ausgabe.err
+    assert "erwartete Feldzahl 2, gefundene Feldzahl 3" in ausgabe.err
+    assert not profil_datei.exists()
+
+
 def test_transformations_skill_ist_verankert():
     """Skill-Paritaet und die nicht verhandelbaren Kerne des neuen Skills."""
     from pathlib import Path
@@ -621,15 +839,16 @@ def test_runbook_und_architektur_nennen_die_formel_grenze():
 # --------------------------------------------------------------------------- #
 
 
-def _entry_age(gebdat: str, beginn: str) -> int:
+def _entry_age(tmp_path, gebdat: str, beginn: str) -> int:
     """entry_age ueber den Katalog, nicht ueber eine Testrechnung."""
     zeile = dict(ZEILE, GEBDAT=gebdat, BEGINN=beginn)
-    ziel, befunde = wende_an(_spec(), [zeile])
+    ziel, befunde = _wende_testquelle(tmp_path, _spec(), [zeile])
     assert befunde == [], befunde
     return ziel[0]["entry_age"]
 
 
-def test_entry_age_ist_das_vollendete_alter_nicht_die_jahresdifferenz():
+def test_entry_age_ist_das_vollendete_alter_nicht_die_jahresdifferenz(
+        tmp_path):
     """Geburtstag NACH dem Beginn im Jahr: ein Jahr weniger.
 
     Die Jahresdifferenz allein waere 37 — der Katalog rechnet das
@@ -637,28 +856,45 @@ def test_entry_age_ist_das_vollendete_alter_nicht_die_jahresdifferenz():
     zwischen Zielsystem-Konvention und der Kalenderjahresmethode, die
     Quellsysteme fuehren koennen.
     """
-    assert _entry_age("08.12.1979", "01.02.2016") == 36   # Geburtstag danach
-    assert _entry_age("08.01.1979", "01.02.2016") == 37   # Geburtstag davor
-    assert _entry_age("01.02.1979", "01.02.2016") == 37   # exakt am Beginn
+    assert _entry_age(tmp_path, "08.12.1979", "01.02.2016") == 36
+    assert _entry_age(tmp_path, "08.01.1979", "01.02.2016") == 37
+    assert _entry_age(tmp_path, "01.02.1979", "01.02.2016") == 37
 
 
-def test_jahre_aus_datumsdifferenz_rechnet_und_faellt_hart_aus():
+def test_jahre_aus_datumsdifferenz_rechnet_und_faellt_hart_aus(tmp_path):
     """Die Dauerberechnung des Katalogs — inklusive ihrer Fehlergrenze."""
     zeile = dict(ZEILE)
-    spec = TransformationsSpec(
-        quelle_datei="abzug.csv", quelle_sha256="cd" * 32,
-        akteur=AKTEUR, erhoben_am="2026-08-19",
-        felder=[
-            FeldMapping(ziel="duration", typ="berechnung",
-                        quellen=["BEGINN", "ABLAUF"],
-                        berechnung="jahre_aus_datumsdifferenz",
-                        begruendung="Laufzeit aus Beginn und Ablauf"),
-        ],
+    spec = _spec(felder=[
+        (
+            FeldMapping(
+                ziel="duration",
+                typ="berechnung",
+                quellen=["BEGINN", "ABLAUF"],
+                berechnung="jahre_aus_datumsdifferenz",
+                begruendung="Laufzeit aus Beginn und Ablauf",
+            )
+            if feld.ziel == "duration" else feld
+        )
+        for feld in _spec().felder
+    ] + [FeldMapping(
+        typ="nicht_uebernommen",
+        quellen=["n"],
+        begruendung="Dauer wird stattdessen aus Beginn und Ablauf berechnet",
+    )])
+    ziel, befunde = _wende_testquelle(
+        tmp_path,
+        spec,
+        [dict(zeile, ABLAUF="01.06.2035")],
+        quellspalten=QUELLSPALTEN + ["ABLAUF"],
     )
-    ziel, befunde = wende_an(spec, [dict(zeile, ABLAUF="01.06.2035")])
     assert befunde == [] and ziel[0]["duration"] == 20
     # Nicht-positive Dauer ist ein Befund je Zeile, kein stiller Wert:
-    ziel, befunde = wende_an(spec, [dict(zeile, ABLAUF="01.06.2015")])
+    ziel, befunde = _wende_testquelle(
+        tmp_path,
+        spec,
+        [dict(zeile, ABLAUF="01.06.2015")],
+        quellspalten=QUELLSPALTEN + ["ABLAUF"],
+    )
     assert ziel == [] and len(befunde) == 1
     assert "duration" in befunde[0]
 
