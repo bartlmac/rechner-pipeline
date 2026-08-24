@@ -722,6 +722,58 @@ def test_bestand_profil_faellt_bei_falscher_zeilenbreite(
     assert f"gefundene Feldzahl {gefunden}" in meldung
 
 
+@pytest.mark.parametrize(
+    ("daten", "zeilennummer", "gefunden"),
+    [
+        ("1;2\n", 2, 2),
+        ("1;2;3;4\n", 2, 4),
+        ("1;2;3\n4;5\n", 3, 2),
+    ],
+)
+def test_transformationsquelle_faellt_bei_falscher_zeilenbreite(
+        tmp_path, daten, zeilennummer, gefunden):
+    """Zerfranste Zeilen sind ein Befund, kein stiller Default (P2).
+
+    Zu kurze Zeilen wurden frueher mit None aufgefuellt und landeten als
+    leerer Zielwert im Ergebnis; ueberzaehlige Felder verschwanden
+    spurlos. Dieselbe Fehlerklasse ist im Bestandsprofil bereits
+    geschlossen — hier fehlte sie noch.
+    """
+    from rechner_pipeline.ontologie.transformation import (
+        lese_transformationsquelle,
+    )
+
+    csv_datei = tmp_path / "quelle.csv"
+    csv_datei.write_text(f"A;B;C\n{daten}", encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        lese_transformationsquelle(csv_datei)
+
+    meldung = str(exc_info.value)
+    assert f"Zeile {zeilennummer}" in meldung
+    assert f"{gefunden} Felder" in meldung
+    assert "erwartet 3" in meldung
+
+
+def test_transformationsquelle_laesst_leerfeld_und_gequoteten_trenner_zu(
+        tmp_path):
+    """Die Breitenpruefung darf legitime Zeilen nicht mitreissen."""
+    from rechner_pipeline.ontologie.transformation import (
+        lese_transformationsquelle,
+    )
+
+    csv_datei = tmp_path / "quelle.csv"
+    csv_datei.write_text('A;B;C\n1;;3\n4;"x;y";6\n', encoding="utf-8")
+
+    _, spalten, zeilen = lese_transformationsquelle(csv_datei)
+
+    assert spalten == ["A", "B", "C"]
+    assert zeilen == [
+        {"A": "1", "B": "", "C": "3"},
+        {"A": "4", "B": "x;y", "C": "6"},
+    ]
+
+
 def test_bestand_profil_zaehlt_gequoteten_trenner_als_ein_feld(tmp_path):
     from rechner_pipeline.quellen.bestand_profil import baue_profil
 

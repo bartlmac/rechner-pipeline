@@ -299,7 +299,23 @@ def lese_transformationsquelle(
             f"Transformationsquelle {quelle_pfad} hat doppelte Spalten "
             f"{doppelt}"
         )
-    return hashlib.sha256(roh).hexdigest(), quellspalten, list(reader)
+    zeilen: List[Dict[str, Any]] = []
+    for zeile in reader:
+        # DictReader fuellt zu kurze Zeilen mit ``restval`` auf und sammelt
+        # ueberzaehlige Felder unter ``restkey``. Beides waere ein stiller
+        # Default (P2): ein fehlendes Feld erschiene als leerer Zielwert,
+        # ein ueberzaehliges verschwaende spurlos.
+        ueberzaehlig = zeile.pop(reader.restkey, []) if reader.restkey in zeile else []
+        fehlend = [name for name, wert in zeile.items() if wert is reader.restval]
+        if ueberzaehlig or fehlend:
+            gefunden = len(quellspalten) + len(ueberzaehlig) - len(fehlend)
+            raise ValueError(
+                f"Transformationsquelle {quelle_pfad} Zeile {reader.line_num}: "
+                f"{gefunden} Felder, laut Header erwartet {len(quellspalten)} "
+                "— kein stilles Auffuellen und kein stiller Feldverlust"
+            )
+        zeilen.append(zeile)
+    return hashlib.sha256(roh).hexdigest(), quellspalten, zeilen
 
 
 def _wende_registrierte_datei_an(
