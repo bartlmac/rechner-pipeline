@@ -303,6 +303,72 @@ def test_wende_an_blockiert_nachtraeglich_veraenderte_quellbytes(tmp_path):
         wende_an(spec, fall)
 
 
+def test_wende_an_bindet_die_spec_an_die_tatsaechlich_gelesenen_bytes(
+        tmp_path):
+    """Die Spec muss zu DEN Bytes passen, die transformiert werden.
+
+    Die Registerpruefung in ``fall.eingang_datei`` faengt nur den Fall,
+    dass die registrierte Datei nachtraeglich veraendert wurde. Zeigt
+    eine Spec dagegen auf eine unversehrt registrierte Datei, aber mit
+    fremdem ``quelle_sha256``, ist dieser Abgleich im Anwendungspfad die
+    einzige Instanz — und er war ungetestet: Entfernt man ihn, bleibt
+    die Suite gruen.
+    """
+    echte_spec = _spec()
+    fall = _registriere_testquelle(tmp_path, echte_spec, [ZEILE])
+    fremde_spec = _spec(quelle_sha256="b" * 64)
+
+    with pytest.raises(ValueError) as exc_info:
+        wende_an(fremde_spec, fall)
+
+    meldung = str(exc_info.value)
+    assert "quelle_sha256 der Spec passt nicht" in meldung
+    # Die Meldung nennt den tatsaechlichen Hash, damit der Mensch die
+    # Verwechslung aufloesen kann.
+    assert echte_spec.quelle_sha256 in meldung
+
+
+def test_berichtsweg_prueft_quellenbindung_gegen_die_registrierte_datei(
+        tmp_path):
+    """Auch der schmale Berichtsweg muss physisch neu lesen.
+
+    Der Abnahmebericht prueft die Quellenbindung auf JEDEM Weg, nicht nur
+    im Bestands-Scope. Verglichen ein Umbau nur noch Spec- und
+    Ergebnis-Hash miteinander, blieben beide in sich stimmig und die
+    Suite gruen — obwohl keiner von beiden zur registrierten Datei
+    passt. Genau diese in sich stimmige Faelschung stellt der Test her.
+    """
+    from rechner_pipeline.gates.abnahmebericht import (
+        _registrierte_quellenbindung_fehler,
+    )
+
+    echte_spec = _spec()
+    fall = _registriere_testquelle(tmp_path, echte_spec, [ZEILE])
+    echtes_ergebnis = {
+        "quelle_sha256": echte_spec.quelle_sha256,
+        "quellspalten": list(QUELLSPALTEN),
+        "zeilen_quelle": 1,
+        "zeilen_ziel": 1,
+        "befunde": [],
+    }
+    assert _registrierte_quellenbindung_fehler(
+        fall=fall, spec=echte_spec, ergebnis=echtes_ergebnis
+    ) == []
+
+    fremder_hash = "c" * 64
+    fremde_spec = _spec(quelle_sha256=fremder_hash)
+    stimmiges_falsches_ergebnis = {**echtes_ergebnis, "quelle_sha256": fremder_hash}
+
+    fehler = _registrierte_quellenbindung_fehler(
+        fall=fall, spec=fremde_spec, ergebnis=stimmiges_falsches_ergebnis
+    )
+
+    assert any("TransformationsSpec.quelle_sha256 weicht" in m for m in fehler)
+    assert any(
+        "Transformationsergebnis.quelle_sha256 weicht" in m for m in fehler
+    )
+
+
 def test_wende_an_prueft_die_physischen_quellspalten(tmp_path):
     spec = _spec()
     fehlende_summe = [spalte for spalte in QUELLSPALTEN if spalte != "ERLSUMME"]
