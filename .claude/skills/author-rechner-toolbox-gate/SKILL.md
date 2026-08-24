@@ -27,14 +27,18 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     args = _resolve_args(argv)              # parse + merge_request_into_args
     diagnostics_dir = ...                   # from --diagnostics-dir, else a sensible default
 
+    # Red start marker BEFORE any gate work: a crash must never leave the
+    # previous green ledger standing as apparent current evidence.
+    fehlstart = begin_gate_ledger_attempt(
+        command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+        diagnostics_dir=diagnostics_dir, repo_root=...,
+        started_at=started_at,
+        command_line=argv if argv is not None else sys.argv[1:])
+    if fehlstart is not None:               # marker could not be written -> BLOCKING
+        return fehlstart
+
     def _finalize(result: ToolboxResult) -> ToolboxResult:
-        try:                                # ledger is best-effort, disk-only, NEVER masks verdict
-            write_gate_ledger(result, diagnostics_dir, repo_root=...,
-                              started_at=started_at, ended_at=utc_now(),
-                              command_line=argv if argv is not None else sys.argv[1:])
-        except Exception as exc:            # noqa: BLE001
-            log(f"{COMMAND}: gate-ledger write failed: {exc}")
-        return result
+        return finalize_gate_ledger(result)  # atomic; write failure -> INTERNAL
 
     if not args.generated_dir:              # usage problems -> Exit.USAGE (2)
         return _finalize(build_result(command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
@@ -59,14 +63,16 @@ if __name__ == "__main__":
 - `log(msg)` → stderr only. NEVER `print` to stdout (only `run_command` writes stdout).
 - `add_request_json_arg(parser)`; `read_request_json(args.request_json)`; `merge_request_into_args(args, request)` — request fills only argparse fields whose value is `None`.
 - `hash_files(paths, base=REPO_ROOT, missing_ok=False)` → ordered `{repo-relative path: sha256}`. Repo-relative BY DEFAULT (portable; no absolute leak). Use `missing_ok=True` for optional inputs.
-- `write_gate_ledger(result, diagnostics_dir, *, repo_root=None, attempt=1, started_at=None, ended_at=None, command_line=None, gate=None, required=None)` → writes `<command>.gate.json`, returns Path.
+- `begin_gate_ledger_attempt(*, command, gate, gate_version, diagnostics_dir, repo_root=None, started_at=None, command_line=None)` → red start marker; returns `None` on success, else the blocking result to return immediately.
+- `finalize_gate_ledger(result)` → replaces the marker atomically; a write failure yields an INTERNAL result instead of the (green) input.
+- `write_gate_ledger(result, diagnostics_dir, *, repo_root=None, attempt=1, started_at=None, ended_at=None, command_line=None, gate=None, required=None)` → low-level write of `<command>.gate.json`; gates use the two calls above, not this one directly.
 - `utc_now()` → ISO-8601 UTC string.
 
 ## Standard flags every gate accepts
 `--<inputs...>` (e.g. `--repo-root`, `--generated-dir`, `--info-dir`), `--diagnostics-dir`, and `--request-json (- | PATH)` (via `add_request_json_arg`). **RULE: every mergeable flag MUST use `default=None`** — a non-None falsy default (`0/""/False/[]`) silently blocks the request-json value.
 
 ## Ledger emission contract (§6.8.2)
-Write `<command>.gate.json` via `write_gate_ledger` on BOTH pass AND fail paths (wrap each `return` in `_finalize`). It is best-effort, stderr-logged on failure, and NEVER masks the verdict. It is a disk-only side artifact — stdout stays exactly one JSON object. `dossier` (G8) globs `*.gate.json`; a passed required gate with empty `input_hashes` is BLOCKED (`hashes.missing`) — always supply hashes. Gate id comes from `result.gate` (set it on every `build_result`); `required` defaults to membership in `REQUIRED_GATES`.
+Two-step and BLOCKING (ADR-008/ToDo 10.12 — the old best-effort contract is void). First `begin_gate_ledger_attempt(...)` before any gate work: it removes an older `<command>.gate.json` and persists a red start marker, so a crash can never leave a stale green ledger as apparent evidence; if it returns a result, that result is the (blocking) answer. Then wrap every `return` in `_finalize`, which calls `finalize_gate_ledger(result)` — it replaces the marker atomically and turns a write failure into an INTERNAL failure instead of a green verdict. The ledger is a disk-only side artifact — stdout stays exactly one JSON object. A passed gate with empty `input_hashes` is BLOCKED (`hashes.missing`) — always supply hashes. Gate id comes from `result.gate` (set it on every `build_result`); `required` is `True` for every gate (the old opt-in list is gone with ADR-006, and so is the `dossier` aggregation that once consumed these files).
 
 ## Exit-code contract + status mirroring
 `0` pass | `2` usage | `10` extraction | `20` file/compile/schema | `21` static security | `22` conventions | `30` golden-master | `31` algebraic/coverage | `32` roundtrip | `40` dossier | `50` internal. `status` mirrors `exit_code` (0→passed, non-zero→failed) EXCEPT human-review (`human_review_required`, still non-zero/blocking). Non-zero is BLOCKING — never downgrade to a warning. `schemas.CommonResult.validate()` rejects a status/exit mismatch or an out-of-set code.
