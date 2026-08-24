@@ -960,7 +960,9 @@ def _bericht_fehler(
             bestandsbericht_nach=erzeugung["bestandsbericht_nach"],
             fall=fall,
         )
-        gefunden = bericht_pfad.read_text(encoding="utf-8")
+        # Bytes lesen, nicht Text: read_text uebersetzt CRLF/CR still nach LF
+        # und laesst damit eine umkodierte Fassung als "bytegenau" durchgehen.
+        gefunden = bericht_pfad.read_bytes().decode("utf-8")
     except Exception as exc:  # noqa: BLE001 — frei editierbarer Beleg blockiert
         return [f"Abnahmebericht ist nicht reproduzierbar: {exc}"]
     if gefunden != erwartet:

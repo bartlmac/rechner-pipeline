@@ -689,6 +689,41 @@ def test_g2_reproduziert_konsistent_neu_gehashten_abnahmebericht(
     assert "deterministischen Erzeugung" in g2.errors[0]["message"]
 
 
+def test_g2_blockiert_umkodierte_zeilenenden_im_abnahmebericht(
+    tmp_path: Path,
+):
+    """Bytegenau heisst bytegenau — auch bei blosser Umkodierung.
+
+    Der Vergleich las den Bericht frueher als Text ein; Pythons
+    Universal-Newlines uebersetzten CRLF still nach LF, sodass eine
+    umkodierte Fassung samt nachgezogenem Hash als "bytegenau
+    reproduziert" durchging. Der Inhalt bleibt dabei sichtbar gleich —
+    genau deshalb faellt es ohne Test niemandem auf.
+    """
+    fall = _bereite_bestandsfall(tmp_path)
+    diagnostics = fall / "abgeleitet" / "diagnostics"
+    ledger_pfad = diagnostics / "abnahmebericht.gate.json"
+    ledger = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+    bericht_eintrag = ledger["summary"]["bestandsbelege"]["abnahmebericht"]
+    bericht_pfad = fall / bericht_eintrag["pfad"]
+
+    original = bericht_pfad.read_bytes()
+    umkodiert = original.replace(b"\n", b"\r\n")
+    assert umkodiert != original, "Vorbedingung: der Bericht hat Zeilenumbrueche"
+    bericht_pfad.write_bytes(umkodiert)
+    neuer_hash = sha256(umkodiert).hexdigest()
+    bericht_eintrag["sha256"] = neuer_hash
+    ledger["summary"]["output_hashes"][bericht_eintrag["pfad"]] = neuer_hash
+    ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
+
+    g2 = _p9_annahme(
+        fall, "G-2", "darf eine umkodierte Berichtsfassung nicht annehmen"
+    )
+
+    assert g2.exit_code == 20
+    assert "deterministischen Erzeugung" in g2.errors[0]["message"]
+
+
 def test_g2_blockiert_neu_gehashten_bericht_mit_zeilenverlust(
     tmp_path: Path,
 ):
