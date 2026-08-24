@@ -1,15 +1,17 @@
 """``ExportManifest`` and supporting records.
 
-Defines the export manifest and its supporting records. ``ExportManifest.to_dict()``
-produces the canonical manifest JSON shape. Do not change field names, ordering, or
-omission rules, as consumers depend on the exact structure.
+Defines the export manifest and its supporting records. The manifest binds its
+source bytes and every exported artifact through full SHA-256 records.
+``ExportManifest.to_dict()`` produces the canonical manifest JSON shape. Do not
+change field names, ordering, or omission rules, as consumers depend on the exact
+structure.
 
 Knoten: system/assurance
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
@@ -164,6 +166,27 @@ class FileHashRecord:
 
 
 @dataclass(frozen=True)
+class SheetArtifactRecord:
+    """Bijektive Bindung eines Originalblattnamens an seine Exportdatei."""
+
+    original_name: str
+    file_name: str
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SheetArtifactRecord":
+        return cls(
+            original_name=str(data.get("original_name", "")),
+            file_name=str(data.get("file_name", "")),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "original_name": self.original_name,
+            "file_name": self.file_name,
+        }
+
+
+@dataclass(frozen=True)
 class ExportManifest:
     out_dir: Path
     sheet_csvs: List[Path]
@@ -175,6 +198,8 @@ class ExportManifest:
     warnings: List[ManifestWarning]
     prompt_runs: List[PromptRecord]
     output_hashes: List[FileHashRecord]
+    source: FileHashRecord | None = None
+    sheet_artifacts: List[SheetArtifactRecord] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ExportManifest":
@@ -199,12 +224,24 @@ class ExportManifest:
                 FileHashRecord.from_dict(item)
                 for item in data.get("output_hashes", [])
             ],
+            source=(
+                FileHashRecord.from_dict(data["source"])
+                if isinstance(data.get("source"), dict)
+                else None
+            ),
+            sheet_artifacts=[
+                SheetArtifactRecord.from_dict(item)
+                for item in data.get("sheet_artifacts", [])
+            ],
         )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "out_dir": str(self.out_dir),
             "sheet_csvs": [str(p) for p in self.sheet_csvs],
+            "sheet_artifacts": [
+                item.to_dict() for item in self.sheet_artifacts
+            ],
             "vba_txts": [str(p) for p in self.vba_txts],
             "names_manager_csv": str(self.names_manager_csv) if self.names_manager_csv else "",
             "replacements": self.replacements,
@@ -213,6 +250,7 @@ class ExportManifest:
             "warnings": [item.to_dict() for item in self.warnings],
             "prompt_runs": [item.to_dict() for item in self.prompt_runs],
             "output_hashes": [item.to_dict() for item in self.output_hashes],
+            "source": self.source.to_dict() if self.source is not None else None,
         }
 
     def with_warnings(self, warnings: Iterable[ManifestWarning]) -> "ExportManifest":
@@ -235,6 +273,8 @@ class ExportManifest:
             warnings=merged,
             prompt_runs=self.prompt_runs,
             output_hashes=self.output_hashes,
+            source=self.source,
+            sheet_artifacts=self.sheet_artifacts,
         )
 
     def with_prompt_record(self, record: PromptRecord) -> "ExportManifest":
@@ -251,6 +291,8 @@ class ExportManifest:
             warnings=self.warnings,
             prompt_runs=prompt_runs,
             output_hashes=self.output_hashes,
+            source=self.source,
+            sheet_artifacts=self.sheet_artifacts,
         )
 
     def with_output_hashes(self, paths: Iterable[Path]) -> "ExportManifest":
@@ -280,6 +322,8 @@ class ExportManifest:
             warnings=self.warnings,
             prompt_runs=self.prompt_runs,
             output_hashes=records,
+            source=self.source,
+            sheet_artifacts=self.sheet_artifacts,
         )
 
     def strict_error_warnings(self) -> List[ManifestWarning]:

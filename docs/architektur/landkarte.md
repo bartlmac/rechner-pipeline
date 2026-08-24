@@ -30,7 +30,7 @@ flowchart TD
     n__init__["__init__<br/>1 Module"]
     bestand["bestand<br/>14 Module"]
     fall["fall<br/>1 Module"]
-    gates["gates<br/>9 Module"]
+    gates["gates<br/>12 Module"]
     kern["kern<br/>9 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
     models["models<br/>5 Module"]
@@ -41,11 +41,11 @@ flowchart TD
     bestand -- 8 --> kern
     bestand -- 10 --> models
     gates -- 3 --> bestand
-    gates -- 1 --> fall
+    gates -- 4 --> fall
     gates -- 1 --> kern
-    gates -- 4 --> models
-    gates -- 9 --> ontologie
-    gates -- 2 --> qa
+    gates -- 6 --> models
+    gates -- 12 --> ontologie
+    gates -- 3 --> qa
     gates -- 4 --> quellen
     gates -- 1 --> spez
     kommutationskern -- 2 --> kern
@@ -56,7 +56,7 @@ flowchart TD
     qa -- 2 --> kommutationskern
     qa -- 1 --> models
     quellen -- 1 --> kern
-    quellen -- 5 --> models
+    quellen -- 7 --> models
     quellen -- 3 --> ontologie
     quellen -- 1 --> spez
     spez -- 1 --> kern
@@ -74,15 +74,16 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
     bu["bu<br/>22 Module"]
-    klv["klv<br/>57 Module"]
+    klv["klv<br/>60 Module"]
     system_architektur["system/architektur<br/>4 Module"]
-    system_assurance["system/assurance<br/>12 Module"]
+    system_assurance["system/assurance<br/>14 Module"]
     system_fall["system/fall<br/>1 Module"]
-    bu -- 1 --> system_assurance
-    klv -- 3 --> system_assurance
-    klv -- 1 --> system_fall
+    bu -- 2 --> system_assurance
+    klv -- 6 --> system_assurance
+    klv -- 4 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
+    system_assurance -- 1 --> system_fall
 ```
 
 ## 3 Der Zielrechenkern von innen

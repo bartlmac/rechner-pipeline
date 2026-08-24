@@ -63,7 +63,11 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
   Gate G-2 (Mensch, Entscheid-Snapshot). Ein Exit-Code `0` des
   Berichts-Kommandos heißt "Vorlage vollständig und ohne Fehlschlag",
   NICHT "abgenommen" — die Abnahme wird mit `gates/gate_entscheid`
-  vom Menschen festgehalten.
+  vom Menschen festgehalten. Eine ANNAHME verlangt dort seit ADR-008
+  `--freigabe-schluessel <datei>`; die Schlüsseldatei liegt außerhalb
+  des Falls und gehört dem Menschen. Du hast sie nicht und bekommst
+  sie nicht — ein Agent kann an einem menschlichen Gate ausschließlich
+  ablehnen.
 
 ## Ablauf
 
@@ -83,6 +87,16 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    - `erwartete_anzahl=` an `pruefe_bestand`: die Zeilenzahl des
      Bestandsabzugs. Ohne sie ist NICHT geprüft, dass die Prüfmenge
      dem gelieferten Bestand entspricht.
+   Im Bestands-Scope kommen vier Bindungen dazu, ohne die das
+   Suite-JSON KEIN G-2-Beleg ist (der Abnahmebericht verlangt sie und
+   gleicht sie gegen `fall.json` ab):
+   - `stichtag_1=` / `stichtag_2=`: die beiden ISO-Stichtage,
+     chronologisch; sie müssen den Berichtsstichtagen entsprechen.
+   - `bestand_sha256=`: SHA-256 des geprüften Bestands — dieselbe
+     Datei, die Gate B1 geprüft hat.
+   - `system=`: der Systemstand aus
+     `gates._provenienz.systemstand(repo_root)` (exakt die Schlüssel
+     `commit`, `branch`, `dirty`, `quellcode_sha256`).
    Dann `qa.migrationssuite.pruefe_bestand` laufen lassen und das
    zurückgegebene Dict unverändert als JSON in den Fall schreiben
    (`json.dump`, z. B. `abgeleitet/berichte/migrationssuite.json`).
@@ -90,8 +104,12 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    Schritt 4 prüft die Zusammenfassung gegen die Einzelurteile und
    bricht sonst mit `20` ab.
 3. Bestandsberichte vor/nach erzeugen (gleiche Parameter, gleicher
-   Horizont — nur so ist der visuelle Vergleich fair).
-4. Bericht erzeugen und protokollieren:
+   Horizont — nur so ist der visuelle Vergleich fair). Im
+   Bestands-Scope muss außerdem Gate B1
+   (`gates.bestand_validate`) grün gelaufen sein: Sein Ledger ist
+   Pflichtbeleg für G-2 und wird vom Abnahmebericht mitgebunden.
+4. Bericht erzeugen und protokollieren. ALLE aufgeführten Angaben
+   sind Pflicht — fehlt eine, bricht das Kommando als Usage-Fehler ab:
 
    ```
    python -m rechner_pipeline.gates.abnahmebericht \
@@ -99,10 +117,17 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
        --suite faelle/<fall>/abgeleitet/berichte/migrationssuite.json \
        --titel "Migrationsabnahme <Fall>" \
        --stichtag-1 <ISO> --stichtag-2 <ISO> \
-       [--spec <transformationsspec.json>] \
-       [--transformation-ergebnis <ergebnis.json>] \
-       [--bestandsbericht-vor <pfad>] [--bestandsbericht-nach <pfad>]
+       --spec <transformationsspec.json> \
+       --transformation-ergebnis <ergebnis.json> \
+       --bestandsbericht-vor <pfad> --bestandsbericht-nach <pfad>
    ```
+
+   Vor- und Nachbericht müssen verschiedene Dateien sein; keine der
+   Angaben darf auf dieselbe Datei zeigen wie eine andere oder wie
+   der Gate-Ledger. Im Bestands-Scope zieht das Kommando das
+   B1-Ledger automatisch aus
+   `<fall>/abgeleitet/diagnostics/bestand_validate.gate.json`
+   (abweichend: `--b1-ledger`).
 
    Der Bericht landet unter `<fall>/abgeleitet/berichte/`, der
    Ledger-Eintrag `abnahmebericht.gate.json` unter

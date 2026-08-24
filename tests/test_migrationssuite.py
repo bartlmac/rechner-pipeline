@@ -142,6 +142,40 @@ def test_erh_befunde() -> None:
     assert any("ohne Erhöhungssumme" in b for b in ohne_summe["befunde"])
 
 
+@pytest.mark.parametrize("art", ("STO", "TOD", "ABL", "PEX"))
+def test_fehlender_betrag_eines_betragsgevo_ist_konkrete_pruefluecke(
+    art: str,
+) -> None:
+    """Zustandswirkung ersetzt nie den ausgelassenen Betragsvergleich."""
+    if art == "ABL":
+        monat = ABLAUF
+        vertrag = _ablauf_pruefung((GeVoErwartung(art, monat),))
+    elif art == "PEX":
+        monat = 12 * 10
+        dk2 = round(KERN.monatsreserve_beitragsfrei(monat // 12, S2), 2)
+        vertrag = _pruefung(
+            dk2=dk2, gevos=(GeVoErwartung(art, monat),))
+    else:
+        monat = S1 + 4
+        vertrag = _pruefung(
+            dk2_fehlt=True, gevos=(GeVoErwartung(art, monat),))
+    vertrag = dataclasses.replace(
+        vertrag, bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))
+
+    ergebnis = pruefe_bestand([vertrag], erwartete_anzahl=1)
+
+    luecke = f"gevo_{art.lower()}_monat_{monat}"
+    urteil = ergebnis["vertraege"][0]
+    assert urteil["bestanden"], urteil["befunde"]
+    assert urteil["nicht_geprueft"] == [luecke]
+    assert luecke not in [p["groesse"] for p in urteil["pruefungen"]]
+    assert ergebnis["suite_bestanden"] is True
+    assert ergebnis["vollstaendig_geprueft"] is False
+    assert len(ergebnis["pruefluecken"]) == 1
+    assert luecke in ergebnis["pruefluecken"][0]
+    assert "NICHT geprüft" in ergebnis["pruefluecken"][0]
+
+
 def test_gevo_ausserhalb_der_stichtage_ist_befund() -> None:
     gevos = (GeVoErwartung("TOD", S1 - 1, 1.0),)
     urteil = pruefe_vertrag(_pruefung(gevos=gevos))
@@ -578,14 +612,23 @@ def test_tod_bei_anfangs_beitragsfreiem_vertrag_zahlt_die_bfr_summe() -> None:
 def _terminal_urteil(art: str, dk2: Optional[float]) -> Dict[str, Any]:
     """Urteil ueber einen Vertrag mit genau einem GeVo dieser Art.
 
-    Der GeVo traegt keinen Betrag (nichts zu vergleichen) — geprueft
-    wird allein, ob die Art den Vertrag beendet.
+    Der GeVo traegt einen korrekten Betrag, damit ausschließlich geprüft
+    wird, ob die Art den Vertrag beendet.
     """
     if art == "ABL":
         return pruefe_vertrag(_ablauf_pruefung(
-            (GeVoErwartung("ABL", ABLAUF),), dk2=dk2))
+            (GeVoErwartung(
+                "ABL", ABLAUF, float(KLV_DEFAULT.sum_insured)),),
+            dk2=dk2))
     monate = 12 * 10 if art in ("PEX", "ERH") else S1 + 4
-    betrag = 5000.0 if art == "ERH" else None
+    if art == "ERH":
+        betrag = 5000.0
+    elif art == "PEX":
+        betrag = round(KERN.beitragsfreie_summe(monate // 12), 2)
+    elif art == "STO":
+        betrag = round(KERN.monatsreserve(monate).rkw, 2)
+    else:  # TOD
+        betrag = float(KLV_DEFAULT.sum_insured)
     return pruefe_vertrag(_pruefung(
         dk2=dk2, dk2_fehlt=dk2 is None,
         gevos=(GeVoErwartung(art, monate, betrag),)))
@@ -637,7 +680,9 @@ def test_abgang_ist_die_pruefung_der_abbruch_ist_die_luecke() -> None:
     """
     abgegangen = pruefe_bestand(
         [_pruefung(dk2_fehlt=True,
-                   gevos=(GeVoErwartung("STO", S1 + 4),))],
+                   gevos=(GeVoErwartung(
+                       "STO", S1 + 4,
+                       round(KERN.monatsreserve(S1 + 4).rkw, 2)),))],
         erwartete_anzahl=1)
     urteil = abgegangen["vertraege"][0]
     assert urteil["bestanden"], urteil["befunde"]
@@ -759,3 +804,38 @@ def test_erhoehung_nach_bereits_erfolgter_beitragsfreistellung_ist_befund(
     assert not urteil["bestanden"]
     assert any("nur auf dem beitragspflichtigen Track" in b
                for b in urteil["befunde"]), urteil["befunde"]
+
+
+def test_suite_schreibt_scope_bindung_nur_als_vollstaendigen_vertrag() -> None:
+    system = {
+        "commit": "abc1234",
+        "branch": "test",
+        "dirty": "nein",
+        "quellcode_sha256": "b" * 64,
+    }
+    ergebnis = pruefe_bestand(
+        [_pruefung()],
+        erwartete_anzahl=1,
+        stichtag_1="2026-01-01",
+        stichtag_2="2027-01-01",
+        bestand_sha256="a" * 64,
+        system=system,
+    )
+    assert {
+        name: ergebnis[name]
+        for name in ("stichtag_1", "stichtag_2", "bestand_sha256")
+    } == {
+        "stichtag_1": "2026-01-01",
+        "stichtag_2": "2027-01-01",
+        "bestand_sha256": "a" * 64,
+    }
+    assert ergebnis["system"] == system
+    with pytest.raises(ValueError, match="verlangt gemeinsam"):
+        pruefe_bestand([_pruefung()], stichtag_1="2026-01-01")
+    with pytest.raises(ValueError, match="muss nach"):
+        pruefe_bestand(
+            [_pruefung()], stichtag_1="2027-01-01", stichtag_2="2026-01-01",
+            bestand_sha256="a" * 64,
+        )
+    with pytest.raises(ValueError, match="system muss exakt"):
+        pruefe_bestand([_pruefung()], system={"commit": "abc"})

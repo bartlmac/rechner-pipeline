@@ -59,16 +59,25 @@ Stufe 2  A-Box -> Spez -> Kern-Parametrierung
                   StrukturUrteil BERECHNET (Parametrierung vs. neues Produkt);
                   spez/fachspez — das menschenlesbare G-1-Dokument (P7)
   deterministisch: quellen/tafel_import — Tafeln + Ableitungen (Unisex-
-                  Mischtafel als DATEN-Regel, VBA-bit-treu) nach kern/tafeln.xml
+                  Mischtafel als DATEN-Regel, VBA-bit-treu) nach kern/tafeln.xml;
+                  bindet registrierte XLSM, Exportmanifest und konkrete
+                  Blatt-CSV ueber vollstaendige SHA-256-Werte; erzwingt exakt
+                  die Alter 0..123 sowie endliche qx in [0,1] an Import- und
+                  Kern-XML-Ladegrenze
   Gate G-1 (Mensch): Fachspez + Diskrepanzen + Coverage; Werkzeuge:
                   ontologie/entscheide (Aufloesung), gates/gate_entscheid (P9)
 
 Stufe 3  Abnahme
   Gate O3 (generation_golden): Kern (Spez-parametriert) gegen die aus dem
                   Quell-Rechner extrahierten Erwartungswerte; prueft vorab,
-                  dass die Spez gueltige Projektion der A-Box ist
-  Gate G-2 (Mensch): P9-Snapshot — verweigert Annahme, solange vorlaeufige
-                  Diskrepanz-Aufloesungen existieren
+                  dass die Spez gueltige Projektion der A-Box ist; schreibt
+                  je Generation einen inhaltsadressierten Beleg mit A-Box-
+                  und Systemstand
+  Gate G-2 (Mensch): P9-Snapshot — verlangt die Pflichtbelege des
+                  Fall-Scopes. Tarif: O1/G-1/O3. Bestand zusaetzlich: B1,
+                  vollstaendige Zwei-Stichtags-Suite und gruener
+                  Abnahmebericht; G-2 revalidiert alles auf demselben
+                  Eingangs-, A-Box-, System-, Bestands- und Stichtagsstand
 ```
 
 ## 3 Die tragenden Objekte
@@ -79,7 +88,7 @@ Stufe 3  Abnahme
 | `Diskrepanz` | beide Lesarten mit Belegen; Aufloesung nur als expliziter Vorgang (Entscheider, Begruendung, ggf. `vorlaeufig`) | P2 |
 | `Parametrierungszelle` | eine Merkmalskombination; Felder = exakt die Kern-ModelPoint-Stellschrauben; Zellen decken den Merkmalsraum EXAKT | P5, P6 |
 | `TarifSpez` | Parametrierung des Rueckgrats + StrukturUrteil + Tafel-Importe/-Ableitungen + benannte Erweiterungsstellen; validierbar als Projektion der A-Box (beide Richtungen) | D2 (SDD, gebunden) |
-| P9-Snapshot | Entscheid, Entscheider, Begruendung, SHA-256 aller Fall-Artefakte, Git-Stand des Systems; inhaltsadressiert, nie ueberschrieben | P9, P1 |
+| P9-Snapshot | Schema, Gate/Command/Version, Entscheid, Entscheider, Begruendung, SHA-256 aller Fall-Artefakte, Git-Stand und Vorgaenger; G-2 pinnt zusaetzlich Scope und rollenbezogene Pflichtbelege; vollstaendig inhaltsadressiert, nie ueberschrieben; eine Annahme traegt eine HMAC-Freigabe aus einem extern verwahrten Schluessel | P9, P1 |
 
 ## 4 Deterministisch / LLM — die Trennlinie (P4)
 
@@ -267,8 +276,9 @@ Excel-Anker; Kommutation als separater Zweitkern), ADR-005
 (Knoten-Hierarchie, Test-Bindung, Code-Karte, Impact). Hinzugekommen
 seit Redaktionsschluss dieses Dokuments — und fuer den heutigen Stand
 massgeblich: ADR-006 (Portierungs-Anwendungsfall ausser Betrieb; die
-G-Kette entfaellt) und ADR-007 (parallele Migrationen in einem Kern;
-knotengebundene Inkremente auf einem Trunk). Es sind damit sieben ADRs.
+G-Kette entfaellt), ADR-007 (parallele Migrationen in einem Kern;
+knotengebundene Inkremente auf einem Trunk), ADR-008 (signierte
+P9-Freigaben) und ADR-009 (Fall-Scope und Bestands-Pflichtbelege).
 Entscheidungsgrundlage: die
 Architektur-Fragerunde (D1-D4, F1-F3; privat dokumentiert, Ergebnisse
 in diesen ADRs).

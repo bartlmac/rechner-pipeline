@@ -38,6 +38,14 @@ PLAUSIBEL = {
 }
 
 
+def _freigabe_arg(fall: Path) -> list[str]:
+    schluessel = fall.parent / "p9-freigabe.key"
+    if not schluessel.exists():
+        schluessel.write_bytes(b"test-only-p9-authorization-key!" * 2)
+        schluessel.chmod(0o600)
+    return ["--freigabe-schluessel", str(schluessel)]
+
+
 @pytest.fixture()
 def fall_mit_konflikt(tmp_path: Path):
     """Fall mit vollstaendiger A-Box und EINER vorlaeufig geloesten Diskrepanz."""
@@ -160,7 +168,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
                  "--entscheid", "angenommen", "--rolle", "mensch",
                  "--entscheider", "Bartek",
                  "--begruendung", "Alle Diskrepanzen entschieden",
-                 "--repo-root", "."])
+                 "--repo-root", ".", *_freigabe_arg(f)])
     assert result.exit_code == 20                    # O1 fehlt noch
     assert any(e["code"] == "vorbedingung" for e in result.errors)
     assert o1(["--fall", str(f)]).exit_code == 0
@@ -169,7 +177,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
                  "--entscheid", "angenommen", "--rolle", "mensch",
                  "--entscheider", "Bartek",
                  "--begruendung", "Alle Diskrepanzen entschieden",
-                 "--repo-root", "."])
+                 "--repo-root", ".", *_freigabe_arg(f)])
     assert result.exit_code == 0
 
 
@@ -353,8 +361,8 @@ def test_abnahme_runbook_reicht_die_neuen_pruefgroessen_durch():
             assert "erwartete_anzahl" in text, (basis, skill)
 
 
-def test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt():
-    """Genau EIN Subprozess in ``src/``: die Git-Provenienz des Snapshots.
+def test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt():
+    """Genau EIN Subprozess in ``src/``: Git-Provenienz fuer O3 und P9.
 
     Die Nicht-Verhandelbare "kein Netz, kein Subprozess, keine dynamische
     Ausfuehrung" gilt dem RECHEN- und BEWERTUNGSPFAD; ``_git_stand``
@@ -387,10 +395,10 @@ def test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt():
         for pfad in src.rglob("*.py")
     }
     assert sorted(n for n, b in baeume.items() if _importiert_subprocess(b)) == [
-        "gates/gate_entscheid.py"
+        "gates/_provenienz.py"
     ]
 
-    baum = baeume["gates/gate_entscheid.py"]
+    baum = baeume["gates/_provenienz.py"]
     stellen = [
         (funktion.name, knoten.attr)
         for funktion in ast.walk(baum)
@@ -430,9 +438,12 @@ def test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt():
         Path(__file__).resolve().parents[1] / "ONBOARDING.md"
     ).read_text(encoding="utf-8")
     assert "no subprocess" in onboarding
-    assert "gates/gate_entscheid._git_stand" in onboarding
+    assert "gates/_provenienz._git_stand" in onboarding
     assert "exactly ONE subprocess exception" in onboarding
-    assert "test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt" in onboarding
+    assert (
+        "test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt"
+        in onboarding
+    )
 
 
 def test_entscheide_alle_vorlaeufigen_nach_quelle(fall_mit_konflikt, capsys):

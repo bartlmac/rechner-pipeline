@@ -27,8 +27,8 @@ Knoten: klv
 
 from __future__ import annotations
 
-import argparse
 import csv
+import hashlib
 import json
 import re
 import sys
@@ -37,15 +37,23 @@ from typing import Any, Dict, List, Optional
 
 from rechner_pipeline.gates._common import (
     Exit,
+    GateArgumentParser,
+    GateCliContract,
     add_request_json_arg,
+    begin_gate_ledger_attempt,
     build_result,
+    finalize_gate_ledger,
     hash_files,
     log,
-    merge_request_into_args,
-    read_request_json,
+    parse_gate_args,
     run_command,
     utc_now,
-    write_gate_ledger,
+)
+from rechner_pipeline.gates._provenienz import (
+    O3_BELEG_GATE,
+    O3_BELEG_GATE_VERSION,
+    schreibe_o3_beleg,
+    systemstand,
 )
 from rechner_pipeline.qa.golden_master import ROUND_DECIMALS, compare, load_expected
 from rechner_pipeline.quellen.vorverdichtung import (
@@ -55,8 +63,14 @@ from rechner_pipeline.quellen.vorverdichtung import (
     verzeichnis_der_generation,
 )
 
-GATE = "O3.generation-golden-master"
-GATE_VERSION = "0.1.0"
+GATE = O3_BELEG_GATE
+GATE_VERSION = O3_BELEG_GATE_VERSION
+CLI_CONTRACT = GateCliContract(
+    command="generation_golden",
+    gate=GATE,
+    gate_version=GATE_VERSION,
+    diagnostics_from="fall",
+)
 
 #: Skalare Rechenergebnisse: Erwartungsname -> Kern-Methode.
 SKALAR_CONTRACT = ("Bxt", "BJB", "BZB", "Pxt")
@@ -122,7 +136,8 @@ def _waehle_zelle(spez, status: str, tarifart: str):
 
 def main(argv: Optional[List[str]] = None):
     started_at = utc_now()
-    parser = argparse.ArgumentParser(
+    parser = GateArgumentParser(
+        gate_contract=CLI_CONTRACT,
         prog="python -m rechner_pipeline.gates.generation_golden",
         description=(
             "Gate O3: Kern (parametriert ueber die Tarif-Spez) gegen die "
@@ -134,9 +149,7 @@ def main(argv: Optional[List[str]] = None):
     parser.add_argument("--repo-root", dest="repo_root", default=None)
     parser.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None)
     add_request_json_arg(parser)
-    args = parser.parse_args(argv)
-    request = read_request_json(args.request_json)
-    args = merge_request_into_args(args, request)
+    args = parse_gate_args(parser, argv)
 
     fall = Path(args.fall) if args.fall else None
     diagnostics_dir = (
@@ -144,18 +157,52 @@ def main(argv: Optional[List[str]] = None):
         else (fall / "abgeleitet" / "diagnostics" if fall
               else Path.cwd() / "runs" / "diagnostics")
     )
+    ledger_start_fehler = begin_gate_ledger_attempt(
+        command="generation_golden",
+        gate=GATE,
+        gate_version=GATE_VERSION,
+        diagnostics_dir=diagnostics_dir,
+        repo_root=Path(args.repo_root) if args.repo_root else None,
+        started_at=started_at,
+        command_line=argv if argv is not None else sys.argv[1:],
+    )
+    if ledger_start_fehler is not None:
+        return ledger_start_fehler
 
     def _finalize(result):
-        try:
-            write_gate_ledger(
-                result, diagnostics_dir,
-                repo_root=Path(args.repo_root) if args.repo_root else None,
-                started_at=started_at, ended_at=utc_now(),
-                command_line=argv if argv is not None else sys.argv[1:],
-            )
-        except Exception as exc:  # noqa: BLE001
-            log(f"generation_golden: gate-ledger write failed: {exc}")
-        return result
+        if result.status == "passed":
+            try:
+                beleg = schreibe_o3_beleg(
+                    diagnostics_dir,
+                    gate_version=result.gate_version,
+                    status=result.status,
+                    exit_code=result.exit_code,
+                    generation=str(result.summary["generation"]),
+                    abox_sha256=str(result.summary["abox_sha256"]),
+                    system=result.summary["system"],
+                    input_hashes=result.input_hashes,
+                    summary=result.summary,
+                )
+                result.paths["o3_beleg"] = str(beleg)
+            except Exception as exc:  # noqa: BLE001 - Beweis muss gelingen
+                log(f"generation_golden: O3-Beleg write failed: {exc}")
+                result = build_result(
+                    command="generation_golden",
+                    gate=GATE,
+                    gate_version=GATE_VERSION,
+                    exit_code=Exit.FILE_CONTRACT,
+                    errors=[{
+                        "code": "o3_beleg",
+                        "message": (
+                            "Gruener O3-Lauf ohne unveraenderlichen Beleg "
+                            f"ist nicht abnahmefaehig: {exc}"
+                        ),
+                    }],
+                    paths=result.paths,
+                    summary=result.summary,
+                    input_hashes=result.input_hashes,
+                )
+        return finalize_gate_ledger(result)
 
     def _usage(message: str):
         return _finalize(build_result(
@@ -192,11 +239,19 @@ def main(argv: Optional[List[str]] = None):
 
     # Die Spez ist Projektion der A-Box — ohne diese Pruefung koennte eine
     # editierte Spez eine eigene Wahrheit in den Golden Master tragen.
-    from rechner_pipeline.ontologie.abox import abox_pfad, lade as lade_abox
+    from rechner_pipeline.ontologie.abox import abox_pfad
+    from rechner_pipeline.ontologie.tbox import ABox
 
-    if abox_pfad(fall).is_file():
+    abox_datei = abox_pfad(fall)
+    abox_sha256 = ""
+    if abox_datei.is_file():
         try:
-            abox = lade_abox(fall)
+            # Einmal lesen, dann genau DIESE Bytes parsen und hashen.  Zwei
+            # getrennte Lesevorgaenge koennten bei einer gleichzeitigen
+            # Aenderung einen Hash fuer eine andere A-Box protokollieren.
+            abox_roh = abox_datei.read_bytes()
+            abox_sha256 = hashlib.sha256(abox_roh).hexdigest()
+            abox = ABox.model_validate_json(abox_roh)
         except Exception as exc:
             return _contract_fehler("abox", f"A-Box unlesbar: {exc}")
         from rechner_pipeline.spez.validierung import validate_spez
@@ -210,7 +265,7 @@ def main(argv: Optional[List[str]] = None):
             )
     else:
         return _contract_fehler(
-            "abox", f"A-Box fehlt ({abox_pfad(fall)}) — ohne A-Box ist die "
+            "abox", f"A-Box fehlt ({abox_datei}) — ohne A-Box ist die "
             "Spez nicht als Projektion pruefbar",
         )
 
@@ -361,8 +416,21 @@ def main(argv: Optional[List[str]] = None):
     andere_zellen = sorted(
         z.knoten for z in spez.zellen if z.knoten != zelle.knoten
     )
+    repo_root = (
+        Path(args.repo_root).resolve()
+        if args.repo_root else Path(__file__).resolve().parents[3]
+    )
+    try:
+        verwendeter_systemstand = systemstand(repo_root)
+    except Exception as exc:  # Beweisprovenienz ist Teil des O3-Contracts
+        return _contract_fehler(
+            "systemstand", f"Systemstand nicht bestimmbar: {exc}"
+        )
+
     summary = {
         "generation": args.generation,
+        "abox_sha256": abox_sha256,
+        "system": verwendeter_systemstand,
         "zelle": zelle.knoten,
         # Ermittelt, nicht angenommen: gegen WELCHES Quellblatt der
         # Golden Master gefahren ist, gehoert in den Ledger.
@@ -390,17 +458,24 @@ def main(argv: Optional[List[str]] = None):
         paths={"fall": str(fall), "spez": str(spez_datei),
                "vorverdichtung": str(vorverdichtung)},
         summary=summary,
-        input_hashes=hash_files(
-            [
-                names_csv,
-                spez_datei,
-                vorverdichtung / f"{praefix}_scalar.json",
-                vorverdichtung / f"{praefix}_table_values.csv",
-                Path(__file__).resolve().parent.parent / "kern" / "tafeln.xml",
-            ],
-            base=Path(args.repo_root).resolve() if args.repo_root else None,
-            missing_ok=True,
-        ),
+        input_hashes={
+            # Stabiler Rollenschluessel: G-2 kann ohne Pfadheuristik den
+            # SHA der tatsaechlich geparsten A-Box pruefen.
+            "abgeleitet/abox/abox.json": abox_sha256,
+            **hash_files(
+                [
+                    names_csv,
+                    spez_datei,
+                    vorverdichtung / f"{praefix}_scalar.json",
+                    vorverdichtung / f"{praefix}_table_values.csv",
+                    Path(__file__).resolve().parent.parent
+                    / "kern"
+                    / "tafeln.xml",
+                ],
+                base=repo_root,
+                missing_ok=True,
+            ),
+        },
     ))
 
 

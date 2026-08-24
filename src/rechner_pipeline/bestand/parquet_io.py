@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Sequence
 
 import pandas as pd
 import pyarrow as pa
@@ -80,9 +80,45 @@ def write_portfolio(df: pd.DataFrame, path: Path) -> Path:
     return path
 
 
-def read_portfolio(path: Path) -> pd.DataFrame:
-    """Read a table back with canonical pandas dtypes and column order."""
+def read_portfolio(
+    path: Path,
+    *,
+    expected_columns: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
+    """Read a table back with canonical pandas dtypes and column order.
+
+    If ``expected_columns`` is supplied by a gate, the physical Parquet
+    columns *and their Arrow types* are checked before conversion and
+    canonical selection.  This must happen before ``astype``: otherwise an
+    integral-looking ``double`` column such as ``status_id = 1.0`` would be
+    silently normalised to ``int64`` and the gate would validate data against
+    a schema the file itself never satisfied.  Without ``expected_columns``,
+    columns unknown to every persistable portfolio family are still rejected.
+    """
     table = pq.read_table(path)
+    erlaubt = (
+        set(expected_columns) if expected_columns is not None else set(_DTYPE_MAP)
+    )
+    unbekannt = [name for name in table.column_names if name not in erlaubt]
+    if unbekannt:
+        raise ValueError(
+            f"Unbekannte physische Parquet-Spalten: {unbekannt}"
+        )
+    if expected_columns is not None:
+        typfehler = []
+        for name in expected_columns:
+            if name not in table.column_names:
+                continue
+            erwartet = _ARROW_TYPES[_DTYPE_MAP[name]]
+            vorhanden = table.schema.field(name).type
+            if vorhanden != erwartet:
+                typfehler.append(
+                    f"{name}: Typ {vorhanden}, erwartet {erwartet}"
+                )
+        if typfehler:
+            raise ValueError(
+                "Physisches Parquet-Schema weicht ab: " + "; ".join(typfehler)
+            )
     df = table.to_pandas()
     for name in df.columns:
         if _DTYPE_MAP.get(name) == "datetime64[ns]":

@@ -53,7 +53,19 @@ Abschnitt 8.)
 Gate schreibt einen inhaltsadressierten Snapshot: Artefakt-Hashes,
 Systemstand, Entscheider, Rolle, Begruendung; Snapshots verketten
 ihre Vorgaenger. Die Annahme RECHNET ihre Vorbedingungen (Gates gruen
-und auf demselben Stand verankert).
+und auf demselben Stand verankert). Gate O3 schreibt entsprechend einen
+inhaltsadressierten Beleg je Generation. G-2 verlangt genau die
+Generationenmenge der aktuellen A-Box und gleicht A-Box- sowie Systemstand
+jedes Belegs ab. Eine menschliche Annahme wird mit einem ausserhalb des Falls
+verwahrten HMAC-Schluessel autorisiert. P9 validiert beim Lesen Schema,
+vollstaendigen kanonischen Hash, daraus abgeleiteten Dateinamen, Signatur und
+den zyklenfreien Vorgaengergraph mit genau einer Spitze (ADR-008).
+Der Fall-Scope bestimmt die G-2-Pflichtbelege: Tariffaelle bleiben bei
+O1/G-1/O3, Bestandsfaelle binden zusaetzlich B1, vollstaendige Suite und
+Abnahmebericht auf denselben Eingangs-, A-Box-, System- und
+Zwei-Stichtagsstand. G-2 hasht ihre aktuellen Bytes und das von B1 benannte
+Portfolio neu, fuehrt die B1-Engines erneut aus und rendert den Abnahmebericht
+zum Bytevergleich deterministisch neu (ADR-009).
 
 **P10 — Kontext ist Architekturgegenstand.** Uebergaben zwischen
 Agenten laufen ueber persistierte Artefakte, nie ueber

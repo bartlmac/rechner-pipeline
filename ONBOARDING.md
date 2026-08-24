@@ -5,7 +5,7 @@ A system for **life-insurance portfolio migration**, with **no LLM SDK in the
 codebase** (the CLI agent *is* the model; Python code pre-digests, validates,
 computes and accepts):
 
-1. **The target kernel** (`rechner_pipeline.kern`, version 3.0.0): a stable,
+1. **The target kernel** (`rechner_pipeline.kern`, version 3.0.1): a stable,
    versioned calculation kernel formulated entirely in the state-model world
    (semi-Markov backbone, Thiele recursion on pure decrement probabilities).
    Two products — endowment (KLV) and disability (BU) — are *configurations*
@@ -22,7 +22,7 @@ computes and accepts):
    gates (G-1/G-2/G-T) and immutable decision snapshots.
 
 Read `docs/architektur/migrations-pipeline-v01.md` first, then the role catalog
-`docs/architektur/skill-architektur.md`, then the seven ADRs in
+`docs/architektur/skill-architektur.md`, then the ADRs in
 `docs/architektur/`.
 
 **Historical note:** the project started from a one-time *translation act* — a
@@ -90,7 +90,7 @@ SHA-256, origin path and size in the `eingang.json` register, and sets
 the copy read-only. Every later statement in the case traces back to
 these hashes — the provenance chain starts here:
 ```
-python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012
+python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012 --scope tarif
 python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
     --datei tests/fixtures/Tarifrechner_KLV_TG2012.xlsm
 python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
@@ -113,7 +113,7 @@ GeVo protocol). Register it into a fresh case — the case is named
 `baldrian-uebernahme` throughout the docs, the skills and the ADRs, so
 keep that name:
 ```
-python -m rechner_pipeline.fall anlegen --fall faelle/baldrian-uebernahme
+python -m rechner_pipeline.fall anlegen --fall faelle/baldrian-uebernahme --scope bestand
 for f in lieferungen/baldrian/*.xlsm lieferungen/baldrian/*.docx lieferungen/baldrian/*.csv; do
   python -m rechner_pipeline.fall registrieren --fall faelle/baldrian-uebernahme --datei "$f"
 done
@@ -223,21 +223,42 @@ Each gate is one command, writes one JSON to stdout plus a
 | G0 | `gates.extract` | deterministic pre-digest of a source workbook (formulas, cached values, defined names via openpyxl; VBA via `oletools.olevba`) |
 | O0 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
 | O1 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
-| O3 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values |
-| P9 | `gates.gate_entscheid` | immutable snapshots of the human gates (G-1, G-2, G-T); `--rolle mensch\|agent` is mandatory (exit 2 without it) and agents may only reject |
-| B1 | `gates.bestand_validate` | portfolio schema and movement identities per year, track and measure |
+| O3 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state |
+| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (G-1, G-2, G-T); accepted decisions require an externally held HMAC key, and G-2 requires the evidence roles for the declared case scope; agents may only reject |
+| B1 | `gates.bestand_validate` | portfolio contract and movement identities |
+| G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds B1, the suite and HTML report on one state |
+
+An accepted P9 decision additionally requires
+`--freigabe-schluessel /secure/p9-approval.key`. The human operator keeps this
+file outside the case and outside agent access; it must contain at least 32
+cryptographically random bytes, have POSIX mode 0600, and exactly one hard
+link. Repeat the option with old keys first and the
+active signing key last when rotating. Key bytes and paths are never persisted.
+P9 revalidates the strict ledger/snapshot schemas, canonical content hash,
+full-hash filename, HMAC, predecessor existence, cycles, and the unique chain
+tip on every read (ADR-008).
+
+For G-2, `fall.json` also carries `scope.typ` (`tarif` or `bestand`). Missing
+declarations are never inferred from files. A tariff case requires no portfolio
+artifacts; a portfolio case requires a green B1 ledger, complete suite and HTML
+report bound by the green `abnahmebericht` ledger. G-2 rehashes their current
+bytes, reruns the B1 engines, revalidates the suite, and deterministically
+rerenders the report for a byte comparison instead of trusting that editable
+ledger (ADR-009).
 
 ## 5. Non-negotiables
 - **Deterministic and SDK-free** in `src/`: no network, no dynamic execution,
   no subprocess; same input -> same output; sorted serialization. There is
-  exactly ONE subprocess exception, and it is bounded by a test: the P9
-  snapshot (`gates/gate_entscheid._git_stand`) records the system state a
-  human decided on with three READING git calls (`rev-parse HEAD`,
+  exactly ONE subprocess exception, and it is bounded by a test: the shared
+  O3/P9 proof provenance (`gates/_provenienz._git_stand`) records the Git
+  state proved or decided on with three READING git calls (`rev-parse HEAD`,
   `rev-parse --abbrev-ref HEAD`, `status --porcelain`) — it computes and
-  judges nothing, and if git is unavailable the state is the named value
-  `unbekannt`, never a silent default. Any further subprocess import, any
+  judges nothing. A pure-Python SHA-256 over the installed package sources
+  distinguishes different dirty code states. If git is unavailable, its
+  fields carry the named value `unbekannt`, never a silent default. Any
+  further subprocess import, any
   other command, and any process start via `os` turns
-  `tests/test_fachspez_und_p9.py::test_subprozess_bleibt_auf_die_p9_provenienz_beschraenkt`
+  `tests/test_fachspez_und_p9.py::test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt`
   red.
 - **Fail-fast, never silent**: no silent overwrite, no silent default. Doubt is
   a named state (`nicht_belegt`/`mehrdeutig`/`widerspruechlich`) or a hard
@@ -250,19 +271,13 @@ Each gate is one command, writes one JSON to stdout plus a
 - **Full suite before every commit** (`.venv/bin/python -m pytest`). The impact
   tool is informational — it never narrows what has to run. CI
   (`.github/workflows/tests.yml`) runs the full suite on every push and
-  pull request.
-  **What "green" does not cover:** four tests are bound to a local,
-  gitignored case workspace (`faelle/archiv/baldrian-klv-tg2015`) and
-  skip wherever it is absent — in CI, in a fresh clone, and on any
-  machine that has not got that case: `test_formeln.py:52`,
-  `test_review_fixes_v01.py:364` and `:382`, `test_tafel_import.py:126`.
-  Among them is the only end-to-end proof of gate O3 (the parametrized
-  kernel against the delivered expectation values). A green run therefore
-  reads "... passed, 4 skipped" everywhere except on a machine carrying
-  that case — if you quote a green suite as evidence, say which of the
-  two you ran. Closing the gap properly means
-  a checked-in minimal fixture under `tests/fixtures/`, not a looser
-  assertion — it is an open item, not a solved one.
+  pull request. The mandatory `tests/test_o3_fixture_e2e.py` job uses the
+  versioned, anonymised `tests/fixtures/o3_g2_minimal/` data and performs real
+  extraction, formula checking and O3 from a fresh temporary case. The
+  positive path in `tests/test_o3_g2_beweisvertrag.py` continues through G-2
+  on the same fixture contract. Missing or hash-drifted fixture input is a
+  hard failure, never a skip. Local and real case workspaces under `faelle/`
+  remain gitignored and are not a prerequisite for a green suite.
 - Direct dependencies pinned exactly (`pyproject.toml`), their transitive
   closure pinned in `requirements*.txt` (section 2); new dependencies only
   via ADR. Push is the human's job.

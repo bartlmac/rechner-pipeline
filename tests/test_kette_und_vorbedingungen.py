@@ -14,7 +14,7 @@ from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates.abox_merge import main as merge_cli
 from rechner_pipeline.gates.abox_validate import main as o1
 from rechner_pipeline.gates.gate_entscheid import main as p9
-from rechner_pipeline.ontologie import PFLICHT_PARAMETER
+from rechner_pipeline.ontologie import PFLICHT_PARAMETER, belegt
 from rechner_pipeline.ontologie.abox import abox_pfad, lade, speichere
 from rechner_pipeline.ontologie.befuellung import loese_diskrepanz_auf
 from rechner_pipeline.ontologie.kette import fragmente_ordner, pruefe_kette
@@ -26,6 +26,14 @@ PLAUSIBEL = {
     "stoab_max": 150.0, "min_alter_flex": 60, "min_rlz_flex": 5,
 }
 AKTEUR = "test/extrahiere-quellfragment@abc1234"
+
+
+def _freigabe_arg(fall: Path) -> list[str]:
+    schluessel = fall.parent / "p9-freigabe.key"
+    if not schluessel.exists():
+        schluessel.write_bytes(b"test-only-p9-authorization-key!" * 2)
+        schluessel.chmod(0o600)
+    return ["--freigabe-schluessel", str(schluessel)]
 
 
 def _fragment_json(datei: str, art: str, **override) -> dict:
@@ -120,6 +128,88 @@ def test_kette_akzeptiert_dokumentierte_aufloesung(fall_mit_fragmenten):
                for b in pruefe_kette(f))
 
 
+def test_o1_akzeptiert_beleg_der_gewaehlten_lesart(fall_mit_fragmenten):
+    f = fall_mit_fragmenten
+    merge_cli(["--fall", str(f)])
+    abox = lade(f)
+    [diskrepanz] = abox.diskrepanzen
+    gewaehlte_lesart = next(
+        lesart for lesart in diskrepanz.lesarten if lesart.wert == 0.03
+    )
+
+    loese_diskrepanz_auf(
+        abox, diskrepanz.id, 0.03, "agent (vorlaeufig)", "GM-Zweck",
+        "2026-08-15T12:00:00+00:00", vorlaeufig=True,
+    )
+    speichere(abox, f)
+
+    result = o1(["--fall", str(f)])
+    assert result.exit_code == 0
+    aussage = lade(f).generationen[0].zellen[0].parameter["beta1"]
+    assert aussage.provenienz == gewaehlte_lesart.provenienz
+
+
+def test_o1_lehnt_beleg_der_verworfenen_lesart_ab(fall_mit_fragmenten):
+    f = fall_mit_fragmenten
+    merge_cli(["--fall", str(f)])
+    abox = lade(f)
+    [diskrepanz] = abox.diskrepanzen
+    verworfene_lesart = next(
+        lesart for lesart in diskrepanz.lesarten if lesart.wert == 0.025
+    )
+    loese_diskrepanz_auf(
+        abox, diskrepanz.id, 0.03, "agent (vorlaeufig)", "GM-Zweck",
+        "2026-08-15T12:00:00+00:00", vorlaeufig=True,
+    )
+    zelle = abox.generationen[0].zellen[0]
+    zelle.parameter["beta1"] = belegt(
+        0.03, list(verworfene_lesart.provenienz)
+    )
+    speichere(abox, f)
+
+    result = o1(["--fall", str(f)])
+    assert result.exit_code == 20
+    assert any(
+        error["code"] == "kette"
+        and "kein Beleg aus einer Lesart mit dem entschiedenen Wert" in
+        error["message"]
+        for error in result.errors
+    )
+
+
+def test_o1_lehnt_zusaetzlichen_beleg_der_verworfenen_lesart_ab(
+    fall_mit_fragmenten,
+):
+    f = fall_mit_fragmenten
+    merge_cli(["--fall", str(f)])
+    abox = lade(f)
+    [diskrepanz] = abox.diskrepanzen
+    gewaehlte_lesart = next(
+        lesart for lesart in diskrepanz.lesarten if lesart.wert == 0.03
+    )
+    verworfene_lesart = next(
+        lesart for lesart in diskrepanz.lesarten if lesart.wert == 0.025
+    )
+    loese_diskrepanz_auf(
+        abox, diskrepanz.id, 0.03, "agent (vorlaeufig)", "GM-Zweck",
+        "2026-08-15T12:00:00+00:00", vorlaeufig=True,
+    )
+    zelle = abox.generationen[0].zellen[0]
+    zelle.parameter["beta1"] = belegt(
+        0.03,
+        list(gewaehlte_lesart.provenienz + verworfene_lesart.provenienz),
+    )
+    speichere(abox, f)
+
+    result = o1(["--fall", str(f)])
+    assert result.exit_code == 20
+    assert any(
+        error["code"] == "kette"
+        and "Beleg einer verworfenen Lesart" in error["message"]
+        for error in result.errors
+    )
+
+
 def test_kette_faengt_manipulierte_fragmente(fall_mit_fragmenten):
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
@@ -155,7 +245,7 @@ def test_g2_verlangt_o3_und_geltenden_g1(fall_mit_fragmenten):
     assert o1(["--fall", str(f)]).exit_code == 0
 
     basis = ["--fall", str(f), "--rolle", "mensch", "--entscheider", "B",
-             "--begruendung", "x", "--repo-root", "."]
+             "--begruendung", "x", "--repo-root", ".", *_freigabe_arg(f)]
     # G-2 ohne O3:
     result = p9(["--gate", "G-2", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
@@ -188,7 +278,7 @@ def test_g1_annahme_verlangt_verankertes_o1(fall_mit_fragmenten):
     speichere(abox, f)
     result = p9(["--gate", "G-1", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
-    assert any("ANDEREN A-Box-Stand" in e["message"] for e in result.errors)
+    assert any("Provenienzvertrag" in e["message"] for e in result.errors)
 
 
 def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):
@@ -200,6 +290,16 @@ def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):
                  "--rolle", "agent", *basis])
     assert result.exit_code == 2
     assert any("Menschen vorbehalten" in e["message"] for e in result.errors)
+    # Nicht nur der Exit-Code zaehlt, sondern die Wirkung: es darf kein
+    # angenommener Snapshot entstanden sein, gleich mit welchem Code der
+    # Aufruf abbricht.
+    entscheide_dir = Path(f) / "entscheide"
+    angenommen = [
+        pfad for pfad in entscheide_dir.rglob("*.json")
+        if json.loads(pfad.read_text(encoding="utf-8")).get("entscheid")
+        == "angenommen"
+    ]
+    assert angenommen == []
     result = p9(["--gate", "G-1", "--entscheid", "abgelehnt",
                  "--rolle", "agent", *basis])
     assert result.exit_code == 0

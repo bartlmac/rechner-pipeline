@@ -30,10 +30,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline.quellen.extract.excel import (
+    _ensure_safe_artifact_targets,
     _manifest_warning,
+    _planned_sheet_output_filenames,
+    _atomic_text_artifact,
     excel_value_to_text,
     is_empty_text,
     safe_filename,
+    sheet_artifact_filenames,
 )
 
 
@@ -83,7 +87,12 @@ def _import_vba_parser() -> Any:
 
 
 def export_one_sheet(
-    ws_formula, ws_value, sheet_name: str, out_dir: Path
+    ws_formula,
+    ws_value,
+    sheet_name: str,
+    out_dir: Path,
+    *,
+    artifact_filename: str | None = None,
 ) -> Tuple[Optional[Path], int]:
     """Schreibe eine Sheet-CSV im Schema ``Blatt;Adresse;Formel;Wert``.
 
@@ -95,11 +104,13 @@ def export_one_sheet(
     unberechnet gespeichert) -- der Aufrufer kann daraus eine Manifest-Warnung
     ableiten.
     """
-    out_path = out_dir / f"{safe_filename(sheet_name)}.csv"
+    out_path = out_dir / (
+        artifact_filename or sheet_artifact_filenames([sheet_name])[0]
+    )
     wrote_any = False
     formula_without_cache = 0
 
-    with out_path.open("w", newline="", encoding="utf-8") as f:
+    with _atomic_text_artifact(out_path, newline="") as f:
         writer = csv.writer(f, delimiter=";")
         writer.writerow(["Blatt", "Adresse", "Formel", "Wert"])
 
@@ -155,9 +166,23 @@ def export_all_sheets(
     """
     exported: List[Path] = []
     missing_cache: Dict[str, int] = {}
-    for ws_formula in wb_formula.worksheets:
+    worksheets = list(wb_formula.worksheets)
+    artifact_filenames = sheet_artifact_filenames(
+        [str(ws.title) for ws in worksheets]
+    )
+    _ensure_safe_artifact_targets(
+        out_dir,
+        _planned_sheet_output_filenames(artifact_filenames),
+    )
+    for ws_formula, artifact_filename in zip(worksheets, artifact_filenames):
         ws_value = wb_value[ws_formula.title]
-        p, n = export_one_sheet(ws_formula, ws_value, str(ws_formula.title), out_dir)
+        p, n = export_one_sheet(
+            ws_formula,
+            ws_value,
+            str(ws_formula.title),
+            out_dir,
+            artifact_filename=artifact_filename,
+        )
         if p is not None and p.exists():
             exported.append(p)
         if n:
@@ -215,7 +240,8 @@ def export_vba_modules_to_txt(
                 if body.strip() == "":
                     continue
                 out_path = vba_dir / f"{safe_filename(module_name)}.txt"
-                out_path.write_text(body + "\n", encoding="utf-8", newline="\n")
+                with _atomic_text_artifact(out_path, newline="\n") as f:
+                    f.write(body + "\n")
                 exported.append(out_path)
                 print(f"[OK] VBA exported (olevba): {module_name} -> {out_path}")
     except Exception as exc:
@@ -296,7 +322,7 @@ def export_name_manager_to_csv(wb_formula, wb_value, out_dir: Path) -> Optional[
         print("[OK] No defined names -> no names_manager.csv generated")
         return None
 
-    with out_path.open("w", newline="", encoding="utf-8") as f:
+    with _atomic_text_artifact(out_path, newline="") as f:
         writer = csv.writer(f, delimiter=";")
         writer.writerow(
             [

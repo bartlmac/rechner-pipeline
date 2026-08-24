@@ -16,6 +16,8 @@ import pytest
 
 from rechner_pipeline.quellen.adapters.excel import ExcelAdapter
 from rechner_pipeline.gates import extract as extract_cmd
+from rechner_pipeline.models.manifest import file_sha256
+from rechner_pipeline.quellen.extract import excel as excel_export
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KLV = REPO_ROOT / "tests" / "fixtures" / "Tarifrechner_KLV_TG2012.xlsm"
@@ -69,6 +71,29 @@ def test_klv_extract_full_coverage(tmp_path: Path):
     assert (out_dir / "names_manager.csv").is_file()
     assert (out_dir / "export_manifest.json").is_file()
     assert (out_dir / "vba" / "mConstants.txt").is_file()
+
+    # Das Exportmanifest bindet die echten Workbook-Bytes und jedes
+    # Exportartefakt mit vollstaendigem SHA-256. Der Tafelimport kann damit
+    # spaetere Aenderungen einer Blatt-CSV sicher erkennen.
+    manifest = json.loads(
+        (out_dir / "export_manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["source"] == {
+        "path": str(KLV),
+        "bytes": KLV.stat().st_size,
+        "sha256": file_sha256(KLV),
+    }
+    assert manifest["sheet_artifacts"] == [
+        {"original_name": "Kalkulation", "file_name": "Kalkulation.csv"},
+        {"original_name": "Tafeln", "file_name": "Tafeln.csv"},
+    ]
+    output_hashes = {item["path"]: item for item in manifest["output_hashes"]}
+    tafeln_pfad = str(out_dir / "Tafeln.csv")
+    assert output_hashes[tafeln_pfad] == {
+        "path": tafeln_pfad,
+        "bytes": (out_dir / "Tafeln.csv").stat().st_size,
+        "sha256": file_sha256(out_dir / "Tafeln.csv"),
+    }
 
     # Coverage is explicit and full (numeric scalar expectations present).
     assert out["summary"]["expectation_coverage"] == "full"
@@ -294,6 +319,10 @@ def test_adapter_builds_manifest_from_path_objects(tmp_path: Path):
     assert all(isinstance(p, Path) for p in bundle.manifest.sheet_csvs)
     assert all(isinstance(p, Path) for p in bundle.manifest.llm_inputs)
     assert isinstance(bundle.manifest.out_dir, Path)
+    assert [item.to_dict() for item in bundle.manifest.sheet_artifacts] == [
+        {"original_name": "Kalkulation", "file_name": "Kalkulation.csv"},
+        {"original_name": "Tafeln", "file_name": "Tafeln.csv"},
+    ]
     assert bundle.validate() == []
     assert bundle.expectation_coverage == "full"
 
@@ -302,6 +331,42 @@ def test_adapter_supports_suffixes():
     assert ExcelAdapter.supports(Path("x.xlsm"))
     assert ExcelAdapter.supports(Path("x.XLSX"))
     assert not ExcelAdapter.supports(Path("x.docx"))
+
+
+def test_com_sheet_export_uses_shared_collision_free_assignment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class Sheet:
+        def __init__(self, name: str):
+            self.Name = name
+
+    class Workbook:
+        Worksheets = [Sheet("Tarif<Alt"), Sheet("Tarif>Alt")]
+
+    def fake_export_one_sheet(
+        sheet,
+        out_dir: Path,
+        *,
+        artifact_filename: str | None = None,
+    ) -> Path:
+        filename = artifact_filename or f"{excel_export.safe_filename(sheet.Name)}.csv"
+        path = out_dir / filename
+        path.write_text(sheet.Name, encoding="utf-8")
+        return path
+
+    monkeypatch.setattr(excel_export, "export_one_sheet", fake_export_one_sheet)
+
+    exported = excel_export.export_all_sheets(Workbook(), tmp_path)
+
+    assert [path.name for path in exported] == [
+        "Tarif_Alt.csv",
+        "Tarif_Alt__2.csv",
+    ]
+    assert [path.read_text(encoding="utf-8") for path in exported] == [
+        "Tarif<Alt",
+        "Tarif>Alt",
+    ]
 
 
 def test_strict_manifest_warnings_pass_when_no_warnings(tmp_path: Path):

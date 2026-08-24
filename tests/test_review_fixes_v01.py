@@ -251,6 +251,7 @@ def test_merge_toleranz_ist_eng():
 
 def test_importiere_fuer_spez_p1_und_kreuzprobe(tmp_path: Path):
     from rechner_pipeline.kern.konventionen import MAX_ALTER
+    from rechner_pipeline.models.manifest import file_sha256
     from rechner_pipeline.quellen.tafel_import import (
         TafelImportFehler,
         importiere_fuer_spez,
@@ -270,7 +271,33 @@ def test_importiere_fuer_spez_p1_und_kreuzprobe(tmp_path: Path):
         z = i + 4
         zeilen += [f"Tafeln;$A${z};{alter};{alter}",
                    f"Tafeln;$B${z};0.01;0.01", f"Tafeln;$C${z};0.02;0.02"]
-    (vv / "Tafeln.csv").write_text("\n".join(zeilen), encoding="utf-8")
+    tafeln_csv = vv / "Tafeln.csv"
+    tafeln_csv.write_text("\n".join(zeilen), encoding="utf-8")
+    registrierte_quelle = fall / "eingang" / quelle.name
+    (vv / "export_manifest.json").write_text(
+        json.dumps({
+            "out_dir": str(vv),
+            "sheet_csvs": [str(tafeln_csv)],
+            "vba_txts": [],
+            "names_manager_csv": "",
+            "replacements": {},
+            "llm_inputs": [str(tafeln_csv)],
+            "all_outputs": [str(tafeln_csv)],
+            "warnings": [],
+            "prompt_runs": [],
+            "output_hashes": [{
+                "path": str(tafeln_csv),
+                "bytes": tafeln_csv.stat().st_size,
+                "sha256": file_sha256(tafeln_csv),
+            }],
+            "source": {
+                "path": str(registrierte_quelle),
+                "bytes": registrierte_quelle.stat().st_size,
+                "sha256": file_sha256(registrierte_quelle),
+            },
+        }),
+        encoding="utf-8",
+    )
 
     spez_dir = fall / "abgeleitet" / "spez"
     spez_dir.mkdir(parents=True)
@@ -350,50 +377,3 @@ def test_validate_spez_findet_geloeschtes_pflichtfeld():
     assert validate_spez(spez, abox) == []
     del spez.zellen[0].model_point["stoab_satz"]     # Kern-Default-Falle
     assert any("Pflichtfeld fehlt" in f for f in validate_spez(spez, abox))
-
-
-# --- Finding 27/18: Gate O3 blockt ohne Tabelle und crasht nie ohne Ledger --
-
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-# Eingefrorener Vorlauf-Fall als lokales Regressions-Fixture; skipt sauber,
-# wo faelle/ fehlt (z.B. frischer Clone).
-FALL = REPO_ROOT / "faelle" / "archiv" / "baldrian-klv-tg2015"
-
-
-@pytest.mark.skipif(not FALL.is_dir(), reason="kein Archiv-Fall faelle/archiv/baldrian-klv-tg2015")
-def test_gate_o3_blockt_ohne_verlaufswerte(tmp_path: Path):
-    import shutil
-
-    from rechner_pipeline.gates.generation_golden import main
-
-    kopie = tmp_path / "fall"
-    shutil.copytree(FALL, kopie)
-    (kopie / "abgeleitet" / "vorverdichtung" / "xlsm-TG2015"
-     / "Kalkulation_table_values.csv").unlink()
-    result = main(["--fall", str(kopie), "--generation", "klv/tg2015"])
-    assert result.exit_code == 30
-    assert any("kein Golden Master" in e["message"] for e in result.errors)
-    # Der Ledger wurde geschrieben (kein alter gruener bleibt liegen):
-    ledger = kopie / "abgeleitet" / "diagnostics" / "generation_golden.gate.json"
-    assert json.loads(ledger.read_text(encoding="utf-8"))["status"] == "failed"
-
-
-@pytest.mark.skipif(not FALL.is_dir(), reason="kein Archiv-Fall faelle/archiv/baldrian-klv-tg2015")
-def test_gate_o3_blockt_manipulierte_spez(tmp_path: Path):
-    """Die Spez ist Projektion: eine editierte Spez traegt keinen GM."""
-    import shutil
-
-    from rechner_pipeline.gates.generation_golden import main
-    from rechner_pipeline.spez.validierung import spez_pfad
-
-    kopie = tmp_path / "fall"
-    shutil.copytree(FALL, kopie)
-    pfad = spez_pfad(kopie, "klv/tg2015")
-    spez = json.loads(pfad.read_text(encoding="utf-8"))
-    for zelle in spez["zellen"]:
-        zelle["model_point"]["beta1"] = 0.031        # eigene Wahrheit
-    pfad.write_text(json.dumps(spez), encoding="utf-8")
-    result = main(["--fall", str(kopie), "--generation", "klv/tg2015"])
-    assert result.exit_code == 30
-    assert any(e["code"] == "spez_projektion" for e in result.errors)

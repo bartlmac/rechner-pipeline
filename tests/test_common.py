@@ -110,7 +110,7 @@ def test_write_gate_ledger_failed_path(tmp_path: Path) -> None:
 def test_write_gate_ledger_derives_gate_from_command(tmp_path: Path) -> None:
     """When result.gate is unset, the gate id is derived from the catalogue."""
     result = _common.build_result(
-        command="extract",  # -> G1.file-contract in ALL_GATES
+        command="extract",  # -> G0.extraction-manifest in ALL_GATES
         gate_version="1.0.0",
         exit_code=_common.Exit.OK,
         input_hashes={"generated/x.py": "c" * 64},
@@ -142,6 +142,66 @@ def test_write_gate_ledger_records_command_line(tmp_path: Path) -> None:
         "x.golden_master",
         "--flag",
     ]
+
+
+@pytest.mark.parametrize(
+    ("feld", "wert"),
+    [
+        ("required", "false"),
+        ("attempt", True),
+        ("schema_version", 999),
+        ("input_hashes", {"x": "kein-hash"}),
+    ],
+)
+def test_load_gate_ledger_lehnt_schema_manipulation_ab(
+    tmp_path: Path, feld: str, wert: object
+) -> None:
+    result = _golden_master_result(status="passed", exit_code=_common.Exit.OK)
+    pfad = _common.write_gate_ledger(result, tmp_path)
+    payload = json.loads(pfad.read_text(encoding="utf-8"))
+    payload[feld] = wert
+    pfad.write_text(json.dumps(payload), encoding="utf-8")
+
+    entries, read_errors = _common.load_gate_ledger(tmp_path)
+
+    assert entries == []
+    assert len(read_errors) == 1
+    assert "ungueltiger Gate-Ledger" in read_errors[0]["error"]
+
+
+def test_load_gate_ledger_lehnt_fremdes_feld_ab(tmp_path: Path) -> None:
+    result = _golden_master_result(status="passed", exit_code=_common.Exit.OK)
+    pfad = _common.write_gate_ledger(result, tmp_path)
+    payload = json.loads(pfad.read_text(encoding="utf-8"))
+    payload["nachtraeglich_gruen"] = True
+    pfad.write_text(json.dumps(payload), encoding="utf-8")
+
+    entries, read_errors = _common.load_gate_ledger(tmp_path)
+
+    assert entries == []
+    assert "unknown fields" in read_errors[0]["error"]
+
+
+def test_load_gate_ledger_lehnt_negative_laufzeit_ab(tmp_path: Path) -> None:
+    result = _golden_master_result(status="passed", exit_code=_common.Exit.OK)
+    pfad = _common.write_gate_ledger(result, tmp_path)
+    payload = json.loads(pfad.read_text(encoding="utf-8"))
+    payload["summary"]["ended_at"] = "2000-01-01T00:00:00+00:00"
+    pfad.write_text(json.dumps(payload), encoding="utf-8")
+
+    entries, read_errors = _common.load_gate_ledger(tmp_path)
+
+    assert payload["summary"]["ended_at"] < payload["started_at"]
+    assert entries == []
+    assert "must not precede" in read_errors[0]["error"]
+
+
+def test_gate_katalog_traegt_die_tatsaechlichen_vertrags_ids() -> None:
+    katalog, _ = _common._gate_catalogue()
+    assert katalog["abox_validate"] == "O1.abox-contract"
+    assert katalog["generation_golden"] == "O3.generation-golden-master"
+    assert katalog["bestand_validate"] == "B1.bestand-contract"
+    assert katalog["abnahmebericht"] == "G2-vorlage.migrationsabnahme"
 
 
 # --------------------------------------------------------------------------- #

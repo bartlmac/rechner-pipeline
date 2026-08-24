@@ -80,7 +80,9 @@ from rechner_pipeline.kern.rechenkern import (
 #: (kern/tafeln.py, Erschoepfungs-Domaene rein aus qx); Verlaufswerte
 #: modellpunktgetrieben statt blattfest 0..50. Rechenwerte unveraendert
 #: (reiner Schnitt: qx-Pfad identisch, Anker gruen).
-__version__ = "3.0.0"
+#: 3.0.1 = Kern-XML-Ladevertrag prueft qx-Domaene und den exakten
+#: Altersbereich fail-fast; Rechenwerte und Tafelbytes bleiben unveraendert.
+__version__ = "3.0.1"
 
 __all__ = [
     "ModelPoint",

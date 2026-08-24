@@ -4,8 +4,9 @@ Validates the Bestandsdaten tables against their schemas and invariants
 (engines: :mod:`rechner_pipeline.models.bestand`,
 :func:`rechner_pipeline.qa.bestand.sanity_check`):
 
-* Basisbestand/Gesamtbestand (``--portfolio``): Spalten-Contract, Enums,
-  Zeilen-Invarianten, Datums-Konsistenz (``validate_portfolio``).
+* Basisbestand/Gesamtbestand (``--portfolio``): physischer Parquet- und
+  Spalten-Contract, Basisstatus, Enums, Zeilen-Invarianten und
+  Datums-Konsistenz (``read_portfolio``/``validate_portfolio``).
 * Statushistorie (``--historie``, optional): fortlaufende status_id,
   terminale Status nur am Ende, Datumsgrenzen (``validate_statushistorie``).
 * Erhoehungsscheiben (``--scheiben``, optional): Arithmetik gegen den
@@ -56,14 +57,18 @@ Knoten: klv, bu
 
 from __future__ import annotations
 
-import argparse
+import datetime as _dt
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.models.bestand import (
+    LEDGER_NAMES,
+    SCHEIBEN_NAMES,
+    STATUS_HISTORIE_NAMES,
+    STAMM_NAMES,
     validate_portfolio,
     validate_scheiben,
     validate_statushistorie,
@@ -71,19 +76,27 @@ from rechner_pipeline.models.bestand import (
 from rechner_pipeline.qa.bestand import sanity_check
 from rechner_pipeline.gates._common import (
     Exit,
+    GateArgumentParser,
+    GateCliContract,
     add_request_json_arg,
+    begin_gate_ledger_attempt,
     build_result,
+    finalize_gate_ledger,
     hash_files,
     log,
-    merge_request_into_args,
-    read_request_json,
+    parse_gate_args,
     run_command,
     utc_now,
-    write_gate_ledger,
 )
+from rechner_pipeline.gates._provenienz import systemstand
 
 GATE = "B1.bestand-contract"
-GATE_VERSION = "1.0.0"
+GATE_VERSION = "1.4.0"
+CLI_CONTRACT = GateCliContract(
+    command="bestand_validate",
+    gate=GATE,
+    gate_version=GATE_VERSION,
+)
 
 #: Der Weg hinaus, wenn der Eingang von B1 fehlt: ein Gate darf nicht nur
 #: melden, DASS etwas fehlt, es nennt das Kommando, das den Eingang
@@ -99,8 +112,9 @@ ERZEUGER_HINWEIS = {
 }
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+def _build_parser() -> GateArgumentParser:
+    parser = GateArgumentParser(
+        gate_contract=CLI_CONTRACT,
         prog="python -m rechner_pipeline.gates.bestand_validate",
         description="Gate B1: Bestandsdaten-Tabellen gegen Schema und Invarianten pruefen.",
     )
@@ -130,30 +144,170 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def pruefe_b1_eingaenge(
+    eingaben: Mapping[str, Path],
+    *,
+    bis: Optional[_dt.date] = None,
+) -> Tuple[Dict[str, int], List[dict], List[dict]]:
+    """B1-Engines rein lesend auf einer benannten Eingabenkonfiguration.
+
+    Der CLI-Produzent und G-2 benutzen bewusst dieselbe Funktion. So ist ein
+    frei editierbares, passend neu gehashtes B1-Ledger keine Selbstaussage:
+    G-2 fuehrt Schema-, Invarianten-, Bewegungs- und optionale Sanity-Pruefung
+    auf den aktuellen Bytes erneut aus.
+
+    Rueckgabe: ``(geprueft, contract_fehler, usage_fehler)``.
+    """
+    erlaubt = {"portfolio", "historie", "scheiben", "ledger", "config"}
+    rollen = set(eingaben)
+    errors: List[dict] = []
+    usage_errors: List[dict] = []
+    if "portfolio" not in rollen:
+        return {}, [{"code": "portfolio", "message": "Portfolio-Rolle fehlt"}], []
+    if not rollen <= erlaubt:
+        return {}, [{
+            "code": "eingangsrollen",
+            "message": f"Unbekannte B1-Eingangsrollen: {sorted(rollen - erlaubt)}",
+        }], []
+
+    tabellen: Dict[str, Any] = {}
+    spaltenvertrag = {
+        "portfolio": STAMM_NAMES,
+        "historie": STATUS_HISTORIE_NAMES,
+        "scheiben": SCHEIBEN_NAMES,
+        "ledger": LEDGER_NAMES,
+    }
+    for rolle in ("portfolio", "historie", "scheiben", "ledger"):
+        if rolle not in eingaben:
+            continue
+        try:
+            tabellen[rolle] = read_portfolio(
+                eingaben[rolle], expected_columns=spaltenvertrag[rolle]
+            )
+        except Exception as exc:  # noqa: BLE001 — Parquet-Backends variieren
+            errors.append({
+                "code": rolle,
+                "message": f"{rolle}-Datei ist nicht als Bestand lesbar: {exc}",
+            })
+
+    portfolio = tabellen.get("portfolio")
+    historie = tabellen.get("historie")
+    scheiben = tabellen.get("scheiben")
+    ledger = tabellen.get("ledger")
+    geprueft: Dict[str, int] = {}
+    if portfolio is not None:
+        geprueft["portfolio_zeilen"] = int(len(portfolio))
+        try:
+            for meldung in validate_portfolio(portfolio):
+                errors.append({"code": "portfolio", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "portfolio", "message": str(exc)})
+    if portfolio is not None and historie is not None:
+        geprueft["historie_zeilen"] = int(len(historie))
+        try:
+            for meldung in validate_statushistorie(portfolio, historie):
+                errors.append({"code": "historie", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "historie", "message": str(exc)})
+    if portfolio is not None and scheiben is not None:
+        geprueft["scheiben_zeilen"] = int(len(scheiben))
+        try:
+            for meldung in validate_scheiben(
+                portfolio, scheiben, historie=historie
+            ):
+                errors.append({"code": "scheiben", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "scheiben", "message": str(exc)})
+
+    if ledger is not None and scheiben is None:
+        try:
+            hat_erhoehungen = bool((ledger["ereignis"] == "ERH").any())
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "ledger", "message": str(exc)})
+            hat_erhoehungen = False
+        if hat_erhoehungen:
+            usage_errors.append({
+                "code": "missing_arg",
+                "message": "Ledger enthaelt dynamische Erhoehungen (ERH) — "
+                "--scheiben ist erforderlich, sonst sind die Bestandssummen "
+                "systematisch zu niedrig und die Bewegungs-Identitaet "
+                "falsch-positiv verletzt",
+            })
+
+    if (
+        portfolio is not None
+        and ledger is not None
+        and historie is not None
+        and not errors
+        and not usage_errors
+    ):
+        from rechner_pipeline.bestand.kennzahlen import (
+            bewegungskonto,
+            bu_bewegungskonto,
+        )
+
+        konto: List[dict] = []
+        try:
+            konto = bewegungskonto(
+                portfolio, historie, ledger, scheiben, bis=bis
+            )
+            konto += bu_bewegungskonto(
+                portfolio, historie, ledger, bis=bis
+            )
+        except Exception as exc:  # noqa: BLE001 — malformed inputs blockieren
+            errors.append({"code": "ledger", "message": str(exc)})
+        geprueft["bewegungsjahre"] = len(konto)
+        for zeile in konto:
+            for track, oks in zeile["identitaet"].items():
+                for mass, ok in oks.items():
+                    if not ok:
+                        errors.append({
+                            "code": "bewegung",
+                            "message": (
+                                f"Jahr {zeile['jahr']} {track}/{mass}: "
+                                "Anfang + Zugang - Abgang != Endbestand"
+                            ),
+                        })
+
+    if "config" in eingaben and portfolio is not None:
+        try:
+            config = load_config(eingaben["config"])
+        except (OSError, ValueError) as exc:
+            errors.append({"code": "config", "message": str(exc)})
+        else:
+            try:
+                for meldung in config.validate():
+                    errors.append({"code": "config", "message": meldung})
+                for meldung in sanity_check(portfolio, config.plausibilitaet):
+                    errors.append({"code": "sanity", "message": meldung})
+                geprueft["sanity_baender"] = len(config.plausibilitaet)
+            except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+                errors.append({"code": "sanity", "message": str(exc)})
+    return geprueft, errors, usage_errors
+
+
 def main(argv: Optional[List[str]] = None):
     started_at = utc_now()
     parser = _build_parser()
-    args = parser.parse_args(argv)
-    request = read_request_json(args.request_json)
-    args = merge_request_into_args(args, request)
+    args = parse_gate_args(parser, argv)
 
     diagnostics_dir = (
         Path(args.diagnostics_dir) if args.diagnostics_dir else Path.cwd() / "runs" / "diagnostics"
     )
+    ledger_start_fehler = begin_gate_ledger_attempt(
+        command="bestand_validate",
+        gate=GATE,
+        gate_version=GATE_VERSION,
+        diagnostics_dir=diagnostics_dir,
+        repo_root=Path(args.repo_root) if args.repo_root else None,
+        started_at=started_at,
+        command_line=argv if argv is not None else sys.argv[1:],
+    )
+    if ledger_start_fehler is not None:
+        return ledger_start_fehler
 
     def _finalize(result):
-        try:
-            write_gate_ledger(
-                result,
-                diagnostics_dir,
-                repo_root=Path(args.repo_root) if args.repo_root else None,
-                started_at=started_at,
-                ended_at=utc_now(),
-                command_line=argv if argv is not None else sys.argv[1:],
-            )
-        except Exception as exc:  # noqa: BLE001 — Ledger darf das Gate nie maskieren
-            log(f"bestand_validate: gate-ledger write failed: {exc}")
-        return result
+        return finalize_gate_ledger(result)
 
     def _usage(errors: List[dict], repair_hints: Optional[List[dict]] = None):
         return _finalize(build_result(
@@ -185,8 +339,6 @@ def main(argv: Optional[List[str]] = None):
                 "message": "--bis nur zusammen mit --ledger",
             }])
         try:
-            import datetime as _dt
-
             bis = _dt.date.fromisoformat(args.bis)
         except ValueError as exc:
             return _usage([{"code": "bad_arg", "message": f"Ungueltiges --bis-Datum: {exc}"}])
@@ -208,80 +360,29 @@ def main(argv: Optional[List[str]] = None):
     paths = {name: str(p) for name, p in eingaben.items()}
     repo_root = Path(args.repo_root).resolve() if args.repo_root else None
     input_hashes = hash_files(list(eingaben.values()), base=repo_root, missing_ok=True)
+    portfolio_hashes = hash_files(
+        [eingaben["portfolio"]], base=repo_root, missing_ok=True
+    )
+    [(portfolio_input, portfolio_sha256)] = portfolio_hashes.items()
+    eingangsrollen: Dict[str, str] = {}
+    for rolle, pfad in eingaben.items():
+        rollen_hash = hash_files([pfad], base=repo_root, missing_ok=True)
+        [(hash_schluessel, _hash)] = rollen_hash.items()
+        eingangsrollen[rolle] = hash_schluessel
+    geprueft, errors, usage_errors = pruefe_b1_eingaenge(eingaben, bis=bis)
+    if usage_errors:
+        return _usage(usage_errors)
 
-    portfolio = read_portfolio(eingaben["portfolio"])
-    historie = read_portfolio(eingaben["historie"]) if "historie" in eingaben else None
-    scheiben = read_portfolio(eingaben["scheiben"]) if "scheiben" in eingaben else None
-    ledger = read_portfolio(eingaben["ledger"]) if "ledger" in eingaben else None
-
-    errors: List[dict] = []
-    geprueft: Dict[str, int] = {"portfolio_zeilen": int(len(portfolio))}
-
-    for meldung in validate_portfolio(portfolio):
-        errors.append({"code": "portfolio", "message": meldung})
-    if historie is not None:
-        geprueft["historie_zeilen"] = int(len(historie))
-        for meldung in validate_statushistorie(portfolio, historie):
-            errors.append({"code": "historie", "message": meldung})
-    if scheiben is not None:
-        geprueft["scheiben_zeilen"] = int(len(scheiben))
-        for meldung in validate_scheiben(portfolio, scheiben, historie=historie):
-            errors.append({"code": "scheiben", "message": meldung})
-    if (
-        ledger is not None
-        and scheiben is None
-        and (ledger["ereignis"] == "ERH").any()
-    ):
-        return _usage([{
-            "code": "missing_arg",
-            "message": "Ledger enthaelt dynamische Erhoehungen (ERH) — "
-            "--scheiben ist erforderlich, sonst sind die Bestandssummen "
-            "systematisch zu niedrig und die Bewegungs-Identitaet "
-            "falsch-positiv verletzt",
-        }])
-    if ledger is not None and historie is not None and not errors:
-        # Bewegungs-Identitaeten (BaFin-Nachweisungs-Struktur): Anfang +
-        # Zugang - Abgang = Endbestand je Jahr, Track und Mass — eine
-        # Verletzung ist ein Engine-/Datenfehler.
-        from rechner_pipeline.bestand.kennzahlen import (
-            bewegungskonto,
-            bu_bewegungskonto,
-        )
-
-        konto: List[dict] = []
-        try:
-            konto = bewegungskonto(portfolio, historie, ledger, scheiben, bis=bis)
-            # Gemischte Bestaende fuehren zwei Nachweisungen (KLV mit
-            # Versicherungssumme, BU mit Jahresrente); beide Identitaeten
-            # sind harte Gate-Bedingungen.
-            konto = konto + bu_bewegungskonto(portfolio, historie, ledger, bis=bis)
-        except ValueError as exc:
-            errors.append({"code": "ledger", "message": str(exc)})
-        geprueft["bewegungsjahre"] = len(konto)
-        for zeile in konto:
-            for track, oks in zeile["identitaet"].items():
-                for mass, ok in oks.items():
-                    if not ok:
-                        errors.append({
-                            "code": "bewegung",
-                            "message": (
-                                f"Jahr {zeile['jahr']} {track}/{mass}: "
-                                "Anfang + Zugang - Abgang != Endbestand"
-                            ),
-                        })
-    if "config" in eingaben:
-        try:
-            config = load_config(eingaben["config"])
-        except ValueError as exc:
-            errors.append({"code": "config", "message": str(exc)})
-        else:
-            for meldung in config.validate():
-                errors.append({"code": "config", "message": meldung})
-            for meldung in sanity_check(portfolio, config.plausibilitaet):
-                errors.append({"code": "sanity", "message": meldung})
-            geprueft["sanity_baender"] = len(config.plausibilitaet)
-
-    summary = {**geprueft, "all_passed": not errors}
+    summary = {
+        **geprueft,
+        "all_passed": not errors,
+        "portfolio_input": portfolio_input,
+        "portfolio_sha256": portfolio_sha256,
+        "eingangsrollen": eingangsrollen,
+        "bis": args.bis,
+    }
+    if repo_root is not None:
+        summary["system"] = systemstand(repo_root)
 
     if not errors:
         log(f"bestand_validate: B1 PASSED ({geprueft})")

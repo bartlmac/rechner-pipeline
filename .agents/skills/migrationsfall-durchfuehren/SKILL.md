@@ -66,7 +66,7 @@ beteiligten Module ableiten und im Zweifel den Menschen fragen.
 ### Stufe 0 — Fall-Arbeitsbereich
 
 ```bash
-python -m rechner_pipeline.fall anlegen --fall faelle/<fall> --beschreibung "..."
+python -m rechner_pipeline.fall anlegen --fall faelle/<fall> --scope <tarif|bestand> --beschreibung "..."
 python -m rechner_pipeline.fall registrieren --fall faelle/<fall> --datei <quelle>   # je Quelle
 python -m rechner_pipeline.fall status --fall faelle/<fall>
 ```
@@ -74,6 +74,9 @@ python -m rechner_pipeline.fall status --fall faelle/<fall>
 Regeln: Eingang ist nicht regenerierbar und wird nie aufgeraeumt;
 Konflikte beim Registrieren (gleicher Name, anderer Inhalt) sind ein
 Vorgang fuer den Menschen, kein Overwrite.
+Der Scope ist ein fachlicher Entscheid: `tarif` ohne Bestandsuebernahme,
+`bestand` mit Bestandsabzug/-uebernahme. Nie aus zufaellig vorhandenen Dateien
+erraten oder spaeter zur Umgehung einer Gate-Pflicht umetikettieren.
 
 ### Stufe 1 — Quellen -> A-Box
 
@@ -136,12 +139,23 @@ Quelle liest und beides an G-1 haengt.
    praeziser Frage — nie eine Annahme.
 3. Pruefen und anwenden (deterministisch, nie von Hand):
    `ontologie.transformation.validate_spec(spec, quellspalten)` muss
-   LEER sein, danach `wende_an(spec, zeilen)`. `wende_an` gibt
+   LEER sein, danach
+   `gates.transformation_anwenden.wende_an(spec, fall_pfad)`. `wende_an` loest
+   `spec.quelle_datei` selbst ueber das Fallregister auf, liest die zu
+   transformierenden Zeilen aus diesem registrierten Eingang und prueft
+   SHA-256 der Spec sowie deren physische
+   Quellspalten erneut und gibt
    `(zeilen, befunde)` zurueck und laesst jede Zeile mit Befund WEG —
    wer nur die Zeilen nimmt, migriert stillschweigend weniger
    Vertraege. Zaehle die Klammer laut: Zeilen im Abzug -> transformierte
    Zeilen -> Befunde, und trag sie in die G-1-Vorlage und den
    Abnahmebericht (`--transformation-ergebnis`).
+   Das persistierte Ergebnis ist ein JSON-Objekt mit exakt
+   `schema_version`, `spec_sha256`, `quelle_sha256`, `quellspalten`,
+   `ziel_datei` (Fall-relativ), `ziel_sha256`, `zeilen_quelle`,
+   `zeilen_ziel` und `befunde`. Der Abnahmebericht rechnet Spec-Abdeckung
+   und alle vier Hashbindungen nach; handgeschriebene Kurzsummaries sind im
+   Bestands-Scope kein Beleg.
 4. Abzugsabgleich, wo der Abzug eine offene Diskrepanz entscheiden kann
    (`qa.abzugsabgleich.gleiche_ab`): er belegt eine Lesart nur, wenn
    GENAU eine zu den gelieferten Werten passt, und niemals gegen die
@@ -183,11 +197,23 @@ Befunde der Anwendung und jede beim Lesen aufgefallene Formelabweichung
 Der Mensch entscheidet mit
 `python -m rechner_pipeline.ontologie.entscheide --rolle mensch ...` und
 snapshottet mit `python -m rechner_pipeline.gates.gate_entscheid
---gate G-1 --rolle mensch ...`. Als Agent darfst du AUSSCHLIESSLICH
+--gate G-1 --rolle mensch --freigabe-schluessel <externe-datei> ...`.
+Der Freigabeschluessel gehoert ausserhalb des Falls und ausserhalb des
+Agentenzugriffs in die Autoritaetsumgebung des Menschen (mindestens 32
+kryptografisch zufaellige Byte, POSIX 0600, genau ein Hardlink). DU liest,
+erzeugst oder kopierst ihn nicht; der Mensch fuehrt den
+Annahmeaufruf aus. Bei Rotation werden alte Schluessel zuerst und der aktive
+zuletzt mit wiederholtem Flag uebergeben. Als Agent darfst du AUSSCHLIESSLICH
 ablehnen (--rolle agent, dokumentierter Zwischenstand). Die Annahme
-rechnet ihre Vorbedingungen: O1 gruen und auf dem aktuellen
-A-Box-Stand verankert; G-2 verlangt zusaetzlich O3 gruen+verankert und
-einen geltenden G-1-Annahme-Snapshot desselben Stands.
+rechnet ihre Vorbedingungen: das O1-Ledger ist schema-, Gate-, Command-,
+Versions- und hashrollengenau auf dem aktuellen A-Box-Stand verankert; P9
+validiert Snapshot-Schema, Vollhash-Dateiname, Freigabesignatur und die
+zyklenfreie Kette mit genau einer Spitze. G-2 verlangt zusaetzlich fuer exakt
+jede Generation der A-Box einen inhaltsadressierten gruenen O3-Beleg desselben
+A-Box- und Systemstands sowie einen geltenden signierten G-1-Annahme-Snapshot
+   desselben Stands. Im Scope `bestand` kommen die Pflichtbelege fuer B1,
+   vollstaendige Suite und Abnahmebericht hinzu; ein Scope `tarif` verlangt
+   sie nicht.
 
 ### Stufe 2 — A-Box -> Spez -> Kern
 
@@ -209,7 +235,10 @@ einen geltenden G-1-Annahme-Snapshot desselben Stands.
 1. Gate O3: `python -m rechner_pipeline.gates.generation_golden --fall faelle/<fall> --generation <gen-id> --repo-root .`
    Prueft vorab, dass die Spez Projektion der A-Box ist, und vergleicht
    den Kern gegen die aus dem Quell-Rechner extrahierten
-   Erwartungswerte. Beachte das Summary: `zellen_ohne_erwartungswerte`
+   Erwartungswerte. Ein gruener Lauf schreibt neben dem Latest-Ledger
+   einen unveraenderlichen, inhaltsadressierten Beleg fuer diese Generation;
+   alle A-Box-Generationen muessen auf demselben A-Box- und Systemstand
+   gelaufen sein. Beachte das Summary: `zellen_ohne_erwartungswerte`
    ehrlich weitermelden (der Quell-Rechner traegt meist nur EINEN
    Beispiel-Modellpunkt).
 2. Volle Suite: `.venv/bin/python -m pytest` — bestehende Verankerungen
@@ -226,7 +255,7 @@ Skill `pruefe-migrationsabnahme` — uebergib an ihn, statt die Schritte
 selbst zu improvisieren:
 
 1. Gate B1 auf den uebernommenen Bestand:
-   `python -m rechner_pipeline.gates.bestand_validate --portfolio <bestand>.parquet --config <config>.toml --repo-root .`
+   `python -m rechner_pipeline.gates.bestand_validate --portfolio <bestand>.parquet --config <config>.toml --repo-root . --diagnostics-dir faelle/<fall>/abgeleitet/diagnostics`
    (Schema und Invarianten; Historie/Scheiben/Ledger optional
    mitgeben, wenn der Fall sie fuehrt.)
 2. Abnahmesuite je Vertrag: `qa.migrationssuite.pruefe_bestand` —
@@ -237,26 +266,40 @@ selbst zu improvisieren:
    Zeilenzahl des Abzugs geht als `erwartete_anzahl` mit (sonst ist die
    Vollstaendigkeit der Pruefmenge ungeprueft). Beides liegt im
    Bestandsabzug vor und wird durchgereicht, sonst weist der Bericht
-   Pruefluecken aus. Bibliotheks-Modul ohne CLI: die
+   Pruefluecken aus und blockiert. Bibliotheks-Modul ohne CLI: die
    `VertragsPruefung`-Auftraege baut der Abnahme-Skill aus den
    Fall-Artefakten. Toleranzen kommen aus `qa` und werden NIE
-   aufgeweicht.
+   aufgeweicht. Das persistierte Suite-JSON bindet zusaetzlich
+   `stichtag_1`, `stichtag_2`, `bestand_sha256` und den Systemstand; im
+   Bestands-Scope muss `vollstaendig_geprueft=true` sein.
 3. Bestandsberichte vor/nach mit denselben Parametern (nur so ist der
    Vergleich fair):
    `python -m rechner_pipeline.bestand.cli_report --portfolio <bestand>.parquet --stichtage <liste> --out <ziel>.html`
 4. Abnahmebericht als Entscheidungsvorlage (keine Abnahme):
    `python -m rechner_pipeline.gates.abnahmebericht --fall faelle/<fall> --suite <suite>.json --titel "..." --stichtag-1 <iso> --stichtag-2 <iso> --spec <transformation>.spec.json --transformation-ergebnis <ergebnis>.json --bestandsbericht-vor <pfad> --bestandsbericht-nach <pfad>`
+   Alle vier nach der Suite genannten Artefakte sind Pflicht. Zeilenverlust,
+   Transformationsbefunde und nicht entschiedene Konflikte erzeugen einen roten
+   Bericht und einen blockierenden Exit-Code. Suite, Pflichtartefakte,
+   HTML-Ausgabe und Gate-Ledger muessen paarweise verschiedene Dateien sein;
+   Pfad- und Hardlink-Aliase sind keine getrennten Belege.
    Ablage mit `--fall`:
    `<fall>/abgeleitet/berichte/migrationsabnahme.html`, Ledger unter
-   `<fall>/abgeleitet/diagnostics`.
+   `<fall>/abgeleitet/diagnostics`. Das gruene
+   `abnahmebericht.gate.json` bindet B1, Suite und HTML-Bericht an Eingang,
+   A-Box, System, den von B1 benannten Bestand und beide Stichtage; ohne diese
+   konsistente Bindung darf G-2 im Bestands-Scope nicht angenommen werden.
 
 ### Gate G-2 (Mensch — hier STOPPST du wieder)
 
-`python -m rechner_pipeline.gates.gate_entscheid --gate G-2 --rolle mensch ...`
-— uebergeben, nicht selbst entscheiden. Vorgelegt werden O3, die volle
-Suite und, wenn ein Bestand uebernommen wurde, der Abnahmebericht mit
-allen Fehlschlaegen und Befunden — vollstaendig, ohne
-Stichproben-Beschoenigung.
+`python -m rechner_pipeline.gates.gate_entscheid --gate G-2 --rolle mensch
+--freigabe-schluessel <externe-datei> ...`
+— uebergeben, nicht selbst entscheiden. G-2 liest den Scope aus `fall.json`
+und leitet seine exakte Pflichtbelegmenge aus dem Fall-Scope ab. Im
+Bestands-Scope werden das Abnahme-Ledger, jedes von ihm gebundene Artefakt und
+das von B1 benannte Portfolio gegen die aktuellen Bytes nachgehasht. B1 und
+Suite werden semantisch erneut validiert; der HTML-Bericht wird aus der Suite
+deterministisch neu gerendert und bytegenau verglichen. Vorgelegt wird alles
+vollstaendig, ohne Stichproben-Beschoenigung.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)
 

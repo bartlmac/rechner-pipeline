@@ -10,6 +10,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from rechner_pipeline.quellen.extract.excel import _atomic_text_artifact
+
 RANGE_RE = re.compile(r"^\$?([A-Z]+)\$?(\d+)\s*:\s*\$?([A-Z]+)\$?(\d+)$")
 CELL_RE = re.compile(r"^\$?([A-Z]+)\$?(\d+)$")
 
@@ -141,7 +143,8 @@ def extract_one_pair_from_values(fv: Dict[str, Any], comp_csv: Path, out_dir: Pa
         scalars[label] = fv.get(addr)
 
     scalar_out = out_dir / f"{prefix}_scalar.json"
-    scalar_out.write_text(json.dumps(scalars, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _atomic_text_artifact(scalar_out, newline="\n") as f:
+        f.write(json.dumps(scalars, ensure_ascii=False, indent=2))
     print(f"[OK] Scalar exported: {scalar_out}")
 
     tables: List[pd.DataFrame] = []
@@ -172,10 +175,11 @@ def extract_one_pair_from_values(fv: Dict[str, Any], comp_csv: Path, out_dir: Pa
         tables.append(df)
 
     out_csv = out_dir / f"{prefix}_table_values.csv"
-    if tables:
-        pd.concat(tables, ignore_index=True).to_csv(out_csv, index=False)
-    else:
-        pd.DataFrame().to_csv(out_csv, index=False)
+    with _atomic_text_artifact(out_csv, newline="") as f:
+        if tables:
+            pd.concat(tables, ignore_index=True).to_csv(f, index=False)
+        else:
+            pd.DataFrame().to_csv(f, index=False)
     print(f"[OK] Table values exported: {out_csv}")
 
 
@@ -189,9 +193,13 @@ def extract_one_pair(addr_csv: Path, comp_csv: Path, out_dir: Path, prefix: str)
 
 def extract_all_pairs_in_info_dir(info_dir: Path) -> List[Dict[str, Any]]:
     warnings: List[Dict[str, Any]] = []
-    compressed = {p.stem.replace("_compressed", ""): p for p in info_dir.glob("*_compressed.csv")}
+    compressed = {
+        p.stem.removesuffix("_compressed"): p
+        for p in info_dir.glob("*_compressed.csv")
+    }
     address_values = {
-        p.stem.replace("_address_values", ""): p for p in info_dir.glob("*_address_values.csv")
+        p.stem.removesuffix("_address_values"): p
+        for p in info_dir.glob("*_address_values.csv")
     }
     sheet_csv = {
         p.stem: p

@@ -7,7 +7,7 @@ Architektur-Entscheidungen selbst stehen als ADRs unter
 `docs/architektur/` — dieser Changelog fasst sie zusammen und macht
 einen vorgeführten Stand zitierbar.
 
-## Unveröffentlicht — Stand 2026-08-19
+## Unveröffentlicht — Stand 2026-08-24
 
 ### Was das System kann
 
@@ -17,14 +17,17 @@ einen vorgeführten Stand zitierbar.
   Quelle, deterministischer Merge zur A-Box mit Provenienz je Aussage,
   Widersprüche als Diskrepanz-Objekte, Projektion zur Tarif-Spez,
   parametrierter Kern, Abnahme gegen die Lieferung.
-* **Sechs Gates** als je ein Kommando mit JSON auf stdout und Ledger:
+* **Sieben Gates** als je ein Kommando mit JSON auf stdout und Ledger:
   `extract` (G0), `abox_merge` (O0), `abox_validate` (O1),
   `generation_golden` (O3), `gate_entscheid` (P9), `bestand_validate`
-  (B1). Ein Nicht-Null-Exit blockiert und wird nie zur Warnung.
+  (B1) und `abnahmebericht` (G2-Vorlage). Ein Nicht-Null-Exit blockiert
+  und wird nie zur Warnung. Jeder Lauf ersetzt den alten Beleg vor der
+  Facharbeit durch einen roten Startbeleg und publiziert den Abschluss
+  atomar.
 * **Menschliche Gates G-1/G-2/G-T** mit unveränderlichen Snapshots;
   `--rolle mensch|agent` ist Pflicht, ein Agent kann ein menschliches
   Gate nur ablehnen.
-* **Zielrechenkern 3.0.0**: KLV und Berufsunfähigkeit auf einem
+* **Zielrechenkern 3.0.1**: KLV und Berufsunfähigkeit auf einem
   gemeinsamen (Semi-)Markov-Zustandsmodell mit Thiele-Rückwärts-
   rekursion, Tafelwerk als reine qx-Vektoren, Monatsreserven für
   Bilanzstichtage, vertragsweite Bewertung dynamischer
@@ -57,10 +60,11 @@ einen vorgeführten Stand zitierbar.
 * **Gate O3 deckt die Beispielzelle** des Quell-Rechners
   (einzel/nichtraucher); die übrigen Zellen brauchen weitere
   Erwartungswerte vom Lieferanten. Das Komplement weist das Gate aus.
-* **Vier fallgebundene Tests skippen ohne lokalen Fall-Arbeitsbereich**
-  (`faelle/archiv/baldrian-klv-tg2015`) — darunter der einzige
-  Ende-zu-Ende-Beleg für Gate O3. In der CI und im frischen Clone
-  läuft er nicht mit; ein eingechecktes Minimal-Fixture ist offen.
+* **Das O3-/G-2-Pflicht-Fixture ist bewusst klein und synthetisch.** Es deckt
+  einen Modellpunkt und eine Ratenzuschlagsstaffel ab, nicht die sechs Zellen
+  des archivierten TG2015-Falls. Dafür laufen echte Vorverdichtung, O3 und
+  G-2 im frischen Clone verpflichtend; ein fehlendes oder hashabweichendes
+  Fixture ist ein Testfehler statt eines Skips.
 * **Der Knoten-Lebenszyklus** (`in_migration` / `abgenommen`, ADR-007
   Regel 4) ist in der T-Box noch nicht umgesetzt.
 * **Kein geteilter Fall-Speicher**: Fall-Artefakte (A-Box, Entscheide,
@@ -131,3 +135,43 @@ einen vorgeführten Stand zitierbar.
   reproduzierbare Eingabe, damit die strenge Warnungs-Behandlung
   (`filterwarnings = ["error"]`) nur eigene Änderungen anzeigt und
   nicht fremde Neuveröffentlichungen.
+
+### Geändert am 2026-08-20 bis 2026-08-24 (externe Review-Runde)
+
+Ein externes Review des Stands vom 19.08. hat Beweislücken der
+Abnahmekette aufgedeckt: Ein von Hand geschriebener P9-Snapshot konnte
+G-2 freischalten, ein grüner O3-Ledger schaltete G-2 nie frei, und der
+Abnahmebericht übernahm Selbstauskünfte der Suite, statt sie
+nachzurechnen. Daraus:
+
+* **ADR-008 (20.08.): Signierte P9-Freigaben** — striktes Ledger- und
+  Snapshot-Schema, kanonischer Eigenhash, inhaltsadressierter
+  Dateiname, geprüfter Vorgängergraph; jede menschliche Annahme trägt
+  eine HMAC-SHA-256-Freigabe gegen eine Schlüsseldatei außerhalb des
+  Falls (`--freigabe-schluessel`). Eine Ablehnung bleibt ohne Schlüssel
+  möglich — der sichere Agentenpfad.
+* **ADR-009 (20.08.): Fall-Scope und Bestands-Pflichtbelege** — jeder
+  Fall deklariert `tarif` oder `bestand` in `fall.json`; daraus leitet
+  G-2 seine Pflichtbelege ab und rechnet sie neu nach, statt dem
+  Ledger zu glauben. Ein Altfall ohne Deklaration blockiert.
+* **O3-Belege** sind unveränderlich und inhaltsadressiert und binden
+  A-Box, Systemstand und Eingangsartefakte.
+* **Abnahmebericht rechnet neu**: Residuen, Vertrags- und Suiteurteile,
+  Mengenbefunde und Prüflücken werden aus den atomaren Fakten
+  abgeleitet; Prüflücken, Zeilenverlust, Transformationsbefunde und
+  offene Konflikte blockieren als `abnahmehindernisse`.
+* **Fehlende GeVo-Erwartungsbeträge** (STO/TOD/ABL/PEX) werden zur
+  benannten Prüflücke, statt still zu bestehen.
+* **Provenienz und Integrität**: O1 verwirft Belege aus abgelehnten
+  Lesarten; der Tafelimport prüft die Kette XLSM → Exportmanifest →
+  Blatt-CSV per Vollhash; Sterbewahrscheinlichkeiten und Altersgitter
+  werden an allen Ladepfaden validiert (Kern 3.0.1); Fall-Registrierung
+  ist gegen Symlinks, Pfadtraversal und parallele Läufe gehärtet;
+  Excel-Blattnamen werden bijektiv auf Dateinamen abgebildet.
+* **Ein eingechecktes O3-Fixture** löst die vier fallgebundenen
+  Test-Auslassungen ab; die CI fährt es als Pflichtstufe vor der
+  Vollsuite.
+* **Bewusst nicht umgesetzt**: statische QS (Lint/Typprüfung/Security),
+  eine unveränderliche Attempt-Historie der Gate-Ledger und ein
+  mehrstufiges Statusmodell des Abnahmeberichts — der Gate-Vertrag
+  bleibt binär und blockierend.
