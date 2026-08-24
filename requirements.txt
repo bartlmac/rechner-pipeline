@@ -10,7 +10,7 @@ matplotlib==3.11.1
 cffi==2.0.0
 colorama==0.4.6
 colorclass==2.2.2
-cryptography==49.0.0
+cryptography==50.0.0
 easygui==0.98.3
 et_xmlfile==2.0.0
 msoffcrypto-tool==6.0.0
