@@ -40,7 +40,8 @@ migrationsfall-durchfuehren
   |     Konflikt --> bereite-fachkonflikt-auf --> MENSCH (entscheide + G-1)
   |- Stufe 1b (Bestandsabzug): quellen/bestand_profil (Code, Vorverdichtung)
   |     --> transformiere-quellbestand --> TransformationsSpec
-  |     --> ontologie/transformation validate_spec + wende_an (Code)
+  |     --> ontologie/transformation validate_spec,
+  |         gates/transformation_anwenden wende_an (Code)
   |     offener Konflikt / fehlendes Zielfeld --> MENSCH (G-1 bzw. G-T)
   |- Stufe 2/3: Gates O1/O3; Kern-Aenderung noetig?
   |     Parametrierung: quellen/tafel_import (Code, kein Skill)

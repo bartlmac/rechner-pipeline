@@ -5,7 +5,7 @@ A system for **life-insurance portfolio migration**, with **no LLM SDK in the
 codebase** (the CLI agent *is* the model; Python code pre-digests, validates,
 computes and accepts):
 
-1. **The target kernel** (`rechner_pipeline.kern`, version 3.0.0): a stable,
+1. **The target kernel** (`rechner_pipeline.kern`, version 3.0.1): a stable,
    versioned calculation kernel formulated entirely in the state-model world
    (semi-Markov backbone, Thiele recursion on pure decrement probabilities).
    Two products — endowment (KLV) and disability (BU) — are *configurations*
