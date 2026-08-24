@@ -82,8 +82,21 @@ Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
   Archivierung der alten Kette auf dem deklarierten Scope neu entschieden; es
   gibt keine stille Umdeutung.
 - Das Abnahme-Ledger ist noch ein ueberschriebenes Latest-Ledger. G-2 begegnet
-  seiner fehlenden Authentisierung durch vollstaendige Revalidierung; atomare
-  Laufbelege bleiben Gegenstand von ToDo 10.12.
+  seiner fehlenden Authentisierung durch vollstaendige Revalidierung; eine
+  unveraenderliche Versuchshistorie gibt es weiterhin nur fuer gruene
+  O3-Belege.
+
+  *(Nachtrag 2026-08-24: ToDo 10.12 ist im selben Stand umgesetzt und nicht
+  mehr offen — jeder Gate-Lauf ersetzt den alten Beleg vor der Facharbeit
+  durch einen roten Startbeleg und publiziert den Abschluss atomar
+  (`gates._common.begin_gate_ledger_attempt` / `finalize_gate_ledger`). Was
+  bleibt, ist die fehlende Attempt-Historie; das Latest-Ledger ist weiterhin
+  ueberschreibbar. Eine bewusste Ausnahme liegt in `gates.abnahmebericht`:
+  Kollidiert der Ledger-Pfad kanonisch mit einer Artefaktrolle, wird gar kein
+  Ledger geschrieben, damit der Lauf das Pflichtartefakt nicht zerstoert —
+  dann kann ein aelterer gruener Beleg stehen bleiben. Der Aufruf ist rot und
+  G-2 revalidiert ohnehin vollstaendig; wer das Abnahme-Ledger automatisiert
+  auswertet, darf sich aber nicht allein auf seine Aktualitaet verlassen.)*
 
 ## Bewusst nicht Bestandteil dieser Entscheidung
 

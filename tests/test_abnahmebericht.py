@@ -613,6 +613,46 @@ def test_kommando_blockiert_kollision_mit_eigenem_gate_ledger(
         assert not ledger_pfad.exists()
     else:
         assert ledger_pfad.read_text(encoding="utf-8") == _spec().model_dump_json()
+    # Der Lauf laesst das kollidierende Artefakt bewusst unangetastet und
+    # schreibt deshalb KEINEN Ledger — dann kann an diesem Pfad ein aelterer
+    # Beleg stehen bleiben. Das muss in der Antwort stehen, sonst haelt eine
+    # Automatisierung den Altbeleg fuer das Ergebnis dieses Laufs.
+    assert any(
+        eintrag["code"] == "ledger_nicht_geschrieben"
+        for eintrag in result.errors
+    ), "Der ungeschriebene Ledger muss im Ergebnis ausgewiesen sein"
+
+
+def test_kollision_laesst_alten_gruenen_ledger_stehen_und_sagt_es(
+        tmp_path) -> None:
+    """Dokumentierte Ausnahme, festgenagelt (ADR-009 Nachtrag).
+
+    Zeigt eine Artefaktrolle auf den Ledger-Pfad, schreibt das Kommando
+    keinen Ledger — auch keinen roten Startbeleg. Ein dort liegender
+    gruener Altbeleg ueberlebt den roten Lauf also unveraendert. Das ist
+    gewollt (sonst zerstoerte der Lauf das Pflichtartefakt), darf aber
+    nicht still passieren.
+    """
+    suite_pfad = tmp_path / "suite.json"
+    suite_pfad.write_text(json.dumps(
+        _vollstaendige_suite(_pruefung("P-1"))), encoding="utf-8")
+    argv = _basis_argv(tmp_path, suite_pfad)
+    ledger_pfad = tmp_path / "diagnostics" / "abnahmebericht.gate.json"
+    ledger_pfad.parent.mkdir(parents=True, exist_ok=True)
+    altbeleg = json.dumps({"status": "passed", "exit_code": 0}, sort_keys=True)
+    ledger_pfad.write_text(altbeleg, encoding="utf-8")
+    argv[argv.index("--spec") + 1] = str(ledger_pfad)
+
+    result = main(argv)
+
+    assert result.exit_code == Exit.USAGE
+    assert ledger_pfad.read_text(encoding="utf-8") == altbeleg
+    hinweis = [
+        eintrag for eintrag in result.errors
+        if eintrag["code"] == "ledger_nicht_geschrieben"
+    ]
+    assert hinweis, "Der Lauf muss den ungeschriebenen Ledger ausweisen"
+    assert "belegt NICHT diesen Lauf" in hinweis[0]["message"]
 
 
 @pytest.mark.parametrize(

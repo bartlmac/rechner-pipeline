@@ -1565,10 +1565,25 @@ def main(argv: Optional[List[str]] = None):
         return finalize_gate_ledger(result)
 
     def _usage(message: str, *, ledger_schreiben: bool = True):
+        fehler = [{"code": "usage", "message": message}]
+        if not ledger_schreiben:
+            # Der Ledger bleibt ungeschrieben, damit der Lauf das
+            # kollidierende Artefakt nicht zerstoert. Dann kann an diesem
+            # Pfad ein aelterer gruener Beleg stehen bleiben — das gehoert
+            # in die Antwort auf stdout und nicht nur ins stderr-Log, sonst
+            # haelt eine Automatisierung den Altbeleg fuer aktuell.
+            fehler.append({
+                "code": "ledger_nicht_geschrieben",
+                "message": (
+                    "Gate-Ledger wurde nicht geschrieben, weil sein Zielpfad "
+                    "mit einem Ein- oder Ausgabeartefakt kollidiert. Eine "
+                    "vorhandene Datei an diesem Pfad belegt NICHT diesen Lauf."
+                ),
+            })
         result = build_result(
             command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
             exit_code=Exit.USAGE,
-            errors=[{"code": "usage", "message": message}],
+            errors=fehler,
         )
         if not ledger_schreiben:
             log(
@@ -1746,7 +1761,7 @@ def main(argv: Optional[List[str]] = None):
             "transformation_ergebnis_unlesbar",
             [f"{type(exc).__name__}: {exc}"],
             "Erwartet ein JSON-Objekt mit zeilen_quelle, zeilen_ziel "
-            "und befunde (Ausgabe von ontologie.transformation.wende_an).")
+            "und befunde (Ausgabe von gates.transformation_anwenden.wende_an).")
     transformation_fehler = _transformation_ergebnis_fehler(
         transformation_ergebnis
     )
@@ -1755,7 +1770,7 @@ def main(argv: Optional[List[str]] = None):
             "transformation_ergebnis_contract",
             transformation_fehler,
             "Erwartet nichtnegative ganzzahlige Zeilenanzahlen und eine "
-            "Liste textueller Befunde aus ontologie.transformation.wende_an.",
+            "Liste textueller Befunde aus gates.transformation_anwenden.wende_an.",
         )
 
     if not bestands_scope:
