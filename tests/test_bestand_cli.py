@@ -380,6 +380,79 @@ def test_gate_b1_lehnt_unbekannte_physische_parquet_spalte_ab(
     )
 
 
+def test_gate_b1_lehnt_physischen_status_id_float_typ_ab(
+    lauf, tmp_path, capsys
+):
+    """Der Arrow-Typ muss vor der kanonischen Pandas-Konvertierung gelten.
+
+    Alle Werte bleiben absichtlich ``1.0``: eine nachtraegliche Konvertierung
+    zu ``int64`` wuerde die gemeldete fehlerhafte Datei sonst gruen machen.
+    """
+    tabelle = pq.read_table(lauf / "bestand.parquet")
+    index = tabelle.schema.get_field_index("status_id")
+    status_id = pa.array([1.0] * tabelle.num_rows, type=pa.float64())
+    tabelle = tabelle.set_column(index, "status_id", status_id)
+    pfad = tmp_path / "status_id_als_kommazahl.parquet"
+    pq.write_table(tabelle, pfad, compression="zstd")
+
+    code = run_command(gate_cli.main, [
+        "--portfolio", str(pfad),
+        "--diagnostics-dir", str(tmp_path / "diag_status_id_typ"),
+    ])
+    ergebnis = json.loads(capsys.readouterr().out)
+
+    assert code == 20
+    assert ergebnis["status"] == "failed"
+    assert any(
+        e["code"] == "portfolio"
+        and "Physisches Parquet-Schema weicht ab" in e["message"]
+        and "status_id: Typ double, erwartet int64" in e["message"]
+        for e in ergebnis["errors"]
+    )
+
+
+@pytest.mark.parametrize(
+    "leerwert",
+    [
+        pytest.param("", id="leerstring"),
+        pytest.param("   ", id="leerraum"),
+        pytest.param(None, id="parquet-null"),
+    ],
+)
+def test_gate_b1_lehnt_leere_tarif_generation_ab(
+    lauf, tmp_path, capsys, leerwert
+):
+    pfad = tmp_path / "tarif_generation_leer.parquet"
+    if leerwert is None:
+        tabelle = pq.read_table(lauf / "bestand.parquet")
+        index = tabelle.schema.get_field_index("tarif_generation")
+        generationen = tabelle.column("tarif_generation").to_pylist()
+        generationen[0] = None
+        tabelle = tabelle.set_column(
+            index,
+            "tarif_generation",
+            pa.array(generationen, type=pa.string()),
+        )
+        pq.write_table(tabelle, pfad, compression="zstd")
+    else:
+        bestand = read_portfolio(lauf / "bestand.parquet")
+        bestand.loc[bestand.index[0], "tarif_generation"] = leerwert
+        write_portfolio(bestand, pfad)
+
+    code = run_command(gate_cli.main, [
+        "--portfolio", str(pfad),
+        "--diagnostics-dir", str(tmp_path / "diag_tarif_generation"),
+    ])
+    ergebnis = json.loads(capsys.readouterr().out)
+
+    assert code == 20
+    assert ergebnis["status"] == "failed"
+    assert any(
+        e["code"] == "portfolio" and e["message"] == "tarif_generation leer"
+        for e in ergebnis["errors"]
+    )
+
+
 @pytest.mark.parametrize(
     ("mutation", "erwartete_meldung"),
     [

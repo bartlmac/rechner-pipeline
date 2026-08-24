@@ -88,7 +88,11 @@ def read_portfolio(
     """Read a table back with canonical pandas dtypes and column order.
 
     If ``expected_columns`` is supplied by a gate, the physical Parquet
-    columns are checked before conversion and canonical selection. Otherwise
+    columns *and their Arrow types* are checked before conversion and
+    canonical selection.  This must happen before ``astype``: otherwise an
+    integral-looking ``double`` column such as ``status_id = 1.0`` would be
+    silently normalised to ``int64`` and the gate would validate data against
+    a schema the file itself never satisfied.  Without ``expected_columns``,
     columns unknown to every persistable portfolio family are still rejected.
     """
     table = pq.read_table(path)
@@ -100,6 +104,21 @@ def read_portfolio(
         raise ValueError(
             f"Unbekannte physische Parquet-Spalten: {unbekannt}"
         )
+    if expected_columns is not None:
+        typfehler = []
+        for name in expected_columns:
+            if name not in table.column_names:
+                continue
+            erwartet = _ARROW_TYPES[_DTYPE_MAP[name]]
+            vorhanden = table.schema.field(name).type
+            if vorhanden != erwartet:
+                typfehler.append(
+                    f"{name}: Typ {vorhanden}, erwartet {erwartet}"
+                )
+        if typfehler:
+            raise ValueError(
+                "Physisches Parquet-Schema weicht ab: " + "; ".join(typfehler)
+            )
     df = table.to_pandas()
     for name in df.columns:
         if _DTYPE_MAP.get(name) == "datetime64[ns]":

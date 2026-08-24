@@ -232,6 +232,11 @@ def validate_portfolio(df: Any) -> List[str]:
 
     if df["police_id"].duplicated().any():
         errors.append("police_id nicht eindeutig")
+    generation = df["tarif_generation"]
+    if generation.isna().any() or generation.map(
+        lambda wert: not isinstance(wert, str) or not wert.strip()
+    ).any():
+        errors.append("tarif_generation leer")
     if not df["sex"].isin(SEX_VALUES).all():
         errors.append(f"sex ausserhalb {SEX_VALUES}")
     if not df["produkt"].isin(PRODUKT_VALUES).all():
@@ -545,4 +550,3 @@ def bu_model_point_kwargs(
             raise KeyError(f"BU-Generation-Feld fehlt: {name}")
         kwargs[name] = generation[name]
     return kwargs
-
