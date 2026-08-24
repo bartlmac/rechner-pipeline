@@ -203,6 +203,39 @@ def test_g2_lehnt_manipulierten_g1_snapshot_ab(
         assert "Freigabesignatur" in result.errors[0]["message"]
 
 
+def test_p9_schema_verweigert_agenten_annahme_im_lesepfad(
+    tmp_path: Path,
+) -> None:
+    """Die Agenten-Sperre muss auch beim LESEN eines Snapshots greifen.
+
+    Auf dem Schreibweg verweigert die Kommandozeile einem Agenten die
+    Annahme. Ein Snapshot kann aber auch von aussen praepariert im Fall
+    liegen; dann ist diese Schemaregel die letzte Instanz, die ihn
+    abweist. Ohne diesen Test liesse sich die Regel ersatzlos loeschen,
+    ohne dass die Suite es bemerkt — der Kern der Arbeitsteilung
+    (ein Agent entscheidet kein menschliches Gate) haette dann keinen
+    Waechter mehr im Lesepfad.
+    """
+    _, _, snapshot_pfad = _bereit_fuer_g2(tmp_path)
+    daten = json.loads(snapshot_pfad.read_text(encoding="utf-8"))
+    assert daten["rolle"] == "mensch"
+    assert daten["entscheid"] == "angenommen"
+
+    daten["rolle"] = "agent"
+
+    assert (
+        "an agent cannot authorize an accepted human gate"
+        in P9Snapshot.validate_payload(daten)
+    )
+
+    # Gegenprobe: die Ablehnung durch einen Agenten bleibt zulaessig.
+    daten["entscheid"] = "abgelehnt"
+    assert not any(
+        "an agent cannot authorize" in fehler
+        for fehler in P9Snapshot.validate_payload(daten)
+    )
+
+
 @pytest.mark.parametrize(
     "ungueltiger_wert", [{}, []], ids=["objekt", "liste"]
 )

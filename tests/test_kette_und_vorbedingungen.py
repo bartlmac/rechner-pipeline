@@ -290,6 +290,16 @@ def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):
                  "--rolle", "agent", *basis])
     assert result.exit_code == 2
     assert any("Menschen vorbehalten" in e["message"] for e in result.errors)
+    # Nicht nur der Exit-Code zaehlt, sondern die Wirkung: es darf kein
+    # angenommener Snapshot entstanden sein, gleich mit welchem Code der
+    # Aufruf abbricht.
+    entscheide_dir = Path(f) / "entscheide"
+    angenommen = [
+        pfad for pfad in entscheide_dir.rglob("*.json")
+        if json.loads(pfad.read_text(encoding="utf-8")).get("entscheid")
+        == "angenommen"
+    ]
+    assert angenommen == []
     result = p9(["--gate", "G-1", "--entscheid", "abgelehnt",
                  "--rolle", "agent", *basis])
     assert result.exit_code == 0
