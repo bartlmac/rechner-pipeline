@@ -20,6 +20,7 @@ Rechenkern-Entwicklung. Die Fachdokumente des Beispiel-Rechenkerns
 - [ADR-007: Parallele Migrationen in einem Kern — Trunk, knotengebundene Inkremente, Knoten-Lebenszyklus](adr-007-parallele-migrationen-ein-kern.md)
 - [ADR-008: Signierte P9-Freigaben ausserhalb des Falls](adr-008-signierte-p9-freigaben.md)
 - [ADR-009: Fall-Scope und Bestands-Pflichtbelege fuer G-2](adr-009-fall-scope-und-gate-dag.md)
+- [ADR-011: Bestandsfuehrung mit gefuehrtem Zustand und Journal](adr-011-bestandsfuehrung.md)
 
 Die Pakete `rechner_pipeline.ontologie` und `rechner_pipeline.spez`
 setzen die Pipeline um; ihr Zusammenspiel und der Praezedenzfall

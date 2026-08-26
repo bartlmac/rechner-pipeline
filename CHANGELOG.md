@@ -175,3 +175,18 @@ nachzurechnen. Daraus:
   eine unveränderliche Attempt-Historie der Gate-Ledger und ein
   mehrstufiges Statusmodell des Abnahmeberichts — der Gate-Vertrag
   bleibt binär und blockierend.
+
+### Geändert am 2026-08-26
+
+* **ADR-011: Bestandsführung mit geführtem Zustand und Journal** — der
+  Stammsatz trägt den aktuellen Zustand (Status und seit wann), das
+  Journal (Statushistorie + Ledger) ist die vollständige Aufzeichnung,
+  aus der die Auskunft den Bestand zu jedem früheren Tag rekonstruiert.
+  Kein Bewertungspfad liest das Journal; die Bewertung rechnet aus dem
+  Zustand. `bestand_gesamt.parquet` ist seither geführt; Gate B1 prüft
+  die Deckungsgleichheit von Stamm und Journal. Die rückwirkende
+  Zeitscheiben-Sicht ist pensioniert. Erhöhungsscheiben tragen ihre
+  Rechnungsgrundlage (`gamma1`) selbst — behebt einen Defekt, bei dem
+  die Auswertung die Scheibe mit dem Verwaltungskostensatz der
+  Generation statt der Tarifwerk-Regel rekonstruierte (+2,0 %
+  Scheibenbeitrag).

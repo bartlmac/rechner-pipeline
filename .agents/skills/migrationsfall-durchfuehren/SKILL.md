@@ -255,7 +255,10 @@ Skill `pruefe-migrationsabnahme` — uebergib an ihn, statt die Schritte
 selbst zu improvisieren:
 
 1. Gate B1 auf den uebernommenen Bestand:
-   `python -m rechner_pipeline.gates.bestand_validate --portfolio <bestand>.parquet --config <config>.toml --repo-root . --diagnostics-dir faelle/<fall>/abgeleitet/diagnostics`
+   `python -m rechner_pipeline.gates.bestand_validate --portfolio <bestand>.parquet --config <config>.toml --repo-root . --diagnostics-dir faelle/<fall>/abgeleitet/diagnostics
+   (trägt der Bestand Folgezustände — `status_id > 1` —, zusätzlich
+   `--historie <journal>.parquet`: B1 prüft den Stammzustand gegen den
+   jüngsten Journalstand, ADR-011)`
    (Schema und Invarianten; Historie/Scheiben/Ledger optional
    mitgeben, wenn der Fall sie fuehrt.)
 2. Abnahmesuite je Vertrag: `qa.migrationssuite.pruefe_bestand` —

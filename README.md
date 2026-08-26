@@ -138,7 +138,7 @@ startet keinen Gate-Lauf.
 | O1 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
 | O3 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
 | P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (G-1, G-2, G-T); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, G-2 verlangt die zum Fall-Scope passenden Pflichtbelege |
-| B1 | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, Basisstatus (`1`/`POL` zum Versicherungsbeginn am Monatsersten) und Bewegungs-Identitäten je Jahr, Track und Maß |
+| B1 | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand) und Bewegungs-Identitäten je Jahr, Track und Maß |
 | G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |
 
 Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
