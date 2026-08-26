@@ -384,6 +384,11 @@ def test_stichtag_teilt_die_nachweisung_in_historie_und_prognose(
     assert f"Stichtag {stichtag.isoformat()} — ab hier Prognose" in mit
     assert "Referenzstichtag" in mit
     assert "ab hier Prognose" not in ohne
+    # Die gestrichelte Grenzlinie in den Diagrammen ist Teil des Vertrags:
+    # unter den Report-rcParams ist die axvline die einzige Quelle von
+    # stroke-dasharray im SVG.
+    assert "stroke-dasharray" in mit
+    assert "stroke-dasharray" not in ohne
     # Genau EINE Trennstelle je Bewegungstabelle (zwei Traeger-Bestaende
     # mal Stueck und Summe), nicht je Zeile:
     assert mit.count("ab hier Prognose") == 4
@@ -437,9 +442,47 @@ def test_cli_stichtag(portfolio, fortschreibung, tmp_path):
         "--scheiben", str(s), "--bis", "2035-01-01", "--stichtag", "2026-01-01",
         "--out", str(out),
     ]) == 0
-    assert "ab hier Prognose" in out.read_text(encoding="utf-8")
+    text = out.read_text(encoding="utf-8")
+    assert "ab hier Prognose" in text
+    assert "stroke-dasharray" in text
     assert cli.main([
         "--portfolio", str(parquet), "--stichtag", "kein-datum",
+    ]) == 2
+
+
+def test_cli_referenzstichtag_kommt_aus_der_config(portfolio, tmp_path):
+    """Der Referenzstichtag ist eine Eigenschaft des Bestands: ohne
+    --stichtag zieht das CLI meta.referenzstichtag aus der Config, das
+    Flag uebersteuert nur. Verhindert die Regression, dass ein Aufruf
+    ohne Flag stillschweigend alle Stichtags-Markierungen verliert."""
+    parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
+    ohne_flag = tmp_path / "ohne_flag.html"
+    assert cli.main([
+        "--portfolio", str(parquet), "--config", str(EXAMPLE),
+        "--out", str(ohne_flag),
+    ]) == 0
+    text = ohne_flag.read_text(encoding="utf-8")
+    assert "Referenzstichtag: 2026-01-01" in text
+    assert "stroke-dasharray" in text
+
+    uebersteuert = tmp_path / "uebersteuert.html"
+    assert cli.main([
+        "--portfolio", str(parquet), "--config", str(EXAMPLE),
+        "--stichtag", "2010-01-01", "--out", str(uebersteuert),
+    ]) == 0
+    text = uebersteuert.read_text(encoding="utf-8")
+    assert "Referenzstichtag: 2010-01-01" in text
+    assert "Referenzstichtag: 2026-01-01" not in text
+
+    # Der naheliegendste Tippfehler beim neuen Feld (String statt
+    # TOML-Datum) ist ein sauberer Exit 2, kein Traceback:
+    kaputt = tmp_path / "kaputt.toml"
+    kaputt.write_text(
+        '[meta]\nseed = 1\nreferenzstichtag = "2026-01-01"\n',
+        encoding="utf-8",
+    )
+    assert cli.main([
+        "--portfolio", str(parquet), "--config", str(kaputt),
     ]) == 2
 
 

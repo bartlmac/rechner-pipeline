@@ -18,7 +18,9 @@ Usage::
 schalten die Ereignis-/Abgangs-Sichten frei; ``--config`` zusaetzlich die
 aktuariellen Kennzahlen, ``--bis`` (der Fortschreibungs-Horizont) die
 Bestandsbewegung in Nachweisungs-Struktur, ``--stichtag`` deren Teilung in
-Historie und Prognose. ``--scheiben`` ist Pflicht,
+Historie und Prognose. Ohne ``--stichtag`` gilt ``meta.referenzstichtag``
+aus der Config — der Referenzstichtag ist eine Eigenschaft des Bestands,
+das Flag uebersteuert ihn nur. ``--scheiben`` ist Pflicht,
 sobald der Ledger dynamische Erhoehungen enthaelt.
 
 Knoten: klv, bu
@@ -92,7 +94,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=None,
         help=(
             "Referenzstichtag (ISO-Datum): teilt die Nachweisungen in "
-            "Historie (bis zum Stichtag) und Prognose (danach)."
+            "Historie (bis zum Stichtag) und Prognose (danach). "
+            "Default: meta.referenzstichtag aus --config, falls gesetzt."
         ),
     )
     parser.add_argument(
@@ -168,11 +171,19 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
         from rechner_pipeline.bestand.config import load_config
 
-        config = load_config(config_path)
+        try:
+            config = load_config(config_path)
+        except ValueError as exc:
+            print(f"bestand_report: {exc}", file=sys.stderr)
+            return 2
         fehler = config.validate()
         if fehler:
             print(f"bestand_report: Config ungueltig: {'; '.join(fehler)}", file=sys.stderr)
             return 2
+        # Der Referenzstichtag ist eine Eigenschaft des Bestands: er kommt
+        # aus der Config und wird per --stichtag nur uebersteuert.
+        if stichtag is None:
+            stichtag = config.referenzstichtag
 
     df = read_portfolio(portfolio_path)
     if scheiben is not None:
