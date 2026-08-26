@@ -3,8 +3,8 @@ name: migrationsfall-durchfuehren
 description: >-
   Run a complete migration case through the ontology pipeline (Stufe 1 Quellen->A-Box
   plus Bestandsabzug->Transformation, Stufe 2 A-Box->Spez->Kern-Parametrierung, Stufe 3
-  Golden-Master-Abnahme plus Bestands-Abnahme ueber zwei Stichtage), including the
-  human gates G-1/G-2 and their P9 snapshots. Trigger when the user asks to migrate a new
+  Golden-Master-Abnahme plus aktuarieller Test und Bestands-Controlling ueber zwei
+  Stichtage), including the human gates G-1/G-A/G-2 and their P9 snapshots. Trigger when the user asks to migrate a new
   Tarifgeneration or product delivery (Tarifmeldung + Tarifrechner + Bestandsabzug) into the
   kernel, to "einen Migrationsfall durchfuehren/anlegen", or names this skill. Skip for:
   authoring gates (use author-rechner-toolbox-gate) or pure read/analysis questions.
@@ -210,10 +210,14 @@ Versions- und hashrollengenau auf dem aktuellen A-Box-Stand verankert; P9
 validiert Snapshot-Schema, Vollhash-Dateiname, Freigabesignatur und die
 zyklenfreie Kette mit genau einer Spitze. G-2 verlangt zusaetzlich fuer exakt
 jede Generation der A-Box einen inhaltsadressierten gruenen O3-Beleg desselben
-A-Box- und Systemstands sowie einen geltenden signierten G-1-Annahme-Snapshot
-   desselben Stands. Im Scope `bestand` kommen die Pflichtbelege fuer B1,
-   vollstaendige Suite und Abnahmebericht hinzu; ein Scope `tarif` verlangt
-   sie nicht.
+A-Box- und Systemstands, einen geltenden signierten G-1-Annahme-Snapshot
+   desselben Stands UND einen geltenden signierten G-A-Annahme-Snapshot
+   (aktuarielle Abnahme — G-A geht G-2 zwingend voraus, ADR-010). Die
+   Pflichtbelege werden JE GATE aus dem Scope abgeleitet
+   (`fall.BELEGROLLEN`): Im Scope `bestand` verlangt G-A Testergebnis und
+   Bericht des aktuariellen Tests, G-2 zusaetzlich die Belege fuer B1,
+   vollstaendige Suite und Abnahmebericht; ein Scope `tarif` verlangt
+   beides nicht.
 
 ### Stufe 2 — A-Box -> Spez -> Kern
 
@@ -244,15 +248,28 @@ A-Box- und Systemstands sowie einen geltenden signierten G-1-Annahme-Snapshot
 2. Volle Suite: `.venv/bin/python -m pytest` — bestehende Verankerungen
    duerfen sich nicht bewegen.
 
-### Stufe 3b — Abnahme des uebernommenen Bestands (wenn Stufe 1b lief)
+### Stufe 3b — Pruefung des uebernommenen Bestands (wenn Stufe 1b lief)
 
-O3 nimmt die PARAMETRIERUNG ab, nicht den Bestand. Der Beweis einer
-Bestandsmigration endet nicht beim Stichtags-Foto: das Zielsystem muss
-den uebernommenen Bestand auch FORTSCHREIBEN wie das Quellsystem.
-Deshalb ueber ZWEI Stichtage, und deshalb braucht es dafuer den Folge-
-Abzug und das GeVo-Protokoll der Lieferung. Durchgefuehrt wird das vom
-Skill `pruefe-migrationsabnahme` — uebergib an ihn, statt die Schritte
-selbst zu improvisieren:
+O3 nimmt die PARAMETRIERUNG ab, nicht den Bestand. Der uebernommene
+Bestand laeuft durch ZWEI getrennte Pruefebenen mit ZWEI menschlichen
+Gates in erzwungener Reihenfolge (ADR-010):
+
+ZUERST der AKTUARIELLE TEST (Skill `aktuartest-durchfuehren`, Gate
+G-A): je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne
+Interpolation, ohne Summation — auf einer belegten Stichprobe
+(`qa.stichprobe`, v0: `vollbestand`). Die Engine
+`qa.aktuarieller_test` schreibt das Ergebnis-JSON, das Gate
+`gates.aktuartest` rendert die G-A-Vorlage. Der Verantwortliche Aktuar
+entscheidet G-A (`gate_entscheid --gate G-A`); ohne geltende
+G-A-Annahme ist G-2 unmoeglich.
+
+DANACH das MIGRATIONSCONTROLLING (Skill `pruefe-migrationscontrolling`,
+Gate G-2): der Beweis einer Bestandsmigration endet nicht beim
+Stichtags-Foto — das Zielsystem muss den uebernommenen Bestand auch
+FORTSCHREIBEN wie das Quellsystem. Deshalb ueber ZWEI Stichtage und
+ueber JEDEN Vertrag, und deshalb braucht es dafuer den Folge-Abzug und
+das GeVo-Protokoll der Lieferung. Uebergib an die beiden Skills, statt
+die Schritte selbst zu improvisieren:
 
 1. Gate B1 auf den uebernommenen Bestand:
    `python -m rechner_pipeline.gates.bestand_validate --portfolio <bestand>.parquet --config <config>.toml --repo-root . --diagnostics-dir faelle/<fall>/abgeleitet/diagnostics
@@ -296,8 +313,11 @@ selbst zu improvisieren:
 
 `python -m rechner_pipeline.gates.gate_entscheid --gate G-2 --rolle mensch
 --freigabe-schluessel <externe-datei> ...`
-— uebergeben, nicht selbst entscheiden. G-2 liest den Scope aus `fall.json`
-und leitet seine exakte Pflichtbelegmenge aus dem Fall-Scope ab. Im
+— uebergeben, nicht selbst entscheiden. G-2 verlangt den geltenden,
+signierten G-A-Snapshot desselben Stands als Vorgaenger und pinnt ihn
+als Rolle `ga_snapshot` (aktuarielle vor finanzieller Abnahme,
+ADR-010). G-2 liest den Scope aus `fall.json`
+und leitet seine exakte Pflichtbelegmenge je Gate aus dem Fall-Scope ab. Im
 Bestands-Scope werden das Abnahme-Ledger, jedes von ihm gebundene Artefakt und
 das von B1 benannte Portfolio gegen die aktuellen Bytes nachgehasht. B1 und
 Suite werden semantisch erneut validiert; der HTML-Bericht wird aus der Suite
@@ -315,6 +335,7 @@ vollstaendig, ohne Stichproben-Beschoenigung.
 - Ein Ziel-Pflichtfeld der Transformation ist aus dem Abzug nicht
   ableitbar, oder die Quelle traegt ein fachlich uebernahmepflichtiges
   Merkmal, fuer das die Ziel-Ontologie kein Feld hat (Gate G-T).
-- Die Abnahmesuite meldet Befunde zur Konsistenz der Lieferung
+- Die Controlling-Suite (`qa.migrationssuite`) oder der aktuarielle
+  Test melden Befunde zur Konsistenz der Lieferung
   (fehlende Vertraege ohne Abgangs-GeVo, unbekannte GeVo-Arten) — das
   ist ein Ergebnis fuer den Menschen, kein Hindernis, das du wegraeumst.

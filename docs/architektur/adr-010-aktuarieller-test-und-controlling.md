@@ -120,8 +120,10 @@ Test als unvollstaendig.
 * ADR-009 erhaelt einen Nachtrag: Die dortige Belegmenge beschreibt ab
   hier G-2; G-A hat eine eigene.
 * Der Skill `pruefe-migrationsabnahme` zerfaellt in zwei Skills entlang
-  der beiden Verantwortlichkeiten; das Runbook `migrationsfall-durchfuehren`
-  routet auf beide und haelt die Reihenfolge ein.
+  der beiden Verantwortlichkeiten (umgesetzt als
+  `aktuartest-durchfuehren` und `pruefe-migrationscontrolling`); das
+  Runbook `migrationsfall-durchfuehren` routet auf beide und haelt die
+  Reihenfolge ein.
 * Bestehende Faelle: Ein Fall, dessen G-2 vor Einfuehrung dieses ADR
   entschieden wurde, traegt keinen G-A-Vorgaenger. Solche Ketten werden
   nicht umgedeutet; der Fall wird nach revisionsfester Archivierung der

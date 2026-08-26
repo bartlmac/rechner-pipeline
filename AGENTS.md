@@ -82,14 +82,15 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `python -m rechner_pipeline.gates.gate_entscheid` (human gates, P9
   snapshots). Agents never resolve discrepancies as final; provisional
   resolutions carry `vorlaeufig=true` and block human acceptance.
-- Migration acceptance: the two-reporting-date suite
+- Migration controlling: the two-reporting-date suite
   (`rechner_pipeline.qa.migrationssuite`) and the HTML acceptance
   report (`rechner_pipeline.gates.abnahmebericht`) are libraries driven
-  by the `pruefe-migrationsabnahme` skill.
-- Actuarial test: per-contract comparison at each contract's own
-  anchor date (`rechner_pipeline.qa.aktuarieller_test`, no
-  interpolation, no summation) with the G-A template gate
-  `python -m rechner_pipeline.gates.aktuartest`.
+  by the `pruefe-migrationscontrolling` skill (gate G-2).
+- Actuarial test (precedes G-2): per-contract comparison at each
+  contract's own anchor date (`rechner_pipeline.qa.aktuarieller_test`,
+  no interpolation, no summation) with the G-A template gate
+  `python -m rechner_pipeline.gates.aktuartest`, driven by the
+  `aktuartest-durchfuehren` skill.
 - Portfolio module: `python -m rechner_pipeline.bestand.cli_fortschreibung`
   (GeVo stream to Parquet), `python -m rechner_pipeline.bestand.cli_report`
   (self-contained HTML report; `--bis` is the simulation horizon,
@@ -116,9 +117,10 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `$extrahiere-quellfragment`; portfolio-extract mappings follow
   `$transformiere-quellbestand`.
 - Fachliche Konflikte are PREPARED with `$bereite-fachkonflikt-auf` and
-  DECIDED by humans; migration acceptance is prepared with
-  `$pruefe-migrationsabnahme` (the decision remains the human gate
-  G-2).
+  DECIDED by humans; the actuarial test is prepared with
+  `$aktuartest-durchfuehren` (decision: human gate G-A) and migration
+  controlling with `$pruefe-migrationscontrolling` (decision: human
+  gate G-2; G-A precedes G-2).
 - For implementation work in `src/`/`tests/`, follow
   `$entwickle-im-zielsystem` (the architecture rules there are
   non-negotiable); code changes during a running migration additionally

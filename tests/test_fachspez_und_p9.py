@@ -354,7 +354,8 @@ def test_abnahme_runbook_reicht_die_neuen_pruefgroessen_durch():
 
     repo = Path(__file__).resolve().parents[1]
     for basis in (".claude", ".agents"):
-        for skill in ("pruefe-migrationsabnahme", "migrationsfall-durchfuehren"):
+        for skill in ("pruefe-migrationscontrolling",
+                      "migrationsfall-durchfuehren"):
             text = (repo / basis / "skills" / skill / "SKILL.md").read_text(
                 encoding="utf-8")
             assert "bjb_erwartet_1" in text, (basis, skill)

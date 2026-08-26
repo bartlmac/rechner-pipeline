@@ -1,27 +1,39 @@
 ---
-name: pruefe-migrationsabnahme
+name: pruefe-migrationscontrolling
 description: >-
-  Run the deterministic migration acceptance checks for a portfolio
+  Run the deterministic migration controlling checks for a portfolio
   migration and prepare the human acceptance decision: two-reporting-date
-  Deckungskapital comparison, GeVo amounts between the dates, the
-  transformation mapping table, and the before/after Bestandsbericht pair
-  — rendered as one acceptance report. Trigger when a migration case has a
-  transformed portfolio plus delivered expectation data (second extract,
-  GeVo protocol) and acceptance is due, or the user asks to "die Migration
-  abnehmen/pruefen". Skip for: deciding the acceptance itself (human, Gate
-  G-2), computing any actuarial value by hand (deterministic suite only),
-  resolving discrepancies (bereite-fachkonflikt-auf).
+  Deckungskapital comparison over the FULL portfolio, GeVo amounts between
+  the dates, the transformation mapping table, and the before/after
+  Bestandsbericht pair — rendered as one acceptance report for Gate G-2.
+  Trigger when a migration case has a transformed portfolio plus delivered
+  expectation data (second extract, GeVo protocol) and acceptance is due,
+  or the user asks to "die Migration abnehmen/pruefen". Skip for: the
+  actuarial test at each contract's own anchor date
+  (aktuartest-durchfuehren, Gate G-A — it comes FIRST), deciding the
+  acceptance itself (human, Gate G-2), computing any actuarial value by
+  hand (deterministic suite only), resolving discrepancies
+  (bereite-fachkonflikt-auf).
 ---
 
-# Migrationsabnahme prüfen
+# Migrationscontrolling prüfen
 
 ## Rolle und Ziel
 
-Du führst die DETERMINISTISCHE Abnahmeprüfung einer Bestandsmigration
-aus und bereitest das Urteil für die MENSCHLICHE Abnahme (Gate G-2)
-auf. Der Beweis einer Migration endet nicht beim Stichtags-Foto: Das
-Zielsystem muss den übernommenen Bestand auch FORTSCHREIBEN wie das
-Quellsystem. Geprüft wird deshalb über zwei Stichtage.
+Du führst das DETERMINISTISCHE Migrationscontrolling einer
+Bestandsmigration aus und bereitest das Urteil für die MENSCHLICHE
+Abnahme (Gate G-2) auf. Der Beweis einer Migration endet nicht beim
+Stichtags-Foto: Das Zielsystem muss den übernommenen Bestand auch
+FORTSCHREIBEN wie das Quellsystem. Geprüft wird deshalb über zwei
+Stichtage — jeder Vertrag des Bestands, aggregierend.
+
+ABGRENZUNG (ADR-010): Das Controlling ist die ZWEITE Prüfebene. Die
+ERSTE ist der aktuarielle Test je Vertrag am eigenen
+Verankerungszeitpunkt (Skill `aktuartest-durchfuehren`, Gate G-A) —
+G-A geht G-2 zwingend voraus; ein G-2-Entscheid ohne geltende
+G-A-Annahme ist unmöglich. "Vollständig geprüft" heißt HIER: jeder
+Vertrag des Bestands (`vollstaendig_geprueft`); im aktuariellen Test
+heißt es: die Stichprobe wurde abgearbeitet.
 
 Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 
@@ -136,12 +148,6 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    roter Bericht wird geschrieben wie ein grüner — er IST das
    Beweisstück.
 5. Ergebnis dem Menschen zur G-2-Entscheidung vorlegen, STOPP.
-
-## Ausbau (geplant, hier verankern)
-
-- Golden-Master-Tests der Migration: definierte Referenz-Verträge mit
-  eingefrorenen Erwartungswerten als dauerhafte Regression — Definition
-  folgt, dieser Skill ist ihr Zuhause.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)
 

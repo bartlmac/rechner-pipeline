@@ -918,7 +918,8 @@ def test_runbook_fuehrt_die_bestands_haelfte_der_pipeline():
     for marke in ("Stufe 1b", "Stufe 3b",
                   "rechner_pipeline.quellen.bestand_profil",
                   "transformiere-quellbestand", "validate_spec", "wende_an",
-                  "qa.abzugsabgleich", "pruefe-migrationsabnahme",
+                  "qa.abzugsabgleich", "pruefe-migrationscontrolling",
+                  "aktuartest-durchfuehren",
                   "rechner_pipeline.gates.bestand_validate",
                   "qa.migrationssuite", "rechner_pipeline.gates.abnahmebericht",
                   "rechner_pipeline.bestand.cli_report"):

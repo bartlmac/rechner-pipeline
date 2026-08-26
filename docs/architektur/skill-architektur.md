@@ -28,7 +28,8 @@ gehoert dann in ein Gate oder einen Validator.
 | Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (G-T) |
 | Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen RECHNEN, Entscheidungs-Dossier + Empfehlung liefern, dann STOPP | entscheiden (auch nicht "offensichtliche" Faelle); Quellen-Hierarchie festlegen |
 | Gate-Autorenschaft | `author-rechner-toolbox-gate` | neue Pruef-CLIs unter dem Ledger-/Exit-Contract | Fachlogik ausserhalb des Pruefens |
-| Migrations-Abnahme | `pruefe-migrationsabnahme` | deterministische Abnahmepruefung ueber zwei Stichtage (Migrationssuite, GeVo-Vergleich, Mapping-Tabelle, Bestandsberichte vor/nach) als G-2-Vorlage aufbereiten | abnehmen (Mensch, G-2); Werte selbst rechnen; Toleranzen aufweichen; Erwartungswerte "korrigieren" |
+| Aktuarieller Test | `aktuartest-durchfuehren` | deterministischen Test je Vertrag am eigenen Verankerungszeitpunkt auf belegter Stichprobe fahren (Engine, aktuartest-Gate) als G-A-Vorlage aufbereiten | abnehmen (Mensch, G-A); Werte selbst rechnen; interpolieren oder summieren (Engine verbietet es); Toleranzen aufweichen |
+| Migrationscontrolling | `pruefe-migrationscontrolling` | deterministisches Controlling ueber zwei Stichtage und jeden Vertrag (Migrationssuite, GeVo-Vergleich, Mapping-Tabelle, Bestandsberichte vor/nach) als G-2-Vorlage aufbereiten | abnehmen (Mensch, G-2); Werte selbst rechnen; Toleranzen aufweichen; Erwartungswerte "korrigieren" |
 | Migrations-CI | `integriere-migrationsinkrement` | Code-Aenderungen waehrend laufender Migrationen als kleine knotengebundene Inkremente integrieren (ADR-007: Impact, Gesamt-Suite inkl. aller Faelle, benanntes Staging) | langlebige Branches oder Kern-Forks; Landung ohne falluebergreifenden Beweis; Rueckgrat ohne Koordination; Push (Mensch) |
 
 ## Zusammenspiel (wer uebergibt an wen)
@@ -47,16 +48,18 @@ migrationsfall-durchfuehren
   |     Parametrierung: quellen/tafel_import (Code, kein Skill)
   |     mehr als Parametrierung: STOPP --> G-T-Vorlage --> MENSCH
   |         danach: entwickle-im-zielsystem (unter dem G-T-Beschluss)
-  |- Stufe 3b (uebernommener Bestand): pruefe-migrationsabnahme
-  |     (Gate B1, qa/migrationssuite, gates/abnahmebericht)
-  |     --> Abnahmebericht --> MENSCH (G-2)
+  |- Stufe 3b (uebernommener Bestand), Reihenfolge erzwungen (ADR-010):
+  |     1. aktuartest-durchfuehren (qa/stichprobe, qa/aktuarieller_test,
+  |        gates/aktuartest) --> G-A-Vorlage --> MENSCH (G-A)
+  |     2. pruefe-migrationscontrolling (Gate B1, qa/migrationssuite,
+  |        gates/abnahmebericht) --> Abnahmebericht --> MENSCH (G-2)
   |- jeder Implementierungs-Block: entwickle-im-zielsystem
   |     Abschluss: teste-adversarial --> Fixes --> Regressionstests
   |     waehrend laufender Faelle: integriere-migrationsinkrement
   '- Doku-Pflichten: dokumentiere-system (ADR, README, AGENTS)
 ```
 
-Menschliche Gates (G-1/G-2/G-T, P9-Snapshots) sind KEINE Skills — sie
+Menschliche Gates (G-1/G-A/G-2/G-T, P9-Snapshots) sind KEINE Skills — sie
 sind Werkzeuge fuer Menschen (`ontologie.entscheide`,
 `gates.gate_entscheid`). Skills bereiten sie vor und halten an ihnen an.
 

@@ -490,7 +490,7 @@ def main(argv: Optional[List[str]] = None):
             hints=[
                 "Erst den aktuariellen Test fahren: Pruefauftraege je "
                 "Vertrag bauen und qa.aktuarieller_test.pruefe_stichprobe "
-                "als JSON persistieren (Skill: fuehre-aktuartest-durch)."
+                "als JSON persistieren (Skill: aktuartest-durchfuehren)."
             ],
         )
 
