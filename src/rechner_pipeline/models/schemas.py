@@ -67,10 +67,10 @@ __all__ = [
 DECISION_VALUES: tuple[str, ...] = ("accepted", "human_review_required", "failed")
 EXPECTATION_COVERAGE_VALUES: tuple[str, ...] = ("full", "sparse", "none")
 GATE_VERSION_DEFAULT = "1.0.0"
-P9_SNAPSHOT_SCHEMA_VERSION = 4
-P9_GATE_VERSION = "0.5.0"
+P9_SNAPSHOT_SCHEMA_VERSION = 5
+P9_GATE_VERSION = "0.6.0"
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
-P9_GATES: tuple[str, ...] = ("G-1", "G-2", "G-T")
+P9_GATES: tuple[str, ...] = ("G-1", "G-A", "G-2", "G-T")
 
 
 def _kanonisches_json(data: Any) -> bytes:
@@ -435,10 +435,10 @@ class P9Snapshot:
         errors: List[str] = []
         gate = data.get("gate")
         expected_fields = set(cls._BASE_FIELDS)
+        if gate in ("G-A", "G-2"):
+            expected_fields.update({"fall_scope", "pflichtbelege"})
         if gate == "G-2":
-            expected_fields.update({
-                "o3_belege", "fall_scope", "pflichtbelege",
-            })
+            expected_fields.add("o3_belege")
         if data.get("entscheid") == "angenommen":
             expected_fields.add("freigabe")
         fields = set(data)
@@ -510,13 +510,21 @@ class P9Snapshot:
         if zeit_fehler:
             errors.append(zeit_fehler)
 
-        if gate == "G-2":
+        if gate in ("G-A", "G-2"):
             if data.get("fall_scope") not in ("tarif", "bestand"):
                 errors.append("fall_scope must be 'tarif' or 'bestand'")
             pflichtbelege = data.get("pflichtbelege")
             if not isinstance(pflichtbelege, dict):
                 errors.append("pflichtbelege must be an object")
-            elif data.get("entscheid") == "angenommen" and not pflichtbelege:
+            elif (
+                gate == "G-2"
+                and data.get("entscheid") == "angenommen"
+                and not pflichtbelege
+            ):
+                # G-A darf im Tarif-Scope belegfrei angenommen werden
+                # (keine Vertragslieferung, keine Testartefakte); die
+                # exakte Rollenmenge je Gate und Scope erzwingt der
+                # Lesepfad in gate_entscheid.
                 errors.append("pflichtbelege must not be empty for acceptance")
             else:
                 for rolle, belege in pflichtbelege.items():
@@ -542,6 +550,7 @@ class P9Snapshot:
                             errors.append(
                                 f"pflichtbelege[{rolle!r}] contains a non-SHA-256"
                             )
+        if gate == "G-2":
             o3_belege = data.get("o3_belege")
             if not isinstance(o3_belege, dict):
                 errors.append("o3_belege must be an object")

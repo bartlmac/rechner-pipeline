@@ -23,7 +23,12 @@ import rechner_pipeline.gates.generation_golden as generation_golden
 from rechner_pipeline.bestand import cli_fortschreibung
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.fall import registrieren
-from rechner_pipeline.gates import abnahmebericht, bestand_validate, gate_entscheid
+from rechner_pipeline.gates import (
+    abnahmebericht,
+    aktuartest,
+    bestand_validate,
+    gate_entscheid,
+)
 from rechner_pipeline.gates._provenienz import (
     pruefe_o3_beleg,
     schreibe_o3_beleg,
@@ -39,7 +44,12 @@ from rechner_pipeline.ontologie.transformation import (
     ZIEL_PFLICHT,
 )
 from rechner_pipeline.quellen.vorverdichtung import verzeichnis_der_generation
+from rechner_pipeline.qa.aktuarieller_test import (
+    VerankerungsPruefung,
+    pruefe_stichprobe,
+)
 from rechner_pipeline.qa.migrationssuite import VertragsPruefung, pruefe_bestand
+from rechner_pipeline.qa.stichprobe import ziehe
 from tests.e2e_fixture import bereite_o3_fall, lade_o3_fixture
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -83,6 +93,13 @@ def _bereite_fall(
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
     ]).exit_code == 0
     assert _p9_annahme(fall, "G-1", "A-Box fachlich geprueft").exit_code == 0
+    if scope == "tarif":
+        # G-A geht G-2 voraus (ADR-010); im Tarif-Scope ohne eigene
+        # Belegrollen. Im Bestands-Scope stellt _bereite_bestandsfall
+        # zuerst die aktuartest-Belege her.
+        assert _p9_annahme(
+            fall, "G-A", "aktuarielle Methode geprueft"
+        ).exit_code == 0
     return fall
 
 
@@ -220,7 +237,45 @@ def _bereite_bestandsfall(tmp_path: Path) -> Path:
         "bestandsbericht_vor",
         "bestandsbericht_nach",
     }
+    _aktuartest_belege(fall)
+    assert _p9_annahme(
+        fall, "G-A", "aktuarieller Test auf dem Bestand geprueft"
+    ).exit_code == 0
     return fall
+
+
+def _aktuartest_belege(
+    fall: Path, *, drift: float = 0.0, erwarteter_exit: int = 0
+):
+    """Echte aktuartest-Belege (Engine-JSON, Bericht, Ledger)."""
+    kern = Rechenkern(KLV_DEFAULT)
+    ta = 12 * 9
+    test = pruefe_stichprobe(
+        [VerankerungsPruefung(
+            police_id="P-SCOPE-1",
+            model_point=asdict(KLV_DEFAULT),
+            monate_ta=ta,
+            historientyp="ohne_gevo",
+            erwartet={
+                "kVx_MRV": round(
+                    kern.verlaufszeile(ta // 12).vx_mrv + drift, 2
+                ),
+            },
+        )],
+        ziehe("vollbestand", ["P-SCOPE-1"]),
+        system=gate_entscheid.systemstand(REPO_ROOT),
+    )
+    berichte = fall / "abgeleitet" / "berichte"
+    berichte.mkdir(parents=True, exist_ok=True)
+    (berichte / "aktuartest.json").write_text(
+        json.dumps(test, sort_keys=True), encoding="utf-8"
+    )
+    ergebnis = aktuartest.main([
+        "--fall", str(fall),
+        "--titel", "Aktuarieller Test E2E",
+        "--repo-root", str(REPO_ROOT),
+    ])
+    assert ergebnis.exit_code == erwarteter_exit
 
 
 def test_echtes_o3_schreibt_beleg_und_g2_nimmt_denselben_stand_an(
@@ -258,7 +313,7 @@ def test_echtes_o3_schreibt_beleg_und_g2_nimmt_denselben_stand_an(
     }
     assert snapshot["fall_scope"] == "tarif"
     assert set(snapshot["pflichtbelege"]) == {
-        "o1_ledger", "g1_snapshot", "o3_belege",
+        "o1_ledger", "g1_snapshot", "ga_snapshot", "o3_belege",
     }
     assert not any("bestand" in rolle for rolle in snapshot["pflichtbelege"])
 
@@ -302,8 +357,8 @@ def test_bestands_scope_bindet_b1_suite_und_abnahmebericht_bis_g2(
     snapshot = json.loads(Path(g2.paths["snapshot"]).read_text(encoding="utf-8"))
     assert snapshot["fall_scope"] == "bestand"
     assert set(snapshot["pflichtbelege"]) == {
-        "o1_ledger", "g1_snapshot", "o3_belege", "b1_ledger",
-        "migrationssuite", "abnahmebericht",
+        "o1_ledger", "g1_snapshot", "ga_snapshot", "o3_belege",
+        "b1_ledger", "migrationssuite", "abnahmebericht",
     }
     assert all(snapshot["pflichtbelege"].values())
 
@@ -1256,3 +1311,98 @@ def test_ungueltige_generations_id_im_beleg_wird_befund_statt_crash(
     _beleg, fehler = pruefe_o3_beleg(pfad)
     assert any("Knoten-ID" in meldung for meldung in fehler)
     assert any("Dateiname nicht ableitbar" in meldung for meldung in fehler)
+
+
+def test_g2_verlangt_geltendes_ga_vor_sich(tmp_path: Path):
+    """ADR-010: G-A geht G-2 voraus — ein G-2-Entscheid ohne geltende,
+    signierte G-A-Annahme ist unmoeglich; danach pinnt G-2 den
+    G-A-Snapshot als Pflichtrolle."""
+    fall = bereite_o3_fall(tmp_path, ("klv/tg2012",), scope="tarif")
+    assert o1([
+        "--fall", str(fall), "--repo-root", str(REPO_ROOT),
+    ]).exit_code == 0
+    assert _p9_annahme(fall, "G-1", "A-Box fachlich geprueft").exit_code == 0
+    assert _o3_tg2012(fall).exit_code == 0
+
+    vorzeitig = _p9_annahme(fall, "G-2", "vor der aktuariellen Abnahme")
+    assert vorzeitig.exit_code == 20
+    meldung = vorzeitig.errors[0]["message"]
+    assert "G-A" in meldung and "--gate G-A" in meldung
+    assert list((fall / "entscheide").glob("G-2-*.json")) == []
+
+    # Eine G-A-ABLEHNUNG ist snapshotbar, oeffnet G-2 aber nicht:
+    schluessel = fall.parent / "p9-freigabe.key"
+    ablehnung = gate_entscheid.main([
+        "--fall", str(fall), "--gate", "G-A",
+        "--entscheid", "abgelehnt", "--rolle", "mensch",
+        "--entscheider", "fachrolle",
+        "--begruendung", "Methode noch offen",
+        "--repo-root", str(REPO_ROOT),
+        "--freigabe-schluessel", str(schluessel),
+    ])
+    assert ablehnung.exit_code == 0
+    weiterhin = _p9_annahme(fall, "G-2", "trotz abgelehntem G-A")
+    assert weiterhin.exit_code == 20
+    assert "G-A" in weiterhin.errors[0]["message"]
+
+    ga = _p9_annahme(fall, "G-A", "aktuarielle Methode geprueft")
+    assert ga.exit_code == 0
+    g2 = _p9_annahme(fall, "G-2", "nach der aktuariellen Abnahme")
+    assert g2.exit_code == 0
+    snapshot = json.loads(
+        Path(g2.paths["snapshot"]).read_text(encoding="utf-8")
+    )
+    assert snapshot["pflichtbelege"]["ga_snapshot"] == [
+        ga.summary["snapshot_sha256"]
+    ]
+
+
+def test_ga_annahme_im_bestandsscope_verlangt_gruene_aktuartest_belege(
+    tmp_path: Path,
+):
+    """G-A pinnt im Bestands-Scope die Testartefakte: fehlend, nicht
+    bestanden oder byte-abweichend zum Ledger blockt die Annahme; die
+    Ablehnung bleibt jederzeit snapshotbar."""
+    fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
+
+    ohne_belege = _p9_annahme(fall, "G-A", "ohne Testbelege")
+    assert ohne_belege.exit_code == 20
+    assert "gates.aktuartest" in ohne_belege.errors[0]["message"]
+
+    # Roter Test: Vorlage nicht bestanden -> Annahme unmoeglich,
+    # Ablehnung moeglich.
+    _aktuartest_belege(fall, drift=25.0, erwarteter_exit=30)
+    rot = _p9_annahme(fall, "G-A", "trotz rotem Test")
+    assert rot.exit_code == 20
+    assert "nicht bestanden" in rot.errors[0]["message"]
+    schluessel = fall.parent / "p9-freigabe.key"
+    ablehnung = gate_entscheid.main([
+        "--fall", str(fall), "--gate", "G-A",
+        "--entscheid", "abgelehnt", "--rolle", "mensch",
+        "--entscheider", "fachrolle",
+        "--begruendung", "Test nicht bestanden",
+        "--repo-root", str(REPO_ROOT),
+        "--freigabe-schluessel", str(schluessel),
+    ])
+    assert ablehnung.exit_code == 0
+
+    # Gruene Belege, dann Bytes veraendern: die Ledger-Bindung bricht.
+    _aktuartest_belege(fall)
+    test_pfad = fall / "abgeleitet" / "berichte" / "aktuartest.json"
+    test_pfad.write_text(
+        test_pfad.read_text(encoding="utf-8") + "\n", encoding="utf-8"
+    )
+    manipuliert = _p9_annahme(fall, "G-A", "auf manipulierten Bytes")
+    assert manipuliert.exit_code == 20
+    assert "aktuellen Bytes" in manipuliert.errors[0]["message"]
+
+    _aktuartest_belege(fall)
+    angenommen = _p9_annahme(fall, "G-A", "aktuarieller Test geprueft")
+    assert angenommen.exit_code == 0
+    snapshot = json.loads(
+        Path(angenommen.paths["snapshot"]).read_text(encoding="utf-8")
+    )
+    assert set(snapshot["pflichtbelege"]) == {
+        "aktuartest", "aktuartest_bericht",
+    }
+    assert snapshot["fall_scope"] == "bestand"

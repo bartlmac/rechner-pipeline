@@ -24,7 +24,7 @@ einen vorgeführten Stand zitierbar.
   und wird nie zur Warnung. Jeder Lauf ersetzt den alten Beleg vor der
   Facharbeit durch einen roten Startbeleg und publiziert den Abschluss
   atomar.
-* **Menschliche Gates G-1/G-2/G-T** mit unveränderlichen Snapshots;
+* **Menschliche Gates G-1/G-A/G-2/G-T** mit unveränderlichen Snapshots;
   `--rolle mensch|agent` ist Pflicht, ein Agent kann ein menschliches
   Gate nur ablehnen.
 * **Zielrechenkern 3.0.1**: KLV und Berufsunfähigkeit auf einem
@@ -178,6 +178,23 @@ nachzurechnen. Daraus:
 
 ### Geändert am 2026-08-26
 
+* **ADR-010 umgesetzt: aktuarieller Test und Migrationscontrolling sind
+  getrennte Gates** — die Test-Engine (`qa.aktuarieller_test`)
+  vergleicht je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt
+  ohne Interpolation und ohne Summation der Vergleichsgrößen (nur
+  Verteilungsgrößen der Residuen, geclustert nach Historientyp) auf
+  einer belegten Stichprobe (`qa.stichprobe`, v0-Profil `vollbestand`).
+  Das Gate `gates.aktuartest` rechnet das Ergebnis von innen nach außen
+  nach und rendert die Entscheidungsvorlage für das neue menschliche
+  Gate G-A (aktuarielle Abnahme, Verantwortlicher Aktuar).
+  Prüfsummen laufen als Transportsicherung getrennt und sind nie Teil
+  des fachlichen Urteils.
+* **G-A geht G-2 voraus (erzwungen)** — `P9_GATES` wächst um `G-A`, die
+  Pflichtbelegmenge wird je Gate aufgelöst (`fall.BELEGROLLEN`,
+  ADR-009-Nachtrag), G-2 verlangt den geltenden signierten G-A-Snapshot
+  auf demselben Stand und pinnt ihn als Rolle `ga_snapshot`. Das
+  P9-Schema hebt auf Version 5 (Gate-Version 0.6.0); Altketten mit
+  v4-Snapshots werden revisionsfest archiviert und neu entschieden.
 * **ADR-011: Bestandsführung mit geführtem Zustand und Journal** — der
   Stammsatz trägt den aktuellen Zustand (Status und seit wann), das
   Journal (Statushistorie + Ledger) ist die vollständige Aufzeichnung,

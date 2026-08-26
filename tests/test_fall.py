@@ -64,12 +64,20 @@ def test_scope_legt_die_g2_pflichten_fuer_tarif_und_bestand_fest(
     assert fall_mod.lade_scope(tarif) == "tarif"
     assert fall_mod.lade_scope(bestand) == "bestand"
     assert fall_mod.g2_belegrollen("tarif") == [
-        "o1_ledger", "g1_snapshot", "o3_belege",
+        "o1_ledger", "g1_snapshot", "ga_snapshot", "o3_belege",
     ]
     assert fall_mod.g2_belegrollen("bestand") == [
-        "o1_ledger", "g1_snapshot", "o3_belege", "b1_ledger",
-        "migrationssuite", "abnahmebericht",
+        "o1_ledger", "g1_snapshot", "ga_snapshot", "o3_belege",
+        "b1_ledger", "migrationssuite", "abnahmebericht",
     ]
+    # Belegrollen JE GATE (ADR-010): G-A pinnt im Bestands-Scope die
+    # Testartefakte, im Tarif-Scope ist die Rollenmenge leer.
+    assert fall_mod.belegrollen("G-A", "tarif") == []
+    assert fall_mod.belegrollen("G-A", "bestand") == [
+        "aktuartest", "aktuartest_bericht",
+    ]
+    with pytest.raises(FallFehler, match="kein Belegrollen-Vertrag"):
+        fall_mod.belegrollen("G-1", "tarif")
     ungueltig = tmp_path / "ungueltig"
     with pytest.raises(FallFehler, match="unbekannter Fall-Scope"):
         anlegen(ungueltig, scope="geraten")

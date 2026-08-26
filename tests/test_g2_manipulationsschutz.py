@@ -131,6 +131,9 @@ def _bereit_fuer_g2(tmp_path: Path) -> tuple[Path, Path, Path]:
     key = _schluessel(tmp_path / "p9.key")
     g1 = _p9(fall, key, "G-1")
     assert g1.exit_code == 0
+    # G-A geht G-2 voraus (ADR-010); der Manipulationsschutz-Fall ist
+    # tarif-Scope, dort traegt G-A keine eigenen Belegrollen.
+    assert _p9(fall, key, "G-A").exit_code == 0
     _o3_beleg(fall)
     return fall, key, Path(g1.paths["snapshot"])
 

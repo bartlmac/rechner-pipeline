@@ -122,3 +122,20 @@ Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
 - Einen allgemeinen Gate-DAG einfuehren: verworfen, weil T6-03 nur die drei
   fehlenden Bestandsbelege nachgewiesen hat und ToDo 6.2 den Fehlerfix bewusst
   auf diesen Befund begrenzt.
+
+## Nachtrag 2026-08-26 (ADR-010)
+
+Die Pflichtbelegmenge dieses ADR beschreibt ab hier das Gate G-2. Mit
+ADR-010 wird die scope-getriebene Belegmenge JE GATE aufgeloest
+(`fall.BELEGROLLEN`): Das neue menschliche Gate G-A (aktuarielle
+Abnahme) traegt eine eigene Rollenmenge — im Bestands-Scope das
+Testergebnis und der Bericht des aktuariellen Tests, im Tarif-Scope
+keine eigenen Rollen. G-2 verlangt zusaetzlich den geltenden
+G-A-Snapshot als Pflichtrolle (`ga_snapshot`); die erzwungene
+Reihenfolge G-A vor G-2 laeuft ueber den unveraenderten Kettenvertrag
+aus ADR-008. Das P9-Schema hebt seine Version auf 5 (Gate-Version
+0.6.0); v4-Snapshots sind keine gueltigen Belege des neuen Vertrags —
+Altketten werden nach dem Verfahren dieses ADR revisionsfest archiviert
+und neu entschieden. Die hier verworfene Alternative eines allgemeinen
+Gate-DAG bleibt verworfen: Auch die Je-Gate-Aufloesung ist eine
+deklarierte Tabelle, kein frei konfigurierbarer Graph.

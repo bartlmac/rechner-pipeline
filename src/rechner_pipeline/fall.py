@@ -65,19 +65,30 @@ EINGANG_REGISTER_LOCK = ".eingang.json.lock"
 FALL_SCOPE_SCHEMA_VERSION = 2
 FALL_SCOPES = ("tarif", "bestand")
 
-#: Der befundnahe G-2-Vertrag aus T6-03: Tariffaelle brauchen nur die bereits
-#: bestehenden Tarifbelege; Bestandsfaelle genau die drei zusaetzlich
-#: nachgewiesenen Pflichtbelege. Transformationsbindung ist Gegenstand von 10.13.
-G2_BELEGROLLEN = {
-    "tarif": ("o1_ledger", "g1_snapshot", "o3_belege"),
-    "bestand": (
-        "o1_ledger",
-        "g1_snapshot",
-        "o3_belege",
-        "b1_ledger",
-        "migrationssuite",
-        "abnahmebericht",
-    ),
+#: Pflichtbelegrollen JE GATE und Scope (ADR-009, fortgeschrieben durch
+#: ADR-010): G-A und G-2 verlangen verschiedene Belege. G-A (aktuarielle
+#: Abnahme) pinnt im Bestands-Scope das Testergebnis und den Bericht des
+#: aktuariellen Tests; im Tarif-Scope gibt es keine Vertragslieferung und
+#: damit keine eigenen Testartefakte — der Entscheid stuetzt sich dort
+#: auf die ohnehin gepinnten O3-Belege. G-2 traegt zusaetzlich den
+#: geltenden G-A-Snapshot als Pflichtrolle (erzwungene Reihenfolge).
+BELEGROLLEN = {
+    "G-A": {
+        "tarif": (),
+        "bestand": ("aktuartest", "aktuartest_bericht"),
+    },
+    "G-2": {
+        "tarif": ("o1_ledger", "g1_snapshot", "ga_snapshot", "o3_belege"),
+        "bestand": (
+            "o1_ledger",
+            "g1_snapshot",
+            "ga_snapshot",
+            "o3_belege",
+            "b1_ledger",
+            "migrationssuite",
+            "abnahmebericht",
+        ),
+    },
 }
 
 
@@ -139,10 +150,20 @@ def lade_scope(fall: Path) -> str:
     return str(typ)
 
 
-def g2_belegrollen(scope: str) -> List[str]:
-    """Stabile Pflichtbelegrollen fuer den ausdruecklichen Fall-Scope."""
+def belegrollen(gate: str, scope: str) -> List[str]:
+    """Stabile Pflichtbelegrollen je Gate fuer den ausdruecklichen Scope."""
+    if gate not in BELEGROLLEN:
+        raise FallFehler(
+            f"kein Belegrollen-Vertrag fuer Gate {gate!r} "
+            f"(deklariert: {sorted(BELEGROLLEN)})"
+        )
     scope_dokument(scope)
-    return list(G2_BELEGROLLEN[scope])
+    return list(BELEGROLLEN[gate][scope])
+
+
+def g2_belegrollen(scope: str) -> List[str]:
+    """Stabile G-2-Pflichtbelegrollen (Kurzform von ``belegrollen``)."""
+    return belegrollen("G-2", scope)
 
 
 def _pruefe_eingangsname(name: str) -> str:

@@ -1,7 +1,9 @@
 # ADR-010: Aktuarieller Test und Migrationscontrolling sind getrennte Gates
 
-Status: Entwurf (Beschluss Auftraggeber 2026-08-26 zu den Punkten E3 und E4
-des Migrationskonzepts; Umsetzung offen)
+Status: angenommen und umgesetzt (Beschluss Auftraggeber 2026-08-26 zu den
+Punkten E3 und E4 des Migrationskonzepts; Umsetzung 2026-08-26:
+`qa.aktuarieller_test`, `gates.aktuartest`, Gate G-A in P9 mit
+erzwungener Reihenfolge vor G-2, Belegrollen je Gate)
 
 Normative Referenz: Fachkonzept „Konstruktive Neuberechnung und
 Korrekturschicht" v0.2, Kapitel 6.1-6.3 (im Folgenden FK). Dieses ADR
