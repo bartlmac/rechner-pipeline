@@ -49,9 +49,11 @@ Scheibe) und die Ableitung des Zustands zur Bewertungszeit selbst.
 * **Bestandsfuehrung** (`bestand/fuehrung.py`, neu): fuehrt je Vertrag
   den AKTUELLEN Zustand — Status, seit wann (`status_date` = Beginn des
   aktuellen Status), Summen, Beitrag, Schichten mit ihren eigenen
-  Rechnungsgrundlagen — und das **Journal** (Statushistorie +
-  Geschaeftsvorfall-Ledger) als vollstaendige, nur-anfuegbare
-  Aufzeichnung. Der gefuehrte Stamm und das Journal sind per Invariante
+  Rechnungsgrundlagen — und das **Journal** als vollstaendige, nur-anfuegbare Aufzeichnung —
+  das Statusjournal (Historie) fuehrt die Zustandswechsel, das
+  Betragsjournal (Ledger) die Geschaeftsvorfaelle mit ihren
+  Kern-Betraegen; die Fuehrung setzt den Stammzustand aus dem
+  Statusjournal. Der gefuehrte Stamm und das Journal sind per Invariante
   deckungsgleich: Der Stammzustand IST der juengste Journalstand.
 * **Bewertung** (`bestand/auswertung.py`, umgebaut): rechnet
   ausschliesslich aus dem gefuehrten Zustand. Verweildauer =
@@ -118,8 +120,10 @@ dem Uebernahme-Ereignis BEGINNT statt mit dem Vertragsbeginn.
 
 * Ausgewiesene Werte aendern sich dort, wo der gamma1-Defekt wirkte
   (Beitraege/Reserven der Erhoehungsscheiben im Bestandsbericht). Das
-  ist die Behebung eines Fehlers, keine Modellaenderung; der
-  Aenderungsumfang wird im Branch beziffert.
+  ist die Behebung eines Fehlers, keine Modellaenderung. *(Beziffert am
+  PLV-Gesamtbestand, 26.08.: Beitragssumme −0,20 % — rund 7.400 EUR am
+  Stichtag 2026 —, Deckungskapital +0,003 %; je Beispielscheibe
+  Jahresbeitrag −2,0 %.)*
 * `bestand_mit_historie` + `zeitscheibe` als Bewertungs-Eingang
   entfallen; Leser des Bestands erhalten den gefuehrten Stamm.
 * ADR-009/B1: Die Basisstatus-Invarianten wandern semantisch vom Stamm

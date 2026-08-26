@@ -203,8 +203,14 @@ Beitragsfreistellung, dynamische Erhöhungen als eigene Scheiben,
 Ablauf); jeder Betrag kommt aus dem Kern, die Eintrittsraten aus einer
 eigenen Annahmenschicht (3. Ordnung), und das Bewegungskonto führt die
 Identität Anfangsbestand + Zugang − Abgang = Endbestand exakt in der
-Struktur der BaFin-Nachweisungen. Der Bestandsbericht rendert das als
-selbst-enthaltene HTML-Seite:
+Struktur der BaFin-Nachweisungen. Der Bestand wird **geführt**
+(ADR-011): Der Stammsatz trägt je Vertrag den aktuellen Zustand (Status
+und seit wann), das Journal die vollständige Aufzeichnung; die Auskunft
+rekonstruiert den Bestand zu jedem früheren Tag aus dem Journal, und
+die Bewertung liest ausschließlich den Zustand — kein Bewertungspfad
+liest das Journal. Gate B1 erzwingt die Deckungsgleichheit von
+Stammzustand und jüngstem Journalstand. Der Bestandsbericht rendert das
+als selbst-enthaltene HTML-Seite:
 
 ```bash
 python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml ...
