@@ -89,7 +89,8 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 - Portfolio module: `python -m rechner_pipeline.bestand.cli_fortschreibung`
   (GeVo stream to Parquet), `python -m rechner_pipeline.bestand.cli_report`
   (self-contained HTML report; `--bis` is the simulation horizon,
-  `--stichtag` splits history from projection),
+  `--stichtag` splits history from projection — default:
+  `meta.referenzstichtag` from the config),
   `python -m rechner_pipeline.gates.bestand_validate` (B1).
 - Navigate and scope changes via the ontology index (ADR-005;
   fundstellen are derived, not searched):
