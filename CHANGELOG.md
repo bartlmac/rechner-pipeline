@@ -17,10 +17,10 @@ einen vorgeführten Stand zitierbar.
   Quelle, deterministischer Merge zur A-Box mit Provenienz je Aussage,
   Widersprüche als Diskrepanz-Objekte, Projektion zur Tarif-Spez,
   parametrierter Kern, Abnahme gegen die Lieferung.
-* **Sieben Gates** als je ein Kommando mit JSON auf stdout und Ledger:
+* **Acht Gates** als je ein Kommando mit JSON auf stdout und Ledger:
   `extract` (G0), `abox_merge` (O0), `abox_validate` (O1),
   `generation_golden` (O3), `gate_entscheid` (P9), `bestand_validate`
-  (B1) und `abnahmebericht` (G2-Vorlage). Ein Nicht-Null-Exit blockiert
+  (B1), `aktuartest` (GA-Vorlage) und `abnahmebericht` (G2-Vorlage). Ein Nicht-Null-Exit blockiert
   und wird nie zur Warnung. Jeder Lauf ersetzt den alten Beleg vor der
   Facharbeit durch einen roten Startbeleg und publiziert den Abschluss
   atomar.

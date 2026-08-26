@@ -980,6 +980,7 @@ ALL_GATES: Tuple[Tuple[str, str], ...] = (
     ("O3.generation-golden-master", "generation_golden"),
     ("P9.gate-entscheid", "gate_entscheid"),
     ("B1.bestand-contract", "bestand_validate"),
+    ("GA-vorlage.aktuarieller-test", "aktuartest"),
     ("G2-vorlage.migrationsabnahme", "abnahmebericht"),
 )
 

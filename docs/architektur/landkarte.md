@@ -30,7 +30,7 @@ flowchart TD
     n__init__["__init__<br/>1 Module"]
     bestand["bestand<br/>16 Module"]
     fall["fall<br/>1 Module"]
-    gates["gates<br/>12 Module"]
+    gates["gates<br/>13 Module"]
     kern["kern<br/>9 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
     models["models<br/>5 Module"]
@@ -45,7 +45,7 @@ flowchart TD
     gates -- 1 --> kern
     gates -- 6 --> models
     gates -- 12 --> ontologie
-    gates -- 3 --> qa
+    gates -- 5 --> qa
     gates -- 4 --> quellen
     gates -- 1 --> spez
     kommutationskern -- 2 --> kern
@@ -74,7 +74,7 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
     bu["bu<br/>24 Module"]
-    klv["klv<br/>64 Module"]
+    klv["klv<br/>65 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
     system_fall["system/fall<br/>1 Module"]

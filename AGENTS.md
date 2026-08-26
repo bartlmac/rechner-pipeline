@@ -86,6 +86,10 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   (`rechner_pipeline.qa.migrationssuite`) and the HTML acceptance
   report (`rechner_pipeline.gates.abnahmebericht`) are libraries driven
   by the `pruefe-migrationsabnahme` skill.
+- Actuarial test: per-contract comparison at each contract's own
+  anchor date (`rechner_pipeline.qa.aktuarieller_test`, no
+  interpolation, no summation) with the G-A template gate
+  `python -m rechner_pipeline.gates.aktuartest`.
 - Portfolio module: `python -m rechner_pipeline.bestand.cli_fortschreibung`
   (GeVo stream to Parquet), `python -m rechner_pipeline.bestand.cli_report`
   (self-contained HTML report; `--bis` is the simulation horizon,

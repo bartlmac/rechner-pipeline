@@ -214,12 +214,13 @@ def _perzentil(sortierte_betraege: List[float], p: int) -> float:
     return sortierte_betraege[idx]
 
 
-def _verteilung(residuen: List[float]) -> Dict[str, Any]:
+def verteilung(residuen: List[float]) -> Dict[str, Any]:
     """Verteilungsgroessen der |Residuen| — die EINZIGEN Aggregate.
 
     Keine Summe der Vergleichswerte, kein Mittelwert, kein Median
     (ADR-010 / FK 6.2). Die Betragssumme der ABWEICHUNGEN ist eine
-    Groesse der Residuum-Verteilung, keine Bestandssumme.
+    Groesse der Residuum-Verteilung, keine Bestandssumme. Oeffentlich,
+    weil das Gate-Kommando die Aggregate hiermit nachrechnet.
     """
     betraege = sorted(abs(r) for r in residuen)
     if not betraege:
@@ -310,7 +311,7 @@ def pruefe_stichprobe(
         gruppen[typ] = {
             "anzahl": len(im_typ),
             "bestanden": sum(1 for e in im_typ if e["bestanden"]),
-            **_verteilung(residuen),
+            **verteilung(residuen),
         }
 
     alle_residuen = [
@@ -324,7 +325,7 @@ def pruefe_stichprobe(
         "fehlgeschlagen": fehlgeschlagen,
         "mengenbefunde": mengenbefunde,
         "stichprobe_vollstaendig": stichprobe_vollstaendig,
-        "verteilung": _verteilung(alle_residuen),
+        "verteilung": verteilung(alle_residuen),
         "gruppen": gruppen,
         "vertraege": ergebnisse,
         "test_bestanden": stichprobe_vollstaendig and fehlgeschlagen == 0,
