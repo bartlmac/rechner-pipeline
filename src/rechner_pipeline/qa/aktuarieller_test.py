@@ -105,16 +105,37 @@ def _pruefe_auftrag(v: VerankerungsPruefung) -> None:
             f"police {v.police_id}: unbekannte Groessen {unbekannt} "
             f"(gerechnet werden: {list(GEPRUEFTE_GROESSEN)})"
         )
+    if v.scheiben and v.beitragsfrei_seit_jahr is not None:
+        raise AktuartestFehler(
+            f"police {v.police_id}: Erhoehungsscheiben UND "
+            "Beitragsfreistellung zusammen rechnet die Engine in v0 "
+            "nicht — der beitragsfreie Scheibenpfad ist nicht definiert "
+            "statt still der aktive Track (Erweiterung: Strecke der "
+            "Migrationssuite uebernehmen)"
+        )
     if v.scheiben and set(v.erwartet) - {"kVx_MRV", "RKW"}:
         raise AktuartestFehler(
             f"police {v.police_id}: mit Erhoehungsscheiben rechnet die "
             "Engine nur kVx_MRV und RKW vertragsweit — andere Groessen "
             "sind nicht definiert statt still falsch"
         )
+    if v.beitragsfrei_seit_jahr is not None and v.beitragsfrei_seit_jahr <= 0:
+        raise AktuartestFehler(
+            f"police {v.police_id}: beitragsfrei_seit_jahr="
+            f"{v.beitragsfrei_seit_jahr} ist kein Vertragsjahr"
+        )
     if v.beitragsfrei_seit_jahr is not None and "RKW" in v.erwartet:
         raise AktuartestFehler(
             f"police {v.police_id}: RKW im beitragsfreien Zustand ist in "
             "v0 nicht definiert — Groesse weglassen oder Engine erweitern"
+        )
+    if v.beitragsfrei_seit_jahr is None and "VS_bfr" in v.erwartet:
+        raise AktuartestFehler(
+            f"police {v.police_id}: VS_bfr ist nur im beitragsfreien "
+            "Zustand eine Testgroesse — die beitragsfreie Summe existiert "
+            "erst nach der Umwandlung (Bestand-Konvention fuehrt fuer "
+            "aktive Vertraege 0.00, die Blattzeile den hypothetischen "
+            "Umwandlungswert; still verglichen waere beides falsch)"
         )
 
 
@@ -154,8 +175,6 @@ def _system_werte(v: VerankerungsPruefung) -> Dict[str, float]:
         werte["kVx_MRV"] = zeile.vx_mrv
     if "RKW" in v.erwartet:
         werte["RKW"] = zeile.rkw
-    if "VS_bfr" in v.erwartet:
-        werte["VS_bfr"] = zeile.vs_bfr
     if "BJB" in v.erwartet:
         werte["BJB"] = (
             0.0 if jahr >= grund_mp.t else kern.gross_annual_premium()
@@ -287,6 +306,11 @@ def pruefe_stichprobe(
     for v in vertraege:
         try:
             ergebnisse.append(pruefe_verankerung(v))
+        except AktuartestFehler:
+            # Ein verletzter Engine-Vertrag ist ein Konstruktionsfehler
+            # des AUFRUFS, kein Lieferbefund — er wird nie zu einem
+            # Vertrags-Befund herabgestuft (ADR-010 Abschnitt 4).
+            raise
         except DATEN_AUSNAHMEN as exc:
             ergebnisse.append(
                 {

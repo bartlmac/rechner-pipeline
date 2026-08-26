@@ -126,6 +126,13 @@ def test_fehler(test: Any) -> List[str]:
         return fehler
     if stichprobe["umfang"] != len(stichprobe["police_ids"]):
         fehler.append("stichprobe: umfang deckt police_ids nicht")
+    if len(set(stichprobe["police_ids"])) != len(stichprobe["police_ids"]):
+        fehler.append(
+            "stichprobe: doppelte police_ids — die Abdeckungsbehauptung "
+            "waere aufgeblasen"
+        )
+    if stichprobe["umfang"] > stichprobe["grundgesamtheit"]:
+        fehler.append("stichprobe: umfang uebersteigt die Grundgesamtheit")
     if stichprobe["vollerhebung"] != (
         stichprobe["umfang"] == stichprobe["grundgesamtheit"]
     ):
@@ -137,10 +144,12 @@ def test_fehler(test: Any) -> List[str]:
         fehler.append("vertraege: doppelte police_id")
     alle_residuen: List[float] = []
     fehlgeschlagen = 0
+    feld_fehler = False
     for v in vertraege:
         v_fehlend = sorted(_VERTRAGS_FELDER - set(v))
         if v_fehlend:
             fehler.append(f"vertrag {v.get('police_id')}: {v_fehlend} fehlt")
+            feld_fehler = True
             continue
         alle_ok = bool(v["pruefungen"])
         for p in v["pruefungen"]:
@@ -166,6 +175,10 @@ def test_fehler(test: Any) -> List[str]:
         if not v["bestanden"]:
             fehlgeschlagen += 1
 
+    if feld_fehler:
+        # Ohne vollstaendige Vertragszeilen sind die nachgelagerten
+        # Aggregate nicht ableitbar — die Feld-Befunde stehen fuer sich.
+        return fehler
     if test["anzahl"] != len(vertraege):
         fehler.append("anzahl deckt vertraege nicht")
     if test["fehlgeschlagen"] != fehlgeschlagen:
@@ -507,7 +520,16 @@ def main(argv: Optional[List[str]] = None):
             input_hashes=hash_files([test_pfad], missing_ok=True),
         ))
 
-    fehler = test_fehler(test)
+    # Fremd erzeugte oder beschaedigte JSONs duerfen die Nachrechnung
+    # nicht zu einem Toolbox-Defekt (INTERNAL) machen: ein Typfehler in
+    # den Daten ist eine Vertragsverletzung der DATEI.
+    try:
+        fehler = test_fehler(test)
+    except (TypeError, ValueError, KeyError, AttributeError) as exc:
+        fehler = [
+            "Ergebnis strukturell unlesbar: "
+            f"{type(exc).__name__}: {exc}"
+        ]
     input_hashes = hash_files(
         [test_pfad] + ([fall / "fall.json"] if fall else []),
         base=fall, missing_ok=True,
@@ -524,7 +546,22 @@ def main(argv: Optional[List[str]] = None):
             paths={"test": str(test_pfad)},
         ))
 
-    html = baue_bericht(titel=args.titel, test=test)
+    try:
+        html = baue_bericht(titel=args.titel, test=test)
+    except (TypeError, ValueError, KeyError) as exc:
+        return _finalize(build_result(
+            command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+            exit_code=Exit.FILE_CONTRACT,
+            errors=[{
+                "code": "test_contract",
+                "message": (
+                    "Ergebnis nicht renderbar: "
+                    f"{type(exc).__name__}: {exc}"
+                ),
+            }],
+            input_hashes=input_hashes,
+            paths={"test": str(test_pfad)},
+        ))
     bericht_pfad.parent.mkdir(parents=True, exist_ok=True)
     bericht_pfad.write_text(html, encoding="utf-8", newline="\n")
 
@@ -541,6 +578,10 @@ def main(argv: Optional[List[str]] = None):
         "belege": hash_files(
             [test_pfad, bericht_pfad], base=fall, missing_ok=False,
         ),
+        # Renderer-Vertrag: mit diesen Eingaben ist der Bericht
+        # deterministisch reproduzierbar — G-A rendert ihn bytegenau
+        # neu, statt dem Ledger-Status zu glauben.
+        "bericht_erzeugung": {"titel": args.titel},
     }
     paths = {"test": str(test_pfad), "bericht": str(bericht_pfad)}
     output_hashes = hash_files([bericht_pfad], base=fall)

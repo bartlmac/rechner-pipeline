@@ -274,3 +274,29 @@ def test_ergebnis_ist_deterministisch():
     a = pruefe_stichprobe(auftraege, _stichprobe("P1", "P2"))
     b = pruefe_stichprobe(auftraege, _stichprobe("P1", "P2"))
     assert a == b
+
+
+def test_scheiben_und_beitragsfreiheit_zusammen_sind_hart_undefiniert():
+    """Review-Fix: die Kombination rechnete still den aktiven Track —
+    jetzt lehnt die Engine sie ab, statt falsche Werte zu liefern."""
+    with pytest.raises(AktuartestFehler, match="Beitragsfreistellung"):
+        pruefe_verankerung(_auftrag(
+            erwartet={"kVx_MRV": 1.0},
+            scheiben=((3, 10_000.0),),
+            beitragsfrei_seit_jahr=5,
+        ))
+    with pytest.raises(AktuartestFehler, match="kein Vertragsjahr"):
+        pruefe_verankerung(_auftrag(
+            erwartet={"kVx_MRV": 1.0}, beitragsfrei_seit_jahr=0,
+        ))
+    with pytest.raises(AktuartestFehler, match="nur im beitragsfreien"):
+        pruefe_verankerung(_auftrag(erwartet={"VS_bfr": 1.0}))
+
+
+def test_engine_vertragsfehler_wird_nie_zum_lieferbefund():
+    """Review-Fix: AktuartestFehler ist ValueError-Unterklasse und darf
+    trotzdem nicht in der Vertrags-Isolation verschwinden."""
+    with pytest.raises(AktuartestFehler, match="Rechenpunkt"):
+        pruefe_stichprobe(
+            [_auftrag("P1", monate_ta=TA + 5)], _stichprobe("P1")
+        )

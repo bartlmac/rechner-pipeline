@@ -1406,3 +1406,74 @@ def test_ga_annahme_im_bestandsscope_verlangt_gruene_aktuartest_belege(
         "aktuartest", "aktuartest_bericht",
     }
     assert snapshot["fall_scope"] == "bestand"
+
+
+def test_ga_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
+    tmp_path: Path,
+):
+    """Review-Fix: Ein editierter Ledger-Status (failed -> passed) ueber
+    einem echt roten Test darf G-A nicht oeffnen — die Annahme leitet
+    das Verdikt aus dem Artefakt neu ab und reproduziert den Bericht
+    bytegenau."""
+    fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
+    _aktuartest_belege(fall, drift=25.0, erwarteter_exit=30)
+
+    ledger_pfad = (
+        fall / "abgeleitet" / "diagnostics" / "aktuartest.gate.json"
+    )
+    ledger = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+    ledger["status"] = "passed"
+    ledger_pfad.write_text(json.dumps(ledger), encoding="utf-8")
+
+    geflippt = _p9_annahme(fall, "G-A", "auf geflipptem Ledger")
+    assert geflippt.exit_code == 20
+    assert "nicht bestanden" in geflippt.errors[0]["message"]
+
+    # Auch ein handgeschriebenes, intern konsistentes gruenes Ergebnis
+    # ohne aktuellen Systemstand oeffnet G-A nicht:
+    from rechner_pipeline.qa.aktuarieller_test import (
+        pruefe_stichprobe as _ps,
+    )
+    from rechner_pipeline.qa.stichprobe import ziehe as _ziehe
+
+    kern = Rechenkern(KLV_DEFAULT)
+    erfunden = _ps(
+        [VerankerungsPruefung(
+            police_id="P-SCOPE-1", model_point=asdict(KLV_DEFAULT),
+            monate_ta=12 * 9, historientyp="ohne_gevo",
+            erwartet={"kVx_MRV": round(kern.verlaufszeile(9).vx_mrv, 2)},
+        )],
+        _ziehe("vollbestand", ["P-SCOPE-1"]),
+        system={"commit": "0" * 40, "branch": "erfunden",
+                "dirty": "false", "quellcode_sha256": "1" * 64},
+    )
+    test_pfad = fall / "abgeleitet" / "berichte" / "aktuartest.json"
+    test_pfad.write_text(json.dumps(erfunden, sort_keys=True),
+                         encoding="utf-8")
+    ergebnis = aktuartest.main([
+        "--fall", str(fall), "--titel", "Aktuarieller Test E2E",
+        "--repo-root", str(REPO_ROOT),
+    ])
+    assert ergebnis.exit_code == 0  # das Gate prueft nur Konsistenz ...
+    fremd = _p9_annahme(fall, "G-A", "auf fremdem Systemstand")
+    assert fremd.exit_code == 20    # ... die Annahme bindet den Stand
+    assert "Systemstand" in fremd.errors[0]["message"]
+
+    # Und ein nachtraeglich ausgetauschter Bericht bricht die
+    # deterministische Wiedergabe:
+    _aktuartest_belege(fall)
+    bericht_pfad = fall / "abgeleitet" / "berichte" / "aktuartest.html"
+    inhalt = bericht_pfad.read_text(encoding="utf-8")
+    bericht_pfad.write_text(
+        inhalt.replace("NICHT BESTANDEN", "BESTANDEN")
+        if "NICHT BESTANDEN" in inhalt else inhalt + "<!-- x -->\n",
+        encoding="utf-8",
+    )
+    ledger = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+    ledger["summary"]["belege"][
+        "abgeleitet/berichte/aktuartest.html"
+    ] = sha256(bericht_pfad.read_bytes()).hexdigest()
+    ledger_pfad.write_text(json.dumps(ledger), encoding="utf-8")
+    getauscht = _p9_annahme(fall, "G-A", "auf getauschtem Bericht")
+    assert getauscht.exit_code == 20
+    assert "deterministische Wiedergabe" in getauscht.errors[0]["message"]

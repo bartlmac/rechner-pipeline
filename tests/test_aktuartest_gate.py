@@ -162,3 +162,45 @@ def test_pfadkollision_ist_usage(tmp_path, capsys):
     ergebnis = _lauf(fall, capsys, extra=["--bericht", str(ziel)])
     assert ergebnis["exit_code"] == 2
     assert "Pfadkollision" in ergebnis["errors"][0]["message"]
+
+
+def test_aufgeblasene_stichprobe_faellt_als_contract_fehler_auf(
+    tmp_path, capsys
+):
+    """Review-Fix: doppelte police_ids in der Stichprobe blaehen die
+    Abdeckungsbehauptung auf — der mengenbasierte Abgleich allein
+    wuerde sie durchlassen."""
+    ergebnis = _testergebnis()
+    ergebnis["stichprobe"]["police_ids"] = ["P1"] * 500
+    ergebnis["stichprobe"]["umfang"] = 500
+    ergebnis["stichprobe"]["grundgesamtheit"] = 500
+    fall = _fall(tmp_path, ergebnis)
+    resultat = _lauf(fall, capsys)
+    assert resultat["exit_code"] == 20
+    meldungen = "; ".join(e["message"] for e in resultat["errors"])
+    assert "doppelte police_ids" in meldungen
+
+
+def test_typkaputtes_json_ist_contract_fehler_nicht_internal(
+    tmp_path, capsys
+):
+    """Review-Fix: Typfehler in fremden JSONs sind Exit 20
+    (Dateivertrag), nie Exit 50 (Toolbox-Defekt)."""
+    ergebnis = _testergebnis()
+    ergebnis["vertraege"][0]["pruefungen"][0]["system"] = "abc"
+    fall = _fall(tmp_path, ergebnis)
+    resultat = _lauf(fall, capsys)
+    assert resultat["exit_code"] == 20
+    assert "strukturell unlesbar" in "; ".join(
+        e["message"] for e in resultat["errors"]
+    )
+
+    ohne_typ = _testergebnis()
+    del ohne_typ["vertraege"][0]["historientyp"]
+    fall2 = tmp_path / "f2"
+    (fall2 / "abgeleitet" / "berichte").mkdir(parents=True)
+    (fall2 / "abgeleitet" / "berichte" / "aktuartest.json").write_text(
+        json.dumps(ohne_typ), encoding="utf-8"
+    )
+    resultat = _lauf(fall2, capsys)
+    assert resultat["exit_code"] == 20

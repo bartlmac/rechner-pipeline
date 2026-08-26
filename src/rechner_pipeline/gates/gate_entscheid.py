@@ -1197,12 +1197,6 @@ def main(argv: Optional[List[str]] = None):
                 ga_fehler: List[str] = []
                 if ga_ledger.get("command") != "aktuartest":
                     ga_fehler.append("Ledger gehoert nicht zu aktuartest")
-                if ga_ledger.get("status") != "passed":
-                    ga_fehler.append(
-                        "aktuartest ist nicht bestanden — eine Annahme "
-                        "ohne gruene Vorlage waere ohne Grundlage "
-                        "(Ablehnung bleibt moeglich)"
-                    )
                 erwartete_belege = {
                     "abgeleitet/berichte/aktuartest.json":
                         _sha256_datei(test_pfad),
@@ -1222,6 +1216,75 @@ def main(argv: Optional[List[str]] = None):
                         + "; ".join(ga_fehler[:5])
                         + f" — Gate auf dem aktuellen Stand neu fahren: "
                         f"{ga_kommando}",
+                    )
+                # Die Annahme RECHNET ihre Voraussetzungen — sie glaubt
+                # sie nicht: Das Testverdikt wird aus dem Artefakt neu
+                # abgeleitet und der Bericht bytegenau reproduziert. Ein
+                # editierter Ledger-Status oder ein handgeschriebenes
+                # Ergebnis ohne aktuellen Systemstand oeffnet G-A nicht.
+                from rechner_pipeline.gates import aktuartest as ga_gate
+
+                try:
+                    ga_test = json.loads(
+                        test_pfad.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError) as exc:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: Testergebnis unlesbar: "
+                        f"{exc} — Gate neu fahren: {ga_kommando}",
+                    )
+                try:
+                    ga_test_fehler = ga_gate.test_fehler(ga_test)
+                except (TypeError, ValueError, KeyError, AttributeError) as exc:
+                    ga_test_fehler = [
+                        f"strukturell unlesbar ({type(exc).__name__}: {exc})"
+                    ]
+                if ga_test_fehler:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: Testergebnis verletzt den "
+                        "Aktuartest-Vertrag: "
+                        + "; ".join(ga_test_fehler[:5]),
+                    )
+                if ga_test.get("test_bestanden") is not True:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: der aktuarielle Test ist "
+                        "nicht bestanden — eine Annahme ohne gruene "
+                        "Vorlage waere ohne Grundlage (Ablehnung bleibt "
+                        "moeglich)",
+                    )
+                if ga_test.get("system") != entscheid_systemstand:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: das Testergebnis traegt "
+                        "nicht den aktuellen Systemstand — Test und "
+                        f"Gate neu fahren: {ga_kommando}",
+                    )
+                ga_titel = (
+                    ga_ledger.get("summary", {})
+                    .get("bericht_erzeugung", {})
+                )
+                if not isinstance(ga_titel, dict):
+                    ga_titel = {}
+                try:
+                    ga_html = ga_gate.baue_bericht(
+                        titel=str(ga_titel.get("titel", "")),
+                        test=ga_test,
+                    )
+                except (TypeError, ValueError, KeyError) as exc:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: G-A-Vorlage nicht "
+                        f"reproduzierbar ({type(exc).__name__}: {exc})",
+                    )
+                if ga_html.encode("utf-8") != bericht_pfad.read_bytes():
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: der Bericht ist nicht die "
+                        "deterministische Wiedergabe des Testergebnisses "
+                        f"— Gate neu fahren: {ga_kommando}",
                     )
                 pflichtbelege["aktuartest"] = [
                     erwartete_belege["abgeleitet/berichte/aktuartest.json"]
