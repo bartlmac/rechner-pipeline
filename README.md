@@ -240,6 +240,15 @@ Fachdokumente des Zielkerns in seiner eigenen Mathematik
 Gültigkeitsgrenzen), gerendert über eine gepinnte Doku-Engine
 (`docs/engine/`).
 
+**Das Fachkonzept** (`docs/fachkonzept/`): die fachlich normative
+Methode der konstruktiven Neuberechnung — Bestandsmigration ohne
+Historienmigration. Es steht über den Tarifplänen, die es je Produkt
+ausgestalten; das **Migrationskonzept**
+(`docs/migrationskonzept/`) ist die projektseitige Instanz daneben und
+beschreibt das Verfahren eines Migrationsfalls (Prüfebenen, Nachweise,
+Entscheidungen). Beide Ordner tragen ein README, das die Abgrenzung
+festhält — jede Aussage hat genau ein Zuhause.
+
 **Der Bestand** (`rechner_pipeline.bestand`): synthetische,
 deterministisch reproduzierbare Bestände, deren Datenmodell 1:1 auf dem
 Kern-Contract liegt. Die Entwicklung über die Zeit ist ein einziger
