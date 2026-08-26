@@ -21,6 +21,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from rechner_pipeline.models.bestand import (
+    ABSCHLUSS_NAMES,
+    ABSCHLUSS_SPALTEN,
     LEDGER_NAMES,
     LEDGER_SPALTEN,
     SCHEIBEN_NAMES,
@@ -33,7 +35,8 @@ from rechner_pipeline.models.bestand import (
 #: All persistable table families share one name->dtype map (Statushistorie
 #: columns are a subset of the Stamm columns, dtypes are consistent).
 _DTYPE_MAP = (
-    dict(STAMM_SPALTEN)
+    dict(ABSCHLUSS_SPALTEN)
+    | dict(STAMM_SPALTEN)
     | dict(ZEITSCHEIBEN_SPALTEN)
     | dict(LEDGER_SPALTEN)
     | dict(SCHEIBEN_SPALTEN)
@@ -125,6 +128,8 @@ def read_portfolio(
             df[name] = pd.to_datetime(df[name])
         elif _DTYPE_MAP.get(name) is not None:
             df[name] = df[name].astype(_DTYPE_MAP[name])
+    if set(df.columns) == set(ABSCHLUSS_NAMES):
+        return df[list(ABSCHLUSS_NAMES)]
     if set(df.columns) == set(LEDGER_NAMES):
         return df[list(LEDGER_NAMES)]
     if set(df.columns) == set(SCHEIBEN_NAMES):

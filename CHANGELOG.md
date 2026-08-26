@@ -190,3 +190,10 @@ nachzurechnen. Daraus:
   die Auswertung die Scheibe mit dem Verwaltungskostensatz der
   Generation statt der Tarifwerk-Regel rekonstruierte (+2,0 %
   Scheibenbeitrag).
+* **Abschlüsse als Teil des Datenhaushalts** — festgeschriebene
+  einzelvertragliche Bewertungsstände je Stichtag
+  (`bestand/abschluss.py`, `cli_abschluss`): genau einer je Stichtag,
+  nie überschrieben, mit Kern-Version je Zeile; die Kontrolle stellt
+  die Neuberechnung dagegen und weist Abweichungen aus. Gerechnet über
+  dieselbe einzelvertragliche Strecke (`auswertung.einzelwerte_am`),
+  die auch die Berichts-Aggregation trägt.

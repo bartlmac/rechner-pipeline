@@ -201,11 +201,32 @@ SCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("gamma1", "float64"),             # -> ModelPoint.gamma1 der Scheibe
 )
 
+#: Abschluss: festgeschriebene Bewertungsergebnisse eines Stichtags
+#: (ADR-011). Einzelvertraglich, nur-anfuegbar, nie ueberschrieben — ein
+#: publizierter Stand darf sich nachtraeglich nicht bewegen, auch wenn der
+#: Kern sich weiterentwickelt. ``kern_version`` benennt den Stand, unter
+#: dem die Werte entstanden; eine spaetere Kontrolle weist Abweichungen
+#: der Neuberechnung AUS, statt sie still zu ersetzen.
+ABSCHLUSS_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("stichtag", "datetime64[ns]"),
+    ("produkt", "object"),
+    ("tarif_generation", "object"),
+    ("status_code", "object"),
+    ("leistung", "float64"),          # VS (KLV, inkl. Scheiben) bzw. Jahresrente (BU)
+    ("deckungskapital", "float64"),
+    ("rueckkaufswert", "float64"),
+    ("vs_bfr", "float64"),
+    ("jahresbeitrag", "float64"),
+    ("kern_version", "object"),
+)
+
 STAMM_NAMES: Tuple[str, ...] = tuple(n for n, _ in STAMM_SPALTEN)
 ZEITSCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in ZEITSCHEIBEN_SPALTEN)
 STATUS_HISTORIE_NAMES: Tuple[str, ...] = tuple(n for n, _ in STATUS_HISTORIE_SPALTEN)
 LEDGER_NAMES: Tuple[str, ...] = tuple(n for n, _ in LEDGER_SPALTEN)
 SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
+ABSCHLUSS_NAMES: Tuple[str, ...] = tuple(n for n, _ in ABSCHLUSS_SPALTEN)
 
 
 def stamm_dtypes() -> Dict[str, str]:

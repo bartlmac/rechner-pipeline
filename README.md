@@ -249,7 +249,11 @@ und seit wann), das Journal die vollständige Aufzeichnung; die Auskunft
 rekonstruiert den Bestand zu jedem früheren Tag aus dem Journal, und
 die Bewertung liest ausschließlich den Zustand — kein Bewertungspfad
 liest das Journal. Gate B1 erzwingt die Deckungsgleichheit von
-Stammzustand und jüngstem Journalstand:
+Stammzustand und jüngstem Journalstand. Berichte rechnen jederzeit neu
+— **Abschlüsse nicht**: Ein festgeschriebener Stichtagsstand
+(`bestand/abschluss.py`, genau einer je Stichtag, mit Kern-Version je
+Zeile) wird nie überschrieben; die Kontrolle stellt die Neuberechnung
+dagegen und weist Abweichungen aus, statt sie still zu ersetzen:
 
 ```mermaid
 flowchart LR
@@ -274,6 +278,8 @@ Nachweisungen · Bewegungskonto"]
     AUSKUNFT -- "Zustand am Tag X" --> BEW
     STAMM --> BEW
     BEW --> BERICHT
+    BEW -- "friert Stichtag ein (einmalig)" --> ABSCHLUSS[("Abschlüsse
+festgeschrieben, nie überschrieben")]
 ```
 
 Der Bestandsbericht rendert das als selbst-enthaltene HTML-Seite:
@@ -281,6 +287,7 @@ Der Bestandsbericht rendert das als selbst-enthaltene HTML-Seite:
 ```bash
 python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml ...
 python -m rechner_pipeline.bestand.cli_report --portfolio <parquet> --out bericht.html ...
+python -m rechner_pipeline.bestand.cli_abschluss --config ... --lauf runs/bestand --stichtag 2026-01-01
 ```
 
 **Die Migrationsfälle** (`faelle/`, lokale Arbeitsbereiche, nicht

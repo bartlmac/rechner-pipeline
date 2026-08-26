@@ -93,6 +93,8 @@ Nachweisungen · Bewegungskonto"]
     AUSKUNFT -- "Zustand am Tag X" --> BEW
     STAMM --> BEW
     BEW --> BERICHT
+    BEW -- "friert Stichtag ein (einmalig)" --> ABSCHLUSS[("Abschlüsse
+festgeschrieben je Stichtag, nie überschrieben")]
 ```
 
 Die zwei Invarianten stehen bewusst als Text statt als Kanten im Bild
@@ -150,6 +152,28 @@ wird: Ein uebernommener Vertrag ist ein Stammsatz mit geliefertem
 Zustand (i0, u0 via status_code/status_date, t_a), dessen Journal mit
 dem Uebernahme-Ereignis BEGINNT statt mit dem Vertragsbeginn.
 
+### 6. Abschluesse sind festgeschrieben
+
+Berichte werden jederzeit neu gerechnet — ein ABGESCHLOSSENER Stand
+nicht: Der Bilanzwert eines Stichtags darf sich nachtraeglich nicht
+bewegen, auch wenn der Kern sich weiterentwickelt (Leitlinie des
+Auftraggebers: Logik eines funktionierenden Unternehmens). Deshalb
+gehoeren Abschluesse zum Datenhaushalt der Fuehrung
+(`bestand/abschluss.py`, Tabellenfamilie `ABSCHLUSS_SPALTEN`):
+
+* Ein Abschluss friert die einzelvertraglichen Bewertungsergebnisse
+  eines Stichtags ein — gerechnet ueber DIESELBE Strecke wie jede
+  andere Bewertung (`auswertung.einzelwerte_am`); ein zweiter
+  Rechenweg waere der Drift-Mechanismus dieses ADRs.
+* Je Stichtag existiert genau ein Abschluss; ein zweiter Versuch ist
+  ein harter Fehler, kein stilles Ueberschreiben. Jede Zeile traegt
+  die `kern_version` ihres Entstehens.
+* Die Kontrolle (`pruefe_abschluss`) stellt die Neuberechnung gegen
+  den festgeschriebenen Stand: Abweichungen — etwa nach einem
+  Kern-Update — werden je Police und Groesse AUSGEWIESEN und ersetzen
+  den Abschluss nie. Eine Korrektur eines festgeschriebenen Standes
+  ist eine menschliche Entscheidung mit eigenem Vorgang.
+
 ## Konsequenzen
 
 * Ausgewiesene Werte aendern sich dort, wo der gamma1-Defekt wirkte
@@ -174,6 +198,4 @@ dem Uebernahme-Ereignis BEGINNT statt mit dem Vertragsbeginn.
 * Eine transaktionale Einzel-Buchungs-API fuer den laufenden Betrieb:
   Die Simulation bucht weiterhin im Lauf; `fuehre_fort` ist der
   gemeinsame Trichter, nicht ein Online-Buchungssystem.
-* Historisierung von Bewertungsergebnissen (Jahresabschluss-Staende):
-  Rueckschau-Werte werden aus Auskunft + Bewertung gerechnet, nicht
-  gespeichert.
+
