@@ -228,7 +228,8 @@ Each gate is one command, writes one JSON to stdout plus a
 | O0 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
 | O1 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
 | O3 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state |
-| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (G-1, G-A, G-2, G-T); accepted decisions require an externally held HMAC key, G-A and G-2 require the per-gate evidence roles for the declared case scope, and G-2 requires a current signed G-A acceptance as its predecessor (ADR-010); agents may only reject |
+| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (G-1, G-A, G-2, G-T); accepted decisions require an externally held HMAC key, G-A and G-2 require the per-gate evidence roles for the declared case scope, and G-2 requires a current signed G-A acceptance on the same state, pinned as the evidence role `ga_snapshot` (ADR-010); agents may only reject |
+| GA-Vorlage | `gates.aktuartest` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for gate G-A; transport-security digests are reported separately |
 | B1 | `gates.bestand_validate` | portfolio contract and movement identities |
 | G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds B1, the suite and HTML report on one state |
 

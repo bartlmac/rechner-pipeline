@@ -10,7 +10,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 - LLM agents propose (one pre-digested source each); deterministic code
   decides (merge, coverage, comparison, transformation, acceptance);
   humans decide contradictions between sources and every acceptance
-  gate (G-1/G-2/G-T). No LLM path inside any gate.
+  gate (G-1/G-A/G-2/G-T). No LLM path inside any gate.
 - The Python package is deterministic and SDK-free. Do not add OpenAI,
   Anthropic, LangGraph, provider, token, or hosted-agent runtime paths
   to `src/`; do not add network, subprocess, dynamic execution, or

@@ -242,7 +242,7 @@ Migrationsfall):
 | `klv/plv_2022` | KLV-2022 | 2022-01–2035-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
 
 Migrierte Generationen kommen erst nach ihrer fachlichen Abnahme
-(G-1/G-2) in eine Bestand-Config — dann mit der Knoten-ID ihres
+(G-1/G-A/G-2) in eine Bestand-Config — dann mit der Knoten-ID ihres
 Migrationsfalls (z. B. `klv/tg2015`) und der durch Gate O3 geprüften
 Parametrierung. Diese Tabelle ist test-verankert gegen die Config:
 weicht sie ab, fällt die Suite.

@@ -60,10 +60,13 @@ jedes Belegs ab. Eine menschliche Annahme wird mit einem ausserhalb des Falls
 verwahrten HMAC-Schluessel autorisiert. P9 validiert beim Lesen Schema,
 vollstaendigen kanonischen Hash, daraus abgeleiteten Dateinamen, Signatur und
 den zyklenfreien Vorgaengergraph mit genau einer Spitze (ADR-008).
-Der Fall-Scope bestimmt die G-2-Pflichtbelege: Tariffaelle bleiben bei
-O1/G-1/O3, Bestandsfaelle binden zusaetzlich B1, vollstaendige Suite und
-Abnahmebericht auf denselben Eingangs-, A-Box-, System- und
-Zwei-Stichtagsstand. G-2 hasht ihre aktuellen Bytes und das von B1 benannte
+Der Fall-Scope bestimmt die Pflichtbelege JE GATE (ADR-009 mit
+ADR-010-Nachtrag): G-2 verlangt in beiden Scopes O1, G-1, die geltende
+G-A-Annahme (Rolle ``ga_snapshot`` — aktuarielle vor finanzieller
+Abnahme) und O3; Bestandsfaelle binden zusaetzlich B1, vollstaendige
+Suite und Abnahmebericht auf denselben Eingangs-, A-Box-, System- und
+Zwei-Stichtagsstand. G-A verlangt im Bestands-Scope Testergebnis und
+Bericht des aktuariellen Tests, im Tarif-Scope keine eigenen Rollen. G-2 hasht ihre aktuellen Bytes und das von B1 benannte
 Portfolio neu, fuehrt die B1-Engines erneut aus und rendert den Abnahmebericht
 zum Bytevergleich deterministisch neu (ADR-009).
 

@@ -55,8 +55,10 @@ danach werden der Gesamtbestand und die finanziellen Folgen geprueft und
 abgenommen. Eine finanzielle Abnahme ohne nachgewiesene methodische Guete
 waere ohne Aussage.
 
-Die Reihenfolge wird ueber die vorhandene Snapshot-Kette abgebildet: Der
-G-2-Snapshot fuehrt den geltenden G-A-Snapshot als Vorgaenger. Damit gilt
+Die Reihenfolge wird ueber den Snapshot-Mechanismus abgebildet: Der
+G-2-Snapshot pinnt die geltende, signierte G-A-Annahme desselben Stands
+als Pflichtrolle ``ga_snapshot`` (das ``vorgaenger``-Feld der Kette
+bleibt gate-intern, ADR-008). Damit gilt
 der bestehende Kettenvertrag aus ADR-008 unveraendert weiter — Schema,
 kanonischer Hash, Freigabesignatur, Zyklenfreiheit, genau eine Spitze.
 
@@ -125,7 +127,7 @@ Test als unvollstaendig.
   Runbook `migrationsfall-durchfuehren` routet auf beide und haelt die
   Reihenfolge ein.
 * Bestehende Faelle: Ein Fall, dessen G-2 vor Einfuehrung dieses ADR
-  entschieden wurde, traegt keinen G-A-Vorgaenger. Solche Ketten werden
+  entschieden wurde, traegt keine gepinnte G-A-Annahme. Solche Ketten werden
   nicht umgedeutet; der Fall wird nach revisionsfester Archivierung der
   Altkette auf dem neuen Vertrag neu entschieden (Verfahren analog
   ADR-008).

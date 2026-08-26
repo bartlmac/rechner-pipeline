@@ -113,7 +113,11 @@ Vorverdichtung und Agenten-Extraktion -> deterministischer Merge zur
 A-Box -> Diskrepanzen als Entscheidungs-Dossier an den Menschen
 (Gate G-1) -> Spez -> parametrierter Kern -> Abnahme gegen die
 Lieferung (Gate O3, Bestandsabzugs-Abgleich) -> Transformation und
-Übernahme des Bestands -> **Migrationsabnahme über zwei Stichtage**:
+Übernahme des Bestands -> **aktuarieller Test je Vertrag am eigenen
+Verankerungszeitpunkt** auf einer belegten Stichprobe
+(`qa/aktuarieller_test`, `gates/aktuartest`) als Vorlage für das
+menschliche Gate G-A, das G-2 zwingend vorausgeht (ADR-010) ->
+**Migrationscontrolling über zwei Stichtage**:
 Deckungskapital am Migrations- und am Folgestichtag plus die
 Geschäftsvorfälle dazwischen, gegen die gelieferten Erwartungswerte
 (`qa/migrationssuite`), zusammengefasst im HTML-Abnahmebericht
@@ -177,7 +181,7 @@ startet keinen Gate-Lauf.
 | O0 | `gates.abox_merge` | Zusammenführung der Extraktions-Fragmente zur A-Box |
 | O1 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
 | O3 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
-| P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (G-1, G-A, G-2, G-T); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, G-A und G-2 verlangen die zum Fall-Scope passenden Pflichtbelege je Gate, und G-2 verlangt den geltenden G-A-Snapshot als Vorgänger (aktuarielle vor finanzieller Abnahme, ADR-010) |
+| P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (G-1, G-A, G-2, G-T); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, G-A und G-2 verlangen die zum Fall-Scope passenden Pflichtbelege je Gate, und G-2 verlangt die geltende, signierte G-A-Annahme auf demselben Stand und pinnt sie als Pflichtrolle `ga_snapshot` (aktuarielle vor finanzieller Abnahme, ADR-010) |
 | B1 | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand) und Bewegungs-Identitäten je Jahr, Track und Maß |
 | GA-Vorlage | `gates.aktuartest` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für Gate G-A; Transportsicherung wird getrennt ausgewiesen |
 | G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |

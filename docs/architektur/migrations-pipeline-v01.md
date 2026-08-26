@@ -8,16 +8,19 @@
 > die G0-G8-Abnahmekette des Sechs-Datei-Vergleichskerns (Abschnitt 7)
 > — sie existiert nicht mehr, heute gibt es nur noch die Gates
 > `extract`, `abox_merge`, `abox_validate`, `generation_golden`,
-> `gate_entscheid`, `bestand_validate` und `abnahmebericht`; die
+> `gate_entscheid`, `bestand_validate`, `aktuartest` und
+> `abnahmebericht`; die
 > Aussage, in Stufe 1 gebe es keine Bestandsdaten-Quelle (Abschnitt 8);
 > der Skill-Zuschnitt (Abschnitt 9); und die ADR-Liste (Abschnitt 10).
 > Die Prinzipien, die Stufenlogik und die Objektmodelle gelten
-> unveraendert. Aktueller Rollen-Katalog:
+> unveraendert — mit einer Erweiterung: ADR-010 schaltet dem Gate G-2
+> das menschliche Gate G-A (aktuarielle Abnahme, Vorlage
+> `gates.aktuartest`) zwingend vor. Aktueller Rollen-Katalog:
 > [skill-architektur.md](skill-architektur.md).
 
 Stand: 2026-08-15. Am Migrationsfall KLV TG2012 -> TG2015 MECHANISCH
 abgenommen (Gate O3: 616 Werte gegen den Quell-Rechner, 0 Abweichungen);
-die MENSCHLICHEN Gates G-1/G-2 des Falls stehen aus (8 vorlaeufige
+die MENSCHLICHEN Gates G-1/G-A/G-2 des Falls stehen aus (8 vorlaeufige
 Diskrepanz-Aufloesungen warten auf die fachliche Entscheidung). Dieses
 Dokument beschreibt Architektur UND Ist-Stand — was v0.1 bewusst nicht
 kann, steht in Abschnitt 8. Die Prinzipien in Vollform: prinzipien.md.
@@ -73,9 +76,13 @@ Stufe 3  Abnahme
                   dass die Spez gueltige Projektion der A-Box ist; schreibt
                   je Generation einen inhaltsadressierten Beleg mit A-Box-
                   und Systemstand
-  Gate G-2 (Mensch): P9-Snapshot — verlangt die Pflichtbelege des
-                  Fall-Scopes. Tarif: O1/G-1/O3. Bestand zusaetzlich: B1,
-                  vollstaendige Zwei-Stichtags-Suite und gruener
+  Gate G-A (Mensch): aktuarielle Abnahme VOR G-2 (ADR-010) — Vorlage
+                  `gates.aktuartest` (Test je Vertrag am eigenen
+                  Verankerungszeitpunkt, belegte Stichprobe); im
+                  Bestands-Scope pinnt G-A Testergebnis und Bericht
+  Gate G-2 (Mensch): P9-Snapshot — verlangt die Pflichtbelege je Gate
+                  und Scope. Tarif: O1/G-1/G-A/O3. Bestand zusaetzlich:
+                  B1, vollstaendige Zwei-Stichtags-Suite und gruener
                   Abnahmebericht; G-2 revalidiert alles auf demselben
                   Eingangs-, A-Box-, System-, Bestands- und Stichtagsstand
 ```
@@ -88,7 +95,7 @@ Stufe 3  Abnahme
 | `Diskrepanz` | beide Lesarten mit Belegen; Aufloesung nur als expliziter Vorgang (Entscheider, Begruendung, ggf. `vorlaeufig`) | P2 |
 | `Parametrierungszelle` | eine Merkmalskombination; Felder = exakt die Kern-ModelPoint-Stellschrauben; Zellen decken den Merkmalsraum EXAKT | P5, P6 |
 | `TarifSpez` | Parametrierung des Rueckgrats + StrukturUrteil + Tafel-Importe/-Ableitungen + benannte Erweiterungsstellen; validierbar als Projektion der A-Box (beide Richtungen) | D2 (SDD, gebunden) |
-| P9-Snapshot | Schema, Gate/Command/Version, Entscheid, Entscheider, Begruendung, SHA-256 aller Fall-Artefakte, Git-Stand und Vorgaenger; G-2 pinnt zusaetzlich Scope und rollenbezogene Pflichtbelege; vollstaendig inhaltsadressiert, nie ueberschrieben; eine Annahme traegt eine HMAC-Freigabe aus einem extern verwahrten Schluessel | P9, P1 |
+| P9-Snapshot | Schema, Gate/Command/Version, Entscheid, Entscheider, Begruendung, SHA-256 aller Fall-Artefakte, Git-Stand und Vorgaenger; G-A und G-2 pinnen zusaetzlich Scope und rollenbezogene Pflichtbelege je Gate; vollstaendig inhaltsadressiert, nie ueberschrieben; eine Annahme traegt eine HMAC-Freigabe aus einem extern verwahrten Schluessel | P9, P1 |
 
 ## 4 Deterministisch / LLM — die Trennlinie (P4)
 
