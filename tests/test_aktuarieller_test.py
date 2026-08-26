@@ -235,6 +235,38 @@ def test_doppelte_auftraege_und_leere_liste_fallen_hart_aus():
         pruefe_stichprobe([], _stichprobe("P1"))
 
 
+def test_vollstaendigkeit_hat_je_pruefebene_ihren_eigenen_namen():
+    """ADR-010 Abschnitt 6: Controlling-Vollstaendigkeit (jeder Vertrag,
+    ``vollstaendig_geprueft``) und Test-Vollstaendigkeit (Stichprobe
+    abgearbeitet, ``stichprobe_vollstaendig``) sind verschiedene
+    Begriffe — keine Ergebnisstruktur traegt den Namen der anderen
+    Ebene, sonst meldet ein Gate einen korrekten Test als
+    unvollstaendig."""
+    import dataclasses as dc
+
+    from rechner_pipeline.qa.migrationssuite import (
+        VertragsPruefung,
+        pruefe_bestand,
+    )
+
+    test = pruefe_stichprobe([_auftrag("P1")], _stichprobe("P1"))
+    assert "stichprobe_vollstaendig" in test
+    assert "vollstaendig_geprueft" not in test
+
+    kern_dk = round(KERN.monatsreserve(12 * 9 + 5).vx_mrv, 2)
+    suite = pruefe_bestand(
+        [VertragsPruefung(
+            police_id="P1", model_point=dict(MP),
+            monate_stichtag_1=12 * 9 + 5, monate_stichtag_2=12 * 10 + 5,
+            dk_erwartet_1=kern_dk,
+            dk_erwartet_2=round(KERN.monatsreserve(12 * 10 + 5).vx_mrv, 2),
+        )],
+        erwartete_anzahl=1,
+    )
+    assert "vollstaendig_geprueft" in suite
+    assert "stichprobe_vollstaendig" not in suite
+
+
 def test_ergebnis_ist_deterministisch():
     auftraege = [_auftrag("P1"), _auftrag("P2", historientyp="dyn",
                                           scheiben=((5, 10_000.0),),

@@ -53,6 +53,17 @@ Primitive Strukturen, kein Ontologie-Import — die Suite ist
 fallunabhängig; die Fall-Bindung (welche Lieferung, welche Lesart der
 Rechnungsgrundlagen) macht der Migrationsfall.
 
+ABGRENZUNG (ADR-010): Diese Suite ist das MIGRATIONSCONTROLLING am
+Migrationsstichtag — jeder Vertrag des Bestands, aggregierend, Vorlage
+fuer Gate G-2. ``vollstaendig_geprueft`` traegt genau diese Bedeutung:
+jeder Vertrag wurde geprueft, ein ungeprueter ist eine Prueflücke. Der
+AKTUARIELLE TEST (``qa.aktuarieller_test``, Gate G-A) ist die andere
+Pruefebene: je Vertrag am eigenen Verankerungszeitpunkt, auf einer
+Stichprobe — dort heisst Vollstaendigkeit ``stichprobe_vollstaendig``
+(die Stichprobe wurde abgearbeitet). Die Scope-Bindungen dieser Suite
+(``bestand_sha256``, ``system``) sind Transport- und
+Provenienzsicherung des Controllings, kein aktuarielles Urteil.
+
 Knoten: klv
 """
 

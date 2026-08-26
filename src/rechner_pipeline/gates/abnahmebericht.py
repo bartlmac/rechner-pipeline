@@ -23,6 +23,14 @@ Contract-Fehler ab. Gleiche Eingaben ergeben byte-identisches HTML (keine
 Zeitstempel), und das Verdikt ist ausdrücklich eine maschinelle Prüfaussage —
 die Abnahme selbst ist Gate G-2 (Mensch, Entscheid-Snapshot).
 
+ABGRENZUNG (ADR-010): Dieser Bericht ist die Vorlage des
+MIGRATIONSCONTROLLINGS am Migrationsstichtag (voller Bestand,
+aggregierend). Die aktuarielle Pruefebene — je Vertrag am eigenen
+Verankerungszeitpunkt, auf einer Stichprobe — laeuft getrennt ueber
+``gates.aktuartest`` als Vorlage des menschlichen Gates G-A, das G-2
+zwingend vorausgeht. Die SHA-256-Bindungen dieses Berichts sind
+Transport- und Provenienzsicherung des Controllings.
+
 Als Kommando (``python -m rechner_pipeline.gates.abnahmebericht``) ist
 das Modul zugleich ein Toolbox-Gate nach dem Vertrag der übrigen Gates:
 EIN JSON auf stdout, ein ``abnahmebericht.gate.json``-Ledger in den
