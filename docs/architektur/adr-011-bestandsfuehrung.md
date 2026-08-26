@@ -66,6 +66,40 @@ Scheibe) und die Ableitung des Zustands zur Bewertungszeit selbst.
   ist ein GEFUEHRTER Bestand (aktueller Stamm + Journal), kein
   Rohmaterial, aus dem sich jeder Leser den Zustand selbst ableitet.
 
+```mermaid
+flowchart LR
+    SIM["Simulation
+GeVo-Strom, einmalig"]
+    subgraph BF["Bestandsführung"]
+        STAMM["geführter Stamm
+aktueller Zustand je Vertrag"]
+        JOURNAL[("Journal
+Historie + Ledger, nur anfügbar")]
+    end
+    MIG["Migrationszugang — geplant
+Journal beginnt mit Übernahme"]
+    AUSKUNFT["Auskunft
+bestand_am(tag)"]
+    BEW["Bewertung
+Werte aus dem Zustand"]
+    BERICHT["Bestandsbericht
+Nachweisungen · Bewegungskonto"]
+
+    SIM -- "fuehre_fort" --> STAMM
+    SIM --> JOURNAL
+    MIG -. "fuehre_fort" .-> STAMM
+    MIG -.-> JOURNAL
+    JOURNAL -- "Rückschau je Tag" --> AUSKUNFT
+    AUSKUNFT -- "Zustand am Tag X" --> BEW
+    STAMM --> BEW
+    BEW --> BERICHT
+```
+
+Die zwei Invarianten stehen bewusst als Text statt als Kanten im Bild
+(ein Verbot als gemalte Kante laese sich wie ein Datenfluss): Kein
+Bewertungspfad liest das Journal, und der Stammzustand ist der
+juengste Journalstand — Gate B1 erzwingt die Deckung.
+
 ### 2. Ein Buchungsweg
 
 Zustandsaenderungen laufen ueber genau eine Stelle

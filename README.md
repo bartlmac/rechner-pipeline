@@ -34,6 +34,46 @@ Die Arbeitsteilung ist der Kern der Methodik:
   werden Objekte mit beiden Lesarten, nie stille Annahmen; jede
   Abnahme ist ein menschliches Gate mit unveränderlichem Snapshot.
 
+Die Komponenten des Repositories, mit ihrem Simulations-Tooling
+daneben (die Objekte und das System links sind das Produkt; das
+Tooling rechts erzeugt die Vorzeigeobjekte und ist je Objekt
+verzichtbar, ohne dass das System etwas verliert):
+
+```mermaid
+flowchart RL
+    subgraph OBJEKTE["Objekte und System"]
+        direction TB
+        P1["(1) Pfefferminzia
+Zielbestand: Kern + Bestandsführung"]
+        F2["(2) Migrationsobjekte
+Quellbestände: faelle/ · lieferungen/"]
+        S3["(3) KI-System
+Pipeline · Gates · Agenten-Skills"]
+        P1 ~~~ F2 ~~~ S3
+    end
+    subgraph TOOLING["Simulations-Tooling"]
+        direction TB
+        T4["(4) Bestands-Simulation
+erzeugt (1) einmalig"]
+        T5["(5) Quellbestand-Simulation
+erzeugt Lieferungen für (2)"]
+        T6["(6) Tägliche Fortschreibung — geplant
+Vorfälle je Tag für (1)"]
+        T4 ~~~ T5 ~~~ T6
+    end
+    TOOLING -. "erzeugt die Vorzeigeobjekte" .-> OBJEKTE
+
+    classDef objekt fill:#0e7568,stroke:#0a544b,color:#ffffff
+    classDef system fill:#4a5d8a,stroke:#36466b,color:#ffffff
+    classDef sim fill:#5c636b,stroke:#464c53,color:#ffffff
+    classDef geplant stroke-dasharray: 6 4
+    class P1,F2 objekt
+    class S3 system
+    class T4,T5,T6 sim
+    class T6 geplant
+```
+
+
 ## Architektur
 
 **Schichten** (Import-Regeln maschinell erzwungen,
@@ -209,8 +249,34 @@ und seit wann), das Journal die vollständige Aufzeichnung; die Auskunft
 rekonstruiert den Bestand zu jedem früheren Tag aus dem Journal, und
 die Bewertung liest ausschließlich den Zustand — kein Bewertungspfad
 liest das Journal. Gate B1 erzwingt die Deckungsgleichheit von
-Stammzustand und jüngstem Journalstand. Der Bestandsbericht rendert das
-als selbst-enthaltene HTML-Seite:
+Stammzustand und jüngstem Journalstand:
+
+```mermaid
+flowchart LR
+    SIM["Simulation
+GeVo-Strom, einmalig"]
+    subgraph BF["Bestandsführung"]
+        STAMM["geführter Stamm
+aktueller Zustand je Vertrag"]
+        JOURNAL[("Journal
+Historie + Ledger, nur anfügbar")]
+    end
+    AUSKUNFT["Auskunft
+bestand_am(tag)"]
+    BEW["Bewertung
+Werte aus dem Zustand"]
+    BERICHT["Bestandsbericht
+Nachweisungen · Bewegungskonto"]
+
+    SIM -- "fuehre_fort" --> STAMM
+    SIM --> JOURNAL
+    JOURNAL -- "Rückschau je Tag" --> AUSKUNFT
+    AUSKUNFT -- "Zustand am Tag X" --> BEW
+    STAMM --> BEW
+    BEW --> BERICHT
+```
+
+Der Bestandsbericht rendert das als selbst-enthaltene HTML-Seite:
 
 ```bash
 python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml ...
