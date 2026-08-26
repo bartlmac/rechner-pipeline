@@ -59,7 +59,7 @@ def _schema_for(columns: List[str]) -> pa.schema:
 def write_portfolio(df: pd.DataFrame, path: Path) -> Path:
     """Write a table deterministically to Parquet.
 
-    Supports the portfolio families (base portfolio, Zeitscheibe,
+    Supports the portfolio families (base portfolio, Auskunfts-Schnitt,
     Statushistorie — column subsets of the Stamm) and the Ereignis-Ledger.
     """
     columns = list(df.columns)

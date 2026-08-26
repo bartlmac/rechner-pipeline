@@ -27,10 +27,14 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig
-from rechner_pipeline.bestand.ereignisse import bestand_mit_historie, vertrags_rkw
-from rechner_pipeline.bestand.zeitscheibe import months_between, zeitscheibe
+from rechner_pipeline.bestand.fuehrung import bestand_am, months_between
+from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern
-from rechner_pipeline.models.bestand import bu_model_point_kwargs, model_point_kwargs
+from rechner_pipeline.models.bestand import (
+    STATUS_HISTORIE_SPALTEN,
+    bu_model_point_kwargs,
+    model_point_kwargs,
+)
 
 
 def vertragswerte(
@@ -126,37 +130,6 @@ def _bu_produkte_je_police(stamm: pd.DataFrame, config: BestandConfig) -> Dict[i
     return produkte
 
 
-def _bu_phasenbeginne(historie: pd.DataFrame) -> Dict[int, List[_dt.date]]:
-    """police_id -> Datumsstempel der Uebergaenge in den Leistungsbezug.
-
-    Weil die Statushistorie strikt zwischen Anwaerterstand und
-    Leistungsbezug alterniert, ist der juengste BU-Stempel vor einem
-    Stichtag genau der Beginn der dort laufenden Leistungsphase — daraus
-    folgt die BU-Dauer (volle Jahre) fuer :meth:`BU.reserve_bu`.
-    """
-    if historie is None or len(historie) == 0:
-        return {}
-    bu = historie[historie["status_code"] == "BU"]
-    beginne: Dict[int, List[_dt.date]] = {}
-    for pid, datum in zip(bu["police_id"], bu["status_date"]):
-        beginne.setdefault(int(pid), []).append(datum.date())
-    for liste in beginne.values():
-        liste.sort()
-    return beginne
-
-
-def _pex_jahre(stamm: pd.DataFrame, historie: pd.DataFrame) -> Dict[int, int]:
-    """police_id -> Vertragsjahr der Beitragsfreistellung (aus der Historie)."""
-    pex = historie[historie["status_code"] == "PEX"]
-    if len(pex) == 0:
-        return {}
-    starts = stamm.set_index("police_id")["insurance_start"]
-    return {
-        int(pid): months_between(starts.loc[pid].date(), datum.date()) // 12
-        for pid, datum in zip(pex["police_id"], pex["status_date"])
-    }
-
-
 def _scheiben_kerne(
     stamm: pd.DataFrame,
     scheiben: pd.DataFrame,
@@ -184,9 +157,18 @@ def _scheiben_kerne(
             "sum_insured": s["sum_insured"],
             "zahlweise": h["zahlweise"],
         }
-        kern = Rechenkern(
-            ModelPoint(**model_point_kwargs(row, generationen[str(h["tarif_generation"])]))
-        )
+        if "gamma1" not in s:
+            raise ValueError(
+                f"scheiben: police {pid} ohne gamma1-Spalte — Altbestand vor "
+                "ADR-011; den Lauf mit der aktuellen Fortschreibung neu "
+                "erzeugen (die Scheibe traegt ihre Rechnungsgrundlage selbst)"
+            )
+        kwargs = model_point_kwargs(row, generationen[str(h["tarif_generation"])])
+        # Schicht-eigene Rechnungsgrundlage der Scheibe (ADR-011): nicht aus
+        # der Generation rekonstruieren — genau das hatte die Tarifwerk-Regel
+        # (gamma1-Bezugsgroesse GrundVS => Scheibe 0) verloren.
+        kwargs["gamma1"] = float(s["gamma1"])
+        kern = Rechenkern(ModelPoint(**kwargs))
         je_police.setdefault(pid, []).append(
             {
                 "erh_jahr": int(s["erhoehung_jahr"]),
@@ -211,17 +193,21 @@ def auswertungs_verlauf(
     Erhoehungen) gehen ab ihrem Erhoehungstermin in die Summen ein; nach
     einer Beitragsfreistellung laeuft jede Scheibe mit ihrem eigenen
     Jahresversatz beitragsfrei weiter. Deterministisch: die
-    Summationsreihenfolge folgt der Zeitscheiben-Sortierung.
+    Summationsreihenfolge folgt der Auskunfts-Sortierung.
+
+    Arbeitsteilung nach ADR-011: Der Zustand je Stichtag kommt aus der
+    Auskunft (:func:`~rechner_pipeline.bestand.fuehrung.bestand_am`); die
+    Bewertung selbst liest ausschliesslich die Zustandszeile — Verweildauer
+    und PEX-Jahr folgen aus ``status_date``, nie aus einem Journal-Lauf.
     """
-    if historie is not None and len(historie) > 0:
-        sicht = bestand_mit_historie(stamm, historie)
-        pex_jahre = _pex_jahre(stamm, historie)
+    if historie is None:
+        journal = pd.DataFrame(
+            {name: pd.Series(dtype=dtype) for name, dtype in STATUS_HISTORIE_SPALTEN}
+        )
     else:
-        sicht = stamm
-        pex_jahre = {}
+        journal = historie
     kerne = _kerne_je_police(stamm, config)
     bu_produkte = _bu_produkte_je_police(stamm, config)
-    bu_beginne = _bu_phasenbeginne(historie)
     bu_renten = (
         stamm.set_index("police_id")["bu_rente"] if len(bu_produkte) else None
     )
@@ -233,7 +219,7 @@ def auswertungs_verlauf(
 
     reihe: List[Dict[str, Any]] = []
     for stichtag in stichtage:
-        scheibe = zeitscheibe(sicht, stichtag)
+        scheibe = bestand_am(stamm, journal, stichtag)
         agg: Dict[str, Any] = {
             "stichtag": stichtag.isoformat(),
             "vertraege": int(len(scheibe)),
@@ -255,26 +241,27 @@ def auswertungs_verlauf(
             "bzb_jahr": 0.0,
             "bu_beitrag": 0.0,
         }
-        for pid, months_exp, status in zip(
-            scheibe["police_id"], scheibe["months_exp"], scheibe["status_code"]
+        for pid, months_exp, status, status_seit, beginn in zip(
+            scheibe["police_id"],
+            scheibe["months_exp"],
+            scheibe["status_code"],
+            scheibe["status_date"],
+            scheibe["insurance_start"],
         ):
             pid = int(pid)
             if pid in bu_produkte:
                 # BU: Reserve aus dem Zustandsmodell — im Anwaerterstand die
                 # Aktivenreserve, im Leistungsbezug die Invalidenreserve mit
-                # der Dauer seit Rentenbeginn (Semi-Markov).
+                # der Dauer seit Rentenbeginn (Semi-Markov). Die Dauer ist
+                # Zustand: status_date der Auskunftszeile IST der Beginn der
+                # am Stichtag laufenden Leistungsphase.
                 produkt = bu_produkte[pid]
                 jahr = int(months_exp) // 12
                 rente = float(bu_renten.loc[pid])
                 agg["bu_vertraege"] += 1
                 agg["bu_jahresrente"] += rente
                 if status == "BU":
-                    beginne = [d for d in bu_beginne.get(pid, ()) if d <= stichtag]
-                    if not beginne:
-                        raise ValueError(
-                            f"police {pid}: Status BU ohne BU-Zeile in der Historie"
-                        )
-                    dauer = months_between(beginne[-1], stichtag) // 12
+                    dauer = months_between(status_seit.date(), stichtag) // 12
                     reserve = produkt.reserve_bu(jahr, dauer)
                     agg["bu_leistungsbezug"] += 1
                     agg["bu_jahresrente_laufend"] += rente
@@ -291,11 +278,8 @@ def auswertungs_verlauf(
                 continue
             pex_jahr = None
             if status == "PEX":
-                if pid not in pex_jahre:
-                    raise ValueError(
-                        f"police {pid}: PEX-Status ohne PEX-Zeile in der Historie"
-                    )
-                pex_jahr = pex_jahre[pid]
+                # Das PEX-Jahr ist Zustand: Vertragsjahr des Statusbeginns.
+                pex_jahr = months_between(beginn.date(), status_seit.date()) // 12
             werte = vertragswerte(kerne[pid], int(months_exp), pex_jahr)
             # Erhoehungsscheiben des Vertrags, die am Stichtag existieren —
             # jede mit ihrem Jahresversatz (PEX-Jahr entsprechend versetzt).

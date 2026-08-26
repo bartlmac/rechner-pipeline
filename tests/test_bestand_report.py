@@ -20,7 +20,7 @@ from rechner_pipeline.bestand.kennzahlen import (
     verlauf,
 )
 from rechner_pipeline.bestand.parquet_io import write_portfolio
-from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+from rechner_pipeline.bestand.fuehrung import schnitt_am
 from rechner_pipeline.bestand import cli_report as cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -74,7 +74,7 @@ def test_jahresraster_spans_contract_period(portfolio):
 
 def test_stichtags_kennzahlen_match_slice(portfolio):
     stichtag = dt.date(2010, 1, 1)
-    scheibe = zeitscheibe(portfolio, stichtag)
+    scheibe = schnitt_am(portfolio, stichtag)
     kz = stichtags_kennzahlen(scheibe, stichtag)
     assert kz["vertraege"] == len(scheibe)
     assert kz["summe_vs"] == pytest.approx(float(scheibe["sum_insured"].sum()))
@@ -83,7 +83,7 @@ def test_stichtags_kennzahlen_match_slice(portfolio):
 
 def test_stichtags_kennzahlen_empty_slice_is_zero(portfolio):
     stichtag = dt.date(1970, 1, 1)
-    kz = stichtags_kennzahlen(zeitscheibe(portfolio, stichtag), stichtag)
+    kz = stichtags_kennzahlen(schnitt_am(portfolio, stichtag), stichtag)
     assert kz["vertraege"] == 0 and kz["summe_vs"] == 0.0
     assert kz["generationen"] == {}
 
@@ -157,15 +157,15 @@ def test_ereignis_kennzahlen_summen_und_jahresreihe(fortschreibung):
 
 
 def test_status_verlauf_zaehlt_pol_und_pex(portfolio, fortschreibung):
-    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+    from rechner_pipeline.bestand.fuehrung import journalsicht
     from rechner_pipeline.bestand.kennzahlen import status_verlauf
-    from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+    from rechner_pipeline.bestand.fuehrung import schnitt_am
 
     historie, _, *_ = fortschreibung
-    sicht = bestand_mit_historie(portfolio, historie)
+    sicht = journalsicht(portfolio, historie)
     stichtag = dt.date(2020, 1, 1)
     reihe = status_verlauf(sicht, [stichtag])
-    scheibe = zeitscheibe(sicht, stichtag)
+    scheibe = schnitt_am(sicht, stichtag)
     assert reihe[0]["POL"] + reihe[0]["PEX"] == len(scheibe)
     assert reihe[0]["PEX"] > 0  # Beispielraten erzeugen Beitragsfreistellungen
 
@@ -613,9 +613,9 @@ def test_volumen_verlauf_steht_je_versicherungsart(gemischter_bestand):
     assert "Σ versicherte Jahresrente (Berufsunfähigkeit)" in html
     # Jede Spalte fuehrt ihren Teilbestand, nicht den Gesamtbestand:
     from rechner_pipeline.bestand.berichtstexte import teilbestand
-    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+    from rechner_pipeline.bestand.fuehrung import journalsicht
 
-    bestand = bestand_mit_historie(df, erg.historie)
+    bestand = journalsicht(df, erg.historie)
     werte = {
         produkt: verlauf(
             teilbestand(bestand, produkt), [dt.date(2026, 1, 1)], spalte
@@ -684,7 +684,7 @@ def test_beitragsvolumen_im_bericht(gemischter_bestand):
         assert report._zahl(r["bzb_jahr"] + r["bu_beitrag"]) in html
 
 
-def test_beitragssumme_gegen_nachrechnung_ueber_die_zeitscheibe(
+def test_beitragssumme_gegen_nachrechnung_ueber_die_schnitt_am(
     portfolio, config, fortschreibung
 ):
     """Kontrollrechnung: die aggregierte Beitragssumme entspricht der
@@ -694,7 +694,7 @@ def test_beitragssumme_gegen_nachrechnung_ueber_die_zeitscheibe(
         auswertungs_verlauf,
         beitraege,
     )
-    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+    from rechner_pipeline.bestand.fuehrung import journalsicht
     from rechner_pipeline.kern import ModelPoint, Rechenkern
     from rechner_pipeline.models.bestand import model_point_kwargs
 
@@ -706,7 +706,7 @@ def test_beitragssumme_gegen_nachrechnung_ueber_die_zeitscheibe(
     reihe = auswertungs_verlauf(
         portfolio, historie, config, [stichtag], scheiben=ohne_erh
     )
-    scheibe = zeitscheibe(bestand_mit_historie(portfolio, historie), stichtag)
+    scheibe = schnitt_am(journalsicht(portfolio, historie), stichtag)
     assert (scheibe["status_code"] == "PEX").any(), "Fixture ohne PEX"
 
     felder = {g.name: g.generation_fields() for g in config.generationen}

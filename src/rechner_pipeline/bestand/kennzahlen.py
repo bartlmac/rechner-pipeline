@@ -15,7 +15,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+from rechner_pipeline.bestand.fuehrung import schnitt_am
 from rechner_pipeline.models.bestand import AKTIVE_STATUS
 
 
@@ -29,7 +29,7 @@ def jahresraster(df: pd.DataFrame) -> List[_dt.date]:
 def stichtags_kennzahlen(
     scheibe: pd.DataFrame, stichtag: _dt.date, leistung: str = "sum_insured"
 ) -> Dict[str, Any]:
-    """Kennzahlen einer Zeitscheibe (leere Scheibe ergibt Nullwerte).
+    """Kennzahlen eines Auskunfts-Schnitts (leerer Schnitt ergibt Nullwerte).
 
     ``leistung`` waehlt die produktfuehrende Leistungsspalte
     (:data:`~rechner_pipeline.models.bestand.LEISTUNGSSPALTE`): bei einem
@@ -57,7 +57,7 @@ def verlauf(
     df: pd.DataFrame, stichtage: List[_dt.date], leistung: str = "sum_insured"
 ) -> List[Dict[str, Any]]:
     """Kennzahlen-Reihe über eine Stichtagsliste (Bestandsverlauf)."""
-    return [stichtags_kennzahlen(zeitscheibe(df, s), s, leistung) for s in stichtage]
+    return [stichtags_kennzahlen(schnitt_am(df, s), s, leistung) for s in stichtage]
 
 
 def generationsnamen(df: pd.DataFrame) -> List[str]:
@@ -235,8 +235,7 @@ def bu_bewegungskonto(
     ``bis`` ist wie bei :func:`bewegungskonto` der Fortschreibungs-Horizont:
     nur vollständig simulierte Jahre werden ausgewiesen.
     """
-    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
-    from rechner_pipeline.bestand.zeitscheibe import zeitscheibe as _zeitscheibe
+    from rechner_pipeline.bestand.fuehrung import journalsicht
 
     fremd = set(ledger["police_id"]) - set(bestand["police_id"])
     if fremd:
@@ -248,11 +247,11 @@ def bu_bewegungskonto(
     bestand, historie, ledger = _nur_produkt(bestand, historie, ledger, "bu")
     if len(bestand) == 0:
         return []
-    sicht = bestand_mit_historie(bestand, historie)
+    sicht = journalsicht(bestand, historie)
     renten = bestand.set_index("police_id")["bu_rente"]
 
-    def bestand_am(stichtag: _dt.date) -> Dict[str, Dict[str, float]]:
-        scheibe = _zeitscheibe(sicht, stichtag)
+    def stand_am(stichtag: _dt.date) -> Dict[str, Dict[str, float]]:
+        scheibe = schnitt_am(sicht, stichtag)
         anwaerter = scheibe[scheibe["status_code"] == "POL"]
         rentner = scheibe[scheibe["status_code"] == "BU"]
         return {
@@ -272,8 +271,8 @@ def bu_bewegungskonto(
 
     konto: List[Dict[str, Any]] = []
     for jahr in jahre:
-        anfang = bestand_am(_dt.date(jahr, 1, 1))
-        ende = bestand_am(_dt.date(jahr + 1, 1, 1))
+        anfang = stand_am(_dt.date(jahr, 1, 1))
+        ende = stand_am(_dt.date(jahr + 1, 1, 1))
         von_ts = pd.Timestamp(_dt.date(jahr, 1, 1))
         bis_ts = pd.Timestamp(_dt.date(jahr + 1, 1, 1))
         periode = ledger[
@@ -379,7 +378,7 @@ def bewegungskonto(
 
     ``bestand`` ist der GESAMTbestand (inkl. Neuzugängen, vgl.
     ``mit_zugaengen``); Periode eines Jahres J ist ``(1.1.J, 1.1.J+1]``
-    (konsistent zur Zeitscheiben-Konvention ``status_date <= stichtag``).
+    (konsistent zur Auskunfts-Konvention ``status_date <= stichtag``).
 
     ``bis`` ist der Fortschreibungs-Horizont (dasselbe Datum wie beim
     ``fortschreiben``-Lauf): nur Jahre mit ``1.1.J+1 <= bis`` sind
@@ -387,10 +386,9 @@ def bewegungskonto(
     Konto über alle Vertragsjahre — dann muss der Aufrufer sicherstellen,
     dass der Horizont alle Vertragsenden abdeckt, sonst fehlen hinter dem
     Horizont die Abläufe und die Identität ist scheinbar verletzt
-    (Zeitscheibe filtert hart auf ``insurance_end > stichtag``).
+    (der Auskunfts-Schnitt filtert hart auf ``insurance_end > stichtag``).
     """
-    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
-    from rechner_pipeline.bestand.zeitscheibe import zeitscheibe as _zeitscheibe
+    from rechner_pipeline.bestand.fuehrung import journalsicht
 
     fremd = set(ledger["police_id"]) - set(bestand["police_id"])
     if fremd:
@@ -405,7 +403,7 @@ def bewegungskonto(
     bestand, historie, ledger = _nur_produkt(bestand, historie, ledger, "klv")
     if len(bestand) == 0:
         return []   # reiner BU-Bestand: die KLV-Nachweisung ist leer
-    sicht = bestand_mit_historie(bestand, historie)
+    sicht = journalsicht(bestand, historie)
     stamm_vs = bestand.set_index("police_id")["sum_insured"]
 
     pex_zeilen = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")
@@ -439,9 +437,9 @@ def bewegungskonto(
                 summe += betrag
         return summe
 
-    def bestand_am(stichtag: _dt.date) -> Dict[str, Dict[str, float]]:
+    def stand_am(stichtag: _dt.date) -> Dict[str, Dict[str, float]]:
         ts = pd.Timestamp(stichtag)
-        scheibe = _zeitscheibe(sicht, stichtag)
+        scheibe = schnitt_am(sicht, stichtag)
         bpfl = scheibe[scheibe["status_code"] == "POL"]
         bfr = scheibe[scheibe["status_code"] == "PEX"]
         return {
@@ -470,8 +468,8 @@ def bewegungskonto(
 
     konto: List[Dict[str, Any]] = []
     for jahr in jahre:
-        anfang = bestand_am(_dt.date(jahr, 1, 1))
-        ende = bestand_am(_dt.date(jahr + 1, 1, 1))
+        anfang = stand_am(_dt.date(jahr, 1, 1))
+        ende = stand_am(_dt.date(jahr + 1, 1, 1))
         von_ts = pd.Timestamp(_dt.date(jahr, 1, 1))
         bis_ts = pd.Timestamp(_dt.date(jahr + 1, 1, 1))
         periode = ledger[
@@ -567,16 +565,16 @@ def status_verlauf(
 
     Gezählt werden ALLE in-force-Status (POL beitragspflichtig, PEX
     beitragsfrei, BU im Leistungsbezug) — die Summe der Zähler ist damit
-    immer die Zahl der Verträge in der Zeitscheibe. Ein fehlender Zähler
+    immer die Zahl der Verträge im Auskunfts-Schnitt. Ein fehlender Zähler
     hätte Leistungsbezieher still unterschlagen.
 
-    ``sicht`` ist die Mehrzeilen-Sicht aus
-    :func:`rechner_pipeline.bestand.ereignisse.bestand_mit_historie`; die
-    Zeitscheibe wählt je Police den jüngsten in-force-Status.
+    ``sicht`` ist die Journalsicht aus
+    :func:`rechner_pipeline.bestand.fuehrung.journalsicht`; der
+    Auskunfts-Schnitt wählt je Police den jüngsten in-force-Status.
     """
     reihe: List[Dict[str, Any]] = []
     for stichtag in stichtage:
-        scheibe = zeitscheibe(sicht, stichtag)
+        scheibe = schnitt_am(sicht, stichtag)
         counts = scheibe["status_code"].value_counts()
         eintrag: Dict[str, Any] = {"stichtag": stichtag.isoformat()}
         for status in AKTIVE_STATUS:

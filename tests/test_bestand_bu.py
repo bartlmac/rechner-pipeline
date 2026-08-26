@@ -22,12 +22,11 @@ import pytest
 from rechner_pipeline.bestand.config import Annahmen, load_config
 from rechner_pipeline.bestand.ereignisse import (
     EreignisError,
-    bestand_mit_historie,
     bu_uebergang,
     fortschreiben,
 )
 from rechner_pipeline.bestand.generator import generate
-from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+from rechner_pipeline.bestand.fuehrung import journalsicht, schnitt_am
 from rechner_pipeline.kern.produkte.bu import AKTIV, BU, BU_ZUSTAND, TOT, BUModelPoint
 from rechner_pipeline.kern.zustandsmodell import Zustandsmodell
 from rechner_pipeline.models.bestand import (
@@ -259,12 +258,12 @@ def test_zeitscheibe_kennt_den_leistungsbezug(config, monkeypatch):
         {"police_id": 10000001, "start": dt.date(2010, 5, 1), "x": 40, "n": 20}
     )
     erg = fortschreiben(stamm, _ohne_marge(config), dt.date(2040, 1, 1))
-    sicht = bestand_mit_historie(stamm, erg.historie)
+    sicht = journalsicht(stamm, erg.historie)
     # Vor der Invalidisierung Anwaerter, danach im Leistungsbezug — beides
     # in-force (AKTIVE_STATUS), der Ablauf beendet den Bestand.
-    assert list(zeitscheibe(sicht, dt.date(2011, 1, 1))["status_code"]) == ["POL"]
-    assert list(zeitscheibe(sicht, dt.date(2015, 1, 1))["status_code"]) == ["BU"]
-    assert len(zeitscheibe(sicht, dt.date(2031, 1, 1))) == 0
+    assert list(schnitt_am(sicht, dt.date(2011, 1, 1))["status_code"]) == ["POL"]
+    assert list(schnitt_am(sicht, dt.date(2015, 1, 1))["status_code"]) == ["BU"]
+    assert len(schnitt_am(sicht, dt.date(2031, 1, 1))) == 0
 
 
 # --------------------------------------------------------------------------- #
@@ -772,10 +771,10 @@ def test_status_verlauf_zaehlt_den_leistungsbezug(config, portfolio):
     """Review-Fix: BU ist ein in-force-Status; die Status-Reihe muss ihn
     fuehren, sonst unterschlaegt sie Vertraege."""
     from rechner_pipeline.bestand.kennzahlen import status_verlauf
-    from rechner_pipeline.bestand.zeitscheibe import zeitscheibe as _zs
+    from rechner_pipeline.bestand.fuehrung import journalsicht, schnitt_am as _zs
 
     erg = fortschreiben(portfolio, config, dt.date(2050, 1, 1))
-    sicht = bestand_mit_historie(portfolio, erg.historie)
+    sicht = journalsicht(portfolio, erg.historie)
     stichtage = [dt.date(j, 1, 1) for j in (2015, 2025, 2035)]
     reihe = status_verlauf(sicht, stichtage)
     for zeile, stichtag in zip(reihe, stichtage):

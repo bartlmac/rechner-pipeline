@@ -71,6 +71,7 @@ from rechner_pipeline.models.bestand import (
     STAMM_NAMES,
     validate_portfolio,
     validate_scheiben,
+    validate_stamm_journal,
     validate_statushistorie,
 )
 from rechner_pipeline.qa.bestand import sanity_check
@@ -202,6 +203,22 @@ def pruefe_b1_eingaenge(
                 errors.append({"code": "portfolio", "message": meldung})
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
             errors.append({"code": "portfolio", "message": str(exc)})
+    if portfolio is not None and historie is None and not errors:
+        # Ein gefuehrter Bestand mit (zustandsgueltigen) Folgezustaenden
+        # verlangt sein Journal: Ohne die Buchungen ist ein behaupteter
+        # Zustand kein Beleg (ADR-011). Zustands-UNGUELTIGE Zeilen sind
+        # dagegen Datenfehler und stehen bereits oben in den Contract-Fehlern
+        # — sie werden nicht zur Argumentfrage umgedeutet.
+        try:
+            if (portfolio["status_id"] > 1).any():
+                usage_errors.append({
+                    "code": "missing_arg",
+                    "message": "Portfolio traegt Folgezustaende (status_id > 1) "
+                    "— --historie ist erforderlich: der Stammzustand muss "
+                    "gegen den juengsten Journalstand geprueft werden",
+                })
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "portfolio", "message": str(exc)})
     if portfolio is not None and historie is not None:
         geprueft["historie_zeilen"] = int(len(historie))
         try:
@@ -209,6 +226,14 @@ def pruefe_b1_eingaenge(
                 errors.append({"code": "historie", "message": meldung})
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
             errors.append({"code": "historie", "message": str(exc)})
+        # Deckungsgleichheit von Stamm und Journal (ADR-011): der Stammsatz
+        # IST der juengste Journalstand — sonst ist der Bestand keine
+        # Fuehrung, sondern eine Behauptung.
+        try:
+            for meldung in validate_stamm_journal(portfolio, historie):
+                errors.append({"code": "fuehrung", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "fuehrung", "message": str(exc)})
     if portfolio is not None and scheiben is not None:
         geprueft["scheiben_zeilen"] = int(len(scheiben))
         try:

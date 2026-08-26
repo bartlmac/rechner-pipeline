@@ -124,8 +124,13 @@ def _bereite_bestandsfall(tmp_path: Path) -> Path:
     ziel = lauf / "bestand_gesamt.parquet"
     # Der Bestandsfall hat exakt eine B1-Zeile und die Suite prueft exakt
     # diese eine Zeile. Eine Teilpruefung eines groesseren B1-Bestands waere
-    # kein positiver Vollstaendigkeitsbeleg.
-    write_portfolio(read_portfolio(ziel).iloc[:1].copy(), ziel)
+    # kein positiver Vollstaendigkeitsbeleg. Gewaehlt wird eine Zeile im
+    # Ursprungszustand (status_id 1): der gefuehrte Gesamtbestand traegt
+    # seit ADR-011 aktuelle Zustaende, und ein Folgezustand verlangte sein
+    # Journal — das dieser Ein-Zeilen-Ausschnitt nicht mitfuehrt.
+    gesamt = read_portfolio(ziel)
+    ursprung = gesamt[gesamt["status_id"] == 1]
+    write_portfolio(ursprung.iloc[:1].copy(), ziel)
     diagnostics = fall / "abgeleitet" / "diagnostics"
     b1 = bestand_validate.main([
         "--portfolio", str(ziel),
@@ -1104,6 +1109,7 @@ def test_abnahmebericht_blockiert_teilpruefung_des_b1_portfolios(
     diagnostics = fall / "abgeleitet" / "diagnostics"
     b1 = bestand_validate.main([
         "--portfolio", str(portfolio),
+        "--historie", str(lauf / "historie.parquet"),
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
     ])

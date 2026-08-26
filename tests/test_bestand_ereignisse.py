@@ -25,11 +25,10 @@ from rechner_pipeline.bestand.config import (
 )
 from rechner_pipeline.bestand.ereignisse import (
     EreignisError,
-    bestand_mit_historie,
     fortschreiben,
 )
 from rechner_pipeline.bestand.generator import generate
-from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+from rechner_pipeline.bestand.fuehrung import journalsicht, schnitt_am
 from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.models.bestand import (
     STAMM_SPALTEN,
@@ -37,7 +36,7 @@ from rechner_pipeline.models.bestand import (
     model_point_kwargs,
     validate_statushistorie,
 )
-from rechner_pipeline.qa.bestand import zeitscheiben_invarianten
+from rechner_pipeline.qa.bestand import auskunfts_invarianten
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
@@ -274,9 +273,9 @@ def test_zeitscheibe_laesst_terminale_vertraege_fallen(config):
     )
     cfg = _mit_raten(config, tod_faktor=1e12)  # TOD am 2011-06-01
     historie, _, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
-    sicht = bestand_mit_historie(stamm, historie)
-    davor = zeitscheibe(sicht, dt.date(2011, 5, 1))
-    danach = zeitscheibe(sicht, dt.date(2011, 6, 1))
+    sicht = journalsicht(stamm, historie)
+    davor = schnitt_am(sicht, dt.date(2011, 5, 1))
+    danach = schnitt_am(sicht, dt.date(2011, 6, 1))
     assert list(davor["police_id"]) == [10000001]
     assert davor["status_code"].iloc[0] == "POL"
     assert len(danach) == 0
@@ -288,8 +287,8 @@ def test_zeitscheibe_behaelt_beitragsfreie_vertraege(config):
     )
     cfg = _mit_raten(config, pex_rate=0.999999)  # PEX am 2011-06-01
     historie, _, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
-    sicht = bestand_mit_historie(stamm, historie)
-    scheibe = zeitscheibe(sicht, dt.date(2015, 1, 1))
+    sicht = journalsicht(stamm, historie)
+    scheibe = schnitt_am(sicht, dt.date(2015, 1, 1))
     assert list(scheibe["police_id"]) == [10000001]
     assert scheibe["status_code"].iloc[0] == "PEX"
     assert scheibe["status_id"].iloc[0] == 2
@@ -299,9 +298,9 @@ def test_zeitscheibe_behaelt_beitragsfreie_vertraege(config):
 
 def test_zeitscheiben_invarianten_gelten_auch_mit_historie(portfolio, config):
     historie, _, *_ = fortschreiben(portfolio, config, dt.date(2035, 1, 1))
-    sicht = bestand_mit_historie(portfolio, historie)
-    scheibe = zeitscheibe(sicht, dt.date(2020, 7, 1))
-    assert zeitscheiben_invarianten(sicht, scheibe) == []
+    sicht = journalsicht(portfolio, historie)
+    scheibe = schnitt_am(sicht, dt.date(2020, 7, 1))
+    assert auskunfts_invarianten(sicht, scheibe) == []
 
 
 def test_bestand_mit_historie_wiederholt_stammdaten_bytegleich(config):
@@ -310,7 +309,7 @@ def test_bestand_mit_historie_wiederholt_stammdaten_bytegleich(config):
     )
     cfg = _mit_raten(config, pex_rate=0.999999)
     historie, _, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
-    sicht = bestand_mit_historie(stamm, historie)
+    sicht = journalsicht(stamm, historie)
     assert len(sicht) == 3  # POL + PEX + ABL
     stammfelder = [
         c for c in sicht.columns
@@ -591,7 +590,7 @@ def test_fortschreiben_lehnt_nicht_basisbestand_ab(config):
     )
     cfg = _mit_raten(config, pex_rate=0.999999)
     historie, _, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
-    sicht = bestand_mit_historie(stamm, historie)
+    sicht = journalsicht(stamm, historie)
     with pytest.raises(EreignisError, match="Basisbestand"):
         fortschreiben(sicht[sicht["status_code"] == "PEX"], cfg, dt.date(2045, 1, 1))
 
