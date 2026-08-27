@@ -34,7 +34,7 @@ muss vorfuehrbar sein, bevor er eintritt.
    Falldaten (A-Box), kuenftig Tafel-Eintraege.
 3. **Jedes Testmodul erklaert seine Knoten-Bindung** (dieselbe
    `Knoten:`-Docstring-Zeile). Eine ungebundene Testdatei ist Drift
-   (test-verankert) — ohne Bindung kann die Impact-Berechnung den Test
+   (maschinell gesichert) — ohne Bindung kann die Impact-Berechnung den Test
    nur noch konservativ einplanen.
 4. **Die Schichtenkarte ist nachrechenbar** (`code_karte`): statischer
    Import-/Aufruf-Graph (ast, deterministisch, keine Ausfuehrung) mit
@@ -75,7 +75,7 @@ muss vorfuehrbar sein, bevor er eintritt.
    selektierten Test geladen werden, sonst faellt die Auswahl
    konservativ auf die volle Suite. Damit kann kein Import-Bruch
    unsichtbar bleiben (heute haelt die Deckung fuer alle 79 Module,
-   test-verankert). Was die Selektion NICHT verspricht, ist die
+   maschinell gesichert). Was die Selektion NICHT verspricht, ist die
    vollstaendige Liste aller Tests, die brechen koennten: Tests, die
    ein geaendertes Modul laden, ohne fachlich betroffen zu sein,
    stehen als `weitere_lader` im Ergebnis (bei `bu.py` heute 16 zu 5

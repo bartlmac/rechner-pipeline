@@ -199,7 +199,7 @@ def berechne(mp: ModelPoint = KLV_DEFAULT, produkt: str = "klv") -> Dict[str, Di
         "scalars": {cls.contract_prefix: instanz.scalars()},
         # Das Verlaufsfenster ist Produkt-Contract (KLV: 0..50 aus dem
         # historischen Sechs-Datei-Vergleichskern, BU: 0..n) — Eigenschaft
-        # dieser Vergleichs-View, KEIN Kern-Anker (Kern 3.0.0: der Verlauf
+        # dieser Vergleichs-View, KEIN Referenzwert des Kerns (Kern 3.0.0: der Verlauf
         # selbst ist modellpunktgetrieben).
         "tables": {
             cls.contract_prefix: instanz.verlaufswerte(

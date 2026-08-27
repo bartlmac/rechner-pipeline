@@ -206,7 +206,7 @@ Annahmeaufruf aus. Bei Rotation werden alte Schluessel zuerst und der aktive
 zuletzt mit wiederholtem Flag uebergeben. Als Agent darfst du AUSSCHLIESSLICH
 ablehnen (--rolle agent, dokumentierter Zwischenstand). Die Annahme
 rechnet ihre Vorbedingungen: das O1-Ledger ist schema-, Gate-, Command-,
-Versions- und hashrollengenau auf dem aktuellen A-Box-Stand verankert; P9
+Versions- und hashrollengenau an den aktuellen A-Box-Stand gebunden; P9
 validiert Snapshot-Schema, Vollhash-Dateiname, Freigabesignatur und die
 zyklenfreie Kette mit genau einer Spitze. G-2 verlangt zusaetzlich fuer exakt
 jede Generation der A-Box einen inhaltsadressierten gruenen O3-Beleg desselben
@@ -232,7 +232,7 @@ A-Box- und Systemstands, einen geltenden signierten G-1-Annahme-Snapshot
 3. Kern-Aenderungen: eine neue Generation ist PARAMETRIERUNG — kein
    Formel-Code. Neue Tafeln in `kern/tafeln.xml` sind eine fachliche
    Aenderung: Kern-`__version__` anheben, Abnahme-Protokoll des Kerns
-   einhalten (bestehende Charakterisierungs-Anker muessen gruen bleiben).
+   einhalten (bestehende Charakterisierungstests muessen gruen bleiben).
 
 ### Stufe 3 — Abnahme
 
@@ -245,7 +245,7 @@ A-Box- und Systemstands, einen geltenden signierten G-1-Annahme-Snapshot
    gelaufen sein. Beachte das Summary: `zellen_ohne_erwartungswerte`
    ehrlich weitermelden (der Quell-Rechner traegt meist nur EINEN
    Beispiel-Modellpunkt).
-2. Volle Suite: `.venv/bin/python -m pytest` — bestehende Verankerungen
+2. Volle Suite: `.venv/bin/python -m pytest` — bestehende Referenzwerte
    duerfen sich nicht bewegen.
 
 ### Stufe 3b — Pruefung des uebernommenen Bestands (wenn Stufe 1b lief)
@@ -331,7 +331,7 @@ vollstaendig, ohne Stichproben-Beschoenigung.
   widersprechen sich).
 - Tafel-Konflikt (wertverschieden bei gleichem Namen) oder
   Eingang-Integritaetsverletzung.
-- Eine bestehende Kern-Verankerung (Charakterisierungs-Anker) wird rot.
+- Ein bestehender Charakterisierungstest des Kerns (eingefrorene Referenzwerte) wird rot.
 - Ein Ziel-Pflichtfeld der Transformation ist aus dem Abzug nicht
   ableitbar, oder die Quelle traegt ein fachlich uebernahmepflichtiges
   Merkmal, fuer das die Ziel-Ontologie kein Feld hat (Gate G-T).

@@ -84,7 +84,7 @@ als eigener Skill mit demselben Muster:
    Nachweiskette, ihre Aenderung ist sichtbar).
 2. Paritaet `.claude`/`.agents` haelt der Test
    `tests/test_agent_workflow_docs.py`; Kernregeln der Migrations-
-   Skills sind dort zusaetzlich verankert (Loeschen faellt rot aus).
+   Skills sind dort zusaetzlich maschinell gesichert (Loeschen faellt rot aus).
 3. Ein Skill nennt seine Grenze so praezise wie seinen Auftrag —
    "Skip for" ist Pflicht, Ueberlappungen zwischen Skills sind ein
    Befund.

@@ -34,7 +34,7 @@ die Fachlogik.
 - JSON-Schemata fuer Structured Output werden generiert
   (`model_json_schema()`), nie von Hand gepflegt.
 - Deterministische Serialisierung bleibt Pflicht (sortierte Schluessel,
-  feste Feldreihenfolge) — Tests verankern das.
+  feste Feldreihenfolge) — Tests sichern das ab.
 
 ## Verworfene Alternative
 

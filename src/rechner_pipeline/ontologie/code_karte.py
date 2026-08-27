@@ -150,7 +150,7 @@ def _absolut(modul: Optional[str], level: int, rel: str) -> Optional[str]:
     if len(basis) < level - 1 + 1:
         return None
     anker = basis[: len(basis) - (level - 1)]
-    dotted = ".".join(anker)
+    dotted = ".".join(paketpfad)
     return f"{dotted}.{modul}" if modul else dotted
 
 

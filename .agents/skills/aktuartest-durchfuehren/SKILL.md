@@ -119,7 +119,7 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 5. Ergebnis dem Verantwortlichen Aktuar zur G-A-Entscheidung
    vorlegen, STOPP.
 
-## Ausbau (geplant, hier verankern)
+## Ausbau (geplant, hier festgehalten)
 
 - Golden-Master-Tests der Migration: definierte Referenz-Verträge mit
   eingefrorenen Erwartungswerten als dauerhafte Regression — Definition

@@ -14,7 +14,7 @@ Rechenkern-Entwicklung. Die Fachdokumente des Beispiel-Rechenkerns
 - [ADR-001: Repo-Zielstruktur entlang der Migrations-Pipeline](adr-001-repo-zielstruktur.md)
 - [ADR-002: Fall-Arbeitsbereich — das Repo ist das System, nicht der Datenraum](adr-002-fall-arbeitsbereich.md)
 - [ADR-003: Pydantic fuer T-Box und A-Box](adr-003-pydantic-fuer-ontologie.md)
-- [ADR-004: Der Zielkern ist Thiele-Welt — Excel-Paritaet ist Uebersetzungsbeleg, kein Anker](adr-004-thiele-kern-ohne-excel-anker.md)
+- [ADR-004: Der Zielkern ist Thiele-Welt — Excel-Paritaet ist Uebersetzungsbeleg, kein laufender Referenzwert](adr-004-thiele-kern-ohne-excel-referenzwerte.md)
 - [ADR-005: Knoten-Hierarchie, Test-Bindung, Code-Karte und berechneter Impact](adr-005-knoten-hierarchie-und-impact.md)
 - [ADR-006: Der Portierungs-Anwendungsfall wird ausser Betrieb genommen](adr-006-portierung-ausser-betrieb.md)
 - [ADR-007: Parallele Migrationen in einem Kern — Trunk, knotengebundene Inkremente, Knoten-Lebenszyklus](adr-007-parallele-migrationen-ein-kern.md)

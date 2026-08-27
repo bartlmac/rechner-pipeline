@@ -15,7 +15,7 @@ format:
 > Gliederung ist für alle Produkte des Kerns dieselbe. Historische
 > Provenienz: einmalige
 > Migration aus dem Quell-Workbook (Übersetzungsbeleg: 617/617 am
-> 22.07.2026 — historisch, kein laufender Anker); Quellnamen
+> 22.07.2026 — historisch, kein laufender Referenzwert); Quellnamen
 > der Größen (`Bxt`, `kVx_MRV`, …) sind bewusst erhalten
 > (Provenienz-Prinzip).
 
@@ -194,17 +194,17 @@ Annahmen wirken nie in Beitrag oder Reserve zurueck
 ([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 5.2).
 
-# 11 Verankerung und Abnahme
+# 11 Referenzwerte und Abnahme
 
 Das Abnahme-Protokoll gilt für alle Produkte
 ([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 11). Für dieses Produkt sind
-verankert: die Charakterisierungs-Anker des produktiven Pfads, die
+gesichert: die eingefrorenen Referenzwerte des produktiven Pfads, die
 Toleranz-Überleitung gegen den Kommutations-Zweitkern
 (`qa/ueberleitung`) und je Migrationsfall Gate O3 gegen den
 Quell-Rechner. Die einmalige 617/617-Excel-Parität (22.07.2026, 4
 Nachkommastellen) ist der historische Übersetzungsbeleg, kein
-laufender Anker.
+laufender Referenzwert.
 
 # 12 Vorgesehene Erweiterungen
 

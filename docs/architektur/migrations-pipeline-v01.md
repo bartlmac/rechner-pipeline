@@ -54,7 +54,7 @@ Stufe 1  Quellen -> A-Box
   deterministisch: ontologie/befuellung — Provenienz-Anreicherung aus dem
                   Eingang-Register, Merge (Widerspruch => Diskrepanz-Objekt),
                   Coverage gegen den T-Box-Pflichtumfang
-  Gate O1 (abox_validate): Contract + Register-Verankerung + Coverage +
+  Gate O1 (abox_validate): Contract + Register-Bindung + Coverage +
                   offene Diskrepanzen blockieren
 
 Stufe 2  A-Box -> Spez -> Kern-Parametrierung
@@ -153,7 +153,7 @@ noch den O-/P9-Weg auf dem stabilen Zielkern.
   (zusaetzliche Modellpunkte vom Lieferanten oder COM-Neuberechnung) —
   Gate O3 weist das Komplement aus.
 * Der deterministische Formel-Rueck-Check (quellen/formeln.py, in Gate
-  O1 verankert) deckt die IF-Staffeln; andere Formelformen prueft er
+  O1 eingebaut) deckt die IF-Staffeln; andere Formelformen prueft er
   fail-fast als "nicht pruefbar" — ein breiterer Formel-Parser bleibt
   offen.
 * Kein Graph-Store, keine Embeddings, keine BU-/FLV-/Renten-Klassen in
@@ -279,7 +279,7 @@ braucht); Testing/Abnahme = Gate-Kette + Suite + menschliche Gates.
 
 ADR-001 (Repo-Zielstruktur), ADR-002 (Fall-Arbeitsbereich), ADR-003
 (Pydantic fuer die Ontologie-Schicht), ADR-004 (Thiele-Kern ohne
-Excel-Anker; Kommutation als separater Zweitkern), ADR-005
+Excel-Referenzwerte; Kommutation als separater Zweitkern), ADR-005
 (Knoten-Hierarchie, Test-Bindung, Code-Karte, Impact). Hinzugekommen
 seit Redaktionsschluss dieses Dokuments — und fuer den heutigen Stand
 massgeblich: ADR-006 (Portierungs-Anwendungsfall ausser Betrieb; die

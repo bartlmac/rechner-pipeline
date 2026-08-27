@@ -1,4 +1,4 @@
-# ADR-004: Der Zielkern ist Thiele-Welt — Excel-Paritaet ist Uebersetzungsbeleg, kein Anker
+# ADR-004: Der Zielkern ist Thiele-Welt — Excel-Paritaet ist Uebersetzungsbeleg, kein laufender Referenzwert
 
 Status: akzeptiert (Bartek, 2026-08-16). Umgesetzt: Kern 3.0.0
 (`kern/tafeln.py`, `rechner_pipeline.kommutationskern`).
@@ -11,7 +11,7 @@ drei Bezuege zur Excel-Historie mit sich:
 
 1. Die **617/617-Excel-Paritaet** (einmalige Uebersetzungsabnahme vom
    22.07.2026) lief als dauerhafter Kern-Test mit eingecheckten
-   Erwartungswert-Fixtures weiter — als waere sie ein laufender Anker.
+   Erwartungswert-Fixtures weiter — als waere sie ein laufender Referenzwert.
 2. **Kommutationswerte** (D/N/C/M) lebten als `kern/kommutation.py` im
    Kern, obwohl der produktive Pfad sie nirgends braucht: das
    Zustandsmodell konsumiert ausschliesslich reine qx-Vektoren.
@@ -40,8 +40,8 @@ eine historische Workbook.
 3. **Die 617/617-Paritaet ist Geschichte des Uebersetzungsakts.** Der
    Dauertest und die Fixtures (`tests/fixtures/kern_klv/`) sind
    entfernt; Doku nennt sie nur noch als historischen
-   Uebersetzungsbeleg. Verankert ist der Kern ueber
-   Charakterisierungs-Anker in voller Float-Praezision; die fachliche
+   Uebersetzungsbeleg. Festgeschrieben ist der Kern ueber
+   Charakterisierungs-Referenzwerte in voller Float-Praezision; die fachliche
    Abnahme je Migrationsfall ist Gate O3 gegen den Quell-Rechner.
 4. **Der Verlauf ist modellpunktgetrieben** (`verlaufswerte()` bis n,
    `verlaufszeile(a)` bis zur Tafel-Erschoepfung). Das 51-Zeilen-Fenster
@@ -52,17 +52,17 @@ eine historische Workbook.
 ## Konsequenzen
 
 - Kern-`__version__` 3.0.0; das Abnahme-Protokoll im
-  `kern/__init__`-Docstring beschreibt den neuen Stand (Anker,
+  `kern/__init__`-Docstring beschreibt den neuen Stand (Referenzwerte,
   Ueberleitung, algebraische Gates, Gate O3 je Fall).
 - Rechenwerte sind unveraendert: der produktive Pfad nutzte schon
-  vorher ausschliesslich qx. Beleg: alle Charakterisierungs-Anker
+  vorher ausschliesslich qx. Beleg: alle Charakterisierungs-Referenzwerte
   bit-exakt gruen, Gate O3 des Praezedenzfalls klv-tg2015 weiter
   616 Werte / 0 Abweichungen.
 - Die Bestand-Engine behaelt ihr Verlaufsfenster 0..50 als EIGENE
   konservative Grenze (so dokumentiert); sie ist Kandidat fuer eine
   tafelbewusste Endalter-Pruefung je Generation (Roadmap).
 - `berechne()` bleibt die Golden-Master-Contract-View fuer
-  Fall-Abnahmen; ihre Fensterung ist Produkt-Contract, kein Kern-Anker.
+  Fall-Abnahmen; ihre Fensterung ist Produkt-Contract, kein Kern-Referenzwert.
 - Kuenftige Produkte definieren ihren Verlaufs-Contract selbst; nichts
   zwingt sie in die Geometrie des historischen KLV-Workbooks.
 

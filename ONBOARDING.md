@@ -38,7 +38,7 @@ precedent TG2012 -> TG2015 ran through without a single formula change.
 The **normal case is the opposite**: a ceded portfolio brings benefit
 features the kernel does not know yet, and the migration is an intensive,
 node-bound CODE extension of the one trunk (small increments, landing
-only with the full suite green including every other case's anchors,
+only with the full suite green including every other case's frozen reference values,
 `integriere-migrationsinkrement`). New products come through the T-Box
 (gate G-T) — in either case not by translating another workbook.
 

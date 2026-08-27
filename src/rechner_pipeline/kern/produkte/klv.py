@@ -111,7 +111,7 @@ class KLV:
     contract_prefix = "Kalkulation"  # Blattname des Quell-Workbooks
     # Vergleichsfenster des historischen Sechs-Datei-Contracts (Zeilen
     # 0..50 des Quell-Verlaufsblatts) — Eigenschaft der Vergleichs-View
-    # in ``berechne``, KEIN Kern-Anker.
+    # in ``berechne``, KEIN Referenzwert des Kerns.
     contract_verlauf_bis: int | None = 50
     model_point_cls = ModelPoint
 

@@ -7,7 +7,7 @@ eine qx-Kurve erfunden. :class:`Tafelbasis` ist die aufgeloeste Basis
 Kommutations-Ableitungen: der Zielkern rechnet vollstaendig in der
 Zustandsmodell-Welt. Die Tafel-Erschoepfung (ab dem ersten Alter nach
 qx = 1 sind bedingte Barwerte nicht definiert) ist hier als
-Domaenenregel verankert (:class:`TafelBereichError`).
+Domaenenregel festgehalten (:class:`TafelBereichError`).
 
 Namensaufloesung: exakter Tafelname gewinnt (so tragen abgeleitete
 Unisex-Mischtafeln wie ``DAV2008_T_NR_U70`` ohne Code-Aenderung);
@@ -217,7 +217,7 @@ def select_tafel(
 
     Rückgabe ist eine unveränderliche Sicht (MappingProxy) auf die
     Prozess-globalen Tafeldaten — Aufrufer können sie nicht mutieren
-    (Anker-Bit-Exaktheit). ``sex`` löst geschlechtsabhängige Tafeln auf
+    (Bit-Exaktheit der Referenzwerte). ``sex`` löst geschlechtsabhängige Tafeln auf
     (siehe :func:`_select_key`).
     """
     key = _select_key(name, sex)

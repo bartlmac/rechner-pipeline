@@ -11,7 +11,7 @@ bidirektionalen Index (nie handgepflegt) und meldet Drift:
   System-Wurzel ``system`` sein (Tippfehler-Schutz; tiefere Ebenen wie
   ``klv/tg2015`` sind Instanzen und bewusst offen),
 * Testmodule ohne Knoten-Bindung — jede Testdatei erklaert, welchen
-  Fachknoten sie verankert; das ist die Grundlage der
+  Fachknoten sie absichert; das ist die Grundlage der
   Impact-Berechnung (``ontologie.impact``),
 * Module ohne Knoten-Annotation — ein HARTER Befund fuer jedes
   Modul ausser ``__init__.py`` (Beschluss Bartek 2026-08-18: kein

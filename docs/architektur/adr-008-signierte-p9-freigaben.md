@@ -94,7 +94,7 @@ erhalten.
 
 - Nur Eigenhash und inhaltsadressierter Dateiname: verworfen, weil ein
   Fallschreiber beides neu berechnen kann.
-- Eine zweite frei beschreibbare Ankerdatei ausserhalb `entscheide/` aber im
+- Eine zweite frei beschreibbare Referenzdatei ausserhalb `entscheide/` aber im
   selben Fall: verworfen, weil sie dieselbe Autoritaetsgrenze haette.
 - Eine neue asymmetrische Kryptografie-Abhaengigkeit: fuer diese Version
   verworfen, weil sie Paket-, ADR- und Betriebsaufwand erzeugt, obwohl eine

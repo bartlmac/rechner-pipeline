@@ -72,7 +72,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   in the skills, not in the concept documents.
 - **Parallel migrations share one kernel trunk** (ADR-007): code
   changes during a migration are small node-bound increments; landing
-  requires the full suite green including every case's anchors.
+  requires the full suite green including every case's frozen reference values.
 
 ## Common Commands
 

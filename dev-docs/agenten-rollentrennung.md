@@ -108,6 +108,6 @@ Migrationspipeline erweitert. Er braucht einen eigenen Vorgang und die
 Zustimmung derer, die danach unter den neuen Anweisungen arbeiten.
 
 **Vorarbeit, die schon steht:** Die Regel „Fachdokumente sprechen die
-Sprache des Unternehmens" ist im Skill `dokumentiere-system` verankert
+Sprache des Unternehmens" steht im Skill `dokumentiere-system`
 (beide Spiegel) — mit dem ausdruecklichen Hinweis, dass sie nicht
 pruefbar ist und durch Schreiben unter dem Skill eingehalten wird.

@@ -1,6 +1,6 @@
 """Architektur-Werkzeuge: Code-Karte-Regeln, Knoten-Hierarchie, Impact.
 
-Verankert die 1M-LOC-Mechanik: die Schichtenkarte ist nachrechenbar
+Sichert die 1M-LOC-Mechanik maschinell ab: die Schichtenkarte ist nachrechenbar
 (ADR-004-Regel inklusive), Knoten-Wurzeln sind validiert, jede
 Testdatei ist an Knoten gebunden, und der Impact einer Aenderung ist
 BERECHNET — selektiv bei sauberer Annotation, konservativ (volle
@@ -489,9 +489,9 @@ def test_konservativ_behaelt_direkt_geaenderte_testdatei():
 
 def test_artefakte_ohne_bindung_sind_konservativ():
     """Review-Befund: Fixtures und unbekannte src-Artefakte galten als
-    'kein Impact' — eine geaenderte Anker-Fixture ergab 0 Tests."""
+    'kein Impact' — eine geaenderte Referenzwert-Fixture ergab 0 Tests."""
     for datei, muster in (
-        ("tests/fixtures/kern_anker/anker_dav2008.json", "Test-Artefakt"),
+        ("tests/fixtures/kern_referenzwerte/referenz_dav2008.json", "Test-Artefakt"),
         ("src/rechner_pipeline/quellen/neu.json", "ohne Daten-Bindung"),
         ("skripte/hilfs.py", "ausserhalb von src/ und tests/"),
     ):

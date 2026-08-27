@@ -6,7 +6,7 @@ Three check families, all returning error lists (repo idiom; empty = pass):
 * :func:`auskunfts_invarianten` — ein Auskunfts-Schnitt (ADR-011) darf
   Zeilen auswaehlen und Stichtagsgroessen ableiten, aber jeden Stammwert
   nur unveraendert durchreichen.
-* Golden-master anchoring is byte-level and lives in
+* Golden-master reference values are byte-level and live in
   :func:`rechner_pipeline.bestand.parquet_io.portfolio_hash`; schema
   validation lives in :func:`rechner_pipeline.models.bestand.validate_portfolio`.
 

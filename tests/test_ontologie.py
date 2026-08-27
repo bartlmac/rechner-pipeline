@@ -238,7 +238,7 @@ def test_zellen_id_ist_abgeleitet_und_deterministisch():
 
 
 # --------------------------------------------------------------------------- #
-# A-Box: Determinismus, Kreuz-Validierung, Eingang-Verankerung
+# A-Box: Determinismus, Kreuz-Validierung, Bindung an das Eingang-Register
 # --------------------------------------------------------------------------- #
 
 
@@ -289,7 +289,7 @@ def test_validate_verwaiste_offene_diskrepanz():
     assert any("verwaist" in f for f in validate_abox(abox))
 
 
-def test_validate_verankert_quellen_im_eingang_register():
+def test_validate_bindet_quellen_an_das_eingang_register():
     abox = _abox()
     register = {"quellen": [
         {"datei": "Tarifrechner_KLV_TG2015.xlsm", "sha256": SHA_A},

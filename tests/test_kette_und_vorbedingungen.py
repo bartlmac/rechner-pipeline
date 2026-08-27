@@ -250,14 +250,14 @@ def test_g2_verlangt_o3_und_geltenden_g1(fall_mit_fragmenten):
     result = p9(["--gate", "G-2", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
     assert any("O3" in e["message"] for e in result.errors)
-    # G-1-Annahme geht (O1 gruen + verankert):
+    # G-1-Annahme geht (O1 gruen + an den geprueften A-Box-Stand gebunden):
     assert p9(["--gate", "G-1", "--entscheid", "angenommen", *basis]).exit_code == 0
     # G-2 scheitert weiter an O3 (nie gelaufen) — nicht an G-1:
     result = p9(["--gate", "G-2", "--entscheid", "angenommen", *basis])
     assert any("O3" in e["message"] for e in result.errors)
 
 
-def test_g1_annahme_verlangt_verankertes_o1(fall_mit_fragmenten):
+def test_g1_annahme_verlangt_gebundenes_o1(fall_mit_fragmenten):
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
     abox = lade(f)
@@ -271,7 +271,7 @@ def test_g1_annahme_verlangt_verankertes_o1(fall_mit_fragmenten):
     result = p9(["--gate", "G-1", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
     assert any(e["code"] == "vorbedingung" for e in result.errors)
-    # O1 gruen, dann A-Box VERAENDERN -> Verankerung bricht:
+    # O1 gruen, dann A-Box VERAENDERN -> Provenienzbindung bricht:
     assert o1(["--fall", str(f)]).exit_code == 0
     abox = lade(f)
     abox.generationen[0].anmerkungen.append("nachtraeglich")

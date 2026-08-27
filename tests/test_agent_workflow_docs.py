@@ -90,7 +90,7 @@ def test_migrations_skills_nennen_die_tragenden_regeln() -> None:
 
 def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
     """Die Skill-Architektur lebt: jeder Rollen-Skill traegt Auftrag UND
-    Grenze; die nicht verhandelbaren Kerne sind verankert."""
+    Grenze; die nicht verhandelbaren Kerne sind festgehalten."""
     entwickler = _read(".claude/skills/entwickle-im-zielsystem/SKILL.md")
     assert "NICHT verhandelbar" in entwickler
     assert "Schichtenkarte" in entwickler
@@ -118,7 +118,7 @@ def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
     assert "du rechnest NIE selbst" in aktuartest
     assert "G-A" in aktuartest
     assert "NIE" in aktuartest and "aufgeweicht" in aktuartest
-    assert "Golden-Master-Tests" in aktuartest             # Ausbau-Anker
+    assert "Golden-Master-Tests" in aktuartest             # Ausbaustufe festgehalten
     assert "Stichprobe" in aktuartest
     ci = _read(".claude/skills/integriere-migrationsinkrement/SKILL.md")
     assert "ADR-007" in ci

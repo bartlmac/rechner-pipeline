@@ -19,8 +19,8 @@ Der Bericht war die Abnahme-Grundlage für den Wechsel des produktiven
 KLV-Pfads auf das Zustandsmodell (abgenommen 2026-08-12, kern 2.0.0);
 seither ist das Gate der dauerhafte Kreuz-Check beider Schienen (beide
 werden EXPLIZIT injiziert — es prüft die Schienen-Äquivalenz, nicht den
-produktiven Default; dessen Voll-Präzisions-Verankerung sind die
-Anker-Fixtures). Bekannte gemeinsame blinde Stelle beider Schienen: die
+produktiven Default; dessen Voll-Präzisions-Sicherung sind die
+Referenz-Fixtures). Bekannte gemeinsame blinde Stelle beider Schienen: die
 letzte Tafelzelle (Kommutation füllt tx/cx am Endalter 123 nie; für die
 ausgelieferten Tafeln ist die Differenz exakt 0, weil lx dort bereits 0
 ist).

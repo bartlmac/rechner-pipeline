@@ -103,7 +103,7 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
     )
     z.append("")
 
-    z.append("## 1 Quellen und Verankerung")
+    z.append("## 1 Quellen und Provenienzbindung")
     z.append("")
     z.append("| Quelle | Art | SHA-256 |")
     z.append("|---|---|---|")

@@ -3,8 +3,7 @@ name: teste-adversarial
 description: >-
   Quality-assure a finished block of work with the established adversarial pattern:
   independent review dimensions produce findings, every finding is adversarially
-  verified against the real code (refute-first), confirmed findings are fixed and
-  anchored as regression tests. Also carries the repo's test-writing discipline
+  verified against the real code (refute-first), confirmed findings are fixed and locked in as regression tests. Also carries the repo's test-writing discipline
   (mutation thinking, independent control calculations, honest skips). Trigger after
   completing a substantial implementation block, before declaring work done, or when
   the user asks for a review/QA of changes. Skip for: trivial one-line fixes, pure

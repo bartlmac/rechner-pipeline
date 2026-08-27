@@ -1,6 +1,6 @@
 """Plan P5+P6: Transformations-Spec und Abzugsabgleich.
 
-Verankert die beiden Migrations-Maschinerien VOR ihrem ersten echten
+Sichert die beiden Migrations-Maschinerien VOR ihrem ersten echten
 Einsatz (Baldrian-Fall): das Mapping ist beidseitig geprueft und
 deterministisch angewandt; der Abgleich loest eine Diskrepanz nur dann
 automatisch auf, wenn die Belege genau EINE Lesart stuetzen und die
@@ -13,8 +13,8 @@ die Aufloesung eines konkreten Migrationsfalls.
 EHRLICHKEIT UEBER DIE ERWARTUNGSQUELLE (Abgleich-Haelfte): Die Belege
 der Abgleich-Tests entstehen ueber ``berechne`` — denselben Kern, den
 der Abgleich intern rechnet. Ein Rechenfehler des Kerns faellt hier
-also NICHT auf; das leisten Golden Master und Fall-Anker. Geprueft
-wird die URTEILSLOGIK: wann automatisch aufgeloest werden darf, wann
+also NICHT auf; das leisten Golden Master und die eingefrorenen
+Fall-Referenzwerte. Geprueft wird die URTEILSLOGIK: wann automatisch aufgeloest werden darf, wann
 die Beleglage zu duenn ist, wann ein Ausreisser keine Verwerfung ist
 und welcher Beleg als schlechtester benannt wird. Diese Erwartungen
 sind vom Kern unabhaengig — sie folgen aus den Schwellwerten und aus
@@ -731,7 +731,7 @@ def test_beta1_fall_wird_ebenfalls_belegt():
 
 
 # --------------------------------------------------------------------------- #
-# P5: Vorverdichter (Spaltenprofil) und Skill-Verankerung
+# P5: Vorverdichter (Spaltenprofil) und Skill-Absicherung
 # --------------------------------------------------------------------------- #
 
 
@@ -877,7 +877,7 @@ def test_bestand_profil_cli_meldet_falsche_zeilenbreite(
     assert not profil_datei.exists()
 
 
-def test_transformations_skill_ist_verankert():
+def test_transformations_skill_ist_abgesichert():
     """Skill-Paritaet und die nicht verhandelbaren Kerne des neuen Skills."""
     from pathlib import Path
 
@@ -905,7 +905,7 @@ def test_runbook_fuehrt_die_bestands_haelfte_der_pipeline():
     Die Bestandsmaschinerie (Spaltenprofil, Transformation, Abgleich,
     Zwei-Stichtags-Abnahme, Abnahmebericht) existiert als Code und als
     eigene Skills; ohne Einstieg im Runbook wird sie in einem echten
-    Fall schlicht nicht ausgefuehrt (Systempruefung 19.08.). Verankert
+    Fall schlicht nicht ausgefuehrt (Systempruefung 19.08.). Sichert
     sind die Uebergaben, nicht die Formulierung.
     """
     from pathlib import Path

@@ -24,7 +24,7 @@ Dieser Beweis ist erbracht. Was danach entstand, hat den Gegenstand
 verschoben:
 
 * Der Zielkern ist eine eigenstaendige, versionierte Komponente in der
-  Zustandsmodell-Welt (ADR-004). Die Excel-Paritaet ist kein Anker mehr.
+  Zustandsmodell-Welt (ADR-004). Die Excel-Paritaet ist kein laufender Referenzwert mehr.
 * Eine neue Tarifgeneration ist **Parametrierung** — der Praezedenzfall
   TG2012 -> TG2015 lief ohne eine einzige Formelaenderung durch.
 * Ein neues Produkt kommt ueber die T-Box (Gate G-T) und wird IM

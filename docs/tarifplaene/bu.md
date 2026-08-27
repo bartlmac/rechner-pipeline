@@ -171,7 +171,7 @@ Annahmen wirken nie in Beitrag oder Reserve zurueck
 ([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 5.2).
 
-# 11 Verankerung und Abnahme
+# 11 Referenzwerte und Abnahme
 
 Das Abnahme-Protokoll gilt für alle Produkte
 ([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),

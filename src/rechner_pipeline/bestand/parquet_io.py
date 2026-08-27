@@ -139,5 +139,5 @@ def read_portfolio(
 
 
 def portfolio_hash(path: Path) -> str:
-    """SHA-256 of the Parquet file bytes (golden-master anchor)."""
+    """SHA-256 of the Parquet file bytes (golden-master reference value)."""
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()

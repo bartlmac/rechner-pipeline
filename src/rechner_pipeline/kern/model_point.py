@@ -2,7 +2,7 @@
 
 Reine Datenschicht ohne Rechenlogik. Die Feldliste ist der Input-Contract des
 Kerns; das Bestandsmodul (:mod:`rechner_pipeline.models.bestand`) hält seine
-``MODEL_POINT_FIELDS`` deckungsgleich dazu (per Test verankert).
+``MODEL_POINT_FIELDS`` deckungsgleich dazu (maschinell per Test gesichert).
 
 Provenienz der Felder (Defined Names des Quell-Workbooks):
   x=B4, Sex=B5, n=B6, t=B7, VS=B8, zw=B9,

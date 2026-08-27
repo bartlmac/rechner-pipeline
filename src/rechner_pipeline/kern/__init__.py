@@ -7,7 +7,7 @@ des Rueckgrats), die Abnahme-Gates nehmen sie ab.
 
 Beschluss 2026-08-16 (Bartek): Der Kern ist vollstaendig in der
 Zustandsmodell-Welt — die historische Excel-Paritaet (617/617) war die
-EINMALIGE Abnahme des Uebersetzungsakts und ist KEIN Anker des Kerns
+EINMALIGE Abnahme des Uebersetzungsakts und ist KEIN laufender Referenzwert
 mehr; die klassischen Kommutationsspalten sind kein Bestandteil des
 Kerns, sondern leben als separater Zweitkern
 (:mod:`rechner_pipeline.kommutationskern`) ausschliesslich fuer die
@@ -33,9 +33,9 @@ der Herkunftsbeleg; Ablauf-/Strukturnamen sind deutsch.
 
 Abnahme-Protokoll fuer Kern-Aenderungen:
 
-1. Die Charakterisierungs-Anker (``tests/fixtures/kern_anker/``) frieren
+1. Die eingefrorenen Referenzwerte (``tests/fixtures/kern_referenzwerte/``) halten
    das Verhalten repraesentativer Modellpunkte in VOLLER Float-Praezision
-   ein — sie sind die Regressions-Verankerung des Kerns. Ein Diff dort
+   — sie sind die Regressionssicherung des Kerns. Ein Diff dort
    braucht eine fachliche Begruendung im selben Commit (bewusste Abnahme
    statt stiller Drift).
 2. Die Toleranz-Ueberleitung (:mod:`rechner_pipeline.qa.ueberleitung`)
@@ -46,7 +46,7 @@ Abnahme-Protokoll fuer Kern-Aenderungen:
 4. Je MIGRATIONSFALL gilt der Generations-Golden-Master (Gate O3):
    der Kern, parametriert ueber die Tarif-Spez, reproduziert die
    Erwartungswerte des jeweiligen QUELL-Rechners — das ist Fall-Abnahme,
-   kein Kern-Anker.
+   kein Referenzwert des Kerns.
 5. ``__version__`` wird bei jeder fachlichen Aenderung angehoben und im
    Commit begruendet.
 
@@ -70,16 +70,16 @@ from rechner_pipeline.kern.rechenkern import (
     vertrags_monatsreserve,
 )
 
-#: Kern-Version (Abnahme-Anker, siehe Docstring).
+#: Kern-Version (Abnahme-Referenz, siehe Docstring).
 #: 1.x/2.x = Migrations- und Backbone-Aera (Historie in Git).
 #: 3.0.0 = Zielbild-Schnitt (Beschluss Bartek 2026-08-16): Kern
 #: vollstaendig in der Zustandsmodell-Welt; Kommutation als separater
 #: Zweitkern (rechner_pipeline.kommutationskern) nur noch Kreuzschiene;
-#: Excel-Paritaet 617/617 als Kern-Anker entfernt (sie war die einmalige
+#: Excel-Paritaet 617/617 als Kern-Referenzwert entfernt (sie war die einmalige
 #: Abnahme des Uebersetzungsakts); Tafel-Schicht eigenstaendig
 #: (kern/tafeln.py, Erschoepfungs-Domaene rein aus qx); Verlaufswerte
 #: modellpunktgetrieben statt blattfest 0..50. Rechenwerte unveraendert
-#: (reiner Schnitt: qx-Pfad identisch, Anker gruen).
+#: (reiner Schnitt: qx-Pfad identisch, Referenzwerte gruen).
 #: 3.0.1 = Kern-XML-Ladevertrag prueft qx-Domaene und den exakten
 #: Altersbereich fail-fast; Rechenwerte und Tafelbytes bleiben unveraendert.
 __version__ = "3.0.1"

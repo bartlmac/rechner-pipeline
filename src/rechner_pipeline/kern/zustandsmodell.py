@@ -22,7 +22,7 @@ Mathematischer Rahmen:
 * Bewertung über Thiele-Rückwärtsrekursion (:meth:`Zustandsmodell.barwert`);
   die Vorwärts-Zustandsverteilung (:meth:`Zustandsmodell.verteilung`) dient
   als unabhängiger Selbsttest (Vorwärts- == Rückwärtsbewertung, testseitig
-  verankert).
+  festgeschrieben).
 
 Abgrenzung zur Kommutations-Schiene (:mod:`rechner_pipeline.kern.barwerte`):
 Die Kommutation ist die geschlossene Summenform des 2-Zustands-Falls mit den

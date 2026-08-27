@@ -4,7 +4,7 @@ EHRLICHKEIT ÜBER DIE ERWARTUNGSQUELLE: Die Erwartungswerte der grünen
 Pfade stammen aus DEMSELBEN Kern, den die Suite rechnet (centgerundet,
 wie eine reale Lieferung sie führt). Diese Tests können deshalb keinen
 Rechenfehler des Kerns finden — das leisten der Golden Master und die
-Fall-Anker. Geprüft wird hier das URTEIL: Toleranzgrenzen, Auswahl des
+Fall-Referenzwerte. Geprüft wird hier das URTEIL: Toleranzgrenzen, Auswahl des
 Tracks (aktiv / beitragsfrei / abgegangen / Scheiben nach ERH), die
 Befundtexte der Lieferungs-Inkonsistenzen sowie Vollständigkeit,
 Duplikate und ausgewiesene Prüflücken.

@@ -1,11 +1,11 @@
-"""Der stabile KLV-Rechenkern: Verankerung, Parametrisierung, Contract.
+"""Der stabile KLV-Rechenkern: Referenzwerte, Parametrisierung, Contract.
 
 Kern 3.0.0 (Beschluss 2026-08-16): die einmalige Excel-Paritaets-Abnahme
 (617/617 am 2026-07-22) ist Geschichte des Uebersetzungsakts, kein
-Kern-Anker mehr — Fall-Abnahmen laufen ueber Gate O3 je Migrationsfall.
-Diese Tests verankern stattdessen:
+eingefrorener Kern-Referenzwert mehr — Fall-Abnahmen laufen ueber Gate O3 je Migrationsfall.
+Diese Tests sichern stattdessen:
 
-1. **Verankerung**: Charakterisierungs-Anker (bit-exakte ``berechne()``-
+1. **Referenzwerte**: Charakterisierungs-Referenzwerte (bit-exakte ``berechne()``-
    Ergebnisse) und bekannte Skalare nageln das Kern-Verhalten fest; ein
    Diff braucht eine bewusste, fachlich begruendete Abnahme.
 2. **Parametrisierung**: andere Modellpunkte (Alter, Geschlecht, Zins, Tafel)
@@ -37,15 +37,15 @@ from rechner_pipeline.kommutationskern.kommutation import fuer
 from rechner_pipeline.kern.produkte import UnbekanntesProduktError, hole
 from rechner_pipeline.kern.produkte.klv import KLV, VERLAUFSWERTE_SPALTEN
 from rechner_pipeline.models.bestand import MODEL_POINT_FIELDS, model_point_kwargs
-ANKER = Path(__file__).resolve().parent / "fixtures" / "kern_anker"
+REFERENZWERTE = Path(__file__).resolve().parent / "fixtures" / "kern_referenzwerte"
 
 
 # --------------------------------------------------------------------------- #
-# 1. Verankerung (Anker + bekannte Skalare)
+# 1. Referenzwerte (eingefrorene Ergebnisse + bekannte Skalare)
 # --------------------------------------------------------------------------- #
 
 
-def test_scalar_values_known_anchors():
+def test_scalar_values_known_references():
     scalars = berechne(KLV_DEFAULT)["scalars"]["Kalkulation"]
     assert scalars["ratzu"] == 0.05
     assert scalars["BJB"] == pytest.approx(4465.6547026924, abs=1e-8)
@@ -53,17 +53,17 @@ def test_scalar_values_known_anchors():
 
 
 @pytest.mark.parametrize(
-    "pfad", sorted(ANKER.glob("anker_*.json")), ids=lambda p: p.stem
+    "pfad", sorted(REFERENZWERTE.glob("referenz_*.json")), ids=lambda p: p.stem
 )
-def test_charakterisierungs_anker_bleiben_exakt(pfad):
+def test_charakterisierungs_referenzwerte_bleiben_exakt(pfad):
     """Eingefrorene berechne()-Ergebnisse weiterer Modellpunkte (bit-exakt).
 
-    Die Anker sind kernintern (nicht extern verifiziert); sie nageln
+    Die Referenzwerte sind kernintern (nicht extern verifiziert); sie nageln
     das Kern-Verhalten auf den sonst ungetesteten Zweigen numerisch fest —
-    seit dem Backbone-Wechsel sind sie die Voll-Präzisions-Verankerung des
+    seit dem Backbone-Wechsel sind sie die Voll-Präzisions-Referenz des
     produktiven Pfads. Ein Diff hier ist eine Verhaltensänderung und braucht
     eine bewusste, fachlich begründete Abnahme (kern/__init__-Docstring).
-    Anker anderer Produkte tragen ein ``produkt``-Feld (Registry-Dispatch).
+    Referenzwerte anderer Produkte tragen ein ``produkt``-Feld (Registry-Dispatch).
     """
     data = json.loads(pfad.read_text(encoding="utf-8"))
     produkt = data.get("produkt", "klv")

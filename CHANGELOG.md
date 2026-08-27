@@ -93,7 +93,7 @@ einen vorgeführten Stand zitierbar.
   Nutzer-Configs.
 * **ADR-004 (16.08.): Der Zielkern ist Thiele-Welt** — Kern 3.0.0. Die
   Excel-Parität (617/617 Werte, 22.07.2026) ist Übersetzungsbeleg der
-  Vergangenheit, kein Anker mehr; die Kommutationsrechnung wandert in
+  Vergangenheit, kein laufender Referenzwert mehr; die Kommutationsrechnung wandert in
   einen separaten Zweitkern.
 * **ADR-005 (16.08.): Knoten-Hierarchie, Test-Bindung, Code-Karte,
   berechneter Impact** — Knoten-Annotation wird Pflicht und maschinell

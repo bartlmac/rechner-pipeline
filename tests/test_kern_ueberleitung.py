@@ -18,7 +18,7 @@ from rechner_pipeline.kern.produkte.klv import KLV
 from rechner_pipeline.kern import tafeln
 
 #: Vergleichsfenster der Ueberleitung (0..50) — Eigenschaft des
-#: Kreuz-Checks, seit Kern 3.0.0 KEIN Kern-Anker mehr.
+#: Kreuz-Checks, seit Kern 3.0.0 KEIN eingefrorener Kern-Referenzwert mehr.
 VERLAUFSJAHRE = 51
 from rechner_pipeline.kern.zustandsmodell import ZustandsBarwerte
 from rechner_pipeline.qa.ueberleitung import (
@@ -62,9 +62,9 @@ def test_klassifizierung_skaliert_mit_versicherungssumme():
 
 
 def test_default_liefert_exakt_die_zustandsmodell_werte():
-    """Review-Fix-Verankerung: das Gate prueft die Schienen-Aequivalenz,
+    """Review-Fix, maschinell gesichert: das Gate prueft die Schienen-Aequivalenz,
     nicht den Default — diese Wert-Pruefung bindet den produktiven Default
-    bit-exakt an die Zustandsmodell-Schiene (zusaetzlich zu den Ankern)."""
+    bit-exakt an die Zustandsmodell-Schiene (zusaetzlich zu den Referenzwerten)."""
     from rechner_pipeline.kern import berechne
 
     mp = KLV_DEFAULT

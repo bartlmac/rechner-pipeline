@@ -1,5 +1,5 @@
 {
- "charakterisierung": "Kern 2.0.0: produktiver Pfad = Zustandsmodell-Rueckgrat (Wechsel abgenommen 2026-08-12 via Toleranz-Ueberleitung qa/ueberleitung: 6170 Werte, 0 abweichend, max. 4e-13 relativ; Vorgaenger-Anker = Kommutations-Schiene, Stand 1.x). Volle Float-Praezision, NICHT Excel-verifiziert (anders als kern_klv/) — Zweck: Verhaltens-gleichheit bei Refactorings und bewusste Abnahme kuenftiger marginaler Aenderungen.",
+ "charakterisierung": "Kern 2.0.0: produktiver Pfad = Zustandsmodell-Rueckgrat (Wechsel abgenommen 2026-08-12 via Toleranz-Ueberleitung qa/ueberleitung: 6170 Werte, 0 abweichend, max. 4e-13 relativ; Vorgaenger-Referenzwerte = Kommutations-Schiene, Stand 1.x). Volle Float-Praezision, NICHT Excel-verifiziert (anders als kern_klv/) — Zweck: Verhaltens-gleichheit bei Refactorings und bewusste Abnahme kuenftiger marginaler Aenderungen.",
  "ergebnis": {
   "scalars": {
    "Kalkulation": {

@@ -128,7 +128,7 @@ def _provenienz_fabrik(
         raise BefuellungsFehler(
             f"Fragment-Quelle {fragment.quelle_datei!r} ist im "
             "Eingang-Register nicht registriert — keine Aussage ohne "
-            "verankerte Quelle (P1)"
+            "registrierte Quelle (P1)"
         )
     sha = registriert[fragment.quelle_datei]
 

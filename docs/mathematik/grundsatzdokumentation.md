@@ -237,10 +237,10 @@ dem Tarifwerk stammt, hat in Beitrag und Reserve nichts zu suchen.
   Zielkerns: Dieser führt keine $l_x$-Kette, sondern rechnet
   Verbleibswahrscheinlichkeiten direkt aus den Ausscheidewerten. Wer
   ein neues Produkt baut, braucht beide Größen nicht.
-* **Verankerung in voller Präzision.** Charakterisierungs-Anker binden
+* **Referenzwerte in voller Präzision.** Eingefrorene Referenzwerte (Charakterisierungstests) binden
   den produktiven Pfad in voller Float-Präzision. Eine auf
   Nachkommastellen gerundete Parität ist ein historischer
-  Übersetzungsbeleg, kein laufender Anker.
+  Übersetzungsbeleg, kein laufender Referenzwert.
 
 # 7 Geschäftsvorfälle: Buchungskonvention
 
@@ -733,10 +733,10 @@ Produkten dient (`Knoten: klv, bu`), gehört hierher; was ein Modul mit
 genau einem Produktknoten beschreibt, gehört in den Tarifplan. **Kein
 Satz steht an beiden Orten.**
 
-# 11 Abnahme und Verankerung
+# 11 Abnahme und Referenzwerte   [Achtung: docs/tarifplaene/klv.md und bu.md verweisen als "Abschnitt 11" hierher]
 
 Änderungen am Kern folgen seinem Abnahme-Protokoll
-(`rechner_pipeline.kern`): Charakterisierungs-Anker in voller
+(`rechner_pipeline.kern`): eingefrorene Referenzwerte (Charakterisierungstests) in voller
 Float-Präzision, algebraische Identitätsprüfungen, je Migrationsfall
 Gate O3 gegen den Quell-Rechner, und für Produkte mit
 Kommutations-Vergleichsschiene die Toleranz-Überleitung

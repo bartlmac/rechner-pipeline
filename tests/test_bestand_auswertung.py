@@ -165,7 +165,7 @@ def test_auswertungs_verlauf_beispielbestand(portfolio, config, fortschreibung):
 
 
 def test_auswertung_pex_versatz_der_scheiben(config):
-    """Review-Fix-Verankerung: Scheiben laufen nach PEX mit ihrem eigenen
+    """Review-Fix, maschinell gesichert: Scheiben laufen nach PEX mit ihrem eigenen
     Jahresversatz beitragsfrei weiter (hand-konstruiertes, validiertes Paar)."""
     import dataclasses
 

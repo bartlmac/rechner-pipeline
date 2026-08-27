@@ -30,7 +30,7 @@ Randbedingungen:
   das vermieden werden soll.
 * Die ADR-005-Mechanik existiert bereits: Jeder Baustein traegt einen
   Ontologie-Knoten, jeder Test ist knotengebunden, `impact` berechnet
-  Beruehrungsmengen, Anker- und O3-Gates beweisen Wertidentitaet.
+  Beruehrungsmengen, Referenzwert- und O3-Gates beweisen Wertidentitaet.
 
 ## Entscheidung
 
@@ -48,7 +48,7 @@ dieser Baustein?" beantwortet der Knoten, nicht die Branch-Historie.
 **Regel 3 — Inkremente landen klein und frueh auf dem Trunk, und jede
 Landung beweist die Nicht-Beruehrung der anderen Faelle.** Ein
 Inkrement darf nur landen, wenn die Gesamt-Suite gruen ist —
-einschliesslich der Anker und O3-Laeufe ALLER anderen offenen und
+einschliesslich der Referenzwert- und O3-Laeufe ALLER anderen offenen und
 abgeschlossenen Faelle. Dass Migration A Migration B nicht veraendert
 hat, wird bei jeder Landung maschinell bewiesen, nicht per Disziplin
 gehofft. Der fachliche Zustand einer laufenden Migration (A-Box,
@@ -57,7 +57,7 @@ Fall-Arbeitsbereich `faelle/<name>/` (ADR-002).
 
 **Regel 4 — Knoten-Lebenszyklus.** Ein Generation-Knoten traegt einen
 Status: `in_migration` (mit Verweis auf den offenen Fall; Werte duerfen
-sich noch aendern) oder `abgenommen` (anker-gesichert, Werte
+sich noch aendern) oder `abgenommen` (durch Referenzwerte gesichert, Werte
 eingefroren). Damit ist jederzeit ablesbar, welche Teile des Kerns zu
 welcher unfertigen Migration gehoeren. Der echte Konfliktfall wird
 benennbar und ist ein KOORDINATIONSPUNKT mit menschlicher Entscheidung,

@@ -4,7 +4,7 @@ Prueft die A-Box eines Fall-Arbeitsbereichs:
 
 * Struktur- und Kreuz-Objekt-Contract (Pydantic-Validierung beim Laden
   plus :func:`rechner_pipeline.ontologie.abox.validate_abox`), inklusive
-  Verankerung jeder Quelle im Eingang-Register des Falls (P1),
+  Bindung jeder Quelle an das Eingang-Register des Falls (P1),
 * Coverage gegen den PFLICHTUMFANG der T-Box je Parametrierungszelle
   (P6) — eine unvollstaendige A-Box blockiert Stage 2,
 * offene Diskrepanzen (P2) — sie blockieren ebenfalls: die Aufloesung

@@ -53,7 +53,7 @@ Abschnitt 8.)
 Gate schreibt einen inhaltsadressierten Snapshot: Artefakt-Hashes,
 Systemstand, Entscheider, Rolle, Begruendung; Snapshots verketten
 ihre Vorgaenger. Die Annahme RECHNET ihre Vorbedingungen (Gates gruen
-und auf demselben Stand verankert). Gate O3 schreibt entsprechend einen
+und an denselben Stand gebunden). Gate O3 schreibt entsprechend einen
 inhaltsadressierten Beleg je Generation. G-2 verlangt genau die
 Generationenmenge der aktuellen A-Box und gleicht A-Box- sowie Systemstand
 jedes Belegs ab. Eine menschliche Annahme wird mit einem ausserhalb des Falls

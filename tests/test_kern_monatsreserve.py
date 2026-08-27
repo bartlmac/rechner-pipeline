@@ -79,7 +79,7 @@ def test_stoab_in_der_kappung_und_rkw(kern: Rechenkern) -> None:
     """Vertragsjahr 10: der Rohwert liegt über ``stoab_max`` — geprüft wird
     die Kappung und die RKW-Definition, NICHT die Interpolation.
 
-    Der Punkt bleibt bewusst stehen (er verankert die Kappungsregel und
+    Der Punkt bleibt bewusst stehen (er haelt die Kappungsregel und
     den RKW), sagt aber nichts über die DR-Abhängigkeit: bei ``a=10`` ist
     ``satz*(VS - DR) = 611.07``, also das Vierfache der Obergrenze. Die
     DR-abhängige Zone prüft

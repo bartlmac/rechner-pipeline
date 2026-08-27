@@ -151,7 +151,7 @@ zum Bytevergleich neu (ADR-009).
 Braucht die Migration eine **Code-Änderung** (Berechnungskatalog,
 Bewertung, Produktdefinition), läuft sie als kleines, knotengebundenes
 Inkrement auf dem einen Trunk — Landung nur mit grüner Gesamt-Suite
-einschließlich der Anker aller anderen Fälle (ADR-007: parallele
+einschließlich der Referenzwerte aller anderen Fälle (ADR-007: parallele
 Migrationen in einem Kern).
 
 Die Agenten-Rollen samt Grenzen stehen im Katalog
