@@ -1,11 +1,14 @@
 # Aktuarieller Test: AT-1, AT-2, AT-3
 
-**Stand:** Vorschlag zur Durchsprache, 27.08.2026.
+**Stand:** gebaut am 27.08.2026, Suite 1021 grün.
 **Auftrag:** Rückmeldung zum Abnahmebericht, Punkt N4 — der aktuarielle
 Test ist mit einem Stichtag nicht vollständig; er braucht drei Tests mit
 je eigener Stichprobe, eigenen Abnahmekriterien und eigenem Bericht.
-**Status:** nichts hiervon ist gebaut. AT-1 ist der heutige Test um einen
-zweiten Zeitpunkt erweitert; AT-2 und AT-3 sind neu.
+**Status:** Die Engine trägt Prüfpunkte, `dDK` ist als Prüfwert je
+Geschäftsvorfall gebaut, die drei Abnahmen `A-M1`/`A-M2`/`A-M3` sind
+eigene, einzeln zeichenbare Gates (ADR-012), und jede rendert einen
+Bericht mit eigenem Schwerpunkt. Offen und unten beschrieben: die
+Stichprobenprofile und ihr Erzeugungsweg für den Baldrian-Fall.
 
 ## 1 Das Problem
 
@@ -67,27 +70,41 @@ als es ist.
 
 ### 2.3 AT-3 — GeVo-Test
 
-Die Prüfwerte je Geschäftsvorfall stehen bereits im Bewegungsjournal der
-Bestandsführung, als Betragsart je Ereignis:
+Der tragende Prüfwert ist für **jeden** Vorfall derselbe: die
+**Veränderung des Deckungskapitals**, die er auslöst (`dDK`).
 
-| Vorfall | Prüfwert | Zeitpunkt |
-|---|---|---|
-| STO Storno | Rückkaufswert | Wirksamkeit des Storno |
-| PEX Beitragsfreistellung | beitragsfreie Versicherungssumme | Wirksamkeit der Freistellung |
-| ABL Ablauf | Ablaufleistung (KLV), Jahresrente (BU) | Ablauftermin |
-| TOD Tod | Todesfallleistung, Jahresrente (BU) | Todestag |
-| INV Invalidität | BU-Jahresrente | Eintritt |
-| REA Reaktivierung | BU-Jahresrente | Reaktivierung |
-| ERH Erhöhung | erhöhte Versicherungssumme | Erhöhungstermin |
+Der erste Entwurf hatte je Vorfall die ausgezahlte Leistung genannt und
+bei ABL, TOD und REA die BU-Jahresrente. Das ist kein gültiger Prüfwert:
+Eine laufende Rente ist keine Größe zu *einem* Zeitpunkt, und bei Ablauf,
+Tod und Reaktivierung wird sie nicht ausgezahlt, sondern eine bestehende
+endet. Die Veränderung des Deckungskapitals dagegen ist für jeden Vorfall
+definiert — und sie ist genau das, was der Vorfall im Bestand bewirkt.
+
+| Vorfall | ΔDK | zusätzlicher Leistungswert | Zeitpunkt |
+|---|---|---|---|
+| STO Storno | −DK (Vertrag endet) | Rückkaufswert | Wirksamkeit |
+| PEX Beitragsfreistellung | DK<sub>bfr</sub> − DK<sub>bpfl</sub> | beitragsfreie Summe | Wirksamkeit |
+| ABL Ablauf | −DK | Ablaufleistung (KLV) | Ablauftermin |
+| TOD Tod | −DK | Todesfallleistung | Todestag |
+| ERH Erhöhung | 0 (neue Scheibe startet bei null) | erhöhte Summe | Erhöhungstermin |
+| INV Invalidität | Zustandswechsel im BU-Graph | — | Eintritt |
+| REA Reaktivierung | Zustandswechsel im BU-Graph | — | Reaktivierung |
+
+Zwei Fälle sind dabei besonders aufschlussreich: Bei der
+Beitragsfreistellung ist ΔDK bei verlustfreier Umwandlung **null**; ein
+Abzug macht sie negativ — genau der Prüfwert, um den es geht. Bei der
+Erhöhung muss ΔDK null sein, weil die neue Scheibe bei null beginnt; ein
+anderer Wert ist ein Befund.
+
+Invalidisierung und Reaktivierung wechseln den Zustand des
+BU-Zustandsgraphen. Die Engine **lehnt sie ab**, statt einen KLV-Wert
+auszugeben, der wie ein BU-Wert aussähe. Sie kommen dazu, wenn die
+BU-Zustandsbewertung angeschlossen ist.
 
 Damit ist AT-3 nicht zu erfinden, sondern abzuleiten: Der Testauftrag
 liest die Vorfälle, die die Stichprobe benennt, und vergleicht je Vorfall
-den Wert, den das System bildet, gegen den gelieferten.
+die Veränderung, die das System bildet, gegen die gelieferte.
 
-@Claude Keine valide Prüfwerte: ABL/Jarhesrente (BU); TOD Jahresrente (BU); 
-Reaktivierung BU-Jahresrente; zudem wird einmal Jahresrente (BU) und wieder 
-sonst BU-Jahresrente geschrieben.  Stattdessen sollte für jeden Vorfall die
-Veränderung des Deckungskapital als Prüfwerte reingeommen werden.
 
 ## 3 Die gemeinsame Struktur
 
@@ -172,18 +189,60 @@ dass sämtliche Differenzen reine Cent-Rundung sind — ohne Rundung sind
 Jede Toleranz muss über diesem Rauschen liegen, sonst misst der Test die
 Darstellungskonvention statt der Rechnung.
 
-@Claude: Achtung - die Tests sind selbst separate Gates. Das ist wichtig
-denn in der Praxis wird anhand der Abnahme dieses indiviudellen Tests
-an anderen Stellen weiter gearbeitet (oder nicht). GeVos sind oft erst
-in der späteren Phase der Migration notwendig. Wichtig also, dass wir das
-als Gates trennen.
+### 4.1 Stichprobenweite: eine Skala, keine feste Zuordnung
 
-@Claude: Die Stichprobenprofile waren anders gemeint. Jeder Test hat
-unterschiedliche mögliche Stichproben (von "voll" - Gesambestand oder
-alle GeVos die simuliert sind; bis "sehr klein" - z. B. 1 Fall pro GeVo).
-Du kannst einen Vorschlag der Ausgestaltung geben und Prozess diese für
-Baldrian mit dem Windows-Werkzeug zu generieren - wenn wir den neuen
-Fall vorbereiten, finalisieren wir uns nutzen wir das.
+Die Weite ist keine Eigenschaft des Tests, sondern eine Entscheidung je
+Migrationsfall: Ein Erstlauf gegen eine unbekannte Lieferung fährt eng,
+eine Abnahme fährt weit. Deshalb trägt jedes Profil seine Weite im
+Klartext, und sie steht im Bericht — ein grüner Test über zwei Verträge
+sagt etwas anderes als derselbe Test über achthundert.
+
+Vorschlag für die vier Stufen:
+
+| Stufe | AT-1 Stichtag | AT-2 Verlauf | AT-3 Geschäftsvorfall |
+|---|---|---|---|
+| **voll** | ganzer Bestand | ganzer Bestand, jeder mit seinen Zeitpunkten | alle vorhandenen Vorfälle |
+| **geschichtet** | Mindestzahl je Historientyp | Mindestzahl je Restlaufzeit-Klasse | Mindestzahl je Vorfallart |
+| **eng** | je Historientyp einige | je Restlaufzeit-Klasse einige | je Vorfallart einige |
+| **minimal** | ein Vertrag je Historientyp | ein Vertrag je Restlaufzeit-Klasse | **ein Fall je Vorfallart** |
+
+Die Schichtungsachse ist je Test eine andere, und das ist der Punkt: Bei
+AT-1 entscheidet die Historie über das Residuum, bei AT-2 die
+Restlaufzeit (wer nur noch drei Jahre läuft, hat den 5-Jahres-Punkt
+nicht), bei AT-3 die Vorfallart.
+
+Für die minimale Stufe gilt eine Warnung, die der Bericht auch ausgibt:
+Bei weniger als drei Fällen je Ausprägung trägt die Aussage nicht weit.
+Der Geschäftsvorfall-Bericht weist deshalb je Vorfallart aus, wie viele
+Fälle sie stützen — und welche Vorfallart die Stichprobe gar nicht
+enthält.
+
+### 4.2 Wie die Stichproben für den Baldrian-Fall entstehen
+
+Der Weg über das Windows-Werkzeug, wenn wir den Fall aufsetzen:
+
+1. **Grundgesamtheit feststellen.** Aus dem gelieferten Bestandsabzug für
+   AT-1 und AT-2, aus dem gelieferten Bewegungsprotokoll für AT-3. Für
+   AT-3 ist die Grundgesamtheit nicht der Bestand, sondern die Menge der
+   Vorfälle — nur ein Teil der Verträge hat überhaupt einen.
+2. **Schichten bilden** nach der jeweiligen Achse (Historientyp,
+   Restlaufzeit-Klasse, Vorfallart) und die Besetzung je Schicht
+   auszählen. Dünn besetzte Schichten fallen hier auf, bevor gezogen wird.
+3. **Ziehen** mit dokumentiertem Startwert; dieselbe Grundgesamtheit und
+   derselbe Startwert ergeben dieselbe Stichprobe.
+4. **Auftrag an das abgebende Unternehmen** formulieren: Für genau diese
+   Policen und genau diese Zeitpunkte werden Vergleichswerte erbeten —
+   bei AT-2 einschließlich der Werte nach fünf und zehn Jahren sowie zum
+   Ablauf, bei AT-3 je Vorfall die Veränderung des Deckungskapitals.
+   Dieser Auftrag ist der eigentliche Zweck der Ziehung: Er sagt der
+   Gegenseite, was sie liefern soll, und wir bekommen nicht mehr Daten
+   als nötig.
+5. **Zurückspielen** und den Test fahren; die Stichprobe geht als Beleg
+   mit in das Ergebnis.
+
+Schritt 4 ist der, der die Weite bestimmt: Was wir nicht erbitten, kann
+später nicht geprüft werden. Deshalb sollte die Weite feststehen, bevor
+der Auftrag rausgeht — nicht danach.
 
 ## 5 Die drei Berichte
 
@@ -192,17 +251,37 @@ wäre bequem und fachlich falsch: Der Verantwortliche Aktuar nimmt AT-1
 möglicherweise ab und AT-3 nicht, und diese Entscheidung muss getrennt
 dokumentiert und getrennt gezeichnet sein.
 
-Die Berichtserzeugung selbst bleibt, wie sie ist — der Renderer bekommt
-das Testergebnis und das Profil und schreibt daraus. Was hinzukommt:
-Jeder Bericht weist **sein** Profil aus, mit Stichprobenziehung, Kriterien
-und Abdeckung (wie viele Verträge tragen welchen Prüfpunkt).
+Gemeinsam ist allen dreien nur das Gerüst: Urteil, Testprofil mit Weite
+und Kriterien, Stichprobenbeleg, Residuum nach Historientyp, Residuum
+nach Anlass, Fehlschläge, Transportsicherung, Systemstand. Der
+Schwerpunkt ist je Bericht ein anderer — **gebaut** ist:
 
-@Claude: Die Berichte werden sehr wahrscheinlich recht unterschiedlich
-sein. Bei GeVos geht es mehr um plausibilität als um eine lange Tabelle
-mit "Beinahenulls", mehr Text-Prosa Beurteilung und Begründung.
-Bei Verlaufsteste werden wir ggf. auch Diagrame nutzen, noch unklar.
-Ehrlicherweise brauchen wir unterschiedliche Vorlagen. Gerne Vorschlag
-für die inhaltliche Ausgestaltung geben!
+**A-M1 Stichtagstest: Übernahme und Fortschreibung nebeneinander.** Der
+Bericht stellt die beiden Zeitpunkte direkt gegenüber, weil genau die
+Differenz zwischen ihnen die neue Aussage ist. Enthält ein Lauf nur den
+Übernahmestichtag, sagt der Bericht das ausdrücklich: Er belegt dann den
+Übernahmeakt, aber nicht die Fortschreibungsregel.
+
+**A-M2 Verlaufstest: Entwicklung über die Prüfzeitpunkte.** Eine Zeile je
+Zeitpunkt mit dem größten Residuum und der Zahl der Verträge, die diesen
+Punkt überhaupt tragen. Wächst das Residuum von Punkt zu Punkt, liegt der
+Verdacht auf der Ausscheideordnung oder dem Kostenverlauf statt auf dem
+Übernahmestand — das ist die Frage, die der Verlaufstest beantwortet.
+
+**A-M3 Geschäftsvorfalltest: Beurteilung statt Wertetabelle.** Eine Zeile
+je Vorfallart mit Fallzahl, größtem Residuum und einem Urteilssatz:
+„exakt getroffen", „im Rundungsrauschen der Lieferung", „Abweichung über
+dem Rundungsrauschen — begründen", jeweils mit dem Zusatz „nur N Fälle —
+schmale Grundlage", wo die Stichprobe dünn ist. Nicht getroffene
+Vorfallarten stehen ausdrücklich als solche da, mit dem Satz, dass der
+Test über sie nichts sagt.
+
+**Offen, bewusst nicht gebaut:** Diagramme im Verlaufsbericht. Ein
+Residuum-über-Zeit-Verlauf wäre dort naheliegend, aber solange die
+Berichte deterministisch und ohne externe Abhängigkeiten sein müssen,
+käme nur eine selbst erzeugte SVG-Kurve in Frage. Das ist machbar und
+lohnt sich, sobald ein echter Lauf mit mehreren Zeitpunkten vorliegt —
+an synthetischen Nullen zeigt eine Kurve nichts.
 
 ## 6 Was das für das Gate bedeutet
 
@@ -216,53 +295,71 @@ eine Ebene tiefer. Die Belegrollen wachsen entsprechend: statt einer
 Rolle `ga_snapshot` drei (`at1_snapshot`, `at2_snapshot`, `at3_snapshot`),
 die G-2 alle drei pinnt.
 
-## 7 Offene Entscheidungen für die Durchsprache
+## 7 Entschieden und umgesetzt
 
-**E1 — Unterjährige Prüfzeitpunkte bei AT-3.** Ein Geschäftsvorfall
-passiert am Wirksamkeitstag, nicht am Vertragsjahrestag. Die Invariante
-aus ADR-010 lautet aber: kein unterjähriger Vergleich. Mein Vorschlag,
-diese Spannung aufzulösen: Die Invariante verbietet **Interpolation** —
-einen Jahreswert auf einen Zwischentermin hochzurechnen. Sie verbietet
-nicht, eine Größe zu vergleichen, die das System an diesem Termin
-tatsächlich bildet. Die Monatsreserve ist eine definierte Größe
-(Grundsatzdokumentation Abschnitt 6 führt beide unterjährigen
-Konventionen), der Rückkaufswert zum Stornotermin ebenso. AT-3 vergleicht
-also gerechnete Werte, keine Interpolate. Das braucht deine Zustimmung,
-weil es die Formulierung der Invariante schärft.
+**E1 — Unterjährige Prüfzeitpunkte bei AT-3: zugelassen.** Ein
+Geschäftsvorfall setzt selbst den Rechenpunkt; Stichtags- und
+Verlaufspunkte liegen weiterhin auf dem Vertragsjahrestag, und ein Wert
+dazwischen ist dort ein harter Fehler.
 
-@Claude: ok, das ist fast selbstverständlich aber ok noch explizit.
+**Dazu ein Befund, der die Begründung zurechtgerückt hat.** Der erste
+Entwurf argumentierte, die Monatsreserve sei „eine gerechnete Größe, kein
+Interpolat". Ein Test, der genau das nachweisen sollte, ist rot geworden:
+Die Monatsreserve des Kerns ist ausdrücklich **linear zwischen den
+Vertragsjahrestagen gemischt** (`klv.monatsreserve`, Grundsatzdokumentation
+Abschnitt 6). Unterjährig wird also sehr wohl gegen einen interpolierten
+Wert verglichen.
 
-**E2 — Was ist "die letzte technische Änderung"?** Bei AT-1 nennst du als
-ersten Zeitpunkt "letzter Vertragsstichtag bzw. letzte technische
-Änderung". Ist die technische Änderung ein eigener Rechenpunkt (dann
-braucht der Vertrag ein Attribut dafür), oder der letzte Jahrestag davor?
+Zulässig ist es trotzdem, aber aus einem anderen Grund: Beim
+Geschäftsvorfall **ist** dieser Betrag die Auszahlung. Rechnet das
+Quellsystem unterjährig anders — etwa mit Zinseszins statt linear —, ist
+die Differenz eine echte Konventionsdifferenz mit Zahlungswirkung, und
+genau die soll der Geschäftsvorfalltest finden. Am Migrationsstichtag
+dagegen bleibt der unterjährige Vergleich verboten, weil dort alle
+Verträge gleichzeitig verglichen würden und die Mischungskonvention die
+Methode verdecken würde. Docstrings, Fehlermeldung und ein eigener Test
+halten diese Unterscheidung fest.
 
-@Claude: Geschäftsvorfallsdatum für GV, die nicht am Vertragsstichtag
-passieren, z. B. vor der Migration wird eine Beitragsreduktion oder
-Verkürzung der Dauer angestoßen (haben wir im Modell noch nicht) oder
-einfach Zustandsänderung in die Invalidisierung oder Reaktivierung
-(wenn wir es dann monatlich oder sogar täglich simulieren). Dann soll
-dieser Wert genommen werden, denn der ist aktueller als der letzte
-Vertragsstichtag. Es ist eine reine Konvention aus der Migrationspraxi
-aber eine sinvolle und diese würde ich als regel ins System übernehmen.
+**E2 — Der Verankerungszeitpunkt ist das Geschäftsvorfallsdatum, wo es
+eines gibt.** Fällt ein rechnender Geschäftsvorfall nicht auf den
+Vertragsstichtag (Beitragsreduktion, Dauerverkürzung, Invalidisierung,
+Reaktivierung), gilt sein Datum, weil es aktueller ist als der letzte
+Vertragsstichtag. Das ist die Konvention der Migrationspraxis und deckt
+sich mit Grundsatzdokumentation 9.12:
+$t_a = \max(\text{letzter Vertragsstichtag},\ \text{letzter rechnender
+Geschäftsvorfall})$. Die Engine setzt das um, indem sie unterjährige
+Punkte mit Vorfall-Anlass zulässt.
 
-**E3 — Stichprobenprofile.** Heute gibt es genau ein Profil
-(`vollbestand`). AT-2 und AT-3 brauchen andere: AT-3 kann nicht über den
-Vollbestand laufen, weil nur ein Teil der Verträge überhaupt einen
-Geschäftsvorfall hat. Soll AT-3 alle Vorfälle prüfen, die es gibt, oder
-eine Ziehung je Vorfallart mit Mindestabdeckung?
+Zwei der genannten Vorfälle gibt es im Modell noch nicht
+(Beitragsreduktion, Dauerverkürzung) und zwei kann die Engine noch nicht
+bewerten (Invalidisierung, Reaktivierung — sie brauchen die
+BU-Zustandsbewertung). Für beide gilt: Sie werden hart abgelehnt, nicht
+still mit einem KLV-Wert bedient.
 
-@Claude: Siehe meine Anmerkungen oben, das habe ich dort schon erklärt.
+**E3 — Stichprobenweite ist eine Skala je Test**, siehe 4.1 und 4.2. Die
+Weite steht im Profil und im Bericht; die Ziehung selbst und der
+Erzeugungsweg für den Baldrian-Fall sind dort beschrieben.
 
-**E4 — Reihenfolge des Baus.** Mein Vorschlag: erst der Umbau auf
-Prüfpunkte plus AT-1 (das ist der kleinste Schritt mit dem größten
-Zugewinn und lässt sich sofort gegen TG2015 fahren), dann AT-3 (die
-Prüfwerte liegen im Journal bereit), dann AT-2 (braucht am meisten
-gelieferte Erwartungswerte und ist am ehesten von der Datenlage
-abhängig).
+**E4 — In einem Zug gebaut.** Engine, Profile, drei Gates, drei Berichte,
+22 neue Tests, Suite 1021 grün.
 
-@Claude: Ich würde das ehrlichgesagt voll durchziehen, es ist klein
-genug um in einem rutsch zu bauen und zu besprechen.
+## 7a Was noch offen ist
+
+* **Die Stichprobenprofile in `qa.stichprobe`** kennen weiterhin nur
+  `vollbestand`. Die Skala aus 4.1 ist beschrieben, aber die Ziehung nach
+  Historientyp, Restlaufzeit-Klasse und Vorfallart ist nicht gebaut — sie
+  wird fällig, wenn der Baldrian-Fall aufgesetzt wird, und braucht dann
+  den Auftrag an das Windows-Werkzeug aus 4.2.
+* **Invalidisierung und Reaktivierung** im Geschäftsvorfalltest, sobald
+  die BU-Zustandsbewertung angeschlossen ist.
+* **Diagramme im Verlaufsbericht**, sobald ein echter Lauf mit mehreren
+  Zeitpunkten vorliegt.
+* **`A-M2` und `A-M3` sind keine Pflichtbelege von `A-M4`.** Das ist
+  Absicht: Verlaufs- und Geschäftsvorfallwerte liefert ein abgebendes
+  Unternehmen oft erst später, während die Migration auf dem belegten
+  Stichtagstest schon läuft. Ob ein Fall ohne sie abgenommen wird, ist
+  eine Entscheidung des Aktuariats je Fall — die Gate-Kette nimmt sie
+  niemandem ab.
 
 ## 8 Was hier NICHT steht
 
