@@ -59,7 +59,10 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   correction layer in its section 9; Tarifplaene in
   `docs/tarifplaene/` carry the per-product elaboration and never
   repeat the shared backbone (guarded by
-  `tests/test_tarifplan_struktur.py`); the
+  `tests/test_tarifplan_struktur.py`); how the showcase portfolios are
+  GENERATED — third-order experience assumptions, simulation tooling —
+  in `docs/simulation/`, never in the actuarial documents, because in a
+  real company reality drives the portfolio, not a model; the
   project-side migration procedure in `docs/migrationskonzept/`
   (template; the filled instance lives in the case workspace); planned
   work that is recognised but not built in `dev-docs/`; team

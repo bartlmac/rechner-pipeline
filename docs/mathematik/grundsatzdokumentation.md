@@ -190,30 +190,22 @@ Modellpunkts. Eine Anfrage jenseits der tabellierten Domäne ist ein
 benannter Fehler, kein stiller Nullwert — ein Vertrag, dessen
 Bewertungshorizont die Tafel erschöpft, muss als solcher auffallen.
 
-## 5.2 Erste gegen dritte Ordnung
+## 5.2 Ordnung der Rechnungsgrundlagen
 
-Die **Bewertung** rechnet auf Rechnungsgrundlagen **erster Ordnung**.
-Wie sich ein Bestand über die Zeit **entwickelt**, steuern davon
-getrennte **Erfahrungsannahmen dritter Ordnung**: Jede
-Ereigniswahrscheinlichkeit der Fortschreibung entsteht daraus als
-geklemmte affine Transformation
+Die Bewertung rechnet auf Rechnungsgrundlagen **erster Ordnung** — den
+vorsichtig angesetzten Werten des Tarifwerks. Sie sind die einzigen
+Werte, die in Beitrag, Reserve und Leistung eingehen.
 
-$$\text{Annahme} \;=\; \min(1,\; \max(0,\; a + b \cdot q)),
-\qquad q = \text{Wert erster Ordnung}$$
+Davon strikt getrennt sind Annahmen **dritter Ordnung**, also erwartete
+statt vorsichtige Werte. Sie werden in diesem System ausschliesslich
+vom Simulationswerkzeug verwendet, das die Vorzeigebestaende erzeugt
+(`docs/simulation/erfahrungsannahmen.md`). Für die Bewertung gilt:
 
-Die Klemmung auf $[0, 1]$ gehört zur Definition: Ohne sie wäre die
-Transformation keine Wahrscheinlichkeitsabbildung. Zur Belegung der
-Parameter:
+> Eine Annahme dritter Ordnung darf nie in die Bewertung
+> zurueckwirken.
 
-* $b < 1$ dämpft eine belastende, $b > 1$ verstärkt eine entlastende
-  Ausscheideordnung; $b = 1$ übernimmt die erste Ordnung unverändert.
-* $b = 0$ ist der Fall für Ereignisse, für die es **keine**
-  Rechnungsgrundlage gibt (Storno, Beitragsfreistellung, dynamische
-  Erhöhung): Dort ist $a$ die Rate selbst.
-
-Beiträge und Reserven bleiben von den Erfahrungsannahmen unberührt.
-Diese Trennung ist nicht verhandelbar: Eine Erfahrungsannahme darf nie
-in die Bewertung zurückwirken.
+Das ist nicht verhandelbar. Ein Wert, der aus einer Erwartung statt aus
+dem Tarifwerk stammt, hat in Beitrag und Reserve nichts zu suchen.
 
 # 6 Diskretisierung, Numerik und Rundung
 

@@ -43,18 +43,21 @@ ZENTRAL = REPO_ROOT / "docs" / "mathematik" / "grundsatzdokumentation.md"
 #: waehrend ein blosser Verweis ("die Rekursion steht in ...") nicht
 #: anschlaegt. Ein Waechter gegen sinngemaesse Prosa-Wiederholung ist
 #: das ausdruecklich NICHT — dagegen hilft nur das Review.
+#: Je Thema: die Bausteine, ab wievielen Treffern es als AUSGEFUEHRT
+#: gilt, und das Dokument, in dem es zuhause ist.
+SIMULATION = REPO_ROOT / "docs" / "simulation" / "erfahrungsannahmen.md"
 BACKBONE_AUSFUEHRUNGEN = {
     "Thiele-Rekursion": (
-        [r"V_j\(s", r"V_j\+1\(s", r"p_s\\tos"], 2,
+        [r"V_j\(s", r"V_j\+1\(s", r"p_s\\tos"], 2, ZENTRAL,
     ),
     "Residuum-Regel": (
-        [r"p_s\\toss?'?\(x", r"1-\\sum_s"], 2,
+        [r"p_s\\toss?'?\(x", r"1-\\sum_s"], 2, ZENTRAL,
     ),
     "affine Ordnungs-Transformation": (
-        [r"a\+b\\cdot", r"ersteOrdnung", r"\\min\(1"], 2,
+        [r"a\+b\\cdot", r"ersteOrdnung", r"\\min\(1"], 2, SIMULATION,
     ),
     "Diskontfaktor-Definition": (
-        [r"v=\\[tdf]?frac1\{?1\+i", r"v=1/\(1\+i\)"], 1,
+        [r"v=\\[tdf]?frac1\{?1\+i", r"v=1/\(1\+i\)"], 1, ZENTRAL,
     ),
 }
 
@@ -150,30 +153,32 @@ def test_alle_tarifplaene_haben_dieselbe_gliederung():
         )
 
 
-def test_kein_tarifplan_fuehrt_das_gemeinsame_rueckgrat_aus():
+def test_kein_tarifplan_fuehrt_ein_fremdes_thema_aus():
     """Der Kern der Entdopplung: Was fuer alle Produkte gilt, steht
-    einmal im zentralen Dokument. Ein Tarifplan verweist darauf."""
+    einmal an seinem Ort. Ein Tarifplan verweist darauf."""
     def _treffer(text: str, bausteine):
         norm = _normalisiert(text)
         return [b for b in bausteine if re.search(b, norm)]
 
-    zentral = ZENTRAL.read_text(encoding="utf-8")
-    for thema, (bausteine, schwelle) in BACKBONE_AUSFUEHRUNGEN.items():
-        gefunden = _treffer(zentral, bausteine)
+    for thema, (bausteine, schwelle, zuhause) in (
+        BACKBONE_AUSFUEHRUNGEN.items()
+    ):
+        gefunden = _treffer(zuhause.read_text(encoding="utf-8"), bausteine)
         assert len(gefunden) >= schwelle, (
-            f"{thema} steht nicht (mehr) in der Grundsatzdokumentation "
-            f"(nur {gefunden}) — dann ist der Waechter blind"
+            f"{thema} steht nicht (mehr) in "
+            f"{zuhause.relative_to(REPO_ROOT)} (nur {gefunden}) — dann "
+            "ist die Pruefung blind"
         )
     for name, pfad in _tarifplaene().items():
         text = pfad.read_text(encoding="utf-8")
         rueckwanderung = [
-            thema for thema, (bausteine, schwelle)
+            f"{thema} (zuhause in {zuhause.relative_to(REPO_ROOT)})"
+            for thema, (bausteine, schwelle, zuhause)
             in BACKBONE_AUSFUEHRUNGEN.items()
             if len(_treffer(text, bausteine)) >= schwelle
         ]
         assert not rueckwanderung, (
-            f"{name}.md fuehrt Backbone-Themen aus: {rueckwanderung} — "
-            "sie gehoeren in docs/mathematik/grundsatzdokumentation.md, "
+            f"{name}.md fuehrt fremde Themen aus: {rueckwanderung} — "
             "der Tarifplan verweist nur darauf"
         )
 

@@ -163,14 +163,13 @@ Beispielpunkt: $x=35$, $n=30$, $R = 12\,000$, $i = 1{,}75\,\%$.
 # 10 Abgrenzung: Bewertung und Fortschreibung
 
 Dieser Tarifplan beschreibt die **Bewertung** auf den
-Rechnungsgrundlagen erster Ordnung. Die Trennung zu den
-Erfahrungsannahmen dritter Ordnung steht in der
-[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
-Abschnitt 5.2. Für dieses Produkt ist die
-Richtung der Transformation je Ausscheideordnung verschieden:
-belastende Ordnungen (Invalidisierung) tragen $b < 1$, entlastende
-(Reaktivierung) $b > 1$. Die Annahmen liegen unter `[annahmen]` der
-Bestands-Config.
+Rechnungsgrundlagen erster Ordnung. Wie ein Bestand dieses Produkts im
+Vorzeigebetrieb fortgeschrieben wird, ist keine Eigenschaft des Tarifs,
+sondern des Simulationswerkzeugs
+(`docs/simulation/erfahrungsannahmen.md`); die dort verwendeten
+Annahmen wirken nie in Beitrag oder Reserve zurueck
+([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
+Abschnitt 5.2).
 
 # 11 Verankerung und Abnahme
 
