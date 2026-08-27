@@ -1,7 +1,7 @@
 # Migrationskonzept — das projektseitige Verfahren
 
 Das Migrationskonzept ist die **projektseitige Instanz** der Methode aus
-dem [Fachkonzept](../fachkonzept/): je Bestand und Quellsystem einmal
+dem [Fachkonzept](../mathematik/konstruktive-neuberechnung.md): je Bestand und Quellsystem einmal
 ausgefuellt, Freigabekreis Projektleitung, Quellsystem-Verantwortliche
 und Fachexperte Aktuariat. Es beschreibt, wie ein konkreter Bestand
 uebernommen und geprueft wird — Systemkontext, Datenliefervertrag,
@@ -36,7 +36,7 @@ hat jede Art von Aussage **genau ein Zuhause**:
 
 | Aussage | Zuhause | Hier stattdessen |
 |---|---|---|
-| Mathematik der Methode, Invarianten, Toleranzphilosophie | [Fachkonzept](../fachkonzept/), Grundsatzdokumentation, Tarifplaene | Verweis auf Kapitelnummer |
+| Mathematik der Methode, Invarianten, Toleranzphilosophie | [../mathematik/](../mathematik/) (Fachkonzept und Grundsatzdokumentation), Tarifplaene | Verweis auf Kapitelnummer |
 | Warum das System so gebaut ist (Alternativen, Konsequenzen) | ADRs unter [../architektur/](../architektur/) | Verweis auf ADR-Nummer |
 | Kommandozeilen, Flags, Reihenfolge der Handgriffe | Agenten-Skills unter `.claude/skills/`, Einstieg in `ONBOARDING.md` | Verweis auf den Skill-Namen |
 | Was ein Modul rechnet und welche Faelle es hart ablehnt | Modul-Docstrings im Code | Verweis auf das Modul |

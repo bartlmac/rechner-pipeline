@@ -181,7 +181,7 @@ nachzurechnen. Daraus:
 * **Dreistufige Fachdokumentation nach Fachkonzept Kap. 1.3 und 8** —
   das Fachkonzept „Konstruktive Neuberechnung und Korrekturschicht"
   v0.2 liegt als zitierfähige Kopie im Repo
-  (`docs/fachkonzept/`, Änderungen laufen über seinen Autor), daneben
+  (`docs/mathematik/`, Änderungen laufen über seinen Autor), daneben
   neu die **Grundsatzdokumentation**: Mathematik und Numerik, der die
   Umsetzung folgt — Zustandsraum und Semi-Markov-Modell,
   Thiele-Rekursion auf dem erweiterten Zustand, Rechnungsgrundlagen

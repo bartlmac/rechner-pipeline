@@ -98,12 +98,12 @@ DOKU_NAMENSBINDUNG: Dict[str, Tuple[str, ...]] = {
 }
 
 #: Aenderungen hier machen jede Selektion unsicher -> volle Suite.
-#: ``docs/fachkonzept/`` traegt die Mathematik, DER DIE UMSETZUNG FOLGT
+#: ``docs/mathematik/`` traegt die Mathematik, DER DIE UMSETZUNG FOLGT
 #: (Fachkonzept Kap. 8.1) — eine Aenderung daran ist nie auf einen
 #: Knoten begrenzt, auch wenn sie nur ein Produkt zu betreffen scheint.
 GLOBAL_KONSERVATIV = ("pyproject.toml", "tests/conftest.py",
                       "tests/__init__.py", ".github/",
-                      "docs/fachkonzept/")
+                      "docs/mathematik/")
 
 
 def verwandt(a: str, b: str) -> bool:

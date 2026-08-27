@@ -374,9 +374,10 @@ def test_impact_bindet_tarifplaene_ueber_den_dateinamen():
 def test_impact_fachkonzept_ist_konservativ():
     """Die Grundsatzmathematik, der die Umsetzung folgt (FK 8.1), ist
     nie auf einen Knoten begrenzt."""
-    ergebnis = berechne_impact(
-        ["docs/fachkonzept/konstruktive-neuberechnung.md"], *_repo_args())
-    assert ergebnis["konservativ"]
+    for datei in ("docs/mathematik/konstruktive-neuberechnung.md",
+                  "docs/mathematik/grundsatzdokumentation.md"):
+        ergebnis = berechne_impact([datei], *_repo_args())
+        assert ergebnis["konservativ"], datei
 
 
 def test_impact_geloeschtes_modul_ist_konservativ():

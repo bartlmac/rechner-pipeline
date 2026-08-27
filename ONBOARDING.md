@@ -165,7 +165,7 @@ the skills under `.claude/skills/` / `.agents/skills/`.
 What you CAN still exercise end-to-end on your own: the portfolio
 generator and its report (next), gate G0 on any workbook, the
 code-ontology tools, the actuarial documentation
-(`docs/fachkonzept/grundsatzdokumentation.md` for the shared maths,
+(`docs/mathematik/grundsatzdokumentation.md` for the shared maths,
 `docs/tarifplaene/` for each product's elaboration), and the
 test suite.
 

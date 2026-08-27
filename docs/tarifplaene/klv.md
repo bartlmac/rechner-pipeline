@@ -10,7 +10,7 @@ format:
 > 2.0.0): die **Ausgestaltung** dieses Produkts. Das gemeinsame
 > Rückgrat — Zustandsraum, Thiele-Rekursion, Rechnungsgrundlagen-Schicht,
 > Numerik — steht einmal in der
-> [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md) und
+> [Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md) und
 > wird hier nicht wiederholt; die
 > Gliederung ist für alle Produkte des Kerns dieselbe. Historische
 > Provenienz: einmalige
@@ -48,7 +48,7 @@ nicht (Markov, Select-Periode 0).
 Die Bewertungsgleichung ist nicht produktspezifisch: Zustandsraum,
 Thiele-Rückwärtsrekursion, Fälligkeits- und Diskontierungskonventionen
 stehen in der
-[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitte 3 und 4.
 
 Für dieses Produkt entfällt die Dauerabhängigkeit ($d_{\max} = 0$,
@@ -139,7 +139,7 @@ $a \ge n -$ `min_rlz_flex`.
 
 Buchungskonvention und die Einordnung der
 Eintrittswahrscheinlichkeiten:
-[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 7. Jeder Betrag kommt aus dem Kern.
 
 | GeVo | Wirkung | Betrag |
@@ -189,14 +189,14 @@ Dieser Tarifplan beschreibt die **Bewertung** auf den
 Rechnungsgrundlagen erster Ordnung. Die Trennung zu den
 Erfahrungsannahmen dritter Ordnung, aus denen die Fortschreibung ihre
 Ereigniswahrscheinlichkeiten bildet, steht in der
-[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 5.2. Für dieses Produkt liegen
 die Annahmen unter `[annahmen]` der Bestands-Config.
 
 # 11 Verankerung und Abnahme
 
 Das Abnahme-Protokoll gilt für alle Produkte
-([Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 11). Für dieses Produkt sind
 verankert: die Charakterisierungs-Anker des produktiven Pfads, die
 Toleranz-Überleitung gegen den Kommutations-Zweitkern

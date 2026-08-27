@@ -238,12 +238,12 @@ Zielkerns.
 Aussage hat genau ein Zuhause (`tests/test_tarifplan_struktur.py` hält
 den Schnitt):
 
-1. **Das Fachkonzept** (`docs/fachkonzept/konstruktive-neuberechnung.md`):
+1. **Das Fachkonzept** (`docs/mathematik/konstruktive-neuberechnung.md`):
    die fachlich normative Methode der konstruktiven Neuberechnung —
    Bestandsmigration ohne Historienmigration. Fachlich bindend,
    technisch offen.
 2. **Die Grundsatzdokumentation**
-   (`docs/fachkonzept/grundsatzdokumentation.md`): Mathematik und
+   (`docs/mathematik/grundsatzdokumentation.md`): Mathematik und
    Numerik, der die Umsetzung folgt — das allen Produkten gemeinsame
    Rückgrat (Zustandsraum und Semi-Markov-Modell, Thiele-Rekursion,
    Rechnungsgrundlagen-Schicht, Diskretisierung und Rundung,

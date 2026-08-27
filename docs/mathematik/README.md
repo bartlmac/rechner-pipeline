@@ -1,8 +1,9 @@
-# Fachkonzept — die produktseitige Methode
+# Mathematik — was das System rechnet
 
-Hier liegt die **fachlich normative Methode** der konstruktiven
-Neuberechnung: was gerechnet wird und warum, unabhaengig von einem
-einzelnen Migrationsfall und unabhaengig von der technischen Umsetzung.
+Hier liegt die **fachlich normative Rechenmethode**: was gerechnet wird
+und warum, unabhaengig von einem einzelnen Migrationsfall und
+unabhaengig von der technischen Umsetzung. Die beiden Dokumente haben
+verschiedene Herkunft und verschiedene Aenderungswege — siehe unten.
 
 | Dokument | Inhalt |
 |---|---|
@@ -20,9 +21,11 @@ Dokumentation (Freigabekreis Aktuariat/Entwicklung):
    normative Mathematik und Numerik, ein Dokument. *Die Implementierung
    folgt der Grundsatzdokumentation, nicht umgekehrt.* Sie trägt das
    Rückgrat, das allen Produkten gemeinsam ist (Zustandsraum,
-   Thiele-Rekursion, Rechnungsgrundlagen-Schicht, Numerik) und nimmt in
-   Abschnitt 9 die Korrekturmathematik auf, sobald deren Freiheitsgrade
-   entschieden sind.
+   Thiele-Rekursion, Rechnungsgrundlagen-Schicht, Numerik) — und in
+   Abschnitt 9 die vollstaendige Mathematik der Korrekturschicht
+   (Migrationszugang). Deren technische Freiheitsgrade sind dort
+   ausgewiesen und noch zu entscheiden; die Rechenmethode selbst ist
+   festgelegt.
 3. **Produktspezifische Ausgestaltung** (FK Kap. 8.2): je Tarifplan des
    Zielsystems die konkrete Belegung aller produktabhaengigen
    Festlegungen (Zustandsgraph mit Uebergangsklassifikation, Ankerliste,
@@ -48,27 +51,39 @@ Fall. Der Stand, damit niemand raten muss:
 | Fachkonzept-Kapitel | Zuhause im Repo | Stand |
 |---|---|---|
 | 1 Zweck, Geltungsbereich, Einordnung | dieses README (Hierarchie) | uebernommen |
-| 2 Begriffe und Notation | Grundsatzdokumentation Abschnitt 2 | teilweise (Basis-Notation; die Symbole der Korrekturschicht fehlen) |
-| 3 Methodik der konstruktiven Neuberechnung | — | **offen** (Zwei-Schritt-Prinzip, Ankerhierarchie, Residuum-Struktur) |
-| 4 Korrekturschicht | Grundsatzdokumentation Abschnitt 9 (benannt, leer) | **offen** — wartet auf die Entscheidung der Freiheitsgrade |
-| 5 Verankerungszeitpunkt, Lieferobjekte, Historienfreiheit | Migrationskonzept Kapitel 4 und 5 (beim Maintainer, nicht hier) | **offen** |
+| 2 Begriffe und Notation | Grundsatzdokumentation Abschnitt 2 | uebernommen |
+| 3 Methodik der konstruktiven Neuberechnung | Grundsatzdokumentation 9.1 bis 9.4 | uebernommen |
+| 4 Korrekturschicht | Grundsatzdokumentation 9.5 bis 9.11 | uebernommen; die diskrete Rekursion ist dort festgelegt (FK 4.2 delegiert sie ausdruecklich) |
+| 5 Verankerungszeitpunkt und Historienfreiheit | Grundsatzdokumentation 9.12 und 9.13 | uebernommen |
+| 5.2 und 5.4 Nachfahren, Lieferobjekte | Migrationskonzept Kapitel 4 und 5 (beim Maintainer) | **offen** — Verfahren und Datenliefervertrag, keine Mathematik |
 | 6 Test- und Abnahmekonzept | Migrationskonzept Kapitel 6 und 7 | uebernommen (mit ausgewiesener Luecke bei 6.3) |
 | 7 Regulatorischer Rahmen | Migrationskonzept Kapitel 7.7 | uebernommen |
 | 8 Zu erstellende Dokumentation | dieses README, Grundsatzdokumentation | uebernommen |
-| 9 Implementierungsfreiheiten und Konfliktregel | Grundsatzdokumentation Abschnitt 12 | Mechanik uebernommen, die elf Freiheitsgrade selbst sind offen |
+| 9 Implementierungsfreiheiten und Konfliktregel | Grundsatzdokumentation 9.14 und Abschnitt 12 | uebernommen; die elf Freiheitsgrade sind als offen ausgewiesen — das ist ihr Zustand, keine Luecke der Uebernahme |
 
-Solange Zeilen mit **offen** darin stehen, bleibt das Fachkonzept die
-normative Referenz und wird zitiert, nicht ersetzt.
+Damit ist die **Methode** vollstaendig uebernommen: Was der
+Rechenkern zu tun hat, steht in der Grundsatzdokumentation. Offen
+bleibt die projektseitige Haelfte (Nachfahren, Datenliefervertrag), die
+ins Migrationskonzept gehoert und nicht hierher. Sobald sie dort steht,
+kann das Fachkonzept als Vorlage pensioniert werden — bis dahin bleibt
+es die zitierte Quelle.
 
-## Aenderungsweg
+## Aenderungswege — zwei verschiedene
 
-Diese Datei ist eine **unveraenderte Kopie** der freigegebenen Fassung
-aus dem Wissens-Graph des Maintainers; das Repo traegt sie, damit Code,
-Tests und ADRs eine zitierfaehige Quelle im selben Stand haben.
-Aenderungen entstehen **nicht hier**: Sie laufen ueber den Autor des
-Fachkonzepts und kommen als neue Fassung herein. Wer beim Bauen einen
-Aenderungsbedarf sieht, meldet ihn als Vorschlag, statt das Dokument
-anzupassen.
+**`konstruktive-neuberechnung.md` ist FREMD.** Die Datei ist eine
+unveraenderte Kopie der freigegebenen Fassung aus dem Wissens-Graph des
+Maintainers; das Repo traegt sie, damit Code, Tests und ADRs eine
+zitierfaehige Quelle im selben Stand haben. Aenderungen entstehen
+**nicht hier**: Sie laufen ueber den Autor und kommen als neue Fassung
+herein. Wer beim Bauen einen Aenderungsbedarf sieht, meldet ihn als
+Vorschlag, statt das Dokument anzupassen.
+
+**`grundsatzdokumentation.md` ist repo-eigen.** Sie wird hier gepflegt,
+und der Kern folgt ihr — nicht umgekehrt. Substanzielle Aenderungen an
+ihren normativen Abschnitten brauchen die Zustimmung des Aktuariats
+(dort Abschnitt 13); Abweichungen zwischen Konzept und Realisierung
+werden entschieden und im Abweichungsverzeichnis gefuehrt, nie implizit
+aufgeloest.
 
 ## Was hier NICHT steht
 

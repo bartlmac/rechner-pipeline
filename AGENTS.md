@@ -53,7 +53,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `lieferungen/` automatically; sources enter a case only through
   explicit registration.
 - **Docs have one home each:** architecture and ADRs in
-  `docs/architektur/`; the product-side method in `docs/fachkonzept/` —
+  `docs/architektur/`; the product-side method in `docs/mathematik/` —
   `konstruktive-neuberechnung.md` is the Fachkonzept and is NEVER
   edited here (changes come from its author), while
   `grundsatzdokumentation.md` is this repo's own normative maths and

@@ -11,7 +11,7 @@ format:
 > (`kern/produkte/bu.py`): die **Ausgestaltung** dieses Produkts. Das
 > gemeinsame Rückgrat — Zustandsraum, Thiele-Rekursion,
 > Rechnungsgrundlagen-Schicht, Numerik — steht einmal in der
-> [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md) und
+> [Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md) und
 > wird hier nicht wiederholt; die Gliederung ist für
 > alle Produkte des Kerns dieselbe. Rechnungsgrundlagen sind die
 > **DAV 1997 I** (unverändert übernommen, je Geschlecht).
@@ -51,7 +51,7 @@ Residuum.
 Die Bewertungsgleichung ist nicht produktspezifisch: Zustandsraum,
 Thiele-Rückwärtsrekursion, Fälligkeits- und Diskontierungskonventionen
 stehen in der
-[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitte 3 und 4.
 
 Für dieses Produkt ist die **Dauerabhängigkeit im Zustand `bu`
@@ -111,7 +111,7 @@ Produktdefinition ist zurückgestellt.
 
 Buchungskonvention und die Einordnung der
 Eintrittswahrscheinlichkeiten:
-[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 7. Der Betrag ist hier die vom GeVo betroffene
 **Jahresrente** (Bezugsgröße der Nachweisung), nicht eine Auszahlung:
 Todesfall- und Erlebensfallleistung kennt das Produkt nicht.
@@ -165,7 +165,7 @@ Beispielpunkt: $x=35$, $n=30$, $R = 12\,000$, $i = 1{,}75\,\%$.
 Dieser Tarifplan beschreibt die **Bewertung** auf den
 Rechnungsgrundlagen erster Ordnung. Die Trennung zu den
 Erfahrungsannahmen dritter Ordnung steht in der
-[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 5.2. Für dieses Produkt ist die
 Richtung der Transformation je Ausscheideordnung verschieden:
 belastende Ordnungen (Invalidisierung) tragen $b < 1$, entlastende
@@ -175,7 +175,7 @@ Bestands-Config.
 # 11 Verankerung und Abnahme
 
 Das Abnahme-Protokoll gilt für alle Produkte
-([Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 11). Für dieses Produkt sind
 verankert: der Charakterisierungs-Anker `anker_bu_beispiel.json` (volle
 Float-Präzision, Provenienz „DAV 1997 I"), der Engine-Selbsttest

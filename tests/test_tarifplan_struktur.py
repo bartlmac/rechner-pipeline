@@ -29,7 +29,7 @@ from rechner_pipeline.kern.produkte import PRODUKTE
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TARIFPLAENE = REPO_ROOT / "docs" / "tarifplaene"
-ZENTRAL = REPO_ROOT / "docs" / "fachkonzept" / "grundsatzdokumentation.md"
+ZENTRAL = REPO_ROOT / "docs" / "mathematik" / "grundsatzdokumentation.md"
 
 #: Themen des gemeinsamen Rueckgrats. Sie stehen im zentralen Dokument;
 #: ein Tarifplan darf sie NENNEN und darauf verweisen, aber nicht
@@ -173,7 +173,7 @@ def test_kein_tarifplan_fuehrt_das_gemeinsame_rueckgrat_aus():
         ]
         assert not rueckwanderung, (
             f"{name}.md fuehrt Backbone-Themen aus: {rueckwanderung} — "
-            "sie gehoeren in docs/fachkonzept/grundsatzdokumentation.md, "
+            "sie gehoeren in docs/mathematik/grundsatzdokumentation.md, "
             "der Tarifplan verweist nur darauf"
         )
 
