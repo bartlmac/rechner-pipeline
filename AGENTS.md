@@ -99,11 +99,21 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   (`rechner_pipeline.qa.migrationssuite`) and the HTML acceptance
   report (`rechner_pipeline.gates.abnahmebericht`) are libraries driven
   by the `pruefe-migrationscontrolling` skill (gate A-M4).
-- Actuarial test (precedes A-M4): per-contract comparison at each
-  contract's own anchor date (`rechner_pipeline.qa.aktuarieller_test`,
-  no interpolation, no summation) with the A-M1 template gate
-  `python -m rechner_pipeline.gates.aktuartest`, driven by the
-  `aktuartest-durchfuehren` skill.
+- Actuarial test (precedes A-M4): THREE separately signed acceptances —
+  `A-M1` Stichtagstest, `A-M2` Verlaufstest, `A-M3`
+  Geschaeftsvorfalltest. Per contract a LIST of check points
+  (`rechner_pipeline.qa.aktuarieller_test`), each with its own sample and
+  criteria (`rechner_pipeline.qa.testprofil`); no interpolated
+  comparison, no summation. Sub-annual points are admissible only with a
+  business event as the occasion — there the mixing convention IS the
+  subject of the check. Rendered by
+  `python -m rechner_pipeline.gates.aktuartest --abnahme A-M1|A-M2|A-M3`,
+  driven by the `aktuartest-durchfuehren` skill.
+- Migration entry (ADR-012, Grundsatzdokumentation section 9): the
+  correction layer computes in `rechner_pipeline.kern.korrekturschicht`.
+  It is NOT a second engine — the collapse form arises from the existing
+  Thiele recursion by dropping the value-continuous transitions, which is
+  why lapse assumptions cannot influence the calibration factor.
 - Portfolio module: `python -m rechner_pipeline.bestand.cli_fortschreibung`
   (GeVo stream to Parquet), `python -m rechner_pipeline.bestand.cli_report`
   (self-contained HTML report; `--bis` is the simulation horizon,

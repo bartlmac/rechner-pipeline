@@ -113,10 +113,12 @@ Vorverdichtung und Agenten-Extraktion -> deterministischer Merge zur
 A-Box -> Diskrepanzen als Entscheidungs-Dossier an den Menschen
 (Gate A-Q1) -> Spez -> parametrierter Kern -> Abnahme gegen die
 Lieferung (Gate P-K1, Bestandsabzugs-Abgleich) -> Transformation und
-Übernahme des Bestands -> **aktuarieller Test je Vertrag am eigenen
-Verankerungszeitpunkt** auf einer belegten Stichprobe
-(`qa/aktuarieller_test`, `gates/aktuartest`) als Vorlage für das
-menschliche Gate A-M1, das A-M4 zwingend vorausgeht (ADR-010) ->
+Übernahme des Bestands -> **aktuarieller Test je Vertrag an seinen
+eigenen Rechenpunkten** auf belegten Stichproben
+(`qa/aktuarieller_test`, `qa/testprofil`, `gates/aktuartest`) in drei
+einzeln gezeichneten Abnahmen — `A-M1` Stichtagstest, `A-M2`
+Verlaufstest, `A-M3` Geschäftsvorfalltest —, die dem Controlling `A-M4`
+vorausgehen (ADR-010, ADR-012) ->
 **Migrationscontrolling über zwei Stichtage**:
 Deckungskapital am Migrations- und am Folgestichtag plus die
 Geschäftsvorfälle dazwischen, gegen die gelieferten Erwartungswerte
@@ -183,7 +185,7 @@ startet keinen Gate-Lauf.
 | P-K1 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
 | P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (A-Q1, A-M1, A-M4, A-K1); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, A-M1 und A-M4 verlangen die zum Fall-Scope passenden Pflichtbelege je Gate, und A-M4 verlangt die geltende, signierte A-M1-Annahme auf demselben Stand und pinnt sie als Pflichtrolle `am1_snapshot` (aktuarielle vor finanzieller Abnahme, ADR-010) |
 | P-B1 | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand) und Bewegungs-Identitäten je Jahr, Track und Maß |
-| GA-Vorlage | `gates.aktuartest` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für Gate A-M1; Transportsicherung wird getrennt ausgewiesen |
+| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für Gate A-M1; Transportsicherung wird getrennt ausgewiesen |
 | G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es P-B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |
 
 Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
@@ -245,7 +247,12 @@ den Schnitt):
    Rechnungsgrundlagen-Schicht, Diskretisierung und Rundung,
    Schichtenbild) und in Abschnitt 9 die Methode des Migrationszugangs:
    konstruktive Neuberechnung mit Korrekturschicht, also
-   Bestandsmigration ohne Historienmigration.
+   Bestandsmigration ohne Historienmigration. Die Schicht rechnet
+   (`kern/korrekturschicht.py`) — sie ist keine zweite Rechenmaschine,
+   sondern dieselbe Thiele-Rekursion mit anderen Zahlungen; die
+   wertkontinuierlichen Übergänge fallen aus ihrer Dynamik heraus,
+   weshalb Stornoannahmen den Kalibrierungsfaktor nicht beeinflussen
+   können.
 2. **Die Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): die
    Ausgestaltung je Produkt — Zustandsraum des Tarifs, Leistungen,
    Beiträge, Reservebegriffe, GeVo-Katalog mit Betragsformeln,

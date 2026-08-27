@@ -176,13 +176,73 @@ nachzurechnen. Daraus:
   mehrstufiges Statusmodell des Abnahmeberichts — der Gate-Vertrag
   bleibt binär und blockierend.
 
+### Geändert am 2026-08-27 (abends)
+
+* **ADR-012: Gate-Namen sagen, wer entscheidet und worüber.** Acht Namen
+  nach sieben Bildungsregeln wurden auf eine Ordnung gebracht:
+  `<Art>-<Gegenstand><Nummer>.<fachliche Kennung>`, mit `P` für die
+  maschinelle Prüfung und `A` für die menschliche Abnahme. Aus
+  `G0.extraction-manifest` wird `P-Q1.quellfragment`, aus `G-2` wird
+  `A-M4`, aus `P9.<gate>` wird `entscheid.<abnahme>`. Der Buchstabe `G`
+  hatte drei Bedeutungen, und `G-2` unterschied sich von
+  `G2.static-security` um einen Bindestrich bei völlig verschiedener
+  Bedeutung. Vollständige Umstellung in Code, Ledgern, Snapshots,
+  Belegrollen, Tests, Dokumentation, Skills und CI — möglich, weil nie
+  eine Migration nach außen gelaufen ist.
+* **Der aktuarielle Test besteht aus drei Abnahmen** (`A-M1`
+  Stichtagstest, `A-M2` Verlaufstest, `A-M3` Geschäftsvorfalltest),
+  jede mit eigener Stichprobe, eigenen Kriterien, eigenem Bericht und
+  eigener Unterschrift. Die Engine trägt statt eines Zeitpunkts eine
+  Liste von **Prüfpunkten** je Vertrag; ein Vertrag besteht nur, wenn
+  jeder seiner Punkte besteht. Die Verteilungsauswertung clustert nach
+  Historientyp **und Anlass**. Neue Prüfgröße `dDK`: die Veränderung des
+  Deckungskapitals durch einen Geschäftsvorfall — eine laufende Rente
+  ist keine Größe zu einem Zeitpunkt und taugt nicht als Vergleichswert.
+  Toleranzen kommen aus einem **Testprofil** (`qa.testprofil`) statt aus
+  einer Konstante; ein Profil, dessen Abnahmegrenze unter dem
+  Rundungsrauschen einer centgerundeten Lieferung liegt, wird abgelehnt.
+* **Der Korrekturterm des Bestandszugangs rechnet**
+  (`kern.korrekturschicht`, Grundsatzdokumentation Abschnitt 9). Es
+  brauchte keine zweite Rechenmaschine: Die Kollapsform entsteht aus der
+  vorhandenen Thiele-Rekursion, indem die wertkontinuierlichen Übergänge
+  aus der Übergangsfunktion genommen werden — ihre
+  Wahrscheinlichkeitsmasse bleibt per Residuum-Regel im Zustand. Die
+  **Optionsunabhängigkeit** aus 9.8 ist damit eine Eigenschaft der
+  Konstruktion und gemessen: über Stornoquoten von 0 bis 25 Prozent
+  bleibt der Kalibrierungsfaktor auf die letzte Stelle gleich, während
+  dieselbe Größe um 28 Prozent springt, sobald man den Storno
+  fälschlich als vererbend führt.
+* **Abschnitt 9.10 neu gefasst: die Degenerationsschwelle entfällt.**
+  Die alte Begründung („sonst explodiert der Kalibrierungsfaktor") trägt
+  nicht — er ist ein Zwischenwert, kein Ausweiswert, und wird mit einem
+  im selben Maß kleineren Einheitsstrom multipliziert. Nachgemessen
+  bleibt der Schichtwert bei jeder Restlaufzeit exakt beim Residuum.
+  Hart abgefangen wird nur noch der Fall ohne Amortisationsraum. Wer
+  kurze Restlaufzeiten ausbuchen statt verteilen will, parametriert das
+  je Bestandsgruppe — es ist eine Entscheidung des Rechnungswesens,
+  keine Eigenschaft der Methode.
+* **Externe Reviewrunde T14 zur Bestandsführung**: sieben Befunde, jeder
+  am Code nachgeprüft mit dem Auftrag, ihn zu widerlegen. Sechs
+  umgesetzt. Das Schreiben von Beständen ist jetzt **atomar** (zwei
+  gleichzeitige Schreiber erzeugten eine physisch defekte Datei, und der
+  Stichtag war danach eine Sackgasse); der **Abschluss trägt dieselben
+  Vorbedingungen wie der Bericht** (ohne Erhöhungsscheiben lag das
+  Deckungskapital 3.795.035,38 zu niedrig, bei Exit 0 — und die eigene
+  Kontrolle meldete „deckungsgleich"); die **Bewertung verlangt das
+  Journal zum geführten Stamm** (ohne es wies der Bericht 51 Prozent zu
+  viele Verträge und 70 Prozent zu viel Deckungskapital aus); **`gamma1`
+  wird geprüft** (ein negativer Wert erzeugte einen negativen
+  Jahresbeitrag, ein `NaN` einen Rückkaufswert von 0,00 statt
+  26.506,09); der Abschluss bindet den **Dateinamen an den
+  Inhaltsstichtag**. Gate `P-B1` steht auf Version 2.0.0.
+
 ### Geändert am 2026-08-27
 
-* **Dreistufige Fachdokumentation nach Fachkonzept Kap. 1.3 und 8** —
-  das Fachkonzept „Konstruktive Neuberechnung und Korrekturschicht"
-  v0.2 liegt als zitierfähige Kopie im Repo
-  (`docs/mathematik/`, Änderungen laufen über seinen Autor), daneben
-  neu die **Grundsatzdokumentation**: Mathematik und Numerik, der die
+* **Dreistufige Fachdokumentation** — das Fachkonzept „Konstruktive
+  Neuberechnung und Korrekturschicht" v0.2 ist inzwischen **vollständig
+  in die Grundsatzdokumentation aufgenommen und gelöscht**; sie ist die
+  normative Quelle, alle Verweise sind umgestellt. Neu ist damit die
+  **Grundsatzdokumentation**: Mathematik und Numerik, der die
   Umsetzung folgt — Zustandsraum und Semi-Markov-Modell,
   Thiele-Rekursion auf dem erweiterten Zustand, Rechnungsgrundlagen
   und Ordnungs-Abgrenzung, die beiden unterjährigen Konventionen,
