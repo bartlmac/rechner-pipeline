@@ -55,18 +55,23 @@ Fall. Der Stand, damit niemand raten muss:
 | 3 Methodik der konstruktiven Neuberechnung | Grundsatzdokumentation 9.1 bis 9.4 | uebernommen |
 | 4 Korrekturschicht | Grundsatzdokumentation 9.5 bis 9.11 | uebernommen; die diskrete Rekursion ist dort festgelegt (FK 4.2 delegiert sie ausdruecklich) |
 | 5 Verankerungszeitpunkt und Historienfreiheit | Grundsatzdokumentation 9.12 und 9.13 | uebernommen |
-| 5.2 und 5.4 Nachfahren, Lieferobjekte | Migrationskonzept Kapitel 4 und 5 (beim Maintainer) | **offen** — Verfahren und Datenliefervertrag, keine Mathematik |
+| 5.2 und 5.4 Nachfahren, Lieferobjekte | Grundsatzdokumentation 9.12; Migrationskonzept Kapitel 4 und 5 | uebernommen — die fallspezifischen Feldlisten bleiben dort ⟨TODO⟩, das ist ihr Zustand als Vorlage |
 | 6 Test- und Abnahmekonzept | Migrationskonzept Kapitel 6 und 7 | uebernommen (mit ausgewiesener Luecke bei 6.3) |
 | 7 Regulatorischer Rahmen | Migrationskonzept Kapitel 7.7 | uebernommen |
 | 8 Zu erstellende Dokumentation | dieses README, Grundsatzdokumentation | uebernommen |
 | 9 Implementierungsfreiheiten und Konfliktregel | Grundsatzdokumentation 9.14 und Abschnitt 12 | uebernommen; die elf Freiheitsgrade sind als offen ausgewiesen — das ist ihr Zustand, keine Luecke der Uebernahme |
 
-Damit ist die **Methode** vollstaendig uebernommen: Was der
-Rechenkern zu tun hat, steht in der Grundsatzdokumentation. Offen
-bleibt die projektseitige Haelfte (Nachfahren, Datenliefervertrag), die
-ins Migrationskonzept gehoert und nicht hierher. Sobald sie dort steht,
-kann das Fachkonzept als Vorlage pensioniert werden — bis dahin bleibt
-es die zitierte Quelle.
+Damit ist das Fachkonzept **inhaltlich vollstaendig uebernommen**: Die
+Rechenmethode steht in der Grundsatzdokumentation, das Verfahren in der
+Migrationskonzept-Vorlage. Was dort noch ⟨TODO⟩ traegt, sind
+fallspezifische Angaben (welches Quellsystem welches Feld liefert) —
+kein ungehobener Inhalt des Fachkonzepts.
+
+Es bleibt trotzdem hier liegen, und zwar als **zitierte Quelle**: Code,
+ADRs und beide Konzepte verweisen an rund fuenfzig Stellen auf seine
+Kapitelnummern ("FK 4.3", "FK 6.2"). Eine Pensionierung waere erst
+sinnvoll, wenn diese Verweise auf die Grundsatzdokumentation umgestellt
+sind — eine eigene, saubere Aufgabe, keine Loeschung nebenbei.
 
 ## Aenderungswege — zwei verschiedene
 
