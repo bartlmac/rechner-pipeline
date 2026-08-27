@@ -340,6 +340,30 @@ def test_impact_skill_aenderung_trifft_workflow_doku_test():
     assert ergebnis["tests"] == ["test_agent_workflow_docs.py"]
 
 
+def test_impact_tarifplan_ist_test_tragend():
+    """Die Tarifplaene tragen die Generationen-Tabelle, die
+    test_bestand_config zeichengenau gegen die Config prueft — eine
+    Aenderung dort darf nicht als reine Doku durchgehen und null Tests
+    auswaehlen."""
+    ergebnis = berechne_impact(["docs/tarifplaene/bu.md"], *_repo_args())
+    assert ergebnis["knoten"] == ["bu"]
+    assert "test_bestand_config.py" in ergebnis["tests"]
+    assert not any("kein Code-/Vertrags-Impact" in h
+                   for h in ergebnis["hinweise"])
+
+    klv = berechne_impact(["docs/tarifplaene/klv.md"], *_repo_args())
+    assert klv["knoten"] == ["klv"]
+    assert "test_bestand_config.py" in klv["tests"]
+
+
+def test_impact_fachkonzept_ist_konservativ():
+    """Die Grundsatzmathematik, der die Umsetzung folgt (FK 8.1), ist
+    nie auf einen Knoten begrenzt."""
+    ergebnis = berechne_impact(
+        ["docs/fachkonzept/konstruktive-neuberechnung.md"], *_repo_args())
+    assert ergebnis["konservativ"]
+
+
 def test_impact_geloeschtes_modul_ist_konservativ():
     ergebnis = berechne_impact(
         ["src/rechner_pipeline/kern/geloescht.py"],

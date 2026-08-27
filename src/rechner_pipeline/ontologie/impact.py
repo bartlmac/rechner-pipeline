@@ -79,16 +79,25 @@ DATEN_BINDUNG: Dict[str, str] = {
 }
 
 #: Doku-/Vertrags-Pfade, die an einen Knoten gebunden sind (test-tragend).
+#: Die Tarifplaene gehoeren dazu: Sie tragen die Generationen-Tabelle,
+#: die ``test_bestand_config`` zeichengenau gegen die Bestand-Config
+#: prueft — eine Aenderung dort ist kein reiner Doku-Vorgang.
 DOKU_BINDUNG: Dict[str, str] = {
     "AGENTS.md": "system/skills",
     ".claude/skills/": "system/skills",
     ".agents/skills/": "system/skills",
     "docs/architektur/skill-architektur.md": "system/skills",
+    "docs/tarifplaene/klv.md": "klv",
+    "docs/tarifplaene/bu.md": "bu",
 }
 
 #: Aenderungen hier machen jede Selektion unsicher -> volle Suite.
+#: ``docs/fachkonzept/`` traegt die Mathematik, DER DIE UMSETZUNG FOLGT
+#: (Fachkonzept Kap. 8.1) — eine Aenderung daran ist nie auf einen
+#: Knoten begrenzt, auch wenn sie nur ein Produkt zu betreffen scheint.
 GLOBAL_KONSERVATIV = ("pyproject.toml", "tests/conftest.py",
-                      "tests/__init__.py", ".github/")
+                      "tests/__init__.py", ".github/",
+                      "docs/fachkonzept/")
 
 
 def verwandt(a: str, b: str) -> bool:
