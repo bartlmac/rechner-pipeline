@@ -7,9 +7,11 @@ format:
 ---
 
 > Tarifplan des **Zielrechenkerns** (`rechner_pipeline.kern`, ab Version
-> 2.0.0). Das Produkt ist in der Mathematik des Kerns beschrieben
-> (Zustandsmodell, Thiele-Rekursion); die Gliederung ist für alle
-> Produkte des Kerns dieselbe. Historische Provenienz: einmalige
+> 2.0.0): die **Ausgestaltung** dieses Produkts. Das gemeinsame
+> Rückgrat — Zustandsraum, Thiele-Rekursion, Rechnungsgrundlagen-Schicht,
+> Numerik — steht einmal in der
+> [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md) und wird hier nicht wiederholt; die
+> Gliederung ist für alle Produkte des Kerns dieselbe. Historische Provenienz: einmalige
 > Migration aus dem Quell-Workbook (Übersetzungsbeleg: 617/617 am
 > 22.07.2026 — historisch, kein laufender Anker); Quellnamen
 > der Größen (`Bxt`, `kVx_MRV`, …) sind bewusst erhalten
@@ -39,29 +41,17 @@ Zwei Zustände, ein Übergang:
 Der Verbleib ist das Residuum $1 - q_x$; eine Dauerabhängigkeit gibt es
 nicht (Markov, Select-Periode 0).
 
-# 3 Bewertung: Thiele-Rückwärtsrekursion
+# 3 Bewertung
 
-Alle Produkte des Kerns rechnen auf demselben Rückgrat
-(`kern/zustandsmodell.py`). Der Barwert im Zustand $s$ zu Beginn des
-Jahres $j$ folgt der Rückwärtsrekursion
+Die Bewertungsgleichung ist nicht produktspezifisch: Zustandsraum,
+Thiele-Rückwärtsrekursion, Fälligkeits- und Diskontierungskonventionen
+stehen in der [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitte 3 und 4.
 
-$$
-V_j(s) \;=\; z(s, j) \;+\; v \cdot \sum_{s'} p_{s \to s'}(x_0 + j,\, d)
-\cdot \bigl( u(s, s', j) + V_{j+1}(s') \bigr),
-\qquad v = \tfrac{1}{1+i},
-$$
-
-mit vorschüssigen Zustandszahlungen $z$ und nachschüssigen
-Übergangszahlungen $u$ (fällig am Ende des Übergangsjahres). Die
-Übergangswahrscheinlichkeiten hängen neben dem erreichten Alter
-optional von der Verweildauer $d$ im Zustand ab (Semi-Markov über
-Zustandsraum-Erweiterung); der Verbleib ist stets das Residuum. Für
-dieses Produkt entfällt die Dauerabhängigkeit.
-
-Die klassische Kommutations-Schiene lebt als separater Zweitkern
-(`rechner_pipeline.kommutationskern`) ausschließlich für den
-Kreuz-Check weiter (Toleranz-Überleitung, `qa/ueberleitung`); sie ist
-kein Bestandteil des Zielkerns.
+Für dieses Produkt entfällt die Dauerabhängigkeit ($d_{\max} = 0$,
+Markov). Zusätzlich existiert eine Kommutations-Vergleichsschiene: Der
+klassische Zweitkern (`rechner_pipeline.kommutationskern`) rechnet
+dasselbe Produkt auf dem alten Weg, ausschließlich als Kreuz-Check
+(`qa/ueberleitung`).
 
 # 4 Zahlungsprofile
 
@@ -143,11 +133,9 @@ $a \ge n -$ `min_rlz_flex`.
 
 # 7 Geschäftsvorfälle (GeVo-Katalog)
 
-Buchung auf Vertragsjahrestagen (Jahr $a$ wirtschaftet, Buchung am
-Jahrestag $a{+}1$); jeder Betrag kommt aus dem Kern. Die
-Eintrittswahrscheinlichkeiten der Fortschreibung sind
-Erfahrungsannahmen (dritte Ordnung), nicht die Rechnungsgrundlagen —
-siehe Abschnitt 10.
+Buchungskonvention und die Einordnung der
+Eintrittswahrscheinlichkeiten: [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+Abschnitt 7. Jeder Betrag kommt aus dem Kern.
 
 | GeVo | Wirkung | Betrag |
 |---|---|---|
@@ -188,28 +176,27 @@ Tarifgeneration ist eine Parametrierung, keine Formeländerung:
 * Tafelbereich: Alter ab der Tafel-Erschöpfung (erstes Alter nach
   $q_x \ge 1$, z. B. DAV 1994 T ab Alter 101) sind fail-fast; kein
   Alter über 123.
-* Wegzugsummen je Zustand müssen $\le 1$ sein (Engine fail-fast).
 * Kein Storno beitragsfreier Verträge (keine RKW-Regel definiert).
 
 # 10 Abgrenzung: Bewertung und Fortschreibung
 
 Dieser Tarifplan beschreibt die **Bewertung** auf den
-Rechnungsgrundlagen erster Ordnung. Wie sich ein Bestand über die Zeit
-entwickelt, steuern davon getrennte **Erfahrungsannahmen** (dritte
-Ordnung, `[annahmen]` der Bestands-Config): jede
-Ereigniswahrscheinlichkeit entsteht daraus als
-$a + b \cdot (\text{erste Ordnung})$. Beiträge und Reserven bleiben
-davon unberührt.
+Rechnungsgrundlagen erster Ordnung. Die Trennung zu den
+Erfahrungsannahmen dritter Ordnung, aus denen die Fortschreibung ihre
+Ereigniswahrscheinlichkeiten bildet, steht in der
+[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitt 5.2. Für dieses Produkt liegen
+die Annahmen unter `[annahmen]` der Bestands-Config.
 
 # 11 Verankerung und Abnahme
 
-Charakterisierungs-Anker in voller Float-Präzision (Voll-Präzisions-
-Verankerung des produktiven Pfads), Toleranz-Überleitung gegen den
-separaten Kommutations-Zweitkern (`qa/ueberleitung`), je Migrationsfall
-Gate O3 gegen den Quell-Rechner. Die einmalige 617/617-Excel-Parität
-(22.07.2026, 4 Nachkommastellen) ist der historische Übersetzungsbeleg,
-kein laufender Anker. Änderungen folgen dem
-Abnahme-Protokoll des Kerns (`kern/__init__`).
+Das Abnahme-Protokoll gilt für alle Produkte
+([Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitt 11). Für dieses Produkt sind
+verankert: die Charakterisierungs-Anker des produktiven Pfads, die
+Toleranz-Überleitung gegen den Kommutations-Zweitkern
+(`qa/ueberleitung`) und je Migrationsfall Gate O3 gegen den
+Quell-Rechner. Die einmalige 617/617-Excel-Parität (22.07.2026, 4
+Nachkommastellen) ist der historische Übersetzungsbeleg, kein
+laufender Anker.
 
 # 12 Vorgesehene Erweiterungen
 

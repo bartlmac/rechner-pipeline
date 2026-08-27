@@ -30,7 +30,7 @@ zweimal teuer gewesen).
 |---|---|---|
 | Architektur-Entscheidungen | `docs/architektur/adr-NNN-*.md` | ADR-Format: Kontext, Entscheidung, Konsequenzen, verworfene Alternative(n); Status + Datum + Entscheider; Index in `docs/architektur/README.md` nachziehen |
 | Architektur-Beschreibung | `docs/architektur/*.md` | beschreibt IST und Absicht; "bewusst nicht"-Abschnitte sind Pflicht (Grenzen benennen, nie beschoenigen) |
-| Tarifplaene (Zielkern) | `docs/tarifplaene/*.md` | 12-Abschnitts-Gliederung, wortgleicher Thiele-Abschnitt, Rendering ueber die Doku-Engine |
+| Tarifplaene (Zielkern) | `docs/tarifplaene/*.md` | AUSGESTALTUNG je Produkt; das gemeinsame Rueckgrat steht einmal in `docs/fachkonzept/grundsatzdokumentation.md` und wird nie wiederholt (Waechter: tests/test_tarifplan_struktur.py); einheitliche Gliederung ueber alle Produkte, Rendering ueber die Doku-Engine |
 | Agenten-Anweisungen (Team) | `AGENTS.md` + `.claude/skills/` (+ `.agents/`-Spiegel) | CLI-neutral; AGENTS.md-Aenderungen im Team abstimmen; Skill-Paritaet ist test-tragend |
 | README | `README.md` | erzaehlt das System entlang der Architektur; Kommandobeispiele muessen LAUFEN (nachpruefen, nicht abschreiben) |
 | Private Notizen, Bauplaene, Erklaerungen | `docs-local/` (gitignored) | nie Klarnamen/Kontaktdaten des Kreises ins oeffentliche Repo (DSGVO) |

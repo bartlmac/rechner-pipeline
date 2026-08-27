@@ -1,7 +1,7 @@
 """Fachspezifikation: das menschenlesbare G-1-Abnahmedokument (P7).
 
-Deterministisch aus Spez + A-Box + Coverage generiert — Gliederung wie
-die Zielkern-Tarifplaene (12 Abschnitte), aber hier ist das Dokument
+Deterministisch aus Spez + A-Box + Coverage generiert — Gliederung in
+der Art der Zielkern-Tarifplaene, aber hier ist das Dokument
 PROJEKTION der Daten, nie die Quelle: jede Zahl traegt ihre Herkunft
 (Quelle + Fundstelle + Quellenlage), jeder Widerspruch steht mit beiden
 Lesarten und dem Stand seiner Aufloesung im Text. Der Leser des Gates

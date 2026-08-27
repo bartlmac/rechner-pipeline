@@ -7,8 +7,11 @@ format:
 ---
 
 > Tarifplan des **Zielrechenkerns** für das BU-Beispielprodukt
-> (`kern/produkte/bu.py`). Das Produkt ist in der Mathematik des Kerns
-> beschrieben (Zustandsmodell, Thiele-Rekursion); die Gliederung ist für
+> (`kern/produkte/bu.py`): die **Ausgestaltung** dieses Produkts. Das
+> gemeinsame Rückgrat — Zustandsraum, Thiele-Rekursion,
+> Rechnungsgrundlagen-Schicht, Numerik — steht einmal in der
+> [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md) und
+> wird hier nicht wiederholt; die Gliederung ist für
 > alle Produkte des Kerns dieselbe. Rechnungsgrundlagen sind die
 > **DAV 1997 I** (unverändert übernommen, je Geschlecht).
 
@@ -42,24 +45,16 @@ $d$ ist die Zahl voller Jahre im Zustand `bu` (Select-Dauer, gekappt auf
 die Select-Periode der Tafeln — hier 5). Der Verbleib je Zustand ist das
 Residuum.
 
-# 3 Bewertung: Thiele-Rückwärtsrekursion
+# 3 Bewertung
 
-Alle Produkte des Kerns rechnen auf demselben Rückgrat
-(`kern/zustandsmodell.py`). Der Barwert im Zustand $s$ zu Beginn des
-Jahres $j$ folgt der Rückwärtsrekursion
+Die Bewertungsgleichung ist nicht produktspezifisch: Zustandsraum,
+Thiele-Rückwärtsrekursion, Fälligkeits- und Diskontierungskonventionen
+stehen in der [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitte 3 und 4.
 
-$$
-V_j(s) \;=\; z(s, j) \;+\; v \cdot \sum_{s'} p_{s \to s'}(x_0 + j,\, d)
-\cdot \bigl( u(s, s', j) + V_{j+1}(s') \bigr),
-\qquad v = \tfrac{1}{1+i},
-$$
-
-mit vorschüssigen Zustandszahlungen $z$ und nachschüssigen
-Übergangszahlungen $u$ (fällig am Ende des Übergangsjahres). Die
-Übergangswahrscheinlichkeiten hängen neben dem erreichten Alter
-optional von der Verweildauer $d$ im Zustand ab (Semi-Markov über
-Zustandsraum-Erweiterung); der Verbleib ist stets das Residuum. Für
-dieses Produkt ist die Dauerabhängigkeit im Zustand `bu` wesentlich.
+Für dieses Produkt ist die **Dauerabhängigkeit im Zustand `bu`
+wesentlich**: Reaktivierung und Invalidensterblichkeit sind
+Select-Grundlagen, die Verweildauer wird auf die Select-Periode der
+Tafeln gekappt (hier 5 Jahre).
 
 # 4 Zahlungsprofile
 
@@ -109,12 +104,11 @@ Produktdefinition ist zurückgestellt.
 
 # 7 Geschäftsvorfälle (GeVo-Katalog)
 
-Buchung auf Vertragsjahrestagen (Jahr $a$ wirtschaftet, Buchung am
-Jahrestag $a{+}1$), analog zur Kapitalversicherung. Der Betrag ist die
-vom GeVo betroffene **Jahresrente** (Bezugsgröße der Nachweisung), nicht
-eine Auszahlung: Todesfall- und Erlebensfallleistung kennt das Produkt
-nicht. Die Eintrittswahrscheinlichkeiten sind Erfahrungsannahmen
-(dritte Ordnung), nicht die Rechnungsgrundlagen — siehe Abschnitt 10.
+Buchungskonvention und die Einordnung der
+Eintrittswahrscheinlichkeiten: [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+Abschnitt 7. Der Betrag ist hier die vom GeVo betroffene
+**Jahresrente** (Bezugsgröße der Nachweisung), nicht eine Auszahlung:
+Todesfall- und Erlebensfallleistung kennt das Produkt nicht.
 
 | GeVo | Wirkung | Betrag |
 |---|---|---|
@@ -159,27 +153,27 @@ Beispielpunkt: $x=35$, $n=30$, $R = 12\,000$, $i = 1{,}75\,\%$.
   BU-Eintritt am Ende von Jahr 0); oberhalb der Select-Periode wird auf
   deren Ultimate-Stufe gekappt. Ungleiche Select-Perioden von RI/TI sind
   fail-fast (sonst blieben Tafeldaten still unbenutzt).
-* Wegzugsummen je Zustand müssen $\le 1$ sein (Engine fail-fast).
 
 # 10 Abgrenzung: Bewertung und Fortschreibung
 
 Dieser Tarifplan beschreibt die **Bewertung** auf den
-Rechnungsgrundlagen erster Ordnung. Wie sich ein Bestand über die Zeit
-entwickelt, steuern davon getrennte **Erfahrungsannahmen** (dritte
-Ordnung, `[annahmen]` der Bestands-Config): jede
-Übergangswahrscheinlichkeit der Simulation entsteht daraus als
-$a + b \cdot (\text{erste Ordnung})$ — bei belastenden
-Ausscheideordnungen (Invalidisierung) mit $b < 1$, bei entlastenden
-(Reaktivierung) mit $b > 1$. Beiträge und Reserven bleiben davon
-unberührt.
+Rechnungsgrundlagen erster Ordnung. Die Trennung zu den
+Erfahrungsannahmen dritter Ordnung steht in der
+[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitt 5.2. Für dieses Produkt ist die
+Richtung der Transformation je Ausscheideordnung verschieden:
+belastende Ordnungen (Invalidisierung) tragen $b < 1$, entlastende
+(Reaktivierung) $b > 1$. Die Annahmen liegen unter `[annahmen]` der
+Bestands-Config.
 
 # 11 Verankerung und Abnahme
 
-Charakterisierungs-Anker `anker_bu_beispiel.json` (volle
-Float-Präzision, Provenienz „DAV 1997 I"); Engine-Selbsttest Vorwärts-
-gegen Rückwärtsbewertung auf der echten BU-Konfiguration; Monte-Carlo-
-Abgleich der Bestandssimulation gegen die Zustandsverteilung derselben
-Ordnung. Änderungen folgen dem Abnahme-Protokoll des Kerns.
+Das Abnahme-Protokoll gilt für alle Produkte
+([Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitt 11). Für dieses Produkt sind
+verankert: der Charakterisierungs-Anker `anker_bu_beispiel.json` (volle
+Float-Präzision, Provenienz „DAV 1997 I"), der Engine-Selbsttest
+Vorwärts- gegen Rückwärtsbewertung auf der echten BU-Konfiguration und
+der Monte-Carlo-Abgleich der Bestandssimulation gegen die
+Zustandsverteilung derselben Ordnung.
 
 # 12 Vorgesehene Erweiterungen
 

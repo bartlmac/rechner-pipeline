@@ -7,6 +7,7 @@ einzelnen Migrationsfall und unabhaengig von der technischen Umsetzung.
 | Dokument | Inhalt |
 |---|---|
 | [konstruktive-neuberechnung.md](konstruktive-neuberechnung.md) | Fachkonzept „Konstruktive Neuberechnung und Korrekturschicht" v0.2 — Methode, Invarianten, Prozess- und Testrahmen, Freiheitsgrade |
+| [grundsatzdokumentation.md](grundsatzdokumentation.md) | Mathematik und Numerik des Zielrechenkerns, produktübergreifend — das gemeinsame Rückgrat, dem die Umsetzung folgt |
 
 ## Einordnung (Fachkonzept Kap. 1.3)
 
@@ -15,17 +16,22 @@ Dokumentation (Freigabekreis Aktuariat/Entwicklung):
 
 1. **Fachkonzept** (hier): Methode, Invarianten, Prozess- und Testrahmen,
    Freiheitsgrade.
-2. **Grundsatzdokumentation** (FK Kap. 8.1): normative Mathematik und
-   Numerik, ein Dokument. *Die Implementierung folgt der
-   Grundsatzdokumentation, nicht umgekehrt.* — **noch nicht erstellt.**
+2. **Grundsatzdokumentation** ([grundsatzdokumentation.md](grundsatzdokumentation.md)):
+   normative Mathematik und Numerik, ein Dokument. *Die Implementierung
+   folgt der Grundsatzdokumentation, nicht umgekehrt.* Sie trägt das
+   Rückgrat, das allen Produkten gemeinsam ist (Zustandsraum,
+   Thiele-Rekursion, Rechnungsgrundlagen-Schicht, Numerik) und nimmt in
+   Abschnitt 9 die Korrekturmathematik auf, sobald deren Freiheitsgrade
+   entschieden sind.
 3. **Produktspezifische Ausgestaltung** (FK Kap. 8.2): je Tarifplan des
    Zielsystems die konkrete Belegung aller produktabhaengigen
    Festlegungen (Zustandsgraph mit Uebergangsklassifikation, Ankerliste,
    Formfunktion, Floors, Datenlieferumfang, Testfallkatalog). Ihr Ort in
    diesem Repo sind die bestehenden Tarifplaene unter
    [../tarifplaene/](../tarifplaene/) — je migriertem Produkt ein
-   Ausgestaltungs-Abschnitt. **Noch nicht erstellt**, weil die
-   Korrekturschicht nicht gebaut ist.
+   Ausgestaltungs-Abschnitt. Er wird faellig, sobald ein Produkt mit
+   Korrekturschicht migriert wird; welche Punkte er belegen muss, steht
+   in Grundsatzdokumentation Abschnitt 10 Nummer 9.
 
 Daneben — nicht darunter — steht **projektseitig** das
 [Migrationskonzept](../migrationskonzept/): je Bestand und Quellsystem
