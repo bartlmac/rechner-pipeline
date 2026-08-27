@@ -171,10 +171,97 @@ def test_vertrag_mit_befund_kommt_nicht_ins_journal():
     assert bericht["befunde"][0]["police_id"] == 2
 
 
-def test_unterjaehriger_verankerungszeitpunkt_faellt_hart_aus():
-    """Verankert wird am Rechenpunkt (9.12) — schon der Auftrag muss stimmen."""
-    with pytest.raises(MigrationszugangFehler, match="kein Rechenpunkt"):
+def test_unterjaehriger_verankerungszeitpunkt_wird_vorerst_abgelehnt():
+    """Ein offener Punkt, der nicht still gerundet wird.
+
+    Nach 9.12 setzt ein rechnender Geschaeftsvorfall den
+    Verankerungszeitpunkt, auch zwischen zwei Vertragsstichtagen. Die
+    Korrekturschicht rechnet aber auf dem Jahresgitter. Solange nicht
+    entschieden ist, wie das Rumpfjahr behandelt wird, faellt der Fall
+    aus — auf den Jahrestag zu runden waere eine stille Konvention.
+    """
+    with pytest.raises(MigrationszugangFehler, match="unterjaehrig"):
         Uebernahme(police_id=1, model_point=MP, monate_ta=TA + 5, dk_ist=1.0)
+
+
+# --------------------------------------------------------------------------- #
+# 5. Geschaeftsvorfall-Metadaten der Vorgeschichte (9.14)
+# --------------------------------------------------------------------------- #
+
+
+def test_verankerungszeitpunkt_ist_das_maximum_aus_stichtag_und_vorfall():
+    """9.12: t_a = max(letzter Vertragsstichtag, letzter rechnender Vorfall)."""
+    from rechner_pipeline.bestand.migrationszugang import (
+        Vorgang, verankerungszeitpunkt,
+    )
+
+    # Vorfall im Vertragsjahr 8, Stichtag im Jahr 9: der Jahrestag gewinnt.
+    assert verankerungszeitpunkt([Vorgang(1, "ERH", 100)], 115) == 108
+    # Ohne Vorgeschichte bleibt der letzte Jahrestag.
+    assert verankerungszeitpunkt([], 115) == 108
+    # Ein Vorfall NACH dem letzten Jahrestag ist aktueller und gewinnt.
+    assert verankerungszeitpunkt([Vorgang(1, "RED", 110)], 115) == 110
+
+
+def test_nicht_rechnende_vorfaelle_setzen_keinen_verankerungspunkt():
+    """Nur was gerechnet hat, hinterlaesst einen Rechenpunkt."""
+    from rechner_pipeline.bestand.migrationszugang import (
+        Vorgang, verankerungszeitpunkt,
+    )
+
+    # Ein Ereignis ohne Neuberechnung (hier: eine erfundene Kennung)
+    assert verankerungszeitpunkt([Vorgang(1, "NOTIZ", 110)], 115) == 108
+
+
+def test_vorgeschichte_hinter_dem_stichtag_faellt_hart_aus():
+    from rechner_pipeline.bestand.migrationszugang import (
+        Vorgang, verankerungszeitpunkt,
+    )
+
+    with pytest.raises(MigrationszugangFehler, match="hinter dem Stichtag"):
+        verankerungszeitpunkt([Vorgang(1, "ERH", 200)], 115)
+
+
+@pytest.mark.parametrize(
+    "arten, erwartet",
+    [
+        ([], "ohne_vorgeschichte"),
+        (["ERH", "ERH"], "dynamik"),
+        (["RED"], "reduziert"),
+        (["ERH", "PEX"], "beitragsfrei"),
+        (["NOTIZ"], "sonstige"),
+    ],
+)
+def test_historientyp_clustert_die_verteilungsauswertung(arten, erwartet):
+    """Grob und absichtlich so — die Cluster erklaeren, nicht beschreiben."""
+    from rechner_pipeline.bestand.migrationszugang import Vorgang, historientyp
+
+    vg = [Vorgang(1, a, 60 + i) for i, a in enumerate(arten)]
+    assert historientyp(vg) == erwartet
+
+
+def test_die_metadatenliste_traegt_keinen_betrag():
+    """Die Trennlinie aus 9.14: Zeitpunkte kommen mit, Werte nicht.
+
+    Kaeme ein Wert mit, koennte er in die Bewertung sickern — und die
+    konstruktive Neuberechnung waere keine mehr.
+    """
+    import dataclasses
+
+    from rechner_pipeline.bestand.migrationszugang import (
+        Vorgang, pruefe_metadatenliste,
+    )
+
+    felder = {f.name for f in dataclasses.fields(Vorgang)}
+    assert felder == {"police_id", "art", "monate_seit_beginn"}
+    assert pruefe_metadatenliste([Vorgang(1, "ERH", 60)]) == []
+
+
+def test_vorgang_vor_vertragsbeginn_faellt_hart_aus():
+    from rechner_pipeline.bestand.migrationszugang import Vorgang
+
+    with pytest.raises(MigrationszugangFehler, match="vor Vertragsbeginn"):
+        Vorgang(1, "ERH", -1)
 
 
 def test_doppelte_police_faellt_hart_aus():

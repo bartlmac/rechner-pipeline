@@ -91,12 +91,29 @@ class Uebernahme:
     kohorte: str = "t_a"
 
     def __post_init__(self) -> None:
-        if self.monate_ta < 0 or self.monate_ta % 12 != 0:
+        if self.monate_ta < 0:
+            raise MigrationszugangFehler(
+                f"police {self.police_id}: monate_ta={self.monate_ta} liegt "
+                "vor Vertragsbeginn"
+            )
+        if self.monate_ta % 12 != 0:
+            # Offener Punkt, bewusst nicht halb geloest: Ein rechnender
+            # Geschaeftsvorfall zwischen zwei Vertragsstichtagen setzt nach
+            # 9.12 den Verankerungszeitpunkt — er ist aktueller als der
+            # letzte Jahrestag. Die Korrekturschicht rechnet aber auf dem
+            # Jahresgitter (9.6); ein unterjaehriger Verankerungspunkt
+            # braucht entweder ein Monatsgitter oder eine Konvention, wie
+            # das erste Rumpfjahr behandelt wird. Beides ist eine fachliche
+            # Entscheidung, keine technische — bis sie getroffen ist, wird
+            # der Fall abgelehnt statt still auf den Jahrestag gerundet.
             raise MigrationszugangFehler(
                 f"police {self.police_id}: monate_ta={self.monate_ta} ist "
-                "kein Rechenpunkt — verankert wird am letzten exakten "
-                "Rechenpunkt des Quellsystems (volle Jahre, "
-                "Grundsatzdokumentation 9.12)"
+                f"unterjaehrig (Vertragsjahr {self.monate_ta // 12}, Monat "
+                f"{self.monate_ta % 12}). Nach 9.12 setzt ein rechnender "
+                "Geschaeftsvorfall den Verankerungszeitpunkt, auch zwischen "
+                "zwei Stichtagen — die Korrekturschicht rechnet aber auf dem "
+                "Jahresgitter. Wie das Rumpfjahr zu behandeln ist, ist offen "
+                "und zu entscheiden, bevor solche Vertraege uebernommen werden"
             )
 
 
@@ -307,3 +324,111 @@ def zugangsbericht(ergebnisse: Sequence[Zugangsergebnis]) -> Dict[str, Any]:
             {"police_id": e.police_id, "befund": e.befund} for e in befunde
         ][:50],
     }
+
+
+# --------------------------------------------------------------------------- #
+# Geschaeftsvorfall-Metadaten der Vorgeschichte (Grundsatzdokumentation 9.14)
+# --------------------------------------------------------------------------- #
+
+#: Vorfaelle, die im Quellsystem eine Neuberechnung ausgeloest haben und
+#: deshalb einen Rechenpunkt setzen (9.12: t_a ist das Maximum aus letztem
+#: Vertragsstichtag und letztem RECHNENDEM Geschaeftsvorfall). Ein Storno
+#: oder Tod beendet den Vertrag und kommt in einer Uebernahme nicht vor;
+#: eine Erhoehung dagegen rechnet.
+RECHNENDE_VORFAELLE = frozenset({"ERH", "PEX", "RED", "ZUZ", "VERL"})
+
+
+@dataclass(frozen=True)
+class Vorgang:
+    """Ein Geschaeftsvorfall der Vorgeschichte — Zeitpunkt und Art, KEIN Wert.
+
+    Das ist die Trennlinie aus 9.14: Die Vollhistorie bleibt beim
+    abgebenden Unternehmen, die *Metadaten* kommen mit. Sie tragen keinen
+    Betrag, weil der Rechenkern sie nie sehen darf — er wuerde sonst
+    rechnen, was er konstruktiv selbst ermitteln soll.
+
+    Wozu sie dann dienen: den Verankerungszeitpunkt zu bestimmen, die
+    Residuum-Verteilung nach Historientyp zu clustern und Ausreisser
+    erklaerbar zu machen. Ohne sie ist die aktuarielle Abnahme laut 9.14
+    nicht durchfuehrbar — sie ist Abnahmevoraussetzung, nicht Komfort.
+    """
+
+    police_id: int
+    art: str
+    monate_seit_beginn: int
+
+    def __post_init__(self) -> None:
+        if self.monate_seit_beginn < 0:
+            raise MigrationszugangFehler(
+                f"police {self.police_id}: Vorgang vor Vertragsbeginn "
+                f"({self.monate_seit_beginn} Monate)"
+            )
+
+    @property
+    def rechnet(self) -> bool:
+        return self.art in RECHNENDE_VORFAELLE
+
+
+def verankerungszeitpunkt(
+    vorgeschichte: Sequence[Vorgang], monate_am_stichtag: int
+) -> int:
+    """$t_a = \\max(\\text{letzter Vertragsstichtag}, \\text{letzter rechnender Vorfall})$.
+
+    Die Konvention aus 9.12, und zugleich die Antwort auf die Frage, was
+    "letzte technische Aenderung" heisst: Faellt ein rechnender Vorfall
+    NICHT auf den Vertragsstichtag, gilt sein Datum — es ist aktueller.
+
+    Der zurueckgegebene Wert ist immer ein Rechenpunkt: Der letzte
+    Vertragsstichtag ist per Definition einer, und ein rechnender Vorfall
+    setzt selbst einen.
+    """
+    letzter_stichtag = (monate_am_stichtag // 12) * 12
+    rechnende = [v.monate_seit_beginn for v in vorgeschichte if v.rechnet]
+    if not rechnende:
+        return letzter_stichtag
+    letzter_vorfall = max(rechnende)
+    if letzter_vorfall > monate_am_stichtag:
+        raise MigrationszugangFehler(
+            f"Vorgang {letzter_vorfall} Monate nach Beginn liegt hinter dem "
+            f"Stichtag ({monate_am_stichtag} Monate) — die Vorgeschichte "
+            "gehoert vor die Uebernahme"
+        )
+    return max(letzter_stichtag, letzter_vorfall)
+
+
+def historientyp(vorgeschichte: Sequence[Vorgang]) -> str:
+    """Cluster fuer die Verteilungsauswertung (9.12, Lieferobjekt 2).
+
+    Grob und absichtlich so: Die Cluster sollen erklaeren, WARUM Residuen
+    auseinanderlaufen, nicht jeden Vertrag einzeln beschreiben. Ein
+    feineres Raster gehoert in den Tarifplan, wenn ein Bestand es
+    verlangt.
+    """
+    arten = {v.art for v in vorgeschichte}
+    if not arten:
+        return "ohne_vorgeschichte"
+    if "PEX" in arten:
+        return "beitragsfrei"
+    if "RED" in arten:
+        return "reduziert"
+    if "ERH" in arten:
+        return "dynamik"
+    return "sonstige"
+
+
+def pruefe_metadatenliste(vorgeschichte: Sequence[Vorgang]) -> List[str]:
+    """Dass die Liste wirklich nur Metadaten traegt — kein Betrag.
+
+    Ein Beleg dafuer, dass die Trennung aus 9.14 eingehalten ist: Kaeme
+    hier ein Wert mit, koennte er in die Bewertung sickern, und die
+    konstruktive Neuberechnung waere keine mehr.
+    """
+    befunde: List[str] = []
+    for v in vorgeschichte:
+        for feld in ("betrag", "wert", "dk", "reserve"):
+            if hasattr(v, feld):
+                befunde.append(
+                    f"police {v.police_id}: Metadatensatz traegt {feld!r} — "
+                    "die Vorgeschichte liefert Zeitpunkte, keine Werte (9.14)"
+                )
+    return befunde
