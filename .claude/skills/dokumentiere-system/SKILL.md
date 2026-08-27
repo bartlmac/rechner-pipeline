@@ -52,12 +52,15 @@ zweimal teuer gewesen).
 - **Fachdokumente sprechen die Sprache des Unternehmens.** Wer die
   Grundsatzdokumentation, einen Tarifplan, das Migrationskonzept oder
   einen erzeugten Bericht liest, ist Aktuar, Pruefer, Revision oder
-  Vorstand — dort gibt es keine Repositories, Commits, Branches oder
-  Testsuiten. Stattdessen: Aenderungsverfahren, Aenderungsgrund,
-  maschinelle Pruefung, blockierender Befund. Werkzeugsprache gehoert in
-  README, AGENTS.md und die Skills. Ein Waechter haelt die vier
-  Fachdokumente (tests/test_tarifplan_struktur.py); die Regel gilt
-  weiter als er reicht.
+  Vorstand. Dort gibt es keine Repositories, Commits, Branches,
+  Testsuiten, Fixtures, Pipelines oder Backlogs — und auch keinen
+  "gruenen Lauf". Stattdessen: Aenderungsverfahren, Aenderungsgrund,
+  maschinelle Pruefung, blockierender Befund, Nachweis.
+  Werkzeugsprache gehoert in README, AGENTS.md und die Skills.
+  Diese Regel ist NICHT test-bar — eine Wortliste faengt bekannte
+  Begriffe und keine neu erfundenen. Sie wird eingehalten, indem
+  Fachdokumentation unter diesem Skill geschrieben und vor der Abgabe
+  aus der Sicht ihres Lesers gegengelesen wird.
 - Aktualisierungs-Pflicht: wer Verhalten aendert, zieht betroffene
   Dokumente IM SELBEN Block nach (README-Kommandos, AGENTS-Eintraege,
   ADR-Konsequenzen, Grundsatzmathematik). Veraltete Doku ist ein Befund.

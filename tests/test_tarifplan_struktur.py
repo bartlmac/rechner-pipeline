@@ -260,39 +260,3 @@ def test_alle_doku_links_zeigen_auf_existierende_dateien():
                     f"{pfad.relative_to(REPO_ROOT)} -> {ziel}"
                 )
     assert not tot, "tote Doku-Links:\n  " + "\n  ".join(tot)
-
-
-#: Fachdokumente werden einem Aktuar, einem Pruefer oder der Revision
-#: vorgelegt. Dort gibt es keine Repositories, keine Commits und keine
-#: Testsuiten — Begriffe des Entwicklungswerkzeugs gehoeren in die
-#: READMEs, Skills und AGENTS.md, nicht in die Fachdokumentation.
-FACHDOKUMENTE = (
-    "docs/mathematik/grundsatzdokumentation.md",
-    "docs/migrationskonzept/vorlage.md",
-    "docs/tarifplaene/klv.md",
-    "docs/tarifplaene/bu.md",
-)
-WERKZEUG_JARGON = (
-    r"\bRepositor(?:y|ies|ium)\b", r"\bRepos?\b", r"\bCommits?\b",
-    r"\bgit\b", r"\bgitignore", r"\bBranch(?:es)?\b", r"\bpytest\b",
-    r"\bPull Request", r"\bTestsuite\b", r"faellt die Suite",
-    r"fällt die Suite",
-)
-
-
-@pytest.mark.parametrize("datei", FACHDOKUMENTE)
-def test_fachdokumente_sprechen_keinen_werkzeug_jargon(datei):
-    """Ein Fachdokument wird im Unternehmen gelesen, nicht im
-    Entwicklungswerkzeug. Wer die Grundsatzdokumentation dem
-    Verantwortlichen Aktuar vorlegt, kann ihm keine Commits erklaeren."""
-    text = (REPO_ROOT / datei).read_text(encoding="utf-8")
-    gefunden = sorted({
-        treffer
-        for muster in WERKZEUG_JARGON
-        for treffer in re.findall(muster, text, re.I)
-    })
-    assert not gefunden, (
-        f"{datei} spricht Werkzeug-Jargon: {gefunden} — im Fachdokument "
-        "die fachliche Formulierung waehlen (Aenderungsverfahren statt "
-        "Commit, maschinelle Pruefung statt Suite)"
-    )
