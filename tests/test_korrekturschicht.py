@@ -23,9 +23,9 @@ import pytest
 
 from rechner_pipeline.kern import KLV_DEFAULT
 from rechner_pipeline.kern.korrekturschicht import (
-    DEGENERATIONS_SCHWELLE,
     SCHICHT_CONV,
     Degeneration,
+    KeinAmortisationsraum,
     FloorVerletzung,
     Formfunktion,
     Korrekturschicht,
@@ -178,12 +178,59 @@ def test_biometrie_wirkt_sehr_wohl():
 # --------------------------------------------------------------------------- #
 
 
-def test_degeneration_wird_nicht_verrentet_sondern_abgelehnt():
-    """Bei kurzer Restlaufzeit explodiert rho — die Schwelle faengt das."""
+@pytest.mark.parametrize("jahre", [20, 10, 5, 3, 2, 1])
+def test_kurze_restlaufzeit_rechnet_korrekt_ohne_jede_grenze(jahre: int):
+    """Es gibt keine eingebaute Schwelle — und es braucht auch keine.
+
+    Ein frueherer Entwurf lehnte kurze Restlaufzeiten ab, weil "rho
+    explodiert". Das traegt nicht: rho ist ein Zwischenwert und waechst
+    zwar, wird aber mit einer im selben Mass kleineren Formfunktion
+    multipliziert. Der Schichtwert bleibt exakt das Residuum, der
+    Terminalwert exakt null — bei JEDER Restlaufzeit.
+    """
     s = _schicht()
-    winzig = Formfunktion(kennung="winzig", werte=(DEGENERATIONS_SCHWELLE / 2,))
-    with pytest.raises(Degeneration, match="unter der Schwelle"):
-        s.verankere(winzig, 45, AKTIV, -1000.0)
+    form = form_konstantes_fenster(jahre, jahre)
+    R = -850.0
+    p = s.verankere(form, 45, AKTIV, R)
+    v = s.verlauf(p, form, 45)
+    assert v[0] == pytest.approx(R, rel=1e-12)
+    assert v[-1] == 0.0
+
+
+def test_ohne_amortisationsraum_faellt_es_hart_aus():
+    """Der einzige zwingende Grenzfall: Pi = 0, also Division durch null.
+
+    Er entsteht nicht aus kurzer Restlaufzeit, sondern daraus, dass ueber
+    den erlebten Zeitraum gar kein Einheitsstrom laeuft.
+    """
+    s = _schicht()
+    # Sterblichkeit 1: nach dem ersten Jahr lebt niemand mehr, und die Form
+    # zahlt erst danach.
+    tot_sofort = Zustandsmodell(
+        (AKTIV, TOT), ZINS,
+        lambda v, n, a, d: 1.0 if (v, n) == (AKTIV, TOT) else 0.0,
+    )
+    schicht = Korrekturschicht(tot_sofort, ((AKTIV, TOT),))
+    spaet = Formfunktion(kennung="erst_spaeter", werte=(0.0, 0.0, 1.0))
+    with pytest.raises(KeinAmortisationsraum, match="keinen Einheitsstrom"):
+        schicht.verankere(spaet, 45, AKTIV, -1000.0)
+
+
+def test_ausbuchungsgrenze_ist_eine_entscheidung_des_aufrufers():
+    """Wer kurze Laufzeiten ausbuchen WILL, sagt es — die Methode nicht.
+
+    Ohne Grenze rechnet derselbe Fall durch. Das ist der Unterschied
+    zwischen einer Bilanzentscheidung und einer Eigenschaft der Methode.
+    """
+    s = _schicht()
+    form = form_konstantes_fenster(2, 2)
+    pi = s.pi(form, 45, AKTIV)
+
+    ohne = s.verlauf(s.verankere(form, 45, AKTIV, -850.0), form, 45)
+    assert ohne[0] == pytest.approx(-850.0, rel=1e-12)
+
+    with pytest.raises(Degeneration, match="Ausbuchungsgrenze"):
+        s.verankere(form, 45, AKTIV, -850.0, ausbuchungsgrenze=pi + 1.0)
 
 
 def test_floor_wird_ueber_den_ganzen_pfad_geprueft():

@@ -41,15 +41,27 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from rechner_pipeline.kern.zustandsmodell import Zustandsmodell
 
-#: Unterhalb dieses Barwerts des Einheitsstroms ist die Restlaufzeit zu
-#: kurz, um ein Residuum zu verrenten: $\rho = R/\Pi$ explodiert
-#: (Grundsatzdokumentation 9.10). Das Residuum wird dann sofort ueber das
-#: Ergebnis ausgebucht — sichtbar, nicht still.
-#:
-#: Der Wert ist ein offener Freiheitsgrad (9.16) und hier bewusst
-#: konservativ gesetzt: ein Zehntel Jahresbarwert. Er gehoert vor dem
-#: ersten echten Bestand fachlich entschieden.
-DEGENERATIONS_SCHWELLE = 0.1
+# Es gibt hier bewusst KEINE feste Schwelle fuer "zu kurze Restlaufzeit".
+#
+# Ein frueherer Entwurf hatte eine, mit der Begruendung aus
+# Grundsatzdokumentation 9.10: unterhalb einer Schwelle explodiere
+# $\rho = R/\Pi$. Nachgemessen traegt das nicht. $\rho$ ist ein
+# Zwischenwert, kein Ausweiswert: Er waechst zwar (von 54 auf 850 bei
+# einer Restlaufzeit von 20 auf 1 Jahr), wird aber mit einer im selben
+# Mass kleineren Formfunktion multipliziert. Der Schichtwert bleibt in
+# jedem Fall exakt das Residuum, der Terminalwert exakt null — die
+# Rechnung ist bei jeder Restlaufzeit korrekt.
+#
+# Eine feste Zahl haette deshalb kein Ergebnis beurteilt (das tun die
+# Toleranzen des aktuariellen Tests), sondern die METHODE umgeschaltet:
+# ab drei Jahren verteilen, darunter ausbuchen. Zwei verschiedene
+# Behandlungen desselben Sachverhalts, getrennt durch einen Wert, den
+# niemand begruenden kann.
+#
+# Was bleibt, ist eine Entscheidung des Rechnungswesens: Ob ein
+# Unternehmen kurze Restlaufzeiten ABSICHTLICH ausbuchen statt verteilen
+# will. Die kommt als ``ausbuchungsgrenze`` je Aufruf herein und steht
+# damit im Beleg, statt als Konstante im Kern zu stecken.
 
 #: Schichttypen (9.13): das Historienresiduum ist die primaere
 #: Qualitaetskennzahl, das Konventionsresiduum die optionale Zweitschicht.
@@ -61,8 +73,21 @@ class KorrekturschichtFehler(ValueError):
     """Verankerung nicht durchfuehrbar — fail-fast statt stiller Naeherung."""
 
 
+class KeinAmortisationsraum(KorrekturschichtFehler):
+    """$\\Pi = 0$: es gibt keinen Zeitraum, ueber den verteilt werden koennte.
+
+    Der einzige mathematisch zwingende Grenzfall — nicht eine Frage der
+    Bilanzpolitik, sondern eine Division durch null.
+    """
+
+
 class Degeneration(KorrekturschichtFehler):
-    """Restlaufzeit zu kurz: das Residuum wird ausgebucht, nicht verrentet."""
+    """Die gesetzte Ausbuchungsgrenze ist unterschritten.
+
+    Wird NUR geworfen, wenn der Aufrufer eine ``ausbuchungsgrenze``
+    mitgibt. Ohne sie rechnet die Schicht auch kurze Restlaufzeiten — die
+    Werte stimmen dort (siehe Kopf des Moduls).
+    """
 
 
 class FloorVerletzung(KorrekturschichtFehler):
@@ -145,7 +170,10 @@ def form_konstantes_fenster(horizont: int, fenster: int) -> Formfunktion:
     """$g \\equiv 1$ auf $[t_a,\\, t_a + n]$ (9.9, Kandidat 2).
 
     Am leichtesten zu erklaeren; ``fenster`` ist Produktparameter. Bei
-    kurzer Restlaufzeit ungeeignet — das faengt die Degenerationsschwelle.
+    kurzer Restlaufzeit wird der Abbau steil (bei einem Jahr Restlaufzeit
+    traegt dieses eine Jahr die ganze Differenz) — richtig gerechnet
+    bleibt es trotzdem. Ob ein so steiler Abbau noch als Verteilung
+    gelten soll, entscheidet der Aufrufer ueber ``ausbuchungsgrenze``.
     """
     if fenster <= 0:
         raise KorrekturschichtFehler(f"Amortisationsfenster {fenster} <= 0")
@@ -301,7 +329,7 @@ class Korrekturschicht:
         *,
         verweildauer: int = 0,
         schichttyp: str = SCHICHT_HIST,
-        schwelle: float = DEGENERATIONS_SCHWELLE,
+        ausbuchungsgrenze: Optional[float] = None,
         kohorte: str = "t_a",
         in_ueberschuss: bool = True,
         in_zzr: bool = True,
@@ -316,12 +344,24 @@ class Korrekturschicht:
         if not math.isfinite(residuum):
             raise KorrekturschichtFehler(f"Residuum ist {residuum!r}")
         p = self.pi(form, alter0, zustand, verweildauer=verweildauer)
-        if p < schwelle:
+        if p <= 0.0:
+            # Der einzige zwingende Grenzfall: kein Zeitraum, ueber den
+            # verteilt werden koennte. Keine Ermessensfrage.
+            raise KeinAmortisationsraum(
+                f"Pi = {p!r}: die Formfunktion traegt ueber die Restlaufzeit "
+                "keinen Einheitsstrom (kein erlebter Zeitraum oder durchweg "
+                "null) — es gibt nichts, worauf sich das Residuum verteilen "
+                "liesse"
+            )
+        if ausbuchungsgrenze is not None and p < ausbuchungsgrenze:
+            # Bilanzentscheidung des Aufrufers, keine Eigenschaft der Methode:
+            # Er will kurze Restlaufzeiten ausbuchen statt verteilen. Die
+            # Rechnung selbst waere auch hier korrekt.
             raise Degeneration(
-                f"Pi = {p!r} unter der Schwelle {schwelle!r}: die Restlaufzeit "
-                "traegt das Residuum nicht mehr. Es wird sofort ueber das "
-                "Ergebnis ausgebucht statt verrentet (Grundsatzdokumentation "
-                "9.10) — und die Ausbuchung ist auszuweisen"
+                f"Pi = {p!r} unter der gesetzten Ausbuchungsgrenze "
+                f"{ausbuchungsgrenze!r}: Das Residuum ist nach dieser Vorgabe "
+                "sofort ueber das Ergebnis auszubuchen statt zu verteilen — "
+                "und die Ausbuchung ist auszuweisen"
             )
         return Schichtparameter(
             schichttyp=schichttyp,

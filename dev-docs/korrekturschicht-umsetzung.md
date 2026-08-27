@@ -222,9 +222,27 @@ Vorlaufzeit, bevor AT-1 gegen TG2015 laufen kann. Die Gegenrichtung wäre:
 erst AT-1 mit rohem Vergleich fahren, um die Datenlage zu sehen, dann
 N7.1.
 
-**K2 — Die Degenerationsschwelle.** In 9.16 als offen ausgewiesen. Sie
-braucht eine Zahl, bevor ein echter Bestand läuft, und sie ist eine
-fachliche Entscheidung, keine technische.
+**K2 — Die Degenerationsschwelle: erledigt, indem sie entfällt.** Der
+erste Entwurf baute sie ein, weil 9.10 sie verlangte. Beim Erklären der
+Mechanik kam die Rückfrage, warum es hier überhaupt eine feste Zahl
+braucht, wo der aktuarielle Test doch schon Grenzen hat — und die
+Nachmessung gab der Frage recht: Bei jeder Restlaufzeit von einem Jahr
+aufwärts bleibt der Schichtwert exakt $R$ und der Terminalwert exakt
+null. Es explodiert nichts; $\rho$ ist ein Zwischenwert, kein
+Ausweiswert.
+
+Dazu kam ein Befund an der eigenen Umsetzung: Die eingebaute Grenze
+prüfte $\Pi$, dessen Größenordnung von der Formfunktion abhängt — im
+selben Fall 1,00 (konstantes Fenster) gegen 190.450,31 (proportional
+zur Basis). Eine Grenze von 0,1 hätte in keinem realistischen Fall
+gegriffen. Der Guardrail war wirkungslos.
+
+Umgesetzt: Die Konstante ist entfallen. Hart abgefangen wird nur noch
+$\Pi = 0$ — der einzige zwingende Fall. Wer kurze Restlaufzeiten
+ausbuchen statt verteilen will, gibt eine `ausbuchungsgrenze` mit; das
+ist eine Entscheidung des Rechnungswesens je Bestandsgruppe und steht
+dann im Beleg. Abschnitt 9.10 der Grundsatzdokumentation ist
+entsprechend neu gefasst.
 
 **K3 — Wo die Schichtparameter herkommen.** Der Kern bekommt sie als
 Attribut (9.14: die Ableitungslast liegt quellseitig oder in der

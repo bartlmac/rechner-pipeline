@@ -527,11 +527,33 @@ in der Ausgestaltung des Tarifplans zu dokumentieren.
   (§ 153 VVG, RfB). **Ob und wie** es dem Bestand zusteht, ist
   Unternehmensentscheidung — der Kern muss den Effekt **sichtbar
   ausweisen** können.
-* **Degeneration $\Pi \to 0$** bei kurzer Restlaufzeit: Unterhalb einer
-  Schwelle wird $R$ sofort über das Ergebnis ausgebucht statt verrentet,
-  sonst explodiert $\rho$. Dass es eine Schwelle gibt und die
-  Ausbuchung im Ergebnis sichtbar ist, ist bindend; ihr Wert ist offen
-  (9.16).
+* **Kein Amortisationsraum ($\Pi = 0$):** Trägt die Formfunktion über
+  den erlebten Zeitraum keinen Einheitsstrom, ist $\rho$ nicht
+  definiert. Das ist der einzige zwingende Grenzfall und ein harter
+  Fehler — es gibt nichts, worauf sich das Residuum verteilen ließe.
+* **Kurze Restlaufzeit ist dagegen KEIN Grenzfall.** Eine frühere
+  Fassung dieses Abschnitts verlangte eine Schwelle mit der Begründung,
+  unterhalb davon explodiere $\rho$. Das trägt nicht: $\rho$ ist ein
+  Zwischenwert der Kalibrierung, kein Ausweiswert. Er wächst bei
+  kürzerer Restlaufzeit zwar, wird aber mit einem im selben Maß
+  kleineren Einheitsstrom multipliziert — der Schichtwert bleibt in
+  jedem Fall exakt $R$ und der Terminalwert exakt null.
+
+  Eine feste Schwelle hätte deshalb kein Ergebnis beurteilt, sondern die
+  **Methode umgeschaltet**: oberhalb verteilen, unterhalb ausbuchen.
+  Zwei verschiedene Behandlungen desselben Sachverhalts, getrennt durch
+  einen Wert, für den es keine fachliche Begründung gibt. Das
+  unterscheidet die Frage von den Toleranzen des aktuariellen Tests
+  (9.15): Die beurteilen ein Ergebnis, hier gäbe es nichts zu
+  beurteilen.
+* **Ausbuchung statt Verteilung** bleibt möglich, ist aber eine
+  **Entscheidung des Rechnungswesens je Bestandsgruppe**, keine
+  Eigenschaft der Methode: Ein Unternehmen kann festlegen, dass es
+  Residuen unterhalb einer Restlaufzeit sofort über das Ergebnis
+  ausbucht, weil ein sehr steiler Abbau bilanziell einem Einmaleffekt
+  gleichkommt. Wird das so festgelegt, ist es zu parametrieren und im
+  Beleg auszuweisen — nicht im Rechenkern zu verdrahten. Und die
+  Ausbuchung ist im Ergebnis sichtbar zu machen.
 * **Flags:** Die Schicht ist Deckungskapital, trägt den Rechnungszins
   ihrer Bestandsgruppe und ist im Default in Überschussbemessung und
   ZZR-Ermittlung **enthalten** — beides als Konfiguration je
@@ -689,7 +711,8 @@ Tarifplan zu belegen — nicht beim Implementieren nebenbei:
 | Klasse-A-Integration | Anrechnung des Gesamt-Deckungskapitals **einschließlich der Schicht**, danach $\rho := 0$ | Reihenfolge und Verortung in der Geschäftsvorfall-Engine, Transaktionsschnitt |
 | Klasse-C-Neuverankerung | Operator nach 9.8 | Auslösemechanik (Ereignis-Haken oder Neubewertung) |
 | Unterjährige Altkonventionen | als konfigurierbare Rechnungsgrundlage, nicht als Sonderlogik im Rechenpfad | Konfigurationsmodell, Granularität |
-| Degenerationsfall | eine Schwelle muss existieren, die Ausbuchung sichtbar sein (9.10) | konkreter Schwellwert, Buchungsweg |
+| Kein Amortisationsraum | $\Pi = 0$ ist ein harter Fehler (9.10) | — |
+| Ausbuchung statt Verteilung | falls festgelegt: parametriert und im Beleg ausgewiesen, Ausbuchung im Ergebnis sichtbar (9.10) | ob ueberhaupt, ab welcher Restlaufzeit, Buchungsweg |
 | Floor-Prüfung | pfadweise zur Kalibrierungszeit (9.10) | Prüfraster, Performance-Strategie |
 | Persistenz | Parameter statt Werte, Reproduzierbarkeit (9.11) | Speichermodell, Versionierung |
 | Reporting | eigene Position je Vertrag und aggregiert, beide Residuen getrennt | Kontenanbindung, Berichtsformate |
@@ -725,7 +748,8 @@ eines Produkts legt fest — und nur er:
 9. Bei **migrierten Produkten** zusätzlich die Ausgestaltung der
    Korrekturmathematik (Übergangsklassifikation,
    Ankerliste mit Härtegraden, Formfunktion, Floors,
-   Degenerationsschwelle, Testfallkatalog).
+   gegebenenfalls eine Ausbuchungsregel für kurze Restlaufzeiten,
+   Testfallkatalog).
 
 Die Abgrenzung ist mechanisch prüfbar und folgt der
 Knoten-Annotation des Codes: Was ein Modul beschreibt, das allen
