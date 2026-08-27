@@ -66,16 +66,40 @@ FALL_SCOPE_SCHEMA_VERSION = 2
 FALL_SCOPES = ("tarif", "bestand")
 
 #: Pflichtbelegrollen JE GATE und Scope (ADR-009, fortgeschrieben durch
-#: ADR-010): A-M1 und A-M4 verlangen verschiedene Belege. A-M1 (aktuarielle
-#: Abnahme) pinnt im Bestands-Scope das Testergebnis und den Bericht des
-#: aktuariellen Tests; im Tarif-Scope gibt es keine Vertragslieferung und
-#: damit keine eigenen Testartefakte — der Entscheid stuetzt sich dort
-#: auf die ohnehin gepinnten P-K1-Belege. A-M4 traegt zusaetzlich den
-#: geltenden A-M1-Snapshot als Pflichtrolle (erzwungene Reihenfolge).
+#: ADR-010 und ADR-012). Der aktuarielle Test besteht aus drei Abnahmen,
+#: die dem Migrationscontrolling alle drei vorausgehen:
+#:
+#: * ``A-M1`` Stichtagstest, ``A-M2`` Verlaufstest, ``A-M3``
+#:   Geschaeftsvorfalltest — jede pinnt im Bestands-Scope ihr eigenes
+#:   Testergebnis und ihren eigenen Bericht. Im Tarif-Scope gibt es keine
+#:   Vertragslieferung und damit keine eigenen Testartefakte; der Entscheid
+#:   stuetzt sich dort auf die ohnehin gepinnten P-K1-Belege.
+#: * ``A-M4`` traegt den geltenden ``A-M1``-Snapshot als Pflichtrolle.
+#:   Das ist die erzwungene Reihenfolge: Ohne den Stichtagstest ist der
+#:   Uebernahmestand nicht belegt, und eine finanzielle Abnahme des
+#:   Gesamtbestands naehme etwas ab, dessen Grundlage offen ist.
+#:
+#: ``A-M2`` und ``A-M3`` sind BEWUSST keine Pflichtbelege von ``A-M4``.
+#: Sie sind eigene Gates, gerade damit an ihnen getrennt weitergearbeitet
+#: werden kann: Verlaufs- und Geschaeftsvorfallwerte liefert ein
+#: abgebendes Unternehmen oft erst in einer spaeteren Phase, waehrend die
+#: Migration auf dem belegten Stichtagstest bereits laeuft. Wer sie
+#: zwingend vorschaltet, blockiert die Migration an Daten, die es noch
+#: nicht gibt — und wer sie ganz weglaesst, hat den Test nicht
+#: vollstaendig gefahren. Beides ist eine Entscheidung des Aktuariats je
+#: Fall, keine Eigenschaft der Gate-Kette.
 BELEGROLLEN = {
     "A-M1": {
         "tarif": (),
         "bestand": ("aktuartest", "aktuartest_bericht"),
+    },
+    "A-M2": {
+        "tarif": (),
+        "bestand": ("aktuartest_am2", "aktuartest_am2_bericht"),
+    },
+    "A-M3": {
+        "tarif": (),
+        "bestand": ("aktuartest_am3", "aktuartest_am3_bericht"),
     },
     "A-M4": {
         "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege"),

@@ -98,7 +98,7 @@ from rechner_pipeline.models.schemas import (
 )
 
 GATE_VERSION = P9_GATE_VERSION
-GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M4", "A-K1")
+GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1")
 CLI_CONTRACT = GateCliContract(
     command="gate_entscheid",
     gate="entscheid.?",
