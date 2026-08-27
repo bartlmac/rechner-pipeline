@@ -333,3 +333,100 @@ def test_profil_steht_im_ergebnis_und_traegt_den_beleg():
     assert ergebnis["profil"]["weite"] == "1 Fall je Vorfallart"
     assert ergebnis["profil"]["kennung"] == "A-M1"
     assert ergebnis["profil"]["grundtoleranz"]["abs_tol"] == ENG.abs_tol
+
+
+# --------------------------------------------------------------------------- #
+# 7. Korrekturschicht im Test (Grundsatzdokumentation 9, ADR-010)
+# --------------------------------------------------------------------------- #
+
+
+def _uebernommen(delta: float = -850.0, ta_jahr: int = 9):
+    """Ein uebernommener Vertrag samt seiner verankerten Schicht."""
+    from rechner_pipeline.bestand.migrationszugang import Uebernahme, uebernehmen
+
+    prosp = KERN.verlaufszeile(ta_jahr).drx_bpfl
+    e, = uebernehmen([
+        Uebernahme(police_id=1, model_point=dict(MP),
+                   monate_ta=12 * ta_jahr, dk_ist=prosp + delta)
+    ])
+    return e, prosp + delta, 12 * ta_jahr
+
+
+def test_ohne_schicht_meldet_der_test_die_uebernahmedifferenz_als_fehler():
+    """Der rohe Wertvergleich kann nicht anders — er kennt die Methode nicht."""
+    _, geliefert, ta = _uebernommen()
+    v = _vertrag(Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME))
+    ergebnis = pruefe_vertrag(v, _profil())
+    assert ergebnis["bestanden"] is False
+    assert ergebnis["pruefungen"][0]["residuum"] == pytest.approx(850.0)
+
+
+def test_mit_schicht_ist_die_uebernahmedifferenz_konstruktionsbedingt_null():
+    """Das ist der Zugewinn: Der Test misst ab jetzt, was DANEBEN passiert.
+
+    Am Verankerungszeitpunkt traegt die Schicht genau das Residuum. Was
+    der Test dort noch findet, waere ein Fehler der Verankerung selbst.
+    """
+    e, geliefert, ta = _uebernommen()
+    v = _vertrag(
+        Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
+        schicht=e.parameter, monate_ta=ta,
+    )
+    ergebnis = pruefe_vertrag(v, _profil())
+    assert ergebnis["bestanden"] is True
+    assert ergebnis["pruefungen"][0]["residuum"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_die_schicht_wirkt_auch_am_naechsten_stichtag():
+    """A-M1 prueft die Fortschreibung — die Schicht laeuft dort mit."""
+    e, geliefert, ta = _uebernommen()
+    fort_basis = KERN.verlaufszeile(ta // 12 + 1).drx_bpfl
+
+    # Der Wert, den das System am naechsten Stichtag zeigt, liegt zwischen
+    # der reinen Basis und dem gelieferten Stand: Die Schicht ist teilweise
+    # abgebaut.
+    v = _vertrag(
+        Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
+        Pruefpunkt(ta + 12, {"kVx_MRV": fort_basis}, ANLASS_FORTSCHREIBUNG),
+        schicht=e.parameter, monate_ta=ta,
+    )
+    ergebnis = pruefe_vertrag(v, _profil())
+    zweiter = ergebnis["pruefungen"][1]
+    assert zweiter["system"] < fort_basis, "die Schicht ist negativ, senkt also"
+    assert zweiter["system"] > fort_basis - 850.0, "sie ist teilweise abgebaut"
+
+
+def test_schicht_ohne_verankerungszeitpunkt_faellt_hart_aus():
+    """Die Schicht rechnet ab t_a — ohne den Zeitpunkt ist sie undefiniert."""
+    e, geliefert, ta = _uebernommen()
+    v = _vertrag(
+        Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
+        schicht=e.parameter,
+    )
+    with pytest.raises(AktuartestFehler, match="ohne monate_ta"):
+        pruefe_vertrag(v, _profil())
+
+
+def test_pruefpunkt_vor_der_verankerung_faellt_hart_aus():
+    """Vor t_a gehoerte der Vertrag dem abgebenden Unternehmen."""
+    e, geliefert, ta = _uebernommen()
+    v = _vertrag(
+        Pruefpunkt(ta - 12, {"kVx_MRV": 1.0}, ANLASS_UEBERNAHME),
+        schicht=e.parameter, monate_ta=ta,
+    )
+    with pytest.raises(AktuartestFehler, match="VOR dem Verankerungszeitpunkt"):
+        pruefe_vertrag(v, _profil())
+
+
+def test_beitrag_bleibt_von_der_schicht_unberuehrt():
+    """Die Schicht ist Deckungskapital, kein Vertragsmerkmal (9.10)."""
+    e, geliefert, ta = _uebernommen()
+    mit = _vertrag(
+        Pruefpunkt(ta, {"BJB": KERN.gross_annual_premium()}, ANLASS_UEBERNAHME),
+        schicht=e.parameter, monate_ta=ta,
+    )
+    ohne = _vertrag(
+        Pruefpunkt(ta, {"BJB": KERN.gross_annual_premium()}, ANLASS_UEBERNAHME)
+    )
+    assert pruefe_vertrag(mit, _profil())["bestanden"]
+    assert pruefe_vertrag(ohne, _profil())["bestanden"]

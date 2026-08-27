@@ -52,7 +52,7 @@ flowchart TD
     models -- 1 --> gates
     models -- 1 --> kern
     ontologie -- 1 --> kern
-    qa -- 9 --> kern
+    qa -- 10 --> kern
     qa -- 2 --> kommutationskern
     qa -- 1 --> models
     quellen -- 1 --> kern

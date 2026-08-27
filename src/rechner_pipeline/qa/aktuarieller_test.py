@@ -83,6 +83,12 @@ from rechner_pipeline.kern.rechenkern import (
     erhoehungs_scheibe,
     vertrags_monatsreserve,
 )
+from rechner_pipeline.kern.korrekturschicht import (
+    Korrekturschicht,
+    Schichtparameter,
+    form_konstantes_fenster,
+    form_proportional_zur_basis,
+)
 from rechner_pipeline.qa.migrationssuite import DATEN_AUSNAHMEN
 from rechner_pipeline.qa.stichprobe import Stichprobe
 from rechner_pipeline.qa.testprofil import Kriterium, Testprofil
@@ -198,6 +204,21 @@ class Vertragspruefung:
     punkte: Tuple[Pruefpunkt, ...]
     scheiben: Tuple[Tuple[int, float], ...] = field(default_factory=tuple)
     beitragsfrei_seit_jahr: Optional[int] = None
+    #: Schichtparameter des Migrationszugangs (Grundsatzdokumentation 9.11).
+    #: Sind sie gesetzt, vergleicht die Engine den Wert EINSCHLIESSLICH
+    #: Korrekturschicht — das Residuum wird damit von einer Restgroesse zu
+    #: einer kalibrierten: Am Verankerungszeitpunkt ist es
+    #: konstruktionsbedingt null, und interessant wird, was DANEBEN
+    #: passiert (der zweite Punkt von A-M1, der Verlauf von A-M2, die
+    #: Geschaeftsvorfaelle von A-M3).
+    #:
+    #: Ohne sie bleibt der rohe Wertvergleich — der ist weiter gueltig,
+    #: solange ein Fall keine Schicht fuehrt.
+    schicht: Optional[Schichtparameter] = None
+    #: Der Verankerungszeitpunkt in vollen Vertragsmonaten. Pflicht, wenn
+    #: eine Schicht gesetzt ist: Die Schicht rechnet ab dort, nicht ab
+    #: Vertragsbeginn.
+    monate_ta: Optional[int] = None
 
 
 def verankerungspunkt(monate: int, erwartet: Dict[str, float]) -> Pruefpunkt:
@@ -298,6 +319,26 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
             f"police {v.police_id}: beitragsfrei_seit_jahr="
             f"{v.beitragsfrei_seit_jahr} ist kein Vertragsjahr"
         )
+    if v.schicht is not None:
+        if v.monate_ta is None:
+            raise AktuartestFehler(
+                f"police {v.police_id}: Schichtparameter ohne monate_ta — die "
+                "Korrekturschicht rechnet ab dem Verankerungszeitpunkt, nicht "
+                "ab Vertragsbeginn"
+            )
+        if v.monate_ta % 12 != 0 or v.monate_ta < 0:
+            raise AktuartestFehler(
+                f"police {v.police_id}: monate_ta={v.monate_ta} ist kein "
+                "Rechenpunkt (Grundsatzdokumentation 9.12)"
+            )
+        frueh = [p.monate for p in v.punkte if p.monate < v.monate_ta]
+        if frueh:
+            raise AktuartestFehler(
+                f"police {v.police_id}: Pruefpunkte {sorted(frueh)[:3]} liegen "
+                f"VOR dem Verankerungszeitpunkt {v.monate_ta} — dort ist die "
+                "Korrekturschicht nicht definiert, der Vertrag gehoerte dem "
+                "abgebenden Unternehmen"
+            )
     doppelt = _doppelte_punkte(v.punkte)
     if doppelt:
         raise AktuartestFehler(
@@ -367,6 +408,43 @@ def _deckungskapital(
     return kern.zustand_am(monate).vx_mrv
 
 
+def _schichtwert(v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt) -> float:
+    """Der Wert der Korrekturschicht am Pruefpunkt (0.0 ohne Schicht).
+
+    Die Schicht rechnet ab dem Verankerungszeitpunkt; ein Pruefpunkt DAVOR
+    liegt ausserhalb ihrer Definition und ist ein Auftragsfehler. Auf dem
+    Jahresgitter wird der Verlaufswert genommen, unterjaehrig linear
+    zwischen den Jahresraendern gemischt — dieselbe Konvention wie fuer die
+    Basisschicht (Abschnitt 6), denn die Schicht ist dieselbe Rekursion
+    mit anderen Zahlungen und darf keine eigene Zeitachse bekommen
+    ("Overlay ohne dritte Uhr", 9.5).
+    """
+    if v.schicht is None:
+        return 0.0
+    jahr_ta = v.monate_ta // 12
+    kern = Rechenkern(mp)
+    basis = [kern.verlaufszeile(a).drx_bpfl for a in range(jahr_ta, mp.n + 1)]
+    if v.schicht.formfunktion == "konstantes_fenster":
+        fenster = int(v.schicht.formparameter["fenster"])
+        form = form_konstantes_fenster(len(basis), min(fenster, len(basis)))
+    else:
+        form = form_proportional_zur_basis(basis)
+    bw = kern.produkt.bw
+    schicht = Korrekturschicht(
+        bw.modell, tuple(tuple(pair) for pair in v.schicht.vererbend)
+    )
+    verlauf = schicht.verlauf(v.schicht, form, mp.x + jahr_ta)
+
+    seit_ta = p.monate - v.monate_ta
+    j, rest = divmod(seit_ta, 12)
+    if j >= len(verlauf) - 1:
+        return verlauf[-1]
+    if rest == 0:
+        return verlauf[j]
+    anteil = rest / 12.0
+    return (1.0 - anteil) * verlauf[j] + anteil * verlauf[j + 1]
+
+
 def _system_werte(
     v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt
 ) -> Dict[str, float]:
@@ -418,6 +496,51 @@ def _system_werte(
         werte["BJB"] = (
             0.0 if p.jahr >= mp.t else kern.gross_annual_premium()
         )
+    return _mit_schicht(v, mp, p, werte)
+
+
+#: Groessen, auf die die Korrekturschicht wirkt. Das Deckungskapital
+#: traegt sie unmittelbar; der Rueckkaufswert folgt ihr, weil die Schicht
+#: sich bei Rueckkauf mit auszahlt (Grundsatzdokumentation 9.7, Klasse B
+#: wertkontinuierlich). Beitrag und beitragsfreie Summe beruehrt sie
+#: nicht — sie sind Groessen des Vertrags, nicht seiner Bewertung.
+SCHICHT_GROESSEN = ("kVx_MRV", "RKW", "dDK")
+
+
+def _mit_schicht(
+    v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt, werte: Dict[str, float]
+) -> Dict[str, float]:
+    """Die Korrekturschicht auf die betroffenen Groessen legen.
+
+    Ohne Schicht bleibt alles unveraendert — der rohe Wertvergleich ist
+    weiter gueltig, solange ein Fall keine fuehrt.
+
+    Mit Schicht misst der Test nicht mehr ``system - erwartet`` roh,
+    sondern die Differenz EINSCHLIESSLICH der verankerten Korrektur. Am
+    Verankerungszeitpunkt ist sie konstruktionsbedingt null; was der Test
+    dann noch findet, liegt DANEBEN — in der Fortschreibung, im Verlauf
+    oder in einem Geschaeftsvorfall. Genau das ist der Zugewinn.
+
+    Bei ``dDK`` wirkt sie doppelt und hebt sich zum Teil auf: Ein
+    vererbender Vorfall (Tod) laesst die Schicht verfallen, ein
+    wertkontinuierlicher (Storno) zahlt sie mit aus. Die Engine bildet
+    deshalb dieselbe Differenz wie fuer die Basisschicht — vorher minus
+    nachher — nur auf dem Gesamtwert.
+    """
+    if v.schicht is None:
+        return werte
+    korr = _schichtwert(v, mp, p)
+    for groesse in SCHICHT_GROESSEN:
+        if groesse not in werte:
+            continue
+        if groesse == "dDK":
+            # dDK ist bereits eine Differenz. Die Schicht veraendert sie um
+            # ihren eigenen Sprung an dieser Stelle: Bei Beendigung faellt
+            # sie mit auf null, bei einer Umwandlung laeuft sie weiter.
+            vor, nach = GEVO_WIRKUNG[p.anlass]
+            werte[groesse] += (0.0 if nach == "beendet" else korr) - korr
+        else:
+            werte[groesse] += korr
     return werte
 
 
