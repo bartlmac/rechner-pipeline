@@ -6,12 +6,18 @@ noch aus.
 
 ## Fachlich
 
+Drei fruehere Punkte dieser Liste sind zu eigenen Vorhaben gewachsen und
+stehen jetzt dort: die Verlaufs- und Geschaeftsvorfalltests sowie die
+Verteilungstoleranzen in
+[aktuarieller-test-at1-at2-at3.md](aktuarieller-test-at1-at2-at3.md), das
+Rechenmodul der Korrekturschicht in
+[korrekturschicht-umsetzung.md](korrekturschicht-umsetzung.md).
+
+## Fachlich
+
 | Punkt | Herkunft | Anmerkung |
 |---|---|---|
-| **Verlaufs- und Geschaeftsvorfalltests** fuer den aktuariellen Test: Vorwaertsrechnung gegen eine Schattenrechnung des Quellsystems, Testmatrix je Vertragskonstellation | Grundsatzdokumentation 9.15 | Ohne sie gilt die Methode als nicht abgenommen. Der heutige Test belegt nur die Stichtagstreue am Rechenpunkt. |
-| **Verteilungstoleranzen als Urteilskriterium**: Schwelle auf Maximum oder hohem Perzentil je Cluster | Grundsatzdokumentation 9.15 | Heute haengt das maschinelle Urteil an Toleranzen je Einzelwert; die Verteilung wird nur ausgewiesen. Festlegung des Aktuariats. |
-| **Verankerungsattribute** als Vertragsmerkmale ($t_a$, Verankerungszustand und Verweildauer) | Fruehere Befundliste, N6 | Durch die Bestandsfuehrung andockbereit; braucht einen ADR-Nachtrag, weil die Zustandsregeln fuer migrierte Bestaende zu lockern sind. |
-| **Rechenmodul der Korrekturschicht** ohne Produktpolitik | Fruehere Befundliste, N7 | Die Mathematik steht (Grundsatzdokumentation Abschnitt 9); offen sind die Freiheitsgrade in 9.16. |
+| **Verankerungsattribute** als Vertragsmerkmale ($t_a$, Verankerungszustand und Verweildauer) | Fruehere Befundliste, N6 | Durch die Bestandsfuehrung andockbereit; braucht einen ADR-Nachtrag, weil die Zustandsregeln fuer migrierte Bestaende zu lockern sind. Wird blockierend, sobald die Korrekturschicht laeuft ([korrekturschicht-umsetzung.md](korrekturschicht-umsetzung.md), K3). |
 | **Stichprobenprofile** jenseits von `vollbestand` | Grundsatzdokumentation, Erweiterungsstelle | Je Profil eine Festlegung des Aktuariats. |
 | **Ausgestaltung je migriertem Tarifplan** (Uebergangsklassifikation, Ankerliste, Formfunktion, Floors, Testfallkatalog) | Grundsatzdokumentation Abschnitt 10 Nr. 9 | Faellig, sobald ein Produkt mit Korrekturschicht migriert wird. |
 | **Zwei offene Entscheidungen des Migrationskonzepts**: Verbleib der Geschaeftsvorfall-Metadatenliste (E1) und Aktivierung des Konventionsresiduum-Pfads (E2) | Migrationskonzept Kapitel 11 | Je Bestand zu entscheiden. |
