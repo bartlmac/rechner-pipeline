@@ -238,5 +238,5 @@ Migrationsfall):
 Migrierte Generationen kommen erst nach ihrer fachlichen Abnahme
 (G-1/G-A/G-2) in eine Bestand-Config — dann mit der Knoten-ID ihres
 Migrationsfalls (z. B. `klv/tg2015`) und der durch Gate O3 geprüften
-Parametrierung. Diese Tabelle ist test-verankert gegen die Config:
-weicht sie ab, fällt die Suite.
+Parametrierung. Diese Tabelle wird maschinell gegen die Bestandskonfiguration
+geprüft; eine Abweichung ist ein Fehler und blockiert.

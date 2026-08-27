@@ -168,7 +168,7 @@ wird.
 
 ### 6.4 Artefakte und Nachweiskette
 
-1. **Das Suite-Ergebnis** (maschinenlesbar): je Vertrag die
+1. **Das Ergebnis der Prüfrechnung** (maschinenlesbar): je Vertrag die
    Einzelvergleiche, die Befunde, die Prüflücken; dazu die Bindungen an
    beide Stichtage, an die geprüfte Bestandsdatei und an den
    Systemstand.
@@ -181,11 +181,11 @@ wird.
    Berichtslaufs.
 
 Auch hier gilt: Der Bericht rechnet keine Fachwerte, sondern leitet
-Residuen, Einzel-, Vertrags- und Suiteurteile aus den persistierten
+Residuen sowie Einzel-, Vertrags- und Gesamturteil aus den persistierten
 Fakten neu ab und lehnt jede widersprüchliche Ableitung ab. Er ist
 deterministisch und wird rot wie grün geschrieben.
 
-Die SHA-256-Bindungen zwischen Bestandsdatei, Suite, Bericht und
+Die Prüfsummen-Bindungen zwischen Bestandsdatei, Prüfrechnung, Bericht und
 Gate-Belegen sind **Transport- und Provenienzsicherung**: Sie belegen,
 dass alle Nachweise denselben Stand meinen — sie ersetzen kein
 fachliches Urteil.
@@ -201,12 +201,13 @@ Snapshot festgehalten und pinnt die Pflichtbelege, die sich aus dem
 | Scope | Pflichtbelege von G-2 |
 |---|---|
 | Tarif | O1-Protokoll, geltender G-1-Snapshot, **geltender G-A-Snapshot**, O3-Belege je Generation |
-| Bestand | zusätzlich B1-Protokoll, vollständige Suite, Abnahmebericht |
+| Bestand | zusätzlich Bestandsprotokoll, vollständige Prüfrechnung, Abnahmebericht |
 
 Die Annahme rechnet ihre Voraussetzungen nach: Sie hasht die
-gebundenen Artefakte auf ihren aktuellen Bytes neu, validiert Suite und
-Bestandsprotokoll erneut und rendert den Bericht aus der Suite
-deterministisch nach, um ihn Byte für Byte zu vergleichen.
+gebundenen Nachweise auf ihrem aktuellen Stand neu, validiert
+Prüfrechnung und Bestandsprotokoll erneut und erzeugt den Bericht aus
+der Prüfrechnung deterministisch nach, um ihn zeichengenau zu
+vergleichen.
 
 **Ohne geltende aktuarielle Abnahme (G-A) ist ein G-2-Entscheid
 unmöglich** (Kapitel 7.7). Eine Ablehnung an G-2 führt zurück in die

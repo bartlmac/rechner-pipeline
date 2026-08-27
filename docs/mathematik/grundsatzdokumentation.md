@@ -632,9 +632,10 @@ nicht durchführbar** — ohne sie gibt es keine Historien-Clusterung und
 keine erklärbaren Ausreißer. Sie ist Abnahmevoraussetzung, nicht
 Komfort.
 
-Für den Kern dieses Repositories gilt die Invariante heute schon und
-ist strukturell abgesichert: Kein Bewertungspfad liest das Journal
-(ADR-011).
+Im Zielrechenkern ist diese Invariante bereits umgesetzt und
+strukturell abgesichert: Kein Bewertungspfad liest das Journal der
+Bestandsführung; bewertet wird ausschließlich aus dem Zustand
+(Architekturentscheidung ADR-011).
 
 ## 9.15 Prüfung der Methode und Verantwortung
 
@@ -771,11 +772,18 @@ feststellt, löst sie nicht implizit auf, sondern trägt sie hier ein
 
 # 13 Versionierung und Änderungsprozess
 
-Dieses Dokument ist versioniert wie der Code, in dem es gilt: Eine
-Änderung läuft als Commit mit dem Änderungsgrund, und der Kern folgt
-ihr — nicht umgekehrt. Substanzielle Änderungen an den Abschnitten 3
-bis 9 sind fachliche Änderungen und brauchen die Zustimmung des
-Aktuariats — für Abschnitt 9 (Korrekturschicht) gilt zusätzlich die
-Konfliktregel aus 9.16: entschieden wird zwischen Entwicklung und
-fachverantwortlichem Aktuar. Sie erscheinen im Changelog des
-Repositories.
+Dieses Dokument ist versioniert, und die Umsetzung folgt ihm — nicht
+umgekehrt. Jede Änderung trägt ihren Änderungsgrund und ist
+nachvollziehbar historisiert.
+
+Substanzielle Änderungen an den Abschnitten 3 bis 9 sind fachliche
+Änderungen und brauchen die **Zustimmung des Aktuariats**; für
+Abschnitt 9 (Korrekturschicht) gilt zusätzlich die Konfliktregel aus
+9.16 — entschieden wird zwischen Entwicklung und fachverantwortlichem
+Aktuar. Redaktionelle Änderungen an den übrigen Abschnitten laufen im
+regulären Änderungsverfahren der Systemdokumentation.
+
+Änderungen, die das Rechenergebnis berühren können, werden zusätzlich
+im Änderungsverzeichnis des Zielsystems ausgewiesen, damit ein
+Bilanzstichtag der Fassung zugeordnet werden kann, unter der er
+gerechnet wurde.

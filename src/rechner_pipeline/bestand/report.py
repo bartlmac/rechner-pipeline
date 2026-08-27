@@ -983,7 +983,7 @@ def render_html(
         f"{df['insurance_end'].dt.date.max().isoformat()}"
     )
     quelle = (
-        f"<li>Quelle (SHA-256, gekürzt): <code>{quelle_hash[:16]}</code></li>"
+        f"<li>Prüfsumme der Quelle (SHA-256, gekürzt): <code>{quelle_hash[:16]}</code></li>"
         if quelle_hash
         else ""
     )

@@ -49,6 +49,15 @@ zweimal teuer gewesen).
   welcher Fehler ohne sie passiert) statt Code nachzuerzaehlen; das
   Repo nutzt Docstrings als Traeger von Abnahme-Protokollen und
   Knoten-Annotationen — diese Teile nie beilaeufig umformulieren.
+- **Fachdokumente sprechen die Sprache des Unternehmens.** Wer die
+  Grundsatzdokumentation, einen Tarifplan, das Migrationskonzept oder
+  einen erzeugten Bericht liest, ist Aktuar, Pruefer, Revision oder
+  Vorstand — dort gibt es keine Repositories, Commits, Branches oder
+  Testsuiten. Stattdessen: Aenderungsverfahren, Aenderungsgrund,
+  maschinelle Pruefung, blockierender Befund. Werkzeugsprache gehoert in
+  README, AGENTS.md und die Skills. Ein Waechter haelt die vier
+  Fachdokumente (tests/test_tarifplan_struktur.py); die Regel gilt
+  weiter als er reicht.
 - Aktualisierungs-Pflicht: wer Verhalten aendert, zieht betroffene
   Dokumente IM SELBEN Block nach (README-Kommandos, AGENTS-Eintraege,
   ADR-Konsequenzen, Grundsatzmathematik). Veraltete Doku ist ein Befund.

@@ -202,5 +202,5 @@ Präfix `plv_` = PLV-eigene Generation ohne Migrationsfall):
 | `bu/plv_2000` | BU-2000 | 2000-01–2016-12 | 1.75% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 |
 | `bu/plv_2017` | BU-2017 | 2017-01–2035-12 | 0.90% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 |
 
-Diese Tabelle ist test-verankert gegen die Config: weicht sie ab,
-fällt die Suite.
+Diese Tabelle wird maschinell gegen die Bestandskonfiguration
+geprüft; eine Abweichung ist ein Fehler und blockiert.
