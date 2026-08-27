@@ -337,15 +337,11 @@ und hier dokumentiert.
 
 | Nr | Gegenstand | Entscheidung | Datum |
 |---|---|---|---|
-| — | *(keine entschiedenen Abweichungen)* | — | — |
+| 1 | Ratenzuschlag-Staffel lag doppelt vor: wirksam als Feld am Modellpunkt, tot als Konstante der Konventionsschicht | Die tote Kopie ist entfernt; die Staffel wird immer übergeben, ein Default in der Konventionsschicht ist unzulässig — Tarifwerk gehört zum Produkt | 2026-08-27 |
 
-Offen und noch nicht entschieden ist eine Doppelung der
-Ratenzuschlag-Staffel: Der **wirksame** Default liegt bereits beim
-Produkt (Felder des Modellpunkts, vom Produkt stets explizit
-übergeben). Daneben steht dieselbe Staffel ein zweites Mal als
-Konstante in der untersten Konventionsschicht, die der Produktpfad nie
-erreicht. Zwei Kopien derselben Zahlen sind eine Driftquelle; welche
-verschwindet, ist zu entscheiden.
+Weitere Abweichungen sind derzeit nicht entschieden. Wer eine
+feststellt, löst sie nicht implizit auf, sondern trägt sie hier ein
+(Fachkonzept Kap. 9, Konfliktregel).
 
 # 13 Versionierung und Änderungsprozess
 
