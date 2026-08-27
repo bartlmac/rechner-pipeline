@@ -45,7 +45,9 @@ from rechner_pipeline.ontologie.transformation import (
 )
 from rechner_pipeline.quellen.vorverdichtung import verzeichnis_der_generation
 from rechner_pipeline.qa.aktuarieller_test import (
-    VerankerungsPruefung,
+    ANLASS_UEBERNAHME,
+    Pruefpunkt,
+    Vertragspruefung,
     pruefe_stichprobe,
 )
 from rechner_pipeline.qa.migrationssuite import VertragsPruefung, pruefe_bestand
@@ -244,6 +246,17 @@ def _bereite_bestandsfall(tmp_path: Path) -> Path:
     return fall
 
 
+def _am1_profil():
+    """Das Profil des Stichtagstests mit den Toleranzen des Abzugsabgleichs."""
+    from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
+    from rechner_pipeline.qa.testprofil import Kriterium, Testprofil
+
+    return Testprofil(
+        kennung="A-M1", weite="vollbestand", kriterien={},
+        grundtoleranz=Kriterium(abs_tol=ABS_TOL, rel_tol=REL_TOL),
+    )
+
+
 def _aktuartest_belege(
     fall: Path, *, drift: float = 0.0, erwarteter_exit: int = 0
 ):
@@ -251,18 +264,20 @@ def _aktuartest_belege(
     kern = Rechenkern(KLV_DEFAULT)
     ta = 12 * 9
     test = pruefe_stichprobe(
-        [VerankerungsPruefung(
+        [Vertragspruefung(
             police_id="P-SCOPE-1",
             model_point=asdict(KLV_DEFAULT),
-            monate_ta=ta,
             historientyp="ohne_gevo",
-            erwartet={
-                "kVx_MRV": round(
+            punkte=(Pruefpunkt(
+                ta,
+                {"kVx_MRV": round(
                     kern.verlaufszeile(ta // 12).vx_mrv + drift, 2
-                ),
-            },
+                )},
+                ANLASS_UEBERNAHME,
+            ),),
         )],
         ziehe("vollbestand", ["P-SCOPE-1"]),
+        _am1_profil(),
         system=gate_entscheid.systemstand(REPO_ROOT),
     )
     berichte = fall / "abgeleitet" / "berichte"
@@ -1438,12 +1453,17 @@ def test_am1_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
 
     kern = Rechenkern(KLV_DEFAULT)
     erfunden = _ps(
-        [VerankerungsPruefung(
+        [Vertragspruefung(
             police_id="P-SCOPE-1", model_point=asdict(KLV_DEFAULT),
-            monate_ta=12 * 9, historientyp="ohne_gevo",
-            erwartet={"kVx_MRV": round(kern.verlaufszeile(9).vx_mrv, 2)},
+            historientyp="ohne_gevo",
+            punkte=(Pruefpunkt(
+                12 * 9,
+                {"kVx_MRV": round(kern.verlaufszeile(9).vx_mrv, 2)},
+                ANLASS_UEBERNAHME,
+            ),),
         )],
         _ziehe("vollbestand", ["P-SCOPE-1"]),
+        _am1_profil(),
         system={"commit": "0" * 40, "branch": "erfunden",
                 "dirty": "false", "quellcode_sha256": "1" * 64},
     )

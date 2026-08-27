@@ -15,28 +15,36 @@ import pytest
 from rechner_pipeline.gates import aktuartest as gate
 from rechner_pipeline.gates._common import run_command
 from rechner_pipeline.kern import KLV_DEFAULT, Rechenkern
-from rechner_pipeline.qa.abzugsabgleich import ABS_TOL
+from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 from rechner_pipeline.qa.aktuarieller_test import (
-    VerankerungsPruefung,
+    ANLASS_UEBERNAHME,
+    Pruefpunkt,
+    Vertragspruefung,
     pruefe_stichprobe,
 )
 from rechner_pipeline.qa.stichprobe import ziehe
+from rechner_pipeline.qa.testprofil import Kriterium, Testprofil
 
 MP = dataclasses.asdict(KLV_DEFAULT)
 KERN = Rechenkern(KLV_DEFAULT)
 TA = 12 * 9
 
+PROFIL = Testprofil(
+    kennung="A-M1", weite="vollbestand", kriterien={},
+    grundtoleranz=Kriterium(abs_tol=ABS_TOL, rel_tol=REL_TOL),
+)
 
-def _testergebnis(*, drift: float = 0.0) -> Dict[str, Any]:
+
+def _testergebnis(*, drift: float = 0.0, profil: Testprofil = PROFIL) -> Dict[str, Any]:
     erwartet = round(KERN.zustand_am(TA).vx_mrv + drift, 2)
     auftraege = [
-        VerankerungsPruefung(
-            police_id="P1", model_point=dict(MP), monate_ta=TA,
-            historientyp="ohne_gevo", erwartet={"kVx_MRV": erwartet},
+        Vertragspruefung(
+            police_id="P1", model_point=dict(MP), historientyp="ohne_gevo",
+            punkte=(Pruefpunkt(TA, {"kVx_MRV": erwartet}, ANLASS_UEBERNAHME),),
         )
     ]
     return pruefe_stichprobe(
-        auftraege, ziehe("vollbestand", ["P1"]),
+        auftraege, ziehe("vollbestand", ["P1"]), profil,
         transportsicherung={"bestand_sha256": "ab" * 32},
         system={"commit": "deadbeef", "branch": "x", "dirty": "false",
                 "quellcode_sha256": "cd" * 32},

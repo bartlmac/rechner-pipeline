@@ -1,10 +1,20 @@
-"""``aktuartest`` toolbox command — Vorlage fuer das menschliche Gate A-M1.
+"""``aktuartest`` toolbox command — Vorlage fuer die drei aktuariellen Abnahmen.
 
 Rendert aus dem Ergebnis des aktuariellen Tests (``qa.aktuarieller_test``,
 als JSON persistiert) die Entscheidungsvorlage fuer den Verantwortlichen
-Aktuar und prueft dabei den Ergebnis-Vertrag von innen nach aussen neu:
-Einzelurteile gegen die Toleranzen, Zaehler, Stichproben-Vollstaendigkeit
-und die Verteilungsgroessen werden nachgerechnet — eine gruene
+Aktuar. Es gibt drei Abnahmen mit je eigener Stichprobe, eigenen Kriterien
+und eigenem Bericht (ADR-010, ADR-012), und alle drei gehen dem
+Migrationscontrolling ``A-M4`` voraus:
+
+``A-M1`` Stichtagstest, ``A-M2`` Verlaufstest, ``A-M3``
+Geschaeftsvorfalltest. Welcher gerendert wird, sagt das Ergebnis selbst
+ueber sein Profil — das Kommando erfindet keinen Test, es liest den, der
+gelaufen ist.
+
+Dabei wird der Ergebnis-Vertrag von innen nach aussen neu geprueft:
+Einzelurteile gegen die Toleranzen DES PROFILS, Vertragsurteile gegen ihre
+Einzelvergleiche, Zaehler und Stichproben-Vollstaendigkeit, zuletzt
+saemtliche Verteilungsgroessen samt Abnahmegrenzen. Eine gruene
 Zusammenfassung ueber einem roten Einzelvergleich ist damit auch auf dem
 Bibliothekspfad unmoeglich. Die Werte selbst rechnet ausschliesslich die
 Engine; der Zusammenbau der Pruefauftraege ist Sache des Falls.
@@ -33,7 +43,7 @@ import json
 import math
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from rechner_pipeline.gates._common import (
     Exit,
@@ -49,14 +59,28 @@ from rechner_pipeline.gates._common import (
     run_command,
     utc_now,
 )
-from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
-from rechner_pipeline.qa.aktuarieller_test import PERZENTILE, verteilung
+from rechner_pipeline.qa.aktuarieller_test import (
+    PERZENTILE,
+    verteilung,
+    verteilungsbefunde,
+)
+from rechner_pipeline.qa.testprofil import Kriterium, ProfilFehler, Testprofil
 
 COMMAND = "aktuartest"
-#: Bewusst "GA-vorlage", nicht "GA": Das Kommando liefert die Vorlage;
-#: die aktuarielle ABNAHME ist der menschliche P9-Entscheid am Gate A-M1.
-GATE = "A-M1.stichtagstest"
-GATE_VERSION = "1.0.0"
+
+#: Die drei Tests und ihre Gate-Kennungen (ADR-012). Das Kommando liefert
+#: je Test die VORLAGE; die aktuarielle Abnahme ist der menschliche
+#: Entscheid am jeweiligen Gate. Alle drei gehen dem Migrationscontrolling
+#: (A-M4) voraus.
+GATES: Dict[str, str] = {
+    "A-M1": "A-M1.stichtagstest",
+    "A-M2": "A-M2.verlaufstest",
+    "A-M3": "A-M3.geschaeftsvorfalltest",
+}
+#: Der Vorgabetest, wenn das Kommando ohne ``--test`` laeuft: der
+#: Stichtagstest, mit dem jede Migration beginnt.
+GATE = GATES["A-M1"]
+GATE_VERSION = "2.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -65,17 +89,24 @@ CLI_CONTRACT = GateCliContract(
 )
 
 _ERGEBNIS_FELDER = {
-    "stichprobe", "anzahl", "bestanden", "fehlgeschlagen",
-    "mengenbefunde", "stichprobe_vollstaendig", "verteilung", "gruppen",
+    "profil", "stichprobe", "anzahl", "bestanden", "fehlgeschlagen",
+    "mengenbefunde", "grenzbefunde", "stichprobe_vollstaendig",
+    "verteilung", "gruppen", "nach_anlass", "nach_kriterium",
     "vertraege", "test_bestanden",
+}
+_PROFIL_FELDER = {
+    "kennung", "titel", "weite", "grundtoleranz", "kriterien", "bemerkung",
 }
 _STICHPROBEN_FELDER = {
     "profil", "parameter", "umfang", "grundgesamtheit", "vollerhebung",
     "police_ids",
 }
 _VERTRAGS_FELDER = {
-    "police_id", "historientyp", "monate_ta", "bestanden", "pruefungen",
+    "police_id", "historientyp", "anlaesse", "bestanden", "pruefungen",
     "befunde",
+}
+_PRUEFUNGS_FELDER = {
+    "anlass", "monate", "groesse", "system", "erwartet", "residuum", "ok",
 }
 
 _STIL = """
@@ -99,17 +130,41 @@ def _e(text: Any) -> str:
     )
 
 
-def _ok(ist: float, soll: float) -> bool:
-    return math.isclose(ist, soll, rel_tol=REL_TOL, abs_tol=ABS_TOL)
+def _ok(ist: float, soll: float, k: Kriterium) -> bool:
+    return math.isclose(ist, soll, rel_tol=k.rel_tol, abs_tol=k.abs_tol)
+
+
+def _profil_aus_beleg(beleg: Mapping[str, Any]) -> Testprofil:
+    """Das Profil aus seinem eigenen Beleg zurueckbauen.
+
+    Damit rechnet das Gate mit GENAU den Kriterien nach, die im Ergebnis
+    ausgewiesen sind — nicht mit einer Konstante, die anderswo steht. Ein
+    Ergebnis, das seine Toleranzen nicht mitbringt, ist nicht pruefbar.
+    """
+    return Testprofil(
+        kennung=beleg["kennung"],
+        weite=beleg["weite"],
+        bemerkung=beleg.get("bemerkung", ""),
+        grundtoleranz=Kriterium(**beleg["grundtoleranz"]),
+        kriterien={s: Kriterium(**k) for s, k in beleg["kriterien"].items()},
+    )
 
 
 def test_fehler(test: Any) -> List[str]:
     """Ergebnis-Vertrag von innen nach aussen neu ableiten.
 
     Rueckgabe: Befundliste (leer = konsistent). Geprueft wird alles, was
-    sich ohne die Modellpunkte nachrechnen laesst: Einzel-Urteile gegen
-    die Toleranzen, Residuen, Zaehler, Mengenabgleich gegen die
-    Stichprobe und saemtliche Verteilungsgroessen.
+    sich ohne die Modellpunkte nachrechnen laesst — in vier Schritten, von
+    denen jeder auf dem vorigen aufsetzt:
+
+    1. jeden Einzelvergleich gegen die Toleranz des Profils,
+    2. jedes Vertragsurteil gegen seine Einzelvergleiche,
+    3. Zaehler und Mengenabgleich gegen die Stichprobe,
+    4. saemtliche Verteilungsgroessen und Abnahmegrenzen.
+
+    Der Sinn ist die Reihenfolge: Ein gruenes Gesamturteil kann nicht ueber
+    einem roten Einzelvergleich stehen, weil das Urteil aus den
+    Einzelvergleichen entsteht und nicht daneben.
     """
     if not isinstance(test, dict):
         return ["Ergebnis ist kein Objekt"]
@@ -117,6 +172,24 @@ def test_fehler(test: Any) -> List[str]:
     fehlend = sorted(_ERGEBNIS_FELDER - set(test))
     if fehlend:
         return [f"Pflichtfelder fehlen: {fehlend}"]
+
+    profil_beleg = test["profil"]
+    if not isinstance(profil_beleg, dict) or (_PROFIL_FELDER - set(profil_beleg)):
+        return fehler + ["profil: Beleg-Felder unvollstaendig"]
+    if profil_beleg["kennung"] not in GATES:
+        return fehler + [
+            f"profil: unbekannter Test {profil_beleg['kennung']!r} — "
+            f"bekannt sind {sorted(GATES)}"
+        ]
+    try:
+        profil = _profil_aus_beleg(profil_beleg)
+    except (KeyError, TypeError, ProfilFehler) as exc:
+        return fehler + [f"profil: nicht rekonstruierbar ({exc})"]
+    if profil.als_beleg() != profil_beleg:
+        fehler.append(
+            "profil: Beleg ist nicht die Darstellung des Profils, mit dem "
+            "geprueft wurde"
+        )
 
     stichprobe = test["stichprobe"]
     if not isinstance(stichprobe, dict) or (
@@ -153,17 +226,35 @@ def test_fehler(test: Any) -> List[str]:
             continue
         alle_ok = bool(v["pruefungen"])
         for p in v["pruefungen"]:
+            p_fehlend = sorted(_PRUEFUNGS_FELDER - set(p))
+            if p_fehlend:
+                fehler.append(
+                    f"police {v['police_id']}: Vergleich ohne {p_fehlend}"
+                )
+                feld_fehler = True
+                continue
+            if p["anlass"] not in v["anlaesse"]:
+                fehler.append(
+                    f"police {v['police_id']}: Vergleich am Anlass "
+                    f"{p['anlass']!r}, den die Vertragszeile nicht auffuehrt"
+                )
             residuum = p["system"] - p["erwartet"]
             if p["residuum"] != residuum:
                 fehler.append(
                     f"police {v['police_id']} {p['groesse']}: residuum "
                     "ist nicht system - erwartet"
                 )
-            soll_ok = _ok(p["system"], p["erwartet"])
+            # Beim Geschaeftsvorfalltest entscheidet die Vorfallart ueber
+            # die Toleranz, sonst die Vergleichsgroesse — dieselbe Regel
+            # wie in der Engine, hier unabhaengig nachvollzogen.
+            schluessel = (
+                p["anlass"] if profil.kennung == "A-M3" else p["groesse"]
+            )
+            soll_ok = _ok(p["system"], p["erwartet"], profil.fuer(schluessel))
             if bool(p["ok"]) != soll_ok:
                 fehler.append(
                     f"police {v['police_id']} {p['groesse']}: ok-Urteil "
-                    "widerspricht den Toleranzen"
+                    "widerspricht den Toleranzen des Profils"
                 )
             alle_ok = alle_ok and soll_ok
             alle_residuen.append(residuum)
@@ -216,12 +307,284 @@ def test_fehler(test: Any) -> List[str]:
     ):
         fehler.append("gruppen decken die Historientypen nicht")
 
-    soll_bestanden = bool(test["stichprobe_vollstaendig"]) and (
-        fehlgeschlagen == 0
+    # Zweite Cluster-Achse: der Anlass sagt, WO im Vertragsleben die
+    # Residuen liegen. Ein Residuum bei der Uebernahme und eines beim
+    # Ablauf sind verschiedene Befunde.
+    alle_pruefungen = [p for v in vertraege for p in v.get("pruefungen", [])]
+    for anlass, aggregat in sorted(test["nach_anlass"].items()):
+        residuen = [
+            p["system"] - p["erwartet"]
+            for p in alle_pruefungen if p["anlass"] == anlass
+        ]
+        soll = {"anzahl_vergleiche": len(residuen), **verteilung(residuen)}
+        if aggregat != soll:
+            fehler.append(f"nach_anlass {anlass}: Aggregat ist nicht nachgerechnet")
+    if sorted(test["nach_anlass"]) != sorted({p["anlass"] for p in alle_pruefungen}):
+        fehler.append("nach_anlass deckt die Anlaesse nicht")
+
+    schluessel_von = (
+        (lambda p: p["anlass"])
+        if profil.kennung == "A-M3"
+        else (lambda p: p["groesse"])
+    )
+    nach_schluessel: Dict[str, Any] = {}
+    for s in sorted({schluessel_von(p) for p in alle_pruefungen}):
+        residuen = [
+            p["system"] - p["erwartet"]
+            for p in alle_pruefungen if schluessel_von(p) == s
+        ]
+        nach_schluessel[s] = verteilung(residuen)
+    if test["nach_kriterium"] != nach_schluessel:
+        fehler.append("nach_kriterium ist nicht die Nachrechnung der Residuen")
+
+    soll_grenzbefunde = verteilungsbefunde(nach_schluessel, profil)
+    if sorted(test["grenzbefunde"]) != sorted(soll_grenzbefunde):
+        fehler.append(
+            "grenzbefunde widersprechen der Nachrechnung der Abnahmegrenzen"
+        )
+
+    soll_bestanden = (
+        bool(test["stichprobe_vollstaendig"])
+        and fehlgeschlagen == 0
+        and not soll_grenzbefunde
     )
     if bool(test["test_bestanden"]) != soll_bestanden:
         fehler.append("test_bestanden widerspricht der Neuableitung")
     return fehler
+
+
+def _verteilungs_zellen(v: Mapping[str, Any], *, mit_anzahl: bool = True) -> str:
+    """Die Verteilungsgroessen als Tabellenzellen.
+
+    ``mit_anzahl=False`` laesst die Zaehlspalte weg — dort, wo die Tabelle
+    schon eine eigene Zaehlung fuehrt.
+    """
+    spalten = 2 + len(PERZENTILE)
+    if not v.get("anzahl_werte"):
+        vorn = "<td class='zahl'>0</td>" if mit_anzahl else ""
+        return vorn + "<td>—</td>" * spalten
+    zellen = []
+    if mit_anzahl:
+        zellen.append(f"<td class='zahl'>{v['anzahl_werte']:d}</td>")
+    zellen.append(f"<td class='zahl'>{v['max_abs_residuum']:.6f}</td>")
+    zellen.extend(
+        f"<td class='zahl'>{v[f'p{p}_abs_residuum']:.6f}</td>"
+        for p in PERZENTILE
+    )
+    zellen.append(f"<td class='zahl'>{v['summe_abs_residuum']:.6f}</td>")
+    return "".join(zellen)
+
+
+def _profil_abschnitt(profil: Mapping[str, Any]) -> str:
+    """Weite und Abnahmekriterien — beides traegt den Beleg.
+
+    Wer nur das Ergebnis sieht, weiss nicht, wie weit gezogen und wie eng
+    gemessen wurde. Ein gruener Test ueber eine enge Stichprobe mit weiten
+    Toleranzen sagt etwas anderes als derselbe Test ueber den Vollbestand.
+    """
+    zeilen = [
+        "<h2>Testprofil (Beleg)</h2>",
+        "<table><tr><th>Test</th><th>Stichprobenweite</th></tr>"
+        f"<tr><td>{_e(profil['kennung'])} — {_e(profil['titel'])}</td>"
+        f"<td>{_e(profil['weite'])}</td></tr></table>",
+    ]
+    if profil.get("bemerkung"):
+        zeilen.append(f"<p>{_e(profil['bemerkung'])}</p>")
+    zeilen.append(
+        "<table><tr><th>gilt für</th><th>abs. Toleranz</th>"
+        "<th>rel. Toleranz</th><th>Grenze max |R|</th>"
+        "<th>Grenze p95 |R|</th></tr>"
+    )
+    def _zeile(name: str, k: Mapping[str, Any]) -> str:
+        def g(wert: Any) -> str:
+            return "nicht gefordert" if wert is None else f"{wert:g}"
+        return (
+            f"<tr><td>{_e(name)}</td>"
+            f"<td class='zahl'>{k['abs_tol']:g}</td>"
+            f"<td class='zahl'>{k['rel_tol']:g}</td>"
+            f"<td class='zahl'>{g(k['max_abs_residuum'])}</td>"
+            f"<td class='zahl'>{g(k['p95_abs_residuum'])}</td></tr>"
+        )
+    zeilen.append(_zeile("alle übrigen", profil["grundtoleranz"]))
+    for name, k in sorted(profil["kriterien"].items()):
+        zeilen.append(_zeile(name, k))
+    zeilen.append("</table>")
+    return "".join(zeilen)
+
+
+def _anlass_abschnitt(test: Mapping[str, Any]) -> str:
+    """Die zweite Cluster-Achse: WO im Vertragsleben liegen die Residuen.
+
+    Der Historientyp sagt, welche Verträge auseinanderlaufen; der Anlass
+    sagt, an welcher Stelle. Ein Residuum bei der Übernahme und eines beim
+    Ablauf sind verschiedene Befunde.
+    """
+    kopf = (
+        "<th>Vergleiche</th><th>max |R|</th>"
+        + "".join(f"<th>p{p} |R|</th>" for p in PERZENTILE)
+        + "<th>Summe |R|</th>"
+    )
+    zeilen = [
+        "<h2>Residuum nach Anlass</h2>",
+        f"<table><tr><th>Anlass</th>{kopf}</tr>",
+    ]
+    for anlass, a in sorted(test["nach_anlass"].items()):
+        zeilen.append(
+            f"<tr><td>{_e(anlass)}</td>"
+            f"<td class='zahl'>{a['anzahl_vergleiche']:d}</td>"
+            + _verteilungs_zellen(a, mit_anzahl=False)
+            + "</tr>"
+        )
+    zeilen.append("</table>")
+    if test["grenzbefunde"]:
+        zeilen.append(
+            "<table><tr><th class='rot'>Verletzte Abnahmegrenze</th></tr>"
+            + "".join(
+                f"<tr><td class='rot'>{_e(b)}</td></tr>"
+                for b in test["grenzbefunde"]
+            )
+            + "</table>"
+        )
+    return "".join(zeilen)
+
+
+def _schwerpunkt(test: Mapping[str, Any]) -> str:
+    """Der Abschnitt, der je Test ein anderer ist.
+
+    Die drei Tests beantworten verschiedene Fragen und brauchen deshalb
+    verschiedene Darstellungen: Der Stichtagstest lebt von der
+    Gegenüberstellung zweier Zeitpunkte, der Verlaufstest von der
+    Entwicklung über die Restlaufzeit, der Geschäftsvorfalltest von der
+    Beurteilung je Vorfallart — dort ist eine lange Tabelle mit Werten
+    nahe null weniger wert als die Aussage, ob jede Vorfallart getroffen
+    und plausibel gerechnet wurde.
+    """
+    kennung = test["profil"]["kennung"]
+    if kennung == "A-M3":
+        return _gevo_beurteilung(test)
+    if kennung == "A-M2":
+        return _verlauf_uebersicht(test)
+    return _stichtag_uebersicht(test)
+
+
+def _stichtag_uebersicht(test: Mapping[str, Any]) -> str:
+    """A-M1: Übernahmestand und Fortschreibung nebeneinander."""
+    na = test["nach_anlass"]
+    u = na.get("uebernahme", {})
+    f = na.get("fortschreibung", {})
+    if not f:
+        return (
+            "<h2>Übernahme und Fortschreibung</h2>"
+            "<p class='hinweis'>Dieser Lauf enthält nur den "
+            "Übernahmestichtag. Der Stichtagstest ist erst vollständig, "
+            "wenn auch der nächste Vertragsstichtag laut Fortschreibung "
+            "verglichen wurde — sonst belegt er den Übernahmeakt, aber "
+            "nicht die Fortschreibungsregel.</p>"
+        )
+    return (
+        "<h2>Übernahme und Fortschreibung</h2>"
+        "<p>Der erste Punkt belegt den Übernahmeakt, der zweite die "
+        "Fortschreibungsregel. Ein Vertrag, der am Verankerungszeitpunkt "
+        "stimmt und beim nächsten Stichtag nicht, hat einen Fehler, den "
+        "eine Korrekturschicht verdeckt hätte.</p>"
+        "<table><tr><th>Punkt</th><th>Vergleiche</th><th>max |R|</th></tr>"
+        f"<tr><td>Übernahmestand</td>"
+        f"<td class='zahl'>{u.get('anzahl_vergleiche', 0):d}</td>"
+        f"<td class='zahl'>{u.get('max_abs_residuum', 0.0):.6f}</td></tr>"
+        f"<tr><td>nächster Vertragsstichtag</td>"
+        f"<td class='zahl'>{f.get('anzahl_vergleiche', 0):d}</td>"
+        f"<td class='zahl'>{f.get('max_abs_residuum', 0.0):.6f}</td></tr>"
+        "</table>"
+    )
+
+
+def _verlauf_uebersicht(test: Mapping[str, Any]) -> str:
+    """A-M2: Entwicklung des Residuums über die Prüfzeitpunkte."""
+    punkte: Dict[int, List[float]] = {}
+    for v in test["vertraege"]:
+        for p in v.get("pruefungen", []):
+            punkte.setdefault(p["monate"], []).append(abs(p["residuum"]))
+    zeilen = [
+        "<h2>Verlauf über die Prüfzeitpunkte</h2>",
+        "<p>Ein systematischer Fehler des Verlaufs wächst mit der Dauer. "
+        "Wächst das Residuum von Zeitpunkt zu Zeitpunkt, liegt der Verdacht "
+        "auf der Ausscheideordnung oder dem Kostenverlauf — nicht auf dem "
+        "Übernahmestand.</p>",
+        "<table><tr><th>Vertragsmonat</th><th>Vertragsjahr</th>"
+        "<th>Verträge mit diesem Punkt</th><th>max |R|</th></tr>",
+    ]
+    for monate in sorted(punkte):
+        betraege = punkte[monate]
+        zeilen.append(
+            f"<tr><td class='zahl'>{monate:d}</td>"
+            f"<td class='zahl'>{monate // 12:d}</td>"
+            f"<td class='zahl'>{len(betraege):d}</td>"
+            f"<td class='zahl'>{max(betraege):.6f}</td></tr>"
+        )
+    zeilen.append("</table>")
+    zeilen.append(
+        "<p class='hinweis'>Nicht jeder Vertrag trägt jeden Zeitpunkt: "
+        "Bei einer Restlaufzeit unter fünf bzw. zehn Jahren gibt es den "
+        "Punkt nicht. Das ist kein Befund — aber die Spalte "
+        "&quot;Verträge mit diesem Punkt&quot; zeigt, worüber die Aussage "
+        "an dieser Stelle überhaupt reicht.</p>"
+    )
+    return "".join(zeilen)
+
+
+def _gevo_beurteilung(test: Mapping[str, Any]) -> str:
+    """A-M3: Beurteilung je Vorfallart statt einer langen Wertetabelle.
+
+    Beim Geschäftsvorfalltest geht es um Plausibilität: Ist jede Vorfallart
+    überhaupt getroffen, wie viele Fälle stützen die Aussage, und rechnet
+    das System die Veränderung des Deckungskapitals so, wie die Vorfallart
+    es verlangt. Eine Tabelle mit hunderten Werten nahe null trägt dazu
+    weniger bei als diese Übersicht.
+    """
+    from rechner_pipeline.qa.aktuarieller_test import GEVO_ARTEN
+
+    getroffen = {
+        a: v for a, v in test["nach_anlass"].items() if a in GEVO_ARTEN
+    }
+    zeilen = [
+        "<h2>Beurteilung je Geschäftsvorfall</h2>",
+        "<table><tr><th>Vorfall</th><th>Vergleiche</th><th>max |R|</th>"
+        "<th>Beurteilung</th></tr>",
+    ]
+    for art in GEVO_ARTEN:
+        a = getroffen.get(art)
+        if not a:
+            zeilen.append(
+                f"<tr><td>{_e(art)}</td><td class='zahl'>0</td>"
+                "<td class='zahl'>—</td>"
+                "<td>nicht in der Stichprobe — über diese Vorfallart sagt "
+                "der Test nichts</td></tr>"
+            )
+            continue
+        max_r = a.get("max_abs_residuum", 0.0)
+        anzahl = a.get("anzahl_vergleiche", 0)
+        if max_r == 0.0:
+            urteil = "exakt getroffen"
+        elif max_r < 0.005:
+            urteil = "im Rundungsrauschen der Lieferung"
+        else:
+            urteil = "Abweichung über dem Rundungsrauschen — begründen"
+        if anzahl < 3:
+            urteil += f" (nur {anzahl} Fall/Fälle — schmale Grundlage)"
+        zeilen.append(
+            f"<tr><td>{_e(art)}</td><td class='zahl'>{anzahl:d}</td>"
+            f"<td class='zahl'>{max_r:.6f}</td><td>{_e(urteil)}</td></tr>"
+        )
+    zeilen.append("</table>")
+    fehlend = [a for a in GEVO_ARTEN if a not in getroffen]
+    if fehlend:
+        zeilen.append(
+            "<p class='hinweis'>Nicht geprüfte Vorfallarten: "
+            f"{_e(', '.join(fehlend))}. Der Test belegt sie nicht. Ob das "
+            "hinnehmbar ist, entscheidet der Verantwortliche Aktuar — im "
+            "laufenden Bestand können sie jederzeit auftreten.</p>"
+        )
+    return "".join(zeilen)
 
 
 def baue_bericht(*, titel: str, test: Dict[str, Any]) -> str:
@@ -271,6 +634,8 @@ def baue_bericht(*, titel: str, test: Dict[str, Any]) -> str:
         "dieses Berichts.</p>"
     )
 
+    teile.append(_profil_abschnitt(test["profil"]))
+
     teile.append("<h2>Stichprobe (Beleg)</h2>")
     parameter = ", ".join(
         f"{k}={v}" for k, v in sorted(s["parameter"].items())
@@ -299,20 +664,6 @@ def baue_bericht(*, titel: str, test: Dict[str, Any]) -> str:
             "die Definition des Tests.</p>"
         )
 
-    def _verteilungs_zellen(v: Dict[str, Any]) -> str:
-        if not v.get("anzahl_werte"):
-            return "<td class='zahl'>0</td>" + "<td>—</td>" * (
-                2 + len(PERZENTILE)
-            )
-        zellen = [f"<td class='zahl'>{v['anzahl_werte']:d}</td>",
-                  f"<td class='zahl'>{v['max_abs_residuum']:.6f}</td>"]
-        zellen.extend(
-            f"<td class='zahl'>{v[f'p{p}_abs_residuum']:.6f}</td>"
-            for p in PERZENTILE
-        )
-        zellen.append(f"<td class='zahl'>{v['summe_abs_residuum']:.6f}</td>")
-        return "".join(zellen)
-
     kopf = (
         "<th>Werte</th><th>max |R|</th>"
         + "".join(f"<th>p{p} |R|</th>" for p in PERZENTILE)
@@ -337,17 +688,20 @@ def baue_bericht(*, titel: str, test: Dict[str, Any]) -> str:
         )
     teile.append("</table>")
 
+    teile.append(_anlass_abschnitt(test))
+    teile.append(_schwerpunkt(test))
+
     fehlgeschlagene = [v for v in test["vertraege"] if not v["bestanden"]]
     teile.append("<h2>Fehlschläge und Befunde</h2>")
     if fehlgeschlagene:
         teile.append(
             "<table><tr><th>Police</th><th>Historientyp</th>"
-            "<th>t_a (Monate)</th><th>Befunde</th></tr>"
+            "<th>Anlässe</th><th>Befunde</th></tr>"
         )
         teile.extend(
             f"<tr><td>{_e(v['police_id'])}</td>"
             f"<td>{_e(v['historientyp'])}</td>"
-            f"<td class='zahl'>{v['monate_ta']:d}</td>"
+            f"<td>{_e(', '.join(v['anlaesse']))}</td>"
             f"<td class='rot'>{_e('; '.join(v['befunde']))}</td></tr>"
             for v in fehlgeschlagene
         )
@@ -358,7 +712,7 @@ def baue_bericht(*, titel: str, test: Dict[str, Any]) -> str:
     teile.append(
         "<h2>Einzelvergleiche</h2>"
         "<table><tr><th>Police</th><th>Historientyp</th>"
-        "<th>t_a (Monate)</th><th>Größe</th><th>System</th>"
+        "<th>Anlass</th><th>Monat</th><th>Größe</th><th>System</th>"
         "<th>Lieferung</th><th>Residuum</th><th>Urteil</th></tr>"
     )
     for v in test["vertraege"]:
@@ -370,7 +724,8 @@ def baue_bericht(*, titel: str, test: Dict[str, Any]) -> str:
             teile.append(
                 f"<tr><td>{_e(v['police_id'])}</td>"
                 f"<td>{_e(v['historientyp'])}</td>"
-                f"<td class='zahl'>{v['monate_ta']:d}</td>"
+                f"<td>{_e(p['anlass'])}</td>"
+                f"<td class='zahl'>{p['monate']:d}</td>"
                 f"<td>{_e(p['groesse'])}</td>"
                 f"<td class='zahl'>{p['system']:.6f}</td>"
                 f"<td class='zahl'>{p['erwartet']:.6f}</td>"
@@ -412,9 +767,15 @@ def _build_parser() -> GateArgumentParser:
         gate_contract=CLI_CONTRACT,
         prog=f"python -m rechner_pipeline.gates.{COMMAND}",
         description=(
-            "Vorlage fuer das menschliche Gate A-M1: prueft das Ergebnis "
-            "des aktuariellen Tests und rendert die Entscheidungsvorlage."
+            "Vorlage fuer eine der drei aktuariellen Abnahmen: prueft das "
+            "Ergebnis des Tests und rendert die Entscheidungsvorlage."
         ),
+    )
+    parser.add_argument(
+        "--abnahme", default=None, choices=sorted(GATES),
+        help="Welche Abnahme (A-M1 Stichtagstest, A-M2 Verlaufstest, "
+             "A-M3 Geschaeftsvorfalltest). Muss zum Profil des Ergebnisses "
+             "passen.",
     )
     parser.add_argument("--fall", default=None, help="Fall-Arbeitsbereich.")
     parser.add_argument(
@@ -444,8 +805,13 @@ def main(argv: Optional[List[str]] = None):
         else (fall / "abgeleitet" / "diagnostics" if fall
               else Path.cwd() / "runs" / "diagnostics")
     )
+    # Die Abnahme steht im Namen jedes Artefakts: drei Tests je Fall, die
+    # sonst denselben Ledger und denselben Bericht ueberschreiben wuerden.
+    abnahme = args.abnahme or "A-M1"
+    gate = GATES[abnahme]
+    kennung = COMMAND if abnahme == "A-M1" else f"{COMMAND}-{abnahme}"
     fehlstart = begin_gate_ledger_attempt(
-        command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+        command=COMMAND, gate=gate, gate_version=GATE_VERSION,
         diagnostics_dir=diagnostics_dir,
         repo_root=Path(args.repo_root) if args.repo_root else None,
         started_at=started_at,
@@ -459,7 +825,7 @@ def main(argv: Optional[List[str]] = None):
 
     def _usage(message: str, *, hints: Optional[List[str]] = None):
         return _finalize(build_result(
-            command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.USAGE,
             errors=[{"code": "usage", "message": message}],
             repair_hints=list(hints or []),
@@ -469,7 +835,7 @@ def main(argv: Optional[List[str]] = None):
         return _usage("erforderlich: --titel")
     test_pfad = (
         Path(args.test) if args.test
-        else (fall / "abgeleitet" / "berichte" / "aktuartest.json"
+        else (fall / "abgeleitet" / "berichte" / f"{kennung}.json"
               if fall else None)
     )
     if test_pfad is None:
@@ -479,7 +845,7 @@ def main(argv: Optional[List[str]] = None):
         )
     bericht_pfad = (
         Path(args.bericht) if args.bericht
-        else (fall / "abgeleitet" / "berichte" / "aktuartest.html"
+        else (fall / "abgeleitet" / "berichte" / f"{kennung}.html"
               if fall else None)
     )
     if bericht_pfad is None:
@@ -488,7 +854,7 @@ def main(argv: Optional[List[str]] = None):
             "--fall setzen (dann <fall>/abgeleitet/berichte/"
             "aktuartest.html)"
         )
-    ledger_ziel = (diagnostics_dir / f"{COMMAND}{GATE_LEDGER_SUFFIX}")
+    ledger_ziel = (diagnostics_dir / f"{kennung}{GATE_LEDGER_SUFFIX}")
     belegte = {
         test_pfad.resolve(), bericht_pfad.resolve(), ledger_ziel.resolve()
     }
@@ -511,7 +877,7 @@ def main(argv: Optional[List[str]] = None):
         test = json.loads(test_pfad.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return _finalize(build_result(
-            command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.FILE_CONTRACT,
             errors=[{
                 "code": "test_unlesbar",
@@ -523,6 +889,22 @@ def main(argv: Optional[List[str]] = None):
     # Fremd erzeugte oder beschaedigte JSONs duerfen die Nachrechnung
     # nicht zu einem Toolbox-Defekt (INTERNAL) machen: ein Typfehler in
     # den Daten ist eine Vertragsverletzung der DATEI.
+    gemeldet = (test or {}).get("profil", {}).get("kennung") if isinstance(test, dict) else None
+    if gemeldet is not None and gemeldet != abnahme:
+        return _finalize(build_result(
+            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
+            exit_code=Exit.FILE_CONTRACT,
+            errors=[{
+                "code": "test_contract",
+                "message": (
+                    f"Ergebnis gehoert zu {gemeldet}, gerendert werden soll "
+                    f"aber {abnahme}. Ein Bericht unter falscher Abnahme "
+                    "waere ein Beleg fuer etwas, das nicht geprueft wurde"
+                ),
+            }],
+            paths={"test": str(test_pfad)},
+        ))
+
     try:
         fehler = test_fehler(test)
     except (TypeError, ValueError, KeyError, AttributeError) as exc:
@@ -536,7 +918,7 @@ def main(argv: Optional[List[str]] = None):
     )
     if fehler:
         return _finalize(build_result(
-            command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.FILE_CONTRACT,
             errors=[
                 {"code": "test_contract", "message": f}
@@ -550,7 +932,7 @@ def main(argv: Optional[List[str]] = None):
         html = baue_bericht(titel=args.titel, test=test)
     except (TypeError, ValueError, KeyError) as exc:
         return _finalize(build_result(
-            command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.FILE_CONTRACT,
             errors=[{
                 "code": "test_contract",
@@ -587,12 +969,12 @@ def main(argv: Optional[List[str]] = None):
     output_hashes = hash_files([bericht_pfad], base=fall)
     if test["test_bestanden"]:
         return _finalize(build_result(
-            command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.OK, paths=paths, summary=summary,
             input_hashes=input_hashes, output_hashes=output_hashes,
         ))
     return _finalize(build_result(
-        command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
+        command=COMMAND, gate=gate, gate_version=GATE_VERSION,
         exit_code=Exit.GOLDEN_MASTER, paths=paths, summary=summary,
         input_hashes=input_hashes, output_hashes=output_hashes,
         errors=[

@@ -22,18 +22,47 @@ from rechner_pipeline.kern import (
     erhoehungs_scheibe,
     vertrags_monatsreserve,
 )
-from rechner_pipeline.qa.abzugsabgleich import ABS_TOL
+from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 from rechner_pipeline.qa.aktuarieller_test import (
+    ANLASS_FORTSCHREIBUNG,
+    ANLASS_UEBERNAHME,
+    ANLASS_VERLAUF,
     AktuartestFehler,
-    VerankerungsPruefung,
-    pruefe_stichprobe,
-    pruefe_verankerung,
+    Pruefpunkt,
+    Vertragspruefung,
+    pruefe_stichprobe as _pruefe_stichprobe,
+    pruefe_vertrag,
 )
 from rechner_pipeline.qa.stichprobe import Stichprobe, ziehe
+from rechner_pipeline.qa.testprofil import Kriterium, Testprofil
 
 MP = dataclasses.asdict(KLV_DEFAULT)
 KERN = Rechenkern(KLV_DEFAULT)
 TA = 12 * 9  # Verankerungszeitpunkt: neunter Jahrestag (Rechenpunkt)
+
+#: Die frueheren Engine-Konstanten als Profil — dieselben Toleranzen wie
+#: zuvor, damit die Urteile der bestehenden Faelle unveraendert bleiben.
+GRUNDTOLERANZ = Kriterium(abs_tol=ABS_TOL, rel_tol=REL_TOL)
+
+
+def _profil(kennung: str = "A-M1", **kwargs: Any) -> Testprofil:
+    kwargs.setdefault("weite", "vollbestand")
+    kwargs.setdefault("kriterien", {})
+    kwargs.setdefault("grundtoleranz", GRUNDTOLERANZ)
+    return Testprofil(kennung=kennung, **kwargs)
+
+
+PROFIL = _profil()
+
+
+def _punkt(
+    monate: int = TA,
+    erwartet: Optional[Dict[str, float]] = None,
+    anlass: str = ANLASS_UEBERNAHME,
+) -> Pruefpunkt:
+    if erwartet is None:
+        erwartet = {"kVx_MRV": round(KERN.zustand_am(monate).vx_mrv, 2)}
+    return Pruefpunkt(monate=monate, erwartet=erwartet, anlass=anlass)
 
 
 def _auftrag(
@@ -41,19 +70,28 @@ def _auftrag(
     monate_ta: int = TA,
     historientyp: str = "ohne_gevo",
     erwartet: Optional[Dict[str, float]] = None,
+    punkte: Optional[Tuple[Pruefpunkt, ...]] = None,
     **kwargs: Any,
-) -> VerankerungsPruefung:
-    if erwartet is None:
-        zeile = KERN.zustand_am(monate_ta)
-        erwartet = {"kVx_MRV": round(zeile.vx_mrv, 2)}
-    return VerankerungsPruefung(
+) -> Vertragspruefung:
+    if punkte is None:
+        punkte = (_punkt(monate_ta, erwartet),)
+    return Vertragspruefung(
         police_id=police_id,
         model_point=dict(MP),
-        monate_ta=monate_ta,
         historientyp=historientyp,
-        erwartet=erwartet,
+        punkte=punkte,
         **kwargs,
     )
+
+
+def pruefe_verankerung(v: Vertragspruefung, profil: Testprofil = PROFIL):
+    """Bruecke fuer die Faelle, die genau einen Pruefpunkt tragen."""
+    return pruefe_vertrag(v, profil)
+
+
+def pruefe_stichprobe(vertraege, stichprobe, profil: Testprofil = PROFIL, **kwargs):
+    """Wie die Engine, nur mit dem Vorgabeprofil dieser Testdatei."""
+    return _pruefe_stichprobe(vertraege, stichprobe, profil, **kwargs)
 
 
 def _stichprobe(*police_ids: str) -> Stichprobe:
@@ -146,7 +184,7 @@ def test_engine_vertrag_faellt_hart_aus():
         pruefe_verankerung(_auftrag(erwartet={"kVx_XYZ": 1.0}))
     with pytest.raises(AktuartestFehler, match="kein Testauftrag"):
         pruefe_verankerung(_auftrag(erwartet={}))
-    with pytest.raises(AktuartestFehler, match="nur kVx_MRV und RKW"):
+    with pytest.raises(AktuartestFehler, match="nur kVx_MRV, RKW und dDK"):
         pruefe_verankerung(
             _auftrag(erwartet={"BJB": 100.0}, scheiben=((5, 1000.0),))
         )
@@ -181,12 +219,11 @@ def test_stichprobe_vollstaendig_abgearbeitet_ist_die_definition():
 
 
 def test_kranke_lieferdaten_werden_je_vertrag_isoliert():
-    kaputt = VerankerungsPruefung(
+    kaputt = Vertragspruefung(
         police_id="P2",
         model_point={**MP, "x": "vierzig"},
-        monate_ta=TA,
         historientyp="ohne_gevo",
-        erwartet={"kVx_MRV": 1.0},
+        punkte=(_punkt(TA, {"kVx_MRV": 1.0}),),
     )
     ergebnis = pruefe_stichprobe(
         [_auftrag("P1"), kaputt], _stichprobe("P1", "P2")
