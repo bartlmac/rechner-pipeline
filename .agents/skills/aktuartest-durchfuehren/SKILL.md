@@ -2,14 +2,17 @@
 name: aktuartest-durchfuehren
 description: >-
   Run the deterministic actuarial test of a portfolio migration and
-  prepare the decision template for the Verantwortlicher Aktuar:
-  per-contract comparison at each contract's OWN anchor date t_a (at the
-  exact computation point, no interpolation, no summation — only
-  distribution measures of the residuals, clustered by history type) on a
-  documented sample, rendered by the aktuartest gate as the A-M1 template.
-  Trigger when a migration case has a transformed portfolio plus
-  delivered per-contract expectation values and the actuarial acceptance
-  (Gate A-M1) is due — it precedes Gate A-M4. Skip for: the full-portfolio
+  prepare the decision template for the Verantwortlicher Aktuar. Three
+  separate acceptances, each with its own sample, criteria and report:
+  A-M1 Stichtagstest (takeover state plus the next contract anniversary),
+  A-M2 Verlaufstest (5 and 10 years, maturity), A-M3
+  Geschaeftsvorfalltest (one point per business event, checked on the
+  change in Deckungskapital). Per contract, at the contract's OWN
+  computation points — no interpolated comparison, no summation, only
+  distribution measures of the residuals, clustered by history type and
+  occasion. Trigger when a migration case has a transformed portfolio
+  plus delivered per-contract expectation values and one of the actuarial
+  acceptances is due — all three precede Gate A-M4. Skip for: the full-portfolio
   controlling at the migration date (pruefe-migrationscontrolling, Gate
   A-M4), deciding the acceptance itself (human, Gate A-M1), computing any
   actuarial value by hand (deterministic engine only).
@@ -33,31 +36,43 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
   mit benanntem Profil (v0 kennt genau `vollbestand`), deterministisch,
   mit ausgewiesener Grundgesamtheit. Die Ziehung ist Teil des Belegs
   (`als_beleg()`), die Police-Liste gehört dazu.
-- `qa/aktuarieller_test` — die Test-Engine: je Vertrag ein
-  `VerankerungsPruefung`-Auftrag, Vergleich am Rechenpunkt (ein
-  unterjähriges `monate_ta` ist ein harter Fehler, keine
-  Interpolation), keine Summation der Vergleichsgrößen — nur
-  Verteilungsgrößen der |Residuen| (Maximum, hohe Perzentile,
-  Betragssumme der Abweichungen), geclustert nach `historientyp`.
-  Kranke Lieferdaten werden je Vertrag isoliert und als Befund
-  ausgewiesen.
-- `python -m rechner_pipeline.gates.aktuartest` — rechnet das
-  Engine-Ergebnis von innen nach außen nach und rendert die
-  A-M1-Vorlage (HTML) mit Stichproben-Beleg im Kopf; schreibt
-  `aktuartest.gate.json` in die Diagnostics. Exit-Codes: `0` Vorlage
+- `qa/testprofil` — das Profil je Test: Stichprobenweite im Klartext
+  und die Abnahmekriterien. `Kriterium` trägt beides — die Toleranz des
+  Einzelwerts (`abs_tol`, `rel_tol`) und die Abnahmegrenze der
+  Verteilung (`max_abs_residuum`, `p95_abs_residuum`). Eine Grenze
+  unter dem Rundungsrauschen einer centgerundeten Lieferung wird hart
+  abgelehnt: Sie misst die Darstellung, nicht die Rechnung.
+- `qa/aktuarieller_test` — die Test-Engine: je Vertrag eine
+  `Vertragspruefung` mit einer Liste von `Pruefpunkt`en. Ein Vertrag
+  besteht nur, wenn JEDER seiner Punkte besteht. Keine Summation der
+  Vergleichsgrößen — nur Verteilungsgrößen der |Residuen| (Maximum,
+  hohe Perzentile, Betragssumme), geclustert nach `historientyp` UND
+  `anlass`. Kranke Lieferdaten werden je Vertrag isoliert und als
+  Befund ausgewiesen.
+- `python -m rechner_pipeline.gates.aktuartest --abnahme A-M1|A-M2|A-M3`
+  — rechnet das Engine-Ergebnis von innen nach außen nach und rendert
+  die Vorlage (HTML) mit Profil- und Stichproben-Beleg im Kopf; jede
+  Abnahme schreibt ihr eigenes Ergebnis, ihren eigenen Bericht und
+  ihren eigenen Ledger. Ein Ergebnis, dessen Profil nicht zur
+  angeforderten Abnahme passt, wird abgelehnt. Exit-Codes: `0` Vorlage
   vollständig und Test bestanden, `30` Test nicht bestanden, `20`
   Ergebnis unlesbar oder inkonsistent, `2` Aufruf unvollständig.
 
 ## Nicht verhandelbar
 
 - Werte rechnet NUR die Engine. Du baust die Prüfaufträge
-  (`VerankerungsPruefung`) aus den Fall-Artefakten — transformierter
-  Bestand, Lesart der Rechnungsgrundlagen aus der Spez, gelieferte
-  Erwartungswerte, Historie je Vertrag — und interpretierst Urteile.
-- `monate_ta` ist ein VERTRAGSATTRIBUT (der letzte exakte Rechenpunkt
-  des Vertrags, volle Jahre), kein Suite-Parameter. Verlangt jemand
-  einen unterjährigen Vergleichszeitpunkt: STOPP, Mensch fragen — die
-  Engine lehnt ihn hart ab, und das ist Absicht (Grundsatzdokumentation 9.12).
+  (`Vertragspruefung` mit ihren `Pruefpunkt`en) aus den Fall-Artefakten
+  — transformierter Bestand, Lesart der Rechnungsgrundlagen aus der
+  Spez, gelieferte Erwartungswerte, Historie je Vertrag — und
+  interpretierst Urteile.
+- Der Zeitpunkt ist ein VERTRAGSATTRIBUT, kein Suite-Parameter. Stichtags-
+  und Verlaufspunkte liegen auf dem Vertragsjahrestag; ein Wert dazwischen
+  wäre interpoliert und die Engine lehnt ihn hart ab. Unterjährig ist
+  ausschließlich ein Geschäftsvorfall, weil dort die Mischungskonvention
+  den ausgezahlten Betrag bestimmt — sie ist der Gegenstand der Prüfung,
+  nicht ihre Störung (Grundsatzdokumentation 9.12, ADR-010).
+- Verlangt jemand einen unterjährigen Stichtags- oder Verlaufspunkt:
+  STOPP, Mensch fragen.
 - Toleranzen kommen aus `qa` (REL_TOL/ABS_TOL) und werden NIE
   aufgeweicht, um "grün zu werden".
 - Die Stichprobe wird GEZOGEN und belegt, nie von Hand
@@ -83,50 +98,78 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 1. Vollständigkeit prüfen: transformierter Bestand, Spez (Lesart),
    gelieferte Erwartungswerte je Vertrag, Historie (für t_a und
    Historientyp). Fehlt etwas: STOPP.
-2. Stichprobe ziehen: `qa.stichprobe.ziehe("vollbestand",
-   police_ids)` über die Policennummern des transformierten Bestands.
-   Ein anderes Profil existiert in v0 nicht — der Wunsch danach ist
-   eine Teamaufgabe (ADR-010 Abschnitt 5), kein Ad-hoc-Parameter.
-3. Je Vertrag der Stichprobe den Prüfauftrag bauen:
-   - `monate_ta`: volle Vertragsmonate am Verankerungszeitpunkt
-     (letzter exakter Rechenpunkt, Vielfaches von 12; aus
-     `bestand.fuehrung.months_between` und dem Vertragsbeginn).
+2. Abnahme wählen. Es sind drei, jede mit eigener Stichprobe, eigenen
+   Kriterien und eigener Unterschrift; jede läuft für sich:
+   - `A-M1` Stichtagstest: je Vertrag ZWEI Punkte — Übernahmestand am
+     Verankerungszeitpunkt (`anlass="uebernahme"`) und nächster
+     Vertragsstichtag laut Fortschreibung (`anlass="fortschreibung"`).
+   - `A-M2` Verlaufstest: nach 5 und 10 Jahren sowie zum Ablauf
+     (`anlass="verlauf"`). Verträge mit kürzerer Restlaufzeit tragen
+     den Punkt schlicht nicht — das ist kein Befund, muss aber in der
+     Stichprobenweite stehen.
+   - `A-M3` Geschäftsvorfalltest: je Vorfall ein Punkt, `anlass` ist
+     der Vorfall-Code (`STO`, `PEX`, `ABL`, `TOD`, `ERH`).
+3. Stichprobe ziehen: `qa.stichprobe.ziehe("vollbestand",
+   police_ids)`. Weitere Profile sind beschrieben, aber nicht gebaut —
+   der Wunsch danach ist eine Teamaufgabe, kein Ad-hoc-Parameter.
+4. Profil bauen (`qa.testprofil.Testprofil`): Kennung der Abnahme,
+   Stichprobenweite IM KLARTEXT (sie steht im Bericht und trägt den
+   Beleg), Grundtoleranz und die Kriterien je Größe — bei `A-M3` je
+   Vorfallart, weil dort der Vorfall über die Toleranz entscheidet.
+5. Je Vertrag der Stichprobe die `Vertragspruefung` bauen:
+   - `punkte`: die `Pruefpunkt`e der gewählten Abnahme, je mit
+     `monate` (volle Vertragsmonate seit Beginn), `erwartet` und
+     `anlass`.
    - `historientyp`: Cluster der Historie (z. B. `ohne_gevo`, `pex`,
      `dynamik`) — er strukturiert die Verteilungsauswertung.
    - `erwartet`: die gelieferten Werte mit Kern-Größennamen
-     (`kVx_MRV`, `RKW`, `BJB`, `VS_bfr`); nur liefern, was geliefert
-     wurde — die Engine lehnt unbekannte Größen hart ab.
+     (`kVx_MRV`, `RKW`, `BJB`, `VS_bfr`, `dDK`); nur liefern, was
+     geliefert wurde — die Engine lehnt unbekannte Größen hart ab.
+     `dDK` (Veränderung des Deckungskapitals) ist der tragende
+     Prüfwert des Geschäftsvorfalltests und nur dort zulässig.
    - `scheiben` (nach dynamischen Erhöhungen) und
      `beitragsfrei_seit_jahr` (PEX) aus der Historie.
    Dann `qa.aktuarieller_test.pruefe_stichprobe(vertraege, stichprobe,
-   transportsicherung=..., system=...)` laufen lassen und das Dict
-   unverändert als JSON in den Fall schreiben (`json.dump`, Ziel
-   `abgeleitet/berichte/aktuartest.json`). Das JSON wird NIE von Hand
-   nachgebessert — das Gate rechnet die Zusammenfassung gegen die
-   Einzelurteile nach und bricht sonst mit `20` ab.
-4. Vorlage erzeugen und protokollieren:
+   profil, transportsicherung=..., system=...)` laufen lassen und das
+   Dict unverändert als JSON in den Fall schreiben (`json.dump`, Ziel
+   `abgeleitet/berichte/aktuartest.json` für A-M1, mit Abnahme-Suffix
+   für A-M2 und A-M3). Das JSON wird NIE von Hand nachgebessert — das
+   Gate rechnet die Zusammenfassung gegen die Einzelurteile nach und
+   bricht sonst mit `20` ab.
+6. Vorlage erzeugen und protokollieren:
 
    ```
    python -m rechner_pipeline.gates.aktuartest \
        --fall faelle/<fall> \
-       --titel "Aktuarieller Test <Fall>"
+       --abnahme A-M1 \
+       --titel "Stichtagstest <Fall>"
    ```
 
-   Der Bericht landet unter `<fall>/abgeleitet/berichte/
-   aktuartest.html`, der Ledger unter `<fall>/abgeleitet/diagnostics/`.
-   Ein roter Bericht wird geschrieben wie ein grüner — er IST das
+   Der Bericht landet unter `<fall>/abgeleitet/berichte/`, der Ledger
+   unter `<fall>/abgeleitet/diagnostics/`; beide tragen die Abnahme im
+   Namen, sonst überschreiben sich die drei Tests gegenseitig. Ein
+   roter Bericht wird geschrieben wie ein grüner — er IST das
    Beweisstück.
-5. Ergebnis dem Verantwortlichen Aktuar zur A-M1-Entscheidung
-   vorlegen, STOPP.
+7. Ergebnis dem Verantwortlichen Aktuar zur Entscheidung über DIESE
+   Abnahme vorlegen, STOPP. Jede der drei wird einzeln gezeichnet:
+   Der Aktuar kann den Stichtagstest abnehmen und den Verlaufstest
+   zurückweisen.
 
 ## Ausbau (geplant, hier festgehalten)
 
 - Golden-Master-Tests der Migration: definierte Referenz-Verträge mit
   eingefrorenen Erwartungswerten als dauerhafte Regression — Definition
   folgt, dieser Skill ist ihr Zuhause.
-- Weitere Stichprobenprofile (geschichtet, risikoorientiert) über die
-  Erweiterungsstelle `qa.stichprobe.PROFILE` — je Profil eine
-  Teamentscheidung mit ADR-010-Nachzug.
+- Weitere Stichprobenprofile (geschichtet nach Historientyp,
+  Restlaufzeit-Klasse oder Vorfallart) über die Erweiterungsstelle
+  `qa.stichprobe.PROFILE`. Die Skala und der Erzeugungsweg sind
+  beschrieben (`dev-docs/aktuarieller-test-at1-at2-at3.md`), die
+  Ziehung ist nicht gebaut — sie wird fällig, wenn ein Fall aufgesetzt
+  wird.
+- Invalidisierung und Reaktivierung im Geschäftsvorfalltest: Die Engine
+  lehnt `dDK` für beide hart ab, weil sie den Zustand des BU-Graphen
+  wechseln. Sie kommen dazu, wenn die BU-Zustandsbewertung angeschlossen
+  ist.
 - Das methodische Residuum R der Korrekturschicht (Grundsatzdokumentation Abschnitt 9): Die
   Engine trägt den Platz benannt und leer, bis es ein R gibt.
 

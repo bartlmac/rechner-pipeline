@@ -28,7 +28,7 @@ gehoert dann in ein Gate oder einen Validator.
 | Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (A-K1) |
 | Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen RECHNEN, Entscheidungs-Dossier + Empfehlung liefern, dann STOPP | entscheiden (auch nicht "offensichtliche" Faelle); Quellen-Hierarchie festlegen |
 | Gate-Autorenschaft | `author-rechner-toolbox-gate` | neue Pruef-CLIs unter dem Ledger-/Exit-Contract | Fachlogik ausserhalb des Pruefens |
-| Aktuarieller Test | `aktuartest-durchfuehren` | deterministischen Test je Vertrag am eigenen Verankerungszeitpunkt auf belegter Stichprobe fahren (Engine, aktuartest-Gate) als A-M1-Vorlage aufbereiten | abnehmen (Mensch, A-M1); Werte selbst rechnen; interpolieren oder summieren (Engine verbietet es); Toleranzen aufweichen |
+| Aktuarieller Test | `aktuartest-durchfuehren` | die drei Abnahmen je Vertrag an seinen eigenen Rechenpunkten fahren (Engine, aktuartest-Gate) und je Abnahme eine Vorlage aufbereiten: A-M1 Stichtagstest, A-M2 Verlaufstest, A-M3 Geschaeftsvorfalltest | abnehmen (Mensch, A-M1); Werte selbst rechnen; interpolieren oder summieren (Engine verbietet es); Toleranzen aufweichen |
 | Migrationscontrolling | `pruefe-migrationscontrolling` | deterministisches Controlling ueber zwei Stichtage und jeden Vertrag (Migrationssuite, GeVo-Vergleich, Mapping-Tabelle, Bestandsberichte vor/nach) als A-M4-Vorlage aufbereiten | abnehmen (Mensch, A-M4); Werte selbst rechnen; Toleranzen aufweichen; Erwartungswerte "korrigieren" |
 | Migrations-CI | `integriere-migrationsinkrement` | Code-Aenderungen waehrend laufender Migrationen als kleine knotengebundene Inkremente integrieren (ADR-007: Impact, Gesamt-Suite inkl. aller Faelle, benanntes Staging) | langlebige Branches oder Kern-Forks; Landung ohne falluebergreifenden Beweis; Rueckgrat ohne Koordination; Push (Mensch) |
 
@@ -49,8 +49,9 @@ migrationsfall-durchfuehren
   |     mehr als Parametrierung: STOPP --> A-K1-Vorlage --> MENSCH
   |         danach: entwickle-im-zielsystem (unter dem A-K1-Beschluss)
   |- Stufe 3b (uebernommener Bestand), Reihenfolge erzwungen (ADR-010):
-  |     1. aktuartest-durchfuehren (qa/stichprobe, qa/aktuarieller_test,
-  |        gates/aktuartest) --> A-M1-Vorlage --> MENSCH (A-M1)
+  |     1. aktuartest-durchfuehren (qa/stichprobe, qa/testprofil,
+  |        qa/aktuarieller_test, gates/aktuartest) --> je Abnahme eine
+  |        Vorlage --> MENSCH (A-M1, A-M2, A-M3 einzeln)
   |     2. pruefe-migrationscontrolling (Gate P-B1, qa/migrationssuite,
   |        gates/abnahmebericht) --> Abnahmebericht --> MENSCH (A-M4)
   |- jeder Implementierungs-Block: entwickle-im-zielsystem
