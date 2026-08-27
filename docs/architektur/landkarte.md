@@ -31,7 +31,7 @@ flowchart TD
     bestand["bestand<br/>17 Module"]
     fall["fall<br/>1 Module"]
     gates["gates<br/>13 Module"]
-    kern["kern<br/>10 Module"]
+    kern["kern<br/>11 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
     models["models<br/>5 Module"]
     ontologie["ontologie<br/>16 Module"]
@@ -74,7 +74,7 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
     bu["bu<br/>25 Module"]
-    klv["klv<br/>68 Module"]
+    klv["klv<br/>69 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
     system_fall["system/fall<br/>1 Module"]
@@ -97,6 +97,7 @@ darauf (ADR-004).
 %% kern — erzeugt von ontologie.landkarte
 flowchart TD
     rechner_pipeline_kern___init___py["__init__"]
+    rechner_pipeline_kern_beitragsreduktion_py["beitragsreduktion"]
     rechner_pipeline_kern_konventionen_py["konventionen"]
     rechner_pipeline_kern_korrekturschicht_py["korrekturschicht"]
     rechner_pipeline_kern_model_point_py["model_point"]
@@ -111,6 +112,7 @@ flowchart TD
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_tafeln_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_zustandsmodell_py
+    rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern_korrekturschicht_py --> rechner_pipeline_kern_zustandsmodell_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_bu_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_klv_py
