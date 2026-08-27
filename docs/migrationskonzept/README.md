@@ -27,8 +27,8 @@ Kapiteln, das je Fall kopiert und ausgefuellt wird.
 |---|---|---|
 | 1-4 | Zweck, Systemkontext, Bestandsabgrenzung, Datenliefervertrag | Geruest mit ⟨TODO⟩ — fallspezifisch auszufuellen |
 | 5 | Migrationszugangsroutine (Statusmodell, Schrittfolge je Vertrag, Kohorten, Protokoll) | **fachlich vorbefuellt** — Aenderungen nur nach menschlicher Freigabe |
-| 6 | Migrationscontrolling am $t_0$ ueber den vollen Bestand, Vorlage fuer Gate G-2 | ausgearbeitet |
-| 7 | Aktuarielle Abnahme am $t_a$ je Vertrag auf einer Stichprobe, Vorlage fuer Gate G-A | ausgearbeitet |
+| 6 | Migrationscontrolling am $t_0$ ueber den vollen Bestand, Vorlage fuer Gate A-M4 | ausgearbeitet |
+| 7 | Aktuarielle Abnahme am $t_a$ je Vertrag auf einer Stichprobe, Vorlage fuer Gate A-M1 | ausgearbeitet |
 | 8-10 | Fehler- und Klaerungsprozess, Archiv, Ablaufplanung | Geruest mit ⟨TODO⟩ |
 | 11 | Entscheidungen und offene Punkte | zwei offene Entscheidungen (E1, E2) |
 

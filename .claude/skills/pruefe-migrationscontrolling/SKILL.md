@@ -5,13 +5,13 @@ description: >-
   migration and prepare the human acceptance decision: two-reporting-date
   Deckungskapital comparison over the FULL portfolio, GeVo amounts between
   the dates, the transformation mapping table, and the before/after
-  Bestandsbericht pair — rendered as one acceptance report for Gate G-2.
+  Bestandsbericht pair — rendered as one acceptance report for Gate A-M4.
   Trigger when a migration case has a transformed portfolio plus delivered
   expectation data (second extract, GeVo protocol) and acceptance is due,
   or the user asks to "die Migration abnehmen/pruefen". Skip for: the
   actuarial test at each contract's own anchor date
-  (aktuartest-durchfuehren, Gate G-A — it comes FIRST), deciding the
-  acceptance itself (human, Gate G-2), computing any actuarial value by
+  (aktuartest-durchfuehren, Gate A-M1 — it comes FIRST), deciding the
+  acceptance itself (human, Gate A-M4), computing any actuarial value by
   hand (deterministic suite only), resolving discrepancies
   (bereite-fachkonflikt-auf).
 ---
@@ -22,16 +22,16 @@ description: >-
 
 Du führst das DETERMINISTISCHE Migrationscontrolling einer
 Bestandsmigration aus und bereitest das Urteil für die MENSCHLICHE
-Abnahme (Gate G-2) auf. Der Beweis einer Migration endet nicht beim
+Abnahme (Gate A-M4) auf. Der Beweis einer Migration endet nicht beim
 Stichtags-Foto: Das Zielsystem muss den übernommenen Bestand auch
 FORTSCHREIBEN wie das Quellsystem. Geprüft wird deshalb über zwei
 Stichtage — jeder Vertrag des Bestands, aggregierend.
 
 ABGRENZUNG (ADR-010): Das Controlling ist die ZWEITE Prüfebene. Die
 ERSTE ist der aktuarielle Test je Vertrag am eigenen
-Verankerungszeitpunkt (Skill `aktuartest-durchfuehren`, Gate G-A) —
-G-A geht G-2 zwingend voraus; ein G-2-Entscheid ohne geltende
-G-A-Annahme ist unmöglich. "Vollständig geprüft" heißt HIER: jeder
+Verankerungszeitpunkt (Skill `aktuartest-durchfuehren`, Gate A-M1) —
+A-M1 geht A-M4 zwingend voraus; ein A-M4-Entscheid ohne geltende
+A-M1-Annahme ist unmöglich. "Vollständig geprüft" heißt HIER: jeder
 Vertrag des Bestands (`vollstaendig_geprueft`); im aktuariellen Test
 heißt es: die Stichprobe wurde abgearbeitet.
 
@@ -72,7 +72,7 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
   korrigierst keine Erwartungswerte und keine Lieferung — eine
   Abweichung ist ein Ergebnis, kein Hindernis.
 - Der Bericht ist die Entscheidungsvorlage; die Abnahme selbst ist
-  Gate G-2 (Mensch, Entscheid-Snapshot). Ein Exit-Code `0` des
+  Gate A-M4 (Mensch, Entscheid-Snapshot). Ein Exit-Code `0` des
   Berichts-Kommandos heißt "Vorlage vollständig und ohne Fehlschlag",
   NICHT "abgenommen" — die Abnahme wird mit `gates/gate_entscheid`
   vom Menschen festgehalten. Eine ANNAHME verlangt dort seit ADR-008
@@ -100,12 +100,12 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
      Bestandsabzugs. Ohne sie ist NICHT geprüft, dass die Prüfmenge
      dem gelieferten Bestand entspricht.
    Im Bestands-Scope kommen vier Bindungen dazu, ohne die das
-   Suite-JSON KEIN G-2-Beleg ist (der Abnahmebericht verlangt sie und
+   Suite-JSON KEIN A-M4-Beleg ist (der Abnahmebericht verlangt sie und
    gleicht sie gegen `fall.json` ab):
    - `stichtag_1=` / `stichtag_2=`: die beiden ISO-Stichtage,
      chronologisch; sie müssen den Berichtsstichtagen entsprechen.
    - `bestand_sha256=`: SHA-256 des geprüften Bestands — dieselbe
-     Datei, die Gate B1 geprüft hat.
+     Datei, die Gate P-B1 geprüft hat.
    - `system=`: der Systemstand aus
      `gates._provenienz.systemstand(repo_root)` (exakt die Schlüssel
      `commit`, `branch`, `dirty`, `quellcode_sha256`).
@@ -117,9 +117,9 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    bricht sonst mit `20` ab.
 3. Bestandsberichte vor/nach erzeugen (gleiche Parameter, gleicher
    Horizont — nur so ist der visuelle Vergleich fair). Im
-   Bestands-Scope muss außerdem Gate B1
+   Bestands-Scope muss außerdem Gate P-B1
    (`gates.bestand_validate`) grün gelaufen sein: Sein Ledger ist
-   Pflichtbeleg für G-2 und wird vom Abnahmebericht mitgebunden.
+   Pflichtbeleg für A-M4 und wird vom Abnahmebericht mitgebunden.
 4. Bericht erzeugen und protokollieren. ALLE aufgeführten Angaben
    sind Pflicht — fehlt eine, bricht das Kommando als Usage-Fehler ab:
 
@@ -137,9 +137,9 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    Vor- und Nachbericht müssen verschiedene Dateien sein; keine der
    Angaben darf auf dieselbe Datei zeigen wie eine andere oder wie
    der Gate-Ledger. Im Bestands-Scope zieht das Kommando das
-   B1-Ledger automatisch aus
+   P-B1-Ledger automatisch aus
    `<fall>/abgeleitet/diagnostics/bestand_validate.gate.json`
-   (abweichend: `--b1-ledger`).
+   (abweichend: `--pb1-ledger`).
 
    Der Bericht landet unter `<fall>/abgeleitet/berichte/`, der
    Ledger-Eintrag `abnahmebericht.gate.json` unter
@@ -147,7 +147,7 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    vollständig ausgewiesen (keine Stichproben-Beschönigung); ein
    roter Bericht wird geschrieben wie ein grüner — er IST das
    Beweisstück.
-5. Ergebnis dem Menschen zur G-2-Entscheidung vorlegen, STOPP.
+5. Ergebnis dem Menschen zur A-M4-Entscheidung vorlegen, STOPP.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)
 

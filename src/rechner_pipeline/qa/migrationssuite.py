@@ -55,9 +55,9 @@ Rechnungsgrundlagen) macht der Migrationsfall.
 
 ABGRENZUNG (ADR-010): Diese Suite ist das MIGRATIONSCONTROLLING am
 Migrationsstichtag — jeder Vertrag des Bestands, aggregierend, Vorlage
-fuer Gate G-2. ``vollstaendig_geprueft`` traegt genau diese Bedeutung:
+fuer Gate A-M4. ``vollstaendig_geprueft`` traegt genau diese Bedeutung:
 jeder Vertrag wurde geprueft, ein ungeprueter ist eine Prueflücke. Der
-AKTUARIELLE TEST (``qa.aktuarieller_test``, Gate G-A) ist die andere
+AKTUARIELLE TEST (``qa.aktuarieller_test``, Gate A-M1) ist die andere
 Pruefebene: je Vertrag am eigenen Verankerungszeitpunkt, auf einer
 Stichprobe — dort heisst Vollstaendigkeit ``stichprobe_vollstaendig``
 (die Stichprobe wurde abgearbeitet). Die Scope-Bindungen dieser Suite
@@ -530,9 +530,9 @@ def pruefe_bestand(
 
     SCOPE-BINDUNG: Für einen Bestandsfall werden ``stichtag_1``,
     ``stichtag_2`` und ``bestand_sha256`` gemeinsam übergeben. Fuer einen
-    G-2-Beleg kommt der vom Aufrufer berechnete ``system``-Stand hinzu. Die
+    A-M4-Beleg kommt der vom Aufrufer berechnete ``system``-Stand hinzu. Die
     Suite validiert und spiegelt diese Angaben in ihr Ergebnis. Ohne sie bleibt
-    die Funktion fallunabhängig, ihr Ergebnis ist aber kein G-2-Beleg eines
+    die Funktion fallunabhängig, ihr Ergebnis ist aber kein A-M4-Beleg eines
     Bestandsfalls.
 
     LEERE PRÜFMENGE: harter Fehler statt eines ausgewiesenen

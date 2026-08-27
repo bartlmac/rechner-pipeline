@@ -30,7 +30,7 @@ knotengebundener Inkremente, nie ein langlebiger Branch.
   (Bausteine UND Tests); neuer knotengebundener Code ist für andere
   Fälle inert, bis eine Spez ihn parametriert.
 - **Landung nur mit maschinellem Nicht-Berührungs-Beweis**: die
-  GESAMT-Suite ist grün, einschließlich der Referenzwerte und O3-Läufe ALLER
+  GESAMT-Suite ist grün, einschließlich der Referenzwerte und P-K1-Läufe ALLER
   offenen und abgeschlossenen Fälle. "Betrifft die anderen nicht" wird
   bewiesen, nie behauptet.
 - **Rückgrat-Änderungen** (Thiele-Rekursion, Tafelwerk, Bestand) sind

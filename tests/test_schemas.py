@@ -328,7 +328,7 @@ def test_qa_report_accepted_roundtrip():
         max_attempts=4,
         expectation_coverage="full",
         qa_contract_path="generated/qa_contract.json",
-        gates=[{"gate": "G0.extraction-manifest", "required": True, "status": "passed"}],
+        gates=[{"gate": "P-Q1.quellfragment", "required": True, "status": "passed"}],
         generated_file_hashes=[
             {"path": "generated/inputs.py", "bytes": 1234, "sha256": "b" * 64}
         ],
@@ -390,8 +390,8 @@ def test_run_dossier_v2_delta_roundtrip_and_merge():
             "max_attempts": 4,
         },
         qa_report={"path": "generated/qa_report.json", "exists": True},
-        gate_results=[{"gate": "G0.extraction-manifest", "status": "passed"}],
-        attempts=[{"attempt": 1, "gates_run": ["G0"], "outcome": "accepted"}],
+        gate_results=[{"gate": "P-Q1.quellfragment", "status": "passed"}],
+        attempts=[{"attempt": 1, "gates_run": ["P-Q1"], "outcome": "accepted"}],
         input_bundle={"expectation_coverage": "full"},
     )
     assert delta.validate() == []

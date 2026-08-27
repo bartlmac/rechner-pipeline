@@ -8,7 +8,7 @@
     "tabellen_zeilen": 51,
     "werte_verglichen": 616
   },
-  "fall": "anonymisierter-o3-g2-testfall",
+  "fall": "anonymisierter-pk1-am4-testfall",
   "generation": "klv/tg2012",
   "parameter": {
     "alpha": 0.025,
@@ -36,7 +36,7 @@
     "fundstelle_ratzu": "Kalkulation!$E$12"
   },
   "quelle": {
-    "datei": "o3_g2_anonymisiert.xlsm",
+    "datei": "pk1_am4_anonymisiert.xlsm",
     "sha256": "6d55285ce8ec960038e981ea3c1c84b42a69dfac3c0a55c73c536299466d2287"
   },
   "schema_version": 1

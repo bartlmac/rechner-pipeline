@@ -30,7 +30,7 @@ Randbedingungen:
   das vermieden werden soll.
 * Die ADR-005-Mechanik existiert bereits: Jeder Baustein traegt einen
   Ontologie-Knoten, jeder Test ist knotengebunden, `impact` berechnet
-  Beruehrungsmengen, Referenzwert- und O3-Gates beweisen Wertidentitaet.
+  Beruehrungsmengen, Referenzwert- und P-K1-Gates beweisen Wertidentitaet.
 
 ## Entscheidung
 
@@ -40,7 +40,7 @@ aber je INKREMENT (Lebensdauer Tage, nicht Monate).
 
 **Regel 2 — Die Trennung leistet die Ontologie, nicht Git.** Eine
 Migration erweitert den Kern um IHRE Knoten (neue Generationen, im
-G-T-Fall neue Familien). Neuer knotengebundener Code ist fuer alle
+A-K1-Fall neue Familien). Neuer knotengebundener Code ist fuer alle
 anderen Faelle inert: Er wird erst wirksam, wenn die Spez eines Falls
 ihn parametriert. Die Frage "zu welcher unfertigen Migration gehoert
 dieser Baustein?" beantwortet der Knoten, nicht die Branch-Historie.
@@ -48,7 +48,7 @@ dieser Baustein?" beantwortet der Knoten, nicht die Branch-Historie.
 **Regel 3 — Inkremente landen klein und frueh auf dem Trunk, und jede
 Landung beweist die Nicht-Beruehrung der anderen Faelle.** Ein
 Inkrement darf nur landen, wenn die Gesamt-Suite gruen ist —
-einschliesslich der Referenzwert- und O3-Laeufe ALLER anderen offenen und
+einschliesslich der Referenzwert- und P-K1-Laeufe ALLER anderen offenen und
 abgeschlossenen Faelle. Dass Migration A Migration B nicht veraendert
 hat, wird bei jeder Landung maschinell bewiesen, nicht per Disziplin
 gehofft. Der fachliche Zustand einer laufenden Migration (A-Box,
@@ -71,13 +71,13 @@ kein Git-Merge-Zufall:
 **Konvention Archiv:** Abgeschlossene oder als Vorlauf beendete Faelle
 wandern nach `faelle/archiv/<name>/` — vollstaendig erhalten
 (insbesondere `eingang/` und die nicht regenerierbaren `entscheide/`),
-aber ausserhalb der aktiven Scans (Impact-Fallsuche, O3-Zuordnung
+aber ausserhalb der aktiven Scans (Impact-Fallsuche, P-K1-Zuordnung
 arbeiten auf `faelle/<name>/`, eine Ebene tief).
 
 ## Konsequenzen
 
 * Der Tafel-Import bleibt die einzige zulaessige dauerhafte
-  Kern-Beruehrung VOR der Abnahme (O3 muss rechnen koennen); er ist
+  Kern-Beruehrung VOR der Abnahme (P-K1 muss rechnen koennen); er ist
   additiv, provenienzpflichtig, und gleicher Name mit anderen Werten
   ist ein harter Fail-fast — das serialisiert konkurrierende Faelle
   automatisch.

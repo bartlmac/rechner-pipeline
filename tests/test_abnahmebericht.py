@@ -1,4 +1,4 @@
-"""Migrationsabnahmebericht (gates/abnahmebericht): G-2-Vorlage als HTML.
+"""Migrationsabnahmebericht (gates/abnahmebericht): A-M4-Vorlage als HTML.
 
 Die Suite-Urteile kommen aus der echten Migrationssuite (Kern-eigene,
 centgerundete Erwartungen). Diese Tests können deshalb KEINEN
@@ -13,7 +13,7 @@ unabhängig.
 Dazu das Kommando (Toolbox-Gate-Vertrag): genau EIN JSON auf stdout,
 ``abnahmebericht.gate.json`` auf JEDEM Pfad, Standard-Exit-Codes
 (0 / 2 / 20 / 30), Fall-Vorgaben — und die Grenze, die das Kommando
-nicht überschreitet: es nimmt nicht ab (Gate G-2 bleibt beim Menschen).
+nicht überschreitet: es nimmt nicht ab (Gate A-M4 bleibt beim Menschen).
 
 Knoten: klv
 """
@@ -178,7 +178,7 @@ def test_fallloser_renderer_bleibt_rot_mit_allen_abschnitten(tmp_path) -> None:
     assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
     assert "ohne Fallbindung nicht autoritativ" in text
     assert "ALLE ABNAHMETESTS BESTANDEN" not in text
-    assert "menschliche Entscheidung" in text and "G-2" in text
+    assert "menschliche Entscheidung" in text and "A-M4" in text
     assert "dk_stichtag_1" in text and "dk_stichtag_2" in text
     assert "POLNR" in text and "police_id" in text
     assert "NR -&gt; nichtraucher" in text          # Kodierung, escaped
@@ -417,7 +417,7 @@ def test_fallloses_kommando_schreibt_nur_roten_bericht_und_ledger(
         for eintrag in renderer_artefakte.values()
     )
     # Das Kommando nimmt NICHT ab — die Entscheidung bleibt beim Menschen.
-    assert "G-2" in result.summary["abnahme"]
+    assert "A-M4" in result.summary["abnahme"]
 
     eintrag = _ledger(tmp_path / "diagnostics")
     assert (eintrag.gate, eintrag.command) == (GATE, "abnahmebericht")
@@ -455,7 +455,7 @@ def test_kommando_rot_blockiert_und_schreibt_den_bericht_trotzdem(
     result = main(_basis_argv(tmp_path, suite_pfad))
 
     assert (result.exit_code, result.status) == (Exit.GOLDEN_MASTER, "failed")
-    # Gerade der rote Bericht ist das Beweisstueck fuer die G-2-Vorlage.
+    # Gerade der rote Bericht ist das Beweisstueck fuer die A-M4-Vorlage.
     text = (tmp_path / "berichte" / "abnahme.html").read_text(encoding="utf-8")
     assert "1 von 2 Verträgen FEHLGESCHLAGEN" in text
     meldungen = [e["message"] for e in result.errors]

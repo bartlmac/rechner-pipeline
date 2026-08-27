@@ -29,7 +29,7 @@ def test_if_staffel_parser_ist_fail_fast():
     with pytest.raises(FormelCheckFehler, match="erwartet 'zw'"):
         lese_if_staffel("=IF(alter=2,2%,0)", "zw")
     with pytest.raises(FormelCheckFehler, match="IF-Staffel"):
-        lese_if_staffel("=A1*B1", "zw")
+        lese_if_staffel("=A1*P-B1", "zw")
     with pytest.raises(FormelCheckFehler, match="doppelt"):
         lese_if_staffel("=IF(zw=2,2%,IF(zw=2,3%,0))", "zw")
     with pytest.raises(FormelCheckFehler, match="Default"):
@@ -44,18 +44,18 @@ def test_if_staffel_parser_ist_fail_fast():
 
 
 # --------------------------------------------------------------------------- #
-# Regression: der Blattname ist Sache des Quellsystems (Review-Befund O1)
+# Regression: der Blattname ist Sache des Quellsystems (Review-Befund P-Q3)
 #
 # Der Rueck-Check verdrahtete "Kalkulation" hart. Ein Quellsystem, das
 # sein Kalkulationsblatt anders nennt (Baldrian: "Tarifrechnung"), lief
-# damit still an jeder Pruefung vorbei, waehrend Gate O1 gruen blieb.
+# damit still an jeder Pruefung vorbei, waehrend Gate P-Q3 gruen blieb.
 # Die Fixture ist bewusst selbst erzeugt und haengt an KEINEM Fall unter
 # faelle/ (die Arbeitsbereiche sind gitignored).
 # --------------------------------------------------------------------------- #
 
 ZEIT = "2026-08-19T06:00:00+00:00"
 
-#: Vollstaendiger Pflichtumfang, damit Gate O1 an nichts anderem scheitert.
+#: Vollstaendiger Pflichtumfang, damit Gate P-Q3 an nichts anderem scheitert.
 PFLICHT_WERTE = {
     "zins": 0.0175, "tafel": "DAV2008_T", "alpha": 0.025, "beta1": 0.03,
     "gamma1": 0.001, "gamma2": 0.00125, "gamma3": 0.0025,
@@ -185,7 +185,7 @@ def _fall_mit_abox(
         meldungs_parameter = dict(meldungs_ratzu)
         if not mit_rechner:
             # Ohne Rechner traegt die Meldung auch den Pflichtumfang,
-            # sonst waere die A-Box unvollstaendig (Gate O1).
+            # sonst waere die A-Box unvollstaendig (Gate P-Q3).
             meldungs_parameter.update(parameter)
         fragmente.append(QuellFragment(
             generation="tg2012", quelle_datei="meldung.docx",
@@ -266,7 +266,7 @@ def test_fehlende_vorverdichtung_ohne_quellrechner_nennt_die_lage(
     assert "gates.extract" not in pruefung.hinweise[0]
 
 
-def test_gate_o1_warnt_bei_fehlender_vorverdichtung(tmp_path: Path):
+def test_gate_pq3_warnt_bei_fehlender_vorverdichtung(tmp_path: Path):
     """Gate-Ebene zu C6: der Ausfall erreicht Summary UND Warnungen.
 
     Vorher stand hier nur ein Status im Summary und keine einzige
@@ -327,7 +327,7 @@ def test_nur_aus_der_meldung_belegte_staffel_ist_kein_befund(tmp_path: Path):
     assert pruefung.blatt == "Tarifrechnung"
 
 
-def test_gate_o1_warnt_nicht_bei_reiner_meldungs_aussage(tmp_path: Path):
+def test_gate_pq3_warnt_nicht_bei_reiner_meldungs_aussage(tmp_path: Path):
     """Gate-Ebene zu C7: der fachlich korrekte Fall erzeugt KEINE
     Warnung, die Zaehlung steht trotzdem im Summary."""
     from rechner_pipeline.gates.abox_validate import main
@@ -359,7 +359,7 @@ def test_vorverdichtung_ohne_manifest_ist_befund_nicht_nicht_pruefbar(
     assert "export_manifest.json" in pruefung.befunde[0]
 
 
-def test_gate_o1_macht_den_ausgefallenen_rueckcheck_sichtbar(tmp_path: Path):
+def test_gate_pq3_macht_den_ausgefallenen_rueckcheck_sichtbar(tmp_path: Path):
     """Gate-Ebene: der Befund erreicht Summary UND Warnungen — auch wenn
     das Gate im Uebrigen gruen ist (blockieren waere eine fachliche
     Verschaerfung und ist bewusst nicht Teil dieses Fixes)."""
@@ -378,7 +378,7 @@ def test_gate_o1_macht_den_ausgefallenen_rueckcheck_sichtbar(tmp_path: Path):
     assert ergebnis.exit_code == 0
 
 
-def test_gate_o1_meldet_den_gelaufenen_rueckcheck_mit_zahl(tmp_path: Path):
+def test_gate_pq3_meldet_den_gelaufenen_rueckcheck_mit_zahl(tmp_path: Path):
     """Gegenprobe: passt das Blatt, steht die Pruefzahl im Summary und
     es gibt keine Ausfall-Warnung."""
     from rechner_pipeline.gates.abox_validate import main
@@ -429,7 +429,7 @@ def test_blattname_und_dateistamm_fallen_auseinander(tmp_path: Path):
     assert blatt.name == BLATT_MIT_SONDERZEICHEN     # Fundstellen-Praefix
     assert blatt.stamm == STAMM_MIT_SONDERZEICHEN    # Artefakt-Praefix
 
-    # Verwendung 1 (Artefakte, z. B. Gate O3): der STAMM adressiert die
+    # Verwendung 1 (Artefakte, z. B. Gate P-K1): der STAMM adressiert die
     # abgeleiteten Dateien, der Blattname tut es nicht.
     assert (verzeichnis / f"{blatt.stamm}_compressed.csv").is_file()
     assert not (verzeichnis / f"{blatt.name}_compressed.csv").exists()

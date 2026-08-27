@@ -1,4 +1,4 @@
-"""CLI-Befehle des Bestandsmoduls: bestand_fortschreibung (Producer) + Gate B1.
+"""CLI-Befehle des Bestandsmoduls: bestand_fortschreibung (Producer) + Gate P-B1.
 
 Knoten: klv, bu
 """
@@ -95,7 +95,7 @@ def test_fortschreibung_cli_usage_fehler(tmp_path):
 def lauf_gemischt(tmp_path):
     """CLI-Lauf auf dem GEMISCHTEN Beispielbestand (KLV + BU).
 
-    Gate B1 prueft beide Nachweisungen als harte Bedingung; auf einem
+    Gate P-B1 prueft beide Nachweisungen als harte Bedingung; auf einem
     reinen KLV-Bestand laeuft der BU-Zweig leer durch und belegt nichts.
     """
     out = tmp_path / "lauf_gemischt"
@@ -106,7 +106,7 @@ def lauf_gemischt(tmp_path):
     return out
 
 
-def test_gate_b1_prueft_die_bu_nachweisung(lauf_gemischt, tmp_path, capsys):
+def test_gate_pb1_prueft_die_bu_nachweisung(lauf_gemischt, tmp_path, capsys):
     """Der BU-Zweig des Gates mit echten BU-Daten.
 
     Ohne diesen Lauf war ``bu_bewegungskonto`` im Gate zwar aufgerufen,
@@ -155,7 +155,7 @@ def test_gate_b1_prueft_die_bu_nachweisung(lauf_gemischt, tmp_path, capsys):
     assert any(e["code"] == "bewegung" for e in ergebnis["errors"])
 
 
-def test_gate_b1_passed_und_ledger(lauf, tmp_path, capsys):
+def test_gate_pb1_passed_und_ledger(lauf, tmp_path, capsys):
     diagnostics = tmp_path / "diag"
     code = run_command(gate_cli.main, [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
@@ -174,10 +174,10 @@ def test_gate_b1_passed_und_ledger(lauf, tmp_path, capsys):
     assert (diagnostics / "bestand_validate.gate.json").is_file()
 
 
-def test_gate_b1_kaputtes_parquet_ersetzt_alten_gruenen_ledger(
+def test_gate_pb1_kaputtes_parquet_ersetzt_alten_gruenen_ledger(
     lauf, tmp_path, capsys
 ):
-    """Regression T6-12: Der bestaetigte B1-Crash darf nicht altgruen bleiben."""
+    """Regression T6-12: Der bestaetigte P-B1-Crash darf nicht altgruen bleiben."""
     diagnostics = tmp_path / "diag_crash_regression"
     argv = [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
@@ -206,10 +206,10 @@ def test_gate_b1_kaputtes_parquet_ersetzt_alten_gruenen_ledger(
     )
 
 
-def test_gate_b1_unerwartete_exception_schreibt_aktuellen_roten_ledger(
+def test_gate_pb1_unerwartete_exception_schreibt_aktuellen_roten_ledger(
     lauf, tmp_path, capsys, monkeypatch
 ):
-    """Auch ein Fehler ausserhalb der B1-Contract-Faenger beendet den Versuch."""
+    """Auch ein Fehler ausserhalb der P-B1-Contract-Faenger beendet den Versuch."""
     diagnostics = tmp_path / "diag_unexpected"
     argv = [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
@@ -223,7 +223,7 @@ def test_gate_b1_unerwartete_exception_schreibt_aktuellen_roten_ledger(
     alter_ledger = json.loads(ledger_pfad.read_text(encoding="utf-8"))
 
     def _crash(*args, **kwargs):
-        raise RuntimeError("erzwungener B1-Crash")
+        raise RuntimeError("erzwungener P-B1-Crash")
 
     monkeypatch.setattr(gate_cli, "hash_files", _crash)
     code = run_command(gate_cli.main, argv)
@@ -238,7 +238,7 @@ def test_gate_b1_unerwartete_exception_schreibt_aktuellen_roten_ledger(
     assert aktueller_ledger["summary"]["errors"][0]["code"] == "internal_error"
 
 
-def test_gate_b1_ledger_schreibfehler_kann_nicht_gruen_enden(
+def test_gate_pb1_ledger_schreibfehler_kann_nicht_gruen_enden(
     lauf, tmp_path, capsys, monkeypatch
 ):
     """Der rote Startmarker bleibt, wenn der atomare Abschluss-Write scheitert."""
@@ -278,7 +278,7 @@ def test_gate_b1_ledger_schreibfehler_kann_nicht_gruen_enden(
     assert not list(diagnostics.glob(".*.tmp"))
 
 
-def test_gate_b1_bewegungsidentitaet(lauf, tmp_path, capsys):
+def test_gate_pb1_bewegungsidentitaet(lauf, tmp_path, capsys):
     basis = [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
         "--historie", str(lauf / "historie.parquet"),
@@ -337,7 +337,7 @@ def test_gate_b1_bewegungsidentitaet(lauf, tmp_path, capsys):
     assert any("PEX-Ledger-Zeile" in e["message"] for e in ergebnis["errors"])
 
 
-def test_gate_b1_findet_verletzungen(lauf, tmp_path, capsys):
+def test_gate_pb1_findet_verletzungen(lauf, tmp_path, capsys):
     kaputt = read_portfolio(lauf / "bestand.parquet")
     kaputt.loc[kaputt.index[0], "sum_insured"] = -1.0
     pfad = write_portfolio(kaputt, tmp_path / "kaputt.parquet")
@@ -358,7 +358,7 @@ def test_gate_b1_findet_verletzungen(lauf, tmp_path, capsys):
         pytest.param("ereignis", id="fuer-portfolio-unbekannt"),
     ],
 )
-def test_gate_b1_lehnt_unbekannte_physische_parquet_spalte_ab(
+def test_gate_pb1_lehnt_unbekannte_physische_parquet_spalte_ab(
     lauf, tmp_path, capsys, zusatzspalte
 ):
     quelle = lauf / "bestand.parquet"
@@ -386,7 +386,7 @@ def test_gate_b1_lehnt_unbekannte_physische_parquet_spalte_ab(
     )
 
 
-def test_gate_b1_lehnt_physischen_status_id_float_typ_ab(
+def test_gate_pb1_lehnt_physischen_status_id_float_typ_ab(
     lauf, tmp_path, capsys
 ):
     """Der Arrow-Typ muss vor der kanonischen Pandas-Konvertierung gelten.
@@ -425,7 +425,7 @@ def test_gate_b1_lehnt_physischen_status_id_float_typ_ab(
         pytest.param(None, id="parquet-null"),
     ],
 )
-def test_gate_b1_lehnt_leere_tarif_generation_ab(
+def test_gate_pb1_lehnt_leere_tarif_generation_ab(
     lauf, tmp_path, capsys, leerwert
 ):
     pfad = tmp_path / "tarif_generation_leer.parquet"
@@ -480,7 +480,7 @@ def test_gate_b1_lehnt_leere_tarif_generation_ab(
         ),
     ],
 )
-def test_gate_b1_prueft_jede_basisstatus_invariante(
+def test_gate_pb1_prueft_jede_basisstatus_invariante(
     lauf, tmp_path, capsys, mutation, erwartete_meldung
 ):
     bestand = read_portfolio(lauf / "bestand.parquet")
@@ -509,17 +509,17 @@ def test_gate_b1_prueft_jede_basisstatus_invariante(
     )
 
 
-def test_gate_b1_usage(tmp_path, capsys):
+def test_gate_pb1_usage(tmp_path, capsys):
     code = run_command(gate_cli.main, ["--diagnostics-dir", str(tmp_path)])
     ergebnis = json.loads(capsys.readouterr().out)
     assert code == 2
     assert any(e["code"] == "missing_arg" for e in ergebnis["errors"])
 
 
-def test_gate_b1_nennt_den_erzeuger_wenn_der_eingang_fehlt(tmp_path, capsys):
+def test_gate_pb1_nennt_den_erzeuger_wenn_der_eingang_fehlt(tmp_path, capsys):
     """Nicht-Verhandelbare: ein harter Fehler nennt den Weg hinaus.
 
-    Fehlt der Eingang von B1, genuegt 'Datei nicht gefunden' nicht — die
+    Fehlt der Eingang von P-B1, genuegt 'Datei nicht gefunden' nicht — die
     Meldung muss das Kommando tragen, das die Datei herstellt
     (Systempruefung F6). Geprueft fuer beide Einstiegsfaelle: gar kein
     --portfolio und ein --portfolio, das es nicht gibt.
@@ -539,13 +539,13 @@ def test_gate_b1_nennt_den_erzeuger_wenn_der_eingang_fehlt(tmp_path, capsys):
             assert teil in texte, teil
 
 
-def test_gate_b1_akzeptiert_beginne_nach_dem_horizont(lauf, tmp_path, capsys):
+def test_gate_pb1_akzeptiert_beginne_nach_dem_horizont(lauf, tmp_path, capsys):
     """--bis ist der Fortschreibungs-HORIZONT, kein Stichtag.
 
     Der Basis-Erzeuger besiedelt das volle Verkaufsfenster jeder
     Generation in einem Batch; Vertragsbeginne nach --bis sind deshalb
     Datenmodell, nicht Datenfehler (Systempruefung F3, geprueft und
-    widerlegt). Der Test haelt das fest: wer B1 um die Invariante
+    widerlegt). Der Test haelt das fest: wer P-B1 um die Invariante
     'max(insurance_start) <= --bis' erweitert, macht diesen Lauf rot.
     """
     portfolio = read_portfolio(lauf / "bestand_gesamt.parquet")

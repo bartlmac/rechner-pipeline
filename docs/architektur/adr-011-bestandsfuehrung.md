@@ -100,7 +100,7 @@ festgeschrieben je Stichtag, nie überschrieben")]
 Die zwei Invarianten stehen bewusst als Text statt als Kanten im Bild
 (ein Verbot als gemalte Kante laese sich wie ein Datenfluss): Kein
 Bewertungspfad liest das Journal, und der Stammzustand ist der
-juengste Journalstand — Gate B1 erzwingt die Deckung.
+juengste Journalstand — Gate P-B1 erzwingt die Deckung.
 
 ### 2. Ein Buchungsweg
 
@@ -142,7 +142,7 @@ den aktuellen Zustand am Fuehrungsstand, nicht mehr den Ursprung. Die
 Spaltenmenge bleibt unveraendert. `validate_portfolio` prueft kuenftig:
 gueltiger Status (auch terminal), `status_date` zwischen
 Versicherungsbeginn und Fuehrungsstand, `status_id` = Nummer des
-juengsten Statuswechsels; Gate B1 prueft zusaetzlich die
+juengsten Statuswechsels; Gate P-B1 prueft zusaetzlich die
 Deckungsgleichheit von Stamm und Journal. Die bisherige
 Ursprungszustands-Invariante gilt weiterhin — aber als Aussage ueber den
 JOURNALANFANG (erste Zeile je Vertrag), nicht ueber den Stammsatz.
@@ -184,7 +184,7 @@ gehoeren Abschluesse zum Datenhaushalt der Fuehrung
   Jahresbeitrag −2,0 %.)*
 * `bestand_mit_historie` + `zeitscheibe` als Bewertungs-Eingang
   entfallen; Leser des Bestands erhalten den gefuehrten Stamm.
-* ADR-009/B1: Die Basisstatus-Invarianten wandern semantisch vom Stamm
+* ADR-009/P-B1: Die Basisstatus-Invarianten wandern semantisch vom Stamm
   auf den Journalanfang. Das ist eine bewusste Nachfuehrung der gerade
   erst gehaerteten Pruefung, kein Aufweichen: Die Pruefmenge wird
   groesser (Stamm-Konsistenz UND Journal-Anfang), nicht kleiner.

@@ -738,7 +738,7 @@ Satz steht an beiden Orten.**
 Änderungen am Kern folgen seinem Abnahme-Protokoll
 (`rechner_pipeline.kern`): eingefrorene Referenzwerte (Charakterisierungstests) in voller
 Float-Präzision, algebraische Identitätsprüfungen, je Migrationsfall
-Gate O3 gegen den Quell-Rechner, und für Produkte mit
+Gate P-K1 gegen den Quell-Rechner, und für Produkte mit
 Kommutations-Vergleichsschiene die Toleranz-Überleitung
 (`qa/ueberleitung`). Die klassische Kommutationsrechnung lebt als
 separater Zweitkern ausschließlich als Kreuz-Check; sie ist kein

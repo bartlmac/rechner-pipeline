@@ -65,7 +65,7 @@ flowchart TD
 
 ## 2 Fachknoten — die Sicht der Ontologie
 
-Dieselben IDs wie in der A-Box eines Migrationsfalls und in Gate O3. Eine
+Dieselben IDs wie in der A-Box eines Migrationsfalls und in Gate P-K1. Eine
 Kante entsteht nur bei einem ECHTEN Uebergang: ein Rueckgrat-Modul, das
 `klv, bu` traegt, macht KLV nicht von BU abhaengig — beide stehen darauf.
 Deshalb sind KLV und BU hier korrekt unverbunden.

@@ -370,7 +370,7 @@ def bewegungskonto(
     (inkl. Erhöhungsscheiben) bzw. beitragsfreie Summen — nicht die
     Auszahlungsbeträge des Ledgers. Dadurch gelten die Identitäten exakt
     und werden je Jahr, Track und Maß mitgeliefert (``identitaet``) —
-    das Gate B1 prüft sie hart (Stück exakt, Summen mit einer relativ zum
+    das Gate P-B1 prüft sie hart (Stück exakt, Summen mit einer relativ zum
     Bruttovolumen skalierten Toleranz gegen Float-Akkumulationsrauschen).
     Inkonsistente Eingaben (Ledger-Policen außerhalb des Bestands, doppelte
     PEX-Zeilen, PEX-Status ohne PEX-Ledger-Zeile) sind ein sofortiger

@@ -10,7 +10,7 @@ entscheidet das Quellsystem: der Vorlauf-Fall nannte es
 
 Wer diesen Namen hart verdrahtet, prueft still nichts, sobald ein
 Quellsystem anders benennt — genau so fiel der Formel-Rueck-Check in
-Gate O1 aus, ohne dass das Gate rot wurde (Review-Befund). Dieses Modul
+Gate P-Q3 aus, ohne dass das Gate rot wurde (Review-Befund). Dieses Modul
 liest den Namen deshalb aus den Artefakten selbst:
 
 * ``export_manifest.json`` sagt, WELCHE Blaetter exportiert wurden und

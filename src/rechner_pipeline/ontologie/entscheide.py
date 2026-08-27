@@ -1,6 +1,6 @@
-"""``entscheide`` — die menschliche Diskrepanz-Aufloesung als CLI (G-1).
+"""``entscheide`` — die menschliche Diskrepanz-Aufloesung als CLI (A-Q1).
 
-Der Vorgang, den das Gate G-1 meint: ein benannter Mensch waehlt
+Der Vorgang, den das Gate A-Q1 meint: ein benannter Mensch waehlt
 zwischen den Lesarten einer Diskrepanz und begruendet die Wahl. Eine
 VORLAEUFIGE (Agenten-)Aufloesung wird dabei ersetzt — das ist der
 einzige erlaubte Weg, eine Aufloesung zu aendern; eine endgueltige
@@ -50,7 +50,7 @@ def _wert_parsen(roh: str):
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.ontologie.entscheide",
-        description="Diskrepanz(en) menschlich aufloesen (Gate G-1).",
+        description="Diskrepanz(en) menschlich aufloesen (Gate A-Q1).",
     )
     parser.add_argument("--fall", required=True)
     parser.add_argument("--entscheider", required=True)

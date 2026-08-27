@@ -20,7 +20,7 @@ muss vorfuehrbar sein, bevor er eintritt.
 1. **Knoten-IDs sind hierarchisch**: `familie[/generation[/zelle]]`
    (dieselbe Konvention wie `ontologie.ids.knoten_id`, die A-Box und
    Gates schon nutzen — `klv/tg2015` ist im Index dieselbe ID wie im
-   Gate O3). Die Wurzel ist validiert: T-Box-Familie, registriertes
+   Gate P-K1). Die Wurzel ist validiert: T-Box-Familie, registriertes
    Kern-Produkt (Produkte ohne Migrationsfall, wie BU) oder die
    System-Wurzel `system` (Werkzeug-Straenge: `system/assurance`,
    `system/skills`, `system/architektur`, ...). Tiefere Ebenen sind
@@ -68,7 +68,7 @@ muss vorfuehrbar sein, bevor er eintritt.
    `src/`/`tests/` ohne Bindung, nicht repo-relativ aufloesbare
    Pfade), ist der Impact die volle Suite — mit ausgewiesenem Grund.
    Praezision ist verdient, nie vermutet. Zusaetzlich nennt der Impact
-   die Faelle, deren Generationen betroffen sind (Gate O3 erneut
+   die Faelle, deren Generationen betroffen sind (Gate P-K1 erneut
    fahren).
 6. **Die Garantie heisst Entdeckung, nicht Vollstaendigkeit** — und
    sie ist erzwungen: jedes geaenderte Modul MUSS von mindestens einem
@@ -159,7 +159,7 @@ Cytoscape.js, vis-network/pyvis, Mermaid, viz.js.
   beantworten eine andere Frage als wir — welche Tests den Code
   AUSFUEHREN, nicht welchen FACHKNOTEN eine Aenderung betrifft. Sie
   koennen weder eine Generation (``klv/tg2015``) noch ein
-  Migrationsfall-Gate (O3) benennen. Als Ergaenzung gegen die
+  Migrationsfall-Gate (P-K1) benennen. Als Ergaenzung gegen die
   dokumentierte Verhaltens-Restluecke bleiben sie denkbar.
 - **Visualisierung**: das ZEICHNEN macht fremdes Werkzeug. Der
   Generator gibt den Graphen als **Mermaid** (GitHub zeichnet es direkt
@@ -183,7 +183,7 @@ Cytoscape.js, vis-network/pyvis, Mermaid, viz.js.
 
 Der unvermeidbare Eigenanteil ist die ONTOLOGIE-BINDUNG: kein
 Fremdwerkzeug kennt ``klv/tg2015`` als Fachknoten oder kann sagen,
-welcher Migrationsfall und welches Gate O3 nach einer Aenderung neu zu
+welcher Migrationsfall und welches Gate P-K1 nach einer Aenderung neu zu
 fahren ist. Genau diese Kopplung von Codebasis und A-Box ist die
 Architekturhypothese — sie ist domaenenspezifisch und bleibt es.
 

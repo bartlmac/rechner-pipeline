@@ -2,7 +2,7 @@
 
 Kern 3.0.0 (Beschluss 2026-08-16): die einmalige Excel-Paritaets-Abnahme
 (617/617 am 2026-07-22) ist Geschichte des Uebersetzungsakts, kein
-eingefrorener Kern-Referenzwert mehr — Fall-Abnahmen laufen ueber Gate O3 je Migrationsfall.
+eingefrorener Kern-Referenzwert mehr — Fall-Abnahmen laufen ueber Gate P-K1 je Migrationsfall.
 Diese Tests sichern stattdessen:
 
 1. **Referenzwerte**: Charakterisierungs-Referenzwerte (bit-exakte ``berechne()``-

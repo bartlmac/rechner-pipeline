@@ -549,7 +549,7 @@ def test_kern_fuehrt_die_tg2015_tafeln_mit_korrekter_mischung():
 def test_ausgelieferte_tg2015_tafeln_tragen_reale_vollhashkette():
     """Die sechs Bestandsbelege duerfen nicht auf Kurzprovenienz regredieren.
 
-    Die Konstanten stammen aus zwei bytegleichen G0-1.1.0-Exporten des unter
+    Die Konstanten stammen aus zwei bytegleichen P-Q1-1.1.0-Exporten des unter
     seinem vollstaendigen Git-Blob rekonstruierten und registrierten TG2015-
     Workbooks. Die vier Quellvektoren und zwei U70-Ableitungen wurden dabei
     vollstaendig gegen das ausgelieferte Kern-XML verglichen.

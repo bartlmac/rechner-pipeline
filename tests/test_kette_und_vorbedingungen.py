@@ -12,7 +12,7 @@ import pytest
 
 from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates.abox_merge import main as merge_cli
-from rechner_pipeline.gates.abox_validate import main as o1
+from rechner_pipeline.gates.abox_validate import main as pq3
 from rechner_pipeline.gates.gate_entscheid import main as p9
 from rechner_pipeline.ontologie import PFLICHT_PARAMETER, belegt
 from rechner_pipeline.ontologie.abox import abox_pfad, lade, speichere
@@ -102,8 +102,8 @@ def test_kette_faengt_direkte_abox_edits(fall_mit_fragmenten):
     speichere(abox, f)
     befunde = pruefe_kette(f)
     assert any("Diskrepanzenmenge" in b for b in befunde)
-    # ... und Gate O1 faellt darauf:
-    result = o1(["--fall", str(f)])
+    # ... und Gate P-Q3 faellt darauf:
+    result = pq3(["--fall", str(f)])
     assert result.exit_code == 20
     assert any(e["code"] == "kette" for e in result.errors)
 
@@ -128,7 +128,7 @@ def test_kette_akzeptiert_dokumentierte_aufloesung(fall_mit_fragmenten):
                for b in pruefe_kette(f))
 
 
-def test_o1_akzeptiert_beleg_der_gewaehlten_lesart(fall_mit_fragmenten):
+def test_pq3_akzeptiert_beleg_der_gewaehlten_lesart(fall_mit_fragmenten):
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
     abox = lade(f)
@@ -143,13 +143,13 @@ def test_o1_akzeptiert_beleg_der_gewaehlten_lesart(fall_mit_fragmenten):
     )
     speichere(abox, f)
 
-    result = o1(["--fall", str(f)])
+    result = pq3(["--fall", str(f)])
     assert result.exit_code == 0
     aussage = lade(f).generationen[0].zellen[0].parameter["beta1"]
     assert aussage.provenienz == gewaehlte_lesart.provenienz
 
 
-def test_o1_lehnt_beleg_der_verworfenen_lesart_ab(fall_mit_fragmenten):
+def test_pq3_lehnt_beleg_der_verworfenen_lesart_ab(fall_mit_fragmenten):
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
     abox = lade(f)
@@ -167,7 +167,7 @@ def test_o1_lehnt_beleg_der_verworfenen_lesart_ab(fall_mit_fragmenten):
     )
     speichere(abox, f)
 
-    result = o1(["--fall", str(f)])
+    result = pq3(["--fall", str(f)])
     assert result.exit_code == 20
     assert any(
         error["code"] == "kette"
@@ -177,7 +177,7 @@ def test_o1_lehnt_beleg_der_verworfenen_lesart_ab(fall_mit_fragmenten):
     )
 
 
-def test_o1_lehnt_zusaetzlichen_beleg_der_verworfenen_lesart_ab(
+def test_pq3_lehnt_zusaetzlichen_beleg_der_verworfenen_lesart_ab(
     fall_mit_fragmenten,
 ):
     f = fall_mit_fragmenten
@@ -201,7 +201,7 @@ def test_o1_lehnt_zusaetzlichen_beleg_der_verworfenen_lesart_ab(
     )
     speichere(abox, f)
 
-    result = o1(["--fall", str(f)])
+    result = pq3(["--fall", str(f)])
     assert result.exit_code == 20
     assert any(
         error["code"] == "kette"
@@ -232,8 +232,8 @@ def test_merge_cli_erzwingt_akteur_konvention(fall_mit_fragmenten):
     assert any("Konvention" in e["message"] for e in result.errors)
 
 
-def test_g2_verlangt_o3_und_geltenden_g1(fall_mit_fragmenten):
-    """Befund 1 der Systempruefung: G-2 ohne O3 oder ohne G-1-Annahme
+def test_am4_verlangt_pk1_und_geltenden_aq1(fall_mit_fragmenten):
+    """Befund 1 der Systempruefung: A-M4 ohne P-K1 oder ohne A-Q1-Annahme
     auf demselben Stand ist nicht mehr snapshotbar."""
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
@@ -242,22 +242,22 @@ def test_g2_verlangt_o3_und_geltenden_g1(fall_mit_fragmenten):
     loese_diskrepanz_auf(abox, d.id, 0.03, "Bartek", "entschieden",
                          "2026-08-15T12:00:00+00:00", vorlaeufig=False)
     speichere(abox, f)
-    assert o1(["--fall", str(f)]).exit_code == 0
+    assert pq3(["--fall", str(f)]).exit_code == 0
 
     basis = ["--fall", str(f), "--rolle", "mensch", "--entscheider", "B",
              "--begruendung", "x", "--repo-root", ".", *_freigabe_arg(f)]
-    # G-2 ohne O3:
-    result = p9(["--gate", "G-2", "--entscheid", "angenommen", *basis])
+    # A-M4 ohne P-K1:
+    result = p9(["--gate", "A-M4", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
-    assert any("O3" in e["message"] for e in result.errors)
-    # G-1-Annahme geht (O1 gruen + an den geprueften A-Box-Stand gebunden):
-    assert p9(["--gate", "G-1", "--entscheid", "angenommen", *basis]).exit_code == 0
-    # G-2 scheitert weiter an O3 (nie gelaufen) — nicht an G-1:
-    result = p9(["--gate", "G-2", "--entscheid", "angenommen", *basis])
-    assert any("O3" in e["message"] for e in result.errors)
+    assert any("P-K1" in e["message"] for e in result.errors)
+    # A-Q1-Annahme geht (P-Q3 gruen + an den geprueften A-Box-Stand gebunden):
+    assert p9(["--gate", "A-Q1", "--entscheid", "angenommen", *basis]).exit_code == 0
+    # A-M4 scheitert weiter an P-K1 (nie gelaufen) — nicht an A-Q1:
+    result = p9(["--gate", "A-M4", "--entscheid", "angenommen", *basis])
+    assert any("P-K1" in e["message"] for e in result.errors)
 
 
-def test_g1_annahme_verlangt_gebundenes_o1(fall_mit_fragmenten):
+def test_aq1_annahme_verlangt_gebundenes_pq3(fall_mit_fragmenten):
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
     abox = lade(f)
@@ -267,16 +267,16 @@ def test_g1_annahme_verlangt_gebundenes_o1(fall_mit_fragmenten):
     speichere(abox, f)
     basis = ["--fall", str(f), "--rolle", "mensch", "--entscheider", "B",
              "--begruendung", "x", "--repo-root", "."]
-    # Ohne O1-Lauf:
-    result = p9(["--gate", "G-1", "--entscheid", "angenommen", *basis])
+    # Ohne P-Q3-Lauf:
+    result = p9(["--gate", "A-Q1", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
     assert any(e["code"] == "vorbedingung" for e in result.errors)
-    # O1 gruen, dann A-Box VERAENDERN -> Provenienzbindung bricht:
-    assert o1(["--fall", str(f)]).exit_code == 0
+    # P-Q3 gruen, dann A-Box VERAENDERN -> Provenienzbindung bricht:
+    assert pq3(["--fall", str(f)]).exit_code == 0
     abox = lade(f)
     abox.generationen[0].anmerkungen.append("nachtraeglich")
     speichere(abox, f)
-    result = p9(["--gate", "G-1", "--entscheid", "angenommen", *basis])
+    result = p9(["--gate", "A-Q1", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
     assert any("Provenienzvertrag" in e["message"] for e in result.errors)
 
@@ -286,7 +286,7 @@ def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):
     merge_cli(["--fall", str(f)])
     basis = ["--fall", str(f), "--entscheider", "claude-fable-5",
              "--begruendung", "Zwischenstand", "--repo-root", "."]
-    result = p9(["--gate", "G-1", "--entscheid", "angenommen",
+    result = p9(["--gate", "A-Q1", "--entscheid", "angenommen",
                  "--rolle", "agent", *basis])
     assert result.exit_code == 2
     assert any("Menschen vorbehalten" in e["message"] for e in result.errors)
@@ -300,7 +300,7 @@ def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):
         == "angenommen"
     ]
     assert angenommen == []
-    result = p9(["--gate", "G-1", "--entscheid", "abgelehnt",
+    result = p9(["--gate", "A-Q1", "--entscheid", "abgelehnt",
                  "--rolle", "agent", *basis])
     assert result.exit_code == 0
     snapshot = json.loads(Path(result.paths["snapshot"]).read_text(encoding="utf-8"))

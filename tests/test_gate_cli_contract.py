@@ -30,39 +30,39 @@ GATE_CLIS = (
     pytest.param(
         extract.main,
         "extract",
-        "G0.extraction-manifest",
+        "P-Q1.quellfragment",
         Exit.EXTRACTION,
         ["--adapter", "unbekannt"],
-        id="g0-extract",
+        id="pq1-extract",
     ),
     pytest.param(
         abox_merge.main,
         "abox_merge",
-        "O0.abox-merge",
+        "P-Q2.zusammenfuehrung",
         Exit.USAGE,
         ["--unbekannt"],
-        id="o0-abox-merge",
+        id="pq2-abox-merge",
     ),
     pytest.param(
         abox_validate.main,
         "abox_validate",
-        "O1.abox-contract",
+        "P-Q3.fachliche-pruefung",
         Exit.USAGE,
         ["--unbekannt"],
-        id="o1-abox-validate",
+        id="pq3-abox-validate",
     ),
     pytest.param(
         generation_golden.main,
         "generation_golden",
-        "O3.generation-golden-master",
+        "P-K1.generations-golden-master",
         Exit.USAGE,
         ["--unbekannt"],
-        id="o3-generation-golden",
+        id="pk1-generation-golden",
     ),
     pytest.param(
         gate_entscheid.main,
         "gate_entscheid",
-        "P9.?",
+        "entscheid.?",
         Exit.USAGE,
         ["--gate", "ungueltig"],
         id="p9-gate-entscheid",
@@ -70,18 +70,18 @@ GATE_CLIS = (
     pytest.param(
         bestand_validate.main,
         "bestand_validate",
-        "B1.bestand-contract",
+        "P-B1.bestandspruefung",
         Exit.USAGE,
         ["--unbekannt"],
-        id="b1-bestand-validate",
+        id="pb1-bestand-validate",
     ),
     pytest.param(
         abnahmebericht.main,
         "abnahmebericht",
-        "G2-vorlage.migrationsabnahme",
+        "A-M4.migrationscontrolling",
         Exit.USAGE,
         ["--unbekannt"],
-        id="g2-abnahmebericht",
+        id="am4-abnahmebericht",
     ),
 )
 
@@ -225,7 +225,7 @@ def test_kaputtes_request_json_ist_usage_statt_internal_error(
         stdout=captured.out,
         ledger_path=diagnostics / "extract.gate.json",
         command="extract",
-        gate="G0.extraction-manifest",
+        gate="P-Q1.quellfragment",
     )
     assert "--request-json" in json.loads(captured.out)["errors"][0]["message"]
 
@@ -243,7 +243,7 @@ def test_p9_parsefehler_bindet_gueltiges_gate_und_redigiert_schluesselpfad(
             "--diagnostics-dir",
             str(diagnostics),
             "--gate",
-            "G-2",
+            "A-M4",
             "--rolle",
             "ungueltig",
             "--freigabe-schluessel",
@@ -252,13 +252,13 @@ def test_p9_parsefehler_bindet_gueltiges_gate_und_redigiert_schluesselpfad(
     )
 
     captured = capsys.readouterr()
-    ledger_path = diagnostics / "gate_entscheid_g2.gate.json"
+    ledger_path = diagnostics / "gate_entscheid_am4.gate.json"
     _assert_usage_contract(
         exit_code=exit_code,
         stdout=captured.out,
         ledger_path=ledger_path,
-        command="gate_entscheid_g2",
-        gate="P9.G-2",
+        command="gate_entscheid_am4",
+        gate="entscheid.A-M4",
     )
     ledger_text = ledger_path.read_text(encoding="utf-8")
     assert str(geheim) not in ledger_text
@@ -300,6 +300,6 @@ def test_p9_request_json_mit_ungueltigem_gate_bleibt_im_diagnostics_ordner(
         stdout=captured.out,
         ledger_path=diagnostics / "gate_entscheid.gate.json",
         command="gate_entscheid",
-        gate="P9.?",
+        gate="entscheid.?",
     )
     assert not (tmp_path / "ausbruch.gate.json").exists()

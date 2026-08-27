@@ -2,8 +2,8 @@
 
 Status: angenommen und umgesetzt (Beschluss Auftraggeber 2026-08-26 zu den
 Punkten E3 und E4 des Migrationskonzepts; Umsetzung 2026-08-26:
-`qa.aktuarieller_test`, `gates.aktuartest`, Gate G-A in P9 mit
-erzwungener Reihenfolge vor G-2, Belegrollen je Gate)
+`qa.aktuarieller_test`, `gates.aktuartest`, Gate A-M1 in P9 mit
+erzwungener Reihenfolge vor A-M4, Belegrollen je Gate)
 
 Normative Referenz: **Grundsatzdokumentation**
 (`docs/mathematik/grundsatzdokumentation.md`), Abschnitt 9.15 — die
@@ -51,11 +51,11 @@ ist: die Vorlage des Migrationscontrollings am $t_0$.
 
 ### 2. Zwei menschliche Gates in fester Reihenfolge
 
-Neben G-1 (fachliche Konflikte), G-2 und G-T tritt **G-A: aktuarielle
+Neben A-Q1 (fachliche Konflikte), A-M4 und A-K1 tritt **A-M1: aktuarielle
 Abnahme**. Die Reihenfolge ist nicht empfohlen, sondern erzwungen:
 
-> **G-A geht G-2 voraus.** Ein G-2-Entscheid ohne geltende, signierte
-> G-A-Annahme ist unmoeglich.
+> **A-M1 geht A-M4 voraus.** Ein A-M4-Entscheid ohne geltende, signierte
+> A-M1-Annahme ist unmoeglich.
 
 Begruendung (Auftraggeber, 26.08.): Der aktuarielle Test kommt zuerst; erst
 danach werden der Gesamtbestand und die finanziellen Folgen geprueft und
@@ -63,17 +63,17 @@ abgenommen. Eine finanzielle Abnahme ohne nachgewiesene methodische Guete
 waere ohne Aussage.
 
 Die Reihenfolge wird ueber den Snapshot-Mechanismus abgebildet: Der
-G-2-Snapshot pinnt die geltende, signierte G-A-Annahme desselben Stands
-als Pflichtrolle ``ga_snapshot`` (das ``vorgaenger``-Feld der Kette
+A-M4-Snapshot pinnt die geltende, signierte A-M1-Annahme desselben Stands
+als Pflichtrolle ``am1_snapshot`` (das ``vorgaenger``-Feld der Kette
 bleibt gate-intern, ADR-008). Damit gilt
 der bestehende Kettenvertrag aus ADR-008 unveraendert weiter — Schema,
 kanonischer Hash, Freigabesignatur, Zyklenfreiheit, genau eine Spitze.
 
 ### 3. Rueckschleife ist zulaessig, Reihenfolge bleibt
 
-Eine Ablehnung an G-2 fuehrt zurueck in Analyse und ggf. erneuten Test. Die
+Eine Ablehnung an A-M4 fuehrt zurueck in Analyse und ggf. erneuten Test. Die
 Kette bildet das als neue Snapshots ab; es entsteht keine Sonderlogik.
-Unzulaessig bleibt allein die Umkehrung: G-2 vor G-A.
+Unzulaessig bleibt allein die Umkehrung: A-M4 vor A-M1.
 
 ### 4. Der aktuarielle Test rechnet je Vertrag zu seinem eigenen $t_a$
 
@@ -122,19 +122,19 @@ Test als unvollstaendig.
 
 ## Konsequenzen
 
-* `P9_GATES` waechst um `G-A`; das P9-Schema hebt seine Version an. Die
+* `P9_GATES` waechst um `A-M1`; das P9-Schema hebt seine Version an. Die
   scope-getriebene Pflichtbelegmenge aus ADR-009 wird **je Gate**
-  aufgeloest statt nur je Scope — G-A und G-2 verlangen verschiedene
+  aufgeloest statt nur je Scope — A-M1 und A-M4 verlangen verschiedene
   Belege.
 * ADR-009 erhaelt einen Nachtrag: Die dortige Belegmenge beschreibt ab
-  hier G-2; G-A hat eine eigene.
+  hier A-M4; A-M1 hat eine eigene.
 * Der Skill `pruefe-migrationsabnahme` zerfaellt in zwei Skills entlang
   der beiden Verantwortlichkeiten (umgesetzt als
   `aktuartest-durchfuehren` und `pruefe-migrationscontrolling`); das
   Runbook `migrationsfall-durchfuehren` routet auf beide und haelt die
   Reihenfolge ein.
-* Bestehende Faelle: Ein Fall, dessen G-2 vor Einfuehrung dieses ADR
-  entschieden wurde, traegt keine gepinnte G-A-Annahme. Solche Ketten werden
+* Bestehende Faelle: Ein Fall, dessen A-M4 vor Einfuehrung dieses ADR
+  entschieden wurde, traegt keine gepinnte A-M1-Annahme. Solche Ketten werden
   nicht umgedeutet; der Fall wird nach revisionsfester Archivierung der
   Altkette auf dem neuen Vertrag neu entschieden (Verfahren analog
   ADR-008).

@@ -50,7 +50,7 @@ from rechner_pipeline.gates._common import (
     utc_now,
 )
 
-GATE = "G0.extraction-manifest"
+GATE = "P-Q1.quellfragment"
 GATE_VERSION = "1.1.0"
 COMMAND = "extract"
 CLI_CONTRACT = GateCliContract(
@@ -325,7 +325,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         output_hashes = {}
 
     # input_hashes: the genuine extraction INPUT — the source workbook.
-    # G0's ledger needs a non-empty input_hashes or dossier raises hashes.missing.
+    # P-Q1's ledger needs a non-empty input_hashes or dossier raises hashes.missing.
     # Keyed repo-relative (falls back to its own string when outside repo-root).
     try:
         input_hashes = hash_files([source], base=repo_root, missing_ok=True)

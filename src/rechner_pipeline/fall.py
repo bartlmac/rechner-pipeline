@@ -60,31 +60,31 @@ EINGANG_REGISTER = "eingang.json"
 EINGANG_REGISTER_LOCK = ".eingang.json.lock"
 
 #: Der Fall deklariert seinen fachlichen Umfang einmal im nicht regenerierbaren
-#: Manifest. G-2 darf daraus Pflichten ableiten; Dateiexistenz oder ein zufaellig
+#: Manifest. A-M4 darf daraus Pflichten ableiten; Dateiexistenz oder ein zufaellig
 #: vorhandener Bestandsbericht sind kein belastbarer Scope-Entscheid.
 FALL_SCOPE_SCHEMA_VERSION = 2
 FALL_SCOPES = ("tarif", "bestand")
 
 #: Pflichtbelegrollen JE GATE und Scope (ADR-009, fortgeschrieben durch
-#: ADR-010): G-A und G-2 verlangen verschiedene Belege. G-A (aktuarielle
+#: ADR-010): A-M1 und A-M4 verlangen verschiedene Belege. A-M1 (aktuarielle
 #: Abnahme) pinnt im Bestands-Scope das Testergebnis und den Bericht des
 #: aktuariellen Tests; im Tarif-Scope gibt es keine Vertragslieferung und
 #: damit keine eigenen Testartefakte — der Entscheid stuetzt sich dort
-#: auf die ohnehin gepinnten O3-Belege. G-2 traegt zusaetzlich den
-#: geltenden G-A-Snapshot als Pflichtrolle (erzwungene Reihenfolge).
+#: auf die ohnehin gepinnten P-K1-Belege. A-M4 traegt zusaetzlich den
+#: geltenden A-M1-Snapshot als Pflichtrolle (erzwungene Reihenfolge).
 BELEGROLLEN = {
-    "G-A": {
+    "A-M1": {
         "tarif": (),
         "bestand": ("aktuartest", "aktuartest_bericht"),
     },
-    "G-2": {
-        "tarif": ("o1_ledger", "g1_snapshot", "ga_snapshot", "o3_belege"),
+    "A-M4": {
+        "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege"),
         "bestand": (
-            "o1_ledger",
-            "g1_snapshot",
-            "ga_snapshot",
-            "o3_belege",
-            "b1_ledger",
+            "pq3_ledger",
+            "aq1_snapshot",
+            "am1_snapshot",
+            "pk1_belege",
+            "pb1_ledger",
             "migrationssuite",
             "abnahmebericht",
         ),
@@ -161,9 +161,9 @@ def belegrollen(gate: str, scope: str) -> List[str]:
     return list(BELEGROLLEN[gate][scope])
 
 
-def g2_belegrollen(scope: str) -> List[str]:
-    """Stabile G-2-Pflichtbelegrollen (Kurzform von ``belegrollen``)."""
-    return belegrollen("G-2", scope)
+def am4_belegrollen(scope: str) -> List[str]:
+    """Stabile A-M4-Pflichtbelegrollen (Kurzform von ``belegrollen``)."""
+    return belegrollen("A-M4", scope)
 
 
 def _pruefe_eingangsname(name: str) -> str:

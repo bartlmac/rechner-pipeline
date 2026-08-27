@@ -19,7 +19,7 @@ computes and accepts):
    (Tarifmeldung DOCX, Tarifrechner XLSM) -> ontology (T-Box/A-Box with
    per-statement provenance and discrepancy objects) -> Tarif-Spez ->
    parametrized kernel -> acceptance against the source calculator, with human
-   gates (G-1/G-A/G-2/G-T) and immutable decision snapshots.
+   gates (A-Q1/A-M1/A-M4/A-K1) and immutable decision snapshots.
 
 Read `docs/architektur/migrations-pipeline-v01.md` first, then the role catalog
 `docs/architektur/skill-architektur.md`, then the ADRs in
@@ -40,7 +40,7 @@ features the kernel does not know yet, and the migration is an intensive,
 node-bound CODE extension of the one trunk (small increments, landing
 only with the full suite green including every other case's frozen reference values,
 `integriere-migrationsinkrement`). New products come through the T-Box
-(gate G-T) — in either case not by translating another workbook.
+(gate A-K1) — in either case not by translating another workbook.
 
 A migration case lives in a **Fall-Arbeitsbereich** (`python -m
 rechner_pipeline.fall`, ADR-002). The artifacts of this workspace belong to
@@ -127,43 +127,43 @@ old one under `faelle/archiv/`.
 The stages after registration run through the agent skills
 (`migrationsfall-durchfuehren` orchestrates; role catalog in
 `docs/architektur/skill-architektur.md`): pre-digestion and extraction
-per source, merge into the A-Box, discrepancies to the human gate G-1,
+per source, merge into the A-Box, discrepancies to the human gate A-Q1,
 transformation of the portfolio extract, Spez, acceptance gates, and the
 two-reporting-date migration suite with its HTML acceptance report for
-gate G-2. The deliveries may contain deliberate errors and source-system
+gate A-M4. The deliveries may contain deliberate errors and source-system
 quirks — finding them IS the demonstration.
 
-**Pre-digest a source (gate G0):**
+**Pre-digest a source (gate P-Q1):**
 ```
 python -m rechner_pipeline.gates.extract --repo-root . \
     --input faelle/klv-tg2012/eingang/Tarifrechner_KLV_TG2012.xlsm \
     --out-dir faelle/klv-tg2012/abgeleitet/vorverdichtung/xlsm-TG2012 --adapter excel
 ```
-The ontology gates cannot follow directly on a fresh case: O1
-(`gates.abox_validate`) validates an A-Box, and O3
+The ontology gates cannot follow directly on a fresh case: P-Q3
+(`gates.abox_validate`) validates an A-Box, and P-K1
 (`gates.generation_golden`) validates a Tarif-Spez — neither exists
 yet. The A-Box is produced by the Stage-1 extraction agents plus the
 deterministic merge (`gates.abox_merge`), and the Spez is projected
-from the accepted A-Box. Calling O1 or O3 on a bare case fails with
+from the accepted A-Box. Calling P-Q3 or P-K1 on a bare case fails with
 exit 2 **by design**: no silent default, the error names what is
 missing. Run them the way `migrationsfall-durchfuehren` does — after
 the stage that produces their input, and with the same `--generation`
 the case actually carries.
 
 **Where the deterministic walkthrough ends — read this before you get
-stuck.** `anlegen`, `registrieren`, `status` and the G0 pre-digestion
+stuck.** `anlegen`, `registrieren`, `status` and the P-Q1 pre-digestion
 above are plain Python: they run for anyone who cloned the repo, no key,
 no agent. What comes next does not. Extraction per source, the reading
 of the Tarifmeldung and the transformation proposal for the portfolio
 extract are **agent** steps (that is the point of the architecture — the
-model proposes, deterministic code decides), and G-1/G-2 are human
+model proposes, deterministic code decides), and A-Q1/A-M4 are human
 decisions, not commands. So a walkthrough without an agent CLI ends
 here, with a non-zero exit that is the contract and not a broken
 install. To continue you need Claude Code or Codex in the repo root and
 the skills under `.claude/skills/` / `.agents/skills/`.
 
 What you CAN still exercise end-to-end on your own: the portfolio
-generator and its report (next), gate G0 on any workbook, the
+generator and its report (next), gate P-Q1 on any workbook, the
 code-ontology tools, the actuarial documentation
 (`docs/mathematik/grundsatzdokumentation.md` for the shared maths,
 `docs/tarifplaene/` for each product's elaboration), and the
@@ -226,14 +226,14 @@ Each gate is one command, writes one JSON to stdout plus a
 
 | Gate | Command | Proves |
 |---|---|---|
-| G0 | `gates.extract` | deterministic pre-digest of a source workbook (formulas, cached values, defined names via openpyxl; VBA via `oletools.olevba`) |
-| O0 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
-| O1 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
-| O3 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state |
-| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (G-1, G-A, G-2, G-T); accepted decisions require an externally held HMAC key, G-A and G-2 require the per-gate evidence roles for the declared case scope, and G-2 requires a current signed G-A acceptance on the same state, pinned as the evidence role `ga_snapshot` (ADR-010); agents may only reject |
-| GA-Vorlage | `gates.aktuartest` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for gate G-A; transport-security digests are reported separately |
-| B1 | `gates.bestand_validate` | portfolio contract and movement identities |
-| G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds B1, the suite and HTML report on one state |
+| P-Q1 | `gates.extract` | deterministic pre-digest of a source workbook (formulas, cached values, defined names via openpyxl; VBA via `oletools.olevba`) |
+| P-Q2 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
+| P-Q3 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
+| P-K1 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state |
+| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-M1, A-M4, A-K1); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); agents may only reject |
+| GA-Vorlage | `gates.aktuartest` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for gate A-M1; transport-security digests are reported separately |
+| P-B1 | `gates.bestand_validate` | portfolio contract and movement identities |
+| G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds P-B1, the suite and HTML report on one state |
 
 An accepted P9 decision additionally requires
 `--freigabe-schluessel /secure/p9-approval.key`. The human operator keeps this
@@ -245,11 +245,11 @@ P9 revalidates the strict ledger/snapshot schemas, canonical content hash,
 full-hash filename, HMAC, predecessor existence, cycles, and the unique chain
 tip on every read (ADR-008).
 
-For G-2, `fall.json` also carries `scope.typ` (`tarif` or `bestand`). Missing
+For A-M4, `fall.json` also carries `scope.typ` (`tarif` or `bestand`). Missing
 declarations are never inferred from files. A tariff case requires no portfolio
-artifacts; a portfolio case requires a green B1 ledger, complete suite and HTML
-report bound by the green `abnahmebericht` ledger. G-2 rehashes their current
-bytes, reruns the B1 engines, revalidates the suite, and deterministically
+artifacts; a portfolio case requires a green P-B1 ledger, complete suite and HTML
+report bound by the green `abnahmebericht` ledger. A-M4 rehashes their current
+bytes, reruns the P-B1 engines, revalidates the suite, and deterministically
 rerenders the report for a byte comparison instead of trusting that editable
 ledger (ADR-009).
 
@@ -257,7 +257,7 @@ ledger (ADR-009).
 - **Deterministic and SDK-free** in `src/`: no network, no dynamic execution,
   no subprocess; same input -> same output; sorted serialization. There is
   exactly ONE subprocess exception, and it is bounded by a test: the shared
-  O3/P9 proof provenance (`gates/_provenienz._git_stand`) records the Git
+  P-K1/P9 proof provenance (`gates/_provenienz._git_stand`) records the Git
   state proved or decided on with three READING git calls (`rev-parse HEAD`,
   `rev-parse --abbrev-ref HEAD`, `status --porcelain`) — it computes and
   judges nothing. A pure-Python SHA-256 over the installed package sources
@@ -273,15 +273,15 @@ ledger (ADR-009).
 - **Agents never decide** contradictions between sources. Provisional
   resolutions carry `vorlaeufig=true` and block every human acceptance.
 - **Nodes** (`Knoten: klv/tg2015`) in every module and test docstring; the same
-  IDs as the A-Box and gate O3. `code_index` must stay drift-free,
+  IDs as the A-Box and gate P-K1. `code_index` must stay drift-free,
   `code_karte` finding-free.
 - **Full suite before every commit** (`.venv/bin/python -m pytest`). The impact
   tool is informational — it never narrows what has to run. CI
   (`.github/workflows/tests.yml`) runs the full suite on every push and
-  pull request. The mandatory `tests/test_o3_fixture_e2e.py` job uses the
-  versioned, anonymised `tests/fixtures/o3_g2_minimal/` data and performs real
-  extraction, formula checking and O3 from a fresh temporary case. The
-  positive path in `tests/test_o3_g2_beweisvertrag.py` continues through G-2
+  pull request. The mandatory `tests/test_pk1_fixture_e2e.py` job uses the
+  versioned, anonymised `tests/fixtures/pk1_am4_minimal/` data and performs real
+  extraction, formula checking and P-K1 from a fresh temporary case. The
+  positive path in `tests/test_pk1_am4_beweisvertrag.py` continues through A-M4
   on the same fixture contract. Missing or hash-drifted fixture input is a
   hard failure, never a skip. Local and real case workspaces under `faelle/`
   remain gitignored and are not a prerequisite for a green suite.

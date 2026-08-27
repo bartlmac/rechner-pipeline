@@ -70,7 +70,7 @@ GATE_VERSION_DEFAULT = "1.0.0"
 P9_SNAPSHOT_SCHEMA_VERSION = 5
 P9_GATE_VERSION = "0.6.0"
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
-P9_GATES: tuple[str, ...] = ("G-1", "G-A", "G-2", "G-T")
+P9_GATES: tuple[str, ...] = ("A-Q1", "A-M1", "A-M4", "A-K1")
 
 
 def _kanonisches_json(data: Any) -> bytes:
@@ -435,10 +435,10 @@ class P9Snapshot:
         errors: List[str] = []
         gate = data.get("gate")
         expected_fields = set(cls._BASE_FIELDS)
-        if gate in ("G-A", "G-2"):
+        if gate in ("A-M1", "A-M4"):
             expected_fields.update({"fall_scope", "pflichtbelege"})
-        if gate == "G-2":
-            expected_fields.add("o3_belege")
+        if gate == "A-M4":
+            expected_fields.add("pk1_belege")
         if data.get("entscheid") == "angenommen":
             expected_fields.add("freigabe")
         fields = set(data)
@@ -510,18 +510,18 @@ class P9Snapshot:
         if zeit_fehler:
             errors.append(zeit_fehler)
 
-        if gate in ("G-A", "G-2"):
+        if gate in ("A-M1", "A-M4"):
             if data.get("fall_scope") not in ("tarif", "bestand"):
                 errors.append("fall_scope must be 'tarif' or 'bestand'")
             pflichtbelege = data.get("pflichtbelege")
             if not isinstance(pflichtbelege, dict):
                 errors.append("pflichtbelege must be an object")
             elif (
-                gate == "G-2"
+                gate == "A-M4"
                 and data.get("entscheid") == "angenommen"
                 and not pflichtbelege
             ):
-                # G-A darf im Tarif-Scope belegfrei angenommen werden
+                # A-M1 darf im Tarif-Scope belegfrei angenommen werden
                 # (keine Vertragslieferung, keine Testartefakte); die
                 # exakte Rollenmenge je Gate und Scope erzwingt der
                 # Lesepfad in gate_entscheid.
@@ -550,36 +550,36 @@ class P9Snapshot:
                             errors.append(
                                 f"pflichtbelege[{rolle!r}] contains a non-SHA-256"
                             )
-        if gate == "G-2":
-            o3_belege = data.get("o3_belege")
-            if not isinstance(o3_belege, dict):
-                errors.append("o3_belege must be an object")
+        if gate == "A-M4":
+            pk1_belege = data.get("pk1_belege")
+            if not isinstance(pk1_belege, dict):
+                errors.append("pk1_belege must be an object")
             else:
-                for generation, belege in o3_belege.items():
+                for generation, belege in pk1_belege.items():
                     if (
                         not isinstance(generation, str)
                         or re.fullmatch(r"[a-z0-9_]+/[a-z0-9_]+", generation)
                         is None
                     ):
-                        errors.append(f"invalid O3 generation key {generation!r}")
+                        errors.append(f"invalid P-K1 generation key {generation!r}")
                     if not isinstance(belege, list):
-                        errors.append(f"o3_belege[{generation!r}] must be an array")
+                        errors.append(f"pk1_belege[{generation!r}] must be an array")
                         continue
                     if data.get("entscheid") == "angenommen" and not belege:
                         errors.append(
-                            f"o3_belege[{generation!r}] must not be empty"
+                            f"pk1_belege[{generation!r}] must not be empty"
                         )
                     gueltige_belege = [
                         value for value in belege if _is_sha256(value)
                     ]
                     if len(gueltige_belege) != len(set(gueltige_belege)):
                         errors.append(
-                            f"o3_belege[{generation!r}] contains duplicates"
+                            f"pk1_belege[{generation!r}] contains duplicates"
                         )
                     for value in belege:
                         if not _is_sha256(value):
                             errors.append(
-                                f"o3_belege[{generation!r}] contains a non-SHA-256"
+                                f"pk1_belege[{generation!r}] contains a non-SHA-256"
                             )
 
         if data.get("entscheid") == "angenommen":

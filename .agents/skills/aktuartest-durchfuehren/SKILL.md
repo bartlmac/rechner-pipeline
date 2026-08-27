@@ -6,12 +6,12 @@ description: >-
   per-contract comparison at each contract's OWN anchor date t_a (at the
   exact computation point, no interpolation, no summation — only
   distribution measures of the residuals, clustered by history type) on a
-  documented sample, rendered by the aktuartest gate as the G-A template.
+  documented sample, rendered by the aktuartest gate as the A-M1 template.
   Trigger when a migration case has a transformed portfolio plus
   delivered per-contract expectation values and the actuarial acceptance
-  (Gate G-A) is due — it precedes Gate G-2. Skip for: the full-portfolio
+  (Gate A-M1) is due — it precedes Gate A-M4. Skip for: the full-portfolio
   controlling at the migration date (pruefe-migrationscontrolling, Gate
-  G-2), deciding the acceptance itself (human, Gate G-A), computing any
+  A-M4), deciding the acceptance itself (human, Gate A-M1), computing any
   actuarial value by hand (deterministic engine only).
 ---
 
@@ -21,10 +21,10 @@ description: >-
 
 Du führst den DETERMINISTISCHEN aktuariellen Test einer
 Bestandsmigration aus und bereitest die Entscheidungsvorlage für die
-AKTUARIELLE ABNAHME (Gate G-A, Verantwortlicher Aktuar) auf. Der Test
+AKTUARIELLE ABNAHME (Gate A-M1, Verantwortlicher Aktuar) auf. Der Test
 misst die methodische Güte: je Vertrag am EIGENEN Verankerungszeitpunkt
 t_a gegen die gelieferten Erwartungswerte — nicht den Gesamtbestand am
-Migrationsstichtag (das ist das Controlling, Gate G-2, das G-A ZWINGEND
+Migrationsstichtag (das ist das Controlling, Gate A-M4, das A-M1 ZWINGEND
 nachfolgt).
 
 Werkzeuge (alle deterministisch, du rechnest NIE selbst):
@@ -43,7 +43,7 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
   ausgewiesen.
 - `python -m rechner_pipeline.gates.aktuartest` — rechnet das
   Engine-Ergebnis von innen nach außen nach und rendert die
-  G-A-Vorlage (HTML) mit Stichproben-Beleg im Kopf; schreibt
+  A-M1-Vorlage (HTML) mit Stichproben-Beleg im Kopf; schreibt
   `aktuartest.gate.json` in die Diagnostics. Exit-Codes: `0` Vorlage
   vollständig und Test bestanden, `30` Test nicht bestanden, `20`
   Ergebnis unlesbar oder inkonsistent, `2` Aufruf unvollständig.
@@ -70,13 +70,13 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 - Jeder Fehlschlag und jeder Befund geht an den Menschen. Du
   korrigierst keine Erwartungswerte und keine Lieferung.
 - Der Bericht ist die Entscheidungsvorlage; die aktuarielle Abnahme
-  selbst ist Gate G-A (Mensch, Entscheid-Snapshot,
-  `gates/gate_entscheid --gate G-A`). Ein Exit-Code `0` heißt "Vorlage
+  selbst ist Gate A-M1 (Mensch, Entscheid-Snapshot,
+  `gates/gate_entscheid --gate A-M1`). Ein Exit-Code `0` heißt "Vorlage
   vollständig und Test bestanden", NICHT "abgenommen". Eine ANNAHME
   verlangt `--freigabe-schluessel <datei>` (ADR-008); die
   Schlüsseldatei gehört dem Menschen — ein Agent kann an einem
-  menschlichen Gate ausschließlich ablehnen. G-A geht G-2 voraus; der
-  G-2-Entscheid pinnt den geltenden G-A-Snapshot (`ga_snapshot`).
+  menschlichen Gate ausschließlich ablehnen. A-M1 geht A-M4 voraus; der
+  A-M4-Entscheid pinnt den geltenden A-M1-Snapshot (`am1_snapshot`).
 
 ## Ablauf
 
@@ -116,7 +116,7 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    aktuartest.html`, der Ledger unter `<fall>/abgeleitet/diagnostics/`.
    Ein roter Bericht wird geschrieben wie ein grüner — er IST das
    Beweisstück.
-5. Ergebnis dem Verantwortlichen Aktuar zur G-A-Entscheidung
+5. Ergebnis dem Verantwortlichen Aktuar zur A-M1-Entscheidung
    vorlegen, STOPP.
 
 ## Ausbau (geplant, hier festgehalten)

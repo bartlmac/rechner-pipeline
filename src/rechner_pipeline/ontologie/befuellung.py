@@ -372,7 +372,7 @@ def loese_diskrepanz_auf(
     # Zustand (Diskrepanz aufgeloest, Aussage noch widerspruechlich).
     # Ziele finden sich ueber die Referenz (diskrepanz_id) ODER ueber die
     # Adresse (knoten, feld) — nach einer VORLAEUFIGEN Aufloesung traegt
-    # die Aussage keine Referenz mehr, die Neuentscheidung (G-1) muss die
+    # die Aussage keine Referenz mehr, die Neuentscheidung (A-Q1) muss die
     # Adresse treffen.
     ziele: List[Tuple[Dict[str, Aussage], str]] = []
     unisex_ziele: List[Any] = []

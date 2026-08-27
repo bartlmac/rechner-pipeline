@@ -1,4 +1,4 @@
-"""``bestand_validate`` toolbox command — gate B1 (Bestandsdaten-Contract).
+"""``bestand_validate`` toolbox command — gate P-B1 (Bestandsdaten-Contract).
 
 Validates the Bestandsdaten tables against their schemas and invariants
 (engines: :mod:`rechner_pipeline.models.bestand`,
@@ -29,14 +29,14 @@ Stichtag, zu dem der Bestand ausgewiesen wird. Vertragsbeginne NACH
 Basis-Erzeuger besiedelt das volle Verkaufsfenster jeder Generation in
 EINEM Batch (``configs/bestand_klv.toml`` und ``configs/bestand_gesamt.toml``
 tragen Beginne bis 2035-12, unabhaengig von ``--bis``), waehrend ``--bis``
-nur bestimmt, wie weit der GeVo-Strom projiziert wurde. B1 darf daraus
+nur bestimmt, wie weit der GeVo-Strom projiziert wurde. P-B1 darf daraus
 also keine Invariante ``max(insurance_start) <= --bis`` machen: sie waere
 gegen jeden Beispiel-Bestand verletzt (bei ``--bis 2020-01-01`` in 241
 bzw. 494 Zeilen) und wuerde die Kohorte des Datenmodells fuer einen
 Datenfehler erklaeren. Aus demselben Grund prueft die Bewegungs-Identitaet
 nur vollstaendig simulierte Kalenderjahre. Die Stichtags-Sicht (welche
 Vertraege zaehlen zu einem Datum?) ist Sache des Berichts
-(``bestand.cli_report --stichtag``), nicht dieses Gates: B1 prueft den
+(``bestand.cli_report --stichtag``), nicht dieses Gates: P-B1 prueft den
 Datei-Contract.
 
 Blocking failures exit ``20`` (``Exit.FILE_CONTRACT``) with the error list
@@ -91,7 +91,7 @@ from rechner_pipeline.gates._common import (
 )
 from rechner_pipeline.gates._provenienz import systemstand
 
-GATE = "B1.bestand-contract"
+GATE = "P-B1.bestandspruefung"
 GATE_VERSION = "1.4.0"
 CLI_CONTRACT = GateCliContract(
     command="bestand_validate",
@@ -99,7 +99,7 @@ CLI_CONTRACT = GateCliContract(
     gate_version=GATE_VERSION,
 )
 
-#: Der Weg hinaus, wenn der Eingang von B1 fehlt: ein Gate darf nicht nur
+#: Der Weg hinaus, wenn der Eingang von P-B1 fehlt: ein Gate darf nicht nur
 #: melden, DASS etwas fehlt, es nennt das Kommando, das den Eingang
 #: herstellt (Nicht-Verhandelbare "fail fast, aber mit Ausweg").
 ERZEUGER_HINWEIS = {
@@ -117,7 +117,7 @@ def _build_parser() -> GateArgumentParser:
     parser = GateArgumentParser(
         gate_contract=CLI_CONTRACT,
         prog="python -m rechner_pipeline.gates.bestand_validate",
-        description="Gate B1: Bestandsdaten-Tabellen gegen Schema und Invarianten pruefen.",
+        description="Gate P-B1: Bestandsdaten-Tabellen gegen Schema und Invarianten pruefen.",
     )
     parser.add_argument("--portfolio", default=None, help="Bestand-Parquet (Pflicht).")
     parser.add_argument("--historie", default=None, help="Statushistorie-Parquet (optional).")
@@ -145,16 +145,16 @@ def _build_parser() -> GateArgumentParser:
     return parser
 
 
-def pruefe_b1_eingaenge(
+def pruefe_pb1_eingaenge(
     eingaben: Mapping[str, Path],
     *,
     bis: Optional[_dt.date] = None,
 ) -> Tuple[Dict[str, int], List[dict], List[dict]]:
-    """B1-Engines rein lesend auf einer benannten Eingabenkonfiguration.
+    """P-B1-Engines rein lesend auf einer benannten Eingabenkonfiguration.
 
-    Der CLI-Produzent und G-2 benutzen bewusst dieselbe Funktion. So ist ein
-    frei editierbares, passend neu gehashtes B1-Ledger keine Selbstaussage:
-    G-2 fuehrt Schema-, Invarianten-, Bewegungs- und optionale Sanity-Pruefung
+    Der CLI-Produzent und A-M4 benutzen bewusst dieselbe Funktion. So ist ein
+    frei editierbares, passend neu gehashtes P-B1-Ledger keine Selbstaussage:
+    A-M4 fuehrt Schema-, Invarianten-, Bewegungs- und optionale Sanity-Pruefung
     auf den aktuellen Bytes erneut aus.
 
     Rueckgabe: ``(geprueft, contract_fehler, usage_fehler)``.
@@ -168,7 +168,7 @@ def pruefe_b1_eingaenge(
     if not rollen <= erlaubt:
         return {}, [{
             "code": "eingangsrollen",
-            "message": f"Unbekannte B1-Eingangsrollen: {sorted(rollen - erlaubt)}",
+            "message": f"Unbekannte P-B1-Eingangsrollen: {sorted(rollen - erlaubt)}",
         }], []
 
     tabellen: Dict[str, Any] = {}
@@ -394,7 +394,7 @@ def main(argv: Optional[List[str]] = None):
         rollen_hash = hash_files([pfad], base=repo_root, missing_ok=True)
         [(hash_schluessel, _hash)] = rollen_hash.items()
         eingangsrollen[rolle] = hash_schluessel
-    geprueft, errors, usage_errors = pruefe_b1_eingaenge(eingaben, bis=bis)
+    geprueft, errors, usage_errors = pruefe_pb1_eingaenge(eingaben, bis=bis)
     if usage_errors:
         return _usage(usage_errors)
 
@@ -410,7 +410,7 @@ def main(argv: Optional[List[str]] = None):
         summary["system"] = systemstand(repo_root)
 
     if not errors:
-        log(f"bestand_validate: B1 PASSED ({geprueft})")
+        log(f"bestand_validate: P-B1 PASSED ({geprueft})")
         return _finalize(build_result(
             command="bestand_validate",
             gate=GATE,
@@ -421,7 +421,7 @@ def main(argv: Optional[List[str]] = None):
             input_hashes=input_hashes,
         ))
 
-    log(f"bestand_validate: B1 FAILED mit {len(errors)} Verletzung(en)")
+    log(f"bestand_validate: P-B1 FAILED mit {len(errors)} Verletzung(en)")
     return _finalize(build_result(
         command="bestand_validate",
         gate=GATE,

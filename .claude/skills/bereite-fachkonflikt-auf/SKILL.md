@@ -5,7 +5,7 @@ description: >-
   contradiction between Meldung/Rechner/Bestand, T-Box tension) for HUMAN decision:
   verify both readings against the sources, assess actuarial plausibility and impact,
   produce a decision dossier with a recommendation — then STOP. Agents never decide
-  fachliche Konflikte (P2/P4). Trigger when discrepancies surface (Gate O1, merge, reference-value mismatch) and a decision needs preparing, or when the user asks to
+  fachliche Konflikte (P2/P4). Trigger when discrepancies surface (Gate P-Q3, merge, reference-value mismatch) and a decision needs preparing, or when the user asks to
   assess/prepare a fachlichen Widerspruch. Skip for: resolving the conflict (human,
   via ontologie.entscheide + gate_entscheid), technical bugs (fix them), extraction
   errors (correct the fragment with verification note).
@@ -29,7 +29,7 @@ mit `gates.gate_entscheid` (P9).
 | Extraktionsfehler | eine Lesart haelt der Nachpruefung gegen die eigene Quelle nicht stand (falsche Zeile, falscher Satzteil, Normalisierungsfehler) | KEIN Fachkonflikt: Fragment korrigieren, Anmerkung dokumentieren, Akteur um `+verifikation` ergaenzen, neu mergen |
 | Echter Quell-Widerspruch | beide Lesarten sind in ihrer Quelle woertlich belegt | Dossier (unten) |
 | Referenzwert-Konflikt | ein Charakterisierungs-Referenzwert oder ein Gate-O3-Beleg weicht nach einer Aenderung ab | erst Eigenfehler ausschliessen; sonst Dossier mit Wert-Diff und Ursachenanalyse (Abnahme-Protokoll des Kerns gilt) |
-| Modell-Spannung | die T-Box kann einen Sachverhalt nicht ausdruecken (fehlendes Feld, fehlende Klasse) | G-T-Vorlage: Aenderungsvorschlag als Artefakt, kein stilles Einbauen |
+| Modell-Spannung | die T-Box kann einen Sachverhalt nicht ausdruecken (fehlendes Feld, fehlende Klasse) | A-K1-Vorlage: Aenderungsvorschlag als Artefakt, kein stilles Einbauen |
 
 ## Schritt 2: Beide Lesarten VERIFIZIEREN
 

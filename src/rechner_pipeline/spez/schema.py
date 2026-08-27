@@ -9,7 +9,7 @@ Familie oder mehr?) und benannte Erweiterungsstellen fuer alles, was
 das Schema sprengt — nur DORT entstuende freie Implementierung.
 
 Aus der Spez werden generiert: die menschenlesbare Fachspezifikation
-(P7, das G-1-Abnahmedokument) und die Kern-Parametrierung. Die Spez
+(P7, das A-Q1-Abnahmedokument) und die Kern-Parametrierung. Die Spez
 ist gegen die A-Box deterministisch validierbar (jeder Wert muss dort
 belegt sein — die Spez ist Projektion, nicht zweite Quelle).
 

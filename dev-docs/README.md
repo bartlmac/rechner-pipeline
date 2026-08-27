@@ -47,6 +47,5 @@ Vier Abschnitte, mehr braucht es nicht:
 |---|---|
 | [Aktuarieller Test AT-1/AT-2/AT-3](aktuarieller-test-at1-at2-at3.md) | Konzept, wartet auf Durchsprache |
 | [Korrekturschicht umsetzen](korrekturschicht-umsetzung.md) | Umsetzungsvorschlag, wartet auf Durchsprache |
-| [Gate-Namenssystematik](gate-namenssystematik.md) | Vorschlag, wartet auf Entscheidung |
 | [Rollentrennung der Agenten](agenten-rollentrennung.md) | Skizze, wartet auf Entscheidung |
 | [Offene Punkte](offene-punkte.md) | laufend |

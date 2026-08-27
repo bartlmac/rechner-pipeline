@@ -1,11 +1,11 @@
-"""Fachspezifikation: das menschenlesbare G-1-Abnahmedokument (P7).
+"""Fachspezifikation: das menschenlesbare A-Q1-Abnahmedokument (P7).
 
 Deterministisch aus Spez + A-Box + Coverage generiert — Gliederung in
 der Art der Zielkern-Tarifplaene, aber hier ist das Dokument
 PROJEKTION der Daten, nie die Quelle: jede Zahl traegt ihre Herkunft
 (Quelle + Fundstelle + Quellenlage), jeder Widerspruch steht mit beiden
 Lesarten und dem Stand seiner Aufloesung im Text. Der Leser des Gates
-G-1 entscheidet auf dieser Grundlage — nicht auf Code, nicht auf JSON.
+A-Q1 entscheidet auf dieser Grundlage — nicht auf Code, nicht auf JSON.
 
 Kein Markup-Ehrgeiz: Markdown, Tabellen, Klartext. Gerendert wird bei
 Bedarf ueber die Doku-Engine (wie die Tarifplaene).
@@ -54,7 +54,7 @@ def _md(wert) -> str:
     """Zellinhalt Markdown-tabellensicher machen (Pipes, Zeilenumbrueche).
 
     Werte und Begruendungen stammen aus Quellen und Agenten — ein ``|``
-    oder Zeilenumbruch darin wuerde die G-1-Tabellen zerlegen.
+    oder Zeilenumbruch darin wuerde die A-Q1-Tabellen zerlegen.
     """
     text = str(wert)
     return text.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
@@ -224,7 +224,7 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
                 e = d.entscheidung
                 entscheid = (
                     f"{_md(e.gewaehlter_wert)} — {_md(e.entscheider)}"
-                    + (" **[VORLAEUFIG — G-1-Entscheidung steht aus]**"
+                    + (" **[VORLAEUFIG — A-Q1-Entscheidung steht aus]**"
                        if e.vorlaeufig else "")
                 )
             z.append(f"| `{d.knoten.split('/', 2)[-1]}#{d.feld}` "

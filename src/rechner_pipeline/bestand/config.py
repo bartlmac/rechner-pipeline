@@ -163,7 +163,7 @@ class TarifGeneration:
     #: "bu" = Berufsunfaehigkeit (Zustandsmodell-Konfiguration).
     produkt: str = "klv"
     #: Ontologie-Knoten dieser Generation (Pflicht): dieselbe ID-Konvention
-    #: wie A-Box und Gate O3 (familie/generation, z. B. "klv/plv_1994" fuer
+    #: wie A-Box und Gate P-K1 (familie/generation, z. B. "klv/plv_1994" fuer
     #: PLV-eigene, "klv/tg2015" fuer migrierte Generationen). Jede
     #: Generation, die der Bestand rechnet, ist damit ein Knoten der
     #: Ontologie — keine Parametrierung am System vorbei. Die Wurzel muss

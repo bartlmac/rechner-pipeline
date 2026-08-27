@@ -43,7 +43,7 @@ Abnahme-Protokoll fuer Kern-Aenderungen:
    bleiben — zwei unabhaengige Rechenwege, eine Toleranz.
 3. Die algebraischen Eigenschaften (qa_contract, Hypothesis) muessen
    halten.
-4. Je MIGRATIONSFALL gilt der Generations-Golden-Master (Gate O3):
+4. Je MIGRATIONSFALL gilt der Generations-Golden-Master (Gate P-K1):
    der Kern, parametriert ueber die Tarif-Spez, reproduziert die
    Erwartungswerte des jeweiligen QUELL-Rechners — das ist Fall-Abnahme,
    kein Referenzwert des Kerns.

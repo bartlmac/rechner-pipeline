@@ -1,4 +1,4 @@
-"""Migrationsabnahmebericht: deterministisches HTML als G-2-Vorlage.
+"""Migrationsabnahmebericht: deterministisches HTML als A-M4-Vorlage.
 
 Die Entscheidungsvorlage der menschlichen Migrationsabnahme, aus drei
 deterministischen Bausteinen:
@@ -21,13 +21,13 @@ Residuen-, Einzel-, Vertrags- und Suiteurteile lediglich erneut aus den
 persistierten atomaren Fakten und lehnt jede widerspruechliche Ableitung als
 Contract-Fehler ab. Gleiche Eingaben ergeben byte-identisches HTML (keine
 Zeitstempel), und das Verdikt ist ausdrücklich eine maschinelle Prüfaussage —
-die Abnahme selbst ist Gate G-2 (Mensch, Entscheid-Snapshot).
+die Abnahme selbst ist Gate A-M4 (Mensch, Entscheid-Snapshot).
 
 ABGRENZUNG (ADR-010): Dieser Bericht ist die Vorlage des
 MIGRATIONSCONTROLLINGS am Migrationsstichtag (voller Bestand,
 aggregierend). Die aktuarielle Pruefebene — je Vertrag am eigenen
 Verankerungszeitpunkt, auf einer Stichprobe — laeuft getrennt ueber
-``gates.aktuartest`` als Vorlage des menschlichen Gates G-A, das G-2
+``gates.aktuartest`` als Vorlage des menschlichen Gates A-M1, das A-M4
 zwingend vorausgeht. Die SHA-256-Bindungen dieses Berichts sind
 Transport- und Provenienzsicherung des Controllings.
 
@@ -38,19 +38,19 @@ Diagnostics-Ordner, Standard-Exit-Codes. Es NIMMT DIE MIGRATION NICHT
 AB — es stellt fest, ob die deterministische Migrationssuite ohne
 Fehlschlag geurteilt hat, und legt die Entscheidungsvorlage als
 Fall-Artefakt mit Provenienz (Eingabe-Hashes) ab. Die Abnahme bleibt
-Gate G-2 beim Menschen (``gates/gate_entscheid``); ein
+Gate A-M4 beim Menschen (``gates/gate_entscheid``); ein
 Exit-Code ``0`` heißt "vollständige Vorlage ohne Abnahmehindernis", nicht
 "abgenommen". Prüflücken, Zeilenverlust, Transformationsbefunde, nicht
 entschiedene Konflikte oder fehlende Pflichtartefakte blockieren den grünen
 Bericht und werden im HTML sowie im Ledger einzeln ausgewiesen. Was nicht
 geprüft wurde oder verloren ging, wird nie als bestanden bezeichnet.
 
-In einem als ``bestand`` deklarierten Fall sind ein gruener B1-Beleg und eine
+In einem als ``bestand`` deklarierten Fall sind ein gruener P-B1-Beleg und eine
 vollstaendige Suite Pflicht. Das gruene Ledger bindet beide und den erzeugten
 HTML-Abnahmebericht gemeinsam an Eingangsregister, A-Box, Systemstand und
 beide Stichtage. Spec, Transformationsergebnis sowie Vor- und Nachbericht sind
 zusaetzlich unter vier festen Renderer-Rollen an Fallpfad und SHA-256 gebunden.
-G-2 hasht diese Dateien neu und leitet die sichtbaren Transformationsfakten aus
+A-M4 hasht diese Dateien neu und leitet die sichtbaren Transformationsfakten aus
 ihrem Inhalt ab. Ein ``tarif``-Fall verlangt die Bestandsbelege nicht.
 Unabhaengig vom Scope kann ein Bericht nur gruen werden, wenn seine Quelle im
 Fall registriert ist und fuer genau diesen Aufruf physisch neu gelesen wurde;
@@ -121,10 +121,10 @@ from rechner_pipeline.ontologie.transformation import (
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 
 COMMAND = "abnahmebericht"
-#: Kein Gate "G2": die Abnahme ist der MENSCHLICHE Gate G-2. Dieses
+#: Kein Gate "G2": die Abnahme ist der MENSCHLICHE Gate A-M4. Dieses
 #: Kommando erzeugt und protokolliert dessen Vorlage — der Gate-Name
 #: sagt das, damit ein Ledger-Leser die beiden nie verwechselt.
-GATE = "G2-vorlage.migrationsabnahme"
+GATE = "A-M4.migrationscontrolling"
 GATE_VERSION = "1.10.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
@@ -133,7 +133,7 @@ CLI_CONTRACT = GateCliContract(
     diagnostics_from="fall",
 )
 
-# Die Rollen sind Teil des persistierten Beweisvertrags mit G-2. Pfadnamen in
+# Die Rollen sind Teil des persistierten Beweisvertrags mit A-M4. Pfadnamen in
 # ``input_hashes`` sind keine Rollen: Sie duerfen deshalb weder zum Erkennen
 # noch zum Vollstaendigkeitsnachweis dieser vier Eingaben verwendet werden.
 RENDERER_ARTEFAKTROLLEN = (
@@ -335,12 +335,12 @@ def _transformationsvertrag_fehler(
     ergebnis: Any,
     suite: Dict[str, Any],
 ) -> tuple[List[str], Optional[Path], Optional[str]]:
-    """Quelle, Spec, Anwendung und B1-/Suite-Ziel lueckenlos verbinden.
+    """Quelle, Spec, Anwendung und P-B1-/Suite-Ziel lueckenlos verbinden.
 
     Keine Angabe des Ergebnis-JSON gilt als Beweis ihrer selbst. Quelle und
     Header werden ueber das Fallregister neu aufgeloest, die Bytes gehasht und
     mit der Spec sowie dem Ergebnis verglichen. Das Ziel wird ebenfalls neu
-    gehasht und muss genau der von Suite und damit B1 gepruefte Bestand sein.
+    gehasht und muss genau der von Suite und damit P-B1 gepruefte Bestand sein.
     """
     if not isinstance(ergebnis, dict) or set(ergebnis) != (
         TRANSFORMATIONSERGEBNIS_FELDER
@@ -421,7 +421,7 @@ def _transformationsvertrag_fehler(
         )
     if ergebnis.get("zeilen_ziel") != suite.get("anzahl"):
         fehler.append(
-            "Transformationsergebnis.zeilen_ziel weicht von der durch B1 und "
+            "Transformationsergebnis.zeilen_ziel weicht von der durch P-B1 und "
             "Migrationssuite geprueften Bestandszeilenzahl ab"
         )
 
@@ -452,7 +452,7 @@ def _registrierte_quellenbindung_fehler(
     """Quellbehauptungen gegen eine neu gelesene Fallquelle pruefen.
 
     Diese engere Pruefung ist auf jedem Berichtsweg erforderlich, auch wenn
-    der Fall-Scope nicht den weitergehenden Bestandsvertrag mit B1 und
+    der Fall-Scope nicht den weitergehenden Bestandsvertrag mit P-B1 und
     Transformationsziel aktiviert. Ein vom Aufrufer gelieferter Pfad oder ein
     deklarierter Hash ist ausdruecklich kein Registrierungsnachweis.
     """
@@ -611,7 +611,7 @@ def _abnahme_zusammenfassung(
     bestandsbericht_nach: Optional[str],
     fall: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    """Kanonisches Berichtsverdikt für Produzent und G-2-Prüfung."""
+    """Kanonisches Berichtsverdikt für Produzent und A-M4-Prüfung."""
     hindernisse = _abnahmehindernisse(
         suite=suite,
         spec=spec,
@@ -719,7 +719,7 @@ def baue_bericht(
     teile.append(
         "<p class='hinweis'>Maschinelle Prüfaussage der deterministischen "
         "Migrationssuite. Die ABNAHME ist eine menschliche Entscheidung "
-        "(Gate G-2) auf Grundlage dieses Berichts.</p>")
+        "(Gate A-M4) auf Grundlage dieses Berichts.</p>")
 
     # Die Klammer um die Menge: geprüft ist nur, was auch drin war.
     teile.append("<h2>Prüfmenge (Vollständigkeit und Duplikate)</h2>")
@@ -1243,7 +1243,7 @@ def _suite_zusammenfassung(suite: Dict[str, Any]) -> Dict[str, Any]:
 
     Aufrufer validieren vorher mit :func:`_suite_fehler`. Die erneute
     Ableitung bleibt trotzdem zentral, damit weder der Berichtsproduzent noch
-    G-2 auf frei editierbare Top-Level- oder Ledger-Zaehler vertrauen.
+    A-M4 auf frei editierbare Top-Level- oder Ledger-Zaehler vertrauen.
     """
     vertraege = suite["vertraege"]
     vertragsurteile = [
@@ -1330,12 +1330,12 @@ def _b1_fehler(
     suite: Dict[str, Any],
     erwartetes_system: Dict[str, str],
 ) -> List[str]:
-    """B1-Ledger laden, Bytes hashen und produktive B1-Engines neu fahren."""
+    """P-B1-Ledger laden, Bytes hashen und produktive P-B1-Engines neu fahren."""
     try:
         payload = json.loads(ledger_pfad.read_text(encoding="utf-8"))
         entry = GateLedgerEntry.from_dict(payload)
     except (OSError, UnicodeError, ValueError, TypeError) as exc:
-        return [f"B1-Ledger ungueltig: {exc}"]
+        return [f"P-B1-Ledger ungueltig: {exc}"]
     fehler: List[str] = []
     erwartet = {
         "gate": bestand_validate.GATE,
@@ -1346,28 +1346,28 @@ def _b1_fehler(
     }
     for feld, wert in erwartet.items():
         if getattr(entry, feld) != wert:
-            fehler.append(f"B1-Ledger.{feld} ist {getattr(entry, feld)!r} statt {wert!r}")
+            fehler.append(f"P-B1-Ledger.{feld} ist {getattr(entry, feld)!r} statt {wert!r}")
     if entry.summary.get("exit_code") != 0 or entry.summary.get("all_passed") is not True:
-        fehler.append("B1-Ledger traegt kein konsistentes gruenes Einzelurteil")
+        fehler.append("P-B1-Ledger traegt kein konsistentes gruenes Einzelurteil")
     if entry.summary.get("system") != erwartetes_system:
-        fehler.append("B1-Ledger bindet nicht den aktuellen Systemstand")
+        fehler.append("P-B1-Ledger bindet nicht den aktuellen Systemstand")
 
     portfolio_input = entry.summary.get("portfolio_input")
     portfolio_sha256 = entry.summary.get("portfolio_sha256")
     if not isinstance(portfolio_input, str) or not portfolio_input:
-        fehler.append("B1-Ledger.summary.portfolio_input fehlt")
+        fehler.append("P-B1-Ledger.summary.portfolio_input fehlt")
     if (
         not isinstance(portfolio_sha256, str)
         or len(portfolio_sha256) != 64
         or any(zeichen not in "0123456789abcdef" for zeichen in portfolio_sha256)
     ):
-        fehler.append("B1-Ledger.summary.portfolio_sha256 ist kein SHA-256")
+        fehler.append("P-B1-Ledger.summary.portfolio_sha256 ist kein SHA-256")
     if isinstance(portfolio_input, str) and entry.input_hashes.get(
         portfolio_input
     ) != portfolio_sha256:
-        fehler.append("B1-Ledger bindet seine benannte Portfolio-Rolle nicht")
+        fehler.append("P-B1-Ledger bindet seine benannte Portfolio-Rolle nicht")
     if portfolio_sha256 != suite.get("bestand_sha256"):
-        fehler.append("B1-Ledger und Migrationssuite binden verschiedene Bestaende")
+        fehler.append("P-B1-Ledger und Migrationssuite binden verschiedene Bestaende")
 
     rollen = entry.summary.get("eingangsrollen")
     erlaubte_rollen = {"portfolio", "historie", "scheiben", "ledger", "config"}
@@ -1378,12 +1378,12 @@ def _b1_fehler(
         or any(not isinstance(name, str) or not name for name in rollen.values())
         or len(set(rollen.values())) != len(rollen)
     ):
-        fehler.append("B1-Ledger.summary.eingangsrollen ist ungueltig")
+        fehler.append("P-B1-Ledger.summary.eingangsrollen ist ungueltig")
         rollen = {}
     elif set(entry.input_hashes) != set(rollen.values()):
-        fehler.append("B1-Eingangsrollen und input_hashes sind nicht deckungsgleich")
+        fehler.append("P-B1-Eingangsrollen und input_hashes sind nicht deckungsgleich")
     if rollen.get("portfolio") != portfolio_input:
-        fehler.append("B1-Ledger benennt widerspruechliche Portfolio-Rollen")
+        fehler.append("P-B1-Ledger benennt widerspruechliche Portfolio-Rollen")
 
     aktuelle_eingaben: Dict[str, Path] = {}
     portfolio_gebunden = False
@@ -1391,11 +1391,11 @@ def _b1_fehler(
         roh = Path(name)
         vorhanden = roh.resolve() if roh.is_absolute() else (repo_root / roh).resolve()
         if not vorhanden.is_file():
-            fehler.append(f"B1-Eingangsartefakt {name!r} fehlt")
+            fehler.append(f"P-B1-Eingangsartefakt {name!r} fehlt")
             continue
         gefunden = sha256(vorhanden.read_bytes()).hexdigest()
         if gefunden != erwartet_hash:
-            fehler.append(f"B1-Eingangsartefakt {name!r} hat einen anderen SHA-256")
+            fehler.append(f"P-B1-Eingangsartefakt {name!r} hat einen anderen SHA-256")
         if name == portfolio_input and gefunden == erwartet_hash == portfolio_sha256:
             portfolio_gebunden = True
         rolle = next(
@@ -1409,10 +1409,10 @@ def _b1_fehler(
                 try:
                     vorhanden.relative_to(fall.resolve())
                 except ValueError:
-                    fehler.append("B1-Portfolio-Rolle liegt ausserhalb des Falls")
+                    fehler.append("P-B1-Portfolio-Rolle liegt ausserhalb des Falls")
     if not portfolio_gebunden:
         fehler.append(
-            "B1-Ledger bindet nicht seine aktuelle Portfolio-Datei"
+            "P-B1-Ledger bindet nicht seine aktuelle Portfolio-Datei"
         )
 
     bis_roh = entry.summary.get("bis")
@@ -1421,27 +1421,27 @@ def _b1_fehler(
         try:
             bis = _dt.date.fromisoformat(bis_roh)
         except (TypeError, ValueError):
-            fehler.append("B1-Ledger.summary.bis ist kein ISO-Datum oder null")
+            fehler.append("P-B1-Ledger.summary.bis ist kein ISO-Datum oder null")
     if "ledger" in rollen and ("historie" not in rollen or bis is None):
-        fehler.append("B1-Ledger-Rolle ledger verlangt historie und bis")
+        fehler.append("P-B1-Ledger-Rolle ledger verlangt historie und bis")
     if "ledger" not in rollen and bis_roh is not None:
-        fehler.append("B1-Ledger.summary.bis ist nur mit ledger zulaessig")
+        fehler.append("P-B1-Ledger.summary.bis ist nur mit ledger zulaessig")
 
     geprueft: Dict[str, int] = {}
     if set(aktuelle_eingaben) == set(rollen):
-        geprueft, b1_errors, b1_usage_errors = bestand_validate.pruefe_b1_eingaenge(
+        geprueft, pb1_errors, pb1_usage_errors = bestand_validate.pruefe_pb1_eingaenge(
             aktuelle_eingaben,
             bis=bis,
         )
         fehler.extend(
-            f"B1-Neupruefung [{befund.get('code')}]: {befund.get('message')}"
-            for befund in [*b1_errors, *b1_usage_errors]
+            f"P-B1-Neupruefung [{befund.get('code')}]: {befund.get('message')}"
+            for befund in [*pb1_errors, *pb1_usage_errors]
         )
         for name, wert in geprueft.items():
             if entry.summary.get(name) != wert:
                 fehler.append(
-                    f"B1-Ledger.summary.{name} stimmt nicht mit der "
-                    "erneuten B1-Pruefung ueberein"
+                    f"P-B1-Ledger.summary.{name} stimmt nicht mit der "
+                    "erneuten P-B1-Pruefung ueberein"
                 )
 
     portfolio_zeilen = geprueft.get("portfolio_zeilen")
@@ -1451,7 +1451,7 @@ def _b1_fehler(
         or portfolio_zeilen != suite.get("erwartete_anzahl")
     ):
         fehler.append(
-            "B1-Portfoliozeilen, Suite-Pruefmenge und erwartete Anzahl "
+            "P-B1-Portfoliozeilen, Suite-Pruefmenge und erwartete Anzahl "
             "muessen uebereinstimmen"
         )
     return fehler
@@ -1463,7 +1463,7 @@ def _build_parser() -> GateArgumentParser:
         prog="python -m rechner_pipeline.gates.abnahmebericht",
         description=(
             "Migrationsabnahmebericht rendern und protokollieren — die "
-            "Entscheidungsvorlage des MENSCHLICHEN Gates G-2, keine "
+            "Entscheidungsvorlage des MENSCHLICHEN Gates A-M4, keine "
             "Abnahme."
         ),
     )
@@ -1495,8 +1495,8 @@ def _build_parser() -> GateArgumentParser:
         "--bestandsbericht-nach", dest="bestandsbericht_nach", default=None,
         help="Bestandsbericht NACH der Migration (Pflichtartefakt).")
     parser.add_argument(
-        "--b1-ledger", dest="b1_ledger", default=None,
-        help="Gruenes B1-Ledger; im Bestands-Scope Default: "
+        "--pb1-ledger", dest="pb1_ledger", default=None,
+        help="Gruenes P-B1-Ledger; im Bestands-Scope Default: "
         "<fall>/abgeleitet/diagnostics/bestand_validate.gate.json.")
     parser.add_argument(
         "--bericht", default=None,
@@ -1542,7 +1542,7 @@ def main(argv: Optional[List[str]] = None):
             ("--transformation-ergebnis", args.transformation_ergebnis),
             ("--bestandsbericht-vor", args.bestandsbericht_vor),
             ("--bestandsbericht-nach", args.bestandsbericht_nach),
-            ("--b1-ledger", args.b1_ledger),
+            ("--pb1-ledger", args.pb1_ledger),
             ("--bericht", args.bericht),
         )
         if wert
@@ -1639,8 +1639,8 @@ def main(argv: Optional[List[str]] = None):
             + ", ".join(fehlende_artefakte)
         )
     if bestands_scope:
-        if not args.b1_ledger:
-            args.b1_ledger = str(
+        if not args.pb1_ledger:
+            args.pb1_ledger = str(
                 fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
             )
 
@@ -1652,7 +1652,7 @@ def main(argv: Optional[List[str]] = None):
         "bestandsbericht_nach": Path(args.bestandsbericht_nach),
     }
     if bestands_scope:
-        eingaben["b1_ledger"] = Path(args.b1_ledger)
+        eingaben["pb1_ledger"] = Path(args.pb1_ledger)
     fehlend = [str(p) for p in eingaben.values() if not p.is_file()]
     if fehlend:
         return _usage(f"Datei nicht gefunden: {'; '.join(fehlend)}")
@@ -1723,7 +1723,7 @@ def main(argv: Optional[List[str]] = None):
             )
     else:
         # Auch der falllose Bibliotheks-/CLI-Pfad schreibt die Rollen explizit.
-        # Nur im Bestands-Scope verlangt G-2 darueber hinaus sichere Fallpfade.
+        # Nur im Bestands-Scope verlangt A-M4 darueber hinaus sichere Fallpfade.
         for rolle in renderer_artefaktrollen():
             [(pfad, datei_hash)] = hash_files(
                 [eingaben[rolle]], base=hash_basis
@@ -1815,18 +1815,18 @@ def main(argv: Optional[List[str]] = None):
                 "Migrationssuite vollstaendig auf genau dem geprueften "
                 "Bestand und den beiden Scope-Stichtagen neu ausfuehren.",
             )
-        b1_fehler = _b1_fehler(
-            ledger_pfad=eingaben["b1_ledger"],
+        pb1_fehler = _b1_fehler(
+            ledger_pfad=eingaben["pb1_ledger"],
             fall=fall,
             repo_root=repo_root,
             suite=suite,
             erwartetes_system=gemeinsame_bindung["system"],
         )
-        if b1_fehler:
+        if pb1_fehler:
             return _contract_fehler(
-                "b1_contract",
-                b1_fehler,
-                "Gate B1 und Migrationssuite auf demselben aktuellen "
+                "pb1_contract",
+                pb1_fehler,
+                "Gate P-B1 und Migrationssuite auf demselben aktuellen "
                 "Bestandsartefakt erneut ausfuehren.",
             )
         transformations_fehler, _, _ = _transformationsvertrag_fehler(
@@ -1888,7 +1888,7 @@ def main(argv: Optional[List[str]] = None):
         ),
         "mapping_tabelle": spec is not None,
         # Ausdruecklich: dieses Kommando nimmt nichts ab.
-        "abnahme": "offen — Gate G-2 (Mensch, gates/gate_entscheid)",
+        "abnahme": "offen — Gate A-M4 (Mensch, gates/gate_entscheid)",
         "bericht_erzeugung": bericht_erzeugung,
         "renderer_artefakte": renderer_artefakte,
     }
@@ -1900,7 +1900,7 @@ def main(argv: Optional[List[str]] = None):
             assert fall is not None and gemeinsame_bindung is not None
             try:
                 bestandsbelege = {
-                    "b1_ledger": artefakt_eintrag(fall, eingaben["b1_ledger"]),
+                    "pb1_ledger": artefakt_eintrag(fall, eingaben["pb1_ledger"]),
                     "migrationssuite": artefakt_eintrag(fall, eingaben["suite"]),
                     "abnahmebericht": artefakt_eintrag(fall, bericht_pfad),
                 }
@@ -1913,7 +1913,7 @@ def main(argv: Optional[List[str]] = None):
                 return _contract_fehler(
                     "bestands_belegrollen",
                     ["interne Belegrollen weichen vom Bestandsvertrag ab"],
-                    "Abnahmebericht und G-2-Vertrag gemeinsam versionieren.",
+                    "Abnahmebericht und A-M4-Vertrag gemeinsam versionieren.",
                 )
             summary["bestandsbelege"] = bestandsbelege
         log(f"{COMMAND}: vollstaendige Vorlage ohne Abnahmehindernis "

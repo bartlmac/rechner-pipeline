@@ -9,8 +9,8 @@ Entscheider: Auftraggeber durch ToDo 10.2
 Ein P9-Snapshot lag bisher ausschliesslich im frei editierbaren
 Fall-Arbeitsbereich. Sein gespeicherter Eigenhash wurde beim Lesen nicht
 nachgerechnet; Gate, Command, Version, Dateiname und Vorgaengergraph waren
-ebenfalls nicht vollstaendig validiert. Ein handgeschriebener G-1-Snapshot
-und ein minimales als gruen bezeichnetes O1-Ledger konnten deshalb G-2
+ebenfalls nicht vollstaendig validiert. Ein handgeschriebener A-Q1-Snapshot
+und ein minimales als gruen bezeichnetes P-Q3-Ledger konnten deshalb A-M4
 freischalten, obwohl die behaupteten Gates nie gelaufen waren.
 
 Ein kanonischer Hash erkennt versehentliche oder nachtraegliche Aenderungen,
@@ -24,13 +24,13 @@ erhalten.
 
 1. Das allgemeine Gate-Ledger-Schema ist strikt. Pflicht- und Fremdfelder,
    echte boolesche und ganzzahlige Typen, ISO-8601-Zeiten, Status/Exit-Code
-   sowie SHA-256-Maps werden vor jeder Beweisverwendung validiert. G-1/G-2
-   bindet das O1-Ledger zusaetzlich exakt an Gate `O1.abox-contract`, Command
+   sowie SHA-256-Maps werden vor jeder Beweisverwendung validiert. A-Q1/A-M4
+   bindet das P-Q3-Ledger zusaetzlich exakt an Gate `P-Q3.fachliche-pruefung`, Command
    `abox_validate`, die aktuelle Gate-Version und die Rollen-Hashschluessel
    `eingang.json` sowie `abgeleitet/abox/abox.json`.
 2. P9-Snapshot-Schema ab v2 bindet Schema, Command `gate_entscheid`,
    Gate-Version, Gate, Entscheid, Rolle, Begruendung, Fall, Artefakt-Hashes,
-   Systemstand, Entscheidungszeit, Vorgaenger und bei G-2 die O3-Belegmenge.
+   Systemstand, Entscheidungszeit, Vorgaenger und bei A-M4 die P-K1-Belegmenge.
    Der kanonische SHA-256 umfasst alle persistierten Felder ausser sich
    selbst. Der Dateiname ist `<gate>-<vollstaendiger-sha256>.json`.
 3. Beim Lesen wird jeder Snapshot des Gates validiert. Jeder Vorgaenger muss
@@ -56,10 +56,10 @@ erhalten.
 ## Konsequenzen
 
 - Eine reine Fallmanipulation kann keine gueltige menschliche Annahme mehr
-  erzeugen. Inhalt, Dateiname, Kette und Signatur werden bei G-2 neu
+  erzeugen. Inhalt, Dateiname, Kette und Signatur werden bei A-M4 neu
   berechnet statt geglaubt.
 - Alte P9-Snapshots vor dem jeweils aktuellen Schema sind keine gueltigen
-  Abnahmebelege fuer den neuen Vertrag. Offene Faelle muessen O1 erneut fahren
+  Abnahmebelege fuer den neuen Vertrag. Offene Faelle muessen P-Q3 erneut fahren
   und durch den Menschen auf dem aktuellen Stand neu entschieden werden.
   Vorher verschiebt der Mensch die Altdateien unveraendert in ein
   revisionsfestes Legacy-Verzeichnis; sie werden nicht automatisch
@@ -86,7 +86,7 @@ erhalten.
 - Unveraenderliche Attempt-Ledger und ein atomarer Latest-Verweis sind ToDo
   10.12. Diese ADR macht den aktuell verwendeten Ledger strikt, ersetzt aber
   nicht dessen Speichersemantik.
-- Der deklarative Fall-Scope und daraus abgeleitete G-2-Pflichtbelege sind in
+- Der deklarative Fall-Scope und daraus abgeleitete A-M4-Pflichtbelege sind in
   ADR-009 entschieden. Diese ADR sichert deren menschliche Freigabe, waehrend
   ADR-009 bestimmt, welche Belege ein konkreter Scope verlangt.
 

@@ -20,7 +20,7 @@ drei Bezuege zur Excel-Historie mit sich:
 
 Das widerspricht dem Zielbild: ein zielbildfaehiges Geraet fuer die
 Bestandsmigration, dessen Abnahme je Migrationsfall gegen den
-jeweiligen Quell-Rechner laeuft (Gate O3) — nicht dauerhaft gegen das
+jeweiligen Quell-Rechner laeuft (Gate P-K1) — nicht dauerhaft gegen das
 eine historische Workbook.
 
 ## Entscheidung
@@ -42,7 +42,7 @@ eine historische Workbook.
    entfernt; Doku nennt sie nur noch als historischen
    Uebersetzungsbeleg. Festgeschrieben ist der Kern ueber
    Charakterisierungs-Referenzwerte in voller Float-Praezision; die fachliche
-   Abnahme je Migrationsfall ist Gate O3 gegen den Quell-Rechner.
+   Abnahme je Migrationsfall ist Gate P-K1 gegen den Quell-Rechner.
 4. **Der Verlauf ist modellpunktgetrieben** (`verlaufswerte()` bis n,
    `verlaufszeile(a)` bis zur Tafel-Erschoepfung). Das 51-Zeilen-Fenster
    bleibt als expliziter Vergleichs-Contract der `berechne()`-View
@@ -53,10 +53,10 @@ eine historische Workbook.
 
 - Kern-`__version__` 3.0.0; das Abnahme-Protokoll im
   `kern/__init__`-Docstring beschreibt den neuen Stand (Referenzwerte,
-  Ueberleitung, algebraische Gates, Gate O3 je Fall).
+  Ueberleitung, algebraische Gates, Gate P-K1 je Fall).
 - Rechenwerte sind unveraendert: der produktive Pfad nutzte schon
   vorher ausschliesslich qx. Beleg: alle Charakterisierungs-Referenzwerte
-  bit-exakt gruen, Gate O3 des Praezedenzfalls klv-tg2015 weiter
+  bit-exakt gruen, Gate P-K1 des Praezedenzfalls klv-tg2015 weiter
   616 Werte / 0 Abweichungen.
 - Die Bestand-Engine behaelt ihr Verlaufsfenster 0..50 als EIGENE
   konservative Grenze (so dokumentiert); sie ist Kandidat fuer eine

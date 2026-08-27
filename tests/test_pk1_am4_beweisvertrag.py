@@ -1,9 +1,9 @@
-"""O3-zu-G-2-Beweisvertrag mit echtem Golden-Master-Lauf.
+"""P-K1-zu-G-2-Beweisvertrag mit echtem Golden-Master-Lauf.
 
 Die Positivstrecke nutzt die eingecheckte synthetische XLSM, ihre echte
 openpyxl-Vorverdichtung, den produktiven Rechenkern und beide echten Gates.
 Die Negativstrecken beweisen, dass weder ein Teilbeleg bei mehreren
-Generationen noch ein Beleg eines anderen A-Box- oder Systemstands fuer G-2
+Generationen noch ein Beleg eines anderen A-Box- oder Systemstands fuer A-M4
 genuegt.
 
 Knoten: klv
@@ -30,11 +30,11 @@ from rechner_pipeline.gates import (
     gate_entscheid,
 )
 from rechner_pipeline.gates._provenienz import (
-    pruefe_o3_beleg,
-    schreibe_o3_beleg,
+    pruefe_pk1_beleg,
+    schreibe_pk1_beleg,
 )
-from rechner_pipeline.gates.abox_validate import main as o1
-from rechner_pipeline.gates.generation_golden import main as o3
+from rechner_pipeline.gates.abox_validate import main as pq3
+from rechner_pipeline.gates.generation_golden import main as pk1
 from rechner_pipeline.kern import Rechenkern
 from rechner_pipeline.kern.model_point import KLV_DEFAULT
 from rechner_pipeline.ontologie.abox import lade, speichere
@@ -50,7 +50,7 @@ from rechner_pipeline.qa.aktuarieller_test import (
 )
 from rechner_pipeline.qa.migrationssuite import VertragsPruefung, pruefe_bestand
 from rechner_pipeline.qa.stichprobe import ziehe
-from tests.e2e_fixture import bereite_o3_fall, lade_o3_fixture
+from tests.e2e_fixture import bereite_pk1_fall, lade_pk1_fixture
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 def _p9_annahme(fall: Path, gate: str, begruendung: str):
@@ -77,7 +77,7 @@ def _bereite_fall(
     scope: str = "tarif",
 ) -> Path:
     """Echten TG2012-Input vorbereiten; weitere Generationen teilen die Werte."""
-    fall = bereite_o3_fall(tmp_path, generationen, scope=scope)
+    fall = bereite_pk1_fall(tmp_path, generationen, scope=scope)
     if scope == "bestand":
         bestandsquelle = tmp_path / "synthetischer-bestand.csv"
         bestandsquelle.write_text(
@@ -89,22 +89,22 @@ def _bereite_fall(
             encoding="utf-8",
         )
         registrieren(fall, bestandsquelle)
-    assert o1([
+    assert pq3([
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
     ]).exit_code == 0
-    assert _p9_annahme(fall, "G-1", "A-Box fachlich geprueft").exit_code == 0
+    assert _p9_annahme(fall, "A-Q1", "A-Box fachlich geprueft").exit_code == 0
     if scope == "tarif":
-        # G-A geht G-2 voraus (ADR-010); im Tarif-Scope ohne eigene
+        # A-M1 geht A-M4 voraus (ADR-010); im Tarif-Scope ohne eigene
         # Belegrollen. Im Bestands-Scope stellt _bereite_bestandsfall
         # zuerst die aktuartest-Belege her.
         assert _p9_annahme(
-            fall, "G-A", "aktuarielle Methode geprueft"
+            fall, "A-M1", "aktuarielle Methode geprueft"
         ).exit_code == 0
     return fall
 
 
 def _o3_tg2012(fall: Path):
-    return o3([
+    return pk1([
         "--fall", str(fall),
         "--generation", "klv/tg2012",
         "--repo-root", str(REPO_ROOT),
@@ -128,7 +128,7 @@ def _abnahmebericht(fall: Path):
 
 
 def _bereite_bestandsfall(tmp_path: Path) -> Path:
-    """Echte O1/O3/B1-/Suite-/Berichtsbelege fuer einen Bestandsfall."""
+    """Echte P-Q3/P-K1/P-B1-/Suite-/Berichtsbelege fuer einen Bestandsfall."""
     fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
     assert _o3_tg2012(fall).exit_code == 0
 
@@ -139,8 +139,8 @@ def _bereite_bestandsfall(tmp_path: Path) -> Path:
         "--out-dir", str(lauf),
     ]) == 0
     ziel = lauf / "bestand_gesamt.parquet"
-    # Der Bestandsfall hat exakt eine B1-Zeile und die Suite prueft exakt
-    # diese eine Zeile. Eine Teilpruefung eines groesseren B1-Bestands waere
+    # Der Bestandsfall hat exakt eine P-B1-Zeile und die Suite prueft exakt
+    # diese eine Zeile. Eine Teilpruefung eines groesseren P-B1-Bestands waere
     # kein positiver Vollstaendigkeitsbeleg. Gewaehlt wird eine Zeile im
     # Ursprungszustand (status_id 1): der gefuehrte Gesamtbestand traegt
     # seit ADR-011 aktuelle Zustaende, und ein Folgezustand verlangte sein
@@ -149,12 +149,12 @@ def _bereite_bestandsfall(tmp_path: Path) -> Path:
     ursprung = gesamt[gesamt["status_id"] == 1]
     write_portfolio(ursprung.iloc[:1].copy(), ziel)
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    b1 = bestand_validate.main([
+    pb1 = bestand_validate.main([
         "--portfolio", str(ziel),
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
     ])
-    assert b1.exit_code == 0
+    assert pb1.exit_code == 0
 
     ziel_hash = sha256(ziel.read_bytes()).hexdigest()
 
@@ -229,7 +229,7 @@ def _bereite_bestandsfall(tmp_path: Path) -> Path:
     )
     assert abnahme_ledger["status"] == "passed"
     assert set(abnahme_ledger["summary"]["bestandsbelege"]) == {
-        "b1_ledger", "migrationssuite", "abnahmebericht",
+        "pb1_ledger", "migrationssuite", "abnahmebericht",
     }
     assert set(abnahme_ledger["summary"]["renderer_artefakte"]) == {
         "spec",
@@ -239,7 +239,7 @@ def _bereite_bestandsfall(tmp_path: Path) -> Path:
     }
     _aktuartest_belege(fall)
     assert _p9_annahme(
-        fall, "G-A", "aktuarieller Test auf dem Bestand geprueft"
+        fall, "A-M1", "aktuarieller Test auf dem Bestand geprueft"
     ).exit_code == 0
     return fall
 
@@ -278,19 +278,19 @@ def _aktuartest_belege(
     assert ergebnis.exit_code == erwarteter_exit
 
 
-def test_echtes_o3_schreibt_beleg_und_g2_nimmt_denselben_stand_an(
+def test_echtes_pk1_schreibt_beleg_und_am4_nimmt_denselben_stand_an(
     tmp_path: Path,
 ):
     fall = _bereite_fall(tmp_path, ("klv/tg2012",))
     abox_datei = fall / "abgeleitet" / "abox" / "abox.json"
     abox_sha256 = sha256(abox_datei.read_bytes()).hexdigest()
 
-    erster_o3 = _o3_tg2012(fall)
-    assert erster_o3.exit_code == 0
-    assert erster_o3.summary["werte_verglichen"] == 616
-    assert erster_o3.input_hashes["abgeleitet/abox/abox.json"] == abox_sha256
-    beleg_pfad = Path(erster_o3.paths["o3_beleg"])
-    beleg, fehler = pruefe_o3_beleg(beleg_pfad)
+    erster_pk1 = _o3_tg2012(fall)
+    assert erster_pk1.exit_code == 0
+    assert erster_pk1.summary["werte_verglichen"] == 616
+    assert erster_pk1.input_hashes["abgeleitet/abox/abox.json"] == abox_sha256
+    beleg_pfad = Path(erster_pk1.paths["pk1_beleg"])
+    beleg, fehler = pruefe_pk1_beleg(beleg_pfad)
     assert fehler == []
     assert beleg is not None
     assert beleg["generation"] == "klv/tg2012"
@@ -298,67 +298,67 @@ def test_echtes_o3_schreibt_beleg_und_g2_nimmt_denselben_stand_an(
     assert beleg["system"] == gate_entscheid.systemstand(REPO_ROOT)
 
     # Derselbe Beweis ist idempotent: kein Overwrite und keine zweite Datei.
-    zweiter_o3 = _o3_tg2012(fall)
-    assert zweiter_o3.exit_code == 0
-    assert Path(zweiter_o3.paths["o3_beleg"]) == beleg_pfad
+    zweiter_pk1 = _o3_tg2012(fall)
+    assert zweiter_pk1.exit_code == 0
+    assert Path(zweiter_pk1.paths["pk1_beleg"]) == beleg_pfad
     assert list(beleg_pfad.parent.glob("generation_golden.*.beleg.json")) == [
         beleg_pfad
     ]
 
-    g2 = _p9_annahme(fall, "G-2", "O3-Beweis vollstaendig geprueft")
-    assert g2.exit_code == 0
-    snapshot = json.loads(Path(g2.paths["snapshot"]).read_text(encoding="utf-8"))
-    assert snapshot["o3_belege"] == {
+    am4 = _p9_annahme(fall, "A-M4", "P-K1-Beweis vollstaendig geprueft")
+    assert am4.exit_code == 0
+    snapshot = json.loads(Path(am4.paths["snapshot"]).read_text(encoding="utf-8"))
+    assert snapshot["pk1_belege"] == {
         "klv/tg2012": [beleg["beleg_sha256"]]
     }
     assert snapshot["fall_scope"] == "tarif"
     assert set(snapshot["pflichtbelege"]) == {
-        "o1_ledger", "g1_snapshot", "ga_snapshot", "o3_belege",
+        "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
     }
     assert not any("bestand" in rolle for rolle in snapshot["pflichtbelege"])
 
 
-def test_tarif_scope_mit_fehlender_deklaration_blockiert_g2(tmp_path: Path):
+def test_tarif_scope_mit_fehlender_deklaration_blockiert_am4(tmp_path: Path):
     fall = _bereite_fall(tmp_path, ("klv/tg2012",))
     assert _o3_tg2012(fall).exit_code == 0
     manifest = json.loads((fall / "fall.json").read_text(encoding="utf-8"))
     manifest.pop("scope")
     (fall / "fall.json").write_text(json.dumps(manifest), encoding="utf-8")
 
-    g2 = _p9_annahme(fall, "G-2", "darf Scope nicht erraten")
+    am4 = _p9_annahme(fall, "A-M4", "darf Scope nicht erraten")
 
-    assert g2.exit_code == 20
-    assert g2.errors[0]["code"] == "fall_scope"
-    assert "nicht maschinenlesbar" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert am4.errors[0]["code"] == "fall_scope"
+    assert "nicht maschinenlesbar" in am4.errors[0]["message"]
 
 
-def test_g2_blockiert_scope_downgrade_nach_signiertem_g1(tmp_path: Path):
+def test_am4_blockiert_scope_downgrade_nach_signiertem_aq1(tmp_path: Path):
     fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
     assert _o3_tg2012(fall).exit_code == 0
     manifest = json.loads((fall / "fall.json").read_text(encoding="utf-8"))
     manifest["scope"]["typ"] = "tarif"
     (fall / "fall.json").write_text(json.dumps(manifest), encoding="utf-8")
 
-    g2 = _p9_annahme(fall, "G-2", "darf Bestands-Scope nicht herabstufen")
+    am4 = _p9_annahme(fall, "A-M4", "darf Bestands-Scope nicht herabstufen")
 
-    assert g2.exit_code == 20
-    assert "keine eindeutige, signierte G-1" in g2.errors[0]["message"]
-    assert "Scope-" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "keine eindeutige, signierte A-Q1" in am4.errors[0]["message"]
+    assert "Scope-" in am4.errors[0]["message"]
 
 
-def test_bestands_scope_bindet_b1_suite_und_abnahmebericht_bis_g2(
+def test_bestands_scope_bindet_pb1_suite_und_abnahmebericht_bis_am4(
     tmp_path: Path,
 ):
     fall = _bereite_bestandsfall(tmp_path)
 
-    g2 = _p9_annahme(fall, "G-2", "Bestandsbeweise vollstaendig geprueft")
+    am4 = _p9_annahme(fall, "A-M4", "Bestandsbeweise vollstaendig geprueft")
 
-    assert g2.exit_code == 0
-    snapshot = json.loads(Path(g2.paths["snapshot"]).read_text(encoding="utf-8"))
+    assert am4.exit_code == 0
+    snapshot = json.loads(Path(am4.paths["snapshot"]).read_text(encoding="utf-8"))
     assert snapshot["fall_scope"] == "bestand"
     assert set(snapshot["pflichtbelege"]) == {
-        "o1_ledger", "g1_snapshot", "ga_snapshot", "o3_belege",
-        "b1_ledger", "migrationssuite", "abnahmebericht",
+        "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
+        "pb1_ledger", "migrationssuite", "abnahmebericht",
     }
     assert all(snapshot["pflichtbelege"].values())
 
@@ -435,10 +435,10 @@ def test_abnahmebericht_prueft_quellspalten_am_registrierten_csv_header_nach(
     assert "tarifart" in meldung
 
 
-def test_g2_prueft_neu_gehashte_transformationsquelle_gegen_das_register(
+def test_am4_prueft_neu_gehashte_transformationsquelle_gegen_das_register(
     tmp_path: Path,
 ):
-    """Ein in sich konsistenter falscher Quellhash darf G-2 nicht passieren."""
+    """Ein in sich konsistenter falscher Quellhash darf A-M4 nicht passieren."""
     fall = _bereite_bestandsfall(tmp_path)
     ledger_pfad = (
         fall / "abgeleitet" / "diagnostics" / "abnahmebericht.gate.json"
@@ -451,7 +451,7 @@ def test_g2_prueft_neu_gehashte_transformationsquelle_gegen_das_register(
     register = json.loads((fall / "eingang.json").read_text(encoding="utf-8"))
     falscher_aber_formaler_hash = next(
         quelle["sha256"] for quelle in register["quellen"]
-        if quelle["datei"] == lade_o3_fixture().quelle.name
+        if quelle["datei"] == lade_pk1_fixture().quelle.name
     )
     spec_roh = json.loads(spec_pfad.read_text(encoding="utf-8"))
     spec_roh["quelle_sha256"] = falscher_aber_formaler_hash
@@ -494,19 +494,19 @@ def test_g2_prueft_neu_gehashte_transformationsquelle_gegen_das_register(
     }
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
+    am4 = _p9_annahme(
         fall,
-        "G-2",
+        "A-M4",
         "darf konsistent neu gehashte falsche Transformationsquelle nicht annehmen",
     )
 
-    assert g2.exit_code == 20
+    assert am4.exit_code == 20
     assert "tatsaechlich transformierten registrierten Datei" in (
-        g2.errors[0]["message"]
+        am4.errors[0]["message"]
     )
 
 
-def test_abnahmebericht_bindet_behauptete_zielzeilen_an_b1_und_suite(
+def test_abnahmebericht_bindet_behauptete_zielzeilen_an_pb1_und_suite(
     tmp_path: Path,
 ):
     """Gleiche 2->2-Zaehler duerfen keinen physischen Einzeiler belegen."""
@@ -550,7 +550,7 @@ def test_abnahmebericht_bindet_behauptete_zielzeilen_an_b1_und_suite(
 
     assert (bericht.exit_code, bericht.status) == (20, "failed")
     assert bericht.errors[0]["code"] == "transformation_contract"
-    assert "B1 und Migrationssuite geprueften Bestandszeilenzahl" in (
+    assert "P-B1 und Migrationssuite geprueften Bestandszeilenzahl" in (
         bericht.errors[0]["message"]
     )
 
@@ -569,20 +569,20 @@ def test_bestands_scope_blockiert_jedes_nachtraeglich_geaenderte_pflichtartefakt
         original = artefakt.read_bytes()
         artefakt.write_bytes(original + b"\n")
         try:
-            g2 = _p9_annahme(
-                fall, "G-2", f"darf geaenderten Beleg {rolle} nicht annehmen"
+            am4 = _p9_annahme(
+                fall, "A-M4", f"darf geaenderten Beleg {rolle} nicht annehmen"
             )
         finally:
             artefakt.write_bytes(original)
 
-        assert g2.exit_code == 20, rolle
-        assert g2.errors[0]["code"] == "vorbedingung", rolle
-        assert rolle in g2.errors[0]["message"], rolle
-        assert "SHA-256" in g2.errors[0]["message"], rolle
+        assert am4.exit_code == 20, rolle
+        assert am4.errors[0]["code"] == "vorbedingung", rolle
+        assert rolle in am4.errors[0]["message"], rolle
+        assert "SHA-256" in am4.errors[0]["message"], rolle
 
 
 @pytest.mark.parametrize(
-    "rolle", ["b1_ledger", "migrationssuite", "abnahmebericht"]
+    "rolle", ["pb1_ledger", "migrationssuite", "abnahmebericht"]
 )
 def test_bestands_scope_blockiert_jeden_fehlenden_pflichtbeleg(
     tmp_path: Path,
@@ -599,27 +599,27 @@ def test_bestands_scope_blockiert_jeden_fehlenden_pflichtbeleg(
     else:
         (fall / ledger["summary"]["bestandsbelege"][rolle]["pfad"]).unlink()
 
-    g2 = _p9_annahme(
-        fall, "G-2", f"darf fehlenden Bestandsbeleg {rolle} nicht annehmen"
+    am4 = _p9_annahme(
+        fall, "A-M4", f"darf fehlenden Bestandsbeleg {rolle} nicht annehmen"
     )
 
-    assert g2.exit_code == 20
-    assert g2.errors[0]["code"] == "vorbedingung"
-    assert rolle in g2.errors[0]["message"]
-    assert "fehlt" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert am4.errors[0]["code"] == "vorbedingung"
+    assert rolle in am4.errors[0]["message"]
+    assert "fehlt" in am4.errors[0]["message"]
 
 
 @pytest.mark.parametrize("aenderung", ["geaendert", "geloescht"])
-def test_g2_blockiert_veraltete_belege_nach_portfolio_drift(
+def test_am4_blockiert_veraltete_belege_nach_portfolio_drift(
     tmp_path: Path,
     aenderung: str,
 ):
     fall = _bereite_bestandsfall(tmp_path)
-    b1_ledger = json.loads(
+    pb1_ledger = json.loads(
         (fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json")
         .read_text(encoding="utf-8")
     )
-    portfolio = Path(b1_ledger["summary"]["portfolio_input"])
+    portfolio = Path(pb1_ledger["summary"]["portfolio_input"])
     if not portfolio.is_absolute():
         portfolio = REPO_ROOT / portfolio
     if aenderung == "geaendert":
@@ -627,20 +627,20 @@ def test_g2_blockiert_veraltete_belege_nach_portfolio_drift(
     else:
         portfolio.unlink()
 
-    g2 = _p9_annahme(fall, "G-2", "darf alten B1-Stand nicht annehmen")
+    am4 = _p9_annahme(fall, "A-M4", "darf alten P-B1-Stand nicht annehmen")
 
-    assert g2.exit_code == 20
-    assert "B1-Eingangsartefakt" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "P-B1-Eingangsartefakt" in am4.errors[0]["message"]
 
 
-def test_g2_loest_repo_relatives_portfolio_nicht_ueber_schattenkopie_auf():
+def test_am4_loest_repo_relatives_portfolio_nicht_ueber_schattenkopie_auf():
     with tempfile.TemporaryDirectory(prefix=".todo-10-3-", dir=REPO_ROOT) as tmp:
         fall = _bereite_bestandsfall(Path(tmp))
-        b1 = json.loads(
+        pb1 = json.loads(
             (fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json")
             .read_text(encoding="utf-8")
         )
-        portfolio_schluessel = b1["summary"]["portfolio_input"]
+        portfolio_schluessel = pb1["summary"]["portfolio_input"]
         assert not Path(portfolio_schluessel).is_absolute()
         portfolio = REPO_ROOT / portfolio_schluessel
         schattenkopie = fall / portfolio_schluessel
@@ -648,17 +648,17 @@ def test_g2_loest_repo_relatives_portfolio_nicht_ueber_schattenkopie_auf():
         schattenkopie.write_bytes(portfolio.read_bytes())
         portfolio.write_bytes(b"manipulierter echter Repo-Pfad")
 
-        g2 = _p9_annahme(
+        am4 = _p9_annahme(
             fall,
-            "G-2",
+            "A-M4",
             "darf eine Schattenkopie am falschen Aufloesungspfad nicht nutzen",
         )
 
-        assert g2.exit_code == 20
-        assert "B1-Eingangsartefakt" in g2.errors[0]["message"]
+        assert am4.exit_code == 20
+        assert "P-B1-Eingangsartefakt" in am4.errors[0]["message"]
 
 
-def test_g2_validiert_neu_gehashte_unvollstaendige_suite_semantisch(
+def test_am4_validiert_neu_gehashte_unvollstaendige_suite_semantisch(
     tmp_path: Path,
 ):
     fall = _bereite_bestandsfall(tmp_path)
@@ -676,30 +676,30 @@ def test_g2_validiert_neu_gehashte_unvollstaendige_suite_semantisch(
     ledger["input_hashes"][suite_eintrag["pfad"]] = neuer_hash
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
-        fall, "G-2", "darf neu gehashte unvollstaendige Suite nicht annehmen"
+    am4 = _p9_annahme(
+        fall, "A-M4", "darf neu gehashte unvollstaendige Suite nicht annehmen"
     )
 
-    assert g2.exit_code == 20
-    assert "vollstaendig gepruefte Migrationssuite" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "vollstaendig gepruefte Migrationssuite" in am4.errors[0]["message"]
 
 
-def test_g2_fuehrt_b1_auf_konsistent_neu_behauptetem_portfolio_erneut_aus(
+def test_am4_fuehrt_pb1_auf_konsistent_neu_behauptetem_portfolio_erneut_aus(
     tmp_path: Path,
 ):
     fall = _bereite_bestandsfall(tmp_path)
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    b1_pfad = diagnostics / "bestand_validate.gate.json"
-    b1 = json.loads(b1_pfad.read_text(encoding="utf-8"))
-    portfolio_schluessel = b1["summary"]["portfolio_input"]
+    pb1_pfad = diagnostics / "bestand_validate.gate.json"
+    pb1 = json.loads(pb1_pfad.read_text(encoding="utf-8"))
+    portfolio_schluessel = pb1["summary"]["portfolio_input"]
     portfolio = Path(portfolio_schluessel)
     if not portfolio.is_absolute():
         portfolio = REPO_ROOT / portfolio
-    portfolio.write_bytes(b"kein Parquet und kein gueltiger B1-Bestand")
+    portfolio.write_bytes(b"kein Parquet und kein gueltiger P-B1-Bestand")
     portfolio_hash = sha256(portfolio.read_bytes()).hexdigest()
-    b1["input_hashes"][portfolio_schluessel] = portfolio_hash
-    b1["summary"]["portfolio_sha256"] = portfolio_hash
-    b1_pfad.write_text(json.dumps(b1, sort_keys=True), encoding="utf-8")
+    pb1["input_hashes"][portfolio_schluessel] = portfolio_hash
+    pb1["summary"]["portfolio_sha256"] = portfolio_hash
+    pb1_pfad.write_text(json.dumps(pb1, sort_keys=True), encoding="utf-8")
 
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
@@ -708,22 +708,22 @@ def test_g2_fuehrt_b1_auf_konsistent_neu_behauptetem_portfolio_erneut_aus(
 
     abnahme_pfad = diagnostics / "abnahmebericht.gate.json"
     abnahme = json.loads(abnahme_pfad.read_text(encoding="utf-8"))
-    for rolle, pfad in (("b1_ledger", b1_pfad), ("migrationssuite", suite_pfad)):
+    for rolle, pfad in (("pb1_ledger", pb1_pfad), ("migrationssuite", suite_pfad)):
         eintrag = abnahme["summary"]["bestandsbelege"][rolle]
         neuer_hash = sha256(pfad.read_bytes()).hexdigest()
         eintrag["sha256"] = neuer_hash
         abnahme["input_hashes"][eintrag["pfad"]] = neuer_hash
     abnahme_pfad.write_text(json.dumps(abnahme, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
-        fall, "G-2", "darf einen neu behaupteten roten B1-Bestand nicht annehmen"
+    am4 = _p9_annahme(
+        fall, "A-M4", "darf einen neu behaupteten roten P-B1-Bestand nicht annehmen"
     )
 
-    assert g2.exit_code == 20
-    assert "nicht als Bestand lesbar" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "nicht als Bestand lesbar" in am4.errors[0]["message"]
 
 
-def test_g2_reproduziert_konsistent_neu_gehashten_abnahmebericht(
+def test_am4_reproduziert_konsistent_neu_gehashten_abnahmebericht(
     tmp_path: Path,
 ):
     fall = _bereite_bestandsfall(tmp_path)
@@ -741,15 +741,15 @@ def test_g2_reproduziert_konsistent_neu_gehashten_abnahmebericht(
     ledger["summary"]["output_hashes"][bericht_eintrag["pfad"]] = neuer_hash
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
-        fall, "G-2", "darf einen frei erfundenen Bericht nicht annehmen"
+    am4 = _p9_annahme(
+        fall, "A-M4", "darf einen frei erfundenen Bericht nicht annehmen"
     )
 
-    assert g2.exit_code == 20
-    assert "deterministischen Erzeugung" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "deterministischen Erzeugung" in am4.errors[0]["message"]
 
 
-def test_g2_blockiert_umkodierte_zeilenenden_im_abnahmebericht(
+def test_am4_blockiert_umkodierte_zeilenenden_im_abnahmebericht(
     tmp_path: Path,
 ):
     """Bytegenau heisst bytegenau — auch bei blosser Umkodierung.
@@ -776,15 +776,15 @@ def test_g2_blockiert_umkodierte_zeilenenden_im_abnahmebericht(
     ledger["summary"]["output_hashes"][bericht_eintrag["pfad"]] = neuer_hash
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
-        fall, "G-2", "darf eine umkodierte Berichtsfassung nicht annehmen"
+    am4 = _p9_annahme(
+        fall, "A-M4", "darf eine umkodierte Berichtsfassung nicht annehmen"
     )
 
-    assert g2.exit_code == 20
-    assert "deterministischen Erzeugung" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "deterministischen Erzeugung" in am4.errors[0]["message"]
 
 
-def test_g2_blockiert_neu_gehashten_bericht_mit_zeilenverlust(
+def test_am4_blockiert_neu_gehashten_bericht_mit_zeilenverlust(
     tmp_path: Path,
 ):
     """Ein roter Renderer-Vertrag darf nicht unter altem Grün passieren."""
@@ -814,15 +814,15 @@ def test_g2_blockiert_neu_gehashten_bericht_mit_zeilenverlust(
     ledger["summary"]["output_hashes"][bericht_eintrag["pfad"]] = neuer_hash
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
-        fall, "G-2", "darf Zeilenverlust nicht aus alter Summary begruenen"
+    am4 = _p9_annahme(
+        fall, "A-M4", "darf Zeilenverlust nicht aus alter Summary begruenen"
     )
 
-    assert g2.exit_code == 20
-    assert "gebundenen Transformationsergebnis" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "gebundenen Transformationsergebnis" in am4.errors[0]["message"]
 
 
-def test_g2_blockiert_entfernte_renderer_rolle_samt_pflichtartefakt(
+def test_am4_blockiert_entfernte_renderer_rolle_samt_pflichtartefakt(
     tmp_path: Path,
 ):
     fall = _bereite_bestandsfall(tmp_path)
@@ -835,15 +835,15 @@ def test_g2_blockiert_entfernte_renderer_rolle_samt_pflichtartefakt(
     (fall / spec_eintrag["pfad"]).unlink()
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
-        fall, "G-2", "darf fehlendes Berichtsartefakt nicht uebergehen"
+    am4 = _p9_annahme(
+        fall, "A-M4", "darf fehlendes Berichtsartefakt nicht uebergehen"
     )
 
-    assert g2.exit_code == 20
-    assert "exakt die Renderer-Artefakte" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "exakt die Renderer-Artefakte" in am4.errors[0]["message"]
 
 
-def test_g2_blockiert_neu_gehashtes_rotes_transformationsartefakt_bei_gruener_kopie(
+def test_am4_blockiert_neu_gehashtes_rotes_transformationsartefakt_bei_gruener_kopie(
     tmp_path: Path,
 ):
     """Dateiinhalt statt der frei editierbaren Renderer-Kopie entscheidet."""
@@ -872,19 +872,19 @@ def test_g2_blockiert_neu_gehashtes_rotes_transformationsartefakt_bei_gruener_ko
     ]["zeilen_ziel"] == 1
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
+    am4 = _p9_annahme(
         fall,
-        "G-2",
+        "A-M4",
         "darf rotes Transformationsartefakt nicht aus gruener Kopie begruenen",
     )
 
-    assert g2.exit_code == 20
-    meldung = g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    meldung = am4.errors[0]["message"]
     assert "gebundenen Transformationsergebnis" in meldung
     assert "Zeilenverlust blockiert" in meldung
 
 
-def test_g2_blockiert_pfadalias_auf_vorbericht_als_fehlenden_nachbericht(
+def test_am4_blockiert_pfadalias_auf_vorbericht_als_fehlenden_nachbericht(
     tmp_path: Path,
 ):
     """Zwei Rollen duerfen nicht per ``./`` dieselben Bytes vortaeuschen."""
@@ -932,17 +932,17 @@ def test_g2_blockiert_pfadalias_auf_vorbericht_als_fehlenden_nachbericht(
     }
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
+    am4 = _p9_annahme(
         fall,
-        "G-2",
+        "A-M4",
         "darf fehlenden Nachbericht nicht durch Pfadalias ersetzen",
     )
 
-    assert g2.exit_code == 20
-    assert "kein kanonischer Fallpfad" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "kein kanonischer Fallpfad" in am4.errors[0]["message"]
 
 
-def test_g2_blockiert_hardlink_zwischen_vor_und_nachbericht(
+def test_am4_blockiert_hardlink_zwischen_vor_und_nachbericht(
     tmp_path: Path,
 ):
     """Zwei Pfade auf dasselbe Dateiobjekt sind keine zwei Pflichtbelege."""
@@ -962,17 +962,17 @@ def test_g2_blockiert_hardlink_zwischen_vor_und_nachbericht(
     ledger["input_hashes"][nach_eintrag["pfad"]] = vor_eintrag["sha256"]
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
+    am4 = _p9_annahme(
         fall,
-        "G-2",
+        "A-M4",
         "darf einen Hardlink nicht als zweiten Bestandsbericht annehmen",
     )
 
-    assert g2.exit_code == 20
-    assert "physisch verschiedene Dateien" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "physisch verschiedene Dateien" in am4.errors[0]["message"]
 
 
-def test_g2_blockiert_bestandsberichtrolle_auf_abnahmebericht_output(
+def test_am4_blockiert_bestandsberichtrolle_auf_abnahmebericht_output(
     tmp_path: Path,
 ):
     """Der HTML-Output darf keine fehlende Vor-/Nachrolle ersetzen."""
@@ -1016,21 +1016,21 @@ def test_g2_blockiert_bestandsberichtrolle_auf_abnahmebericht_output(
     }
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
+    am4 = _p9_annahme(
         fall,
-        "G-2",
+        "A-M4",
         "darf den Output nicht als fehlenden Nachbericht annehmen",
     )
 
-    assert g2.status == "failed"
-    assert g2.exit_code != 0
-    assert "Eingabe- und Outputrollen" in g2.errors[0]["message"]
+    assert am4.status == "failed"
+    assert am4.exit_code != 0
+    assert "Eingabe- und Outputrollen" in am4.errors[0]["message"]
 
 
-def test_g2_blockiert_neu_gehashte_rote_suite_trotz_alter_gruener_summary(
+def test_am4_blockiert_neu_gehashte_rote_suite_trotz_alter_gruener_summary(
     tmp_path: Path,
 ):
-    """G-2 muss das Suiteurteil selbst statt aus dem Ledger lesen."""
+    """A-M4 muss das Suiteurteil selbst statt aus dem Ledger lesen."""
     fall = _bereite_bestandsfall(tmp_path)
     diagnostics = fall / "abgeleitet" / "diagnostics"
     ledger_pfad = diagnostics / "abnahmebericht.gate.json"
@@ -1077,13 +1077,13 @@ def test_g2_blockiert_neu_gehashte_rote_suite_trotz_alter_gruener_summary(
             ledger["summary"]["output_hashes"][eintrag["pfad"]] = neuer_hash
     ledger_pfad.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
 
-    g2 = _p9_annahme(
-        fall, "G-2", "darf rote Suite nicht aus alter Summary begruenen"
+    am4 = _p9_annahme(
+        fall, "A-M4", "darf rote Suite nicht aus alter Summary begruenen"
     )
 
-    assert g2.exit_code == 20
-    assert "suite_bestanden" in g2.errors[0]["message"]
-    assert "Migrationssuite ist nicht bestanden" in g2.errors[0]["message"]
+    assert am4.exit_code == 20
+    assert "suite_bestanden" in am4.errors[0]["message"]
+    assert "Migrationssuite ist nicht bestanden" in am4.errors[0]["message"]
 
 
 def test_abnahmebericht_blockiert_unvollstaendige_suite_vor_gruenem_beleg(
@@ -1112,16 +1112,16 @@ def test_abnahmebericht_blockiert_unvollstaendige_suite_vor_gruenem_beleg(
     assert "vollstaendig gepruefte Migrationssuite" in bericht.errors[0]["message"]
 
 
-def test_abnahmebericht_verwechselt_portfolio_rolle_nicht_mit_b1_nebeneingang(
+def test_abnahmebericht_verwechselt_portfolio_rolle_nicht_mit_pb1_nebeneingang(
     tmp_path: Path,
 ):
     fall = _bereite_bestandsfall(tmp_path)
-    b1_pfad = fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
-    b1 = json.loads(b1_pfad.read_text(encoding="utf-8"))
+    pb1_pfad = fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
+    pb1 = json.loads(pb1_pfad.read_text(encoding="utf-8"))
     config_pfad = REPO_ROOT / "configs" / "bestand_klv.toml"
     config_hash = sha256(config_pfad.read_bytes()).hexdigest()
-    b1["input_hashes"]["configs/bestand_klv.toml"] = config_hash
-    b1_pfad.write_text(json.dumps(b1, sort_keys=True), encoding="utf-8")
+    pb1["input_hashes"]["configs/bestand_klv.toml"] = config_hash
+    pb1_pfad.write_text(json.dumps(pb1, sort_keys=True), encoding="utf-8")
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
     suite["bestand_sha256"] = config_hash
@@ -1130,7 +1130,7 @@ def test_abnahmebericht_verwechselt_portfolio_rolle_nicht_mit_b1_nebeneingang(
     bericht = _abnahmebericht(fall)
 
     assert bericht.exit_code == 20
-    assert bericht.errors[0]["code"] == "b1_contract"
+    assert bericht.errors[0]["code"] == "pb1_contract"
     assert "verschiedene Bestaende" in bericht.errors[0]["message"]
 
 
@@ -1150,7 +1150,7 @@ def test_abnahmebericht_blockiert_veralteten_suite_systemstand(
     assert "aktuellen Systemstand" in bericht.errors[0]["message"]
 
 
-def test_abnahmebericht_blockiert_teilpruefung_des_b1_portfolios(
+def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
     tmp_path: Path,
 ):
     fall = _bereite_bestandsfall(tmp_path)
@@ -1162,14 +1162,14 @@ def test_abnahmebericht_blockiert_teilpruefung_des_b1_portfolios(
     ]) == 0
     portfolio = lauf / "bestand_gesamt.parquet"
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    b1 = bestand_validate.main([
+    pb1 = bestand_validate.main([
         "--portfolio", str(portfolio),
         "--historie", str(lauf / "historie.parquet"),
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
     ])
-    assert b1.exit_code == 0
-    assert b1.summary["portfolio_zeilen"] > 1
+    assert pb1.exit_code == 0
+    assert pb1.summary["portfolio_zeilen"] > 1
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
     suite["bestand_sha256"] = sha256(portfolio.read_bytes()).hexdigest()
@@ -1178,11 +1178,11 @@ def test_abnahmebericht_blockiert_teilpruefung_des_b1_portfolios(
     bericht = _abnahmebericht(fall)
 
     assert bericht.exit_code == 20
-    assert bericht.errors[0]["code"] == "b1_contract"
+    assert bericht.errors[0]["code"] == "pb1_contract"
     assert "Suite-Pruefmenge" in bericht.errors[0]["message"]
 
 
-def test_o3_bleibt_bei_gescheitertem_belegschreiben_nicht_gruen(
+def test_pk1_bleibt_bei_gescheitertem_belegschreiben_nicht_gruen(
     tmp_path: Path,
     monkeypatch,
 ):
@@ -1192,13 +1192,13 @@ def test_o3_bleibt_bei_gescheitertem_belegschreiben_nicht_gruen(
         raise OSError("Belegziel nicht beschreibbar")
 
     monkeypatch.setattr(
-        generation_golden, "schreibe_o3_beleg", _schreibfehler
+        generation_golden, "schreibe_pk1_beleg", _schreibfehler
     )
     ergebnis = _o3_tg2012(fall)
 
     assert ergebnis.exit_code == 20
     assert ergebnis.status == "failed"
-    assert ergebnis.errors[0]["code"] == "o3_beleg"
+    assert ergebnis.errors[0]["code"] == "pk1_beleg"
     diagnostics = fall / "abgeleitet" / "diagnostics"
     assert list(diagnostics.glob("generation_golden.*.beleg.json")) == []
     ledger = json.loads(
@@ -1209,28 +1209,28 @@ def test_o3_bleibt_bei_gescheitertem_belegschreiben_nicht_gruen(
     assert ledger["status"] == "failed"
 
 
-def test_g2_blockt_wenn_bei_mehreren_generationen_ein_o3_beleg_fehlt(
+def test_am4_blockt_wenn_bei_mehreren_generationen_ein_pk1_beleg_fehlt(
     tmp_path: Path,
 ):
     fall = _bereite_fall(tmp_path, ("klv/tg2012", "klv/tg2013"))
     assert _o3_tg2012(fall).exit_code == 0
 
-    g2 = _p9_annahme(fall, "G-2", "darf nicht angenommen werden")
-    assert g2.exit_code == 20
-    [fehler] = g2.errors
+    am4 = _p9_annahme(fall, "A-M4", "darf nicht angenommen werden")
+    assert am4.exit_code == 20
+    [fehler] = am4.errors
     assert fehler["code"] == "vorbedingung"
-    assert "O3-Beleg fehlt fuer ['klv/tg2013']" in fehler["message"]
+    assert "P-K1-Beleg fehlt fuer ['klv/tg2013']" in fehler["message"]
 
 
-def test_g2_blockt_einen_beleg_fuer_fremde_generation(tmp_path: Path):
+def test_am4_blockt_einen_beleg_fuer_fremde_generation(tmp_path: Path):
     fall = _bereite_fall(tmp_path, ("klv/tg2012",))
-    o3_ergebnis = _o3_tg2012(fall)
-    assert o3_ergebnis.exit_code == 0
+    pk1_ergebnis = _o3_tg2012(fall)
+    assert pk1_ergebnis.exit_code == 0
     beleg = json.loads(
-        Path(o3_ergebnis.paths["o3_beleg"]).read_text(encoding="utf-8")
+        Path(pk1_ergebnis.paths["pk1_beleg"]).read_text(encoding="utf-8")
     )
     fremde_summary = {**beleg["summary"], "generation": "klv/tg2013"}
-    schreibe_o3_beleg(
+    schreibe_pk1_beleg(
         fall / "abgeleitet" / "diagnostics",
         gate_version=beleg["gate_version"],
         status=beleg["status"],
@@ -1242,31 +1242,31 @@ def test_g2_blockt_einen_beleg_fuer_fremde_generation(tmp_path: Path):
         summary=fremde_summary,
     )
 
-    g2 = _p9_annahme(fall, "G-2", "darf nicht angenommen werden")
-    assert g2.exit_code == 20
-    assert "fremde Generationen ['klv/tg2013']" in g2.errors[0]["message"]
+    am4 = _p9_annahme(fall, "A-M4", "darf nicht angenommen werden")
+    assert am4.exit_code == 20
+    assert "fremde Generationen ['klv/tg2013']" in am4.errors[0]["message"]
 
 
-def test_g2_blockt_o3_beleg_eines_anderen_abox_stands(tmp_path: Path):
+def test_am4_blockt_pk1_beleg_eines_anderen_abox_stands(tmp_path: Path):
     fall = _bereite_fall(tmp_path, ("klv/tg2012",))
     assert _o3_tg2012(fall).exit_code == 0
 
     abox = lade(fall)
     abox.generationen[0].anmerkungen.append("neuer fachlicher Stand")
     speichere(abox, fall)
-    assert o1([
+    assert pq3([
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
     ]).exit_code == 0
     assert _p9_annahme(
-        fall, "G-1", "geaenderten A-Box-Stand geprueft"
+        fall, "A-Q1", "geaenderten A-Box-Stand geprueft"
     ).exit_code == 0
 
-    g2 = _p9_annahme(fall, "G-2", "darf nicht angenommen werden")
-    assert g2.exit_code == 20
-    assert "A-Box-Stand abweichend" in g2.errors[0]["message"]
+    am4 = _p9_annahme(fall, "A-M4", "darf nicht angenommen werden")
+    assert am4.exit_code == 20
+    assert "A-Box-Stand abweichend" in am4.errors[0]["message"]
 
 
-def test_g2_blockt_o3_beleg_eines_anderen_systemstands(
+def test_am4_blockt_pk1_beleg_eines_anderen_systemstands(
     tmp_path: Path,
     monkeypatch,
 ):
@@ -1278,12 +1278,12 @@ def test_g2_blockt_o3_beleg_eines_anderen_systemstands(
     abweichend["quellcode_sha256"] = "0" * 64 if alt != "0" * 64 else "1" * 64
     monkeypatch.setattr(gate_entscheid, "systemstand", lambda _repo: abweichend)
 
-    g2 = _p9_annahme(fall, "G-2", "darf nicht angenommen werden")
-    assert g2.exit_code == 20
-    assert "Systemstand abweichend" in g2.errors[0]["message"]
+    am4 = _p9_annahme(fall, "A-M4", "darf nicht angenommen werden")
+    assert am4.exit_code == 20
+    assert "Systemstand abweichend" in am4.errors[0]["message"]
 
 
-def test_g2_blockt_nachtraeglich_geaenderte_o3_erwartungsdatei(
+def test_am4_blockt_nachtraeglich_geaenderte_pk1_erwartungsdatei(
     tmp_path: Path,
 ):
     fall = _bereite_fall(tmp_path, ("klv/tg2012",))
@@ -1294,9 +1294,9 @@ def test_g2_blockt_nachtraeglich_geaenderte_o3_erwartungsdatei(
     )
     erwartung.write_bytes(erwartung.read_bytes() + b"\n")
 
-    g2 = _p9_annahme(fall, "G-2", "darf nicht angenommen werden")
-    assert g2.exit_code == 20
-    assert "O3-Eingangsartefakte abweichend" in g2.errors[0]["message"]
+    am4 = _p9_annahme(fall, "A-M4", "darf nicht angenommen werden")
+    assert am4.exit_code == 20
+    assert "P-K1-Eingangsartefakte abweichend" in am4.errors[0]["message"]
 
 
 def test_ungueltige_generations_id_im_beleg_wird_befund_statt_crash(
@@ -1308,32 +1308,32 @@ def test_ungueltige_generations_id_im_beleg_wird_befund_statt_crash(
         "beleg_sha256": "a" * 64,
     }), encoding="utf-8")
 
-    _beleg, fehler = pruefe_o3_beleg(pfad)
+    _beleg, fehler = pruefe_pk1_beleg(pfad)
     assert any("Knoten-ID" in meldung for meldung in fehler)
     assert any("Dateiname nicht ableitbar" in meldung for meldung in fehler)
 
 
-def test_g2_verlangt_geltendes_ga_vor_sich(tmp_path: Path):
-    """ADR-010: G-A geht G-2 voraus — ein G-2-Entscheid ohne geltende,
-    signierte G-A-Annahme ist unmoeglich; danach pinnt G-2 den
-    G-A-Snapshot als Pflichtrolle."""
-    fall = bereite_o3_fall(tmp_path, ("klv/tg2012",), scope="tarif")
-    assert o1([
+def test_am4_verlangt_geltendes_am1_vor_sich(tmp_path: Path):
+    """ADR-010: A-M1 geht A-M4 voraus — ein A-M4-Entscheid ohne geltende,
+    signierte A-M1-Annahme ist unmoeglich; danach pinnt A-M4 den
+    A-M1-Snapshot als Pflichtrolle."""
+    fall = bereite_pk1_fall(tmp_path, ("klv/tg2012",), scope="tarif")
+    assert pq3([
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
     ]).exit_code == 0
-    assert _p9_annahme(fall, "G-1", "A-Box fachlich geprueft").exit_code == 0
+    assert _p9_annahme(fall, "A-Q1", "A-Box fachlich geprueft").exit_code == 0
     assert _o3_tg2012(fall).exit_code == 0
 
-    vorzeitig = _p9_annahme(fall, "G-2", "vor der aktuariellen Abnahme")
+    vorzeitig = _p9_annahme(fall, "A-M4", "vor der aktuariellen Abnahme")
     assert vorzeitig.exit_code == 20
     meldung = vorzeitig.errors[0]["message"]
-    assert "G-A" in meldung and "--gate G-A" in meldung
-    assert list((fall / "entscheide").glob("G-2-*.json")) == []
+    assert "A-M1" in meldung and "--gate A-M1" in meldung
+    assert list((fall / "entscheide").glob("A-M4-*.json")) == []
 
-    # Eine G-A-ABLEHNUNG ist snapshotbar, oeffnet G-2 aber nicht:
+    # Eine A-M1-ABLEHNUNG ist snapshotbar, oeffnet A-M4 aber nicht:
     schluessel = fall.parent / "p9-freigabe.key"
     ablehnung = gate_entscheid.main([
-        "--fall", str(fall), "--gate", "G-A",
+        "--fall", str(fall), "--gate", "A-M1",
         "--entscheid", "abgelehnt", "--rolle", "mensch",
         "--entscheider", "fachrolle",
         "--begruendung", "Methode noch offen",
@@ -1341,43 +1341,43 @@ def test_g2_verlangt_geltendes_ga_vor_sich(tmp_path: Path):
         "--freigabe-schluessel", str(schluessel),
     ])
     assert ablehnung.exit_code == 0
-    weiterhin = _p9_annahme(fall, "G-2", "trotz abgelehntem G-A")
+    weiterhin = _p9_annahme(fall, "A-M4", "trotz abgelehntem A-M1")
     assert weiterhin.exit_code == 20
-    assert "G-A" in weiterhin.errors[0]["message"]
+    assert "A-M1" in weiterhin.errors[0]["message"]
 
-    ga = _p9_annahme(fall, "G-A", "aktuarielle Methode geprueft")
-    assert ga.exit_code == 0
-    g2 = _p9_annahme(fall, "G-2", "nach der aktuariellen Abnahme")
-    assert g2.exit_code == 0
+    am1 = _p9_annahme(fall, "A-M1", "aktuarielle Methode geprueft")
+    assert am1.exit_code == 0
+    am4 = _p9_annahme(fall, "A-M4", "nach der aktuariellen Abnahme")
+    assert am4.exit_code == 0
     snapshot = json.loads(
-        Path(g2.paths["snapshot"]).read_text(encoding="utf-8")
+        Path(am4.paths["snapshot"]).read_text(encoding="utf-8")
     )
-    assert snapshot["pflichtbelege"]["ga_snapshot"] == [
-        ga.summary["snapshot_sha256"]
+    assert snapshot["pflichtbelege"]["am1_snapshot"] == [
+        am1.summary["snapshot_sha256"]
     ]
 
 
-def test_ga_annahme_im_bestandsscope_verlangt_gruene_aktuartest_belege(
+def test_am1_annahme_im_bestandsscope_verlangt_gruene_aktuartest_belege(
     tmp_path: Path,
 ):
-    """G-A pinnt im Bestands-Scope die Testartefakte: fehlend, nicht
+    """A-M1 pinnt im Bestands-Scope die Testartefakte: fehlend, nicht
     bestanden oder byte-abweichend zum Ledger blockt die Annahme; die
     Ablehnung bleibt jederzeit snapshotbar."""
     fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
 
-    ohne_belege = _p9_annahme(fall, "G-A", "ohne Testbelege")
+    ohne_belege = _p9_annahme(fall, "A-M1", "ohne Testbelege")
     assert ohne_belege.exit_code == 20
     assert "gates.aktuartest" in ohne_belege.errors[0]["message"]
 
     # Roter Test: Vorlage nicht bestanden -> Annahme unmoeglich,
     # Ablehnung moeglich.
     _aktuartest_belege(fall, drift=25.0, erwarteter_exit=30)
-    rot = _p9_annahme(fall, "G-A", "trotz rotem Test")
+    rot = _p9_annahme(fall, "A-M1", "trotz rotem Test")
     assert rot.exit_code == 20
     assert "nicht bestanden" in rot.errors[0]["message"]
     schluessel = fall.parent / "p9-freigabe.key"
     ablehnung = gate_entscheid.main([
-        "--fall", str(fall), "--gate", "G-A",
+        "--fall", str(fall), "--gate", "A-M1",
         "--entscheid", "abgelehnt", "--rolle", "mensch",
         "--entscheider", "fachrolle",
         "--begruendung", "Test nicht bestanden",
@@ -1392,12 +1392,12 @@ def test_ga_annahme_im_bestandsscope_verlangt_gruene_aktuartest_belege(
     test_pfad.write_text(
         test_pfad.read_text(encoding="utf-8") + "\n", encoding="utf-8"
     )
-    manipuliert = _p9_annahme(fall, "G-A", "auf manipulierten Bytes")
+    manipuliert = _p9_annahme(fall, "A-M1", "auf manipulierten Bytes")
     assert manipuliert.exit_code == 20
     assert "aktuellen Bytes" in manipuliert.errors[0]["message"]
 
     _aktuartest_belege(fall)
-    angenommen = _p9_annahme(fall, "G-A", "aktuarieller Test geprueft")
+    angenommen = _p9_annahme(fall, "A-M1", "aktuarieller Test geprueft")
     assert angenommen.exit_code == 0
     snapshot = json.loads(
         Path(angenommen.paths["snapshot"]).read_text(encoding="utf-8")
@@ -1408,11 +1408,11 @@ def test_ga_annahme_im_bestandsscope_verlangt_gruene_aktuartest_belege(
     assert snapshot["fall_scope"] == "bestand"
 
 
-def test_ga_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
+def test_am1_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
     tmp_path: Path,
 ):
     """Review-Fix: Ein editierter Ledger-Status (failed -> passed) ueber
-    einem echt roten Test darf G-A nicht oeffnen — die Annahme leitet
+    einem echt roten Test darf A-M1 nicht oeffnen — die Annahme leitet
     das Verdikt aus dem Artefakt neu ab und reproduziert den Bericht
     bytegenau."""
     fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
@@ -1425,12 +1425,12 @@ def test_ga_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
     ledger["status"] = "passed"
     ledger_pfad.write_text(json.dumps(ledger), encoding="utf-8")
 
-    geflippt = _p9_annahme(fall, "G-A", "auf geflipptem Ledger")
+    geflippt = _p9_annahme(fall, "A-M1", "auf geflipptem Ledger")
     assert geflippt.exit_code == 20
     assert "nicht bestanden" in geflippt.errors[0]["message"]
 
     # Auch ein handgeschriebenes, intern konsistentes gruenes Ergebnis
-    # ohne aktuellen Systemstand oeffnet G-A nicht:
+    # ohne aktuellen Systemstand oeffnet A-M1 nicht:
     from rechner_pipeline.qa.aktuarieller_test import (
         pruefe_stichprobe as _ps,
     )
@@ -1455,7 +1455,7 @@ def test_ga_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
         "--repo-root", str(REPO_ROOT),
     ])
     assert ergebnis.exit_code == 0  # das Gate prueft nur Konsistenz ...
-    fremd = _p9_annahme(fall, "G-A", "auf fremdem Systemstand")
+    fremd = _p9_annahme(fall, "A-M1", "auf fremdem Systemstand")
     assert fremd.exit_code == 20    # ... die Annahme bindet den Stand
     assert "Systemstand" in fremd.errors[0]["message"]
 
@@ -1474,6 +1474,6 @@ def test_ga_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
         "abgeleitet/berichte/aktuartest.html"
     ] = sha256(bericht_pfad.read_bytes()).hexdigest()
     ledger_pfad.write_text(json.dumps(ledger), encoding="utf-8")
-    getauscht = _p9_annahme(fall, "G-A", "auf getauschtem Bericht")
+    getauscht = _p9_annahme(fall, "A-M1", "auf getauschtem Bericht")
     assert getauscht.exit_code == 20
     assert "deterministische Wiedergabe" in getauscht.errors[0]["message"]

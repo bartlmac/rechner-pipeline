@@ -112,11 +112,11 @@ def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
         ".claude/skills/pruefe-migrationscontrolling/SKILL.md"
     )
     assert "du rechnest NIE selbst" in controlling
-    assert "G-2" in controlling
+    assert "A-M4" in controlling
     assert "NIE" in controlling and "aufgeweicht" in controlling  # Toleranzen
     aktuartest = _read(".claude/skills/aktuartest-durchfuehren/SKILL.md")
     assert "du rechnest NIE selbst" in aktuartest
-    assert "G-A" in aktuartest
+    assert "A-M1" in aktuartest
     assert "NIE" in aktuartest and "aufgeweicht" in aktuartest
     assert "Golden-Master-Tests" in aktuartest             # Ausbaustufe festgehalten
     assert "Stichprobe" in aktuartest

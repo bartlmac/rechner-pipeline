@@ -1,10 +1,10 @@
-"""Gemeinsame Fallstandsbindung der Bestands-Pflichtbelege fuer G-2.
+"""Gemeinsame Fallstandsbindung der Bestands-Pflichtbelege fuer A-M4.
 
-Der Bestandsvertrag aus T6-03 umfasst genau B1, eine vollstaendig gepruefte
+Der Bestandsvertrag aus T6-03 umfasst genau P-B1, eine vollstaendig gepruefte
 Migrationssuite und den gruenen Abnahmebericht. Dieses Hilfsmodul stellt ihre
 gemeinsame Eingangs-, A-Box-, System- und Zwei-Stichtagsbindung sowie sichere
 fallrelative Artefaktrollen bereit. Die fachlichen Belegvertraege werden beim
-Produzenten und erneut von G-2 validiert.
+Produzenten und erneut von A-M4 validiert.
 
 Knoten: klv, system/assurance
 """
@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.gates._provenienz import systemstand
 
-BESTANDS_BELEGROLLEN = ("b1_ledger", "migrationssuite", "abnahmebericht")
+BESTANDS_BELEGROLLEN = ("pb1_ledger", "migrationssuite", "abnahmebericht")
 _SYSTEM_FELDER = {"commit", "branch", "dirty", "quellcode_sha256"}
 
 

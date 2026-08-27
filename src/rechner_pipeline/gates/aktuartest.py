@@ -1,4 +1,4 @@
-"""``aktuartest`` toolbox command — Vorlage fuer das menschliche Gate G-A.
+"""``aktuartest`` toolbox command — Vorlage fuer das menschliche Gate A-M1.
 
 Rendert aus dem Ergebnis des aktuariellen Tests (``qa.aktuarieller_test``,
 als JSON persistiert) die Entscheidungsvorlage fuer den Verantwortlichen
@@ -54,8 +54,8 @@ from rechner_pipeline.qa.aktuarieller_test import PERZENTILE, verteilung
 
 COMMAND = "aktuartest"
 #: Bewusst "GA-vorlage", nicht "GA": Das Kommando liefert die Vorlage;
-#: die aktuarielle ABNAHME ist der menschliche P9-Entscheid am Gate G-A.
-GATE = "GA-vorlage.aktuarieller-test"
+#: die aktuarielle ABNAHME ist der menschliche P9-Entscheid am Gate A-M1.
+GATE = "A-M1.stichtagstest"
 GATE_VERSION = "1.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
@@ -225,7 +225,7 @@ def test_fehler(test: Any) -> List[str]:
 
 
 def baue_bericht(*, titel: str, test: Dict[str, Any]) -> str:
-    """Entscheidungsvorlage fuer G-A — deterministisch, byte-identisch.
+    """Entscheidungsvorlage fuer A-M1 — deterministisch, byte-identisch.
 
     Nur aus einem intern konsistenten Ergebnis (``test_fehler`` leer);
     sonst ``ValueError`` — derselbe fail-fast Contract wie im Kommando.
@@ -267,7 +267,7 @@ def baue_bericht(*, titel: str, test: Dict[str, Any]) -> str:
     teile.append(
         "<p class='hinweis'>Maschinelle Prüfaussage des deterministischen "
         "aktuariellen Tests. Die AKTUARIELLE ABNAHME ist eine menschliche "
-        "Entscheidung (Gate G-A, Verantwortlicher Aktuar) auf Grundlage "
+        "Entscheidung (Gate A-M1, Verantwortlicher Aktuar) auf Grundlage "
         "dieses Berichts.</p>"
     )
 
@@ -412,7 +412,7 @@ def _build_parser() -> GateArgumentParser:
         gate_contract=CLI_CONTRACT,
         prog=f"python -m rechner_pipeline.gates.{COMMAND}",
         description=(
-            "Vorlage fuer das menschliche Gate G-A: prueft das Ergebnis "
+            "Vorlage fuer das menschliche Gate A-M1: prueft das Ergebnis "
             "des aktuariellen Tests und rendert die Entscheidungsvorlage."
         ),
     )
@@ -579,7 +579,7 @@ def main(argv: Optional[List[str]] = None):
             [test_pfad, bericht_pfad], base=fall, missing_ok=False,
         ),
         # Renderer-Vertrag: mit diesen Eingaben ist der Bericht
-        # deterministisch reproduzierbar — G-A rendert ihn bytegenau
+        # deterministisch reproduzierbar — A-M1 rendert ihn bytegenau
         # neu, statt dem Ledger-Status zu glauben.
         "bericht_erzeugung": {"titel": args.titel},
     }

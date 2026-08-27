@@ -450,7 +450,7 @@ def _argument_error_result(
     decision_gate = _argument_value(error, argv, "gate")
     if decision_gate in contract.decision_gate_choices:
         command = f"{command}_{decision_gate.lower().replace('-', '')}"
-        gate = f"P9.{decision_gate}"
+        gate = f"entscheid.{decision_gate}"
 
     result = build_result(
         command=command,
@@ -974,14 +974,14 @@ def load_gate_ledger(
 
 
 ALL_GATES: Tuple[Tuple[str, str], ...] = (
-    ("G0.extraction-manifest", "extract"),
-    ("O0.abox-merge", "abox_merge"),
-    ("O1.abox-contract", "abox_validate"),
-    ("O3.generation-golden-master", "generation_golden"),
-    ("P9.gate-entscheid", "gate_entscheid"),
-    ("B1.bestand-contract", "bestand_validate"),
-    ("GA-vorlage.aktuarieller-test", "aktuartest"),
-    ("G2-vorlage.migrationsabnahme", "abnahmebericht"),
+    ("P-Q1.quellfragment", "extract"),
+    ("P-Q2.zusammenfuehrung", "abox_merge"),
+    ("P-Q3.fachliche-pruefung", "abox_validate"),
+    ("P-K1.generations-golden-master", "generation_golden"),
+    ("entscheid.vollzug", "gate_entscheid"),
+    ("P-B1.bestandspruefung", "bestand_validate"),
+    ("A-M1.stichtagstest", "aktuartest"),
+    ("A-M4.migrationscontrolling", "abnahmebericht"),
 )
 
 def _gate_catalogue() -> Tuple[Dict[str, str], Tuple[str, ...]]:

@@ -401,7 +401,7 @@ def test_impact_faelle_hinweis_folgt_der_lineage(tmp_path: Path):
         ["src/rechner_pipeline/daten/tg2015.py"],
         SYNTH_INDEX, SYNTH_KARTE, SYNTH_TESTS, generationen, SYNTH_IMPORTS,
     )
-    # Nur die verwandte Generation braucht ihr O3 erneut — nicht das
+    # Nur die verwandte Generation braucht ihr P-K1 erneut — nicht das
     # Geschwister:
     assert [f["generation"] for f in ergebnis["faelle"]] == ["klv/tg2015"]
     # fail-soft ohne Fall-Verzeichnis:

@@ -373,7 +373,7 @@ def berechne_impact(
         for g in treffer:
             betroffene_faelle.append({
                 "fall": fall, "generation": g,
-                "hinweis": f"Gate O3 fuer {fall} --generation {g} "
+                "hinweis": f"Gate P-K1 fuer {fall} --generation {g} "
                            "erneut fahren",
             })
 

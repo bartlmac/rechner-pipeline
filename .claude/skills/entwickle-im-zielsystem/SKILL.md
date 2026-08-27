@@ -111,7 +111,7 @@ STOPP, Vorschlag formulieren, Mensch entscheidet.
 ## STOPP-Kriterien (Mensch fragen)
 
 - Eine Regel oben muesste gebrochen werden, um die Aufgabe zu erfuellen.
-- Ein bestehender Referenzwert (Charakterisierungstest, Gate O3 eines Falls) wird rot und die
+- Ein bestehender Referenzwert (Charakterisierungstest, Gate P-K1 eines Falls) wird rot und die
   Ursache ist nicht ein offensichtlicher eigener Fehler.
 - Ein Schichten-/Zustaendigkeitsschnitt muesste sich aendern.
 - Eine neue Dependency, ein neues Top-Level-Verzeichnis, eine Aenderung

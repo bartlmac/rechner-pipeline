@@ -84,6 +84,11 @@ Damit ist AT-3 nicht zu erfinden, sondern abzuleiten: Der Testauftrag
 liest die Vorfälle, die die Stichprobe benennt, und vergleicht je Vorfall
 den Wert, den das System bildet, gegen den gelieferten.
 
+@Claude Keine valide Prüfwerte: ABL/Jarhesrente (BU); TOD Jahresrente (BU); 
+Reaktivierung BU-Jahresrente; zudem wird einmal Jahresrente (BU) und wieder 
+sonst BU-Jahresrente geschrieben.  Stattdessen sollte für jeden Vorfall die
+Veränderung des Deckungskapital als Prüfwerte reingeommen werden.
+
 ## 3 Die gemeinsame Struktur
 
 Alle drei Tests sind derselbe Vorgang mit anderer Bestückung: **ein
@@ -167,6 +172,19 @@ dass sämtliche Differenzen reine Cent-Rundung sind — ohne Rundung sind
 Jede Toleranz muss über diesem Rauschen liegen, sonst misst der Test die
 Darstellungskonvention statt der Rechnung.
 
+@Claude: Achtung - die Tests sind selbst separate Gates. Das ist wichtig
+denn in der Praxis wird anhand der Abnahme dieses indiviudellen Tests
+an anderen Stellen weiter gearbeitet (oder nicht). GeVos sind oft erst
+in der späteren Phase der Migration notwendig. Wichtig also, dass wir das
+als Gates trennen.
+
+@Claude: Die Stichprobenprofile waren anders gemeint. Jeder Test hat
+unterschiedliche mögliche Stichproben (von "voll" - Gesambestand oder
+alle GeVos die simuliert sind; bis "sehr klein" - z. B. 1 Fall pro GeVo).
+Du kannst einen Vorschlag der Ausgestaltung geben und Prozess diese für
+Baldrian mit dem Windows-Werkzeug zu generieren - wenn wir den neuen
+Fall vorbereiten, finalisieren wir uns nutzen wir das.
+
 ## 5 Die drei Berichte
 
 Drei Tests, drei Abnahmen, drei Berichte. Ein zusammengefasster Bericht
@@ -178,6 +196,13 @@ Die Berichtserzeugung selbst bleibt, wie sie ist — der Renderer bekommt
 das Testergebnis und das Profil und schreibt daraus. Was hinzukommt:
 Jeder Bericht weist **sein** Profil aus, mit Stichprobenziehung, Kriterien
 und Abdeckung (wie viele Verträge tragen welchen Prüfpunkt).
+
+@Claude: Die Berichte werden sehr wahrscheinlich recht unterschiedlich
+sein. Bei GeVos geht es mehr um plausibilität als um eine lange Tabelle
+mit "Beinahenulls", mehr Text-Prosa Beurteilung und Begründung.
+Bei Verlaufsteste werden wir ggf. auch Diagrame nutzen, noch unklar.
+Ehrlicherweise brauchen wir unterschiedliche Vorlagen. Gerne Vorschlag
+für die inhaltliche Ausgestaltung geben!
 
 ## 6 Was das für das Gate bedeutet
 
@@ -205,10 +230,21 @@ Konventionen), der Rückkaufswert zum Stornotermin ebenso. AT-3 vergleicht
 also gerechnete Werte, keine Interpolate. Das braucht deine Zustimmung,
 weil es die Formulierung der Invariante schärft.
 
+@Claude: ok, das ist fast selbstverständlich aber ok noch explizit.
+
 **E2 — Was ist "die letzte technische Änderung"?** Bei AT-1 nennst du als
 ersten Zeitpunkt "letzter Vertragsstichtag bzw. letzte technische
 Änderung". Ist die technische Änderung ein eigener Rechenpunkt (dann
 braucht der Vertrag ein Attribut dafür), oder der letzte Jahrestag davor?
+
+@Claude: Geschäftsvorfallsdatum für GV, die nicht am Vertragsstichtag
+passieren, z. B. vor der Migration wird eine Beitragsreduktion oder
+Verkürzung der Dauer angestoßen (haben wir im Modell noch nicht) oder
+einfach Zustandsänderung in die Invalidisierung oder Reaktivierung
+(wenn wir es dann monatlich oder sogar täglich simulieren). Dann soll
+dieser Wert genommen werden, denn der ist aktueller als der letzte
+Vertragsstichtag. Es ist eine reine Konvention aus der Migrationspraxi
+aber eine sinvolle und diese würde ich als regel ins System übernehmen.
 
 **E3 — Stichprobenprofile.** Heute gibt es genau ein Profil
 (`vollbestand`). AT-2 und AT-3 brauchen andere: AT-3 kann nicht über den
@@ -216,12 +252,17 @@ Vollbestand laufen, weil nur ein Teil der Verträge überhaupt einen
 Geschäftsvorfall hat. Soll AT-3 alle Vorfälle prüfen, die es gibt, oder
 eine Ziehung je Vorfallart mit Mindestabdeckung?
 
+@Claude: Siehe meine Anmerkungen oben, das habe ich dort schon erklärt.
+
 **E4 — Reihenfolge des Baus.** Mein Vorschlag: erst der Umbau auf
 Prüfpunkte plus AT-1 (das ist der kleinste Schritt mit dem größten
 Zugewinn und lässt sich sofort gegen TG2015 fahren), dann AT-3 (die
 Prüfwerte liegen im Journal bereit), dann AT-2 (braucht am meisten
 gelieferte Erwartungswerte und ist am ehesten von der Datenlage
 abhängig).
+
+@Claude: Ich würde das ehrlichgesagt voll durchziehen, es ist klein
+genug um in einem rutsch zu bauen und zu besprechen.
 
 ## 8 Was hier NICHT steht
 

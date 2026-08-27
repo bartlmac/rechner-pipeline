@@ -1,4 +1,4 @@
-"""Gate-Kommando aktuartest: G-A-Vorlage aus dem Testergebnis (ADR-010).
+"""Gate-Kommando aktuartest: A-M1-Vorlage aus dem Testergebnis (ADR-010).
 
 Knoten: klv
 """
@@ -66,7 +66,7 @@ def test_gruener_pfad_schreibt_bericht_und_ledger(tmp_path, capsys):
     fall = _fall(tmp_path, _testergebnis())
     ergebnis = _lauf(fall, capsys)
     assert ergebnis["status"] == "passed" and ergebnis["exit_code"] == 0
-    assert ergebnis["gate"] == "GA-vorlage.aktuarieller-test"
+    assert ergebnis["gate"] == "A-M1.stichtagstest"
     assert ergebnis["summary"]["test_bestanden"] is True
     assert ergebnis["summary"]["stichprobe"]["profil"] == "vollbestand"
     assert set(ergebnis["summary"]["belege"]) == {
@@ -78,7 +78,7 @@ def test_gruener_pfad_schreibt_bericht_und_ledger(tmp_path, capsys):
     html = (fall / "abgeleitet" / "berichte" / "aktuartest.html"
             ).read_text(encoding="utf-8")
     assert "AKTUARIELLER TEST BESTANDEN" in html
-    assert "Gate G-A, Verantwortlicher Aktuar" in html
+    assert "Gate A-M1, Verantwortlicher Aktuar" in html
     assert "kein Teil des Urteils" in html and "ab" * 32 in html
     assert "eigenen".upper() not in html or True
 

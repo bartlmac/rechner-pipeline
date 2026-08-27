@@ -684,7 +684,7 @@ def _nachweisung_html(
         f"jedem Jahr, je Bestand, in Stück und {spec['bezug']} (Gate-geprüft)."
         if alle_ok else
         "WARNUNG: Bewegungs-Identität verletzt — Daten inkonsistent "
-        "(Gate B1 schlägt fehl)."
+        "(Gate P-B1 schlägt fehl)."
     )
 
     def tabelle(track: str, positionen, mass: str) -> str:

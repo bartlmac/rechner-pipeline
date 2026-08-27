@@ -10,7 +10,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 - LLM agents propose (one pre-digested source each); deterministic code
   decides (merge, coverage, comparison, transformation, acceptance);
   humans decide contradictions between sources and every acceptance
-  gate (G-1/G-A/G-2/G-T). No LLM path inside any gate.
+  gate (A-Q1/A-M1/A-M4/A-K1). No LLM path inside any gate.
 - The Python package is deterministic and SDK-free. Do not add OpenAI,
   Anthropic, LangGraph, provider, token, or hosted-agent runtime paths
   to `src/`; do not add network, subprocess, dynamic execution, or
@@ -84,13 +84,13 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `... status --fall faelle/<name>`.
 - Migration pipeline (ontology as the only stage interface; see
   `docs/architektur/migrations-pipeline-v01.md`):
-  `python -m rechner_pipeline.gates.extract` (G0, pre-digest a
+  `python -m rechner_pipeline.gates.extract` (P-Q1, pre-digest a
   workbook), `python -m rechner_pipeline.quellen.bestand_profil`
   (column profile of a delivered portfolio extract — transformation
   agents read this, never the raw CSV),
-  `python -m rechner_pipeline.gates.abox_validate` (O1),
+  `python -m rechner_pipeline.gates.abox_validate` (P-Q3),
   `python -m rechner_pipeline.quellen.tafel_import`,
-  `python -m rechner_pipeline.gates.generation_golden` (O3),
+  `python -m rechner_pipeline.gates.generation_golden` (P-K1),
   `python -m rechner_pipeline.ontologie.entscheide` and
   `python -m rechner_pipeline.gates.gate_entscheid` (human gates, P9
   snapshots). Agents never resolve discrepancies as final; provisional
@@ -98,10 +98,10 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 - Migration controlling: the two-reporting-date suite
   (`rechner_pipeline.qa.migrationssuite`) and the HTML acceptance
   report (`rechner_pipeline.gates.abnahmebericht`) are libraries driven
-  by the `pruefe-migrationscontrolling` skill (gate G-2).
-- Actuarial test (precedes G-2): per-contract comparison at each
+  by the `pruefe-migrationscontrolling` skill (gate A-M4).
+- Actuarial test (precedes A-M4): per-contract comparison at each
   contract's own anchor date (`rechner_pipeline.qa.aktuarieller_test`,
-  no interpolation, no summation) with the G-A template gate
+  no interpolation, no summation) with the A-M1 template gate
   `python -m rechner_pipeline.gates.aktuartest`, driven by the
   `aktuartest-durchfuehren` skill.
 - Portfolio module: `python -m rechner_pipeline.bestand.cli_fortschreibung`
@@ -109,7 +109,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   (self-contained HTML report; `--bis` is the simulation horizon,
   `--stichtag` splits history from projection — default:
   `meta.referenzstichtag` from the config),
-  `python -m rechner_pipeline.gates.bestand_validate` (B1).
+  `python -m rechner_pipeline.gates.bestand_validate` (P-B1).
 - Navigate and scope changes via the ontology index (ADR-005;
   fundstellen are derived, not searched):
   `python -m rechner_pipeline.ontologie.code_index --tests tests`,
@@ -131,9 +131,9 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `$transformiere-quellbestand`.
 - Fachliche Konflikte are PREPARED with `$bereite-fachkonflikt-auf` and
   DECIDED by humans; the actuarial test is prepared with
-  `$aktuartest-durchfuehren` (decision: human gate G-A) and migration
+  `$aktuartest-durchfuehren` (decision: human gate A-M1) and migration
   controlling with `$pruefe-migrationscontrolling` (decision: human
-  gate G-2; G-A precedes G-2).
+  gate A-M4; A-M1 precedes A-M4).
 - For implementation work in `src/`/`tests/`, follow
   `$entwickle-im-zielsystem` (the architecture rules there are
   non-negotiable); code changes during a running migration additionally

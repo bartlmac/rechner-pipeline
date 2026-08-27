@@ -38,7 +38,7 @@ Nicht verhandelbar:
   Menschen und blockiert die Anwendung, bis er entschieden hat (P2).
 - Fehlt der Ziel-Ontologie ein Feld, das die Quelle traegt und das
   fachlich uebernommen werden muesste: STOPP — Ontologie-Erweiterung
-  ist Gate G-T, nie deine Entscheidung.
+  ist Gate A-K1, nie deine Entscheidung.
 - Akteur-Konvention in der Spec: `<modell>/<skill>@<git-sha-kurz>`.
 
 ## Ablauf

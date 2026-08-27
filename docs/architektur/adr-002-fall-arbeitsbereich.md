@@ -36,7 +36,7 @@ Arbeitsbereich mit zwei strikt getrennten Zonen:
 ```
 
 Einschraenkung in v0.1: ``abgeleitet/abox/abox.json`` traegt nach dem
-Gate G-1 auch die menschlichen Diskrepanz-Entscheidungen und ist damit
+Gate A-Q1 auch die menschlichen Diskrepanz-Entscheidungen und ist damit
 nicht mehr frei regenerierbar — bis die Entscheidungs-Wiederanwendung
 aus den P9-Snapshots gebaut ist, gilt: abox.json nicht loeschen.
 

@@ -4,7 +4,7 @@ description: >-
   Run a complete migration case through the ontology pipeline (Stufe 1 Quellen->A-Box
   plus Bestandsabzug->Transformation, Stufe 2 A-Box->Spez->Kern-Parametrierung, Stufe 3
   Golden-Master-Abnahme plus aktuarieller Test und Bestands-Controlling ueber zwei
-  Stichtage), including the human gates G-1/G-A/G-2 and their P9 snapshots. Trigger when the user asks to migrate a new
+  Stichtage), including the human gates A-Q1/A-M1/A-M4 and their P9 snapshots. Trigger when the user asks to migrate a new
   Tarifgeneration or product delivery (Tarifmeldung + Tarifrechner + Bestandsabzug) into the
   kernel, to "einen Migrationsfall durchfuehren/anlegen", or names this skill. Skip for:
   authoring gates (use author-rechner-toolbox-gate) or pure read/analysis questions.
@@ -50,7 +50,7 @@ die PLV uebernimmt den KLV-Bestand (TG2012 -> TG2015).
 
 Er dient AUSSCHLIESSLICH als Formvorlage: Artefakt-FORMATE und
 Verzeichnisstruktur nachschlagen, also wie ein Fragment, eine Spez oder
-ein G-1-Dokument aufgebaut ist. Werte, Lesarten, Zuordnungen oder
+ein A-Q1-Dokument aufgebaut ist. Werte, Lesarten, Zuordnungen oder
 Entscheidungen einer anderen Migration werden NIE uebernommen — jeder
 Fall wird aus seinen eigenen Quellen belegt, auch wenn er dieselbe
 Generation betrifft. Ein Wert, den du nicht in deiner Quelle gefunden
@@ -96,25 +96,25 @@ erraten oder spaeter zur Umgehung einer Gate-Pflicht umetikettieren.
    schreiben ({"<fragment>.json": "<modell>/<skill>@<git-sha>"}), dann
    `python -m rechner_pipeline.gates.abox_merge --fall faelle/<fall> --repo-root .`
    — NIE baue_abox von Hand fuer einen echten Fall: der Merge-Ledger
-   bindet die A-Box an die Fragmente, Gate O1 rechnet die Kette nach.
+   bindet die A-Box an die Fragmente, Gate P-Q3 rechnet die Kette nach.
    Widersprueche werden Diskrepanz-Objekte — erwuenscht.
-5. Gate O1: `python -m rechner_pipeline.gates.abox_validate --fall faelle/<fall> --repo-root .`
+5. Gate P-Q3: `python -m rechner_pipeline.gates.abox_validate --fall faelle/<fall> --repo-root .`
    Blockt bei Coverage-Luecken und offenen Diskrepanzen. Fuer den
    Weiterbau duerfen Diskrepanzen VORLAEUFIG zur Rechner-Lesart
    aufgeloest werden (`loese_diskrepanz_auf(..., vorlaeufig=True)`,
    Begruendung: der GM reproduziert den Rechner; fachliche Entscheidung
-   G-1) — niemals endgueltig durch einen Agenten.
+   A-Q1) — niemals endgueltig durch einen Agenten.
 
 GRENZE DIESER STUFE (bewusst, v0.1 — nenne sie, statt sie zu
 verschweigen): Das QuellFragment traegt PARAMETER, keine FORMELN. Ein
 Widerspruch in der Formel selbst — Meldung und Rechner bestimmen
 dieselbe Groesse verschieden, etwa mit anderer Bezugsgroesse oder
 anderem Index — wird deshalb nie eine Diskrepanz und kann von keinem
-Gate gefunden werden; O3 bleibt gruen, weil er den Rechner reproduziert.
+Gate gefunden werden; P-K1 bleibt gruen, weil er den Rechner reproduziert.
 Die Identitaet der Formeln ist heute menschliche Abnahme gegen den
-Tarifplan (`docs/tarifplaene/`) im Gate G-1. Faellt dir beim Arbeiten
+Tarifplan (`docs/tarifplaene/`) im Gate A-Q1. Faellt dir beim Arbeiten
 eine Formelabweichung auf, gehoert sie ausdruecklich in die
-G-1-Vorlage (Ziffer der Meldung, Rechner-Lesart, Wirkung) — sie als
+A-Q1-Vorlage (Ziffer der Meldung, Rechner-Lesart, Wirkung) — sie als
 "nicht extrahierbar" zu uebergehen waere ein stiller Verlust.
 Begruendung und Ausbaupfad: `docs/architektur/migrations-pipeline-v01.md`
 Abschnitt 8.1.
@@ -124,7 +124,7 @@ Abschnitt 8.1.
 Der Bestandsabzug laeuft NICHT durch die Fragment-Extraktion: Stufe 1
 uebersetzt Tarifgroessen in die A-Box, hier werden Vertraege in das
 Ziel-Datenmodell uebersetzt. Beides ist Stufe 1, weil beides aus einer
-Quelle liest und beides an G-1 haengt.
+Quelle liest und beides an A-Q1 haengt.
 
 1. Vorverdichtung (deterministisch, P10 — der Agent sieht nie die
    Rohdatei):
@@ -148,7 +148,7 @@ Quelle liest und beides an G-1 haengt.
    `(zeilen, befunde)` zurueck und laesst jede Zeile mit Befund WEG —
    wer nur die Zeilen nimmt, migriert stillschweigend weniger
    Vertraege. Zaehle die Klammer laut: Zeilen im Abzug -> transformierte
-   Zeilen -> Befunde, und trag sie in die G-1-Vorlage und den
+   Zeilen -> Befunde, und trag sie in die A-Q1-Vorlage und den
    Abnahmebericht (`--transformation-ergebnis`).
    Das persistierte Ergebnis ist ein JSON-Objekt mit exakt
    `schema_version`, `spec_sha256`, `quelle_sha256`, `quellspalten`,
@@ -161,9 +161,9 @@ Quelle liest und beides an G-1 haengt.
    GENAU eine zu den gelieferten Werten passt, und niemals gegen die
    Meldung — eine verworfene Meldungs-Lesart bleibt immer beim Menschen
    (`bereite-fachkonflikt-auf`).
-5. Offene Konflikte der Spec und die Befundliste gehen mit an G-1. Ein
+5. Offene Konflikte der Spec und die Befundliste gehen mit an A-Q1. Ein
    Ziel-Pflichtfeld, das die Quelle nicht hergibt, ist ein STOPP: die
-   Ziel-Ontologie zu erweitern ist Gate G-T, nie deine Entscheidung.
+   Ziel-Ontologie zu erweitern ist Gate A-K1, nie deine Entscheidung.
 
 Von den transformierten Zeilen zum BESTAND des Zielsystems: `wende_an`
 liefert die VERTRAGSfelder (die Kern-Contract-Seite, `ZIEL_PFLICHT`).
@@ -178,16 +178,16 @@ enthalten — tragen im Stamm KEIN PEX: der Stamm fuehrt den Vertrag bei
 Beginn (`status_code` POL, `status_id` 1), die Beitragsfreistellung ist
 eine Zeile der Statushistorie (`status_id` 2, `status_date` = Datum der
 Beitragsfreistellung). Nur so finden Zeitscheibe und Auswertung den
-beitragsfreien Track und sein PEX-Jahr; ein PEX im Stamm weist Gate B1
+beitragsfreien Track und sein PEX-Jahr; ein PEX im Stamm weist Gate P-B1
 zurueck (`status_code ausserhalb ('POL',)`).
 
 Geschrieben wird deterministisch mit
 `bestand/parquet_io.write_portfolio`. Dieser Zusammenbau ist heute
 fallweiser Code und kein eigenes Modul: leg ihn als Skript in den
 Fall-Arbeitsbereich (`abgeleitet/skripte/`), damit er reproduzierbar
-und pruefbar bleibt, und weise ihn im G-1-Dossier aus.
+und pruefbar bleibt, und weise ihn im A-Q1-Dossier aus.
 
-### Gate G-1 (Mensch — hier STOPPST du und uebergibst)
+### Gate A-Q1 (Mensch — hier STOPPST du und uebergibst)
 
 Vorlegen: `abgeleitet/fachspez/<gen>.md` (Generator:
 `spez.fachspez.speichere_fachspez`), Diskrepanzenliste, Coverage — und,
@@ -197,7 +197,7 @@ Befunde der Anwendung und jede beim Lesen aufgefallene Formelabweichung
 Der Mensch entscheidet mit
 `python -m rechner_pipeline.ontologie.entscheide --rolle mensch ...` und
 snapshottet mit `python -m rechner_pipeline.gates.gate_entscheid
---gate G-1 --rolle mensch --freigabe-schluessel <externe-datei> ...`.
+--gate A-Q1 --rolle mensch --freigabe-schluessel <externe-datei> ...`.
 Der Freigabeschluessel gehoert ausserhalb des Falls und ausserhalb des
 Agentenzugriffs in die Autoritaetsumgebung des Menschen (mindestens 32
 kryptografisch zufaellige Byte, POSIX 0600, genau ein Hardlink). DU liest,
@@ -205,17 +205,17 @@ erzeugst oder kopierst ihn nicht; der Mensch fuehrt den
 Annahmeaufruf aus. Bei Rotation werden alte Schluessel zuerst und der aktive
 zuletzt mit wiederholtem Flag uebergeben. Als Agent darfst du AUSSCHLIESSLICH
 ablehnen (--rolle agent, dokumentierter Zwischenstand). Die Annahme
-rechnet ihre Vorbedingungen: das O1-Ledger ist schema-, Gate-, Command-,
+rechnet ihre Vorbedingungen: das P-Q3-Ledger ist schema-, Gate-, Command-,
 Versions- und hashrollengenau an den aktuellen A-Box-Stand gebunden; P9
 validiert Snapshot-Schema, Vollhash-Dateiname, Freigabesignatur und die
-zyklenfreie Kette mit genau einer Spitze. G-2 verlangt zusaetzlich fuer exakt
-jede Generation der A-Box einen inhaltsadressierten gruenen O3-Beleg desselben
-A-Box- und Systemstands, einen geltenden signierten G-1-Annahme-Snapshot
-   desselben Stands UND einen geltenden signierten G-A-Annahme-Snapshot
-   (aktuarielle Abnahme — G-A geht G-2 zwingend voraus, ADR-010). Die
+zyklenfreie Kette mit genau einer Spitze. A-M4 verlangt zusaetzlich fuer exakt
+jede Generation der A-Box einen inhaltsadressierten gruenen P-K1-Beleg desselben
+A-Box- und Systemstands, einen geltenden signierten A-Q1-Annahme-Snapshot
+   desselben Stands UND einen geltenden signierten A-M1-Annahme-Snapshot
+   (aktuarielle Abnahme — A-M1 geht A-M4 zwingend voraus, ADR-010). Die
    Pflichtbelege werden JE GATE aus dem Scope abgeleitet
-   (`fall.BELEGROLLEN`): Im Scope `bestand` verlangt G-A Testergebnis und
-   Bericht des aktuariellen Tests, G-2 zusaetzlich die Belege fuer B1,
+   (`fall.BELEGROLLEN`): Im Scope `bestand` verlangt A-M1 Testergebnis und
+   Bericht des aktuariellen Tests, A-M4 zusaetzlich die Belege fuer P-B1,
    vollstaendige Suite und Abnahmebericht; ein Scope `tarif` verlangt
    beides nicht.
 
@@ -225,7 +225,7 @@ A-Box- und Systemstands, einen geltenden signierten G-1-Annahme-Snapshot
    + `spez.validierung.speichere_spez`. Das Struktur-Urteil
    (Parametrierung vs. neue Produktfamilie) wird BERECHNET — nimm es
    ernst: `neue_produktfamilie` oder offene Erweiterungsstellen heissen
-   STOPP und Mensch fragen (T-Box-/Kern-Erweiterung ist Gate G-T).
+   STOPP und Mensch fragen (T-Box-/Kern-Erweiterung ist Gate A-K1).
 2. Tafel-Import: `python -m rechner_pipeline.quellen.tafel_import --fall faelle/<fall> --generation <gen-id> --dry-run`,
    pruefen, dann scharf. Konflikte (wertverschiedene Tafeln gleichen
    Namens) sind ein Provenienz-Problem fuer den Menschen.
@@ -236,7 +236,7 @@ A-Box- und Systemstands, einen geltenden signierten G-1-Annahme-Snapshot
 
 ### Stufe 3 — Abnahme
 
-1. Gate O3: `python -m rechner_pipeline.gates.generation_golden --fall faelle/<fall> --generation <gen-id> --repo-root .`
+1. Gate P-K1: `python -m rechner_pipeline.gates.generation_golden --fall faelle/<fall> --generation <gen-id> --repo-root .`
    Prueft vorab, dass die Spez Projektion der A-Box ist, und vergleicht
    den Kern gegen die aus dem Quell-Rechner extrahierten
    Erwartungswerte. Ein gruener Lauf schreibt neben dem Latest-Ledger
@@ -250,31 +250,31 @@ A-Box- und Systemstands, einen geltenden signierten G-1-Annahme-Snapshot
 
 ### Stufe 3b — Pruefung des uebernommenen Bestands (wenn Stufe 1b lief)
 
-O3 nimmt die PARAMETRIERUNG ab, nicht den Bestand. Der uebernommene
+P-K1 nimmt die PARAMETRIERUNG ab, nicht den Bestand. Der uebernommene
 Bestand laeuft durch ZWEI getrennte Pruefebenen mit ZWEI menschlichen
 Gates in erzwungener Reihenfolge (ADR-010):
 
 ZUERST der AKTUARIELLE TEST (Skill `aktuartest-durchfuehren`, Gate
-G-A): je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne
+A-M1): je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne
 Interpolation, ohne Summation — auf einer belegten Stichprobe
 (`qa.stichprobe`, v0: `vollbestand`). Die Engine
 `qa.aktuarieller_test` schreibt das Ergebnis-JSON, das Gate
-`gates.aktuartest` rendert die G-A-Vorlage. Der Verantwortliche Aktuar
-entscheidet G-A (`gate_entscheid --gate G-A`); ohne geltende
-G-A-Annahme ist G-2 unmoeglich.
+`gates.aktuartest` rendert die A-M1-Vorlage. Der Verantwortliche Aktuar
+entscheidet A-M1 (`gate_entscheid --gate A-M1`); ohne geltende
+A-M1-Annahme ist A-M4 unmoeglich.
 
 DANACH das MIGRATIONSCONTROLLING (Skill `pruefe-migrationscontrolling`,
-Gate G-2): der Beweis einer Bestandsmigration endet nicht beim
+Gate A-M4): der Beweis einer Bestandsmigration endet nicht beim
 Stichtags-Foto — das Zielsystem muss den uebernommenen Bestand auch
 FORTSCHREIBEN wie das Quellsystem. Deshalb ueber ZWEI Stichtage und
 ueber JEDEN Vertrag, und deshalb braucht es dafuer den Folge-Abzug und
 das GeVo-Protokoll der Lieferung. Uebergib an die beiden Skills, statt
 die Schritte selbst zu improvisieren:
 
-1. Gate B1 auf den uebernommenen Bestand:
+1. Gate P-B1 auf den uebernommenen Bestand:
    `python -m rechner_pipeline.gates.bestand_validate --portfolio <bestand>.parquet --config <config>.toml --repo-root . --diagnostics-dir faelle/<fall>/abgeleitet/diagnostics
    (trägt der Bestand Folgezustände — `status_id > 1` —, zusätzlich
-   `--historie <journal>.parquet`: B1 prüft den Stammzustand gegen den
+   `--historie <journal>.parquet`: P-B1 prüft den Stammzustand gegen den
    jüngsten Journalstand, ADR-011)`
    (Schema und Invarianten; Historie/Scheiben/Ledger optional
    mitgeben, wenn der Fall sie fuehrt.)
@@ -305,21 +305,21 @@ die Schritte selbst zu improvisieren:
    Ablage mit `--fall`:
    `<fall>/abgeleitet/berichte/migrationsabnahme.html`, Ledger unter
    `<fall>/abgeleitet/diagnostics`. Das gruene
-   `abnahmebericht.gate.json` bindet B1, Suite und HTML-Bericht an Eingang,
-   A-Box, System, den von B1 benannten Bestand und beide Stichtage; ohne diese
-   konsistente Bindung darf G-2 im Bestands-Scope nicht angenommen werden.
+   `abnahmebericht.gate.json` bindet P-B1, Suite und HTML-Bericht an Eingang,
+   A-Box, System, den von P-B1 benannten Bestand und beide Stichtage; ohne diese
+   konsistente Bindung darf A-M4 im Bestands-Scope nicht angenommen werden.
 
-### Gate G-2 (Mensch — hier STOPPST du wieder)
+### Gate A-M4 (Mensch — hier STOPPST du wieder)
 
-`python -m rechner_pipeline.gates.gate_entscheid --gate G-2 --rolle mensch
+`python -m rechner_pipeline.gates.gate_entscheid --gate A-M4 --rolle mensch
 --freigabe-schluessel <externe-datei> ...`
-— uebergeben, nicht selbst entscheiden. G-2 verlangt den geltenden,
-signierten G-A-Snapshot desselben Stands als Vorgaenger und pinnt ihn
-als Rolle `ga_snapshot` (aktuarielle vor finanzieller Abnahme,
-ADR-010). G-2 liest den Scope aus `fall.json`
+— uebergeben, nicht selbst entscheiden. A-M4 verlangt den geltenden,
+signierten A-M1-Snapshot desselben Stands als Vorgaenger und pinnt ihn
+als Rolle `am1_snapshot` (aktuarielle vor finanzieller Abnahme,
+ADR-010). A-M4 liest den Scope aus `fall.json`
 und leitet seine exakte Pflichtbelegmenge je Gate aus dem Fall-Scope ab. Im
 Bestands-Scope werden das Abnahme-Ledger, jedes von ihm gebundene Artefakt und
-das von B1 benannte Portfolio gegen die aktuellen Bytes nachgehasht. B1 und
+das von P-B1 benannte Portfolio gegen die aktuellen Bytes nachgehasht. P-B1 und
 Suite werden semantisch erneut validiert; der HTML-Bericht wird aus der Suite
 deterministisch neu gerendert und bytegenau verglichen. Vorgelegt wird alles
 vollstaendig, ohne Stichproben-Beschoenigung.
@@ -334,7 +334,7 @@ vollstaendig, ohne Stichproben-Beschoenigung.
 - Ein bestehender Charakterisierungstest des Kerns (eingefrorene Referenzwerte) wird rot.
 - Ein Ziel-Pflichtfeld der Transformation ist aus dem Abzug nicht
   ableitbar, oder die Quelle traegt ein fachlich uebernahmepflichtiges
-  Merkmal, fuer das die Ziel-Ontologie kein Feld hat (Gate G-T).
+  Merkmal, fuer das die Ziel-Ontologie kein Feld hat (Gate A-K1).
 - Die Controlling-Suite (`qa.migrationssuite`) oder der aktuarielle
   Test melden Befunde zur Konsistenz der Lieferung
   (fehlende Vertraege ohne Abgangs-GeVo, unbekannte GeVo-Arten) — das

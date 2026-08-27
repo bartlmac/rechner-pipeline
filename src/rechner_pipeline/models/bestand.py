@@ -272,7 +272,7 @@ def validate_portfolio(df: Any) -> List[str]:
     # traegt den AKTUELLEN Zustand. status_id 1 ist der Ursprungssatz und
     # unterliegt der strengen Ursprungsregel (POL am Versicherungsbeginn);
     # hoehere status_id sind gebuchte Folgezustaende — ihre Deckung mit dem
-    # Journal prueft validate_stamm_journal (Gate B1 erzwingt sie).
+    # Journal prueft validate_stamm_journal (Gate P-B1 erzwingt sie).
     if (df["status_id"] < 1).any():
         errors.append("status_id < 1")
     if not df["status_code"].isin(STATUS_CODE_VALUES).all():
@@ -404,7 +404,7 @@ def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
     grenzen = stamm.set_index("police_id")[["insurance_start", "insurance_end"]]
     # Altbestaende (Parquet vor der Produkt-Einfuehrung) haben die Spalte
     # nicht; validate_portfolio meldet das praezise, hier darf es keinen
-    # KeyError geben — sonst endet Gate B1 als internal_error statt als
+    # KeyError geben — sonst endet Gate P-B1 als internal_error statt als
     # Contract-Fehler.
     produkt_je_police = (
         stamm.set_index("police_id")["produkt"]

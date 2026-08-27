@@ -119,7 +119,7 @@ Das Migrationscontrolling misst am **Migrationsstichtag $t_0$** gegen
 die Bilanz: Ist der Bestand vollständig übernommen, stimmen die Werte
 zum Übernahmezeitpunkt, und schreibt das Zielsystem ihn danach fort wie
 das Quellsystem? Es ist die **zweite** Prüfebene; die methodische Güte
-prüft zuvor die aktuarielle Abnahme (Kapitel 7, Gate G-A).
+prüft zuvor die aktuarielle Abnahme (Kapitel 7, Gate A-M1).
 
 Der Beweis endet nicht beim Stichtags-Foto. Ein Zielsystem, das den
 übernommenen Bestand am $t_0$ trifft, ihn danach aber anders
@@ -177,7 +177,7 @@ wird.
    Fehlschläge, die Transformations-Mapping-Tabelle und die Verweise auf
    die Bestandsberichte vor und nach der Migration.
 3. **Die Gate-Belege**: das Schema- und Invariantenprotokoll des
-   übernommenen Bestands (Gate B1) und das Protokoll des
+   übernommenen Bestands (Gate P-B1) und das Protokoll des
    Berichtslaufs.
 
 Auch hier gilt: Der Bericht rechnet keine Fachwerte, sondern leitet
@@ -190,7 +190,7 @@ Gate-Belegen sind **Transport- und Provenienzsicherung**: Sie belegen,
 dass alle Nachweise denselben Stand meinen — sie ersetzen kein
 fachliches Urteil.
 
-### 6.5 Gate G-2: der Entscheid
+### 6.5 Gate A-M4: der Entscheid
 
 Die Abnahme ist ein menschlicher Entscheid der Projektleitung auf
 Grundlage des Berichts; ein grüner Berichtslauf heißt „Vorlage
@@ -198,9 +198,9 @@ vollständig", nicht „abgenommen". Der Entscheid wird als signierter
 Snapshot festgehalten und pinnt die Pflichtbelege, die sich aus dem
 **Fall-Scope** ergeben:
 
-| Scope | Pflichtbelege von G-2 |
+| Scope | Pflichtbelege von A-M4 |
 |---|---|
-| Tarif | O1-Protokoll, geltender G-1-Snapshot, **geltender G-A-Snapshot**, O3-Belege je Generation |
+| Tarif | P-Q3-Protokoll, geltender A-Q1-Snapshot, **geltender A-M1-Snapshot**, P-K1-Belege je Generation |
 | Bestand | zusätzlich Bestandsprotokoll, vollständige Prüfrechnung, Abnahmebericht |
 
 Die Annahme rechnet ihre Voraussetzungen nach: Sie hasht die
@@ -209,8 +209,8 @@ Prüfrechnung und Bestandsprotokoll erneut und erzeugt den Bericht aus
 der Prüfrechnung deterministisch nach, um ihn zeichengenau zu
 vergleichen.
 
-**Ohne geltende aktuarielle Abnahme (G-A) ist ein G-2-Entscheid
-unmöglich** (Kapitel 7.7). Eine Ablehnung an G-2 führt zurück in die
+**Ohne geltende aktuarielle Abnahme (A-M1) ist ein A-M4-Entscheid
+unmöglich** (Kapitel 7.7). Eine Ablehnung an A-M4 führt zurück in die
 Analyse; die Kette bildet das als neue Snapshots ab.
 
 ### 6.6 Deckungsgrad gegenüber Grundsatzdokumentation 9.15
@@ -242,7 +242,7 @@ am Übernahmestichtag in Summe?") ist Gegenstand des
 Migrationscontrollings (Kapitel 6).
 
 Die Trennung ist bewusst und in der Reihenfolge bindend: **Die
-aktuarielle Abnahme (Gate G-A) geht der Migrationsabnahme (Gate G-2)
+aktuarielle Abnahme (Gate A-M1) geht der Migrationsabnahme (Gate A-M4)
 voraus.** Eine finanzielle Abnahme des Gesamtbestands vor dem Nachweis
 methodischer Güte nähme etwas ab, dessen Grundlage noch offen ist. Die
 Reihenfolge ist technisch erzwungen, nicht empfohlen (7.7).
@@ -358,7 +358,7 @@ gegen die Stichprobe und sämtliche Verteilungsgrößen werden
 nachgerechnet. Eine grüne Zusammenfassung über einem roten
 Einzelvergleich ist damit ausgeschlossen.
 
-### 7.7 Gate G-A: der Entscheid
+### 7.7 Gate A-M1: der Entscheid
 
 Der Test **entscheidet nichts**. Die aktuarielle Abnahme ist ein
 menschlicher Entscheid des **Verantwortlichen Aktuars** (Grundsatzdokumentation 9.15,
@@ -377,11 +377,11 @@ festgehalten (ADR-008). Dabei gilt:
 * Eine **Ablehnung ist jederzeit möglich** und ebenso ein Snapshot —
   auch über einem roten Test. Ein Agent kann an diesem Gate
   ausschließlich ablehnen.
-* **Gate G-2 verlangt die geltende G-A-Annahme** auf demselben Eingangs-,
+* **Gate A-M4 verlangt die geltende A-M1-Annahme** auf demselben Eingangs-,
   A-Box- und Systemstand und pinnt sie als Pflichtbeleg. Ändert sich der
-  Stand, ist die G-A-Annahme nicht mehr geltend — der Test wird auf dem
+  Stand, ist die A-M1-Annahme nicht mehr geltend — der Test wird auf dem
   neuen Stand wiederholt und neu entschieden.
-* Die **Rückschleife ist zulässig**: Eine Ablehnung an G-2 führt zurück
+* Die **Rückschleife ist zulässig**: Eine Ablehnung an A-M4 führt zurück
   in Analyse und ggf. erneuten Test; die Kette bildet das als neue
   Snapshots ab. Unzulässig bleibt allein die Umkehrung der Reihenfolge.
 
@@ -396,7 +396,7 @@ vollständig ab. **Nicht** abgedeckt sind:
   die GV-Testmatrix je Vertragskonstellations-Cluster gibt es auf dieser
   Prüfebene nicht. Grundsatzdokumentation 9.15 ist hier eindeutig: *„Ohne Verlaufstests gilt
   die Methode als nicht abgenommen; Stichtagstreue allein ist notwendig,
-  nicht hinreichend."* Eine G-A-Annahme auf dem heutigen Stand belegt
+  nicht hinreichend."* Eine A-M1-Annahme auf dem heutigen Stand belegt
   also die Stichtagstreue am Rechenpunkt — sie ersetzt die Verlaufstests
   nicht und darf nicht als deren Erfüllung gelesen werden.
 * **Toleranzen auf der Verteilung als Urteilskriterium.** Die Verteilung

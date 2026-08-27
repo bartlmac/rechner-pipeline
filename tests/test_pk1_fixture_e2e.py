@@ -1,4 +1,4 @@
-"""Pflicht-E2E fuer das versionierte, anonymisierte O3-/G-2-Fixture.
+"""Pflicht-E2E fuer das versionierte, anonymisierte P-K1-/A-M4-Fixture.
 
 Diese Tests duerfen nicht skippen: fehlt das Fixture oder weicht seine
 Quellbindung ab, ist das ein harter Testfehler. Der positive Pfad und die
@@ -20,17 +20,17 @@ import tests.e2e_fixture as fixture_mod
 from tests.e2e_fixture import (
     O3_GENERATION,
     REPO_ROOT,
-    bereite_o3_fall,
-    lade_o3_fixture,
+    bereite_pk1_fall,
+    lade_pk1_fixture,
 )
-from rechner_pipeline.gates.generation_golden import main as o3
+from rechner_pipeline.gates.generation_golden import main as pk1
 from rechner_pipeline.quellen.formeln import pruefe_ratzu_staffeln
 from rechner_pipeline.quellen.vorverdichtung import verzeichnis_der_generation
 from rechner_pipeline.spez.validierung import spez_pfad
 
 
 def _o3(fall: Path):
-    return o3([
+    return pk1([
         "--fall", str(fall),
         "--generation", O3_GENERATION,
         "--repo-root", str(REPO_ROOT),
@@ -38,12 +38,12 @@ def _o3(fall: Path):
 
 
 def test_versioniertes_fixture_ist_vollstaendig_und_quellgebunden():
-    fixture = lade_o3_fixture()
+    fixture = lade_pk1_fixture()
     assert fixture.generation == O3_GENERATION
     assert fixture.quelle.is_file()
     assert fixture.quelle.parent == fixture_mod.FIXTURE_PFAD.parent
     assert len(fixture.quelle_sha256) == 64
-    assert fixture.fall == "anonymisierter-o3-g2-testfall"
+    assert fixture.fall == "anonymisierter-pk1-am4-testfall"
 
     with ZipFile(fixture.quelle) as paket:
         kern_metadaten = ElementTree.fromstring(
@@ -78,7 +78,7 @@ def test_fehlendes_pflicht_fixture_ist_harter_fehler(
     monkeypatch.setattr(fixture_mod, "FIXTURE_PFAD", fehlend)
 
     with pytest.raises(AssertionError, match="Pflicht-Fixture fehlt"):
-        fixture_mod.lade_o3_fixture()
+        fixture_mod.lade_pk1_fixture()
 
 
 def test_hashdrift_der_fixture_quelle_ist_harter_fehler(
@@ -89,7 +89,7 @@ def test_hashdrift_der_fixture_quelle_ist_harter_fehler(
         fixture_mod.FIXTURE_PFAD.read_text(encoding="utf-8")
     )
     quelle = tmp_path / "synthetische-quelle.xlsm"
-    quelle.write_bytes(lade_o3_fixture().quelle.read_bytes() + b"manipuliert")
+    quelle.write_bytes(lade_pk1_fixture().quelle.read_bytes() + b"manipuliert")
     fixture_roh["quelle"]["datei"] = quelle.name
     fixture_pfad = tmp_path / "fixture.json"
     fixture_pfad.write_text(
@@ -98,13 +98,13 @@ def test_hashdrift_der_fixture_quelle_ist_harter_fehler(
     monkeypatch.setattr(fixture_mod, "FIXTURE_PFAD", fixture_pfad)
 
     with pytest.raises(AssertionError, match="versionierten SHA-256"):
-        fixture_mod.lade_o3_fixture()
+        fixture_mod.lade_pk1_fixture()
 
 
 def test_ratzu_extraktion_des_fixtures_haelt_dem_rueckcheck_stand(
     tmp_path: Path,
 ):
-    fall = bereite_o3_fall(tmp_path)
+    fall = bereite_pk1_fall(tmp_path)
     pruefung = pruefe_ratzu_staffeln(fall, O3_GENERATION)
 
     assert pruefung.status == "geprueft"
@@ -114,8 +114,8 @@ def test_ratzu_extraktion_des_fixtures_haelt_dem_rueckcheck_stand(
     assert pruefung.blatt == "Kalkulation"
 
 
-def test_gate_o3_blockt_ohne_verlaufswerte(tmp_path: Path):
-    fall = bereite_o3_fall(tmp_path)
+def test_gate_pk1_blockt_ohne_verlaufswerte(tmp_path: Path):
+    fall = bereite_pk1_fall(tmp_path)
     verlaufswerte = (
         verzeichnis_der_generation(fall, O3_GENERATION)
         / "Kalkulation_table_values.csv"
@@ -130,8 +130,8 @@ def test_gate_o3_blockt_ohne_verlaufswerte(tmp_path: Path):
     assert json.loads(ledger.read_text(encoding="utf-8"))["status"] == "failed"
 
 
-def test_gate_o3_blockt_manipulierte_spez(tmp_path: Path):
-    fall = bereite_o3_fall(tmp_path)
+def test_gate_pk1_blockt_manipulierte_spez(tmp_path: Path):
+    fall = bereite_pk1_fall(tmp_path)
     pfad = spez_pfad(fall, O3_GENERATION)
     spez = json.loads(pfad.read_text(encoding="utf-8"))
     for zelle in spez["zellen"]:
@@ -144,9 +144,9 @@ def test_gate_o3_blockt_manipulierte_spez(tmp_path: Path):
     assert any(fehler["code"] == "spez_projektion" for fehler in result.errors)
 
 
-def test_gate_o3_mit_versioniertem_fixture_besteht(tmp_path: Path):
-    fixture = lade_o3_fixture()
-    result = _o3(bereite_o3_fall(tmp_path))
+def test_gate_pk1_mit_versioniertem_fixture_besteht(tmp_path: Path):
+    fixture = lade_pk1_fixture()
+    result = _o3(bereite_pk1_fall(tmp_path))
 
     assert result.exit_code == 0, result.errors
     assert result.summary["werte_verglichen"] == fixture.erwartung[

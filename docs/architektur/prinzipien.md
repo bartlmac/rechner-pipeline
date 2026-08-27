@@ -2,7 +2,7 @@
 
 Die normative Grundlage des Systems (beschlossen in der
 Architektur-Fragerunde 2026-08-14, hier team-sichtbar in Vollform).
-Nicht verhandelbar; Aenderungen sind ein G-T-artiger Vorgang mit
+Nicht verhandelbar; Aenderungen sind ein A-K1-artiger Vorgang mit
 Bartek.
 
 **P1 — Provenance auf Attributebene.** Jede Aussage in der A-Box
@@ -53,21 +53,21 @@ Abschnitt 8.)
 Gate schreibt einen inhaltsadressierten Snapshot: Artefakt-Hashes,
 Systemstand, Entscheider, Rolle, Begruendung; Snapshots verketten
 ihre Vorgaenger. Die Annahme RECHNET ihre Vorbedingungen (Gates gruen
-und an denselben Stand gebunden). Gate O3 schreibt entsprechend einen
-inhaltsadressierten Beleg je Generation. G-2 verlangt genau die
+und an denselben Stand gebunden). Gate P-K1 schreibt entsprechend einen
+inhaltsadressierten Beleg je Generation. A-M4 verlangt genau die
 Generationenmenge der aktuellen A-Box und gleicht A-Box- sowie Systemstand
 jedes Belegs ab. Eine menschliche Annahme wird mit einem ausserhalb des Falls
 verwahrten HMAC-Schluessel autorisiert. P9 validiert beim Lesen Schema,
 vollstaendigen kanonischen Hash, daraus abgeleiteten Dateinamen, Signatur und
 den zyklenfreien Vorgaengergraph mit genau einer Spitze (ADR-008).
 Der Fall-Scope bestimmt die Pflichtbelege JE GATE (ADR-009 mit
-ADR-010-Nachtrag): G-2 verlangt in beiden Scopes O1, G-1, die geltende
-G-A-Annahme (Rolle ``ga_snapshot`` — aktuarielle vor finanzieller
-Abnahme) und O3; Bestandsfaelle binden zusaetzlich B1, vollstaendige
+ADR-010-Nachtrag): A-M4 verlangt in beiden Scopes P-Q3, A-Q1, die geltende
+A-M1-Annahme (Rolle ``am1_snapshot`` — aktuarielle vor finanzieller
+Abnahme) und P-K1; Bestandsfaelle binden zusaetzlich P-B1, vollstaendige
 Suite und Abnahmebericht auf denselben Eingangs-, A-Box-, System- und
-Zwei-Stichtagsstand. G-A verlangt im Bestands-Scope Testergebnis und
-Bericht des aktuariellen Tests, im Tarif-Scope keine eigenen Rollen. G-2 hasht ihre aktuellen Bytes und das von B1 benannte
-Portfolio neu, fuehrt die B1-Engines erneut aus und rendert den Abnahmebericht
+Zwei-Stichtagsstand. A-M1 verlangt im Bestands-Scope Testergebnis und
+Bericht des aktuariellen Tests, im Tarif-Scope keine eigenen Rollen. A-M4 hasht ihre aktuellen Bytes und das von P-B1 benannte
+Portfolio neu, fuehrt die P-B1-Engines erneut aus und rendert den Abnahmebericht
 zum Bytevergleich deterministisch neu (ADR-009).
 
 **P10 — Kontext ist Architekturgegenstand.** Uebergaben zwischen

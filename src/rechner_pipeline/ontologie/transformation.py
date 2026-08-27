@@ -48,7 +48,7 @@ from pydantic import BaseModel, ConfigDict, Field
 #: Geschlecht tarif-wirkungslos, nicht entbehrlich — der Bestand fuehrt es
 #: weiter fuer Nachweisung, Folgebewertung und spaetere geschlechts-
 #: abhaengige Generationen. Fehlt der Lieferung eine Geschlechtsspalte,
-#: ist das ein Befund fuer den Menschen (G-1), keine stille Auslassung.
+#: ist das ein Befund fuer den Menschen (A-Q1), keine stille Auslassung.
 ZIEL_PFLICHT: Tuple[str, ...] = (
     "police_id", "beginn", "entry_age", "sex", "duration",
     "premium_duration", "sum_insured", "zahlweise", "status", "tarifart",
@@ -195,7 +195,7 @@ def validate_spec(
         if ziel not in ZIEL_PFLICHT + ZIEL_OPTIONAL:
             fehler.append(
                 f"unbekanntes Zielfeld {ziel!r} — die Ziel-Ontologie "
-                "kennt es nicht (Erweiterung waere Gate G-T)"
+                "kennt es nicht (Erweiterung waere Gate A-K1)"
             )
         if ziele.count(ziel) > 1:
             fehler.append(f"Zielfeld {ziel!r} ist mehrfach gemappt")

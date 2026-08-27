@@ -1,8 +1,8 @@
-# Anonymisiertes O3-/G-2-Pflicht-Fixture
+# Anonymisiertes P-K1-/A-M4-Pflicht-Fixture
 
 `fixture.json` beschreibt den kleinsten fachlichen Fall, der den echten
-Extraktions-, O1-, O3- und G-2-Pfad traegt. Die Quelle ist das synthetische,
-eingecheckte Workbook `o3_g2_anonymisiert.xlsm` im selben Verzeichnis; sein
+Extraktions-, P-Q3-, P-K1- und A-M4-Pfad traegt. Die Quelle ist das synthetische,
+eingecheckte Workbook `pk1_am4_anonymisiert.xlsm` im selben Verzeichnis; sein
 voller SHA-256 ist Bestandteil des Fixtures. Die Kopie enthaelt weder
 `cp:lastModifiedBy` noch `x15ac:absPath` oder externe Office-Relationships,
 damit keine Personen-/Kontokennung und kein Herkunftspfad mitversioniert wird.

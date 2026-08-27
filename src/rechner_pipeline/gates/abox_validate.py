@@ -1,4 +1,4 @@
-"""``abox_validate`` gate command — Gate O1 (A-Box-Contract + Coverage).
+"""``abox_validate`` gate command — Gate P-Q3 (A-Box-Contract + Coverage).
 
 Prueft die A-Box eines Fall-Arbeitsbereichs:
 
@@ -8,7 +8,7 @@ Prueft die A-Box eines Fall-Arbeitsbereichs:
 * Coverage gegen den PFLICHTUMFANG der T-Box je Parametrierungszelle
   (P6) — eine unvollstaendige A-Box blockiert Stage 2,
 * offene Diskrepanzen (P2) — sie blockieren ebenfalls: die Aufloesung
-  ist ein menschlicher Vorgang (Gate G-1), kein Durchwinken.
+  ist ein menschlicher Vorgang (Gate A-Q1), kein Durchwinken.
 
 Blocking failures exit ``20`` (``Exit.FILE_CONTRACT``); Usage-Fehler
 exit ``2``. Schreibt den ``abox_validate.gate.json``-Ledger-Eintrag wie
@@ -46,7 +46,7 @@ from rechner_pipeline.gates._common import (
     utc_now,
 )
 
-GATE = "O1.abox-contract"
+GATE = "P-Q3.fachliche-pruefung"
 GATE_VERSION = "0.3.0"
 CLI_CONTRACT = GateCliContract(
     command="abox_validate",
@@ -63,7 +63,7 @@ def _build_parser() -> GateArgumentParser:
         gate_contract=CLI_CONTRACT,
         prog="python -m rechner_pipeline.gates.abox_validate",
         description=(
-            "Gate O1: A-Box eines Falls gegen T-Box-Contract, "
+            "Gate P-Q3: A-Box eines Falls gegen T-Box-Contract, "
             "Eingang-Register und Pflicht-Coverage pruefen."
         ),
     )
@@ -129,7 +129,7 @@ def main(argv: Optional[List[str]] = None):
         ])
 
     # Stabile Rollenschluessel statt zufaelliger absoluter Temp-Pfade: P9
-    # bindet O1 genau an diese beiden Eingaben und darf den A-Box-SHA nicht
+    # bindet P-Q3 genau an diese beiden Eingaben und darf den A-Box-SHA nicht
     # unter irgendeinem frei waehlbaren Hash-Key akzeptieren.
     input_hashes = {
         "eingang.json": hash_files([register_pfad], base=fall)["eingang.json"],
@@ -212,7 +212,7 @@ def main(argv: Optional[List[str]] = None):
             "code": "diskrepanzen_offen",
             "message": (
                 f"{len(offene)} offene Diskrepanz(en) — Aufloesung ist ein "
-                "menschlicher Vorgang (Gate G-1): " + ", ".join(offene)
+                "menschlicher Vorgang (Gate A-Q1): " + ", ".join(offene)
             ),
         })
 

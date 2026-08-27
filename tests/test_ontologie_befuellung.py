@@ -1,4 +1,4 @@
-"""Stage 1: Fragment -> A-Box (deterministischer Merge) + Gate O1.
+"""Stage 1: Fragment -> A-Box (deterministischer Merge) + Gate P-Q3.
 
 Knoten: klv
 """
@@ -142,7 +142,7 @@ def test_aufloesung_waehlt_lesart_und_zieht_aussage_nach(fall: Path):
 
 
 # --------------------------------------------------------------------------- #
-# Gate O1
+# Gate P-Q3
 # --------------------------------------------------------------------------- #
 
 
@@ -181,7 +181,7 @@ def test_gate_blockt_luecken_und_offene_diskrepanzen(fall: Path):
     assert result.exit_code == 20
     codes = {e["code"] for e in result.errors}
     assert "coverage" in codes            # Pflichtumfang nicht belegt
-    assert "diskrepanzen_offen" in codes  # Aufloesung ist menschlich (G-1)
+    assert "diskrepanzen_offen" in codes  # Aufloesung ist menschlich (A-Q1)
 
 
 def test_gate_blockt_manipulierten_eingang(fall: Path):

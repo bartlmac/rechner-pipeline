@@ -1,4 +1,4 @@
-"""``generation_golden`` gate command — Gate O3 (Generations-Golden-Master).
+"""``generation_golden`` gate command — Gate P-K1 (Generations-Golden-Master).
 
 DER Abnahme-Test einer migrierten Tarifgeneration: der stabile Kern,
 parametriert ueber die Tarif-Spez des Falls (Projektion der A-Box),
@@ -52,7 +52,7 @@ from rechner_pipeline.gates._common import (
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GATE,
     O3_BELEG_GATE_VERSION,
-    schreibe_o3_beleg,
+    schreibe_pk1_beleg,
     systemstand,
 )
 from rechner_pipeline.qa.golden_master import ROUND_DECIMALS, compare, load_expected
@@ -140,7 +140,7 @@ def main(argv: Optional[List[str]] = None):
         gate_contract=CLI_CONTRACT,
         prog="python -m rechner_pipeline.gates.generation_golden",
         description=(
-            "Gate O3: Kern (parametriert ueber die Tarif-Spez) gegen die "
+            "Gate P-K1: Kern (parametriert ueber die Tarif-Spez) gegen die "
             "aus dem Quell-Rechner extrahierten Erwartungswerte."
         ),
     )
@@ -172,7 +172,7 @@ def main(argv: Optional[List[str]] = None):
     def _finalize(result):
         if result.status == "passed":
             try:
-                beleg = schreibe_o3_beleg(
+                beleg = schreibe_pk1_beleg(
                     diagnostics_dir,
                     gate_version=result.gate_version,
                     status=result.status,
@@ -183,18 +183,18 @@ def main(argv: Optional[List[str]] = None):
                     input_hashes=result.input_hashes,
                     summary=result.summary,
                 )
-                result.paths["o3_beleg"] = str(beleg)
+                result.paths["pk1_beleg"] = str(beleg)
             except Exception as exc:  # noqa: BLE001 - Beweis muss gelingen
-                log(f"generation_golden: O3-Beleg write failed: {exc}")
+                log(f"generation_golden: P-K1-Beleg write failed: {exc}")
                 result = build_result(
                     command="generation_golden",
                     gate=GATE,
                     gate_version=GATE_VERSION,
                     exit_code=Exit.FILE_CONTRACT,
                     errors=[{
-                        "code": "o3_beleg",
+                        "code": "pk1_beleg",
                         "message": (
-                            "Gruener O3-Lauf ohne unveraenderlichen Beleg "
+                            "Gruener P-K1-Lauf ohne unveraenderlichen Beleg "
                             f"ist nicht abnahmefaehig: {exc}"
                         ),
                     }],
@@ -318,7 +318,7 @@ def main(argv: Optional[List[str]] = None):
     # Quellsystem (Blattname -> Dateistamm der abgeleiteten Artefakte).
     # Hart verdrahtet war hier "Kalkulation"; ein anders benanntes Blatt
     # lief damit in eine irrefuehrende Coverage-Meldung statt in den
-    # Vergleich (Review-Befund, dieselbe Ursache wie in Gate O1).
+    # Vergleich (Review-Befund, dieselbe Ursache wie in Gate P-Q3).
     try:
         blatt = lies_vorverdichtung(vorverdichtung).kalkulationsblatt
     except (VorverdichtungFehlt, VorverdichtungFehler) as exc:
@@ -422,7 +422,7 @@ def main(argv: Optional[List[str]] = None):
     )
     try:
         verwendeter_systemstand = systemstand(repo_root)
-    except Exception as exc:  # Beweisprovenienz ist Teil des O3-Contracts
+    except Exception as exc:  # Beweisprovenienz ist Teil des P-K1-Contracts
         return _contract_fehler(
             "systemstand", f"Systemstand nicht bestimmbar: {exc}"
         )
@@ -459,7 +459,7 @@ def main(argv: Optional[List[str]] = None):
                "vorverdichtung": str(vorverdichtung)},
         summary=summary,
         input_hashes={
-            # Stabiler Rollenschluessel: G-2 kann ohne Pfadheuristik den
+            # Stabiler Rollenschluessel: A-M4 kann ohne Pfadheuristik den
             # SHA der tatsaechlich geparsten A-Box pruefen.
             "abgeleitet/abox/abox.json": abox_sha256,
             **hash_files(

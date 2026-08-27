@@ -1,7 +1,7 @@
 """Negativvertraege fuer Ledger, P9-Kette und menschliche Freigabe.
 
-Die Tests bauen eine vollstaendige synthetische A-Box, echtes O1 und einen
-schema-validen O3-Beleg.  G-2 erreicht dadurch wirklich den G-1-Lesepfad;
+Die Tests bauen eine vollstaendige synthetische A-Box, echtes P-Q3 und einen
+schema-validen P-K1-Beleg.  A-M4 erreicht dadurch wirklich den A-Q1-Lesepfad;
 manipulierte Snapshots duerfen nicht schon an einer irrelevanten fehlenden
 Vorbedingung scheitern.
 
@@ -22,11 +22,11 @@ from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates import gate_entscheid
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GATE_VERSION,
-    schreibe_o3_beleg,
+    schreibe_pk1_beleg,
     systemstand,
 )
 from rechner_pipeline.gates._common import load_gate_ledger, run_command
-from rechner_pipeline.gates.abox_validate import main as o1
+from rechner_pipeline.gates.abox_validate import main as pq3
 from rechner_pipeline.kern.model_point import KLV_DEFAULT
 from rechner_pipeline.models.schemas import P9Snapshot, p9_snapshot_sha256
 from rechner_pipeline.ontologie.abox import speichere
@@ -65,7 +65,7 @@ def _fall(tmp_path: Path) -> Path:
         quelle_datei=quelle.datei,
         quelle_sha256=quelle.sha256,
         fundstelle="Kalkulation!A1",
-        akteur="test/g2-manipulationsschutz@abc1234",
+        akteur="test/am4-manipulationsschutz@abc1234",
         erhoben_am=ZEIT,
     )
     modellpunkt = asdict(KLV_DEFAULT)
@@ -86,7 +86,7 @@ def _fall(tmp_path: Path) -> Path:
         )],
     )
     speichere(abox, fall)
-    assert o1(["--fall", str(fall), "--repo-root", str(REPO_ROOT)]).exit_code == 0
+    assert pq3(["--fall", str(fall), "--repo-root", str(REPO_ROOT)]).exit_code == 0
     return fall
 
 
@@ -109,7 +109,7 @@ def _o3_beleg(fall: Path) -> None:
     abox_pfad = fall / "abgeleitet" / "abox" / "abox.json"
     abox_hash = sha256(abox_pfad.read_bytes()).hexdigest()
     stand = systemstand(REPO_ROOT)
-    schreibe_o3_beleg(
+    schreibe_pk1_beleg(
         fall / "abgeleitet" / "diagnostics",
         gate_version=O3_BELEG_GATE_VERSION,
         status="passed",
@@ -129,20 +129,20 @@ def _o3_beleg(fall: Path) -> None:
 def _bereit_fuer_g2(tmp_path: Path) -> tuple[Path, Path, Path]:
     fall = _fall(tmp_path)
     key = _schluessel(tmp_path / "p9.key")
-    g1 = _p9(fall, key, "G-1")
-    assert g1.exit_code == 0
-    # G-A geht G-2 voraus (ADR-010); der Manipulationsschutz-Fall ist
-    # tarif-Scope, dort traegt G-A keine eigenen Belegrollen.
-    assert _p9(fall, key, "G-A").exit_code == 0
+    aq1 = _p9(fall, key, "A-Q1")
+    assert aq1.exit_code == 0
+    # A-M1 geht A-M4 voraus (ADR-010); der Manipulationsschutz-Fall ist
+    # tarif-Scope, dort traegt A-M1 keine eigenen Belegrollen.
+    assert _p9(fall, key, "A-M1").exit_code == 0
     _o3_beleg(fall)
-    return fall, key, Path(g1.paths["snapshot"])
+    return fall, key, Path(aq1.paths["snapshot"])
 
 
 @pytest.mark.parametrize(
     "manipulation",
     ["minimal", "gate", "command", "version", "required_typ", "hash_key"],
 )
-def test_annahme_lehnt_manipulierten_o1_ledger_ab(
+def test_annahme_lehnt_manipulierten_pq3_ledger_ab(
     tmp_path: Path, manipulation: str
 ) -> None:
     fall = _fall(tmp_path)
@@ -157,7 +157,7 @@ def test_annahme_lehnt_manipulierten_o1_ledger_ab(
             ).hexdigest()},
         }
     elif manipulation == "gate":
-        daten["gate"] = "O3.generation-golden-master"
+        daten["gate"] = "P-K1.generations-golden-master"
     elif manipulation == "command":
         daten["command"] = "generation_golden"
     elif manipulation == "version":
@@ -170,16 +170,16 @@ def test_annahme_lehnt_manipulierten_o1_ledger_ab(
         )
     ledger.write_text(json.dumps(daten), encoding="utf-8")
 
-    result = _p9(fall, key, "G-1")
+    result = _p9(fall, key, "A-Q1")
 
     assert result.exit_code == 20
     assert result.errors[0]["code"] == "vorbedingung"
     assert "Ledger-/Provenienzvertrag" in result.errors[0]["message"]
-    assert list((fall / "entscheide").glob("G-1-*.json")) == []
+    assert list((fall / "entscheide").glob("A-Q1-*.json")) == []
 
 
 @pytest.mark.parametrize("manipulation", ["inhalt", "dateiname", "signatur"])
-def test_g2_lehnt_manipulierten_g1_snapshot_ab(
+def test_am4_lehnt_manipulierten_aq1_snapshot_ab(
     tmp_path: Path, manipulation: str
 ) -> None:
     fall, key, snapshot_pfad = _bereit_fuer_g2(tmp_path)
@@ -188,20 +188,20 @@ def test_g2_lehnt_manipulierten_g1_snapshot_ab(
         daten["begruendung"] = "nachtraeglich geschoent"
         snapshot_pfad.write_text(json.dumps(daten), encoding="utf-8")
     elif manipulation == "dateiname":
-        snapshot_pfad.rename(snapshot_pfad.with_name(f"G-1-{'f' * 64}.json"))
+        snapshot_pfad.rename(snapshot_pfad.with_name(f"A-Q1-{'f' * 64}.json"))
     else:
         daten["freigabe"]["signatur"] = "0" * 64
         daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
         neu = snapshot_pfad.with_name(
-            gate_entscheid._snapshot_dateiname("G-1", daten["snapshot_sha256"])
+            gate_entscheid._snapshot_dateiname("A-Q1", daten["snapshot_sha256"])
         )
         snapshot_pfad.unlink()
         neu.write_text(json.dumps(daten), encoding="utf-8")
 
-    result = _p9(fall, key, "G-2")
+    result = _p9(fall, key, "A-M4")
 
     assert result.exit_code == 20
-    assert "G-1-Snapshot-Vertrag verletzt" in result.errors[0]["message"]
+    assert "A-Q1-Snapshot-Vertrag verletzt" in result.errors[0]["message"]
     if manipulation == "signatur":
         assert "Freigabesignatur" in result.errors[0]["message"]
 
@@ -242,7 +242,7 @@ def test_p9_schema_verweigert_agenten_annahme_im_lesepfad(
 @pytest.mark.parametrize(
     "ungueltiger_wert", [{}, []], ids=["objekt", "liste"]
 )
-def test_g2_lehnt_nichtskalaren_vorgaenger_kontrolliert_ab(
+def test_am4_lehnt_nichtskalaren_vorgaenger_kontrolliert_ab(
     tmp_path: Path, ungueltiger_wert: object
 ) -> None:
     fall, key, snapshot_pfad = _bereit_fuer_g2(tmp_path)
@@ -253,11 +253,11 @@ def test_g2_lehnt_nichtskalaren_vorgaenger_kontrolliert_ab(
     assert "every vorgaenger entry must be a SHA-256" in schema_fehler
     snapshot_pfad.write_text(json.dumps(daten), encoding="utf-8")
 
-    result = _p9(fall, key, "G-2")
+    result = _p9(fall, key, "A-M4")
 
     assert result.exit_code == 20
     assert result.errors[0]["code"] == "vorbedingung"
-    assert "G-1-Snapshot-Vertrag verletzt" in result.errors[0]["message"]
+    assert "A-Q1-Snapshot-Vertrag verletzt" in result.errors[0]["message"]
     assert "every vorgaenger entry must be a SHA-256" in result.errors[0][
         "message"
     ]
@@ -266,21 +266,21 @@ def test_g2_lehnt_nichtskalaren_vorgaenger_kontrolliert_ab(
 @pytest.mark.parametrize(
     "ungueltiger_wert", [{}, []], ids=["objekt", "liste"]
 )
-def test_g2_lehnt_nichtskalaren_o3_beleg_kontrolliert_ab(
+def test_am4_lehnt_nichtskalaren_pk1_beleg_kontrolliert_ab(
     tmp_path: Path, ungueltiger_wert: object
 ) -> None:
     fall, key, _ = _bereit_fuer_g2(tmp_path)
-    g2 = _p9(fall, key, "G-2")
-    assert g2.exit_code == 0
-    snapshot_pfad = Path(g2.paths["snapshot"])
+    am4 = _p9(fall, key, "A-M4")
+    assert am4.exit_code == 0
+    snapshot_pfad = Path(am4.paths["snapshot"])
     daten = json.loads(snapshot_pfad.read_text(encoding="utf-8"))
-    daten["o3_belege"]["klv/tg2012"] = [ungueltiger_wert]
+    daten["pk1_belege"]["klv/tg2012"] = [ungueltiger_wert]
 
     schema_fehler = P9Snapshot.validate_payload(daten)
     assert any("contains a non-SHA-256" in fehler for fehler in schema_fehler)
     snapshot_pfad.write_text(json.dumps(daten), encoding="utf-8")
 
-    result = _p9(fall, key, "G-2")
+    result = _p9(fall, key, "A-M4")
 
     assert result.exit_code == 20
     assert result.errors[0]["code"] == "snapshot"
@@ -291,21 +291,21 @@ def test_g2_lehnt_nichtskalaren_o3_beleg_kontrolliert_ab(
 @pytest.mark.parametrize(
     "ungueltiger_wert", [{}, []], ids=["objekt", "liste"]
 )
-def test_g2_lehnt_nichtskalaren_scope_pflichtbeleg_kontrolliert_ab(
+def test_am4_lehnt_nichtskalaren_scope_pflichtbeleg_kontrolliert_ab(
     tmp_path: Path, ungueltiger_wert: object
 ) -> None:
     fall, key, _ = _bereit_fuer_g2(tmp_path)
-    g2 = _p9(fall, key, "G-2")
-    assert g2.exit_code == 0
-    snapshot_pfad = Path(g2.paths["snapshot"])
+    am4 = _p9(fall, key, "A-M4")
+    assert am4.exit_code == 0
+    snapshot_pfad = Path(am4.paths["snapshot"])
     daten = json.loads(snapshot_pfad.read_text(encoding="utf-8"))
-    daten["pflichtbelege"]["o1_ledger"] = [ungueltiger_wert]
+    daten["pflichtbelege"]["pq3_ledger"] = [ungueltiger_wert]
 
     schema_fehler = P9Snapshot.validate_payload(daten)
     assert any("contains a non-SHA-256" in fehler for fehler in schema_fehler)
     snapshot_pfad.write_text(json.dumps(daten), encoding="utf-8")
 
-    result = _p9(fall, key, "G-2")
+    result = _p9(fall, key, "A-M4")
 
     assert result.exit_code == 20
     assert result.errors[0]["code"] == "snapshot"
@@ -313,15 +313,15 @@ def test_g2_lehnt_nichtskalaren_scope_pflichtbeleg_kontrolliert_ab(
     assert "contains a non-SHA-256" in result.errors[0]["message"]
 
 
-def test_g2_lehnt_signierten_snapshot_mit_fehlender_scope_rolle_ab(
+def test_am4_lehnt_signierten_snapshot_mit_fehlender_scope_rolle_ab(
     tmp_path: Path,
 ) -> None:
     fall, key, _ = _bereit_fuer_g2(tmp_path)
-    g2 = _p9(fall, key, "G-2")
-    assert g2.exit_code == 0
-    snapshot_pfad = Path(g2.paths["snapshot"])
+    am4 = _p9(fall, key, "A-M4")
+    assert am4.exit_code == 0
+    snapshot_pfad = Path(am4.paths["snapshot"])
     daten = json.loads(snapshot_pfad.read_text(encoding="utf-8"))
-    daten["pflichtbelege"].pop("o1_ledger")
+    daten["pflichtbelege"].pop("pq3_ledger")
     daten.pop("snapshot_sha256")
     daten["freigabe"] = gate_entscheid._freigabe_fuer(
         daten, key.read_bytes()
@@ -331,12 +331,12 @@ def test_g2_lehnt_signierten_snapshot_mit_fehlender_scope_rolle_ab(
     # Rollenmenge wird aus dem Fall-Scope beim Lesen abgeleitet.
     assert P9Snapshot.validate_payload(daten) == []
     manipuliert = snapshot_pfad.with_name(
-        gate_entscheid._snapshot_dateiname("G-2", daten["snapshot_sha256"])
+        gate_entscheid._snapshot_dateiname("A-M4", daten["snapshot_sha256"])
     )
     snapshot_pfad.unlink()
     manipuliert.write_text(json.dumps(daten), encoding="utf-8")
 
-    result = _p9(fall, key, "G-2")
+    result = _p9(fall, key, "A-M4")
 
     assert result.exit_code == 20
     assert result.errors[0]["code"] == "snapshot"
@@ -344,20 +344,20 @@ def test_g2_lehnt_signierten_snapshot_mit_fehlender_scope_rolle_ab(
     assert "aus dem Scope" in result.errors[0]["message"]
 
 
-def test_g2_lehnt_fehlenden_vorgaenger_ab(tmp_path: Path) -> None:
+def test_am4_lehnt_fehlenden_vorgaenger_ab(tmp_path: Path) -> None:
     fall, key, erster = _bereit_fuer_g2(tmp_path)
-    zweiter = _p9(fall, key, "G-1", entscheid="abgelehnt")
+    zweiter = _p9(fall, key, "A-Q1", entscheid="abgelehnt")
     assert zweiter.exit_code == 0
     erster.unlink()
 
-    result = _p9(fall, key, "G-2")
+    result = _p9(fall, key, "A-M4")
 
     assert result.exit_code == 20
     assert "Vorgaenger" in result.errors[0]["message"]
     assert "existiert nicht" in result.errors[0]["message"]
 
 
-def test_g2_lehnt_zwei_gueltige_spitzen_ab(tmp_path: Path) -> None:
+def test_am4_lehnt_zwei_gueltige_spitzen_ab(tmp_path: Path) -> None:
     fall, key, snapshot_pfad = _bereit_fuer_g2(tmp_path)
     daten = json.loads(snapshot_pfad.read_text(encoding="utf-8"))
     daten["begruendung"] = "konkurrierender Entscheidungszweig"
@@ -368,11 +368,11 @@ def test_g2_lehnt_zwei_gueltige_spitzen_ab(tmp_path: Path) -> None:
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
     assert P9Snapshot.validate_payload(daten) == []
     zweig = snapshot_pfad.with_name(
-        gate_entscheid._snapshot_dateiname("G-1", daten["snapshot_sha256"])
+        gate_entscheid._snapshot_dateiname("A-Q1", daten["snapshot_sha256"])
     )
     zweig.write_text(json.dumps(daten), encoding="utf-8")
 
-    result = _p9(fall, key, "G-2")
+    result = _p9(fall, key, "A-M4")
 
     assert result.exit_code == 20
     assert "genau eine eindeutige Spitze" in result.errors[0]["message"]
@@ -396,12 +396,12 @@ def test_vorgaenger_graph_erkennt_zyklus_auch_unabhaengig_vom_hashschema(
 def test_annahme_braucht_externen_privaten_schluessel(tmp_path: Path) -> None:
     fall = _fall(tmp_path)
 
-    ohne = _p9(fall, None, "G-1")
+    ohne = _p9(fall, None, "A-Q1")
     assert ohne.exit_code == 20
     assert ohne.errors[0]["code"] == "freigabe"
 
     intern = _schluessel(fall / "intern.key")
-    innerhalb = _p9(fall, intern, "G-1")
+    innerhalb = _p9(fall, intern, "A-Q1")
     assert innerhalb.exit_code == 20
     assert "innerhalb des Falls" in innerhalb.errors[0]["message"]
 
@@ -414,7 +414,7 @@ def test_annahme_lehnt_in_den_fall_hardverlinkten_schluessel_ab(
     extern = _schluessel(tmp_path / "extern.key")
     os.link(extern, fall / "schluessel-spiegel.key")
 
-    result = _p9(fall, extern, "G-1")
+    result = _p9(fall, extern, "A-Q1")
 
     assert result.exit_code == 20
     assert "Hardlinks" in result.errors[0]["message"]
@@ -424,11 +424,11 @@ def test_schluesselpfad_und_bytes_erscheinen_nicht_im_ledger(tmp_path: Path) -> 
     fall = _fall(tmp_path)
     key = _schluessel(tmp_path / "streng-geheim.key", byte=b"z")
 
-    result = _p9(fall, key, "G-1")
+    result = _p9(fall, key, "A-Q1")
 
     assert result.exit_code == 0
     ledger = json.loads((
-        fall / "abgeleitet" / "diagnostics" / "gate_entscheid_g1.gate.json"
+        fall / "abgeleitet" / "diagnostics" / "gate_entscheid_aq1.gate.json"
     ).read_text(encoding="utf-8"))
     serialisiert = json.dumps(ledger)
     assert str(key) not in serialisiert
@@ -442,7 +442,7 @@ def test_p9_cli_emittiert_genau_ein_json_und_schema_valides_ledger(
     fall = _fall(tmp_path)
     key = _schluessel(tmp_path / "p9.key")
     argv = [
-        "--fall", str(fall), "--gate", "G-1", "--entscheid", "angenommen",
+        "--fall", str(fall), "--gate", "A-Q1", "--entscheid", "angenommen",
         "--rolle", "mensch", "--entscheider", "fachrolle",
         "--begruendung", "CLI-Vertrag geprueft", "--repo-root", str(REPO_ROOT),
         "--freigabe-schluessel", str(key),
@@ -458,6 +458,6 @@ def test_p9_cli_emittiert_genau_ein_json_und_schema_valides_ledger(
         fall / "abgeleitet" / "diagnostics"
     )
     assert lesefehler == []
-    p9 = [entry for entry in eintraege if entry.command == "gate_entscheid_g1"]
+    p9 = [entry for entry in eintraege if entry.command == "gate_entscheid_aq1"]
     assert len(p9) == 1
     assert p9[0].status == "passed"

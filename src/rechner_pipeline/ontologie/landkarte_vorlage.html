@@ -208,7 +208,7 @@
         (<span class="id">klv</span>), eine Tarifgeneration
         (<span class="id">klv/tg2015</span>), später eine Zelle. Dieselben
         Bezeichner benennen die Generation in der A-Box eines Migrationsfalls
-        und im Gate O3. Neu ist, dass auch der <b>Code</b> sie trägt: jedes
+        und im Gate P-K1. Neu ist, dass auch der <b>Code</b> sie trägt: jedes
         fachtragende Modul und jede Testdatei deklarieren ihre Knoten in einer
         Zeile im Modul-Docstring.
       </p>
@@ -354,7 +354,7 @@
         <li>
           <b>Fachliche Abnahme wird adressierbar.</b> Der Impact nennt nicht
           nur Tests, sondern auch die Migrationsfälle, deren Generationen
-          betroffen sind — welches Gate O3 also erneut zu fahren ist.
+          betroffen sind — welches Gate P-K1 also erneut zu fahren ist.
         </li>
       </ul>
     </div>
@@ -546,7 +546,7 @@ function zeige(index) {
   notizen.replaceChildren();
   s.konservativ.forEach((k) => notizen.append(el("div", "notiz", k)));
   s.faelle.forEach((g) =>
-    notizen.append(el("div", "notiz gut", "Gate O3 erneut fahren: Generation " + g)));
+    notizen.append(el("div", "notiz gut", "Gate P-K1 erneut fahren: Generation " + g)));
   s.hinweise.filter((h) => h.includes("Import-Kante") || h.includes("Daten-Bindung"))
     .forEach((h) => notizen.append(el("div", "notiz gut", h)));
   if ((s.weitere_lader || []).length) {

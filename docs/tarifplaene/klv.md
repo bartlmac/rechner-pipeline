@@ -201,7 +201,7 @@ Das Abnahme-Protokoll gilt für alle Produkte
 Abschnitt 11). Für dieses Produkt sind
 gesichert: die eingefrorenen Referenzwerte des produktiven Pfads, die
 Toleranz-Überleitung gegen den Kommutations-Zweitkern
-(`qa/ueberleitung`) und je Migrationsfall Gate O3 gegen den
+(`qa/ueberleitung`) und je Migrationsfall Gate P-K1 gegen den
 Quell-Rechner. Die einmalige 617/617-Excel-Parität (22.07.2026, 4
 Nachkommastellen) ist der historische Übersetzungsbeleg, kein
 laufender Referenzwert.
@@ -220,7 +220,7 @@ Migrationsfälle übernehmen fremde Bestände in die PLV. Ihre neun
 KLV-Bestandsgenerationen sind konstruiert (kein Migrationsfall, keine
 Quell-Provenienz) und tragen — wie jede Generation, die das System
 rechnet — eine **Ontologie-Knoten-ID** (Pflichtfeld `knoten` der
-Bestand-Config, dieselbe Konvention wie A-Box und Gate O3; Wurzel =
+Bestand-Config, dieselbe Konvention wie A-Box und Gate P-K1; Wurzel =
 Produktfamilie, Präfix `plv_` = PLV-eigene Generation ohne
 Migrationsfall):
 
@@ -237,7 +237,7 @@ Migrationsfall):
 | `klv/plv_2022` | KLV-2022 | 2022-01–2035-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
 
 Migrierte Generationen kommen erst nach ihrer fachlichen Abnahme
-(G-1/G-A/G-2) in eine Bestand-Config — dann mit der Knoten-ID ihres
-Migrationsfalls (z. B. `klv/tg2015`) und der durch Gate O3 geprüften
+(A-Q1/A-M1/A-M4) in eine Bestand-Config — dann mit der Knoten-ID ihres
+Migrationsfalls (z. B. `klv/tg2015`) und der durch Gate P-K1 geprüften
 Parametrierung. Diese Tabelle wird maschinell gegen die Bestandskonfiguration
 geprüft; eine Abweichung ist ein Fehler und blockiert.

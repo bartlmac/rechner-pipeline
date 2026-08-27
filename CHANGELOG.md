@@ -18,13 +18,13 @@ einen vorgeführten Stand zitierbar.
   Widersprüche als Diskrepanz-Objekte, Projektion zur Tarif-Spez,
   parametrierter Kern, Abnahme gegen die Lieferung.
 * **Acht Gates** als je ein Kommando mit JSON auf stdout und Ledger:
-  `extract` (G0), `abox_merge` (O0), `abox_validate` (O1),
-  `generation_golden` (O3), `gate_entscheid` (P9), `bestand_validate`
-  (B1), `aktuartest` (GA-Vorlage) und `abnahmebericht` (G2-Vorlage). Ein Nicht-Null-Exit blockiert
+  `extract` (P-Q1), `abox_merge` (P-Q2), `abox_validate` (P-Q3),
+  `generation_golden` (P-K1), `gate_entscheid` (P9), `bestand_validate`
+  (P-B1), `aktuartest` (GA-Vorlage) und `abnahmebericht` (G2-Vorlage). Ein Nicht-Null-Exit blockiert
   und wird nie zur Warnung. Jeder Lauf ersetzt den alten Beleg vor der
   Facharbeit durch einen roten Startbeleg und publiziert den Abschluss
   atomar.
-* **Menschliche Gates G-1/G-A/G-2/G-T** mit unveränderlichen Snapshots;
+* **Menschliche Gates A-Q1/A-M1/A-M4/A-K1** mit unveränderlichen Snapshots;
   `--rolle mensch|agent` ist Pflicht, ein Agent kann ein menschliches
   Gate nur ablehnen.
 * **Zielrechenkern 3.0.1**: KLV und Berufsunfähigkeit auf einem
@@ -42,7 +42,7 @@ einen vorgeführten Stand zitierbar.
 * **Migrationsabnahme über zwei Stichtage**: Deckungskapital am
   Migrations- und am Folgestichtag plus die Geschäftsvorfälle
   dazwischen, gegen die gelieferten Erwartungswerte, zusammengefasst im
-  HTML-Abnahmebericht als Vorlage für Gate G-2.
+  HTML-Abnahmebericht als Vorlage für Gate A-M4.
 * **Code-Ontologie**: Module und Tests deklarieren ihren Fachknoten;
   Index, Schichtenkarte, Impact und Landkarte werden daraus berechnet
   statt gepflegt.
@@ -53,17 +53,17 @@ einen vorgeführten Stand zitierbar.
 ### Was es bewusst noch nicht kann
 
 * **Formelidentität ist keine Maschinenprüfung.** Der Formel-Rück-
-  Check in Gate O1 deckt die IF-Staffeln; jede andere Formelform meldet
+  Check in Gate P-Q3 deckt die IF-Staffeln; jede andere Formelform meldet
   er fail-fast als "nicht prüfbar". Ob Tarifmeldung und Quell-Rechner
   dieselbe Formel meinen, entscheidet heute ein Mensch gegen den
   Tarifplan.
-* **Gate O3 deckt die Beispielzelle** des Quell-Rechners
+* **Gate P-K1 deckt die Beispielzelle** des Quell-Rechners
   (einzel/nichtraucher); die übrigen Zellen brauchen weitere
   Erwartungswerte vom Lieferanten. Das Komplement weist das Gate aus.
-* **Das O3-/G-2-Pflicht-Fixture ist bewusst klein und synthetisch.** Es deckt
+* **Das P-K1-/A-M4-Pflicht-Fixture ist bewusst klein und synthetisch.** Es deckt
   einen Modellpunkt und eine Ratenzuschlagsstaffel ab, nicht die sechs Zellen
-  des archivierten TG2015-Falls. Dafür laufen echte Vorverdichtung, O3 und
-  G-2 im frischen Clone verpflichtend; ein fehlendes oder hashabweichendes
+  des archivierten TG2015-Falls. Dafür laufen echte Vorverdichtung, P-K1 und
+  A-M4 im frischen Clone verpflichtend; ein fehlendes oder hashabweichendes
   Fixture ist ein Testfehler statt eines Skips.
 * **Der Knoten-Lebenszyklus** (`in_migration` / `abgenommen`, ADR-007
   Regel 4) ist in der T-Box noch nicht umgesetzt.
@@ -126,7 +126,7 @@ einen vorgeführten Stand zitierbar.
   zwei Stichtage und HTML-Abnahmebericht mit Bestandsberichten
   vor/nach.
 * **Bestandsmodul erweitert** — GeVo-Strom mit Erhöhungsscheiben und
-  Bewegungskonto, Gate B1 auf Bewegungs-Identitäten je Jahr, Track und
+  Bewegungskonto, Gate P-B1 auf Bewegungs-Identitäten je Jahr, Track und
   Maß.
 * **Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`) als Fachdokumente
   des Zielkerns in seiner eigenen Mathematik, gerendert über eine
@@ -140,7 +140,7 @@ einen vorgeführten Stand zitierbar.
 
 Ein externes Review des Stands vom 19.08. hat Beweislücken der
 Abnahmekette aufgedeckt: Ein von Hand geschriebener P9-Snapshot konnte
-G-2 freischalten, ein grüner O3-Ledger schaltete G-2 nie frei, und der
+A-M4 freischalten, ein grüner P-K1-Ledger schaltete A-M4 nie frei, und der
 Abnahmebericht übernahm Selbstauskünfte der Suite, statt sie
 nachzurechnen. Daraus:
 
@@ -152,9 +152,9 @@ nachzurechnen. Daraus:
   möglich — der sichere Agentenpfad.
 * **ADR-009 (20.08.): Fall-Scope und Bestands-Pflichtbelege** — jeder
   Fall deklariert `tarif` oder `bestand` in `fall.json`; daraus leitet
-  G-2 seine Pflichtbelege ab und rechnet sie neu nach, statt dem
+  A-M4 seine Pflichtbelege ab und rechnet sie neu nach, statt dem
   Ledger zu glauben. Ein Altfall ohne Deklaration blockiert.
-* **O3-Belege** sind unveränderlich und inhaltsadressiert und binden
+* **P-K1-Belege** sind unveränderlich und inhaltsadressiert und binden
   A-Box, Systemstand und Eingangsartefakte.
 * **Abnahmebericht rechnet neu**: Residuen, Vertrags- und Suiteurteile,
   Mengenbefunde und Prüflücken werden aus den atomaren Fakten
@@ -162,13 +162,13 @@ nachzurechnen. Daraus:
   offene Konflikte blockieren als `abnahmehindernisse`.
 * **Fehlende GeVo-Erwartungsbeträge** (STO/TOD/ABL/PEX) werden zur
   benannten Prüflücke, statt still zu bestehen.
-* **Provenienz und Integrität**: O1 verwirft Belege aus abgelehnten
+* **Provenienz und Integrität**: P-Q3 verwirft Belege aus abgelehnten
   Lesarten; der Tafelimport prüft die Kette XLSM → Exportmanifest →
   Blatt-CSV per Vollhash; Sterbewahrscheinlichkeiten und Altersgitter
   werden an allen Ladepfaden validiert (Kern 3.0.1); Fall-Registrierung
   ist gegen Symlinks, Pfadtraversal und parallele Läufe gehärtet;
   Excel-Blattnamen werden bijektiv auf Dateinamen abgebildet.
-* **Ein eingechecktes O3-Fixture** löst die vier fallgebundenen
+* **Ein eingechecktes P-K1-Fixture** löst die vier fallgebundenen
   Test-Auslassungen ab; die CI fährt es als Pflichtstufe vor der
   Vollsuite.
 * **Bewusst nicht umgesetzt**: statische QS (Lint/Typprüfung/Security),
@@ -212,13 +212,13 @@ nachzurechnen. Daraus:
   einer belegten Stichprobe (`qa.stichprobe`, v0-Profil `vollbestand`).
   Das Gate `gates.aktuartest` rechnet das Ergebnis von innen nach außen
   nach und rendert die Entscheidungsvorlage für das neue menschliche
-  Gate G-A (aktuarielle Abnahme, Verantwortlicher Aktuar).
+  Gate A-M1 (aktuarielle Abnahme, Verantwortlicher Aktuar).
   Prüfsummen laufen als Transportsicherung getrennt und sind nie Teil
   des fachlichen Urteils.
-* **G-A geht G-2 voraus (erzwungen)** — `P9_GATES` wächst um `G-A`, die
+* **A-M1 geht A-M4 voraus (erzwungen)** — `P9_GATES` wächst um `A-M1`, die
   Pflichtbelegmenge wird je Gate aufgelöst (`fall.BELEGROLLEN`,
-  ADR-009-Nachtrag), G-2 verlangt den geltenden signierten G-A-Snapshot
-  auf demselben Stand und pinnt ihn als Rolle `ga_snapshot`. Das
+  ADR-009-Nachtrag), A-M4 verlangt den geltenden signierten A-M1-Snapshot
+  auf demselben Stand und pinnt ihn als Rolle `am1_snapshot`. Das
   P9-Schema hebt auf Version 5 (Gate-Version 0.6.0); Altketten mit
   v4-Snapshots werden revisionsfest archiviert und neu entschieden.
 * **ADR-011: Bestandsführung mit geführtem Zustand und Journal** — der
@@ -226,7 +226,7 @@ nachzurechnen. Daraus:
   Journal (Statushistorie + Ledger) ist die vollständige Aufzeichnung,
   aus der die Auskunft den Bestand zu jedem früheren Tag rekonstruiert.
   Kein Bewertungspfad liest das Journal; die Bewertung rechnet aus dem
-  Zustand. `bestand_gesamt.parquet` ist seither geführt; Gate B1 prüft
+  Zustand. `bestand_gesamt.parquet` ist seither geführt; Gate P-B1 prüft
   die Deckungsgleichheit von Stamm und Journal. Die rückwirkende
   Zeitscheiben-Sicht ist pensioniert. Erhöhungsscheiben tragen ihre
   Rechnungsgrundlage (`gamma1`) selbst — behebt einen Defekt, bei dem

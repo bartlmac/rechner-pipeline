@@ -110,14 +110,14 @@ def test_write_gate_ledger_failed_path(tmp_path: Path) -> None:
 def test_write_gate_ledger_derives_gate_from_command(tmp_path: Path) -> None:
     """When result.gate is unset, the gate id is derived from the catalogue."""
     result = _common.build_result(
-        command="extract",  # -> G0.extraction-manifest in ALL_GATES
+        command="extract",  # -> P-Q1.quellfragment in ALL_GATES
         gate_version="1.0.0",
         exit_code=_common.Exit.OK,
         input_hashes={"generated/x.py": "c" * 64},
     )
     out = _common.write_gate_ledger(result, tmp_path)
     entry = GateLedgerEntry.from_dict(json.loads(out.read_text(encoding="utf-8")))
-    assert entry.gate == "G0.extraction-manifest"
+    assert entry.gate == "P-Q1.quellfragment"
     assert entry.required is True
     assert entry.validate() == []
 
@@ -198,10 +198,10 @@ def test_load_gate_ledger_lehnt_negative_laufzeit_ab(tmp_path: Path) -> None:
 
 def test_gate_katalog_traegt_die_tatsaechlichen_vertrags_ids() -> None:
     katalog, _ = _common._gate_catalogue()
-    assert katalog["abox_validate"] == "O1.abox-contract"
-    assert katalog["generation_golden"] == "O3.generation-golden-master"
-    assert katalog["bestand_validate"] == "B1.bestand-contract"
-    assert katalog["abnahmebericht"] == "G2-vorlage.migrationsabnahme"
+    assert katalog["abox_validate"] == "P-Q3.fachliche-pruefung"
+    assert katalog["generation_golden"] == "P-K1.generations-golden-master"
+    assert katalog["bestand_validate"] == "P-B1.bestandspruefung"
+    assert katalog["abnahmebericht"] == "A-M4.migrationscontrolling"
 
 
 # --------------------------------------------------------------------------- #
