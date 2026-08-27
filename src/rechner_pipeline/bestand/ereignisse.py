@@ -116,8 +116,11 @@ class Fortschreibung(NamedTuple):
     """Ergebnis von :func:`fortschreiben` (vier deterministische Tabellen).
 
     ``zugaenge`` sind die waehrend der Fortschreibung entstandenen
-    Neuzugaenge (POL-Basiszeilen); der gefuehrte Gesamtbestand fuer Auskunft,
-    Auswertung und Bericht ist :func:`mit_zugaengen` (stamm, zugaenge).
+    Neuzugaenge (POL-Basiszeilen). :func:`mit_zugaengen` (stamm, zugaenge)
+    setzt beide zum Gesamtbestand zusammen; GEFUEHRT ist er erst nach
+    :func:`rechner_pipeline.bestand.fuehrung.fuehre_fort`, das den
+    juengsten Journalstand auf den Stamm projiziert (siehe
+    ``cli_fortschreibung``).
     """
 
     historie: pd.DataFrame
@@ -132,8 +135,6 @@ def _add_years(d: _dt.date, years: int) -> _dt.date:
 
 def _leerer_frame(spalten) -> pd.DataFrame:
     return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in spalten})
-
-
 
 
 class _Vertrag:
@@ -680,9 +681,10 @@ def fortschreiben(
 def mit_zugaengen(stamm: pd.DataFrame, zugaenge: pd.DataFrame) -> pd.DataFrame:
     """Gesamtbestand = Basisbestand + Neuzugaenge (POL-Basiszeilen).
 
-    Das Ergebnis ist der Bestand fuer Zeitscheibe, Auswertung und Bericht;
-    es erfuellt denselben Basis-Contract wie der Generator-Output
-    (validate_portfolio-konform, eindeutige police_ids).
+    Das Ergebnis erfuellt denselben Contract wie der Generator-Output
+    (validate_portfolio-konform, eindeutige police_ids) und traegt noch
+    Ursprungszustaende; den gefuehrten Zustand setzt erst
+    :func:`rechner_pipeline.bestand.fuehrung.fuehre_fort`.
     """
     if len(zugaenge) == 0:
         return stamm.copy().reset_index(drop=True)

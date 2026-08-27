@@ -535,6 +535,25 @@ def validate_scheiben(stamm: Any, scheiben: Any, historie: Any = None) -> List[s
         errors.append("scheiben: fehlende Werte (NaN) in sum_insured")
     elif (scheiben["sum_insured"] <= 0).any():
         errors.append("scheiben: sum_insured <= 0")
+    # gamma1 ist die Rechnungsgrundlage der Scheibe und geht in Beitrag und
+    # Reserve ein. Die Tarifwerk-Regel setzt sie auf null, weil die
+    # Bezugsgroesse der Verwaltungskosten die GrundVS bleibt
+    # (kern.rechenkern.erhoehungs_scheibe). Ein anderer Wert rechnet still
+    # falsch: NaN laesst den Rueckkaufswert auf 0,00 fallen statt auf NaN,
+    # ein negativer Wert erzeugt einen negativen Jahresbeitrag — beides
+    # plausibel aussehende Zahlen, die niemandem auffallen.
+    # NaN wird getrennt gemeldet, weil jeder Vergleich damit False ist;
+    # das != 0.0 danach faengt Unendlich und jeden Fremdwert mit.
+    if scheiben["gamma1"].isna().any():
+        errors.append("scheiben: fehlende Werte (NaN) in gamma1")
+    elif (scheiben["gamma1"] != 0.0).any():
+        abweichend = sorted(
+            set(scheiben.loc[scheiben["gamma1"] != 0.0, "police_id"])
+        )[:5]
+        errors.append(
+            "scheiben: gamma1 != 0 (Tarifwerk-Regel: die Bezugsgroesse der "
+            f"Verwaltungskosten bleibt die GrundVS), police {abweichend}"
+        )
     if not (scheiben["erhoehung_datum"].dt.day == 1).all():
         errors.append("scheiben: erhoehung_datum nicht auf Monatsersten normalisiert")
 

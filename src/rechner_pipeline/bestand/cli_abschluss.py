@@ -37,6 +37,8 @@ from rechner_pipeline.bestand.abschluss import (
 )
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.kern import MissingMortalityTableError
+from rechner_pipeline.models.bestand import validate_scheiben
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -78,9 +80,44 @@ def main(argv: Optional[List[str]] = None) -> int:
         historie = read_portfolio(lauf / "historie.parquet")
         scheiben_pfad = lauf / "scheiben.parquet"
         scheiben = read_portfolio(scheiben_pfad) if scheiben_pfad.is_file() else None
-    except (OSError, ValueError) as exc:
+        ledger_pfad = lauf / "ledger.parquet"
+        ledger = read_portfolio(ledger_pfad) if ledger_pfad.is_file() else None
+    except (OSError, ValueError, MissingMortalityTableError) as exc:
         print(f"bestand_abschluss: {exc}", file=sys.stderr)
         return 2
+
+    # Ein Abschluss ist festgeschrieben und wird nie ueberschrieben. Er muss
+    # deshalb DIESELBEN Vorbedingungen bestehen wie der Bericht und wie Gate
+    # P-B1 — sonst beurteilen drei Pfade denselben Datenstand verschieden,
+    # und ausgerechnet der unumkehrbare ist der nachlaessigste.
+    fehler = config.validate()
+    if fehler:
+        print(
+            f"bestand_abschluss: Config ungueltig: {'; '.join(fehler)}",
+            file=sys.stderr,
+        )
+        return 2
+    if (
+        ledger is not None
+        and scheiben is None
+        and (ledger["ereignis"] == "ERH").any()
+    ):
+        print(
+            "bestand_abschluss: Ledger enthaelt dynamische Erhoehungen (ERH), "
+            f"aber {scheiben_pfad.name} fehlt — Deckungskapital und Beitrag "
+            "waeren systematisch zu niedrig, und der Stand ist danach "
+            "festgeschrieben",
+            file=sys.stderr,
+        )
+        return 2
+    if scheiben is not None:
+        fehler = validate_scheiben(stamm, scheiben, historie=historie)
+        if fehler:
+            print(
+                f"bestand_abschluss: Scheiben ungueltig: {'; '.join(fehler[:3])}",
+                file=sys.stderr,
+            )
+            return 2
 
     if ns.pruefen:
         pfad = abschluss_pfad(out_dir, stichtag)
