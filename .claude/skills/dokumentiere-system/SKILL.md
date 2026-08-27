@@ -34,6 +34,7 @@ zweimal teuer gewesen).
 | Tarifplaene (Zielkern) | `docs/tarifplaene/*.md` | AUSGESTALTUNG je Produkt; das gemeinsame Rueckgrat steht einmal in `docs/mathematik/grundsatzdokumentation.md` und wird nie wiederholt (Waechter: tests/test_tarifplan_struktur.py); einheitliche Gliederung ueber alle Produkte, Rendering ueber die Doku-Engine |
 | Agenten-Anweisungen (Team) | `AGENTS.md` + `.claude/skills/` (+ `.agents/`-Spiegel) | CLI-neutral; AGENTS.md-Aenderungen im Team abstimmen; Skill-Paritaet ist test-tragend |
 | README | `README.md` | erzaehlt das System entlang der Architektur; Kommandobeispiele muessen LAUFEN (nachpruefen, nicht abschreiben) |
+| Erkannte, aber nicht umgesetzte Arbeit | `docs/vorhaben/` | ein groesseres Vorhaben je Datei (Problem, Warum es zaehlt, Loesungsskizze inkl. was sie NICHT leistet, Einordnung); Kleineres in offene-punkte.md; erledigt = geloescht, nicht abgehakt |
 | Private Notizen, Bauplaene, Erklaerungen | `docs-local/` (gitignored) | nie Klarnamen/Kontaktdaten des Kreises ins oeffentliche Repo (DSGVO) |
 | Fall-Dokumente | Fall-Arbeitsbereich | generiert (Fachspez, Coverage, Ledger), nie von Hand editiert |
 
