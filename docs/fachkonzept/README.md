@@ -38,6 +38,28 @@ Daneben — nicht darunter — steht **projektseitig** das
 instanziiert, Freigabekreis Projekt. Es referenziert das Fachkonzept,
 nie umgekehrt.
 
+## Stand der Uebernahme
+
+Das Fachkonzept ist die **Quelle**, aus der die Dokumente dieses Repos
+gespeist werden. Es kann pensioniert werden, sobald jede seiner
+normativen Aussagen ein Zuhause hier hat — heute ist das nicht der
+Fall. Der Stand, damit niemand raten muss:
+
+| Fachkonzept-Kapitel | Zuhause im Repo | Stand |
+|---|---|---|
+| 1 Zweck, Geltungsbereich, Einordnung | dieses README (Hierarchie) | uebernommen |
+| 2 Begriffe und Notation | Grundsatzdokumentation Abschnitt 2 | teilweise (Basis-Notation; die Symbole der Korrekturschicht fehlen) |
+| 3 Methodik der konstruktiven Neuberechnung | — | **offen** (Zwei-Schritt-Prinzip, Ankerhierarchie, Residuum-Struktur) |
+| 4 Korrekturschicht | Grundsatzdokumentation Abschnitt 9 (benannt, leer) | **offen** — wartet auf die Entscheidung der Freiheitsgrade |
+| 5 Verankerungszeitpunkt, Lieferobjekte, Historienfreiheit | Migrationskonzept Kapitel 4 und 5 (beim Maintainer, nicht hier) | **offen** |
+| 6 Test- und Abnahmekonzept | Migrationskonzept Kapitel 6 und 7 | uebernommen (mit ausgewiesener Luecke bei 6.3) |
+| 7 Regulatorischer Rahmen | Migrationskonzept Kapitel 7.7 | uebernommen |
+| 8 Zu erstellende Dokumentation | dieses README, Grundsatzdokumentation | uebernommen |
+| 9 Implementierungsfreiheiten und Konfliktregel | Grundsatzdokumentation Abschnitt 12 | Mechanik uebernommen, die elf Freiheitsgrade selbst sind offen |
+
+Solange Zeilen mit **offen** darin stehen, bleibt das Fachkonzept die
+normative Referenz und wird zitiert, nicht ersetzt.
+
 ## Aenderungsweg
 
 Diese Datei ist eine **unveraenderte Kopie** der freigegebenen Fassung
