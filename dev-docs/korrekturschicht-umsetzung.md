@@ -1,13 +1,14 @@
 # Korrekturschicht: Umsetzungsvorschlag
 
-**Stand:** Vorschlag zur Durchsprache, 27.08.2026.
+**Stand:** Stufe N7.1 gebaut am 27.08.2026
+(`kern/korrekturschicht.py`, 22 Tests, Suite 1054 grün).
 **Auftrag:** Rückmeldung zum Abnahmebericht, Punkt N7 — die Mathematik
 der Korrekturschicht steht in der Grundsatzdokumentation Abschnitt 9
 vollständig; sie soll analog zur Thiele-Engine im Rechenkern umgesetzt
 werden.
-**Status:** nichts gebaut. Der aktuarielle Test misst heute
-`system - erwartet` roh; der Platz für das methodische Residuum ist
-benannt und leer.
+**Status:** Der Verankerungsoperator rechnet, die Kollapsform entsteht
+aus der vorhandenen Rekursion, beide Guardrails stehen, die Parameter
+sind persistierbar. Was noch fehlt, steht in Abschnitt 7.
 
 ## 1 Der eine Satz, aus dem alles folgt
 
@@ -166,12 +167,20 @@ erste echte Bestand läuft.
 
 ## 7 Ausbaustufen
 
-**N7.1 — die Stufe, die TG2015 tragen kann.** Erstverankerung bei $t_a$,
-Formfunktion Default, vererbend nur "Tod mit fester Versicherungssumme"
-(der KLV-Default aus 9.7), beide Guardrails, Parameter-Persistenz. Damit
-misst der aktuarielle Test statt eines rohen Wertvergleichs ein
-verankertes Residuum — der Punkt, an dem die Methode zum ersten Mal
-wirklich läuft.
+**N7.1 — GEBAUT.** Erstverankerung bei $t_a$, Formfunktion Default plus
+konstantes Fenster, vererbend nur "Tod mit fester Versicherungssumme"
+(der KLV-Default aus 9.7), beide Guardrails, Parameter-Persistenz.
+
+Zwei Messungen aus dem Bau, die den Entwurf bestätigen: $\Pi$ stimmt
+gegen die geschlossene Handformel auf $1{,}8 \cdot 10^{-15}$, und die
+Optionsunabhängigkeit ist messbar — über Stornoraten von 0 bis 25 %
+bleibt $\rho$ auf die letzte Stelle gleich, während dieselbe Größe um
+28 % springt, sobald man den Storno fälschlich als vererbend führt. Was
+in 9.8 eine Aussage ist, ist jetzt eine Eigenschaft der Konstruktion.
+
+Am produktiven KLV-Kern gefahren: Verankerung im neunten Vertragsjahr
+mit $R = -850{,}00$, exakt getroffen, monoton abgebaut, Terminalwert
+null.
 
 **N7.2 — Übergangsklassifikation je Produkt.** Die Tabelle aus 9.7 ist
 der Default; die vollständige Klassifikation gehört je Produkt in den

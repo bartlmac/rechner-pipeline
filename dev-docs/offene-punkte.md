@@ -18,6 +18,8 @@ Rechenmodul der Korrekturschicht in
 | Punkt | Herkunft | Anmerkung |
 |---|---|---|
 | **Verankerungsattribute** als Vertragsmerkmale ($t_a$, Verankerungszustand und Verweildauer) | Fruehere Befundliste, N6 | Durch die Bestandsfuehrung andockbereit; braucht einen ADR-Nachtrag, weil die Zustandsregeln fuer migrierte Bestaende zu lockern sind. Wird blockierend, sobald die Korrekturschicht laeuft ([korrekturschicht-umsetzung.md](korrekturschicht-umsetzung.md), K3). |
+| **Degenerationsschwelle der Korrekturschicht** (Grundsatzdokumentation 9.16) | Bau der Korrekturschicht | Im Code konservativ vorbelegt (ein Zehntel Jahresbarwert) und als offener Freiheitsgrad ausgewiesen. Vor dem ersten echten Bestand ist der Wert fachlich zu entscheiden. |
+| **Uebergangsklassifikation je Produkt** (Grundsatzdokumentation 9.7) | Bau der Korrekturschicht | Die Tabelle in 9.7 ist der Default; die vollstaendige Klassifikation gehoert je Produkt in den Tarifplan. Fuer die KLV ist heute nur 'Tod mit fester Versicherungssumme' als vererbend gesetzt - fuer die BU steht sie aus. |
 | **Stichprobenprofile** jenseits von `vollbestand` | Grundsatzdokumentation, Erweiterungsstelle | Je Profil eine Festlegung des Aktuariats. |
 | **Ausgestaltung je migriertem Tarifplan** (Uebergangsklassifikation, Ankerliste, Formfunktion, Floors, Testfallkatalog) | Grundsatzdokumentation Abschnitt 10 Nr. 9 | Faellig, sobald ein Produkt mit Korrekturschicht migriert wird. |
 | **Zwei offene Entscheidungen des Migrationskonzepts**: Verbleib der Geschaeftsvorfall-Metadatenliste (E1) und Aktivierung des Konventionsresiduum-Pfads (E2) | Migrationskonzept Kapitel 11 | Je Bestand zu entscheiden. |

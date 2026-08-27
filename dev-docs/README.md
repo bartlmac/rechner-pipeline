@@ -46,6 +46,6 @@ Vier Abschnitte, mehr braucht es nicht:
 | Vorhaben | Stand |
 |---|---|
 | [Aktuarieller Test AT-1/AT-2/AT-3](aktuarieller-test-at1-at2-at3.md) | gebaut; offen sind Stichprobenprofile und BU-Vorfaelle |
-| [Korrekturschicht umsetzen](korrekturschicht-umsetzung.md) | Umsetzungsvorschlag, wartet auf Durchsprache |
+| [Korrekturschicht umsetzen](korrekturschicht-umsetzung.md) | Stufe N7.1 gebaut; N7.2 bis N7.4 offen |
 | [Rollentrennung der Agenten](agenten-rollentrennung.md) | Skizze, wartet auf Entscheidung |
 | [Offene Punkte](offene-punkte.md) | laufend |
