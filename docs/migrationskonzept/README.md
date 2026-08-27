@@ -19,15 +19,26 @@ Quellsystem- und Lieferdetails, die nicht ins oeffentliche Repo
 gehoeren. Was hier steht, ist der Teil, der ueber alle Faelle gleich
 bleibt.
 
+Die Vorlage ist [vorlage.md](vorlage.md) — ein Dokument mit allen elf
+Kapiteln, das je Fall kopiert und ausgefuellt wird.
+
 | Kapitel | Inhalt | Stand |
 |---|---|---|
-| 1-5 | Zweck, Systemkontext, Bestandsabgrenzung, Datenliefervertrag, Migrationszugangsroutine | beim Maintainer, noch nicht hier |
-| [6 Migrationscontrolling](06-migrationscontrolling.md) | Pruefung am Migrationsstichtag $t_0$ ueber den vollen Bestand, Vorlage fuer Gate G-2 | ausgearbeitet |
-| [7 Aktuarielle Abnahme](07-aktuarielle-abnahme.md) | Pruefung am Verankerungszeitpunkt $t_a$ je Vertrag auf einer Stichprobe, Vorlage fuer Gate G-A | ausgearbeitet |
-| 8-11 | Fehler- und Klaerungsprozess, Archiv, Ablaufplanung, Entscheidungen | beim Maintainer, noch nicht hier |
+| 1-4 | Zweck, Systemkontext, Bestandsabgrenzung, Datenliefervertrag | Geruest mit ⟨TODO⟩ — fallspezifisch auszufuellen |
+| 5 | Migrationszugangsroutine (Statusmodell, Schrittfolge je Vertrag, Kohorten, Protokoll) | **fachlich vorbefuellt** — Aenderungen nur nach menschlicher Freigabe |
+| 6 | Migrationscontrolling am $t_0$ ueber den vollen Bestand, Vorlage fuer Gate G-2 | ausgearbeitet |
+| 7 | Aktuarielle Abnahme am $t_a$ je Vertrag auf einer Stichprobe, Vorlage fuer Gate G-A | ausgearbeitet |
+| 8-10 | Fehler- und Klaerungsprozess, Archiv, Ablaufplanung | Geruest mit ⟨TODO⟩ |
+| 11 | Entscheidungen und offene Punkte | zwei offene Entscheidungen (E1, E2) |
 
-Die Kapitelnummern folgen dem Geruest des Maintainers; die hier
-ausgearbeiteten sind die, deren Werkzeuge gebaut sind (ADR-010).
+Zwei Markierungen steuern die Weiterarbeit, beide aus dem Geruest:
+**⟨TODO: …⟩** ist zu erarbeitender Inhalt; **⟨ENTSCHEIDUNG: …⟩** ist
+eine offene menschliche Entscheidung, die nie selbst aufgeloest, sondern
+in Kapitel 11 gefuehrt und vorgelegt wird. Die Bearbeitungshinweise am
+Kopf der Vorlage sind bindend.
+
+Ausgearbeitet sind die Kapitel, deren Werkzeuge gebaut sind (ADR-010);
+die uebrigen tragen die Struktur und ihre Platzhalter.
 
 ## Was hier NICHT steht — die Regel gegen Doppelpflege
 
