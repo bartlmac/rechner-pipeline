@@ -1,6 +1,6 @@
 ---
 title: "Migrationskonzept ⟨Bestand / Quellsystem⟩"
-subtitle: "Vorlage — projektseitige Instanz der Methode aus dem Fachkonzept Konstruktive Neuberechnung"
+subtitle: "Vorlage — projektseitige Instanz der konstruktiven Neuberechnung"
 lang: de-DE
 date: 2026-08-26
 ---
@@ -9,7 +9,7 @@ date: 2026-08-26
 |---|---|
 | Dokumenttyp | Migrationskonzept (projektseitig, je Bestand/Quellsystem instanziiert) |
 | Status | Vorlage v0.2 — Kapitel 6 und 7 ausgearbeitet, uebrige Kapitel Geruest |
-| Normative Referenzen | Fachkonzept „Konstruktive Neuberechnung und Korrekturschicht" v0.2 (im Folgenden **FK**, `docs/mathematik/konstruktive-neuberechnung.md`); Grundsatzdokumentation (`docs/mathematik/grundsatzdokumentation.md`, dort Abschnitt 9 fuer die Korrekturschicht); Ausgestaltungen der betroffenen Tarifpläne ⟨Liste⟩ |
+| Normative Referenzen | **Grundsatzdokumentation** (`docs/mathematik/grundsatzdokumentation.md`) — Mathematik und Numerik des Zielrechenkerns, dort Abschnitt 9 fuer den Migrationszugang und die Korrekturschicht; Ausgestaltungen der betroffenen Tarifpläne ⟨Liste⟩ |
 | Bestand / Mandant | ⟨…⟩ |
 | Quellsystem | ⟨…⟩ |
 | Freigabe | ⟨Projektleitung⟩, ⟨Quellsystem-Verantwortliche⟩, ⟨Fachexperte Aktuariat⟩ |
@@ -18,17 +18,17 @@ date: 2026-08-26
 
 ## Bearbeitungshinweise für die Weiterbearbeitung (Agent)
 
-1. **Normativ ist das FK.** Begriffe und Notation aus FK Kap. 2 gelten unverändert; nichts aus dem FK wird hier umdefiniert, abgeschwächt oder dupliziert — es wird referenziert.
+1. **Normativ ist die Grundsatzdokumentation.** Begriffe und Notation aus ihrem Abschnitt 2 gelten unverändert; nichts daraus wird hier umdefiniert, abgeschwächt oder dupliziert — es wird referenziert.
 2. **Markierungen:** ⟨TODO: …⟩ = zu erarbeitender Inhalt. ⟨ENTSCHEIDUNG: …⟩ = offene menschliche Entscheidung — nicht selbst auflösen, sondern in Kap. 11 führen und zur Entscheidung vorlegen.
-3. **Kapitel 5 ist fachlich vorbefüllt.** Schrittfolge, System-Zuordnungen (MIG/RK) und Fehlerausgänge sind mit dem FK abgestimmt; Änderungen daran nur nach menschlicher Freigabe (Entwicklung + Fachexperte). Technische Konkretisierungen (5.7) sind ausdrücklich erwünscht.
-4. **Konflikte** zwischen diesem Dokument, der Kernel-Architektur und dem FK werden nicht implizit aufgelöst: Verfahren nach FK Kap. 9 (Konfliktregel), Eintrag hier in Kap. 11 und im Abweichungsverzeichnis der Grundsatzdokumentation.
+3. **Kapitel 5 ist fachlich vorbefüllt.** Schrittfolge, System-Zuordnungen (MIG/RK) und Fehlerausgänge sind mit der Methode abgestimmt; Änderungen daran nur nach menschlicher Freigabe (Entwicklung + Fachexperte). Technische Konkretisierungen (5.7) sind ausdrücklich erwünscht.
+4. **Konflikte** zwischen diesem Dokument, der Kern-Architektur und der Grundsatzdokumentation werden nicht implizit aufgelöst: Verfahren nach Grundsatzdokumentation 9.16 (Konfliktregel), Eintrag hier in Kap. 11 und im Abweichungsverzeichnis der Grundsatzdokumentation.
 5. Keine erfundenen Feldnamen, Paragraphen oder Kennzahlen — Unbekanntes bleibt ⟨TODO⟩. Dokumentsprache Deutsch.
 
 ---
 
 ## 1 Zweck und Geltungsbereich
 
-Dieses Dokument instanziiert die Methode des FK für die Migration des Bestands ⟨…⟩ aus dem Quellsystem ⟨…⟩ in den Zielrechenkern. Es regelt Systemkontext, Datenliefervertrag, die Migrationszugangsroutine sowie Controlling-, Abnahme-, Klärungs- und Archivprozesse dieses konkreten Migrationsvorhabens.
+Dieses Dokument instanziiert die Methode der Grundsatzdokumentation für die Migration des Bestands ⟨…⟩ aus dem Quellsystem ⟨…⟩ in den Zielrechenkern. Es regelt Systemkontext, Datenliefervertrag, die Migrationszugangsroutine sowie Controlling-, Abnahme-, Klärungs- und Archivprozesse dieses konkreten Migrationsvorhabens.
 
 ⟨TODO: Bestandsumfang, betroffene Bestandsgruppen, zeitlicher Rahmen, Migrationsstichtag(e)⟩
 
@@ -36,30 +36,30 @@ Dieses Dokument instanziiert die Methode des FK für die Migration des Bestands 
 
 Zielrechenkern und Migrationssystem laufen in einer gemeinsamen Hülle, sind aber zwei getrennte Objekte mit strikter Aufgabenteilung:
 
-- **Zielrechenkern (RK):** rechnet und bewertet. Historienfrei (FK 5.5). Bietet ausschließlich reguläre APIs: Vertragsanlage, Geschäftsvorfälle, Verankerungsoperator $\mathcal{A}$, Bewertung und Reporting-Positionen. Es existieren keine migrationsspezifischen Sonderrechenpfade (FK 3.1).
-- **Migrationssystem (MIG):** orchestriert. Hält das Staging der Lieferobjekte 1–3 (FK 5.4), führt Validierungen und Ableitungen aus (FK 5.5: Ableitungslast), ruft RK-APIs auf, führt Statusmodell und Migrationsprotokoll, produziert die Datengrundlage für Controlling (Kap. 6) und Abnahme (Kap. 7).
+- **Zielrechenkern (RK):** rechnet und bewertet. Historienfrei (Grundsatzdokumentation 9.14). Bietet ausschließlich reguläre APIs: Vertragsanlage, Geschäftsvorfälle, Verankerungsoperator $\mathcal{A}$, Bewertung und Reporting-Positionen. Es existieren keine migrationsspezifischen Sonderrechenpfade (Grundsatzdokumentation 9.1).
+- **Migrationssystem (MIG):** orchestriert. Hält das Staging der Lieferobjekte 1–3 (Grundsatzdokumentation 9.12), führt Validierungen und Ableitungen aus (Grundsatzdokumentation 9.14: Ableitungslast), ruft RK-APIs auf, führt Statusmodell und Migrationsprotokoll, produziert die Datengrundlage für Controlling (Kap. 6) und Abnahme (Kap. 7).
 
-**Grenzregel (bindend, FK 5.5):** Die GV-Liste überschreitet die Grenze MIG → RK zu keinem Zeitpunkt. Der einzige Historieninput des RK ist das abgeleitete Attributset aus Lieferobjekt 1.
+**Grenzregel (bindend, Grundsatzdokumentation 9.14):** Die GV-Liste überschreitet die Grenze MIG → RK zu keinem Zeitpunkt. Der einzige Historieninput des RK ist das abgeleitete Attributset aus Lieferobjekt 1.
 
 ⟨TODO: konkrete Komponenten- und Schnittstellenbenennung im Zielprodukt, Deployment der gemeinsamen Hülle, Mandanten-/Berechtigungsmodell, Staging-Datenhaltung⟩
 
 ## 3 Quellsystem und Bestandsabgrenzung
 
-⟨TODO: Quellsystembeschreibung; frühere Migrationen des Quellsystems (geerbte Residuen — FK 3.3); Bestandsgruppen und Tarifplan-Zuordnung; Tarifpläne ohne freigegebene Ausgestaltung → nicht migrationsfähig (FK 8.2); Ausschlüsse und Sonderbestände⟩
+⟨TODO: Quellsystembeschreibung; frühere Migrationen des Quellsystems (geerbte Residuen — Grundsatzdokumentation 9.3); Bestandsgruppen und Tarifplan-Zuordnung; Tarifpläne ohne freigegebene Ausgestaltung → nicht migrationsfähig (Grundsatzdokumentation Abschnitt 10 Nr. 9); Ausschlüsse und Sonderbestände⟩
 
 ## 4 Datenliefervertrag und Ableitungsregeln
 
-Struktur gemäß FK 5.4 (drei Lieferobjekte). Je Lieferobjekt: Feldliste mit Quellsystem-Mapping, Ableitungsort (quellseitig vs. ETL im MIG) und Validierungsregel.
+Struktur gemäß Grundsatzdokumentation 9.12 (drei Lieferobjekte). Je Lieferobjekt: Feldliste mit Quellsystem-Mapping, Ableitungsort (quellseitig vs. ETL im MIG) und Validierungsregel.
 
 ### 4.1 Lieferobjekt 1 — Zustandssnapshot am $t_a$
 
-| Attribut (FK 5.4) | Quellsystemfeld | Ableitung | Validierung |
+| Attribut (Grundsatzdokumentation 9.12) | Quellsystemfeld | Ableitung | Validierung |
 |---|---|---|---|
 | ⟨TODO: je Tarifplan, inkl. $i_0$, $u_0$, Options-/Rechtszustände, Dynamikzähler, Restzillmerstand, Steueraggregate⟩ | ⟨…⟩ | ⟨quellseitig / ETL⟩ | ⟨…⟩ |
 
 ### 4.2 Lieferobjekt 2 — GV-Metadatenliste
 
-⟨TODO: GV-Typkatalog des Quellsystems und Mapping auf die Übergangstaxonomie FK 4.3 (Klassen A/B/C); Kennzeichnung rechnender GV für die $t_a$-Ermittlung⟩
+⟨TODO: GV-Typkatalog des Quellsystems und Mapping auf die Übergangstaxonomie Grundsatzdokumentation 9.7 (Klassen A/B/C); Kennzeichnung rechnender GV für die $t_a$-Ermittlung⟩
 
 ### 4.3 Lieferobjekt 3 — Voll-Bewegungsdaten $[t_a, t_0]$
 
@@ -67,13 +67,13 @@ Struktur gemäß FK 5.4 (drei Lieferobjekte). Je Lieferobjekt: Feldliste mit Que
 
 ### 4.4 GV-Inventur
 
-Vorab-Inventur aller im Bestand tatsächlich vorkommenden GV-Typen und -Konstellationen gegen die Taxonomie der Ausgestaltungen (FK 8.2). Nicht abgedeckte Konstellationen sind vor Migrationsbeginn zu klären. ⟨TODO: Inventurergebnis, Lückenliste⟩
+Vorab-Inventur aller im Bestand tatsächlich vorkommenden GV-Typen und -Konstellationen gegen die Taxonomie der Ausgestaltungen (Grundsatzdokumentation Abschnitt 10 Nr. 9). Nicht abgedeckte Konstellationen sind vor Migrationsbeginn zu klären. ⟨TODO: Inventurergebnis, Lückenliste⟩
 
 ## 5 Migrationszugangsroutine *(vorbefüllt)*
 
 ### 5.1 Vorbedingungen
 
-Je Tarifplan liegt eine freigegebene Ausgestaltung vor (FK 8.2). Die Datenlieferung ist gegen den Liefervertrag (Kap. 4) validiert. Die GV-Inventur (4.4) ist abgeschlossen und lückenfrei oder mit dokumentierten Ausschlüssen versehen.
+Je Tarifplan liegt eine freigegebene Ausgestaltung vor (Grundsatzdokumentation Abschnitt 10 Nr. 9). Die Datenlieferung ist gegen den Liefervertrag (Kap. 4) validiert. Die GV-Inventur (4.4) ist abgeschlossen und lückenfrei oder mit dokumentierten Ausschlüssen versehen.
 
 ### 5.2 Statusmodell
 
@@ -84,22 +84,22 @@ Hauptpfad: `angeliefert → validiert → verankert → nachgefahren → abgegli
 | Nr | Schritt | System | Inhalt | Fehlerausgang |
 |---|---|---|---|---|
 | 1 | Intake und Validierung | MIG | Schema-/Pflichtfeldprüfung der Lieferobjekte 1–3; Plausibilitätsregeln ⟨TODO: Regelkatalog⟩; Prüfung Tarifplan-Zulassung (5.1) | klärung(Datenlieferung) |
-| 2 | $t_a$- und Kohortenbestimmung | MIG | $t_a$ gemäß FK 5.1 aus Vertragsstichtag und letztem rechnenden GV (Lieferobjekt 2); fehlt die $t_a$-Lieferung → Fallback-Kohorte $t_0$ (FK 5.4) | Kohorte „Fallback" |
+| 2 | $t_a$- und Kohortenbestimmung | MIG | $t_a$ gemäß Grundsatzdokumentation 9.12 aus Vertragsstichtag und letztem rechnenden GV (Lieferobjekt 2); fehlt die $t_a$-Lieferung → Fallback-Kohorte $t_0$ (Grundsatzdokumentation 9.12) | Kohorte „Fallback" |
 | 3 | Zustandsextrakt | MIG | Historienabgeleitete Attribute bereitstellen bzw. per Ableitungsregel (Kap. 4) berechnen: $i_0$, $u_0$, Options-/Rechtszustände, Dynamikzähler, Restzillmerstand, Steueraggregate. GV-Liste verbleibt im MIG (Grenzregel Kap. 2) | klärung(Ableitung) |
-| 4 | Initialanlage | RK | Vertragsanlage mit Ursprungsparametern und mitwandernden Rechnungsgrundlagen (FK 3.1 Schritt 1) über die reguläre Anlage-API | klärung(Tarifabbildung) |
-| 5 | Verankerung | RK | Zustand $(i_0, u_0)$ setzen; $V^{\mathrm{prosp}}$ rechnen; $R_{\mathrm{hist}} = V^{\mathrm{ist}} - V^{\mathrm{prosp}}$; Guardrails gemäß FK 4.6 (pfadweise Floors, Degenerationsschwelle, Vorzeichen/Kappung); $\mathcal{A}(t_a, i_0, u_0, R_{\mathrm{hist}})$; Persistenz des Parametertupels (FK 4.7) | Kappungsfall → Fehlerprozess (Kap. 8); Degeneration → Ausbuchungsweg (FK 9 Nr. 6) |
-| 6 | Nachfahren $[t_a, t_0]$ | MIG → RK | Bewegungsdaten (Lieferobjekt 3) als reguläre RK-Geschäftsvorfälle; Klasse-A-GV im Nachfahrzeitraum: Absorption gemäß FK 4.3 | klärung(GV-Inventur) |
-| 7 | $t_0$-Abgleich | MIG | Nachgefahrener Wert vs. gelieferter $t_0$-Altwert; Klassifikation systematisch (Konventionsdifferenz je Cluster) vs. unsystematisch (Befund) gemäß FK 5.2; optionale Zweitverankerung $R_{\mathrm{conv}}$ (FK 5.3) nur falls E2 aktiviert (Kap. 11) | klärung(Befund) |
-| 8 | Vertragsprüfung | MIG | Anker-Nachweis innerhalb der Toleranzen der Ausgestaltung; Reporting-Positionen belegt ($R_{\mathrm{hist}}$ / ggf. $R_{\mathrm{conv}}$ getrennt, FK 4.7) | klärung(Prüfung) |
+| 4 | Initialanlage | RK | Vertragsanlage mit Ursprungsparametern und mitwandernden Rechnungsgrundlagen (Grundsatzdokumentation 9.1 Schritt 1) über die reguläre Anlage-API | klärung(Tarifabbildung) |
+| 5 | Verankerung | RK | Zustand $(i_0, u_0)$ setzen; $V^{\mathrm{prosp}}$ rechnen; $R_{\mathrm{hist}} = V^{\mathrm{ist}} - V^{\mathrm{prosp}}$; Guardrails gemäß Grundsatzdokumentation 9.10 (pfadweise Floors, Degenerationsschwelle, Vorzeichen/Kappung); $\mathcal{A}(t_a, i_0, u_0, R_{\mathrm{hist}})$; Persistenz des Parametertupels (Grundsatzdokumentation 9.11) | Kappungsfall → Fehlerprozess (Kap. 8); Degeneration → Ausbuchungsweg (Grundsatzdokumentation 9.16) |
+| 6 | Nachfahren $[t_a, t_0]$ | MIG → RK | Bewegungsdaten (Lieferobjekt 3) als reguläre RK-Geschäftsvorfälle; Klasse-A-GV im Nachfahrzeitraum: Absorption gemäß Grundsatzdokumentation 9.7 | klärung(GV-Inventur) |
+| 7 | $t_0$-Abgleich | MIG | Nachgefahrener Wert vs. gelieferter $t_0$-Altwert; Klassifikation systematisch (Konventionsdifferenz je Cluster) vs. unsystematisch (Befund) gemäß Grundsatzdokumentation 9.12; optionale Zweitverankerung $R_{\mathrm{conv}}$ (Grundsatzdokumentation 9.13) nur falls E2 aktiviert (Kap. 11) | klärung(Befund) |
+| 8 | Vertragsprüfung | MIG | Anker-Nachweis innerhalb der Toleranzen der Ausgestaltung; Reporting-Positionen belegt ($R_{\mathrm{hist}}$ / ggf. $R_{\mathrm{conv}}$ getrennt, Grundsatzdokumentation 9.11) | klärung(Prüfung) |
 | 9 | Abschluss und Protokoll | MIG | Status `migriert`; Migrationsprotokoll gemäß 5.6 | — |
 
 ### 5.4 Idempotenz und Wiederanlauf
 
-Die Routine ist je Vertrag deterministisch und wiederholbar (Datennachlieferungen, Korrekturläufe). Ein erneuter Lauf ersetzt die Verankerungsparameter vollständig — es gibt kein kumulierendes $\rho$. Nachfahren und Verankerung sind je Vertrag transaktional; ein abgebrochener Lauf hinterlässt keinen teilverankerten Vertrag. ⟨TODO: technischer Mechanismus; Transaktionsschnitt und Persistenz sind Implementierungsfreiheiten FK 9 Nr. 3 und 8⟩
+Die Routine ist je Vertrag deterministisch und wiederholbar (Datennachlieferungen, Korrekturläufe). Ein erneuter Lauf ersetzt die Verankerungsparameter vollständig — es gibt kein kumulierendes $\rho$. Nachfahren und Verankerung sind je Vertrag transaktional; ein abgebrochener Lauf hinterlässt keinen teilverankerten Vertrag. ⟨TODO: technischer Mechanismus; Transaktionsschnitt und Persistenz sind Implementierungsfreiheiten Grundsatzdokumentation 9.16⟩
 
 ### 5.5 Kohorten
 
-Standard ($t_a$-Verankerung) · Fallback ($t_0$-Verankerung, FK 5.4) · Kappung (FK 4.6, im Fehlerprozess) · Befund (unsystematische Abgleichsabweichung). Kohorten werden getrennt reportet und tragen eigene Toleranzen (FK 6.2). ⟨TODO: Kennzeichnung im Datenmodell, FK 9 Nr. 10⟩
+Standard ($t_a$-Verankerung) · Fallback ($t_0$-Verankerung, Grundsatzdokumentation 9.12) · Kappung (Grundsatzdokumentation 9.10, im Fehlerprozess) · Befund (unsystematische Abgleichsabweichung). Kohorten werden getrennt reportet und tragen eigene Toleranzen (Grundsatzdokumentation 9.15). ⟨TODO: Kennzeichnung im Datenmodell, Grundsatzdokumentation 9.16⟩
 
 ### 5.6 Migrationsprotokoll je Vertrag
 
@@ -107,11 +107,11 @@ Mindestinhalte: Eingangswerte der Lieferobjekte, ermitteltes $t_a$, Kohorte, $(i
 
 ### 5.7 Offene technische Punkte
 
-⟨TODO: Massenlaufsteuerung und Parallelisierung; Performance der pfadweisen Floor-Prüfung (FK 9 Nr. 7); Reihenfolge-Abhängigkeiten bei Vertragsbündeln (Haupt-/Zusatzversicherung); Umgang mit Verträgen mit GV zwischen Datenabzug und $t_0$⟩
+⟨TODO: Massenlaufsteuerung und Parallelisierung; Performance der pfadweisen Floor-Prüfung (Grundsatzdokumentation 9.16); Reihenfolge-Abhängigkeiten bei Vertragsbündeln (Haupt-/Zusatzversicherung); Umgang mit Verträgen mit GV zwischen Datenabzug und $t_0$⟩
 
 ## 6 Migrationscontrolling ($t_0$)
 
-*Rahmen: Projektseitige Ausgestaltung von **FK 6.1**, Zeile „Migrationscontrolling". Die Gate-Architektur entscheidet **ADR-010** (Trennung der Prüfebenen) und **ADR-009** (Fall-Scope und Pflichtbelege); die Handgriffe stehen im Skill `pruefe-migrationscontrolling`.*
+*Rahmen: Projektseitige Ausgestaltung von **Grundsatzdokumentation 9.15**, Zeile „Migrationscontrolling". Die Gate-Architektur entscheidet **ADR-010** (Trennung der Prüfebenen) und **ADR-009** (Fall-Scope und Pflichtbelege); die Handgriffe stehen im Skill `pruefe-migrationscontrolling`.*
 
 ### 6.1 Zweck und Abgrenzung
 
@@ -212,16 +212,16 @@ deterministisch nach, um ihn Byte für Byte zu vergleichen.
 unmöglich** (Kapitel 7.7). Eine Ablehnung an G-2 führt zurück in die
 Analyse; die Kette bildet das als neue Snapshots ab.
 
-### 6.6 Deckungsgrad gegenüber FK 6.1
+### 6.6 Deckungsgrad gegenüber Grundsatzdokumentation 9.15
 
 Abgedeckt sind die Vertragsabstimmung, die Wertprüfung an beiden
 Stichtagen und die Nachfahr-Abweichungen. **Nicht** abgedeckt sind die
-übrigen in FK 6.1 genannten Controlling-Kennzahlen:
+übrigen in Grundsatzdokumentation 9.15 genannten Controlling-Kennzahlen:
 
 * **Summen je Bestandsgruppe** (Deckungskapital, ZZR): Das Controlling
   urteilt heute je Vertrag und über die Prüfmenge, nicht über
   Bestandsgruppen-Aggregate der Bilanz.
-* **$R_{conv}$-Statistik**: Der Konventionsresiduum-Pfad (FK 5.3) ist
+* **$R_{conv}$-Statistik**: Der Konventionsresiduum-Pfad (Grundsatzdokumentation 9.13) ist
   nicht aktiviert; ob er für einen Bestand gefahren wird, ist eine
   Entscheidung im Kapitel „Entscheidungen und offene Punkte".
 * **Überschussprojektion des Folgejahres**: als künftige Erweiterung
@@ -229,7 +229,7 @@ Stichtagen und die Nachfahr-Abweichungen. **Nicht** abgedeckt sind die
 
 ## 7 Aktuarielle Abnahme ($t_a$)
 
-*Rahmen: Projektseitige Ausgestaltung von **FK 6.1** (Prüfebene „Aktuarieller Test"), **FK 6.2** (Toleranzdefinition auf der Verteilung) und **FK 6.3** (Verlaufs- und Geschäftsvorfalltests). Die Gate-Architektur dahinter entscheidet **ADR-010**; die Handgriffe stehen im Skill `aktuartest-durchfuehren`. Dieses Kapitel beschreibt das Verfahren: was geprüft wird, woran das Urteil hängt, welche Nachweise entstehen und wer entscheidet.*
+*Rahmen: Projektseitige Ausgestaltung von **Grundsatzdokumentation 9.15** (Prüfebene „Aktuarieller Test"), **Grundsatzdokumentation 9.15** (Toleranzdefinition auf der Verteilung) und **Grundsatzdokumentation 9.15** (Verlaufs- und Geschäftsvorfalltests). Die Gate-Architektur dahinter entscheidet **ADR-010**; die Handgriffe stehen im Skill `aktuartest-durchfuehren`. Dieses Kapitel beschreibt das Verfahren: was geprüft wird, woran das Urteil hängt, welche Nachweise entstehen und wer entscheidet.*
 
 ### 7.1 Zweck und Abgrenzung
 
@@ -249,7 +249,7 @@ Reihenfolge ist technisch erzwungen, nicht empfohlen (7.7).
 ### 7.2 Prüfgegenstand: der Verankerungszeitpunkt je Vertrag
 
 Geprüft wird **je Vertrag an seinem eigenen Verankerungszeitpunkt
-$t_a$** (FK 5.1: der letzte exakte Rechenpunkt des Quellsystems). $t_a$
+$t_a$** (Grundsatzdokumentation 9.12: der letzte exakte Rechenpunkt des Quellsystems). $t_a$
 ist damit ein **Vertragsattribut**, kein Parameter des Prüflaufs — zwei
 Verträge desselben Bestands werden in aller Regel zu verschiedenen
 Zeitpunkten verglichen.
@@ -260,7 +260,7 @@ Konvention gelten:
 1. **Keine Interpolation.** Verglichen wird am Rechenpunkt. Ein
    unterjähriger Vergleichszeitpunkt ist ein Konstruktionsfehler des
    Prüfauftrags und bricht den Lauf ab — er wird nicht als Befund
-   ausgewiesen. Begründung (FK 5.1): Ein interpolierter Wert misst die
+   ausgewiesen. Begründung (Grundsatzdokumentation 9.12): Ein interpolierter Wert misst die
    Interpolationskonvention mit und entwertet das Residuum als
    Diagnoseinstrument.
 2. **Keine Summation der Vergleichsgrößen.** Werte zu verschiedenen
@@ -308,7 +308,7 @@ Aggregiert wird **ausschließlich über die Verteilung der Beträge
 $|R|$**, geclustert nach **Historientyp** (der Übergangsklasse der
 Vertragshistorie): Maximum, hohe Perzentile und Betragssumme der
 Abweichungen je Cluster. Mittelwert und Median werden bewusst nicht
-gebildet (FK 6.2): Erwartet wird Bimodalität, und ein unauffälliger
+gebildet (Grundsatzdokumentation 9.15): Erwartet wird Bimodalität, und ein unauffälliger
 Mittelwert bei großen Einzelmaxima ist ein Befund, keine Entwarnung.
 
 **Lesehilfe für die Vorlage.** Cent-Größenordnung in den Perzentilen ist
@@ -360,7 +360,7 @@ Einzelvergleich ist damit ausgeschlossen.
 ### 7.7 Gate G-A: der Entscheid
 
 Der Test **entscheidet nichts**. Die aktuarielle Abnahme ist ein
-menschlicher Entscheid des **Verantwortlichen Aktuars** (FK Kap. 7,
+menschlicher Entscheid des **Verantwortlichen Aktuars** (Grundsatzdokumentation 9.15,
 § 141 VAG) auf Grundlage der Vorlage. Ein grüner Testlauf heißt „Vorlage
 vollständig und Test bestanden", nicht „abgenommen".
 
@@ -384,16 +384,16 @@ festgehalten (ADR-008). Dabei gilt:
   in Analyse und ggf. erneuten Test; die Kette bildet das als neue
   Snapshots ab. Unzulässig bleibt allein die Umkehrung der Reihenfolge.
 
-### 7.8 Deckungsgrad gegenüber FK Kapitel 6
+### 7.8 Deckungsgrad gegenüber Grundsatzdokumentation 9.15
 
-Der heutige Stand deckt FK 6.1 (Prüfebene, Zeitbezug, Verantwortung)
-und die Auswertungsform aus FK 6.2 (Verteilung statt Mittelwert)
+Der heutige Stand deckt Grundsatzdokumentation 9.15 (Prüfebene, Zeitbezug, Verantwortung)
+und die Auswertungsform aus Grundsatzdokumentation 9.15 (Verteilung statt Mittelwert)
 vollständig ab. **Nicht** abgedeckt sind:
 
-* **FK 6.3 — Verlaufs- und Geschäftsvorfalltests.** Vorwärtsrechnung
+* **Grundsatzdokumentation 9.15 — Verlaufs- und Geschäftsvorfalltests.** Vorwärtsrechnung
   über mehrere Jahre gegen eine Schattenrechnung des Quellsystems und
   die GV-Testmatrix je Vertragskonstellations-Cluster gibt es auf dieser
-  Prüfebene nicht. FK 6.3 ist hier eindeutig: *„Ohne Verlaufstests gilt
+  Prüfebene nicht. Grundsatzdokumentation 9.15 ist hier eindeutig: *„Ohne Verlaufstests gilt
   die Methode als nicht abgenommen; Stichtagstreue allein ist notwendig,
   nicht hinreichend."* Eine G-A-Annahme auf dem heutigen Stand belegt
   also die Stichtagstreue am Rechenpunkt — sie ersetzt die Verlaufstests
@@ -401,15 +401,15 @@ vollständig ab. **Nicht** abgedeckt sind:
 * **Toleranzen auf der Verteilung als Urteilskriterium.** Die Verteilung
   wird ausgewiesen, aber das maschinelle Urteil hängt heute an
   Toleranzen je Einzelwert. Eine Schwelle auf Maximum oder hohem
-  Perzentil je Cluster (FK 6.2) ist eine Festlegung des Aktuariats und
+  Perzentil je Cluster (Grundsatzdokumentation 9.15) ist eine Festlegung des Aktuariats und
   noch nicht getroffen.
 * **Das methodische Residuum $R_{hist}$.** Solange es keine
-  Korrekturschicht gibt (FK Kap. 3-5), trägt der Test den vorhandenen
+  Korrekturschicht gibt (Grundsatzdokumentation Abschnitt 9), trägt der Test den vorhandenen
   Wertvergleich — am richtigen Zeitpunkt und ohne Summen. Der Platz für
   $R_{hist}$ ist im Werkzeug benannt und leer; er wird gefüllt, wenn die
   Korrekturschicht steht, ohne dass sich Verfahren, Gate oder
   Nachweiskette ändern.
-* **Floor-Prüfungen** (§ 169 VVG, FK 4.6) als Teil des Tests.
+* **Floor-Prüfungen** (§ 169 VVG, Grundsatzdokumentation 9.10) als Teil des Tests.
 
 Diese vier Punkte sind der Arbeitsvorrat dieser Prüfebene. Sie stehen
 hier, damit eine Abnahme weiß, was sie abnimmt.
@@ -422,20 +422,20 @@ Aktuar⟩
 
 ## 8 Fehler- und Klärungsprozess
 
-Abgrenzung bindend gemäß FK 3.4: Die Korrekturschicht absorbiert Bewertungsdifferenzen bei unveränderten Ankern; jede Veränderung eines Ankers (Quellfehler) ist ein Kundenrechts- und Kommunikationsthema und läuft über diesen Prozess — niemals über die Schicht. ⟨TODO: Prozessdefinition, Rollen, Schwellen für Einzelfallklärung, Nachzahlungs-/Kommunikationsregeln, Schnittstelle zur Kappungs-Kohorte aus 5.5⟩
+Abgrenzung bindend gemäß Grundsatzdokumentation 9.4: Die Korrekturschicht absorbiert Bewertungsdifferenzen bei unveränderten Ankern; jede Veränderung eines Ankers (Quellfehler) ist ein Kundenrechts- und Kommunikationsthema und läuft über diesen Prozess — niemals über die Schicht. ⟨TODO: Prozessdefinition, Rollen, Schwellen für Einzelfallklärung, Nachzahlungs-/Kommunikationsregeln, Schnittstelle zur Kappungs-Kohorte aus 5.5⟩
 
 ## 9 Archiv und Auskunftssystem
 
-Anforderungen gemäß FK 5.5 (Rolle „Archiv") und FK 1.2: read-only, dauerhaft, auskunftsfähig für Aufbewahrungspflichten, Auskunftsersuchen und Rückabwicklungsfälle inkl. der dafür nötigen Wertehistorie. Keine Anforderung an den RK. ⟨TODO: Lösungsarchitektur, Auskunftsumfang und -fristen, Betriebsmodell, Löschkonzept⟩
+Anforderungen gemäß Grundsatzdokumentation 9.14 (Rolle „Archiv") und Grundsatzdokumentation 9.14: read-only, dauerhaft, auskunftsfähig für Aufbewahrungspflichten, Auskunftsersuchen und Rückabwicklungsfälle inkl. der dafür nötigen Wertehistorie. Keine Anforderung an den RK. ⟨TODO: Lösungsarchitektur, Auskunftsumfang und -fristen, Betriebsmodell, Löschkonzept⟩
 
 ## 10 Ablaufplanung
 
-⟨TODO: Migrationsstrategie (Big Bang vs. Wellen), Generalproben, Parallellauf/Schattenbetrieb mit Delta-Reporting (FK 6.3), Cut-over-Drehbuch, Rückfallszenario⟩
+⟨TODO: Migrationsstrategie (Big Bang vs. Wellen), Generalproben, Parallellauf/Schattenbetrieb mit Delta-Reporting (Grundsatzdokumentation 9.15), Cut-over-Drehbuch, Rückfallszenario⟩
 
 ## 11 Entscheidungen und offene Punkte
 
 | Nr | Gegenstand | Bezug | Status |
 |---|---|---|---|
-| E1 | GV-Metadatenliste dauerhaft im Zielbestand vs. Verbleib im Migrations-Staging | FK 9 Nr. 11 | ⟨ENTSCHEIDUNG: offen⟩ |
-| E2 | Aktivierung des $R_{\mathrm{conv}}$-Pfads (Zweitverankerung am $t_0$) für diesen Bestand | FK 5.3 | ⟨ENTSCHEIDUNG: offen⟩ |
+| E1 | GV-Metadatenliste dauerhaft im Zielbestand vs. Verbleib im Migrations-Staging | Grundsatzdokumentation 9.16 | ⟨ENTSCHEIDUNG: offen⟩ |
+| E2 | Aktivierung des $R_{\mathrm{conv}}$-Pfads (Zweitverankerung am $t_0$) für diesen Bestand | Grundsatzdokumentation 9.13 | ⟨ENTSCHEIDUNG: offen⟩ |
 | E3 | ⟨…⟩ | ⟨…⟩ | ⟨…⟩ |

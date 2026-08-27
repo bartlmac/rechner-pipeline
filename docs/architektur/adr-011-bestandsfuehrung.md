@@ -32,10 +32,10 @@ Journal fuer Nachweis und Auskunft, nicht die Eingabe der Bewertung.
 Die Vermischung war fuer den selbst erzeugten Schaubestand konsistent
 (der Ereignisstrom IST dort die Wahrheit) und bricht genau am
 eigentlichen Zweck des Systems: Ein migrierter Vertrag kommt als
-Zustandsschnappschuss ohne Historie (Fachkonzept "Konstruktive
-Neuberechnung" Kap. 5.4/5.5). Im heutigen Modell muesste man ihm eine
-Historie ERFINDEN, damit die Ableitung funktioniert — das
-Replay-Surrogat, das das Fachkonzept ausdruecklich ausschliesst. Drei
+Zustandsschnappschuss ohne Historie (Grundsatzdokumentation 9.12 und 9.14). Im heutigen
+Modell muesste man ihm eine Historie ERFINDEN, damit die Ableitung
+funktioniert — das Replay-Surrogat, das die Methode ausdruecklich
+ausschliesst. Drei
 zuvor getrennt gemeldete Befunde haben diese eine Ursache: die
 fehlenden Verankerungsattribute (i0, u0, t_a), der gamma1-Defekt der
 Erhoehungsscheiben (Rekonstruktion zur Bewertungszeit statt Persistenz
@@ -59,7 +59,7 @@ Scheibe) und die Ableitung des Zustands zur Bewertungszeit selbst.
   ausschliesslich aus dem gefuehrten Zustand. Verweildauer =
   f(status_date, Stichtag); PEX-Jahr = f(insurance_start, status_date).
   **Kein Bewertungspfad liest das Journal.** Das ist dieselbe
-  Historienfreiheit, die das Fachkonzept (5.5) vom Rechenkern verlangt —
+  Historienfreiheit, die die Grundsatzdokumentation (9.14) vom Rechenkern verlangt —
   eine Ebene hoeher angewendet.
 * **Simulation** (`bestand/ereignisse.py`, Rolle geschaerft): erzeugt
   den Vorzeigebestand einmalig, als Strom von Buchungen. Ihr Ergebnis
@@ -131,7 +131,7 @@ Erhoehungsscheiben tragen ihre Rechnungsgrundlagen selbst (zunaechst:
 `gamma1`, per Tarifwerk-Regel 0 — Bezugsgroesse bleibt die GrundVS).
 Die Bewertung liest die Schicht, statt sie aus der Tarifgeneration zu
 rekonstruieren. Das behebt den gemessenen Defekt und ist zugleich die
-Richtung des Fachkonzepts (4.7: Parameter persistieren, Werte
+Richtung der Grundsatzdokumentation (9.11: Parameter persistieren, Werte
 reproduzierbar).
 
 ### 5. Der Stammsatz traegt den aktuellen Zustand
@@ -193,7 +193,7 @@ gehoeren Abschluesse zum Datenhaushalt der Fuehrung
 
 ## Bewusst nicht Bestandteil dieser Entscheidung
 
-* Der Migrationszugang selbst und die Korrekturschicht (Fachkonzept
+* Der Migrationszugang selbst und die Korrekturschicht (Grundsatzdokumentation
   Kap. 3-5): Dieses ADR schafft den Ort, an dem beide andocken.
 * Eine transaktionale Einzel-Buchungs-API fuer den laufenden Betrieb:
   Die Simulation bucht weiterhin im Lauf; `fuehre_fort` ist der

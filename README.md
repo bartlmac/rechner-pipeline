@@ -234,21 +234,19 @@ Die klassische Kommutationsrechnung lebt als **separater Zweitkern**
 Kreuz-Check (`qa/ueberleitung`) — sie ist kein Bestandteil des
 Zielkerns.
 
-**Die Fachdokumentation** ist dreistufig, produktseitig, und jede
+**Die Fachdokumentation** ist zweistufig, produktseitig, und jede
 Aussage hat genau ein Zuhause (`tests/test_tarifplan_struktur.py` hält
 den Schnitt):
 
-1. **Das Fachkonzept** (`docs/mathematik/konstruktive-neuberechnung.md`):
-   die fachlich normative Methode der konstruktiven Neuberechnung —
-   Bestandsmigration ohne Historienmigration. Fachlich bindend,
-   technisch offen.
-2. **Die Grundsatzdokumentation**
+1. **Die Grundsatzdokumentation**
    (`docs/mathematik/grundsatzdokumentation.md`): Mathematik und
    Numerik, der die Umsetzung folgt — das allen Produkten gemeinsame
    Rückgrat (Zustandsraum und Semi-Markov-Modell, Thiele-Rekursion,
    Rechnungsgrundlagen-Schicht, Diskretisierung und Rundung,
-   Schichtenbild).
-3. **Die Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): die
+   Schichtenbild) und in Abschnitt 9 die Methode des Migrationszugangs:
+   konstruktive Neuberechnung mit Korrekturschicht, also
+   Bestandsmigration ohne Historienmigration.
+2. **Die Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): die
    Ausgestaltung je Produkt — Zustandsraum des Tarifs, Leistungen,
    Beiträge, Reservebegriffe, GeVo-Katalog mit Betragsformeln,
    Stellschrauben, Gültigkeitsgrenzen. Sie wiederholen das Rückgrat

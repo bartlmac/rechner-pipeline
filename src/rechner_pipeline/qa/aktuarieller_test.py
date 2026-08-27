@@ -1,9 +1,9 @@
 """Aktuarieller Test: Wertvergleich je Vertrag am eigenen Verankerungszeitpunkt.
 
-Umsetzung von ADR-010 (Trennung aktuarieller Test / Migrationscontrolling;
-normative Referenz Fachkonzept "Konstruktive Neuberechnung und
-Korrekturschicht" v0.2, Kap. 5.1 und 6.1-6.3). Drei Invarianten gelten im
-Code, nicht nur in der Doku:
+Umsetzung von ADR-010 (Trennung aktuarieller Test /
+Migrationscontrolling; normative Referenz: Grundsatzdokumentation
+Abschnitt 9.12 und 9.15). Drei Invarianten gelten im Code, nicht nur in
+der Doku:
 
 * **Der Vergleichszeitpunkt ist ein Vertragsattribut** (``monate_ta``),
   kein Suite-Parameter. Jeder Vertrag wird an SEINEM Verankerungszeitpunkt
@@ -19,8 +19,9 @@ Code, nicht nur in der Doku:
   Gruppe), geclustert nach Historientyp.
 
 Das Residuum ``system - erwartet`` ist der Wertvergleich, den wir heute
-haben: Solange es keine Korrekturschicht gibt (FK Kap. 3-5, bewusst nicht
-Bestandteil von ADR-010), traegt der Test diesen Vergleich — am richtigen
+haben: Solange es keine Korrekturschicht gibt (Grundsatzdokumentation
+Abschnitt 9; ihr Bau ist bewusst nicht Bestandteil von ADR-010), traegt
+der Test diesen Vergleich — am richtigen
 Zeitpunkt und ohne Summen. Der Platz fuer das methodische Residuum R
 bleibt benannt und leer.
 
@@ -55,8 +56,9 @@ from rechner_pipeline.qa.stichprobe import Stichprobe
 #: ist ein harter Fehler — stiller Verzicht waere ein falscher Nachweis.
 GEPRUEFTE_GROESSEN = ("kVx_MRV", "RKW", "BJB", "VS_bfr")
 
-#: Hohe Perzentile der |Residuum|-Verteilung (FK 6.2: Toleranzen auf
-#: Maximum und hohen Perzentilen, nie auf Mittelwert oder Median).
+#: Hohe Perzentile der |Residuum|-Verteilung (Grundsatzdokumentation
+#: 9.15: Toleranzen auf Maximum und hohen Perzentilen, nie auf
+#: Mittelwert oder Median).
 PERZENTILE = (95, 99)
 
 
@@ -69,7 +71,8 @@ class VerankerungsPruefung:
     """Pruefauftrag eines Vertrags an seinem Verankerungszeitpunkt.
 
     ``monate_ta`` sind die vollen Vertragsmonate am Verankerungszeitpunkt
-    t_a (FK 5.1: der letzte exakte Rechenpunkt) — ein Vielfaches von 12.
+    t_a (Grundsatzdokumentation 9.12: der letzte exakte Rechenpunkt) —
+    ein Vielfaches von 12.
     ``historientyp`` clustert die Verteilungsauswertung (z. B. nach der
     Uebergangsklasse der Historie); die Engine schreibt ihm keine
     Semantik vor. ``erwartet`` traegt die gelieferten Vergleichswerte mit
@@ -91,7 +94,8 @@ def _pruefe_auftrag(v: VerankerungsPruefung) -> None:
         raise AktuartestFehler(
             f"police {v.police_id}: monate_ta={v.monate_ta} ist kein "
             "Rechenpunkt — t_a ist der letzte exakte Rechenpunkt des "
-            "Vertrags (volle Jahre, FK 5.1); unterjaehrige Mischwerte "
+            "Vertrags (volle Jahre, Grundsatzdokumentation 9.12); "
+            "unterjaehrige Mischwerte "
             "sind im aktuariellen Test unzulaessig (ADR-010)"
         )
     if not v.erwartet:
@@ -237,7 +241,8 @@ def verteilung(residuen: List[float]) -> Dict[str, Any]:
     """Verteilungsgroessen der |Residuen| — die EINZIGEN Aggregate.
 
     Keine Summe der Vergleichswerte, kein Mittelwert, kein Median
-    (ADR-010 / FK 6.2). Die Betragssumme der ABWEICHUNGEN ist eine
+    (ADR-010, Grundsatzdokumentation 9.15). Die Betragssumme der
+    ABWEICHUNGEN ist eine
     Groesse der Residuum-Verteilung, keine Bestandssumme. Oeffentlich,
     weil das Gate-Kommando die Aggregate hiermit nachrechnet.
     """

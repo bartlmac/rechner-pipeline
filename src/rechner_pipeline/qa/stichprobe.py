@@ -1,4 +1,4 @@
-"""Stichprobenprofile des aktuariellen Tests (ADR-010, FK 6.1).
+"""Stichprobenprofile des aktuariellen Tests (ADR-010, Grundsatzdokumentation 9.15).
 
 Der aktuarielle Test misst am Verankerungszeitpunkt gegen die Methode und
 laeuft dafuer auf einer STICHPROBE, nicht auf dem ganzen Bestand. Die
@@ -19,7 +19,7 @@ Umfang v0 — bewusst genau ein Profil:
     und zugleich der Randfall der Parametrisierung.
 
 Weitere Profile sind eine offene Teilaufgabe und werden hier NICHT auf
-Vorrat erfunden: Schichtung nach Historientyp-Cluster (FK 5.4
+Vorrat erfunden: Schichtung nach Historientyp-Cluster (Grundsatzdokumentation 9.12
 Lieferobjekt 2), Mindestabdeckung je Cluster, Zufallsziehung mit
 dokumentiertem Startwert. Die Erweiterungsstelle ist :data:`PROFILE` —
 eine neue Funktion mit derselben Signatur eintragen, mehr braucht es

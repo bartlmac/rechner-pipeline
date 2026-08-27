@@ -189,9 +189,9 @@ def test_jeder_tarifplan_verweist_auf_die_grundsatzdokumentation():
 
 
 def test_grundsatzdokumentation_deckt_die_pflichtinhalte_ab():
-    """Fachkonzept 8.1 nennt die Pflichtinhalte. Was heute nicht
-    gebaut ist, steht als benannter, leerer Abschnitt drin — aber es
-    steht drin."""
+    """Die Grundsatzdokumentation traegt die Pflichtinhalte der
+    normativen Mathematik. Was heute nicht gebaut ist, steht als
+    benannter Abschnitt drin — aber es steht drin."""
     text = ZENTRAL.read_text(encoding="utf-8")
     for pflicht in (
         "Zustandsraum", "Notation", "Thiele", "Rechnungsgrundlagen",
@@ -241,3 +241,22 @@ def test_der_abschnittszahl_waechter_ist_nicht_vakuant():
     assert re.findall(muster, f"die Tarifplaene haben {ist} Abschnitte")
     assert not re.findall(muster, "ADR-010 Abschnitt 5 sagt dazu")
     assert not re.findall(muster, "siehe Grundsatzdokumentation Abschnitt 4")
+
+
+def test_alle_doku_links_zeigen_auf_existierende_dateien():
+    """Ein Verweis auf ein geloeschtes Dokument faellt beim Lesen auf,
+    nicht beim Pruefen — ausser hier. Geprueft werden alle relativen
+    Markdown-Links unter docs/ (der Umzug des Fachkonzepts in die
+    Grundsatzdokumentation hat gezeigt, wie leicht so ein Link stehen
+    bleibt)."""
+    tot: List[str] = []
+    for pfad in sorted((REPO_ROOT / "docs").rglob("*.md")):
+        text = pfad.read_text(encoding="utf-8")
+        for ziel in re.findall(r"\]\(([^)#:]+?)(?:#[^)]*)?\)", text):
+            if ziel.startswith(("http", "mailto:", "/")):
+                continue
+            if not (pfad.parent / ziel).resolve().exists():
+                tot.append(
+                    f"{pfad.relative_to(REPO_ROOT)} -> {ziel}"
+                )
+    assert not tot, "tote Doku-Links:\n  " + "\n  ".join(tot)

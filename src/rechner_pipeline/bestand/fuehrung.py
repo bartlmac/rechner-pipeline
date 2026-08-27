@@ -17,8 +17,8 @@ eine Stelle, an der beides zusammenlaeuft:
 
 Die Gegenregel steht in der Bewertung: Kein Bewertungspfad liest das
 Journal. Die Bewertung rechnet aus dem Zustand (dieselbe
-Historienfreiheit, die das Fachkonzept "Konstruktive Neuberechnung" in
-Kap. 5.5 vom Rechenkern verlangt — eine Ebene hoeher angewendet).
+Historienfreiheit, die die Grundsatzdokumentation in 9.14 vom
+Rechenkern verlangt — eine Ebene hoeher angewendet).
 
 Der Ursprungszustand ist Konvention, kein Datensatz: Jede Police beginnt
 mit (status_id 1, POL, Versicherungsbeginn). Die Auskunft synthetisiert

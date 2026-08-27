@@ -8,7 +8,7 @@ Je Produkt ein Tarifplan mit der **Ausgestaltung**: Zustandsraum des
 Tarifs, Leistungen, Beiträge, Reservebegriffe, GeVo-Katalog,
 Stellschrauben, Gültigkeitsgrenzen, Bestandsgenerationen — und bei
 migrierten Produkten die Parameter der Korrekturmathematik
-(Fachkonzept Kap. 8.2). Das **gemeinsame Rückgrat** aller Produkte
+(Grundsatzdokumentation Abschnitt 10 Nr. 9). Das **gemeinsame Rückgrat** aller Produkte
 (Zustandsmodell, Thiele-Rekursion, Rechnungsgrundlagen-Schicht,
 Numerik) steht einmal in der
 [Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md) und

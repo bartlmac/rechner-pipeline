@@ -321,7 +321,7 @@ def baue_bericht(*, titel: str, test: Dict[str, Any]) -> str:
     teile.append(
         "<h2>Verteilung des Residuums</h2>"
         "<p>Ausschließlich Verteilungsgrößen der Abweichungen — keine "
-        "Summe der Vergleichswerte, kein Mittelwert (FK 6.2).</p>"
+        "Summe der Vergleichswerte, kein Mittelwert (Grundsatzdokumentation 9.15).</p>"
         f"<table><tr><th>Gruppe</th><th>Verträge</th><th>bestanden</th>{kopf}"
         "</tr>"
         f"<tr><td>alle</td><td class='zahl'>{test['anzahl']:d}</td>"

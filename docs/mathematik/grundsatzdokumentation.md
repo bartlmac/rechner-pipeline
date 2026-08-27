@@ -6,12 +6,11 @@ format:
     papersize: a4
 ---
 
-> **Grundsatzdokumentation** im Sinne des Fachkonzepts „Konstruktive
-> Neuberechnung und Korrekturschicht" v0.2, Kapitel 8.1: die Mathematik
-> und Numerik, **der die Umsetzung folgt**. Sie gilt für **alle**
-> Produkte des Zielrechenkerns. Was ein einzelnes Produkt ausmacht,
-> steht in seinem Tarifplan (`docs/tarifplaene/`, Fachkonzept Kap. 8.2)
-> — und dort auch nur dort.
+> **Die Mathematik und Numerik, der die Umsetzung folgt.** Sie gilt für
+> **alle** Produkte des Zielrechenkerns; was ein einzelnes Produkt
+> ausmacht, steht in seinem Tarifplan (`docs/tarifplaene/`) — und dort
+> auch nur dort. Der Migrationszugang samt Korrekturschicht steht in
+> Abschnitt 9.
 >
 > **Zur Reihenfolge, ehrlich:** Der Rechenkern existierte vor diesem
 > Dokument. Was hier steht, kodifiziert die geltenden Konventionen des
@@ -19,6 +18,10 @@ format:
 > Implementierung sind ab hier unzulässig und laufen über den
 > Änderungsprozess (Abschnitt 13), dokumentiert im
 > Abweichungsverzeichnis (Abschnitt 12).
+>
+> **Herkunft:** Die Methode des Migrationszugangs (Abschnitt 9) geht auf
+> das Fachkonzept „Konstruktive Neuberechnung und Korrekturschicht"
+> v0.2 zurück und ist hier vollständig aufgenommen.
 
 # 1 Zweck und Geltung
 
@@ -32,8 +35,7 @@ Die Abgrenzung nach oben und unten:
 
 | Dokument | Gegenstand |
 |---|---|
-| Fachkonzept (`konstruktive-neuberechnung.md`) | die Methode: Invarianten, Prozess- und Testrahmen, Freiheitsgrade — fachlich normativ, technisch offen |
-| **Grundsatzdokumentation (dieses Dokument)** | Mathematik und Numerik, verbindlich für die Implementierung; produktübergreifend |
+| **Grundsatzdokumentation (dieses Dokument)** | Mathematik und Numerik, verbindlich für die Implementierung; produktübergreifend — einschließlich Migrationszugang und Korrekturschicht (Abschnitt 9) |
 | Tarifpläne (`docs/tarifplaene/*.md`) | die Ausgestaltung je Produkt: Zustandsraum des Tarifs, Leistungen, Rechnungsgrundlagen, Stellschrauben — bei migrierten Produkten zusätzlich die Parameter der Korrekturmathematik |
 
 # 2 Notation
@@ -231,7 +233,7 @@ in die Bewertung zurückwirken.
 * **Rechenpunkt.** Bewertungen, die eine Aussage über die **Methode**
   tragen sollen (aktuarielle Prüfung, Verankerung), werden am
   Rechenpunkt gebildet — am Vertragsjahrestag, nicht am interpolierten
-  Zwischenwert (Fachkonzept Kap. 5.1).
+  Zwischenwert (9.12).
 * **Rundung.** Rundung ist eine Konvention der Darstellung, nicht der
   Rekursion: Zwischenergebnisse der Bewertung laufen in voller
   Gleitkomma-Präzision. Wo gerundet wird, gilt **kaufmännisch von der
@@ -274,7 +276,7 @@ und sich nur in ihren Zahlungsfunktionen unterscheiden:
 
 Die Schichten sind additiv und werden **getrennt ausgewiesen**. Keine
 Schicht führt einen eigenen Zustand oder eine eigene Uhr ein
-(Fachkonzept Kap. 4.1).
+(9.5).
 
 # 9 Korrekturschicht: die Mathematik des Migrationszugangs
 
@@ -283,22 +285,19 @@ zieht mit seinen Ursprungsparametern ins Zielsystem und wird dort an
 einem Rechenpunkt gegen die gelieferten Werte verankert. Die dabei
 verbleibende Bewertungsdifferenz trägt eine eigene Bewertungsschicht.
 
-Dieser Abschnitt übernimmt die **Rechenmethode** aus dem Fachkonzept
-(dort Kapitel 3 bis 5) in die verbindliche Form, der die Umsetzung zu
-folgen hat, und legt die Diskretisierung fest, die das Fachkonzept
-ausdrücklich hierher delegiert (FK 4.2). Nicht hierher gehört die
-projektseitige Hälfte — der Datenliefervertrag mit seinen drei
-Lieferobjekten, das Quellsystem-Mapping und die Ableitungsregeln stehen
-im Migrationskonzept (FK 5.4, FK 1.3).
+Dieser Abschnitt ist die verbindliche Form der Rechenmethode, der die
+Umsetzung zu folgen hat. Nicht hierher gehört die projektseitige
+Hälfte: Der Datenliefervertrag mit seinen drei Lieferobjekten, das
+Quellsystem-Mapping und die Ableitungsregeln stehen in der
+Migrationskonzept-Vorlage.
 
 **Status:** Die Rechenmethode ist normativ und hier vollständig; sie ist
 noch **nicht implementiert**. Offen sind die technischen Freiheitsgrade
-aus FK Kapitel 9 (siehe 9.15).
+(siehe 9.16).
 
-**Zur Notation:** Das Fachkonzept schreibt Zustände als $i, j$ und die
-Verweildauer als $u$. Dieses Dokument führt Zustände als $s, s'$, die
-Verweildauer als $d$ und das Vertragsjahr als $j$ (Abschnitt 2); die
-Übernahme ist entsprechend umgeschrieben. Inhaltlich ändert das nichts.
+**Zur Notation:** Zustände sind $s, s'$, die Verweildauer ist $d$, das
+Vertragsjahr $j$ (Abschnitt 2) — durchgehend, auch in diesem
+Abschnitt.
 
 ## 9.1 Zwei-Schritt-Prinzip
 
@@ -354,8 +353,8 @@ zweiten Cluster — getrieben vor allem durch die Zillmer-Amortisation des
 Quellsystems, Dynamik-Schichtung, Beitragsabgrenzung und Kostenentnahmen
 in beitragsfreien Zeiten. $R$ ist damit zugleich
 **Migrationsqualitätskennzahl**; seine nach Historientyp geclusterte
-Verteilung ist zentraler Prüfgegenstand beider Prüfebenen des
-Fachkonzepts Kapitel 6 (Migrationskonzept Kapitel 6 und 7).
+Verteilung ist zentraler Prüfgegenstand beider Prüfebenen (9.15;
+Verfahren im Migrationskonzept, Kapitel 6 und 7).
 
 Daraus folgt: Die Korrekturschicht ist **Regelbestandteil jedes
 migrierten Vertrags** (gegebenenfalls mit Kalibrierungsfaktor null),
@@ -394,8 +393,8 @@ Drei Anti-Pattern sind verbindlich ausgeschlossen:
 * **Keine dritte Uhr.** Die Zahlungsfunktion darf von Zeit,
   Verweildauer und statischen Vertragsattributen abhängen; „Zeit seit
   Migration" ist $t - t_a$ und damit kein zusätzlicher Zustandsraum.
-  Das Fachkonzept **empfiehlt**, auf die Verweildauer-Abhängigkeit zu
-  verzichten; sie ist damit zulässig, aber begründungspflichtig.
+  Auf die Verweildauer-Abhängigkeit soll **verzichtet** werden, wo es
+  möglich ist; sie bleibt zulässig, ist aber begründungspflichtig.
 * **Kein skalarer Restposten** in der Datenhaltung mit tabellarischer
   Tilgung: Er erfüllt keine Thiele-Rekursion und ist bei
   Zustandswechseln undefiniert.
@@ -432,7 +431,7 @@ $$(\partial_t + \partial_d)\, V^{\mathrm{korr}} \;=\;
 \;-\; c_s(t,d),
 \qquad V^{\mathrm{korr}}(T) = 0$$
 
-**Diskrete Form — hier festgelegt** (FK 4.2 delegiert die
+**Diskrete Form — hier festgelegt** (Grundsatzdokumentation 9.6 delegiert die
 Diskretisierung an dieses Dokument). Auf dem Jahresgitter aus Abschnitt
 6 und mit denselben Ersetzungen wie im übrigen Kern
 ($e^{-\delta} \to v$, $\mu_{s s'} \to p_{s \to s'}$ für $s' \neq s$):
@@ -540,7 +539,7 @@ in der Ausgestaltung des Tarifplans zu dokumentieren.
   Schwelle wird $R$ sofort über das Ergebnis ausgebucht statt verrentet,
   sonst explodiert $\rho$. Dass es eine Schwelle gibt und die
   Ausbuchung im Ergebnis sichtbar ist, ist bindend; ihr Wert ist offen
-  (9.15).
+  (9.16).
 * **Flags:** Die Schicht ist Deckungskapital, trägt den Rechnungszins
   ihrer Bestandsgruppe und ist im Default in Überschussbemessung und
   ZZR-Ermittlung **enthalten** — beides als Konfiguration je
@@ -637,10 +636,56 @@ Für den Kern dieses Repositories gilt die Invariante heute schon und
 ist strukturell abgesichert: Kein Bewertungspfad liest das Journal
 (ADR-011).
 
-## 9.15 Offene Freiheitsgrade
+## 9.15 Prüfung der Methode und Verantwortung
+
+Die Güte der konstruktiven Neuberechnung wird auf **zwei getrennten
+Ebenen** geprüft. Die Trennung ist methodisch, nicht organisatorisch:
+
+| Ebene | Zeitbezug | Gegenstand | Verantwortung |
+|---|---|---|---|
+| **Aktuarieller Test** | $t_a$ | methodische Güte: Verteilung von $R_{\mathrm{hist}}$ geclustert nach Historientyp, Ausreißeranalyse, Floor-Prüfungen | Aktuariat, Verantwortlicher Aktuar |
+| **Migrationscontrolling** | $t_0$ | Vollständigkeit, Überleitung, Bilanz: Vertrags- und Summenabstimmung, Deckungskapital- und ZZR-Summen je Bestandsgruppe, Statistik des Konventionsresiduums, Nachfahr-Abweichungen je Cluster | Migrationsprojekt |
+
+Das Controlling misst am Übernahmepunkt gegen die Bilanz, der
+aktuarielle Test am Rechenpunkt gegen die Methode.
+
+**Toleranzform.** Toleranzen werden auf der **Verteilung** definiert —
+Maximum, hohe Perzentile, Betragssumme je Bestandsgruppe — **niemals
+auf Mittelwert oder Median**. Erwartet wird Bimodalität (9.3); ein
+unauffälliger Mittelwert bei großen Einzelmaxima ist ein Befund, keine
+Entwarnung. „Rundung" ist als Ursache nur für Differenzen in
+Cent-Größenordnung zulässig; größere Beträge verlangen eine benannte
+Ursache je Cluster.
+
+**Verlaufstests.** Stichtagstreue allein genügt nicht. Verlangt sind
+zusätzlich die Vorwärtsrechnung über mehrere Jahre gegen eine
+Schattenrechnung des Quellsystems für repräsentative Cluster und eine
+Testmatrix je Vertragskonstellation, die alle Übergänge der Klassen A,
+B und C mit ihrem Sollverhalten abdeckt (9.7). **Ohne Verlaufstests
+gilt die Methode als nicht abgenommen.**
+
+**Verantwortung und Rahmen.** Für die Methode der
+Deckungsrückstellungsberechnung besteht kein Genehmigungsvorbehalt der
+Aufsicht; eine Abstimmung ist möglich, aber kein Freibrief.
+Verantwortlich zeichnet der **Verantwortliche Aktuar (§ 141 VAG)**,
+flankiert von Abschlussprüfer und interner Revision. Grundlage der
+Freigabe sind dieses Dokument, die produktspezifischen Ausgestaltungen
+(Abschnitt 10 Nr. 9) und die Residualstatistik der beiden Prüfebenen.
+
+Einschlägige Randbedingungen, die die Methode einhält: § 169 VVG und
+DeckRV (Mindestwerte, Höchstzillmerung, 9.10), § 153 VVG
+(Überschussbeteiligung beim Abbau eines positiven Residuums, 9.10),
+§ 155 VAG (Standmitteilungskonsistenz, 9.12), § 341f HGB und ZZR
+(Schicht in Bestandsgruppe und ZZR-Ermittlung, 9.10) sowie die
+mitwandernden Rechnungsgrundlagen (9.1).
+
+Das Verfahren beider Prüfebenen — Artefakte, Gates, Entscheidungswege —
+steht in der Migrationskonzept-Vorlage, Kapitel 6 und 7.
+
+## 9.16 Offene Freiheitsgrade
 
 Die Mathematik oben ist verbindlich. Offen sind die folgenden Punkte
-aus Fachkonzept Kapitel 9; sie sind **zwischen Entwicklung und
+der Methode; sie sind **zwischen Entwicklung und
 fachverantwortlichem Aktuar** zu entscheiden und danach hier oder im
 Tarifplan zu belegen — nicht beim Implementieren nebenbei:
 
@@ -685,7 +730,7 @@ eines Produkts legt fest — und nur er:
 7. **Gültigkeitsgrenzen** und produktspezifische Fail-fast-Regeln.
 8. **Bestandsgenerationen** mit ihren Ontologie-Knoten.
 9. Bei **migrierten Produkten** zusätzlich die Ausgestaltung der
-   Korrekturmathematik nach Fachkonzept 8.2 (Übergangsklassifikation,
+   Korrekturmathematik (Übergangsklassifikation,
    Ankerliste mit Härtegraden, Formfunktion, Floors,
    Degenerationsschwelle, Testfallkatalog).
 
@@ -707,12 +752,12 @@ separater Zweitkern ausschließlich als Kreuz-Check; sie ist kein
 Bestandteil des Zielkerns.
 
 Die Abnahme einer **Migration** ist davon getrennt und läuft über die
-beiden Prüfebenen des Fachkonzepts Kapitel 6 (Migrationskonzept
+beiden Prüfebenen (9.15; Verfahren im Migrationskonzept,
 Kapitel 6 und 7).
 
 # 12 Abweichungsverzeichnis
 
-Nach Fachkonzept Kap. 9 (Konfliktregel) werden Abweichungen zwischen
+Nach der Konfliktregel (9.16) werden Abweichungen zwischen
 Konzept und Realisierung nicht implizit aufgelöst, sondern entschieden
 und hier dokumentiert.
 
@@ -722,7 +767,7 @@ und hier dokumentiert.
 
 Weitere Abweichungen sind derzeit nicht entschieden. Wer eine
 feststellt, löst sie nicht implizit auf, sondern trägt sie hier ein
-(Fachkonzept Kap. 9, Konfliktregel).
+(Konfliktregel, 9.16).
 
 # 13 Versionierung und Änderungsprozess
 
@@ -731,6 +776,6 @@ Dieses Dokument ist versioniert wie der Code, in dem es gilt: Eine
 ihr — nicht umgekehrt. Substanzielle Änderungen an den Abschnitten 3
 bis 9 sind fachliche Änderungen und brauchen die Zustimmung des
 Aktuariats — für Abschnitt 9 (Korrekturschicht) gilt zusätzlich die
-Konfliktregel aus 9.15: entschieden wird zwischen Entwicklung und
+Konfliktregel aus 9.16: entschieden wird zwischen Entwicklung und
 fachverantwortlichem Aktuar. Sie erscheinen im Changelog des
 Repositories.

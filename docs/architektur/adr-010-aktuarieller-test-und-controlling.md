@@ -5,14 +5,21 @@ Punkten E3 und E4 des Migrationskonzepts; Umsetzung 2026-08-26:
 `qa.aktuarieller_test`, `gates.aktuartest`, Gate G-A in P9 mit
 erzwungener Reihenfolge vor G-2, Belegrollen je Gate)
 
-Normative Referenz: Fachkonzept „Konstruktive Neuberechnung und
-Korrekturschicht" v0.2, Kapitel 6.1-6.3 (im Folgenden FK). Dieses ADR
-instanziiert die dort getroffene Trennung in unserer Gate-Architektur; es
-definiert nichts fachlich neu.
+Normative Referenz: **Grundsatzdokumentation**
+(`docs/mathematik/grundsatzdokumentation.md`), Abschnitt 9.15 — die
+Trennung der beiden Pruefebenen und die Toleranzform. Dieses ADR
+instanziiert sie in unserer Gate-Architektur; es definiert nichts
+fachlich neu.
+
+*Zur Herkunft:* Bei Beschluss dieses ADR lag die Methode als Fachkonzept
+„Konstruktive Neuberechnung und Korrekturschicht" v0.2 vor (Kapitel
+6.1-6.3). Dieses Dokument ist seither vollstaendig in die
+Grundsatzdokumentation aufgenommen; die Verweise unten sind entsprechend
+umgestellt.
 
 ## Kontext
 
-FK 6.1 trennt zwei Pruefebenen mit unterschiedlichem Zeitbezug, Gegenstand
+Die Grundsatzdokumentation trennt in 9.15 zwei Pruefebenen mit unterschiedlichem Zeitbezug, Gegenstand
 und Verantwortlichem:
 
 * **Migrationscontrolling** misst am Migrationsstichtag $t_0$ gegen die
@@ -22,7 +29,7 @@ und Verantwortlichem:
 * **Aktuarieller Test** misst am Verankerungszeitpunkt $t_a$ gegen die
   Methode: Verteilung des Residuums, geclustert nach Historientyp,
   Ausreisseranalyse, Floor-Pruefungen. $t_a$ ist **je Vertrag verschieden**
-  (FK 5.1). Verantwortung: Aktuariat / Verantwortlicher Aktuar.
+  (Grundsatzdokumentation 9.12). Verantwortung: Aktuariat / Verantwortlicher Aktuar.
 
 Unsere heutige Abnahme vermischt beides. `qa.migrationssuite` vergleicht je
 Vertrag gegen **ein** Stichtagspaar, das fuer die ganze Suite gilt,
@@ -75,12 +82,12 @@ Daraus folgen drei Invarianten, die im Code gelten und nicht nur in der
 Doku stehen:
 
 * **Keine Interpolation.** Verglichen wird am Rechenpunkt; unterjaehrige
-  Mischwerte sind im Test unzulaessig (FK 5.1: sonst misst $R$
+  Mischwerte sind im Test unzulaessig (Grundsatzdokumentation 9.12: sonst misst $R$
   Interpolationskonventionen mit und ist als Diagnoseinstrument entwertet).
 * **Keine Summation der Vergleichsgroessen.** Werte zu verschiedenen
   Stichtagen zu addieren, ergibt fachlich nichts. Die Test-Engine bildet
   deshalb keine Deckungskapital-Summe; sie kennt ausschliesslich
-  Verteilungsgroessen des Residuums (FK 6.2: Toleranzen auf Maximum und
+  Verteilungsgroessen des Residuums (Grundsatzdokumentation 9.15: Toleranzen auf Maximum und
   hohen Perzentilen, nie auf Mittelwert oder Median).
 * **Pruefsummen sind Transportsicherung, kein fachlicher Abgleich.**
   Mitgelieferte Summen werden gepruefet und getrennt ausgewiesen, nie als
@@ -136,7 +143,7 @@ Test als unvollstaendig.
 
 ## Bewusst nicht Bestandteil dieser Entscheidung
 
-* Die **Korrekturschicht** und der Migrationszugang (FK Kap. 3-5). Dieses
+* Die **Korrekturschicht** und der Migrationszugang (Grundsatzdokumentation Abschnitt 9). Dieses
   ADR trennt die Pruefebenen; es baut die Methode nicht. Der aktuarielle
   Test kann seine eigentliche Kennzahl — die Verteilung von
   $R_{\mathrm{hist}}$ — erst rechnen, wenn es ein $R$ gibt. Bis dahin

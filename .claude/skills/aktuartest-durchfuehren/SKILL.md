@@ -57,7 +57,7 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 - `monate_ta` ist ein VERTRAGSATTRIBUT (der letzte exakte Rechenpunkt
   des Vertrags, volle Jahre), kein Suite-Parameter. Verlangt jemand
   einen unterjährigen Vergleichszeitpunkt: STOPP, Mensch fragen — die
-  Engine lehnt ihn hart ab, und das ist Absicht (FK 5.1).
+  Engine lehnt ihn hart ab, und das ist Absicht (Grundsatzdokumentation 9.12).
 - Toleranzen kommen aus `qa` (REL_TOL/ABS_TOL) und werden NIE
   aufgeweicht, um "grün zu werden".
 - Die Stichprobe wird GEZOGEN und belegt, nie von Hand
@@ -127,7 +127,7 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 - Weitere Stichprobenprofile (geschichtet, risikoorientiert) über die
   Erweiterungsstelle `qa.stichprobe.PROFILE` — je Profil eine
   Teamentscheidung mit ADR-010-Nachzug.
-- Das methodische Residuum R der Korrekturschicht (FK Kap. 3-5): Die
+- Das methodische Residuum R der Korrekturschicht (Grundsatzdokumentation Abschnitt 9): Die
   Engine trägt den Platz benannt und leer, bis es ein R gibt.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)
