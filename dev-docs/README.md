@@ -1,16 +1,21 @@
-# Vorhaben — was ansteht und warum
+# dev-docs — Planung des Entwicklerteams
 
-Hier steht Arbeit, die **erkannt und eingeplant, aber nicht umgesetzt**
-ist: groessere Umbauten mit einer Loesungsskizze, offene Punkte aus
-Reviews, Nachzuege, die auf eine Entscheidung warten. Der Zweck ist,
-dass ein erkanntes Problem nicht in einer Besprechung oder einem
-Commit-Text verschwindet.
+Backlog und Vorhaben fuer Repo, Tooling und Arbeitsweise: groessere
+Umbauten mit einer Loesungsskizze, offene Punkte aus Reviews,
+Nachzuege, die auf eine Entscheidung warten. Der Zweck ist, dass ein
+erkanntes Problem nicht in einer Besprechung oder einem Commit-Text
+verschwindet.
 
-Das ist **keine** Systemdokumentation: Was das System ist und rechnet,
-steht in `docs/architektur/`, `docs/mathematik/`, `docs/tarifplaene/`
-und `docs/migrationskonzept/`. Und es ist nicht `docs-local/` — das ist
-der private Arbeitsbereich des Maintainers. Was hier steht, ist fuer
-das Team.
+Hier arbeitet das **Entwicklerteam an diesem Repository** — Sprints,
+Backlog, Refactorings, CI, Skills. Das ist eine andere Welt als das
+Versicherungsunternehmen, das dieses System abbildet: Dessen
+Fachdokumentation (`docs/mathematik/`, `docs/tarifplaene/`,
+`docs/migrationskonzept/`) spricht die Sprache des Unternehmens und
+kennt weder Repos noch Sprints. Hier gilt das nicht — hier ist
+Werkzeugsprache die richtige Sprache.
+
+Abzugrenzen ist nur `docs-local/`: der private, nicht eingecheckte
+Arbeitsbereich des Maintainers. Was hier steht, ist fuer das Team.
 
 ## Ablage
 

@@ -62,7 +62,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `tests/test_tarifplan_struktur.py`); the
   project-side migration procedure in `docs/migrationskonzept/`
   (template; the filled instance lives in the case workspace); planned
-  work that is recognised but not built in `docs/vorhaben/`; team
+  work that is recognised but not built in `dev-docs/`; team
   agent instructions here; private notes in `docs-local/` (never read
   those or `simulation/` unless the human explicitly points you there —
   they are the maintainer's staging areas). Commands and flags belong
