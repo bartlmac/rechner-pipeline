@@ -33,14 +33,44 @@ ZENTRAL = REPO_ROOT / "docs" / "fachkonzept" / "grundsatzdokumentation.md"
 
 #: Themen des gemeinsamen Rueckgrats. Sie stehen im zentralen Dokument;
 #: ein Tarifplan darf sie NENNEN und darauf verweisen, aber nicht
-#: ausfuehren. Erkennungsmerkmal ist der Formelsatz bzw. die
-#: Definitionsformulierung — der blosse Begriff ist erlaubt.
+#: ausfuehren.
+#:
+#: Erkannt wird die AUSFUEHRUNG an ihren Bausteinen, nicht am Wortlaut:
+#: geprueft wird auf dem normalisierten Text (LaTeX-Abstandsbefehle,
+#: geschweifte Einzelklammern und Leerraum entfernt), und ein Befund
+#: verlangt MEHRERE Bausteine desselben Themas im selben Dokument. So
+#: faellt eine umformatierte oder umgeschriebene Kopie ebenfalls auf,
+#: waehrend ein blosser Verweis ("die Rekursion steht in ...") nicht
+#: anschlaegt. Ein Waechter gegen sinngemaesse Prosa-Wiederholung ist
+#: das ausdruecklich NICHT — dagegen hilft nur das Review.
 BACKBONE_AUSFUEHRUNGEN = {
-    "Thiele-Rekursionsformel": r"V_j\(s\)\s*\\;=\\;",
-    "Residuum-Regel als Definition": r"p_\{s\s*\\to\s*s\}",
-    "affine Ordnungs-Transformation": r"a \+ b \\cdot",
-    "Diskontfaktor-Definition": r"v\s*=\s*\\tfrac\{1\}\{1\+i\}",
+    "Thiele-Rekursion": (
+        [r"V_j\(s", r"V_j\+1\(s", r"p_s\\tos"], 2,
+    ),
+    "Residuum-Regel": (
+        [r"p_s\\toss?'?\(x", r"1-\\sum_s"], 2,
+    ),
+    "affine Ordnungs-Transformation": (
+        [r"a\+b\\cdot", r"ersteOrdnung", r"\\min\(1"], 2,
+    ),
+    "Diskontfaktor-Definition": (
+        [r"v=\\[tdf]?frac1\{?1\+i", r"v=1/\(1\+i\)"], 1,
+    ),
 }
+
+
+def _normalisiert(text: str) -> str:
+    r"""LaTeX-Rauschen entfernen, damit Umformatierungen nicht durchrutschen.
+
+    ``\;=\;`` und ``=``, ``V_j`` und ``V_{j}``, ``\tfrac`` und
+    ``\frac`` sollen dasselbe treffen — sonst faengt der Waechter nur
+    die woertliche Kopie und nicht die umformatierte.
+    """
+    ohne = re.sub(r"\\[;,:!> ]", "", text)          # Abstandsbefehle
+    ohne = re.sub(r"\\bigl|\\bigr|\\Bigl|\\Bigr|\\left|\\right",
+                  "", ohne)
+    ohne = ohne.replace("{", "").replace("}", "")   # V_{j+1} -> V_j+1
+    return re.sub(r"\s+", "", ohne)
 
 
 def _tarifplaene() -> Dict[str, Path]:
@@ -48,8 +78,19 @@ def _tarifplaene() -> Dict[str, Path]:
             if p.stem != "README"}
 
 
+def _ohne_codeblocks(text: str) -> str:
+    """Ueberschriften INNERHALB eines Code-Fence sind keine Gliederung."""
+    return re.sub(r"^```.*?^```", "", text, flags=re.M | re.S)
+
+
 def _abschnitte(text: str) -> List[str]:
-    return re.findall(r"^# (\d+) (.+)$", text, re.M)
+    """Nummerierte Top-Level-Abschnitte in Reihenfolge."""
+    return re.findall(r"^# (\d+) (.+)$", _ohne_codeblocks(text), re.M)
+
+
+def _alle_ueberschriften(text: str) -> List[str]:
+    """Alle Top-Level-Ueberschriften — auch unnummerierte (Anhaenge)."""
+    return re.findall(r"^# (.+)$", _ohne_codeblocks(text), re.M)
 
 
 def test_jedes_registrierte_produkt_hat_einen_tarifplan():
@@ -80,32 +121,59 @@ def test_alle_tarifplaene_haben_dieselbe_gliederung():
     }
     assert gliederungen, "keine Tarifplaene gefunden"
     referenz_name, referenz = sorted(gliederungen.items())[0]
+    laengen = {len(g) for g in gliederungen.values()}
+    kuerzeste = min(laengen)
     for name, gliederung in gliederungen.items():
-        assert gliederung == referenz, (
-            f"{name}.md weicht von {referenz_name}.md ab:\n"
-            f"  {name}: {gliederung}\n  {referenz_name}: {referenz}"
+        # Der GEMEINSAME Kopf ist identisch; ein migriertes Produkt darf
+        # hinten anhaengen (Ausgestaltung der Korrekturmathematik,
+        # Grundsatzdokumentation Abschnitt 10 Nr. 9) — aber nicht
+        # dazwischenschieben oder umbenennen.
+        assert gliederung[:kuerzeste] == referenz[:kuerzeste], (
+            f"{name}.md weicht im gemeinsamen Teil von {referenz_name}.md "
+            f"ab:\n  {name}: {gliederung[:kuerzeste]}\n"
+            f"  {referenz_name}: {referenz[:kuerzeste]}"
         )
-    # Luecken- und Reihenfolgetreue der Nummerierung:
-    nummern = [int(n) for n, _ in referenz]
-    assert nummern == list(range(1, len(nummern) + 1)), nummern
+        nummern = [int(n) for n, _ in gliederung]
+        assert nummern == list(range(1, len(nummern) + 1)), (
+            f"{name}.md: Abschnittsnummern springen: {nummern}"
+        )
+        # Unnummerierte Top-Level-Ueberschriften waeren ein Parkplatz
+        # fuer Prosa, die der Gliederungsvergleich nicht sieht:
+        unnummeriert = [
+            u for u in _alle_ueberschriften(
+                (TARIFPLAENE / f"{name}.md").read_text(encoding="utf-8"))
+            if not re.match(r"\d+ ", u)
+        ]
+        assert not unnummeriert, (
+            f"{name}.md traegt unnummerierte Abschnitte {unnummeriert} — "
+            "sie stehen ausserhalb der geprueften Gliederung"
+        )
 
 
 def test_kein_tarifplan_fuehrt_das_gemeinsame_rueckgrat_aus():
     """Der Kern der Entdopplung: Was fuer alle Produkte gilt, steht
     einmal im zentralen Dokument. Ein Tarifplan verweist darauf."""
+    def _treffer(text: str, bausteine):
+        norm = _normalisiert(text)
+        return [b for b in bausteine if re.search(b, norm)]
+
     zentral = ZENTRAL.read_text(encoding="utf-8")
-    for thema, muster in BACKBONE_AUSFUEHRUNGEN.items():
-        assert re.search(muster, zentral), (
-            f"{thema} steht nicht (mehr) in der Grundsatzdokumentation — "
-            "dann ist der Waechter blind"
+    for thema, (bausteine, schwelle) in BACKBONE_AUSFUEHRUNGEN.items():
+        gefunden = _treffer(zentral, bausteine)
+        assert len(gefunden) >= schwelle, (
+            f"{thema} steht nicht (mehr) in der Grundsatzdokumentation "
+            f"(nur {gefunden}) — dann ist der Waechter blind"
         )
     for name, pfad in _tarifplaene().items():
         text = pfad.read_text(encoding="utf-8")
-        gefunden = [t for t, m in BACKBONE_AUSFUEHRUNGEN.items()
-                    if re.search(m, text)]
-        assert not gefunden, (
-            f"{name}.md fuehrt Backbone-Themen aus: {gefunden} — sie "
-            "gehoeren in docs/fachkonzept/grundsatzdokumentation.md, "
+        rueckwanderung = [
+            thema for thema, (bausteine, schwelle)
+            in BACKBONE_AUSFUEHRUNGEN.items()
+            if len(_treffer(text, bausteine)) >= schwelle
+        ]
+        assert not rueckwanderung, (
+            f"{name}.md fuehrt Backbone-Themen aus: {rueckwanderung} — "
+            "sie gehoeren in docs/fachkonzept/grundsatzdokumentation.md, "
             "der Tarifplan verweist nur darauf"
         )
 
@@ -133,24 +201,43 @@ def test_grundsatzdokumentation_deckt_die_pflichtinhalte_ab():
         assert pflicht in text, f"Pflichtinhalt fehlt: {pflicht}"
 
 
-@pytest.mark.parametrize("behauptung, datei", [
-    ("spez/fachspez.py", "src/rechner_pipeline/spez/fachspez.py"),
-    (".claude-Skill", ".claude/skills/dokumentiere-system/SKILL.md"),
-    (".agents-Skill", ".agents/skills/dokumentiere-system/SKILL.md"),
-])
-def test_niemand_behauptet_eine_falsche_abschnittszahl(behauptung, datei):
-    """Der Drift, der den Umbau ausgeloest hat: Drei Stellen sprachen von
-    einer 12-Abschnitts-Gliederung, waehrend die Dokumente 13 Abschnitte
-    trugen. Eine Zahl, die an mehreren Orten steht, driftet — hier wird
-    sie gegen die Dokumente geprueft."""
+#: Dateien, die frueher eine feste Abschnittszahl behaupteten. Der Drift,
+#: der den Umbau ausgeloest hat, entstand genau hier: drei Stellen
+#: sprachen von einer 12-Abschnitts-Gliederung, waehrend die Dokumente
+#: 13 Abschnitte trugen.
+ZAHL_BEHAUPTER = (
+    "src/rechner_pipeline/spez/fachspez.py",
+    ".claude/skills/dokumentiere-system/SKILL.md",
+    ".agents/skills/dokumentiere-system/SKILL.md",
+)
+
+
+@pytest.mark.parametrize("datei", ZAHL_BEHAUPTER)
+def test_niemand_behauptet_eine_falsche_abschnittszahl(datei):
+    """Eine Zahl, die an mehreren Orten steht, driftet. Wer die
+    Gliederungslaenge doch beziffert, wird gegen die Dokumente
+    geprueft — die Formulierung muss dafuer eindeutig auf die
+    Tarifplan-Gliederung zeigen ("N Abschnitte" / "N-Abschnitts"),
+    nicht auf einen zitierten Abschnitt eines anderen Dokuments."""
     ist = len(_abschnitte(
         _tarifplaene()["klv"].read_text(encoding="utf-8")))
     text = (REPO_ROOT / datei).read_text(encoding="utf-8")
-    falsch = [
-        n for n in re.findall(r"(\d+)[- ]Abschnitt", text)
-        if int(n) != ist
-    ]
+    behauptet = re.findall(r"\b(\d+)[- ]Abschnitt(?:e|s)\b", text)
+    falsch = [n for n in behauptet if int(n) != ist]
     assert not falsch, (
         f"{datei} behauptet {falsch} Abschnitte, die Tarifplaene haben "
         f"{ist} — eine der beiden Stellen ist veraltet"
     )
+
+
+def test_der_abschnittszahl_waechter_ist_nicht_vakuant():
+    """Kontrolle zum vorigen Test: Er muss fallen, wenn jemand eine
+    falsche Zahl schreibt — und darf nicht auf zitierte Abschnitte
+    anderer Dokumente anspringen ("ADR-010 Abschnitt 5")."""
+    ist = len(_abschnitte(
+        _tarifplaene()["klv"].read_text(encoding="utf-8")))
+    muster = r"\b(\d+)[- ]Abschnitt(?:e|s)\b"
+    assert re.findall(muster, f"eine {ist - 1}-Abschnitts-Gliederung")
+    assert re.findall(muster, f"die Tarifplaene haben {ist} Abschnitte")
+    assert not re.findall(muster, "ADR-010 Abschnitt 5 sagt dazu")
+    assert not re.findall(muster, "siehe Grundsatzdokumentation Abschnitt 4")

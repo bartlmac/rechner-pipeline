@@ -60,7 +60,7 @@ import ast
 import json
 import sys
 from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 SRC_PREFIX = "src/rechner_pipeline/"
 TEST_PREFIX = "tests/"
@@ -87,8 +87,14 @@ DOKU_BINDUNG: Dict[str, str] = {
     ".claude/skills/": "system/skills",
     ".agents/skills/": "system/skills",
     "docs/architektur/skill-architektur.md": "system/skills",
-    "docs/tarifplaene/klv.md": "klv",
-    "docs/tarifplaene/bu.md": "bu",
+}
+
+#: Doku-Ordner, deren Dateiname den Knoten bestimmt: ``<knoten>.md``.
+#: Generisch statt aufgezaehlt, damit ein neues Produkt seinen Tarifplan
+#: nicht stillschweigend ausserhalb der Testselektion mitbringt; der
+#: README des Ordners ist kein Produkt und faellt konservativ aus.
+DOKU_NAMENSBINDUNG: Dict[str, Tuple[str, ...]] = {
+    "docs/tarifplaene/": ("README",),
 }
 
 #: Aenderungen hier machen jede Selektion unsicher -> volle Suite.
@@ -238,6 +244,15 @@ def berechne_impact(
             (k for pfx, k in DOKU_BINDUNG.items() if datei.startswith(pfx)),
             None,
         )
+        if doku is None:
+            for ordner, ausnahmen in DOKU_NAMENSBINDUNG.items():
+                if not datei.startswith(ordner) or not datei.endswith(".md"):
+                    continue
+                stamm = datei[len(ordner):-len(".md")]
+                if "/" in stamm or stamm in ausnahmen:
+                    break
+                doku = stamm
+                break
         if doku is not None:
             knoten.add(doku)
             continue

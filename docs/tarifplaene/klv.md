@@ -10,8 +10,10 @@ format:
 > 2.0.0): die **Ausgestaltung** dieses Produkts. Das gemeinsame
 > Rückgrat — Zustandsraum, Thiele-Rekursion, Rechnungsgrundlagen-Schicht,
 > Numerik — steht einmal in der
-> [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md) und wird hier nicht wiederholt; die
-> Gliederung ist für alle Produkte des Kerns dieselbe. Historische Provenienz: einmalige
+> [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md) und
+> wird hier nicht wiederholt; die
+> Gliederung ist für alle Produkte des Kerns dieselbe. Historische
+> Provenienz: einmalige
 > Migration aus dem Quell-Workbook (Übersetzungsbeleg: 617/617 am
 > 22.07.2026 — historisch, kein laufender Anker); Quellnamen
 > der Größen (`Bxt`, `kVx_MRV`, …) sind bewusst erhalten
@@ -45,7 +47,9 @@ nicht (Markov, Select-Periode 0).
 
 Die Bewertungsgleichung ist nicht produktspezifisch: Zustandsraum,
 Thiele-Rückwärtsrekursion, Fälligkeits- und Diskontierungskonventionen
-stehen in der [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitte 3 und 4.
+stehen in der
+[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+Abschnitte 3 und 4.
 
 Für dieses Produkt entfällt die Dauerabhängigkeit ($d_{\max} = 0$,
 Markov). Zusätzlich existiert eine Kommutations-Vergleichsschiene: Der
@@ -134,7 +138,8 @@ $a \ge n -$ `min_rlz_flex`.
 # 7 Geschäftsvorfälle (GeVo-Katalog)
 
 Buchungskonvention und die Einordnung der
-Eintrittswahrscheinlichkeiten: [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+Eintrittswahrscheinlichkeiten:
+[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
 Abschnitt 7. Jeder Betrag kommt aus dem Kern.
 
 | GeVo | Wirkung | Betrag |
@@ -184,13 +189,15 @@ Dieser Tarifplan beschreibt die **Bewertung** auf den
 Rechnungsgrundlagen erster Ordnung. Die Trennung zu den
 Erfahrungsannahmen dritter Ordnung, aus denen die Fortschreibung ihre
 Ereigniswahrscheinlichkeiten bildet, steht in der
-[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitt 5.2. Für dieses Produkt liegen
+[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+Abschnitt 5.2. Für dieses Produkt liegen
 die Annahmen unter `[annahmen]` der Bestands-Config.
 
 # 11 Verankerung und Abnahme
 
 Das Abnahme-Protokoll gilt für alle Produkte
-([Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitt 11). Für dieses Produkt sind
+([Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+Abschnitt 11). Für dieses Produkt sind
 verankert: die Charakterisierungs-Anker des produktiven Pfads, die
 Toleranz-Überleitung gegen den Kommutations-Zweitkern
 (`qa/ueberleitung`) und je Migrationsfall Gate O3 gegen den

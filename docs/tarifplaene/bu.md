@@ -1,5 +1,6 @@
 ---
-title: "Tarifplan BU — Berufsunfähigkeitsversicherung (Beispielprodukt, Zielrechenkern)"
+title: "Tarifplan BU — Berufsunfähigkeitsversicherung (Beispielprodukt,
+Zielrechenkern)"
 lang: de
 format:
   typst:
@@ -49,7 +50,9 @@ Residuum.
 
 Die Bewertungsgleichung ist nicht produktspezifisch: Zustandsraum,
 Thiele-Rückwärtsrekursion, Fälligkeits- und Diskontierungskonventionen
-stehen in der [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitte 3 und 4.
+stehen in der
+[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+Abschnitte 3 und 4.
 
 Für dieses Produkt ist die **Dauerabhängigkeit im Zustand `bu`
 wesentlich**: Reaktivierung und Invalidensterblichkeit sind
@@ -85,9 +88,11 @@ Prospektiv je Vertragsjahr $a \in [0, n]$, im Leistungsbezug zusätzlich
 nach der Select-Dauer $d$:
 
 $$
-V_{\text{aktiv}}(a) = R\,L_a(\text{aktiv}) - p_{\text{netto}}\,P_a(\text{aktiv}),
+V_{\text{aktiv}}(a) = R\,L_a(\text{aktiv}) -
+p_{\text{netto}}\,P_a(\text{aktiv}),
 \qquad
-V_{\text{bu}}(a, d) = R\,L_a(\text{bu}, d) - p_{\text{netto}}\,P_a(\text{bu}, d).
+V_{\text{bu}}(a, d) = R\,L_a(\text{bu}, d) -
+p_{\text{netto}}\,P_a(\text{bu}, d).
 $$
 
 Per Konstruktion ist $V_{\text{aktiv}}(0) = 0$. $V_{\text{bu}}$ ist im
@@ -105,7 +110,8 @@ Produktdefinition ist zurückgestellt.
 # 7 Geschäftsvorfälle (GeVo-Katalog)
 
 Buchungskonvention und die Einordnung der
-Eintrittswahrscheinlichkeiten: [Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+Eintrittswahrscheinlichkeiten:
+[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
 Abschnitt 7. Der Betrag ist hier die vom GeVo betroffene
 **Jahresrente** (Bezugsgröße der Nachweisung), nicht eine Auszahlung:
 Todesfall- und Erlebensfallleistung kennt das Produkt nicht.
@@ -159,7 +165,8 @@ Beispielpunkt: $x=35$, $n=30$, $R = 12\,000$, $i = 1{,}75\,\%$.
 Dieser Tarifplan beschreibt die **Bewertung** auf den
 Rechnungsgrundlagen erster Ordnung. Die Trennung zu den
 Erfahrungsannahmen dritter Ordnung steht in der
-[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitt 5.2. Für dieses Produkt ist die
+[Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+Abschnitt 5.2. Für dieses Produkt ist die
 Richtung der Transformation je Ausscheideordnung verschieden:
 belastende Ordnungen (Invalidisierung) tragen $b < 1$, entlastende
 (Reaktivierung) $b > 1$. Die Annahmen liegen unter `[annahmen]` der
@@ -168,7 +175,8 @@ Bestands-Config.
 # 11 Verankerung und Abnahme
 
 Das Abnahme-Protokoll gilt für alle Produkte
-([Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md), Abschnitt 11). Für dieses Produkt sind
+([Grundsatzdokumentation](../fachkonzept/grundsatzdokumentation.md),
+Abschnitt 11). Für dieses Produkt sind
 verankert: der Charakterisierungs-Anker `anker_bu_beispiel.json` (volle
 Float-Präzision, Provenienz „DAV 1997 I"), der Engine-Selbsttest
 Vorwärts- gegen Rückwärtsbewertung auf der echten BU-Konfiguration und

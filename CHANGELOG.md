@@ -176,6 +176,32 @@ nachzurechnen. Daraus:
   mehrstufiges Statusmodell des Abnahmeberichts — der Gate-Vertrag
   bleibt binär und blockierend.
 
+### Geändert am 2026-08-27
+
+* **Dreistufige Fachdokumentation nach Fachkonzept Kap. 1.3 und 8** —
+  das Fachkonzept „Konstruktive Neuberechnung und Korrekturschicht"
+  v0.2 liegt als zitierfähige Kopie im Repo
+  (`docs/fachkonzept/`, Änderungen laufen über seinen Autor), daneben
+  neu die **Grundsatzdokumentation**: Mathematik und Numerik, der die
+  Umsetzung folgt — Zustandsraum und Semi-Markov-Modell,
+  Thiele-Rekursion auf dem erweiterten Zustand, Rechnungsgrundlagen
+  und Ordnungs-Abgrenzung, die beiden unterjährigen Konventionen,
+  Rundung, Schichtenbild und Produkt-Contract. Die **Tarifpläne**
+  tragen seither nur noch die Ausgestaltung je Produkt und verweisen
+  für das gemeinsame Rückgrat; rund ein Viertel jedes Plans stand
+  vorher wortgleich im anderen. Ein Wächter hält den Schnitt
+  (`tests/test_tarifplan_struktur.py`): je Produkt ein Tarifplan und
+  umgekehrt, gemeinsame Gliederung, kein Backbone-Thema im Tarifplan,
+  keine widersprüchliche Abschnittszahl.
+* **Projektseitig** das Migrationskonzept (`docs/migrationskonzept/`)
+  mit den ausgearbeiteten Kapiteln 6 (Migrationscontrolling) und 7
+  (aktuarielle Abnahme), jeweils mit Deckungsgrad gegenüber
+  Fachkonzept Kapitel 6.
+* **Impact kennt die Doku-Bindungen**: Tarifpläne binden über ihren
+  Dateinamen an den Produktknoten (ein neues Produkt bringt seinen
+  Plan damit nicht an der Testselektion vorbei), das Fachkonzept fällt
+  konservativ aus.
+
 ### Geändert am 2026-08-26
 
 * **ADR-010 umgesetzt: aktuarieller Test und Migrationscontrolling sind

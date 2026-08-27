@@ -30,6 +30,7 @@ zweimal teuer gewesen).
 |---|---|---|
 | Architektur-Entscheidungen | `docs/architektur/adr-NNN-*.md` | ADR-Format: Kontext, Entscheidung, Konsequenzen, verworfene Alternative(n); Status + Datum + Entscheider; Index in `docs/architektur/README.md` nachziehen |
 | Architektur-Beschreibung | `docs/architektur/*.md` | beschreibt IST und Absicht; "bewusst nicht"-Abschnitte sind Pflicht (Grenzen benennen, nie beschoenigen) |
+| Fachkonzept und Grundsatzmathematik | `docs/fachkonzept/` | `konstruktive-neuberechnung.md` ist FREMD (Autor ausserhalb des Repos, nie hier aendern); `grundsatzdokumentation.md` ist die repo-eigene normative Mathematik/Numerik ALLER Produkte — was fuer mehr als ein Produkt gilt, gehoert dorthin, nicht in einen Tarifplan |
 | Tarifplaene (Zielkern) | `docs/tarifplaene/*.md` | AUSGESTALTUNG je Produkt; das gemeinsame Rueckgrat steht einmal in `docs/fachkonzept/grundsatzdokumentation.md` und wird nie wiederholt (Waechter: tests/test_tarifplan_struktur.py); einheitliche Gliederung ueber alle Produkte, Rendering ueber die Doku-Engine |
 | Agenten-Anweisungen (Team) | `AGENTS.md` + `.claude/skills/` (+ `.agents/`-Spiegel) | CLI-neutral; AGENTS.md-Aenderungen im Team abstimmen; Skill-Paritaet ist test-tragend |
 | README | `README.md` | erzaehlt das System entlang der Architektur; Kommandobeispiele muessen LAUFEN (nachpruefen, nicht abschreiben) |

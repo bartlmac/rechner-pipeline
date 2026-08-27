@@ -47,7 +47,8 @@ Die Abgrenzung nach oben und unten:
 | $p_{s \to s'}(x, d)$ | Übergangswahrscheinlichkeit im Jahr, in dem Alter $x$ und Verweildauer $d$ erreicht sind |
 | $z(s, j)$ | vorschüssige Zahlung im Zustand $s$ zu Beginn des Jahres $j$ |
 | $u(s, s', j)$ | nachschüssige Zahlung beim Übergang $s \to s'$ im Jahr $j$ |
-| $V_j(s)$ | prospektiver Barwert im Zustand $s$ zu Beginn des Jahres $j$ |
+| $V_j(s, d)$ | prospektiver Barwert im Zustand $s$ mit Verweildauer $d$ zu Beginn des Jahres $j$ |
+| $d_{\max}$ | maximale Verweildauer des Modells (Select-Periode; $0$ = markovsch) |
 | $i$ | Rechnungszins, $v = 1/(1+i)$ der jährliche Diskontfaktor |
 
 Produktspezifische Größen (Beitragsraten, Reservebegriffe,
@@ -100,28 +101,56 @@ markovsch.
 
 ## 4.1 Die Rekursion
 
-Alle Produkte des Kerns bewerten auf demselben Rückgrat. Der Barwert im
-Zustand $s$ zu Beginn des Jahres $j$ folgt der Rückwärtsrekursion
+Alle Produkte des Kerns bewerten auf demselben Rückgrat. Bewertet wird
+auf dem **erweiterten Zustand** $(s, d)$ — Zustand und Verweildauer
+zusammen (3.3). Der Barwert zu Beginn des Jahres $j$ folgt der
+Rückwärtsrekursion
 
 $$
-V_j(s) \;=\; z(s, j) \;+\; v \cdot \sum_{s'} p_{s \to s'}(x_0 + j,\, d)
-\cdot \bigl( u(s, s', j) + V_{j+1}(s') \bigr),
-\qquad v = \tfrac{1}{1+i},
+V_j(s, d) \;=\; z(s, j) \;+\; v \cdot \Bigl[
+\sum_{s' \neq s} p_{s \to s'}(x_0 + j,\, d)
+\cdot \bigl( u(s, s', j) + V_{j+1}(s', 0) \bigr)
+\;+\; p_{s \to s}(x_0 + j,\, d) \cdot V_{j+1}\bigl(s,\, d^{+}\bigr)
+\Bigr],
 $$
 
-mit der Terminalbedingung $V_n(s) = 0$ für alle Zustände am Ende des
+mit $v = \tfrac{1}{1+i}$, der fortgeschriebenen Verweildauer
+$d^{+} = \min(d + 1,\; d_{\max})$ und der Terminalbedingung
+$V_n(s, d) = 0$ für alle Zustände und Dauern am Ende des
 Bewertungshorizonts $n$.
+
+Zwei Eigenschaften der Gleichung sind bindend und nicht bloß
+Darstellung:
+
+* **Die Verweildauer wird beim Zustandswechsel auf null gesetzt und
+  beim Verbleib fortgeschrieben.** Sie ist Teil des Arguments, nicht
+  ein Parameter der Übergangsfunktion allein — sonst ist der Barwert
+  eines dauerabhängigen Produkts unterbestimmt.
+* **Übergangszahlungen fallen nur beim echten Zustandswechsel an**
+  ($s' \neq s$). Eine am Jahresende fällige Zahlung, die den Zustand
+  nicht verlässt, ist über das Zahlungsprofil $z$ des Folgejahres
+  abzubilden; die Rekursion kennt dafür keinen Term.
+
+Für ein markovsches Produkt ist $d_{\max} = 0$, damit $d = d^{+} = 0$,
+und die Gleichung fällt auf die gewohnte Form ohne Dauerargument
+zusammen.
 
 ## 4.2 Fälligkeitskonventionen
 
 * **Zustandszahlungen $z$ sind vorschüssig** — fällig zu Beginn des
   Jahres, in dem der Zustand besteht.
 * **Übergangszahlungen $u$ sind nachschüssig** — fällig am Ende des
-  Jahres, in dem der Übergang stattfindet.
+  Jahres, in dem der Übergang stattfindet, und nur bei echtem
+  Zustandswechsel (4.1).
 
 Diese Konvention gilt für alle Produkte und alle Schichten. Eine
-Leistung, die davon abweicht, ist über das Zahlungsprofil abzubilden,
+Leistung, die davon abweicht, ist über die Zahlungsprofile abzubilden,
 nicht über eine Sonderbehandlung in der Rekursion.
+
+Unterjährige Zahlweisen werden nicht durch ein feineres Gitter
+abgebildet, sondern durch ein **Abzugsglied** auf dem Jahresbarwert
+(geschlossene Näherung, je Produkt im Tarifplan belegt). Die Rekursion
+selbst bleibt jährlich.
 
 ## 4.3 Diskontierung
 
@@ -150,34 +179,55 @@ Die **Bewertung** rechnet auf Rechnungsgrundlagen **erster Ordnung**.
 Wie sich ein Bestand über die Zeit **entwickelt**, steuern davon
 getrennte **Erfahrungsannahmen dritter Ordnung**: Jede
 Ereigniswahrscheinlichkeit der Fortschreibung entsteht daraus als
-affine Transformation
+geklemmte affine Transformation
 
-$$\text{Annahme} \;=\; a + b \cdot (\text{erste Ordnung})$$
+$$\text{Annahme} \;=\; \min\bigl(1,\; \max(0,\; a + b \cdot q)\bigr),
+\qquad q = \text{Wert erster Ordnung}$$
 
-mit $b < 1$ bei belastenden und $b > 1$ bei entlastenden
-Ausscheideordnungen. Beiträge und Reserven bleiben davon unberührt.
+Die Klemmung auf $[0, 1]$ gehört zur Definition: Ohne sie wäre die
+Transformation keine Wahrscheinlichkeitsabbildung. Zur Belegung der
+Parameter:
+
+* $b < 1$ dämpft eine belastende, $b > 1$ verstärkt eine entlastende
+  Ausscheideordnung; $b = 1$ übernimmt die erste Ordnung unverändert.
+* $b = 0$ ist der Fall für Ereignisse, für die es **keine**
+  Rechnungsgrundlage gibt (Storno, Beitragsfreistellung, dynamische
+  Erhöhung): Dort ist $a$ die Rate selbst.
+
+Beiträge und Reserven bleiben von den Erfahrungsannahmen unberührt.
 Diese Trennung ist nicht verhandelbar: Eine Erfahrungsannahme darf nie
 in die Bewertung zurückwirken.
 
 # 6 Diskretisierung, Numerik und Rundung
 
 * **Gitter.** Die Rekursion läuft auf **jährlichen** Stützstellen, den
-  Vertragsjahrestagen. Unterjährige Werte entstehen ausschließlich durch
-  benannte Interpolation zwischen zwei Jahresstützstellen und sind als
-  solche kenntlich; an einer Jahresstützstelle ist der interpolierte
-  Wert bit-identisch zur Jahreszeile.
-* **Rechenpunkt.** Bewertungen, die eine Aussage über die Methode
+  Vertragsjahrestagen. Ein unterjähriger Stichtag wird auf eine von
+  **zwei benannten Konventionen** abgebildet, nie stillschweigend:
+
+  | Konvention | Regel | Verwendung |
+  |---|---|---|
+  | **Zustand am Stichtag** | Werte des angebrochenen Vertragsjahres, also der Verlaufszeile $\lfloor m/12 \rfloor$ bei $m$ vollen Vertragsmonaten — **keine** Interpolation | Bestandsführung und ihre Bewertung, aktuarielle Prüfung |
+  | **Monatsreserve** | lineare Interpolation zwischen den Jahresstützstellen $\lfloor m/12 \rfloor$ und $+1$; an einer Stützstelle bit-identisch zur Jahreszeile | Bilanzstichtage zwischen zwei Jahrestagen, Migrationscontrolling |
+
+  Welche Konvention gilt, sagt der aufrufende Pfad — beide zu mischen
+  oder eine für die andere zu halten, ist ein Fehler: An einem
+  Stichtag mitten im Vertragsjahr liegen sie um Größenordnungen
+  auseinander.
+* **Rechenpunkt.** Bewertungen, die eine Aussage über die **Methode**
   tragen sollen (aktuarielle Prüfung, Verankerung), werden am
-  Rechenpunkt gebildet, nicht am interpolierten Zwischenwert
-  (Fachkonzept Kap. 5.1).
-* **Radix.** Tafelbezogene Bestandszahlen verwenden die Radix
-  $l_0 = 1\,000\,000$.
-* **Rundung.** Rundung ist eine Konvention der Darstellung und der
-  Kommutationsspalten, nicht der Rekursion: Zwischenergebnisse der
-  Bewertung laufen in voller Gleitkomma-Präzision. Wo gerundet wird,
-  gilt **kaufmännisch von der Null weg** (half away from zero) auf 16
-  Stellen — nicht das kaufmännische Runden zur geraden Ziffer, das
-  Python voreinstellt.
+  Rechenpunkt gebildet — am Vertragsjahrestag, nicht am interpolierten
+  Zwischenwert (Fachkonzept Kap. 5.1).
+* **Rundung.** Rundung ist eine Konvention der Darstellung, nicht der
+  Rekursion: Zwischenergebnisse der Bewertung laufen in voller
+  Gleitkomma-Präzision. Wo gerundet wird, gilt **kaufmännisch von der
+  Null weg** (half away from zero) — nicht das Runden zur geraden
+  Ziffer, das Python voreinstellt.
+* **Radix und Rundungsordnung der Kommutation.** Die Radix
+  $l_0 = 1\,000\,000$ und die Rundung auf 16 Stellen sind Konventionen
+  der **Kommutations-Vergleichsschiene** (Abschnitt 11), nicht des
+  Zielkerns: Dieser führt keine $l_x$-Kette, sondern rechnet
+  Verbleibswahrscheinlichkeiten direkt aus den Ausscheidewerten. Wer
+  ein neues Produkt baut, braucht beide Größen nicht.
 * **Verankerung in voller Präzision.** Charakterisierungs-Anker binden
   den produktiven Pfad in voller Float-Präzision. Eine auf
   Nachkommastellen gerundete Parität ist ein historischer
@@ -289,11 +339,13 @@ und hier dokumentiert.
 |---|---|---|---|
 | — | *(keine entschiedenen Abweichungen)* | — | — |
 
-Offen und noch nicht entschieden ist die Ratenzuschlag-Staffel: Sie ist
-Tarifwerk und sitzt implementierungsseitig in der untersten
-Konventionsschicht statt beim Produkt. Fachlich ist sie über den
-Modellpunkt übersteuerbar; der Default gehört bei Gelegenheit dorthin,
-wo er hingehört.
+Offen und noch nicht entschieden ist eine Doppelung der
+Ratenzuschlag-Staffel: Der **wirksame** Default liegt bereits beim
+Produkt (Felder des Modellpunkts, vom Produkt stets explizit
+übergeben). Daneben steht dieselbe Staffel ein zweites Mal als
+Konstante in der untersten Konventionsschicht, die der Produktpfad nie
+erreicht. Zwei Kopien derselben Zahlen sind eine Driftquelle; welche
+verschwindet, ist zu entscheiden.
 
 # 13 Versionierung und Änderungsprozess
 

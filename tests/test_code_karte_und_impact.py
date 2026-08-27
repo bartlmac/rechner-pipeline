@@ -356,6 +356,21 @@ def test_impact_tarifplan_ist_test_tragend():
     assert "test_bestand_config.py" in klv["tests"]
 
 
+def test_impact_bindet_tarifplaene_ueber_den_dateinamen():
+    """Die Bindung ist generisch: Ein drittes Produkt bringt seinen
+    Tarifplan nicht stillschweigend ausserhalb der Testselektion mit
+    (Review-Befund — vorher waren klv.md und bu.md einzeln
+    aufgezaehlt)."""
+    neu = berechne_impact(["docs/tarifplaene/rlv.md"], *_repo_args())
+    assert neu["knoten"] == ["rlv"]
+    assert not any("kein Code-/Vertrags-Impact" in h
+                   for h in neu["hinweise"])
+    # Der README des Ordners ist kein Produkt:
+    readme = berechne_impact(
+        ["docs/tarifplaene/README.md"], *_repo_args())
+    assert readme["knoten"] == []
+
+
 def test_impact_fachkonzept_ist_konservativ():
     """Die Grundsatzmathematik, der die Umsetzung folgt (FK 8.1), ist
     nie auf einen Knoten begrenzt."""

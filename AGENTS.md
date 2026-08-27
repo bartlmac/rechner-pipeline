@@ -53,13 +53,17 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `lieferungen/` automatically; sources enter a case only through
   explicit registration.
 - **Docs have one home each:** architecture and ADRs in
-  `docs/architektur/`, the normative actuarial method in
-  `docs/fachkonzept/` (product-side, never edited here — changes come
-  from its author), Tarifplaene in `docs/tarifplaene/` (they carry the
-  per-product elaboration of the Fachkonzept, FK ch. 8.2), the
+  `docs/architektur/`; the product-side method in `docs/fachkonzept/` —
+  `konstruktive-neuberechnung.md` is the Fachkonzept and is NEVER
+  edited here (changes come from its author), while
+  `grundsatzdokumentation.md` is this repo's own normative maths and
+  numerics (FK ch. 8.1) and IS maintained here, with the kernel
+  following it; Tarifplaene in `docs/tarifplaene/` carry the
+  per-product elaboration (FK ch. 8.2) and never repeat the shared
+  backbone (guarded by `tests/test_tarifplan_struktur.py`); the
   project-side migration procedure in `docs/migrationskonzept/`
-  (template; the filled instance lives in the case workspace), team
-  agent instructions here, private notes in `docs-local/` (never read
+  (template; the filled instance lives in the case workspace); team
+  agent instructions here; private notes in `docs-local/` (never read
   those or `simulation/` unless the human explicitly points you there —
   they are the maintainer's staging areas). Commands and flags belong
   in the skills, not in the concept documents.

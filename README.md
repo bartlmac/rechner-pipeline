@@ -234,20 +234,31 @@ Die klassische Kommutationsrechnung lebt als **separater Zweitkern**
 Kreuz-Check (`qa/ueberleitung`) — sie ist kein Bestandteil des
 Zielkerns.
 
-**Die Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): die
-Fachdokumente des Zielkerns in seiner eigenen Mathematik
-(Zustandsmodell, GeVo-Katalog mit Betragsformeln, Stellschrauben,
-Gültigkeitsgrenzen), gerendert über eine gepinnte Doku-Engine
-(`docs/engine/`).
+**Die Fachdokumentation** ist dreistufig, produktseitig, und jede
+Aussage hat genau ein Zuhause (`tests/test_tarifplan_struktur.py` hält
+den Schnitt):
 
-**Das Fachkonzept** (`docs/fachkonzept/`): die fachlich normative
-Methode der konstruktiven Neuberechnung — Bestandsmigration ohne
-Historienmigration. Es steht über den Tarifplänen, die es je Produkt
-ausgestalten; das **Migrationskonzept**
-(`docs/migrationskonzept/`) ist die projektseitige Instanz daneben und
-beschreibt das Verfahren eines Migrationsfalls (Prüfebenen, Nachweise,
-Entscheidungen). Beide Ordner tragen ein README, das die Abgrenzung
-festhält — jede Aussage hat genau ein Zuhause.
+1. **Das Fachkonzept** (`docs/fachkonzept/konstruktive-neuberechnung.md`):
+   die fachlich normative Methode der konstruktiven Neuberechnung —
+   Bestandsmigration ohne Historienmigration. Fachlich bindend,
+   technisch offen.
+2. **Die Grundsatzdokumentation**
+   (`docs/fachkonzept/grundsatzdokumentation.md`): Mathematik und
+   Numerik, der die Umsetzung folgt — das allen Produkten gemeinsame
+   Rückgrat (Zustandsraum und Semi-Markov-Modell, Thiele-Rekursion,
+   Rechnungsgrundlagen-Schicht, Diskretisierung und Rundung,
+   Schichtenbild).
+3. **Die Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): die
+   Ausgestaltung je Produkt — Zustandsraum des Tarifs, Leistungen,
+   Beiträge, Reservebegriffe, GeVo-Katalog mit Betragsformeln,
+   Stellschrauben, Gültigkeitsgrenzen. Sie wiederholen das Rückgrat
+   nicht, sondern verweisen darauf. Gerendert über eine gepinnte
+   Doku-Engine (`docs/engine/`).
+
+Daneben — nicht darunter — steht projektseitig das
+**Migrationskonzept** (`docs/migrationskonzept/`): das Verfahren eines
+Migrationsfalls (Prüfebenen, Nachweise, Entscheidungen), je Bestand
+instanziiert.
 
 **Der Bestand** (`rechner_pipeline.bestand`): synthetische,
 deterministisch reproduzierbare Bestände, deren Datenmodell 1:1 auf dem
