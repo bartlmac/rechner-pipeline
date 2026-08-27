@@ -55,7 +55,7 @@ Struktur gemäß Grundsatzdokumentation 9.12 (drei Lieferobjekte). Je Lieferobje
 
 | Attribut (Grundsatzdokumentation 9.12) | Quellsystemfeld | Ableitung | Validierung |
 |---|---|---|---|
-| ⟨TODO: je Tarifplan, inkl. $i_0$, $u_0$, Options-/Rechtszustände, Dynamikzähler, Restzillmerstand, Steueraggregate⟩ | ⟨…⟩ | ⟨quellseitig / ETL⟩ | ⟨…⟩ |
+| ⟨TODO: je Tarifplan, inkl. $s_0$, $d_0$, Options-/Rechtszustände, Dynamikzähler, Restzillmerstand, Steueraggregate⟩ | ⟨…⟩ | ⟨quellseitig / ETL⟩ | ⟨…⟩ |
 
 ### 4.2 Lieferobjekt 2 — GV-Metadatenliste
 
@@ -85,9 +85,9 @@ Hauptpfad: `angeliefert → validiert → verankert → nachgefahren → abgegli
 |---|---|---|---|---|
 | 1 | Intake und Validierung | MIG | Schema-/Pflichtfeldprüfung der Lieferobjekte 1–3; Plausibilitätsregeln ⟨TODO: Regelkatalog⟩; Prüfung Tarifplan-Zulassung (5.1) | klärung(Datenlieferung) |
 | 2 | $t_a$- und Kohortenbestimmung | MIG | $t_a$ gemäß Grundsatzdokumentation 9.12 aus Vertragsstichtag und letztem rechnenden GV (Lieferobjekt 2); fehlt die $t_a$-Lieferung → Fallback-Kohorte $t_0$ (Grundsatzdokumentation 9.12) | Kohorte „Fallback" |
-| 3 | Zustandsextrakt | MIG | Historienabgeleitete Attribute bereitstellen bzw. per Ableitungsregel (Kap. 4) berechnen: $i_0$, $u_0$, Options-/Rechtszustände, Dynamikzähler, Restzillmerstand, Steueraggregate. GV-Liste verbleibt im MIG (Grenzregel Kap. 2) | klärung(Ableitung) |
+| 3 | Zustandsextrakt | MIG | Historienabgeleitete Attribute bereitstellen bzw. per Ableitungsregel (Kap. 4) berechnen: $s_0$, $d_0$, Options-/Rechtszustände, Dynamikzähler, Restzillmerstand, Steueraggregate. GV-Liste verbleibt im MIG (Grenzregel Kap. 2) | klärung(Ableitung) |
 | 4 | Initialanlage | RK | Vertragsanlage mit Ursprungsparametern und mitwandernden Rechnungsgrundlagen (Grundsatzdokumentation 9.1 Schritt 1) über die reguläre Anlage-API | klärung(Tarifabbildung) |
-| 5 | Verankerung | RK | Zustand $(i_0, u_0)$ setzen; $V^{\mathrm{prosp}}$ rechnen; $R_{\mathrm{hist}} = V^{\mathrm{ist}} - V^{\mathrm{prosp}}$; Guardrails gemäß Grundsatzdokumentation 9.10 (pfadweise Floors, Degenerationsschwelle, Vorzeichen/Kappung); $\mathcal{A}(t_a, i_0, u_0, R_{\mathrm{hist}})$; Persistenz des Parametertupels (Grundsatzdokumentation 9.11) | Kappungsfall → Fehlerprozess (Kap. 8); Degeneration → Ausbuchungsweg (Grundsatzdokumentation 9.16) |
+| 5 | Verankerung | RK | Zustand $(s_0, d_0)$ setzen; $V^{\mathrm{prosp}}$ rechnen; $R_{\mathrm{hist}} = V^{\mathrm{ist}} - V^{\mathrm{prosp}}$; Guardrails gemäß Grundsatzdokumentation 9.10 (pfadweise Floors, Degenerationsschwelle, Vorzeichen/Kappung); $\mathcal{A}(t_a, s_0, d_0, R_{\mathrm{hist}})$; Persistenz des Parametertupels (Grundsatzdokumentation 9.11) | Kappungsfall → Fehlerprozess (Kap. 8); Degeneration → Ausbuchungsweg (Grundsatzdokumentation 9.16) |
 | 6 | Nachfahren $[t_a, t_0]$ | MIG → RK | Bewegungsdaten (Lieferobjekt 3) als reguläre RK-Geschäftsvorfälle; Klasse-A-GV im Nachfahrzeitraum: Absorption gemäß Grundsatzdokumentation 9.7 | klärung(GV-Inventur) |
 | 7 | $t_0$-Abgleich | MIG | Nachgefahrener Wert vs. gelieferter $t_0$-Altwert; Klassifikation systematisch (Konventionsdifferenz je Cluster) vs. unsystematisch (Befund) gemäß Grundsatzdokumentation 9.12; optionale Zweitverankerung $R_{\mathrm{conv}}$ (Grundsatzdokumentation 9.13) nur falls E2 aktiviert (Kap. 11) | klärung(Befund) |
 | 8 | Vertragsprüfung | MIG | Anker-Nachweis innerhalb der Toleranzen der Ausgestaltung; Reporting-Positionen belegt ($R_{\mathrm{hist}}$ / ggf. $R_{\mathrm{conv}}$ getrennt, Grundsatzdokumentation 9.11) | klärung(Prüfung) |
@@ -103,7 +103,7 @@ Standard ($t_a$-Verankerung) · Fallback ($t_0$-Verankerung, Grundsatzdokumentat
 
 ### 5.6 Migrationsprotokoll je Vertrag
 
-Mindestinhalte: Eingangswerte der Lieferobjekte, ermitteltes $t_a$, Kohorte, $(i_0, u_0)$, $V^{\mathrm{prosp}}$, $R_{\mathrm{hist}}$, ggf. $R_{\mathrm{conv}}$, Guardrail-Ergebnisse, Abgleichs- und Prüfergebnisse, Statusverlauf. Das Protokoll ist die Datengrundlage der Kapitel 6 und 7 und Teil der Revisionsdokumentation.
+Mindestinhalte: Eingangswerte der Lieferobjekte, ermitteltes $t_a$, Kohorte, $(s_0, d_0)$, $V^{\mathrm{prosp}}$, $R_{\mathrm{hist}}$, ggf. $R_{\mathrm{conv}}$, Guardrail-Ergebnisse, Abgleichs- und Prüfergebnisse, Statusverlauf. Das Protokoll ist die Datengrundlage der Kapitel 6 und 7 und Teil der Revisionsdokumentation.
 
 ### 5.7 Offene technische Punkte
 

@@ -37,7 +37,7 @@ Modell muesste man ihm eine Historie ERFINDEN, damit die Ableitung
 funktioniert — das Replay-Surrogat, das die Methode ausdruecklich
 ausschliesst. Drei
 zuvor getrennt gemeldete Befunde haben diese eine Ursache: die
-fehlenden Verankerungsattribute (i0, u0, t_a), der gamma1-Defekt der
+fehlenden Verankerungsattribute (s_0, d_0, t_a), der gamma1-Defekt der
 Erhoehungsscheiben (Rekonstruktion zur Bewertungszeit statt Persistenz
 der Schicht-Rechnungsgrundlagen; gemessen +2,0 % Jahresbeitrag der
 Scheibe) und die Ableitung des Zustands zur Bewertungszeit selbst.
@@ -149,7 +149,7 @@ JOURNALANFANG (erste Zeile je Vertrag), nicht ueber den Stammsatz.
 
 Damit hat auch der Migrationszugang seinen Platz, ohne dass hier gebaut
 wird: Ein uebernommener Vertrag ist ein Stammsatz mit geliefertem
-Zustand (i0, u0 via status_code/status_date, t_a), dessen Journal mit
+Zustand (s_0, d_0 via status_code/status_date, t_a), dessen Journal mit
 dem Uebernahme-Ereignis BEGINNT statt mit dem Vertragsbeginn.
 
 ### 6. Abschluesse sind festgeschrieben
