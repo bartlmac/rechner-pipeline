@@ -203,6 +203,24 @@ def einzelwerte_am(
     ``bu_leistungsbezug`` (bool).
     """
     if historie is None:
+        # Ein gefuehrter Stamm traegt seinen aktuellen Zustand; journalsicht
+        # synthetisiert den Ursprung aber unbedingt als POL am
+        # Versicherungsbeginn. Ohne Journal bliebe genau diese eine Zeile
+        # uebrig — stornierte und verstorbene Vertraege kehrten als
+        # beitragspflichtige POL in den Bestand zurueck, und beitragsfreies
+        # Geschaeft verschwaende. Derselbe Wachposten steht in Gate P-B1
+        # (gates/bestand_validate: "Portfolio traegt Folgezustaende"); er
+        # gehoert auch hierher, weil die Bibliothek ohne Gate aufrufbar ist.
+        folge = stamm["status_id"] > 1
+        if bool(folge.any()):
+            betroffen = sorted(stamm.loc[folge, "police_id"])[:5]
+            raise ValueError(
+                f"{int(folge.sum())} Vertraege tragen einen Folgezustand "
+                f"(status_id > 1, z. B. police {betroffen}), aber es wurde "
+                "keine Historie uebergeben. Der gefuehrte Zustand ginge "
+                "verloren und die Bewertung faende terminierte Vertraege als "
+                "beitragspflichtig wieder — Journal mitgeben (ADR-011)"
+            )
         journal = pd.DataFrame(
             {name: pd.Series(dtype=dtype) for name, dtype in STATUS_HISTORIE_SPALTEN}
         )

@@ -134,6 +134,16 @@ def pruefe_abschluss(
     if len(stichtage) != 1:
         return [f"abschluss: mehrere Stichtage in einer Datei ({len(stichtage)})"]
     stichtag = pd.Timestamp(stichtage[0]).date()
+    # Der Dateiname IST die Aussage, welchen Stichtag der Stand traegt
+    # (abschluss_pfad). Weichen Name und Inhalt ab, ist die Datei kaputt und
+    # nicht etwa befundfrei: Ohne diese Bindung meldet die Neuberechnung
+    # "deckungsgleich", weil sie gegen den INHALTS-Stichtag rechnet.
+    erwartet = abschluss_pfad(Path(pfad).parent, stichtag)
+    if Path(pfad).name != erwartet.name:
+        return [
+            f"abschluss: Datei heisst {Path(pfad).name}, enthaelt aber den "
+            f"Stichtag {stichtag.isoformat()} (erwartet {erwartet.name})"
+        ]
 
     neu = _rechne(stamm, historie, config, stichtag, scheiben)
     kern_stand_alt = sorted(set(fest["kern_version"]))
@@ -157,11 +167,11 @@ def pruefe_abschluss(
     zahlen = ("leistung", "deckungskapital", "rueckkaufswert", "vs_bfr", "jahresbeitrag")
     for pid in gemeinsam:
         f, n = fest_idx.loc[pid], neu_idx.loc[pid]
-        if str(f["status_code"]) != str(n["status_code"]):
-            befunde.append(
-                f"abschluss police {pid}: status {f['status_code']} -> "
-                f"{n['status_code']}"
-            )
+        for sp in ("status_code", "produkt", "tarif_generation"):
+            if str(f[sp]) != str(n[sp]):
+                befunde.append(
+                    f"abschluss police {pid}: {sp} {f[sp]} -> {n[sp]}"
+                )
         for sp in zahlen:
             if not math.isclose(float(f[sp]), float(n[sp]), rel_tol=0.0, abs_tol=0.0):
                 befunde.append(

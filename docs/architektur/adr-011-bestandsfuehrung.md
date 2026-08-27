@@ -105,9 +105,10 @@ juengste Journalstand — Gate B1 erzwingt die Deckung.
 ### 2. Ein Buchungsweg
 
 Zustandsaenderungen laufen ueber genau eine Stelle
-(`fuehrung.fuehre_fort`): Sie setzt den neuen Stammzustand und fuegt die
-Journalzeilen an — fuer die Simulation heute und fuer den
-Migrationszugang morgen. Zwei Schreibwege auf denselben Bestand sind der
+(`fuehrung.fuehre_fort`): Sie nimmt das Journal entgegen und setzt daraus
+den neuen Stammzustand — der gemeinsame Trichter fuer die Simulation
+heute und fuer den Migrationszugang morgen. Die Journalzeilen selbst
+entstehen davor, bei der Simulation in `ereignisse.fortschreiben`. Zwei Schreibwege auf denselben Bestand sind der
 Mechanismus, aus dem Drift entsteht; der gamma1-Defekt war genau das im
 Kleinen.
 
@@ -198,4 +199,3 @@ gehoeren Abschluesse zum Datenhaushalt der Fuehrung
 * Eine transaktionale Einzel-Buchungs-API fuer den laufenden Betrieb:
   Die Simulation bucht weiterhin im Lauf; `fuehre_fort` ist der
   gemeinsame Trichter, nicht ein Online-Buchungssystem.
-

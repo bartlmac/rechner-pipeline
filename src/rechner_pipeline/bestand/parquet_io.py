@@ -13,6 +13,8 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -79,7 +81,27 @@ def write_portfolio(df: pd.DataFrame, path: Path) -> Path:
     table = pa.Table.from_arrays(arrays, schema=schema)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(table, path, compression="zstd")
+    # Erst vollstaendig daneben schreiben, dann in einem Zug an den Zielpfad
+    # umhaengen. os.replace ist auf einem Dateisystem atomar: Es gibt die
+    # Zieldatei entweder alt oder neu, nie halb. Direkt auf den Zielpfad
+    # geschrieben hinterlaesst ein Abbruch — oder ein zweiter Schreiber —
+    # einen Stumpf mit kaputtem Parquet-Fuss, und der ist eine Sackgasse:
+    # Fuer schreibe_abschluss existiert der Stichtag dann bereits, waehrend
+    # ihn niemand mehr lesen kann.
+    # Der temporaere Name muss je AUFRUF eindeutig sein, nicht je Prozess:
+    # zwei Threads teilen sich die PID und wuerden sonst dieselbe Datei
+    # beschreiben und einander wegziehen.
+    fd, tmp_name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        pq.write_table(table, tmp, compression="zstd")
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return path
 
 
