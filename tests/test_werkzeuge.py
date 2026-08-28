@@ -285,3 +285,78 @@ def test_ueberschreiten_ja_verschweigen_nein(tmp_path: Path):
     assert gespeichert["ueberschreitung_begruendet"] == (
         "Tafelwechsel, als Mensch entschieden")
     assert gespeichert["befunde"], "der Befund bleibt sichtbar"
+
+
+# --------------------------------------------------------------------------- #
+# Vorzeigeseite: der Ergebnisabschnitt
+# --------------------------------------------------------------------------- #
+
+
+def _fall_mit_berichten(tmp_path: Path, **berichte) -> Path:
+    fall = tmp_path / "fall"
+    (fall / "abgeleitet" / "berichte").mkdir(parents=True)
+    (fall / "fall.json").write_text(
+        json.dumps({"name": "probe", "scope": {"typ": "bestand"}}), "utf-8")
+    (fall / "eingang.json").write_text(json.dumps({"quellen": []}), "utf-8")
+    for name, inhalt in berichte.items():
+        (fall / "abgeleitet" / "berichte" / f"{name}.json").write_text(
+            json.dumps(inhalt), "utf-8")
+    return fall
+
+
+def test_ein_roter_lauf_wird_als_roter_lauf_dargestellt(tmp_path: Path):
+    """Eine Vorzeigeseite, die nur den Erfolgsfall zeigen kann, ist eine
+    Werbebroschuere. Der Lauf ist keine: A-M4 duldet im Bestands-Scope
+    keine Pruefluecke, und genau das muss lesbar sein."""
+    fall = _fall_mit_berichten(
+        tmp_path,
+        aktuartest={"anzahl": 40, "bestanden": 37, "fehlgeschlagen": 3,
+                    "test_bestanden": False},
+        migrationssuite={"anzahl": 500, "bestanden": 494,
+                         "pruefluecken": ["a", "b"],
+                         "vollstaendig_geprueft": False,
+                         "stichtag_1": "2026-01-01",
+                         "stichtag_2": "2027-01-01"},
+    )
+    seite = vz._seite(fall, tmp_path, [], None)
+
+    assert "**nicht bestanden**" in seite
+    assert "| Prüflücken | 2 |" in seite
+    assert "| Vollständig geprüft | nein |" in seite
+    assert "geglätteter Wert wäre eine Behauptung ohne Rechnung" in seite
+
+
+def test_eine_unbegruendete_ueberschreitung_bleibt_unbegruendet(
+    tmp_path: Path,
+):
+    """Die Seite beschoenigt den Umbau nicht: Wer die Schranke ohne einen
+    Satz reisst, steht ohne einen Satz da."""
+    fall = _fall_mit_berichten(
+        tmp_path,
+        umbaubudget={"gesamt": {"summe": 21000, "vorgabe": 18000},
+                     "befunde": ["Gesamtaenderung 21000 Zeilen ueber 18000"],
+                     "ueberschreitung_begruendet": None},
+    )
+    seite = vz._seite(fall, tmp_path, [], None)
+    assert "Eine Überschreitung:" in seite
+    assert "**Ohne Begründung.**" in seite
+
+    fall2 = _fall_mit_berichten(
+        tmp_path / "zweiter",
+        umbaubudget={"gesamt": {"summe": 21000, "vorgabe": 18000},
+                     "befunde": ["Gesamtaenderung 21000 Zeilen ueber 18000"],
+                     "ueberschreitung_begruendet": "Kern ersetzt, bewusst"},
+    )
+    seite2 = vz._seite(fall2, tmp_path, [], None)
+    assert "Kern ersetzt, bewusst" in seite2
+    assert "**Ohne Begründung.**" not in seite2
+
+
+def test_ein_fall_ohne_berichte_behauptet_kein_ergebnis(tmp_path: Path):
+    """Das Werkzeug laeuft auch auf einem leeren Fall durch — eine
+    Vorzeigeseite ist deshalb KEIN Nachweis, dass der Lauf vollstaendig
+    war. Sie darf dann aber auch nichts anderes behaupten."""
+    fall = _fall_mit_berichten(tmp_path)
+    seite = vz._seite(fall, tmp_path, [], None)
+    assert "*(noch keine Berichte im Fall)*" in seite
+    assert "bestanden" not in seite

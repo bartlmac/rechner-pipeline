@@ -35,6 +35,24 @@ Sammelt Lieferung, Gate-Ledger, Entscheide und Verlauf, stempelt
 Systemstand und Branch, schreibt `index.md`, `_config.yml` und
 `artefakte/`.
 
+Den Abschnitt **Das Ergebnis** baut sie aus den Berichten unter
+`<fall>/abgeleitet/berichte/`: den drei aktuariellen Abnahmen
+(`aktuartest*.json` samt ihrer HTML-Vorlagen), dem Controlling
+(`migrationssuite.json`), den Bestandsberichten (`bestandsbericht*.html`)
+und — wenn dort abgelegt — `umbaubudget.json`. Das Budget landet also
+nur auf der Seite, wenn es in den Fall geschrieben wurde:
+
+```
+python werkzeuge/umbaubudget.py --basis <startpunkt> \
+    --json faelle/<fall>/abgeleitet/berichte/umbaubudget.json
+```
+
+Die Seite rechnet nichts nach. Jede Zahl steht so in einem Artefakt, das
+unter `artefakte/` daneben liegt — sonst waere die Vorfuehrung eine
+Behauptung ueber sich selbst. Ein NICHT bestandener Test und eine
+gerissene Schranke werden genauso dargestellt wie ein gruener Lauf; eine
+Seite, die nur den Erfolgsfall zeigen kann, waere eine Werbebroschuere.
+
 ## Umfang eines Laufs messen
 
 ```

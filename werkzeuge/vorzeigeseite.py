@@ -180,6 +180,73 @@ def _entscheide(fall: Path) -> List[Dict[str, Any]]:
     return aus
 
 
+#: Die drei aktuariellen Abnahmen mit dem Dateinamen, unter dem das
+#: ``aktuartest``-Gate sie ablegt, und dem, was sie pruefen.
+ABNAHMEN = (
+    ("A-M1", "aktuartest", "Stichtagstest",
+     "Übernahmezeitpunkt und nächster Vertragsstichtag"),
+    ("A-M2", "aktuartest-A-M2", "Verlaufstest",
+     "fünf und zehn Jahre nach der Übernahme, und der Ablauf"),
+    ("A-M3", "aktuartest-A-M3", "Geschäftsvorfalltest",
+     "je Vorfall die Änderung des Deckungskapitals"),
+)
+
+
+def _ergebnis(fall: Path) -> Dict[str, Any]:
+    """Die Urteile des Laufs aus den Berichtsartefakten lesen.
+
+    Die Seite RECHNET nichts. Jede Zahl steht so in einer Datei, die
+    daneben liegt und nachpruefbar ist — sonst waere die Vorfuehrung
+    eine Behauptung ueber sich selbst.
+    """
+    berichte = fall / "abgeleitet" / "berichte"
+    abnahmen: List[Dict[str, Any]] = []
+    for kennung, datei, titel, prueft in ABNAHMEN:
+        d = _lies_json(berichte / f"{datei}.json")
+        if not isinstance(d, dict):
+            continue
+        abnahmen.append({
+            "kennung": kennung, "titel": titel, "prueft": prueft,
+            "anzahl": d.get("anzahl"), "bestanden": d.get("bestanden"),
+            "fehlgeschlagen": d.get("fehlgeschlagen"),
+            "urteil": d.get("test_bestanden"),
+            "bericht": (f"artefakte/abgeleitet/berichte/{datei}.html"
+                        if (berichte / f"{datei}.html").is_file() else None),
+        })
+
+    suite = _lies_json(berichte / "migrationssuite.json")
+    controlling = None
+    if isinstance(suite, dict):
+        luecken = suite.get("pruefluecken") or []
+        controlling = {
+            "anzahl": suite.get("anzahl"),
+            "bestanden": suite.get("bestanden"),
+            "pruefluecken": len(luecken),
+            "vollstaendig": suite.get("vollstaendig_geprueft"),
+            "stichtag_1": suite.get("stichtag_1"),
+            "stichtag_2": suite.get("stichtag_2"),
+        }
+
+    budget = _lies_json(berichte / "umbaubudget.json")
+    return {
+        "abnahmen": abnahmen,
+        "controlling": controlling,
+        "budget": budget if isinstance(budget, dict) else None,
+        "bestandsberichte": sorted(
+            f"artefakte/abgeleitet/berichte/{p.name}"
+            for p in berichte.glob("bestandsbericht*.html")
+        ) if berichte.is_dir() else [],
+    }
+
+
+def _urteilswort(urteil: Any) -> str:
+    if urteil is True:
+        return "bestanden"
+    if urteil is False:
+        return "**nicht bestanden**"
+    return "*(ohne Urteil)*"
+
+
 def _quellen(fall: Path) -> List[Dict[str, Any]]:
     d = _lies_json(fall / "eingang.json") or {}
     return sorted(d.get("quellen", []), key=lambda q: q.get("datei", ""))
@@ -217,6 +284,7 @@ def _seite(fall: Path, repo: Path, kopiert: List[str],
     gates = _gates(fall)
     entscheide = _entscheide(fall)
     quellen = _quellen(fall)
+    ergebnis = _ergebnis(fall)
     heute = dt.date.today().isoformat()
 
     z: List[str] = []
@@ -256,6 +324,86 @@ def _seite(fall: Path, repo: Path, kopiert: List[str],
         z.append(f"| `{q.get('datei','?')}` | {q.get('bytes',0):,} "
                  f"| `{str(q.get('sha256',''))[:16]}…` |")
     z.append("")
+
+    z.append("## Das Ergebnis")
+    z.append("")
+    if not (ergebnis["abnahmen"] or ergebnis["controlling"]):
+        z.append("*(noch keine Berichte im Fall)*")
+        z.append("")
+    else:
+        z.append("Was bei der Übernahme herausgekommen ist. Die Seite")
+        z.append("rechnet nichts nach — jede Zahl steht so in einem")
+        z.append("Artefakt, das unter `artefakte/` daneben liegt.")
+        z.append("")
+    if ergebnis["abnahmen"]:
+        z.append("### Die aktuariellen Abnahmen")
+        z.append("")
+        z.append("Je Abnahme eine eigene Stichprobe und eigene Kriterien.")
+        z.append("Sie prüfen denselben Bestand zu verschiedenen Zeitpunkten.")
+        z.append("")
+        z.append("| Abnahme | Geprüft wird | Verträge | Befunde | Urteil |")
+        z.append("|---|---|---:|---:|---|")
+        for a in ergebnis["abnahmen"]:
+            name = f"{a['kennung']} {a['titel']}"
+            if a["bericht"]:
+                name = f"[{name}]({a['bericht']})"
+            z.append(f"| {name} | {a['prueft']} | {a['anzahl']} "
+                     f"| {a['fehlgeschlagen']} | {_urteilswort(a['urteil'])} |")
+        z.append("")
+    if ergebnis["controlling"]:
+        c = ergebnis["controlling"]
+        z.append("### Das Migrationscontrolling (A-M4)")
+        z.append("")
+        z.append("Kein Vertrag und keine Stichprobe, sondern der ganze")
+        z.append(f"Bestand über zwei Stichtage ({c['stichtag_1']} und")
+        z.append(f"{c['stichtag_2']}).")
+        z.append("")
+        z.append("| | |")
+        z.append("|---|---:|")
+        z.append(f"| Geprüfte Verträge | {c['anzahl']} |")
+        z.append(f"| Davon bestanden | {c['bestanden']} |")
+        z.append(f"| Prüflücken | {c['pruefluecken']} |")
+        z.append(f"| Vollständig geprüft | "
+                 f"{'ja' if c['vollstaendig'] else 'nein'} |")
+        z.append("")
+        if c["pruefluecken"]:
+            z.append("Eine **Prüflücke** ist ein Vertrag, dessen Wert am")
+            z.append("Folgestichtag nicht nachgerechnet werden konnte. Der")
+            z.append("Bestands-Scope duldet keine: Der Lauf endet dort mit")
+            z.append("einem Befund, und das ist die richtige Auskunft — ein")
+            z.append("geglätteter Wert wäre eine Behauptung ohne Rechnung.")
+            z.append("")
+    for pfad in ergebnis["bestandsberichte"]:
+        z.append(f"* Bestandsbericht: [{Path(pfad).name}]({pfad})")
+    if ergebnis["bestandsberichte"]:
+        z.append("")
+    if ergebnis["budget"]:
+        b = ergebnis["budget"]
+        offene = b.get("befunde") or []
+        gesamt = b.get("gesamt") or {}
+        z.append("### Umfang des Umbaus")
+        z.append("")
+        z.append("Wie weit dieser Lauf das Zielsystem verändert hat.")
+        z.append("")
+        z.append(f"Geändert: {gesamt.get('summe','?')} Zeilen in `src/` und")
+        z.append(f"`tests/` (Schranke {gesamt.get('vorgabe','?')}).")
+        z.append("")
+        if not offene:
+            z.append("Im Rahmen der vereinbarten Schranken.")
+        else:
+            wort = ("eine Überschreitung" if len(offene) == 1
+                    else f"{len(offene)} Überschreitungen")
+            z.append(f"{wort[0].upper()}{wort[1:]}:")
+            z.append("")
+            for befund in offene:
+                z.append(f"* {befund}")
+            z.append("")
+            begruendung = b.get("ueberschreitung_begruendet")
+            if begruendung:
+                z.append(f"Als Menschentscheidung begründet: „{begruendung}“")
+            else:
+                z.append("**Ohne Begründung.**")
+        z.append("")
 
     z.append("## Der Lauf")
     z.append("")
