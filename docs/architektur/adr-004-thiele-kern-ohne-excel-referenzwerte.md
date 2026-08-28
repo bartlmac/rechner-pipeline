@@ -3,6 +3,13 @@
 Status: akzeptiert (Bartek, 2026-08-16). Umgesetzt: Kern 3.0.0
 (`kern/tafeln.py`, `rechner_pipeline.kommutationskern`).
 
+> **Punkt 2 abgeloest durch [ADR-013](adr-013-kommutations-kreuzcheck-ausser-betrieb.md)
+> (2026-08-28):** Der Kommutations-Zweitkern und der Kreuz-Check sind
+> ausser Betrieb. Der Uebersetzungsbeleg ist erbracht und bleibt hier
+> zitierbar; die Sicherung des Kernverhaltens tragen seither die
+> eingefrorenen Referenzwerte. Alles Uebrige dieser Entscheidung gilt
+> unveraendert.
+
 ## Kontext
 
 Der Zielkern rechnet seit Version 2.0.0 auf einem

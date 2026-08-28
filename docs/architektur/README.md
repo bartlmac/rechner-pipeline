@@ -23,6 +23,7 @@ Rechenkern-Entwicklung. Die Fachdokumente des Beispiel-Rechenkerns
 - [ADR-010: Aktuarieller Test und Migrationscontrolling sind getrennte Gates](adr-010-aktuarieller-test-und-controlling.md)
 - [ADR-011: Bestandsfuehrung mit gefuehrtem Zustand und Journal](adr-011-bestandsfuehrung.md)
 - [ADR-012: Gate-Namen sagen, wer entscheidet und worueber](adr-012-gate-namensordnung.md)
+- [ADR-013: Der Kommutations-Kreuzcheck wird ausser Betrieb genommen](adr-013-kommutations-kreuzcheck-ausser-betrieb.md)
 
 > **Zu den Gate-Namen:** Die Namen in allen aelteren ADRs sind auf die
 > Ordnung aus ADR-012 umgestellt (`G-2` heisst jetzt `A-M4`, `O3` heisst
