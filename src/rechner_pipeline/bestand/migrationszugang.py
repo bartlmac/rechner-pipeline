@@ -536,6 +536,16 @@ class AbgeleiteteErhoehung:
     erhoehungssumme: float
     jahr: int
 
+    #: REICHWEITEN-WARNUNG (Hinweis der Zulieferung, 2026-08-28): Diese
+    #: Ableitung traegt NUR den Fall genau EINER Erhoehung je Vertrag.
+    #: Bei n Erhoehungen stehen n+1 Unbekannte zwei gelieferten Groessen
+    #: gegenueber — ab der zweiten Erhoehung ist das System dauerhaft
+    #: unterbestimmt, nicht nur in Randfaellen. Die Ableitung ist deshalb
+    #: eine FALL-Ableitungsregel (Migrationskonzept Kap. 4), nicht die
+    #: Grundlage der Uebernahme; der allgemeine Mechanismus ist der
+    #: Migrationszugang ueber das gelieferte Deckungskapital als Anker
+    #: plus Korrekturschicht (Grundsatzdokumentation Abschnitt 9).
+
     def als_beleg(self) -> Dict[str, Any]:
         return {
             "grundsumme": self.grundsumme,
@@ -563,6 +573,9 @@ def leite_erhoehung_ab(
     Tarifwerk-Regel). Beide zahlen bis zum SELBEN Kalenderzeitpunkt
     (t bzw. t - jahr ab Erhoehung) — solange der Vertrag am Stichtag
     Beitrag zahlt, enthaelt JBRUTTO beide Teile.
+
+    Reichweite: siehe Warnung an :class:`AbgeleiteteErhoehung` — genau
+    EINE Erhoehung je Vertrag, sonst dauerhaft unterbestimmt.
     """
     from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
 
