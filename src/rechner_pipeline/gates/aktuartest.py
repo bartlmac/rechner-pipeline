@@ -805,13 +805,21 @@ def main(argv: Optional[List[str]] = None):
         else (fall / "abgeleitet" / "diagnostics" if fall
               else Path.cwd() / "runs" / "diagnostics")
     )
-    # Die Abnahme steht im Namen jedes Artefakts: drei Tests je Fall, die
-    # sonst denselben Ledger und denselben Bericht ueberschreiben wuerden.
+    # Die Abnahme steht im Namen JEDES Artefakts — Testergebnis, Bericht
+    # UND Gate-Ledger. Drei Tests je Fall wuerden sich sonst gegenseitig
+    # ueberschreiben, und zwar unbemerkt: Der Ledger traegt den Namen aus
+    # ``result.command``, nicht den hier gerechneten Zielpfad. Ein
+    # A-M2-Lauf loeschte damit den gruenen A-M1-Beleg, auf dem der
+    # Entscheid steht — auch bei einem blossen Aufruffehler, denn schon
+    # der rote Startmarker wird unter diesem Namen geschrieben.
+    #
+    # A-M1 behaelt bewusst den nackten Kommandonamen: Unter ihm bindet
+    # der Entscheid den Pflichtbeleg (gate_entscheid, fall.SCOPES).
     abnahme = args.abnahme or "A-M1"
     gate = GATES[abnahme]
     kennung = COMMAND if abnahme == "A-M1" else f"{COMMAND}-{abnahme}"
     fehlstart = begin_gate_ledger_attempt(
-        command=COMMAND, gate=gate, gate_version=GATE_VERSION,
+        command=kennung, gate=gate, gate_version=GATE_VERSION,
         diagnostics_dir=diagnostics_dir,
         repo_root=Path(args.repo_root) if args.repo_root else None,
         started_at=started_at,
@@ -825,7 +833,7 @@ def main(argv: Optional[List[str]] = None):
 
     def _usage(message: str, *, hints: Optional[List[str]] = None):
         return _finalize(build_result(
-            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
+            command=kennung, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.USAGE,
             errors=[{"code": "usage", "message": message}],
             repair_hints=list(hints or []),
@@ -877,7 +885,7 @@ def main(argv: Optional[List[str]] = None):
         test = json.loads(test_pfad.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return _finalize(build_result(
-            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
+            command=kennung, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.FILE_CONTRACT,
             errors=[{
                 "code": "test_unlesbar",
@@ -892,7 +900,7 @@ def main(argv: Optional[List[str]] = None):
     gemeldet = (test or {}).get("profil", {}).get("kennung") if isinstance(test, dict) else None
     if gemeldet is not None and gemeldet != abnahme:
         return _finalize(build_result(
-            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
+            command=kennung, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.FILE_CONTRACT,
             errors=[{
                 "code": "test_contract",
@@ -918,7 +926,7 @@ def main(argv: Optional[List[str]] = None):
     )
     if fehler:
         return _finalize(build_result(
-            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
+            command=kennung, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.FILE_CONTRACT,
             errors=[
                 {"code": "test_contract", "message": f}
@@ -932,7 +940,7 @@ def main(argv: Optional[List[str]] = None):
         html = baue_bericht(titel=args.titel, test=test)
     except (TypeError, ValueError, KeyError) as exc:
         return _finalize(build_result(
-            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
+            command=kennung, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.FILE_CONTRACT,
             errors=[{
                 "code": "test_contract",
@@ -969,12 +977,12 @@ def main(argv: Optional[List[str]] = None):
     output_hashes = hash_files([bericht_pfad], base=fall)
     if test["test_bestanden"]:
         return _finalize(build_result(
-            command=COMMAND, gate=gate, gate_version=GATE_VERSION,
+            command=kennung, gate=gate, gate_version=GATE_VERSION,
             exit_code=Exit.OK, paths=paths, summary=summary,
             input_hashes=input_hashes, output_hashes=output_hashes,
         ))
     return _finalize(build_result(
-        command=COMMAND, gate=gate, gate_version=GATE_VERSION,
+        command=kennung, gate=gate, gate_version=GATE_VERSION,
         exit_code=Exit.GOLDEN_MASTER, paths=paths, summary=summary,
         input_hashes=input_hashes, output_hashes=output_hashes,
         errors=[

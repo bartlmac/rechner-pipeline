@@ -212,3 +212,58 @@ def test_typkaputtes_json_ist_contract_fehler_nicht_internal(
     )
     resultat = _lauf(fall2, capsys)
     assert resultat["exit_code"] == 20
+
+
+# --------------------------------------------------------------------------- #
+# Drei Abnahmen, drei Belege
+# --------------------------------------------------------------------------- #
+
+
+def test_a_m2_ueberschreibt_den_a_m1_ledger_nicht(tmp_path, capsys):
+    """Der gruene A-M1-Beleg traegt den Entscheid — er darf nicht fallen.
+
+    Testergebnis und Bericht trugen die Abnahme schon im Namen, der
+    Gate-Ledger nicht: Er wird unter ``result.command`` geschrieben, und
+    das war fuer alle drei Abnahmen derselbe Name. Ein A-M2-Lauf loeschte
+    damit unbemerkt den Beleg, auf dem gate_entscheid den Pflichtbeleg
+    bindet.
+    """
+    profil_am2 = dataclasses.replace(PROFIL, kennung="A-M2")
+
+    fall = _fall(tmp_path, _testergebnis())
+    _lauf(fall, capsys)
+    diagnostics = fall / "abgeleitet" / "diagnostics"
+    am1 = diagnostics / "aktuartest.gate.json"
+    assert am1.is_file()
+    vorher = json.loads(am1.read_text(encoding="utf-8"))
+    assert vorher["status"] == "passed"
+
+    (fall / "abgeleitet" / "berichte" / "aktuartest-A-M2.json").write_text(
+        json.dumps(_testergebnis(profil=profil_am2)), encoding="utf-8"
+    )
+    _lauf(fall, capsys, extra=["--abnahme", "A-M2"])
+
+    assert json.loads(am1.read_text(encoding="utf-8")) == vorher, \
+        "der A-M1-Ledger wurde vom A-M2-Lauf veraendert"
+    assert (diagnostics / "aktuartest-A-M2.gate.json").is_file()
+
+
+def test_auch_ein_fehlstart_der_zweiten_abnahme_laesst_a_m1_stehen(
+    tmp_path, capsys
+):
+    """Schon der rote Startmarker wird unter dem Ledger-Namen geschrieben.
+
+    Ein blosser Aufruffehler in A-M2 haette den A-M1-Beleg sonst
+    ungueltig gemacht, bevor ueberhaupt gerechnet wurde.
+    """
+    fall = _fall(tmp_path, _testergebnis())
+    _lauf(fall, capsys)
+    am1 = fall / "abgeleitet" / "diagnostics" / "aktuartest.gate.json"
+    vorher = json.loads(am1.read_text(encoding="utf-8"))
+
+    # Kein Testergebnis fuer A-M2 vorhanden -> Aufruffehler.
+    ergebnis = _lauf(fall, capsys, extra=["--abnahme", "A-M2"])
+    assert ergebnis["exit_code"] != 0
+
+    assert json.loads(am1.read_text(encoding="utf-8")) == vorher, \
+        "der A-M1-Ledger fiel einem Fehlstart der zweiten Abnahme zum Opfer"
