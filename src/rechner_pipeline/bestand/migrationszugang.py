@@ -518,6 +518,91 @@ def leite_absetzung_ab(
     )
 
 
+@dataclass(frozen=True)
+class AbgeleiteteErhoehung:
+    """Die aus dem Abzug zurueckgerechnete Alt-Dynamikerhoehung.
+
+    Der Abzug fuehrt die GESAMTsumme nach der Erhoehung; fuer die
+    konstruktive Rechnung braucht das Zielsystem die Zerlegung in
+    Grundvertrag und Scheibe (Tarifwerk: eigener Modellpunkt je Scheibe
+    mit versetzten Dauern und ohne gamma1). Bei GENAU EINER Erhoehung
+    sind ERLSUMME und JBRUTTO zwei lineare Gleichungen in
+    (Grundsumme, Erhoehungssumme) — die Beitragsraten beider Teile sind
+    bekannte, verschiedene Saetze. Ohne laufenden Beitrag ist das System
+    unterbestimmt (nachliefern lassen, nicht raten).
+    """
+
+    grundsumme: float
+    erhoehungssumme: float
+    jahr: int
+
+    def als_beleg(self) -> Dict[str, Any]:
+        return {
+            "grundsumme": self.grundsumme,
+            "erhoehungssumme": self.erhoehungssumme,
+            "jahr": self.jahr,
+        }
+
+
+def leite_erhoehung_ab(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    jahr: int,
+    erlsumme: float,
+    jbrutto: float,
+) -> AbgeleiteteErhoehung:
+    """Grund- und Erhoehungssumme einer Alt-Dynamik ableiten.
+
+    Loest das lineare System
+
+        S_g + S_s               = ERLSUMME
+        S_g * B_g + S_s * B_s   = JBRUTTO
+
+    mit den Beitragsraten des Grundvertrags (``B_g``) und der Scheibe
+    (``B_s``, Modellpunkt mit versetzten Dauern und gamma1 = 0 nach der
+    Tarifwerk-Regel). Beide zahlen bis zum SELBEN Kalenderzeitpunkt
+    (t bzw. t - jahr ab Erhoehung) — solange der Vertrag am Stichtag
+    Beitrag zahlt, enthaelt JBRUTTO beide Teile.
+    """
+    from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
+
+    if jbrutto <= 0.0:
+        raise MigrationszugangFehler(
+            "JBRUTTO <= 0: die Beitragszahlung ist am Stichtag beendet, "
+            "die Zerlegung in Grund- und Erhoehungssumme ist aus dem "
+            "Abzug NICHT bestimmbar — Erhoehungs- oder Grundsumme "
+            "nachliefern lassen, nicht raten"
+        )
+    if erlsumme <= 0.0:
+        raise MigrationszugangFehler(f"ERLSUMME {erlsumme!r} unplausibel")
+
+    einheit = ModelPoint(**{**dict(modellpunkt_felder), "sum_insured": 1.0})
+    if not 0 < jahr < einheit.t:
+        raise MigrationszugangFehler(
+            f"Erhoehungsjahr {jahr} liegt nicht in der Beitragszahlungs"
+            f"dauer (0 < jahr < t = {einheit.t})"
+        )
+    grund_rate = Rechenkern(einheit).gross_premium_rate()
+    scheiben_rate = Rechenkern(
+        erhoehungs_scheibe(einheit, jahr, 1.0)).gross_premium_rate()
+    if abs(grund_rate - scheiben_rate) < 1e-12:
+        raise MigrationszugangFehler(
+            "Beitragsraten von Grundvertrag und Scheibe sind gleich — "
+            "die Zerlegung ist nicht bestimmbar"
+        )
+    grundsumme = (jbrutto - erlsumme * scheiben_rate) / (
+        grund_rate - scheiben_rate)
+    erhoehungssumme = erlsumme - grundsumme
+    if grundsumme <= 0.0 or erhoehungssumme <= 0.0:
+        raise MigrationszugangFehler(
+            f"Zerlegung unplausibel (Grundsumme {grundsumme:.2f}, "
+            f"Erhoehungssumme {erhoehungssumme:.2f}) — Lieferung und "
+            "Erhoehungsjahr klaeren"
+        )
+    return AbgeleiteteErhoehung(
+        grundsumme=grundsumme, erhoehungssumme=erhoehungssumme, jahr=jahr)
+
+
 # --------------------------------------------------------------------------- #
 # Geschaeftsvorfall-Metadaten der Vorgeschichte (Grundsatzdokumentation 9.14)
 # --------------------------------------------------------------------------- #

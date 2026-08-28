@@ -416,3 +416,58 @@ def test_erlsumme_unter_dem_fortgefuehrten_teil_faellt_hart():
             _mp_felder(), jahr=9, erlsumme=1000.0,
             jbrutto=round(_Rechenkern(_KLV_DEFAULT).gross_annual_premium(), 2),
             verfahren="mit_abzug")
+
+
+# --------------------------------------------------------------------------- #
+# Rueckrechnung einer Alt-Dynamikerhoehung (leite_erhoehung_ab)
+# --------------------------------------------------------------------------- #
+
+from rechner_pipeline.bestand.migrationszugang import leite_erhoehung_ab
+from rechner_pipeline.kern.rechenkern import (
+    erhoehungs_scheibe as _erhoehungs_scheibe,
+)
+
+
+def test_erhoehungszerlegung_trifft_die_wahren_summen():
+    """Roundtrip mit centgerundeter Lieferung: die wahren Teilsummen
+    muessen auf Bruchteile eines Promille getroffen sein."""
+    s_grund, s_scheibe, jahr = 80000.0, 12000.0, 6
+    felder = _mp_felder(sum_insured=s_grund)
+    grund = _Rechenkern(type(_KLV_DEFAULT)(**felder))
+    scheibe = _Rechenkern(_erhoehungs_scheibe(grund.mp, jahr, s_scheibe))
+    erlsumme = round(s_grund + s_scheibe, 2)
+    jbrutto = round(grund.gross_annual_premium()
+                    + scheibe.gross_annual_premium(), 2)
+
+    ergebnis = leite_erhoehung_ab(
+        felder, jahr=jahr, erlsumme=erlsumme, jbrutto=jbrutto)
+    assert ergebnis.grundsumme == _pytest.approx(s_grund, rel=5e-5)
+    assert ergebnis.erhoehungssumme == _pytest.approx(s_scheibe, rel=5e-5)
+
+
+def test_erhoehungszerlegung_ohne_rundung_ist_exakt():
+    s_grund, s_scheibe, jahr = 80000.0, 12000.0, 6
+    felder = _mp_felder(sum_insured=s_grund)
+    grund = _Rechenkern(type(_KLV_DEFAULT)(**felder))
+    scheibe = _Rechenkern(_erhoehungs_scheibe(grund.mp, jahr, s_scheibe))
+    ergebnis = leite_erhoehung_ab(
+        felder, jahr=jahr, erlsumme=s_grund + s_scheibe,
+        jbrutto=grund.gross_annual_premium() + scheibe.gross_annual_premium())
+    assert ergebnis.grundsumme == _pytest.approx(s_grund, rel=1e-9)
+    assert ergebnis.erhoehungssumme == _pytest.approx(s_scheibe, rel=1e-9)
+
+
+def test_erhoehungszerlegung_ohne_beitrag_ist_unterbestimmt():
+    with _pytest.raises(_MZFehler, match="NICHT bestimmbar"):
+        leite_erhoehung_ab(_mp_felder(), jahr=6, erlsumme=92000.0, jbrutto=0.0)
+
+
+def test_erhoehungszerlegung_weist_unplausible_lieferung_zurueck():
+    """Ein Beitrag, der zur Gesamtsumme ohne Erhoehung passt (oder sie
+    uebersteigt), ergibt keine positive Scheibe — Befund statt Raten."""
+    felder = _mp_felder(sum_insured=92000.0)
+    nur_grund = _Rechenkern(type(_KLV_DEFAULT)(**felder))
+    with _pytest.raises(_MZFehler, match="Zerlegung unplausibel"):
+        leite_erhoehung_ab(
+            felder, jahr=6, erlsumme=92000.0,
+            jbrutto=round(nur_grund.gross_annual_premium(), 2))
