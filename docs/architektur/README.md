@@ -9,7 +9,6 @@ Rechenkern-Entwicklung. Die Fachdokumente des Beispiel-Rechenkerns
 ## Inhalt
 
 - [Prinzipien P1-P10 der Migrations-Pipeline](prinzipien.md)
-- [Offene Punkte — was bewusst noch nicht entschieden ist](offene-punkte.md)
 - [Migrations-Pipeline v0.1: Ontologie als Stage-Interface](migrations-pipeline-v01.md)
 - [Skill-Architektur: die Agenten-Rollen des Gesamtsystems](skill-architektur.md)
 - [ADR-001: Repo-Zielstruktur entlang der Migrations-Pipeline](adr-001-repo-zielstruktur.md)
