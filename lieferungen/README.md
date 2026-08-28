@@ -38,5 +38,22 @@ Ergebnis. Die Notiz wird deshalb erst registriert, wenn die Lücke
 aufgefallen und nachgefragt worden ist. Wer sie von Anfang an in den
 Fall nimmt, überspringt genau den Vorgang, den dieser Showcase zeigt.
 
+Die **Erwartungswerte für den aktuariellen Test** liegen in vier
+Dateien: die Werte am Übernahmestichtag und am Folgejahrestag, die Werte
+im Verlauf (fünf und zehn Jahre nach der Übernahme sowie zum Ablauf),
+die Werte je Geschäftsvorfall, und der Beleg der vereinbarten
+Stichprobe. Baldrian rechnet nicht den ganzen Bestand nach, sondern die
+hundert Verträge einer nach Historientyp geschichteten Stichprobe plus
+alle zweiundvierzig Verträge mit Vorfall im Migrationsjahr — die
+Stichprobe ist deshalb Teil der Lieferung und nicht Sache des
+übernehmenden Unternehmens.
+
+Eine Abkürzung des Vorführfalls sei hier ausdrücklich genannt: Diese
+vier Dateien tragen bereits die Struktur der Prüfaufträge des
+aktuariellen Tests (Zeitpunkt, Anlass, erwartete Größen). Ein echtes
+abgebendes Unternehmen lieferte Werte in seinem eigenen Format, und die
+Übersetzung in Prüfaufträge wäre selbst ein Arbeitsschritt. Die
+Abkürzung spart diesen Schritt; sie ändert nichts an den Werten.
+
 **Durchführung:** siehe `ONBOARDING.md`, Abschnitt 3 („Run the
 showcase migration").

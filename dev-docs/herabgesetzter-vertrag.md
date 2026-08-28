@@ -59,11 +59,38 @@ umgewandelten Zusatzsumme. Dafuer muss `vertrags_monatsreserve`
 beitragsfreie Teile aufnehmen koennen; heute summiert sie nur
 beitragspflichtige.
 
-Zwei Randbedingungen sprechen dafuer, und beide sind nachgerechnet: Im
-Moment der Herabsetzung ergibt die Zweiteilung denselben Wert wie
-`kern.beitragsreduktion` (verlustfrei, Abweichung null), und am Ablauf
-genau die herabgesetzte Versicherungssumme. Eine Darstellung, die beide
-Enden trifft, ist mit einiger Sicherheit die richtige.
+**Die Teilung ist nicht die einzige Schreibweise** (praezisiert
+2026-08-28). Die Leistungsmathematik verlangt sie nicht: Barwerte sind
+linear in der Summe, und voellig kostenfrei liefern beide Schreibweisen
+exakt denselben Wert (nachgerechnet, Abweichung 0,00). Was die
+Darstellung erzwingt, ist etwas anderes — **Beitrag und Summe
+entkoppeln sich**. Ein Thiele-Vertrag ueber die neue Gesamtsumme
+forderte nach dem Aequivalenzprinzip 3.105,02, der Kunde zahlt aber
+2.679,39; die Luecke von 425,63 kann ein Modellpunkt ohne
+Beitragsfeld nicht tragen.
+
+Daraus folgen zwei gangbare Wege:
+
+1. **Zwei Teile** — je in sich stimmig, der beitragspflichtige mit
+   seinem eigenen Aequivalenzbeitrag.
+2. **Ein Modellpunkt mit ausdruecklichem Beitrag** — dann traegt ein
+   Vertrag einen Beitrag, der nicht der Aequivalenzbeitrag ist.
+
+Sie unterscheiden sich NUR in der Kostenzuordnung, und zwar um Betraege
+in der Groessenordnung der Verfahrensdifferenz selbst (rund 115 im
+zehnten Jahr des Referenzvertrags). Den Ausschlag gibt eine
+Randbedingung: Die Zweiteilung erhaelt die Verlustfreiheit im Moment
+der Herabsetzung (17.750,35, unveraendert), der einzelne Modellpunkt
+verliert dort still 127,93, weil sich seine Kostenbasis von der
+urspruenglichen auf die herabgesetzte Summe verschiebt. Wer eine
+Umwandlung verlustfrei nennt, darf die Reserve dabei nicht springen
+lassen. Am Ablauf treffen beide dieselbe Summe.
+
+**Die eigentliche Frage ist damit eine Kostenfrage**, keine
+Darstellungsfrage: Traegt der herabgesetzte Vertrag seine
+Verwaltungskosten auf der neuen Gesamtsumme, oder traegt der
+fortgefuehrte Teil gamma1 auf seiner eigenen Summe und der umgewandelte
+gamma3 auf seiner? Das steht im Tarifwerk, nicht im Code.
 
 **Was die Skizze NICHT leistet.** Sie sagt nichts darueber, wie der
 Vertrag GELIEFERT wird — ob das abgebende Unternehmen die
@@ -91,10 +118,17 @@ herabgesetzte Vertraege enthaelt.
 **Wer entscheidet**: das Aktuariat — ob die Zweiteilung die richtige
 Modellierung ist oder ob die Herabsetzung anders gefuehrt gehoert.
 
-**Woran man merkt, dass es faellig wird**: Der Verlaufstest A-M2 des
-Baldrian-Falls meldet fuer die 25 herabgesetzten Vertraege der
-Stichprobe ein Residuum in der Groessenordnung von zehn Prozent des
-Deckungskapitals und mehr. Die Migrationssuite weist den Wert am
-Folgestichtag solcher Vertraege ausdruecklich als Pruefluecke aus
-(`dk_stichtag_2_nach_red_monat_<m>`), statt ihn falsch zu rechnen — wer
-diese Luecke schliessen will, braucht dieses Vorhaben.
+**Woran man merkt, dass es faellig wird**: Es ist bereits faellig, und
+zwar blockierend. Die Migrationssuite weist den Wert am Folgestichtag
+eines herabgesetzten Vertrags als Pruefluecke aus
+(`dk_stichtag_2_nach_red_monat_<m>`), statt ihn falsch zu rechnen. Der
+Bestands-Scope duldet aber keine Pruefluecke: `abnahmebericht` verlangt
+"eine vollstaendig gepruefte Migrationssuite ohne Pruefluecken"
+(:1307-1312). Nachgerechnet an einem einzigen Vertrag mit einer
+Herabsetzung zwischen den Stichtagen: `vollstaendig_geprueft` faellt auf
+`False`, und **A-M4 ist damit nicht erreichbar**. Der zweite
+Baldrian-Fall traegt vier solche Vorfaelle.
+
+Der Verlaufstest A-M2 zeigt daneben fuer die 25 herabgesetzten
+Vertraege der Stichprobe ein Residuum in der Groessenordnung von zehn
+Prozent des Deckungskapitals und mehr.

@@ -1,0 +1,3984 @@
+{
+  "profil": {
+    "bemerkung": "Die Punkte liegen fuenf und zehn Jahre nach der Uebernahme und am Ablauf. Zum Ablauf ist der Wert keine Rechengroesse mehr, sondern die Zahlung an den Kunden — er verdiente eine engere Grenze als die Zwischenpunkte. Die Engine schluesselt die Kriterien dieses Tests aber nach Vergleichsgroesse, nicht nach Anlass, und die Ablaufleistung ist dieselbe Groesse kVx_MRV wie die Zwischenwerte. Wer den Ablauf enger fahren will, prueft ihn heute als eigenen Lauf. Das ist eine bekannte Enge der Profilstruktur, keine fachliche Aussage. Zum Fall: Die Verlaufspunkte liegen bei $t_a$ + 5 und + 10 Jahren sowie am Ablauf, beschnitten auf die Restlaufzeit. Vertraege mit kurzer Restlaufzeit tragen entsprechend weniger Punkte; der Ablauf ist immer dabei.",
+    "grundtoleranz": {
+      "abs_tol": 0.05,
+      "max_abs_residuum": 1.0,
+      "p95_abs_residuum": 0.25,
+      "rel_tol": 1e-07
+    },
+    "kennung": "A-M2",
+    "kriterien": {},
+    "titel": "Verlaufstest",
+    "weite": "geschichtet, 25 je Historientyp-Cluster"
+  },
+  "stichprobe": {
+    "grundgesamtheit": 474,
+    "parameter": {
+      "abdeckung": {
+        "beitragsfrei": {
+          "gezogen": 25,
+          "vorhanden": 40
+        },
+        "dynamik": {
+          "gezogen": 25,
+          "vorhanden": 90
+        },
+        "ohne_vorgeschichte": {
+          "gezogen": 25,
+          "vorhanden": 309
+        },
+        "reduziert": {
+          "gezogen": 25,
+          "vorhanden": 35
+        }
+      },
+      "je_schicht": 25,
+      "saat": "baldrian-uebernahme-2026"
+    },
+    "police_ids": [
+      "7000301",
+      "7000345",
+      "7000083",
+      "7000004",
+      "7000092",
+      "7000041",
+      "7000451",
+      "7000500",
+      "7000116",
+      "7000257",
+      "7000223",
+      "7000043",
+      "7000008",
+      "7000022",
+      "7000354",
+      "7000221",
+      "7000425",
+      "7000032",
+      "7000138",
+      "7000372",
+      "7000120",
+      "7000097",
+      "7000132",
+      "7000215",
+      "7000196",
+      "7000185",
+      "7000493",
+      "7000234",
+      "7000447",
+      "7000462",
+      "7000362",
+      "7000261",
+      "7000335",
+      "7000419",
+      "7000430",
+      "7000343",
+      "7000007",
+      "7000429",
+      "7000028",
+      "7000188",
+      "7000355",
+      "7000179",
+      "7000467",
+      "7000325",
+      "7000200",
+      "7000333",
+      "7000485",
+      "7000151",
+      "7000439",
+      "7000319",
+      "7000011",
+      "7000329",
+      "7000241",
+      "7000229",
+      "7000145",
+      "7000235",
+      "7000212",
+      "7000082",
+      "7000287",
+      "7000164",
+      "7000220",
+      "7000123",
+      "7000417",
+      "7000177",
+      "7000499",
+      "7000346",
+      "7000454",
+      "7000370",
+      "7000218",
+      "7000384",
+      "7000404",
+      "7000420",
+      "7000060",
+      "7000405",
+      "7000480",
+      "7000161",
+      "7000367",
+      "7000078",
+      "7000473",
+      "7000088",
+      "7000458",
+      "7000373",
+      "7000402",
+      "7000448",
+      "7000342",
+      "7000379",
+      "7000377",
+      "7000392",
+      "7000312",
+      "7000254",
+      "7000482",
+      "7000153",
+      "7000024",
+      "7000475",
+      "7000051",
+      "7000250",
+      "7000098",
+      "7000044",
+      "7000472",
+      "7000047"
+    ],
+    "profil": "geschichtet",
+    "umfang": 100,
+    "vollerhebung": false
+  },
+  "test": "A-M2",
+  "vertraege": [
+    {
+      "beitragsfrei_seit_jahr": 7,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000301",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 34324.74,
+            "kVx_MRV": 31075.78
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 34324.74,
+            "kVx_MRV": 32469.3
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 34324.74,
+            "kVx_MRV": 34324.74
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 8,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000345",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 32872.33,
+            "kVx_MRV": 32872.33
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 2,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000083",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 21028.14,
+            "kVx_MRV": 21028.14
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 4,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000004",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 19117.85,
+            "kVx_MRV": 18031.95
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 19117.85,
+            "kVx_MRV": 18929.62
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 19117.85,
+            "kVx_MRV": 19117.85
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 6,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000092",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 37867.0,
+            "kVx_MRV": 37867.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 5,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000041",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 26090.53,
+            "kVx_MRV": 26090.53
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 4,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000451",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 17694.14,
+            "kVx_MRV": 16852.6
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 17694.14,
+            "kVx_MRV": 17694.14
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 3,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000500",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 42633.16,
+            "kVx_MRV": 42633.16
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 2,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000116",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 10790.61,
+            "kVx_MRV": 10790.61
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 7,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000257",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 58663.68,
+            "kVx_MRV": 58086.1
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 58663.68,
+            "kVx_MRV": 58663.68
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 6,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000223",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 26322.05,
+            "kVx_MRV": 25078.84
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 26322.05,
+            "kVx_MRV": 26322.05
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 4,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000043",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 20401.81,
+            "kVx_MRV": 19253.26
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 20401.81,
+            "kVx_MRV": 20200.94
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 20401.81,
+            "kVx_MRV": 20401.81
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 6,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000008",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 19724.05,
+            "kVx_MRV": 19529.85
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 19724.05,
+            "kVx_MRV": 19724.05
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 2,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000022",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 12753.92,
+            "kVx_MRV": 12628.35
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 12753.92,
+            "kVx_MRV": 12753.92
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 2,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000354",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 20113.24,
+            "kVx_MRV": 20113.24
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 5,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000221",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 40357.04,
+            "kVx_MRV": 39959.7
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 40357.04,
+            "kVx_MRV": 40357.04
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 4,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000425",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 8016.04,
+            "kVx_MRV": 7636.34
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 8016.04,
+            "kVx_MRV": 8016.04
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 8,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000032",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 71754.1,
+            "kVx_MRV": 68338.21
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 71754.1,
+            "kVx_MRV": 71754.1
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 2,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000138",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 3689.9,
+            "kVx_MRV": 3479.49
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 3689.9,
+            "kVx_MRV": 3653.57
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 3689.9,
+            "kVx_MRV": 3689.9
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 3,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000372",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 18132.94,
+            "kVx_MRV": 17954.41
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 18132.94,
+            "kVx_MRV": 18132.94
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 2,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000120",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 2317.34,
+            "kVx_MRV": 2184.86
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 2317.34,
+            "kVx_MRV": 2294.52
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 2317.34,
+            "kVx_MRV": 2317.34
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 3,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000097",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 5340.96,
+            "kVx_MRV": 4800.01
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 5340.96,
+            "kVx_MRV": 5036.26
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 5340.96,
+            "kVx_MRV": 5340.96
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 4,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000132",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 7571.22,
+            "kVx_MRV": 7571.22
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 5,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000215",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 17610.44,
+            "kVx_MRV": 16044.84
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 17610.44,
+            "kVx_MRV": 16511.02
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 17610.44,
+            "kVx_MRV": 17610.44
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 360
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 3,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 108,
+      "police_id": "7000196",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 7698.31,
+            "kVx_MRV": 6931.45
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 7698.31,
+            "kVx_MRV": 7264.16
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "VS_bfr": 7698.31,
+            "kVx_MRV": 7698.31
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000185",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 7688.2,
+            "RKW": 101690.65,
+            "kVx_MRV": 101890.65
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 7688.2,
+            "RKW": 145133.9,
+            "kVx_MRV": 145133.9
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 154350.0,
+            "kVx_MRV": 154350.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000493",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 73587.51,
+            "kVx_MRV": 73587.51
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 77856.52,
+            "kVx_MRV": 77856.52
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 78750.0,
+            "kVx_MRV": 78750.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000234",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1838.33,
+            "RKW": 25700.77,
+            "kVx_MRV": 25807.98
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1838.33,
+            "RKW": 36042.57,
+            "kVx_MRV": 36098.33
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 47200.0,
+            "kVx_MRV": 47250.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000447",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 5570.44,
+            "RKW": 56174.11,
+            "kVx_MRV": 56374.11
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 5570.44,
+            "RKW": 75011.37,
+            "kVx_MRV": 75011.37
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 100800.0,
+            "kVx_MRV": 100800.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000462",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2082.28,
+            "RKW": 29666.06,
+            "kVx_MRV": 29790.11
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2082.28,
+            "RKW": 41710.27,
+            "kVx_MRV": 41774.4
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 54550.0,
+            "kVx_MRV": 54600.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000362",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2307.74,
+            "RKW": 27724.84,
+            "kVx_MRV": 27879.44
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2307.74,
+            "RKW": 37340.6,
+            "kVx_MRV": 37447.36
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 58800.0,
+            "kVx_MRV": 58800.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 360
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000261",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 73450.0,
+            "kVx_MRV": 73500.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000335",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 3381.58,
+            "RKW": 45457.61,
+            "kVx_MRV": 45507.61
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 49300.0,
+            "kVx_MRV": 49350.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000419",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 78976.61,
+            "kVx_MRV": 79026.61
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 83404.12,
+            "kVx_MRV": 83454.12
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 88150.0,
+            "kVx_MRV": 88200.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000430",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 38753.9,
+            "kVx_MRV": 38803.9
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 40950.0,
+            "kVx_MRV": 40950.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000343",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 11089.83,
+            "RKW": 154434.08,
+            "kVx_MRV": 154634.08
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 11089.83,
+            "RKW": 213663.74,
+            "kVx_MRV": 213663.74
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 279300.0,
+            "kVx_MRV": 279300.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000007",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 152099.08,
+            "kVx_MRV": 152099.08
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 160650.0,
+            "kVx_MRV": 160650.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000429",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 5445.93,
+            "RKW": 80749.01,
+            "kVx_MRV": 80749.01
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 87150.0,
+            "kVx_MRV": 87150.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000028",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 3708.05,
+            "RKW": 53410.07,
+            "kVx_MRV": 53410.07
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 57750.0,
+            "kVx_MRV": 57750.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 132,
+      "police_id": "7000188",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 81223.34,
+            "kVx_MRV": 81223.34
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 192
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 84715.61,
+            "kVx_MRV": 84715.61
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 252
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 88200.0,
+            "kVx_MRV": 88200.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000355",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 4240.16,
+            "RKW": 61347.08,
+            "kVx_MRV": 61470.23
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 86050.0,
+            "kVx_MRV": 86100.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000179",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2368.81,
+            "RKW": 35179.57,
+            "kVx_MRV": 35323.2
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2368.81,
+            "RKW": 49093.74,
+            "kVx_MRV": 49168.15
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 64000.0,
+            "kVx_MRV": 64050.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000467",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1468.03,
+            "RKW": 20113.64,
+            "kVx_MRV": 20165.06
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1468.03,
+            "RKW": 28651.26,
+            "kVx_MRV": 28651.26
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 30450.0,
+            "kVx_MRV": 30450.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000325",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 60850.0,
+            "kVx_MRV": 60900.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000200",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 106975.28,
+            "kVx_MRV": 107025.28
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 113151.49,
+            "kVx_MRV": 113151.49
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 114450.0,
+            "kVx_MRV": 114450.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 132,
+      "police_id": "7000333",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1722.83,
+            "RKW": 27519.47,
+            "kVx_MRV": 27569.47
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 192
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 35650.0,
+            "kVx_MRV": 35700.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000485",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 4450.48,
+            "RKW": 59445.17,
+            "kVx_MRV": 59645.17
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 4450.48,
+            "RKW": 84754.42,
+            "kVx_MRV": 84917.83
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 117550.0,
+            "kVx_MRV": 117600.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000151",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 5973.19,
+            "RKW": 82389.15,
+            "kVx_MRV": 82439.15
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 89200.0,
+            "kVx_MRV": 89250.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000439",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 4202.53,
+            "RKW": 62394.13,
+            "kVx_MRV": 62517.29
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 87100.0,
+            "kVx_MRV": 87150.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000319",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 5747.65,
+            "RKW": 67795.36,
+            "kVx_MRV": 67795.36
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 5747.65,
+            "RKW": 96017.86,
+            "kVx_MRV": 96017.86
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 102900.0,
+            "kVx_MRV": 102900.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000011",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 50000.0,
+            "kVx_MRV": 50000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000329",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2927.84,
+            "RKW": 37512.99,
+            "kVx_MRV": 37712.99
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2927.84,
+            "RKW": 52249.77,
+            "kVx_MRV": 52427.63
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 88000.0,
+            "kVx_MRV": 88000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 360
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000241",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 97290.38,
+            "kVx_MRV": 97340.38
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 102770.05,
+            "kVx_MRV": 102820.05
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 104000.0,
+            "kVx_MRV": 104000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000229",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1493.3,
+            "RKW": 23020.32,
+            "kVx_MRV": 23070.32
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 31950.0,
+            "kVx_MRV": 32000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000145",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2813.64,
+            "RKW": 38507.91,
+            "kVx_MRV": 38507.91
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 54000.0,
+            "kVx_MRV": 54000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000235",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 4327.92,
+            "RKW": 59359.38,
+            "kVx_MRV": 59359.38
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 4327.92,
+            "RKW": 83687.8,
+            "kVx_MRV": 83687.8
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 89000.0,
+            "kVx_MRV": 89000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000212",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 103000.0,
+            "kVx_MRV": 103000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000082",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 6217.14,
+            "RKW": 96450.86,
+            "kVx_MRV": 96637.67
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 133950.0,
+            "kVx_MRV": 134000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000287",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1319.08,
+            "RKW": 21031.05,
+            "kVx_MRV": 21031.05
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 29000.0,
+            "kVx_MRV": 29000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000164",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2287.88,
+            "RKW": 31158.7,
+            "kVx_MRV": 31158.7
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 41648.02,
+            "kVx_MRV": 41648.02
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 46000.0,
+            "kVx_MRV": 46000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 360
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000220",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1794.92,
+            "RKW": 28241.01,
+            "kVx_MRV": 28241.01
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 39000.0,
+            "kVx_MRV": 39000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000123",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 81000.0,
+            "kVx_MRV": 81000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000417",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2695.26,
+            "RKW": 37908.21,
+            "kVx_MRV": 38087.77
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2695.26,
+            "RKW": 53637.28,
+            "kVx_MRV": 53738.59
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 73950.0,
+            "kVx_MRV": 74000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000177",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 4566.14,
+            "RKW": 60822.03,
+            "kVx_MRV": 60822.03
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 66000.0,
+            "kVx_MRV": 66000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000499",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 68761.04,
+            "kVx_MRV": 68811.04
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 72713.42,
+            "kVx_MRV": 72763.42
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 76950.0,
+            "kVx_MRV": 77000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000346",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 71395.91,
+            "kVx_MRV": 71395.91
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 75137.73,
+            "kVx_MRV": 75137.73
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 76000.0,
+            "kVx_MRV": 76000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000454",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 46488.59,
+            "kVx_MRV": 46488.59
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 49000.0,
+            "kVx_MRV": 49000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000370",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 49950.0,
+            "kVx_MRV": 50000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000218",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 33564.25,
+            "kVx_MRV": 33614.25
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 33950.0,
+            "kVx_MRV": 34000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000384",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 7264.39,
+            "RKW": 96810.49,
+            "kVx_MRV": 96810.49
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 7264.39,
+            "RKW": 133318.22,
+            "kVx_MRV": 133318.22
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 183000.0,
+            "kVx_MRV": 183000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000404",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 52950.0,
+            "kVx_MRV": 53000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000420",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 4215.83,
+            "RKW": 58337.37,
+            "kVx_MRV": 58484.95
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 4215.83,
+            "RKW": 82862.22,
+            "kVx_MRV": 82912.22
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 87950.0,
+            "kVx_MRV": 88000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000060",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 54949.17,
+            "kVx_MRV": 54949.17
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 58000.0,
+            "kVx_MRV": 58000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000405",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 3062.42,
+            "RKW": 41696.9,
+            "kVx_MRV": 41802.89
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 3062.42,
+            "RKW": 59264.68,
+            "kVx_MRV": 59314.68
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 63000.0,
+            "kVx_MRV": 63000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000480",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 5543.19,
+            "RKW": 77904.82,
+            "kVx_MRV": 77984.9
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 87950.94,
+            "kVx_MRV": 88000.94
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 94000.0,
+            "kVx_MRV": 94000.0
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000161",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 96276.08,
+            "kVx_MRV": 96404.1
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000367",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 24286.5,
+            "kVx_MRV": 24286.5
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000078",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 184397.63,
+            "kVx_MRV": 184397.63
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000473",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1872.14,
+            "RKW": 30582.79,
+            "kVx_MRV": 30673.15
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1872.14,
+            "RKW": 41670.15,
+            "kVx_MRV": 41670.15
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 44013.86,
+            "kVx_MRV": 44013.86
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000088",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 37903.14,
+            "kVx_MRV": 37964.97
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000458",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2142.89,
+            "RKW": 36504.1,
+            "kVx_MRV": 36504.1
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2142.89,
+            "RKW": 49144.72,
+            "kVx_MRV": 49144.72
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 62812.18,
+            "kVx_MRV": 62812.18
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000373",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2343.56,
+            "RKW": 35887.75,
+            "kVx_MRV": 35988.81
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2343.56,
+            "RKW": 49670.71,
+            "kVx_MRV": 49720.71
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 52534.82,
+            "kVx_MRV": 52584.82
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000402",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1002.55,
+            "RKW": 18757.65,
+            "kVx_MRV": 18757.65
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1002.55,
+            "RKW": 24863.95,
+            "kVx_MRV": 24863.95
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 31409.36,
+            "kVx_MRV": 31409.36
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000448",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 36046.55,
+            "kVx_MRV": 36096.55
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 38092.3,
+            "kVx_MRV": 38142.3
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000342",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 36564.7,
+            "kVx_MRV": 36625.6
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 38614.23,
+            "kVx_MRV": 38667.34
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 39043.98,
+            "kVx_MRV": 39095.46
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000379",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1192.29,
+            "RKW": 18740.26,
+            "kVx_MRV": 18795.25
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1192.29,
+            "RKW": 25714.28,
+            "kVx_MRV": 25714.28
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 27174.96,
+            "kVx_MRV": 27174.96
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000377",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 52565.67,
+            "kVx_MRV": 52565.67
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000392",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 18110.65,
+            "kVx_MRV": 18160.65
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 19122.01,
+            "kVx_MRV": 19172.01
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 19332.34,
+            "kVx_MRV": 19382.34
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000312",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 35023.24,
+            "kVx_MRV": 35073.24
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000254",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 87869.56,
+            "kVx_MRV": 88049.81
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000482",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1951.1,
+            "RKW": 32555.78,
+            "kVx_MRV": 32555.78
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1951.1,
+            "RKW": 44137.17,
+            "kVx_MRV": 44137.17
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 72370.67,
+            "kVx_MRV": 72370.67
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 360
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000153",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2388.6,
+            "RKW": 40420.48,
+            "kVx_MRV": 40543.45
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2388.6,
+            "RKW": 54679.48,
+            "kVx_MRV": 54733.35
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 57643.02,
+            "kVx_MRV": 57693.02
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000024",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1586.56,
+            "RKW": 24819.64,
+            "kVx_MRV": 24939.34
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1586.56,
+            "RKW": 34183.67,
+            "kVx_MRV": 34257.39
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 46281.31,
+            "kVx_MRV": 46331.31
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000475",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 874.48,
+            "RKW": 18418.12,
+            "kVx_MRV": 18418.12
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 874.48,
+            "RKW": 23340.11,
+            "kVx_MRV": 23340.11
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 34231.27,
+            "kVx_MRV": 34231.27
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 360
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000051",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1291.74,
+            "RKW": 27535.65,
+            "kVx_MRV": 27615.05
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 35642.36,
+            "kVx_MRV": 35692.36
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000250",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 138533.54,
+            "kVx_MRV": 138733.54
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 145982.54,
+            "kVx_MRV": 146182.54
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000098",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2913.66,
+            "RKW": 43888.18,
+            "kVx_MRV": 44015.41
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 168
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 2913.66,
+            "RKW": 60592.27,
+            "kVx_MRV": 60592.27
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 228
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 64137.74,
+            "kVx_MRV": 64137.74
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000044",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1831.31,
+            "RKW": 31767.86,
+            "kVx_MRV": 31767.86
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1831.31,
+            "RKW": 42266.85,
+            "kVx_MRV": 42266.85
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 53800.76,
+            "kVx_MRV": 53800.76
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 300
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000472",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 1695.47,
+            "RKW": 29663.08,
+            "kVx_MRV": 29663.08
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 39962.96,
+            "kVx_MRV": 39962.96
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000047",
+      "punkte": [
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 95813.29,
+            "kVx_MRV": 95941.96
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 180
+        },
+        {
+          "anlass": "verlauf",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 101141.53,
+            "kVx_MRV": 101248.78
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 240
+        }
+      ]
+    }
+  ]
+}
