@@ -1,0 +1,10 @@
+theme: jekyll-theme-cayman
+title: Migrationsfall — Vorfuehrung
+description: >-
+  Vorfuehrung einer agentischen Bestandsmigration. Erfundene Unternehmen,
+  synthetische Vertraege, mit einem Simulationsschluessel gezeichnete
+  Abnahmen.
+include:
+  - artefakte
+keep_files:
+  - artefakte

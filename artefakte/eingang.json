@@ -1,0 +1,75 @@
+{
+  "quellen": [
+    {
+      "bytes": 58349,
+      "datei": "Mitteilung_143_KLV_TG2015.docx",
+      "quelle_pfad": "lieferungen/baldrian/Mitteilung_143_KLV_TG2015.docx",
+      "registriert_am": "2026-08-28T06:43:51+00:00",
+      "sha256": "64b6ae9f31159bda338e832b56749670c2d750f9d4941a408f5a3167fe510bd7"
+    },
+    {
+      "bytes": 54398,
+      "datei": "Tarifrechner_KLV_TG2015.xlsm",
+      "quelle_pfad": "lieferungen/baldrian/Tarifrechner_KLV_TG2015.xlsm",
+      "registriert_am": "2026-08-28T06:43:51+00:00",
+      "sha256": "e0cd0a03298f2a191a3f645d8c8f1263e050909dddbb29c9ec22aff9870683a8"
+    },
+    {
+      "bytes": 49571,
+      "datei": "baldrian_bestandsabzug_2026-01-01.csv",
+      "quelle_pfad": "lieferungen/baldrian/baldrian_bestandsabzug_2026-01-01.csv",
+      "registriert_am": "2026-08-28T06:43:51+00:00",
+      "sha256": "8cc955d5a974ba9a52ff49565f5214a8e90f66bfc1c3cedc28531ef4b9fe838f"
+    },
+    {
+      "bytes": 48662,
+      "datei": "baldrian_bestandsabzug_2027-01-01.csv",
+      "quelle_pfad": "lieferungen/baldrian/baldrian_bestandsabzug_2027-01-01.csv",
+      "registriert_am": "2026-08-28T06:43:51+00:00",
+      "sha256": "d2d73d9178c2eae797c009aa1bef81db0f20b69d7581b71f0bb0bba9628a1b07"
+    },
+    {
+      "bytes": 16037,
+      "datei": "baldrian_erwartungswerte_geschaeftsvorfaelle.json",
+      "quelle_pfad": "lieferungen/baldrian/baldrian_erwartungswerte_geschaeftsvorfaelle.json",
+      "registriert_am": "2026-08-28T07:42:38+00:00",
+      "sha256": "c48137fd6846eb9215cf1d92f42623d2654e00477ab766c5d043d1ac5d6b0c34"
+    },
+    {
+      "bytes": 3440,
+      "datei": "baldrian_erwartungswerte_stichprobe.json",
+      "quelle_pfad": "lieferungen/baldrian/baldrian_erwartungswerte_stichprobe.json",
+      "registriert_am": "2026-08-28T07:42:38+00:00",
+      "sha256": "6d14ab5122798b9797bc4cfcbe2f2f8641815ca80e49ff86e8dca36e3b2f874e"
+    },
+    {
+      "bytes": 78362,
+      "datei": "baldrian_erwartungswerte_stichtag.json",
+      "quelle_pfad": "lieferungen/baldrian/baldrian_erwartungswerte_stichtag.json",
+      "registriert_am": "2026-08-28T07:42:38+00:00",
+      "sha256": "0b8d5afba1761b40b7c3d8fb51c2aa7db2e50945907d1d1f84cd415648c899b1"
+    },
+    {
+      "bytes": 84482,
+      "datei": "baldrian_erwartungswerte_verlauf.json",
+      "quelle_pfad": "lieferungen/baldrian/baldrian_erwartungswerte_verlauf.json",
+      "registriert_am": "2026-08-28T07:42:38+00:00",
+      "sha256": "d8cb1d83a716dfbaead2b6665eed4c03b2d9c8f893471ea18e46088abe8ee271"
+    },
+    {
+      "bytes": 3978,
+      "datei": "baldrian_gevo_metadaten.csv",
+      "quelle_pfad": "lieferungen/baldrian/baldrian_gevo_metadaten.csv",
+      "registriert_am": "2026-08-28T06:43:51+00:00",
+      "sha256": "b004fa029cc8970b7f713772c5db995807013df2cbcabb46d2ad7b470170a44d"
+    },
+    {
+      "bytes": 1622,
+      "datei": "baldrian_gevo_protokoll_2026.csv",
+      "quelle_pfad": "lieferungen/baldrian/baldrian_gevo_protokoll_2026.csv",
+      "registriert_am": "2026-08-28T06:43:51+00:00",
+      "sha256": "7e3ba5c68dd9fc6b2bcc5a3bbc65fbfbde1b941195a517070632e101bb8d1607"
+    }
+  ],
+  "schema_version": 1
+}

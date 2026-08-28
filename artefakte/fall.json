@@ -1,0 +1,10 @@
+{
+  "angelegt_am": "2026-08-28T06:43:43+00:00",
+  "beschreibung": "",
+  "name": "baldrian-uebernahme",
+  "schema_version": 1,
+  "scope": {
+    "schema_version": 2,
+    "typ": "bestand"
+  }
+}
