@@ -55,7 +55,7 @@ Knoten: klv
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from rechner_pipeline.kern.model_point import ModelPoint
 from rechner_pipeline.kern.tafeln import Tafelbasis
@@ -217,3 +217,90 @@ def paesse(mp: ModelPoint, pfad: Zahlungspfad, basis: Tafelbasis) -> Barwertpaes
         tod=tuple(tod),
         erleben=tuple(erleben),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Die zusammengesetzte Reserve
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class Pfadzeile:
+    """Die Reservegroessen eines Vertragsjahres auf dem Pfadweg.
+
+    Dieselben Groessen wie ``produkte.klv.Verlaufszeile``, nur aus
+    Zahlungspfaden statt aus Einheitsbarwerten gebildet. Fuer den
+    unveraenderten Vertrag sind beide bit-identisch — das ist die
+    Abnahme, ohne die dieser Weg nicht produktiv werden darf.
+    """
+
+    jahr: int
+    leistungsbarwert: float
+    axn: float
+    axt: float
+    vx_bpfl: float
+    drx_bpfl: float
+    vx_bfr: float
+    vx_mrv: float
+
+
+def verlaufszeile(
+    mp: ModelPoint, pfad: Zahlungspfad, basis: Tafelbasis, a: int,
+    *, skalare: Optional[Dict[str, float]] = None,
+) -> Pfadzeile:
+    """Die Reserve im Vertragsjahr ``a``, gebildet aus dem Zahlungspfad.
+
+    ``skalare`` traegt die vier Vertragskonstanten ``pxt``, ``bjb``,
+    ``axn_full``, ``axt_full`` und ``azd_full``. Sie stehen AUSSERHALB
+    der Rekursion und werden am unveraenderten Vertrag bestimmt: Der
+    Beitragssatz wurde bei Abschluss festgelegt und aendert sich durch
+    eine spaetere Herabsetzung nicht — geaendert hat sich, wie viel
+    davon tatsaechlich gezahlt wird, und genau das steht im Pfad.
+
+    Ohne ``skalare`` werden sie aus dem Standardpfad des Modellpunkts
+    gerechnet; das ist der Normalfall.
+    """
+    p = paesse(mp, pfad, basis)
+    if skalare is None:
+        skalare = vertragskonstanten(mp, basis)
+
+    axn = p.rente_n(a)
+    axt = p.rente_t(a)
+    azd = p.rente_zd(a)
+    leistung = p.leistungsbarwert(a) if a <= mp.n else 0.0
+
+    kvx_bpfl = (
+        leistung
+        - skalare["pxt"] * axt
+        + mp.gamma2 * (axn - (skalare["axn_full"] / skalare["axt_full"]) * axt)
+    )
+    kdrx_bpfl = mp.sum_insured * kvx_bpfl
+    kvx_bfr = leistung + mp.gamma3 * axn
+    kvx_mrv = kdrx_bpfl + (
+        mp.alpha * mp.t * skalare["bjb"] * azd / skalare["azd_full"]
+    )
+    return Pfadzeile(
+        jahr=a, leistungsbarwert=leistung, axn=axn, axt=axt,
+        vx_bpfl=kvx_bpfl, drx_bpfl=kdrx_bpfl, vx_bfr=kvx_bfr, vx_mrv=kvx_mrv,
+    )
+
+
+def vertragskonstanten(mp: ModelPoint, basis: Tafelbasis) -> Dict[str, float]:
+    """Die Skalare des UNVERAENDERTEN Vertrags.
+
+    Sie beschreiben die Preisbildung bei Abschluss und bleiben von einer
+    spaeteren Herabsetzung unberuehrt. Sie kommen aus dem KLV-Produkt,
+    damit es genau eine Wahrheit dafuer gibt — der Pfadweg baut die
+    Beitragsermittlung nicht ein zweites Mal nach.
+    """
+    from rechner_pipeline.kern.produkte.klv import KLV
+
+    kern = KLV(mp)
+    p = paesse(mp, standardpfad(mp), basis)
+    return {
+        "pxt": kern.net_premium_rate(),
+        "bjb": kern.gross_annual_premium(),
+        "axn_full": p.rente_n(0),
+        "axt_full": p.rente_t(0),
+        "azd_full": p.rente_zd(0),
+    }

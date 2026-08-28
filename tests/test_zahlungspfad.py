@@ -136,3 +136,90 @@ def test_herabsetzung_senkt_den_beitragsbarwert_anteilig():
         beitrag=tuple(1.0 if j < 5 else 0.5 for j in range(mp.t))), basis)
 
     assert halb.rente_t(5) == pytest.approx(voll.rente_t(5) * 0.5, rel=1e-12)
+
+
+# --------------------------------------------------------------------------- #
+# Die zusammengesetzte Reserve
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("mp,etikett", _referenzpunkte(),
+                         ids=[e for _, e in _referenzpunkte()])
+def test_reserve_aus_dem_pfad_trifft_den_skalaren_weg_bit_exakt(mp, etikett):
+    """Die zweite Haelfte der Sperre: nicht nur die Paesse, auch die
+    daraus gebildete Reserve muss exakt stimmen."""
+    from rechner_pipeline.kern.zahlungspfad import verlaufszeile
+
+    kern = KLV(mp)
+    basis = tafeln.basis(mp.sex, mp.tafel)
+    pfad = standardpfad(mp)
+
+    for a in range(0, mp.n + 1):
+        z = kern.verlaufszeile(a)
+        pz = verlaufszeile(mp, pfad, basis, a)
+        for name in ("vx_bpfl", "drx_bpfl", "vx_bfr", "vx_mrv"):
+            assert getattr(pz, name) == getattr(z, name), (
+                f"{name} weicht ab bei a={a}")
+
+
+def test_herabgesetzter_vertrag_zahlt_am_ablauf_die_herabgesetzte_summe():
+    """Der Zweck der ganzen Umstellung, an einer Zahl.
+
+    Ohne Zahlungspfade rechnet der Kern den Vertrag mit seinen
+    Ursprungsparametern und zahlte am Ablauf die volle Summe — im
+    Beispiel 100.000 statt 69.531, ein knappes Drittel zu viel an den
+    Kunden.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, reduziere
+    from rechner_pipeline.kern.zahlungspfad import (
+        Zahlungspfad, verlaufszeile, vertragskonstanten)
+
+    mp = KLV_DEFAULT
+    basis = tafeln.basis(mp.sex, mp.tafel)
+    jahr, f = 5, 0.6
+    neu = reduziere(KLV(mp), jahr, f, verfahren=PROSPEKTIV).vs_neu
+    anteil = neu / mp.sum_insured
+
+    pfad = Zahlungspfad(
+        leistung=tuple(1.0 if j < jahr else anteil for j in range(mp.n)),
+        ablauf=anteil,
+        beitrag=tuple(1.0 if j < jahr else f for j in range(mp.t)),
+    )
+    am_ablauf = verlaufszeile(
+        mp, pfad, basis, mp.n, skalare=vertragskonstanten(mp, basis))
+
+    assert am_ablauf.drx_bpfl == pytest.approx(neu, abs=0.01)
+    # Und deutlich unter der ungekuerzten Summe — das ist der Punkt.
+    assert am_ablauf.drx_bpfl < mp.sum_insured * 0.75
+
+
+def test_die_verlustfreiheit_ist_im_pfadmodell_eine_gleichung():
+    """Ein naiv gewaehlter Leistungsfaktor haelt sie NICHT.
+
+    Kuenftige Beitraege zu senken erhoeht die prospektive Reserve,
+    solange die Leistung nicht entsprechend faellt. Welcher Faktor sie
+    unveraendert laesst, haengt an der Kostenzuordnung — die steht im
+    Tarifwerk, nicht im Code. Dieser Test haelt fest, dass das Modell
+    die Frage STELLT, statt sie stillschweigend zu beantworten.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, reduziere
+    from rechner_pipeline.kern.zahlungspfad import (
+        Zahlungspfad, verlaufszeile, vertragskonstanten)
+
+    mp = KLV_DEFAULT
+    basis = tafeln.basis(mp.sex, mp.tafel)
+    jahr, f = 5, 0.6
+    r = reduziere(KLV(mp), jahr, f, verfahren=PROSPEKTIV)
+    anteil = r.vs_neu / mp.sum_insured
+
+    pfad = Zahlungspfad(
+        leistung=tuple(1.0 if j < jahr else anteil for j in range(mp.n)),
+        ablauf=anteil,
+        beitrag=tuple(1.0 if j < jahr else f for j in range(mp.t)),
+    )
+    im_vorfalljahr = verlaufszeile(
+        mp, pfad, basis, jahr, skalare=vertragskonstanten(mp, basis))
+
+    # Die Reserve springt — der naive Faktor ist nicht der verlustfreie.
+    assert im_vorfalljahr.drx_bpfl != pytest.approx(r.dk_nach, abs=0.01)
+    assert im_vorfalljahr.drx_bpfl > r.dk_nach
