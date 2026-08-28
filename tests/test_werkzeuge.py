@@ -12,6 +12,9 @@ koennen:
 * Die Vorzeigeseite laesst die Regie nicht durch. ``simulation/`` und
   ``docs-local/`` tragen die Aufloesungen des Vorfuehrfalls; eine
   Sperre, die nur empfiehlt, ist keine.
+* Das Umbaubudget unterscheidet Hinzufuegen von Ersetzen. Wer das
+  vermischt, meldet gewoehnliche Arbeit als Architekturbruch — und ein
+  Alarm, der immer schlaegt, wird abgeschaltet.
 
 Knoten: klv
 """
@@ -28,6 +31,7 @@ WERKZEUGE = Path(__file__).resolve().parent.parent / "werkzeuge"
 sys.path.insert(0, str(WERKZEUGE))
 
 import verlaufsprotokoll as vp  # noqa: E402
+import umbaubudget as ub  # noqa: E402
 import vorzeigeseite as vz  # noqa: E402
 
 
@@ -157,3 +161,127 @@ def test_gewoehnlicher_fallpfad_passiert_die_sperre(tmp_path):
     ziel.write_text("{}", encoding="utf-8")
 
     vz._pruefe_regie(ziel)  # darf nicht werfen
+
+
+# --------------------------------------------------------------------------- #
+# Umbaubudget: die Schranke gegen das stille Ersetzen
+# --------------------------------------------------------------------------- #
+
+
+def _repo(tmp_path: Path) -> Path:
+    """Ein winziges Repo mit einem Ausgangsstand auf ``basis``."""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    (repo / "tests" / "fixtures" / "kern_referenzwerte").mkdir(parents=True)
+    (repo / "src" / "rechner_pipeline" / "kern").mkdir(parents=True)
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=repo, check=True,
+                       capture_output=True)
+
+    git("init", "-q", "-b", "basis")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "test")
+    (repo / "tests" / "fixtures" / "kern_referenzwerte"
+     / "referenz_alt.json").write_text('{"wert": 1}\n', encoding="utf-8")
+    (repo / "src" / "rechner_pipeline" / "kern" / "modul.py").write_text(
+        "\n".join(f"zeile_{i} = {i}" for i in range(60)) + "\n",
+        encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "Ausgangsstand")
+    git("switch", "-q", "-c", "lauf")
+    return repo
+
+
+def test_ein_neuer_referenzwert_ist_gewoehnliche_arbeit(tmp_path: Path):
+    """Hinzufuegen stellt einen Massstab daneben, Aendern verschiebt ihn.
+
+    Ein Alarm, der schon beim Danebenstellen schlaegt, meldet gewoehnliche
+    Arbeit als Architekturbruch — und wird deshalb abgeschaltet.
+    """
+    import subprocess
+
+    repo = _repo(tmp_path)
+    (repo / "tests" / "fixtures" / "kern_referenzwerte"
+     / "referenz_neu.json").write_text('{"wert": 2}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True,
+                   capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "neuer Referenzwert"],
+                   cwd=repo, check=True, capture_output=True)
+
+    messung = ub.messe(repo, "basis")
+    assert messung["stolperdraehte"] == []
+    assert ub.befunde(messung) == []
+
+
+def test_ein_geaenderter_referenzwert_reisst_den_draht(tmp_path: Path):
+    """Wer den bestehenden Massstab umschreibt, aendert nicht das
+    Gemessene, sondern das Mass."""
+    import subprocess
+
+    repo = _repo(tmp_path)
+    (repo / "tests" / "fixtures" / "kern_referenzwerte"
+     / "referenz_alt.json").write_text('{"wert": 99}\n', encoding="utf-8")
+    subprocess.run(["git", "commit", "-q", "-am", "Referenzwert gedreht"],
+                   cwd=repo, check=True, capture_output=True)
+
+    messung = ub.messe(repo, "basis")
+    assert [d["datei"] for d in messung["stolperdraehte"]] == [
+        "tests/fixtures/kern_referenzwerte/referenz_alt.json"
+    ]
+    assert len(ub.befunde(messung)) == 1
+
+
+def test_loeschen_im_kern_reisst_das_budget_hinzufuegen_nicht(
+    tmp_path: Path, monkeypatch,
+):
+    """Loeschen ist Ersetzen — nur darauf zielt die Schranke."""
+    import subprocess
+
+    monkeypatch.setattr(ub, "VORGABE_LOESCHUNG", {"kern": 10})
+    repo = _repo(tmp_path)
+    modul = repo / "src" / "rechner_pipeline" / "kern" / "modul.py"
+
+    modul.write_text(
+        modul.read_text(encoding="utf-8")
+        + "\n".join(f"neu_{i} = {i}" for i in range(500)) + "\n",
+        encoding="utf-8")
+    subprocess.run(["git", "commit", "-q", "-am", "viel hinzugefuegt"],
+                   cwd=repo, check=True, capture_output=True)
+    assert ub.befunde(ub.messe(repo, "basis")) == []
+
+    modul.write_text("zeile_0 = 0\n", encoding="utf-8")
+    subprocess.run(["git", "commit", "-q", "-am", "Kern ersetzt"],
+                   cwd=repo, check=True, capture_output=True)
+    offene = ub.befunde(ub.messe(repo, "basis"))
+    assert len(offene) == 1
+    assert "kern/" in offene[0] and "Ersetzen" in offene[0]
+
+
+def test_ueberschreiten_ja_verschweigen_nein(tmp_path: Path):
+    """Die Begruendung macht aus einer Nebenwirkung eine Entscheidung."""
+    import subprocess
+
+    repo = _repo(tmp_path)
+    (repo / "tests" / "fixtures" / "kern_referenzwerte"
+     / "referenz_alt.json").write_text('{"wert": 99}\n', encoding="utf-8")
+    subprocess.run(["git", "commit", "-q", "-am", "Referenzwert gedreht"],
+                   cwd=repo, check=True, capture_output=True)
+    ziel = tmp_path / "budget.json"
+
+    ohne = ub.main(["--repo", str(repo), "--basis", "basis",
+                    "--json", str(ziel)])
+    assert ohne == 20
+    assert json.loads(ziel.read_text(encoding="utf-8"))[
+        "ueberschreitung_begruendet"] is None
+
+    mit = ub.main(["--repo", str(repo), "--basis", "basis",
+                   "--json", str(ziel),
+                   "--ueberschreitung-begruendet",
+                   "Tafelwechsel, als Mensch entschieden"])
+    assert mit == 0
+    gespeichert = json.loads(ziel.read_text(encoding="utf-8"))
+    assert gespeichert["ueberschreitung_begruendet"] == (
+        "Tafelwechsel, als Mensch entschieden")
+    assert gespeichert["befunde"], "der Befund bleibt sichtbar"

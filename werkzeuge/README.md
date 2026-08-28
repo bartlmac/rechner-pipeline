@@ -11,6 +11,7 @@ bleibt, steht in `dev-docs/offene-punkte.md`.
 |---|---|
 | `verlaufsprotokoll.py` | Sitzungstranskript zu einem lesbaren Verlauf |
 | `vorzeigeseite.py` | Fall-Artefakte zu einer statischen Seite |
+| `umbaubudget.py` | wie weit ein Lauf das System umgebaut hat |
 
 ## Verlauf eines Laufs protokollieren
 
@@ -33,6 +34,41 @@ python werkzeuge/vorzeigeseite.py \
 Sammelt Lieferung, Gate-Ledger, Entscheide und Verlauf, stempelt
 Systemstand und Branch, schreibt `index.md`, `_config.yml` und
 `artefakte/`.
+
+## Umfang eines Laufs messen
+
+```
+python werkzeuge/umbaubudget.py --basis <startpunkt-des-laufs> \
+    [--json runs/umbaubudget.json] \
+    [--ueberschreitung-begruendet "<ein Satz>"]
+```
+
+`--basis` ist der Stand, auf dem der Lauf AUFGESETZT hat — nicht `main`,
+sonst misst man die Vorgeschichte mit.
+
+Wer einen Migrationsfall loest, darf Code aendern, die Ontologie
+erweitern und Gates umbauen. Was er nicht soll, ist das System nebenbei
+durch ein anderes ersetzen — etwa den Rechenkern von der
+Thiele-Rekursion auf Kommutationszahlen zurueckdrehen, weil das gerade
+der kuerzere Weg zum gruenen Gate waere. Absicht laesst sich nicht
+abfragen, Umfang schon.
+
+Deshalb wiegt **Loeschen schwerer als Hinzufuegen**: Hinzufuegen ist der
+Auftrag, Loeschen ist Ersetzen. Das Gesamtbudget traegt viel (18.000
+Zeilen in `src/` und `tests/`), die Loeschbudgets wenig und je Schicht
+getrennt (`kern/` und `ontologie/` je 450, alles uebrige 1.200).
+
+Daneben stehen **Stolperdraehte**, die keine Budgetfrage sind, sondern
+eine Architekturfrage: geaenderte Charakterisierungs-Referenzwerte, eine
+neue Kante in der Schicht-Allowlist, ein umgeschriebener ADR. Neu
+hinzukommende Referenzwerte reissen nichts — ein Alarm, der schon beim
+Danebenstellen schlaegt, wird abgeschaltet.
+
+**Ueberschreiten ist erlaubt, Verschweigen nicht.** Ohne Begruendung
+endet das Werkzeug auf 20. Mit `--ueberschreitung-begruendet` laeuft es
+durch, und der Satz steht im Ergebnis und auf der Vorfuehrseite. Aus
+einer Nebenwirkung von vierzig Commits wird so eine benannte
+Entscheidung.
 
 ## Veroeffentlichen
 
