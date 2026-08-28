@@ -221,15 +221,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="nachgelieferter fortgefuehrter Beitragsanteil einer "
                         "Alt-Absetzung, deren Beitragsgleichung entfaellt "
                         "(wiederholbar)")
-    p.add_argument("--plausibilitaet-statt-vergleich",
-                   dest="plausibilitaet", default=None,
-                   metavar="REGISTRIERTE_DATEI",
+    p.add_argument("--plausibilitaet-beleg", dest="plausibilitaet_beleg",
+                   default=None, metavar="REGISTRIERTE_DATEI",
                    help="REGISTRIERTE Auskunft der abgebenden Gesellschaft, "
-                        "die je Police und Groesse belegt, dass der "
-                        "gelieferte Wert kein tauglicher Vergleichsmassstab "
-                        "ist (JSON: {\"begruendung\": ..., \"groessen\": "
-                        "[...], \"policen\": [...]}). Ohne diesen Beleg "
+                        "dass der gelieferte Wert einer Groesse kein "
+                        "herleitbarer Erwartungswert ist. Ohne diesen Beleg "
                         "wird jede Groesse wertverglichen.")
+    p.add_argument("--plausibilitaet-groesse", dest="plausibilitaet_groessen",
+                   action="append", default=[], metavar="GROESSE",
+                   help="Groesse, deren Wertvergleich der Beleg ersetzt "
+                        "(wiederholbar; nur Groessen mit Plausibilitaetsregel).")
+    p.add_argument("--plausibilitaet-vorfallart",
+                   dest="plausibilitaet_vorfallart", default=None,
+                   metavar="ART",
+                   help="Reichweite des Belegs als KRITERIUM: alle Vertraege "
+                        "mit dieser Vorfallart in der Vorgeschichte — so, wie "
+                        "die Auskunft ihre Reichweite bestimmt, statt ueber "
+                        "eine getippte Policenliste.")
     p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
                    default=None, metavar="SATZ",
                    help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
@@ -285,18 +293,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             for _, r in bestand.iterrows()
         }
 
+    # Die REGISTRIERTE Vorgeschichte einmal lesen: Sie traegt die
+    # Anfangszustaende UND die Reichweite eines Plausibilitaets-Belegs.
+    import csv
+
+    vorgeschichte: List[Dict[str, str]] = []
+    if args.vorgeschichte is not None:
+        with fall_mod.eingang_datei(fall, args.vorgeschichte).open(
+                encoding="utf-8") as datei:
+            vorgeschichte = list(csv.DictReader(datei, delimiter=";"))
+
     anfangszustaende = None
     if args.vorgeschichte is not None:
-        import csv
-
         from rechner_pipeline.gates.migrationssuite_lauf import (
             VORGABE,
             anfangszustaende_je_police,
         )
 
-        with fall_mod.eingang_datei(fall, args.vorgeschichte).open(
-                encoding="utf-8") as datei:
-            vorgeschichte = list(csv.DictReader(datei, delimiter=";"))
         red_anteile: Dict[str, float] = {}
         if args.red_anteile_datei is not None:
             with fall_mod.eingang_datei(
@@ -337,19 +350,34 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Kommandozeilen-Text waere fuer die Zeichnung nicht bindbar — die
     # menschlichen Gates hashen den Eingang, nicht den Aufruf.
     plausibilitaet: Dict[str, Dict[str, str]] = {}
-    if args.plausibilitaet is not None:
-        beleg = _lies_registriert(fall, args.plausibilitaet)
-        begruendung = str(beleg.get("begruendung", "")).strip()
-        groessen = [str(g) for g in beleg.get("groessen", [])]
-        policen = [str(x) for x in beleg.get("policen", [])]
-        if not begruendung or not groessen or not policen:
-            print(f"{args.plausibilitaet}: erwartet werden nichtleere Felder "
-                  "begruendung, groessen und policen", file=sys.stderr)
+    if args.plausibilitaet_beleg is not None:
+        if not args.plausibilitaet_groessen or not args.plausibilitaet_vorfallart:
+            print("--plausibilitaet-beleg verlangt --plausibilitaet-groesse "
+                  "und --plausibilitaet-vorfallart — ein Beleg ohne Groesse "
+                  "und Reichweite ist keiner", file=sys.stderr)
             return 2
-        quelle = f"{begruendung} [Beleg: {args.plausibilitaet}]"
+        if not vorgeschichte:
+            print("--plausibilitaet-vorfallart verlangt --vorgeschichte: die "
+                  "Reichweite folgt aus der Metadatenliste", file=sys.stderr)
+            return 2
+        # Der Beleg muss REGISTRIERT sein — eine unregistrierte Datei
+        # faellt hier hart auf, bevor irgendein Vergleich entfaellt.
+        beleg_pfad = fall_mod.eingang_datei(fall, args.plausibilitaet_beleg)
+        art = args.plausibilitaet_vorfallart
+        betroffen = sorted({
+            str(z["POLNR"]) for z in vorgeschichte if z.get("GEVO") == art
+        })
+        if not betroffen:
+            print(f"Vorfallart {art!r} kommt in der Vorgeschichte nicht vor — "
+                  "der Beleg traefe keinen Vertrag", file=sys.stderr)
+            return 2
+        quelle = (
+            f"Kein herleitbarer Erwartungswert laut {beleg_pfad.name} "
+            f"(Reichweite: Vorgeschichte mit Vorfallart {art})"
+        )
         plausibilitaet = {
-            police: {groesse: quelle for groesse in groessen}
-            for police in policen
+            police: {g: quelle for g in args.plausibilitaet_groessen}
+            for police in betroffen
         }
 
     auftraege = baue_auftraege(

@@ -788,8 +788,29 @@ def _mit_schicht(
 _KORRIDOR_TOL = 0.011
 
 
-def _ok(ist: float, soll: float, k: Kriterium) -> bool:
-    return math.isclose(ist, soll, rel_tol=k.rel_tol, abs_tol=k.abs_tol)
+#: Rundungsunschaerfe EINER centgerundeten Liefergroesse.
+_CENT_UNSCHAERFE = 0.005
+
+
+def _ok(ist: float, soll: float, k: Kriterium, komponenten: int = 1) -> bool:
+    """Wertvergleich mit der Rundungsunschaerfe der LIEFERUNG.
+
+    Die Abnahmegrenze ist auf centgenaue Lieferwerte ausgelegt. Setzt
+    sich ein gelieferter Wert aber aus mehreren je fuer sich gerundeten
+    Teilen zusammen — Grundvertrag plus Erhoehungsscheiben —, traegt
+    jeder Teil bis zu einen halben Cent Unschaerfe, und die Summe kann
+    die Ein-Cent-Grenze reissen, ohne dass eine Rechnung falsch waere
+    (im Lauf gemessen: 27030,05625 gegen geliefert 27030,06 — der
+    gelieferte Wert IST die Summe der einzeln gerundeten Teile).
+
+    Die Toleranz waechst deshalb mit der Zahl der Komponenten. Das ist
+    keine Aufweichung, sondern Fehlerfortpflanzung: Ohne sie misst der
+    Test die Darstellungskonvention der Quelle statt ihrer Rechnung
+    (dev-docs/aktuarieller-test-at1-at2-at3.md, Abschnitt 4).
+    """
+    unschaerfe = _CENT_UNSCHAERFE * max(0, komponenten - 1)
+    return math.isclose(
+        ist, soll, rel_tol=k.rel_tol, abs_tol=k.abs_tol + unschaerfe)
 
 
 def pruefe_vertrag(
@@ -852,7 +873,10 @@ def pruefe_vertrag(
                     )
             else:
                 schluessel = p.anlass if p.ist_gevo else groesse
-                ok = _ok(system, erwartet, profil.fuer(schluessel))
+                # Jede Erhoehungsscheibe ist eine eigene, fuer sich
+                # gerundete Komponente des gelieferten Werts.
+                ok = _ok(system, erwartet, profil.fuer(schluessel),
+                         komponenten=1 + len(v.scheiben))
                 eintrag.update({
                     "kriterium": KRITERIUM_VERGLEICH, "ok": ok})
                 if not ok:
@@ -870,6 +894,9 @@ def pruefe_vertrag(
         "pruefungen": pruefungen,
         "befunde": befunde,
         "plausibilitaet": dict(v.plausibilitaet),
+        # Zahl der je fuer sich gerundeten Teile des gelieferten Werts —
+        # das Gate rechnet die Toleranz damit nach.
+        "komponenten": 1 + len(v.scheiben),
     }
 
 

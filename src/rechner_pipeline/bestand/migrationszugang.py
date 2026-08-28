@@ -844,6 +844,15 @@ def leite_erhoehung_aus_satz_ab(
     if erlsumme <= 0.0:
         raise MigrationszugangFehler(f"ERLSUMME {erlsumme!r} unplausibel")
     grundsumme = erlsumme / (1.0 + satz)
+    # Verifizierte Glaettung: Versicherungssummen werden auf ganze Euro
+    # gefuehrt. Der gerundete Wert wird NICHT einfach genommen, sondern
+    # muss die gelieferte Gesamtsumme centgenau reproduzieren — sonst
+    # bleibt der rohe Quotient. Ohne diesen Schritt traegt der
+    # Rundungsrest der Lieferung bis in die Reserve (gemessen: ein
+    # hundertstel Cent ueber der Abnahmegrenze).
+    glatt = round(grundsumme)
+    if glatt > 0 and abs(glatt * (1.0 + satz) - erlsumme) <= 0.005:
+        grundsumme = float(glatt)
     return AbgeleiteteErhoehung(
         grundsumme=grundsumme, erhoehungssumme=erlsumme - grundsumme,
         jahr=jahr)

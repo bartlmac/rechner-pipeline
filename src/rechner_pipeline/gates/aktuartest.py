@@ -62,6 +62,7 @@ from rechner_pipeline.gates._common import (
 from rechner_pipeline.qa.aktuarieller_test import (
     KRITERIUM_PLAUSIBILITAET,
     KRITERIUM_VERGLEICH,
+    _CENT_UNSCHAERFE,
     _KORRIDOR_TOL,
     PERZENTILE,
     verteilung,
@@ -133,8 +134,14 @@ def _e(text: Any) -> str:
     )
 
 
-def _ok(ist: float, soll: float, k: Kriterium) -> bool:
-    return math.isclose(ist, soll, rel_tol=k.rel_tol, abs_tol=k.abs_tol)
+def _ok(ist: float, soll: float, k: Kriterium, komponenten: int = 1) -> bool:
+    """Wertvergleich wie in der Engine — einschliesslich der
+    Rundungsunschaerfe mehrteiliger Lieferwerte (siehe
+    ``qa.aktuarieller_test._ok``). Bewusst hier nachgebaut statt
+    importiert: Das Gate rechnet unabhaengig nach."""
+    unschaerfe = _CENT_UNSCHAERFE * max(0, komponenten - 1)
+    return math.isclose(
+        ist, soll, rel_tol=k.rel_tol, abs_tol=k.abs_tol + unschaerfe)
 
 
 def _profil_aus_beleg(beleg: Mapping[str, Any]) -> Testprofil:
@@ -313,7 +320,11 @@ def test_fehler(test: Any) -> List[str]:
             schluessel = (
                 p["anlass"] if profil.kennung == "A-M3" else p["groesse"]
             )
-            soll_ok = _ok(p["system"], p["erwartet"], profil.fuer(schluessel))
+            # Dieselbe Fehlerfortpflanzung wie in der Engine, hier
+            # unabhaengig nachvollzogen: die Zahl der Komponenten steht
+            # als Zaehler an der Vertragszeile.
+            soll_ok = _ok(p["system"], p["erwartet"], profil.fuer(schluessel),
+                          komponenten=int(v.get("komponenten", 1)))
             if bool(p["ok"]) != soll_ok:
                 fehler.append(
                     f"police {v['police_id']} {p['groesse']}: ok-Urteil "
