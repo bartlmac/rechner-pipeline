@@ -38,6 +38,32 @@ Ergebnis. Die Notiz wird deshalb erst registriert, wenn die Lücke
 aufgefallen und nachgefragt worden ist. Wer sie von Anfang an in den
 Fall nimmt, überspringt genau den Vorgang, den dieser Showcase zeigt.
 
+Dasselbe gilt für **zwei weitere Nachlieferungen**, die erst auf
+Rückfrage entstanden sind. Sie liegen bei, gehören aber ebenso wenig zur
+ursprünglichen Lieferung:
+
+* Die **aktuarielle Notiz zum Stornoabschlag** (2026/05) beantwortet die
+  Frage, nach welcher Regel der Abschlag eines bereits herabgesetzten
+  Vertrages gebildet wird — mit der Auskunft, dass es diese Regel nicht
+  gibt: Die Absetzung war der Werthöhe nach nie zugesagt, die damalige
+  Berechnung ist nicht mehr rekonstruierbar. Für die betroffenen
+  Verträge ist der gelieferte Rückkaufswert damit kein herleitbarer
+  Erwartungswert. Das ist eine realistische Auskunft, keine Panne:
+  Abgebende Unternehmen können ihre Altbestandsrechnungen oft nicht
+  vollständig herleiten. Ob ein Verfahren das aushält, statt es zu
+  übertünchen, entscheidet sich an solchen Stellen.
+* Die **Nachlieferung zu den Absetzungen** trägt eine einzige Zeile: den
+  fortgeführten Beitragsanteil einer Police, deren
+  Beitragszahlungsdauer am Migrationsstichtag bereits abgelaufen war.
+  Bei allen übrigen Absetzungen ist dieser Anteil aus dem gelieferten
+  Stand rückrechenbar; bei dieser einen fällt die Beitragsgleichung weg.
+  Geliefert wird also, was wirklich nicht ableitbar ist — nicht mehr.
+
+Beide Nachlieferungen sind Dokumente, nicht Zusagen per Zuruf: Die
+menschlichen Gates binden registrierte Eingänge über ihre Prüfsummen,
+und eine Auskunft, die nur im Gesprächsprotokoll steht, lässt sich dort
+nicht pinnen.
+
 Die **Erwartungswerte für den aktuariellen Test** liegen in vier
 Dateien: die Werte am Übernahmestichtag und am Folgejahrestag, die Werte
 im Verlauf (fünf und zehn Jahre nach der Übernahme sowie zum Ablauf),
