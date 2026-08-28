@@ -501,3 +501,108 @@ def test_ursprungssumme_verlangt_einen_echten_anteil():
         leite_ursprungssumme_ab(
             _mp_felder(), jahr=8, erlsumme=90000.0, anteil=1.0,
             verfahren="mit_abzug")
+
+
+# --------------------------------------------------------------------------- #
+# Ursprungssumme eines beitragsfrei uebernommenen Vertrags
+# --------------------------------------------------------------------------- #
+
+from rechner_pipeline.bestand.migrationszugang import (
+    leite_erhoehung_aus_satz_ab,
+    leite_pex_ursprungssumme_ab,
+    pruefe_erhoehungssatz,
+)
+
+
+def test_pex_ursprungssumme_kehrt_die_umwandlung_um():
+    """Der Abzug fuehrt die beitragsfreie Summe; der Kern braucht die
+    Ursprungssumme und wandelt selbst um."""
+    pex_jahr = 7
+    kern = _Rechenkern(_KLV_DEFAULT)
+    vs_bfr = kern.beitragsfreie_summe(pex_jahr)
+    vs = leite_pex_ursprungssumme_ab(
+        _mp_felder(), pex_jahr=pex_jahr, vs_bfr=round(vs_bfr, 2))
+    assert vs == _pytest.approx(_KLV_DEFAULT.sum_insured, rel=5e-5)
+
+
+def test_pex_ursprungssumme_ohne_umkehrung_waere_zu_klein():
+    """Mutationsfaenger: die gelieferte Summe direkt als Ursprungssumme
+    zu nehmen, unterschaetzt den Vertrag um den Umwandlungsfaktor."""
+    pex_jahr = 7
+    kern = _Rechenkern(_KLV_DEFAULT)
+    vs_bfr = kern.beitragsfreie_summe(pex_jahr)
+    assert vs_bfr < 0.9 * _KLV_DEFAULT.sum_insured
+    vs = leite_pex_ursprungssumme_ab(
+        _mp_felder(), pex_jahr=pex_jahr, vs_bfr=round(vs_bfr, 2))
+    assert vs > 1.1 * vs_bfr
+
+
+def test_pex_ursprungssumme_weist_unmoegliche_jahre_zurueck():
+    with _pytest.raises(_MZFehler, match="nicht in der Laufzeit"):
+        leite_pex_ursprungssumme_ab(_mp_felder(), pex_jahr=0, vs_bfr=1000.0)
+
+
+# --------------------------------------------------------------------------- #
+# Zerlegung aus dem belegten Dynamiksatz
+# --------------------------------------------------------------------------- #
+
+
+def test_satz_zerlegung_trifft_die_tarifwerk_regel():
+    """S' = e * S^ges: aus der Gesamtsumme folgen beide Teile."""
+    z = leite_erhoehung_aus_satz_ab(jahr=6, erlsumme=105000.0, satz=0.05)
+    assert z.grundsumme == _pytest.approx(100000.0, rel=1e-12)
+    assert z.erhoehungssumme == _pytest.approx(5000.0, rel=1e-12)
+
+
+def test_satz_zerlegung_braucht_keinen_beitrag():
+    """Der Vorteil gegenueber der Beitragszerlegung: sie traegt auch
+    Vertraege, deren Beitragszahlung beendet ist."""
+    z = leite_erhoehung_aus_satz_ab(jahr=4, erlsumme=52500.0, satz=0.05)
+    assert z.erhoehungssumme > 0
+
+
+@_pytest.mark.parametrize("satz", [0.0, 1.0, -0.05])
+def test_satz_ausserhalb_null_bis_eins_faellt_hart(satz):
+    with _pytest.raises(_MZFehler, match="nicht in"):
+        leite_erhoehung_aus_satz_ab(jahr=6, erlsumme=105000.0, satz=satz)
+
+
+def test_satzpruefung_belegt_den_richtigen_und_verwirft_die_anderen():
+    """Die Pruefung haelt den Satz gegen den Jahresbeitrag — eine
+    Groesse, die in die Zerlegung NICHT eingeht."""
+    from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe as _es
+
+    jahr, satz_wahr = 6, 0.05
+    grundsumme = 100000.0
+    felder = _mp_felder(sum_insured=grundsumme)
+    grund = _Rechenkern(type(_KLV_DEFAULT)(**felder))
+    scheibe = _Rechenkern(_es(grund.mp, jahr, grundsumme * satz_wahr))
+    beleg = (felder, jahr, grundsumme * (1 + satz_wahr),
+             round(grund.gross_annual_premium()
+                   + scheibe.gross_annual_premium(), 2))
+
+    richtig = pruefe_erhoehungssatz(satz_wahr, [beleg])
+    assert richtig["passt"] and richtig["geprueft"] == 1
+    for falsch in (0.03, 0.07):
+        assert not pruefe_erhoehungssatz(falsch, [beleg])["passt"]
+
+
+def test_satzpruefung_ignoriert_belege_ohne_beitrag():
+    """Ohne Beitrag gibt es nichts zu pruefen — und kein stilles Bestehen."""
+    ergebnis = pruefe_erhoehungssatz(0.05, [(_mp_felder(), 6, 105000.0, 0.0)])
+    assert ergebnis["geprueft"] == 0 and not ergebnis["passt"]
+
+
+def test_verfeinerung_schaerft_den_anteil_auf_den_glatten_parameter():
+    """Aus zwei centgerundeten Feldern kommt ein leicht verrauschter
+    Anteil; die Verfeinerung prueft glatte Kandidaten gegen den
+    Jahresbeitrag und trifft den vereinbarten Parameter exakt."""
+    jahr, f_wahr, vs_wahr = 6, 0.6, 65000.0
+    felder = _mp_felder(sum_insured=vs_wahr)
+    r = _reduziere(_Rechenkern(type(_KLV_DEFAULT)(**felder)), jahr, f_wahr,
+                   verfahren="mit_abzug")
+    ergebnis = leite_absetzung_ab(
+        felder, jahr=jahr, erlsumme=round(r.vs_neu, 2),
+        jbrutto=round(r.bjb_neu, 2), verfahren="mit_abzug")
+    assert ergebnis.anteil == f_wahr           # exakt, nicht nur nahe
+    assert ergebnis.vs_alt == _pytest.approx(vs_wahr, rel=1e-6)

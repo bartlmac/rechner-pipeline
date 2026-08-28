@@ -500,6 +500,10 @@ def leite_absetzung_ab(
             continue
         if (abs(probe.vs_neu - erlsumme) <= ABLEITUNG_SELBSTCHECK_TOL
                 and abs(probe.bjb_neu - jbrutto) <= ABLEITUNG_SELBSTCHECK_TOL):
+            vs_alt, anteil, probe = _verfeinere_absetzung(
+                modellpunkt_felder, jahr=jahr, erlsumme=erlsumme,
+                jbrutto=jbrutto, verfahren=verfahren,
+                roh_anteil=anteil, roh_vs=vs_alt, roh_probe=probe)
             return AbgeleiteteAbsetzung(
                 vs_alt=vs_alt, anteil=anteil, jahr=jahr,
                 verfahren=verfahren, stoab_zweig=zweig,
@@ -516,6 +520,44 @@ def leite_absetzung_ab(
         + ("; ".join(fehler) if fehler else "keine Kandidaten")
         + "). Verfahren und Lieferung klaeren, nicht raten."
     )
+
+
+def leite_pex_ursprungssumme_ab(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    pex_jahr: int,
+    vs_bfr: float,
+) -> float:
+    """Ursprungssumme eines beitragsfrei UEBERNOMMENEN Vertrags ableiten.
+
+    Der Abzug fuehrt bei diesen Vertraegen als Versicherungssumme die
+    BEITRAGSFREIE Summe — den Zustand nach der Freistellung. Der
+    Zielkern rechnet aber aus der Ursprungssumme: Er bildet
+    ``VS_bfr = VS * v_bfr(a0)`` selbst. Ohne Umkehrung wuerde die
+    gelieferte beitragsfreie Summe ein zweites Mal umgewandelt und der
+    Vertrag um den Faktor ``v_bfr`` zu klein bewertet.
+
+    Die Umkehrung ist exakt: Alle Zielgroessen sind homogen in der
+    Versicherungssumme, ``v_bfr(a0)`` je Einheit ist der gesuchte
+    Faktor. Nach dem Ende der Beitragszahlungsdauer ist er eins — dort
+    IST die gelieferte Summe die Ursprungssumme.
+    """
+    einheit = ModelPoint(**{**dict(modellpunkt_felder), "sum_insured": 1.0})
+    if pex_jahr <= 0 or pex_jahr > einheit.n:
+        raise MigrationszugangFehler(
+            f"Beitragsfreistellungsjahr {pex_jahr} liegt nicht in der "
+            f"Laufzeit (0 < jahr <= n = {einheit.n})"
+        )
+    if vs_bfr <= 0.0:
+        raise MigrationszugangFehler(
+            f"gelieferte beitragsfreie Summe {vs_bfr!r} unplausibel")
+    faktor = Rechenkern(einheit).beitragsfreie_summe(pex_jahr)
+    if faktor <= 0.0:
+        raise MigrationszugangFehler(
+            f"beitragsfreier Umwandlungsfaktor in Jahr {pex_jahr} ist "
+            f"{faktor!r} — eine Umkehrung ist dort nicht definiert"
+        )
+    return vs_bfr / faktor
 
 
 def leite_ursprungssumme_ab(
@@ -621,6 +663,58 @@ def leite_ursprungssumme_ab(
     )
 
 
+def _verfeinere_absetzung(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    jahr: int,
+    erlsumme: float,
+    jbrutto: float,
+    verfahren: str,
+    roh_anteil: float,
+    roh_vs: float,
+    roh_probe: Any,
+) -> Tuple[float, float, Any]:
+    """Den rohen Anteil auf einen glatten Vertragsparameter schaerfen.
+
+    Beide Lieferfelder sind centgerundet; die Rueckrechnung nutzt beide
+    zugleich, ihre Rundungsfehler verstaerken sich also in Anteil UND
+    Ursprungssumme. Ein fortgefuehrter Beitragsanteil ist aber ein
+    VEREINBARTER Parameter und praktisch immer glatt (die Lieferung
+    zeigt 0,4 / 0,5 / 0,6 / 0,75).
+
+    Deshalb wird nicht gerundet und gehofft, sondern VERIFIZIERT: Zu
+    jedem glatten Kandidaten in der Naehe des rohen Werts wird die
+    Ursprungssumme exakt aus der ERLSUMME bestimmt (eine Gleichung, eine
+    Unbekannte) und der daraus folgende Jahresbeitrag gegen den
+    gelieferten gehalten — ein Feld, das in diese Bestimmung NICHT
+    eingeht. Genommen wird der GROEBSTE Kandidat, der beide Felder
+    centgenau trifft; trifft keiner, bleibt es beim rohen Wert.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import (
+        BeitragsreduktionFehler,
+        reduziere,
+    )
+
+    for stellen in (2, 3, 4):
+        kandidat = round(roh_anteil, stellen)
+        if not 0.0 < kandidat < 1.0 or kandidat == roh_anteil:
+            continue
+        try:
+            vs_kandidat = leite_ursprungssumme_ab(
+                modellpunkt_felder, jahr=jahr, erlsumme=erlsumme,
+                anteil=kandidat, verfahren=verfahren)
+            probe = reduziere(
+                Rechenkern(ModelPoint(**{**dict(modellpunkt_felder),
+                                         "sum_insured": vs_kandidat})),
+                jahr, kandidat, verfahren=verfahren)
+        except (MigrationszugangFehler, BeitragsreduktionFehler):
+            continue
+        if (abs(probe.vs_neu - erlsumme) <= ABLEITUNG_SELBSTCHECK_TOL
+                and abs(probe.bjb_neu - jbrutto) <= ABLEITUNG_SELBSTCHECK_TOL):
+            return vs_kandidat, kandidat, probe
+    return roh_vs, roh_anteil, roh_probe
+
+
 @dataclass(frozen=True)
 class AbgeleiteteErhoehung:
     """Die aus dem Abzug zurueckgerechnete Alt-Dynamikerhoehung.
@@ -655,6 +749,99 @@ class AbgeleiteteErhoehung:
             "erhoehungssumme": self.erhoehungssumme,
             "jahr": self.jahr,
         }
+
+
+def leite_erhoehung_aus_satz_ab(
+    *,
+    jahr: int,
+    erlsumme: float,
+    satz: float,
+) -> AbgeleiteteErhoehung:
+    """Zerlegung aus dem BELEGTEN Dynamiksatz — ohne Beitragsgleichung.
+
+    Das Tarifwerk bildet die neue Scheibe als ``S' = e * S^ges`` (klv.md,
+    GeVo-Katalog ERH). Bei GENAU EINER Erhoehung folgt daraus
+    ``ERLSUMME = S_grund * (1 + e)``, also eine Zerlegung ohne den
+    Jahresbeitrag — sie traegt deshalb auch Vertraege, deren
+    Beitragszahlung am Stichtag beendet ist.
+
+    Der Satz ``e`` wird NICHT geraten: Er ist eine Eigenschaft der
+    Lieferung und gehoert belegt (``pruefe_erhoehungssatz`` haelt einen
+    Kandidaten gegen die gelieferten Jahresbeitraege) sowie in den
+    Meldungs-Korridor eingeordnet. Ohne Beleg gilt die
+    Beitragszerlegung :func:`leite_erhoehung_ab`.
+    """
+    if not 0.0 < satz < 1.0:
+        raise MigrationszugangFehler(
+            f"Erhoehungssatz {satz!r} liegt nicht in (0, 1)")
+    if erlsumme <= 0.0:
+        raise MigrationszugangFehler(f"ERLSUMME {erlsumme!r} unplausibel")
+    grundsumme = erlsumme / (1.0 + satz)
+    return AbgeleiteteErhoehung(
+        grundsumme=grundsumme, erhoehungssumme=erlsumme - grundsumme,
+        jahr=jahr)
+
+
+def pruefe_erhoehungssatz(
+    kandidat: float,
+    belege: Sequence[Tuple[Mapping[str, Any], int, float, float]],
+    *,
+    abs_tol: float = 0.011,
+) -> Dict[str, Any]:
+    """Einen Dynamiksatz gegen die gelieferten Jahresbeitraege pruefen.
+
+    Je Beleg ``(modellpunkt_felder, jahr, erlsumme, jbrutto)`` wird die
+    Zerlegung AUS DEM SATZ gebildet und der daraus folgende
+    Gesamt-Jahresbeitrag (Grundvertrag plus Scheibe, jede bis zu ihrer
+    eigenen Beitragszahlungsdauer) gegen den gelieferten gehalten. Der
+    Beitrag geht in die Zerlegung nicht ein — die Pruefung ist also
+    unabhaengig, nicht die Umkehrung ihrer selbst.
+
+    Schluessel mit fuehrendem Unterstrich (etwa ``_police``) sind
+    Beleg-Metadaten und erreichen den Modellpunkt nicht.
+
+    Rueckgabe wie beim Abzugsabgleich: Zaehler, Quote und die groessten
+    Ausreisser. Ein Urteil faellt hier NICHT; das ist Sache des
+    Menschen, der den Satz fuer den Fall festlegt.
+    """
+    from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
+
+    verletzende: List[Tuple[float, str]] = []
+    geprueft = 0
+    max_abw = 0.0
+    for felder, jahr, erlsumme, jbrutto in belege:
+        if jbrutto <= 0.0:
+            continue
+        zerlegung = leite_erhoehung_aus_satz_ab(
+            jahr=jahr, erlsumme=erlsumme, satz=kandidat)
+        kern_felder = {k: v for k, v in dict(felder).items()
+                       if not k.startswith("_")}
+        grund_mp = ModelPoint(**{**kern_felder,
+                                 "sum_insured": zerlegung.grundsumme})
+        grund = Rechenkern(grund_mp)
+        scheibe = Rechenkern(erhoehungs_scheibe(
+            grund_mp, jahr, zerlegung.erhoehungssumme))
+        system = 0.0
+        if grund_mp.t > 0:
+            system += grund.gross_annual_premium()
+        if scheibe.mp.t > 0:
+            system += scheibe.gross_annual_premium()
+        geprueft += 1
+        abw = abs(system - jbrutto)
+        max_abw = max(max_abw, abw)
+        if abw > abs_tol:
+            verletzende.append((abw, str(felder.get("_police", ""))))
+    verletzende.sort(key=lambda e: -e[0])
+    return {
+        "satz": kandidat,
+        "geprueft": geprueft,
+        "verletzt": len(verletzende),
+        "passt": geprueft > 0 and not verletzende,
+        "quote_stuetzend": ((geprueft - len(verletzende)) / geprueft
+                            if geprueft else 0.0),
+        "max_abweichung": max_abw,
+        "groesste_abweichungen": [round(a, 4) for a, _ in verletzende[:5]],
+    }
 
 
 def leite_erhoehung_ab(

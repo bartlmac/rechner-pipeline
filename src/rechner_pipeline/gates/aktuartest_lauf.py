@@ -90,7 +90,9 @@ def _zelle(spez, auspraegungen: Dict[str, str]):
 
 
 def _generationsfelder(zelle) -> Dict[str, Any]:
-    return {feld: wert.wert for feld, wert in zelle.model_point.items()}
+    # Die Spez traegt die Modellpunkt-Felder als schlichte Werte
+    # (spez/schema.py: Wert ist ein Typ-Alias, kein Traeger-Objekt).
+    return dict(zelle.model_point)
 
 
 def _lies_registriert(fall: Path, name: str) -> Any:
@@ -156,7 +158,9 @@ def baue_auftraege(
             model_point=mp,
             historientyp=str(eintrag.get("historientyp", "unbekannt")),
             punkte=tuple(punkte),
-            beitragsfrei_seit_jahr=eintrag.get("beitragsfrei_seit_jahr"),
+            beitragsfrei_seit_jahr=eintrag.get(
+                "beitragsfrei_seit_jahr",
+                zustand.get("beitragsfrei_seit_jahr")),
             monate_ta=eintrag.get("monate_ta"),
             scheiben=tuple(zustand.get("scheiben", ())),
             reduktion=zustand.get("reduktion"),
@@ -210,6 +214,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="nachgelieferter fortgefuehrter Beitragsanteil einer "
                         "Alt-Absetzung, deren Beitragsgleichung entfaellt "
                         "(wiederholbar)")
+    p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
+                   default=None, metavar="SATZ",
+                   help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
+                        "S' = e * S^ges); ohne ihn wird je Vertrag aus dem "
+                        "Jahresbeitrag zerlegt")
     p.add_argument("--red-verfahren", dest="red_verfahren",
                    default=PROSPEKTIV, choices=sorted(VERFAHREN),
                    help="Verfahren der Beitragsherabsetzung (Eigenschaft "
@@ -283,7 +292,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             spez, zeilen if args.zeilen is not None else [],
             vorgeschichte, bestand, spalten=dict(VORGABE),
             red_verfahren=args.red_verfahren, red_anteile=red_anteile,
-            auspraegungen=auspraegungen)
+            auspraegungen=auspraegungen,
+            erhoehungssatz=args.erhoehungssatz)
         for w in zustandswarnungen:
             print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
                   file=sys.stderr)

@@ -175,8 +175,9 @@ def anfangszustaende_je_police(
     red_verfahren: str,
     red_anteile: Optional[Dict[str, float]] = None,
     auspraegungen: Optional[Dict[str, Dict[str, str]]] = None,
+    erhoehungssatz: Optional[float] = None,
 ) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
-    """Vorgeschichts-Welten ERH und RED je Police ableiten.
+    """Vorgeschichts-Welten PEX, ERH und RED je Police ableiten.
 
     Der Stamm fuehrt die AKTUELLE Gesamtsumme; die Bewertung der
     Vorgeschichts-Welten braucht den URSPRUNGS-Modellpunkt. Je Police
@@ -197,6 +198,8 @@ def anfangszustaende_je_police(
         MigrationszugangFehler,
         leite_absetzung_ab,
         leite_erhoehung_ab,
+        leite_erhoehung_aus_satz_ab,
+        leite_pex_ursprungssumme_ab,
         leite_ursprungssumme_ab,
     )
 
@@ -211,7 +214,7 @@ def anfangszustaende_je_police(
 
     ereignisse: Dict[str, List[Dict[str, str]]] = {}
     for zeile in vorgeschichte:
-        if zeile[s["gevo"]] in ("ERH", "RED"):
+        if zeile[s["gevo"]] in ("PEX", "ERH", "RED"):
             ereignisse.setdefault(str(zeile[s["police"]]), []).append(zeile)
 
     zustaende: Dict[str, Dict[str, Any]] = {}
@@ -243,13 +246,27 @@ def anfangszustaende_je_police(
         jbrutto = float(transformiert.get("brutto_jahresbeitrag") or 0.0)
         zelle = _zelle(spez, (auspraegungen or {}).get(police, {}))
         mp_felder = model_point_kwargs(
-            stammzeilen[police],
-            {feld: wert.wert for feld, wert in zelle.model_point.items()})
+            stammzeilen[police], dict(zelle.model_point))
 
         try:
-            if art == "ERH":
-                erh = leite_erhoehung_ab(
-                    mp_felder, jahr=jahr, erlsumme=erlsumme, jbrutto=jbrutto)
+            if art == "PEX":
+                # Der Abzug fuehrt hier die BEITRAGSFREIE Summe; der Kern
+                # rechnet aus der Ursprungssumme und wandelt selbst um.
+                zustaende[police] = {
+                    "beitragsfrei_seit_jahr": jahr,
+                    "sum_insured": leite_pex_ursprungssumme_ab(
+                        mp_felder, pex_jahr=jahr, vs_bfr=erlsumme),
+                }
+            elif art == "ERH":
+                if erhoehungssatz is not None:
+                    # Belegter Dynamiksatz: Zerlegung ohne Beitrag —
+                    # traegt auch Vertraege ohne laufenden Beitrag.
+                    erh = leite_erhoehung_aus_satz_ab(
+                        jahr=jahr, erlsumme=erlsumme, satz=erhoehungssatz)
+                else:
+                    erh = leite_erhoehung_ab(
+                        mp_felder, jahr=jahr, erlsumme=erlsumme,
+                        jbrutto=jbrutto)
                 zustaende[police] = {
                     "scheiben": ((jahr, erh.erhoehungssumme),),
                     "sum_insured": erh.grundsumme,
@@ -295,9 +312,7 @@ def baue_auftraege(
             f"Spez traegt {len(spez.zellen)} Zellen — ohne die "
             "transformierten Zeilen (--zeilen) ist die Zellwahl je Police "
             "nicht bestimmbar")
-    felder = {feld: wert.wert
-              for feld, wert in _zelle(spez, {}).model_point.items()} \
-        if not mehrzellig else None
+    felder = dict(_zelle(spez, {}).model_point) if not mehrzellig else None
 
     auftraege: List[VertragsPruefung] = []
     for _, zeile in bestand.iterrows():
@@ -314,10 +329,8 @@ def baue_auftraege(
                 raise SystemExit(
                     f"Police {police}: keine transformierte Zeile — die "
                     "Zellwahl ist nicht bestimmbar")
-            generation = {
-                feld: wert.wert
-                for feld, wert in _zelle(
-                    spez, auspraegungen[police]).model_point.items()}
+            generation = dict(
+                _zelle(spez, auspraegungen[police]).model_point)
 
         vorfaelle = []
         for g in sorted(gevos.get(police, []), key=lambda z: _parse(z[s["datum"]])):
@@ -348,7 +361,9 @@ def baue_auftraege(
             bjb_erwartet_1=(float(ab1[police][s["jbrutto"]])
                             if ab1[police].get(s["jbrutto"]) else None),
             gevos=tuple(vorfaelle),
-            beitragsfrei_seit_jahr=(beitragsfrei_seit or {}).get(police),
+            beitragsfrei_seit_jahr=zustand.get(
+                "beitragsfrei_seit_jahr",
+                (beitragsfrei_seit or {}).get(police)),
             scheiben=tuple(zustand.get("scheiben", ())),
             reduktion=zustand.get("reduktion"),
         ))
@@ -387,6 +402,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="nachgelieferter fortgefuehrter Beitragsanteil einer "
                         "Alt-Absetzung, deren Beitragsgleichung entfaellt "
                         "(wiederholbar)")
+    p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
+                   default=None, metavar="SATZ",
+                   help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
+                        "S' = e * S^ges); ohne ihn wird je Vertrag aus dem "
+                        "Jahresbeitrag zerlegt")
     p.add_argument("--red-verfahren", dest="red_verfahren",
                    default=PROSPEKTIV, choices=sorted(VERFAHREN),
                    help="Verfahren der Beitragsherabsetzung (Eigenschaft "
@@ -438,7 +458,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             spez, zeilen if args.zeilen is not None else [],
             vorgeschichte, bestand, spalten=spalten,
             red_verfahren=args.red_verfahren, red_anteile=red_anteile,
-            auspraegungen=auspraegungen)
+            auspraegungen=auspraegungen,
+            erhoehungssatz=args.erhoehungssatz)
         for w in zustandswarnungen:
             print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
                   file=sys.stderr)
