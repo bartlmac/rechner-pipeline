@@ -185,3 +185,135 @@ class Testprofil:
             },
             "bemerkung": self.bemerkung,
         }
+
+
+# --------------------------------------------------------------------------- #
+# Vorlagen der drei Abnahmen
+# --------------------------------------------------------------------------- #
+#
+# Ein Profil ist eine Entscheidung des Aktuariats je Migrationsfall. Diese
+# Vorlagen sind der begruendete Ausgangspunkt dafuer, nicht die
+# Entscheidung selbst: Sie tragen die Toleranzen, die aus der NATUR des
+# jeweiligen Vergleichs folgen, und der Fall passt an, wo er Grund dazu
+# hat. Eine Anpassung ist damit sichtbar — anders als eine Zahl, die
+# irgendwann irgendwer gesetzt hat.
+#
+# Die Weite bleibt bewusst ohne Vorbelegung: Wie weit gezogen wurde, kann
+# keine Vorlage wissen, und ein Vorgabewert waere genau die stille
+# Annahme, die der Beleg verhindern soll.
+
+#: Was eine centgerundete Lieferung an einem Vergleich zum SELBEN
+#: Zeitpunkt hoechstens erzeugt. Beide Seiten runden, also das Doppelte
+#: des Rundungsrauschens, aufgerundet auf den Cent.
+_CENTGENAU = Kriterium(
+    abs_tol=0.01, rel_tol=1e-9,
+    max_abs_residuum=0.05, p95_abs_residuum=0.02,
+)
+
+#: Ein Wert, den das Quellsystem ueber Jahre fortgeschrieben hat. Jeder
+#: Jahresschritt rundet erneut, und die Kostenverlaeufe beider Systeme
+#: laufen minimal auseinander. Cent-Gleichheit ist hier nicht erreichbar
+#: und ihre Forderung waere kein strengerer, sondern ein untauglicher
+#: Test.
+_FORTGESCHRIEBEN = Kriterium(
+    abs_tol=0.05, rel_tol=1e-7,
+    max_abs_residuum=1.00, p95_abs_residuum=0.25,
+)
+
+VORLAGEN: Mapping[str, Dict[str, Any]] = {
+    "A-M1": {
+        "grundtoleranz": _CENTGENAU,
+        "kriterien": {},
+        "bemerkung": (
+            "Beide Punkte vergleichen zum selben Zeitpunkt gegen einen "
+            "gelieferten Wert; es trennt sie nur die Rundung. Eine "
+            "Unterscheidung je Groesse ist deshalb nicht begruendet — "
+            "kVx_MRV, RKW, BJB und VS_bfr tragen dieselbe Grenze. Der "
+            "Uebernahmepunkt ist bei gefuehrter Korrekturschicht "
+            "konstruktionsbedingt null; aussagekraeftig ist der zweite "
+            "Punkt, der die Fortschreibungsregel prueft."
+        ),
+    },
+    "A-M2": {
+        "grundtoleranz": _FORTGESCHRIEBEN,
+        "kriterien": {},
+        "bemerkung": (
+            "Die Punkte liegen fuenf und zehn Jahre nach der Uebernahme "
+            "und am Ablauf. Zum Ablauf ist der Wert keine Rechengroesse "
+            "mehr, sondern die Zahlung an den Kunden — er verdiente eine "
+            "engere Grenze als die Zwischenpunkte. Die Engine "
+            "schluesselt die Kriterien dieses Tests aber nach "
+            "Vergleichsgroesse, nicht nach Anlass, und die Ablaufleistung "
+            "ist dieselbe Groesse kVx_MRV wie die Zwischenwerte. Wer den "
+            "Ablauf enger fahren will, prueft ihn heute als eigenen Lauf. "
+            "Das ist eine bekannte Enge der Profilstruktur, keine "
+            "fachliche Aussage."
+        ),
+    },
+    "A-M3": {
+        "grundtoleranz": _CENTGENAU,
+        "kriterien": {
+            # Die einzige Art, die eine eigene Grenze verdient. Eine
+            # Erhoehung legt eine Scheibe mit Reserve null an, dDK ist
+            # also strukturell null — und eine gelieferte Null traegt
+            # keinen Rundungsfehler, den man zugestehen muesste. Alle
+            # uebrigen Arten vergleichen gegen einen centgerundeten
+            # Betrag und tragen deshalb die Grundtoleranz; sie hier
+            # einzeln zu wiederholen sagte nichts aus.
+            # Der engere Wert steht beim Einzelvergleich, nicht bei den
+            # Verteilungsgrenzen: Die halten die Untergrenze des
+            # Rundungsrauschens ein, weil auch eine Verteilung von Nullen
+            # gegen centgerundete Nachbarwerte ausgewertet wird.
+            "ERH": Kriterium(
+                abs_tol=0.001, rel_tol=1e-9,
+                max_abs_residuum=RUNDUNGSRAUSCHEN,
+                p95_abs_residuum=RUNDUNGSRAUSCHEN,
+            ),
+        },
+        "bemerkung": (
+            "Rueckkauf, Tod und Ablauf beenden den Vertrag; dort IST der "
+            "Wert die Auszahlung, und eine Abweichung bekommt der Kunde "
+            "zu spueren. Sie tragen dieselbe centgenaue Grenze wie die "
+            "Umwandlungen — nicht aus Bequemlichkeit, sondern weil alle "
+            "gegen einen centgerundeten Betrag zum selben Zeitpunkt "
+            "vergleichen. "
+            "Zur Herabsetzung: Rechnet das abgebende Unternehmen sie mit "
+            "Stornoabzug und das Zielsystem verlustfrei, weicht dDK um "
+            "genau diesen Abzug ab. Diese Grenze aufzuweiten, um den "
+            "Befund verschwinden zu lassen, waere falsch — die Abweichung "
+            "ist der Sachverhalt, den die Abnahme sehen soll. Sie gehoert "
+            "in die Abnahmeentscheidung, belegt durch die Beschreibung "
+            "des Quellverfahrens, nicht in eine stillere Toleranz. "
+            "Invalidisierung und Reaktivierung stehen nicht in der "
+            "Tabelle: Die Engine rechnet ihr dDK nicht, solange die "
+            "BU-Zustandsbewertung offen ist."
+        ),
+    },
+}
+
+
+def vorlage(kennung: str, *, weite: str, bemerkung: str = "") -> Testprofil:
+    """Das Profil einer Abnahme aus ihrer Vorlage bauen.
+
+    ``weite`` ist Pflicht und beschreibt die Ziehung in Worten — sie
+    gehoert in den Beleg und kann nicht vorbelegt werden. ``bemerkung``
+    tritt NEBEN die Begruendung der Vorlage, statt sie zu ersetzen: Wer
+    im Fall etwas anderes entscheidet, soll sagen warum, ohne dass die
+    urspruengliche Begruendung verschwindet.
+    """
+    if kennung not in VORLAGEN:
+        raise ProfilFehler(
+            f"keine Vorlage fuer {kennung!r} — vorhanden sind "
+            f"{sorted(VORLAGEN)}"
+        )
+    v = VORLAGEN[kennung]
+    texte = [v["bemerkung"]]
+    if bemerkung:
+        texte.append(f"Zum Fall: {bemerkung}")
+    return Testprofil(
+        kennung=kennung,
+        kriterien=dict(v["kriterien"]),
+        weite=weite,
+        grundtoleranz=v["grundtoleranz"],
+        bemerkung=" ".join(texte),
+    )
