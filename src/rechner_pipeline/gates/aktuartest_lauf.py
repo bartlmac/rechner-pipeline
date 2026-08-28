@@ -119,6 +119,10 @@ def baue_auftraege(
                 "muss vom gelieferten Bestand gedeckt sein"
             )
         zeile = zeilen[police]
+        if len(spez.zellen) > 1 and police not in auspraegungen_je_police:
+            raise SystemExit(
+                f"Police {police}: keine Auspraegungen fuer die Zellwahl — "
+                "die transformierten Zeilen (--zeilen) decken sie nicht")
         zelle = _zelle(spez, auspraegungen_je_police.get(police, {}))
         mp = model_point_kwargs(zeile, _generationsfelder(zelle))
 
@@ -181,6 +185,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="REGISTRIERTE Quelle mit dem Ziehungsbeleg")
     p.add_argument("--bestand", required=True,
                    help="transformierter Bestand (Parquet)")
+    p.add_argument("--zeilen", default=None,
+                   help="transformierte Zeilen (gates.transformation_anwenden "
+                        "--zeilen) — Pflicht, sobald die Spez mehr als eine "
+                        "Zelle traegt (Zellwahl je Police)")
     p.add_argument("--repo-root", dest="repo_root", default=".")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/berichte/...)")
@@ -202,13 +210,29 @@ def main(argv: Optional[List[str]] = None) -> int:
               f"{args.abnahme}", file=sys.stderr)
         return 2
 
-    # Die Merkmalsauspraegungen je Police kommen aus dem Bestand: Sie
-    # waehlen die Spez-Zelle. Fehlt die Spalte, entscheidet die Spez mit
-    # nur einer Zelle von selbst.
-    auspraegungen = {
-        str(r["police_id"]): {}
-        for _, r in bestand.iterrows()
-    }
+    # Die Merkmalsauspraegungen je Police waehlen die Spez-Zelle. Sie
+    # kommen aus den transformierten Zeilen (der Stamm traegt sie nicht);
+    # ohne --zeilen entscheidet nur eine einzellige Spez von selbst.
+    from rechner_pipeline.gates.migrationssuite_lauf import (
+        auspraegungen_je_police,
+    )
+
+    if args.zeilen is not None:
+        zeilen = json.loads(Path(args.zeilen).read_text(encoding="utf-8"))
+        if not isinstance(zeilen, list):
+            print(f"{args.zeilen}: erwartet wird die Zeilenliste aus "
+                  "gates.transformation_anwenden --zeilen", file=sys.stderr)
+            return 2
+        auspraegungen = auspraegungen_je_police(spez, zeilen)
+    elif len(spez.zellen) > 1:
+        print(f"Spez traegt {len(spez.zellen)} Zellen — ohne --zeilen ist "
+              "die Zellwahl je Police nicht bestimmbar", file=sys.stderr)
+        return 2
+    else:
+        auspraegungen = {
+            str(r["police_id"]): {}
+            for _, r in bestand.iterrows()
+        }
 
     auftraege = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen)

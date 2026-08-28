@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -91,9 +92,83 @@ def _zelle(spez, auspraegungen: Dict[str, str]):
     return treffer[0]
 
 
+def auspraegungen_je_police(
+    spez, zeilen: List[Dict[str, Any]]
+) -> Dict[str, Dict[str, str]]:
+    """Die Zellwahl-Auspraegungen je Police aus den transformierten Zeilen.
+
+    Welche Dimensionen es gibt, sagen die Auspraegungs-Schluessel der
+    Spez-Zellen; die Werte je Vertrag tragen die transformierten Zeilen
+    (``gates.transformation_anwenden --zeilen``) unter genau diesen
+    Feldnamen. Eine Zeile ohne Dimensionswert waere eine Police, deren
+    Zelle sich nicht bestimmen laesst — harter Fehler, kein stilles
+    Zurueckfallen auf irgendeine Zelle.
+    """
+    dimensionen = sorted({k for z in spez.zellen for k in z.auspraegungen})
+    aus: Dict[str, Dict[str, str]] = {}
+    for zeile in zeilen:
+        police = str(zeile.get("police_id", "")).strip()
+        if not police:
+            raise SystemExit(
+                "transformierte Zeile ohne police_id — die Zeilenliste "
+                "gehoert aus gates.transformation_anwenden --zeilen")
+        fehlend = [d for d in dimensionen if not str(zeile.get(d, "")).strip()]
+        if fehlend:
+            raise SystemExit(
+                f"Police {police}: transformierte Zeile traegt keine "
+                f"Auspraegung fuer {fehlend} — ohne sie ist keine "
+                "Spez-Zelle bestimmbar")
+        aus[police] = {d: str(zeile[d]) for d in dimensionen}
+    return aus
+
+
+def beitragsfrei_seit_jahr_je_police(
+    vorgeschichte: List[Dict[str, str]], bestand, *, spalten: Dict[str, str],
+) -> Dict[str, int]:
+    """Anfangszustand aus der Vorgeschichte: PEX-Vertragsjahr je Police.
+
+    Eine Beitragsfreistellung VOR dem Migrationsstichtag ist kein GeVo
+    des Pruefzeitraums, sondern der Zustand, in dem der Vertrag
+    uebernommen wird (``VertragsPruefung.beitragsfrei_seit_jahr``). Sie
+    wirkt am Vertragsjahrestag; ein PEX-Datum abseits des Jahrestags
+    ist eine Lieferungs-Inkonsistenz und faellt hart, statt still
+    gerundet zu werden.
+    """
+    s = spalten
+    beginne = {
+        str(z["police_id"]): z["insurance_start"].date()
+        for _, z in bestand.iterrows()
+    }
+    aus: Dict[str, int] = {}
+    for zeile in vorgeschichte:
+        if zeile[s["gevo"]] != "PEX":
+            continue
+        police = str(zeile[s["police"]])
+        beginn = beginne.get(police)
+        if beginn is None:
+            # Vorgeschichte zu einer Police, die nicht uebernommen wurde
+            # (z. B. verworfene Zeile) — hier kein Urteil, die
+            # Mengenpruefung der Suite meldet Bestandsluecken selbst.
+            continue
+        monate = _monate(beginn, _parse(zeile[s["datum"]]))
+        if monate % 12:
+            raise SystemExit(
+                f"Police {police}: PEX der Vorgeschichte bei Monat {monate} "
+                "liegt nicht auf dem Vertragsjahrestag — Beitragsfreistellung "
+                "wirkt am Jahrestag (Lieferung klaeren, nicht runden)")
+        if police in aus:
+            raise SystemExit(
+                f"Police {police}: zwei PEX in der Vorgeschichte — eine "
+                "zweite Beitragsfreistellung gibt es nicht")
+        aus[police] = monate // 12
+    return aus
+
+
 def baue_auftraege(
     bestand, spez, abzug_1, abzug_2, protokoll, *,
     stichtag_1: dt.date, stichtag_2: dt.date, spalten: Dict[str, str],
+    auspraegungen: Optional[Dict[str, Dict[str, str]]] = None,
+    beitragsfrei_seit: Optional[Dict[str, int]] = None,
 ) -> List[VertragsPruefung]:
     """Je Vertrag genau einen Pruefauftrag."""
     s = spalten
@@ -103,9 +178,15 @@ def baue_auftraege(
     for z in protokoll:
         gevos.setdefault(z[s["police"]], []).append(z)
 
+    mehrzellig = len(spez.zellen) > 1
+    if mehrzellig and auspraegungen is None:
+        raise SystemExit(
+            f"Spez traegt {len(spez.zellen)} Zellen — ohne die "
+            "transformierten Zeilen (--zeilen) ist die Zellwahl je Police "
+            "nicht bestimmbar")
     felder = {feld: wert.wert
               for feld, wert in _zelle(spez, {}).model_point.items()} \
-        if len(spez.zellen) == 1 else None
+        if not mehrzellig else None
 
     auftraege: List[VertragsPruefung] = []
     for _, zeile in bestand.iterrows():
@@ -115,9 +196,17 @@ def baue_auftraege(
                 f"Police {police} steht im Bestand, aber nicht im Abzug zum "
                 "Migrationsstichtag — die Pruefmenge waere keine Bestandsmenge")
         beginn = zeile["insurance_start"].date()
-        generation = felder if felder is not None else {
-            feld: wert.wert
-            for feld, wert in _zelle(spez, {}).model_point.items()}
+        if felder is not None:
+            generation = felder
+        else:
+            if police not in auspraegungen:
+                raise SystemExit(
+                    f"Police {police}: keine transformierte Zeile — die "
+                    "Zellwahl ist nicht bestimmbar")
+            generation = {
+                feld: wert.wert
+                for feld, wert in _zelle(
+                    spez, auspraegungen[police]).model_point.items()}
 
         vorfaelle = []
         for g in sorted(gevos.get(police, []), key=lambda z: _parse(z[s["datum"]])):
@@ -141,6 +230,7 @@ def baue_auftraege(
             bjb_erwartet_1=(float(ab1[police][s["jbrutto"]])
                             if ab1[police].get(s["jbrutto"]) else None),
             gevos=tuple(vorfaelle),
+            beitragsfrei_seit_jahr=(beitragsfrei_seit or {}).get(police),
         ))
     return auftraege
 
@@ -163,6 +253,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="transformierter Bestand (Parquet), von P-B1 geprueft")
     p.add_argument("--stichtag-1", dest="stichtag_1", required=True)
     p.add_argument("--stichtag-2", dest="stichtag_2", required=True)
+    p.add_argument("--zeilen", default=None,
+                   help="transformierte Zeilen (gates.transformation_anwenden "
+                        "--zeilen) — Pflicht, sobald die Spez mehr als eine "
+                        "Zelle traegt (Zellwahl je Police)")
+    p.add_argument("--vorgeschichte", default=None,
+                   help="REGISTRIERTE Metadatenliste der Geschaeftsvorfaelle "
+                        "vor dem Stichtag (POLNR;GEVO;DATUM) — traegt den "
+                        "Anfangszustand (PEX-Vertragsjahr) je Police")
     p.add_argument("--repo-root", dest="repo_root", default=".")
     p.add_argument("--out", default=None)
     for name, vorgabe in VORGABE.items():
@@ -177,21 +275,50 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     spalten = {n: getattr(args, f"spalte_{n}") for n in VORGABE}
+    bestand_pfad = Path(args.bestand)
+    bestand = read_portfolio(bestand_pfad)
+    spez = lade_spez(fall, args.generation)
+    abzug_1 = _lies_csv(fall, args.abzug_1)
+
+    auspraegungen = None
+    if args.zeilen is not None:
+        zeilen = json.loads(Path(args.zeilen).read_text(encoding="utf-8"))
+        if not isinstance(zeilen, list):
+            print(f"{args.zeilen}: erwartet wird die Zeilenliste aus "
+                  "gates.transformation_anwenden --zeilen", file=sys.stderr)
+            return 2
+        auspraegungen = auspraegungen_je_police(spez, zeilen)
+
+    beitragsfrei_seit = None
+    if args.vorgeschichte is not None:
+        beitragsfrei_seit = beitragsfrei_seit_jahr_je_police(
+            _lies_csv(fall, args.vorgeschichte), bestand, spalten=spalten)
+
     auftraege = baue_auftraege(
-        read_portfolio(Path(args.bestand)),
-        lade_spez(fall, args.generation),
-        _lies_csv(fall, args.abzug_1),
+        bestand,
+        spez,
+        abzug_1,
         _lies_csv(fall, args.abzug_2),
         _lies_csv(fall, args.protokoll),
         stichtag_1=_parse(args.stichtag_1),
         stichtag_2=_parse(args.stichtag_2),
         spalten=spalten,
+        auspraegungen=auspraegungen,
+        beitragsfrei_seit=beitragsfrei_seit,
     )
 
-    ergebnis = pruefe_bestand(auftraege, erwartete_anzahl=len(auftraege))
-    ergebnis["system"] = systemstand(Path(args.repo_root).resolve())
-    ergebnis["stichtag_1"] = args.stichtag_1
-    ergebnis["stichtag_2"] = args.stichtag_2
+    # Die Pruefmenge wird an der LIEFERUNG gemessen, nicht an sich
+    # selbst: erwartete Anzahl ist die Zeilenzahl des Abzugs zum
+    # Migrationsstichtag. Scope-Bindung (Stichtage, Bestand-Hash,
+    # Systemstand) laeuft durch die validierende Suite-Signatur.
+    ergebnis = pruefe_bestand(
+        auftraege,
+        erwartete_anzahl=len(abzug_1),
+        stichtag_1=_parse(args.stichtag_1).isoformat(),
+        stichtag_2=_parse(args.stichtag_2).isoformat(),
+        bestand_sha256=hashlib.sha256(bestand_pfad.read_bytes()).hexdigest(),
+        system=systemstand(Path(args.repo_root).resolve()),
+    )
 
     ziel = Path(args.out) if args.out else (
         fall / "abgeleitet" / "berichte" / "migrationssuite.json")
