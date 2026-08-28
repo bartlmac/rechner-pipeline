@@ -84,8 +84,14 @@ def test_migrations_skills_nennen_die_tragenden_regeln() -> None:
     runbook = _read(".claude/skills/migrationsfall-durchfuehren/SKILL.md")
     assert "vorlaeufig=True" in runbook
     assert "gate_entscheid" in runbook
-    assert "faelle/archiv/baldrian-klv-tg2015" in runbook      # Referenzfall (archiviert)
     assert "STOPP" in runbook                         # Abbruchkriterien
+    # Kein Test auf den NAMEN des Referenzfalls mehr. Er zeigte auf
+    # `faelle/`, einen gitignorierten Datenraum (ADR-002) — der Test
+    # konnte also nie pruefen, ob es den Fall gibt, sondern nur, ob eine
+    # Zeichenkette dasteht. Als der Fall umbenannt wurde, hielt er die
+    # veraltete Angabe fest, statt sie zu melden: ein Test, der einen
+    # Fehler konserviert. Was der Runbook-Text ueber den Referenzfall
+    # sagt, gehoert in den Skill, nicht in eine Wortliste.
 
 
 def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:

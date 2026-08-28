@@ -44,9 +44,16 @@ Nicht verhandelbar (P1-P10, Kurzform):
 
 ## Referenzfall
 
-`faelle/archiv/baldrian-klv-tg2015` ist der Praezedenzfall: die Baldrian Leben
-(fiktives abgebendes Unternehmen) liefert Tarifmeldung und Tarifrechner,
-die PLV uebernimmt den KLV-Bestand (TG2012 -> TG2015).
+`faelle/archiv/baldrian-uebernahme-2026-08-18` ist der Praezedenzfall:
+die Baldrian Leben (fiktives abgebendes Unternehmen) liefert Tarifmeldung
+und Tarifrechner, die PLV uebernimmt den KLV-Bestand (TG2012 -> TG2015).
+
+Er deckt nur Stufe 1 ab: Fragmente, Vorverdichtung, TransformationsSpec
+und vier Gate-Ledger. A-Box, Spez, Fachspez, Berichte, Bestand und
+Entscheide fehlen — als Formvorlage fuer Stufe 2, 3 und 3b ist er leer.
+Seine Spec passt ausserdem nicht mehr auf die heutige Lieferung
+(abweichender `quelle_sha256`), Werte waeren also auch dann nicht
+uebertragbar, wenn man es duerfte.
 
 Er dient AUSSCHLIESSLICH als Formvorlage: Artefakt-FORMATE und
 Verzeichnisstruktur nachschlagen, also wie ein Fragment, eine Spez oder
@@ -60,6 +67,57 @@ Untersagt der Auftraggeber den Zugriff auf archivierte Faelle, gilt
 das Verbot ohne Ausnahme — auch fuer Formatfragen. Dann die Formate aus
 dem generierten Schema (`model_json_schema()`) und den Docstrings der
 beteiligten Module ableiten und im Zweifel den Menschen fragen.
+
+## Reihenfolge-Zwaenge (was Belege rueckwirkend entwertet)
+
+Erzwungen ist im Code nur zweierlei: **A-Q1 und A-M1 gehen A-M4
+voraus** — beide als Pflichtrollen im A-M4-Snapshot. Alles andere ist
+Datenabhaengigkeit ohne Gate-DAG; wer sie missachtet, bekommt keinen
+Fehler, sondern einen Beleg, der spaeter nicht mehr gilt.
+
+Drei Dinge entwerten rueckwirkend, was schon gezeichnet war:
+
+*Eine neu registrierte Quelle.* A-Q1 und A-M1 binden `eingang.json`
+ueber ihre Artefakt-Hashes, und A-M4 vergleicht diesen Hash in beiden
+Snapshots. Wer nach dem A-Q1-Entscheid noch eine Datei registriert —
+etwa eine nachgereichte aktuarielle Notiz —, muss A-Q1 und A-M1 neu
+zeichnen lassen. Registriere deshalb alles, was die Lieferung hergibt,
+BEVOR du zeichnest; kommt spaeter etwas nach, ist die Neuzeichnung der
+Preis und keine Panne.
+
+*Jede Codeaenderung und jeder Tafel-Import.* Der Systemstand hasht ALLE
+`.py`- und `.xml`-Dateien des installierten Pakets — ein Tafel-Import
+schreibt nach `kern/tafeln.xml`, ein Testfix aendert eine `.py`. Danach
+tragen P-K1-Belege und menschliche Snapshots einen Systemstand, den
+A-M4 als abweichend zurueckweist. Also: erst alle Kern-, Tafel- und
+Codeaenderungen abschliessen, dann P-K1, dann die menschlichen Gates.
+Wer waehrend der Abnahmephase noch einen Bug fixt, faengt die Abnahme
+von vorn an.
+
+*Jede Diskrepanz-Aufloesung.* `ontologie.entscheide` schreibt die A-Box
+neu. Jede Annahme prueft danach das P-Q3-Ledger gegen den AKTUELLEN
+Stand von `eingang.json` und `abox.json`. Nach jeder Aufloesung laeuft
+P-Q3 also erneut, sonst scheitert der naechste Entscheid an
+"Gate P-Q3 verletzt den Ledger-/Provenienzvertrag".
+
+Dazu drei Stellen, an denen ein Pfad ein VERTRAG ist und kein
+Vorschlag:
+
+- Die Vorverdichtung muss unter
+  `<fall>/abgeleitet/vorverdichtung/xlsm-<GENERATION GROSS>` liegen,
+  sonst findet P-K1 sie nicht.
+- A-M1 verlangt im Bestands-Scope exakt
+  `<fall>/abgeleitet/berichte/aktuartest.json` und `.html` sowie
+  `<fall>/abgeleitet/diagnostics/aktuartest.gate.json`. Wer `--out`
+  oder `--bericht` umbiegt, macht A-M1 unentscheidbar.
+- `gates.bestand_validate` schreibt seinen Ledger per Vorgabe nach
+  `./runs/diagnostics`. A-M4 sucht ihn unter
+  `<fall>/abgeleitet/diagnostics`. Ohne `--diagnostics-dir` fehlt der
+  P-B1-Pflichtbeleg.
+
+Und eine Reihenfolge, die man leicht falsch herum macht: Der
+**Abnahmebericht** bindet Eingang, A-Box und Systemstand mit. Er
+entsteht deshalb NACH der letzten A-Box-Aenderung, nicht davor.
 
 ## Ablauf
 
@@ -156,6 +214,16 @@ Quelle liest und beides an A-Q1 haengt.
    `zeilen_ziel` und `befunde`. Der Abnahmebericht rechnet Spec-Abdeckung
    und alle vier Hashbindungen nach; handgeschriebene Kurzsummaries sind im
    Bestands-Scope kein Beleg.
+
+   Als Kommando:
+   `python -m rechner_pipeline.gates.transformation_anwenden --fall faelle/<fall> --spec <spec>.json --anwenden --zeilen <zeilen>.json`
+
+   Es laeuft ZWEIMAL. Zuerst so, um die Zeilen fuer die Uebernahme zu
+   erzeugen. Nach der Uebernahme erneut mit
+   `--ziel <bestand>.parquet --ergebnis <ergebnis>.json`, weil
+   `ziel_datei` und `ziel_sha256` auf den fertigen Bestand zeigen — den
+   es beim ersten Lauf noch nicht gibt. Ohne `--ziel` bleiben beide leer,
+   und A-M4 verwirft das Ergebnis.
 4. Abzugsabgleich, wo der Abzug eine offene Diskrepanz entscheiden kann
    (`qa.abzugsabgleich.gleiche_ab`): er belegt eine Lesart nur, wenn
    GENAU eine zu den gelieferten Werten passt, und niemals gegen die
@@ -181,11 +249,22 @@ Beitragsfreistellung). Nur so finden Zeitscheibe und Auswertung den
 beitragsfreien Track und sein PEX-Jahr; ein PEX im Stamm weist Gate P-B1
 zurueck (`status_code ausserhalb ('POL',)`).
 
-Geschrieben wird deterministisch mit
-`bestand/parquet_io.write_portfolio`. Dieser Zusammenbau ist heute
-fallweiser Code und kein eigenes Modul: leg ihn als Skript in den
-Fall-Arbeitsbereich (`abgeleitet/skripte/`), damit er reproduzierbar
-und pruefbar bleibt, und weise ihn im A-Q1-Dossier aus.
+Diesen Zusammenbau macht ein Kommando, kein fallweises Skript:
+
+```
+python -m rechner_pipeline.gates.bestand_uebernehmen \
+    --fall faelle/<fall> --zeilen <zeilen>.json \
+    --tarif-generation klv/tg2015 --stichtag <iso> \
+    --vorgeschichte <registrierte-gevo-metadaten>.csv \
+    --out-dir faelle/<fall>/abgeleitet/bestand
+```
+
+Es schreibt `bestand.parquet`, `historie.parquet` und `ledger.parquet`
+deterministisch ueber `bestand/parquet_io.write_portfolio` und setzt die
+Statusregel von oben um: Stamm bei Beginn, Folgezustaende in der
+Historie. `--vorgeschichte` liest die REGISTRIERTE Metadatenliste der
+Geschaeftsvorfaelle vor dem Stichtag; ohne sie ist der
+Verankerungszeitpunkt nicht bestimmbar.
 
 ### Gate A-Q1 (Mensch — hier STOPPST du und uebergibst)
 
@@ -287,9 +366,11 @@ die Schritte selbst zu improvisieren:
    Vollstaendigkeit der Pruefmenge ungeprueft). Beides liegt im
    Bestandsabzug vor und wird durchgereicht, sonst weist der Bericht
    Pruefluecken aus und blockiert. Bibliotheks-Modul ohne CLI: die
-   `VertragsPruefung`-Auftraege baut der Abnahme-Skill aus den
-   Fall-Artefakten. Toleranzen kommen aus `qa` und werden NIE
-   aufgeweicht. Das persistierte Suite-JSON bindet zusaetzlich
+   `VertragsPruefung`-Auftraege baut das Kommando
+   `python -m rechner_pipeline.gates.migrationssuite_lauf --fall faelle/<fall> --generation klv/tg2015 --abzug-1 <registriert>.csv --abzug-2 <registriert>.csv --gevo-protokoll <registriert>.csv --bestand <bestand>.parquet --stichtag-1 <iso> --stichtag-2 <iso>`
+   aus den Fall-Artefakten; die Spaltennamen der Lieferung sind
+   Parameter (`--spalte-*`), keine Systemeigenschaft. Toleranzen kommen
+   aus `qa` und werden NIE aufgeweicht. Das persistierte Suite-JSON bindet zusaetzlich
    `stichtag_1`, `stichtag_2`, `bestand_sha256` und den Systemstand; im
    Bestands-Scope muss `vollstaendig_geprueft=true` sein.
 3. Bestandsberichte vor/nach mit denselben Parametern (nur so ist der

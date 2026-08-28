@@ -153,13 +153,29 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
      `beitragsfrei_seit_jahr` (PEX) aus der Historie. Die Engine lehnt
      `RKW` und `BJB` im beitragsfreien Zustand ab und `VS_bfr`
      ausserhalb davon — die Größen müssen zum Zustand passen.
-   Dann `qa.aktuarieller_test.pruefe_stichprobe(vertraege, stichprobe,
-   profil, transportsicherung=..., system=...)` laufen lassen und das
-   Dict unverändert als JSON in den Fall schreiben (`json.dump`, Ziel
-   `abgeleitet/berichte/aktuartest.json` für A-M1, mit Abnahme-Suffix
-   für A-M2 und A-M3). Das JSON wird NIE von Hand nachgebessert — das
-   Gate rechnet die Zusammenfassung gegen die Einzelurteile nach und
-   bricht sonst mit `20` ab.
+   Diesen Zusammenbau macht ein Kommando, nicht der Agent:
+
+   ```
+   python -m rechner_pipeline.gates.aktuartest_lauf \
+       --fall faelle/<fall> --abnahme A-M1 \
+       --generation klv/tg2015 \
+       --erwartungswerte <registrierte-lieferung>.json \
+       --stichprobe <registrierter-ziehungsbeleg>.json \
+       --bestand <bestand>.parquet
+   ```
+
+   Es baut die `Vertragspruefung`-Auftraege aus den Fall-Artefakten,
+   laesst `qa.aktuarieller_test.pruefe_stichprobe` rechnen und schreibt
+   das Dict unveraendert dorthin, wo das Gate es erwartet
+   (`abgeleitet/berichte/aktuartest.json` fuer A-M1, mit Abnahme-Suffix
+   fuer A-M2 und A-M3). Erwartungswerte und Stichprobe sind
+   REGISTRIERTE Quellen, keine freien Pfade.
+
+   Das JSON wird NIE von Hand nachgebessert — das Gate rechnet die
+   Zusammenfassung gegen die Einzelurteile nach und bricht sonst mit
+   `20` ab. Ein handgebautes Ergebnis traegt ausserdem typischerweise
+   kein `system`-Feld; die Annahme des Gates scheitert dann an
+   "das Testergebnis traegt nicht den aktuellen Systemstand".
 6. Vorlage erzeugen und protokollieren:
 
    ```

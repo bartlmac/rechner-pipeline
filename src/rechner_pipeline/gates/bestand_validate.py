@@ -139,7 +139,10 @@ def _build_parser() -> GateArgumentParser:
     parser.add_argument("--repo-root", dest="repo_root", default=None)
     parser.add_argument(
         "--diagnostics-dir", dest="diagnostics_dir", default=None,
-        help="Verzeichnis fuer den Gate-Ledger-Eintrag (Default: ./diagnostics).",
+        help="Verzeichnis fuer den Gate-Ledger-Eintrag "
+             "(Default: ./runs/diagnostics). In einem Migrationsfall "
+             "ausdruecklich auf <fall>/abgeleitet/diagnostics setzen — "
+             "dort sucht A-M4 den P-B1-Pflichtbeleg, und nur dort.",
     )
     add_request_json_arg(parser)
     return parser
