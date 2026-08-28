@@ -99,16 +99,26 @@ Der aktuarielle Test laeuft auf einer **Stichprobe**. Die Stichprobe ist
 Teil des Beleges: benanntes Profil, deterministisch und reproduzierbar,
 mit ausgewiesener Grundgesamtheit.
 
-Version v0 kennt genau ein Profil: **`vollbestand`** — die Stichprobe ist
-der ganze Bestand. Fuer einen Bestand in der Groessenordnung des
-Showcase-Falls ist das die fachlich richtige Wahl und zugleich der
-Randfall der Parametrisierung.
+Es gibt zwei Profile. Beide sind aus einem konkreten Bedarf entstanden,
+keines auf Vorrat:
 
-Weitere Profile (Schichtung nach Historientyp-Cluster aus Lieferobjekt 2,
-Mindestabdeckung je Cluster, Zufallsziehung mit dokumentiertem Startwert)
-sind **bewusst offen** und als eigenstaendige Teilaufgabe vorgesehen. Die
-Huelle benennt die Erweiterungsstelle; sie erfindet keine Profile auf
-Vorrat.
+**`vollbestand`** — die Stichprobe ist der ganze Bestand. Fuer einen
+Bestand in der Groessenordnung des Showcase-Falls ist das die fachlich
+richtige Wahl und zugleich der Randfall der Parametrisierung.
+
+**`geschichtet`** (ergaenzt 2026-08-28) — je Historientyp-Cluster aus
+Lieferobjekt 2 eine feste Anzahl, Ziehreihenfolge ueber einen Hash mit
+dokumentiertem Startwert, Abdeckung je Cluster im Beleg. Der Anlass ist
+der zweite Baldrian-Fall: Unter 500 Vertraegen tragen 35 eine
+Herabsetzung. Eine ungeschichtete Ziehung kann diesen Cluster
+vollstaendig verfehlen — der Test bestuende dann, ohne den Vorgang je
+gerechnet zu haben, und das ist kein bestandener Test, sondern ein
+ungeprueftes Verfahren. Ist ein Cluster kleiner als die Sollzahl, wird er
+vollstaendig gezogen und die Untererfuellung ausgewiesen, statt sie zu
+verschweigen.
+
+Weitere Profile bleiben offen. Die Erweiterungsstelle ist benannt
+(`qa.stichprobe.PROFILE`); sie erfindet keine Profile auf Vorrat.
 
 ### 6. „Vollstaendig geprueft" bedeutet auf den beiden Ebenen Verschiedenes
 
@@ -151,7 +161,8 @@ Test als unvollstaendig.
   ohne Summation.
 * Die **Ueberschussprojektion** im Controlling (Folgejahr). Als kuenftige
   Erweiterung benannt, nicht gebaut.
-* Die **Stichprobenprofile** jenseits von `vollbestand` (siehe 5).
+* Die **Stichprobenprofile** jenseits von `vollbestand` und
+  `geschichtet` (siehe 5).
 
 ## Verworfene Alternativen
 

@@ -11,25 +11,31 @@ Bestand und dieselben Parameter ergeben dieselbe Stichprobe, und
 :meth:`Stichprobe.als_beleg` beschreibt sie vollstaendig genug, um sie
 anderswo nachzuziehen.
 
-Umfang v0 — bewusst genau ein Profil:
+Zwei Profile, beide aus einem konkreten Bedarf entstanden:
 
 ``vollbestand``
     Die Stichprobe ist der ganze Bestand. Fuer Bestaende in der
     Groessenordnung des Showcase-Falls ist das die fachlich richtige Wahl
     und zugleich der Randfall der Parametrisierung.
 
-Weitere Profile sind eine offene Teilaufgabe und werden hier NICHT auf
-Vorrat erfunden: Schichtung nach Historientyp-Cluster (Grundsatzdokumentation 9.12
-Lieferobjekt 2), Mindestabdeckung je Cluster, Zufallsziehung mit
-dokumentiertem Startwert. Die Erweiterungsstelle ist :data:`PROFILE` —
-eine neue Funktion mit derselben Signatur eintragen, mehr braucht es
-nicht.
+``geschichtet``
+    Je Historientyp-Cluster eine feste Anzahl (Grundsatzdokumentation 9.12,
+    Lieferobjekt 2). Notwendig, sobald der Bestand seltene Historientypen
+    enthaelt: Eine ungeschichtete Ziehung kann sie vollstaendig verfehlen,
+    und der Test bestuende, ohne den Vorgang je gerechnet zu haben. Die
+    Ziehreihenfolge folgt einem Hash mit dokumentiertem Startwert, die
+    Abdeckung je Cluster steht im Beleg.
+
+Weitere Profile werden hier NICHT auf Vorrat erfunden. Die
+Erweiterungsstelle ist :data:`PROFILE` — eine neue Funktion mit derselben
+Signatur eintragen, mehr braucht es nicht.
 
 Knoten: klv
 """
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, Mapping, Sequence, Tuple
 
@@ -100,9 +106,78 @@ def _vollbestand(police_ids: Sequence[str], **parameter: Any) -> Stichprobe:
     )
 
 
+def _schluessel(police_id: str, saat: str) -> str:
+    """Stabile Ziehreihenfolge — kein Zufallszustand, kein Startwert-Raten.
+
+    Der Startwert geht in den Hash ein und steht im Beleg. Damit laesst
+    sich dieselbe Stichprobe anderswo nachziehen, und ein Wechsel des
+    Startwerts ist sichtbar statt still.
+    """
+    return hashlib.sha256(f"{saat}:{police_id}".encode()).hexdigest()
+
+
+def _geschichtet(
+    police_ids: Sequence[str],
+    *,
+    schichten: Mapping[str, str],
+    je_schicht: int,
+    saat: str = "",
+) -> Stichprobe:
+    """Je Historientyp-Cluster eine feste Anzahl ziehen.
+
+    Der aktuarielle Test wertet das Residuum nach Historientyp getrennt
+    aus (Grundsatzdokumentation 9.12, Lieferobjekt 2). Eine ungeschichtete
+    Ziehung traefe die seltenen Typen womoeglich gar nicht — ein Bestand
+    mit 35 Herabsetzungen unter 500 Vertraegen kann eine Zufallsstichprobe
+    von 50 vollstaendig verfehlen, und der Test wuerde bestehen, ohne den
+    Vorgang je gerechnet zu haben.
+
+    Ist ein Cluster kleiner als ``je_schicht``, wird er vollstaendig
+    gezogen. Das ist kein Fehler, aber es steht im Beleg: Die Abdeckung
+    je Cluster wird ausgewiesen, damit der Leser sieht, worauf die Aussage
+    fuer diesen Typ beruht.
+    """
+    if je_schicht < 1:
+        raise StichprobenFehler(
+            f"je_schicht={je_schicht} — eine leere Schicht ist kein "
+            "bestandener Test"
+        )
+    fehlend = [pid for pid in police_ids if pid not in schichten]
+    if fehlend:
+        raise StichprobenFehler(
+            f"{len(fehlend)} Policen ohne Historientyp (z. B. "
+            f"{fehlend[0]!r}) — nach welchem Cluster ausgewertet wird, "
+            "muss fuer jeden Vertrag feststehen"
+        )
+
+    nach_schicht: Dict[str, list] = {}
+    for pid in police_ids:
+        nach_schicht.setdefault(schichten[pid], []).append(pid)
+
+    gezogen: list = []
+    abdeckung: Dict[str, Any] = {}
+    for name in sorted(nach_schicht):
+        kandidaten = sorted(nach_schicht[name], key=lambda p: _schluessel(p, saat))
+        wahl = kandidaten[:je_schicht]
+        gezogen.extend(wahl)
+        abdeckung[name] = {"gezogen": len(wahl), "vorhanden": len(kandidaten)}
+
+    return Stichprobe(
+        profil="geschichtet",
+        parameter={
+            "je_schicht": je_schicht,
+            "saat": saat,
+            "abdeckung": abdeckung,
+        },
+        police_ids=tuple(gezogen),
+        grundgesamtheit=len(police_ids),
+    )
+
+
 #: Erweiterungsstelle: Profilname -> Ziehfunktion.
 PROFILE: Dict[str, Callable[..., Stichprobe]] = {
     "vollbestand": _vollbestand,
+    "geschichtet": _geschichtet,
 }
 
 

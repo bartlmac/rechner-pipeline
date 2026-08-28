@@ -88,10 +88,81 @@ def test_stichprobe_darf_die_grundgesamtheit_nicht_uebersteigen():
         )
 
 
-def test_v0_kennt_genau_ein_profil():
+def test_profilkatalog_ist_abgeschlossen():
     """Haelt den bewussten Umfang fest: keine Profile auf Vorrat.
 
     Faellt dieser Test, ist ein Profil dazugekommen — dann gehoert die
     Erweiterung in ADR-010 Abschnitt 5 nachgezogen.
     """
-    assert sorted(PROFILE) == ["vollbestand"]
+    assert sorted(PROFILE) == ["geschichtet", "vollbestand"]
+
+
+# --------------------------------------------------------------------------- #
+# Profil "geschichtet"
+# --------------------------------------------------------------------------- #
+
+#: Ein Bestand mit einem seltenen Typ — genau der Fall, fuer den es das
+#: Profil gibt: 40 unberuehrte, 8 mit Erhoehung, 3 mit Herabsetzung.
+_SCHICHTEN = {
+    **{f"P-U{i:03d}": "unberuehrt" for i in range(40)},
+    **{f"P-E{i:03d}": "ERH" for i in range(8)},
+    **{f"P-R{i:03d}": "RED" for i in range(3)},
+}
+
+
+def test_geschichtet_trifft_jeden_cluster():
+    """Der seltene Cluster darf nicht durchrutschen — dafuer ist das Profil da."""
+    stichprobe = ziehe(
+        "geschichtet", list(_SCHICHTEN), schichten=_SCHICHTEN, je_schicht=5
+    )
+
+    typen = {_SCHICHTEN[pid] for pid in stichprobe.police_ids}
+    assert typen == {"unberuehrt", "ERH", "RED"}
+    # 5 + 5 + alle 3 des kleinen Clusters
+    assert stichprobe.umfang == 13
+    assert not stichprobe.ist_vollerhebung
+
+
+def test_geschichtet_weist_zu_kleinen_cluster_im_beleg_aus():
+    """Ein Cluster unter der Sollzahl ist kein Fehler, aber er steht im Beleg."""
+    beleg = ziehe(
+        "geschichtet", list(_SCHICHTEN), schichten=_SCHICHTEN, je_schicht=5
+    ).als_beleg()
+
+    abdeckung = beleg["parameter"]["abdeckung"]
+    assert abdeckung["RED"] == {"gezogen": 3, "vorhanden": 3}
+    assert abdeckung["unberuehrt"] == {"gezogen": 5, "vorhanden": 40}
+
+
+def test_geschichtet_ist_deterministisch_und_saatabhaengig():
+    ids = list(_SCHICHTEN)
+    a = ziehe("geschichtet", ids, schichten=_SCHICHTEN, je_schicht=5, saat="x")
+    b = ziehe("geschichtet", ids, schichten=_SCHICHTEN, je_schicht=5, saat="x")
+    c = ziehe("geschichtet", ids, schichten=_SCHICHTEN, je_schicht=5, saat="y")
+
+    assert a.police_ids == b.police_ids
+    assert a.police_ids != c.police_ids
+
+
+def test_geschichtet_ist_unabhaengig_von_der_reihenfolge_der_grundgesamtheit():
+    """Sonst haenge die Stichprobe an der Sortierung der Lieferdatei."""
+    ids = list(_SCHICHTEN)
+    a = ziehe("geschichtet", ids, schichten=_SCHICHTEN, je_schicht=5)
+    b = ziehe("geschichtet", list(reversed(ids)), schichten=_SCHICHTEN, je_schicht=5)
+
+    assert sorted(a.police_ids) == sorted(b.police_ids)
+
+
+def test_police_ohne_historientyp_ist_harter_fehler():
+    with pytest.raises(StichprobenFehler, match="ohne Historientyp"):
+        ziehe(
+            "geschichtet",
+            list(_SCHICHTEN) + ["P-FREMD"],
+            schichten=_SCHICHTEN,
+            je_schicht=5,
+        )
+
+
+def test_je_schicht_null_ist_harter_fehler():
+    with pytest.raises(StichprobenFehler, match="je_schicht=0"):
+        ziehe("geschichtet", list(_SCHICHTEN), schichten=_SCHICHTEN, je_schicht=0)
