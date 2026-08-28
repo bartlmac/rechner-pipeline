@@ -137,17 +137,23 @@ Nachbau still falsch wird:
 **Was die Skizze NICHT leistet, und was sie ausdruecklich NICHT
 vorschlaegt.**
 
-Sie schlaegt NICHT vor, `ZustandsBarwerte` zu entfernen. Die Schicht hat
-eine zweite Aufgabe, die mit Effizienz nichts zu tun hat: Sie stellt das
-`Barwerte`-Interface bereit, ueber das `qa/ueberleitung.py:125-126`
-denselben KLV-Produktcode einmal mit der Kommutation und einmal mit dem
-Zustandsmodell rechnet und vergleicht. Das ist der Uebersetzungsbeleg
-aus ADR-004. Faellt die Schicht, faellt der Kreuz-Check.
+Sie schlaegt NICHT vor, `ZustandsBarwerte` sofort zu entfernen. Bis
+ADR-013 hatte die Schicht eine zweite Aufgabe neben der Effizienz: Sie
+stellte das `Barwerte`-Interface fuer den Kommutations-Kreuz-Check
+bereit. Dieser Anspruch ist am 2026-08-28 geschnitten — die
+Ueberleitung ist ausser Betrieb, die Einhaengestelle
+`KLV(mp, barwerte=...)` entfernt. Damit ist die Schicht eine reine
+Effizienzschicht, und die traegt sich nach der Messung oben nicht mehr.
+
+Sie faellt trotzdem nicht mit dieser Skizze, sondern MIT der
+Umstellung: Solange die KLV Einheitsbarwerte abfragt, wird sie
+gebraucht. Erst wenn der Standardvertrag seine arithmetische Gestalt in
+der neuen Form erreicht, ist sie leer.
 
 Vorgeschlagen ist deshalb ein ZWEITER Pfad neben dem skalaren:
 
-* der skalare Pfad bleibt fuer Standardvertraege und traegt den
-  Kommutations-Kreuz-Check;
+* der skalare Pfad bleibt vorerst fuer Standardvertraege und haelt
+  deren bit-exakte Gestalt;
 * der Spektrum-Pfad bewertet Vertraege, deren Verlauf geaendert wurde;
 * **im Ueberschneidungsbereich muessen beide denselben Wert liefern** —
   ein Standardvertrag ueber Spektren bewertet muss die skalare Reserve
