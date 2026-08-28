@@ -315,3 +315,104 @@ def test_fallback_kohorte_wird_durchgereicht():
     """9.12: Wer nur den Stand am Migrationsstichtag hat, ist eigene Kohorte."""
     e, = uebernehmen([_uebernahme(kohorte="t_0-fallback")])
     assert e.parameter.kohorte == "t_0-fallback"
+
+
+# --------------------------------------------------------------------------- #
+# Rueckrechnung einer Alt-Absetzung (leite_absetzung_ab)
+# --------------------------------------------------------------------------- #
+
+import dataclasses as _dc
+
+import pytest as _pytest
+
+from rechner_pipeline.kern import KLV_DEFAULT as _KLV_DEFAULT
+from rechner_pipeline.kern.beitragsreduktion import (
+    reduziere as _reduziere,
+)
+from rechner_pipeline.kern.rechenkern import Rechenkern as _Rechenkern
+from rechner_pipeline.bestand.migrationszugang import (
+    MigrationszugangFehler as _MZFehler,
+    leite_absetzung_ab,
+)
+
+
+def _mp_felder(**override):
+    felder = _dc.asdict(_KLV_DEFAULT)
+    felder.update(override)
+    return felder
+
+
+def _roundtrip(vs_true, f_true, jahr, verfahren, *, runden=True, **mp_override):
+    """Vorwaerts rechnen, (centgerundet) liefern, zurueckrechnen."""
+    felder = _mp_felder(sum_insured=vs_true, **mp_override)
+    r = _reduziere(_Rechenkern(type(_KLV_DEFAULT)(**felder)), jahr, f_true,
+                   verfahren=verfahren)
+    s = round(r.vs_neu, 2) if runden else r.vs_neu
+    p = round(r.bjb_neu, 2) if runden else r.bjb_neu
+    return leite_absetzung_ab(
+        felder, jahr=jahr, erlsumme=s, jbrutto=p, verfahren=verfahren)
+
+
+# KLV_DEFAULT (stoab_satz 0.01, min 50, max 150): VS 100000 in Jahr 9
+# klemmt an der OBERGRENZE; kleine Summen an der UNTERGRENZE; schmale
+# Bandmitte ueber angepasste Grenzen; flexible Phase ueber das Alter.
+@_pytest.mark.parametrize("fall", [
+    dict(vs=100000.0, f=0.6, jahr=9, verfahren="mit_abzug",
+         erwartet_zweig="max"),
+    dict(vs=100000.0, f=0.4, jahr=9, verfahren="mit_abzug",
+         erwartet_zweig="satz", stoab_max=5000.0),
+    dict(vs=100000.0, f=0.6, jahr=9, verfahren="mit_abzug",
+         erwartet_zweig="min", stoab_min=1200.0, stoab_max=5000.0),
+    dict(vs=100000.0, f=0.6, jahr=9, verfahren="prospektiv",
+         erwartet_zweig="flex_oder_null"),
+    dict(vs=100000.0, f=0.5, jahr=26, verfahren="mit_abzug",
+         erwartet_zweig="flex_oder_null", t=28),  # x+26=71>=60, 26>=30-5
+])
+def test_rueckrechnung_trifft_die_wahren_parameter(fall):
+    mp_override = {k: v for k, v in fall.items()
+                   if k not in ("vs", "f", "jahr", "verfahren",
+                                "erwartet_zweig")}
+    ergebnis = _roundtrip(fall["vs"], fall["f"], fall["jahr"],
+                          fall["verfahren"], **mp_override)
+    assert ergebnis.stoab_zweig == fall["erwartet_zweig"]
+    # Centrundung der Lieferung begrenzt die Genauigkeit; die wahren
+    # Parameter muessen aber auf Bruchteile eines Promille getroffen sein.
+    assert ergebnis.vs_alt == _pytest.approx(fall["vs"], rel=5e-5)
+    assert ergebnis.anteil == _pytest.approx(fall["f"], rel=5e-5)
+
+
+def test_rueckrechnung_ohne_rundung_ist_exakt():
+    ergebnis = _roundtrip(100000.0, 0.6, 9, "mit_abzug", runden=False)
+    assert ergebnis.vs_alt == _pytest.approx(100000.0, rel=1e-9)
+    assert ergebnis.anteil == _pytest.approx(0.6, rel=1e-9)
+
+
+def test_ohne_laufenden_beitrag_ist_die_ableitung_unterbestimmt():
+    with _pytest.raises(_MZFehler, match="NICHT bestimmbar"):
+        leite_absetzung_ab(_mp_felder(), jahr=9, erlsumme=50000.0,
+                           jbrutto=0.0, verfahren="mit_abzug")
+
+
+def test_falsches_verfahren_liefert_andere_parameter():
+    """Die Umkehrung kann das Verfahren NICHT aus (ERLSUMME, JBRUTTO)
+    widerlegen: mit dem falschen Verfahren findet sie ein anderes, in
+    sich konsistentes Parameterpaar. Der Test haelt fest, DASS die
+    Parameter dann daneben liegen — der Schiedsrichter ist der
+    unabhaengige Deckungskapital-Vergleich der Migrationssuite, nicht
+    die Vorwaertsprobe. Deshalb ist das Verfahren dokumentierte
+    Fall-Eigenschaft (Aktuarielle Notiz), keine Raterei der Ableitung."""
+    felder = _mp_felder(sum_insured=100000.0)
+    r = _reduziere(_Rechenkern(_KLV_DEFAULT), 9, 0.6, verfahren="mit_abzug")
+    falsch = leite_absetzung_ab(
+        felder, jahr=9, erlsumme=round(r.vs_neu, 2),
+        jbrutto=round(r.bjb_neu, 2), verfahren="prospektiv")
+    assert abs(falsch.vs_alt - 100000.0) > 10.0
+    assert abs(falsch.anteil - 0.6) > 1e-4
+
+
+def test_erlsumme_unter_dem_fortgefuehrten_teil_faellt_hart():
+    with _pytest.raises(_MZFehler, match="keine Absetzung ableitbar"):
+        leite_absetzung_ab(
+            _mp_felder(), jahr=9, erlsumme=1000.0,
+            jbrutto=round(_Rechenkern(_KLV_DEFAULT).gross_annual_premium(), 2),
+            verfahren="mit_abzug")

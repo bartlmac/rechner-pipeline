@@ -38,7 +38,7 @@ flowchart TD
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>5 Module"]
-    bestand -- 13 --> kern
+    bestand -- 14 --> kern
     bestand -- 13 --> models
     gates -- 6 --> bestand
     gates -- 7 --> fall

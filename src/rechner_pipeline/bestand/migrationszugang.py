@@ -33,6 +33,7 @@ Knoten: klv
 from __future__ import annotations
 
 import datetime as _dt
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -324,6 +325,197 @@ def zugangsbericht(ergebnisse: Sequence[Zugangsergebnis]) -> Dict[str, Any]:
             {"police_id": e.police_id, "befund": e.befund} for e in befunde
         ][:50],
     }
+
+
+# --------------------------------------------------------------------------- #
+# Rueckrechnung einer Alt-Absetzung (Zustandsextrakt per Ableitungsregel)
+# --------------------------------------------------------------------------- #
+
+#: Toleranz des Vorwaerts-Selbstchecks: die gelieferten Felder sind
+#: centgerundet, die Rueckrechnung kann sie also hoechstens auf die
+#: Rundung genau reproduzieren. Ein groesserer Rest heisst: falscher
+#: Zweig, falsches Verfahren oder inkonsistente Lieferung.
+ABLEITUNG_SELBSTCHECK_TOL = 0.011
+
+
+@dataclass(frozen=True)
+class AbgeleiteteAbsetzung:
+    """Die aus dem Abzug zurueckgerechnete Alt-Absetzung eines Vertrags.
+
+    ``vs_alt`` und ``anteil`` sind VERTRAGSPARAMETER, die die Lieferung
+    nicht direkt traegt: Der Abzug fuehrt den Zustand NACH der Absetzung
+    (ERLSUMME = neue Gesamtsumme, JBRUTTO = fortgefuehrter Beitrag). Mit
+    dem dokumentierten Verfahren der Quelle (Aktuarielle Notiz 2026/04:
+    Teilkuendigung) sind beide eindeutig bestimmbar, solange der Vertrag
+    am Stichtag noch Beitrag zahlt — sonst ist das System unterbestimmt
+    und die Parameter muessen nachgeliefert werden (kein Raten).
+
+    ``selbstcheck_*`` sind die Vorwaertsprobe: :func:`reduziere` mit den
+    abgeleiteten Parametern muss die gelieferten Felder auf die
+    Centrundung genau reproduzieren.
+    """
+
+    vs_alt: float
+    anteil: float
+    jahr: int
+    verfahren: str
+    stoab_zweig: str
+    selbstcheck_vs_neu: float
+    selbstcheck_bjb_neu: float
+
+    def als_beleg(self) -> Dict[str, Any]:
+        return {
+            "vs_alt": self.vs_alt,
+            "anteil": self.anteil,
+            "jahr": self.jahr,
+            "verfahren": self.verfahren,
+            "stoab_zweig": self.stoab_zweig,
+            "selbstcheck_vs_neu": self.selbstcheck_vs_neu,
+            "selbstcheck_bjb_neu": self.selbstcheck_bjb_neu,
+        }
+
+
+def leite_absetzung_ab(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    jahr: int,
+    erlsumme: float,
+    jbrutto: float,
+    verfahren: str,
+) -> AbgeleiteteAbsetzung:
+    """Ursprungssumme und fortgefuehrten Anteil einer Alt-Absetzung ableiten.
+
+    Eingang sind die Felder des Modellpunkts OHNE belastbare
+    Versicherungssumme (``sum_insured`` wird ignoriert), das
+    Absetzungsjahr aus der GeVo-Metadatenliste und die gelieferten
+    Felder ERLSUMME (neue Gesamtsumme) und JBRUTTO (fortgefuehrter
+    Jahresbeitrag) des Abzugs.
+
+    Herleitung: Alle Zielgroessen des Kerns sind je Einheit
+    Versicherungssumme formuliert. Mit den Saetzen ``v = kVx_bpfl(j)``,
+    ``vbfr = kVx_bfr(j)`` und der Beitragsrate ``Bxt`` gilt
+
+        K := JBRUTTO / Bxt = f * VS                     (fortgefuehrter Teil)
+        S - K = (DR - StoAb) * (1 - f) / vbfr           (umgewandelter Teil)
+
+    und je Stornoabzugs-Zweig (Regelwerk des Tarifplans) wird die zweite
+    Gleichung nach VS aufloesbar: im Satz-Zweig und bei StoAb = 0 linear,
+    in den geklammerten Zweigen (Unter-/Obergrenze) quadratisch. Der
+    Zweig wird nicht geraten: Jeder Kandidat muss das Regelwerk an
+    seiner eigenen Loesung erfuellen, und die Vorwaertsprobe ueber
+    :func:`reduziere` muss die gelieferten Felder treffen.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import (
+        VERFAHREN,
+        BeitragsreduktionFehler,
+        reduziere,
+    )
+
+    if verfahren not in VERFAHREN:
+        raise MigrationszugangFehler(
+            f"unbekanntes Verfahren {verfahren!r} — bekannt sind "
+            f"{list(VERFAHREN)}"
+        )
+    if jbrutto <= 0.0:
+        raise MigrationszugangFehler(
+            "JBRUTTO <= 0: die Beitragszahlung ist am Stichtag beendet, "
+            "der fortgefuehrte Anteil ist aus dem Abzug NICHT bestimmbar — "
+            "f oder die Versicherungssumme vor der Absetzung nachliefern "
+            "lassen, nicht raten"
+        )
+    if erlsumme <= 0.0:
+        raise MigrationszugangFehler(f"ERLSUMME {erlsumme!r} unplausibel")
+
+    einheit = ModelPoint(**{**dict(modellpunkt_felder), "sum_insured": 1.0})
+    kern_einheit = Rechenkern(einheit)
+    if not 0 < jahr < einheit.t:
+        raise MigrationszugangFehler(
+            f"Absetzungsjahr {jahr} liegt nicht in der Beitragszahlungs"
+            f"dauer (0 < jahr < t = {einheit.t})"
+        )
+    zeile = kern_einheit.verlaufszeile(jahr)
+    v, vbfr = zeile.vx_bpfl, zeile.vx_bfr
+    bxt = kern_einheit.gross_premium_rate()
+    if vbfr <= 0.0 or bxt <= 0.0:
+        raise MigrationszugangFehler(
+            f"Saetze unplausibel (kVx_bfr={vbfr!r}, Bxt={bxt!r})"
+        )
+    k_teil = jbrutto / bxt
+    if erlsumme <= k_teil:
+        raise MigrationszugangFehler(
+            f"ERLSUMME {erlsumme} liegt nicht ueber dem fortgefuehrten "
+            f"Teil {k_teil:.2f} — keine Absetzung ableitbar"
+        )
+
+    s_satz = einheit.stoab_satz
+    flex_oder_null = (
+        verfahren == "prospektiv"
+        or kern_einheit.produkt.ist_flex_phase(jahr)
+        or s_satz <= 0.0
+    )
+
+    kandidaten: List[Tuple[str, float]] = []
+    if flex_oder_null:
+        if v <= 0.0:
+            raise MigrationszugangFehler(f"kVx_bpfl({jahr}) = {v!r} <= 0")
+        kandidaten.append(
+            ("flex_oder_null", k_teil + (erlsumme - k_teil) * vbfr / v))
+    else:
+        # Satz-Zweig: StoAb = s * VS * (1 - v), linear in VS.
+        nenner = v - s_satz * (1.0 - v)
+        if nenner > 0.0:
+            vs = k_teil + (erlsumme - k_teil) * vbfr / nenner
+            if einheit.stoab_min <= s_satz * vs * (1.0 - v) <= einheit.stoab_max:
+                kandidaten.append(("satz", vs))
+        # Geklammerte Zweige: StoAb konstant c, quadratisch in VS.
+        for zweig, c in (("min", einheit.stoab_min),
+                         ("max", einheit.stoab_max)):
+            # v*VS^2 - (c + K*v + (S-K)*vbfr)*VS + c*K = 0
+            b = c + k_teil * v + (erlsumme - k_teil) * vbfr
+            disk = b * b - 4.0 * v * c * k_teil
+            if disk < 0.0 or v <= 0.0:
+                continue
+            for wurzel in ((b + math.sqrt(disk)) / (2.0 * v),
+                           (b - math.sqrt(disk)) / (2.0 * v)):
+                if wurzel <= k_teil:
+                    continue
+                roh = s_satz * wurzel * (1.0 - v)
+                passt = (roh <= c) if zweig == "min" else (roh >= c)
+                if passt:
+                    kandidaten.append((zweig, wurzel))
+
+    fehler: List[str] = []
+    for zweig, vs_alt in kandidaten:
+        anteil = k_teil / vs_alt
+        if not 0.0 < anteil < 1.0:
+            fehler.append(f"{zweig}: Anteil {anteil:.6f} ausserhalb (0, 1)")
+            continue
+        try:
+            probe = reduziere(
+                Rechenkern(ModelPoint(**{
+                    **dict(modellpunkt_felder), "sum_insured": vs_alt})),
+                jahr, anteil, verfahren=verfahren)
+        except BeitragsreduktionFehler as exc:
+            fehler.append(f"{zweig}: {exc}")
+            continue
+        if (abs(probe.vs_neu - erlsumme) <= ABLEITUNG_SELBSTCHECK_TOL
+                and abs(probe.bjb_neu - jbrutto) <= ABLEITUNG_SELBSTCHECK_TOL):
+            return AbgeleiteteAbsetzung(
+                vs_alt=vs_alt, anteil=anteil, jahr=jahr,
+                verfahren=verfahren, stoab_zweig=zweig,
+                selbstcheck_vs_neu=probe.vs_neu,
+                selbstcheck_bjb_neu=probe.bjb_neu,
+            )
+        fehler.append(
+            f"{zweig}: Vorwaertsprobe daneben (vs_neu {probe.vs_neu:.4f} "
+            f"vs. {erlsumme}, bjb_neu {probe.bjb_neu:.4f} vs. {jbrutto})")
+
+    raise MigrationszugangFehler(
+        "Alt-Absetzung nicht ableitbar — kein Stornoabzugs-Zweig "
+        "reproduziert die gelieferten Felder ("
+        + ("; ".join(fehler) if fehler else "keine Kandidaten")
+        + "). Verfahren und Lieferung klaeren, nicht raten."
+    )
 
 
 # --------------------------------------------------------------------------- #
