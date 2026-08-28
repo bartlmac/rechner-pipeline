@@ -417,7 +417,11 @@ def test_die_liste_ist_vollstaendig_und_weist_das_ungepruefte_aus():
     from rechner_pipeline.kern.korrekturschicht import HEILUNG, ungeprueft
     from rechner_pipeline.qa.aktuarieller_test import GEVO_ARTEN
 
-    assert set(GEVO_ARTEN) | {MIG_KENNUNG, "RED"} <= set(HEILUNG)
+    # RED stand hier frueher gesondert, weil die Herabsetzung noch kein
+    # Anlass des aktuariellen Tests war. Seit sie einer ist, traegt
+    # GEVO_ARTEN sie mit; nur der Migrationszugang selbst bleibt extra,
+    # denn er ist kein Vorfall des Quellsystems.
+    assert set(GEVO_ARTEN) | {MIG_KENNUNG} <= set(HEILUNG)
     assert ungeprueft() == ["INV", "PEX", "REA"]
     for kennung, regel in HEILUNG.items():
         assert regel.begruendung, f"{kennung} ohne Begruendung"

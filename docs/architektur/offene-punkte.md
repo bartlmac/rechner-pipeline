@@ -126,6 +126,16 @@ landet dann im Residuum, statt nur die Verfahrensdifferenz. Am Ablauf
 traegt die Schicht per Terminalbedingung null, und der Vertrag zahlte die
 urspruengliche Summe aus — nicht die herabgesetzte.
 
+**Wie die Suite damit umgeht**: Die Migrationssuite prueft eine
+Herabsetzung auf ihre ZULAESSIGKEIT (am Vertragsjahrestag, nicht nach
+einer Beitragsfreistellung, mit einem Anteil in [0, 1]) und weist den
+Wert am Folgestichtag als Pruefluecke aus
+(``dk_stichtag_2_nach_red_monat_<m>``). Sie rechnet ihn nicht auf der
+urspruenglichen Summe — eine ausgewiesene Luecke ist ehrlicher als eine
+Zahl, die aussieht, als sei sie geprueft. Diese Behandlung nimmt die
+Entscheidung unten nicht vorweg; sie haelt den Fall nur offen sichtbar,
+bis sie gefallen ist.
+
 **Groessenordnung** (Referenzvertrag x=45, n=30, t=20, VS 100.000,
 Herabsetzung in Jahr 5 auf 60 Prozent des Beitrags):
 

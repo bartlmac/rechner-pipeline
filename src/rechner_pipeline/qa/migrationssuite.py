@@ -83,7 +83,7 @@ from rechner_pipeline.kern import (
 )
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 
-GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL")
+GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL", "RED")
 #: Diese Arten tragen einen eigenständig zu vergleichenden Leistungs-
 #: beziehungsweise Statuswechselbetrag. Fehlt er, darf ein zusätzlich
 #: erkannter Lieferungsbefund die konkrete Prüflücke nicht verdecken.
@@ -134,6 +134,10 @@ class GeVoErwartung:
     art: str
     monate: int
     betrag_erwartet: Optional[float] = None
+    #: Nur bei RED: der fortgeführte Bruchteil des Beitrags. Er steht im
+    #: Vorfall und nicht im Vertrag; ohne ihn ist die Herabsetzung nicht
+    #: bestimmt.
+    anteil: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -271,6 +275,18 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     ``dk_stichtag_2`` steht deshalb in ``nicht_geprueft``. Die
     Asymmetrie ist gewollt: einmal ist die Größe geprüft, einmal ist
     sie ungeprüft.
+
+    HERABGESETZTE VERTRÄGE — der dritte Fall, und aus einem anderen
+    Grund: Hier LIEGT ein Erwartungswert vor, aber das Zielsystem kann
+    ihm nichts gegenüberstellen. Ein herabgesetzter Vertrag ist teils
+    beitragspflichtig, teils beitragsfrei, und der Modellpunkt trägt
+    beides nicht zugleich (docs/architektur/offene-punkte.md, O-7).
+    Ihn auf der ursprünglichen Summe zu rechnen hieße, gegen einen
+    Vertrag zu vergleichen, den es nicht mehr gibt. ``dk_stichtag_2``
+    steht deshalb in ``nicht_geprueft`` — nicht weil die Lieferung
+    lückenhaft wäre, sondern weil das Zielsystem es ist. Beides bleibt
+    ungeprüft, und das ist die Gemeinsamkeit, die den Eintrag
+    rechtfertigt.
     """
     if v.monate_stichtag_2 <= v.monate_stichtag_1:
         raise ValueError(
@@ -313,6 +329,7 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
         nicht_geprueft.append("bjb_stichtag_1")
 
     terminal_monat: Optional[int] = None
+    red_monat: Optional[int] = None
     scheiben: List[Tuple[int, Rechenkern]] = []
     for g in sorted(v.gevos, key=lambda g: g.monate):
         if g.art not in GEVO_ARTEN:
@@ -401,6 +418,43 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     _terminale_leistung(kern, scheiben, pex_jahr),
                     g.betrag_erwartet,
                 ))
+        elif g.art == "RED":
+            # Die Herabsetzung wird hier auf ihre ZULÄSSIGKEIT geprüft,
+            # nicht auf ihren Wert. Der Grund steht in
+            # docs/architektur/offene-punkte.md, O-7: Ein herabgesetzter
+            # Vertrag hat im Zielkern keine Darstellung — er ist teils
+            # beitragspflichtig, teils beitragsfrei, und der Modellpunkt
+            # kann beides nicht zugleich tragen. Der Wert am
+            # Folgestichtag wird deshalb als Prüflücke ausgewiesen, statt
+            # ihn auf der ursprünglichen Summe zu rechnen und damit still
+            # falsch zu vergleichen.
+            #
+            # Die Wertänderung IM Moment der Herabsetzung ist davon nicht
+            # betroffen; sie prüft der Geschäftsvorfalltest A-M3 über
+            # kern.beitragsreduktion.
+            if pex_jahr is not None:
+                befunde.append(
+                    f"RED bei Monat {g.monate}: der Vertrag ist seit Jahr "
+                    f"{pex_jahr} beitragsfrei — es gibt keinen Beitrag, "
+                    "der sich herabsetzen ließe"
+                )
+                continue
+            if g.monate % 12:
+                befunde.append(
+                    f"RED bei Monat {g.monate}: die Herabsetzung wirkt am "
+                    "Vertragsjahrestag (Vielfaches von 12)"
+                )
+                continue
+            if g.anteil is None:
+                nicht_geprueft.append(f"gevo_red_monat_{g.monate}_anteil")
+            elif not 0.0 <= g.anteil <= 1.0:
+                befunde.append(
+                    f"RED bei Monat {g.monate}: Anteil {g.anteil} liegt "
+                    "nicht in [0, 1] — er ist der fortgeführte Bruchteil "
+                    "des Beitrags"
+                )
+                continue
+            red_monat = g.monate
         else:  # PEX
             if pex_jahr is not None:
                 befunde.append(
@@ -443,6 +497,12 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
             "Vertrag fehlt am Folgestichtag, aber die GeVos nennen keinen "
             "Abgang — Lieferung inkonsistent"
         )
+    elif red_monat is not None:
+        # Siehe O-7: Der Wert ließe sich nur auf der ursprünglichen Summe
+        # rechnen, also auf einem Vertrag, den es nicht mehr gibt. Eine
+        # ausgewiesene Prüflücke ist ehrlicher als eine Zahl, die
+        # aussieht, als sei sie geprüft.
+        nicht_geprueft.append(f"dk_stichtag_2_nach_red_monat_{red_monat}")
     else:
         if pex_jahr is not None:
             dk2 = kern.monatsreserve_beitragsfrei(

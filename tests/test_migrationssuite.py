@@ -620,13 +620,22 @@ def _terminal_urteil(art: str, dk2: Optional[float]) -> Dict[str, Any]:
             (GeVoErwartung(
                 "ABL", ABLAUF, float(KLV_DEFAULT.sum_insured)),),
             dk2=dk2))
-    monate = 12 * 10 if art in ("PEX", "ERH") else S1 + 4
+    # PEX, ERH und RED wirken am Vertragsjahrestag; sie hier unterjaehrig
+    # abzulegen erzeugte einen zweiten Befund und der Test bestuende aus
+    # dem falschen Grund.
+    monate = 12 * 10 if art in ("PEX", "ERH", "RED") else S1 + 4
     if art == "ERH":
         betrag = 5000.0
     elif art == "PEX":
         betrag = round(KERN.beitragsfreie_summe(monate // 12), 2)
     elif art == "STO":
         betrag = round(KERN.monatsreserve(monate).rkw, 2)
+    elif art == "RED":
+        # Die Herabsetzung traegt keinen verglichenen Betrag (O-7); was
+        # sie braucht, ist der fortgefuehrte Anteil.
+        return pruefe_vertrag(_pruefung(
+            dk2=dk2, dk2_fehlt=dk2 is None,
+            gevos=(GeVoErwartung("RED", monate, None, anteil=0.6),)))
     else:  # TOD
         betrag = float(KLV_DEFAULT.sum_insured)
     return pruefe_vertrag(_pruefung(
@@ -839,3 +848,78 @@ def test_suite_schreibt_scope_bindung_nur_als_vollstaendigen_vertrag() -> None:
         )
     with pytest.raises(ValueError, match="system muss exakt"):
         pruefe_bestand([_pruefung()], system={"commit": "abc"})
+
+
+# --------------------------------------------------------------------------- #
+# Herabsetzung (RED): geprueft wird die Zulaessigkeit, nicht der Wert
+# --------------------------------------------------------------------------- #
+
+
+def _red_urteil(monate: int = 12 * 10, anteil: Optional[float] = 0.6,
+                vorher: Tuple[GeVoErwartung, ...] = ()) -> Dict[str, Any]:
+    return pruefe_vertrag(_pruefung(
+        gevos=vorher + (GeVoErwartung("RED", monate, None, anteil=anteil),)))
+
+
+def test_red_weist_den_folgestichtag_als_pruefluecke_aus() -> None:
+    """Der Kern kann einen herabgesetzten Vertrag nicht fortschreiben.
+
+    Er wuerde ihn auf der urspruenglichen Summe rechnen — also auf einem
+    Vertrag, den es nicht mehr gibt. Eine ausgewiesene Luecke ist
+    ehrlicher als eine Zahl, die aussieht als sei sie geprueft
+    (docs/architektur/offene-punkte.md, O-7).
+    """
+    urteil = _red_urteil()
+
+    assert urteil["bestanden"], urteil["befunde"]
+    assert any("dk_stichtag_2_nach_red" in luecke
+               for luecke in urteil["nicht_geprueft"]), urteil["nicht_geprueft"]
+    # Und der Wert wird eben NICHT als bestandene Pruefung ausgewiesen.
+    assert "dk_stichtag_2" not in [p["groesse"] for p in urteil["pruefungen"]]
+
+
+def test_red_am_ersten_stichtag_wird_weiter_geprueft() -> None:
+    """Nur der Wert NACH der Herabsetzung faellt aus, nicht der davor."""
+    urteil = _red_urteil()
+
+    assert "dk_stichtag_1" in [p["groesse"] for p in urteil["pruefungen"]]
+
+
+def test_red_unterjaehrig_ist_ein_befund() -> None:
+    urteil = _red_urteil(monate=S1 + 4)
+
+    assert not urteil["bestanden"]
+    assert any("Vertragsjahrestag" in b for b in urteil["befunde"]), urteil
+
+
+def test_red_nach_beitragsfreistellung_ist_ein_befund() -> None:
+    """Ein beitragsfreier Vertrag hat keinen Beitrag, den man senken kann."""
+    pex = GeVoErwartung("PEX", 12 * 10, round(KERN.beitragsfreie_summe(10), 2))
+    urteil = _red_urteil(monate=12 * 10, vorher=(pex,))
+
+    assert not urteil["bestanden"]
+    assert any("beitragsfrei" in b for b in urteil["befunde"]), urteil
+
+
+def test_red_ohne_anteil_ist_eine_luecke_kein_befund() -> None:
+    """Die Lieferung ist unvollstaendig, aber der Vertrag nicht falsch."""
+    urteil = _red_urteil(anteil=None)
+
+    assert urteil["bestanden"], urteil["befunde"]
+    assert any("anteil" in luecke for luecke in urteil["nicht_geprueft"])
+
+
+@pytest.mark.parametrize("anteil", [-0.1, 1.5])
+def test_red_mit_unmoeglichem_anteil_ist_ein_befund(anteil: float) -> None:
+    urteil = _red_urteil(anteil=anteil)
+
+    assert not urteil["bestanden"]
+    assert any("[0, 1]" in b for b in urteil["befunde"]), urteil
+
+
+def test_red_beendet_den_vertrag_nicht() -> None:
+    """Sie ist eine Aenderung, kein Abgang — der Vertrag steht weiter."""
+    urteil = _terminal_urteil("RED", None)
+
+    assert not urteil["bestanden"]
+    assert any("keinen Abgang" in b for b in urteil["befunde"]), urteil
