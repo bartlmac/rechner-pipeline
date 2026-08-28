@@ -417,6 +417,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "vor dem Stichtag (POLNR;GEVO;DATUM) — traegt die "
                         "Anfangszustaende (PEX-Jahr, Alt-Scheiben, "
                         "Alt-Absetzung) je Police")
+    p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
+                   default=None, metavar="REGISTRIERTE_DATEI",
+                   help="REGISTRIERTE Nachlieferung der fortgefuehrten "
+                        "Beitragsanteile (POLNR;GEVO;DATUM;ANTEIL)")
+    p.add_argument("--anker-erwartungswerte", dest="anker_quelle",
+                   default=None, metavar="REGISTRIERTE_DATEI",
+                   help="REGISTRIERTE Erwartungswerte am Verankerungs"
+                        "zeitpunkt. Aus ihnen wird der Zustand einer "
+                        "Absetzung kalibriert, deren Beitragsgleichung "
+                        "entfaellt — eine ANDERE Quelle als die hier "
+                        "geprueften Abzugswerte, der Vergleich bleibt also "
+                        "unabhaengig.")
     p.add_argument("--red-anteil", dest="red_anteile", action="append",
                    default=[], metavar="POLNR=ANTEIL",
                    help="nachgelieferter fortgefuehrter Beitragsanteil einer "
@@ -467,6 +479,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         beitragsfrei_seit = beitragsfrei_seit_jahr_je_police(
             vorgeschichte, bestand, spalten=spalten)
         red_anteile: Dict[str, float] = {}
+        if args.red_anteile_datei is not None:
+            for zeile in _lies_csv(fall, args.red_anteile_datei):
+                if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
+                    red_anteile[str(zeile["POLNR"])] = float(zeile["ANTEIL"])
+        anker: Dict[str, Any] = {}
+        if args.anker_quelle is not None:
+            quelle = json.loads(fall_mod.eingang_datei(
+                fall, args.anker_quelle).read_text(encoding="utf-8"))
+            for eintrag in quelle.get("vertraege", []):
+                erster = next(
+                    (x for x in (eintrag.get("punkte") or [])
+                     if x.get("anlass") == "uebernahme"), None)
+                if erster and "kVx_MRV" in (erster.get("erwartet") or {}):
+                    anker[str(eintrag["police_id"])] = (
+                        int(erster["monate"]),
+                        float(erster["erwartet"]["kVx_MRV"]))
         for eintrag in args.red_anteile:
             police, _, wert = eintrag.partition("=")
             if not police or not wert:
@@ -479,7 +507,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             vorgeschichte, bestand, spalten=spalten,
             red_verfahren=args.red_verfahren, red_anteile=red_anteile,
             auspraegungen=auspraegungen,
-            erhoehungssatz=args.erhoehungssatz)
+            erhoehungssatz=args.erhoehungssatz, anker=anker)
         for w in zustandswarnungen:
             print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
                   file=sys.stderr)
