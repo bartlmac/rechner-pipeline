@@ -526,6 +526,7 @@ def _deckungskapital(
     zustand: str,
     parameter: Mapping[str, float] = MappingProxyType({}),
     red_verfahren: str = PROSPEKTIV,
+    pex_jahr: Optional[int] = None,
 ) -> float:
     """Deckungskapital in einem benannten Zustand — ohne Interpolation.
 
@@ -552,7 +553,8 @@ def _deckungskapital(
                     "herabgesetzten Vertrags unterjaehrig ist nicht "
                     "abgebildet — sie wirkt am Vertragsjahrestag"
                 )
-            return rv.reserve_beitragsfrei(monate // 12, monate)
+            return rv.reserve_beitragsfrei(
+                pex_jahr if pex_jahr is not None else monate // 12, monate)
         # "bestand" und "beitragspflichtig": der gefuehrte Wert des
         # geteilten Vertrags.
         return rv.monatsreserve(monate).vx_mrv
@@ -565,15 +567,31 @@ def _deckungskapital(
             kern, monate // 12, parameter["anteil"], verfahren=red_verfahren
         ).dk_nach
     if zustand == "beitragsfrei":
-        a0 = v.beitragsfrei_seit_jahr
+        # Bei einem PEX-GESCHAEFTSVORFALL ist das Freistellungsjahr der
+        # Vorfall selbst — der Vertrag war vorher beitragspflichtig, ein
+        # Anfangszustand existiert also gerade NICHT. Nur ausserhalb
+        # eines Vorfalls (Stichtags- oder Verlaufspunkt eines schon
+        # beitragsfrei uebernommenen Vertrags) traegt ihn der Auftrag.
+        a0 = pex_jahr if pex_jahr is not None else v.beitragsfrei_seit_jahr
         if a0 is None:
             raise AktuartestFehler(
                 f"police {v.police_id}: beitragsfreier Wert verlangt "
                 "beitragsfrei_seit_jahr"
             )
-        if monate % 12:
-            return kern.monatsreserve_beitragsfrei(a0, monate)
-        return kern.reserve_beitragsfrei(a0, monate // 12)
+        # Erhoehungsscheiben laufen nach der Freistellung mit ihrem
+        # EIGENEN Jahresversatz beitragsfrei weiter (dieselbe Regel wie
+        # in qa.migrationssuite). Ohne sie faellt der Scheibenwert bei
+        # einem PEX-Vorfall aus dem Vertrag heraus, und dDK meldet einen
+        # Verlust, den es nicht gibt.
+        def _bfr(k, a0_k: int, m_k: int) -> float:
+            if m_k % 12:
+                return k.monatsreserve_beitragsfrei(a0_k, m_k)
+            return k.reserve_beitragsfrei(a0_k, m_k // 12)
+
+        gesamt = _bfr(kern, a0, monate)
+        for erh_jahr, scheibe in scheiben:
+            gesamt += _bfr(scheibe, a0 - erh_jahr, monate - 12 * erh_jahr)
+        return gesamt
     # "bestand" und "beitragspflichtig" sind derselbe gefuehrte Wert; die
     # Unterscheidung benennt nur, worauf sich der Vergleich bezieht.
     if scheiben:
@@ -631,12 +649,14 @@ def _system_werte(
 
     if "dDK" in gefragt:
         vor, nach = GEVO_WIRKUNG[p.anlass]  # von _pruefe_punkt abgesichert
+        # Ein PEX-Vorfall setzt sein Freistellungsjahr selbst.
+        pex_jahr = p.monate // 12 if p.anlass == "PEX" else None
         dk_vor = _deckungskapital(
             v, mp, kern, scheiben, p.monate, vor, p.parameter,
-            red_verfahren=red_verfahren)
+            red_verfahren=red_verfahren, pex_jahr=pex_jahr)
         dk_nach = _deckungskapital(
             v, mp, kern, scheiben, p.monate, nach, p.parameter,
-            red_verfahren=red_verfahren)
+            red_verfahren=red_verfahren, pex_jahr=pex_jahr)
         werte["dDK"] = dk_nach - dk_vor
 
     if v.reduktion is not None:
@@ -685,7 +705,9 @@ def _system_werte(
                 v, mp, kern, scheiben, p.monate, "beitragsfrei"
             )
         if "VS_bfr" in gefragt:
-            werte["VS_bfr"] = kern.beitragsfreie_summe(a0)
+            werte["VS_bfr"] = kern.beitragsfreie_summe(a0) + sum(
+                s.beitragsfreie_summe(a0 - erh_jahr)
+                for erh_jahr, s in scheiben)
         if "BJB" in gefragt:
             werte["BJB"] = 0.0
         return werte

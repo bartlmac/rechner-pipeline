@@ -560,6 +560,73 @@ def leite_pex_ursprungssumme_ab(
     return vs_bfr / faktor
 
 
+def kalibriere_absetzung_aus_dk(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    jahr: int,
+    erlsumme: float,
+    dk_ist: float,
+    monate_dk: int,
+    verfahren: str,
+    toleranz: float = 1e-9,
+) -> Tuple[float, float]:
+    """Anteil und Ursprungssumme aus dem GELIEFERTEN Wert kalibrieren.
+
+    Der Rueckfallweg fuer Absetzungen, deren Beitragsgleichung entfaellt
+    (Beitragszahlung am Stichtag beendet) und fuer die kein Anteil
+    nachgeliefert wurde. Statt der zweiten Gleichung aus dem Jahresbeitrag
+    tritt der gelieferte Wert am Verankerungszeitpunkt: Zu jedem Anteil
+    folgt die Ursprungssumme exakt aus der Erlebensfallsumme, und der
+    daraus gerechnete Bestandswert ist monoton im Anteil — Bisektion
+    findet den Anteil, der den gelieferten Wert trifft.
+
+    **Der Preis ist Zirkularitaet, und sie ist auszuweisen:** Der
+    Vergleich am Verankerungszeitpunkt ist fuer diese Vertraege danach
+    konstruktionsbedingt erfuellt und traegt keine Aussage mehr. Aussage
+    tragen die Punkte DANEBEN — die Fortschreibung, der Verlauf, die
+    Geschaeftsvorfaelle. Das ist dieselbe Kohorten-Logik wie beim
+    Migrationszugang (Grundsatzdokumentation 9.12): Wer den Anker
+    setzt, misst nicht mehr am Anker.
+    """
+    def wert(anteil: float) -> Tuple[float, float]:
+        vs = leite_ursprungssumme_ab(
+            modellpunkt_felder, jahr=jahr, erlsumme=erlsumme,
+            anteil=anteil, verfahren=verfahren)
+        from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
+
+        kern = Rechenkern(ModelPoint(**{**dict(modellpunkt_felder),
+                                        "sum_insured": vs}))
+        rv = ReduzierterVertrag.nach(kern, jahr, anteil, verfahren=verfahren)
+        return vs, rv.monatsreserve(monate_dk).vx_mrv
+
+    unten, oben = 1e-6, 1.0 - 1e-6
+    try:
+        _, w_unten = wert(unten)
+        _, w_oben = wert(oben)
+    except (MigrationszugangFehler, ValueError) as exc:
+        raise MigrationszugangFehler(
+            f"Kalibrierung nicht durchfuehrbar: {exc}") from exc
+    if not (min(w_unten, w_oben) - 0.02 <= dk_ist <= max(w_unten, w_oben) + 0.02):
+        raise MigrationszugangFehler(
+            f"gelieferter Wert {dk_ist} liegt ausserhalb des erreichbaren "
+            f"Bereichs [{min(w_unten, w_oben):.2f}, {max(w_unten, w_oben):.2f}] "
+            "— der Anteil ist damit nicht kalibrierbar"
+        )
+    steigend = w_oben > w_unten
+    for _ in range(200):
+        mitte = 0.5 * (unten + oben)
+        _, w = wert(mitte)
+        if abs(w - dk_ist) <= toleranz * max(1.0, abs(dk_ist)):
+            break
+        if (w < dk_ist) == steigend:
+            unten = mitte
+        else:
+            oben = mitte
+    anteil = 0.5 * (unten + oben)
+    vs, _ = wert(anteil)
+    return vs, anteil
+
+
 def leite_ursprungssumme_ab(
     modellpunkt_felder: Mapping[str, Any],
     *,

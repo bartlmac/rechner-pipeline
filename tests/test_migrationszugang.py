@@ -606,3 +606,37 @@ def test_verfeinerung_schaerft_den_anteil_auf_den_glatten_parameter():
         jbrutto=round(r.bjb_neu, 2), verfahren="mit_abzug")
     assert ergebnis.anteil == f_wahr           # exakt, nicht nur nahe
     assert ergebnis.vs_alt == _pytest.approx(vs_wahr, rel=1e-6)
+
+
+def test_kalibrierung_findet_den_anteil_aus_dem_ankerwert():
+    """Rueckfallweg ohne Beitragsgleichung: der gelieferte Wert am
+    Verankerungszeitpunkt bestimmt den Anteil."""
+    from rechner_pipeline.bestand.migrationszugang import (
+        kalibriere_absetzung_aus_dk,
+    )
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
+
+    jahr, f_wahr, vs_wahr, monate = 6, 0.6, 65000.0, 120
+    felder = _mp_felder(sum_insured=vs_wahr)
+    kern = _Rechenkern(type(_KLV_DEFAULT)(**felder))
+    rv = ReduzierterVertrag.nach(kern, jahr, f_wahr, verfahren="mit_abzug")
+    dk = round(rv.monatsreserve(monate).vx_mrv, 2)
+    erlsumme = round(rv.reduktion.vs_neu, 2)
+
+    vs, f = kalibriere_absetzung_aus_dk(
+        felder, jahr=jahr, erlsumme=erlsumme, dk_ist=dk, monate_dk=monate,
+        verfahren="mit_abzug")
+    assert f == _pytest.approx(f_wahr, abs=1e-4)
+    assert vs == _pytest.approx(vs_wahr, rel=1e-4)
+
+
+def test_kalibrierung_weist_unerreichbare_werte_zurueck():
+    """Ein Wert ausserhalb des erreichbaren Bereichs wird nicht durch
+    einen Randanteil 'getroffen' — er faellt."""
+    from rechner_pipeline.bestand.migrationszugang import (
+        kalibriere_absetzung_aus_dk,
+    )
+    with _pytest.raises(_MZFehler, match="ausserhalb des erreichbaren"):
+        kalibriere_absetzung_aus_dk(
+            _mp_felder(), jahr=6, erlsumme=70000.0, dk_ist=1.0,
+            monate_dk=120, verfahren="mit_abzug")

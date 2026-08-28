@@ -211,6 +211,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "vor dem Stichtag (POLNR;GEVO;DATUM) — traegt die "
                         "Anfangszustaende (Alt-Scheiben, Alt-Absetzung) je "
                         "Police der Stichprobe")
+    p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
+                   default=None, metavar="REGISTRIERTE_DATEI",
+                   help="REGISTRIERTE Nachlieferung der fortgefuehrten "
+                        "Beitragsanteile (POLNR;GEVO;DATUM;ANTEIL) — fuer "
+                        "die Zeichnung bindbar, anders als --red-anteil")
     p.add_argument("--red-anteil", dest="red_anteile", action="append",
                    default=[], metavar="POLNR=ANTEIL",
                    help="nachgelieferter fortgefuehrter Beitragsanteil einer "
@@ -282,16 +287,24 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     anfangszustaende = None
     if args.vorgeschichte is not None:
+        import csv
+
         from rechner_pipeline.gates.migrationssuite_lauf import (
             VORGABE,
             anfangszustaende_je_police,
         )
-        import csv
 
         with fall_mod.eingang_datei(fall, args.vorgeschichte).open(
                 encoding="utf-8") as datei:
             vorgeschichte = list(csv.DictReader(datei, delimiter=";"))
         red_anteile: Dict[str, float] = {}
+        if args.red_anteile_datei is not None:
+            with fall_mod.eingang_datei(
+                    fall, args.red_anteile_datei).open(encoding="utf-8") as d:
+                for zeile in csv.DictReader(d, delimiter=";"):
+                    if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
+                        red_anteile[str(zeile["POLNR"])] = float(
+                            zeile["ANTEIL"])
         for eintrag in args.red_anteile:
             police, _, wert = eintrag.partition("=")
             if not police or not wert:
@@ -299,12 +312,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                       file=sys.stderr)
                 return 2
             red_anteile[police.strip()] = float(wert)
+        # Ankerwerte fuer den Rueckfallweg: der gelieferte Wert am
+        # Verankerungszeitpunkt je Vertrag der Stichprobe.
+        anker: Dict[str, Any] = {}
+        for eintrag in lieferung["vertraege"]:
+            punkte = eintrag.get("punkte") or []
+            erster = next(
+                (p for p in punkte if p.get("anlass") == "uebernahme"), None)
+            if erster and "kVx_MRV" in (erster.get("erwartet") or {}):
+                anker[str(eintrag["police_id"])] = (
+                    int(erster["monate"]),
+                    float(erster["erwartet"]["kVx_MRV"]))
         anfangszustaende, zustandswarnungen = anfangszustaende_je_police(
             spez, zeilen if args.zeilen is not None else [],
             vorgeschichte, bestand, spalten=dict(VORGABE),
             red_verfahren=args.red_verfahren, red_anteile=red_anteile,
             auspraegungen=auspraegungen,
-            erhoehungssatz=args.erhoehungssatz)
+            erhoehungssatz=args.erhoehungssatz, anker=anker)
         for w in zustandswarnungen:
             print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
                   file=sys.stderr)

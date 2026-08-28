@@ -176,6 +176,7 @@ def anfangszustaende_je_police(
     red_anteile: Optional[Dict[str, float]] = None,
     auspraegungen: Optional[Dict[str, Dict[str, str]]] = None,
     erhoehungssatz: Optional[float] = None,
+    anker: Optional[Dict[str, Tuple[int, float]]] = None,
 ) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
     """Vorgeschichts-Welten PEX, ERH und RED je Police ableiten.
 
@@ -201,6 +202,7 @@ def anfangszustaende_je_police(
         leite_erhoehung_aus_satz_ab,
         leite_pex_ursprungssumme_ab,
         leite_ursprungssumme_ab,
+        kalibriere_absetzung_aus_dk,
     )
 
     s = spalten
@@ -273,18 +275,36 @@ def anfangszustaende_je_police(
                 }
             else:
                 anteil = red_anteile.get(police)
+                kalibriert = False
                 if anteil is not None:
                     vs_alt = leite_ursprungssumme_ab(
                         mp_felder, jahr=jahr, erlsumme=erlsumme,
                         anteil=anteil, verfahren=red_verfahren)
-                else:
+                elif jbrutto > 0.0:
                     absetzung = leite_absetzung_ab(
                         mp_felder, jahr=jahr, erlsumme=erlsumme,
                         jbrutto=jbrutto, verfahren=red_verfahren)
                     anteil, vs_alt = absetzung.anteil, absetzung.vs_alt
+                elif (anker or {}).get(police):
+                    # Rueckfallweg: aus dem gelieferten Wert kalibrieren.
+                    # Der Vergleich an DIESEM Punkt wird dadurch
+                    # konstruktionsbedingt und traegt keine Aussage mehr.
+                    monate_dk, dk_ist = (anker or {})[police]
+                    vs_alt, anteil = kalibriere_absetzung_aus_dk(
+                        mp_felder, jahr=jahr, erlsumme=erlsumme,
+                        dk_ist=dk_ist, monate_dk=monate_dk,
+                        verfahren=red_verfahren)
+                    kalibriert = True
+                else:
+                    raise MigrationszugangFehler(
+                        "JBRUTTO <= 0 und kein Anteil nachgeliefert: der "
+                        "fortgefuehrte Anteil ist nicht bestimmbar — "
+                        "nachliefern lassen oder einen Ankerwert uebergeben"
+                    )
                 zustaende[police] = {
                     "reduktion": (jahr, anteil),
                     "sum_insured": vs_alt,
+                    "kalibriert_aus_anker": kalibriert,
                 }
         except MigrationszugangFehler as exc:
             warnungen.append(f"Police {police} ({art}, Jahr {jahr}): {exc}")
