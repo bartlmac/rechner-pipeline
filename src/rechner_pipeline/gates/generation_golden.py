@@ -8,9 +8,15 @@ komplette Verlaufswerte-Tabelle, verglichen mit der bestehenden
 Golden-Master-Engine (Rundung auf 4 Nachkommastellen, positionsweise
 Zeilen, Namens-Matching).
 
-Der Beispiel-Modellpunkt (x, n, t, VS, zw, Sex, Status, Tarifart) wird
-deterministisch aus dem Names-Manager der Vorverdichtung gelesen; die
-Spez-Zelle waehlt sich ueber (tarifart, status). Erwartungs-Skalare,
+Der Beispiel-Modellpunkt (x, n, t, VS, zw, Geschlecht plus die
+Merkmalsauspraegungen der Spez-Dimensionen) wird deterministisch aus
+dem Names-Manager der Vorverdichtung gelesen. Die NAMEN dieser
+Eingabezellen sind eine Konvention des QUELLSYSTEMS, keine des Gates:
+aufgeloest wird ueber die ``quellnamen`` der A-Box-Generation
+(Semantik-Schluessel ``eingabe:<groesse>`` bzw. ``dimension:<id>``,
+siehe :data:`EINGABE_SEMANTIK`), mit den Namen der Erst-Lieferung als
+Rueckfall, wenn die A-Box keine Zuordnung traegt. Die Spez-Zelle
+waehlt sich ueber die Dimensions-Auspraegungen. Erwartungs-Skalare,
 die keine Rechenergebnisse sind (Zins, Tafel), werden gegen die Spez
 selbst geprueft; nicht zuordenbare Erwartungsreste werden AUSGEWIESEN,
 nie still uebersprungen (P6).
@@ -90,15 +96,73 @@ def _lese_names(names_csv: Path) -> Dict[str, str]:
     return namen
 
 
-def _modellpunkt_eingaben(namen: Dict[str, str]) -> Dict[str, Any]:
+#: Semantik-Schluessel der Modellpunkt-Eingaben, wie die Fragmente sie in
+#: ``quellnamen`` festhalten (``{"GESCHL": "eingabe:geschlecht"}``). Der
+#: Names-Manager einer fremden Mappe benennt seine Eingabezellen nach der
+#: Konvention des QUELLSYSTEMS — sie hier wortgleich zu verlangen hiesse,
+#: die Namen der ersten Lieferung zur Gate-Eigenschaft zu machen. Der
+#: Rueckfall-Name gilt, wenn die A-Box keine Zuordnung traegt (aeltere
+#: Fragmente, Fixtures).
+EINGABE_SEMANTIK: Dict[str, str] = {
+    "x": "eingabe:alter_bei_beginn",
+    "n": "eingabe:vertragsdauer",
+    "t": "eingabe:beitragszahlungsdauer",
+    "VS": "eingabe:versicherungssumme",
+    "zw": "eingabe:zahlweise",
+    "Sex": "eingabe:geschlecht",
+}
+
+
+def _quellname_fuer(
+    semantik: str, quellnamen: Dict[str, str], namen: Dict[str, str],
+    rueckfall: str,
+) -> str:
+    """Den Names-Manager-Namen einer Semantik bestimmen.
+
+    Kandidat ist jeder quellnamen-Eintrag, der die Semantik EXAKT nennt
+    (pipe-vereinte Eintraege werden aufgeteilt; ``dimension:tarifart``
+    trifft nicht ``dimension:tarifart=einzel``). Von den Kandidaten
+    zaehlen nur die, die im Names-Manager existieren: mehrere mit
+    verschiedenen Werten sind ein harter Fehler (kein stilles Raten),
+    keiner heisst Rueckfall auf den Namen der Erst-Lieferung.
+    """
+    kandidaten = sorted({
+        name for name, ziel in quellnamen.items()
+        if semantik in [t.strip() for t in str(ziel).split("|")]
+    })
+    vorhandene = [k for k in kandidaten if namen.get(k, "") != ""]
+    werte = {namen[k] for k in vorhandene}
+    if len(werte) > 1:
+        raise ValueError(
+            f"quellnamen nennen fuer {semantik!r} mehrere Names-Manager-"
+            f"Eintraege mit verschiedenen Werten ({sorted(vorhandene)}) — "
+            "die Zuordnung ist mehrdeutig und muss in den Fragmenten "
+            "geklaert werden"
+        )
+    return vorhandene[0] if vorhandene else rueckfall
+
+
+def _modellpunkt_eingaben(
+    namen: Dict[str, str], quellnamen: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
+    quellnamen = quellnamen or {}
+    name_von = {
+        feld: _quellname_fuer(semantik, quellnamen, namen, rueckfall=feld)
+        for feld, semantik in EINGABE_SEMANTIK.items()
+    }
     pflicht = ("x", "n", "t", "VS", "zw", "Sex")
-    fehlend = [p for p in pflicht if p not in namen or namen[p] == ""]
+    fehlend = [
+        f"{p} (Name {name_von[p]!r})" for p in pflicht
+        if name_von[p] not in namen or namen[name_von[p]] == ""
+    ]
     if fehlend:
         raise ValueError(
             f"Names-Manager ohne Modellpunkt-Eingaben {fehlend} — der "
-            "Beispiel-Modellpunkt ist nicht ableitbar"
+            "Beispiel-Modellpunkt ist nicht ableitbar (Zuordnung fremder "
+            "Namen: quellnamen der A-Box, Schluessel eingabe:<groesse>)"
         )
-    def _zahl(name: str, wandler) -> Any:
+    def _zahl(feld: str, wandler) -> Any:
+        name = name_von[feld]
         try:
             return wandler(float(namen[name]))
         except (TypeError, ValueError) as exc:
@@ -113,18 +177,40 @@ def _modellpunkt_eingaben(namen: Dict[str, str]) -> Dict[str, Any]:
         "t": _zahl("t", int),
         "sum_insured": _zahl("VS", float),
         "zw": _zahl("zw", int),
-        "sex_roh": namen["Sex"],
-        "status": namen.get("Status", ""),
-        "tarifart": namen.get("Tarifart", ""),
+        "sex_roh": namen[name_von["Sex"]],
     }
 
 
-def _waehle_zelle(spez, status: str, tarifart: str):
-    gesucht = {}
-    if status:
-        gesucht["status"] = status.strip().lower()
-    if tarifart:
-        gesucht["tarifart"] = tarifart.strip().lower()
+def _dimensions_auspraegungen(
+    spez, namen: Dict[str, str], quellnamen: Optional[Dict[str, str]] = None
+) -> Dict[str, str]:
+    """Die Merkmalsauspraegungen des Beispiel-Modellpunkts je Spez-Dimension.
+
+    Welche Dimensionen es gibt, sagt die SPEZ (die Auspraegungs-Schluessel
+    ihrer Zellen); wie die Eingabezelle im Quellsystem heisst, sagen die
+    ``quellnamen`` (``dimension:<id>``). Rueckfall ist der kapitalisierte
+    Dimensionsname — die Konvention der Erst-Lieferung (``Status``,
+    ``Tarifart``).
+    """
+    quellnamen = quellnamen or {}
+    ids = sorted({k for z in spez.zellen for k in z.auspraegungen})
+    auspraegungen: Dict[str, str] = {}
+    for dim_id in ids:
+        name = _quellname_fuer(
+            f"dimension:{dim_id}", quellnamen, namen,
+            rueckfall=dim_id.capitalize(),
+        )
+        wert = namen.get(name, "")
+        if wert:
+            auspraegungen[dim_id] = wert
+    return auspraegungen
+
+
+def _waehle_zelle(spez, auspraegungen: Dict[str, str]):
+    gesucht = {
+        dim: wert.strip().lower()
+        for dim, wert in auspraegungen.items() if wert
+    }
     treffer = [z for z in spez.zellen if z.auspraegungen == gesucht]
     if not treffer:
         raise ValueError(
@@ -270,9 +356,13 @@ def main(argv: Optional[List[str]] = None):
         )
 
     namen = _lese_names(names_csv)
+    generation = next(
+        (g for g in abox.generationen if g.id == args.generation), None)
+    quellnamen = dict(generation.quellnamen) if generation is not None else {}
     try:
-        eingaben = _modellpunkt_eingaben(namen)
-        zelle = _waehle_zelle(spez, eingaben["status"], eingaben["tarifart"])
+        eingaben = _modellpunkt_eingaben(namen, quellnamen)
+        auspraegungen = _dimensions_auspraegungen(spez, namen, quellnamen)
+        zelle = _waehle_zelle(spez, auspraegungen)
     except ValueError as exc:
         return _usage(str(exc))
 
@@ -442,8 +532,8 @@ def main(argv: Optional[List[str]] = None):
         "zellen_ohne_erwartungswerte": andere_zellen,
         "modellpunkt": {k: eingaben[k] for k in
                         ("x", "n", "t", "sum_insured", "zw")}
-        | {"sex": eingaben["sex_roh"], "status": eingaben["status"],
-           "tarifart": eingaben["tarifart"], "tafel": mp.tafel},
+        | {"sex": eingaben["sex_roh"], "tafel": mp.tafel}
+        | {dim: wert for dim, wert in sorted(auspraegungen.items())},
         "skalare_verglichen": len(gefilterte_erwartung),
         "parameter_geprueft": [p["name"] for p in parameter_pruefungen],
         "tabellen_zeilen": anzahl_zeilen,
