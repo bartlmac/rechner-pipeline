@@ -134,6 +134,7 @@ def baue(
     produkt: str,
     stichtag: dt.date,
     vorgeschichte: Dict[str, List[Tuple[str, dt.date]]],
+    generationsfelder: Optional[Dict[str, Any]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, List[str]]:
     """Stamm, Historie und Ledger aus den transformierten Zeilen."""
     stamm: List[Dict[str, Any]] = []
@@ -208,6 +209,35 @@ def baue(
             "betrag_art": "VS",
             "betrag": float(z["sum_insured"]),
         })
+        # Der mitgebrachte Zustand braucht seine Buchung: Ein Vertrag,
+        # der beitragsfrei ankommt, traegt in der Historie eine
+        # PEX-Zeile, und die Bewegungsrechnung des aufnehmenden
+        # Unternehmens verlangt die zugehoerige Summe. Sie kommt NICHT
+        # aus der Lieferung — die Vorgeschichte fuehrt keine Betraege
+        # (Grundsatzdokumentation 9.14) —, sondern wird gerechnet: Das
+        # ist derselbe konstruktive Weg wie fuer jede andere Groesse des
+        # uebernommenen Vertrags.
+        for art, datum in wechsel:
+            if art != "PEX" or generationsfelder is None:
+                continue
+            pex_jahr = (datum.year - beginn.year) * 12 + (
+                datum.month - beginn.month) - (
+                1 if datum.day < beginn.day else 0)
+            pex_jahr //= 12
+            ledger.append({
+                "police_id": int(police),
+                "tarif_generation": tarif_generation,
+                "ereignis": "PEX",
+                "vertragsjahr": pex_jahr,
+                "status_date": pd.Timestamp(datum),
+                "betrag_art": "VS_bfr",
+                "betrag": _beitragsfreie_summe(
+                    z,
+                    generationsfelder.get(police, generationsfelder)
+                    if isinstance(next(iter(generationsfelder.values()), None),
+                                  dict) else generationsfelder,
+                    pex_jahr),
+            })
 
     if abweichende_geburtsdaten:
         hinweise.append(
@@ -231,6 +261,29 @@ def baue(
         pd.DataFrame(ledger, columns=list(LEDGER_NAMES)),
         hinweise,
     )
+
+
+def _beitragsfreie_summe(
+    zeile: Dict[str, Any], generationsfelder: Dict[str, Any], pex_jahr: int
+) -> float:
+    """Die beitragsfreie Summe eines uebernommenen Vertrags — gerechnet.
+
+    Das Zielsystem bildet sie aus den Ursprungsparametern; die Lieferung
+    traegt sie nicht. Ist die gelieferte Summe bereits die beitragsfreie
+    (so fuehren Abzuege beitragsfrei gestellte Vertraege), ist sie
+    zugleich das Ergebnis — der Kern rechnet dann auf der
+    Ursprungssumme, die diese Summe erzeugt.
+    """
+    from rechner_pipeline.kern import ModelPoint, Rechenkern
+
+    felder = {
+        "x": int(zeile["entry_age"]), "sex": str(zeile["sex"]),
+        "n": int(zeile["duration"]), "t": int(zeile["premium_duration"]),
+        "sum_insured": float(zeile["sum_insured"]),
+        "zw": int(zeile["zahlweise"]),
+        **{k: v for k, v in generationsfelder.items()},
+    }
+    return float(Rechenkern(ModelPoint(**felder)).beitragsfreie_summe(pex_jahr))
 
 
 def _parse(wert: Any) -> dt.date:
@@ -259,6 +312,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--vorgeschichte", default=None,
                    help="REGISTRIERTE Metadatenliste der Geschaeftsvorfaelle "
                         "vor dem Stichtag (POLNR;GEVO;DATUM)")
+    p.add_argument("--generation-spez", dest="generation_spez", default=None,
+                   help="Knoten-Id der Tarif-Spez des Falls (z. B. "
+                        "klv/tg2015). Mit ihr rechnet die Uebernahme die "
+                        "beitragsfreie Summe mitgebrachter PEX-Zustaende — "
+                        "ohne sie fehlt der Bewegungsrechnung ihre Buchung.")
     p.add_argument("--out-dir", dest="out_dir", required=True,
                    help="Zielverzeichnis im Fall")
     args = p.parse_args(argv)
@@ -274,13 +332,41 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"--out-dir muss im Fall liegen: {ziel}", file=sys.stderr)
         return 2
 
+    generationsfelder = None
+    if args.generation_spez:
+        from rechner_pipeline.spez.validierung import lade_spez
+
+        spez = lade_spez(fall, args.generation_spez)
+        if len(spez.zellen) != 1:
+            # Mehrzellige Spez: die Zellwahl je Vertrag traegt die
+            # transformierte Zeile; hier genuegt die Zelle, deren
+            # Auspraegungen die Zeile nennt.
+            generationsfelder = None
+        else:
+            generationsfelder = dict(spez.zellen[0].model_point)
+
     zeilen = _lies_zeilen(Path(args.zeilen))
+    if args.generation_spez and generationsfelder is None:
+        from rechner_pipeline.spez.validierung import lade_spez
+
+        spez = lade_spez(fall, args.generation_spez)
+        zellen = {tuple(sorted(z.auspraegungen.items())): dict(z.model_point)
+                  for z in spez.zellen}
+        dimensionen = sorted({k for z in spez.zellen for k in z.auspraegungen})
+        generationsfelder = {}
+        for z in zeilen:
+            schluessel = tuple(sorted(
+                (d, str(z[d])) for d in dimensionen if d in z))
+            if schluessel in zellen:
+                generationsfelder[str(z["police_id"])] = zellen[schluessel]
+
     stamm, historie, ledger, hinweise = baue(
         zeilen,
         tarif_generation=args.generation,
         produkt=args.produkt,
         stichtag=_parse(args.stichtag),
         vorgeschichte=_vorgeschichte(fall, args.vorgeschichte),
+        generationsfelder=generationsfelder,
     )
 
     write_portfolio(stamm, ziel / "bestand.parquet")

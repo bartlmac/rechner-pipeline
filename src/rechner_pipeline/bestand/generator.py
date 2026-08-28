@@ -206,6 +206,13 @@ def _generate_generation(
 ) -> pd.DataFrame:
     rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence([master_seed, gen_index])))
     n = gen.sample_size
+    if n == 0:
+        # Uebernommene Generation: ihre Vertraege kommen aus der
+        # Migration, nicht aus der Ziehung (siehe config.TarifGeneration).
+        return _baue_frame(
+            gen, _ziehe_attribute(gen, rng, 0),
+            _draw_insurance_start(rng, gen, 0),
+            np.arange(0, dtype=np.int64))
     attribute = _ziehe_attribute(gen, rng, n)
     # 4) Time axis (month-first convention) — drawn AFTER the attributes,
     #    identical rng call order as before the refactoring.

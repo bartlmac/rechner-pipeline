@@ -225,8 +225,14 @@ class TarifGeneration:
                 f"{prefix}: gueltig_bis nach 2200 (Zeitachse: pandas-Timestamps "
                 "enden 2262; Vertragsenden muessen darstellbar bleiben)"
             )
-        if self.sample_size <= 0:
-            errors.append(f"{prefix}: sample_size <= 0")
+        if self.sample_size < 0:
+            errors.append(f"{prefix}: sample_size negativ")
+        # sample_size = 0 ist der UEBERNOMMENE Fall: Eine Generation, die
+        # aus einer Migration in den Bestand kommt, wird nicht erzeugt —
+        # ihre Vertraege liegen schon vor. Ihre Rechnungsgrundlagen
+        # braucht die Config trotzdem, sonst kann der Bericht sie nicht
+        # bewerten. Das Verbot der Null stammte aus der Zeit, in der jede
+        # Generation eine erzeugte war.
         if not self.knoten:
             errors.append(
                 f"{prefix}: knoten fehlt — jede Generation traegt ihre "
