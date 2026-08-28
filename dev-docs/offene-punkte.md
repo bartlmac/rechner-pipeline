@@ -12,7 +12,7 @@ Rechenmodul der Korrekturschicht in
 [korrekturschicht-umsetzung.md](korrekturschicht-umsetzung.md). Ein
 vierter ist am 2026-08-28 dazugekommen: die fehlende Darstellung des
 herabgesetzten Vertrags im Zielkern, jetzt in
-[herabgesetzter-vertrag.md](herabgesetzter-vertrag.md).
+[zahlungspfade-migrierter-vertraege.md](zahlungspfade-migrierter-vertraege.md).
 
 ## Fachlich
 

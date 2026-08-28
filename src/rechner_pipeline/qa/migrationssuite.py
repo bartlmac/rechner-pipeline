@@ -280,7 +280,7 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     Grund: Hier LIEGT ein Erwartungswert vor, aber das Zielsystem kann
     ihm nichts gegenüberstellen. Ein herabgesetzter Vertrag ist teils
     beitragspflichtig, teils beitragsfrei, und der Modellpunkt trägt
-    beides nicht zugleich (dev-docs/herabgesetzter-vertrag.md).
+    beides nicht zugleich (dev-docs/zahlungspfade-migrierter-vertraege.md).
     Ihn auf der ursprünglichen Summe zu rechnen hieße, gegen einen
     Vertrag zu vergleichen, den es nicht mehr gibt. ``dk_stichtag_2``
     steht deshalb in ``nicht_geprueft`` — nicht weil die Lieferung
@@ -421,7 +421,7 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
         elif g.art == "RED":
             # Die Herabsetzung wird hier auf ihre ZULÄSSIGKEIT geprüft,
             # nicht auf ihren Wert. Der Grund steht in
-            # dev-docs/herabgesetzter-vertrag.md: Ein herabgesetzter
+            # dev-docs/zahlungspfade-migrierter-vertraege.md: Ein herabgesetzter
             # Vertrag hat im Zielkern keine Darstellung — er ist teils
             # beitragspflichtig, teils beitragsfrei, und der Modellpunkt
             # kann beides nicht zugleich tragen. Der Wert am

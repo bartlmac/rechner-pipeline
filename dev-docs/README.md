@@ -48,5 +48,5 @@ Vier Abschnitte, mehr braucht es nicht:
 | [Aktuarieller Test AT-1/AT-2/AT-3](aktuarieller-test-at1-at2-at3.md) | gebaut; offen sind Stichprobenprofile und BU-Vorfaelle |
 | [Korrekturschicht umsetzen](korrekturschicht-umsetzung.md) | Stufe N7.1 gebaut; N7.2 bis N7.4 offen |
 | [Rollentrennung der Agenten](agenten-rollentrennung.md) | Skizze, wartet auf Entscheidung |
-| [Herabgesetzter Vertrag im Zielkern](herabgesetzter-vertrag.md) | Luecke gemessen, wartet auf Entscheidung |
+| [Zahlungspfade migrierter Vertraege](zahlungspfade-migrierter-vertraege.md) | Richtung bejaht 2026-08-28; blockiert A-M4 des zweiten Baldrian-Falls |
 | [Offene Punkte](offene-punkte.md) | laufend |

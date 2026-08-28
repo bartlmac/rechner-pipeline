@@ -867,7 +867,7 @@ def test_red_weist_den_folgestichtag_als_pruefluecke_aus() -> None:
     Er wuerde ihn auf der urspruenglichen Summe rechnen — also auf einem
     Vertrag, den es nicht mehr gibt. Eine ausgewiesene Luecke ist
     ehrlicher als eine Zahl, die aussieht als sei sie geprueft
-    (dev-docs/herabgesetzter-vertrag.md).
+    (dev-docs/zahlungspfade-migrierter-vertraege.md).
     """
     urteil = _red_urteil()
 
