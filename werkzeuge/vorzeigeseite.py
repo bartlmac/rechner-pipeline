@@ -301,7 +301,8 @@ def _seite(fall: Path, repo: Path, kopiert: List[str],
     for name, zweck in UEBERNEHMEN:
         treffer = [k for k in kopiert if k.startswith(f"artefakte/{name}")]
         if treffer:
-            z.append(f"* `{name}` — {zweck} ({len(treffer)} Dateien)")
+            wort = "Datei" if len(treffer) == 1 else "Dateien"
+            z.append(f"* `{name}` — {zweck} ({len(treffer)} {wort})")
     z.append("")
     return "\n".join(z) + "\n"
 
@@ -311,7 +312,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--fall", required=True, help="Fall-Arbeitsbereich")
     p.add_argument("--out", required=True, help="Zielverzeichnis der Seite")
     p.add_argument("--verlauf", default=None,
-                   help="Verlaufsprotokoll (werkzeuge/verlaufsprotokoll.py)")
+                   help="Verlaufsprotokoll der OPERATOR-Sitzung "
+                        "(werkzeuge/verlaufsprotokoll.py --sitzung <uuid>). "
+                        "Nicht --neueste nehmen: das ist womoeglich die "
+                        "Sitzung, die das Werkzeug gebaut hat.")
     p.add_argument("--repo", default=".", help="Repo-Wurzel fuer den Systemstand")
     args = p.parse_args(argv)
 
