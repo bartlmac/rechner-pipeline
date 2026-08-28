@@ -488,3 +488,86 @@ def test_anteil_eins_aendert_das_deckungskapital_nicht():
         Pruefpunkt(12 * 9, {"dDK": 0.0}, "RED", {"anteil": 1.0})
     )
     assert pruefe_vertrag(vertrag, _profil("A-M3"))["bestanden"] is True
+
+
+# --------------------------------------------------------------------------- #
+# Anfangszustand Herabsetzung (Kern 3.1.0): der geteilte Vertrag
+# --------------------------------------------------------------------------- #
+
+
+def _zweiteilung(monate: int, jahr: int = 8, anteil: float = 0.6):
+    """Unabhaengige Nachrechnung aus Kern-Primitiven (ohne ReduzierterVertrag)."""
+    from rechner_pipeline.kern.beitragsreduktion import reduziere
+
+    r = reduziere(KERN, jahr, anteil)
+    bfr_teil = r.vs_neu - anteil * r.vs_alt
+    a, rest = divmod(monate, 12)
+    satz = KERN.verlaufszeile(a).vx_bfr
+    if rest:
+        u = rest / 12.0
+        satz = (1.0 - u) * satz + u * KERN.verlaufszeile(a + 1).vx_bfr
+    return anteil * KERN.monatsreserve(monate).vx_mrv + bfr_teil * satz
+
+
+def test_reduzierter_anfangszustand_bewertet_den_geteilten_vertrag():
+    monate = 12 * 10
+    erwartet_mrv = _zweiteilung(monate)
+    erwartet_bjb = 0.6 * KERN.gross_annual_premium()
+    v = _vertrag(
+        Pruefpunkt(monate=monate,
+                   erwartet={"kVx_MRV": round(erwartet_mrv, 2),
+                             "BJB": round(erwartet_bjb, 2)},
+                   anlass="uebernahme"),
+        reduktion=(8, 0.6),
+    )
+    urteil = pruefe_vertrag(v, _profil(grund=Kriterium(abs_tol=0.01,
+                                                       rel_tol=1e-9)))
+    assert urteil["bestanden"], urteil["befunde"]
+
+
+def test_reduzierter_anfangszustand_faellt_nicht_auf_den_unreduzierten_wert():
+    """Mutationsfaenger: der unreduzierte kVx_MRV darf NICHT bestehen."""
+    monate = 12 * 10
+    v = _vertrag(
+        Pruefpunkt(monate=monate,
+                   erwartet={"kVx_MRV": round(KERN.monatsreserve(monate).vx_mrv, 2)},
+                   anlass="uebernahme"),
+        reduktion=(8, 0.6),
+    )
+    urteil = pruefe_vertrag(v, _profil())
+    assert not urteil["bestanden"]
+
+
+def test_ddk_der_beitragsfreistellung_eines_reduzierten_vertrags():
+    """PEX auf Alt-RED: verlustfreie Umwandlung des GETEILTEN Vertrags."""
+    monate = 12 * 10
+    v = _vertrag(
+        Pruefpunkt(monate=monate, erwartet={"dDK": 0.0}, anlass="PEX"),
+        reduktion=(8, 0.6),
+    )
+    urteil = pruefe_vertrag(v, _profil(kennung="A-M3"))
+    assert urteil["bestanden"], urteil["befunde"]
+
+
+def test_reduktion_mit_scheiben_oder_pex_zustand_faellt_hart():
+    with pytest.raises(AktuartestFehler, match="Kombination"):
+        pruefe_vertrag(_vertrag(
+            Pruefpunkt(monate=120, erwartet={"kVx_MRV": 1.0},
+                       anlass="uebernahme"),
+            reduktion=(8, 0.6), scheiben=((9, 5000.0),),
+        ), _profil())
+    with pytest.raises(AktuartestFehler, match="Kombination"):
+        pruefe_vertrag(_vertrag(
+            Pruefpunkt(monate=120, erwartet={"kVx_MRV": 1.0},
+                       anlass="uebernahme"),
+            reduktion=(8, 0.6), beitragsfrei_seit_jahr=9,
+        ), _profil())
+
+
+def test_pruefpunkt_vor_der_reduktion_ist_widerspruechlich():
+    with pytest.raises(AktuartestFehler, match="VOR der Herabsetzung"):
+        pruefe_vertrag(_vertrag(
+            Pruefpunkt(monate=12 * 5, erwartet={"kVx_MRV": 1.0},
+                       anlass="uebernahme"),
+            reduktion=(8, 0.6),
+        ), _profil())

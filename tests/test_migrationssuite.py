@@ -861,21 +861,85 @@ def _red_urteil(monate: int = 12 * 10, anteil: Optional[float] = 0.6,
         gevos=vorher + (GeVoErwartung("RED", monate, None, anteil=anteil),)))
 
 
-def test_red_weist_den_folgestichtag_als_pruefluecke_aus() -> None:
-    """Der Kern kann einen herabgesetzten Vertrag nicht fortschreiben.
+def _zweiteilung_dk2(anteil: float, red_jahr: int) -> float:
+    """Unabhaengige Nachrechnung des Folgewerts aus Kern-Primitiven.
 
-    Er wuerde ihn auf der urspruenglichen Summe rechnen — also auf einem
-    Vertrag, den es nicht mehr gibt. Eine ausgewiesene Luecke ist
-    ehrlicher als eine Zahl, die aussieht als sei sie geprueft
-    (dev-docs/zahlungspfade-migrierter-vertraege.md).
+    Fortgefuehrter Anteil auf dem beitragspflichtigen Track plus die bei
+    der Reduktion fixierte beitragsfreie Summe auf dem (monatlich
+    gemischten) bfr-Satz — komponiert aus reduziere() und den
+    Verlaufszeilen, NICHT ueber ReduzierterVertrag.
     """
-    urteil = _red_urteil()
+    from rechner_pipeline.kern.beitragsreduktion import reduziere
+
+    r = reduziere(KERN, red_jahr, anteil)
+    bfr_teil = r.vs_neu - anteil * r.vs_alt
+    a, rest = divmod(S2, 12)
+    satz = KERN.verlaufszeile(a).vx_bfr
+    if rest:
+        u = rest / 12.0
+        satz = (1.0 - u) * satz + u * KERN.verlaufszeile(a + 1).vx_bfr
+    return anteil * KERN.monatsreserve(S2).vx_mrv + bfr_teil * satz
+
+
+def test_red_mit_anteil_rechnet_den_folgestichtag() -> None:
+    """Seit Kern 3.1.0 wird der geteilte Vertrag fortgefuehrt.
+
+    Erwartung ist die unabhaengig komponierte Zweiteilung; die Suite
+    muss sie treffen, den Wert als Pruefung ausweisen und KEINE
+    Prueflücke mehr fuehren.
+    """
+    dk2 = round(_zweiteilung_dk2(0.6, 10), 2)
+    urteil = pruefe_vertrag(_pruefung(
+        dk2=dk2, gevos=(GeVoErwartung("RED", 12 * 10, None, anteil=0.6),)))
+
+    assert urteil["bestanden"], urteil["befunde"]
+    assert "dk_stichtag_2" in [p["groesse"] for p in urteil["pruefungen"]]
+    assert not any("dk_stichtag_2_nach_red" in luecke
+                   for luecke in urteil["nicht_geprueft"])
+
+
+def test_red_auf_urspruenglicher_summe_zu_rechnen_wuerde_auffallen() -> None:
+    """Mutationsfaenger: der unreduzierte Wert darf NICHT bestehen."""
+    urteil = _red_urteil()  # Erwartung ist der UNREDUZIERTE Folgewert
+
+    assert not urteil["bestanden"]
+    vergleich = next(p for p in urteil["pruefungen"]
+                     if p["groesse"] == "dk_stichtag_2")
+    assert not vergleich["ok"]
+
+
+def test_red_ohne_anteil_bleibt_die_pruefluecke() -> None:
+    """Ohne gelieferten Anteil ist die Herabsetzung unbestimmt."""
+    urteil = _red_urteil(anteil=None)
 
     assert urteil["bestanden"], urteil["befunde"]
     assert any("dk_stichtag_2_nach_red" in luecke
                for luecke in urteil["nicht_geprueft"]), urteil["nicht_geprueft"]
-    # Und der Wert wird eben NICHT als bestandene Pruefung ausgewiesen.
     assert "dk_stichtag_2" not in [p["groesse"] for p in urteil["pruefungen"]]
+
+
+def test_gevo_nach_red_im_pruefzeitraum_ist_ein_befund() -> None:
+    """Folge-GeVos eines frisch herabgesetzten Vertrags sind noch nicht
+    abgebildet — ein Befund, kein stiller falscher Wert."""
+    urteil = pruefe_vertrag(_pruefung(gevos=(
+        GeVoErwartung("RED", 12 * 10, None, anteil=0.6),
+        GeVoErwartung("PEX", 12 * 10, 50000.0),
+    )))
+
+    assert not urteil["bestanden"]
+    assert any("nach Herabsetzung" in b for b in urteil["befunde"]), urteil
+
+
+def test_red_nach_erhoehungsscheibe_ist_ein_befund() -> None:
+    """Herabsetzung eines Vertrags mit Scheiben: Ausgestaltung offen."""
+    urteil = pruefe_vertrag(_pruefung(gevos=(
+        GeVoErwartung("ERH", 12 * 10, 5000.0),
+        GeVoErwartung("RED", 12 * 10, None, anteil=0.6),
+    )))
+
+    assert not urteil["bestanden"]
+    assert any("Erhöhungsscheiben" in b or "Erhoehungsscheiben" in b
+               for b in urteil["befunde"]), urteil
 
 
 def test_red_am_ersten_stichtag_wird_weiter_geprueft() -> None:

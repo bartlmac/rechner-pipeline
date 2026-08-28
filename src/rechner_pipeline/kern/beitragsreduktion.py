@@ -45,7 +45,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:  # pragma: no cover
+    from rechner_pipeline.kern.produkte.klv import Monatsreserve
 
 from rechner_pipeline.kern.rechenkern import Rechenkern
 
@@ -173,6 +176,130 @@ def reduziere(
         dk_vor=dk_vor,
         dk_nach=dk_nach,
     )
+
+
+@dataclass(frozen=True)
+class ReduzierterVertrag:
+    """Der geteilte Vertrag NACH einer Beitragsreduktion — die Folgebewertung.
+
+    Die Reduktion selbst rechnet :func:`reduziere`; dieses Objekt traegt
+    den Vertrag DANACH. Zweiteilung des Tarifwerks: der fortgefuehrte
+    Anteil ``anteil`` bleibt ein beitragspflichtiger Vertrag ueber
+    ``anteil * VS`` — saemtliche Zielgroessen des Kerns sind homogen in
+    der Versicherungssumme (der Beitrag ist ``VS * Bxt``) und skalieren
+    deshalb exakt mit. Der umgewandelte Teil ist eine bei der Reduktion
+    FIXIERTE beitragsfreie Summe, die auf dem beitragsfreien Reservesatz
+    weiterlaeuft — dieselbe Mechanik wie die Summe einer
+    Beitragsfreistellung (Tarifplan klv.md, GeVo-Katalog PEX).
+
+    Stornoabschlag und Rueckkaufswert gelten je VERTRAG, einmal auf die
+    Gesamtwerte gerechnet — dieselbe Regel wie bei Erhoehungsscheiben
+    (:func:`rechner_pipeline.kern.rechenkern.vertrags_monatsreserve`);
+    die Gesamt-VS ist die neue Gesamtsumme ``vs_neu``.
+    """
+
+    kern: Rechenkern
+    reduktion: Reduktion
+
+    @classmethod
+    def nach(
+        cls, kern: Rechenkern, jahr: int, anteil: float,
+        *, verfahren: str = PROSPEKTIV,
+    ) -> "ReduzierterVertrag":
+        return cls(kern=kern, reduktion=reduziere(
+            kern, jahr, anteil, verfahren=verfahren))
+
+    @property
+    def bfr_teil(self) -> float:
+        """Die bei der Reduktion fixierte beitragsfreie Summe."""
+        return self.reduktion.vs_neu - self.reduktion.anteil * self.reduktion.vs_alt
+
+    def _pruefe_monat(self, monate: int) -> None:
+        if monate < 12 * self.reduktion.jahr:
+            raise BeitragsreduktionFehler(
+                f"Monats-Stichtag {monate} liegt vor der Reduktion "
+                f"(Jahr {self.reduktion.jahr}) — davor gilt der "
+                "unreduzierte Vertrag"
+            )
+
+    def _bfr_satz(self, monate: int) -> float:
+        """Beitragsfreier Reservesatz, linear zwischen den Jahrestagen."""
+        a, rest = divmod(int(monate), 12)
+        satz = self.kern.verlaufszeile(a).vx_bfr
+        if rest:
+            u = rest / 12.0
+            satz = (1.0 - u) * satz + u * self.kern.verlaufszeile(a + 1).vx_bfr
+        return satz
+
+    def monatsreserve(self, monate: int) -> "Monatsreserve":
+        """Vertragsweite Reserven des geteilten Vertrags am Monats-Stichtag."""
+        from rechner_pipeline.kern.produkte.klv import Monatsreserve
+
+        self._pruefe_monat(monate)
+        mr = self.kern.monatsreserve(monate)
+        umgewandelt = self.bfr_teil * self._bfr_satz(monate)
+        anteil = self.reduktion.anteil
+        dr = anteil * mr.drx_bpfl + umgewandelt
+        mrv = anteil * mr.vx_mrv + umgewandelt
+        mp = self.kern.mp
+        a = int(monate) // 12
+        if a > mp.n or self.kern.produkt.ist_flex_phase(a):
+            stoab = 0.0
+        else:
+            stoab = min(mp.stoab_max,
+                        max(mp.stoab_min,
+                            mp.stoab_satz * (self.reduktion.vs_neu - dr)))
+        return Monatsreserve(
+            monate=int(monate), jahr=a, monatsanteil=(int(monate) % 12) / 12.0,
+            drx_bpfl=dr, vx_mrv=mrv, stoab=stoab,
+            rkw=max(0.0, mrv - stoab),
+        )
+
+    def bjb(self, monate: int) -> float:
+        """Bruttojahresbeitrag nach der Reduktion (0 nach Ende der Zahlung)."""
+        self._pruefe_monat(monate)
+        if monate >= 12 * self.kern.mp.t:
+            return 0.0
+        return self.reduktion.bjb_neu
+
+    def beitragsfreie_summe(self, pex_jahr: int) -> float:
+        """Beitragsfreie Gesamtsumme bei SPAETERER Beitragsfreistellung.
+
+        Der fortgefuehrte Anteil wandelt zu seinem Satz (``anteil *
+        VS_bfr(pex_jahr)``), der bereits umgewandelte Teil ist fixiert
+        und bleibt unveraendert.
+        """
+        if pex_jahr < self.reduktion.jahr:
+            raise BeitragsreduktionFehler(
+                f"Beitragsfreistellung im Jahr {pex_jahr} vor der Reduktion "
+                f"(Jahr {self.reduktion.jahr})"
+            )
+        return (self.reduktion.anteil * self.kern.beitragsfreie_summe(pex_jahr)
+                + self.bfr_teil)
+
+    def reserve_beitragsfrei(self, pex_jahr: int, monate: int) -> float:
+        """Reserve nach einer SPAETEREN Beitragsfreistellung des geteilten
+        Vertrags: die dort fixierte Gesamtsumme laeuft auf dem
+        beitragsfreien Reservesatz weiter (Spiegel von
+        :meth:`Rechenkern.monatsreserve_beitragsfrei`)."""
+        if monate < 12 * pex_jahr:
+            raise BeitragsreduktionFehler(
+                f"Monats-Stichtag {monate} vor der Beitragsfreistellung "
+                f"(Jahr {pex_jahr})"
+            )
+        return self.beitragsfreie_summe(pex_jahr) * self._bfr_satz(monate)
+
+    def terminale_leistung(self, pex_jahr: Optional[int] = None) -> float:
+        """Leistung eines terminalen Falls (TOD, ABL) nach der Reduktion.
+
+        Auf dem (teil-)beitragspflichtigen Track die neue Gesamtsumme
+        ``vs_neu``; nach einer spaeteren Beitragsfreistellung die dort
+        fixierte beitragsfreie Gesamtsumme — dieselbe Regel wie beim
+        ungeteilten Vertrag (Tarifplan klv.md, GeVo-Katalog TOD/ABL).
+        """
+        if pex_jahr is not None:
+            return self.beitragsfreie_summe(pex_jahr)
+        return self.reduktion.vs_neu
 
 
 def verfahrensdifferenz(kern: Rechenkern, jahr: int, anteil: float) -> Dict[str, float]:

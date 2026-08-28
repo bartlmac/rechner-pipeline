@@ -52,7 +52,7 @@ flowchart TD
     models -- 1 --> gates
     models -- 1 --> kern
     ontologie -- 1 --> kern
-    qa -- 7 --> kern
+    qa -- 8 --> kern
     qa -- 1 --> models
     quellen -- 1 --> kern
     quellen -- 7 --> models
@@ -112,6 +112,7 @@ flowchart TD
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_tafeln_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_zustandsmodell_py
+    rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern_korrekturschicht_py --> rechner_pipeline_kern_zustandsmodell_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_bu_py

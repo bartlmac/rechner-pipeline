@@ -79,7 +79,11 @@ from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from rechner_pipeline.kern import ModelPoint
-from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, reduziere
+from rechner_pipeline.kern.beitragsreduktion import (
+    PROSPEKTIV,
+    ReduzierterVertrag,
+    reduziere,
+)
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
     erhoehungs_scheibe,
@@ -236,6 +240,13 @@ class Vertragspruefung:
     #: eine Schicht gesetzt ist: Die Schicht rechnet ab dort, nicht ab
     #: Vertragsbeginn.
     monate_ta: Optional[int] = None
+    #: ANFANGSZUSTAND einer Herabsetzung VOR dem Migrationsstichtag:
+    #: ``(vertragsjahr, fortgefuehrter_anteil)``. Der Vertrag wird dann als
+    #: geteilter Vertrag bewertet (Kern 3.1.0,
+    #: :class:`~rechner_pipeline.kern.beitragsreduktion.ReduzierterVertrag`,
+    #: Zielverfahren prospektiv). Eine Herabsetzung ZWISCHEN den
+    #: Pruefpunkten ist kein Anfangszustand, sondern ein RED-Pruefpunkt.
+    reduktion: Optional[Tuple[int, float]] = None
 
 
 def verankerungspunkt(monate: int, erwartet: Dict[str, float]) -> Pruefpunkt:
@@ -361,6 +372,41 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
             f"police {v.police_id}: beitragsfrei_seit_jahr="
             f"{v.beitragsfrei_seit_jahr} ist kein Vertragsjahr"
         )
+    if v.reduktion is not None:
+        jahr, anteil = v.reduktion
+        unvertraeglich = [
+            name for name, gesetzt in (
+                ("Erhoehungsscheiben", bool(v.scheiben)),
+                ("Beitragsfreistellung als Anfangszustand",
+                 v.beitragsfrei_seit_jahr is not None),
+                ("Korrekturschicht", v.schicht is not None),
+            ) if gesetzt
+        ]
+        if unvertraeglich:
+            raise AktuartestFehler(
+                f"police {v.police_id}: Herabsetzung als Anfangszustand "
+                f"zusammen mit {', '.join(unvertraeglich)} rechnet die "
+                "Engine nicht — die Kombination ist nicht definiert statt "
+                "still ein Track"
+            )
+        if jahr <= 0:
+            raise AktuartestFehler(
+                f"police {v.police_id}: Reduktionsjahr {jahr} ist kein "
+                "Vertragsjahr"
+            )
+        if not 0.0 <= anteil <= 1.0:
+            raise AktuartestFehler(
+                f"police {v.police_id}: Reduktionsanteil {anteil} liegt "
+                "nicht in [0, 1] — er ist der fortgefuehrte Bruchteil des "
+                "Beitrags"
+            )
+        frueh = [p.monate for p in v.punkte if p.monate < 12 * jahr]
+        if frueh:
+            raise AktuartestFehler(
+                f"police {v.police_id}: Pruefpunkte {sorted(frueh)[:3]} "
+                f"liegen VOR der Herabsetzung (Jahr {jahr}) — dort gilt der "
+                "unreduzierte Vertrag, der Auftrag ist widerspruechlich"
+            )
     if v.schicht is not None:
         if v.monate_ta is None:
             raise AktuartestFehler(
@@ -433,6 +479,26 @@ def _deckungskapital(
     """
     if zustand == "beendet":
         return 0.0
+    if v.reduktion is not None:
+        # Anfangszustand Herabsetzung: der geteilte Vertrag (Kern 3.1.0).
+        rv = ReduzierterVertrag.nach(
+            kern, v.reduktion[0], v.reduktion[1], verfahren=PROSPEKTIV)
+        if zustand == "herabgesetzt":
+            raise AktuartestFehler(
+                f"police {v.police_id}: zweite Herabsetzung eines bereits "
+                "herabgesetzten Vertrags ist nicht abgebildet"
+            )
+        if zustand == "beitragsfrei":
+            if monate % 12:
+                raise AktuartestFehler(
+                    f"police {v.police_id}: Beitragsfreistellung eines "
+                    "herabgesetzten Vertrags unterjaehrig ist nicht "
+                    "abgebildet — sie wirkt am Vertragsjahrestag"
+                )
+            return rv.reserve_beitragsfrei(monate // 12, monate)
+        # "bestand" und "beitragspflichtig": der gefuehrte Wert des
+        # geteilten Vertrags.
+        return rv.monatsreserve(monate).vx_mrv
     if zustand == "herabgesetzt":
         # Das Zielverfahren rechnet prospektiv, also verlustfrei. Rechnet
         # das Quellsystem mit Abzug, ist die Differenz kein Fehler,
@@ -512,6 +578,23 @@ def _system_werte(
         dk_nach = _deckungskapital(
             v, mp, kern, scheiben, p.monate, nach, p.parameter)
         werte["dDK"] = dk_nach - dk_vor
+
+    if v.reduktion is not None:
+        # Der geteilte Vertrag (Anfangszustand Herabsetzung): Reserven und
+        # Rueckkaufswert vertragsweit ueber beide Teile, der Beitrag ist
+        # der fortgefuehrte Anteil. Keine Schicht dazu — die Kombination
+        # weist _pruefe_auftrag zurueck.
+        rv = ReduzierterVertrag.nach(
+            kern, v.reduktion[0], v.reduktion[1], verfahren=PROSPEKTIV)
+        if gefragt & {"kVx_MRV", "RKW"}:
+            m = rv.monatsreserve(p.monate)
+            if "kVx_MRV" in gefragt:
+                werte["kVx_MRV"] = m.vx_mrv
+            if "RKW" in gefragt:
+                werte["RKW"] = m.rkw
+        if "BJB" in gefragt:
+            werte["BJB"] = rv.bjb(p.monate)
+        return werte
 
     if scheiben:
         if gefragt & {"kVx_MRV", "RKW"}:

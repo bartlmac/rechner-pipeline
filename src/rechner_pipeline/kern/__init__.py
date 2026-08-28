@@ -89,7 +89,13 @@ from rechner_pipeline.kern.rechenkern import (
 #: (reiner Schnitt: qx-Pfad identisch, Referenzwerte gruen).
 #: 3.0.1 = Kern-XML-Ladevertrag prueft qx-Domaene und den exakten
 #: Altersbereich fail-fast; Rechenwerte und Tafelbytes bleiben unveraendert.
-__version__ = "3.0.1"
+#: 3.1.0 = Folgebewertung herabgesetzter Vertraege (beitragsreduktion.
+#: ReduzierterVertrag): Zweiteilung in fortgefuehrten Anteil und fixierte
+#: beitragsfreie Summe, vertragsweiter Stornoabschlag auf der neuen
+#: Gesamtsumme, spaetere Beitragsfreistellung und terminale Leistungen.
+#: Additive Faehigkeit fuer migrierte Bestaende mit RED-Vorgeschichte
+#: (Baldrian-Uebernahme); bestehende Rechenwerte unveraendert.
+__version__ = "3.1.0"
 
 __all__ = [
     "ModelPoint",

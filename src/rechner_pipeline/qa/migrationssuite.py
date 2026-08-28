@@ -81,6 +81,10 @@ from rechner_pipeline.kern import (
     erhoehungs_scheibe,
     vertrags_monatsreserve,
 )
+from rechner_pipeline.kern.beitragsreduktion import (
+    PROSPEKTIV,
+    ReduzierterVertrag,
+)
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 
 GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL", "RED")
@@ -330,6 +334,7 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
 
     terminal_monat: Optional[int] = None
     red_monat: Optional[int] = None
+    reduziert: Optional[ReduzierterVertrag] = None
     scheiben: List[Tuple[int, Rechenkern]] = []
     for g in sorted(v.gevos, key=lambda g: g.monate):
         if g.art not in GEVO_ARTEN:
@@ -350,6 +355,20 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
             befunde.append(
                 f"GeVo {g.art} bei Monat {g.monate} nach terminalem GeVo "
                 f"(Monat {terminal_monat}) — Lieferung inkonsistent"
+            )
+            continue
+        if red_monat is not None:
+            # Ein weiterer Vorfall NACH einer Herabsetzung im
+            # Prüfzeitraum: der geteilte Vertrag kann Folge-GeVos
+            # (zweites PEX-Fixieren, Erhöhung, Rückkauf) rechnen, aber
+            # keiner der Zweige unten tut es — sie rechnen auf dem
+            # UNGETEILTEN Kern. Ein stiller falscher Wert wäre schlimmer
+            # als ein Befund.
+            befunde.append(
+                f"GeVo {g.art} bei Monat {g.monate} nach Herabsetzung "
+                f"(Monat {red_monat}) — Folge-Geschäftsvorfälle eines im "
+                "Prüfzeitraum herabgesetzten Vertrags sind in der Suite "
+                "noch nicht abgebildet"
             )
             continue
         if g.art == "ERH":
@@ -419,24 +438,34 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     g.betrag_erwartet,
                 ))
         elif g.art == "RED":
-            # Die Herabsetzung wird hier auf ihre ZULÄSSIGKEIT geprüft,
-            # nicht auf ihren Wert. Der Grund steht in
-            # dev-docs/zahlungspfade-migrierter-vertraege.md: Ein herabgesetzter
-            # Vertrag hat im Zielkern keine Darstellung — er ist teils
-            # beitragspflichtig, teils beitragsfrei, und der Modellpunkt
-            # kann beides nicht zugleich tragen. Der Wert am
-            # Folgestichtag wird deshalb als Prüflücke ausgewiesen, statt
-            # ihn auf der ursprünglichen Summe zu rechnen und damit still
-            # falsch zu vergleichen.
+            # Der herabgesetzte Vertrag wird seit Kern 3.1.0 FORTGEFÜHRT
+            # (kern.beitragsreduktion.ReduzierterVertrag, Zweiteilung in
+            # fortgeführten Anteil und fixierte beitragsfreie Summe). Die
+            # Suite rechnet mit dem ZIELVERFAHREN (prospektiv,
+            # verlustfrei); rechnet das Quellsystem mit Abzug, zeigt der
+            # Vergleich am Folgestichtag genau die Verfahrensdifferenz —
+            # je Vertrag sichtbar, statt einer Prüflücke oder eines
+            # stillen Vergleichs auf der ursprünglichen Summe.
             #
-            # Die Wertänderung IM Moment der Herabsetzung ist davon nicht
-            # betroffen; sie prüft der Geschäftsvorfalltest A-M3 über
-            # kern.beitragsreduktion.
+            # Ohne gelieferten Anteil bleibt die Herabsetzung
+            # unbestimmt: Anteils-Vergleich UND Folgewert sind dann
+            # ausgewiesene Prüflücken.
+            #
+            # Die Wertänderung IM Moment der Herabsetzung prüft der
+            # Geschäftsvorfalltest A-M3 über kern.beitragsreduktion.
             if pex_jahr is not None:
                 befunde.append(
                     f"RED bei Monat {g.monate}: der Vertrag ist seit Jahr "
                     f"{pex_jahr} beitragsfrei — es gibt keinen Beitrag, "
                     "der sich herabsetzen ließe"
+                )
+                continue
+            if scheiben:
+                befunde.append(
+                    f"RED bei Monat {g.monate} nach dynamischer Erhöhung — "
+                    "die Herabsetzung eines Vertrags mit Erhöhungsscheiben "
+                    "ist im Zielsystem noch nicht abgebildet (Tarifplan-"
+                    "Ausgestaltung offen); Wert nicht gerechnet"
                 )
                 continue
             if g.monate % 12:
@@ -454,6 +483,9 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     "des Beitrags"
                 )
                 continue
+            else:
+                reduziert = ReduzierterVertrag.nach(
+                    kern, g.monate // 12, g.anteil, verfahren=PROSPEKTIV)
             red_monat = g.monate
         else:  # PEX
             if pex_jahr is not None:
@@ -498,11 +530,23 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
             "Abgang — Lieferung inkonsistent"
         )
     elif red_monat is not None:
-        # Siehe O-7: Der Wert ließe sich nur auf der ursprünglichen Summe
-        # rechnen, also auf einem Vertrag, den es nicht mehr gibt. Eine
-        # ausgewiesene Prüflücke ist ehrlicher als eine Zahl, die
-        # aussieht, als sei sie geprüft.
-        nicht_geprueft.append(f"dk_stichtag_2_nach_red_monat_{red_monat}")
+        if reduziert is not None:
+            # Der geteilte Vertrag wird fortgeführt (Kern 3.1.0): der
+            # fortgeführte Anteil auf dem beitragspflichtigen Track, die
+            # fixierte beitragsfreie Summe auf dem bfr-Satz. Gerechnet
+            # wird das ZIELVERFAHREN; eine Verfahrensdifferenz der
+            # Quelle erscheint als Residuum dieses Vergleichs.
+            pruefungen.append(_vergleich(
+                "dk_stichtag_2",
+                reduziert.monatsreserve(v.monate_stichtag_2).vx_mrv,
+                v.dk_erwartet_2,
+            ))
+        else:
+            # Ohne gelieferten Anteil ist die Herabsetzung unbestimmt —
+            # eine ausgewiesene Prüflücke ist ehrlicher als eine Zahl,
+            # die aussieht, als sei sie geprüft.
+            nicht_geprueft.append(
+                f"dk_stichtag_2_nach_red_monat_{red_monat}")
     else:
         if pex_jahr is not None:
             dk2 = kern.monatsreserve_beitragsfrei(

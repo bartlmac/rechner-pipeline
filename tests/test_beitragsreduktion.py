@@ -162,3 +162,83 @@ def test_beleg_traegt_das_verfahren_und_die_veraenderung():
     assert beleg["verfahren"] == MIT_ABZUG
     assert beleg["anteil"] == 0.6
     assert beleg["dDK"] == pytest.approx(r.dk_nach - r.dk_vor)
+
+
+# --------------------------------------------------------------------------- #
+# 5. Folgebewertung: der Vertrag NACH der Reduktion
+# --------------------------------------------------------------------------- #
+
+from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag  # noqa: E402
+
+
+def test_folgebewertung_setzt_stetig_an_der_reduktion_auf():
+    """Am Reduktions-Jahrestag muss die DR exakt dk_nach sein."""
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    mr = rv.monatsreserve(12 * JAHR)
+    assert mr.drx_bpfl == pytest.approx(rv.reduktion.dk_nach, rel=1e-12)
+
+
+def test_anteil_eins_ist_der_unreduzierte_vertrag():
+    """f=1 laesst alles unveraendert — bis in den Rueckkaufswert."""
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 1.0)
+    for monate in (12 * JAHR, 12 * JAHR + 7, 12 * (JAHR + 5)):
+        a, b = rv.monatsreserve(monate), KERN.monatsreserve(monate)
+        assert a.vx_mrv == pytest.approx(b.vx_mrv, rel=1e-12)
+        assert a.rkw == pytest.approx(b.rkw, rel=1e-12)
+
+
+def test_anteil_null_prospektiv_ist_die_volle_beitragsfreistellung():
+    """f=0 muss der beitragsfreien Fortfuehrung des Kerns entsprechen."""
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.0)
+    for monate in (12 * JAHR + 6, 12 * (JAHR + 3)):
+        assert rv.monatsreserve(monate).vx_mrv == pytest.approx(
+            KERN.monatsreserve_beitragsfrei(JAHR, monate), rel=1e-12)
+    assert rv.bjb(12 * JAHR) == 0.0
+
+
+def test_am_ablauf_steht_die_neue_gesamtsumme():
+    """Unabhaengige Kontrolle ueber die Produktlogik: die Reserve laeuft
+    auf die Ablaufleistung zu, und die ist nach der Teilung vs_neu."""
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    n = KERN.mp.n
+    assert rv.monatsreserve(12 * n).vx_mrv == pytest.approx(
+        rv.reduktion.vs_neu, rel=1e-9)
+    assert rv.terminale_leistung() == pytest.approx(rv.reduktion.vs_neu)
+
+
+def test_spaetere_beitragsfreistellung_fixiert_beide_teile():
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    pex = JAHR + 4
+    erwartet = 0.6 * KERN.beitragsfreie_summe(pex) + rv.bfr_teil
+    assert rv.beitragsfreie_summe(pex) == pytest.approx(erwartet, rel=1e-12)
+    assert rv.terminale_leistung(pex) == pytest.approx(erwartet, rel=1e-12)
+    with pytest.raises(BeitragsreduktionFehler, match="vor der Reduktion"):
+        rv.beitragsfreie_summe(JAHR - 1)
+
+
+def test_beitrag_nach_reduktion_und_nach_beitragsende():
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    assert rv.bjb(12 * JAHR) == pytest.approx(
+        0.6 * KERN.gross_annual_premium(), rel=1e-12)
+    assert rv.bjb(12 * KERN.mp.t) == 0.0
+    with pytest.raises(BeitragsreduktionFehler, match="vor der Reduktion"):
+        rv.bjb(12 * (JAHR - 1))
+
+
+def test_stornoabzug_gilt_vertragsweit_auf_der_neuen_gesamtsumme():
+    """Unabhaengige Nachrechnung der Klammer min(max(...)) am Monatswert."""
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    monate = 12 * JAHR + 5
+    mr = rv.monatsreserve(monate)
+    mp = KERN.mp
+    erwartet = min(mp.stoab_max,
+                   max(mp.stoab_min,
+                       mp.stoab_satz * (rv.reduktion.vs_neu - mr.drx_bpfl)))
+    assert mr.stoab == pytest.approx(erwartet, rel=1e-12)
+    assert mr.rkw == pytest.approx(mr.vx_mrv - mr.stoab, rel=1e-12)
+
+
+def test_monat_vor_der_reduktion_faellt_hart():
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    with pytest.raises(BeitragsreduktionFehler, match="vor der Reduktion"):
+        rv.monatsreserve(12 * JAHR - 1)
