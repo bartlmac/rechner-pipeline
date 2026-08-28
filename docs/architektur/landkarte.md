@@ -31,7 +31,7 @@ flowchart TD
     bestand["bestand<br/>17 Module"]
     fall["fall<br/>1 Module"]
     gates["gates<br/>13 Module"]
-    kern["kern<br/>11 Module"]
+    kern["kern<br/>12 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
     models["models<br/>5 Module"]
     ontologie["ontologie<br/>16 Module"]
@@ -73,7 +73,7 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
     bu["bu<br/>25 Module"]
-    klv["klv<br/>68 Module"]
+    klv["klv<br/>69 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
     system_fall["system/fall<br/>1 Module"]
@@ -105,6 +105,7 @@ flowchart TD
     rechner_pipeline_kern_produkte_klv_py["klv"]
     rechner_pipeline_kern_rechenkern_py["rechenkern"]
     rechner_pipeline_kern_tafeln_py["tafeln"]
+    rechner_pipeline_kern_zahlungspfad_py["zahlungspfad"]
     rechner_pipeline_kern_zustandsmodell_py["zustandsmodell"]
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_konventionen_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_model_point_py
@@ -125,6 +126,9 @@ flowchart TD
     rechner_pipeline_kern_rechenkern_py --> rechner_pipeline_kern_produkte___init___py
     rechner_pipeline_kern_rechenkern_py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_tafeln_py --> rechner_pipeline_kern_konventionen_py
+    rechner_pipeline_kern_zahlungspfad_py --> rechner_pipeline_kern_model_point_py
+    rechner_pipeline_kern_zahlungspfad_py --> rechner_pipeline_kern_tafeln_py
+    rechner_pipeline_kern_zahlungspfad_py --> rechner_pipeline_kern_zustandsmodell_py
     rechner_pipeline_kern_zustandsmodell_py --> rechner_pipeline_kern_konventionen_py
     rechner_pipeline_kern_zustandsmodell_py --> rechner_pipeline_kern_tafeln_py
 ```

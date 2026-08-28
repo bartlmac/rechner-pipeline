@@ -69,6 +69,23 @@ UEBERNEHMEN = (
 )
 
 
+#: Minimale Jekyll-Konfiguration der veroeffentlichten Seite. Das Thema
+#: rendert Tabellen und Code lesbar; die Artefakte werden ausdruecklich
+#: NICHT von Jekyll angefasst, damit JSON und CSV unveraendert
+#: herunterladbar bleiben.
+JEKYLL = """theme: jekyll-theme-cayman
+title: Migrationsfall — Vorfuehrung
+description: >-
+  Vorfuehrung einer agentischen Bestandsmigration. Erfundene Unternehmen,
+  synthetische Vertraege, mit einem Simulationsschluessel gezeichnete
+  Abnahmen.
+include:
+  - artefakte
+keep_files:
+  - artefakte
+"""
+
+
 class VeroeffentlichungFehler(RuntimeError):
     """Etwas darf nicht auf die Seite — fail-fast statt Warnung."""
 
@@ -321,6 +338,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         (ziel / "index.md").write_text(
             _seite(fall, Path(args.repo).resolve(), kopiert, verlauf_text),
             encoding="utf-8")
+        # Jekyll rendert die Markdown-Seiten; ohne Konfiguration nimmt
+        # GitHub Pages ein Vorgabethema, das die Tabellen bricht.
+        (ziel / "_config.yml").write_text(JEKYLL, encoding="utf-8")
     except VeroeffentlichungFehler as exc:
         print(f"ABBRUCH: {exc}", file=sys.stderr)
         return 1
@@ -334,6 +354,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     print("  - Stehen Klarnamen im Verlaufsprotokoll?")
     print("  - Ist der Simulationshinweis oben noch zutreffend?")
     print("  - Traegt die Seite etwas, das die Vorfuehrung verrät?")
+    print()
+    print("Veroeffentlichen (der Mensch, bewusst — siehe werkzeuge/README.md):")
+    print(f"  git worktree add /tmp/gh-pages gh-pages")
+    print(f"  cp -r {ziel}/. /tmp/gh-pages/")
+    print(f"  cd /tmp/gh-pages && git add -A && git commit && git push")
     return 0
 
 
