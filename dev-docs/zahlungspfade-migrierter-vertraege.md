@@ -100,6 +100,40 @@ Hochgerechnet auf 500.000 Vertraege: 16,5 Sekunden einkernig, eine
 Sekunde auf sechzehn Kernen. Die Bauform muss also nicht aus
 Geschwindigkeitsgruenden bleiben.
 
+**Die naive Form geht NICHT** (vermessen 2026-08-28). Der Nachbau ueber
+Zahlungspfade ist bit-exakt moeglich — alle fuenf KLV-Referenzdateien
+liessen sich allein mit ``Zustandsmodell.barwert_verlauf``
+reproduzieren. Aber nur mit **getrennten Einheits-Paessen und Faktoren
+AUSSERHALB der Rekursion**. Sobald Todesfall und Ablauf in EINEN Aufruf
+wandern oder die Versicherungssumme in den Zahlungsvektor gezogen wird,
+weichen die Werte in der letzten Stelle ab, und die bit-exakte Abnahme
+faellt. Die Summationsreihenfolge ist Teil dessen, was die
+eingefrorenen Referenzwerte festhalten.
+
+Fuer die Umstellung heisst das: Der Standardvertrag behaelt die heutige
+arithmetische Gestalt, sonst ist die Abnahme nicht zu haben. Die
+Allgemeinheit kommt daneben, fuer Vertraege mit geaendertem Verlauf —
+fuer die es ohnehin keine eingefrorene Referenz gibt.
+
+**Drei weitere Fallen aus derselben Vermessung**, jede eine, an der ein
+Nachbau still falsch wird:
+
+* **Es gibt keine Netto-Reserve im Code.** ``kVx_bpfl``/``kDRx_bpfl``
+  ist die GEZILLMERTE Deckungsrueckstellung, ``kVx_MRV`` dieselbe
+  Groesse mit auf ``zillmer_dauer`` gestreckter
+  Abschlusskostentilgung — die Bilanz- und Rueckkaufsgroesse. Wer die
+  Netto-Reserve als Vergleich nimmt, liegt in Jahr 3 um 1.834 daneben.
+  Genau daran ist der Schnellversuch gescheitert.
+* **Der Beitrag in der Reserve ist ein SATZ, das Zillmerglied ein
+  BETRAG.** In ``kVx_bpfl`` steht der gezillmerte Nettobeitragssatz
+  ``Pxt`` (je Einheit Versicherungssumme), im Zillmerglied von
+  ``kVx_MRV`` dagegen der absolute ``BJB``. Derselbe Methodenrumpf
+  wechselt die Masseinheit.
+* **``VS_bfr`` springt bei ``a = t``.** Drei Zweige: null nach Ablauf,
+  ``kVx_MRV / kVx_bfr`` waehrend der Beitragszahlung, und danach die
+  volle Versicherungssumme — im Referenzvertrag ein Sprung um 1,1
+  Prozent gegenueber dem, was die Formel ergaebe.
+
 **Was die Skizze NICHT leistet, und was sie ausdruecklich NICHT
 vorschlaegt.**
 
@@ -117,10 +151,12 @@ Vorgeschlagen ist deshalb ein ZWEITER Pfad neben dem skalaren:
 * der Spektrum-Pfad bewertet Vertraege, deren Verlauf geaendert wurde;
 * **im Ueberschneidungsbereich muessen beide denselben Wert liefern** —
   ein Standardvertrag ueber Spektren bewertet muss die skalare Reserve
-  treffen.
+  treffen, und zwar bit-exakt gegen die eingefrorenen Referenzwerte.
 
 Diese Deckungsgleichheit ist der erste Meilenstein und zugleich die
-Sperre: Ohne sie darf der zweite Pfad nicht produktiv werden.
+Sperre: Ohne sie darf der zweite Pfad nicht produktiv werden. Sie ist
+erreichbar — siehe die Vermessung unten —, aber nur unter Erhalt der
+arithmetischen Gestalt.
 
 Sie loest ausserdem die Kostenfrage nicht auf, sondern macht sie
 sichtbar. Ein Zahlungspfad muss die Kosten enthalten, und ob der
