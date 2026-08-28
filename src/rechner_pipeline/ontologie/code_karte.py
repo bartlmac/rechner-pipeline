@@ -57,7 +57,7 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     "spez": {"spez", "ontologie", "kern"},           # kern: lesende
     #                                                  Introspektion (D2)
     "quellen": {"quellen", "models", "ontologie", "kern", "spez"},
-    "qa": {"qa", "models", "quellen", "kern", "kommutationskern"},
+    "qa": {"qa", "models", "quellen", "kern"},
     "bestand": {"bestand", "kern", "models", "qa"},
     "gates": {"gates", "ontologie", "quellen", "kern", "models", "qa",
               "spez", "bestand", "fall"},            # Pruef-CLIs lesen alles;
@@ -67,9 +67,15 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     "__init__": set(),                               # Paketwurzel
 }
 
-#: ADR-004: der Kommutations-Zweitkern hat genau einen Konsumenten.
+#: ADR-013: Der Kommutations-Zweitkern hat KEINEN Konsumenten mehr im
+#: Produktivpfad. Er lebt nur noch als unabhaengiger Zeuge der
+#: algebraischen Eigenschaftstests (tests/test_kern_algebraisch.py), die
+#: ihn testseitig direkt bauen — nicht ueber eine Schnittstelle, die der
+#: Zielkern seinetwegen aufrechterhaelt. Genau darin liegt der
+#: Unterschied zu vorher: Der Zweitkern hat keinen Anspruch mehr an den
+#: lebenden Code, und deshalb formt er ihn auch nicht mehr.
 ZWEITKERN = "kommutationskern"
-ZWEITKERN_KONSUMENTEN = {"qa", "kommutationskern"}
+ZWEITKERN_KONSUMENTEN = {"kommutationskern"}
 
 #: Verbotene SDK-Namensfamilien. Geprueft wird die FAMILIE, nicht der
 #: exakte Name: ``langchain_openai``, ``langgraph_sdk``,

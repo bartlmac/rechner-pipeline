@@ -45,15 +45,23 @@ TESTS = REPO / "tests"
 def test_karte_des_repos_haelt_die_schichtregeln():
     karte = baue_karte(SRC)
     assert validate(karte) == []
-    # ADR-004 explizit: kein Zielkern-Modul importiert den Zweitkern.
+    # ADR-013: Der Zweitkern hat KEINEN Konsumenten im Produktivpfad
+    # mehr. Frueher verlangte dieser Test die Kreuz-Check-Kante
+    # qa -> Zweitkern; sie ist mit der Toleranz-Ueberleitung entfallen.
+    # Was den Zweitkern noch nutzt, sind die algebraischen
+    # Eigenschaftstests — testseitig, ohne Kante in der Code-Karte.
+    #
+    # Die Umkehrung ist jetzt die Aussage: Findet sich hier je wieder
+    # eine Kante, hat sich der Produktivpfad an eine stillgelegte
+    # Rechenschiene gebunden, und genau das soll nicht passieren.
     zweitkern_kanten = [
         (k["von"], k["nach"]) for k in karte["kanten"]
         if k["nach"].startswith("rechner_pipeline/kommutationskern/")
         and not k["von"].startswith("rechner_pipeline/kommutationskern/")
     ]
-    assert all(von.startswith("rechner_pipeline/qa/")
-               for von, _ in zweitkern_kanten), zweitkern_kanten
-    assert zweitkern_kanten, "Kreuz-Check-Kante qa -> Zweitkern fehlt"
+    assert not zweitkern_kanten, (
+        "Der Produktivpfad importiert den stillgelegten Zweitkern "
+        f"(ADR-013): {zweitkern_kanten}")
 
 
 def test_karte_ist_deterministisch():

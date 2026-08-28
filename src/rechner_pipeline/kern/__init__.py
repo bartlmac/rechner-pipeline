@@ -10,8 +10,10 @@ Zustandsmodell-Welt — die historische Excel-Paritaet (617/617) war die
 EINMALIGE Abnahme des Uebersetzungsakts und ist KEIN laufender Referenzwert
 mehr; die klassischen Kommutationsspalten sind kein Bestandteil des
 Kerns, sondern leben als separater Zweitkern
-(:mod:`rechner_pipeline.kommutationskern`) ausschliesslich fuer die
-Kreuz-Rechenschiene der QA.
+(:mod:`rechner_pipeline.kommutationskern`). Seit ADR-013 hat er KEINEN
+Konsumenten im Produktivpfad mehr: Die Toleranz-Ueberleitung ist ausser
+Betrieb, und der Zweitkern lebt nur noch als unabhaengiger Zeuge der
+algebraischen Eigenschaftstests, die ihn testseitig direkt bauen.
 
 Schichten::
 
@@ -38,9 +40,12 @@ Abnahme-Protokoll fuer Kern-Aenderungen:
    — sie sind die Regressionssicherung des Kerns. Ein Diff dort
    braucht eine fachliche Begruendung im selben Commit (bewusste Abnahme
    statt stiller Drift).
-2. Die Toleranz-Ueberleitung (:mod:`rechner_pipeline.qa.ueberleitung`)
-   gegen den separaten Kommutationskern muss in der Rundungsklasse
-   bleiben — zwei unabhaengige Rechenwege, eine Toleranz.
+2. *(entfallen mit ADR-013.)* Die Toleranz-Ueberleitung gegen den
+   Kommutationskern war der Uebersetzungsbeleg des Backbone-Wechsels
+   und ist erbracht. Was von der Unabhaengigkeit bleibt, steht in den
+   algebraischen Eigenschaftstests: Sie halten die Durchreicher
+   ``pv_benefits``/``pv_premiums``/``net_premium`` gegen den Zweitkern,
+   damit dort nicht der Methodenrumpf gegen sich selbst prueft.
 3. Die algebraischen Eigenschaften (qa_contract, Hypothesis) muessen
    halten.
 4. Je MIGRATIONSFALL gilt der Generations-Golden-Master (Gate P-K1):
@@ -74,7 +79,9 @@ from rechner_pipeline.kern.rechenkern import (
 #: 1.x/2.x = Migrations- und Backbone-Aera (Historie in Git).
 #: 3.0.0 = Zielbild-Schnitt (Beschluss Bartek 2026-08-16): Kern
 #: vollstaendig in der Zustandsmodell-Welt; Kommutation als separater
-#: Zweitkern (rechner_pipeline.kommutationskern) nur noch Kreuzschiene;
+#: Zweitkern (rechner_pipeline.kommutationskern), seit ADR-013 ohne
+#: Konsumenten im Produktivpfad und nur noch Zeuge der algebraischen
+#: Eigenschaftstests;
 #: Excel-Paritaet 617/617 als Kern-Referenzwert entfernt (sie war die einmalige
 #: Abnahme des Uebersetzungsakts); Tafel-Schicht eigenstaendig
 #: (kern/tafeln.py, Erschoepfungs-Domaene rein aus qx); Verlaufswerte

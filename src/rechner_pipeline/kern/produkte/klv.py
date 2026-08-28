@@ -115,20 +115,24 @@ class KLV:
     contract_verlauf_bis: int | None = 50
     model_point_cls = ModelPoint
 
-    def __init__(self, mp: ModelPoint, barwerte=None) -> None:
-        """``barwerte`` erlaubt ein alternatives Rechenrückgrat mit dem
-        ``Barwerte``-Interface. Produktiver Default ist seit der
-        abgenommenen Toleranz-Überleitung (kern 2.0.0, Bartek 2026-08-12;
-        6170 Werte, 0 abweichend, max. 4e-13 relativ) das
-        Zustandsmodell-Rückgrat; die Kommutations-Schiene bleibt als
-        Kreuz-Check-Schiene erhalten (``qa/ueberleitung`` injiziert beide
-        explizit)."""
+    def __init__(self, mp: ModelPoint) -> None:
+        """Das Rechenrückgrat ist das Zustandsmodell — ohne Alternative.
+
+        Bis ADR-013 nahm dieser Konstruktor ein austauschbares
+        ``Barwerte``-Rückgrat, damit die Toleranz-Überleitung denselben
+        Produktcode einmal mit der Kommutation und einmal mit dem
+        Zustandsmodell rechnen konnte. Diese Überleitung war der
+        Übersetzungsbeleg des Backbone-Wechsels (kern 2.0.0, 2026-08-12;
+        6170 Werte, 0 abweichend, max. 4e-13 relativ) und ist erbracht.
+
+        Die Einhängestelle fällt mit ihr. Sie war der Anspruch, den der
+        Zweitkern an den Zielkern hatte — und über ihn kam die Grenze
+        des Kommutationsmodells herein: Ein austauschbares
+        ``Barwerte``-Rückgrat kann nur Einheitsbarwerte liefern, also
+        konstante Summe und konstanten Beitrag."""
         self.mp = mp
         self.basis = tafeln.basis(mp.sex, mp.tafel)
-        self.bw = (
-            barwerte if barwerte is not None
-            else ZustandsBarwerte(self.basis, mp.zins)
-        )
+        self.bw = ZustandsBarwerte(self.basis, mp.zins)
         self._scalar_cache: Dict[str, float] = {}
         self._zeilen_cache: Dict[int, Verlaufszeile] = {}
 
