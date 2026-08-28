@@ -430,3 +430,61 @@ def test_beitrag_bleibt_von_der_schicht_unberuehrt():
     )
     assert pruefe_vertrag(mit, _profil())["bestanden"]
     assert pruefe_vertrag(ohne, _profil())["bestanden"]
+
+
+# --------------------------------------------------------------------------- #
+# Herabsetzung (RED) — der Vorfall, dessen Wirkung im Parameter steht
+# --------------------------------------------------------------------------- #
+
+
+def test_red_rechnet_dDK_aus_dem_anteil():
+    """Der Pruefwert der Herabsetzung ist die Wirkung des Zielverfahrens.
+
+    Die Engine darf ihn nicht aus einem Zustandspaar ableiten: Wie weit
+    der Vertrag geteilt wird, steht im Vorfall.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, reduziere
+
+    jahr = 9
+    erwartet = reduziere(KERN, jahr, 0.6, verfahren=PROSPEKTIV).d_dk
+    vertrag = _vertrag(
+        Pruefpunkt(12 * jahr, {"dDK": erwartet}, "RED", {"anteil": 0.6})
+    )
+    assert pruefe_vertrag(vertrag, _profil("A-M3"))["bestanden"] is True
+
+
+def test_red_ohne_anteil_ist_harter_fehler():
+    """Ein geratener Anteil waere eine erfundene Vergleichsgroesse."""
+    vertrag = _vertrag(Pruefpunkt(12 * 9, {"dDK": -100.0}, "RED"))
+    with pytest.raises(AktuartestFehler, match="parameter\\['anteil'\\]"):
+        pruefe_vertrag(vertrag, _profil("A-M3"))
+
+
+@pytest.mark.parametrize("anteil", [-0.1, 1.5, float("nan")])
+def test_red_anteil_ausserhalb_null_bis_eins_faellt_aus(anteil):
+    vertrag = _vertrag(
+        Pruefpunkt(12 * 9, {"dDK": -100.0}, "RED", {"anteil": anteil})
+    )
+    with pytest.raises(AktuartestFehler, match="liegt nicht in"):
+        pruefe_vertrag(vertrag, _profil("A-M3"))
+
+
+def test_red_unterjaehrig_faellt_aus_solange_das_rumpfjahr_offen_ist():
+    """Anders als Storno ist die Herabsetzung nur am Vertragsstichtag.
+
+    Sie unterjaehrig zuzulassen hiesse, eine Rumpfjahr-Konvention still
+    festzulegen (offener Punkt O-1).
+    """
+    vertrag = _vertrag(
+        Pruefpunkt(12 * 9 + 3, {"dDK": -100.0}, "RED", {"anteil": 0.6})
+    )
+    with pytest.raises(AktuartestFehler, match="nur am Vertragsstichtag"):
+        pruefe_vertrag(vertrag, _profil("A-M3"))
+
+
+def test_anteil_eins_aendert_das_deckungskapital_nicht():
+    """Der Randfall haelt fest, dass keine Reduktion auch keine Wirkung hat."""
+    vertrag = _vertrag(
+        Pruefpunkt(12 * 9, {"dDK": 0.0}, "RED", {"anteil": 1.0})
+    )
+    assert pruefe_vertrag(vertrag, _profil("A-M3"))["bestanden"] is True

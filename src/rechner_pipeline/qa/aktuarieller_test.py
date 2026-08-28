@@ -75,9 +75,11 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from rechner_pipeline.kern import ModelPoint
+from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, reduziere
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
     erhoehungs_scheibe,
@@ -123,7 +125,7 @@ STICHTAGS_ANLAESSE = (ANLASS_UEBERNAHME, ANLASS_FORTSCHREIBUNG)
 
 #: Die Geschaeftsvorfaelle des Bewegungsjournals (A-M3). Die Kennungen sind
 #: dieselben wie im Ledger der Bestandsfuehrung.
-GEVO_ARTEN = ("STO", "PEX", "ABL", "TOD", "INV", "REA", "ERH")
+GEVO_ARTEN = ("STO", "PEX", "ABL", "TOD", "INV", "REA", "ERH", "RED")
 
 ALLE_ANLAESSE = STICHTAGS_ANLAESSE + (ANLASS_VERLAUF,) + GEVO_ARTEN
 
@@ -140,6 +142,10 @@ ALLE_ANLAESSE = STICHTAGS_ANLAESSE + (ANLASS_VERLAUF,) + GEVO_ARTEN
 #:   ein Abzug macht sie negativ — genau der Pruefwert, um den es geht.
 #: * Eine dynamische Erhoehung legt eine neue Scheibe an, deren Reserve bei
 #:   null beginnt: ``dDK`` ist null. Ein anderer Wert ist ein Befund.
+#: * Die Herabsetzung TEILT den Vertrag: Ein Anteil laeuft
+#:   beitragspflichtig weiter, der Rest wird umgewandelt. Wie viel, steht
+#:   nicht im Zustand, sondern im Parameter des Vorfalls — deshalb
+#:   verlangt sie ``parameter["anteil"]`` am Pruefpunkt.
 #: * Invalidisierung und Reaktivierung sind Zustandswechsel des
 #:   BU-Zustandsgraphen. Sie brauchen die BU-Zustandsbewertung; die
 #:   Engine lehnt sie ab, statt einen KLV-Wert auszugeben.
@@ -148,10 +154,16 @@ GEVO_WIRKUNG: Mapping[str, Optional[Tuple[str, str]]] = {
     "ABL": ("bestand", "beendet"),
     "TOD": ("bestand", "beendet"),
     "PEX": ("beitragspflichtig", "beitragsfrei"),
+    "RED": ("beitragspflichtig", "herabgesetzt"),
     "ERH": ("bestand", "bestand"),
     "INV": None,
     "REA": None,
 }
+
+#: Zustaende, die einen Parameter des Vorfalls brauchen — und welchen.
+#: Ohne ihn ist der Wert nicht bestimmt, und die Engine bricht ab, statt
+#: einen Anteil zu raten.
+ZUSTANDSPARAMETER: Mapping[str, str] = {"herabgesetzt": "anteil"}
 
 
 class AktuartestFehler(ValueError):
@@ -170,11 +182,16 @@ class Pruefpunkt:
 
     ``erwartet`` traegt die gelieferten Vergleichswerte mit Kern-
     Groessennamen als Schluesseln.
+
+    ``parameter`` traegt, was der Vorfall selbst mitbringt und was nicht
+    aus dem Vertrag folgt — bei der Herabsetzung der fortgefuehrte
+    Beitragsanteil. Fuer alle anderen Anlaesse bleibt er leer.
     """
 
     monate: int
     erwartet: Dict[str, float]
     anlass: str
+    parameter: Mapping[str, float] = field(default_factory=dict)
 
     @property
     def ist_gevo(self) -> bool:
@@ -279,6 +296,31 @@ def _pruefe_punkt(v: Vertragspruefung, p: Pruefpunkt, mp: ModelPoint) -> None:
             "den Zustand des BU-Graphen). Die Engine rechnet sie nicht und "
             "gibt keinen KLV-Wert aus, der so aussaehe als sei er einer"
         )
+    verlangt = ZUSTANDSPARAMETER.get(
+        (GEVO_WIRKUNG.get(p.anlass) or ("", ""))[1]
+    )
+    if verlangt is not None and "dDK" in p.erwartet:
+        wert = p.parameter.get(verlangt)
+        if wert is None:
+            raise AktuartestFehler(
+                f"police {v.police_id}: dDK fuer {p.anlass} verlangt "
+                f"parameter[{verlangt!r}] — wie weit der Vertrag geteilt "
+                "wird, steht im Vorfall und nicht im Vertrag. Die Engine "
+                "raet ihn nicht"
+            )
+        if not math.isfinite(wert) or not 0.0 <= wert <= 1.0:
+            raise AktuartestFehler(
+                f"police {v.police_id}: {verlangt}={wert!r} liegt nicht in "
+                "[0, 1] — er ist der fortgefuehrte Bruchteil des Beitrags"
+            )
+        if p.unterjaehrig:
+            raise AktuartestFehler(
+                f"police {v.police_id}: monate={p.monate} — die Herabsetzung "
+                "findet nur am Vertragsstichtag statt (Beschluss 2026-08-28, "
+                "kern.beitragsreduktion). Ein unterjaehriger Punkt setzte "
+                "eine Rumpfjahr-Konvention voraus, die noch nicht "
+                "entschieden ist"
+            )
     if v.scheiben and set(p.erwartet) - {"kVx_MRV", "RKW", "dDK"}:
         raise AktuartestFehler(
             f"police {v.police_id}: mit Erhoehungsscheiben rechnet die "
@@ -380,15 +422,25 @@ def _deckungskapital(
     scheiben,
     monate: int,
     zustand: str,
+    parameter: Mapping[str, float] = MappingProxyType({}),
 ) -> float:
     """Deckungskapital in einem benannten Zustand — ohne Interpolation.
 
     ``bestand`` ist der gefuehrte Wert, ``beendet`` ist null (der Vertrag
     existiert nach dem Vorfall nicht mehr), ``beitragspflichtig`` und
     ``beitragsfrei`` sind die beiden Seiten der Umwandlung.
+    ``herabgesetzt`` ist der geteilte Vertrag nach einer Beitragsreduktion.
     """
     if zustand == "beendet":
         return 0.0
+    if zustand == "herabgesetzt":
+        # Das Zielverfahren rechnet prospektiv, also verlustfrei. Rechnet
+        # das Quellsystem mit Abzug, ist die Differenz kein Fehler,
+        # sondern die Verfahrensfrage — sie gehoert in das Residuum und
+        # nicht in eine Anpassung der Engine (kern.beitragsreduktion).
+        return reduziere(
+            kern, monate // 12, parameter["anteil"], verfahren=PROSPEKTIV
+        ).dk_nach
     if zustand == "beitragsfrei":
         a0 = v.beitragsfrei_seit_jahr
         if a0 is None:
@@ -455,8 +507,10 @@ def _system_werte(
 
     if "dDK" in gefragt:
         vor, nach = GEVO_WIRKUNG[p.anlass]  # von _pruefe_punkt abgesichert
-        dk_vor = _deckungskapital(v, mp, kern, scheiben, p.monate, vor)
-        dk_nach = _deckungskapital(v, mp, kern, scheiben, p.monate, nach)
+        dk_vor = _deckungskapital(
+            v, mp, kern, scheiben, p.monate, vor, p.parameter)
+        dk_nach = _deckungskapital(
+            v, mp, kern, scheiben, p.monate, nach, p.parameter)
         werte["dDK"] = dk_nach - dk_vor
 
     if scheiben:
