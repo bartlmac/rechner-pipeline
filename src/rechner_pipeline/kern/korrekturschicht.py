@@ -35,6 +35,7 @@ Knoten: klv, bu
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -439,3 +440,128 @@ class Korrekturschicht:
             floor = float(mindestwerte[j])
             if gesamt < floor - 1e-9:
                 raise FloorVerletzung(j, gesamt, floor)
+
+
+# --------------------------------------------------------------------------- #
+# Heilung: welcher Geschaeftsvorfall die Schicht aufloest (9.7, Klasse A)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class Heilungsregel:
+    """Was ein Geschaeftsvorfall mit der Korrekturschicht macht.
+
+    ``heilt`` heisst: Der Vorfall rechnet den Vertrag neu und rechnet dabei
+    das Gesamt-Deckungskapital EINSCHLIESSLICH der Schicht an. Danach ist
+    der Kalibrierungsfaktor null — der Vertrag ist rein prospektiv, das
+    Migrationsresiduum ist erledigt (9.7, Klasse A).
+
+    ``geprueft`` unterscheidet eine fachlich entschiedene Zuordnung von
+    einer vorlaeufigen. Vorlaeufige Eintraege sind bewusst vollstaendig
+    aufgefuehrt statt weggelassen: Ein fehlender Vorfall wuerde stillschweigend
+    nicht heilen, und niemand faende die Luecke.
+    """
+
+    heilt: bool
+    geprueft: bool
+    begruendung: str
+
+
+#: Je Geschaeftsvorfall, ob er die Korrekturschicht aufloest.
+#:
+#: **Ziel der Zuordnung** (Beschluss 2026-08-28): Das Residuum soll so
+#: schnell wie moeglich verschwinden, aber nur dort, wo es rechtskonform
+#: ist — naemlich wo der Vertrag ohnehin neu gerechnet wird.
+#:
+#: **Abweichung von Grundsatzdokumentation 9.7:** Die Tabelle dort fuehrt
+#: "Dynamik" unter den rechnenden Geschaeftsvorfaellen der Klasse A. Das
+#: trifft fuer die dynamische Erhoehung dieses Systems nicht zu: Sie legt
+#: eine NEUE SCHEIBE an und laesst den bestehenden Vertrag unberuehrt
+#: (``kern.rechenkern.erhoehungs_scheibe``). Es wird nichts neu gerechnet,
+#: also gibt es keinen Anlass, die Schicht aufzuloesen. Der Abschnitt ist
+#: entsprechend praezisiert.
+HEILUNG: Mapping[str, Heilungsregel] = {
+    "RED": Heilungsregel(
+        heilt=True, geprueft=True,
+        begruendung="Beitragsreduktion rechnet den Vertrag neu — das "
+                    "Gesamt-Deckungskapital einschliesslich Schicht geht in "
+                    "die Neuberechnung ein (9.7, Klasse A)",
+    ),
+    "PEX": Heilungsregel(
+        heilt=True, geprueft=False,
+        begruendung="Beitragsfreistellung rechnet neu; 9.7 fuehrt sie als "
+                    "Klasse A. Zuordnung uebernommen, fachlich noch nicht "
+                    "bestaetigt",
+    ),
+    "ERH": Heilungsregel(
+        heilt=False, geprueft=True,
+        begruendung="Die dynamische Erhoehung legt eine neue Scheibe an und "
+                    "laesst den bestehenden Vertrag unberuehrt — es wird "
+                    "nichts neu gerechnet. Abweichung von 9.7, wo Dynamik "
+                    "unter Klasse A steht",
+    ),
+    "STO": Heilungsregel(
+        heilt=False, geprueft=True,
+        begruendung="Rueckkauf ist wertkontinuierlich (9.7, Klasse B): Die "
+                    "Schicht zahlt sich im Rueckkaufswert mit aus, statt "
+                    "aufgeloest zu werden",
+    ),
+    "TOD": Heilungsregel(
+        heilt=False, geprueft=True,
+        begruendung="Tod mit fester Versicherungssumme ist vererbend (9.7, "
+                    "Klasse B): Der Schichtwert verfaellt",
+    ),
+    "ABL": Heilungsregel(
+        heilt=False, geprueft=True,
+        begruendung="Der Ablauf traegt die Terminalbedingung V_korr(T) = 0 — "
+                    "die Schicht ist dort ohnehin null",
+    ),
+    "INV": Heilungsregel(
+        heilt=False, geprueft=False,
+        begruendung="Invalidisierung wechselt den Zustand des BU-Graphen. Ob "
+                    "der Wechsel neu rechnet, haengt an der noch offenen "
+                    "BU-Zustandsbewertung",
+    ),
+    "REA": Heilungsregel(
+        heilt=False, geprueft=False,
+        begruendung="Reaktivierung wie INV — offen bis zur BU-Bewertung",
+    ),
+    "MIG": Heilungsregel(
+        heilt=False, geprueft=True,
+        begruendung="Der Migrationszugang ERZEUGT die Schicht; er kann sie "
+                    "nicht im selben Vorgang aufloesen",
+    ),
+}
+
+
+def heilt(vorfall: str) -> bool:
+    """Ob dieser Geschaeftsvorfall die Korrekturschicht aufloest.
+
+    Ein unbekannter Vorfall ist ein harter Fehler, keine stille
+    Nicht-Heilung: Wer eine neue Vorfallart einfuehrt, muss ihre Wirkung
+    auf die Schicht entscheiden.
+    """
+    regel = HEILUNG.get(vorfall)
+    if regel is None:
+        raise KorrekturschichtFehler(
+            f"unbekannter Geschaeftsvorfall {vorfall!r} — seine Wirkung auf "
+            "die Korrekturschicht ist zu entscheiden, bevor er gebucht wird "
+            f"(bekannt: {sorted(HEILUNG)})"
+        )
+    return regel.heilt
+
+
+def ungeprueft() -> List[str]:
+    """Die Vorfaelle, deren Zuordnung fachlich noch nicht bestaetigt ist."""
+    return sorted(k for k, r in HEILUNG.items() if not r.geprueft)
+
+
+def absorbiere(parameter: Schichtparameter) -> Schichtparameter:
+    """Klasse-A-Absorption: der Vertrag ist geheilt, die Schicht ist null.
+
+    Der Verankerungsoperator mit $R = 0$ (9.8, dritter Aufrufkontext).
+    Die uebrigen Parameter bleiben stehen, damit im Beleg nachvollziehbar
+    ist, dass hier einmal eine Schicht war — eine geloeschte Schicht und
+    eine nie vorhandene sind verschiedene Sachverhalte.
+    """
+    return dataclasses.replace(parameter, rho=0.0)

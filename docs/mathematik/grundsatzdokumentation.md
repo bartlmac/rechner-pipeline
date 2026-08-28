@@ -454,9 +454,16 @@ geschieht. Die folgende Tabelle ist der **Default**; die vollständige
 Klassifikation aller Übergänge des jeweiligen Zustandsgraphen gehört je
 Produkt in den Tarifplan.
 
+Leitgedanke der Zuordnung: Das Residuum soll so früh wie möglich
+verschwinden, aber nur dort, wo der Vertrag **ohnehin neu gerechnet
+wird**. Wo nichts neu gerechnet wird, gibt es keinen Anlass, die Schicht
+aufzulösen — sie aufzulösen hieße, eine Differenz verschwinden zu lassen,
+die noch besteht.
+
 | Ereignis / Übergang | Klasse | Behandlung |
 |---|---|---|
-| Rechnender Geschäftsvorfall (Beitragsfreistellung, Herabsetzung, Dynamik, Zuzahlung, Teilrückkauf, Verlängerung) | A | **Absorption:** Das Gesamt-Deckungskapital *einschließlich der Schicht* wird angerechnet, danach Kalibrierungsfaktor null. Der Vertrag ist ab dem ersten rechnenden Vorfall rein prospektiv — „geheilt". |
+| Rechnender Geschäftsvorfall (Beitragsfreistellung, Herabsetzung, Zuzahlung, Teilrückkauf, Verlängerung) | A | **Absorption:** Das Gesamt-Deckungskapital *einschließlich der Schicht* wird angerechnet, danach Kalibrierungsfaktor null. Der Vertrag ist ab dem ersten rechnenden Vorfall rein prospektiv — „geheilt". |
+| Dynamische Erhöhung | B | **nicht rechnend:** Sie legt eine neue Scheibe an und lässt den bestehenden Vertrag unberührt. Es wird nichts neu gerechnet, also löst sie die Schicht auch nicht auf. *Präzisierung 2026-08-28: Eine frühere Fassung führte die Dynamik unter Klasse A. Das trifft für ein Scheibenmodell nicht zu — dort entsteht ein zusätzlicher Vertragsteil, keine Neuberechnung des vorhandenen.* |
 | Rückkauf | B | wertkontinuierlich: Die Schicht zahlt sich im Rückkaufswert aus. Konvention: Den Stornoabzug trägt die Basisschicht. |
 | Tod mit fester Versicherungssumme | B | **vererbend:** Die Leistung ist Anker und bleibt unangetastet, der Schichtwert verfällt. Die Sterblichkeit finanziert die Amortisation anteilig mit. |
 | Tod oder Ablauf mit DK-bezogener Leistung | B | wertkontinuierlich: Die Schicht fließt in die Leistung ein. |

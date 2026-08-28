@@ -348,3 +348,99 @@ def test_verankerung_am_echten_klv_vertrag():
     # Und die Gesamtreserve liegt unter der prospektiven, wie es ein
     # negatives Residuum verlangt.
     assert basis[0] + korr[0] < basis[0]
+
+
+# --------------------------------------------------------------------------- #
+# 7. Heilung: welcher Geschaeftsvorfall die Schicht aufloest (9.7)
+# --------------------------------------------------------------------------- #
+
+
+def test_die_beitragsreduktion_heilt_den_vertrag():
+    """Beschluss 2026-08-28: das Residuum soll so frueh wie moeglich weg —
+    aber nur dort, wo der Vertrag ohnehin neu gerechnet wird."""
+    from rechner_pipeline.kern.korrekturschicht import heilt
+
+    assert heilt("RED") is True
+
+
+def test_die_dynamische_erhoehung_heilt_nicht():
+    """Abweichung von 9.7, fachlich begruendet.
+
+    Die Tabelle dort fuehrte Dynamik unter Klasse A. Fuer ein
+    Scheibenmodell trifft das nicht zu: Die Erhoehung legt eine NEUE
+    Scheibe an und laesst den bestehenden Vertrag unberuehrt. Es wird
+    nichts neu gerechnet — also gibt es keinen Anlass, die Schicht
+    aufzuloesen. Sie aufzuloesen hiesse, eine bestehende Differenz
+    verschwinden zu lassen.
+    """
+    from rechner_pipeline.kern.korrekturschicht import heilt
+
+    assert heilt("ERH") is False
+
+
+@pytest.mark.parametrize("vorfall", ["STO", "TOD", "ABL"])
+def test_klasse_b_vorfaelle_heilen_nicht(vorfall: str):
+    """Sie tragen die Schicht weiter oder lassen sie verfallen (9.7)."""
+    from rechner_pipeline.kern.korrekturschicht import heilt
+
+    assert heilt(vorfall) is False
+
+
+def test_der_migrationszugang_heilt_sich_nicht_selbst():
+    """Er ERZEUGT die Schicht — er kann sie nicht im selben Vorgang aufloesen."""
+    from rechner_pipeline.kern.korrekturschicht import heilt
+
+    assert heilt("MIG") is False
+
+
+def test_unbekannter_vorfall_faellt_hart_aus():
+    """Eine neue Vorfallart muss ihre Wirkung auf die Schicht entscheiden.
+
+    Stille Nicht-Heilung waere die gefaehrliche Variante: Der Vorfall
+    liefe durch, die Schicht bliebe stehen, und niemand haette es
+    entschieden.
+    """
+    from rechner_pipeline.kern.korrekturschicht import heilt
+
+    with pytest.raises(KorrekturschichtFehler, match="unbekannter Geschaeftsvorfall"):
+        heilt("ZUZ")
+
+
+def test_die_liste_ist_vollstaendig_und_weist_das_ungepruefte_aus():
+    """Alle Vorfallarten stehen drin, auch die noch nicht entschiedenen.
+
+    Ein fehlender Vorfall wuerde stillschweigend nicht heilen, und
+    niemand faende die Luecke. Was noch nicht fachlich bestaetigt ist,
+    steht deshalb drin und ist als solches markiert.
+    """
+    from rechner_pipeline.bestand.migrationszugang import MIG as MIG_KENNUNG
+    from rechner_pipeline.kern.korrekturschicht import HEILUNG, ungeprueft
+    from rechner_pipeline.qa.aktuarieller_test import GEVO_ARTEN
+
+    assert set(GEVO_ARTEN) | {MIG_KENNUNG, "RED"} <= set(HEILUNG)
+    assert ungeprueft() == ["INV", "PEX", "REA"]
+    for kennung, regel in HEILUNG.items():
+        assert regel.begruendung, f"{kennung} ohne Begruendung"
+
+
+def test_absorption_setzt_den_faktor_auf_null_und_behaelt_die_spur():
+    """Klasse A: der Vertrag ist geheilt, war aber einmal migriert.
+
+    Die uebrigen Parameter bleiben stehen — eine aufgeloeste Schicht und
+    eine nie vorhandene sind verschiedene Sachverhalte, und im Beleg muss
+    das unterscheidbar bleiben.
+    """
+    from rechner_pipeline.kern.korrekturschicht import absorbiere
+
+    s = _schicht()
+    form = form_konstantes_fenster(10, 10)
+    vorher = s.verankere(form, 45, AKTIV, -850.0)
+    nachher = absorbiere(vorher)
+
+    assert vorher.rho != 0.0
+    assert nachher.rho == 0.0
+    assert all(w == 0.0 for w in s.verlauf(nachher, form, 45))
+    # Die Spur bleibt:
+    assert nachher.verankerungszustand == vorher.verankerungszustand
+    assert nachher.formfunktion == vorher.formfunktion
+    assert nachher.kohorte == vorher.kohorte

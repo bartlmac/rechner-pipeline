@@ -103,6 +103,16 @@ def reduziere(
     ``anteil`` ist der fortgefuehrte Bruchteil des Beitrags: ``0.6`` senkt
     ihn auf 60 Prozent. ``1.0`` ist keine Reduktion, ``0.0`` die
     vollstaendige Beitragsfreistellung.
+
+    **Nur am Vertragsstichtag** (Beschluss 2026-08-28). Die Signatur nimmt
+    ein Vertragsjahr, keine Monate — eine unterjaehrige Reduktion ist
+    damit nicht ausdrueckbar, und das ist Absicht: Sie wuerde einen
+    unterjaehrigen Verankerungszeitpunkt erzeugen, und wie die
+    Korrekturschicht ein Rumpfjahr behandelt, ist noch nicht entschieden
+    (offener Punkt, betrifft nicht nur diesen Geschaeftsvorfall).
+
+    Wer das erweitern will, muss zuerst die Rumpfjahr-Konvention klaeren —
+    nicht hier einen Monatsparameter ergaenzen.
     """
     if verfahren not in VERFAHREN:
         raise BeitragsreduktionFehler(
