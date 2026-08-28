@@ -601,3 +601,40 @@ def test_scheiben_vertrag_traegt_den_beitrag_beider_teile():
         scheiben=((erh_jahr, erh_summe),),
     )
     assert not pruefe_vertrag(v2, _profil())["bestanden"]
+
+
+def test_red_ddk_folgt_dem_verfahren_des_falls():
+    """Unabhaengige Kontrolle gegen die Formel der Aktuariellen Notiz
+    2026/04: bei Teilkuendigung ist dDK = -StoAb * (1 - f); das
+    Zielverfahren prospektiv ist verlustfrei (dDK = 0)."""
+    jahr, f = 10, 0.6
+    stoab = KERN.verlaufszeile(jahr).stoab
+    punkt = Pruefpunkt(monate=12 * jahr, erwartet={"dDK": 0.0},
+                       anlass="RED", parameter={"anteil": f})
+
+    prospektiv = pruefe_vertrag(_vertrag(punkt), _profil(kennung="A-M3"))
+    assert prospektiv["bestanden"], prospektiv["befunde"]
+
+    erwartet_abzug = -stoab * (1 - f)
+    punkt_abzug = Pruefpunkt(monate=12 * jahr,
+                             erwartet={"dDK": round(erwartet_abzug, 2)},
+                             anlass="RED", parameter={"anteil": f})
+    mit_abzug = pruefe_vertrag(
+        _vertrag(punkt_abzug), _profil(kennung="A-M3"),
+        red_verfahren="mit_abzug")
+    assert mit_abzug["bestanden"], mit_abzug["befunde"]
+
+
+def test_stichprobe_belegt_das_red_verfahren():
+    from rechner_pipeline.qa.stichprobe import Stichprobe
+
+    v = _vertrag(Pruefpunkt(
+        monate=120,
+        erwartet={"kVx_MRV": round(KERN.zustand_am(120).vx_mrv, 2)},
+        anlass="uebernahme"))
+    probe = Stichprobe(profil="vollbestand", parameter={},
+                       police_ids=("P1",), grundgesamtheit=1)
+    ergebnis = pruefe_stichprobe([v], probe, _profil(
+        grund=Kriterium(abs_tol=0.01, rel_tol=1e-9)),
+        red_verfahren="mit_abzug")
+    assert ergebnis["red_verfahren"] == "mit_abzug"

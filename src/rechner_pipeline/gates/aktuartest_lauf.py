@@ -51,6 +51,7 @@ from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import model_point_kwargs
+from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.qa.aktuarieller_test import (
     Pruefpunkt,
     Vertragspruefung,
@@ -189,6 +190,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="transformierte Zeilen (gates.transformation_anwenden "
                         "--zeilen) — Pflicht, sobald die Spez mehr als eine "
                         "Zelle traegt (Zellwahl je Police)")
+    p.add_argument("--red-verfahren", dest="red_verfahren",
+                   default=PROSPEKTIV, choices=sorted(VERFAHREN),
+                   help="Verfahren der Beitragsherabsetzung (Eigenschaft "
+                        "des Migrationsfalls; Vorgabe: Zielverfahren "
+                        "prospektiv)")
     p.add_argument("--repo-root", dest="repo_root", default=".")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/berichte/...)")
@@ -244,6 +250,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         auftraege, stichprobe, profil,
         transportsicherung={"lieferung": args.erwartungswerte},
         system=systemstand(Path(args.repo_root).resolve()),
+        red_verfahren=args.red_verfahren,
     )
 
     ziel = Path(args.out) if args.out else (

@@ -290,7 +290,9 @@ def _bjb_system(
     return gesamt
 
 
-def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
+def pruefe_vertrag(
+    v: VertragsPruefung, *, red_verfahren: str = PROSPEKTIV
+) -> Dict[str, Any]:
     """Zwei-Stichtags-Urteil für einen Vertrag.
 
     Rückgabe: ``bestanden`` (alle Vergleiche innerhalb der Toleranz und
@@ -317,6 +319,14 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     Prüfzeitraum ein RED-GeVo mit geliefertem Anteil. Nur ohne Anteil
     bleibt der Folgestichtag eine ausgewiesene Prüflücke — nicht weil
     die Rechnung fehlte, sondern weil die Herabsetzung unbestimmt ist.
+
+    ``red_verfahren`` ist eine Eigenschaft des QUELLSYSTEMS und damit des
+    Migrationsfalls, nicht des Vertrags (kern.beitragsreduktion): das
+    Zielverfahren ``prospektiv`` ist der Default; ein Fall, dessen
+    Quelle die Absetzung als Teilkündigung mit anteiligem Stornoabschlag
+    rechnet (Baldrian, Aktuarielle Notiz 2026/04), übergibt
+    ``mit_abzug`` — sonst misst das Controlling die Verfahrensdifferenz
+    statt der Migration.
     """
     if v.monate_stichtag_2 <= v.monate_stichtag_1:
         raise ValueError(
@@ -370,7 +380,7 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
             )
         # Jahr- und Anteilsgrenzen prueft der Kern (fail-fast).
         alt_rv = ReduzierterVertrag.nach(
-            kern, red_jahr, red_anteil, verfahren=PROSPEKTIV)
+            kern, red_jahr, red_anteil, verfahren=red_verfahren)
 
     # Anfangszustand: dynamische Erhoehungen der Vorgeschichte.
     scheiben: List[Tuple[int, Rechenkern]] = []
@@ -540,9 +550,9 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
             # Der herabgesetzte Vertrag wird seit Kern 3.1.0 FORTGEFÜHRT
             # (kern.beitragsreduktion.ReduzierterVertrag, Zweiteilung in
             # fortgeführten Anteil und fixierte beitragsfreie Summe). Die
-            # Suite rechnet mit dem ZIELVERFAHREN (prospektiv,
-            # verlustfrei); rechnet das Quellsystem mit Abzug, zeigt der
-            # Vergleich am Folgestichtag genau die Verfahrensdifferenz —
+            # Suite rechnet mit ``red_verfahren`` (Default: Zielverfahren
+            # prospektiv); weicht das Verfahren des Falls davon ab, zeigt
+            # der Vergleich am Folgestichtag die Verfahrensdifferenz —
             # je Vertrag sichtbar, statt einer Prüflücke oder eines
             # stillen Vergleichs auf der ursprünglichen Summe.
             #
@@ -590,7 +600,7 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                 continue
             else:
                 reduziert = ReduzierterVertrag.nach(
-                    kern, g.monate // 12, g.anteil, verfahren=PROSPEKTIV)
+                    kern, g.monate // 12, g.anteil, verfahren=red_verfahren)
             red_monat = g.monate
         else:  # PEX
             if pex_jahr is not None:
@@ -733,6 +743,7 @@ def pruefe_bestand(
     vertraege: List[VertragsPruefung],
     *,
     erwartete_anzahl: Optional[int] = None,
+    red_verfahren: str = PROSPEKTIV,
     stichtag_1: Optional[str] = None,
     stichtag_2: Optional[str] = None,
     bestand_sha256: Optional[str] = None,
@@ -836,7 +847,7 @@ def pruefe_bestand(
     urteile: List[Dict[str, Any]] = []
     for v in vertraege:
         try:
-            urteile.append(pruefe_vertrag(v))
+            urteile.append(pruefe_vertrag(v, red_verfahren=red_verfahren))
         except DATEN_AUSNAHMEN as exc:
             urteile.append({
                 "police_id": v.police_id,
@@ -878,6 +889,7 @@ def pruefe_bestand(
         "mengenbefunde": mengenbefunde,
         "pruefluecken": pruefluecken,
         "vollstaendig_geprueft": not pruefluecken,
+        "red_verfahren": red_verfahren,
         "vertraege": urteile,
     }
     if all(wert is not None for wert in scope_werte):

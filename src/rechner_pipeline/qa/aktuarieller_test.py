@@ -469,6 +469,7 @@ def _deckungskapital(
     monate: int,
     zustand: str,
     parameter: Mapping[str, float] = MappingProxyType({}),
+    red_verfahren: str = PROSPEKTIV,
 ) -> float:
     """Deckungskapital in einem benannten Zustand — ohne Interpolation.
 
@@ -482,7 +483,7 @@ def _deckungskapital(
     if v.reduktion is not None:
         # Anfangszustand Herabsetzung: der geteilte Vertrag (Kern 3.1.0).
         rv = ReduzierterVertrag.nach(
-            kern, v.reduktion[0], v.reduktion[1], verfahren=PROSPEKTIV)
+            kern, v.reduktion[0], v.reduktion[1], verfahren=red_verfahren)
         if zustand == "herabgesetzt":
             raise AktuartestFehler(
                 f"police {v.police_id}: zweite Herabsetzung eines bereits "
@@ -505,7 +506,7 @@ def _deckungskapital(
         # sondern die Verfahrensfrage — sie gehoert in das Residuum und
         # nicht in eine Anpassung der Engine (kern.beitragsreduktion).
         return reduziere(
-            kern, monate // 12, parameter["anteil"], verfahren=PROSPEKTIV
+            kern, monate // 12, parameter["anteil"], verfahren=red_verfahren
         ).dk_nach
     if zustand == "beitragsfrei":
         a0 = v.beitragsfrei_seit_jahr
@@ -564,7 +565,8 @@ def _schichtwert(v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt) -> float:
 
 
 def _system_werte(
-    v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt
+    v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt,
+    red_verfahren: str = PROSPEKTIV,
 ) -> Dict[str, float]:
     """Die angeforderten Groessen am Pruefpunkt — ohne Interpolation."""
     kern, scheiben = _kerne(v, mp)
@@ -574,9 +576,11 @@ def _system_werte(
     if "dDK" in gefragt:
         vor, nach = GEVO_WIRKUNG[p.anlass]  # von _pruefe_punkt abgesichert
         dk_vor = _deckungskapital(
-            v, mp, kern, scheiben, p.monate, vor, p.parameter)
+            v, mp, kern, scheiben, p.monate, vor, p.parameter,
+            red_verfahren=red_verfahren)
         dk_nach = _deckungskapital(
-            v, mp, kern, scheiben, p.monate, nach, p.parameter)
+            v, mp, kern, scheiben, p.monate, nach, p.parameter,
+            red_verfahren=red_verfahren)
         werte["dDK"] = dk_nach - dk_vor
 
     if v.reduktion is not None:
@@ -585,7 +589,7 @@ def _system_werte(
         # der fortgefuehrte Anteil. Keine Schicht dazu — die Kombination
         # weist _pruefe_auftrag zurueck.
         rv = ReduzierterVertrag.nach(
-            kern, v.reduktion[0], v.reduktion[1], verfahren=PROSPEKTIV)
+            kern, v.reduktion[0], v.reduktion[1], verfahren=red_verfahren)
         if gefragt & {"kVx_MRV", "RKW"}:
             m = rv.monatsreserve(p.monate)
             if "kVx_MRV" in gefragt:
@@ -703,7 +707,10 @@ def _ok(ist: float, soll: float, k: Kriterium) -> bool:
     return math.isclose(ist, soll, rel_tol=k.rel_tol, abs_tol=k.abs_tol)
 
 
-def pruefe_vertrag(v: Vertragspruefung, profil: Testprofil) -> Dict[str, Any]:
+def pruefe_vertrag(
+    v: Vertragspruefung, profil: Testprofil, *,
+    red_verfahren: str = PROSPEKTIV,
+) -> Dict[str, Any]:
     """Einen Vertrag an allen seinen Pruefpunkten pruefen (deterministisch).
 
     Auftrags-Verletzungen (falscher Rechenpunkt, unbekannte Groessen) sind
@@ -719,7 +726,7 @@ def pruefe_vertrag(v: Vertragspruefung, profil: Testprofil) -> Dict[str, Any]:
     pruefungen: List[Dict[str, Any]] = []
     befunde: List[str] = []
     for p in v.punkte:
-        werte = _system_werte(v, mp, p)
+        werte = _system_werte(v, mp, p, red_verfahren=red_verfahren)
         # Beim Geschaeftsvorfalltest entscheidet die Vorfallart ueber die
         # Toleranz, sonst die Vergleichsgroesse.
         for groesse in sorted(p.erwartet):
@@ -820,6 +827,7 @@ def pruefe_stichprobe(
     *,
     transportsicherung: Optional[Mapping[str, Any]] = None,
     system: Optional[Mapping[str, str]] = None,
+    red_verfahren: str = PROSPEKTIV,
 ) -> Dict[str, Any]:
     """Einen der drei Tests ueber eine belegte Stichprobe fahren.
 
@@ -865,7 +873,8 @@ def pruefe_stichprobe(
     ergebnisse: List[Dict[str, Any]] = []
     for v in vertraege:
         try:
-            ergebnisse.append(pruefe_vertrag(v, profil))
+            ergebnisse.append(
+                pruefe_vertrag(v, profil, red_verfahren=red_verfahren))
         except AktuartestFehler:
             # Ein verletzter Engine-Vertrag ist ein Konstruktionsfehler
             # des AUFRUFS, kein Lieferbefund — er wird nie zu einem
@@ -937,6 +946,10 @@ def pruefe_stichprobe(
         "nach_anlass": nach_anlass,
         "nach_kriterium": nach_schluessel,
         "vertraege": ergebnisse,
+        # Verfahrens-Beleg (Eigenschaft des Migrationsfalls, siehe
+        # kern.beitragsreduktion): ohne ihn waere eine Differenz zweier
+        # Systeme nicht erklaerbar, sondern nur ein unerklaerter Rest.
+        "red_verfahren": red_verfahren,
         "test_bestanden": (
             stichprobe_vollstaendig
             and fehlgeschlagen == 0

@@ -15,13 +15,13 @@ Vorgaben passen zur Baldrian-Lieferung; jede andere Lieferung setzt sie
 um. Sie im Code festzuschreiben hiesse, eine Lieferungskonvention zur
 Systemeigenschaft zu machen.
 
-**Was der Lauf NICHT tut: er glaettet nichts.** Traegt ein Vertrag
-zwischen den Stichtagen eine Herabsetzung, weist die Suite den Wert am
-Folgestichtag als Pruefluecke aus, statt ihn auf der urspruenglichen
-Summe zu rechnen. Der Bestands-Scope von A-M4 duldet keine Luecke — der
-Lauf endet dort also mit einem Befund, und das ist richtig so, solange
-der Zielkern einen herabgesetzten Vertrag nicht fortschreiben kann
-(``dev-docs/zahlungspfade-migrierter-vertraege.md``).
+**Was der Lauf NICHT tut: er glaettet nichts.** Eine Herabsetzung mit
+geliefertem Anteil wird seit Kern 3.1.0 als geteilter Vertrag
+fortgeschrieben (``--red-verfahren`` ist die dokumentierte Eigenschaft
+des Quellsystems, Vorgabe: Zielverfahren prospektiv); OHNE Anteil
+bleibt der Folgestichtag eine ausgewiesene Pruefluecke, und der
+Bestands-Scope von A-M4 duldet keine — der Lauf endet dann mit einem
+Befund statt mit einer Zahl, die aussieht wie geprueft.
 
 Knoten: klv
 """
@@ -41,6 +41,7 @@ from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import model_point_kwargs
+from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.qa.migrationssuite import (
     GeVoErwartung,
     VertragsPruefung,
@@ -261,6 +262,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="REGISTRIERTE Metadatenliste der Geschaeftsvorfaelle "
                         "vor dem Stichtag (POLNR;GEVO;DATUM) — traegt den "
                         "Anfangszustand (PEX-Vertragsjahr) je Police")
+    p.add_argument("--red-verfahren", dest="red_verfahren",
+                   default=PROSPEKTIV, choices=sorted(VERFAHREN),
+                   help="Verfahren der Beitragsherabsetzung (Eigenschaft "
+                        "des Migrationsfalls; Vorgabe: Zielverfahren "
+                        "prospektiv)")
     p.add_argument("--repo-root", dest="repo_root", default=".")
     p.add_argument("--out", default=None)
     for name, vorgabe in VORGABE.items():
@@ -314,6 +320,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ergebnis = pruefe_bestand(
         auftraege,
         erwartete_anzahl=len(abzug_1),
+        red_verfahren=args.red_verfahren,
         stichtag_1=_parse(args.stichtag_1).isoformat(),
         stichtag_2=_parse(args.stichtag_2).isoformat(),
         bestand_sha256=hashlib.sha256(bestand_pfad.read_bytes()).hexdigest(),

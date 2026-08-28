@@ -1110,3 +1110,27 @@ def test_zweite_herabsetzung_auf_alt_reduktion_ist_ein_befund():
     ))
     assert not urteil["bestanden"]
     assert any("zweite Herabsetzung" in b for b in urteil["befunde"]), urteil
+
+
+def test_alt_reduktion_folgt_dem_verfahren_des_falls():
+    """Mit Teilkuendigungs-Verfahren (Notiz 2026/04) muss die Suite die
+    mit_abzug-Zweiteilung treffen — und das Ergebnis belegt das
+    Verfahren."""
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
+
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="mit_abzug")
+    auftrag = _pruefung_mit(
+        dk_erwartet_1=round(rv.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(rv.monatsreserve(S2).vx_mrv, 2),
+        reduktion=(8, 0.6),
+    )
+    urteil = pruefe_vertrag(auftrag, red_verfahren="mit_abzug")
+    assert urteil["bestanden"], urteil["befunde"]
+    # Mit dem Zielverfahren (prospektiv, Default) traefe dieselbe
+    # Erwartung NICHT — die Verfahrensdifferenz ist der Stornoabzug.
+    assert not pruefe_vertrag(auftrag)["bestanden"]
+
+    ergebnis = pruefe_bestand([auftrag], erwartete_anzahl=1,
+                              red_verfahren="mit_abzug")
+    assert ergebnis["red_verfahren"] == "mit_abzug"
+    assert ergebnis["suite_bestanden"] is True
