@@ -33,9 +33,12 @@ nachfolgt).
 Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 
 - `qa/stichprobe` — die belegte Stichprobe: `ziehe(profil, police_ids)`
-  mit benanntem Profil (v0 kennt genau `vollbestand`), deterministisch,
-  mit ausgewiesener Grundgesamtheit. Die Ziehung ist Teil des Belegs
-  (`als_beleg()`), die Police-Liste gehört dazu.
+  mit benanntem Profil, deterministisch, mit ausgewiesener
+  Grundgesamtheit. Die Ziehung ist Teil des Belegs (`als_beleg()`), die
+  Police-Liste gehört dazu. Zwei Profile: `vollbestand` (der ganze
+  Bestand) und `geschichtet` (je Historientyp-Cluster eine feste
+  Anzahl, Ziehreihenfolge über einen Hash mit dokumentiertem
+  Startwert).
 - `qa/testprofil` — das Profil je Test: Stichprobenweite im Klartext
   und die Abnahmekriterien. `Kriterium` trägt beides — die Toleranz des
   Einzelwerts (`abs_tol`, `rel_tol`) und die Abnahmegrenze der
@@ -108,14 +111,33 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
      den Punkt schlicht nicht — das ist kein Befund, muss aber in der
      Stichprobenweite stehen.
    - `A-M3` Geschäftsvorfalltest: je Vorfall ein Punkt, `anlass` ist
-     der Vorfall-Code (`STO`, `PEX`, `ABL`, `TOD`, `ERH`).
-3. Stichprobe ziehen: `qa.stichprobe.ziehe("vollbestand",
-   police_ids)`. Weitere Profile sind beschrieben, aber nicht gebaut —
-   der Wunsch danach ist eine Teamaufgabe, kein Ad-hoc-Parameter.
-4. Profil bauen (`qa.testprofil.Testprofil`): Kennung der Abnahme,
-   Stichprobenweite IM KLARTEXT (sie steht im Bericht und trägt den
-   Beleg), Grundtoleranz und die Kriterien je Größe — bei `A-M3` je
-   Vorfallart, weil dort der Vorfall über die Toleranz entscheidet.
+     der Vorfall-Code (`STO`, `PEX`, `ABL`, `TOD`, `ERH`, `RED`).
+     Die Herabsetzung `RED` verlangt zusätzlich
+     `parameter={"anteil": f}` am Prüfpunkt — wie weit der Vertrag
+     geteilt wird, steht im Vorfall und nicht im Vertrag, und die
+     Engine rät es nicht. Sie liegt immer auf dem Vertragsstichtag.
+3. Stichprobe ziehen: `qa.stichprobe.ziehe(profil, police_ids, ...)`.
+   `vollbestand` für kleine Bestände, `geschichtet` (mit `schichten`,
+   `je_schicht`, `saat`), sobald der Bestand seltene Historientypen
+   enthält — eine ungeschichtete Ziehung kann einen Cluster
+   vollständig verfehlen, und der Test bestünde, ohne den Vorgang je
+   gerechnet zu haben. Welches Profil und wie weit, entscheidet das
+   Aktuariat; ein drittes Profil ist eine Teamaufgabe, kein
+   Ad-hoc-Parameter.
+4. Profil bauen: `qa.testprofil.vorlage(kennung, weite=...)` gibt den
+   begründeten Ausgangspunkt je Abnahme — Toleranzen, die aus der Natur
+   des Vergleichs folgen, nicht gesetzte Zahlen. Die Weite ist Pflicht
+   und steht IM KLARTEXT (sie trägt den Beleg im Bericht). Wer im Fall
+   abweicht, baut das `Testprofil` selbst und sagt in `bemerkung`,
+   warum. Bei `A-M3` sind die Kriterien je Vorfallart geschlüsselt,
+   weil dort der Vorfall über die Toleranz entscheidet.
+
+   Eine Toleranz NIE aufweiten, damit ein Befund verschwindet. Weicht
+   das Quellsystem methodisch ab — etwa bei der Herabsetzung, wenn es
+   mit Stornoabzug rechnet und das Zielsystem verlustfrei —, ist die
+   Abweichung der Sachverhalt, den die Abnahme sehen soll. Sie gehört
+   in die Abnahmeentscheidung, belegt durch die Beschreibung des
+   Quellverfahrens, nicht in eine stillere Grenze.
 5. Je Vertrag der Stichprobe die `Vertragspruefung` bauen:
    - `punkte`: die `Pruefpunkt`e der gewählten Abnahme, je mit
      `monate` (volle Vertragsmonate seit Beginn), `erwartet` und
@@ -128,7 +150,9 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
      `dDK` (Veränderung des Deckungskapitals) ist der tragende
      Prüfwert des Geschäftsvorfalltests und nur dort zulässig.
    - `scheiben` (nach dynamischen Erhöhungen) und
-     `beitragsfrei_seit_jahr` (PEX) aus der Historie.
+     `beitragsfrei_seit_jahr` (PEX) aus der Historie. Die Engine lehnt
+     `RKW` und `BJB` im beitragsfreien Zustand ab und `VS_bfr`
+     ausserhalb davon — die Größen müssen zum Zustand passen.
    Dann `qa.aktuarieller_test.pruefe_stichprobe(vertraege, stichprobe,
    profil, transportsicherung=..., system=...)` laufen lassen und das
    Dict unverändert als JSON in den Fall schreiben (`json.dump`, Ziel
@@ -160,12 +184,11 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 - Golden-Master-Tests der Migration: definierte Referenz-Verträge mit
   eingefrorenen Erwartungswerten als dauerhafte Regression — Definition
   folgt, dieser Skill ist ihr Zuhause.
-- Weitere Stichprobenprofile (geschichtet nach Historientyp,
-  Restlaufzeit-Klasse oder Vorfallart) über die Erweiterungsstelle
-  `qa.stichprobe.PROFILE`. Die Skala und der Erzeugungsweg sind
-  beschrieben (`dev-docs/aktuarieller-test-at1-at2-at3.md`), die
-  Ziehung ist nicht gebaut — sie wird fällig, wenn ein Fall aufgesetzt
-  wird.
+- Weitere Stichprobenprofile (nach Restlaufzeit-Klasse oder
+  Vorfallart) über die Erweiterungsstelle `qa.stichprobe.PROFILE`. Die
+  Schichtung nach Historientyp ist gebaut (`geschichtet`, ADR-010
+  Abschnitt 5); die übrigen sind beschrieben
+  (`dev-docs/aktuarieller-test-at1-at2-at3.md`) und nicht gebaut.
 - Invalidisierung und Reaktivierung im Geschäftsvorfalltest: Die Engine
   lehnt `dDK` für beide hart ab, weil sie den Zustand des BU-Graphen
   wechseln. Sie kommen dazu, wenn die BU-Zustandsbewertung angeschlossen
@@ -177,7 +200,10 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 
 - Ein Verankerungszeitpunkt ist nicht als voller Rechenpunkt
   bestimmbar (unterjährige Anforderung, unklare Historie).
-- Ein anderes Stichprobenprofil als `vollbestand` wird gewünscht.
+- Ein Stichprobenprofil jenseits von `vollbestand` und `geschichtet`
+  wird gewünscht.
+- Die Herabsetzung `RED` soll unterjährig geprüft werden — dafür
+  fehlt die Rumpfjahr-Konvention (`dev-docs/offene-punkte.md`).
 - Eine Toleranzfrage stellt sich (nie selbst entscheiden).
 - Die Engine isoliert Verträge als nicht rechenbar (kranke
   Lieferdaten) — das ist ein Befund für den Menschen, kein Grund, die
