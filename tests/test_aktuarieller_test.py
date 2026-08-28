@@ -184,9 +184,9 @@ def test_engine_vertrag_faellt_hart_aus():
         pruefe_verankerung(_auftrag(erwartet={"kVx_XYZ": 1.0}))
     with pytest.raises(AktuartestFehler, match="kein Testauftrag"):
         pruefe_verankerung(_auftrag(erwartet={}))
-    with pytest.raises(AktuartestFehler, match="nur kVx_MRV, RKW und dDK"):
+    with pytest.raises(AktuartestFehler, match="nur kVx_MRV, RKW, BJB und dDK"):
         pruefe_verankerung(
-            _auftrag(erwartet={"BJB": 100.0}, scheiben=((5, 1000.0),))
+            _auftrag(erwartet={"VS_bfr": 100.0}, scheiben=((5, 1000.0),))
         )
     with pytest.raises(AktuartestFehler, match="Vertragsende"):
         pruefe_verankerung(_auftrag(monate_ta=12 * (KLV_DEFAULT.n + 1)))

@@ -332,11 +332,11 @@ def _pruefe_punkt(v: Vertragspruefung, p: Pruefpunkt, mp: ModelPoint) -> None:
                 "eine Rumpfjahr-Konvention voraus, die noch nicht "
                 "entschieden ist"
             )
-    if v.scheiben and set(p.erwartet) - {"kVx_MRV", "RKW", "dDK"}:
+    if v.scheiben and set(p.erwartet) - {"kVx_MRV", "RKW", "BJB", "dDK"}:
         raise AktuartestFehler(
             f"police {v.police_id}: mit Erhoehungsscheiben rechnet die "
-            "Engine nur kVx_MRV, RKW und dDK vertragsweit — andere Groessen "
-            "sind nicht definiert statt still falsch"
+            "Engine nur kVx_MRV, RKW, BJB und dDK vertragsweit — andere "
+            "Groessen sind nicht definiert statt still falsch"
         )
     if v.beitragsfrei_seit_jahr is not None and "RKW" in p.erwartet:
         raise AktuartestFehler(
@@ -603,6 +603,19 @@ def _system_werte(
                 werte["kVx_MRV"] = m.vx_mrv
             if "RKW" in gefragt:
                 werte["RKW"] = m.rkw
+        if "BJB" in gefragt:
+            # Jede Scheibe ist ein eigener Modellpunkt mit eigenem
+            # Beitrag bis zu IHRER Beitragszahlungsdauer — dieselbe
+            # Regel wie in der Bestandsfuehrung
+            # (bestand.auswertung.beitraege); der gelieferte
+            # Jahresbeitrag eines Dynamik-Vertrags enthaelt die
+            # Scheibenbeitraege.
+            gesamt = (0.0 if p.monate >= 12 * mp.t
+                      else kern.gross_annual_premium())
+            for erh_jahr, k in scheiben:
+                if p.monate - 12 * erh_jahr < 12 * k.mp.t:
+                    gesamt += k.gross_annual_premium()
+            werte["BJB"] = gesamt
         return werte
 
     if v.beitragsfrei_seit_jahr is not None:

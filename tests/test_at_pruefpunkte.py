@@ -571,3 +571,33 @@ def test_pruefpunkt_vor_der_reduktion_ist_widerspruechlich():
                        anlass="uebernahme"),
             reduktion=(8, 0.6),
         ), _profil())
+
+
+def test_scheiben_vertrag_traegt_den_beitrag_beider_teile():
+    """Der gelieferte Jahresbeitrag eines Dynamik-Vertrags enthaelt die
+    Scheibenbeitraege — Regel der Bestandsfuehrung, unabhaengig
+    nachgerechnet aus den Teil-Modellpunkten."""
+    from rechner_pipeline.kern import erhoehungs_scheibe
+
+    erh_jahr, erh_summe = 6, 20000.0
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, erh_summe))
+    erwartet = KERN.gross_annual_premium() + scheibe.gross_annual_premium()
+    monate = 12 * 9
+    v = _vertrag(
+        Pruefpunkt(monate=monate,
+                   erwartet={"BJB": round(erwartet, 2)},
+                   anlass="uebernahme"),
+        scheiben=((erh_jahr, erh_summe),),
+    )
+    urteil = pruefe_vertrag(v, _profil(grund=Kriterium(abs_tol=0.01,
+                                                       rel_tol=1e-9)))
+    assert urteil["bestanden"], urteil["befunde"]
+
+    # Mutationsfaenger: der Grundbeitrag allein darf NICHT bestehen.
+    v2 = _vertrag(
+        Pruefpunkt(monate=monate,
+                   erwartet={"BJB": round(KERN.gross_annual_premium(), 2)},
+                   anlass="uebernahme"),
+        scheiben=((erh_jahr, erh_summe),),
+    )
+    assert not pruefe_vertrag(v2, _profil())["bestanden"]

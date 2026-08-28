@@ -987,3 +987,126 @@ def test_red_beendet_den_vertrag_nicht() -> None:
 
     assert not urteil["bestanden"]
     assert any("keinen Abgang" in b for b in urteil["befunde"]), urteil
+
+
+# --------------------------------------------------------------------------- #
+# Anfangszustaende der Vorgeschichte: Alt-Scheiben und Alt-Herabsetzung
+# --------------------------------------------------------------------------- #
+
+
+def _pruefung_mit(**kwargs) -> VertragsPruefung:
+    basis = dict(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=0.0, dk_erwartet_2=0.0,
+    )
+    basis.update(kwargs)
+    return VertragsPruefung(**basis)
+
+
+def test_alt_scheiben_gehen_in_beide_stichtage_und_den_beitrag_ein():
+    """Unabhaengige Kontrolle: Grund- plus Scheibenwert je Stichtag,
+    Beitrag als Summe der Teilbeitraege (Regel der Bestandsfuehrung)."""
+    from rechner_pipeline.kern import erhoehungs_scheibe
+
+    erh_jahr, erh_summe = 6, 20000.0
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, erh_summe))
+    dk1 = KERN.monatsreserve(S1).vx_mrv + scheibe.monatsreserve(
+        S1 - 12 * erh_jahr).vx_mrv
+    dk2 = KERN.monatsreserve(S2).vx_mrv + scheibe.monatsreserve(
+        S2 - 12 * erh_jahr).vx_mrv
+    bjb = KERN.gross_annual_premium() + scheibe.gross_annual_premium()
+
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(dk1, 2), dk_erwartet_2=round(dk2, 2),
+        bjb_erwartet_1=round(bjb, 2),
+        scheiben=((erh_jahr, erh_summe),),
+    ))
+    assert urteil["bestanden"], urteil["befunde"]
+
+
+def test_alt_scheibe_ohne_scheibenwert_wuerde_auffallen():
+    """Mutationsfaenger: der scheibenlose Grundwert darf NICHT bestehen."""
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(KERN.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(KERN.monatsreserve(S2).vx_mrv, 2),
+        scheiben=((6, 20000.0),),
+    ))
+    assert not urteil["bestanden"]
+
+
+def test_alt_reduktion_bewertet_den_geteilten_vertrag():
+    """dk an beiden Stichtagen und der Beitrag folgen der Zweiteilung."""
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
+
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(rv.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(_zweiteilung_dk2(0.6, 8), 2),
+        bjb_erwartet_1=round(0.6 * KERN.gross_annual_premium(), 2),
+        reduktion=(8, 0.6),
+    ))
+    assert urteil["bestanden"], urteil["befunde"]
+
+
+def test_alt_reduktion_faellt_nicht_auf_den_unreduzierten_wert():
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(KERN.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(KERN.monatsreserve(S2).vx_mrv, 2),
+        reduktion=(8, 0.6),
+    ))
+    assert not urteil["bestanden"]
+
+
+def test_pex_auf_alt_reduktion_fixiert_beide_teile():
+    """Der gelieferte Fall (PEX auf Alt-RED): Betrag und Folgewert."""
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
+
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    pex_monat = 12 * 10
+    summe = rv.beitragsfreie_summe(10)
+    dk2 = rv.reserve_beitragsfrei(10, S2)
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(rv.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(dk2, 2),
+        reduktion=(8, 0.6),
+        gevos=(GeVoErwartung("PEX", pex_monat, round(summe, 2)),),
+    ))
+    assert urteil["bestanden"], urteil["befunde"]
+
+
+def test_erh_auf_alt_reduktion_traegt_die_scheibe_neben_der_teilung():
+    """Der gelieferte Fall (ERH auf Alt-RED): Folgewert = geteilter
+    Vertrag plus Scheibe an ihrem versetzten Stichtag."""
+    from rechner_pipeline.kern import erhoehungs_scheibe
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
+
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    erh_monat, erh_summe = 12 * 10, 15000.0
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, erh_summe))
+    dk2 = rv.monatsreserve(S2).vx_mrv + scheibe.monatsreserve(
+        S2 - erh_monat).vx_mrv
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(rv.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(dk2, 2),
+        reduktion=(8, 0.6),
+        gevos=(GeVoErwartung("ERH", erh_monat, erh_summe),),
+    ))
+    assert urteil["bestanden"], urteil["befunde"]
+
+
+def test_mehrere_anfangszustaende_zugleich_fallen_hart():
+    with pytest.raises(ValueError, match="mehrere Anfangszustaende"):
+        pruefe_vertrag(_pruefung_mit(
+            reduktion=(8, 0.6), beitragsfrei_seit_jahr=7,
+        ))
+
+
+def test_zweite_herabsetzung_auf_alt_reduktion_ist_ein_befund():
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=0.0, dk_erwartet_2=0.0,
+        reduktion=(8, 0.6),
+        gevos=(GeVoErwartung("RED", 12 * 10, None, anteil=0.5),),
+    ))
+    assert not urteil["bestanden"]
+    assert any("zweite Herabsetzung" in b for b in urteil["befunde"]), urteil

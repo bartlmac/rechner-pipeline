@@ -72,7 +72,7 @@ from __future__ import annotations
 import datetime as _dt
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from rechner_pipeline.kern import (
     MissingMortalityTableError,
@@ -163,6 +163,17 @@ class VertragsPruefung:
     Track und der Jahresbeitrag ist 0. Eine Beitragsfreistellung
     ZWISCHEN den Stichtagen ist kein Anfangszustand, sondern ein
     PEX-GeVo.
+
+    ``scheiben`` und ``reduktion`` sind die beiden anderen
+    Anfangszustaende eines uebernommenen Vertrags: dynamische
+    Erhoehungen der VORGESCHICHTE als ``(vertragsjahr,
+    erhoehungssumme)`` je Scheibe, bzw. eine Herabsetzung der
+    Vorgeschichte als ``(vertragsjahr, fortgefuehrter_anteil)`` —
+    bewertet als geteilter Vertrag (Kern 3.1.0, Zielverfahren
+    prospektiv). Die Anfangszustaende sind EXKLUSIV: eine Vorgeschichte
+    mit mehreren Welten (beitragsfrei UND reduziert, ...) ist kein
+    abgebildeter Fall und faellt als Auftragsfehler, nicht als stiller
+    Track.
     """
 
     police_id: str
@@ -174,6 +185,8 @@ class VertragsPruefung:
     gevos: Tuple[GeVoErwartung, ...] = field(default_factory=tuple)
     bjb_erwartet_1: Optional[float] = None
     beitragsfrei_seit_jahr: Optional[int] = None
+    scheiben: Tuple[Tuple[int, float], ...] = field(default_factory=tuple)
+    reduktion: Optional[Tuple[int, float]] = None
 
 
 def _vergleich(groesse: str, system: float, erwartet: float) -> Dict[str, Any]:
@@ -243,20 +256,38 @@ def _terminale_leistung(
 
 
 def _bjb_system(
-    kern: Rechenkern, monate: int, pex_jahr: Optional[int]
+    kern: Rechenkern,
+    monate: int,
+    pex_jahr: Optional[int],
+    *,
+    scheiben: Sequence[Tuple[int, Rechenkern]] = (),
+    reduziert: Optional["ReduzierterVertrag"] = None,
 ) -> float:
     """Bruttojahresbeitrag des Vertrags am Monats-Stichtag.
 
     Nach dem Ende der Beitragszahlungsdauer (``monate >= 12 * t``) und
     ab einer Beitragsfreistellung wird kein Beitrag mehr gezahlt: der
     Systemwert ist dann ``0.0``, so wie die Bestandsabzüge das Feld
-    führen. Sonst der Jahresbeitrag des Grundvertrags
-    (``VS * Bxt``); Erhöhungsscheiben entstehen erst durch ERH-GeVos
-    NACH dem Migrationsstichtag und tragen hier deshalb nichts bei.
+    führen. Sonst der Jahresbeitrag des Grundvertrags (``VS * Bxt``) —
+    nach einer Herabsetzung der fortgeführte Anteil davon. Jede
+    Erhöhungsscheibe der Vorgeschichte ist ein eigener Modellpunkt mit
+    eigenem Beitrag bis zu IHRER Beitragszahlungsdauer (dieselbe Regel
+    wie ``bestand.auswertung.beitraege``): ohne sie wäre das
+    Beitragsvolumen so zu niedrig wie das Deckungskapital ohne
+    Scheiben.
     """
-    if pex_jahr is not None or monate >= 12 * kern.mp.t:
+    if pex_jahr is not None:
         return 0.0
-    return kern.gross_annual_premium()
+    if reduziert is not None:
+        gesamt = reduziert.bjb(monate)
+    elif monate >= 12 * kern.mp.t:
+        gesamt = 0.0
+    else:
+        gesamt = kern.gross_annual_premium()
+    for erh_jahr, k in scheiben:
+        if monate - 12 * erh_jahr < 12 * k.mp.t:
+            gesamt += k.gross_annual_premium()
+    return gesamt
 
 
 def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
@@ -280,17 +311,12 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     Asymmetrie ist gewollt: einmal ist die Größe geprüft, einmal ist
     sie ungeprüft.
 
-    HERABGESETZTE VERTRÄGE — der dritte Fall, und aus einem anderen
-    Grund: Hier LIEGT ein Erwartungswert vor, aber das Zielsystem kann
-    ihm nichts gegenüberstellen. Ein herabgesetzter Vertrag ist teils
-    beitragspflichtig, teils beitragsfrei, und der Modellpunkt trägt
-    beides nicht zugleich (dev-docs/zahlungspfade-migrierter-vertraege.md).
-    Ihn auf der ursprünglichen Summe zu rechnen hieße, gegen einen
-    Vertrag zu vergleichen, den es nicht mehr gibt. ``dk_stichtag_2``
-    steht deshalb in ``nicht_geprueft`` — nicht weil die Lieferung
-    lückenhaft wäre, sondern weil das Zielsystem es ist. Beides bleibt
-    ungeprüft, und das ist die Gemeinsamkeit, die den Eintrag
-    rechtfertigt.
+    HERABGESETZTE VERTRÄGE — seit Kern 3.1.0 werden sie FORTGEFÜHRT
+    (geteilter Vertrag, Zielverfahren prospektiv): eine Herabsetzung der
+    Vorgeschichte ist der Anfangszustand ``reduktion``, eine im
+    Prüfzeitraum ein RED-GeVo mit geliefertem Anteil. Nur ohne Anteil
+    bleibt der Folgestichtag eine ausgewiesene Prüflücke — nicht weil
+    die Rechnung fehlte, sondern weil die Herabsetzung unbestimmt ist.
     """
     if v.monate_stichtag_2 <= v.monate_stichtag_1:
         raise ValueError(
@@ -302,6 +328,19 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     befunde: List[str] = []
     pruefungen: List[Dict[str, Any]] = []
     nicht_geprueft: List[str] = []
+
+    # Anfangszustaende sind EXKLUSIV: je Vertrag hoechstens EINE
+    # Vorgeschichts-Welt (beitragsfrei, Alt-Scheiben, herabgesetzt).
+    welten = [name for name, gesetzt in (
+        ("beitragsfrei_seit_jahr", v.beitragsfrei_seit_jahr is not None),
+        ("scheiben", bool(v.scheiben)),
+        ("reduktion", v.reduktion is not None),
+    ) if gesetzt]
+    if len(welten) > 1:
+        raise ValueError(
+            f"{v.police_id}: mehrere Anfangszustaende zugleich "
+            f"({', '.join(welten)}) — die Kombination ist nicht abgebildet"
+        )
 
     # Anfangszustand: schon vor dem Migrationsstichtag beitragsfrei.
     pex_jahr: Optional[int] = v.beitragsfrei_seit_jahr
@@ -318,7 +357,41 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                 f"(Monat {v.monate_stichtag_1}) — als PEX-GeVo liefern, "
                 "nicht als Anfangszustand"
             )
+
+    # Anfangszustand: Herabsetzung der Vorgeschichte (geteilter Vertrag).
+    alt_rv: Optional[ReduzierterVertrag] = None
+    if v.reduktion is not None:
+        red_jahr, red_anteil = v.reduktion
+        if 12 * red_jahr > v.monate_stichtag_1:
+            raise ValueError(
+                f"{v.police_id}: Herabsetzung in Jahr {red_jahr} liegt nach "
+                "dem Migrationsstichtag — als RED-GeVo liefern, nicht als "
+                "Anfangszustand"
+            )
+        # Jahr- und Anteilsgrenzen prueft der Kern (fail-fast).
+        alt_rv = ReduzierterVertrag.nach(
+            kern, red_jahr, red_anteil, verfahren=PROSPEKTIV)
+
+    # Anfangszustand: dynamische Erhoehungen der Vorgeschichte.
+    scheiben: List[Tuple[int, Rechenkern]] = []
+    for erh_jahr, erh_summe in v.scheiben:
+        if 12 * erh_jahr > v.monate_stichtag_1:
+            raise ValueError(
+                f"{v.police_id}: Erhoehungsscheibe aus Jahr {erh_jahr} liegt "
+                "nach dem Migrationsstichtag — als ERH-GeVo liefern, nicht "
+                "als Anfangszustand"
+            )
+        scheiben.append(
+            (erh_jahr, Rechenkern(erhoehungs_scheibe(
+                grund_mp, erh_jahr, erh_summe))))
+
+    if alt_rv is not None:
+        dk_1 = alt_rv.monatsreserve(v.monate_stichtag_1).vx_mrv
+    elif pex_jahr is not None:
         dk_1 = kern.monatsreserve_beitragsfrei(pex_jahr, v.monate_stichtag_1)
+    elif scheiben:
+        dk_1 = vertrags_monatsreserve(
+            kern, scheiben, v.monate_stichtag_1).vx_mrv
     else:
         dk_1 = kern.monatsreserve(v.monate_stichtag_1).vx_mrv
     pruefungen.append(_vergleich("dk_stichtag_1", dk_1, v.dk_erwartet_1))
@@ -326,7 +399,8 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     if v.bjb_erwartet_1 is not None:
         pruefungen.append(_vergleich(
             "bjb_stichtag_1",
-            _bjb_system(kern, v.monate_stichtag_1, pex_jahr),
+            _bjb_system(kern, v.monate_stichtag_1, pex_jahr,
+                        scheiben=scheiben, reduziert=alt_rv),
             v.bjb_erwartet_1,
         ))
     else:
@@ -335,7 +409,6 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     terminal_monat: Optional[int] = None
     red_monat: Optional[int] = None
     reduziert: Optional[ReduzierterVertrag] = None
-    scheiben: List[Tuple[int, Rechenkern]] = []
     for g in sorted(v.gevos, key=lambda g: g.monate):
         if g.art not in GEVO_ARTEN:
             befunde.append(f"unbekannte GeVo-Art {g.art!r}")
@@ -405,17 +478,34 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     "Verträge)"
                 )
                 continue
+            if alt_rv is not None and scheiben:
+                befunde.append(
+                    f"STO bei Monat {g.monate}: Rückkauf eines "
+                    "herabgesetzten Vertrags MIT Erhöhungsscheiben ist "
+                    "nicht abgebildet"
+                )
+                continue
             if g.betrag_erwartet is not None:
+                rkw = (alt_rv.monatsreserve(g.monate).rkw
+                       if alt_rv is not None else
+                       vertrags_monatsreserve(kern, scheiben, g.monate).rkw)
                 pruefungen.append(_vergleich(
-                    f"gevo_sto_monat_{g.monate}",
-                    vertrags_monatsreserve(kern, scheiben, g.monate).rkw,
-                    g.betrag_erwartet,
+                    f"gevo_sto_monat_{g.monate}", rkw, g.betrag_erwartet,
                 ))
         elif g.art == "TOD":
+            if alt_rv is not None and scheiben:
+                befunde.append(
+                    f"TOD bei Monat {g.monate}: Leistung eines "
+                    "herabgesetzten Vertrags MIT Erhöhungsscheiben ist "
+                    "nicht abgebildet"
+                )
+                continue
             if g.betrag_erwartet is not None:
+                leistung = (alt_rv.terminale_leistung(pex_jahr)
+                            if alt_rv is not None else
+                            _terminale_leistung(kern, scheiben, pex_jahr))
                 pruefungen.append(_vergleich(
-                    f"gevo_tod_monat_{g.monate}",
-                    _terminale_leistung(kern, scheiben, pex_jahr),
+                    f"gevo_tod_monat_{g.monate}", leistung,
                     g.betrag_erwartet,
                 ))
         elif g.art == "ABL":
@@ -431,10 +521,19 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     f"n = {grund_mp.n} Jahre)"
                 )
                 continue
+            if alt_rv is not None and scheiben:
+                befunde.append(
+                    f"ABL bei Monat {g.monate}: Leistung eines "
+                    "herabgesetzten Vertrags MIT Erhöhungsscheiben ist "
+                    "nicht abgebildet"
+                )
+                continue
             if g.betrag_erwartet is not None:
+                leistung = (alt_rv.terminale_leistung(pex_jahr)
+                            if alt_rv is not None else
+                            _terminale_leistung(kern, scheiben, pex_jahr))
                 pruefungen.append(_vergleich(
-                    f"gevo_abl_monat_{g.monate}",
-                    _terminale_leistung(kern, scheiben, pex_jahr),
+                    f"gevo_abl_monat_{g.monate}", leistung,
                     g.betrag_erwartet,
                 ))
         elif g.art == "RED":
@@ -458,6 +557,12 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     f"RED bei Monat {g.monate}: der Vertrag ist seit Jahr "
                     f"{pex_jahr} beitragsfrei — es gibt keinen Beitrag, "
                     "der sich herabsetzen ließe"
+                )
+                continue
+            if alt_rv is not None:
+                befunde.append(
+                    f"RED bei Monat {g.monate}: zweite Herabsetzung eines "
+                    "bereits herabgesetzten Vertrags ist nicht abgebildet"
                 )
                 continue
             if scheiben:
@@ -501,11 +606,20 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     "am Vertragsjahrestag (Vielfaches von 12)"
                 )
                 continue
+            if alt_rv is not None and scheiben:
+                befunde.append(
+                    f"PEX bei Monat {g.monate}: Beitragsfreistellung eines "
+                    "herabgesetzten Vertrags MIT Erhöhungsscheiben ist "
+                    "nicht abgebildet"
+                )
+                continue
             pex_jahr = g.monate // 12
             if g.betrag_erwartet is not None:
+                summe = (alt_rv.beitragsfreie_summe(pex_jahr)
+                         if alt_rv is not None else
+                         _bfr_gesamtsumme(kern, scheiben, pex_jahr))
                 pruefungen.append(_vergleich(
-                    f"gevo_pex_monat_{g.monate}",
-                    _bfr_gesamtsumme(kern, scheiben, pex_jahr),
+                    f"gevo_pex_monat_{g.monate}", summe,
                     g.betrag_erwartet,
                 ))
 
@@ -548,7 +662,18 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
             nicht_geprueft.append(
                 f"dk_stichtag_2_nach_red_monat_{red_monat}")
     else:
-        if pex_jahr is not None:
+        if alt_rv is not None:
+            if pex_jahr is not None:
+                dk2 = alt_rv.reserve_beitragsfrei(
+                    pex_jahr, v.monate_stichtag_2)
+            else:
+                # Geteilter Vertrag plus etwaige Scheiben aus
+                # Prüfzeitraums-ERH — jede an ihrem versetzten Stichtag.
+                dk2 = alt_rv.monatsreserve(v.monate_stichtag_2).vx_mrv + sum(
+                    k.monatsreserve(
+                        v.monate_stichtag_2 - 12 * erh_jahr).vx_mrv
+                    for erh_jahr, k in scheiben)
+        elif pex_jahr is not None:
             dk2 = kern.monatsreserve_beitragsfrei(
                 pex_jahr, v.monate_stichtag_2) + sum(
                 k.monatsreserve_beitragsfrei(
