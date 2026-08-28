@@ -60,6 +60,9 @@ from rechner_pipeline.gates._common import (
     utc_now,
 )
 from rechner_pipeline.qa.aktuarieller_test import (
+    KRITERIUM_PLAUSIBILITAET,
+    KRITERIUM_VERGLEICH,
+    _KORRIDOR_TOL,
     PERZENTILE,
     verteilung,
     verteilungsbefunde,
@@ -150,6 +153,18 @@ def _profil_aus_beleg(beleg: Mapping[str, Any]) -> Testprofil:
     )
 
 
+def _ist_wertvergleich(pruefung: Mapping[str, Any]) -> bool:
+    """Ob eine Pruefung in die Residuum-Verteilung eingeht.
+
+    Nur Wertvergleiche tun das. Eine Plausibilitaetspruefung hat keinen
+    gemeinsamen Massstab mit der Lieferung; ihr Residuum in dieselbe
+    Verteilung zu werfen hiesse, die Aussage ueber die Methode mit einer
+    Groesse zu verduennen, die gar nicht verglichen wurde.
+    """
+    return pruefung.get("kriterium", KRITERIUM_VERGLEICH) != (
+        KRITERIUM_PLAUSIBILITAET)
+
+
 def test_fehler(test: Any) -> List[str]:
     """Ergebnis-Vertrag von innen nach aussen neu ableiten.
 
@@ -218,6 +233,7 @@ def test_fehler(test: Any) -> List[str]:
     alle_residuen: List[float] = []
     fehlgeschlagen = 0
     feld_fehler = False
+    plausibilitaets_zahl = 0
     for v in vertraege:
         v_fehlend = sorted(_VERTRAGS_FELDER - set(v))
         if v_fehlend:
@@ -244,6 +260,53 @@ def test_fehler(test: Any) -> List[str]:
                     f"police {v['police_id']} {p['groesse']}: residuum "
                     "ist nicht system - erwartet"
                 )
+            if p.get("kriterium") == KRITERIUM_PLAUSIBILITAET:
+                # Ersetzter Wertvergleich: geprueft wird gegen den
+                # ausgewiesenen Korridor, und zwar auf BEIDEN Seiten.
+                # Sein Residuum bleibt aus der Verteilung heraus — sonst
+                # verzerrte eine Groesse ohne gemeinsamen Massstab die
+                # Aussage ueber die Methode.
+                korridor = p.get("korridor")
+                begruendung = str(p.get("begruendung", "")).strip()
+                if (not isinstance(korridor, list) or len(korridor) != 2
+                        or korridor[0] > korridor[1]):
+                    fehler.append(
+                        f"police {v['police_id']} {p['groesse']}: "
+                        "Plausibilitaetspruefung ohne gueltigen Korridor"
+                    )
+                    feld_fehler = True
+                    continue
+                if not begruendung:
+                    fehler.append(
+                        f"police {v['police_id']} {p['groesse']}: "
+                        "Plausibilitaetspruefung ohne Begruendung — eine "
+                        "Ausnahme ohne Beleg ist keine"
+                    )
+                if v["police_id"] not in test.get(
+                        "plausibilitaet_statt_vergleich", {}):
+                    fehler.append(
+                        f"police {v['police_id']} {p['groesse']}: "
+                        "Plausibilitaetspruefung ohne Ausweis in der "
+                        "Zusammenfassung"
+                    )
+                unten, oben = float(korridor[0]), float(korridor[1])
+                system_ok = unten - _KORRIDOR_TOL <= p["system"] <= oben + _KORRIDOR_TOL
+                erwartet_ok = (
+                    unten - _KORRIDOR_TOL <= p["erwartet"] <= oben + _KORRIDOR_TOL)
+                if bool(p.get("erwartet_im_korridor")) != erwartet_ok:
+                    fehler.append(
+                        f"police {v['police_id']} {p['groesse']}: "
+                        "erwartet_im_korridor widerspricht dem Korridor"
+                    )
+                soll_ok = system_ok and erwartet_ok
+                if bool(p["ok"]) != soll_ok:
+                    fehler.append(
+                        f"police {v['police_id']} {p['groesse']}: ok-Urteil "
+                        "widerspricht dem Plausibilitaets-Korridor"
+                    )
+                alle_ok = alle_ok and soll_ok
+                plausibilitaets_zahl += 1
+                continue
             # Beim Geschaeftsvorfalltest entscheidet die Vorfallart ueber
             # die Toleranz, sonst die Vergleichsgroesse — dieselbe Regel
             # wie in der Engine, hier unabhaengig nachvollzogen.
@@ -270,6 +333,9 @@ def test_fehler(test: Any) -> List[str]:
         # Ohne vollstaendige Vertragszeilen sind die nachgelagerten
         # Aggregate nicht ableitbar — die Feld-Befunde stehen fuer sich.
         return fehler
+    if test.get("plausibilitaets_pruefungen", 0) != plausibilitaets_zahl:
+        fehler.append(
+            "plausibilitaets_pruefungen widerspricht den Einzelpruefungen")
     if test["anzahl"] != len(vertraege):
         fehler.append("anzahl deckt vertraege nicht")
     if test["fehlgeschlagen"] != fehlgeschlagen:
@@ -294,6 +360,7 @@ def test_fehler(test: Any) -> List[str]:
         residuen = [
             p["system"] - p["erwartet"]
             for v in im_typ for p in v.get("pruefungen", [])
+            if _ist_wertvergleich(p)
         ]
         soll = {
             "anzahl": len(im_typ),
@@ -310,7 +377,10 @@ def test_fehler(test: Any) -> List[str]:
     # Zweite Cluster-Achse: der Anlass sagt, WO im Vertragsleben die
     # Residuen liegen. Ein Residuum bei der Uebernahme und eines beim
     # Ablauf sind verschiedene Befunde.
-    alle_pruefungen = [p for v in vertraege for p in v.get("pruefungen", [])]
+    alle_pruefungen = [
+        p for v in vertraege for p in v.get("pruefungen", [])
+        if _ist_wertvergleich(p)
+    ]
     for anlass, aggregat in sorted(test["nach_anlass"].items()):
         residuen = [
             p["system"] - p["erwartet"]
@@ -690,6 +760,31 @@ def baue_bericht(*, titel: str, test: Dict[str, Any]) -> str:
 
     teile.append(_anlass_abschnitt(test))
     teile.append(_schwerpunkt(test))
+
+    ausnahmen = test.get("plausibilitaet_statt_vergleich") or {}
+    if ausnahmen:
+        # VOR den Fehlschlaegen: Wer das Urteil liest, muss zuerst
+        # wissen, wo NICHT gegen die Lieferung verglichen wurde.
+        teile.append(
+            "<h2>Ersetzter Wertvergleich (Einschränkung des Urteils)</h2>"
+            "<p>Für die folgenden Verträge ist der gelieferte Wert der "
+            "genannten Größe <strong>kein tauglicher Vergleichsmaßstab</strong>. "
+            "An die Stelle des centgenauen Vergleichs tritt die "
+            "Plausibilitätsregel des Tarifwerks; geprüft wird dabei auch "
+            "der gelieferte Wert selbst. Das Urteil dieser Verträge trägt "
+            f"insoweit weniger als das der übrigen — betroffen sind "
+            f"{len(ausnahmen)} von {test['anzahl']} Verträgen mit "
+            f"{test.get('plausibilitaets_pruefungen', 0)} Einzelprüfungen."
+            "</p><table><tr><th>Police</th><th>Größe</th>"
+            "<th>Begründung</th></tr>"
+        )
+        for police in sorted(ausnahmen):
+            for groesse, grund in sorted(dict(ausnahmen[police]).items()):
+                teile.append(
+                    f"<tr><td>{_e(police)}</td><td>{_e(groesse)}</td>"
+                    f"<td>{_e(grund)}</td></tr>"
+                )
+        teile.append("</table>")
 
     fehlgeschlagene = [v for v in test["vertraege"] if not v["bestanden"]]
     teile.append("<h2>Fehlschläge und Befunde</h2>")

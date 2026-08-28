@@ -109,6 +109,7 @@ def baue_auftraege(
     *,
     auspraegungen_je_police: Dict[str, Dict[str, str]],
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
+    plausibilitaet: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> List[Vertragspruefung]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag."""
     zeilen = {str(r["police_id"]): r for _, r in bestand.iterrows()}
@@ -164,6 +165,7 @@ def baue_auftraege(
             monate_ta=eintrag.get("monate_ta"),
             scheiben=tuple(zustand.get("scheiben", ())),
             reduktion=zustand.get("reduktion"),
+            plausibilitaet=(plausibilitaet or {}).get(police, {}),
         ))
     return auftraege
 
@@ -214,6 +216,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="nachgelieferter fortgefuehrter Beitragsanteil einer "
                         "Alt-Absetzung, deren Beitragsgleichung entfaellt "
                         "(wiederholbar)")
+    p.add_argument("--plausibilitaet-statt-vergleich",
+                   dest="plausibilitaet", default=None,
+                   metavar="REGISTRIERTE_DATEI",
+                   help="REGISTRIERTE Auskunft der abgebenden Gesellschaft, "
+                        "die je Police und Groesse belegt, dass der "
+                        "gelieferte Wert kein tauglicher Vergleichsmassstab "
+                        "ist (JSON: {\"begruendung\": ..., \"groessen\": "
+                        "[...], \"policen\": [...]}). Ohne diesen Beleg "
+                        "wird jede Groesse wertverglichen.")
     p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
                    default=None, metavar="SATZ",
                    help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
@@ -298,9 +309,28 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
                   file=sys.stderr)
 
+    # Ersetzter Wertvergleich: NUR aus einer registrierten Quelle. Ein
+    # Kommandozeilen-Text waere fuer die Zeichnung nicht bindbar — die
+    # menschlichen Gates hashen den Eingang, nicht den Aufruf.
+    plausibilitaet: Dict[str, Dict[str, str]] = {}
+    if args.plausibilitaet is not None:
+        beleg = _lies_registriert(fall, args.plausibilitaet)
+        begruendung = str(beleg.get("begruendung", "")).strip()
+        groessen = [str(g) for g in beleg.get("groessen", [])]
+        policen = [str(x) for x in beleg.get("policen", [])]
+        if not begruendung or not groessen or not policen:
+            print(f"{args.plausibilitaet}: erwartet werden nichtleere Felder "
+                  "begruendung, groessen und policen", file=sys.stderr)
+            return 2
+        quelle = f"{begruendung} [Beleg: {args.plausibilitaet}]"
+        plausibilitaet = {
+            police: {groesse: quelle for groesse in groessen}
+            for police in policen
+        }
+
     auftraege = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
-        anfangszustaende=anfangszustaende)
+        anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet)
     stichprobe = _stichprobe(beleg, args.abnahme)
     profil = vorlage(args.abnahme, weite=str(
         stichprobe.parameter.get("weite") or stichprobe.profil))

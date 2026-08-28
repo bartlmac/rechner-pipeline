@@ -638,3 +638,130 @@ def test_stichprobe_belegt_das_red_verfahren():
         grund=Kriterium(abs_tol=0.01, rel_tol=1e-9)),
         red_verfahren="mit_abzug")
     assert ergebnis["red_verfahren"] == "mit_abzug"
+
+
+# --------------------------------------------------------------------------- #
+# Ersetzter Wertvergleich: Plausibilitaet statt Vergleich
+# --------------------------------------------------------------------------- #
+
+from rechner_pipeline.qa.aktuarieller_test import (
+    KRITERIUM_PLAUSIBILITAET,
+    KRITERIUM_VERGLEICH,
+    PLAUSIBILITAET,
+)
+
+GRUND = "Altrechnung nicht rekonstruierbar (Auskunft der Zulieferung)"
+
+
+def _rkw_punkt(monate=120, rkw=None, dk=None):
+    zeile = KERN.zustand_am(monate)
+    return Pruefpunkt(
+        monate=monate,
+        erwartet={"kVx_MRV": round(dk if dk is not None else zeile.vx_mrv, 2),
+                  "RKW": round(rkw if rkw is not None else zeile.rkw, 2)},
+        anlass="uebernahme",
+    )
+
+
+def test_plausibilitaet_ersetzt_den_wertvergleich_im_korridor():
+    """Ein gelieferter Rueckkaufswert, der den centgenauen Vergleich
+    reisst, aber im Korridor des Tarifwerks liegt, besteht — und wird
+    als ersetzter Vergleich ausgewiesen."""
+    zeile = KERN.zustand_am(120)
+    daneben = round(zeile.rkw + 50.0, 2)       # 50 EUR mehr, im Korridor
+    v = _vertrag(_rkw_punkt(rkw=daneben), plausibilitaet={"RKW": GRUND})
+    urteil = pruefe_vertrag(v, _profil())
+    assert urteil["bestanden"], urteil["befunde"]
+    rkw = next(p for p in urteil["pruefungen"] if p["groesse"] == "RKW")
+    assert rkw["kriterium"] == KRITERIUM_PLAUSIBILITAET
+    assert rkw["erwartet_im_korridor"] and rkw["begruendung"] == GRUND
+    # Das Deckungskapital bleibt im WERTVERGLEICH — die Ausnahme gilt
+    # genau der benannten Groesse.
+    dk = next(p for p in urteil["pruefungen"] if p["groesse"] == "kVx_MRV")
+    assert dk["kriterium"] == KRITERIUM_VERGLEICH
+
+
+def test_plausibilitaet_faengt_einen_unmoeglichen_systemwert():
+    """Kein Freibrief: ein Systemwert ausserhalb des Korridors faellt."""
+    zeile = KERN.zustand_am(120)
+    v = _vertrag(_rkw_punkt(), plausibilitaet={"RKW": GRUND})
+    urteil = pruefe_vertrag(v, _profil())
+    assert urteil["bestanden"]
+    # Korridor ist [DK - stoab_max, DK]; ein Systemwert darunter faellt.
+    korridor = next(p for p in urteil["pruefungen"]
+                    if p["groesse"] == "RKW")["korridor"]
+    assert korridor[0] == pytest.approx(
+        zeile.vx_mrv - KLV_DEFAULT.stoab_max, abs=0.02)
+    assert korridor[1] == pytest.approx(zeile.vx_mrv, abs=0.02)
+
+
+def test_plausibilitaet_prueft_auch_den_gelieferten_wert():
+    """Die Ausnahme trifft beide Seiten: ein gelieferter Wert ausserhalb
+    des Korridors ist ein Befund GEGEN DIE LIEFERUNG."""
+    zeile = KERN.zustand_am(120)
+    unmoeglich = round(zeile.vx_mrv - 5 * KLV_DEFAULT.stoab_max, 2)
+    v = _vertrag(_rkw_punkt(rkw=unmoeglich), plausibilitaet={"RKW": GRUND})
+    urteil = pruefe_vertrag(v, _profil())
+    assert not urteil["bestanden"]
+    assert any("GELIEFERTER Wert" in b for b in urteil["befunde"]), urteil
+
+
+def test_groesse_ohne_plausibilitaetsregel_faellt_hart():
+    """Nur wo eine Regel des Tarifwerks existiert, laesst sich der
+    Wertvergleich ersetzen — sonst waere es ein Weg, jeden Fehlschlag
+    wegzudefinieren."""
+    assert "kVx_MRV" not in PLAUSIBILITAET
+    v = _vertrag(_rkw_punkt(), plausibilitaet={"kVx_MRV": GRUND})
+    with pytest.raises(AktuartestFehler, match="keine Plausibilitaetsregel"):
+        pruefe_vertrag(v, _profil())
+
+
+def test_plausibilitaet_ohne_begruendung_faellt_hart():
+    v = _vertrag(_rkw_punkt(), plausibilitaet={"RKW": "   "})
+    with pytest.raises(AktuartestFehler, match="ohne Begruendung"):
+        pruefe_vertrag(v, _profil())
+
+
+def test_ersetzte_vergleiche_verzerren_die_residuum_verteilung_nicht():
+    """Ein Residuum ohne gemeinsamen Massstab gehoert nicht in die
+    Verteilung — sonst kippten die Abnahmegrenzen an einer Groesse, die
+    gar nicht verglichen wurde."""
+    from rechner_pipeline.qa.stichprobe import Stichprobe
+
+    zeile = KERN.zustand_am(120)
+    v = _vertrag(_rkw_punkt(rkw=round(zeile.rkw + 50.0, 2)),
+                 plausibilitaet={"RKW": GRUND})
+    probe = Stichprobe(profil="vollbestand", parameter={},
+                       police_ids=("P1",), grundgesamtheit=1)
+    ergebnis = pruefe_stichprobe([v], probe, _profil())
+    assert ergebnis["test_bestanden"], ergebnis["grenzbefunde"]
+    assert ergebnis["verteilung"]["max_abs_residuum"] < 0.02
+    assert ergebnis["plausibilitaets_pruefungen"] == 1
+    assert ergebnis["plausibilitaet_statt_vergleich"] == {"P1": {"RKW": GRUND}}
+
+
+def test_gate_rechnet_die_plausibilitaet_nach_und_faengt_manipulation():
+    """Ein von Hand auf gruen gesetztes Urteil faellt im Gate."""
+    from rechner_pipeline.gates.aktuartest import test_fehler
+    from rechner_pipeline.qa.stichprobe import Stichprobe
+
+    zeile = KERN.zustand_am(120)
+    unmoeglich = round(zeile.vx_mrv - 5 * KLV_DEFAULT.stoab_max, 2)
+    v = _vertrag(_rkw_punkt(rkw=unmoeglich), plausibilitaet={"RKW": GRUND})
+    probe = Stichprobe(profil="vollbestand", parameter={},
+                       police_ids=("P1",), grundgesamtheit=1)
+    ergebnis = pruefe_stichprobe([v], probe, _profil())
+    assert not ergebnis["test_bestanden"]
+    assert test_fehler(ergebnis) == []
+
+    # Manipulation: das rote Einzelurteil auf gruen drehen.
+    import copy
+    gefaelscht = copy.deepcopy(ergebnis)
+    for p in gefaelscht["vertraege"][0]["pruefungen"]:
+        if p["groesse"] == "RKW":
+            p["ok"] = True
+            p["erwartet_im_korridor"] = True
+    gefaelscht["vertraege"][0]["befunde"] = []
+    gefaelscht["vertraege"][0]["bestanden"] = True
+    befunde = test_fehler(gefaelscht)
+    assert any("Korridor" in f for f in befunde), befunde

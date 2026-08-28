@@ -114,6 +114,38 @@ GEPRUEFTE_GROESSEN = ("kVx_MRV", "RKW", "BJB", "VS_bfr", "dDK")
 #: Mittelwert oder Median).
 PERZENTILE = (95, 99)
 
+#: Kennung der Pruefart im Beleg. Der Regelfall ist der WERTVERGLEICH
+#: gegen den gelieferten Wert; ``plausibilitaet`` ist die Ausnahme fuer
+#: Groessen, deren gelieferter Wert nachweislich kein tauglicher
+#: Massstab ist (siehe :data:`PLAUSIBILITAET`).
+KRITERIUM_VERGLEICH = "wertvergleich"
+KRITERIUM_PLAUSIBILITAET = "plausibilitaet"
+
+
+def _korridor_rkw(werte: Mapping[str, float], mp: ModelPoint) -> Tuple[float, float]:
+    """Zulaessiger Rueckkaufswert aus dem Tarifwerk (klv.md, Abschnitt 6).
+
+    ``RKW = max(0, kVx_MRV - StoAb)`` mit einem Stornoabzug zwischen
+    null (flexible Phase) und ``stoab_max``. Daraus folgt der Korridor
+    ohne jede Annahme ueber die Abzugsformel — er gilt fuer JEDE
+    zulaessige Ausgestaltung des Abzugs.
+    """
+    if "kVx_MRV" not in werte:
+        raise AktuartestFehler(
+            "Plausibilitaet des Rueckkaufswerts verlangt kVx_MRV am "
+            "selben Pruefpunkt — ohne das Deckungskapital ist der "
+            "Korridor nicht bestimmt"
+        )
+    dk = float(werte["kVx_MRV"])
+    return (max(0.0, dk - float(mp.stoab_max)), dk)
+
+
+#: Groessen, fuer die es eine PLAUSIBILITAETSREGEL aus dem Tarifwerk
+#: gibt — und nur fuer sie darf der Wertvergleich ersetzt werden. Eine
+#: Groesse ohne Regel bleibt im Wertvergleich; sonst waere die Ausnahme
+#: ein Weg, jeden Fehlschlag wegzudefinieren.
+PLAUSIBILITAET: Mapping[str, Any] = {"RKW": _korridor_rkw}
+
 # --------------------------------------------------------------------------- #
 # Anlaesse
 # --------------------------------------------------------------------------- #
@@ -240,6 +272,18 @@ class Vertragspruefung:
     #: eine Schicht gesetzt ist: Die Schicht rechnet ab dort, nicht ab
     #: Vertragsbeginn.
     monate_ta: Optional[int] = None
+    #: Groessen, deren gelieferter Wert NACHWEISLICH kein tauglicher
+    #: Vergleichsmassstab ist, mit der Begruendung als Wert (Verweis auf
+    #: den Beleg). Statt des Wertvergleichs laeuft dort die
+    #: Plausibilitaetsregel des Tarifwerks (:data:`PLAUSIBILITAET`) —
+    #: und sie prueft BEIDE Seiten: Liegt der gelieferte Wert selbst
+    #: ausserhalb des Korridors, ist das ein Befund gegen die Lieferung.
+    #:
+    #: Die Ausnahme ist eng: Sie braucht je Groesse eine Regel, sie
+    #: steht mit Begruendung im Beleg und im Bericht, und ihr Residuum
+    #: geht NICHT in die Verteilungsauswertung ein — eine Differenz
+    #: ohne gemeinsamen Massstab ist keine Aussage ueber die Methode.
+    plausibilitaet: Mapping[str, str] = field(default_factory=dict)
     #: ANFANGSZUSTAND einer Herabsetzung VOR dem Migrationsstichtag:
     #: ``(vertragsjahr, fortgefuehrter_anteil)``. Der Vertrag wird dann als
     #: geteilter Vertrag bewertet (Kern 3.1.0,
@@ -426,6 +470,18 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
                 f"VOR dem Verankerungszeitpunkt {v.monate_ta} — dort ist die "
                 "Korrekturschicht nicht definiert, der Vertrag gehoerte dem "
                 "abgebenden Unternehmen"
+            )
+    for groesse, begruendung in dict(v.plausibilitaet).items():
+        if groesse not in PLAUSIBILITAET:
+            raise AktuartestFehler(
+                f"police {v.police_id}: fuer {groesse!r} gibt es keine "
+                "Plausibilitaetsregel — der Wertvergleich laesst sich nur "
+                f"ersetzen, wo eine Regel existiert ({sorted(PLAUSIBILITAET)})"
+            )
+        if not str(begruendung).strip():
+            raise AktuartestFehler(
+                f"police {v.police_id}: Plausibilitaet fuer {groesse!r} ohne "
+                "Begruendung — eine Ausnahme ohne Beleg ist keine"
             )
     doppelt = _doppelte_punkte(v.punkte)
     if doppelt:
@@ -703,6 +759,13 @@ def _mit_schicht(
 # --------------------------------------------------------------------------- #
 
 
+#: Randtoleranz des Plausibilitaets-Korridors. Der Korridor ist eine
+#: Ungleichung, keine Toleranz — aber seine Grenzen entstehen aus
+#: gerundeten Groessen, und ein Wert exakt AUF der Grenze soll nicht an
+#: der letzten Stelle scheitern.
+_KORRIDOR_TOL = 0.011
+
+
 def _ok(ist: float, soll: float, k: Kriterium) -> bool:
     return math.isclose(ist, soll, rel_tol=k.rel_tol, abs_tol=k.abs_tol)
 
@@ -730,28 +793,53 @@ def pruefe_vertrag(
         # Beim Geschaeftsvorfalltest entscheidet die Vorfallart ueber die
         # Toleranz, sonst die Vergleichsgroesse.
         for groesse in sorted(p.erwartet):
-            schluessel = p.anlass if p.ist_gevo else groesse
-            k = profil.fuer(schluessel)
             system = float(werte[groesse])
             erwartet = float(p.erwartet[groesse])
             residuum = system - erwartet
-            ok = _ok(system, erwartet, k)
-            pruefungen.append(
-                {
-                    "anlass": p.anlass,
-                    "monate": p.monate,
-                    "groesse": groesse,
-                    "system": system,
-                    "erwartet": erwartet,
-                    "residuum": residuum,
-                    "ok": ok,
-                }
-            )
-            if not ok:
-                befunde.append(
-                    f"{p.anlass}@{p.monate}M {groesse}: system {system!r} "
-                    f"vs. erwartet {erwartet!r} (residuum {residuum!r})"
-                )
+            eintrag: Dict[str, Any] = {
+                "anlass": p.anlass,
+                "monate": p.monate,
+                "groesse": groesse,
+                "system": system,
+                "erwartet": erwartet,
+                "residuum": residuum,
+            }
+            if groesse in v.plausibilitaet:
+                unten, oben = PLAUSIBILITAET[groesse](werte, mp)
+                system_ok = unten - _KORRIDOR_TOL <= system <= oben + _KORRIDOR_TOL
+                erwartet_ok = (
+                    unten - _KORRIDOR_TOL <= erwartet <= oben + _KORRIDOR_TOL)
+                eintrag.update({
+                    "kriterium": KRITERIUM_PLAUSIBILITAET,
+                    "korridor": [unten, oben],
+                    "erwartet_im_korridor": erwartet_ok,
+                    "begruendung": str(v.plausibilitaet[groesse]),
+                    "ok": system_ok and erwartet_ok,
+                })
+                if not system_ok:
+                    befunde.append(
+                        f"{p.anlass}@{p.monate}M {groesse}: Systemwert "
+                        f"{system!r} ausserhalb des zulaessigen Korridors "
+                        f"[{unten!r}, {oben!r}]"
+                    )
+                if not erwartet_ok:
+                    befunde.append(
+                        f"{p.anlass}@{p.monate}M {groesse}: GELIEFERTER Wert "
+                        f"{erwartet!r} ausserhalb des zulaessigen Korridors "
+                        f"[{unten!r}, {oben!r}] — Befund gegen die Lieferung"
+                    )
+            else:
+                schluessel = p.anlass if p.ist_gevo else groesse
+                ok = _ok(system, erwartet, profil.fuer(schluessel))
+                eintrag.update({
+                    "kriterium": KRITERIUM_VERGLEICH, "ok": ok})
+                if not ok:
+                    befunde.append(
+                        f"{p.anlass}@{p.monate}M {groesse}: system "
+                        f"{system!r} vs. erwartet {erwartet!r} "
+                        f"(residuum {residuum!r})"
+                    )
+            pruefungen.append(eintrag)
     return {
         "police_id": v.police_id,
         "historientyp": v.historientyp,
@@ -759,6 +847,7 @@ def pruefe_vertrag(
         "bestanden": not befunde,
         "pruefungen": pruefungen,
         "befunde": befunde,
+        "plausibilitaet": dict(v.plausibilitaet),
     }
 
 
@@ -895,14 +984,27 @@ def pruefe_stichprobe(
                 }
             )
 
-    alle_pruefungen = [p for e in ergebnisse for p in e["pruefungen"]]
+    # Die Verteilungsauswertung sieht NUR Wertvergleiche: Ein Residuum
+    # ohne gemeinsamen Massstab (Plausibilitaetspruefung) waere dort
+    # keine Aussage ueber die Methode, sondern Rauschen mit Vorzeichen.
+    alle_pruefungen = [
+        p for e in ergebnisse for p in e["pruefungen"]
+        if p.get("kriterium", KRITERIUM_VERGLEICH) == KRITERIUM_VERGLEICH
+    ]
+    plausibilitaets_pruefungen = [
+        p for e in ergebnisse for p in e["pruefungen"]
+        if p.get("kriterium") == KRITERIUM_PLAUSIBILITAET
+    ]
 
     # Zwei Cluster-Achsen: der Historientyp sagt, WELCHE Vertraege
     # auseinanderlaufen, der Anlass sagt, WO im Vertragsleben.
     gruppen: Dict[str, Dict[str, Any]] = {}
     for typ in sorted({e["historientyp"] for e in ergebnisse}):
         im_typ = [e for e in ergebnisse if e["historientyp"] == typ]
-        residuen = [p["residuum"] for e in im_typ for p in e["pruefungen"]]
+        residuen = [
+            p["residuum"] for e in im_typ for p in e["pruefungen"]
+            if p.get("kriterium", KRITERIUM_VERGLEICH) == KRITERIUM_VERGLEICH
+        ]
         gruppen[typ] = {
             "anzahl": len(im_typ),
             "bestanden": sum(1 for e in im_typ if e["bestanden"]),
@@ -942,6 +1044,14 @@ def pruefe_stichprobe(
         "grenzbefunde": grenzbefunde,
         "stichprobe_vollstaendig": stichprobe_vollstaendig,
         "verteilung": verteilung(alle_residuen),
+        # Die Ausnahme steht im Beleg, nicht in einer Fussnote: welche
+        # Groessen bei welchen Vertraegen NICHT wertverglichen wurden
+        # und warum.
+        "plausibilitaet_statt_vergleich": {
+            e["police_id"]: e["plausibilitaet"]
+            for e in ergebnisse if e.get("plausibilitaet")
+        },
+        "plausibilitaets_pruefungen": len(plausibilitaets_pruefungen),
         "gruppen": gruppen,
         "nach_anlass": nach_anlass,
         "nach_kriterium": nach_schluessel,
