@@ -1022,15 +1022,35 @@ def test_validate_spec_weist_unbekannte_berechnung_zurueck():
     """Katalogtreue: der Agent WAEHLT, er erfindet keine Rechenregel.
 
     Eine Quellkonvention, die der Katalog nicht kennt (z. B. eine
-    Kalenderjahres-Altersregel), muss als Befund auffallen — sonst
+    Halbjahres-Altersregel), muss als Befund auffallen — sonst
     entstuende sie stillschweigend als nicht implementierte Absicht.
+    (Die Kalenderjahresmethode war das urspruengliche Beispiel dieses
+    Tests; sie ist seit dem Baldrian-Abzugsabgleich BELEGTE
+    Katalogfunktion — das unbekannte Beispiel ist nachgerueckt.)
     """
     spec = _spec(felder=[
         FeldMapping(ziel="entry_age", typ="berechnung",
                     quellen=["GEBDAT", "BEGINN"],
-                    berechnung="alter_kalenderjahresmethode",
+                    berechnung="alter_zum_naechsten_geburtstag",
                     begruendung="Quellkonvention des abgebenden Systems"),
     ])
     fehler = validate_spec(spec, QUELLSPALTEN)
-    assert any("alter_kalenderjahresmethode" in f and "Berechnung" in f
+    assert any("alter_zum_naechsten_geburtstag" in f and "Berechnung" in f
                for f in fehler), fehler
+
+
+def test_kalenderjahresmethode_zaehlt_die_jahresdifferenz():
+    """Die Quellkonvention 'Beginnjahr minus Geburtsjahr' — unabhaengig
+    davon, ob der Geburtstag im Beginnjahr schon erreicht war. Der
+    Unterschied zum vollendeten Alter ist genau der Fall 'Geburtstag
+    nach Beginn'."""
+    from rechner_pipeline.ontologie.transformation import BERECHNUNGEN
+
+    kalender = BERECHNUNGEN["alter_kalenderjahresmethode"]
+    vollendet = BERECHNUNGEN["alter_aus_geburtsdatum_und_beginn"]
+    zeile = {"GEBDAT": "15.09.1980", "BEGINN": "01.05.2015"}
+    assert kalender(zeile, ["GEBDAT", "BEGINN"]) == 35
+    assert vollendet(zeile, ["GEBDAT", "BEGINN"]) == 34
+    zeile2 = {"GEBDAT": "15.03.1980", "BEGINN": "01.05.2015"}
+    assert kalender(zeile2, ["GEBDAT", "BEGINN"]) == 35
+    assert vollendet(zeile2, ["GEBDAT", "BEGINN"]) == 35

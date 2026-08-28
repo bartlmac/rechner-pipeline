@@ -206,6 +206,77 @@ def _dimensions_auspraegungen(
     return auspraegungen
 
 
+def _rechner_quelldatei(vorverdichtung: Path) -> str:
+    """Name der Quellmappe, aus der die Erwartungswerte stammen.
+
+    Steht im ``input_bundle.json`` der Vorverdichtung (``source_path``)
+    und ist damit dieselbe Datei, gegen die verglichen wird — nicht
+    geraten und nicht aus dem Verzeichnisnamen abgeleitet.
+    """
+    bundle = vorverdichtung / "input_bundle.json"
+    if not bundle.is_file():
+        return ""
+    try:
+        daten = json.loads(bundle.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return Path(str(daten.get("source_path", ""))).name
+
+
+def gegenprobe_felder(
+    abox, zelle_knoten: str, rechner_datei: str
+) -> Dict[str, Dict[str, Any]]:
+    """Felder, in denen die Spez den Quell-Rechner BEWUSST verlaesst.
+
+    Der Golden Master beweist, dass die Parametrierung eine korrekte
+    UEBERSETZUNG des Quell-Rechners ist. Wurde eine Diskrepanz zwischen
+    Meldung und Rechner menschlich GEGEN den Rechner entschieden (Gate
+    A-Q1, belegt etwa durch den Abzugsabgleich), traegt die Spez dort
+    absichtlich einen anderen Wert — der Rechner selbst ist in diesem
+    Feld nachweislich falsch. Ein Vergleich gegen seine Werte muesste
+    dann scheitern, und das Gate saehe aus wie ein Uebersetzungsfehler.
+
+    Deshalb prueft P-K1 in solchen Feldern gegen die VERWORFENE
+    Rechner-Lesart: Reproduziert der Kern den Rechner unter dessen
+    EIGENER Lesart exakt, ist die Uebersetzung fehlerfrei und die
+    einzige Ursache jeder Abweichung ist die dokumentierte
+    Entscheidung. Jede darueber hinausgehende Abweichung faellt
+    unveraendert hart — die Gegenprobe weicht keine Toleranz auf,
+    sie bildet den Vergleichsmodellpunkt richtig.
+
+    Streng an drei Stellen: nur ENDGUELTIGE menschliche Entscheidungen
+    (eine vorlaeufige Agenten-Aufloesung loest nichts aus), nur
+    Diskrepanzen GENAU DIESER Zelle, und nur Lesarten, deren Provenienz
+    auf die Mappe zeigt, aus der die Erwartungswerte stammen.
+    """
+    felder: Dict[str, Dict[str, Any]] = {}
+    if not rechner_datei:
+        return felder
+    for d in getattr(abox, "diskrepanzen", []):
+        if d.knoten != zelle_knoten or d.status != "aufgeloest":
+            continue
+        entscheidung = d.entscheidung
+        if entscheidung is None or entscheidung.vorlaeufig:
+            continue
+        rechner_lesarten = [
+            l for l in d.lesarten
+            if any(p.quelle_datei == rechner_datei for p in l.provenienz)
+        ]
+        if len(rechner_lesarten) != 1:
+            # Keine oder mehrdeutige Rechner-Lesart: nichts zu ersetzen.
+            continue
+        rechner_wert = rechner_lesarten[0].wert
+        if rechner_wert == entscheidung.gewaehlter_wert:
+            continue        # Entscheid folgte dem Rechner — kein Konflikt
+        felder[d.feld] = {
+            "rechner_wert": rechner_wert,
+            "spez_wert": entscheidung.gewaehlter_wert,
+            "entscheider": entscheidung.entscheider,
+            "entschieden_am": entscheidung.entschieden_am,
+        }
+    return felder
+
+
 def _waehle_zelle(spez, auspraegungen: Dict[str, str]):
     gesucht = {
         dim: wert.strip().lower()
@@ -369,6 +440,19 @@ def main(argv: Optional[List[str]] = None):
     from rechner_pipeline.kern import ModelPoint, Rechenkern
 
     mp_felder: Dict[str, Any] = dict(zelle.model_point)
+    # Felder, in denen die Spez den Rechner bewusst verlaesst (A-Q1):
+    # dort wird gegen SEINE Lesart geprueft, siehe gegenprobe_felder.
+    gegenprobe = gegenprobe_felder(
+        abox, zelle.knoten, _rechner_quelldatei(vorverdichtung))
+    unbekannte_gegenprobe = sorted(set(gegenprobe) - set(mp_felder))
+    if unbekannte_gegenprobe:
+        return _contract_fehler(
+            "gegenprobe",
+            "Entschiedene Diskrepanz betrifft Felder ausserhalb der "
+            f"Spez-Zelle: {unbekannte_gegenprobe}",
+        )
+    for feld, eintrag in gegenprobe.items():
+        mp_felder[feld] = eintrag["rechner_wert"]
     # 21: unbekannte Spez-Felder sind ein Contract-Befund, kein Crash.
     import dataclasses
 
@@ -438,6 +522,11 @@ def main(argv: Optional[List[str]] = None):
                 continue
             feld = PARAMETER_SKALARE[name]
             soll = zelle.model_point.get(feld)
+            # In einem entschiedenen Feld wird gegen die gepruefte
+            # Rechner-Lesart gehalten — sonst meldete das Gate die
+            # dokumentierte Entscheidung als Parameterfehler.
+            if feld in gegenprobe:
+                soll = gegenprobe[feld]["rechner_wert"]
             if feld == "tafel":
                 # Erwartung nennt die BASIS; die Spez traegt den finalen
                 # Namen (Basis + ggf. Unisex-Ableitung).
@@ -452,6 +541,7 @@ def main(argv: Optional[List[str]] = None):
             parameter_pruefungen.append({
                 "name": name, "feld": feld,
                 "erwartet": wert, "spez": soll, "ok": ok,
+                "gegen_rechner_lesart": feld in gegenprobe,
             })
         else:
             uebersprungen.append(name)
@@ -534,6 +624,12 @@ def main(argv: Optional[List[str]] = None):
                         ("x", "n", "t", "sum_insured", "zw")}
         | {"sex": eingaben["sex_roh"], "tafel": mp.tafel}
         | {dim: wert for dim, wert in sorted(auspraegungen.items())},
+        # Wo die Spez den Rechner bewusst verlaesst, steht es HIER —
+        # ein gruener Beleg ohne diesen Ausweis waere die stillschweigende
+        # Behauptung, Spez und Rechner seien deckungsgleich.
+        "gegenprobe_gegen_rechner_lesart": {
+            feld: dict(eintrag) for feld, eintrag in sorted(gegenprobe.items())
+        },
         "skalare_verglichen": len(gefilterte_erwartung),
         "parameter_geprueft": [p["name"] for p in parameter_pruefungen],
         "tabellen_zeilen": anzahl_zeilen,

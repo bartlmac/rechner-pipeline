@@ -88,6 +88,23 @@ def _alter_aus_daten(zeile: Dict[str, Any], quellen: List[str]) -> int:
     return alter
 
 
+def _alter_kalenderjahr(zeile: Dict[str, Any], quellen: List[str]) -> int:
+    """Kalenderjahresmethode: Alter = Beginnjahr - Geburtsjahr.
+
+    Verbreitete Konvention von Quell-Bestandsfuehrungen: das
+    versicherungstechnische Eintrittsalter ist die Differenz der
+    Kalenderjahre, unabhaengig davon, ob der Geburtstag im Beginnjahr
+    schon erreicht war. Welche Regel eine Lieferung verwendet, ist eine
+    Eigenschaft der Quelle und wird im Migrationsfall BELEGT entschieden
+    (Abzugsabgleich), nie geraten.
+    """
+    geb, beginn = _parse_datum(zeile[quellen[0]]), _parse_datum(zeile[quellen[1]])
+    alter = beginn.year - geb.year
+    if not 0 <= alter <= 123:
+        raise ValueError(f"berechnetes Alter {alter} unplausibel")
+    return alter
+
+
 def _jahre_aus_daten(zeile: Dict[str, Any], quellen: List[str]) -> int:
     von, bis = _parse_datum(zeile[quellen[0]]), _parse_datum(zeile[quellen[1]])
     jahre = bis.year - von.year - (
@@ -115,6 +132,7 @@ def _ganzzahl(zeile: Dict[str, Any], quellen: List[str]) -> int:
 #: Ein Mapping mit unbekannter Berechnung faellt in der Validierung.
 BERECHNUNGEN: Dict[str, Callable[[Dict[str, Any], List[str]], Any]] = {
     "alter_aus_geburtsdatum_und_beginn": _alter_aus_daten,
+    "alter_kalenderjahresmethode": _alter_kalenderjahr,
     "jahre_aus_datumsdifferenz": _jahre_aus_daten,
     "datum_nach_iso": _datum_iso,
     "zahl": _zahl,
@@ -127,6 +145,7 @@ BERECHNUNGEN: Dict[str, Callable[[Dict[str, Any], List[str]], Any]] = {
 #: waehrend der Anwendung zu einem ``IndexError``.
 BERECHNUNGS_ARITAETEN: Dict[str, int] = {
     "alter_aus_geburtsdatum_und_beginn": 2,
+    "alter_kalenderjahresmethode": 2,
     "jahre_aus_datumsdifferenz": 2,
     "datum_nach_iso": 1,
     "zahl": 1,
