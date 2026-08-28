@@ -106,6 +106,7 @@ def baue_auftraege(
     spez,
     *,
     auspraegungen_je_police: Dict[str, Dict[str, str]],
+    anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> List[Vertragspruefung]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag."""
     zeilen = {str(r["police_id"]): r for _, r in bestand.iterrows()}
@@ -126,6 +127,13 @@ def baue_auftraege(
                 "die transformierten Zeilen (--zeilen) decken sie nicht")
         zelle = _zelle(spez, auspraegungen_je_police.get(police, {}))
         mp = model_point_kwargs(zeile, _generationsfelder(zelle))
+        zustand = (anfangszustaende or {}).get(police, {})
+        if "sum_insured" in zustand:
+            # Der Stamm fuehrt die aktuelle Gesamtsumme; die Bewertung
+            # der Vorgeschichts-Welt rechnet auf dem Ursprungs- bzw.
+            # Grund-Modellpunkt (Fall-Ableitungsregel der
+            # Uebernahmestrecke).
+            mp["sum_insured"] = float(zustand["sum_insured"])
 
         punkte = []
         for p in eintrag["punkte"]:
@@ -150,6 +158,8 @@ def baue_auftraege(
             punkte=tuple(punkte),
             beitragsfrei_seit_jahr=eintrag.get("beitragsfrei_seit_jahr"),
             monate_ta=eintrag.get("monate_ta"),
+            scheiben=tuple(zustand.get("scheiben", ())),
+            reduktion=zustand.get("reduktion"),
         ))
     return auftraege
 
@@ -190,6 +200,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="transformierte Zeilen (gates.transformation_anwenden "
                         "--zeilen) — Pflicht, sobald die Spez mehr als eine "
                         "Zelle traegt (Zellwahl je Police)")
+    p.add_argument("--vorgeschichte", default=None,
+                   help="REGISTRIERTE Metadatenliste der Geschaeftsvorfaelle "
+                        "vor dem Stichtag (POLNR;GEVO;DATUM) — traegt die "
+                        "Anfangszustaende (Alt-Scheiben, Alt-Absetzung) je "
+                        "Police der Stichprobe")
+    p.add_argument("--red-anteil", dest="red_anteile", action="append",
+                   default=[], metavar="POLNR=ANTEIL",
+                   help="nachgelieferter fortgefuehrter Beitragsanteil einer "
+                        "Alt-Absetzung, deren Beitragsgleichung entfaellt "
+                        "(wiederholbar)")
     p.add_argument("--red-verfahren", dest="red_verfahren",
                    default=PROSPEKTIV, choices=sorted(VERFAHREN),
                    help="Verfahren der Beitragsherabsetzung (Eigenschaft "
@@ -240,8 +260,37 @@ def main(argv: Optional[List[str]] = None) -> int:
             for _, r in bestand.iterrows()
         }
 
+    anfangszustaende = None
+    if args.vorgeschichte is not None:
+        from rechner_pipeline.gates.migrationssuite_lauf import (
+            VORGABE,
+            anfangszustaende_je_police,
+        )
+        import csv
+
+        with fall_mod.eingang_datei(fall, args.vorgeschichte).open(
+                encoding="utf-8") as datei:
+            vorgeschichte = list(csv.DictReader(datei, delimiter=";"))
+        red_anteile: Dict[str, float] = {}
+        for eintrag in args.red_anteile:
+            police, _, wert = eintrag.partition("=")
+            if not police or not wert:
+                print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL",
+                      file=sys.stderr)
+                return 2
+            red_anteile[police.strip()] = float(wert)
+        anfangszustaende, zustandswarnungen = anfangszustaende_je_police(
+            spez, zeilen if args.zeilen is not None else [],
+            vorgeschichte, bestand, spalten=dict(VORGABE),
+            red_verfahren=args.red_verfahren, red_anteile=red_anteile,
+            auspraegungen=auspraegungen)
+        for w in zustandswarnungen:
+            print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
+                  file=sys.stderr)
+
     auftraege = baue_auftraege(
-        lieferung, bestand, spez, auspraegungen_je_police=auspraegungen)
+        lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
+        anfangszustaende=anfangszustaende)
     stichprobe = _stichprobe(beleg, args.abnahme)
     profil = vorlage(args.abnahme, weite=str(
         stichprobe.parameter.get("weite") or stichprobe.profil))

@@ -518,6 +518,109 @@ def leite_absetzung_ab(
     )
 
 
+def leite_ursprungssumme_ab(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    jahr: int,
+    erlsumme: float,
+    anteil: float,
+    verfahren: str,
+) -> float:
+    """Ursprungssumme einer Alt-Absetzung bei BEKANNTEM Anteil ableiten.
+
+    Der Fall der Nachlieferung: Der fortgefuehrte Bruchteil ``f`` ist
+    geliefert (Zustandsparameter), die Versicherungssumme vor der
+    Absetzung nicht — und die Beitragsgleichung faellt weg, weil die
+    Beitragszahlungsdauer abgelaufen ist. Mit bekanntem ``f`` ist die
+    ERLSUMME-Gleichung in jedem Stornoabzugs-Zweig LINEAR in der
+    Ursprungssumme; der Zweig wird wie in :func:`leite_absetzung_ab`
+    am eigenen Kandidaten geprueft und die Vorwaertsprobe muss die
+    gelieferte Summe auf die Centrundung treffen.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import (
+        VERFAHREN,
+        BeitragsreduktionFehler,
+        reduziere,
+    )
+
+    if verfahren not in VERFAHREN:
+        raise MigrationszugangFehler(
+            f"unbekanntes Verfahren {verfahren!r} — bekannt sind "
+            f"{list(VERFAHREN)}"
+        )
+    if not 0.0 < anteil < 1.0:
+        raise MigrationszugangFehler(
+            f"Anteil {anteil!r} liegt nicht in (0, 1) — er ist der "
+            "fortgefuehrte Bruchteil des Beitrags"
+        )
+    if erlsumme <= 0.0:
+        raise MigrationszugangFehler(f"ERLSUMME {erlsumme!r} unplausibel")
+
+    einheit = ModelPoint(**{**dict(modellpunkt_felder), "sum_insured": 1.0})
+    kern_einheit = Rechenkern(einheit)
+    if not 0 < jahr < einheit.t:
+        raise MigrationszugangFehler(
+            f"Absetzungsjahr {jahr} liegt nicht in der Beitragszahlungs"
+            f"dauer (0 < jahr < t = {einheit.t})"
+        )
+    zeile = kern_einheit.verlaufszeile(jahr)
+    v, vbfr = zeile.vx_bpfl, zeile.vx_bfr
+    if vbfr <= 0.0:
+        raise MigrationszugangFehler(f"kVx_bfr({jahr}) = {vbfr!r} <= 0")
+    frei = 1.0 - anteil
+    s_satz = einheit.stoab_satz
+    flex_oder_null = (
+        verfahren == "prospektiv"
+        or kern_einheit.produkt.ist_flex_phase(jahr)
+        or s_satz <= 0.0
+    )
+
+    kandidaten: List[Tuple[str, float]] = []
+    if flex_oder_null:
+        faktor = anteil + v * frei / vbfr
+        kandidaten.append(("flex_oder_null", erlsumme / faktor))
+    else:
+        # Satz-Zweig: ERLSUMME = VS * (f + (v - s(1-v)) * (1-f) / vbfr)
+        faktor = anteil + (v - s_satz * (1.0 - v)) * frei / vbfr
+        if faktor > 0.0:
+            vs = erlsumme / faktor
+            if einheit.stoab_min <= s_satz * vs * (1.0 - v) <= einheit.stoab_max:
+                kandidaten.append(("satz", vs))
+        # Klammerzweige: ERLSUMME = VS * (f + v(1-f)/vbfr) - c(1-f)/vbfr
+        for zweig, c in (("min", einheit.stoab_min),
+                         ("max", einheit.stoab_max)):
+            faktor = anteil + v * frei / vbfr
+            vs = (erlsumme + c * frei / vbfr) / faktor
+            roh = s_satz * vs * (1.0 - v)
+            passt = (roh <= c) if zweig == "min" else (roh >= c)
+            if passt:
+                kandidaten.append((zweig, vs))
+
+    fehler: List[str] = []
+    for zweig, vs_alt in kandidaten:
+        if vs_alt <= 0.0:
+            fehler.append(f"{zweig}: Ursprungssumme {vs_alt:.2f} <= 0")
+            continue
+        try:
+            probe = reduziere(
+                Rechenkern(ModelPoint(**{
+                    **dict(modellpunkt_felder), "sum_insured": vs_alt})),
+                jahr, anteil, verfahren=verfahren)
+        except BeitragsreduktionFehler as exc:
+            fehler.append(f"{zweig}: {exc}")
+            continue
+        if abs(probe.vs_neu - erlsumme) <= ABLEITUNG_SELBSTCHECK_TOL:
+            return vs_alt
+        fehler.append(
+            f"{zweig}: Vorwaertsprobe daneben (vs_neu {probe.vs_neu:.4f} "
+            f"vs. {erlsumme})")
+    raise MigrationszugangFehler(
+        "Ursprungssumme nicht ableitbar — kein Stornoabzugs-Zweig "
+        "reproduziert die gelieferte Summe ("
+        + ("; ".join(fehler) if fehler else "keine Kandidaten") + ")"
+    )
+
+
 @dataclass(frozen=True)
 class AbgeleiteteErhoehung:
     """Die aus dem Abzug zurueckgerechnete Alt-Dynamikerhoehung.

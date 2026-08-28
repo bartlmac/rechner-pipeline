@@ -40,7 +40,7 @@ flowchart TD
     spez["spez<br/>5 Module"]
     bestand -- 14 --> kern
     bestand -- 13 --> models
-    gates -- 6 --> bestand
+    gates -- 7 --> bestand
     gates -- 7 --> fall
     gates -- 3 --> kern
     gates -- 9 --> models

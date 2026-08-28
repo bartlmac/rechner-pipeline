@@ -35,7 +35,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.parquet_io import read_portfolio
@@ -165,11 +165,121 @@ def beitragsfrei_seit_jahr_je_police(
     return aus
 
 
+def anfangszustaende_je_police(
+    spez,
+    zeilen: List[Dict[str, Any]],
+    vorgeschichte: List[Dict[str, str]],
+    bestand,
+    *,
+    spalten: Dict[str, str],
+    red_verfahren: str,
+    red_anteile: Optional[Dict[str, float]] = None,
+    auspraegungen: Optional[Dict[str, Dict[str, str]]] = None,
+) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
+    """Vorgeschichts-Welten ERH und RED je Police ableiten.
+
+    Der Stamm fuehrt die AKTUELLE Gesamtsumme; die Bewertung der
+    Vorgeschichts-Welten braucht den URSPRUNGS-Modellpunkt. Je Police
+    mit Alt-Erhoehung bzw. Alt-Absetzung liefert diese Funktion den
+    Anfangszustand (``scheiben`` bzw. ``reduktion``) UND die
+    zugehoerige Ursprungs- bzw. Grundsumme (``sum_insured``), abgeleitet
+    aus den transformierten Zeilen (ERLSUMME/JBRUTTO) nach den
+    Fall-Ableitungsregeln der Uebernahmestrecke. Ein nachgelieferter
+    Anteil (``red_anteile``) ersetzt die Beitragsgleichung.
+
+    Nicht bestimmbare Policen (z. B. Beitragszahlung am Stichtag
+    beendet) bekommen KEINEN Zustand und werden als Warnung
+    zurueckgegeben — der Wertvergleich der Suite zeigt sie dann rot,
+    statt dass ein geratener Zustand still richtig aussieht. PEX
+    behandelt :func:`beitragsfrei_seit_jahr_je_police`.
+    """
+    from rechner_pipeline.bestand.migrationszugang import (
+        MigrationszugangFehler,
+        leite_absetzung_ab,
+        leite_erhoehung_ab,
+        leite_ursprungssumme_ab,
+    )
+
+    s = spalten
+    red_anteile = red_anteile or {}
+    beginne = {
+        str(z["police_id"]): z["insurance_start"].date()
+        for _, z in bestand.iterrows()
+    }
+    stammzeilen = {str(z["police_id"]): z for _, z in bestand.iterrows()}
+    zeilen_je_police = {str(z.get("police_id", "")): z for z in zeilen}
+
+    ereignisse: Dict[str, List[Dict[str, str]]] = {}
+    for zeile in vorgeschichte:
+        if zeile[s["gevo"]] in ("ERH", "RED"):
+            ereignisse.setdefault(str(zeile[s["police"]]), []).append(zeile)
+
+    zustaende: Dict[str, Dict[str, Any]] = {}
+    warnungen: List[str] = []
+    for police in sorted(ereignisse):
+        beginn = beginne.get(police)
+        if beginn is None:
+            continue
+        if len(ereignisse[police]) > 1:
+            raise SystemExit(
+                f"Police {police}: mehrere Vorgeschichts-Ereignisse "
+                f"({[e[s['gevo']] for e in ereignisse[police]]}) — die "
+                "Kombination ist nicht abgebildet")
+        ereignis = ereignisse[police][0]
+        art = ereignis[s["gevo"]]
+        monate = _monate(beginn, _parse(ereignis[s["datum"]]))
+        if monate % 12:
+            raise SystemExit(
+                f"Police {police}: {art} der Vorgeschichte bei Monat "
+                f"{monate} liegt nicht auf dem Vertragsjahrestag — "
+                "Lieferung klaeren, nicht runden")
+        jahr = monate // 12
+        transformiert = zeilen_je_police.get(police)
+        if transformiert is None:
+            raise SystemExit(
+                f"Police {police}: keine transformierte Zeile — der "
+                "Anfangszustand ist nicht ableitbar")
+        erlsumme = float(transformiert["sum_insured"])
+        jbrutto = float(transformiert.get("brutto_jahresbeitrag") or 0.0)
+        zelle = _zelle(spez, (auspraegungen or {}).get(police, {}))
+        mp_felder = model_point_kwargs(
+            stammzeilen[police],
+            {feld: wert.wert for feld, wert in zelle.model_point.items()})
+
+        try:
+            if art == "ERH":
+                erh = leite_erhoehung_ab(
+                    mp_felder, jahr=jahr, erlsumme=erlsumme, jbrutto=jbrutto)
+                zustaende[police] = {
+                    "scheiben": ((jahr, erh.erhoehungssumme),),
+                    "sum_insured": erh.grundsumme,
+                }
+            else:
+                anteil = red_anteile.get(police)
+                if anteil is not None:
+                    vs_alt = leite_ursprungssumme_ab(
+                        mp_felder, jahr=jahr, erlsumme=erlsumme,
+                        anteil=anteil, verfahren=red_verfahren)
+                else:
+                    absetzung = leite_absetzung_ab(
+                        mp_felder, jahr=jahr, erlsumme=erlsumme,
+                        jbrutto=jbrutto, verfahren=red_verfahren)
+                    anteil, vs_alt = absetzung.anteil, absetzung.vs_alt
+                zustaende[police] = {
+                    "reduktion": (jahr, anteil),
+                    "sum_insured": vs_alt,
+                }
+        except MigrationszugangFehler as exc:
+            warnungen.append(f"Police {police} ({art}, Jahr {jahr}): {exc}")
+    return zustaende, warnungen
+
+
 def baue_auftraege(
     bestand, spez, abzug_1, abzug_2, protokoll, *,
     stichtag_1: dt.date, stichtag_2: dt.date, spalten: Dict[str, str],
     auspraegungen: Optional[Dict[str, Dict[str, str]]] = None,
     beitragsfrei_seit: Optional[Dict[str, int]] = None,
+    anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> List[VertragsPruefung]:
     """Je Vertrag genau einen Pruefauftrag."""
     s = spalten
@@ -220,9 +330,16 @@ def baue_auftraege(
                 anteil=float(anteil) if anteil else None,
             ))
 
+        mp_kwargs = model_point_kwargs(zeile, generation)
+        zustand = (anfangszustaende or {}).get(police, {})
+        if "sum_insured" in zustand:
+            # Der Stamm fuehrt die aktuelle Gesamtsumme; die Bewertung
+            # der Vorgeschichts-Welt rechnet auf dem Ursprungs- bzw.
+            # Grund-Modellpunkt (Fall-Ableitungsregel).
+            mp_kwargs["sum_insured"] = float(zustand["sum_insured"])
         auftraege.append(VertragsPruefung(
             police_id=police,
-            model_point=model_point_kwargs(zeile, generation),
+            model_point=mp_kwargs,
             monate_stichtag_1=_monate(beginn, stichtag_1),
             monate_stichtag_2=_monate(beginn, stichtag_2),
             dk_erwartet_1=float(ab1[police][s["deckkap"]]),
@@ -232,6 +349,8 @@ def baue_auftraege(
                             if ab1[police].get(s["jbrutto"]) else None),
             gevos=tuple(vorfaelle),
             beitragsfrei_seit_jahr=(beitragsfrei_seit or {}).get(police),
+            scheiben=tuple(zustand.get("scheiben", ())),
+            reduktion=zustand.get("reduktion"),
         ))
     return auftraege
 
@@ -260,8 +379,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "Zelle traegt (Zellwahl je Police)")
     p.add_argument("--vorgeschichte", default=None,
                    help="REGISTRIERTE Metadatenliste der Geschaeftsvorfaelle "
-                        "vor dem Stichtag (POLNR;GEVO;DATUM) — traegt den "
-                        "Anfangszustand (PEX-Vertragsjahr) je Police")
+                        "vor dem Stichtag (POLNR;GEVO;DATUM) — traegt die "
+                        "Anfangszustaende (PEX-Jahr, Alt-Scheiben, "
+                        "Alt-Absetzung) je Police")
+    p.add_argument("--red-anteil", dest="red_anteile", action="append",
+                   default=[], metavar="POLNR=ANTEIL",
+                   help="nachgelieferter fortgefuehrter Beitragsanteil einer "
+                        "Alt-Absetzung, deren Beitragsgleichung entfaellt "
+                        "(wiederholbar)")
     p.add_argument("--red-verfahren", dest="red_verfahren",
                    default=PROSPEKTIV, choices=sorted(VERFAHREN),
                    help="Verfahren der Beitragsherabsetzung (Eigenschaft "
@@ -296,9 +421,27 @@ def main(argv: Optional[List[str]] = None) -> int:
         auspraegungen = auspraegungen_je_police(spez, zeilen)
 
     beitragsfrei_seit = None
+    anfangszustaende = None
     if args.vorgeschichte is not None:
+        vorgeschichte = _lies_csv(fall, args.vorgeschichte)
         beitragsfrei_seit = beitragsfrei_seit_jahr_je_police(
-            _lies_csv(fall, args.vorgeschichte), bestand, spalten=spalten)
+            vorgeschichte, bestand, spalten=spalten)
+        red_anteile: Dict[str, float] = {}
+        for eintrag in args.red_anteile:
+            police, _, wert = eintrag.partition("=")
+            if not police or not wert:
+                print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL",
+                      file=sys.stderr)
+                return 2
+            red_anteile[police.strip()] = float(wert)
+        anfangszustaende, zustandswarnungen = anfangszustaende_je_police(
+            spez, zeilen if args.zeilen is not None else [],
+            vorgeschichte, bestand, spalten=spalten,
+            red_verfahren=args.red_verfahren, red_anteile=red_anteile,
+            auspraegungen=auspraegungen)
+        for w in zustandswarnungen:
+            print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
+                  file=sys.stderr)
 
     auftraege = baue_auftraege(
         bestand,
@@ -311,6 +454,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         spalten=spalten,
         auspraegungen=auspraegungen,
         beitragsfrei_seit=beitragsfrei_seit,
+        anfangszustaende=anfangszustaende,
     )
 
     # Die Pruefmenge wird an der LIEFERUNG gemessen, nicht an sich

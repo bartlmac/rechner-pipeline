@@ -471,3 +471,33 @@ def test_erhoehungszerlegung_weist_unplausible_lieferung_zurueck():
         leite_erhoehung_ab(
             felder, jahr=6, erlsumme=92000.0,
             jbrutto=round(nur_grund.gross_annual_premium(), 2))
+
+
+# --------------------------------------------------------------------------- #
+# Ursprungssumme bei bekanntem Anteil (leite_ursprungssumme_ab)
+# --------------------------------------------------------------------------- #
+
+from rechner_pipeline.bestand.migrationszugang import leite_ursprungssumme_ab
+
+
+@_pytest.mark.parametrize("verfahren,f,jahr,override", [
+    ("mit_abzug", 0.75, 8, {}),                                   # max-Zweig
+    ("mit_abzug", 0.4, 9, {"stoab_max": 5000.0}),                 # satz-Zweig
+    ("mit_abzug", 0.6, 9, {"stoab_min": 1200.0, "stoab_max": 5000.0}),  # min
+    ("prospektiv", 0.6, 9, {}),
+])
+def test_ursprungssumme_bei_bekanntem_anteil(verfahren, f, jahr, override):
+    felder = _mp_felder(sum_insured=100000.0, **override)
+    r = _reduziere(_Rechenkern(type(_KLV_DEFAULT)(**felder)), jahr, f,
+                   verfahren=verfahren)
+    vs = leite_ursprungssumme_ab(
+        felder, jahr=jahr, erlsumme=round(r.vs_neu, 2), anteil=f,
+        verfahren=verfahren)
+    assert vs == _pytest.approx(100000.0, rel=5e-5)
+
+
+def test_ursprungssumme_verlangt_einen_echten_anteil():
+    with _pytest.raises(_MZFehler, match="fortgefuehrte Bruchteil"):
+        leite_ursprungssumme_ab(
+            _mp_felder(), jahr=8, erlsumme=90000.0, anteil=1.0,
+            verfahren="mit_abzug")
