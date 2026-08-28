@@ -89,6 +89,7 @@ from rechner_pipeline.gates._provenienz import (
 )
 from rechner_pipeline.models.schemas import (
     GateLedgerEntry,
+    P9_AKTUARIELLE_ABNAHMEN,
     P9_FREIGABE_VERFAHREN,
     P9_GATE_VERSION,
     P9_SNAPSHOT_SCHEMA_VERSION,
@@ -99,6 +100,16 @@ from rechner_pipeline.models.schemas import (
 
 GATE_VERSION = P9_GATE_VERSION
 GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1")
+#: Die drei aktuariellen Abnahmen desselben migrierten Bestands. Sie
+#: laufen ueber DENSELBEN Vertrag — je Abnahme ein Testergebnis, ein
+#: Bericht und ein Ledger des ``aktuartest``-Gates — und unterscheiden
+#: sich nur im Dateinamen, den das Gate aus der Abnahme bildet. Deshalb
+#: prueft sie ein Zweig und nicht drei: Eine Abnahme, die anders
+#: geprueft wuerde als ihre Geschwister, waere eine fachliche Aussage
+#: und keine Namensvariante. Die Liste selbst gehoert zum
+#: Snapshot-Vertrag (``models.schemas``) — sie hier zu wiederholen
+#: hiesse, dieselbe Aussage an zwei Orten zu pflegen.
+AKTUARIELLE_ABNAHMEN = P9_AKTUARIELLE_ABNAHMEN
 CLI_CONTRACT = GateCliContract(
     command="gate_entscheid",
     gate="entscheid.?",
@@ -1030,7 +1041,7 @@ def main(argv: Optional[List[str]] = None):
     pk1_belege: Dict[str, List[str]] = {}
     pflichtbelege: Dict[str, List[str]] = {}
     fall_scope: Optional[str] = None
-    if args.gate in ("A-M1", "A-M4"):
+    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4",):
         try:
             fall_scope = fall_mod.lade_scope(fall)
         except fall_mod.FallFehler as exc:
@@ -1154,7 +1165,7 @@ def main(argv: Optional[List[str]] = None):
         if args.gate == "A-M4":
             pflichtbelege["pq3_ledger"] = [_sha256_datei(pq3_pfad)]
 
-        if args.gate == "A-M1":
+        if args.gate in AKTUARIELLE_ABNAHMEN:
             # Aktuarielle Abnahme (ADR-010): Im Bestands-Scope stuetzt
             # sich der Entscheid auf das Testergebnis und den Bericht
             # des aktuariellen Tests; beide werden als Pflichtbelege
@@ -1163,14 +1174,25 @@ def main(argv: Optional[List[str]] = None):
             # gibt es keine Vertragslieferung und damit keine eigenen
             # Testartefakte (Rollenmenge leer); die P-K1-Belege sind
             # ueber artefakt_hashes ohnehin gepinnt.
+            abnahme = args.gate
+            # Dieselbe Namensbildung wie im aktuartest-Gate: A-M1 traegt
+            # den nackten Namen, die Geschwister ihr Suffix.
+            kennung = (
+                "aktuartest" if abnahme == "A-M1"
+                else f"aktuartest-{abnahme}"
+            )
+            beleg_rolle = (
+                "aktuartest" if abnahme == "A-M1"
+                else f"aktuartest_{abnahme.replace('-', '').lower()}"
+            )
             if fall_scope == "bestand":
                 berichte = fall / "abgeleitet" / "berichte"
-                test_pfad = berichte / "aktuartest.json"
-                bericht_pfad = berichte / "aktuartest.html"
-                ledger_pfad = diagnostics / "aktuartest.gate.json"
+                test_pfad = berichte / f"{kennung}.json"
+                bericht_pfad = berichte / f"{kennung}.html"
+                ledger_pfad = diagnostics / f"{kennung}.gate.json"
                 am1_kommando = (
                     "python -m rechner_pipeline.gates.aktuartest "
-                    f"--fall {fall} --titel <titel>"
+                    f"--fall {fall} --abnahme {abnahme} --titel <titel>"
                 )
                 fehlende = [
                     pfad.name
@@ -1195,12 +1217,12 @@ def main(argv: Optional[List[str]] = None):
                         f"{exc} — Gate neu fahren: {am1_kommando}",
                     )
                 am1_fehler: List[str] = []
-                if am1_ledger.get("command") != "aktuartest":
-                    am1_fehler.append("Ledger gehoert nicht zu aktuartest")
+                if am1_ledger.get("command") != kennung:
+                    am1_fehler.append(f"Ledger gehoert nicht zu {kennung}")
                 erwartete_belege = {
-                    "abgeleitet/berichte/aktuartest.json":
+                    f"abgeleitet/berichte/{kennung}.json":
                         _sha256_datei(test_pfad),
-                    "abgeleitet/berichte/aktuartest.html":
+                    f"abgeleitet/berichte/{kennung}.html":
                         _sha256_datei(bericht_pfad),
                 }
                 ledger_belege = am1_ledger.get("summary", {}).get("belege")
@@ -1221,7 +1243,7 @@ def main(argv: Optional[List[str]] = None):
                 # sie nicht: Das Testverdikt wird aus dem Artefakt neu
                 # abgeleitet und der Bericht bytegenau reproduziert. Ein
                 # editierter Ledger-Status oder ein handgeschriebenes
-                # Ergebnis ohne aktuellen Systemstand oeffnet A-M1 nicht.
+                # Ergebnis ohne aktuellen Systemstand oeffnet die Abnahme nicht.
                 from rechner_pipeline.gates import aktuartest as am1_gate
 
                 try:
@@ -1246,6 +1268,22 @@ def main(argv: Optional[List[str]] = None):
                         "Annahme verweigert: Testergebnis verletzt den "
                         "Aktuartest-Vertrag: "
                         + "; ".join(am1_test_fehler[:5]),
+                    )
+                # Die Annahme glaubt dem Dateinamen nicht: Ein
+                # A-M1-Ergebnis, das jemand unter dem Namen des
+                # Verlaufstests ablegt, wuerde sonst den Ablauf
+                # zeichnen, ohne ihn geprueft zu haben.
+                gemeldete_abnahme = (
+                    am1_test.get("profil", {}).get("kennung")
+                    if isinstance(am1_test.get("profil"), dict) else None
+                )
+                if gemeldete_abnahme != abnahme:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: das Testergebnis gehoert zu "
+                        f"{gemeldete_abnahme!r}, gezeichnet werden soll "
+                        f"aber {abnahme} — Test der richtigen Abnahme "
+                        f"fahren: {am1_kommando}",
                     )
                 if am1_test.get("test_bestanden") is not True:
                     return _sperre(
@@ -1276,7 +1314,7 @@ def main(argv: Optional[List[str]] = None):
                 except (TypeError, ValueError, KeyError) as exc:
                     return _sperre(
                         "vorbedingung",
-                        "Annahme verweigert: A-M1-Vorlage nicht "
+                        "Annahme verweigert: Vorlage nicht "
                         f"reproduzierbar ({type(exc).__name__}: {exc})",
                     )
                 if am1_html.encode("utf-8") != bericht_pfad.read_bytes():
@@ -1286,14 +1324,14 @@ def main(argv: Optional[List[str]] = None):
                         "deterministische Wiedergabe des Testergebnisses "
                         f"— Gate neu fahren: {am1_kommando}",
                     )
-                pflichtbelege["aktuartest"] = [
-                    erwartete_belege["abgeleitet/berichte/aktuartest.json"]
+                pflichtbelege[beleg_rolle] = [
+                    erwartete_belege[f"abgeleitet/berichte/{kennung}.json"]
                 ]
-                pflichtbelege["aktuartest_bericht"] = [
-                    erwartete_belege["abgeleitet/berichte/aktuartest.html"]
+                pflichtbelege[f"{beleg_rolle}_bericht"] = [
+                    erwartete_belege[f"abgeleitet/berichte/{kennung}.html"]
                 ]
             erwartete_rollen = fall_mod.belegrollen(
-                "A-M1", fall_scope or ""
+                abnahme, fall_scope or ""
             )
             if set(pflichtbelege) != set(erwartete_rollen):
                 fehlende_rollen = sorted(
@@ -1596,7 +1634,7 @@ def main(argv: Optional[List[str]] = None):
         "artefakt_hashes": _artefakt_hashes(fall, ausser_gate=args.gate),
         "system": entscheid_systemstand,
     }
-    if args.gate in ("A-M1", "A-M4"):
+    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4",):
         kern_inhalt["fall_scope"] = fall_scope
         kern_inhalt["pflichtbelege"] = pflichtbelege
     if args.gate == "A-M4":

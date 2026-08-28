@@ -70,7 +70,21 @@ GATE_VERSION_DEFAULT = "1.0.0"
 P9_SNAPSHOT_SCHEMA_VERSION = 5
 P9_GATE_VERSION = "0.6.0"
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
-P9_GATES: tuple[str, ...] = ("A-Q1", "A-M1", "A-M4", "A-K1")
+#: Die menschlich entscheidbaren Gates. A-M2 (Verlaufstest) und A-M3
+#: (Geschaeftsvorfalltest) stehen hier gleichberechtigt neben A-M1: Alle
+#: drei sind aktuarielle Abnahmen desselben migrierten Bestands, nur an
+#: verschiedenen Zeitpunkten. Ihre Vorlagen entstanden frueher als ihre
+#: Entscheidbarkeit — die Folge war ein Bestand, dessen Uebernahmewert
+#: gezeichnet ist, dessen ABLAUFLEISTUNG aber niemand unterschrieben
+#: hat. Die Auszahlung an den Kunden ohne Unterschrift zu lassen, waere
+#: keine Vereinfachung, sondern eine Luecke in der Abnahme.
+P9_GATES: tuple[str, ...] = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1")
+#: Die aktuariellen Abnahmen. Sie tragen dieselben Zusatzfelder im
+#: Snapshot (Scope und Pflichtbelege), weil sie sich fachlich nur im
+#: Zeitpunkt unterscheiden. Einmal deklariert, nicht je Pruefstelle
+#: wiederholt: Eine vierte Liste derselben Gates war genau der Grund,
+#: warum A-M2 zwar entschieden, aber nicht gespeichert werden konnte.
+P9_AKTUARIELLE_ABNAHMEN: tuple[str, ...] = ("A-M1", "A-M2", "A-M3")
 
 
 def _kanonisches_json(data: Any) -> bytes:
@@ -435,7 +449,7 @@ class P9Snapshot:
         errors: List[str] = []
         gate = data.get("gate")
         expected_fields = set(cls._BASE_FIELDS)
-        if gate in ("A-M1", "A-M4"):
+        if gate in P9_AKTUARIELLE_ABNAHMEN or gate == "A-M4":
             expected_fields.update({"fall_scope", "pflichtbelege"})
         if gate == "A-M4":
             expected_fields.add("pk1_belege")

@@ -258,35 +258,53 @@ def _am1_profil():
 
 
 def _aktuartest_belege(
-    fall: Path, *, drift: float = 0.0, erwarteter_exit: int = 0
+    fall: Path, *, drift: float = 0.0, erwarteter_exit: int = 0,
+    abnahme: str = "A-M1",
 ):
-    """Echte aktuartest-Belege (Engine-JSON, Bericht, Ledger)."""
+    """Echte aktuartest-Belege (Engine-JSON, Bericht, Ledger).
+
+    Die drei Abnahmen unterscheiden sich im Zeitpunkt und im Anlass, nicht
+    im Weg: A-M1 prueft die Uebernahme, A-M2 den Verlauf fuenf Jahre
+    danach. Der Dateiname folgt dem Gate (``aktuartest`` bzw.
+    ``aktuartest-<abnahme>``).
+    """
+    from rechner_pipeline.qa.aktuarieller_test import ANLASS_VERLAUF
+    from rechner_pipeline.qa.testprofil import vorlage
+
     kern = Rechenkern(KLV_DEFAULT)
     ta = 12 * 9
+    if abnahme == "A-M1":
+        monate, anlass, profil = ta, ANLASS_UEBERNAHME, _am1_profil()
+    else:
+        monate = ta + 12 * 5
+        anlass = ANLASS_VERLAUF
+        profil = vorlage(abnahme, weite="vollbestand")
+    kennung = "aktuartest" if abnahme == "A-M1" else f"aktuartest-{abnahme}"
     test = pruefe_stichprobe(
         [Vertragspruefung(
             police_id="P-SCOPE-1",
             model_point=asdict(KLV_DEFAULT),
             historientyp="ohne_gevo",
             punkte=(Pruefpunkt(
-                ta,
+                monate,
                 {"kVx_MRV": round(
-                    kern.verlaufszeile(ta // 12).vx_mrv + drift, 2
+                    kern.verlaufszeile(monate // 12).vx_mrv + drift, 2
                 )},
-                ANLASS_UEBERNAHME,
+                anlass,
             ),),
         )],
         ziehe("vollbestand", ["P-SCOPE-1"]),
-        _am1_profil(),
+        profil,
         system=gate_entscheid.systemstand(REPO_ROOT),
     )
     berichte = fall / "abgeleitet" / "berichte"
     berichte.mkdir(parents=True, exist_ok=True)
-    (berichte / "aktuartest.json").write_text(
+    (berichte / f"{kennung}.json").write_text(
         json.dumps(test, sort_keys=True), encoding="utf-8"
     )
     ergebnis = aktuartest.main([
         "--fall", str(fall),
+        "--abnahme", abnahme,
         "--titel", "Aktuarieller Test E2E",
         "--repo-root", str(REPO_ROOT),
     ])
@@ -1497,3 +1515,75 @@ def test_am1_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
     getauscht = _p9_annahme(fall, "A-M1", "auf getauschtem Bericht")
     assert getauscht.exit_code == 20
     assert "deterministische Wiedergabe" in getauscht.errors[0]["message"]
+
+
+def test_alle_drei_aktuariellen_abnahmen_sind_zeichenbar(tmp_path: Path):
+    """A-M2 und A-M3 sind menschlich entscheidbar wie A-M1.
+
+    Frueher kannte ``P9_GATES`` nur A-M1: Die Vorlagen fuer Verlaufs- und
+    Geschaeftsvorfalltest entstanden, liessen sich aber nicht zeichnen —
+    ein Bestand konnte also durch das Controlling, dessen ABLAUFLEISTUNG
+    niemand unterschrieben hatte.
+    """
+    fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
+
+    for abnahme in ("A-M2", "A-M3"):
+        rolle = f"aktuartest_{abnahme.replace('-', '').lower()}"
+
+        ohne_belege = _p9_annahme(fall, abnahme, "ohne Testbelege")
+        assert ohne_belege.exit_code == 20
+        assert "gates.aktuartest" in ohne_belege.errors[0]["message"]
+
+        _aktuartest_belege(fall, abnahme=abnahme)
+        entscheid = _p9_annahme(fall, abnahme, "Vorlage fachlich geprueft")
+        assert entscheid.exit_code == 0, (abnahme, entscheid.errors)
+        snapshot = json.loads(
+            Path(entscheid.paths["snapshot"]).read_text(encoding="utf-8")
+        )
+        assert snapshot["gate"] == abnahme
+        assert set(snapshot["pflichtbelege"]) == {rolle, f"{rolle}_bericht"}
+
+
+def test_ein_am1_ergebnis_unter_dem_namen_von_am2_zeichnet_nicht(
+    tmp_path: Path,
+):
+    """Der Entscheid glaubt dem Dateinamen nicht, sondern dem Profil.
+
+    Wer ein bestandenes A-M1-Ergebnis unter den Namen des Verlaufstests
+    legt und das Ledger passend umschreibt, haette sonst die
+    Ablaufleistung gezeichnet, ohne sie geprueft zu haben — alle
+    uebrigen Bindungen (Ledger-Kommando, Belegbytes, Systemstand,
+    Berichtsreproduktion) haelt die Faelschung ein.
+    """
+    fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
+    _aktuartest_belege(fall)
+    berichte = fall / "abgeleitet" / "berichte"
+    diagnostics = fall / "abgeleitet" / "diagnostics"
+
+    test = json.loads((berichte / "aktuartest.json").read_text("utf-8"))
+    assert test["profil"]["kennung"] == "A-M1"
+    (berichte / "aktuartest-A-M2.json").write_text(
+        json.dumps(test, sort_keys=True), encoding="utf-8"
+    )
+    (berichte / "aktuartest-A-M2.html").write_text(
+        aktuartest.baue_bericht(titel="Aktuarieller Test E2E", test=test),
+        encoding="utf-8",
+    )
+    ledger = json.loads(
+        (diagnostics / "aktuartest.gate.json").read_text("utf-8")
+    )
+    ledger["command"] = "aktuartest-A-M2"
+    ledger["summary"]["belege"] = {
+        f"abgeleitet/berichte/aktuartest-A-M2.{endung}":
+            sha256((berichte / f"aktuartest-A-M2.{endung}").read_bytes())
+            .hexdigest()
+        for endung in ("json", "html")
+    }
+    (diagnostics / "aktuartest-A-M2.gate.json").write_text(
+        json.dumps(ledger, sort_keys=True), encoding="utf-8"
+    )
+
+    gefaelscht = _p9_annahme(fall, "A-M2", "auf einem A-M1-Ergebnis")
+    assert gefaelscht.exit_code == 20
+    assert "A-M1" in gefaelscht.errors[0]["message"]
+    assert list((fall / "entscheide").glob("A-M2-*.json")) == []
