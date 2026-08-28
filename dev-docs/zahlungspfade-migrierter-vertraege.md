@@ -1,5 +1,19 @@
 # Migrierte Vertraege brauchen Zahlungspfade, nicht Produktparameter
 
+**Stand-Nachtrag 2026-08-28 (Baldrian-Lauf):** Der akute Blocker aus
+Abschnitt 2 ist behoben, OHNE den Spektrum-Pfad zu bauen: Kern 3.1.0
+fuehrt den herabgesetzten Vertrag als ZWEITEILUNG fort
+(`kern/beitragsreduktion.ReduzierterVertrag` — fortgefuehrter Anteil
+beitragspflichtig, fixierte beitragsfreie Summe auf dem bfr-Satz;
+komponiert aus vorhandenen, abgenommenen Kern-Groessen). Suite und
+aktuarieller Test bewerten damit Herabsetzungen im Pruefzeitraum und
+als Anfangszustand; die Prueflücke `dk_stichtag_2_nach_red` bleibt nur
+noch ohne gelieferten Anteil. Der allgemeine Spektrum-Pfad dieses
+Vorhabens bleibt fuer die uebrigen Verlaufaenderungen (Zuzahlung,
+Teilrueckkauf, Verlaengerung) offen — die Zweiteilung ist der
+Spezialfall, den der Bestand JETZT verlangt, nicht der Ersatz der
+Skizze.
+
 ## 1 Problem
 
 Der Zielkern kann einen Vertrag nicht bewerten, dessen Leistung oder

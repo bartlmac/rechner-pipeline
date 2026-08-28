@@ -147,6 +147,7 @@ Abschnitt 7. Jeder Betrag kommt aus dem Kern.
 | **ZUG** Zugang | POL-Basiszeile ab Versicherungsbeginn | $S$ (Bestandsvolumen) |
 | **ERH** dynamische Erhöhung | neue Scheibe: eigener Modellpunkt mit $x' = x{+}a$, $n' = n{-}a$, $t' = t{-}a$, $S' = e \cdot S^{ges}$ (Zinseszins), ohne $\gamma_1$ (Bezugsgröße GrundVS); kein Statuswechsel | $S'$ |
 | **PEX** Beitragsfreistellung | Statuswechsel; fixiert $\sum_{\text{Scheiben}} S^{bfr}_a$; danach beitragsfreier Track | $\sum S^{bfr}_a$ |
+| **RED** Beitragsherabsetzung | teilt den Vertrag am Jahrestag: Anteil $f$ läuft beitragspflichtig weiter ($f \cdot S$, $f \cdot \text{BJB}$), der freiwerdende Teil wird in eine fixierte beitragsfreie Summe umgewandelt (Zielverfahren: verlustfrei, $S^{bfr\text{-}Teil} = (1{-}f)\, DR_a / {}_a V^{bfr}$); kein Statuswechsel; StoAb/RKW vertragsweit auf $S^{neu} = f S + S^{bfr\text{-}Teil}$; spätere PEX fixiert beide Teile; nur auf dem ungeteilten beitragspflichtigen Track ohne Scheiben (Übriges: Ausgestaltung offen) | $\Delta DK$ (0 bei verlustfreier Umwandlung) |
 | **STO** Rückkauf | terminal; nur beitragspflichtig, $a < n$ | $\text{RKW}_a$ (vertragsweiter StoAb) |
 | **TOD** Tod | terminal | $S^{ges}$ bzw. nach PEX $\sum S^{bfr}$ |
 | **ABL** Ablauf | terminal bei $a = n$ | $S^{ges}$ bzw. $\sum S^{bfr}$ |
