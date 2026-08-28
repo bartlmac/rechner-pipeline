@@ -91,6 +91,7 @@ _FARBEN = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
 _EREIGNIS_FARBEN = {
     "ZUG": "#1f77b4",
     "ERH": "#17becf",
+    "RED": "#7f7f7f",
     "PEX": "#9467bd",
     "INV": "#8c564b",
     "REA": "#bcbd22",

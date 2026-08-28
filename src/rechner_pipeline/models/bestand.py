@@ -97,6 +97,13 @@ PRODUKT_VALUES: Tuple[str, ...] = ("klv", "bu")
 #: Full status enum of the Fortschreibung (Ereignis-Engine): POL = active
 #: premium-paying, PEX = active paid-up (KLV), BU = active, drawing the
 #: disability annuity (BU), STO/TOD/ABL = terminal.
+#:
+#: Die Herabsetzung ``RED`` steht bewusst NICHT hier. Sie ist wie die
+#: dynamische Erhoehung ein Ereignis OHNE Statuswechsel: Der Vertrag
+#: bleibt beitragspflichtig (``POL``), nur Summe und Beitrag aendern
+#: sich. Ein eigener Status waere eine Aussage ueber den Zustand, die es
+#: nicht gibt — ein herabgesetzter Vertrag ist kein anderer Zustand,
+#: sondern ein anderer Verlauf.
 STATUS_CODE_VALUES: Tuple[str, ...] = ("POL", "PEX", "BU", "STO", "TOD", "ABL")
 #: The generator's base portfolio carries only active POL rows.
 BASIS_STATUS: Tuple[str, ...] = ("POL",)
@@ -170,12 +177,12 @@ LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
     # GeVo-Code: meist der resultierende status_code, faellt aber davon ab,
     # wo der GeVo einen ANDEREN Zustand herstellt (INV -> BU, REA -> POL)
     # oder gar keinen (ERH/ZUG).
-    ("ereignis", "object"),          # PEX|STO|TOD|ABL|ERH|ZUG|INV|REA
+    ("ereignis", "object"),          # PEX|STO|TOD|ABL|ERH|ZUG|INV|REA|RED
     ("vertragsjahr", "int64"),       # booked anniversary (completed years; ZUG: 0)
     ("status_date", "datetime64[ns]"),
     # Bezugsgroesse des Betrags — je Produkt verschieden: KLV fuehrt
     # Versicherungssummen/Rueckkaufswerte, BU die betroffene Jahresrente.
-    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS (ZUG) | BU_Jahresrente
+    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS_herabsetzung | VS (ZUG) | BU_Jahresrente
     ("betrag", "float64"),
 )
 
