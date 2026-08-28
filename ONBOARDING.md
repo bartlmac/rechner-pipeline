@@ -106,19 +106,28 @@ overwrite. If a delivery genuinely replaces an earlier one, set up a
 fresh case (or archive the old one under `faelle/archiv/`).
 
 **Run the showcase migration.** `lieferungen/baldrian/` ships the
-delivery of the fictitious insurer Baldrian Leben — the three inputs of
-a real portfolio migration (faulty tariff calculator, tariff
-notification, portfolio data delivery with two reporting dates and a
-GeVo protocol). Register it into a fresh case — the case is named
+delivery of the fictitious insurer Baldrian Leben — the inputs of a real
+portfolio migration (faulty tariff calculator, tariff notification,
+portfolio data delivery with two reporting dates, a GeVo protocol, and
+the metadata list of the business events that happened BEFORE the
+migration date). Register it into a fresh case — the case is named
 `baldrian-uebernahme` throughout the docs, the skills and the ADRs, so
 keep that name:
 ```
 python -m rechner_pipeline.fall anlegen --fall faelle/baldrian-uebernahme --scope bestand
-for f in lieferungen/baldrian/*.xlsm lieferungen/baldrian/*.docx lieferungen/baldrian/*.csv; do
+for f in lieferungen/baldrian/*.xlsm lieferungen/baldrian/Mitteilung_143_KLV_TG2015.docx \
+         lieferungen/baldrian/*.csv; do
   python -m rechner_pipeline.fall registrieren --fall faelle/baldrian-uebernahme --datei "$f"
 done
 python -m rechner_pipeline.fall status --fall faelle/baldrian-uebernahme
 ```
+Note which file the loop does NOT pick up:
+`Aktuarielle_Notiz_Beitragsabsetzung.docx`. The tariff notification does
+not describe how a premium reduction is computed, and the delivery is
+deliberately incomplete there. The note is what the ceding insurer sends
+AFTER the gap has surfaced and someone asked — register it then, not
+before. Registering it upfront skips the very step this showcase
+demonstrates.
 If that workspace already exists, `anlegen` stops with a hard error
 ("Fall existiert bereits") instead of writing into it — by design, since
 `eingang/` is not regenerable (ADR-002). Pick another name or archive the
