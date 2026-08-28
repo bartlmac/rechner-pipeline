@@ -28,14 +28,11 @@ from rechner_pipeline.gates.migrationssuite_lauf import (
 
 
 @dataclass
-class _Wert:
-    wert: object
-
-
-@dataclass
 class _Zelle:
+    # model_point traegt SCHLICHTE Werte — wie die geladene Spez
+    # (spez/schema.py: Wert ist ein Typ-Alias, kein Traeger-Objekt).
     auspraegungen: Dict[str, str] = field(default_factory=dict)
-    model_point: Dict[str, _Wert] = field(default_factory=dict)
+    model_point: Dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -43,17 +40,17 @@ class _Spez:
     zellen: List[_Zelle] = field(default_factory=list)
 
 
-def _generationsfelder(zins: float) -> Dict[str, _Wert]:
+def _generationsfelder(zins: float) -> Dict[str, object]:
     return {
-        "zins": _Wert(zins), "tafel": _Wert("DAV2008_T_NR_U70"),
-        "alpha": _Wert(0.025), "beta1": _Wert(0.03),
-        "gamma1": _Wert(0.001), "gamma2": _Wert(0.00125),
-        "gamma3": _Wert(0.0025), "policy_fee": _Wert(12.0),
-        "min_alter_flex": _Wert(60), "min_rlz_flex": _Wert(5),
-        "stoab_satz": _Wert(0.005), "stoab_min": _Wert(50.0),
-        "stoab_max": _Wert(200.0), "zillmer_dauer": _Wert(5),
-        "ratzu_zw2": _Wert(0.02), "ratzu_zw4": _Wert(0.03),
-        "ratzu_zw12": _Wert(0.05),
+        "zins": zins, "tafel": "DAV2008_T_NR_U70",
+        "alpha": 0.025, "beta1": 0.03,
+        "gamma1": 0.001, "gamma2": 0.00125,
+        "gamma3": 0.0025, "policy_fee": 12.0,
+        "min_alter_flex": 60, "min_rlz_flex": 5,
+        "stoab_satz": 0.005, "stoab_min": 50.0,
+        "stoab_max": 200.0, "zillmer_dauer": 5,
+        "ratzu_zw2": 0.02, "ratzu_zw4": 0.03,
+        "ratzu_zw12": 0.05,
     }
 
 
@@ -194,7 +191,7 @@ def _tg_default_spez():
 
     felder = dc.asdict(KLV_DEFAULT)
     return _Spez(zellen=[_Zelle({}, {
-        f: _Wert(felder[f]) for f in GENERATION_FIELDS
+        f: felder[f] for f in GENERATION_FIELDS
     })])
 
 
