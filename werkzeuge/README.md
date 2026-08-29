@@ -12,6 +12,8 @@ bleibt, steht in `dev-docs/offene-punkte.md`.
 | `verlaufsprotokoll.py` | Sitzungstranskript zu einem lesbaren Verlauf |
 | `vorzeigeseite.py` | Fall-Artefakte zu einer statischen Seite |
 | `umbaubudget.py` | wie weit ein Lauf das System umgebaut hat |
+| `falldaten.py` | Datenmodell einer Falldarstellung aus den Artefakten |
+| `fallbericht.py` | Darstellung aus dem Datenmodell rendern |
 
 ## Verlauf eines Laufs protokollieren
 
@@ -87,6 +89,42 @@ endet das Werkzeug auf 20. Mit `--ueberschreitung-begruendet` laeuft es
 durch, und der Satz steht im Ergebnis und auf der Vorfuehrseite. Aus
 einer Nebenwirkung von vierzig Commits wird so eine benannte
 Entscheidung.
+
+## Einen Fall darstellen
+
+```
+python werkzeuge/falldaten.py --fall faelle/<fall> \
+    --abzug <registrierter-abzug-1>.csv --abzug <registrierter-abzug-2>.csv \
+    --out runs/falldaten.json
+python werkzeuge/fallbericht.py --daten runs/falldaten.json \
+    [--texte texte.json] --out runs/fallbericht.html
+```
+
+Der erste Schritt erhebt, der zweite stellt dar. Die Trennung ist der
+Zweck: Zahlen kommen aus den Artefakten und aendern sich beim naechsten
+Lauf von selbst, Struktur und Beschriftungen stehen im Renderer und
+bleiben.
+
+**Was frei geschrieben wird, sind vier Stellen** — und zwei davon fuellen
+sich aus signierten Quellen: ein Absatz zum Anlass, je Befund eine
+Wirkungszeile, die Begruendungen der Abnahmen (aus den
+Entscheid-Snapshots) und Auszuege aus registrierten Quellen. Ohne
+Textdatei entsteht eine vollstaendige Seite ohne Erzaehlung; das ist
+Absicht.
+
+**Die Abgrenzungen werden ABGELEITET, nicht geschrieben.** Eine
+Einschraenkung entsteht dort, wo zwei Artefaktwerte auseinanderfallen:
+Pruefgesamtheit gegen Bestandsgroesse, ersetzte gegen verglichene
+Pruefungen, Quellspalten ohne Entscheidung. Sie verschwindet beim
+naechsten Lauf von selbst, wenn die Ursache weg ist — niemand muss einen
+Satz streichen.
+
+**Der Bericht ist Konsument, kein Vertragsgeber.** Er verlangt von keinem
+Agenten, etwas fuer ihn aufzuschreiben; er liest, was ohnehin entsteht.
+Der Preis dafuer ist, dass eine Formaenderung der Pipeline ihn treffen
+kann — deshalb meldet `falldaten.py` fehlende Pflichtabschnitte auf
+stderr und endet auf 3. Eine Darstellung, die vollstaendig aussieht und
+es nicht ist, waere die schlechteste Variante.
 
 ## Veroeffentlichen
 

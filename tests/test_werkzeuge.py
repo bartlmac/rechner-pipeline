@@ -360,3 +360,193 @@ def test_ein_fall_ohne_berichte_behauptet_kein_ergebnis(tmp_path: Path):
     seite = vz._seite(fall, tmp_path, [], None)
     assert "*(noch keine Berichte im Fall)*" in seite
     assert "bestanden" not in seite
+
+
+# --------------------------------------------------------------------------- #
+# Falldaten: das Datenmodell einer Falldarstellung
+# --------------------------------------------------------------------------- #
+
+import falldaten as fd  # noqa: E402
+import fallbericht as fb  # noqa: E402
+
+
+def _leerfall(tmp_path: Path) -> Path:
+    fall = tmp_path / "leer"
+    fall.mkdir()
+    (fall / "fall.json").write_text(
+        json.dumps({"name": "leer", "scope": {"typ": "bestand"}}), "utf-8")
+    (fall / "eingang.json").write_text(json.dumps({"quellen": []}), "utf-8")
+    return fall
+
+
+def test_ein_fehlender_abschnitt_wird_laut_gemeldet(tmp_path: Path):
+    """Der Bericht ist Konsument der Pipeline und kein Vertragsgeber: Er
+    liest, was ohnehin entsteht. Der Preis dafuer ist, dass eine
+    Formaenderung ihn treffen kann — also muss sie wehtun. Eine
+    Darstellung, die vollstaendig aussieht und es nicht ist, waere die
+    schlechteste Variante."""
+    fall = _leerfall(tmp_path)
+    ziel = tmp_path / "daten.json"
+    code = fd.main(["--fall", str(fall), "--out", str(ziel)])
+
+    assert code == 3, "ein unvollstaendiger Fall darf nicht auf 0 enden"
+    modell = json.loads(ziel.read_text(encoding="utf-8"))
+    # Das Modell entsteht trotzdem — wer die Luecke beheben will, braucht
+    # zuerst das, was da ist.
+    assert {l["gruppe"] for l in modell["luecken"]} == {
+        g for g, _, _ in fd.ERWARTET}
+
+
+def test_eine_vollerhebung_ist_keine_zu_kleine_pruefmenge():
+    """Der Geschaeftsvorfalltest prueft ALLE Vorfaelle, nicht alle
+    Vertraege. Seine Grundgesamtheit mit der Bestandsgroesse zu
+    vergleichen erzeugte eine Einschraenkung, die keine ist — und ein
+    Alarm, der falsch schlaegt, wird abgeschaltet."""
+    def modell(vollerhebung: bool):
+        return {
+            "bestand": {"anzahl": 500},
+            "abnahmen": {"aktuariell": [{
+                "kennung": "A-M3",
+                "stichprobe": {"grundgesamtheit": 42,
+                               "vollerhebung": vollerhebung},
+                "plausibilitaets_pruefungen": 0,
+            }], "controlling": None},
+        }
+    ohne = [a for a in fd.abgrenzungen(modell(False))
+            if "Pruefgesamtheit" in a["was"]]
+    mit = [a for a in fd.abgrenzungen(modell(True))
+           if "Pruefgesamtheit" in a["was"]]
+    assert len(ohne) == 1 and ohne[0]["zahlen"] == "42 von 500"
+    assert mit == []
+
+
+def test_ersetzter_wertvergleich_wird_zur_abgrenzung():
+    """"100 von 100" darf nicht verschweigen, dass ein Teil der
+    Pruefungen kein Wertvergleich war."""
+    modell = {
+        "bestand": {"anzahl": 100},
+        "abnahmen": {"aktuariell": [{
+            "kennung": "A-M1",
+            "stichprobe": {"grundgesamtheit": 100, "vollerhebung": False},
+            "plausibilitaets_pruefungen": 50,
+            "plausibilitaet_vertraege": 25,
+            "verteilung": {"anzahl_werte": 500},
+        }], "controlling": None},
+    }
+    treffer = [a for a in fd.abgrenzungen(modell)
+               if "Plausibilitaet" in a["was"]]
+    assert len(treffer) == 1
+    assert "50 von 550" in treffer[0]["zahlen"]
+    assert "25 Vertraege" in treffer[0]["zahlen"]
+
+
+def test_stille_und_erklaerte_nichtuebernahme_sind_verschieden():
+    """Eine Spalte, ueber die niemand nachgedacht hat, sieht im Ergebnis
+    aus wie eine bewusst weggelassene. Genau das darf sie nicht."""
+    grund = {
+        "bestand": {}, "abnahmen": {},
+        "transformation": {
+            "vorhanden": True, "zeilen_quelle": 10, "zeilen_ziel": 10,
+            "konflikte": [],
+            "nicht_uebernommen": [
+                {"quellen": ["ERKLAERT"], "begruendung": "operatives Feld"}],
+            "stumm_weggelassen": ["VERGESSEN"],
+        },
+    }
+    aus = fd.abgrenzungen(grund)
+    stumm = [a for a in aus if "weder abgebildet" in a["was"]]
+    assert len(stumm) == 1 and stumm[0]["zahlen"] == "VERGESSEN"
+    # Die erklaerte Nichtuebernahme erzeugt KEINE Abgrenzung — sie ist
+    # eine Aussage und kein Mangel.
+    assert not any("ERKLAERT" in str(a.get("zahlen")) for a in aus)
+
+    grund["transformation"]["nicht_uebernommen"][0]["begruendung"] = ""
+    ohne_grund = [a for a in fd.abgrenzungen(grund)
+                  if "ohne Begruendung" in a["was"]]
+    assert len(ohne_grund) == 1
+
+
+def test_zeilenverlust_der_transformation_faellt_auf():
+    """Wer nur die transformierten Zeilen nimmt, migriert stillschweigend
+    weniger Vertraege."""
+    modell = {
+        "bestand": {}, "abnahmen": {},
+        "transformation": {"vorhanden": True, "zeilen_quelle": 500,
+                           "zeilen_ziel": 497, "konflikte": [],
+                           "nicht_uebernommen": [], "stumm_weggelassen": []},
+    }
+    treffer = [a for a in fd.abgrenzungen(modell) if "Zeilen verloren" in a["was"]]
+    assert len(treffer) == 1 and treffer[0]["zahlen"] == "497 von 500"
+
+
+# --------------------------------------------------------------------------- #
+# Fallbericht: die Darstellung
+# --------------------------------------------------------------------------- #
+
+
+def test_die_darstellung_traegt_ohne_freien_text(tmp_path: Path):
+    """Die Zahlen tragen fuer sich; der Text ordnet nur ein. Ein Bericht
+    ohne Textdatei muss deshalb vollstaendig sein — sonst haengt die
+    Aussage doch am Verfasser."""
+    modell = {
+        "fall": {"name": "probe", "scope": "bestand"},
+        "lieferung": {"anzahl": 2, "anzahl_nachgereicht": 1, "quellen": [
+            {"datei": "a.csv", "bytes": 10, "sha256": "ab" * 32,
+             "nachgereicht": False},
+            {"datei": "notiz.docx", "bytes": 20, "sha256": "cd" * 32,
+             "nachgereicht": True}]},
+        "bestand": {"vorhanden": True, "anzahl": 500, "groessen": {},
+                    "abzuege": [], "kreuzproben": [
+                        {"was": "Abgaenge", "links": 9, "rechts": 9,
+                         "stimmt": True}]},
+        "abnahmen": {"aktuariell": [], "controlling": None},
+        "parameter": {"diskrepanzen": [], "belege": {}},
+        "kette": {"gates": [], "entscheide": []},
+        "abgrenzungen": [],
+    }
+    seite = fb.baue(modell, {})
+    assert "500" in seite
+    assert "notiz.docx" in seite and "nachgereicht" in seite
+    assert "geht auf" in seite          # die Kreuzprobe steht drin
+    assert "Fachliche Sicht" in seite and "Technische Sicht" in seite
+
+
+def test_eine_nicht_aufgehende_kreuzprobe_wird_nicht_beschoenigt():
+    modell = {
+        "fall": {"name": "p", "scope": "bestand"},
+        "lieferung": {"quellen": []},
+        "bestand": {"vorhanden": True, "anzahl": 5, "groessen": {},
+                    "abzuege": [], "kreuzproben": [
+                        {"was": "Abgaenge", "links": 9, "rechts": 7,
+                         "stimmt": False}]},
+        "abnahmen": {"aktuariell": [], "controlling": None},
+        "parameter": {"diskrepanzen": [], "belege": {}},
+        "kette": {"gates": [], "entscheide": []},
+        "abgrenzungen": [],
+    }
+    assert "GEHT NICHT AUF" in fb.baue(modell, {})
+
+
+def test_abgrenzungen_landen_in_ihrer_sicht():
+    """Fachliche Einschraenkungen gehoeren zum Fachteil, technische zum
+    technischen — sonst liest der Aktuar Prüfsummen und der Entwickler
+    Residuen."""
+    modell = {
+        "fall": {"name": "p", "scope": "bestand"},
+        "lieferung": {"quellen": []},
+        "bestand": {"vorhanden": False},
+        "abnahmen": {"aktuariell": [], "controlling": None},
+        "parameter": {"diskrepanzen": [], "belege": {}},
+        "kette": {"gates": [], "entscheide": []},
+        "abgrenzungen": [
+            {"sicht": "fachlich", "abnahme": "A-M1", "was": "FACHBEFUND",
+             "zahlen": "1 von 2"},
+            {"sicht": "technisch", "abnahme": None, "was": "TECHNIKBEFUND",
+             "zahlen": None},
+        ],
+    }
+    seite = fb.baue(modell, {})
+    fach = seite.index("FACHBEFUND")
+    technik = seite.index("TECHNIKBEFUND")
+    trenner = seite.index("Technische Sicht")
+    assert fach < trenner < technik
