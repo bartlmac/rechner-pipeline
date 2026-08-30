@@ -365,9 +365,10 @@ def _lade_snapshot_kette(
             fehler.append(
                 f"{pfad.name}: gate {daten['gate']!r} statt erwartet {gate!r}"
             )
-        if daten["fall"] != str(fall):
+        if daten["fall"] != fall.name:
             fehler.append(
-                f"{pfad.name}: Fallbindung {daten['fall']!r} statt {str(fall)!r}"
+                f"{pfad.name}: Fallbindung {daten['fall']!r} statt "
+                f"{fall.name!r}"
             )
         erwartet = _snapshot_dateiname(gate, sha)
         if pfad.name != erwartet:
@@ -1630,7 +1631,14 @@ def main(argv: Optional[List[str]] = None):
         "entscheider": args.entscheider,
         "rolle": args.rolle,
         "begruendung": args.begruendung,
-        "fall": str(fall),
+        # Der NAME des Falls, nicht sein Pfad. Das Feld dient der
+        # Identitaet ("gehoert dieser Snapshot zu diesem Fall?"), und
+        # dafuer ist ein absoluter Pfad schlecht: Er bricht, sobald der
+        # Fall umzieht, und er traegt das Heimatverzeichnis des
+        # Bedieners in ein signiertes und moeglicherweise
+        # veroeffentlichtes Artefakt. Der Name leistet dasselbe und ist
+        # neutral.
+        "fall": fall.name,
         "artefakt_hashes": _artefakt_hashes(fall, ausser_gate=args.gate),
         "system": entscheid_systemstand,
     }

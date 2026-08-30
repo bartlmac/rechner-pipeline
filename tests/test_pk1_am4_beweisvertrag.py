@@ -1587,3 +1587,32 @@ def test_ein_am1_ergebnis_unter_dem_namen_von_am2_zeichnet_nicht(
     assert gefaelscht.exit_code == 20
     assert "A-M1" in gefaelscht.errors[0]["message"]
     assert list((fall / "entscheide").glob("A-M2-*.json")) == []
+
+
+def test_der_snapshot_bindet_den_fall_ueber_den_namen(tmp_path: Path):
+    """Die Fallbindung ist der NAME, nicht der Pfad.
+
+    Das Feld dient der Identitaet — "gehoert dieser Snapshot hierher?".
+    Ein absoluter Pfad leistet das schlechter (er bricht beim Umzug) und
+    traegt das Heimatverzeichnis des Bedieners in ein signiertes
+    Artefakt. In einer veroeffentlichten Kette ist das nicht mehr zu
+    entfernen: Der Wert liegt INNERHALB der gehashten Nutzlast und der
+    Signaturnachricht, jede Redaktion braeche Selbsthash, Dateiname,
+    Signatur und die Bindung der Folgeentscheide in einem Zug.
+    """
+    # _bereite_fall zeichnet A-Q1 bereits; ein zweiter Entscheid waere
+    # ein neuer Snapshot und nicht der zu pruefende.
+    fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="tarif")
+    schnappschuesse = sorted((fall / "entscheide").glob("A-Q1-*.json"))
+    assert len(schnappschuesse) == 1
+    snapshot = json.loads(
+        schnappschuesse[0].read_text(encoding="utf-8")
+    )
+
+    assert snapshot["fall"] == fall.name
+    assert "/" not in snapshot["fall"] and "\\" not in snapshot["fall"]
+    # Der gesamte Snapshot darf keinen absoluten Pfad tragen — auch nicht
+    # in artefakt_hashes oder pflichtbelegen.
+    roh = json.dumps(snapshot, ensure_ascii=False)
+    assert str(tmp_path) not in roh
+    assert str(Path.home()) not in roh

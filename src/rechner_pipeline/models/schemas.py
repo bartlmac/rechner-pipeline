@@ -67,7 +67,13 @@ __all__ = [
 DECISION_VALUES: tuple[str, ...] = ("accepted", "human_review_required", "failed")
 EXPECTATION_COVERAGE_VALUES: tuple[str, ...] = ("full", "sparse", "none")
 GATE_VERSION_DEFAULT = "1.0.0"
-P9_SNAPSHOT_SCHEMA_VERSION = 5
+#: Version 6 (2026-08-30): Das Feld ``fall`` traegt den NAMEN des
+#: Falls statt seines absoluten Pfades. Der Pfad war als Identitaet
+#: untauglich (er bricht beim Umzug) und trug das Heimatverzeichnis des
+#: Bedieners in ein signiertes Artefakt — in einer veroeffentlichten
+#: Kette ist das nicht mehr zu entfernen, weil der Pfad INNERHALB der
+#: gehashten Nutzlast und der Signaturnachricht liegt.
+P9_SNAPSHOT_SCHEMA_VERSION = 6
 P9_GATE_VERSION = "0.6.0"
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
 #: Die menschlich entscheidbaren Gates. A-M2 (Verlaufstest) und A-M3
