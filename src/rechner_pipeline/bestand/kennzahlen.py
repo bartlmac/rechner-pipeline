@@ -138,6 +138,11 @@ def ledger_mit_bestandszugang(
                 if "bu_rente" in fehlend.columns
                 else fehlend["sum_insured"]
             ).to_numpy(float),
+            # Diese Zugaenge werden hier aus dem Stamm ERGAENZT, weil der
+            # Ausgangsbestand keine eigenen ZUG-Zeilen fuehrt. Die Summe
+            # steht im Stamm, ist also gelieferte beziehungsweise
+            # gefuehrte Groesse und keine Herleitung dieser Auswertung.
+            "betrag_herkunft": "geliefert",
         }
     )
     if len(ledger) == 0:

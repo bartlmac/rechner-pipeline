@@ -208,6 +208,8 @@ def baue(
             "status_date": pd.Timestamp(beginn),
             "betrag_art": "VS",
             "betrag": float(z["sum_insured"]),
+            # Die Zugangssumme steht im Abzug der abgebenden Gesellschaft.
+            "betrag_herkunft": "geliefert",
         })
         # Der mitgebrachte Zustand braucht seine Buchung: Ein Vertrag,
         # der beitragsfrei ankommt, traegt in der Historie eine
@@ -231,6 +233,12 @@ def baue(
                 "vertragsjahr": pex_jahr,
                 "status_date": pd.Timestamp(datum),
                 "betrag_art": "VS_bfr",
+                # NICHT geliefert: Die Vorgeschichte fuehrt keine
+                # Betraege. Diese Zahl ist eine Rechnung des
+                # AUFNEHMENDEN Unternehmens und kein Beleg der
+                # Gegenseite -- im Bewegungskonto muss sie als solche
+                # erkennbar sein.
+                "betrag_herkunft": "gerechnet",
                 "betrag": _beitragsfreie_summe(
                     z,
                     generationsfelder.get(police, generationsfelder)

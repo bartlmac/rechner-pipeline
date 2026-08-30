@@ -289,6 +289,9 @@ def zugangsjournal(
             "vertragsjahr": e.monate_ta // 12,
             "status_date": pd.Timestamp(stichtag),
             "betrag_art": BETRAG_ART,
+            # Das Residuum ist die Differenz zwischen geliefertem Stand
+            # und eigener Rechnung -- also selbst eine Rechnung.
+            "betrag_herkunft": "gerechnet",
             "betrag": e.residuum,
         }
         for e in ergebnisse

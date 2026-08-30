@@ -259,3 +259,34 @@ def test_das_datenmodell_der_darstellung_ist_vollstaendig(
     assert modell["bestand"]["anzahl"] == 25
     assert modell["transformation"]["zeilen_quelle"] == 25
     assert modell["transformation"]["stumm_weggelassen"] == []
+
+
+def test_das_bewegungskonto_trennt_beleg_von_eigenrechnung(
+    gefahrener_fall: Path,
+):
+    """Im uebernommenen Bestand stehen zwei Arten von Betraegen
+    nebeneinander, und sie sind nicht gleich viel wert.
+
+    Die Zugangssumme steht im Abzug der abgebenden Gesellschaft. Die
+    beitragsfreie Summe eines mitgebrachten PEX-Zustands steht dort NICHT
+    — die Vorgeschichte fuehrt keine Betraege —, sie wird vom
+    AUFNEHMENDEN Unternehmen konstruktiv gerechnet. Das ist richtig, aber
+    es ist keine Buchung der Gegenseite. Ohne die Unterscheidung verloere
+    das Bewegungskonto genau die Eigenschaft, fuer die man es fuehrt.
+    """
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import BETRAG_HERKUNFT, LEDGER_NAMES
+
+    ledger = read_portfolio(
+        gefahrener_fall / "abgeleitet" / "bestand" / "ledger.parquet",
+        expected_columns=LEDGER_NAMES,
+    )
+    assert set(ledger["betrag_herkunft"]) <= set(BETRAG_HERKUNFT)
+
+    zugang = ledger[ledger["ereignis"] == "ZUG"]
+    assert len(zugang) > 0
+    assert set(zugang["betrag_herkunft"]) == {"geliefert"}
+
+    pex = ledger[ledger["ereignis"] == "PEX"]
+    assert len(pex) > 0, "der Schnitt traegt beitragsfreie Vertraege"
+    assert set(pex["betrag_herkunft"]) == {"gerechnet"}

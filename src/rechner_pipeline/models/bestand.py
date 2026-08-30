@@ -184,7 +184,24 @@ LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
     # Versicherungssummen/Rueckkaufswerte, BU die betroffene Jahresrente.
     ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS_herabsetzung | VS (ZUG) | BU_Jahresrente
     ("betrag", "float64"),
+    # Woher der BETRAG stammt. Im eigenen Bestand ist er immer
+    # ``gerechnet`` — der Kern erzeugt ihn, und das ist der Normalfall.
+    # In einem UEBERNOMMENEN Bestand faellt beides auseinander: Die
+    # Zugangssumme steht im Abzug (``geliefert``), die beitragsfreie
+    # Summe eines mitgebrachten PEX-Zustands dagegen nicht -- die
+    # Vorgeschichte fuehrt keine Betraege (Grundsatzdokumentation 9.14),
+    # also rechnet das AUFNEHMENDE Unternehmen sie konstruktiv.
+    #
+    # Das ist richtig so, aber es ist keine Buchung der Gegenseite. Ohne
+    # das Merkmal staende sie im Bewegungskonto neben Buchungen, die aus
+    # gelieferten Tatsachen stammen, und das Konto verloere genau die
+    # Eigenschaft, fuer die man es fuehrt: unterscheiden zu koennen,
+    # was belegt ist und was hergeleitet.
+    ("betrag_herkunft", "object"),   # geliefert | gerechnet
 )
+
+#: Zulaessige Werte von ``betrag_herkunft``.
+BETRAG_HERKUNFT = ("geliefert", "gerechnet")
 
 #: Erhoehungsscheiben (dynamische Erhoehung): each row is an own layer of a
 #: contract, actuarially an own model point (Schichtungsprinzip). The base

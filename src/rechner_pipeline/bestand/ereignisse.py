@@ -198,6 +198,11 @@ def _event(
         "status_date": pd.Timestamp(datum),
         "betrag_art": art,
         "betrag": float(betrag),
+        # Der eigene Bestand rechnet seine Betraege selbst -- hier ist
+        # das der Normalfall und keine Einschraenkung. Bemerkenswert wird
+        # die Angabe erst im uebernommenen Bestand, wo daneben Betraege
+        # aus der Lieferung stehen.
+        "betrag_herkunft": "gerechnet",
     }
 
 
@@ -653,6 +658,7 @@ def fortschreiben(
             "status_date": pd.to_datetime(ereignisse["status_date"]),
             "betrag_art": ereignisse["betrag_art"].astype(object),
             "betrag": ereignisse["betrag"].astype("float64"),
+            "betrag_herkunft": ereignisse["betrag_herkunft"].astype(object),
         }
     ).reset_index(drop=True)
 
