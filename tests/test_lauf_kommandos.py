@@ -292,3 +292,71 @@ def test_auftragsbau_uebernimmt_zustand_und_ursprungssumme():
     a, = auftraege
     assert a.reduktion == (6, 0.6)
     assert a.model_point["sum_insured"] == 100000.0
+
+
+# --------------------------------------------------------------------------- #
+# Die Korrekturschicht erreicht den Pruefauftrag
+# --------------------------------------------------------------------------- #
+
+def _schicht_datei(fall, inhalt) -> str:
+    """Eine REGISTRIERTE Schichtdatei im Fall anlegen."""
+    import json as _json
+
+    from rechner_pipeline.fall import registrieren
+
+    quelle = fall.parent / "schicht.json"
+    quelle.write_text(_json.dumps(inhalt), encoding="utf-8")
+    registrieren(fall, quelle)
+    return quelle.name
+
+
+def test_die_korrekturschicht_erreicht_den_pruefauftrag(tmp_path):
+    """Die Schicht war im Kern vorhanden, in der Testengine verdrahtet und
+    durch Tests gedeckt — aber KEIN Kommando konnte sie setzen.
+
+    Sie ist ein Vertragsattribut, das die Uebernahmestrecke ableitet
+    (Grundsatzdokumentation 9.14: der Rechenkern bleibt historienfrei),
+    muss also von aussen in den Auftrag kommen. Und aus einer
+    REGISTRIERTEN Quelle: Ein Residuum, das der Pruefer selbst setzen
+    koennte, waere kein Beweis, sondern ein Regler.
+    """
+    from rechner_pipeline.fall import anlegen
+    from rechner_pipeline.gates.aktuartest_lauf import _schichten
+
+    fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
+    name = _schicht_datei(fall, {
+        "7000001": {
+            "schichttyp": "hist",
+            "verankerungszustand": "beitragspflichtig",
+            "verweildauer": 12,
+            "rho": 850.0,
+            "formfunktion": "konstantes_fenster",
+            "formparameter": {"fenster": 12},
+        }
+    })
+
+    schichten = _schichten(fall, name)
+    assert set(schichten) == {"7000001"}
+    assert schichten["7000001"].rho == 850.0
+    assert schichten["7000001"].verweildauer == 12
+
+    # Ohne Angabe bleibt es beim schichtfreien Lauf — kein stiller Default.
+    assert _schichten(fall, None) == {}
+
+
+def test_eine_unbrauchbare_schicht_faellt_hart(tmp_path):
+    """Eine halb gelesene Schicht waere schlimmer als keine: Sie traegt ein
+    Residuum, das niemand geprueft hat."""
+    from rechner_pipeline.fall import anlegen
+    from rechner_pipeline.gates.aktuartest_lauf import _schichten
+
+    fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
+    name = _schicht_datei(fall, {"7000001": {"schichttyp": "unbekannt",
+                                             "verankerungszustand": "x",
+                                             "verweildauer": 1, "rho": 1.0,
+                                             "formfunktion": "f"}})
+
+    with pytest.raises(SystemExit, match="unbrauchbar"):
+        _schichten(fall, name)

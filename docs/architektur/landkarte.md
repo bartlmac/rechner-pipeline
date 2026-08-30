@@ -42,7 +42,7 @@ flowchart TD
     bestand -- 13 --> models
     gates -- 7 --> bestand
     gates -- 7 --> fall
-    gates -- 4 --> kern
+    gates -- 5 --> kern
     gates -- 9 --> models
     gates -- 12 --> ontologie
     gates -- 9 --> qa

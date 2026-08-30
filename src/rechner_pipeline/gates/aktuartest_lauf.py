@@ -57,6 +57,10 @@ from rechner_pipeline.qa.aktuarieller_test import (
     Vertragspruefung,
     pruefe_stichprobe,
 )
+from rechner_pipeline.kern.korrekturschicht import (
+    KorrekturschichtFehler,
+    Schichtparameter,
+)
 from rechner_pipeline.qa.stichprobe import Stichprobe
 from rechner_pipeline.qa.testprofil import vorlage
 from rechner_pipeline.spez.validierung import lade_spez
@@ -108,6 +112,7 @@ def baue_auftraege(
     spez,
     *,
     auspraegungen_je_police: Dict[str, Dict[str, str]],
+    schichten: Optional[Dict[str, Any]] = None,
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     plausibilitaet: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> List[Vertragspruefung]:
@@ -166,8 +171,42 @@ def baue_auftraege(
             scheiben=tuple(zustand.get("scheiben", ())),
             reduktion=zustand.get("reduktion"),
             plausibilitaet=(plausibilitaet or {}).get(police, {}),
+            schicht=(schichten or {}).get(police),
         ))
     return auftraege
+
+
+def _schichten(fall: Path, name: Optional[str]) -> Dict[str, Any]:
+    """Die Korrekturschicht je Police aus einer REGISTRIERTEN Quelle.
+
+    Die Schicht ist ein VERTRAGSATTRIBUT, das die Uebernahmestrecke
+    ableitet (Grundsatzdokumentation 9.14: der Rechenkern bleibt
+    historienfrei). Sie muss deshalb von aussen in den Pruefauftrag
+    kommen — und aus einer registrierten Quelle, nicht aus einem freien
+    Pfad: Ein Residuum, das der Pruefer selbst setzen koennte, waere
+    kein Beweis, sondern ein Regler.
+
+    Format: ``{"<police_id>": {<Felder von Schichtparameter>}}``.
+    """
+    if not name:
+        return {}
+    roh = _lies_registriert(fall, name)
+    if not isinstance(roh, dict):
+        raise SystemExit(
+            f"Schichtdatei {name!r} traegt kein Objekt "
+            "police_id -> Schichtparameter")
+    aus: Dict[str, Any] = {}
+    for police, felder in roh.items():
+        if not isinstance(felder, dict):
+            raise SystemExit(f"Schicht fuer Police {police}: kein Objekt")
+        try:
+            aus[str(police)] = Schichtparameter(
+                **{k: (tuple(tuple(x) for x in v) if k == "vererbend" else v)
+                   for k, v in felder.items()})
+        except (TypeError, KorrekturschichtFehler) as exc:
+            raise SystemExit(
+                f"Schicht fuer Police {police} unbrauchbar: {exc}") from exc
+    return aus
 
 
 def _stichprobe(beleg: Dict[str, Any], abnahme: str) -> Stichprobe:
@@ -248,6 +287,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Verfahren der Beitragsherabsetzung (Eigenschaft "
                         "des Migrationsfalls; Vorgabe: Zielverfahren "
                         "prospektiv)")
+    p.add_argument(
+        "--schicht", dest="schicht", default=None,
+        help="REGISTRIERTE Quelle mit der Korrekturschicht je Police "
+             "(police_id -> Schichtparameter). Sie ist ein Vertragsattribut, "
+             "das die Uebernahmestrecke ableitet (9.14) — der Rechenkern "
+             "bleibt historienfrei. Ohne Angabe rechnet der Test ohne "
+             "Schicht; das Residuum am Verankerungspunkt bleibt dann eine "
+             "Restgroesse statt einer getragenen.")
     p.add_argument("--repo-root", dest="repo_root", default=".")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/berichte/...)")
@@ -380,9 +427,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             for police in betroffen
         }
 
+    schichten = _schichten(fall, args.schicht)
     auftraege = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
-        anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet)
+        anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet,
+        schichten=schichten)
     stichprobe = _stichprobe(beleg, args.abnahme)
     profil = vorlage(args.abnahme, weite=str(
         stichprobe.parameter.get("weite") or stichprobe.profil))
