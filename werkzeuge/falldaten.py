@@ -537,6 +537,7 @@ def kette(fall: Path) -> Dict[str, Any]:
             "status": d.get("status"),
             "gestartet": d.get("started_at"),
             "versuch": d.get("attempt"),
+            "pb1_umfang": (d.get("summary") or {}).get("pb1_umfang"),
         })
     gates.sort(key=lambda g: (str(g["gestartet"]), str(g["kommando"])))
 
@@ -673,6 +674,17 @@ def abgrenzungen(modell: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "sicht": "technisch", "abnahme": None,
                 "was": f"Belegrechnung {name} ist an keine Pruefsumme gebunden",
                 "zahlen": None,
+            })
+
+    # Was die Bestandspruefung NICHT gesehen hat. Das A-M4-Ledger weist
+    # den Umfang aus; hier wird daraus eine benannte Einschraenkung.
+    for g in (modell.get("kette") or {}).get("gates", []):
+        umfang = (g.get("pb1_umfang") or {})
+        if umfang and not umfang.get("bewegungskonto_geprueft"):
+            aus.append({
+                "sicht": "technisch", "abnahme": "A-M4",
+                "was": "Das Bewegungskonto wurde nicht geprueft",
+                "zahlen": "P-B1 sah " + ", ".join(umfang.get("geprueft") or []),
             })
 
     k = modell.get("kette") or {}

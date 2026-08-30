@@ -1385,6 +1385,21 @@ def _b1_fehler(
     if rollen.get("portfolio") != portfolio_input:
         fehler.append("P-B1-Ledger benennt widerspruechliche Portfolio-Rollen")
 
+    # Der UMFANG der Vorpruefung gehoert in den Beleg.
+    #
+    # Die Bewegungs-Identitaet (Anfang + Zugang - Abgang = Endbestand) ist
+    # die einzige Pruefung, die den ZUSAMMENHANG der Zeilen prueft statt
+    # jede fuer sich. Lief P-B1 ohne die Rollen historie und ledger, hat
+    # sie nicht stattgefunden -- und ein gruenes A-M4 sagte darueber
+    # nichts, weder so noch so.
+    #
+    # Erzwungen wird sie trotzdem NICHT: Ein Bestandsausschnitt ohne
+    # Journal kann sie nicht liefern, und ein Gate, das Unmoegliches
+    # verlangt, wird umgangen statt befolgt. Stattdessen weist der Beleg
+    # aus, WAS geprueft wurde -- daraus leitet die Falldarstellung ihre
+    # Abgrenzung ab, und ein Leser sieht den Unterschied zwischen
+    # "geprueft" und "nicht geprueft" statt nur ein gruenes Gate.
+
     aktuelle_eingaben: Dict[str, Path] = {}
     portfolio_gebunden = False
     for name, erwartet_hash in entry.input_hashes.items():
@@ -1894,6 +1909,23 @@ def main(argv: Optional[List[str]] = None):
     }
     if gemeinsame_bindung is not None:
         summary["scope_bindung"] = gemeinsame_bindung
+
+    # Welche Tabellen die Bestandspruefung tatsaechlich gesehen hat. Ein
+    # gruenes A-M4 sagt sonst nichts darueber, ob das Bewegungskonto
+    # geprueft wurde -- und "geprueft" und "nicht geprueft" saehen im
+    # Beleg gleich aus.
+    if bestands_scope and eingaben.get("pb1_ledger"):
+        try:
+            pb1_roh = json.loads(
+                Path(eingaben["pb1_ledger"]).read_text(encoding="utf-8"))
+            pb1_rollen = sorted((pb1_roh.get("summary") or {})
+                                .get("eingangsrollen") or {})
+        except (OSError, ValueError, AttributeError):
+            pb1_rollen = []
+        summary["pb1_umfang"] = {
+            "geprueft": pb1_rollen,
+            "bewegungskonto_geprueft": "ledger" in pb1_rollen,
+        }
 
     if summary["bericht_bestanden"]:
         if bestands_scope:
