@@ -302,7 +302,9 @@ def transformation(fall: Path) -> Dict[str, Any]:
         return {"vorhanden": False}
 
     specs = sorted(verzeichnis.glob("*.spec.json"))
-    ergebnisse = sorted(verzeichnis.glob("ergebnis-*.json"))
+    # Der Dateiname des Ergebnisses ist eine Konvention, kein Vertrag:
+    # Der Lauf haengt den Stichtag an, ein Test nicht.
+    ergebnisse = sorted(verzeichnis.glob("ergebnis*.json"))
     if not specs:
         return {"vorhanden": False}
 
