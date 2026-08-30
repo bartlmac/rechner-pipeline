@@ -24,12 +24,14 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import hashlib
 import json
 import sys
 from pathlib import Path
 from typing import List, Optional
 
 from rechner_pipeline.ontologie.abox import lade, speichere, validate_abox
+from rechner_pipeline.ontologie.diskrepanz import Beleg
 from rechner_pipeline.ontologie.befuellung import (
     BefuellungsFehler,
     loese_diskrepanz_auf,
@@ -71,6 +73,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--quelle", default=None,
                         help="Quelldatei, deren Lesart bei --alle-vorlaeufigen gilt.")
+    parser.add_argument(
+        "--beleg", default=None,
+        help="FALL-RELATIVER Pfad der deterministischen Rechnung, die die "
+             "Lesart stuetzt (z. B. abgeleitet/berichte/abzugsabgleich.json). "
+             "Ihre Pruefsumme wird in die Entscheidung aufgenommen und von "
+             "Gate P-Q3 nachgerechnet. Ohne Angabe traegt die Entscheidung "
+             "nur ihre Begruendung -- eine Prosa-Nennung im Text sichert "
+             "nichts.",
+    )
     args = parser.parse_args(argv)
 
     fall = Path(args.fall)
@@ -88,6 +99,18 @@ def main(argv: Optional[List[str]] = None) -> int:
             file=sys.stderr,
         )
         return 1
+
+    beleg = None
+    if args.beleg:
+        beleg_pfad = fall / args.beleg
+        if not beleg_pfad.is_file():
+            print(f"entscheide: Beleg {args.beleg!r} liegt nicht im Fall "
+                  f"({beleg_pfad})", file=sys.stderr)
+            return 2
+        beleg = Beleg(
+            datei=args.beleg,
+            sha256=hashlib.sha256(beleg_pfad.read_bytes()).hexdigest(),
+        )
 
     jetzt = _jetzt()
     entschieden: List[str] = []
@@ -121,7 +144,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 _ersetze_vorlaeufig(abox, d.id)
                 loese_diskrepanz_auf(
                     abox, d.id, lesart.wert, args.entscheider,
-                    args.begruendung, jetzt, vorlaeufig=False,
+                    args.begruendung, jetzt, vorlaeufig=False, beleg=beleg,
                 )
                 entschieden.append(d.id)
         else:
@@ -134,6 +157,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             loese_diskrepanz_auf(
                 abox, args.diskrepanz, _wert_parsen(args.wert),
                 args.entscheider, args.begruendung, jetzt, vorlaeufig=False,
+                beleg=beleg,
             )
             entschieden.append(args.diskrepanz)
     except BefuellungsFehler as exc:

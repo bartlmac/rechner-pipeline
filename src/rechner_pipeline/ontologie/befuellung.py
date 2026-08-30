@@ -337,6 +337,7 @@ def loese_diskrepanz_auf(
     begruendung: str,
     entschieden_am: str,
     vorlaeufig: bool = False,
+    beleg: Optional["Beleg"] = None,
 ) -> ABox:
     """Menschliche Aufloesung anwenden: Diskrepanz + Aussage nachziehen.
 
@@ -345,7 +346,7 @@ def loese_diskrepanz_auf(
     neuer Wert waere eine neue Quelle und gehoert als solche erfasst).
     Die Aussage wird belegt mit der Provenienz der gewaehlten Lesart.
     """
-    from rechner_pipeline.ontologie.diskrepanz import Entscheidung
+    from rechner_pipeline.ontologie.diskrepanz import Beleg, Entscheidung  # noqa: F401
 
     kandidaten = [
         (i, d) for i, d in enumerate(abox.diskrepanzen) if d.id == diskrepanz_id
@@ -404,6 +405,7 @@ def loese_diskrepanz_auf(
             gewaehlter_wert=lesart.wert,
             entschieden_am=entschieden_am,
             vorlaeufig=vorlaeufig,
+            beleg=beleg,
         ),
     })
     for parameter, feld in ziele:
