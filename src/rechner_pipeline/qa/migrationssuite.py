@@ -299,7 +299,15 @@ def pruefe_vertrag(
     kein Befund), ``befunde`` (Texte zu Lieferungs-Inkonsistenzen),
     ``pruefungen`` (je Größe System-/Erwartungswert und Residuum) und
     ``nicht_geprueft`` (Größen, zu denen die Lieferung keinen
-    Erwartungswert trägt — ausgewiesene Lücke, kein Bestehen).
+    Erwartungswert trägt).
+
+    ``bestanden`` und ``nicht_geprueft`` sind ABSICHTLICH getrennt: Das
+    Urteil sagt, ob das Gerechnete stimmt; die Lücke sagt, wozu die
+    Gegenseite nichts geliefert hat. Ein Vertrag kann bestanden UND
+    unvollständig geprüft sein. Für den Lauf führt ``pruefe_bestand`` das
+    unter ``vollstaendig_geprueft`` zusammen, und Gate A-M4 duldet im
+    Bestands-Scope keine Lücke — die Aussage geht also nicht verloren,
+    sie steht nur an der Stelle, an der sie hingehört.
 
     ABGEGANGENE VERTRÄGE — warum ``dk_stichtag_2`` dort WEDER verglichen
     noch als Lücke geführt wird: Bei einem terminalen GeVo ist das
@@ -697,6 +705,17 @@ def pruefe_vertrag(
 
     return {
         "police_id": v.police_id,
+        # Eine Luecke geht NICHT in dieses Urteil ein, und das ist
+        # Absicht: Sie sagt etwas ueber die LIEFERUNG, nicht ueber den
+        # Vertrag. Ein Vertrag, zu dessen Groesse die Gegenseite keinen
+        # Wert geliefert hat, ist deshalb nicht falsch gerechnet — er ist
+        # an dieser Stelle ungeprueft. Beides in ein Urteil zu werfen
+        # vermischte zwei verschiedene Aussagen und machte den Bericht
+        # aermer, nicht ehrlicher.
+        #
+        # Verdeckt wird dabei nichts: ``nicht_geprueft`` steht je Vertrag
+        # im Bericht, ``vollstaendig_geprueft`` fasst es fuer den Lauf
+        # zusammen, und A-M4 duldet im Bestands-Scope keine Luecke.
         "bestanden": not befunde and all(p["ok"] for p in pruefungen),
         "befunde": befunde,
         "pruefungen": pruefungen,

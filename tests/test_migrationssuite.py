@@ -1134,3 +1134,33 @@ def test_alt_reduktion_folgt_dem_verfahren_des_falls():
                               red_verfahren="mit_abzug")
     assert ergebnis["red_verfahren"] == "mit_abzug"
     assert ergebnis["suite_bestanden"] is True
+
+
+def test_luecke_und_urteil_bleiben_getrennte_aussagen() -> None:
+    """``bestanden`` und ``nicht_geprueft`` sind zwei verschiedene Saetze.
+
+    Das Urteil sagt, ob das GERECHNETE stimmt; die Luecke sagt, wozu die
+    Gegenseite nichts geliefert hat. Ein Vertrag ohne gelieferten
+    Jahresbeitrag ist deshalb nicht falsch gerechnet — er ist an dieser
+    Stelle ungeprueft.
+
+    Der Test steht hier, weil die Versuchung gross ist, beides zu
+    verschmelzen: Ein Bericht "500 von 500 bestanden" neben ausgewiesenen
+    Luecken liest sich staerker, als er ist. Die Antwort darauf ist die
+    DARSTELLUNG, nicht das Urteil — verdeckt wird nichts, denn
+    ``vollstaendig_geprueft`` fasst die Luecken fuer den Lauf zusammen und
+    Gate A-M4 duldet im Bestands-Scope keine.
+    """
+    # _pruefung() liefert keinen bjb_erwartet_1 — genau der Fall.
+    ohne_beitrag = _pruefung()
+    urteil = pruefe_vertrag(ohne_beitrag)
+
+    assert urteil["bestanden"] is True
+    assert urteil["befunde"] == []
+    assert any("bjb" in luecke for luecke in urteil["nicht_geprueft"])
+
+    # Auf Laufebene faellt die Luecke sehr wohl ins Gewicht.
+    bericht = pruefe_bestand([ohne_beitrag], erwartete_anzahl=1)
+    assert bericht["bestanden"] == 1
+    assert bericht["vollstaendig_geprueft"] is False
+    assert bericht["pruefluecken"]
