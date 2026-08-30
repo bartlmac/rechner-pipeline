@@ -353,3 +353,70 @@ def test_force_utf8_stream_handles_none_and_missing_reconfigure() -> None:
     assert _common.force_utf8_stream(None) is None
     plain = io.StringIO()  # no reconfigure attribute
     assert _common.force_utf8_stream(plain) is plain
+
+
+# --------------------------------------------------------------------------- #
+# Der Laufverlauf je Kommando
+# --------------------------------------------------------------------------- #
+
+
+def _fahre_gate(diagnostics: Path, *, status: str, exit_code: int):
+    """Einen vollstaendigen Gate-Lauf simulieren (beginnen, abschliessen)."""
+    fehlstart = _common.begin_gate_ledger_attempt(
+        command="golden_master",
+        gate="G5.golden-master",
+        gate_version="1.0.0",
+        diagnostics_dir=diagnostics,
+    )
+    assert fehlstart is None
+    return _common.finalize_gate_ledger(
+        _golden_master_result(status=status, exit_code=exit_code))
+
+
+def test_die_rot_historie_eines_kommandos_bleibt_erhalten(tmp_path: Path):
+    """Das Ledger traegt den GELTENDEN Stand und wird ersetzt — sonst
+    laege ein ueberholtes Urteil als aktueller Beleg herum. Die Folge war
+    aber, dass jedes Ledger auf "bestanden, erster Versuch" stand, auch
+    nach einem Lauf, der mehrfach zurueckschleifen musste. Damit verlor
+    die Ablage genau das, was ein Migrationslauf an Erkenntnis erzeugt:
+    wo es geklemmt hat.
+    """
+    _fahre_gate(tmp_path, status="failed", exit_code=_common.Exit.GOLDEN_MASTER)
+    _fahre_gate(tmp_path, status="failed", exit_code=_common.Exit.GOLDEN_MASTER)
+    _fahre_gate(tmp_path, status="passed", exit_code=_common.Exit.OK)
+
+    historie = _common.lies_gate_historie(tmp_path, "golden_master")
+    assert [e["versuch"] for e in historie] == [1, 2, 3]
+    assert [e["status"] for e in historie] == ["failed", "failed", "passed"]
+    assert historie[0]["fehler"] == ["gm.mismatch"]
+    assert historie[-1]["fehler"] == []
+
+    # Das Ledger selbst traegt weiter NUR den geltenden Stand — und seine
+    # Versuchsnummer ist jetzt wahr statt immer 1.
+    ledger = json.loads(
+        (tmp_path / f"golden_master{_common.GATE_LEDGER_SUFFIX}")
+        .read_text(encoding="utf-8"))
+    assert ledger["status"] == "passed"
+    assert ledger["attempt"] == 3
+
+
+def test_ohne_lauf_gibt_es_keine_historie(tmp_path: Path):
+    assert _common.lies_gate_historie(tmp_path, "golden_master") == []
+
+
+def test_eine_unlesbare_historienzeile_haelt_kein_gate_auf(tmp_path: Path):
+    """Die Historie ist ein Zusatzbeleg, kein Vertrag. Sie darf einen
+    Gate-Lauf niemals aufhalten — sonst waere die Beobachtung teurer als
+    das Beobachtete."""
+    pfad = _common.gate_historie_pfad(tmp_path, "golden_master")
+    pfad.write_text('{"versuch": 1, "status": "failed"}\nkein json\n\n',
+                    encoding="utf-8")
+
+    assert len(_common.lies_gate_historie(tmp_path, "golden_master")) == 1
+
+    ergebnis = _fahre_gate(tmp_path, status="passed", exit_code=_common.Exit.OK)
+    assert ergebnis.exit_code == _common.Exit.OK
+    # Die kaputte Zeile wird uebersprungen, nicht repariert: Der neue Lauf
+    # zaehlt als zweiter, weil eine lesbare Zeile vorlag.
+    historie = _common.lies_gate_historie(tmp_path, "golden_master")
+    assert [e["versuch"] for e in historie] == [1, 2]
