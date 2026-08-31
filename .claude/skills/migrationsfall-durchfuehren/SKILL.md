@@ -267,6 +267,16 @@ Historie. `--vorgeschichte` liest die REGISTRIERTE Metadatenliste der
 Geschaeftsvorfaelle vor dem Stichtag; ohne sie ist der
 Verankerungszeitpunkt nicht bestimmbar.
 
+**Fortschreibung.** Der uebernommene Bestand lebt in den Buechern des
+aufnehmenden Unternehmens weiter — er altert, storniert, laeuft ab. Das
+faehrt `bestand.cli_fortschreibung` auf dem uebernommenen Stamm; die
+Engine setzt am Bestandszugang an und im Zustand, den der Vertrag
+mitbringt (ADR-015). Die Buchungen der Uebernahme selbst (Zugang, bei
+beitragsfrei ankommenden Vertraegen die Umbuchung) stehen bereits im
+Ledger und werden dem Fortschreibungs-Ledger vorangestellt. Ohne diesen
+Schritt fehlen den uebernommenen Vertraegen die Abgangsbuchungen, und
+die Bestandsbewegung des Gesamtbestands geht nicht auf.
+
 **Tarifzellen.** Fuehrt die Spez mehr als eine Zelle, kommen zwei
 weitere Ausgaben dazu: `merkmale.parquet` (je Vertrag und Dimension die
 gewaehlte Auspraegung — die Nebentabelle zur Zellwahl) und

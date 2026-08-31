@@ -62,6 +62,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--config", required=True, help="Bestand-Config (TOML).")
     parser.add_argument("--bis", required=True, help="Horizont (ISO-Datum).")
     parser.add_argument(
+        "--merkmale",
+        default=None,
+        help=(
+            "Merkmalsauspraegungen-Parquet — Pflicht, sobald eine "
+            "Tarifgeneration der Config in Zellen aufgeteilt ist "
+            "(uebernommene Bestaende); sonst waere die Zellwahl geraten."
+        ),
+    )
+    parser.add_argument(
         "--portfolio",
         default=None,
         help=(
@@ -114,7 +123,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             basis = generate(config, bis=neuzugang_ab)
             write_portfolio(basis, out_dir / "bestand.parquet")
-        ergebnis = fortschreiben(basis, config, bis, neuzugang_ab=neuzugang_ab)
+        merkmale = None
+        if ns.merkmale:
+            merkmale_path = Path(ns.merkmale)
+            if not merkmale_path.is_file():
+                print(
+                    f"bestand_fortschreibung: Merkmale nicht gefunden: {merkmale_path}",
+                    file=sys.stderr)
+                return 2
+            merkmale = read_portfolio(merkmale_path)
+        ergebnis = fortschreiben(basis, config, bis, neuzugang_ab=neuzugang_ab,
+                                 merkmale=merkmale)
         # Der Gesamtbestand ist GEFUEHRT (ADR-011): der Stammsatz traegt den
         # aktuellen Zustand am Horizont, das Journal (historie/ledger) die
         # vollstaendige Aufzeichnung. bestand.parquet bleibt der Basisbestand

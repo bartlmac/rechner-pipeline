@@ -79,6 +79,7 @@ from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.models.bestand import (
+    AKTIVE_STATUS,
     LEDGER_SPALTEN,
     SCHEIBEN_SPALTEN,
     STAMM_NAMES,
@@ -131,6 +132,39 @@ class Fortschreibung(NamedTuple):
 
 def _add_years(d: _dt.date, years: int) -> _dt.date:
     return _dt.date(d.year + years, d.month, 1)
+
+
+def _vertragsjahr(beginn: _dt.date, datum: _dt.date) -> int:
+    """Volle Vertragsjahre zwischen Beginn und Datum (Monatszaehlung).
+
+    Alle Daten des Stamms liegen auf dem Monatsersten, deshalb genuegt die
+    Monatsdifferenz. Dieselbe Rechnung wie in ``gates.bestand_uebernehmen``
+    — Zugangsjahr und gebuchtes Vertragsjahr muessen zusammenpassen.
+    """
+    monate = (datum.year - beginn.year) * 12 + (datum.month - beginn.month)
+    return max(0, monate // 12)
+
+
+def _zugangslage(row: Mapping[str, Any]) -> Tuple[int, str, int]:
+    """Ab welchem Vertragsjahr und in welchem Zustand ein Vertrag laeuft.
+
+    Eigenes Geschaeft beginnt bei Vertragsjahr 0 im Zustand POL — dort
+    faellt der Bestandszugang auf den Versicherungsbeginn und die Antwort
+    ist die bisherige. Ein UEBERNOMMENER Vertrag tritt spaeter ein, mit
+    dem Alter und dem Zustand, den er mitbringt: Die Jahre davor gehoeren
+    dem abgebenden Unternehmen und duerfen nicht simuliert werden — sonst
+    erfaende die Engine eine Geschichte, die anderswo bereits stattfand,
+    und wuerde sie als unsere buchen.
+
+    Rueckgabe: (erstes zu simulierendes Vertragsjahr, Zustand beim
+    Zugang, Vertragsjahr des Zustandswechsels).
+    """
+    beginn = pd.Timestamp(row["insurance_start"]).date()
+    zugang = pd.Timestamp(row["bestandszugang"]).date()
+    ab_jahr = _vertragsjahr(beginn, zugang)
+    zustand = str(row.get("status_code", "POL"))
+    seit = _vertragsjahr(beginn, pd.Timestamp(row["status_date"]).date())
+    return ab_jahr, zustand, seit
 
 
 def _leerer_frame(spalten) -> pd.DataFrame:
@@ -212,8 +246,20 @@ def _simuliere_vertrag(
     annahmen,
     seed: int,
     bis: _dt.date,
+    ab_jahr: int = 0,
+    pex_jahr: int | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Simulate one contract; returns (booked events, Erhoehungsscheiben)."""
+    """Simulate one contract; returns (booked events, Erhoehungsscheiben).
+
+    ``ab_jahr`` ist das erste zu simulierende Vertragsjahr — 0 fuer
+    eigenes Geschaeft, das Zugangsjahr fuer einen uebernommenen Vertrag.
+    ``pex_jahr`` setzt ihn beitragsfrei ab diesem Vertragsjahr, ohne die
+    Beitragsfreistellung noch einmal zu buchen: Sie ist beim abgebenden
+    Unternehmen geschehen, die Uebernahme hat sie bereits verbucht.
+
+    Beides zusammen heisst: Die Engine simuliert die Zukunft des
+    Vertrags, nicht seine Vergangenheit.
+    """
     police_id = int(row["police_id"])
     start = pd.Timestamp(row["insurance_start"]).date()
     n = int(row["duration"])
@@ -235,11 +281,18 @@ def _simuliere_vertrag(
             _event(police_id, code, jahr, _add_years(start, jahr), art, betrag, status)
         )
 
-    beitragsfrei_ab: int | None = None
-    pex_summe = 0.0
+    # Ein beitragsfrei uebernommener Vertrag bringt seinen Zustand mit.
+    # Die beitragsfreie Summe wurde bei der Beitragsfreistellung fixiert
+    # und wird hier aus demselben Vertragsjahr rekonstruiert — dieselbe
+    # Rechnung wie in der Uebernahme, damit Buchung und Fortschreibung
+    # nicht auseinanderlaufen.
+    beitragsfrei_ab: int | None = pex_jahr
+    pex_summe = (
+        vertrag.beitragsfreie_summe(pex_jahr) if pex_jahr is not None else 0.0
+    )
     horizont_erreicht = False
 
-    for j in range(n):
+    for j in range(ab_jahr, n):
         stichtag_jahr = _add_years(start, j + 1)
         if stichtag_jahr > bis:
             horizont_erreicht = True
@@ -363,6 +416,8 @@ def _simuliere_bu_vertrag(
     annahmen,
     seed: int,
     bis: _dt.date,
+    ab_jahr: int = 0,
+    bu_seit: int | None = None,
 ) -> List[Dict[str, Any]]:
     """Simuliere einen BU-Vertrag; liefert die gebuchten GeVos.
 
@@ -417,11 +472,15 @@ def _simuliere_bu_vertrag(
             )
         )
 
-    zustand = AKTIV
-    dauer = 0
+    # Wie beim KLV-Pfad: Ein uebernommener Vertrag bringt seinen Zustand
+    # mit. Steht er im Leistungsbezug, zaehlt die Verweildauer ab dem
+    # Vertragsjahr der Invalidisierung — sie steuert Reaktivierung und
+    # Sterblichkeit im Leistungsbezug (Select-Periode).
+    zustand = BU_ZUSTAND if bu_seit is not None else AKTIV
+    dauer = min(ab_jahr - bu_seit, max_dauer) if bu_seit is not None else 0
     horizont_erreicht = False
 
-    for j in range(n):
+    for j in range(ab_jahr, n):
         if _add_years(start, j + 1) > bis:
             horizont_erreicht = True
             break
@@ -466,6 +525,7 @@ def fortschreiben(
     bis: _dt.date,
     *,
     neuzugang_ab: _dt.date | None = None,
+    merkmale: pd.DataFrame | None = None,
 ) -> Fortschreibung:
     """Roll the base portfolio forward to ``bis``.
 
@@ -495,14 +555,54 @@ def fortschreiben(
     konfig_fehler = config.annahmen.validate()
     if konfig_fehler:
         raise EreignisError("; ".join(konfig_fehler))
-    if len(stamm) and not (
-        (stamm["status_code"] == "POL").all() & (stamm["status_id"] == 1).all()
-    ):
-        raise EreignisError(
-            "Stamm ist kein Basisbestand (nur status_code POL mit status_id 1): "
-            "Zeitscheiben oder Historie-Sichten koennen nicht erneut "
-            "fortgeschrieben werden — die Engine simuliert ab insurance_start"
+    # Zwei zulaessige Formen, unterschieden am Bestandszugang:
+    #
+    # EIGENES Geschaeft (Zugang = Versicherungsbeginn) muss ein
+    # Ursprungsbestand sein. Sonst waere es eine Zeitscheiben- oder
+    # Journalsicht, und die Engine simulierte sie ab insurance_start ein
+    # zweites Mal.
+    #
+    # UEBERNOMMENES Geschaeft (Zugang spaeter) bringt seinen Zustand mit:
+    # Es ist der Sinn einer Uebernahme, dass der Vertrag nicht bei null
+    # anfaengt. Erlaubt ist genau der Zustand BEIM ZUGANG — traegt der
+    # Stamm einen spaeteren, ist der Bestand bereits fortgeschrieben und
+    # wuerde es ein zweites Mal.
+    if len(stamm):
+        uebernommen = (
+            pd.to_datetime(stamm["bestandszugang"])
+            > pd.to_datetime(stamm["insurance_start"])
         )
+        eigen = stamm[~uebernommen]
+        if len(eigen) and not (
+            (eigen["status_code"] == "POL").all() & (eigen["status_id"] == 1).all()
+        ):
+            raise EreignisError(
+                "Stamm ist kein Basisbestand (nur status_code POL mit status_id 1): "
+                "Zeitscheiben oder Historie-Sichten koennen nicht erneut "
+                "fortgeschrieben werden — die Engine simuliert ab insurance_start"
+            )
+        uebern = stamm[uebernommen]
+        if len(uebern):
+            tot = uebern[~uebern["status_code"].isin(AKTIVE_STATUS)]
+            if len(tot):
+                raise EreignisError(
+                    f"{len(tot)} uebernommene Vertraege stehen in einem "
+                    f"Endzustand (z. B. police {int(tot['police_id'].iloc[0])}, "
+                    f"{tot['status_code'].iloc[0]}) — ein beendeter Vertrag "
+                    "wird nicht uebernommen und nicht fortgeschrieben"
+                )
+            spaet = uebern[
+                pd.to_datetime(uebern["status_date"])
+                > pd.to_datetime(uebern["bestandszugang"])
+            ]
+            if len(spaet):
+                raise EreignisError(
+                    f"{len(spaet)} uebernommene Vertraege tragen einen "
+                    "Zustandswechsel NACH ihrem Bestandszugang (z. B. police "
+                    f"{int(spaet['police_id'].iloc[0])}): Der Bestand ist "
+                    "bereits fortgeschrieben und wuerde ein zweites Mal "
+                    "simuliert — den Zugangsstand uebergeben"
+                )
     if stamm["police_id"].duplicated().any():
         raise EreignisError("police_id nicht eindeutig")
     if len(stamm) and int(stamm["police_id"].min()) <= 0:
@@ -555,6 +655,14 @@ def fortschreiben(
     else:
         zugaenge = _leerer_frame(STAMM_SPALTEN)
 
+    # Rechnungsgrundlagen je Vertrag statt je Generation: Ist eine
+    # Generation in Tarifzellen aufgeteilt, steht die Sterbetafel in der
+    # Zelle und der Generationsrumpf traegt sie gar nicht. Dieselbe
+    # Aufloesung wie die Bewertung — die Simulation muss denselben Tarif
+    # rechnen wie der Bericht, sonst laufen sie auseinander.
+    from rechner_pipeline.bestand.auswertung import grundlagen_je_police
+
+    grundlagen = grundlagen_je_police(config, merkmale)
     generationen = {g.name: g.generation_fields() for g in config.generationen}
     bu_generationen = {
         g.name: g.bu_generation_fields()
@@ -594,6 +702,7 @@ def fortschreiben(
         # zusammenpassen — sonst liefe die Zeile mit fremden
         # Rechnungsgrundlagen still durch Engine und Auswertung (eine
         # BU-Generation traegt z.B. keine KLV-Kosten).
+        ab_jahr, zustand, seit = _zugangslage(row)
         produkt = str(row.get("produkt", "klv"))
         if produkt_je_generation.get(name) != produkt:
             raise EreignisError(
@@ -609,12 +718,17 @@ def fortschreiben(
                 # Beispielprodukt nicht; die zugehoerigen Annahmen wirken
                 # daher nur auf KLV-Generationen).
                 events = _simuliere_bu_vertrag(
-                    row, bu_generationen[name], config.annahmen, config.seed, bis
+                    row, bu_generationen[name], config.annahmen, config.seed, bis,
+                    ab_jahr=ab_jahr,
+                    bu_seit=seit if zustand == "BU" else None,
                 )
                 scheiben = []
             else:
                 events, scheiben = _simuliere_vertrag(
-                    row, generationen[name], config.annahmen, config.seed, bis
+                    row, grundlagen(int(row["police_id"]), name),
+                    config.annahmen, config.seed, bis,
+                    ab_jahr=ab_jahr,
+                    pex_jahr=seit if zustand == "PEX" else None,
                 )
         except EreignisError:
             raise
@@ -671,8 +785,18 @@ def fortschreiben(
         return Fortschreibung(
             _leerer_frame(STATUS_HISTORIE_SPALTEN), ledger, scheiben_df, zugaenge
         )
-    # status_id je Police fortlaufend ab 2 (Basis-POL im Stamm ist 1).
-    zustaende["status_id"] = zustaende.groupby("police_id").cumcount() + 2
+    # status_id je Police fortlaufend NACH dem mitgebrachten Stand. Beim
+    # eigenen Geschaeft ist das die Basis-POL mit status_id 1, also wie
+    # bisher ab 2. Ein beitragsfrei uebernommener Vertrag traegt schon
+    # eine 2 (die PEX-Zeile der Uebernahme) und wird ab 3 fortgezaehlt --
+    # sonst gaebe es zwei Zeilen mit derselben Nummer, und der Stamm
+    # koennte seinen juengsten Journalstand nicht mehr bestimmen.
+    mitgebracht = gesamt.set_index("police_id")["status_id"]
+    zustaende["status_id"] = (
+        zustaende.groupby("police_id").cumcount()
+        + 1
+        + zustaende["police_id"].map(mitgebracht).astype("int64")
+    )
     historie = pd.DataFrame(
         {
             "police_id": zustaende["police_id"].astype("int64"),
