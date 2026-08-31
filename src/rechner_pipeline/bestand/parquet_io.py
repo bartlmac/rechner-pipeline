@@ -27,6 +27,8 @@ from rechner_pipeline.models.bestand import (
     ABSCHLUSS_SPALTEN,
     LEDGER_NAMES,
     LEDGER_SPALTEN,
+    MERKMALE_NAMES,
+    MERKMALE_SPALTEN,
     SCHEIBEN_NAMES,
     SCHEIBEN_SPALTEN,
     STAMM_NAMES,
@@ -42,6 +44,7 @@ _DTYPE_MAP = (
     | dict(ZEITSCHEIBEN_SPALTEN)
     | dict(LEDGER_SPALTEN)
     | dict(SCHEIBEN_SPALTEN)
+    | dict(MERKMALE_SPALTEN)
 )
 
 _ARROW_TYPES = {
@@ -156,6 +159,8 @@ def read_portfolio(
         return df[list(LEDGER_NAMES)]
     if set(df.columns) == set(SCHEIBEN_NAMES):
         return df[list(SCHEIBEN_NAMES)]
+    if set(df.columns) == set(MERKMALE_NAMES):
+        return df[list(MERKMALE_NAMES)]
     ordered = [c for c in list(STAMM_NAMES) + [n for n, _ in ZEITSCHEIBEN_SPALTEN] if c in df.columns]
     return df[ordered]
 

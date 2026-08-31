@@ -225,6 +225,27 @@ SCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("gamma1", "float64"),             # -> ModelPoint.gamma1 der Scheibe
 )
 
+#: Merkmalsauspraegungen je Vertrag — die Wahl der Tarifzelle.
+#:
+#: Eine Nebentabelle wie ``scheiben`` und ``historie``: Sie traegt NUR
+#: Vertraege, deren Tarifgeneration Merkmalsdimensionen fuehrt. Fehlt sie,
+#: hat der Bestand keine Zellen — nicht: die Information ging verloren.
+#: Der Unterschied ist wichtig, weil ``NULL`` in einer Stammspalte beides
+#: hiesse, "trifft nicht zu" und "unbekannt".
+#:
+#: LANGFORMAT und nicht eine Spalte je Dimension: WELCHE Dimensionen es
+#: gibt, steht in der Tarifgeneration und ist damit Daten, nicht Schema.
+#: Die uebernommene KLV TG2015 fuehrt ``status`` und ``tarifart``, eine
+#: andere Generation fuehrt andere. Ein Attribut-Beutel ist das trotzdem
+#: nicht: Das Vokabular ist kontrolliert — jede Dimension und jede
+#: Auspraegung muss in der Spez der Generation deklariert sein, und genau
+#: das prueft :func:`validate_merkmale`.
+MERKMALE_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("dimension", "object"),        # z. B. status, tarifart
+    ("auspraegung", "object"),      # z. B. nichtraucher, einzel
+)
+
 #: Abschluss: festgeschriebene Bewertungsergebnisse eines Stichtags
 #: (ADR-011). Einzelvertraglich, nur-anfuegbar, nie ueberschrieben — ein
 #: publizierter Stand darf sich nachtraeglich nicht bewegen, auch wenn der
@@ -251,6 +272,7 @@ STATUS_HISTORIE_NAMES: Tuple[str, ...] = tuple(n for n, _ in STATUS_HISTORIE_SPA
 LEDGER_NAMES: Tuple[str, ...] = tuple(n for n, _ in LEDGER_SPALTEN)
 SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
 ABSCHLUSS_NAMES: Tuple[str, ...] = tuple(n for n, _ in ABSCHLUSS_SPALTEN)
+MERKMALE_NAMES: Tuple[str, ...] = tuple(n for n, _ in MERKMALE_SPALTEN)
 
 
 def stamm_dtypes() -> Dict[str, str]:
@@ -686,3 +708,62 @@ def bu_model_point_kwargs(
             raise KeyError(f"BU-Generation-Feld fehlt: {name}")
         kwargs[name] = generation[name]
     return kwargs
+
+
+def validate_merkmale(
+    stamm: Any, merkmale: Any, dimensionen: Any = None
+) -> List[str]:
+    """Merkmalsauspraegungen gegen Stamm und Tarifwerk pruefen.
+
+    Ohne ``dimensionen`` bleibt es bei der Struktur: Spaltenvertrag,
+    dtypes, bekannte Policen, keine doppelte Dimension je Vertrag.
+
+    Mit ``dimensionen`` — ein Mapping Dimension auf erlaubte
+    Auspraegungen, wie es die Spez der Generation fuehrt — wird das
+    VOKABULAR geprueft. Genau das unterscheidet diese Tabelle von einem
+    Attribut-Beutel: Wer eine Dimension erfindet oder eine Auspraegung
+    schreibt, die es im Tarifwerk nicht gibt, waehlt keine Zelle, sondern
+    eine Zelle, die es nicht gibt.
+    """
+    errors: List[str] = []
+    cols = list(merkmale.columns)
+    if cols != list(MERKMALE_NAMES):
+        errors.append(f"merkmale: Spalten {cols} != erwartet {list(MERKMALE_NAMES)}")
+        return errors
+    for name, dtype in MERKMALE_SPALTEN:
+        actual = str(merkmale[name].dtype)
+        if actual != dtype:
+            errors.append(f"merkmale {name}: dtype {actual}, erwartet {dtype}")
+    if len(merkmale) == 0:
+        return errors
+
+    unbekannt = sorted(set(merkmale["police_id"]) - set(stamm["police_id"]))
+    if unbekannt:
+        errors.append(
+            f"merkmale: {len(unbekannt)} Police(n) nicht im Stamm, z. B. "
+            f"{unbekannt[:5]}")
+
+    doppelt = merkmale.duplicated(subset=["police_id", "dimension"])
+    if bool(doppelt.any()):
+        betroffen = sorted(set(merkmale.loc[doppelt, "police_id"]))
+        errors.append(
+            f"merkmale: {len(betroffen)} Police(n) tragen eine Dimension "
+            f"mehrfach, z. B. {betroffen[:5]} — eine Zelle waehlt je "
+            "Dimension GENAU eine Auspraegung")
+
+    if dimensionen is not None:
+        erlaubt = {str(k): {str(v) for v in werte}
+                   for k, werte in dict(dimensionen).items()}
+        fremde = sorted(set(merkmale["dimension"]) - set(erlaubt))
+        if fremde:
+            errors.append(
+                f"merkmale: Dimension(en) {fremde} sind im Tarifwerk nicht "
+                f"deklariert (bekannt: {sorted(erlaubt)})")
+        for dim, gueltig in erlaubt.items():
+            teil = merkmale[merkmale["dimension"] == dim]
+            falsch = sorted(set(teil["auspraegung"]) - gueltig)
+            if falsch:
+                errors.append(
+                    f"merkmale {dim}: Auspraegung(en) {falsch} nicht "
+                    f"deklariert (erlaubt: {sorted(gueltig)})")
+    return errors

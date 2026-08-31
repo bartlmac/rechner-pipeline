@@ -59,6 +59,7 @@ import pandas as pd
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.parquet_io import write_portfolio
 from rechner_pipeline.models.bestand import (
+    MERKMALE_SPALTEN,
     STATUS_HISTORIE_NAMES,
     LEDGER_NAMES,
     STAMM_NAMES,
@@ -69,6 +70,43 @@ from rechner_pipeline.models.bestand import (
 #: — der Vertrag bleibt beitragspflichtig und bekommt keine
 #: Historienzeile.
 GEVO_STATUS = {"PEX": "PEX", "STO": "STO", "TOD": "TOD", "ABL": "ABL"}
+
+
+def _merkmalstabelle(zeilen, spez) -> "pd.DataFrame":
+    """Je Vertrag und Dimension die gewaehlte Auspraegung.
+
+    WELCHE Dimensionen es gibt, sagt die Spez der Generation -- nicht
+    dieses Kommando. Traegt sie nur eine Zelle ohne Auspraegungen, gibt
+    es keine Dimensionen und damit keine Tabelle.
+
+    Die Transformation liefert die Auspraegungen laengst mit (sie waehlt
+    damit die Spez-Zelle je Vertrag); sie fielen bisher nur weg, weil der
+    Stamm sie nicht kennt. Damit bewertete der Bestandsbericht einen
+    Bestand mit sechs Zellen mit einer einzigen.
+    """
+    dimensionen = sorted({
+        name
+        for zelle in getattr(spez, "zellen", [])
+        for name in (zelle.auspraegungen or {})
+    })
+    if not dimensionen:
+        return pd.DataFrame(columns=[n for n, _ in MERKMALE_SPALTEN])
+
+    saetze = []
+    for z in zeilen:
+        for dim in dimensionen:
+            wert = z.get(dim)
+            if wert in (None, ""):
+                continue
+            saetze.append({
+                "police_id": int(z["police_id"]),
+                "dimension": str(dim),
+                "auspraegung": str(wert).strip().lower(),
+            })
+    rahmen = pd.DataFrame(saetze, columns=[n for n, _ in MERKMALE_SPALTEN])
+    for name, dtype in MERKMALE_SPALTEN:
+        rahmen[name] = rahmen[name].astype(dtype)
+    return rahmen.sort_values(["police_id", "dimension"]).reset_index(drop=True)
 
 
 def _vertragsjahre(beginn, stichtag) -> int:
@@ -382,6 +420,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     write_portfolio(stamm, ziel / "bestand.parquet")
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(ledger, ziel / "ledger.parquet")
+
+    # Die Merkmalsauspraegungen als NEBENTABELLE, wie Scheiben und
+    # Historie: Sie entsteht nur, wenn die Tarifgeneration Dimensionen
+    # fuehrt. Ohne Datei hat der Bestand keine Zellen -- das ist etwas
+    # anderes als leere Stammspalten, in denen "trifft nicht zu" und
+    # "unbekannt" gleich aussehen.
+    merkmale = _merkmalstabelle(zeilen, spez)
+    if len(merkmale):
+        write_portfolio(merkmale, ziel / "merkmale.parquet")
+        print(f"  merkmale.parquet: {len(merkmale)} Zeilen "
+              f"({merkmale['dimension'].nunique()} Dimensionen)")
 
     print(f"{len(stamm)} Vertraege uebernommen nach {ziel}")
     print(f"  bestand.parquet   {len(stamm)} Zeilen")

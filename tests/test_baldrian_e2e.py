@@ -307,3 +307,49 @@ def test_das_bewegungskonto_beginnt_am_uebernahmestichtag(
     assert "PEX" in set(historie["status_code"])
     assert (pd.to_datetime(historie["status_date"]) < stichtag).any(), (
         "die Vorgeschichte liegt vor dem Stichtag — genau das ist ihr Sinn")
+
+
+def test_die_merkmale_stehen_in_einer_nebentabelle(gefahrener_fall: Path):
+    """Die Tarifzelle je Vertrag — als eigene Tabelle, nicht als
+    Stammspalten.
+
+    Die uebernommene Generation fuehrt sechs Zellen ueber zwei
+    Dimensionen; der Stamm kannte sie nicht, also fielen sie bei der
+    Uebernahme weg und der Bestandsbericht bewertete alles mit EINEM
+    Parametersatz. Sie in den Stamm zu legen haette Spalten erzeugt, die
+    fuer den Eigenbestand dauerhaft leer waeren — und ``NULL`` hiesse
+    dort zweierlei, "trifft nicht zu" und "unbekannt".
+
+    Deshalb eine Nebentabelle wie ``scheiben`` und ``historie``: Keine
+    Datei heisst, der Bestand hat keine Zellen.
+    """
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import (
+        MERKMALE_NAMES,
+        STAMM_NAMES,
+        validate_merkmale,
+    )
+
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    merkmale = read_portfolio(bestand / "merkmale.parquet",
+                              expected_columns=MERKMALE_NAMES)
+    stamm = read_portfolio(bestand / "bestand.parquet",
+                           expected_columns=STAMM_NAMES)
+
+    assert set(merkmale["dimension"]) == {"status", "tarifart"}
+    # Je Vertrag genau eine Auspraegung je Dimension.
+    assert len(merkmale) == 2 * len(stamm)
+    assert validate_merkmale(stamm, merkmale) == []
+
+    # Das Vokabular ist kontrolliert — genau das unterscheidet die
+    # Tabelle von einem Attribut-Beutel.
+    erlaubt = {"status": {"raucher", "nichtraucher"},
+               "tarifart": {"einzel", "kollektiv", "haus"}}
+    assert validate_merkmale(stamm, merkmale, erlaubt) == []
+
+    eng = {"status": {"nichtraucher"}, "tarifart": {"einzel"}}
+    befunde = validate_merkmale(stamm, merkmale, eng)
+    assert befunde and any("nicht" in b for b in befunde)
+
+    # Und der Stamm bleibt frei davon.
+    assert "status" not in STAMM_NAMES and "tarifart" not in STAMM_NAMES
