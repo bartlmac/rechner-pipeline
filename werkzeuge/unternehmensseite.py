@@ -87,7 +87,8 @@ def _titel_und_rumpf(text: str) -> tuple:
     return "", rumpf
 
 
-def _vorspann(rel: Path, titel: str, mit_mathe: bool) -> str:
+def _vorspann(rel: Path, titel: str, mit_mathe: bool,
+              zurueck: tuple = ("Aktuariat", "../")) -> str:
     """Kopf einer importierten Seite: Stil, Banderole, Titel, MathJax."""
     wurzel = "../" * len(rel.parts)
     z = [f'<link rel="stylesheet" href="{wurzel}assets/stil.css">']
@@ -97,7 +98,7 @@ def _vorspann(rel: Path, titel: str, mit_mathe: bool) -> str:
     if mit_mathe:
         z.append(MATHJAX.rstrip("\n"))
     z.append("")
-    z.append("[← Aktuariat](../)")
+    z.append(f"[← {zurueck[0]}]({zurueck[1]})")
     z.append("")
     if titel:
         z.append(f"# {titel}")
@@ -159,6 +160,99 @@ def _tarifplan_uebersicht(ziel: Path, importiert: List[tuple]) -> None:
     pfad.write_text("\n".join(z), encoding="utf-8")
 
 
+def architektur(docs: Path, ziel: Path) -> int:
+    """``docs/architektur`` unter ``it/architektur/`` einspielen.
+
+    Vollstaendig — ADRs, Prinzipien, Migrations-Pipeline —, damit die
+    Querverweise der Dokumente untereinander gelten. ``README.md`` wird
+    zur Uebersicht ``index.md``. Nur ``landkarte.md`` bleibt draussen:
+    Die Landkarte wird beim Bau FRISCH aus dem Code erzeugt
+    (``landkarten``); eine eingecheckte Fassung zu kopieren waere
+    genau die Drift, die der Import vermeiden soll.
+    """
+    verzeichnis = docs / "architektur"
+    if not verzeichnis.is_dir():
+        raise VeroeffentlichungFehler(
+            f"Architektur-Dokumente fehlen: {verzeichnis}")
+    anzahl = 0
+    for quelle in sorted(verzeichnis.glob("*.md")):
+        if quelle.name == "landkarte.md":
+            continue
+        _pruefe_regie(quelle)
+        titel, rumpf = _titel_und_rumpf(
+            quelle.read_text(encoding="utf-8"))
+        # Verweise auf die eingecheckte Landkarte zeigen im Auftritt auf
+        # die beim Bau frisch erzeugte Fassung.
+        rumpf = rumpf.replace("](landkarte.md)", "](landkarte-schichten.html)")
+        name = "index.md" if quelle.name == "README.md" else quelle.name
+        zielpfad = ziel / "it" / "architektur" / name
+        zielpfad.parent.mkdir(parents=True, exist_ok=True)
+        zielpfad.write_text(
+            _vorspann(Path("architektur") / name, titel, "$" in rumpf,
+                      zurueck=("IT", "../")) + rumpf,
+            encoding="utf-8")
+        anzahl += 1
+    return anzahl
+
+
+def landkarten(repo: Path, ziel: Path) -> None:
+    """Die Landkarten des Codes beim Bau frisch erzeugen.
+
+    ``ontologie.landkarte`` liefert selbsttragende HTML-Artefakte; als
+    Stand wird der Commit gestempelt, aus dem gebaut wurde. Ein
+    fehlgeschlagener Lauf bricht den Bau ab — eine IT-Seite mit einer
+    Landkarte von vorgestern waere Drift mit Ansage.
+    """
+    import subprocess
+    stand = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"], cwd=repo,
+        capture_output=True, text=True).stdout.strip()
+    for umfang, name in (("schichten", "landkarte-schichten.html"),
+                         ("modul", "landkarte-module.html")):
+        aus = ziel / "it" / "architektur" / name
+        aus.parent.mkdir(parents=True, exist_ok=True)
+        lauf = subprocess.run(
+            [sys.executable, "-m", "rechner_pipeline.ontologie.landkarte",
+             "--format", "html", "--umfang", umfang,
+             "--stand", stand, "--out", str(aus)],
+            cwd=repo, capture_output=True, text=True)
+        if lauf.returncode != 0:
+            raise VeroeffentlichungFehler(
+                f"Landkarte ({umfang}) liess sich nicht erzeugen: "
+                f"{lauf.stderr.strip()[:300]}")
+
+
+def techstack(repo: Path, ziel: Path) -> None:
+    """``it/techstack.md`` beim Bau aus ``pyproject.toml`` erzeugen."""
+    import tomllib
+    with (repo / "pyproject.toml").open("rb") as datei:
+        projekt = tomllib.load(datei)["project"]
+
+    z = [_vorspann(Path("techstack.md"), "Techstack", False,
+                   zurueck=("IT", "./")).rstrip("\n"), ""]
+    z += ["Beim Bau aus `pyproject.toml` erzeugt — die Liste kann dem",
+          "Repo nicht davonlaufen.", "",
+          f"Python {projekt.get('requires-python', '?')}, keine",
+          "Laufzeit-Abhaengigkeit zu Office-Produkten oder zu",
+          "KI-Diensten: Der Rechenkern und alle Gates laufen ohne",
+          "Netz. Versionen exakt gepinnt:", "",
+          "| Laufzeit | Version |", "|---|---|"]
+    for eintrag in projekt.get("dependencies", []):
+        name, _, version = eintrag.partition("==")
+        z.append(f"| `{name}` | {version or '—'} |")
+    z += ["", "| Entwicklung | Version |", "|---|---|"]
+    for eintrag in (projekt.get("optional-dependencies") or {}).get("dev", []):
+        name, _, version = eintrag.partition("==")
+        z.append(f"| `{name}` | {version or '—'} |")
+    z += ["",
+          "Die KI-Agenten arbeiten AUSSERHALB dieser Laufzeit: Sie lesen",
+          "Lieferungen und schlagen vor; gerechnet und geurteilt wird",
+          "ausschliesslich im deterministischen Kern.", ""]
+    pfad = ziel / "it" / "techstack.md"
+    pfad.parent.mkdir(parents=True, exist_ok=True)
+    pfad.write_text("\n".join(z), encoding="utf-8")
+
+
 def baue(quellen: Path, ziel: Path) -> List[str]:
     """Die Quellseiten in den Push-Baum spiegeln, mit beiden Zwaengen."""
     if not (quellen / "index.md").is_file():
@@ -199,23 +293,30 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Wurzel der Fachdokumente (Vorgabe: docs); von "
                         "dort werden Tarifplaene und Grundsatz-"
                         "dokumentation importiert")
+    p.add_argument("--repo", default=".",
+                   help="Repo-Wurzel (pyproject.toml, Landkarten-Erzeugung)")
     p.add_argument("--out", required=True,
                    help="Push-Baum der Seite; die Fall-Seiten liegen dort "
                         "unter migrationen/<fall>/")
     args = p.parse_args(argv)
 
     quellen = Path(args.quellen).resolve()
+    repo = Path(args.repo).resolve()
     ziel = Path(args.out).resolve()
     ziel.mkdir(parents=True, exist_ok=True)
     try:
         kopiert = baue(quellen, ziel)
         doku = fachdokumente(Path(args.docs).resolve(), ziel)
+        adrs = architektur(Path(args.docs).resolve(), ziel)
+        landkarten(repo, ziel)
+        techstack(repo, ziel)
     except VeroeffentlichungFehler as exc:
         print(f"ABBRUCH: {exc}", file=sys.stderr)
         return 1
 
     print(f"{ziel}: {len(kopiert)} Unternehmensseiten-Dateien, "
-          f"{len(doku)} Fachdokumente importiert")
+          f"{len(doku)} Fachdokumente, {adrs} Architektur-Dokumente, "
+          "2 Landkarten und der Techstack erzeugt")
     faelle = sorted(
         p.parent.name for p in (ziel / "migrationen").glob("*/index.md")
     ) if (ziel / "migrationen").is_dir() else []

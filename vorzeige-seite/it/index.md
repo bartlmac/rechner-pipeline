@@ -6,7 +6,9 @@ Bestandsmigration. <a href="../">Zur Startseite.</a></div>
 
 Zwei Dinge tragen unser Geschäftsmodell: ein Rechenkern, dem man jede
 Zahl nachrechnen kann, und ein Migrationsvorgehen, das die Übersetzung
-fremder Bestände beherrschbar macht.
+fremder Bestände beherrschbar macht. Die Darstellungen auf dieser
+Seite werden beim Bau **aus dem Repo erzeugt oder eingespielt** —
+Beschreibung und Code können nicht auseinanderlaufen.
 
 ## Der Rechenkern
 
@@ -18,9 +20,16 @@ bestehen. Es gibt keinen Punkt im Rechenweg, an dem geschätzt,
 geglättet oder interpoliert wird — ein Wert, der nicht nachgerechnet
 werden kann, wird als Befund ausgewiesen statt ersetzt. Die Mathematik
 dahinter dokumentiert das Aktuariat in der
-[Grundsatzdokumentation](../aktuariat/mathematik/grundsatzdokumentation.html);
-die Architekturentscheide sind öffentlich
-([docs/architektur](https://github.com/bartlmac/rechner-pipeline/tree/main/docs/architektur)).
+[Grundsatzdokumentation](../aktuariat/mathematik/grundsatzdokumentation.html).
+
+Wie der Code tatsächlich geschichtet ist, zeigen die beim Bau aus dem
+Code erzeugten Landkarten — kein gepflegtes Schaubild, sondern der
+gemessene Stand:
+
+* [Landkarte der Schichten](architektur/landkarte-schichten.html) —
+  der Überblick: Schichten und ihre Abhängigkeiten
+* [Landkarte der Module](architektur/landkarte-module.html) — das
+  Detail bis auf Modulebene
 
 ## Das KI-gestützte Migrationsvorgehen
 
@@ -38,8 +47,18 @@ KI-Agenten und deterministische Prüfstrecken arbeitsteilig:
   selbst sind menschliche Entscheide, kryptographisch gezeichnet und
   an die geprüften Artefakte gebunden.
 
-Wie das im Ergebnis aussieht, zeigt der
+Das Konzept dahinter ist vollständig eingespielt: die
+[Migrations-Pipeline](architektur/migrations-pipeline-v01.html)
+(Ontologie als Schnittstelle der Stufen, mit den Abnahme-Gates), die
+nicht verhandelbaren
+[Prinzipien P1–P10](architektur/prinzipien.html) und sämtliche
+[Architekturentscheide (ADRs)](architektur/). Wie das im Ergebnis
+aussieht, zeigt der
 [Abnahmebericht der Übernahme Baldrian](../migrationen/baldrian/) —
-einschließlich der Gate-Kette und der signierten Entscheide. Das
-System selbst ist quelloffen:
+einschließlich der Gate-Kette und der signierten Entscheide.
+
+## Techstack
+
+Beim Bau aus `pyproject.toml` erzeugt: [Techstack](techstack.html).
+Das System selbst ist quelloffen:
 [bartlmac/rechner-pipeline](https://github.com/bartlmac/rechner-pipeline).

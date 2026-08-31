@@ -10,9 +10,9 @@ aus denen jede Zahl nachgerechnet werden kann — auch dann, wenn ein
 Lauf Befunde hatte: Ein Bericht, der nur den Erfolgsfall zeigen
 könnte, wäre eine Werbebroschüre.
 
-| Übernahme | Stichtag | Verträge | Status | |
-|---|---|---:|---|---|
-| Baldrian, Tranche 1 | 01.01.2026 | 500 | aktuariell abgenommen | [Zum Bericht](baldrian/) |
+| Übernahme | Stichtag | Verträge | Deckungskapital | Status | |
+|---|---|---:|---:|---|---|
+| Baldrian, Tranche 1 | 01.01.2026 | 500 | 22.488.836,41 € | aktuariell abgenommen | [Zum Bericht](baldrian/) |
 
 Weitere Übernahmen folgen; die Historie wächst mit jedem
 abgeschlossenen Fall.

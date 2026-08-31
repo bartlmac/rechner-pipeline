@@ -29,9 +29,9 @@ jeder Zahl.
 Zugang 2026</span></p>
 <p>davon 503 beitragspflichtig übernommen und 51 beitragsfrei
 umgebucht — vollständig aus der Bestandsübernahme Baldrian.</p>
-<p class="platzhalter">Vertriebskennzahlen und
-Geschäftsvorfall-Statistik im Zeitverlauf folgen an dieser Stelle.</p>
-<p><a href="aktuariat/">Zur Bestandsentwicklung im Aktuariat</a></p>
+<p class="platzhalter">Zeitreihen folgen, sobald der Bestand über
+weitere Berichtsjahre geführt ist.</p>
+<p><a href="geschaeftsentwicklung/">Vertiefung: Geschäftsentwicklung</a></p>
 </div>
 <div class="block-gross">
 <h3>Aktuelle Bestandsmigration</h3>
@@ -56,10 +56,12 @@ unser Rechenwerk.</span></a>
 <a class="kachel" href="it/"><b>IT</b>
 <span>Der deterministische Rechenkern und das KI-gestützte
 Migrationsvorgehen.</span></a>
-<a class="kachel" href="risikomanagement/"><b>Risikomanagement<span class="wip">im Aufbau</span></b>
-<span>Kontrollen und Schranken rund um Übernahme und Fortführung.</span></a>
-<a class="kachel" href="finanzen/"><b>Finanzen<span class="wip">im Aufbau</span></b>
-<span>Bewertung und Berichtswesen des übernommenen Geschäfts.</span></a>
+<a class="kachel" href="risikomanagement/"><b>Risikomanagement</b>
+<span>Drei Schranken: signierte Entscheide, Umbaubudget,
+Prüfung ohne Glättung.</span></a>
+<a class="kachel" href="finanzen/"><b>Finanzen</b>
+<span>Übernommene Größen, Überleitung und Nachweisung des
+Geschäfts.</span></a>
 </div>
 
 <div class="migrationen-band">
