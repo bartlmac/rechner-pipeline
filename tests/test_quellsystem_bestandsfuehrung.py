@@ -84,17 +84,22 @@ def test_der_alte_lieferungsdefekt_ist_tot(buch):
     assert erh_nach_red > 10
 
 
-def test_vorfaelle_folgen_der_kalenderjahres_logik(buch):
-    """Die Quelle bucht am 1. Januar — nicht am Vertragsjahrestag.
+def test_vorfaelle_buchen_am_vertragsjahrestag(buch):
+    """Jahres-Batch: gebucht wird am Jahrestag des jeweiligen Vertrags.
 
-    Genau daraus entstehen spaeter unterjaehrige t_a der Lieferung: Der
-    letzte exakte Rechenpunkt liegt am Vertragsjahrestag VOR dem Vorfall.
+    So belegt es die versionierte Alt-Lieferung (PEX am 01.02., STO am
+    01.04.) — die Vorfaelle verteilen sich uebers Kalenderjahr, und
+    jede Buchung faellt exakt auf einen Rechenpunkt des Blatts. Die
+    Kalenderjahres-Eigenheit der Quelle steckt in der Altersermittlung,
+    nicht im Buchungsdatum.
     """
+    policen = buch.policen
+    monate = set()
     for b in buch.journal:
-        if b.art == "ZUG":
-            assert b.datum.day == 1
-        else:
-            assert (b.datum.month, b.datum.day) == (1, 1), b
+        beginn = policen[b.polnr].beginn
+        assert (b.datum.month, b.datum.day) == (beginn.month, 1), b
+        monate.add(b.datum.month)
+    assert len(monate) > 6, "die Buchungen verteilen sich uebers Jahr"
 
 
 def test_das_journal_ist_in_sich_konsistent(buch):

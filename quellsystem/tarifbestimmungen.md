@@ -52,6 +52,11 @@ als eigenständiger Baustein geführt: mit dem bei Wirksamwerden
 erreichten Alter, der restlichen Versicherungs- und
 Beitragszahlungsdauer und eigener Wertermittlung nach Anhang A.
 
+Erhöhungen sind ausgeschlossen, sobald die restliche
+Versicherungsdauer weniger als fünf Jahre beträgt; ein so kurzer
+Baustein ließe sich nicht mehr über die Abschlusskostenverteilung
+der Beitragskalkulation (Anhang A) ausfinanzieren.
+
 ## 4. Rückkauf und Abzug
 
 Bei Kündigung erstatten wir den Zeitwert der Versicherung abzüglich

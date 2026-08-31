@@ -42,20 +42,33 @@ Testtoleranzen). Excel bleibt der Tarifrechner der Quelle.
 3. `bestandsfuehrung` — steht: Verkauf (~1000 Policen ueber das
    Vertriebsfenster 2015/16, stochastisch mit Seed; der Bestand am
    Stichtag ist ERGEBNIS, keine Vorgabe) und Fuehrung je Kalenderjahr
-   mit MEHREREN Vorfaellen je Vertrag — Dynamikserien, Erhoehung+PEX,
-   Erhoehung+Herabsetzung, Dynamik NACH der Herabsetzung. Konventionen
-   der Quelle, messbar getestet: Vorfaelle am 1. Januar
-   (Kalenderjahres-Logik — daraus entstehen die unterjaehrigen t_a),
-   Stornoabzug JE SCHEIBE (die Untergrenze greift mehrfach; der Test
-   misst die Differenz zur vertragsweiten Rechnung), Herabsetzung als
-   TEILKUENDIGUNG MIT AUSZAHLUNG nur auf der Grundscheibe, Cent beim
-   Buchen. Praezisierung am Golden Master (2026-08-31): Das Blatt
-   rundet die AUSGABEZELLEN auf Cent, nicht jeden Zwischenwert —
-   gerundet wird beim BUCHEN je Geschaeftsvorfall, nicht in der
-   Rechenkette.
-4. `export` — Bestandsabzug, GeVo-Metadaten, Protokoll und
-   Erwartungswerte im Lieferformat (POLNR;...;DECKKAP), einschliesslich
-   t_a/dk_ta je Vertrag fuer die Verankerung.
+   mit MEHREREN Vorfaellen je Vertrag — Dynamikserien (Einschluss ist
+   Vertragsmerkmal), Erhoehung+PEX, Erhoehung+Herabsetzung, Dynamik
+   NACH der Herabsetzung. Konventionen der Quelle, messbar getestet:
+   Jahres-Batch mit Buchung am VERTRAGSJAHRESTAG (so belegt es die
+   Alt-Lieferung; die Kalenderjahres-Eigenheit steckt in der
+   Altersermittlung ueber die Differenz der Kalenderjahre von Beginn
+   und Geburt), Stornoabzug JE SCHEIBE (die Untergrenze greift
+   mehrfach; der Test misst die Differenz zur vertragsweiten Rechnung),
+   Herabsetzung als TEILKUENDIGUNG MIT AUSZAHLUNG nur auf der
+   Grundscheibe, Cent beim Buchen, keine Erhoehung unter fuenf Jahren
+   Restlaufzeit (Tarifbestimmungen Ziffer 3 — die VBA-Formel
+   amortisiert Abschlusskosten stur ueber die Zillmerdauer).
+   Praezisierung am Golden Master (2026-08-31): Das Blatt rundet die
+   AUSGABEZELLEN auf Cent, nicht jeden Zwischenwert — gerundet wird
+   beim BUCHEN je Geschaeftsvorfall, nicht in der Rechenkette.
+4. `export` + `erwartungswerte` — steht: das Lieferpaket im Format der
+   Alt-Lieferung. Bestandsabzug je Stichtag (Kopfzeile, Enums,
+   TT.MM.JJJJ; DECKKAP = Wert am letzten Vertragsjahrestag t_a),
+   GeVo-Metadaten (Vorgeschichte der Abzugs-Policen), GeVo-Protokoll
+   des Migrationsjahres (mit Betraegen, PARAM = Anteil bei RED) und die
+   vier Erwartungswerte-JSONs (Stichprobe VOR den Werten gezogen,
+   geschichtet je Historientyp; A-M1 Uebernahme+Fortschreibung, A-M2
+   Verlauf bis Ablauf, A-M3 dDK je Vorfall aus dem Journal). Der
+   Stichtagsbestand ist eine REKONSTRUKTION aus dem Journal — spaetere
+   Vorfaelle sind rueckwirkend unsichtbar, getestet ueber Kreuz
+   zwischen den Artefakten. STORNO_KZ bleibt im sauberen Export leer
+   (das R/S-Kennzeichen der Vorfuehr-Lieferung ist Regie, M2).
 
 ## Dokumente der Quelle
 
