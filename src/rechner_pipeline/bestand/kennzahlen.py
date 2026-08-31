@@ -80,12 +80,18 @@ def generationsnamen(df: pd.DataFrame) -> List[str]:
 #: (ZUG/ERH/RED sind GeVos ohne Statuswechsel, daher vorangestellt; die
 #: Herabsetzung steht neben der Erhoehung, weil beide dasselbe tun —
 #: sie aendern Summe und Beitrag, nicht den Zustand).
-EREIGNIS_REIHENFOLGE = ("ZUG", "ERH", "RED", "PEX", "INV", "REA",
+EREIGNIS_REIHENFOLGE = ("ZUG", "MIG", "ERH", "RED", "PEX", "INV", "REA",
                         "STO", "TOD", "ABL")
 
 #: Klartext je Ereignis-Code (Berichts-Beschriftung).
 EREIGNIS_LABELS = {
     "ZUG": "Neuzugang",
+    # Der Migrationszugang steht direkt hinter dem Neuzugang: Beides
+    # bringt einen Vertrag in die Buecher, nur kommt der eine aus dem
+    # Vertrieb und der andere aus einer Uebernahme. Er stand im Journal
+    # und in den Kennzahlen, aber nicht in der Beschriftung -- ein Leser
+    # fand ihn in den Zahlen und nicht im Text wieder.
+    "MIG": "Migrationszugang",
     "ERH": "Dynamische Erhöhung",
     "RED": "Beitragsherabsetzung",
     "PEX": "Beitragsfreistellung",

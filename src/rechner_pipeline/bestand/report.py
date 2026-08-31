@@ -91,6 +91,7 @@ _FARBEN = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
 #: Feste Ereignis-Farben (Reihenfolge wie EREIGNIS_REIHENFOLGE).
 _EREIGNIS_FARBEN = {
     "ZUG": "#1f77b4",
+    "MIG": "#4c9be8",   # verwandt mit ZUG: beides ein Zugang in die Buecher
     "ERH": "#17becf",
     "RED": "#7f7f7f",
     "PEX": "#9467bd",
@@ -412,8 +413,9 @@ NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
         "titel": "Kapitalversicherung",
         "bezug": "Versicherungssumme",
         "erlaeuterung": (
-            "Zugang aus den Versicherungsbeginnen (die POL-Basiszeile ist der "
-            "Zugangs-Geschäftsvorfall) und aus dynamischen Erhöhungen (nur "
+            "Zugang am Bestandszugang — beim eigenen Geschäft der "
+            "Versicherungsbeginn, bei übernommenem Geschäft der "
+            "Migrationsstichtag (ADR-014) — und aus dynamischen Erhöhungen (nur "
             "Summe, kein Stück); Abgänge mit den abgehenden "
             "Versicherungssummen einschließlich Erhöhungsscheiben, nicht mit "
             "den Auszahlungsbeträgen. Die Beitragsfreistellung ist eine "
@@ -1023,12 +1025,10 @@ def render_html(
         f"<p>{TEXTE['stichtag']}</p>" if stichtag is not None else ""
     )
     generationen_html = _generationen_uebersicht_html(config, df)
-    stichtag_zeile = (
-        f"<li>Referenzstichtag: {stichtag.isoformat()} — bis dahin Historie, "
-        "danach Prognose</li>"
-        if stichtag is not None else ""
-    )
-    fortschreibung_zeile = ""
+    # Referenzstichtag und Geschaeftsvorfall-Zaehler standen hier einmal
+    # als eigene Kopfzeilen; seit kopfzeilen() sie fuehrt, wurden sie noch
+    # gebaut und nie ausgegeben. Wer dort eine Formulierung aendert, aendert
+    # nichts -- deshalb weg statt stehenlassen.
     klv_hinweis = (
         "Beitragsfreie Verträge (PEX) bleiben in-force und gehen mit ihrer "
         "ursprünglichen Versicherungssumme in den Verlauf ein; die bei "
@@ -1043,11 +1043,6 @@ def render_html(
     if historie is not None:
         summen = ereignis_summen(gevo_ledger)
         if summen:
-            letzter = gevo_ledger["status_date"].max().date().isoformat()
-            fortschreibung_zeile = (
-                f"<li>Geschäftsvorfälle: {len(gevo_ledger)} "
-                f"(letzter am {letzter})</li>"
-            )
             summen_zeilen = "".join(
                 f"<tr><td>{s['label']} ({s['ereignis']})</td>"
                 f"<td class='num'>{s['anzahl']}</td>"
@@ -1073,7 +1068,6 @@ abgangsbereinigt: stornierte, gestorbene und abgelaufene Verträge verlassen
 den Bestand am Buchungstag. {klv_hinweis}Alle Beträge stammen aus dem
 stabilen Rechenkern.</p>"""
         else:
-            fortschreibung_zeile = "<li>Fortschreibung: keine Ereignisse im Horizont</li>"
             ereignis_html = (
                 f"\n<h2>Geschäftsvorfälle {stichtage[0].year} bis "
                 f"{stichtage[-1].year}</h2>"
