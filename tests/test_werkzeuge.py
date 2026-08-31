@@ -504,6 +504,23 @@ def test_die_fallseite_als_unterseite_haengt_im_auftritt(tmp_path: Path):
 
 
 # --------------------------------------------------------------------------- #
+# Auftritt: die Kette als ein Kommando
+# --------------------------------------------------------------------------- #
+
+import auftritt as at  # noqa: E402
+
+
+def test_der_auftritt_reicht_den_fehler_der_kette_durch(tmp_path: Path):
+    """Bricht ein Kettenglied, bricht die Kette — mit demselben Urteil.
+    Ein Entwurf aus einer halb gelaufenen Kette saehe vollstaendig aus
+    und waere es nicht."""
+    code = at.main(["--fall", str(tmp_path / "kein-fall"), "--name", "x",
+                    "--out", str(tmp_path / "seite"), "--vorschau", ""])
+    assert code == 2
+    assert not (tmp_path / "seite").exists()
+
+
+# --------------------------------------------------------------------------- #
 # Drift: das Urteil ueber den veroeffentlichten Stand
 # --------------------------------------------------------------------------- #
 

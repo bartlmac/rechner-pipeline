@@ -12,6 +12,7 @@ bleibt, steht in `dev-docs/offene-punkte.md`.
 | `verlaufsprotokoll.py` | Sitzungstranskript zu einem lesbaren Verlauf |
 | `vorzeigeseite.py` | Datenmodell und Artefakte eines Falls zu einer statischen Seite |
 | `unternehmensseite.py` | die Seiten des fiktiven Unternehmens zusammenbauen |
+| `auftritt.py` | den ganzen Entwurf mit einem Kommando aus den Quellen bauen |
 | `drift.py` | den veroeffentlichten Stand gegen den Entwurf halten |
 | `umbaubudget.py` | wie weit ein Lauf das System umgebaut hat |
 | `falldaten.py` | Datenmodell einer Falldarstellung aus den Artefakten |
@@ -37,15 +38,25 @@ Migrationsberichte entstehen je Fall aus den Artefakten und haengen
 unter `migrationen/<fall>/`. Jede Unternehmensseite MUSS die
 Fiktions-Banderole tragen — `unternehmensseite.py` baut sonst nicht.
 
+Der Entwurf wird nicht gepflegt, sondern ERZEUGT — ein Kommando faehrt
+die ganze Kette aus den aktuellen Quellen (Datenmodell, Fall-Seite,
+Unternehmensseiten samt Fachdoku, Landkarte und Techstack, Vorschau).
+So kann der Entwurf nicht hinter Codebasis oder Fall-Artefakten
+zurueckbleiben; vor Sichtung und Veroeffentlichung einmal laufen
+lassen:
+
 ```
-python werkzeuge/falldaten.py --fall faelle/baldrian-uebernahme \
-    --abzug <abzug-1>.csv --abzug <abzug-2>.csv --out runs/falldaten.json
-python werkzeuge/vorzeigeseite.py \
-    --fall faelle/baldrian-uebernahme --daten runs/falldaten.json \
-    --out runs/seite/migrationen/baldrian --als-unterseite \
+python werkzeuge/auftritt.py --fall faelle/baldrian-uebernahme \
+    --name baldrian \
+    --abzug baldrian_bestandsabzug_2026-01-01.csv \
+    --abzug baldrian_bestandsabzug_2027-01-01.csv \
     [--verlauf verlauf.md]
-python werkzeuge/unternehmensseite.py --out runs/seite
 ```
+
+`--name` ist das URL-Segment unter `migrationen/`, so wie die
+Unternehmensseiten den Fall verlinken. Die Schritte der Kette bleiben
+einzeln aufrufbar (`falldaten.py`, `vorzeigeseite.py
+--als-unterseite`, `unternehmensseite.py`, `vorschau.py`).
 
 Die Zahlen der Seite kommen aus dem Datenmodell (`falldaten.py`) —
 demselben, aus dem auch der Fallbericht gerendert wird. Seite und
@@ -201,12 +212,8 @@ verwaiste Artefakte der vorigen Version oeffentlich liegen, und ein
 Artefakt, auf das keine Seite mehr zeigt, ist trotzdem abrufbar.
 
 ```
-python werkzeuge/falldaten.py --fall faelle/<fall> \
-    --abzug <abzug-1>.csv --abzug <abzug-2>.csv --out runs/falldaten.json
-python werkzeuge/vorzeigeseite.py --fall faelle/<fall> \
-    --daten runs/falldaten.json --out runs/seite/migrationen/<fall> \
-    --als-unterseite
-python werkzeuge/unternehmensseite.py --out runs/seite
+python werkzeuge/auftritt.py --fall faelle/<fall> --name <kurzname> \
+    --abzug <abzug-1>.csv --abzug <abzug-2>.csv [--verlauf verlauf.md]
 git worktree add /tmp/gh-pages gh-pages
 git -C /tmp/gh-pages rm -rq .
 cp -r runs/seite/. /tmp/gh-pages/
@@ -223,8 +230,8 @@ ein Werkzeug:
 ### Ansehen vor dem Schieben
 
 Lokal existiert die Seite nur als Quelle (`index.md` + `artefakte/`);
-ihr HTML erzeugt erst Jekyll auf den GitHub-Servern. Den Entwurf zeigt
-die Vorschau:
+ihr HTML erzeugt erst Jekyll auf den GitHub-Servern. `auftritt.py`
+rendert die Vorschau bereits mit; einzeln:
 
 ```
 python3 werkzeuge/vorschau.py --seite runs/seite \
