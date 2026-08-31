@@ -39,14 +39,20 @@ Testtoleranzen). Excel bleibt der Tarifrechner der Quelle.
    tarifart). Golden Master: alle 15 Blattspalten ueber 717 Zeilen;
    EUR-Spalten centgenau bis auf gezaehlte Halbcent-Kanten (33 von
    >10000, je +-0.01 — Float-Kettenreihenfolge VBA/Python).
-3. `bestandsfuehrung` — Stamm + Journal der Quelle mit den ABWEICHENDEN
-   Konventionen (StoAb je Scheibe, RED mit Abzug, Cent-Rundung der
-   GEBUCHTEN Betraege, Kalenderjahr-Logik, VS_bfr auf Vormonat);
-   GeVo-Simulation mit mehreren Vorfaellen je Vertrag. Praezisierung am
-   Golden Master (2026-08-31): Das Blatt rundet die AUSGABEZELLEN auf
-   Cent, nicht jeden Zwischenwert — "Rundung je Zwischenschritt" aus dem
-   urspruenglichen Konventionsbeschluss heisst hier: gerundet wird beim
-   BUCHEN je Geschaeftsvorfall, nicht in der Rechenkette.
+3. `bestandsfuehrung` — steht: Verkauf (~1000 Policen ueber das
+   Vertriebsfenster 2015/16, stochastisch mit Seed; der Bestand am
+   Stichtag ist ERGEBNIS, keine Vorgabe) und Fuehrung je Kalenderjahr
+   mit MEHREREN Vorfaellen je Vertrag — Dynamikserien, Erhoehung+PEX,
+   Erhoehung+Herabsetzung, Dynamik NACH der Herabsetzung. Konventionen
+   der Quelle, messbar getestet: Vorfaelle am 1. Januar
+   (Kalenderjahres-Logik — daraus entstehen die unterjaehrigen t_a),
+   Stornoabzug JE SCHEIBE (die Untergrenze greift mehrfach; der Test
+   misst die Differenz zur vertragsweiten Rechnung), Herabsetzung als
+   TEILKUENDIGUNG MIT AUSZAHLUNG nur auf der Grundscheibe, Cent beim
+   Buchen. Praezisierung am Golden Master (2026-08-31): Das Blatt
+   rundet die AUSGABEZELLEN auf Cent, nicht jeden Zwischenwert —
+   gerundet wird beim BUCHEN je Geschaeftsvorfall, nicht in der
+   Rechenkette.
 4. `export` — Bestandsabzug, GeVo-Metadaten, Protokoll und
    Erwartungswerte im Lieferformat (POLNR;...;DECKKAP), einschliesslich
    t_a/dk_ta je Vertrag fuer die Verankerung.
