@@ -15,7 +15,7 @@ jeder Zahl.
 
 | | |
 |---|---|
-| Rechtsform | Aktiengesellschaft |
+| Rechtsform | fAG (fiktive Aktiengesellschaft) |
 | Sitz | Minzheim |
 | Gegründet | 1907 |
 | Geschäftsfokus | Run-off: Übernahme und Fortführung von LV-Beständen |
@@ -64,8 +64,7 @@ Migrationsvorgehen.</span></a>
 
 <div class="migrationen-band">
 <h2>Unsere Bestandsmigrationen</h2>
-<p>Kein Firmenbereich, sondern unser Leistungsnachweis: Berichte aus
-den Übernahmen selbst. Jede Migration steht hier mit signierten
+<p>Unser Leistungsnachweis: Berichte aus den Übernahmen selbst. Jede Migration steht hier mit signierten
 Abnahmen, vollständiger Gate-Kette und den Artefakten, aus denen jede
 Zahl nachgerechnet werden kann. Erste Übernahme: <b>Baldrian
 (2026)</b>.</p>

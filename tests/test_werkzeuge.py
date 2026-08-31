@@ -448,6 +448,37 @@ def test_mit_banderole_wird_der_baum_gespiegelt(tmp_path: Path):
     assert (ziel / "index.md").is_file()
 
 
+def test_fachdokumente_werden_mit_banderole_importiert(tmp_path: Path):
+    """Der Auftritt importiert die Fachdokumente beim Bau (eine Quelle,
+    eine Heimat: docs/); der YAML-Vorspann wird zum Seitentitel, die
+    Banderole kommt davor, Formeln bekommen MathJax. Ein fehlendes
+    Dokument bricht den Bau ab, statt eine vollstaendig aussehende
+    Seite ohne Tarifplaene zu bauen."""
+    docs = tmp_path / "docs"
+    (docs / "tarifplaene").mkdir(parents=True)
+    (docs / "tarifplaene" / "probe.md").write_text(
+        '---\ntitle: "Tarifplan Probe —\n  umbrochen"\nlang: de\n---\n\n'
+        "# 1 Inhalt\nFormel $S_x$\n", encoding="utf-8")
+
+    ziel = tmp_path / "seite"
+    importiert = us.fachdokumente(
+        docs, ziel, dokumente=("tarifplaene/probe.md",))
+    assert importiert == [
+        ("tarifplaene/probe.md", "Tarifplan Probe — umbrochen")]
+    seite = (ziel / "aktuariat" / "tarifplaene" / "probe.md").read_text(
+        encoding="utf-8")
+    assert us.BANDEROLE in seite
+    assert "# Tarifplan Probe — umbrochen" in seite
+    assert "title:" not in seite
+    assert "mathjax" in seite.lower()
+    uebersicht = (ziel / "aktuariat" / "tarifplaene" / "index.md").read_text(
+        encoding="utf-8")
+    assert "[Tarifplan Probe — umbrochen](probe.html)" in uebersicht
+
+    with pytest.raises(vz.VeroeffentlichungFehler):
+        us.fachdokumente(docs, ziel, dokumente=("tarifplaene/fehlt.md",))
+
+
 def test_die_fallseite_als_unterseite_haengt_im_auftritt(tmp_path: Path):
     """Als Unterseite gehoert die Jekyll-Konfiguration der Wurzel des
     Auftritts, nicht dem Fall — und der Rueckverweis haengt den Bericht

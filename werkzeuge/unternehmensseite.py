@@ -39,6 +39,125 @@ from vorzeigeseite import VeroeffentlichungFehler, _pruefe_regie
 #: Banderole oben auf der Seite. Fehlt er, wird nicht gebaut.
 BANDEROLE = "Fiktives Unternehmen"
 
+#: Fachdokumente, die der Auftritt beim Bau importiert. Eine Quelle,
+#: eine Heimat (``docs/``) — der Auftritt kopiert beim Bau, statt eine
+#: zweite Fassung zu pflegen. Zielort ist ``aktuariat/<pfad>`` mit dem
+#: Pfad UNTER docs/: so bleiben die relativen Querverweise der
+#: Dokumente untereinander (Tarifplan -> Grundsatzdokumentation)
+#: unveraendert gueltig.
+FACHDOKUMENTE = (
+    "tarifplaene/klv.md",
+    "tarifplaene/bu.md",
+    "mathematik/grundsatzdokumentation.md",
+)
+
+#: MathJax fuer Fachdokumente mit TeX-Formeln. Die Wiedergabe ist
+#: best-effort: Markdown und TeX teilen sich Sonderzeichen, einzelne
+#: Formeln koennen im Gerenderten leiden — das Dokument im Repo bleibt
+#: die massgebliche Fassung.
+MATHJAX = (
+    '<script>window.MathJax={tex:{inlineMath:[["$","$"],'
+    '["\\\\(","\\\\)"]]}};</script>\n'
+    '<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/'
+    'tex-mml-chtml.js"></script>\n'
+)
+
+
+def _titel_und_rumpf(text: str) -> tuple:
+    """YAML-Vorspann eines Fachdokuments abtrennen.
+
+    Der Titel des Vorspanns wird zur Ueberschrift der importierten
+    Seite; der Rest des Vorspanns (Druckformat u. ae.) betrifft nur die
+    Dokument-Erzeugung und faellt weg.
+    """
+    if not text.startswith("---\n"):
+        return "", text
+    kopf, _, rumpf = text[4:].partition("\n---\n")
+    zeilen = kopf.splitlines()
+    for i, zeile in enumerate(zeilen):
+        if not zeile.startswith("title:"):
+            continue
+        wert = zeile.split(":", 1)[1].strip()
+        # Ein YAML-Titel darf umbrochen sein — Folgezeilen anhaengen,
+        # bis das schliessende Anfuehrungszeichen erreicht ist.
+        while not (len(wert) > 1 and wert.endswith('"')):
+            i += 1
+            wert += " " + zeilen[i].strip()
+        return wert.strip('"'), rumpf
+    return "", rumpf
+
+
+def _vorspann(rel: Path, titel: str, mit_mathe: bool) -> str:
+    """Kopf einer importierten Seite: Stil, Banderole, Titel, MathJax."""
+    wurzel = "../" * len(rel.parts)
+    z = [f'<link rel="stylesheet" href="{wurzel}assets/stil.css">']
+    z.append(f'<div class="banderole">{BANDEROLE} — eine Vorführung '
+             'agentischer Bestandsmigration. '
+             f'<a href="{wurzel}">Zur Startseite.</a></div>')
+    if mit_mathe:
+        z.append(MATHJAX.rstrip("\n"))
+    z.append("")
+    z.append("[← Aktuariat](../)")
+    z.append("")
+    if titel:
+        z.append(f"# {titel}")
+        z.append("")
+    return "\n".join(z) + "\n"
+
+
+def fachdokumente(docs: Path, ziel: Path,
+                  dokumente=FACHDOKUMENTE) -> List[tuple]:
+    """Die Fachdokumente unter ``aktuariat/`` in den Auftritt einbinden.
+
+    Ein gelistetes Dokument, das fehlt, bricht den Bau ab: Eine Seite,
+    die still ohne ihre Tarifplaene erschiene, saehe vollstaendig aus
+    und waere es nicht.
+    """
+    aus: List[tuple] = []
+    for name in dokumente:
+        quelle = docs / name
+        if not quelle.is_file():
+            raise VeroeffentlichungFehler(
+                f"Fachdokument fehlt: {quelle}. Der Auftritt wuerde ohne "
+                "es vollstaendig aussehen und waere es nicht.")
+        _pruefe_regie(quelle)
+        text = quelle.read_text(encoding="utf-8")
+        titel, rumpf = _titel_und_rumpf(text)
+        rel = Path("aktuariat") / name
+        zielpfad = ziel / rel
+        zielpfad.parent.mkdir(parents=True, exist_ok=True)
+        zielpfad.write_text(
+            _vorspann(Path(name), titel, "$" in rumpf) + rumpf,
+            encoding="utf-8")
+        aus.append((name, titel))
+    _tarifplan_uebersicht(ziel, aus)
+    return aus
+
+
+def _tarifplan_uebersicht(ziel: Path, importiert: List[tuple]) -> None:
+    """Generierte Uebersichtsseite der importierten Tarifplaene."""
+    plaene = [(Path(name), titel) for name, titel in importiert
+              if Path(name).parts[0] == "tarifplaene"]
+    if not plaene:
+        return
+    z = ['<link rel="stylesheet" href="../../assets/stil.css">',
+         f'<div class="banderole">{BANDEROLE} — eine Vorführung '
+         'agentischer Bestandsmigration. '
+         '<a href="../../">Zur Startseite.</a></div>',
+         "", "[← Aktuariat](../)", "", "# Tarifpläne", "",
+         "Die Bewertung jedes Vertrags folgt einem dokumentierten",
+         "Tarifplan. Die geführten Tarifgenerationen:", ""]
+    for pfad, titel in plaene:
+        z.append(f"* [{titel or pfad.stem}]({pfad.stem}.html)")
+    z += ["",
+          "Das gemeinsame mathematische Rückgrat — Zustandsraum,",
+          "Thiele-Rekursion, Rechnungsgrundlagen — steht einmal in der",
+          "[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.html).",
+          ""]
+    pfad = ziel / "aktuariat" / "tarifplaene" / "index.md"
+    pfad.parent.mkdir(parents=True, exist_ok=True)
+    pfad.write_text("\n".join(z), encoding="utf-8")
+
 
 def baue(quellen: Path, ziel: Path) -> List[str]:
     """Die Quellseiten in den Push-Baum spiegeln, mit beiden Zwaengen."""
@@ -76,6 +195,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "zusammenbauen.")
     p.add_argument("--quellen", default="vorzeige-seite",
                    help="versionierte Quellseiten (Vorgabe: vorzeige-seite)")
+    p.add_argument("--docs", default="docs",
+                   help="Wurzel der Fachdokumente (Vorgabe: docs); von "
+                        "dort werden Tarifplaene und Grundsatz-"
+                        "dokumentation importiert")
     p.add_argument("--out", required=True,
                    help="Push-Baum der Seite; die Fall-Seiten liegen dort "
                         "unter migrationen/<fall>/")
@@ -86,11 +209,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     ziel.mkdir(parents=True, exist_ok=True)
     try:
         kopiert = baue(quellen, ziel)
+        doku = fachdokumente(Path(args.docs).resolve(), ziel)
     except VeroeffentlichungFehler as exc:
         print(f"ABBRUCH: {exc}", file=sys.stderr)
         return 1
 
-    print(f"{ziel}: {len(kopiert)} Unternehmensseiten-Dateien")
+    print(f"{ziel}: {len(kopiert)} Unternehmensseiten-Dateien, "
+          f"{len(doku)} Fachdokumente importiert")
     faelle = sorted(
         p.parent.name for p in (ziel / "migrationen").glob("*/index.md")
     ) if (ziel / "migrationen").is_dir() else []

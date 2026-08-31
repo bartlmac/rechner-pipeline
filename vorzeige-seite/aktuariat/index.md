@@ -11,17 +11,26 @@ Geschäft.
 
 ## Tarifpläne
 
-*In Vorbereitung.* Hier entsteht die Übersicht der geführten
-Tarifgenerationen — beginnend mit der aus der Übernahme Baldrian
-stammenden kapitalbildenden Lebensversicherung (Tarifgeneration
-2015) — mit Rechnungsgrundlagen, Bewertungsansatz und den
-zugehörigen Dokumenten.
+Die Bewertung jedes Vertrags folgt einem dokumentierten Tarifplan —
+mit Zustandsmodell, Rechnungsgrundlagen und den Formeln, nach denen
+der Rechenkern arbeitet. Geführt werden derzeit die kapitalbildende
+Lebensversicherung (Tarifgeneration 2015, aus der Übernahme Baldrian)
+und ein Berufsunfähigkeits-Beispielprodukt.
+
+[Zu den Tarifplänen](tarifplaene/) — das gemeinsame mathematische
+Rückgrat aller Produkte (Zustandsraum, Thiele-Rekursion,
+Rechnungsgrundlagen-Schicht, Numerik) steht in der
+[Grundsatzdokumentation](mathematik/grundsatzdokumentation.html).
 
 ## Bestandsentwicklung
 
-*In Vorbereitung.* Hier wird die jeweils aktuelle Sicht auf den
-Bestand verknüpft: Zugang, Abgang und Geschäftsvorfälle im
-Zeitverlauf sowie der aktuelle Bestandsbericht mit der Bewertung je
-Tarifzelle. Bis dahin zeigt der
-[aktuelle Abnahmebericht der Migration](../migrationen/baldrian/)
-den übernommenen Bestand im Detail.
+Die aktuelle Sicht auf den geführten Bestand, bewertet je Tarifzelle:
+
+* [Bestand nach der Übernahme Baldrian, Stichtag 01.01.2026](../migrationen/baldrian/artefakte/abgeleitet/berichte/bestandsbericht-nach.html)
+* [Der gelieferte Bestand vor der Übernahme, zum Vergleich](../migrationen/baldrian/artefakte/abgeleitet/berichte/bestandsbericht-vor.html)
+
+Jede Zahl der Berichte ist über den
+[Abnahmebericht der Migration](../migrationen/baldrian/)
+nachrechenbar. *In Vorbereitung:* Zugang, Abgang und Geschäftsvorfälle
+im Zeitverlauf sowie die fortgeschriebene Sicht bis zum Ablauf des
+Bestands.

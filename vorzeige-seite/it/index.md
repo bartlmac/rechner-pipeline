@@ -16,7 +16,11 @@ Thiele-Rekursion; jede produktive Änderung muss eine Suite von
 Charakterisierungstests mit eingefrorenen Referenzwerten unverändert
 bestehen. Es gibt keinen Punkt im Rechenweg, an dem geschätzt,
 geglättet oder interpoliert wird — ein Wert, der nicht nachgerechnet
-werden kann, wird als Befund ausgewiesen statt ersetzt.
+werden kann, wird als Befund ausgewiesen statt ersetzt. Die Mathematik
+dahinter dokumentiert das Aktuariat in der
+[Grundsatzdokumentation](../aktuariat/mathematik/grundsatzdokumentation.html);
+die Architekturentscheide sind öffentlich
+([docs/architektur](https://github.com/bartlmac/rechner-pipeline/tree/main/docs/architektur)).
 
 ## Das KI-gestützte Migrationsvorgehen
 
