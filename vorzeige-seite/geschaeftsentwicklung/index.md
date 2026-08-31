@@ -11,15 +11,22 @@ hier bewusst **nicht** enthalten — sie werden unter
 
 ## Neuzugang
 
-Wir zeichnen kein Neugeschäft: Die Pfefferminzia ist ein
-Run-off-Spezialist, ihr Wachstum kommt aus Übernahmen. Der Neuzugang
-aus eigenem Vertrieb ist im laufenden Jahr — wie in jedem Jahr —
-**null**.
+Unser Wachstum kommt aus Übernahmen; eigenes Neugeschäft zeichnen wir
+zurückhaltend — im laufenden Jahr: **3 Neuzugänge**. Zusammen mit der
+Übernahme Baldrian stehen damit 1.315 Verträge in force
+(815 eigene, 500 übernommene, Stand 01.01.2026).
+
+Zählwerk-Hinweis, weil hier leicht doppelt gezählt wird: 40 der
+übernommenen Verträge kamen bereits beitragsfrei an. Sie treten mit
+voller Summe in den beitragspflichtigen Bestand ein und wechseln zum
+Zugangsdatum in den beitragsfreien — zwei **Bewegungen**, ein Vertrag.
+Bewegungszahlen und Vertragszahlen dürfen deshalb nie addiert werden.
 
 ## Geschäftsvorfälle im laufenden Jahr
 
-Bewegungen des Bestands zwischen den Stichtagen 01.01.2026 und
-01.01.2027, geliefert und einzeln nachgerechnet:
+Aus dem eigenen Bestand: **11 Beitragsfreistellungen**. Im geprüften
+Übernahmebestand der Tranche Baldrian 1 (01.01.2026 bis 01.01.2027)
+wurden 42 Geschäftsvorfälle geliefert und einzeln nachgerechnet:
 
 | Art | Anzahl |
 |---|---:|

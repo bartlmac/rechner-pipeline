@@ -15,68 +15,53 @@ aktuariell abgenommen, jede Zahl mit Herkunft.
 | Rechtsform | fAG (fiktive Aktiengesellschaft) |
 | Sitz | Minzheim |
 | Gegründet | 1907 |
-| Geschäftsfokus | Run-off: Übernahme und Fortführung von LV-Beständen |
-| Bestand | 3.114 Verträge (Stand 01.01.2026, nach Übernahme Baldrian) |
+| Geschäftsfokus | Übernahme und Fortführung von LV-Beständen |
+| Bestand | 1.315 Verträge in force (01.01.2026, davon 500 übernommen) |
 | Verantwortlicher Aktuar | selbst auch ein Roboter — zeichnet aber mit menschlichem Schlüssel |
 
 <div class="blocks">
 <div class="block-gross">
 <h3>Geschäftsentwicklung</h3>
-<p><span class="kennzahl">42</span> <span class="einheit">Geschäftsvorfälle
-im laufenden Jahr</span></p>
-<svg role="img" aria-label="Geschäftsvorfälle je Art: Erhöhung 24,
-Rückkauf 6, Beitragsfreistellung 5, Absetzung 4, Todesfall 3"
-viewBox="0 0 260 92" style="font:11px system-ui;max-width:100%">
-<g><title>Erhöhung: 24 Vorfälle</title>
-<text x="92" y="11" text-anchor="end" fill="#5f6663">Erhöhung</text>
-<rect x="98" y="3" width="130" height="10" rx="3" fill="#2f5d62"/>
-<rect x="98" y="3" width="3" height="10" fill="#2f5d62"/>
-<text x="233" y="11" fill="#1b1e1c">24</text></g>
-<g><title>Rückkauf: 6 Vorfälle</title>
-<text x="92" y="29" text-anchor="end" fill="#5f6663">Rückkauf</text>
-<rect x="98" y="21" width="33" height="10" rx="3" fill="#2f5d62"/>
-<rect x="98" y="21" width="3" height="10" fill="#2f5d62"/>
-<text x="136" y="29" fill="#1b1e1c">6</text></g>
-<g><title>Beitragsfreistellung: 5 Vorfälle</title>
-<text x="92" y="47" text-anchor="end" fill="#5f6663">Beitragsfreist.</text>
-<rect x="98" y="39" width="27" height="10" rx="3" fill="#2f5d62"/>
-<rect x="98" y="39" width="3" height="10" fill="#2f5d62"/>
-<text x="130" y="47" fill="#1b1e1c">5</text></g>
-<g><title>Absetzung: 4 Vorfälle</title>
-<text x="92" y="65" text-anchor="end" fill="#5f6663">Absetzung</text>
-<rect x="98" y="57" width="22" height="10" rx="3" fill="#2f5d62"/>
-<rect x="98" y="57" width="3" height="10" fill="#2f5d62"/>
-<text x="125" y="65" fill="#1b1e1c">4</text></g>
-<g><title>Todesfall: 3 Vorfälle</title>
-<text x="92" y="83" text-anchor="end" fill="#5f6663">Todesfall</text>
-<rect x="98" y="75" width="16" height="10" rx="3" fill="#2f5d62"/>
-<rect x="98" y="75" width="3" height="10" fill="#2f5d62"/>
-<text x="119" y="83" fill="#1b1e1c">3</text></g>
+<p><span class="kennzahl">1.315</span> <span class="einheit">Verträge
+in force am 01.01.2026</span></p>
+<svg role="img" aria-label="Zusammensetzung des Bestands: 815 eigene
+Verträge, 500 übernommen aus Baldrian"
+viewBox="0 0 260 40" style="font:11px system-ui;max-width:100%">
+<g><title>815 eigene Verträge</title>
+<rect x="0" y="4" width="150" height="12" rx="3" fill="#2f5d62"/>
+<rect x="147" y="4" width="3" height="12" fill="#2f5d62"/></g>
+<g><title>500 übernommen (Baldrian)</title>
+<rect x="152" y="4" width="90" height="12" rx="3" fill="#8c4a2f"/>
+<rect x="152" y="4" width="3" height="12" fill="#8c4a2f"/></g>
+<circle cx="4" cy="30" r="4" fill="#2f5d62"/>
+<text x="12" y="34" fill="#1b1e1c">815 eigene</text>
+<circle cx="116" cy="30" r="4" fill="#8c4a2f"/>
+<text x="124" y="34" fill="#1b1e1c">500 übernommen</text>
 </svg>
-<p>Kein eigenes Neugeschäft — wir sind Run-off-Spezialist; Zugänge aus
-Übernahmen stehen rechts.</p>
+<p>Im laufenden Jahr: 3 Neuzugänge und 11 Beitragsfreistellungen aus
+eigenem Geschäft — unser Wachstum kommt aus Übernahmen (rechts).</p>
 <p><a href="geschaeftsentwicklung/">Vertiefung: Geschäftsentwicklung</a></p>
 </div>
 <div class="block-gross">
 <h3>Aktuelle Bestandsmigration</h3>
-<p><span class="kennzahl">554</span> <span class="einheit">Verträge
-Zugang aus der Übernahme Baldrian</span></p>
-<svg role="img" aria-label="Zusammensetzung des Zugangs: 503
-beitragspflichtig übernommen, 51 beitragsfrei umgebucht"
+<p><span class="kennzahl">500</span> <span class="einheit">Verträge
+migriert in Tranche Baldrian&nbsp;1</span></p>
+<svg role="img" aria-label="Zusammensetzung der Übernahme: 460
+beitragspflichtig, 40 beitragsfrei angekommen"
 viewBox="0 0 260 40" style="font:11px system-ui;max-width:100%">
-<g><title>503 beitragspflichtig übernommen</title>
-<rect x="0" y="4" width="216" height="12" rx="3" fill="#2f5d62"/>
-<rect x="213" y="4" width="3" height="12" fill="#2f5d62"/></g>
-<g><title>51 beitragsfrei umgebucht</title>
-<rect x="218" y="4" width="24" height="12" rx="3" fill="#8c4a2f"/>
-<rect x="218" y="4" width="3" height="12" fill="#8c4a2f"/></g>
+<g><title>460 beitragspflichtig übernommen</title>
+<rect x="0" y="4" width="222" height="12" rx="3" fill="#2f5d62"/>
+<rect x="219" y="4" width="3" height="12" fill="#2f5d62"/></g>
+<g><title>40 beitragsfrei angekommen, zum Zugang umgebucht</title>
+<rect x="224" y="4" width="18" height="12" rx="3" fill="#8c4a2f"/>
+<rect x="224" y="4" width="3" height="12" fill="#8c4a2f"/></g>
 <circle cx="4" cy="30" r="4" fill="#2f5d62"/>
-<text x="12" y="34" fill="#1b1e1c">503 beitragspflichtig</text>
+<text x="12" y="34" fill="#1b1e1c">460 beitragspflichtig</text>
 <circle cx="136" cy="30" r="4" fill="#8c4a2f"/>
-<text x="144" y="34" fill="#1b1e1c">51 umgebucht</text>
+<text x="144" y="34" fill="#1b1e1c">40 beitragsfrei</text>
 </svg>
-<p>Stichtag 01.01.2026. Tranche 1 über zwei Stichtage nachgerechnet:
-<b>0 Prüflücken</b>, alle Abnahmen gezeichnet.</p>
+<p>Stichtag 01.01.2026. Jeder Vertrag über zwei Stichtage
+nachgerechnet: <b>0 Prüflücken</b>, alle Abnahmen gezeichnet.</p>
 <p><a href="migrationen/baldrian/">Zum aktuellen Abnahmebericht</a> ·
 <a href="migrationen/">Alle Migrationen</a></p>
 </div>
