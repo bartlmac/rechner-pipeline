@@ -33,14 +33,20 @@ Testtoleranzen). Excel bleibt der Tarifrechner der Quelle.
 
 1. `kommutation`/`barwerte`/`tafeln`/`konventionen` — steht (Kopie plus
    Golden-Master-Test).
-2. `rechnung` — die KLV-Zielgroessen des Quellsystems (Bxt, BJB/BZB,
-   kVx-Verlauf, StoAb/RKW, VS_bfr) in VBA-Formelform auf der
-   Kommutation, je Tarifzelle (status x tarifart); Golden Master sind
-   dieselben CSVs, Spalte fuer Spalte.
+2. `rechnung` + `tarifwerk` — steht: die KLV-Zielgroessen des
+   Quellsystems (Bxt, BJB/BZB, kVx-Verlauf, StoAb/RKW, VS_bfr) in
+   VBA-Formelform auf der Kommutation, je Tarifzelle (status x
+   tarifart). Golden Master: alle 15 Blattspalten ueber 717 Zeilen;
+   EUR-Spalten centgenau bis auf gezaehlte Halbcent-Kanten (33 von
+   >10000, je +-0.01 — Float-Kettenreihenfolge VBA/Python).
 3. `bestandsfuehrung` — Stamm + Journal der Quelle mit den ABWEICHENDEN
-   Konventionen (StoAb je Scheibe, RED mit Abzug, Rundung je
-   Zwischenschritt, Kalenderjahr-Logik, VS_bfr auf Vormonat);
-   GeVo-Simulation mit mehreren Vorfaellen je Vertrag.
+   Konventionen (StoAb je Scheibe, RED mit Abzug, Cent-Rundung der
+   GEBUCHTEN Betraege, Kalenderjahr-Logik, VS_bfr auf Vormonat);
+   GeVo-Simulation mit mehreren Vorfaellen je Vertrag. Praezisierung am
+   Golden Master (2026-08-31): Das Blatt rundet die AUSGABEZELLEN auf
+   Cent, nicht jeden Zwischenwert — "Rundung je Zwischenschritt" aus dem
+   urspruenglichen Konventionsbeschluss heisst hier: gerundet wird beim
+   BUCHEN je Geschaeftsvorfall, nicht in der Rechenkette.
 4. `export` — Bestandsabzug, GeVo-Metadaten, Protokoll und
    Erwartungswerte im Lieferformat (POLNR;...;DECKKAP), einschliesslich
    t_a/dk_ta je Vertrag fuer die Verankerung.

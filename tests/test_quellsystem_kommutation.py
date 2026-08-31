@@ -113,3 +113,55 @@ def test_die_tafelkopie_ist_eigenstaendig_ladbar():
     assert len(qx_vector("M", "DAV2008_T_NR_U70")) == 124
     with pytest.raises(MissingMortalityTableError):
         qx_vector("M", "GIBTS_NICHT")
+
+
+def test_die_zielgroessen_treffen_das_kalkulationsblatt():
+    """Alle 15 Blattspalten gegen den Excel-Golden-Master, 717 Zeilen.
+
+    Massstab, am Golden Master kalibriert: Saetze auf 1e-11 relativ;
+    EUR-Spalten exakt auf den Cent BIS AUF Halbcent-Kanten — die
+    Basiswerte differieren um ~1e-12 (Float-Kettenreihenfolge
+    VBA/Python), und genau an einer .xx5-Grenze kippt die Cent-Rundung
+    dann um einen Cent. Solche Kipper sind auf +-0.01 begrenzt UND hart
+    gezaehlt (<= 40 von ueber 10000 Betraegen): Ein Formelfehler
+    erzeugte massenhaft groessere Differenzen und faellt.
+    """
+    from quellsystem.rechnung import Rechnung, Vertrag
+    from quellsystem.tarifwerk import zelle
+
+    zeilen = _zeilen()
+    if zeilen is None:
+        pytest.skip("Regie-Dateien (simulation/baldrian) nicht vorhanden")
+
+    raten = ("Bxt", "Pxt", "Axn_B", "axn_C", "axt_D",
+             "kVx_bpfl_E", "kVx_bfr_G")
+    cent = ("BJB", "BZB", "kDRx_bpfl_F", "kVx_MRV_H",
+            "StoAb_J", "RKW_K", "VS_bfr_L")
+    kipper = 0
+    betraege = 0
+    for z in zeilen:
+        r = Rechnung(zelle(z["Status"], z["Tarifart"]),
+                     Vertrag(int(z["x"]), int(z["n"]), int(z["t"]),
+                             float(z["VS"]), int(z["zw"])))
+        ist = {"Bxt": r.bxt(), "BJB": r.bjb(), "BZB": r.bzb(),
+               "Pxt": r.pxt(), **r.verlaufszeile(int(z["k"]))}
+        assert ist["flexPhase_I"] == float(z["flexPhase_I"]), (
+            f"Zeile {z['TestNr']}: flexPhase")
+        for sp in raten:
+            assert ist[sp] == pytest.approx(
+                float(z[sp]), rel=1e-11, abs=1e-11
+            ), f"Zeile {z['TestNr']} ({z['Status']}/{z['Tarifart']}): {sp}"
+        for sp in cent:
+            betraege += 1
+            diff = ist[sp] - float(z[sp])
+            assert abs(diff) <= 0.01 + 1e-9, (
+                f"Zeile {z['TestNr']}: {sp} weicht um {diff!r} ab -- das "
+                "ist mehr als eine Halbcent-Kante"
+            )
+            if abs(diff) > 1e-9:
+                kipper += 1
+    assert betraege > 5000
+    assert kipper <= 40, (
+        f"{kipper} Cent-Kipper -- weit mehr als die bekannten "
+        "Halbcent-Kanten; die Rundungsreihenfolge stimmt nicht mehr"
+    )
