@@ -18,16 +18,18 @@ Projektionen darüber. Manche Gruppe speist beide: Bei den Diskrepanzen
 gehören die Werte in die fachliche Darstellung und die Belegmethode in die
 technische.
 
-===========  ==================================  =========================
-Gruppe       Inhalt                              Quelle
-===========  ==================================  =========================
-lieferung    registrierte Quellen, Nachlieferung eingang.json, entscheide
-bestand      Profil, Vorgeschichte, Vorfaelle    bestand.parquet, Abzuege
-parameter    Generation, Diskrepanzen, Belege    abox.json, Spez, Abgleich
-abnahmen     Umfang, Toleranzen, Verteilungen    berichte/*.json
-kette        Gate-Laeufe und Entscheide          diagnostics/, entscheide/
-abgrenzungen was die Zahlen NICHT sagen          abgeleitet aus obigem
-===========  ==================================  =========================
+==============  ==================================  =========================
+Gruppe          Inhalt                              Quelle
+==============  ==================================  =========================
+lieferung       registrierte Quellen, Nachlieferung eingang.json, entscheide
+bestand         Profil, Vorgeschichte, Vorfaelle    bestand.parquet, Abzuege
+transformation  Feldabbildung, Verworfenes          transformation/*.json
+parameter       Generation, Diskrepanzen, Belege    abox.json, Spez, Abgleich
+abnahmen        Umfang, Toleranzen, Verteilungen    berichte/*.json
+kette           Gate-Laeufe und Entscheide          diagnostics/, entscheide/
+umbau           Umbaubudget des Fall-Laufs          berichte/umbaubudget.json
+abgrenzungen    was die Zahlen NICHT sagen          abgeleitet aus obigem
+==============  ==================================  =========================
 
 Die letzte Gruppe ist die wichtigste und die einzige, die vergleicht
 statt zu lesen: Eine Einschränkung entsteht dort, wo zwei Artefaktwerte
@@ -457,6 +459,12 @@ def abnahmen(fall: Path) -> Dict[str, Any]:
         aus["aktuariell"].append({
             "kennung": kennung,
             "titel": profil.get("titel") or titel,
+            # Verweis auf die HTML-Vorlage des Gates, fallrelativ. Das
+            # Modell LISTET nur; ob ein Verweis eine Veroeffentlichung
+            # erreicht, entscheidet der Konsument (Regie-Sperre der
+            # Vorzeigeseite) — die Liste hier ist kein Weg daran vorbei.
+            "bericht": (f"abgeleitet/berichte/{datei}.html"
+                        if (berichte / f"{datei}.html").is_file() else None),
             "anzahl": d.get("anzahl"),
             "bestanden": d.get("bestanden"),
             "fehlgeschlagen": d.get("fehlgeschlagen"),
@@ -497,6 +505,10 @@ def abnahmen(fall: Path) -> Dict[str, Any]:
             "stichtag_2": s.get("stichtag_2"),
             "je_groesse": _suite_achsen(s),
         }
+    aus["bestandsberichte"] = sorted(
+        f"abgeleitet/berichte/{p.name}"
+        for p in berichte.glob("bestandsbericht*.html")
+    ) if berichte.is_dir() else []
     aus["gelesen_aus"] = [
         f"abgeleitet/berichte/{datei}.json"
         for _, datei, _ in ABNAHMEN
@@ -575,7 +587,35 @@ def kette(fall: Path) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# F — Abgrenzungen (abgeleitet)
+# F — Umbau
+# --------------------------------------------------------------------------- #
+
+def umbau(fall: Path) -> Dict[str, Any]:
+    """Wie weit der Lauf das Zielsystem umgebaut hat.
+
+    Das Budget begrenzt die Arbeit des Operators WAEHREND des Fall-Laufs
+    und ist damit eine Eigenschaft der Fall-Arbeit — deshalb gehoert es
+    zum Fall. Es entsteht aber nur, wenn jemand es erhoben und in den
+    Fall geschrieben hat (``umbaubudget.py --json``); sein Fehlen ist
+    keine Luecke des Falls, sondern eine nicht durchgefuehrte Messung.
+    """
+    d = _json(fall / "abgeleitet" / "berichte" / "umbaubudget.json")
+    if not isinstance(d, dict):
+        return {"vorhanden": False}
+    return {
+        "vorhanden": True,
+        "basis": d.get("basis"),
+        "gesamt": d.get("gesamt"),
+        "befunde": d.get("befunde") or [],
+        "stolperdraehte": [s.get("datei")
+                           for s in d.get("stolperdraehte") or []],
+        "ueberschreitung_begruendet": d.get("ueberschreitung_begruendet"),
+        "gelesen_aus": ["abgeleitet/berichte/umbaubudget.json"],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# G — Abgrenzungen (abgeleitet)
 # --------------------------------------------------------------------------- #
 
 def abgrenzungen(modell: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -740,6 +780,7 @@ def sammle(fall: Path, abzuege: List[str]) -> Dict[str, Any]:
         "schema_version": 1,
         "fall": {
             "name": manifest.get("name") or fall.name,
+            "beschreibung": manifest.get("beschreibung") or None,
             "scope": (manifest.get("scope") or {}).get("typ"),
         },
         "lieferung": lieferung(fall),
@@ -748,6 +789,7 @@ def sammle(fall: Path, abzuege: List[str]) -> Dict[str, Any]:
         "parameter": parameter(fall),
         "abnahmen": abnahmen(fall),
         "kette": kette(fall),
+        "umbau": umbau(fall),
     }
     modell["abgrenzungen"] = abgrenzungen(modell)
     modell["luecken"] = luecken(modell)

@@ -304,6 +304,16 @@ def _fall_mit_berichten(tmp_path: Path, **berichte) -> Path:
     return fall
 
 
+def _modell(fall: Path):
+    """Das Datenmodell so erheben, wie es auch der Lauf taete.
+
+    Die Seite ist Konsument von ``falldaten.py``; ein von Hand gebautes
+    Modell testete sonst eine Form, die der Erzeuger nie schreibt.
+    """
+    import falldaten
+    return falldaten.sammle(fall, [])
+
+
 def test_ein_roter_lauf_wird_als_roter_lauf_dargestellt(tmp_path: Path):
     """Eine Vorzeigeseite, die nur den Erfolgsfall zeigen kann, ist eine
     Werbebroschuere. Der Lauf ist keine: A-M4 duldet im Bestands-Scope
@@ -318,7 +328,7 @@ def test_ein_roter_lauf_wird_als_roter_lauf_dargestellt(tmp_path: Path):
                          "stichtag_1": "2026-01-01",
                          "stichtag_2": "2027-01-01"},
     )
-    seite = vz._seite(fall, tmp_path, [], None)
+    seite = vz._seite(fall, _modell(fall), tmp_path, [], None)
 
     assert "**nicht bestanden**" in seite
     assert "| Prüflücken | 2 |" in seite
@@ -337,7 +347,7 @@ def test_eine_unbegruendete_ueberschreitung_bleibt_unbegruendet(
                      "befunde": ["Gesamtaenderung 21000 Zeilen ueber 18000"],
                      "ueberschreitung_begruendet": None},
     )
-    seite = vz._seite(fall, tmp_path, [], None)
+    seite = vz._seite(fall, _modell(fall), tmp_path, [], None)
     assert "Eine Überschreitung:" in seite
     assert "**Ohne Begründung.**" in seite
 
@@ -347,7 +357,7 @@ def test_eine_unbegruendete_ueberschreitung_bleibt_unbegruendet(
                      "befunde": ["Gesamtaenderung 21000 Zeilen ueber 18000"],
                      "ueberschreitung_begruendet": "Kern ersetzt, bewusst"},
     )
-    seite2 = vz._seite(fall2, tmp_path, [], None)
+    seite2 = vz._seite(fall2, _modell(fall2), tmp_path, [], None)
     assert "Kern ersetzt, bewusst" in seite2
     assert "**Ohne Begründung.**" not in seite2
 
@@ -357,9 +367,45 @@ def test_ein_fall_ohne_berichte_behauptet_kein_ergebnis(tmp_path: Path):
     Vorzeigeseite ist deshalb KEIN Nachweis, dass der Lauf vollstaendig
     war. Sie darf dann aber auch nichts anderes behaupten."""
     fall = _fall_mit_berichten(tmp_path)
-    seite = vz._seite(fall, tmp_path, [], None)
+    seite = vz._seite(fall, _modell(fall), tmp_path, [], None)
     assert "*(noch keine Berichte im Fall)*" in seite
     assert "bestanden" not in seite
+
+
+def test_modell_verweise_passieren_die_regie_sperre_nicht_ungeprueft(
+    tmp_path: Path,
+):
+    """Das Modell listet Artefakt-Verweise; die Seite prueft sie trotzdem
+    selbst. Sonst waere die Liste ein Weg an der Regie-Sperre vorbei —
+    die Zwei-Quellen-Lage beseitigt und dafuer die Sperre aufgeweicht."""
+    fall = _fall_mit_berichten(tmp_path)
+    modell = _modell(fall)
+    modell["abnahmen"]["bestandsberichte"] = [
+        "abgeleitet/berichte/NOTIZEN.md"]
+
+    with pytest.raises(vz.VeroeffentlichungFehler):
+        vz._seite(fall, modell, tmp_path,
+                  ["artefakte/abgeleitet/berichte/NOTIZEN.md"], None)
+
+
+def test_verlinkt_wird_nur_was_kopiert_wurde(tmp_path: Path):
+    """Ein Link auf eine nicht kopierte Datei waere eine Behauptung ohne
+    Artefakt daneben."""
+    fall = _fall_mit_berichten(tmp_path)
+    (fall / "abgeleitet" / "berichte" / "bestandsbericht-vor.html").write_text(
+        "<p>Bericht</p>", encoding="utf-8")
+    modell = _modell(fall)
+    assert modell["abnahmen"]["bestandsberichte"] == [
+        "abgeleitet/berichte/bestandsbericht-vor.html"]
+
+    ohne = vz._seite(fall, modell, tmp_path, [], None)
+    assert "bestandsbericht-vor.html" not in ohne
+
+    mit = vz._seite(fall, modell, tmp_path,
+                    ["artefakte/abgeleitet/berichte/bestandsbericht-vor.html"],
+                    None)
+    assert ("[bestandsbericht-vor.html]"
+            "(artefakte/abgeleitet/berichte/bestandsbericht-vor.html)") in mit
 
 
 # --------------------------------------------------------------------------- #
@@ -395,6 +441,30 @@ def test_ein_fehlender_abschnitt_wird_laut_gemeldet(tmp_path: Path):
     # zuerst das, was da ist.
     assert {l["gruppe"] for l in modell["luecken"]} == {
         g for g, _, _ in fd.ERWARTET}
+
+
+def test_das_modell_traegt_beschreibung_und_berichtsverweise(tmp_path: Path):
+    """Die Vorzeigeseite konsumiert das Modell; was sie zeigt, muss es
+    tragen — sonst bliebe sie fuer genau diese Reste ein zweiter Leser
+    desselben Datenraums."""
+    fall = _fall_mit_berichten(
+        tmp_path,
+        aktuartest={"anzahl": 1, "bestanden": 1, "fehlgeschlagen": 0,
+                    "test_bestanden": True})
+    (fall / "abgeleitet" / "berichte" / "aktuartest.html").write_text(
+        "<p>Vorlage</p>", encoding="utf-8")
+    (fall / "fall.json").write_text(json.dumps(
+        {"name": "probe", "beschreibung": "Ein Vorfuehrfall.",
+         "scope": {"typ": "bestand"}}), "utf-8")
+
+    modell = fd.sammle(fall, [])
+    assert modell["fall"]["beschreibung"] == "Ein Vorfuehrfall."
+    [t] = modell["abnahmen"]["aktuariell"]
+    assert t["bericht"] == "abgeleitet/berichte/aktuartest.html"
+    # Das Umbaubudget entsteht nur, wenn jemand es erhoben hat — sein
+    # Fehlen ist eine nicht durchgefuehrte Messung, keine Luecke.
+    assert modell["umbau"] == {"vorhanden": False}
+    assert not any(l["gruppe"] == "umbau" for l in fd.luecken(modell))
 
 
 def test_eine_vollerhebung_ist_keine_zu_kleine_pruefmenge():

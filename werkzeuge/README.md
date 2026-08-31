@@ -10,7 +10,7 @@ bleibt, steht in `dev-docs/offene-punkte.md`.
 | Werkzeug | Zweck |
 |---|---|
 | `verlaufsprotokoll.py` | Sitzungstranskript zu einem lesbaren Verlauf |
-| `vorzeigeseite.py` | Fall-Artefakte zu einer statischen Seite |
+| `vorzeigeseite.py` | Datenmodell und Artefakte eines Falls zu einer statischen Seite |
 | `umbaubudget.py` | wie weit ein Lauf das System umgebaut hat |
 | `falldaten.py` | Datenmodell einer Falldarstellung aus den Artefakten |
 | `fallbericht.py` | Darstellung aus dem Datenmodell rendern |
@@ -28,21 +28,24 @@ hervorgehoben. Schluesselpfade und Geheimnisse sind redigiert.
 ## Seite eines Laufs bauen
 
 ```
+python werkzeuge/falldaten.py --fall faelle/baldrian-uebernahme \
+    --abzug <abzug-1>.csv --abzug <abzug-2>.csv --out runs/falldaten.json
 python werkzeuge/vorzeigeseite.py \
-    --fall faelle/baldrian-uebernahme \
+    --fall faelle/baldrian-uebernahme --daten runs/falldaten.json \
     --out vorzeige/ [--verlauf verlauf.md]
 ```
 
-Sammelt Lieferung, Gate-Ledger, Entscheide und Verlauf, stempelt
-Systemstand und Branch, schreibt `index.md`, `_config.yml` und
-`artefakte/`.
+Die Zahlen der Seite kommen aus dem Datenmodell (`falldaten.py`) —
+demselben, aus dem auch der Fallbericht gerendert wird. Seite und
+Bericht tragen damit dieselben Zahlen aus derselben Quelle; frueher
+lasen beide die Fall-Artefakte getrennt, und zwei Leser desselben
+Datenraums driften auseinander. Was die Seite selbst tut, ist
+Veroeffentlichung: Artefakte ueber die Positivliste kopieren, die Regie
+sperren, Systemstand und Branch stempeln, `index.md`, `_config.yml` und
+`artefakte/` schreiben.
 
-Den Abschnitt **Das Ergebnis** baut sie aus den Berichten unter
-`<fall>/abgeleitet/berichte/`: den drei aktuariellen Abnahmen
-(`aktuartest*.json` samt ihrer HTML-Vorlagen), dem Controlling
-(`migrationssuite.json`), den Bestandsberichten (`bestandsbericht*.html`)
-und — wenn dort abgelegt — `umbaubudget.json`. Das Budget landet also
-nur auf der Seite, wenn es in den Fall geschrieben wurde:
+Das Modell traegt auch das Umbaubudget des Laufs — aber nur, wenn es in
+den Fall geschrieben wurde:
 
 ```
 python werkzeuge/umbaubudget.py --basis <startpunkt> \
@@ -51,7 +54,9 @@ python werkzeuge/umbaubudget.py --basis <startpunkt> \
 
 Die Seite rechnet nichts nach. Jede Zahl steht so in einem Artefakt, das
 unter `artefakte/` daneben liegt — sonst waere die Vorfuehrung eine
-Behauptung ueber sich selbst. Ein NICHT bestandener Test und eine
+Behauptung ueber sich selbst. Verlinkt wird nur, was die Positivliste
+tatsaechlich kopiert hat, und die Regie-Sperre prueft auch die Verweise
+aus dem Modell noch einmal selbst. Ein NICHT bestandener Test und eine
 gerissene Schranke werden genauso dargestellt wie ein gruener Lauf; eine
 Seite, die nur den Erfolgsfall zeigen kann, waere eine Werbebroschuere.
 
@@ -177,7 +182,10 @@ Es bleibt eine menschliche Handlung.
 Die Seite in ein gitignoriertes Verzeichnis bauen, von dort schieben:
 
 ```
-python werkzeuge/vorzeigeseite.py --fall faelle/<fall> --out runs/vorzeige
+python werkzeuge/falldaten.py --fall faelle/<fall> \
+    --abzug <abzug-1>.csv --abzug <abzug-2>.csv --out runs/falldaten.json
+python werkzeuge/vorzeigeseite.py --fall faelle/<fall> \
+    --daten runs/falldaten.json --out runs/vorzeige
 git worktree add /tmp/gh-pages gh-pages
 cp -r runs/vorzeige/. /tmp/gh-pages/
 cd /tmp/gh-pages && git add -A && git commit -m "Lauf <datum>" && git push
