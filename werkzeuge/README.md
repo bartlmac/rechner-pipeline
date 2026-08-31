@@ -216,7 +216,6 @@ die Vorschau:
 ```
 python3 werkzeuge/vorschau.py --seite runs/vorzeige \
     --out runs/vorzeige-vorschau
-xdg-open runs/vorzeige-vorschau/index.html
 ```
 
 Rendert `index.md` und `verlauf.md` in ein eigenes Verzeichnis und
@@ -224,6 +223,14 @@ verlinkt die Artefakte (Symlink, kein zweiter Datenbestand); Zahlen,
 Tabellen und Links sind damit pruefbar. Eine Lesehilfe, kein Abbild
 des Pages-Themas — die Optik der Live-Seite entsteht erst beim Bau.
 Das Werkzeug weigert sich, ins Push-Verzeichnis zu rendern.
+
+Angesehen wird die Vorschau im Browser ueber einen internen
+Sichtungs-Server, der per Symlink auf dieses Verzeichnis zeigt — URL
+und Betrieb stehen in der Infra-Doku, nicht im Repo. Zwei Regeln
+daraus fuer die Seiten selbst: nur RELATIVE Links (die Sichtung
+liefert unter einem Pfad-Praefix aus, absolute Pfade ab `/` brechen),
+und der Vorschau-Pfad `runs/vorzeige-vorschau` bleibt stabil, weil der
+Symlink des Servers darauf zeigt.
 
 ### Vorher pruefen
 

@@ -113,7 +113,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"{link} -> {artefakte}")
 
     print()
-    print(f"Ansehen: xdg-open {out / 'index.html'}")
+    print(f"Vorschau: {out / 'index.html'}")
+    print("Sichtung im Browser: README, Abschnitt 'Ansehen vor dem Schieben'.")
     return 0
 
 
