@@ -336,7 +336,20 @@ snapshottet mit `python -m rechner_pipeline.gates.gate_entscheid
 --gate A-Q1 --rolle mensch --freigabe-schluessel <externe-datei> ...`.
 Der Freigabeschluessel gehoert ausserhalb des Falls und ausserhalb des
 Agentenzugriffs in die Autoritaetsumgebung des Menschen (mindestens 32
-kryptografisch zufaellige Byte, POSIX 0600, genau ein Hardlink). DU liest,
+kryptografisch zufaellige Byte, POSIX 0600, genau ein Hardlink).
+
+**Zeichnungsordnung (Zwei-Operatoren-Regie, Beschluss 2026-08-31).**
+Faehrt der Fall mit getrennten Rollen — `quelle-experte` (zeichnet nur
+Lieferungen, keine Gates), `plv-va` (zeichnet A-Q1 und A-M1..M4 mit
+eigenem menschlichem Schluessel), `mensch` (Eskalation, `"*"`) — dann
+uebergibt JEDER Entscheid-Aufruf `--zeichnungsordnung <datei>`: ein JSON
+AUSSERHALB des Falls, das Rollen an Schluessel-Fingerabdruecke und Gates
+an Rollen bindet. Mit Ordnung prueft gate_entscheid die Annahme UND jede
+Vorbedingungs-Annahme der Kette; die Rolle wandert mitsigniert in den
+Snapshot (`zeichnung`). Zwei Rollen mit demselben Schluessel sind ein
+Fehler. Der Mensch steigt nur nach Abbruchkriterium ein: klarer
+Systemfehler (durch Agenten/Operatoren nicht heilbar), Zirkelreferenz,
+drei fruchtlose Q&A-Schleifen zum selben Thema, Budget ueberschritten. DU liest,
 erzeugst oder kopierst ihn nicht; der Mensch fuehrt den
 Annahmeaufruf aus. Bei Rotation werden alte Schluessel zuerst und der aktive
 zuletzt mit wiederholtem Flag uebergeben. Als Agent darfst du AUSSCHLIESSLICH

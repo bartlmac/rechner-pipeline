@@ -224,6 +224,123 @@ def _freigabe_fuer(snapshot_ohne_freigabe: dict, key: bytes) -> Dict[str, str]:
     }
 
 
+#: Gates, die eine Zeichnungsordnung einer Rolle zuordnen kann. "*" heisst
+#: alle -- die Eskalationsrolle des Menschen.
+ZEICHNUNG_GATES = ("A-Q1",) + tuple(AKTUARIELLE_ABNAHMEN) + ("A-M4",)
+
+
+def _lade_zeichnungsordnung(
+    raw: object, fall: Path
+) -> Tuple[Optional[dict], Optional[str], List[str]]:
+    """Zeichnungsordnung laden: welche ROLLE darf welches GATE zeichnen.
+
+    Die Ordnung bindet Rollen an Schluessel-Fingerabdruecke und Gates an
+    Rollen. Sie gehoert wie die Schluessel selbst in die
+    Autoritaetsumgebung des Menschen, AUSSERHALB des frei editierbaren
+    Falls -- eine Ordnung, die der Fall selbst umschreiben kann, ordnet
+    nichts. Zwei Rollen mit demselben Fingerabdruck sind ein Fehler:
+    Die Trennung der Operatoren waere sonst nur behauptet.
+
+    Ohne Angabe (None) gilt das bisherige Verhalten -- jeder uebergebene
+    Schluessel zeichnet jedes Gate. Die Regie eines Falls entscheidet,
+    ob sie die Ordnung verlangt.
+    """
+    if raw is None:
+        return None, None, []
+    if not isinstance(raw, str):
+        return None, None, ["--zeichnungsordnung muss ein Pfad sein"]
+    angegeben = Path(raw)
+    absolut = angegeben if angegeben.is_absolute() else Path.cwd() / angegeben
+    fall_resolved = fall.resolve()
+    try:
+        resolved = absolut.resolve(strict=True)
+    except OSError as exc:
+        return None, None, [f"Zeichnungsordnung nicht lesbar ({raw!r}): {exc}"]
+    if _ist_unter(absolut.absolute(), fall_resolved) or _ist_unter(
+        resolved, fall_resolved
+    ):
+        return None, None, [
+            f"Zeichnungsordnung {raw!r} liegt innerhalb des Falls; die "
+            "Rollenbindung muss extern verwahrt werden"
+        ]
+    try:
+        daten = json.loads(resolved.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return None, None, [f"Zeichnungsordnung nicht als JSON lesbar: {exc}"]
+    fehler: List[str] = []
+    if not isinstance(daten, dict) or daten.get("schema_version") != 1:
+        fehler.append("Zeichnungsordnung: schema_version 1 erwartet")
+        return None, None, fehler
+    rollen = daten.get("rollen")
+    if not isinstance(rollen, dict) or not rollen:
+        return None, None, ["Zeichnungsordnung: 'rollen' fehlt oder leer"]
+    gesehen: Dict[str, str] = {}
+    for name, eintrag in rollen.items():
+        if not isinstance(eintrag, dict):
+            fehler.append(f"Zeichnungsordnung: Rolle {name!r} ist kein Objekt")
+            continue
+        fp = eintrag.get("schluessel_sha256")
+        if not (isinstance(fp, str) and len(fp) == 64
+                and all(c in "0123456789abcdef" for c in fp)):
+            fehler.append(
+                f"Zeichnungsordnung: Rolle {name!r} ohne gueltigen "
+                "schluessel_sha256 (64 Hexzeichen)"
+            )
+            continue
+        if fp in gesehen:
+            fehler.append(
+                f"Zeichnungsordnung: Rollen {gesehen[fp]!r} und {name!r} "
+                "teilen denselben Schluessel -- die Trennung der Operatoren "
+                "waere nur behauptet"
+            )
+        gesehen[fp] = name
+        gates = eintrag.get("gates")
+        if not isinstance(gates, list) or not all(
+            isinstance(g, str) and (g == "*" or g in ZEICHNUNG_GATES)
+            for g in gates
+        ):
+            fehler.append(
+                f"Zeichnungsordnung: Rolle {name!r} mit ungueltiger "
+                f"gates-Liste (erlaubt: {list(ZEICHNUNG_GATES)} oder '*')"
+            )
+    if fehler:
+        return None, None, fehler
+    sha = hashlib.sha256(resolved.read_bytes()).hexdigest()
+    return daten, sha, []
+
+
+def _zeichnungsrolle(
+    ordnung: dict, schluessel_sha256: str
+) -> Optional[str]:
+    """Die Rolle, der dieser Fingerabdruck gehoert (None = keiner)."""
+    for name, eintrag in ordnung["rollen"].items():
+        if eintrag.get("schluessel_sha256") == schluessel_sha256:
+            return name
+    return None
+
+
+def _zeichnungsfehler(
+    ordnung: Optional[dict], gate: str, schluessel_sha256: str
+) -> Optional[str]:
+    """Warum dieser Schluessel dieses Gate NICHT zeichnen darf (None = darf)."""
+    if ordnung is None:
+        return None
+    rolle = _zeichnungsrolle(ordnung, schluessel_sha256)
+    if rolle is None:
+        return (
+            "der Freigabeschluessel gehoert keiner Rolle der "
+            "Zeichnungsordnung -- wer nicht in der Ordnung steht, "
+            "zeichnet nicht"
+        )
+    gates = ordnung["rollen"][rolle].get("gates", [])
+    if "*" in gates or gate in gates:
+        return None
+    return (
+        f"die Rolle {rolle!r} ist fuer {gate} nicht zeichnungsberechtigt "
+        f"(ihre Gates: {gates or 'keine'})"
+    )
+
+
 def _pruefe_freigabe(snapshot: dict, schluesselring: Mapping[str, bytes]) -> List[str]:
     if snapshot.get("entscheid") != "angenommen":
         return []
@@ -956,6 +1073,16 @@ def main(argv: Optional[List[str]] = None):
             "Die Datei muss ausserhalb des Falls liegen und privat sein."
         ),
     )
+    parser.add_argument(
+        "--zeichnungsordnung",
+        default=None,
+        help=(
+            "JSON ausserhalb des Falls: welche ROLLE (Schluessel-"
+            "Fingerabdruck) welches GATE zeichnen darf. Mit Ordnung wird "
+            "jede Annahme UND jede Vorbedingungs-Annahme dagegen "
+            "geprueft; ohne bleibt das bisherige Verhalten."
+        ),
+    )
     parser.add_argument("--repo-root", dest="repo_root", default=".")
     parser.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None)
     add_request_json_arg(parser)
@@ -1064,6 +1191,12 @@ def main(argv: Optional[List[str]] = None):
             schluessel_geladen = True
             return fehler
         return []
+
+    zeichnungsordnung, zeichnungsordnung_sha, zo_fehler = (
+        _lade_zeichnungsordnung(args.zeichnungsordnung, fall)
+    )
+    if zo_fehler:
+        return _usage("; ".join(zo_fehler))
 
     # Annahme-Sperre: eine Annahme setzt einen integeren Fall und
     # endgueltige Entscheidungen voraus — sonst wuerde ein ungeloester
@@ -1520,6 +1653,16 @@ def main(argv: Optional[List[str]] = None):
                     "--freigabe-schluessel <externe-datei>)",
                 )
             assert aq1_spitze is not None
+            zf = _zeichnungsfehler(
+                zeichnungsordnung, "A-Q1",
+                aq1_spitze.get("freigabe", {}).get("schluessel_sha256", ""),
+            )
+            if zf:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: die geltende A-Q1-Annahme wurde "
+                    f"von einem unberechtigten Schluessel gezeichnet -- {zf}",
+                )
             pflichtbelege["aq1_snapshot"] = [aq1_spitze["snapshot_sha256"]]
 
             # Die aktuariellen Abnahmen gehen A-M4 voraus: A-M1 immer
@@ -1578,6 +1721,17 @@ def main(argv: Optional[List[str]] = None):
                         "<text> --freigabe-schluessel <externe-datei>)",
                     )
                 assert spitze_a is not None
+                zf = _zeichnungsfehler(
+                    zeichnungsordnung, abnahme_gate,
+                    spitze_a.get("freigabe", {}).get("schluessel_sha256", ""),
+                )
+                if zf:
+                    return _sperre(
+                        "vorbedingung",
+                        f"Annahme verweigert: die geltende {abnahme_gate}-"
+                        "Annahme wurde von einem unberechtigten Schluessel "
+                        f"gezeichnet -- {zf}",
+                    )
                 rolle_a = f"am{abnahme_gate[-1]}_snapshot"
                 pflichtbelege[rolle_a] = [spitze_a["snapshot_sha256"]]
 
@@ -1692,6 +1846,21 @@ def main(argv: Optional[List[str]] = None):
                 "ist erforderlich; ein frei editierbarer Fall darf seine "
                 "menschliche Freigabe nicht selbst behaupten",
             )
+        zf = _zeichnungsfehler(zeichnungsordnung, args.gate, aktiver_schluessel)
+        if zf:
+            return _sperre(
+                "zeichnung",
+                f"Annahme verweigert: {zf}",
+            )
+        if zeichnungsordnung is not None:
+            # Die Rollenbindung wandert IN den Snapshot und wird
+            # mitsigniert: Wer spaeter prueft, sieht nicht nur DASS
+            # gezeichnet wurde, sondern als welche Rolle unter welcher
+            # Ordnung.
+            snapshot["zeichnung"] = {
+                "rolle": _zeichnungsrolle(zeichnungsordnung, aktiver_schluessel),
+                "ordnung_sha256": zeichnungsordnung_sha,
+            }
         snapshot["freigabe"] = _freigabe_fuer(
             snapshot, schluesselring[aktiver_schluessel]
         )

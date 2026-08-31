@@ -463,7 +463,20 @@ class P9Snapshot:
             expected_fields.add("freigabe")
         fields = set(data)
         missing = sorted(expected_fields - fields)
-        unknown = sorted(fields - expected_fields)
+        # "zeichnung" ist OPTIONAL: Sie entsteht nur, wenn eine
+        # Zeichnungsordnung uebergeben wurde (Rollenbindung der Annahme).
+        # Aeltere Snapshots ohne sie bleiben gueltig.
+        unknown = sorted(fields - expected_fields - {"zeichnung"})
+        z = data.get("zeichnung")
+        if z is not None and not (
+            isinstance(z, dict)
+            and set(z) == {"rolle", "ordnung_sha256"}
+            and isinstance(z.get("rolle"), str)
+            and isinstance(z.get("ordnung_sha256"), str)
+        ):
+            errors.append(
+                "zeichnung muss {rolle, ordnung_sha256} mit Strings sein"
+            )
         if missing:
             errors.append(f"required fields missing: {missing}")
         if unknown:
