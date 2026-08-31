@@ -61,6 +61,7 @@ from rechner_pipeline.bestand.parquet_io import write_portfolio
 from rechner_pipeline.models.bestand import (
     GENERATION_FIELDS,
     MERKMALE_SPALTEN,
+    VERANKERUNG_SPALTEN,
     STATUS_HISTORIE_NAMES,
     LEDGER_NAMES,
     STAMM_NAMES,
@@ -158,6 +159,74 @@ def _merkmalstabelle(zeilen, spez) -> "pd.DataFrame":
     for name, dtype in MERKMALE_SPALTEN:
         rahmen[name] = rahmen[name].astype(dtype)
     return rahmen.sort_values(["police_id", "dimension"]).reset_index(drop=True)
+
+
+def _verankerungstabelle(
+    zeilen: List[Dict[str, Any]],
+    vorgeschichte: Dict[str, List[Tuple[str, dt.date]]],
+) -> "pd.DataFrame":
+    """Verankerungsattribute je Vertrag — wenn die Lieferung sie traegt.
+
+    ``monate_ta`` und ``dk_ta`` kommen aus der transformierten Zeile
+    (Korrekturschicht-Umsetzung K3: die Ableitungslast liegt quellseitig
+    oder in der Uebernahmestrecke). Zustand und Verweildauer am t_a
+    werden aus der REGISTRIERTEN Vorgeschichte abgeleitet — dieselbe
+    Quelle, aus der die Statushistorie entsteht, kein zweiter Kanal.
+
+    Alle oder keine: Eine halbe Verankerungstabelle waere schlimmer als
+    keine, denn die Korrekturschicht faende einen Teil der Vertraege und
+    hielte den Rest fuer verankerungsfrei. Ein TERMINALER Vorfall vor
+    t_a ist ein Lieferungswiderspruch — ein beendeter Vertrag hat keinen
+    spaeteren Rechenpunkt.
+    """
+    mit = [z for z in zeilen if z.get("monate_ta") is not None]
+    if not mit:
+        return pd.DataFrame(columns=[n for n, _ in VERANKERUNG_SPALTEN])
+    if len(mit) != len(zeilen):
+        ohne = [str(z["police_id"]) for z in zeilen
+                if z.get("monate_ta") is None][:5]
+        raise SystemExit(
+            f"{len(zeilen) - len(mit)} von {len(zeilen)} Zeilen ohne "
+            f"monate_ta (z. B. {ohne}) — Verankerungsattribute werden fuer "
+            "ALLE Vertraege geliefert oder fuer keinen; eine halbe Tabelle "
+            "liesse die Korrekturschicht den Rest fuer verankerungsfrei "
+            "halten"
+        )
+    saetze = []
+    for z in mit:
+        police = str(z["police_id"])
+        beginn = _parse(z["beginn"])
+        monate_ta = int(z["monate_ta"])
+        if z.get("dk_ta") is None:
+            raise SystemExit(
+                f"Police {police}: monate_ta ohne dk_ta — eine Verankerung "
+                "ohne Wert ist keine"
+            )
+        gesamt = beginn.year * 12 + (beginn.month - 1) + monate_ta
+        datum_ta = dt.date(gesamt // 12, gesamt % 12 + 1, 1)
+        zustand, seit = "beitragspflichtig", beginn
+        for art, datum in sorted(vorgeschichte.get(police, []),
+                                 key=lambda e: e[1]):
+            if art not in GEVO_STATUS or datum > datum_ta:
+                continue
+            if GEVO_STATUS[art] in ("STO", "TOD", "ABL"):
+                raise SystemExit(
+                    f"Police {police}: terminaler Vorfall {art} am "
+                    f"{datum.isoformat()} VOR dem Verankerungszeitpunkt "
+                    f"{datum_ta.isoformat()} — ein beendeter Vertrag hat "
+                    "keinen spaeteren Rechenpunkt"
+                )
+            zustand, seit = "beitragsfrei", datum
+        saetze.append({
+            "police_id": int(police),
+            "monate_ta": monate_ta,
+            "zustand_ta": zustand,
+            "verweildauer_ta": _vertragsjahre(seit, datum_ta),
+            "dk_ta": float(z["dk_ta"]),
+        })
+    rahmen = pd.DataFrame(saetze, columns=[n for n, _ in VERANKERUNG_SPALTEN])
+    return rahmen.astype(dict(VERANKERUNG_SPALTEN)).sort_values(
+        "police_id").reset_index(drop=True)
 
 
 def _vertragsjahre(beginn, stichtag) -> int:
@@ -556,6 +625,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             pfad.write_text(abschnitt, encoding="utf-8")
             print(f"  generation-zellen.toml: {len(spez.zellen)} Zellen "
                   "(in die Bestand-Config uebernehmen)")
+
+    # Verankerungsattribute als NEBENTABELLE (K3): Bisher lebten t_a und
+    # der dort gelieferte Wert nur im Pruefauftrag, je Lauf aus den
+    # Erwartungswerten rekonstruiert. Traegt die Lieferung sie je Zeile,
+    # werden sie hier Vertragsmerkmale des Bestands.
+    verankerung = _verankerungstabelle(
+        zeilen, _vorgeschichte(fall, args.vorgeschichte))
+    if len(verankerung):
+        write_portfolio(verankerung, ziel / "verankerung.parquet")
+        print(f"  verankerung.parquet: {len(verankerung)} Zeilen "
+              f"(t_a in Vertragsmonaten, Zustand aus der Vorgeschichte)")
 
     # E1 (Migrationskonzept Kap. 11, Entscheidung 2026-08-31): Die
     # gelieferte GeVo-Metadatenliste gehoert DAUERHAFT zum Zielbestand --

@@ -232,6 +232,28 @@ SCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("gamma1", "float64"),             # -> ModelPoint.gamma1 der Scheibe
 )
 
+#: Verankerungsattribute je uebernommenem Vertrag (Grundsatzdokumentation
+#: 9.12, Korrekturschicht-Umsetzung K3): t_a ist der letzte exakte
+#: Rechenpunkt des Quellsystems in VERTRAGSMONATEN, ``dk_ta`` der dort
+#: gelieferte Wert, ``zustand_ta``/``verweildauer_ta`` der Zustand und
+#: seine vollen Jahre am Verankerungszeitpunkt (Selektionsargumente der
+#: Schicht).
+#:
+#: NEBENTABELLE wie ``merkmale``: Nur migrierte Vertraege tragen eine
+#: Verankerung — als Stammspalten hiessen leere Felder beim Eigenbestand
+#: zweierlei ("trifft nicht zu" und "unbekannt"). Keine Datei heisst:
+#: der Bestand hat keine Verankerungen. Bisher lebten die Attribute nur
+#: im Pruefauftrag (aus den Erwartungswerten je Lauf rekonstruiert);
+#: als Vertragsmerkmale persistiert kann die Korrekturschicht sie lesen,
+#: ohne dass jemand die Lieferung erneut auswertet.
+VERANKERUNG_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("monate_ta", "int64"),
+    ("zustand_ta", "object"),
+    ("verweildauer_ta", "int64"),
+    ("dk_ta", "float64"),
+)
+
 #: Merkmalsauspraegungen je Vertrag — die Wahl der Tarifzelle.
 #:
 #: Eine Nebentabelle wie ``scheiben`` und ``historie``: Sie traegt NUR
@@ -280,6 +302,7 @@ LEDGER_NAMES: Tuple[str, ...] = tuple(n for n, _ in LEDGER_SPALTEN)
 SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
 ABSCHLUSS_NAMES: Tuple[str, ...] = tuple(n for n, _ in ABSCHLUSS_SPALTEN)
 MERKMALE_NAMES: Tuple[str, ...] = tuple(n for n, _ in MERKMALE_SPALTEN)
+VERANKERUNG_NAMES: Tuple[str, ...] = tuple(n for n, _ in VERANKERUNG_SPALTEN)
 
 
 def stamm_dtypes() -> Dict[str, str]:
@@ -730,6 +753,70 @@ def bu_model_point_kwargs(
             raise KeyError(f"BU-Generation-Feld fehlt: {name}")
         kwargs[name] = generation[name]
     return kwargs
+
+
+def validate_verankerung(stamm: Any, verankerung: Any) -> List[str]:
+    """Verankerungsattribute gegen den Stamm pruefen (leer = gueltig).
+
+    Jede Zeile gehoert zu einem bekannten Vertrag, je Vertrag hoechstens
+    eine Verankerung, und t_a liegt INNERHALB der Vertragslaufzeit — ein
+    Rechenpunkt nach dem Ablauf verankert nichts. ``dk_ta`` muss belegt
+    sein: Eine Verankerung ohne Wert ist keine.
+    """
+    errors: List[str] = []
+    cols = list(verankerung.columns)
+    if cols != list(VERANKERUNG_NAMES):
+        return [
+            f"verankerung: Spalten weichen ab: erwartet "
+            f"{list(VERANKERUNG_NAMES)}, vorhanden {cols}"
+        ]
+    for name, dtype in VERANKERUNG_SPALTEN:
+        actual = str(verankerung[name].dtype)
+        if actual != dtype:
+            errors.append(f"verankerung: Spalte {name}: dtype {actual}, erwartet {dtype}")
+    if errors:
+        return errors
+    unbekannt = set(verankerung["police_id"]) - set(stamm["police_id"])
+    if unbekannt:
+        errors.append(
+            f"verankerung: police_ids ausserhalb des Bestands: "
+            f"{sorted(unbekannt)[:5]}"
+        )
+    if verankerung["police_id"].duplicated().any():
+        doppelt = sorted(
+            verankerung.loc[verankerung["police_id"].duplicated(), "police_id"]
+        )[:5]
+        errors.append(
+            f"verankerung: mehrere Verankerungen je Police: {doppelt} — "
+            "t_a ist der EINE letzte exakte Rechenpunkt (9.12)"
+        )
+    if (verankerung["monate_ta"] < 0).any():
+        errors.append("verankerung: monate_ta negativ")
+    if verankerung["dk_ta"].isna().any():
+        errors.append("verankerung: dk_ta fehlt (NaN) — eine Verankerung ohne Wert ist keine")
+    leer = verankerung["zustand_ta"].map(
+        lambda z: not isinstance(z, str) or not z.strip()
+    )
+    if leer.any():
+        errors.append("verankerung: zustand_ta leer")
+    if (verankerung["verweildauer_ta"] < 0).any():
+        errors.append("verankerung: verweildauer_ta negativ")
+    laufzeit = stamm.set_index("police_id")["duration"]
+    grenze = verankerung["police_id"].map(laufzeit) * 12
+    zu_spaet = verankerung["monate_ta"] > grenze
+    if zu_spaet.fillna(False).any():
+        betroffen = sorted(verankerung.loc[zu_spaet.fillna(False), "police_id"])[:5]
+        errors.append(
+            f"verankerung: monate_ta nach Vertragsablauf (z. B. police "
+            f"{betroffen}) — nach dem Ablauf gibt es keinen Rechenpunkt"
+        )
+    zu_lang = verankerung["verweildauer_ta"] > verankerung["monate_ta"] // 12
+    if zu_lang.any():
+        errors.append(
+            "verankerung: verweildauer_ta laenger als die Vertragszeit bis "
+            "t_a — im Zustand kann niemand laenger sein als es den Vertrag gibt"
+        )
+    return errors
 
 
 def validate_merkmale(

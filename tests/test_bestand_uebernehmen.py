@@ -149,3 +149,154 @@ def test_die_uebernahme_archiviert_die_gevo_metadatenliste(tmp_path):
 
     archiv = ziel / "quellarchiv" / "gevo_metadaten.csv"
     assert archiv.read_bytes() == metadaten.read_bytes()
+
+
+# --------------------------------------------------------------------------- #
+# Verankerungsattribute (Grundsatzdokumentation 9.12, K3)
+# --------------------------------------------------------------------------- #
+
+
+def test_verankerung_wird_vertragsmerkmal_wenn_die_lieferung_sie_traegt(tmp_path):
+    """t_a, Wert, Zustand und Verweildauer wandern als Nebentabelle in den
+    Bestand — bisher lebten sie nur im Pruefauftrag, je Lauf aus den
+    Erwartungswerten rekonstruiert (K3: dieselbe Luecke, die ADR-011
+    nannte).
+    """
+    import json
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.fall import anlegen, registrieren
+    from rechner_pipeline.gates import bestand_uebernehmen
+    from rechner_pipeline.models.bestand import (
+        STAMM_NAMES,
+        VERANKERUNG_NAMES,
+        validate_verankerung,
+    )
+
+    fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
+    metadaten = tmp_path / "gevo_metadaten.csv"
+    # ERH ist kein Statuswechsel — beide Vertraege bleiben
+    # beitragspflichtig; den beitragsfreien Fall prueft der Unit-Test
+    # darunter (die Uebernahme beitragsfreier Vertraege verlangt
+    # Rechnungsgrundlagen, die hier nichts zur Sache tun).
+    metadaten.write_text(
+        "POLNR;GEVO;DATUM\n7000002;ERH;01.02.2020\n", encoding="utf-8")
+    registrieren(fall, metadaten)
+
+    zeilen = tmp_path / "zeilen.json"
+    zeilen.write_text(json.dumps([
+        {**ZEILE, "monate_ta": 120, "dk_ta": 41_000.50},
+        {**ZEILE, "police_id": 7000002, "monate_ta": 108, "dk_ta": 38_500.25},
+    ]), encoding="utf-8")
+    ziel = fall / "abgeleitet" / "bestand"
+
+    assert bestand_uebernehmen.main([
+        "--fall", str(fall), "--zeilen", str(zeilen),
+        "--tarif-generation", "TG2015", "--stichtag", "2026-02-01",
+        "--vorgeschichte", "gevo_metadaten.csv",
+        "--out-dir", str(ziel),
+    ]) == 0
+
+    stamm = read_portfolio(ziel / "bestand.parquet",
+                           expected_columns=STAMM_NAMES)
+    tabelle = read_portfolio(ziel / "verankerung.parquet",
+                             expected_columns=VERANKERUNG_NAMES)
+    assert validate_verankerung(stamm, tabelle) == []
+    je = tabelle.set_index("police_id")
+    assert je.loc[7000001, "zustand_ta"] == "beitragspflichtig"
+    assert je.loc[7000001, "verweildauer_ta"] == 10
+    assert je.loc[7000001, "dk_ta"] == 41_000.50
+    assert je.loc[7000002, "monate_ta"] == 108
+
+
+def test_zustand_am_ta_kommt_aus_der_vorgeschichte():
+    """Beitragsfrei seit zwei Jahren vor t_a: Zustand und Verweildauer.
+
+    Die Ableitung nutzt dieselbe registrierte Vorgeschichte wie die
+    Statushistorie — kein zweiter Kanal, keine stille Vorgabe.
+    """
+    import datetime as _dt
+
+    from rechner_pipeline.gates.bestand_uebernehmen import _verankerungstabelle
+
+    tabelle = _verankerungstabelle(
+        [{**ZEILE, "monate_ta": 120, "dk_ta": 38_500.25}],
+        {"7000001": [("PEX", _dt.date(2024, 2, 1))]},
+    )
+    zeile = tabelle.iloc[0]
+    assert zeile["zustand_ta"] == "beitragsfrei"
+    assert zeile["verweildauer_ta"] == 2
+    # Ein PEX NACH t_a aendert den Zustand am t_a nicht.
+    spaeter = _verankerungstabelle(
+        [{**ZEILE, "monate_ta": 120, "dk_ta": 1.0}],
+        {"7000001": [("PEX", _dt.date(2026, 6, 1))]},
+    )
+    assert spaeter.iloc[0]["zustand_ta"] == "beitragspflichtig"
+
+
+def test_halbe_verankerungslieferung_faellt_hart(tmp_path):
+    """Alle oder keine — sonst hielte die Schicht den Rest fuer frei."""
+    import json
+
+    from rechner_pipeline.fall import anlegen, registrieren
+    from rechner_pipeline.gates import bestand_uebernehmen
+
+    fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
+    metadaten = tmp_path / "gevo_metadaten.csv"
+    metadaten.write_text("POLNR;GEVO;DATUM\n", encoding="utf-8")
+    registrieren(fall, metadaten)
+    zeilen = tmp_path / "zeilen.json"
+    zeilen.write_text(json.dumps([
+        {**ZEILE, "monate_ta": 120, "dk_ta": 1.0},
+        {**ZEILE, "police_id": 7000002},
+    ]), encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc:
+        bestand_uebernehmen.main([
+            "--fall", str(fall), "--zeilen", str(zeilen),
+            "--tarif-generation", "TG2015", "--stichtag", "2026-02-01",
+            "--vorgeschichte", "gevo_metadaten.csv",
+            "--out-dir", str(fall / "abgeleitet" / "bestand"),
+        ])
+    assert "ALLE" in str(exc.value)
+
+
+def test_terminaler_vorfall_vor_ta_ist_ein_lieferungswiderspruch():
+    """Ein beendeter Vertrag hat keinen spaeteren Rechenpunkt."""
+    import datetime as _dt
+
+    from rechner_pipeline.gates.bestand_uebernehmen import _verankerungstabelle
+
+    with pytest.raises(SystemExit) as exc:
+        _verankerungstabelle(
+            [{**ZEILE, "monate_ta": 120, "dk_ta": 1.0}],
+            {"7000001": [("STO", _dt.date(2020, 2, 1))]},
+        )
+    assert "terminaler Vorfall" in str(exc.value)
+
+
+def test_validate_verankerung_findet_die_naheliegenden_fehler():
+    """Unbekannte Police, doppeltes t_a, t_a nach Ablauf."""
+    import pandas as pd
+
+    from rechner_pipeline.gates.bestand_uebernehmen import _verankerungstabelle
+    from rechner_pipeline.models.bestand import validate_verankerung
+
+    stamm, _h, _l, _hw = _baue()
+    gut = _verankerungstabelle(
+        [{**ZEILE, "monate_ta": 60, "dk_ta": 10.0}], {})
+    assert validate_verankerung(stamm, gut) == []
+
+    fremd = gut.assign(police_id=999)
+    assert any("ausserhalb des Bestands" in b
+               for b in validate_verankerung(stamm, fremd))
+
+    doppelt = pd.concat([gut, gut], ignore_index=True)
+    assert any("mehrere Verankerungen" in b
+               for b in validate_verankerung(stamm, doppelt))
+
+    zu_spaet = gut.assign(monate_ta=12 * (ZEILE["duration"] + 1))
+    befunde = validate_verankerung(stamm, zu_spaet)
+    assert any("nach Vertragsablauf" in b for b in befunde)

@@ -310,6 +310,17 @@ der Basisbestand. `--merkmale` ist Pflicht, sobald die uebernommene
 Generation in Tarifzellen aufgeteilt ist; ohne sie bricht die Bewertung
 ab, statt eine Zelle zu raten.
 
+**Verankerungsattribute.** Traegt die transformierte Zeile ``monate_ta``
+und ``dk_ta`` (der letzte exakte Rechenpunkt des Quellsystems und der
+dort gelieferte Wert, Grundsatzdokumentation 9.12), schreibt die
+Uebernahme zusaetzlich ``verankerung.parquet`` — Zustand und
+Verweildauer am t_a leitet sie aus der registrierten Vorgeschichte ab.
+Alle Vertraege oder keiner; eine halbe Tabelle liesse die
+Korrekturschicht den Rest fuer verankerungsfrei halten. Die
+Korrekturschicht und der aktuarielle Test koennen die Attribute damit
+als VERTRAGSMERKMALE lesen, statt sie je Lauf aus den Erwartungswerten
+zu rekonstruieren.
+
 **Tarifzellen.** Fuehrt die Spez mehr als eine Zelle, kommen zwei
 weitere Ausgaben dazu: `merkmale.parquet` (je Vertrag und Dimension die
 gewaehlte Auspraegung — die Nebentabelle zur Zellwahl) und
