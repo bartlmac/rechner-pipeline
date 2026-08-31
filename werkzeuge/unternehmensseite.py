@@ -183,7 +183,7 @@ def architektur(docs: Path, ziel: Path) -> int:
             quelle.read_text(encoding="utf-8"))
         # Verweise auf die eingecheckte Landkarte zeigen im Auftritt auf
         # die beim Bau frisch erzeugte Fassung.
-        rumpf = rumpf.replace("](landkarte.md)", "](landkarte-schichten.html)")
+        rumpf = rumpf.replace("](landkarte.md)", "](landkarte.html)")
         name = "index.md" if quelle.name == "README.md" else quelle.name
         zielpfad = ziel / "it" / "architektur" / name
         zielpfad.parent.mkdir(parents=True, exist_ok=True)
@@ -196,10 +196,11 @@ def architektur(docs: Path, ziel: Path) -> int:
 
 
 def landkarten(repo: Path, ziel: Path) -> None:
-    """Die Landkarten des Codes beim Bau frisch erzeugen.
+    """Die Landkarte des Codes beim Bau frisch erzeugen.
 
-    ``ontologie.landkarte`` liefert selbsttragende HTML-Artefakte; als
-    Stand wird der Commit gestempelt, aus dem gebaut wurde. Ein
+    ``ontologie.landkarte`` liefert EIN selbsttragendes HTML-Artefakt,
+    das alle Umfaenge (Schichten bis Module) selbst enthaelt; als Stand
+    wird der Commit gestempelt, aus dem gebaut wurde. Ein
     fehlgeschlagener Lauf bricht den Bau ab — eine IT-Seite mit einer
     Landkarte von vorgestern waere Drift mit Ansage.
     """
@@ -207,19 +208,16 @@ def landkarten(repo: Path, ziel: Path) -> None:
     stand = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"], cwd=repo,
         capture_output=True, text=True).stdout.strip()
-    for umfang, name in (("schichten", "landkarte-schichten.html"),
-                         ("modul", "landkarte-module.html")):
-        aus = ziel / "it" / "architektur" / name
-        aus.parent.mkdir(parents=True, exist_ok=True)
-        lauf = subprocess.run(
-            [sys.executable, "-m", "rechner_pipeline.ontologie.landkarte",
-             "--format", "html", "--umfang", umfang,
-             "--stand", stand, "--out", str(aus)],
-            cwd=repo, capture_output=True, text=True)
-        if lauf.returncode != 0:
-            raise VeroeffentlichungFehler(
-                f"Landkarte ({umfang}) liess sich nicht erzeugen: "
-                f"{lauf.stderr.strip()[:300]}")
+    aus = ziel / "it" / "architektur" / "landkarte.html"
+    aus.parent.mkdir(parents=True, exist_ok=True)
+    lauf = subprocess.run(
+        [sys.executable, "-m", "rechner_pipeline.ontologie.landkarte",
+         "--format", "html", "--stand", stand, "--out", str(aus)],
+        cwd=repo, capture_output=True, text=True)
+    if lauf.returncode != 0:
+        raise VeroeffentlichungFehler(
+            "Die Landkarte liess sich nicht erzeugen: "
+            f"{lauf.stderr.strip()[:300]}")
 
 
 def techstack(repo: Path, ziel: Path) -> None:
@@ -316,7 +314,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     print(f"{ziel}: {len(kopiert)} Unternehmensseiten-Dateien, "
           f"{len(doku)} Fachdokumente, {adrs} Architektur-Dokumente, "
-          "2 Landkarten und der Techstack erzeugt")
+          "Landkarte und Techstack erzeugt")
     faelle = sorted(
         p.parent.name for p in (ziel / "migrationen").glob("*/index.md")
     ) if (ziel / "migrationen").is_dir() else []

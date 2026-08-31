@@ -22,14 +22,10 @@ werden kann, wird als Befund ausgewiesen statt ersetzt. Die Mathematik
 dahinter dokumentiert das Aktuariat in der
 [Grundsatzdokumentation](../aktuariat/mathematik/grundsatzdokumentation.html).
 
-Wie der Code tatsächlich geschichtet ist, zeigen die beim Bau aus dem
-Code erzeugten Landkarten — kein gepflegtes Schaubild, sondern der
-gemessene Stand:
-
-* [Landkarte der Schichten](architektur/landkarte-schichten.html) —
-  der Überblick: Schichten und ihre Abhängigkeiten
-* [Landkarte der Module](architektur/landkarte-module.html) — das
-  Detail bis auf Modulebene
+Wie der Code tatsächlich geschichtet ist, zeigt die
+[Landkarte](architektur/landkarte.html) — beim Bau aus dem Code
+erzeugt, vom Schichten-Überblick bis auf Modulebene. Kein gepflegtes
+Schaubild, sondern der gemessene Stand.
 
 ## Das KI-gestützte Migrationsvorgehen
 
