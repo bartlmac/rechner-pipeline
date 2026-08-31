@@ -81,6 +81,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Erhoehungsscheiben-Parquet (nur zusammen mit --historie/--ledger).",
     )
     parser.add_argument(
+        "--merkmale",
+        default=None,
+        help=(
+            "Merkmalsauspraegungen-Parquet — Pflicht, sobald eine "
+            "Tarifgeneration der Config in Zellen aufgeteilt ist (sonst "
+            "waere die Zellwahl geraten)."
+        ),
+    )
+    parser.add_argument(
         "--bis",
         default=None,
         help=(
@@ -163,6 +172,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return 2
             scheiben = read_portfolio(Path(ns.scheiben))
 
+    merkmale = None
+    if ns.merkmale:
+        if not Path(ns.merkmale).is_file():
+            print(f"bestand_report: Merkmale nicht gefunden: {ns.merkmale}",
+                  file=sys.stderr)
+            return 2
+        merkmale = read_portfolio(Path(ns.merkmale))
+
     config = None
     if ns.config:
         config_path = Path(ns.config)
@@ -206,6 +223,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             ledger=ledger,
             config=config,
             scheiben=scheiben,
+            merkmale=merkmale,
             bis=bis,
             stichtag=stichtag,
         )

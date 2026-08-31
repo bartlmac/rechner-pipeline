@@ -59,6 +59,7 @@ import pandas as pd
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.parquet_io import write_portfolio
 from rechner_pipeline.models.bestand import (
+    GENERATION_FIELDS,
     MERKMALE_SPALTEN,
     STATUS_HISTORIE_NAMES,
     LEDGER_NAMES,
@@ -70,6 +71,56 @@ from rechner_pipeline.models.bestand import (
 #: — der Vertrag bleibt beitragspflichtig und bekommt keine
 #: Historienzeile.
 GEVO_STATUS = {"PEX": "PEX", "STO": "STO", "TOD": "TOD", "ABL": "ABL"}
+
+
+def _zellen_toml(spez, generation: str) -> str:
+    """Die Tarifzellen der Spez als Config-Abschnitt fuer den Bestand.
+
+    Die Merkmalstabelle sagt, WELCHE Zelle ein Vertrag hat; welche
+    Grundlagen in der Zelle gelten, muss die Bestand-Config sagen. Ohne
+    diesen Abschnitt bewertet der Bericht sechs Zellen mit einem Satz --
+    und wer ihn von Hand schreibt, uebertraegt bei sechs Zellen und
+    siebzehn Feldern gut hundert Zahlen.
+
+    Aufgeteilt in gemeinsam und abweichend: Felder mit gleichem Wert in
+    allen Zellen gehoeren zur Generation, nur der Rest in die Zelle. So
+    liest man am Abschnitt ab, was die Zellen ueberhaupt unterscheidet.
+    """
+    zellen = [z for z in getattr(spez, "zellen", []) if z.auspraegungen]
+    if not zellen:
+        return ""
+
+    def _wert(v) -> str:
+        if isinstance(v, bool):
+            return "true" if v else "false"
+        if isinstance(v, str):
+            return f'"{v}"'
+        return repr(v)
+
+    # model_point ist ein Pydantic-Modell: erst in ein Dict, sonst
+    # iteriert "in" Paare statt Feldnamen und alles waere "nicht da".
+    saetze = [dict(z.model_point) for z in zellen]
+    felder = [f for f in GENERATION_FIELDS if all(f in s for s in saetze)]
+    gemeinsam = [f for f in felder if len({s[f] for s in saetze}) == 1]
+    abweichend = [f for f in felder if f not in gemeinsam]
+
+    aus = [
+        f"# Tarifzellen der Generation {generation}, erzeugt aus der Spez.",
+        "# Die Zuweisungen unter diesem Kommentar gehoeren in den",
+        "# Generationsblock der Bestand-Config; die Zellbloecke darunter",
+        "# folgen unveraendert. (Kein Marker im Kommentar: der Abschnitt",
+        "# wird an seinem ersten Zellblock geteilt.)",
+        "",
+    ]
+    aus += [f"{f} = {_wert(saetze[0][f])}" for f in gemeinsam]
+    for z, satz in sorted(zip(zellen, saetze),
+                          key=lambda p: sorted(p[0].auspraegungen.items())):
+        paare = ", ".join(
+            f'{k} = "{z.auspraegungen[k]}"' for k in sorted(z.auspraegungen)
+        )
+        aus += ["", "[[generation.zelle]]", f"auspraegungen = {{ {paare} }}"]
+        aus += [f"{f} = {_wert(satz[f])}" for f in abweichend]
+    return "\n".join(aus) + "\n"
 
 
 def _merkmalstabelle(zeilen, spez) -> "pd.DataFrame":
@@ -426,11 +477,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     # fuehrt. Ohne Datei hat der Bestand keine Zellen -- das ist etwas
     # anderes als leere Stammspalten, in denen "trifft nicht zu" und
     # "unbekannt" gleich aussehen.
-    merkmale = _merkmalstabelle(zeilen, spez)
-    if len(merkmale):
+    merkmale = _merkmalstabelle(zeilen, spez) if args.generation_spez else None
+    if merkmale is not None and len(merkmale):
         write_portfolio(merkmale, ziel / "merkmale.parquet")
         print(f"  merkmale.parquet: {len(merkmale)} Zeilen "
               f"({merkmale['dimension'].nunique()} Dimensionen)")
+        # Und die Grundlagen zu den Zellen -- sonst laege die Zuordnung
+        # vor, aber nichts, worauf sie zeigt.
+        abschnitt = _zellen_toml(spez, args.generation)
+        if abschnitt:
+            pfad = ziel / "generation-zellen.toml"
+            pfad.write_text(abschnitt, encoding="utf-8")
+            print(f"  generation-zellen.toml: {len(spez.zellen)} Zellen "
+                  "(in die Bestand-Config uebernehmen)")
 
     print(f"{len(stamm)} Vertraege uebernommen nach {ziel}")
     print(f"  bestand.parquet   {len(stamm)} Zeilen")

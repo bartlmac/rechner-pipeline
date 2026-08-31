@@ -353,3 +353,101 @@ def test_die_merkmale_stehen_in_einer_nebentabelle(gefahrener_fall: Path):
 
     # Und der Stamm bleibt frei davon.
     assert "status" not in STAMM_NAMES and "tarifart" not in STAMM_NAMES
+
+
+def test_uebernahme_ohne_spez_laeuft_und_erzeugt_keine_merkmale(
+    gefahrener_fall: Path, tmp_path: Path
+):
+    """Ohne ``--generation-spez`` gibt es keine Zellen -- und keinen Absturz.
+
+    Die Merkmalstabelle liest ihre Dimensionen aus der Spez. Wer ohne sie
+    uebernimmt, liefert einen Bestand ohne Zellen; das ist ein zulaessiger
+    Fall (der Eigenbestand kennt keine), kein Sonderweg. Der Zweig war
+    ungetestet, weil der e2e-Lauf die Spez immer mitgibt.
+    """
+    zeilen = (gefahrener_fall / "abgeleitet" / "transformation" / "zeilen.json")
+    ziel = gefahrener_fall / "abgeleitet" / "ohne_spez"
+
+    assert bestand_uebernehmen.main([
+        "--fall", str(gefahrener_fall), "--zeilen", str(zeilen),
+        "--tarif-generation", GENERATION, "--stichtag", STICHTAG_1,
+        "--vorgeschichte", METADATEN,
+        "--out-dir", str(ziel),
+    ]) == 0
+
+    assert (ziel / "bestand.parquet").exists()
+    assert not (ziel / "merkmale.parquet").exists()
+
+
+def test_der_lauf_liefert_die_grundlagen_zu_seinen_zellen(gefahrener_fall: Path):
+    """Zuordnung UND Grundlagen -- sonst zeigt die Zuordnung ins Leere.
+
+    ``merkmale.parquet`` sagt, welche Zelle ein Vertrag hat. Was in der
+    Zelle gilt, muss die Bestand-Config sagen; ohne diesen Abschnitt
+    bewertet der Bericht die sechs Zellen weiter mit einem Satz. Von Hand
+    waeren es gut hundert Zahlen.
+
+    Der Test prueft nicht nur, dass der Abschnitt da ist, sondern dass er
+    ladbar und gueltig ist und dieselben sechs Zellen aufspannt.
+    """
+    from rechner_pipeline.bestand.config import load_config
+
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    abschnitt = (bestand / "generation-zellen.toml").read_text("utf-8")
+
+    # Was alle Zellen teilen, steht oben; was sie unterscheidet, in ihnen.
+    kopf, _, zellteil = abschnitt.partition("[[generation.zelle]]")
+    assert "zins = 0.0125" in kopf, "gemeinsamer Zins gehoert zur Generation"
+    assert "tafel" not in kopf, "die Sterbetafel unterscheidet die Zellen"
+    assert abschnitt.count("[[generation.zelle]]") == 6
+    assert zellteil.count("auspraegungen = {") == 6
+
+    # Der Abschnitt muss eine gueltige Config ergeben. Kopf in den
+    # Generationsblock, Zellen darunter -- genau wie im Kommentar steht.
+    vorlage = (FIXTURE / "klv-tg2015.spez.json")
+    assert vorlage.exists()
+    toml = _zellen_config(abschnitt)
+    pfad = gefahrener_fall / "abgeleitet" / "zellen-probe.toml"
+    pfad.write_text(toml, encoding="utf-8")
+    config = load_config(pfad)
+    assert config.validate() == []
+
+    gen = config.generationen[0]
+    assert len(gen.zellen) == 6
+    assert gen.dimensionen() == ("status", "tarifart")
+    # Die Tafel kommt aus der Zelle, der Zins aus der Generation.
+    assert gen.felder_fuer({"status": "raucher", "tarifart": "einzel"})["tafel"] \
+        == "DAV2008_T_R_U70"
+    assert gen.felder_fuer({"status": "nichtraucher", "tarifart": "haus"})["tafel"] \
+        == "DAV2008_T_NR_U70"
+    # Der Haustarif hat keinen Stornoabzug -- der Einzeltarif schon.
+    assert gen.felder_fuer({"status": "raucher", "tarifart": "haus"})["stoab_satz"] == 0.0
+    assert gen.felder_fuer({"status": "raucher", "tarifart": "einzel"})["stoab_satz"] > 0.0
+
+
+def _zellen_config(abschnitt: str) -> str:
+    """Den erzeugten Abschnitt in eine vollstaendige Config einbetten."""
+    kopf, sep, rest = abschnitt.partition("[[generation.zelle]]")
+    gemeinsam = "\n".join(
+        z for z in kopf.splitlines() if z and not z.startswith("#")
+    )
+    return (
+        '[meta]\nseed = 1\nbeschreibung = "Probe"\n'
+        "referenzstichtag = 2026-01-01\n\n"
+        f'[[generation]]\nname = "{GENERATION}"\nknoten = "{GENERATION}"\n'
+        "gueltig_von = 2015-01-01\ngueltig_bis = 2016-12-31\n"
+        f"sample_size = 0\nmax_endalter = 85\n{gemeinsam}\n\n"
+        "[generation.verteilungen.entry_age]\n"
+        'typ = "normal_trunc"\nmean = 40.0\nsd = 12.0\nmin = 18.0\n'
+        "max = 62.0\nround = 0\n\n"
+        '[generation.verteilungen.sex]\ntyp = "empirical_discrete"\n'
+        'values = ["M", "F"]\nprobs = [0.5, 0.5]\n\n'
+        '[generation.verteilungen.duration]\ntyp = "empirical_discrete"\n'
+        "values = [25]\nprobs = [1.0]\n\n"
+        '[generation.verteilungen.premium_duration]\n'
+        'typ = "empirical_discrete"\nvalues = [25]\nprobs = [1.0]\n\n'
+        '[generation.verteilungen.sum_insured]\ntyp = "lognormal"\n'
+        "meanlog = 11.2\nsdlog = 0.5\nround = -3\n\n"
+        '[generation.verteilungen.zahlweise]\ntyp = "empirical_discrete"\n'
+        "values = [1]\nprobs = [1.0]\n\n" + sep + rest
+    )

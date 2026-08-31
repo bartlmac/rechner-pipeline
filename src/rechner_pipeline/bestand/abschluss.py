@@ -56,8 +56,10 @@ def _rechne(
     config: BestandConfig,
     stichtag: _dt.date,
     scheiben: Optional[pd.DataFrame],
+    merkmale: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
-    zeilen = einzelwerte_am(stamm, historie, config, stichtag, scheiben=scheiben)
+    zeilen = einzelwerte_am(stamm, historie, config, stichtag,
+                            scheiben=scheiben, merkmale=merkmale)
     if not zeilen:
         raise AbschlussError(
             f"Abschluss {stichtag.isoformat()}: kein in-force-Bestand am "
@@ -91,6 +93,7 @@ def schreibe_abschluss(
     ziel_dir: Path,
     *,
     scheiben: Optional[pd.DataFrame] = None,
+    merkmale: Optional[pd.DataFrame] = None,
 ) -> Path:
     """Bewertungsstand des Stichtags festschreiben (genau einmal).
 
@@ -105,7 +108,7 @@ def schreibe_abschluss(
             f"Abschluss {stichtag.isoformat()} ist bereits festgeschrieben "
             f"({pfad}) — festgeschriebene Staende werden nie ueberschrieben"
         )
-    df = _rechne(stamm, historie, config, stichtag, scheiben)
+    df = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
     ziel_dir.mkdir(parents=True, exist_ok=True)
     return write_portfolio(df, pfad)
 
@@ -117,6 +120,7 @@ def pruefe_abschluss(
     config: BestandConfig,
     *,
     scheiben: Optional[pd.DataFrame] = None,
+    merkmale: Optional[pd.DataFrame] = None,
 ) -> List[str]:
     """Neuberechnung gegen den festgeschriebenen Stand stellen.
 
@@ -145,7 +149,7 @@ def pruefe_abschluss(
             f"Stichtag {stichtag.isoformat()} (erwartet {erwartet.name})"
         ]
 
-    neu = _rechne(stamm, historie, config, stichtag, scheiben)
+    neu = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
     kern_stand_alt = sorted(set(fest["kern_version"]))
     if kern_stand_alt != [KERN_VERSION]:
         befunde.append(

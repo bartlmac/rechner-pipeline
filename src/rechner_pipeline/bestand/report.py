@@ -56,6 +56,7 @@ from rechner_pipeline.bestand.berichtstexte import (  # noqa: E402
     teilbestand,
 )
 from rechner_pipeline.bestand.config import BestandConfig  # noqa: E402
+from rechner_pipeline.models.bestand import validate_merkmale  # noqa: E402
 from rechner_pipeline.bestand.fuehrung import journalsicht, schnitt_am  # noqa: E402
 from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
     EREIGNIS_LABELS,
@@ -793,6 +794,7 @@ def render_html(
     ledger: Optional[pd.DataFrame] = None,
     config: Optional[BestandConfig] = None,
     scheiben: Optional[pd.DataFrame] = None,
+    merkmale: Optional[pd.DataFrame] = None,
     bis: Optional[_dt.date] = None,
     stichtag: Optional[_dt.date] = None,
 ) -> str:
@@ -823,6 +825,21 @@ def render_html(
         raise ValueError(
             "scheiben nur zusammen mit historie/ledger (ein fortschreiben-Lauf)"
         )
+    if merkmale is not None and config is not None:
+        # Die Merkmalstabelle waehlt die Tarifzelle; sie darf nur
+        # Auspraegungen nennen, die die Generation auch fuehrt. Ein Tippfehler
+        # waere sonst kein Fehler, sondern eine Zelle, die es nicht gibt --
+        # und die Bewertung braeche erst tief im Kern ab.
+        erlaubt = {
+            dim: {str(z.auspraegungen[dim]) for z in g.zellen if dim in z.auspraegungen}
+            for g in config.generationen
+            for dim in g.dimensionen()
+        }
+        fehler = validate_merkmale(df, merkmale, erlaubt or None)
+        if fehler:
+            raise ValueError(
+                f"Merkmale ungueltig: {'; '.join(fehler[:3])}"
+            )
     if ledger is not None:
         fremd = set(ledger["police_id"]) - set(df["police_id"])
         if fremd:
@@ -938,7 +955,8 @@ def render_html(
         reihe_ausw: List[Dict[str, Any]] = []
         if config is not None:
             reihe_ausw = auswertungs_verlauf(
-                df, historie, config, stichtage, scheiben=scheiben
+                df, historie, config, stichtage, scheiben=scheiben,
+                merkmale=merkmale
             )
             svg_dk = _chart_deckungskapital(reihe_ausw, stichtag=stichtag)
             svg_beitrag = _chart_beitraege(

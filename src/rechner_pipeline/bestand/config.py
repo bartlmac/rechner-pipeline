@@ -152,6 +152,46 @@ _KNOTEN_ID = re.compile(r"^[a-z0-9_]+(/[a-z0-9_]+)+$")
 
 
 @dataclass
+class TarifZelle:
+    """Eine Tarifzelle: Merkmalskombination + die Grundlagen, die dort gelten.
+
+    Eine Generation ist nicht immer ein einziger Parametersatz. Die
+    uebernommene TG2015 fuehrt sechs Zellen ueber ``status`` und
+    ``tarifart``; zwoelf der siebzehn Kernfelder unterscheiden sich
+    zwischen ihnen — bis zur Sterbetafel (Raucher/Nichtraucher) und zum
+    Stornoabzug (der Haustarif hat keinen). Wer den Bestand mit EINEM
+    Satz bewertet, rechnet die Raucher mit der Nichtrauchertafel.
+
+    ``felder`` traegt nur die ABWEICHENDEN Kernfelder; alles Uebrige
+    kommt aus der Generation. So bleibt sichtbar, was die Zelle
+    ausmacht, statt siebzehn Werte je Zelle zu wiederholen.
+
+    Welche Zelle ein Vertrag hat, sagt ``merkmale.parquet`` — nicht
+    diese Datei. Hier stehen die Grundlagen, dort die Zuordnung.
+    """
+
+    auspraegungen: Dict[str, str]
+    felder: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def schluessel(self) -> Tuple[Tuple[str, str], ...]:
+        """Kanonische, sortierte Form — die Reihenfolge darf nicht zaehlen."""
+        return tuple(sorted((str(k), str(v)) for k, v in self.auspraegungen.items()))
+
+    def validate(self) -> List[str]:
+        errors: List[str] = []
+        if not self.auspraegungen:
+            errors.append("zelle: auspraegungen fehlen")
+        unbekannt = sorted(set(self.felder) - set(GENERATION_FIELDS))
+        if unbekannt:
+            errors.append(
+                f"zelle {dict(self.schluessel)}: unbekannte Kernfelder "
+                f"{unbekannt} (erlaubt: {sorted(GENERATION_FIELDS)})"
+            )
+        return errors
+
+
+@dataclass
 class TarifGeneration:
     name: str
     gueltig_von: _dt.date
@@ -199,12 +239,47 @@ class TarifGeneration:
     tafel_ri: str = "DAV1997_RI"
     tafel_ti: str = "DAV1997_TI"
     zuschlag: float = 0.05
+    #: Tarifzellen dieser Generation (leer = ein einziger Parametersatz).
+    #: Die Werte oben sind dann die der Generation als ganzer; mit Zellen
+    #: sind sie der gemeinsame Rumpf, den die Zellen ueberschreiben.
+    zellen: List[TarifZelle] = field(default_factory=list)
     verteilungen: Dict[str, VerteilungsSpec] = field(default_factory=dict)
     korrelationen: List[Korrelation] = field(default_factory=list)
 
     def generation_fields(self) -> Dict[str, Any]:
         """The kernel-side tariff parameters (joined into ModelPoint kwargs)."""
         return {name: getattr(self, name) for name in GENERATION_FIELDS}
+
+    def dimensionen(self) -> Tuple[str, ...]:
+        """Die Merkmalsdimensionen, ueber die diese Generation aufgeteilt ist."""
+        return tuple(sorted({k for z in self.zellen for k in z.auspraegungen}))
+
+    def felder_fuer(self, auspraegungen: Mapping[str, str]) -> Dict[str, Any]:
+        """Die Rechnungsgrundlagen der Zelle, die ``auspraegungen`` benennt.
+
+        Ohne Zellen gilt der Satz der Generation — der heutige Zustand,
+        unveraendert. Mit Zellen ist eine nicht getroffene Kombination ein
+        harter Fehler und kein stiller Rueckfall auf den Rumpf: Der Rumpf
+        ist bei mehrzelligen Generationen kein gueltiger Tarif, sondern
+        nur der gemeinsame Teil. Ein Vertrag ohne Zelle waere sonst
+        klaglos mit Grundlagen bewertet, die fuer ihn nie galten.
+        """
+        felder = self.generation_fields()
+        if not self.zellen:
+            return felder
+        dims = self.dimensionen()
+        gesucht = tuple(sorted(
+            (d, str(auspraegungen[d])) for d in dims if d in auspraegungen
+        ))
+        for zelle in self.zellen:
+            if zelle.schluessel == gesucht:
+                felder.update(zelle.felder)
+                return felder
+        raise KeyError(
+            f"generation {self.name}: keine Tarifzelle fuer {dict(gesucht)} "
+            f"(Dimensionen {list(dims)}; bekannt: "
+            f"{[dict(z.schluessel) for z in self.zellen]})"
+        )
 
     def bu_generation_fields(self) -> Dict[str, Any]:
         """Die BU-Rechnungsgrundlagen (fuer BUModelPoint-kwargs)."""
@@ -263,50 +338,28 @@ class TarifGeneration:
             errors.append(f"{prefix}: max_endalter ausserhalb (0, 121]")
         if self.produkt not in PRODUKT_VALUES:
             errors.append(f"{prefix}: produkt {self.produkt!r} ausserhalb {list(PRODUKT_VALUES)}")
+        errors.extend(self._validate_zellen(prefix))
         if self.zins <= -1.0:
             errors.append(f"{prefix}: zins <= -100%")
         if self.produkt == "bu":
             errors.extend(self._validate_bu(prefix))
-        # Ausscheideordnung des Sterblichkeits-Risikos: bei KLV die
-        # Tarif-Tafel, bei BU die Aktivensterblichkeit.
-        sterbetafel = self.tafel_aktiv if self.produkt == "bu" else self.tafel
-        if not sterbetafel:
-            errors.append(f"{prefix}: tafel fehlt")
+        # Die Tarifwerte gelten je ZELLE. Ist die Generation aufgeteilt,
+        # muss jede Zelle fuer sich stimmen; die Generation traegt dann nur
+        # den gemeinsamen Rumpf, und dessen Tafel darf leer sein, weil sie
+        # ohnehin aus der Zelle kommt. Ohne Zellen ist der Rumpf der Tarif
+        # — dann pruefen dieselben Regeln ihn selbst.
+        if self.produkt == "bu":
+            errors.extend(self._validate_tarifwerte(
+                prefix, self.tafel_aktiv, self.generation_fields()))
+        elif not self.zellen:
+            errors.extend(self._validate_tarifwerte(
+                prefix, self.tafel, self.generation_fields()))
         else:
-            # max_endalter muss vor der Tafel-Erschoepfung liegen, sonst
-            # kann ein voll validiertes Setup Vertraege erzeugen, deren
-            # Fortschreibung im Kern an der Tafelgrenze scheitert.
-            from rechner_pipeline.kern import MissingMortalityTableError
-            from rechner_pipeline.kern.konventionen import MAX_ALTER
-            from rechner_pipeline.kern.tafeln import basis as tafelbasis
-
-            try:
-                grenze = min(
-                    (b.erschoepft - 1 if b.erschoepft is not None
-                     else MAX_ALTER)
-                    for b in (
-                        tafelbasis("M", sterbetafel),
-                        tafelbasis("F", sterbetafel),
-                    )
-                )
-            except MissingMortalityTableError as exc:
-                errors.append(f"{prefix}: {exc}")
-            else:
-                if self.max_endalter > grenze:
-                    errors.append(
-                        f"{prefix}: max_endalter {self.max_endalter} liegt hinter "
-                        f"der Tafel-Erschoepfung von {sterbetafel} "
-                        f"(letztes Alter mit Dx > 0: {grenze})"
-                    )
-        if self.stoab_min > self.stoab_max:
-            errors.append(f"{prefix}: stoab_min > stoab_max")
-        if self.stoab_satz < 0:
-            errors.append(f"{prefix}: stoab_satz < 0")
-        if self.zillmer_dauer <= 0:
-            errors.append(f"{prefix}: zillmer_dauer <= 0")
-        for name in ("ratzu_zw2", "ratzu_zw4", "ratzu_zw12"):
-            if getattr(self, name) < 0:
-                errors.append(f"{prefix}: {name} < 0")
+            for zelle in self.zellen:
+                felder = {**self.generation_fields(), **zelle.felder}
+                errors.extend(self._validate_tarifwerte(
+                    f"{prefix}, zelle {dict(zelle.schluessel)}",
+                    str(felder.get("tafel", "")), felder))
         for merkmal in self.required_merkmale():
             if merkmal not in self.verteilungen:
                 errors.append(f"{prefix}: verteilung fuer {merkmal} fehlt")
@@ -336,6 +389,83 @@ class TarifGeneration:
                     f"(Matrix nicht positiv semidefinit, min. Eigenwert {min_eig:.3f}) "
                     "— rhos abschwaechen oder Paare entfernen"
                 )
+        return errors
+
+    def _validate_tarifwerte(
+        self, prefix: str, sterbetafel: str, felder: Mapping[str, Any]
+    ) -> List[str]:
+        """Die Regeln EINES Tarifs — der Generation oder einer ihrer Zellen."""
+        errors: List[str] = []
+        if not sterbetafel:
+            errors.append(f"{prefix}: tafel fehlt")
+        else:
+            # max_endalter muss vor der Tafel-Erschoepfung liegen, sonst
+            # kann ein voll validiertes Setup Vertraege erzeugen, deren
+            # Fortschreibung im Kern an der Tafelgrenze scheitert.
+            from rechner_pipeline.kern import MissingMortalityTableError
+            from rechner_pipeline.kern.konventionen import MAX_ALTER
+            from rechner_pipeline.kern.tafeln import basis as tafelbasis
+
+            try:
+                grenze = min(
+                    (b.erschoepft - 1 if b.erschoepft is not None
+                     else MAX_ALTER)
+                    for b in (
+                        tafelbasis("M", sterbetafel),
+                        tafelbasis("F", sterbetafel),
+                    )
+                )
+            except MissingMortalityTableError as exc:
+                errors.append(f"{prefix}: {exc}")
+            else:
+                if self.max_endalter > grenze:
+                    errors.append(
+                        f"{prefix}: max_endalter {self.max_endalter} liegt hinter "
+                        f"der Tafel-Erschoepfung von {sterbetafel} "
+                        f"(letztes Alter mit Dx > 0: {grenze})"
+                    )
+        if float(felder.get("stoab_min", 0.0)) > float(felder.get("stoab_max", 0.0)):
+            errors.append(f"{prefix}: stoab_min > stoab_max")
+        if float(felder.get("stoab_satz", 0.0)) < 0:
+            errors.append(f"{prefix}: stoab_satz < 0")
+        if int(felder.get("zillmer_dauer", 0)) <= 0:
+            errors.append(f"{prefix}: zillmer_dauer <= 0")
+        for name in ("ratzu_zw2", "ratzu_zw4", "ratzu_zw12"):
+            if float(felder.get(name, 0.0)) < 0:
+                errors.append(f"{prefix}: {name} < 0")
+        return errors
+
+    def _validate_zellen(self, prefix: str) -> List[str]:
+        """Die Zellen muessen EINEN Merkmalsraum aufspannen, luecken- und
+        doppelfrei.
+
+        Zwei Zellen mit demselben Schluessel machen die Auswahl von der
+        Reihenfolge abhaengig; eine Zelle, die eine Dimension auslaesst,
+        macht sie mehrdeutig. Beides faellt sonst erst bei der Bewertung
+        auf — und dann als falsche Zahl, nicht als Fehler.
+        """
+        errors: List[str] = []
+        if not self.zellen:
+            return errors
+        dims = self.dimensionen()
+        gesehen: Dict[Tuple[Tuple[str, str], ...], int] = {}
+        for i, zelle in enumerate(self.zellen):
+            errors.extend(f"{prefix}, {e}" for e in zelle.validate())
+            fehlend = sorted(set(dims) - set(zelle.auspraegungen))
+            if fehlend:
+                errors.append(
+                    f"{prefix}: zelle {dict(zelle.schluessel)} laesst die "
+                    f"Dimensionen {fehlend} offen — jede Zelle muss den "
+                    "ganzen Merkmalsraum benennen, sonst ist die Zuordnung "
+                    "eines Vertrags mehrdeutig"
+                )
+            if zelle.schluessel in gesehen:
+                errors.append(
+                    f"{prefix}: zelle {dict(zelle.schluessel)} doppelt "
+                    f"(Position {gesehen[zelle.schluessel]} und {i}) — welche "
+                    "gilt, waere Reihenfolge, nicht Fachlichkeit"
+                )
+            gesehen[zelle.schluessel] = i
         return errors
 
     def _validate_bu(self, prefix: str) -> List[str]:
@@ -588,6 +718,19 @@ def load_config(path: Path) -> BestandConfig:
             )
             for k in g.get("korrelation", [])
         ]
+        # [[generation.zelle]] mit auspraegungen = {...} und den
+        # abweichenden Kernfeldern direkt daneben. Unbekannte Felder
+        # meldet TarifZelle.validate — hier wird nur gelesen.
+        zellen = [
+            TarifZelle(
+                auspraegungen={
+                    str(k): str(v)
+                    for k, v in (z.get("auspraegungen", {}) or {}).items()
+                },
+                felder={k: v for k, v in z.items() if k != "auspraegungen"},
+            )
+            for z in g.get("zelle", [])
+        ]
         generationen.append(
             TarifGeneration(
                 name=str(g.get("name", "")),
@@ -620,6 +763,7 @@ def load_config(path: Path) -> BestandConfig:
                 tafel_ri=str(g.get("tafel_ri", "DAV1997_RI")),
                 tafel_ti=str(g.get("tafel_ti", "DAV1997_TI")),
                 zuschlag=float(g.get("zuschlag", 0.05)),
+                zellen=zellen,
                 verteilungen=verteilungen,
                 korrelationen=korrelationen,
             )

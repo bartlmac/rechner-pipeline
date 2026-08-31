@@ -256,6 +256,7 @@ python -m rechner_pipeline.gates.bestand_uebernehmen \
     --fall faelle/<fall> --zeilen <zeilen>.json \
     --tarif-generation klv/tg2015 --stichtag <iso> \
     --vorgeschichte <registrierte-gevo-metadaten>.csv \
+    --generation-spez klv/tg2015 \
     --out-dir faelle/<fall>/abgeleitet/bestand
 ```
 
@@ -265,6 +266,19 @@ Statusregel von oben um: Stamm bei Beginn, Folgezustaende in der
 Historie. `--vorgeschichte` liest die REGISTRIERTE Metadatenliste der
 Geschaeftsvorfaelle vor dem Stichtag; ohne sie ist der
 Verankerungszeitpunkt nicht bestimmbar.
+
+**Tarifzellen.** Fuehrt die Spez mehr als eine Zelle, kommen zwei
+weitere Ausgaben dazu: `merkmale.parquet` (je Vertrag und Dimension die
+gewaehlte Auspraegung — die Nebentabelle zur Zellwahl) und
+`generation-zellen.toml` (die Rechnungsgrundlagen der Zellen als
+Abschnitt fuer die Bestand-Config). Beide gehoeren zusammen: die eine
+sagt WELCHE Zelle, die andere WAS darin gilt. Der Abschnitt wird in die
+Config uebernommen, der Bericht bekommt `--merkmale
+<...>/merkmale.parquet`. Ohne diese Kette bewertet der Bericht alle
+uebernommenen Vertraege mit EINEM Parametersatz — bei der TG2015 mit der
+Nichtrauchertafel auch die Raucher. Eine aufgeteilte Generation ohne
+Merkmalstabelle bricht die Bewertung hart ab; sie faellt nicht still auf
+den gemeinsamen Rumpf zurueck, denn der gilt fuer keinen Vertrag.
 
 ### Gate A-Q1 (Mensch — hier STOPPST du und uebergibst)
 
