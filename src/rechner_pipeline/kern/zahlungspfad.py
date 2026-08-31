@@ -305,7 +305,18 @@ def verlaufszeile(
     p = paesse(mp, pfad, basis)
     if skalare is None:
         skalare = vertragskonstanten(mp, basis)
+    return _zeile(p, mp, skalare, a)
 
+
+def _zeile(
+    p: Barwertpaesse, mp: ModelPoint, skalare: Dict[str, float], a: int
+) -> Pfadzeile:
+    """Eine Jahreszeile aus BEREITS gerechneten Paessen.
+
+    Herausgeloest, weil die unterjaehrige Bewertung zwei benachbarte
+    Jahre braucht: Die Paesse zweimal zu rechnen waere dieselbe Rekursion
+    zweimal.
+    """
     axn = p.rente_n(a)
     axt = p.rente_t(a)
     azd = p.rente_zd(a)
@@ -329,6 +340,78 @@ def verlaufszeile(
     return Pfadzeile(
         jahr=a, leistungsbarwert=leistung, axn=axn, axt=axt,
         vx_bpfl=kvx_bpfl, drx_bpfl=kdrx_bpfl, vx_bfr=kvx_bfr, vx_mrv=kvx_mrv,
+    )
+
+
+@dataclass(frozen=True)
+class Pfadmonatsreserve:
+    """Reserven an einem Monats-Stichtag, gebildet aus dem Zahlungspfad.
+
+    Dieselbe Bilanzierungskonvention wie ``produkte.klv.Monatsreserve``:
+    lineare Mischung der Jahrestage ``a`` und ``a+1`` mit dem Monatsanteil,
+    Stornoabschlag und Rueckkaufswert aus den INTERPOLIERTEN Betraegen neu
+    gerechnet, Regelwerk nach dem angebrochenen Vertragsjahr.
+    """
+
+    monate: int
+    jahr: int
+    monatsanteil: float
+    drx_bpfl: float
+    vx_mrv: float
+    stoab: float
+    rkw: float
+
+
+def monatsreserve(
+    mp: ModelPoint, pfad: Zahlungspfad, basis: Tafelbasis, monate: int,
+    *, skalare: Optional[Dict[str, float]] = None,
+) -> Pfadmonatsreserve:
+    """Die Reserve nach ``monate`` vollen Monaten auf dem Pfadweg.
+
+    **Der Stornoabschlag rechnet auf der Summe, die der Vertrag am
+    Stichtag TRAEGT** — also ``VS`` mal dem Leistungsfaktor des Pfades,
+    nicht auf der Ursprungssumme. Bei einem herabgesetzten Vertrag ist das
+    die neue Gesamtsumme; genau so schreibt es der Tarifplan vor
+    (StoAb und RKW vertragsweit auf ``S_neu``). Ein Pfad, der die Summe
+    aendert, aendert damit auch den Abschlag — und muss es, sonst zoege
+    das Zielsystem einen Abschlag auf eine Summe ab, die es nicht mehr
+    versichert.
+    """
+    from rechner_pipeline.kern.produkte.klv import KLV
+
+    monate = int(monate)
+    if monate < 0:
+        raise ZahlungspfadFehler(f"Monats-Stichtag {monate} negativ")
+    if monate > 12 * mp.n:
+        raise ZahlungspfadFehler(
+            f"Monats-Stichtag {monate} liegt nach dem Ablauf "
+            f"(n = {mp.n} Jahre) — dort gibt es keine Reserve mehr")
+
+    p = paesse(mp, pfad, basis)
+    if skalare is None:
+        skalare = vertragskonstanten(mp, basis)
+
+    a, rest = divmod(monate, 12)
+    u = rest / 12.0
+    za = _zeile(p, mp, skalare, a)
+    if rest == 0:
+        dr, mrv = za.drx_bpfl, za.vx_mrv
+    else:
+        zb = _zeile(p, mp, skalare, a + 1)
+        dr = (1.0 - u) * za.drx_bpfl + u * zb.drx_bpfl
+        mrv = (1.0 - u) * za.vx_mrv + u * zb.vx_mrv
+
+    produkt = KLV(mp)
+    if a > mp.n or produkt.ist_flex_phase(a):
+        stoab = 0.0
+    else:
+        summe = mp.sum_insured * (
+            pfad.leistung[a] if a < mp.n else pfad.ablauf)
+        stoab = min(mp.stoab_max,
+                    max(mp.stoab_min, mp.stoab_satz * (summe - dr)))
+    return Pfadmonatsreserve(
+        monate=monate, jahr=a, monatsanteil=u,
+        drx_bpfl=dr, vx_mrv=mrv, stoab=stoab, rkw=max(0.0, mrv - stoab),
     )
 
 

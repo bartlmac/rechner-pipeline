@@ -274,27 +274,42 @@ class ReduzierterVertrag:
         return satz
 
     def monatsreserve(self, monate: int) -> "Monatsreserve":
-        """Vertragsweite Reserven des geteilten Vertrags am Monats-Stichtag."""
+        """Vertragsweite Reserven des geteilten Vertrags am Monats-Stichtag.
+
+        Gerechnet ueber den ZAHLUNGSPFAD: eine Rekursion ueber den
+        tatsaechlichen Verlauf, statt den Ursprungsvertrag zu rechnen und
+        mit dem Anteil zu multiplizieren.
+
+        Die Skalierung war exakt, aber nur unter einer Voraussetzung --
+        Homogenitaet in der Versicherungssumme. Sie gilt fuer einen
+        ungeteilten Vertrag und faellt, sobald Erhoehungsscheiben mit
+        eigenem Eintrittsalter und eigener Beitragsdauer dazukommen;
+        genau darum beschraenkt der Tarifplan die Herabsetzung heute auf
+        den Track ohne Scheiben. Der Verlauf braucht die Voraussetzung
+        nicht: Er beschreibt, was gezahlt wird.
+
+        Die Umstellung ist wertneutral -- Pfad und Skalierung stimmen an
+        jedem Monats-Stichtag ueberein (Test in tests/test_zahlungspfad).
+        Getragen wird die Gleichheit von den KOSTENPROFILEN des Pfades:
+        Ohne sie liefe der Verlauf mit den vollen Verwaltungskosten des
+        beitragspflichtigen Vertrags und laege um Hunderte Euro daneben.
+        """
         from rechner_pipeline.kern.produkte.klv import Monatsreserve
+        from rechner_pipeline.kern.zahlungspfad import (
+            monatsreserve as pfad_monatsreserve,
+        )
 
         self._pruefe_monat(monate)
-        mr = self.kern.monatsreserve(monate)
-        umgewandelt = self.bfr_teil * self._bfr_satz(monate)
-        anteil = self.reduktion.anteil
-        dr = anteil * mr.drx_bpfl + umgewandelt
-        mrv = anteil * mr.vx_mrv + umgewandelt
         mp = self.kern.mp
-        a = int(monate) // 12
-        if a > mp.n or self.kern.produkt.ist_flex_phase(a):
-            stoab = 0.0
-        else:
-            stoab = min(mp.stoab_max,
-                        max(mp.stoab_min,
-                            mp.stoab_satz * (self.reduktion.vs_neu - dr)))
+        werte = pfad_monatsreserve(
+            mp, als_zahlungspfad(self.reduktion, mp), self.kern.basis,
+            int(monate),
+        )
         return Monatsreserve(
-            monate=int(monate), jahr=a, monatsanteil=(int(monate) % 12) / 12.0,
-            drx_bpfl=dr, vx_mrv=mrv, stoab=stoab,
-            rkw=max(0.0, mrv - stoab),
+            monate=werte.monate, jahr=werte.jahr,
+            monatsanteil=werte.monatsanteil,
+            drx_bpfl=werte.drx_bpfl, vx_mrv=werte.vx_mrv,
+            stoab=werte.stoab, rkw=werte.rkw,
         )
 
     def bjb(self, monate: int) -> float:

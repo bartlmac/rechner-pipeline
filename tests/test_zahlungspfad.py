@@ -314,3 +314,88 @@ def test_ohne_kostenprofil_weicht_der_pfad_messbar_ab():
         pytest.approx(soll, abs=1e-6))
     assert abs(verlaufszeile(mp, ohne, basis, 10, skalare=skalare).drx_bpfl
                - soll) > 100.0
+
+
+# --------------------------------------------------------------------------- #
+# Unterjaehrige Bewertung
+# --------------------------------------------------------------------------- #
+
+def test_der_pfad_trifft_den_skalaren_weg_an_jedem_monatsstichtag():
+    """Bit-exakt, nicht nur nahe dran.
+
+    Der unveraenderte Vertrag muss auf beiden Wegen DIESELBEN Bytes
+    ergeben — sonst waere die Umstellung eine Wertaenderung, die sich als
+    Refactoring tarnt. Geprueft werden alle vier Groessen: Auch
+    Stornoabschlag und Rueckkaufswert, die aus der interpolierten Reserve
+    neu gerechnet werden.
+    """
+    from rechner_pipeline.kern import Rechenkern
+    from rechner_pipeline.kern.model_point import KLV_DEFAULT
+    from rechner_pipeline.kern.zahlungspfad import (
+        monatsreserve,
+        standardpfad,
+        vertragskonstanten,
+    )
+
+    kern = Rechenkern(KLV_DEFAULT)
+    mp, basis = kern.mp, kern.basis
+    pfad, skalare = standardpfad(mp), vertragskonstanten(mp, basis)
+
+    for monate in range(0, 12 * mp.n + 1):
+        skalar = kern.monatsreserve(monate)
+        ueber_pfad = monatsreserve(mp, pfad, basis, monate, skalare=skalare)
+        assert ueber_pfad.jahr == skalar.jahr
+        assert ueber_pfad.monatsanteil == skalar.monatsanteil
+        for name in ("drx_bpfl", "vx_mrv", "stoab", "rkw"):
+            assert getattr(ueber_pfad, name) == getattr(skalar, name), (
+                f"Monat {monate}, Groesse {name}")
+
+
+@pytest.mark.parametrize("verfahren", ["prospektiv", "mit_abzug"])
+def test_der_pfad_trifft_die_herabsetzung_auch_unterjaehrig(verfahren: str):
+    """Die Herabsetzung stimmt an JEDEM Monats-Stichtag, nicht nur am
+    Jahrestag — inklusive des Stornoabschlags, der auf der NEUEN
+    Gesamtsumme rechnet."""
+    from rechner_pipeline.kern import Rechenkern
+    from rechner_pipeline.kern.beitragsreduktion import (
+        ReduzierterVertrag,
+        als_zahlungspfad,
+        reduziere,
+    )
+    from rechner_pipeline.kern.model_point import KLV_DEFAULT
+    from rechner_pipeline.kern.zahlungspfad import (
+        monatsreserve,
+        vertragskonstanten,
+    )
+
+    kern = Rechenkern(KLV_DEFAULT)
+    mp, basis = kern.mp, kern.basis
+    red = reduziere(kern, 5, 0.6, verfahren=verfahren)
+    skaliert = ReduzierterVertrag(kern=kern, reduktion=red)
+    pfad = als_zahlungspfad(red, mp)
+    skalare = vertragskonstanten(mp, basis)
+
+    for monate in range(12 * 5, 12 * mp.n + 1):
+        a = skaliert.monatsreserve(monate)
+        b = monatsreserve(mp, pfad, basis, monate, skalare=skalare)
+        for name in ("drx_bpfl", "vx_mrv", "stoab", "rkw"):
+            assert getattr(b, name) == pytest.approx(
+                getattr(a, name), abs=1e-6), f"Monat {monate}, {name}"
+
+
+def test_nach_dem_ablauf_gibt_es_keine_reserve():
+    """Fail fast statt stiller Null — dieselbe Grenze wie im skalaren Weg."""
+    from rechner_pipeline.kern import Rechenkern
+    from rechner_pipeline.kern.model_point import KLV_DEFAULT
+    from rechner_pipeline.kern.zahlungspfad import (
+        ZahlungspfadFehler,
+        monatsreserve,
+        standardpfad,
+    )
+
+    kern = Rechenkern(KLV_DEFAULT)
+    mp, basis = kern.mp, kern.basis
+    with pytest.raises(ZahlungspfadFehler, match="nach dem Ablauf"):
+        monatsreserve(mp, standardpfad(mp), basis, 12 * mp.n + 1)
+    with pytest.raises(ZahlungspfadFehler, match="negativ"):
+        monatsreserve(mp, standardpfad(mp), basis, -1)
