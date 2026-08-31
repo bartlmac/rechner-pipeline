@@ -197,6 +197,10 @@ def _baue_frame(
             "insurance_start": pd.to_datetime(starts),
             "insurance_end": pd.to_datetime(ins_end),
             "payment_end": pd.to_datetime(pay_end),
+            # Eigenes Geschaeft: der Vertrag kommt mit seinem Abschluss in
+            # die Buecher. Nur uebernommene Bestaende trennen die beiden
+            # Daten (gates/bestand_uebernehmen setzt den Stichtag).
+            "bestandszugang": pd.to_datetime(starts),
         }
     )
 

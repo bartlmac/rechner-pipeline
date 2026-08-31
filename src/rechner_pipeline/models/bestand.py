@@ -144,6 +144,13 @@ STAMM_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("insurance_start", "datetime64[ns]"),
     ("insurance_end", "datetime64[ns]"),
     ("payment_end", "datetime64[ns]"),
+    # Wann der Vertrag in DIESE Buecher kam. Beim eigenen Geschaeft ist
+    # das der Versicherungsbeginn; bei uebernommenem der
+    # Migrationsstichtag — davor stand der Vertrag beim abgebenden
+    # Unternehmen. Ohne die Unterscheidung fuehrte der Bestandsbericht
+    # eine 2015 abgeschlossene Baldrian-Police ab 2015 in den Buechern
+    # der PLV, elf Jahre vor der Uebernahme.
+    ("bestandszugang", "datetime64[ns]"),
 )
 
 #: Die produktfuehrende Leistungsspalte (Bezugsgroesse der Nachweisung):
@@ -390,6 +397,20 @@ def validate_portfolio(df: Any) -> List[str]:
         errors.append("Folgestatus mit status_date <= insurance_start")
     if (df.loc[folge, "status_date"] > df.loc[folge, "insurance_end"]).any():
         errors.append("Folgestatus mit status_date > insurance_end")
+    # Der Bestandszugang liegt zwischen Vertragsbeginn und Ablauf: Vor dem
+    # Beginn gibt es den Vertrag nicht, nach dem Ablauf gibt es nichts mehr
+    # zu uebernehmen. Beim eigenen Geschaeft faellt er auf den Beginn.
+    zugang = df["bestandszugang"]
+    if zugang.isna().any():
+        errors.append("bestandszugang fehlt (NaT)")
+    else:
+        if (zugang < start).any():
+            errors.append(
+                "bestandszugang < insurance_start (ein Vertrag kann nicht in "
+                "die Buecher kommen, bevor er geschlossen wurde)"
+            )
+        if (zugang >= df["insurance_end"]).any():
+            errors.append("bestandszugang >= insurance_end")
     # Monatserster-Konvention (deterministische Jahres-/Monatsarithmetik).
     for col in (
         "status_date",
@@ -397,6 +418,7 @@ def validate_portfolio(df: Any) -> List[str]:
         "insurance_start",
         "insurance_end",
         "payment_end",
+        "bestandszugang",
     ):
         if not (df[col].dt.day == 1).all():
             errors.append(f"{col}: nicht auf Monatsersten normalisiert")

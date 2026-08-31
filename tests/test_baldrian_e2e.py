@@ -451,3 +451,49 @@ def _zellen_config(abschnitt: str) -> str:
         '[generation.verteilungen.zahlweise]\ntyp = "empirical_discrete"\n'
         "values = [1]\nprobs = [1.0]\n\n" + sep + rest
     )
+
+
+def test_der_uebernommene_bestand_beginnt_am_migrationsstichtag(
+    gefahrener_fall: Path,
+):
+    """Nicht am Vertragsbeginn -- am Zugang in UNSERE Buecher.
+
+    Der Befund, der diesen Test erzwang: Der Bestandsbericht fuehrte den
+    Baldrian-Bestand ab 2015, weil ``jahresraster`` und ``schnitt_am`` den
+    Versicherungsbeginn lasen. 2022 standen dort 493 Vertraege mit 38,1
+    Mio Versicherungssumme -- vier Jahre bevor die PLV sie uebernahm. Die
+    Vertraege begannen 2015 tatsaechlich, nur eben beim abgebenden
+    Unternehmen; in den Buechern der PLV gab es sie nicht.
+
+    Die Korrektur der Ledger-Seite (ZUG-Buchung zum Stichtag) hatte diese
+    Stelle nicht erreicht: Sie liest den Stamm, nicht das Ledger.
+    """
+    import datetime as _dt
+
+    from rechner_pipeline.bestand.fuehrung import fuehre_fort, schnitt_am
+    from rechner_pipeline.bestand.kennzahlen import jahresraster
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import STAMM_NAMES, STATUS_HISTORIE_NAMES
+
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    stamm = read_portfolio(bestand / "bestand.parquet",
+                           expected_columns=STAMM_NAMES)
+    historie = read_portfolio(bestand / "historie.parquet",
+                              expected_columns=STATUS_HISTORIE_NAMES)
+    stichtag = _dt.date.fromisoformat(STICHTAG_1)
+
+    # Der Vertragsbeginn liegt weiterhin in der Vergangenheit -- die
+    # Rekursion braucht ihn. Nur der Zugang ist der Stichtag.
+    assert stamm["insurance_start"].min().date() < stichtag
+    assert set(stamm["bestandszugang"].dt.date) == {stichtag}
+
+    # Die Berichtsreihe beginnt am Stichtag, nicht 2015.
+    raster = jahresraster(stamm)
+    assert raster[0] == stichtag
+
+    # Und vor dem Stichtag ist der Bestand leer -- nicht "fast leer".
+    sicht = fuehre_fort(stamm, historie)
+    for jahr in (2015, 2020, 2025):
+        leer = schnitt_am(sicht, _dt.date(jahr, 1, 1))
+        assert len(leer) == 0, f"{jahr}: {len(leer)} Vertraege vor der Uebernahme"
+    assert len(schnitt_am(sicht, stichtag)) == len(stamm)

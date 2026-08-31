@@ -94,6 +94,9 @@ def _bu_stamm(*vertraege: dict) -> pd.DataFrame:
                 "insurance_start": start,
                 "insurance_end": dt.date(start.year + v["n"], start.month, 1),
                 "payment_end": dt.date(start.year + v["n"], start.month, 1),
+                # Eigenes Geschaeft: Zugang = Beginn. "zugang"
+                # uebersteuert fuer uebernommene Vertraege.
+                "bestandszugang": v.get("zugang", start),
             }
         )
     df = pd.DataFrame(rows)

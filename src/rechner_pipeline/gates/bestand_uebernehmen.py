@@ -276,6 +276,12 @@ def baue(
             "insurance_start": pd.Timestamp(beginn),
             "insurance_end": pd.Timestamp(_jahrestag(beginn, n)),
             "payment_end": pd.Timestamp(_jahrestag(beginn, t)),
+            # HIER trennen sich Vertragsbeginn und Bestandszugang: Der
+            # Vertrag wurde beim abgebenden Unternehmen geschlossen und
+            # kommt erst zum Migrationsstichtag in unsere Buecher. Ohne
+            # diese Zeile fuehrte der Bestandsbericht ihn ab seinem
+            # Beginn — also Jahre, bevor es die Uebernahme gab.
+            "bestandszugang": pd.Timestamp(stichtag),
         })
         # Die Statuswechsel der Vorgeschichte, fortlaufend ab id 2. ERH
         # und RED erzeugen keine Zeile: Sie aendern Summe und Beitrag,

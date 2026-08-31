@@ -997,10 +997,23 @@ def render_html(
         + "</tbody></table>"
     )
 
+    # Der Zeitraum des BESTANDS, nicht der Vertraege: Ein uebernommener
+    # Bestand beginnt in unseren Buechern am Migrationsstichtag, auch wenn
+    # seine aeltesten Vertraege Jahre frueher geschlossen wurden. Fallen
+    # die beiden auseinander, sagt die Zeile es -- daran erkennt der Leser
+    # ohne weitere Anzeige, dass Geschaeft uebernommen wurde.
+    erster_zugang = df["bestandszugang"].dt.date.min()
+    erster_beginn = df["insurance_start"].dt.date.min()
     zeitraum = (
-        f"{df['insurance_start'].dt.date.min().isoformat()} bis "
+        f"{erster_zugang.isoformat()} bis "
         f"{df['insurance_end'].dt.date.max().isoformat()}"
     )
+    if erster_beginn < erster_zugang:
+        zeitraum += (
+            f" (übernommenes Geschäft: älteste Verträge ab "
+            f"{erster_beginn.isoformat()}, in diesen Büchern erst ab "
+            f"{erster_zugang.isoformat()})"
+        )
     quelle = (
         f"<li>Prüfsumme der Quelle (SHA-256, gekürzt): <code>{quelle_hash[:16]}</code></li>"
         if quelle_hash

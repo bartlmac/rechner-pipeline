@@ -20,8 +20,15 @@ from rechner_pipeline.models.bestand import AKTIVE_STATUS
 
 
 def jahresraster(df: pd.DataFrame) -> List[_dt.date]:
-    """Jährliche Stichtage (1.1.) vom ersten Vertragsbeginn bis zum letzten Ablauf."""
-    von = int(df["insurance_start"].dt.year.min())
+    """Jährliche Stichtage (1.1.) vom ersten Bestandszugang bis zum letzten Ablauf.
+
+    Vom ZUGANG, nicht vom Vertragsbeginn: Ein übernommener Bestand
+    beginnt in unseren Büchern am Migrationsstichtag. Sein ältester
+    Vertrag mag 2015 geschlossen worden sein — die Jahre davor sind
+    unsere nicht, und eine Reihe, die dort anfängt, behauptet einen
+    Bestand, den es hier nie gab.
+    """
+    von = int(df["bestandszugang"].dt.year.min())
     bis = int(df["insurance_end"].dt.year.max())
     return [_dt.date(jahr, 1, 1) for jahr in range(von, bis + 1)]
 
@@ -102,8 +109,14 @@ def ledger_mit_bestandszugang(
     alle uebrigen Ereignisse erscheinen ueber den ganzen Zeitraum, der
     Zugang erst ab dem ersten Neugeschaeftsjahr, als haette der Bestand
     davor keinen Zugang gehabt. Das Bewegungskonto leitet den Zugang
-    deshalb aus ``insurance_start`` ab; diese Funktion holt dieselbe
+    deshalb aus ``bestandszugang`` ab; diese Funktion holt dieselbe
     Ableitung fuer Ereignis-Tabelle und -Grafik nach.
+
+    ``bestandszugang`` und nicht ``insurance_start``: Beim eigenen
+    Geschaeft sind sie gleich, bei uebernommenem faellt der Zugang auf
+    den Migrationsstichtag. Beide Ableitungen muessen dieselbe Spalte
+    lesen, sonst zeigen Bewegungskonto und Ereignis-Tabelle fuer
+    denselben Bestand verschiedene Zugangsjahre.
 
     Betrag und Betrags-Art sind die der jeweiligen Versicherungsart
     (Versicherungssumme bzw. Jahresrente), wie sie die Engine fuer ihre
@@ -129,7 +142,7 @@ def ledger_mit_bestandszugang(
             "tarif_generation": fehlend["tarif_generation"].to_numpy(),
             "ereignis": "ZUG",
             "vertragsjahr": 0,
-            "status_date": fehlend["insurance_start"].to_numpy(),
+            "status_date": fehlend["bestandszugang"].to_numpy(),
             "betrag_art": [
                 BU_BETRAG_ART if b else "VS" for b in ist_bu
             ],
@@ -271,7 +284,7 @@ def bu_bewegungskonto(
             for track, teil in (("anwaerter", anwaerter), ("rentner", rentner))
         }
 
-    von = int((bestand["insurance_start"] - pd.Timedelta(days=1)).dt.year.min())
+    von = int((bestand["bestandszugang"] - pd.Timedelta(days=1)).dt.year.min())
     letzt = int(bestand["insurance_end"].dt.year.max())
     jahre = range(von, letzt + 1)
     if bis is not None:
@@ -295,8 +308,8 @@ def bu_bewegungskonto(
             }
 
         zug = bestand[
-            (bestand["insurance_start"] > von_ts)
-            & (bestand["insurance_start"] <= bis_ts)
+            (bestand["bestandszugang"] > von_ts)
+            & (bestand["bestandszugang"] <= bis_ts)
         ]
         inv = periode[periode["ereignis"] == "INV"]
         rea = periode[periode["ereignis"] == "REA"]
@@ -465,7 +478,7 @@ def bewegungskonto(
     # Beginn genau am 1.1.J gehoert per Periodenkonvention (1.1.J-1, 1.1.J]
     # zur Periode J-1 — der Rasterstart rechnet deshalb einen Tag zurueck,
     # sonst erschiene ein 1.1.-Zugang des fruehesten Jahres nie als Zugang.
-    von = int((bestand["insurance_start"] - pd.Timedelta(days=1)).dt.year.min())
+    von = int((bestand["bestandszugang"] - pd.Timedelta(days=1)).dt.year.min())
     letzt = int(bestand["insurance_end"].dt.year.max())
     jahre = range(von, letzt + 1)
     if bis is not None:
@@ -492,8 +505,8 @@ def bewegungskonto(
         # Zugangs-Satz — deckt Batch-Historie UND simulierten Neuzugang
         # einheitlich ab; die ZUG-Ledger-Zeilen sind eine Teilmenge davon):
         zug = bestand[
-            (bestand["insurance_start"] > von_ts)
-            & (bestand["insurance_start"] <= bis_ts)
+            (bestand["bestandszugang"] > von_ts)
+            & (bestand["bestandszugang"] <= bis_ts)
         ]
         erh = periode[periode["ereignis"] == "ERH"]
         pex = periode[periode["ereignis"] == "PEX"]

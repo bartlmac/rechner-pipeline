@@ -120,6 +120,7 @@ def _stamm() -> pd.DataFrame:
             "sum_insured": 100_000.0,
             "zahlweise": 1,
             "insurance_start": pd.Timestamp("2015-01-01"),
+            "bestandszugang": pd.Timestamp("2015-01-01"),
             "insurance_end": pd.Timestamp("2040-01-01"),
             "payment_end": pd.Timestamp("2040-01-01"),
             "date_of_birth": pd.Timestamp("1975-01-01"),
