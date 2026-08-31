@@ -464,16 +464,42 @@ die Schritte selbst zu improvisieren:
 
 `python -m rechner_pipeline.gates.gate_entscheid --gate A-M4 --rolle mensch
 --freigabe-schluessel <externe-datei> ...`
-— uebergeben, nicht selbst entscheiden. A-M4 verlangt den geltenden,
-signierten A-M1-Snapshot desselben Stands als Vorgaenger und pinnt ihn
-als Rolle `am1_snapshot` (aktuarielle vor finanzieller Abnahme,
-ADR-010). A-M4 liest den Scope aus `fall.json`
+— uebergeben, nicht selbst entscheiden. A-M4 verlangt die geltenden,
+signierten Abnahme-Snapshots desselben Stands als Vorgaenger und pinnt
+sie als Rollen `am1_snapshot`/`am2_snapshot`/`am3_snapshot`: A-M1 immer
+(aktuarielle vor finanzieller Abnahme, ADR-010), im Bestands-Scope auch
+A-M2 und A-M3 (Entscheidung 2026-08-31 — ein Bestand mit richtigem
+Stichtagswert und falscher Ablaufleistung kam vorher durch das
+Controlling). A-M4 liest den Scope aus `fall.json`
 und leitet seine exakte Pflichtbelegmenge je Gate aus dem Fall-Scope ab. Im
 Bestands-Scope werden das Abnahme-Ledger, jedes von ihm gebundene Artefakt und
 das von P-B1 benannte Portfolio gegen die aktuellen Bytes nachgehasht. P-B1 und
 Suite werden semantisch erneut validiert; der HTML-Bericht wird aus der Suite
 deterministisch neu gerendert und bytegenau verglichen. Vorgelegt wird alles
 vollstaendig, ohne Stichproben-Beschoenigung.
+
+### Pflichtschritt vor A-M4: Ausgestaltung des migrierten Tarifplans
+
+Traegt der Fall eine RECHNENDE Korrekturschicht (Residuum > 0 verankert),
+legst du als plv-va VOR der A-M4-Vorlage die Schichtfestlegungen des
+migrierten Tarifplans zur Zeichnung vor — sie lassen sich nicht vorab
+definieren, sondern entstehen aus dem konkreten Bestand
+(Grundsatzdokumentation Abschnitt 10 Nr. 9):
+
+1. **Uebergangsklassifikation** je Geschaeftsvorfall des Produkts
+   (vererbt eine Korrektur den Vorfall oder heilt er sie) — einschliesslich
+   der Bestaetigung der Heilungsklassen, die heute als ungeprueft
+   markiert sind (`kern.korrekturschicht.HEILUNG`, `geprueft=False`).
+2. **Ankerliste**: welche Groessen an welchen Zeitpunkten verankert sind
+   (t_a je Vertrag; t_0 nur bei aktiviertem R_conv-Pfad, E2).
+3. **Formfunktion** des Residuen-Abbaus samt Parametern.
+4. **Untergrenzen/Floors** der Schichtwerte.
+5. **Testfallkatalog** der Schicht (welche Vertragslagen der aktuarielle
+   Test je Abnahme abdecken muss).
+
+Ohne rechnende Schicht (Residuum ~0 wie im ersten Baldrian-Lauf)
+entfaellt der Schritt — das haeltst du im Laufprotokoll fest, statt ihn
+still zu ueberspringen.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)
 
