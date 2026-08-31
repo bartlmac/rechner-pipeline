@@ -44,8 +44,11 @@ Veroeffentlichung: Artefakte ueber die Positivliste kopieren, die Regie
 sperren, Systemstand und Branch stempeln, `index.md`, `_config.yml` und
 `artefakte/` schreiben.
 
-Das Modell traegt auch das Umbaubudget des Laufs — aber nur, wenn es in
-den Fall geschrieben wurde:
+Das Umbaubudget des Laufs ist ein Pflichtabschnitt des Modells: Ein
+abgeschlossener Fall traegt die Messung immer — ein Lauf, dessen Umbau
+niemand gemessen hat, saehe sonst aus wie ein Lauf ohne Umbau. Fehlt
+sie, meldet `falldaten.py` eine Luecke (Exit 3). Erhoben wird sie in
+den Fall:
 
 ```
 python werkzeuge/umbaubudget.py --basis <startpunkt> \

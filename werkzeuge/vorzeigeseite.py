@@ -74,6 +74,11 @@ UEBERNEHMEN = (
     ("eingang.json", "Register der gelieferten Quellen"),
     ("fall.json", "Fallmanifest mit Scope"),
     ("abgeleitet/berichte", "Berichte des Laufs"),
+    # Konventionspfad der Fortschreibung (Skill migrationsfall-
+    # durchfuehren; bestand.cli_fortschreibung --uebernahme schreibt
+    # dorthin). Ad-hoc benannte Zwischenstaende eines Durchgangs
+    # gehoeren NICHT in diese Liste.
+    ("abgeleitet/bestand-nach", "Fortschreibung des uebernommenen Bestands"),
     ("abgeleitet/diagnostics", "Gate-Ledger"),
     ("entscheide", "Entscheid-Snapshots der menschlichen Gates"),
 )

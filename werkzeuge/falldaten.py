@@ -505,10 +505,15 @@ def abnahmen(fall: Path) -> Dict[str, Any]:
             "stichtag_2": s.get("stichtag_2"),
             "je_groesse": _suite_achsen(s),
         }
+    # Der Anker ist der DATEINAME, nicht das Verzeichnis: Ein
+    # Bestandsbericht heisst in jedem Erzeuger bestandsbericht*.html,
+    # die Verzeichnisse darunter wechseln (berichte/ fuer die
+    # Vergleichsberichte, bestand-nach/ fuer die Fortschreibung).
+    abgeleitet = fall / "abgeleitet"
     aus["bestandsberichte"] = sorted(
-        f"abgeleitet/berichte/{p.name}"
-        for p in berichte.glob("bestandsbericht*.html")
-    ) if berichte.is_dir() else []
+        str(p.relative_to(fall))
+        for p in abgeleitet.rglob("bestandsbericht*.html")
+    ) if abgeleitet.is_dir() else []
     aus["gelesen_aus"] = [
         f"abgeleitet/berichte/{datei}.json"
         for _, datei, _ in ABNAHMEN
@@ -595,9 +600,10 @@ def umbau(fall: Path) -> Dict[str, Any]:
 
     Das Budget begrenzt die Arbeit des Operators WAEHREND des Fall-Laufs
     und ist damit eine Eigenschaft der Fall-Arbeit — deshalb gehoert es
-    zum Fall. Es entsteht aber nur, wenn jemand es erhoben und in den
-    Fall geschrieben hat (``umbaubudget.py --json``); sein Fehlen ist
-    keine Luecke des Falls, sondern eine nicht durchgefuehrte Messung.
+    zum Fall, und ein abgeschlossener Fall muss die Messung tragen
+    (ERWARTET): Ein Lauf, dessen Umbau niemand gemessen hat, sieht sonst
+    aus wie ein Lauf ohne Umbau. Erhoben wird sie mit
+    ``umbaubudget.py --json`` in den Fall.
     """
     d = _json(fall / "abgeleitet" / "berichte" / "umbaubudget.json")
     if not isinstance(d, dict):
@@ -750,6 +756,7 @@ ERWARTET = (
     ("parameter", "generationen", "Tarifgeneration der A-Box"),
     ("abnahmen", "aktuariell", "aktuarielle Abnahmen"),
     ("kette", "entscheide", "menschliche Entscheide"),
+    ("umbau", "vorhanden", "Umbaubudget des Fall-Laufs"),
 )
 
 

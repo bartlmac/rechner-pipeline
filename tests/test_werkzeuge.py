@@ -453,6 +453,13 @@ def test_das_modell_traegt_beschreibung_und_berichtsverweise(tmp_path: Path):
                     "test_bestanden": True})
     (fall / "abgeleitet" / "berichte" / "aktuartest.html").write_text(
         "<p>Vorlage</p>", encoding="utf-8")
+    # Der Bestandsbericht der Fortschreibung liegt NICHT unter berichte/,
+    # sondern im Konventionspfad der Fortschreibung — gefunden wird er
+    # ueber den Dateinamen, den stabileren Anker.
+    nach = fall / "abgeleitet" / "bestand-nach"
+    nach.mkdir()
+    (nach / "bestandsbericht_nach_uebernahme.html").write_text(
+        "<p>Fortschreibung</p>", encoding="utf-8")
     (fall / "fall.json").write_text(json.dumps(
         {"name": "probe", "beschreibung": "Ein Vorfuehrfall.",
          "scope": {"typ": "bestand"}}), "utf-8")
@@ -461,10 +468,13 @@ def test_das_modell_traegt_beschreibung_und_berichtsverweise(tmp_path: Path):
     assert modell["fall"]["beschreibung"] == "Ein Vorfuehrfall."
     [t] = modell["abnahmen"]["aktuariell"]
     assert t["bericht"] == "abgeleitet/berichte/aktuartest.html"
-    # Das Umbaubudget entsteht nur, wenn jemand es erhoben hat — sein
-    # Fehlen ist eine nicht durchgefuehrte Messung, keine Luecke.
+    assert modell["abnahmen"]["bestandsberichte"] == [
+        "abgeleitet/bestand-nach/bestandsbericht_nach_uebernahme.html"]
+    # Ein abgeschlossener Fall traegt die Umbau-Messung IMMER: Ein Lauf,
+    # dessen Umbau niemand gemessen hat, saehe sonst aus wie ein Lauf
+    # ohne Umbau.
     assert modell["umbau"] == {"vorhanden": False}
-    assert not any(l["gruppe"] == "umbau" for l in fd.luecken(modell))
+    assert any(l["gruppe"] == "umbau" for l in fd.luecken(modell))
 
 
 def test_eine_vollerhebung_ist_keine_zu_kleine_pruefmenge():
