@@ -71,6 +71,19 @@ from rechner_pipeline.models.bestand import (
 GEVO_STATUS = {"PEX": "PEX", "STO": "STO", "TOD": "TOD", "ABL": "ABL"}
 
 
+def _vertragsjahre(beginn, stichtag) -> int:
+    """Volle Vertragsjahre zwischen Beginn und Stichtag.
+
+    Der Zugang eines uebernommenen Vertrags faellt nicht in sein erstes
+    Vertragsjahr: Er tritt mit seinem Alter in die Buecher ein, und das
+    Bewegungsjournal soll das zeigen.
+    """
+    monate = ((stichtag.year - beginn.year) * 12
+              + (stichtag.month - beginn.month)
+              - (1 if stichtag.day < beginn.day else 0))
+    return max(0, monate // 12)
+
+
 def _monatserster_vor(beginn: dt.date, monate: int) -> dt.date:
     """Monatserster, der ``monate`` volle Monate vor ``beginn`` liegt.
 
@@ -200,52 +213,41 @@ def baue(
             letzte["status_id"] = len(wechsel) + 1
             letzte["status_code"] = GEVO_STATUS[wechsel[-1][0]]
             letzte["status_date"] = pd.Timestamp(wechsel[-1][1])
+        # Der Vertrag tritt am UEBERNAHMESTICHTAG in die Buecher des
+        # aufnehmenden Unternehmens ein, nicht an seinem Beginn.
+        #
+        # Zuvor wurde er auf den Vertragsbeginn gebucht und die
+        # Vorgeschichte als eigene Bewegungen nachgefahren -- 540 von 540
+        # Buchungen lagen damit VOR dem Stichtag. In den Buechern der
+        # PLV hat 2017 aber keine Beitragsfreistellung stattgefunden; der
+        # Vertrag war da noch gar nicht da. Was Baldrian gebucht hat,
+        # steht in Baldrians Journal.
+        #
+        # Die Vorgeschichte ERKLAERT den Zustand, sie ist keine Bewegung
+        # des aufnehmenden Unternehmens. Sie bleibt deshalb in der
+        # Statushistorie (dort beschreibt sie den Vertrag und traegt die
+        # Bewertung) und faellt aus dem Bewegungsjournal heraus. Genau so
+        # beschreibt es der Migrationszugang: "Die Historie des
+        # Quellsystems wird nicht nachgefahren"
+        # (bestand/migrationszugang.py, Grundsatzdokumentation 9.14).
+        #
+        # Der gebuchte Betrag ist die Summe, die der Vertrag am Stichtag
+        # TRAEGT. Fuer einen beitragsfrei uebernommenen Vertrag ist das
+        # die beitragsfreie Summe -- der Abzug fuehrt sie bereits als
+        # ERLSUMME. Die frueher zusaetzlich gebuchte PEX-Zeile wandelte
+        # dieselbe Police ein zweites Mal um und widersprach der
+        # Zugangsbuchung (56.307 gegen 48.038 bei Police 7000001).
         ledger.append({
             "police_id": int(police),
             "tarif_generation": tarif_generation,
             "ereignis": "ZUG",
-            "vertragsjahr": 0,
-            "status_date": pd.Timestamp(beginn),
+            "vertragsjahr": _vertragsjahre(beginn, stichtag),
+            "status_date": pd.Timestamp(stichtag),
             "betrag_art": "VS",
             "betrag": float(z["sum_insured"]),
             # Die Zugangssumme steht im Abzug der abgebenden Gesellschaft.
             "betrag_herkunft": "geliefert",
         })
-        # Der mitgebrachte Zustand braucht seine Buchung: Ein Vertrag,
-        # der beitragsfrei ankommt, traegt in der Historie eine
-        # PEX-Zeile, und die Bewegungsrechnung des aufnehmenden
-        # Unternehmens verlangt die zugehoerige Summe. Sie kommt NICHT
-        # aus der Lieferung — die Vorgeschichte fuehrt keine Betraege
-        # (Grundsatzdokumentation 9.14) —, sondern wird gerechnet: Das
-        # ist derselbe konstruktive Weg wie fuer jede andere Groesse des
-        # uebernommenen Vertrags.
-        for art, datum in wechsel:
-            if art != "PEX" or generationsfelder is None:
-                continue
-            pex_jahr = (datum.year - beginn.year) * 12 + (
-                datum.month - beginn.month) - (
-                1 if datum.day < beginn.day else 0)
-            pex_jahr //= 12
-            ledger.append({
-                "police_id": int(police),
-                "tarif_generation": tarif_generation,
-                "ereignis": "PEX",
-                "vertragsjahr": pex_jahr,
-                "status_date": pd.Timestamp(datum),
-                "betrag_art": "VS_bfr",
-                # NICHT geliefert: Die Vorgeschichte fuehrt keine
-                # Betraege. Diese Zahl ist eine Rechnung des
-                # AUFNEHMENDEN Unternehmens und kein Beleg der
-                # Gegenseite -- im Bewegungskonto muss sie als solche
-                # erkennbar sein.
-                "betrag_herkunft": "gerechnet",
-                "betrag": _beitragsfreie_summe(
-                    z,
-                    generationsfelder.get(police, generationsfelder)
-                    if isinstance(next(iter(generationsfelder.values()), None),
-                                  dict) else generationsfelder,
-                    pex_jahr),
-            })
 
     if abweichende_geburtsdaten:
         hinweise.append(

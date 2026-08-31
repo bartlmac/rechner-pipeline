@@ -261,32 +261,49 @@ def test_das_datenmodell_der_darstellung_ist_vollstaendig(
     assert modell["transformation"]["stumm_weggelassen"] == []
 
 
-def test_das_bewegungskonto_trennt_beleg_von_eigenrechnung(
+def test_das_bewegungskonto_beginnt_am_uebernahmestichtag(
     gefahrener_fall: Path,
 ):
-    """Im uebernommenen Bestand stehen zwei Arten von Betraegen
-    nebeneinander, und sie sind nicht gleich viel wert.
+    """In den Buechern des aufnehmenden Unternehmens beginnt der Vertrag
+    am Uebernahmestichtag — nicht an seinem Vertragsbeginn.
 
-    Die Zugangssumme steht im Abzug der abgebenden Gesellschaft. Die
-    beitragsfreie Summe eines mitgebrachten PEX-Zustands steht dort NICHT
-    — die Vorgeschichte fuehrt keine Betraege —, sie wird vom
-    AUFNEHMENDEN Unternehmen konstruktiv gerechnet. Das ist richtig, aber
-    es ist keine Buchung der Gegenseite. Ohne die Unterscheidung verloere
-    das Bewegungskonto genau die Eigenschaft, fuer die man es fuehrt.
+    Zuvor lagen ALLE Buchungen davor: der Zugang auf dem Vertragsbeginn
+    (2015/2016) und die Vorgeschichte als eigene Bewegungen (bis 2023).
+    In den Buechern der PLV hat 2017 aber keine Beitragsfreistellung
+    stattgefunden; der Vertrag war da noch gar nicht da. Was die
+    abgebende Gesellschaft gebucht hat, steht in IHREM Journal.
+
+    Die Vorgeschichte erklaert den Zustand und bleibt in der
+    Statushistorie — dort traegt sie die Bewertung. Eine Bewegung des
+    aufnehmenden Unternehmens ist sie nicht.
     """
+    import pandas as pd
+
     from rechner_pipeline.bestand.parquet_io import read_portfolio
-    from rechner_pipeline.models.bestand import BETRAG_HERKUNFT, LEDGER_NAMES
-
-    ledger = read_portfolio(
-        gefahrener_fall / "abgeleitet" / "bestand" / "ledger.parquet",
-        expected_columns=LEDGER_NAMES,
+    from rechner_pipeline.models.bestand import (
+        LEDGER_NAMES,
+        STATUS_HISTORIE_NAMES,
     )
-    assert set(ledger["betrag_herkunft"]) <= set(BETRAG_HERKUNFT)
 
-    zugang = ledger[ledger["ereignis"] == "ZUG"]
-    assert len(zugang) > 0
-    assert set(zugang["betrag_herkunft"]) == {"geliefert"}
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    ledger = read_portfolio(bestand / "ledger.parquet",
+                            expected_columns=LEDGER_NAMES)
+    stichtag = pd.Timestamp(STICHTAG_1)
 
-    pex = ledger[ledger["ereignis"] == "PEX"]
-    assert len(pex) > 0, "der Schnitt traegt beitragsfreie Vertraege"
-    assert set(pex["betrag_herkunft"]) == {"gerechnet"}
+    assert (pd.to_datetime(ledger["status_date"]) >= stichtag).all(), (
+        "Buchungen vor dem Uebernahmestichtag: "
+        + str(sorted(set(
+            str(d)[:10] for d in ledger["status_date"]
+            if pd.Timestamp(d) < stichtag))[:5]))
+    assert set(ledger["ereignis"]) == {"ZUG"}, (
+        "die Vorgeschichte gehoert nicht ins Journal des aufnehmenden "
+        "Unternehmens")
+    assert set(ledger["betrag_herkunft"]) == {"geliefert"}
+
+    # Die Statushistorie fuehrt sie sehr wohl: Sie beschreibt den
+    # Vertrag, und ohne sie waere sein Zustand am Stichtag unbestimmt.
+    historie = read_portfolio(bestand / "historie.parquet",
+                              expected_columns=STATUS_HISTORIE_NAMES)
+    assert "PEX" in set(historie["status_code"])
+    assert (pd.to_datetime(historie["status_date"]) < stichtag).any(), (
+        "die Vorgeschichte liegt vor dem Stichtag — genau das ist ihr Sinn")
