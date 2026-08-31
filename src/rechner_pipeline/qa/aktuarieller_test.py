@@ -972,6 +972,24 @@ def pruefe_vertrag(
         # Zahl der je fuer sich gerundeten Teile des gelieferten Werts —
         # das Gate rechnet die Toleranz damit nach.
         "komponenten": 1 + len(v.scheiben),
+        # Der vollstaendige PRUEFAUFTRAG des Vertrags — damit der
+        # Entscheid (und jeder spaetere Leser) die Systemwerte NACHRECHNEN
+        # kann, statt nur die innere Konsistenz zu pruefen. Ohne ihn ist
+        # ein Testergebnis eine Behauptung ueber Eingaben, die es nicht
+        # nennt. Deterministisch sortiert; die Schichten als Belegform.
+        "auftrag": {
+            "model_point": {k: v.model_point[k]
+                            for k in sorted(v.model_point)},
+            "scheiben": [[jahr, vs] for jahr, vs in v.scheiben],
+            "beitragsfrei_seit_jahr": v.beitragsfrei_seit_jahr,
+            "reduktion": list(v.reduktion) if v.reduktion else None,
+            "monate_ta": v.monate_ta,
+            "monate_t0": v.monate_t0,
+            "schicht": v.schicht.als_beleg() if v.schicht else None,
+            "schicht_conv": (
+                v.schicht_conv.als_beleg() if v.schicht_conv else None
+            ),
+        },
     }
 
 

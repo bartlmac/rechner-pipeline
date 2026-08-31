@@ -857,3 +857,38 @@ def test_zweitverankerung_ohne_t0_faellt_hart():
             schicht_conv=conv,
         ), _profil())
     assert "monate_t0" in str(exc.value)
+
+
+def test_das_ergebnis_traegt_den_pruefauftrag_zum_nachrechnen():
+    """Ein Testergebnis ohne seine Eingaben ist eine Behauptung.
+
+    Der Entscheid soll die Vertragswerte NACHRECHNEN koennen — hier
+    geschieht genau das: Aus dem persistierten Auftrag wird der Kern neu
+    gebaut, und der Systemwert des Pruefpunkts faellt identisch.
+    """
+    from rechner_pipeline.kern import Rechenkern
+    from rechner_pipeline.kern.model_point import ModelPoint
+
+    v = _vertrag(Pruefpunkt(TA, {"kVx_MRV": KERN.zustand_am(TA).vx_mrv},
+                            ANLASS_UEBERNAHME))
+    ergebnis = pruefe_vertrag(v, _profil())
+    auftrag = ergebnis["auftrag"]
+
+    nachgebaut = Rechenkern(ModelPoint(**auftrag["model_point"]))
+    p = ergebnis["pruefungen"][0]
+    assert nachgebaut.zustand_am(p["monate"]).vx_mrv == p["system"]
+
+    # Der Auftrag ist vollstaendig, nicht nur der Modellpunkt.
+    assert auftrag["scheiben"] == []
+    assert auftrag["monate_ta"] is None
+    assert auftrag["schicht"] is None
+    assert sorted(auftrag["model_point"]) == sorted(auftrag["model_point"])
+
+    # Mit Schicht steht ihr Beleg im Auftrag.
+    e, geliefert, ta = _uebernommen()
+    mit = pruefe_vertrag(_vertrag(
+        Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
+        schicht=e.parameter, monate_ta=ta,
+    ), _profil())
+    assert mit["auftrag"]["monate_ta"] == ta
+    assert mit["auftrag"]["schicht"]["rho"] == e.parameter.rho
