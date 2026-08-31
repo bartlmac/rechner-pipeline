@@ -199,6 +199,26 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"bestand_fortschreibung: Config ungueltig: {'; '.join(fehler)}", file=sys.stderr)
         return 2
 
+    # Der Referenzstichtag ist eine Eigenschaft des Bestands (Config);
+    # --neuzugang-ab SOLL mit ihm uebereinstimmen -- er ist genau die
+    # Grenze zwischen Batch-Erzeugung und simuliertem Neuzugang. Eine
+    # Abweichung kann gewollt sein (Sonderlaeufe), faellt aber sonst
+    # still auseinander: Bestand und Bericht meinen dann verschiedene
+    # Grenzen. Deshalb ein Hinweis, kein Fehler.
+    if (
+        neuzugang_ab is not None
+        and config.referenzstichtag is not None
+        and neuzugang_ab != config.referenzstichtag
+    ):
+        print(
+            "bestand_fortschreibung: HINWEIS: --neuzugang-ab "
+            f"{neuzugang_ab.isoformat()} weicht vom referenzstichtag der "
+            f"Config ab ({config.referenzstichtag.isoformat()}) — der "
+            "Referenzstichtag ist die Grenze zwischen Batch und Neuzugang; "
+            "eine Abweichung gehoert begruendet",
+            file=sys.stderr,
+        )
+
     out_dir = Path(ns.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 

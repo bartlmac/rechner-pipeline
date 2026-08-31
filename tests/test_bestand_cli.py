@@ -566,3 +566,60 @@ def test_gate_pb1_akzeptiert_beginne_nach_dem_horizont(lauf, tmp_path, capsys):
     ergebnis = json.loads(capsys.readouterr().out)
     assert code == 0, ergebnis["errors"]
     assert ergebnis["summary"]["all_passed"] is True
+
+
+def test_abweichender_neuzugang_ab_wird_angesagt(tmp_path, capsys):
+    """Der Referenzstichtag ist die Grenze zwischen Batch und Neuzugang.
+
+    Weicht --neuzugang-ab von ihm ab, meinen Bestand und Bericht
+    verschiedene Grenzen — das fiel bisher still auseinander. Ein
+    Hinweis, kein Fehler: Sonderlaeufe bleiben erlaubt, aber nicht
+    unbemerkt.
+    """
+    out = tmp_path / "lauf"
+    code = fs_cli.main([
+        "--config", str(EXAMPLE), "--bis", "2020-01-01",
+        "--neuzugang-ab", "2019-01-01", "--out-dir", str(out),
+    ])
+    assert code == 0
+    meldungen = capsys.readouterr().err
+    assert "HINWEIS" in meldungen and "referenzstichtag" in meldungen
+    assert "2019-01-01" in meldungen and "2026-01-01" in meldungen
+
+    # Stimmen die Daten ueberein, bleibt es still.
+    code = fs_cli.main([
+        "--config", str(EXAMPLE), "--bis", "2027-01-01",
+        "--neuzugang-ab", "2026-01-01", "--out-dir", str(tmp_path / "l2"),
+    ])
+    assert code == 0
+    assert "HINWEIS" not in capsys.readouterr().err
+
+
+def test_der_abschluss_schreibt_sich_schreibgeschuetzt(lauf, tmp_path):
+    """Ein festgeschriebener Stand wehrt sich selbst (runs/-Schutz).
+
+    Anlass war ein realer Verlust echter Laufdaten durch ein
+    aufraeumendes rm -r. 0444 laesst ein rm ohne -f nachfragen und ein
+    Ueberschreiben scheitern; gegen rm -rf schuetzt kein Dateirecht --
+    das bleibt Verhaltensregel (runs/ ist Wegwerf).
+    """
+    import datetime as _dt
+    import os
+    import stat
+
+    from rechner_pipeline.bestand.abschluss import schreibe_abschluss
+    from rechner_pipeline.bestand.config import load_config
+
+    if os.name == "nt":
+        pytest.skip("POSIX-Dateirechte")
+
+    config = load_config(EXAMPLE)
+    stamm = read_portfolio(lauf / "bestand_gesamt.parquet")
+    historie = read_portfolio(lauf / "historie.parquet")
+    scheiben = read_portfolio(lauf / "scheiben.parquet")
+    pfad = schreibe_abschluss(
+        stamm, historie, config, _dt.date(2016, 1, 1),
+        tmp_path / "abschluesse", scheiben=scheiben,
+    )
+    modus = stat.S_IMODE(Path(pfad).stat().st_mode)
+    assert modus & 0o222 == 0, f"Abschluss ist beschreibbar (0o{modus:o})"
