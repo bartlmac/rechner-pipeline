@@ -999,21 +999,16 @@ def render_html(
 
     # Der Zeitraum des BESTANDS, nicht der Vertraege: Ein uebernommener
     # Bestand beginnt in unseren Buechern am Migrationsstichtag, auch wenn
-    # seine aeltesten Vertraege Jahre frueher geschlossen wurden. Fallen
-    # die beiden auseinander, sagt die Zeile es -- daran erkennt der Leser
-    # ohne weitere Anzeige, dass Geschaeft uebernommen wurde.
+    # seine aeltesten Vertraege Jahre frueher geschlossen wurden. Der
+    # Zusatz nennt nur, DASS uebernommen wurde -- die Daten stehen bereits
+    # in der Zeile.
     erster_zugang = df["bestandszugang"].dt.date.min()
-    erster_beginn = df["insurance_start"].dt.date.min()
     zeitraum = (
         f"{erster_zugang.isoformat()} bis "
         f"{df['insurance_end'].dt.date.max().isoformat()}"
     )
-    if erster_beginn < erster_zugang:
-        zeitraum += (
-            f" (übernommenes Geschäft: älteste Verträge ab "
-            f"{erster_beginn.isoformat()}, in diesen Büchern erst ab "
-            f"{erster_zugang.isoformat()})"
-        )
+    if df["insurance_start"].dt.date.min() < erster_zugang:
+        zeitraum += " (übernommenes Geschäft)"
     quelle = (
         f"<li>Prüfsumme der Quelle (SHA-256, gekürzt): <code>{quelle_hash[:16]}</code></li>"
         if quelle_hash
@@ -1171,11 +1166,12 @@ stabilen Rechenkern.</p>"""
 <h2>Aktuarielle Kennzahlen je Stichtag, {ausw_zeitraum}</h2>
 <div class="charts">{svg_dk}</div>
 {ausw_tabelle}
-<p>Alle Werte kommen in-process aus dem stabilen Rechenkern.
-Deckungskapital: beitragspflichtig die Deckungsrückstellung kDRx_bpfl,
-nach Beitragsfreistellung die beitragsfreie Reserve (VS_bfr mal kVx_bfr).
-Rückkaufswert nur auf dem beitragspflichtigen Track (das Quell-Blatt
-definiert keine Rückkaufsregel für beitragsfreie Verträge).</p>
+<p>Alle Werte sind im Rechenkern gerechnet, nicht aus einer Lieferung
+übernommen. Deckungskapital: bei beitragspflichtigen Verträgen die
+Deckungsrückstellung (kDRx_bpfl), nach Beitragsfreistellung die
+beitragsfreie Reserve (VS_bfr mal kVx_bfr). Ein Rückkaufswert wird nur
+für beitragspflichtige Verträge ausgewiesen; für beitragsfreie Verträge
+ist im Tarifwerk keine Rückkaufsregel hinterlegt.</p>
 
 <h3>Beiträge</h3>
 <div class="charts">{svg_beitrag}</div>
