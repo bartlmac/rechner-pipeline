@@ -12,6 +12,7 @@ bleibt, steht in `dev-docs/offene-punkte.md`.
 | `verlaufsprotokoll.py` | Sitzungstranskript zu einem lesbaren Verlauf |
 | `vorzeigeseite.py` | Datenmodell und Artefakte eines Falls zu einer statischen Seite |
 | `unternehmensseite.py` | die Seiten des fiktiven Unternehmens zusammenbauen |
+| `drift.py` | den veroeffentlichten Stand gegen den Entwurf halten |
 | `umbaubudget.py` | wie weit ein Lauf das System umgebaut hat |
 | `falldaten.py` | Datenmodell einer Falldarstellung aus den Artefakten |
 | `fallbericht.py` | Darstellung aus dem Datenmodell rendern |
@@ -279,3 +280,19 @@ gh api repos/<owner>/<repo>/pages/builds/latest --jq '{status, error}'
 `status: built` heisst fertig, `errored` nennt den Grund im Feld
 `error`. Erst danach zeigt die URL den neuen Stand — ein alter Stand im
 Browser ist meist der Cache, nicht ein misslungener Bau.
+
+### Drift pruefen
+
+Zwischen zwei Veroeffentlichungen driftet der Live-Stand vom Repo weg.
+Ob es so ist, beurteilt ein Werkzeug — es veroeffentlicht nichts:
+
+```
+python werkzeuge/drift.py --seite runs/seite [--ref gh-pages]
+```
+
+Vergleicht den frisch gebauten Entwurf mit dem `gh-pages`-Branch.
+Volatile Stempel (Veroeffentlichungsdatum, Systemstand der
+Fall-Seiten, Bau-Commit der Landkarte) zaehlen nicht als Drift —
+sonst schluege der Test immer, und ein Alarm, der immer schlaegt,
+wird abgeschaltet. Exit 1 listet die Abweichungen; aktualisiert wird
+von Hand (Abschnitt "Je Lauf").

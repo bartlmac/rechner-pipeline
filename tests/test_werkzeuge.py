@@ -504,6 +504,75 @@ def test_die_fallseite_als_unterseite_haengt_im_auftritt(tmp_path: Path):
 
 
 # --------------------------------------------------------------------------- #
+# Drift: das Urteil ueber den veroeffentlichten Stand
+# --------------------------------------------------------------------------- #
+
+import drift as dr  # noqa: E402
+
+
+def _seitenrepo(tmp_path: Path) -> Path:
+    """Ein Mini-Repo, dessen Branch gh-pages eine Seite traegt."""
+    import subprocess
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=repo, check=True,
+                       capture_output=True)
+
+    git("init", "-q", "-b", "gh-pages")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "test")
+    (repo / "index.md").write_text(
+        "# Fall\n| Veröffentlicht | 2026-08-28 |\n"
+        "| Systemstand | `alt` auf `main` |\nInhalt A\n", encoding="utf-8")
+    (repo / "artefakte").mkdir()
+    (repo / "artefakte" / "a.json").write_text('{"wert": 1}',
+                                               encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "veroeffentlichter Stand")
+    return repo
+
+
+def _entwurf(tmp_path: Path, inhalt: str, wert: int) -> Path:
+    entwurf = tmp_path / "entwurf"
+    (entwurf / "artefakte").mkdir(parents=True, exist_ok=True)
+    (entwurf / "index.md").write_text(
+        f"# Fall\n| Veröffentlicht | 2026-08-31 |\n"
+        f"| Systemstand | `neu` auf `vorzeige-url` |\n{inhalt}\n",
+        encoding="utf-8")
+    (entwurf / "artefakte" / "a.json").write_text(
+        f'{{"wert": {wert}}}', encoding="utf-8")
+    return entwurf
+
+
+def test_volatile_stempel_sind_kein_drift(tmp_path: Path):
+    """Datum und Systemstand aendern sich mit jedem Bau, ohne dass sich
+    inhaltlich etwas bewegt haette. Ein Test, der darauf schluege,
+    schluege immer — und wuerde abgeschaltet."""
+    repo = _seitenrepo(tmp_path)
+    entwurf = _entwurf(tmp_path, "Inhalt A", wert=1)
+
+    assert dr.main(["--seite", str(entwurf), "--repo", str(repo)]) == 0
+
+
+def test_inhaltliche_abweichung_ist_drift(tmp_path: Path, capsys):
+    """Geaenderte, neue und verschwundene Dateien werden benannt; das
+    Werkzeug urteilt nur — veroeffentlicht wird von Hand."""
+    repo = _seitenrepo(tmp_path)
+    entwurf = _entwurf(tmp_path, "Inhalt B", wert=2)
+    (entwurf / "neu.md").write_text("Neue Seite\n", encoding="utf-8")
+
+    code = dr.main(["--seite", str(entwurf), "--repo", str(repo)])
+    aus = capsys.readouterr().out
+    assert code == 1
+    assert "GEAENDERT: index.md" in aus
+    assert "GEAENDERT: artefakte/a.json" in aus
+    assert "NEU: neu.md" in aus
+    assert "menschliche Handlung" in aus
+
+
+# --------------------------------------------------------------------------- #
 # Falldaten: das Datenmodell einer Falldarstellung
 # --------------------------------------------------------------------------- #
 
