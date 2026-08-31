@@ -297,3 +297,21 @@ ledger (ADR-009).
 - Direct dependencies pinned exactly (`pyproject.toml`), their transitive
   closure pinned in `requirements*.txt` (section 2); new dependencies only
   via ADR. Push is the human's job.
+
+## Laufdaten: was Wegwerf ist und was sich wehrt
+
+`runs/` ist **Wegwerf**: Jeder darf dort loeschen, nichts darin ist die
+einzige Kopie von etwas Wichtigem. Was festgehalten werden soll, lebt an
+zwei Orten mit eigenem Schutz:
+
+* im **Fall** (`faelle/<fall>/` — `eingang/` und `entscheide/` sind
+  unantastbar, `abgeleitet/` ist reproduzierbar), oder
+* als **Abschluss** (`bestand.cli_abschluss`): festgeschriebene Staende
+  schreiben sich selbst schreibgeschuetzt (0444) — ein `rm` ohne `-f`
+  fragt nach, ein Ueberschreiben scheitert. Gegen `rm -rf` schuetzt kein
+  Dateirecht; deshalb die Verhaltensregel: vor jedem Aufraeumen unter
+  `runs/` pruefen, ob echte Laufdaten dort liegen — besser: sie liegen
+  dort gar nicht erst.
+
+Anlass ist ein realer Verlust: 2026-06-05 hat ein aufraeumendes
+`rm -r runs` die Artefakte eines echten Laufs zerstoert.

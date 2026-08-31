@@ -28,6 +28,7 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import datetime as _dt
+import os
 import math
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -110,7 +111,17 @@ def schreibe_abschluss(
         )
     df = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
     ziel_dir.mkdir(parents=True, exist_ok=True)
-    return write_portfolio(df, pfad)
+    geschrieben = write_portfolio(df, pfad)
+    # Ein festgeschriebener Stand wehrt sich selbst: schreibgeschuetzt
+    # (0444), damit ein versehentliches Ueberschreiben oder ein rm ohne
+    # -f nachfragt statt still zu loeschen. Anlass war ein realer
+    # Verlust echter Laufdaten durch ein aufraeumendes rm -r (Backlog
+    # "runs/-Schutz"). Gegen rm -rf schuetzt kein Dateirecht -- das
+    # bleibt eine Verhaltensregel: runs/ ist Wegwerf, Festzuhaltendes
+    # lebt im Fall oder in einem Abschluss.
+    if os.name != "nt":
+        Path(geschrieben).chmod(0o444)
+    return geschrieben
 
 
 def pruefe_abschluss(
