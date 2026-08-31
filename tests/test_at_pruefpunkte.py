@@ -765,3 +765,95 @@ def test_gate_rechnet_die_plausibilitaet_nach_und_faengt_manipulation():
     gefaelscht["vertraege"][0]["bestanden"] = True
     befunde = test_fehler(gefaelscht)
     assert any("Korridor" in f for f in befunde), befunde
+
+
+def test_die_zweitverankerung_traegt_das_konventionsresiduum_getrennt():
+    """9.13, Entscheidung E2 2026-08-31: R_conv wird separat erfasst.
+
+    Aufbau: Am Verankerungszeitpunkt t_a heilt die hist-Schicht die
+    Uebernahmedifferenz; am Migrationsstichtag t_0 (ein Jahr spaeter)
+    bleibt eine kleine, SYSTEMATISCHE Konventionsdifferenz. Ohne conv-
+    Schicht ist sie ein Befund; mit ihr ist der Punkt konstruktionsbedingt
+    getroffen -- und die hist-Schicht blieb unangetastet, denn die beiden
+    Residuen werden nie vermischt.
+    """
+    from rechner_pipeline.bestand.migrationszugang import Uebernahme, uebernehmen
+
+    e, geliefert, ta = _uebernommen()
+    t0 = ta + 12
+    basis_t0 = KERN.verlaufszeile(t0 // 12).drx_bpfl
+    hist_wert_t0 = pruefe_vertrag(_vertrag(
+        Pruefpunkt(t0, {"kVx_MRV": basis_t0}, ANLASS_FORTSCHREIBUNG),
+        schicht=e.parameter, monate_ta=ta,
+    ), _profil())["pruefungen"][0]["system"]
+
+    delta_conv = 12.5
+    geliefert_t0 = hist_wert_t0 + delta_conv
+    # Die Zweitverankerung nutzt denselben Operator, nur als conv-Schicht
+    # am t_0 (delta klein und positiv -- eine Rundungskonvention, kein
+    # Historienfehler).
+    e_conv, = uebernehmen([
+        Uebernahme(police_id=1, model_point=dict(MP),
+                   monate_ta=t0,
+                   dk_ist=KERN.verlaufszeile(t0 // 12).drx_bpfl + delta_conv)
+    ])
+    import dataclasses
+
+    conv = dataclasses.replace(e_conv.parameter, schichttyp="conv")
+
+    ohne = pruefe_vertrag(_vertrag(
+        Pruefpunkt(t0, {"kVx_MRV": geliefert_t0}, ANLASS_FORTSCHREIBUNG),
+        schicht=e.parameter, monate_ta=ta,
+    ), _profil())
+    # Residuum = System - erwartet: das System liegt um die
+    # Konventionsdifferenz UNTER dem gelieferten Wert.
+    assert ohne["pruefungen"][0]["residuum"] == pytest.approx(-delta_conv)
+
+    mit = pruefe_vertrag(_vertrag(
+        Pruefpunkt(t0, {"kVx_MRV": geliefert_t0}, ANLASS_FORTSCHREIBUNG),
+        schicht=e.parameter, monate_ta=ta,
+        schicht_conv=conv, monate_t0=t0,
+    ), _profil())
+    assert mit["pruefungen"][0]["residuum"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_vertauschte_schichttypen_fallen_hart():
+    """hist gehoert nach schicht, conv nach schicht_conv -- nie umgekehrt.
+
+    Wer das Konventionsresiduum in das hist-Feld legt, vermischt die
+    beiden Residuen, die 9.13 ausdruecklich trennt -- und die primaere
+    Qualitaetskennzahl R_hist waere still verfaelscht.
+    """
+    import dataclasses
+
+    e, geliefert, ta = _uebernommen()
+    conv = dataclasses.replace(e.parameter, schichttyp="conv")
+
+    with pytest.raises(AktuartestFehler) as exc:
+        pruefe_vertrag(_vertrag(
+            Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
+            schicht=conv, monate_ta=ta,
+        ), _profil())
+    assert "R_hist" in str(exc.value)
+
+    with pytest.raises(AktuartestFehler) as exc:
+        pruefe_vertrag(_vertrag(
+            Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
+            schicht=e.parameter, monate_ta=ta,
+            schicht_conv=e.parameter, monate_t0=ta,
+        ), _profil())
+    assert "'conv'" in str(exc.value)
+
+
+def test_zweitverankerung_ohne_t0_faellt_hart():
+    import dataclasses
+
+    e, geliefert, ta = _uebernommen()
+    conv = dataclasses.replace(e.parameter, schichttyp="conv")
+    with pytest.raises(AktuartestFehler) as exc:
+        pruefe_vertrag(_vertrag(
+            Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
+            schicht=e.parameter, monate_ta=ta,
+            schicht_conv=conv,
+        ), _profil())
+    assert "monate_t0" in str(exc.value)

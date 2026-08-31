@@ -298,13 +298,13 @@ def test_auftragsbau_uebernimmt_zustand_und_ursprungssumme():
 # Die Korrekturschicht erreicht den Pruefauftrag
 # --------------------------------------------------------------------------- #
 
-def _schicht_datei(fall, inhalt) -> str:
+def _schicht_datei(fall, inhalt, name: str = "schicht.json") -> str:
     """Eine REGISTRIERTE Schichtdatei im Fall anlegen."""
     import json as _json
 
     from rechner_pipeline.fall import registrieren
 
-    quelle = fall.parent / "schicht.json"
+    quelle = fall.parent / name
     quelle.write_text(_json.dumps(inhalt), encoding="utf-8")
     registrieren(fall, quelle)
     return quelle.name
@@ -360,3 +360,67 @@ def test_eine_unbrauchbare_schicht_faellt_hart(tmp_path):
 
     with pytest.raises(SystemExit, match="unbrauchbar"):
         _schichten(fall, name)
+
+
+def test_die_beiden_residuen_kommen_getrennt_in_den_auftrag(tmp_path):
+    """9.13, Entscheidung E2 2026-08-31: R_conv wird separat erfasst.
+
+    Je Police darf die registrierte Schichtdatei jetzt BEIDE Residuen
+    tragen — hist verankert bei t_a, conv mit eigenem t_0 am
+    Migrationsstichtag. Die beiden werden nie vermischt: getrennte
+    Parameter, getrennte Verankerung, in der Engine getrennte Felder.
+    """
+    from rechner_pipeline.fall import anlegen
+    from rechner_pipeline.gates.aktuartest_lauf import (
+        _schicht_felder,
+        _schichten,
+    )
+
+    fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
+    hist = {
+        "schichttyp": "hist", "verankerungszustand": "beitragspflichtig",
+        "verweildauer": 12, "rho": 850.0,
+        "formfunktion": "konstantes_fenster", "formparameter": {"fenster": 12},
+    }
+    conv = {
+        "schichttyp": "conv", "verankerungszustand": "beitragspflichtig",
+        "verweildauer": 0, "rho": 12.5,
+        "formfunktion": "konstantes_fenster", "formparameter": {"fenster": 6},
+        "monate_t0": 132,
+    }
+    name = _schicht_datei(fall, {"7000001": {"hist": hist, "conv": conv}})
+
+    schichten = _schichten(fall, name)
+    felder = _schicht_felder(schichten["7000001"])
+    assert felder["schicht"].rho == 850.0
+    assert felder["schicht"].schichttyp == "hist"
+    assert felder["schicht_conv"].rho == 12.5
+    assert felder["schicht_conv"].schichttyp == "conv"
+    assert felder["monate_t0"] == 132
+
+    # Das flache Format bleibt gueltig -- es traegt nur R_hist.
+    flach = _schichten(fall, _schicht_datei(fall, {"7000002": hist}, "schicht-flach.json"))
+    assert _schicht_felder(flach["7000002"]) == {"schicht": flach["7000002"]}
+
+
+def test_conv_ohne_t0_und_fremde_teile_fallen_hart(tmp_path):
+    """Eine Zweitverankerung ohne Verankerungszeitpunkt verankert nichts."""
+    from rechner_pipeline.fall import anlegen
+    from rechner_pipeline.gates.aktuartest_lauf import _schichten
+
+    fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
+    conv_ohne_t0 = {
+        "schichttyp": "conv", "verankerungszustand": "beitragspflichtig",
+        "verweildauer": 0, "rho": 1.0,
+        "formfunktion": "konstantes_fenster", "formparameter": {"fenster": 6},
+    }
+    with pytest.raises(SystemExit) as exc:
+        _schichten(fall, _schicht_datei(fall, {"1": {"conv": conv_ohne_t0}}))
+    assert "monate_t0" in str(exc.value)
+
+    with pytest.raises(SystemExit) as exc:
+        _schichten(fall, _schicht_datei(
+            fall, {"1": {"hist": conv_ohne_t0, "extra": {}}}, "schicht-extra.json"))
+    assert "unbekannte Teile" in str(exc.value)

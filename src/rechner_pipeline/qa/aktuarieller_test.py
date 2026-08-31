@@ -268,6 +268,18 @@ class Vertragspruefung:
     #: Ohne sie bleibt der rohe Wertvergleich — der ist weiter gueltig,
     #: solange ein Fall keine Schicht fuehrt.
     schicht: Optional[Schichtparameter] = None
+    #: Zweitverankerung fuer das Konventionsresiduum (9.13, Entscheidung
+    #: E2 2026-08-31: getrennt erfassen). Eine EIGENE Schicht mit
+    #: eigenem Verankerungszeitpunkt: R_hist verankert bei t_a und
+    #: bleibt die primaere Qualitaetskennzahl, R_conv verankert am
+    #: Migrationsstichtag t_0. Die beiden Residuen werden nie vermischt
+    #: -- getrennt persistiert, getrennt gerechnet; die Engine addiert
+    #: nur ihre WERTE am Pruefpunkt, denn beide sind dieselbe Rekursion
+    #: mit anderen Zahlungen.
+    schicht_conv: Optional[Schichtparameter] = None
+    #: Verankerungszeitpunkt der conv-Schicht in vollen Vertragsmonaten
+    #: (t_0). Pflicht, wenn schicht_conv gesetzt ist.
+    monate_t0: Optional[int] = None
     #: Der Verankerungszeitpunkt in vollen Vertragsmonaten. Pflicht, wenn
     #: eine Schicht gesetzt ist: Die Schicht rechnet ab dort, nicht ab
     #: Vertragsbeginn.
@@ -471,6 +483,35 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
                 "Korrekturschicht nicht definiert, der Vertrag gehoerte dem "
                 "abgebenden Unternehmen"
             )
+    if v.schicht is not None and v.schicht.schichttyp != "hist":
+        raise AktuartestFehler(
+            f"police {v.police_id}: schicht traegt schichttyp "
+            f"{v.schicht.schichttyp!r} — das Feld ist fuer R_hist "
+            "reserviert; das Konventionsresiduum gehoert nach schicht_conv "
+            "(9.13: die beiden Residuen werden nie vermischt)"
+        )
+    if v.schicht_conv is not None:
+        if v.schicht_conv.schichttyp != "conv":
+            raise AktuartestFehler(
+                f"police {v.police_id}: schicht_conv traegt schichttyp "
+                f"{v.schicht_conv.schichttyp!r} statt 'conv'"
+            )
+        if v.monate_t0 is None:
+            raise AktuartestFehler(
+                f"police {v.police_id}: schicht_conv ohne monate_t0 — die "
+                "Zweitverankerung rechnet ab dem Migrationsstichtag t_0"
+            )
+        if v.monate_t0 % 12 != 0 or v.monate_t0 < 0:
+            raise AktuartestFehler(
+                f"police {v.police_id}: monate_t0={v.monate_t0} ist kein "
+                "Rechenpunkt (Grundsatzdokumentation 9.12)"
+            )
+        frueh = [p.monate for p in v.punkte if p.monate < v.monate_t0]
+        if frueh:
+            raise AktuartestFehler(
+                f"police {v.police_id}: Pruefpunkte {sorted(frueh)[:3]} "
+                f"liegen VOR der Zweitverankerung {v.monate_t0}"
+            )
     for groesse, begruendung in dict(v.plausibilitaet).items():
         if groesse not in PLAUSIBILITAET:
             raise AktuartestFehler(
@@ -602,33 +643,49 @@ def _deckungskapital(
 
 
 def _schichtwert(v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt) -> float:
-    """Der Wert der Korrekturschicht am Pruefpunkt (0.0 ohne Schicht).
+    """Der Gesamtwert der Korrekturschichten am Pruefpunkt (0.0 ohne).
 
-    Die Schicht rechnet ab dem Verankerungszeitpunkt; ein Pruefpunkt DAVOR
-    liegt ausserhalb ihrer Definition und ist ein Auftragsfehler. Auf dem
-    Jahresgitter wird der Verlaufswert genommen, unterjaehrig linear
-    zwischen den Jahresraendern gemischt — dieselbe Konvention wie fuer die
-    Basisschicht (Abschnitt 6), denn die Schicht ist dieselbe Rekursion
-    mit anderen Zahlungen und darf keine eigene Zeitachse bekommen
-    ("Overlay ohne dritte Uhr", 9.5).
+    R_hist (verankert bei t_a) und R_conv (verankert bei t_0) sind
+    getrennte Schichten mit getrennten Parametern; hier werden nur ihre
+    WERTE addiert, denn am Pruefpunkt wirken beide auf dieselbe Zahl.
     """
-    if v.schicht is None:
-        return 0.0
-    jahr_ta = v.monate_ta // 12
+    summe = 0.0
+    if v.schicht is not None:
+        summe += _eine_schicht(v.schicht, v.monate_ta, mp, p)
+    if v.schicht_conv is not None:
+        summe += _eine_schicht(v.schicht_conv, v.monate_t0, mp, p)
+    return summe
+
+
+def _eine_schicht(
+    parameter: Schichtparameter, monate_anker: int, mp: ModelPoint,
+    p: Pruefpunkt,
+) -> float:
+    """Der Wert EINER Schicht am Pruefpunkt.
+
+    Die Schicht rechnet ab ihrem Verankerungszeitpunkt; ein Pruefpunkt
+    DAVOR liegt ausserhalb ihrer Definition und ist ein Auftragsfehler.
+    Auf dem Jahresgitter wird der Verlaufswert genommen, unterjaehrig
+    linear zwischen den Jahresraendern gemischt — dieselbe Konvention wie
+    fuer die Basisschicht (Abschnitt 6), denn die Schicht ist dieselbe
+    Rekursion mit anderen Zahlungen und darf keine eigene Zeitachse
+    bekommen ("Overlay ohne dritte Uhr", 9.5).
+    """
+    jahr_ta = monate_anker // 12
     kern = Rechenkern(mp)
     basis = [kern.verlaufszeile(a).drx_bpfl for a in range(jahr_ta, mp.n + 1)]
-    if v.schicht.formfunktion == "konstantes_fenster":
-        fenster = int(v.schicht.formparameter["fenster"])
+    if parameter.formfunktion == "konstantes_fenster":
+        fenster = int(parameter.formparameter["fenster"])
         form = form_konstantes_fenster(len(basis), min(fenster, len(basis)))
     else:
         form = form_proportional_zur_basis(basis)
     bw = kern.produkt.bw
     schicht = Korrekturschicht(
-        bw.modell, tuple(tuple(pair) for pair in v.schicht.vererbend)
+        bw.modell, tuple(tuple(pair) for pair in parameter.vererbend)
     )
-    verlauf = schicht.verlauf(v.schicht, form, mp.x + jahr_ta)
+    verlauf = schicht.verlauf(parameter, form, mp.x + jahr_ta)
 
-    seit_ta = p.monate - v.monate_ta
+    seit_ta = p.monate - monate_anker
     j, rest = divmod(seit_ta, 12)
     if j >= len(verlauf) - 1:
         return verlauf[-1]

@@ -171,9 +171,29 @@ def baue_auftraege(
             scheiben=tuple(zustand.get("scheiben", ())),
             reduktion=zustand.get("reduktion"),
             plausibilitaet=(plausibilitaet or {}).get(police, {}),
-            schicht=(schichten or {}).get(police),
+            **_schicht_felder((schichten or {}).get(police)),
         ))
     return auftraege
+
+
+def _schicht_felder(eintrag: Any) -> Dict[str, Any]:
+    """Die Schicht-Felder einer Vertragspruefung aus dem Registereintrag.
+
+    Flach = nur R_hist (rueckwaerts kompatibel); getrennt = hist/conv mit
+    eigenem t_0. Die Engine haelt die beiden Residuen auseinander (9.13);
+    hier werden nur die Felder verteilt.
+    """
+    if eintrag is None:
+        return {}
+    if isinstance(eintrag, Schichtparameter):
+        return {"schicht": eintrag}
+    aus: Dict[str, Any] = {}
+    if "hist" in eintrag:
+        aus["schicht"] = eintrag["hist"]
+    if "conv" in eintrag:
+        aus["schicht_conv"] = eintrag["conv"]
+        aus["monate_t0"] = eintrag["monate_t0"]
+    return aus
 
 
 def _schichten(fall: Path, name: Optional[str]) -> Dict[str, Any]:
@@ -186,7 +206,19 @@ def _schichten(fall: Path, name: Optional[str]) -> Dict[str, Any]:
     Pfad: Ein Residuum, das der Pruefer selbst setzen koennte, waere
     kein Beweis, sondern ein Regler.
 
-    Format: ``{"<police_id>": {<Felder von Schichtparameter>}}``.
+    Format je Police entweder FLACH (nur R_hist, rueckwaerts
+    kompatibel)::
+
+        {"<police_id>": {<Felder von Schichtparameter>}}
+
+    oder GETRENNT nach den beiden Residuen (9.13, Entscheidung E2
+    2026-08-31: separat erfassen)::
+
+        {"<police_id>": {"hist": {...}, "conv": {..., "monate_t0": <n>}}}
+
+    ``conv`` traegt seinen eigenen Verankerungszeitpunkt ``monate_t0``
+    (Vertragsmonate am Migrationsstichtag — je Vertrag verschieden,
+    obwohl der Kalendertag derselbe ist).
     """
     if not name:
         return {}
@@ -195,17 +227,41 @@ def _schichten(fall: Path, name: Optional[str]) -> Dict[str, Any]:
         raise SystemExit(
             f"Schichtdatei {name!r} traegt kein Objekt "
             "police_id -> Schichtparameter")
-    aus: Dict[str, Any] = {}
-    for police, felder in roh.items():
-        if not isinstance(felder, dict):
-            raise SystemExit(f"Schicht fuer Police {police}: kein Objekt")
+
+    def _parameter(police: str, felder: Dict[str, Any]) -> Schichtparameter:
         try:
-            aus[str(police)] = Schichtparameter(
+            return Schichtparameter(
                 **{k: (tuple(tuple(x) for x in v) if k == "vererbend" else v)
                    for k, v in felder.items()})
         except (TypeError, KorrekturschichtFehler) as exc:
             raise SystemExit(
                 f"Schicht fuer Police {police} unbrauchbar: {exc}") from exc
+
+    aus: Dict[str, Any] = {}
+    for police, felder in roh.items():
+        if not isinstance(felder, dict):
+            raise SystemExit(f"Schicht fuer Police {police}: kein Objekt")
+        if "hist" in felder or "conv" in felder:
+            fremd = set(felder) - {"hist", "conv"}
+            if fremd:
+                raise SystemExit(
+                    f"Schicht fuer Police {police}: unbekannte Teile "
+                    f"{sorted(fremd)} neben hist/conv")
+            eintrag: Dict[str, Any] = {}
+            if "hist" in felder:
+                eintrag["hist"] = _parameter(police, felder["hist"])
+            if "conv" in felder:
+                conv_felder = dict(felder["conv"])
+                monate_t0 = conv_felder.pop("monate_t0", None)
+                if monate_t0 is None:
+                    raise SystemExit(
+                        f"Schicht fuer Police {police}: conv ohne monate_t0 "
+                        "— die Zweitverankerung rechnet ab t_0")
+                eintrag["conv"] = _parameter(police, conv_felder)
+                eintrag["monate_t0"] = int(monate_t0)
+            aus[str(police)] = eintrag
+        else:
+            aus[str(police)] = _parameter(police, felder)
     return aus
 
 

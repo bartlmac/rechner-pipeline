@@ -437,6 +437,6 @@ Anforderungen gemäß Grundsatzdokumentation 9.14 (Rolle „Archiv") und Grundsa
 
 | Nr | Gegenstand | Bezug | Status |
 |---|---|---|---|
-| E1 | GV-Metadatenliste dauerhaft im Zielbestand vs. Verbleib im Migrations-Staging | Grundsatzdokumentation 9.16 | ⟨ENTSCHEIDUNG: offen⟩ |
-| E2 | Aktivierung des $R_{\mathrm{conv}}$-Pfads (Zweitverankerung am $t_0$) für diesen Bestand | Grundsatzdokumentation 9.13 | ⟨ENTSCHEIDUNG: offen⟩ |
+| E1 | GV-Metadatenliste dauerhaft im Zielbestand vs. Verbleib im Migrations-Staging | Grundsatzdokumentation 9.16 | Standard: **Archiv der PLV** (Entscheidung 2026-08-31; das Quellsystem wird stillgelegt und als Archiv genutzt — die Uebernahme legt die Liste unter `quellarchiv/` beim Zielbestand ab). Abweichung je Bestand begruenden. |
+| E2 | Aktivierung des $R_{\mathrm{conv}}$-Pfads (Zweitverankerung am $t_0$) für diesen Bestand | Grundsatzdokumentation 9.13 | Standard: **aktivieren, sobald systematische Konventionsdifferenzen bestehen** (Entscheidung 2026-08-31: getrennt erfassen — die Schichtdatei traegt je Police `hist` und `conv` mit eigenem `monate_t0`). Der plv-va legt die Klassifikation je Cluster zur Zeichnung vor. |
 | E3 | ⟨…⟩ | ⟨…⟩ | ⟨…⟩ |
