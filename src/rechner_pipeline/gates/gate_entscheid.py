@@ -1522,51 +1522,64 @@ def main(argv: Optional[List[str]] = None):
             assert aq1_spitze is not None
             pflichtbelege["aq1_snapshot"] = [aq1_spitze["snapshot_sha256"]]
 
-            # A-M1 geht A-M4 voraus (ADR-010): Ein A-M4-Entscheid ohne
-            # geltende, signierte aktuarielle Abnahme auf DEMSELBEN
-            # Stand ist unmoeglich. Die Rueckschleife bleibt zulaessig
-            # (neue Snapshots), nur die Umkehrung nicht.
-            am1_snapshots, am1_spitzen, am1_ketten_fehler = (
-                _lade_snapshot_kette(
-                    verzeichnis_aq1, "A-M1", fall, schluesselring
-                )
+            # Die aktuariellen Abnahmen gehen A-M4 voraus: A-M1 immer
+            # (ADR-010), im Bestands-Scope auch A-M2 und A-M3
+            # (Entscheidung Auftraggeber 2026-08-31). Vorher war nur A-M1
+            # Voraussetzung — ein Bestand mit richtigem Stichtagswert und
+            # falscher Ablaufleistung kam also durch das Controlling. Die
+            # Rueckschleife bleibt zulaessig (neue Snapshots), nur die
+            # Umkehrung nicht. Im Tarif-Scope gibt es keinen Bestand,
+            # dessen Verlauf oder Geschaeftsvorfaelle A-M2/A-M3 abnehmen
+            # koennten — dort bleibt es bei A-M1.
+            pflicht_abnahmen = ["A-M1"] + (
+                ["A-M2", "A-M3"] if fall_scope == "bestand" else []
             )
-            if am1_ketten_fehler:
-                return _sperre(
-                    "vorbedingung",
-                    "Annahme verweigert: A-M1-Snapshot-Vertrag verletzt: "
-                    + "; ".join(am1_ketten_fehler[:5]),
+            for abnahme_gate in pflicht_abnahmen:
+                snapshots_a, spitzen_a, ketten_fehler_a = (
+                    _lade_snapshot_kette(
+                        verzeichnis_aq1, abnahme_gate, fall, schluesselring
+                    )
                 )
-            am1_spitze = (
-                am1_snapshots[am1_spitzen[0]][1]
-                if len(am1_spitzen) == 1 else None
-            )
-            am1_passend = (
-                am1_spitze is not None
-                and am1_spitze["entscheid"] == "angenommen"
-                and am1_spitze["artefakt_hashes"].get(
-                    "abgeleitet/abox/abox.json"
-                ) == abox_hash
-                and am1_spitze["artefakt_hashes"].get("eingang.json")
-                == eingang_hash
-                and am1_spitze["artefakt_hashes"].get("fall.json")
-                == _sha256_datei(fall / "fall.json")
-                and am1_spitze["system"] == entscheid_systemstand
-            )
-            if not am1_passend:
-                return _sperre(
-                    "vorbedingung",
-                    "Annahme verweigert: keine eindeutige, signierte "
-                    "A-M1-ANNAHME (aktuarielle Abnahme) auf aktuellem "
-                    "Eingangs-, A-Box- und Systemstand — A-M1 geht A-M4 "
-                    "voraus (ADR-010; entscheiden mit: python -m "
-                    "rechner_pipeline.gates.gate_entscheid --fall "
-                    f"{fall} --gate A-M1 --entscheid angenommen --rolle "
-                    "mensch --entscheider <name> --begruendung <text> "
-                    "--freigabe-schluessel <externe-datei>)",
+                if ketten_fehler_a:
+                    return _sperre(
+                        "vorbedingung",
+                        f"Annahme verweigert: {abnahme_gate}-Snapshot-"
+                        "Vertrag verletzt: "
+                        + "; ".join(ketten_fehler_a[:5]),
+                    )
+                spitze_a = (
+                    snapshots_a[spitzen_a[0]][1]
+                    if len(spitzen_a) == 1 else None
                 )
-            assert am1_spitze is not None
-            pflichtbelege["am1_snapshot"] = [am1_spitze["snapshot_sha256"]]
+                passend_a = (
+                    spitze_a is not None
+                    and spitze_a["entscheid"] == "angenommen"
+                    and spitze_a["artefakt_hashes"].get(
+                        "abgeleitet/abox/abox.json"
+                    ) == abox_hash
+                    and spitze_a["artefakt_hashes"].get("eingang.json")
+                    == eingang_hash
+                    and spitze_a["artefakt_hashes"].get("fall.json")
+                    == _sha256_datei(fall / "fall.json")
+                    and spitze_a["system"] == entscheid_systemstand
+                )
+                if not passend_a:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: keine eindeutige, signierte "
+                        f"{abnahme_gate}-ANNAHME (aktuarielle Abnahme) auf "
+                        "aktuellem Eingangs-, A-Box- und Systemstand — die "
+                        "aktuariellen Abnahmen gehen A-M4 voraus (A-M1: "
+                        "ADR-010; A-M2/A-M3 im Bestands-Scope: Entscheidung "
+                        "2026-08-31; entscheiden mit: python -m "
+                        "rechner_pipeline.gates.gate_entscheid --fall "
+                        f"{fall} --gate {abnahme_gate} --entscheid angenommen "
+                        "--rolle mensch --entscheider <name> --begruendung "
+                        "<text> --freigabe-schluessel <externe-datei>)",
+                    )
+                assert spitze_a is not None
+                rolle_a = f"am{abnahme_gate[-1]}_snapshot"
+                pflichtbelege[rolle_a] = [spitze_a["snapshot_sha256"]]
 
             if fall_scope == "bestand":
                 bestandsbelege, bestands_fehler = _passende_bestandsbelege(

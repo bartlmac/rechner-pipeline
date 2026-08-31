@@ -129,7 +129,7 @@ def _abnahmebericht(fall: Path):
     ])
 
 
-def _bereite_bestandsfall(tmp_path: Path) -> Path:
+def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     """Echte P-Q3/P-K1/P-B1-/Suite-/Berichtsbelege fuer einen Bestandsfall."""
     fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
     assert _o3_tg2012(fall).exit_code == 0
@@ -243,6 +243,17 @@ def _bereite_bestandsfall(tmp_path: Path) -> Path:
     assert _p9_annahme(
         fall, "A-M1", "aktuarieller Test auf dem Bestand geprueft"
     ).exit_code == 0
+    # Im Bestands-Scope verlangt A-M4 seit 2026-08-31 alle drei
+    # aktuariellen Abnahmen -- vorher kam ein Bestand mit richtigem
+    # Stichtagswert und falscher Ablaufleistung durch das Controlling.
+    for abnahme, text in (
+        ("A-M2", "Bestandsverlauf ueber zwei Stichtage geprueft"),
+        ("A-M3", "Geschaeftsvorfaelle des Pruefjahres geprueft"),
+    ):
+        if abnahme in ohne_abnahmen:
+            continue
+        _aktuartest_belege(fall, abnahme=abnahme)
+        assert _p9_annahme(fall, abnahme, text).exit_code == 0
     return fall
 
 
@@ -390,8 +401,9 @@ def test_bestands_scope_bindet_pb1_suite_und_abnahmebericht_bis_am4(
     snapshot = json.loads(Path(am4.paths["snapshot"]).read_text(encoding="utf-8"))
     assert snapshot["fall_scope"] == "bestand"
     assert set(snapshot["pflichtbelege"]) == {
-        "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
-        "pb1_ledger", "migrationssuite", "abnahmebericht",
+        "pq3_ledger", "aq1_snapshot",
+        "am1_snapshot", "am2_snapshot", "am3_snapshot",
+        "pk1_belege", "pb1_ledger", "migrationssuite", "abnahmebericht",
     }
     assert all(snapshot["pflichtbelege"].values())
 
@@ -1616,3 +1628,33 @@ def test_der_snapshot_bindet_den_fall_ueber_den_namen(tmp_path: Path):
     roh = json.dumps(snapshot, ensure_ascii=False)
     assert str(tmp_path) not in roh
     assert str(Path.home()) not in roh
+
+
+def test_am4_verlangt_im_bestandsscope_auch_am2_und_am3(tmp_path: Path):
+    """Entscheidung 2026-08-31: A-M4 verlangt alle drei Abnahmen.
+
+    Vorher war nur A-M1 Voraussetzung — ein Bestand mit richtigem
+    Stichtagswert (A-M1 gruen) und falscher Ablaufleistung (A-M2 nie
+    gezeichnet) kam durch das Controlling. Der Test baut genau diesen
+    Bestand: alles gezeichnet ausser A-M2.
+    """
+    fall = _bereite_bestandsfall(tmp_path, ohne_abnahmen=("A-M2",))
+
+    vorzeitig = _p9_annahme(fall, "A-M4", "ohne Verlaufs-Abnahme")
+    assert vorzeitig.exit_code == 20
+    meldung = vorzeitig.errors[0]["message"]
+    assert "A-M2" in meldung and "--gate A-M2" in meldung
+    assert list((fall / "entscheide").glob("A-M4-*.json")) == []
+
+    # Mit der nachgeholten A-M2-Annahme oeffnet sich A-M4 — die
+    # Rueckschleife bleibt zulaessig, nur die Umkehrung nicht.
+    _aktuartest_belege(fall, abnahme="A-M2")
+    assert _p9_annahme(
+        fall, "A-M2", "Bestandsverlauf nachgeprueft"
+    ).exit_code == 0
+    am4 = _p9_annahme(fall, "A-M4", "jetzt vollstaendig")
+    assert am4.exit_code == 0
+    snapshot = json.loads(
+        Path(am4.paths["snapshot"]).read_text(encoding="utf-8"))
+    assert snapshot["pflichtbelege"]["am2_snapshot"]
+    assert snapshot["pflichtbelege"]["am3_snapshot"]

@@ -107,6 +107,8 @@ BELEGROLLEN = {
             "pq3_ledger",
             "aq1_snapshot",
             "am1_snapshot",
+            "am2_snapshot",
+            "am3_snapshot",
             "pk1_belege",
             "pb1_ledger",
             "migrationssuite",

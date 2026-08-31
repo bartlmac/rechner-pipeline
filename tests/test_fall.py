@@ -67,8 +67,11 @@ def test_scope_legt_die_am4_pflichten_fuer_tarif_und_bestand_fest(
         "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
     ]
     assert fall_mod.am4_belegrollen("bestand") == [
-        "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
-        "pb1_ledger", "migrationssuite", "abnahmebericht",
+        "pq3_ledger", "aq1_snapshot",
+        # Alle drei aktuariellen Abnahmen (Entscheidung 2026-08-31) --
+        # im Tarif-Scope nur A-M1, dort gibt es keinen Bestand.
+        "am1_snapshot", "am2_snapshot", "am3_snapshot",
+        "pk1_belege", "pb1_ledger", "migrationssuite", "abnahmebericht",
     ]
     # Belegrollen JE GATE (ADR-010): A-M1 pinnt im Bestands-Scope die
     # Testartefakte, im Tarif-Scope ist die Rollenmenge leer.
