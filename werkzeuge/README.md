@@ -182,7 +182,11 @@ Es bleibt eine menschliche Handlung.
 
 ### Je Lauf
 
-Die Seite in ein gitignoriertes Verzeichnis bauen, von dort schieben:
+Die Seite in ein gitignoriertes Verzeichnis bauen, von dort schieben.
+Der neue Stand ERSETZT den alten vollstaendig: Erst den Inhalt des
+Pages-Worktrees leeren, dann kopieren — wer nur drueberkopiert, laesst
+verwaiste Artefakte der vorigen Version oeffentlich liegen, und ein
+Artefakt, auf das keine Seite mehr zeigt, ist trotzdem abrufbar.
 
 ```
 python werkzeuge/falldaten.py --fall faelle/<fall> \
@@ -190,6 +194,7 @@ python werkzeuge/falldaten.py --fall faelle/<fall> \
 python werkzeuge/vorzeigeseite.py --fall faelle/<fall> \
     --daten runs/falldaten.json --out runs/vorzeige
 git worktree add /tmp/gh-pages gh-pages
+git -C /tmp/gh-pages rm -rq .
 cp -r runs/vorzeige/. /tmp/gh-pages/
 cd /tmp/gh-pages && git add -A && git commit -m "Lauf <datum>" && git push
 cd - && git worktree remove /tmp/gh-pages
@@ -216,6 +221,12 @@ aktuariellen Abnahmen aus wie eine echte.
 **Beim Menschen:** Stehen Klarnamen im Verlaufsprotokoll? Trifft der
 Simulationshinweis noch zu? Traegt die Seite etwas, das die Vorfuehrung
 verraet? Das Werkzeug fragt danach; beantworten muss es jemand.
+
+**Erst der Code, dann die Seite.** Die Seite stempelt Commit und
+Branch als Provenienz. Dieser Stand muss im oeffentlichen Repo
+nachschlagbar sein, BEVOR die Seite live geht — eine Seite, deren
+Kernversprechen die Nachpruefbarkeit ist, darf nicht auf einen Commit
+zeigen, den niemand einsehen kann.
 
 ### Danach pruefen
 
