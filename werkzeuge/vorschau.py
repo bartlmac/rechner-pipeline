@@ -5,11 +5,13 @@ Lokal existiert die Seite nur als QUELLE (``index.md``, ``_config.yml``,
 beim Push. Wer den Entwurf vorher pruefen will — die Handfragen des
 Runbooks verlangen genau das —, braucht eine lokale Darstellung.
 
-Dieses Werkzeug rendert sie in ein EIGENES Verzeichnis neben dem
-Push-Verzeichnis, nie hinein: Eine von Hand dazugelegte ``index.html``
-kollidierte beim Veroeffentlichen mit der von Jekyll gebauten. Die
-Artefakte werden verlinkt (Symlink), nicht kopiert — die Vorschau ist
-eine Sicht auf den Entwurf, kein zweiter Datenbestand.
+Dieses Werkzeug rendert ALLE Markdown-Seiten des Baums (Startseite,
+Bereiche, Migrationsberichte, Verlauf) in ein EIGENES Verzeichnis
+neben dem Push-Verzeichnis, nie hinein: Eine von Hand dazugelegte
+``index.html`` kollidierte beim Veroeffentlichen mit der von Jekyll
+gebauten. Artefakte und Assets werden verlinkt (Symlink), nicht
+kopiert — die Vorschau ist eine Sicht auf den Entwurf, kein zweiter
+Datenbestand.
 
 Die Vorschau ist eine LESEHILFE, kein Abbild des Pages-Themas: Inhalt,
 Zahlen, Tabellen und Links sind pruefbar; die Optik der Live-Seite
@@ -26,9 +28,14 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 from typing import List, Optional
+
+#: Verzeichnisse, die als Ganzes in die Vorschau verlinkt werden —
+#: Artefakt-Belege und Seiten-Assets; ihr Inhalt wird nicht gerendert.
+GANZ_VERLINKEN = ("artefakte", "assets")
 
 STIL = """
 body{margin:0;background:#f8f8f6;color:#1b1e1c;
@@ -85,32 +92,48 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     out.mkdir(parents=True, exist_ok=True)
-    for quelle in (seite / "index.md", seite / "verlauf.md"):
-        if not quelle.is_file():
+    gerendert, verlinkt = 0, 0
+    for quelle in sorted(seite.rglob("*")):
+        rel = quelle.relative_to(seite)
+        # Inhalte von als Ganzes verlinkten Verzeichnissen nicht betreten.
+        if any(teil in GANZ_VERLINKEN for teil in rel.parts[:-1]):
             continue
-        rumpf = markdown.markdown(
-            quelle.read_text(encoding="utf-8"), extensions=["tables"])
-        # Jekyll (jekyll-relative-links, auf Pages vorgegeben) macht aus
-        # einem Link auf eine .md-Datei den Link auf ihr gerendertes
-        # Gegenstueck; die Vorschau tut dasselbe.
-        rumpf = rumpf.replace('href="verlauf.md"', 'href="verlauf.html"')
-        ziel = out / (quelle.stem + ".html")
-        ziel.write_text(
-            SEITE.format(name=quelle.name, stil=STIL, rumpf=rumpf),
-            encoding="utf-8")
-        print(f"{ziel}")
-
-    artefakte = seite / "artefakte"
-    link = out / "artefakte"
-    if artefakte.is_dir():
-        if link.is_symlink():
-            link.unlink()
-        elif link.exists():
-            print(f"{link} existiert und ist kein Symlink — nicht angefasst.",
+        ziel = out / rel
+        if quelle.is_dir():
+            if quelle.name not in GANZ_VERLINKEN:
+                continue
+        elif quelle.name == "_config.yml":
+            # Jekyll-Konfiguration — hat in der Vorschau keine Wirkung.
+            continue
+        elif quelle.suffix == ".md":
+            rumpf = markdown.markdown(
+                quelle.read_text(encoding="utf-8"),
+                extensions=["tables", "attr_list"])
+            # Jekyll (jekyll-relative-links, auf Pages vorgegeben) macht
+            # aus einem Link auf eine .md-Datei den Link auf ihr
+            # gerendertes Gegenstueck; die Vorschau tut dasselbe.
+            rumpf = re.sub(r'href="([^":]+)\.md"', r'href="\1.html"', rumpf)
+            ziel = ziel.with_suffix(".html")
+            ziel.parent.mkdir(parents=True, exist_ok=True)
+            ziel.write_text(
+                SEITE.format(name=str(rel), stil=STIL, rumpf=rumpf),
+                encoding="utf-8")
+            gerendert += 1
+            continue
+        # Verzeichnisse aus GANZ_VERLINKEN und lose Nicht-Markdown-Dateien
+        # werden verlinkt, nicht kopiert — die Vorschau ist eine Sicht auf
+        # den Entwurf, kein zweiter Datenbestand.
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        if ziel.is_symlink():
+            ziel.unlink()
+        elif ziel.exists():
+            print(f"{ziel} existiert und ist kein Symlink — nicht angefasst.",
                   file=sys.stderr)
             return 2
-        link.symlink_to(os.path.relpath(artefakte, out))
-        print(f"{link} -> {artefakte}")
+        ziel.symlink_to(os.path.relpath(quelle, ziel.parent))
+        verlinkt += 1
+
+    print(f"{out}: {gerendert} Seiten gerendert, {verlinkt} Verweise gesetzt")
 
     print()
     print(f"Vorschau: {out / 'index.html'}")

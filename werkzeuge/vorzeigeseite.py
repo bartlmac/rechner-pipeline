@@ -208,7 +208,8 @@ def _kopiere(fall: Path, ziel: Path) -> List[str]:
 
 
 def _seite(fall: Path, modell: Dict[str, Any], repo: Path,
-           kopiert: List[str], verlauf: Optional[str]) -> str:
+           kopiert: List[str], verlauf: Optional[str],
+           unterseite: bool = False) -> str:
     stand = _systemstand(repo)
     fallinfo = modell.get("fall") or {}
     kette = modell.get("kette") or {}
@@ -233,6 +234,9 @@ def _seite(fall: Path, modell: Dict[str, Any], repo: Path,
     z.append("> Snapshots prüft, erkennt das am Fingerabdruck des")
     z.append("> Schlüssels — er ist unten ausgewiesen.")
     z.append("")
+    if unterseite:
+        z.append("[← Unsere Bestandsmigrationen](../)")
+        z.append("")
     if fallinfo.get("beschreibung"):
         z.append(str(fallinfo["beschreibung"]))
         z.append("")
@@ -413,6 +417,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "Nicht --neueste nehmen: das ist womoeglich die "
                         "Sitzung, die das Werkzeug gebaut hat.")
     p.add_argument("--repo", default=".", help="Repo-Wurzel fuer den Systemstand")
+    p.add_argument("--als-unterseite", action="store_true",
+                   help="Fall-Seite als Teil des Unternehmensauftritts bauen "
+                        "(migrationen/<fall>/): keine eigene _config.yml — "
+                        "die gehoert der Wurzel — und ein Rueckverweis auf "
+                        "die Migrations-Uebersicht")
     args = p.parse_args(argv)
 
     fall = Path(args.fall).resolve()
@@ -455,11 +464,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             (ziel / "verlauf.md").write_text(verlauf_text, encoding="utf-8")
         (ziel / "index.md").write_text(
             _seite(fall, modell, Path(args.repo).resolve(), kopiert,
-                   verlauf_text),
+                   verlauf_text, unterseite=args.als_unterseite),
             encoding="utf-8")
         # Jekyll rendert die Markdown-Seiten; ohne Konfiguration nimmt
-        # GitHub Pages ein Vorgabethema, das die Tabellen bricht.
-        (ziel / "_config.yml").write_text(JEKYLL, encoding="utf-8")
+        # GitHub Pages ein Vorgabethema, das die Tabellen bricht. Als
+        # Unterseite gehoert die Konfiguration der Wurzel des
+        # Unternehmensauftritts (unternehmensseite.py), nicht dem Fall.
+        if not args.als_unterseite:
+            (ziel / "_config.yml").write_text(JEKYLL, encoding="utf-8")
     except VeroeffentlichungFehler as exc:
         print(f"ABBRUCH: {exc}", file=sys.stderr)
         return 1

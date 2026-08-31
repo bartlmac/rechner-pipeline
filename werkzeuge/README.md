@@ -11,6 +11,7 @@ bleibt, steht in `dev-docs/offene-punkte.md`.
 |---|---|
 | `verlaufsprotokoll.py` | Sitzungstranskript zu einem lesbaren Verlauf |
 | `vorzeigeseite.py` | Datenmodell und Artefakte eines Falls zu einer statischen Seite |
+| `unternehmensseite.py` | die Seiten des fiktiven Unternehmens zusammenbauen |
 | `umbaubudget.py` | wie weit ein Lauf das System umgebaut hat |
 | `falldaten.py` | Datenmodell einer Falldarstellung aus den Artefakten |
 | `fallbericht.py` | Darstellung aus dem Datenmodell rendern |
@@ -26,14 +27,23 @@ python werkzeuge/verlaufsprotokoll.py --sitzung <uuid> --mit-denken
 Trennt Mensch, Konsole, Operator und Werkzeug; Entscheide werden
 hervorgehoben. Schluesselpfade und Geheimnisse sind redigiert.
 
-## Seite eines Laufs bauen
+## Die Seite bauen
+
+Die Vorfuehrung tritt als Unternehmensauftritt der (frei erfundenen)
+Pfefferminzia Lebensversicherung AG auf. Die Unternehmensseiten sind
+handgeschriebene, versionierte Quellen unter `vorzeige-seite/`; die
+Migrationsberichte entstehen je Fall aus den Artefakten und haengen
+unter `migrationen/<fall>/`. Jede Unternehmensseite MUSS die
+Fiktions-Banderole tragen — `unternehmensseite.py` baut sonst nicht.
 
 ```
 python werkzeuge/falldaten.py --fall faelle/baldrian-uebernahme \
     --abzug <abzug-1>.csv --abzug <abzug-2>.csv --out runs/falldaten.json
 python werkzeuge/vorzeigeseite.py \
     --fall faelle/baldrian-uebernahme --daten runs/falldaten.json \
-    --out vorzeige/ [--verlauf verlauf.md]
+    --out runs/seite/migrationen/baldrian --als-unterseite \
+    [--verlauf verlauf.md]
+python werkzeuge/unternehmensseite.py --out runs/seite
 ```
 
 Die Zahlen der Seite kommen aus dem Datenmodell (`falldaten.py`) —
@@ -193,10 +203,12 @@ Artefakt, auf das keine Seite mehr zeigt, ist trotzdem abrufbar.
 python werkzeuge/falldaten.py --fall faelle/<fall> \
     --abzug <abzug-1>.csv --abzug <abzug-2>.csv --out runs/falldaten.json
 python werkzeuge/vorzeigeseite.py --fall faelle/<fall> \
-    --daten runs/falldaten.json --out runs/vorzeige
+    --daten runs/falldaten.json --out runs/seite/migrationen/<fall> \
+    --als-unterseite
+python werkzeuge/unternehmensseite.py --out runs/seite
 git worktree add /tmp/gh-pages gh-pages
 git -C /tmp/gh-pages rm -rq .
-cp -r runs/vorzeige/. /tmp/gh-pages/
+cp -r runs/seite/. /tmp/gh-pages/
 cd /tmp/gh-pages && git add -A && git commit -m "Lauf <datum>" && git push
 cd - && git worktree remove /tmp/gh-pages
 ```
@@ -214,13 +226,13 @@ ihr HTML erzeugt erst Jekyll auf den GitHub-Servern. Den Entwurf zeigt
 die Vorschau:
 
 ```
-python3 werkzeuge/vorschau.py --seite runs/vorzeige \
+python3 werkzeuge/vorschau.py --seite runs/seite \
     --out runs/vorzeige-vorschau
 ```
 
-Rendert `index.md` und `verlauf.md` in ein eigenes Verzeichnis und
-verlinkt die Artefakte (Symlink, kein zweiter Datenbestand); Zahlen,
-Tabellen und Links sind damit pruefbar. Eine Lesehilfe, kein Abbild
+Rendert alle Markdown-Seiten des Baums in ein eigenes Verzeichnis und
+verlinkt Artefakte und Assets (Symlink, kein zweiter Datenbestand);
+Zahlen, Tabellen und Links sind damit pruefbar. Eine Lesehilfe, kein Abbild
 des Pages-Themas — die Optik der Live-Seite entsteht erst beim Bau.
 Das Werkzeug weigert sich, ins Push-Verzeichnis zu rendern.
 

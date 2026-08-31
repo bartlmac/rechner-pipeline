@@ -409,11 +409,72 @@ def test_verlinkt_wird_nur_was_kopiert_wurde(tmp_path: Path):
 
 
 # --------------------------------------------------------------------------- #
-# Falldaten: das Datenmodell einer Falldarstellung
+# Unternehmensseite: die Banderole
 # --------------------------------------------------------------------------- #
 
 import falldaten as fd  # noqa: E402
 import fallbericht as fb  # noqa: E402
+import unternehmensseite as us  # noqa: E402
+
+
+def _quellseiten(tmp_path: Path) -> Path:
+    quellen = tmp_path / "vorzeige-seite"
+    quellen.mkdir()
+    (quellen / "_config.yml").write_text("theme: x\n", encoding="utf-8")
+    (quellen / "index.md").write_text(
+        "Fiktives Unternehmen — Vorfuehrung\n\n# Willkommen\n",
+        encoding="utf-8")
+    return quellen
+
+
+def test_eine_seite_ohne_banderole_wird_nicht_gebaut(tmp_path: Path):
+    """Je echter der Auftritt wirkt, desto wichtiger die Kennzeichnung:
+    Eine Unternehmensseite ohne Fiktions-Hinweis saehe aus wie ein
+    echter Versicherer — der Bau bricht ab, statt zu warnen."""
+    quellen = _quellseiten(tmp_path)
+    (quellen / "it").mkdir()
+    (quellen / "it" / "index.md").write_text(
+        "# IT\nohne Hinweis\n", encoding="utf-8")
+
+    with pytest.raises(vz.VeroeffentlichungFehler):
+        us.baue(quellen, tmp_path / "seite")
+
+
+def test_mit_banderole_wird_der_baum_gespiegelt(tmp_path: Path):
+    quellen = _quellseiten(tmp_path)
+    ziel = tmp_path / "seite"
+    kopiert = us.baue(quellen, ziel)
+    assert sorted(kopiert) == ["_config.yml", "index.md"]
+    assert (ziel / "index.md").is_file()
+
+
+def test_die_fallseite_als_unterseite_haengt_im_auftritt(tmp_path: Path):
+    """Als Unterseite gehoert die Jekyll-Konfiguration der Wurzel des
+    Auftritts, nicht dem Fall — und der Rueckverweis haengt den Bericht
+    in die Migrations-Uebersicht ein."""
+    fall = _fall_mit_berichten(tmp_path)
+    daten = tmp_path / "daten.json"
+    fd.main(["--fall", str(fall), "--out", str(daten)])
+    ziel = tmp_path / "seite" / "migrationen" / "probe"
+
+    code = vz.main(["--fall", str(fall), "--daten", str(daten),
+                    "--out", str(ziel), "--als-unterseite"])
+    assert code == 0
+    assert not (ziel / "_config.yml").exists()
+    seite = (ziel / "index.md").read_text(encoding="utf-8")
+    assert "[← Unsere Bestandsmigrationen](../)" in seite
+
+    # Ohne den Schalter bleibt die Seite eigenstaendig veroeffentlichbar.
+    solo = tmp_path / "solo"
+    vz.main(["--fall", str(fall), "--daten", str(daten), "--out", str(solo)])
+    assert (solo / "_config.yml").is_file()
+    assert "Bestandsmigrationen](../)" not in (solo / "index.md").read_text(
+        encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- #
+# Falldaten: das Datenmodell einer Falldarstellung
+# --------------------------------------------------------------------------- #
 
 
 def _leerfall(tmp_path: Path) -> Path:
