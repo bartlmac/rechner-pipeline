@@ -11,11 +11,18 @@ Fehler ist.
 Die Grundsatzdokumentation fuehrt sie in 9.7 als rechnenden
 Geschaeftsvorfall (Klasse A, "Herabsetzung").
 
-**Die gemeinsame Konstruktion.** Beide Verfahren teilen den Vertrag: Ein
-Anteil ``f`` bleibt beitragspflichtig, der Rest wird beitragsfrei
-gestellt. Weil der Jahresbeitrag proportional zur Versicherungssumme ist
-(``BJB = VS * Bxt``), ist ``f`` zugleich der Beitrags- und der
-Summenanteil des fortgefuehrten Teils.
+**Die gemeinsame Konstruktion.** Der Vertrag wird NICHT geteilt. Er
+bekommt ab dem Reduktionsjahr einen geknickten Verlauf: Der Beitrag faellt
+auf den Anteil ``f``, und der freiwerdende Reserveanteil wird in
+beitragsfreie Summe umgewandelt, die als eigenes Leistungsprofil neben
+dem fortgefuehrten steht (:func:`als_zahlungspfad`). Weil der
+Jahresbeitrag proportional zur Versicherungssumme ist (``BJB = VS *
+Bxt``), ist ``f`` zugleich der Beitrags- und der Summenanteil des
+fortgefuehrten Teils.
+
+Die Rede vom "geteilten Vertrag" stammt aus der Zeit, in der die
+Folgebewertung zwei skalierte Vertraege addierte. Sie hat die Mathematik
+falsch dargestellt: Es gibt einen Vertrag und einen Verlauf.
 
 **Wo sie sich unterscheiden: was mit dem freiwerdenden Reserveanteil
 geschieht.**
@@ -45,12 +52,15 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 if TYPE_CHECKING:  # pragma: no cover
     from rechner_pipeline.kern.produkte.klv import Monatsreserve
 
-from rechner_pipeline.kern.rechenkern import Rechenkern
+from rechner_pipeline.kern.rechenkern import (
+    Rechenkern,
+    vertrags_monatsreserve,
+)
 
 #: Die beiden Verfahren. Welches gilt, ist eine Eigenschaft des SYSTEMS,
 #: nicht des Vertrags — deshalb steht es im Beleg der Migration und nicht
@@ -117,6 +127,34 @@ def reduziere(
     Wer das erweitern will, muss zuerst die Rumpfjahr-Konvention klaeren —
     nicht hier einen Monatsparameter ergaenzen.
     """
+    _pruefe_eingaben(kern.mp, jahr, anteil, verfahren)
+
+    zeile = kern.verlaufszeile(jahr)
+    # Der ungeteilte Vertrag traegt seinen eigenen Stornoabschlag; beim
+    # verlustfreien Verfahren wird keiner erhoben.
+    nach_abzug = (
+        1.0 if verfahren == PROSPEKTIV
+        else _abzugsfaktor(zeile.drx_bpfl, zeile.stoab, jahr)
+    )
+    return _reduziere_eine_schicht(kern, jahr, anteil, nach_abzug, verfahren)
+
+
+def _pruefe_eingaben(
+    mp: ModelPoint, jahr: int, anteil: float, verfahren: str
+) -> None:
+    """Die Eingangswachen — fuer JEDEN Weg in die Reduktion dieselben.
+
+    Sie standen einmal nur im ungeteilten Weg. Der geschichtete lief
+    daran vorbei und nahm klaglos einen Anteil von -1 (negative
+    Versicherungssummen), einen Anteil von 5 (der Vertrag verdreifacht
+    sich) und ein Vertragsjahr nach dem Beitragsende (es gibt keinen
+    Beitrag mehr zu senken). Eine Wache, die nur an einem von zwei
+    Eingaengen steht, ist keine.
+
+    Beim geschichteten Vertrag genuegt die Pruefung am Grundvertrag: Jede
+    Scheibe traegt ``n' = n - e`` und ``t' = t - e`` und rechnet im
+    Vertragsjahr ``jahr - e`` — die Bedingungen sind damit aequivalent.
+    """
     if verfahren not in VERFAHREN:
         raise BeitragsreduktionFehler(
             f"unbekanntes Verfahren {verfahren!r} — bekannt sind {list(VERFAHREN)}"
@@ -126,7 +164,6 @@ def reduziere(
             f"Anteil {anteil!r} liegt nicht in [0, 1] — er ist der "
             "fortgefuehrte Bruchteil des Beitrags"
         )
-    mp = kern.mp
     if jahr < 0 or jahr > mp.n:
         raise BeitragsreduktionFehler(
             f"Vertragsjahr {jahr} ausserhalb der Laufzeit (n={mp.n})"
@@ -137,6 +174,33 @@ def reduziere(
             f"(t={mp.t}) — es gibt keinen Beitrag zu reduzieren"
         )
 
+
+def _abzugsfaktor(dk: float, stoab: float, jahr: int) -> float:
+    """Der Anteil der Reserve, der den Stornoabschlag ueberlebt."""
+    if dk <= 0.0:
+        raise BeitragsreduktionFehler(
+            f"Vertragsjahr {jahr}: Deckungsrueckstellung ist {dk!r} — ein "
+            "anteiliger Stornoabschlag ist darauf nicht bildbar"
+        )
+    return 1.0 - stoab / dk
+
+
+def _reduziere_eine_schicht(
+    kern: Rechenkern,
+    jahr: int,
+    anteil: float,
+    nach_abzug: float,
+    verfahren: str = PROSPEKTIV,
+) -> "Reduktion":
+    """Die Reduktion EINER Schicht — der gemeinsame Rechenteil.
+
+    ``nach_abzug`` ist der Anteil der Reserve, der die Umwandlung
+    ueberlebt: 1.0 beim verlustfreien Verfahren, sonst der vertragsweit
+    gebildete Faktor. Beim ungeteilten Vertrag ist die Schicht der
+    Vertrag, und beide Wege rechnen dieselbe Formel — deshalb steht sie
+    hier einmal.
+    """
+    mp = kern.mp
     zeile = kern.verlaufszeile(jahr)
     dk_vor = zeile.drx_bpfl
     vs_alt = mp.sum_insured
@@ -144,14 +208,7 @@ def reduziere(
 
     # Der fortgefuehrte Teil bleibt unveraendert; nur der freiwerdende
     # Anteil wird umgewandelt.
-    frei = 1.0 - anteil
-    if verfahren == PROSPEKTIV:
-        # Verlustfrei: derselbe Satz wie bei vollstaendiger Freistellung.
-        umgewandelt = dk_vor * frei
-    else:
-        # Wie ein Teilrueckkauf: anteiliger Stornoabzug auf den
-        # freiwerdenden Teil, bevor umgewandelt wird.
-        umgewandelt = (dk_vor - zeile.stoab) * frei
+    umgewandelt = dk_vor * nach_abzug * (1.0 - anteil)
 
     if zeile.vx_bfr <= 0.0:
         raise BeitragsreduktionFehler(
@@ -178,6 +235,125 @@ def reduziere(
     )
 
 
+def reduziere_geschichtet(
+    grund: Rechenkern,
+    scheiben: Sequence[Tuple[int, Rechenkern]],
+    jahr: int,
+    anteil: float,
+    *,
+    verfahren: str = PROSPEKTIV,
+) -> List[Tuple[int, "Reduktion"]]:
+    """Herabsetzung eines Vertrags MIT dynamischen Erhoehungsscheiben.
+
+    **Anteilig ueber alle Schichten** (Tarifplan KLV 12, entschieden
+    2026-08-31): Jede Schicht traegt denselben Faktor ``anteil``. Das ist
+    keine willkuerliche Wahl unter mehreren, sondern die einzige Regel,
+    die ohne neue Konvention auskommt — weil der Jahresbeitrag jeder
+    Schicht proportional zu ihrer Summe ist, ergibt derselbe Faktor je
+    Schicht in der Summe genau den Zielbeitrag::
+
+        sum_i (f * BJB_i) = f * sum_i BJB_i
+
+    Die Alternativen brauchen mehr als eine Rechnung: "juengste zuerst"
+    braucht eine Reihenfolge und eine Regel fuer die teilweise
+    zurueckgenommene Schicht, "nur die Grundscheibe" laesst den Beitrag
+    der Erhoehungen unsenkbar.
+
+    **Der Stornoabschlag bleibt vertragsweit.** Seine Grenzen
+    ``stoab_min``/``stoab_max`` gelten je VERTRAG (Tarifplan 6); je
+    Schicht gebildet griffen sie mehrfach und der Abzug waere bei einem
+    geschichteten Vertrag ein Vielfaches des zugesagten. Er wird deshalb
+    EINMAL auf den Gesamtwerten gebildet und dann proportional zur
+    Deckungsrueckstellung der Schicht verteilt — dem Anteil, aus dem der
+    umgewandelte Betrag stammt. Beim verlustfreien Verfahren entfaellt
+    die Frage, dort wird kein Abzug erhoben.
+
+    Rueckgabe: je Schicht ihr Erhoehungsjahr und ihre Reduktion, in der
+    Reihenfolge (Grundscheibe zuerst) von ``vertrags_monatsreserve``.
+    """
+    teile: List[Tuple[int, Rechenkern]] = [(0, grund)] + list(scheiben)
+    _pruefe_eingaben(grund.mp, jahr, anteil, verfahren)
+
+    # Erst die Schichten pruefen, dann rechnen: Eine Scheibe, die es im
+    # Reduktionsjahr noch nicht gibt, soll als Reduktionsfehler auffallen
+    # und nicht tief in der vertragsweiten Reserve.
+    for erh_jahr, _kern in teile:
+        if jahr - erh_jahr < 0:
+            raise BeitragsreduktionFehler(
+                f"Erhoehungsscheibe aus Jahr {erh_jahr} existiert im "
+                f"Vertragsjahr {jahr} noch nicht"
+            )
+
+    # Die vertragsweiten Groessen am Reduktionsstichtag: Sie entscheiden
+    # ueber den Abzug, bevor irgendeine Schicht gerechnet wird.
+    gesamt = vertrags_monatsreserve(grund, list(scheiben), 12 * jahr)
+    # Der Anteil der Reserve, der die Umwandlung ueberlebt. Derselbe
+    # Faktor fuer jede Schicht: Der Abzug ist vertragsweit gebildet und
+    # wird proportional zur eingebrachten Reserve getragen.
+    nach_abzug = (
+        1.0 if verfahren == PROSPEKTIV
+        else _abzugsfaktor(gesamt.drx_bpfl, gesamt.stoab, jahr)
+    )
+
+    aus: List[Tuple[int, "Reduktion"]] = []
+    for erh_jahr, kern in teile:
+        # Die Schicht rechnet ihre eigene Reduktion — mit ihrem eigenen
+        # Eintrittsalter, ihrer eigenen Restdauer und ihrem eigenen
+        # beitragsfreien Reservesatz. Nur der Abzug kommt von aussen.
+        aus.append((erh_jahr, _reduziere_eine_schicht(
+            kern, jahr - erh_jahr, anteil, nach_abzug, verfahren)))
+    return aus
+
+
+def vertrags_monatsreserve_reduziert(
+    teile: Sequence[Tuple[int, "ReduzierterVertrag"]], monate: int
+) -> "Monatsreserve":
+    """Vertragsweite Monatsreserve eines herabgesetzten GESCHICHTETEN Vertrags.
+
+    Spiegel von
+    :func:`rechner_pipeline.kern.rechenkern.vertrags_monatsreserve`, nur
+    dass jede Schicht ihren herabgesetzten Verlauf rechnet: Reserven sind
+    die Summe der Schichtwerte, jede an ihrem versetzten Stichtag; der
+    Stornoabschlag gilt je VERTRAG und wird einmal auf den Gesamtwerten
+    gebildet.
+
+    Bezugsgroesse des Abschlags ist die NEUE Gesamtsumme — die Summe der
+    ``vs_neu`` aller Schichten, also fortgefuehrter plus umgewandelter
+    Teil. Die alte waere die Summe eines Vertrags, den es nicht mehr gibt.
+    """
+    from rechner_pipeline.kern.produkte.klv import Monatsreserve
+
+    if not teile:
+        raise BeitragsreduktionFehler(
+            "keine Schichten — ein Vertrag ohne Grundscheibe ist keiner")
+    dr = mrv = 0.0
+    for erh_jahr, vertrag in teile:
+        versetzt = monate - 12 * erh_jahr
+        if versetzt < 0:
+            raise BeitragsreduktionFehler(
+                f"Erhoehungsscheibe aus Jahr {erh_jahr} existiert am "
+                f"Monats-Stichtag {monate} noch nicht"
+            )
+        reserve = vertrag.monatsreserve(versetzt)
+        dr += reserve.drx_bpfl
+        mrv += reserve.vx_mrv
+
+    grund = teile[0][1].kern
+    mp = grund.mp
+    a = monate // 12
+    if a > mp.n or grund.produkt.ist_flex_phase(a):
+        stoab = 0.0
+    else:
+        vs = sum(v.reduktion.vs_neu for _, v in teile)
+        stoab = min(mp.stoab_max,
+                    max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+    return Monatsreserve(
+        monate=monate, jahr=a, monatsanteil=(monate % 12) / 12.0,
+        drx_bpfl=dr, vx_mrv=mrv, stoab=stoab,
+        rkw=max(0.0, mrv - stoab),
+    )
+
+
 def als_zahlungspfad(red: "Reduktion", mp: ModelPoint) -> "Zahlungspfad":
     """Die Herabsetzung als VERLAUF statt als Skalierung.
 
@@ -193,10 +369,15 @@ def als_zahlungspfad(red: "Reduktion", mp: ModelPoint) -> "Zahlungspfad":
     rechnet den Ursprungsvertrag einmal und multipliziert. Das gilt fuer
     einen ungeteilten Vertrag exakt — und nur fuer den. Sobald
     Erhoehungsscheiben mit eigenem Eintrittsalter und eigener
-    Beitragsdauer dazukommen, gibt es keinen gemeinsamen Faktor mehr,
-    und genau deshalb beschraenkt der Tarifplan die Herabsetzung heute
-    auf den ungeteilten Track. Der Verlauf braucht keine Homogenitaet;
-    er beschreibt, was gezahlt wird, und die Rekursion rechnet es aus.
+    Beitragsdauer dazukommen, gibt es keinen gemeinsamen Faktor mehr.
+    Der Verlauf braucht keine Homogenitaet; er beschreibt, was gezahlt
+    wird, und die Rekursion rechnet es aus.
+
+    Damit ist die Beschraenkung des Tarifplans auf den ungeteilten
+    Vertrag keine Grenze der Rechnung mehr. Was bei geschichteten
+    Vertraegen fehlt, ist die ZUSAGE, wie sich eine Herabsetzung des
+    Gesamtbeitrags auf die Schichten verteilt — eine Tarifentscheidung
+    (Tarifplan KLV, Abschnitt 12).
 
     Geprueft ist die Gleichwertigkeit am ungeteilten Vertrag: Pfad und
     Skalierung stimmen ueber alle Vertragsjahre bis auf
@@ -222,17 +403,20 @@ def als_zahlungspfad(red: "Reduktion", mp: ModelPoint) -> "Zahlungspfad":
 
 @dataclass(frozen=True)
 class ReduzierterVertrag:
-    """Der geteilte Vertrag NACH einer Beitragsreduktion — die Folgebewertung.
+    """Der herabgesetzte Vertrag NACH der Reduktion — die Folgebewertung.
 
     Die Reduktion selbst rechnet :func:`reduziere`; dieses Objekt traegt
-    den Vertrag DANACH. Zweiteilung des Tarifwerks: der fortgefuehrte
-    Anteil ``anteil`` bleibt ein beitragspflichtiger Vertrag ueber
-    ``anteil * VS`` — saemtliche Zielgroessen des Kerns sind homogen in
-    der Versicherungssumme (der Beitrag ist ``VS * Bxt``) und skalieren
-    deshalb exakt mit. Der umgewandelte Teil ist eine bei der Reduktion
-    FIXIERTE beitragsfreie Summe, die auf dem beitragsfreien Reservesatz
+    den Vertrag DANACH — als EINEN Vertrag mit geknicktem Verlauf, nicht
+    als Summe zweier Vertraege. Ab dem Reduktionsjahr traegt er den
+    Beitragsanteil ``anteil`` und daneben die bei der Reduktion FIXIERTE
+    beitragsfreie Summe, die auf dem beitragsfreien Reservesatz
     weiterlaeuft — dieselbe Mechanik wie die Summe einer
-    Beitragsfreistellung (Tarifplan klv.md, GeVo-Katalog PEX).
+    Beitragsfreistellung (Tarifplan klv.md, 7.1 und GeVo-Katalog PEX).
+
+    Gerechnet wird ueber den Zahlungspfad (:func:`als_zahlungspfad`),
+    nicht ueber zwei skalierte Vertraege. Die Skalierung waere nur beim
+    ungeteilten Vertrag exakt, weil sie Homogenitaet in der
+    Versicherungssumme voraussetzt; der Pfad braucht sie nicht.
 
     Stornoabschlag und Rueckkaufswert gelten je VERTRAG, einmal auf die
     Gesamtwerte gerechnet — dieselbe Regel wie bei Erhoehungsscheiben
@@ -274,7 +458,7 @@ class ReduzierterVertrag:
         return satz
 
     def monatsreserve(self, monate: int) -> "Monatsreserve":
-        """Vertragsweite Reserven des geteilten Vertrags am Monats-Stichtag.
+        """Vertragsweite Reserven des herabgesetzten Vertrags am Monats-Stichtag.
 
         Gerechnet ueber den ZAHLUNGSPFAD: eine Rekursion ueber den
         tatsaechlichen Verlauf, statt den Ursprungsvertrag zu rechnen und
@@ -283,10 +467,10 @@ class ReduzierterVertrag:
         Die Skalierung war exakt, aber nur unter einer Voraussetzung --
         Homogenitaet in der Versicherungssumme. Sie gilt fuer einen
         ungeteilten Vertrag und faellt, sobald Erhoehungsscheiben mit
-        eigenem Eintrittsalter und eigener Beitragsdauer dazukommen;
-        genau darum beschraenkt der Tarifplan die Herabsetzung heute auf
-        den Track ohne Scheiben. Der Verlauf braucht die Voraussetzung
-        nicht: Er beschreibt, was gezahlt wird.
+        eigenem Eintrittsalter und eigener Beitragsdauer dazukommen. Der
+        Verlauf braucht die Voraussetzung nicht: Er beschreibt, was
+        gezahlt wird. Offen ist bei geschichteten Vertraegen nur die
+        Zusage der Verteilung (Tarifplan KLV, Abschnitt 12).
 
         Die Umstellung ist wertneutral -- Pfad und Skalierung stimmen an
         jedem Monats-Stichtag ueberein (Test in tests/test_zahlungspfad).
@@ -335,8 +519,8 @@ class ReduzierterVertrag:
                 + self.bfr_teil)
 
     def reserve_beitragsfrei(self, pex_jahr: int, monate: int) -> float:
-        """Reserve nach einer SPAETEREN Beitragsfreistellung des geteilten
-        Vertrags: die dort fixierte Gesamtsumme laeuft auf dem
+        """Reserve nach einer SPAETEREN Beitragsfreistellung des
+        herabgesetzten Vertrags: die dort fixierte Gesamtsumme laeuft auf dem
         beitragsfreien Reservesatz weiter (Spiegel von
         :meth:`Rechenkern.monatsreserve_beitragsfrei`)."""
         if monate < 12 * pex_jahr:

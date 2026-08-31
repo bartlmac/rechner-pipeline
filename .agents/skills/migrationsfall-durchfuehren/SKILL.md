@@ -289,6 +289,27 @@ beitragsfrei ankommenden Vertraegen die Umbuchung) stellt das Kommando
 dem Fortschreibungs-Journal voran. Die Merkmalstabelle nimmt es aus dem
 Uebernahme-Verzeichnis, `--merkmale` uebersteuert sie.
 
+**Bericht.** Den Bestandsbericht danach IN DAS Fortschreibungs-
+verzeichnis schreiben, nicht irgendwohin — die Vorzeigeseite findet ihn
+ueber diesen Pfad:
+
+```
+python -m rechner_pipeline.bestand.cli_report \
+    --portfolio faelle/<fall>/abgeleitet/bestand-nach/bestand_gesamt.parquet \
+    --historie  faelle/<fall>/abgeleitet/bestand-nach/historie.parquet \
+    --ledger    faelle/<fall>/abgeleitet/bestand-nach/ledger.parquet \
+    --scheiben  faelle/<fall>/abgeleitet/bestand-nach/scheiben.parquet \
+    --merkmale  faelle/<fall>/abgeleitet/bestand/merkmale.parquet \
+    --config <bestand-config>.toml \
+    --bis <horizont> --stichtag <migrationsstichtag> \
+    --out faelle/<fall>/abgeleitet/bestand-nach/bestandsbericht.html
+```
+
+Quelle ist `bestand_gesamt.parquet` (der GEFUEHRTE Gesamtbestand), nicht
+der Basisbestand. `--merkmale` ist Pflicht, sobald die uebernommene
+Generation in Tarifzellen aufgeteilt ist; ohne sie bricht die Bewertung
+ab, statt eine Zelle zu raten.
+
 **Tarifzellen.** Fuehrt die Spez mehr als eine Zelle, kommen zwei
 weitere Ausgaben dazu: `merkmale.parquet` (je Vertrag und Dimension die
 gewaehlte Auspraegung — die Nebentabelle zur Zellwahl) und

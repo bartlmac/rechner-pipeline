@@ -242,3 +242,193 @@ def test_monat_vor_der_reduktion_faellt_hart():
     rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
     with pytest.raises(BeitragsreduktionFehler, match="vor der Reduktion"):
         rv.monatsreserve(12 * JAHR - 1)
+
+
+# --------------------------------------------------------------------------- #
+# Herabsetzung geschichteter Vertraege (Tarifplan KLV 12, anteilig)
+# --------------------------------------------------------------------------- #
+
+
+def _geschichtet(jahre=(4, 8), vs=15_000.0):
+    """Grundvertrag plus dynamische Erhoehungsscheiben."""
+    from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
+
+    return [
+        (j, Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, j, vs))) for j in jahre
+    ]
+
+
+def test_anteilig_trifft_den_zielbeitrag_ueber_alle_schichten():
+    """Der Grund, warum anteilig ohne neue Konvention auskommt.
+
+    Der Jahresbeitrag jeder Schicht ist proportional zu ihrer Summe.
+    Derselbe Faktor je Schicht ergibt deshalb in der Summe genau den
+    Zielbeitrag — das muss nicht zugesagt werden, das folgt.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import reduziere_geschichtet
+
+    grund = Rechenkern(KLV_DEFAULT)
+    scheiben = _geschichtet()
+    f = 0.6
+    teile = reduziere_geschichtet(grund, scheiben, 10, f)
+
+    alt = sum(r.bjb_alt for _, r in teile)
+    neu = sum(r.bjb_neu for _, r in teile)
+    assert alt > 0
+    assert neu == pytest.approx(f * alt, rel=1e-12)
+    assert len(teile) == 3, "Grundscheibe plus zwei Erhoehungen"
+    assert [j for j, _ in teile] == [0, 4, 8]
+
+
+@pytest.mark.parametrize("verfahren", [PROSPEKTIV, MIT_ABZUG])
+def test_ohne_scheiben_ist_die_verallgemeinerung_der_sonderfall(verfahren):
+    """Die geschichtete Rechnung MUSS den ungeteilten Fall exakt treffen.
+
+    Sonst waere sie ein zweites Verfahren neben dem zugesagten, nicht
+    seine Verallgemeinerung — und der Tarifplan saegte an seiner eigenen
+    Zusage.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import reduziere_geschichtet
+
+    grund = Rechenkern(KLV_DEFAULT)
+    einzeln = reduziere(grund, 10, 0.6, verfahren=verfahren)
+    [(erh_jahr, geschichtet)] = reduziere_geschichtet(
+        grund, [], 10, 0.6, verfahren=verfahren)
+
+    assert erh_jahr == 0
+    assert geschichtet == einzeln
+
+
+def test_der_stornoabschlag_wird_nicht_je_schicht_erhoben():
+    """Die Grenzen gelten je VERTRAG — sonst zahlt der Kunde sie dreifach.
+
+    Der Tarifplan setzt Unter- und Obergrenze des Stornoabschlags je
+    Vertrag (Abschnitt 6). Je Schicht gebildet griffe die Untergrenze
+    einmal pro Schicht, und ein Vertrag mit zwei Erhoehungen verlore beim
+    Herabsetzen mehr als der zugesagte Abschlag. Dieser Test haelt den
+    Unterschied fest und zeigt, dass er nicht klein ist.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import (
+        reduziere_geschichtet,
+        vertrags_monatsreserve_reduziert,
+    )
+    from rechner_pipeline.kern.rechenkern import vertrags_monatsreserve
+
+    grund = Rechenkern(KLV_DEFAULT)
+    scheiben = _geschichtet()
+    jahr, f = 10, 0.6
+
+    gesamt = vertrags_monatsreserve(grund, scheiben, 12 * jahr)
+    teile = reduziere_geschichtet(grund, scheiben, jahr, f,
+                                  verfahren=MIT_ABZUG)
+
+    # Der insgesamt einbehaltene Abzug ist der VERTRAGSWEITE, anteilig
+    # auf den freiwerdenden Teil: nicht die Summe je Schicht gebildeter.
+    verlustfrei = reduziere_geschichtet(grund, scheiben, jahr, f,
+                                        verfahren=PROSPEKTIV)
+    einbehalten = sum(a.dk_nach for _, a in verlustfrei) - sum(
+        b.dk_nach for _, b in teile)
+    assert einbehalten == pytest.approx(gesamt.stoab * (1.0 - f), rel=1e-9)
+
+    # Die falsche Rechnung zur Kontrolle: je Schicht ein eigener Abschlag.
+    je_schicht = sum(
+        k.verlaufszeile(jahr - j).stoab for j, k in [(0, grund)] + scheiben)
+    assert je_schicht > gesamt.stoab, (
+        "ohne den Kontrolltest sagt der Test oben nichts — die beiden "
+        "Rechnungen muessen wirklich auseinanderliegen")
+
+
+@pytest.mark.parametrize("verfahren", [PROSPEKTIV, MIT_ABZUG])
+def test_voller_beitrag_laesst_den_geschichteten_vertrag_unveraendert(verfahren):
+    """f = 1 ist keine Reduktion — auch mit Schichten nicht."""
+    from rechner_pipeline.kern.beitragsreduktion import reduziere_geschichtet
+
+    grund = Rechenkern(KLV_DEFAULT)
+    scheiben = _geschichtet()
+    for _, r in reduziere_geschichtet(grund, scheiben, 10, 1.0,
+                                      verfahren=verfahren):
+        assert r.vs_neu == pytest.approx(r.vs_alt, rel=1e-12)
+        assert r.bjb_neu == pytest.approx(r.bjb_alt, rel=1e-12)
+        assert r.dk_nach == pytest.approx(r.dk_vor, rel=1e-12)
+
+
+def test_eine_noch_nicht_existierende_schicht_ist_ein_fehler():
+    """Vor ihrem Erhoehungsjahr gibt es die Scheibe nicht.
+
+    Dieselbe Wache wie in vertrags_monatsreserve: Eine Reduktion im
+    Vertragsjahr 3 kann eine Scheibe aus Jahr 8 nicht herabsetzen.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import reduziere_geschichtet
+
+    grund = Rechenkern(KLV_DEFAULT)
+    with pytest.raises(BeitragsreduktionFehler) as exc:
+        reduziere_geschichtet(grund, _geschichtet(jahre=(8,)), 3, 0.6)
+    assert "existiert im Vertragsjahr 3 noch nicht" in str(exc.value)
+
+
+def test_die_folgebewertung_bildet_den_abschlag_einmal():
+    """Vertragsweit auf der NEUEN Gesamtsumme.
+
+    Nach der Herabsetzung ist die Bezugsgroesse des Abschlags die Summe
+    der neuen Schichtsummen — fortgefuehrter plus umgewandelter Teil. Die
+    alte waere die Summe eines Vertrags, den es nicht mehr gibt.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import (
+        ReduzierterVertrag,
+        reduziere_geschichtet,
+        vertrags_monatsreserve_reduziert,
+    )
+
+    grund = Rechenkern(KLV_DEFAULT)
+    scheiben = _geschichtet()
+    jahr = 10
+    teile = reduziere_geschichtet(grund, scheiben, jahr, 0.6)
+    kerne = dict([(0, grund)] + scheiben)
+    vertraege = [
+        (j, ReduzierterVertrag(kern=kerne[j], reduktion=r)) for j, r in teile
+    ]
+
+    monate = 12 * (jahr + 3)
+    ges = vertrags_monatsreserve_reduziert(vertraege, monate)
+
+    # Reserven summieren sich ueber die Schichten ...
+    einzeln = sum(
+        v.monatsreserve(monate - 12 * j).drx_bpfl for j, v in vertraege)
+    assert ges.drx_bpfl == pytest.approx(einzeln, rel=1e-12)
+
+    # ... der Abschlag nicht: er ist einmal auf den Gesamtwerten gebildet.
+    je_schicht = sum(
+        v.monatsreserve(monate - 12 * j).stoab for j, v in vertraege)
+    assert 0.0 < ges.stoab < je_schicht
+    vs_neu = sum(r.vs_neu for _, r in teile)
+    erwartet = min(KLV_DEFAULT.stoab_max,
+                   max(KLV_DEFAULT.stoab_min,
+                       KLV_DEFAULT.stoab_satz * (vs_neu - ges.drx_bpfl)))
+    assert ges.stoab == pytest.approx(erwartet, rel=1e-12)
+
+
+@pytest.mark.parametrize("jahr,anteil,was", [
+    (KLV_DEFAULT.t, 0.6, "nach Beitragsende"),
+    (10, 5.0, "Anteil ueber 1"),
+    (10, -1.0, "negativer Anteil"),
+    (999, 0.6, "Jahr ausserhalb der Laufzeit"),
+])
+def test_beide_wege_weisen_dieselben_eingaben_ab(jahr, anteil, was):
+    """Eine Wache, die nur an einem von zwei Eingaengen steht, ist keine.
+
+    Die Eingangspruefungen standen zuerst nur im ungeteilten Weg. Der
+    geschichtete lief daran vorbei und nahm klaglos einen Anteil von -1
+    (negative Versicherungssummen), einen Anteil von 5 (der Vertrag
+    verdreifacht sich) und ein Vertragsjahr nach dem Beitragsende. Keine
+    Ausnahme, kein Befund — nur falsche Zahlen.
+
+    Dieser Test stellt die beiden Wege gegeneinander: Was der eine
+    ablehnt, muss der andere auch ablehnen.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import reduziere_geschichtet
+
+    grund = Rechenkern(KLV_DEFAULT)
+    with pytest.raises(BeitragsreduktionFehler):
+        reduziere(grund, jahr, anteil)
+    with pytest.raises(BeitragsreduktionFehler):
+        reduziere_geschichtet(grund, _geschichtet(jahre=(4,)), jahr, anteil)

@@ -147,10 +147,76 @@ Abschnitt 7. Jeder Betrag kommt aus dem Kern.
 | **ZUG** Zugang | POL-Basiszeile ab Versicherungsbeginn | $S$ (Bestandsvolumen) |
 | **ERH** dynamische Erhöhung | neue Scheibe: eigener Modellpunkt mit $x' = x{+}a$, $n' = n{-}a$, $t' = t{-}a$, $S' = e \cdot S^{ges}$ (Zinseszins), ohne $\gamma_1$ (Bezugsgröße GrundVS); kein Statuswechsel | $S'$ |
 | **PEX** Beitragsfreistellung | Statuswechsel; fixiert $\sum_{\text{Scheiben}} S^{bfr}_a$; danach beitragsfreier Track | $\sum S^{bfr}_a$ |
-| **RED** Beitragsherabsetzung | teilt den Vertrag am Jahrestag: Anteil $f$ läuft beitragspflichtig weiter ($f \cdot S$, $f \cdot \text{BJB}$), der freiwerdende Teil wird in eine fixierte beitragsfreie Summe umgewandelt (Zielverfahren: verlustfrei, $S^{bfr\text{-}Teil} = (1{-}f)\, DR_a / {}_a V^{bfr}$); kein Statuswechsel; StoAb/RKW vertragsweit auf $S^{neu} = f S + S^{bfr\text{-}Teil}$; spätere PEX fixiert beide Teile; nur auf dem ungeteilten beitragspflichtigen Track ohne Scheiben (Übriges: Ausgestaltung offen) | $\Delta DK$ (0 bei verlustfreier Umwandlung) |
+| **RED** Beitragsherabsetzung | Beitrag sinkt am Jahrestag $a_0$ auf den Anteil $f$; der Vertrag wird NICHT geteilt, sondern bekommt ein geknicktes Zahlungsprofil (7.1). Kein Statuswechsel; StoAb/RKW weiterhin vertragsweit; eine spätere PEX fixiert die Gesamtsumme | $\Delta DK$ (0 bei verlustfreier Umwandlung) |
 | **STO** Rückkauf | terminal; nur beitragspflichtig, $a < n$ | $\text{RKW}_a$ (vertragsweiter StoAb) |
 | **TOD** Tod | terminal | $S^{ges}$ bzw. nach PEX $\sum S^{bfr}$ |
 | **ABL** Ablauf | terminal bei $a = n$ | $S^{ges}$ bzw. $\sum S^{bfr}$ |
+
+## 7.1 Beitragsherabsetzung: Zahlungsprofil und Geltungsbereich
+
+Der herabgesetzte Vertrag ist **ein** Vertrag mit geknicktem Verlauf,
+nicht die Summe zweier Verträge. Ab dem Reduktionsjahr $a_0$ gilt,
+relativ zur Ursprungssumme $S$:
+
+| Größe | vor $a_0$ | ab $a_0$ |
+|---|---|---|
+| Beitrag | $1$ | $f$ |
+| Leistung (Todes- und Erlebensfall, Ablauf) | $1$ | $f + q$ |
+| beitragspflichtige Verwaltungskosten ($\gamma_2$) | $1$ | $f$ |
+| beitragsfreie Verwaltungskosten ($\gamma_3$) | $0$ | $q$ |
+
+$q$ ist die umgewandelte beitragsfreie Summe relativ zu $S$. Sie ist die
+**einzige** Größe, in der sich die beiden Verfahren unterscheiden:
+
+$$
+q^{\text{prospektiv}} = (1-f)\,\frac{{}_{a_0}V^{bpfl}}{{}_{a_0}V^{bfr}},
+\qquad
+q^{\text{mit Abzug}} = (1-f)\,
+\frac{{}_{a_0}DR^{bpfl} - \text{StoAb}_{a_0}}{S \cdot {}_{a_0}V^{bfr}} .
+$$
+
+Das prospektive Verfahren wandelt verlustfrei um; das Altverfahren
+behandelt den freiwerdenden Anteil wie eine Teilkündigung und erhebt den
+anteiligen Stornoabschlag, bevor es umwandelt. Bei $f = 0$ sind beide
+die vollständige Beitragsfreistellung, bei $f = 1$ ändert sich nichts.
+Welches Verfahren gilt, ist eine Eigenschaft des rechnenden **Systems**
+und keine des Vertrags — es steht deshalb im Beleg einer Migration, nicht
+im Modellpunkt.
+
+Die Reserve rechnet die Rekursion aus diesem Profil; sie skaliert keinen
+Ursprungsvertrag hoch. Der Unterschied ist nicht die Schreibweise:
+Skalierung setzt **Homogenität in der Versicherungssumme** voraus und
+gilt nur für den ungeteilten Vertrag exakt. Ein Profil beschreibt, was
+gezahlt wird, und braucht diese Voraussetzung nicht.
+
+**Bei geschichteten Verträgen wirkt die Herabsetzung anteilig.** Trägt
+der Vertrag dynamische Erhöhungsscheiben, so trägt jede Schicht denselben
+Faktor $f$ und wandelt ihren freiwerdenden Anteil mit **ihrem eigenen**
+beitragsfreien Reservesatz um; jede Schicht rechnet dabei in ihrem
+eigenen Vertragsjahr $a_i = a_0 - e_i$, wobei $e_i$ ihr Erhöhungsjahr ist.
+
+Anteilig ist keine Wahl unter mehreren, sondern die Folge der
+Beitragsdefinition: Weil der Jahresbeitrag jeder Schicht proportional zu
+ihrer Summe ist, ergibt derselbe Faktor je Schicht in der Summe genau den
+Zielbeitrag,
+
+$$
+\sum_i f \cdot \text{BJB}_i = f \sum_i \text{BJB}_i .
+$$
+
+**Der Stornoabschlag bleibt vertragsweit** (Abschnitt 6): einmal auf den
+Gesamtwerten gebildet und dann proportional zur Deckungsrückstellung der
+Schicht getragen —
+
+$$
+q_i^{\text{mit Abzug}} = (1-f)\,
+\Bigl(1 - \frac{\text{StoAb}^{ges}_{a_0}}{DR^{ges}_{a_0}}\Bigr)
+\frac{{}_{a_i}V^{bpfl}}{{}_{a_i}V^{bfr}} .
+$$
+
+Je Schicht gebildet griffen $u_{\min}$ und $u_{\max}$ mehrfach, und ein
+Vertrag mit zwei Erhöhungen verlöre beim Herabsetzen mehr als den
+zugesagten Abschlag.
 
 # 8 Modellpunkt und Tarif-Stellschrauben
 
@@ -209,9 +275,17 @@ laufender Referenzwert.
 
 # 12 Vorgesehene Erweiterungen
 
-Beitragsreduktion, Wiederinkraftsetzung, monatsgenaues Ereignisgitter,
+Wiederinkraftsetzung, monatsgenaues Ereignisgitter,
 Überschussbeteiligung — jeweils als GeVo-Formeln in Abschnitt 7 zu
 ergänzen, bevor sie implementiert werden.
+
+Die **Beitragsherabsetzung** stand hier, zuletzt nur noch mit ihrer
+Verteilungsregel für geschichtete Verträge; seit 2026-08-31 ist sie
+vollständig in 7.1 zugesagt (anteilig über alle Schichten,
+Stornoabschlag vertragsweit). Verworfen wurden dabei „jüngste Schicht
+zuerst" — wegabhängig und ohne Regel für die teilweise zurückgenommene
+Schicht — und „nur die Grundscheibe", das den Beitrag der
+Erhöhungsscheiben unsenkbar ließe.
 
 # 13 PLV-Bestandsgenerationen
 
