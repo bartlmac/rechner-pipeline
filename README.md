@@ -59,7 +59,10 @@ erzeugt (1) einmalig"]
 erzeugt Lieferungen für (2)"]
         T6["(6) Tägliche Fortschreibung — geplant
 Vorfälle je Tag für (1)"]
-        T4 ~~~ T5 ~~~ T6
+        R7["(7) Regie — WIP
+Spielleitung der Vorführung: Drehbücher, Rollen,
+Auflösungen; bespielt (4)–(6)"]
+        T4 ~~~ T5 ~~~ T6 ~~~ R7
     end
     TOOLING -. "erzeugt die Vorzeigeobjekte" .-> OBJEKTE
 
@@ -70,8 +73,16 @@ Vorfälle je Tag für (1)"]
     class P1,F2 objekt
     class S3 system
     class T4,T5,T6 sim
-    class T6 geplant
+    classDef regie fill:#7a5c2e,stroke:#5d461f,color:#ffffff
+    class R7 regie
+    class T6,R7 geplant
 ```
+
+Die **Regie** (7) ist als Konzept benannt, ihre Dokumentation ist in
+Arbeit — Stub: `dev-docs/regie.md`. Sie legt fest, was vorgeführt wird
+und unter welchen Bedingungen (Spielleiter-Bereiche, Rollen samt
+Zeichnungsordnung, Abbruchkriterien); wie die Simulation gehört sie zum
+Gesamtbild, aber nicht zum System.
 
 
 ## Architektur

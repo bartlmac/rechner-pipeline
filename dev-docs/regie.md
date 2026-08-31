@@ -34,11 +34,9 @@ ein Tag bringt, welche Stoerungen inszeniert werden).
 
 ## Was zu dokumentieren bleibt
 
-1. **README-Diagramm erweitern**: Das Komponentenbild (Objekte/System
-   links, Simulations-Tooling rechts: (4) Bestands-Simulation,
-   (5) Quellbestand-Simulation, (6) Taegliche Fortschreibung) bekommt
-   eine vierte Komponente oder einen Balken UNTER dem Tooling:
-   **Regie** — sie bespielt Migration UND Fortschreibung.
+1. ~~README-Diagramm erweitern~~ — geschehen 2026-08-31: Komponente
+   (7) "Regie — WIP" im Komponentenbild, gestrichelt wie das geplante
+   Tooling, mit Verweis hierher.
 2. Ein eigenes Kapitel (dieses Dokument ausbauen): Abgrenzung
    System / Simulation / Regie, die Bereiche, die Rollen, die
    Abbruchkriterien, der Umgang mit Aufloesungen.
