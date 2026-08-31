@@ -113,3 +113,39 @@ def test_abweichendes_geliefertes_geburtsdatum_wird_gemeldet():
         stichtag=dt.date(2026, 1, 1), vorgeschichte={})
 
     assert any("Geburtsdaten weichen" in h for h in hinweise)
+
+
+def test_die_uebernahme_archiviert_die_gevo_metadatenliste(tmp_path):
+    """E1 (Entscheidung 2026-08-31): Archiv der PLV.
+
+    Das Quellsystem wird stillgelegt und als Archiv genutzt -- die
+    gelieferte GeVo-Metadatenliste gehoert deshalb dauerhaft zum
+    Zielbestand, nicht nur ins Migrations-Staging. Byte-identisch: Ein
+    Archiv, das beim Archivieren umschreibt, archiviert nicht.
+    """
+    import json
+
+    from rechner_pipeline.fall import anlegen, registrieren
+    from rechner_pipeline.gates import bestand_uebernehmen
+
+    fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
+
+    metadaten = tmp_path / "gevo_metadaten.csv"
+    metadaten.write_text(
+        "POLNR;GEVO;DATUM\n7000001;ERH;01.02.2020\n", encoding="utf-8")
+    registrieren(fall, metadaten)
+
+    zeilen = tmp_path / "zeilen.json"
+    zeilen.write_text(json.dumps([dict(ZEILE)]), encoding="utf-8")
+    ziel = fall / "abgeleitet" / "bestand"
+
+    assert bestand_uebernehmen.main([
+        "--fall", str(fall), "--zeilen", str(zeilen),
+        "--tarif-generation", "TG2015", "--stichtag", "2026-01-01",
+        "--vorgeschichte", "gevo_metadaten.csv",
+        "--out-dir", str(ziel),
+    ]) == 0
+
+    archiv = ziel / "quellarchiv" / "gevo_metadaten.csv"
+    assert archiv.read_bytes() == metadaten.read_bytes()

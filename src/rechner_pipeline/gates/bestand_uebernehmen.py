@@ -407,10 +407,23 @@ def baue(
             "falsch (beitragsfreier Track, gamma3, VS_bfr)."
         )
 
+    # Explizit auf die Vertrags-Dtypes: Ein LEERES Frame hat sonst
+    # object-Spalten, und der Parquet-Schreiber scheitert am ersten
+    # Datumsfeld. Der Fall ist real -- eine Vorgeschichte, die nur ERH
+    # oder RED enthaelt, erzeugt keine einzige Historienzeile.
+    from rechner_pipeline.models.bestand import (
+        LEDGER_SPALTEN,
+        STAMM_SPALTEN,
+        STATUS_HISTORIE_SPALTEN,
+    )
+
     return (
-        pd.DataFrame(stamm, columns=list(STAMM_NAMES)),
-        pd.DataFrame(historie, columns=list(STATUS_HISTORIE_NAMES)),
-        pd.DataFrame(ledger, columns=list(LEDGER_NAMES)),
+        pd.DataFrame(stamm, columns=list(STAMM_NAMES))
+        .astype(dict(STAMM_SPALTEN)),
+        pd.DataFrame(historie, columns=list(STATUS_HISTORIE_NAMES))
+        .astype(dict(STATUS_HISTORIE_SPALTEN)),
+        pd.DataFrame(ledger, columns=list(LEDGER_NAMES))
+        .astype(dict(LEDGER_SPALTEN)),
         hinweise,
     )
 
@@ -543,6 +556,20 @@ def main(argv: Optional[List[str]] = None) -> int:
             pfad.write_text(abschnitt, encoding="utf-8")
             print(f"  generation-zellen.toml: {len(spez.zellen)} Zellen "
                   "(in die Bestand-Config uebernehmen)")
+
+    # E1 (Migrationskonzept Kap. 11, Entscheidung 2026-08-31): Die
+    # gelieferte GeVo-Metadatenliste gehoert DAUERHAFT zum Zielbestand --
+    # das Quellsystem wird stillgelegt und als Archiv genutzt, also
+    # archiviert die PLV die Liste bei der Uebernahme. Byte-identische
+    # Kopie der REGISTRIERTEN Datei, kein Umformat: Ein Archiv, das beim
+    # Archivieren umschreibt, archiviert nicht.
+    if args.vorgeschichte:
+        quelle = fall_mod.eingang_datei(fall, args.vorgeschichte)
+        archiv = ziel / "quellarchiv"
+        archiv.mkdir(parents=True, exist_ok=True)
+        (archiv / quelle.name).write_bytes(quelle.read_bytes())
+        print(f"  quellarchiv/{quelle.name}: GeVo-Metadatenliste archiviert "
+              "(E1: Archiv der PLV)")
 
     print(f"{len(stamm)} Vertraege uebernommen nach {ziel}")
     print(f"  bestand.parquet   {len(stamm)} Zeilen")
