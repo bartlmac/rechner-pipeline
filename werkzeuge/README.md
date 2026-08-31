@@ -14,6 +14,7 @@ bleibt, steht in `dev-docs/offene-punkte.md`.
 | `umbaubudget.py` | wie weit ein Lauf das System umgebaut hat |
 | `falldaten.py` | Datenmodell einer Falldarstellung aus den Artefakten |
 | `fallbericht.py` | Darstellung aus dem Datenmodell rendern |
+| `vorschau.py` | den Entwurf der Seite lokal ansehen, vor dem Schieben |
 
 ## Verlauf eines Laufs protokollieren
 
@@ -203,7 +204,26 @@ cd - && git worktree remove /tmp/gh-pages
 **Keine `index.html` in den Ausgabeordner legen.** Jekyll baut die
 `index.md` zu genau diesem Namen; eine von Hand danebengelegte Datei
 kollidiert mit ihr. Wer sich die Seite vor dem Schieben lokal ansehen
-will, rendert sie NEBEN das Verzeichnis, nicht hinein.
+will, rendert sie NEBEN das Verzeichnis, nicht hinein — dafuer gibt es
+ein Werkzeug:
+
+### Ansehen vor dem Schieben
+
+Lokal existiert die Seite nur als Quelle (`index.md` + `artefakte/`);
+ihr HTML erzeugt erst Jekyll auf den GitHub-Servern. Den Entwurf zeigt
+die Vorschau:
+
+```
+python3 werkzeuge/vorschau.py --seite runs/vorzeige \
+    --out runs/vorzeige-vorschau
+xdg-open runs/vorzeige-vorschau/index.html
+```
+
+Rendert `index.md` und `verlauf.md` in ein eigenes Verzeichnis und
+verlinkt die Artefakte (Symlink, kein zweiter Datenbestand); Zahlen,
+Tabellen und Links sind damit pruefbar. Eine Lesehilfe, kein Abbild
+des Pages-Themas — die Optik der Live-Seite entsteht erst beim Bau.
+Das Werkzeug weigert sich, ins Push-Verzeichnis zu rendern.
 
 ### Vorher pruefen
 
