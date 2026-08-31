@@ -223,3 +223,94 @@ def test_die_verlustfreiheit_ist_im_pfadmodell_eine_gleichung():
     # Die Reserve springt — der naive Faktor ist nicht der verlustfreie.
     assert im_vorfalljahr.drx_bpfl != pytest.approx(r.dk_nach, abs=0.01)
     assert im_vorfalljahr.drx_bpfl > r.dk_nach
+
+
+# --------------------------------------------------------------------------- #
+# Die Herabsetzung als Verlauf
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("verfahren", ["prospektiv", "mit_abzug"])
+@pytest.mark.parametrize("jahr,anteil", [(5, 0.6), (9, 0.75), (12, 0.4)])
+def test_der_pfad_trifft_die_skalierung_der_herabsetzung(
+    verfahren: str, jahr: int, anteil: float,
+):
+    """Verlauf und Skalierung sind am ungeteilten Vertrag gleichwertig.
+
+    Die Skalierung setzt Homogenitaet in der Versicherungssumme voraus:
+    Sie rechnet den Ursprungsvertrag einmal und multipliziert. Der
+    Verlauf braucht das nicht — er beschreibt, was gezahlt wird. Solange
+    beide Wege offen sind, muessen sie DASSELBE ergeben; sonst waere die
+    Umstellung eine Wertaenderung und keine Umstellung.
+
+    Die Gleichheit haengt an den KOSTENPROFILEN. Ohne sie weichen die
+    Wege um mehrere hundert Euro ab, und zwar genau um die
+    Verwaltungskosten: Die Skalierung laesst gamma2 mit dem Beitrag
+    sinken und legt gamma3 auf den umgewandelten Teil, der Verlauf
+    trueg ohne Profil durchgehend gamma2. Das ist eine Frage des
+    Tarifwerks, keine der Mathematik -- und der Pfad druckt sie aus,
+    statt eine Lesart einzubauen.
+    """
+    from rechner_pipeline.kern import Rechenkern
+    from rechner_pipeline.kern.beitragsreduktion import (
+        ReduzierterVertrag,
+        als_zahlungspfad,
+        reduziere,
+    )
+    from rechner_pipeline.kern.model_point import KLV_DEFAULT
+    from rechner_pipeline.kern.zahlungspfad import (
+        vertragskonstanten,
+        verlaufszeile,
+    )
+
+    kern = Rechenkern(KLV_DEFAULT)
+    mp, basis = kern.mp, kern.basis
+    red = reduziere(kern, jahr, anteil, verfahren=verfahren)
+    skaliert = ReduzierterVertrag(kern=kern, reduktion=red)
+
+    pfad = als_zahlungspfad(red, mp)
+    pfad.pruefe(mp)
+    assert not pfad.ist_konstant, "eine Herabsetzung ist kein Standardpfad"
+
+    skalare = vertragskonstanten(mp, basis)
+    for a in range(jahr, mp.n + 1):
+        ueber_pfad = verlaufszeile(mp, pfad, basis, a, skalare=skalare)
+        assert ueber_pfad.drx_bpfl == pytest.approx(
+            skaliert.monatsreserve(12 * a).drx_bpfl, abs=1e-6), (
+            f"Vertragsjahr {a}: Pfad und Skalierung weichen ab")
+
+
+def test_ohne_kostenprofil_weicht_der_pfad_messbar_ab():
+    """Der Beweis, dass die Kostenprofile TRAGEN und nicht Zierrat sind.
+
+    Faellt das Profil weg, traegt der Verlauf durchgehend die vollen
+    Verwaltungskosten des beitragspflichtigen Vertrags — und liegt um
+    Hunderte von Euro daneben. Die Abweichung ist kein Rundungsfehler,
+    sondern eine andere fachliche Aussage ueber die Kostenzuordnung.
+    """
+    from rechner_pipeline.kern import Rechenkern
+    from rechner_pipeline.kern.beitragsreduktion import (
+        ReduzierterVertrag,
+        als_zahlungspfad,
+        reduziere,
+    )
+    from rechner_pipeline.kern.model_point import KLV_DEFAULT
+    from rechner_pipeline.kern.zahlungspfad import (
+        Zahlungspfad,
+        vertragskonstanten,
+        verlaufszeile,
+    )
+
+    kern = Rechenkern(KLV_DEFAULT)
+    mp, basis = kern.mp, kern.basis
+    red = reduziere(kern, 5, 0.6)
+    skaliert = ReduzierterVertrag(kern=kern, reduktion=red)
+    mit = als_zahlungspfad(red, mp)
+    ohne = Zahlungspfad(leistung=mit.leistung, ablauf=mit.ablauf,
+                        beitrag=mit.beitrag)
+
+    skalare = vertragskonstanten(mp, basis)
+    soll = skaliert.monatsreserve(12 * 10).drx_bpfl
+    assert verlaufszeile(mp, mit, basis, 10, skalare=skalare).drx_bpfl == (
+        pytest.approx(soll, abs=1e-6))
+    assert abs(verlaufszeile(mp, ohne, basis, 10, skalare=skalare).drx_bpfl
+               - soll) > 100.0

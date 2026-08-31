@@ -114,6 +114,7 @@ flowchart TD
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_zustandsmodell_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_rechenkern_py
+    rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_zahlungspfad_py
     rechner_pipeline_kern_korrekturschicht_py --> rechner_pipeline_kern_zustandsmodell_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_bu_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_klv_py

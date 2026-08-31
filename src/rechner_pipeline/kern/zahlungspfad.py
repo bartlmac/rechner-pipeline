@@ -87,6 +87,20 @@ class Zahlungspfad:
     leistung: Tuple[float, ...]
     ablauf: float
     beitrag: Tuple[float, ...]
+    #: Faktor auf die Verwaltungskosten des BEITRAGSPFLICHTIGEN Teils
+    #: (gamma2) je Vertragsjahr. Leer heisst: durchgehend 1.0, also der
+    #: unveraenderte Vertrag.
+    kosten_bpfl: Tuple[float, ...] = ()
+    #: Faktor auf die Verwaltungskosten des UMGEWANDELTEN Teils (gamma3)
+    #: je Vertragsjahr. Leer heisst: durchgehend 0.0 — ein
+    #: beitragspflichtiger Vertrag traegt keinen umgewandelten Teil.
+    kosten_bfr: Tuple[float, ...] = ()
+
+    def profil_bpfl(self, mp: ModelPoint) -> Tuple[float, ...]:
+        return self.kosten_bpfl or (1.0,) * mp.n
+
+    def profil_bfr(self, mp: ModelPoint) -> Tuple[float, ...]:
+        return self.kosten_bfr or (0.0,) * mp.n
 
     def pruefe(self, mp: ModelPoint) -> None:
         if len(self.leistung) != mp.n:
@@ -100,6 +114,14 @@ class Zahlungspfad:
                 f"Beitragsprofil hat {len(self.beitrag)} Jahre, die "
                 f"Beitragszahlungsdauer betraegt {mp.t}"
             )
+        for name, profil in (("kosten_bpfl", self.kosten_bpfl),
+                             ("kosten_bfr", self.kosten_bfr)):
+            if profil and len(profil) != mp.n:
+                raise ZahlungspfadFehler(
+                    f"{name} hat {len(profil)} Jahre, der Vertrag laeuft "
+                    f"{mp.n} — Verwaltungskosten haengen an der "
+                    "Vertragsdauer, nicht an der Beitragsdauer"
+                )
 
     @property
     def ist_konstant(self) -> bool:
@@ -113,6 +135,8 @@ class Zahlungspfad:
             all(w == 1.0 for w in self.leistung)
             and self.ablauf == 1.0
             and all(w == 1.0 for w in self.beitrag)
+            and all(w == 1.0 for w in self.kosten_bpfl)
+            and not any(self.kosten_bfr)
         )
 
 
@@ -158,6 +182,18 @@ class Barwertpaesse:
     azd: Tuple[float, ...]
     tod: Tuple[float, ...]
     erleben: Tuple[float, ...]
+    #: Die Rente ueber die Versicherungsdauer mit dem KOSTENPROFIL je
+    #: Kostenart. Beim unveraenderten Vertrag ist ``axn_bpfl`` gleich
+    #: ``axn`` und ``axn_bfr`` durchgehend null — dann faellt die Formel
+    #: auf die alte zurueck.
+    axn_bpfl: Tuple[float, ...] = ()
+    axn_bfr: Tuple[float, ...] = ()
+
+    def kostenrente_bpfl(self, a: int) -> float:
+        return self._wert(self.axn_bpfl or self.axn, a)
+
+    def kostenrente_bfr(self, a: int) -> float:
+        return self._wert(self.axn_bfr, a)
 
     @staticmethod
     def _wert(werte: Tuple[float, ...], a: int) -> float:
@@ -203,15 +239,21 @@ def paesse(mp: ModelPoint, pfad: Zahlungspfad, basis: Tafelbasis) -> Barwertpaes
         ),
     )
     return Barwertpaesse(
-        # Die Rente ueber die Versicherungsdauer traegt die
-        # Verwaltungskosten gamma2 und gamma3 — sie haengen an der
-        # Vertragsdauer, nicht am Beitrag, und laufen deshalb mit
-        # konstantem Profil. Ob sie bei einem herabgesetzten Vertrag der
-        # Summe folgen sollten, ist eine Frage des Tarifwerks und
-        # ausdruecklich offen (dev-docs/zahlungspfade-migrierter-
-        # vertraege.md); bis sie entschieden ist, bleibt es beim
-        # heutigen Verhalten.
+        # ``axn`` ist die Rente ueber die Versicherungsdauer mit
+        # KONSTANTEM Profil. Sie bleibt der Bezug fuer den
+        # beitragsfreien Reservesatz und fuer die Vertragskonstanten —
+        # beides sind Saetze des unveraenderten Vertrags.
+        #
+        # Die KOSTEN dagegen tragen ein eigenes Profil je Kostenart. Wie
+        # sich die Verwaltungskosten eines herabgesetzten Vertrags
+        # verhalten, ist eine Frage des Tarifwerks und keine der
+        # Mathematik: Folgen sie dem Beitrag (der fortgefuehrte Teil
+        # traegt gamma2 anteilig, der umgewandelte gamma3 auf seiner
+        # eigenen Summe) oder bleiben sie am Vertrag? Der Pfad druckt
+        # beides aus, statt eine Lesart einzubauen.
         axn=tuple(_rentenpass(modell, x, n, [1.0] * n)),
+        axn_bpfl=tuple(_rentenpass(modell, x, n, list(pfad.profil_bpfl(mp)))),
+        axn_bfr=tuple(_rentenpass(modell, x, n, list(pfad.profil_bfr(mp)))),
         axt=tuple(_rentenpass(modell, x, t, pfad.beitrag)),
         azd=tuple(_rentenpass(modell, x, zd, [1.0] * max(zd, 0))),
         tod=tuple(tod),
@@ -272,7 +314,12 @@ def verlaufszeile(
     kvx_bpfl = (
         leistung
         - skalare["pxt"] * axt
-        + mp.gamma2 * (axn - (skalare["axn_full"] / skalare["axt_full"]) * axt)
+        + mp.gamma2 * (p.kostenrente_bpfl(a)
+                       - (skalare["axn_full"] / skalare["axt_full"]) * axt)
+        # Der umgewandelte Teil traegt seine eigenen Verwaltungskosten.
+        # Beim unveraenderten Vertrag ist dieses Profil null, der Term
+        # faellt weg, und die Formel ist die alte.
+        + mp.gamma3 * p.kostenrente_bfr(a)
     )
     kdrx_bpfl = mp.sum_insured * kvx_bpfl
     kvx_bfr = leistung + mp.gamma3 * axn

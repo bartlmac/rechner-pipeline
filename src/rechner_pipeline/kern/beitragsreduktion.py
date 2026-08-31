@@ -178,6 +178,48 @@ def reduziere(
     )
 
 
+def als_zahlungspfad(red: "Reduktion", mp: ModelPoint) -> "Zahlungspfad":
+    """Die Herabsetzung als VERLAUF statt als Skalierung.
+
+    Der herabgesetzte Vertrag ist ein Vertrag mit einem geknickten
+    Zahlungsverlauf: Ab dem Reduktionsjahr traegt er den Bruchteil ``f``
+    des Beitrags und die Leistung ``f + q``, wobei ``q`` die umgewandelte
+    beitragsfreie Summe relativ zur Ursprungssumme ist. Die Kosten folgen
+    getrennt — der fortgefuehrte Teil traegt gamma2 anteilig, der
+    umgewandelte gamma3 auf seiner eigenen Summe.
+
+    **Warum das mehr ist als eine zweite Schreibweise.** Die
+    Skalierung setzt Homogenitaet in der Versicherungssumme voraus: Sie
+    rechnet den Ursprungsvertrag einmal und multipliziert. Das gilt fuer
+    einen ungeteilten Vertrag exakt — und nur fuer den. Sobald
+    Erhoehungsscheiben mit eigenem Eintrittsalter und eigener
+    Beitragsdauer dazukommen, gibt es keinen gemeinsamen Faktor mehr,
+    und genau deshalb beschraenkt der Tarifplan die Herabsetzung heute
+    auf den ungeteilten Track. Der Verlauf braucht keine Homogenitaet;
+    er beschreibt, was gezahlt wird, und die Rekursion rechnet es aus.
+
+    Geprueft ist die Gleichwertigkeit am ungeteilten Vertrag: Pfad und
+    Skalierung stimmen ueber alle Vertragsjahre bis auf
+    Gleitkommarauschen ueberein (siehe Test).
+    """
+    from rechner_pipeline.kern.zahlungspfad import Zahlungspfad
+
+    a0, f = red.jahr, red.anteil
+    if red.vs_alt <= 0.0:
+        raise BeitragsreduktionFehler(
+            f"Ursprungssumme {red.vs_alt!r} — ohne sie ist kein relativer "
+            "Verlauf bildbar")
+    q = (red.vs_neu - f * red.vs_alt) / red.vs_alt
+    nachher = f + q
+    return Zahlungspfad(
+        leistung=tuple(1.0 if j < a0 else nachher for j in range(mp.n)),
+        ablauf=nachher,
+        beitrag=tuple(1.0 if j < a0 else f for j in range(mp.t)),
+        kosten_bpfl=tuple(1.0 if j < a0 else f for j in range(mp.n)),
+        kosten_bfr=tuple(0.0 if j < a0 else q for j in range(mp.n)),
+    )
+
+
 @dataclass(frozen=True)
 class ReduzierterVertrag:
     """Der geteilte Vertrag NACH einer Beitragsreduktion — die Folgebewertung.
