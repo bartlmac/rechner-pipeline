@@ -13,7 +13,18 @@ Usage::
     python -m rechner_pipeline.bestand.cli_fortschreibung \\
         --config configs/bestand_klv.toml --bis 2035-01-01 \\
         [--portfolio bestand.parquet]           # sonst: aus der Config erzeugt \\
+        [--uebernahme faelle/<fall>/abgeleitet/bestand]   # migrierter Bestand \\
         [--neuzugang-ab 2010-01-01] --out-dir lauf/
+
+``--uebernahme`` nimmt das Erzeugnis von ``gates.bestand_uebernehmen`` in
+den Lauf: Der uebernommene Bestand wird dem eigenen VORANGESTELLT und in
+DEMSELBEN Fortschreibungslauf mitgefahren — ein GeVo-Strom, ein Erzeuger,
+auch nach einer Migration. Zwei getrennte Laeufe zu mischen ergaebe einen
+Bestand, in dem ein Teil fortgeschrieben ist und der andere nicht; genau
+daran brach die Bestandsbewegung (ADR-015). Die Buchungen der Uebernahme
+(Zugang, bei beitragsfrei ankommenden Vertraegen die Umbuchung) stehen
+dem Fortschreibungs-Journal voran, denn sie liegen vor dessen erstem
+simulierten Jahr.
 
 Outputs in ``--out-dir``: ``bestand.parquet`` (Basis; nur ohne --portfolio),
 ``historie.parquet``, ``ledger.parquet``, ``scheiben.parquet``,
@@ -44,6 +55,77 @@ from rechner_pipeline.bestand.fuehrung import fuehre_fort
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 
 
+def _lies_uebernahme(verzeichnis: Path) -> dict:
+    """Die Tabellen eines uebernommenen Bestands einlesen.
+
+    Erwartet wird das Erzeugnis von ``gates.bestand_uebernehmen``. Fehlt
+    eine der drei Pflichttabellen, ist es kein uebernommener Bestand,
+    sondern ein halber — die Meldung sagt, welche.
+    """
+    from rechner_pipeline.models.bestand import (
+        LEDGER_NAMES,
+        MERKMALE_NAMES,
+        STAMM_NAMES,
+        STATUS_HISTORIE_NAMES,
+    )
+
+    vertraege = {
+        "bestand": STAMM_NAMES,
+        "historie": STATUS_HISTORIE_NAMES,
+        "ledger": LEDGER_NAMES,
+    }
+    fehlend = [n for n in vertraege if not (verzeichnis / f"{n}.parquet").is_file()]
+    if fehlend:
+        raise ValueError(
+            f"Uebernahme {verzeichnis}: {fehlend} fehlen — erwartet wird das "
+            "Erzeugnis von gates.bestand_uebernehmen"
+        )
+    tabellen = {
+        name: read_portfolio(verzeichnis / f"{name}.parquet", expected_columns=spalten)
+        for name, spalten in vertraege.items()
+    }
+    merkmale_pfad = verzeichnis / "merkmale.parquet"
+    tabellen["merkmale"] = (
+        read_portfolio(merkmale_pfad, expected_columns=MERKMALE_NAMES)
+        if merkmale_pfad.is_file() else None
+    )
+    return tabellen
+
+
+def _mit_uebernahme(eigen, uebernommen):
+    """Eigenen und uebernommenen Bestand zu EINER Basis fuegen.
+
+    Beide gehen in denselben Fortschreibungslauf. Zwei getrennte Laeufe
+    zu mischen ergaebe einen Bestand, in dem ein Teil fortgeschrieben ist
+    und der andere nicht — genau daran brach die Bestandsbewegung
+    (ADR-015).
+    """
+    import pandas as pd
+
+    from rechner_pipeline.models.bestand import STAMM_NAMES
+
+    beide = pd.concat([eigen, uebernommen], ignore_index=True)
+    doppelt = beide["police_id"][beide["police_id"].duplicated()]
+    if len(doppelt):
+        raise ValueError(
+            f"police_id-Kollision zwischen eigenem und uebernommenem Bestand: "
+            f"{sorted(set(doppelt))[:5]} — die Nummernkreise muessen getrennt "
+            "sein, sonst bezeichnet eine Nummer zwei Vertraege"
+        )
+    return (
+        beide.sort_values("police_id", kind="stable")
+        .reset_index(drop=True)[list(STAMM_NAMES)]
+    )
+
+
+def _voran(uebernahme, fortschreibung, sortierung):
+    """Das Journal der Uebernahme dem der Fortschreibung voranstellen."""
+    import pandas as pd
+
+    beide = pd.concat([uebernahme, fortschreibung], ignore_index=True)
+    return beide.sort_values(sortierung, kind="stable").reset_index(drop=True)
+
+
 def _datum(raw: str, name: str) -> _dt.date:
     try:
         return _dt.date.fromisoformat(raw)
@@ -61,6 +143,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--config", required=True, help="Bestand-Config (TOML).")
     parser.add_argument("--bis", required=True, help="Horizont (ISO-Datum).")
+    parser.add_argument(
+        "--uebernahme",
+        default=None,
+        help=(
+            "Verzeichnis eines uebernommenen Bestands (Erzeugnis von "
+            "gates.bestand_uebernehmen): bestand/historie/ledger.parquet, "
+            "optional merkmale.parquet. Wird mitgefahren, nicht danach "
+            "angeklebt."
+        ),
+    )
     parser.add_argument(
         "--merkmale",
         default=None,
@@ -123,6 +215,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             basis = generate(config, bis=neuzugang_ab)
             write_portfolio(basis, out_dir / "bestand.parquet")
+        uebernahme = None
+        if ns.uebernahme:
+            uebernahme = _lies_uebernahme(Path(ns.uebernahme))
+            basis = _mit_uebernahme(basis, uebernahme["bestand"])
         merkmale = None
         if ns.merkmale:
             merkmale_path = Path(ns.merkmale)
@@ -132,28 +228,41 @@ def main(argv: Optional[List[str]] = None) -> int:
                     file=sys.stderr)
                 return 2
             merkmale = read_portfolio(merkmale_path)
+        elif uebernahme is not None:
+            # Die Uebernahme bringt ihre Merkmalstabelle mit; sie extra zu
+            # verlangen hiesse, dieselbe Datei zweimal zu benennen.
+            merkmale = uebernahme["merkmale"]
         ergebnis = fortschreiben(basis, config, bis, neuzugang_ab=neuzugang_ab,
                                  merkmale=merkmale)
+        # Das Journal der Uebernahme geht dem der Fortschreibung VORAUS:
+        # Zugang und Umbuchung liegen am Bestandszugang, also vor dem
+        # ersten simulierten Vertragsjahr.
+        historie, ledger = ergebnis.historie, ergebnis.ledger
+        if uebernahme is not None:
+            historie = _voran(uebernahme["historie"], historie,
+                              ["police_id", "status_id"])
+            ledger = _voran(uebernahme["ledger"], ledger,
+                            ["police_id", "status_date"])
         # Der Gesamtbestand ist GEFUEHRT (ADR-011): der Stammsatz traegt den
         # aktuellen Zustand am Horizont, das Journal (historie/ledger) die
         # vollstaendige Aufzeichnung. bestand.parquet bleibt der Basisbestand
         # (Ursprungszustaende am Generierungsbeginn).
-        gesamt = fuehre_fort(
-            mit_zugaengen(basis, ergebnis.zugaenge), ergebnis.historie
-        )
+        gesamt = fuehre_fort(mit_zugaengen(basis, ergebnis.zugaenge), historie)
     except (EreignisError, ValueError) as exc:
         print(f"bestand_fortschreibung: {exc}", file=sys.stderr)
         return 2
 
-    write_portfolio(ergebnis.historie, out_dir / "historie.parquet")
-    write_portfolio(ergebnis.ledger, out_dir / "ledger.parquet")
+    write_portfolio(historie, out_dir / "historie.parquet")
+    write_portfolio(ledger, out_dir / "ledger.parquet")
     write_portfolio(ergebnis.scheiben, out_dir / "scheiben.parquet")
     write_portfolio(ergebnis.zugaenge, out_dir / "zugaenge.parquet")
     write_portfolio(gesamt, out_dir / "bestand_gesamt.parquet")
 
     print(
-        f"bestand_fortschreibung: {len(basis)} Basisvertraege, "
-        f"{len(ergebnis.zugaenge)} Neuzugaenge, {len(ergebnis.ledger)} GeVos, "
+        f"bestand_fortschreibung: {len(basis)} Basisvertraege"
+        + (f" (davon {len(uebernahme['bestand'])} uebernommen)"
+           if uebernahme is not None else "")
+        + f", {len(ergebnis.zugaenge)} Neuzugaenge, {len(ledger)} GeVos, "
         f"{len(ergebnis.scheiben)} Erhoehungsscheiben -> {out_dir}",
         file=sys.stderr,
     )

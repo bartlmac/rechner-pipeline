@@ -268,14 +268,26 @@ Geschaeftsvorfaelle vor dem Stichtag; ohne sie ist der
 Verankerungszeitpunkt nicht bestimmbar.
 
 **Fortschreibung.** Der uebernommene Bestand lebt in den Buechern des
-aufnehmenden Unternehmens weiter — er altert, storniert, laeuft ab. Das
-faehrt `bestand.cli_fortschreibung` auf dem uebernommenen Stamm; die
-Engine setzt am Bestandszugang an und im Zustand, den der Vertrag
-mitbringt (ADR-015). Die Buchungen der Uebernahme selbst (Zugang, bei
-beitragsfrei ankommenden Vertraegen die Umbuchung) stehen bereits im
-Ledger und werden dem Fortschreibungs-Ledger vorangestellt. Ohne diesen
-Schritt fehlen den uebernommenen Vertraegen die Abgangsbuchungen, und
-die Bestandsbewegung des Gesamtbestands geht nicht auf.
+aufnehmenden Unternehmens weiter — er altert, storniert, laeuft ab. Ohne
+diesen Schritt fehlen ihm die Abgangsbuchungen, und die Bestandsbewegung
+des Gesamtbestands geht nicht auf.
+
+```
+python -m rechner_pipeline.bestand.cli_fortschreibung \
+    --config <bestand-config>.toml --bis <iso> --neuzugang-ab <stichtag> \
+    --portfolio <eigener-basisbestand>.parquet \
+    --uebernahme faelle/<fall>/abgeleitet/bestand \
+    --out-dir faelle/<fall>/abgeleitet/bestand-nach
+```
+
+Eigener und uebernommener Bestand gehen in DENSELBEN Lauf — ein
+GeVo-Strom, ein Erzeuger. Zwei getrennte Laeufe zu mischen ergaebe einen
+Bestand, in dem ein Teil fortgeschrieben ist und der andere nicht. Die
+Engine setzt je Vertrag am Bestandszugang an, im Zustand, den er
+mitbringt (ADR-015); die Buchungen der Uebernahme (Zugang, bei
+beitragsfrei ankommenden Vertraegen die Umbuchung) stellt das Kommando
+dem Fortschreibungs-Journal voran. Die Merkmalstabelle nimmt es aus dem
+Uebernahme-Verzeichnis, `--merkmale` uebersteuert sie.
 
 **Tarifzellen.** Fuehrt die Spez mehr als eine Zelle, kommen zwei
 weitere Ausgaben dazu: `merkmale.parquet` (je Vertrag und Dimension die

@@ -103,8 +103,12 @@ ist ein Startpunkt, kein anderes Modell.
 * Der Zufallsstrom eigener Vertraege ist unberuehrt (``ab_jahr`` 0
   verbraucht dieselben Draws in derselben Reihenfolge) — bestehende
   Laeufe liefern dieselben Zahlen.
-* ``cli_fortschreibung`` nimmt ``--merkmale``; ohne die Tabelle bricht
-  eine in Zellen aufgeteilte Generation hart ab (ADR-014-Muster).
+* ``cli_fortschreibung`` nimmt ``--uebernahme <verzeichnis>`` (das
+  Erzeugnis von ``gates.bestand_uebernehmen``) und faehrt eigenen und
+  uebernommenen Bestand in EINEM Lauf; die Uebernahmebuchungen stellt es
+  dem Fortschreibungs-Journal voran. Dazu ``--merkmale``; ohne die
+  Tabelle bricht eine in Zellen aufgeteilte Generation hart ab
+  (ADR-014-Muster), aus dem Uebernahme-Verzeichnis kommt sie von selbst.
 * Die Uebernahme (``gates.bestand_uebernehmen``) bucht Zugang und — bei
   beitragsfrei ankommenden Vertraegen — die Umbuchung, beide zum
   Zugangsdatum. Die Engine setzt danach an; ihre Buchungen liegen

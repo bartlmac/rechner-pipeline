@@ -60,12 +60,10 @@ def _stamm(zeilen) -> pd.DataFrame:
     return pd.DataFrame(rohe)[list(STAMM_NAMES)].astype(dict(STAMM_SPALTEN))
 
 
-@pytest.fixture(scope="module")
-def config(tmp_path_factory):
-    """Eine Generation ohne Zellen — hier geht es um den Zugang, nicht um Tarife."""
-    from rechner_pipeline.bestand.config import load_config
-
-    toml = """
+#: Eine Generation ohne Zellen — hier geht es um den Zugang, nicht um
+#: Tarife. Als Modulkonstante, weil auch die CLI-Tests sie auf die Platte
+#: schreiben muessen.
+_CONFIG_TOML = """
 [meta]
 seed = 7
 beschreibung = "Uebernahme"
@@ -142,8 +140,14 @@ erh_prozent = 0.05
 a = 0.05
 b = 0.0
 """
+
+
+@pytest.fixture(scope="module")
+def config(tmp_path_factory):
+    from rechner_pipeline.bestand.config import load_config
+
     pfad = tmp_path_factory.mktemp("cfg") / "uebernahme.toml"
-    pfad.write_text(toml, encoding="utf-8")
+    pfad.write_text(_CONFIG_TOML, encoding="utf-8")
     cfg = load_config(pfad)
     assert cfg.validate() == []
     return cfg
@@ -273,3 +277,130 @@ def test_der_eigenbestand_bleibt_gegen_journalsichten_geschuetzt(config):
     with pytest.raises(EreignisError) as exc:
         fortschreiben(stamm, config, BIS)
     assert "kein Basisbestand" in str(exc.value)
+
+
+# --------------------------------------------------------------------------- #
+# Das Kommando: eigener und uebernommener Bestand in EINEM Lauf
+# --------------------------------------------------------------------------- #
+
+
+def _schreibe_uebernahme(verzeichnis):
+    """Ein Uebernahme-Verzeichnis wie gates.bestand_uebernehmen es schreibt."""
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.models.bestand import (
+        LEDGER_SPALTEN,
+        STATUS_HISTORIE_SPALTEN,
+    )
+
+    verzeichnis.mkdir(parents=True, exist_ok=True)
+    stamm = _stamm([
+        {"id": 900_001, "beginn": "2015-01-01", "zugang": "2026-01-01"},
+        {"id": 900_002, "beginn": "2015-01-01", "zugang": "2026-01-01",
+         "status": "PEX", "status_id": 2, "status_date": "2022-01-01"},
+    ])
+    historie = pd.DataFrame([{
+        "police_id": 900_002, "status_id": 2, "status_code": "PEX",
+        "status_date": pd.Timestamp("2022-01-01"),
+    }])[[n for n, _ in STATUS_HISTORIE_SPALTEN]].astype(dict(STATUS_HISTORIE_SPALTEN))
+    ledger = pd.DataFrame([
+        {"police_id": pid, "tarif_generation": "klv/zellen", "ereignis": ev,
+         "vertragsjahr": 11, "status_date": pd.Timestamp("2026-01-01"),
+         "betrag_art": "VS", "betrag": betrag, "betrag_herkunft": herkunft}
+        for pid, ev, betrag, herkunft in (
+            (900_001, "ZUG", 100_000.0, "geliefert"),
+            (900_002, "ZUG", 100_000.0, "geliefert"),
+            (900_002, "PEX", 61_000.0, "gerechnet"),
+        )
+    ])[[n for n, _ in LEDGER_SPALTEN]].astype(dict(LEDGER_SPALTEN))
+
+    write_portfolio(stamm, verzeichnis / "bestand.parquet")
+    write_portfolio(historie, verzeichnis / "historie.parquet")
+    write_portfolio(ledger, verzeichnis / "ledger.parquet")
+    return stamm, historie, ledger
+
+
+def test_cli_faehrt_eigenen_und_uebernommenen_bestand_in_einem_lauf(tmp_path):
+    """Ein GeVo-Strom, ein Erzeuger — auch nach einer Migration.
+
+    Zwei getrennte Laeufe zu mischen ergaebe einen Bestand, in dem ein
+    Teil fortgeschrieben ist und der andere nicht: Die uebernommenen
+    Vertraege verschwaenden ueber ``insurance_end`` aus dem Schnitt, ohne
+    dass sie jemand ausbucht, und die Bestandsbewegung ginge nicht auf
+    (ADR-015). Deshalb nimmt das Kommando die Uebernahme MIT hinein.
+    """
+    from rechner_pipeline.bestand import cli_fortschreibung as fs_cli
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+    from rechner_pipeline.models.bestand import LEDGER_NAMES, STAMM_NAMES
+
+    eigen = _stamm([{"id": i, "beginn": "2015-01-01"} for i in range(1, 11)])
+    eigen_pfad = tmp_path / "eigen.parquet"
+    write_portfolio(eigen, eigen_pfad)
+    uebernahme = tmp_path / "uebernahme"
+    _schreibe_uebernahme(uebernahme)
+
+    cfg_pfad = tmp_path / "cfg.toml"
+    cfg_pfad.write_text(_CONFIG_TOML, encoding="utf-8")
+
+    out = tmp_path / "lauf"
+    assert fs_cli.main([
+        "--config", str(cfg_pfad), "--bis", "2046-01-01",
+        "--portfolio", str(eigen_pfad),
+        "--uebernahme", str(uebernahme),
+        "--out-dir", str(out),
+    ]) == 0
+
+    gesamt = read_portfolio(out / "bestand_gesamt.parquet",
+                            expected_columns=STAMM_NAMES)
+    ledger = read_portfolio(out / "ledger.parquet", expected_columns=LEDGER_NAMES)
+    assert len(gesamt) == 12, "zehn eigene und zwei uebernommene"
+
+    # Die Buchungen der Uebernahme stehen voran und sind erhalten.
+    uebern = ledger[ledger["police_id"] >= 900_000]
+    assert {"ZUG", "PEX"} <= set(uebern["ereignis"])
+    assert "gerechnet" in set(uebern["betrag_herkunft"])
+    # Und die Fortschreibung hat die uebernommenen Vertraege ausgebucht --
+    # genau das fehlte vorher.
+    abgang = uebern[uebern["ereignis"].isin(("ABL", "STO", "TOD"))]
+    assert len(abgang) == 2, "beide uebernommenen Vertraege enden vor 2046"
+    assert (abgang["status_date"].dt.date > ZUGANG).all()
+
+
+def test_cli_weist_kollidierende_policennummern_ab(tmp_path):
+    """Eine Nummer, ein Vertrag.
+
+    Kollidieren die Nummernkreise, bezeichnete dieselbe Nummer zwei
+    verschiedene Vertraege — und jede Auswertung waehlte zufaellig einen.
+    """
+    from rechner_pipeline.bestand import cli_fortschreibung as fs_cli
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+
+    eigen = _stamm([{"id": 900_001, "beginn": "2015-01-01"}])
+    eigen_pfad = tmp_path / "eigen.parquet"
+    write_portfolio(eigen, eigen_pfad)
+    uebernahme = tmp_path / "uebernahme"
+    _schreibe_uebernahme(uebernahme)
+    cfg_pfad = tmp_path / "cfg.toml"
+    cfg_pfad.write_text(_CONFIG_TOML, encoding="utf-8")
+
+    assert fs_cli.main([
+        "--config", str(cfg_pfad), "--bis", "2046-01-01",
+        "--portfolio", str(eigen_pfad),
+        "--uebernahme", str(uebernahme),
+        "--out-dir", str(tmp_path / "lauf"),
+    ]) == 2
+
+
+def test_cli_verlangt_die_pflichttabellen_der_uebernahme(tmp_path):
+    """Ein halbes Uebernahme-Verzeichnis ist kein uebernommener Bestand."""
+    from rechner_pipeline.bestand import cli_fortschreibung as fs_cli
+
+    leer = tmp_path / "leer"
+    leer.mkdir()
+    cfg_pfad = tmp_path / "cfg.toml"
+    cfg_pfad.write_text(_CONFIG_TOML, encoding="utf-8")
+
+    assert fs_cli.main([
+        "--config", str(cfg_pfad), "--bis", "2046-01-01",
+        "--uebernahme", str(leer),
+        "--out-dir", str(tmp_path / "lauf"),
+    ]) == 2
