@@ -118,14 +118,14 @@ def reduziere(
     vollstaendige Beitragsfreistellung.
 
     **Nur am Vertragsstichtag** (Beschluss 2026-08-28). Die Signatur nimmt
-    ein Vertragsjahr, keine Monate — eine unterjaehrige Reduktion ist
-    damit nicht ausdrueckbar, und das ist Absicht: Sie wuerde einen
-    unterjaehrigen Verankerungszeitpunkt erzeugen, und wie die
-    Korrekturschicht ein Rumpfjahr behandelt, ist noch nicht entschieden
-    (offener Punkt, betrifft nicht nur diesen Geschaeftsvorfall).
-
-    Wer das erweitern will, muss zuerst die Rumpfjahr-Konvention klaeren —
-    nicht hier einen Monatsparameter ergaenzen.
+    ein Vertragsjahr, keine Monate. Die Rumpfjahr-Konvention der
+    KORREKTURSCHICHT ist seit 2026-08-31 entschieden (9.6-Nachtrag:
+    Verankerung und Bewertung am unterjaehrigen t_a) — sie regelt aber
+    nur, wie die Schicht einen unterjaehrigen Punkt TRAEGT, nicht die
+    unterjaehrige AUSFUEHRUNG eines Geschaeftsvorfalls. Eine Reduktion
+    zwischen zwei Jahrestagen braucht zusaetzlich den unterjaehrigen
+    Knick des Zahlungsprofils samt Beitragsabgrenzung — ein eigener Bau,
+    kein Monatsparameter an dieser Signatur.
     """
     _pruefe_eingaben(kern.mp, jahr, anteil, verfahren)
 

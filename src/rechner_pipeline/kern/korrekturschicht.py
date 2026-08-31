@@ -209,6 +209,11 @@ class Schichtparameter:
     kohorte: str = "t_a"
     in_ueberschuss: bool = True
     in_zzr: bool = True
+    #: Rumpfmonate der Verankerung (9.6-Nachtrag 2026-08-31): t_a liegt
+    #: ``rumpfmonate`` Monate NACH dem Gitterjahrestag, auf dem die
+    #: Rekursion beginnt. 0 = Verankerung auf dem Jahresgitter (der alte
+    #: und weiterhin haeufigste Fall).
+    rumpfmonate: int = 0
 
     def __post_init__(self) -> None:
         if self.schichttyp not in (SCHICHT_HIST, SCHICHT_CONV):
@@ -220,6 +225,11 @@ class Schichtparameter:
         if self.verweildauer < 0:
             raise KorrekturschichtFehler(
                 f"Verweildauer {self.verweildauer} negativ"
+            )
+        if not 0 <= self.rumpfmonate < 12:
+            raise KorrekturschichtFehler(
+                f"Rumpfmonate {self.rumpfmonate} ausserhalb 0..11 — zwoelf "
+                "Monate Rumpf sind ein ganzes Jahr und gehoeren aufs Gitter"
             )
 
     def als_beleg(self) -> Dict[str, Any]:
@@ -234,12 +244,31 @@ class Schichtparameter:
             "kohorte": self.kohorte,
             "in_ueberschuss": self.in_ueberschuss,
             "in_zzr": self.in_zzr,
+            "rumpfmonate": self.rumpfmonate,
         }
 
 
 # --------------------------------------------------------------------------- #
 # Die Schicht
 # --------------------------------------------------------------------------- #
+
+
+def _rumpf_zahlung(form, zustand: str, rumpfmonate: int):
+    """Zustandszahlung des Einheitsstroms mit anteiligem erstem Gitterjahr.
+
+    m Rumpfmonate heisst: Vom ersten Gitterjahr liegen nur (12-m) Monate
+    nach dem Verankerungszeitpunkt — der Einheitsstrom dieses Jahres wird
+    pro rata gekuerzt. m = 0 laesst alles unveraendert.
+    """
+    faktor = (12 - rumpfmonate) / 12.0
+
+    def zahlung(s: str, j: int) -> float:
+        if s != zustand:
+            return 0.0
+        wert = form.werte[j]
+        return wert * faktor if j == 0 else wert
+
+    return zahlung
 
 
 def vererbende_dynamik(
@@ -305,19 +334,30 @@ class Korrekturschicht:
         zustand: str,
         *,
         verweildauer: int = 0,
+        rumpfmonate: int = 0,
     ) -> float:
-        """$\\Pi_s(t,d)$ — Barwert des Einheitsstroms unter der Dynamik (9.8).
+        r"""$\\Pi_s(t,d)$ — Barwert des Einheitsstroms unter der Dynamik (9.8).
 
         Eine geschlossene Form ist ausdruecklich nicht erforderlich: Es ist
         DIESELBE Rekursion wie fuer $V^{korr}$, nur mit $c = g$.
+
+        **Rumpfjahr** (9.6-Nachtrag): Liegt t_a ``rumpfmonate`` Monate nach
+        dem Gitterjahrestag, traegt das erste Gitterjahr den Einheitsstrom
+        nur anteilig ((12-m)/12 — der Rest des Jahres liegt nach t_a), und
+        $\Pi(t_a)$ ist die lineare Mischung der Gitterwerte — dieselbe
+        Monatskonvention wie ueberall im Kern, keine dritte Uhr (9.5).
         """
-        return self.modell.barwert(
+        verlauf = self.modell.barwert_verlauf(
             zustand,
             alter0,
             len(form.werte),
-            zahlung_zustand=lambda s, j: form.werte[j] if s == zustand else 0.0,
+            zahlung_zustand=_rumpf_zahlung(form, zustand, rumpfmonate),
             start_dauer=verweildauer,
         )
+        if rumpfmonate == 0:
+            return verlauf[0]
+        theta = rumpfmonate / 12.0
+        return (1.0 - theta) * verlauf[0] + theta * verlauf[1]
 
     # -- Verankerungsoperator ---------------------------------------------- #
 
@@ -334,6 +374,7 @@ class Korrekturschicht:
         kohorte: str = "t_a",
         in_ueberschuss: bool = True,
         in_zzr: bool = True,
+        rumpfmonate: int = 0,
     ) -> Schichtparameter:
         """$\\mathcal{A}(t, s, d, R)$: $\\rho = R/\\Pi_s(t,d)$, $c_s = \\rho g$.
 
@@ -344,7 +385,8 @@ class Korrekturschicht:
         """
         if not math.isfinite(residuum):
             raise KorrekturschichtFehler(f"Residuum ist {residuum!r}")
-        p = self.pi(form, alter0, zustand, verweildauer=verweildauer)
+        p = self.pi(form, alter0, zustand, verweildauer=verweildauer,
+                    rumpfmonate=rumpfmonate)
         if p <= 0.0:
             # Der einzige zwingende Grenzfall: kein Zeitraum, ueber den
             # verteilt werden koennte. Keine Ermessensfrage.
@@ -375,6 +417,7 @@ class Korrekturschicht:
             kohorte=kohorte,
             in_ueberschuss=in_ueberschuss,
             in_zzr=in_zzr,
+            rumpfmonate=rumpfmonate,
         )
 
     # -- Bewertung ---------------------------------------------------------- #
@@ -391,13 +434,12 @@ class Korrekturschicht:
         """
         zustand = parameter.verankerungszustand
         rho = parameter.rho
+        einheit = _rumpf_zahlung(form, zustand, parameter.rumpfmonate)
         return self.modell.barwert_verlauf(
             zustand,
             alter0,
             len(form.werte),
-            zahlung_zustand=(
-                lambda s, j: rho * form.werte[j] if s == zustand else 0.0
-            ),
+            zahlung_zustand=lambda s, j: rho * einheit(s, j),
             start_dauer=parameter.verweildauer,
         )
 

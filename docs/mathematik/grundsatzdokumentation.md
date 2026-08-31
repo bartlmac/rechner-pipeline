@@ -447,6 +447,26 @@ ihn exakt. Zahlungsprofil, Fälligkeit, Diskontierung und Rundung sind
 dieselben wie für die Basisschicht: Die Korrekturschicht ist kein
 zweiter Rechenweg, sondern dieselbe Rekursion mit anderen Zahlungen.
 
+**Rumpfjahr (Nachtrag 2026-08-31).** Liegt der Verankerungszeitpunkt
+$t_a = 12j + m$ mit $0 < m < 12$ zwischen zwei Jahrestagen (9.12: ein
+rechnender Geschäftsvorfall setzt ihn), wird die Schicht auf dem
+Jahresgitter **ab dem Jahrestag $j$** gerechnet, mit zwei Festlegungen:
+
+1. Das erste Gitterjahr trägt den Einheitsstrom **pro rata** mit dem
+   Faktor $(12-m)/12$ — nur dieser Teil des Jahres liegt nach $t_a$.
+2. Werte an unterjährigen Zeitpunkten — einschließlich $t_a$ selbst und
+   damit $\Pi(t_a)$ für die Verankerung $\rho = R/\Pi(t_a)$ — sind die
+   **lineare Mischung der Gitterränder**, dieselbe Monatskonvention wie
+   im übrigen Kern (9.14). Die Schicht bekommt keine eigene Zeitachse
+   ("Overlay ohne dritte Uhr", 9.5).
+
+$m = 0$ reduziert beides auf die Jahresverankerung; der Selbsttest der
+Verankerung ($V^{\mathrm{korr}}(t_a) = R$ konstruktionsbedingt) bleibt
+für jedes $m$ erhalten. Die Konvention regelt die **Verankerung und
+Bewertung** der Schicht am Rumpfjahr — die unterjährige *Ausführung*
+eines Geschäftsvorfalls (etwa eine Herabsetzung zwischen zwei
+Jahrestagen) ist davon unberührt und weiterhin gesondert festzulegen.
+
 ## 9.7 Übergangstaxonomie
 
 Die Klassifikation entscheidet, was beim Übergang mit dem Schichtwert

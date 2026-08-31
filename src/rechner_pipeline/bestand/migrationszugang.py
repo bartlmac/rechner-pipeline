@@ -97,25 +97,13 @@ class Uebernahme:
                 f"police {self.police_id}: monate_ta={self.monate_ta} liegt "
                 "vor Vertragsbeginn"
             )
-        if self.monate_ta % 12 != 0:
-            # Offener Punkt, bewusst nicht halb geloest: Ein rechnender
-            # Geschaeftsvorfall zwischen zwei Vertragsstichtagen setzt nach
-            # 9.12 den Verankerungszeitpunkt — er ist aktueller als der
-            # letzte Jahrestag. Die Korrekturschicht rechnet aber auf dem
-            # Jahresgitter (9.6); ein unterjaehriger Verankerungspunkt
-            # braucht entweder ein Monatsgitter oder eine Konvention, wie
-            # das erste Rumpfjahr behandelt wird. Beides ist eine fachliche
-            # Entscheidung, keine technische — bis sie getroffen ist, wird
-            # der Fall abgelehnt statt still auf den Jahrestag gerundet.
-            raise MigrationszugangFehler(
-                f"police {self.police_id}: monate_ta={self.monate_ta} ist "
-                f"unterjaehrig (Vertragsjahr {self.monate_ta // 12}, Monat "
-                f"{self.monate_ta % 12}). Nach 9.12 setzt ein rechnender "
-                "Geschaeftsvorfall den Verankerungszeitpunkt, auch zwischen "
-                "zwei Stichtagen — die Korrekturschicht rechnet aber auf dem "
-                "Jahresgitter. Wie das Rumpfjahr zu behandeln ist, ist offen "
-                "und zu entscheiden, bevor solche Vertraege uebernommen werden"
-            )
+        # Unterjaehrige Verankerung ist seit dem 9.6-Nachtrag
+        # (Rumpfjahr-Konvention, 2026-08-31) zulaessig: Das Gitter beginnt
+        # am Jahrestag davor, das erste Gitterjahr traegt den
+        # Einheitsstrom pro rata, Werte am und nach t_a entstehen durch
+        # dieselbe lineare Monatsmischung wie ueberall im Kern. Die alte
+        # Ablehnung ("bis die Konvention entschieden ist") ist damit
+        # gegenstandslos.
 
 
 @dataclass(frozen=True)
@@ -232,7 +220,15 @@ def uebernehmen(
                 )
             )
             continue
-        dk_prosp = basis[0]
+        rumpf = v.monate_ta % 12
+        if rumpf == 0:
+            dk_prosp = basis[0]
+        else:
+            # Prospektiver Wert AM unterjaehrigen t_a: lineare Mischung der
+            # Jahresraender — die Monatskonvention des Kerns (9.14), keine
+            # eigene Uhr der Schicht.
+            theta = rumpf / 12.0
+            dk_prosp = (1.0 - theta) * basis[0] + theta * basis[1]
         residuum = float(v.dk_ist) - dk_prosp
 
         bw = kern.produkt.bw
@@ -246,6 +242,7 @@ def uebernehmen(
                 v.zustand if v.zustand in bw.modell.zustaende else bw.AKTIV,
                 residuum,
                 verweildauer=v.verweildauer,
+                rumpfmonate=rumpf,
                 ausbuchungsgrenze=ausbuchungsgrenze,
                 kohorte=v.kohorte,
             )

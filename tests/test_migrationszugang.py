@@ -171,17 +171,63 @@ def test_vertrag_mit_befund_kommt_nicht_ins_journal():
     assert bericht["befunde"][0]["police_id"] == 2
 
 
-def test_unterjaehriger_verankerungszeitpunkt_wird_vorerst_abgelehnt():
-    """Ein offener Punkt, der nicht still gerundet wird.
+def test_unterjaehrige_verankerung_traegt_das_rumpfjahr_pro_rata():
+    """Die Rumpfjahr-Konvention (9.6-Nachtrag, entschieden 2026-08-31).
 
-    Nach 9.12 setzt ein rechnender Geschaeftsvorfall den
-    Verankerungszeitpunkt, auch zwischen zwei Vertragsstichtagen. Die
-    Korrekturschicht rechnet aber auf dem Jahresgitter. Solange nicht
-    entschieden ist, wie das Rumpfjahr behandelt wird, faellt der Fall
-    aus — auf den Jahrestag zu runden waere eine stille Konvention.
+    Frueher wurde der Fall abgelehnt ("bis entschieden ist, wie das
+    Rumpfjahr behandelt wird"). Entschieden ist: Das Gitter beginnt am
+    Jahrestag vor t_a, das erste Gitterjahr traegt den Einheitsstrom pro
+    rata ((12-m)/12), und der Wert AM t_a ist die lineare Mischung der
+    Gitterwerte — dieselbe Monatskonvention wie ueberall im Kern, keine
+    dritte Uhr. Der Selbsttest der Verankerung bleibt damit erhalten:
+    V(t_a) ist konstruktionsbedingt das Residuum.
     """
-    with pytest.raises(MigrationszugangFehler, match="unterjaehrig"):
-        Uebernahme(police_id=1, model_point=MP, monate_ta=TA + 5, dk_ist=1.0)
+    from rechner_pipeline.kern import Rechenkern
+    from rechner_pipeline.kern.korrekturschicht import Korrekturschicht
+    from rechner_pipeline.kern.model_point import KLV_DEFAULT
+
+    kern = Rechenkern(KLV_DEFAULT)
+    rumpf = 5
+    monate_ta = TA + rumpf
+    theta = rumpf / 12.0
+    jahr = monate_ta // 12
+    basis0 = kern.verlaufszeile(jahr).drx_bpfl
+    basis1 = kern.verlaufszeile(jahr + 1).drx_bpfl
+    prospektiv = (1.0 - theta) * basis0 + theta * basis1
+    delta = -850.0
+
+    e, = uebernehmen([
+        Uebernahme(police_id=1, model_point=MP, monate_ta=monate_ta,
+                   dk_ist=prospektiv + delta)
+    ])
+    assert e.befund is None
+    assert e.parameter is not None
+    assert e.parameter.rumpfmonate == rumpf
+    assert e.residuum == pytest.approx(delta)
+
+    # Selbsttest am unterjaehrigen t_a: linear gemischter Schichtwert ==
+    # Residuum. Ohne die pro-rata-Kuerzung des ersten Gitterjahres laege
+    # er daneben — genau das unterscheidet die Konvention vom stillen
+    # Runden auf den Jahrestag.
+    from rechner_pipeline.kern.korrekturschicht import (
+        form_proportional_zur_basis,
+    )
+
+    bw = kern.produkt.bw
+    schicht = Korrekturschicht(bw.modell, ((bw.AKTIV, bw.TOT),))
+    basis = [kern.verlaufszeile(a).drx_bpfl
+             for a in range(jahr, KLV_DEFAULT.n + 1)]
+    form = form_proportional_zur_basis(basis)
+    verlauf = schicht.verlauf(e.parameter, form, KLV_DEFAULT.x + jahr)
+    am_ta = (1.0 - theta) * verlauf[0] + theta * verlauf[1]
+    assert am_ta == pytest.approx(delta, rel=1e-9)
+
+    # Und der Gitterfall bleibt bitgleich: rumpfmonate=0 aendert nichts.
+    glatt, = uebernehmen([
+        Uebernahme(police_id=1, model_point=MP, monate_ta=TA,
+                   dk_ist=basis0 + delta)
+    ])
+    assert glatt.parameter.rumpfmonate == 0
 
 
 # --------------------------------------------------------------------------- #

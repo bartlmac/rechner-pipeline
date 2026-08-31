@@ -448,3 +448,82 @@ def test_absorption_setzt_den_faktor_auf_null_und_behaelt_die_spur():
     assert nachher.verankerungszustand == vorher.verankerungszustand
     assert nachher.formfunktion == vorher.formfunktion
     assert nachher.kohorte == vorher.kohorte
+
+
+# --------------------------------------------------------------------------- #
+# Rumpfjahr-Konvention (9.6-Nachtrag, entschieden 2026-08-31)
+# --------------------------------------------------------------------------- #
+
+
+def _rumpf_aufbau():
+    from rechner_pipeline.kern import Rechenkern
+    from rechner_pipeline.kern.korrekturschicht import (
+        Korrekturschicht,
+        form_konstantes_fenster,
+    )
+    from rechner_pipeline.kern.model_point import KLV_DEFAULT
+
+    kern = Rechenkern(KLV_DEFAULT)
+    bw = kern.produkt.bw
+    schicht = Korrekturschicht(bw.modell, ((bw.AKTIV, bw.TOT),))
+    form = form_konstantes_fenster(10, 6)
+    return schicht, form, bw
+
+
+def test_pi_kuerzt_das_erste_gitterjahr_pro_rata():
+    """Kontrollrechnung ueber die Modell-API statt f(x)==f(x).
+
+    Sechs Rumpfmonate heissen: Das erste Gitterjahr traegt den
+    Einheitsstrom nur zur Haelfte, und Pi(t_a) ist die lineare Mischung
+    der beiden ersten Gitterwerte. Beide Seiten hier entstehen aus
+    derselben Zustandsmodell-Engine, aber die rechte baut Kuerzung und
+    Mischung VON HAND -- faellt der pro-rata-Faktor im Schichtcode weg,
+    laufen die Seiten auseinander.
+    """
+    schicht, form, bw = _rumpf_aufbau()
+    alter0, zustand, m = 50, bw.AKTIV, 6
+    theta = m / 12.0
+
+    pi_rumpf = schicht.pi(form, alter0, zustand, rumpfmonate=m)
+
+    def hand_zahlung(s, j):
+        if s != zustand:
+            return 0.0
+        wert = form.werte[j]
+        return wert * (12 - m) / 12.0 if j == 0 else wert
+
+    verlauf = schicht.modell.barwert_verlauf(
+        zustand, alter0, len(form.werte), zahlung_zustand=hand_zahlung)
+    erwartet = (1.0 - theta) * verlauf[0] + theta * verlauf[1]
+    assert pi_rumpf == pytest.approx(erwartet, rel=1e-12)
+
+    # m = 0 ist bitgleich der alte Fall.
+    assert schicht.pi(form, alter0, zustand) == schicht.pi(
+        form, alter0, zustand, rumpfmonate=0)
+
+
+def test_verankerung_mit_rumpf_trifft_das_residuum_am_ta():
+    """Selbsttest der Konvention: linear gemischter Wert am t_a == R."""
+    schicht, form, bw = _rumpf_aufbau()
+    for m in (1, 5, 11):
+        parameter = schicht.verankere(
+            form, 50, bw.AKTIV, -850.0, rumpfmonate=m)
+        assert parameter.rumpfmonate == m
+        verlauf = schicht.verlauf(parameter, form, 50)
+        theta = m / 12.0
+        am_ta = (1.0 - theta) * verlauf[0] + theta * verlauf[1]
+        assert am_ta == pytest.approx(-850.0, rel=1e-9)
+        assert parameter.als_beleg()["rumpfmonate"] == m
+
+
+def test_zwoelf_rumpfmonate_sind_kein_rumpf():
+    from rechner_pipeline.kern.korrekturschicht import (
+        KorrekturschichtFehler,
+        Schichtparameter,
+    )
+
+    with pytest.raises(KorrekturschichtFehler, match="Rumpfmonate"):
+        Schichtparameter(
+            schichttyp="hist", verankerungszustand="x", verweildauer=0,
+            rho=1.0, formfunktion="f", rumpfmonate=12,
+        )

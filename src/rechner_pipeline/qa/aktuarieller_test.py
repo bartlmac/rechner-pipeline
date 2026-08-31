@@ -470,10 +470,17 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
                 "Korrekturschicht rechnet ab dem Verankerungszeitpunkt, nicht "
                 "ab Vertragsbeginn"
             )
-        if v.monate_ta % 12 != 0 or v.monate_ta < 0:
+        if v.monate_ta < 0:
             raise AktuartestFehler(
-                f"police {v.police_id}: monate_ta={v.monate_ta} ist kein "
-                "Rechenpunkt (Grundsatzdokumentation 9.12)"
+                f"police {v.police_id}: monate_ta={v.monate_ta} liegt vor "
+                "Vertragsbeginn"
+            )
+        if v.monate_ta % 12 != 0 and v.schicht.rumpfmonate != v.monate_ta % 12:
+            raise AktuartestFehler(
+                f"police {v.police_id}: monate_ta={v.monate_ta} traegt "
+                f"{v.monate_ta % 12} Rumpfmonate, die Schicht aber "
+                f"rumpfmonate={v.schicht.rumpfmonate} — Verankerung und "
+                "Schicht muessen dasselbe Rumpfjahr meinen (9.6-Nachtrag)"
             )
         frueh = [p.monate for p in v.punkte if p.monate < v.monate_ta]
         if frueh:
@@ -501,10 +508,17 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
                 f"police {v.police_id}: schicht_conv ohne monate_t0 — die "
                 "Zweitverankerung rechnet ab dem Migrationsstichtag t_0"
             )
-        if v.monate_t0 % 12 != 0 or v.monate_t0 < 0:
+        if v.monate_t0 < 0:
             raise AktuartestFehler(
-                f"police {v.police_id}: monate_t0={v.monate_t0} ist kein "
-                "Rechenpunkt (Grundsatzdokumentation 9.12)"
+                f"police {v.police_id}: monate_t0={v.monate_t0} liegt vor "
+                "Vertragsbeginn"
+            )
+        if (v.monate_t0 % 12 != 0
+                and v.schicht_conv.rumpfmonate != v.monate_t0 % 12):
+            raise AktuartestFehler(
+                f"police {v.police_id}: monate_t0={v.monate_t0} traegt "
+                f"{v.monate_t0 % 12} Rumpfmonate, die conv-Schicht aber "
+                f"rumpfmonate={v.schicht_conv.rumpfmonate}"
             )
         frueh = [p.monate for p in v.punkte if p.monate < v.monate_t0]
         if frueh:
@@ -671,6 +685,10 @@ def _eine_schicht(
     Rekursion mit anderen Zahlungen und darf keine eigene Zeitachse
     bekommen ("Overlay ohne dritte Uhr", 9.5).
     """
+    # Das GITTER beginnt am Jahrestag vor dem Anker; bei einer
+    # Rumpfjahr-Verankerung (9.6-Nachtrag) liegt t_a mitten im ersten
+    # Gitterjahr. Abgelesen wird ab dem Gitterjahrestag, linear gemischt
+    # -- am t_a selbst ergibt das konstruktionsbedingt das Residuum.
     jahr_ta = monate_anker // 12
     kern = Rechenkern(mp)
     basis = [kern.verlaufszeile(a).drx_bpfl for a in range(jahr_ta, mp.n + 1)]
@@ -685,8 +703,8 @@ def _eine_schicht(
     )
     verlauf = schicht.verlauf(parameter, form, mp.x + jahr_ta)
 
-    seit_ta = p.monate - monate_anker
-    j, rest = divmod(seit_ta, 12)
+    seit_gitter = p.monate - 12 * jahr_ta
+    j, rest = divmod(seit_gitter, 12)
     if j >= len(verlauf) - 1:
         return verlauf[-1]
     if rest == 0:
