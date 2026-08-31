@@ -57,6 +57,21 @@ Testtoleranzen). Excel bleibt der Tarifrechner der Quelle.
    Erwartungswerte im Lieferformat (POLNR;...;DECKKAP), einschliesslich
    t_a/dk_ta je Vertrag fuer die Verankerung.
 
+## Dokumente der Quelle
+
+Die Tarifbestimmungen (AVB-artiges Lieferartefakt) haben eine
+**Markdown-Quelle** (`tarifbestimmungen.md`) und werden ueber die
+gepinnte Doku-Engine des Repos gerendert (`docs/engine/render.sh`,
+Quarto/Typst) — derselbe Weg wie die Zieltarifplaene. Beschluss
+2026-08-31: Word war Bequemlichkeit; am Ende steht ohnehin ein binaeres
+Artefakt (PDF), und fuer die Simulation ist eine Textquelle bequemer.
+Die Optik traegt das Altsystem (Schreibmaschinenschrift per
+Frontmatter). Der Formelanhang uebernimmt die Zeichenerklaerung der
+Tarifmeldung eins zu eins — einschliesslich ihres gewollten
+Indexfehlers (N(x)-Summe ab j=1; Regie F3, nur in der Doku, das
+Rechenwerk rechnet korrekt). `docx.py` bleibt fuer Office-Artefakte,
+die es als DOCX geben muss (Notizen, Mitteilungs-Nachbauten).
+
 Die Baldrian-REGIE (welche Defekte die Lieferung absichtlich traegt,
 Seeds, Nachlieferungen) bleibt in `simulation/baldrian/` — gitignored,
 Spielleiter-Bereich.

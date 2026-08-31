@@ -36,5 +36,6 @@ Thumbs.db
 
 # Doku-Engine-Renderings (Quellen sind die Markdown-Dateien)
 docs/**/*.pdf
+quellsystem/*.pdf
 docs/**/*.typ
 docs/**/*_files/
