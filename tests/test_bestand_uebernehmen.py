@@ -29,10 +29,21 @@ ZEILE = {
 }
 
 
-def _baue(vorgeschichte=None):
+#: Rechnungsgrundlagen der Generation. Nur noetig, sobald ein Vertrag
+#: beitragsfrei uebernommen wird: Dann bucht die Uebernahme die Umbuchung
+#: in den beitragsfreien Bestand und muss deren Summe rechnen.
+GRUNDLAGEN = {
+    "zins": 0.0125, "tafel": "DAV2008_T_NR_U70", "alpha": 0.025,
+    "beta1": 0.03, "gamma1": 0.001, "gamma2": 0.00125, "gamma3": 0.0025,
+    "policy_fee": 12.0, "min_alter_flex": 60, "min_rlz_flex": 5,
+}
+
+
+def _baue(vorgeschichte=None, grundlagen=GRUNDLAGEN):
     return baue(
         [dict(ZEILE)], tarif_generation="TG2015", produkt="klv",
         stichtag=dt.date(2026, 1, 1), vorgeschichte=vorgeschichte or {},
+        generationsfelder=grundlagen,
     )
 
 

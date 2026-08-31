@@ -326,12 +326,11 @@ def baue(
         # Quellsystems wird nicht nachgefahren"
         # (bestand/migrationszugang.py, Grundsatzdokumentation 9.14).
         #
-        # Der gebuchte Betrag ist die Summe, die der Vertrag am Stichtag
-        # TRAEGT. Fuer einen beitragsfrei uebernommenen Vertrag ist das
-        # die beitragsfreie Summe -- der Abzug fuehrt sie bereits als
-        # ERLSUMME. Die frueher zusaetzlich gebuchte PEX-Zeile wandelte
-        # dieselbe Police ein zweites Mal um und widersprach der
-        # Zugangsbuchung (56.307 gegen 48.038 bei Police 7000001).
+        # Der Zugang bucht die VERSICHERUNGSSUMME des Vertrags -- auch
+        # bei einem beitragsfrei uebernommenen. Er tritt mit seiner
+        # vollen Summe in den beitragspflichtigen Bestand ein und wird
+        # im selben Augenblick in den beitragsfreien umgebucht; genau
+        # so weist es die Nachweisung aus.
         ledger.append({
             "police_id": int(police),
             "tarif_generation": tarif_generation,
@@ -343,6 +342,54 @@ def baue(
             # Die Zugangssumme steht im Abzug der abgebenden Gesellschaft.
             "betrag_herkunft": "geliefert",
         })
+        # Kommt der Vertrag bereits beitragsfrei an, gehoert dazu die
+        # Umbuchung -- ebenfalls zum ZUGANGSDATUM, nicht zum historischen
+        # Datum der Beitragsfreistellung. Bei Baldrian ist die 2022
+        # geschehen; in den Buechern der PLV gab es den Vertrag da nicht.
+        # Die Umbuchung IST der Eintritt in den beitragsfreien Bestand.
+        #
+        # Ohne diese Zeile fuehrt die Nachweisung den Vertrag dauerhaft
+        # als beitragspflichtig: Der Zugang bucht ihn dorthin und nichts
+        # holt ihn heraus -- die Identitaet Anfang + Zugang - Abgang -
+        # Umbuchung = Ende bricht, und der beitragsfreie Bestand faende
+        # keine Summe (kennzahlen.stand_am liest sie aus dieser Zeile).
+        #
+        # Der Betrag ist die beitragsfreie Summe und damit KLEINER als
+        # die Zugangssumme -- kein Widerspruch, sondern die Umwandlung
+        # selbst: Der beitragspflichtige Bestand gibt die volle Summe ab,
+        # der beitragsfreie nimmt die herabgesetzte auf. Die Lieferung
+        # traegt sie nicht, das Zielsystem rechnet sie aus den
+        # Ursprungsparametern -- deshalb "gerechnet".
+        pex_datum = next(
+            (datum for art, datum in wechsel if art == "PEX"), None)
+        if pex_datum is not None:
+            felder = generationsfelder or {}
+            if felder and police in felder:
+                felder = felder[police]
+            if not felder:
+                # Kein stiller Verzicht: Ohne Rechnungsgrundlagen laesst
+                # sich die beitragsfreie Summe nicht bilden, und ein
+                # Bestand mit beitragsfreien Vertraegen ohne diese Buchung
+                # ist unvollstaendig -- die Nachweisung fuehrte sie
+                # dauerhaft als beitragspflichtig.
+                raise SystemExit(
+                    f"Police {police} ist beitragsfrei uebernommen "
+                    f"({pex_datum}), aber es liegen keine "
+                    "Rechnungsgrundlagen vor -- die beitragsfreie Summe "
+                    "ist nicht berechenbar. --generation-spez mitgeben "
+                    "(oder generationsfelder uebergeben)."
+                )
+            ledger.append({
+                "police_id": int(police),
+                "tarif_generation": tarif_generation,
+                "ereignis": "PEX",
+                "vertragsjahr": _vertragsjahre(beginn, stichtag),
+                "status_date": pd.Timestamp(stichtag),
+                "betrag_art": "VS",
+                "betrag": _beitragsfreie_summe(
+                    z, felder, _vertragsjahre(beginn, pex_datum)),
+                "betrag_herkunft": "gerechnet",
+            })
 
     if abweichende_geburtsdaten:
         hinweise.append(

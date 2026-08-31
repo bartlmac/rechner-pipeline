@@ -295,10 +295,29 @@ def test_das_bewegungskonto_beginnt_am_uebernahmestichtag(
         + str(sorted(set(
             str(d)[:10] for d in ledger["status_date"]
             if pd.Timestamp(d) < stichtag))[:5]))
-    assert set(ledger["ereignis"]) == {"ZUG"}, (
-        "die Vorgeschichte gehoert nicht ins Journal des aufnehmenden "
-        "Unternehmens")
-    assert set(ledger["betrag_herkunft"]) == {"geliefert"}
+    # Alle Buchungen liegen AUF dem Stichtag: Der Vertrag tritt ein, und
+    # war er schon beitragsfrei, wird er im selben Augenblick umgebucht.
+    # Das historische Datum der Beitragsfreistellung (2022) taucht im
+    # Journal des aufnehmenden Unternehmens nirgends auf.
+    assert set(pd.to_datetime(ledger["status_date"])) == {stichtag}
+    assert set(ledger["ereignis"]) <= {"ZUG", "PEX"}, (
+        "die Vorgeschichte gehoert nicht als eigene Bewegung ins Journal "
+        "des aufnehmenden Unternehmens")
+
+    zug = ledger[ledger["ereignis"] == "ZUG"]
+    pex = ledger[ledger["ereignis"] == "PEX"]
+    # Die Zugangssumme steht im Abzug, die beitragsfreie Summe rechnet
+    # das Zielsystem -- und die Herkunft sagt es je Buchung.
+    assert set(zug["betrag_herkunft"]) == {"geliefert"}
+    assert set(pex["betrag_herkunft"]) == {"gerechnet"}
+
+    # Je umgebuchter Police genau eine PEX-Zeile, und ihr Betrag ist die
+    # HERABGESETZTE Summe: Der beitragspflichtige Bestand gibt die volle
+    # Versicherungssumme ab, der beitragsfreie nimmt die kleinere auf.
+    assert len(pex) == len(set(pex["police_id"]))
+    zug_summe = zug.set_index("police_id")["betrag"]
+    for pid, betrag in zip(pex["police_id"], pex["betrag"]):
+        assert 0.0 < betrag < zug_summe.loc[pid]
 
     # Die Statushistorie fuehrt sie sehr wohl: Sie beschreibt den
     # Vertrag, und ohne sie waere sein Zustand am Stichtag unbestimmt.
@@ -355,28 +374,34 @@ def test_die_merkmale_stehen_in_einer_nebentabelle(gefahrener_fall: Path):
     assert "status" not in STAMM_NAMES and "tarifart" not in STAMM_NAMES
 
 
-def test_uebernahme_ohne_spez_laeuft_und_erzeugt_keine_merkmale(
-    gefahrener_fall: Path, tmp_path: Path
+def test_ohne_spez_verweigert_die_uebernahme_beitragsfreier_vertraege(
+    gefahrener_fall: Path
 ):
-    """Ohne ``--generation-spez`` gibt es keine Zellen -- und keinen Absturz.
+    """Ohne Rechnungsgrundlagen kein halber Bestand.
 
-    Die Merkmalstabelle liest ihre Dimensionen aus der Spez. Wer ohne sie
-    uebernimmt, liefert einen Bestand ohne Zellen; das ist ein zulaessiger
-    Fall (der Eigenbestand kennt keine), kein Sonderweg. Der Zweig war
-    ungetestet, weil der e2e-Lauf die Spez immer mitgibt.
+    Die Merkmalstabelle liest ihre Dimensionen aus der Spez -- ein Bestand
+    ohne Zellen ist zulaessig, der Eigenbestand kennt keine. Aber die
+    Baldrian-Lieferung enthaelt beitragsfrei uebernommene Vertraege, und
+    fuer sie muss die Uebernahme die Umbuchung in den beitragsfreien
+    Bestand buchen. Deren Summe ist ohne Tarifparameter nicht rechenbar.
+
+    Sie wegzulassen faellt nicht sofort auf: Stamm und Historie waeren
+    vollstaendig, und erst die Nachweisung fuehrte die Vertraege dauerhaft
+    als beitragspflichtig. Deshalb hier der harte Abbruch mit dem Ausweg
+    in der Meldung.
     """
     zeilen = (gefahrener_fall / "abgeleitet" / "transformation" / "zeilen.json")
     ziel = gefahrener_fall / "abgeleitet" / "ohne_spez"
 
-    assert bestand_uebernehmen.main([
-        "--fall", str(gefahrener_fall), "--zeilen", str(zeilen),
-        "--tarif-generation", GENERATION, "--stichtag", STICHTAG_1,
-        "--vorgeschichte", METADATEN,
-        "--out-dir", str(ziel),
-    ]) == 0
-
-    assert (ziel / "bestand.parquet").exists()
-    assert not (ziel / "merkmale.parquet").exists()
+    with pytest.raises(SystemExit) as exc:
+        bestand_uebernehmen.main([
+            "--fall", str(gefahrener_fall), "--zeilen", str(zeilen),
+            "--tarif-generation", GENERATION, "--stichtag", STICHTAG_1,
+            "--vorgeschichte", METADATEN,
+            "--out-dir", str(ziel),
+        ])
+    assert "--generation-spez" in str(exc.value)
+    assert "beitragsfrei" in str(exc.value)
 
 
 def test_der_lauf_liefert_die_grundlagen_zu_seinen_zellen(gefahrener_fall: Path):
