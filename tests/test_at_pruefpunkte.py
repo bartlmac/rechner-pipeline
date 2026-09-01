@@ -1129,17 +1129,11 @@ class TestStoabJeBausteinRegel:
             je_vertrag["RKW"], rel=1e-6)
 
 
-def test_auftragsbau_bricht_bei_vorgeschichte_ohne_zustand_hart():
-    """20 von 25 reduziert-Policen liefen im zweiten Lauf ZUSTANDSLOS in
-    den Wertvergleich (Zustandsableitung scheiterte nur mit stderr-
-    Warnung) und urteilten auf einer falschen Welt. Ein Vertrag mit
-    Vorgeschichte, aber ohne ableitbaren Anfangszustand, ist kein
-    Pruefauftrag — die Luecke wird im Rueckgabewert AUSGEWIESEN (das
-    Verhalten der ersten Lieferung — sichtbar rot statt still — bleibt;
-    neu ist, dass der Beleg die Ursache traegt statt nur stderr)."""
+def _zustandslos_fixture():
+    """Eine reduziert-Police, deren Anfangszustand nicht ableitbar war
+    (leere anfangszustaende) — der Serie+RED-Fall des zweiten Laufs."""
     import pandas as pd
 
-    from rechner_pipeline.gates.aktuartest_lauf import baue_auftraege
     from rechner_pipeline.kern import KLV_DEFAULT
 
     import dataclasses as dc
@@ -1170,8 +1164,49 @@ def test_auftragsbau_bricht_bei_vorgeschichte_ohne_zustand_hart():
         "punkte": [{"monate": 120, "anlass": "uebernahme",
                     "erwartet": {"BJB": 1.0}}],
     }]}
+    return lieferung, bestand, spez
+
+
+def test_auftragsbau_weist_vorgeschichte_ohne_zustand_aus():
+    """20 von 25 reduziert-Policen liefen im zweiten Lauf ZUSTANDSLOS in
+    den Wertvergleich (Zustandsableitung scheiterte nur mit stderr-
+    Warnung) und urteilten auf einer falschen Welt. Ein Vertrag mit
+    Vorgeschichte, aber ohne ableitbaren Anfangszustand, ist kein
+    Pruefauftrag — die Luecke wird im Rueckgabewert AUSGEWIESEN (das
+    Verhalten der ersten Lieferung — sichtbar rot statt still — bleibt;
+    neu ist, dass der Beleg die Ursache traegt statt nur stderr)."""
+    from rechner_pipeline.gates.aktuartest_lauf import baue_auftraege
+
+    lieferung, bestand, spez = _zustandslos_fixture()
     auftraege, _ausgelassen, zustandslos = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police={},
         anfangszustaende={})
     assert zustandslos == ["7000717"]
     assert len(auftraege) == 1
+
+
+def test_auftragsbau_verwirft_plausibilitaet_ohne_zustand_ausgewiesen():
+    """Die Vorfallart-Reichweite eines Plausibilitaets-Belegs trifft
+    auch Policen ohne ableitbaren Anfangszustand. Dort ersetzt der
+    Beleg nichts (Systemwert = Stammwelt, Kandidaten-Regeln brauchen
+    den Herabsetzungszustand) — der Antrag wird VERWORFEN statt eines
+    Auftrags, den die Engine-Wache hart abweist: Im zweiten Lauf starb
+    daran der komplette A-M1 statt der rechenbaren Punkte."""
+    from rechner_pipeline.gates.aktuartest_lauf import baue_auftraege
+
+    lieferung, bestand, spez = _zustandslos_fixture()
+    auftraege, _ausgelassen, zustandslos = baue_auftraege(
+        lieferung, bestand, spez, auspraegungen_je_police={},
+        anfangszustaende={},
+        plausibilitaet={"7000717": {"kVx_MRV": GRUND, "BJB": GRUND}},
+        red_anteil_kandidaten=(0.50, 0.60, 0.75))
+    assert zustandslos == ["7000717"]
+    assert auftraege[0].plausibilitaet == {}
+    assert auftraege[0].reduktion_kandidaten == ()
+    # Der Auftrag ist engine-vertraeglich: kein AktuartestFehler, die
+    # Police faellt im Wertvergleich sichtbar rot statt den Lauf zu
+    # brechen.
+    urteil = pruefe_vertrag(auftraege[0], _profil())
+    assert not urteil["bestanden"]
+    assert all(p["kriterium"] == KRITERIUM_VERGLEICH
+               for p in urteil["pruefungen"])

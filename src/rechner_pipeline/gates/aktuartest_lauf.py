@@ -118,20 +118,33 @@ def baue_auftraege(
     scheiben_mit_gamma1: bool = False,
     stoab_je_baustein: bool = False,
     red_anteil_kandidaten: Tuple[float, ...] = (),
-) -> Tuple[List[Vertragspruefung], List[str]]:
+) -> Tuple[List[Vertragspruefung], List[str], List[str]]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag.
 
-    Rueckgabe ``(auftraege, schicht_ausgelassen)``: Fuer Policen mit
-    Herabsetzungs-Anfangszustand UND ersetztem Wertvergleich
-    (Plausibilitaets-Beleg, Aktuars-Entscheid) wird die
+    Rueckgabe ``(auftraege, schicht_ausgelassen, zustandslos)``: Fuer
+    Policen mit Herabsetzungs-Anfangszustand UND ersetztem
+    Wertvergleich (Plausibilitaets-Beleg, Aktuars-Entscheid) wird die
     Korrekturschicht AUSGEWIESEN ausgelassen — die Kombination ist in
     der Engine bewusst undefiniert, und wo der Wertvergleich ersetzt
     ist, rechnet die Schicht ohnehin in kein Urteil. OHNE Ersetzung
     bleibt der harte Engine-Waechter (kein stilles Weglassen).
+
+    ``zustandslos`` sind Policen mit Vorgeschichte, aber ohne
+    ableitbaren Anfangszustand: eine AUSGEWIESENE Pruefluecke, kein
+    Abbruch (etabliertes Verhalten der ersten Lieferung — die Police
+    faellt sichtbar rot, statt dass ein geratener Zustand still
+    richtig aussieht). Ein Plausibilitaets-Antrag wird diesen Policen
+    NICHT gewaehrt, sondern ausgewiesen verworfen: Ihr Systemwert
+    rechnet mangels Zustand die Stammwelt, ein Korridor darum urteilt
+    nichts, und die Kandidaten-Regeln brauchen den
+    Herabsetzungszustand (im zweiten Lauf brach die blind ueber die
+    Vorfallart-Reichweite verteilte Ersetzung den ganzen Lauf an der
+    Engine-Wache ab, statt die rechenbaren Policen zu liefern).
     """
     zeilen = {str(r["police_id"]): r for _, r in bestand.iterrows()}
     auftraege: List[Vertragspruefung] = []
     schicht_ausgelassen: List[str] = []
+    zustandslos: List[str] = []
 
     for eintrag in lieferung["vertraege"]:
         police = str(eintrag["police_id"])
@@ -172,14 +185,31 @@ def baue_auftraege(
                            for k, v in (p.get("parameter") or {}).items()},
             ))
 
+        historientyp = str(eintrag.get("historientyp", "unbekannt"))
+        beitragsfrei = eintrag.get(
+            "beitragsfrei_seit_jahr", zustand.get("beitragsfrei_seit_jahr"))
+        ohne_zustand = (
+            historientyp not in ("ohne_vorgeschichte", "unbekannt")
+            and not zustand.get("scheiben")
+            and zustand.get("reduktion") is None
+            and beitragsfrei is None)
+        if ohne_zustand:
+            zustandslos.append(police)
+        gewaehrt = dict((plausibilitaet or {}).get(police, {}))
+        if gewaehrt and ohne_zustand:
+            # Die Reichweite des Belegs (Vorfallart) trifft auch
+            # Policen ohne ableitbaren Anfangszustand — dort ersetzt er
+            # nichts (siehe Docstring); der Antrag wird verworfen statt
+            # eines Auftrags, den die Engine-Wache hart abweist. main
+            # weist die Policen im Ergebnis aus.
+            gewaehrt = {}
+
         auftraege.append(Vertragspruefung(
             police_id=police,
             model_point=mp,
-            historientyp=str(eintrag.get("historientyp", "unbekannt")),
+            historientyp=historientyp,
             punkte=tuple(punkte),
-            beitragsfrei_seit_jahr=eintrag.get(
-                "beitragsfrei_seit_jahr",
-                zustand.get("beitragsfrei_seit_jahr")),
+            beitragsfrei_seit_jahr=beitragsfrei,
             monate_ta=eintrag.get("monate_ta"),
             scheiben=tuple(zustand.get("scheiben", ())),
             reduktion=zustand.get("reduktion"),
@@ -190,28 +220,19 @@ def baue_auftraege(
             reduktion_kandidaten=(
                 tuple(red_anteil_kandidaten)
                 if zustand.get("reduktion") else ()),
-            plausibilitaet=(plausibilitaet or {}).get(police, {}),
+            plausibilitaet=gewaehrt,
             scheiben_mit_gamma1=scheiben_mit_gamma1,
             stoab_je_baustein=stoab_je_baustein,
             **_schicht_felder(_schicht_fuer(
                 police, zustand, (schichten or {}).get(police),
-                (plausibilitaet or {}).get(police), schicht_ausgelassen)),
+                gewaehrt, schicht_ausgelassen)),
         ))
-    # Vorgeschichte ohne ableitbaren Anfangszustand ist eine
-    # AUSGEWIESENE Pruefluecke, kein Abbruch (etabliertes Verhalten der
-    # ersten Lieferung: die Police faellt sichtbar rot, statt dass ein
-    # geratener Zustand still richtig aussieht). Der Ausweis gehoert
-    # aber in den BELEG, nicht nur nach stderr — im zweiten Lauf hielt
-    # der Aktuar 20 solcher Policen fuer einen Systemfehler, weil das
-    # Ergebnis-JSON die Ursache nirgends nannte (main haengt die
-    # Zustandswarnungen deshalb an das Ergebnis an).
-    zustandslos = sorted(
-        a.police_id for a in auftraege
-        if a.historientyp not in ("ohne_vorgeschichte", "unbekannt")
-        and not a.scheiben and a.reduktion is None
-        and a.beitragsfrei_seit_jahr is None
-    )
-    return auftraege, schicht_ausgelassen, zustandslos
+    # Der Ausweis der Prueflueke gehoert in den BELEG, nicht nur nach
+    # stderr — im zweiten Lauf hielt der Aktuar 20 solcher Policen fuer
+    # einen Systemfehler, weil das Ergebnis-JSON die Ursache nirgends
+    # nannte (main haengt die Zustandswarnungen deshalb an das
+    # Ergebnis an).
+    return auftraege, schicht_ausgelassen, sorted(zustandslos)
 
 
 def _schicht_fuer(
@@ -639,6 +660,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"WARNUNG Police {police}: Korrekturschicht nicht im "
               "Pruefpfad — Herabsetzungs-Anfangszustand, Wertvergleich "
               "durch Plausibilitaets-Beleg ersetzt", file=sys.stderr)
+    plaus_verweigert = sorted(p for p in zustandslos if p in plausibilitaet)
+    for police in plaus_verweigert:
+        print(f"WARNUNG Police {police}: Plausibilitaets-Beleg nicht "
+              "angewandt — kein ableitbarer Anfangszustand, die Police "
+              "bleibt sichtbar im Wertvergleich", file=sys.stderr)
     stichprobe = _stichprobe(beleg, args.abnahme)
     profil = vorlage(args.abnahme, weite=str(
         stichprobe.parameter.get("weite") or stichprobe.profil))
@@ -664,6 +690,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "Anteile je Ereignis nachliefern: POLNR;GEVO;DATUM;"
                 "ANTEIL), nicht Toleranzen weiten."),
         }
+        if plaus_verweigert:
+            ergebnis["anfangszustand_nicht_ableitbar"][
+                "plausibilitaet_nicht_angewandt"] = plaus_verweigert
 
     ziel = Path(args.out) if args.out else (
         fall / "abgeleitet" / "berichte" / ZIELNAME[args.abnahme])
