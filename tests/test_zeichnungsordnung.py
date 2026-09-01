@@ -143,6 +143,23 @@ def test_zwei_rollen_mit_demselben_schluessel_sind_ein_fehler(aufbau, tmp_path):
     assert "denselben Schluessel" in ergebnis.errors[0]["message"]
 
 
+def test_jedes_zeichenbare_gate_ist_einer_rolle_zuweisbar(tmp_path):
+    """A-K1 fiel durch: zeichenbar (GUELTIGE_GATES), aber der Ordnung
+    nicht zuweisbar — eine Ordnung mit Loch, gefunden beim Aufsetzen
+    der Vier-Rollen-Regie (plv-it zeichnet A-K1). Der Waechter bindet
+    die Zuweisbarkeit an die Liste der zeichenbaren Gates."""
+    assert set(gate_entscheid.GUELTIGE_GATES) <= set(
+        gate_entscheid.ZEICHNUNG_GATES)
+    ordnung = _schreibe_ordnung(tmp_path / "mit-a-k1.json", {
+        "plv-it": {"schluessel_sha256": "0" * 64, "gates": ["A-K1"]},
+    })
+    geladen, sha, fehler = gate_entscheid._lade_zeichnungsordnung(
+        str(ordnung), tmp_path / "fall")
+    assert fehler == []
+    assert geladen["rollen"]["plv-it"]["gates"] == ["A-K1"]
+    assert sha
+
+
 def test_der_mensch_zeichnet_alles(aufbau, tmp_path):
     """Eskalationsrolle: gates '*' — der Mensch nach Abbruchkriterium."""
     fall, va, _experte, _ordnung = aufbau

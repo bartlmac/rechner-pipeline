@@ -225,8 +225,11 @@ def _freigabe_fuer(snapshot_ohne_freigabe: dict, key: bytes) -> Dict[str, str]:
 
 
 #: Gates, die eine Zeichnungsordnung einer Rolle zuordnen kann. "*" heisst
-#: alle -- die Eskalationsrolle des Menschen.
-ZEICHNUNG_GATES = ("A-Q1",) + tuple(AKTUARIELLE_ABNAHMEN) + ("A-M4",)
+#: alle -- die Eskalationsrolle des Menschen. Massgeblich sind ALLE
+#: zeichenbaren Gates: Eine engere Liste war ein Loch der Ordnung --
+#: A-K1 liess sich zeichnen, aber keiner Rolle zuweisen (gefunden beim
+#: Aufsetzen der Vier-Rollen-Regie fuer Fall-Lauf 2).
+ZEICHNUNG_GATES = GUELTIGE_GATES
 
 
 def _lade_zeichnungsordnung(
