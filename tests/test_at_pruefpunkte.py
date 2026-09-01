@@ -396,6 +396,42 @@ def test_die_schicht_wirkt_auch_am_naechsten_stichtag():
     assert zweiter["system"] > fort_basis - 850.0, "sie ist teilweise abgebaut"
 
 
+def test_schicht_ist_am_ablauf_exakt_null():
+    """A-M2-Befund des zweiten Laufs (Police 7000586): Am Ablauftermin
+    gilt tarifbedingt kVx_MRV(n) = Erlebensfallsumme — eine
+    Fuehrungs-Korrektur hat dort nichts mehr zu verteilen
+    (Terminalbedingung V_korr(n) = 0, 9.7). Mit einem Zahlungsgewicht
+    auch im Ablaufjahr stand die Schicht dort noch auf rho x Basis(n).
+    Der Punkt DAVOR muss die Schicht weiterhin tragen — sonst waere
+    sie nur frueher abgeschaltet statt korrekt amortisiert."""
+    e, geliefert, ta = _uebernommen()
+    ablauf = 12 * KLV_DEFAULT.n
+    ablaufleistung = KERN.verlaufszeile(KLV_DEFAULT.n).vx_mrv
+    v = _vertrag(
+        Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
+        Pruefpunkt(ablauf, {"kVx_MRV": round(ablaufleistung, 2)},
+                   ANLASS_VERLAUF),
+        schicht=e.parameter, monate_ta=ta,
+    )
+    ergebnis = pruefe_vertrag(v, _profil())
+    assert ergebnis["bestanden"], ergebnis["befunde"]
+    am_ablauf = next(p for p in ergebnis["pruefungen"]
+                     if p["monate"] == ablauf)
+    assert am_ablauf["system"] == pytest.approx(ablaufleistung, abs=1e-9)
+    # Zonen-Beleg: ein Jahr vor Ablauf wirkt die Schicht noch.
+    vor_ablauf = 12 * (KLV_DEFAULT.n - 1)
+    basis_vor = KERN.verlaufszeile(KLV_DEFAULT.n - 1).vx_mrv
+    v2 = _vertrag(
+        Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
+        Pruefpunkt(vor_ablauf, {"kVx_MRV": round(basis_vor, 2)},
+                   ANLASS_VERLAUF),
+        schicht=e.parameter, monate_ta=ta,
+    )
+    p_vor = next(p for p in pruefe_vertrag(v2, _profil())["pruefungen"]
+                 if p["monate"] == vor_ablauf)
+    assert abs(p_vor["system"] - basis_vor) > 1.0
+
+
 def test_schicht_ohne_verankerungszeitpunkt_faellt_hart_aus():
     """Die Schicht rechnet ab t_a — ohne den Zeitpunkt ist sie undefiniert."""
     e, geliefert, ta = _uebernommen()

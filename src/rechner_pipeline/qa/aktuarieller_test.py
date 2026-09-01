@@ -823,7 +823,12 @@ def _eine_schicht(
     # -- am t_a selbst ergibt das konstruktionsbedingt das Residuum.
     jahr_ta = monate_anker // 12
     kern = Rechenkern(mp)
-    basis = [kern.verlaufszeile(a).drx_bpfl for a in range(jahr_ta, mp.n + 1)]
+    # Zahlungsjahre jahr_ta .. n-1: das Ablaufjahr traegt keine
+    # Amortisations-Zahlung (Terminalbedingung V_korr(n) = 0, 9.7) —
+    # dieselbe Grenze wie bei der Verankerung
+    # (bestand.migrationszugang._basisverlauf), sonst passte rho nicht
+    # zur Form und das Residuum am t_a risse.
+    basis = [kern.verlaufszeile(a).drx_bpfl for a in range(jahr_ta, mp.n)]
     if parameter.formfunktion == "konstantes_fenster":
         fenster = int(parameter.formparameter["fenster"])
         form = form_konstantes_fenster(len(basis), min(fenster, len(basis)))

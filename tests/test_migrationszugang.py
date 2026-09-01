@@ -90,7 +90,9 @@ def test_die_schicht_traegt_das_residuum_exakt(delta: float):
     )
 
     e, = uebernehmen([_uebernahme(delta=delta)])
-    basis = [KERN.verlaufszeile(a).drx_bpfl for a in range(TA_JAHR, KLV_DEFAULT.n + 1)]
+    # Zahlungsjahre TA_JAHR .. n-1: das Ablaufjahr traegt keine
+    # Amortisations-Zahlung (Terminalbedingung, A-M2-Befund Lauf 2).
+    basis = [KERN.verlaufszeile(a).drx_bpfl for a in range(TA_JAHR, KLV_DEFAULT.n)]
     bw = KERN.produkt.bw
     schicht = Korrekturschicht(bw.modell, ((bw.AKTIV, bw.TOT),))
     verlauf = schicht.verlauf(
@@ -216,7 +218,7 @@ def test_unterjaehrige_verankerung_traegt_das_rumpfjahr_pro_rata():
     bw = kern.produkt.bw
     schicht = Korrekturschicht(bw.modell, ((bw.AKTIV, bw.TOT),))
     basis = [kern.verlaufszeile(a).drx_bpfl
-             for a in range(jahr, KLV_DEFAULT.n + 1)]
+             for a in range(jahr, KLV_DEFAULT.n)]  # Zahlungsjahre bis n-1
     form = form_proportional_zur_basis(basis)
     verlauf = schicht.verlauf(e.parameter, form, KLV_DEFAULT.x + jahr)
     am_ta = (1.0 - theta) * verlauf[0] + theta * verlauf[1]

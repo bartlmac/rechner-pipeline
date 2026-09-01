@@ -137,9 +137,20 @@ class Zugangsergebnis:
 
 
 def _basisverlauf(kern: Rechenkern, ab_jahr: int) -> List[float]:
-    """Prospektive Deckungsrueckstellung je Jahr ab dem Verankerungszeitpunkt."""
+    """Prospektive Deckungsrueckstellung je ZAHLUNGSJAHR der Schicht.
+
+    Zahlungsjahre sind ``ab_jahr .. n-1`` — das Ablaufjahr ``n`` traegt
+    KEINE Amortisations-Zahlung: Am Ablauf zahlt der Vertrag die
+    garantierte Erlebensfallsumme, eine Fuehrungs-Korrektur hat dort
+    nichts mehr zu verteilen (Terminalbedingung V_korr(n) = 0,
+    Grundsatzdokumentation 9.7). Mit einem Gewicht auch im Ablaufjahr
+    stand die Schicht am Ablauf noch auf rho x Basis(n) — im zweiten
+    Baldrian-Lauf als A-M2-Befund gefunden (Police 7000586:
+    kVx_MRV(n) um exakt rho x Erlebensfallsumme ueber der
+    Ablaufleistung).
+    """
     n = kern.mp.n
-    return [kern.verlaufszeile(a).drx_bpfl for a in range(ab_jahr, n + 1)]
+    return [kern.verlaufszeile(a).drx_bpfl for a in range(ab_jahr, n)]
 
 
 def _forme(kennung: str, basis: Sequence[float], fenster: Optional[int]) -> Formfunktion:
@@ -200,19 +211,19 @@ def uebernehmen(
                 f"police {v.police_id}: Verankerungszeitpunkt liegt hinter "
                 f"dem Vertragsende (n={mp.n})"
             )
-        basis = _basisverlauf(kern, jahr)
         if jahr >= mp.n:
             # Verankerung genau am Ablauf: Es gibt keine Restlaufzeit, ueber
-            # die etwas zu verteilen waere. Der Wert der Formfunktion an
-            # diesem einen Punkt ist zwar positiv (die Ablaufleistung), aber
+            # die etwas zu verteilen waere. Der prospektive Wert an diesem
+            # einen Punkt ist zwar positiv (die Ablaufleistung), aber
             # eine Schicht darauf haette keinen Zeitraum zum Abbauen — sie
             # waere im selben Moment faellig wie die Leistung selbst. Das ist
             # eine sofortige Ausbuchung und muss als solche behandelt werden.
+            dk_ablauf = kern.verlaufszeile(mp.n).drx_bpfl
             ergebnisse.append(
                 Zugangsergebnis(
                     police_id=v.police_id, monate_ta=v.monate_ta,
-                    dk_ist=float(v.dk_ist), dk_prosp=basis[0],
-                    residuum=float(v.dk_ist) - basis[0], parameter=None,
+                    dk_ist=float(v.dk_ist), dk_prosp=dk_ablauf,
+                    residuum=float(v.dk_ist) - dk_ablauf, parameter=None,
                     befund=(
                         "Verankerung am Ablauf: keine Restlaufzeit, ueber die "
                         "das Residuum verteilt werden koennte — es ist sofort "
@@ -221,15 +232,22 @@ def uebernehmen(
                 )
             )
             continue
+        # Der prospektive Wert AM t_a kommt von den STUETZSTELLEN des
+        # Kernverlaufs (bis einschliesslich n) — die Form-Basis dagegen
+        # traegt nur ZAHLUNGSJAHRE (bis n-1, Terminalbedingung); die
+        # beiden teilen sich seit dem A-M2-Befund des zweiten Laufs
+        # bewusst keine Liste mehr.
+        basis = _basisverlauf(kern, jahr)
         rumpf = v.monate_ta % 12
         if rumpf == 0:
-            dk_prosp = basis[0]
+            dk_prosp = kern.verlaufszeile(jahr).drx_bpfl
         else:
             # Prospektiver Wert AM unterjaehrigen t_a: lineare Mischung der
             # Jahresraender — die Monatskonvention des Kerns (9.14), keine
             # eigene Uhr der Schicht.
             theta = rumpf / 12.0
-            dk_prosp = (1.0 - theta) * basis[0] + theta * basis[1]
+            dk_prosp = ((1.0 - theta) * kern.verlaufszeile(jahr).drx_bpfl
+                        + theta * kern.verlaufszeile(jahr + 1).drx_bpfl)
         residuum = float(v.dk_ist) - dk_prosp
 
         bw = kern.produkt.bw
