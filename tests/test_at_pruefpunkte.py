@@ -526,6 +526,50 @@ def test_anteil_eins_aendert_das_deckungskapital_nicht():
     assert pruefe_vertrag(vertrag, _profil("A-M3"))["bestanden"] is True
 
 
+def test_teilkuendigung_zahlt_den_gekuendigten_grundanteil_aus():
+    """A-M3-Befund des zweiten Laufs, an allen neun Fehlschlaegen auf
+    den Cent bewiesen: Die Quelle rechnet RED als TEILKUENDIGUNG der
+    Grundversicherung mit Auszahlung — dDK = -(1-f) x kVx des
+    Grundbausteins, unabhaengig von Stornoabzugs-Parametern (der Abzug
+    mindert die Auszahlung, nicht die Reserve). Erhoehungsscheiben sind
+    nicht beruehrt und kuerzen sich im dDK exakt heraus."""
+    from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+
+    jahr, f = 9, 0.6
+    dk_grund = KERN.zustand_am(12 * jahr).vx_mrv
+    erwartet = -(1.0 - f) * dk_grund
+    einzel = _vertrag(
+        Pruefpunkt(12 * jahr, {"dDK": round(erwartet, 2)}, "RED",
+                   {"anteil": f}))
+    urteil = pruefe_vertrag(einzel, _profil("A-M3"),
+                            red_verfahren=TEILKUENDIGUNG)
+    assert urteil["bestanden"], urteil["befunde"]
+    assert urteil["pruefungen"][0]["system"] == pytest.approx(
+        erwartet, abs=1e-6)
+
+    mit_scheiben = _vertrag(
+        Pruefpunkt(12 * jahr, {"dDK": round(erwartet, 2)}, "RED",
+                   {"anteil": f}),
+        scheiben=((5, 4000.0),))
+    urteil2 = pruefe_vertrag(mit_scheiben, _profil("A-M3"),
+                             red_verfahren=TEILKUENDIGUNG)
+    assert urteil2["pruefungen"][0]["system"] == pytest.approx(
+        erwartet, abs=1e-6)
+
+
+def test_plv_teilung_mit_scheiben_ist_im_gevotest_nicht_gebaut():
+    """Hart statt still ohne Scheibenwert (der alte Pfad verlor die
+    Scheiben im Nach-Zustand — die acht inkonsistenten sys-Werte des
+    A-M3-Befunds)."""
+    from rechner_pipeline.kern.beitragsreduktion import MIT_ABZUG
+
+    v = _vertrag(
+        Pruefpunkt(12 * 9, {"dDK": -100.0}, "RED", {"anteil": 0.6}),
+        scheiben=((5, 4000.0),))
+    with pytest.raises(AktuartestFehler, match="teilkuendigung"):
+        pruefe_vertrag(v, _profil("A-M3"), red_verfahren=MIT_ABZUG)
+
+
 # --------------------------------------------------------------------------- #
 # Anfangszustand Herabsetzung (Kern 3.1.0): der geteilte Vertrag
 # --------------------------------------------------------------------------- #

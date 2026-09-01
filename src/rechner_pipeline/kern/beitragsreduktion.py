@@ -50,6 +50,7 @@ Knoten: klv
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
@@ -67,7 +68,15 @@ from rechner_pipeline.kern.rechenkern import (
 #: im Modellpunkt.
 PROSPEKTIV = "prospektiv"
 MIT_ABZUG = "mit_abzug"
-VERFAHREN = (PROSPEKTIV, MIT_ABZUG)
+#: Quell-Verfahren der Baldrian-Uebernahme (Bedingungswerk Ziffer 6,
+#: A-M3-Befund des zweiten Laufs): Der Anteil (1-f) der
+#: GRUNDVERSICHERUNG wird GEKUENDIGT und sein Rueckkaufswert
+#: ausgezahlt — kein beitragsfrei gestellter Teil bleibt zurueck, der
+#: Vertrag danach ist der zustandslose Vertrag mit f x S (die Quelle
+#: rechnet blattweise weiter). Die PLV-Verfahren oben wandeln dagegen
+#: den freiwerdenden Teil in eine beitragsfreie Summe um (Zweiteilung).
+TEILKUENDIGUNG = "teilkuendigung"
+VERFAHREN = (PROSPEKTIV, MIT_ABZUG, TEILKUENDIGUNG)
 
 
 class BeitragsreduktionFehler(ValueError):
@@ -128,6 +137,38 @@ def reduziere(
     kein Monatsparameter an dieser Signatur.
     """
     _pruefe_eingaben(kern.mp, jahr, anteil, verfahren)
+
+    if verfahren == TEILKUENDIGUNG:
+        # Teilkuendigung der Grundversicherung MIT AUSZAHLUNG: Die
+        # Reserve des gekuendigten Anteils verlaesst den Vertrag
+        # (dDK = -(1-f) x kVx), der Rest laeuft ZUSTANDSLOS mit f x S
+        # weiter — wegen der Summen-Homogenitaet des Kerns ist
+        # dk_nach = f x dk_vor exakt; gerechnet wird er trotzdem ueber
+        # den neuen Modellpunkt, nicht ueber die Formel. Der Abzug nach
+        # Ziffer 4 mindert die AUSZAHLUNG an den Kunden, nicht die
+        # verbleibende Reserve. Basis ist der GEFUEHRTE Wert (kVx_MRV)
+        # — die Groesse, die die Quelle bucht und der
+        # Geschaeftsvorfalltest vergleicht.
+        if anteil <= 0.0:
+            raise BeitragsreduktionFehler(
+                "Teilkuendigung mit fortgefuehrtem Anteil 0 ist eine "
+                "VOLLkuendigung — als Storno-Vorfall fuehren, nicht als "
+                "Herabsetzung"
+            )
+        vs_alt = kern.mp.sum_insured
+        neu = Rechenkern(dataclasses.replace(
+            kern.mp, sum_insured=anteil * vs_alt))
+        return Reduktion(
+            jahr=jahr,
+            anteil=anteil,
+            verfahren=verfahren,
+            vs_alt=vs_alt,
+            vs_neu=anteil * vs_alt,
+            bjb_alt=kern.gross_annual_premium(),
+            bjb_neu=neu.gross_annual_premium(),
+            dk_vor=kern.verlaufszeile(jahr).vx_mrv,
+            dk_nach=neu.verlaufszeile(jahr).vx_mrv,
+        )
 
     zeile = kern.verlaufszeile(jahr)
     # Der ungeteilte Vertrag traegt seinen eigenen Stornoabschlag; beim
@@ -271,6 +312,13 @@ def reduziere_geschichtet(
     Rueckgabe: je Schicht ihr Erhoehungsjahr und ihre Reduktion, in der
     Reihenfolge (Grundscheibe zuerst) von ``vertrags_monatsreserve``.
     """
+    if verfahren == TEILKUENDIGUNG:
+        raise BeitragsreduktionFehler(
+            "Teilkuendigung trifft NUR die Grundversicherung "
+            "(Bedingungswerk Ziffer 6) — die anteilige Schichten-Teilung "
+            "ist die PLV-Regel; fuer die Teilkuendigung den Grundvertrag "
+            "mit reduziere() senken, die Scheiben laufen unveraendert"
+        )
     teile: List[Tuple[int, Rechenkern]] = [(0, grund)] + list(scheiben)
     _pruefe_eingaben(grund.mp, jahr, anteil, verfahren)
 
@@ -432,6 +480,13 @@ class ReduzierterVertrag:
         cls, kern: Rechenkern, jahr: int, anteil: float,
         *, verfahren: str = PROSPEKTIV,
     ) -> "ReduzierterVertrag":
+        if verfahren == TEILKUENDIGUNG:
+            raise BeitragsreduktionFehler(
+                "Folgebewertung einer Teilkuendigung ist der ZUSTANDSLOSE "
+                "Vertrag mit f x S (Rechenkern mit gesenkter Summe) — es "
+                "gibt keinen geteilten Vertrag und keinen beitragsfreien "
+                "Teil zu fuehren"
+            )
         return cls(kern=kern, reduktion=reduziere(
             kern, jahr, anteil, verfahren=verfahren))
 

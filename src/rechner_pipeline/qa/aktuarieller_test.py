@@ -81,6 +81,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from rechner_pipeline.kern import ModelPoint
 from rechner_pipeline.kern.beitragsreduktion import (
     PROSPEKTIV,
+    TEILKUENDIGUNG,
     ReduzierterVertrag,
     reduziere,
 )
@@ -746,13 +747,29 @@ def _deckungskapital(
         # geteilten Vertrags.
         return rv.monatsreserve(monate).vx_mrv
     if zustand == "herabgesetzt":
-        # Das Zielverfahren rechnet prospektiv, also verlustfrei. Rechnet
-        # das Quellsystem mit Abzug, ist die Differenz kein Fehler,
-        # sondern die Verfahrensfrage — sie gehoert in das Residuum und
-        # nicht in eine Anpassung der Engine (kern.beitragsreduktion).
-        return reduziere(
+        # Das Verfahren ist dokumentierte Fall-Eigenschaft (klv.md 7.1):
+        # Die PLV-Verfahren teilen den Vertrag (prospektiv verlustfrei
+        # bzw. mit Abzug), die TEILKUENDIGUNG der zweiten
+        # Baldrian-Lieferung kuendigt den Anteil der GRUNDVERSICHERUNG
+        # mit Auszahlung (Ziffer 6) — die Erhoehungsscheiben sind davon
+        # nicht beruehrt und laufen im Nach-Zustand unveraendert weiter
+        # (A-M3-Befund des zweiten Laufs: neun dDK-Fehlschlaege, alle
+        # exakt -(1-f) x kVx des Grundbausteins). Fuer die
+        # PLV-Teilungsverfahren ist die Scheiben-Kombination nicht
+        # gebaut — hart statt still ohne Scheibenwert.
+        if scheiben and red_verfahren != TEILKUENDIGUNG:
+            raise AktuartestFehler(
+                f"police {v.police_id}: dDK einer Herabsetzung mit "
+                "Erhoehungsscheiben ist nur im Verfahren "
+                "'teilkuendigung' definiert — die anteilige "
+                "Schichten-Teilung der PLV ist hier nicht gebaut"
+            )
+        nach = reduziere(
             kern, monate // 12, parameter["anteil"], verfahren=red_verfahren
         ).dk_nach
+        for erh_jahr, scheibe in scheiben:
+            nach += scheibe.monatsreserve(monate - 12 * erh_jahr).vx_mrv
+        return nach
     if zustand == "beitragsfrei":
         # Bei einem PEX-GESCHAEFTSVORFALL ist das Freistellungsjahr der
         # Vorfall selbst — der Vertrag war vorher beitragspflichtig, ein

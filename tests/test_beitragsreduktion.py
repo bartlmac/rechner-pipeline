@@ -432,3 +432,52 @@ def test_beide_wege_weisen_dieselben_eingaben_ab(jahr, anteil, was):
         reduziere(grund, jahr, anteil)
     with pytest.raises(BeitragsreduktionFehler):
         reduziere_geschichtet(grund, _geschichtet(jahre=(4,)), jahr, anteil)
+
+
+class TestTeilkuendigung:
+    """Drittes Verfahren (A-M3-Befund des zweiten Baldrian-Laufs):
+    Kuendigung des (1-f)-Anteils der GRUNDVERSICHERUNG mit Auszahlung —
+    der Rest laeuft zustandslos mit f x S weiter, dDK = -(1-f) x kVx.
+    """
+
+    def test_zustandslos_und_summen_homogen(self):
+        import dataclasses as dc
+
+        from rechner_pipeline.kern.beitragsreduktion import (
+            TEILKUENDIGUNG,
+            reduziere,
+        )
+
+        kern = Rechenkern(KLV_DEFAULT)
+        r = reduziere(kern, 10, 0.6, verfahren=TEILKUENDIGUNG)
+        zeile = kern.verlaufszeile(10)
+        assert r.dk_vor == zeile.vx_mrv
+        # Summen-Homogenitaet des Kerns: der gerechnete neue Vertrag
+        # trifft die Formel f x dk_vor — unabhaengige Kontrolle.
+        assert r.dk_nach == pytest.approx(0.6 * zeile.vx_mrv, rel=1e-9)
+        assert r.d_dk == pytest.approx(-0.4 * zeile.vx_mrv, rel=1e-9)
+        assert r.vs_neu == pytest.approx(0.6 * KLV_DEFAULT.sum_insured)
+        neu = Rechenkern(dc.replace(
+            KLV_DEFAULT, sum_insured=0.6 * KLV_DEFAULT.sum_insured))
+        assert r.bjb_neu == pytest.approx(
+            neu.gross_annual_premium(), rel=1e-12)
+        assert r.als_beleg()["verfahren"] == "teilkuendigung"
+
+    def test_wachen_fail_fast(self):
+        from rechner_pipeline.kern.beitragsreduktion import (
+            TEILKUENDIGUNG,
+            ReduzierterVertrag,
+            reduziere,
+            reduziere_geschichtet,
+        )
+
+        kern = Rechenkern(KLV_DEFAULT)
+        with pytest.raises(BeitragsreduktionFehler, match="VOLLkuendigung"):
+            reduziere(kern, 10, 0.0, verfahren=TEILKUENDIGUNG)
+        with pytest.raises(BeitragsreduktionFehler, match="ZUSTANDSLOSE"):
+            ReduzierterVertrag.nach(kern, 10, 0.6,
+                                    verfahren=TEILKUENDIGUNG)
+        with pytest.raises(BeitragsreduktionFehler,
+                           match="NUR die Grundversicherung"):
+            reduziere_geschichtet(kern, _geschichtet(jahre=(4,)), 10, 0.6,
+                                  verfahren=TEILKUENDIGUNG)
