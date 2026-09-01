@@ -72,18 +72,33 @@ Testtoleranzen). Excel bleibt der Tarifrechner der Quelle.
 
 ## Dokumente der Quelle
 
-Die Tarifbestimmungen (AVB-artiges Lieferartefakt) haben eine
-**Markdown-Quelle** (`tarifbestimmungen.md`) und werden ueber die
-gepinnte Doku-Engine des Repos gerendert (`docs/engine/render.sh`,
-Quarto/Typst) — derselbe Weg wie die Zieltarifplaene. Beschluss
-2026-08-31: Word war Bequemlichkeit; am Ende steht ohnehin ein binaeres
-Artefakt (PDF), und fuer die Simulation ist eine Textquelle bequemer.
-Die Optik traegt das Altsystem (Schreibmaschinenschrift per
-Frontmatter). Der Formelanhang uebernimmt die Zeichenerklaerung der
-Tarifmeldung eins zu eins — einschliesslich ihres gewollten
-Indexfehlers (N(x)-Summe ab j=1; Regie F3, nur in der Doku, das
-Rechenwerk rechnet korrekt). `docx.py` bleibt fuer Office-Artefakte,
-die es als DOCX geben muss (Notizen, Mitteilungs-Nachbauten).
+Die Quelle liefert ZWEI Dokumente, sauber getrennt (Beschluss
+2026-09-01; vorher stand beides vermischt in einer Datei
+"Tarifbestimmungen"):
+
+* **AVB** (`avb.md`): die vertraglichen Zusagen — rudimentaer und ohne
+  eine einzige Formel (Abzug je Baustein GESONDERT, Herabsetzung als
+  Teilkuendigung MIT AUSZAHLUNG, Dynamik-Schranke). AVB enthalten
+  keine Aktuarik; darauf steht ein Waechter-Test.
+* **Tarifplan / Mitteilung 143** (`tarifplan.md`): der aktuarielle
+  Teil — Rechnungsgrundlagen, Kostensaetze je Bestandsgruppe (mehrere
+  schmale Tabellen statt einer breiten), Kommutationsformeln im
+  Schreibmaschinen-Bruchsatz, Rundungsvorschrift als eigener Abschnitt
+  statt RUNDEN-Wrapper in den Formeln. Nachfolger des Alt-Artefakts
+  `Mitteilung_143_KLV_TG2015` (dort DOCX, jetzt Markdown).
+
+Beide haben **Markdown-Quellen** und werden ueber die gepinnte
+Doku-Engine des Repos gerendert (`docs/engine/render.sh`, Quarto/Typst)
+— derselbe Weg wie die Zieltarifplaene. Beschluss 2026-08-31: Word war
+Bequemlichkeit; am Ende steht ohnehin ein binaeres Artefakt (PDF), und
+fuer die Simulation ist eine Textquelle bequemer. Die Optik traegt das
+Altsystem (Schreibmaschinenschrift, Flattersatz ohne Silbentrennung,
+Absatzabstand genau eine Leerzeile — Typst-Vorspann in den Quellen).
+Die Grundformeln uebernehmen die Zeichenerklaerung der Tarifmeldung
+eins zu eins — einschliesslich ihres gewollten Indexfehlers
+(N(x)-Summe ab j=1; Regie F3, nur in der Doku, das Rechenwerk rechnet
+korrekt). `docx.py` bleibt fuer Office-Artefakte, die es als DOCX
+geben muss (Notizen, Mitteilungs-Nachbauten).
 
 Die Baldrian-REGIE (welche Defekte die Lieferung absichtlich traegt,
 Seeds, Nachlieferungen) bleibt in `simulation/baldrian/` — gitignored,

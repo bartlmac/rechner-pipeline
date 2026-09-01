@@ -15,7 +15,8 @@ stehen die Parser der Zielseite:
 * ``gevo_protokoll``: die Vorfaelle des Folgejahres MIT Betraegen
   (inklusive der terminalen STO/TOD/ABL); PARAM traegt bei RED den
   fortgefuehrten Anteil.
-* ``tarifbestimmungen`` als PDF (Doku-Engine, siehe tarifbestimmungen.py).
+* die Dokumente der Quelle als PDF: AVB und Tarifplan/Mitteilung 143
+  (Doku-Engine, siehe dokumente.py).
 
 Der Bestand eines Stichtags ist eine REKONSTRUKTION aus dem Journal
 (:func:`stand_am`): Das Buch wird ueber den Stichtag hinaus gefuehrt,
@@ -291,8 +292,9 @@ class Export:
             aus.extend(Erwartungswerte(self, stichtag, stichtag2)
                        .schreibe(ziel))
         if mit_pdf:
-            from quellsystem.tarifbestimmungen import als_pdf
+            from quellsystem.dokumente import AVB, TARIFPLAN, als_pdf
 
+            aus.append(als_pdf(AVB, ziel / "AVB_KLV_TG2015.pdf"))
             aus.append(als_pdf(
-                ziel / "Tarifbestimmungen_KLV_TG2015.pdf"))
+                TARIFPLAN, ziel / "Mitteilung_143_KLV_TG2015.pdf"))
         return aus
