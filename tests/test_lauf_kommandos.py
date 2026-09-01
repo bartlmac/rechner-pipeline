@@ -500,3 +500,28 @@ def test_anfangszustand_serie_ohne_satz_und_pex_nicht_terminal_fallen_hart():
             _tg_default_spez(), zeilen, nicht_terminal,
             _bestand_mit(7000005), spalten=SPALTEN,
             red_verfahren="mit_abzug", erhoehungssatz=0.05)
+
+
+def test_schicht_wird_bei_ersetztem_red_vergleich_ausgewiesen_ausgelassen():
+    """RED-Anfangszustand + Korrekturschicht ist in der Engine bewusst
+    undefiniert. Mit ersetztem Wertvergleich (Plausibilitaets-Beleg,
+    Aktuars-Entscheid) wird die Schicht AUSGEWIESEN ausgelassen; ohne
+    Ersetzung bleibt der Eintrag stehen — der Engine-Waechter soll die
+    Kombination hart benennen, nichts faellt still weg."""
+    from rechner_pipeline.gates.aktuartest_lauf import _schicht_fuer
+
+    schicht = {"hist": {"platzhalter": True}}
+    ausgelassen: list = []
+    # Mit Ersetzung: Schicht raus, Police vermerkt.
+    aus = _schicht_fuer(
+        "7000292", {"reduktion": (3, 0.6)}, schicht,
+        {"anlass": "RED", "beleg": "notiz"}, ausgelassen)
+    assert aus is None and ausgelassen == ["7000292"]
+    # Ohne Ersetzung: Eintrag bleibt (Waechter-Fall der Engine).
+    aus = _schicht_fuer(
+        "7000293", {"reduktion": (3, 0.6)}, schicht, None, ausgelassen)
+    assert aus is schicht and ausgelassen == ["7000292"]
+    # Ohne Reduktion: Schicht bleibt selbstverstaendlich im Pfad.
+    aus = _schicht_fuer("7000294", {}, schicht,
+                        {"anlass": "RED"}, ausgelassen)
+    assert aus is schicht and ausgelassen == ["7000292"]

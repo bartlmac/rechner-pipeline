@@ -115,10 +115,20 @@ def baue_auftraege(
     schichten: Optional[Dict[str, Any]] = None,
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     plausibilitaet: Optional[Dict[str, Dict[str, str]]] = None,
-) -> List[Vertragspruefung]:
-    """Aus Lieferung und Bestand die Pruefauftraege je Vertrag."""
+) -> Tuple[List[Vertragspruefung], List[str]]:
+    """Aus Lieferung und Bestand die Pruefauftraege je Vertrag.
+
+    Rueckgabe ``(auftraege, schicht_ausgelassen)``: Fuer Policen mit
+    Herabsetzungs-Anfangszustand UND ersetztem Wertvergleich
+    (Plausibilitaets-Beleg, Aktuars-Entscheid) wird die
+    Korrekturschicht AUSGEWIESEN ausgelassen — die Kombination ist in
+    der Engine bewusst undefiniert, und wo der Wertvergleich ersetzt
+    ist, rechnet die Schicht ohnehin in kein Urteil. OHNE Ersetzung
+    bleibt der harte Engine-Waechter (kein stilles Weglassen).
+    """
     zeilen = {str(r["police_id"]): r for _, r in bestand.iterrows()}
     auftraege: List[Vertragspruefung] = []
+    schicht_ausgelassen: List[str] = []
 
     for eintrag in lieferung["vertraege"]:
         police = str(eintrag["police_id"])
@@ -171,9 +181,36 @@ def baue_auftraege(
             scheiben=tuple(zustand.get("scheiben", ())),
             reduktion=zustand.get("reduktion"),
             plausibilitaet=(plausibilitaet or {}).get(police, {}),
-            **_schicht_felder((schichten or {}).get(police)),
+            **_schicht_felder(_schicht_fuer(
+                police, zustand, (schichten or {}).get(police),
+                (plausibilitaet or {}).get(police), schicht_ausgelassen)),
         ))
-    return auftraege
+    return auftraege, schicht_ausgelassen
+
+
+def _schicht_fuer(
+    police: str,
+    zustand: Dict[str, Any],
+    schicht_eintrag: Any,
+    plausibilitaet: Optional[Dict[str, str]],
+    schicht_ausgelassen: List[str],
+) -> Any:
+    """Ob die Schicht dieser Police in den Pruefauftrag geht.
+
+    Herabsetzungs-Anfangszustand + Korrekturschicht ist in der Engine
+    bewusst undefiniert: Die Schicht wurde auf der gelieferten
+    Ist-Summe verankert, der Herabsetzungs-Pfad rechnet die
+    Ursprungs-Welt im Zielverfahren. Ist der Wertvergleich der Police
+    durch einen registrierten Plausibilitaets-Beleg ERSETZT
+    (Aktuars-Entscheid), wird die Schicht ausgewiesen ausgelassen;
+    ohne Ersetzung bleibt der Eintrag stehen und der Engine-Waechter
+    benennt die Kombination hart.
+    """
+    if (zustand.get("reduktion") is not None
+            and schicht_eintrag is not None and plausibilitaet):
+        schicht_ausgelassen.append(police)
+        return None
+    return schicht_eintrag
 
 
 def _schicht_felder(eintrag: Any) -> Dict[str, Any]:
@@ -539,10 +576,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     schichten = _schichten(fall, args.schicht,
                            repo_root=Path(args.repo_root).resolve())
-    auftraege = baue_auftraege(
+    auftraege, schicht_ausgelassen = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
         anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet,
         schichten=schichten)
+    for police in schicht_ausgelassen:
+        print(f"WARNUNG Police {police}: Korrekturschicht nicht im "
+              "Pruefpfad — Herabsetzungs-Anfangszustand, Wertvergleich "
+              "durch Plausibilitaets-Beleg ersetzt", file=sys.stderr)
     stichprobe = _stichprobe(beleg, args.abnahme)
     profil = vorlage(args.abnahme, weite=str(
         stichprobe.parameter.get("weite") or stichprobe.profil))
@@ -553,6 +594,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         system=systemstand(Path(args.repo_root).resolve()),
         red_verfahren=args.red_verfahren,
     )
+    if schicht_ausgelassen:
+        # Ausgewiesene Auslassung gehoert in den Beleg, nicht nur nach
+        # stderr — A-M1 liest das Ergebnis, nicht das Terminal.
+        ergebnis["schicht_ausgelassen"] = sorted(schicht_ausgelassen)
 
     ziel = Path(args.out) if args.out else (
         fall / "abgeleitet" / "berichte" / ZIELNAME[args.abnahme])
