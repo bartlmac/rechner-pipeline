@@ -95,7 +95,17 @@ from rechner_pipeline.kern.rechenkern import (
 #: Gesamtsumme, spaetere Beitragsfreistellung und terminale Leistungen.
 #: Additive Faehigkeit fuer migrierte Bestaende mit RED-Vorgeschichte
 #: (Baldrian-Uebernahme); bestehende Rechenwerte unveraendert.
-__version__ = "3.2.0"
+#: 3.2.0 = Scheiben-gamma1 als Tarifwerks-Eigenschaft der Lieferung
+#: (erhoehungs_scheibe, Parameter gamma1_uebernehmen; Vorgabe =
+#: GrundVS-Regel der ersten Lieferung); Rechenwerte der Vorgabe
+#: unveraendert.
+#: 3.3.0 = Stornoabschlag-Grenzen wahlweise JE BAUSTEIN
+#: (vertrags_monatsreserve, Parameter stoab_je_baustein; Vorgabe =
+#: vertragsweit, Tarifplan 6): Abzug je Grund- und Erhoehungsscheibe
+#: einzeln geklemmt, RKW = Summe der auf null begrenzten
+#: Baustein-Rueckkaufswerte (Bedingungswerk der zweiten
+#: Baldrian-Lieferung, Ziffer 4); Rechenwerte der Vorgabe unveraendert.
+__version__ = "3.3.0"
 
 __all__ = [
     "ModelPoint",

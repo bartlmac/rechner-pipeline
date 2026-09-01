@@ -262,6 +262,14 @@ class Vertragspruefung:
     #: Lieferung 1 und PLV-Eigengeschaeft: ohne gamma1). Kommt vom
     #: Lauf-Flag, wird nie geraten.
     scheiben_mit_gamma1: bool = False
+    #: Ob die Stornoabschlag-Grenzen JE BAUSTEIN greifen statt je
+    #: Vertrag — ebenfalls Tarifwerks-Eigenschaft der jeweiligen
+    #: Lieferung (Lieferung 2: Abzug je Baustein gesondert erhoben,
+    #: der Rueckkaufswert des Vertrags ist die Summe der
+    #: Baustein-Rueckkaufswerte, Bedingungswerk Ziffer 4; Lieferung 1
+    #: und PLV-Eigengeschaeft: vertragsweit, Tarifplan 6). Kommt vom
+    #: Lauf-Flag, wird nie geraten.
+    stoab_je_baustein: bool = False
     beitragsfrei_seit_jahr: Optional[int] = None
     #: Schichtparameter des Migrationszugangs (Grundsatzdokumentation 9.11).
     #: Sind sie gesetzt, vergleicht die Engine den Wert EINSCHLIESSLICH
@@ -760,7 +768,9 @@ def _system_werte(
 
     if scheiben:
         if gefragt & {"kVx_MRV", "RKW"}:
-            m = vertrags_monatsreserve(kern, scheiben, p.monate)
+            m = vertrags_monatsreserve(
+                kern, scheiben, p.monate,
+                stoab_je_baustein=v.stoab_je_baustein)
             if "kVx_MRV" in gefragt:
                 werte["kVx_MRV"] = m.vx_mrv
             if "RKW" in gefragt:

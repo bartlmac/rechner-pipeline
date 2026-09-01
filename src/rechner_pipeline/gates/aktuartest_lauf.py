@@ -116,6 +116,7 @@ def baue_auftraege(
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     plausibilitaet: Optional[Dict[str, Dict[str, str]]] = None,
     scheiben_mit_gamma1: bool = False,
+    stoab_je_baustein: bool = False,
 ) -> Tuple[List[Vertragspruefung], List[str]]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag.
 
@@ -183,6 +184,7 @@ def baue_auftraege(
             reduktion=zustand.get("reduktion"),
             plausibilitaet=(plausibilitaet or {}).get(police, {}),
             scheiben_mit_gamma1=scheiben_mit_gamma1,
+            stoab_je_baustein=stoab_je_baustein,
             **_schicht_felder(_schicht_fuer(
                 police, zustand, (schichten or {}).get(police),
                 (plausibilitaet or {}).get(police), schicht_ausgelassen)),
@@ -446,6 +448,14 @@ def main(argv: Optional[List[str]] = None) -> int:
              "ihren Dokumenten (Lieferung 2: eigenstaendiger Baustein "
              "mit eigener Wertermittlung); ohne Flag gilt die "
              "GrundVS-Regel der ersten Lieferung.")
+    p.add_argument(
+        "--stoab-je-baustein", dest="stoab_je_baustein",
+        action="store_true",
+        help="Stornoabschlag-Grenzen greifen JE BAUSTEIN (Grund und "
+             "jede Erhoehungsscheibe einzeln, RKW = Summe der "
+             "Baustein-Rueckkaufswerte) — Tarifwerks-Eigenschaft der "
+             "Lieferung laut Bedingungswerk Ziffer 4; ohne Flag gelten "
+             "die Grenzen je Vertrag (PLV-Regel, Tarifplan 6).")
     p.add_argument("--red-verfahren", dest="red_verfahren",
                    default=PROSPEKTIV, choices=sorted(VERFAHREN),
                    help="Verfahren der Beitragsherabsetzung (Eigenschaft "
@@ -604,7 +614,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
         anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet,
         schichten=schichten,
-        scheiben_mit_gamma1=args.scheiben_mit_gamma1)
+        scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+        stoab_je_baustein=args.stoab_je_baustein)
     for police in schicht_ausgelassen:
         print(f"WARNUNG Police {police}: Korrekturschicht nicht im "
               "Pruefpfad — Herabsetzungs-Anfangszustand, Wertvergleich "

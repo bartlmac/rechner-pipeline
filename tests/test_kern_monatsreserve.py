@@ -283,6 +283,84 @@ def test_vertragsreserve_scheibe_vor_entstehung(kern: Rechenkern) -> None:
         vertrags_monatsreserve(kern, [(10, scheibe)], 12 * 10 - 1)
 
 
+class TestStoabJeBaustein:
+    """Stornoabschlag-Grenzen je Baustein (Bedingungswerk Lieferung 2, Ziffer 4).
+
+    Die unabhängige Kontrollrechnung ist die Einzel-``monatsreserve`` je
+    Baustein: Sie klemmt an anderer Stelle im Code mit denselben Grenzen
+    und begrenzt ihren RKW selbst auf null. Der je-Baustein-Modus muss
+    ihre SUMME treffen — der Vertrag ist die Summe seiner selbständigen
+    Bausteine, nichts weiter.
+    """
+
+    def test_summe_der_einzelbausteine_in_der_sensitiven_zone(
+        self, kern: Rechenkern
+    ) -> None:
+        """Dieselbe Konstruktion wie der je-VERTRAG-Test: dort ist die
+        Scheiben-Summe (150.50) ausdrücklich der FALSCHE Wert — hier ist
+        sie der richtige, und das vertragsweite Ergebnis (105.53) der
+        falsche."""
+        mp = KLV_DEFAULT
+        a, s_neu, monate = 8, 5000.0, 12 * 22 + 5
+        scheibe = Rechenkern(erhoehungs_scheibe(mp, a, s_neu))
+        r_grund = kern.monatsreserve(monate)
+        r_scheibe = scheibe.monatsreserve(monate - 12 * a)
+        # Zonen-Beleg: die kleine Scheibe klemmt am Mindestabzug, der
+        # Grund liegt frei — je Baustein und je Vertrag sind damit
+        # unterscheidbar UND die Klemmrichtung ist belegt.
+        roh_scheibe = mp.stoab_satz * (s_neu - r_scheibe.drx_bpfl)
+        assert roh_scheibe < mp.stoab_min
+        assert r_scheibe.stoab == mp.stoab_min
+
+        vertrag = vertrags_monatsreserve(
+            kern, [(a, scheibe)], monate, stoab_je_baustein=True)
+        assert vertrag.drx_bpfl == pytest.approx(
+            r_grund.drx_bpfl + r_scheibe.drx_bpfl)
+        assert vertrag.vx_mrv == pytest.approx(
+            r_grund.vx_mrv + r_scheibe.vx_mrv)
+        assert vertrag.stoab == pytest.approx(
+            r_grund.stoab + r_scheibe.stoab)
+        assert vertrag.rkw == pytest.approx(r_grund.rkw + r_scheibe.rkw)
+        # ... und NICHT das vertragsweite Ergebnis:
+        je_vertrag = vertrags_monatsreserve(kern, [(a, scheibe)], monate)
+        assert vertrag.stoab != pytest.approx(je_vertrag.stoab, rel=1e-6)
+
+    def test_baustein_unter_dem_mindestabzug_klemmt_bei_null(
+        self, kern: Rechenkern
+    ) -> None:
+        """Eine junge, frisch gezillmerte Scheibe hat weniger Reserve als
+        den Mindestabzug: ihr RKW ist null, sie subventioniert die
+        anderen Bausteine nicht. ``rkw`` ist deshalb bewusst GRÖSSER als
+        ``max(0, vx_mrv - stoab)`` — die Zusicherung fällt bei der
+        naheliegenden Mutation (Formel beibehalten)."""
+        mp = KLV_DEFAULT
+        a, s_neu, monate = 8, 500.0, 12 * 9 + 5
+        scheibe = Rechenkern(erhoehungs_scheibe(mp, a, s_neu))
+        r_grund = kern.monatsreserve(monate)
+        r_scheibe = scheibe.monatsreserve(monate - 12 * a)
+        # Zonen-Beleg: Reserve der Scheibe unter dem Mindestabzug.
+        assert r_scheibe.vx_mrv < mp.stoab_min
+        assert r_scheibe.rkw == 0.0
+
+        vertrag = vertrags_monatsreserve(
+            kern, [(a, scheibe)], monate, stoab_je_baustein=True)
+        assert vertrag.rkw == pytest.approx(r_grund.rkw)
+        assert vertrag.rkw > max(0.0, vertrag.vx_mrv - vertrag.stoab)
+
+    def test_flexible_phase_je_baustein_bleibt_abzugsfrei(
+        self, kern: Rechenkern
+    ) -> None:
+        """Gleicher Ablauftermin aller Bausteine: In der flexiblen Phase
+        des Vertrags ist auch jede Scheibe in ihrer flexiblen Phase —
+        der Abzug ist null, der RKW die volle Reserve."""
+        a, monate = 8, 12 * 26 + 3
+        scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a, 5000.0))
+        vertrag = vertrags_monatsreserve(
+            kern, [(a, scheibe)], monate, stoab_je_baustein=True)
+        assert vertrag.stoab == 0.0
+        assert vertrag.rkw == pytest.approx(vertrag.vx_mrv)
+
+
 def test_kurzer_vertrag_ohne_zillmer_luecke() -> None:
     """Auch ein Vertrag ohne Abschlusskosten interpoliert konsistent."""
     mp = dataclasses.replace(KLV_DEFAULT, alpha=0.0, n=12, t=7, x=37)

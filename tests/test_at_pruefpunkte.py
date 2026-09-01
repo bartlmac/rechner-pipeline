@@ -966,6 +966,54 @@ class TestScheibenGamma1Regel:
         assert erwartete_differenz > 0.0
 
 
+class TestStoabJeBausteinRegel:
+    """WO die Stornoabschlag-Grenzen greifen, ist eine Tarifwerks-
+    Eigenschaft der LIEFERUNG — gefunden im zweiten Baldrian-Lauf als
+    RKW-Residuen in Vielfachen der Grenzbetraege (Aktuars-Befund): Die
+    Quelle erhebt den Abzug je BAUSTEIN gesondert (Bedingungswerk
+    Ziffer 4), der Kern klemmte stur einmal je Vertrag."""
+
+    def test_engine_rechnet_rkw_je_nach_lieferungsregel(self):
+        """Derselbe Auftrag, nur das Flag verschieden: Der RKW-Systemwert
+        muss je Baustein exakt die Summe der Einzel-Monatsreserven
+        treffen (unabhaengige Kontrollrechnung) und sich vom
+        vertragsweiten Wert unterscheiden (Mutation 'Flag wird
+        ignoriert' faellt)."""
+        import dataclasses
+
+        from rechner_pipeline.kern import KLV_DEFAULT
+        from rechner_pipeline.kern.rechenkern import (
+            Rechenkern,
+            erhoehungs_scheibe,
+        )
+        from rechner_pipeline.qa.aktuarieller_test import (
+            Pruefpunkt,
+            Vertragspruefung,
+            _system_werte,
+        )
+
+        mp = KLV_DEFAULT
+        monate = 12 * 22 + 5  # DR-sensitive Zone: Grenzen unterscheidbar
+        basis = dict(
+            police_id="X", model_point=dataclasses.asdict(mp),
+            historientyp="dynamik",
+            punkte=(Pruefpunkt(monate=monate, erwartet={"RKW": 1.0},
+                               anlass="uebernahme"),),
+            scheiben=((8, 5000.0),),
+        )
+        p = basis["punkte"][0]
+        je_vertrag = _system_werte(Vertragspruefung(**basis), mp, p)
+        je_baustein = _system_werte(
+            Vertragspruefung(**basis, stoab_je_baustein=True), mp, p)
+
+        grund = Rechenkern(mp).monatsreserve(monate)
+        scheibe = Rechenkern(
+            erhoehungs_scheibe(mp, 8, 5000.0)).monatsreserve(monate - 12 * 8)
+        assert je_baustein["RKW"] == pytest.approx(grund.rkw + scheibe.rkw)
+        assert je_baustein["RKW"] != pytest.approx(
+            je_vertrag["RKW"], rel=1e-6)
+
+
 def test_auftragsbau_bricht_bei_vorgeschichte_ohne_zustand_hart():
     """20 von 25 reduziert-Policen liefen im zweiten Lauf ZUSTANDSLOS in
     den Wertvergleich (Zustandsableitung scheiterte nur mit stderr-

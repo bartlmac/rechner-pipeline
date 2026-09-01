@@ -190,6 +190,10 @@ class VertragsPruefung:
     #: Tarifwerks-Eigenschaft der Lieferung, siehe
     #: kern.rechenkern.erhoehungs_scheibe.
     scheiben_mit_gamma1: bool = False
+    #: Stornoabschlag-Grenzen je Baustein statt je Vertrag —
+    #: Tarifwerks-Eigenschaft der Lieferung, siehe
+    #: kern.rechenkern.vertrags_monatsreserve.
+    stoab_je_baustein: bool = False
     reduktion: Optional[Tuple[int, float]] = None
 
 
@@ -511,7 +515,9 @@ def pruefe_vertrag(
             if g.betrag_erwartet is not None:
                 rkw = (alt_rv.monatsreserve(g.monate).rkw
                        if alt_rv is not None else
-                       vertrags_monatsreserve(kern, scheiben, g.monate).rkw)
+                       vertrags_monatsreserve(
+                           kern, scheiben, g.monate,
+                           stoab_je_baustein=v.stoab_je_baustein).rkw)
                 pruefungen.append(_vergleich(
                     f"gevo_sto_monat_{g.monate}", rkw, g.betrag_erwartet,
                 ))
