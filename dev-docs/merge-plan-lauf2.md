@@ -37,24 +37,75 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
 
 ## Schritte
 
-1. [ ] T16-Nacharbeit auf feat/bestandsfuehrung (Owner: merge-session;
+1. [x] T16-Nacharbeit auf feat/bestandsfuehrung (Owner: merge-session;
    additive Commits). Scope-Entscheid des Maintainers 2026-09-01:
-   Toepfe A+B werden umgesetzt, Topf C ist benannte Folgearbeit
-   (Betriebsvertrag des atomaren Writers, zwei Mutationsanker,
-   Gate-SemVer-Regel). Pruefpunkt: A+B gruen, C benannt; Suite gruen.
+   Toepfe A+B werden umgesetzt, Topf C ist benannte Folgearbeit.
+   Pruefpunkt: A+B gruen, C benannt; Suite gruen.
+   ERLEDIGT 2026-09-01, merge-session. Drei additive Commits auf
+   feat/bestandsfuehrung (7f00742 bleibt Vorfahr, fallbericht behaelt
+   seine Basis):
+   - bcc0657 Engine-Umzug nach bestand/vorbedingungen.py
+   - f08a1a1 Topf A: T16-01/02, der Abschluss konsumiert das ganze
+     Lauf-Bundle durch dieselbe Engine wie Gate B1; neu --bis
+     (Fortschreibungs-Horizont). BREAKING.
+   - 76d4bd5 Topf B: T16-03 Endlichkeit, T16-04 Genau-einmal-Publish
+     (os.link), T16-05 Berichtswachposten an der CLI-Grenze, T16-06a
+     Dateirechte, T16-07 Teil, T16-08 Teil (CHANGELOG/README),
+     T16-09 Skill-Paritaet ueber Verzeichnisvergleich.
+   Suite 969 passed (Basis 956). Jede Korrektur per Mutation
+   gegengeprueft: neun Mutationen, alle von den vorgesehenen Tests
+   rot gemeldet.
+   Topf C bleibt offen und ist in der Commit-Botschaft von 76d4bd5
+   sowie im CHANGELOG benannt: Betriebsvertrag des atomaren Writers
+   (fsync, Temp-Reste nach SIGKILL, ENAMETOOLONG) und die
+   repositoryweite Gate-SemVer-Regel. Die urspruenglich als Topf C
+   gefuehrten "zwei Mutationsanker" sind erledigt bzw. gegenstandslos:
+   der gamma1-Anker ist in 76d4bd5 gebaut (End-to-End ueber physisches
+   Parquet und die CLI), und ein B1-Versionsanker ist kein Test --
+   weil die nachgelagerten Pruefer die Version dynamisch lesen, kann
+   keine Zusicherung entscheiden, ob eine Aenderung Major war. Das
+   gehoert zur SemVer-Regel.
+   OFFEN fuer den Maintainer: dev-docs/offene-punkte.md existiert auf
+   feat/bestandsfuehrung nicht (kam erst mit 953c6e1). Die
+   Backlog-Eintraege fuer Topf C werden deshalb bei Schritt 3 gesetzt,
+   wenn die Nacharbeit auf fallbericht ankommt.
 2. [ ] PR #10 -> main mergen (Owner: Maintainer). Pruefpunkt:
    origin/main traegt die Nacharbeit.
 3. [ ] Nacharbeits-Commits nach fallbericht holen: merge
    feat/bestandsfuehrung (oder main) -> fallbericht (Owner:
-   merge-session + dev-session gemeinsam). ERWARTETER KONFLIKT, ein
-   Commit, eine Datei: gates/bestand_validate.py — der Engine-Umzug
-   (pruefe_b1_eingaenge -> bestand/vorbedingungen.py, Schichtenkarte
-   verbietet bestand -> gates) kollidiert mit den
-   fallbericht-Umbenennungen im selben Block (pruefe_pb1_eingaenge,
-   GATE P-B1.bestandspruefung). Aufloesungsregel: Umzugsdatei
-   uebernehmen, die fallbericht-Namen in vorbedingungen.py ziehen,
-   Block im Gate loeschen. Pruefpunkt: volle Suite auf fallbericht
-   gruen; code_karte befundfrei.
+   merge-session + dev-session gemeinsam). ERWARTETE KONFLIKTE:
+   FUENF Dateien, je ein Block (Ausnahme Landkarte: zwei). Am
+   2026-09-01 im Wegwerf-Worktree gegen fallbericht 26f35c8 gemessen,
+   nicht geschaetzt — die fruehere Angabe "ein Commit, eine Datei" war
+   zu optimistisch. Alle Konflikte sind mechanisch:
+   - gates/bestand_validate.py — der Engine-Umzug
+     (pruefe_b1_eingaenge -> bestand/vorbedingungen.py, Schichtenkarte
+     verbietet bestand -> gates) gegen die fallbericht-Umbenennungen im
+     selben Block. Aufloesung: Umzugsdatei uebernehmen, die
+     fallbericht-Namen (pruefe_pb1_eingaenge, GATE
+     P-B1.bestandspruefung) in vorbedingungen.py ziehen, Block im Gate
+     loeschen.
+   - bestand/abschluss.py — die beiden Seiten sind KOMPLEMENTAER, nicht
+     konkurrierend: fallbericht setzt den Abschluss auf 0444, die
+     Nacharbeit veroeffentlicht ihn exklusiv (os.link). Aufloesung:
+     beides behalten, in dieser Reihenfolge — erst
+     write_portfolio(..., exklusiv=True) im try/except FileExistsError,
+     dann chmod(0o444) auf das Ergebnis. Wichtig: os.replace
+     ueberschreibt eine 0444-Datei anstandslos (nachgemessen, Ergebnis
+     0600); erst der exklusive Publish macht den Schreibschutz zu mehr
+     als einer Geste.
+   - tests/test_agent_workflow_docs.py — fallbericht pflegt die
+     Handliste weiter, die Nacharbeit ersetzt sie durch einen
+     Verzeichnisvergleich. Aufloesung: Seite der Nacharbeit nehmen; sie
+     deckt die elf Paare auf fallbericht automatisch ab, genau dafuer
+     wurde sie gebaut.
+   - docs/architektur/landkarte.md — erzeugte Datei, beide Seiten
+     aendern Kantengewichte. NICHT von Hand aufloesen, sondern nach dem
+     Merge neu erzeugen (ontologie.landkarte, drei Mermaid-Bloecke:
+     schichten, knoten, modul kern).
+   - README.md — beide Seiten redigieren; Textmerge von Hand.
+   Pruefpunkt: volle Suite auf fallbericht gruen; code_karte
+   befundfrei; landkarte-Regression gruen.
 4. [ ] quellsystem -> fallbericht mergen (Owner: merge-session).
    Konfliktfrei geprobt (2026-09-01; rein additiv: quellsystem/,
    lieferungen/baldrian-2/, 5 Testdateien, eine .gitignore-Zeile).
