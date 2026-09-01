@@ -163,6 +163,14 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    PR-Schnitt-Vorbehalt (Gebiet Kern/Gates) beginnt mit 1:
    Vorlauf-Fix der Zeichnungsordnungs-Allowlist (A-K1 war zeichenbar,
    aber keiner Rolle zuweisbar; gate_entscheid, vor Laufstart).
+6b. [ ] T18-Korrekturen (Owner: nach Maintainer-Entscheid;
+   fruehestens nach Anstoss von Fall-Lauf 2 — so entschieden
+   2026-09-01): eigener Korrektur-PR gegen main, Geschwister zu
+   PR #10; danach main -> fallbericht nachziehen (klein). Der
+   A/B/C-Schnitt von Schritt 8 ist NICHT betroffen. Inhalt und
+   Konstruktionszwaenge: dev-docs/offene-punkte.md (T18) — vor
+   Baubeginn entscheiden, ob das Laufmanifest optional-mit-Vorbehalt
+   kommt oder die Lauf-2-Artefakte neu erzeugt werden.
 7. [ ] vorzeige-url -> fallbericht (Owner: merge-session, mit der
    vorzeige-Session abstimmen; test_baldrian_e2e-Kopplung dort
    verifizieren). Pruefpunkt: Suite gruen, Vorzeigeseite rendert.
