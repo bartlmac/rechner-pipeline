@@ -180,6 +180,7 @@ def test_abschluss_ohne_scheiben_bei_erh_im_ledger_blockiert(
         "--config", "configs/bestand_klv.toml",
         "--lauf", str(unvollstaendig),
         "--stichtag", STICHTAG.isoformat(),
+        "--bis", "2035-01-01",   # Horizont des Fixture-Laufs
         "--out-dir", str(tmp_path / "ziel"),
     ])
     assert exit_code == 2

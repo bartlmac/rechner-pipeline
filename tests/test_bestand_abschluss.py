@@ -6,8 +6,10 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import datetime as dt
+import shutil
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from rechner_pipeline.bestand import cli_abschluss
@@ -23,12 +25,20 @@ from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben, mit_zugaengen
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
 from rechner_pipeline.bestand.generator import generate
-from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.kern import __version__ as KERN_VERSION
-from rechner_pipeline.models.bestand import ABSCHLUSS_NAMES
+from rechner_pipeline.models.bestand import (
+    ABSCHLUSS_NAMES,
+    SCHEIBEN_SPALTEN,
+    STATUS_HISTORIE_SPALTEN,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STICHTAG = dt.date(2016, 1, 1)
+#: Fortschreibungs-Horizont des Fixture-Laufs. Der Abschluss
+#: braucht ihn, weil die Bewegungs-Identitaet nur fuer
+#: vollstaendig simulierte Kalenderjahre gilt.
+HORIZONT = dt.date(2020, 1, 1)
 
 
 @pytest.fixture(scope="module")
@@ -37,13 +47,63 @@ def config():
 
 
 @pytest.fixture(scope="module")
-def lauf(config):
+def _fortschreibung(config):
     basis = generate(config)
-    ergebnis = fortschreiben(basis, config, dt.date(2020, 1, 1))
+    return basis, fortschreiben(basis, config, HORIZONT)
+
+
+@pytest.fixture(scope="module")
+def lauf(_fortschreibung):
+    basis, ergebnis = _fortschreibung
     stamm = fuehre_fort(
         mit_zugaengen(basis, ergebnis.zugaenge), ergebnis.historie
     )
     return stamm, ergebnis.historie, ergebnis.scheiben
+
+
+@pytest.fixture(scope="module")
+def bundle(tmp_path_factory, lauf, _fortschreibung):
+    """Ein VOLLSTAENDIGES Lauf-Bundle auf Platte.
+
+    So hinterlaesst cli_fortschreibung einen Lauf, und genau so verlangt
+    ihn der Abschluss: Stamm, Historie, Ledger und Scheiben gehoeren
+    zusammen. Die Negativtests unten kopieren dieses Verzeichnis und
+    nehmen ihm gezielt ein Stueck weg.
+    """
+    stamm, historie, scheiben = lauf
+    _basis, ergebnis = _fortschreibung
+    ziel = tmp_path_factory.mktemp("lauf")
+    write_portfolio(stamm, ziel / "bestand_gesamt.parquet")
+    write_portfolio(historie, ziel / "historie.parquet")
+    write_portfolio(scheiben, ziel / "scheiben.parquet")
+    write_portfolio(ergebnis.ledger, ziel / "ledger.parquet")
+    return ziel
+
+
+def _leere_tabelle(spalten):
+    """Schema-korrekt, aber ohne Zeilen — der Fall, der bisher durchkam."""
+    return pd.DataFrame({n: pd.Series(dtype=d) for n, d in spalten})
+
+
+def _bundle_kopie(bundle, tmp_path, entfernen=(), **ersatz):
+    ziel = tmp_path / "lauf"
+    shutil.copytree(bundle, ziel)
+    for name in entfernen:
+        (ziel / f"{name}.parquet").unlink()
+    for name, tabelle in ersatz.items():
+        write_portfolio(tabelle, ziel / f"{name}.parquet")
+    return ziel
+
+
+def _argv(lauf_dir, out_dir, *extra):
+    return [
+        "--config", str(REPO_ROOT / "configs" / "bestand_klv.toml"),
+        "--lauf", str(lauf_dir),
+        "--stichtag", STICHTAG.isoformat(),
+        "--bis", HORIZONT.isoformat(),
+        "--out-dir", str(out_dir),
+        *extra,
+    ]
 
 
 def test_abschluss_friert_die_eine_bewertungsstrecke_ein(lauf, config, tmp_path):
@@ -167,23 +227,12 @@ def test_vorhandene_abschluesse_listet_sortiert(lauf, config, tmp_path):
     assert gefunden[STICHTAG] == abschluss_pfad(tmp_path, STICHTAG)
 
 
-def test_cli_schreibt_und_prueft(lauf, config, tmp_path, capsys):
-    from rechner_pipeline.bestand.parquet_io import write_portfolio
-
-    stamm, historie, scheiben = lauf
-    lauf_dir = tmp_path / "lauf"
-    lauf_dir.mkdir()
-    write_portfolio(stamm, lauf_dir / "bestand_gesamt.parquet")
-    write_portfolio(historie, lauf_dir / "historie.parquet")
-    write_portfolio(scheiben, lauf_dir / "scheiben.parquet")
-    argv = [
-        "--config", str(REPO_ROOT / "configs" / "bestand_klv.toml"),
-        "--lauf", str(lauf_dir),
-        "--stichtag", STICHTAG.isoformat(),
-    ]
+def test_cli_schreibt_und_prueft(bundle, tmp_path, capsys):
+    out = tmp_path / "abschluesse"
+    argv = _argv(bundle, out)
 
     assert cli_abschluss.main(argv) == 0
-    assert (lauf_dir / "abschluesse" / f"abschluss_{STICHTAG}.parquet").is_file()
+    assert (out / f"abschluss_{STICHTAG}.parquet").is_file()
     # Doppel-Festschreibung: harter Fehler.
     assert cli_abschluss.main(argv) == 2
     # Pruefung deckt.
@@ -191,3 +240,104 @@ def test_cli_schreibt_und_prueft(lauf, config, tmp_path, capsys):
     meldungen = capsys.readouterr().err
     assert "nie ueberschrieben" in meldungen
     assert "deckt den Abschluss" in meldungen
+
+
+# --- T16-01/T16-02: der Abschluss verlangt das ganze Bundle ----------------
+#
+# Alle folgenden Faelle lieferten vor der Korrektur Exit 0 und einen
+# festgeschriebenen, materiell falschen Stand — den die eigene Kontrolle
+# anschliessend bestaetigte. Sie pruefen die VERDRAHTUNG in der CLI, nicht
+# nur die Engine: genau dort war die Luecke.
+
+
+def test_leere_scheiben_blockieren_den_abschluss(bundle, tmp_path, capsys):
+    """T16-01: schema-korrekt, aber ohne Zeilen — und das Ledger traegt ERH.
+
+    Gemessen am regulaeren KLV-Lauf lag das Deckungskapital dadurch um
+    3.795.035,38 zu niedrig, bei Exit 0 und in einem unumkehrbaren Stand.
+    """
+    lauf_dir = _bundle_kopie(
+        bundle, tmp_path, scheiben=_leere_tabelle(SCHEIBEN_SPALTEN)
+    )
+    out = tmp_path / "abschluesse"
+
+    assert cli_abschluss.main(_argv(lauf_dir, out)) == 2
+    assert not (out / f"abschluss_{STICHTAG}.parquet").exists()
+    assert "Vorbedingung" in capsys.readouterr().err
+
+
+def test_leere_historie_blockiert_den_abschluss(bundle, tmp_path, capsys):
+    """T16-02: eine leere Historie ist ein DataFrame und kam bisher durch.
+
+    Der gefuehrte Zustand ginge verloren; gemessen 55,7 statt 35,5 Mio
+    Deckungskapital.
+    """
+    lauf_dir = _bundle_kopie(
+        bundle, tmp_path, historie=_leere_tabelle(STATUS_HISTORIE_SPALTEN)
+    )
+    out = tmp_path / "abschluesse"
+
+    assert cli_abschluss.main(_argv(lauf_dir, out)) == 2
+    assert not (out / f"abschluss_{STICHTAG}.parquet").exists()
+    assert "Journalzeilen" in capsys.readouterr().err
+
+
+def test_fehlendes_ledger_blockiert_den_abschluss(bundle, tmp_path, capsys):
+    """Ohne Ledger laeuft die Bewegungspruefung nicht — dann sind fehlende
+    Scheiben wieder unsichtbar. Der Abschluss verlangt das Bundle ganz."""
+    lauf_dir = _bundle_kopie(bundle, tmp_path, entfernen=("ledger",))
+    out = tmp_path / "abschluesse"
+
+    assert cli_abschluss.main(_argv(lauf_dir, out)) == 2
+    assert not (out / f"abschluss_{STICHTAG}.parquet").exists()
+    assert "unvollstaendiges Lauf-Bundle" in capsys.readouterr().err
+
+
+def test_stichtag_hinter_dem_horizont_blockiert(bundle, tmp_path, capsys):
+    """Ein Abschluss auf Jahre, die der Lauf nie simuliert hat, ist keine
+    Bewertung. Frueher lief er durch und die Bewegungspruefung htte ihn
+    mit irrefuehrenden Meldungen quittiert."""
+    out = tmp_path / "abschluesse"
+    argv = [
+        "--config", str(REPO_ROOT / "configs" / "bestand_klv.toml"),
+        "--lauf", str(bundle),
+        "--stichtag", "2026-01-01",
+        "--bis", HORIZONT.isoformat(),
+        "--out-dir", str(out),
+    ]
+
+    assert cli_abschluss.main(argv) == 2
+    assert "Horizont" in capsys.readouterr().err
+
+
+def test_pruefen_faellt_nicht_mit_dem_defekt_mit(bundle, tmp_path, capsys):
+    """Die gemeinsame-Eingabe-Closure: Produzent UND Kontrolle rechneten mit
+    demselben unvollstaendigen Bundle und bestaetigten einander.
+
+    Ein korrekt festgeschriebener Abschluss, danach --pruefen auf einem
+    Bundle mit leeren Scheiben: die Kontrolle muss blockieren, statt
+    "Neuberechnung deckt den Abschluss" zu melden.
+    """
+    out = tmp_path / "abschluesse"
+    assert cli_abschluss.main(_argv(bundle, out)) == 0
+    capsys.readouterr()
+
+    kaputt = _bundle_kopie(
+        bundle, tmp_path, scheiben=_leere_tabelle(SCHEIBEN_SPALTEN)
+    )
+    assert cli_abschluss.main(_argv(kaputt, out, "--pruefen")) == 2
+    meldungen = capsys.readouterr().err
+    assert "deckt den Abschluss" not in meldungen
+
+
+def test_leere_historie_ist_wie_keine(lauf, config):
+    """T16-02 eine Ebene tiefer: auch der Bibliotheksaufruf muss sie
+    ablehnen, nicht nur die CLI."""
+    from rechner_pipeline.bestand.auswertung import einzelwerte_am
+
+    stamm, _historie, scheiben = lauf
+    with pytest.raises(ValueError, match="keine Historie"):
+        einzelwerte_am(
+            stamm, _leere_tabelle(STATUS_HISTORIE_SPALTEN), config,
+            STICHTAG, scheiben=scheiben,
+        )

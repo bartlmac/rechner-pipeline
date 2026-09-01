@@ -202,7 +202,10 @@ def einzelwerte_am(
     BU-Leistungsbezug), ``bzb_jahr`` (gezahltes Jahresvolumen, KLV) und
     ``bu_leistungsbezug`` (bool).
     """
-    if historie is None:
+    if historie is None or len(historie) == 0:
+        # Eine LEERE Historie ist keine Historie: sie ist ein DataFrame und
+        # passierte den Wachposten, der nur auf None sah — derselbe Verlust
+        # des gefuehrten Zustands, nur unsichtbar.
         # Ein gefuehrter Stamm traegt seinen aktuellen Zustand; journalsicht
         # synthetisiert den Ursprung aber unbedingt als POL am
         # Versicherungsbeginn. Ohne Journal bliebe genau diese eine Zeile
