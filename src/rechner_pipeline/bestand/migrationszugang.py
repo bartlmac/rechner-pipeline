@@ -33,6 +33,7 @@ Knoten: klv
 from __future__ import annotations
 
 import datetime as _dt
+import itertools
 import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -1037,6 +1038,111 @@ def leite_serie_aus_satz_ab(
         grundsumme=grundsumme_ist,
         scheiben=scheiben,
         absetzungen=tuple(absetzungen),
+    )
+
+
+def bestimme_serie_mit_kandidaten(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    ereignisse: Sequence[Tuple[str, int, Optional[float]]],
+    erlsumme: float,
+    satz: float,
+    jbrutto: float,
+    kandidaten: Sequence[float],
+    scheiben_mit_gamma1: bool = False,
+    abs_tol: float = ABLEITUNG_SELBSTCHECK_TOL,
+) -> AbgeleiteteSerie:
+    """Offene Herabsetzungs-Anteile einer Serie aus dem BEITRAG bestimmen.
+
+    Die exakten Anteile sind bei der Quelle endgueltig nicht mehr
+    feststellbar (registrierte Auskunft), das Tarifwerk kennt aber nur
+    endlich viele Stufen. Zu jeder Kandidaten-Kombination der offenen
+    Herabsetzungen loest die Serien-Ableitung die Struktur geschlossen
+    aus der Gesamtsumme — diskriminieren kann also nur eine ZWEITE,
+    unabhaengige Gleichung: der gelieferte Jahresbeitrag gegen die
+    Summe der BAUSTEIN-Beitraege (Grund und jede Erhoehungsscheibe mit
+    ihrem eigenen Eintrittsalter, gamma1 nach Lieferungsregel; dasselbe
+    Muster wie :func:`pruefe_erhoehungssatz`). Der Beitrag geht in die
+    Zerlegung nicht ein — die Probe ist keine Umkehrung ihrer selbst.
+
+    GENAU EIN Treffer bestimmt die Anteile (mit Beleg in
+    ``absetzungen``); kein Treffer oder mehrere sind benannte Fehler —
+    eine Bestimmung per Wuerfelwurf waere schlimmer als eine
+    ausgewiesene Luecke. Zweiter Baldrian-Lauf, 2026-09-01: 14 von 25
+    reduziert-Vertraegen sind ERH-Serien mit Herabsetzung, deren
+    Anteile so bestimmbar werden.
+    """
+    offen = [i for i, (art, _, anteil) in enumerate(ereignisse)
+             if art == "RED" and anteil is None]
+    if not offen:
+        return leite_serie_aus_satz_ab(
+            ereignisse=ereignisse, erlsumme=erlsumme, satz=satz)
+    if jbrutto <= 0.0:
+        raise MigrationszugangFehler(
+            "JBRUTTO <= 0: die Beitragsgleichung entfaellt, offene "
+            "Herabsetzungs-Anteile sind aus Kandidaten nicht "
+            "bestimmbar — Anteile je Ereignis nachliefern lassen"
+        )
+    eindeutig = sorted(set(kandidaten))
+    if len(eindeutig) < 2:
+        raise MigrationszugangFehler(
+            f"Kandidatenmenge {list(kandidaten)!r}: unter zwei "
+            "verschiedenen Kandidaten ist nichts zu bestimmen — einen "
+            "bekannten Anteil direkt liefern (POLNR;GEVO;DATUM;ANTEIL)"
+        )
+    if len(offen) > 3:
+        raise MigrationszugangFehler(
+            f"{len(offen)} offene Herabsetzungen: die "
+            "Kandidaten-Kombinatorik traegt keine Bestimmung mehr — "
+            "Anteile je Ereignis nachliefern lassen"
+        )
+
+    from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
+
+    kern_felder = {k: v for k, v in dict(modellpunkt_felder).items()
+                   if not k.startswith("_")}
+    treffer: List[Tuple[Tuple[float, ...], AbgeleiteteSerie]] = []
+    proben: List[str] = []
+    for kombi in itertools.product(eindeutig, repeat=len(offen)):
+        versuch = list(ereignisse)
+        for pos, f in zip(offen, kombi):
+            art, jahr, _ = versuch[pos]
+            versuch[pos] = (art, jahr, f)
+        try:
+            serie = leite_serie_aus_satz_ab(
+                ereignisse=versuch, erlsumme=erlsumme, satz=satz)
+        except MigrationszugangFehler as exc:
+            proben.append(f"{kombi}: {exc}")
+            continue
+        grund_mp = ModelPoint(**{**kern_felder,
+                                 "sum_insured": serie.grundsumme})
+        system = (Rechenkern(grund_mp).gross_annual_premium()
+                  if grund_mp.t > 0 else 0.0)
+        for jahr_s, summe in serie.scheiben:
+            scheibe = Rechenkern(erhoehungs_scheibe(
+                grund_mp, jahr_s, summe,
+                gamma1_uebernehmen=scheiben_mit_gamma1))
+            if scheibe.mp.t > 0:
+                system += scheibe.gross_annual_premium()
+        abw = abs(system - jbrutto)
+        proben.append(f"{kombi}: Beitragsabweichung {abw:.4f}")
+        # Jeder Baustein ist eine eigene, fuer sich gerundete
+        # Komponente des gelieferten Beitrags.
+        if abw <= abs_tol * (1 + len(serie.scheiben)):
+            treffer.append((kombi, serie))
+    if len(treffer) == 1:
+        return treffer[0][1]
+    lage = "; ".join(proben)
+    if not treffer:
+        raise MigrationszugangFehler(
+            "kein belegter Kandidat reproduziert den gelieferten "
+            f"Jahresbeitrag {jbrutto} ({lage}) — Kandidatenmenge oder "
+            "Dynamiksatz klaeren, Anteile nachliefern lassen"
+        )
+    raise MigrationszugangFehler(
+        "mehrere Kandidaten-Kombinationen reproduzieren den "
+        f"gelieferten Jahresbeitrag ({lage}) — die Bestimmung waere "
+        "ein Wuerfelwurf; Anteile je Ereignis nachliefern lassen"
     )
 
 

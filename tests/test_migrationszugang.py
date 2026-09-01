@@ -788,3 +788,133 @@ class TestSerienAbleitung:
             leite_serie_aus_satz_ab(
                 ereignisse=[("ERH", 1, None)],
                 erlsumme=1000.0, satz=1.5)
+
+
+class TestSerienKandidatenBestimmung:
+    """bestimme_serie_mit_kandidaten: offene Anteile aus dem Beitrag.
+
+    Handkette der wahren Welt (Muster der 14 Serie+RED-Policen des
+    zweiten Laufs, z. B. ERH,ERH,RED): Grundsumme 80000, Satz 5
+    Prozent, ERH(3)=4000, ERH(5)=4200, RED(8, f=0.6) auf die
+    Grundsumme -> IST-Grund 48000, ERLSUMME 56200. Der gelieferte
+    Jahresbeitrag ist die Summe der Baustein-Beitraege dieser
+    IST-Struktur — er diskriminiert die Kandidaten, weil jede andere
+    f-Annahme eine andere Baustein-Mischung mit anderem Gesamtbeitrag
+    ergibt.
+    """
+
+    EREIGNISSE = [("ERH", 3, None), ("ERH", 5, None), ("RED", 8, None)]
+    ERLSUMME, SATZ = 56200.0, 0.05
+    KANDIDATEN = (0.50, 0.60, 0.75)
+
+    def _jbrutto_der_wahren_welt(self, gamma1: bool) -> float:
+        from rechner_pipeline.kern import erhoehungs_scheibe
+
+        grund_mp = type(_KLV_DEFAULT)(
+            **_mp_felder(sum_insured=48000.0))
+        s = _Rechenkern(grund_mp).gross_annual_premium()
+        for jahr, summe in ((3, 4000.0), (5, 4200.0)):
+            s += _Rechenkern(erhoehungs_scheibe(
+                grund_mp, jahr, summe, gamma1_uebernehmen=gamma1,
+            )).gross_annual_premium()
+        return round(s, 2)
+
+    def test_bestimmung_trifft_den_wahren_anteil(self):
+        from rechner_pipeline.bestand.migrationszugang import (
+            bestimme_serie_mit_kandidaten,
+        )
+
+        serie = bestimme_serie_mit_kandidaten(
+            _mp_felder(), ereignisse=self.EREIGNISSE,
+            erlsumme=self.ERLSUMME, satz=self.SATZ,
+            jbrutto=self._jbrutto_der_wahren_welt(False),
+            kandidaten=self.KANDIDATEN)
+        assert serie.absetzungen == ((8, 0.6),)
+        assert serie.grundsumme == pytest.approx(48000.0, abs=0.01)
+        assert [s for _, s in serie.scheiben] == pytest.approx(
+            [4000.0, 4200.0], abs=0.01)
+
+    def test_kandidatenmenge_ohne_den_wahren_wert_faellt(self):
+        """Zonen-Beleg der Trennschaerfe: die falschen Kandidaten
+        reproduzieren den Beitrag WIRKLICH nicht — sonst wuerde der
+        Treffer-Test eine leere Auswahl pruefen."""
+        from rechner_pipeline.bestand.migrationszugang import (
+            MigrationszugangFehler,
+            bestimme_serie_mit_kandidaten,
+        )
+
+        with pytest.raises(MigrationszugangFehler,
+                           match="kein belegter Kandidat"):
+            bestimme_serie_mit_kandidaten(
+                _mp_felder(), ereignisse=self.EREIGNISSE,
+                erlsumme=self.ERLSUMME, satz=self.SATZ,
+                jbrutto=self._jbrutto_der_wahren_welt(False),
+                kandidaten=(0.50, 0.75))
+
+    def test_gamma1_regel_der_lieferung_diskriminiert_mit(self):
+        """Die Beitragsprobe muss mit der Tarifwerks-Regel der
+        Lieferung rechnen: Ein mit voller Formel gelieferter Beitrag
+        trifft nur mit gamma1-Flag — ohne Flag fehlt je Scheibe der
+        gamma1-Anteil und kein Kandidat passt."""
+        from rechner_pipeline.bestand.migrationszugang import (
+            MigrationszugangFehler,
+            bestimme_serie_mit_kandidaten,
+        )
+
+        jbrutto = self._jbrutto_der_wahren_welt(True)
+        serie = bestimme_serie_mit_kandidaten(
+            _mp_felder(), ereignisse=self.EREIGNISSE,
+            erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=jbrutto,
+            kandidaten=self.KANDIDATEN, scheiben_mit_gamma1=True)
+        assert serie.absetzungen == ((8, 0.6),)
+        with pytest.raises(MigrationszugangFehler,
+                           match="kein belegter Kandidat"):
+            bestimme_serie_mit_kandidaten(
+                _mp_felder(), ereignisse=self.EREIGNISSE,
+                erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=jbrutto,
+                kandidaten=self.KANDIDATEN, scheiben_mit_gamma1=False)
+
+    def test_fehlerpfade_fail_fast(self):
+        from rechner_pipeline.bestand.migrationszugang import (
+            MigrationszugangFehler,
+            bestimme_serie_mit_kandidaten,
+        )
+
+        with pytest.raises(MigrationszugangFehler,
+                           match="Beitragsgleichung entfaellt"):
+            bestimme_serie_mit_kandidaten(
+                _mp_felder(), ereignisse=self.EREIGNISSE,
+                erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=0.0,
+                kandidaten=self.KANDIDATEN)
+        with pytest.raises(MigrationszugangFehler,
+                           match="unter zwei verschiedenen"):
+            bestimme_serie_mit_kandidaten(
+                _mp_felder(), ereignisse=self.EREIGNISSE,
+                erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=1000.0,
+                kandidaten=(0.6, 0.6))
+        viele = [("ERH", 1, None)] + [
+            ("RED", j, None) for j in (2, 4, 6, 8)]
+        with pytest.raises(MigrationszugangFehler,
+                           match="Kombinatorik"):
+            bestimme_serie_mit_kandidaten(
+                _mp_felder(), ereignisse=viele,
+                erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=1000.0,
+                kandidaten=self.KANDIDATEN)
+
+    def test_geschlossene_serie_braucht_keine_probe(self):
+        """Alle Anteile gesetzt: reine Delegation an die Ableitung —
+        auch mit jbrutto=0 (die Beitragsgleichung wird nicht gebraucht,
+        ihr Fehlen darf dann nicht werfen)."""
+        from rechner_pipeline.bestand.migrationszugang import (
+            bestimme_serie_mit_kandidaten,
+            leite_serie_aus_satz_ab,
+        )
+
+        ereignisse = [("ERH", 3, None), ("RED", 8, 0.6)]
+        direkt = leite_serie_aus_satz_ab(
+            ereignisse=ereignisse, erlsumme=self.ERLSUMME, satz=self.SATZ)
+        via = bestimme_serie_mit_kandidaten(
+            _mp_felder(), ereignisse=ereignisse,
+            erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=0.0,
+            kandidaten=self.KANDIDATEN)
+        assert via == direkt

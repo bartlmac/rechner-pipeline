@@ -608,7 +608,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             red_verfahren=args.red_verfahren, red_anteile=red_anteile,
             red_anteile_je_datum=red_anteile_je_datum,
             auspraegungen=auspraegungen,
-            erhoehungssatz=args.erhoehungssatz, anker=anker)
+            erhoehungssatz=args.erhoehungssatz, anker=anker,
+            red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
+            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
         for w in zustandswarnungen:
             print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
                   file=sys.stderr)

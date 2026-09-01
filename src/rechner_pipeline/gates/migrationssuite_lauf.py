@@ -174,6 +174,9 @@ def _serienzustand(
     erhoehungssatz: Optional[float],
     red_anteile: Dict[str, float],
     red_anteile_je_datum: Dict[str, Dict[str, float]],
+    jbrutto: float = 0.0,
+    red_anteil_kandidaten: Tuple[float, ...] = (),
+    scheiben_mit_gamma1: bool = False,
 ) -> Dict[str, Any]:
     """Anfangszustand einer Ereignis-SERIE (Lieferung-2-Regelfall).
 
@@ -185,10 +188,14 @@ def _serienzustand(
     beitragsfreien Gesamtsumme). Sonst IST-Struktur aus dem belegten
     Dynamiksatz. Ein fehlender Satz ist ein harter Abbruch (betraefe
     jede Serien-Police), ein fehlender Absetzungs-Anteil eine
-    Warnung je Police.
+    Warnung je Police — es sei denn, eine BELEGTE Kandidatenmenge ist
+    uebergeben: dann bestimmt die Beitragsgleichung den Anteil
+    (bestimme_serie_mit_kandidaten; eindeutiger Treffer oder benannter
+    Fehler, kein Raten).
     """
     from rechner_pipeline.bestand.migrationszugang import (
         MigrationszugangFehler,
+        bestimme_serie_mit_kandidaten,
         leite_pex_ursprungssumme_ab,
         leite_serie_aus_satz_ab,
     )
@@ -218,8 +225,17 @@ def _serienzustand(
             anteil = red_anteile_je_datum.get(police, {}).get(
                 datum, red_anteile.get(police))
         ereignisse.append((art, jahr, anteil))
-    serie = leite_serie_aus_satz_ab(
-        ereignisse=ereignisse, erlsumme=erlsumme, satz=erhoehungssatz)
+    offene_red = any(
+        art == "RED" and anteil is None for art, _, anteil in ereignisse)
+    if offene_red and red_anteil_kandidaten:
+        serie = bestimme_serie_mit_kandidaten(
+            mp_felder, ereignisse=ereignisse, erlsumme=erlsumme,
+            satz=erhoehungssatz, jbrutto=jbrutto,
+            kandidaten=red_anteil_kandidaten,
+            scheiben_mit_gamma1=scheiben_mit_gamma1)
+    else:
+        serie = leite_serie_aus_satz_ab(
+            ereignisse=ereignisse, erlsumme=erlsumme, satz=erhoehungssatz)
     zustand: Dict[str, Any] = {
         "sum_insured": serie.grundsumme,
         "scheiben": serie.scheiben,
@@ -243,6 +259,8 @@ def anfangszustaende_je_police(
     erhoehungssatz: Optional[float] = None,
     anker: Optional[Dict[str, Tuple[int, float]]] = None,
     red_anteile_je_datum: Optional[Dict[str, Dict[str, float]]] = None,
+    red_anteil_kandidaten: Tuple[float, ...] = (),
+    scheiben_mit_gamma1: bool = False,
 ) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
     """Vorgeschichts-Welten je Police ableiten — auch SERIEN.
 
@@ -333,7 +351,10 @@ def anfangszustaende_je_police(
                     police, folge, mp_felder,
                     erlsumme=erlsumme, erhoehungssatz=erhoehungssatz,
                     red_anteile=red_anteile,
-                    red_anteile_je_datum=red_anteile_je_datum or {})
+                    red_anteile_je_datum=red_anteile_je_datum or {},
+                    jbrutto=jbrutto,
+                    red_anteil_kandidaten=red_anteil_kandidaten,
+                    scheiben_mit_gamma1=scheiben_mit_gamma1)
             except MigrationszugangFehler as exc:
                 warnungen.append(f"Police {police} (Serie): {exc}")
             continue
@@ -529,6 +550,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="nachgelieferter fortgefuehrter Beitragsanteil einer "
                         "Alt-Absetzung, deren Beitragsgleichung entfaellt "
                         "(wiederholbar)")
+    p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
+                   action="append", type=float, default=[],
+                   metavar="ANTEIL",
+                   help="BELEGTER Tarif-Kandidat des Herabsetzungsanteils "
+                        "(wiederholbar); offene Anteile in Ereignis-Serien "
+                        "werden dann ueber die Beitragsgleichung bestimmt "
+                        "(eindeutiger Treffer oder benannter Fehler) — "
+                        "siehe aktuartest_lauf.")
     p.add_argument(
         "--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
         action="store_true",
@@ -620,7 +649,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             red_verfahren=args.red_verfahren, red_anteile=red_anteile,
             auspraegungen=auspraegungen,
             erhoehungssatz=args.erhoehungssatz, anker=anker,
-            red_anteile_je_datum=red_anteile_je_datum)
+            red_anteile_je_datum=red_anteile_je_datum,
+            red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
+            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
         for w in zustandswarnungen:
             print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
                   file=sys.stderr)
