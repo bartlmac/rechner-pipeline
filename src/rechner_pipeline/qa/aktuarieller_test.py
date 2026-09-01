@@ -377,6 +377,17 @@ class Vertragspruefung:
     #: Zielverfahren prospektiv). Eine Herabsetzung ZWISCHEN den
     #: Pruefpunkten ist kein Anfangszustand, sondern ein RED-Pruefpunkt.
     reduktion: Optional[Tuple[int, float]] = None
+    #: Komponentenzahl der QUELL-Buchfuehrung, wenn der Ziel-Rechenweg
+    #: sie kollabiert: Die Ein-Punkt-Inversion beitragsfrei
+    #: uebernommener Serien (Faktorgleichheit) ist WERT-aequivalent,
+    #: macht die Bausteine der Quelle im Auftrag aber unsichtbar
+    #: (scheiben leer) — der gelieferte Wert bleibt trotzdem die Summe
+    #: von k je fuer sich gerundeten Baustein-Werten (Bedingungswerk
+    #: Ziffer 5: beitragsfreie Summe je Baustein ermittelt). Fuer die
+    #: Rundungs-Skalierung des Wertvergleichs (:func:`_ok`) zaehlt die
+    #: QUELLSEITIGE Zahl; ohne Angabe gilt wie bisher
+    #: ``1 + len(scheiben)``.
+    quell_komponenten: Optional[int] = None
     #: BELEGTE Kandidatenmenge des Herabsetzungsanteils, wenn der exakte
     #: Anteil bei der Quelle endgueltig nicht mehr feststellbar ist, das
     #: Tarifwerk aber nur endlich viele Stufen kennt (registrierte
@@ -510,6 +521,12 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
         raise AktuartestFehler(
             f"police {v.police_id}: beitragsfrei_seit_jahr="
             f"{v.beitragsfrei_seit_jahr} ist kein Vertragsjahr"
+        )
+    if v.quell_komponenten is not None and v.quell_komponenten < 1:
+        raise AktuartestFehler(
+            f"police {v.police_id}: quell_komponenten="
+            f"{v.quell_komponenten} — ein gelieferter Wert besteht aus "
+            "mindestens einer Komponente"
         )
     if v.reduktion is not None:
         jahr, anteil = v.reduktion
@@ -1066,10 +1083,14 @@ def pruefe_vertrag(
                     )
             else:
                 schluessel = p.anlass if p.ist_gevo else groesse
-                # Jede Erhoehungsscheibe ist eine eigene, fuer sich
-                # gerundete Komponente des gelieferten Werts.
+                # Jede fuer sich gerundete Komponente des gelieferten
+                # Werts zaehlt: Erhoehungsscheiben im Auftrag, oder —
+                # wo der Ziel-Rechenweg die Bausteine kollabiert
+                # (Ein-Punkt-Inversion) — die Komponentenzahl der
+                # QUELL-Buchfuehrung.
                 ok = _ok(system, erwartet, profil.fuer(schluessel),
-                         komponenten=1 + len(v.scheiben))
+                         komponenten=max(1 + len(v.scheiben),
+                                         v.quell_komponenten or 1))
                 eintrag.update({
                     "kriterium": KRITERIUM_VERGLEICH, "ok": ok})
                 if not ok:
@@ -1088,8 +1109,10 @@ def pruefe_vertrag(
         "befunde": befunde,
         "plausibilitaet": dict(v.plausibilitaet),
         # Zahl der je fuer sich gerundeten Teile des gelieferten Werts —
-        # das Gate rechnet die Toleranz damit nach.
-        "komponenten": 1 + len(v.scheiben),
+        # das Gate rechnet die Toleranz damit nach. Massgeblich ist die
+        # QUELLSEITIGE Zahl, wo der Ziel-Rechenweg Bausteine kollabiert
+        # (quell_komponenten im Auftrags-Echo).
+        "komponenten": max(1 + len(v.scheiben), v.quell_komponenten or 1),
         # Der vollstaendige PRUEFAUFTRAG des Vertrags — damit der
         # Entscheid (und jeder spaetere Leser) die Systemwerte NACHRECHNEN
         # kann, statt nur die innere Konsistenz zu pruefen. Ohne ihn ist
@@ -1100,6 +1123,7 @@ def pruefe_vertrag(
                             for k in sorted(v.model_point)},
             "scheiben": [[jahr, vs] for jahr, vs in v.scheiben],
             "beitragsfrei_seit_jahr": v.beitragsfrei_seit_jahr,
+            "quell_komponenten": v.quell_komponenten,
             "reduktion": list(v.reduktion) if v.reduktion else None,
             "monate_ta": v.monate_ta,
             "monate_t0": v.monate_t0,

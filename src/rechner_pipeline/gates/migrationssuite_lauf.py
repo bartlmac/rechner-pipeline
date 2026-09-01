@@ -213,6 +213,14 @@ def _serienzustand(
             "beitragsfrei_seit_jahr": pex_jahr,
             "sum_insured": leite_pex_ursprungssumme_ab(
                 mp_felder, pex_jahr=pex_jahr, vs_bfr=erlsumme),
+            # Die Ein-Punkt-Inversion kollabiert die Bausteine der
+            # Quelle (wert-aequivalent, Faktorgleichheit) — fuer die
+            # Rundungs-Skalierung des Wertvergleichs bleibt aber
+            # massgeblich, aus wie vielen je fuer sich gerundeten
+            # Baustein-Werten der gelieferte Wert besteht
+            # (Bedingungswerk Ziffer 5: je Baustein ermittelt).
+            "quell_komponenten": 1 + sum(
+                1 for a, _, _ in folge if a == "ERH"),
         }
     if erhoehungssatz is None:
         raise SystemExit(

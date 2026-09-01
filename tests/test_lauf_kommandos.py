@@ -515,6 +515,10 @@ def test_anfangszustand_serie_mit_terminalem_pex_ist_einpunkt():
     assert z["beitragsfrei_seit_jahr"] == 8
     assert z["sum_insured"] == pytest.approx(10000.0, rel=1e-6)
     assert "scheiben" not in z
+    # Die Inversion kollabiert die Bausteine wert-aequivalent — die
+    # QUELLSEITIGE Komponentenzahl (Grund + eine Erhoehung) bleibt fuer
+    # die Rundungs-Skalierung des Wertvergleichs ausgewiesen.
+    assert z["quell_komponenten"] == 2
 
 
 def test_anfangszustand_serie_ohne_satz_und_pex_nicht_terminal_fallen_hart():

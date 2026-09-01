@@ -1167,6 +1167,38 @@ def _zustandslos_fixture():
     return lieferung, bestand, spez
 
 
+def test_quell_komponenten_skalieren_die_rundungstoleranz():
+    """Die zwei letzten A-M1-Fehlschlaege des zweiten Laufs (7000061,
+    7000977): beitragsfrei uebernommene ERH-Serien, deren Ein-Punkt-
+    Inversion die Bausteine der Quelle kollabiert (scheiben leer,
+    komponenten=1) — der gelieferte kVx_MRV bleibt aber die Summe von
+    k je fuer sich gerundeten Baustein-Werten. Die QUELLSEITIGE
+    Komponentenzahl skaliert deshalb die Rundungstoleranz — dieselbe
+    hergeleitete Fehlerfortpflanzung wie bei den Scheiben-Vertraegen,
+    keine Ermessens-Weitung."""
+    a0, monate = 8, 120
+    basis = dict(beitragsfrei_seit_jahr=a0)
+    probe = pruefe_vertrag(_vertrag(
+        Pruefpunkt(monate=monate, erwartet={"kVx_MRV": 1.0},
+                   anlass="uebernahme"), **basis), _profil())
+    system = next(p["system"] for p in probe["pruefungen"])
+    # Residuum sicher ueber der Grundtoleranz (0,01) und unter der
+    # 5-Komponenten-Toleranz (0,01 + 4 x 0,005 = 0,03).
+    erwartet = round(system, 2) + 0.02
+    punkt = Pruefpunkt(monate=monate, erwartet={"kVx_MRV": erwartet},
+                       anlass="uebernahme")
+    ohne = pruefe_vertrag(_vertrag(punkt, **basis), _profil())
+    assert not ohne["bestanden"]
+    mit = pruefe_vertrag(
+        _vertrag(punkt, **basis, quell_komponenten=5), _profil())
+    assert mit["bestanden"], mit["befunde"]
+    assert mit["komponenten"] == 5
+    assert mit["auftrag"]["quell_komponenten"] == 5
+    with pytest.raises(AktuartestFehler, match="mindestens einer"):
+        pruefe_vertrag(_vertrag(punkt, **basis, quell_komponenten=0),
+                       _profil())
+
+
 def test_auftragsbau_weist_vorgeschichte_ohne_zustand_aus():
     """20 von 25 reduziert-Policen liefen im zweiten Lauf ZUSTANDSLOS in
     den Wertvergleich (Zustandsableitung scheiterte nur mit stderr-

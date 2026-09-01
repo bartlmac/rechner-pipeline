@@ -222,6 +222,7 @@ def baue_auftraege(
             beitragsfrei_seit_jahr=beitragsfrei,
             monate_ta=eintrag.get("monate_ta"),
             scheiben=tuple(zustand.get("scheiben", ())),
+            quell_komponenten=zustand.get("quell_komponenten"),
             reduktion=zustand.get("reduktion"),
             # Die Kandidatenmenge ist eine Eigenschaft der QUELL-LAGE
             # (eine Auskunft je Fall), kein Policen-Datum — sie greift
