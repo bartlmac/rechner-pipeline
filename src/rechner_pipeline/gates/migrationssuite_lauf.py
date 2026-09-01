@@ -408,6 +408,7 @@ def baue_auftraege(
     auspraegungen: Optional[Dict[str, Dict[str, str]]] = None,
     beitragsfrei_seit: Optional[Dict[str, int]] = None,
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
+    scheiben_mit_gamma1: bool = False,
 ) -> List[VertragsPruefung]:
     """Je Vertrag genau einen Pruefauftrag."""
     s = spalten
@@ -476,6 +477,7 @@ def baue_auftraege(
                 "beitragsfrei_seit_jahr",
                 (beitragsfrei_seit or {}).get(police)),
             scheiben=tuple(zustand.get("scheiben", ())),
+            scheiben_mit_gamma1=scheiben_mit_gamma1,
             reduktion=zustand.get("reduktion"),
         ))
     return auftraege
@@ -525,6 +527,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="nachgelieferter fortgefuehrter Beitragsanteil einer "
                         "Alt-Absetzung, deren Beitragsgleichung entfaellt "
                         "(wiederholbar)")
+    p.add_argument(
+        "--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
+        action="store_true",
+        help="Erhoehungsscheiben mit voller Beitragsformel (gamma1) — "
+             "Tarifwerks-Eigenschaft der Lieferung, siehe "
+             "aktuartest_lauf.")
     p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
                    default=None, metavar="SATZ",
                    help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
@@ -621,6 +629,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         auspraegungen=auspraegungen,
         beitragsfrei_seit=beitragsfrei_seit,
         anfangszustaende=anfangszustaende,
+        scheiben_mit_gamma1=args.scheiben_mit_gamma1,
     )
 
     # Die Pruefmenge wird an der LIEFERUNG gemessen, nicht an sich

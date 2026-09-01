@@ -892,3 +892,123 @@ def test_das_ergebnis_traegt_den_pruefauftrag_zum_nachrechnen():
     ), _profil())
     assert mit["auftrag"]["monate_ta"] == ta
     assert mit["auftrag"]["schicht"]["rho"] == e.parameter.rho
+
+
+class TestScheibenGamma1Regel:
+    """Die gamma1-Regel der Erhoehungsscheiben ist eine Tarifwerks-
+    Eigenschaft der LIEFERUNG, keine Kern-Konstante — gefunden im
+    zweiten Baldrian-Lauf als bit-stabiler BJB-Fehlbetrag ueber beide
+    Stichtage (Aktuars-Befund): Die Quelle der zweiten Lieferung rechnet
+    jede Scheibe mit der VOLLEN Beitragsformel, der Kern rechnete stur
+    die GrundVS-Regel der ersten."""
+
+    def test_flag_schaltet_die_volle_formel_und_default_bleibt_alt(self):
+        import dataclasses
+
+        from rechner_pipeline.kern import KLV_DEFAULT
+        from rechner_pipeline.kern.rechenkern import (
+            Rechenkern,
+            erhoehungs_scheibe,
+        )
+
+        alt = erhoehungs_scheibe(KLV_DEFAULT, 5, 4000.0)
+        voll = erhoehungs_scheibe(KLV_DEFAULT, 5, 4000.0,
+                                  gamma1_uebernehmen=True)
+        assert alt.gamma1 == 0.0
+        assert voll.gamma1 == KLV_DEFAULT.gamma1 > 0.0
+        # Unabhaengige Referenz: die volle Scheibe ist exakt der direkt
+        # konstruierte Modellpunkt mit gamma1 — kein eigener Formelpfad.
+        direkt = dataclasses.replace(
+            KLV_DEFAULT, x=KLV_DEFAULT.x + 5, n=KLV_DEFAULT.n - 5,
+            t=KLV_DEFAULT.t - 5, sum_insured=4000.0)
+        assert Rechenkern(voll).gross_annual_premium() == pytest.approx(
+            Rechenkern(direkt).gross_annual_premium(), abs=1e-9)
+        assert Rechenkern(voll).gross_annual_premium() > (
+            Rechenkern(alt).gross_annual_premium())
+
+    def test_engine_rechnet_bjb_je_nach_lieferungsregel(self):
+        """Derselbe Auftrag, nur das Flag verschieden: Der BJB-Systemwert
+        muss sich exakt um den gamma1-Beitragsanteil der Scheibe
+        unterscheiden (Mutation 'Flag wird ignoriert' faellt)."""
+        import dataclasses
+
+        from rechner_pipeline.kern import KLV_DEFAULT
+        from rechner_pipeline.kern.rechenkern import Rechenkern
+        from rechner_pipeline.qa.aktuarieller_test import (
+            Pruefpunkt,
+            Vertragspruefung,
+            _kerne,
+        )
+
+        mp = KLV_DEFAULT
+        basis = dict(
+            police_id="X", model_point=dataclasses.asdict(mp),
+            historientyp="dynamik",
+            punkte=(Pruefpunkt(monate=120, erwartet={"BJB": 1.0},
+                               anlass="uebernahme"),),
+            scheiben=((5, 4000.0),),
+        )
+        ohne = Vertragspruefung(**basis)
+        mit = Vertragspruefung(**basis, scheiben_mit_gamma1=True)
+        g0, s0 = _kerne(ohne, mp)
+        g1, s1 = _kerne(mit, mp)
+        bjb_ohne = g0.gross_annual_premium() + s0[0][1].gross_annual_premium()
+        bjb_mit = g1.gross_annual_premium() + s1[0][1].gross_annual_premium()
+        erwartete_differenz = (
+            Rechenkern(dataclasses.replace(
+                mp, x=mp.x + 5, n=mp.n - 5, t=mp.t - 5, sum_insured=4000.0)
+            ).gross_annual_premium()
+            - Rechenkern(dataclasses.replace(
+                mp, x=mp.x + 5, n=mp.n - 5, t=mp.t - 5, sum_insured=4000.0,
+                gamma1=0.0)).gross_annual_premium())
+        assert bjb_mit - bjb_ohne == pytest.approx(erwartete_differenz,
+                                                   abs=1e-9)
+        assert erwartete_differenz > 0.0
+
+
+def test_auftragsbau_bricht_bei_vorgeschichte_ohne_zustand_hart():
+    """20 von 25 reduziert-Policen liefen im zweiten Lauf ZUSTANDSLOS in
+    den Wertvergleich (Zustandsableitung scheiterte nur mit stderr-
+    Warnung) und urteilten auf einer falschen Welt. Ein Vertrag mit
+    Vorgeschichte, aber ohne ableitbaren Anfangszustand, ist kein
+    Pruefauftrag — die Luecke wird im Rueckgabewert AUSGEWIESEN (das
+    Verhalten der ersten Lieferung — sichtbar rot statt still — bleibt;
+    neu ist, dass der Beleg die Ursache traegt statt nur stderr)."""
+    import pandas as pd
+
+    from rechner_pipeline.gates.aktuartest_lauf import baue_auftraege
+    from rechner_pipeline.kern import KLV_DEFAULT
+
+    import dataclasses as dc
+    felder = dc.asdict(KLV_DEFAULT)
+    from rechner_pipeline.models.bestand import GENERATION_FIELDS
+
+    @dc.dataclass
+    class _Zelle:
+        auspraegungen: dict
+        model_point: dict
+
+    @dc.dataclass
+    class _Spez:
+        zellen: list
+
+    spez = _Spez(zellen=[_Zelle({}, {
+        f: felder[f] for f in GENERATION_FIELDS})])
+    bestand = pd.DataFrame([{
+        "police_id": 7000717, "sum_insured": felder["sum_insured"],
+        "entry_age": felder["x"], "duration": felder["n"],
+        "premium_duration": felder["t"], "zahlweise": felder["zw"],
+        "sex": felder["sex"],
+        "insurance_start": pd.Timestamp("2016-01-01"),
+    }])
+    lieferung = {"vertraege": [{
+        "police_id": "7000717", "historientyp": "reduziert",
+        "monate_ta": 120, "beitragsfrei_seit_jahr": None,
+        "punkte": [{"monate": 120, "anlass": "uebernahme",
+                    "erwartet": {"BJB": 1.0}}],
+    }]}
+    auftraege, _ausgelassen, zustandslos = baue_auftraege(
+        lieferung, bestand, spez, auspraegungen_je_police={},
+        anfangszustaende={})
+    assert zustandslos == ["7000717"]
+    assert len(auftraege) == 1

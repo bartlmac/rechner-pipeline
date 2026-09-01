@@ -186,6 +186,10 @@ class VertragsPruefung:
     bjb_erwartet_1: Optional[float] = None
     beitragsfrei_seit_jahr: Optional[int] = None
     scheiben: Tuple[Tuple[int, float], ...] = field(default_factory=tuple)
+    #: Volle Beitragsformel (mit gamma1) fuer die Scheiben —
+    #: Tarifwerks-Eigenschaft der Lieferung, siehe
+    #: kern.rechenkern.erhoehungs_scheibe.
+    scheiben_mit_gamma1: bool = False
     reduktion: Optional[Tuple[int, float]] = None
 
 
@@ -401,7 +405,8 @@ def pruefe_vertrag(
             )
         scheiben.append(
             (erh_jahr, Rechenkern(erhoehungs_scheibe(
-                grund_mp, erh_jahr, erh_summe))))
+                grund_mp, erh_jahr, erh_summe,
+                gamma1_uebernehmen=v.scheiben_mit_gamma1))))
 
     if alt_rv is not None:
         dk_1 = alt_rv.monatsreserve(v.monate_stichtag_1).vx_mrv

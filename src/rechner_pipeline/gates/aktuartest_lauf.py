@@ -115,6 +115,7 @@ def baue_auftraege(
     schichten: Optional[Dict[str, Any]] = None,
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     plausibilitaet: Optional[Dict[str, Dict[str, str]]] = None,
+    scheiben_mit_gamma1: bool = False,
 ) -> Tuple[List[Vertragspruefung], List[str]]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag.
 
@@ -181,11 +182,26 @@ def baue_auftraege(
             scheiben=tuple(zustand.get("scheiben", ())),
             reduktion=zustand.get("reduktion"),
             plausibilitaet=(plausibilitaet or {}).get(police, {}),
+            scheiben_mit_gamma1=scheiben_mit_gamma1,
             **_schicht_felder(_schicht_fuer(
                 police, zustand, (schichten or {}).get(police),
                 (plausibilitaet or {}).get(police), schicht_ausgelassen)),
         ))
-    return auftraege, schicht_ausgelassen
+    # Vorgeschichte ohne ableitbaren Anfangszustand ist eine
+    # AUSGEWIESENE Pruefluecke, kein Abbruch (etabliertes Verhalten der
+    # ersten Lieferung: die Police faellt sichtbar rot, statt dass ein
+    # geratener Zustand still richtig aussieht). Der Ausweis gehoert
+    # aber in den BELEG, nicht nur nach stderr — im zweiten Lauf hielt
+    # der Aktuar 20 solcher Policen fuer einen Systemfehler, weil das
+    # Ergebnis-JSON die Ursache nirgends nannte (main haengt die
+    # Zustandswarnungen deshalb an das Ergebnis an).
+    zustandslos = sorted(
+        a.police_id for a in auftraege
+        if a.historientyp not in ("ohne_vorgeschichte", "unbekannt")
+        and not a.scheiben and a.reduktion is None
+        and a.beitragsfrei_seit_jahr is None
+    )
+    return auftraege, schicht_ausgelassen, zustandslos
 
 
 def _schicht_fuer(
@@ -422,6 +438,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
                         "S' = e * S^ges); ohne ihn wird je Vertrag aus dem "
                         "Jahresbeitrag zerlegt")
+    p.add_argument(
+        "--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
+        action="store_true",
+        help="Erhoehungsscheiben rechnen die VOLLE Beitragsformel "
+             "(mit gamma1) — Tarifwerks-Eigenschaft der Lieferung laut "
+             "ihren Dokumenten (Lieferung 2: eigenstaendiger Baustein "
+             "mit eigener Wertermittlung); ohne Flag gilt die "
+             "GrundVS-Regel der ersten Lieferung.")
     p.add_argument("--red-verfahren", dest="red_verfahren",
                    default=PROSPEKTIV, choices=sorted(VERFAHREN),
                    help="Verfahren der Beitragsherabsetzung (Eigenschaft "
@@ -576,10 +600,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     schichten = _schichten(fall, args.schicht,
                            repo_root=Path(args.repo_root).resolve())
-    auftraege, schicht_ausgelassen = baue_auftraege(
+    auftraege, schicht_ausgelassen, zustandslos = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
         anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet,
-        schichten=schichten)
+        schichten=schichten,
+        scheiben_mit_gamma1=args.scheiben_mit_gamma1)
     for police in schicht_ausgelassen:
         print(f"WARNUNG Police {police}: Korrekturschicht nicht im "
               "Pruefpfad — Herabsetzungs-Anfangszustand, Wertvergleich "
@@ -598,6 +623,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Ausgewiesene Auslassung gehoert in den Beleg, nicht nur nach
         # stderr — A-M1 liest das Ergebnis, nicht das Terminal.
         ergebnis["schicht_ausgelassen"] = sorted(schicht_ausgelassen)
+    if zustandslos:
+        ergebnis["anfangszustand_nicht_ableitbar"] = {
+            "policen": zustandslos,
+            "hinweis": (
+                "Vorgeschichte vorhanden, Anfangszustand nicht ableitbar "
+                "(siehe Zustandswarnungen des Laufs) — der Wertvergleich "
+                "dieser Policen rechnet die Stammwelt und faellt "
+                "erwartbar rot; Ursache beheben (z. B. Herabsetzungs-"
+                "Anteile je Ereignis nachliefern: POLNR;GEVO;DATUM;"
+                "ANTEIL), nicht Toleranzen weiten."),
+        }
 
     ziel = Path(args.out) if args.out else (
         fall / "abgeleitet" / "berichte" / ZIELNAME[args.abnahme])

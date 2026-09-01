@@ -124,14 +124,27 @@ class Rechenkern:
         return self.produkt.monatsreserve_beitragsfrei(a0, monate)
 
 
-def erhoehungs_scheibe(mp: ModelPoint, jahr: int, vs: float) -> ModelPoint:
-    """Modellpunkt einer dynamischen Erhöhungsscheibe (Tarifwerk-Regel).
+def erhoehungs_scheibe(
+    mp: ModelPoint, jahr: int, vs: float, *, gamma1_uebernehmen: bool = False
+) -> ModelPoint:
+    """Modellpunkt einer dynamischen Erhöhungsscheibe.
 
     Eigene Scheibe mit versetzten Dauern (x+jahr, n-jahr, t-jahr) und der
-    Erhöhungssumme. Die Bezugsgröße für ``gamma1`` bleibt die GrundVS
-    (Tarifmitteilung, Bemerkung zur Kostentabelle): Erhöhungen erhöhen
-    die beitragsbezogenen Verwaltungskosten NICHT — die Grundscheibe
-    trägt γ1 bereits vollständig, die Erhöhungsscheibe trägt keins.
+    Erhöhungssumme. Ob die Scheibe ``gamma1`` trägt, ist eine
+    TARIFWERKS-EIGENSCHAFT DER JEWEILIGEN LIEFERUNG, keine Konstante —
+    das hat der zweite Baldrian-Lauf gezeigt (2026-09-01, bit-stabiler
+    BJB-Fehlbetrag über beide Stichtage):
+
+    * Vorgabe ``gamma1_uebernehmen=False`` (Bestandsverhalten): die
+      Bezugsgröße für γ1 bleibt die GrundVS — so stand es in der
+      Tarifmitteilung der ERSTEN Lieferung, und so rechnet das eigene
+      Neugeschäft der PLV.
+    * ``gamma1_uebernehmen=True``: die Scheibe rechnet die VOLLE
+      Beitragsformel inklusive γ1 — so bestimmt es das Bedingungswerk
+      der ZWEITEN Lieferung ("eigenständiger Baustein mit eigener
+      Wertermittlung"). Die Prüfstrecke der Migration setzt den
+      Parameter nach der dokumentierten Quell-Lage; er wird nie
+      geraten.
     """
     if not 0 < jahr < mp.t:
         raise ValueError(
@@ -140,7 +153,7 @@ def erhoehungs_scheibe(mp: ModelPoint, jahr: int, vs: float) -> ModelPoint:
         )
     return dataclasses.replace(
         mp, x=mp.x + jahr, n=mp.n - jahr, t=mp.t - jahr,
-        sum_insured=vs, gamma1=0.0,
+        sum_insured=vs, gamma1=mp.gamma1 if gamma1_uebernehmen else 0.0,
     )
 
 

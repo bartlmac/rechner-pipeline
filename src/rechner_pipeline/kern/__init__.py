@@ -95,7 +95,7 @@ from rechner_pipeline.kern.rechenkern import (
 #: Gesamtsumme, spaetere Beitragsfreistellung und terminale Leistungen.
 #: Additive Faehigkeit fuer migrierte Bestaende mit RED-Vorgeschichte
 #: (Baldrian-Uebernahme); bestehende Rechenwerte unveraendert.
-__version__ = "3.1.0"
+__version__ = "3.2.0"
 
 __all__ = [
     "ModelPoint",

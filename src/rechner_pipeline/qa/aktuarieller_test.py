@@ -256,6 +256,12 @@ class Vertragspruefung:
     historientyp: str
     punkte: Tuple[Pruefpunkt, ...]
     scheiben: Tuple[Tuple[int, float], ...] = field(default_factory=tuple)
+    #: Ob die Erhoehungsscheiben die VOLLE Beitragsformel (mit gamma1)
+    #: rechnen — Tarifwerks-Eigenschaft der jeweiligen Lieferung
+    #: (Lieferung 2: volle Formel je Baustein laut Bedingungswerk;
+    #: Lieferung 1 und PLV-Eigengeschaeft: ohne gamma1). Kommt vom
+    #: Lauf-Flag, wird nie geraten.
+    scheiben_mit_gamma1: bool = False
     beitragsfrei_seit_jahr: Optional[int] = None
     #: Schichtparameter des Migrationszugangs (Grundsatzdokumentation 9.11).
     #: Sind sie gesetzt, vergleicht die Engine den Wert EINSCHLIESSLICH
@@ -566,7 +572,8 @@ def _doppelte_punkte(punkte: Tuple[Pruefpunkt, ...]) -> List[Tuple[int, str]]:
 def _kerne(v: Vertragspruefung, mp: ModelPoint):
     grund = Rechenkern(mp)
     scheiben = [
-        (jahr_s, Rechenkern(erhoehungs_scheibe(mp, jahr_s, vs)))
+        (jahr_s, Rechenkern(erhoehungs_scheibe(
+            mp, jahr_s, vs, gamma1_uebernehmen=v.scheiben_mit_gamma1)))
         for jahr_s, vs in v.scheiben
     ]
     return grund, scheiben
