@@ -881,7 +881,7 @@ class TestSerienKandidatenBestimmung:
         )
 
         with pytest.raises(MigrationszugangFehler,
-                           match="Beitragsgleichung entfaellt"):
+                           match="kein Ankerwert"):
             bestimme_serie_mit_kandidaten(
                 _mp_felder(), ereignisse=self.EREIGNISSE,
                 erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=0.0,
@@ -900,6 +900,121 @@ class TestSerienKandidatenBestimmung:
                 _mp_felder(), ereignisse=viele,
                 erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=1000.0,
                 kandidaten=self.KANDIDATEN)
+
+    def test_ankerwert_diskriminiert_wenn_der_beitrag_entfaellt(self):
+        """Die drei beitragslosen Serien-Policen des zweiten Laufs
+        (Beitragszahlungsdauer am Stichtag abgelaufen, JBRUTTO 0):
+        das gelieferte Deckungskapital am Verankerungszeitpunkt tritt
+        als zweite Gleichung an die Beitragsstelle — Wahl unter den
+        endlich vielen belegten Hypothesen, keine stetige
+        Kalibrierung."""
+        from rechner_pipeline.bestand.migrationszugang import (
+            MigrationszugangFehler,
+            bestimme_serie_mit_kandidaten,
+        )
+        from rechner_pipeline.kern import erhoehungs_scheibe
+        from rechner_pipeline.kern.rechenkern import (
+            vertrags_monatsreserve,
+        )
+
+        monate = 12 * 10
+        grund_mp = type(_KLV_DEFAULT)(**_mp_felder(sum_insured=48000.0))
+        dk_wahr = vertrags_monatsreserve(
+            _Rechenkern(grund_mp),
+            [(jahr, _Rechenkern(erhoehungs_scheibe(grund_mp, jahr, s)))
+             for jahr, s in ((3, 4000.0), (5, 4200.0))],
+            monate).vx_mrv
+        serie = bestimme_serie_mit_kandidaten(
+            _mp_felder(), ereignisse=self.EREIGNISSE,
+            erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=0.0,
+            kandidaten=self.KANDIDATEN,
+            anker=(monate, round(dk_wahr, 2)))
+        assert serie.absetzungen == ((8, 0.6),)
+        assert serie.grundsumme == pytest.approx(48000.0, abs=0.01)
+        # Zonen-Beleg: ohne den wahren Kandidaten faellt die Wahl.
+        with pytest.raises(MigrationszugangFehler,
+                           match="kein belegter Kandidat"):
+            bestimme_serie_mit_kandidaten(
+                _mp_felder(), ereignisse=self.EREIGNISSE,
+                erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=0.0,
+                kandidaten=(0.50, 0.75),
+                anker=(monate, round(dk_wahr, 2)))
+
+    def test_herabsetzung_vor_erster_erhoehung_ist_anteil_invariant(self):
+        """Police 7000569 des zweiten Laufs: Liegt die Herabsetzung vor
+        jeder Erhoehung, skaliert sie die gesamte Kette — jede
+        Kandidaten-Annahme ergibt DIESELBE IST-Struktur. Das ist kein
+        Wuerfelwurf, sondern Unerheblichkeit: Struktur zurueckgeben,
+        Jahr als anteil_unbestimmt ausweisen, keinen Anteil raten."""
+        from rechner_pipeline.bestand.migrationszugang import (
+            bestimme_serie_mit_kandidaten,
+        )
+        from rechner_pipeline.kern import erhoehungs_scheibe
+
+        grund_mp = type(_KLV_DEFAULT)(**_mp_felder(sum_insured=10000.0))
+        jbrutto = round(
+            _Rechenkern(grund_mp).gross_annual_premium()
+            + _Rechenkern(erhoehungs_scheibe(
+                grund_mp, 3, 500.0)).gross_annual_premium()
+            + _Rechenkern(erhoehungs_scheibe(
+                grund_mp, 4, 525.0)).gross_annual_premium(), 2)
+        serie = bestimme_serie_mit_kandidaten(
+            _mp_felder(),
+            ereignisse=[("RED", 1, None), ("ERH", 3, None),
+                        ("ERH", 4, None)],
+            erlsumme=11025.0, satz=self.SATZ, jbrutto=jbrutto,
+            kandidaten=self.KANDIDATEN)
+        assert serie.grundsumme == pytest.approx(10000.0, abs=0.01)
+        assert [s for _, s in serie.scheiben] == pytest.approx(
+            [500.0, 525.0], abs=0.01)
+        assert serie.absetzungen == ()
+        assert serie.anteil_unbestimmt == (1,)
+        assert serie.als_beleg()["anteil_unbestimmt"] == [1]
+
+    def test_invarianter_anker_mit_verschiedenen_strukturen_faellt(self):
+        """Policen 7000679/7000396 des zweiten Laufs: Liegt der Anker
+        NACH dem Beitragszahlungsende, ist das Deckungskapital homogen
+        in der Gesamtsumme — jeder Kandidat trifft, aber die Strukturen
+        (Grund/Scheiben-Split) sind VERSCHIEDEN und an frueheren
+        Punkten bewertungsrelevant. Das System darf dann nicht waehlen:
+        benannter Fehler mit dem Lesart-Ausweg."""
+        from rechner_pipeline.bestand.migrationszugang import (
+            MigrationszugangFehler,
+            bestimme_serie_mit_kandidaten,
+            leite_serie_aus_satz_ab,
+        )
+        from rechner_pipeline.kern import erhoehungs_scheibe
+        from rechner_pipeline.kern.rechenkern import (
+            vertrags_monatsreserve,
+        )
+
+        felder = _mp_felder(t=5)
+        ereignisse = [("ERH", 1, None), ("ERH", 2, None),
+                      ("RED", 3, None)]
+        erlsumme, monate = 60000.0, 12 * 12  # weit nach t=5
+
+        def dk(f):
+            er = [(a, j, f if a == "RED" else None)
+                  for a, j, _ in ereignisse]
+            s = leite_serie_aus_satz_ab(
+                ereignisse=er, erlsumme=erlsumme, satz=0.05)
+            gm = type(_KLV_DEFAULT)(**{**felder,
+                                       "sum_insured": s.grundsumme})
+            return vertrags_monatsreserve(
+                _Rechenkern(gm),
+                [(j, _Rechenkern(erhoehungs_scheibe(gm, j, su)))
+                 for j, su in s.scheiben],
+                monate).vx_mrv
+
+        # Zonen-Beleg: nach dem Beitragsende ist das DK strukturfrei —
+        # sonst pruefte der Test nicht den Mehrdeutigkeits-Pfad.
+        assert dk(0.50) == pytest.approx(dk(0.75), abs=1e-6)
+        with pytest.raises(MigrationszugangFehler,
+                           match="VERSCHIEDENEN Strukturen"):
+            bestimme_serie_mit_kandidaten(
+                felder, ereignisse=ereignisse, erlsumme=erlsumme,
+                satz=0.05, jbrutto=0.0, kandidaten=self.KANDIDATEN,
+                anker=(monate, round(dk(0.60), 2)))
 
     def test_geschlossene_serie_braucht_keine_probe(self):
         """Alle Anteile gesetzt: reine Delegation an die Ableitung —

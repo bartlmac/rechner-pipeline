@@ -177,6 +177,7 @@ def _serienzustand(
     jbrutto: float = 0.0,
     red_anteil_kandidaten: Tuple[float, ...] = (),
     scheiben_mit_gamma1: bool = False,
+    anker_wert: Optional[Tuple[int, float]] = None,
 ) -> Dict[str, Any]:
     """Anfangszustand einer Ereignis-SERIE (Lieferung-2-Regelfall).
 
@@ -232,7 +233,8 @@ def _serienzustand(
             mp_felder, ereignisse=ereignisse, erlsumme=erlsumme,
             satz=erhoehungssatz, jbrutto=jbrutto,
             kandidaten=red_anteil_kandidaten,
-            scheiben_mit_gamma1=scheiben_mit_gamma1)
+            scheiben_mit_gamma1=scheiben_mit_gamma1,
+            anker=anker_wert)
     else:
         serie = leite_serie_aus_satz_ab(
             ereignisse=ereignisse, erlsumme=erlsumme, satz=erhoehungssatz)
@@ -243,6 +245,10 @@ def _serienzustand(
     if serie.absetzungen:
         # Beleg fuer Vorlage und Protokoll; kein Konsument rechnet damit.
         zustand["alt_absetzungen"] = serie.absetzungen
+    if serie.anteil_unbestimmt:
+        # Ebenfalls Beleg: Herabsetzungsjahre, deren Anteil aus der
+        # IST-Welt nicht identifizierbar und fuer sie unerheblich ist.
+        zustand["absetzungsanteil_unbestimmt"] = serie.anteil_unbestimmt
     return zustand
 
 
@@ -354,7 +360,8 @@ def anfangszustaende_je_police(
                     red_anteile_je_datum=red_anteile_je_datum or {},
                     jbrutto=jbrutto,
                     red_anteil_kandidaten=red_anteil_kandidaten,
-                    scheiben_mit_gamma1=scheiben_mit_gamma1)
+                    scheiben_mit_gamma1=scheiben_mit_gamma1,
+                    anker_wert=(anker or {}).get(police))
             except MigrationszugangFehler as exc:
                 warnungen.append(f"Police {police} (Serie): {exc}")
             continue
