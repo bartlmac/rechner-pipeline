@@ -317,10 +317,11 @@ def test_entscheide_verlangt_rolle_mensch_und_archiviert(fall_mit_fragmenten, ca
     loese_diskrepanz_auf(abox, d.id, 0.03, "agent (vorlaeufig)", "GM",
                          "2026-08-15T12:00:00+00:00", vorlaeufig=True)
     speichere(abox, f)
-    # Ohne --rolle mensch: argparse lehnt ab (SystemExit 2)
-    with pytest.raises(SystemExit):
-        entscheide(["--fall", str(f), "--diskrepanz", d.id, "--wert", "0.025",
-                    "--entscheider", "B", "--begruendung", "x"])
+    # Ohne Rolle: sauberer Usage-Fehler (seit dem Vier-Rollen-Modell
+    # prueft main selbst — behauptete Rollen ohne Ordnung zaehlen nicht)
+    assert entscheide(
+        ["--fall", str(f), "--diskrepanz", d.id, "--wert", "0.025",
+         "--entscheider", "B", "--begruendung", "x"]) == 2
     capsys.readouterr()
     rc = entscheide(["--fall", str(f), "--rolle", "mensch",
                      "--diskrepanz", d.id, "--wert", "0.025",
@@ -336,3 +337,84 @@ def test_entscheide_verlangt_rolle_mensch_und_archiviert(fall_mit_fragmenten, ca
     assert d2.entscheidungs_historie[0].entscheider == "agent (vorlaeufig)"
     # Und die Kette akzeptiert den neu entschiedenen Wert:
     assert pruefe_kette(f) == []
+
+
+def _ordnung_und_schluessel(tmp_path):
+    """Zeichnungsordnung + Rollen-Schluessel fuer die Entscheide-Tests."""
+    import hashlib as _hl
+
+    schluessel = {}
+    fingerprints = {}
+    for rolle, inhalt in (("plv-aktuar", b"aktuar-schluessel-fuer-tests!!!!" * 2),
+                          ("plv-it", b"it-schluessel-fuer-die-tests!!!!" * 2)):
+        pfad = tmp_path / f"{rolle}.key"
+        pfad.write_bytes(inhalt)
+        pfad.chmod(0o600)
+        schluessel[rolle] = pfad
+        fingerprints[rolle] = _hl.sha256(inhalt).hexdigest()
+    ordnung = tmp_path / "zeichnungsordnung.json"
+    ordnung.write_text(json.dumps({"schema_version": 1, "rollen": {
+        "plv-aktuar": {"schluessel_sha256": fingerprints["plv-aktuar"],
+                       "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
+        "plv-it": {"schluessel_sha256": fingerprints["plv-it"],
+                   "gates": ["A-K1"]},
+    }}), encoding="utf-8")
+    return ordnung, schluessel
+
+
+def test_entscheide_bestimmt_die_rolle_aus_dem_schluessel(
+        fall_mit_fragmenten, tmp_path):
+    """Vier-Rollen-Modell: Der plv-aktuar vollzieht seine fachliche
+    Entscheidung selbst — die Rolle kommt aus dem Schluessel, die
+    Bindung (Rolle, Ordnungs-Hash) steht in der Entscheidung."""
+    import hashlib as _hl
+
+    from rechner_pipeline.ontologie import entscheide as entscheide_cli
+
+    f = fall_mit_fragmenten
+    merge_cli(["--fall", str(f)])
+    abox = lade(f)
+    [d] = abox.diskrepanzen
+    ordnung, schluessel = _ordnung_und_schluessel(tmp_path)
+    assert entscheide_cli.main([
+        "--fall", str(f), "--diskrepanz", d.id, "--wert", "0.03",
+        "--entscheider", "Verantwortlicher Aktuar",
+        "--begruendung", "Meldung massgeblich",
+        "--zeichnungsordnung", str(ordnung),
+        "--freigabe-schluessel", str(schluessel["plv-aktuar"]),
+    ]) == 0
+    neu = lade(f)
+    [d2] = neu.diskrepanzen
+    assert d2.entscheidung is not None and not d2.entscheidung.vorlaeufig
+    assert d2.entscheidung.zeichnung["rolle"] == "plv-aktuar"
+    assert d2.entscheidung.zeichnung["ordnung_sha256"] == _hl.sha256(
+        ordnung.read_bytes()).hexdigest()
+
+
+def test_entscheide_weist_rollen_ohne_aq1_und_fremde_schluessel_ab(
+        fall_mit_fragmenten, tmp_path):
+    from rechner_pipeline.ontologie import entscheide as entscheide_cli
+
+    f = fall_mit_fragmenten
+    merge_cli(["--fall", str(f)])
+    abox = lade(f)
+    [d] = abox.diskrepanzen
+    ordnung, schluessel = _ordnung_und_schluessel(tmp_path)
+    basis = ["--fall", str(f), "--diskrepanz", d.id, "--wert", "0.03",
+             "--entscheider", "X", "--begruendung", "y",
+             "--zeichnungsordnung", str(ordnung)]
+    # plv-it zeichnet A-Q1 nicht — fachliche Entscheide sind Aktuars-Sache:
+    assert entscheide_cli.main(
+        basis + ["--freigabe-schluessel", str(schluessel["plv-it"])]) == 1
+    fremd = tmp_path / "fremd.key"
+    fremd.write_bytes(b"selbstgebauter-schluessel!!!!!!!" * 2)
+    assert entscheide_cli.main(
+        basis + ["--freigabe-schluessel", str(fremd)]) == 1
+    # Ohne Ordnung bleibt nur der Mensch — behauptete Rollen zaehlen nicht:
+    assert entscheide_cli.main([
+        "--fall", str(f), "--diskrepanz", d.id, "--wert", "0.03",
+        "--entscheider", "X", "--begruendung", "y",
+        "--rolle", "plv-aktuar"]) == 2
+    # Nichts davon hat entschieden:
+    [d3] = lade(f).diskrepanzen
+    assert d3.entscheidung is None or d3.entscheidung.vorlaeufig

@@ -12,7 +12,7 @@ Knoten: klv
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -69,6 +69,12 @@ class Entscheidung(BaseModel):
     #: (manche entscheidet das Aktuariat aus dem Tarifwerk). Wo es eine
     #: gibt, gehoert sie hierher und nicht nur in den Begruendungstext.
     beleg: Optional[Beleg] = None
+    #: Rollenbindung der Entscheidung (Vier-Rollen-Modell, 2026-09-01):
+    #: ``{"rolle": ..., "ordnung_sha256": ...}`` — die Rolle wurde aus
+    #: dem Schluessel-Fingerabdruck der Zeichnungsordnung BESTIMMT,
+    #: nicht behauptet. None beim Alt-Weg (--rolle mensch ohne
+    #: Ordnung); dasselbe Muster wie die zeichnung im P9-Snapshot.
+    zeichnung: Optional[Dict[str, str]] = None
 
 
 class Diskrepanz(BaseModel):

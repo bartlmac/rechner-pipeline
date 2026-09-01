@@ -49,7 +49,11 @@ PAKET = "rechner_pipeline"
 SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     "kern": {"kern"},                                # rein: das Fundament
     "kommutationskern": {"kommutationskern", "kern"},  # Zweitkern liest Tafeln
-    "ontologie": {"ontologie", "kern"},              # kern: nur lesende
+    # models seit 2026-09-01: der Zeichnungsordnungs-Vertrag
+    # (models.zeichnung) wird von gates UND ontologie.entscheide
+    # gelesen (Vier-Rollen-Modell) — paketuebergreifende Vertraege
+    # sind genau die models-Zustaendigkeit.
+    "ontologie": {"ontologie", "kern", "models"},    # kern: nur lesende
     #                                                  Registry-Introspektion
     #                                                  (erlaubte_wurzeln)
     "models": {"models", "kern", "gates"},           # gates: Altlast

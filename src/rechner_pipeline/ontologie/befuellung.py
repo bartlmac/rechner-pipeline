@@ -338,6 +338,7 @@ def loese_diskrepanz_auf(
     entschieden_am: str,
     vorlaeufig: bool = False,
     beleg: Optional["Beleg"] = None,
+    zeichnung: Optional[Dict[str, str]] = None,
 ) -> ABox:
     """Menschliche Aufloesung anwenden: Diskrepanz + Aussage nachziehen.
 
@@ -406,6 +407,7 @@ def loese_diskrepanz_auf(
             entschieden_am=entschieden_am,
             vorlaeufig=vorlaeufig,
             beleg=beleg,
+            zeichnung=zeichnung,
         ),
     })
     for parameter, feld in ziele:

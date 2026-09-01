@@ -99,7 +99,13 @@ from rechner_pipeline.models.schemas import (
 )
 
 GATE_VERSION = P9_GATE_VERSION
-GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1")
+# Umzug 2026-09-01: der Rollen-/Gate-Vertrag lebt in models.zeichnung
+# (paketuebergreifend — auch ontologie.entscheide liest ihn seither).
+from rechner_pipeline.models.zeichnung import (  # noqa: E402
+    GUELTIGE_GATES,
+    lade_zeichnungsordnung as _models_lade_zeichnungsordnung,
+    zeichnungsrolle as _models_zeichnungsrolle,
+)
 #: Die drei aktuariellen Abnahmen desselben migrierten Bestands. Sie
 #: laufen ueber DENSELBEN Vertrag — je Abnahme ein Testergebnis, ein
 #: Bericht und ein Ledger des ``aktuartest``-Gates — und unterscheiden
@@ -235,92 +241,22 @@ ZEICHNUNG_GATES = GUELTIGE_GATES
 def _lade_zeichnungsordnung(
     raw: object, fall: Path
 ) -> Tuple[Optional[dict], Optional[str], List[str]]:
-    """Zeichnungsordnung laden: welche ROLLE darf welches GATE zeichnen.
+    """Zeichnungsordnung laden — delegiert an models.zeichnung.
 
-    Die Ordnung bindet Rollen an Schluessel-Fingerabdruecke und Gates an
-    Rollen. Sie gehoert wie die Schluessel selbst in die
-    Autoritaetsumgebung des Menschen, AUSSERHALB des frei editierbaren
-    Falls -- eine Ordnung, die der Fall selbst umschreiben kann, ordnet
-    nichts. Zwei Rollen mit demselben Fingerabdruck sind ein Fehler:
-    Die Trennung der Operatoren waere sonst nur behauptet.
-
-    Ohne Angabe (None) gilt das bisherige Verhalten -- jeder uebergebene
-    Schluessel zeichnet jedes Gate. Die Regie eines Falls entscheidet,
-    ob sie die Ordnung verlangt.
+    Der Vertrag (Rollen an Fingerabdruecke, Gates an Rollen, Ordnung
+    ausserhalb des Falls, keine geteilten Schluessel) ist
+    paketuebergreifend und lebt seit dem Vier-Rollen-Modell in
+    ``models.zeichnung`` — ontologie.entscheide liest ihn ebenfalls.
+    Der Alias hier bleibt, weil Gates und Tests ihn kennen.
     """
-    if raw is None:
-        return None, None, []
-    if not isinstance(raw, str):
-        return None, None, ["--zeichnungsordnung muss ein Pfad sein"]
-    angegeben = Path(raw)
-    absolut = angegeben if angegeben.is_absolute() else Path.cwd() / angegeben
-    fall_resolved = fall.resolve()
-    try:
-        resolved = absolut.resolve(strict=True)
-    except OSError as exc:
-        return None, None, [f"Zeichnungsordnung nicht lesbar ({raw!r}): {exc}"]
-    if _ist_unter(absolut.absolute(), fall_resolved) or _ist_unter(
-        resolved, fall_resolved
-    ):
-        return None, None, [
-            f"Zeichnungsordnung {raw!r} liegt innerhalb des Falls; die "
-            "Rollenbindung muss extern verwahrt werden"
-        ]
-    try:
-        daten = json.loads(resolved.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        return None, None, [f"Zeichnungsordnung nicht als JSON lesbar: {exc}"]
-    fehler: List[str] = []
-    if not isinstance(daten, dict) or daten.get("schema_version") != 1:
-        fehler.append("Zeichnungsordnung: schema_version 1 erwartet")
-        return None, None, fehler
-    rollen = daten.get("rollen")
-    if not isinstance(rollen, dict) or not rollen:
-        return None, None, ["Zeichnungsordnung: 'rollen' fehlt oder leer"]
-    gesehen: Dict[str, str] = {}
-    for name, eintrag in rollen.items():
-        if not isinstance(eintrag, dict):
-            fehler.append(f"Zeichnungsordnung: Rolle {name!r} ist kein Objekt")
-            continue
-        fp = eintrag.get("schluessel_sha256")
-        if not (isinstance(fp, str) and len(fp) == 64
-                and all(c in "0123456789abcdef" for c in fp)):
-            fehler.append(
-                f"Zeichnungsordnung: Rolle {name!r} ohne gueltigen "
-                "schluessel_sha256 (64 Hexzeichen)"
-            )
-            continue
-        if fp in gesehen:
-            fehler.append(
-                f"Zeichnungsordnung: Rollen {gesehen[fp]!r} und {name!r} "
-                "teilen denselben Schluessel -- die Trennung der Operatoren "
-                "waere nur behauptet"
-            )
-        gesehen[fp] = name
-        gates = eintrag.get("gates")
-        if not isinstance(gates, list) or not all(
-            isinstance(g, str) and (g == "*" or g in ZEICHNUNG_GATES)
-            for g in gates
-        ):
-            fehler.append(
-                f"Zeichnungsordnung: Rolle {name!r} mit ungueltiger "
-                f"gates-Liste (erlaubt: {list(ZEICHNUNG_GATES)} oder '*')"
-            )
-    if fehler:
-        return None, None, fehler
-    sha = hashlib.sha256(resolved.read_bytes()).hexdigest()
-    return daten, sha, []
+    return _models_lade_zeichnungsordnung(raw, fall)
 
 
 def _zeichnungsrolle(
     ordnung: dict, schluessel_sha256: str
 ) -> Optional[str]:
-    """Die Rolle, der dieser Fingerabdruck gehoert (None = keiner)."""
-    for name, eintrag in ordnung["rollen"].items():
-        if eintrag.get("schluessel_sha256") == schluessel_sha256:
-            return name
-    return None
-
+    """Die Rolle, der dieser Fingerabdruck gehoert (models.zeichnung)."""
+    return _models_zeichnungsrolle(ordnung, schluessel_sha256)
 
 def _zeichnungsfehler(
     ordnung: Optional[dict], gate: str, schluessel_sha256: str
