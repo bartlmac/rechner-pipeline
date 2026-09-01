@@ -83,7 +83,7 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    Commits, volle Suite auf dem gemergten Stand 969 gruen.
    Kontrolliert: 7f00742 und 76d4bd5 beide in main, fallbericht haengt
    unveraendert an seiner Basis.
-3. [ ] Nacharbeits-Commits nach fallbericht holen: merge
+3. [x] Nacharbeits-Commits nach fallbericht holen: merge
    feat/bestandsfuehrung (oder main) -> fallbericht (Owner:
    merge-session + dev-session gemeinsam). ERWARTETE KONFLIKTE:
    FUENF Dateien, je ein Block (Ausnahme Landkarte: zwei). Am
@@ -118,6 +118,24 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    - README.md — beide Seiten redigieren; Textmerge von Hand.
    Pruefpunkt: volle Suite auf fallbericht gruen; code_karte
    befundfrei; landkarte-Regression gruen.
+   ERLEDIGT 2026-09-01, merge-session (Hauptbaum von der dev-session
+   stillgehalten). Merge-Commit ef2cb1b, Eltern 3f33bfd + 33e9dec.
+   Alle fuenf vorhergesagten Konflikte traten auf und wurden nach den
+   hinterlegten Regeln aufgeloest; Suite 1421 passed (1408 auf dem
+   Zweig + 13 aus der Nacharbeit), code_karte befunde [].
+   Drei Dinge, die im Konfliktbild nicht standen und beim Aufloesen
+   anfielen:
+   - cli_abschluss.py kollidierte NICHT, importierte aber den alten
+     Funktionsnamen. Beim Ziehen auf pruefe_pb1_eingaenge musste er mit,
+     sonst waere es erst in der Suite aufgefallen.
+   - Die beiden Fassungen der Engine wurden gegeneinander geprueft:
+     sachlich identisch, Unterschiede ausschliesslich in den
+     Umbenennungen. Der Umzug ist damit nachweislich verlustfrei.
+   - Der CHANGELOG haette die Reviewrunde T14 zweimal beschrieben
+     (einmal hier, einmal aus main mitgebracht). Der mitgebrachte
+     Abschnitt steht jetzt auf T16 und verweist nach oben; die doppelte
+     gamma1-Aussage ist entfernt, die Versionsbegruendung blieb, weil
+     sie oben fehlte.
 4. [ ] quellsystem -> fallbericht mergen (Owner: merge-session).
    Konfliktfrei geprobt (2026-09-01; rein additiv: quellsystem/,
    lieferungen/baldrian-2/, 5 Testdateien, eine .gitignore-Zeile).
