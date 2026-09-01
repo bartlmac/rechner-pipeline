@@ -144,9 +144,53 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
 7. [ ] vorzeige-url -> fallbericht (Owner: merge-session, mit der
    vorzeige-Session abstimmen; test_baldrian_e2e-Kopplung dort
    verifizieren). Pruefpunkt: Suite gruen, Vorzeigeseite rendert.
-8. [ ] fallbericht -> main als PR (Owner: Maintainer; erst nach 2
-   und 6). Pruefpunkt: PR enthaelt keine bestandsfuehrung-Commits mehr
-   als eigene Aenderung (schon in main).
+8. [ ] fallbericht -> main als DREI gestapelte PRs (Owner: Maintainer;
+   erst nach 2 und 6). Entscheid des Maintainers 2026-09-01: nicht ein
+   PR, sondern drei chronologische Schnitte entlang der bestehenden
+   Kette -- rein additiv, keine History wird umgeschrieben. Pruefpunkt
+   je PR: kein bestandsfuehrung-Commit als eigene Aenderung (schon in
+   main), Suite gruen.
+   Ein thematisch sauberer Schnitt ist NICHT zu haben: die Themen liegen
+   chronologisch verschraenkt (Korrekturterm 27.08., Rumpfjahr-
+   Konvention 31.08., beides Kern). Sie zu trennen hiesse cherry-picken,
+   und das wuerde fallbericht von seiner Basis abreissen.
+   Schnittpunkte, alle am 2026-09-01 auf gruen geprueft (getrennte
+   Worktrees, parallel, ohne die G-2-Kollision paralleler Laeufe im
+   selben Baum):
+   - PR A bis 7e6184a "aktuartest-durchfuehren auf die drei Abnahmen":
+     aktuarieller Test in drei Abnahmen, Gate-Namen (ADR-010/012),
+     Doku-Umbau. 31 Commits, 158 Dateien, +8.6k. Suite 1021.
+   - PR B bis 1c43737 "die vier Produzenten-Kommandos": Korrekturschicht,
+     Zahlungspfade, Herabsetzung, die vier Kommandos. 40 Commits,
+     81 Dateien, +17.9k. Suite 1212.
+   - PR C Rest bis fallbericht: Migrationsfall Baldrian (Uebernahme,
+     Bestandsdarstellung, Werkzeuge) plus quellsystem, vorzeige-url und
+     Lauf 2. 59+ Commits, 101 Dateien, +13.9k. Suite 1408 am Stand
+     34336c4 (noch ohne die T16-Fixes aus Schritt 3).
+   Begruendung fuer den Split: 150 Commits sind fuer einen Menschen kein
+   Review. Die zwei externen Runden haben ihren Wert an einem
+   9-Commit-PR bewiesen (sechzehn echte Befunde, zwei materiell). PR B
+   ist aktuarielle Mathematik -- genau das, was der Verteiler beurteilen
+   kann.
+   VERWORFEN wurde, die PRs vor Lauf 2 zu ziehen. Gruende: dieser Plan
+   erklaert Lauf 2 selbst zum Integrationstest nach Schritt 4, und
+   Lauf 2 belastet nicht nur PR C, sondern ueber Stufe 2 und 3 auch die
+   Gates aus A und die Kernmathematik aus B; "gemergt, dann repariert"
+   ist genau das Muster, das die Reviewrunden T14/T16 erzeugt hat; und
+   ein Review, das waehrend seiner Laufzeit unter sich veraendert wird,
+   verbrennt geliehene Reviewer-Zeit.
+   VORBEHALT: Korrekturen aus Lauf 2 landen am Kettenende, also in PR C
+   -- auch wenn sie Code aus A oder B betreffen. Chronologische Schnitte
+   koennen das nicht umsortieren. Faellt in Lauf 2 viel in A/B-Gebiet
+   an, ist der Schnitt danach neu zu bewerten, statt ihn jetzt
+   festzuzurren. Die PR-Branches werden deshalb erst nach Lauf 2
+   angelegt.
 9. [ ] Aufraeumen: Branches lauf/baldrian-uebernahme,
-   feat/migrationszugang loeschen; feat/test-controlling-trennung
-   entscheiden (1 Doku-Commit: mergen oder verwerfen).
+   feat/migrationszugang loeschen.
+   feat/test-controlling-trennung: VERWERFEN, geprueft 2026-09-01. Der
+   Branch traegt dieselben fuenf Dateien wie der aelteste
+   fallbericht-Commit, aber in aelterer Fassung -- ADR-010 steht dort
+   auf "Entwurf, Umsetzung offen" statt "angenommen und umgesetzt",
+   qa/stichprobe.py ist 91 Zeilen und tests/test_stichprobe.py
+   75 Zeilen aermer. fallbericht ist strikt weiter; es geht nichts
+   verloren.
