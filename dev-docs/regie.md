@@ -10,15 +10,24 @@ die **Spielleitung der Vorfuehrung**. Sie legt fest, WAS vorgefuehrt
 wird und unter welchen Bedingungen — sie ist Teil des Gesamtbilds, aber
 wie die Simulation NICHT Teil des Systems. Heute gehoeren dazu:
 
-* **Spielleiter-Bereiche** `docs-local/` und `simulation/` (gitignored):
-  die Aufloesungen der Showcase-Faelle — welche Defekte eine Lieferung
-  absichtlich traegt, wie die Beispieldaten entstehen. Operative
-  Migrations-Sessions lesen sie nicht; die Vorzeigeseite bricht ab,
-  wenn etwas davon in die Veroeffentlichung geriete.
-* **Rollenbesetzung je Fall**: `quelle-experte` (bedient die
-  Lieferungen, zeichnet keine Gates), `plv-va` (zeichnet A-Q1 und
-  A-M1..M4, eigener menschlicher Schluessel), `mensch` (Eskalation).
-  Technisch getragen von der Zeichnungsordnung
+* **Spielleiter-Bereiche** `docs-local/`, `simulation/` und `regie/`
+  (alle gitignored): die Aufloesungen der Showcase-Faelle und die
+  Spielleitung der Laeufe. `simulation/` erzeugt die Artefakte der
+  Quelle (samt Manipulations-Doku), `regie/` traegt die
+  LAUF-Spielleitung — Drehbuecher und die Auftraege der
+  Operator-Sessions (uebergeben wird nur ihr INHALT als Start-Prompt;
+  die Sessions lesen den Bereich nie). Operative Migrations-Sessions
+  lesen keinen der drei Bereiche; die Vorzeigeseite bricht ab, wenn
+  etwas davon in die Veroeffentlichung geriete.
+* **Rollenbesetzung je Fall** (Modell Lauf 2, 2026-09-01):
+  `programmleiter` (Orchestrator der PLV, fuehrt den Fall E2E; in
+  Personalunion PLV-IT mit eigenem Schluessel fuer A-K1 und die
+  Katalog-Erweiterungen), `plv-aktuar` (unabhaengige zeichnende
+  Fachinstanz: A-Q1, A-M1..M4, eigener Schluessel — wer den Prozess
+  faehrt, nimmt ihn nicht selbst fachlich ab), `quelle-experte`
+  (Baldrian-Aktuar: Lieferungen und Auskuenfte, bewusst knapp
+  gehalten, kein Schluessel), `mensch` (Eskalation nach
+  Abbruchkriterien). Technisch getragen von der Zeichnungsordnung
   (`gate_entscheid --zeichnungsordnung`).
 * **Abbruchkriterien**, nach denen der Mensch einsteigt: klarer
   Systemfehler (durch Agenten/Operatoren nicht heilbar),

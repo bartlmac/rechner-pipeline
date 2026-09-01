@@ -18,6 +18,7 @@ __pycache__/
 # Artefakt-Simulationen der Showcase-Faelle (Regie-Bereich, ausserhalb
 # des Systems)
 /simulation
+/regie/
 
 # Lokale Overrides und private Notizen (.claude/skills/ bleibt getrackt)
 .claude/settings.local.json
