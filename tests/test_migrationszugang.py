@@ -1035,3 +1035,18 @@ class TestSerienKandidatenBestimmung:
             erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=0.0,
             kandidaten=self.KANDIDATEN)
         assert via == direkt
+
+
+def test_extern_gerechneter_prospektivwert_bestimmt_das_residuum():
+    """Ausweitung Nr. 18: Zustands-Welten rechnet der Aufrufer — das
+    Residuum ist dann exakt dk_ist minus dem extern uebergebenen
+    Prospektivwert, nicht die Stamm-Welt-Differenz."""
+    ta = 12 * 10
+    extern = 12345.67
+    e, = uebernehmen([
+        Uebernahme(police_id=1, model_point=MP, monate_ta=ta,
+                   dk_ist=extern + 500.0, dk_prosp_extern=extern)
+    ])
+    assert e.dk_prosp == pytest.approx(extern)
+    assert e.residuum == pytest.approx(500.0)
+    assert e.parameter is not None

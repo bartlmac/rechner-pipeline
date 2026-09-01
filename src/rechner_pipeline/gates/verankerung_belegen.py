@@ -40,7 +40,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline.bestand.migrationszugang import (
     FORMEN,
@@ -83,6 +83,55 @@ def _zelle(spez, auspraegungen: Dict[str, str]):
     return treffer[0]
 
 
+def _zustands_dk_prosp(
+    mp_kwargs: Dict[str, Any],
+    zustand: Dict[str, Any],
+    monate_ta: int,
+    *,
+    scheiben_mit_gamma1: bool,
+) -> Optional[float]:
+    """Prospektiver drx-Wert am t_a auf der ZUSTANDS-Welt (None = Stamm).
+
+    Dieselben Welten wie in den Pruefstrecken: Erhoehungsscheiben,
+    beitragsfreie Uebernahme, geteilter Vertrag. Ohne Anfangszustand
+    rechnet ``uebernehmen`` selbst (identische drx-Konvention).
+    """
+    scheiben = tuple(zustand.get("scheiben", ()))
+    pex = zustand.get("beitragsfrei_seit_jahr")
+    reduktion = zustand.get("reduktion")
+    if not scheiben and pex is None and reduktion is None:
+        return None
+    from rechner_pipeline.kern import ModelPoint, Rechenkern
+    from rechner_pipeline.kern.rechenkern import (
+        erhoehungs_scheibe,
+        vertrags_monatsreserve,
+    )
+
+    grund_mp = ModelPoint(**mp_kwargs)
+    kern = Rechenkern(grund_mp)
+    if reduktion is not None:
+        # Nur die PLV-Teilungsverfahren liefern diesen Zustand; unter
+        # der Teilkuendigungs-Semantik fuehrt der Zustandsbau die
+        # Police zustandslos (Ausweitung 16/17).
+        from rechner_pipeline.kern.beitragsreduktion import (
+            ReduzierterVertrag,
+        )
+
+        rv = ReduzierterVertrag.nach(
+            kern, int(reduktion[0]), float(reduktion[1]))
+        return rv.monatsreserve(monate_ta).drx_bpfl
+    if pex is not None:
+        # Die beitragsfreie Reserve kennt im Kern nur einen Begriff.
+        return kern.monatsreserve_beitragsfrei(int(pex), monate_ta)
+    kerne = [
+        (int(j), Rechenkern(erhoehungs_scheibe(
+            grund_mp, int(j), float(s),
+            gamma1_uebernehmen=scheiben_mit_gamma1)))
+        for j, s in scheiben
+    ]
+    return vertrags_monatsreserve(kern, kerne, monate_ta).drx_bpfl
+
+
 def baue_schichtbeleg(
     verankerung,
     bestand,
@@ -91,6 +140,8 @@ def baue_schichtbeleg(
     *,
     formfunktion: str,
     fenster: Optional[int] = None,
+    anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
+    scheiben_mit_gamma1: bool = False,
 ) -> Dict[str, Any]:
     """Schichtparameter je Police — der rechnende Kern des Producers.
 
@@ -130,13 +181,25 @@ def baue_schichtbeleg(
                 "nicht bestimmbar")
         generation = dict(_zelle(
             spez, auspraegungen.get(police, {})).model_point)
+        mp = model_point_kwargs(stamm, generation)
+        anfangszustand = (anfangszustaende or {}).get(police, {})
+        if "sum_insured" in anfangszustand:
+            # Die Bewertungs-Welt der Pruefstrecke: Ursprungs- bzw.
+            # Grundsumme statt der aktuellen Gesamtsumme des Stamms.
+            mp["sum_insured"] = float(anfangszustand["sum_insured"])
         vertraege.append(Uebernahme(
             police_id=int(police),
-            model_point=model_point_kwargs(stamm, generation),
+            model_point=mp,
             monate_ta=int(zeile["monate_ta"]),
             dk_ist=float(zeile["dk_ta"]),
             zustand=zustand,
             verweildauer=int(zeile["verweildauer_ta"]),
+            # Zustands-Vertraege verankern auf ihrer ZUSTANDS-Welt —
+            # sonst traegt die Schicht die Weltendifferenz als
+            # Phantom-Residuum (zweiter Baldrian-Lauf, rho bis 0,04).
+            dk_prosp_extern=_zustands_dk_prosp(
+                mp, anfangszustand, int(zeile["monate_ta"]),
+                scheiben_mit_gamma1=scheiben_mit_gamma1),
         ))
 
     ergebnisse = uebernehmen(
@@ -182,6 +245,39 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "dokumentiert")
     p.add_argument("--fenster", type=int, default=None,
                    help="Amortisationsfenster (nur konstantes_fenster)")
+    p.add_argument("--zeilen", default=None,
+                   help="transformierte Zeilen (fuer den Zustandsbau; "
+                        "Pflicht bei mehrzelliger Spez mit Vorgeschichte)")
+    p.add_argument("--vorgeschichte", default=None,
+                   help="REGISTRIERTE GeVo-Vorgeschichte. Mit ihr "
+                        "verankert der Producer jede Police auf ihrer "
+                        "ZUSTANDS-Welt (Scheiben, Beitragsfreistellung, "
+                        "Herabsetzung) — ohne sie traegt die Schicht die "
+                        "Weltendifferenz als Phantom-Residuum.")
+    p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
+                   default=None, metavar="SATZ",
+                   help="belegter Dynamiksatz (siehe aktuartest_lauf)")
+    p.add_argument("--red-verfahren", dest="red_verfahren",
+                   default=None,
+                   help="Verfahren der Beitragsherabsetzung (siehe "
+                        "aktuartest_lauf); Vorgabe: Zielverfahren")
+    p.add_argument("--red-anteil", dest="red_anteile", action="append",
+                   default=[], metavar="POLNR=ANTEIL",
+                   help="dokumentierte Anteils-Lesart je Police "
+                        "(wiederholbar)")
+    p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
+                   action="append", type=float, default=[],
+                   metavar="ANTEIL",
+                   help="belegter Tarif-Kandidat (wiederholbar, siehe "
+                        "aktuartest_lauf)")
+    p.add_argument("--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
+                   action="store_true",
+                   help="volle Beitragsformel der Scheiben (siehe "
+                        "aktuartest_lauf)")
+    p.add_argument("--anker-erwartungswerte", dest="anker_quelle",
+                   default=None, metavar="REGISTRIERTE_DATEI",
+                   help="registrierte Erwartungswerte am "
+                        "Verankerungszeitpunkt (siehe migrationssuite_lauf)")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/schichten/"
                         "verankerung_schichten.json)")
@@ -209,14 +305,80 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if merkmale_pfad.is_file() else None)
 
     spez = lade_spez(fall, args.generation)
+    bestand = read_portfolio(pfade["bestand"])
+
+    anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None
+    if args.vorgeschichte is not None:
+        # Dieselbe Zustandsbau-Maschinerie wie in den Pruefstrecken —
+        # die Verankerung MUSS auf derselben Welt stehen, auf der
+        # spaeter bewertet wird (spaete Imports: gates-Geschwister).
+        import csv
+
+        from rechner_pipeline import fall as fall_mod
+        from rechner_pipeline.gates.migrationssuite_lauf import (
+            VORGABE,
+            anfangszustaende_je_police,
+            auspraegungen_je_police,
+        )
+        from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
+
+        if args.zeilen is not None:
+            zeilen = json.loads(
+                Path(args.zeilen).read_text(encoding="utf-8"))
+            auspraegungen = auspraegungen_je_police(spez, zeilen)
+        elif len(spez.zellen) > 1:
+            print("verankerung_belegen: mehrzellige Spez mit "
+                  "Vorgeschichte verlangt --zeilen", file=sys.stderr)
+            return 2
+        else:
+            zeilen = []
+            auspraegungen = {
+                str(r["police_id"]): {} for _, r in bestand.iterrows()}
+        with fall_mod.eingang_datei(fall, args.vorgeschichte).open(
+                encoding="utf-8") as datei:
+            vorgeschichte = list(csv.DictReader(datei, delimiter=";"))
+        red_anteile: Dict[str, float] = {}
+        for eintrag in args.red_anteile:
+            police, _, wert = eintrag.partition("=")
+            if not police or not wert:
+                print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL",
+                      file=sys.stderr)
+                return 2
+            red_anteile[police.strip()] = float(wert)
+        anker: Dict[str, Tuple[int, float]] = {}
+        if args.anker_quelle is not None:
+            quelle = json.loads(fall_mod.eingang_datei(
+                fall, args.anker_quelle).read_text(encoding="utf-8"))
+            for v in quelle.get("vertraege", []):
+                erster = next(
+                    (pkt for pkt in v.get("punkte", [])
+                     if pkt.get("anlass") == "uebernahme"
+                     and "kVx_MRV" in (pkt.get("erwartet") or {})), None)
+                if erster:
+                    anker[str(v["police_id"])] = (
+                        int(erster["monate"]),
+                        float(erster["erwartet"]["kVx_MRV"]))
+        anfangszustaende, warnungen = anfangszustaende_je_police(
+            spez, zeilen, vorgeschichte, bestand, spalten=dict(VORGABE),
+            red_verfahren=args.red_verfahren or PROSPEKTIV,
+            red_anteile=red_anteile, auspraegungen=auspraegungen,
+            erhoehungssatz=args.erhoehungssatz, anker=anker,
+            red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
+            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
+        for w in warnungen:
+            print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
+                  file=sys.stderr)
+
     try:
         beleg = baue_schichtbeleg(
             pd.read_parquet(pfade["verankerung"]),
-            read_portfolio(pfade["bestand"]),
+            bestand,
             merkmale,
             spez,
             formfunktion=args.formfunktion,
             fenster=args.fenster,
+            anfangszustaende=anfangszustaende,
+            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
         )
     except MigrationszugangFehler as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
@@ -239,6 +401,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             "generation": args.generation,
             "formfunktion": args.formfunktion,
             "fenster": args.fenster,
+            "vorgeschichte": args.vorgeschichte,
+            "erhoehungssatz": args.erhoehungssatz,
+            "red_verfahren": args.red_verfahren,
+            "red_anteile": sorted(args.red_anteile),
+            "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
+            "scheiben_mit_gamma1": args.scheiben_mit_gamma1,
+            "anker_erwartungswerte": args.anker_quelle,
         },
     }
 

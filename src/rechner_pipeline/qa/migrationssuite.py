@@ -206,6 +206,16 @@ class VertragsPruefung:
     schicht_conv: Optional[Any] = None
     monate_ta: Optional[int] = None
     monate_t0: Optional[int] = None
+    #: Buchungszeitpunkt der gelieferten DECKKAP-Spalte — eine
+    #: LIEFERUNGS-EIGENSCHAFT (zweiter Baldrian-Lauf, registrierte
+    #: Auskunft "DECKKAP Jahrestag"): Das Kommutations-Quellsystem
+    #: fuehrt das Deckungskapital zum letzten VERTRAGSJAHRESTAG vor dem
+    #: Abzugsstichtag, nicht kalendertaeglich interpoliert. Auf dem
+    #: falschen Zeitpunkt misst der Vergleich bis zu elf Monate
+    #: Reservezuwachs als Phantom-Residuum (im Lauf: vierstellig, alle
+    #: Vertraege mit unterjaehrigem Beginn). Kommt vom Lauf-Flag, wird
+    #: nie geraten.
+    dk_am_jahrestag: bool = False
 
 
 def _schichtsumme(
@@ -447,6 +457,16 @@ def pruefe_vertrag(
                 grund_mp, erh_jahr, erh_summe,
                 gamma1_uebernehmen=v.scheiben_mit_gamma1))))
 
+    # Der dk-Vergleichszeitpunkt je Stichtag: kalendertaeglich (unsere
+    # Monatskonvention) oder der letzte Vertragsjahrestag davor
+    # (Quell-Konvention "DECKKAP Jahrestag").
+    def _dk_monat(stichtag_monate: int) -> int:
+        return (12 * (stichtag_monate // 12) if v.dk_am_jahrestag
+                else stichtag_monate)
+
+    dk_monat_1 = _dk_monat(v.monate_stichtag_1)
+    dk_monat_2 = _dk_monat(v.monate_stichtag_2)
+
     if (v.schicht is not None or v.schicht_conv is not None):
         if v.schicht is not None and v.monate_ta is None:
             raise ValueError(
@@ -467,18 +487,17 @@ def pruefe_vertrag(
             )
 
     if alt_rv is not None:
-        dk_1 = alt_rv.monatsreserve(v.monate_stichtag_1).vx_mrv
+        dk_1 = alt_rv.monatsreserve(dk_monat_1).vx_mrv
     elif pex_jahr is not None:
-        dk_1 = kern.monatsreserve_beitragsfrei(pex_jahr, v.monate_stichtag_1)
+        dk_1 = kern.monatsreserve_beitragsfrei(pex_jahr, dk_monat_1)
     elif scheiben:
-        dk_1 = vertrags_monatsreserve(
-            kern, scheiben, v.monate_stichtag_1).vx_mrv
+        dk_1 = vertrags_monatsreserve(kern, scheiben, dk_monat_1).vx_mrv
     else:
-        dk_1 = kern.monatsreserve(v.monate_stichtag_1).vx_mrv
+        dk_1 = kern.monatsreserve(dk_monat_1).vx_mrv
     # Die Korrekturschicht traegt das Verankerungs-Residuum — der
     # gefuehrte Stichtagswert ist Basis PLUS Schicht (Nachzug des
     # zweiten Laufs; ohne sie zeigte jeder Vertrag sein rohes R).
-    dk_1 += _schichtsumme(v, grund_mp, v.monate_stichtag_1)
+    dk_1 += _schichtsumme(v, grund_mp, dk_monat_1)
     pruefungen.append(_vergleich("dk_stichtag_1", dk_1, v.dk_erwartet_1))
 
     if v.bjb_erwartet_1 is not None:
@@ -751,26 +770,24 @@ def pruefe_vertrag(
     else:
         if alt_rv is not None:
             if pex_jahr is not None:
-                dk2 = alt_rv.reserve_beitragsfrei(
-                    pex_jahr, v.monate_stichtag_2)
+                dk2 = alt_rv.reserve_beitragsfrei(pex_jahr, dk_monat_2)
             else:
                 # Geteilter Vertrag plus etwaige Scheiben aus
                 # Prüfzeitraums-ERH — jede an ihrem versetzten Stichtag.
-                dk2 = alt_rv.monatsreserve(v.monate_stichtag_2).vx_mrv + sum(
-                    k.monatsreserve(
-                        v.monate_stichtag_2 - 12 * erh_jahr).vx_mrv
+                dk2 = alt_rv.monatsreserve(dk_monat_2).vx_mrv + sum(
+                    k.monatsreserve(dk_monat_2 - 12 * erh_jahr).vx_mrv
                     for erh_jahr, k in scheiben)
         elif pex_jahr is not None:
             dk2 = kern.monatsreserve_beitragsfrei(
-                pex_jahr, v.monate_stichtag_2) + sum(
+                pex_jahr, dk_monat_2) + sum(
                 k.monatsreserve_beitragsfrei(
                     pex_jahr - erh_jahr,
-                    v.monate_stichtag_2 - 12 * erh_jahr)
+                    dk_monat_2 - 12 * erh_jahr)
                 for erh_jahr, k in scheiben)
         else:
             dk2 = vertrags_monatsreserve(
-                kern, scheiben, v.monate_stichtag_2).vx_mrv
-        dk2 += _schichtsumme(v, grund_mp, v.monate_stichtag_2)
+                kern, scheiben, dk_monat_2).vx_mrv
+        dk2 += _schichtsumme(v, grund_mp, dk_monat_2)
         pruefungen.append(_vergleich("dk_stichtag_2", dk2, v.dk_erwartet_2))
 
     return {

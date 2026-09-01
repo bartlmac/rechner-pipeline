@@ -486,6 +486,7 @@ def baue_auftraege(
     stoab_je_baustein: bool = False,
     schichten: Optional[Dict[str, Any]] = None,
     monate_ta_je_police: Optional[Dict[str, int]] = None,
+    dk_am_jahrestag: bool = False,
 ) -> List[VertragsPruefung]:
     """Je Vertrag genau einen Pruefauftrag."""
     s = spalten
@@ -557,6 +558,7 @@ def baue_auftraege(
             scheiben_mit_gamma1=scheiben_mit_gamma1,
             stoab_je_baustein=stoab_je_baustein,
             reduktion=zustand.get("reduktion"),
+            dk_am_jahrestag=dk_am_jahrestag,
             **_schicht_teile(
                 police, (schichten or {}).get(police),
                 (monate_ta_je_police or {}).get(police)),
@@ -628,6 +630,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Stornoabschlag-Grenzen je Baustein statt je Vertrag — "
              "Tarifwerks-Eigenschaft der Lieferung, siehe "
              "aktuartest_lauf.")
+    p.add_argument(
+        "--dk-stichtag", dest="dk_stichtag", default="kalendertag",
+        choices=("kalendertag", "jahrestag"),
+        help="Buchungszeitpunkt der gelieferten DECKKAP-Spalte — "
+             "Lieferungseigenschaft (registrierte Auskunft): die erste "
+             "Lieferung interpolierte kalendertaeglich, das "
+             "Kommutations-Quellsystem der zweiten fuehrt das "
+             "Deckungskapital zum letzten VERTRAGSJAHRESTAG vor dem "
+             "Abzugsstichtag. Auf dem falschen Zeitpunkt misst der "
+             "Vergleich bis zu elf Monate Reservezuwachs als "
+             "Phantom-Residuum.")
     p.add_argument(
         "--schicht", dest="schicht", default=None,
         metavar="SCHICHTBELEG",
@@ -756,6 +769,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         stoab_je_baustein=args.stoab_je_baustein,
         schichten=schichten,
         monate_ta_je_police=monate_ta_je_police,
+        dk_am_jahrestag=(args.dk_stichtag == "jahrestag"),
     )
 
     # Die Pruefmenge wird an der LIEFERUNG gemessen, nicht an sich

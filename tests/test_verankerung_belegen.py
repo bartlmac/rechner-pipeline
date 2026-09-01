@@ -182,3 +182,46 @@ def test_fremder_systemstand_und_fehlende_provenienz_fallen_hart(tmp_path):
     with pytest.raises(SystemExit, match="Provenienzblock"):
         _schichten(fall2, "abgeleitet/schichten/verankerung_schichten.json",
                    repo_root=REPO_ROOT)
+
+
+def test_zustands_vertraege_verankern_auf_ihrer_welt():
+    """Ausweitung Nr. 18 des zweiten Laufs: Ohne Anfangszustaende
+    verankerte der Producer die Stamm-Welt — bei Serien-Policen wurde
+    die Weltendifferenz (Einzelbaustein vs. Scheiben) zum
+    Phantom-Residuum (im Fall: rho bis 0,04). Mit Anfangszustand
+    rechnet dk_prosp auf der Scheiben-Welt (drx-Basis): Ein dk_ta
+    GENAU auf dieser Welt ergibt Residuum ~0."""
+    from rechner_pipeline.kern.rechenkern import (
+        erhoehungs_scheibe,
+        vertrags_monatsreserve,
+    )
+
+    grund, erh_jahr, summe = 90000.0, 4, 4500.0
+    grund_mp = dataclasses.replace(KLV_DEFAULT, sum_insured=grund)
+    kerne = [(erh_jahr, Rechenkern(erhoehungs_scheibe(
+        grund_mp, erh_jahr, summe)))]
+    dk_welt = vertrags_monatsreserve(
+        Rechenkern(grund_mp), kerne, 120).drx_bpfl
+    verankerung = pd.DataFrame([{
+        "police_id": 7000001, "monate_ta": 120,
+        "zustand_ta": "beitragspflichtig", "verweildauer_ta": 10,
+        "dk_ta": round(dk_welt, 2),
+    }])
+    zustand = {"7000001": {
+        "sum_insured": grund, "scheiben": ((erh_jahr, summe),)}}
+    beleg = baue_schichtbeleg(
+        verankerung, _bestand(7000001), None, _spez_einzellig(),
+        formfunktion="proportional_zur_basis",
+        anfangszustaende=zustand)
+    rho = beleg["schichten"]["7000001"]["hist"]["rho"]
+    assert abs(beleg["summary"]["residuum_max_abs"]) <= 0.01
+    assert abs(rho) < 1e-5
+
+    # Gegenprobe: OHNE Zustand entsteht genau das Phantom-Residuum
+    # (Stamm-Welt-drx minus Scheiben-Welt-drx).
+    phantom = baue_schichtbeleg(
+        verankerung, _bestand(7000001), None, _spez_einzellig(),
+        formfunktion="proportional_zur_basis")
+    stamm_drx = Rechenkern(KLV_DEFAULT).verlaufszeile(10).drx_bpfl
+    assert phantom["summary"]["residuum_max_abs"] == pytest.approx(
+        abs(round(dk_welt, 2) - stamm_drx), abs=0.02)

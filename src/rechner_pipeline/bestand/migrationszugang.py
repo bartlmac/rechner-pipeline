@@ -91,6 +91,16 @@ class Uebernahme:
     verweildauer: int = 0
     historientyp: str = "unbekannt"
     kohorte: str = "t_a"
+    #: Prospektiver Wert am t_a, EXTERN gerechnet — fuer Vertraege,
+    #: deren Welt mehr ist als der eine Modellpunkt (Anfangszustaende:
+    #: Erhoehungsscheiben, Beitragsfreistellung, Herabsetzung). Ohne
+    #: ihn rechnet ``uebernehmen`` die Stamm-Welt selbst — fuer
+    #: Zustands-Vertraege ergaebe das ein PHANTOM-Residuum aus der
+    #: Weltendifferenz statt des echten Rests (zweiter Baldrian-Lauf:
+    #: rho bis 0,04 bei Serien-Policen). Der Aufrufer rechnet auf
+    #: DERSELBEN Basis (drx_bpfl) und DERSELBEN Zustands-Welt, auf der
+    #: auch die Pruefstrecke bewertet.
+    dk_prosp_extern: Optional[float] = None
 
     def __post_init__(self) -> None:
         if self.monate_ta < 0:
@@ -239,7 +249,11 @@ def uebernehmen(
         # bewusst keine Liste mehr.
         basis = _basisverlauf(kern, jahr)
         rumpf = v.monate_ta % 12
-        if rumpf == 0:
+        if v.dk_prosp_extern is not None:
+            # Zustands-Welten (Scheiben, Beitragsfreistellung,
+            # Herabsetzung) rechnet der Aufrufer — siehe Feld-Docstring.
+            dk_prosp = float(v.dk_prosp_extern)
+        elif rumpf == 0:
             dk_prosp = kern.verlaufszeile(jahr).drx_bpfl
         else:
             # Prospektiver Wert AM unterjaehrigen t_a: lineare Mischung der

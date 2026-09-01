@@ -1244,3 +1244,35 @@ def test_schicht_ohne_monate_ta_faellt_hart() -> None:
     )
     with pytest.raises(ValueError, match="ohne monate_ta"):
         pruefe_vertrag(v)
+
+
+def test_dk_am_jahrestag_ist_lieferungseigenschaft() -> None:
+    """Ausweitung Nr. 18 (registrierte Auskunft "DECKKAP Jahrestag"):
+    Das Kommutations-Quellsystem fuehrt das Deckungskapital zum letzten
+    VERTRAGSJAHRESTAG vor dem Abzugsstichtag. S1/S2 liegen hier fuenf
+    Monate nach dem Jahrestag — auf dem falschen Zeitpunkt misst der
+    Vergleich fuenf Monate Reservezuwachs als Phantom-Residuum
+    (Zonen-Beleg: die Differenz ist wesentlich)."""
+    jt1, jt2 = 12 * (S1 // 12), 12 * (S2 // 12)
+    geliefert_1 = round(KERN.monatsreserve(jt1).vx_mrv, 2)
+    geliefert_2 = round(KERN.monatsreserve(jt2).vx_mrv, 2)
+    assert abs(KERN.monatsreserve(S1).vx_mrv - geliefert_1) > 100.0
+
+    jahrestag = VertragsPruefung(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=geliefert_1, dk_erwartet_2=geliefert_2,
+        dk_am_jahrestag=True,
+    )
+    assert pruefe_vertrag(jahrestag)["bestanden"]
+
+    kalendertag = VertragsPruefung(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=geliefert_1, dk_erwartet_2=geliefert_2,
+    )
+    urteil = pruefe_vertrag(kalendertag)
+    assert not urteil["bestanden"]
+    dk1 = next(p for p in urteil["pruefungen"]
+               if p["groesse"] == "dk_stichtag_1")
+    assert dk1["residuum"] > 100.0  # der Reservezuwachs seit Jahrestag

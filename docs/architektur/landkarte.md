@@ -42,8 +42,8 @@ flowchart TD
     bestand -- 15 --> models
     bestand -- 1 --> qa
     gates -- 7 --> bestand
-    gates -- 7 --> fall
-    gates -- 5 --> kern
+    gates -- 8 --> fall
+    gates -- 8 --> kern
     gates -- 10 --> models
     gates -- 12 --> ontologie
     gates -- 8 --> qa
@@ -83,7 +83,7 @@ flowchart TD
     bu -- 2 --> system_assurance
     klv -- 6 --> system_assurance
     klv -- 2 --> system_entscheid
-    klv -- 7 --> system_fall
+    klv -- 8 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
     system_assurance -- 1 --> system_fall
