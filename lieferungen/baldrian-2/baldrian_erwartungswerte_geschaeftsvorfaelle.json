@@ -1,0 +1,3049 @@
+{
+ "profil": {
+  "bemerkung": "Rueckkauf, Tod und Ablauf beenden den Vertrag und raeumen die gefuehrte Reserve; dDK ist die Wirkung des Vorfalls auf das Deckungskapital im Buch der Quelle, festgehalten am Buchungstag. Die Quelle rechnet Beitragsfreistellung und Herabsetzung MIT Stornoabzug (je Baustein beziehungsweise anteilig auf der Grundscheibe); rechnet das Zielsystem verlustfrei um, weicht dDK um genau diese Abzuege ab. Diese Grenze aufzuweiten, um den Befund verschwinden zu lassen, waere falsch — die Abweichung ist der Sachverhalt, den die Abnahme sehen soll. Sie gehoert in die Abnahmeentscheidung, belegt durch die Beschreibung des Quellverfahrens, nicht in eine stillere Toleranz. Die Dynamik traegt am Buchungstag noch keine Reserve — ihr Kriterium ist entsprechend eng.",
+  "grundtoleranz": {
+   "abs_tol": 0.01,
+   "max_abs_residuum": 0.05,
+   "p95_abs_residuum": 0.02,
+   "rel_tol": 1e-09
+  },
+  "kennung": "A-M3",
+  "kriterien": {
+   "ERH": {
+    "abs_tol": 0.001,
+    "max_abs_residuum": 0.005,
+    "p95_abs_residuum": 0.005,
+    "rel_tol": 1e-09
+   }
+  },
+  "titel": "Geschaeftsvorfalltest",
+  "weite": "alle Geschaeftsvorfaelle des Migrationsjahres"
+ },
+ "stichprobe": {
+  "grundgesamtheit": 166,
+  "parameter": {},
+  "police_ids": [
+   "7000002",
+   "7000004",
+   "7000009",
+   "7000013",
+   "7000020",
+   "7000022",
+   "7000023",
+   "7000027",
+   "7000029",
+   "7000030",
+   "7000033",
+   "7000035",
+   "7000036",
+   "7000037",
+   "7000042",
+   "7000044",
+   "7000048",
+   "7000049",
+   "7000052",
+   "7000068",
+   "7000073",
+   "7000081",
+   "7000084",
+   "7000096",
+   "7000098",
+   "7000099",
+   "7000100",
+   "7000105",
+   "7000111",
+   "7000112",
+   "7000121",
+   "7000122",
+   "7000124",
+   "7000140",
+   "7000143",
+   "7000144",
+   "7000145",
+   "7000151",
+   "7000156",
+   "7000165",
+   "7000166",
+   "7000188",
+   "7000189",
+   "7000194",
+   "7000195",
+   "7000198",
+   "7000206",
+   "7000207",
+   "7000212",
+   "7000220",
+   "7000224",
+   "7000228",
+   "7000240",
+   "7000244",
+   "7000248",
+   "7000266",
+   "7000277",
+   "7000278",
+   "7000281",
+   "7000287",
+   "7000297",
+   "7000302",
+   "7000310",
+   "7000328",
+   "7000346",
+   "7000347",
+   "7000351",
+   "7000375",
+   "7000376",
+   "7000389",
+   "7000399",
+   "7000407",
+   "7000415",
+   "7000417",
+   "7000427",
+   "7000430",
+   "7000444",
+   "7000452",
+   "7000457",
+   "7000465",
+   "7000484",
+   "7000494",
+   "7000497",
+   "7000498",
+   "7000503",
+   "7000505",
+   "7000509",
+   "7000512",
+   "7000524",
+   "7000532",
+   "7000543",
+   "7000544",
+   "7000550",
+   "7000554",
+   "7000558",
+   "7000559",
+   "7000561",
+   "7000569",
+   "7000570",
+   "7000578",
+   "7000598",
+   "7000600",
+   "7000602",
+   "7000606",
+   "7000615",
+   "7000618",
+   "7000626",
+   "7000637",
+   "7000649",
+   "7000656",
+   "7000657",
+   "7000661",
+   "7000663",
+   "7000675",
+   "7000687",
+   "7000693",
+   "7000695",
+   "7000696",
+   "7000708",
+   "7000712",
+   "7000720",
+   "7000725",
+   "7000734",
+   "7000738",
+   "7000745",
+   "7000753",
+   "7000763",
+   "7000767",
+   "7000769",
+   "7000770",
+   "7000783",
+   "7000784",
+   "7000786",
+   "7000791",
+   "7000797",
+   "7000802",
+   "7000807",
+   "7000808",
+   "7000821",
+   "7000823",
+   "7000824",
+   "7000826",
+   "7000838",
+   "7000839",
+   "7000840",
+   "7000845",
+   "7000850",
+   "7000853",
+   "7000864",
+   "7000881",
+   "7000884",
+   "7000888",
+   "7000899",
+   "7000911",
+   "7000917",
+   "7000925",
+   "7000930",
+   "7000934",
+   "7000952",
+   "7000955",
+   "7000964",
+   "7000965",
+   "7000970",
+   "7000971",
+   "7000991",
+   "7000996"
+  ],
+  "profil": "vollbestand",
+  "umfang": 166,
+  "vollerhebung": true
+ },
+ "test": "A-M3",
+ "vertraege": [
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 132,
+   "police_id": "7000002",
+   "punkte": [
+    {
+     "anlass": "ABL",
+     "erwartet": {
+      "dDK": -75000.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000004",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 132,
+   "police_id": "7000009",
+   "punkte": [
+    {
+     "anlass": "ABL",
+     "erwartet": {
+      "dDK": -46000.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000013",
+   "punkte": [
+    {
+     "anlass": "ABL",
+     "erwartet": {
+      "dDK": -105867.56
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000020",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000022",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000023",
+   "punkte": [
+    {
+     "anlass": "ABL",
+     "erwartet": {
+      "dDK": -72930.38
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000027",
+   "punkte": [
+    {
+     "anlass": "ABL",
+     "erwartet": {
+      "dDK": -125197.15
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 132,
+   "police_id": "7000029",
+   "punkte": [
+    {
+     "anlass": "ABL",
+     "erwartet": {
+      "dDK": -67000.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000030",
+   "punkte": [
+    {
+     "anlass": "ABL",
+     "erwartet": {
+      "dDK": -31907.04
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000033",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000035",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000036",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 132,
+   "police_id": "7000037",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 144
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000042",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 120,
+   "police_id": "7000044",
+   "punkte": [
+    {
+     "anlass": "PEX",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 120,
+   "police_id": "7000048",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -87117.71
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000049",
+   "punkte": [
+    {
+     "anlass": "RED",
+     "erwartet": {
+      "dDK": -8191.91
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132,
+     "parameter": {
+      "anteil": 0.75
+     }
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000052",
+   "punkte": [
+    {
+     "anlass": "RED",
+     "erwartet": {
+      "dDK": -32275.55
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132,
+     "parameter": {
+      "anteil": 0.5
+     }
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000068",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000073",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000081",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000084",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000096",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000098",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 120,
+   "police_id": "7000099",
+   "punkte": [
+    {
+     "anlass": "RED",
+     "erwartet": {
+      "dDK": -9470.51
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132,
+     "parameter": {
+      "anteil": 0.6
+     }
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000100",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000105",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000111",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000112",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000121",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000122",
+   "punkte": [
+    {
+     "anlass": "RED",
+     "erwartet": {
+      "dDK": -11141.05
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132,
+     "parameter": {
+      "anteil": 0.75
+     }
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000124",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000140",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000143",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -40885.01
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000144",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000145",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -41619.06
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000151",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000156",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000165",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000166",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000188",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000189",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000194",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000195",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000198",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -61378.86
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000206",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000207",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000212",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000220",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000224",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000228",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000240",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000244",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 120,
+   "police_id": "7000248",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000266",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 120,
+   "police_id": "7000277",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000278",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000281",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000287",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000297",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000302",
+   "punkte": [
+    {
+     "anlass": "RED",
+     "erwartet": {
+      "dDK": -4703.11
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132,
+     "parameter": {
+      "anteil": 0.6
+     }
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000310",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000328",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 120,
+   "police_id": "7000346",
+   "punkte": [
+    {
+     "anlass": "PEX",
+     "erwartet": {
+      "dDK": -0.01
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000347",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000351",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000375",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 120,
+   "police_id": "7000376",
+   "punkte": [
+    {
+     "anlass": "PEX",
+     "erwartet": {
+      "dDK": -0.01
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000389",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000399",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000407",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000415",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000417",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000427",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -41266.71
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000430",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -51716.65
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000444",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 120,
+   "police_id": "7000452",
+   "punkte": [
+    {
+     "anlass": "RED",
+     "erwartet": {
+      "dDK": -7224.03
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132,
+     "parameter": {
+      "anteil": 0.5
+     }
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000457",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 120,
+   "police_id": "7000465",
+   "punkte": [
+    {
+     "anlass": "PEX",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 120,
+   "police_id": "7000484",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000494",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 120,
+   "police_id": "7000497",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -27666.73
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000498",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000503",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000505",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000509",
+   "punkte": [
+    {
+     "anlass": "RED",
+     "erwartet": {
+      "dDK": -8917.17
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132,
+     "parameter": {
+      "anteil": 0.6
+     }
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 120,
+   "police_id": "7000512",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000524",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 120,
+   "police_id": "7000532",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 132
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 108,
+   "police_id": "7000543",
+   "punkte": [
+    {
+     "anlass": "RED",
+     "erwartet": {
+      "dDK": -11940.8
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120,
+     "parameter": {
+      "anteil": 0.5
+     }
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000544",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000550",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000554",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000558",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000559",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 108,
+   "police_id": "7000561",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 108,
+   "police_id": "7000569",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 108,
+   "police_id": "7000570",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -38171.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000578",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000598",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000600",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 108,
+   "police_id": "7000602",
+   "punkte": [
+    {
+     "anlass": "PEX",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000606",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000615",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000618",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -44606.43
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000626",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000637",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000649",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000656",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000657",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 108,
+   "police_id": "7000661",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -39983.45
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000663",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000675",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000687",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000693",
+   "punkte": [
+    {
+     "anlass": "TOD",
+     "erwartet": {
+      "dDK": -26674.4
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000695",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -39879.43
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000696",
+   "punkte": [
+    {
+     "anlass": "RED",
+     "erwartet": {
+      "dDK": -8093.39
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120,
+     "parameter": {
+      "anteil": 0.75
+     }
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000708",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000712",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000720",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000725",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 108,
+   "police_id": "7000734",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000738",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000745",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000753",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000763",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000767",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000769",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000770",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000783",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000784",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000786",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000791",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000797",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000802",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000807",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000808",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000821",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000823",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000824",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000826",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000838",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000839",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 108,
+   "police_id": "7000840",
+   "punkte": [
+    {
+     "anlass": "PEX",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000845",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000850",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000853",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000864",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -22758.17
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000881",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000884",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000888",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000899",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000911",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000917",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 108,
+   "police_id": "7000925",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -21202.81
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000930",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000934",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000952",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000955",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000964",
+   "punkte": [
+    {
+     "anlass": "TOD",
+     "erwartet": {
+      "dDK": -29921.11
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000965",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000970",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "ohne_vorgeschichte",
+   "monate_ta": 108,
+   "police_id": "7000971",
+   "punkte": [
+    {
+     "anlass": "STO",
+     "erwartet": {
+      "dDK": -54157.68
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "dynamik",
+   "monate_ta": 108,
+   "police_id": "7000991",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  },
+  {
+   "historientyp": "reduziert",
+   "monate_ta": 108,
+   "police_id": "7000996",
+   "punkte": [
+    {
+     "anlass": "ERH",
+     "erwartet": {
+      "dDK": 0.0
+     },
+     "groessen": [
+      "dDK"
+     ],
+     "monate": 120
+    }
+   ]
+  }
+ ]
+}
