@@ -195,7 +195,7 @@ startet keinen Gate-Lauf.
 | P-Q3 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
 | P-K1 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
 | P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (A-Q1, A-M1, A-M4, A-K1); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, A-M1 und A-M4 verlangen die zum Fall-Scope passenden Pflichtbelege je Gate, und A-M4 verlangt die geltende, signierte A-M1-Annahme auf demselben Stand und pinnt sie als Pflichtrolle `am1_snapshot` (aktuarielle vor finanzieller Abnahme, ADR-010) |
-| P-B1 | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand) und Bewegungs-Identitäten je Jahr, Track und Maß |
+| P-B1 (Version `2.0.0`) | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, endliche Beträge (`NaN` und `inf` sind Datenfehler), Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand), die Tarifwerk-Regel `gamma1 == 0` der Erhöhungsscheiben und Bewegungs-Identitäten je Jahr, Track und Maß. Die Version steht auf `2.0.0`, weil sich die normative Akzeptanzmenge geändert hat: vorher grüne Belege werden rot und umgekehrt |
 | A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für Gate A-M1; Transportsicherung wird getrennt ausgewiesen |
 | G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es P-B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |
 
@@ -294,7 +294,14 @@ Stammzustand und jüngstem Journalstand. Berichte rechnen jederzeit neu
 — **Abschlüsse nicht**: Ein festgeschriebener Stichtagsstand
 (`bestand/abschluss.py`, genau einer je Stichtag, mit Kern-Version je
 Zeile) wird nie überschrieben; die Kontrolle stellt die Neuberechnung
-dagegen und weist Abweichungen aus, statt sie still zu ersetzen:
+dagegen und weist Abweichungen aus, statt sie still zu ersetzen.
+„Genau einmal" ist dabei nicht nur eine Prüfung vor dem Schreiben,
+sondern der Publish selbst: existiert der Zielpfad, scheitert der Aufruf
+atomar. Und weil ein festgeschriebener Stand unumkehrbar ist, verlangt er
+das **ganze** Lauf-Bundle — Stamm, Historie, Ledger, Scheiben und Config,
+geprüft mit derselben Engine wie Gate P-B1, vor dem Schreiben wie vor dem
+Prüfen. Eine Teilmenge des Laufs ergäbe sonst einen festgeschriebenen
+Falschstand, den die eigene Kontrolle bestätigt:
 
 ```mermaid
 flowchart LR
@@ -328,7 +335,7 @@ Der Bestandsbericht rendert das als selbst-enthaltene HTML-Seite:
 ```bash
 python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml ...
 python -m rechner_pipeline.bestand.cli_report --portfolio <parquet> --out bericht.html ...
-python -m rechner_pipeline.bestand.cli_abschluss --config ... --lauf runs/bestand --stichtag 2026-01-01
+python -m rechner_pipeline.bestand.cli_abschluss --config ... --lauf runs/bestand --stichtag 2026-01-01 --bis 2026-01-01
 ```
 
 **Die Migrationsfälle** (`faelle/`, lokale Arbeitsbereiche, nicht

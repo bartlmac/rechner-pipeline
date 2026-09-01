@@ -300,3 +300,58 @@ nachzurechnen. Daraus:
   die Neuberechnung dagegen und weist Abweichungen aus. Gerechnet über
   dieselbe einzelvertragliche Strecke (`auswertung.einzelwerte_am`),
   die auch die Berichts-Aggregation trägt.
+
+### Geändert am 2026-08-28 bis 2026-09-01 (externe Review-Runde T16)
+
+Die Nachprüfung des Reparaturstandes der vorigen Runde (oben, 27.08.)
+fand neun weitere Befunde. Das durchgehende Muster: Die Reparaturen
+prüften jeweils den `None`-Fall, aber nicht den Fall „vorhanden, aber
+leer". Eine fehlende Scheibendatei blockierte, eine leere kam durch;
+dasselbe bei der Historie — beides am einzigen unumkehrbaren Stand des
+Systems, und beides gegenüber der eigenen Kontrolle unsichtbar.
+
+* **Warum `P-B1` auf `2.0.0` steht und nicht auf `1.5.0`** — weil sich
+  die normative Akzeptanzmenge geändert hat: Belege, die unter dem alten
+  Vertrag grün waren, werden unter dem neuen rot, und umgekehrt.
+  Nachgelagerte Prüfer lesen die Version dynamisch statt sie zu
+  wiederholen. Dabei fiel auf, dass im Repository überhaupt nicht
+  geregelt ist, wann eine Gate-Version steigen muss; die Regel ist als
+  Folgearbeit benannt. Ein Test kann sie nicht ersetzen: gerade weil die
+  nachgelagerten Prüfer die Version dynamisch lesen, kann keine
+  Zusicherung entscheiden, ob eine Änderung Major oder Patch war — das
+  ist eine Regel, kein Assert.
+* **Der Abschluss konsumiert das ganze Lauf-Bundle** — Stamm, Historie,
+  Ledger, Scheiben und Config werden vor dem Festschreiben *und* vor dem
+  Prüfen mit derselben Engine geprüft wie in Gate P-B1
+  (`bestand/vorbedingungen.py`). Vorher sperrte die CLI nur bei
+  fehlender Datei; eine vorhandene, aber leere Scheiben- oder
+  Historiendatei kam durch und wurde festgeschrieben (Deckungskapital
+  3.795.035,38 zu niedrig bzw. 55,7 statt 35,5 Mio) — und die eigene
+  Kontrolle bestätigte den Stand. Neu ist `--bis`, der
+  Fortschreibungs-Horizont: die Bewegungs-Identität gilt nur für
+  vollständig simulierte Kalenderjahre.
+* **Bilanzwerte sind endlich** — `+inf` passierte Schema, Bänder, Gate
+  und Abschlusskontrolle, weil `math.isclose(inf, inf)` wahr ist. Jetzt
+  weisen sowohl die Portfolio-Invarianten als auch die
+  Abschlusskontrolle nichtendliche Werte aus.
+* **Festgeschrieben heißt genau einmal** — der Abschluss wird exklusiv
+  veröffentlicht (`os.link`): existiert der Zielpfad, scheitert der
+  Aufruf atomar, statt zu überschreiben. Die vorherige Prüfung auf
+  Existenz mit anschließendem `os.replace` ließ unter Konkurrenz beide
+  Schreiber Erfolg melden. Die sechs Ausgaben eines Laufs bleiben
+  bewusst überschreibbar.
+* **Der Bericht verweigert die unvollständige Auskunft** — ein geführter
+  Stamm ohne Journal wird an der CLI-Grenze abgewiesen, unabhängig
+  davon, ob aktuarielle Kennzahlen angefordert wurden. Vorher saß der
+  Wachposten in der aktuariellen Funktion, die ohne `--config` nie
+  gerufen wurde: 464 statt 1.213 Verträgen zum Stichtag 2016, bei
+  Exit 0 und ohne Vorbehalt.
+* **Der atomare Writer ändert die Dateirechte nicht mehr** —
+  `tempfile.mkstemp` legt mit `0600` an und `os.replace` nimmt diesen
+  Modus mit; die sechs Lauf-Ausgaben endeten dadurch als `0600` statt
+  nach umask. Durabilität (`fsync`), Temp-Reste nach `SIGKILL` und
+  überlange Zielnamen sind als Folgearbeit benannt, nicht stillschweigend
+  zugesichert.
+* **Die Skill-Parität ist wirklich test-erzwungen** — der Test
+  verglich eine von Hand gepflegte Liste von neun Paaren und übersah das
+  vorhandene zehnte; verglichen werden jetzt die Verzeichnisse.

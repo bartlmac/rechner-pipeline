@@ -28,7 +28,7 @@ dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 %% Schichten — erzeugt von ontologie.landkarte
 flowchart TD
     n__init__["__init__<br/>1 Module"]
-    bestand["bestand<br/>17 Module"]
+    bestand["bestand<br/>18 Module"]
     fall["fall<br/>1 Module"]
     gates["gates<br/>16 Module"]
     kern["kern<br/>12 Module"]
@@ -40,12 +40,13 @@ flowchart TD
     spez["spez<br/>5 Module"]
     bestand -- 14 --> kern
     bestand -- 15 --> models
-    gates -- 7 --> bestand
+    bestand -- 1 --> qa
+    gates -- 5 --> bestand
     gates -- 7 --> fall
     gates -- 5 --> kern
-    gates -- 9 --> models
+    gates -- 8 --> models
     gates -- 12 --> ontologie
-    gates -- 9 --> qa
+    gates -- 8 --> qa
     gates -- 4 --> quellen
     gates -- 4 --> spez
     kommutationskern -- 2 --> kern
@@ -64,7 +65,7 @@ flowchart TD
 
 ## 2 Fachknoten — die Sicht der Ontologie
 
-Dieselben IDs wie in der A-Box eines Migrationsfalls und in Gate P-K1. Eine
+Dieselben IDs wie in der A-Box eines Migrationsfalls und in Gate O3. Eine
 Kante entsteht nur bei einem ECHTEN Uebergang: ein Rueckgrat-Modul, das
 `klv, bu` traegt, macht KLV nicht von BU abhaengig — beide stehen darauf.
 Deshalb sind KLV und BU hier korrekt unverbunden.
@@ -72,8 +73,8 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 ```mermaid
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
-    bu["bu<br/>25 Module"]
-    klv["klv<br/>72 Module"]
+    bu["bu<br/>26 Module"]
+    klv["klv<br/>73 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
     system_fall["system/fall<br/>1 Module"]

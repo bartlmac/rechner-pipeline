@@ -111,14 +111,37 @@ def schreibe_abschluss(
         )
     df = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
     ziel_dir.mkdir(parents=True, exist_ok=True)
-    geschrieben = write_portfolio(df, pfad)
-    # Ein festgeschriebener Stand wehrt sich selbst: schreibgeschuetzt
-    # (0444), damit ein versehentliches Ueberschreiben oder ein rm ohne
-    # -f nachfragt statt still zu loeschen. Anlass war ein realer
-    # Verlust echter Laufdaten durch ein aufraeumendes rm -r (Backlog
-    # "runs/-Schutz"). Gegen rm -rf schuetzt kein Dateirecht -- das
-    # bleibt eine Verhaltensregel: runs/ ist Wegwerf, Festzuhaltendes
-    # lebt im Fall oder in einem Abschluss.
+    # Zwei Sicherungen, die einzeln beide zu wenig tragen und erst
+    # zusammen dicht sind -- die Reihenfolge ist deshalb wesentlich.
+    #
+    # Zuerst der exklusive Publish: Die exists()-Pruefung oben ist eine
+    # Momentaufnahme, zwischen ihr und dem Schreiben liegt die Berechnung.
+    # Zwei parallele Aufrufe kamen beide durch, und os.replace
+    # ueberschrieb den zuerst veroeffentlichten Stand -- beide meldeten
+    # Erfolg. os.link scheitert stattdessen atomar, wenn der Zielpfad
+    # schon existiert; das macht die Zusage "genau einmal" wahr, ohne
+    # Lock-Infrastruktur.
+    #
+    # Danach der Schreibschutz: Ein festgeschriebener Stand wehrt sich
+    # auch gegen die Hand -- 0444, damit ein versehentliches
+    # Ueberschreiben scheitert und ein rm ohne -f nachfragt statt still
+    # zu loeschen. Anlass war ein realer Verlust echter Laufdaten durch
+    # ein aufraeumendes rm -r (Backlog "runs/-Schutz").
+    #
+    # Warum beides: Nachgemessen ueberfaehrt os.replace eine 0444-Datei
+    # anstandslos und hinterlaesst sie mit 0600 -- der Schreibschutz
+    # allein hielt also gegen alles ausser gegen unseren eigenen
+    # Schreibpfad. Und der exklusive Publish schuetzt nur beim
+    # Veroeffentlichen, nicht danach. Gegen rm -rf schuetzt ohnehin kein
+    # Dateirecht; das bleibt eine Verhaltensregel: runs/ ist Wegwerf,
+    # Festzuhaltendes lebt im Fall oder in einem Abschluss.
+    try:
+        geschrieben = write_portfolio(df, pfad, exklusiv=True)
+    except FileExistsError as exc:
+        raise AbschlussError(
+            f"Abschluss {stichtag.isoformat()} ist bereits festgeschrieben "
+            f"({pfad}) — festgeschriebene Staende werden nie ueberschrieben"
+        ) from exc
     if os.name != "nt":
         Path(geschrieben).chmod(0o444)
     return geschrieben
@@ -188,10 +211,20 @@ def pruefe_abschluss(
                     f"abschluss police {pid}: {sp} {f[sp]} -> {n[sp]}"
                 )
         for sp in zahlen:
-            if not math.isclose(float(f[sp]), float(n[sp]), rel_tol=0.0, abs_tol=0.0):
+            alt_wert, neu_wert = float(f[sp]), float(n[sp])
+            # math.isclose(inf, inf) ist WAHR: ein nichtendlicher Bilanzwert
+            # wuerde sich selbst decken und die Kontrolle bestaetigte einen
+            # Stand, den niemand verantworten kann. Endlichkeit zuerst.
+            if not math.isfinite(alt_wert) or not math.isfinite(neu_wert):
+                befunde.append(
+                    f"abschluss police {pid}: {sp} nichtendlich "
+                    f"(festgeschrieben {alt_wert!r}, neu {neu_wert!r}) — "
+                    "ein Bilanzwert ist endlich"
+                )
+            elif not math.isclose(alt_wert, neu_wert, rel_tol=0.0, abs_tol=0.0):
                 befunde.append(
                     f"abschluss police {pid}: {sp} festgeschrieben "
-                    f"{float(f[sp])!r}, neu {float(n[sp])!r}"
+                    f"{alt_wert!r}, neu {neu_wert!r}"
                 )
     return befunde
 

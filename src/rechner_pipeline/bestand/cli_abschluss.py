@@ -16,7 +16,14 @@ Usage::
 
     python -m rechner_pipeline.bestand.cli_abschluss \\
         --config configs/bestand_gesamt.toml --lauf runs/bestand \\
-        --stichtag 2026-01-01 [--out-dir runs/bestand/abschluesse] [--pruefen]
+        --stichtag 2026-01-01 --bis 2026-01-01 \\
+        [--out-dir runs/bestand/abschluesse] [--pruefen]
+
+Beide Betriebsarten pruefen VORHER dasselbe vollstaendige Lauf-Bundle
+(Stamm, Historie, Ledger, Scheiben, Config) mit derselben Engine wie
+Gate P-B1 — ``bestand.vorbedingungen.pruefe_pb1_eingaenge``. Ein Abschluss
+auf einer Teilmenge waere ein festgeschriebener Falschstand, den die
+eigene Kontrolle bestaetigt.
 
 Knoten: klv, bu
 """
@@ -37,8 +44,8 @@ from rechner_pipeline.bestand.abschluss import (
 )
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.bestand.vorbedingungen import pruefe_pb1_eingaenge
 from rechner_pipeline.kern import MissingMortalityTableError
-from rechner_pipeline.models.bestand import validate_scheiben
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -57,6 +64,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--stichtag", required=True, help="ISO-Datum.")
     parser.add_argument(
+        "--bis", required=True,
+        help="Fortschreibungs-Horizont des Laufs (ISO-Datum) — DASSELBE "
+        "Datum wie beim cli_fortschreibung-Lauf. Die Bewegungs-Identitaet "
+        "gilt nur fuer vollstaendig simulierte Kalenderjahre; ohne den "
+        "Horizont waere sie scheinbar verletzt.",
+    )
+    parser.add_argument(
         "--out-dir", default=None,
         help="Abschluss-Verzeichnis (Default: <lauf>/abschluesse).",
     )
@@ -72,52 +86,73 @@ def main(argv: Optional[List[str]] = None) -> int:
     except ValueError as exc:
         print(f"bestand_abschluss: --stichtag: {exc}", file=sys.stderr)
         return 2
+    try:
+        bis = _dt.date.fromisoformat(ns.bis)
+    except ValueError as exc:
+        print(f"bestand_abschluss: --bis: {exc}", file=sys.stderr)
+        return 2
+    if stichtag > bis:
+        print(
+            f"bestand_abschluss: Stichtag {stichtag.isoformat()} liegt hinter "
+            f"dem Fortschreibungs-Horizont {bis.isoformat()} — der Lauf hat "
+            "die Jahre dazwischen nie simuliert. Ein Abschluss darauf waere "
+            "keine Bewertung, sondern eine Behauptung",
+            file=sys.stderr,
+        )
+        return 2
     lauf = Path(ns.lauf)
     out_dir = Path(ns.out_dir) if ns.out_dir else lauf / "abschluesse"
+
+    # Ein Abschluss ist festgeschrieben und wird nie ueberschrieben. Er muss
+    # deshalb DASSELBE vollstaendige Lauf-Bundle bestehen wie Gate P-B1 — und
+    # zwar durch DIESELBE Engine, nicht durch eine eigene Teilpruefung.
+    # Vorher sperrte die CLI nur bei "scheiben is None": eine vorhandene,
+    # schema-korrekte, aber LEERE Scheiben- oder Historiendatei passierte,
+    # und Schreiben wie --pruefen bestaetigten einander auf demselben
+    # unvollstaendigen Stand. Gemessen an einem regulaeren KLV-Lauf: leere
+    # Scheiben 25 Bewegungsfehler (Deckungskapital 3.795.035,38 zu niedrig),
+    # leere Historie 1.076 Fuehrungsfehler (Deckungskapital 55,7 statt
+    # 35,5 Mio) — beides bisher mit Exit 0 in einem unumkehrbaren Stand.
+    eingaben = {
+        "portfolio": lauf / "bestand_gesamt.parquet",
+        "historie": lauf / "historie.parquet",
+        "ledger": lauf / "ledger.parquet",
+        "scheiben": lauf / "scheiben.parquet",
+        "config": Path(ns.config),
+    }
+    fehlend = [str(pfad) for pfad in eingaben.values() if not pfad.is_file()]
+    if fehlend:
+        print(
+            "bestand_abschluss: unvollstaendiges Lauf-Bundle — nicht "
+            f"gefunden: {', '.join(fehlend)}. Ein Abschluss verlangt den "
+            "ganzen Lauf (erzeugt von bestand.cli_fortschreibung), nicht "
+            "die Teilmenge, die zufaellig dasteht",
+            file=sys.stderr,
+        )
+        return 2
+    _, fehler, usage = pruefe_pb1_eingaenge(eingaben, bis=bis)
+    if fehler or usage:
+        for eintrag in (usage + fehler)[:5]:
+            print(f"bestand_abschluss: {eintrag['message']}", file=sys.stderr)
+        anzahl = len(fehler) + len(usage)
+        if anzahl > 5:
+            print(f"bestand_abschluss: ... und {anzahl - 5} weitere",
+                  file=sys.stderr)
+        print(
+            f"bestand_abschluss: {anzahl} Vorbedingung(en) verletzt — es "
+            "wird nichts festgeschrieben. Passt --bis zum Lauf?",
+            file=sys.stderr,
+        )
+        return 2
+
     try:
         config = load_config(Path(ns.config))
-        stamm = read_portfolio(lauf / "bestand_gesamt.parquet")
-        historie = read_portfolio(lauf / "historie.parquet")
-        scheiben_pfad = lauf / "scheiben.parquet"
-        scheiben = read_portfolio(scheiben_pfad) if scheiben_pfad.is_file() else None
-        ledger_pfad = lauf / "ledger.parquet"
-        ledger = read_portfolio(ledger_pfad) if ledger_pfad.is_file() else None
+        stamm = read_portfolio(eingaben["portfolio"])
+        historie = read_portfolio(eingaben["historie"])
+        scheiben = read_portfolio(eingaben["scheiben"])
     except (OSError, ValueError, MissingMortalityTableError) as exc:
         print(f"bestand_abschluss: {exc}", file=sys.stderr)
         return 2
-
-    # Ein Abschluss ist festgeschrieben und wird nie ueberschrieben. Er muss
-    # deshalb DIESELBEN Vorbedingungen bestehen wie der Bericht und wie Gate
-    # P-B1 — sonst beurteilen drei Pfade denselben Datenstand verschieden,
-    # und ausgerechnet der unumkehrbare ist der nachlaessigste.
-    fehler = config.validate()
-    if fehler:
-        print(
-            f"bestand_abschluss: Config ungueltig: {'; '.join(fehler)}",
-            file=sys.stderr,
-        )
-        return 2
-    if (
-        ledger is not None
-        and scheiben is None
-        and (ledger["ereignis"] == "ERH").any()
-    ):
-        print(
-            "bestand_abschluss: Ledger enthaelt dynamische Erhoehungen (ERH), "
-            f"aber {scheiben_pfad.name} fehlt — Deckungskapital und Beitrag "
-            "waeren systematisch zu niedrig, und der Stand ist danach "
-            "festgeschrieben",
-            file=sys.stderr,
-        )
-        return 2
-    if scheiben is not None:
-        fehler = validate_scheiben(stamm, scheiben, historie=historie)
-        if fehler:
-            print(
-                f"bestand_abschluss: Scheiben ungueltig: {'; '.join(fehler[:3])}",
-                file=sys.stderr,
-            )
-            return 2
 
     if ns.pruefen:
         pfad = abschluss_pfad(out_dir, stichtag)

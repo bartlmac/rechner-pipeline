@@ -180,6 +180,7 @@ def test_abschluss_ohne_scheiben_bei_erh_im_ledger_blockiert(
         "--config", "configs/bestand_klv.toml",
         "--lauf", str(unvollstaendig),
         "--stichtag", STICHTAG.isoformat(),
+        "--bis", "2035-01-01",   # Horizont des Fixture-Laufs
         "--out-dir", str(tmp_path / "ziel"),
     ])
     assert exit_code == 2
@@ -223,6 +224,15 @@ def test_abschluss_vergleicht_auch_produkt_und_generation(
     write_portfolio(fest, pfad)
     befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
     assert any("tarif_generation" in b for b in befunde)
+
+    # Und produkt ebenso: der Testname behauptete beide, mutierte aber nur
+    # die Generation — der Produktvergleich liess sich entfernen, ohne dass
+    # ein Test rot wurde.
+    fest = read_portfolio(pfad)
+    fest.loc[fest.index[0], "produkt"] = "bu"
+    write_portfolio(fest, pfad)
+    befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
+    assert any("produkt" in b for b in befunde)
 
 
 # --------------------------------------------------------------------------- #
