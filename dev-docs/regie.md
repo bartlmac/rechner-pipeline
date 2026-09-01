@@ -16,8 +16,10 @@ wie die Simulation NICHT Teil des Systems. Heute gehoeren dazu:
   Quelle (samt Manipulations-Doku), `regie/` traegt die
   LAUF-Spielleitung — Drehbuecher und die Auftraege der
   Operator-Sessions (uebergeben wird nur ihr INHALT als Start-Prompt;
-  die Sessions lesen den Bereich nie). Operative Migrations-Sessions
-  lesen keinen der drei Bereiche; die Vorzeigeseite bricht ab, wenn
+  die Sessions lesen den Bereich nie; der Betriebsleitfaden des
+  Spielleiters — Aufsetzen, Benennen, Modelle, Disziplin waehrend des
+  Laufs, Nacharbeit — liegt als README im Bereich selbst). Operative
+  Migrations-Sessions lesen keinen der drei Bereiche; die Vorzeigeseite bricht ab, wenn
   etwas davon in die Veroeffentlichung geriete.
 * **Rollenbesetzung je Fall** (Modell Lauf 2, 2026-09-01):
   `programmleiter` (Orchestrator der PLV, fuehrt den Fall E2E; in
