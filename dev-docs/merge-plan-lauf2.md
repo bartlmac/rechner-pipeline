@@ -136,12 +136,13 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
      Abschnitt steht jetzt auf T16 und verweist nach oben; die doppelte
      gamma1-Aussage ist entfernt, die Versionsbegruendung blieb, weil
      sie oben fehlte.
-4. [ ] quellsystem -> fallbericht mergen (Owner: merge-session).
-   Konfliktfrei geprobt (2026-09-01; rein additiv: quellsystem/,
-   lieferungen/baldrian-2/, 5 Testdateien, eine .gitignore-Zeile).
-   Pruefpunkt: volle Suite gruen (Referenz: 1436 passed auf dem
-   Probe-Stand). Danach Branch quellsystem loeschen; Worktree
-   aufloesen oder fuer Quell-Nacharbeiten behalten (Maintainer).
+4. [x] quellsystem -> fallbericht gemergt (2026-09-01, dev-session;
+   Merge-Commit a16a43d). Konfliktfrei wie geprobt, rein additiv;
+   volle Suite auf dem Ergebnis 1453 passed, code_karte befundfrei.
+   OFFEN (Maintainer): Branch quellsystem loeschen — geht erst, wenn
+   der Worktree ~/git/rechner-pipeline-quellsystem aufgeloest oder
+   umgehaengt ist (ein ausgecheckter Branch laesst sich nicht
+   loeschen); Worktree behalten oder aufloesen ist Maintainer-Entscheid.
 5. Vorbereitung Lauf 2:
    a. [x] (2026-09-01, dev) Meldungs-Vorverdichtung liest Text-PDF:
       ADR-016, pypdf==6.16.2, Commit c5b7df1 auf fallbericht (Scan
