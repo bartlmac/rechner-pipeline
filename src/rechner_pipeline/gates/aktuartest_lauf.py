@@ -117,6 +117,7 @@ def baue_auftraege(
     plausibilitaet: Optional[Dict[str, Dict[str, str]]] = None,
     scheiben_mit_gamma1: bool = False,
     stoab_je_baustein: bool = False,
+    red_anteil_kandidaten: Tuple[float, ...] = (),
 ) -> Tuple[List[Vertragspruefung], List[str]]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag.
 
@@ -182,6 +183,13 @@ def baue_auftraege(
             monate_ta=eintrag.get("monate_ta"),
             scheiben=tuple(zustand.get("scheiben", ())),
             reduktion=zustand.get("reduktion"),
+            # Die Kandidatenmenge ist eine Eigenschaft der QUELL-LAGE
+            # (eine Auskunft je Fall), kein Policen-Datum — sie greift
+            # genau dort, wo ein Herabsetzungs-Anfangszustand behauptet
+            # wird; die Engine wehrt sie ohne einen solchen ab.
+            reduktion_kandidaten=(
+                tuple(red_anteil_kandidaten)
+                if zustand.get("reduktion") else ()),
             plausibilitaet=(plausibilitaet or {}).get(police, {}),
             scheiben_mit_gamma1=scheiben_mit_gamma1,
             stoab_je_baustein=stoab_je_baustein,
@@ -435,6 +443,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "mit dieser Vorfallart in der Vorgeschichte — so, wie "
                         "die Auskunft ihre Reichweite bestimmt, statt ueber "
                         "eine getippte Policenliste.")
+    p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
+                   action="append", type=float, default=[],
+                   metavar="ANTEIL",
+                   help="BELEGTER Tarif-Kandidat des Herabsetzungsanteils "
+                        "(wiederholbar), wenn der exakte Anteil bei der "
+                        "Quelle endgueltig nicht feststellbar ist. Die "
+                        "Plausibilitaetsregeln rechnen dann den Korridor "
+                        "ueber die Kandidatenmenge statt um einen "
+                        "Punktwert; gilt fuer alle Vertraege mit "
+                        "Herabsetzungs-Anfangszustand.")
     p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
                    default=None, metavar="SATZ",
                    help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
@@ -615,7 +633,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet,
         schichten=schichten,
         scheiben_mit_gamma1=args.scheiben_mit_gamma1,
-        stoab_je_baustein=args.stoab_je_baustein)
+        stoab_je_baustein=args.stoab_je_baustein,
+        red_anteil_kandidaten=tuple(args.red_anteil_kandidaten))
     for police in schicht_ausgelassen:
         print(f"WARNUNG Police {police}: Korrekturschicht nicht im "
               "Pruefpfad — Herabsetzungs-Anfangszustand, Wertvergleich "

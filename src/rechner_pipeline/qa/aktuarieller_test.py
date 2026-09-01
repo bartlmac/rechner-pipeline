@@ -122,14 +122,53 @@ KRITERIUM_VERGLEICH = "wertvergleich"
 KRITERIUM_PLAUSIBILITAET = "plausibilitaet"
 
 
-def _korridor_rkw(werte: Mapping[str, float], mp: ModelPoint) -> Tuple[float, float]:
-    """Zulaessiger Rueckkaufswert aus dem Tarifwerk (klv.md, Abschnitt 6).
+def _kandidaten_rechnung(
+    groesse: str, v: "Vertragspruefung", mp: ModelPoint,
+    p: "Pruefpunkt", red_verfahren: str,
+) -> Tuple[float, float]:
+    """Korridor aus der Tarifformel ueber die BELEGTE Kandidatenmenge.
 
-    ``RKW = max(0, kVx_MRV - StoAb)`` mit einem Stornoabzug zwischen
-    null (flexible Phase) und ``stoab_max``. Daraus folgt der Korridor
-    ohne jede Annahme ueber die Abzugsformel — er gilt fuer JEDE
-    zulaessige Ausgestaltung des Abzugs.
+    Wenn der exakte Herabsetzungsanteil bei der Quelle nicht mehr
+    feststellbar ist, das Tarifwerk aber nur endlich viele Stufen kennt
+    (belegte Auskunft), ist der zulaessige Bereich einer Groesse das
+    Intervall ueber die Kandidaten-Ergebnisse: dieselbe
+    ReduzierterVertrag-Rechnung wie im Wertvergleich, nur je Kandidat
+    statt mit einem Punktwert — keine generische Schranke, sondern die
+    Tarifformel selbst, dreifach gerechnet (Aktuars-Massgabe des
+    zweiten Baldrian-Laufs, 2026-09-01).
     """
+    jahr = v.reduktion[0]
+    aus = []
+    for anteil in v.reduktion_kandidaten:
+        rv = ReduzierterVertrag.nach(
+            Rechenkern(mp), jahr, anteil, verfahren=red_verfahren)
+        if groesse == "BJB":
+            aus.append(rv.bjb(p.monate))
+        else:
+            m = rv.monatsreserve(p.monate)
+            aus.append(m.vx_mrv if groesse == "kVx_MRV" else m.rkw)
+    return (min(aus), max(aus))
+
+
+def _korridor_rkw(
+    v: "Vertragspruefung", mp: ModelPoint, p: "Pruefpunkt",
+    werte: Mapping[str, float], red_verfahren: str,
+) -> Tuple[float, float]:
+    """Zulaessiger Rueckkaufswert — zwei getrennte Ausnahme-Tatbestaende.
+
+    Mit belegter Kandidatenmenge (``reduktion_kandidaten``): der
+    Zustand selbst ist unbestimmt, ein Korridor um den Punktwert waere
+    ein Korridor um eine Vermutung — es rechnet die Kandidaten-Strecke.
+
+    Ohne Kandidaten (Bestandsverhalten, erste Lieferung): der Zustand
+    ist bekannt, nur die ABZUGSKONVENTION der Quelle weicht belegt ab.
+    Dann gilt der Tarifwerks-Bound (klv.md, Abschnitt 6):
+    ``RKW = max(0, kVx_MRV - StoAb)`` mit einem Stornoabzug zwischen
+    null (flexible Phase) und ``stoab_max`` — ohne jede Annahme ueber
+    die Abzugsformel, also fuer JEDE zulaessige Ausgestaltung.
+    """
+    if v.reduktion_kandidaten:
+        return _kandidaten_rechnung("RKW", v, mp, p, red_verfahren)
     if "kVx_MRV" not in werte:
         raise AktuartestFehler(
             "Plausibilitaet des Rueckkaufswerts verlangt kVx_MRV am "
@@ -140,11 +179,32 @@ def _korridor_rkw(werte: Mapping[str, float], mp: ModelPoint) -> Tuple[float, fl
     return (max(0.0, dk - float(mp.stoab_max)), dk)
 
 
+def _korridor_kandidaten(groesse: str):
+    """Korridorregel, die es NUR ueber die Kandidatenmenge gibt.
+
+    Fuer kVx_MRV und BJB existiert kein zustandsfreier Tarifwerks-Bound
+    — ohne belegte Kandidaten gibt es keine Regel, und die Groesse
+    bleibt im Wertvergleich (Wache in ``_pruefe_auftrag``).
+    """
+    def korridor(
+        v: "Vertragspruefung", mp: ModelPoint, p: "Pruefpunkt",
+        werte: Mapping[str, float], red_verfahren: str,
+    ) -> Tuple[float, float]:
+        return _kandidaten_rechnung(groesse, v, mp, p, red_verfahren)
+    return korridor
+
+
 #: Groessen, fuer die es eine PLAUSIBILITAETSREGEL aus dem Tarifwerk
 #: gibt — und nur fuer sie darf der Wertvergleich ersetzt werden. Eine
 #: Groesse ohne Regel bleibt im Wertvergleich; sonst waere die Ausnahme
-#: ein Weg, jeden Fehlschlag wegzudefinieren.
-PLAUSIBILITAET: Mapping[str, Any] = {"RKW": _korridor_rkw}
+#: ein Weg, jeden Fehlschlag wegzudefinieren. kVx_MRV und BJB haben
+#: ihre Regel NUR ueber die belegte Kandidatenmenge des
+#: Herabsetzungsanteils (siehe :func:`_korridor_kandidaten`).
+PLAUSIBILITAET: Mapping[str, Any] = {
+    "RKW": _korridor_rkw,
+    "kVx_MRV": _korridor_kandidaten("kVx_MRV"),
+    "BJB": _korridor_kandidaten("BJB"),
+}
 
 # --------------------------------------------------------------------------- #
 # Anlaesse
@@ -317,6 +377,15 @@ class Vertragspruefung:
     #: Zielverfahren prospektiv). Eine Herabsetzung ZWISCHEN den
     #: Pruefpunkten ist kein Anfangszustand, sondern ein RED-Pruefpunkt.
     reduktion: Optional[Tuple[int, float]] = None
+    #: BELEGTE Kandidatenmenge des Herabsetzungsanteils, wenn der exakte
+    #: Anteil bei der Quelle endgueltig nicht mehr feststellbar ist, das
+    #: Tarifwerk aber nur endlich viele Stufen kennt (registrierte
+    #: Auskunft). Wirkt ausschliesslich in den Plausibilitaetsregeln:
+    #: Der Korridor einer Groesse ist dann das Intervall ihrer
+    #: Kandidaten-Ergebnisse (:func:`_kandidaten_rechnung`); der
+    #: Punktwert aus ``reduktion`` bleibt die ausgewiesene
+    #: Arbeits-Lesart. Nur zusammen mit ``reduktion`` zulaessig.
+    reduktion_kandidaten: Tuple[float, ...] = ()
 
 
 def verankerungspunkt(monate: int, erwartet: Dict[str, float]) -> Pruefpunkt:
@@ -477,6 +546,29 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
                 f"liegen VOR der Herabsetzung (Jahr {jahr}) — dort gilt der "
                 "unreduzierte Vertrag, der Auftrag ist widerspruechlich"
             )
+    if v.reduktion_kandidaten:
+        if v.reduktion is None:
+            raise AktuartestFehler(
+                f"police {v.police_id}: Kandidaten des "
+                "Herabsetzungsanteils ohne Herabsetzungs-Anfangszustand "
+                "(reduktion) — die Kandidaten beziffern einen Zustand, "
+                "den der Auftrag gar nicht behauptet"
+            )
+        schlecht = [f for f in v.reduktion_kandidaten
+                    if not 0.0 <= f <= 1.0]
+        if schlecht:
+            raise AktuartestFehler(
+                f"police {v.police_id}: Kandidaten {schlecht} liegen "
+                "nicht in [0, 1] — sie sind fortgefuehrte Bruchteile des "
+                "Beitrags"
+            )
+        if len(set(v.reduktion_kandidaten)) < 2:
+            raise AktuartestFehler(
+                f"police {v.police_id}: unter zwei verschiedenen "
+                "Kandidaten spannt sich kein Korridor — ein bekannter "
+                "Anteil gehoert als Punktwert in reduktion, nicht in "
+                "eine einelementige Ausnahme"
+            )
     if v.schicht is not None:
         if v.monate_ta is None:
             raise AktuartestFehler(
@@ -546,6 +638,14 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
                 f"police {v.police_id}: fuer {groesse!r} gibt es keine "
                 "Plausibilitaetsregel — der Wertvergleich laesst sich nur "
                 f"ersetzen, wo eine Regel existiert ({sorted(PLAUSIBILITAET)})"
+            )
+        if groesse in ("kVx_MRV", "BJB") and not v.reduktion_kandidaten:
+            raise AktuartestFehler(
+                f"police {v.police_id}: die Plausibilitaetsregel fuer "
+                f"{groesse!r} ist die Rechnung ueber die belegte "
+                "Kandidatenmenge des Herabsetzungsanteils — ohne "
+                "reduktion_kandidaten gibt es keine Regel, die Groesse "
+                "bleibt im Wertvergleich"
             )
         if not str(begruendung).strip():
             raise AktuartestFehler(
@@ -940,7 +1040,8 @@ def pruefe_vertrag(
                 "residuum": residuum,
             }
             if groesse in v.plausibilitaet:
-                unten, oben = PLAUSIBILITAET[groesse](werte, mp)
+                unten, oben = PLAUSIBILITAET[groesse](
+                    v, mp, p, werte, red_verfahren)
                 system_ok = unten - _KORRIDOR_TOL <= system <= oben + _KORRIDOR_TOL
                 erwartet_ok = (
                     unten - _KORRIDOR_TOL <= erwartet <= oben + _KORRIDOR_TOL)

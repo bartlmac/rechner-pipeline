@@ -710,9 +710,20 @@ def test_groesse_ohne_plausibilitaetsregel_faellt_hart():
     """Nur wo eine Regel des Tarifwerks existiert, laesst sich der
     Wertvergleich ersetzen — sonst waere es ein Weg, jeden Fehlschlag
     wegzudefinieren."""
-    assert "kVx_MRV" not in PLAUSIBILITAET
-    v = _vertrag(_rkw_punkt(), plausibilitaet={"kVx_MRV": GRUND})
+    assert "dDK" not in PLAUSIBILITAET
+    v = _vertrag(_rkw_punkt(), plausibilitaet={"dDK": GRUND})
     with pytest.raises(AktuartestFehler, match="keine Plausibilitaetsregel"):
+        pruefe_vertrag(v, _profil())
+
+
+def test_kvx_mrv_plausibilitaet_ohne_kandidaten_faellt_hart():
+    """kVx_MRV und BJB haben ihre Regel NUR ueber die belegte
+    Kandidatenmenge — ohne sie bleibt die Groesse im Wertvergleich,
+    ein Antrag ist ein Auftragsfehler (Massstab des Aktuars: kein
+    Pauschal-informativ)."""
+    assert "kVx_MRV" in PLAUSIBILITAET and "BJB" in PLAUSIBILITAET
+    v = _vertrag(_rkw_punkt(), plausibilitaet={"kVx_MRV": GRUND})
+    with pytest.raises(AktuartestFehler, match="bleibt im Wertvergleich"):
         pruefe_vertrag(v, _profil())
 
 
@@ -765,6 +776,110 @@ def test_gate_rechnet_die_plausibilitaet_nach_und_faengt_manipulation():
     gefaelscht["vertraege"][0]["bestanden"] = True
     befunde = test_fehler(gefaelscht)
     assert any("Korridor" in f for f in befunde), befunde
+
+
+class TestKandidatenKorridor:
+    """Korridor aus der Tarifformel ueber die belegte Kandidatenmenge.
+
+    Zweiter Plausibilitaets-Befund des zweiten Baldrian-Laufs: Der
+    generische Storno-Bound ist fuer Vertraege mit UNBEKANNTEM
+    Herabsetzungsanteil ein Korridor um eine Vermutung (oft exakt
+    stoab_max breit, teils auf einen Punkt entartet). Kennt das
+    Tarifwerk nur endlich viele Stufen (belegte Auskunft), ist der
+    zulaessige Bereich das Intervall der Kandidaten-Ergebnisse —
+    dieselbe ReduzierterVertrag-Rechnung, je Kandidat statt einmal.
+    """
+
+    KANDIDATEN = (0.50, 0.60, 0.75)
+    JAHR, MONATE = 10, 144
+
+    def _kandidaten_werte(self, groesse):
+        from rechner_pipeline.kern.beitragsreduktion import (
+            ReduzierterVertrag,
+        )
+
+        aus = []
+        for f in self.KANDIDATEN:
+            rv = ReduzierterVertrag.nach(KERN, self.JAHR, f)
+            if groesse == "BJB":
+                aus.append(rv.bjb(self.MONATE))
+            else:
+                m = rv.monatsreserve(self.MONATE)
+                aus.append(m.vx_mrv if groesse == "kVx_MRV" else m.rkw)
+        return aus
+
+    def _vertrag_mit_kandidaten(self, erwartet):
+        return _vertrag(
+            Pruefpunkt(monate=self.MONATE, erwartet=erwartet,
+                       anlass="uebernahme"),
+            reduktion=(self.JAHR, 0.60),
+            reduktion_kandidaten=self.KANDIDATEN,
+            plausibilitaet={g: GRUND for g in erwartet},
+        )
+
+    def test_korridor_ist_intervall_der_kandidaten_rechnungen(self):
+        """Fuer jede der drei Groessen: Der Beleg-Korridor ist exakt
+        [min, max] der unabhaengig nachgerechneten Kandidaten-Werte,
+        und ein Lieferwert auf einem Kandidaten besteht."""
+        erwartet = {}
+        korridore = {}
+        for groesse in ("kVx_MRV", "RKW", "BJB"):
+            werte = self._kandidaten_werte(groesse)
+            # Zonen-Beleg: die Kandidaten unterscheiden sich wirklich,
+            # sonst pruefte der Test ein entartetes Intervall.
+            assert max(werte) - min(werte) > 1.0
+            korridore[groesse] = (min(werte), max(werte))
+            erwartet[groesse] = round(werte[0], 2)  # Kandidat 0.50
+        urteil = pruefe_vertrag(
+            self._vertrag_mit_kandidaten(erwartet), _profil())
+        assert urteil["bestanden"], urteil["befunde"]
+        for p in urteil["pruefungen"]:
+            assert p["kriterium"] == KRITERIUM_PLAUSIBILITAET
+            unten, oben = korridore[p["groesse"]]
+            assert p["korridor"][0] == pytest.approx(unten)
+            assert p["korridor"][1] == pytest.approx(oben)
+
+    def test_lieferwert_ausserhalb_der_kandidatenmenge_faellt(self):
+        """Kein Freibrief: Ein gelieferter Wert, der mit KEINEM
+        Kandidaten vertraeglich ist, ist ein Befund gegen die
+        Lieferung."""
+        werte = self._kandidaten_werte("RKW")
+        daneben = round(min(werte) - 500.0, 2)
+        urteil = pruefe_vertrag(
+            self._vertrag_mit_kandidaten({"RKW": daneben}), _profil())
+        assert not urteil["bestanden"]
+        assert any("GELIEFERTER Wert" in b for b in urteil["befunde"])
+
+    def test_kandidaten_ohne_reduktion_fallen_hart(self):
+        v = _vertrag(_rkw_punkt(),
+                     reduktion_kandidaten=self.KANDIDATEN)
+        with pytest.raises(AktuartestFehler,
+                           match="ohne Herabsetzungs-Anfangszustand"):
+            pruefe_vertrag(v, _profil())
+
+    def test_ein_kandidat_spannt_keinen_korridor(self):
+        v = _vertrag(
+            Pruefpunkt(monate=self.MONATE, erwartet={"RKW": 1.0},
+                       anlass="uebernahme"),
+            reduktion=(self.JAHR, 0.60),
+            reduktion_kandidaten=(0.60, 0.60),
+            plausibilitaet={"RKW": GRUND},
+        )
+        with pytest.raises(AktuartestFehler, match="kein Korridor"):
+            pruefe_vertrag(v, _profil())
+
+    def test_rkw_ohne_kandidaten_behaelt_den_tarifwerks_bound(self):
+        """Der Lauf-1-Tatbestand bleibt: Zustand bekannt, nur die
+        Abzugskonvention der Quelle weicht ab — dort gilt weiter
+        [kVx_MRV - stoab_max, kVx_MRV]."""
+        zeile = KERN.zustand_am(120)
+        v = _vertrag(_rkw_punkt(), plausibilitaet={"RKW": GRUND})
+        urteil = pruefe_vertrag(v, _profil())
+        korridor = next(p for p in urteil["pruefungen"]
+                        if p["groesse"] == "RKW")["korridor"]
+        assert korridor[0] == pytest.approx(
+            zeile.vx_mrv - KLV_DEFAULT.stoab_max, abs=0.02)
+        assert korridor[1] == pytest.approx(zeile.vx_mrv, abs=0.02)
 
 
 def test_die_zweitverankerung_traegt_das_konventionsresiduum_getrennt():
