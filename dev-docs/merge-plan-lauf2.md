@@ -157,9 +157,12 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
       monate_ta (Berechnung aus BEGINN/Stichtag; Berechnungskatalog
       ggf. erweitern) und dk_ta (= DECKKAP) ergaenzen, sonst entsteht
       keine verankerung.parquet.
-6. [ ] Fall-Lauf 2 auf fallbericht fahren (Owner: dev-session;
-   menschliche Gates nach Zeichnungsordnung). Pruefpunkt: A-M4-Kette
-   steht.
+6. [ ] Fall-Lauf 2 auf fallbericht fahren (Owner: Lauf-Sessions des
+   Maintainers, Vier-Rollen-Regie; dev-session als Systembetreuung).
+   Pruefpunkt: A-M4-Kette steht. Korrektur-Zaehlung fuer den
+   PR-Schnitt-Vorbehalt (Gebiet Kern/Gates) beginnt mit 1:
+   Vorlauf-Fix der Zeichnungsordnungs-Allowlist (A-K1 war zeichenbar,
+   aber keiner Rolle zuweisbar; gate_entscheid, vor Laufstart).
 7. [ ] vorzeige-url -> fallbericht (Owner: merge-session, mit der
    vorzeige-Session abstimmen; test_baldrian_e2e-Kopplung dort
    verifizieren). Pruefpunkt: Suite gruen, Vorzeigeseite rendert.
