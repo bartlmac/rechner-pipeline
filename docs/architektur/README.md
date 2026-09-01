@@ -26,6 +26,7 @@ Rechenkern-Entwicklung. Die Fachdokumente des Beispiel-Rechenkerns
 - [ADR-013: Der Kommutations-Kreuzcheck wird ausser Betrieb genommen](adr-013-kommutations-kreuzcheck-ausser-betrieb.md)
 - [ADR-014: Bestandszugang getrennt vom Vertragsbeginn](adr-014-bestandszugang-getrennt-vom-vertragsbeginn.md)
 - [ADR-015: Uebernommenen Bestand fortschreiben — ab dem Zugang](adr-015-uebernommenen-bestand-fortschreiben.md)
+- [ADR-016: Vorverdichtung liest Text-PDF (pypdf); OCR bleibt draussen](adr-016-pdf-vorverdichtung.md)
 
 > **Zu den Gate-Namen:** Die Namen in allen aelteren ADRs sind auf die
 > Ordnung aus ADR-012 umgestellt (`G-2` heisst jetzt `A-M4`, `O3` heisst

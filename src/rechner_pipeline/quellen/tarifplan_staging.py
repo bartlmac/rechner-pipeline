@@ -1,25 +1,41 @@
 """``tarifplan_staging`` toolbox command — Migrationsartefakte nach JSON.
 
 Architektur-Entscheidung (Bartek, 2026-08-13): Tarifplan-Dokumente von zu
-migrierenden Bestaenden (DOCX der Quellsysteme) sind MIGRATIONSARTEFAKTE.
-Sie gehoeren nicht in die Zielkern-Dokumentation (dort leben neu verfasste
-Tarifplaene in der Mathematik des Kerns, ``docs/tarifplaene/``), sondern in
-ein maschinenlesbares Staging: dieses Kommando extrahiert die Inhalte eines
-DOCX strukturiert nach JSON (``runs/migrationsstaging/``) — nicht fuer Menschen
-formatiert, sondern als Datenvorbereitung fuer die Migration (Abgleich mit
-Geschaeftsplan/Quellsystem, spaeterer Migrations-Contract).
+migrierenden Bestaenden sind MIGRATIONSARTEFAKTE. Sie gehoeren nicht in
+die Zielkern-Dokumentation (dort leben neu verfasste Tarifplaene in der
+Mathematik des Kerns, ``docs/tarifplaene/``), sondern in ein
+maschinenlesbares Staging: dieses Kommando extrahiert die Inhalte eines
+Dokuments strukturiert nach JSON — nicht fuer Menschen formatiert,
+sondern als Datenvorbereitung fuer die Migration (Vorverdichtung der
+Fragment-Extraktion, P10: der Agent sieht nie die Rohdatei).
 
-Stdlib-only: ein DOCX ist ein ZIP mit XML — gelesen werden
-``word/document.xml`` (Absaetze mit Formatvorlagen, Tabellen als
-Zellmatrizen, OMML-Formeln als Rohtext) und ``docProps/core.xml``
-(Metadaten). Deterministisch: gleiche Datei -> byte-gleiches JSON (keine
-Zeitstempel; der SHA-256 der Quelle ist Teil des Outputs).
+FORMATE (Entscheid Bartek 2026-09-01, ADR-016): Quellsysteme liefern de
+facto meist PDF, gelegentlich DOCX. Beide werden bedient — nach Suffix
+unterschieden, gleiche JSON-Struktur:
+
+* **DOCX** (stdlib): ein ZIP mit XML — gelesen werden
+  ``word/document.xml`` (Absaetze mit Formatvorlagen, Tabellen als
+  Zellmatrizen, OMML-Formeln als Rohtext) und ``docProps/core.xml``.
+* **PDF** (pypdf, gepinnt): NUR Text-PDFs — extrahiert wird der
+  Textlayer, zeilenerhaltend (Formelsatz alter Meldungen lebt vom
+  Zeilenlayout), Absaetze an Leerzeilen getrennt, je Absatz die Seite
+  als Fundstelle. Ein PDF ohne Textlayer (Scan) ist ein HARTER FEHLER:
+  OCR ist bewusst nicht Teil dieser Stufe (Backlog; extern beschaffbar)
+  — eine stumm leere Vorverdichtung waere ein stiller Verlust. PDF
+  kennt keine Absatzstile, Tabellen- und Formelstruktur: ``tabellen``
+  und ``formeln`` bleiben leer, der Inhalt steht als Text in den
+  Absaetzen; der ``hinweis`` weist das aus.
+
+Deterministisch: gleiche Datei -> byte-gleiches JSON (keine Zeitstempel;
+der SHA-256 der Quelle ist Teil des Outputs).
 
 Usage::
 
     python -m rechner_pipeline.quellen.tarifplan_staging \\
-        --docx tests/fixtures/Mitteilung_143_KLV_TG2012.docx \\
-        --out runs/migrationsstaging/klv_mitteilung_143.json
+        --input faelle/<fall>/eingang/Mitteilung_143_KLV_TG2015.pdf \\
+        --out faelle/<fall>/abgeleitet/vorverdichtung/meldung-TG2015.json
+
+(``--docx`` bleibt als Altname von ``--input`` erhalten.)
 
 Knoten: klv
 """
@@ -33,6 +49,8 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import pypdf
 
 from rechner_pipeline.models.manifest import file_sha256
 
@@ -82,7 +100,92 @@ def _stil(absatz: ET.Element) -> str:
     return stil.get(f"{_W}val", "") if stil is not None else ""
 
 
-def extrahiere(docx_pfad: Path) -> Dict[str, Any]:
+class StagingFehler(ValueError):
+    """Quelle nicht extrahierbar — Meldung nennt den Ausweg."""
+
+
+def extrahiere(pfad: Path) -> Dict[str, Any]:
+    """Dokument strukturiert nach dict — Dispatch nach Dateiformat."""
+    suffix = Path(pfad).suffix.lower()
+    if suffix == ".docx":
+        return _extrahiere_docx(Path(pfad))
+    if suffix == ".pdf":
+        return _extrahiere_pdf(Path(pfad))
+    raise StagingFehler(
+        f"unbekanntes Format {suffix!r} — unterstuetzt sind .docx und "
+        ".pdf (Text-PDF); andere Formate zuerst dorthin ueberfuehren"
+    )
+
+
+def _extrahiere_pdf(pdf_pfad: Path) -> Dict[str, Any]:
+    """Textlayer eines PDF, zeilenerhaltend; Absaetze an Leerzeilen.
+
+    Zeilen INNERHALB eines Absatzes bleiben mit Umbruch verbunden — der
+    Formelsatz alter Meldungen (Bruchstriche, Summenzeichen ueber
+    mehrere Zeilen) traegt Bedeutung im Layout, ein Zusammenziehen zu
+    Fliesstext wuerde ihn zerstoeren.
+    """
+    try:
+        leser = pypdf.PdfReader(pdf_pfad)
+        if leser.is_encrypted:
+            raise StagingFehler(
+                f"{pdf_pfad.name} ist verschluesselt — entschluesselte "
+                "Fassung der Quelle anfordern"
+            )
+        seiten_texte = [seite.extract_text() or "" for seite in leser.pages]
+    except StagingFehler:
+        raise
+    except Exception as exc:  # pypdf wirft formatabhaengig verschieden
+        raise StagingFehler(f"PDF nicht lesbar: {exc}") from exc
+
+    absaetze: List[Dict[str, Any]] = []
+    for seite_nr, text in enumerate(seiten_texte, start=1):
+        block: List[str] = []
+        for zeile in text.splitlines() + [""]:
+            if zeile.strip():
+                block.append(zeile.rstrip())
+            elif block:
+                absaetze.append({
+                    "stil": "",
+                    "text": "\n".join(block),
+                    "seite": seite_nr,
+                })
+                block = []
+    if not absaetze:
+        raise StagingFehler(
+            f"{pdf_pfad.name} traegt keinen Textlayer (Scan?) — OCR ist "
+            "bewusst nicht Teil der Vorverdichtung (Backlog); eine "
+            "Textfassung extern beschaffen und die registrierte Quelle "
+            "nachliefern"
+        )
+
+    metadaten: Dict[str, str] = {}
+    roh_meta = leser.metadata or {}
+    for feld, schluessel in (("title", "/Title"), ("subject", "/Subject"),
+                             ("creator", "/Creator"), ("author", "/Author")):
+        wert = roh_meta.get(schluessel)
+        if wert:
+            metadaten[feld] = str(wert)
+
+    return {
+        "quelle": str(pdf_pfad),
+        "quelle_sha256": file_sha256(pdf_pfad),
+        "metadaten": metadaten,
+        "absaetze": absaetze,
+        "tabellen": [],
+        "formeln": [],
+        "hinweis": (
+            "Migrationsartefakt-Staging aus einem Text-PDF: Absaetze "
+            "zeilenerhaltend, je Absatz die Seite als Fundstelle. PDF "
+            "kennt keine Absatzstile, Tabellen- oder Formelstruktur — "
+            "Tabellen und Formeln stehen als Text in den Absaetzen, "
+            "'tabellen' und 'formeln' sind bauartbedingt leer (kein "
+            "Zeichen von Formelfreiheit der Quelle)."
+        ),
+    }
+
+
+def _extrahiere_docx(docx_pfad: Path) -> Dict[str, Any]:
     """DOCX strukturiert nach dict (Absaetze, Tabellen, Formeln, Metadaten)."""
     with zipfile.ZipFile(docx_pfad) as archiv:
         dokument = ET.fromstring(archiv.read("word/document.xml"))
@@ -145,20 +248,27 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.quellen.tarifplan_staging",
         description=(
-            "Migrationsartefakt (DOCX-Tarifplan) strukturiert nach JSON "
-            "extrahieren. Producer, kein Gate."
+            "Migrationsartefakt (Tarifplan/Meldung als DOCX oder Text-PDF) "
+            "strukturiert nach JSON extrahieren. Producer, kein Gate."
         ),
     )
-    parser.add_argument("--docx", required=True, help="Quell-DOCX (Migrationsartefakt).")
-    parser.add_argument("--out", required=True, help="Ziel-JSON (runs/migrationsstaging/...).")
+    quelle = parser.add_mutually_exclusive_group(required=True)
+    quelle.add_argument(
+        "--input", help="Quelldokument (.docx oder .pdf, Migrationsartefakt).")
+    quelle.add_argument(
+        "--docx", help="Altname fuer --input (bestehende Aufrufe).")
+    parser.add_argument("--out", required=True, help="Ziel-JSON (Vorverdichtung).")
     ns = parser.parse_args(argv)
 
-    docx_pfad = Path(ns.docx)
-    if not docx_pfad.is_file():
-        print(f"tarifplan_staging: DOCX nicht gefunden: {docx_pfad}", file=sys.stderr)
+    pfad = Path(ns.input or ns.docx)
+    if not pfad.is_file():
+        print(f"tarifplan_staging: Quelle nicht gefunden: {pfad}", file=sys.stderr)
         return 2
     try:
-        daten = extrahiere(docx_pfad)
+        daten = extrahiere(pfad)
+    except StagingFehler as exc:
+        print(f"tarifplan_staging: {exc}", file=sys.stderr)
+        return 2
     except (zipfile.BadZipFile, ET.ParseError, KeyError) as exc:
         print(f"tarifplan_staging: DOCX nicht lesbar: {exc}", file=sys.stderr)
         return 2

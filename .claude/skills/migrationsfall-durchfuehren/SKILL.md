@@ -140,7 +140,7 @@ erraten oder spaeter zur Umgehung einer Gate-Pflicht umetikettieren.
 
 1. Vorverdichtung (deterministisch, je Quelltyp):
    - XLSM: `python -m rechner_pipeline.gates.extract --repo-root . --input faelle/<fall>/eingang/<datei> --out-dir faelle/<fall>/abgeleitet/vorverdichtung/xlsm-<GEN> --adapter excel --diagnostics-dir faelle/<fall>/abgeleitet/diagnostics`
-   - DOCX: `python -m rechner_pipeline.quellen.tarifplan_staging --docx faelle/<fall>/eingang/<datei> --out faelle/<fall>/abgeleitet/vorverdichtung/meldung-<GEN>.json`
+   - DOCX/PDF (Textlayer; ADR-016 — ein Scan ohne Textlayer blockiert hart, OCR extern): `python -m rechner_pipeline.quellen.tarifplan_staging --input faelle/<fall>/eingang/<datei> --out faelle/<fall>/abgeleitet/vorverdichtung/meldung-<GEN>.json`
 2. Extraktion: je (Quelle x Generation) EIN Agent nach Skill
    `extrahiere-quellfragment` (Structured Output gegen das generierte
    QuellFragment-Schema; der Agent sieht NUR seine eigene Quelle).

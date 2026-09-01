@@ -111,3 +111,64 @@ def test_fehlerpfade_exit_2(tmp_path, capsys):
     assert staging.main(
         ["--docx", str(tmp_path / "fehlt.docx"), "--out", str(tmp_path / "w.json")]
     ) == 2
+
+
+def _mini_pdf_ohne_text(pfad: Path) -> Path:
+    import pypdf
+
+    schreiber = pypdf.PdfWriter()
+    schreiber.add_blank_page(width=595, height=842)
+    with pfad.open("wb") as f:
+        schreiber.write(f)
+    return pfad
+
+
+KLV_PDF = REPO_ROOT / "tests" / "fixtures" / "Mitteilung_143_KLV_TG2015.pdf"
+
+
+def test_pdf_staging_deterministisch_und_inhaltstreu(tmp_path):
+    """Text-PDF (Doku-Engine-Artefakt der TG2015-Meldung): Extraktion ist
+    deterministisch, zeilenerhaltend und verliert die tragenden Inhalte
+    nicht — insbesondere ueberlebt die Indexfehler-Zeile der
+    Zeichenerklaerung die Extraktion woertlich (sie ist der Gegenstand
+    einer menschlichen Abnahme und darf nicht im Staging verschwinden)."""
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    assert staging.main(["--input", str(KLV_PDF), "--out", str(a)]) == 0
+    assert staging.main(["--input", str(KLV_PDF), "--out", str(b)]) == 0
+    assert a.read_bytes() == b.read_bytes()
+    daten = json.loads(a.read_text(encoding="utf-8"))
+    assert daten["quelle_sha256"]
+    assert daten["absaetze"] and all(x["seite"] >= 1 for x in daten["absaetze"])
+    volltext = "\n".join(x["text"] for x in daten["absaetze"])
+    assert "Summe von j=1 bis omega-x" in volltext
+    assert "Tarifzins" in volltext and "Promille" in volltext
+    # PDF traegt keine Tabellen-/Formelstruktur — leer, aber ausgewiesen:
+    assert daten["tabellen"] == [] and daten["formeln"] == []
+    assert "bauartbedingt leer" in daten["hinweis"]
+    # Zeilenerhaltend: der Schreibmaschinen-Bruchsatz bleibt lesbar.
+    assert "---" in volltext
+
+
+def test_pdf_ohne_textlayer_ist_harter_fehler(tmp_path, capsys):
+    """Ein Scan ohne Textlayer wird abgelehnt (OCR bewusst nicht Teil
+    der Stufe) — eine stumm leere Vorverdichtung waere ein stiller
+    Verlust."""
+    pdf = _mini_pdf_ohne_text(tmp_path / "scan.pdf")
+    assert staging.main(["--input", str(pdf), "--out", str(tmp_path / "x.json")]) == 2
+    fehler = capsys.readouterr().err
+    assert "Textlayer" in fehler and "OCR" in fehler
+    assert not (tmp_path / "x.json").exists()
+
+
+def test_docx_altname_und_input_liefern_dasselbe(tmp_path):
+    alt, neu = tmp_path / "alt.json", tmp_path / "neu.json"
+    assert staging.main(["--docx", str(KLV_DOCX), "--out", str(alt)]) == 0
+    assert staging.main(["--input", str(KLV_DOCX), "--out", str(neu)]) == 0
+    assert alt.read_bytes() == neu.read_bytes()
+
+
+def test_unbekanntes_format_exit_2(tmp_path, capsys):
+    fremd = tmp_path / "meldung.txt"
+    fremd.write_text("kein Dokument")
+    assert staging.main(["--input", str(fremd), "--out", str(tmp_path / "x.json")]) == 2
+    assert "unbekanntes Format" in capsys.readouterr().err
