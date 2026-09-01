@@ -69,6 +69,7 @@ Knoten: klv
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as _dt
 import math
 from dataclasses import dataclass, field
@@ -83,6 +84,7 @@ from rechner_pipeline.kern import (
 )
 from rechner_pipeline.kern.beitragsreduktion import (
     PROSPEKTIV,
+    TEILKUENDIGUNG,
     ReduzierterVertrag,
 )
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
@@ -671,12 +673,13 @@ def pruefe_vertrag(
                     "bereits herabgesetzten Vertrags ist nicht abgebildet"
                 )
                 continue
-            if scheiben:
+            if scheiben and red_verfahren != TEILKUENDIGUNG:
                 befunde.append(
                     f"RED bei Monat {g.monate} nach dynamischer Erhöhung — "
-                    "die Herabsetzung eines Vertrags mit Erhöhungsscheiben "
-                    "ist im Zielsystem noch nicht abgebildet (Tarifplan-"
-                    "Ausgestaltung offen); Wert nicht gerechnet"
+                    "die anteilige Schichten-Teilung eines Vertrags mit "
+                    "Erhöhungsscheiben ist im Zielsystem nicht abgebildet; "
+                    "Wert nicht gerechnet (die TEILKUENDIGUNG der zweiten "
+                    "Lieferung rechnet diesen Fall)"
                 )
                 continue
             if g.monate % 12:
@@ -687,6 +690,7 @@ def pruefe_vertrag(
                 continue
             if g.anteil is None:
                 nicht_geprueft.append(f"gevo_red_monat_{g.monate}_anteil")
+                red_monat = g.monate
             elif not 0.0 <= g.anteil <= 1.0:
                 befunde.append(
                     f"RED bei Monat {g.monate}: Anteil {g.anteil} liegt "
@@ -694,10 +698,23 @@ def pruefe_vertrag(
                     "des Beitrags"
                 )
                 continue
+            elif red_verfahren == TEILKUENDIGUNG:
+                # Quell-Semantik (Bedingungswerk Ziffer 6, Ausweitung
+                # 16/19): Der Anteil (1-f) der GRUNDVERSICHERUNG ist
+                # gekündigt und ausgezahlt; der Vertrag läuft
+                # ZUSTANDSLOS mit f x S weiter, die Erhöhungsscheiben
+                # unberührt. Kein geteilter Zustand, keine
+                # Folge-GeVo-Sperre — nur der Grund-Kern wird auf die
+                # gekündigte Welt gebunden. ``grund_mp`` bleibt die
+                # VERANKERUNGS-Welt: Schichtbewertung und
+                # Scheiben-Versatz rechnen weiter auf ihr.
+                kern = Rechenkern(dataclasses.replace(
+                    grund_mp,
+                    sum_insured=g.anteil * grund_mp.sum_insured))
             else:
                 reduziert = ReduzierterVertrag.nach(
                     kern, g.monate // 12, g.anteil, verfahren=red_verfahren)
-            red_monat = g.monate
+                red_monat = g.monate
         else:  # PEX
             if pex_jahr is not None:
                 befunde.append(

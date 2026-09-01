@@ -1276,3 +1276,50 @@ def test_dk_am_jahrestag_ist_lieferungseigenschaft() -> None:
     dk1 = next(p for p in urteil["pruefungen"]
                if p["groesse"] == "dk_stichtag_1")
     assert dk1["residuum"] > 100.0  # der Reservezuwachs seit Jahrestag
+
+
+def test_teilkuendigung_gevo_fuehrt_zustandslos_fort() -> None:
+    """Ausweitung Nr. 19 (A-M4-Haelfte des Teilkuendigungs-Backlogs):
+    Ein RED-GeVo im Pruefzeitraum kuendigt unter der Quell-Semantik den
+    (1-f)-Anteil der Grundversicherung — der Folgestichtag rechnet die
+    ZUSTANDSLOSE f x S-Welt (Scheiben unberuehrt), keinen geteilten
+    Vertrag und keine Folge-GeVo-Sperre. Im Lauf zeigten 280 Vertraege
+    am Stichtag 2 exakt den nicht abgezogenen Kuendigungswert
+    (7000052: +32.275,55 = der A-M3-dDK derselben Police)."""
+    import dataclasses as dc
+
+    f = 0.6
+    red_monat = 12 * 10  # Jahrestag zwischen S1 und S2
+    assert S1 < red_monat <= S2
+    klein = dc.replace(KLV_DEFAULT, sum_insured=f * KLV_DEFAULT.sum_insured)
+    dk2_erwartet = round(Rechenkern(klein).monatsreserve(S2).vx_mrv, 2)
+
+    urteil = pruefe_vertrag(VertragsPruefung(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=round(KERN.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=dk2_erwartet,
+        gevos=(GeVoErwartung(art="RED", monate=red_monat,
+                             betrag_erwartet=None, anteil=f),),
+    ), red_verfahren="teilkuendigung")
+    assert urteil["bestanden"], urteil["befunde"]
+
+    # Mit Erhoehungsscheibe: die Scheibe laeuft unberuehrt weiter —
+    # kein "nicht abgebildet"-Befund mehr.
+    from rechner_pipeline.kern import erhoehungs_scheibe
+
+    erh_jahr, summe = 5, 4000.0
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, summe))
+    dk1 = round(KERN.monatsreserve(S1).vx_mrv
+                + scheibe.monatsreserve(S1 - 12 * erh_jahr).vx_mrv, 2)
+    dk2 = round(Rechenkern(klein).monatsreserve(S2).vx_mrv
+                + scheibe.monatsreserve(S2 - 12 * erh_jahr).vx_mrv, 2)
+    urteil2 = pruefe_vertrag(VertragsPruefung(
+        police_id="P-2", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=dk1, dk_erwartet_2=dk2,
+        scheiben=((erh_jahr, summe),),
+        gevos=(GeVoErwartung(art="RED", monate=red_monat,
+                             betrag_erwartet=None, anteil=f),),
+    ), red_verfahren="teilkuendigung")
+    assert urteil2["bestanden"], urteil2["befunde"]
