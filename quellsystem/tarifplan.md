@@ -32,13 +32,13 @@ Versicherungsbedingungen (AVB) zum Tarifwerk TG2015.
 
 ## 1. Rechnungsgrundlagen
 
-Der Rechnungszins beträgt 1,25 %. Die Sterblichkeit richtet sich nach
-dem Raucherstatus der versicherten Person:
+Der Tarifzins beträgt 1,25 %. Die Sterblichkeit richtet sich nach der
+Risikoklasse der versicherten Person:
 
-| Raucherstatus | Sterbetafel |
+| Risikoklasse | Sterbetafel |
 |---|---|
-| Nichtraucher | DAV2008_T_NR_U70 |
-| Raucher | DAV2008_T_R_U70 |
+| NR (Nichtraucher) | DAV2008_T_NR_U70 |
+| R (Raucher) | DAV2008_T_R_U70 |
 
 Das Höchstalter der Ausscheideordnung ist omega = 123, die Wurzel
 l(0) = 1.000.000. Die Abschlusskosten werden über die ersten fünf
@@ -48,15 +48,15 @@ Jahren — entfällt der Abzug nach Abschnitt 2.
 
 ## 2. Kostensätze und Abzüge je Bestandsgruppe
 
-Die Kostensätze hängen nur von der Bestandsgruppe ab; der
-Raucherstatus bestimmt allein die Sterbetafel.
+Die Kostensätze hängen nur von der Bestandsgruppe ab; die
+Risikoklasse bestimmt allein die Sterbetafel.
 
 Bestandsgruppe Einzel:
 
 | Größe | Wert |
 |---|---|
 | Abschlusskosten alpha (der Beitragssumme) | 25 Promille |
-| Inkassokosten beta1 (des Beitrags) | 3 % |
+| Inkassokosten beta1 (des Beitrags) | 30 Promille |
 | Verwaltung gamma1 (Beitragszahlungsdauer) | 1 Promille |
 | Verwaltung gamma2 (beitragsfreie Jahre) | 1,25 Promille |
 | Verwaltung gamma3 (nach Beitragsfreistellung) | 2,5 Promille |
@@ -73,7 +73,7 @@ Bestandsgruppe Kollektiv:
 | Größe | Wert |
 |---|---|
 | Abschlusskosten alpha (der Beitragssumme) | 15 Promille |
-| Inkassokosten beta1 (des Beitrags) | 1,5 % |
+| Inkassokosten beta1 (des Beitrags) | 15 Promille |
 | Verwaltung gamma1 (Beitragszahlungsdauer) | 0,8 Promille |
 | Verwaltung gamma2 (beitragsfreie Jahre) | 1 Promille |
 | Verwaltung gamma3 (nach Beitragsfreistellung) | 2,5 Promille |
@@ -90,7 +90,7 @@ Bestandsgruppe Haus:
 | Größe | Wert |
 |---|---|
 | Abschlusskosten alpha (der Beitragssumme) | 0 Promille |
-| Inkassokosten beta1 (des Beitrags) | 1 % |
+| Inkassokosten beta1 (des Beitrags) | 10 Promille |
 | Verwaltung gamma1 (Beitragszahlungsdauer) | 0,8 Promille |
 | Verwaltung gamma2 (beitragsfreie Jahre) | 1 Promille |
 | Verwaltung gamma3 (nach Beitragsfreistellung) | 2,5 Promille |
@@ -100,8 +100,11 @@ Bestandsgruppe Haus:
 
 ## 3. Zusammenstellung der Bezeichnungen und Grundformeln
 
+Das rechnungsmäßige Eintrittsalter x ergibt sich als Differenz der
+Kalenderjahre von Versicherungsbeginn und Geburt.
+
 Die Wertermittlung erfolgt nach der Kommutationsmethode. Ausgehend von
-der jeweiligen Sterbetafel q(x) und dem Rechnungszins i mit
+der jeweiligen Sterbetafel q(x) und dem Tarifzins i mit
 v = 1/(1+i) werden gebildet:
 
 ```
@@ -138,7 +141,7 @@ AG(k)  =   ------- * Summe ( ----------------- )   fuer s = 0, ..., k-1
               k               1 + (s/k) * i
 ```
 
-Beitragssatz je Einheit Versicherungssumme:
+Beitragssatz je Einheit Erlebensfallsumme:
 
 ```
             nAx + nEx + gamma1 * ax:t + gamma2 * (ax:n - ax:t)
@@ -154,3 +157,13 @@ jedem Rechenschritt kaufmännisch auf 16 Nachkommastellen gerundet
 Rechenkette ungerundet. Beträge in Euro — Beiträge, Deckungskapitale,
 Abzüge, Rückkaufswerte und beitragsfreie Summen — werden erst in der
 Ausgabe kaufmännisch auf den Cent gerundet; gebucht wird centgenau.
+
+## 6. Bestandsabzug
+
+Der Bestandsabzug meldet je Vertrag die Erlebensfallsumme (ERLSUMME;
+bei beitragsfrei gestellten Verträgen die beitragsfreie Summe), den
+aktuellen Jahresbeitrag (JBRUTTO; 0,00 bei Beitragsfreiheit und nach
+Ablauf der Beitragszahlungsdauer) und das Deckungskapital (DECKKAP)
+zum letzten Vertragsjahrestag vor dem Abzugsstichtag. DECKKAP ist die
+letzte Standmitteilung des Vertrags — die Bestandsführung bewertet am
+Vertragsjahrestag und interpoliert nicht.

@@ -36,8 +36,8 @@ Wir zahlen die vereinbarte Versicherungssumme beim Tod der
 versicherten Person während der Versicherungsdauer, spätestens beim
 Erleben des vereinbarten Ablauftermins. Der Tarif wird in den
 Bestandsgruppen Einzel, Kollektiv und Haus geführt; der Beitrag
-richtet sich nach der Bestandsgruppe und dem Raucherstatus der
-versicherten Person.
+richtet sich nach der Bestandsgruppe und der Risikoklasse
+(Nichtraucher oder Raucher) der versicherten Person.
 
 ## 2. Beiträge
 

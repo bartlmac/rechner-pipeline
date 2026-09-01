@@ -22,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from quellsystem.dokumente import AVB, TARIFPLAN, als_pdf, text  # noqa: E402
+from quellsystem.export import RK  # noqa: E402
 from quellsystem.tarifwerk import TAFEL, ZELLEN  # noqa: E402
 
 
@@ -115,15 +116,18 @@ def test_die_kostentabellen_tragen_das_tarifwerk():
 
     md = text(TARIFPLAN)
     for status, tafel in TAFEL.items():
-        assert f"| {status} | {tafel} |" in md
-    assert "1,25 %" in md  # Rechnungszins
+        assert f"| {RK[status]} ({status}) | {tafel} |" in md
+    assert "1,25 %" in md  # Tarifzins
 
     for tarifart in ("Einzel", "Kollektiv", "Haus"):
         zelle = ZELLEN[("Nichtraucher", tarifart)]
         segment = md.split(f"Bestandsgruppe {tarifart}:")[1].split(
             "\n## ")[0].split("Bestandsgruppe ")[0]
         assert f"| {_de(zelle.alpha * 1000)} Promille |" in segment
-        assert f"| {_de(zelle.beta1 * 100)} % |" in segment
+        # Baldrian meldet die Inkassokosten in PROMILLE (Regie-
+        # Umbenennung A1.2; identische Werte, andere Einheit als die
+        # PLV-Spez sie fuehrt — F2 vergleicht Excel gegen diese Zahl).
+        assert f"| {_de(zelle.beta1 * 1000)} Promille |" in segment
         for g in (zelle.gamma1, zelle.gamma2, zelle.gamma3):
             assert f"| {_de(g * 1000)} Promille |" in segment
         assert f"{zelle.policy_fee:.2f}".replace(".", ",") + " EUR" in segment
@@ -135,6 +139,27 @@ def test_die_kostentabellen_tragen_das_tarifwerk():
                 assert f"| {_de(zelle.ratzu[zw] * 100)} % |" in segment
         else:
             assert segment.count("entfällt") == 2
+
+
+def test_der_tarifplan_spricht_baldrian():
+    """Die Meldung spricht die Sprache der QUELLE, nicht die der PLV.
+
+    Die Sprachdifferenz ist Vorfuehr-Substanz (Regie-Umbenennungen):
+    Tarifzins statt Rechnungszins, Risikoklasse statt Raucherstatus,
+    Erlebensfallsumme statt Versicherungssumme — der Transformations-
+    Skill muss die Semantik erkennen, nicht Woerter abgleichen. Dazu
+    die zwei Konventionssaetze, aus denen die Migration Code ableitet:
+    das Kalenderjahres-Alter (M1) und der Jahrestagswert des DECKKAP
+    (die Quelle interpoliert nicht).
+    """
+    md = text(TARIFPLAN)
+    assert "Tarifzins" in md
+    assert "Rechnungszins" not in md
+    assert "Risikoklasse" in md and "Raucherstatus" not in md
+    assert "je Einheit Erlebensfallsumme" in md
+    assert "Kalenderjahre von Versicherungsbeginn und Geburt" in md
+    assert "## 6. Bestandsabzug" in md
+    assert "letzten Vertragsjahrestag" in md and "interpoliert nicht" in md
 
 
 def test_die_optik_ist_schreibmaschine():
