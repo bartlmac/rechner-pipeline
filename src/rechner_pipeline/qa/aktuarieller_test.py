@@ -824,15 +824,28 @@ def _eine_schicht(
     parameter: Schichtparameter, monate_anker: int, mp: ModelPoint,
     p: Pruefpunkt,
 ) -> float:
-    """Der Wert EINER Schicht am Pruefpunkt.
+    return schichtwert_bei(parameter, monate_anker, mp, p.monate)
 
-    Die Schicht rechnet ab ihrem Verankerungszeitpunkt; ein Pruefpunkt
+
+def schichtwert_bei(
+    parameter: Schichtparameter, monate_anker: int, mp: ModelPoint,
+    monate: int,
+) -> float:
+    """Der Wert EINER Schicht zu einem Vertragsmonat.
+
+    Die Schicht rechnet ab ihrem Verankerungszeitpunkt; ein Zeitpunkt
     DAVOR liegt ausserhalb ihrer Definition und ist ein Auftragsfehler.
     Auf dem Jahresgitter wird der Verlaufswert genommen, unterjaehrig
     linear zwischen den Jahresraendern gemischt — dieselbe Konvention wie
     fuer die Basisschicht (Abschnitt 6), denn die Schicht ist dieselbe
     Rekursion mit anderen Zahlungen und darf keine eigene Zeitachse
     bekommen ("Overlay ohne dritte Uhr", 9.5).
+
+    Oeffentlich, weil BEIDE Vergleichs-Engines dieselbe Bewertung
+    brauchen (A-M1..A-M3 hier, das Migrationscontrolling A-M4 in
+    qa.migrationssuite — Nachzug des zweiten Laufs: die Suite stammte
+    aus der Vor-Schicht-Aera und zeigte jedem Vertrag sein rohes,
+    unabsorbiertes Verankerungs-Residuum).
     """
     # Das GITTER beginnt am Jahrestag vor dem Anker; bei einer
     # Rumpfjahr-Verankerung (9.6-Nachtrag) liegt t_a mitten im ersten
@@ -857,7 +870,7 @@ def _eine_schicht(
     )
     verlauf = schicht.verlauf(parameter, form, mp.x + jahr_ta)
 
-    seit_gitter = p.monate - 12 * jahr_ta
+    seit_gitter = monate - 12 * jahr_ta
     j, rest = divmod(seit_gitter, 12)
     if j >= len(verlauf) - 1:
         return verlauf[-1]

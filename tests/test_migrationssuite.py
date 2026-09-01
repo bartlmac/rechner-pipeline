@@ -1164,3 +1164,83 @@ def test_luecke_und_urteil_bleiben_getrennte_aussagen() -> None:
     assert bericht["bestanden"] == 1
     assert bericht["vollstaendig_geprueft"] is False
     assert bericht["pruefluecken"]
+
+
+# --------------------------------------------------------------------------- #
+# Korrekturschicht im Migrationscontrolling (Nachzug des zweiten Laufs)
+# --------------------------------------------------------------------------- #
+
+
+def _mit_schicht(delta: float = -850.0):
+    """Verankerung am Jahrestag vor S1 — dieselbe Strecke wie im Fall."""
+    from rechner_pipeline.bestand.migrationszugang import (
+        Uebernahme,
+        uebernehmen,
+    )
+
+    ta = 12 * 9
+    prosp = KERN.verlaufszeile(9).drx_bpfl
+    e, = uebernehmen([
+        Uebernahme(police_id=1, model_point=dict(MP),
+                   monate_ta=ta, dk_ist=prosp + delta)
+    ])
+    return e.parameter, ta, delta
+
+
+def test_korrekturschicht_absorbiert_das_verankerungsresiduum() -> None:
+    """A-M4-Nachzug des zweiten Laufs: Ohne Schicht zeigt jeder Vertrag
+    eines schichtfuehrenden Falls sein rohes Verankerungs-Residuum an
+    den Stichtagen (im Lauf: 773 von 834 dk-Fehlschlaege). Mit Schicht
+    ist der Stichtagswert Basis PLUS Schicht — am Verankerungspunkt
+    konstruktionsbedingt der gelieferte Stand."""
+    parameter, ta, delta = _mit_schicht()
+    geliefert_1 = round(KERN.monatsreserve(S1).vx_mrv
+                        + delta * 1.0, 2)  # roher Anker: R am t_a
+    # Praezise: Der gelieferte Stand am S1 ist Basis + Schichtwert(S1);
+    # bei S1 = t_a + 5 Monate ist die Schicht noch fast voll. Fuer den
+    # Test nehmen wir den SYSTEMWERT mit Schicht als Erwartung und
+    # pruefen beide Richtungen: mit Schicht exakt gruen, ohne Schicht
+    # faellt er um eine Residuums-Groessenordnung.
+    from rechner_pipeline.qa.aktuarieller_test import schichtwert_bei
+    from rechner_pipeline.kern import ModelPoint
+
+    s1_schicht = schichtwert_bei(parameter, ta, ModelPoint(**MP), S1)
+    s2_schicht = schichtwert_bei(parameter, ta, ModelPoint(**MP), S2)
+    # Zonen-Beleg: die Schicht ist an beiden Stichtagen wesentlich und
+    # baut sich ab.
+    assert abs(s1_schicht) > 100.0
+    assert abs(s2_schicht) < abs(s1_schicht)
+
+    geliefert_1 = round(KERN.monatsreserve(S1).vx_mrv + s1_schicht, 2)
+    geliefert_2 = round(KERN.monatsreserve(S2).vx_mrv + s2_schicht, 2)
+    mit = VertragsPruefung(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=geliefert_1, dk_erwartet_2=geliefert_2,
+        schicht=parameter, monate_ta=ta,
+    )
+    urteil = pruefe_vertrag(mit)
+    assert urteil["bestanden"], urteil["befunde"]
+
+    ohne = VertragsPruefung(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=geliefert_1, dk_erwartet_2=geliefert_2,
+    )
+    urteil_ohne = pruefe_vertrag(ohne)
+    assert not urteil_ohne["bestanden"]
+    dk1 = next(p for p in urteil_ohne["pruefungen"]
+               if p["groesse"] == "dk_stichtag_1")
+    assert abs(dk1["residuum"]) > 100.0
+
+
+def test_schicht_ohne_monate_ta_faellt_hart() -> None:
+    parameter, _, _ = _mit_schicht()
+    v = VertragsPruefung(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=1.0, dk_erwartet_2=1.0,
+        schicht=parameter,
+    )
+    with pytest.raises(ValueError, match="ohne monate_ta"):
+        pruefe_vertrag(v)

@@ -195,6 +195,41 @@ class VertragsPruefung:
     #: kern.rechenkern.vertrags_monatsreserve.
     stoab_je_baustein: bool = False
     reduktion: Optional[Tuple[int, float]] = None
+    #: Korrekturschicht des Migrationszugangs (9.11) — Nachzug des
+    #: zweiten Laufs: Ohne sie zeigt jeder Vertrag eines Falls, der
+    #: Schichten fuehrt, an den Stichtagen sein rohes, unabsorbiertes
+    #: Verankerungs-Residuum. Bewertet wird mit derselben Funktion wie
+    #: im aktuariellen Test (schichtwert_bei); ``monate_ta`` ist der
+    #: Verankerungszeitpunkt der hist-Schicht, ``monate_t0`` der der
+    #: conv-Zweitschicht.
+    schicht: Optional[Any] = None
+    schicht_conv: Optional[Any] = None
+    monate_ta: Optional[int] = None
+    monate_t0: Optional[int] = None
+
+
+def _schichtsumme(
+    v: "VertragsPruefung", grund_mp: ModelPoint, monate: int
+) -> float:
+    """Wert der Korrekturschicht(en) am Vertragsmonat (0.0 ohne Schicht).
+
+    Dieselbe Bewertung wie im aktuariellen Test — die Schicht ist EIN
+    Vertragsattribut, das beide Engines identisch lesen muessen. Der
+    Import ist spaet, weil aktuarieller_test seinerseits aus diesem
+    Modul importiert (DATEN_AUSNAHMEN) — auf Modulebene waere das ein
+    Zirkel.
+    """
+    if v.schicht is None and v.schicht_conv is None:
+        return 0.0
+    from rechner_pipeline.qa.aktuarieller_test import schichtwert_bei
+
+    summe = 0.0
+    if v.schicht is not None:
+        summe += schichtwert_bei(v.schicht, v.monate_ta, grund_mp, monate)
+    if v.schicht_conv is not None:
+        summe += schichtwert_bei(
+            v.schicht_conv, v.monate_t0, grund_mp, monate)
+    return summe
 
 
 def _vergleich(groesse: str, system: float, erwartet: float) -> Dict[str, Any]:
@@ -412,6 +447,25 @@ def pruefe_vertrag(
                 grund_mp, erh_jahr, erh_summe,
                 gamma1_uebernehmen=v.scheiben_mit_gamma1))))
 
+    if (v.schicht is not None or v.schicht_conv is not None):
+        if v.schicht is not None and v.monate_ta is None:
+            raise ValueError(
+                f"{v.police_id}: Korrekturschicht ohne monate_ta — die "
+                "Schicht rechnet ab dem Verankerungszeitpunkt, nicht ab "
+                "Vertragsbeginn"
+            )
+        if v.schicht_conv is not None and v.monate_t0 is None:
+            raise ValueError(
+                f"{v.police_id}: conv-Schicht ohne monate_t0 — die "
+                "Zweitverankerung rechnet ab t_0"
+            )
+        if alt_rv is not None:
+            raise ValueError(
+                f"{v.police_id}: Herabsetzungs-Anfangszustand zusammen "
+                "mit Korrekturschicht ist nicht definiert — dieselbe "
+                "Unvertraeglichkeit wie im aktuariellen Test"
+            )
+
     if alt_rv is not None:
         dk_1 = alt_rv.monatsreserve(v.monate_stichtag_1).vx_mrv
     elif pex_jahr is not None:
@@ -421,6 +475,10 @@ def pruefe_vertrag(
             kern, scheiben, v.monate_stichtag_1).vx_mrv
     else:
         dk_1 = kern.monatsreserve(v.monate_stichtag_1).vx_mrv
+    # Die Korrekturschicht traegt das Verankerungs-Residuum — der
+    # gefuehrte Stichtagswert ist Basis PLUS Schicht (Nachzug des
+    # zweiten Laufs; ohne sie zeigte jeder Vertrag sein rohes R).
+    dk_1 += _schichtsumme(v, grund_mp, v.monate_stichtag_1)
     pruefungen.append(_vergleich("dk_stichtag_1", dk_1, v.dk_erwartet_1))
 
     if v.bjb_erwartet_1 is not None:
@@ -712,6 +770,7 @@ def pruefe_vertrag(
         else:
             dk2 = vertrags_monatsreserve(
                 kern, scheiben, v.monate_stichtag_2).vx_mrv
+        dk2 += _schichtsumme(v, grund_mp, v.monate_stichtag_2)
         pruefungen.append(_vergleich("dk_stichtag_2", dk2, v.dk_erwartet_2))
 
     return {

@@ -41,7 +41,11 @@ from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import model_point_kwargs
-from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
+from rechner_pipeline.kern.beitragsreduktion import (
+    PROSPEKTIV,
+    TEILKUENDIGUNG,
+    VERFAHREN,
+)
 from rechner_pipeline.qa.migrationssuite import (
     GeVoErwartung,
     VertragsPruefung,
@@ -377,6 +381,16 @@ def anfangszustaende_je_police(
         art = folge[0][0]
         jahr = folge[0][1]
 
+        if art == "RED" and red_verfahren == TEILKUENDIGUNG:
+            # Unter der Teilkuendigungs-Semantik (Bedingungswerk
+            # Ziffer 6, Ausweitung 16) fuehrt die Quelle nach der
+            # Herabsetzung ZUSTANDSLOS mit der kleineren Grundsumme
+            # weiter — und die steht bereits im gelieferten Stamm. Es
+            # gibt keinen geteilten Anfangszustand zu rekonstruieren;
+            # die Teilungs-Rueckwege (leite_absetzung_ab,
+            # Anker-Kalibrierung) sind Artefakte der PLV-Verfahren.
+            continue
+
         try:
             if art == "PEX":
                 # Der Abzug fuehrt hier die BEITRAGSFREIE Summe; der Kern
@@ -438,6 +452,30 @@ def anfangszustaende_je_police(
     return zustaende, warnungen
 
 
+def _schicht_teile(
+    police: str, eintrag: Any, monate_ta: Optional[int]
+) -> Dict[str, Any]:
+    """Schicht-Felder eines Belegeintrags fuer den Pruefauftrag.
+
+    Wiederverwendet die Zerlegung des aktuariellen Tests
+    (_schicht_felder); der Verankerungszeitpunkt kommt aus
+    verankerung.parquet — derselben Datei, deren SHA der Schichtbeleg
+    per Provenienz bindet.
+    """
+    if eintrag is None:
+        return {}
+    from rechner_pipeline.gates.aktuartest_lauf import _schicht_felder
+
+    felder = dict(_schicht_felder(eintrag))
+    if monate_ta is None:
+        raise SystemExit(
+            f"Police {police}: Schichtbeleg ohne Verankerungszeitpunkt — "
+            "verankerung.parquet traegt die Police nicht"
+        )
+    felder["monate_ta"] = int(monate_ta)
+    return felder
+
+
 def baue_auftraege(
     bestand, spez, abzug_1, abzug_2, protokoll, *,
     stichtag_1: dt.date, stichtag_2: dt.date, spalten: Dict[str, str],
@@ -446,6 +484,8 @@ def baue_auftraege(
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     scheiben_mit_gamma1: bool = False,
     stoab_je_baustein: bool = False,
+    schichten: Optional[Dict[str, Any]] = None,
+    monate_ta_je_police: Optional[Dict[str, int]] = None,
 ) -> List[VertragsPruefung]:
     """Je Vertrag genau einen Pruefauftrag."""
     s = spalten
@@ -517,6 +557,9 @@ def baue_auftraege(
             scheiben_mit_gamma1=scheiben_mit_gamma1,
             stoab_je_baustein=stoab_je_baustein,
             reduktion=zustand.get("reduktion"),
+            **_schicht_teile(
+                police, (schichten or {}).get(police),
+                (monate_ta_je_police or {}).get(police)),
         ))
     return auftraege
 
@@ -585,6 +628,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Stornoabschlag-Grenzen je Baustein statt je Vertrag — "
              "Tarifwerks-Eigenschaft der Lieferung, siehe "
              "aktuartest_lauf.")
+    p.add_argument(
+        "--schicht", dest="schicht", default=None,
+        metavar="SCHICHTBELEG",
+        help="ABGELEITETER Schichtbeleg (gates.verankerung_belegen) "
+             "unter <fall>/abgeleitet/ — derselbe Beleg wie beim "
+             "aktuariellen Test, mit nachgerechneter Provenienz-Bindung. "
+             "Ohne ihn bleibt der rohe Wertvergleich: gueltig, solange "
+             "der Fall keine Schichten fuehrt; sonst zeigt jeder "
+             "Vertrag sein unabsorbiertes Verankerungs-Residuum.")
     p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
                    default=None, metavar="SATZ",
                    help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
@@ -671,6 +723,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
                   file=sys.stderr)
 
+    schichten: Optional[Dict[str, Any]] = None
+    monate_ta_je_police: Optional[Dict[str, int]] = None
+    if args.schicht is not None:
+        # Dieselbe bindbare Quelle wie beim aktuariellen Test —
+        # Provenienz-Pruefung inklusive (spaeter Import: aktuartest_lauf
+        # importiert seinerseits lazy aus diesem Modul).
+        from rechner_pipeline.gates.aktuartest_lauf import _schichten
+
+        schichten = _schichten(fall, args.schicht,
+                               repo_root=Path(args.repo_root).resolve())
+        import pandas as pd
+
+        ver = pd.read_parquet(
+            fall / "abgeleitet" / "bestand" / "verankerung.parquet")
+        monate_ta_je_police = {
+            str(z.police_id): int(z.monate_ta) for z in ver.itertuples()}
+
     auftraege = baue_auftraege(
         bestand,
         spez,
@@ -685,6 +754,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         anfangszustaende=anfangszustaende,
         scheiben_mit_gamma1=args.scheiben_mit_gamma1,
         stoab_je_baustein=args.stoab_je_baustein,
+        schichten=schichten,
+        monate_ta_je_police=monate_ta_je_police,
     )
 
     # Die Pruefmenge wird an der LIEFERUNG gemessen, nicht an sich
