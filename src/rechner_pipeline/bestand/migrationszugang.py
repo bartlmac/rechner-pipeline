@@ -341,6 +341,40 @@ def zugangsbericht(ergebnisse: Sequence[Zugangsergebnis]) -> Dict[str, Any]:
 #: Zweig, falsches Verfahren oder inkonsistente Lieferung.
 ABLEITUNG_SELBSTCHECK_TOL = 0.011
 
+#: Kleinste Absetzung, die aus cent-gerundeten Lieferfeldern noch
+#: IDENTIFIZIERBAR ist. Eine "Loesung" mit kleinerem abgesetzten Betrag
+#: ist mathematisch konsistent und fachlich leer: Sie presst das
+#: Rundungsrauschen der Lieferung in einen Anteil nahe 1 (zweiter
+#: Baldrian-Lauf: fuenf Policen mit f zwischen 0.9999893 und 0.9999995,
+#: abgesetzte Betraege 3 bis 37 Cent) — siehe
+#: :func:`_pruefe_wirksame_absetzung`.
+ABSETZUNG_MINDESTBETRAG = 1.0
+
+
+def _pruefe_wirksame_absetzung(vs_alt: float, anteil: float) -> None:
+    """Degenerations-Wache der Absetzungs-Rueckwege (2. Lauf, 2026-09-01).
+
+    Liegt der abgesetzte Betrag unter der Aufloesung cent-gerundeter
+    Lieferfelder, sind die gelieferten Werte OHNE wirksame Absetzung
+    erklaerbar — der Vorfall in der Historie und die Wertlage
+    widersprechen sich. Das ist ein benannter Befund, kein Zustand: Als
+    Herabsetzung gefuehrt lief im zweiten Lauf jede
+    Kandidaten-Plausibilitaet ins Leere (Korridor um eine faktisch
+    ungeteilte Welt).
+    """
+    betrag = vs_alt * (1.0 - anteil)
+    if betrag < ABSETZUNG_MINDESTBETRAG:
+        raise MigrationszugangFehler(
+            f"abgeleitete Absetzung betraegt nur {betrag:.2f} EUR "
+            f"(fortgefuehrter Anteil {anteil:.7f}) — unterhalb der "
+            "Aufloesung cent-gerundeter Lieferfelder. Die gelieferten "
+            "Werte sind ohne wirksame Absetzung erklaerbar; die "
+            "Vorfallshistorie widerspricht der Wertlage. Nicht als "
+            "Herabsetzung fuehren — den Widerspruch bei der Quelle "
+            "klaeren (Vorfalls-/Feldsemantik) oder den Anteil "
+            "nachliefern lassen."
+        )
+
 
 @dataclass(frozen=True)
 class AbgeleiteteAbsetzung:
@@ -508,6 +542,7 @@ def leite_absetzung_ab(
                 modellpunkt_felder, jahr=jahr, erlsumme=erlsumme,
                 jbrutto=jbrutto, verfahren=verfahren,
                 roh_anteil=anteil, roh_vs=vs_alt, roh_probe=probe)
+            _pruefe_wirksame_absetzung(vs_alt, anteil)
             return AbgeleiteteAbsetzung(
                 vs_alt=vs_alt, anteil=anteil, jahr=jahr,
                 verfahren=verfahren, stoab_zweig=zweig,
@@ -628,6 +663,7 @@ def kalibriere_absetzung_aus_dk(
             oben = mitte
     anteil = 0.5 * (unten + oben)
     vs, _ = wert(anteil)
+    _pruefe_wirksame_absetzung(vs, anteil)
     return vs, anteil
 
 

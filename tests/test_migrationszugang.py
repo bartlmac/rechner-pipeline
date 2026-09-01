@@ -464,6 +464,41 @@ def test_erlsumme_unter_dem_fortgefuehrten_teil_faellt_hart():
             verfahren="mit_abzug")
 
 
+def test_absetzung_unterhalb_der_rundungsaufloesung_faellt_hart():
+    """Zweiter Lauf: fuenf RED-Policen, deren JBRUTTO praktisch der
+    volle Beitrag zur ERLSUMME ist. Die Gleichungen liefern dann ein f
+    nahe 1 (abgesetzt: Centbetraege) — ein Rundungsphantom, kein
+    Zustand. Als Herabsetzung gefuehrt lief jede
+    Kandidaten-Plausibilitaet ins Leere; die Ableitung benennt den
+    Widerspruch zwischen Vorfallshistorie und Wertlage jetzt hart."""
+    felder = _mp_felder(sum_insured=34500.0)
+    bjb_voll = _Rechenkern(
+        type(_KLV_DEFAULT)(**felder)).gross_annual_premium()
+    with _pytest.raises(_MZFehler, match="ohne wirksame Absetzung"):
+        leite_absetzung_ab(
+            felder, jahr=3, erlsumme=34500.0,
+            jbrutto=bjb_voll * (1.0 - 1e-6),
+            verfahren="prospektiv")
+
+
+def test_kalibrierung_auf_rand_anteil_faellt_als_widerspruch():
+    """Auch der Anker-Rueckfallweg: Trifft der gelieferte Wert die
+    UNGETEILTE Welt, laeuft die Bisektion an den Rand f -> 1 und
+    wuerde eine Absetzung um Centbetraege behaupten — derselbe
+    Widerspruch, dieselbe harte Benennung."""
+    from rechner_pipeline.bestand.migrationszugang import (
+        kalibriere_absetzung_aus_dk,
+    )
+
+    felder = _mp_felder(sum_insured=42000.0)
+    dk = round(_Rechenkern(
+        type(_KLV_DEFAULT)(**felder)).monatsreserve(120).vx_mrv, 2)
+    with _pytest.raises(_MZFehler, match="ohne wirksame Absetzung"):
+        kalibriere_absetzung_aus_dk(
+            felder, jahr=3, erlsumme=42000.0, dk_ist=dk,
+            monate_dk=120, verfahren="prospektiv")
+
+
 # --------------------------------------------------------------------------- #
 # Rueckrechnung einer Alt-Dynamikerhoehung (leite_erhoehung_ab)
 # --------------------------------------------------------------------------- #
