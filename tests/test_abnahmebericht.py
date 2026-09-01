@@ -1073,3 +1073,44 @@ def test_kommando_gibt_genau_ein_json_auf_stdout(tmp_path, capsys) -> None:
     assert daten["exit_code"] == rc == Exit.GOLDEN_MASTER
     assert daten["status"] == "failed"
     assert daten["schema_version"] == 1
+
+
+def test_gate_rechnet_die_komponentenskalierte_toleranz_nach(
+        tmp_path) -> None:
+    """Ausweitung Nr. 22 des zweiten Laufs: Das Gate verwarf exakt die
+    vier Urteile, die die Suite seit Korrektur 21 komponentenskaliert
+    richtig faellt — seine eigene Nachrechnung nutzte das flache
+    Toleranzpaar. Jetzt steht die Komponentenzahl als Zaehler an jeder
+    Pruefung und das Gate rechnet mit ihr nach: Ein 0,023-Residuum bei
+    sechs Komponenten ist gruen, OHNE den Zaehler bleibt es rot."""
+    import json
+
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    p = daten["vertraege"][0]["pruefungen"][0]
+    # Delta ZWISCHEN der flachen Grenze (max aus abs 0,02 und
+    # rel 1e-6) und der 6-Komponenten-Grenze — nur die Skalierung
+    # entscheidet dann das Urteil (Zonen-Beleg).
+    flach = max(0.02, abs(p["erwartet"]) * 1e-6)
+    skaliert = max(0.02 + 5 * 0.005, abs(p["erwartet"]) * 1e-6)
+    assert flach < skaliert, "Fixture-Wert zu gross fuer den Zonen-Test"
+    delta = (flach + skaliert) / 2
+    p["system"] = p["erwartet"] + delta
+    p["residuum"] = p["system"] - p["erwartet"]
+    p["komponenten"] = 6
+    p["ok"] = True
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+    result = main(_basis_argv(tmp_path, suite_pfad))
+    meldungen = " ".join(e["message"] for e in result.errors)
+    assert "'ok'" not in meldungen, meldungen
+    assert result.exit_code != Exit.FILE_CONTRACT
+
+    # Ohne den Zaehler ist dasselbe Urteil eine Umetikettierung —
+    # der suite_contract-Fehler steht in den Meldungen (der Exit-Code
+    # kann von anderen, hier unbeteiligten Blockern der Fixture
+    # dominiert werden).
+    p.pop("komponenten")
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+    result = main(_basis_argv(tmp_path, suite_pfad))
+    meldungen = " ".join(e["message"] for e in result.errors)
+    assert "'ok'" in meldungen

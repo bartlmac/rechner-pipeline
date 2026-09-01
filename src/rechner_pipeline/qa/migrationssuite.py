@@ -276,6 +276,10 @@ def _vergleich(
         "erwartet": erwartet,
         "residuum": system - erwartet,
         "ok": ok,
+        # Zaehler fuer die unabhaengige Nachrechnung des Gates
+        # (gates.abnahmebericht) — ohne ihn koennte es die skalierte
+        # Toleranz nicht nachvollziehen und verwuerfe korrekte Urteile.
+        "komponenten": komponenten,
     }
 
 

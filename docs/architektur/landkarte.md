@@ -46,7 +46,7 @@ flowchart TD
     gates -- 8 --> kern
     gates -- 10 --> models
     gates -- 12 --> ontologie
-    gates -- 8 --> qa
+    gates -- 9 --> qa
     gates -- 4 --> quellen
     gates -- 5 --> spez
     kommutationskern -- 2 --> kern

@@ -119,6 +119,25 @@ from rechner_pipeline.ontologie.transformation import (
     validate_spec,
 )
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
+from rechner_pipeline.qa.migrationssuite import _CENT_UNSCHAERFE
+
+
+def _suite_vergleich_ok(pruefung) -> bool:
+    """Das Vergleichsurteil der Suite, unabhaengig nachvollzogen.
+
+    Dieselbe komponentenskalierte Fehlerfortpflanzung wie
+    ``qa.migrationssuite._vergleich`` (Korrektur 21 des zweiten
+    Laufs): Die Komponentenzahl steht als Zaehler an der Pruefung —
+    ohne sie verwuerfe das Gate genau die Urteile, die die Suite
+    korrekt faellt (vier Vertraege mit 6-7 Quell-Komponenten).
+    """
+    komponenten = int(pruefung.get("komponenten", 1))
+    return math.isclose(
+        pruefung["system"],
+        pruefung["erwartet"],
+        rel_tol=REL_TOL,
+        abs_tol=ABS_TOL + _CENT_UNSCHAERFE * max(0, komponenten - 1),
+    )
 
 COMMAND = "abnahmebericht"
 #: Kein Gate "G2": die Abnahme ist der MENSCHLICHE Gate A-M4. Dieses
@@ -1171,12 +1190,7 @@ def _suite_fehler(daten: Any) -> List[str]:
                     f"{pruef_wo}: 'residuum' ({pruefung['residuum']!r}) "
                     f"passt nicht zu system - erwartet ({residuum!r})"
                 )
-            berechnet_ok = math.isclose(
-                pruefung["system"],
-                pruefung["erwartet"],
-                rel_tol=REL_TOL,
-                abs_tol=ABS_TOL,
-            )
+            berechnet_ok = _suite_vergleich_ok(pruefung)
             berechnete_pruefurteile.append(berechnet_ok)
             if pruefung["ok"] is not berechnet_ok:
                 fehler.append(
@@ -1250,12 +1264,7 @@ def _suite_zusammenfassung(suite: Dict[str, Any]) -> Dict[str, Any]:
         bool(urteil["pruefungen"])
         and not urteil["befunde"]
         and all(
-            math.isclose(
-                pruefung["system"],
-                pruefung["erwartet"],
-                rel_tol=REL_TOL,
-                abs_tol=ABS_TOL,
-            )
+            _suite_vergleich_ok(pruefung)
             for pruefung in urteil["pruefungen"]
         )
         for urteil in vertraege
