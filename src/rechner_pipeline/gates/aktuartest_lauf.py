@@ -196,12 +196,22 @@ def baue_auftraege(
         if ohne_zustand:
             zustandslos.append(police)
         gewaehrt = dict((plausibilitaet or {}).get(police, {}))
-        if gewaehrt and ohne_zustand:
-            # Die Reichweite des Belegs (Vorfallart) trifft auch
-            # Policen ohne ableitbaren Anfangszustand — dort ersetzt er
-            # nichts (siehe Docstring); der Antrag wird verworfen statt
-            # eines Auftrags, den die Engine-Wache hart abweist. main
-            # weist die Policen im Ergebnis aus.
+        if gewaehrt and zustand.get("reduktion") is None:
+            # Die Reichweite des Belegs (Vorfallart) trifft mehr
+            # Policen, als die Ersetzungs-Regeln tragen: ALLE
+            # Regel-Tatbestaende (Kandidaten-Rechnung fuer
+            # kVx_MRV/BJB/RKW, Abzugskonventions-Bound fuer RKW)
+            # beziehen sich auf den Herabsetzungs-ANFANGSZUSTAND. Ohne
+            # ihn entfaellt der Antrag ausgewiesen — zwei Faelle:
+            # (a) kein ableitbarer Zustand (zustandslos, Korrektur 9):
+            #     der Systemwert rechnet eine falsche Welt, ein
+            #     Korridor darum urteilt nichts;
+            # (b) VOLLSTAENDIG bestimmter Zustand ohne reduktion
+            #     (Serien-IST-Struktur, Ausweitung 11): der
+            #     Wertvergleich ist wieder tauglich, eine Ersetzung
+            #     hat keinen Tatbestand mehr — im zweiten Lauf brach
+            #     A-M1 sonst an der Engine-Wache (Korrektur 12).
+            # main weist die Policen im Ergebnis aus.
             gewaehrt = {}
 
         auftraege.append(Vertragspruefung(
@@ -662,11 +672,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"WARNUNG Police {police}: Korrekturschicht nicht im "
               "Pruefpfad — Herabsetzungs-Anfangszustand, Wertvergleich "
               "durch Plausibilitaets-Beleg ersetzt", file=sys.stderr)
-    plaus_verweigert = sorted(p for p in zustandslos if p in plausibilitaet)
+    # Die Wahrheit ueber gewaehrte Ersetzungen steht im AUFTRAG — von
+    # dort rekonstruieren, nicht die Verteil-Logik nachbauen.
+    vergeben = {a.police_id: bool(a.plausibilitaet) for a in auftraege}
+    plaus_verweigert = sorted(
+        p for p in plausibilitaet if not vergeben.get(p, False))
     for police in plaus_verweigert:
+        grund = ("kein ableitbarer Anfangszustand"
+                 if police in zustandslos
+                 else "Zustand vollstaendig bestimmt, kein "
+                      "Herabsetzungs-Anfangszustand (Serien-IST-Struktur)")
         print(f"WARNUNG Police {police}: Plausibilitaets-Beleg nicht "
-              "angewandt — kein ableitbarer Anfangszustand, die Police "
-              "bleibt sichtbar im Wertvergleich", file=sys.stderr)
+              f"angewandt — {grund}; die Police bleibt sichtbar im "
+              "Wertvergleich", file=sys.stderr)
     stichprobe = _stichprobe(beleg, args.abnahme)
     profil = vorlage(args.abnahme, weite=str(
         stichprobe.parameter.get("weite") or stichprobe.profil))
@@ -692,9 +710,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "Anteile je Ereignis nachliefern: POLNR;GEVO;DATUM;"
                 "ANTEIL), nicht Toleranzen weiten."),
         }
-        if plaus_verweigert:
-            ergebnis["anfangszustand_nicht_ableitbar"][
-                "plausibilitaet_nicht_angewandt"] = plaus_verweigert
+    if plaus_verweigert:
+        # Eigenes Feld statt Unterpunkt der Zustandslos-Prueflueke:
+        # Der Antrag entfaellt auch fuer Policen mit VOLLSTAENDIG
+        # bestimmtem Zustand (Serien-IST-Struktur) — dort ist nichts
+        # "nicht ableitbar", der Wertvergleich ist schlicht wieder
+        # der Massstab.
+        ergebnis["plausibilitaet_nicht_angewandt"] = {
+            police: ("anfangszustand_nicht_ableitbar"
+                     if police in zustandslos
+                     else "kein_herabsetzungs_anfangszustand")
+            for police in plaus_verweigert
+        }
 
     ziel = Path(args.out) if args.out else (
         fall / "abgeleitet" / "berichte" / ZIELNAME[args.abnahme])

@@ -1210,3 +1210,32 @@ def test_auftragsbau_verwirft_plausibilitaet_ohne_zustand_ausgewiesen():
     assert not urteil["bestanden"]
     assert all(p["kriterium"] == KRITERIUM_VERGLEICH
                for p in urteil["pruefungen"])
+
+
+def test_auftragsbau_verwirft_plausibilitaet_bei_serien_ist_struktur():
+    """Korrektur 12 des zweiten Laufs: Nach der Serien-Aufloesung
+    (Ausweitung 11) traegt die Police einen VOLLSTAENDIG bestimmten
+    Zustand (Scheiben + Grundsumme, kein reduktion) — die
+    Vorfallart-Reichweite des Belegs beantragte trotzdem weiter
+    kVx_MRV/BJB-Plausibilitaet, deren Regel den Herabsetzungszustand
+    braucht, und A-M1 starb wortgleich an der Engine-Wache. Ohne
+    Herabsetzungs-Anfangszustand entfaellt der Antrag ausgewiesen;
+    die Police ist NICHT zustandslos und laeuft im Wertvergleich."""
+    from rechner_pipeline.gates.aktuartest_lauf import baue_auftraege
+
+    lieferung, bestand, spez = _zustandslos_fixture()
+    auftraege, _ausgelassen, zustandslos = baue_auftraege(
+        lieferung, bestand, spez, auspraegungen_je_police={},
+        anfangszustaende={"7000717": {
+            "scheiben": ((3, 4000.0),), "sum_insured": 48000.0}},
+        plausibilitaet={"7000717": {"kVx_MRV": GRUND, "BJB": GRUND,
+                                    "RKW": GRUND}},
+        red_anteil_kandidaten=(0.50, 0.60, 0.75))
+    assert zustandslos == []
+    assert auftraege[0].scheiben == ((3, 4000.0),)
+    assert auftraege[0].plausibilitaet == {}
+    assert auftraege[0].reduktion_kandidaten == ()
+    # Engine-vertraeglich: der Wertvergleich urteilt, keine Wache.
+    urteil = pruefe_vertrag(auftraege[0], _profil())
+    assert all(p["kriterium"] == KRITERIUM_VERGLEICH
+               for p in urteil["pruefungen"])
