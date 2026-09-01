@@ -16,47 +16,33 @@ def _read(rel: str) -> str:
 
 
 def test_codex_repo_skills_match_claude_skills() -> None:
-    """Codex support must not drift from the verified Claude skill bodies."""
-    pairs = (
-        (
-            ".claude/skills/author-rechner-toolbox-gate/SKILL.md",
-            ".agents/skills/author-rechner-toolbox-gate/SKILL.md",
-        ),
-        (
-            ".claude/skills/migrationsfall-durchfuehren/SKILL.md",
-            ".agents/skills/migrationsfall-durchfuehren/SKILL.md",
-        ),
-        (
-            ".claude/skills/extrahiere-quellfragment/SKILL.md",
-            ".agents/skills/extrahiere-quellfragment/SKILL.md",
-        ),
-        (
-            ".claude/skills/entwickle-im-zielsystem/SKILL.md",
-            ".agents/skills/entwickle-im-zielsystem/SKILL.md",
-        ),
-        (
-            ".claude/skills/teste-adversarial/SKILL.md",
-            ".agents/skills/teste-adversarial/SKILL.md",
-        ),
-        (
-            ".claude/skills/dokumentiere-system/SKILL.md",
-            ".agents/skills/dokumentiere-system/SKILL.md",
-        ),
-        (
-            ".claude/skills/bereite-fachkonflikt-auf/SKILL.md",
-            ".agents/skills/bereite-fachkonflikt-auf/SKILL.md",
-        ),
-        (
-            ".claude/skills/pruefe-migrationsabnahme/SKILL.md",
-            ".agents/skills/pruefe-migrationsabnahme/SKILL.md",
-        ),
-        (
-            ".claude/skills/integriere-migrationsinkrement/SKILL.md",
-            ".agents/skills/integriere-migrationsinkrement/SKILL.md",
-        ),
+    """Codex support must not drift from the verified Claude skill bodies.
+
+    Verglichen werden die VERZEICHNISSE, nicht eine gepflegte Liste. Die
+    Liste hier zaehlte neun Paare auf und vergass das vorhandene
+    ``transformiere-quellbestand``: eine einseitige Aenderung daran blieb
+    gruen, waehrend AGENTS.md die Paritaet als test-erzwungen ausweist.
+    Eine Handliste ist genau so lange vollstaendig, bis jemand einen Skill
+    hinzufuegt -- und dann sagt sie nichts mehr, ohne rot zu werden.
+    """
+    claude_wurzel = REPO_ROOT / ".claude" / "skills"
+    codex_wurzel = REPO_ROOT / ".agents" / "skills"
+
+    def _dateien(wurzel: Path) -> set:
+        return {p.relative_to(wurzel) for p in wurzel.rglob("*") if p.is_file()}
+
+    claude_dateien, codex_dateien = _dateien(claude_wurzel), _dateien(codex_wurzel)
+    assert claude_dateien, "keine Skills gefunden — Pfad falsch?"
+    nur_claude = sorted(str(p) for p in claude_dateien - codex_dateien)
+    nur_codex = sorted(str(p) for p in codex_dateien - claude_dateien)
+    assert not nur_claude, f"nur unter .claude/skills/: {nur_claude}"
+    assert not nur_codex, f"nur unter .agents/skills/: {nur_codex}"
+
+    unterschiedlich = sorted(
+        str(rel) for rel in claude_dateien
+        if (claude_wurzel / rel).read_bytes() != (codex_wurzel / rel).read_bytes()
     )
-    for claude_rel, codex_rel in pairs:
-        assert _read(codex_rel) == _read(claude_rel), codex_rel
+    assert not unterschiedlich, f"Inhalt weicht ab: {unterschiedlich}"
 
 
 def test_root_agents_md_documents_codex_without_breaking_claude() -> None:

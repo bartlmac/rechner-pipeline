@@ -20,15 +20,48 @@ Knoten: klv
 from __future__ import annotations
 
 import sys
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from rechner_pipeline.kern import ModelPoint, berechne
+from rechner_pipeline.kern import ModelPoint, Rechenkern, berechne
 from rechner_pipeline.models.bestand import model_point_kwargs
 
 
 
 class KernlaufError(RuntimeError):
     """Der Kern liefert kein verwertbares Ergebnis fuer diesen Vertrag."""
+
+
+def vertrags_rkw(
+    grund: Rechenkern, scheiben: List[Tuple[int, Rechenkern]], jahr: int
+) -> float:
+    """Vertragsweiter Rueckkaufswert ueber Grund- und Erhoehungsscheiben.
+
+    Die Stornoabschlag-Grenzen des Tarifwerks (stoab_min/max) sind je
+    VERTRAG kalibriert: der Abzug wird einmal auf die Gesamtwerte gerechnet
+    (satz * (Gesamt-VS - Gesamt-Deckungsrueckstellung), begrenzt), nicht je
+    Scheibe — sonst wuerde die Untergrenze je Scheibe binden und der
+    Gesamtabzug mit der Scheibenzahl wachsen. Fuer Vertraege ohne Scheiben
+    ist das Ergebnis bit-identisch zur RKW-Spalte der Kern-Verlaufszeile.
+
+    Wohnt hier, weil Simulation UND Bewertung den Wert brauchen — beide
+    ueber den Kern, keine ueber die jeweils andere (ADR-011).
+    """
+    zeilen = [grund.verlaufszeile(jahr)] + [
+        kern.verlaufszeile(jahr - erh_jahr) for erh_jahr, kern in scheiben
+    ]
+    mrv = 0.0
+    for z in zeilen:
+        mrv += z.vx_mrv
+    if grund.produkt.ist_flex_phase(jahr):
+        stoab = 0.0
+    else:
+        mp = grund.mp
+        vs = mp.sum_insured + sum(kern.mp.sum_insured for _, kern in scheiben)
+        dr = 0.0
+        for z in zeilen:
+            dr += z.drx_bpfl
+        stoab = min(mp.stoab_max, max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+    return max(0.0, mrv - stoab)
 
 
 def berechne_vertrag(

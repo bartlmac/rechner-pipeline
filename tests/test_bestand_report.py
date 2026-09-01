@@ -20,7 +20,7 @@ from rechner_pipeline.bestand.kennzahlen import (
     verlauf,
 )
 from rechner_pipeline.bestand.parquet_io import write_portfolio
-from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+from rechner_pipeline.bestand.fuehrung import schnitt_am
 from rechner_pipeline.bestand import cli_report as cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -74,7 +74,7 @@ def test_jahresraster_spans_contract_period(portfolio):
 
 def test_stichtags_kennzahlen_match_slice(portfolio):
     stichtag = dt.date(2010, 1, 1)
-    scheibe = zeitscheibe(portfolio, stichtag)
+    scheibe = schnitt_am(portfolio, stichtag)
     kz = stichtags_kennzahlen(scheibe, stichtag)
     assert kz["vertraege"] == len(scheibe)
     assert kz["summe_vs"] == pytest.approx(float(scheibe["sum_insured"].sum()))
@@ -83,7 +83,7 @@ def test_stichtags_kennzahlen_match_slice(portfolio):
 
 def test_stichtags_kennzahlen_empty_slice_is_zero(portfolio):
     stichtag = dt.date(1970, 1, 1)
-    kz = stichtags_kennzahlen(zeitscheibe(portfolio, stichtag), stichtag)
+    kz = stichtags_kennzahlen(schnitt_am(portfolio, stichtag), stichtag)
     assert kz["vertraege"] == 0 and kz["summe_vs"] == 0.0
     assert kz["generationen"] == {}
 
@@ -157,15 +157,15 @@ def test_ereignis_kennzahlen_summen_und_jahresreihe(fortschreibung):
 
 
 def test_status_verlauf_zaehlt_pol_und_pex(portfolio, fortschreibung):
-    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+    from rechner_pipeline.bestand.fuehrung import journalsicht
     from rechner_pipeline.bestand.kennzahlen import status_verlauf
-    from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+    from rechner_pipeline.bestand.fuehrung import schnitt_am
 
     historie, _, *_ = fortschreibung
-    sicht = bestand_mit_historie(portfolio, historie)
+    sicht = journalsicht(portfolio, historie)
     stichtag = dt.date(2020, 1, 1)
     reihe = status_verlauf(sicht, [stichtag])
-    scheibe = zeitscheibe(sicht, stichtag)
+    scheibe = schnitt_am(sicht, stichtag)
     assert reihe[0]["POL"] + reihe[0]["PEX"] == len(scheibe)
     assert reihe[0]["PEX"] > 0  # Beispielraten erzeugen Beitragsfreistellungen
 
@@ -384,6 +384,11 @@ def test_stichtag_teilt_die_nachweisung_in_historie_und_prognose(
     assert f"Stichtag {stichtag.isoformat()} — ab hier Prognose" in mit
     assert "Referenzstichtag" in mit
     assert "ab hier Prognose" not in ohne
+    # Die gestrichelte Grenzlinie in den Diagrammen ist Teil des Vertrags:
+    # unter den Report-rcParams ist die axvline die einzige Quelle von
+    # stroke-dasharray im SVG.
+    assert "stroke-dasharray" in mit
+    assert "stroke-dasharray" not in ohne
     # Genau EINE Trennstelle je Bewegungstabelle (zwei Traeger-Bestaende
     # mal Stueck und Summe), nicht je Zeile:
     assert mit.count("ab hier Prognose") == 4
@@ -437,9 +442,47 @@ def test_cli_stichtag(portfolio, fortschreibung, tmp_path):
         "--scheiben", str(s), "--bis", "2035-01-01", "--stichtag", "2026-01-01",
         "--out", str(out),
     ]) == 0
-    assert "ab hier Prognose" in out.read_text(encoding="utf-8")
+    text = out.read_text(encoding="utf-8")
+    assert "ab hier Prognose" in text
+    assert "stroke-dasharray" in text
     assert cli.main([
         "--portfolio", str(parquet), "--stichtag", "kein-datum",
+    ]) == 2
+
+
+def test_cli_referenzstichtag_kommt_aus_der_config(portfolio, tmp_path):
+    """Der Referenzstichtag ist eine Eigenschaft des Bestands: ohne
+    --stichtag zieht das CLI meta.referenzstichtag aus der Config, das
+    Flag uebersteuert nur. Verhindert die Regression, dass ein Aufruf
+    ohne Flag stillschweigend alle Stichtags-Markierungen verliert."""
+    parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
+    ohne_flag = tmp_path / "ohne_flag.html"
+    assert cli.main([
+        "--portfolio", str(parquet), "--config", str(EXAMPLE),
+        "--out", str(ohne_flag),
+    ]) == 0
+    text = ohne_flag.read_text(encoding="utf-8")
+    assert "Referenzstichtag: 2026-01-01" in text
+    assert "stroke-dasharray" in text
+
+    uebersteuert = tmp_path / "uebersteuert.html"
+    assert cli.main([
+        "--portfolio", str(parquet), "--config", str(EXAMPLE),
+        "--stichtag", "2010-01-01", "--out", str(uebersteuert),
+    ]) == 0
+    text = uebersteuert.read_text(encoding="utf-8")
+    assert "Referenzstichtag: 2010-01-01" in text
+    assert "Referenzstichtag: 2026-01-01" not in text
+
+    # Der naheliegendste Tippfehler beim neuen Feld (String statt
+    # TOML-Datum) ist ein sauberer Exit 2, kein Traceback:
+    kaputt = tmp_path / "kaputt.toml"
+    kaputt.write_text(
+        '[meta]\nseed = 1\nreferenzstichtag = "2026-01-01"\n',
+        encoding="utf-8",
+    )
+    assert cli.main([
+        "--portfolio", str(parquet), "--config", str(kaputt),
     ]) == 2
 
 
@@ -613,9 +656,9 @@ def test_volumen_verlauf_steht_je_versicherungsart(gemischter_bestand):
     assert "Σ versicherte Jahresrente (Berufsunfähigkeit)" in html
     # Jede Spalte fuehrt ihren Teilbestand, nicht den Gesamtbestand:
     from rechner_pipeline.bestand.berichtstexte import teilbestand
-    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+    from rechner_pipeline.bestand.fuehrung import journalsicht
 
-    bestand = bestand_mit_historie(df, erg.historie)
+    bestand = journalsicht(df, erg.historie)
     werte = {
         produkt: verlauf(
             teilbestand(bestand, produkt), [dt.date(2026, 1, 1)], spalte
@@ -684,7 +727,7 @@ def test_beitragsvolumen_im_bericht(gemischter_bestand):
         assert report._zahl(r["bzb_jahr"] + r["bu_beitrag"]) in html
 
 
-def test_beitragssumme_gegen_nachrechnung_ueber_die_zeitscheibe(
+def test_beitragssumme_gegen_nachrechnung_ueber_die_schnitt_am(
     portfolio, config, fortschreibung
 ):
     """Kontrollrechnung: die aggregierte Beitragssumme entspricht der
@@ -694,7 +737,7 @@ def test_beitragssumme_gegen_nachrechnung_ueber_die_zeitscheibe(
         auswertungs_verlauf,
         beitraege,
     )
-    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+    from rechner_pipeline.bestand.fuehrung import journalsicht
     from rechner_pipeline.kern import ModelPoint, Rechenkern
     from rechner_pipeline.models.bestand import model_point_kwargs
 
@@ -706,7 +749,7 @@ def test_beitragssumme_gegen_nachrechnung_ueber_die_zeitscheibe(
     reihe = auswertungs_verlauf(
         portfolio, historie, config, [stichtag], scheiben=ohne_erh
     )
-    scheibe = zeitscheibe(bestand_mit_historie(portfolio, historie), stichtag)
+    scheibe = schnitt_am(journalsicht(portfolio, historie), stichtag)
     assert (scheibe["status_code"] == "PEX").any(), "Fixture ohne PEX"
 
     felder = {g.name: g.generation_fields() for g in config.generationen}

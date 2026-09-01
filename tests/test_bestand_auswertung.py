@@ -19,7 +19,7 @@ from rechner_pipeline.bestand.auswertung import (
 from rechner_pipeline.bestand.config import Annahme, Annahmen, load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben
 from rechner_pipeline.bestand.generator import generate
-from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+from rechner_pipeline.bestand.fuehrung import schnitt_am
 from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.models.bestand import STAMM_SPALTEN, model_point_kwargs
 
@@ -116,7 +116,7 @@ def test_auswertungs_verlauf_ohne_historie_summiert_kernwerte(config):
     )
     stichtag = dt.date(2020, 1, 1)
     reihe = auswertungs_verlauf(stamm, None, config, [stichtag])
-    scheibe = zeitscheibe(stamm, stichtag)
+    scheibe = schnitt_am(stamm, stichtag)
     erwartet_dk = sum(
         _kern(stamm.iloc[i], config).zustand_am(int(m)).drx_bpfl
         for i, m in enumerate(scheibe["months_exp"])
@@ -184,6 +184,9 @@ def test_auswertung_pex_versatz_der_scheiben(config):
             "duration": pd.Series([18], dtype="int64"),
             "premium_duration": pd.Series([13], dtype="int64"),
             "sum_insured": pd.Series([5000.0], dtype="float64"),
+            # Schicht-eigene Rechnungsgrundlage (ADR-011): Tarifwerk-Regel
+            # der Scheibe ist gamma1 = 0 (Bezugsgroesse bleibt die GrundVS).
+            "gamma1": pd.Series([0.0], dtype="float64"),
         }
     )
     historie = pd.DataFrame(
@@ -201,7 +204,9 @@ def test_auswertung_pex_versatz_der_scheiben(config):
     reihe = auswertungs_verlauf(stamm, historie, config, [stichtag], scheiben=scheiben)
     grund = _kern(stamm.iloc[0], config)
     scheiben_kern = Rechenkern(
-        dataclasses.replace(grund.mp, x=47, n=18, t=13, sum_insured=5000.0)
+        dataclasses.replace(
+            grund.mp, x=47, n=18, t=13, sum_insured=5000.0, gamma1=0.0
+        )
     )
     erwartet_dk = grund.reserve_beitragsfrei(3, 5) + scheiben_kern.reserve_beitragsfrei(1, 3)
     erwartet_vs = grund.beitragsfreie_summe(3) + scheiben_kern.beitragsfreie_summe(1)
@@ -234,6 +239,7 @@ def test_scheiben_fremder_polizzen_sind_fehler(config):
             "duration": pd.Series([19], dtype="int64"),
             "premium_duration": pd.Series([14], dtype="int64"),
             "sum_insured": pd.Series([5000.0], dtype="float64"),
+            "gamma1": pd.Series([0.0], dtype="float64"),
         }
     )
     with pytest.raises(ValueError, match="99999999"):

@@ -8,7 +8,7 @@ Werkzeug beim Empfänger nötig.
 
 Mit Statushistorie und Ereignis-Ledger (Fortschreibung, optional) zeigt der
 Bericht zusätzlich die Ereignis-/Abgangs-Sichten: der Bestandsverlauf wird
-abgangsbereinigt (Zeitscheiben auf der Mehrzeilen-Sicht), dazu kommen der
+abgangsbereinigt (Auskunfts-Schnitte auf der Journalsicht), dazu kommen der
 in-force-Bestand nach Status, die Ereignisse je Kalenderjahr und die
 Betragssummen je Ereignisart.
 
@@ -56,7 +56,7 @@ from rechner_pipeline.bestand.berichtstexte import (  # noqa: E402
     teilbestand,
 )
 from rechner_pipeline.bestand.config import BestandConfig  # noqa: E402
-from rechner_pipeline.bestand.ereignisse import bestand_mit_historie  # noqa: E402
+from rechner_pipeline.bestand.fuehrung import journalsicht, schnitt_am  # noqa: E402
 from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
     EREIGNIS_LABELS,
     EREIGNIS_REIHENFOLGE,
@@ -70,7 +70,6 @@ from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
     status_verlauf,
     verlauf,
 )
-from rechner_pipeline.bestand.zeitscheibe import zeitscheibe  # noqa: E402
 
 REPORT_VERSION = "2.0.0"
 
@@ -201,7 +200,7 @@ def _zeichne_stichtagsgrenze(
 
     ``zwischen=True`` fuer Kalenderjahr-Balken (die Grenze faellt ZWISCHEN
     das letzte Historien- und das erste Prognosejahr); sonst liegt sie AUF
-    dem Stichtags-Tick (Zeitscheibe am 1.1. = Ende der Historie). Gleiche
+    dem Stichtags-Tick (Auskunfts-Schnitt am 1.1. = Ende der Historie). Gleiche
     Optik wie im Bewegungskonto, damit jede Zeitachse dieselbe Lesart hat.
     """
     if stichtag is None or not jahre:
@@ -851,9 +850,9 @@ def render_html(
             # eine systematische Ueberzeichnung des Bestands.
             stichtage = [s for s in stichtage if s <= bis] or stichtage[:1]
     generationen = generationsnamen(df)
-    # Mit Historie rechnen Verlauf und Zeitscheiben abgangsbereinigt auf der
+    # Mit Historie rechnen Verlauf und Auskunfts-Schnitte abgangsbereinigt auf der
     # Mehrzeilen-Sicht; Strukturbilder je Vertrag bleiben auf dem Basisbestand.
-    bestand = bestand_mit_historie(df, historie) if historie is not None else df
+    bestand = journalsicht(df, historie) if historie is not None else df
     leistung, leistung_label = _leistungssicht(df)
     reihe = verlauf(bestand, stichtage, leistung)
     # Volumen-Verlauf je Versicherungsart. Die Vertragszahl ist ueber die
@@ -875,7 +874,7 @@ def render_html(
     struktur_stichtag = stichtag or _dt.date.fromisoformat(
         hoechststand["stichtag"]
     )
-    scheibe = zeitscheibe(bestand, struktur_stichtag)
+    scheibe = schnitt_am(bestand, struktur_stichtag)
     # Ereignis-Sicht auf dem um die Bestands-Zugaenge ergaenzten Ledger:
     # die Engine bucht ZUG nur fuer Neuzugaenge, die Vertraege des
     # Ausgangsbestands sind zum Simulationsbeginn schon da. Ohne die

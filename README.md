@@ -34,6 +34,46 @@ Die Arbeitsteilung ist der Kern der Methodik:
   werden Objekte mit beiden Lesarten, nie stille Annahmen; jede
   Abnahme ist ein menschliches Gate mit unveränderlichem Snapshot.
 
+Die Komponenten des Repositories, mit ihrem Simulations-Tooling
+daneben (die Objekte und das System links sind das Produkt; das
+Tooling rechts erzeugt die Vorzeigeobjekte und ist je Objekt
+verzichtbar, ohne dass das System etwas verliert):
+
+```mermaid
+flowchart RL
+    subgraph OBJEKTE["Objekte und System"]
+        direction TB
+        P1["(1) Pfefferminzia
+Zielbestand: Kern + Bestandsführung"]
+        F2["(2) Migrationsobjekte
+Quellbestände: faelle/ · lieferungen/"]
+        S3["(3) KI-System
+Pipeline · Gates · Agenten-Skills"]
+        P1 ~~~ F2 ~~~ S3
+    end
+    subgraph TOOLING["Simulations-Tooling"]
+        direction TB
+        T4["(4) Bestands-Simulation
+erzeugt (1) einmalig"]
+        T5["(5) Quellbestand-Simulation
+erzeugt Lieferungen für (2)"]
+        T6["(6) Tägliche Fortschreibung — geplant
+Vorfälle je Tag für (1)"]
+        T4 ~~~ T5 ~~~ T6
+    end
+    TOOLING -. "erzeugt die Vorzeigeobjekte" .-> OBJEKTE
+
+    classDef objekt fill:#0e7568,stroke:#0a544b,color:#ffffff
+    classDef system fill:#4a5d8a,stroke:#36466b,color:#ffffff
+    classDef sim fill:#5c636b,stroke:#464c53,color:#ffffff
+    classDef geplant stroke-dasharray: 6 4
+    class P1,F2 objekt
+    class S3 system
+    class T4,T5,T6 sim
+    class T6 geplant
+```
+
+
 ## Architektur
 
 **Schichten** (Import-Regeln maschinell erzwungen,
@@ -138,7 +178,7 @@ startet keinen Gate-Lauf.
 | O1 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
 | O3 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
 | P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (G-1, G-2, G-T); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, G-2 verlangt die zum Fall-Scope passenden Pflichtbelege |
-| B1 | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, Basisstatus (`1`/`POL` zum Versicherungsbeginn am Monatsersten) und Bewegungs-Identitäten je Jahr, Track und Maß |
+| B1 (Version `2.0.0`) | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, endliche Beträge (`NaN` und `inf` sind Datenfehler), Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand), die Tarifwerk-Regel `gamma1 == 0` der Erhöhungsscheiben und Bewegungs-Identitäten je Jahr, Track und Maß. Die Version steht auf `2.0.0`, weil sich die normative Akzeptanzmenge geändert hat: vorher grüne Belege werden rot und umgekehrt |
 | G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |
 
 Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
@@ -203,12 +243,58 @@ Beitragsfreistellung, dynamische Erhöhungen als eigene Scheiben,
 Ablauf); jeder Betrag kommt aus dem Kern, die Eintrittsraten aus einer
 eigenen Annahmenschicht (3. Ordnung), und das Bewegungskonto führt die
 Identität Anfangsbestand + Zugang − Abgang = Endbestand exakt in der
-Struktur der BaFin-Nachweisungen. Der Bestandsbericht rendert das als
-selbst-enthaltene HTML-Seite:
+Struktur der BaFin-Nachweisungen. Der Bestand wird **geführt**
+(ADR-011): Der Stammsatz trägt je Vertrag den aktuellen Zustand (Status
+und seit wann), das Journal die vollständige Aufzeichnung; die Auskunft
+rekonstruiert den Bestand zu jedem früheren Tag aus dem Journal, und
+die Bewertung liest ausschließlich den Zustand — kein Bewertungspfad
+liest das Journal. Gate B1 erzwingt die Deckungsgleichheit von
+Stammzustand und jüngstem Journalstand. Berichte rechnen jederzeit neu
+— **Abschlüsse nicht**: Ein festgeschriebener Stichtagsstand
+(`bestand/abschluss.py`, genau einer je Stichtag, mit Kern-Version je
+Zeile) wird nie überschrieben; die Kontrolle stellt die Neuberechnung
+dagegen und weist Abweichungen aus, statt sie still zu ersetzen.
+„Genau einmal" ist dabei nicht nur eine Prüfung vor dem Schreiben,
+sondern der Publish selbst: existiert der Zielpfad, scheitert der Aufruf
+atomar. Und weil ein festgeschriebener Stand unumkehrbar ist, verlangt er
+das **ganze** Lauf-Bundle — Stamm, Historie, Ledger, Scheiben und Config,
+geprüft mit derselben Engine wie Gate B1, vor dem Schreiben wie vor dem
+Prüfen. Eine Teilmenge des Laufs ergäbe sonst einen festgeschriebenen
+Falschstand, den die eigene Kontrolle bestätigt:
+
+```mermaid
+flowchart LR
+    SIM["Simulation
+GeVo-Strom, einmalig"]
+    subgraph BF["Bestandsführung"]
+        STAMM["geführter Stamm
+aktueller Zustand je Vertrag"]
+        JOURNAL[("Journal
+Historie + Ledger, nur anfügbar")]
+    end
+    AUSKUNFT["Auskunft
+bestand_am(tag)"]
+    BEW["Bewertung
+Werte aus dem Zustand"]
+    BERICHT["Bestandsbericht
+Nachweisungen · Bewegungskonto"]
+
+    SIM -- "fuehre_fort" --> STAMM
+    SIM --> JOURNAL
+    JOURNAL -- "Rückschau je Tag" --> AUSKUNFT
+    AUSKUNFT -- "Zustand am Tag X" --> BEW
+    STAMM --> BEW
+    BEW --> BERICHT
+    BEW -- "friert Stichtag ein (einmalig)" --> ABSCHLUSS[("Abschlüsse
+festgeschrieben, nie überschrieben")]
+```
+
+Der Bestandsbericht rendert das als selbst-enthaltene HTML-Seite:
 
 ```bash
 python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml ...
 python -m rechner_pipeline.bestand.cli_report --portfolio <parquet> --out bericht.html ...
+python -m rechner_pipeline.bestand.cli_abschluss --config ... --lauf runs/bestand --stichtag 2026-01-01 --bis 2026-01-01
 ```
 
 **Die Migrationsfälle** (`faelle/`, lokale Arbeitsbereiche, nicht

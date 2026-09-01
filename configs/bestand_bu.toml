@@ -20,6 +20,10 @@
 [meta]
 seed = 20260813
 beschreibung = "Pfefferminzia LV (PLV): BU-Bestand, zwei Generationen (Lehrbeispiel)"
+# Referenzstichtag des Bestands: Grenze zwischen Historie und Prognose
+# im Bestandsbericht (cli_report; dessen --stichtag uebersteuert).
+# Abschluss und Fortschreibung setzen ihre Stichtage weiterhin explizit.
+referenzstichtag = 2026-01-01
 
 # --------------------------------------------------------------------------
 # BU-Geschaeft 2000-2016 (DAV 1997 I)

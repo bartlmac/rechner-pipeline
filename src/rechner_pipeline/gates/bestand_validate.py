@@ -60,20 +60,13 @@ from __future__ import annotations
 import datetime as _dt
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Dict, List, Optional
 
-from rechner_pipeline.bestand.config import load_config
-from rechner_pipeline.bestand.parquet_io import read_portfolio
-from rechner_pipeline.models.bestand import (
-    LEDGER_NAMES,
-    SCHEIBEN_NAMES,
-    STATUS_HISTORIE_NAMES,
-    STAMM_NAMES,
-    validate_portfolio,
-    validate_scheiben,
-    validate_statushistorie,
-)
-from rechner_pipeline.qa.bestand import sanity_check
+# Die Pruefengine wohnt in der Bestandsschicht, damit auch der
+# Abschluss-Produzent sie erreicht (Schichtenkarte verbietet
+# bestand -> gates). Der Name bleibt hier im Namensraum des Gates: der
+# Abnahmebericht ruft ihn als bestand_validate.pruefe_b1_eingaenge.
+from rechner_pipeline.bestand.vorbedingungen import pruefe_b1_eingaenge
 from rechner_pipeline.gates._common import (
     Exit,
     GateArgumentParser,
@@ -91,7 +84,7 @@ from rechner_pipeline.gates._common import (
 from rechner_pipeline.gates._provenienz import systemstand
 
 GATE = "B1.bestand-contract"
-GATE_VERSION = "1.4.0"
+GATE_VERSION = "2.0.0"
 CLI_CONTRACT = GateCliContract(
     command="bestand_validate",
     gate=GATE,
@@ -144,146 +137,6 @@ def _build_parser() -> GateArgumentParser:
     return parser
 
 
-def pruefe_b1_eingaenge(
-    eingaben: Mapping[str, Path],
-    *,
-    bis: Optional[_dt.date] = None,
-) -> Tuple[Dict[str, int], List[dict], List[dict]]:
-    """B1-Engines rein lesend auf einer benannten Eingabenkonfiguration.
-
-    Der CLI-Produzent und G-2 benutzen bewusst dieselbe Funktion. So ist ein
-    frei editierbares, passend neu gehashtes B1-Ledger keine Selbstaussage:
-    G-2 fuehrt Schema-, Invarianten-, Bewegungs- und optionale Sanity-Pruefung
-    auf den aktuellen Bytes erneut aus.
-
-    Rueckgabe: ``(geprueft, contract_fehler, usage_fehler)``.
-    """
-    erlaubt = {"portfolio", "historie", "scheiben", "ledger", "config"}
-    rollen = set(eingaben)
-    errors: List[dict] = []
-    usage_errors: List[dict] = []
-    if "portfolio" not in rollen:
-        return {}, [{"code": "portfolio", "message": "Portfolio-Rolle fehlt"}], []
-    if not rollen <= erlaubt:
-        return {}, [{
-            "code": "eingangsrollen",
-            "message": f"Unbekannte B1-Eingangsrollen: {sorted(rollen - erlaubt)}",
-        }], []
-
-    tabellen: Dict[str, Any] = {}
-    spaltenvertrag = {
-        "portfolio": STAMM_NAMES,
-        "historie": STATUS_HISTORIE_NAMES,
-        "scheiben": SCHEIBEN_NAMES,
-        "ledger": LEDGER_NAMES,
-    }
-    for rolle in ("portfolio", "historie", "scheiben", "ledger"):
-        if rolle not in eingaben:
-            continue
-        try:
-            tabellen[rolle] = read_portfolio(
-                eingaben[rolle], expected_columns=spaltenvertrag[rolle]
-            )
-        except Exception as exc:  # noqa: BLE001 — Parquet-Backends variieren
-            errors.append({
-                "code": rolle,
-                "message": f"{rolle}-Datei ist nicht als Bestand lesbar: {exc}",
-            })
-
-    portfolio = tabellen.get("portfolio")
-    historie = tabellen.get("historie")
-    scheiben = tabellen.get("scheiben")
-    ledger = tabellen.get("ledger")
-    geprueft: Dict[str, int] = {}
-    if portfolio is not None:
-        geprueft["portfolio_zeilen"] = int(len(portfolio))
-        try:
-            for meldung in validate_portfolio(portfolio):
-                errors.append({"code": "portfolio", "message": meldung})
-        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
-            errors.append({"code": "portfolio", "message": str(exc)})
-    if portfolio is not None and historie is not None:
-        geprueft["historie_zeilen"] = int(len(historie))
-        try:
-            for meldung in validate_statushistorie(portfolio, historie):
-                errors.append({"code": "historie", "message": meldung})
-        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
-            errors.append({"code": "historie", "message": str(exc)})
-    if portfolio is not None and scheiben is not None:
-        geprueft["scheiben_zeilen"] = int(len(scheiben))
-        try:
-            for meldung in validate_scheiben(
-                portfolio, scheiben, historie=historie
-            ):
-                errors.append({"code": "scheiben", "message": meldung})
-        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
-            errors.append({"code": "scheiben", "message": str(exc)})
-
-    if ledger is not None and scheiben is None:
-        try:
-            hat_erhoehungen = bool((ledger["ereignis"] == "ERH").any())
-        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
-            errors.append({"code": "ledger", "message": str(exc)})
-            hat_erhoehungen = False
-        if hat_erhoehungen:
-            usage_errors.append({
-                "code": "missing_arg",
-                "message": "Ledger enthaelt dynamische Erhoehungen (ERH) — "
-                "--scheiben ist erforderlich, sonst sind die Bestandssummen "
-                "systematisch zu niedrig und die Bewegungs-Identitaet "
-                "falsch-positiv verletzt",
-            })
-
-    if (
-        portfolio is not None
-        and ledger is not None
-        and historie is not None
-        and not errors
-        and not usage_errors
-    ):
-        from rechner_pipeline.bestand.kennzahlen import (
-            bewegungskonto,
-            bu_bewegungskonto,
-        )
-
-        konto: List[dict] = []
-        try:
-            konto = bewegungskonto(
-                portfolio, historie, ledger, scheiben, bis=bis
-            )
-            konto += bu_bewegungskonto(
-                portfolio, historie, ledger, bis=bis
-            )
-        except Exception as exc:  # noqa: BLE001 — malformed inputs blockieren
-            errors.append({"code": "ledger", "message": str(exc)})
-        geprueft["bewegungsjahre"] = len(konto)
-        for zeile in konto:
-            for track, oks in zeile["identitaet"].items():
-                for mass, ok in oks.items():
-                    if not ok:
-                        errors.append({
-                            "code": "bewegung",
-                            "message": (
-                                f"Jahr {zeile['jahr']} {track}/{mass}: "
-                                "Anfang + Zugang - Abgang != Endbestand"
-                            ),
-                        })
-
-    if "config" in eingaben and portfolio is not None:
-        try:
-            config = load_config(eingaben["config"])
-        except (OSError, ValueError) as exc:
-            errors.append({"code": "config", "message": str(exc)})
-        else:
-            try:
-                for meldung in config.validate():
-                    errors.append({"code": "config", "message": meldung})
-                for meldung in sanity_check(portfolio, config.plausibilitaet):
-                    errors.append({"code": "sanity", "message": meldung})
-                geprueft["sanity_baender"] = len(config.plausibilitaet)
-            except Exception as exc:  # noqa: BLE001 — malformed data blockiert
-                errors.append({"code": "sanity", "message": str(exc)})
-    return geprueft, errors, usage_errors
 
 
 def main(argv: Optional[List[str]] = None):

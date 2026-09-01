@@ -3,8 +3,9 @@
 Three check families, all returning error lists (repo idiom; empty = pass):
 
 * :func:`sanity_check` — distribution plausibility: configured value bands.
-* :func:`zeitscheiben_invarianten` — a Zeitscheibe may select rows and add
-  derived columns, but every Stamm value must pass through unchanged.
+* :func:`auskunfts_invarianten` — ein Auskunfts-Schnitt (ADR-011) darf
+  Zeilen auswaehlen und Stichtagsgroessen ableiten, aber jeden Stammwert
+  nur unveraendert durchreichen.
 * Golden-master anchoring is byte-level and lives in
   :func:`rechner_pipeline.bestand.parquet_io.portfolio_hash`; schema
   validation lives in :func:`rechner_pipeline.models.bestand.validate_portfolio`.
@@ -57,10 +58,10 @@ def sanity_check(
     return errors
 
 
-def zeitscheiben_invarianten(
+def auskunfts_invarianten(
     basis: pd.DataFrame, scheibe: pd.DataFrame
 ) -> List[str]:
-    """A Zeitscheibe must be a pure selection + derivation of the base.
+    """Ein Auskunfts-Schnitt ist reine Auswahl + Ableitung der Journalsicht.
 
     Checks: column contract (Stamm + Zeitscheiben columns, exact order), no
     invented policies, no duplicated policies, and byte-equal Stamm values for
@@ -70,15 +71,15 @@ def zeitscheiben_invarianten(
     expected_cols = list(STAMM_NAMES) + list(ZEITSCHEIBEN_NAMES)
     if list(scheibe.columns) != expected_cols:
         errors.append(
-            f"zeitscheibe: Spalten {list(scheibe.columns)} != erwartet {expected_cols}"
+            f"auskunft: Spalten {list(scheibe.columns)} != erwartet {expected_cols}"
         )
         return errors
     if scheibe["police_id"].duplicated().any():
-        errors.append("zeitscheibe: police_id doppelt")
+        errors.append("auskunft: police_id doppelt")
 
     unbekannt = set(scheibe["police_id"]) - set(basis["police_id"])
     if unbekannt:
-        errors.append(f"zeitscheibe: erfundene police_ids {sorted(unbekannt)[:5]}")
+        errors.append(f"auskunft: erfundene police_ids {sorted(unbekannt)[:5]}")
         return errors
 
     # Vergleichsschluessel ist die Statuszeile (police_id, status_id): die
@@ -87,18 +88,18 @@ def zeitscheiben_invarianten(
     stamm = list(STAMM_NAMES)
     key = ["police_id", "status_id"]
     if basis.duplicated(subset=key).any():
-        errors.append("zeitscheibe: Basis hat doppelte (police_id, status_id)")
+        errors.append("auskunft: Basis hat doppelte (police_id, status_id)")
         return errors
     merged = scheibe[stamm].merge(
         basis[stamm], on=key, how="left", suffixes=("", "_basis"), indicator=True
     )
     if (merged["_merge"] != "both").any():
-        errors.append("zeitscheibe: Statuszeile (police_id, status_id) nicht in Basis")
+        errors.append("auskunft: Statuszeile (police_id, status_id) nicht in Basis")
         return errors
     diff_cols = [
         c for c in stamm
         if c not in key and not merged[c].equals(merged[f"{c}_basis"])
     ]
     if diff_cols:
-        errors.append(f"zeitscheibe: Stammfelder veraendert: {diff_cols}")
+        errors.append(f"auskunft: Stammfelder veraendert: {diff_cols}")
     return errors

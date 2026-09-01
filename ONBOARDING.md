@@ -169,9 +169,13 @@ test suite.
 
 **Generate a portfolio and its report.** Two DIFFERENT dates: `--bis` is
 the simulation horizon (how far events are projected), `--stichtag` only
-marks the history/projection boundary in the report. Setting `--bis` to
-"today" silently kills the projection — everything beyond the reference
-date then degenerates to planned new business:
+marks the history/projection boundary in the report. `--stichtag` is
+optional: without it the report takes `meta.referenzstichtag` from the
+config (so it only applies when `--config` is passed) — the reference
+date is a property of the portfolio, kept in its config, and the flag
+merely overrides it. Setting `--bis` to "today" silently kills the
+projection — everything beyond the reference date then degenerates to
+planned new business:
 ```
 python -m rechner_pipeline.bestand.cli_fortschreibung \
     --config configs/bestand_gesamt.toml --bis 2046-01-01 --out-dir runs/bestand

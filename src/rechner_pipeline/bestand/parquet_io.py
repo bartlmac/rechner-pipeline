@@ -13,6 +13,8 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -21,6 +23,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from rechner_pipeline.models.bestand import (
+    ABSCHLUSS_NAMES,
+    ABSCHLUSS_SPALTEN,
     LEDGER_NAMES,
     LEDGER_SPALTEN,
     SCHEIBEN_NAMES,
@@ -33,7 +37,8 @@ from rechner_pipeline.models.bestand import (
 #: All persistable table families share one name->dtype map (Statushistorie
 #: columns are a subset of the Stamm columns, dtypes are consistent).
 _DTYPE_MAP = (
-    dict(STAMM_SPALTEN)
+    dict(ABSCHLUSS_SPALTEN)
+    | dict(STAMM_SPALTEN)
     | dict(ZEITSCHEIBEN_SPALTEN)
     | dict(LEDGER_SPALTEN)
     | dict(SCHEIBEN_SPALTEN)
@@ -56,11 +61,37 @@ def _schema_for(columns: List[str]) -> pa.schema:
     return pa.schema(fields)
 
 
-def write_portfolio(df: pd.DataFrame, path: Path) -> Path:
+def _dateimodus() -> int:
+    """Der Modus, den ein normal erzeugter Lauf-Output tragen soll.
+
+    ``tempfile.mkstemp`` legt den neuen Inode mit 0600 an, und ``os.replace``
+    nimmt DIESEN Modus mit -- nicht den des bisherigen Ziels. Ohne
+    Korrektur wurde aus einer 0664-Datei still eine 0600-Datei, und der
+    Berechtigungsvertrag der sechs Lauf-Ausgaben aenderte sich, ohne dass
+    es irgendwo stand. Einmal beim Import ermittelt: os.umask ist
+    prozessweit und laesst sich nur lesen, indem man sie kurz setzt.
+    """
+    maske = os.umask(0)
+    os.umask(maske)
+    return 0o666 & ~maske
+
+
+_DATEIMODUS = _dateimodus()
+
+
+def write_portfolio(
+    df: pd.DataFrame, path: Path, *, exklusiv: bool = False
+) -> Path:
     """Write a table deterministically to Parquet.
 
-    Supports the portfolio families (base portfolio, Zeitscheibe,
+    Supports the portfolio families (base portfolio, Auskunfts-Schnitt,
     Statushistorie — column subsets of the Stamm) and the Ereignis-Ledger.
+
+    ``exklusiv=True`` veroeffentlicht genau einmal: existiert der Zielpfad
+    bereits, scheitert der Aufruf mit ``FileExistsError`` statt zu
+    ueberschreiben. Das ist der Vertrag festgeschriebener Staende
+    (ADR-011); die sechs Ausgaben eines Laufs sind dagegen bewusst
+    ueberschreibbar.
     """
     columns = list(df.columns)
     schema = _schema_for(columns)
@@ -76,7 +107,37 @@ def write_portfolio(df: pd.DataFrame, path: Path) -> Path:
     table = pa.Table.from_arrays(arrays, schema=schema)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(table, path, compression="zstd")
+    # Erst vollstaendig daneben schreiben, dann in einem Zug an den Zielpfad
+    # umhaengen. os.replace ist auf einem Dateisystem atomar: Es gibt die
+    # Zieldatei entweder alt oder neu, nie halb. Direkt auf den Zielpfad
+    # geschrieben hinterlaesst ein Abbruch — oder ein zweiter Schreiber —
+    # einen Stumpf mit kaputtem Parquet-Fuss, und der ist eine Sackgasse:
+    # Fuer schreibe_abschluss existiert der Stichtag dann bereits, waehrend
+    # ihn niemand mehr lesen kann.
+    # Der temporaere Name muss je AUFRUF eindeutig sein, nicht je Prozess:
+    # zwei Threads teilen sich die PID und wuerden sonst dieselbe Datei
+    # beschreiben und einander wegziehen.
+    fd, tmp_name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        pq.write_table(table, tmp, compression="zstd")
+        os.chmod(tmp, _DATEIMODUS)
+        if exklusiv:
+            # Genau-einmal-Publish: os.link legt den Zielnamen an und
+            # scheitert mit FileExistsError, wenn es ihn schon gibt --
+            # atomar und prozessuebergreifend, ohne Lock-Infrastruktur.
+            # os.replace kann das nicht: es ueberschreibt bewusst, auch
+            # eine schreibgeschuetzte Datei.
+            os.link(tmp, path)
+            tmp.unlink()
+        else:
+            os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return path
 
 
@@ -125,6 +186,8 @@ def read_portfolio(
             df[name] = pd.to_datetime(df[name])
         elif _DTYPE_MAP.get(name) is not None:
             df[name] = df[name].astype(_DTYPE_MAP[name])
+    if set(df.columns) == set(ABSCHLUSS_NAMES):
+        return df[list(ABSCHLUSS_NAMES)]
     if set(df.columns) == set(LEDGER_NAMES):
         return df[list(LEDGER_NAMES)]
     if set(df.columns) == set(SCHEIBEN_NAMES):

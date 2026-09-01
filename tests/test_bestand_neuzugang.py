@@ -25,7 +25,7 @@ from rechner_pipeline.bestand.ereignisse import (
     mit_zugaengen,
 )
 from rechner_pipeline.bestand.generator import neuzugaenge
-from rechner_pipeline.bestand.zeitscheibe import zeitscheibe
+from rechner_pipeline.bestand.fuehrung import schnitt_am
 from rechner_pipeline.models.bestand import STAMM_SPALTEN, validate_portfolio
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -145,10 +145,10 @@ def test_neuzugaenge_werden_mitsimuliert(config):
     # Zeitscheibe auf dem Gesamtbestand: nach dem Tod niemand mehr in-force
     # (der Basis-Vertrag stirbt ebenfalls im ersten Jahr nach 2000):
     sicht = mit_zugaengen(stamm, ergebnis.zugaenge)
-    from rechner_pipeline.bestand.ereignisse import bestand_mit_historie
+    from rechner_pipeline.bestand.fuehrung import journalsicht
 
-    voll = bestand_mit_historie(sicht, ergebnis.historie)
-    scheibe = zeitscheibe(voll, dt.date(2019, 1, 1))
+    voll = journalsicht(sicht, ergebnis.historie)
+    scheibe = schnitt_am(voll, dt.date(2019, 1, 1))
     assert len(scheibe) == 0
 
 
@@ -159,8 +159,8 @@ def test_zeitscheibe_zaehlt_neuzugaenge_nach_referenzstichtag(config):
     )
     ergebnis = fortschreiben(stamm, config, dt.date(2014, 1, 1), neuzugang_ab=REF)
     sicht = mit_zugaengen(stamm, ergebnis.zugaenge)
-    davor = zeitscheibe(sicht, REF)
-    danach = zeitscheibe(sicht, dt.date(2013, 6, 1))
+    davor = schnitt_am(sicht, REF)
+    danach = schnitt_am(sicht, dt.date(2013, 6, 1))
     assert len(davor) == 1  # nur der Basis-Vertrag
     assert len(danach) > len(davor)
 

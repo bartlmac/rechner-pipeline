@@ -12,8 +12,8 @@ import pytest
 
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.generator import generate
-from rechner_pipeline.bestand.zeitscheibe import derived_age, months_between, zeitscheibe
-from rechner_pipeline.qa.bestand import zeitscheiben_invarianten
+from rechner_pipeline.bestand.fuehrung import derived_age, months_between, schnitt_am
+from rechner_pipeline.qa.bestand import auskunfts_invarianten
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
@@ -43,7 +43,7 @@ def test_derived_age_six_month_rounding():
 
 def test_zeitscheibe_selects_only_active_contracts(portfolio):
     stichtag = dt.date(2010, 6, 30)
-    scheibe = zeitscheibe(portfolio, stichtag)
+    scheibe = schnitt_am(portfolio, stichtag)
     assert (scheibe["insurance_start"].dt.date <= stichtag).all()
     assert (scheibe["insurance_end"].dt.date > stichtag).all()
     # Vertraege, die erst spaeter beginnen, sind nicht enthalten:
@@ -55,7 +55,7 @@ def test_months_exp_plus_rem_equals_contract_months(portfolio):
     """Review-Fix: konsistente Semantik fuer JEDEN Stichtag —
     months_exp (Floor) + months_rem (Ceiling) == 12 * duration."""
     for stichtag in (dt.date(2012, 1, 1), dt.date(2012, 1, 15)):
-        scheibe = zeitscheibe(portfolio, stichtag)
+        scheibe = schnitt_am(portfolio, stichtag)
         summe = scheibe["months_exp"] + scheibe["months_rem"]
         assert (summe == 12 * scheibe["duration"]).all(), stichtag
 
@@ -65,7 +65,7 @@ def test_months_rem_at_contract_start_equals_full_term(portfolio):
     Gesamtmonate als Rest, nicht Gesamtmonate + 1."""
     row = portfolio.iloc[0]
     stichtag = row["insurance_start"].date()
-    scheibe = zeitscheibe(portfolio, stichtag)
+    scheibe = schnitt_am(portfolio, stichtag)
     treffer = scheibe[scheibe["police_id"] == row["police_id"]]
     assert len(treffer) == 1
     assert int(treffer.iloc[0]["months_exp"]) == 0
@@ -74,7 +74,7 @@ def test_months_rem_at_contract_start_equals_full_term(portfolio):
 
 def test_zeitscheibe_derives_consistent_fields(portfolio):
     stichtag = dt.date(2010, 6, 30)
-    scheibe = zeitscheibe(portfolio, stichtag)
+    scheibe = schnitt_am(portfolio, stichtag)
     row = scheibe.iloc[0]
     start = row["insurance_start"].date()
     assert row["months_exp"] == months_between(start, stichtag)
@@ -84,21 +84,21 @@ def test_zeitscheibe_derives_consistent_fields(portfolio):
 
 
 def test_zeitscheiben_invarianten_pass_for_real_slice(portfolio):
-    scheibe = zeitscheibe(portfolio, dt.date(2012, 1, 1))
-    assert zeitscheiben_invarianten(portfolio, scheibe) == []
+    scheibe = schnitt_am(portfolio, dt.date(2012, 1, 1))
+    assert auskunfts_invarianten(portfolio, scheibe) == []
 
 
 def test_zeitscheiben_invarianten_catch_mutation(portfolio):
-    scheibe = zeitscheibe(portfolio, dt.date(2012, 1, 1))
+    scheibe = schnitt_am(portfolio, dt.date(2012, 1, 1))
     kaputt = scheibe.copy()
     kaputt.loc[kaputt.index[0], "sum_insured"] += 1.0
-    errors = zeitscheiben_invarianten(portfolio, kaputt)
+    errors = auskunfts_invarianten(portfolio, kaputt)
     assert any("Stammfelder veraendert" in e and "sum_insured" in e for e in errors)
 
 
 def test_zeitscheiben_invarianten_catch_invented_policy(portfolio):
-    scheibe = zeitscheibe(portfolio, dt.date(2012, 1, 1))
+    scheibe = schnitt_am(portfolio, dt.date(2012, 1, 1))
     kaputt = scheibe.copy()
     kaputt.loc[kaputt.index[0], "police_id"] = 999_999_999
-    errors = zeitscheiben_invarianten(portfolio, kaputt)
+    errors = auskunfts_invarianten(portfolio, kaputt)
     assert any("erfundene police_ids" in e for e in errors)

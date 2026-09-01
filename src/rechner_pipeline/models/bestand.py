@@ -30,6 +30,8 @@ import dataclasses as _dc
 import datetime as _dt
 from typing import Any, Dict, List, Mapping, Tuple
 
+import numpy as _np
+
 from rechner_pipeline.kern.model_point import ModelPoint as _KernModelPoint
 
 # --------------------------------------------------------------------------- #
@@ -145,7 +147,7 @@ STAMM_SPALTEN: Tuple[Tuple[str, str], ...] = (
 #: Versicherungssummen und Jahresrenten zusammen.
 LEISTUNGSSPALTE: Dict[str, str] = {"klv": "sum_insured", "bu": "bu_rente"}
 
-#: Columns derived per Zeitscheibe (never part of the generated base portfolio).
+#: Columns derived per Auskunfts-Schnitt (never part of the generated base portfolio).
 ZEITSCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("stichtag", "datetime64[ns]"),
     ("age", "int64"),
@@ -153,8 +155,9 @@ ZEITSCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("months_rem", "int64"),
 )
 
-#: Statushistorie of the Fortschreibung: follow-up status rows per contract
-#: (the base POL row lives in the Stamm; history rows start at status_id 2).
+#: Status-Journal der Fortschreibung: follow-up status rows per contract.
+#: Der Ursprungszustand (status_id 1, POL am Versicherungsbeginn) ist
+#: Konvention, kein Datensatz — Journalzeilen beginnen bei status_id 2.
 STATUS_HISTORIE_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("police_id", "int64"),
     ("status_id", "int64"),
@@ -193,6 +196,31 @@ SCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("duration", "int64"),             # Restlaufzeit -> ModelPoint.n
     ("premium_duration", "int64"),     # Rest-Beitragsdauer -> ModelPoint.t
     ("sum_insured", "float64"),        # Erhoehungssumme -> ModelPoint.sum_insured
+    # Schicht-eigene Rechnungsgrundlage (ADR-011): die Scheibe traegt ihr
+    # gamma1 selbst (Tarifwerk-Regel: 0, Bezugsgroesse bleibt die GrundVS).
+    # Eine Rekonstruktion aus der Tarifgeneration zur Bewertungszeit hatte
+    # die Regel verloren (+2 % Scheibenbeitrag).
+    ("gamma1", "float64"),             # -> ModelPoint.gamma1 der Scheibe
+)
+
+#: Abschluss: festgeschriebene Bewertungsergebnisse eines Stichtags
+#: (ADR-011). Einzelvertraglich, nur-anfuegbar, nie ueberschrieben — ein
+#: publizierter Stand darf sich nachtraeglich nicht bewegen, auch wenn der
+#: Kern sich weiterentwickelt. ``kern_version`` benennt den Stand, unter
+#: dem die Werte entstanden; eine spaetere Kontrolle weist Abweichungen
+#: der Neuberechnung AUS, statt sie still zu ersetzen.
+ABSCHLUSS_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("stichtag", "datetime64[ns]"),
+    ("produkt", "object"),
+    ("tarif_generation", "object"),
+    ("status_code", "object"),
+    ("leistung", "float64"),          # VS (KLV, inkl. Scheiben) bzw. Jahresrente (BU)
+    ("deckungskapital", "float64"),
+    ("rueckkaufswert", "float64"),
+    ("vs_bfr", "float64"),
+    ("jahresbeitrag", "float64"),
+    ("kern_version", "object"),
 )
 
 STAMM_NAMES: Tuple[str, ...] = tuple(n for n, _ in STAMM_SPALTEN)
@@ -200,6 +228,7 @@ ZEITSCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in ZEITSCHEIBEN_SPALTEN)
 STATUS_HISTORIE_NAMES: Tuple[str, ...] = tuple(n for n, _ in STATUS_HISTORIE_SPALTEN)
 LEDGER_NAMES: Tuple[str, ...] = tuple(n for n, _ in LEDGER_SPALTEN)
 SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
+ABSCHLUSS_NAMES: Tuple[str, ...] = tuple(n for n, _ in ABSCHLUSS_SPALTEN)
 
 
 def stamm_dtypes() -> Dict[str, str]:
@@ -241,10 +270,25 @@ def validate_portfolio(df: Any) -> List[str]:
         errors.append(f"sex ausserhalb {SEX_VALUES}")
     if not df["produkt"].isin(PRODUKT_VALUES).all():
         errors.append(f"produkt ausserhalb {PRODUKT_VALUES}")
-    if not (df["status_id"] == 1).all():
-        errors.append("status_id != 1 (Basisbestand)")
-    if not df["status_code"].isin(BASIS_STATUS).all():
-        errors.append(f"status_code ausserhalb {BASIS_STATUS} (Basisbestand: nur POL)")
+    # Zustandsregeln des gefuehrten Bestands (ADR-011): Der Stammsatz
+    # traegt den AKTUELLEN Zustand. status_id 1 ist der Ursprungssatz und
+    # unterliegt der strengen Ursprungsregel (POL am Versicherungsbeginn);
+    # hoehere status_id sind gebuchte Folgezustaende — ihre Deckung mit dem
+    # Journal prueft validate_stamm_journal (Gate B1 erzwingt sie).
+    if (df["status_id"] < 1).any():
+        errors.append("status_id < 1")
+    if not df["status_code"].isin(STATUS_CODE_VALUES).all():
+        errors.append(f"status_code ausserhalb {STATUS_CODE_VALUES}")
+    ursprung = df["status_id"] == 1
+    if not df.loc[ursprung, "status_code"].isin(BASIS_STATUS).all():
+        errors.append("status_id 1 mit status_code != POL (Ursprungssatz)")
+    folge = df[~ursprung]
+    for produkt, erlaubt in PRODUKT_STATUS.items():
+        zeilen = folge[folge["produkt"] == produkt]
+        if len(zeilen) and not zeilen["status_code"].isin(erlaubt).all():
+            errors.append(
+                f"{produkt}: Folgestatus ausserhalb {sorted(erlaubt)}"
+            )
     if not df["zahlweise"].isin(ZAHLWEISE_VALUES).all():
         errors.append(f"zahlweise ausserhalb {ZAHLWEISE_VALUES}")
 
@@ -254,6 +298,17 @@ def validate_portfolio(df: Any) -> List[str]:
     nan_spalten = [c for c in num.columns if num[c].isna().any()]
     if nan_spalten:
         errors.append(f"fehlende Werte (NaN) in {nan_spalten}")
+    # Unendlich ist kein fehlender Wert und faellt durch jede Bandpruefung:
+    # inf > 0 ist wahr, inf <= 0 ist falsch. Ein Stammsatz mit
+    # sum_insured = +inf passierte Gate B1, den Abschluss UND dessen
+    # Kontrolle, weil math.isclose(inf, inf) wahr ist. Bilanzwerte sind
+    # endlich; alles andere ist ein Datenfehler der Quelle.
+    inf_spalten = [
+        c for c in num.columns
+        if bool(_np.isinf(num[c].to_numpy(dtype="float64", na_value=0.0)).any())
+    ]
+    if inf_spalten:
+        errors.append(f"nichtendliche Werte (inf) in {inf_spalten}")
     if (num["entry_age"] < 0).any():
         errors.append("entry_age negativ")
     if (num["duration"] <= 0).any():
@@ -294,8 +349,14 @@ def validate_portfolio(df: Any) -> List[str]:
         errors.append("insurance_end <= insurance_start")
     if (df["payment_end"] <= start).any():
         errors.append("payment_end <= insurance_start")
-    if not (df["status_date"] == start).all():
-        errors.append("status_date != insurance_start (Basisbestand)")
+    ursprung = df["status_id"] == 1
+    if not (df.loc[ursprung, "status_date"] == start[ursprung]).all():
+        errors.append("status_id 1 mit status_date != insurance_start (Ursprungssatz)")
+    folge = ~ursprung
+    if (df.loc[folge, "status_date"] <= start[folge]).any():
+        errors.append("Folgestatus mit status_date <= insurance_start")
+    if (df.loc[folge, "status_date"] > df.loc[folge, "insurance_end"]).any():
+        errors.append("Folgestatus mit status_date > insurance_end")
     # Monatserster-Konvention (deterministische Jahres-/Monatsarithmetik).
     for col in (
         "status_date",
@@ -325,8 +386,9 @@ def validate_portfolio(df: Any) -> List[str]:
 def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
     """Validate a Statushistorie against its base portfolio (error-list idiom).
 
-    A history holds only follow-up statuses (the POL row lives in the Stamm):
-    per police consecutive ``status_id`` starting at 2 in ``status_date``
+    A history holds only follow-up statuses (the origin row — POL at the
+    insurance start — is convention, not a record): per police consecutive
+    ``status_id`` starting at 2 in ``status_date``
     order, at most one PEX, at most one terminal status — and the terminal
     one is last. An empty history is valid.
     """
@@ -409,6 +471,50 @@ def validate_statushistorie(stamm: Any, historie: Any) -> List[str]:
     return errors
 
 
+def validate_stamm_journal(stamm: Any, historie: Any) -> List[str]:
+    """Deckungsgleichheit von gefuehrtem Stamm und Journal (ADR-011).
+
+    Der Stammzustand IST der juengste Journalstand: Je Police mit
+    Journalzeilen muss der Stammsatz exakt die juengste Zeile tragen
+    (status_id, status_code, status_date); eine Police ohne Journalzeilen
+    steht im Ursprungszustand (status_id 1). Ein Stamm, der etwas anderes
+    behauptet als sein Journal, ist keine Bestandsfuehrung, sondern eine
+    Behauptung.
+    """
+    errors: List[str] = []
+    if len(historie) == 0:
+        juengste = None
+    else:
+        juengste = (
+            historie.sort_values(["police_id", "status_id"], kind="stable")
+            .groupby("police_id", sort=False)
+            .tail(1)
+            .set_index("police_id")
+        )
+    for zeile in stamm.itertuples(index=False):
+        pid = int(zeile.police_id)
+        if juengste is not None and pid in juengste.index:
+            soll = juengste.loc[pid]
+            ist = (int(zeile.status_id), str(zeile.status_code), zeile.status_date)
+            erwartet = (
+                int(soll["status_id"]),
+                str(soll["status_code"]),
+                soll["status_date"],
+            )
+            if ist != erwartet:
+                errors.append(
+                    f"stamm police {pid}: Zustand {ist[1]} (id {ist[0]}, "
+                    f"{ist[2].date()}) weicht vom juengsten Journalstand "
+                    f"{erwartet[1]} (id {erwartet[0]}, {erwartet[2].date()}) ab"
+                )
+        elif int(zeile.status_id) != 1:
+            errors.append(
+                f"stamm police {pid}: status_id {int(zeile.status_id)} ohne "
+                "Journalzeilen — ein Folgezustand braucht seine Buchung"
+            )
+    return errors
+
+
 def validate_scheiben(stamm: Any, scheiben: Any, historie: Any = None) -> List[str]:
     """Validate Erhoehungsscheiben against their base contracts (error list).
 
@@ -442,6 +548,25 @@ def validate_scheiben(stamm: Any, scheiben: Any, historie: Any = None) -> List[s
         errors.append("scheiben: fehlende Werte (NaN) in sum_insured")
     elif (scheiben["sum_insured"] <= 0).any():
         errors.append("scheiben: sum_insured <= 0")
+    # gamma1 ist die Rechnungsgrundlage der Scheibe und geht in Beitrag und
+    # Reserve ein. Die Tarifwerk-Regel setzt sie auf null, weil die
+    # Bezugsgroesse der Verwaltungskosten die GrundVS bleibt
+    # (kern.rechenkern.erhoehungs_scheibe). Ein anderer Wert rechnet still
+    # falsch: NaN laesst den Rueckkaufswert auf 0,00 fallen statt auf NaN,
+    # ein negativer Wert erzeugt einen negativen Jahresbeitrag — beides
+    # plausibel aussehende Zahlen, die niemandem auffallen.
+    # NaN wird getrennt gemeldet, weil jeder Vergleich damit False ist;
+    # das != 0.0 danach faengt Unendlich und jeden Fremdwert mit.
+    if scheiben["gamma1"].isna().any():
+        errors.append("scheiben: fehlende Werte (NaN) in gamma1")
+    elif (scheiben["gamma1"] != 0.0).any():
+        abweichend = sorted(
+            set(scheiben.loc[scheiben["gamma1"] != 0.0, "police_id"])
+        )[:5]
+        errors.append(
+            "scheiben: gamma1 != 0 (Tarifwerk-Regel: die Bezugsgroesse der "
+            f"Verwaltungskosten bleibt die GrundVS), police {abweichend}"
+        )
     if not (scheiben["erhoehung_datum"].dt.day == 1).all():
         errors.append("scheiben: erhoehung_datum nicht auf Monatsersten normalisiert")
 

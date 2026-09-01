@@ -76,6 +76,7 @@ import numpy as np
 import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig
+from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.models.bestand import (
     LEDGER_SPALTEN,
@@ -115,8 +116,11 @@ class Fortschreibung(NamedTuple):
     """Ergebnis von :func:`fortschreiben` (vier deterministische Tabellen).
 
     ``zugaenge`` sind die waehrend der Fortschreibung entstandenen
-    Neuzugaenge (POL-Basiszeilen); der Gesamtbestand fuer Zeitscheibe,
-    Auswertung und Bericht ist :func:`mit_zugaengen` (stamm, zugaenge).
+    Neuzugaenge (POL-Basiszeilen). :func:`mit_zugaengen` (stamm, zugaenge)
+    setzt beide zum Gesamtbestand zusammen; GEFUEHRT ist er erst nach
+    :func:`rechner_pipeline.bestand.fuehrung.fuehre_fort`, das den
+    juengsten Journalstand auf den Stamm projiziert (siehe
+    ``cli_fortschreibung``).
     """
 
     historie: pd.DataFrame
@@ -131,36 +135,6 @@ def _add_years(d: _dt.date, years: int) -> _dt.date:
 
 def _leerer_frame(spalten) -> pd.DataFrame:
     return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in spalten})
-
-
-def vertrags_rkw(
-    grund: Rechenkern, scheiben: List[Tuple[int, Rechenkern]], jahr: int
-) -> float:
-    """Vertragsweiter Rueckkaufswert ueber Grund- und Erhoehungsscheiben.
-
-    Die Stornoabschlag-Grenzen des Tarifwerks (stoab_min/max) sind je
-    VERTRAG kalibriert: der Abzug wird einmal auf die Gesamtwerte gerechnet
-    (satz * (Gesamt-VS - Gesamt-Deckungsrueckstellung), begrenzt), nicht je
-    Scheibe — sonst wuerde die Untergrenze je Scheibe binden und der
-    Gesamtabzug mit der Scheibenzahl wachsen. Fuer Vertraege ohne Scheiben
-    ist das Ergebnis bit-identisch zur RKW-Spalte der Kern-Verlaufszeile.
-    """
-    zeilen = [grund.verlaufszeile(jahr)] + [
-        kern.verlaufszeile(jahr - erh_jahr) for erh_jahr, kern in scheiben
-    ]
-    mrv = 0.0
-    for z in zeilen:
-        mrv += z.vx_mrv
-    if grund.produkt.ist_flex_phase(jahr):
-        stoab = 0.0
-    else:
-        mp = grund.mp
-        vs = mp.sum_insured + sum(kern.mp.sum_insured for _, kern in scheiben)
-        dr = 0.0
-        for z in zeilen:
-            dr += z.drx_bpfl
-        stoab = min(mp.stoab_max, max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
-    return max(0.0, mrv - stoab)
 
 
 class _Vertrag:
@@ -309,6 +283,10 @@ def _simuliere_vertrag(
                         "duration": mp_s.n,
                         "premium_duration": mp_s.t,
                         "sum_insured": mp_s.sum_insured,
+                        # Schicht-eigene Rechnungsgrundlage aus dem
+                        # Kern-Konstruktor persistieren (ADR-011): die
+                        # Scheibe ist aus ihren Parametern reproduzierbar.
+                        "gamma1": mp_s.gamma1,
                     }
                 )
                 buche("ERH", j + 1, "VS_erhoehung", betrag, status=None)
@@ -502,7 +480,7 @@ def fortschreiben(
     stable kernel. Pure function of (stamm, config, bis, neuzugang_ab) —
     seed-deterministic, the Stamm itself is never mutated. Fail-fast
     guards: only POL base rows
-    (a Zeitscheibe or Historie view fed back in is an error — the engine
+    (an Auskunfts- or Journalsicht fed back in is an error — the engine
     would re-simulate it from insurance_start), unique positive police_id,
     valid event rates, durations within the engine's 0..50 window.
     """
@@ -703,9 +681,10 @@ def fortschreiben(
 def mit_zugaengen(stamm: pd.DataFrame, zugaenge: pd.DataFrame) -> pd.DataFrame:
     """Gesamtbestand = Basisbestand + Neuzugaenge (POL-Basiszeilen).
 
-    Das Ergebnis ist der Bestand fuer Zeitscheibe, Auswertung und Bericht;
-    es erfuellt denselben Basis-Contract wie der Generator-Output
-    (validate_portfolio-konform, eindeutige police_ids).
+    Das Ergebnis erfuellt denselben Contract wie der Generator-Output
+    (validate_portfolio-konform, eindeutige police_ids) und traegt noch
+    Ursprungszustaende; den gefuehrten Zustand setzt erst
+    :func:`rechner_pipeline.bestand.fuehrung.fuehre_fort`.
     """
     if len(zugaenge) == 0:
         return stamm.copy().reset_index(drop=True)
@@ -714,33 +693,5 @@ def mit_zugaengen(stamm: pd.DataFrame, zugaenge: pd.DataFrame) -> pd.DataFrame:
         raise EreignisError("police_id-Kollision zwischen Bestand und Neuzugang")
     return (
         beide.sort_values("police_id", kind="stable")
-        .reset_index(drop=True)[list(STAMM_NAMES)]
-    )
-
-
-def bestand_mit_historie(
-    stamm: pd.DataFrame, historie: pd.DataFrame
-) -> pd.DataFrame:
-    """DAV-style multi-row view: Stamm rows plus one row per history status.
-
-    Every history row repeats its contract's Stamm columns byte-identically
-    and replaces only ``status_id``/``status_code``/``status_date`` — exactly
-    the shape the Zeitscheibe's youngest-status selection expects.
-    """
-    unbekannt = set(historie["police_id"]) - set(stamm["police_id"])
-    if unbekannt:
-        raise EreignisError(
-            f"historie: police_id unbekannt: {sorted(unbekannt)[:5]} — "
-            "bei Neuzugaengen den Gesamtbestand uebergeben "
-            "(mit_zugaengen(stamm, zugaenge))"
-        )
-    if len(historie) == 0:
-        return stamm.copy().reset_index(drop=True)
-
-    stammdaten = stamm.drop(columns=["status_id", "status_code", "status_date"])
-    folge = historie.merge(stammdaten, on="police_id", how="left", validate="m:1")
-    beide = pd.concat([stamm, folge[list(STAMM_NAMES)]], ignore_index=True)
-    return (
-        beide.sort_values(["police_id", "status_id"], kind="stable")
         .reset_index(drop=True)[list(STAMM_NAMES)]
     )

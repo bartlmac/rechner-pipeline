@@ -181,6 +181,8 @@ def test_gate_b1_kaputtes_parquet_ersetzt_alten_gruenen_ledger(
     diagnostics = tmp_path / "diag_crash_regression"
     argv = [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
+        # gefuehrter Bestand (ADR-011): Folgezustaende verlangen das Journal
+        "--historie", str(lauf / "historie.parquet"),
         "--diagnostics-dir", str(diagnostics),
     ]
     assert run_command(gate_cli.main, argv) == 0
@@ -211,6 +213,8 @@ def test_gate_b1_unerwartete_exception_schreibt_aktuellen_roten_ledger(
     diagnostics = tmp_path / "diag_unexpected"
     argv = [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
+        # gefuehrter Bestand (ADR-011): Folgezustaende verlangen das Journal
+        "--historie", str(lauf / "historie.parquet"),
         "--diagnostics-dir", str(diagnostics),
     ]
     assert run_command(gate_cli.main, argv) == 0
@@ -241,6 +245,8 @@ def test_gate_b1_ledger_schreibfehler_kann_nicht_gruen_enden(
     diagnostics = tmp_path / "diag_write_error"
     argv = [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
+        # gefuehrter Bestand (ADR-011): Folgezustaende verlangen das Journal
+        "--historie", str(lauf / "historie.parquet"),
         "--diagnostics-dir", str(diagnostics),
     ]
     assert run_command(gate_cli.main, argv) == 0
@@ -456,13 +462,15 @@ def test_gate_b1_lehnt_leere_tarif_generation_ab(
 @pytest.mark.parametrize(
     ("mutation", "erwartete_meldung"),
     [
-        pytest.param("status_id", "status_id != 1", id="status-id-ist-nicht-eins"),
+        pytest.param("status_id", "Folgestatus", id="status-id-ist-nicht-eins"),
         pytest.param(
-            "status_code", "status_code ausserhalb", id="status-code-ist-nicht-pol"
+            "status_code",
+            "status_id 1 mit status_code != POL",
+            id="status-code-ist-nicht-pol",
         ),
         pytest.param(
             "status_date",
-            "status_date != insurance_start",
+            "status_id 1 mit status_date != insurance_start",
             id="statusdatum-ist-nicht-versicherungsbeginn",
         ),
         pytest.param(

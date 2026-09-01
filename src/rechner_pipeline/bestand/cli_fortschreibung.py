@@ -17,8 +17,10 @@ Usage::
 
 Outputs in ``--out-dir``: ``bestand.parquet`` (Basis; nur ohne --portfolio),
 ``historie.parquet``, ``ledger.parquet``, ``scheiben.parquet``,
-``zugaenge.parquet`` und ``bestand_gesamt.parquet`` (Basis + Neuzugaenge —
-der Bestand fuer Zeitscheibe/Auswertung/``bestand_report``).
+``zugaenge.parquet`` und ``bestand_gesamt.parquet`` — der GEFUEHRTE
+Gesamtbestand (ADR-011): Basis + Neuzugaenge, Statusspalten auf dem
+aktuellen Zustand am Horizont; Eingang fuer Auskunft, Auswertung und
+``bestand_report``.
 
 Knoten: klv, bu
 """
@@ -38,6 +40,7 @@ from rechner_pipeline.bestand.ereignisse import (
     mit_zugaengen,
 )
 from rechner_pipeline.bestand.generator import generate
+from rechner_pipeline.bestand.fuehrung import fuehre_fort
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 
 
@@ -112,7 +115,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             basis = generate(config, bis=neuzugang_ab)
             write_portfolio(basis, out_dir / "bestand.parquet")
         ergebnis = fortschreiben(basis, config, bis, neuzugang_ab=neuzugang_ab)
-        gesamt = mit_zugaengen(basis, ergebnis.zugaenge)
+        # Der Gesamtbestand ist GEFUEHRT (ADR-011): der Stammsatz traegt den
+        # aktuellen Zustand am Horizont, das Journal (historie/ledger) die
+        # vollstaendige Aufzeichnung. bestand.parquet bleibt der Basisbestand
+        # (Ursprungszustaende am Generierungsbeginn).
+        gesamt = fuehre_fort(
+            mit_zugaengen(basis, ergebnis.zugaenge), ergebnis.historie
+        )
     except (EreignisError, ValueError) as exc:
         print(f"bestand_fortschreibung: {exc}", file=sys.stderr)
         return 2

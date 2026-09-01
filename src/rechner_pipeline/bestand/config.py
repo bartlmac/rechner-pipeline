@@ -27,7 +27,7 @@ import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from rechner_pipeline.models.bestand import (
     BU_GENERATION_FIELDS,
@@ -523,6 +523,10 @@ class BestandConfig:
     generationen: List[TarifGeneration]
     plausibilitaet: Dict[str, Tuple[float, float]] = field(default_factory=dict)
     annahmen: Annahmen = field(default_factory=Annahmen)
+    #: Referenzstichtag des Bestands (Historie/Prognose-Grenze im
+    #: Bericht): eine Eigenschaft des Bestands, in der Config gefuehrt —
+    #: nicht des einzelnen Berichts-Aufrufs.
+    referenzstichtag: Optional[_dt.date] = None
 
     def validate(self) -> List[str]:
         errors: List[str] = []
@@ -665,12 +669,19 @@ def load_config(path: Path) -> BestandConfig:
         annahme_kwargs["erh_prozent"] = float(roh_annahmen["erh_prozent"])
     annahmen = Annahmen(**annahme_kwargs)
 
+    referenzstichtag: Optional[_dt.date] = None
+    if "referenzstichtag" in meta:
+        referenzstichtag = _to_date(
+            meta.get("referenzstichtag"), "meta.referenzstichtag", errors
+        )
+
     config = BestandConfig(
         seed=int(meta.get("seed", 0)),
         beschreibung=str(meta.get("beschreibung", "")),
         generationen=generationen,
         plausibilitaet=plausibilitaet,
         annahmen=annahmen,
+        referenzstichtag=referenzstichtag,
     )
     if errors:
         raise ValueError("Config-Ladefehler: " + "; ".join(errors))

@@ -17,6 +17,10 @@
 [meta]
 seed = 20260814
 beschreibung = "Pfefferminzia LV (PLV): Gesamtbestand KLV (9 Generationen) und BU (2 Generationen)"
+# Referenzstichtag des Bestands: Grenze zwischen Historie und Prognose
+# im Bestandsbericht (cli_report; dessen --stichtag uebersteuert).
+# Abschluss und Fortschreibung setzen ihre Stichtage weiterhin explizit.
+referenzstichtag = 2026-01-01
 
 # --------------------------------------------------------------------------
 # KLV-Generation 1: KLV-1994, Verkauf 1994-07-01 bis 2000-06-30
