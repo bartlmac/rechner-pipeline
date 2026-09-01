@@ -489,6 +489,25 @@ Suite werden semantisch erneut validiert; der HTML-Bericht wird aus der Suite
 deterministisch neu gerendert und bytegenau verglichen. Vorgelegt wird alles
 vollstaendig, ohne Stichproben-Beschoenigung.
 
+**Schichtbeleg erzeugen (Producer, seit Lauf 2):** Den Schichtbeleg fuer
+`aktuartest_lauf --schicht` erzeugt das Systemkommando
+
+```
+python -m rechner_pipeline.gates.verankerung_belegen \
+    --fall faelle/<fall> --repo-root . --generation <gen> \
+    --formfunktion <deine Ausgestaltungs-Entscheidung> \
+    [--fenster <n>]
+```
+
+aus `verankerung.parquet`, Stamm, Merkmalen und der Fall-Spez — mit
+Provenienzblock (Eingabe-Hashes + Systemstand), den der Testlauf
+NACHRECHNET. Kein Fall-Skript, keine Registrierung von
+Systemartefakten in den Eingang; nach jeder Codeaenderung neu
+erzeugen. Exit 0 nur bei vollstaendiger Tabelle — Befunde entscheiden,
+dann neu erzeugen. WICHTIG davor: alle offenen/vorlaeufigen
+Diskrepanzen der Spez endgueltig aufloesen — eine Schicht, die eine
+ungeklaerte Diskrepanz glattzieht, ist ein Regler, kein Beleg.
+
 ### Pflichtschritt vor A-M4: Ausgestaltung des migrierten Tarifplans
 
 Traegt der Fall eine RECHNENDE Korrekturschicht (Residuum > 0 verankert),

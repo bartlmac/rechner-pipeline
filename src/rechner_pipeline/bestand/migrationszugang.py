@@ -241,7 +241,11 @@ def uebernehmen(
                 mp.x + jahr,
                 v.zustand if v.zustand in bw.modell.zustaende else bw.AKTIV,
                 residuum,
-                verweildauer=v.verweildauer,
+                # Select-Kappung ist Aufrufer-Pflicht (Zustandsmodell-
+                # Vertrag): im homogenen Modell (max_dauer 0) startet
+                # jede Verweildauer bei 0; das VERTRAGSMERKMAL
+                # verweildauer_ta bleibt ungekappt in der Tabelle.
+                verweildauer=min(v.verweildauer, bw.modell.max_dauer),
                 rumpfmonate=rumpf,
                 ausbuchungsgrenze=ausbuchungsgrenze,
                 kohorte=v.kohorte,

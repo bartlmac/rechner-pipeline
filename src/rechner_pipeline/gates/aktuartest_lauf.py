@@ -196,15 +196,26 @@ def _schicht_felder(eintrag: Any) -> Dict[str, Any]:
     return aus
 
 
-def _schichten(fall: Path, name: Optional[str]) -> Dict[str, Any]:
-    """Die Korrekturschicht je Police aus einer REGISTRIERTEN Quelle.
+def _schichten(
+    fall: Path, name: Optional[str], repo_root: Optional[Path] = None
+) -> Dict[str, Any]:
+    """Die Korrekturschicht je Police aus einer BINDBAREN Quelle.
 
     Die Schicht ist ein VERTRAGSATTRIBUT, das die Uebernahmestrecke
     ableitet (Grundsatzdokumentation 9.14: der Rechenkern bleibt
     historienfrei). Sie muss deshalb von aussen in den Pruefauftrag
-    kommen — und aus einer registrierten Quelle, nicht aus einem freien
-    Pfad: Ein Residuum, das der Pruefer selbst setzen koennte, waere
-    kein Beweis, sondern ein Regler.
+    kommen — aus einer Quelle, die der Pruefer nicht selbst setzen
+    kann: Ein freies Residuum waere kein Beweis, sondern ein Regler.
+
+    Zwei bindbare Wege (Erweiterung 2026-09-01, Maintainer-Go):
+
+    * eine REGISTRIERTE Quelle (wie bisher), oder
+    * das ABGELEITETE Artefakt des System-Producers
+      (``gates.verankerung_belegen``) unter ``<fall>/abgeleitet/`` —
+      akzeptiert NUR mit Provenienzblock, dessen Bindungen dieser Lauf
+      NACHRECHNET: Systemstand identisch, SHA-256 jeder Eingabe
+      unveraendert. Nicht die Ablage macht den Beleg vertrauenswuerdig,
+      sondern die Nachrechenbarkeit seiner Kette.
 
     Format je Police entweder FLACH (nur R_hist, rueckwaerts
     kompatibel)::
@@ -222,7 +233,43 @@ def _schichten(fall: Path, name: Optional[str]) -> Dict[str, Any]:
     """
     if not name:
         return {}
-    roh = _lies_registriert(fall, name)
+    kandidat = Path(name) if Path(name).is_absolute() else fall / name
+    abgeleitet = (fall / "abgeleitet").resolve()
+    if kandidat.is_file() and kandidat.resolve().is_relative_to(abgeleitet):
+        roh = json.loads(kandidat.read_text(encoding="utf-8"))
+        prov = roh.get("provenienz") if isinstance(roh, dict) else None
+        if not isinstance(prov, dict) or "schichten" not in roh:
+            raise SystemExit(
+                f"abgeleitete Schichtdatei {name!r} ohne Provenienzblock "
+                "— bindbare Belege erzeugt nur der Producer "
+                "gates.verankerung_belegen")
+        if repo_root is None:
+            raise SystemExit(
+                "abgeleitete Schichtdatei verlangt --repo-root fuer die "
+                "Systemstand-Nachrechnung")
+        ist_stand = systemstand(Path(repo_root).resolve())
+        if prov.get("systemstand") != ist_stand:
+            raise SystemExit(
+                f"Schichtbeleg {name!r} traegt einen anderen Systemstand "
+                "als diesen Lauf — nach jeder Codeaenderung neu erzeugen "
+                "(gates.verankerung_belegen), nicht weiterverwenden")
+        import hashlib as _hashlib
+
+        for rel, soll in (prov.get("eingaben") or {}).items():
+            pfad = fall / rel
+            if not pfad.is_file():
+                raise SystemExit(
+                    f"Schichtbeleg-Eingabe fehlt: {rel} — die Kette ist "
+                    "nicht nachrechenbar")
+            ist = _hashlib.sha256(pfad.read_bytes()).hexdigest()
+            if ist != soll:
+                raise SystemExit(
+                    f"Schichtbeleg-Eingabe {rel} wurde veraendert "
+                    "(SHA-256 weicht ab) — Beleg neu erzeugen, nicht "
+                    "weiterverwenden")
+        roh = roh["schichten"]
+    else:
+        roh = _lies_registriert(fall, name)
     if not isinstance(roh, dict):
         raise SystemExit(
             f"Schichtdatei {name!r} traegt kein Objekt "
@@ -490,7 +537,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             for police in betroffen
         }
 
-    schichten = _schichten(fall, args.schicht)
+    schichten = _schichten(fall, args.schicht,
+                           repo_root=Path(args.repo_root).resolve())
     auftraege = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
         anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet,
