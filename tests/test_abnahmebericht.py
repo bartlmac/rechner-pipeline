@@ -1114,3 +1114,45 @@ def test_gate_rechnet_die_komponentenskalierte_toleranz_nach(
     result = main(_basis_argv(tmp_path, suite_pfad))
     meldungen = " ".join(e["message"] for e in result.errors)
     assert "'ok'" in meldungen
+
+
+def test_eingebettete_spec_ist_die_dateiform(tmp_path) -> None:
+    """Ausweitung Nr. 23 des zweiten Laufs (A-M4-Zeichnungsblocker):
+    Der Entscheid vergleicht bericht_erzeugung.spec strukturell mit
+    der per SHA gebundenen Datei — eine SPARSE geschriebene Spec
+    (Default-Felder ausgelassen, wie transformiere-quellbestand sie
+    erzeugt) kann einer vollstaendigen model_dump_json-Zweitform NIE
+    gleich sein (im Lauf: 17 fehlende Default-Felder). Eingebettet
+    wird jetzt die geparste DATEI-Form."""
+    import json
+
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    argv = _basis_argv(tmp_path, suite_pfad)
+    spec_pfad = tmp_path / "spec.json"
+    sparse = _spec().model_dump_json(exclude_defaults=True)
+    spec_pfad.write_text(sparse, encoding="utf-8")
+    assert json.loads(sparse) != json.loads(_spec().model_dump_json()), \
+        "Fixture-Spec traegt keine Default-Felder — Zonen-Beleg leer"
+
+    main(argv)
+
+    ledger_pfade = sorted((tmp_path / "diagnostics").glob("*.json"))
+    assert ledger_pfade, "kein Diagnostics-Ledger geschrieben"
+    daten = json.loads(ledger_pfade[-1].read_text(encoding="utf-8"))
+    def _finde_spec(obj):
+        if isinstance(obj, dict):
+            if "bericht_erzeugung" in obj:
+                return obj["bericht_erzeugung"]["spec"]
+            for wert in obj.values():
+                treffer = _finde_spec(wert)
+                if treffer is not None:
+                    return treffer
+        if isinstance(obj, list):
+            for wert in obj:
+                treffer = _finde_spec(wert)
+                if treffer is not None:
+                    return treffer
+        return None
+    eingebettet = _finde_spec(daten)
+    assert eingebettet is not None, "bericht_erzeugung.spec nicht im Ledger"
+    assert eingebettet == json.loads(sparse)

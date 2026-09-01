@@ -895,19 +895,27 @@ def _bericht_erzeugung(
     titel: str,
     stichtag_1: str,
     stichtag_2: str,
-    spec: Optional[TransformationsSpec],
+    spec_roh: Optional[Dict[str, Any]],
     transformation_ergebnis: Optional[Dict[str, Any]],
     bestandsbericht_vor: Optional[str],
     bestandsbericht_nach: Optional[str],
 ) -> Dict[str, Any]:
-    """Kanonische, JSON-faehige Eingaben des deterministischen Renderers."""
+    """Kanonische, JSON-faehige Eingaben des deterministischen Renderers.
+
+    ``spec_roh`` ist die GEPARSTE DATEI-Form der TransformationsSpec —
+    nicht eine Zweitserialisierung des validierten Objekts: Der
+    Entscheid vergleicht den eingebetteten Wert strukturell mit der
+    per SHA gebundenen Datei, und eine sparse geschriebene Datei
+    (Default-Felder ausgelassen) kann einer vollstaendigen
+    ``model_dump_json``-Form NIE gleich sein (A-M4-Blocker des zweiten
+    Laufs: 17 fehlende Default-Felder). Beide Seiten des Vergleichs
+    kommen jetzt aus demselben Serialisierungspfad — der Datei.
+    """
     return {
         "titel": titel,
         "stichtag_1": stichtag_1,
         "stichtag_2": stichtag_2,
-        "spec": (
-            json.loads(spec.model_dump_json()) if spec is not None else None
-        ),
+        "spec": spec_roh,
         "transformation_ergebnis": transformation_ergebnis,
         "bestandsbericht_vor": bestandsbericht_vor,
         "bestandsbericht_nach": bestandsbericht_nach,
@@ -1774,9 +1782,14 @@ def main(argv: Optional[List[str]] = None):
             "lassen, statt die Zusammenfassung nachzubessern.")
 
     spec = None
+    spec_roh = None
     try:
-        spec = TransformationsSpec.model_validate_json(
-            eingaben["spec"].read_text(encoding="utf-8"))
+        spec_text = eingaben["spec"].read_text(encoding="utf-8")
+        spec = TransformationsSpec.model_validate_json(spec_text)
+        # Die DATEI-Form fuer den eingebetteten Renderer-Vertrag — der
+        # Entscheid vergleicht sie strukturell mit der gebundenen Datei
+        # (siehe _bericht_erzeugung).
+        spec_roh = json.loads(spec_text)
     except (OSError, ValueError) as exc:
         return _contract_fehler(
             "spec_unlesbar", [f"{type(exc).__name__}: {exc}"],
@@ -1881,7 +1894,7 @@ def main(argv: Optional[List[str]] = None):
         titel=args.titel,
         stichtag_1=args.stichtag_1,
         stichtag_2=args.stichtag_2,
-        spec=spec,
+        spec_roh=spec_roh,
         transformation_ergebnis=transformation_ergebnis,
         bestandsbericht_vor=bestandsbericht_vor,
         bestandsbericht_nach=bestandsbericht_nach,
