@@ -69,8 +69,20 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    feat/bestandsfuehrung nicht (kam erst mit 953c6e1). Die
    Backlog-Eintraege fuer Topf C werden deshalb bei Schritt 3 gesetzt,
    wenn die Nacharbeit auf fallbericht ankommt.
-2. [ ] PR #10 -> main mergen (Owner: Maintainer). Pruefpunkt:
+2. [x] PR #10 -> main mergen (Owner: Maintainer). Pruefpunkt:
    origin/main traegt die Nacharbeit.
+   ERLEDIGT 2026-09-01, Maintainer (Merge vorbereitet: merge-session).
+   Lokaler Merge-Commit 33e9dec nach der Hauskonvention von PR #9
+   ("Merge PR #10: ..."), zwei Eltern 5e36810 + 76d4bd5, danach zwei
+   Pushes in dieser Reihenfolge: erst feat/bestandsfuehrung, dann main.
+   Die Reihenfolge war noetig, damit PR #10 die drei
+   Nacharbeits-Commits ueberhaupt zeigt — bei umgekehrter Reihenfolge
+   haette GitHub ihn als gemergt markiert, ohne sie je darzustellen,
+   und die Antwort an die externe Review-Runde verweist genau darauf.
+   Ergebnis: origin/main 33e9dec, PR #10 MERGED mit zwoelf sichtbaren
+   Commits, volle Suite auf dem gemergten Stand 969 gruen.
+   Kontrolliert: 7f00742 und 76d4bd5 beide in main, fallbericht haengt
+   unveraendert an seiner Basis.
 3. [ ] Nacharbeits-Commits nach fallbericht holen: merge
    feat/bestandsfuehrung (oder main) -> fallbericht (Owner:
    merge-session + dev-session gemeinsam). ERWARTETE KONFLIKTE:
