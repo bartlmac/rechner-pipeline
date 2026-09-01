@@ -686,3 +686,70 @@ def test_kalibrierung_weist_unerreichbare_werte_zurueck():
         kalibriere_absetzung_aus_dk(
             _mp_felder(), jahr=6, erlsumme=70000.0, dk_ist=1.0,
             monate_dk=120, verfahren="mit_abzug")
+
+
+class TestSerienAbleitung:
+    """leite_serie_aus_satz_ab: die Lieferung-2-Serien, handgerechnet.
+
+    Referenz ist die Vorwaertskette der Quelle: Grundsumme 76000, sechs
+    Annahmen zu 5 Prozent der jeweiligen Gesamtsumme — die Zahlen des
+    realen Vertrags 7000755 der zweiten Baldrian-Lieferung.
+    """
+
+    def test_reine_erhoehungsserie_trifft_die_vorwaertskette_centgenau(self):
+        from rechner_pipeline.bestand.migrationszugang import (
+            leite_serie_aus_satz_ab,
+        )
+
+        ereignisse = [("ERH", j, None) for j in (1, 3, 4, 7, 8, 9)]
+        serie = leite_serie_aus_satz_ab(
+            ereignisse=ereignisse, erlsumme=101847.27, satz=0.05)
+        assert serie.grundsumme == pytest.approx(76000.00, abs=0.01)
+        erwartet = [3800.00, 3990.00, 4189.50, 4398.98, 4618.92, 4849.87]
+        assert [s for _, s in serie.scheiben] == pytest.approx(
+            erwartet, abs=0.01)
+        assert [j for j, _ in serie.scheiben] == [1, 3, 4, 7, 8, 9]
+        # Die IST-Struktur reproduziert die gelieferte Summe exakt.
+        assert serie.grundsumme + sum(s for _, s in serie.scheiben) == (
+            pytest.approx(101847.27, abs=0.001))
+        assert serie.absetzungen == ()
+
+    def test_absetzung_wirkt_nur_auf_die_grundsumme(self):
+        """Handkette: 10000 -> ERH(1): +500 -> RED(2, f=0.6):
+        Grund 6000 -> ERH(3): +325 (5 Prozent von 6500). Gesamt 6825."""
+        from rechner_pipeline.bestand.migrationszugang import (
+            leite_serie_aus_satz_ab,
+        )
+
+        serie = leite_serie_aus_satz_ab(
+            ereignisse=[("ERH", 1, None), ("RED", 2, 0.6), ("ERH", 3, None)],
+            erlsumme=6825.00, satz=0.05)
+        assert serie.grundsumme == pytest.approx(6000.00, abs=0.01)
+        assert [s for _, s in serie.scheiben] == pytest.approx(
+            [500.00, 325.00], abs=0.01)
+        assert serie.absetzungen == ((2, 0.6),)
+
+    def test_fehlerpfade_fail_fast(self):
+        from rechner_pipeline.bestand.migrationszugang import (
+            MigrationszugangFehler,
+            leite_serie_aus_satz_ab,
+        )
+
+        with pytest.raises(MigrationszugangFehler, match="aufsteigend"):
+            leite_serie_aus_satz_ab(
+                ereignisse=[("ERH", 3, None), ("ERH", 2, None)],
+                erlsumme=1000.0, satz=0.05)
+        with pytest.raises(MigrationszugangFehler, match="Anteil"):
+            leite_serie_aus_satz_ab(
+                ereignisse=[("ERH", 1, None), ("RED", 2, None)],
+                erlsumme=1000.0, satz=0.05)
+        with pytest.raises(MigrationszugangFehler, match="terminal"):
+            leite_serie_aus_satz_ab(
+                ereignisse=[("PEX", 1, None), ("ERH", 2, None)],
+                erlsumme=1000.0, satz=0.05)
+        # Ein Satz, der die gelieferte Summe strukturell verfehlt
+        # (Grundsumme wuerde negativ), bricht hart.
+        with pytest.raises(MigrationszugangFehler):
+            leite_serie_aus_satz_ab(
+                ereignisse=[("ERH", 1, None)],
+                erlsumme=1000.0, satz=1.5)

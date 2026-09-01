@@ -414,6 +414,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
 
         red_anteile: Dict[str, float] = {}
+        red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
         if args.red_anteile_datei is not None:
             with fall_mod.eingang_datei(
                     fall, args.red_anteile_datei).open(encoding="utf-8") as d:
@@ -421,6 +422,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
                         red_anteile[str(zeile["POLNR"])] = float(
                             zeile["ANTEIL"])
+                        if zeile.get("DATUM"):
+                            red_anteile_je_datum.setdefault(
+                                str(zeile["POLNR"]), {})[
+                                    str(zeile["DATUM"])] = float(
+                                        zeile["ANTEIL"])
         for eintrag in args.red_anteile:
             police, _, wert = eintrag.partition("=")
             if not police or not wert:
@@ -443,6 +449,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             spez, zeilen if args.zeilen is not None else [],
             vorgeschichte, bestand, spalten=dict(VORGABE),
             red_verfahren=args.red_verfahren, red_anteile=red_anteile,
+            red_anteile_je_datum=red_anteile_je_datum,
             auspraegungen=auspraegungen,
             erhoehungssatz=args.erhoehungssatz, anker=anker)
         for w in zustandswarnungen:

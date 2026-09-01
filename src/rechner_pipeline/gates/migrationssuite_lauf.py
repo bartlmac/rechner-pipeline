@@ -165,6 +165,71 @@ def beitragsfrei_seit_jahr_je_police(
     return aus
 
 
+def _serienzustand(
+    police: str,
+    folge: List[Tuple[str, int, str]],
+    mp_felder: Dict[str, Any],
+    *,
+    erlsumme: float,
+    erhoehungssatz: Optional[float],
+    red_anteile: Dict[str, float],
+    red_anteile_je_datum: Dict[str, Dict[str, float]],
+) -> Dict[str, Any]:
+    """Anfangszustand einer Ereignis-SERIE (Lieferung-2-Regelfall).
+
+    Terminale Beitragsfreistellung: Gesamtsummen-Inversion — die
+    beitragsfreien Faktoren aller Bausteine desselben Ablauftermins
+    sind identisch, die Zerlegung ist fuer den beitragsfreien Wert
+    unerheblich (Ein-Punkt-Weg, Beschluss des Maintainers im zweiten
+    Lauf; die Erhoehungen der Vorgeschichte stecken in der gelieferten
+    beitragsfreien Gesamtsumme). Sonst IST-Struktur aus dem belegten
+    Dynamiksatz. Ein fehlender Satz ist ein harter Abbruch (betraefe
+    jede Serien-Police), ein fehlender Absetzungs-Anteil eine
+    Warnung je Police.
+    """
+    from rechner_pipeline.bestand.migrationszugang import (
+        MigrationszugangFehler,
+        leite_pex_ursprungssumme_ab,
+        leite_serie_aus_satz_ab,
+    )
+
+    arten = [a for a, _, _ in folge]
+    if "PEX" in arten:
+        if arten.count("PEX") > 1 or arten[-1] != "PEX":
+            raise SystemExit(
+                f"Police {police}: Beitragsfreistellung ist in der "
+                f"Vorgeschichte nicht terminal ({arten}) — die Quelle "
+                "stellt danach nichts mehr um; Lieferung klaeren")
+        pex_jahr = folge[-1][1]
+        return {
+            "beitragsfrei_seit_jahr": pex_jahr,
+            "sum_insured": leite_pex_ursprungssumme_ab(
+                mp_felder, pex_jahr=pex_jahr, vs_bfr=erlsumme),
+        }
+    if erhoehungssatz is None:
+        raise SystemExit(
+            f"Police {police}: mehrere Alt-Ereignisse sind ohne "
+            "--erhoehungssatz unterbestimmt — den Dynamiksatz als "
+            "registrierte Auskunft der Quelle beschaffen")
+    ereignisse: List[Tuple[str, int, Optional[float]]] = []
+    for art, jahr, datum in folge:
+        anteil = None
+        if art == "RED":
+            anteil = red_anteile_je_datum.get(police, {}).get(
+                datum, red_anteile.get(police))
+        ereignisse.append((art, jahr, anteil))
+    serie = leite_serie_aus_satz_ab(
+        ereignisse=ereignisse, erlsumme=erlsumme, satz=erhoehungssatz)
+    zustand: Dict[str, Any] = {
+        "sum_insured": serie.grundsumme,
+        "scheiben": serie.scheiben,
+    }
+    if serie.absetzungen:
+        # Beleg fuer Vorlage und Protokoll; kein Konsument rechnet damit.
+        zustand["alt_absetzungen"] = serie.absetzungen
+    return zustand
+
+
 def anfangszustaende_je_police(
     spez,
     zeilen: List[Dict[str, Any]],
@@ -177,8 +242,20 @@ def anfangszustaende_je_police(
     auspraegungen: Optional[Dict[str, Dict[str, str]]] = None,
     erhoehungssatz: Optional[float] = None,
     anker: Optional[Dict[str, Tuple[int, float]]] = None,
+    red_anteile_je_datum: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
-    """Vorgeschichts-Welten PEX, ERH und RED je Police ableiten.
+    """Vorgeschichts-Welten je Police ableiten — auch SERIEN.
+
+    Einzel-Ereignisse (genau ein PEX, ERH oder RED) laufen unveraendert
+    ueber die Lauf-1-Ableitungen. MEHRERE Ereignisse je Police
+    (Lieferung-2-Regelfall: jaehrliche Dynamiken, dazwischen
+    Herabsetzungen, terminale Beitragsfreistellung) laufen ueber
+    :func:`_serienzustand`: terminale PEX als Gesamtsummen-Inversion,
+    sonst IST-Struktur aus dem belegten Dynamiksatz
+    (``migrationszugang.leite_serie_aus_satz_ab``);
+    ``red_anteile_je_datum`` traegt nachgelieferte Anteile je Ereignis
+    (POLNR;GEVO;DATUM;ANTEIL), ``red_anteile`` bleibt der
+    Pauschalwert je Police.
 
     Der Stamm fuehrt die AKTUELLE Gesamtsumme; die Bewertung der
     Vorgeschichts-Welten braucht den URSPRUNGS-Modellpunkt. Je Police
@@ -225,20 +302,20 @@ def anfangszustaende_je_police(
         beginn = beginne.get(police)
         if beginn is None:
             continue
-        if len(ereignisse[police]) > 1:
-            raise SystemExit(
-                f"Police {police}: mehrere Vorgeschichts-Ereignisse "
-                f"({[e[s['gevo']] for e in ereignisse[police]]}) — die "
-                "Kombination ist nicht abgebildet")
-        ereignis = ereignisse[police][0]
-        art = ereignis[s["gevo"]]
-        monate = _monate(beginn, _parse(ereignis[s["datum"]]))
-        if monate % 12:
-            raise SystemExit(
-                f"Police {police}: {art} der Vorgeschichte bei Monat "
-                f"{monate} liegt nicht auf dem Vertragsjahrestag — "
-                "Lieferung klaeren, nicht runden")
-        jahr = monate // 12
+        # Chronologie mit Jahrestags-Wache je Ereignis: die gelieferten
+        # Daten muessen auf dem Vertragsjahresgitter liegen.
+        folge: List[Tuple[str, int, Optional[str]]] = []
+        for ereignis in sorted(
+                ereignisse[police], key=lambda e: _parse(e[s["datum"]])):
+            art_e = ereignis[s["gevo"]]
+            monate_e = _monate(beginn, _parse(ereignis[s["datum"]]))
+            if monate_e % 12:
+                raise SystemExit(
+                    f"Police {police}: {art_e} der Vorgeschichte bei Monat "
+                    f"{monate_e} liegt nicht auf dem Vertragsjahrestag — "
+                    "Lieferung klaeren, nicht runden")
+            folge.append((art_e, monate_e // 12, ereignis[s["datum"]]))
+
         transformiert = zeilen_je_police.get(police)
         if transformiert is None:
             raise SystemExit(
@@ -249,6 +326,20 @@ def anfangszustaende_je_police(
         zelle = _zelle(spez, (auspraegungen or {}).get(police, {}))
         mp_felder = model_point_kwargs(
             stammzeilen[police], dict(zelle.model_point))
+
+        if len(folge) > 1:
+            try:
+                zustaende[police] = _serienzustand(
+                    police, folge, mp_felder,
+                    erlsumme=erlsumme, erhoehungssatz=erhoehungssatz,
+                    red_anteile=red_anteile,
+                    red_anteile_je_datum=red_anteile_je_datum or {})
+            except MigrationszugangFehler as exc:
+                warnungen.append(f"Police {police} (Serie): {exc}")
+            continue
+
+        art = folge[0][0]
+        jahr = folge[0][1]
 
         try:
             if art == "PEX":
@@ -479,10 +570,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         beitragsfrei_seit = beitragsfrei_seit_jahr_je_police(
             vorgeschichte, bestand, spalten=spalten)
         red_anteile: Dict[str, float] = {}
+        red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
         if args.red_anteile_datei is not None:
             for zeile in _lies_csv(fall, args.red_anteile_datei):
                 if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
                     red_anteile[str(zeile["POLNR"])] = float(zeile["ANTEIL"])
+                    if zeile.get("DATUM"):
+                        red_anteile_je_datum.setdefault(
+                            str(zeile["POLNR"]), {})[str(zeile["DATUM"])] = (
+                                float(zeile["ANTEIL"]))
         anker: Dict[str, Any] = {}
         if args.anker_quelle is not None:
             quelle = json.loads(fall_mod.eingang_datei(
@@ -507,7 +603,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             vorgeschichte, bestand, spalten=spalten,
             red_verfahren=args.red_verfahren, red_anteile=red_anteile,
             auspraegungen=auspraegungen,
-            erhoehungssatz=args.erhoehungssatz, anker=anker)
+            erhoehungssatz=args.erhoehungssatz, anker=anker,
+            red_anteile_je_datum=red_anteile_je_datum)
         for w in zustandswarnungen:
             print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
                   file=sys.stderr)

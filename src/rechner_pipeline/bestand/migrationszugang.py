@@ -858,6 +858,148 @@ def leite_erhoehung_aus_satz_ab(
         jahr=jahr)
 
 
+@dataclass(frozen=True)
+class AbgeleiteteSerie:
+    """Die IST-Struktur eines Vertrags mit MEHREREN Alt-Ereignissen.
+
+    Lieferung 2 der Baldrian-Uebernahme traegt Ereignis-SERIEN als
+    Regelfall (jaehrliche Dynamiken, dazwischen Herabsetzungen). Das
+    lineare Zwei-Gleichungs-System der Einzel-Ableitung ist dann
+    dauerhaft unterbestimmt; bestimmend wird der BELEGTE Dynamiksatz:
+    Jede Annahme erhoeht die Gesamtsumme um den Faktor (1 + Satz), jede
+    Herabsetzung multipliziert NUR die Grundsumme mit dem
+    fortgefuehrten Anteil (so sagt es das gelieferte Bedingungswerk:
+    Teilkuendigung der Grundversicherung, Erhoehungen unberuehrt).
+    Damit ist jede Folge aus Erhoehungen und Herabsetzungen LINEAR in
+    der Ursprungs-Grundsumme — die gelieferte Gesamtsumme bestimmt sie
+    geschlossen, ohne Nachlieferung von Scheibenbestaenden.
+
+    SENSITIVITAET (Hinweis des Maintainers, 2026-09-01): Stufen, die
+    aelter sind als die Zillmerdauer, tragen keinen
+    Abschlusskosten-Restbestand mehr — Rekonstruktionsunsicherheit
+    konzentriert sich auf die jungen Stufen. Die Probe gegen den
+    gelieferten Jahresbeitrag laeuft im aktuariellen Test mit (BJB ist
+    Pruefgroesse) und belegt Satz und Anteile je Vertrag unabhaengig.
+
+    Die Struktur ist die IST-Welt am Stichtag: Die Grundsumme traegt
+    die Herabsetzungen bereits in sich (kleinere Summe auf laufendem
+    Blatt — genau so rechnet die Quelle nach einer Teilkuendigung
+    weiter, ihre Blattformel ist zustandslos). Die VERFAHRENSFRAGE der
+    Absetzung (Quelle mit Abzug, Ziel verlustfrei) ist damit fuer die
+    Punktwerte in die Struktur eingepreist und gehoert als Behandlung
+    in die Gate-Vorlage; gemessen wird sie an den
+    Geschaeftsvorfaellen des Pruefzeitraums (A-M3), nicht doppelt am
+    Stichtagswert.
+    """
+
+    grundsumme: float
+    scheiben: Tuple[Tuple[int, float], ...]
+    absetzungen: Tuple[Tuple[int, float], ...]
+
+    def als_beleg(self) -> Dict[str, Any]:
+        return {
+            "grundsumme": self.grundsumme,
+            "scheiben": [list(s) for s in self.scheiben],
+            "absetzungen": [list(a) for a in self.absetzungen],
+        }
+
+
+def leite_serie_aus_satz_ab(
+    *,
+    ereignisse: Sequence[Tuple[str, int, Optional[float]]],
+    erlsumme: float,
+    satz: float,
+) -> AbgeleiteteSerie:
+    """IST-Struktur einer Ereignis-Serie aus dem belegten Dynamiksatz.
+
+    ``ereignisse`` ist die chronologische Folge ``(art, jahr, anteil)``
+    mit art in {ERH, RED}; ``anteil`` ist nur bei RED gesetzt (der
+    fortgefuehrte Bruchteil f der Grundsumme, nachgelieferte Auskunft).
+    Eine Beitragsfreistellung gehoert NICHT hierher — sie ist terminal
+    und laeuft ueber die Gesamtsummen-Inversion
+    (:func:`leite_pex_ursprungssumme_ab`; die beitragsfreien Faktoren
+    aller Bausteine desselben Ablauftermins sind identisch, die
+    Zerlegung ist fuer den Wert unerheblich).
+
+    Rueckgabe in IST-Summen: Scheiben centgerundet (so bucht die
+    Quelle), die Grundsumme als Rest zur gelieferten Gesamtsumme —
+    damit reproduziert die Struktur ERLSUMME exakt. Reisst die
+    Vorwaertsprobe trotzdem (Satz passt nicht zur Lieferung), ist das
+    ein harter Fehler, keine stille Glaettung.
+    """
+    if not 0.0 < satz < 1.0:
+        raise MigrationszugangFehler(
+            f"Erhoehungssatz {satz!r} liegt nicht in (0, 1)")
+    if erlsumme <= 0.0:
+        raise MigrationszugangFehler(f"ERLSUMME {erlsumme!r} unplausibel")
+    if not ereignisse:
+        raise MigrationszugangFehler("leere Ereignisfolge")
+
+    grund_einheit = 1.0
+    scheiben_einheiten: List[Tuple[int, float]] = []
+    absetzungen: List[Tuple[int, float]] = []
+    letztes_jahr = 0
+    for art, jahr, anteil in ereignisse:
+        if jahr <= letztes_jahr:
+            raise MigrationszugangFehler(
+                f"Ereignisjahre nicht strikt aufsteigend (Jahr {jahr} "
+                f"nach {letztes_jahr}) — die Quelle bucht je Jahrestag "
+                "hoechstens einen Vorfall; Lieferung klaeren"
+            )
+        letztes_jahr = jahr
+        if art == "ERH":
+            e = satz * (grund_einheit + sum(e for _, e in scheiben_einheiten))
+            scheiben_einheiten.append((jahr, e))
+        elif art == "RED":
+            if anteil is None or not 0.0 < anteil < 1.0:
+                raise MigrationszugangFehler(
+                    f"Absetzung im Jahr {jahr} ohne gueltigen "
+                    f"fortgefuehrten Anteil ({anteil!r}) — je Ereignis "
+                    "nachliefern lassen (POLNR;GEVO;DATUM;ANTEIL)"
+                )
+            grund_einheit *= anteil
+            absetzungen.append((jahr, anteil))
+        else:
+            raise MigrationszugangFehler(
+                f"Ereignisart {art!r} gehoert nicht in die Serie "
+                "(erwartet ERH/RED; PEX ist terminal und laeuft separat)"
+            )
+
+    gesamt_einheit = grund_einheit + sum(e for _, e in scheiben_einheiten)
+    grundsumme_roh = erlsumme / gesamt_einheit
+    # Versicherungssummen werden auf ganze Euro gefuehrt: Der glatte
+    # Kandidat muss die Lieferung reproduzieren, sonst bleibt der rohe
+    # Quotient (dieselbe verifizierte Glaettung wie bei der
+    # Einzel-Erhoehung).
+    glatt = round(grundsumme_roh)
+    if glatt > 0 and abs(glatt * gesamt_einheit - erlsumme) <= 0.005 * (
+            1 + len(scheiben_einheiten)):
+        grundsumme_roh = float(glatt)
+    scheiben = tuple(
+        (jahr, round(grundsumme_roh * e, 2))
+        for jahr, e in scheiben_einheiten
+    )
+    grundsumme_ist = round(erlsumme - sum(s for _, s in scheiben), 2)
+    if grundsumme_ist <= 0.0:
+        raise MigrationszugangFehler(
+            f"rekonstruierte Grundsumme {grundsumme_ist!r} unplausibel — "
+            f"der Satz {satz} passt nicht zur gelieferten Summe"
+        )
+    probe = grundsumme_roh * grund_einheit
+    if abs(probe - grundsumme_ist) > 0.01 * (1 + len(scheiben)):
+        raise MigrationszugangFehler(
+            f"Vorwaertsprobe reisst: Grundsumme aus Kette {probe:.2f} "
+            f"gegen Rest zur Lieferung {grundsumme_ist:.2f} — Satz oder "
+            "Anteile passen nicht zur gelieferten Summe; Auskunft "
+            "klaeren, nicht glaetten"
+        )
+    return AbgeleiteteSerie(
+        grundsumme=grundsumme_ist,
+        scheiben=scheiben,
+        absetzungen=tuple(absetzungen),
+    )
+
+
 def pruefe_erhoehungssatz(
     kandidat: float,
     belege: Sequence[Tuple[Mapping[str, Any], int, float, float]],

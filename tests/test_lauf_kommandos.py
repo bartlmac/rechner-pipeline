@@ -424,3 +424,79 @@ def test_conv_ohne_t0_und_fremde_teile_fallen_hart(tmp_path):
         _schichten(fall, _schicht_datei(
             fall, {"1": {"hist": conv_ohne_t0, "extra": {}}}, "schicht-extra.json"))
     assert "unbekannte Teile" in str(exc.value)
+
+
+def test_anfangszustand_serie_baut_ist_struktur_mit_absetzung():
+    """Lieferung-2-Regelfall: Ereignis-Serie. Referenz ist die Handkette
+    10000 -> ERH(1) +500 -> RED(2, f=0.6) Grund 6000 -> ERH(3) +325;
+    der Anteil kommt JE EREIGNIS ueber die Datums-Nachlieferung."""
+    zeilen = [{"police_id": "7000003", "sum_insured": 6825.00,
+               "brutto_jahresbeitrag": 100.0}]
+    vorgeschichte = [
+        {"POLNR": "7000003", "GEVO": "ERH", "DATUM": "01.01.2017"},
+        {"POLNR": "7000003", "GEVO": "RED", "DATUM": "01.01.2018"},
+        {"POLNR": "7000003", "GEVO": "ERH", "DATUM": "01.01.2019"},
+    ]
+    zustaende, warnungen = anfangszustaende_je_police(
+        _tg_default_spez(), zeilen, vorgeschichte,
+        _bestand_mit(7000003), spalten=SPALTEN,
+        red_verfahren="mit_abzug", erhoehungssatz=0.05,
+        red_anteile_je_datum={"7000003": {"01.01.2018": 0.6}})
+    assert not warnungen
+    z = zustaende["7000003"]
+    assert z["sum_insured"] == pytest.approx(6000.00, abs=0.01)
+    assert [j for j, _ in z["scheiben"]] == [1, 3]
+    assert [s for _, s in z["scheiben"]] == pytest.approx(
+        [500.00, 325.00], abs=0.01)
+    assert z["alt_absetzungen"] == ((2, 0.6),)
+    assert "reduktion" not in z, (
+        "die Serie ist IST-Struktur, kein Reduktions-Zustand")
+
+
+def test_anfangszustand_serie_mit_terminalem_pex_ist_einpunkt():
+    """Erhoehung + terminale Beitragsfreistellung: Gesamtsummen-Inversion
+    (Faktorgleichheit der Bausteine) — Referenz ist die unabhaengige
+    Vorwaertsrechnung: Ursprung 10000 wandelt im Jahr 8 selbst um."""
+    import dataclasses as _dc
+
+    einheit = _dc.replace(KLV_DEFAULT, sum_insured=1.0)
+    faktor = Rechenkern(einheit).beitragsfreie_summe(8)
+    vs_bfr_geliefert = round(10000.0 * faktor, 2)
+    zeilen = [{"police_id": "7000004", "sum_insured": vs_bfr_geliefert,
+               "brutto_jahresbeitrag": 0.0}]
+    vorgeschichte = [
+        {"POLNR": "7000004", "GEVO": "ERH", "DATUM": "01.01.2019"},
+        {"POLNR": "7000004", "GEVO": "PEX", "DATUM": "01.01.2024"},
+    ]
+    zustaende, warnungen = anfangszustaende_je_police(
+        _tg_default_spez(), zeilen, vorgeschichte,
+        _bestand_mit(7000004), spalten=SPALTEN,
+        red_verfahren="mit_abzug", erhoehungssatz=0.05)
+    assert not warnungen
+    z = zustaende["7000004"]
+    assert z["beitragsfrei_seit_jahr"] == 8
+    assert z["sum_insured"] == pytest.approx(10000.0, rel=1e-6)
+    assert "scheiben" not in z
+
+
+def test_anfangszustand_serie_ohne_satz_und_pex_nicht_terminal_fallen_hart():
+    zeilen = [{"police_id": "7000005", "sum_insured": 6825.00,
+               "brutto_jahresbeitrag": 100.0}]
+    serie = [
+        {"POLNR": "7000005", "GEVO": "ERH", "DATUM": "01.01.2017"},
+        {"POLNR": "7000005", "GEVO": "ERH", "DATUM": "01.01.2019"},
+    ]
+    with pytest.raises(SystemExit, match="erhoehungssatz"):
+        anfangszustaende_je_police(
+            _tg_default_spez(), zeilen, serie,
+            _bestand_mit(7000005), spalten=SPALTEN,
+            red_verfahren="mit_abzug")
+    nicht_terminal = [
+        {"POLNR": "7000005", "GEVO": "PEX", "DATUM": "01.01.2017"},
+        {"POLNR": "7000005", "GEVO": "ERH", "DATUM": "01.01.2019"},
+    ]
+    with pytest.raises(SystemExit, match="terminal"):
+        anfangszustaende_je_police(
+            _tg_default_spez(), zeilen, nicht_terminal,
+            _bestand_mit(7000005), spalten=SPALTEN,
+            red_verfahren="mit_abzug", erhoehungssatz=0.05)
