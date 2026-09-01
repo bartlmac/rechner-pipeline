@@ -107,7 +107,19 @@ def schreibe_abschluss(
         )
     df = _rechne(stamm, historie, config, stichtag, scheiben)
     ziel_dir.mkdir(parents=True, exist_ok=True)
-    return write_portfolio(df, pfad)
+    # Die exists()-Pruefung oben ist eine Momentaufnahme: zwischen ihr und
+    # dem Schreiben liegt die Berechnung. Zwei parallele Aufrufe kamen
+    # beide durch, und os.replace ueberschrieb den zuerst veroeffentlichten
+    # Stand -- beide meldeten Erfolg. Der exklusive Publish macht die
+    # Zusage "genau einmal" wahr, ohne Lock: os.link scheitert atomar,
+    # wenn der Zielpfad schon existiert.
+    try:
+        return write_portfolio(df, pfad, exklusiv=True)
+    except FileExistsError as exc:
+        raise AbschlussError(
+            f"Abschluss {stichtag.isoformat()} ist bereits festgeschrieben "
+            f"({pfad}) — festgeschriebene Staende werden nie ueberschrieben"
+        ) from exc
 
 
 def pruefe_abschluss(
@@ -173,10 +185,20 @@ def pruefe_abschluss(
                     f"abschluss police {pid}: {sp} {f[sp]} -> {n[sp]}"
                 )
         for sp in zahlen:
-            if not math.isclose(float(f[sp]), float(n[sp]), rel_tol=0.0, abs_tol=0.0):
+            alt_wert, neu_wert = float(f[sp]), float(n[sp])
+            # math.isclose(inf, inf) ist WAHR: ein nichtendlicher Bilanzwert
+            # wuerde sich selbst decken und die Kontrolle bestaetigte einen
+            # Stand, den niemand verantworten kann. Endlichkeit zuerst.
+            if not math.isfinite(alt_wert) or not math.isfinite(neu_wert):
+                befunde.append(
+                    f"abschluss police {pid}: {sp} nichtendlich "
+                    f"(festgeschrieben {alt_wert!r}, neu {neu_wert!r}) — "
+                    "ein Bilanzwert ist endlich"
+                )
+            elif not math.isclose(alt_wert, neu_wert, rel_tol=0.0, abs_tol=0.0):
                 befunde.append(
                     f"abschluss police {pid}: {sp} festgeschrieben "
-                    f"{float(f[sp])!r}, neu {float(n[sp])!r}"
+                    f"{alt_wert!r}, neu {neu_wert!r}"
                 )
     return befunde
 

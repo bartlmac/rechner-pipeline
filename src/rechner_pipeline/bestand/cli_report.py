@@ -186,6 +186,27 @@ def main(argv: Optional[List[str]] = None) -> int:
             stichtag = config.referenzstichtag
 
     df = read_portfolio(portfolio_path)
+    # Derselbe Wachposten wie in einzelwerte_am und Gate B1 — aber an der
+    # CLI-Grenze, wo er auch ohne --config greift. Ohne Journal rendert
+    # render_html den strukturellen Verlauf direkt aus dem Stamm und ruft
+    # einzelwerte_am nie; gemessen zum Stichtag 2016: 464 statt 1.213
+    # Vertraege und 37,5 statt 95,1 Mio Versicherungssumme, bei Exit 0 und
+    # ohne jeden Vorbehalt im Bericht. Ein Bericht ist das, was ein Mensch
+    # anschaut — er darf nicht still zu wenig zeigen.
+    if historie is None or len(historie) == 0:
+        folge = df["status_id"] > 1
+        if bool(folge.any()):
+            betroffen = sorted(df.loc[folge, "police_id"])[:5]
+            print(
+                f"bestand_report: {int(folge.sum())} Vertraege tragen einen "
+                f"Folgezustand (status_id > 1, z. B. police {betroffen}), "
+                "aber es wurde keine Historie uebergeben. Stornierte und "
+                "verstorbene Vertraege kehrten als beitragspflichtig in den "
+                "Bericht zurueck — --historie und --ledger mitgeben "
+                "(ADR-011)",
+                file=sys.stderr,
+            )
+            return 2
     if scheiben is not None:
         from rechner_pipeline.models.bestand import validate_scheiben
 

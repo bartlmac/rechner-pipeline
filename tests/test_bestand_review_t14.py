@@ -225,6 +225,15 @@ def test_abschluss_vergleicht_auch_produkt_und_generation(
     befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
     assert any("tarif_generation" in b for b in befunde)
 
+    # Und produkt ebenso: der Testname behauptete beide, mutierte aber nur
+    # die Generation — der Produktvergleich liess sich entfernen, ohne dass
+    # ein Test rot wurde.
+    fest = read_portfolio(pfad)
+    fest.loc[fest.index[0], "produkt"] = "bu"
+    write_portfolio(fest, pfad)
+    befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
+    assert any("produkt" in b for b in befunde)
+
 
 # --------------------------------------------------------------------------- #
 # T14-03: Geschrieben wird atomar

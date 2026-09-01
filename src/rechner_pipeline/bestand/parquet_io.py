@@ -61,11 +61,37 @@ def _schema_for(columns: List[str]) -> pa.schema:
     return pa.schema(fields)
 
 
-def write_portfolio(df: pd.DataFrame, path: Path) -> Path:
+def _dateimodus() -> int:
+    """Der Modus, den ein normal erzeugter Lauf-Output tragen soll.
+
+    ``tempfile.mkstemp`` legt den neuen Inode mit 0600 an, und ``os.replace``
+    nimmt DIESEN Modus mit -- nicht den des bisherigen Ziels. Ohne
+    Korrektur wurde aus einer 0664-Datei still eine 0600-Datei, und der
+    Berechtigungsvertrag der sechs Lauf-Ausgaben aenderte sich, ohne dass
+    es irgendwo stand. Einmal beim Import ermittelt: os.umask ist
+    prozessweit und laesst sich nur lesen, indem man sie kurz setzt.
+    """
+    maske = os.umask(0)
+    os.umask(maske)
+    return 0o666 & ~maske
+
+
+_DATEIMODUS = _dateimodus()
+
+
+def write_portfolio(
+    df: pd.DataFrame, path: Path, *, exklusiv: bool = False
+) -> Path:
     """Write a table deterministically to Parquet.
 
     Supports the portfolio families (base portfolio, Auskunfts-Schnitt,
     Statushistorie — column subsets of the Stamm) and the Ereignis-Ledger.
+
+    ``exklusiv=True`` veroeffentlicht genau einmal: existiert der Zielpfad
+    bereits, scheitert der Aufruf mit ``FileExistsError`` statt zu
+    ueberschreiben. Das ist der Vertrag festgeschriebener Staende
+    (ADR-011); die sechs Ausgaben eines Laufs sind dagegen bewusst
+    ueberschreibbar.
     """
     columns = list(df.columns)
     schema = _schema_for(columns)
@@ -98,7 +124,17 @@ def write_portfolio(df: pd.DataFrame, path: Path) -> Path:
     tmp = Path(tmp_name)
     try:
         pq.write_table(table, tmp, compression="zstd")
-        os.replace(tmp, path)
+        os.chmod(tmp, _DATEIMODUS)
+        if exklusiv:
+            # Genau-einmal-Publish: os.link legt den Zielnamen an und
+            # scheitert mit FileExistsError, wenn es ihn schon gibt --
+            # atomar und prozessuebergreifend, ohne Lock-Infrastruktur.
+            # os.replace kann das nicht: es ueberschreibt bewusst, auch
+            # eine schreibgeschuetzte Datei.
+            os.link(tmp, path)
+            tmp.unlink()
+        else:
+            os.replace(tmp, path)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise

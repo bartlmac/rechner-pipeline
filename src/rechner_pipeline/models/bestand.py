@@ -30,6 +30,8 @@ import dataclasses as _dc
 import datetime as _dt
 from typing import Any, Dict, List, Mapping, Tuple
 
+import numpy as _np
+
 from rechner_pipeline.kern.model_point import ModelPoint as _KernModelPoint
 
 # --------------------------------------------------------------------------- #
@@ -296,6 +298,17 @@ def validate_portfolio(df: Any) -> List[str]:
     nan_spalten = [c for c in num.columns if num[c].isna().any()]
     if nan_spalten:
         errors.append(f"fehlende Werte (NaN) in {nan_spalten}")
+    # Unendlich ist kein fehlender Wert und faellt durch jede Bandpruefung:
+    # inf > 0 ist wahr, inf <= 0 ist falsch. Ein Stammsatz mit
+    # sum_insured = +inf passierte Gate B1, den Abschluss UND dessen
+    # Kontrolle, weil math.isclose(inf, inf) wahr ist. Bilanzwerte sind
+    # endlich; alles andere ist ein Datenfehler der Quelle.
+    inf_spalten = [
+        c for c in num.columns
+        if bool(_np.isinf(num[c].to_numpy(dtype="float64", na_value=0.0)).any())
+    ]
+    if inf_spalten:
+        errors.append(f"nichtendliche Werte (inf) in {inf_spalten}")
     if (num["entry_age"] < 0).any():
         errors.append("entry_age negativ")
     if (num["duration"] <= 0).any():

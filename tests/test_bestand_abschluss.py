@@ -330,6 +330,25 @@ def test_pruefen_faellt_nicht_mit_dem_defekt_mit(bundle, tmp_path, capsys):
     assert "deckt den Abschluss" not in meldungen
 
 
+def test_gamma1_abweichung_blockiert_den_abschluss(bundle, tmp_path, capsys):
+    """Der gamma1-Waechter, end-to-end durch die produktive Verdrahtung.
+
+    Der bisherige Test rief validate_scheiben direkt auf; die Verdrahtung
+    des Validators in pruefe_b1_eingaenge liess sich entfernen, ohne dass
+    ein Test rot wurde. Dieser Fall geht ueber physisches Parquet und die
+    CLI: gamma1 != 0 rechnet still falsch (gemessen -5.0 -> Jahresbeitrag
+    -7.202,87 EUR), und der Stand waere danach festgeschrieben.
+    """
+    scheiben = read_portfolio(bundle / "scheiben.parquet")
+    scheiben.loc[scheiben.index[0], "gamma1"] = -5.0
+    lauf_dir = _bundle_kopie(bundle, tmp_path, scheiben=scheiben)
+    out = tmp_path / "abschluesse"
+
+    assert cli_abschluss.main(_argv(lauf_dir, out)) == 2
+    assert not (out / f"abschluss_{STICHTAG}.parquet").exists()
+    assert "gamma1" in capsys.readouterr().err
+
+
 def test_leere_historie_ist_wie_keine(lauf, config):
     """T16-02 eine Ebene tiefer: auch der Bibliotheksaufruf muss sie
     ablehnen, nicht nur die CLI."""

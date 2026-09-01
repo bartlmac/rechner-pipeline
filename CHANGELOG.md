@@ -197,3 +197,65 @@ nachzurechnen. Daraus:
   die Neuberechnung dagegen und weist Abweichungen aus. Gerechnet über
   dieselbe einzelvertragliche Strecke (`auswertung.einzelwerte_am`),
   die auch die Berichts-Aggregation trägt.
+
+### Geändert am 2026-08-27 bis 2026-09-01 (externe Review-Runden T14 und T16)
+
+Zwei aufeinanderfolgende externe Prüfungen des Bestandsführungs-Standes.
+Die erste (T14) fand sieben Befunde, die zweite (T16) prüfte den
+Reparaturstand nach und fand neun weitere. Das durchgehende Muster der
+zweiten Runde: Die Reparaturen prüften jeweils den `None`-Fall, aber
+nicht den Fall „vorhanden, aber leer".
+
+* **Gate B1 trägt Version `2.0.0`** — nicht `1.5.0`, weil sich die
+  normative Akzeptanzmenge geändert hat: Belege, die unter dem alten
+  Vertrag grün waren, werden unter dem neuen rot, und umgekehrt.
+  Nachgelagerte Prüfer (Abnahmebericht, G-2) lesen die Version dynamisch
+  statt sie zu wiederholen. Wann eine Gate-Version steigen muss, ist im
+  Repository noch nirgends geregelt; die Regel ist als Folgearbeit
+  benannt. Ein Test kann sie nicht ersetzen: weil die nachgelagerten
+  Prüfer die Version dynamisch lesen, kann keine Zusicherung entscheiden,
+  ob eine Änderung Major oder Patch war — das ist eine Regel, kein
+  Assert.
+* **`gamma1` ist eine geprüfte Rechnungsgrundlage** — B1 prüft die
+  Tarifwerk-Regel selbst: `gamma1 == 0`, weil die Bezugsgröße der
+  Verwaltungskosten die GrundVS bleibt. Der Wert ging vorher ungeprüft
+  in Beitrag und Reserve ein. Gemessen: `gamma1 = -5.0` erzeugte einen
+  negativen Jahresbeitrag von −7.202,87 EUR, und bei `NaN` fiel der
+  Rückkaufswert auf 0,00 statt 26.506,09 — ein still plausibler
+  Falschwert ist schlimmer als eine sichtbare `NaN`. `NaN` wird getrennt
+  gemeldet, weil jeder Vergleich damit falsch ist.
+* **Der Abschluss konsumiert das ganze Lauf-Bundle** — Stamm, Historie,
+  Ledger, Scheiben und Config werden vor dem Festschreiben *und* vor dem
+  Prüfen mit derselben Engine geprüft wie in Gate B1
+  (`bestand/vorbedingungen.py`). Vorher sperrte die CLI nur bei
+  fehlender Datei; eine vorhandene, aber leere Scheiben- oder
+  Historiendatei kam durch und wurde festgeschrieben (Deckungskapital
+  3.795.035,38 zu niedrig bzw. 55,7 statt 35,5 Mio) — und die eigene
+  Kontrolle bestätigte den Stand. Neu ist `--bis`, der
+  Fortschreibungs-Horizont: die Bewegungs-Identität gilt nur für
+  vollständig simulierte Kalenderjahre.
+* **Bilanzwerte sind endlich** — `+inf` passierte Schema, Bänder, Gate
+  und Abschlusskontrolle, weil `math.isclose(inf, inf)` wahr ist. Jetzt
+  weisen sowohl die Portfolio-Invarianten als auch die
+  Abschlusskontrolle nichtendliche Werte aus.
+* **Festgeschrieben heißt genau einmal** — der Abschluss wird exklusiv
+  veröffentlicht (`os.link`): existiert der Zielpfad, scheitert der
+  Aufruf atomar, statt zu überschreiben. Die vorherige Prüfung auf
+  Existenz mit anschließendem `os.replace` ließ unter Konkurrenz beide
+  Schreiber Erfolg melden. Die sechs Ausgaben eines Laufs bleiben
+  bewusst überschreibbar.
+* **Der Bericht verweigert die unvollständige Auskunft** — ein geführter
+  Stamm ohne Journal wird an der CLI-Grenze abgewiesen, unabhängig
+  davon, ob aktuarielle Kennzahlen angefordert wurden. Vorher saß der
+  Wachposten in der aktuariellen Funktion, die ohne `--config` nie
+  gerufen wurde: 464 statt 1.213 Verträgen zum Stichtag 2016, bei
+  Exit 0 und ohne Vorbehalt.
+* **Der atomare Writer ändert die Dateirechte nicht mehr** —
+  `tempfile.mkstemp` legt mit `0600` an und `os.replace` nimmt diesen
+  Modus mit; die sechs Lauf-Ausgaben endeten dadurch als `0600` statt
+  nach umask. Durabilität (`fsync`), Temp-Reste nach `SIGKILL` und
+  überlange Zielnamen sind als Folgearbeit benannt, nicht stillschweigend
+  zugesichert.
+* **Die Skill-Parität ist wirklich test-erzwungen** — der Test
+  verglich eine von Hand gepflegte Liste von neun Paaren und übersah das
+  vorhandene zehnte; verglichen werden jetzt die Verzeichnisse.
