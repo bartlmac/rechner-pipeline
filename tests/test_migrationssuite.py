@@ -1323,3 +1323,36 @@ def test_teilkuendigung_gevo_fuehrt_zustandslos_fort() -> None:
                              betrag_erwartet=None, anteil=f),),
     ), red_verfahren="teilkuendigung")
     assert urteil2["bestanden"], urteil2["befunde"]
+
+
+def test_komponentenzahl_skaliert_die_suite_toleranz() -> None:
+    """Nachzug Nr. 21 (die vier letzten A-M4-Faelle, 6-7 Komponenten,
+    Residuen 0,0228-0,0240): Dieselbe komponentenskalierte
+    Fehlerfortpflanzung wie im aktuariellen Test (Korrektur 14) —
+    keine pauschale Toleranzerhoehung: bei einer Komponente bleibt
+    0,023 ein Fehlschlag."""
+    from rechner_pipeline.qa import aktuarieller_test as at
+    from rechner_pipeline.qa import migrationssuite as ms
+
+    assert ms._CENT_UNSCHAERFE == at._CENT_UNSCHAERFE  # Sync-Wache
+
+    # Kleiner Vertrag, damit die RELATIVE Toleranz (1e-6) nicht greift
+    # und allein die absolute Skalierung urteilt (Zonen-Beleg).
+    import dataclasses as dc
+
+    mp_klein = dc.asdict(dc.replace(KLV_DEFAULT, sum_insured=20000.0))
+    kern_klein = Rechenkern(KLV_DEFAULT.__class__(**mp_klein))
+    wert_1 = kern_klein.monatsreserve(S1).vx_mrv
+    assert wert_1 * 1e-6 < 0.02  # rel-Grenze unter der abs-Grenze
+    daneben = round(wert_1 + 0.023, 2)
+    basis = dict(
+        police_id="P-1", model_point=mp_klein,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=daneben,
+        dk_erwartet_2=round(kern_klein.monatsreserve(S2).vx_mrv, 2),
+    )
+    eng = pruefe_vertrag(VertragsPruefung(**basis))
+    assert not eng["bestanden"]
+    weit = pruefe_vertrag(VertragsPruefung(
+        **basis, quell_komponenten=6))
+    assert weit["bestanden"], weit["befunde"]

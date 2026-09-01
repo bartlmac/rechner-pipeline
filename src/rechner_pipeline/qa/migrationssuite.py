@@ -218,6 +218,12 @@ class VertragsPruefung:
     #: Vertraege mit unterjaehrigem Beginn). Kommt vom Lauf-Flag, wird
     #: nie geraten.
     dk_am_jahrestag: bool = False
+    #: Komponentenzahl der QUELL-Buchfuehrung, wo der Ziel-Rechenweg
+    #: sie kollabiert (Ein-Punkt-Inversion beitragsfreier Serien) —
+    #: dieselbe Groesse wie im aktuariellen Test (Korrektur 14): der
+    #: gelieferte Wert bleibt die Summe je fuer sich gerundeter
+    #: Baustein-Werte, auch wenn der Auftrag keine Scheiben traegt.
+    quell_komponenten: Optional[int] = None
 
 
 def _schichtsumme(
@@ -244,8 +250,26 @@ def _schichtsumme(
     return summe
 
 
-def _vergleich(groesse: str, system: float, erwartet: float) -> Dict[str, Any]:
-    ok = math.isclose(system, erwartet, rel_tol=REL_TOL, abs_tol=ABS_TOL)
+#: Rundungsunschaerfe je zusaetzlicher Baustein-Komponente — DERSELBE
+#: Wert wie qa.aktuarieller_test._CENT_UNSCHAERFE (dort Korrektur 14;
+#: hier Nachzug Nr. 21 des zweiten Laufs: vier Vertraege mit 6-7
+#: Komponenten rissen die pauschale Toleranz um exakt die
+#: Fehlerfortpflanzung, dev-docs/aktuarieller-test-at1-at2-at3.md
+#: Abschnitt 4). Ein Test haelt beide Konstanten synchron; der direkte
+#: Import waere ein Modul-Zirkel.
+_CENT_UNSCHAERFE = 0.005
+
+
+def _vergleich(
+    groesse: str, system: float, erwartet: float, komponenten: int = 1
+) -> Dict[str, Any]:
+    """Wertvergleich; die Toleranz waechst mit der Zahl der je fuer
+    sich gerundeten Komponenten des gelieferten Werts (Grund plus
+    Erhoehungsscheiben bzw. kollabierte Quell-Bausteine) — keine
+    Aufweichung, sondern Fehlerfortpflanzung."""
+    ok = math.isclose(
+        system, erwartet, rel_tol=REL_TOL,
+        abs_tol=ABS_TOL + _CENT_UNSCHAERFE * max(0, komponenten - 1))
     return {
         "groesse": groesse,
         "system": system,
@@ -500,7 +524,12 @@ def pruefe_vertrag(
     # gefuehrte Stichtagswert ist Basis PLUS Schicht (Nachzug des
     # zweiten Laufs; ohne sie zeigte jeder Vertrag sein rohes R).
     dk_1 += _schichtsumme(v, grund_mp, dk_monat_1)
-    pruefungen.append(_vergleich("dk_stichtag_1", dk_1, v.dk_erwartet_1))
+    # Jede Erhoehungsscheibe (bzw. jeder kollabierte Quell-Baustein)
+    # ist eine eigene, fuer sich gerundete Komponente des Lieferwerts.
+    komponenten_1 = max(1 + len(scheiben), v.quell_komponenten or 1)
+    pruefungen.append(_vergleich(
+        "dk_stichtag_1", dk_1, v.dk_erwartet_1,
+        komponenten=komponenten_1))
 
     if v.bjb_erwartet_1 is not None:
         pruefungen.append(_vergleich(
@@ -508,6 +537,7 @@ def pruefe_vertrag(
             _bjb_system(kern, v.monate_stichtag_1, pex_jahr,
                         scheiben=scheiben, reduziert=alt_rv),
             v.bjb_erwartet_1,
+            komponenten=komponenten_1,
         ))
     else:
         nicht_geprueft.append("bjb_stichtag_1")
@@ -805,7 +835,10 @@ def pruefe_vertrag(
             dk2 = vertrags_monatsreserve(
                 kern, scheiben, dk_monat_2).vx_mrv
         dk2 += _schichtsumme(v, grund_mp, dk_monat_2)
-        pruefungen.append(_vergleich("dk_stichtag_2", dk2, v.dk_erwartet_2))
+        pruefungen.append(_vergleich(
+            "dk_stichtag_2", dk2, v.dk_erwartet_2,
+            komponenten=max(1 + len(scheiben),
+                            v.quell_komponenten or 1)))
 
     return {
         "police_id": v.police_id,

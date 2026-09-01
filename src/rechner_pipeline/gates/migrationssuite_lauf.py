@@ -558,6 +558,7 @@ def baue_auftraege(
             scheiben_mit_gamma1=scheiben_mit_gamma1,
             stoab_je_baustein=stoab_je_baustein,
             reduktion=zustand.get("reduktion"),
+            quell_komponenten=zustand.get("quell_komponenten"),
             dk_am_jahrestag=dk_am_jahrestag,
             **_schicht_teile(
                 police, (schichten or {}).get(police),
