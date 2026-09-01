@@ -240,23 +240,24 @@ def test_berechnungen_verlangen_ihre_exakte_aritaet(berechnung, quellen):
 
 
 @pytest.mark.parametrize("quellen", [[], ["BEGINN", "GEBDAT"]])
-def test_monate_bis_stichtag_verlangt_genau_eine_quellspalte(quellen):
+def test_monate_letzter_jahrestag_verlangt_genau_eine_quellspalte(quellen):
     spec = _spec(felder=[FeldMapping(
         ziel="monate_ta", typ="berechnung", quellen=quellen,
-        berechnung="monate_bis_stichtag", parameter={"stichtag": "2026-01-01"},
+        berechnung="monate_letzter_jahrestag_vor_stichtag",
+        parameter={"stichtag": "2026-01-01"},
         begruendung="adversarial falsche Operandenanzahl",
     )])
 
     fehler = validate_spec(spec, QUELLSPALTEN)
 
-    assert any("monate_bis_stichtag" in f and "braucht genau" in f
-               for f in fehler), fehler
+    assert any("monate_letzter_jahrestag_vor_stichtag" in f
+               and "braucht genau" in f for f in fehler), fehler
 
 
-def test_monate_bis_stichtag_ohne_parameter_blockiert():
+def test_monate_letzter_jahrestag_ohne_parameter_blockiert():
     spec = _spec(felder=[FeldMapping(
         ziel="monate_ta", typ="berechnung", quellen=["BEGINN"],
-        berechnung="monate_bis_stichtag",
+        berechnung="monate_letzter_jahrestag_vor_stichtag",
         begruendung="Verankerungszeitpunkt t_a",
     )])
 
@@ -265,10 +266,10 @@ def test_monate_bis_stichtag_ohne_parameter_blockiert():
     assert any("braucht den Parameter 'stichtag'" in f for f in fehler), fehler
 
 
-def test_monate_bis_stichtag_mit_unlesbarem_datum_blockiert():
+def test_monate_letzter_jahrestag_mit_unlesbarem_datum_blockiert():
     spec = _spec(felder=[FeldMapping(
         ziel="monate_ta", typ="berechnung", quellen=["BEGINN"],
-        berechnung="monate_bis_stichtag",
+        berechnung="monate_letzter_jahrestag_vor_stichtag",
         parameter={"stichtag": "31. Dezember 2025"},
         begruendung="Verankerungszeitpunkt t_a",
     )])
@@ -278,40 +279,51 @@ def test_monate_bis_stichtag_mit_unlesbarem_datum_blockiert():
     assert any("kein bekanntes Datumsformat" in f for f in fehler), fehler
 
 
-def test_monate_bis_stichtag_zaehlt_volle_vertragsmonate():
-    """Unabhaengige Kontrolle gegen die Monatskonvention der Controlling-Suite
-    (``gates.migrationssuite_lauf._monate``) — beide muessen dieselbe Uhr
-    fuehren, sonst widerspricht sich Verankerung und Fortschreibung."""
+def test_monate_letzter_jahrestag_rundet_auf_volle_vertragsjahre_ab():
+    """Unabhaengige Kontrolle: roh ueber die Monatskonvention der
+    Controlling-Suite (``gates.migrationssuite_lauf._monate``) rechnen und
+    von Hand auf das letzte volle Vertragsjahr abrunden — die Katalog-
+    funktion muss auf denselben Wert kommen. Quellsysteme wie Baldrians
+    fuehren das Deckungskapital nur am Vertragsjahrestag (Mitteilung 143
+    Abschnitt 6) und interpolieren nicht; der Stichtag der Lieferung
+    selbst ist meist KEIN Jahrestag."""
     from rechner_pipeline.gates.migrationssuite_lauf import _monate as kontrolle
 
-    monate_bis_stichtag = BERECHNUNGEN["monate_bis_stichtag"]
+    monate_ta = BERECHNUNGEN["monate_letzter_jahrestag_vor_stichtag"]
     faelle = [
-        ("01.06.2015", "01.01.2026"),
-        ("15.03.2020", "01.03.2026"),  # Stichtag-Tag < Beginn-Tag: -1 Monat
-        ("01.01.2020", "01.01.2020"),  # Beginn == Stichtag: 0 Monate
+        ("01.06.2015", "01.01.2026"),   # Stichtag zwischen zwei Jahrestagen
+        ("15.03.2020", "01.03.2026"),   # Stichtag-Tag < Beginn-Tag
+        ("01.01.2020", "01.01.2020"),   # Beginn == Stichtag: 0 Monate
+        ("01.06.2015", "01.06.2025"),   # Stichtag IST der Jahrestag
     ]
     for beginn, stichtag in faelle:
         zeile = {"BEGINN": beginn}
-        erwartet = kontrolle(_parse_datum(beginn), _parse_datum(stichtag))
-        assert monate_bis_stichtag(
-            zeile, ["BEGINN"], {"stichtag": stichtag}) == erwartet
+        roh = kontrolle(_parse_datum(beginn), _parse_datum(stichtag))
+        erwartet = (roh // 12) * 12
+        assert monate_ta(zeile, ["BEGINN"], {"stichtag": stichtag}) == erwartet
+        assert erwartet % 12 == 0
 
 
-def test_monate_bis_stichtag_vor_beginn_ist_unplausibel():
-    monate_bis_stichtag = BERECHNUNGEN["monate_bis_stichtag"]
+def test_monate_letzter_jahrestag_vor_beginn_ist_unplausibel():
+    monate_ta = BERECHNUNGEN["monate_letzter_jahrestag_vor_stichtag"]
     with pytest.raises(ValueError, match="< 0"):
-        monate_bis_stichtag(
+        monate_ta(
             {"BEGINN": "01.06.2027"}, ["BEGINN"], {"stichtag": "01.01.2026"})
 
 
 def test_monate_ta_und_dk_ta_werden_end_zu_end_transformiert(tmp_path):
     """Die Verankerungsattribute laufen als optionale Zielfelder durch die
-    volle Anwendung — belegt am Fall, nicht nur an der Katalogfunktion."""
+    volle Anwendung — belegt am Fall, nicht nur an der Katalogfunktion.
+    BEGINN 01.06.2015, Stichtag 01.01.2026: letzter Jahrestag davor ist
+    01.06.2025, also 120 Monate (10 volle Vertragsjahre), nicht die rohen
+    127 Monate bis zum Stichtag."""
     spec = _spec(felder=list(_spec().felder) + [
         FeldMapping(ziel="monate_ta", typ="berechnung", quellen=["BEGINN"],
-                    berechnung="monate_bis_stichtag",
+                    berechnung="monate_letzter_jahrestag_vor_stichtag",
                     parameter={"stichtag": "01.01.2026"},
-                    begruendung="letzter exakter Rechenpunkt der Quelle"),
+                    begruendung="letzter exakter Rechenpunkt der Quelle "
+                                "(Mitteilung 143 Abschnitt 6: DECKKAP nur "
+                                "am Vertragsjahrestag, keine Interpolation)"),
         FeldMapping(ziel="dk_ta", typ="berechnung", quellen=["DECKKAP"],
                     berechnung="zahl",
                     begruendung="dort gelieferter Deckungskapitalwert"),
@@ -321,7 +333,7 @@ def test_monate_ta_und_dk_ta_werden_end_zu_end_transformiert(tmp_path):
         tmp_path, spec, [zeile], quellspalten=QUELLSPALTEN + ["DECKKAP"])
 
     assert befunde == []
-    assert ziel[0]["monate_ta"] == 127
+    assert ziel[0]["monate_ta"] == 120
     assert ziel[0]["dk_ta"] == pytest.approx(21068.41)
 
 

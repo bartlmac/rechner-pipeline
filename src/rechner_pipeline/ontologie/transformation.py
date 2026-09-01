@@ -135,24 +135,29 @@ def _ganzzahl(zeile: Dict[str, Any], quellen: List[str]) -> int:
     return int(str(zeile[quellen[0]]).strip())
 
 
-def _monate_bis_stichtag(
+def _monate_letzter_jahrestag_vor_stichtag(
     zeile: Dict[str, Any], quellen: List[str], parameter: Dict[str, Any]
 ) -> int:
-    """Volle Vertragsmonate zwischen ``quellen[0]`` und einem festen Stichtag.
+    """Volle Vertragsjahre (in Monaten) zum letzten Jahrestag vor/am Stichtag.
 
-    Der Stichtag ist der Abzugsstichtag der Lieferung — pro Abzugsdatei
-    konstant, keine Spalte der Quelle. Er kommt deshalb als Spec-
-    Parameter, nicht als weitere Quellspalte (dieselbe Monatskonvention
-    wie ``gates.migrationssuite_lauf._monate``, damit der Verankerungs-
-    zeitpunkt und die Controlling-Suite dieselbe Uhr fuehren).
+    Fuer Quellsysteme, die einen Wert (etwa das Deckungskapital) nur am
+    Vertragsjahrestag fuehren und nicht interpolieren — der Stichtag
+    selbst ist meist KEIN Jahrestag. Das Ergebnis ist deshalb immer ein
+    Vielfaches von 12, nicht die rohe Monatsdifferenz zum Stichtag: erst
+    werden die vollen Monate seit ``quellen[0]`` bis zum Stichtag
+    gezaehlt (dieselbe Monatskonvention wie ``gates.migrationssuite_lauf.
+    _monate``), dann auf das letzte volle Vertragsjahr abgerundet. Der
+    Stichtag ist der Abzugsstichtag der Lieferung — pro Abzugsdatei
+    konstant, keine Spalte der Quelle, deshalb Spec-Parameter statt
+    weiterer Quellspalte.
     """
     beginn = _parse_datum(zeile[quellen[0]])
     stichtag = _parse_datum(str(parameter["stichtag"]))
-    monate = (stichtag.year - beginn.year) * 12 + (stichtag.month - beginn.month) - (
+    roh = (stichtag.year - beginn.year) * 12 + (stichtag.month - beginn.month) - (
         1 if stichtag.day < beginn.day else 0)
-    if monate < 0:
-        raise ValueError(f"berechnete Vertragsmonate {monate} < 0")
-    return monate
+    if roh < 0:
+        raise ValueError(f"berechnete Vertragsmonate {roh} < 0")
+    return (roh // 12) * 12
 
 
 #: Katalog der zulaessigen Berechnungen — der Agent WAEHLT, Code RECHNET.
@@ -167,7 +172,7 @@ BERECHNUNGEN: Dict[str, Callable[[Dict[str, Any], List[str], Dict[str, Any]], An
     "datum_nach_iso": lambda z, q, p: _datum_iso(z, q),
     "zahl": lambda z, q, p: _zahl(z, q),
     "ganzzahl": lambda z, q, p: _ganzzahl(z, q),
-    "monate_bis_stichtag": _monate_bis_stichtag,
+    "monate_letzter_jahrestag_vor_stichtag": _monate_letzter_jahrestag_vor_stichtag,
 }
 
 #: Jede Katalogfunktion hat einen expliziten Operandenvertrag. Ein blosses
@@ -181,14 +186,14 @@ BERECHNUNGS_ARITAETEN: Dict[str, int] = {
     "datum_nach_iso": 1,
     "zahl": 1,
     "ganzzahl": 1,
-    "monate_bis_stichtag": 1,
+    "monate_letzter_jahrestag_vor_stichtag": 1,
 }
 
 #: Berechnungen mit Pflicht-Parametern (spec-feste Konstanten statt
 #: Quellspalten). Fehlt ein Schluessel oder ist der Wert nicht plausibel,
 #: faellt die Spec-Validierung — nicht erst jede einzelne Zeile.
 BERECHNUNGS_PFLICHTPARAMETER: Dict[str, Tuple[str, ...]] = {
-    "monate_bis_stichtag": ("stichtag",),
+    "monate_letzter_jahrestag_vor_stichtag": ("stichtag",),
 }
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -298,7 +303,7 @@ def validate_spec(
                         f"{f.ziel}: Berechnung {f.berechnung!r} braucht den "
                         f"Parameter {schluessel!r}"
                     )
-            if f.berechnung == "monate_bis_stichtag" and str(
+            if f.berechnung == "monate_letzter_jahrestag_vor_stichtag" and str(
                 f.parameter.get("stichtag", "")
             ).strip():
                 try:
