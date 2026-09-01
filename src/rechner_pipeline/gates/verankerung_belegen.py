@@ -90,11 +90,18 @@ def _zustands_dk_prosp(
     *,
     scheiben_mit_gamma1: bool,
 ) -> Optional[float]:
-    """Prospektiver drx-Wert am t_a auf der ZUSTANDS-Welt (None = Stamm).
+    """Prospektiver Wert am t_a auf der ZUSTANDS-Welt (None = Stamm).
 
     Dieselben Welten wie in den Pruefstrecken: Erhoehungsscheiben,
-    beitragsfreie Uebernahme, geteilter Vertrag. Ohne Anfangszustand
-    rechnet ``uebernehmen`` selbst (identische drx-Konvention).
+    beitragsfreie Uebernahme, geteilter Vertrag. BASIS ist der
+    GEFUEHRTE Wert (vx_mrv) — die Basis der gelieferten DECKKAP-Spalte
+    und der Vergleichs-Engines. Bei Ein-Baustein-Welten faellt er mit
+    der Deckungsrueckstellung zusammen (dort rechnet ``uebernehmen``
+    selbst, drx-Konvention, identisch); bei Scheiben-Welten differieren
+    beide um den Zillmer-/Zuschlagsrest der jungen Scheiben — auf der
+    falschen Basis wuerde GENAU diese Differenz zum Phantom-rho
+    (zweiter Baldrian-Lauf: 254 dynamik-Policen mit 400-750 EUR,
+    7000286: exakt 744,01).
     """
     scheiben = tuple(zustand.get("scheiben", ()))
     pex = zustand.get("beitragsfrei_seit_jahr")
@@ -119,7 +126,7 @@ def _zustands_dk_prosp(
 
         rv = ReduzierterVertrag.nach(
             kern, int(reduktion[0]), float(reduktion[1]))
-        return rv.monatsreserve(monate_ta).drx_bpfl
+        return rv.monatsreserve(monate_ta).vx_mrv
     if pex is not None:
         # Die beitragsfreie Reserve kennt im Kern nur einen Begriff.
         return kern.monatsreserve_beitragsfrei(int(pex), monate_ta)
@@ -129,7 +136,7 @@ def _zustands_dk_prosp(
             gamma1_uebernehmen=scheiben_mit_gamma1)))
         for j, s in scheiben
     ]
-    return vertrags_monatsreserve(kern, kerne, monate_ta).drx_bpfl
+    return vertrags_monatsreserve(kern, kerne, monate_ta).vx_mrv
 
 
 def baue_schichtbeleg(

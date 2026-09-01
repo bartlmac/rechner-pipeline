@@ -196,12 +196,18 @@ def test_zustands_vertraege_verankern_auf_ihrer_welt():
         vertrags_monatsreserve,
     )
 
-    grund, erh_jahr, summe = 90000.0, 4, 4500.0
+    # Junge Scheibe (2 Jahre alt am t_a): ihr Zillmer-Rest trennt
+    # gefuehrten Wert und Deckungsrueckstellung.
+    grund, erh_jahr, summe = 90000.0, 8, 4500.0
     grund_mp = dataclasses.replace(KLV_DEFAULT, sum_insured=grund)
     kerne = [(erh_jahr, Rechenkern(erhoehungs_scheibe(
         grund_mp, erh_jahr, summe)))]
-    dk_welt = vertrags_monatsreserve(
-        Rechenkern(grund_mp), kerne, 120).drx_bpfl
+    welt = vertrags_monatsreserve(Rechenkern(grund_mp), kerne, 120)
+    # Zonen-Beleg: die Scheiben-Welt trennt gefuehrten Wert und
+    # Deckungsrueckstellung — genau die Differenz, die auf der
+    # falschen Basis zum Phantom-rho wurde (Korrektur Nr. 20).
+    assert welt.vx_mrv - welt.drx_bpfl > 10.0
+    dk_welt = welt.vx_mrv
     verankerung = pd.DataFrame([{
         "police_id": 7000001, "monate_ta": 120,
         "zustand_ta": "beitragspflichtig", "verweildauer_ta": 10,
