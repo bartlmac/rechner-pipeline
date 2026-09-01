@@ -163,6 +163,14 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    PR-Schnitt-Vorbehalt (Gebiet Kern/Gates) beginnt mit 1:
    Vorlauf-Fix der Zeichnungsordnungs-Allowlist (A-K1 war zeichenbar,
    aber keiner Rolle zuweisbar; gate_entscheid, vor Laufstart).
+   Stand 2026-09-01, waehrend des Laufs: acht Korrekturen (Details in
+   regie/drehbuch-lauf2.md), davon im Kern/Gates-Gebiet die
+   Serien-Zustandsableitung f9af1cc, der Schichtbeleg-Producer
+   46cb6a9, Schicht-Auslassungs-Ausweis acefbd8, Scheiben-gamma1
+   fc01663 (Kern 3.2.0), Stornoabschlag je Baustein 2b35155
+   (Kern 3.3.0) und der Kandidaten-Korridor 2c4e0b2 — der
+   Schnitt-Vorbehalt von Schritt 8 ist damit sicher ausgeloest, die
+   A/B/C-Grenzen sind nach Laufende neu zu bewerten.
 6b. [ ] T18-Korrekturen (Owner: nach Maintainer-Entscheid;
    fruehestens nach Anstoss von Fall-Lauf 2 — so entschieden
    2026-09-01): eigener Korrektur-PR gegen main, Geschwister zu
