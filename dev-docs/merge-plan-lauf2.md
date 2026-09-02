@@ -157,9 +157,12 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
       monate_ta (Berechnung aus BEGINN/Stichtag; Berechnungskatalog
       ggf. erweitern) und dk_ta (= DECKKAP) ergaenzen, sonst entsteht
       keine verankerung.parquet.
-6. [ ] Fall-Lauf 2 auf fallbericht fahren (Owner: Lauf-Sessions des
+6. [x] Fall-Lauf 2 auf fallbericht fahren (Owner: Lauf-Sessions des
    Maintainers, Vier-Rollen-Regie; dev-session als Systembetreuung).
-   Pruefpunkt: A-M4-Kette steht. Korrektur-Zaehlung fuer den
+   Pruefpunkt: A-M4-Kette steht. ABGESCHLOSSEN 2026-09-02: alle fuenf
+   Gates auf Systemstand 4b1abf0 gezeichnet (A-M4 834/834, Schicht
+   -0,14 EUR); 23 Korrekturen final, Bilanz in
+   docs/faelle/baldrian-lauf2.md und dev-docs/lauf2-auswertung.md. Korrektur-Zaehlung fuer den
    PR-Schnitt-Vorbehalt (Gebiet Kern/Gates) beginnt mit 1:
    Vorlauf-Fix der Zeichnungsordnungs-Allowlist (A-K1 war zeichenbar,
    aber keiner Rolle zuweisbar; gate_entscheid, vor Laufstart).
@@ -197,6 +200,14 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    begruendeten Commit-Botschaften als Gliederung. Pruefpunkt: kein
    bestandsfuehrung-Commit als eigene Aenderung (schon in main),
    Suite gruen, Review-Befunde geschlossen.
+   STAND 2026-09-02: Der adversariale Review ist gelaufen (22
+   Rohbefunde: 11 bestaetigt und gefixt, S1/S5 dev-bestaetigt und
+   gefixt, S2/S3/S4/S7 als offene Punkte, 2 verworfen —
+   dev-docs/review-lauf2-befunde.md traegt den Status je Befund);
+   kein Befund beruehrt die gezeichneten Ergebnisse. Die E2E-Fixture
+   des zweiten Laufs ist eingefroren (tests/test_baldrian2_e2e.py,
+   822ce75). Suite 1534, Kern 3.4.0 — der PR ist schnittbereit,
+   es fehlt nur noch Schritt 7 (vorzeige-url-Merge).
    HISTORISCH (Entscheid 2026-09-01, durch den Vorbehalt abgeloest):
    drei chronologische Schnitte A/B/C —
    Ein thematisch sauberer Schnitt ist NICHT zu haben: die Themen liegen
