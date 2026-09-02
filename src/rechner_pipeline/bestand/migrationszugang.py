@@ -619,6 +619,16 @@ def leite_pex_ursprungssumme_ab(
     Versicherungssumme, ``v_bfr(a0)`` je Einheit ist der gesuchte
     Faktor. Nach dem Ende der Beitragszahlungsdauer ist er eins — dort
     IST die gelieferte Summe die Ursprungssumme.
+
+    Fuer eine SERIE (Grund + Erhoehungsscheiben) mit terminalem PEX
+    liefert die Inversion durch den Grund-Faktor eine
+    AEQUIVALENZGROESSE, nicht die historische Bausteinsumme: Die
+    Umwandlungsfaktoren der Bausteine sind verschieden (versetzte
+    Zillmer-Fenster), die historische Zerlegung ist aus der
+    Ein-Punkt-Inversion nicht rekonstruierbar. Tragfaehig ist sie
+    trotzdem, weil nach terminalem PEX jede erreichbare Folgegroesse
+    nur an der beitragsfreien Gesamtsumme haengt, die die Inversion
+    exakt reproduziert.
     """
     einheit = ModelPoint(**{**dict(modellpunkt_felder), "sum_insured": 1.0})
     if pex_jahr <= 0 or pex_jahr > einheit.n:
@@ -1005,9 +1015,15 @@ def leite_serie_aus_satz_ab(
     fortgefuehrte Bruchteil f der Grundsumme, nachgelieferte Auskunft).
     Eine Beitragsfreistellung gehoert NICHT hierher — sie ist terminal
     und laeuft ueber die Gesamtsummen-Inversion
-    (:func:`leite_pex_ursprungssumme_ab`; die beitragsfreien Faktoren
-    aller Bausteine desselben Ablauftermins sind identisch, die
-    Zerlegung ist fuer den Wert unerheblich).
+    (:func:`leite_pex_ursprungssumme_ab`). Die Zerlegung ist fuer den
+    Wert unerheblich, weil nach terminalem PEX jede erreichbare
+    Folgegroesse homogen in der beitragsfreien GESAMTSUMME ist:
+    Bausteine desselben Ablauftermins tragen am selben Bewertungstag
+    denselben Reservesatz je Einheit beitragsfreier Summe. Die
+    UMWANDLUNGSFAKTOREN der Bausteine sind dagegen NICHT gleich (die
+    Zillmer-Fenster der Scheiben liegen versetzt) — das
+    Inversions-Ergebnis ist darum eine Aequivalenzgroesse, keine
+    historische Bausteinsumme.
 
     Rueckgabe in IST-Summen: Scheiben centgerundet (so bucht die
     Quelle), die Grundsumme als Rest zur gelieferten Gesamtsumme —

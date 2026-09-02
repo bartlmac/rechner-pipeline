@@ -218,8 +218,13 @@ def _serienzustand(
             "sum_insured": leite_pex_ursprungssumme_ab(
                 mp_felder, pex_jahr=pex_jahr, vs_bfr=erlsumme),
             # Die Ein-Punkt-Inversion kollabiert die Bausteine der
-            # Quelle (wert-aequivalent, Faktorgleichheit) — fuer die
-            # Rundungs-Skalierung des Wertvergleichs bleibt aber
+            # Quelle. Wert-aequivalent ist das, weil nach terminalem
+            # PEX jede erreichbare Pruefgroesse homogen in der
+            # beitragsfreien GESAMTSUMME ist — NICHT weil die
+            # Umwandlungsfaktoren der Bausteine gleich waeren (sie
+            # sind es nicht; sum_insured ist hier eine
+            # Aequivalenzgroesse, keine historische Bausteinsumme).
+            # Fuer die Rundungs-Skalierung des Wertvergleichs bleibt
             # massgeblich, aus wie vielen je fuer sich gerundeten
             # Baustein-Werten der gelieferte Wert besteht
             # (Bedingungswerk Ziffer 5: je Baustein ermittelt).

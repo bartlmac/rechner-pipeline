@@ -510,14 +510,32 @@ def test_anfangszustand_serie_bestimmt_offene_anteile_aus_kandidaten():
 
 
 def test_anfangszustand_serie_mit_terminalem_pex_ist_einpunkt():
-    """Erhoehung + terminale Beitragsfreistellung: Gesamtsummen-Inversion
-    (Faktorgleichheit der Bausteine) — Referenz ist die unabhaengige
-    Vorwaertsrechnung: Ursprung 10000 wandelt im Jahr 8 selbst um."""
+    """Erhoehung + terminale Beitragsfreistellung: Ein-Punkt-Inversion.
+
+    Nicht-zirkulaere Referenz (Review-Befund B1): Die gelieferte
+    beitragsfreie Summe kommt aus der WAHREN Scheiben-Welt — Grund
+    10000 mit eigenem Umwandlungsfaktor, Scheibe 500 (ERH Jahr 3) mit
+    IHREM (deutlich anderen) Faktor. Der Zonen-Beleg zeigt beides:
+    die Faktoren der Bausteine sind NICHT gleich (die alte
+    Docstring-Praemisse war falsch), und die Ein-Punkt-Welt ist an
+    den erreichbaren Folgegroessen trotzdem exakt wert-aequivalent,
+    weil nach terminalem PEX alles homogen in der beitragsfreien
+    GESAMTSUMME ist. Die abgeleitete sum_insured ist darum eine
+    AEQUIVALENZGROESSE, nicht die historische Bausteinsumme 10500."""
     import dataclasses as _dc
 
-    einheit = _dc.replace(KLV_DEFAULT, sum_insured=1.0)
-    faktor = Rechenkern(einheit).beitragsfreie_summe(8)
-    vs_bfr_geliefert = round(10000.0 * faktor, 2)
+    from rechner_pipeline.kern import erhoehungs_scheibe
+
+    grund = Rechenkern(_dc.replace(KLV_DEFAULT, sum_insured=10000.0))
+    scheibe = Rechenkern(erhoehungs_scheibe(grund.mp, 3, 500.0))
+    f_g = Rechenkern(_dc.replace(grund.mp, sum_insured=1.0)
+                     ).beitragsfreie_summe(8)
+    f_s = Rechenkern(_dc.replace(scheibe.mp, sum_insured=1.0)
+                     ).beitragsfreie_summe(5)
+    assert abs(f_s - f_g) > 0.05, "Zonen-Beleg: Faktoren verschieden"
+    vs_bfr_geliefert = round(
+        grund.beitragsfreie_summe(8) + scheibe.beitragsfreie_summe(5), 2)
+
     zeilen = [{"police_id": "7000004", "sum_insured": vs_bfr_geliefert,
                "brutto_jahresbeitrag": 0.0}]
     vorgeschichte = [
@@ -531,11 +549,25 @@ def test_anfangszustand_serie_mit_terminalem_pex_ist_einpunkt():
     assert not warnungen
     z = zustaende["7000004"]
     assert z["beitragsfrei_seit_jahr"] == 8
-    assert z["sum_insured"] == pytest.approx(10000.0, rel=1e-6)
     assert "scheiben" not in z
-    # Die Inversion kollabiert die Bausteine wert-aequivalent — die
-    # QUELLSEITIGE Komponentenzahl (Grund + eine Erhoehung) bleibt fuer
-    # die Rundungs-Skalierung des Wertvergleichs ausgewiesen.
+    # Die Aequivalenzgroesse: Inversion der GESAMTSUMME durch den
+    # Grund-Faktor — nicht die historische Summe der Bausteine.
+    assert z["sum_insured"] == pytest.approx(
+        vs_bfr_geliefert / f_g, rel=1e-9)
+    # Wert-Aequivalenz an mehreren Punkten: Ein-Punkt-Welt und wahre
+    # Scheiben-Welt tragen dieselbe beitragsfreie Reserve. Der einzige
+    # Unterschied ist die Cent-Rundung des GELIEFERTEN Werts (die
+    # Ein-Punkt-Welt reproduziert den gerundeten, die wahre Welt den
+    # ungerundeten Stand) — darum halber Cent, nicht 1e-6.
+    einpunkt = Rechenkern(_dc.replace(
+        KLV_DEFAULT, sum_insured=z["sum_insured"]))
+    for m in (12 * 9, 12 * 10 + 5, 12 * 25):
+        wahr = (grund.monatsreserve_beitragsfrei(8, m)
+                + scheibe.monatsreserve_beitragsfrei(5, m - 36))
+        assert einpunkt.monatsreserve_beitragsfrei(8, m) == pytest.approx(
+            wahr, abs=0.005)
+    # Die QUELLSEITIGE Komponentenzahl (Grund + eine Erhoehung) bleibt
+    # fuer die Rundungs-Skalierung des Wertvergleichs ausgewiesen.
     assert z["quell_komponenten"] == 2
 
 
