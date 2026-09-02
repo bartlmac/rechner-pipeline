@@ -19,14 +19,15 @@ in die Bewertung zurückwirken.
 
 | Dokument | Inhalt |
 |---|---|
+| [bestandserzeugung.md](bestandserzeugung.md) | Vom leeren Verzeichnis zum geführten Bestand: das eine Kommando, die sechs Ausgaben, die zwei Daten samt Fehllesarten, Migration und Quellbestand |
 | [erfahrungsannahmen.md](erfahrungsannahmen.md) | Wie die Simulation ihre Ereigniswahrscheinlichkeiten bildet: dritte Ordnung als Transformation der ersten |
 
 ## Die Werkzeuge
 
 | Werkzeug | Erzeugt |
 |---|---|
-| `bestand.generator` + `bestand.ereignisse` | den Zielbestand der Pfefferminzia: Modellpunkte je Generation, dann ein Strom datierter Geschäftsvorfälle |
-| `simulation/` (nicht eingecheckt) | die Lieferungen der fiktiven abgebenden Unternehmen |
+| `bestand.cli_fortschreibung` (Engines: `bestand.generator` + `bestand.ereignisse`) | den Zielbestand der Pfefferminzia: Modellpunkte je Generation, dann ein Strom datierter Geschäftsvorfälle — Bedienung: [bestandserzeugung.md](bestandserzeugung.md) |
+| `quellsystem/` | die Lieferungen der fiktiven abgebenden Unternehmen: eigener Zweitkern mit den Konventionen der Quelle, Export nach `lieferungen/`; die Fall-Regie (Seeds, Drehbücher) bleibt außerhalb des Repos |
 | geplant | tägliche Fortschreibung — der Punkt, ab dem das Unternehmen zu leben beginnt |
 
 Jeder Betrag kommt auch in der Simulation aus dem Rechenkern; das
