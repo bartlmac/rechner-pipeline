@@ -806,11 +806,16 @@ def pruefe_vertrag(
             # fortgeführte Anteil auf dem beitragspflichtigen Track, die
             # fixierte beitragsfreie Summe auf dem bfr-Satz. Gerechnet
             # wird das ZIELVERFAHREN; eine Verfahrensdifferenz der
-            # Quelle erscheint als Residuum dieses Vergleichs.
+            # Quelle erscheint als Residuum dieses Vergleichs. Die
+            # Lieferungseigenschaften des DK-Vergleichs gelten hier wie
+            # in jedem anderen Zweig: Stichtags-Konvention (Jahrestag
+            # vs. Kalendertag) und Rundungs-Skalierung der gelieferten
+            # Komponenten.
             pruefungen.append(_vergleich(
                 "dk_stichtag_2",
-                reduziert.monatsreserve(v.monate_stichtag_2).vx_mrv,
+                reduziert.monatsreserve(dk_monat_2).vx_mrv,
                 v.dk_erwartet_2,
+                komponenten=v.quell_komponenten or 1,
             ))
         else:
             # Ohne gelieferten Anteil ist die Herabsetzung unbestimmt —

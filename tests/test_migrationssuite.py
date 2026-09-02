@@ -861,7 +861,7 @@ def _red_urteil(monate: int = 12 * 10, anteil: Optional[float] = 0.6,
         gevos=vorher + (GeVoErwartung("RED", monate, None, anteil=anteil),)))
 
 
-def _zweiteilung_dk2(anteil: float, red_jahr: int) -> float:
+def _zweiteilung_dk2(anteil: float, red_jahr: int, monate: int = S2) -> float:
     """Unabhaengige Nachrechnung des Folgewerts aus Kern-Primitiven.
 
     Fortgefuehrter Anteil auf dem beitragspflichtigen Track plus die bei
@@ -873,12 +873,12 @@ def _zweiteilung_dk2(anteil: float, red_jahr: int) -> float:
 
     r = reduziere(KERN, red_jahr, anteil)
     bfr_teil = r.vs_neu - anteil * r.vs_alt
-    a, rest = divmod(S2, 12)
+    a, rest = divmod(monate, 12)
     satz = KERN.verlaufszeile(a).vx_bfr
     if rest:
         u = rest / 12.0
         satz = (1.0 - u) * satz + u * KERN.verlaufszeile(a + 1).vx_bfr
-    return anteil * KERN.monatsreserve(S2).vx_mrv + bfr_teil * satz
+    return anteil * KERN.monatsreserve(monate).vx_mrv + bfr_teil * satz
 
 
 def test_red_mit_anteil_rechnet_den_folgestichtag() -> None:
@@ -916,6 +916,36 @@ def test_red_ohne_anteil_bleibt_die_pruefluecke() -> None:
     assert any("dk_stichtag_2_nach_red" in luecke
                for luecke in urteil["nicht_geprueft"]), urteil["nicht_geprueft"]
     assert "dk_stichtag_2" not in [p["groesse"] for p in urteil["pruefungen"]]
+
+
+def test_red_folgestichtag_folgt_der_jahrestags_konvention() -> None:
+    """Review-Befund B3: ``dk_am_jahrestag`` ist eine Eigenschaft der
+    LIEFERUNG und gilt darum auch fuer den Folgewert des geteilten
+    Vertrags — kalendertaeglich gemessen waere der Reservezuwachs seit
+    dem Jahrestag ein Phantom-Residuum."""
+    jt1, red_monat = 12 * (S1 // 12), 12 * 10
+    dk1_jt = round(KERN.monatsreserve(jt1).vx_mrv, 2)
+    dk2_jt = round(_zweiteilung_dk2(0.6, 10, monate=red_monat), 2)
+    gevos = (GeVoErwartung("RED", red_monat, None, anteil=0.6),)
+
+    urteil = pruefe_vertrag(VertragsPruefung(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=dk1_jt, dk_erwartet_2=dk2_jt,
+        gevos=gevos, dk_am_jahrestag=True,
+    ))
+    assert urteil["bestanden"], urteil["befunde"]
+
+    # Mutationsfaenger: dieselbe Erwartung kalendertaeglich gerechnet
+    # (v.monate_stichtag_2 statt dk_monat_2) darf NICHT bestehen.
+    kalendertag = pruefe_vertrag(VertragsPruefung(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=S1, monate_stichtag_2=S2,
+        dk_erwartet_1=dk1_jt, dk_erwartet_2=dk2_jt, gevos=gevos,
+    ))
+    dk2 = next(p for p in kalendertag["pruefungen"]
+               if p["groesse"] == "dk_stichtag_2")
+    assert not dk2["ok"]
 
 
 def test_gevo_nach_red_im_pruefzeitraum_ist_ein_befund() -> None:
