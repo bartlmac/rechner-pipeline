@@ -182,9 +182,38 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    Konstruktionszwaenge: dev-docs/offene-punkte.md (T18) — vor
    Baubeginn entscheiden, ob das Laufmanifest optional-mit-Vorbehalt
    kommt oder die Lauf-2-Artefakte neu erzeugt werden.
-7. [ ] vorzeige-url -> fallbericht (Owner: merge-session, mit der
+7. [x] vorzeige-url -> fallbericht (Owner: merge-session, mit der
    vorzeige-Session abstimmen; test_baldrian_e2e-Kopplung dort
    verifizieren). Pruefpunkt: Suite gruen, Vorzeigeseite rendert.
+   ERLEDIGT 2026-09-02, merge-session (Hauptbaum von der dev-session
+   stillgehalten, Branch-Stand a34342b von der vorzeige-session
+   bestaetigt). Merge-Commit 9c1f36a, Eltern 06e2a26 + a34342b.
+   Konfliktfrei wie vorhergesagt. Volle Suite im Hauptbaum
+   1544 passed, 0 skipped; code_karte befunde [], code_index
+   drift []. Kein Push.
+   Vorgehen: Der Merge wurde ZUERST in einem Wegwerf-Worktree
+   gefahren und dort voll getestet, damit der Hauptbaum erst
+   angefasst wird, wenn das Ergebnis steht. Der Probelauf meldete
+   1542 passed bei 2 Skips -- beide Artefakte des Worktrees, nicht
+   des Merges: simulation/ ist gitignored und existiert nur im
+   Hauptbaum, weshalb test_quellsystem_kommutation dort uebersprang.
+   Im Hauptbaum laufen beide durch. Merkposten fuer kuenftige
+   Worktree-Pruefungen: eine niedrigere Passed-Zahl im Worktree ist
+   nicht automatisch ein Befund.
+   Das Risiko lag nicht im Text, sondern in der Kopplung: die
+   mitgelieferte tests/test_baldrian_e2e.py ist gegen den
+   Vor-Lauf-Stand geschrieben und konsumiert werkzeuge/falldaten.py,
+   das nur auf der Vorzeige-Seite weitergelaufen ist. Geprueft und
+   unkritisch -- werkzeuge/ ist auf fallbericht-Seite seit 4484365
+   unveraendert, die Bindung laeuft ueber eine Datei
+   (abgeleitet/berichte/umbaubudget.json) statt ueber einen Import,
+   und die Luecken-Erwartung inklusive "umbau" haelt gegen das
+   Lauf-2-Fixture, weil dieses kein Umbaubudget schreibt. Nichts
+   musste angepasst werden.
+   OFFEN, nicht Teil dieses Schritts: Die Rendering-Pruefung macht
+   die vorzeige-session auf diesem Stand. Die statischen Zahlen unter
+   vorzeige-seite/ sind Lauf-1-geeicht; der Inhalts-Nachzug nach
+   Lauf 2 ist dort angekuendigt und kein Merge-Blocker.
 8. [ ] fallbericht -> main als EIN PR mit Review-Leitfaden (Owner:
    Maintainer). REVIDIERT 2026-09-02 (Maintainer-Entscheid nach
    Lauf-Ende): Der 2026-09-01 im Plan selbst angelegte Vorbehalt ist
