@@ -1355,6 +1355,46 @@ def test_teilkuendigung_gevo_fuehrt_zustandslos_fort() -> None:
     assert urteil2["bestanden"], urteil2["befunde"]
 
 
+def test_zweite_teilkuendigung_kettet_die_anteile() -> None:
+    """Review-Befund B8: der Anteil ist der fortgefuehrte Bruchteil des
+    JEWEILIGEN Stands. Zwei Teilkuendigungen im Pruefzeitraum fuehren
+    auf f1 x f2 x S — eine zweite Buchung, die die erste ersatzlos
+    ueberschriebe, waere ein stiller falscher Wert."""
+    import dataclasses as dc
+
+    f1, f2 = 0.8, 0.6
+    s1, s2 = 12 * 8 + 5, 12 * 10 + 5  # zwei Jahrestage im Zeitraum
+    gevos = (GeVoErwartung(art="RED", monate=12 * 9,
+                           betrag_erwartet=None, anteil=f1),
+             GeVoErwartung(art="RED", monate=12 * 10,
+                           betrag_erwartet=None, anteil=f2))
+    dk1 = round(KERN.monatsreserve(s1).vx_mrv, 2)
+    kette = dc.replace(KLV_DEFAULT,
+                       sum_insured=f1 * f2 * KLV_DEFAULT.sum_insured)
+    urteil = pruefe_vertrag(VertragsPruefung(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=s1, monate_stichtag_2=s2,
+        dk_erwartet_1=dk1,
+        dk_erwartet_2=round(Rechenkern(kette).monatsreserve(s2).vx_mrv, 2),
+        gevos=gevos,
+    ), red_verfahren="teilkuendigung")
+    assert urteil["bestanden"], urteil["befunde"]
+
+    # Mutationsfaenger: die Ueberschreibungs-Welt (nur f2) darf NICHT
+    # bestehen.
+    nur_f2 = dc.replace(KLV_DEFAULT,
+                        sum_insured=f2 * KLV_DEFAULT.sum_insured)
+    urteil_falsch = pruefe_vertrag(VertragsPruefung(
+        police_id="P-1", model_point=MP,
+        monate_stichtag_1=s1, monate_stichtag_2=s2,
+        dk_erwartet_1=dk1,
+        dk_erwartet_2=round(
+            Rechenkern(nur_f2).monatsreserve(s2).vx_mrv, 2),
+        gevos=gevos,
+    ), red_verfahren="teilkuendigung")
+    assert not urteil_falsch["bestanden"]
+
+
 def test_komponentenzahl_skaliert_die_suite_toleranz() -> None:
     """Nachzug Nr. 21 (die vier letzten A-M4-Faelle, 6-7 Komponenten,
     Residuen 0,0228-0,0240): Dieselbe komponentenskalierte

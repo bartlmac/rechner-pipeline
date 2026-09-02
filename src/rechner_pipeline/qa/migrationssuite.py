@@ -741,10 +741,14 @@ def pruefe_vertrag(
                 # Folge-GeVo-Sperre — nur der Grund-Kern wird auf die
                 # gekündigte Welt gebunden. ``grund_mp`` bleibt die
                 # VERANKERUNGS-Welt: Schichtbewertung und
-                # Scheiben-Versatz rechnen weiter auf ihr.
+                # Scheiben-Versatz rechnen weiter auf ihr. Der Anteil
+                # ist der fortgeführte Bruchteil des JEWEILIGEN Stands
+                # (wie in der Serien-Rekonstruktion): eine zweite
+                # Teilkündigung im Prüfzeitraum kettet f1 x f2, sie
+                # ersetzt nicht.
                 kern = Rechenkern(dataclasses.replace(
-                    grund_mp,
-                    sum_insured=g.anteil * grund_mp.sum_insured))
+                    kern.mp,
+                    sum_insured=g.anteil * kern.mp.sum_insured))
             else:
                 reduziert = ReduzierterVertrag.nach(
                     kern, g.monate // 12, g.anteil, verfahren=red_verfahren)
