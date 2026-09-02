@@ -105,7 +105,12 @@ from rechner_pipeline.kern.rechenkern import (
 #: einzeln geklemmt, RKW = Summe der auf null begrenzten
 #: Baustein-Rueckkaufswerte (Bedingungswerk der zweiten
 #: Baldrian-Lieferung, Ziffer 4); Rechenwerte der Vorgabe unveraendert.
-__version__ = "3.3.0"
+#: 3.4.0 = Teilkuendigung auch im beitragsfreien Nachlauf (t <= jahr
+#: < n): Ziffer 6 kuendigt einen Summen-Anteil und setzt keinen
+#: laufenden Beitrag voraus — die Beitragsende-Wache gilt nur den
+#: beitragssenkenden Verfahren; alle bestehenden Rechenwerte
+#: unveraendert.
+__version__ = "3.4.0"
 
 __all__ = [
     "ModelPoint",

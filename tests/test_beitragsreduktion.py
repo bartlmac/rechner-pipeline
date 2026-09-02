@@ -463,6 +463,32 @@ class TestTeilkuendigung:
             neu.gross_annual_premium(), rel=1e-12)
         assert r.als_beleg()["verfahren"] == "teilkuendigung"
 
+    def test_im_beitragsfreien_nachlauf_definiert(self):
+        """Ziffer 6 kuendigt einen SUMMEN-Anteil mit Auszahlung — die
+        Beitragsende-Wache der beitragssenkenden Verfahren gilt hier
+        nicht (Review-Befund B4, Kern 3.4.0): im Nachlauf t <= jahr < n
+        ist die Teilkuendigung aktuariell definiert, ihre Grenze ist
+        der Ablauf."""
+        from rechner_pipeline.kern.beitragsreduktion import (
+            TEILKUENDIGUNG,
+            reduziere,
+        )
+
+        kern = Rechenkern(KLV_DEFAULT)
+        assert KLV_DEFAULT.t < 25 < KLV_DEFAULT.n
+        r = reduziere(kern, 25, 0.6, verfahren=TEILKUENDIGUNG)
+        zeile = kern.verlaufszeile(25)
+        assert r.dk_vor == zeile.vx_mrv
+        assert r.dk_nach == pytest.approx(0.6 * zeile.vx_mrv, rel=1e-9)
+        assert r.d_dk == pytest.approx(-0.4 * zeile.vx_mrv, rel=1e-9)
+
+        with pytest.raises(BeitragsreduktionFehler, match="laeuft bei n="):
+            reduziere(kern, KLV_DEFAULT.n, 0.6, verfahren=TEILKUENDIGUNG)
+        # Die beitragssenkenden Verfahren behalten ihre Wache.
+        with pytest.raises(BeitragsreduktionFehler,
+                           match="Beitragszahlungsdauer"):
+            reduziere(kern, 25, 0.6)
+
     def test_wachen_fail_fast(self):
         from rechner_pipeline.kern.beitragsreduktion import (
             TEILKUENDIGUNG,

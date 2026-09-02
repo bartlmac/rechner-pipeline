@@ -209,7 +209,19 @@ def _pruefe_eingaben(
         raise BeitragsreduktionFehler(
             f"Vertragsjahr {jahr} ausserhalb der Laufzeit (n={mp.n})"
         )
-    if jahr >= mp.t:
+    if verfahren == TEILKUENDIGUNG:
+        # Die Teilkuendigung (Bedingungswerk Ziffer 6) kuendigt einen
+        # Anteil der GRUNDVERSICHERUNGSSUMME mit Auszahlung — sie setzt
+        # keinen laufenden Beitrag voraus und ist darum auch im
+        # beitragsfreien Nachlauf (t <= jahr < n) definiert. Ihre
+        # Grenze ist der Ablauf, nicht das Beitragsende.
+        if jahr >= mp.n:
+            raise BeitragsreduktionFehler(
+                f"Vertragsjahr {jahr}: der Vertrag laeuft bei n={mp.n} "
+                "ab — am oder nach dem Ablauf gibt es nichts mehr zu "
+                "kuendigen"
+            )
+    elif jahr >= mp.t:
         raise BeitragsreduktionFehler(
             f"Vertragsjahr {jahr}: die Beitragszahlungsdauer ist beendet "
             f"(t={mp.t}) — es gibt keinen Beitrag zu reduzieren"
