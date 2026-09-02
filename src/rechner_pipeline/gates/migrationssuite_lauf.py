@@ -352,6 +352,20 @@ def anfangszustaende_je_police(
                     "Lieferung klaeren, nicht runden")
             folge.append((art_e, monate_e // 12, ereignis[s["datum"]]))
 
+        # Dubletten-Wache: eine doppelt gelieferte Ereigniszeile wuerde
+        # unten still als zusaetzliche Quell-Komponente zaehlen und der
+        # Rundungstoleranz eine unverdiente Stufe geben — eine
+        # Datenanomalie darf keine Toleranz kaufen.
+        gesehen: set = set()
+        for art_e, jahr_e, datum_e in folge:
+            if (art_e, jahr_e) in gesehen:
+                raise SystemExit(
+                    f"Police {police}: {art_e} am {datum_e} "
+                    f"(Vertragsjahr {jahr_e}) ist in der Vorgeschichte "
+                    "doppelt geliefert — Lieferung klaeren, nicht "
+                    "doppelt zaehlen")
+            gesehen.add((art_e, jahr_e))
+
         transformiert = zeilen_je_police.get(police)
         if transformiert is None:
             raise SystemExit(

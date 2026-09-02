@@ -233,6 +233,24 @@ def test_anfangszustand_erh_leitet_scheibe_und_grundsumme_ab():
         s_grund, rel=5e-5)
 
 
+def test_doppelte_vorgeschichts_zeile_faellt_hart():
+    """Review-Befund B7: eine doppelt gelieferte Ereigniszeile zaehlte
+    still als zusaetzliche Quell-Komponente und gaebe der
+    Rundungstoleranz eine unverdiente Stufe — eine Datenanomalie darf
+    keine Toleranz kaufen."""
+    zeilen = [{"police_id": "7000003", "sum_insured": 90000.0,
+               "brutto_jahresbeitrag": 1000.0}]
+    vorgeschichte = [
+        {"POLNR": "7000003", "GEVO": "ERH", "DATUM": "01.01.2022"},
+        {"POLNR": "7000003", "GEVO": "ERH", "DATUM": "01.01.2022"},
+    ]
+    with pytest.raises(SystemExit, match="doppelt geliefert"):
+        anfangszustaende_je_police(
+            _tg_default_spez(), zeilen, vorgeschichte,
+            _bestand_mit(7000003), spalten=SPALTEN,
+            red_verfahren="mit_abzug")
+
+
 def test_anfangszustand_red_leitet_anteil_und_ursprungssumme_ab():
     r = reduziere(Rechenkern(KLV_DEFAULT), 6, 0.6, verfahren="mit_abzug")
     zeilen = [{"police_id": "7000002", "sum_insured": round(r.vs_neu, 2),
