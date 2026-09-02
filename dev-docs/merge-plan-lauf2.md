@@ -182,12 +182,23 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
 7. [ ] vorzeige-url -> fallbericht (Owner: merge-session, mit der
    vorzeige-Session abstimmen; test_baldrian_e2e-Kopplung dort
    verifizieren). Pruefpunkt: Suite gruen, Vorzeigeseite rendert.
-8. [ ] fallbericht -> main als DREI gestapelte PRs (Owner: Maintainer;
-   erst nach 2 und 6). Entscheid des Maintainers 2026-09-01: nicht ein
-   PR, sondern drei chronologische Schnitte entlang der bestehenden
-   Kette -- rein additiv, keine History wird umgeschrieben. Pruefpunkt
-   je PR: kein bestandsfuehrung-Commit als eigene Aenderung (schon in
-   main), Suite gruen.
+8. [ ] fallbericht -> main als EIN PR mit Review-Leitfaden (Owner:
+   Maintainer). REVIDIERT 2026-09-02 (Maintainer-Entscheid nach
+   Lauf-Ende): Der 2026-09-01 im Plan selbst angelegte Vorbehalt ist
+   eingetreten — die 23 Lauf-Korrekturen liegen quer durch das A/B/C-
+   Gebiet (Kern-Verfahren, QA-Engines, Gates, Bestand), ein
+   chronologischer Drei-Schnitt truege fast die ganze Kette in PR C
+   und zerrisse kausale Zusammenhaenge (Toleranz-Skalierung zieht
+   sich durch drei Schichten). Die Review-Last traegt ein
+   vorgeschalteter adversarialer Multi-Agent-Review der 23er-Kette
+   (Muster T16/T18, Befunde vor dem PR gefixt); der menschliche
+   PR-Review folgt dem Leitfaden: docs/faelle/baldrian-lauf2.md
+   (fachlich) + dev-docs/lauf2-auswertung.md (System) + die 23
+   begruendeten Commit-Botschaften als Gliederung. Pruefpunkt: kein
+   bestandsfuehrung-Commit als eigene Aenderung (schon in main),
+   Suite gruen, Review-Befunde geschlossen.
+   HISTORISCH (Entscheid 2026-09-01, durch den Vorbehalt abgeloest):
+   drei chronologische Schnitte A/B/C —
    Ein thematisch sauberer Schnitt ist NICHT zu haben: die Themen liegen
    chronologisch verschraenkt (Korrekturterm 27.08., Rumpfjahr-
    Konvention 31.08., beides Kern). Sie zu trennen hiesse cherry-picken,
