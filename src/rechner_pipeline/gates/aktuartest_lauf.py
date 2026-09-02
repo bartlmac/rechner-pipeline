@@ -407,6 +407,36 @@ def _schichten(
     return aus
 
 
+def verweigerungs_grund(
+    police: str, *, im_auftrag, zustandslos
+) -> str:
+    """Warum ein Plausibilitaets-Beleg fuer eine Police NICHT gilt.
+
+    Drei getrennte Lagen: Der Beleg reicht ueber die Vorgeschichte
+    weiter als der gepruefte Auftragsbestand — eine Police ausserhalb
+    der Stichprobe/Lieferung hat gar keinen Auftrag, und ihr einen
+    Zustands-Grund zu nennen waere eine irrefuehrende Auskunft an den
+    Verantwortlichen Aktuar (Review-Befund B10).
+    """
+    if police not in im_auftrag:
+        return "nicht_im_gepruefteten_auftragsbestand"
+    if police in zustandslos:
+        return "anfangszustand_nicht_ableitbar"
+    return "kein_herabsetzungs_anfangszustand"
+
+
+_VERWEIGERUNGS_TEXT = {
+    "nicht_im_gepruefteten_auftragsbestand":
+        "die Police steht nicht im gepruefteten Auftragsbestand "
+        "(Stichprobe/Lieferung)",
+    "anfangszustand_nicht_ableitbar":
+        "kein ableitbarer Anfangszustand",
+    "kein_herabsetzungs_anfangszustand":
+        "Zustand vollstaendig bestimmt, kein "
+        "Herabsetzungs-Anfangszustand (Serien-IST-Struktur)",
+}
+
+
 def _stichprobe(beleg: Dict[str, Any], abnahme: str) -> Stichprobe:
     """Die GELIEFERTE Stichprobe, nicht eine hier gezogene."""
     schluessel = "A-M3" if abnahme == "A-M3" else "A-M1_A-M2"
@@ -679,10 +709,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     plaus_verweigert = sorted(
         p for p in plausibilitaet if not vergeben.get(p, False))
     for police in plaus_verweigert:
-        grund = ("kein ableitbarer Anfangszustand"
-                 if police in zustandslos
-                 else "Zustand vollstaendig bestimmt, kein "
-                      "Herabsetzungs-Anfangszustand (Serien-IST-Struktur)")
+        grund = _VERWEIGERUNGS_TEXT[verweigerungs_grund(
+            police, im_auftrag=vergeben.keys(), zustandslos=zustandslos)]
         print(f"WARNUNG Police {police}: Plausibilitaets-Beleg nicht "
               f"angewandt — {grund}; die Police bleibt sichtbar im "
               "Wertvergleich", file=sys.stderr)
@@ -718,9 +746,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         # "nicht ableitbar", der Wertvergleich ist schlicht wieder
         # der Massstab.
         ergebnis["plausibilitaet_nicht_angewandt"] = {
-            police: ("anfangszustand_nicht_ableitbar"
-                     if police in zustandslos
-                     else "kein_herabsetzungs_anfangszustand")
+            police: verweigerungs_grund(
+                police, im_auftrag=vergeben.keys(),
+                zustandslos=zustandslos)
             for police in plaus_verweigert
         }
 

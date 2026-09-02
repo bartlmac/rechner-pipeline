@@ -70,6 +70,24 @@ def _lauf(fall: Path, capsys, extra=()) -> Dict[str, Any]:
     return ergebnis
 
 
+def test_verweigerungs_grund_unterscheidet_die_drei_lagen():
+    """Review-Befund B10: eine Police AUSSERHALB des gepruefteten
+    Auftragsbestands bekam den Zustands-Grund der Serien-IST-Struktur
+    genannt — irrefuehrend fuer den Bericht an den Aktuar."""
+    from rechner_pipeline.gates.aktuartest_lauf import verweigerungs_grund
+
+    im_auftrag = {"P1", "P2"}
+    assert verweigerungs_grund(
+        "P9", im_auftrag=im_auftrag, zustandslos=set()
+    ) == "nicht_im_gepruefteten_auftragsbestand"
+    assert verweigerungs_grund(
+        "P1", im_auftrag=im_auftrag, zustandslos={"P1"}
+    ) == "anfangszustand_nicht_ableitbar"
+    assert verweigerungs_grund(
+        "P2", im_auftrag=im_auftrag, zustandslos={"P1"}
+    ) == "kein_herabsetzungs_anfangszustand"
+
+
 def test_gruener_pfad_schreibt_bericht_und_ledger(tmp_path, capsys):
     fall = _fall(tmp_path, _testergebnis())
     ergebnis = _lauf(fall, capsys)
