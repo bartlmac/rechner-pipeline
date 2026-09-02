@@ -644,6 +644,28 @@ def test_reduktion_mit_scheiben_oder_pex_zustand_faellt_hart():
         ), _profil())
 
 
+def test_reduktion_mit_schicht_faellt_hart_statt_die_schicht_zu_verlieren():
+    """Beide Schicht-Varianten: _system_werte wendet bei Herabsetzung nie
+    eine Schicht an — ohne Waechter fiele eine registrierte Schicht STILL
+    aus dem Ergebnis (Review-Befund B2)."""
+    import dataclasses
+
+    e, _, ta = _uebernommen()
+    with pytest.raises(AktuartestFehler, match="Korrekturschicht"):
+        pruefe_vertrag(_vertrag(
+            Pruefpunkt(monate=120, erwartet={"kVx_MRV": 1.0},
+                       anlass="uebernahme"),
+            reduktion=(8, 0.6), schicht=e.parameter, monate_ta=ta,
+        ), _profil())
+    conv = dataclasses.replace(e.parameter, schichttyp="conv")
+    with pytest.raises(AktuartestFehler, match="Konventionsschicht"):
+        pruefe_vertrag(_vertrag(
+            Pruefpunkt(monate=120, erwartet={"kVx_MRV": 1.0},
+                       anlass="uebernahme"),
+            reduktion=(8, 0.6), schicht_conv=conv, monate_t0=ta,
+        ), _profil())
+
+
 def test_pruefpunkt_vor_der_reduktion_ist_widerspruechlich():
     with pytest.raises(AktuartestFehler, match="VOR der Herabsetzung"):
         pruefe_vertrag(_vertrag(

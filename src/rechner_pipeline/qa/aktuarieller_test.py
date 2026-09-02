@@ -537,6 +537,7 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
                 ("Beitragsfreistellung als Anfangszustand",
                  v.beitragsfrei_seit_jahr is not None),
                 ("Korrekturschicht", v.schicht is not None),
+                ("Konventionsschicht", v.schicht_conv is not None),
             ) if gesetzt
         ]
         if unvertraeglich:
