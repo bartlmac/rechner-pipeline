@@ -1,0 +1,195 @@
+{
+  "akteur": "claude-sonnet-5/transformiere-quellbestand@dc7c80b",
+  "anmerkungen": [
+    "vertragsjahre_am_stichtag (optional) bleibt ungemappt: der Katalog kennt keine Berechnung, die eine einzelne Datumsspalte mit einem Stichtag-Parameter zu Jahren verrechnet (nur monate_letzter_jahrestag_vor_stichtag existiert, dessen Ergebnis bereits als monate_ta gesetzt ist); da das Feld optional ist, keine Notwendigkeit fuer einen Konflikt.",
+    "brutto_zahlbeitrag (optional) bleibt ungemappt: die Quelle fuehrt nur den Jahresbruttobeitrag (JBRUTTO), keine eigene zahlweise-bereits-umgerechnete Spalte; da das Feld optional ist, keine Notwendigkeit fuer einen Konflikt.",
+    "entry_age ist wegen des offenen Konflikts zu GEBDAT/BEGINN nicht gemappt; validate_spec wird deshalb bis zur menschlichen Entscheidung sowohl den offenen Konflikt als auch die fehlende Pflichtfeld-Deckung von entry_age melden — das ist erwartet (Anwendung bleibt blockiert, P2).",
+    "Fuer den Testschnitt auf den gekuerzten Abzug gebunden; die Feldabbildung ist unveraendert."
+  ],
+  "erhoben_am": "2026-09-01",
+  "felder": [
+    {
+      "begruendung": "Eindeutige Policennummer (Kardinalitaet 834 = Zeilenzahl, keine Leerwerte); direkte Vertragskennung.",
+      "quellen": [
+        "POLNR"
+      ],
+      "typ": "direkt",
+      "ziel": "police_id"
+    },
+    {
+      "begruendung": "Konstante Tarifkennung (immer 'KLV15', Kardinalitaet 1) fuer den gesamten Abzug. Die Tarifgeneration wird auf Ebene des Migrationsfalls (Spez) gefuehrt, nicht als Vertragsfeld im Ziel-Datenmodell dieser Spec.",
+      "quellen": [
+        "TARIF"
+      ],
+      "typ": "nicht_uebernommen",
+      "ziel": ""
+    },
+    {
+      "begruendung": "AKT/BFR melden den Vertragsstatus (aktiv/beitragsfrei), nicht die Risikoklasse. Vertragsstatus ist ausdruecklich kein Zielfeld dieser Spec — er kommt aus der registrierten Vorgeschichte (--vorgeschichte, GeVo-Metadaten), nie aus dem Bestandsabzug-Mapping.",
+      "quellen": [
+        "VTG_STATUS"
+      ],
+      "typ": "nicht_uebernommen",
+      "ziel": ""
+    },
+    {
+      "begruendung": "Geschlecht, vollstaendig beobachtete Wertemenge M/W (kardinalitaet 2, keine Leerwerte). Ziel-Vokabular ist M/F (SEX_ZIELWERTE); W (weiblich) -> F.",
+      "kodierung": {
+        "M": "M",
+        "W": "F"
+      },
+      "quellen": [
+        "GESCHL"
+      ],
+      "typ": "kodierung",
+      "ziel": "sex"
+    },
+    {
+      "begruendung": "RK = Raucherklasse, vollstaendig beobachtete Wertemenge NR/R (kardinalitaet 2, keine Leerwerte). Deckt das Zielfeld status (Risikoklasse), dessen Vokabular durch die A-Box bereits auf nichtraucher/raucher festgelegt ist — keine andere Quellspalte traegt diese Information.",
+      "kodierung": {
+        "NR": "nichtraucher",
+        "R": "raucher"
+      },
+      "quellen": [
+        "RK"
+      ],
+      "typ": "kodierung",
+      "ziel": "status"
+    },
+    {
+      "begruendung": "BGRP = Bestandsgruppe, vollstaendig beobachtete Wertemenge E/H/K (kardinalitaet 3, keine Leerwerte). Anfangsbuchstaben entsprechen exakt dem durch die A-Box festgelegten Zielvokabular einzel/haus/kollektiv — keine andere Quellspalte bietet eine dreiwertige Gruppierung.",
+      "kodierung": {
+        "E": "einzel",
+        "H": "haus",
+        "K": "kollektiv"
+      },
+      "quellen": [
+        "BGRP"
+      ],
+      "typ": "kodierung",
+      "ziel": "tarifart"
+    },
+    {
+      "begruendung": "Geburtsdatum, direkt als ISO-Datum uebernehmbar (optionales Herkunftsfeld).",
+      "berechnung": "datum_nach_iso",
+      "quellen": [
+        "GEBDAT"
+      ],
+      "typ": "berechnung",
+      "ziel": "geburtsdatum"
+    },
+    {
+      "begruendung": "Versicherungsbeginn, direkt als ISO-Datum uebernehmbar (Pflichtfeld beginn).",
+      "berechnung": "datum_nach_iso",
+      "quellen": [
+        "BEGINN"
+      ],
+      "typ": "berechnung",
+      "ziel": "beginn"
+    },
+    {
+      "begruendung": "Versicherungsdauer (n) in vollen Jahren aus Beginn und Ablauf.",
+      "berechnung": "jahre_aus_datumsdifferenz",
+      "quellen": [
+        "BEGINN",
+        "ABLAUF"
+      ],
+      "typ": "berechnung",
+      "ziel": "duration"
+    },
+    {
+      "begruendung": "Beitragszahlungsdauer (t), bereits als Jahreszahl gefuehrt; ganzzahlige Uebernahme (nicht direkt, da Zieltyp int, Quelle als CSV-Text).",
+      "berechnung": "ganzzahl",
+      "quellen": [
+        "BZDAUER"
+      ],
+      "typ": "berechnung",
+      "ziel": "premium_duration"
+    },
+    {
+      "begruendung": "Erlebensfallsumme = Versicherungssumme; numerische Uebernahme.",
+      "berechnung": "zahl",
+      "quellen": [
+        "ERLSUMME"
+      ],
+      "typ": "berechnung",
+      "ziel": "sum_insured"
+    },
+    {
+      "begruendung": "Zahlweise als Zahlungen pro Jahr kodiert (Zielmodell erwartet 1/2/4/12 = ZAHLWEISE_VALUES); vollstaendig beobachtete Wertemenge (kardinalitaet 4, keine Leerwerte).",
+      "kodierung": {
+        "halbjaehrlich": 2,
+        "jaehrlich": 1,
+        "monatlich": 12,
+        "vierteljaehrlich": 4
+      },
+      "quellen": [
+        "ZAHLW"
+      ],
+      "typ": "kodierung",
+      "ziel": "zahlweise"
+    },
+    {
+      "begruendung": "Jahresbruttobeitrag, numerische Uebernahme (optionales Abgleichsfeld).",
+      "berechnung": "zahl",
+      "quellen": [
+        "JBRUTTO"
+      ],
+      "typ": "berechnung",
+      "ziel": "brutto_jahresbeitrag"
+    },
+    {
+      "begruendung": "Deckungskapital zum Abzugsstichtag, numerische Uebernahme (optionales Abgleichsfeld).",
+      "berechnung": "zahl",
+      "quellen": [
+        "DECKKAP"
+      ],
+      "typ": "berechnung",
+      "ziel": "deckungskapital"
+    },
+    {
+      "begruendung": "DECKKAP ist laut Tarifmeldung Abschnitt 6 bereits der Deckungskapitalwert am letzten Vertragsjahrestag — keine weitere Umrechnung noetig; direkte numerische Uebernahme als Verankerungswert (zusammen mit monate_ta).",
+      "berechnung": "zahl",
+      "quellen": [
+        "DECKKAP"
+      ],
+      "typ": "berechnung",
+      "ziel": "dk_ta"
+    },
+    {
+      "begruendung": "Volle Vertragsjahre in Monaten zum letzten Vertragsjahrestag vor/am Abzugsstichtag 01.01.2026 (Verankerungsattribut, zusammen mit dk_ta gesetzt).",
+      "berechnung": "monate_letzter_jahrestag_vor_stichtag",
+      "parameter": {
+        "stichtag": "01.01.2026"
+      },
+      "quellen": [
+        "BEGINN"
+      ],
+      "typ": "berechnung",
+      "ziel": "monate_ta"
+    },
+    {
+      "begruendung": "Storno-Kennzeichen (Werte R/S, 97.24% leer) meldet ein Vertragsstatus-/Lebenszyklusereignis, keine Risikoklasse oder Vertragsmerkmal. Vertragsstatus ist ausdruecklich kein Zielfeld dieser Spec — er kommt ausschliesslich aus der registrierten Vorgeschichte (GeVo), nie aus dem Bestandsabzug-Mapping (analog VTG_STATUS).",
+      "quellen": [
+        "STORNO_KZ"
+      ],
+      "typ": "nicht_uebernommen",
+      "ziel": ""
+    },
+    {
+      "begruendung": "VERIFIKATIONS-PASS (Orchestrator): der Transformations-Agent durfte nur das Spaltenprofil des Abzugs lesen (P10) und konnte die Konvention deshalb nicht belegen. Die Tarifmeldung (Stufe 1, bereits im Fall registriert und extrahiert, abgeleitet/abox/fragmente/tg2015-tarifmeldung.json) sagt es explizit: 'Das rechnungsmaessige Eintrittsalter x ergibt sich als Differenz der Kalenderjahre von Versicherungsbeginn und Geburt' (Mitteilung 143 Abschnitt 3, absaetze[1] der Vorverdichtung) — das IST die Kalenderjahresmethode, woertlich und unzweideutig, keine Wahl zwischen zwei plausiblen Lesarten.",
+      "berechnung": "alter_kalenderjahresmethode",
+      "kodierung": {},
+      "parameter": {},
+      "quellen": [
+        "GEBDAT",
+        "BEGINN"
+      ],
+      "typ": "berechnung",
+      "ziel": "entry_age"
+    }
+  ],
+  "offene_konflikte": [],
+  "quelle_datei": "baldrian_bestandsabzug_2026-01-01.csv",
+  "quelle_sha256": "a99b3f20ae8320ced3922af17336cf1b92fc211aa1c0243a823a007c40fe86b8"
+}

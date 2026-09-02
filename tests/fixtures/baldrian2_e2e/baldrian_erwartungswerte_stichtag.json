@@ -1,0 +1,772 @@
+{
+  "profil": {
+    "bemerkung": "Beide Punkte vergleichen zum selben Zeitpunkt gegen einen gelieferten Wert; es trennt sie nur die Rundung. Eine Unterscheidung je Groesse ist deshalb nicht begruendet — kVx_MRV, RKW, BJB und VS_bfr tragen dieselbe Grenze. Der Uebernahmepunkt ist bei gefuehrter Korrekturschicht konstruktionsbedingt null; aussagekraeftig ist der zweite Punkt, der die Fortschreibungsregel prueft.",
+    "grundtoleranz": {
+      "abs_tol": 0.01,
+      "max_abs_residuum": 0.05,
+      "p95_abs_residuum": 0.02,
+      "rel_tol": 1e-09
+    },
+    "kennung": "A-M1",
+    "kriterien": {},
+    "titel": "Stichtagstest",
+    "weite": "geschichtet, 25 je Historientyp-Cluster"
+  },
+  "stichprobe": {
+    "grundgesamtheit": 20,
+    "parameter": {
+      "abdeckung": {
+        "beitragsfrei": {
+          "gezogen": 25,
+          "vorhanden": 160
+        },
+        "dynamik": {
+          "gezogen": 25,
+          "vorhanden": 360
+        },
+        "ohne_vorgeschichte": {
+          "gezogen": 25,
+          "vorhanden": 257
+        },
+        "reduziert": {
+          "gezogen": 25,
+          "vorhanden": 57
+        }
+      },
+      "je_schicht": 25,
+      "saat": "baldrian-uebernahme-2026"
+    },
+    "police_ids": [
+      "7000001",
+      "7000019",
+      "7000023",
+      "7000047",
+      "7000061",
+      "7000068",
+      "7000077",
+      "7000089",
+      "7000099",
+      "7000106",
+      "7000110",
+      "7000159",
+      "7000169",
+      "7000176",
+      "7000192",
+      "7000273",
+      "7000396",
+      "7000569",
+      "7000586",
+      "7000679"
+    ],
+    "profil": "geschichtet",
+    "umfang": 20,
+    "vollerhebung": true
+  },
+  "test": "A-M1",
+  "vertraege": [
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000077",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 5455.64,
+            "RKW": 56741.64,
+            "kVx_MRV": 56741.64
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 5455.64,
+            "RKW": 62831.23,
+            "kVx_MRV": 62831.23
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000110",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 6619.95,
+            "RKW": 64724.34,
+            "kVx_MRV": 64810.29
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 6619.95,
+            "RKW": 71956.23,
+            "kVx_MRV": 72006.23
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000169",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 7961.84,
+            "RKW": 75806.19,
+            "kVx_MRV": 75806.19
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 7961.84,
+            "RKW": 84269.98,
+            "kVx_MRV": 84269.98
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 132,
+      "police_id": "7000001",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 1954.24,
+            "RKW": 21068.41,
+            "kVx_MRV": 21068.41
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 1954.24,
+            "RKW": 23106.92,
+            "kVx_MRV": 23106.92
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 132,
+      "police_id": "7000023",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 72102.93,
+            "kVx_MRV": 72102.93
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 72930.38,
+            "kVx_MRV": 72930.38
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000068",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 20134.49,
+            "RKW": 135788.34,
+            "kVx_MRV": 136240.41
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 20134.49,
+            "RKW": 155336.69,
+            "kVx_MRV": 155846.5
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000159",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 81239.64,
+            "kVx_MRV": 81239.64
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 82143.26,
+            "kVx_MRV": 82143.26
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "dynamik",
+      "monate_ta": 132,
+      "police_id": "7000019",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 1848.28,
+            "RKW": 16044.89,
+            "kVx_MRV": 16044.89
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 1848.28,
+            "RKW": 18040.95,
+            "kVx_MRV": 18040.95
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 2,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000089",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "VS_bfr": 8005.73,
+            "kVx_MRV": 6649.96
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "VS_bfr": 8005.73,
+            "kVx_MRV": 6710.6
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 5,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000061",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "VS_bfr": 45113.15,
+            "kVx_MRV": 42237.43
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "VS_bfr": 45113.15,
+            "kVx_MRV": 42624.34
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 1,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000047",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "VS_bfr": 1169.61,
+            "kVx_MRV": 1065.06
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "VS_bfr": 1169.61,
+            "kVx_MRV": 1074.75
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": 4,
+      "historientyp": "beitragsfrei",
+      "monate_ta": 120,
+      "police_id": "7000106",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "VS_bfr": 24329.94,
+            "kVx_MRV": 22080.39
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "VS_bfr": 24329.94,
+            "kVx_MRV": 22292.29
+          },
+          "groessen": [
+            "kVx_MRV",
+            "VS_bfr"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000679",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 64562.88,
+            "kVx_MRV": 64812.88
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 108
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 65269.52,
+            "kVx_MRV": 65519.52
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000273",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 1432.03,
+            "RKW": 13942.4,
+            "kVx_MRV": 13942.4
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 1432.03,
+            "RKW": 15434.54,
+            "kVx_MRV": 15434.54
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000569",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 2708.08,
+            "RKW": 15134.87,
+            "kVx_MRV": 15500.46
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 108
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 2708.08,
+            "RKW": 17575.42,
+            "kVx_MRV": 17932.88
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000586",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 54477.06,
+            "kVx_MRV": 54477.06
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 108
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 55046.77,
+            "kVx_MRV": 55046.77
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000192",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 1621.55,
+            "RKW": 14523.64,
+            "kVx_MRV": 14593.17
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 1621.55,
+            "RKW": 16161.56,
+            "kVx_MRV": 16222.94
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000099",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 3106.64,
+            "RKW": 24775.7,
+            "kVx_MRV": 25067.8
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 3106.64,
+            "RKW": 28124.67,
+            "kVx_MRV": 28405.04
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000396",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 88072.87,
+            "kVx_MRV": 88372.87
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 0.0,
+            "RKW": 89067.1,
+            "kVx_MRV": 89367.1
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "beitragsfrei_seit_jahr": null,
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000176",
+      "punkte": [
+        {
+          "anlass": "uebernahme",
+          "erwartet": {
+            "BJB": 8342.61,
+            "RKW": 53798.93,
+            "kVx_MRV": 54162.82
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 120
+        },
+        {
+          "anlass": "fortschreibung",
+          "erwartet": {
+            "BJB": 8342.61,
+            "RKW": 62367.54,
+            "kVx_MRV": 62759.31
+          },
+          "groessen": [
+            "kVx_MRV",
+            "RKW",
+            "BJB"
+          ],
+          "monate": 132
+        }
+      ]
+    }
+  ]
+}
