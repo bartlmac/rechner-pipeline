@@ -101,7 +101,11 @@ class Monatsreserve:
     drx_bpfl: float      # Betrag (Deckungsrückstellung, beitragspfl. Track)
     vx_mrv: float        # Betrag (inkl. Zillmer-Tilgung) — Bilanzgröße
     stoab: float         # Stornoabschlag auf Basis der interpolierten DR
-    rkw: float           # max(0, vx_mrv - stoab)
+    # Vertragsweit: max(0, vx_mrv - stoab). Mit stoab_je_baustein wird
+    # JE Baustein auf null geklemmt und dann summiert; stoab bleibt die
+    # ungeklemmte Summe der Abzuege — rkw ist dann NICHT aus
+    # vx_mrv - stoab rueckrechenbar (Kern 3.3.0, Ziffer 4).
+    rkw: float
 
 
 class KLV:
