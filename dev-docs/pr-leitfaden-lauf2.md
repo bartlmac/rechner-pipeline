@@ -12,13 +12,15 @@ Der komplette zweite Baldrian-Migrationslauf als ein Strang: die
 Ausweitung des aktuariellen Tests auf drei Abnahmen, die
 Kern-Mathematik der Korrekturschicht und der Herabsetzung, der
 Fall-Datenraum der zweiten Lieferung (Serien als Regelfall), die 23
-Korrekturen aus dem Lauf selbst, und die Nacharbeit (adversarialer
-Review mit Fixes, E2E-Fixture, Abschlussdokumentation).
+Korrekturen aus dem Lauf selbst, die Nacharbeit (adversarialer
+Review mit Fixes, E2E-Fixture, Abschlussdokumentation) und die
+Vorzeigeseite samt Auftritts-Werkzeugen (Merge-Plan Schritt 7).
 
-Kennzahlen: 189 Commits auf Basis 33e9dec (Merge PR #10), 283
-Dateien, +72,0k/-3,0k Zeilen. Endzustand: Suite 1534 gruen, Kern
-3.4.0, Fall vollstaendig gezeichnet (fuenf Gates auf Systemstand
-4b1abf0; A-M4 834/834, Schichtbeleg-Residuensumme -0,14 EUR).
+Kennzahlen: 205 Commits auf Basis 33e9dec (Merge PR #10), 297
+Dateien, +73,8k/-3,0k Zeilen. Endzustand: Suite 1544 gruen (0
+Skips), Kern 3.4.0, Fall vollstaendig gezeichnet (fuenf Gates auf
+Systemstand 4b1abf0; A-M4 834/834, Schichtbeleg-Residuensumme
+-0,14 EUR).
 
 Warum EIN PR statt des urspruenglichen Drei-Schnitts: Die 23
 Lauf-Korrekturen liegen quer durch alle drei Gebiete (Kern-Verfahren,
@@ -65,11 +67,11 @@ Erst das Ergebnis, dann der Weg, dann der Code:
 3. **dev-docs/review-lauf2-befunde.md** — was der Vorab-Review fand
    und was daraus wurde; die vier bewusst offen gelassenen Punkte
    stehen begruendet in dev-docs/offene-punkte.md.
-4. **Die Commits in fuenf Lesestufen** (unten) — die
+4. **Die Commits in sechs Lesestufen** (unten) — die
    Commit-Botschaften sind die Gliederung: jede nennt das WARUM vor
    dem WAS, Reviews folgen ihnen schneller als dem Diff.
 
-## Die fuenf Lesestufen
+## Die sechs Lesestufen
 
 Die Stufen folgen der Chronologie des Branches; die Grenzen sind
 dieselben, an denen der historische Drei-Schnitt geprueft wurde.
@@ -134,14 +136,38 @@ muss es zeigen)? Ist jede Toleranz-Aufweitung aus der Lieferung
 begruendet (je fuer sich gerundete Komponente) und nirgends ein
 bequemes Pauschalmass?
 
-### Stufe 5 — Nacharbeit (4b1abf0..HEAD, 16 Commits)
+### Stufe 5 — Nacharbeit (4b1abf0.., 18 Commits)
 
 Abschlussbericht und Auswertung (5983417), die 13
 Review-Nacharbeits-Commits (009464d..af2718a, je Commit ein Befund
 mit Referenz auf die Befundliste), E2E-Fixture des zweiten Laufs
-(822ce75), Merge-Plan-Stand (1fd2da7). Prueffrage: Deckt jeder
-Review-Fix seinen Befund mit einem Test ab, der die naheliegende
-Mutation faengt (Mutationsfaenger sind in den Tests benannt)?
+(822ce75), Merge-Plan-Stand und dieser Leitfaden. Prueffrage: Deckt
+jeder Review-Fix seinen Befund mit einem Test ab, der die
+naheliegende Mutation faengt (Mutationsfaenger sind in den Tests
+benannt)?
+
+### Stufe 6 — Vorzeigeseite und Auftritts-Werkzeuge (Merge 9c1f36a, 13+1 Commits)
+
+Der zuletzt eingemergte Seitenast (vorzeige-url, Schritt 7): der
+Pfefferminzia-Auftritt als erzeugte Seite (vorzeige-seite/-Quellen,
+Fiktions-Banderole erzwungen), die Werkzeuge falldaten/auftritt/
+drift/vorzeigeseite in werkzeuge/ (Drift-Prinzip: Darstellungen
+werden generiert oder importiert, nie abgetippt; Veroeffentlichen
+bleibt menschlich) und zwei aktualisierte Testdateien. WICHTIG fuer
+die Review-Last: Diese Commits liefen NICHT durch den adversarialen
+Vorab-Review — das Risiko ist begrenzt (kein Kern, keine Gates,
+keine Rechenwege; Werkzeug- und Seiten-Code), der Merge wurde
+konfliktfrei mit voller Suite auf dem Ergebnis verifiziert (1544,
+inklusive der Datei-Kopplung ueber umbaubudget.json), und der Stand
+ist funktional abgenommen: Die komplette Auftritts-Kette baute mit
+Exit 0 (34 gerenderte Seiten, 0 tote Links, Landkarte/Techstack/
+ADRs frisch aus dem Repo erzeugt; Rendering-Pruefung der
+vorzeige-Session, Details im Merge-Plan Schritt 7). Prueffragen:
+Blockt die Regie-Sperre der Veroeffentlichungswerkzeuge alle
+Spielleiter-Bereiche (bekannte Luecke: regie/ fehlt noch in der
+Sperrliste — dokumentierter Merkposten, Fix folgt VOR der naechsten
+Veroeffentlichung nach dem main-Merge)? Und erzeugt der Auftritt
+wirklich alles aus Repo-Quellen statt aus gepflegten Kopien?
 
 ## Wo die schaerfsten Augen hingehoeren
 
@@ -184,7 +210,9 @@ In absteigender Prioritaet — Risiko mal Neuheit:
 
 Behauptungen dieses Leitfadens selbst pruefen, nicht glauben:
 
-- Volle Suite: `.venv/bin/python -m pytest` (1534 erwartet).
+- Volle Suite: `.venv/bin/python -m pytest` (1544 erwartet; in
+  Worktrees weniger — zwei Pruefungen brauchen den Hauptbaum bzw.
+  Docker, siehe Merkposten im Merge-Plan Schritt 7).
 - Beide Ketten am Stueck: `.venv/bin/python -m pytest
   tests/test_baldrian_e2e.py tests/test_baldrian2_e2e.py`.
 - Kern-Versionslog: src/rechner_pipeline/kern/__init__.py (3.1.0 ->

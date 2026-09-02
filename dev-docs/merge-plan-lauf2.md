@@ -210,10 +210,20 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    und die Luecken-Erwartung inklusive "umbau" haelt gegen das
    Lauf-2-Fixture, weil dieses kein Umbaubudget schreibt. Nichts
    musste angepasst werden.
-   OFFEN, nicht Teil dieses Schritts: Die Rendering-Pruefung macht
-   die vorzeige-session auf diesem Stand. Die statischen Zahlen unter
-   vorzeige-seite/ sind Lauf-1-geeicht; der Inhalts-Nachzug nach
-   Lauf 2 ist dort angekuendigt und kein Merge-Blocker.
+   Rendering-Pruefung ERLEDIGT 2026-09-02 (vorzeige-session auf
+   5a68cc1, abgehakt von dev): kein Befund aus dem Merge; die
+   komplette Auftritts-Kette gebaut (werkzeuge/auftritt.py Exit 0 —
+   45 Fall-Artefakte, 9 Unternehmensseiten, 3 Fachdokumente, 20
+   Architektur-Dokumente, Landkarte und Techstack frisch erzeugt,
+   34 Seiten, 0 tote Links; das Lauf-2-neue ADR automatisch
+   mitimportiert — das Drift-Prinzip greift). Bekannt und KEIN
+   Befund: Die statischen Zahlen unter vorzeige-seite/ sind
+   Lauf-1-geeicht (Inhalts-Nachzug nach dem main-Merge terminiert).
+   Lesehinweis gegen einen Schein-Widerspruch: Die
+   Rendering-Pruefung meldet "falldaten ohne Luecken, Umbaubudget
+   liegt", der e2e-Test erwartet die Luecke "umbau" — beides
+   korrekt, zwei Eingaben (echter Lauf-2-Fall mit Umbaubudget vs.
+   Fixture ohne).
 8. [ ] fallbericht -> main als EIN PR mit Review-Leitfaden (Owner:
    Maintainer). REVIDIERT 2026-09-02 (Maintainer-Entscheid nach
    Lauf-Ende): Der 2026-09-01 im Plan selbst angelegte Vorbehalt ist
@@ -235,10 +245,11 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    dev-docs/review-lauf2-befunde.md traegt den Status je Befund);
    kein Befund beruehrt die gezeichneten Ergebnisse. Die E2E-Fixture
    des zweiten Laufs ist eingefroren (tests/test_baldrian2_e2e.py,
-   822ce75). Suite 1534, Kern 3.4.0 — der PR ist schnittbereit,
-   es fehlt nur noch Schritt 7 (vorzeige-url-Merge). Der
-   Review-Leitfaden steht: dev-docs/pr-leitfaden-lauf2.md (Kopfteil
-   = PR-Beschreibung, danach Leseweg, fuenf Lesestufen,
+   822ce75). Kern 3.4.0. Mit dem Vollzug von Schritt 7 (Merge
+   9c1f36a, Suite 1544) ist der PR SCHNITTBEREIT — es fehlt nur noch
+   Push und PR-Anlage (Maintainer). Der Review-Leitfaden steht:
+   dev-docs/pr-leitfaden-lauf2.md (Kopfteil = PR-Beschreibung,
+   danach Leseweg, sechs Lesestufen inkl. der vorzeige-Commits,
    Schwerpunkt-Dateien, Nachpruefbarkeit).
    HISTORISCH (Entscheid 2026-09-01, durch den Vorbehalt abgeloest):
    drei chronologische Schnitte A/B/C —
