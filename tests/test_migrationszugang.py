@@ -876,6 +876,37 @@ class TestSerienKandidatenBestimmung:
                 erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=jbrutto,
                 kandidaten=self.KANDIDATEN, scheiben_mit_gamma1=False)
 
+    def test_unerheblichkeit_gilt_je_position_nicht_pauschal(self):
+        """Review-Befund B6: RED vor der ersten Erhoehung skaliert nur
+        die Kette (unerheblich), ein spaeteres RED ist ueber den
+        Beitrag EINDEUTIG bestimmt — die Pauschal-Markierung warf den
+        bestimmten Anteil weg. Wahre Welt: RED(1, f beliebig),
+        IST-Grund danach 80000, ERH(3)=4000, ERH(5)=4200,
+        RED(8, f=0.5) -> IST-Grund 40000, ERLSUMME 48200."""
+        from rechner_pipeline.kern import erhoehungs_scheibe
+        from rechner_pipeline.bestand.migrationszugang import (
+            bestimme_serie_mit_kandidaten,
+        )
+
+        grund_mp = type(_KLV_DEFAULT)(**_mp_felder(sum_insured=40000.0))
+        jbrutto = _Rechenkern(grund_mp).gross_annual_premium()
+        for jahr, summe in ((3, 4000.0), (5, 4200.0)):
+            jbrutto += _Rechenkern(erhoehungs_scheibe(
+                grund_mp, jahr, summe)).gross_annual_premium()
+
+        serie = bestimme_serie_mit_kandidaten(
+            _mp_felder(),
+            ereignisse=[("RED", 1, None), ("ERH", 3, None),
+                        ("ERH", 5, None), ("RED", 8, None)],
+            erlsumme=48200.0, satz=self.SATZ,
+            jbrutto=round(jbrutto, 2), kandidaten=self.KANDIDATEN)
+
+        assert serie.anteil_unbestimmt == (1,)
+        assert serie.absetzungen == ((8, 0.5),)
+        assert serie.grundsumme == pytest.approx(40000.0, abs=0.01)
+        assert [s for _, s in serie.scheiben] == pytest.approx(
+            [4000.0, 4200.0], abs=0.01)
+
     def test_fehlerpfade_fail_fast(self):
         from rechner_pipeline.bestand.migrationszugang import (
             MigrationszugangFehler,

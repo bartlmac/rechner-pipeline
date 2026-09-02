@@ -1221,7 +1221,12 @@ def bestimme_serie_mit_kandidaten(
             f"{probe_name} {geliefert} ({lage}) — Kandidatenmenge oder "
             "Dynamiksatz klaeren, Anteile nachliefern lassen"
         )
-    # Mehrere Treffer: identische Struktur = Anteil unerheblich.
+    # Mehrere Treffer: identische Struktur = Anteil unerheblich. Die
+    # Unerheblichkeit gilt JE POSITION, nicht pauschal: Eine offene
+    # Herabsetzung, auf deren Wert sich alle Treffer-Kombinationen
+    # einigen, IST durch die Probe bestimmt und bleibt in den
+    # Absetzungen — nur wo die Kombinationen auseinanderlaufen, ist
+    # der Anteil wirklich unerheblich fuer die Struktur.
     tol = abs_tol * (1 + len(treffer[0][1].scheiben))
     erste = treffer[0][1]
     if all(
@@ -1231,7 +1236,10 @@ def bestimme_serie_mit_kandidaten(
                 for (ja, sa), (jb, sb) in zip(s.scheiben, erste.scheiben))
         for _, s in treffer[1:]
     ):
-        offene_jahre = tuple(ereignisse[i][1] for i in offen)
+        offene_jahre = tuple(
+            ereignisse[i][1] for k, i in enumerate(offen)
+            if len({kombi[k] for kombi, _ in treffer}) > 1
+        )
         return AbgeleiteteSerie(
             grundsumme=erste.grundsumme,
             scheiben=erste.scheiben,
