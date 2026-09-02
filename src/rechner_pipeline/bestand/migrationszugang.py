@@ -1027,9 +1027,14 @@ def leite_serie_aus_satz_ab(
 
     Rueckgabe in IST-Summen: Scheiben centgerundet (so bucht die
     Quelle), die Grundsumme als Rest zur gelieferten Gesamtsumme —
-    damit reproduziert die Struktur ERLSUMME exakt. Reisst die
-    Vorwaertsprobe trotzdem (Satz passt nicht zur Lieferung), ist das
-    ein harter Fehler, keine stille Glaettung.
+    damit reproduziert die Struktur ERLSUMME exakt. Die Vorwaertsprobe
+    am Ende sichert NUR diese Rundungs-Rekomposition (Kette gegen
+    Rest); einen falschen Satz oder falsche Anteile kann sie
+    KONSTRUKTIONSBEDINGT nicht erkennen, weil die Grundsumme aus
+    derselben Kette bestimmt wird. Schiedsrichter dafuer sind die
+    unabhaengigen Proben (Beitrags-/Ankergleichung in
+    :func:`bestimme_serie_mit_kandidaten`, :func:`pruefe_erhoehungssatz`)
+    und der Deckungskapital-Vergleich der Migrationssuite.
     """
     if not 0.0 < satz < 1.0:
         raise MigrationszugangFehler(
@@ -1089,13 +1094,17 @@ def leite_serie_aus_satz_ab(
             f"rekonstruierte Grundsumme {grundsumme_ist!r} unplausibel — "
             f"der Satz {satz} passt nicht zur gelieferten Summe"
         )
+    # Rekompositions-Probe: Kette gegen Rest. Sie prueft die
+    # Cent-Rundung der Zerlegung, NICHT die Richtigkeit von Satz oder
+    # Anteilen (beides steckt schon in grundsumme_roh — siehe
+    # Docstring; die Schiedsrichter sind die unabhaengigen Proben).
     probe = grundsumme_roh * grund_einheit
     if abs(probe - grundsumme_ist) > 0.01 * (1 + len(scheiben)):
         raise MigrationszugangFehler(
-            f"Vorwaertsprobe reisst: Grundsumme aus Kette {probe:.2f} "
-            f"gegen Rest zur Lieferung {grundsumme_ist:.2f} — Satz oder "
-            "Anteile passen nicht zur gelieferten Summe; Auskunft "
-            "klaeren, nicht glaetten"
+            f"Rekompositions-Probe reisst: Grundsumme aus Kette "
+            f"{probe:.2f} gegen Rest zur Lieferung {grundsumme_ist:.2f} "
+            "— die Rundungs-Zerlegung traegt diese Lieferung nicht; "
+            "Auskunft klaeren, nicht glaetten"
         )
     return AbgeleiteteSerie(
         grundsumme=grundsumme_ist,
