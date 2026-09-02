@@ -207,7 +207,10 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    kein Befund beruehrt die gezeichneten Ergebnisse. Die E2E-Fixture
    des zweiten Laufs ist eingefroren (tests/test_baldrian2_e2e.py,
    822ce75). Suite 1534, Kern 3.4.0 — der PR ist schnittbereit,
-   es fehlt nur noch Schritt 7 (vorzeige-url-Merge).
+   es fehlt nur noch Schritt 7 (vorzeige-url-Merge). Der
+   Review-Leitfaden steht: dev-docs/pr-leitfaden-lauf2.md (Kopfteil
+   = PR-Beschreibung, danach Leseweg, fuenf Lesestufen,
+   Schwerpunkt-Dateien, Nachpruefbarkeit).
    HISTORISCH (Entscheid 2026-09-01, durch den Vorbehalt abgeloest):
    drei chronologische Schnitte A/B/C —
    Ein thematisch sauberer Schnitt ist NICHT zu haben: die Themen liegen
