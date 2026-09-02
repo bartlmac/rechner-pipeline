@@ -16,8 +16,10 @@ Korrekturen aus dem Lauf selbst, die Nacharbeit (adversarialer
 Review mit Fixes, E2E-Fixture, Abschlussdokumentation) und die
 Vorzeigeseite samt Auftritts-Werkzeugen (Merge-Plan Schritt 7).
 
-Kennzahlen: 205 Commits auf Basis 33e9dec (Merge PR #10), 297
-Dateien, +73,8k/-3,0k Zeilen. Endzustand: Suite 1544 gruen (0
+Kennzahlen: 208 Commits auf Basis 33e9dec (Merge PR #10), 301
+Dateien, +74,0k/-3,0k Zeilen — gezaehlt EINSCHLIESSLICH dieses
+Leitfaden-Stands; wer nachrechnet (git log main..fallbericht),
+muss auf dieselbe Zahl kommen. Endzustand: Suite 1544 gruen (0
 Skips), Kern 3.4.0, Fall vollstaendig gezeichnet (fuenf Gates auf
 Systemstand 4b1abf0; A-M4 834/834, Schichtbeleg-Residuensumme
 -0,14 EUR).
@@ -136,15 +138,22 @@ muss es zeigen)? Ist jede Toleranz-Aufweitung aus der Lieferung
 begruendet (je fuer sich gerundete Komponente) und nirgends ein
 bequemes Pauschalmass?
 
-### Stufe 5 — Nacharbeit (4b1abf0.., 18 Commits)
+### Stufe 5 — Nacharbeit (4b1abf0.. ohne den Vorzeige-Ast, 21 Commits)
 
 Abschlussbericht und Auswertung (5983417), die 13
 Review-Nacharbeits-Commits (009464d..af2718a, je Commit ein Befund
 mit Referenz auf die Befundliste), E2E-Fixture des zweiten Laufs
-(822ce75), Merge-Plan-Stand und dieser Leitfaden. Prueffrage: Deckt
-jeder Review-Fix seinen Befund mit einem Test ab, der die
-naheliegende Mutation faengt (Mutationsfaenger sind in den Tests
-benannt)?
+(822ce75), Merge-Plan-Staende, dieser Leitfaden samt Nachtraegen —
+und die Versionierung der vier Auskunftsschreiben der Lieferung
+(ce89ad6). Zu letzteren die Antwort auf die naheliegende
+Reviewer-Frage, warum Dokumente der abgebenden Gesellschaft im Repo
+liegen: Die Lieferungs-Ablage lieferungen/ ist der versionierte
+Lieferungs-Nachweis des (simulierten) Falls — wie schon bei der
+ersten Lieferung — und die Quelle der E2E-Fixture-Schnitte; die
+eingecheckten Fassungen sind per diff identisch mit den im
+Fall-Eingang registrierten. Prueffrage: Deckt jeder Review-Fix
+seinen Befund mit einem Test ab, der die naheliegende Mutation
+faengt (Mutationsfaenger sind in den Tests benannt)?
 
 ### Stufe 6 — Vorzeigeseite und Auftritts-Werkzeuge (Merge 9c1f36a, 13+1 Commits)
 
