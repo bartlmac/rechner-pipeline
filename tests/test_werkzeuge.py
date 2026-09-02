@@ -304,6 +304,16 @@ def _fall_mit_berichten(tmp_path: Path, **berichte) -> Path:
     return fall
 
 
+def _modell(fall: Path):
+    """Das Datenmodell so erheben, wie es auch der Lauf taete.
+
+    Die Seite ist Konsument von ``falldaten.py``; ein von Hand gebautes
+    Modell testete sonst eine Form, die der Erzeuger nie schreibt.
+    """
+    import falldaten
+    return falldaten.sammle(fall, [])
+
+
 def test_ein_roter_lauf_wird_als_roter_lauf_dargestellt(tmp_path: Path):
     """Eine Vorzeigeseite, die nur den Erfolgsfall zeigen kann, ist eine
     Werbebroschuere. Der Lauf ist keine: A-M4 duldet im Bestands-Scope
@@ -318,7 +328,7 @@ def test_ein_roter_lauf_wird_als_roter_lauf_dargestellt(tmp_path: Path):
                          "stichtag_1": "2026-01-01",
                          "stichtag_2": "2027-01-01"},
     )
-    seite = vz._seite(fall, tmp_path, [], None)
+    seite = vz._seite(fall, _modell(fall), tmp_path, [], None)
 
     assert "**nicht bestanden**" in seite
     assert "| Prüflücken | 2 |" in seite
@@ -337,7 +347,7 @@ def test_eine_unbegruendete_ueberschreitung_bleibt_unbegruendet(
                      "befunde": ["Gesamtaenderung 21000 Zeilen ueber 18000"],
                      "ueberschreitung_begruendet": None},
     )
-    seite = vz._seite(fall, tmp_path, [], None)
+    seite = vz._seite(fall, _modell(fall), tmp_path, [], None)
     assert "Eine Überschreitung:" in seite
     assert "**Ohne Begründung.**" in seite
 
@@ -347,7 +357,7 @@ def test_eine_unbegruendete_ueberschreitung_bleibt_unbegruendet(
                      "befunde": ["Gesamtaenderung 21000 Zeilen ueber 18000"],
                      "ueberschreitung_begruendet": "Kern ersetzt, bewusst"},
     )
-    seite2 = vz._seite(fall2, tmp_path, [], None)
+    seite2 = vz._seite(fall2, _modell(fall2), tmp_path, [], None)
     assert "Kern ersetzt, bewusst" in seite2
     assert "**Ohne Begründung.**" not in seite2
 
@@ -357,17 +367,231 @@ def test_ein_fall_ohne_berichte_behauptet_kein_ergebnis(tmp_path: Path):
     Vorzeigeseite ist deshalb KEIN Nachweis, dass der Lauf vollstaendig
     war. Sie darf dann aber auch nichts anderes behaupten."""
     fall = _fall_mit_berichten(tmp_path)
-    seite = vz._seite(fall, tmp_path, [], None)
+    seite = vz._seite(fall, _modell(fall), tmp_path, [], None)
     assert "*(noch keine Berichte im Fall)*" in seite
     assert "bestanden" not in seite
+
+
+def test_modell_verweise_passieren_die_regie_sperre_nicht_ungeprueft(
+    tmp_path: Path,
+):
+    """Das Modell listet Artefakt-Verweise; die Seite prueft sie trotzdem
+    selbst. Sonst waere die Liste ein Weg an der Regie-Sperre vorbei —
+    die Zwei-Quellen-Lage beseitigt und dafuer die Sperre aufgeweicht."""
+    fall = _fall_mit_berichten(tmp_path)
+    modell = _modell(fall)
+    modell["abnahmen"]["bestandsberichte"] = [
+        "abgeleitet/berichte/NOTIZEN.md"]
+
+    with pytest.raises(vz.VeroeffentlichungFehler):
+        vz._seite(fall, modell, tmp_path,
+                  ["artefakte/abgeleitet/berichte/NOTIZEN.md"], None)
+
+
+def test_verlinkt_wird_nur_was_kopiert_wurde(tmp_path: Path):
+    """Ein Link auf eine nicht kopierte Datei waere eine Behauptung ohne
+    Artefakt daneben."""
+    fall = _fall_mit_berichten(tmp_path)
+    (fall / "abgeleitet" / "berichte" / "bestandsbericht-vor.html").write_text(
+        "<p>Bericht</p>", encoding="utf-8")
+    modell = _modell(fall)
+    assert modell["abnahmen"]["bestandsberichte"] == [
+        "abgeleitet/berichte/bestandsbericht-vor.html"]
+
+    ohne = vz._seite(fall, modell, tmp_path, [], None)
+    assert "bestandsbericht-vor.html" not in ohne
+
+    mit = vz._seite(fall, modell, tmp_path,
+                    ["artefakte/abgeleitet/berichte/bestandsbericht-vor.html"],
+                    None)
+    assert ("[bestandsbericht-vor.html]"
+            "(artefakte/abgeleitet/berichte/bestandsbericht-vor.html)") in mit
+
+
+# --------------------------------------------------------------------------- #
+# Unternehmensseite: die Banderole
+# --------------------------------------------------------------------------- #
+
+import falldaten as fd  # noqa: E402
+import fallbericht as fb  # noqa: E402
+import unternehmensseite as us  # noqa: E402
+
+
+def _quellseiten(tmp_path: Path) -> Path:
+    quellen = tmp_path / "vorzeige-seite"
+    quellen.mkdir()
+    (quellen / "_config.yml").write_text("theme: x\n", encoding="utf-8")
+    (quellen / "index.md").write_text(
+        "Fiktives Unternehmen — Vorfuehrung\n\n# Willkommen\n",
+        encoding="utf-8")
+    return quellen
+
+
+def test_eine_seite_ohne_banderole_wird_nicht_gebaut(tmp_path: Path):
+    """Je echter der Auftritt wirkt, desto wichtiger die Kennzeichnung:
+    Eine Unternehmensseite ohne Fiktions-Hinweis saehe aus wie ein
+    echter Versicherer — der Bau bricht ab, statt zu warnen."""
+    quellen = _quellseiten(tmp_path)
+    (quellen / "it").mkdir()
+    (quellen / "it" / "index.md").write_text(
+        "# IT\nohne Hinweis\n", encoding="utf-8")
+
+    with pytest.raises(vz.VeroeffentlichungFehler):
+        us.baue(quellen, tmp_path / "seite")
+
+
+def test_mit_banderole_wird_der_baum_gespiegelt(tmp_path: Path):
+    quellen = _quellseiten(tmp_path)
+    ziel = tmp_path / "seite"
+    kopiert = us.baue(quellen, ziel)
+    assert sorted(kopiert) == ["_config.yml", "index.md"]
+    assert (ziel / "index.md").is_file()
+
+
+def test_fachdokumente_werden_mit_banderole_importiert(tmp_path: Path):
+    """Der Auftritt importiert die Fachdokumente beim Bau (eine Quelle,
+    eine Heimat: docs/); der YAML-Vorspann wird zum Seitentitel, die
+    Banderole kommt davor, Formeln bekommen MathJax. Ein fehlendes
+    Dokument bricht den Bau ab, statt eine vollstaendig aussehende
+    Seite ohne Tarifplaene zu bauen."""
+    docs = tmp_path / "docs"
+    (docs / "tarifplaene").mkdir(parents=True)
+    (docs / "tarifplaene" / "probe.md").write_text(
+        '---\ntitle: "Tarifplan Probe —\n  umbrochen"\nlang: de\n---\n\n'
+        "# 1 Inhalt\nFormel $S_x$\n", encoding="utf-8")
+
+    ziel = tmp_path / "seite"
+    importiert = us.fachdokumente(
+        docs, ziel, dokumente=("tarifplaene/probe.md",))
+    assert importiert == [
+        ("tarifplaene/probe.md", "Tarifplan Probe — umbrochen")]
+    seite = (ziel / "aktuariat" / "tarifplaene" / "probe.md").read_text(
+        encoding="utf-8")
+    assert us.BANDEROLE in seite
+    assert "# Tarifplan Probe — umbrochen" in seite
+    assert "title:" not in seite
+    assert "mathjax" in seite.lower()
+    uebersicht = (ziel / "aktuariat" / "tarifplaene" / "index.md").read_text(
+        encoding="utf-8")
+    assert "[Tarifplan Probe — umbrochen](probe.html)" in uebersicht
+
+    with pytest.raises(vz.VeroeffentlichungFehler):
+        us.fachdokumente(docs, ziel, dokumente=("tarifplaene/fehlt.md",))
+
+
+def test_die_fallseite_als_unterseite_haengt_im_auftritt(tmp_path: Path):
+    """Als Unterseite gehoert die Jekyll-Konfiguration der Wurzel des
+    Auftritts, nicht dem Fall — und der Rueckverweis haengt den Bericht
+    in die Migrations-Uebersicht ein."""
+    fall = _fall_mit_berichten(tmp_path)
+    daten = tmp_path / "daten.json"
+    fd.main(["--fall", str(fall), "--out", str(daten)])
+    ziel = tmp_path / "seite" / "migrationen" / "probe"
+
+    code = vz.main(["--fall", str(fall), "--daten", str(daten),
+                    "--out", str(ziel), "--als-unterseite"])
+    assert code == 0
+    assert not (ziel / "_config.yml").exists()
+    seite = (ziel / "index.md").read_text(encoding="utf-8")
+    assert "[← Unsere Bestandsmigrationen](../)" in seite
+
+    # Ohne den Schalter bleibt die Seite eigenstaendig veroeffentlichbar.
+    solo = tmp_path / "solo"
+    vz.main(["--fall", str(fall), "--daten", str(daten), "--out", str(solo)])
+    assert (solo / "_config.yml").is_file()
+    assert "Bestandsmigrationen](../)" not in (solo / "index.md").read_text(
+        encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- #
+# Auftritt: die Kette als ein Kommando
+# --------------------------------------------------------------------------- #
+
+import auftritt as at  # noqa: E402
+
+
+def test_der_auftritt_reicht_den_fehler_der_kette_durch(tmp_path: Path):
+    """Bricht ein Kettenglied, bricht die Kette — mit demselben Urteil.
+    Ein Entwurf aus einer halb gelaufenen Kette saehe vollstaendig aus
+    und waere es nicht."""
+    code = at.main(["--fall", str(tmp_path / "kein-fall"), "--name", "x",
+                    "--out", str(tmp_path / "seite"), "--vorschau", ""])
+    assert code == 2
+    assert not (tmp_path / "seite").exists()
+
+
+# --------------------------------------------------------------------------- #
+# Drift: das Urteil ueber den veroeffentlichten Stand
+# --------------------------------------------------------------------------- #
+
+import drift as dr  # noqa: E402
+
+
+def _seitenrepo(tmp_path: Path) -> Path:
+    """Ein Mini-Repo, dessen Branch gh-pages eine Seite traegt."""
+    import subprocess
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=repo, check=True,
+                       capture_output=True)
+
+    git("init", "-q", "-b", "gh-pages")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "test")
+    (repo / "index.md").write_text(
+        "# Fall\n| Veröffentlicht | 2026-08-28 |\n"
+        "| Systemstand | `alt` auf `main` |\nInhalt A\n", encoding="utf-8")
+    (repo / "artefakte").mkdir()
+    (repo / "artefakte" / "a.json").write_text('{"wert": 1}',
+                                               encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "veroeffentlichter Stand")
+    return repo
+
+
+def _entwurf(tmp_path: Path, inhalt: str, wert: int) -> Path:
+    entwurf = tmp_path / "entwurf"
+    (entwurf / "artefakte").mkdir(parents=True, exist_ok=True)
+    (entwurf / "index.md").write_text(
+        f"# Fall\n| Veröffentlicht | 2026-08-31 |\n"
+        f"| Systemstand | `neu` auf `vorzeige-url` |\n{inhalt}\n",
+        encoding="utf-8")
+    (entwurf / "artefakte" / "a.json").write_text(
+        f'{{"wert": {wert}}}', encoding="utf-8")
+    return entwurf
+
+
+def test_volatile_stempel_sind_kein_drift(tmp_path: Path):
+    """Datum und Systemstand aendern sich mit jedem Bau, ohne dass sich
+    inhaltlich etwas bewegt haette. Ein Test, der darauf schluege,
+    schluege immer — und wuerde abgeschaltet."""
+    repo = _seitenrepo(tmp_path)
+    entwurf = _entwurf(tmp_path, "Inhalt A", wert=1)
+
+    assert dr.main(["--seite", str(entwurf), "--repo", str(repo)]) == 0
+
+
+def test_inhaltliche_abweichung_ist_drift(tmp_path: Path, capsys):
+    """Geaenderte, neue und verschwundene Dateien werden benannt; das
+    Werkzeug urteilt nur — veroeffentlicht wird von Hand."""
+    repo = _seitenrepo(tmp_path)
+    entwurf = _entwurf(tmp_path, "Inhalt B", wert=2)
+    (entwurf / "neu.md").write_text("Neue Seite\n", encoding="utf-8")
+
+    code = dr.main(["--seite", str(entwurf), "--repo", str(repo)])
+    aus = capsys.readouterr().out
+    assert code == 1
+    assert "GEAENDERT: index.md" in aus
+    assert "GEAENDERT: artefakte/a.json" in aus
+    assert "NEU: neu.md" in aus
+    assert "menschliche Handlung" in aus
 
 
 # --------------------------------------------------------------------------- #
 # Falldaten: das Datenmodell einer Falldarstellung
 # --------------------------------------------------------------------------- #
-
-import falldaten as fd  # noqa: E402
-import fallbericht as fb  # noqa: E402
 
 
 def _leerfall(tmp_path: Path) -> Path:
@@ -395,6 +619,40 @@ def test_ein_fehlender_abschnitt_wird_laut_gemeldet(tmp_path: Path):
     # zuerst das, was da ist.
     assert {l["gruppe"] for l in modell["luecken"]} == {
         g for g, _, _ in fd.ERWARTET}
+
+
+def test_das_modell_traegt_beschreibung_und_berichtsverweise(tmp_path: Path):
+    """Die Vorzeigeseite konsumiert das Modell; was sie zeigt, muss es
+    tragen — sonst bliebe sie fuer genau diese Reste ein zweiter Leser
+    desselben Datenraums."""
+    fall = _fall_mit_berichten(
+        tmp_path,
+        aktuartest={"anzahl": 1, "bestanden": 1, "fehlgeschlagen": 0,
+                    "test_bestanden": True})
+    (fall / "abgeleitet" / "berichte" / "aktuartest.html").write_text(
+        "<p>Vorlage</p>", encoding="utf-8")
+    # Der Bestandsbericht der Fortschreibung liegt NICHT unter berichte/,
+    # sondern im Konventionspfad der Fortschreibung — gefunden wird er
+    # ueber den Dateinamen, den stabileren Anker.
+    nach = fall / "abgeleitet" / "bestand-nach"
+    nach.mkdir()
+    (nach / "bestandsbericht_nach_uebernahme.html").write_text(
+        "<p>Fortschreibung</p>", encoding="utf-8")
+    (fall / "fall.json").write_text(json.dumps(
+        {"name": "probe", "beschreibung": "Ein Vorfuehrfall.",
+         "scope": {"typ": "bestand"}}), "utf-8")
+
+    modell = fd.sammle(fall, [])
+    assert modell["fall"]["beschreibung"] == "Ein Vorfuehrfall."
+    [t] = modell["abnahmen"]["aktuariell"]
+    assert t["bericht"] == "abgeleitet/berichte/aktuartest.html"
+    assert modell["abnahmen"]["bestandsberichte"] == [
+        "abgeleitet/bestand-nach/bestandsbericht_nach_uebernahme.html"]
+    # Ein abgeschlossener Fall traegt die Umbau-Messung IMMER: Ein Lauf,
+    # dessen Umbau niemand gemessen hat, saehe sonst aus wie ein Lauf
+    # ohne Umbau.
+    assert modell["umbau"] == {"vorhanden": False}
+    assert any(l["gruppe"] == "umbau" for l in fd.luecken(modell))
 
 
 def test_eine_vollerhebung_ist_keine_zu_kleine_pruefmenge():

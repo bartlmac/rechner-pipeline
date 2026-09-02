@@ -249,12 +249,14 @@ def test_das_datenmodell_der_darstellung_ist_vollstaendig(
 
     modell = falldaten.sammle(gefahrener_fall, [ABZUG_1, ABZUG_2])
     fehlend = [l["gruppe"] for l in falldaten.luecken(modell)]
-    # Zwei Luecken sind erwartet und benannt. Die ENTSCHEIDE fehlen, weil
+    # Drei Luecken sind erwartet und benannt. Die ENTSCHEIDE fehlen, weil
     # der Test nicht zeichnet — das ist eine menschliche Handlung. Die
     # PARAMETRIERUNG fehlt, weil das Fixture die A-Box nicht mitfuehrt:
     # Es prueft die Migration ab dem Bestandsabzug, nicht noch einmal die
-    # Quellenauswertung. Alles Uebrige muss die Kette liefern.
-    assert fehlend == ["parameter", "kette"], (
+    # Quellenauswertung. Das UMBAUBUDGET fehlt, weil der Test kein
+    # Operator-Lauf ist, dessen Umbau zu messen waere. Alles Uebrige muss
+    # die Kette liefern.
+    assert fehlend == ["parameter", "kette", "umbau"], (
         f"unerwartete Luecken: {fehlend}")
     assert modell["bestand"]["anzahl"] == 25
     assert modell["transformation"]["zeilen_quelle"] == 25
