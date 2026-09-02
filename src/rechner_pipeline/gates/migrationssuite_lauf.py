@@ -428,7 +428,8 @@ def anfangszustaende_je_police(
                 else:
                     erh = leite_erhoehung_ab(
                         mp_felder, jahr=jahr, erlsumme=erlsumme,
-                        jbrutto=jbrutto)
+                        jbrutto=jbrutto,
+                        scheiben_mit_gamma1=scheiben_mit_gamma1)
                 zustaende[police] = {
                     "scheiben": ((jahr, erh.erhoehungssumme),),
                     "sum_insured": erh.grundsumme,

@@ -1343,6 +1343,7 @@ def leite_erhoehung_ab(
     jahr: int,
     erlsumme: float,
     jbrutto: float,
+    scheiben_mit_gamma1: bool = False,
 ) -> AbgeleiteteErhoehung:
     """Grund- und Erhoehungssumme einer Alt-Dynamik ableiten.
 
@@ -1352,8 +1353,12 @@ def leite_erhoehung_ab(
         S_g * B_g + S_s * B_s   = JBRUTTO
 
     mit den Beitragsraten des Grundvertrags (``B_g``) und der Scheibe
-    (``B_s``, Modellpunkt mit versetzten Dauern und gamma1 = 0 nach der
-    Tarifwerk-Regel). Beide zahlen bis zum SELBEN Kalenderzeitpunkt
+    (``B_s``, Modellpunkt mit versetzten Dauern). Welche
+    Beitragsformel die Scheibe traegt, ist eine EIGENSCHAFT DER
+    LIEFERUNG (``scheiben_mit_gamma1``, wie ueberall in der
+    Serien-Ableitung; Vorgabe = GrundVS-Regel der ersten Lieferung) —
+    mit der falschen Regel loest das System auf eine falsche
+    Zerlegung. Beide zahlen bis zum SELBEN Kalenderzeitpunkt
     (t bzw. t - jahr ab Erhoehung) — solange der Vertrag am Stichtag
     Beitrag zahlt, enthaelt JBRUTTO beide Teile.
 
@@ -1379,8 +1384,9 @@ def leite_erhoehung_ab(
             f"dauer (0 < jahr < t = {einheit.t})"
         )
     grund_rate = Rechenkern(einheit).gross_premium_rate()
-    scheiben_rate = Rechenkern(
-        erhoehungs_scheibe(einheit, jahr, 1.0)).gross_premium_rate()
+    scheiben_rate = Rechenkern(erhoehungs_scheibe(
+        einheit, jahr, 1.0,
+        gamma1_uebernehmen=scheiben_mit_gamma1)).gross_premium_rate()
     if abs(grund_rate - scheiben_rate) < 1e-12:
         raise MigrationszugangFehler(
             "Beitragsraten von Grundvertrag und Scheibe sind gleich — "

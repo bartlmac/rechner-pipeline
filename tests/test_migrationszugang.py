@@ -540,6 +540,33 @@ def test_erhoehungszerlegung_ohne_rundung_ist_exakt():
     assert ergebnis.erhoehungssumme == _pytest.approx(s_scheibe, rel=1e-9)
 
 
+def test_erhoehungszerlegung_folgt_der_gamma1_regel_der_lieferung():
+    """Review-Befund S1: die Beitragsformel der Scheibe ist eine
+    Eigenschaft der LIEFERUNG (wie in der Serien-Ableitung) — mit der
+    falschen Regel loest das lineare System auf eine falsche
+    Zerlegung. Lieferung mit voller Formel: nur scheiben_mit_gamma1
+    trifft die wahren Summen."""
+    s_grund, s_scheibe, jahr = 80000.0, 12000.0, 6
+    felder = _mp_felder(sum_insured=s_grund)
+    grund = _Rechenkern(type(_KLV_DEFAULT)(**felder))
+    scheibe = _Rechenkern(_erhoehungs_scheibe(
+        grund.mp, jahr, s_scheibe, gamma1_uebernehmen=True))
+    erlsumme = s_grund + s_scheibe
+    jbrutto = grund.gross_annual_premium() + scheibe.gross_annual_premium()
+
+    mit = leite_erhoehung_ab(
+        felder, jahr=jahr, erlsumme=erlsumme, jbrutto=jbrutto,
+        scheiben_mit_gamma1=True)
+    assert mit.grundsumme == _pytest.approx(s_grund, rel=1e-9)
+    assert mit.erhoehungssumme == _pytest.approx(s_scheibe, rel=1e-9)
+
+    ohne = leite_erhoehung_ab(
+        felder, jahr=jahr, erlsumme=erlsumme, jbrutto=jbrutto)
+    assert abs(ohne.grundsumme - s_grund) > 10.0, (
+        "Mutationsfaenger: die falsche Formel-Regel muss die Zerlegung "
+        "sichtbar verfehlen")
+
+
 def test_erhoehungszerlegung_ohne_beitrag_ist_unterbestimmt():
     with _pytest.raises(_MZFehler, match="NICHT bestimmbar"):
         leite_erhoehung_ab(_mp_felder(), jahr=6, erlsumme=92000.0, jbrutto=0.0)
