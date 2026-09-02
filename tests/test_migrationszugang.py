@@ -1037,6 +1037,31 @@ class TestSerienKandidatenBestimmung:
         assert via == direkt
 
 
+def test_ablauf_verankerung_nutzt_den_extern_gerechneten_wert():
+    """Review-Befund B5: Auch am Ablauf ist der Ausbuchungswert der
+    Wert der GERECHNETEN Welt. Der Ablauf-Sonderzweig fiel fuer
+    Zustands-Welten still auf die Stamm-Ablaufleistung zurueck — das
+    Residuum des Ausbuchungs-Befunds war dann die falsche Differenz."""
+    mp_dict = dict(MP)
+    n = mp_dict["n"]
+    extern = 55555.55
+    e, = uebernehmen([
+        Uebernahme(police_id=1, model_point=MP, monate_ta=12 * n,
+                   dk_ist=extern + 500.0, dk_prosp_extern=extern)
+    ])
+    assert e.befund is not None and "Ablauf" in e.befund
+    assert e.dk_prosp == pytest.approx(extern)
+    assert e.residuum == pytest.approx(500.0)
+
+    # Ohne externen Wert bleibt die Stamm-Ablaufleistung die Basis.
+    stamm, = uebernehmen([
+        Uebernahme(police_id=1, model_point=MP, monate_ta=12 * n,
+                   dk_ist=1000.0)
+    ])
+    ablauf = KERN.verlaufszeile(n).drx_bpfl
+    assert stamm.dk_prosp == pytest.approx(ablauf)
+
+
 def test_extern_gerechneter_prospektivwert_bestimmt_das_residuum():
     """Ausweitung Nr. 18: Zustands-Welten rechnet der Aufrufer — das
     Residuum ist dann exakt dk_ist minus dem extern uebergebenen

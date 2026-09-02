@@ -228,7 +228,13 @@ def uebernehmen(
             # eine Schicht darauf haette keinen Zeitraum zum Abbauen — sie
             # waere im selben Moment faellig wie die Leistung selbst. Das ist
             # eine sofortige Ausbuchung und muss als solche behandelt werden.
-            dk_ablauf = kern.verlaufszeile(mp.n).drx_bpfl
+            # Der Ausbuchungswert ist der Wert der GERECHNETEN Welt:
+            # bei Zustands-Welten der vom Aufrufer gerechnete
+            # Prospektivwert (dk_prosp_extern), sonst die
+            # Ablaufleistung des Stamm-Modellpunkts.
+            dk_ablauf = (float(v.dk_prosp_extern)
+                         if v.dk_prosp_extern is not None
+                         else kern.verlaufszeile(mp.n).drx_bpfl)
             ergebnisse.append(
                 Zugangsergebnis(
                     police_id=v.police_id, monate_ta=v.monate_ta,
