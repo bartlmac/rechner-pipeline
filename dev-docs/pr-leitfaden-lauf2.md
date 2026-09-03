@@ -16,7 +16,7 @@ Korrekturen aus dem Lauf selbst, die Nacharbeit (adversarialer
 Review mit Fixes, E2E-Fixture, Abschlussdokumentation) und die
 Vorzeigeseite samt Auftritts-Werkzeugen (Merge-Plan Schritt 7).
 
-Kennzahlen: 213 Commits auf Basis 33e9dec (Merge PR #10), 304
+Kennzahlen: 214 Commits auf Basis 33e9dec (Merge PR #10), 304
 Dateien, +74,7k/-3,1k Zeilen — gezaehlt EINSCHLIESSLICH dieses
 Leitfaden-Stands; wer nachrechnet (git log main..fallbericht),
 muss auf dieselbe Zahl kommen. Die Zahl gilt fuer den

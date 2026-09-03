@@ -177,12 +177,20 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
 8b. [ ] Seiten-Folge-PR: vorzeige-url -> main NACH dem Haupt-Merge
    (Owner: Maintainer; Vorbereitung merge-session). Eingefuehrt
    2026-09-03: Die Vorzeigeseite braucht laenger, der Haupt-PR
-   wartet nicht auf Darstellung. Kleiner PR mit eigenem
-   Mini-Leitfaden: werkzeuge/ (grafik/darstellung/falldaten),
-   vorzeige-seite/, tests/test_werkzeuge.py und die
-   Statische-Stellen-Notiz; der Cherry-pick 759548f (=c8ca1d6)
-   laeuft als leerer Diff durch. Vorbedingung: Barteks Sichtung des
-   Redesigns; Basis nach dem Haupt-Merge auf main heben.
+   wartet nicht auf Darstellung. SCHMAL, ABER UMFANGREICH
+   (Einordnung merge-session, damit die Erwartung stimmt): Die
+   Oberflaeche ist eng — werkzeuge/ (grafik/darstellung/falldaten),
+   vorzeige-seite/, tests/test_werkzeuge.py, Statische-Stellen-
+   Notiz —, das Volumen nicht: Stand 2026-09-03 bereits 99 Commits
+   seit a34342b, weiter wachsend; die Zahl gehoert bei PR-Anlage in
+   den Mini-Leitfaden. Vormerkungen der merge-session fuer die
+   Vorbereitung: (1) eingefrorenen vorzeige-Stand bestaetigen
+   lassen (wie Schritt 7); (2) Basis ist main NACH dem Haupt-Merge
+   — a34342b ist dann enthalten, der Cherry-pick 759548f (=c8ca1d6)
+   laeuft als leerer Diff durch; (3) Kopplungs-Pruefung zuerst: die
+   zwei Testdateien sind gegen einen Fall-Stand geeicht, und der
+   Fall hat sich seit Lauf 2 bewegt. Vorbedingung: Barteks Sichtung
+   des Redesigns.
 6b. [ ] T18-Korrekturen (Owner: nach Maintainer-Entscheid;
    fruehestens nach Anstoss von Fall-Lauf 2 — so entschieden
    2026-09-01): eigener Korrektur-PR gegen main, Geschwister zu
