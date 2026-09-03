@@ -6,6 +6,7 @@ oletools==0.60.2
 pandas==2.3.3
 pyarrow==25.0.1
 matplotlib==3.11.1
+pypdf==6.16.2
 # Transitive deps (pinned for reproducibility):
 cffi==2.0.0
 colorama==0.4.6
