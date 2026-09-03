@@ -180,12 +180,15 @@ def test_fallloser_renderer_bleibt_rot_mit_allen_abschnitten(tmp_path) -> None:
     assert "ALLE ABNAHMETESTS BESTANDEN" not in text
     assert "menschliche Entscheidung" in text and "A-M4" in text
     assert "dk_stichtag_1" in text and "dk_stichtag_2" in text
-    assert "POLNR" in text and "police_id" in text
-    assert "NR -&gt; nichtraucher" in text          # Kodierung, escaped
-    assert "&lt;Tarif rechnet unisex&gt;" in text   # HTML-Escaping
-    assert ("entschieden (fachverantwortliche-rolle): "
-            "&lt;entschieden durch den Menschen&gt;") in text
-    assert "Transformationsergebnis" in text
+    # Entmischungs-Entscheid (Sichtung Lauf 2): Die Uebersetzung wird
+    # GEBUNDEN, nicht mehr eingebettet — Feldtabelle und Konfliktliste
+    # traegt der Uebersetzungsbericht des Produzenten.
+    assert "Datenübersetzung (gebundenes Artefakt)" in text
+    assert "Feldabbildungen" in text
+    assert "entschiedene Konflikte" in text
+    assert "Übersetzungsbericht" in text
+    assert "POLNR" not in text                       # Tabelle ist umgezogen
+    assert "Gate <b>A-M4</b> — Migrationscontrolling" in text
     assert text.count("<b>500</b>") >= 2
     assert "vor/index.html" in text and "nach/index.html" in text
     assert "Keine." in text                          # keine Fehlschlaege
@@ -403,13 +406,14 @@ def test_fallloses_kommando_schreibt_nur_roten_bericht_und_ledger(
     text = bericht.read_text(encoding="utf-8")
     assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
     assert "ohne Fallbindung nicht autoritativ" in text
-    assert "POLNR" in text and "vor/index.html" in text
+    assert "Datenübersetzung (gebundenes Artefakt)" in text
+    assert "POLNR" not in text and "vor/index.html" in text
     # Provenienz: Eingaben UND Ausgabe gehasht (ein bestandenes Gate ohne
     # input_hashes wuerde das Dossier blockieren).
     assert result.input_hashes and str(suite_pfad) in str(result.input_hashes)
     assert list(result.output_hashes) == [str(bericht)]
     assert result.summary["bestanden"] == 2
-    assert result.summary["mapping_tabelle"] is True
+    assert result.summary["uebersetzung_gebunden"] is True
     renderer_artefakte = result.summary["renderer_artefakte"]
     assert set(renderer_artefakte) == set(renderer_artefaktrollen())
     assert all(

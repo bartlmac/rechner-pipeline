@@ -103,6 +103,100 @@ def _ergebnis_json(
     }
 
 
+def _e(text: object) -> str:
+    import html
+
+    return html.escape(str(text), quote=True)
+
+
+def baue_uebersetzungsbericht(
+    *,
+    titel: str,
+    spec: TransformationsSpec,
+    quellspalten: List[str],
+    zeilen_quelle: int,
+    zeilen_ziel: int,
+    befunde: List[str],
+    ziel_datei: Optional[str],
+    ziel_sha256: Optional[str],
+) -> str:
+    """Die Datenuebersetzung als eigener Bericht — frueh im Prozess.
+
+    Entmischungs-Entscheid des Maintainers (Sichtung Lauf 2): Die
+    fachliche DARSTELLUNG der Uebersetzung (Feldabbildung, Konflikte,
+    Ergebnis der Anwendung) gehoert dorthin, wo sie passiert — der
+    Abnahmebericht BINDET sie nur noch. Vollstaendig aus Spec und
+    Anwendung erzeugt, bewusst ohne Zeitstempel: gleiche Eingaben,
+    gleiche Bytes.
+    """
+    z: List[str] = [
+        "<!DOCTYPE html>",
+        "<html lang='de'><head><meta charset='utf-8'>",
+        f"<title>{_e(titel)}</title>",
+        "<style>body{font-family:Georgia,serif;max-width:60rem;"
+        "margin:2rem auto;padding:0 1rem;color:#222;line-height:1.5}"
+        "h1{font-size:1.6rem} h2{font-size:1.2rem;margin-top:2rem}"
+        "table{border-collapse:collapse;width:100%}"
+        "td,th{border:1px solid #bbb;padding:.35rem .6rem;"
+        "text-align:left;vertical-align:top}"
+        "th{background:#f0efe9} .rot{color:#a33;font-weight:bold}"
+        ".gruen{color:#1a6b1a} .hinweis{color:#555;font-size:.92em}"
+        "</style></head><body>",
+        f"<h1>{_e(titel)}</h1>",
+        f"<p class='hinweis'>Quelle: {_e(spec.quelle_datei)} "
+        f"(SHA-256 {_e(spec.quelle_sha256[:16])}&hellip;), "
+        f"Akteur: {_e(spec.akteur)}, {len(quellspalten)} Quellspalten. "
+        "Produzenten-Bericht der Datenuebersetzung; die Abnahme bindet "
+        "ihn, sie wiederholt ihn nicht.</p>",
+    ]
+
+    z.append("<h2>Feldabbildung</h2>")
+    z.append("<table><tr><th>Quellspalten</th><th>Zielfeld</th>"
+             "<th>Art</th><th>Details</th><th>Begründung</th></tr>")
+    for f in spec.felder:
+        if f.typ == "kodierung":
+            detail = "; ".join(f"{k} -> {v}" for k, v in f.kodierung.items())
+        elif f.typ == "berechnung":
+            detail = f.berechnung
+        else:
+            detail = "—"
+        ziel = f.ziel if f.typ != "nicht_uebernommen" else "(nicht übernommen)"
+        z.append(
+            f"<tr><td>{_e(', '.join(f.quellen))}</td><td>{_e(ziel)}</td>"
+            f"<td>{_e(f.typ)}</td><td>{_e(detail)}</td>"
+            f"<td>{_e(f.begruendung)}</td></tr>")
+    z.append("</table>")
+
+    if spec.offene_konflikte:
+        z.append("<h2>Konflikte und Entscheidungen</h2><ul>")
+        for k in spec.offene_konflikte:
+            status = (
+                f"entschieden ({_e(k.entscheider)}): {_e(k.entscheidung)}"
+                if k.entscheidung is not None else
+                "<span class='rot'>OFFEN — blockiert die Anwendung</span>")
+            z.append(f"<li><b>{_e(k.quellspalte)}</b>: {_e(k.frage)} — "
+                     f"{status}</li>")
+        z.append("</ul>")
+
+    z.append("<h2>Ergebnis der Anwendung</h2>")
+    klasse = "gruen" if not befunde else "rot"
+    z.append(
+        f"<p>Quellzeilen: <b>{zeilen_quelle}</b> — übersetzt: "
+        f"<b>{zeilen_ziel}</b> — Zeilen mit Befund (nicht ausgegeben): "
+        f"<span class='{klasse}'>{len(befunde)}</span></p>")
+    if befunde:
+        z.append("<ul>")
+        z.extend(f"<li>{_e(b)}</li>" for b in befunde)
+        z.append("</ul>")
+    if ziel_datei and ziel_sha256:
+        z.append(
+            f"<p class='hinweis'>Zielbindung: {_e(ziel_datei)} "
+            f"(SHA-256 {_e(ziel_sha256[:16])}&hellip;)</p>")
+
+    z.append("</body></html>")
+    return "\n".join(z) + "\n"
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     import argparse
     import json
@@ -129,7 +223,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--ziel", default=None,
                    help="Bestandsartefakt, das ziel_datei/ziel_sha256 binden "
                         "(fallrelativ; NICHT die Zeilenausgabe)")
+    p.add_argument("--bericht", default=None,
+                   help="Uebersetzungsbericht als HTML schreiben "
+                        "(Konvention: abgeleitet/berichte/"
+                        "uebersetzungsbericht.html; braucht --anwenden)")
+    p.add_argument("--bericht-titel", dest="bericht_titel",
+                   default="Uebersetzungsbericht",
+                   help="Ueberschrift des HTML-Berichts")
     args = p.parse_args(argv)
+
+    if args.bericht and not args.anwenden:
+        print("--bericht braucht --anwenden: Der Bericht zeigt das "
+              "Ergebnis der Anwendung, nicht nur die Spec.",
+              file=sys.stderr)
+        return 2
 
     fall = Path(args.fall).resolve()
     spec_pfad = Path(args.spec).resolve()
@@ -197,6 +304,23 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not ziel_bestand:
             print("    HINWEIS: ohne --ziel bleiben ziel_datei und "
                   "ziel_sha256 leer; A-M4 verwirft das Ergebnis dann.")
+
+    if args.bericht:
+        ziel_bestand = Path(args.ziel).resolve() if args.ziel else None
+        bindung = _ergebnis_json(
+            fall, spec_pfad, spec, list(quellspalten),
+            len(quellzeilen), len(zeilen), befunde, ziel_bestand)
+        seite = baue_uebersetzungsbericht(
+            titel=args.bericht_titel, spec=spec,
+            quellspalten=list(quellspalten),
+            zeilen_quelle=len(quellzeilen), zeilen_ziel=len(zeilen),
+            befunde=list(befunde),
+            ziel_datei=bindung.get("ziel_datei"),
+            ziel_sha256=bindung.get("ziel_sha256"))
+        ziel_bericht = Path(args.bericht)
+        ziel_bericht.parent.mkdir(parents=True, exist_ok=True)
+        ziel_bericht.write_text(seite, encoding="utf-8")
+        print(f"  Bericht: {ziel_bericht}")
     return 0
 
 

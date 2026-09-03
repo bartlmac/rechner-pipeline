@@ -246,24 +246,6 @@ def _pruefgroessen_zeilen(suite: Dict[str, Any]) -> List[str]:
     return zeilen
 
 
-def _mapping_zeilen(spec: TransformationsSpec) -> List[str]:
-    zeilen = []
-    for f in spec.felder:
-        if f.typ == "kodierung":
-            detail = "; ".join(f"{k} -> {v}" for k, v in f.kodierung.items())
-        elif f.typ == "berechnung":
-            detail = f.berechnung
-        else:
-            detail = "—"
-        ziel = f.ziel if f.typ != "nicht_uebernommen" else "(nicht übernommen)"
-        zeilen.append(
-            f"<tr><td>{_e(', '.join(f.quellen))}</td><td>{_e(ziel)}</td>"
-            f"<td>{_e(f.typ)}</td><td>{_e(detail)}</td>"
-            f"<td>{_e(f.begruendung)}</td></tr>"
-        )
-    return zeilen
-
-
 def _transformation_ergebnis_fehler(daten: Any) -> List[str]:
     """Minimalen Renderer-Vertrag eines Transformationsergebnisses prüfen."""
     if not isinstance(daten, dict):
@@ -704,7 +686,8 @@ def baue_bericht(
         "<!DOCTYPE html>", "<html lang='de'><head><meta charset='utf-8'>",
         f"<title>{_e(titel)}</title><style>{_STIL}</style></head><body>",
         f"<h1>{_e(titel)}</h1>",
-        f"<p>Migrationsstichtag: <b>{_e(stichtag_1)}</b> — "
+        "<p>Gate <b>A-M4</b> — Migrationscontrolling. "
+        f"Migrationsstichtag: <b>{_e(stichtag_1)}</b> — "
         f"Folgestichtag: <b>{_e(stichtag_2)}</b></p>",
     ]
     mengenbefunde = list(suite["mengenbefunde"])
@@ -817,37 +800,36 @@ def baue_bericht(
         teile.append("<p>Keine.</p>")
 
     if spec is not None:
-        teile.append("<h2>Transformation (fachliche Abnahme des Mappings)"
-                     "</h2>")
+        # Entmischungs-Entscheid des Maintainers (Sichtung Lauf 2): Die
+        # fachliche DARSTELLUNG der Datenuebersetzung traegt der eigene
+        # Uebersetzungsbericht des Produzenten (transformation_anwenden
+        # --bericht), frueh im Prozess. Hier bleibt die BINDUNG — der
+        # Vertrag (Pflichtartefakt, Hash-Pruefung, Abnahmehindernisse)
+        # ist unveraendert; nur eingebettet wird nicht mehr.
+        teile.append("<h2>Datenübersetzung (gebundenes Artefakt)</h2>")
+        offen = [k for k in spec.offene_konflikte
+                 if k.entscheidung is None]
+        entschieden = len(spec.offene_konflikte) - len(offen)
         teile.append(
             f"<p>Quelle: {_e(spec.quelle_datei)} "
             f"(SHA-256 {_e(spec.quelle_sha256[:16])}…), "
-            f"Akteur: {_e(spec.akteur)}</p>")
-        teile.append("<table><tr><th>Quellspalten</th><th>Zielfeld</th>"
-                     "<th>Art</th><th>Details</th><th>Begründung</th></tr>")
-        teile.extend(_mapping_zeilen(spec))
-        teile.append("</table>")
-        if spec.offene_konflikte:
-            teile.append("<h3>Konflikte und Entscheidungen</h3><ul>")
-            for k in spec.offene_konflikte:
-                status = (
-                    f"entschieden ({_e(k.entscheider)}): {_e(k.entscheidung)}"
-                    if k.entscheidung is not None else
-                    "<span class='rot'>OFFEN — blockiert die Anwendung</span>")
-                teile.append(
-                    f"<li><b>{_e(k.quellspalte)}</b>: {_e(k.frage)} — "
-                    f"{status}</li>")
-            teile.append("</ul>")
+            f"Akteur: {_e(spec.akteur)} — {len(spec.felder)} "
+            f"Feldabbildungen, {entschieden} entschiedene Konflikte. "
+            "Die fachliche Darstellung trägt der Übersetzungsbericht "
+            "des Falls; gebunden und nachgeprüft wird sie hier.</p>")
+        if offen:
+            teile.append(
+                f"<p class='rot'>{len(offen)} OFFENE Konflikte — "
+                "eine anwendbare Spec hat keine: "
+                + "; ".join(_e(k.quellspalte) for k in offen) + "</p>")
 
     if transformation_ergebnis is not None:
         te = transformation_ergebnis
-        teile.append("<h3>Transformationsergebnis (Anwendung des Mappings)"
-                     "</h3>")
         befunde = list(te.get("befunde", []))
         klasse = "gruen" if not befunde else "rot"
         teile.append(
             f"<p>Quellzeilen: <b>{int(te['zeilen_quelle']):d}</b> — "
-            f"transformiert: <b>{int(te['zeilen_ziel']):d}</b> — "
+            f"übersetzt: <b>{int(te['zeilen_ziel']):d}</b> — "
             f"Zeilen mit Befund (nicht ausgegeben): "
             f"<span class='{klasse}'>{len(befunde):d}</span></p>")
         if befunde:
@@ -1923,7 +1905,7 @@ def main(argv: Optional[List[str]] = None):
             bestandsbericht_nach=bestandsbericht_nach,
             fall=fall,
         ),
-        "mapping_tabelle": spec is not None,
+        "uebersetzung_gebunden": spec is not None,
         # Ausdruecklich: dieses Kommando nimmt nichts ab.
         "abnahme": "offen — Gate A-M4 (Mensch, gates/gate_entscheid)",
         "bericht_erzeugung": bericht_erzeugung,

@@ -73,6 +73,81 @@ def test_ohne_ziel_bleiben_die_bestandsbindungen_leer(monkeypatch, tmp_path):
     assert isinstance(ergebnis["schema_version"], int)
 
 
+class _Feld:
+    def __init__(self, quellen, ziel, typ="direkt", kodierung=None,
+                 berechnung=None, begruendung="aus der Quelle belegt"):
+        self.quellen, self.ziel, self.typ = quellen, ziel, typ
+        self.kodierung, self.berechnung = kodierung or {}, berechnung
+        self.begruendung = begruendung
+
+
+class _Konflikt:
+    def __init__(self, quellspalte, frage, entscheidung, entscheider=None):
+        self.quellspalte, self.frage = quellspalte, frage
+        self.entscheidung, self.entscheider = entscheidung, entscheider
+
+
+class _BerichtSpec:
+    quelle_datei = "abzug.csv"
+    quelle_sha256 = "ab" * 32
+    akteur = "quelle-experte"
+    felder = [
+        _Feld(["POLNR"], "police_id"),
+        _Feld(["VTG_STATUS"], "status", typ="kodierung",
+              kodierung={"NR": "nichtraucher"}),
+        _Feld(["STORNO_KZ"], "", typ="nicht_uebernommen",
+              begruendung='<script>alert("x")</script>'),
+    ]
+    offene_konflikte = [
+        _Konflikt("GESCHL", "Tarif rechnet unisex?",
+                  "entschieden durch den Menschen",
+                  "fachverantwortliche-rolle"),
+    ]
+
+
+def test_uebersetzungsbericht_traegt_abbildung_konflikte_und_ergebnis():
+    """Entmischungs-Entscheid der Lauf-2-Sichtung: Die fachliche
+    Darstellung der Uebersetzung zieht vom Abnahmebericht hierher um —
+    der Bericht muss also genau das tragen, was dort entfiel."""
+    seite = ta.baue_uebersetzungsbericht(
+        titel="Uebersetzungsbericht", spec=_BerichtSpec(),
+        quellspalten=["POLNR", "VTG_STATUS", "STORNO_KZ", "GESCHL"],
+        zeilen_quelle=834, zeilen_ziel=834, befunde=[],
+        ziel_datei="abgeleitet/bestand/bestand.parquet",
+        ziel_sha256="cd" * 32)
+
+    assert "POLNR" in seite and "police_id" in seite
+    assert "NR -&gt; nichtraucher" in seite            # Kodierung, escaped
+    assert "(nicht übernommen)" in seite
+    assert ("entschieden (fachverantwortliche-rolle): "
+            "entschieden durch den Menschen") in seite
+    assert "<b>834</b>" in seite
+    assert "Zielbindung" in seite and "cdcdcdcdcdcdcdcd" in seite
+    # Begruendungen sind Browser-Eingaben — entschaerft, nie roh.
+    assert "<script>" not in seite
+    assert "&lt;script&gt;" in seite
+
+
+def test_uebersetzungsbericht_ist_deterministisch_und_ohne_zeitstempel():
+    args = dict(
+        titel="Uebersetzungsbericht", spec=_BerichtSpec(),
+        quellspalten=["POLNR"], zeilen_quelle=1, zeilen_ziel=1,
+        befunde=["eine Zeile mit Befund"], ziel_datei=None,
+        ziel_sha256=None)
+    a = ta.baue_uebersetzungsbericht(**args)
+    assert a == ta.baue_uebersetzungsbericht(**args)
+    assert "erzeugt am" not in a.lower()
+    assert "eine Zeile mit Befund" in a
+    assert "Zielbindung" not in a                      # ohne --ziel: keine
+
+
+def test_bericht_braucht_anwenden():
+    """Fail fast statt leerer Behauptung: Ohne Anwendung gibt es kein
+    Ergebnis, das der Bericht zeigen koennte."""
+    assert ta.main(["--fall", "egal", "--spec", "egal",
+                    "--bericht", "egal.html"]) == 2
+
+
 def test_spec_hash_haengt_an_den_dateibytes(monkeypatch, tmp_path):
     """A-M4 rechnet spec_sha256 gegen die aktuellen Bytes nach.
 
