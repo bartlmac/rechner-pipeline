@@ -16,10 +16,16 @@ Korrekturen aus dem Lauf selbst, die Nacharbeit (adversarialer
 Review mit Fixes, E2E-Fixture, Abschlussdokumentation) und die
 Vorzeigeseite samt Auftritts-Werkzeugen (Merge-Plan Schritt 7).
 
-Kennzahlen: 208 Commits auf Basis 33e9dec (Merge PR #10), 301
-Dateien, +74,0k/-3,0k Zeilen — gezaehlt EINSCHLIESSLICH dieses
+Kennzahlen: 213 Commits auf Basis 33e9dec (Merge PR #10), 304
+Dateien, +74,7k/-3,1k Zeilen — gezaehlt EINSCHLIESSLICH dieses
 Leitfaden-Stands; wer nachrechnet (git log main..fallbericht),
-muss auf dieselbe Zahl kommen. Endzustand: Suite 1544 gruen (0
+muss auf dieselbe Zahl kommen. Die Zahl gilt fuer den
+EROEFFNUNGS-Stand des PR; Fix-Commits aus dem Review kommen wie
+ueblich dazu. Die laufende Weiterentwicklung der Vorzeigeseite ist
+aus diesem PR bewusst HERAUSGELOEST — sie kommt als eigener kleiner
+Folge-PR (Merge-Plan Schritt 8b), damit die Pruefung des
+System-Strangs nicht auf Darstellungsarbeit wartet.
+Endzustand: Suite 1552 gruen (0
 Skips), Kern 3.4.0, Fall vollstaendig gezeichnet (fuenf Gates auf
 Systemstand 4b1abf0; A-M4 834/834, Schichtbeleg-Residuensumme
 -0,14 EUR).
@@ -138,14 +144,18 @@ muss es zeigen)? Ist jede Toleranz-Aufweitung aus der Lieferung
 begruendet (je fuer sich gerundete Komponente) und nirgends ein
 bequemes Pauschalmass?
 
-### Stufe 5 — Nacharbeit (4b1abf0.. ohne den Vorzeige-Ast, 21 Commits)
+### Stufe 5 — Nacharbeit (4b1abf0.. ohne den Vorzeige-Ast, 26 Commits)
 
 Abschlussbericht und Auswertung (5983417), die 13
 Review-Nacharbeits-Commits (009464d..af2718a, je Commit ein Befund
 mit Referenz auf die Befundliste), E2E-Fixture des zweiten Laufs
-(822ce75), Merge-Plan-Staende, dieser Leitfaden samt Nachtraegen —
-und die Versionierung der vier Auskunftsschreiben der Lieferung
-(ce89ad6). Zu letzteren die Antwort auf die naheliegende
+(822ce75), Merge-Plan-Staende, dieser Leitfaden samt Nachtraegen,
+die Versionierung der vier Auskunftsschreiben der Lieferung
+(ce89ad6) — und die Sichtungs-Nacharbeit des Maintainers:
+Pruefplan (d5f3d41), Veraenderungs-Dokument des Falls (c8ca1d6),
+Umbaubericht-Ausgabe des Umbaubudgets (623ba8d) und der
+Producer-Split Uebersetzungsbericht/A-M4-Etikettierung (5f39c87,
+wirkt ab dem naechsten Lauf). Zu letzteren die Antwort auf die naheliegende
 Reviewer-Frage, warum Dokumente der abgebenden Gesellschaft im Repo
 liegen: Die Lieferungs-Ablage lieferungen/ ist der versionierte
 Lieferungs-Nachweis des (simulierten) Falls — wie schon bei der

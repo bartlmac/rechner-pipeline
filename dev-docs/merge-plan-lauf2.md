@@ -174,6 +174,15 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    (Kern 3.3.0) und der Kandidaten-Korridor 2c4e0b2 — der
    Schnitt-Vorbehalt von Schritt 8 ist damit sicher ausgeloest, die
    A/B/C-Grenzen sind nach Laufende neu zu bewerten.
+8b. [ ] Seiten-Folge-PR: vorzeige-url -> main NACH dem Haupt-Merge
+   (Owner: Maintainer; Vorbereitung merge-session). Eingefuehrt
+   2026-09-03: Die Vorzeigeseite braucht laenger, der Haupt-PR
+   wartet nicht auf Darstellung. Kleiner PR mit eigenem
+   Mini-Leitfaden: werkzeuge/ (grafik/darstellung/falldaten),
+   vorzeige-seite/, tests/test_werkzeuge.py und die
+   Statische-Stellen-Notiz; der Cherry-pick 759548f (=c8ca1d6)
+   laeuft als leerer Diff durch. Vorbedingung: Barteks Sichtung des
+   Redesigns; Basis nach dem Haupt-Merge auf main heben.
 6b. [ ] T18-Korrekturen (Owner: nach Maintainer-Entscheid;
    fruehestens nach Anstoss von Fall-Lauf 2 — so entschieden
    2026-09-01): eigener Korrektur-PR gegen main, Geschwister zu
@@ -224,6 +233,14 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    liegt", der e2e-Test erwartet die Luecke "umbau" — beides
    korrekt, zwei Eingaben (echter Lauf-2-Fall mit Umbaubudget vs.
    Fixture ohne).
+   NACHTRAG 2026-09-03 (Maintainer-Entscheid, PR nicht blockieren):
+   Die NACH dem Merge 9c1f36a weitergelaufene Seiten-Arbeit
+   (Redesign, Kacheln, Sichtungsrunden; a34342b..vorzeige-url)
+   kommt NICHT mehr in diesen Strang — der geplante gesammelte
+   Rueck-Merge entfaellt zugunsten des Seiten-Folge-PR
+   (Schritt 8b). Die Seiten-Session arbeitet auf vorzeige-url
+   unabhaengig weiter; veroeffentlicht wird ohnehin manuell und
+   getrennt vom Code-Merge.
 8. [ ] fallbericht -> main als EIN PR mit Review-Leitfaden (Owner:
    Maintainer). REVIDIERT 2026-09-02 (Maintainer-Entscheid nach
    Lauf-Ende): Der 2026-09-01 im Plan selbst angelegte Vorbehalt ist
