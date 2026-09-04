@@ -30,7 +30,11 @@ Aufruf::
 
     python werkzeuge/falldaten.py --fall faelle/<fall> --out daten.json
     python werkzeuge/fallbericht.py --daten daten.json --out bericht.html \\
-        [--texte texte.json] [--sicht vorzeige|intern]
+        [--texte texte.json]
+
+Der Renderer gibt BEIDE Sichten gemeinsam aus; eine Auswahl ueber
+``--sicht`` stand hier frueher im Aufrufvertrag, war aber nie gebaut
+(externes Review T19-07).
 """
 
 from __future__ import annotations

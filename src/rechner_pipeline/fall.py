@@ -79,15 +79,21 @@ FALL_SCOPES = ("tarif", "bestand")
 #:   Uebernahmestand nicht belegt, und eine finanzielle Abnahme des
 #:   Gesamtbestands naehme etwas ab, dessen Grundlage offen ist.
 #:
-#: ``A-M2`` und ``A-M3`` sind BEWUSST keine Pflichtbelege von ``A-M4``.
-#: Sie sind eigene Gates, gerade damit an ihnen getrennt weitergearbeitet
-#: werden kann: Verlaufs- und Geschaeftsvorfallwerte liefert ein
-#: abgebendes Unternehmen oft erst in einer spaeteren Phase, waehrend die
-#: Migration auf dem belegten Stichtagstest bereits laeuft. Wer sie
-#: zwingend vorschaltet, blockiert die Migration an Daten, die es noch
-#: nicht gibt — und wer sie ganz weglaesst, hat den Test nicht
-#: vollstaendig gefahren. Beides ist eine Entscheidung des Aktuariats je
-#: Fall, keine Eigenschaft der Gate-Kette.
+#: ``A-M2`` und ``A-M3`` sind im Bestands-Scope EBENFALLS
+#: Pflichtbelege von ``A-M4`` (Entscheid des Aktuariats
+#: 2026-08-31, gebaut mit den drei Abnahmen): Wer den
+#: Gesamtbestand finanziell abnimmt, tut das auf Stichtags-,
+#: Verlaufs- und Geschaeftsvorfallwerten — ein Bestand, dessen
+#: Bewegungen ungeprueft sind, ist nicht abgenommen, sondern nur
+#: zum Stichtag betrachtet.
+#:
+#: Die frueher hier vermerkte Gegenposition (A-M2/A-M3 bewusst
+#: KEINE Pflichtbelege, damit eine Migration auf spaeter
+#: gelieferten Verlaufsdaten nicht blockiert) ist damit
+#: ueberholt; sie stand bis zum externen Review T19-05
+#: unmittelbar neben dem Code, der das Gegenteil erzwingt. Wer
+#: den Scope aendert, aendert BELEGROLLEN und diesen Absatz
+#: gemeinsam.
 BELEGROLLEN = {
     "A-M1": {
         "tarif": (),
