@@ -142,6 +142,7 @@ def test_harmloser_text_bleibt_unveraendert():
 @pytest.mark.parametrize("pfad", [
     "simulation/baldrian/irgendwas.csv",
     "docs-local/notiz.md",
+    "regie/drehbuch-lauf2.md",
     "irgendwo/MANIPULATIONEN.md",
     "ein/anderer/ort/NOTIZEN.md",
 ])
@@ -153,6 +154,49 @@ def test_regie_wird_nicht_veroeffentlicht(tmp_path, pfad):
 
     with pytest.raises(vz.VeroeffentlichungFehler):
         vz._pruefe_regie(ziel)
+
+
+def test_die_sperrliste_traegt_alle_spielleiter_bereiche():
+    """Befund T19-01 (externes Review): ``regie/`` fehlte in REGIE.
+
+    Der Unit-Test oben haette den Fehler nie gefunden — er prueft die
+    Funktion mit den Werten, die die Konstante ohnehin kennt. Die
+    Zusicherung steht aber woanders: dev-docs/regie.md nennt DREI
+    Spielleiter-Bereiche und verspricht den Abbruch fuer alle. Diese
+    Zusicherung ist hier festgeschrieben, damit ein vierter Bereich
+    nicht wieder nur in Prosa existiert.
+    """
+    assert set(vz.REGIE) == {"simulation", "docs-local", "regie"}
+
+
+def test_echter_seitenbau_kopiert_kein_regie_dokument(tmp_path):
+    """Der Weg, nicht nur die Wache: So hat das externe Review den
+    Befund reproduziert — ueber die CLI, nicht ueber die Funktion.
+
+    Ohne diesen Test bliebe die Luecke bestehen, wenn jemand die
+    Pruefung im Renderer versehentlich hinter das Lesen schoebe.
+    """
+    fall = tmp_path / "faelle" / "ein-fall"
+    (fall / "abgeleitet").mkdir(parents=True)
+    (fall / "fall.json").write_text('{"name": "ein-fall"}', encoding="utf-8")
+    daten = tmp_path / "modell.json"
+    daten.write_text('{"fall": {"name": "ein-fall"}}', encoding="utf-8")
+    drehbuch = tmp_path / "regie" / "drehbuch.md"
+    drehbuch.parent.mkdir(parents=True)
+    drehbuch.write_text("GEHEIME AUFLOESUNG", encoding="utf-8")
+    ziel = tmp_path / "seite"
+
+    exit_code = vz.main([
+        "--fall", str(fall), "--daten", str(daten),
+        "--out", str(ziel), "--verlauf", str(drehbuch),
+        "--repo", str(tmp_path),
+    ])
+
+    assert exit_code != 0, "der Seitenbau muss abbrechen"
+    erzeugt = list(ziel.rglob("*")) if ziel.exists() else []
+    assert not any(
+        p.is_file() and "GEHEIME AUFLOESUNG" in p.read_text(encoding="utf-8")
+        for p in erzeugt), "kein Regie-Text darf im Zielbaum liegen"
 
 
 def test_gewoehnlicher_fallpfad_passiert_die_sperre(tmp_path):

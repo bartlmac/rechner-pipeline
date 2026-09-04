@@ -61,8 +61,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 #: Verzeichnisse, aus denen NICHTS auf die Seite gelangen darf. Sie
-#: tragen die Aufloesungen des Vorfuehrfalls.
-REGIE = ("simulation", "docs-local")
+#: tragen die Aufloesungen des Vorfuehrfalls. Die Liste MUSS alle
+#: Spielleiter-Bereiche aus dev-docs/regie.md tragen — dort steht die
+#: Zusicherung, die dieser Code halten muss ("die Vorzeigeseite bricht
+#: ab, wenn etwas davon in die Veroeffentlichung geriete"). ``regie/``
+#: fehlte bis zum externen Review T19-01 und war damit die einzige
+#: Zusicherung ohne Deckung.
+REGIE = ("simulation", "docs-local", "regie")
 
 #: Dateien, die auch einzeln nie veroeffentlicht werden — der Name
 #: allein genuegt, egal wo sie liegen.
