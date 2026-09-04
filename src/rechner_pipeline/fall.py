@@ -49,6 +49,7 @@ import stat
 import sys
 import tempfile
 import time
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
@@ -362,6 +363,9 @@ def _dateigroesse(pfad: Path) -> int:
 
 def _schuetze_datei(pfad: Path) -> None:
     """Eine bereits vorhandene regulaere Eingangskopie sicher schuetzen."""
+    if os.name == "nt":
+        _schuetze_datei_windows(pfad)
+        return
     fd: Optional[int] = None
     try:
         fd = os.open(pfad, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
@@ -380,6 +384,69 @@ def _schuetze_datei(pfad: Path) -> None:
     finally:
         if fd is not None:
             os.close(fd)
+
+
+def _schuetze_datei_windows(pfad: Path) -> None:
+    """Windows-Schreibschutz am nicht gefolgten Datei-Handle setzen."""
+    import ctypes
+    from ctypes import wintypes
+
+    class FileBasicInfo(ctypes.Structure):
+        _fields_ = [
+            ("creation_time", ctypes.c_longlong),
+            ("last_access_time", ctypes.c_longlong),
+            ("last_write_time", ctypes.c_longlong),
+            ("change_time", ctypes.c_longlong),
+            ("file_attributes", wintypes.DWORD),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.GetFileInformationByHandleEx.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD
+    ]
+    kernel32.SetFileInformationByHandle.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD
+    ]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel32.CreateFileW(
+        str(pfad),
+        0x0080 | 0x0100,  # FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES
+        0x0001 | 0x0002 | 0x0004,  # FILE_SHARE_READ | WRITE | DELETE
+        None,
+        3,  # OPEN_EXISTING
+        0x00200000,  # FILE_FLAG_OPEN_REPARSE_POINT
+        None,
+    )
+    if handle == wintypes.HANDLE(-1).value:
+        raise OSError(ctypes.get_last_error(), "Datei-Handle kann nicht geoeffnet werden")
+    try:
+        info = FileBasicInfo()
+        if not kernel32.GetFileInformationByHandleEx(
+            handle, 0, ctypes.byref(info), ctypes.sizeof(info)
+        ):
+            raise OSError(ctypes.get_last_error(), "Dateiattribute sind nicht lesbar")
+        if info.file_attributes & 0x0400:  # FILE_ATTRIBUTE_REPARSE_POINT
+            raise FallFehler(f"keine regulaere Datei: {pfad}")
+        info.file_attributes |= 0x0001  # FILE_ATTRIBUTE_READONLY
+        if not kernel32.SetFileInformationByHandle(
+            handle, 0, ctypes.byref(info), ctypes.sizeof(info)
+        ):
+            raise OSError(ctypes.get_last_error(), "Schreibschutz kann nicht gesetzt werden")
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _ersetze_atomar(temp_pfad: Path, pfad: Path) -> None:
+    """Atomar publizieren; transiente Windows-Sperren begrenzt abwarten."""
+    for versuch in range(10):
+        try:
+            os.replace(temp_pfad, pfad)
+            return
+        except PermissionError:
+            if os.name != "nt" or versuch == 9:
+                raise
+            time.sleep(0.01)
 
 
 def _jetzt_utc() -> str:
@@ -403,7 +470,7 @@ def _schreibe_json(pfad: Path, daten: Dict[str, Any]) -> None:
             suffix=".tmp",
         )
         temp_pfad = Path(temp_name)
-        if hasattr(os, "fchmod"):
+        if os.name != "nt" and hasattr(os, "fchmod"):
             os.fchmod(fd, 0o644)
         with os.fdopen(fd, "wb") as stream:
             fd = None
@@ -414,7 +481,7 @@ def _schreibe_json(pfad: Path, daten: Dict[str, Any]) -> None:
             raise FallFehler(
                 f"JSON-Ziel ist ein Symlink ({pfad}) — Schreiben verweigert"
             )
-        os.replace(temp_pfad, pfad)
+        _ersetze_atomar(temp_pfad, pfad)
     except OSError as exc:
         raise FallFehler(
             f"JSON kann nicht sicher geschrieben werden ({pfad}): {exc}"

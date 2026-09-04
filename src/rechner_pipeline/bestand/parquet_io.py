@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -79,6 +80,18 @@ def _dateimodus() -> int:
 _DATEIMODUS = _dateimodus()
 
 
+def _ersetze_atomar(temp: Path, ziel: Path) -> None:
+    """Atomar ersetzen; kurzzeitige Windows-Dateisperren begrenzt abwarten."""
+    for versuch in range(10):
+        try:
+            os.replace(temp, ziel)
+            return
+        except PermissionError:
+            if os.name != "nt" or versuch == 9:
+                raise
+            time.sleep(0.01)
+
+
 def write_portfolio(
     df: pd.DataFrame, path: Path, *, exklusiv: bool = False
 ) -> Path:
@@ -134,7 +147,7 @@ def write_portfolio(
             os.link(tmp, path)
             tmp.unlink()
         else:
-            os.replace(tmp, path)
+            _ersetze_atomar(tmp, path)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise

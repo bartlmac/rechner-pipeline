@@ -902,7 +902,7 @@ def _artefakt_hashes(fall: Path, ausser_gate: str = "") -> Dict[str, str]:
                 continue
             kandidaten.append(pfad)
     return {
-        str(p.relative_to(fall)): _sha256_datei(p)
+        p.relative_to(fall).as_posix(): _sha256_datei(p)
         for p in kandidaten if p.is_file()
     }
 

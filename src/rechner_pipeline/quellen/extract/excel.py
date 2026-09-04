@@ -34,6 +34,14 @@ _A1_RE = re.compile(r"(\$?)([A-Z]{1,3})(\$?)(\d+)$")
 _SHEET_A1_RE = re.compile(r"((?:'[^']+'|[A-Za-z0-9_]+)!)?(\$?[A-Z]{1,3}\$?\d+)")
 
 
+def _is_windows_reserved(name: str) -> bool:
+    """Windows-reservierte Namen ohne Python-3.14-Warnung erkennen."""
+    is_reserved = getattr(os.path, "isreserved", None)
+    if is_reserved is not None:
+        return bool(is_reserved(name))
+    return PureWindowsPath(name).is_reserved()
+
+
 class ExportArtifactTargetError(ValueError):
     """Ein geplanter Exportpfad ist nicht als regulaere Einzeldatei sicher."""
 
@@ -181,7 +189,7 @@ def sheet_artifact_filenames(sheet_names: List[str], max_len: int = 180) -> List
     used = {_artifact_collision_key(name) for name in _RESERVED_EXPORT_FILENAMES}
     for sheet_name in sheet_names:
         base = safe_filename(sheet_name, max_len=max_len)
-        if PureWindowsPath(f"{base}.csv").is_reserved():
+        if _is_windows_reserved(f"{base}.csv"):
             base = f"_{base}"[:max_len]
         counter = 1
         while True:

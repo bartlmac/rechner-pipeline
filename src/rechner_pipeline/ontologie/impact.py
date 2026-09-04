@@ -104,9 +104,18 @@ def normalisiere(datei: str, repo_root: Optional[Path] = None) -> Optional[str]:
     gibt None zurueck — der Aufrufer behandelt das konservativ, statt
     es still als "keine Auswirkung" abzulegen (Review-Befund).
     """
-    roh = datei.strip().strip('"').replace("\\", "/")
-    if not roh:
+    roh_native = datei.strip().strip('"')
+    if not roh_native:
         return None
+    nativer_pfad = Path(roh_native)
+    if nativer_pfad.is_absolute():
+        try:
+            return nativer_pfad.resolve().relative_to(
+                (repo_root or Path.cwd()).resolve()
+            ).as_posix()
+        except ValueError:
+            return None
+    roh = roh_native.replace("\\", "/")
     pfad = PurePosixPath(roh)
     if pfad.is_absolute():
         wurzel = PurePosixPath(

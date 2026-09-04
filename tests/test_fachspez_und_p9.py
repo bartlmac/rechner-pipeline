@@ -391,7 +391,9 @@ def test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt():
         return False
 
     baeume = {
-        str(pfad.relative_to(src)): ast.parse(pfad.read_text(encoding="utf-8"))
+        pfad.relative_to(src).as_posix(): ast.parse(
+            pfad.read_text(encoding="utf-8")
+        )
         for pfad in src.rglob("*.py")
     }
     assert sorted(n for n, b in baeume.items() if _importiert_subprocess(b)) == [

@@ -647,6 +647,13 @@ def test_hash_files_base_none_keeps_path_as_given(tmp_path):
     assert key == str(f)  # exact path string, not relativized
 
 
+def test_hash_files_outside_base_uses_canonical_absolute_key(tmp_path):
+    f = tmp_path / "x.txt"
+    f.write_text("hello", encoding="utf-8")
+    out = _common.hash_files([f], base=tmp_path / "andere-basis")
+    assert list(out) == [f.resolve().as_posix()]
+
+
 def test_schemas_constants_are_common_source_of_truth():
     from rechner_pipeline.models import schemas as _schemas
 

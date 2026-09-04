@@ -12,19 +12,26 @@
 # den Build rot gefaerbt, ohne dass sich hier etwas geaendert hat — ein
 # Signal ohne Aussage. Die Warnungs-Strenge bleibt deshalb unangetastet;
 # reproduzierbar wird stattdessen die Eingabe. requirements-dev.txt ist
-# unter CPython 3.11 verifiziert (2026-08-19).
+# unter CPython 3.11 verifiziert (2026-08-19). Die Matrix prueft zusaetzlich
+# Windows sowie die neueste unterstuetzte Python-Linie, weil Pfad- und
+# Deprecation-Verhalten plattform- und versionsabhaengig ist.
 name: tests
 on:
   push:
   pull_request:
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.14"]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pip install -e . --no-deps
       - name: Pflicht-E2E O3 und G-2

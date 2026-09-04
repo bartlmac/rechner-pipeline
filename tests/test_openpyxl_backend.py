@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import csv
+import errno
 import json
+import os
 from pathlib import Path, PureWindowsPath
 
 import pytest
@@ -87,7 +89,15 @@ def test_sheet_artifact_names_cover_portable_and_derived_collisions():
     windows_reserved = sheet_artifact_filenames(
         ["CON", "CON.txt", "AUX", "NUL", "COM1", "LPT9"]
     )
-    assert not any(PureWindowsPath(name).is_reserved() for name in windows_reserved)
+    def is_reserved(name: str) -> bool:
+        pruefer = getattr(os.path, "isreserved", None)
+        return (
+            bool(pruefer(name))
+            if pruefer is not None
+            else PureWindowsPath(name).is_reserved()
+        )
+
+    assert not any(is_reserved(name) for name in windows_reserved)
     assert len(windows_reserved) == len(
         {name.casefold() for name in windows_reserved}
     )
@@ -365,7 +375,24 @@ def test_sheet_export_does_not_follow_symlink_inserted_after_preflight(
 
     def preflight_then_insert_symlink(path: Path, filenames) -> None:
         real_preflight(path, filenames)
-        second_target.symlink_to(victim)
+        try:
+            second_target.symlink_to(victim)
+        except OSError as exc:
+            nicht_verfuegbar = (
+                getattr(exc, "winerror", None) in {5, 1314}
+                or exc.errno in {
+                    errno.EACCES,
+                    errno.EPERM,
+                    getattr(errno, "ENOTSUP", -1),
+                    getattr(errno, "EOPNOTSUPP", -1),
+                }
+            )
+            if nicht_verfuegbar:
+                pytest.skip(
+                    "Symlinks sind auf diesem Dateisystem nicht verfuegbar: "
+                    f"{exc}"
+                )
+            raise
 
     monkeypatch.setattr(
         openpyxl_backend,

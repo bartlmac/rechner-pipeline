@@ -29,6 +29,7 @@ import pytest
 
 from rechner_pipeline.gates._common import (
     Exit,
+    hash_files,
     load_gate_ledger,
     run_command,
 )
@@ -404,10 +405,11 @@ def test_fallloses_kommando_schreibt_nur_roten_bericht_und_ledger(
     assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
     assert "ohne Fallbindung nicht autoritativ" in text
     assert "POLNR" in text and "vor/index.html" in text
+    assert "vor\\index.html" not in text and "nach\\index.html" not in text
     # Provenienz: Eingaben UND Ausgabe gehasht (ein bestandenes Gate ohne
     # input_hashes wuerde das Dossier blockieren).
-    assert result.input_hashes and str(suite_pfad) in str(result.input_hashes)
-    assert list(result.output_hashes) == [str(bericht)]
+    assert result.input_hashes and str(suite_pfad) in result.input_hashes
+    assert list(result.output_hashes) == list(hash_files([bericht]))
     assert result.summary["bestanden"] == 2
     assert result.summary["mapping_tabelle"] is True
     renderer_artefakte = result.summary["renderer_artefakte"]

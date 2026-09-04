@@ -831,13 +831,15 @@ def baue_bericht(
     if bestandsbericht_vor or bestandsbericht_nach:
         teile.append("<h2>Bestandsberichte (visueller Vergleich)</h2><ul>")
         if bestandsbericht_vor:
+            href = bestandsbericht_vor.replace("\\", "/")
             teile.append(f"<li>VOR der Migration: <a href="
-                         f"'{_e(bestandsbericht_vor)}'>"
-                         f"{_e(bestandsbericht_vor)}</a></li>")
+                         f"'{_e(href)}'>"
+                         f"{_e(href)}</a></li>")
         if bestandsbericht_nach:
+            href = bestandsbericht_nach.replace("\\", "/")
             teile.append(f"<li>NACH der Migration: <a href="
-                         f"'{_e(bestandsbericht_nach)}'>"
-                         f"{_e(bestandsbericht_nach)}</a></li>")
+                         f"'{_e(href)}'>"
+                         f"{_e(href)}</a></li>")
         teile.append("</ul>")
 
     teile.append("</body></html>")
@@ -848,7 +850,10 @@ def schreibe_bericht(pfad: Path, **kwargs: Any) -> Path:
     """Bericht bauen und schreiben; gibt den Pfad zurück."""
     pfad = Path(pfad)
     pfad.parent.mkdir(parents=True, exist_ok=True)
-    pfad.write_text(baue_bericht(**kwargs), encoding="utf-8")
+    # Der Bericht ist ein gehashtes Beweisartefakt. ``Path.write_text``
+    # uebersetzt unter Windows LF zu CRLF und macht denselben Renderer-Vertrag
+    # damit plattformabhaengig. Bytes halten die kanonischen LF unveraendert.
+    pfad.write_bytes(baue_bericht(**kwargs).encode("utf-8"))
     return pfad
 
 

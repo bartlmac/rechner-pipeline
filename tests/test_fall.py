@@ -6,11 +6,13 @@ Knoten: system/fall
 from __future__ import annotations
 
 import json
+import errno
 import os
 import stat
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -32,6 +34,29 @@ def quelle(tmp_path: Path) -> Path:
     q.parent.mkdir()
     q.write_bytes(b"excel-bytes-v1")
     return q
+
+
+def _symlink_to(
+    link: Path, ziel: Path, *, target_is_directory: bool = False
+) -> None:
+    """Symlink-Sicherheit nur testen, wenn der Prozess Links anlegen darf."""
+    try:
+        link.symlink_to(ziel, target_is_directory=target_is_directory)
+    except OSError as exc:
+        nicht_verfuegbar = (
+            getattr(exc, "winerror", None) in {5, 1314}
+            or exc.errno in {
+                errno.EACCES,
+                errno.EPERM,
+                getattr(errno, "ENOTSUP", -1),
+                getattr(errno, "EOPNOTSUPP", -1),
+            }
+        )
+        if nicht_verfuegbar:
+            pytest.skip(
+                f"Symlinks sind auf diesem Dateisystem nicht verfuegbar: {exc}"
+            )
+        raise
 
 
 def test_anlegen_erzeugt_layout_und_ueberschreibt_nie(tmp_path: Path) -> None:
@@ -291,7 +316,7 @@ def test_registrieren_lehnt_symlink_als_quelle_ab(
     anlegen(f)
     ziel = tmp_path / "fehlt.bin" if dangling else quelle
     link = tmp_path / "quellen-link.bin"
-    link.symlink_to(ziel)
+    _symlink_to(link, ziel)
 
     with pytest.raises(FallFehler, match="Quelle ist ein Symlink"):
         registrieren(f, link)
@@ -314,7 +339,7 @@ def test_registrieren_schreibt_nicht_durch_eingangs_symlink_nach_aussen(
     if not dangling:
         extern.write_bytes(b"extern-vorher")
     kopie = f / "eingang" / quelle.name
-    kopie.symlink_to(extern)
+    _symlink_to(kopie, extern)
 
     with pytest.raises(FallFehler, match="Eingangsziel.*Symlink"):
         registrieren(f, quelle)
@@ -341,7 +366,7 @@ def test_registrieren_lehnt_symlink_als_eingangsregister_ab(
     if not dangling:
         extern.write_text('{"quellen": [], "schema_version": 1}\n', encoding="utf-8")
         vorher = extern.read_bytes()
-    register.symlink_to(extern)
+    _symlink_to(register, extern)
 
     with pytest.raises(FallFehler, match="Eingangs-Register ist ein Symlink"):
         registrieren(f, quelle)
@@ -366,7 +391,7 @@ def test_symlink_im_nachtragen_zeitfenster_wird_abgelehnt(
     def hash_mit_angriff(pfad: Path) -> str:
         wert = original(pfad)
         if pfad == quelle and not kopie.exists() and not kopie.is_symlink():
-            kopie.symlink_to(extern)
+            _symlink_to(kopie, extern)
         return wert
 
     monkeypatch.setattr(fall_mod, "_sha256", hash_mit_angriff)
@@ -427,7 +452,7 @@ def test_spaeter_symlink_im_nachtragen_zeitfenster_wird_abgelehnt(
         original(pfad)
         pfad.chmod(0o644)
         pfad.unlink()
-        pfad.symlink_to(extern)
+        _symlink_to(pfad, extern)
 
     monkeypatch.setattr(fall_mod, "_schuetze_datei", schuetzen_mit_angriff)
 
@@ -454,7 +479,7 @@ def test_symlink_nach_finalem_zielhash_wird_abgelehnt(
         if pfad == kopie and not kopie.is_symlink():
             kopie.chmod(0o644)
             kopie.unlink()
-            kopie.symlink_to(extern)
+            _symlink_to(kopie, extern)
         return wert
 
     monkeypatch.setattr(fall_mod, "_sha256", hash_mit_spaetem_angriff)
@@ -491,7 +516,7 @@ def test_pruefen_meldet_registrierten_symlink_statt_gruen(
     extern = tmp_path / "extern.bin"
     if not dangling:
         extern.write_bytes(quelle.read_bytes())
-    kopie.symlink_to(extern)
+    _symlink_to(kopie, extern)
 
     fehler = pruefen(f)
 
@@ -515,7 +540,7 @@ def test_pruefen_bleibt_bei_symlink_im_hash_zeitfenster_rot(
         if pfad == kopie and not kopie.is_symlink():
             kopie.chmod(0o644)
             kopie.unlink()
-            kopie.symlink_to(extern)
+            _symlink_to(kopie, extern)
         return original(pfad)
 
     monkeypatch.setattr(fall_mod, "_sha256", hash_mit_angriff)
@@ -537,7 +562,7 @@ def test_register_symlink_im_lesezeitfenster_wird_nicht_gefolgt(
         vorhanden = original_exists(pfad)
         if pfad == register and not pfad.is_symlink():
             pfad.unlink()
-            pfad.symlink_to(extern)
+            _symlink_to(pfad, extern)
         return vorhanden
 
     monkeypatch.setattr(Path, "exists", exists_mit_angriff)
@@ -553,7 +578,7 @@ def test_pruefen_meldet_unregistrierten_dangling_symlink(
     anlegen(f)
     registrieren(f, quelle)
     fremd = f / "eingang" / "fremd.csv"
-    fremd.symlink_to(tmp_path / "nicht-vorhanden.csv")
+    _symlink_to(fremd, tmp_path / "nicht-vorhanden.csv")
 
     assert any(
         "fremd.csv" in meldung and "Symlink ohne Registrierung" in meldung
@@ -570,7 +595,7 @@ def test_eingangszone_als_symlink_blockiert_registrierung_und_pruefung(
     eingang.rmdir()
     extern = tmp_path / "externer-eingang"
     extern.mkdir()
-    eingang.symlink_to(extern, target_is_directory=True)
+    _symlink_to(eingang, extern, target_is_directory=True)
 
     with pytest.raises(FallFehler, match="Eingangszone ist ein Symlink"):
         registrieren(f, quelle)
@@ -739,6 +764,28 @@ def test_register_wird_erst_als_vollstaendiges_json_atomar_publiziert(
     assert json.loads(register_pfad.read_text(encoding="utf-8")) == neu
 
 
+def test_register_publish_retryt_transiente_windows_sperre(monkeypatch) -> None:
+    versuche = []
+    schlaf = []
+
+    def ersetzen(temp, ziel):
+        versuche.append((temp, ziel))
+        if len(versuche) < 3:
+            raise PermissionError("kurz gesperrt")
+
+    monkeypatch.setattr(
+        fall_mod, "os", SimpleNamespace(name="nt", replace=ersetzen)
+    )
+    monkeypatch.setattr(
+        fall_mod, "time", SimpleNamespace(sleep=schlaf.append)
+    )
+
+    fall_mod._ersetze_atomar(Path("temp"), Path("ziel"))
+
+    assert len(versuche) == 3
+    assert schlaf == [0.01, 0.01]
+
+
 def test_fehlgeschlagene_atomare_publikation_laesst_register_unveraendert(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -772,7 +819,7 @@ def test_registrierungs_lock_folgt_keinem_symlink(
     anlegen(fall)
     extern = tmp_path / "externes-lockziel"
     extern.write_bytes(b"unveraendert")
-    (fall / fall_mod.EINGANG_REGISTER_LOCK).symlink_to(extern)
+    _symlink_to(fall / fall_mod.EINGANG_REGISTER_LOCK, extern)
 
     with pytest.raises(FallFehler, match="Registrierungs-Lock ist ein Symlink"):
         registrieren(fall, quelle)

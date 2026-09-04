@@ -127,10 +127,10 @@ def _modulpfad(dotted: str, src: Path) -> Optional[str]:
         if teile[1:] else None
     )
     if kandidat is not None:
-        return str(kandidat.relative_to(src.parent))
+        return kandidat.relative_to(src.parent).as_posix()
     init = _exakt_geschriebene_datei(src, [*teile[1:], "__init__.py"])
     if init is not None:
-        return str(init.relative_to(src.parent))
+        return init.relative_to(src.parent).as_posix()
     return None
 
 
@@ -164,7 +164,7 @@ def baue_karte(src: Path) -> Dict[str, object]:
     for pfad in sorted(src.rglob("*.py")):
         if "__pycache__" in pfad.parts:
             continue
-        rel = str(pfad.relative_to(src.parent))
+        rel = pfad.relative_to(src.parent).as_posix()
         text = pfad.read_text(encoding="utf-8")
         baum = ast.parse(text)
         defs = sorted(

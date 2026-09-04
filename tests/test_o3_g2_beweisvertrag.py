@@ -192,7 +192,7 @@ def _bereite_bestandsfall(tmp_path: Path) -> Path:
             "spec_sha256": sha256(spec_pfad.read_bytes()).hexdigest(),
             "quelle_sha256": transformationsquelle["sha256"],
             "quellspalten": list(ZIEL_PFLICHT),
-            "ziel_datei": str(ziel.relative_to(fall)),
+            "ziel_datei": ziel.relative_to(fall).as_posix(),
             "ziel_sha256": ziel_hash,
             "zeilen_quelle": 1,
             "zeilen_ziel": 1,

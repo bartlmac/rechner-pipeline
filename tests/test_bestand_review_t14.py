@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as _dt
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -23,6 +24,7 @@ from rechner_pipeline.bestand.abschluss import (
 )
 from rechner_pipeline.bestand.auswertung import einzelwerte_am
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+from rechner_pipeline.bestand import parquet_io
 from rechner_pipeline.models.bestand import validate_scheiben
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -277,3 +279,39 @@ def test_gleichzeitiges_schreiben_hinterlaesst_keine_kaputte_datei(
 
     rest = [p.name for p in tmp_path.iterdir() if p.name != "z.parquet"]
     assert rest == [], f"temporaere Dateien geblieben: {rest}"
+
+
+@pytest.mark.parametrize(
+    ("plattform", "fehler_bis", "aufrufe", "pausen", "scheitert"),
+    [
+        ("nt", 2, 3, 2, False),
+        ("nt", 99, 10, 9, True),
+        ("posix", 2, 1, 0, True),
+    ],
+)
+def test_atomarer_ersatz_retryt_nur_transiente_windows_sperren(
+    monkeypatch, plattform, fehler_bis, aufrufe, pausen, scheitert
+) -> None:
+    versuche = []
+    schlaf = []
+
+    def ersetzen(temp, ziel):
+        versuche.append((temp, ziel))
+        if len(versuche) <= fehler_bis:
+            raise PermissionError("kurz gesperrt")
+
+    monkeypatch.setattr(
+        parquet_io, "os", SimpleNamespace(name=plattform, replace=ersetzen)
+    )
+    monkeypatch.setattr(
+        parquet_io, "time", SimpleNamespace(sleep=schlaf.append)
+    )
+
+    if scheitert:
+        with pytest.raises(PermissionError, match="kurz gesperrt"):
+            parquet_io._ersetze_atomar(Path("temp"), Path("ziel"))
+    else:
+        parquet_io._ersetze_atomar(Path("temp"), Path("ziel"))
+
+    assert len(versuche) == aufrufe
+    assert len(schlaf) == pausen

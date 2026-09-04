@@ -74,7 +74,7 @@ def baue_index(src: Path) -> Dict[str, object]:
     for pfad in sorted(src.rglob("*.py")):
         if "__pycache__" in pfad.parts:
             continue
-        rel = str(pfad.relative_to(src.parent))
+        rel = pfad.relative_to(src.parent).as_posix()
         knoten = _annotationen(pfad)
         if not knoten:
             unannotiert.append(rel)

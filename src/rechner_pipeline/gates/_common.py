@@ -912,9 +912,11 @@ def hash_files(
             raise FileNotFoundError(str(path))
         if resolved_base is not None:
             try:
-                key = str(path.resolve().relative_to(Path(resolved_base).resolve()))
+                key = path.resolve().relative_to(
+                    Path(resolved_base).resolve()
+                ).as_posix()
             except ValueError:
-                key = str(path)
+                key = path.resolve().as_posix()
         else:
             key = str(path)
         if key in out:
