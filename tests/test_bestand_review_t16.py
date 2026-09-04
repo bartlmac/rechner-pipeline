@@ -192,7 +192,9 @@ def test_bericht_ohne_journal_blockiert(tmp_path, lauf_klv, capsys) -> None:
     ])
     assert exit_code == 2
     assert not ziel.exists()
-    assert "keine Historie" in capsys.readouterr().err
+    # Seit T18-05 urteilt die P-B1-Engine, nicht mehr ein eigener
+    # Wachposten der CLI — die Meldung ist ihre.
+    assert "--historie ist erforderlich" in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------- #

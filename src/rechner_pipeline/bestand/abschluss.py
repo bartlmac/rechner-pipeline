@@ -39,7 +39,7 @@ from rechner_pipeline.bestand.auswertung import einzelwerte_am
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.kern import __version__ as KERN_VERSION
-from rechner_pipeline.models.bestand import ABSCHLUSS_NAMES
+from rechner_pipeline.models.bestand import ABSCHLUSS_NAMES, validate_abschluss
 
 
 class AbschlussError(ValueError):
@@ -83,7 +83,18 @@ def _rechne(
         }
         for z in zeilen
     ])
-    return df[list(ABSCHLUSS_NAMES)]
+    df = df[list(ABSCHLUSS_NAMES)]
+    # Endlichkeit am Ausgang (T18-04): Was hier durchgeht, wird
+    # festgeschrieben und nie ueberschrieben. Ein nichtendlicher Wert ist
+    # kein Bilanzwert, sondern ein Rechen- oder Konfigurationsfehler, der
+    # VOR dem Publish anhalten muss — nicht erst in der Kontrolle danach.
+    befunde = validate_abschluss(df)
+    if befunde:
+        raise AbschlussError(
+            f"Abschluss {stichtag.isoformat()}: der gerechnete Stand ist "
+            "kein festschreibbarer Bilanzstand: " + "; ".join(befunde)
+        )
+    return df
 
 
 def schreibe_abschluss(
@@ -182,6 +193,9 @@ def pruefe_abschluss(
             f"abschluss: Datei heisst {Path(pfad).name}, enthaelt aber den "
             f"Stichtag {stichtag.isoformat()} (erwartet {erwartet.name})"
         ]
+    # Der festgeschriebene Stand selbst muss ein Bilanzstand sein — auch
+    # wenn er unter einem aelteren Stand ohne diese Pruefung entstand.
+    befunde.extend(validate_abschluss(fest))
 
     neu = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
     kern_stand_alt = sorted(set(fest["kern_version"]))

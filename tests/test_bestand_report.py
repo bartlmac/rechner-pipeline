@@ -20,7 +20,8 @@ from rechner_pipeline.bestand.kennzahlen import (
     verlauf,
 )
 from rechner_pipeline.bestand.parquet_io import write_portfolio
-from rechner_pipeline.bestand.fuehrung import schnitt_am
+from rechner_pipeline.bestand.ereignisse import mit_zugaengen
+from rechner_pipeline.bestand.fuehrung import fuehre_fort, schnitt_am
 from rechner_pipeline.bestand import cli_report as cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -292,8 +293,13 @@ def test_cli_bad_stichtag_exits_2(portfolio, tmp_path):
 
 
 def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
-    historie, ledger, scheiben, *_ = fortschreibung
-    parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
+    historie, ledger, scheiben, zugaenge = fortschreibung[:4]
+    # Der Bericht verlangt den GEFUEHRTEN Stamm zu seinem Journal (T18-05):
+    # ein Basisbestand, dessen Stamm POL sagt, waehrend das Journal STO
+    # sagt, ist keine Fuehrung.
+    parquet = write_portfolio(
+        fuehre_fort(mit_zugaengen(portfolio, zugaenge), historie),
+        tmp_path / "b.parquet")
     h = write_portfolio(historie, tmp_path / "h.parquet")
     l = write_portfolio(ledger, tmp_path / "l.parquet")
     s = write_portfolio(scheiben, tmp_path / "s.parquet")
@@ -431,8 +437,10 @@ def test_beide_produkte_teilen_dieselbe_nachweisungs_struktur(config):
 
 
 def test_cli_stichtag(portfolio, fortschreibung, tmp_path):
-    historie, ledger, scheiben, *_ = fortschreibung
-    parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
+    historie, ledger, scheiben, zugaenge = fortschreibung[:4]
+    parquet = write_portfolio(
+        fuehre_fort(mit_zugaengen(portfolio, zugaenge), historie),
+        tmp_path / "b.parquet")
     h = write_portfolio(historie, tmp_path / "h.parquet")
     l = write_portfolio(ledger, tmp_path / "l.parquet")
     s = write_portfolio(scheiben, tmp_path / "s.parquet")

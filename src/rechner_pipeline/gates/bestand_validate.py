@@ -15,6 +15,13 @@ Validates the Bestandsdaten tables against their schemas and invariants
 * Plausibilitaets-Baender (``--config``, optional): Sanity-Bänder aus der
   TOML gegen den Bestand (``sanity_check``); die Config selbst wird
   mitvalidiert.
+* Ereignis-Ledger (``--ledger``): Semantik jeder Buchung — GeVo-Code und
+  Betragsart aus dem Vokabular, endlicher Betrag, Generation des
+  Stammsatzes, Vertragsjahr = vollendete Vertragsjahre am Datum,
+  Journalzeile zu jedem Zustandswechsel, und ZEILENWEISE Bindung jeder
+  ``ERH``-Buchung an genau eine Scheibe (``validate_ledger``; T18-01,
+  T18-06). Vorher band nur die Jahressumme, und vertauschte
+  Scheibenbetraege passierten mit null Befunden.
 * Bewegungs-Identitaeten (``--ledger`` + ``--bis``, optional; ``--bis`` =
   Fortschreibungs-Horizont des Producer-Laufs): Anfang + Zugang - Abgang =
   Endbestand je Kalenderjahr, Track (bpfl/bfr) und Mass (Stueck/Summe) via

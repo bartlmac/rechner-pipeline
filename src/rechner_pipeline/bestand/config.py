@@ -25,6 +25,8 @@ from __future__ import annotations
 import datetime as _dt
 import re
 import tomllib
+import dataclasses as _dc
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
@@ -293,6 +295,25 @@ class TarifGeneration:
         if not self.name:
             errors.append("generation: name fehlt")
         prefix = f"generation {self.name or '?'}"
+        # Endlichkeit dort, wo Zahlen eintreten (externes Review T18-04):
+        # TOML erlaubt ``gamma2 = nan`` und ``zins = inf``; beides passierte
+        # die Config-Pruefung, und der Abschluss publizierte hunderte
+        # nichtendlicher Zahlfelder, bevor die Kontrolle rot wurde. Eine
+        # Rechnungsgrundlage ist eine Zahl — jede, auch in den Zellen.
+        for feld in _dc.fields(self):
+            wert = getattr(self, feld.name)
+            if isinstance(wert, float) and not math.isfinite(wert):
+                errors.append(
+                    f"{prefix}: {feld.name} ist nicht endlich ({wert!r}) — "
+                    "TOML laesst nan/inf zu, eine Rechnungsgrundlage nicht"
+                )
+        for zelle in self.zellen:
+            for name, wert in zelle.felder.items():
+                if isinstance(wert, float) and not math.isfinite(wert):
+                    errors.append(
+                        f"{prefix}: zelle {dict(zelle.schluessel)}: {name} "
+                        f"ist nicht endlich ({wert!r})"
+                    )
         if self.gueltig_von >= self.gueltig_bis:
             errors.append(f"{prefix}: gueltig_von >= gueltig_bis")
         if self.gueltig_bis.year > 2200:
@@ -581,6 +602,12 @@ class Annahme:
 
     def validate(self, name: str) -> List[str]:
         errors: List[str] = []
+        # NaN vergleicht immer falsch und passierte jede Bandpruefung.
+        for feld in ("a", "b"):
+            if not math.isfinite(getattr(self, feld)):
+                errors.append(f"annahmen {name}: {feld} ist nicht endlich")
+        if errors:
+            return errors
         if self.a < 0.0:
             errors.append(f"annahmen {name}: a < 0")
         if self.b < 0.0:
@@ -643,7 +670,9 @@ class Annahmen:
         errors: List[str] = []
         for name, _ in ANNAHME_FELDER:
             errors.extend(getattr(self, name).validate(name))
-        if self.erh_prozent < 0.0:
+        if not math.isfinite(self.erh_prozent):
+            errors.append("annahmen: erh_prozent ist nicht endlich")
+        elif self.erh_prozent < 0.0:
             errors.append("annahmen: erh_prozent < 0")
         if self.erhoehung.a > 0.0 and self.erh_prozent == 0.0:
             errors.append(
@@ -676,7 +705,9 @@ class BestandConfig:
         for gen in self.generationen:
             errors.extend(gen.validate())
         for merkmal, band in self.plausibilitaet.items():
-            if len(band) != 2 or float(band[0]) >= float(band[1]):
+            if len(band) != 2 or not all(math.isfinite(float(g)) for g in band):
+                errors.append(f"plausibilitaet {merkmal}: Band muss (min, max) aus endlichen Zahlen sein")
+            elif float(band[0]) >= float(band[1]):
                 errors.append(f"plausibilitaet {merkmal}: Band muss (min, max) mit min < max sein")
         errors.extend(self.annahmen.validate())
         return errors

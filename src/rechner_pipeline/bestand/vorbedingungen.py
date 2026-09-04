@@ -34,6 +34,7 @@ from rechner_pipeline.models.bestand import (
     SCHEIBEN_NAMES,
     STATUS_HISTORIE_NAMES,
     STAMM_NAMES,
+    validate_ledger,
     validate_portfolio,
     validate_scheiben,
     validate_stamm_journal,
@@ -126,6 +127,9 @@ def lies_und_pruefe_pb1(
             })
 
     tabellen: Dict[str, Any] = {}
+    # SHA-256 der Bytes, die geparst wurden — fuer Konsumenten, die den
+    # Stand benennen wollen (Berichtsfuss, Beleg), ohne erneut zu lesen.
+    hashes: Dict[str, str] = {}
     spaltenvertrag = {
         "portfolio": STAMM_NAMES,
         "historie": STATUS_HISTORIE_NAMES,
@@ -145,6 +149,7 @@ def lies_und_pruefe_pb1(
                 "message": f"{rolle}-Datei ist nicht lesbar: {exc}",
             })
             continue
+        hashes[rolle] = sha256_bytes(daten)
         errors.extend(_manifest_befund(manifest, rolle, daten))
         try:
             tabellen[rolle] = read_portfolio(
@@ -209,6 +214,19 @@ def lies_und_pruefe_pb1(
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
             errors.append({"code": "scheiben", "message": str(exc)})
 
+    if portfolio is not None and ledger is not None:
+        # Semantik der Buchungen (T18-06) und zeilenweise Bindung an die
+        # Scheiben (T18-01) — vor der Bewegungs-Identitaet, die nur
+        # Jahressummen sieht.
+        geprueft["ledger_zeilen"] = int(len(ledger))
+        try:
+            for meldung in validate_ledger(
+                portfolio, ledger, historie=historie, scheiben=scheiben
+            ):
+                errors.append({"code": "ledger", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "ledger", "message": str(exc)})
+
     if ledger is not None and scheiben is None:
         try:
             hat_erhoehungen = bool((ledger["ereignis"] == "ERH").any())
@@ -262,6 +280,7 @@ def lies_und_pruefe_pb1(
     if "config" in eingaben and portfolio is not None:
         try:
             config_bytes = Path(eingaben["config"]).read_bytes()
+            hashes["config"] = sha256_bytes(config_bytes)
             errors.extend(_manifest_befund(manifest, "config", config_bytes))
             config = config_aus_text(config_bytes.decode("utf-8"))
         except (OSError, UnicodeError, ValueError) as exc:
@@ -279,6 +298,7 @@ def lies_und_pruefe_pb1(
     if manifest is not None:
         geprueft["manifest_gebunden"] = len(
             [r for r in eingaben if r in tabellen])
+    tabellen["sha256"] = hashes
     return tabellen, geprueft, errors, usage_errors
 
 

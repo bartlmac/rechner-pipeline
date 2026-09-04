@@ -33,7 +33,6 @@ import datetime as _dt
 import hashlib
 import json
 import os
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
@@ -103,16 +102,18 @@ def schreibe_manifest(
             for p in sorted(ausgaben, key=lambda p: Path(p).name)
         },
     }
+    from rechner_pipeline.bestand.parquet_io import neue_datei
+
     text = json.dumps(inhalt, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     ziel = manifest_pfad(lauf)
-    # Atomar wie die Parquet-Ausgaben: nie ein halbes Manifest.
-    fd, tmp_name = tempfile.mkstemp(dir=lauf, prefix=f".{ziel.name}.", suffix=".tmp")
+    # Atomar wie die Parquet-Ausgaben (nie ein halbes Manifest) und mit
+    # dem Modus der umask zum Schreibzeitpunkt (T18-07).
+    tmp = neue_datei(lauf, ziel.name)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(text)
-        os.replace(tmp_name, ziel)
+        tmp.write_text(text, encoding="utf-8", newline="\n")
+        os.replace(tmp, ziel)
     except BaseException:
-        Path(tmp_name).unlink(missing_ok=True)
+        tmp.unlink(missing_ok=True)
         raise
     return ziel
 

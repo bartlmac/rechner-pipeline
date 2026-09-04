@@ -34,8 +34,9 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from rechner_pipeline.bestand.parquet_io import portfolio_hash, read_portfolio
+from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.bestand.report import render_html
+from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 
 
 def _parse_stichtage(raw: Optional[str]) -> Optional[List[_dt.date]]:
@@ -158,19 +159,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         except ValueError as exc:
             print(f"bestand_report: Ungueltiges --bis-Datum: {exc}", file=sys.stderr)
             return 2
-    historie = ledger = scheiben = None
+    eingaben = {"portfolio": portfolio_path}
     if ns.historie:
         for name, pfad in (("Historie", ns.historie), ("Ledger", ns.ledger)):
             if not Path(pfad).is_file():
                 print(f"bestand_report: {name} nicht gefunden: {pfad}", file=sys.stderr)
                 return 2
-        historie = read_portfolio(Path(ns.historie))
-        ledger = read_portfolio(Path(ns.ledger))
+        eingaben["historie"] = Path(ns.historie)
+        eingaben["ledger"] = Path(ns.ledger)
         if ns.scheiben:
             if not Path(ns.scheiben).is_file():
                 print(f"bestand_report: Scheiben nicht gefunden: {ns.scheiben}", file=sys.stderr)
                 return 2
-            scheiben = read_portfolio(Path(ns.scheiben))
+            eingaben["scheiben"] = Path(ns.scheiben)
 
     merkmale = None
     if ns.merkmale:
@@ -202,44 +203,40 @@ def main(argv: Optional[List[str]] = None) -> int:
         if stichtag is None:
             stichtag = config.referenzstichtag
 
-    df = read_portfolio(portfolio_path)
-    # Derselbe Wachposten wie in einzelwerte_am und Gate P-B1 — aber an der
-    # CLI-Grenze, wo er auch ohne --config greift. Ohne Journal rendert
-    # render_html den strukturellen Verlauf direkt aus dem Stamm und ruft
-    # einzelwerte_am nie; gemessen zum Stichtag 2016: 464 statt 1.213
-    # Vertraege und 37,5 statt 95,1 Mio Versicherungssumme, bei Exit 0 und
-    # ohne jeden Vorbehalt im Bericht. Ein Bericht ist das, was ein Mensch
-    # anschaut — er darf nicht still zu wenig zeigen.
-    if historie is None or len(historie) == 0:
-        folge = df["status_id"] > 1
-        if bool(folge.any()):
-            betroffen = sorted(df.loc[folge, "police_id"])[:5]
-            print(
-                f"bestand_report: {int(folge.sum())} Vertraege tragen einen "
-                f"Folgezustand (status_id > 1, z. B. police {betroffen}), "
-                "aber es wurde keine Historie uebergeben. Stornierte und "
-                "verstorbene Vertraege kehrten als beitragspflichtig in den "
-                "Bericht zurueck — --historie und --ledger mitgeben "
-                "(ADR-011)",
-                file=sys.stderr,
-            )
-            return 2
-    if scheiben is not None:
-        from rechner_pipeline.models.bestand import validate_scheiben
-
-        fehler = validate_scheiben(df, scheiben, historie=historie)
-        if fehler:
-            print(
-                f"bestand_report: Scheiben ungueltig: {'; '.join(fehler[:3])}",
-                file=sys.stderr,
-            )
-            return 2
+    # Dieselbe Pruefengine wie Gate P-B1 und der Abschluss — nicht ein
+    # eigener Wachposten an der CLI-Grenze. Der alte prueft nur, OB eine
+    # Historie da war (None oder leer); eine nichtleere Teilhistorie mit
+    # 1.075 Stamm/Journal-Widerspruechen passierte ihn mit Exit 0 und
+    # einem 977-KB-Bericht (externes Review T18-05). Ein Bericht ist das,
+    # was ein Mensch anschaut — er darf nicht still etwas anderes zeigen
+    # als die Fuehrung. Die Config bleibt hier draussen: Plausibilitaets-
+    # baender sind ein Gate-Kriterium, ein Bericht ueber einen Bestand
+    # ausserhalb der Baender ist genau das, was man dann sehen will.
+    # Was geprueft wurde, wird gerendert (kein zweites Lesen, T18-03).
+    tabellen, _, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=bis)
+    if fehler or usage:
+        for eintrag in (usage + fehler)[:5]:
+            print(f"bestand_report: {eintrag['message']}", file=sys.stderr)
+        anzahl = len(fehler) + len(usage)
+        if anzahl > 5:
+            print(f"bestand_report: ... und {anzahl - 5} weitere", file=sys.stderr)
+        print(
+            f"bestand_report: {anzahl} Vorbedingung(en) verletzt — der "
+            "Bestand ist nicht das, was der Bericht zeigen wuerde "
+            "(--historie und --ledger mitgeben, ADR-011)",
+            file=sys.stderr,
+        )
+        return 2
+    df = tabellen["portfolio"]
+    historie = tabellen.get("historie")
+    ledger = tabellen.get("ledger")
+    scheiben = tabellen.get("scheiben")
     try:
         html = render_html(
             df,
             stichtage=stichtage,
             titel=ns.titel,
-            quelle_hash=portfolio_hash(portfolio_path),
+            quelle_hash=tabellen["sha256"]["portfolio"],
             historie=historie,
             ledger=ledger,
             config=config,
