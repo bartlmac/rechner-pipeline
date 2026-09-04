@@ -74,16 +74,79 @@ jeden darauf gebauten Ast bricht.
 
 ## Was das Review sonst noch festhielt
 
-- **T18-01 bis T18-06** sind auf diesem Branch unveraendert
-  reproduzierbar — erwartbar und beabsichtigt: Sie liegen als eigener
-  Korrektur-PR hinter dem Vorfuehrfall (Merge-Plan Schritt 6b), weil
-  das Laufmanifest den Ausgabevertrag der Fortschreibung aendert und
-  das mitten im Fall die gezeichneten Belege entwertet haette.
-  T18-07 ist teilweise ueberholt (Abschluesse jetzt 0444; der
-  generische Writer nutzt weiter die gecachte umask).
+- **T18-01 bis T18-07** waren auf Stand 730b2e9 unveraendert
+  reproduzierbar — erwartbar, sie lagen bewusst hinter dem
+  Vorfuehrfall. Nach dem Review hat der Maintainer entschieden, sie
+  IN DIESEM PR zu schliessen statt in einem Folge-PR (siehe unten,
+  Abschnitt T18): Der Stand soll vor der Veroeffentlichung sauber
+  sein, und ein paralleler PR war unmoeglich, weil alle Zieldateien
+  schon hier liegen.
 - **Nachweisgrenze des Reviews**, vom Reviewer selbst gezogen:
   `docs-local/`, `simulation/` und `faelle/` lagen nicht vor. Die
   fuenf finalen Zeichnungen und die Vollbestandswerte konnten daher
   nicht kryptografisch gegen den realen Lauf geprueft werden; die
   versionierten E2E-Fixturen decken einen repraesentativen Schnitt und
   die Rechenkette ab, nicht die konkreten Snapshots.
+
+## Nachzug: die Runde T18 (Bestandsfuehrung) in diesem PR
+
+Sieben Befunde des Reviews vom 2026-09-01 auf dem damaligen main;
+Maintainer-Entscheid 2026-09-04: in PR #11 schliessen. Nicht sieben
+Flicken, sondern die drei Bewegungen aus der damaligen Antwort — die
+Klasse hiess "Praedikate ueber Formen (None, leer) statt ueber die
+Identitaet, die gelten muss".
+
+| Befund | Schwere | Status |
+|---|---|---|
+| T18-01 ERH-Ledger und Scheiben nur ueber Jahressummen gebunden | kritisch | **behoben** (`validate_ledger`, zeilenweise Bijektion) |
+| T18-02 `--bis` ist eine unbelegte Behauptung, kein Laufmanifest | kritisch | **behoben** (9a96a11, Manifest Pflicht und fail-fast) |
+| T18-03 Erneutes Lesen zwischen Pruefung und Bewertung (TOCTOU) | kritisch | **behoben** (e7e9907, pruefen und zurueckgeben; Config seit 9a96a11 ebenso) |
+| T18-04 `gamma2 = nan` passiert `config.validate()` | kritisch | **behoben** (Endlichkeit an Config-Eingang und Abschluss-Ausgang) |
+| T18-05 Ein-Zeilen-Historie passiert `cli_report` | hoch | **behoben** (Bericht urteilt ueber die P-B1-Engine, nicht ueber einen eigenen Wachposten) |
+| T18-06 Kein semantischer Ledger-Validator | hoch | **behoben** (`validate_ledger` in P-B1 verdrahtet, Gate 2.1.0) |
+| T18-07 Writer folgt der beim Import gecachten umask | mittel | **behoben** (`os.open` mit 0666 ueberlaesst dem Kernel die aktuelle umask; kein Lesen, kein Fenster) |
+
+**Bewegung 1 — Laufmanifest (T18-02).** `cli_fortschreibung` schreibt
+zuletzt `laufmanifest.json`: Horizont, Neuzugangs-Stichtag, Kern-Stand,
+SHA-256 der Config und jeder Ausgabe. Der Abschluss verlangt es; Gate
+P-B1 bindet es mit `--manifest`. Details: ADR-011 Abschnitt 7.
+
+**Bewegung 2 — pruefen und zurueckgeben (T18-03).** Die Engine liest
+jede Datei genau einmal, hasht und parst dieselben Bytes und gibt
+Tabellen UND Config an den Konsumenten heraus. Abschluss und Bericht
+lesen nichts mehr selbst.
+
+**Bewegung 3 — zeilenweise Bindung und Endlichkeit am Eingang
+(T18-01, -04, -06).** `models.bestand.validate_ledger` prueft, was
+eine Buchung IST (Vokabular, Betragsart zum GeVo, Endlichkeit,
+Generation des Stammsatzes, Vertragsjahr = vollendete Jahre am
+Datum, Journalzeile zum Zustandswechsel) und bindet jede
+ERH-Buchung an genau eine Scheibe ueber Police, Datum, Betrag und
+Erhoehungsjahr. Endlichkeit dort, wo Zahlen eintreten:
+`config.validate()` lehnt nan/inf in jeder Rechnungsgrundlage ab
+(auch in Tarifzellen und Annahmen), `validate_abschluss` haelt den
+gerechneten Stand VOR dem Festschreiben an. Eine bewusste Grenze der
+Ledger/Historie-Bindung: Sie gilt nur in Richtung Ledger -> Historie.
+Ein uebernommener Vertrag traegt die Beitragsfreistellung der Quelle
+in der Historie (ohne Bewegung des aufnehmenden Unternehmens) und die
+Umbuchung zum Zugangsstichtag im Ledger — die Gegenrichtung waere
+falsch, und der Test haelt genau diesen Fall als gueltig fest.
+
+**Die zwei kleinen.** T18-05: `cli_report` ruft dieselbe Engine wie
+Gate und Abschluss (ohne Config — Plausibilitaetsbaender sind ein
+Gate-Kriterium, kein Berichtsverbot). T18-07: Der Writer liest die
+umask nicht mehr (das ginge nur durch Setzen, nebenlaeufig unsicher),
+sondern legt die temporaere Datei mit `os.open(..., 0o666)` an und
+ueberlaesst dem Kernel die Anwendung; gilt fuer Parquet und Manifest.
+
+**Nachweise.** `tests/test_bestand_manifest.py` (T18-02),
+`tests/test_bestand_abschluss.py` (T18-03),
+`tests/test_bestand_review_t18.py` (T18-01, -04, -05, -06, -07);
+jeder stellt den Nachweis des Reviews nach. Mutationsproben je
+Wache: neun Wachen einzeln entfernt (Manifestpflicht, Horizont- und
+Hashpruefung, Scheibenbindung, Ledger-Verdrahtung, Config- und
+Abschluss-Endlichkeit, Berichts-Befunde, Writer), jede vom Test
+gefangen. Zwei Altlasten in bestehenden Tests fielen dabei auf und
+wurden korrigiert: Zwei Berichtstests kombinierten den Basisbestand
+(Stamm sagt POL) mit einem Journal (sagt STO) — genau der Widerspruch,
+den T18-05 sichtbar macht; sie rendern jetzt den gefuehrten Stamm.

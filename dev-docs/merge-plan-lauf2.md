@@ -183,7 +183,18 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    vorzeige-seite/, tests/test_werkzeuge.py, Statische-Stellen-
    Notiz —, das Volumen nicht: Stand 2026-09-03 bereits 99 Commits
    seit a34342b, weiter wachsend; die Zahl gehoert bei PR-Anlage in
-   den Mini-Leitfaden. Vormerkungen der merge-session fuer die
+   den Mini-Leitfaden.
+   ERWARTETER KONFLIKT (gemeldet von der vorzeige-session
+   2026-09-04): Beide Aeste haben regie/ in die
+   Veroeffentlichungssperre eingetragen — dort 4cf5a77, hier 3520883
+   (externer Review-Befund T19-01). Aufloesung abgestimmt: Die
+   fallbericht-Fassung GEWINNT (sie traegt zusaetzlich die
+   Sperrlisten-Zusicherung gegen dev-docs/regie.md und den echten
+   CLI-Weg); der dortige Parameterfall
+   "regie/drehbuch-baldrian-lauf2.md" entfaellt beim Rebase als
+   Dublette. Betroffen: werkzeuge/vorzeigeseite.py und
+   tests/test_werkzeuge.py.
+   Vormerkungen der merge-session fuer die
    Vorbereitung: (1) eingefrorenen vorzeige-Stand bestaetigen
    lassen (wie Schritt 7); (2) Basis ist main NACH dem Haupt-Merge
    — a34342b ist dann enthalten, der Cherry-pick 759548f (=c8ca1d6)
@@ -191,14 +202,23 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    zwei Testdateien sind gegen einen Fall-Stand geeicht, und der
    Fall hat sich seit Lauf 2 bewegt. Vorbedingung: Barteks Sichtung
    des Redesigns.
-6b. [ ] T18-Korrekturen (Owner: nach Maintainer-Entscheid;
-   fruehestens nach Anstoss von Fall-Lauf 2 — so entschieden
-   2026-09-01): eigener Korrektur-PR gegen main, Geschwister zu
-   PR #10; danach main -> fallbericht nachziehen (klein). Der
-   A/B/C-Schnitt von Schritt 8 ist NICHT betroffen. Inhalt und
-   Konstruktionszwaenge: dev-docs/offene-punkte.md (T18) — vor
-   Baubeginn entscheiden, ob das Laufmanifest optional-mit-Vorbehalt
-   kommt oder die Lauf-2-Artefakte neu erzeugt werden.
+6b. [x] T18-Korrekturen. REVIDIERT 2026-09-04 (Maintainer-Entscheid
+   nach dem externen Review T19): NICHT als eigener Korrektur-PR,
+   sondern IN PR #11 — die Themen waren faellig, nur aus Prio
+   verschoben, und der Stand soll DORA-sauber sein, bevor die
+   Vorzeigeseite weitergeht und nach aussen gepusht wird. Ein
+   paralleler PR war ohnehin unmoeglich: alle sieben Zieldateien
+   liegen bereits in PR #11. Konstruktionszwang entschieden:
+   Laufmanifest PFLICHT und fail-fast (kein "optional mit
+   Vorbehalt"); keine Neuzeichnung noetig, weil A-M4 keine
+   cli_fortschreibung-Artefakte bindet. ERLEDIGT 2026-09-04,
+   dev-session: e7e9907 (T18-03 pruefen und zurueckgeben), 9a96a11
+   (T18-02 Laufmanifest), 35374a3 (T18-01 zeilenweise
+   Ledger/Scheiben-Bindung, T18-04 Endlichkeit an Config und
+   Abschluss, T18-06 semantischer Ledger-Validator, T18-05
+   Berichts-Wachposten ueber die P-B1-Engine, T18-07 umask zum
+   Schreibzeitpunkt). Je Befund Regressionstest mit Mutationsprobe;
+   Stand: dev-docs/review-t19-befunde.md (Abschnitt T18).
 7. [x] vorzeige-url -> fallbericht (Owner: merge-session, mit der
    vorzeige-Session abstimmen; test_baldrian_e2e-Kopplung dort
    verifizieren). Pruefpunkt: Suite gruen, Vorzeigeseite rendert.

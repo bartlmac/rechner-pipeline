@@ -17,9 +17,9 @@ Review mit Fixes, E2E-Fixture, Abschlussdokumentation) und die
 Vorzeigeseite samt Auftritts-Werkzeugen (Merge-Plan Schritt 7).
 
 Kennzahlen, gebunden an einen SCHNAPPSCHUSS statt an "jetzt" — Stand
-**f501eb9**: 221 Commits auf Basis 33e9dec (Merge PR #10), 311
-Dateien, +75,6k/-3,1k Zeilen. Nachrechnen:
-`git rev-list --count 33e9dec..f501eb9`.
+**35374a3**: 225 Commits auf Basis 33e9dec (Merge PR #10), 317
+Dateien, +77,3k/-3,2k Zeilen. Nachrechnen:
+`git rev-list --count 33e9dec..35374a3`.
 
 Warum an einen Commit gebunden: Eine Zahl, die "jetzt" meint, wird
 von jedem weiteren Commit falsch — auch von dem, der sie korrigiert.
@@ -27,10 +27,11 @@ Zweimal nachgezogen, zweimal wieder gewandert; das ist dieselbe
 Klasse, die dieser PR an mehreren Stellen repariert (die Ausnahme
 nachpflegen, statt die Invariante zu benennen). Eine Aussage ueber
 einen benannten Stand bleibt dauerhaft wahr, egal was danach kommt —
-und was danach kam, sind Fix-Commits aus dem externen Review T19
-(dev-docs/review-t19-befunde.md).
+und was danach kam, ist der Doku-Commit, der diesen Stand hier
+eintraegt (dev-docs/review-t19-befunde.md).
 
-Zustand auf diesem Stand: Suite 1579 gruen (0 Skips), Kern 3.4.0,
+Zustand auf diesem Stand: Suite 1617 gruen (0 Skips), Kern 3.4.0,
+Gate P-B1 2.1.0,
 Fall vollstaendig gezeichnet (fuenf Gates auf Systemstand 4b1abf0;
 A-M4 834/834, Schichtbeleg-Residuensumme -0,14 EUR).
 
@@ -84,11 +85,11 @@ Erst das Ergebnis, dann der Weg, dann der Code:
 3. **dev-docs/review-lauf2-befunde.md** — was der Vorab-Review fand
    und was daraus wurde; die vier bewusst offen gelassenen Punkte
    stehen begruendet in dev-docs/offene-punkte.md.
-4. **Die Commits in sechs Lesestufen** (unten) — die
+4. **Die Commits in sieben Lesestufen** (unten) — die
    Commit-Botschaften sind die Gliederung: jede nennt das WARUM vor
    dem WAS, Reviews folgen ihnen schneller als dem Diff.
 
-## Die sechs Lesestufen
+## Die sieben Lesestufen
 
 Die Stufen folgen der Chronologie des Branches; die Grenzen sind
 dieselben, an denen der historische Drei-Schnitt geprueft wurde.
@@ -192,10 +193,34 @@ Exit 0 (34 gerenderte Seiten, 0 tote Links, Landkarte/Techstack/
 ADRs frisch aus dem Repo erzeugt; Rendering-Pruefung der
 vorzeige-Session, Details im Merge-Plan Schritt 7). Prueffragen:
 Blockt die Regie-Sperre der Veroeffentlichungswerkzeuge alle
-Spielleiter-Bereiche (bekannte Luecke: regie/ fehlt noch in der
-Sperrliste — dokumentierter Merkposten, Fix folgt VOR der naechsten
-Veroeffentlichung nach dem main-Merge)? Und erzeugt der Auftritt
-wirklich alles aus Repo-Quellen statt aus gepflegten Kopien?
+Spielleiter-Bereiche (die Luecke regie/ fand das externe Review T19
+als kritischen Befund; Fix 3520883 mit drei Tests, darunter der
+echte CLI-Weg)? Und erzeugt der Auftritt wirklich alles aus
+Repo-Quellen statt aus gepflegten Kopien?
+
+### Stufe 7 — Externe Reviews T19 und T18 (730b2e9..35374a3, 10 Commits)
+
+Zwei Review-Runden, nach dem Push von PR #11 geschlossen. T19
+(sieben Befunde auf 730b2e9, dev-docs/review-t19-befunde.md):
+regie-Sperre (3520883, kritisch), Snapshot-Verifikation ohne
+Schluessel und Vollstaendigkeit als Menge (ec64c8a), Klarnamen als
+maschinelle Wache (8b3c0c6), Doku-Vertraege (b82c3dd); T19-04
+(Pin-Schluss) bewusst offen. T18 (sieben Befunde zur
+Bestandsfuehrung vom 2026-09-01, im selben Dokument als Nachzug):
+drei Bewegungen statt sieben Flicken — pruefen und zurueckgeben
+(e7e9907), Laufmanifest als Pflicht (9a96a11, aendert den
+Ausgabevertrag von cli_fortschreibung: laufmanifest.json), und
+zeilenweise Ledger/Scheiben-Bindung mit Endlichkeit an Config und
+Abschluss samt Berichts-Wachposten und umask-Writer (35374a3). Das
+ist die Stufe mit den meisten Vertragsaenderungen des PRs: Gate P-B1
+2.0.0 -> 2.1.0 (additiv, --manifest), Abschluss verlangt das
+Manifest, Bericht urteilt ueber die P-B1-Engine. Prueffragen: Ist
+jede der neun Wachen durch einen Test gedeckt, der ihre Entfernung
+faengt (die Befundliste nennt die Mutationsproben)? Ist die bewusste
+Einseitigkeit der Ledger/Historie-Bindung (Vorgeschichte
+uebernommener Vertraege) fachlich richtig begruendet? Und gibt es
+einen Konsumenten eines Laufverzeichnisses, der das Manifest noch
+nicht kennt?
 
 ## Wo die schaerfsten Augen hingehoeren
 
@@ -238,7 +263,7 @@ In absteigender Prioritaet — Risiko mal Neuheit:
 
 Behauptungen dieses Leitfadens selbst pruefen, nicht glauben:
 
-- Volle Suite: `.venv/bin/python -m pytest` (1579 auf f501eb9; in
+- Volle Suite: `.venv/bin/python -m pytest` (1617 auf 35374a3; in
   Worktrees weniger — zwei Pruefungen brauchen den Hauptbaum bzw.
   Docker, siehe Merkposten im Merge-Plan Schritt 7).
 - Beide Ketten am Stueck: `.venv/bin/python -m pytest
