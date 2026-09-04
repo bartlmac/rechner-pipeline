@@ -31,7 +31,12 @@ Outputs in ``--out-dir``: ``bestand.parquet`` (Basis; nur ohne --portfolio),
 ``zugaenge.parquet`` und ``bestand_gesamt.parquet`` — der GEFUEHRTE
 Gesamtbestand (ADR-011): Basis + Neuzugaenge, Statusspalten auf dem
 aktuellen Zustand am Horizont; Eingang fuer Auskunft, Auswertung und
-``bestand_report``.
+``bestand_report``. Dazu ``laufmanifest.json``, der Lieferschein des
+Laufs (:mod:`rechner_pipeline.bestand.manifest`): Horizont,
+Neuzugangs-Stichtag, Kern-Stand, SHA-256 der Config und jeder Ausgabe.
+Der Abschluss-Produzent verlangt es; Gate P-B1 bindet es auf Wunsch
+(``--manifest``). Ohne Manifest ist ``--bis`` bei den Konsumenten eine
+Behauptung ueber den Lauf, die niemand belegt (T18-02).
 
 Knoten: klv, bu
 """
@@ -52,6 +57,7 @@ from rechner_pipeline.bestand.ereignisse import (
 )
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
+from rechner_pipeline.bestand.manifest import schreibe_manifest
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 
 
@@ -222,6 +228,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     out_dir = Path(ns.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    ausgaben: List[Path] = []
+    eingaben: dict = {}
     try:
         if ns.portfolio:
             portfolio_path = Path(ns.portfolio)
@@ -232,9 +240,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 )
                 return 2
             basis = read_portfolio(portfolio_path)
+            eingaben["portfolio"] = portfolio_path
         else:
             basis = generate(config, bis=neuzugang_ab)
-            write_portfolio(basis, out_dir / "bestand.parquet")
+            ausgaben.append(write_portfolio(basis, out_dir / "bestand.parquet"))
         uebernahme = None
         if ns.uebernahme:
             uebernahme = _lies_uebernahme(Path(ns.uebernahme))
@@ -248,6 +257,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     file=sys.stderr)
                 return 2
             merkmale = read_portfolio(merkmale_path)
+            eingaben["merkmale"] = merkmale_path
         elif uebernahme is not None:
             # Die Uebernahme bringt ihre Merkmalstabelle mit; sie extra zu
             # verlangen hiesse, dieselbe Datei zweimal zu benennen.
@@ -272,11 +282,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"bestand_fortschreibung: {exc}", file=sys.stderr)
         return 2
 
-    write_portfolio(historie, out_dir / "historie.parquet")
-    write_portfolio(ledger, out_dir / "ledger.parquet")
-    write_portfolio(ergebnis.scheiben, out_dir / "scheiben.parquet")
-    write_portfolio(ergebnis.zugaenge, out_dir / "zugaenge.parquet")
-    write_portfolio(gesamt, out_dir / "bestand_gesamt.parquet")
+    ausgaben.append(write_portfolio(historie, out_dir / "historie.parquet"))
+    ausgaben.append(write_portfolio(ledger, out_dir / "ledger.parquet"))
+    ausgaben.append(write_portfolio(ergebnis.scheiben, out_dir / "scheiben.parquet"))
+    ausgaben.append(write_portfolio(ergebnis.zugaenge, out_dir / "zugaenge.parquet"))
+    ausgaben.append(write_portfolio(gesamt, out_dir / "bestand_gesamt.parquet"))
+    # Der Lieferschein zuletzt, ueber die Bytes, die tatsaechlich auf der
+    # Platte liegen: Er belegt den Horizont und bindet jede Ausgabe.
+    schreibe_manifest(
+        out_dir,
+        horizont=bis,
+        neuzugang_ab=neuzugang_ab,
+        config_pfad=config_path,
+        ausgaben=ausgaben,
+        eingaben=eingaben,
+    )
 
     print(
         f"bestand_fortschreibung: {len(basis)} Basisvertraege"

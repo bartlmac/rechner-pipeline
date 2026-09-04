@@ -195,6 +195,13 @@ python -m rechner_pipeline.bestand.cli_report --portfolio runs/bestand/bestand_g
     --scheiben runs/bestand/scheiben.parquet --config configs/bestand_gesamt.toml \
     --bis 2046-01-01 --stichtag 2026-01-01 --out runs/berichte/bestandsbericht.html
 ```
+The run also writes `runs/bestand/laufmanifest.json`, its delivery
+note: the simulated horizon, the config hash and a SHA-256 per output.
+`cli_abschluss` refuses a run directory without it, and `--bis` must
+equal the horizon the manifest attests — the horizon is a property of
+the run, not of the call that reads it. Gate P-B1 binds the manifest
+on request (`--manifest`).
+
 **New business in this run: none — and that is deliberate.** The run
 above reports `3130 Basisvertraege, 0 Neuzugaenge`, and the zero is the
 one number that regularly gets misread. It does NOT mean the portfolio

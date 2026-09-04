@@ -698,7 +698,18 @@ def _to_date(value: Any, label: str, errors: List[str]) -> _dt.date:
 
 def load_config(path: Path) -> BestandConfig:
     """Load and structurally parse a config; call ``.validate()`` afterwards."""
-    raw = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    return config_aus_text(Path(path).read_text(encoding="utf-8"))
+
+
+def config_aus_text(text: str) -> BestandConfig:
+    """Eine Config aus ihrem TOML-Text parsen.
+
+    Getrennt vom Dateizugriff, damit ein Konsument die Bytes, die er
+    gehasht hat (Laufmanifest), auch parst — und nicht die Datei ein
+    zweites Mal liest (T18-03: kein zweites Lesen zwischen Urteil und
+    Verarbeitung).
+    """
+    raw = tomllib.loads(text)
     errors: List[str] = []
     meta: Mapping[str, Any] = raw.get("meta", {})
 

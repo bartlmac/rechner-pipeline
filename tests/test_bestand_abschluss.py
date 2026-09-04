@@ -25,6 +25,7 @@ from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben, mit_zugaengen
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
 from rechner_pipeline.bestand.generator import generate
+from rechner_pipeline.bestand.manifest import schreibe_manifest
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.kern import __version__ as KERN_VERSION
 from rechner_pipeline.models.bestand import (
@@ -34,6 +35,7 @@ from rechner_pipeline.models.bestand import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+CONFIG = REPO_ROOT / "configs" / "bestand_klv.toml"
 STICHTAG = dt.date(2016, 1, 1)
 #: Fortschreibungs-Horizont des Fixture-Laufs. Der Abschluss
 #: braucht ihn, weil die Bewegungs-Identitaet nur fuer
@@ -43,7 +45,7 @@ HORIZONT = dt.date(2020, 1, 1)
 
 @pytest.fixture(scope="module")
 def config():
-    return load_config(REPO_ROOT / "configs" / "bestand_klv.toml")
+    return load_config(CONFIG)
 
 
 @pytest.fixture(scope="module")
@@ -77,7 +79,23 @@ def bundle(tmp_path_factory, lauf, _fortschreibung):
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(scheiben, ziel / "scheiben.parquet")
     write_portfolio(ergebnis.ledger, ziel / "ledger.parquet")
+    _manifest(ziel)
     return ziel
+
+
+def _manifest(lauf_dir):
+    """Der Lieferschein, wie cli_fortschreibung ihn schreibt (T18-02).
+
+    Die Negativtests unten mutieren Tabellen und schreiben das Manifest
+    danach NEU: Sie pruefen die semantischen Wachen (leere Scheiben,
+    gamma1, ...), nicht die Manifest-Bindung — ein Angreifer, der auch
+    das Manifest nachzieht, muss an der Semantik scheitern. Die
+    Manifest-Bindung selbst prueft tests/test_bestand_manifest.py.
+    """
+    schreibe_manifest(
+        lauf_dir, horizont=HORIZONT, neuzugang_ab=None, config_pfad=CONFIG,
+        ausgaben=sorted(lauf_dir.glob("*.parquet")),
+    )
 
 
 def _leere_tabelle(spalten):
@@ -92,12 +110,13 @@ def _bundle_kopie(bundle, tmp_path, entfernen=(), **ersatz):
         (ziel / f"{name}.parquet").unlink()
     for name, tabelle in ersatz.items():
         write_portfolio(tabelle, ziel / f"{name}.parquet")
+    _manifest(ziel)
     return ziel
 
 
 def _argv(lauf_dir, out_dir, *extra):
     return [
-        "--config", str(REPO_ROOT / "configs" / "bestand_klv.toml"),
+        "--config", str(CONFIG),
         "--lauf", str(lauf_dir),
         "--stichtag", STICHTAG.isoformat(),
         "--bis", HORIZONT.isoformat(),
@@ -299,7 +318,7 @@ def test_stichtag_hinter_dem_horizont_blockiert(bundle, tmp_path, capsys):
     mit irrefuehrenden Meldungen quittiert."""
     out = tmp_path / "abschluesse"
     argv = [
-        "--config", str(REPO_ROOT / "configs" / "bestand_klv.toml"),
+        "--config", str(CONFIG),
         "--lauf", str(bundle),
         "--stichtag", "2026-01-01",
         "--bis", HORIZONT.isoformat(),

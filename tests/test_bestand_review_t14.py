@@ -75,6 +75,14 @@ def lauf_verzeichnis(tmp_path_factory, lauf_klv_ursprung):
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(ledger, ziel / "ledger.parquet")
     write_portfolio(scheiben, ziel / "scheiben.parquet")
+    # Der Lieferschein des Laufs (T18-02) — ohne ihn nimmt der Abschluss
+    # das Bundle nicht an.
+    from rechner_pipeline.bestand.manifest import schreibe_manifest
+
+    schreibe_manifest(
+        ziel, horizont=_dt.date(2035, 1, 1), neuzugang_ab=None,
+        config_pfad=CONFIG, ausgaben=sorted(ziel.glob("*.parquet")),
+    )
     return ziel
 
 
