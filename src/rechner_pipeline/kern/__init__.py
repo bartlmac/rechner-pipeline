@@ -5,7 +5,7 @@ versionierte Software; das KI-System baut marginale Aenderungen ein
 (neue Tarifgeneration = Parametrierung, neues Produkt = Konfiguration
 des Rueckgrats), die Abnahme-Gates nehmen sie ab.
 
-Beschluss 2026-08-16 (Bartek): Der Kern ist vollstaendig in der
+Beschluss 2026-08-16 (Maintainer): Der Kern ist vollstaendig in der
 Zustandsmodell-Welt — die historische Excel-Paritaet (617/617) war die
 EINMALIGE Abnahme des Uebersetzungsakts und ist KEIN laufender Referenzwert
 mehr; die klassischen Kommutationsspalten sind kein Bestandteil des
@@ -77,7 +77,7 @@ from rechner_pipeline.kern.rechenkern import (
 
 #: Kern-Version (Abnahme-Referenz, siehe Docstring).
 #: 1.x/2.x = Migrations- und Backbone-Aera (Historie in Git).
-#: 3.0.0 = Zielbild-Schnitt (Beschluss Bartek 2026-08-16): Kern
+#: 3.0.0 = Zielbild-Schnitt (Beschluss Maintainer 2026-08-16): Kern
 #: vollstaendig in der Zustandsmodell-Welt; Kommutation als separater
 #: Zweitkern (rechner_pipeline.kommutationskern), seit ADR-013 ohne
 #: Konsumenten im Produktivpfad und nur noch Zeuge der algebraischen

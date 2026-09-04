@@ -91,6 +91,6 @@ Residuen.
 - **Meldungs-Lesart verworfen**: NIEMALS automatisch. Fehler in der
   Tarifmeldung sind aufsichtsrechtlich relevant — dein Dossier legt den
   Beleg bei, die Bestaetigung und Berichtspflicht liegen IMMER beim
-  Menschen (Regel Bartek 2026-08-18).
+  Menschen (Regel Maintainer 2026-08-18).
 - **Kein eindeutiger Beleg** (beide passen, keine passt, keine
   Belege): das Dossier weist es aus, der Konflikt bleibt beim Menschen.

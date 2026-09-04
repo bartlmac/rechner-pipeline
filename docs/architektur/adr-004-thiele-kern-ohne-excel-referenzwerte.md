@@ -1,6 +1,6 @@
 # ADR-004: Der Zielkern ist Thiele-Welt — Excel-Paritaet ist Uebersetzungsbeleg, kein laufender Referenzwert
 
-Status: akzeptiert (Bartek, 2026-08-16). Umgesetzt: Kern 3.0.0
+Status: akzeptiert (Maintainer, 2026-08-16). Umgesetzt: Kern 3.0.0
 (`kern/tafeln.py`, `rechner_pipeline.kommutationskern`).
 
 > **Punkt 2 abgeloest durch [ADR-013](adr-013-kommutations-kreuzcheck-ausser-betrieb.md)

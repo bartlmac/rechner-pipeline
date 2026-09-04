@@ -1,6 +1,6 @@
 # ADR-007: Parallele Migrationen in einem Kern — Trunk, knotengebundene Inkremente, Knoten-Lebenszyklus
 
-Status: akzeptiert (Bartek, 2026-08-18).
+Status: akzeptiert (Maintainer, 2026-08-18).
 
 ## Kontext
 

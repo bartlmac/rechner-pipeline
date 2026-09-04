@@ -23,7 +23,7 @@ Fachliches Modell (bewusst einfach gehaltenes Beispielprodukt):
 Tafel-Provenienz: Rechnungsgrundlagen sind seit 2026-08-13 die **DAV 1997 I**
 (``DAV1997_I`` Invalidisierung, ``DAV1997_TAA`` Aktivensterblichkeit,
 ``DAV1997_RI`` Reaktivierung und ``DAV1997_TI`` Invalidensterblichkeit als
-Select-Tafeln mit Select-Periode 5, je Geschlecht) — von Bartek bereitgestellt
+Select-Tafeln mit Select-Periode 5, je Geschlecht) — vom Maintainer bereitgestellt
 und unverändert übernommen. Die früheren ``SYNTH_BU_*``-Platzhalter bleiben
 als geschlechtsunabhängiges Select-Beispiel im Tafelwerk, werden aber von
 keinem Produkt mehr vorbelegt.

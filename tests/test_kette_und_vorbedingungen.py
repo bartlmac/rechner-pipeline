@@ -239,7 +239,7 @@ def test_am4_verlangt_pk1_und_geltenden_aq1(fall_mit_fragmenten):
     merge_cli(["--fall", str(f)])
     abox = lade(f)
     [d] = abox.diskrepanzen
-    loese_diskrepanz_auf(abox, d.id, 0.03, "Bartek", "entschieden",
+    loese_diskrepanz_auf(abox, d.id, 0.03, "maintainer", "entschieden",
                          "2026-08-15T12:00:00+00:00", vorlaeufig=False)
     speichere(abox, f)
     assert pq3(["--fall", str(f)]).exit_code == 0
@@ -262,7 +262,7 @@ def test_aq1_annahme_verlangt_gebundenes_pq3(fall_mit_fragmenten):
     merge_cli(["--fall", str(f)])
     abox = lade(f)
     [d] = abox.diskrepanzen
-    loese_diskrepanz_auf(abox, d.id, 0.03, "Bartek", "entschieden",
+    loese_diskrepanz_auf(abox, d.id, 0.03, "maintainer", "entschieden",
                          "2026-08-15T12:00:00+00:00", vorlaeufig=False)
     speichere(abox, f)
     basis = ["--fall", str(f), "--rolle", "mensch", "--entscheider", "B",
@@ -325,13 +325,13 @@ def test_entscheide_verlangt_rolle_mensch_und_archiviert(fall_mit_fragmenten, ca
     capsys.readouterr()
     rc = entscheide(["--fall", str(f), "--rolle", "mensch",
                      "--diskrepanz", d.id, "--wert", "0.025",
-                     "--entscheider", "Bartek", "--begruendung", "Meldung gilt"])
+                     "--entscheider", "maintainer", "--begruendung", "Meldung gilt"])
     assert rc == 0
     capsys.readouterr()
     abox = lade(f)
     [d2] = abox.diskrepanzen
     # Der Weg vorlaeufig -> endgueltig ist auditierbar (append-only):
-    assert d2.entscheidung.entscheider == "Bartek"
+    assert d2.entscheidung.entscheider == "maintainer"
     assert len(d2.entscheidungs_historie) == 1
     assert d2.entscheidungs_historie[0].vorlaeufig is True
     assert d2.entscheidungs_historie[0].entscheider == "agent (vorlaeufig)"

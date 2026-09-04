@@ -1,6 +1,6 @@
 # ADR-005: Knoten-Hierarchie, Test-Bindung, Code-Karte und berechneter Impact
 
-Status: akzeptiert (Bartek, 2026-08-16). Umgesetzt:
+Status: akzeptiert (Maintainer, 2026-08-16). Umgesetzt:
 `ontologie/code_index` (erweitert), `ontologie/code_karte` (neu),
 `ontologie/impact` (neu); alle Testmodule gebunden.
 

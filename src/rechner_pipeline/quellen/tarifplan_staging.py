@@ -1,6 +1,6 @@
 """``tarifplan_staging`` toolbox command — Migrationsartefakte nach JSON.
 
-Architektur-Entscheidung (Bartek, 2026-08-13): Tarifplan-Dokumente von zu
+Architektur-Entscheidung (Maintainer, 2026-08-13): Tarifplan-Dokumente von zu
 migrierenden Bestaenden sind MIGRATIONSARTEFAKTE. Sie gehoeren nicht in
 die Zielkern-Dokumentation (dort leben neu verfasste Tarifplaene in der
 Mathematik des Kerns, ``docs/tarifplaene/``), sondern in ein
@@ -9,7 +9,7 @@ Dokuments strukturiert nach JSON — nicht fuer Menschen formatiert,
 sondern als Datenvorbereitung fuer die Migration (Vorverdichtung der
 Fragment-Extraktion, P10: der Agent sieht nie die Rohdatei).
 
-FORMATE (Entscheid Bartek 2026-09-01, ADR-016): Quellsysteme liefern de
+FORMATE (Entscheid Maintainer 2026-09-01, ADR-016): Quellsysteme liefern de
 facto meist PDF, gelegentlich DOCX. Beide werden bedient — nach Suffix
 unterschieden, gleiche JSON-Struktur:
 

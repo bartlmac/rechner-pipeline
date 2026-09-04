@@ -1,6 +1,6 @@
 # ADR-016: Vorverdichtung liest Text-PDF (pypdf); OCR bleibt draussen
 
-Status: angenommen (Bartek, 2026-09-01). Kontext: Trockenlauf der
+Status: angenommen (Maintainer, 2026-09-01). Kontext: Trockenlauf der
 zweiten Baldrian-Lieferung.
 
 ## Kontext

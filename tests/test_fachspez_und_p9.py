@@ -116,18 +116,18 @@ def test_p9_annahme_blockt_bei_vorlaeufigen(fall_mit_konflikt):
 
     f, *_ = fall_mit_konflikt
     result = main(["--fall", str(f), "--gate", "A-Q1",
-                   "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "Bartek",
+                   "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "maintainer",
                    "--begruendung", "ok", "--repo-root", "."])
     assert result.exit_code == 20
     assert any("vorlaeufig" in e["code"] for e in result.errors)
     # Ablehnung ist jederzeit snapshotbar:
     result = main(["--fall", str(f), "--gate", "A-Q1",
-                   "--entscheid", "abgelehnt", "--rolle", "mensch", "--entscheider", "Bartek",
+                   "--entscheid", "abgelehnt", "--rolle", "mensch", "--entscheider", "maintainer",
                    "--begruendung", "Zins offen", "--repo-root", "."])
     assert result.exit_code == 0
     snapshot = json.loads(
         Path(result.paths["snapshot"]).read_text(encoding="utf-8"))
-    assert snapshot["entscheider"] == "Bartek"
+    assert snapshot["entscheider"] == "maintainer"
     assert snapshot["snapshot_sha256"]
     assert "eingang.json" in snapshot["artefakt_hashes"]
     assert "abgeleitet/abox/abox.json" in snapshot["artefakt_hashes"]
@@ -141,7 +141,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
     f, _, _, d_id = fall_mit_konflikt
     rc = entscheide([
         "--fall", str(f), "--rolle", "mensch", "--diskrepanz", d_id, "--wert", "0.025",
-        "--entscheider", "Bartek",
+        "--entscheider", "maintainer",
         "--begruendung", "Meldung ist die eingereichte Fassung",
     ])
     assert rc == 0
@@ -151,7 +151,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
     abox = lade(f)
     [d] = abox.diskrepanzen
     assert d.entscheidung.vorlaeufig is False
-    assert d.entscheidung.entscheider == "Bartek"
+    assert d.entscheidung.entscheider == "maintainer"
     # Die Aussage folgt der NEUEN Wahl (0.025, Meldungs-Lesart):
     assert abox.generationen[0].zellen[0].parameter["beta1"].wert == 0.025
     # Eine endgueltige Entscheidung ist nicht erneut ueberschreibbar:
@@ -166,7 +166,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
 
     result = p9(["--fall", str(f), "--gate", "A-Q1",
                  "--entscheid", "angenommen", "--rolle", "mensch",
-                 "--entscheider", "Bartek",
+                 "--entscheider", "maintainer",
                  "--begruendung", "Alle Diskrepanzen entschieden",
                  "--repo-root", ".", *_freigabe_arg(f)])
     assert result.exit_code == 20                    # P-Q3 fehlt noch
@@ -175,7 +175,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
     # Jetzt darf P9 annehmen:
     result = p9(["--fall", str(f), "--gate", "A-Q1",
                  "--entscheid", "angenommen", "--rolle", "mensch",
-                 "--entscheider", "Bartek",
+                 "--entscheider", "maintainer",
                  "--begruendung", "Alle Diskrepanzen entschieden",
                  "--repo-root", ".", *_freigabe_arg(f)])
     assert result.exit_code == 0
@@ -191,7 +191,7 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
     from rechner_pipeline.ontologie.entscheide import main as entscheide
 
     basis = ["--gate", "A-Q1", "--entscheid", "angenommen", "--rolle", "mensch",
-             "--entscheider", "Bartek", "--begruendung", "ok", "--repo-root", "."]
+             "--entscheider", "maintainer", "--begruendung", "ok", "--repo-root", "."]
 
     # (a) gar kein Arbeitsbereich -> das Anlege- UND das Registrier-Kommando
     leer = tmp_path / "kein_fall"
@@ -218,7 +218,7 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
     f, _, _, d_id = fall_mit_konflikt
     assert entscheide([
         "--fall", str(f), "--rolle", "mensch", "--diskrepanz", d_id,
-        "--wert", "0.025", "--entscheider", "Bartek",
+        "--wert", "0.025", "--entscheider", "maintainer",
         "--begruendung", "Meldung ist die eingereichte Fassung",
     ]) == 0
     result = main(["--fall", str(f)] + basis)
@@ -312,7 +312,7 @@ def test_pk1_hinweis_ist_je_generation_eine_kopierbare_zeile(tmp_path: Path):
 
     result = main(["--fall", str(f), "--gate", "A-M4", "--entscheid",
                    "angenommen", "--rolle", "mensch", "--entscheider",
-                   "Bartek", "--begruendung", "ok", "--repo-root", "."])
+                   "maintainer", "--begruendung", "ok", "--repo-root", "."])
     assert result.exit_code == 20
     [fehler] = result.errors
     assert fehler["code"] == "vorbedingung"
@@ -453,7 +453,7 @@ def test_entscheide_alle_vorlaeufigen_nach_quelle(fall_mit_konflikt, capsys):
     f, *_ = fall_mit_konflikt
     rc = entscheide([
         "--fall", str(f), "--rolle", "mensch", "--alle-vorlaeufigen",
-        "--quelle", "rechner.xlsm", "--entscheider", "Bartek",
+        "--quelle", "rechner.xlsm", "--entscheider", "maintainer",
         "--begruendung", "Fachverantwortlicher bestaetigt den Rechner-Stand",
     ])
     assert rc == 0

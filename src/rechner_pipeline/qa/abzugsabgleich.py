@@ -12,7 +12,7 @@ ein deterministischer Beleg — keine LLM-Entscheidung, P2/P4 bleiben
 intakt: Code entscheidet auf Evidenz, beide Residuen stehen im
 Protokoll.
 
-DIE HARTE REGEL (Bartek, 18.08.): Wird die MELDUNGS-Lesart verworfen,
+DIE HARTE REGEL (Maintainer, 18.08.): Wird die MELDUNGS-Lesart verworfen,
 ist der Fehler in der Tarifmeldung — aufsichtsrechtlich relevant, ein
 Meldungsfehler wird IMMER von einem Menschen bestaetigt und berichtet.
 Automatisch aufloesbar ist ausschliesslich der Fall "Rechner-Lesart
@@ -245,7 +245,7 @@ def gleiche_ab(
             f"({verlierer['wert']!r}, max. rel. Abweichung "
             f"{verlierer['max_relative_abweichung']:.2e}) — Fehler in der "
             "Tarifmeldung sind aufsichtsrechtlich relevant und werden "
-            "IMMER menschlich bestaetigt und berichtet (Regel Bartek "
+            "IMMER menschlich bestaetigt und berichtet (Regel Maintainer "
             "2026-08-18). Beleg liegt bei, Aufloesung bleibt beim Menschen."
         )
         return ergebnis

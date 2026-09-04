@@ -164,7 +164,7 @@ def test_der_mensch_zeichnet_alles(aufbau, tmp_path):
     """Eskalationsrolle: gates '*' — der Mensch nach Abbruchkriterium."""
     fall, va, _experte, _ordnung = aufbau
     mensch = tmp_path / "mensch.key"
-    fp = _schluessel(mensch, b"bartek-eskalations-schluessel!!!" * 2)
+    fp = _schluessel(mensch, b"maintainer-eskalations-schluessel!" * 2)
     ordnung = _schreibe_ordnung(tmp_path / "mit-mensch.json", {
         "mensch": {"schluessel_sha256": fp, "gates": ["*"]},
     })

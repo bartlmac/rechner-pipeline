@@ -1,6 +1,6 @@
 """Zustandsmodell (Semi-Markov) — das allgemeine Rechenrückgrat des Monolithen.
 
-Beschluss 2026-08-12 (Bartek, operative Entscheidung, gedeckt vom
+Beschluss 2026-08-12 (Maintainer, operative Entscheidung, gedeckt vom
 Team-Beschluss „monolithischer, möglichst flexibler Kern"): Das
 Zustandsmodell ist das Ziel-Rückgrat der Personenversicherungsmathematik in
 diesem Kern — KLV ist sein 2-Zustands-Spezialfall (aktiv/tot), BU/Pflege

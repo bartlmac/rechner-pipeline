@@ -46,7 +46,7 @@ leitet das Berichtsverdikt aus den gebundenen Inhalten neu ab.
 Run via::
 
     python -m rechner_pipeline.gates.gate_entscheid --fall faelle/baldrian-klv-tg2015 \\
-        --gate A-Q1 --entscheid angenommen --entscheider "Bartek" \\
+        --gate A-Q1 --entscheid angenommen --entscheider "maintainer" \\
         --begruendung "..." --freigabe-schluessel /sicher/p9.key \
         [--repo-root .]
 

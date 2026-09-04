@@ -1,6 +1,6 @@
 # ADR-006: Der Portierungs-Anwendungsfall wird ausser Betrieb genommen
 
-Status: akzeptiert (Bartek, 2026-08-17). Umgesetzt: Entfernung aus dem
+Status: akzeptiert (Maintainer, 2026-08-17). Umgesetzt: Entfernung aus dem
 Hauptzweig; konserviert auf Branch `parked/portierung-excel`, Tag
 `portierung-excel-2026-08`. *(Nachtrag 2026-08-19: Branch und Tag
 wurden vor der Veröffentlichung aus dem Arbeits-Repo entfernt — sie

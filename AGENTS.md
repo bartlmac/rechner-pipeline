@@ -22,7 +22,15 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 - Tests before every commit (full suite), named staging (never
   `git add -A`), pushes are done by the human maintainer only.
 - No real names of team members, clients, or suppliers in tracked files
-  or commit messages — use roles instead.
+  or commit messages — use roles instead. Enforced by
+  `tests/test_klarnamen.py` (hash-based, so the check itself carries no
+  names); authorship fields (`pyproject.toml`, `LICENSE`) are the
+  documented exception — a role would be wrong there. Commit messages
+  written before the check existed are a documented exception too: the
+  maintainer decided against rewriting a pushed branch's history
+  (2026-09-04, external review finding T19-06), because a rebase would
+  break the merge plan's "additive only" rule for every branch built on
+  it. New commits follow the rule.
 - Use the repo-scoped skills in `.agents/skills/` when running Codex and
   `.claude/skills/` when running Claude. The two trees are mirrored and
   their parity is test-enforced (`tests/test_agent_workflow_docs.py`);

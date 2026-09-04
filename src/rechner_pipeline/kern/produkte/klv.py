@@ -34,7 +34,7 @@ from rechner_pipeline.kern.zustandsmodell import ZustandsBarwerte
 #: Jenseits von n sind die Zeilen ueber die Blattregeln definiert
 #: (Reserven/RKW 0, flexible Phase) — der Kern rechnet sie auf Anfrage
 #: bis zur Tafel-Erschoepfung (fail-fast), ein blattfester 0..50-Deckel
-#: existiert seit 3.0.0 nicht mehr (Beschluss Bartek 2026-08-16).
+#: existiert seit 3.0.0 nicht mehr (Beschluss Maintainer 2026-08-16).
 
 #: Golden-Master-View-Spalten (Blatt-Keys) — einzige Definitionsstelle.
 VERLAUFSWERTE_SPALTEN = (

@@ -102,7 +102,7 @@ def test_diskrepanz_aufloesung_ist_expliziter_vorgang():
         id="k#f", knoten="k", feld="f", lesarten=lesarten,
         status="aufgeloest",
         entscheidung=Entscheidung(
-            entscheider="bartek", begruendung="Meldung ist massgeblich",
+            entscheider="maintainer", begruendung="Meldung ist massgeblich",
             gewaehlter_wert=1, entschieden_am="2026-08-15T09:00:00+00:00",
         ),
     )

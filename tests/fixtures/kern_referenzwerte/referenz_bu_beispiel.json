@@ -1,5 +1,5 @@
 {
- "charakterisierung": "BU-Beispielprodukt auf den DAV-1997-I-Rechnungsgrundlagen (DAV1997_I Invalidisierung, DAV1997_TAA Aktivensterblichkeit, DAV1997_RI Reaktivierung und DAV1997_TI Invalidensterblichkeit als Select-Tafeln, je Geschlecht). Neu eingefroren 2026-08-13: Ersatz der synthetischen Platzhalter durch die von Bartek bereitgestellten echten Tafeln (unveraendert uebernommen) — der Wechsel der Rechnungsgrundlagen aendert alle Werte fachlich begruendet. Volle Float-Praezision.",
+ "charakterisierung": "BU-Beispielprodukt auf den DAV-1997-I-Rechnungsgrundlagen (DAV1997_I Invalidisierung, DAV1997_TAA Aktivensterblichkeit, DAV1997_RI Reaktivierung und DAV1997_TI Invalidensterblichkeit als Select-Tafeln, je Geschlecht). Neu eingefroren 2026-08-13: Ersatz der synthetischen Platzhalter durch die vom Maintainer bereitgestellten echten Tafeln (unveraendert uebernommen) — der Wechsel der Rechnungsgrundlagen aendert alle Werte fachlich begruendet. Volle Float-Praezision.",
  "ergebnis": {
   "scalars": {
    "BU": {
