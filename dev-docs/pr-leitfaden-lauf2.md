@@ -16,19 +16,28 @@ Korrekturen aus dem Lauf selbst, die Nacharbeit (adversarialer
 Review mit Fixes, E2E-Fixture, Abschlussdokumentation) und die
 Vorzeigeseite samt Auftritts-Werkzeugen (Merge-Plan Schritt 7).
 
-Kennzahlen: 214 Commits auf Basis 33e9dec (Merge PR #10), 304
-Dateien, +74,7k/-3,1k Zeilen — gezaehlt EINSCHLIESSLICH dieses
-Leitfaden-Stands; wer nachrechnet (git log main..fallbericht),
-muss auf dieselbe Zahl kommen. Die Zahl gilt fuer den
-EROEFFNUNGS-Stand des PR; Fix-Commits aus dem Review kommen wie
-ueblich dazu. Die laufende Weiterentwicklung der Vorzeigeseite ist
-aus diesem PR bewusst HERAUSGELOEST — sie kommt als eigener kleiner
-Folge-PR (Merge-Plan Schritt 8b), damit die Pruefung des
-System-Strangs nicht auf Darstellungsarbeit wartet.
-Endzustand: Suite 1552 gruen (0
-Skips), Kern 3.4.0, Fall vollstaendig gezeichnet (fuenf Gates auf
-Systemstand 4b1abf0; A-M4 834/834, Schichtbeleg-Residuensumme
--0,14 EUR).
+Kennzahlen, gebunden an einen SCHNAPPSCHUSS statt an "jetzt" — Stand
+**f501eb9**: 221 Commits auf Basis 33e9dec (Merge PR #10), 311
+Dateien, +75,6k/-3,1k Zeilen. Nachrechnen:
+`git rev-list --count 33e9dec..f501eb9`.
+
+Warum an einen Commit gebunden: Eine Zahl, die "jetzt" meint, wird
+von jedem weiteren Commit falsch — auch von dem, der sie korrigiert.
+Zweimal nachgezogen, zweimal wieder gewandert; das ist dieselbe
+Klasse, die dieser PR an mehreren Stellen repariert (die Ausnahme
+nachpflegen, statt die Invariante zu benennen). Eine Aussage ueber
+einen benannten Stand bleibt dauerhaft wahr, egal was danach kommt —
+und was danach kam, sind Fix-Commits aus dem externen Review T19
+(dev-docs/review-t19-befunde.md).
+
+Zustand auf diesem Stand: Suite 1579 gruen (0 Skips), Kern 3.4.0,
+Fall vollstaendig gezeichnet (fuenf Gates auf Systemstand 4b1abf0;
+A-M4 834/834, Schichtbeleg-Residuensumme -0,14 EUR).
+
+Die laufende Weiterentwicklung der Vorzeigeseite ist aus diesem PR
+bewusst HERAUSGELOEST — sie kommt als eigener Folge-PR (Merge-Plan
+Schritt 8b), damit die Pruefung des System-Strangs nicht auf
+Darstellungsarbeit wartet.
 
 Warum EIN PR statt des urspruenglichen Drei-Schnitts: Die 23
 Lauf-Korrekturen liegen quer durch alle drei Gebiete (Kern-Verfahren,
@@ -229,7 +238,7 @@ In absteigender Prioritaet — Risiko mal Neuheit:
 
 Behauptungen dieses Leitfadens selbst pruefen, nicht glauben:
 
-- Volle Suite: `.venv/bin/python -m pytest` (1544 erwartet; in
+- Volle Suite: `.venv/bin/python -m pytest` (1579 auf f501eb9; in
   Worktrees weniger — zwei Pruefungen brauchen den Hauptbaum bzw.
   Docker, siehe Merkposten im Merge-Plan Schritt 7).
 - Beide Ketten am Stueck: `.venv/bin/python -m pytest
