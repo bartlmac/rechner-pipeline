@@ -11,8 +11,10 @@ Das sind vier Stellen, und zwei davon füllen sich aus signierten Quellen:
 1. ``anlass`` — worum es in diesem Fall geht. Von Hand, ein Absatz.
 2. ``wirkung`` je Diskrepanz — was der Befund fachlich bedeutet, eine
    Zeile. Von Hand.
-3. die Begründungen der Abnahmen — aus den Entscheid-Snapshots, also
-   hashgebunden und gezeichnet.
+3. die Begründungen der Abnahmen — wörtlich aus den Entscheid-Snapshots.
+   Deren Schema, Selbstadressierung und Dateiname prüft dieses Werkzeug;
+   die Freigabesignatur NICHT (kein Schlüsselring in einem
+   Darstellungswerkzeug, externes Review T19-02).
 4. Auszüge aus registrierten Quellen — ebenfalls gebunden.
 
 Wer die Darstellung ohne Textdatei baut, bekommt eine vollständige Seite
@@ -303,7 +305,9 @@ def _it(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
         if e.get("begruendung"):
             z.append(f'<blockquote><p>{_e(e["begruendung"])}</p>'
                      f'<cite>Begründung im Snapshot {_e(e["gate"])}, '
-                     f'gezeichnet {_e(str(e.get("entschieden_am"))[:10])}</cite>'
+                     f'entschieden {_e(str(e.get("entschieden_am"))[:10])}'
+                     f'{"" if e.get("strukturell_verifiziert") else " — Snapshot mit Befund"}'
+                     f'</cite>'
                      f'</blockquote>')
 
     z.append(_quelle(d, "kette"))
@@ -386,7 +390,13 @@ def _kopf(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
     c = a.get("controlling") or {}
     abzug = (b.get("abzuege") or [{}])[0]
     dk = (abzug.get("deckkap") or {}).get("summe")
-    gezeichnet = len((d.get("kette") or {}).get("entscheide") or [])
+    _kette = d.get("kette") or {}
+    # T19-02: Dieses Werkzeug prueft keine Signaturen (kein
+    # Schluesselring) — gezaehlt werden strukturell unversehrte
+    # Snapshots, und die Kachel sagt genau das.
+    eingereicht = _kette.get("entscheide_strukturell_verifiziert")
+    if eingereicht is None:
+        eingereicht = len(_kette.get("entscheide") or [])
 
     kacheln = [
         (_zahl(b.get("anzahl")), "Verträge"),
@@ -395,7 +405,7 @@ def _kopf(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
         (f"{_zahl(dk)} €" if dk else "—", "Deckungskapital"),
         (f'{_e(c.get("stichtag_1"))} / {_e(c.get("stichtag_2"))}'
          if c else "—", "Stichtage"),
-        (_zahl(gezeichnet), "Abnahmen gezeichnet"),
+        (_zahl(eingereicht), "Abnahmen eingereicht"),
     ]
     z = [f'<h1>{_e(texte.get("titel") or d["fall"]["name"])}</h1>']
     if texte.get("anlass"):
@@ -478,16 +488,44 @@ color:var(--matt);font-size:.78rem}
 """
 
 
+def _luecken_block(d: Dict[str, Any]) -> str:
+    """Fehlendes SICHTBAR machen, nicht nur nach stderr melden.
+
+    Externes Review T19-03: Ein Modell mit Luecken erzeugte eine Seite,
+    die vollstaendig aussah — der Hinweis stand nur auf der Konsole des
+    Erzeugers, nicht im Dokument, das Menschen lesen. Ein Bericht, der
+    sein eigenes Fehlen verschweigt, ist schlimmer als ein fehlender
+    Bericht.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from falldaten import luecken  # noqa: E402 — Nachbarwerkzeug
+
+    offene = luecken(d)
+    if not offene:
+        return ""
+    zeilen = "".join(
+        f"<li><b>{_e(l['was'])}</b> — {_e(l['wirkung'])} "
+        f"<code>{_e(l['gruppe'])}.{_e(l['feld'])}</code></li>"
+        for l in offene)
+    return ('<section class="luecken"><h2>Was dieser Bericht NICHT zeigt'
+            '</h2><p>Der Fall traegt die folgenden Angaben nicht; die '
+            'Darstellung laesst sie offen, statt Vollstaendigkeit zu '
+            f'behaupten.</p><ul>{zeilen}</ul></section>')
+
+
 def baue(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
     titel = texte.get("titel") or d["fall"]["name"]
     z = [f"<title>{_e(titel)}</title><style>{STIL}</style><main>",
-         _kopf(d, texte), _fach(d, texte), _it(d, texte)]
+         _kopf(d, texte), _luecken_block(d), _fach(d, texte), _it(d, texte)]
     z.append('<p class="fuss">Erzeugt aus den Prüfartefakten des Falls '
              f'<code>{_e(d["fall"]["name"])}</code>. Alle Zahlen sind dort '
              'nachrechenbar; frei geschrieben sind ausschließlich der '
              'einleitende Absatz und die Wirkungszeilen der Befunde. Die '
              'Begründungen der Abnahmen stammen wörtlich aus den '
-             'signierten Snapshots.</p></main>')
+             'Entscheid-Snapshots des Falls: Schema, Selbstadressierung '
+             'und Dateiname sind hier geprüft, die Freigabesignatur '
+             'NICHT — dafür fehlt diesem Werkzeug bewusst das '
+             'Schlüsselmaterial.</p></main>')
     return "".join(z)
 
 

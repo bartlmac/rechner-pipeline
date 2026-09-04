@@ -542,6 +542,29 @@ def _suite_achsen(suite: Dict[str, Any]) -> Dict[str, int]:
 # E — Kette und Entscheide
 # --------------------------------------------------------------------------- #
 
+def _verifiziere_snapshot(daten: Any, dateiname: str) -> List[str]:
+    """Einen Entscheid-Snapshot pruefen, soweit es ohne Schluessel geht.
+
+    Externes Review T19-02: Dieses Werkzeug las die Dateien roh und die
+    Darstellung nannte sie "gezeichnet" — eine frei erfundene Datei
+    erschien so als Abnahme. Geprueft werden jetzt Schema,
+    Selbstadressierung und Dateiname (``gates.gate_entscheid``); die
+    SIGNATUR bleibt ungeprueft, denn Schluesselmaterial gehoert nicht in
+    ein Darstellungswerkzeug. Wer diese Ausgabe rendert, schreibt
+    deshalb "Signatur hier nicht verifiziert" — nie "gezeichnet".
+
+    Faellt der Import aus (Werkzeug ohne installiertes Paket), ist das
+    ein BEFUND und kein stilles Durchwinken.
+    """
+    try:
+        from rechner_pipeline.gates.gate_entscheid import (
+            pruefe_snapshot_ohne_schluessel,
+        )
+    except ImportError as exc:  # pragma: no cover - Umgebungsfehler
+        return [f"Verifikation nicht moeglich (Paket fehlt): {exc}"]
+    return list(pruefe_snapshot_ohne_schluessel(daten, dateiname))
+
+
 def kette(fall: Path) -> Dict[str, Any]:
     """Gate-Laeufe und menschliche Entscheide."""
     diagnostics = fall / "abgeleitet" / "diagnostics"
@@ -562,6 +585,7 @@ def kette(fall: Path) -> Dict[str, Any]:
     for pfad in sorted((fall / "entscheide").glob("*.json")):
         d = _json(pfad) or {}
         freigabe = d.get("freigabe") or {}
+        befunde = _verifiziere_snapshot(d, pfad.name)
         entscheide.append({
             "gate": d.get("gate"),
             "entscheid": d.get("entscheid"),
@@ -572,6 +596,12 @@ def kette(fall: Path) -> Dict[str, Any]:
             "pflichtbelege": sorted(d.get("pflichtbelege") or {}),
             "artefakte_gebunden": len(d.get("artefakt_hashes") or {}),
             "begruendung": d.get("begruendung"),
+            # Was dieses Werkzeug OHNE Schluessel pruefen kann (T19-02):
+            # Schema, Selbstadressierung, Dateiname. Die Signatur nicht —
+            # ein Darstellungswerkzeug bekommt keinen Schluesselring.
+            "strukturell_verifiziert": not befunde,
+            "verifikationsbefunde": befunde,
+            "signatur_verifiziert": False,
         })
     entscheide.sort(key=lambda e: str(e["entschieden_am"]))
 
@@ -581,11 +611,19 @@ def kette(fall: Path) -> Dict[str, Any]:
         for d in [_json(pfad) or {}]
         if d.get("system")
     })
+    unversehrt = [e for e in entscheide if e["strukturell_verifiziert"]]
     return {
         "gates": gates,
         "entscheide": entscheide,
         "anzahl_gate_laeufe": len(gates),
         "systemstaende_der_entscheide": len(systemstaende),
+        # Der Zaehler, den die Darstellung benutzen darf: strukturell
+        # unversehrte Snapshots. NICHT "gezeichnet" — die Signatur
+        # prueft dieses Werkzeug nicht (T19-02).
+        "entscheide_strukturell_verifiziert": len(unversehrt),
+        "entscheide_mit_befund": len(entscheide) - len(unversehrt),
+        "signaturpruefung": "nicht durchgefuehrt (kein Schluesselring "
+                            "im Darstellungswerkzeug)",
         "gelesen_aus": ["abgeleitet/diagnostics/*.gate.json",
                         "entscheide/*.json"],
     }
@@ -755,9 +793,22 @@ ERWARTET = (
     ("transformation", "felder", "Feldabbildung"),
     ("parameter", "generationen", "Tarifgeneration der A-Box"),
     ("abnahmen", "aktuariell", "aktuarielle Abnahmen"),
+    ("abnahmen", "controlling", "Migrationscontrolling (A-M4)"),
     ("kette", "entscheide", "menschliche Entscheide"),
     ("umbau", "vorhanden", "Umbaubudget des Fall-Laufs"),
 )
+
+#: Die aktuariellen Abnahmen eines Bestands-Falls — als MENGE, nicht als
+#: "irgendeine nichtleere Liste". Externes Review T19-03: Die alte
+#: Pruefung war schwaecher als der reale Scope, der A-M1..A-M3 vor A-M4
+#: erzwingt (gates.gate_entscheid) — ein Fall mit nur A-M1 galt als
+#: vollstaendig. Was der Fall-Scope verlangt, muss die Darstellung
+#: verlangen, sonst behauptet sie Vollstaendigkeit, die keine ist.
+ERWARTETE_ABNAHMEN = ("A-M1", "A-M2", "A-M3")
+
+#: Gates, fuer die ein abgeschlossener Bestands-Fall einen menschlichen
+#: Entscheid tragen muss.
+ERWARTETE_ENTSCHEIDE = ("A-M1", "A-M2", "A-M3", "A-M4")
 
 
 def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -778,6 +829,41 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
                 "gruppe": gruppe, "feld": feld, "was": was,
                 "wirkung": "Der Abschnitt fehlt in der Darstellung.",
             })
+
+    # Mengen statt Nichtleere (T19-03): Eine Abnahme zu haben ist nicht
+    # dasselbe wie DIE Abnahmen zu haben.
+    abnahmen = modell.get("abnahmen") or {}
+    vorhanden = {str(a.get("kennung")) for a in (abnahmen.get("aktuariell")
+                                                 or [])}
+    for kennung in ERWARTETE_ABNAHMEN:
+        if kennung not in vorhanden:
+            aus.append({
+                "gruppe": "abnahmen", "feld": f"aktuariell:{kennung}",
+                "was": f"aktuarielle Abnahme {kennung}",
+                "wirkung": "Die Abnahme fehlt — der Fall ist nicht "
+                           "vollstaendig abgenommen.",
+            })
+
+    kette = modell.get("kette") or {}
+    entschieden = {str(e.get("gate")) for e in (kette.get("entscheide") or [])
+                   if e.get("strukturell_verifiziert") is not False}
+    for gate in ERWARTETE_ENTSCHEIDE:
+        if gate not in entschieden:
+            aus.append({
+                "gruppe": "kette", "feld": f"entscheide:{gate}",
+                "was": f"menschlicher Entscheid zu {gate}",
+                "wirkung": "Kein strukturell unversehrter Snapshot fuer "
+                           "dieses Gate — die Abnahme ist nicht belegt.",
+            })
+
+    mit_befund = kette.get("entscheide_mit_befund") or 0
+    if mit_befund:
+        aus.append({
+            "gruppe": "kette", "feld": "verifikation",
+            "was": f"{mit_befund} Entscheid-Snapshot(s) mit Befund",
+            "wirkung": "Schema, Selbstadressierung oder Dateiname passen "
+                       "nicht — solche Dateien belegen nichts.",
+        })
     return aus
 
 

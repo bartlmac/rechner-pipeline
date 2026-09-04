@@ -305,6 +305,54 @@ def _snapshot_dateiname(gate: str, snapshot_sha256: str) -> str:
     return f"{gate}-{snapshot_sha256}.json"
 
 
+def pruefe_snapshot_ohne_schluessel(
+    daten: Any, dateiname: str
+) -> List[str]:
+    """Was sich an einem Entscheid-Snapshot OHNE Schluessel pruefen laesst.
+
+    Fuer Leser, die keinen Schluesselring haben duerfen — die
+    Darstellungswerkzeuge der Vorfuehrung sind genau solche Leser: Sie
+    zeigen Entscheide an, und Schluesselmaterial hat in einem
+    Darstellungswerkzeug nichts verloren.
+
+    Geprueft wird, was ohne Geheimnis pruefbar ist, und das ist mehr,
+    als es zunaechst scheint: das Schema (:class:`P9Snapshot`), die
+    Selbstadressierung (der kanonische Hash ueber alle Felder ausser
+    ihm selbst) und der Dateiname, der genau diesen Hash tragen muss.
+    Eine frei erfundene Datei scheitert daran, denn ihr Hash passt
+    nicht zu ihrem Inhalt.
+
+    NICHT geprueft wird die Freigabesignatur — sie braucht den
+    Schluessel. Wer diese Funktion benutzt, darf einen Snapshot
+    deshalb NIE als "gezeichnet" oder "signiert" ausweisen, sondern
+    nur als strukturell unversehrt; die Signaturpruefung leistet
+    ``pruefe_zeichnungskette`` mit Schluesselring. Der Unterschied ist
+    kein Detail: Externes Review T19-02 fand genau hier eine
+    kryptografische Aussage, die die Darstellungsschicht nie geprueft
+    hatte.
+
+    Rueckgabe: leere Liste = strukturell unversehrt, sonst die Befunde.
+    """
+    fehler = P9Snapshot.validate_payload(daten)
+    if fehler:
+        return fehler
+    sha = daten.get("snapshot_sha256")
+    erwarteter_hash = p9_snapshot_sha256(daten)
+    if sha != erwarteter_hash:
+        return [
+            "Selbstadressierung verletzt: der Inhalt ergibt "
+            f"{erwarteter_hash[:16]}…, der Snapshot behauptet "
+            f"{str(sha)[:16]}…"
+        ]
+    erwarteter_name = _snapshot_dateiname(str(daten.get("gate")), str(sha))
+    if dateiname != erwarteter_name:
+        return [
+            f"Dateiname {dateiname!r} passt nicht zum kanonischen "
+            f"Snapshot-Hash (erwartet {erwarteter_name!r})"
+        ]
+    return []
+
+
 def _pruefe_g2_snapshot_semantik(snapshot: dict) -> List[str]:
     """Den aus dem Scope abgeleiteten Inhalt einer Annahme pruefen.
 

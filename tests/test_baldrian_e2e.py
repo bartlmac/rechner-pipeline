@@ -248,16 +248,18 @@ def test_das_datenmodell_der_darstellung_ist_vollstaendig(
     import falldaten  # noqa: E402
 
     modell = falldaten.sammle(gefahrener_fall, [ABZUG_1, ABZUG_2])
-    fehlend = [l["gruppe"] for l in falldaten.luecken(modell)]
-    # Drei Luecken sind erwartet und benannt. Die ENTSCHEIDE fehlen, weil
-    # der Test nicht zeichnet — das ist eine menschliche Handlung. Die
-    # PARAMETRIERUNG fehlt, weil das Fixture die A-Box nicht mitfuehrt:
-    # Es prueft die Migration ab dem Bestandsabzug, nicht noch einmal die
-    # Quellenauswertung. Das UMBAUBUDGET fehlt, weil der Test kein
-    # Operator-Lauf ist, dessen Umbau zu messen waere. Alles Uebrige muss
-    # die Kette liefern.
-    assert fehlend == ["parameter", "kette", "umbau"], (
-        f"unerwartete Luecken: {fehlend}")
+    fehlend = {l["gruppe"] for l in falldaten.luecken(modell)}
+    # Drei Luecken-GRUPPEN sind erwartet und benannt. Die ENTSCHEIDE
+    # fehlen, weil der Test nicht zeichnet — das ist eine menschliche
+    # Handlung; seit der Verschaerfung (Review T19-03) meldet die
+    # Pruefung jedes ungezeichnete Gate EINZELN, deshalb die Menge statt
+    # der Liste. Die PARAMETRIERUNG fehlt, weil das Fixture die A-Box
+    # nicht mitfuehrt: Es prueft die Migration ab dem Bestandsabzug,
+    # nicht noch einmal die Quellenauswertung. Das UMBAUBUDGET fehlt,
+    # weil der Test kein Operator-Lauf ist, dessen Umbau zu messen
+    # waere. Alles Uebrige muss die Kette liefern.
+    assert fehlend == {"parameter", "kette", "umbau"}, (
+        f"unerwartete Luecken: {sorted(fehlend)}")
     assert modell["bestand"]["anzahl"] == 25
     assert modell["transformation"]["zeilen_quelle"] == 25
     assert modell["transformation"]["stumm_weggelassen"] == []

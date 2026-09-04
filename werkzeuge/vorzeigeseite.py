@@ -375,10 +375,19 @@ def _seite(fall: Path, modell: Dict[str, Any], repo: Path,
         for e in entscheide:
             schl = (f"`{e['schluessel_sha256']}…`"
                     if e.get("schluessel_sha256") else "*(ohne Signatur)*")
+            # T19-02: Der Fingerabdruck ist eine BEHAUPTUNG der Datei —
+            # geprueft ist hier nur ihre Struktur. Ein Snapshot mit
+            # Befund wird als solcher gezeigt, nicht stillschweigend
+            # mitgezaehlt.
+            if e.get("strukturell_verifiziert") is False:
+                schl += " — **Snapshot mit Befund**"
             z.append(f"| {e['gate']} | {e['entscheid']} | {e['entscheider']} "
                      f"| {e['rolle']} | {schl} |")
         z.append("")
         z.append("Eine Annahme ist HMAC-signiert; das Schlüsselmaterial liegt")
+        z.append("außerhalb des Falls — **diese Seite prüft die Signatur")
+        z.append("deshalb nicht**, sondern nur Schema, Selbstadressierung")
+        z.append("und Dateiname der Snapshots.")
         z.append("außerhalb des Falls. Ein Fall kann seine eigene menschliche")
         z.append("Freigabe deshalb nicht behaupten. Der Fingerabdruck oben")
         z.append("weist die **Schlüsselrolle** nach, nicht die Identität einer")
