@@ -43,8 +43,7 @@ from rechner_pipeline.bestand.abschluss import (
     schreibe_abschluss,
 )
 from rechner_pipeline.bestand.config import load_config
-from rechner_pipeline.bestand.parquet_io import read_portfolio
-from rechner_pipeline.bestand.vorbedingungen import pruefe_pb1_eingaenge
+from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.kern import MissingMortalityTableError
 
 
@@ -130,7 +129,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             file=sys.stderr,
         )
         return 2
-    _, fehler, usage = pruefe_pb1_eingaenge(eingaben, bis=bis)
+    # Pruefen UND uebernehmen: Was hier geprueft wurde, wird unten
+    # verarbeitet — kein zweites Lesen zwischen Urteil und Rechnung
+    # (T18-03; im Nachweis wurde genau dazwischen getauscht).
+    geprueft_tabellen, _, fehler, usage = lies_und_pruefe_pb1(
+        eingaben, bis=bis)
     if fehler or usage:
         for eintrag in (usage + fehler)[:5]:
             print(f"bestand_abschluss: {eintrag['message']}", file=sys.stderr)
@@ -147,9 +150,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         config = load_config(Path(ns.config))
-        stamm = read_portfolio(eingaben["portfolio"])
-        historie = read_portfolio(eingaben["historie"])
-        scheiben = read_portfolio(eingaben["scheiben"])
+        # Die Tabellen kommen aus der Pruefung, nicht von der Platte.
+        stamm = geprueft_tabellen["portfolio"]
+        historie = geprueft_tabellen["historie"]
+        scheiben = geprueft_tabellen["scheiben"]
     except (OSError, ValueError, MissingMortalityTableError) as exc:
         print(f"bestand_abschluss: {exc}", file=sys.stderr)
         return 2

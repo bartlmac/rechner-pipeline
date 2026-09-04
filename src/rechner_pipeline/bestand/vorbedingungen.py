@@ -43,24 +43,54 @@ def pruefe_pb1_eingaenge(
 ) -> Tuple[Dict[str, int], List[dict], List[dict]]:
     """P-B1-Engines rein lesend auf einer benannten Eingabenkonfiguration.
 
+    Sicht fuer Konsumenten, die nur das URTEIL brauchen (die Gates). Wer
+    anschliessend mit den Daten WEITERRECHNET, nimmt
+    :func:`lies_und_pruefe_pb1` und verwendet die zurueckgegebenen
+    Tabellen — sonst entsteht die Luecke aus T18-03: zwischen Pruefung
+    und zweitem Lesen laesst sich die Datei tauschen.
+
+    Rueckgabe: ``(geprueft, contract_fehler, usage_fehler)``.
+    """
+    _, geprueft, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=bis)
+    return geprueft, fehler, usage
+
+
+def lies_und_pruefe_pb1(
+    eingaben: Mapping[str, Path],
+    *,
+    bis: Optional[_dt.date] = None,
+) -> Tuple[Dict[str, Any], Dict[str, int], List[dict], List[dict]]:
+    """Pruefen UND die geprueften Tabellen zurueckgeben.
+
     Der CLI-Produzent und A-M4 benutzen bewusst dieselbe Funktion. So ist ein
     frei editierbares, passend neu gehashtes P-B1-Ledger keine Selbstaussage:
     A-M4 fuehrt Schema-, Invarianten-, Bewegungs- und optionale Sanity-Pruefung
     auf den aktuellen Bytes erneut aus.
 
-    Rueckgabe: ``(geprueft, contract_fehler, usage_fehler)``.
+    **Warum sie die Tabellen herausgibt** (externes Review T18-03): Wer
+    prueft und den Konsumenten danach SELBST lesen laesst, hat nur den
+    Zustand zwischen zwei Lesevorgaengen geprueft. Im Nachweis wurde
+    ``scheiben.parquet`` direkt nach bestandener Pruefung atomar gegen
+    eine gueltige leere Tabelle getauscht; der Abschluss lief mit Exit 0
+    durch und publizierte einen um 3,8 Mio EUR zu niedrigen Stand. Die
+    Reparatur ist nicht eine weitere Pruefung, sondern die Beseitigung
+    des zweiten Lesevorgangs: Was geprueft wurde, wird auch verarbeitet.
+
+    Rueckgabe: ``(tabellen, geprueft, contract_fehler, usage_fehler)``.
+    ``tabellen`` traegt die Rollen, die gelesen werden konnten.
     """
     erlaubt = {"portfolio", "historie", "scheiben", "ledger", "config"}
     rollen = set(eingaben)
     errors: List[dict] = []
     usage_errors: List[dict] = []
     if "portfolio" not in rollen:
-        return {}, [{"code": "portfolio", "message": "Portfolio-Rolle fehlt"}], []
+        return ({}, {},
+                [{"code": "portfolio", "message": "Portfolio-Rolle fehlt"}], [])
     if not rollen <= erlaubt:
-        return {}, [{
+        return ({}, {}, [{
             "code": "eingangsrollen",
             "message": f"Unbekannte P-B1-Eingangsrollen: {sorted(rollen - erlaubt)}",
-        }], []
+        }], [])
 
     tabellen: Dict[str, Any] = {}
     spaltenvertrag = {
@@ -199,4 +229,4 @@ def pruefe_pb1_eingaenge(
                 geprueft["sanity_baender"] = len(config.plausibilitaet)
             except Exception as exc:  # noqa: BLE001 — malformed data blockiert
                 errors.append({"code": "sanity", "message": str(exc)})
-    return geprueft, errors, usage_errors
+    return tabellen, geprueft, errors, usage_errors

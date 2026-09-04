@@ -360,3 +360,60 @@ def test_leere_historie_ist_wie_keine(lauf, config):
             stamm, _leere_tabelle(STATUS_HISTORIE_SPALTEN), config,
             STICHTAG, scheiben=scheiben,
         )
+
+
+# --------------------------------------------------------------------------- #
+# T18-03: Zwischen Pruefung und Verarbeitung darf nichts mehr passieren
+# --------------------------------------------------------------------------- #
+
+def test_tausch_nach_bestandener_pruefung_wirkt_nicht_mehr(
+    bundle, tmp_path, monkeypatch
+):
+    """Externes Review T18-03, als Regression festgeschrieben.
+
+    Im Nachweis wurde ``scheiben.parquet`` DIREKT NACH der bestandenen
+    P-B1-Pruefung atomar gegen eine gueltige leere Tabelle getauscht;
+    die CLI las erneut, endete mit Exit 0 und publizierte einen um
+    3.795.035,38 EUR zu niedrigen Stand. Der Fix beseitigt den zweiten
+    Lesevorgang: Was geprueft wurde, wird verarbeitet.
+
+    Der Test stellt den Angriff exakt nach — er tauscht die Datei im
+    Moment zwischen Pruefung und Rechnung — und verlangt, dass der
+    Abschluss die VOLLEN Scheiben traegt, nicht die leeren.
+    """
+    from rechner_pipeline.bestand import cli_abschluss, vorbedingungen
+    from rechner_pipeline.models.bestand import SCHEIBEN_SPALTEN
+
+    lauf_dir = _bundle_kopie(bundle, tmp_path)
+    out_dir = tmp_path / "abschluesse"
+    echt = vorbedingungen.lies_und_pruefe_pb1
+
+    def _pruefen_dann_tauschen(eingaben, **kwargs):
+        ergebnis = echt(eingaben, **kwargs)
+        # Der Angriff: nach dem Urteil, vor der Verarbeitung.
+        write_portfolio(_leere_tabelle(SCHEIBEN_SPALTEN),
+                        lauf_dir / "scheiben.parquet")
+        return ergebnis
+
+    monkeypatch.setattr(vorbedingungen, "lies_und_pruefe_pb1",
+                        _pruefen_dann_tauschen)
+    monkeypatch.setattr(cli_abschluss, "lies_und_pruefe_pb1",
+                        _pruefen_dann_tauschen)
+
+    assert cli_abschluss.main(_argv(lauf_dir, out_dir)) == 0
+
+    # Der festgeschriebene Stand muss die GEPRUEFTEN Scheiben tragen.
+    # Mit dem alten Verhalten (erneutes Lesen) waere er um die
+    # Erhoehungsscheiben zu niedrig.
+    geschrieben = read_portfolio(abschluss_pfad(out_dir, STICHTAG))
+    referenz_dir = _bundle_kopie(bundle, tmp_path / "referenz")
+    assert cli_abschluss.main(
+        _argv(referenz_dir, tmp_path / "referenz-abschluss")) == 0
+    referenz = read_portfolio(
+        abschluss_pfad(tmp_path / "referenz-abschluss", STICHTAG))
+
+    spalte = "deckungskapital" if "deckungskapital" in geschrieben.columns \
+        else [c for c in geschrieben.columns if "kapital" in c.lower()][0]
+    assert float(geschrieben[spalte].sum()) == pytest.approx(
+        float(referenz[spalte].sum())), (
+        "der getauschte Stand ist in den Abschluss gelangt")
