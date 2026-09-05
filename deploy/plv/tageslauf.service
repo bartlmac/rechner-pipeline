@@ -1,0 +1,10 @@
+# systemd --user: ein Lauf je Aufruf; den Zeitpunkt setzt tageslauf.timer.
+# Installieren: ~/.config/systemd/user/tageslauf.service (deploy/plv/README.md).
+[Unit]
+Description=PLV Tageslauf (rechner-pipeline, Tagesbetrieb der Vorzeige)
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/apps/plv
+ExecStart=/usr/bin/docker compose run --rm tageslauf

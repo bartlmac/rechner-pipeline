@@ -1,0 +1,18 @@
+# Laufzeitumgebung des PLV-Tagesbetriebs unter ~/apps/plv (Konzept, Abschnitt 8.2).
+# Der Container braucht kein Netz: Er liest daten/ und schreibt daten/, sonst nichts.
+# Werte kommen aus .env (Vorlage: env.beispiel) — keine Geheimnisse.
+services:
+  tageslauf:
+    image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER in .env setzen}/rechner-pipeline-plv:${IMAGE_TAG:-latest}
+    network_mode: none
+    user: "${PLV_UID:-1000}:${PLV_GID:-1000}"
+    environment:
+      TZ: ${ZEITZONE:-Europe/Berlin}
+      # Digest des gezogenen Images, vom Menschen nach `docker compose pull`
+      # eingetragen (docker image inspect --format '{{index .RepoDigests 0}}');
+      # steht in jedem Tagesprotokoll und macht den Stand auf den Code
+      # rueckfuehrbar, aus dem er entstand.
+      PLV_IMAGE_DIGEST: ${IMAGE_DIGEST:-}
+    volumes:
+      - ./daten:/daten
+    command: ["--stand", "/daten"]
