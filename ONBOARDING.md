@@ -5,12 +5,25 @@ A system for **life-insurance portfolio migration**, with **no LLM SDK in the
 codebase** (the CLI agent *is* the model; Python code pre-digests, validates,
 computes and accepts):
 
-1. **The target kernel** (`rechner_pipeline.kern`, version 3.0.1): a stable,
-   versioned calculation kernel formulated entirely in the state-model world
+The repository carries **four levels** (ADR-017): the developer's work
+with the AI (reviews, ADRs, the suite); the **KI-Tool**, the agentic
+migration system that any insurer could use unchanged (ontology, spec
+contract, gates, roles, skills, report generators); the **Vorzeige**, a
+fictional insurer at which the tool shows itself and can be tested
+(reference target kernel, portfolio management, the migration case, the
+company site); and the **Vorzeige tools** that produce the Vorzeige
+(portfolio simulation, source-system generation, direction mechanics).
+The layer map records the level of every layer and pins the edges from
+the tool into the Vorzeige as a ratchet.
+
+1. **The target kernel** (`rechner_pipeline.kern`, version 3.4.0, part of
+   the Vorzeige as the reference target system): a stable, versioned
+   calculation kernel formulated entirely in the state-model world
    (semi-Markov backbone, Thiele recursion on pure decrement probabilities).
    Two products — endowment (KLV) and disability (BU) — are *configurations*
-   of that backbone, not separate engines. Commutation values live in a
-   **separate second kernel** used only as a cross-check rail (ADR-004).
+   of that backbone, not separate engines. The commutation second kernel is
+   out of service (ADR-013); it survives only as an independent witness in
+   the algebraic property tests.
 2. **The portfolio module** (`rechner_pipeline.bestand`): synthetic,
    forward-projectable portfolios that the target kernel can compute directly.
    Every amount comes from the kernel; the module carries no actuarial

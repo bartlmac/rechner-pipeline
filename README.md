@@ -20,6 +20,22 @@ Aufgaben:
    weiterentwickelt — unter einer Architektur, die Korrektheit erzwingt
    statt erhofft.
 
+Das Repository trägt dabei **vier Ebenen** (ADR-017), und jedes Modul,
+jedes Dokument und jede Rolle gehört genau einer davon an:
+
+| Ebene | Was sie ist | Hier |
+|---|---|---|
+| Entwickler und KI | die Arbeit an Tool und Vorzeige | Reviews, ADRs, Suite, Gate A-K1 |
+| KI-Tool | das agentische Migrationssystem, unabhängig vom Unternehmen | `ontologie/`, `spez/`, `gates/`, `models/`, `qa/`, `quellen/`, Skills und Agentenrollen, Berichts-Generatoren |
+| Vorzeige | ein fiktives Unternehmen, an dem sich das Tool zeigt und testen lässt | Referenz-Zielsystem `kern/`, Bestandsführung `bestand/`, der Migrationsfall, die Unternehmensseite |
+| Vorzeige-Werkzeuge | was die Vorzeige herstellt und in der Wirklichkeit ein Unternehmen oder Quellsystem liefern würde | Bestandssimulation, Quellsystem-Erzeugung, Regie-Mechanik |
+
+Abgrenzung: Was bei einem beliebigen Versicherer unverändert eingesetzt
+würde, ist Tool; was nur für die fiktiven Unternehmen gilt, ist
+Vorzeige. Der Generator eines Berichts ist Tool, die konfigurierte
+Instanz ist Vorzeige. Die Schichtenkarte trägt die Ebene je Schicht und
+hält die Kanten aus dem Tool in die Vorzeige als Ratsche fest.
+
 Die Arbeitsteilung ist der Kern der Methodik:
 
 - **Agenten schlagen vor** — als versionierte Rollen (Skills): Quellen
@@ -88,7 +104,12 @@ Gesamtbild, aber nicht zum System.
 ## Architektur
 
 **Schichten** (Import-Regeln maschinell erzwungen,
-`ontologie/code_karte`):
+`ontologie/code_karte`; jede Schicht trägt ihre Ebene nach ADR-017, und
+die 29 gemessenen Kanten aus dem Tool in die Vorzeige sind die
+Zielsystem-Schnittstelle — eine neue Kante ist ein Befund, bis ein ADR
+sie aufnimmt). Die Kette unten ist die Lesefassung; die erzwungene
+Erlaubnismatrix ist ein Netz mit Quer- und Rückkanten und steht in der
+erzeugten [Landkarte](docs/architektur/landkarte.md):
 
 ```
 quellen  ->  ontologie  ->  spez  ->  kern  ->  bestand  ->  qa  ->  gates
