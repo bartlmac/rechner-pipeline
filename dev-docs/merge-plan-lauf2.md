@@ -344,18 +344,18 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    verloren.
 10. [ ] Folge-Straenge nach dem Merge von PR #11 (Plan validiert durch
    die merge-session 2026-09-05, Einwendung angenommen):
-   KEIN REBASE. ebenen (5 Commits) und plv-tagesbetrieb (9 Commits)
+   KEIN REBASE. ebenen (5 Commits) und plv-betrieb (9 Commits)
    sitzen exakt auf 730fcb0; sobald PR #11 als Merge-Commit auf main
    ist, sind beide auf einem Vorfahren von main gebaut. Umbasieren
    vergaebe neue Shas — dasselbe Argument, das gegen Squash spricht:
    gates/_provenienz.py schreibt den Commit in jeden Systemstand, den
    P9-Snapshots binden; main traegt Merge-Commits (PR #9, #10, #11).
    Also: (a) PR "Architektur: Ebenen und Rollenmodell" (ebenen -> main,
-   Merge-Commit), (b) PR "PLV-Tagesbetrieb" (plv-tagesbetrieb -> main,
+   Merge-Commit), (b) PR "PLV-Tagesbetrieb" (plv-betrieb -> main,
    Merge-Commit); Reihenfolge frei; Beruehrungen: landkarte.md (nie von
    Hand aufloesen, neu erzeugen), je ein Absatz in AGENTS.md und README
    aus beiden Straengen (beide behalten), werkzeuge/falldaten.py additiv.
-   FRUEHER MERGE plv-tagesbetrieb -> vorzeige-url (Frage des
+   FRUEHER MERGE plv-betrieb -> vorzeige-url (Frage des
    Maintainers, damit das Redesign Stands-Paket und "Bestand heute"
    nutzen kann): unbedenklich, WEIL nicht umbasiert wird — plv erreicht
    main mit denselben Shas; vorzeige-url bekommt damit auch 730fcb0
@@ -379,7 +379,7 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    <basis>...<seiten-branch>; werkzeuge/ traegt Seiten- UND
    Systemcode nebeneinander — T19-01 sass dort), statt "keine
    Systemaenderungen" zu versprechen; (3) REIHENFOLGE: verdichtet wird
-   erst, wenn plv-tagesbetrieb und 730fcb0 auf main sind — sonst faellt
+   erst, wenn plv-betrieb und 730fcb0 auf main sind — sonst faellt
    der frueh gemergte Tagesbetrieb in das Seiten-Delta und wuerde ueber
    Bande mit-gesquasht. Das ist eine Bedingung an den Zeitpunkt des
    Verdichtens, nicht an den fruehen Merge; da waehrend des Redesigns
