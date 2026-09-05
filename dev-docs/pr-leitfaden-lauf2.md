@@ -17,9 +17,9 @@ Review mit Fixes, E2E-Fixture, Abschlussdokumentation) und die
 Vorzeigeseite samt Auftritts-Werkzeugen (Merge-Plan Schritt 7).
 
 Kennzahlen, gebunden an einen SCHNAPPSCHUSS statt an "jetzt" — Stand
-**35374a3**: 225 Commits auf Basis 33e9dec (Merge PR #10), 317
-Dateien, +77,3k/-3,2k Zeilen. Nachrechnen:
-`git rev-list --count 33e9dec..35374a3`.
+**c1d17ae**: 230 Commits auf Basis 33e9dec (Merge PR #10), 322
+Dateien, +82,7k/-3,3k Zeilen. Nachrechnen:
+`git rev-list --count 33e9dec..c1d17ae`.
 
 Warum an einen Commit gebunden: Eine Zahl, die "jetzt" meint, wird
 von jedem weiteren Commit falsch — auch von dem, der sie korrigiert.
@@ -30,7 +30,7 @@ einen benannten Stand bleibt dauerhaft wahr, egal was danach kommt —
 und was danach kam, ist der Doku-Commit, der diesen Stand hier
 eintraegt (dev-docs/review-t19-befunde.md).
 
-Zustand auf diesem Stand: Suite 1617 gruen (0 Skips), Kern 3.4.0,
+Zustand auf diesem Stand: Suite 1634 gruen (0 Skips), Kern 3.4.0,
 Gate P-B1 2.1.0,
 Fall vollstaendig gezeichnet (fuenf Gates auf Systemstand 4b1abf0;
 A-M4 834/834, Schichtbeleg-Residuensumme -0,14 EUR).
@@ -198,7 +198,7 @@ als kritischen Befund; Fix 3520883 mit drei Tests, darunter der
 echte CLI-Weg)? Und erzeugt der Auftritt wirklich alles aus
 Repo-Quellen statt aus gepflegten Kopien?
 
-### Stufe 7 — Externe Reviews T19 und T18 (730b2e9..35374a3, 10 Commits)
+### Stufe 7 — Externe Reviews T19, T18 und T20 (730b2e9..c1d17ae, 15 Commits)
 
 Zwei Review-Runden, nach dem Push von PR #11 geschlossen. T19
 (sieben Befunde auf 730b2e9, dev-docs/review-t19-befunde.md):
@@ -211,16 +211,30 @@ drei Bewegungen statt sieben Flicken — pruefen und zurueckgeben
 (e7e9907), Laufmanifest als Pflicht (9a96a11, aendert den
 Ausgabevertrag von cli_fortschreibung: laufmanifest.json), und
 zeilenweise Ledger/Scheiben-Bindung mit Endlichkeit an Config und
-Abschluss samt Berichts-Wachposten und umask-Writer (35374a3). Das
-ist die Stufe mit den meisten Vertragsaenderungen des PRs: Gate P-B1
-2.0.0 -> 2.1.0 (additiv, --manifest), Abschluss verlangt das
-Manifest, Bericht urteilt ueber die P-B1-Engine. Prueffragen: Ist
-jede der neun Wachen durch einen Test gedeckt, der ihre Entfernung
-faengt (die Befundliste nennt die Mutationsproben)? Ist die bewusste
-Einseitigkeit der Ledger/Historie-Bindung (Vorgeschichte
-uebernommener Vertraege) fachlich richtig begruendet? Und gibt es
-einen Konsumenten eines Laufverzeichnisses, der das Manifest noch
-nicht kennt?
+Abschluss samt Berichts-Wachposten und umask-Writer (35374a3). T20
+(acht Befunde auf 6e239dc, im selben Dokument als zweiter Nachzug):
+die Wiederkehr des Musters an zwei Stellen und ihre Schliessung —
+Gate und A-M4 uebernehmen die Hashes der Engine statt vorher selbst
+zu hashen (T20-01), jede hergeleitete Buchungsart ist je Police an
+den Kern gebunden (T20-04, neues Modul bestand.ledger_bindung),
+Endlichkeit bis in die Verteilungsparameter (T20-05); dazu die
+ehrliche Vorzeigeseite (Signaturstatus, Luecken, Exit 3; T20-02/-03),
+der Scope-Vertrag in allen Dokumenten (T20-06), Flexionsformen in der
+Klarnamenwache (T20-07) und der geschlossene Pin-Schluss mit Test
+(T20-08), alles in c1d17ae. Dazwischen das interne, unabhaengige
+Workflow-Review U1 als Befundliste (cdac965, umbenannt c411737) —
+keine Code-Aenderung, Grundlage des kommenden Architektur-Strangs.
+Das ist die Stufe mit den meisten Vertragsaenderungen des PRs: Gate
+P-B1 2.0.0 -> 2.1.0 (additiv, --manifest, --merkmale), Abschluss
+verlangt das Manifest, Bericht urteilt ueber die P-B1-Engine, Renderer
+enden bei Luecken mit 3. Prueffragen: Ist jede der zwanzig Wachen
+durch einen Test gedeckt, der ihre Entfernung faengt (die Befundliste
+nennt die Mutationsproben)? Ist die bewusste Einseitigkeit der
+Ledger/Historie-Bindung (Vorgeschichte uebernommener Vertraege)
+fachlich richtig begruendet? Stimmt die Kern-Herleitung der
+Buchungsbetraege auch fuer uebernommene Vertraege mit Tarifzellen
+(Merkmalstabelle)? Und gibt es einen Konsumenten eines
+Laufverzeichnisses, der das Manifest noch nicht kennt?
 
 ## Wo die schaerfsten Augen hingehoeren
 
@@ -263,7 +277,7 @@ In absteigender Prioritaet — Risiko mal Neuheit:
 
 Behauptungen dieses Leitfadens selbst pruefen, nicht glauben:
 
-- Volle Suite: `.venv/bin/python -m pytest` (1617 auf 35374a3; in
+- Volle Suite: `.venv/bin/python -m pytest` (1634 auf c1d17ae; in
   Worktrees weniger — zwei Pruefungen brauchen den Hauptbaum bzw.
   Docker, siehe Merkposten im Merge-Plan Schritt 7).
 - Beide Ketten am Stueck: `.venv/bin/python -m pytest
