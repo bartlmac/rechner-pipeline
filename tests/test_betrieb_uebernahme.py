@@ -170,8 +170,13 @@ def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
     assert code == EXIT_OK, zeile
     assert zeile["uebernommen"] is True and zeile["pb1"]["urteil"] == "gruen"
-    assert zeile["uebernahmen"] == [{"fall": "probe-uebernahme", "stichtag": "2026-01-01",
-                                     "vertraege": 3, "snapshot_sha256": "ab" * 32}]
+    [u] = zeile["uebernahmen"]
+    assert (u["fall"], u["stichtag"], u["vertraege"], u["snapshot_sha256"]) == (
+        "probe-uebernahme", "2026-01-01", 3, "ab" * 32)
+    # Der Fall des Fixtures hat keinen Snapshot: die Zeichnung ist "nicht
+    # ausgewiesen" — benannt, nicht leer (B8).
+    assert u["zeichnung"]["rolle"] == "nicht ausgewiesen"
+    assert u["zeichnung"]["signatur_verifiziert"] is False
     gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
     assert {7_000_001, 7_000_002, 7_000_003} <= set(gesamt["police_id"])
     assert (gesamt.set_index("police_id").loc[7_000_003, "status_code"]) == "PEX"

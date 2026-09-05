@@ -25,7 +25,8 @@ Laufzeitumgebung selbst ist kein Repo-Inhalt.
 | `journal/tagesjournal.parquet` | die Buchungstage, nur angefuegt | Bijektion zum Ledger wird bei jedem Lauf geprueft |
 | `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf: Tag, nachgeholte Tage, Neugeschaeft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des Baus), Image-Tag und -Digest | nur angefuegt; auch ein roter Lauf steht drin |
 | `abschluesse/` | `abschluss_<Monatserster>.parquet`, festgeschrieben 0444, genau einmal (ADR-011) | nie ueberschrieben |
-| `berichte/` | `bestandsbericht_<Monatserster>.html` je Monatsabschluss | jederzeit neu renderbar |
+| `berichte/` | `bestandsbericht_<Monatserster>.html` je Monatsabschluss (dazu je Uebernahme ein Teilbestand-Bericht, solange `teilbestand_getrennt` steht) | jederzeit neu renderbar |
+| `seite/index.html` | "Bestand heute": Kennzahlen, Neugeschaeft der Woche, letzte Buchungen, Monatsabschluesse, Uebernahmen mit der Zeichnung ihrer A-M4-Annahme — nach jedem gruenen Lauf aus Protokoll und Journal gerendert, mit Banderole, Stand, Manifest-Hash und Luecken-Block | jederzeit neu renderbar; ein Caddy liefert das Verzeichnis read-only aus |
 
 ## Einrichtung (einmalig, Mensch)
 
@@ -92,9 +93,18 @@ loginctl enable-linger "$USER"     # der Timer laeuft auch ohne Sitzung
   Wechselt die Kern-Version, weisen die Abschluss-Kontrollen
   (`bestand.cli_abschluss --pruefen`) die Abweichungen aus — der
   Tagesbetrieb schreibt nichts um.
-* **Sichtung:** der Bestandsbericht des letzten Monatsabschlusses liegt
-  unter `daten/berichte/`; die oeffentliche Seite bleibt eine vom
-  Menschen veroeffentlichte Momentaufnahme (`werkzeuge/README.md`).
+* **Sichtung:** `daten/seite/index.html` zeigt den Bestand heute, der
+  Bestandsbericht des letzten Monatsabschlusses liegt unter
+  `daten/berichte/`. Die oeffentliche Seite bleibt eine vom Menschen
+  veroeffentlichte Momentaufnahme (`werkzeuge/README.md`): Ihre Quelle
+  ist das **Stands-Paket**, das der Mensch exportiert und dem Auftritt
+  uebergibt — nichts wird automatisch veroeffentlicht:
+
+  ```
+  python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten --paket runs/stands-paket
+  python werkzeuge/auftritt.py --fall faelle/<fall> --name <kurzname> \
+      --abzug ... --stands-paket runs/stands-paket
+  ```
 
 Lokal, ohne Container (Entwicklerrechner), tut dasselbe:
 

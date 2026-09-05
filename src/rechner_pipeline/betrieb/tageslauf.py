@@ -57,6 +57,7 @@ Ablage unter ``--stand`` (Konzept, Abschnitt 7)::
 
     stand/          sechs Ausgaben + laufmanifest.json (+ merkmale.parquet)
     journal/        tagesjournal.parquet, protokoll.jsonl (nur-anfuegbar)
+    seite/          index.html "Bestand heute" (betrieb.seite), nach jedem gruenen Lauf
     abschluesse/    abschluss_<stichtag>.parquet (0444, genau einmal)
     berichte/       bestandsbericht_<stichtag>.html je Monatsabschluss
     uebernahme/     je Migrationsfall ein Eingang (Block B5)
@@ -315,7 +316,8 @@ def _stand_bauen(
         # ist als datierter Eingang nachweisbar, nicht als anonyme Zeile.
         "uebernahmen": [
             {"fall": u.fall, "stichtag": u.stichtag.isoformat(),
-             "vertraege": int(len(u.bestand)), "snapshot_sha256": u.snapshot_sha256}
+             "vertraege": int(len(u.bestand)), "snapshot_sha256": u.snapshot_sha256,
+             "zeichnung": dict(u.zeichnung)}
             for u in uebernahmen
         ],
         "_uebernommene_policen": sorted(
@@ -609,10 +611,20 @@ def tageslauf(
         zeile["fehler"] = f"{type(exc).__name__}: {exc}"
         if exit_code == EXIT_OK:
             exit_code = EXIT_NACHLAUF if "pb1" in zeile else EXIT_USAGE
+    if zeile["uebernommen"]:
+        # Die interne Sicht (Konzept, Abschnitt 8.3): aus Protokoll und
+        # Journal, nach dem uebernommenen Stand und vor der Protokollzeile,
+        # damit die Zeile die Seite nennt. Eine Seite, die nicht gebaut
+        # werden kann, macht den gefuehrten Tag nicht ungeschehen — sie
+        # fehlt, und die Zeile sagt es.
+        from rechner_pipeline.betrieb.seite import SeiteError, rendere_bestand_heute
+
+        try:
+            zeile["seite"] = rendere_bestand_heute(ablage, aktuelle_zeile=zeile).name
+        except (SeiteError, OSError, ValueError) as exc:
+            zeile["seite"] = f"nicht gerendert: {type(exc).__name__}: {exc}"
     _anfuegen(ablage.protokoll_pfad, zeile)
     return exit_code, zeile
-
-
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #

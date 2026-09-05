@@ -62,11 +62,64 @@ class UebernahmeError(ValueError):
     """Ein Uebernahme-Eingang ist unvollstaendig, veraendert oder unpassend."""
 
 
+#: Was ueber die Zeichnung einer A-M4-Annahme NICHT bekannt ist, heisst so —
+#: nicht leer, nicht None. Aeltere Snapshots (Schema 6) fuehren keine
+#: Schluesselklasse; die Seite sagt dann "nicht ausgewiesen", wie die
+#: Fall-Seite.
+NICHT_AUSGEWIESEN = "nicht ausgewiesen"
+
+
+def zeichnung_aus_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str, Any]:
+    """Rolle, Entscheider und Schluesselklasse der A-M4-Annahme aus dem Snapshot.
+
+    Gelesen wird ``entscheide/A-M4-<sha256>.json`` des Falls — die Datei,
+    die das Gate P9 geschrieben hat. Dieses Kommando prueft ihre Signatur
+    NICHT (kein Schluesselring, T19-02); es uebernimmt die Angaben der
+    Datei und benennt sie so. Fehlt der Snapshot, ist jede Angabe
+    ``nicht ausgewiesen``.
+    """
+    leer = {
+        "gate": "A-M4", "entscheid": NICHT_AUSGEWIESEN, "rolle": NICHT_AUSGEWIESEN,
+        "entscheider": NICHT_AUSGEWIESEN, "schluesselklasse": NICHT_AUSGEWIESEN,
+        "schluessel_sha256": NICHT_AUSGEWIESEN, "schema_version": None,
+        "signatur_verifiziert": False,
+        "quelle": "kein A-M4-Snapshot im Fall gefunden",
+    }
+    if not snapshot_sha256:
+        return leer
+    pfad = Path(fall) / "entscheide" / f"A-M4-{snapshot_sha256}.json"
+    if not pfad.is_file():
+        return leer
+    try:
+        daten = json.loads(pfad.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {**leer, "quelle": f"{pfad.name} nicht lesbar"}
+    freigabe = daten.get("freigabe") or {}
+    zeichnung = daten.get("zeichnung") or {}
+    schluessel = str(freigabe.get("schluessel_sha256") or "")
+    return {
+        "gate": str(daten.get("gate") or "A-M4"),
+        "entscheid": str(daten.get("entscheid") or NICHT_AUSGEWIESEN),
+        "rolle": str(daten.get("rolle") or NICHT_AUSGEWIESEN),
+        "entscheider": str(daten.get("entscheider") or zeichnung.get("rolle") or NICHT_AUSGEWIESEN),
+        # Die Schluesselklasse fuehren erst Snapshots ab dem Vier-Rollen-
+        # Modell; ein Altsnapshot (Schema 6) traegt sie nicht.
+        "schluesselklasse": str(
+            zeichnung.get("schluesselklasse") or freigabe.get("schluesselklasse")
+            or NICHT_AUSGEWIESEN),
+        "schluessel_sha256": schluessel[:16] if schluessel else NICHT_AUSGEWIESEN,
+        "schema_version": daten.get("schema_version"),
+        "signatur_verifiziert": False,
+        "quelle": pfad.name,
+    }
+
+
 @dataclasses.dataclass
 class Uebernahme:
     fall: str
     stichtag: _dt.date
     snapshot_sha256: Optional[str]
+    zeichnung: Dict[str, Any]
     verzeichnis: Path
     manifest_pfad: Path
     bestand: pd.DataFrame
@@ -110,6 +163,9 @@ def validate_eingang(daten: Any) -> List[str]:
     snapshot = daten.get("snapshot_sha256")
     if snapshot is not None and not _ist_sha256(snapshot):
         fehler.append("snapshot_sha256 ist keine SHA-256")
+    zeichnung = daten.get("zeichnung")
+    if zeichnung is not None and not isinstance(zeichnung, dict):
+        fehler.append("zeichnung muss eine Tabelle sein")
     dateien = daten.get("dateien")
     if not isinstance(dateien, dict) or not dateien:
         fehler.append("dateien fehlen")
@@ -180,6 +236,7 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
         fall=str(eingang["fall"]),
         stichtag=stichtag,
         snapshot_sha256=eingang.get("snapshot_sha256"),
+        zeichnung=dict(eingang.get("zeichnung") or zeichnung_aus_snapshot(Path("."), None)),
         verzeichnis=verzeichnis,
         manifest_pfad=verzeichnis / EINGANG_DATEI,
         bestand=bestand,
@@ -286,6 +343,9 @@ def eingang_anlegen(
         "fall": fallname,
         "stichtag": stichtag.isoformat(),
         "snapshot_sha256": snapshot_sha256,
+        # Rolle und Schluesselklasse der Zeichnung, wie die Fall-Seite sie
+        # ausweist — Angaben der Snapshot-Datei, hier nicht verifiziert.
+        "zeichnung": zeichnung_aus_snapshot(fall, snapshot_sha256),
         "quelle": str(quelle),
         "dateien": dict(sorted(dateien.items())),
     }

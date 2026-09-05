@@ -138,8 +138,11 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   new business, roll-forward, day journal, P-B1 guard via the engine,
   month-end close, protocol line); `python -m
   rechner_pipeline.betrieb.uebernahme --stand <daten> --fall <faelle/name>
-  --stichtag <ISO>` registers a migrated portfolio as a dated intake.
-  Runtime environment and image: `deploy/plv/`.
+  --stichtag <ISO>` registers a migrated portfolio as a dated intake;
+  `python -m rechner_pipeline.betrieb.seite --stand <daten> [--paket
+  <dir>]` renders "Bestand heute" and exports the stand package that
+  `werkzeuge/falldaten.py --stands-paket` consumes. Runtime environment
+  and image: `deploy/plv/`.
 - Navigate and scope changes via the ontology index (ADR-005;
   fundstellen are derived, not searched):
   `python -m rechner_pipeline.ontologie.code_index --tests tests`,
