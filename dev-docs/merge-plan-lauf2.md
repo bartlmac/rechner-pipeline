@@ -378,4 +378,9 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    vereinbarten Seiten-Pfadsatz beruehrt (git diff --name-only
    <basis>...<seiten-branch>; werkzeuge/ traegt Seiten- UND
    Systemcode nebeneinander — T19-01 sass dort), statt "keine
-   Systemaenderungen" zu versprechen.
+   Systemaenderungen" zu versprechen; (3) REIHENFOLGE: verdichtet wird
+   erst, wenn plv-tagesbetrieb und 730fcb0 auf main sind — sonst faellt
+   der frueh gemergte Tagesbetrieb in das Seiten-Delta und wuerde ueber
+   Bande mit-gesquasht. Das ist eine Bedingung an den Zeitpunkt des
+   Verdichtens, nicht an den fruehen Merge; da waehrend des Redesigns
+   ohnehin nicht veroeffentlicht wird, ist sie im Normalfall erfuellt.
