@@ -81,3 +81,15 @@ def test_die_installierte_transitive_huelle_ist_gepinnt():
     abweichend = {n: (pins[n], v) for n, v in huelle.items() if n in pins and pins[n] != v}
     assert not ungepinnt, f"transitive Pakete ohne Pin: {ungepinnt}"
     assert not abweichend, f"installiert != gepinnt: {abweichend}"
+
+
+def test_das_build_system_ist_exakt_gepinnt():
+    """Review T21-10: Der isolierte Build loeste setuptools und wheel frei
+    auf; der dokumentierte Weg war fuer die Laufzeit reproduzierbar, fuer
+    den Build nicht."""
+    build = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["build-system"]
+    for eintrag in build["requires"]:
+        req = Requirement(eintrag)
+        specs = list(req.specifier)
+        assert len(specs) == 1 and specs[0].operator == "==", (
+            f"Build-Werkzeug {eintrag!r} ist nicht exakt gepinnt")

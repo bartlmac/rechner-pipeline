@@ -305,7 +305,7 @@ def _it(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
               for e in k.get("entscheide", [])]
     z.append(_tabelle(["Gate", "Entscheid", "Rolle", "Schlüsselklasse", "Schlüssel",
                        "gebundene Artefakte"],
-                      zeilen, "Die menschlichen Abnahmen", rechts=[5]))
+                      zeilen, "Die Entscheid-Snapshots der Gates", rechts=[5]))
 
     for e in k.get("entscheide", []):
         if e.get("begruendung"):

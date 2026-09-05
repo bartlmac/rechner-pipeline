@@ -97,7 +97,7 @@ UEBERNEHMEN = (
     # gehoeren NICHT in diese Liste.
     ("abgeleitet/bestand-nach", "Fortschreibung des uebernommenen Bestands"),
     ("abgeleitet/diagnostics", "Gate-Ledger"),
-    ("entscheide", "Entscheid-Snapshots der menschlichen Gates"),
+    ("entscheide", "Entscheid-Snapshots der Gates"),
 )
 
 
@@ -224,6 +224,22 @@ def _kopiere(fall: Path, ziel: Path) -> List[str]:
     return kopiert
 
 
+def _klassenhinweis(entscheide: List[Dict[str, Any]]) -> str:
+    """Was die Snapshots ueber ihre Schluesselklasse SAGEN (mitsigniert,
+    hier nicht verifiziert) — nichts wird behauptet, was nicht in den
+    gelesenen Bytes steht (Review T21-05)."""
+    klassen = {str(e.get("schluesselklasse") or "") for e in entscheide}
+    if not entscheide:
+        return ""
+    if klassen == {"simulation"}:
+        return (" — alle Snapshots weisen sich als Zeichnung mit einem "
+                "**Simulationsschlüssel** aus")
+    if all(k.startswith("nicht ausgewiesen") or k == "" for k in klassen):
+        return (" — die Snapshots weisen ihre Schlüsselklasse nicht aus "
+                "(Schema 6)")
+    return ""
+
+
 def _pruefstand(e: Dict[str, Any]) -> str:
     """Was DIESE Seite ueber einen Snapshot festgestellt hat — und was nicht.
 
@@ -296,13 +312,13 @@ def _seite(fall: Path, modell: Dict[str, Any], repo: Path,
     z.append("")
     z.append("> **Dies ist eine Vorführung, kein echter Bestand.** Die")
     z.append("> beteiligten Unternehmen sind frei erfunden, die Verträge")
-    z.append("> synthetisch erzeugt. Die Entscheid-Snapshots auf dieser")
-    z.append("> Seite tragen den Fingerabdruck eines **Simulationsschlüssels**,")
-    z.append("> nicht den eines Verantwortlichen Aktuars. Diese Seite prüft")
-    z.append("> Schema, Selbstadressierung und Dateinamen der Snapshots;")
-    z.append("> ihre **Signatur verifiziert sie nicht** — dafür fehlt ihr")
-    z.append("> bewusst das Schlüsselmaterial. Der Fingerabdruck ist unten")
-    z.append("> ausgewiesen.")
+    z.append("> synthetisch erzeugt. Diese Seite prüft an den")
+    z.append("> Entscheid-Snapshots Schema, Selbstadressierung und Dateinamen;")
+    z.append("> ihre **Signatur und die Besetzung der zeichnenden Rolle")
+    z.append("> verifiziert sie nicht** — dafür fehlt ihr bewusst das")
+    z.append("> Schlüsselmaterial. Was die Snapshots über sich selbst sagen,")
+    z.append("> steht unten je Snapshot in den Spalten Schlüsselklasse und")
+    z.append("> Prüfstand" + _klassenhinweis(entscheide) + ".")
     z.append("")
     z.extend(_luecken_abschnitt(modell))
     if unterseite:
@@ -433,7 +449,7 @@ def _seite(fall: Path, modell: Dict[str, Any], repo: Path,
         z.append("*(noch keine Gate-Ledger im Fall)*")
     z.append("")
 
-    z.append("## Die menschlichen Entscheide")
+    z.append("## Die Entscheid-Snapshots der Gates")
     z.append("")
     if entscheide:
         z.append("| Gate | Entscheid | Entscheider | Rolle | Schlüsselklasse | Schlüssel (laut Snapshot) | Prüfstand |")
