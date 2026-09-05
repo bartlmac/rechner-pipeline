@@ -215,9 +215,11 @@ python -m rechner_pipeline.bestand.cli_fortschreibung \
     --config configs/bestand_gesamt.toml --bis 2046-01-01 \
     --neuzugang-ab 2026-01-01 --out-dir runs/bestand-nz
 ```
-That run reports `3203 Basisvertraege, 1486 Neuzugaenge` — same total
+That run reports `3203 Basisvertraege, 1213 Neuzugaenge` — same total
 order of magnitude, but arrivals after 01.01.2026 now come with a `ZUG`
-GeVo of their own in the ledger (1486 of them, absent from the run above)
+GeVo of their own in the ledger (1213 of them, absent from the run above;
+the yearly target follows `neuzugang_trend`, so the stream shrinks year
+by year)
 instead of sitting in the base portfolio from the start. The
 documented run above stays without it because it is the reference run of
 the demo: its numbers appear in the portfolio report and in the

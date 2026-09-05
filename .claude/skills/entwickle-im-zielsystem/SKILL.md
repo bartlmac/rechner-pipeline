@@ -35,6 +35,7 @@ ist ihre Lesefassung und muss mit ihr uebereinstimmen.
 | `quellen/` | deterministische Vorverdichter + Import-Werkzeuge je Quelltyp | LLM-Aufrufe; Interpretation (die gehoert in Skills) |
 | `gates/` | Pruef-CLIs mit Ledger-Contract (ein JSON auf stdout, Exit-Codes, `.gate.json`) | Fachlogik, die nicht pruefend ist; Prosa statt Befund |
 | `bestand/` | synthetische Bestaende, Fortschreibung, Bericht | Kern-Umgehungen (Betraege kommen aus dem Kern) |
+| `betrieb/` | Tagesbetrieb der Vorzeige (Neugeschaeft, Tageslauf, Tagesjournal); Betraege aus dem Kern, Wache ueber die P-B1-Engine | eigene Ereignis-Engine; Import aus `gates/` |
 | `models/` | paketuebergreifende Datenvertraege | Verhaltenslogik |
 | `qa/` | deterministische Vergleichs-Engines (Golden Master, Ueberleitung, Diff) | LLM-Pfade |
 | `kommutationskern/` | separater Zweitkern (Kommutation, klassische Barwerte) NUR fuer den Kreuz-Check | jeder Konsument ausser `qa/` — der Zielkern rechnet ohne Kommutation (ADR-004) |

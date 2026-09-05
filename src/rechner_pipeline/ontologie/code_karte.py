@@ -63,6 +63,12 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     "quellen": {"quellen", "models", "ontologie", "kern", "spez"},
     "qa": {"qa", "models", "quellen", "kern"},
     "bestand": {"bestand", "kern", "models", "qa"},
+    # betrieb seit 2026-09-05: der Tagesbetrieb der Vorzeige
+    # (docs/simulation/tagesbetrieb.md, Abschnitt 9) — Neugeschaeft je
+    # Werktag, Tageslauf, Tagesjournal. Konsument der Bestandsschicht wie
+    # deren CLIs; die Wache P-B1 laeuft ueber die Engine
+    # bestand.vorbedingungen, nicht ueber gates (keine Kante betrieb -> gates).
+    "betrieb": {"betrieb", "bestand", "kern", "models", "qa"},
     "gates": {"gates", "ontologie", "quellen", "kern", "models", "qa",
               "spez", "bestand", "fall"},            # Pruef-CLIs lesen alles;
     #                                                  fall: Gates operieren

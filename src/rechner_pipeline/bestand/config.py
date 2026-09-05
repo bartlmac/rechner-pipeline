@@ -279,6 +279,21 @@ class TarifGeneration:
         """The kernel-side tariff parameters (joined into ModelPoint kwargs)."""
         return {name: getattr(self, name) for name in GENERATION_FIELDS}
 
+    def jahresziel(self, jahr: int) -> float:
+        """Das Neugeschaefts-Ziel des Kalenderjahres ``jahr`` (Konzept, Abschnitt 4).
+
+        ``neuzugang_pro_jahr * (1 + neuzugang_trend) ** (jahr - gueltig_von.year)``
+        — ein Jahr ausserhalb des Verkaufsfensters hat kein Ziel. Beide
+        Erzeuger des Neuzugangs lesen das Ziel hier: der jaehrliche
+        (``generator.neuzugaenge``, auf ganze Vertraege gerundet) und der
+        tagesgranulare (``betrieb.neugeschaeft``, auf die Werktage verteilt).
+        """
+        if not self.gueltig_von.year <= jahr <= self.gueltig_bis.year:
+            return 0.0
+        return float(self.neuzugang_pro_jahr) * (1.0 + self.neuzugang_trend) ** (
+            jahr - self.gueltig_von.year
+        )
+
     def dimensionen(self) -> Tuple[str, ...]:
         """Die Merkmalsdimensionen, ueber die diese Generation aufgeteilt ist."""
         return tuple(sorted({k for z in self.zellen for k in z.auspraegungen}))
