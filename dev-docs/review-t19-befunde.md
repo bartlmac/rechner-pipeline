@@ -213,14 +213,14 @@ verlangen (T21-06); der Rest ist umgesetzt.
 | Befund | Schwere | Status |
 |---|---|---|
 | T21-01 BU: Tod/Ablauf akzeptiert "0 oder Rente" unabhaengig vom Zustand davor; Bewegungskonto liest den Track aus dem Betrag | hoch | **behoben** — `ledger_bindung.zustand_vor` leitet den Vorzustand aus der geordneten Historie her (INV und ABL am selben Tag: BU); Konto und Pruefung nutzen dieselbe Herleitung, der Betrag ist nur noch Pruefgegenstand |
-| T21-02 A-M4 akzeptiert im Bestands-Scope jedes Teilprofil von P-B1 (`--config` optional, Betragsbindung damit optional) | hoch | **Entscheidung offen** — bestaetigt; kehrt den T16-Vertrag "ausweisen statt erzwingen" um und verlangt eine Fall-Config, die kein Gate erzeugt (Lauf 2: von Hand beigestellt); Vorschlag unten |
+| T21-02 A-M4 akzeptiert im Bestands-Scope jedes Teilprofil von P-B1 (`--config` optional, Betragsbindung damit optional) | hoch | **entschieden 2026-09-05: nach dem Landen von plv-betrieb** (Backlog dev-docs/offene-punkte.md) — bestaetigt; kehrt den T16-Vertrag "ausweisen statt erzwingen" um und verlangt eine Fall-Config, die kein Gate erzeugt (Lauf 2: von Hand beigestellt); Vorschlag unten |
 | T21-03 Endliche Verteilungsparameter, nichtendlicher Bestand (`meanlog = 1000`), Manifest geschrieben | hoch | **behoben** — Ueberlauf in den Verteilungen ist ein Fehler (numpy errstate), und jede Ausgabe wird vor dem ERSTEN Schreibvorgang auf Endlichkeit geprueft; Exit 2, kein Artefakt, kein Manifest |
 | T21-04 Falldarstellung behandelt fehlenden/unbekannten Scope wie Tarif (Fail-open) | hoch | **behoben** — `falldaten.sammle` liest den Scope streng ueber `fall.lade_scope`; ungueltig ist eine Luecke (Gruppe `fall`) und wird mit dem VOLLEN Bestandsprofil geprueft |
 | T21-05 Darstellung nennt Snapshots "menschliche Entscheide", Kopfzeile behauptet pauschal Simulationsschluessel | mittel | **behoben** — Ueberschriften "Entscheid-Snapshots der Gates"; die Kopfzeile sagt nur, was ALLE Snapshots ueber ihre Schluesselklasse selbst sagen |
-| T21-06 T-Box-Version und A-K1-Vertrag | mittel | **Entscheidung offen** — Vorschlag unten |
+| T21-06 T-Box-Version und A-K1-Vertrag | mittel | **entschieden 2026-09-05: wie vorgeschlagen, im Ebenen-Strang** (Backlog) — Vorschlag unten |
 | T21-07 `betrag_herkunft` nur Vokabular, nicht Semantik | mittel | **behoben** — `validate_ledger`: `geliefert` genau am Zugang eines uebernommenen Vertrags (Zugang nach Beginn), sonst `gerechnet`; beide Richtungen sind Fehler |
 | T21-08 Rolle "mensch" als Platzhalter | mittel | **bereits behoben** (ADR-018, Schema 2, Snapshot-Schema 7) |
-| T21-09 P-B1 aendert die Akzeptanzmenge ohne Versionssprung | mittel | **behoben** — `GATE_VERSION` 3.0.0, README-Zeile begruendet |
+| T21-09 P-B1 aendert die Akzeptanzmenge ohne Versionssprung | mittel | **behoben** — `GATE_VERSION` 3.0.0, README-Zeile begruendet; die seit T16 offene Versionierungsregel ist jetzt festgeschrieben (ADR-012 Nachtrag, Skill author-rechner-toolbox-gate, README; `tests/test_gate_versionsregel.py`) |
 | T21-10 Build-System (`setuptools>=68`, `wheel`) nicht gepinnt | niedrig | **behoben** — exakte Pins, `tests/test_abhaengigkeiten.py` haelt sie |
 
 **Vorschlag zu T21-02.** A-M4 verlangt im Bestands-Scope ein

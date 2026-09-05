@@ -220,6 +220,8 @@ startet keinen Gate-Lauf.
 | A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
 | G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es P-B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |
 
+Gate-Versionen folgen der Akzeptanzmenge (ADR-012, Nachtrag 2026-09-05): Major, wenn ein vorher grüner Beleg rot werden kann oder umgekehrt; Minor für eine optionale Rolle oder Prüfung, die bestehende Belege nicht berührt; Patch für Meldetexte und Summary-Felder. Trägt eine Zeile dieser Tabelle eine Version, hält `tests/test_gate_versionsregel.py` sie mit der `GATE_VERSION` des Moduls zusammen.
+
 Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
 (`tests/test_kern_algebraisch.py`: qx-Schranken, Barwert-Bilanz
 `A + d·ä = 1`, Rekursionen, Äquivalenzprinzip) — unabhängig von jeder
