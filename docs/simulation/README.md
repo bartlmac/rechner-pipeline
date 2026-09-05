@@ -20,6 +20,7 @@ in die Bewertung zurückwirken.
 | Dokument | Inhalt |
 |---|---|
 | [erfahrungsannahmen.md](erfahrungsannahmen.md) | Wie die Simulation ihre Ereigniswahrscheinlichkeiten bildet: dritte Ordnung als Transformation der ersten |
+| [tagesbetrieb.md](tagesbetrieb.md) | Fachkonzept: die PLV als laufendes Unternehmen — tägliches Neugeschäft, Buchungstag und Wirkungstag, nächtlicher Lauf, Monatsabschluss, Laufzeitumgebung |
 
 ## Die Werkzeuge
 
@@ -27,7 +28,7 @@ in die Bewertung zurückwirken.
 |---|---|
 | `bestand.generator` + `bestand.ereignisse` | den Zielbestand der Pfefferminzia: Modellpunkte je Generation, dann ein Strom datierter Geschäftsvorfälle |
 | `simulation/` (nicht eingecheckt) | die Lieferungen der fiktiven abgebenden Unternehmen |
-| geplant | tägliche Fortschreibung — der Punkt, ab dem das Unternehmen zu leben beginnt |
+| geplant (Konzept: [tagesbetrieb.md](tagesbetrieb.md)) | tägliche Fortschreibung — der Punkt, ab dem das Unternehmen zu leben beginnt |
 
 Jeder Betrag kommt auch in der Simulation aus dem Rechenkern; das
 Simulationswerkzeug rechnet nichts Aktuarielles selbst. Es entscheidet
