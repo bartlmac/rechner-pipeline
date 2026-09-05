@@ -6,17 +6,19 @@
 # diese Config erzeugt daher EINEN Bestand und EINEN Bericht mit beiden
 # Nachweisungen.
 #
-# Kapitallebensversicherung: neun Generationen entlang der
-# Hoechstrechnungszins-Stufen (4,0 % bis 0,25 %; die Stufen im Einzelnen
-# stehen ueber dem jeweiligen Generations-Block).
-# Berufsunfaehigkeit: zwei Generationen (1,75 / 0,9 %), Rechnungsgrundlagen
-# DAV 1997 I. Die jeweils juengste Generation ist im Vertrieb.
+# Kapitallebensversicherung: zehn Generationen entlang der
+# Hoechstrechnungszins-Stufen (4,0 % bis 0,25 %, seit 2025 wieder 1,0 %;
+# die Stufen im Einzelnen stehen ueber dem jeweiligen Generations-Block).
+# Berufsunfaehigkeit: drei Generationen (1,75 / 0,9 / 1,0 %),
+# Rechnungsgrundlagen DAV 1997 I. Die jeweils juengste Generation ist im
+# Vertrieb — bis heute: Diese Config traegt den Tagesbetrieb der PLV
+# ([tagesbetrieb], Fachkonzept docs/simulation/tagesbetrieb.md).
 #
 # Eigene, synthetische Parametrierung (Lehrbeispiel, keine realen Werte).
 
 [meta]
 seed = 20260814
-beschreibung = "Pfefferminzia LV (PLV): Gesamtbestand KLV (9 Generationen) und BU (2 Generationen)"
+beschreibung = "Pfefferminzia LV (PLV): Gesamtbestand KLV (10 Generationen) und BU (3 Generationen)"
 # Referenzstichtag des Bestands: Grenze zwischen Historie und Prognose
 # im Bestandsbericht (cli_report; dessen --stichtag uebersteuert).
 # Abschluss und Fortschreibung setzen ihre Stichtage weiterhin explizit.
@@ -556,22 +558,17 @@ var_j = "premium_duration"
 rho = 0.60
 
 # --------------------------------------------------------------------------
-# KLV-Generation 9: KLV-2022, Verkauf 2022-01-01 bis 2035-12-31
+# KLV-Generation 9: KLV-2022, Verkauf 2022-01-01 bis 2024-12-31
 # Rechnungszins 0,25 %, Tafel DAV2008_T
+# (Bis zum Tagesbetrieb lief das Fenster bis 2035-12; seit dem
+# Generationenwechsel zum 2025-01-01 verkauft KLV-2025.)
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2022"
 knoten = "klv/plv_2022"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2022-01-01
-gueltig_bis = 2035-12-31
+gueltig_bis = 2024-12-31
 sample_size = 150
-# Wirkt NUR mit --neuzugang-ab: dann besiedelt der Batch-Erzeuger das
-# Verkaufsfenster bis zum Referenzstichtag (sample_size) und der
-# GeVo-Strom setzt danach mit diesem Jahressatz als ZUG fort. Ohne
-# --neuzugang-ab besiedelt der Batch das ganze Fenster (Ein Erzeuger je
-# Zeitfenster) und der Lauf meldet 0 Neuzugaenge — kein Run-off, nur ein
-# anderer Erzeuger. Siehe ONBOARDING.md Abschnitt 3.
-neuzugang_pro_jahr = 40
 max_endalter = 85
 zins = 0.0025
 tafel = "DAV2008_T"
@@ -627,6 +624,90 @@ rho = -0.40
 var_i = "duration"
 var_j = "premium_duration"
 rho = 0.60
+
+# --------------------------------------------------------------------------
+# KLV-Generation 10: KLV-2025, Verkauf ab 2025-01-01 (im Vertrieb)
+# Rechnungszins 1,0 %, Tafel DAV2008_T
+#
+# VORLAEUFIG (Fachkonzept Tagesbetrieb, Abschnitt 10): Die
+# Rechnungsgrundlagen der aktuellen Generation legt das Aktuariat der
+# Vorzeige fest; bis dahin gelten der Hoechstrechnungszins 2025 (1,0 %)
+# und die Kosten der Vorgaengergeneration. Eine Aenderung ist eine
+# Fachentscheidung, kein Entwicklerschritt.
+# --------------------------------------------------------------------------
+[[generation]]
+name = "KLV-2025"
+knoten = "klv/plv_2025"  # PLV-Tarifgeneration (Ontologie-Knoten)
+gueltig_von = 2025-01-01
+gueltig_bis = 2035-12-31
+# Batch-Dichte wie das Jahresziel (120 je Jahr ueber elf Fensterjahre),
+# damit der Bestand am Betriebsbeginn keinen Sprung zeigt: Der Batch
+# besiedelt das Fenster nur bis zum Betriebsbeginn (Beginn <= 2026-01-01),
+# danach verkauft der Tagesbetrieb Werktag fuer Werktag.
+sample_size = 1320
+# Jahresziel des Neugeschaefts und sein Trend (Fachkonzept Abschnitt 4):
+# Ziel des Jahres J = neuzugang_pro_jahr * (1 + neuzugang_trend)^(J - 2025).
+# Im Tagesbetrieb wird das Ziel wochentagsgewichtet auf die Werktage
+# verteilt; in der Fortschreibung mit --neuzugang-ab ist es der
+# Jahressatz des GeVo-Stroms (ONBOARDING.md Abschnitt 3).
+neuzugang_pro_jahr = 120
+neuzugang_trend = -0.04
+max_endalter = 85
+zins = 0.01
+tafel = "DAV2008_T"
+alpha = 0.025
+beta1 = 0.025
+gamma1 = 0.0008
+gamma2 = 0.00125
+gamma3 = 0.0025
+policy_fee = 30.0
+min_alter_flex = 60
+min_rlz_flex = 5
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 40.0
+sd = 12.0
+min = 18.0
+max = 62.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.50, 0.50]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30]
+probs = [0.15, 0.20, 0.35, 0.20, 0.10]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25]
+probs = [0.20, 0.25, 0.40, 0.15]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 11.2
+sdlog = 0.5
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [12, 1, 4, 2]
+probs = [0.85, 0.07, 0.05, 0.03]
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.40
+
+[[generation.korrelation]]
+var_i = "duration"
+var_j = "premium_duration"
+rho = 0.60
+
 # --------------------------------------------------------------------------
 # BU-Geschaeft 2000-2016 (DAV 1997 I)
 # --------------------------------------------------------------------------
@@ -689,17 +770,19 @@ var_j = "bu_rente"
 rho = 0.30
 
 # --------------------------------------------------------------------------
-# BU-Neugeschaeft ab 2017 (Hoechstrechnungszins 0,9 %), verkauft weiter
+# BU-Geschaeft 2017-2024 (Hoechstrechnungszins 0,9 %)
+# (Bis zum Tagesbetrieb lief das Fenster bis 2035-12; seit dem
+# Generationenwechsel zum 2025-01-01 verkauft BU-2025.)
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2017"
 knoten = "bu/plv_2017"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2017-01-01
-gueltig_bis = 2035-12-31
-sample_size = 300
-# Wirkt NUR mit --neuzugang-ab (siehe Kommentar bei KLV-2022).
-neuzugang_pro_jahr = 30
+gueltig_bis = 2024-12-31
+# 30 je Jahr ueber acht Fensterjahre — dieselbe Dichte wie der bisherige
+# Jahressatz des GeVo-Stroms.
+sample_size = 240
 # Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
 # fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
 max_endalter = 67
@@ -750,6 +833,95 @@ rho = -0.55
 var_i = "entry_age"
 var_j = "bu_rente"
 rho = 0.30
+
+# --------------------------------------------------------------------------
+# BU-Neugeschaeft ab 2025 (Hoechstrechnungszins 1,0 %), im Vertrieb
+#
+# VORLAEUFIG (Fachkonzept Tagesbetrieb, Abschnitt 10): Rechnungszins 1,0 %
+# und die Grundlagen DAV 1997 I der Vorgaengergeneration, bis das
+# Aktuariat der Vorzeige die aktuelle Generation festlegt.
+# --------------------------------------------------------------------------
+[[generation]]
+name = "BU-2025"
+knoten = "bu/plv_2025"  # PLV-Tarifgeneration (Ontologie-Knoten)
+produkt = "bu"
+gueltig_von = 2025-01-01
+gueltig_bis = 2035-12-31
+# Batch-Dichte wie das Jahresziel (30 je Jahr ueber elf Fensterjahre);
+# der Batch besiedelt nur bis zum Betriebsbeginn, danach der Tagesbetrieb.
+sample_size = 330
+# Jahresziel und Trend wie bei KLV-2025 erklaert.
+neuzugang_pro_jahr = 30
+neuzugang_trend = -0.03
+# Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
+# fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
+max_endalter = 67
+zins = 0.01
+# Rechnungsgrundlagen (BU): Aktivensterblichkeit, Invalidisierung,
+# Reaktivierung (Select), Invalidensterblichkeit (Select).
+tafel_aktiv = "DAV1997_TAA"
+tafel_i = "DAV1997_I"
+tafel_ri = "DAV1997_RI"
+tafel_ti = "DAV1997_TI"
+zuschlag = 0.05
+# tafel = Sterbetafel-Feld des KLV-Contracts; bei BU fuehrt tafel_aktiv.
+tafel = "DAV1997_TAA"
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 33.0
+sd = 8.0
+min = 20.0
+max = 55.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.58, 0.42]
+
+# Laufzeit bis Endalter: kuerzere Vertraege sind die Ausnahme (die Kappung
+# auf max_endalter - entry_age wirkt zusaetzlich im Generator).
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [15, 20, 25, 30, 35]
+probs = [0.10, 0.20, 0.30, 0.30, 0.10]
+
+# Versicherte BU-Jahresrente (Bezugsgroesse der Nachweisung).
+[generation.verteilungen.bu_rente]
+typ = "lognormal"
+meanlog = 9.4
+sdlog = 0.35
+round = -2
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "duration"
+rho = -0.55
+
+[[generation.korrelation]]
+var_i = "entry_age"
+var_j = "bu_rente"
+rho = 0.30
+
+# --------------------------------------------------------------------------
+# Tagesbetrieb der PLV (Fachkonzept docs/simulation/tagesbetrieb.md).
+#
+# betriebsbeginn: erster Tag, an dem Werktag fuer Werktag verkauft wird;
+# der Batch-Erzeuger besiedelt die Verkaufsfenster nur bis zu diesem Tag
+# (Beginn <= betriebsbeginn) — ein Erzeuger je Zeitfenster. Faellt mit dem
+# Referenzstichtag und dem Zugang der Baldrian-Uebernahme zusammen.
+# wochentagsgewichte: kein Verkauf am Wochenende, etwas mehr am Montag,
+# sonst gleichmaessig (Abschnitt 4).
+# meldeverzug_tod: VORLAEUFIG (Abschnitt 10) — lognormal, Median 14 Tage,
+# 95 Prozent unter 60 Tagen; Vorschlag des Konzepts, Entscheidung des
+# Aktuariats der Vorzeige steht aus.
+# --------------------------------------------------------------------------
+[tagesbetrieb]
+betriebsbeginn = 2026-01-01
+wochentagsgewichte = { mo = 1.3, di = 1.0, mi = 1.0, do = 1.0, fr = 1.0, sa = 0.0, so = 0.0 }
+meldeverzug_tod = { verteilung = "lognormal", median_tage = 14, p95_tage = 60 }
+
 # --------------------------------------------------------------------------
 # Plausibilitaets-Baender fuer das Sanity-Gate (P-B1).
 # Die produktfuehrenden Leistungsspalten werden je Produkt geprueft

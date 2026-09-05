@@ -16,6 +16,9 @@ Layout (see ``configs/bestand_klv.toml``)::
     [plausibilitaet]            value bands for the sanity gate
     [annahmen]                  Erfahrungsannahmen (3. Ordnung) je Ereignisart
                                 als affine Transformation der ersten Ordnung
+    [tagesbetrieb]              Tagesbetrieb der Vorzeige (Fachkonzept
+                                docs/simulation/tagesbetrieb.md): Betriebsbeginn,
+                                Wochentagsgewichte des Neugeschaefts, Meldeverzug
 
 Knoten: klv, bu
 """
@@ -233,6 +236,12 @@ class TarifGeneration:
     #: Referenzstichtag); 0 = kein Neuzugang. Wirkt nur innerhalb des
     #: Gueltigkeitsfensters der Generation.
     neuzugang_pro_jahr: int = 0
+    #: Jahresfaktor des Neuzugangs (Fachkonzept Tagesbetrieb, Abschnitt 4):
+    #: Das Ziel des Kalenderjahres J ist
+    #: ``neuzugang_pro_jahr * (1 + neuzugang_trend) ** (J - gueltig_von.year)``.
+    #: Negativ laesst das Unternehmen schrumpfen, ohne dass jemand jedes
+    #: Jahr eine Zahl pflegt; 0 (Default) ist der bisherige konstante Satz.
+    neuzugang_trend: float = 0.0
     # Kernel-Tarifparameter (GENERATION_FIELDS des ModelPoint-Contracts):
     zins: float = 0.0
     tafel: str = ""
@@ -373,6 +382,17 @@ class TarifGeneration:
             )
         if not 0 <= self.neuzugang_pro_jahr <= 10_000:
             errors.append(f"{prefix}: neuzugang_pro_jahr ausserhalb [0, 10000]")
+        # Der Trend ist ein Faktor je Jahr: -1 waere ab dem zweiten Jahr
+        # kein Verkauf mehr (und darunter ein negatives Ziel), ueber +1
+        # eine Verdopplung je Jahr — beides ist kein Vertrieb, sondern ein
+        # Tippfehler. Nichtendlich wird oben schon gemeldet.
+        if math.isfinite(self.neuzugang_trend) and not (
+            -1.0 < self.neuzugang_trend <= 1.0
+        ):
+            errors.append(
+                f"{prefix}: neuzugang_trend {self.neuzugang_trend} ausserhalb "
+                "(-1, 1] (Jahresfaktor des Neuzugangs)"
+            )
         if not 0 < self.max_endalter <= 121:
             errors.append(f"{prefix}: max_endalter ausserhalb (0, 121]")
         if self.produkt not in PRODUKT_VALUES:
@@ -699,6 +719,124 @@ class Annahmen:
         return errors
 
 
+#: Wochentage der Neugeschaefts-Gewichtung, in der Reihenfolge von
+#: ``datetime.date.weekday()`` (Montag = 0).
+WOCHENTAGE: Tuple[str, ...] = ("mo", "di", "mi", "do", "fr", "sa", "so")
+
+#: Vorgabe des Fachkonzepts (docs/simulation/tagesbetrieb.md, Abschnitt 4):
+#: kein Verkauf am Wochenende, etwas mehr am Montag, sonst gleichmaessig.
+WOCHENTAGSGEWICHTE_VORGABE: Dict[str, float] = {
+    "mo": 1.3, "di": 1.0, "mi": 1.0, "do": 1.0, "fr": 1.0, "sa": 0.0, "so": 0.0,
+}
+
+#: Verteilungen, die der Meldeverzug ziehen kann. Nur die lognormale ist
+#: gebaut (Median und 95-Prozent-Quantil bestimmen sie vollstaendig);
+#: eine weitere waere eine Erweiterung des Tagesjournals, keine Config.
+MELDEVERZUG_VERTEILUNGEN: Tuple[str, ...] = ("lognormal",)
+
+
+@dataclass(frozen=True)
+class Meldeverzug:
+    """Wie lange das Unternehmen von einem Vorfall NICHT weiss.
+
+    Fachkonzept Tagesbetrieb, Abschnitt 3: Ein Tod wirkt am Wirkungstag,
+    gebucht wird er erst, wenn er gemeldet ist. Der Verzug wird je Police
+    und Jahr deterministisch aus dieser Verteilung gezogen — Median und
+    95-Prozent-Quantil in Tagen legen die lognormale Verteilung fest.
+
+    VORLAEUFIG (Abschnitt 10 des Konzepts, offene Fachentscheidung):
+    Median 14 Tage, 95 Prozent unter 60 Tagen sind der Vorschlag des
+    Konzepts, nicht die Entscheidung des Aktuariats der Vorzeige.
+    """
+
+    verteilung: str = "lognormal"
+    median_tage: float = 14.0
+    p95_tage: float = 60.0
+
+    def validate(self, name: str) -> List[str]:
+        errors: List[str] = []
+        if self.verteilung not in MELDEVERZUG_VERTEILUNGEN:
+            errors.append(
+                f"{name}: verteilung {self.verteilung!r} nicht unterstuetzt "
+                f"(unterstuetzt: {list(MELDEVERZUG_VERTEILUNGEN)})"
+            )
+        for feld in ("median_tage", "p95_tage"):
+            if not math.isfinite(getattr(self, feld)):
+                errors.append(f"{name}: {feld} ist nicht endlich")
+        if errors:
+            return errors
+        if self.median_tage <= 0.0:
+            errors.append(f"{name}: median_tage <= 0")
+        if self.p95_tage <= self.median_tage:
+            errors.append(
+                f"{name}: p95_tage ({self.p95_tage}) muss ueber median_tage "
+                f"({self.median_tage}) liegen — sonst ist die Verteilung "
+                "keine"
+            )
+        return errors
+
+
+@dataclass
+class Tagesbetrieb:
+    """Der Tagesbetrieb der Vorzeige (Fachkonzept docs/simulation/tagesbetrieb.md).
+
+    * ``betriebsbeginn``: der erste Kalendertag, an dem taeglich verkauft
+      wird. Der Basisbestand entsteht bis einschliesslich dieses Tages aus
+      dem Batch-Erzeuger (Beginn <= betriebsbeginn), danach bringt jeder
+      Werktag sein Neugeschaeft — ein Erzeuger je Zeitfenster, wie beim
+      Referenzstichtag der Fortschreibung. Ohne Angabe gibt es keinen
+      Tagesbetrieb; der Tageslauf bricht dann hart ab.
+    * ``wochentagsgewichte``: relatives Gewicht je Wochentag fuer die
+      Verteilung des Jahresziels auf die Kalendertage (Abschnitt 4).
+    * ``meldeverzug_tod``: Verteilung des Meldeverzugs bei Tod (Abschnitt 3).
+
+    Die Werte gehoeren in die Config, nicht in den Code; ohne Abschnitt
+    ``[tagesbetrieb]`` gelten die Vorgaben des Konzepts fuer Gewichte und
+    Meldeverzug, und ``betriebsbeginn`` bleibt leer.
+    """
+
+    betriebsbeginn: Optional[_dt.date] = None
+    wochentagsgewichte: Dict[str, float] = field(
+        default_factory=lambda: dict(WOCHENTAGSGEWICHTE_VORGABE)
+    )
+    meldeverzug_tod: Meldeverzug = field(default_factory=Meldeverzug)
+
+    def gewicht(self, tag: _dt.date) -> float:
+        """Das Gewicht eines Kalendertags (nur vom Wochentag abhaengig)."""
+        return float(self.wochentagsgewichte[WOCHENTAGE[tag.weekday()]])
+
+    def validate(self) -> List[str]:
+        errors: List[str] = []
+        prefix = "tagesbetrieb"
+        if self.betriebsbeginn is not None and not isinstance(
+            self.betriebsbeginn, _dt.date
+        ):
+            errors.append(f"{prefix}: betriebsbeginn ist kein Datum")
+        fehlend = sorted(set(WOCHENTAGE) - set(self.wochentagsgewichte))
+        fremd = sorted(set(self.wochentagsgewichte) - set(WOCHENTAGE))
+        if fehlend or fremd:
+            errors.append(
+                f"{prefix}: wochentagsgewichte brauchen genau die Schluessel "
+                f"{list(WOCHENTAGE)} (fehlend {fehlend}, unbekannt {fremd})"
+            )
+            return errors + self.meldeverzug_tod.validate(f"{prefix} meldeverzug_tod")
+        for tag in WOCHENTAGE:
+            wert = self.wochentagsgewichte[tag]
+            if isinstance(wert, bool) or not isinstance(wert, (int, float)):
+                errors.append(f"{prefix}: wochentagsgewicht {tag} ist keine Zahl")
+            elif not math.isfinite(float(wert)):
+                errors.append(f"{prefix}: wochentagsgewicht {tag} ist nicht endlich")
+            elif float(wert) < 0.0:
+                errors.append(f"{prefix}: wochentagsgewicht {tag} < 0")
+        if not errors and sum(float(v) for v in self.wochentagsgewichte.values()) <= 0.0:
+            errors.append(
+                f"{prefix}: wochentagsgewichte summieren auf 0 — an keinem "
+                "Tag wuerde verkauft, das Jahresziel waere unerreichbar"
+            )
+        errors.extend(self.meldeverzug_tod.validate(f"{prefix} meldeverzug_tod"))
+        return errors
+
+
 @dataclass
 class BestandConfig:
     seed: int
@@ -706,6 +844,8 @@ class BestandConfig:
     generationen: List[TarifGeneration]
     plausibilitaet: Dict[str, Tuple[float, float]] = field(default_factory=dict)
     annahmen: Annahmen = field(default_factory=Annahmen)
+    #: Tagesbetrieb der Vorzeige (Fachkonzept docs/simulation/tagesbetrieb.md).
+    tagesbetrieb: Tagesbetrieb = field(default_factory=Tagesbetrieb)
     #: Referenzstichtag des Bestands (Historie/Prognose-Grenze im
     #: Bericht): eine Eigenschaft des Bestands, in der Config gefuehrt —
     #: nicht des einzelnen Berichts-Aufrufs.
@@ -722,12 +862,46 @@ class BestandConfig:
             errors.append("generation-Namen nicht eindeutig")
         for gen in self.generationen:
             errors.extend(gen.validate())
+        errors.extend(self._validate_verkaufsfenster())
         for merkmal, band in self.plausibilitaet.items():
             if len(band) != 2 or not all(math.isfinite(float(g)) for g in band):
                 errors.append(f"plausibilitaet {merkmal}: Band muss (min, max) aus endlichen Zahlen sein")
             elif float(band[0]) >= float(band[1]):
                 errors.append(f"plausibilitaet {merkmal}: Band muss (min, max) mit min < max sein")
         errors.extend(self.annahmen.validate())
+        errors.extend(self.tagesbetrieb.validate())
+        return errors
+
+    def _validate_verkaufsfenster(self) -> List[str]:
+        """Ein Tag verkauft je Produkt genau EINE Generation.
+
+        Fachkonzept Tagesbetrieb, Abschnitt 4: Ein Tag verkauft die
+        Generation, deren Gueltigkeitsfenster ihn enthaelt — das ist nur
+        eindeutig, wenn die Fenster verkaufender Generationen desselben
+        Produkts nicht ueberlappen. Generationen, die nichts verkaufen
+        (uebernommene: ``sample_size = 0`` ohne Neuzugang), duerfen ihr
+        Fenster dagegen frei tragen — es beschreibt die Verkaufszeit beim
+        abgebenden Unternehmen. KLV und BU ueberlappen selbstverstaendlich.
+        """
+        errors: List[str] = []
+        verkaufend = [
+            g for g in self.generationen
+            if g.sample_size > 0 or g.neuzugang_pro_jahr > 0
+        ]
+        je_produkt: Dict[str, List[TarifGeneration]] = {}
+        for gen in verkaufend:
+            je_produkt.setdefault(gen.produkt, []).append(gen)
+        for produkt, gens in sorted(je_produkt.items()):
+            geordnet = sorted(gens, key=lambda g: (g.gueltig_von, g.name))
+            for vorher, danach in zip(geordnet, geordnet[1:]):
+                if danach.gueltig_von <= vorher.gueltig_bis:
+                    errors.append(
+                        f"generation {vorher.name} und {danach.name} "
+                        f"(produkt {produkt}): Verkaufsfenster ueberlappen "
+                        f"({vorher.gueltig_von.isoformat()}..{vorher.gueltig_bis.isoformat()} "
+                        f"und {danach.gueltig_von.isoformat()}..{danach.gueltig_bis.isoformat()}) "
+                        "— ein Tag verkauft je Produkt genau eine Generation"
+                    )
         return errors
 
 
@@ -743,6 +917,65 @@ def _to_date(value: Any, label: str, errors: List[str]) -> _dt.date:
         return value
     errors.append(f"{label}: kein TOML-Datum")
     return _dt.date(1900, 1, 1)
+
+
+def _lies_tagesbetrieb(roh: Any, errors: List[str]) -> Tagesbetrieb:
+    """``[tagesbetrieb]`` lesen — fehlender Abschnitt = Vorgaben des Konzepts.
+
+    Unbekannte Schluessel sind ein Ladefehler und kein stilles Ignorieren:
+    ein vertippter ``wochentagsgewicht`` liefe sonst mit der Vorgabe
+    durch, und niemand saehe, dass die Config nichts bewirkt.
+    """
+    if roh is None:
+        return Tagesbetrieb()
+    if not isinstance(roh, Mapping):
+        errors.append("[tagesbetrieb] muss eine Tabelle sein")
+        return Tagesbetrieb()
+    bekannt = {"betriebsbeginn", "wochentagsgewichte", "meldeverzug_tod"}
+    fremd = sorted(set(roh) - bekannt)
+    if fremd:
+        errors.append(
+            f"tagesbetrieb: unbekannte Schluessel {fremd} "
+            f"(bekannt: {sorted(bekannt)})"
+        )
+    kwargs: Dict[str, Any] = {}
+    if "betriebsbeginn" in roh:
+        kwargs["betriebsbeginn"] = _to_date(
+            roh["betriebsbeginn"], "tagesbetrieb.betriebsbeginn", errors
+        )
+    if "wochentagsgewichte" in roh:
+        gewichte = roh["wochentagsgewichte"]
+        if not isinstance(gewichte, Mapping):
+            errors.append(
+                "tagesbetrieb: wochentagsgewichte muss eine Tabelle "
+                "{ mo = ..., ..., so = ... } sein"
+            )
+        else:
+            kwargs["wochentagsgewichte"] = {
+                str(k): v for k, v in gewichte.items()
+            }
+    if "meldeverzug_tod" in roh:
+        verzug = roh["meldeverzug_tod"]
+        if not isinstance(verzug, Mapping):
+            errors.append(
+                "tagesbetrieb: meldeverzug_tod muss eine Tabelle "
+                "{ verteilung = ..., median_tage = ..., p95_tage = ... } sein"
+            )
+        else:
+            fremd = sorted(set(verzug) - {"verteilung", "median_tage", "p95_tage"})
+            if fremd:
+                errors.append(
+                    f"tagesbetrieb meldeverzug_tod: unbekannte Schluessel {fremd}"
+                )
+            try:
+                kwargs["meldeverzug_tod"] = Meldeverzug(
+                    verteilung=str(verzug.get("verteilung", "lognormal")),
+                    median_tage=float(verzug.get("median_tage", 14.0)),
+                    p95_tage=float(verzug.get("p95_tage", 60.0)),
+                )
+            except (TypeError, ValueError) as exc:
+                errors.append(f"tagesbetrieb meldeverzug_tod: {exc}")
+    return Tagesbetrieb(**kwargs)
 
 
 def load_config(path: Path) -> BestandConfig:
@@ -801,6 +1034,7 @@ def config_aus_text(text: str) -> BestandConfig:
                 produkt=str(g.get("produkt", "klv")),
                 knoten=str(g.get("knoten", "")),
                 neuzugang_pro_jahr=int(g.get("neuzugang_pro_jahr", 0)),
+                neuzugang_trend=float(g.get("neuzugang_trend", 0.0)),
                 zins=float(g.get("zins", 0.0)),
                 tafel=str(g.get("tafel", "")),
                 alpha=float(g.get("alpha", 0.0)),
@@ -885,12 +1119,15 @@ def config_aus_text(text: str) -> BestandConfig:
             meta.get("referenzstichtag"), "meta.referenzstichtag", errors
         )
 
+    tagesbetrieb = _lies_tagesbetrieb(raw.get("tagesbetrieb"), errors)
+
     config = BestandConfig(
         seed=int(meta.get("seed", 0)),
         beschreibung=str(meta.get("beschreibung", "")),
         generationen=generationen,
         plausibilitaet=plausibilitaet,
         annahmen=annahmen,
+        tagesbetrieb=tagesbetrieb,
         referenzstichtag=referenzstichtag,
     )
     if errors:

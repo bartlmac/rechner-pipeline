@@ -288,7 +288,8 @@ def test_beispiel_configs_tragen_knoten_konsistent():
     assert set(gesehen) == {
         "klv/plv_1994", "klv/plv_2000", "klv/plv_2004", "klv/plv_2007", "klv/plv_2008",
         "klv/plv_2012", "klv/plv_2015", "klv/plv_2017", "klv/plv_2022",
-        "bu/plv_2000", "bu/plv_2017",
+        "klv/plv_2025",
+        "bu/plv_2000", "bu/plv_2017", "bu/plv_2025",
     }
 
 

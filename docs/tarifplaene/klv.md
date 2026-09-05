@@ -291,13 +291,16 @@ Erhöhungsscheiben unsenkbar ließe.
 
 Die **Pfefferminzia Lebensversicherung (PLV)** ist das fiktive
 Unternehmen dieses Arbeitsraums: Zielkern und Bestand gehören ihr,
-Migrationsfälle übernehmen fremde Bestände in die PLV. Ihre neun
+Migrationsfälle übernehmen fremde Bestände in die PLV. Ihre zehn
 KLV-Bestandsgenerationen sind konstruiert (kein Migrationsfall, keine
 Quell-Provenienz) und tragen — wie jede Generation, die das System
 rechnet — eine **Ontologie-Knoten-ID** (Pflichtfeld `knoten` der
 Bestand-Config, dieselbe Konvention wie A-Box und Gate P-K1; Wurzel =
 Produktfamilie, Präfix `plv_` = PLV-eigene Generation ohne
-Migrationsfall):
+Migrationsfall). Die Generation im Vertrieb ist KLV-2025; ihre
+Rechnungsgrundlagen sind **vorläufig** (Höchstrechnungszins 2025 und die
+Kosten der Vorgängergeneration), bis das Aktuariat der Vorzeige sie
+festlegt (Fachkonzept Tagesbetrieb, offene Fachentscheidung):
 
 | Knoten | Name | gültig | Zins | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2/3}$ | $\kappa$ |
 |---|---|---|---|---|---|---|---|---|
@@ -309,7 +312,8 @@ Migrationsfall):
 | `klv/plv_2012` | KLV-2012 | 2012-01–2014-12 | 1.75% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
 | `klv/plv_2015` | KLV-2015 | 2015-01–2016-12 | 1.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
 | `klv/plv_2017` | KLV-2017 | 2017-01–2021-12 | 0.90% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/plv_2022` | KLV-2022 | 2022-01–2035-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
+| `klv/plv_2022` | KLV-2022 | 2022-01–2024-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
+| `klv/plv_2025` | KLV-2025 | 2025-01–2035-12 | 1.00% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
 
 Migrierte Generationen kommen erst nach ihrer fachlichen Abnahme
 (A-Q1/A-M1/A-M4) in eine Bestand-Config — dann mit der Knoten-ID ihres
