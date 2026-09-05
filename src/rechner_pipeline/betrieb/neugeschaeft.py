@@ -239,6 +239,12 @@ def neugeschaeft_zwischen(
     return df.sort_values("police_id", kind="stable").reset_index(drop=True)
 
 
+def ist_tagesneugeschaeft(gen_index: int, police_id: int) -> bool:
+    """Liegt die Nummer im Nummernkreis des Tagesneugeschaefts dieser Generation?"""
+    rest = int(police_id) - (gen_index + 1) * 10_000_000
+    return _TAGES_ID_OFFSET <= rest < _ID_GRENZE
+
+
 def verkaufstag(gen: TarifGeneration, gen_index: int, police_id: int) -> _dt.date:
     """Den Verkaufstag aus der Police-Nummer zurueckrechnen (Umkehrung).
 
