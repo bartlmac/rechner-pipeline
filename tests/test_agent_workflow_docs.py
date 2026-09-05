@@ -123,3 +123,42 @@ def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
                  "integriere-migrationsinkrement"):
         assert name in katalog, name
         assert Path(f".claude/skills/{name}/SKILL.md").is_file(), name
+
+
+# --------------------------------------------------------------------------- #
+# Agentenrollen des KI-Tools (ADR-018, Schritt 2)
+# --------------------------------------------------------------------------- #
+
+AGENTENROLLEN = ("aktuariat", "architektur", "rechenkern", "programmleitung")
+
+
+def test_agentenrollen_sind_in_beiden_baeumen_byte_identisch() -> None:
+    """Dieselbe Paritaet wie bei den Skills: Verzeichnisse, keine Liste."""
+    claude_wurzel = REPO_ROOT / ".claude" / "agents"
+    codex_wurzel = REPO_ROOT / ".agents" / "agents"
+    claude = {p.name for p in claude_wurzel.glob("*.md")}
+    codex = {p.name for p in codex_wurzel.glob("*.md")}
+    assert claude == codex == {f"{n}.md" for n in AGENTENROLLEN}
+    for name in claude:
+        assert (claude_wurzel / name).read_bytes() == (codex_wurzel / name).read_bytes(), name
+
+
+def test_jede_agentenrolle_nennt_kennung_gegenstueck_und_zeichnungsverbot() -> None:
+    """Eine Agentenrolle ohne ihre Kennung, ohne menschliches Gegenstueck
+    oder ohne das Zeichnungsverbot waere eine Rolle ohne Ebene — genau
+    die Unschaerfe, die T20/U1 fanden."""
+    import re
+
+    skills = {p.name for p in (REPO_ROOT / ".claude" / "skills").iterdir() if p.is_dir()}
+    for name in AGENTENROLLEN:
+        text = (REPO_ROOT / ".claude" / "agents" / f"{name}.md").read_text(encoding="utf-8")
+        assert text.startswith("---\n") and f"\nname: {name}\n" in text
+        assert f"agent/{name}" in text, name
+        assert "mensch/" in text and "zeichnet" in text, name
+        assert "zeichnest nie" in text, name
+        # Jeder genannte Skill existiert.
+        for skill in re.findall(r"``([a-z-]+)``", text):
+            if skill in ("nicht_belegt", "mehrdeutig", "widerspruechlich"):
+                continue
+            if "-" in skill:
+                assert skill in skills, f"{name}: Skill {skill!r} gibt es nicht"
