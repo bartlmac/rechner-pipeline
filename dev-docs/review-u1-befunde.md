@@ -1,4 +1,8 @@
-# Unabhaengiges Review T20: Ontologie, Fall-Dokumentation, agentisches Modell
+# Unabhaengiges Review U1: Ontologie, Fall-Dokumentation, agentisches Modell
+
+(U1 = erstes unabhaengiges Workflow-Review des Maintainers. Nicht zu
+verwechseln mit der externen DORA-Runde ToDo 20 vom selben Tag, die im
+Repo als T20 gefuehrt wird.)
 
 Auftrag des Maintainers vom 2026-09-05: ein umfangreiches, unabhaengiges,
 adversariales Review gegen drei vorgegebene Ziele — bewusst OHNE den Kontext
@@ -13,7 +17,7 @@ lokale Fall faelle/baldrian-klv-tg2015-lauf2 durfte gelesen werden.
 
 Verbrauch: Pilot 191k Tokens (Sonnet), Vollausbau 1,51 Mio Tokens gesamt
 (336k Ausgabe), 47 Minuten, Hard-Cap 600k Ausgabe-Tokens nicht erreicht.
-Rohdaten aller Agenten: `dev-docs/review-t20-ergebnis.json`.
+Rohdaten aller Agenten: `dev-docs/review-u1-ergebnis.json`.
 
 Dieses Dokument ist die Befundliste, kein Reparaturstand. Der Stand je
 Befund wird hier nachgetragen, wenn der Maintainer entschieden hat.
