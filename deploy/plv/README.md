@@ -23,7 +23,7 @@ Laufzeitumgebung selbst ist kein Repo-Inhalt.
 | `uebernahme/<fall>/` | je Migrationsfall ein Zugangsstand mit `eingang.json` (Fallname, Stichtag, Snapshot-Hash, SHA-256 je Datei) | unantastbar wie ein Fall-Eingang; jede Datei wird beim Lesen gegen ihre Summe gehalten |
 | `stand/` | der gefuehrte Stand: die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` | ueberschreibbar, aber nur durch einen gruenen Lauf (atomarer Tausch) |
 | `journal/tagesjournal.parquet` | die Buchungstage, nur angefuegt | Bijektion zum Ledger wird bei jedem Lauf geprueft |
-| `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf: Tag, nachgeholte Tage, Neugeschaeft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Digest | nur angefuegt; auch ein roter Lauf steht drin |
+| `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf: Tag, nachgeholte Tage, Neugeschaeft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des Baus), Image-Tag und -Digest | nur angefuegt; auch ein roter Lauf steht drin |
 | `abschluesse/` | `abschluss_<Monatserster>.parquet`, festgeschrieben 0444, genau einmal (ADR-011) | nie ueberschrieben |
 | `berichte/` | `bestandsbericht_<Monatserster>.html` je Monatsabschluss | jederzeit neu renderbar |
 
@@ -37,14 +37,21 @@ cp configs/bestand_gesamt.toml ~/apps/plv/daten/configs/bestand.toml
 ```
 
 **Uebernahme-Eingang** (je Migrationsfall, aus dem Fall-Arbeitsbereich
-heraus; verlangt die Generation des Falls in `bestand.toml`):
+heraus; verlangt die Generation des Falls in `bestand.toml`). Der
+Eingang kommt von AUSSEN ins Volume: Das Kommando laeuft auf dem
+Betriebsrechner mit Zugriff auf den Fall, nicht im Container — der
+Container hat kein Netz und liest den Eingang nur:
 
 ```
 python -m rechner_pipeline.betrieb.uebernahme --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01
 ```
 
-**Image ziehen und Digest eintragen:**
+**Image ziehen und Digest eintragen.** Der Container kennt seinen
+Digest zur Laufzeit nicht (kein Netz, kein Docker-Socket); er kommt aus
+`.env`, vom Menschen nach jedem Pull eingetragen. Ohne Eintrag steht im
+Protokoll `nicht erfasst` — ein benannter Zustand, kein leeres Feld.
+Revision (Commit des Baus) und Tag traegt das Image selbst.
 
 ```
 cd ~/apps/plv && docker compose pull

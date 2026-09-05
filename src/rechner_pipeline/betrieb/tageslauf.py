@@ -111,6 +111,8 @@ from rechner_pipeline.models.bestand import (
 )
 
 PROTOKOLL_SCHEMA_VERSION = 1
+#: Benannter Zustand einer Protokollangabe, die die Umgebung nicht liefert.
+NICHT_ERFASST = "nicht erfasst"
 STAND_DIR = "stand"
 JOURNAL_DIR = "journal"
 ABSCHLUSS_DIR = "abschluesse"
@@ -318,6 +320,9 @@ def _stand_bauen(
         ],
         "_uebernommene_policen": sorted(
             int(p) for u in uebernahmen for p in u.bestand["police_id"]),
+        "_teilbestaende": {
+            u.fall: sorted(int(p) for p in u.bestand["police_id"]) for u in uebernahmen
+        },
     }
     return ablage.arbeit, zahlen
 
@@ -366,13 +371,32 @@ def _uebernehmen(ablage: Ablage) -> None:
         shutil.rmtree(alt)
 
 
+def _teilbestand(tabellen: Dict[str, Any], policen: List[int]) -> Dict[str, Any]:
+    """Die Tabellen eines uebernommenen Teilbestands — dieselben Zeilen, gefiltert.
+
+    Kein zweiter Datenraum: Stamm, Journal, Ledger, Scheiben und Merkmale
+    des Teilbestands sind die Zeilen des Gesamtstands, deren Police zum
+    Eingang gehoert. Der Bericht rendert sie mit denselben Renderern wie
+    den Gesamtbestand (Konzept, Abschnitt 6).
+    """
+    auswahl = set(policen)
+    teil: Dict[str, Any] = {}
+    for rolle in ("portfolio", "historie", "ledger", "scheiben", "merkmale"):
+        tabelle = tabellen.get(rolle)
+        teil[rolle] = (
+            tabelle[tabelle["police_id"].isin(auswahl)].reset_index(drop=True)
+            if tabelle is not None else None
+        )
+    return teil
+
+
 def _bericht(
     tabellen: Dict[str, Any], config: BestandConfig, stichtag: _dt.date, heute: _dt.date,
-    ziel: Path, quelle_hash: str,
+    ziel: Path, quelle_hash: str, titel: Optional[str] = None,
 ) -> Path:
     html = render_html(
         tabellen["portfolio"],
-        titel=f"Bestandsbericht PLV zum {stichtag.isoformat()}",
+        titel=titel or f"Bestandsbericht PLV zum {stichtag.isoformat()}",
         quelle_hash=quelle_hash,
         historie=tabellen["historie"],
         ledger=tabellen["ledger"],
@@ -466,10 +490,15 @@ def tageslauf(
         "nachgeholt": nachgeholt,
         "config_sha256": _datei_hash(config_pfad),
         "kern_version": kern_version,
-        "image_digest": image_digest,
-        # Der Commit, aus dem das Image gebaut wurde (deploy/plv/Dockerfile);
-        # leer ausserhalb des Containers.
-        "image_revision": os.environ.get("PLV_IMAGE_REVISION") or None,
+        # Drei Angaben zum Image, jede mit dem benannten Zustand NICHT_ERFASST
+        # statt eines leeren Felds (ein leeres Feld liest sich wie ein
+        # Fehler): der Digest kommt aus .env, vom Menschen nach dem Pull
+        # eingetragen — der Container kennt ihn selbst nicht (kein Netz,
+        # kein Docker-Socket); Revision (Commit des Baus) und Tag traegt
+        # das Image bzw. compose.yml. Ausserhalb des Containers fehlen alle.
+        "image_digest": image_digest or NICHT_ERFASST,
+        "image_revision": os.environ.get("PLV_IMAGE_REVISION") or NICHT_ERFASST,
+        "image_tag": os.environ.get("PLV_IMAGE_TAG") or NICHT_ERFASST,
         "uebernommen": False,
     }
     exit_code = EXIT_OK
@@ -484,6 +513,8 @@ def tageslauf(
         }
         if befunde:
             exit_code = EXIT_WACHE_ROT
+            zeile.pop("_uebernommene_policen", None)
+            zeile.pop("_teilbestaende", None)
         else:
             # Tagesjournal auf dem geprueften Ledger (dieselben Bytes).
             journal_alt = (
@@ -519,9 +550,17 @@ def tageslauf(
                     (tabellen["portfolio"]["insurance_start"] > pd.Timestamp(heute)).sum()),
             }
             # Monatsabschluesse fuer jeden Monatsersten im gefuehrten Fenster.
+            # Festgeschrieben wird jeder; den Bestandsbericht (jederzeit neu
+            # renderbar) bekommt nur der juengste — beim Nachholen vieler
+            # Monate waere alles andere Rechenzeit fuer Seiten, die niemand
+            # liest. Mit teilbestand_getrennt kommt je Uebernahme ein
+            # Bericht ueber ihren Teilbestand dazu (Konzept, Abschnitt 6).
             manifest_hash = _datei_hash(arbeit / MANIFEST_DATEI)
+            teilbestaende: Dict[str, List[int]] = zeile.pop("_teilbestaende")
             abschluesse: List[Dict[str, Any]] = []
-            for stichtag in monatserste_in(letzter or (betriebsbeginn - _dt.timedelta(days=1)), heute):
+            stichtage = monatserste_in(
+                letzter or (betriebsbeginn - _dt.timedelta(days=1)), heute)
+            for stichtag in stichtage:
                 pfad = abschluss_pfad(ablage.abschluesse, stichtag)
                 if pfad.exists():
                     abschluesse.append({"stichtag": stichtag.isoformat(), "datei": pfad.name,
@@ -532,15 +571,29 @@ def tageslauf(
                     ablage.abschluesse, scheiben=tabellen["scheiben"],
                     merkmale=tabellen.get("merkmale"),
                 )
-                bericht = _bericht(
-                    tabellen, config, stichtag, heute,
-                    ablage.berichte / f"bestandsbericht_{stichtag.isoformat()}.html",
-                    tabellen["sha256"]["portfolio"],
-                )
-                abschluesse.append({
+                eintrag: Dict[str, Any] = {
                     "stichtag": stichtag.isoformat(), "datei": geschrieben.name,
-                    "sha256": _datei_hash(geschrieben), "bericht": bericht.name, "neu": True,
-                })
+                    "sha256": _datei_hash(geschrieben), "neu": True,
+                }
+                if stichtag == stichtage[-1]:
+                    bericht = _bericht(
+                        tabellen, config, stichtag, heute,
+                        ablage.berichte / f"bestandsbericht_{stichtag.isoformat()}.html",
+                        tabellen["sha256"]["portfolio"],
+                    )
+                    eintrag["bericht"] = bericht.name
+                    if config.tagesbetrieb.teilbestand_getrennt and teilbestaende:
+                        eintrag["teilbestaende"] = []
+                        for fall, policen in sorted(teilbestaende.items()):
+                            teil = _bericht(
+                                _teilbestand(tabellen, policen), config, stichtag, heute,
+                                ablage.berichte
+                                / f"bestandsbericht_{stichtag.isoformat()}_teilbestand-{fall}.html",
+                                tabellen["sha256"]["portfolio"],
+                                titel=f"Teilbestand {fall} (uebernommen) zum {stichtag.isoformat()}",
+                            )
+                            eintrag["teilbestaende"].append({"fall": fall, "bericht": teil.name})
+                abschluesse.append(eintrag)
             zeile["abschluesse"] = abschluesse
             # Journal schreiben, dann den Stand uebernehmen.
             ablage.journal.mkdir(parents=True, exist_ok=True)
@@ -552,6 +605,7 @@ def tageslauf(
     except (EreignisError, NeugeschaeftError, TagesjournalError, AbschlussError,
             UebernahmeError, ManifestError, ValueError) as exc:
         zeile.pop("_uebernommene_policen", None)
+        zeile.pop("_teilbestaende", None)
         zeile["fehler"] = f"{type(exc).__name__}: {exc}"
         if exit_code == EXIT_OK:
             exit_code = EXIT_NACHLAUF if "pb1" in zeile else EXIT_USAGE

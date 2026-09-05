@@ -13,6 +13,7 @@ services:
       # steht in jedem Tagesprotokoll und macht den Stand auf den Code
       # rueckfuehrbar, aus dem er entstand.
       PLV_IMAGE_DIGEST: ${IMAGE_DIGEST:-}
+      PLV_IMAGE_TAG: ${IMAGE_TAG:-latest}
     volumes:
       - ./daten:/daten
     command: ["--stand", "/daten"]

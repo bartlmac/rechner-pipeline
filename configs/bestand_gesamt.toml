@@ -18,7 +18,7 @@
 
 [meta]
 seed = 20260814
-beschreibung = "Pfefferminzia LV (PLV): Gesamtbestand KLV (10 Generationen) und BU (3 Generationen)"
+beschreibung = "Pfefferminzia LV (PLV): Gesamtbestand KLV (10 Generationen + uebernommene TG2015) und BU (3 Generationen)"
 # Referenzstichtag des Bestands: Grenze zwischen Historie und Prognose
 # im Bestandsbericht (cli_report; dessen --stichtag uebersteuert).
 # Abschluss und Fortschreibung setzen ihre Stichtage weiterhin explizit.
@@ -905,6 +905,159 @@ var_j = "bu_rente"
 rho = 0.30
 
 # --------------------------------------------------------------------------
+# Generation TG2015 (Baldrian Leben, Migrationsfall baldrian-klv-tg2015-lauf2):
+# UEBERNOMMENE Generation, sample_size = 0 und kein Neuzugang -- ihre 834
+# Vertraege kamen zum 2026-01-01 als Zugang in den Tagesbetrieb
+# (uebernahme/<fall>/ der Laufzeitumgebung, Konzept Abschnitt 6), keine
+# synthetische Erzeugung. Rechnungsgrundlagen aus der Spez des Falls in
+# sechs Tarifzellen (status x tarifart); P-K1 gruen, A-M4 angenommen
+# (2026-09-01). Das Verkaufsfenster ist das des abgebenden Unternehmens
+# und darf mit KLV-2015 ueberlappen: Die PLV hat in diesem Fenster nie
+# TG2015 verkauft.
+# --------------------------------------------------------------------------
+[[generation]]
+name = "TG2015"
+knoten = "klv/tg2015"
+gueltig_von = 2015-01-01
+gueltig_bis = 2017-01-01
+sample_size = 0
+max_endalter = 90
+zins = 0.0175
+gamma3 = 0.0025
+min_alter_flex = 60
+min_rlz_flex = 5
+zillmer_dauer = 5
+
+# sample_size = 0 heisst: der Batch-Erzeuger legt NIE eine Zeile aus
+# diesen Verteilungen an (die Vertraege sind schon uebernommen). Sie sind
+# trotzdem Pflichtfelder der Config (BestandConfig.validate) -- inert,
+# nur zur Format-Erfuellung, Werte ohne fachliche Bedeutung fuer diese
+# Generation.
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 40.0
+sd = 12.0
+min = 18.0
+max = 62.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.50, 0.50]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25, 30]
+probs = [0.15, 0.20, 0.35, 0.20, 0.10]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [12, 15, 20, 25]
+probs = [0.20, 0.25, 0.40, 0.15]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 11.2
+sdlog = 0.5
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [12, 1, 4, 2]
+probs = [0.85, 0.07, 0.05, 0.03]
+
+[[generation.zelle]]
+auspraegungen = { status = "nichtraucher", tarifart = "einzel" }
+tafel = "DAV2008_T_NR_U70"
+alpha = 0.025
+beta1 = 0.03
+gamma1 = 0.001
+gamma2 = 0.00125
+policy_fee = 12.0
+stoab_satz = 0.005
+stoab_min = 50.0
+stoab_max = 200.0
+ratzu_zw2 = 0.02
+ratzu_zw4 = 0.03
+ratzu_zw12 = 0.05
+
+[[generation.zelle]]
+auspraegungen = { status = "nichtraucher", tarifart = "haus" }
+tafel = "DAV2008_T_NR_U70"
+alpha = 0.0
+beta1 = 0.0
+gamma1 = 0.0008
+gamma2 = 0.001
+policy_fee = 0.0
+stoab_satz = 0.0
+stoab_min = 0
+stoab_max = 0
+ratzu_zw2 = 0.0
+ratzu_zw4 = 0.0
+ratzu_zw12 = 0.0
+
+[[generation.zelle]]
+auspraegungen = { status = "nichtraucher", tarifart = "kollektiv" }
+tafel = "DAV2008_T_NR_U70"
+alpha = 0.015
+beta1 = 0.015
+gamma1 = 0.0008
+gamma2 = 0.001
+policy_fee = 12.0
+stoab_satz = 0.005
+stoab_min = 50.0
+stoab_max = 200.0
+ratzu_zw2 = 0.01
+ratzu_zw4 = 0.015
+ratzu_zw12 = 0.025
+
+[[generation.zelle]]
+auspraegungen = { status = "raucher", tarifart = "einzel" }
+tafel = "DAV2008_T_R_U70"
+alpha = 0.025
+beta1 = 0.03
+gamma1 = 0.001
+gamma2 = 0.00125
+policy_fee = 12.0
+stoab_satz = 0.005
+stoab_min = 50.0
+stoab_max = 200.0
+ratzu_zw2 = 0.02
+ratzu_zw4 = 0.03
+ratzu_zw12 = 0.05
+
+[[generation.zelle]]
+auspraegungen = { status = "raucher", tarifart = "haus" }
+tafel = "DAV2008_T_R_U70"
+alpha = 0.0
+beta1 = 0.0
+gamma1 = 0.0008
+gamma2 = 0.001
+policy_fee = 0.0
+stoab_satz = 0.0
+stoab_min = 0
+stoab_max = 0
+ratzu_zw2 = 0.0
+ratzu_zw4 = 0.0
+ratzu_zw12 = 0.0
+
+[[generation.zelle]]
+auspraegungen = { status = "raucher", tarifart = "kollektiv" }
+tafel = "DAV2008_T_R_U70"
+alpha = 0.015
+beta1 = 0.015
+gamma1 = 0.0008
+gamma2 = 0.001
+policy_fee = 12.0
+stoab_satz = 0.005
+stoab_min = 50.0
+stoab_max = 200.0
+ratzu_zw2 = 0.01
+ratzu_zw4 = 0.015
+ratzu_zw12 = 0.025
+
+# --------------------------------------------------------------------------
 # Tagesbetrieb der PLV (Fachkonzept docs/simulation/tagesbetrieb.md).
 #
 # betriebsbeginn: erster Tag, an dem Werktag fuer Werktag verkauft wird;
@@ -916,11 +1069,16 @@ rho = 0.30
 # meldeverzug_tod: VORLAEUFIG (Abschnitt 10) — lognormal, Median 14 Tage,
 # 95 Prozent unter 60 Tagen; Vorschlag des Konzepts, Entscheidung des
 # Aktuariats der Vorzeige steht aus.
+# teilbestand_getrennt: VORLAEUFIG (Abschnitt 10) — der Monatsbericht weist
+# jeden uebernommenen Teilbestand zusaetzlich getrennt aus, solange das
+# Aktuariat es will (dauerhaft oder bis zum ersten Jahresabschluss nach
+# der Uebernahme ist offen).
 # --------------------------------------------------------------------------
 [tagesbetrieb]
 betriebsbeginn = 2026-01-01
 wochentagsgewichte = { mo = 1.3, di = 1.0, mi = 1.0, do = 1.0, fr = 1.0, sa = 0.0, so = 0.0 }
 meldeverzug_tod = { verteilung = "lognormal", median_tage = 14, p95_tage = 60 }
+teilbestand_getrennt = true
 
 # --------------------------------------------------------------------------
 # Plausibilitaets-Baender fuer das Sanity-Gate (P-B1).

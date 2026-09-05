@@ -317,6 +317,13 @@ festlegt (Fachkonzept Tagesbetrieb, offene Fachentscheidung):
 
 Migrierte Generationen kommen erst nach ihrer fachlichen Abnahme
 (A-Q1/A-M1/A-M4) in eine Bestand-Config — dann mit der Knoten-ID ihres
-Migrationsfalls (z. B. `klv/tg2015`) und der durch Gate P-K1 geprüften
-Parametrierung. Diese Tabelle wird maschinell gegen die Bestandskonfiguration
-geprüft; eine Abweichung ist ein Fehler und blockiert.
+Migrationsfalls und der durch Gate P-K1 geprüften Parametrierung. Die
+erste ist die **TG2015 der Baldrian Leben** (`klv/tg2015`, Fall
+`baldrian-klv-tg2015-lauf2`, A-M4 angenommen 2026-09-01): 834 Verträge,
+Zugang zum 2026-01-01, seither im Tagesbetrieb der PLV im selben Strom
+fortgeschrieben wie das eigene Geschäft. Sie hat keinen einen
+Parametersatz, sondern sechs Tarifzellen (`status` × `tarifart`;
+Rechnungszins 1,75 %, Tafeln DAV 2008 T Nichtraucher/Raucher U70); die
+Zellen stehen in der Bestand-Config und werden nicht abgetippt. Diese
+Tabelle wird maschinell gegen die Bestandskonfiguration geprüft; eine
+Abweichung ist ein Fehler und blockiert.

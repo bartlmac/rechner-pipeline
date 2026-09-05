@@ -40,7 +40,7 @@ def test_compose_ohne_netz_mit_datenvolume():
     assert "network_mode: none" in compose
     assert "./daten:/daten" in compose
     assert "rechner-pipeline-plv:${IMAGE_TAG" in compose
-    assert "PLV_IMAGE_DIGEST" in compose
+    assert "PLV_IMAGE_DIGEST" in compose and "PLV_IMAGE_TAG" in compose
     beispiel = _text("env.beispiel")
     for schluessel in ("GHCR_OWNER", "IMAGE_TAG", "IMAGE_DIGEST", "ZEITZONE"):
         assert re.search(rf"^{schluessel}=", beispiel, re.M), schluessel
@@ -67,6 +67,7 @@ def test_workflow_baut_bei_push_auf_main_mit_zwei_tags():
 def test_readme_beschreibt_die_erstbefuellung_und_die_ablage():
     readme = _text("README.md")
     for pflicht in ("Erstbefuellung", "uebernahme/", "stand/", "journal/protokoll.jsonl",
+                    "von AUSSEN ins Volume", "nicht erfasst",
                     "abschluesse/", "betrieb.tageslauf", "betrieb.uebernahme",
                     "systemctl --user enable --now tageslauf.timer", "Exit 3"):
         assert pflicht in readme, pflicht

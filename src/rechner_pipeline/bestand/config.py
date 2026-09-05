@@ -804,6 +804,10 @@ class Tagesbetrieb:
     * ``wochentagsgewichte``: relatives Gewicht je Wochentag fuer die
       Verteilung des Jahresziels auf die Kalendertage (Abschnitt 4).
     * ``meldeverzug_tod``: Verteilung des Meldeverzugs bei Tod (Abschnitt 3).
+    * ``teilbestand_getrennt``: weist der Monatsbericht jeden uebernommenen
+      Teilbestand zusaetzlich getrennt aus (Abschnitt 6, Config-Schalter;
+      ob dauerhaft, ist eine offene Fachentscheidung). Default aus: Ein
+      Bericht, den niemand bestellt hat, ist kein stiller Default.
 
     Die Werte gehoeren in die Config, nicht in den Code; ohne Abschnitt
     ``[tagesbetrieb]`` gelten die Vorgaben des Konzepts fuer Gewichte und
@@ -815,6 +819,7 @@ class Tagesbetrieb:
         default_factory=lambda: dict(WOCHENTAGSGEWICHTE_VORGABE)
     )
     meldeverzug_tod: Meldeverzug = field(default_factory=Meldeverzug)
+    teilbestand_getrennt: bool = False
 
     def gewicht(self, tag: _dt.date) -> float:
         """Das Gewicht eines Kalendertags (nur vom Wochentag abhaengig)."""
@@ -827,6 +832,8 @@ class Tagesbetrieb:
             self.betriebsbeginn, _dt.date
         ):
             errors.append(f"{prefix}: betriebsbeginn ist kein Datum")
+        if not isinstance(self.teilbestand_getrennt, bool):
+            errors.append(f"{prefix}: teilbestand_getrennt muss true oder false sein")
         fehlend = sorted(set(WOCHENTAGE) - set(self.wochentagsgewichte))
         fremd = sorted(set(self.wochentagsgewichte) - set(WOCHENTAGE))
         if fehlend or fremd:
@@ -946,7 +953,8 @@ def _lies_tagesbetrieb(roh: Any, errors: List[str]) -> Tagesbetrieb:
     if not isinstance(roh, Mapping):
         errors.append("[tagesbetrieb] muss eine Tabelle sein")
         return Tagesbetrieb()
-    bekannt = {"betriebsbeginn", "wochentagsgewichte", "meldeverzug_tod"}
+    bekannt = {"betriebsbeginn", "wochentagsgewichte", "meldeverzug_tod",
+               "teilbestand_getrennt"}
     fremd = sorted(set(roh) - bekannt)
     if fremd:
         errors.append(
@@ -969,6 +977,8 @@ def _lies_tagesbetrieb(roh: Any, errors: List[str]) -> Tagesbetrieb:
             kwargs["wochentagsgewichte"] = {
                 str(k): v for k, v in gewichte.items()
             }
+    if "teilbestand_getrennt" in roh:
+        kwargs["teilbestand_getrennt"] = roh["teilbestand_getrennt"]
     if "meldeverzug_tod" in roh:
         verzug = roh["meldeverzug_tod"]
         if not isinstance(verzug, Mapping):

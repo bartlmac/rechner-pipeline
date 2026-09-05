@@ -148,14 +148,19 @@ def test_plv_config_traegt_die_generationen_bis_heute():
         gen = next(g for g in cfg.generationen if g.name == name)
         assert gen.gueltig_bis == dt.date(2024, 12, 31)
         assert gen.neuzugang_pro_jahr == 0
-    # Lueckenlos je Produkt: jede Generation beginnt am Tag nach der vorigen.
+    # Lueckenlos je Produkt: jede verkaufende Generation beginnt am Tag nach
+    # der vorigen; die uebernommene TG2015 traegt das Fenster des abgebenden
+    # Unternehmens und verkauft nicht.
     for produkt in ("klv", "bu"):
         gens = sorted(
-            (g for g in cfg.generationen if g.produkt == produkt),
+            (g for g in cfg.generationen
+             if g.produkt == produkt and (g.sample_size > 0 or g.neuzugang_pro_jahr > 0)),
             key=lambda g: g.gueltig_von,
         )
         for vorher, danach in zip(gens, gens[1:]):
             assert danach.gueltig_von == vorher.gueltig_bis + dt.timedelta(days=1)
+    uebernommen = [g for g in cfg.generationen if g.sample_size == 0 and g.neuzugang_pro_jahr == 0]
+    assert [g.name for g in uebernommen] == ["TG2015"] and uebernommen[0].zellen
 
 
 def test_plv_config_traegt_den_tagesbetrieb():

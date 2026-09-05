@@ -46,9 +46,10 @@ BETRIEBSBEGINN = dt.date(2026, 1, 1)
 
 
 def _kleine_config() -> str:
-    """Die PLV-Config mit acht Vertraegen je Generation und Betriebsbeginn 2026-01-01."""
+    """Die PLV-Config mit acht Vertraegen je verkaufender Generation und
+    Betriebsbeginn 2026-01-01 (die uebernommene TG2015 bleibt bei 0)."""
     text = PLV.read_text(encoding="utf-8")
-    text = re.sub(r"^sample_size = \d+$", "sample_size = 8", text, flags=re.M)
+    text = re.sub(r"^sample_size = [1-9]\d*$", "sample_size = 8", text, flags=re.M)
     assert "betriebsbeginn = 2026-01-01" in text
     return text
 
@@ -98,6 +99,7 @@ def test_protokoll_hat_eine_zeile_je_lauf(gefuehrt):
     assert zweit["gefuehrt_vorher"] == "2026-01-31" and zweit["nachgeholt"] == ["2026-02-01", "2026-02-02"]
     assert dritt["nachgeholt"] == []
     for z in zeilen:
+        assert z["image_digest"] == "nicht erfasst"
         assert z["uebernommen"] is True
         assert z["pb1"]["urteil"] == "gruen"
         assert z["config_sha256"] and z["kern_version"] and z["manifest_sha256"]
@@ -242,7 +244,10 @@ def test_cli(gefuehrt, tmp_path, capsys):
     assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-06",
                     "--image-digest", "sha256:abc"]) == EXIT_OK
     assert "2026-01-06 gefuehrt" in capsys.readouterr().err
-    assert lies_protokoll(ablage.protokoll_pfad)[0]["image_digest"] == "sha256:abc"
+    erste = lies_protokoll(ablage.protokoll_pfad)[0]
+    assert erste["image_digest"] == "sha256:abc"
+    # Was die Umgebung nicht liefert, ist ein benannter Zustand, kein leeres Feld:
+    assert erste["image_revision"] == "nicht erfasst" and erste["image_tag"] == "nicht erfasst"
     assert tl.main(["--stand", str(ablage.wurzel), "--heute", "kein-datum"]) == EXIT_USAGE
     assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-06"]) == EXIT_USAGE
     assert "nicht danach" in capsys.readouterr().err
