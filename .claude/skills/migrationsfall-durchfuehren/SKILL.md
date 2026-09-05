@@ -159,9 +159,13 @@ erraten oder spaeter zur Umgehung einer Gate-Pflicht umetikettieren.
 5. Gate P-Q3: `python -m rechner_pipeline.gates.abox_validate --fall faelle/<fall> --repo-root .`
    Blockt bei Coverage-Luecken und offenen Diskrepanzen. Fuer den
    Weiterbau duerfen Diskrepanzen VORLAEUFIG zur Rechner-Lesart
-   aufgeloest werden (`loese_diskrepanz_auf(..., vorlaeufig=True)`,
-   Begruendung: der GM reproduziert den Rechner; fachliche Entscheidung
-   A-Q1) — niemals endgueltig durch einen Agenten.
+   aufgeloest werden — als Kommando, nie als Skript:
+   `python -m rechner_pipeline.ontologie.entscheide --fall faelle/<fall>
+   --vorlaeufig --akteur <modell>/<skill>@<git-sha> --alle-offenen
+   --quelle <rechner>.xlsm --begruendung "GM reproduziert den Rechner;
+   fachliche Entscheidung A-Q1"` (protokolliert unter
+   abgeleitet/protokoll/vorlaeufige_entscheide.jsonl) — niemals
+   endgueltig durch einen Agenten.
 
 GRENZE DIESER STUFE (bewusst, v0.1 — nenne sie, statt sie zu
 verschweigen): Das QuellFragment traegt PARAMETER, keine FORMELN. Ein

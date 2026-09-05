@@ -64,7 +64,9 @@ def test_migrations_skills_nennen_die_tragenden_regeln() -> None:
     assert "model_json_schema" in extraktion          # Schema generiert, nie kopiert
     assert "KEINE Vorschrift" in extraktion           # unisex-Regel
     runbook = _read(".claude/skills/migrationsfall-durchfuehren/SKILL.md")
-    assert "vorlaeufig=True" in runbook
+    # Vorlaeufige Aufloesung ist ein Kommando (--vorlaeufig), kein Skript
+    # (U1, Z1-06) — der Skill muss den Weg nennen.
+    assert "--vorlaeufig" in runbook and "--akteur" in runbook
     assert "gate_entscheid" in runbook
     assert "STOPP" in runbook                         # Abbruchkriterien
     # Kein Test auf den NAMEN des Referenzfalls mehr. Er zeigte auf

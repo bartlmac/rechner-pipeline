@@ -27,6 +27,21 @@ Run via::
     # oder alle auf einmal derselben Lesart-Quelle folgend:
     ... --alle-vorlaeufigen --quelle Tarifrechner_KLV_TG2015.xlsm ...
 
+    # VORLAEUFIG durch einen Agenten (kein Schluessel, keine Ordnung,
+    # blockt jede Annahme, wird protokolliert — U1 Z1-06):
+    python -m rechner_pipeline.ontologie.entscheide --fall faelle/<fall> \\
+        --vorlaeufig --akteur claude-fable-5-1/migrationsfall-durchfuehren@abc1234 \\
+        --alle-offenen --quelle Tarifrechner_KLV_TG2015.xlsm \\
+        --begruendung "Golden Master reproduziert den Rechner; A-Q1 entscheidet"
+
+Die vorlaeufige Aufloesung war bis dahin die einzige A-Box-Mutation ohne
+Kommando und Ledger (ein Ad-hoc-Skript des Skills). Jetzt ist sie ein
+Kommando mit Akteur-Konvention (P1), schreibt die Entscheidung mit
+``vorlaeufig=True`` und ohne Zeichnung in die A-Box und haengt eine Zeile
+an ``abgeleitet/protokoll/vorlaeufige_entscheide.jsonl`` (Akteur, Zeit,
+Diskrepanzen, Quelle, A-Box-Hash vorher/nachher). Eine endgueltige
+Entscheidung ersetzt sie; sie ersetzt nie eine endgueltige.
+
 Knoten: klv
 """
 
@@ -52,6 +67,128 @@ def _jetzt() -> str:
     return _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
 
 
+PROTOKOLL = Path("abgeleitet") / "protokoll" / "vorlaeufige_entscheide.jsonl"
+
+
+def _abox_sha256(fall: Path) -> Optional[str]:
+    from rechner_pipeline.ontologie.abox import abox_pfad
+
+    pfad = abox_pfad(fall)
+    return hashlib.sha256(pfad.read_bytes()).hexdigest() if pfad.is_file() else None
+
+
+def _vorlaeufig(args, fall: Path) -> int:
+    """Vorlaeufige Aufloesung durch einen Agenten — Kommando statt Skript.
+
+    Kein Schluessel, keine Ordnung, keine Zeichnung: Der Akteur
+    (<modell>/<skill>@<sha>) ist der Entscheider, die Entscheidung traegt
+    ``vorlaeufig=True`` und blockt damit jede Annahme (P2/P4). Was sie
+    ist, steht im Protokoll des Falls — nicht nur in der A-Box, die eine
+    endgueltige Entscheidung spaeter ueberschreibt (die ersetzte bleibt in
+    der Entscheidungshistorie).
+    """
+    from rechner_pipeline.ontologie.befuellung import pruefe_akteur
+
+    if args.zeichnungsordnung or args.freigabe_schluessel or args.rolle:
+        print("entscheide: --vorlaeufig traegt weder Ordnung noch Schluessel "
+              "noch Rolle — ein Agent zeichnet nicht, er legt vor",
+              file=sys.stderr)
+        return 2
+    if not args.akteur:
+        print("entscheide: --vorlaeufig verlangt --akteur "
+              "<modell>/<skill>@<git-sha-kurz> (P1)", file=sys.stderr)
+        return 2
+    try:
+        akteur = pruefe_akteur(args.akteur)
+    except BefuellungsFehler as exc:
+        print(f"entscheide: {exc}", file=sys.stderr)
+        return 2
+    if args.alle_offenen and (args.diskrepanz or args.wert is not None):
+        print("entscheide: --alle-offenen schliesst --diskrepanz/--wert aus",
+              file=sys.stderr)
+        return 2
+    if args.alle_offenen and not args.quelle:
+        print("entscheide: --alle-offenen braucht --quelle", file=sys.stderr)
+        return 2
+    if not args.alle_offenen and (not args.diskrepanz or args.wert is None):
+        print("entscheide: --diskrepanz und --wert sind erforderlich (oder "
+              "--alle-offenen --quelle)", file=sys.stderr)
+        return 2
+    try:
+        abox = lade(fall)
+    except Exception as exc:  # noqa: BLE001
+        print(f"entscheide: A-Box unlesbar: {exc}", file=sys.stderr)
+        return 1
+    vorher = _abox_sha256(fall)
+    jetzt = _jetzt()
+    entschieden: List[dict] = []
+    try:
+        if args.alle_offenen:
+            for d in list(abox.diskrepanzen):
+                if d.status == "aufgeloest" and not (
+                    d.entscheidung is not None and d.entscheidung.vorlaeufig
+                ):
+                    continue
+                lesart = next(
+                    (l for l in d.lesarten
+                     if any(p.quelle_datei == args.quelle for p in l.provenienz)),
+                    None,
+                )
+                if lesart is None:
+                    print(f"entscheide: {d.id}: keine Lesart aus "
+                          f"{args.quelle!r} — einzeln entscheiden",
+                          file=sys.stderr)
+                    return 1
+                _ersetze_vorlaeufig(abox, d.id)
+                loese_diskrepanz_auf(
+                    abox, d.id, lesart.wert, akteur, args.begruendung, jetzt,
+                    vorlaeufig=True,
+                )
+                entschieden.append({"diskrepanz": d.id, "wert": lesart.wert})
+        else:
+            wert = _wert_parsen(args.wert)
+            _ersetze_vorlaeufig(abox, args.diskrepanz)
+            loese_diskrepanz_auf(
+                abox, args.diskrepanz, wert, akteur, args.begruendung, jetzt,
+                vorlaeufig=True,
+            )
+            entschieden.append({"diskrepanz": args.diskrepanz, "wert": wert})
+    except BefuellungsFehler as exc:
+        print(f"entscheide: {exc}", file=sys.stderr)
+        return 1
+    fehler = validate_abox(abox)
+    if fehler:
+        print("entscheide: A-Box nach Aufloesung inkonsistent: "
+              + "; ".join(fehler), file=sys.stderr)
+        return 1
+    speichere(abox, fall)
+    eintrag = {
+        "zeit": jetzt,
+        "akteur": akteur,
+        "vorlaeufig": True,
+        "quelle": args.quelle,
+        "begruendung": args.begruendung,
+        "entschieden": entschieden,
+        "abox_sha256_vorher": vorher,
+        "abox_sha256_nachher": _abox_sha256(fall),
+    }
+    protokoll = fall / PROTOKOLL
+    protokoll.parent.mkdir(parents=True, exist_ok=True)
+    with protokoll.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(eintrag, ensure_ascii=False, sort_keys=True,
+                            default=str) + "\n")
+    print(json.dumps({
+        "fall": str(fall),
+        "vorlaeufig": True,
+        "akteur": akteur,
+        "entschieden": [e["diskrepanz"] for e in entschieden],
+        "protokoll": str(protokoll.relative_to(fall)),
+        "verbleibend_offen": sorted(
+            d.id for d in abox.diskrepanzen if d.status == "offen"),
+    }, ensure_ascii=False, indent=2, sort_keys=True))
+    return 0
+
+
 def _wert_parsen(roh: str):
     try:
         return json.loads(roh)
@@ -65,8 +202,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         description="Diskrepanz(en) menschlich aufloesen (Gate A-Q1).",
     )
     parser.add_argument("--fall", required=True)
-    parser.add_argument("--entscheider", required=True)
+    parser.add_argument("--entscheider", default=None,
+                        help="Pflicht fuer endgueltige Entscheide.")
     parser.add_argument("--begruendung", required=True)
+    parser.add_argument(
+        "--vorlaeufig", action="store_true",
+        help="VORLAEUFIGE Aufloesung durch einen Agenten (kein Schluessel, "
+        "keine Ordnung; blockt jede Annahme; wird unter "
+        "abgeleitet/protokoll/ protokolliert). Verlangt --akteur.",
+    )
+    parser.add_argument(
+        "--akteur", default=None,
+        help="Akteur-Konvention <modell>/<skill>@<git-sha-kurz> (P1), nur "
+        "mit --vorlaeufig.",
+    )
+    parser.add_argument(
+        "--alle-offenen", action="store_true",
+        help="Mit --vorlaeufig: alle offenen (oder bereits vorlaeufig "
+        "aufgeloesten) Diskrepanzen zur Lesart der --quelle aufloesen.",
+    )
     parser.add_argument(
         "--rolle", default=None,
         help="Optional: Rollenkennung (mensch/<funktion>); die Rolle wird "
@@ -111,6 +265,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     fall = Path(args.fall)
+    if args.vorlaeufig:
+        return _vorlaeufig(args, fall)
+    if args.akteur or args.alle_offenen:
+        print("entscheide: --akteur und --alle-offenen gehoeren zu "
+              "--vorlaeufig", file=sys.stderr)
+        return 2
+    if not args.entscheider:
+        print("entscheide: --entscheider ist fuer eine endgueltige "
+              "Entscheidung erforderlich", file=sys.stderr)
+        return 2
     if not (args.zeichnungsordnung and args.freigabe_schluessel):
         print("entscheide: --zeichnungsordnung und --freigabe-schluessel "
               "sind Pflicht — die entscheidende Rolle wird aus dem "
