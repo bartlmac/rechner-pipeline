@@ -22,7 +22,14 @@ from rechner_pipeline.ontologie.code_index import (
     drift_report,
     erlaubte_wurzeln,
 )
-from rechner_pipeline.ontologie.code_karte import baue_karte, validate
+from rechner_pipeline.ontologie.code_karte import (
+    EBENE_JE_SCHICHT,
+    SCHICHT_ERLAUBT,
+    TOOL_NACH_VORZEIGE_ERLAUBT,
+    _absolut,
+    baue_karte,
+    validate,
+)
 from rechner_pipeline.ontologie.impact import (
     berechne_impact,
     import_kanten_je_testmodul,
@@ -823,3 +830,58 @@ def test_module_ohne_knoten_sind_harter_drift(tmp_path: Path):
     _schreibe(tmp_path / "paket" / "modul.py",
               '"""M.\n\nKnoten: klv\n"""\nWERT = 1\n')
     assert drift_report(baue_index(tmp_path / "paket"), []) == []
+
+
+# --------------------------------------------------------------------------- #
+# ADR-017: Ebenen in der Schichtenkarte (Schritt 3)
+# --------------------------------------------------------------------------- #
+
+def test_jede_regelschicht_hat_eine_ebene():
+    """Tool oder Vorzeige — eine dritte Antwort gibt es nicht."""
+    ohne = sorted(s for s in SCHICHT_ERLAUBT if s not in EBENE_JE_SCHICHT)
+    assert ohne == [], ohne
+    assert set(EBENE_JE_SCHICHT.values()) == {"tool", "vorzeige"}
+
+
+def test_die_ratsche_deckt_genau_die_gemessenen_kanten():
+    """Die erlaubte Menge ist die GEMESSENE Menge: Eine Kante, die es nicht
+    mehr gibt, ist aus der Liste zu streichen (die Ratsche darf nicht
+    lockerer sein als der Code), und eine neue ist ein Befund."""
+    karte = baue_karte(SRC)
+    gemessen = {(k["von"], k["nach"]) for k in karte["tool_nach_vorzeige"]}
+    assert gemessen <= TOOL_NACH_VORZEIGE_ERLAUBT, sorted(gemessen - TOOL_NACH_VORZEIGE_ERLAUBT)
+    veraltet = sorted(TOOL_NACH_VORZEIGE_ERLAUBT - gemessen)
+    assert veraltet == [], f"Ratsche lockerer als der Code: {veraltet}"
+    assert all(karte["module"][k["von"]]["ebene"] == "tool" for k in karte["tool_nach_vorzeige"])
+
+
+def test_neue_kante_aus_dem_tool_in_die_vorzeige_ist_ein_befund(tmp_path: Path):
+    src = tmp_path / "rechner_pipeline"
+    (src / "gates").mkdir(parents=True)
+    (src / "kern").mkdir()
+    (src / "__init__.py").write_text("", encoding="utf-8")
+    (src / "gates" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "kern" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "kern" / "neu.py").write_text("X = 1\n", encoding="utf-8")
+    (src / "gates" / "neuer_konsument.py").write_text(
+        "from rechner_pipeline.kern.neu import X\n", encoding="utf-8")
+    befunde = validate(baue_karte(src))
+    assert any("neue Kante aus dem KI-Tool in die Vorzeige" in b for b in befunde), befunde
+
+
+def test_relative_importe_werden_aufgeloest(tmp_path: Path):
+    """U1, Befund Z1-09: _absolut referenzierte eine undefinierte Variable;
+    der Zweig war unerreichbar und ungetestet."""
+    assert _absolut("x", 1, "rechner_pipeline/kern/tafeln.py") == "rechner_pipeline.kern.x"
+    assert _absolut(None, 1, "rechner_pipeline/kern/tafeln.py") == "rechner_pipeline.kern"
+    assert _absolut("y", 2, "rechner_pipeline/kern/produkte/klv.py") == "rechner_pipeline.kern.y"
+    assert _absolut("z", 3, "rechner_pipeline/kern/tafeln.py") is None
+    src = tmp_path / "rechner_pipeline"
+    (src / "kern").mkdir(parents=True)
+    (src / "__init__.py").write_text("", encoding="utf-8")
+    (src / "kern" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "kern" / "a.py").write_text("A = 1\n", encoding="utf-8")
+    (src / "kern" / "b.py").write_text("from . import a\nfrom .a import A\n", encoding="utf-8")
+    karte = baue_karte(src)
+    kanten = {(k["von"], k["nach"]) for k in karte["kanten"]}
+    assert ("rechner_pipeline/kern/b.py", "rechner_pipeline/kern/a.py") in kanten
