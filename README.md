@@ -336,6 +336,7 @@ Der Bestandsbericht rendert das als selbst-enthaltene HTML-Seite:
 python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml ...
 python -m rechner_pipeline.bestand.cli_report --portfolio <parquet> --out bericht.html ...
 python -m rechner_pipeline.bestand.cli_abschluss --config ... --lauf runs/bestand --stichtag 2026-01-01 --bis 2026-01-01
+python -m rechner_pipeline.betrieb.tageslauf --stand ~/apps/plv/daten [--heute 2026-09-05]   # der Tagesbetrieb der PLV
 ```
 
 **Die Migrationsfälle** (`faelle/`, lokale Arbeitsbereiche, nicht

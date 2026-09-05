@@ -28,7 +28,7 @@ in die Bewertung zurückwirken.
 |---|---|
 | `bestand.generator` + `bestand.ereignisse` | den Zielbestand der Pfefferminzia: Modellpunkte je Generation, dann ein Strom datierter Geschäftsvorfälle |
 | `simulation/` (nicht eingecheckt) | die Lieferungen der fiktiven abgebenden Unternehmen |
-| geplant (Konzept: [tagesbetrieb.md](tagesbetrieb.md)) | tägliche Fortschreibung — der Punkt, ab dem das Unternehmen zu leben beginnt |
+| `betrieb.neugeschaeft` + `betrieb.tageslauf` (Konzept: [tagesbetrieb.md](tagesbetrieb.md)) | den Tagesbetrieb der Pfefferminzia: Neugeschäft je Werktag, nächtliche Fortschreibung, Tagesjournal, Monatsabschluss — der Punkt, ab dem das Unternehmen zu leben beginnt |
 
 Jeder Betrag kommt auch in der Simulation aus dem Rechenkern; das
 Simulationswerkzeug rechnet nichts Aktuarielles selbst. Es entscheidet
