@@ -1,0 +1,187 @@
+{
+ "charakterisierung": "PLV-Bestandsgeneration BU-2025 (bu/plv_2025): repraesentativer Modellpunkt auf den Rechnungsgrundlagen der Bestand-Config (configs/bestand_gesamt.toml), eingefroren 2026-09-05 fuer den Tagesbetrieb (Fachkonzept Tagesbetrieb, Abschnitt 5). Kernintern, volle Float-Praezision; ein Diff ist eine Aenderung der Parametrierung oder des Kerns und braucht eine fachliche Begruendung im selben Commit.",
+ "ergebnis": {
+  "scalars": {
+   "BU": {
+    "Bruttobeitrag": 992.9146802589685,
+    "Leistungsbarwert": 21309.67395554064,
+    "Nettobeitrag": 945.6330288180652,
+    "Praemienbarwert": 22.534824087283976
+   }
+  },
+  "tables": {
+   "BU": [
+    {
+     "V_aktiv": 0.0,
+     "V_bu": 184996.28045728477,
+     "jahr": 0.0
+    },
+    {
+     "V_aktiv": 529.766597969101,
+     "V_bu": 185758.45744787215,
+     "jahr": 1.0
+    },
+    {
+     "V_aktiv": 1037.6133621415538,
+     "V_bu": 185755.3666897821,
+     "jahr": 2.0
+    },
+    {
+     "V_aktiv": 1518.0056527684756,
+     "V_bu": 185111.43080259385,
+     "jahr": 3.0
+    },
+    {
+     "V_aktiv": 1973.6077786532696,
+     "V_bu": 183931.5663359752,
+     "jahr": 4.0
+    },
+    {
+     "V_aktiv": 2407.7443837070714,
+     "V_bu": 182230.88960248904,
+     "jahr": 5.0
+    },
+    {
+     "V_aktiv": 2821.71091985963,
+     "V_bu": 180017.6627999681,
+     "jahr": 6.0
+    },
+    {
+     "V_aktiv": 3209.6894019597275,
+     "V_bu": 177259.77993802165,
+     "jahr": 7.0
+    },
+    {
+     "V_aktiv": 3565.2455277263325,
+     "V_bu": 173953.42038808574,
+     "jahr": 8.0
+    },
+    {
+     "V_aktiv": 3887.300851477752,
+     "V_bu": 170164.46782688383,
+     "jahr": 9.0
+    },
+    {
+     "V_aktiv": 4178.552921829403,
+     "V_bu": 165938.6613481217,
+     "jahr": 10.0
+    },
+    {
+     "V_aktiv": 4444.347967235717,
+     "V_bu": 161310.3160171228,
+     "jahr": 11.0
+    },
+    {
+     "V_aktiv": 4683.626482993304,
+     "V_bu": 156297.61961023408,
+     "jahr": 12.0
+    },
+    {
+     "V_aktiv": 4888.731646547234,
+     "V_bu": 150879.06217277775,
+     "jahr": 13.0
+    },
+    {
+     "V_aktiv": 5048.719933679418,
+     "V_bu": 145044.66325329477,
+     "jahr": 14.0
+    },
+    {
+     "V_aktiv": 5142.900766705181,
+     "V_bu": 138799.94030644165,
+     "jahr": 15.0
+    },
+    {
+     "V_aktiv": 5152.19195959673,
+     "V_bu": 132154.69282731402,
+     "jahr": 16.0
+    },
+    {
+     "V_aktiv": 5055.756828162452,
+     "V_bu": 125140.46111261415,
+     "jahr": 17.0
+    },
+    {
+     "V_aktiv": 4836.308461497012,
+     "V_bu": 117791.61962186752,
+     "jahr": 18.0
+    },
+    {
+     "V_aktiv": 4486.027146071321,
+     "V_bu": 110123.71999472978,
+     "jahr": 19.0
+    },
+    {
+     "V_aktiv": 4001.1346250225015,
+     "V_bu": 102090.54981246477,
+     "jahr": 20.0
+    },
+    {
+     "V_aktiv": 3384.089994265939,
+     "V_bu": 93659.37248804879,
+     "jahr": 21.0
+    },
+    {
+     "V_aktiv": 2652.543008153855,
+     "V_bu": 84817.42609684706,
+     "jahr": 22.0
+    },
+    {
+     "V_aktiv": 1838.037524532122,
+     "V_bu": 75585.35252954053,
+     "jahr": 23.0
+    },
+    {
+     "V_aktiv": 993.4723987991802,
+     "V_bu": 65970.03248120585,
+     "jahr": 24.0
+    },
+    {
+     "V_aktiv": 188.91816041356833,
+     "V_bu": 55947.23410756038,
+     "jahr": 25.0
+    },
+    {
+     "V_aktiv": -490.88631560744443,
+     "V_bu": 45523.876377531946,
+     "jahr": 26.0
+    },
+    {
+     "V_aktiv": -1000.656904314023,
+     "V_bu": 34720.564774273356,
+     "jahr": 27.0
+    },
+    {
+     "V_aktiv": -1206.3954745492065,
+     "V_bu": 23552.788782506763,
+     "jahr": 28.0
+    },
+    {
+     "V_aktiv": -945.6330288180652,
+     "V_bu": 12000.0,
+     "jahr": 29.0
+    },
+    {
+     "V_aktiv": 0.0,
+     "V_bu": 0.0,
+     "jahr": 30.0
+    }
+   ]
+  }
+ },
+ "generation": "BU-2025",
+ "knoten": "bu/plv_2025",
+ "model_point": {
+  "bu_rente": 12000.0,
+  "n": 30,
+  "sex": "M",
+  "tafel_aktiv": "DAV1997_TAA",
+  "tafel_i": "DAV1997_I",
+  "tafel_ri": "DAV1997_RI",
+  "tafel_ti": "DAV1997_TI",
+  "x": 35,
+  "zins": 0.01,
+  "zuschlag": 0.05
+ },
+ "produkt": "bu"
+}

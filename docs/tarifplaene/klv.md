@@ -302,18 +302,45 @@ Rechnungsgrundlagen sind **vorläufig** (Höchstrechnungszins 2025 und die
 Kosten der Vorgängergeneration), bis das Aktuariat der Vorzeige sie
 festlegt (Fachkonzept Tagesbetrieb, offene Fachentscheidung):
 
-| Knoten | Name | gültig | Zins | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2/3}$ | $\kappa$ |
-|---|---|---|---|---|---|---|---|---|
-| `klv/plv_1994` | KLV-1994 | 1994-07–2000-06 | 4.00% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 |
-| `klv/plv_2000` | KLV-2000 | 2000-07–2003-12 | 3.25% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 |
-| `klv/plv_2004` | KLV-2004 | 2004-01–2006-12 | 2.75% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 |
-| `klv/plv_2007` | KLV-2007 | 2007-01–2007-12 | 2.25% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 |
-| `klv/plv_2008` | KLV-2008 | 2008-01–2011-12 | 2.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/plv_2012` | KLV-2012 | 2012-01–2014-12 | 1.75% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/plv_2015` | KLV-2015 | 2015-01–2016-12 | 1.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/plv_2017` | KLV-2017 | 2017-01–2021-12 | 0.90% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/plv_2022` | KLV-2022 | 2022-01–2024-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/plv_2025` | KLV-2025 | 2025-01–2035-12 | 1.00% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
+<!-- erzeugt: python -m rechner_pipeline.bestand.tarifplan_tabellen --config configs/bestand_gesamt.toml --produkt klv -->
+| Knoten | Name | gültig | Zins | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2/3}$ | $\kappa$ | Vertrieb |
+|---|---|---|---|---|---|---|---|---|---|
+| `klv/plv_1994` | KLV-1994 | 1994-07–2000-06 | 4.00% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 | Batch 600 |
+| `klv/plv_2000` | KLV-2000 | 2000-07–2003-12 | 3.25% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 | Batch 280 |
+| `klv/plv_2004` | KLV-2004 | 2004-01–2006-12 | 2.75% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 | Batch 260 |
+| `klv/plv_2007` | KLV-2007 | 2007-01–2007-12 | 2.25% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 | Batch 70 |
+| `klv/plv_2008` | KLV-2008 | 2008-01–2011-12 | 2.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 300 |
+| `klv/plv_2012` | KLV-2012 | 2012-01–2014-12 | 1.75% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 240 |
+| `klv/plv_2015` | KLV-2015 | 2015-01–2016-12 | 1.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 180 |
+| `klv/plv_2017` | KLV-2017 | 2017-01–2021-12 | 0.90% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 250 |
+| `klv/plv_2022` | KLV-2022 | 2022-01–2024-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 150 |
+| `klv/plv_2025` | KLV-2025 | 2025-01–2035-12 | 1.00% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 1320; Neugeschäft 120/Jahr, Trend -4%/Jahr |
+
+Tarifzellen der übernommenen Generation **TG2015** (`klv/tg2015`, Rechnungszins 1.75%, Zellen über `status` × `tarifart`; je Zelle nur die vom Rumpf abweichenden Felder):
+
+| Zelle | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2}$ | $\kappa$ | StoAb Satz/min/max | Ratenzuschlag zw2/4/12 |
+|---|---|---|---|---|---|---|---|
+| nichtraucher/einzel | DAV2008_T_NR_U70 | 0.025 | 0.03 | 0.001/0.00125 | 12 | 0.005/50.0/200.0 | 0.02/0.03/0.05 |
+| nichtraucher/haus | DAV2008_T_NR_U70 | 0.0 | 0.0 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
+| nichtraucher/kollektiv | DAV2008_T_NR_U70 | 0.015 | 0.015 | 0.0008/0.001 | 12 | 0.005/50.0/200.0 | 0.01/0.015/0.025 |
+| raucher/einzel | DAV2008_T_R_U70 | 0.025 | 0.03 | 0.001/0.00125 | 12 | 0.005/50.0/200.0 | 0.02/0.03/0.05 |
+| raucher/haus | DAV2008_T_R_U70 | 0.0 | 0.0 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
+| raucher/kollektiv | DAV2008_T_R_U70 | 0.015 | 0.015 | 0.0008/0.001 | 12 | 0.005/50.0/200.0 | 0.01/0.015/0.025 |
+
+Was sich von Generation zu Generation ändert (verkaufende Generationen in Verkaufsreihenfolge; leer heißt: nur das Fenster):
+
+| Wechsel | geänderte Rechnungsgrundlagen |
+|---|---|
+| KLV-1994 → KLV-2000 | zins 4.00% → 3.25% |
+| KLV-2000 → KLV-2004 | zins 3.25% → 2.75% |
+| KLV-2004 → KLV-2007 | zins 2.75% → 2.25% |
+| KLV-2007 → KLV-2008 | tafel DAV1994_T → DAV2008_T; policy_fee 24 → 30 |
+| KLV-2008 → KLV-2012 | zins 2.25% → 1.75% |
+| KLV-2012 → KLV-2015 | zins 1.75% → 1.25% |
+| KLV-2015 → KLV-2017 | zins 1.25% → 0.90% |
+| KLV-2017 → KLV-2022 | zins 0.90% → 0.25% |
+| KLV-2022 → KLV-2025 | zins 0.25% → 1.00% |
+<!-- /erzeugt -->
 
 Migrierte Generationen kommen erst nach ihrer fachlichen Abnahme
 (A-Q1/A-M1/A-M4) in eine Bestand-Config — dann mit der Knoten-ID ihres
