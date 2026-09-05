@@ -105,7 +105,11 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `python -m rechner_pipeline.ontologie.entscheide` and
   `python -m rechner_pipeline.gates.gate_entscheid` (human gates, P9
   snapshots). Agents never resolve discrepancies as final; provisional
-  resolutions carry `vorlaeufig=true` and block human acceptance.
+  resolutions carry `vorlaeufig=true` and block human acceptance. Who
+  signs is determined from the key via the Zeichnungsordnung (ADR-018:
+  roles `mensch/<funktion>` sign, `agent/<name>` roles only prepare and
+  may reject; the key class `mensch`/`simulation`/`agent` is recorded
+  in every snapshot).
 - Migration controlling: the two-reporting-date suite
   (`rechner_pipeline.qa.migrationssuite`) and the HTML acceptance
   report (`rechner_pipeline.gates.abnahmebericht`) are libraries driven

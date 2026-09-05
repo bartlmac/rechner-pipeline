@@ -84,10 +84,11 @@ Lesarten ueber die Abzug-Vertraege und liefert das Urteil samt beider
 Residuen.
 
 - **Rechner-Lesart verworfen, Meldungs-Lesart belegt**: deterministisch
-  belegt — die Aufloesung darf OHNE Menschen erfolgen (Code auf
-  Evidenz, keine LLM-Entscheidung; P2/P4 intakt). Sie wird im
-  Migrationsprotokoll festgehalten und in der Fachspez als eigene
-  Kategorie berichtet.
+  belegt — der staerkste Beleg, den das Dossier tragen kann. Er ersetzt
+  die menschliche Entscheidung NICHT (ADR-018, Option a: der
+  Abzugsabgleich ist ausschliesslich Beleg-Erzeuger); er wandert als
+  `--beleg` in die Entscheidung der zeichnenden Rolle und wird in der
+  Fachspez als eigene Kategorie berichtet.
 - **Meldungs-Lesart verworfen**: NIEMALS automatisch. Fehler in der
   Tarifmeldung sind aufsichtsrechtlich relevant — dein Dossier legt den
   Beleg bei, die Bestaetigung und Berichtspflicht liegen IMMER beim

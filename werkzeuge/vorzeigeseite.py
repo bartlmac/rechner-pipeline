@@ -436,13 +436,14 @@ def _seite(fall: Path, modell: Dict[str, Any], repo: Path,
     z.append("## Die menschlichen Entscheide")
     z.append("")
     if entscheide:
-        z.append("| Gate | Entscheid | Entscheider | Rolle | Schlüssel (laut Snapshot) | Prüfstand |")
-        z.append("|---|---|---|---|---|---|")
+        z.append("| Gate | Entscheid | Entscheider | Rolle | Schlüsselklasse | Schlüssel (laut Snapshot) | Prüfstand |")
+        z.append("|---|---|---|---|---|---|---|")
         for e in entscheide:
             schl = (f"`{e['schluessel_sha256']}…`"
                     if e.get("schluessel_sha256") else "*(ohne Freigabe-Eintrag)*")
             z.append(f"| {e['gate']} | {e['entscheid']} | {e['entscheider']} "
-                     f"| {e['rolle']} | {schl} | {_pruefstand(e)} |")
+                     f"| {e['rolle']} | {e.get('schluesselklasse') or '—'} "
+                     f"| {schl} | {_pruefstand(e)} |")
         z.append("")
         z.extend(_signaturhinweis(entscheide))
     else:

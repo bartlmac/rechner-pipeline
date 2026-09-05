@@ -107,6 +107,8 @@ from rechner_pipeline.models.zeichnung import (  # noqa: E402
     GUELTIGE_GATES,
     lade_zeichnungsordnung as _models_lade_zeichnungsordnung,
     zeichnungsrolle as _models_zeichnungsrolle,
+    gueltige_rollenkennung,
+    zeichnung_fuer,
 )
 #: Die drei aktuariellen Abnahmen desselben migrierten Bestands. Sie
 #: laufen ueber DENSELBEN Vertrag — je Abnahme ein Testergebnis, ein
@@ -1046,10 +1048,19 @@ def main(argv: Optional[List[str]] = None):
     parser.add_argument("--entscheider", default=None)
     parser.add_argument("--begruendung", default=None)
     parser.add_argument(
-        "--rolle", default=None, choices=["mensch", "agent"],
-        help="Wer entscheidet. Agenten duerfen NUR ablehnen "
-        "(dokumentierter Zwischenstand) — die Annahme eines "
-            "menschlichen Gates ist Menschen vorbehalten.",
+        "--rolle", default=None,
+        help="Rollenkennung mit Ebene (ADR-018): mensch/<funktion> oder "
+        "agent/<name>. Fuer eine ANNAHME wird die Rolle aus dem "
+        "Freigabeschluessel ueber die Zeichnungsordnung BESTIMMT; ein "
+        "gesetzter Wert muss dann uebereinstimmen. Fuer eine ABLEHNUNG "
+        "ohne Schluessel ist die Kennung Pflicht (dokumentierter "
+        "Zwischenstand). Agentenrollen koennen nur ablehnen.",
+    )
+    parser.add_argument(
+        "--mandat", default=None,
+        help="Datei des Mandats, unter dem eine SIMULIERTE Rolle handelt; "
+        "ihr SHA-256 wandert in die Zeichnung des Snapshots (ADR-018). "
+        "Optional; bei Schluesselklasse simulation empfohlen.",
     )
     parser.add_argument(
         "--freigabe-schluessel",
@@ -1128,15 +1139,30 @@ def main(argv: Optional[List[str]] = None):
                       + ", ".join(GUELTIGE_GATES) + ")")
     if args.entscheid not in ("angenommen", "abgelehnt"):
         return _usage(f"unbekannter Entscheid {args.entscheid!r}")
-    if args.rolle not in ("mensch", "agent"):
-        return _usage("--rolle mensch|agent ist erforderlich (Agenten "
-                      "koennen nur ablehnen)")
-    if args.rolle == "agent" and args.entscheid == "angenommen":
+    if args.rolle is not None and not gueltige_rollenkennung(args.rolle):
         return _usage(
-            "Rolle 'agent' darf nicht annehmen — die Annahme eines "
-            "menschlichen Gates ist Menschen vorbehalten (P2/P4); "
-            "Agenten dokumentieren Zwischenstaende als Ablehnung"
+            f"--rolle {args.rolle!r} ist keine Rollenkennung mit Ebene — "
+            "erwartet mensch/<funktion> oder agent/<name> (ADR-018); "
+            "die Werte 'mensch' und 'agent' ohne Ebene gelten nicht mehr"
         )
+    if args.entscheid == "abgelehnt" and args.rolle is None:
+        return _usage(
+            "--rolle <kennung> ist fuer eine Ablehnung erforderlich "
+            "(Agentenrollen dokumentieren Zwischenstaende so)"
+        )
+    if args.rolle is not None and args.rolle.startswith("agent/") \
+            and args.entscheid == "angenommen":
+        return _usage(
+            f"Rolle {args.rolle!r} darf nicht annehmen — die Annahme eines "
+            "menschlichen Gates ist Menschen vorbehalten (P2/P4, ADR-018); "
+            "Agenten legen vor und dokumentieren Zwischenstaende als Ablehnung"
+        )
+    mandat_sha256: Optional[str] = None
+    if args.mandat:
+        mandat_pfad = Path(args.mandat)
+        if not mandat_pfad.is_file():
+            return _usage(f"--mandat {args.mandat!r} ist keine Datei")
+        mandat_sha256 = hashlib.sha256(mandat_pfad.read_bytes()).hexdigest()
     if not (fall / "eingang.json").is_file():
         return _usage(
             f"kein Fall-Arbeitsbereich: {fall} (anlegen mit: python -m "
@@ -1779,13 +1805,43 @@ def main(argv: Optional[List[str]] = None):
         )
     geltende = [bestehende[sha] for sha in spitzen]
 
+    # Die Rolle eines Belegs wird aus dem Schluessel BESTIMMT, wo ein
+    # Schluessel und eine Ordnung vorliegen; behauptet ist sie nur bei
+    # einer Ablehnung ohne Schluessel (ADR-018).
+    rolle = args.rolle
+    if zeichnungsordnung is not None and aktiver_schluessel is not None:
+        bestimmt = _zeichnungsrolle(zeichnungsordnung, aktiver_schluessel)
+        if bestimmt is None and args.entscheid == "angenommen":
+            return _sperre(
+                "zeichnung",
+                "Annahme verweigert: der Freigabeschluessel gehoert keiner "
+                "Rolle der Zeichnungsordnung -- wer nicht in der Ordnung "
+                "steht, zeichnet nicht",
+            )
+        if bestimmt is not None:
+            if rolle is not None and rolle != bestimmt:
+                return _usage(
+                    f"--rolle {rolle!r} widerspricht der aus dem Schluessel "
+                    f"bestimmten Rolle {bestimmt!r}"
+                )
+            rolle = bestimmt
+    if rolle is None:
+        # Eine Annahme ohne Ordnung kann keine Rolle bestimmen — das ist
+        # die Sperre aus ADR-018, kein Bedienfehler.
+        return _sperre(
+            "zeichnung",
+            "Annahme verweigert: --zeichnungsordnung fehlt — die zeichnende "
+            "Rolle wird aus dem Freigabeschluessel ueber die Ordnung "
+            "bestimmt, nicht behauptet (ADR-018)",
+        )
+
     kern_inhalt = {
         "command": "gate_entscheid",
         "gate_version": GATE_VERSION,
         "gate": args.gate,
         "entscheid": args.entscheid,
         "entscheider": args.entscheider,
-        "rolle": args.rolle,
+        "rolle": rolle,
         "begruendung": args.begruendung,
         # Der NAME des Falls, nicht sein Pfad. Das Feld dient der
         # Identitaet ("gehoert dieser Snapshot zu diesem Fall?"), und
@@ -1835,21 +1891,31 @@ def main(argv: Optional[List[str]] = None):
                 "ist erforderlich; ein frei editierbarer Fall darf seine "
                 "menschliche Freigabe nicht selbst behaupten",
             )
+        if zeichnungsordnung is None:
+            # Ohne Ordnung keine Annahme (ADR-018): Die zeichnende Rolle
+            # wird aus dem Schluessel bestimmt, nicht behauptet. Spaet
+            # geprueft, damit fachliche Sperren (offene Diskrepanz,
+            # fehlende Vorbedingung) weiterhin als solche gemeldet werden.
+            return _sperre(
+                "zeichnung",
+                "Annahme verweigert: --zeichnungsordnung fehlt — die "
+                "zeichnende Rolle wird aus dem Freigabeschluessel ueber die "
+                "Ordnung bestimmt, nicht behauptet (ADR-018)",
+            )
         zf = _zeichnungsfehler(zeichnungsordnung, args.gate, aktiver_schluessel)
         if zf:
             return _sperre(
                 "zeichnung",
                 f"Annahme verweigert: {zf}",
             )
-        if zeichnungsordnung is not None:
-            # Die Rollenbindung wandert IN den Snapshot und wird
-            # mitsigniert: Wer spaeter prueft, sieht nicht nur DASS
-            # gezeichnet wurde, sondern als welche Rolle unter welcher
-            # Ordnung.
-            snapshot["zeichnung"] = {
-                "rolle": _zeichnungsrolle(zeichnungsordnung, aktiver_schluessel),
-                "ordnung_sha256": zeichnungsordnung_sha,
-            }
+        # Die Rollenbindung wandert IN den Snapshot und wird mitsigniert:
+        # Wer spaeter prueft, sieht nicht nur DASS gezeichnet wurde,
+        # sondern als welche Rolle, unter welcher Ordnung und mit welcher
+        # Schluesselklasse — Mensch oder Simulation (ADR-018).
+        snapshot["zeichnung"] = zeichnung_fuer(
+            zeichnungsordnung, zeichnungsordnung_sha, aktiver_schluessel,
+            mandat_sha256,
+        )
         snapshot["freigabe"] = _freigabe_fuer(
             snapshot, schluesselring[aktiver_schluessel]
         )
@@ -1876,7 +1942,7 @@ def main(argv: Optional[List[str]] = None):
         "gate": args.gate,
         "entscheid": args.entscheid,
         "entscheider": args.entscheider,
-        "rolle": args.rolle,
+        "rolle": rolle,
         "snapshot_sha256": inhalt_hash,
         "vorgaenger": len(vorgaenger),
         "artefakte": len(snapshot["artefakt_hashes"]),

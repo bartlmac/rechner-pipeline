@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.fall import anlegen, registrieren
+from tests.zeichnung_fixture import VA, standard_ordnung
 from rechner_pipeline.gates import gate_entscheid
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GATE_VERSION,
@@ -95,13 +96,17 @@ def _p9(fall: Path, key: Path | None, gate: str, entscheid: str = "angenommen"):
         "--fall", str(fall),
         "--gate", gate,
         "--entscheid", entscheid,
-        "--rolle", "mensch",
+        "--rolle", VA,
         "--entscheider", "fachrolle",
         "--begruendung", f"{gate} {entscheid} geprueft",
         "--repo-root", str(REPO_ROOT),
     ]
     if key is not None:
-        argv.extend(["--freigabe-schluessel", str(key)])
+        # Die Ordnung liegt NEBEN dem Fall (ausserhalb), auch wenn der
+        # Schluessel absichtlich falsch liegt — geprueft wird der Schluessel.
+        ordnung = standard_ordnung(fall.parent, key)
+        argv.extend(["--freigabe-schluessel", str(key),
+                     "--zeichnungsordnung", str(ordnung)])
     return gate_entscheid.main(argv)
 
 
@@ -221,10 +226,13 @@ def test_p9_schema_verweigert_agenten_annahme_im_lesepfad(
     """
     _, _, snapshot_pfad = _bereit_fuer_g2(tmp_path)
     daten = json.loads(snapshot_pfad.read_text(encoding="utf-8"))
-    assert daten["rolle"] == "mensch"
+    assert daten["rolle"] == VA
     assert daten["entscheid"] == "angenommen"
 
-    daten["rolle"] = "agent"
+    # ADR-018: Rollenkennungen tragen die Ebene; eine Agentenrolle im
+    # Snapshot einer Annahme faellt im Lesepfad, egal was die Zeichnung sagt.
+    daten["rolle"] = "agent/programmleitung"
+    daten["zeichnung"]["rolle"] = "agent/programmleitung"
 
     assert (
         "an agent cannot authorize an accepted human gate"
@@ -443,9 +451,10 @@ def test_p9_cli_emittiert_genau_ein_json_und_schema_valides_ledger(
     key = _schluessel(tmp_path / "p9.key")
     argv = [
         "--fall", str(fall), "--gate", "A-Q1", "--entscheid", "angenommen",
-        "--rolle", "mensch", "--entscheider", "fachrolle",
+        "--rolle", VA, "--entscheider", "fachrolle",
         "--begruendung", "CLI-Vertrag geprueft", "--repo-root", str(REPO_ROOT),
         "--freigabe-schluessel", str(key),
+        "--zeichnungsordnung", str(standard_ordnung(tmp_path, key)),
     ]
 
     returncode = run_command(gate_entscheid.main, argv)

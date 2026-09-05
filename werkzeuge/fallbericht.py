@@ -299,11 +299,13 @@ def _it(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
                       f'{_zahl(k.get("anzahl_gate_laeufe"))} Gate-Läufe'))
 
     zeilen = [[_e(e.get("gate")), _e(e.get("entscheid")), _e(e.get("rolle")),
+               _e(e.get("schluesselklasse") or "—"),
                f'<code>{_e(e.get("schluessel_sha256"))}…</code>',
                _zahl(e.get("artefakte_gebunden"))]
               for e in k.get("entscheide", [])]
-    z.append(_tabelle(["Gate", "Entscheid", "Rolle", "Schlüssel", "gebundene Artefakte"],
-                      zeilen, "Die menschlichen Abnahmen", rechts=[4]))
+    z.append(_tabelle(["Gate", "Entscheid", "Rolle", "Schlüsselklasse", "Schlüssel",
+                       "gebundene Artefakte"],
+                      zeilen, "Die menschlichen Abnahmen", rechts=[5]))
 
     for e in k.get("entscheide", []):
         if e.get("begruendung"):

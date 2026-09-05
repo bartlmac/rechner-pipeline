@@ -398,12 +398,16 @@ python -m rechner_pipeline.quellen.tafel_import --fall faelle/mein-fall --genera
 python -m rechner_pipeline.gates.generation_golden --fall faelle/mein-fall \
     --generation klv/tgX --repo-root .                                                 # P-K1
 
-# menschliche Gates:
+# menschliche Gates (ADR-018: die zeichnende Rolle wird aus dem Schluessel
+# ueber die Zeichnungsordnung BESTIMMT, nicht behauptet):
 python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ... \
-    --wert ... --entscheider ... --begruendung ... --rolle mensch
+    --wert ... --entscheider ... --begruendung ... \
+    --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
 python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate A-Q1 \
-    --entscheid angenommen --entscheider ... --begruendung ... --rolle mensch \
-    --freigabe-schluessel /sicher/p9-freigabe.key
+    --entscheid angenommen --entscheider ... --begruendung ... \
+    --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
 ```
 
 Parallele `fall registrieren`-Aufrufe desselben Falls werden über eine
@@ -427,12 +431,15 @@ Zusaetzlich muessen alle Altersvektoren exakt die eindeutigen ganzzahligen Alter
 0 bis 123 tragen; jeder qx-Wert muss endlich sein und in `[0,1]` liegen. Diese
 Invarianten werden beim Import und erneut beim Laden des Kern-XML erzwungen.
 
-`--rolle` ist bei beiden Kommandos Pflicht (ohne das Flag brechen sie
-mit Exit-Code 2 ab) und trägt die Grenze zwischen Mensch und Agent:
-`entscheide` nimmt ausschließlich `--rolle mensch` — endgültige
-Diskrepanz-Auflösungen sind Menschen vorbehalten. Bei `gate_entscheid`
-ist `--rolle agent` zulässig, ein Agent kann ein menschliches Gate damit
-aber nur **ablehnen**, nie annehmen.
+Wer zeichnet, steht in der **Zeichnungsordnung** (ADR-018): Rollen
+heißen `mensch/<funktion>` oder `agent/<name>`, jede trägt eine
+Schlüsselklasse (`mensch`, `simulation`, `agent`) und die Gates, die sie
+zeichnen darf. Eine Annahme braucht Ordnung und Schlüssel; die Rolle wird
+aus dem Schlüssel bestimmt und wandert samt Klasse mitsigniert in den
+Snapshot. Agentenrollen legen vor und zeichnen nie; sie können ein
+menschliches Gate nur **ablehnen** (`--rolle agent/<name>`, dokumentierter
+Zwischenstand). In der Vorführung tragen die menschlichen Rollen die
+Schlüsselklasse `simulation`, und jeder Beleg sagt das.
 
 Eine Annahme braucht zusätzlich `--freigabe-schluessel`. Die Datei wird vom
 Menschen ausserhalb des Falls und ausserhalb des Agentenzugriffs verwahrt,

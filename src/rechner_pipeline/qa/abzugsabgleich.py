@@ -1,7 +1,9 @@
 """Abzugsabgleich: Diskrepanz-Lesarten gegen den Bestandsabzug (Plan P6).
 
-Die Beweisfuehrung, die eine Diskrepanz OHNE Menschen aufloesen darf —
-und die Regel, wann sie es NICHT darf:
+Die staerkste Beweisfuehrung, die ein Diskrepanz-Dossier tragen kann —
+und die Regel, wann sie nichts belegt. Aufgeloest wird eine Diskrepanz
+trotzdem nie von diesem Modul: Es erzeugt den Beleg, die zeichnende
+menschliche Rolle entscheidet und bindet ihn (ADR-018, Option a; P2).
 
 Fuer eine strittige Groesse (z. B. Rechnungszins 1,25 % Meldung gegen
 1,75 % Rechner) rechnet der Zielkern die Vertraege des transformierten
@@ -9,14 +11,15 @@ Bestandsabzugs unter BEIDEN Lesarten und haelt die Ergebnisse gegen
 die gelieferten Werte (Jahresbeitrag, Deckungskapital am Stichtag).
 Passt GENAU EINE Lesart und wird die andere klar verworfen, ist das
 ein deterministischer Beleg — keine LLM-Entscheidung, P2/P4 bleiben
-intakt: Code entscheidet auf Evidenz, beide Residuen stehen im
-Protokoll.
+intakt: Code belegt auf Evidenz, beide Residuen stehen im Protokoll,
+und der Mensch entscheidet mit diesem Beleg in der Hand.
 
 DIE HARTE REGEL (Maintainer, 18.08.): Wird die MELDUNGS-Lesart verworfen,
 ist der Fehler in der Tarifmeldung — aufsichtsrechtlich relevant, ein
 Meldungsfehler wird IMMER von einem Menschen bestaetigt und berichtet.
-Automatisch aufloesbar ist ausschliesslich der Fall "Rechner-Lesart
-verworfen, Meldungs-Lesart belegt".
+Der Fall "Rechner-Lesart verworfen, Meldungs-Lesart belegt" ist der
+einzige, den das Modul als ``automatisch_aufloesbar`` kennzeichnet — als
+Einordnung des Belegs fuer das Dossier, nicht als Vollzug.
 
 DIE BELEGLAGE ZAEHLT, NICHT DER EINZELFALL: Ein Urteil ueber hunderte
 Vertraege darf nicht an einem einzigen Wert kippen — weder zugunsten

@@ -342,9 +342,14 @@ wenn Stufe 1b lief, die offenen Konflikte der TransformationsSpec, die
 Befunde der Anwendung und jede beim Lesen aufgefallene Formelabweichung
 (siehe Grenze der Stufe 1).
 Der Mensch entscheidet mit
-`python -m rechner_pipeline.ontologie.entscheide --rolle mensch ...` und
+`python -m rechner_pipeline.ontologie.entscheide --zeichnungsordnung
+<externe-ordnung> --freigabe-schluessel <externe-datei> ...` und
 snapshottet mit `python -m rechner_pipeline.gates.gate_entscheid
---gate A-Q1 --rolle mensch --freigabe-schluessel <externe-datei> ...`.
+--gate A-Q1 --zeichnungsordnung <externe-ordnung> --freigabe-schluessel
+<externe-datei> ...` — die zeichnende Rolle (`mensch/verantwortlicher-
+aktuar`) wird aus dem Schluessel bestimmt, nicht behauptet (ADR-018).
+Du selbst kannst ein Gate nur ABLEHNEN: `--entscheid abgelehnt --rolle
+agent/programmleitung` dokumentiert den Zwischenstand.
 Der Freigabeschluessel gehoert ausserhalb des Falls und ausserhalb des
 Agentenzugriffs in die Autoritaetsumgebung des Menschen (mindestens 32
 kryptografisch zufaellige Byte, POSIX 0600, genau ein Hardlink).
@@ -473,8 +478,8 @@ die Schritte selbst zu improvisieren:
 
 ### Gate A-M4 (Mensch — hier STOPPST du wieder)
 
-`python -m rechner_pipeline.gates.gate_entscheid --gate A-M4 --rolle mensch
---freigabe-schluessel <externe-datei> ...`
+`python -m rechner_pipeline.gates.gate_entscheid --gate A-M4
+--zeichnungsordnung <externe-ordnung> --freigabe-schluessel <externe-datei> ...`
 — uebergeben, nicht selbst entscheiden. A-M4 verlangt die geltenden,
 signierten Abnahme-Snapshots desselben Stands als Vorgaenger und pinnt
 sie als Rollen `am1_snapshot`/`am2_snapshot`/`am3_snapshot`: A-M1 immer

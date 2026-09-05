@@ -590,6 +590,14 @@ def kette(fall: Path) -> Dict[str, Any]:
             "gate": d.get("gate"),
             "entscheid": d.get("entscheid"),
             "rolle": d.get("rolle"),
+            # Besetzung der Rolle (ADR-018): aus der mitsignierten
+            # Zeichnung. Altsnapshots (Schema 6) tragen sie nicht — das
+            # steht dann so da, statt eine Klasse zu erfinden.
+            "schluesselklasse": (d.get("zeichnung") or {}).get(
+                "schluesselklasse")
+            or ("nicht ausgewiesen (Schema 6)" if d.get("schema_version") == 6
+                else None),
+            "mandat_sha256": (d.get("zeichnung") or {}).get("mandat_sha256"),
             "entscheider": d.get("entscheider"),
             "entschieden_am": d.get("entschieden_am"),
             "schluessel_sha256": (freigabe.get("schluessel_sha256") or "")[:16],
