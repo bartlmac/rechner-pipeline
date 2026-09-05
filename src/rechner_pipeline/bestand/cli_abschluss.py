@@ -129,6 +129,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         "scheiben": lauf / "scheiben.parquet",
         "config": Path(ns.config),
     }
+    # Merkmale sind eine Nebentabelle: Nur Laeufe mit Tarifzellen tragen
+    # sie; fehlt sie dort, meldet die Kern-Herleitung das selbst.
+    if (lauf / "merkmale.parquet").is_file():
+        eingaben["merkmale"] = lauf / "merkmale.parquet"
     fehlend = [str(pfad) for pfad in eingaben.values() if not pfad.is_file()]
     if fehlend:
         print(
@@ -172,6 +176,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     stamm = geprueft_tabellen["portfolio"]
     historie = geprueft_tabellen["historie"]
     scheiben = geprueft_tabellen["scheiben"]
+    merkmale = geprueft_tabellen.get("merkmale")
 
     if ns.pruefen:
         pfad = abschluss_pfad(out_dir, stichtag)
@@ -180,7 +185,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
         try:
             befunde = pruefe_abschluss(
-                pfad, stamm, historie, config, scheiben=scheiben
+                pfad, stamm, historie, config, scheiben=scheiben, merkmale=merkmale
             )
         except (AbschlussError, ValueError, MissingMortalityTableError) as exc:
             print(f"bestand_abschluss: {exc}", file=sys.stderr)
@@ -203,7 +208,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         pfad = schreibe_abschluss(
-            stamm, historie, config, stichtag, out_dir, scheiben=scheiben
+            stamm, historie, config, stichtag, out_dir, scheiben=scheiben,
+            merkmale=merkmale,
         )
     except (AbschlussError, ValueError, MissingMortalityTableError) as exc:
         print(f"bestand_abschluss: {exc}", file=sys.stderr)

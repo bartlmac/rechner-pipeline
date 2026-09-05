@@ -84,7 +84,10 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 
 ## Common Commands
 
-- Install for development: `python -m pip install -e ".[dev]"`.
+- Install for development (the same pinned way CI uses; `pip install -e
+  ".[dev]"` alone resolves the transitive set freshly and is NOT the
+  documented way): `python -m pip install -r requirements-dev.txt`
+  followed by `python -m pip install -e . --no-deps`.
 - Run tests: `python -m pytest`.
 - Case workspace:
   `python -m rechner_pipeline.fall anlegen --fall faelle/<name>`,

@@ -354,12 +354,14 @@ Erzeugungsweg für den Baldrian-Fall sind dort beschrieben.
   die BU-Zustandsbewertung angeschlossen ist.
 * **Diagramme im Verlaufsbericht**, sobald ein echter Lauf mit mehreren
   Zeitpunkten vorliegt.
-* **`A-M2` und `A-M3` sind keine Pflichtbelege von `A-M4`.** Das ist
-  Absicht: Verlaufs- und Geschäftsvorfallwerte liefert ein abgebendes
-  Unternehmen oft erst später, während die Migration auf dem belegten
-  Stichtagstest schon läuft. Ob ein Fall ohne sie abgenommen wird, ist
-  eine Entscheidung des Aktuariats je Fall — die Gate-Kette nimmt sie
-  niemandem ab.
+* ~~`A-M2` und `A-M3` sind keine Pflichtbelege von `A-M4`.~~
+  **Überholt** (Entscheidung des Auftraggebers 2026-08-31, umgesetzt in
+  `gates.gate_entscheid`, dokumentiert in ADR-010): Im Bestands-Scope
+  sind A-M1, A-M2 und A-M3 Pflichtvorgänger von A-M4; im Tarif-Scope
+  bleibt es bei A-M1, weil es dort keinen Bestand gibt, dessen Verlauf
+  oder Geschäftsvorfälle abzunehmen wären. Die frühere Begründung
+  (Verlaufswerte kommen oft später) gilt weiter, führt aber zur
+  Rückschleife mit neuen Snapshots, nicht zur Abnahme ohne Beleg.
 
 ## 8 Was hier NICHT steht
 

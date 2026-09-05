@@ -1,6 +1,6 @@
 # Regie (Stub — Konzept benannt, Dokumentation ausstehend)
 
-**Status:** Platzhalter, angelegt 2026-08-31 auf Barteks Wunsch: "ein
+**Status:** Platzhalter, angelegt 2026-08-31 auf Wunsch des Maintainers: "ein
 Zeichen setzen, dass wir das haben und dokumentieren brauchen."
 
 ## Was die Regie ist

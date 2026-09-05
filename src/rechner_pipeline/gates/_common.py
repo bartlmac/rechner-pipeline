@@ -910,11 +910,6 @@ def hash_files(
     paths raise ``FileNotFoundError`` unless ``missing_ok`` is set, in which case
     they are skipped.
     """
-    if base is _HASH_BASE_DEFAULT:
-        resolved_base: Optional[Path] = REPO_ROOT
-    else:
-        resolved_base = base  # type: ignore[assignment]
-
     out: Dict[str, str] = {}
     for raw in paths:
         path = Path(raw)
@@ -922,17 +917,34 @@ def hash_files(
             if missing_ok:
                 continue
             raise FileNotFoundError(str(path))
-        if resolved_base is not None:
-            try:
-                key = str(path.resolve().relative_to(Path(resolved_base).resolve()))
-            except ValueError:
-                key = str(path)
-        else:
-            key = str(path)
+        key = hash_key(path, base=base)
         if key in out:
             continue
         out[key] = file_sha256(path)
     return out
+
+
+def hash_key(
+    path: Any, *, base: Union[Path, None, Any] = _HASH_BASE_DEFAULT
+) -> str:
+    """Der Schluessel, unter dem :func:`hash_files` eine Datei fuehren wuerde
+    — OHNE die Datei zu lesen.
+
+    Fuer Gates, die ihre Eingaben ueber die Pruefengine genau einmal lesen
+    und deren Hashes uebernehmen (Review T20-01): Der Beleg muss die Bytes
+    nennen, die geprueft wurden, nicht die einer zweiten Lesung davor.
+    """
+    if base is _HASH_BASE_DEFAULT:
+        resolved_base: Optional[Path] = REPO_ROOT
+    else:
+        resolved_base = base  # type: ignore[assignment]
+    path = Path(path)
+    if resolved_base is not None:
+        try:
+            return str(path.resolve().relative_to(Path(resolved_base).resolve()))
+        except ValueError:
+            return str(path)
+    return str(path)
 
 
 # --------------------------------------------------------------------------- #

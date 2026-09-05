@@ -29,8 +29,10 @@ from rechner_pipeline.bestand.manifest import (
     sha256_bytes,
 )
 from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.bestand.ledger_bindung import pruefe_ledger_betraege
 from rechner_pipeline.models.bestand import (
     LEDGER_NAMES,
+    MERKMALE_NAMES,
     SCHEIBEN_NAMES,
     STATUS_HISTORIE_NAMES,
     STAMM_NAMES,
@@ -99,7 +101,7 @@ def lies_und_pruefe_pb1(
     ``tabellen`` traegt die Rollen, die gelesen werden konnten, und unter
     ``config`` die geparste Config, wenn eine uebergeben wurde.
     """
-    erlaubt = {"portfolio", "historie", "scheiben", "ledger", "config"}
+    erlaubt = {"portfolio", "historie", "scheiben", "ledger", "merkmale", "config"}
     rollen = set(eingaben)
     errors: List[dict] = []
     usage_errors: List[dict] = []
@@ -135,8 +137,9 @@ def lies_und_pruefe_pb1(
         "historie": STATUS_HISTORIE_NAMES,
         "scheiben": SCHEIBEN_NAMES,
         "ledger": LEDGER_NAMES,
+        "merkmale": MERKMALE_NAMES,
     }
-    for rolle in ("portfolio", "historie", "scheiben", "ledger"):
+    for rolle in ("portfolio", "historie", "scheiben", "ledger", "merkmale"):
         if rolle not in eingaben:
             continue
         # Genau EIN Lesevorgang je Datei: Die Bytes, die gegen das Manifest
@@ -295,6 +298,25 @@ def lies_und_pruefe_pb1(
                 geprueft["sanity_baender"] = len(config.plausibilitaet)
             except Exception as exc:  # noqa: BLE001 — malformed data blockiert
                 errors.append({"code": "sanity", "message": str(exc)})
+            # Betragsidentitaet je Buchung (T20-04): erst mit den
+            # Rechnungsgrundlagen der Config ist der Kern herleitbar. Nur
+            # auf formal gueltigen Zeilen — sonst meldete jede
+            # Formverletzung zusaetzlich einen Herleitungsfehler.
+            if (
+                ledger is not None
+                and not any(e["code"] in ("ledger", "portfolio", "config") for e in errors)
+            ):
+                try:
+                    for meldung in pruefe_ledger_betraege(
+                        portfolio, ledger, config, scheiben=scheiben,
+                        historie=historie, merkmale=tabellen.get("merkmale"),
+                    ):
+                        errors.append({"code": "ledger", "message": meldung})
+                    geprueft["betraege_hergeleitet"] = int(
+                        ledger["ereignis"].isin(("ZUG", "STO", "PEX", "TOD", "ABL",
+                                                 "INV", "REA")).sum())
+                except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+                    errors.append({"code": "ledger", "message": str(exc)})
     if manifest is not None:
         geprueft["manifest_gebunden"] = len(
             [r for r in eingaben if r in tabellen])

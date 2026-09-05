@@ -70,6 +70,21 @@ def _hash(wort: str) -> str:
     return hashlib.sha256(wort.lower().encode("utf-8")).hexdigest()[:16]
 
 
+def _grundformen(wort: str) -> set[str]:
+    """Das Wort und seine deutschen Flexionsformen auf die Grundform.
+
+    Review T20-07: Fuenf Genitive ("<Name>s Entscheid") passierten die
+    Wache, weil nur der exakte Wort-Hash verglichen wurde. Die Grundform
+    entsteht hier durch Abstreifen der Flexionsendung — der verbotene Name
+    selbst steht damit weiterhin nirgends im Repo.
+    """
+    formen = {wort}
+    for endung in ("s", "es", "n", "ns"):
+        if wort.endswith(endung) and len(wort) - len(endung) >= 4:
+            formen.add(wort[: -len(endung)])
+    return formen
+
+
 def _getrackte_textdateien() -> list[Path]:
     roh = subprocess.run(
         ["git", "ls-files", "-z"], cwd=REPO, capture_output=True,
@@ -100,7 +115,7 @@ def test_keine_klarnamen_in_getrackten_dateien():
             continue
         for nummer, zeile in enumerate(text.splitlines(), 1):
             for wort in _WORT.findall(zeile):
-                if _hash(wort) in VERBOTEN:
+                if any(_hash(f) in VERBOTEN for f in _grundformen(wort)):
                     # Der Name selbst wird NICHT ausgegeben — die Meldung
                     # soll die Stelle zeigen, nicht die Regel brechen.
                     treffer.append(
@@ -144,3 +159,10 @@ def test_die_wache_findet_einen_eingeschmuggelten_namen(tmp_path):
     sauber = "Status: akzeptiert (Maintainer, 2026-01-01)."
     assert not [w for w in _WORT.findall(sauber)
                 if _hash(w) in verboten_probe]
+
+    # T20-07: Die Flexion darf die Wache nicht umgehen — der Genitiv des
+    # erfundenen Namens muss auf dieselbe Grundform fallen.
+    genitiv = f"{erfunden}s Entscheid vom 2026-01-01."
+    gefunden = [w for w in _WORT.findall(genitiv)
+                if any(_hash(f) in verboten_probe for f in _grundformen(w))]
+    assert gefunden == [erfunden + "s"], "die Genitivform umgeht die Wache"

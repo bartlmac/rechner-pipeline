@@ -49,6 +49,7 @@ ROLLEN_DATEIEN: Mapping[str, str] = {
     "historie": "historie.parquet",
     "ledger": "ledger.parquet",
     "scheiben": "scheiben.parquet",
+    "merkmale": "merkmale.parquet",
 }
 
 

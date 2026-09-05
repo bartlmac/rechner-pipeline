@@ -195,8 +195,8 @@ startet keinen Gate-Lauf.
 | P-Q3 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
 | P-K1 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
 | P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (A-Q1, A-M1, A-M4, A-K1); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, A-M1 und A-M4 verlangen die zum Fall-Scope passenden Pflichtbelege je Gate, und A-M4 verlangt die geltende, signierte A-M1-Annahme auf demselben Stand und pinnt sie als Pflichtrolle `am1_snapshot` (aktuarielle vor finanzieller Abnahme, ADR-010) |
-| P-B1 (Version `2.1.0`) | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, endliche Beträge in Stamm, Scheiben und Ledger (`NaN` und `inf` sind Datenfehler), Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand), die Tarifwerk-Regel `gamma1 == 0` der Erhöhungsscheiben, die Semantik jeder Ledger-Buchung (GeVo-Vokabular, Betragsart zum GeVo, Generation des Stammsatzes, Vertragsjahr zum Datum, Journalzeile zum Zustandswechsel) mit zeilenweiser Bindung jeder `ERH`-Buchung an genau eine Scheibe, und Bewegungs-Identitäten je Jahr, Track und Maß; mit `--manifest` zusätzlich den belegten Horizont und die Bytes jeder Tabelle gegen das Laufmanifest. `2.0.0` änderte die normative Akzeptanzmenge (vorher grüne Belege werden rot und umgekehrt), `2.1.0` ergänzt die optionale Manifest-Bindung |
-| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für Gate A-M1; Transportsicherung wird getrennt ausgewiesen |
+| P-B1 (Version `2.1.0`) | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, endliche Beträge in Stamm, Scheiben und Ledger (`NaN` und `inf` sind Datenfehler), Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand), die Tarifwerk-Regel `gamma1 == 0` der Erhöhungsscheiben, die Semantik jeder Ledger-Buchung (GeVo-Vokabular, Betragsart zum GeVo, Generation des Stammsatzes, Vertragsjahr zum Datum, Journalzeile zum Zustandswechsel) mit zeilenweiser Bindung jeder `ERH`-Buchung an genau eine Scheibe, mit `--config` die Betragsidentität jeder STO-/PEX-/TOD-/ABL-/ZUG-Buchung gegen die Kern-Herleitung für genau diese Police (Tarifzellen brauchen `--merkmale`), und Bewegungs-Identitäten je Jahr, Track und Maß; mit `--manifest` zusätzlich den belegten Horizont und die Bytes jeder Tabelle gegen das Laufmanifest. `2.0.0` änderte die normative Akzeptanzmenge (vorher grüne Belege werden rot und umgekehrt), `2.1.0` ergänzt die optionale Manifest-Bindung |
+| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
 | G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es P-B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |
 
 Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
@@ -360,19 +360,18 @@ cd rechner-pipeline
 
 python -m venv .venv
 . .venv/bin/activate                 # Windows: .venv\Scripts\activate
-python -m pip install -e ".[dev]"
+python -m pip install -r requirements-dev.txt
+python -m pip install -e . --no-deps
 python -m pytest                     # volle Suite
 ```
 
-Dieser Weg pinnt die **direkten** Abhängigkeiten exakt und lässt pip
-alles Transitive frei auflösen — bequem, aber nicht reproduzierbar. Wer
-denselben Paketstand will, den die CI fährt, installiert über die
-Pin-Dateien:
-
-```bash
-python -m pip install -r requirements-dev.txt
-python -m pip install -e . --no-deps
-```
+Das ist der eine Installationsweg, derselbe wie in der CI: Die
+Pin-Dateien tragen die direkten Abhängigkeiten UND ihre vollständige
+transitive Hülle (ein Test hält sie geschlossen). `pip install -e
+".[dev]"` allein pinnt nur die direkten Abhängigkeiten und lässt pip
+alles Transitive tagesaktuell auflösen — mit `filterwarnings = error`
+wurde daraus wiederholt eine rote Suite ohne eigene Änderung; dieser Weg
+ist deshalb nicht dokumentiert.
 
 Die Pflicht-E2E-Tests laufen auch im frischen Clone ohne lokalen
 Fall-Arbeitsbereich. Das kleine anonymisierte Fixture unter
@@ -466,11 +465,12 @@ python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang knoten 
   ohne Ontologie-Knoten und Register-Abweichungen im Fall-Eingang sind
   harte Fehler, keine Warnungen.
 - **Gepinnte Abhängigkeiten:** die direkten exakt in `pyproject.toml`,
-  ihre transitive Hülle in `requirements.txt` /
-  `requirements-dev.txt` — das ist der Installationsweg für
-  reproduzierbare Läufe (Schnellstart oben) und der, den die CI fährt.
-  Der bequeme Weg `pip install -e ".[dev]"` löst das Transitive frei
-  auf und ist damit tagesabhängig.
+  ihre vollständige transitive Hülle in `requirements.txt` /
+  `requirements-dev.txt` — der eine Installationsweg (Schnellstart
+  oben), derselbe, den die CI fährt. `tests/test_abhaengigkeiten.py`
+  prüft, dass jede direkte Abhängigkeit mit ihrer Version in den
+  Pin-Dateien steht und die installierte transitive Hülle darin
+  geschlossen ist.
 
 ## Agenten-Anbindung
 

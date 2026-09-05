@@ -121,7 +121,7 @@ def test_die_signatur_gilt_ausdruecklich_als_ungeprueft(fall: Path):
 def _volles_modell() -> dict:
     """Ein Modell, das alle Erwartungen erfuellt."""
     return {
-        "fall": {"name": "ein-fall"},
+        "fall": {"name": "ein-fall", "scope": "bestand"},
         "lieferung": {"quellen": [{"datei": "abzug.csv"}]},
         "bestand": {"anzahl": 834},
         "transformation": {"felder": [{"ziel": "police_id"}]},
@@ -199,3 +199,108 @@ def test_vollstaendiger_bericht_traegt_keinen_luecken_block():
     import fallbericht
 
     assert fallbericht._luecken_block(_volles_modell()) == ""
+
+
+# --------------------------------------------------------------------------- #
+# T20-03: Sollmengen folgen dem Fall-Scope; Luecken enden nicht mit Exit 0;
+# die Vorzeigeseite zeigt sie. T20-02: kein "gezeichnet" ohne Verifikation.
+# --------------------------------------------------------------------------- #
+
+def test_tarif_scope_verlangt_keine_bestandsabnahmen():
+    """Der Nachweis des Reviews: Ein vertragsgemaesser Tarif-Fall (A-M1 und
+    A-M4) bekam vier falsche Bestands-Scope-Luecken. Die Sollmenge folgt
+    jetzt derselben Vertragsquelle wie gates.gate_entscheid."""
+    modell = _volles_modell()
+    modell["fall"]["scope"] = "tarif"
+    modell["abnahmen"] = {"aktuariell": [{"kennung": "A-M1"}]}
+    modell["bestand"] = {}
+    modell["transformation"] = {}
+    modell["kette"]["entscheide"] = [
+        {"gate": g, "strukturell_verifiziert": True} for g in ("A-M1", "A-M4")]
+
+    assert falldaten.luecken(modell) == []
+
+
+def test_bestand_scope_verlangt_alle_drei_abnahmen():
+    modell = _volles_modell()
+    modell["abnahmen"]["aktuariell"] = [{"kennung": "A-M1"}]
+    felder = {l["feld"] for l in falldaten.luecken(modell)}
+    assert {"aktuariell:A-M2", "aktuariell:A-M3"} <= felder
+
+
+def _leerer_fall(tmp_path: Path, scope: str = "bestand") -> Path:
+    """Ein echter, leerer Fall-Arbeitsbereich — so, wie ihn das Review durch
+    alle drei Werkzeug-CLIs geschickt hat (15 Luecken, Renderer Exit 0)."""
+    fall = tmp_path / "fall"
+    (fall / "abgeleitet" / "berichte").mkdir(parents=True)
+    (fall / "abgeleitet" / "diagnostics").mkdir(parents=True)
+    (fall / "entscheide").mkdir()
+    (fall / "fall.json").write_text(
+        json.dumps({"name": "ein-fall", "scope": {"typ": scope}}), encoding="utf-8")
+    (fall / "eingang.json").write_text(json.dumps({"quellen": []}), encoding="utf-8")
+    return fall
+
+
+def test_fallbericht_mit_luecken_endet_nicht_mit_null(tmp_path: Path, capsys):
+    """Geschrieben wird der Bericht — mit Lueckenblock —, aber der Exit-Code
+    sagt es: 3 statt 0. Wer nur den Exit-Code weiterreicht, sieht es."""
+    import fallbericht
+
+    fall = _leerer_fall(tmp_path)
+    modell = falldaten.sammle(fall, [])
+    assert modell["luecken"], "Vorbedingung: der leere Fall hat Luecken"
+    daten = tmp_path / "d.json"
+    daten.write_text(json.dumps(modell, default=str), encoding="utf-8")
+    out = tmp_path / "b.html"
+
+    assert fallbericht.main(["--daten", str(daten), "--out", str(out)]) == 3
+    assert out.is_file() and "Was dieser Bericht NICHT zeigt" in out.read_text(encoding="utf-8")
+    assert "LUECKE" in capsys.readouterr().err
+
+
+def test_vorzeigeseite_zeigt_luecken_und_endet_nicht_mit_null(tmp_path: Path):
+    """Der Nachweis des Reviews: 15 Luecken, die Seite zeigte keine und
+    endete mit Exit 0. Jetzt stehen sie auf der Seite, und der Exit ist 3."""
+    import vorzeigeseite as vz
+
+    fall = _leerer_fall(tmp_path)
+    modell = falldaten.sammle(fall, [])
+    daten = tmp_path / "d.json"
+    daten.write_text(json.dumps(modell, default=str), encoding="utf-8")
+
+    seite = vz._seite(fall, modell, tmp_path, [], None)
+    assert "Was diese Seite NICHT zeigt" in seite
+    assert "aktuarielle Abnahme A-M2" in seite
+
+    out = tmp_path / "seite"
+    assert vz.main(["--fall", str(fall), "--daten", str(daten), "--out", str(out),
+                    "--repo", str(tmp_path)]) == 3
+    assert "Was diese Seite NICHT zeigt" in (out / "index.md").read_text(encoding="utf-8")
+
+
+def test_vorzeigeseite_nennt_nichts_gezeichnet_ohne_verifizierte_signatur(tmp_path: Path):
+    """T20-02: Ein strukturell gueltiger Snapshot mit frei gewaehltem HMAC —
+    das Modell sagt signatur_verifiziert=False, die Seite sagte trotzdem
+    'HMAC-signiert' und 'gezeichnet'."""
+    import vorzeigeseite as vz
+
+    fall = _leerer_fall(tmp_path)
+    modell = falldaten.sammle(fall, [])
+    modell["kette"]["entscheide"] = [
+        {"gate": g, "entscheid": "angenommen", "entscheider": "plv-aktuar",
+         "rolle": "mensch", "entschieden_am": "2026-09-01T10:00:00+00:00",
+         "schluessel_sha256": "cd" * 8, "pflichtbelege": [], "artefakte_gebunden": 2,
+         "begruendung": "x", "strukturell_verifiziert": True,
+         "verifikationsbefunde": [], "signatur_verifiziert": False}
+        for g in ("A-M1", "A-M4")]
+
+    seite = vz._seite(fall, modell, tmp_path, [], None)
+    assert "Signatur hier nicht verifiziert" in seite
+    assert "HMAC-signiert" not in seite
+    assert "gezeichnet" not in seite.replace("nichts gezeichnet", "")
+
+    # Gegenprobe: Erst eine verifizierte Signatur traegt das Wort.
+    for e in modell["kette"]["entscheide"]:
+        e["signatur_verifiziert"] = True
+    seite = vz._seite(fall, modell, tmp_path, [], None)
+    assert "Signatur verifiziert, gezeichnet" in seite

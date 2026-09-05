@@ -137,9 +137,11 @@ Lauf von selbst, Struktur und Beschriftungen stehen im Renderer und
 bleiben.
 
 **Was frei geschrieben wird, sind vier Stellen** — und zwei davon fuellen
-sich aus signierten Quellen: ein Absatz zum Anlass, je Befund eine
-Wirkungszeile, die Begruendungen der Abnahmen (aus den
-Entscheid-Snapshots) und Auszuege aus registrierten Quellen. Ohne
+sich aus den Entscheid-Snapshots und registrierten Quellen (strukturell
+geprueft; die Signatur der Snapshots verifiziert das Werkzeug nicht): ein
+Absatz zum Anlass, je Befund eine Wirkungszeile, die Begruendungen der
+Abnahmen (aus den Entscheid-Snapshots) und Auszuege aus registrierten
+Quellen. Ohne
 Textdatei entsteht eine vollstaendige Seite ohne Erzaehlung; das ist
 Absicht.
 
@@ -261,9 +263,12 @@ die Seite, und `MANIPULATIONEN.md` sowie `NOTIZEN.md` sind gesperrt,
 egal wo sie liegen — dort stehen die Aufloesungen des Vorfuehrfalls. Das
 Werkzeug bricht ab, statt zu warnen. Ausserdem steht der
 Simulationshinweis vor allem anderen: erfundene Unternehmen,
-synthetische Vertraege, Abnahmen mit einem Simulationsschluessel
-gezeichnet. Ohne ihn saehe eine oeffentliche Seite mit signierten
-aktuariellen Abnahmen aus wie eine echte.
+synthetische Vertraege, Entscheid-Snapshots mit dem Fingerabdruck eines
+Simulationsschluessels — deren Signatur die Seite nicht verifiziert und
+deshalb auch nicht "gezeichnet" nennt (T20-02). Ohne den Hinweis saehe
+eine oeffentliche Seite mit aktuariellen Abnahmen aus wie eine echte.
+Fehlt dem Fall ein Pflichtabschnitt, steht das auf der Seite unter "Was
+diese Seite NICHT zeigt", und das Werkzeug endet mit Exit 3 (T20-03).
 
 **Beim Menschen:** Stehen Klarnamen im Verlaufsprotokoll? Trifft der
 Simulationshinweis noch zu? Traegt die Seite etwas, das die Vorfuehrung

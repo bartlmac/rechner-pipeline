@@ -553,7 +553,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     ziel.write_text(baue(daten, texte), encoding="utf-8")
     frei = (1 if texte.get("anlass") else 0) + len(texte.get("wirkung") or {})
     print(f"{ziel}  ({frei} frei geschriebene Textstellen)")
-    return 0
+    # Derselbe Vertrag wie falldaten.py (Review T20-03): Der Bericht wird
+    # geschrieben — mit sichtbarem Lueckenblock —, aber ein unvollstaendiger
+    # Fall endet nicht als normaler Erfolg. Exit 3 = geschrieben, mit
+    # Luecken; wer nur den Exit-Code weiterreicht, sieht es.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from falldaten import luecken  # noqa: E402 — Nachbarwerkzeug
+
+    offene = luecken(daten)
+    for l in offene:
+        print(f"  LUECKE: {l['was']} ({l['gruppe']}.{l['feld']}) — "
+              f"{l['wirkung']}", file=sys.stderr)
+    return 3 if offene else 0
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -86,8 +86,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                  "--als-unterseite"]
     if args.verlauf:
         fallseite += ["--verlauf", args.verlauf]
-    if (zwischen := _schritt(fallseite)) != 0:
+    # Auch die Fall-Seite meldet Luecken mit Exit 3 (T20-03): Sie steht,
+    # traegt die Luecken sichtbar, und die Kette baut weiter — aber der
+    # Gesamt-Exit bleibt 3.
+    zwischen = _schritt(fallseite, erlaubt=(0, 3))
+    if zwischen not in (0, 3):
         return zwischen
+    rc = 3 if 3 in (rc, zwischen) else rc
 
     if (zwischen := _schritt(
             [sys.executable, str(WERKZEUGE / "unternehmensseite.py"),

@@ -28,6 +28,12 @@ Validates the Bestandsdaten tables against their schemas and invariants
   ``kennzahlen.bewegungskonto``; enthaelt der Ledger Erhoehungen (ERH),
   ist ``--scheiben`` Pflicht (ohne Scheiben waeren die Bestandssummen
   systematisch zu niedrig und die Pruefung falsch-positiv).
+* Betragsidentitaet je Buchung (``--ledger`` + ``--config``): Jede
+  STO-/PEX-/TOD-/ABL-/ZUG-Buchung muss den Betrag tragen, den der Kern
+  fuer GENAU DIESE Police im gebuchten Vertragsjahr liefert
+  (``bestand.ledger_bindung``; T20-04 — zwischen Policen vertauschte
+  Stornobetraege liessen Jahressumme und Bewegungskonto unveraendert).
+  Generationen in Tarifzellen brauchen dafuer ``--merkmale``.
 * Laufmanifest (``--manifest``, optional): ``laufmanifest.json`` des
   Producer-Laufs (``bestand.manifest``). Damit ist ``--bis`` keine
   Behauptung des Aufrufers mehr, sondern muss der belegte Horizont sein,
@@ -87,7 +93,7 @@ from rechner_pipeline.bestand.manifest import (
     manifest_aus_bytes,
     sha256_bytes,
 )
-from rechner_pipeline.bestand.vorbedingungen import pruefe_pb1_eingaenge
+from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.gates._common import (
     Exit,
     GateArgumentParser,
@@ -96,7 +102,7 @@ from rechner_pipeline.gates._common import (
     begin_gate_ledger_attempt,
     build_result,
     finalize_gate_ledger,
-    hash_files,
+    hash_key,
     log,
     parse_gate_args,
     run_command,
@@ -149,6 +155,12 @@ def _build_parser() -> GateArgumentParser:
     parser.add_argument(
         "--config", dest="config", default=None,
         help="Bestand-Config (TOML) fuer die Plausibilitaets-Baender (optional).",
+    )
+    parser.add_argument(
+        "--merkmale", default=None,
+        help="Merkmalsauspraegungen-Parquet (optional; Pflicht, sobald eine "
+        "Generation der Config in Tarifzellen aufgeteilt ist und der Ledger "
+        "gegen den Kern hergeleitet wird).",
     )
     parser.add_argument(
         "--manifest", default=None,
@@ -227,7 +239,7 @@ def main(argv: Optional[List[str]] = None):
         except ValueError as exc:
             return _usage([{"code": "bad_arg", "message": f"Ungueltiges --bis-Datum: {exc}"}])
     eingaben = {"portfolio": Path(args.portfolio)}
-    for name in ("historie", "scheiben", "ledger", "config"):
+    for name in ("historie", "scheiben", "ledger", "merkmale", "config"):
         wert = getattr(args, name)
         if wert:
             eingaben[name] = Path(wert)
@@ -254,20 +266,27 @@ def main(argv: Optional[List[str]] = None):
         manifest_sha256 = sha256_bytes(manifest_bytes)
     paths = {name: str(p) for name, p in eingaben.items()}
     repo_root = Path(args.repo_root).resolve() if args.repo_root else None
-    input_hashes = hash_files(list(eingaben.values()), base=repo_root, missing_ok=True)
-    portfolio_hashes = hash_files(
-        [eingaben["portfolio"]], base=repo_root, missing_ok=True
-    )
-    [(portfolio_input, portfolio_sha256)] = portfolio_hashes.items()
-    eingangsrollen: Dict[str, str] = {}
-    for rolle, pfad in eingaben.items():
-        rollen_hash = hash_files([pfad], base=repo_root, missing_ok=True)
-        [(hash_schluessel, _hash)] = rollen_hash.items()
-        eingangsrollen[rolle] = hash_schluessel
-    geprueft, errors, usage_errors = pruefe_pb1_eingaenge(
+    # EIN Lesevorgang je Eingabe: Die Engine liest, hasht und parst dieselben
+    # Bytes und gibt die Hashes zurueck. Der Beleg (input_hashes) nennt
+    # damit genau die Bytes, ueber die das Urteil fiel. Vorher hashte das
+    # Gate jede Datei separat VOR dem Engine-Aufruf; ein atomarer Tausch
+    # dazwischen ergab einen gruenen Beleg ueber Bytes, die nie geprueft
+    # wurden (externes Review T20-01 — dieselbe Klasse wie T18-03, eine
+    # Ebene hoeher).
+    tabellen, geprueft, errors, usage_errors = lies_und_pruefe_pb1(
         eingaben, bis=bis, manifest=manifest)
     if usage_errors:
         return _usage(usage_errors)
+    gelesen: Dict[str, str] = tabellen.get("sha256", {})
+    eingangsrollen: Dict[str, str] = {
+        rolle: hash_key(pfad, base=repo_root) for rolle, pfad in eingaben.items()
+    }
+    input_hashes: Dict[str, str] = {}
+    for rolle, pfad in eingaben.items():
+        if rolle in gelesen and eingangsrollen[rolle] not in input_hashes:
+            input_hashes[eingangsrollen[rolle]] = gelesen[rolle]
+    portfolio_input = eingangsrollen["portfolio"]
+    portfolio_sha256 = gelesen.get("portfolio")
 
     summary = {
         **geprueft,

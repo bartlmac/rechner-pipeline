@@ -56,23 +56,19 @@ registration (below).
 Python **3.11+**. No LLM key needed.
 ```
 python -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"      # Windows: .venv\Scripts\python
-```
-This pins the **direct** dependencies exactly (`pyproject.toml`:
-`openpyxl`, `oletools`, `pandas`, `pyarrow`, `matplotlib`, `pydantic`;
-dev: `pytest`, `hypothesis`) and lets pip resolve everything transitive
-freely. Convenient, but not reproducible: a fresh upstream release can
-change the installed set from one day to the next, and because
-`filterwarnings = ["error"]` is on, a new warning in a third-party
-package turns the suite red without anything here having changed.
-
-For a **reproducible** install — the same set CI uses — go through the
-pin files instead:
-```
-python -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pip install -r requirements-dev.txt   # Windows: .venv\Scripts\python
 .venv/bin/python -m pip install -e . --no-deps
 ```
+This is the one documented install path, identical to CI. The pin files
+carry the direct dependencies (`pyproject.toml`: `openpyxl`, `oletools`,
+`pandas`, `pyarrow`, `matplotlib`, `pydantic`, `pypdf`; dev: `pytest`,
+`hypothesis`) AND their complete transitive closure;
+`tests/test_abhaengigkeiten.py` keeps that closure closed. Installing
+with `pip install -e ".[dev]"` alone pins only the direct dependencies
+and lets pip resolve everything transitive freshly — with
+`filterwarnings = ["error"]` on, a new warning in a third-party package
+then turns the suite red without anything here having changed. That path
+is therefore not documented (external review T19-04/T20-08).
 `requirements.txt` / `requirements-dev.txt` pin the direct dependencies
 plus their transitive closure as installed from public pypi.org (verified
 under CPython 3.11 on 2026-08-19). Nine purely transitive packages
@@ -247,7 +243,7 @@ Each gate is one command, writes one JSON to stdout plus a
 | P-Q3 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
 | P-K1 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state |
 | P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-M1, A-M4, A-K1); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); agents may only reject |
-| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for gate A-M1; transport-security digests are reported separately |
+| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for the respective gate A-M1, A-M2 or A-M3 (in scope `bestand` all three are mandatory predecessors of A-M4, in scope `tarif` only A-M1); transport-security digests are reported separately |
 | P-B1 | `gates.bestand_validate` | portfolio contract and movement identities |
 | G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds P-B1, the suite and HTML report on one state |
 

@@ -51,7 +51,7 @@ import json
 import statistics
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 #: Die drei aktuariellen Abnahmen mit dem Dateinamen des Gates.
 ABNAHMEN = (
@@ -810,6 +810,23 @@ ERWARTETE_ABNAHMEN = ("A-M1", "A-M2", "A-M3")
 #: Entscheid tragen muss.
 ERWARTETE_ENTSCHEIDE = ("A-M1", "A-M2", "A-M3", "A-M4")
 
+#: Gruppen des Modells, die es nur im Bestands-Scope gibt: Ein Tarif-Fall
+#: hat keinen Bestand, keine Transformation und kein Zwei-Stichtags-
+#: Controlling (gates.gate_entscheid verlangt dort nur A-M1 vor A-M4).
+NUR_BESTAND = {("bestand", "anzahl"), ("transformation", "felder"),
+               ("abnahmen", "controlling")}
+
+
+def erwartete_abnahmen(scope: Optional[str]) -> Tuple[str, ...]:
+    """Die Sollmenge folgt dem Fall-Scope — derselben Vertragsquelle wie
+    gates.gate_entscheid (Review T20-03: die globale Menge erklaerte einen
+    vertragsgemaessen Tarif-Fall fuer unvollstaendig)."""
+    return ERWARTETE_ABNAHMEN if scope == "bestand" else ("A-M1",)
+
+
+def erwartete_entscheide(scope: Optional[str]) -> Tuple[str, ...]:
+    return erwartete_abnahmen(scope) + ("A-M4",)
+
 
 def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     """Was der Extraktor erwartet und NICHT gefunden hat.
@@ -822,7 +839,10 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     vollstaendig aus und waere es nicht.
     """
     aus: List[Dict[str, str]] = []
+    scope = (modell.get("fall") or {}).get("scope")
     for gruppe, feld, was in ERWARTET:
+        if scope != "bestand" and (gruppe, feld) in NUR_BESTAND:
+            continue
         inhalt = modell.get(gruppe) or {}
         if not inhalt.get(feld):
             aus.append({
@@ -835,7 +855,7 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     abnahmen = modell.get("abnahmen") or {}
     vorhanden = {str(a.get("kennung")) for a in (abnahmen.get("aktuariell")
                                                  or [])}
-    for kennung in ERWARTETE_ABNAHMEN:
+    for kennung in erwartete_abnahmen(scope):
         if kennung not in vorhanden:
             aus.append({
                 "gruppe": "abnahmen", "feld": f"aktuariell:{kennung}",
@@ -847,7 +867,7 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     kette = modell.get("kette") or {}
     entschieden = {str(e.get("gate")) for e in (kette.get("entscheide") or [])
                    if e.get("strukturell_verifiziert") is not False}
-    for gate in ERWARTETE_ENTSCHEIDE:
+    for gate in erwartete_entscheide(scope):
         if gate not in entschieden:
             aus.append({
                 "gruppe": "kette", "feld": f"entscheide:{gate}",

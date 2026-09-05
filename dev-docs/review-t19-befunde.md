@@ -150,3 +150,52 @@ gefangen. Zwei Altlasten in bestehenden Tests fielen dabei auf und
 wurden korrigiert: Zwei Berichtstests kombinierten den Basisbestand
 (Stamm sagt POL) mit einem Journal (sagt STO) — genau der Widerspruch,
 den T18-05 sichtbar macht; sie rendern jetzt den gefuehrten Stamm.
+
+## Nachzug: die Runde T20 (DORA ToDo 20, 2026-09-05) in diesem PR
+
+Externes Review auf Stand 6e239dc (nach T19- und T18-Nacharbeit); acht
+Befunde, vier hoch, vier mittel. Maintainer-Entscheid: alle acht in
+PR #11 schliessen, bevor gemergt wird. Die Runde bestaetigte, dass die
+konkret demonstrierten Mutationen aus T18 und T19 gefangen sind — und
+zeigte an drei tieferen Gegenbeispielen, dass die KLASSE noch nicht
+geschlossen war. Der Reviewer hat das selbst so eingeordnet: T20-01 und
+T20-04 sind Stellen, an denen die drei Bewegungen der T18-Antwort noch
+nicht durchgezogen waren. Das trifft.
+
+| Befund | Schwere | Status |
+|---|---|---|
+| T20-01 P-B1 bindet andere Bytes, als es prueft (TOCTOU zwischen Gate-Hash und Engine) | hoch | **behoben** — Gate und A-M4-Neupruefung uebernehmen die Hashes der Engine (ein Lesevorgang), `hash_key` statt `hash_files` |
+| T20-02 Vorzeigeseite behauptet verifizierte Signaturwirkung | hoch | **behoben** — Pruefstand je Snapshot ("strukturell geprueft, Signatur hier nicht verifiziert"); "gezeichnet" nur bei `signatur_verifiziert` |
+| T20-03 Unvollstaendige Artefakte enden gruen, Seite verbirgt Luecken, Sollmenge nicht scopebezogen | hoch | **behoben** — Lueckenabschnitt auf der Seite, Exit 3 fuer Bericht, Seite und Kette; Sollmengen aus `fall.scope` wie `gate_entscheid` |
+| T20-04 Stornobetraege nicht an Police und Kern gebunden | hoch | **behoben** — `bestand.ledger_bindung`: STO/PEX/TOD/ABL/ZUG je Police gegen dieselbe Kern-Herleitung wie die Engine; BU gegen die Jahresrente; in P-B1 (mit `--config`) und Abschluss verdrahtet |
+| T20-05 `sdlog = nan` passiert Config und Produzent | mittel | **behoben** — Endlichkeit aller Verteilungsparameter vor jeder Bandpruefung |
+| T20-06 A-M4-Pflichtvertrag dokumentarisch widerspruechlich | mittel | **behoben** — AT-Dokument (Abschnitt als ueberholt markiert), ADR-012, `gate_entscheid`-Modulvertrag, README, ONBOARDING sagen den Scope-Vertrag |
+| T20-07 Klarnamenwache uebersieht Flexionsformen | mittel | **behoben** — fuenf Genitive durch Rollen ersetzt; die Wache prueft Grundformen (Flexionsendungen abgestreift), Mutationsfaenger mit Genitiv |
+| T20-08 Dokumentierter Installationsweg nicht reproduzierbar | mittel | **behoben** — ein Installationsweg (Pin-Dateien, wie CI) in AGENTS/README/ONBOARDING; neun fehlende transitive Pins ergaenzt; `tests/test_abhaengigkeiten.py` haelt den Schluss |
+
+**Was die Runde ueber die Klasse lehrt.** T18-03 hatte den zweiten
+Lesevorgang im Abschluss beseitigt; das Gate selbst hashte weiter
+separat vor der Engine. T18-01/-06 banden ERH zeilenweise an die
+Scheiben; STO, PEX, TOD und ABL blieben auf Jahressummen. T18-04 prufte
+die direkten Zahlfelder; die Verteilungsparameter nicht. Jede Reparatur
+hier heisst deshalb: Die Engine ist die einzige Lesestelle und gibt
+ihre Hashes heraus (T20-01); jede hergeleitete Buchungsart ist gegen
+den Kern gebunden (T20-04); Endlichkeit gilt fuer jeden Zahlparameter
+der Config (T20-05). Der Vertrag steht jetzt in drei Tests, die je
+Klasse eine Wache entfernen und rot werden.
+
+**Bewusste Grenzen der Betragsbindung.** `MIG` (Residuum der
+Uebernahme) und `RED` (von der Engine nicht erzeugt) werden nicht
+hergeleitet; `ERH` bleibt ueber die Scheiben gebunden. Generationen in
+Tarifzellen brauchen die Merkmalstabelle (neue optionale Rolle
+`merkmale` in Engine, Gate und Abschluss); fehlt sie, ist das ein
+benannter Fehler, keine stille Naeherung.
+
+**Nachweise.** `tests/test_bestand_review_t20.py` (T20-01, -04, -05 mit
+den Repros des Reviews), `tests/test_falldaten_verifikation.py` (T20-02,
+-03: leerer Fall durch beide Renderer, Tarif-Scope-Gegenprobe,
+Signaturwortlaut), `tests/test_klarnamen.py` (T20-07),
+`tests/test_abhaengigkeiten.py` (T20-08). Mutationsproben: elf Wachen
+einzeln entfernt (Gate- und A-M4-Hashing vor der Engine, Herleitung
+nicht verdrahtet, Verteilungs-Endlichkeit, Flexion, Signaturwortlaut,
+Lueckenabschnitt, drei Exit-Codes, Sollmenge), jede gefangen.

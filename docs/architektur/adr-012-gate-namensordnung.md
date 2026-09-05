@@ -90,10 +90,14 @@ die Belege lesen.
 | `P9.gate-entscheid` | `entscheid.vollzug` | das Entscheid-Kommando |
 | `P9.<gate>` | `entscheid.<abnahme>` | Ledger-Eintrag eines Vollzugs |
 
-**Reserviert und noch nicht vergeben:** `A-M2` (Verlaufstest) und `A-M3`
-(Geschaeftsvorfalltest). Der aktuarielle Test ist mit einem Stichtag
-nicht vollstaendig; er waechst auf drei Abnahmen, die dem Controlling
-alle drei vorausgehen. Die Nummern stehen jetzt fest, damit spaeter
+**`A-M2` (Verlaufstest) und `A-M3` (Geschaeftsvorfalltest)** waren bei
+Abfassung reserviert; sie sind inzwischen vergeben und gebaut
+(`gates.aktuartest --abnahme A-M2|A-M3`, Snapshots ueber
+`gates.gate_entscheid`). Der aktuarielle Test ist mit einem Stichtag
+nicht vollstaendig; er besteht aus drei Abnahmen, die im Bestands-Scope
+dem Controlling A-M4 alle drei als Pflichtvorgaenger vorausgehen (im
+Tarif-Scope nur A-M1; Entscheidung des Auftraggebers 2026-08-31,
+erzwungen in `gate_entscheid`). Die Nummern standen vorab fest, damit
 nichts nachrutscht.
 
 ### 3. Warum der Entscheid-Vollzug nicht mehr `P9` heisst

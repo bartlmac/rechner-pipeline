@@ -89,6 +89,24 @@ class VerteilungsSpec:
                 f"(unterstuetzt: {list(SUPPORTED_TYPES)}; gamma/beta erst bei realem Bedarf)"
             )
             return errors
+        # Endlichkeit VOR den Bandpruefungen (Review T20-05): TOML laesst
+        # ``sdlog = nan`` zu, und ``nan <= 0`` ist falsch — der Produzent
+        # erzeugte 600 Vertraege mit sum_insured = NaN, Exit 0, Manifest
+        # geschrieben. Jeder Zahlparameter und jedes Gewicht muss endlich
+        # sein, bevor irgendein Vergleich etwas aussagt.
+        for name, wert in p.items():
+            werte = wert if isinstance(wert, (list, tuple)) else [wert]
+            for einzel in werte:
+                if isinstance(einzel, bool) or not isinstance(einzel, (int, float)):
+                    continue
+                if not math.isfinite(float(einzel)):
+                    errors.append(
+                        f"verteilung {self.merkmal}: {name} ist nicht endlich "
+                        f"({einzel!r}) — TOML laesst nan/inf zu, ein "
+                        "Verteilungsparameter nicht"
+                    )
+        if errors:
+            return errors
         if self.typ in ("normal", "normal_trunc"):
             for k in ("mean", "sd"):
                 if k not in p:

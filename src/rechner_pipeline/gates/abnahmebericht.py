@@ -90,6 +90,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from rechner_pipeline import fall as fall_mod
+from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.gates import bestand_validate
 from rechner_pipeline.gates._common import (
     Exit,
@@ -1329,7 +1330,14 @@ def _b1_fehler(
     suite: Dict[str, Any],
     erwartetes_system: Dict[str, str],
 ) -> List[str]:
-    """P-B1-Ledger laden, Bytes hashen und produktive P-B1-Engines neu fahren."""
+    """P-B1-Ledger laden und die produktiven P-B1-Engines neu fahren.
+
+    Gehasht und geprueft werden DIESELBEN Bytes (ein Lesevorgang in der
+    Engine, T20-01): Der Vergleich mit ``input_hashes`` des Ledgers erfolgt
+    auf den Hashes, die die Engine beim Lesen gebildet hat — nicht auf einer
+    separaten Lesung davor, zwischen der und der Pruefung getauscht werden
+    koennte.
+    """
     try:
         payload = json.loads(ledger_pfad.read_text(encoding="utf-8"))
         entry = GateLedgerEntry.from_dict(payload)
@@ -1369,7 +1377,7 @@ def _b1_fehler(
         fehler.append("P-B1-Ledger und Migrationssuite binden verschiedene Bestaende")
 
     rollen = entry.summary.get("eingangsrollen")
-    erlaubte_rollen = {"portfolio", "historie", "scheiben", "ledger", "config"}
+    erlaubte_rollen = {"portfolio", "historie", "scheiben", "ledger", "merkmale", "config"}
     if (
         not isinstance(rollen, dict)
         or "portfolio" not in rollen
@@ -1400,18 +1408,13 @@ def _b1_fehler(
     # "geprueft" und "nicht geprueft" statt nur ein gruenes Gate.
 
     aktuelle_eingaben: Dict[str, Path] = {}
-    portfolio_gebunden = False
+    erwartete_hashes: Dict[str, str] = {}
     for name, erwartet_hash in entry.input_hashes.items():
         roh = Path(name)
         vorhanden = roh.resolve() if roh.is_absolute() else (repo_root / roh).resolve()
         if not vorhanden.is_file():
             fehler.append(f"P-B1-Eingangsartefakt {name!r} fehlt")
             continue
-        gefunden = sha256(vorhanden.read_bytes()).hexdigest()
-        if gefunden != erwartet_hash:
-            fehler.append(f"P-B1-Eingangsartefakt {name!r} hat einen anderen SHA-256")
-        if name == portfolio_input and gefunden == erwartet_hash == portfolio_sha256:
-            portfolio_gebunden = True
         rolle = next(
             (rollenname for rollenname, rollenpfad in rollen.items()
              if rollenpfad == name),
@@ -1419,15 +1422,12 @@ def _b1_fehler(
         )
         if rolle is not None:
             aktuelle_eingaben[rolle] = vorhanden
+            erwartete_hashes[rolle] = erwartet_hash
             if rolle == "portfolio":
                 try:
                     vorhanden.relative_to(fall.resolve())
                 except ValueError:
                     fehler.append("P-B1-Portfolio-Rolle liegt ausserhalb des Falls")
-    if not portfolio_gebunden:
-        fehler.append(
-            "P-B1-Ledger bindet nicht seine aktuelle Portfolio-Datei"
-        )
 
     bis_roh = entry.summary.get("bis")
     bis: Optional[_dt.date] = None
@@ -1442,11 +1442,24 @@ def _b1_fehler(
         fehler.append("P-B1-Ledger.summary.bis ist nur mit ledger zulaessig")
 
     geprueft: Dict[str, int] = {}
+    portfolio_gebunden = False
     if set(aktuelle_eingaben) == set(rollen):
-        geprueft, pb1_errors, pb1_usage_errors = bestand_validate.pruefe_pb1_eingaenge(
+        tabellen, geprueft, pb1_errors, pb1_usage_errors = lies_und_pruefe_pb1(
             aktuelle_eingaben,
             bis=bis,
         )
+        gelesen = tabellen.get("sha256", {})
+        for rolle, erwartet_hash in erwartete_hashes.items():
+            gefunden = gelesen.get(rolle)
+            if gefunden != erwartet_hash:
+                fehler.append(
+                    f"P-B1-Eingangsartefakt {rollen[rolle]!r} hat einen anderen SHA-256"
+                )
+            if (
+                rolle == "portfolio"
+                and gefunden == erwartet_hash == portfolio_sha256
+            ):
+                portfolio_gebunden = True
         fehler.extend(
             f"P-B1-Neupruefung [{befund.get('code')}]: {befund.get('message')}"
             for befund in [*pb1_errors, *pb1_usage_errors]
@@ -1457,6 +1470,10 @@ def _b1_fehler(
                     f"P-B1-Ledger.summary.{name} stimmt nicht mit der "
                     "erneuten P-B1-Pruefung ueberein"
                 )
+    if not portfolio_gebunden:
+        fehler.append(
+            "P-B1-Ledger bindet nicht seine aktuelle Portfolio-Datei"
+        )
 
     portfolio_zeilen = geprueft.get("portfolio_zeilen")
     if (

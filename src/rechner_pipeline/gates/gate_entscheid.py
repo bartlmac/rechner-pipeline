@@ -1,7 +1,7 @@
 """``gate_entscheid`` — der P9-Snapshot eines menschlichen Gates.
 
-Ein menschliches Gate (A-Q1 fachlich, A-M1 aktuarielle Abnahme, A-M4
-Migrationsabnahme, A-K1 T-Box-Aenderung)
+Ein menschliches Gate (A-Q1 fachlich; A-M1, A-M2, A-M3 die drei
+aktuariellen Abnahmen; A-M4 Migrationsabnahme; A-K1 T-Box-Aenderung)
 endet nicht in einer Commit-Message, sondern in einem unveraenderlichen,
 inhaltsadressierten Snapshot: WER hat WAS auf WELCHEM Stand entschieden,
 mit welcher Begruendung. Der Snapshot haelt die SHA-256-Hashes aller
@@ -39,7 +39,9 @@ Bestandsfall zusaetzlich den gruenen P-B1-Beleg, die vollstaendige Suite
 und den Abnahmebericht desselben Eingangs-, A-Box-, System-, Bestands-
 und Zwei-Stichtagsstands. Die Reihenfolge ist erzwungen: Ein
 A-M4-Entscheid ohne geltende, signierte A-M1-Annahme auf demselben Stand
-ist unmoeglich (ADR-010). Im Abnahme-Ledger verlangt A-M4 ausserdem die
+ist unmoeglich (ADR-010); im Bestands-Scope gilt dasselbe fuer A-M2 und
+A-M3 (Entscheidung des Auftraggebers 2026-08-31), im Tarif-Scope bleibt
+es bei A-M1. Im Abnahme-Ledger verlangt A-M4 ausserdem die
 vier festen Renderer-Artefaktrollen, prueft ihre aktuellen Bytes und
 leitet das Berichtsverdikt aus den gebundenen Inhalten neu ab.
 

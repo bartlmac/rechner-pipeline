@@ -200,7 +200,7 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    — a34342b ist dann enthalten, der Cherry-pick 759548f (=c8ca1d6)
    laeuft als leerer Diff durch; (3) Kopplungs-Pruefung zuerst: die
    zwei Testdateien sind gegen einen Fall-Stand geeicht, und der
-   Fall hat sich seit Lauf 2 bewegt. Vorbedingung: Barteks Sichtung
+   Fall hat sich seit Lauf 2 bewegt. Vorbedingung: Sichtung durch den Maintainer
    des Redesigns.
 6b. [x] T18-Korrekturen. REVIDIERT 2026-09-04 (Maintainer-Entscheid
    nach dem externen Review T19): NICHT als eigener Korrektur-PR,

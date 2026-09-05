@@ -534,7 +534,9 @@ def test_die_fallseite_als_unterseite_haengt_im_auftritt(tmp_path: Path):
 
     code = vz.main(["--fall", str(fall), "--daten", str(daten),
                     "--out", str(ziel), "--als-unterseite"])
-    assert code == 0
+    # Der Probe-Fall ist unvollstaendig: geschrieben wird die Seite, der
+    # Exit sagt es (3, Review T20-03) — hier geht es um die Unterseite.
+    assert code == 3
     assert not (ziel / "_config.yml").exists()
     seite = (ziel / "index.md").read_text(encoding="utf-8")
     assert "[← Unsere Bestandsmigrationen](../)" in seite
