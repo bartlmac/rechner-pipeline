@@ -33,8 +33,12 @@ jedes Dokument und jede Rolle gehört genau einer davon an:
 Abgrenzung: Was bei einem beliebigen Versicherer unverändert eingesetzt
 würde, ist Tool; was nur für die fiktiven Unternehmen gilt, ist
 Vorzeige. Der Generator eines Berichts ist Tool, die konfigurierte
-Instanz ist Vorzeige. Die Schichtenkarte trägt die Ebene je Schicht und
-hält die Kanten aus dem Tool in die Vorzeige als Ratsche fest.
+Instanz ist Vorzeige. Die Schichtenkarte trägt die Ebene je Modul und
+hält zwei Grenzen innerhalb des Pakets als Ratsche fest: die Kanten aus
+dem Tool in die Vorzeige und die Kanten aus der Vorzeige in ihre
+Simulationswerkzeuge (Generator, Ereignis-Engine, Neugeschäft). Was
+außerhalb des Pakets liegt (Berichtsgeneratoren, Quellsystem,
+Simulation), misst sie nicht (ADR-017, Reichweite).
 
 Die Arbeitsteilung ist der Kern der Methodik:
 
@@ -73,8 +77,8 @@ Pipeline · Gates · Agenten-Skills"]
 erzeugt (1) einmalig"]
         T5["(5) Quellbestand-Simulation
 erzeugt Lieferungen für (2)"]
-        T6["(6) Tägliche Fortschreibung — geplant
-Vorfälle je Tag für (1)"]
+        T6["(6) Tagesbetrieb der PLV
+Neugeschäft, Vorfälle und Abschlüsse je Tag für (1)"]
         R7["(7) Regie — WIP
 Spielleitung der Vorführung: Drehbücher, Rollen,
 Auflösungen; bespielt (4)–(6)"]
@@ -91,7 +95,7 @@ Auflösungen; bespielt (4)–(6)"]
     class T4,T5,T6 sim
     classDef regie fill:#7a5c2e,stroke:#5d461f,color:#ffffff
     class R7 regie
-    class T6,R7 geplant
+    class R7 geplant
 ```
 
 Die **Regie** (7) ist als Konzept benannt, ihre Dokumentation ist in
@@ -104,10 +108,11 @@ Gesamtbild, aber nicht zum System.
 ## Architektur
 
 **Schichten** (Import-Regeln maschinell erzwungen,
-`ontologie/code_karte`; jede Schicht trägt ihre Ebene nach ADR-017, und
-die 29 gemessenen Kanten aus dem Tool in die Vorzeige sind die
-Zielsystem-Schnittstelle — eine neue Kante ist ein Befund, bis ein ADR
-sie aufnimmt). Die Kette unten ist die Lesefassung; die erzwungene
+`ontologie/code_karte`; jedes Modul trägt seine Ebene nach ADR-017, die
+29 gemessenen Kanten aus dem Tool in die Vorzeige sind die
+Zielsystem-Schnittstelle, die sechs Kanten aus der Vorzeige in ihre
+Simulationswerkzeuge sind die zweite Ratsche — eine neue Kante ist
+jeweils ein Befund, bis ein ADR sie aufnimmt). Die Kette unten ist die Lesefassung; die erzwungene
 Erlaubnismatrix ist ein Netz mit Quer- und Rückkanten und steht in der
 erzeugten [Landkarte](docs/architektur/landkarte.md):
 

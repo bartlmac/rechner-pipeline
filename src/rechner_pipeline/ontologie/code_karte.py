@@ -83,16 +83,50 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
 }
 
 #: Ebene je Schicht (ADR-017). "tool" = das agentische Migrationssystem,
-#: das bei jedem Versicherer unveraendert eingesetzt wuerde; "vorzeige" =
-#: das Referenz-Zielsystem und die Bestandsfuehrung der fiktiven
-#: Unternehmen. Die Vorzeige-Werkzeuge (Ebene 4) liegen ausserhalb von
-#: src (simulation/, spaeter ein eigenes Paket) und erscheinen hier nicht.
+#: das bei jedem Versicherer unveraendert eingesetzt wuerde (Ebene 2);
+#: "vorzeige" = das Referenz-Zielsystem und die Bestandsfuehrung der
+#: fiktiven Unternehmen (Ebene 3); "werkzeug" = die Vorzeige-Werkzeuge,
+#: die synthetische Daten ERZEUGEN (Ebene 4). Die Ebene 4 hat innerhalb
+#: von src keine eigene Schicht, sondern einzelne Module (EBENE_JE_MODUL);
+#: ihre uebrigen Teile (simulation/, quellsystem/, werkzeuge/) liegen
+#: ausserhalb von src und werden hier NICHT gemessen — siehe validate()
+#: und ADR-017, Konsequenzen: Die Karte erzwingt die Ebenen-Grenzen nur
+#: innerhalb des Pakets (Review T22-08).
 EBENE_JE_SCHICHT: Dict[str, str] = {
     "ontologie": "tool", "spez": "tool", "gates": "tool", "models": "tool",
     "qa": "tool", "quellen": "tool", "fall": "tool", "cli": "tool",
     "__init__": "tool",
     "kern": "vorzeige", "bestand": "vorzeige", "betrieb": "vorzeige",
     "kommutationskern": "vorzeige",
+}
+
+#: Module der Ebene 4 innerhalb von src: Sie erzeugen synthetische
+#: Bestaende, Ereignisse und Neugeschaeft — Simulation, nicht Fuehrung.
+#: Die Schicht (bestand, betrieb) sagt nur, WO sie liegen; die Ebene
+#: sagt, WAS sie sind (Review T22-08: aus dem ersten Paketsegment allein
+#: landete der Generator pauschal auf Ebene 3).
+EBENE_JE_MODUL: Dict[str, str] = {
+    "rechner_pipeline/bestand/generator.py": "werkzeug",
+    "rechner_pipeline/bestand/stochastik.py": "werkzeug",
+    "rechner_pipeline/bestand/ereignisse.py": "werkzeug",
+    "rechner_pipeline/bestand/cli_fortschreibung.py": "werkzeug",
+    "rechner_pipeline/betrieb/neugeschaeft.py": "werkzeug",
+}
+
+#: Kanten aus der Vorzeige (Ebene 3) in ihre Werkzeuge (Ebene 4), wie sie
+#: heute bestehen — dieselbe RATSCHE wie TOOL_NACH_VORZEIGE_ERLAUBT: Die
+#: Bestandsfuehrung ruft die Ereignis-Engine und das Neugeschaeft, weil
+#: die Vorzeige ein laufendes Unternehmen simuliert. Jede neue Kante ist
+#: ein Befund; aus dem Tool (Ebene 2) darf es KEINE Kante in Ebene 4
+#: geben (ein Gate, das den Generator importiert, prueft nicht mehr, es
+#: erzeugt).
+VORZEIGE_NACH_WERKZEUG_ERLAUBT: Set[tuple] = {
+    ("rechner_pipeline/bestand/config.py", "rechner_pipeline/bestand/stochastik.py"),
+    ("rechner_pipeline/bestand/kennzahlen.py", "rechner_pipeline/bestand/ereignisse.py"),
+    ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
+    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/bestand/ereignisse.py"),
+    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/bestand/generator.py"),
+    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
 }
 
 #: Die Zielsystem-Schnittstelle, wie sie heute benutzt wird: alle Kanten
@@ -134,8 +168,11 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
 }
 
 
-def ebene(schicht: str) -> Optional[str]:
-    """Die Ebene einer Schicht (ADR-017), None fuer eine unbekannte."""
+def ebene(schicht: str, rel: Optional[str] = None) -> Optional[str]:
+    """Die Ebene eines Moduls (ADR-017): erst das Modul, dann die Schicht;
+    None fuer eine unbekannte Schicht."""
+    if rel is not None and rel in EBENE_JE_MODUL:
+        return EBENE_JE_MODUL[rel]
     return EBENE_JE_SCHICHT.get(schicht)
 
 
@@ -256,7 +293,7 @@ def baue_karte(src: Path) -> Dict[str, object]:
         )
         module[rel] = {
             "schicht": _schicht(rel),
-            "ebene": ebene(_schicht(rel)),
+            "ebene": ebene(_schicht(rel), rel),
             "defs": defs,
             "zeilen": text.count("\n") + 1,
         }
@@ -326,6 +363,7 @@ def baue_karte(src: Path) -> Dict[str, object]:
             for (von, nach), symbole in sorted(kanten.items())
         ],
         "tool_nach_vorzeige": tool_nach_vorzeige(module, kanten),
+        "in_werkzeug": kanten_in_ebene(module, kanten, "werkzeug"),
         "extern": {k: sorted(v) for k, v in sorted(extern.items())},
         "dynamisch_unlesbar": dict(sorted(dynamisch_unlesbar.items())),
     }
@@ -338,10 +376,25 @@ def tool_nach_vorzeige(
     — die Messung, auf der die Ratsche steht."""
     aus: List[Dict[str, str]] = []
     for (von, nach) in sorted(kanten):
-        e_von = module.get(von, {}).get("ebene") or ebene(_schicht(von))
-        e_nach = module.get(nach, {}).get("ebene") or ebene(_schicht(nach))
+        e_von = module.get(von, {}).get("ebene") or ebene(_schicht(von), von)
+        e_nach = module.get(nach, {}).get("ebene") or ebene(_schicht(nach), nach)
         if e_von == "tool" and e_nach == "vorzeige":
             aus.append({"von": von, "nach": nach})
+    return aus
+
+
+def kanten_in_ebene(
+    module: Dict[str, Dict[str, object]], kanten: Dict[tuple, Set[str]], ziel: str
+) -> List[Dict[str, str]]:
+    """Alle Import-Kanten aus einer ANDEREN Ebene in die Ebene ``ziel``,
+    mit der Ebene des Importeurs — die Messung fuer die Ebene-4-Ratsche
+    (Review T22-08)."""
+    aus: List[Dict[str, str]] = []
+    for (von, nach) in sorted(kanten):
+        e_von = module.get(von, {}).get("ebene") or ebene(_schicht(von), von)
+        e_nach = module.get(nach, {}).get("ebene") or ebene(_schicht(nach), nach)
+        if e_nach == ziel and e_von != ziel:
+            aus.append({"von": von, "nach": nach, "von_ebene": str(e_von)})
     return aus
 
 
@@ -356,6 +409,23 @@ def validate(karte: Dict[str, object]) -> List[str]:
             befunde.append(
                 f"{rel}: Schicht {daten['schicht']!r} ohne Ebene — Tool oder "
                 "Vorzeige? (EBENE_JE_SCHICHT, ADR-017)"
+            )
+    # Ebene 4 (Werkzeuge): aus dem Tool nie, aus der Vorzeige nur ueber
+    # die gemessene Ratsche (Review T22-08).
+    for kante in karte.get("in_werkzeug", []):
+        paar = (kante["von"], kante["nach"])
+        if kante["von_ebene"] == "tool":
+            befunde.append(
+                f"{paar[0]} -> {paar[1]}: Kante aus dem KI-Tool in ein "
+                "Vorzeige-Werkzeug (Ebene 4) — das Tool prueft und erzeugt "
+                "nicht (ADR-017)"
+            )
+        elif paar not in VORZEIGE_NACH_WERKZEUG_ERLAUBT:
+            befunde.append(
+                f"{paar[0]} -> {paar[1]}: neue Kante aus der Vorzeige in ihre "
+                "Werkzeuge (Ebene 4) — die Fuehrung haengt an der Simulation "
+                "nur ueber die gemessene Menge (VORZEIGE_NACH_WERKZEUG_ERLAUBT, "
+                "ADR-017); eine neue Kante ist eine Architektur-Entscheidung"
             )
     # Ratsche: keine neue Kante aus dem Tool in die Vorzeige ohne ADR.
     for kante in karte.get("tool_nach_vorzeige", []):

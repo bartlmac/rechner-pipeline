@@ -74,6 +74,19 @@ still. Das gibt A-K1 den Inhalt, der ihm bisher fehlte (U1, Befund Z1-04).
   Werkzeuge importiert niemand ausser der Vorzeige selbst. Ob daraus
   eine Paketteilung folgt, wird nach der Messung entschieden, nicht
   vorher.
+  REICHWEITE (praezisiert 2026-09-06 nach Review T22-08): Erzwungen ist
+  das innerhalb des Pakets `src/rechner_pipeline` — die Grenze Ebene 2
+  zu 3 als gemessene Schnittstelle, die Grenze Ebene 3 zu 4 als
+  gemessene Ratsche ueber die Simulationsmodule (Generator, Stochastik,
+  Ereignis-Engine, Fortschreibungs-Kommando, Neugeschaeft), und aus
+  Ebene 2 keine Kante in Ebene 4. NICHT gemessen sind Ebene 1
+  (Entwickler und KI haben keinen Code) und die Teile der Ebene 4
+  ausserhalb des Pakets (`simulation/`, `quellsystem/`, die
+  Berichtsgeneratoren unter `werkzeuge/`); dass die Berichtsgeneratoren
+  das Produkt lesen und nie umgekehrt, gilt heute durch Messung von
+  Hand, nicht durch Pruefung — Backlog "werkzeuge/ in die
+  Schichtenkarte". Der Satz "vier Ebenen erzwungen" waere zu gross;
+  richtig ist: zwei Grenzen im Paket erzwungen, der Rest benannt.
 - README, ONBOARDING und die Unternehmensseite werden nach Ebenen
   geschnitten: Was ist das Tool, was ist die Vorzeige, was stellt sie
   her. Fachdokumente der Vorzeige nennen KI-Beteiligung und

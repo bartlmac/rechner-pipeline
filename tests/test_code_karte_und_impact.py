@@ -23,9 +23,11 @@ from rechner_pipeline.ontologie.code_index import (
     erlaubte_wurzeln,
 )
 from rechner_pipeline.ontologie.code_karte import (
+    EBENE_JE_MODUL,
     EBENE_JE_SCHICHT,
     SCHICHT_ERLAUBT,
     TOOL_NACH_VORZEIGE_ERLAUBT,
+    VORZEIGE_NACH_WERKZEUG_ERLAUBT,
     _absolut,
     baue_karte,
     validate,
@@ -849,10 +851,47 @@ def test_module_ohne_knoten_sind_harter_drift(tmp_path: Path):
 # --------------------------------------------------------------------------- #
 
 def test_jede_regelschicht_hat_eine_ebene():
-    """Tool oder Vorzeige — eine dritte Antwort gibt es nicht."""
+    """Jede Schicht ist Tool oder Vorzeige; Ebene 4 gibt es nur je Modul."""
     ohne = sorted(s for s in SCHICHT_ERLAUBT if s not in EBENE_JE_SCHICHT)
     assert ohne == [], ohne
     assert set(EBENE_JE_SCHICHT.values()) == {"tool", "vorzeige"}
+    karte = baue_karte(SRC)
+    ebenen = {m["ebene"] for m in karte["module"].values()}
+    assert ebenen == {"tool", "vorzeige", "werkzeug"}, ebenen
+    for rel, e in EBENE_JE_MODUL.items():
+        assert karte["module"][rel]["ebene"] == e, rel
+
+
+def test_die_werkzeug_ratsche_deckt_genau_die_gemessenen_kanten():
+    """Review T22-08: Der Generator lag pauschal auf Ebene 3. Jetzt ist die
+    Grenze 3 -> 4 gemessen und geratscht; 2 -> 4 gibt es nicht."""
+    karte = baue_karte(SRC)
+    gemessen = {(k["von"], k["nach"]) for k in karte["in_werkzeug"]}
+    assert gemessen <= VORZEIGE_NACH_WERKZEUG_ERLAUBT, sorted(gemessen - VORZEIGE_NACH_WERKZEUG_ERLAUBT)
+    veraltet = sorted(VORZEIGE_NACH_WERKZEUG_ERLAUBT - gemessen)
+    assert veraltet == [], f"Ratsche lockerer als der Code: {veraltet}"
+    assert all(k["von_ebene"] == "vorzeige" for k in karte["in_werkzeug"])
+    assert validate(karte) == []
+
+
+def test_kante_aus_dem_tool_in_ein_werkzeug_ist_ein_befund(tmp_path: Path):
+    """Mutationsprobe: die Ebene-4-Pruefung in validate entfernen -> rot."""
+    src = tmp_path / "rechner_pipeline"
+    (src / "gates").mkdir(parents=True)
+    (src / "bestand").mkdir()
+    for d in ("", "gates", "bestand"):
+        (src / d / "__init__.py").write_text("", encoding="utf-8")
+    (src / "bestand" / "generator.py").write_text("X = 1\n", encoding="utf-8")
+    (src / "gates" / "erzeuger.py").write_text(
+        "from rechner_pipeline.bestand.generator import X\n", encoding="utf-8")
+    befunde = validate(baue_karte(src))
+    assert any("Vorzeige-Werkzeug (Ebene 4)" in b for b in befunde), befunde
+    # ... und eine NEUE Kante aus der Vorzeige selbst ebenso:
+    (src / "gates" / "erzeuger.py").unlink()
+    (src / "bestand" / "fuehrung.py").write_text(
+        "from rechner_pipeline.bestand.generator import X\n", encoding="utf-8")
+    befunde = validate(baue_karte(src))
+    assert any("neue Kante aus der Vorzeige in ihre" in b for b in befunde), befunde
 
 
 def test_die_ratsche_deckt_genau_die_gemessenen_kanten():
