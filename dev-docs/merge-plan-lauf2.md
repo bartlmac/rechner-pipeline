@@ -269,8 +269,11 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    (Schritt 8b). Die Seiten-Session arbeitet auf vorzeige-url
    unabhaengig weiter; veroeffentlicht wird ohnehin manuell und
    getrennt vom Code-Merge.
-8. [ ] fallbericht -> main als EIN PR mit Review-Leitfaden (Owner:
-   Maintainer). REVIDIERT 2026-09-02 (Maintainer-Entscheid nach
+8. [x] fallbericht -> main als EIN PR mit Review-Leitfaden (Owner:
+   Maintainer). ERLEDIGT 2026-09-06: PR #11 nach Reviewer-Approve als
+   Merge-Commit 96588b8 auf main (Eltern 33e9dec + 730fcb0); vier
+   Reviewrunden T18/T19/T20/T21 davor geschlossen bzw. als benannte
+   Folgearbeit im Backlog (dev-docs/review-t19-befunde.md). REVIDIERT 2026-09-02 (Maintainer-Entscheid nach
    Lauf-Ende): Der 2026-09-01 im Plan selbst angelegte Vorbehalt ist
    eingetreten — die 23 Lauf-Korrekturen liegen quer durch das A/B/C-
    Gebiet (Kern-Verfahren, QA-Engines, Gates, Bestand), ein
@@ -333,8 +336,13 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    an, ist der Schnitt danach neu zu bewerten, statt ihn jetzt
    festzuzurren. Die PR-Branches werden deshalb erst nach Lauf 2
    angelegt.
-9. [ ] Aufraeumen: Branches lauf/baldrian-uebernahme,
-   feat/migrationszugang loeschen.
+9. [x] Aufraeumen: Branches lauf/baldrian-uebernahme,
+   feat/migrationszugang loeschen. ERLEDIGT lokal 2026-09-06 (beide in
+   main enthalten; feat/test-controlling-trennung verworfen). Auf
+   origin stehen noch fallbericht, feat/bestandsfuehrung und
+   parked/toolbox-pipeline (alle in main enthalten) — Loeschen dort
+   ist Push-Arbeit des Maintainers; quellsystem lokal erst nach dem
+   Aufloesen seines Worktrees.
    feat/test-controlling-trennung: VERWERFEN, geprueft 2026-09-01. Der
    Branch traegt dieselben fuenf Dateien wie der aelteste
    fallbericht-Commit, aber in aelterer Fassung -- ADR-010 steht dort
