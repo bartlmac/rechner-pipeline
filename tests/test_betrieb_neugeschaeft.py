@@ -69,7 +69,7 @@ def jahr_2027(config):
 
 
 def _verkaufstage(config, frame: pd.DataFrame) -> pd.Series:
-    index = {g.name: (i, g) for i, g in enumerate(config.generationen)}
+    index = {g.name: (config.nummernkreis(g), g) for g in config.generationen}
     return pd.Series(
         [verkaufstag(index[n][1], index[n][0], int(p))
          for n, p in zip(frame["tarif_generation"], frame["police_id"])],
@@ -193,21 +193,53 @@ def test_tag_ist_reproduzierbar_und_reihenfolgeunabhaengig(config, jahr_2027):
 
 def test_seed_haengt_am_namen_nicht_an_der_position(config):
     """Mutationsprobe: gen_index statt Name im Seed — dann veraendert
-    eine vorn eingefuegte Generation die Verkaufstage aller anderen."""
+    eine vorn eingefuegte Generation die Verkaufstage aller anderen.
+    Review T22-09: Vorher entfernte dieser Test die police_id-Spalte vor
+    dem Vergleich und fror ein, dass die NUMMERN an der Position hingen.
+    Mit explizitem Nummernkreis (configs/bestand_gesamt.toml) sind auch
+    die Nummern und damit die Ereignishistorien positionsunabhaengig."""
     assert generationsseed("KLV-2025") != generationsseed("BU-2025")
     assert generationsseed("KLV-2025") == generationsseed("KLV-2025")
+    assert all(g.nummernkreis is not None for g in config.generationen)
     umgestellt = copy.deepcopy(config)
     umgestellt.generationen = list(reversed(umgestellt.generationen))
     monat = neugeschaeft_zwischen(config, dt.date(JAHR, 5, 1), dt.date(JAHR, 5, 31))
     monat_um = neugeschaeft_zwischen(umgestellt, dt.date(JAHR, 5, 1), dt.date(JAHR, 5, 31))
-    # Dieselben Vertraege (Merkmale und Verkaufstage), nur die Nummern
-    # folgen dem Nummernkreis der neuen Position.
-    a = monat.drop(columns="police_id").sort_values(
-        ["tarif_generation", "insurance_start", "sum_insured", "bu_rente", "entry_age"]
-    ).reset_index(drop=True)
-    b = monat_um.drop(columns="police_id").sort_values(
-        ["tarif_generation", "insurance_start", "sum_insured", "bu_rente", "entry_age"]
-    ).reset_index(drop=True)
+    a = monat.sort_values("police_id").reset_index(drop=True)
+    b = monat_um.sort_values("police_id").reset_index(drop=True)
+    pd.testing.assert_frame_equal(a, b)
+    assert len(a) > 0
+
+
+def test_ohne_nummernkreis_gilt_die_position_der_erstfassung(config):
+    """Configs ohne das Feld (die bestehenden Bestaende) nummerieren wie
+    bisher — die PLV-Config traegt die Positionen jetzt explizit, also
+    bitidentisch."""
+    positional = copy.deepcopy(config)
+    for g in positional.generationen:
+        g.nummernkreis = None
+    assert positional.validate() == []
+    monat = neugeschaeft_zwischen(config, dt.date(JAHR, 5, 1), dt.date(JAHR, 5, 31))
+    monat_pos = neugeschaeft_zwischen(positional, dt.date(JAHR, 5, 1), dt.date(JAHR, 5, 31))
+    pd.testing.assert_frame_equal(monat, monat_pos)
+    # Halb gesetzt oder doppelt ist ein Config-Fehler:
+    halb = copy.deepcopy(config)
+    halb.generationen[0].nummernkreis = None
+    assert any("entweder alle oder keine" in f for f in halb.validate())
+    doppelt = copy.deepcopy(config)
+    doppelt.generationen[1].nummernkreis = doppelt.generationen[0].nummernkreis
+    assert any("nicht eindeutig" in f for f in doppelt.validate())
+
+
+def test_umsortierte_generationen_aendern_keine_policen_identitaet(config):
+    """Der Nachweis des Reviews: same_policy_ids False, same_event_histories
+    False, ledger_rows 24 vs 29 nach Umdrehen der Generationsliste."""
+    from rechner_pipeline.bestand.generator import generate
+
+    umgestellt = copy.deepcopy(config)
+    umgestellt.generationen = list(reversed(umgestellt.generationen))
+    a = generate(config).sort_values("police_id").reset_index(drop=True)
+    b = generate(umgestellt).sort_values("police_id").reset_index(drop=True)
     pd.testing.assert_frame_equal(a, b)
 
 
@@ -254,7 +286,7 @@ def test_verkaufstag_ist_aus_der_nummer_rueckrechenbar(config, jahr_2027):
         assert int(pid) in set(neugeschaeft_am(config, tag)["police_id"])
     gen0 = config.generationen[0]
     with pytest.raises(NeugeschaeftError, match="Nummernkreis"):
-        verkaufstag(gen0, 0, 10_000_001)          # eine Batch-Nummer
+        verkaufstag(gen0, config.nummernkreis(gen0), 10_000_001)   # eine Batch-Nummer
 
 
 def _zwei_generationen(neuzugang: int, gewichte: str = "") -> str:

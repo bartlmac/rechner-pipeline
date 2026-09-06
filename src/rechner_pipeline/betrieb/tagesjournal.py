@@ -143,21 +143,24 @@ def herkunft(
     tarif_generation: str,
 ) -> str:
     """Woher eine Buchung stammt: Tagesneugeschaeft, Uebernahme oder Fortschreibung."""
+    # Die Herkunft entscheidet VOR dem Nummernkreis (Review T22-09): Eine
+    # gelieferte Zugangsbuchung ist eine Uebernahme, auch wenn ihre Nummer
+    # zufaellig im Tages-Abschnitt eines Kreises liegt — die Nummer eines
+    # fremden Bestands sagt nichts ueber unseren Verkaufstag.
+    if betrag_herkunft == "geliefert":
+        return "uebernahme"
     if ereignis == "ZUG":
         index = _generationsindex(config)
         if tarif_generation in index and ist_tagesneugeschaeft(
             index[tarif_generation][0], police_id
         ):
             return "neugeschaeft"
-        if betrag_herkunft == "geliefert":
-            return "uebernahme"
-    elif betrag_herkunft == "geliefert":
-        return "uebernahme"
     return "fortschreibung"
 
 
 def _generationsindex(config: BestandConfig) -> Dict[str, Tuple[int, Any]]:
-    return {g.name: (i, g) for i, g in enumerate(config.generationen)}
+    """Name -> (Nummernkreis, Generation)."""
+    return {g.name: (config.nummernkreis(g), g) for g in config.generationen}
 
 
 def buchungstag(
@@ -177,9 +180,9 @@ def buchungstag(
                 f"police {police_id}: Tarifgeneration {tarif_generation!r} "
                 "nicht in der Config — der Verkaufstag ist nicht ableitbar"
             )
-        gen_index, gen = index[tarif_generation]
+        kreis, gen = index[tarif_generation]
         try:
-            tag = verkaufstag(gen, gen_index, police_id)
+            tag = verkaufstag(gen, kreis, police_id)
         except NeugeschaeftError as exc:
             raise TagesjournalError(str(exc)) from exc
         if tag >= wirkungstag:

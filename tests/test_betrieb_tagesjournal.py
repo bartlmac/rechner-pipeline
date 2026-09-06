@@ -169,7 +169,7 @@ def test_neugeschaeft_wird_am_verkaufstag_gebucht(config, lauf, sicht):
     assert set(neu["police_id"]) == set(zugaenge["police_id"])
     assert (neu["ereignis"] == "ZUG").all()
     assert (neu["buchungsdatum"] < neu["status_date"]).all()
-    index = {g.name: (i, g) for i, g in enumerate(config.generationen)}
+    index = {g.name: (config.nummernkreis(g), g) for g in config.generationen}
     for z in neu.head(15).itertuples(index=False):
         gen_name = str(zugaenge.set_index("police_id").loc[int(z.police_id), "tarif_generation"])
         i, gen = index[gen_name]
@@ -360,3 +360,18 @@ def test_buchungstag_der_einzelnen_regeln(config, lauf):
     with pytest.raises(TagesjournalError, match="Nummernkreis"):
         buchungstag(config, int(stamm["police_id"].iloc[0]), "ZUG", dt.date(2026, 9, 1),
                     "neugeschaeft", gen.name)
+
+
+def test_eine_gelieferte_zugangsbuchung_ist_eine_uebernahme_auch_im_tageskreis(config):
+    """Review T22-09: Eine ZUG-Zeile mit betrag_herkunft geliefert wurde als
+    neugeschaeft klassifiziert, wenn ihre Nummer im Tages-Abschnitt eines
+    Kreises lag; der dekodierte Buchungstag lag ausserhalb des Fensters.
+    Mutationsprobe: die Herkunfts-Abfrage wieder hinter den Nummernkreis
+    stellen -> rot."""
+    from rechner_pipeline.betrieb.tagesjournal import herkunft
+
+    gen = next(g for g in config.generationen if g.neuzugang_pro_jahr > 0)
+    kreis = config.nummernkreis(gen)
+    im_tageskreis = kreis * 10_000_000 + 5_000_000 + 12_345
+    assert herkunft(config, im_tageskreis, "ZUG", "gerechnet", gen.name) == "neugeschaeft"
+    assert herkunft(config, im_tageskreis, "ZUG", "geliefert", gen.name) == "uebernahme"

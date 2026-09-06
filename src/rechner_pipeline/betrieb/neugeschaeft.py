@@ -37,7 +37,7 @@ ist damit fuer sich reproduzierbar — unabhaengig davon, ob er allein, im
 Nachholen oder als Teil eines Jahres erzeugt wird — und kein Tag
 verschiebt einen anderen.
 
-Police-Nummern tragen den Verkaufstag: ``(gen_index + 1) * 10_000_000 +
+Police-Nummern tragen den Verkaufstag: ``nummernkreis * 10_000_000 +
 5_000_000 + Fensterjahr * 100_000 + Tag_des_Jahres * 100 + k``. Der
 Bereich ab 5 Mio liegt ueber dem Batch (bis 1 Mio) und dem jaehrlichen
 Neuzugang (ab 2 Mio); mehr als 99 Vertraege an einem Tag oder ein
@@ -145,7 +145,9 @@ def naechster_monatserster(tag: _dt.date) -> _dt.date:
     return _dt.date(tag.year, tag.month + 1, 1)
 
 
-def _police_ids(gen: TarifGeneration, gen_index: int, tag: _dt.date, anzahl: int) -> np.ndarray:
+def _police_ids(gen: TarifGeneration, kreis: int, tag: _dt.date, anzahl: int) -> np.ndarray:
+    """Police-Nummern eines Verkaufstags im Nummernkreis ``kreis`` der
+    Generation (config.nummernkreis, T22-09 — nicht ihre Position)."""
     fensterjahr = tag.year - gen.gueltig_von.year
     if anzahl >= _JE_TAG:
         raise NeugeschaeftError(
@@ -154,12 +156,12 @@ def _police_ids(gen: TarifGeneration, gen_index: int, tag: _dt.date, anzahl: int
             "oder die Wochentagsgewichte sind fuer einen Tagesbetrieb unplausibel"
         )
     basis = (
-        (gen_index + 1) * 10_000_000
+        kreis * 10_000_000
         + _TAGES_ID_OFFSET
         + fensterjahr * _JE_JAHR
         + tag.timetuple().tm_yday * _JE_TAG
     )
-    if basis + _JE_TAG > (gen_index + 1) * 10_000_000 + _ID_GRENZE:
+    if basis + _JE_TAG > kreis * 10_000_000 + _ID_GRENZE:
         raise NeugeschaeftError(
             f"generation {gen.name}: Verkaufsfenster ab {gen.gueltig_von.isoformat()} "
             f"reicht im Jahr {tag.year} ueber den Nummernkreis des "
@@ -184,7 +186,7 @@ def neugeschaeft_am(config: BestandConfig, tag: _dt.date) -> pd.DataFrame:
         raise NeugeschaeftError("Config ungueltig: " + "; ".join(fehler))
     tag = pd.Timestamp(tag).date()
     frames: List[pd.DataFrame] = []
-    for idx, gen in enumerate(config.generationen):
+    for gen in config.generationen:
         erwartung = tagesziel(config, gen, tag)
         rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence(
             [config.seed, NEUGESCHAEFT_STREAM, generationsseed(gen.name),
@@ -198,7 +200,7 @@ def neugeschaeft_am(config: BestandConfig, tag: _dt.date) -> pd.DataFrame:
         anzahl = ganz + (1 if u < erwartung - ganz else 0)
         if anzahl == 0:
             continue
-        police_ids = _police_ids(gen, idx, tag, anzahl)
+        police_ids = _police_ids(gen, config.nummernkreis(gen), tag, anzahl)
         attribute = _ziehe_attribute(gen, rng, anzahl)
         beginn = naechster_monatserster(tag)
         frames.append(_baue_frame(gen, attribute, [beginn] * anzahl, police_ids))
@@ -239,20 +241,20 @@ def neugeschaeft_zwischen(
     return df.sort_values("police_id", kind="stable").reset_index(drop=True)
 
 
-def ist_tagesneugeschaeft(gen_index: int, police_id: int) -> bool:
-    """Liegt die Nummer im Nummernkreis des Tagesneugeschaefts dieser Generation?"""
-    rest = int(police_id) - (gen_index + 1) * 10_000_000
+def ist_tagesneugeschaeft(kreis: int, police_id: int) -> bool:
+    """Liegt die Nummer im Tagesneugeschaefts-Abschnitt des Nummernkreises ``kreis``?"""
+    rest = int(police_id) - kreis * 10_000_000
     return _TAGES_ID_OFFSET <= rest < _ID_GRENZE
 
 
-def verkaufstag(gen: TarifGeneration, gen_index: int, police_id: int) -> _dt.date:
+def verkaufstag(gen: TarifGeneration, kreis: int, police_id: int) -> _dt.date:
     """Den Verkaufstag aus der Police-Nummer zurueckrechnen (Umkehrung).
 
     Die Nummer traegt Fensterjahr und Tag des Jahres; das Tagesjournal
     prueft damit, dass eine ZUG-Buchung des Tagesneugeschaefts an dem Tag
     gebucht ist, an dem die Police verkauft wurde.
     """
-    rest = int(police_id) - (gen_index + 1) * 10_000_000 - _TAGES_ID_OFFSET
+    rest = int(police_id) - kreis * 10_000_000 - _TAGES_ID_OFFSET
     if not 0 <= rest < _ID_GRENZE - _TAGES_ID_OFFSET:
         raise NeugeschaeftError(
             f"police {police_id} liegt nicht im Nummernkreis des "
