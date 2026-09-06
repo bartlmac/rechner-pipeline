@@ -351,6 +351,14 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    75 Zeilen aermer. fallbericht ist strikt weiter; es geht nichts
    verloren.
 10. [ ] Folge-Straenge nach dem Merge von PR #11 (Plan validiert durch
+   die merge-session; STAND 2026-09-06: (b) plv-betrieb ist als PR #13
+   gemergt (f066b55, Merge-Commit, kein Rebase); (a) ebenen ist PR #14
+   (CI gruen, main ohne Rebase hineingemergt, Review bis 2026-09-11);
+   der fruehe Merge plv-betrieb -> vorzeige-url ist vollzogen (6abb4d5,
+   Bloecke 3/4 der Seite nach dev-Vorgabe umgebaut); dazugekommen und
+   gemergt: PR #15 Referenzumgebung als Container (beecf3d). Offen: der
+   Seiten-PR nach Verdichtung — alle drei Klauseln sind jetzt erfuellt.
+   Urspruenglicher Plan-Text, validiert durch
    die merge-session 2026-09-05, Einwendung angenommen):
    KEIN REBASE. ebenen (5 Commits) und plv-betrieb (9 Commits)
    sitzen exakt auf 730fcb0; sobald PR #11 als Merge-Commit auf main

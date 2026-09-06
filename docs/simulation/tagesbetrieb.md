@@ -321,12 +321,14 @@ Zusammen etwa sechs bis sieben Arbeitstage. Reihenfolge B1 bis B4 zuerst
 (danach läuft die PLV täglich auf dem Entwicklerrechner), B7 als
 nächstes (danach läuft sie unter `~/apps/plv`), B5, B6 und B8 danach.
 
-**Merge-Weg.** Eigener Branch `plv-tagesbetrieb`, abgezweigt vom Stand
-von PR #11 (730fcb0); nach dem Merge von PR #11 auf `main` umbasieren und
-als eigener PR gegen `main`. Der Architektur-Strang läuft parallel auf
-seinem Branch; die einzige erwartbare Berührung ist die Einordnung des
-neuen Pakets in die Ebenen der Schichtenkarte, die dort ohnehin neu
-entsteht.
+**Merge-Weg.** Eigener Branch `plv-betrieb`, abgezweigt vom Stand von
+PR #11 (730fcb0), ohne Umbasieren als Merge-Commit gegen `main` (PR #13,
+gemergt 2026-09-06 als f066b55; Systemstände und Snapshots binden
+Commit-Shas, deshalb kein Rebase). Vorher wurde er in den Seiten-Branch
+gemergt, damit das Redesign der Vorzeigeseite das Stands-Paket und
+„Bestand heute" nutzen konnte. Der Architektur-Strang lief parallel auf
+seinem Branch; die einzige Berührung war die Einordnung des neuen Pakets
+in die Ebenen der Schichtenkarte, und die blieb konfliktfrei.
 
 ## 10 Offene Fachentscheidungen
 
