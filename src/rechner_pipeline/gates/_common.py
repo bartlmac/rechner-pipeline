@@ -71,6 +71,7 @@ __all__ = [
     "hash_files",
     "status_for_exit",
     "GATE_LEDGER_SUFFIX",
+    "GATE_HISTORIE_SUFFIX",
     "begin_gate_ledger_attempt",
     "finalize_gate_ledger",
     "write_gate_ledger",
@@ -194,6 +195,17 @@ def repo_root() -> Path:
 #: Filename convention for a gate-result ledger entry written into the
 #: diagnostics dir: ``<command>.gate.json`` (e.g. ``golden_master.gate.json``).
 GATE_LEDGER_SUFFIX: str = ".gate.json"
+#: Append-only Verlauf je Kommando, eine Zeile je abgeschlossenem Lauf.
+#:
+#: Das Ledger traegt den GELTENDEN Stand und wird bei jedem Lauf ersetzt;
+#: das ist richtig, denn ein ueberholtes Urteil darf nicht als aktueller
+#: Beleg herumliegen. Die Folge war aber, dass jedes Ledger auf
+#: "bestanden, erster Versuch" stand -- auch nach einem Lauf, der
+#: mehrfach zurueckschleifen musste. Damit verlor die Ablage genau das,
+#: was ein Migrationslauf an Erkenntnis erzeugt: WO es geklemmt hat.
+#:
+#: Die Historie ergaenzt das, ohne den Ledger-Vertrag zu beruehren.
+GATE_HISTORIE_SUFFIX: str = ".historie.jsonl"
 
 
 def utc_now() -> str:
@@ -450,7 +462,7 @@ def _argument_error_result(
     decision_gate = _argument_value(error, argv, "gate")
     if decision_gate in contract.decision_gate_choices:
         command = f"{command}_{decision_gate.lower().replace('-', '')}"
-        gate = f"P9.{decision_gate}"
+        gate = f"entscheid.{decision_gate}"
 
     result = build_result(
         command=command,
@@ -898,11 +910,6 @@ def hash_files(
     paths raise ``FileNotFoundError`` unless ``missing_ok`` is set, in which case
     they are skipped.
     """
-    if base is _HASH_BASE_DEFAULT:
-        resolved_base: Optional[Path] = REPO_ROOT
-    else:
-        resolved_base = base  # type: ignore[assignment]
-
     out: Dict[str, str] = {}
     for raw in paths:
         path = Path(raw)
@@ -910,17 +917,34 @@ def hash_files(
             if missing_ok:
                 continue
             raise FileNotFoundError(str(path))
-        if resolved_base is not None:
-            try:
-                key = str(path.resolve().relative_to(Path(resolved_base).resolve()))
-            except ValueError:
-                key = str(path)
-        else:
-            key = str(path)
+        key = hash_key(path, base=base)
         if key in out:
             continue
         out[key] = file_sha256(path)
     return out
+
+
+def hash_key(
+    path: Any, *, base: Union[Path, None, Any] = _HASH_BASE_DEFAULT
+) -> str:
+    """Der Schluessel, unter dem :func:`hash_files` eine Datei fuehren wuerde
+    — OHNE die Datei zu lesen.
+
+    Fuer Gates, die ihre Eingaben ueber die Pruefengine genau einmal lesen
+    und deren Hashes uebernehmen (Review T20-01): Der Beleg muss die Bytes
+    nennen, die geprueft wurden, nicht die einer zweiten Lesung davor.
+    """
+    if base is _HASH_BASE_DEFAULT:
+        resolved_base: Optional[Path] = REPO_ROOT
+    else:
+        resolved_base = base  # type: ignore[assignment]
+    path = Path(path)
+    if resolved_base is not None:
+        try:
+            return str(path.resolve().relative_to(Path(resolved_base).resolve()))
+        except ValueError:
+            return str(path)
+    return str(path)
 
 
 # --------------------------------------------------------------------------- #
@@ -974,13 +998,14 @@ def load_gate_ledger(
 
 
 ALL_GATES: Tuple[Tuple[str, str], ...] = (
-    ("G0.extraction-manifest", "extract"),
-    ("O0.abox-merge", "abox_merge"),
-    ("O1.abox-contract", "abox_validate"),
-    ("O3.generation-golden-master", "generation_golden"),
-    ("P9.gate-entscheid", "gate_entscheid"),
-    ("B1.bestand-contract", "bestand_validate"),
-    ("G2-vorlage.migrationsabnahme", "abnahmebericht"),
+    ("P-Q1.quellfragment", "extract"),
+    ("P-Q2.zusammenfuehrung", "abox_merge"),
+    ("P-Q3.fachliche-pruefung", "abox_validate"),
+    ("P-K1.generations-golden-master", "generation_golden"),
+    ("entscheid.vollzug", "gate_entscheid"),
+    ("P-B1.bestandspruefung", "bestand_validate"),
+    ("A-M1.stichtagstest", "aktuartest"),
+    ("A-M4.migrationscontrolling", "abnahmebericht"),
 )
 
 def _gate_catalogue() -> Tuple[Dict[str, str], Tuple[str, ...]]:
@@ -1128,11 +1153,78 @@ class _GateLedgerAttempt:
     repo_root: Optional[Path]
     started_at: str
     command_line: Tuple[str, ...]
+    versuch: int = 1
 
 
 _ACTIVE_GATE_LEDGER_ATTEMPT: ContextVar[Optional[_GateLedgerAttempt]] = ContextVar(
     "active_gate_ledger_attempt", default=None
 )
+
+
+def gate_historie_pfad(diagnostics_dir: Union[str, Path], command: str) -> Path:
+    """Pfad des Laufverlaufs eines Kommandos."""
+    return Path(diagnostics_dir) / f"{command}{GATE_HISTORIE_SUFFIX}"
+
+
+def lies_gate_historie(
+    diagnostics_dir: Union[str, Path], command: str
+) -> List[Dict[str, Any]]:
+    """Die abgeschlossenen Laeufe eines Kommandos, aelteste zuerst.
+
+    Eine unlesbare Zeile wird uebersprungen und nicht zum Fehler: Die
+    Historie ist ein Zusatzbeleg, kein Vertrag. Sie darf einen Gate-Lauf
+    niemals aufhalten -- sonst waere die Beobachtung teurer als das
+    Beobachtete.
+    """
+    pfad = gate_historie_pfad(diagnostics_dir, command)
+    if not pfad.is_file():
+        return []
+    aus: List[Dict[str, Any]] = []
+    try:
+        text = pfad.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    for zeile in text.splitlines():
+        zeile = zeile.strip()
+        if not zeile:
+            continue
+        try:
+            eintrag = json.loads(zeile)
+        except ValueError:
+            continue
+        if isinstance(eintrag, dict):
+            aus.append(eintrag)
+    return aus
+
+
+def _schreibe_gate_historie(
+    attempt: "_GateLedgerAttempt", result: "ToolboxResult"
+) -> None:
+    """Einen abgeschlossenen Lauf an die Historie anhaengen.
+
+    Bewusst schmal: Urteil, Zeitpunkte und die Fehlercodes. Der volle
+    Befund steht im Ledger des jeweiligen Laufs -- der ist ueberschrieben,
+    aber die Historie sagt wenigstens, DASS und WORAN es scheiterte.
+    """
+    eintrag = {
+        "versuch": attempt.versuch,
+        "status": result.status,
+        "exit_code": result.exit_code,
+        "started_at": attempt.started_at,
+        "ended_at": utc_now(),
+        "fehler": [
+            str(f.get("code")) if isinstance(f, dict) else str(f)
+            for f in (result.errors or [])
+        ][:8],
+    }
+    pfad = gate_historie_pfad(attempt.diagnostics_dir, attempt.command)
+    try:
+        pfad.parent.mkdir(parents=True, exist_ok=True)
+        with pfad.open("a", encoding="utf-8") as datei:
+            datei.write(json.dumps(eintrag, ensure_ascii=False,
+                                   sort_keys=True) + "\n")
+    except OSError as exc:  # pragma: no cover — Beobachtung haelt nichts auf
+        log(f"{attempt.command}: Historie nicht schreibbar: {exc}")
 
 
 def _ledger_write_failure(
@@ -1214,6 +1306,7 @@ def begin_gate_ledger_attempt(
         repo_root=repo_root,
         started_at=started,
         command_line=tuple(command_line or ()),
+        versuch=len(lies_gate_historie(diagnostics_dir, command)) + 1,
     )
     _ACTIVE_GATE_LEDGER_ATTEMPT.set(attempt)
     marker = build_result(
@@ -1236,6 +1329,7 @@ def begin_gate_ledger_attempt(
             marker,
             attempt.diagnostics_dir,
             repo_root=attempt.repo_root,
+            attempt=attempt.versuch,
             started_at=attempt.started_at,
             ended_at=utc_now(),
             command_line=attempt.command_line,
@@ -1263,6 +1357,7 @@ def finalize_gate_ledger(result: "ToolboxResult") -> "ToolboxResult":
             result,
             attempt.diagnostics_dir,
             repo_root=attempt.repo_root,
+            attempt=attempt.versuch,
             started_at=attempt.started_at,
             ended_at=utc_now(),
             command_line=attempt.command_line,
@@ -1270,6 +1365,10 @@ def finalize_gate_ledger(result: "ToolboxResult") -> "ToolboxResult":
     except Exception as exc:  # noqa: BLE001 — evidence failure is the result
         log(f"{result.command}: gate-ledger write failed: {exc}")
         return _ledger_write_failure(result, exc)
+    else:
+        # Erst NACH dem Ledger: Ein Lauf, dessen Beleg nicht geschrieben
+        # werden konnte, ist kein abgeschlossener Lauf.
+        _schreibe_gate_historie(attempt, result)
     finally:
         _ACTIVE_GATE_LEDGER_ATTEMPT.set(None)
     return result

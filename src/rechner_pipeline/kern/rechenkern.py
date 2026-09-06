@@ -124,14 +124,27 @@ class Rechenkern:
         return self.produkt.monatsreserve_beitragsfrei(a0, monate)
 
 
-def erhoehungs_scheibe(mp: ModelPoint, jahr: int, vs: float) -> ModelPoint:
-    """Modellpunkt einer dynamischen Erhöhungsscheibe (Tarifwerk-Regel).
+def erhoehungs_scheibe(
+    mp: ModelPoint, jahr: int, vs: float, *, gamma1_uebernehmen: bool = False
+) -> ModelPoint:
+    """Modellpunkt einer dynamischen Erhöhungsscheibe.
 
     Eigene Scheibe mit versetzten Dauern (x+jahr, n-jahr, t-jahr) und der
-    Erhöhungssumme. Die Bezugsgröße für ``gamma1`` bleibt die GrundVS
-    (Tarifmitteilung, Bemerkung zur Kostentabelle): Erhöhungen erhöhen
-    die beitragsbezogenen Verwaltungskosten NICHT — die Grundscheibe
-    trägt γ1 bereits vollständig, die Erhöhungsscheibe trägt keins.
+    Erhöhungssumme. Ob die Scheibe ``gamma1`` trägt, ist eine
+    TARIFWERKS-EIGENSCHAFT DER JEWEILIGEN LIEFERUNG, keine Konstante —
+    das hat der zweite Baldrian-Lauf gezeigt (2026-09-01, bit-stabiler
+    BJB-Fehlbetrag über beide Stichtage):
+
+    * Vorgabe ``gamma1_uebernehmen=False`` (Bestandsverhalten): die
+      Bezugsgröße für γ1 bleibt die GrundVS — so stand es in der
+      Tarifmitteilung der ERSTEN Lieferung, und so rechnet das eigene
+      Neugeschäft der PLV.
+    * ``gamma1_uebernehmen=True``: die Scheibe rechnet die VOLLE
+      Beitragsformel inklusive γ1 — so bestimmt es das Bedingungswerk
+      der ZWEITEN Lieferung ("eigenständiger Baustein mit eigener
+      Wertermittlung"). Die Prüfstrecke der Migration setzt den
+      Parameter nach der dokumentierten Quell-Lage; er wird nie
+      geraten.
     """
     if not 0 < jahr < mp.t:
         raise ValueError(
@@ -140,7 +153,7 @@ def erhoehungs_scheibe(mp: ModelPoint, jahr: int, vs: float) -> ModelPoint:
         )
     return dataclasses.replace(
         mp, x=mp.x + jahr, n=mp.n - jahr, t=mp.t - jahr,
-        sum_insured=vs, gamma1=0.0,
+        sum_insured=vs, gamma1=mp.gamma1 if gamma1_uebernehmen else 0.0,
     )
 
 
@@ -148,17 +161,37 @@ def vertrags_monatsreserve(
     grund: Rechenkern,
     scheiben: Sequence[Tuple[int, Rechenkern]],
     monate: int,
+    *,
+    stoab_je_baustein: bool = False,
 ) -> Monatsreserve:
     """Vertragsweite Monatsreserve über Grund- und Erhöhungsscheiben.
 
     Reserven (DR, MRV) sind die Summe der Scheibenwerte, jede Scheibe an
-    ihrem versetzten Monats-Stichtag. Die Stornoabschlag-Grenzen des
-    Tarifwerks gelten je VERTRAG: einmal auf die Gesamtwerte gerechnet,
-    nicht je Scheibe (vgl. den vertragsweiten RKW der Fortschreibung).
-    Ohne Scheiben ist das Ergebnis identisch zu
+    ihrem versetzten Monats-Stichtag. WO die Stornoabschlag-Grenzen des
+    Tarifwerks greifen, ist eine TARIFWERKS-EIGENSCHAFT DER JEWEILIGEN
+    LIEFERUNG, keine Konstante — das hat der zweite Baldrian-Lauf
+    gezeigt (2026-09-01, RKW-Residuen in Vielfachen der Grenzbeträge):
+
+    * Vorgabe ``stoab_je_baustein=False`` (Bestandsverhalten): die
+      Grenzen gelten je VERTRAG, einmal auf die Gesamtwerte gerechnet
+      (Tarifplan 6, vgl. den vertragsweiten RKW der Fortschreibung).
+    * ``stoab_je_baustein=True``: der Abzug wird je BAUSTEIN gesondert
+      erhoben — Grundversicherung und jede Erhöhungsscheibe einzeln,
+      jeweils mit Mindest- und Höchstbetrag, jeweils mit der eigenen
+      Ablauf-/Flexphasen-Prüfung am versetzten Stichtag — und der
+      Rückkaufswert des Vertrags ist die SUMME der auf null begrenzten
+      Baustein-Rückkaufswerte (Bedingungswerk der zweiten
+      Baldrian-Lieferung, Ziffer 4). ``rkw`` ist dann bewusst NICHT
+      ``max(0, vx_mrv - stoab)``: Ein Baustein, dessen Reserve unter
+      dem Mindestabzug liegt, klemmt bei null und subventioniert die
+      anderen nicht. Die Prüfstrecke der Migration setzt den Parameter
+      nach der dokumentierten Quell-Lage; er wird nie geraten.
+
+    Ohne Scheiben und mit Vorgabe ist das Ergebnis identisch zu
     :meth:`Rechenkern.monatsreserve`.
     """
     teile: List[Tuple[int, Rechenkern]] = [(0, grund)] + list(scheiben)
+    stuecke: List[Tuple[Rechenkern, int, Monatsreserve]] = []
     dr = mrv = 0.0
     for erh_jahr, kern in teile:
         versetzt = monate - 12 * erh_jahr
@@ -170,18 +203,35 @@ def vertrags_monatsreserve(
         reserve = kern.monatsreserve(versetzt)
         dr += reserve.drx_bpfl
         mrv += reserve.vx_mrv
-    mp = grund.mp
+        stuecke.append((kern, versetzt, reserve))
     a = monate // 12
-    if a > mp.n or grund.produkt.ist_flex_phase(a):
-        stoab = 0.0
+    if stoab_je_baustein:
+        stoab = rkw = 0.0
+        for kern, versetzt, reserve in stuecke:
+            mp_k = kern.mp
+            a_k = versetzt // 12
+            if a_k > mp_k.n or kern.produkt.ist_flex_phase(a_k):
+                teil_stoab = 0.0
+            else:
+                teil_stoab = min(
+                    mp_k.stoab_max,
+                    max(mp_k.stoab_min,
+                        mp_k.stoab_satz
+                        * (mp_k.sum_insured - reserve.drx_bpfl)))
+            stoab += teil_stoab
+            rkw += max(0.0, reserve.vx_mrv - teil_stoab)
     else:
-        vs = sum(kern.mp.sum_insured for _, kern in teile)
-        stoab = min(mp.stoab_max,
-                    max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+        mp = grund.mp
+        if a > mp.n or grund.produkt.ist_flex_phase(a):
+            stoab = 0.0
+        else:
+            vs = sum(kern.mp.sum_insured for _, kern in teile)
+            stoab = min(mp.stoab_max,
+                        max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+        rkw = max(0.0, mrv - stoab)
     return Monatsreserve(
         monate=monate, jahr=a, monatsanteil=(monate % 12) / 12.0,
-        drx_bpfl=dr, vx_mrv=mrv, stoab=stoab,
-        rkw=max(0.0, mrv - stoab),
+        drx_bpfl=dr, vx_mrv=mrv, stoab=stoab, rkw=rkw,
     )
 
 
@@ -199,7 +249,7 @@ def berechne(mp: ModelPoint = KLV_DEFAULT, produkt: str = "klv") -> Dict[str, Di
         "scalars": {cls.contract_prefix: instanz.scalars()},
         # Das Verlaufsfenster ist Produkt-Contract (KLV: 0..50 aus dem
         # historischen Sechs-Datei-Vergleichskern, BU: 0..n) — Eigenschaft
-        # dieser Vergleichs-View, KEIN Kern-Anker (Kern 3.0.0: der Verlauf
+        # dieser Vergleichs-View, KEIN Referenzwert des Kerns (Kern 3.0.0: der Verlauf
         # selbst ist modellpunktgetrieben).
         "tables": {
             cls.contract_prefix: instanz.verlaufswerte(

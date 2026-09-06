@@ -1,0 +1,529 @@
+"""Korrekturschicht des Migrationszugangs (Grundsatzdokumentation Abschnitt 9).
+
+Die Tests pruefen die Behauptungen des Abschnitts, nicht die Implementierung:
+
+* Die Kollapsform ist die vorhandene Thiele-Rekursion mit weggelassenen
+  wertkontinuierlichen Uebergaengen (9.6) — gegen eine unabhaengige
+  Handformel gerechnet.
+* Der Verankerungsoperator trifft das Residuum exakt (9.8).
+* Optionsunabhaengigkeit: Storno und Beitragsfreistellung koennen rho
+  nicht beeinflussen (9.8) — mit Gegenprobe, dass die Messung ueberhaupt
+  etwas messen kann.
+* Die Guardrails greifen ueber den ganzen Pfad, nicht nur am
+  Verankerungspunkt (9.10).
+
+Knoten: klv
+"""
+
+from __future__ import annotations
+
+import math
+
+import pytest
+
+from rechner_pipeline.kern import KLV_DEFAULT
+from rechner_pipeline.kern.korrekturschicht import (
+    SCHICHT_CONV,
+    Degeneration,
+    KeinAmortisationsraum,
+    FloorVerletzung,
+    Formfunktion,
+    Korrekturschicht,
+    KorrekturschichtFehler,
+    Schichtparameter,
+    form_konstantes_fenster,
+    form_proportional_zur_basis,
+    vererbende_dynamik,
+)
+from rechner_pipeline.kern.rechenkern import Rechenkern
+from rechner_pipeline.kern.zustandsmodell import Zustandsmodell
+
+QX = 0.01
+ZINS = 0.0175
+AKTIV, TOT, STORNIERT = "aktiv", "tot", "storniert"
+
+
+def _modell(storno: float = 0.0) -> Zustandsmodell:
+    """Zweizustandsmodell wie KLV, wahlweise mit Storno als drittem Zustand."""
+    zustaende = (AKTIV, TOT) if storno == 0.0 else (AKTIV, TOT, STORNIERT)
+
+    def uebergang(von: str, nach: str, alter: int, dauer: int) -> float:
+        if (von, nach) == (AKTIV, TOT):
+            return QX
+        if (von, nach) == (AKTIV, STORNIERT):
+            return storno
+        return 0.0
+
+    return Zustandsmodell(zustaende, ZINS, uebergang)
+
+
+def _schicht(storno: float = 0.0) -> Korrekturschicht:
+    """Nur der Tod ist vererbend: die Leistung ist Anker (9.7, Klasse B)."""
+    return Korrekturschicht(_modell(storno), ((AKTIV, TOT),))
+
+
+# --------------------------------------------------------------------------- #
+# 1. Die Kollapsform ist die vorhandene Rekursion
+# --------------------------------------------------------------------------- #
+
+
+def test_pi_stimmt_mit_der_geschlossenen_handformel():
+    """Gegenrechnung ohne die Engine.
+
+    Fuer eine vorschuessige Einheitszahlung ueber n Jahre auf dem
+    Zweizustandsmodell ist der Barwert die geometrische Reihe
+    ``sum (v (1-qx))^j`` — 9.8 sagt ausdruecklich, dass keine geschlossene
+    Form noetig ist, aber hier gibt es eine, und sie ist das Orakel.
+    """
+    n = 10
+    pi = _schicht().pi(form_konstantes_fenster(n, n), 45, AKTIV)
+    v = 1.0 / (1.0 + ZINS)
+    hand = sum((v * (1.0 - QX)) ** j for j in range(n))
+    assert pi == pytest.approx(hand, rel=1e-14)
+
+
+def test_wertkontinuierliche_uebergaenge_fallen_aus_der_dynamik():
+    """Die reduzierte Uebergangsfunktion laesst nur vererbende Ursachen durch."""
+    roh = _modell(storno=0.08).uebergang
+    reduziert = vererbende_dynamik(roh, ((AKTIV, TOT),))
+    assert reduziert(AKTIV, TOT, 45, 0) == QX
+    assert roh(AKTIV, STORNIERT, 45, 0) == 0.08
+    assert reduziert(AKTIV, STORNIERT, 45, 0) == 0.0
+
+
+# --------------------------------------------------------------------------- #
+# 2. Der Verankerungsoperator
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("R", [-1234.56, -1.0, 1.0, 5000.0])
+def test_verankerung_trifft_das_residuum_exakt(R: float):
+    """rho * Pi == R, weil die Rekursion linear in der Zahlung ist (9.8).
+
+    Das ist der Selbsttest, der ohne Zusatzaufwand mitlaeuft: Der
+    Schichtwert AM Verankerungspunkt IST das Residuum.
+    """
+    s = _schicht()
+    form = form_konstantes_fenster(10, 10)
+    p = s.verankere(form, 45, AKTIV, R)
+    assert s.verlauf(p, form, 45)[0] == pytest.approx(R, rel=1e-12)
+
+
+def test_terminalbedingung_ist_null():
+    """V_korr(T) = 0 — nicht verhandelbar (9.7), sonst waere die
+    Ablaufleistung ungleich dem Deckungskapital."""
+    s = _schicht()
+    form = form_konstantes_fenster(10, 10)
+    p = s.verankere(form, 45, AKTIV, -500.0)
+    assert s.verlauf(p, form, 45)[-1] == 0.0
+
+
+def test_residuum_null_ergibt_eine_leere_schicht():
+    """Klasse-A-Geschaeftsvorfall: nach der Absorption ist rho null (9.8)."""
+    s = _schicht()
+    form = form_konstantes_fenster(10, 10)
+    p = s.verankere(form, 45, AKTIV, 0.0)
+    assert p.rho == 0.0
+    assert all(w == 0.0 for w in s.verlauf(p, form, 45))
+
+
+# --------------------------------------------------------------------------- #
+# 3. Optionsunabhaengigkeit (9.8)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("storno", [0.02, 0.08, 0.25])
+def test_stornoannahmen_beeinflussen_rho_nicht(storno: float):
+    """Der Kern der Methode: Storno ist wertkontinuierlich, also unsichtbar.
+
+    "Stornoannahmen spielen in der Migrationsbewertung keine Rolle"
+    (9.8) — hier ist es keine Behauptung, sondern eine Eigenschaft der
+    Konstruktion.
+    """
+    form = form_konstantes_fenster(10, 10)
+    ohne = _schicht().verankere(form, 45, AKTIV, -1000.0)
+    mit = _schicht(storno).verankere(form, 45, AKTIV, -1000.0)
+    assert mit.rho == pytest.approx(ohne.rho, rel=1e-14)
+
+
+def test_gegenprobe_vererbender_storno_wuerde_sehr_wohl_wirken():
+    """Ohne diesen Test misst der vorige moeglicherweise gar nichts.
+
+    Wird derselbe Uebergang faelschlich als vererbend gefuehrt, aendert
+    sich Pi deutlich — die Messung ist also empfindlich.
+    """
+    form = form_konstantes_fenster(10, 10)
+    falsch = Korrekturschicht(_modell(0.08), ((AKTIV, TOT), (AKTIV, STORNIERT)))
+    richtig = _schicht(0.08)
+    assert falsch.pi(form, 45, AKTIV) < richtig.pi(form, 45, AKTIV) - 1.0
+
+
+def test_biometrie_wirkt_sehr_wohl():
+    """Die vererbende Sterblichkeit finanziert die Amortisation mit (9.7)."""
+    form = form_konstantes_fenster(10, 10)
+
+    def modell_mit(qx: float) -> Zustandsmodell:
+        return Zustandsmodell(
+            (AKTIV, TOT), ZINS,
+            lambda v, n, a, d: qx if (v, n) == (AKTIV, TOT) else 0.0,
+        )
+
+    hoch = Korrekturschicht(modell_mit(0.05), ((AKTIV, TOT),))
+    niedrig = Korrekturschicht(modell_mit(0.001), ((AKTIV, TOT),))
+    assert hoch.pi(form, 45, AKTIV) < niedrig.pi(form, 45, AKTIV)
+
+
+# --------------------------------------------------------------------------- #
+# 4. Guardrails (9.10)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("jahre", [20, 10, 5, 3, 2, 1])
+def test_kurze_restlaufzeit_rechnet_korrekt_ohne_jede_grenze(jahre: int):
+    """Es gibt keine eingebaute Schwelle — und es braucht auch keine.
+
+    Ein frueherer Entwurf lehnte kurze Restlaufzeiten ab, weil "rho
+    explodiert". Das traegt nicht: rho ist ein Zwischenwert und waechst
+    zwar, wird aber mit einer im selben Mass kleineren Formfunktion
+    multipliziert. Der Schichtwert bleibt exakt das Residuum, der
+    Terminalwert exakt null — bei JEDER Restlaufzeit.
+    """
+    s = _schicht()
+    form = form_konstantes_fenster(jahre, jahre)
+    R = -850.0
+    p = s.verankere(form, 45, AKTIV, R)
+    v = s.verlauf(p, form, 45)
+    assert v[0] == pytest.approx(R, rel=1e-12)
+    assert v[-1] == 0.0
+
+
+def test_ohne_amortisationsraum_faellt_es_hart_aus():
+    """Der einzige zwingende Grenzfall: Pi = 0, also Division durch null.
+
+    Er entsteht nicht aus kurzer Restlaufzeit, sondern daraus, dass ueber
+    den erlebten Zeitraum gar kein Einheitsstrom laeuft.
+    """
+    s = _schicht()
+    # Sterblichkeit 1: nach dem ersten Jahr lebt niemand mehr, und die Form
+    # zahlt erst danach.
+    tot_sofort = Zustandsmodell(
+        (AKTIV, TOT), ZINS,
+        lambda v, n, a, d: 1.0 if (v, n) == (AKTIV, TOT) else 0.0,
+    )
+    schicht = Korrekturschicht(tot_sofort, ((AKTIV, TOT),))
+    spaet = Formfunktion(kennung="erst_spaeter", werte=(0.0, 0.0, 1.0))
+    with pytest.raises(KeinAmortisationsraum, match="keinen Einheitsstrom"):
+        schicht.verankere(spaet, 45, AKTIV, -1000.0)
+
+
+def test_ausbuchungsgrenze_ist_eine_entscheidung_des_aufrufers():
+    """Wer kurze Laufzeiten ausbuchen WILL, sagt es — die Methode nicht.
+
+    Ohne Grenze rechnet derselbe Fall durch. Das ist der Unterschied
+    zwischen einer Bilanzentscheidung und einer Eigenschaft der Methode.
+    """
+    s = _schicht()
+    form = form_konstantes_fenster(2, 2)
+    pi = s.pi(form, 45, AKTIV)
+
+    ohne = s.verlauf(s.verankere(form, 45, AKTIV, -850.0), form, 45)
+    assert ohne[0] == pytest.approx(-850.0, rel=1e-12)
+
+    with pytest.raises(Degeneration, match="Ausbuchungsgrenze"):
+        s.verankere(form, 45, AKTIV, -850.0, ausbuchungsgrenze=pi + 1.0)
+
+
+def test_floor_wird_ueber_den_ganzen_pfad_geprueft():
+    """9.10 verlangt ausdruecklich ALLE Zeitpunkte, nicht nur t_a.
+
+    Der Fall ist so gebaut, dass er am Verankerungspunkt bestehen wuerde
+    und erst spaeter unter den Floor taucht — genau die Luecke, die eine
+    Pruefung nur am Anker offenliesse.
+    """
+    s = _schicht()
+    n = 10
+    form = form_konstantes_fenster(n, n)
+    p = s.verankere(form, 45, AKTIV, -300.0)
+    basis = [1000.0] * (n + 1)
+
+    nur_am_anker = [0.0] * (n + 1)
+    nur_am_anker[5] = 999.0  # ab hier reisst Basis+Korrektur den Floor
+    with pytest.raises(FloorVerletzung) as exc:
+        s.pruefe_floor(p, form, 45, basis, nur_am_anker)
+    assert exc.value.jahr == 5
+
+    # Ohne den scharfen Mindestwert ist derselbe Pfad zulaessig.
+    s.pruefe_floor(p, form, 45, basis, [0.0] * (n + 1))
+
+
+def test_positives_residuum_verletzt_keinen_floor():
+    """R > 0 ist aufsichtsrechtlich unkritisch (9.10)."""
+    s = _schicht()
+    form = form_konstantes_fenster(10, 10)
+    p = s.verankere(form, 45, AKTIV, +500.0)
+    s.pruefe_floor(p, form, 45, [1000.0] * 11, [900.0] * 11)
+
+
+# --------------------------------------------------------------------------- #
+# 5. Formfunktion und Parameter
+# --------------------------------------------------------------------------- #
+
+
+def test_formfunktion_weist_unbrauchbare_stroeme_zurueck():
+    with pytest.raises(KorrekturschichtFehler, match="leerer Einheitsstrom"):
+        Formfunktion(kennung="leer", werte=())
+    with pytest.raises(KorrekturschichtFehler, match="negativ"):
+        Formfunktion(kennung="neg", werte=(1.0, -1.0))
+    with pytest.raises(KorrekturschichtFehler, match="durchweg null"):
+        Formfunktion(kennung="null", werte=(0.0, 0.0))
+    with pytest.raises(KorrekturschichtFehler, match="ist nan"):
+        Formfunktion(kennung="nan", werte=(float("nan"),))
+
+
+def test_basisproportionale_form_klemmt_negative_basiswerte():
+    """Ein Residuum auf einem negativen Basiswert zu verteilen ergibt nichts."""
+    form = form_proportional_zur_basis([-500.0, 0.0, 1000.0, 2000.0])
+    assert form.werte == (0.0, 0.0, 1000.0, 2000.0)
+
+
+def test_unbekannter_vererbender_uebergang_faellt_hart_aus():
+    with pytest.raises(KorrekturschichtFehler, match="ausserhalb des Zustandsraums"):
+        Korrekturschicht(_modell(), ((AKTIV, "erfunden"),))
+
+
+def test_parameter_tragen_den_beleg_ohne_zwischenwerte():
+    """9.11: persistiert werden Parameter, nie Zwischenwerte."""
+    s = _schicht()
+    form = form_konstantes_fenster(10, 6)
+    p = s.verankere(form, 45, AKTIV, -800.0, schichttyp=SCHICHT_CONV,
+                    kohorte="t_0-fallback", in_zzr=False)
+    beleg = p.als_beleg()
+    assert beleg["schichttyp"] == SCHICHT_CONV
+    assert beleg["kohorte"] == "t_0-fallback"
+    assert beleg["in_zzr"] is False
+    assert beleg["formparameter"] == {"fenster": 6}
+    assert beleg["vererbend"] == [[AKTIV, TOT]]
+    # Kein Wertevektor im Beleg — die Schicht ist aus den Parametern
+    # reproduzierbar, nicht aus gespeicherten Zwischenstaenden.
+    assert not any(isinstance(v, list) and len(v) > 5 for v in beleg.values())
+
+
+def test_unbekannter_schichttyp_faellt_hart_aus():
+    with pytest.raises(KorrekturschichtFehler, match="unbekannter Schichttyp"):
+        Schichtparameter(
+            schichttyp="erfunden", verankerungszustand=AKTIV,
+            verweildauer=0, rho=1.0, formfunktion="x",
+        )
+
+
+# --------------------------------------------------------------------------- #
+# 6. Am echten KLV-Kern
+# --------------------------------------------------------------------------- #
+
+
+def test_verankerung_am_echten_klv_vertrag():
+    """Der Migrationszugang auf dem produktiven Rechenkern.
+
+    Ein uebernommener Vertrag bringt einen Ist-Wert unter dem prospektiven
+    mit (ungetilgter Abschlusskostenanteil). Die Schicht traegt die
+    Differenz und baut sie ueber die Restlaufzeit ab.
+    """
+    kern = Rechenkern(KLV_DEFAULT)
+    mp = KLV_DEFAULT
+    ta = 9
+    basis = [kern.verlaufszeile(a).drx_bpfl for a in range(ta, mp.n + 1)]
+    residuum = -850.0
+
+    bw = kern.produkt.bw
+    schicht = Korrekturschicht(bw.modell, ((bw.AKTIV, bw.TOT),))
+    form = form_proportional_zur_basis(basis)
+    p = schicht.verankere(form, mp.x + ta, bw.AKTIV, residuum)
+    korr = schicht.verlauf(p, form, mp.x + ta)
+
+    assert korr[0] == pytest.approx(residuum, rel=1e-12)
+    assert korr[-1] == 0.0
+    # Der Betrag baut sich monoton ab — kein Wiederanwachsen.
+    betraege = [abs(w) for w in korr]
+    assert all(a >= b - 1e-9 for a, b in zip(betraege, betraege[1:]))
+    # Und die Gesamtreserve liegt unter der prospektiven, wie es ein
+    # negatives Residuum verlangt.
+    assert basis[0] + korr[0] < basis[0]
+
+
+# --------------------------------------------------------------------------- #
+# 7. Heilung: welcher Geschaeftsvorfall die Schicht aufloest (9.7)
+# --------------------------------------------------------------------------- #
+
+
+def test_die_beitragsreduktion_heilt_den_vertrag():
+    """Beschluss 2026-08-28: das Residuum soll so frueh wie moeglich weg —
+    aber nur dort, wo der Vertrag ohnehin neu gerechnet wird."""
+    from rechner_pipeline.kern.korrekturschicht import heilt
+
+    assert heilt("RED") is True
+
+
+def test_die_dynamische_erhoehung_heilt_nicht():
+    """Abweichung von 9.7, fachlich begruendet.
+
+    Die Tabelle dort fuehrte Dynamik unter Klasse A. Fuer ein
+    Scheibenmodell trifft das nicht zu: Die Erhoehung legt eine NEUE
+    Scheibe an und laesst den bestehenden Vertrag unberuehrt. Es wird
+    nichts neu gerechnet — also gibt es keinen Anlass, die Schicht
+    aufzuloesen. Sie aufzuloesen hiesse, eine bestehende Differenz
+    verschwinden zu lassen.
+    """
+    from rechner_pipeline.kern.korrekturschicht import heilt
+
+    assert heilt("ERH") is False
+
+
+@pytest.mark.parametrize("vorfall", ["STO", "TOD", "ABL"])
+def test_klasse_b_vorfaelle_heilen_nicht(vorfall: str):
+    """Sie tragen die Schicht weiter oder lassen sie verfallen (9.7)."""
+    from rechner_pipeline.kern.korrekturschicht import heilt
+
+    assert heilt(vorfall) is False
+
+
+def test_der_migrationszugang_heilt_sich_nicht_selbst():
+    """Er ERZEUGT die Schicht — er kann sie nicht im selben Vorgang aufloesen."""
+    from rechner_pipeline.kern.korrekturschicht import heilt
+
+    assert heilt("MIG") is False
+
+
+def test_unbekannter_vorfall_faellt_hart_aus():
+    """Eine neue Vorfallart muss ihre Wirkung auf die Schicht entscheiden.
+
+    Stille Nicht-Heilung waere die gefaehrliche Variante: Der Vorfall
+    liefe durch, die Schicht bliebe stehen, und niemand haette es
+    entschieden.
+    """
+    from rechner_pipeline.kern.korrekturschicht import heilt
+
+    with pytest.raises(KorrekturschichtFehler, match="unbekannter Geschaeftsvorfall"):
+        heilt("ZUZ")
+
+
+def test_die_liste_ist_vollstaendig_und_weist_das_ungepruefte_aus():
+    """Alle Vorfallarten stehen drin, auch die noch nicht entschiedenen.
+
+    Ein fehlender Vorfall wuerde stillschweigend nicht heilen, und
+    niemand faende die Luecke. Was noch nicht fachlich bestaetigt ist,
+    steht deshalb drin und ist als solches markiert.
+    """
+    from rechner_pipeline.bestand.migrationszugang import MIG as MIG_KENNUNG
+    from rechner_pipeline.kern.korrekturschicht import HEILUNG, ungeprueft
+    from rechner_pipeline.qa.aktuarieller_test import GEVO_ARTEN
+
+    # RED stand hier frueher gesondert, weil die Herabsetzung noch kein
+    # Anlass des aktuariellen Tests war. Seit sie einer ist, traegt
+    # GEVO_ARTEN sie mit; nur der Migrationszugang selbst bleibt extra,
+    # denn er ist kein Vorfall des Quellsystems.
+    assert set(GEVO_ARTEN) | {MIG_KENNUNG} <= set(HEILUNG)
+    assert ungeprueft() == ["INV", "PEX", "REA"]
+    for kennung, regel in HEILUNG.items():
+        assert regel.begruendung, f"{kennung} ohne Begruendung"
+
+
+def test_absorption_setzt_den_faktor_auf_null_und_behaelt_die_spur():
+    """Klasse A: der Vertrag ist geheilt, war aber einmal migriert.
+
+    Die uebrigen Parameter bleiben stehen — eine aufgeloeste Schicht und
+    eine nie vorhandene sind verschiedene Sachverhalte, und im Beleg muss
+    das unterscheidbar bleiben.
+    """
+    from rechner_pipeline.kern.korrekturschicht import absorbiere
+
+    s = _schicht()
+    form = form_konstantes_fenster(10, 10)
+    vorher = s.verankere(form, 45, AKTIV, -850.0)
+    nachher = absorbiere(vorher)
+
+    assert vorher.rho != 0.0
+    assert nachher.rho == 0.0
+    assert all(w == 0.0 for w in s.verlauf(nachher, form, 45))
+    # Die Spur bleibt:
+    assert nachher.verankerungszustand == vorher.verankerungszustand
+    assert nachher.formfunktion == vorher.formfunktion
+    assert nachher.kohorte == vorher.kohorte
+
+
+# --------------------------------------------------------------------------- #
+# Rumpfjahr-Konvention (9.6-Nachtrag, entschieden 2026-08-31)
+# --------------------------------------------------------------------------- #
+
+
+def _rumpf_aufbau():
+    from rechner_pipeline.kern import Rechenkern
+    from rechner_pipeline.kern.korrekturschicht import (
+        Korrekturschicht,
+        form_konstantes_fenster,
+    )
+    from rechner_pipeline.kern.model_point import KLV_DEFAULT
+
+    kern = Rechenkern(KLV_DEFAULT)
+    bw = kern.produkt.bw
+    schicht = Korrekturschicht(bw.modell, ((bw.AKTIV, bw.TOT),))
+    form = form_konstantes_fenster(10, 6)
+    return schicht, form, bw
+
+
+def test_pi_kuerzt_das_erste_gitterjahr_pro_rata():
+    """Kontrollrechnung ueber die Modell-API statt f(x)==f(x).
+
+    Sechs Rumpfmonate heissen: Das erste Gitterjahr traegt den
+    Einheitsstrom nur zur Haelfte, und Pi(t_a) ist die lineare Mischung
+    der beiden ersten Gitterwerte. Beide Seiten hier entstehen aus
+    derselben Zustandsmodell-Engine, aber die rechte baut Kuerzung und
+    Mischung VON HAND -- faellt der pro-rata-Faktor im Schichtcode weg,
+    laufen die Seiten auseinander.
+    """
+    schicht, form, bw = _rumpf_aufbau()
+    alter0, zustand, m = 50, bw.AKTIV, 6
+    theta = m / 12.0
+
+    pi_rumpf = schicht.pi(form, alter0, zustand, rumpfmonate=m)
+
+    def hand_zahlung(s, j):
+        if s != zustand:
+            return 0.0
+        wert = form.werte[j]
+        return wert * (12 - m) / 12.0 if j == 0 else wert
+
+    verlauf = schicht.modell.barwert_verlauf(
+        zustand, alter0, len(form.werte), zahlung_zustand=hand_zahlung)
+    erwartet = (1.0 - theta) * verlauf[0] + theta * verlauf[1]
+    assert pi_rumpf == pytest.approx(erwartet, rel=1e-12)
+
+    # m = 0 ist bitgleich der alte Fall.
+    assert schicht.pi(form, alter0, zustand) == schicht.pi(
+        form, alter0, zustand, rumpfmonate=0)
+
+
+def test_verankerung_mit_rumpf_trifft_das_residuum_am_ta():
+    """Selbsttest der Konvention: linear gemischter Wert am t_a == R."""
+    schicht, form, bw = _rumpf_aufbau()
+    for m in (1, 5, 11):
+        parameter = schicht.verankere(
+            form, 50, bw.AKTIV, -850.0, rumpfmonate=m)
+        assert parameter.rumpfmonate == m
+        verlauf = schicht.verlauf(parameter, form, 50)
+        theta = m / 12.0
+        am_ta = (1.0 - theta) * verlauf[0] + theta * verlauf[1]
+        assert am_ta == pytest.approx(-850.0, rel=1e-9)
+        assert parameter.als_beleg()["rumpfmonate"] == m
+
+
+def test_zwoelf_rumpfmonate_sind_kein_rumpf():
+    from rechner_pipeline.kern.korrekturschicht import (
+        KorrekturschichtFehler,
+        Schichtparameter,
+    )
+
+    with pytest.raises(KorrekturschichtFehler, match="Rumpfmonate"):
+        Schichtparameter(
+            schichttyp="hist", verankerungszustand="x", verweildauer=0,
+            rho=1.0, formfunktion="f", rumpfmonate=12,
+        )

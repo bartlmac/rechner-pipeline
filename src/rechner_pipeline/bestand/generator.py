@@ -197,6 +197,10 @@ def _baue_frame(
             "insurance_start": pd.to_datetime(starts),
             "insurance_end": pd.to_datetime(ins_end),
             "payment_end": pd.to_datetime(pay_end),
+            # Eigenes Geschaeft: der Vertrag kommt mit seinem Abschluss in
+            # die Buecher. Nur uebernommene Bestaende trennen die beiden
+            # Daten (gates/bestand_uebernehmen setzt den Stichtag).
+            "bestandszugang": pd.to_datetime(starts),
         }
     )
 
@@ -206,6 +210,13 @@ def _generate_generation(
 ) -> pd.DataFrame:
     rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence([master_seed, gen_index])))
     n = gen.sample_size
+    if n == 0:
+        # Uebernommene Generation: ihre Vertraege kommen aus der
+        # Migration, nicht aus der Ziehung (siehe config.TarifGeneration).
+        return _baue_frame(
+            gen, _ziehe_attribute(gen, rng, 0),
+            _draw_insurance_start(rng, gen, 0),
+            np.arange(0, dtype=np.int64))
     attribute = _ziehe_attribute(gen, rng, n)
     # 4) Time axis (month-first convention) — drawn AFTER the attributes,
     #    identical rng call order as before the refactoring.

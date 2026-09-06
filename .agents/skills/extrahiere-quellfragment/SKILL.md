@@ -95,7 +95,7 @@ Werte per XLOOKUP), dann extrahiere JE VARIANTEN-SPALTE aus der Matrix
 — die sichtbare Wertespalte zeigt nur die aktuelle Beispiel-Eingabe.
 Staffel-Formeln (verschachtelte IFs, z. B. Ratenzuschlag je Zahlweise)
 woertlich aus dem Formeltext lesen; sie werden deterministisch
-nachgeprueft (quellen/formeln.py, Gate O1). Konstanten koennen in
+nachgeprueft (quellen/formeln.py, Gate P-Q3). Konstanten koennen in
 Formeln stecken (z. B. `MIN(150, MAX(50, 1%*(VS-...)))` fuer den
 Stornoabzug) — Fundstelle ist dann die Formelzelle.
 

@@ -1,6 +1,6 @@
 # ADR-002: Fall-Arbeitsbereich — das Repo ist das System, nicht der Datenraum
 
-Status: akzeptiert (Bartek, 2026-08-14). Umgesetzt:
+Status: akzeptiert (Maintainer, 2026-08-14). Umgesetzt:
 `rechner_pipeline.fall` + `assurance --fall`.
 
 > **Teilweise abgeloest durch [ADR-006](adr-006-portierung-ausser-betrieb.md)**
@@ -36,7 +36,7 @@ Arbeitsbereich mit zwei strikt getrennten Zonen:
 ```
 
 Einschraenkung in v0.1: ``abgeleitet/abox/abox.json`` traegt nach dem
-Gate G-1 auch die menschlichen Diskrepanz-Entscheidungen und ist damit
+Gate A-Q1 auch die menschlichen Diskrepanz-Entscheidungen und ist damit
 nicht mehr frei regenerierbar — bis die Entscheidungs-Wiederanwendung
 aus den P9-Snapshots gebaut ist, gilt: abox.json nicht loeschen.
 

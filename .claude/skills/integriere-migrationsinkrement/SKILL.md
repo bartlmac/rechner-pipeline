@@ -3,8 +3,7 @@ name: integriere-migrationsinkrement
 description: >-
   CI discipline for code changes to the target system during a running
   portfolio migration (ADR-007): small node-bound increments on short-lived
-  branches, landing only with the full suite green including every open and
-  closed case's anchors, human merge/acceptance. Trigger when a migration
+  branches, landing only with the full suite green including every open and closed case's frozen reference values, human merge/acceptance. Trigger when a migration
   requires a code change (kernel, transformation catalog, valuation API)
   or when integrating any increment while one or more migration cases are
   open. Skip for: the content of the change itself
@@ -31,7 +30,7 @@ knotengebundener Inkremente, nie ein langlebiger Branch.
   (Bausteine UND Tests); neuer knotengebundener Code ist für andere
   Fälle inert, bis eine Spez ihn parametriert.
 - **Landung nur mit maschinellem Nicht-Berührungs-Beweis**: die
-  GESAMT-Suite ist grün, einschließlich der Anker und O3-Läufe ALLER
+  GESAMT-Suite ist grün, einschließlich der Referenzwerte und P-K1-Läufe ALLER
   offenen und abgeschlossenen Fälle. "Betrifft die anderen nicht" wird
   bewiesen, nie behauptet.
 - **Rückgrat-Änderungen** (Thiele-Rekursion, Tafelwerk, Bestand) sind
@@ -57,7 +56,7 @@ knotengebundener Inkremente, nie ein langlebiger Branch.
    ehrliche Commit-Botschaft inkl. Suite-Stand).
 5. Abnahme durch den Menschen, Merge, Push durch den Menschen.
 
-## Ausbau (geplant, hier verankern)
+## Ausbau (geplant, hier festgehalten)
 
 - Automatisierte CI (z. B. GitHub Actions) mit derselben Regel:
   Landung nur mit Gesamt-Suite plus fallübergreifenden Gates — die

@@ -3,7 +3,7 @@ Die Vergleichs-Engine des Golden Master (reviewter Repo-Code).
 
 Sie haelt berechnete Werte gegen deterministisch extrahierte
 Erwartungswerte (``*_scalar.json`` und ``*_table_values.csv``) und
-liefert das Urteil als :class:`Report`. Heutiger Nutzer ist Gate O3
+liefert das Urteil als :class:`Report`. Heutiger Nutzer ist Gate P-K1
 (:mod:`rechner_pipeline.gates.generation_golden`), das damit den
 parametrierten Zielkern gegen den Quell-Rechner eines Migrationsfalls
 haelt (ADR-006).
@@ -29,7 +29,7 @@ vermieden:
 * Jede erwartete Spalte mit Daten, die im berechneten Output nicht zugeordnet
   werden kann, ist jetzt eine **harte Abweichung** (``Report.ok`` ist False).
 * ``Report.compared_anything`` macht sichtbar, ob überhaupt ein Skalar oder
-  eine Tabellenzelle verglichen wurde. Gate O3 wertet das als eigene
+  eine Tabellenzelle verglichen wurde. Gate P-K1 wertet das als eigene
   Coverage-Frage aus und akzeptiert einen Null-Vergleich nicht als
   bestandenen Golden-Master.
 

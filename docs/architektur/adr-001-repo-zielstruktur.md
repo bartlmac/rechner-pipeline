@@ -1,6 +1,6 @@
 # ADR-001: Repo-Zielstruktur entlang der Migrations-Pipeline
 
-Status: akzeptiert (Bartek, 2026-08-14). Umgesetzt in zwei Commits
+Status: akzeptiert (Maintainer, 2026-08-14). Umgesetzt in zwei Commits
 (src-Schnitt, runs/-Konsolidierung) vor dem Push des Branches
 `feat/bestandsdaten-modul`.
 
@@ -30,7 +30,7 @@ EINEM Verzeichnis.
 | Neu | Inhalt | Vorher |
 |---|---|---|
 | `quellen/` | Vorverarbeitungsschicht (Stufe 1): ein deterministischer, LLM-freier Vorverdichter je Quelltyp. `quellen/extract` + `quellen/adapters` (Excel), `quellen/tarifplan_staging` (DOCX); Bestands-Profiling folgt | `extract/`, `adapters/`, `toolbox/tarifplan_staging` |
-| `gates/` | alle Pruef-CLIs und die Abnahme-Kette (Stufe 3): G0–G8, `bestand_validate` (B1), `orchestrate/` (Ketten-Runner, Dossier), `_common` (Ledger/Exit-Contract) | `toolbox/`, `orchestrate/` |
+| `gates/` | alle Pruef-CLIs und die Abnahme-Kette (Stufe 3): P-Q1–G8, `bestand_validate` (P-B1), `orchestrate/` (Ketten-Runner, Dossier), `_common` (Ledger/Exit-Contract) | `toolbox/`, `orchestrate/` |
 | `bestand/` | unveraendert, plus eigene Producer-CLIs `cli_report`, `cli_fortschreibung` | `toolbox/bestand_*` |
 | `kern/`, `qa/` | unveraendert (stabiler Rechenkern; deterministische Pruef-Logik) | — |
 | `models/` | geteilte, paketuebergreifende Datenvertraege (Bundle, Manifest, Gate-Schemata, Bestand-Schema, `kern_output` = Sechs-Datei-Contract) | `models/`, `generate/output.py` |

@@ -60,7 +60,7 @@ def _lesarten():
             Lesart(wert=2, provenienz=[prov(sha=SHA_B, datei="m.docx")])]
 
 
-# --- Finding 1: unisex-Widerspruch ist kein Sonderweg an O1 vorbei ---------
+# --- Finding 1: unisex-Widerspruch ist kein Sonderweg an P-Q3 vorbei ---------
 
 
 def _gen_mit_unisex_widerspruch(mit_diskrepanz: bool) -> ABox:
@@ -223,7 +223,7 @@ def test_vorlaeufige_aufloesung_traegt_flag(tmp_path: Path):
     loese_diskrepanz_auf(abox, abox.diskrepanzen[0].id, 0.03,
                          "agent (vorlaeufig)", "GM-Zweck", ZEIT, vorlaeufig=True)
     assert abox.diskrepanzen[0].entscheidung.vorlaeufig is True
-    # O1 weist vorlaeufige Entscheidungen aus:
+    # P-Q3 weist vorlaeufige Entscheidungen aus:
     speichere(abox, f)
     from rechner_pipeline.gates.abox_validate import main
     result = main(["--fall", str(f)])

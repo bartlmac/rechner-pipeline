@@ -112,7 +112,7 @@ def test_baue_spez_verlangt_aufgeloeste_abox():
     abox = _abox()
     gen = abox.generationen[1]
     gen.zellen[0].parameter.pop("zins")            # Luecke
-    with pytest.raises(SpezFehler, match="Gate O1"):
+    with pytest.raises(SpezFehler, match="Gate P-Q3"):
         baue_spez(abox, "klv/tg2015", "klv/tg2012", KERN_TAFELN)
 
 

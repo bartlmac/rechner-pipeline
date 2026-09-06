@@ -1,4 +1,4 @@
-"""Stage 1: Fragment -> A-Box (deterministischer Merge) + Gate O1.
+"""Stage 1: Fragment -> A-Box (deterministischer Merge) + Gate P-Q3.
 
 Knoten: klv
 """
@@ -126,13 +126,13 @@ def test_aufloesung_waehlt_lesart_und_zieht_aussage_nach(fall: Path):
     )
     [d] = abox.diskrepanzen
     with pytest.raises(BefuellungsFehler, match="keine der Lesarten"):
-        loese_diskrepanz_auf(abox, d.id, 0.0275, "bartek", "Mittelwert", ZEIT)
+        loese_diskrepanz_auf(abox, d.id, 0.0275, "maintainer", "Mittelwert", ZEIT)
     loese_diskrepanz_auf(
-        abox, d.id, 0.025, "bartek",
+        abox, d.id, 0.025, "maintainer",
         "Die Tarifmeldung ist die eingereichte Fassung", ZEIT,
     )
     assert abox.diskrepanzen[0].status == "aufgeloest"
-    assert abox.diskrepanzen[0].entscheidung.entscheider == "bartek"
+    assert abox.diskrepanzen[0].entscheidung.entscheider == "maintainer"
     aussage = abox.generationen[0].zellen[0].parameter["beta1"]
     assert aussage.zustand is Zustand.BELEGT and aussage.wert == 0.025
     # Die Provenienz der gewaehlten Lesart bleibt erhalten:
@@ -142,7 +142,7 @@ def test_aufloesung_waehlt_lesart_und_zieht_aussage_nach(fall: Path):
 
 
 # --------------------------------------------------------------------------- #
-# Gate O1
+# Gate P-Q3
 # --------------------------------------------------------------------------- #
 
 
@@ -181,7 +181,7 @@ def test_gate_blockt_luecken_und_offene_diskrepanzen(fall: Path):
     assert result.exit_code == 20
     codes = {e["code"] for e in result.errors}
     assert "coverage" in codes            # Pflichtumfang nicht belegt
-    assert "diskrepanzen_offen" in codes  # Aufloesung ist menschlich (G-1)
+    assert "diskrepanzen_offen" in codes  # Aufloesung ist menschlich (A-Q1)
 
 
 def test_gate_blockt_manipulierten_eingang(fall: Path):
@@ -218,3 +218,93 @@ def test_quellnamen_divergenz_wird_vereint_nicht_entschieden(fall: Path):
     assert set(gen.quellnamen["StoAb"].split(" | ")) == {
         "parameter:stoab_satz/min/max", "parameter:stoab_satz|min|max",
     }
+
+
+def test_die_aufloesung_traegt_ihren_beleg_pruefbar(fall: Path):
+    """Eine Begruendung kann auf eine Rechnung VERWEISEN, nicht sichern,
+    dass es noch dieselbe ist.
+
+    Beim ersten vollstaendigen Lauf beriefen sich alle acht Diskrepanzen
+    woertlich auf denselben Abzugsabgleich — dessen Pruefsumme in keinem
+    Ledger und keinem Snapshot stand. Die Datei haette ausgetauscht
+    werden koennen, ohne dass ein Gate anschlaegt, und mit ihr der Beweis
+    fuer die gesamte Parametrierung.
+    """
+    from rechner_pipeline.ontologie.diskrepanz import Beleg
+
+    meldung = _fragment("meldung.docx", "tarifmeldung", beta1=0.025)
+    rechner = _fragment("rechner.xlsm", "tarifrechner", beta1=0.03)
+    abox = baue_abox(
+        str(fall), [meldung, rechner], _register(fall),
+        ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT,
+    )
+    [d] = abox.diskrepanzen
+    beleg = Beleg(datei="abgeleitet/berichte/abzugsabgleich.json",
+                  sha256="ab" * 32)
+
+    loese_diskrepanz_auf(
+        abox, d.id, 0.025, "fachrolle",
+        "Abzugsabgleich stuetzt die Meldungs-Lesart", ZEIT, beleg=beleg,
+    )
+    [aufgeloest] = abox.diskrepanzen
+    assert aufgeloest.entscheidung.beleg == beleg
+    assert aufgeloest.entscheidung.beleg.datei.endswith("abzugsabgleich.json")
+
+
+def test_eine_aufloesung_ohne_rechnung_bleibt_moeglich(fall: Path):
+    """Nicht jede Aufloesung hat eine deterministische Rechnung — manche
+    entscheidet das Aktuariat aus dem Tarifwerk. Der Beleg ist deshalb
+    optional; erzwungen waere er eine Einladung zur Attrappe."""
+    meldung = _fragment("meldung.docx", "tarifmeldung", beta1=0.025)
+    rechner = _fragment("rechner.xlsm", "tarifrechner", beta1=0.03)
+    abox = baue_abox(
+        str(fall), [meldung, rechner], _register(fall),
+        ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT,
+    )
+    [d] = abox.diskrepanzen
+    loese_diskrepanz_auf(abox, d.id, 0.025, "fachrolle",
+                         "Bedingungswerk laesst nur diese Lesart zu", ZEIT)
+    assert abox.diskrepanzen[0].entscheidung.beleg is None
+
+
+def test_ein_veraenderter_beleg_macht_das_gate_rot(fall: Path, tmp_path: Path):
+    """Der Beleg ist eine Bindung, keine Fussnote: Gate P-Q3 rechnet die
+    Pruefsumme nach, statt der Begruendung zu glauben."""
+    import hashlib
+
+    from rechner_pipeline.gates.abox_validate import pruefe_belege
+    from rechner_pipeline.ontologie.diskrepanz import Beleg
+
+    rechnung = fall / "abgeleitet" / "berichte" / "abzugsabgleich.json"
+    rechnung.parent.mkdir(parents=True, exist_ok=True)
+    rechnung.write_text('{"zins": {"gestuetzt": 217}}', encoding="utf-8")
+
+    meldung = _fragment("meldung.docx", "tarifmeldung", beta1=0.025)
+    rechner = _fragment("rechner.xlsm", "tarifrechner", beta1=0.03)
+    abox = baue_abox(
+        str(fall), [meldung, rechner], _register(fall),
+        ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT,
+    )
+    [d] = abox.diskrepanzen
+    loese_diskrepanz_auf(
+        abox, d.id, 0.025, "fachrolle", "Abzugsabgleich stuetzt die Meldung",
+        ZEIT,
+        beleg=Beleg(
+            datei="abgeleitet/berichte/abzugsabgleich.json",
+            sha256=hashlib.sha256(rechnung.read_bytes()).hexdigest(),
+        ),
+    )
+
+    geprueft, fehler = pruefe_belege(abox, fall)
+    assert (geprueft, fehler) == (1, [])
+
+    # Dieselbe Aussage, andere Zahlen: Der Beweis ist ein anderer.
+    rechnung.write_text('{"zins": {"gestuetzt": 3}}', encoding="utf-8")
+    geprueft, fehler = pruefe_belege(abox, fall)
+    assert geprueft == 1
+    assert len(fehler) == 1 and "veraendert" in fehler[0]
+
+    # Und wenn er ganz verschwindet.
+    rechnung.unlink()
+    _, fehler = pruefe_belege(abox, fall)
+    assert len(fehler) == 1 and "fehlt" in fehler[0]

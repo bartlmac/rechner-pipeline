@@ -17,8 +17,8 @@ eine Stelle, an der beides zusammenlaeuft:
 
 Die Gegenregel steht in der Bewertung: Kein Bewertungspfad liest das
 Journal. Die Bewertung rechnet aus dem Zustand (dieselbe
-Historienfreiheit, die das Fachkonzept "Konstruktive Neuberechnung" in
-Kap. 5.5 vom Rechenkern verlangt — eine Ebene hoeher angewendet).
+Historienfreiheit, die die Grundsatzdokumentation in 9.14 vom
+Rechenkern verlangt — eine Ebene hoeher angewendet).
 
 Der Ursprungszustand ist Konvention, kein Datensatz: Jede Police beginnt
 mit (status_id 1, POL, Versicherungsbeginn). Die Auskunft synthetisiert
@@ -156,17 +156,26 @@ def bestand_am(
 def schnitt_am(sicht: pd.DataFrame, stichtag: _dt.date) -> pd.DataFrame:
     """Auskunfts-Schnitt: in-force-Zustand am ``stichtag`` aus der Journalsicht.
 
-    Auswahl: Vertrag hat begonnen (``insurance_start <= stichtag``), ist
-    nicht abgelaufen (``insurance_end > stichtag``), je Police zaehlt der
-    juengste am Stichtag bekannte Zustand (``status_date <= stichtag``;
-    bei Datums-Gleichstand gewinnt die hoehere ``status_id``), und dieser
+    Auswahl: Vertrag ist in UNSEREN Buechern (``bestandszugang <=
+    stichtag`` — beim eigenen Geschaeft der Versicherungsbeginn, bei
+    uebernommenem der Migrationsstichtag), ist nicht abgelaufen
+    (``insurance_end > stichtag``), je Police zaehlt der juengste am
+    Stichtag bekannte Zustand (``status_date <= stichtag``; bei
+    Datums-Gleichstand gewinnt die hoehere ``status_id``), und dieser
     Zustand ist in-force (POL/PEX/BU). Ableitung: ``age`` (6-Monats-
     Rundung), ``months_exp``, ``months_rem`` und die ``stichtag``-Spalte.
     Invariante je Stichtag: ``months_exp + months_rem == 12 * duration``.
+
+    Der Zugang ersetzt hier den Versicherungsbeginn und ergaenzt ihn
+    nicht: Beim eigenen Geschaeft sind beide gleich, bei uebernommenem
+    ist der Zugang der spaetere — und ein Vertrag, den wir noch nicht
+    hatten, gehoert nicht in unseren Bestand. ``months_exp`` zaehlt
+    weiter ab dem Versicherungsbeginn, denn die Rekursion rechnet den
+    Vertrag, nicht die Zugehoerigkeit.
     """
     ts = pd.Timestamp(stichtag)
     aktiv = sicht[
-        (sicht["insurance_start"] <= ts)
+        (sicht["bestandszugang"] <= ts)
         & (sicht["insurance_end"] > ts)
         & (sicht["status_date"] <= ts)
     ]

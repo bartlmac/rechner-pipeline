@@ -1,0 +1,194 @@
+{
+  "backbone": "kern.klv/kommutation+zustandsmodell",
+  "erweiterungsstellen": [],
+  "familie": "klv",
+  "generation": "klv/tg2015",
+  "spez_version": "0.1.0",
+  "tafel_ableitungen": [
+    {
+      "basis_f": "DAV2008_T_NR_F",
+      "basis_m": "DAV2008_T_NR_M",
+      "maenneranteil": 0.7,
+      "name": "DAV2008_T_NR_U70",
+      "regel": "min1_linear"
+    },
+    {
+      "basis_f": "DAV2008_T_R_F",
+      "basis_m": "DAV2008_T_R_M",
+      "maenneranteil": 0.7,
+      "name": "DAV2008_T_R_U70",
+      "regel": "min1_linear"
+    }
+  ],
+  "tafel_importe": [],
+  "tbox_version": "0.1.0",
+  "unisex": "U70",
+  "urteil": {
+    "begruendung": [
+      "Unisex-Vorgabe U70: als abgeleitete Mischtafel (min(1, f*qx_M + (1-f)*qx_F)) — Daten-Ableitung, keine Kern-Formelaenderung (exakter Tafelname gewinnt in der Kern-Aufloesung)"
+    ],
+    "ergebnis": "parametrierung",
+    "formel_erweiterungen": [],
+    "geaenderte_parameter": [],
+    "neue_dimensionen": [],
+    "neue_tafeln": []
+  },
+  "zellen": [
+    {
+      "auspraegungen": {
+        "status": "nichtraucher",
+        "tarifart": "einzel"
+      },
+      "knoten": "klv/tg2015/zelle:nichtraucher,einzel",
+      "model_point": {
+        "alpha": 0.025,
+        "beta1": 0.03,
+        "gamma1": 0.001,
+        "gamma2": 0.00125,
+        "gamma3": 0.0025,
+        "min_alter_flex": 60,
+        "min_rlz_flex": 5,
+        "policy_fee": 12.0,
+        "ratzu_zw12": 0.05,
+        "ratzu_zw2": 0.02,
+        "ratzu_zw4": 0.03,
+        "stoab_max": 200.0,
+        "stoab_min": 50.0,
+        "stoab_satz": 0.005,
+        "tafel": "DAV2008_T_NR_U70",
+        "zillmer_dauer": 5,
+        "zins": 0.0125
+      }
+    },
+    {
+      "auspraegungen": {
+        "status": "nichtraucher",
+        "tarifart": "haus"
+      },
+      "knoten": "klv/tg2015/zelle:nichtraucher,haus",
+      "model_point": {
+        "alpha": 0.0,
+        "beta1": 0.01,
+        "gamma1": 0.0008,
+        "gamma2": 0.001,
+        "gamma3": 0.0025,
+        "min_alter_flex": 60,
+        "min_rlz_flex": 5,
+        "policy_fee": 0.0,
+        "ratzu_zw12": 0.0,
+        "ratzu_zw2": 0.0,
+        "ratzu_zw4": 0.0,
+        "stoab_max": 0.0,
+        "stoab_min": 0.0,
+        "stoab_satz": 0.0,
+        "tafel": "DAV2008_T_NR_U70",
+        "zillmer_dauer": 5,
+        "zins": 0.0125
+      }
+    },
+    {
+      "auspraegungen": {
+        "status": "nichtraucher",
+        "tarifart": "kollektiv"
+      },
+      "knoten": "klv/tg2015/zelle:nichtraucher,kollektiv",
+      "model_point": {
+        "alpha": 0.015,
+        "beta1": 0.015,
+        "gamma1": 0.0008,
+        "gamma2": 0.001,
+        "gamma3": 0.0025,
+        "min_alter_flex": 60,
+        "min_rlz_flex": 5,
+        "policy_fee": 12.0,
+        "ratzu_zw12": 0.025,
+        "ratzu_zw2": 0.01,
+        "ratzu_zw4": 0.015,
+        "stoab_max": 200.0,
+        "stoab_min": 50.0,
+        "stoab_satz": 0.005,
+        "tafel": "DAV2008_T_NR_U70",
+        "zillmer_dauer": 5,
+        "zins": 0.0125
+      }
+    },
+    {
+      "auspraegungen": {
+        "status": "raucher",
+        "tarifart": "einzel"
+      },
+      "knoten": "klv/tg2015/zelle:raucher,einzel",
+      "model_point": {
+        "alpha": 0.025,
+        "beta1": 0.03,
+        "gamma1": 0.001,
+        "gamma2": 0.00125,
+        "gamma3": 0.0025,
+        "min_alter_flex": 60,
+        "min_rlz_flex": 5,
+        "policy_fee": 12.0,
+        "ratzu_zw12": 0.05,
+        "ratzu_zw2": 0.02,
+        "ratzu_zw4": 0.03,
+        "stoab_max": 200.0,
+        "stoab_min": 50.0,
+        "stoab_satz": 0.005,
+        "tafel": "DAV2008_T_R_U70",
+        "zillmer_dauer": 5,
+        "zins": 0.0125
+      }
+    },
+    {
+      "auspraegungen": {
+        "status": "raucher",
+        "tarifart": "haus"
+      },
+      "knoten": "klv/tg2015/zelle:raucher,haus",
+      "model_point": {
+        "alpha": 0.0,
+        "beta1": 0.01,
+        "gamma1": 0.0008,
+        "gamma2": 0.001,
+        "gamma3": 0.0025,
+        "min_alter_flex": 60,
+        "min_rlz_flex": 5,
+        "policy_fee": 0.0,
+        "ratzu_zw12": 0.0,
+        "ratzu_zw2": 0.0,
+        "ratzu_zw4": 0.0,
+        "stoab_max": 0.0,
+        "stoab_min": 0.0,
+        "stoab_satz": 0.0,
+        "tafel": "DAV2008_T_R_U70",
+        "zillmer_dauer": 5,
+        "zins": 0.0125
+      }
+    },
+    {
+      "auspraegungen": {
+        "status": "raucher",
+        "tarifart": "kollektiv"
+      },
+      "knoten": "klv/tg2015/zelle:raucher,kollektiv",
+      "model_point": {
+        "alpha": 0.015,
+        "beta1": 0.015,
+        "gamma1": 0.0008,
+        "gamma2": 0.001,
+        "gamma3": 0.0025,
+        "min_alter_flex": 60,
+        "min_rlz_flex": 5,
+        "policy_fee": 12.0,
+        "ratzu_zw12": 0.025,
+        "ratzu_zw2": 0.01,
+        "ratzu_zw4": 0.015,
+        "stoab_max": 200.0,
+        "stoab_min": 50.0,
+        "stoab_satz": 0.005,
+        "tafel": "DAV2008_T_R_U70",
+        "zillmer_dauer": 5,
+        "zins": 0.0125
+      }
+    }
+  ]
+}

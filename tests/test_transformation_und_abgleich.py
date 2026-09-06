@@ -1,6 +1,6 @@
 """Plan P5+P6: Transformations-Spec und Abzugsabgleich.
 
-Verankert die beiden Migrations-Maschinerien VOR ihrem ersten echten
+Sichert die beiden Migrations-Maschinerien VOR ihrem ersten echten
 Einsatz (Baldrian-Fall): das Mapping ist beidseitig geprueft und
 deterministisch angewandt; der Abgleich loest eine Diskrepanz nur dann
 automatisch auf, wenn die Belege genau EINE Lesart stuetzen und die
@@ -13,8 +13,8 @@ die Aufloesung eines konkreten Migrationsfalls.
 EHRLICHKEIT UEBER DIE ERWARTUNGSQUELLE (Abgleich-Haelfte): Die Belege
 der Abgleich-Tests entstehen ueber ``berechne`` — denselben Kern, den
 der Abgleich intern rechnet. Ein Rechenfehler des Kerns faellt hier
-also NICHT auf; das leisten Golden Master und Fall-Anker. Geprueft
-wird die URTEILSLOGIK: wann automatisch aufgeloest werden darf, wann
+also NICHT auf; das leisten Golden Master und die eingefrorenen
+Fall-Referenzwerte. Geprueft wird die URTEILSLOGIK: wann automatisch aufgeloest werden darf, wann
 die Beleglage zu duenn ist, wann ein Ausreisser keine Verwerfung ist
 und welcher Beleg als schlechtester benannt wird. Diese Erwartungen
 sind vom Kern unabhaengig — sie folgen aus den Schwellwerten und aus
@@ -33,9 +33,11 @@ import pytest
 
 from rechner_pipeline.kern import KLV_DEFAULT, berechne
 from rechner_pipeline.ontologie.transformation import (
+    BERECHNUNGEN,
     FeldMapping,
     OffenerKonflikt,
     TransformationsSpec,
+    _parse_datum,
     validate_spec,
 )
 from rechner_pipeline.gates.transformation_anwenden import wende_an
@@ -237,6 +239,104 @@ def test_berechnungen_verlangen_ihre_exakte_aritaet(berechnung, quellen):
                for eintrag in fehler), fehler
 
 
+@pytest.mark.parametrize("quellen", [[], ["BEGINN", "GEBDAT"]])
+def test_monate_letzter_jahrestag_verlangt_genau_eine_quellspalte(quellen):
+    spec = _spec(felder=[FeldMapping(
+        ziel="monate_ta", typ="berechnung", quellen=quellen,
+        berechnung="monate_letzter_jahrestag_vor_stichtag",
+        parameter={"stichtag": "2026-01-01"},
+        begruendung="adversarial falsche Operandenanzahl",
+    )])
+
+    fehler = validate_spec(spec, QUELLSPALTEN)
+
+    assert any("monate_letzter_jahrestag_vor_stichtag" in f
+               and "braucht genau" in f for f in fehler), fehler
+
+
+def test_monate_letzter_jahrestag_ohne_parameter_blockiert():
+    spec = _spec(felder=[FeldMapping(
+        ziel="monate_ta", typ="berechnung", quellen=["BEGINN"],
+        berechnung="monate_letzter_jahrestag_vor_stichtag",
+        begruendung="Verankerungszeitpunkt t_a",
+    )])
+
+    fehler = validate_spec(spec, QUELLSPALTEN)
+
+    assert any("braucht den Parameter 'stichtag'" in f for f in fehler), fehler
+
+
+def test_monate_letzter_jahrestag_mit_unlesbarem_datum_blockiert():
+    spec = _spec(felder=[FeldMapping(
+        ziel="monate_ta", typ="berechnung", quellen=["BEGINN"],
+        berechnung="monate_letzter_jahrestag_vor_stichtag",
+        parameter={"stichtag": "31. Dezember 2025"},
+        begruendung="Verankerungszeitpunkt t_a",
+    )])
+
+    fehler = validate_spec(spec, QUELLSPALTEN)
+
+    assert any("kein bekanntes Datumsformat" in f for f in fehler), fehler
+
+
+def test_monate_letzter_jahrestag_rundet_auf_volle_vertragsjahre_ab():
+    """Unabhaengige Kontrolle: roh ueber die Monatskonvention der
+    Controlling-Suite (``gates.migrationssuite_lauf._monate``) rechnen und
+    von Hand auf das letzte volle Vertragsjahr abrunden — die Katalog-
+    funktion muss auf denselben Wert kommen. Quellsysteme wie Baldrians
+    fuehren das Deckungskapital nur am Vertragsjahrestag (Mitteilung 143
+    Abschnitt 6) und interpolieren nicht; der Stichtag der Lieferung
+    selbst ist meist KEIN Jahrestag."""
+    from rechner_pipeline.gates.migrationssuite_lauf import _monate as kontrolle
+
+    monate_ta = BERECHNUNGEN["monate_letzter_jahrestag_vor_stichtag"]
+    faelle = [
+        ("01.06.2015", "01.01.2026"),   # Stichtag zwischen zwei Jahrestagen
+        ("15.03.2020", "01.03.2026"),   # Stichtag-Tag < Beginn-Tag
+        ("01.01.2020", "01.01.2020"),   # Beginn == Stichtag: 0 Monate
+        ("01.06.2015", "01.06.2025"),   # Stichtag IST der Jahrestag
+    ]
+    for beginn, stichtag in faelle:
+        zeile = {"BEGINN": beginn}
+        roh = kontrolle(_parse_datum(beginn), _parse_datum(stichtag))
+        erwartet = (roh // 12) * 12
+        assert monate_ta(zeile, ["BEGINN"], {"stichtag": stichtag}) == erwartet
+        assert erwartet % 12 == 0
+
+
+def test_monate_letzter_jahrestag_vor_beginn_ist_unplausibel():
+    monate_ta = BERECHNUNGEN["monate_letzter_jahrestag_vor_stichtag"]
+    with pytest.raises(ValueError, match="< 0"):
+        monate_ta(
+            {"BEGINN": "01.06.2027"}, ["BEGINN"], {"stichtag": "01.01.2026"})
+
+
+def test_monate_ta_und_dk_ta_werden_end_zu_end_transformiert(tmp_path):
+    """Die Verankerungsattribute laufen als optionale Zielfelder durch die
+    volle Anwendung — belegt am Fall, nicht nur an der Katalogfunktion.
+    BEGINN 01.06.2015, Stichtag 01.01.2026: letzter Jahrestag davor ist
+    01.06.2025, also 120 Monate (10 volle Vertragsjahre), nicht die rohen
+    127 Monate bis zum Stichtag."""
+    spec = _spec(felder=list(_spec().felder) + [
+        FeldMapping(ziel="monate_ta", typ="berechnung", quellen=["BEGINN"],
+                    berechnung="monate_letzter_jahrestag_vor_stichtag",
+                    parameter={"stichtag": "01.01.2026"},
+                    begruendung="letzter exakter Rechenpunkt der Quelle "
+                                "(Mitteilung 143 Abschnitt 6: DECKKAP nur "
+                                "am Vertragsjahrestag, keine Interpolation)"),
+        FeldMapping(ziel="dk_ta", typ="berechnung", quellen=["DECKKAP"],
+                    berechnung="zahl",
+                    begruendung="dort gelieferter Deckungskapitalwert"),
+    ])
+    zeile = dict(ZEILE, DECKKAP="21068.41")
+    ziel, befunde = _wende_testquelle(
+        tmp_path, spec, [zeile], quellspalten=QUELLSPALTEN + ["DECKKAP"])
+
+    assert befunde == []
+    assert ziel[0]["monate_ta"] == 120
+    assert ziel[0]["dk_ta"] == pytest.approx(21068.41)
+
+
 def test_jede_katalogberechnung_hat_einen_aritaetsvertrag():
     from rechner_pipeline.ontologie.transformation import (
         BERECHNUNGEN,
@@ -246,7 +346,7 @@ def test_jede_katalogberechnung_hat_einen_aritaetsvertrag():
     assert set(BERECHNUNGEN) == set(BERECHNUNGS_ARITAETEN)
 
 
-def test_unbekanntes_zielfeld_ist_gt_grenze():
+def test_unbekanntes_zielfeld_ist_ak1_grenze():
     spec = _spec()
     felder = [f.model_dump() for f in spec.felder]
     felder.append(FeldMapping(
@@ -255,7 +355,7 @@ def test_unbekanntes_zielfeld_ist_gt_grenze():
     fehler = validate_spec(
         TransformationsSpec(**{**spec.model_dump(), "felder": felder}),
         QUELLSPALTEN)
-    assert any("provisionssatz" in f and "G-T" in f for f in fehler)
+    assert any("provisionssatz" in f and "A-K1" in f for f in fehler)
 
 
 def test_anwendung_ist_deterministisch_und_vollstaendig(tmp_path):
@@ -731,7 +831,7 @@ def test_beta1_fall_wird_ebenfalls_belegt():
 
 
 # --------------------------------------------------------------------------- #
-# P5: Vorverdichter (Spaltenprofil) und Skill-Verankerung
+# P5: Vorverdichter (Spaltenprofil) und Skill-Absicherung
 # --------------------------------------------------------------------------- #
 
 
@@ -877,7 +977,7 @@ def test_bestand_profil_cli_meldet_falsche_zeilenbreite(
     assert not profil_datei.exists()
 
 
-def test_transformations_skill_ist_verankert():
+def test_transformations_skill_ist_abgesichert():
     """Skill-Paritaet und die nicht verhandelbaren Kerne des neuen Skills."""
     from pathlib import Path
 
@@ -889,7 +989,7 @@ def test_transformations_skill_ist_verankert():
     assert claude == codex                            # Paritaet
     assert "ERFINDEST nichts" in claude
     assert "OffenerKonflikt" in claude
-    assert "G-T" in claude
+    assert "A-K1" in claude
     assert "Abbruchkriterien" in claude
     konflikt = (repo / ".claude/skills/bereite-fachkonflikt-auf/SKILL.md"
                 ).read_text(encoding="utf-8")
@@ -905,7 +1005,7 @@ def test_runbook_fuehrt_die_bestands_haelfte_der_pipeline():
     Die Bestandsmaschinerie (Spaltenprofil, Transformation, Abgleich,
     Zwei-Stichtags-Abnahme, Abnahmebericht) existiert als Code und als
     eigene Skills; ohne Einstieg im Runbook wird sie in einem echten
-    Fall schlicht nicht ausgefuehrt (Systempruefung 19.08.). Verankert
+    Fall schlicht nicht ausgefuehrt (Systempruefung 19.08.). Sichert
     sind die Uebergaben, nicht die Formulierung.
     """
     from pathlib import Path
@@ -918,7 +1018,8 @@ def test_runbook_fuehrt_die_bestands_haelfte_der_pipeline():
     for marke in ("Stufe 1b", "Stufe 3b",
                   "rechner_pipeline.quellen.bestand_profil",
                   "transformiere-quellbestand", "validate_spec", "wende_an",
-                  "qa.abzugsabgleich", "pruefe-migrationsabnahme",
+                  "qa.abzugsabgleich", "pruefe-migrationscontrolling",
+                  "aktuartest-durchfuehren",
                   "rechner_pipeline.gates.bestand_validate",
                   "qa.migrationssuite", "rechner_pipeline.gates.abnahmebericht",
                   "rechner_pipeline.bestand.cli_report"):
@@ -1021,15 +1122,35 @@ def test_validate_spec_weist_unbekannte_berechnung_zurueck():
     """Katalogtreue: der Agent WAEHLT, er erfindet keine Rechenregel.
 
     Eine Quellkonvention, die der Katalog nicht kennt (z. B. eine
-    Kalenderjahres-Altersregel), muss als Befund auffallen — sonst
+    Halbjahres-Altersregel), muss als Befund auffallen — sonst
     entstuende sie stillschweigend als nicht implementierte Absicht.
+    (Die Kalenderjahresmethode war das urspruengliche Beispiel dieses
+    Tests; sie ist seit dem Baldrian-Abzugsabgleich BELEGTE
+    Katalogfunktion — das unbekannte Beispiel ist nachgerueckt.)
     """
     spec = _spec(felder=[
         FeldMapping(ziel="entry_age", typ="berechnung",
                     quellen=["GEBDAT", "BEGINN"],
-                    berechnung="alter_kalenderjahresmethode",
+                    berechnung="alter_zum_naechsten_geburtstag",
                     begruendung="Quellkonvention des abgebenden Systems"),
     ])
     fehler = validate_spec(spec, QUELLSPALTEN)
-    assert any("alter_kalenderjahresmethode" in f and "Berechnung" in f
+    assert any("alter_zum_naechsten_geburtstag" in f and "Berechnung" in f
                for f in fehler), fehler
+
+
+def test_kalenderjahresmethode_zaehlt_die_jahresdifferenz():
+    """Die Quellkonvention 'Beginnjahr minus Geburtsjahr' — unabhaengig
+    davon, ob der Geburtstag im Beginnjahr schon erreicht war. Der
+    Unterschied zum vollendeten Alter ist genau der Fall 'Geburtstag
+    nach Beginn'."""
+    from rechner_pipeline.ontologie.transformation import BERECHNUNGEN
+
+    kalender = BERECHNUNGEN["alter_kalenderjahresmethode"]
+    vollendet = BERECHNUNGEN["alter_aus_geburtsdatum_und_beginn"]
+    zeile = {"GEBDAT": "15.09.1980", "BEGINN": "01.05.2015"}
+    assert kalender(zeile, ["GEBDAT", "BEGINN"], {}) == 35
+    assert vollendet(zeile, ["GEBDAT", "BEGINN"], {}) == 34
+    zeile2 = {"GEBDAT": "15.03.1980", "BEGINN": "01.05.2015"}
+    assert kalender(zeile2, ["GEBDAT", "BEGINN"], {}) == 35
+    assert vollendet(zeile2, ["GEBDAT", "BEGINN"], {}) == 35

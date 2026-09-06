@@ -60,24 +60,67 @@ EINGANG_REGISTER = "eingang.json"
 EINGANG_REGISTER_LOCK = ".eingang.json.lock"
 
 #: Der Fall deklariert seinen fachlichen Umfang einmal im nicht regenerierbaren
-#: Manifest. G-2 darf daraus Pflichten ableiten; Dateiexistenz oder ein zufaellig
+#: Manifest. A-M4 darf daraus Pflichten ableiten; Dateiexistenz oder ein zufaellig
 #: vorhandener Bestandsbericht sind kein belastbarer Scope-Entscheid.
 FALL_SCOPE_SCHEMA_VERSION = 2
 FALL_SCOPES = ("tarif", "bestand")
 
-#: Der befundnahe G-2-Vertrag aus T6-03: Tariffaelle brauchen nur die bereits
-#: bestehenden Tarifbelege; Bestandsfaelle genau die drei zusaetzlich
-#: nachgewiesenen Pflichtbelege. Transformationsbindung ist Gegenstand von 10.13.
-G2_BELEGROLLEN = {
-    "tarif": ("o1_ledger", "g1_snapshot", "o3_belege"),
-    "bestand": (
-        "o1_ledger",
-        "g1_snapshot",
-        "o3_belege",
-        "b1_ledger",
-        "migrationssuite",
-        "abnahmebericht",
-    ),
+#: Pflichtbelegrollen JE GATE und Scope (ADR-009, fortgeschrieben durch
+#: ADR-010 und ADR-012). Der aktuarielle Test besteht aus drei Abnahmen,
+#: die dem Migrationscontrolling alle drei vorausgehen:
+#:
+#: * ``A-M1`` Stichtagstest, ``A-M2`` Verlaufstest, ``A-M3``
+#:   Geschaeftsvorfalltest — jede pinnt im Bestands-Scope ihr eigenes
+#:   Testergebnis und ihren eigenen Bericht. Im Tarif-Scope gibt es keine
+#:   Vertragslieferung und damit keine eigenen Testartefakte; der Entscheid
+#:   stuetzt sich dort auf die ohnehin gepinnten P-K1-Belege.
+#: * ``A-M4`` traegt den geltenden ``A-M1``-Snapshot als Pflichtrolle.
+#:   Das ist die erzwungene Reihenfolge: Ohne den Stichtagstest ist der
+#:   Uebernahmestand nicht belegt, und eine finanzielle Abnahme des
+#:   Gesamtbestands naehme etwas ab, dessen Grundlage offen ist.
+#:
+#: ``A-M2`` und ``A-M3`` sind im Bestands-Scope EBENFALLS
+#: Pflichtbelege von ``A-M4`` (Entscheid des Aktuariats
+#: 2026-08-31, gebaut mit den drei Abnahmen): Wer den
+#: Gesamtbestand finanziell abnimmt, tut das auf Stichtags-,
+#: Verlaufs- und Geschaeftsvorfallwerten — ein Bestand, dessen
+#: Bewegungen ungeprueft sind, ist nicht abgenommen, sondern nur
+#: zum Stichtag betrachtet.
+#:
+#: Die frueher hier vermerkte Gegenposition (A-M2/A-M3 bewusst
+#: KEINE Pflichtbelege, damit eine Migration auf spaeter
+#: gelieferten Verlaufsdaten nicht blockiert) ist damit
+#: ueberholt; sie stand bis zum externen Review T19-05
+#: unmittelbar neben dem Code, der das Gegenteil erzwingt. Wer
+#: den Scope aendert, aendert BELEGROLLEN und diesen Absatz
+#: gemeinsam.
+BELEGROLLEN = {
+    "A-M1": {
+        "tarif": (),
+        "bestand": ("aktuartest", "aktuartest_bericht"),
+    },
+    "A-M2": {
+        "tarif": (),
+        "bestand": ("aktuartest_am2", "aktuartest_am2_bericht"),
+    },
+    "A-M3": {
+        "tarif": (),
+        "bestand": ("aktuartest_am3", "aktuartest_am3_bericht"),
+    },
+    "A-M4": {
+        "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege"),
+        "bestand": (
+            "pq3_ledger",
+            "aq1_snapshot",
+            "am1_snapshot",
+            "am2_snapshot",
+            "am3_snapshot",
+            "pk1_belege",
+            "pb1_ledger",
+            "migrationssuite",
+            "abnahmebericht",
+        ),
+    },
 }
 
 
@@ -139,10 +182,20 @@ def lade_scope(fall: Path) -> str:
     return str(typ)
 
 
-def g2_belegrollen(scope: str) -> List[str]:
-    """Stabile Pflichtbelegrollen fuer den ausdruecklichen Fall-Scope."""
+def belegrollen(gate: str, scope: str) -> List[str]:
+    """Stabile Pflichtbelegrollen je Gate fuer den ausdruecklichen Scope."""
+    if gate not in BELEGROLLEN:
+        raise FallFehler(
+            f"kein Belegrollen-Vertrag fuer Gate {gate!r} "
+            f"(deklariert: {sorted(BELEGROLLEN)})"
+        )
     scope_dokument(scope)
-    return list(G2_BELEGROLLEN[scope])
+    return list(BELEGROLLEN[gate][scope])
+
+
+def am4_belegrollen(scope: str) -> List[str]:
+    """Stabile A-M4-Pflichtbelegrollen (Kurzform von ``belegrollen``)."""
+    return belegrollen("A-M4", scope)
 
 
 def _pruefe_eingangsname(name: str) -> str:

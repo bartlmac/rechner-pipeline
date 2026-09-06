@@ -48,7 +48,7 @@ from pydantic import BaseModel, ConfigDict, Field
 #: Geschlecht tarif-wirkungslos, nicht entbehrlich — der Bestand fuehrt es
 #: weiter fuer Nachweisung, Folgebewertung und spaetere geschlechts-
 #: abhaengige Generationen. Fehlt der Lieferung eine Geschlechtsspalte,
-#: ist das ein Befund fuer den Menschen (G-1), keine stille Auslassung.
+#: ist das ein Befund fuer den Menschen (A-Q1), keine stille Auslassung.
 ZIEL_PFLICHT: Tuple[str, ...] = (
     "police_id", "beginn", "entry_age", "sex", "duration",
     "premium_duration", "sum_insured", "zahlweise", "status", "tarifart",
@@ -64,9 +64,16 @@ ZIEL_PFLICHT: Tuple[str, ...] = (
 SEX_ZIELWERTE: Tuple[str, ...] = ("M", "F")
 
 #: Optionale Zielfelder (Abgleichswerte und Herkunfts-Extras).
+#:
+#: ``monate_ta``/``dk_ta`` sind die Verankerungsattribute
+#: (Grundsatzdokumentation 9.12): der letzte exakte Rechenpunkt des
+#: Quellsystems (in vollen Vertragsmonaten seit Beginn) und der dort
+#: gelieferte Deckungskapitalwert. Nur zusammen sinnvoll — ``gates.
+#: bestand_uebernehmen`` verlangt beide oder keins je Zeile.
 ZIEL_OPTIONAL: Tuple[str, ...] = (
     "vertragsjahre_am_stichtag", "brutto_jahresbeitrag",
     "brutto_zahlbeitrag", "deckungskapital", "geburtsdatum",
+    "monate_ta", "dk_ta",
 )
 
 
@@ -83,6 +90,23 @@ def _alter_aus_daten(zeile: Dict[str, Any], quellen: List[str]) -> int:
     geb, beginn = _parse_datum(zeile[quellen[0]]), _parse_datum(zeile[quellen[1]])
     alter = beginn.year - geb.year - (
         1 if (beginn.month, beginn.day) < (geb.month, geb.day) else 0)
+    if not 0 <= alter <= 123:
+        raise ValueError(f"berechnetes Alter {alter} unplausibel")
+    return alter
+
+
+def _alter_kalenderjahr(zeile: Dict[str, Any], quellen: List[str]) -> int:
+    """Kalenderjahresmethode: Alter = Beginnjahr - Geburtsjahr.
+
+    Verbreitete Konvention von Quell-Bestandsfuehrungen: das
+    versicherungstechnische Eintrittsalter ist die Differenz der
+    Kalenderjahre, unabhaengig davon, ob der Geburtstag im Beginnjahr
+    schon erreicht war. Welche Regel eine Lieferung verwendet, ist eine
+    Eigenschaft der Quelle und wird im Migrationsfall BELEGT entschieden
+    (Abzugsabgleich), nie geraten.
+    """
+    geb, beginn = _parse_datum(zeile[quellen[0]]), _parse_datum(zeile[quellen[1]])
+    alter = beginn.year - geb.year
     if not 0 <= alter <= 123:
         raise ValueError(f"berechnetes Alter {alter} unplausibel")
     return alter
@@ -111,14 +135,44 @@ def _ganzzahl(zeile: Dict[str, Any], quellen: List[str]) -> int:
     return int(str(zeile[quellen[0]]).strip())
 
 
+def _monate_letzter_jahrestag_vor_stichtag(
+    zeile: Dict[str, Any], quellen: List[str], parameter: Dict[str, Any]
+) -> int:
+    """Volle Vertragsjahre (in Monaten) zum letzten Jahrestag vor/am Stichtag.
+
+    Fuer Quellsysteme, die einen Wert (etwa das Deckungskapital) nur am
+    Vertragsjahrestag fuehren und nicht interpolieren — der Stichtag
+    selbst ist meist KEIN Jahrestag. Das Ergebnis ist deshalb immer ein
+    Vielfaches von 12, nicht die rohe Monatsdifferenz zum Stichtag: erst
+    werden die vollen Monate seit ``quellen[0]`` bis zum Stichtag
+    gezaehlt (dieselbe Monatskonvention wie ``gates.migrationssuite_lauf.
+    _monate``), dann auf das letzte volle Vertragsjahr abgerundet. Der
+    Stichtag ist der Abzugsstichtag der Lieferung — pro Abzugsdatei
+    konstant, keine Spalte der Quelle, deshalb Spec-Parameter statt
+    weiterer Quellspalte.
+    """
+    beginn = _parse_datum(zeile[quellen[0]])
+    stichtag = _parse_datum(str(parameter["stichtag"]))
+    roh = (stichtag.year - beginn.year) * 12 + (stichtag.month - beginn.month) - (
+        1 if stichtag.day < beginn.day else 0)
+    if roh < 0:
+        raise ValueError(f"berechnete Vertragsmonate {roh} < 0")
+    return (roh // 12) * 12
+
+
 #: Katalog der zulaessigen Berechnungen — der Agent WAEHLT, Code RECHNET.
 #: Ein Mapping mit unbekannter Berechnung faellt in der Validierung.
-BERECHNUNGEN: Dict[str, Callable[[Dict[str, Any], List[str]], Any]] = {
-    "alter_aus_geburtsdatum_und_beginn": _alter_aus_daten,
-    "jahre_aus_datumsdifferenz": _jahre_aus_daten,
-    "datum_nach_iso": _datum_iso,
-    "zahl": _zahl,
-    "ganzzahl": _ganzzahl,
+#: Der dritte Parameter ist die spec-feste ``parameter``-Wertetabelle
+#: (Konstanten je Mapping, z. B. ein Stichtag) — die meisten Berechnungen
+#: ignorieren ihn.
+BERECHNUNGEN: Dict[str, Callable[[Dict[str, Any], List[str], Dict[str, Any]], Any]] = {
+    "alter_aus_geburtsdatum_und_beginn": lambda z, q, p: _alter_aus_daten(z, q),
+    "alter_kalenderjahresmethode": lambda z, q, p: _alter_kalenderjahr(z, q),
+    "jahre_aus_datumsdifferenz": lambda z, q, p: _jahre_aus_daten(z, q),
+    "datum_nach_iso": lambda z, q, p: _datum_iso(z, q),
+    "zahl": lambda z, q, p: _zahl(z, q),
+    "ganzzahl": lambda z, q, p: _ganzzahl(z, q),
+    "monate_letzter_jahrestag_vor_stichtag": _monate_letzter_jahrestag_vor_stichtag,
 }
 
 #: Jede Katalogfunktion hat einen expliziten Operandenvertrag. Ein blosses
@@ -127,10 +181,19 @@ BERECHNUNGEN: Dict[str, Callable[[Dict[str, Any], List[str]], Any]] = {
 #: waehrend der Anwendung zu einem ``IndexError``.
 BERECHNUNGS_ARITAETEN: Dict[str, int] = {
     "alter_aus_geburtsdatum_und_beginn": 2,
+    "alter_kalenderjahresmethode": 2,
     "jahre_aus_datumsdifferenz": 2,
     "datum_nach_iso": 1,
     "zahl": 1,
     "ganzzahl": 1,
+    "monate_letzter_jahrestag_vor_stichtag": 1,
+}
+
+#: Berechnungen mit Pflicht-Parametern (spec-feste Konstanten statt
+#: Quellspalten). Fehlt ein Schluessel oder ist der Wert nicht plausibel,
+#: faellt die Spec-Validierung — nicht erst jede einzelne Zeile.
+BERECHNUNGS_PFLICHTPARAMETER: Dict[str, Tuple[str, ...]] = {
+    "monate_letzter_jahrestag_vor_stichtag": ("stichtag",),
 }
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -147,6 +210,9 @@ class FeldMapping(BaseModel):
     quellen: List[str] = Field(min_length=0)
     kodierung: Dict[str, Any] = Field(default_factory=dict)
     berechnung: str = ""
+    #: Spec-feste Konstanten fuer ``berechnung`` (z. B. ein Stichtag) —
+    #: nie Quelldaten, deshalb getrennt von ``quellen``.
+    parameter: Dict[str, Any] = Field(default_factory=dict)
     begruendung: str = Field(min_length=1)
 
 
@@ -195,7 +261,7 @@ def validate_spec(
         if ziel not in ZIEL_PFLICHT + ZIEL_OPTIONAL:
             fehler.append(
                 f"unbekanntes Zielfeld {ziel!r} — die Ziel-Ontologie "
-                "kennt es nicht (Erweiterung waere Gate G-T)"
+                "kennt es nicht (Erweiterung waere Gate A-K1)"
             )
         if ziele.count(ziel) > 1:
             fehler.append(f"Zielfeld {ziel!r} ist mehrfach gemappt")
@@ -230,6 +296,24 @@ def validate_spec(
                     f"{f.ziel}: Berechnung {f.berechnung!r} braucht genau "
                     f"{erwartet} Quellspalte{'n' if erwartet != 1 else ''}"
                 )
+        if f.typ == "berechnung" and f.berechnung in BERECHNUNGS_PFLICHTPARAMETER:
+            for schluessel in BERECHNUNGS_PFLICHTPARAMETER[f.berechnung]:
+                if not str(f.parameter.get(schluessel, "")).strip():
+                    fehler.append(
+                        f"{f.ziel}: Berechnung {f.berechnung!r} braucht den "
+                        f"Parameter {schluessel!r}"
+                    )
+            if f.berechnung == "monate_letzter_jahrestag_vor_stichtag" and str(
+                f.parameter.get("stichtag", "")
+            ).strip():
+                try:
+                    _parse_datum(str(f.parameter["stichtag"]))
+                except ValueError:
+                    fehler.append(
+                        f"{f.ziel}: Parameter stichtag "
+                        f"{f.parameter['stichtag']!r} ist kein bekanntes "
+                        "Datumsformat"
+                    )
         if f.typ in ("direkt", "kodierung") and len(f.quellen) != 1:
             fehler.append(f"{f.ziel}: {f.typ} braucht genau EINE Quellspalte")
         if f.typ == "kodierung" and not f.kodierung:
@@ -378,7 +462,8 @@ def _wende_registrierte_datei_an(
                         )
                     ziel[f.ziel] = f.kodierung[roh]
                 else:
-                    ziel[f.ziel] = BERECHNUNGEN[f.berechnung](zeile, f.quellen)
+                    ziel[f.ziel] = BERECHNUNGEN[f.berechnung](
+                        zeile, f.quellen, f.parameter)
                 # Das Geschlecht ist die einzige Zielgroesse, deren falscher
                 # Wert im Kern NICHT auffaellt (Nicht-"M" -> Frauentafel).
                 # Deshalb hier ein Befund je Zeile statt eines stillen Werts.

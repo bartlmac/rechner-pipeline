@@ -129,7 +129,7 @@ def kopfzeilen(
     if bis is not None:
         zeilen.append(f"Projektionshorizont: {bis.isoformat()}")
     if quelle_hash:
-        zeilen.append(f"Quelle (Parquet-Hash): {quelle_hash[:8]}…")
+        zeilen.append(f"Prüfsumme der Datenquelle (SHA-256): {quelle_hash[:8]}…")
     return zeilen
 
 

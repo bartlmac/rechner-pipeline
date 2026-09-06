@@ -1,6 +1,6 @@
 """Zustandsmodell (Semi-Markov) — das allgemeine Rechenrückgrat des Monolithen.
 
-Beschluss 2026-08-12 (Bartek, operative Entscheidung, gedeckt vom
+Beschluss 2026-08-12 (Maintainer, operative Entscheidung, gedeckt vom
 Team-Beschluss „monolithischer, möglichst flexibler Kern"): Das
 Zustandsmodell ist das Ziel-Rückgrat der Personenversicherungsmathematik in
 diesem Kern — KLV ist sein 2-Zustands-Spezialfall (aktiv/tot), BU/Pflege
@@ -22,16 +22,16 @@ Mathematischer Rahmen:
 * Bewertung über Thiele-Rückwärtsrekursion (:meth:`Zustandsmodell.barwert`);
   die Vorwärts-Zustandsverteilung (:meth:`Zustandsmodell.verteilung`) dient
   als unabhängiger Selbsttest (Vorwärts- == Rückwärtsbewertung, testseitig
-  verankert).
+  festgeschrieben).
 
 Abgrenzung zur Kommutations-Schiene (:mod:`rechner_pipeline.kern.barwerte`):
 Die Kommutation ist die geschlossene Summenform des 2-Zustands-Falls mit den
 Excel-Rundungsartefakten des migrierten Quell-Workbooks. Das Zustandsmodell
 rechnet dieselbe Mathematik ohne diese Artefakte — Abweichungen sind reine
 Rundungsreihenfolgen-Differenzen und werden über die Toleranz-Überleitung
-(:mod:`rechner_pipeline.qa.ueberleitung`) klassifiziert. Der Wechsel des
-produktiven KLV-Pfads auf diese Schiene wurde am 2026-08-12 abgenommen
-(kern 2.0.0); die Kommutation bleibt dauerhaft als Kreuz-Check-Schiene.
+klassifiziert. Der Wechsel des produktiven KLV-Pfads auf diese Schiene
+wurde am 2026-08-12 abgenommen (kern 2.0.0); mit ADR-013 ist die
+Ueberleitung ausser Betrieb, weil ihr Beleg erbracht ist.
 Die klassische Tafel-Domäne gilt unverändert: Anker-Alter mit Dx = 0
 (Tafel erschöpft) sind fail-fast (:class:`TafelBereichError`) statt
 stiller bedingter Werte.
@@ -236,7 +236,8 @@ class ZustandsBarwerte:
     Tafelzugriff) — Ueberlebenswahrscheinlichkeiten sind reine
     (1-qx)-Produkte, ohne Kommutations-Ableitungen. Der separate
     Kommutationskern dient nur der Kreuz-Schiene
-    (Toleranz-Überleitung: :mod:`rechner_pipeline.qa.ueberleitung`).
+    (algebraische Eigenschaftstests; die Toleranz-Überleitung ist mit
+    ADR-013 ausser Betrieb).
 
     Performance über Spalten-Pässe: je (Basis, Zahlungsart, Endalter) läuft
     die Thiele-Rekursion genau einmal (:meth:`Zustandsmodell.barwert_verlauf`)

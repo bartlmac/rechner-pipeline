@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-import tempfile
+import secrets
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -27,6 +27,10 @@ from rechner_pipeline.models.bestand import (
     ABSCHLUSS_SPALTEN,
     LEDGER_NAMES,
     LEDGER_SPALTEN,
+    MERKMALE_NAMES,
+    MERKMALE_SPALTEN,
+    VERANKERUNG_NAMES,
+    VERANKERUNG_SPALTEN,
     SCHEIBEN_NAMES,
     SCHEIBEN_SPALTEN,
     STAMM_NAMES,
@@ -42,6 +46,8 @@ _DTYPE_MAP = (
     | dict(ZEITSCHEIBEN_SPALTEN)
     | dict(LEDGER_SPALTEN)
     | dict(SCHEIBEN_SPALTEN)
+    | dict(MERKMALE_SPALTEN)
+    | dict(VERANKERUNG_SPALTEN)
 )
 
 _ARROW_TYPES = {
@@ -61,22 +67,33 @@ def _schema_for(columns: List[str]) -> pa.schema:
     return pa.schema(fields)
 
 
-def _dateimodus() -> int:
-    """Der Modus, den ein normal erzeugter Lauf-Output tragen soll.
+def neue_datei(verzeichnis: Path, name: str) -> Path:
+    """Eine je AUFRUF eindeutige, leere Datei mit dem Modus, den die umask
+    JETZT ergibt (T18-07).
 
-    ``tempfile.mkstemp`` legt den neuen Inode mit 0600 an, und ``os.replace``
-    nimmt DIESEN Modus mit -- nicht den des bisherigen Ziels. Ohne
-    Korrektur wurde aus einer 0664-Datei still eine 0600-Datei, und der
-    Berechtigungsvertrag der sechs Lauf-Ausgaben aenderte sich, ohne dass
-    es irgendwo stand. Einmal beim Import ermittelt: os.umask ist
-    prozessweit und laesst sich nur lesen, indem man sie kurz setzt.
+    ``tempfile.mkstemp`` legt den Inode immer mit 0600 an, und ``os.replace``
+    nimmt DIESEN Modus mit -- nicht den des bisherigen Ziels. Die erste
+    Korrektur las die umask beim Import und setzte den Modus nach; sie
+    folgte damit der umask des Importzeitpunkts, nicht der des Schreibens
+    (externes Review T18-07: nach ``umask 077`` schrieb der Writer weiter
+    0644). Die umask laesst sich nur lesen, indem man sie setzt -- und
+    das rennt nebenlaeufig gegen jeden anderen Thread, der gerade eine
+    Datei anlegt. Deshalb wird sie hier gar nicht gelesen: ``os.open`` mit
+    0666 ueberlaesst dem Kernel die Anwendung der aktuellen umask, atomar
+    und ohne Fenster. Der Name muss je Aufruf eindeutig sein, nicht je
+    Prozess: Zwei Threads teilen sich die PID und wuerden sonst dieselbe
+    Datei beschreiben und einander wegziehen; O_EXCL macht die Kollision
+    zum Fehler statt zum Ueberschreiben.
     """
-    maske = os.umask(0)
-    os.umask(maske)
-    return 0o666 & ~maske
-
-
-_DATEIMODUS = _dateimodus()
+    for _ in range(100):
+        tmp = verzeichnis / f".{name}.{secrets.token_hex(8)}.tmp"
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        except FileExistsError:
+            continue
+        os.close(fd)
+        return tmp
+    raise OSError(f"kein freier temporaerer Dateiname neben {verzeichnis / name}")
 
 
 def write_portfolio(
@@ -114,17 +131,11 @@ def write_portfolio(
     # einen Stumpf mit kaputtem Parquet-Fuss, und der ist eine Sackgasse:
     # Fuer schreibe_abschluss existiert der Stichtag dann bereits, waehrend
     # ihn niemand mehr lesen kann.
-    # Der temporaere Name muss je AUFRUF eindeutig sein, nicht je Prozess:
-    # zwei Threads teilen sich die PID und wuerden sonst dieselbe Datei
-    # beschreiben und einander wegziehen.
-    fd, tmp_name = tempfile.mkstemp(
-        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
-    )
-    os.close(fd)
-    tmp = Path(tmp_name)
+    # Die temporaere Datei traegt den Modus der umask zum Schreibzeitpunkt
+    # (neue_datei); os.replace nimmt ihn an den Zielpfad mit.
+    tmp = neue_datei(path.parent, path.name)
     try:
         pq.write_table(table, tmp, compression="zstd")
-        os.chmod(tmp, _DATEIMODUS)
         if exklusiv:
             # Genau-einmal-Publish: os.link legt den Zielnamen an und
             # scheitert mit FileExistsError, wenn es ihn schon gibt --
@@ -192,10 +203,14 @@ def read_portfolio(
         return df[list(LEDGER_NAMES)]
     if set(df.columns) == set(SCHEIBEN_NAMES):
         return df[list(SCHEIBEN_NAMES)]
+    if set(df.columns) == set(MERKMALE_NAMES):
+        return df[list(MERKMALE_NAMES)]
+    if set(df.columns) == set(VERANKERUNG_NAMES):
+        return df[list(VERANKERUNG_NAMES)]
     ordered = [c for c in list(STAMM_NAMES) + [n for n, _ in ZEITSCHEIBEN_SPALTEN] if c in df.columns]
     return df[ordered]
 
 
 def portfolio_hash(path: Path) -> str:
-    """SHA-256 of the Parquet file bytes (golden-master anchor)."""
+    """SHA-256 of the Parquet file bytes (golden-master reference value)."""
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()

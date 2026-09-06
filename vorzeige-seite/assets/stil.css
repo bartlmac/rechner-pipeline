@@ -1,0 +1,73 @@
+/* Gestaltung der Unternehmensseiten der Vorfuehrung. Ergaenzt das
+   Jekyll-Thema; die Fall-Seiten unter migrationen/<fall>/ nutzen es
+   nicht — sie bleiben das nuechterne Erzeugnis des Werkzeugs. */
+
+.banderole {
+  background: #5b3a29;
+  color: #fff;
+  padding: .55rem 1rem;
+  border-radius: 4px;
+  font-size: .85rem;
+  margin: 0 0 1.6rem;
+}
+.banderole a { color: #ffd9c4; }
+
+table td:first-child { font-weight: 600; }
+
+.blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1rem;
+  margin: 1.6rem 0;
+}
+.block-gross {
+  border: 1px solid #d7dbd4;
+  border-top: 4px solid #2f5d62;
+  border-radius: 6px;
+  padding: 1rem 1.2rem;
+  background: #fbfbfa;
+}
+.block-gross h3 { margin-top: 0; }
+.block-gross .kennzahl { font-size: 1.5rem; font-weight: 700; }
+.block-gross .einheit { color: #5f6663; font-size: .85rem; }
+.block-gross p { margin: .4rem 0; }
+.block-gross .platzhalter { color: #5f6663; font-style: italic; }
+
+.kacheln {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: .8rem;
+  margin: 1.2rem 0 1.8rem;
+}
+a.kachel {
+  display: block;
+  border: 1px solid #d7dbd4;
+  border-radius: 6px;
+  padding: .9rem 1rem;
+  text-decoration: none;
+  color: inherit;
+  background: #fff;
+}
+a.kachel:hover { border-color: #2f5d62; }
+a.kachel b { display: block; margin-bottom: .25rem; color: #2f5d62; }
+a.kachel span { font-size: .85rem; color: #5f6663; }
+a.kachel .wip {
+  display: inline-block;
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #8c4a2f;
+  border: 1px solid #8c4a2f;
+  border-radius: 3px;
+  padding: 0 .35em;
+  margin-left: .4em;
+}
+
+.migrationen-band {
+  border-left: 5px solid #8c4a2f;
+  background: #f8ede5;
+  border-radius: 0 6px 6px 0;
+  padding: 1rem 1.3rem;
+  margin: 2rem 0;
+}
+.migrationen-band h2 { margin-top: 0; }

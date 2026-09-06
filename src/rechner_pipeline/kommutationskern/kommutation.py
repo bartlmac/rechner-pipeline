@@ -4,7 +4,8 @@ Baut fuer eine Basis (Geschlecht, Tafel, Zins) die Kommutationsspalten
 exakt nach dem VBA-Modul ``mGWerte`` des historischen Quell-Workbooks
 (gerundete l_x-Kette). Dieses Paket ist NICHT Teil des Zielkerns: es
 existiert als unabhaengiger zweiter Rechenweg fuer die
-Toleranz-Ueberleitung (qa/ueberleitung). Tafeldaten kommen aus
+algebraischen Eigenschaftstests (tests/test_kern_algebraisch.py).
+Tafeldaten kommen aus
 :mod:`rechner_pipeline.kern.tafeln` — fail-fast, keine erfundenen qx.
 
 Knoten: klv
@@ -105,7 +106,7 @@ def _build(sex: str, tafel: str, zins: float) -> Kommutation:
     # fehlen strukturell in Mx). Fuer die ausgelieferten Tafeln ist das
     # folgenlos (lx[123] = 0); die Zustandsmodell-Schiene modelliert das
     # Endalter vollstaendig — dokumentierte gemeinsame Blindstelle des
-    # Kreuz-Modell-Gates (qa/ueberleitung).
+    # algebraische Eigenschaftstests.
     cx = [0.0] * (omega + 1)
     for i in range(0, omega):
         cx[i] = excel_round(tx[i] * (v ** (i + 1)))

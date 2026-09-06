@@ -25,10 +25,11 @@ gehoert dann in ein Gate oder einen Validator.
 | Entwicklung | `entwickle-im-zielsystem` | Code unter der nicht verhandelbaren Architektur bauen (Schichtenkarte, Determinismus, Fail-fast, Knoten-Annotation, Test-Pflicht) | Architektur "pragmatisch" brechen; ohne Tests committen; Kern-Verankerungen anfassen |
 | Qualitaetssicherung | `teste-adversarial` | Bloecke adversarial reviewen (Finden -> Widerlegen -> Fixen -> Regressionstest) und die Test-Disziplin tragen (Mutations-Denken, unabhaengige Kontrollrechnung) | Findings ungeprueft uebernehmen; gruene Suiten als Beleg fuer Vollstaendigkeit lesen |
 | Dokumentation | `dokumentiere-system` | Doku unter den Repo-Regeln (generiert schlaegt handgeschrieben, ein Zuhause je Typ, ADR-Format, Ehrlichkeits-Abschnitte) | Inhalte doppeln (Drift); Grenzen beschoenigen |
-| Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (G-T) |
+| Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (A-K1) |
 | Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen RECHNEN, Entscheidungs-Dossier + Empfehlung liefern, dann STOPP | entscheiden (auch nicht "offensichtliche" Faelle); Quellen-Hierarchie festlegen |
 | Gate-Autorenschaft | `author-rechner-toolbox-gate` | neue Pruef-CLIs unter dem Ledger-/Exit-Contract | Fachlogik ausserhalb des Pruefens |
-| Migrations-Abnahme | `pruefe-migrationsabnahme` | deterministische Abnahmepruefung ueber zwei Stichtage (Migrationssuite, GeVo-Vergleich, Mapping-Tabelle, Bestandsberichte vor/nach) als G-2-Vorlage aufbereiten | abnehmen (Mensch, G-2); Werte selbst rechnen; Toleranzen aufweichen; Erwartungswerte "korrigieren" |
+| Aktuarieller Test | `aktuartest-durchfuehren` | die drei Abnahmen je Vertrag an seinen eigenen Rechenpunkten fahren (Engine, aktuartest-Gate) und je Abnahme eine Vorlage aufbereiten: A-M1 Stichtagstest, A-M2 Verlaufstest, A-M3 Geschaeftsvorfalltest | abnehmen (Mensch, A-M1); Werte selbst rechnen; interpolieren oder summieren (Engine verbietet es); Toleranzen aufweichen |
+| Migrationscontrolling | `pruefe-migrationscontrolling` | deterministisches Controlling ueber zwei Stichtage und jeden Vertrag (Migrationssuite, GeVo-Vergleich, Mapping-Tabelle, Bestandsberichte vor/nach) als A-M4-Vorlage aufbereiten | abnehmen (Mensch, A-M4); Werte selbst rechnen; Toleranzen aufweichen; Erwartungswerte "korrigieren" |
 | Migrations-CI | `integriere-migrationsinkrement` | Code-Aenderungen waehrend laufender Migrationen als kleine knotengebundene Inkremente integrieren (ADR-007: Impact, Gesamt-Suite inkl. aller Faelle, benanntes Staging) | langlebige Branches oder Kern-Forks; Landung ohne falluebergreifenden Beweis; Rueckgrat ohne Koordination; Push (Mensch) |
 
 ## Zusammenspiel (wer uebergibt an wen)
@@ -37,26 +38,29 @@ gehoert dann in ein Gate oder einen Validator.
 migrationsfall-durchfuehren
   |- Stufe 1 (Tarifparameter): n x extrahiere-quellfragment
   |     --> deterministischer Merge
-  |     Konflikt --> bereite-fachkonflikt-auf --> MENSCH (entscheide + G-1)
+  |     Konflikt --> bereite-fachkonflikt-auf --> MENSCH (entscheide + A-Q1)
   |- Stufe 1b (Bestandsabzug): quellen/bestand_profil (Code, Vorverdichtung)
   |     --> transformiere-quellbestand --> TransformationsSpec
   |     --> ontologie/transformation validate_spec,
   |         gates/transformation_anwenden wende_an (Code)
-  |     offener Konflikt / fehlendes Zielfeld --> MENSCH (G-1 bzw. G-T)
-  |- Stufe 2/3: Gates O1/O3; Kern-Aenderung noetig?
+  |     offener Konflikt / fehlendes Zielfeld --> MENSCH (A-Q1 bzw. A-K1)
+  |- Stufe 2/3: Gates P-Q3/P-K1; Kern-Aenderung noetig?
   |     Parametrierung: quellen/tafel_import (Code, kein Skill)
-  |     mehr als Parametrierung: STOPP --> G-T-Vorlage --> MENSCH
-  |         danach: entwickle-im-zielsystem (unter dem G-T-Beschluss)
-  |- Stufe 3b (uebernommener Bestand): pruefe-migrationsabnahme
-  |     (Gate B1, qa/migrationssuite, gates/abnahmebericht)
-  |     --> Abnahmebericht --> MENSCH (G-2)
+  |     mehr als Parametrierung: STOPP --> A-K1-Vorlage --> MENSCH
+  |         danach: entwickle-im-zielsystem (unter dem A-K1-Beschluss)
+  |- Stufe 3b (uebernommener Bestand), Reihenfolge erzwungen (ADR-010):
+  |     1. aktuartest-durchfuehren (qa/stichprobe, qa/testprofil,
+  |        qa/aktuarieller_test, gates/aktuartest) --> je Abnahme eine
+  |        Vorlage --> MENSCH (A-M1, A-M2, A-M3 einzeln)
+  |     2. pruefe-migrationscontrolling (Gate P-B1, qa/migrationssuite,
+  |        gates/abnahmebericht) --> Abnahmebericht --> MENSCH (A-M4)
   |- jeder Implementierungs-Block: entwickle-im-zielsystem
   |     Abschluss: teste-adversarial --> Fixes --> Regressionstests
   |     waehrend laufender Faelle: integriere-migrationsinkrement
   '- Doku-Pflichten: dokumentiere-system (ADR, README, AGENTS)
 ```
 
-Menschliche Gates (G-1/G-2/G-T, P9-Snapshots) sind KEINE Skills — sie
+Menschliche Gates (A-Q1/A-M1/A-M4/A-K1, P9-Snapshots) sind KEINE Skills — sie
 sind Werkzeuge fuer Menschen (`ontologie.entscheide`,
 `gates.gate_entscheid`). Skills bereiten sie vor und halten an ihnen an.
 
@@ -67,7 +71,7 @@ als eigener Skill mit demselben Muster:
 
 | Rolle (geplant) | Ausloeser |
 |---|---|
-| T-Box-Erweiterung vorbereiten | erster Fall, den die T-Box nicht ausdrueckt (voraussichtlich FLV: neue Produktfamilie, G-T-Vorlage mit Klassen-Entwurf, Migrationsplan der A-Boxen, Testabdeckungs-Impact) |
+| T-Box-Erweiterung vorbereiten | erster Fall, den die T-Box nicht ausdrueckt (voraussichtlich FLV: neue Produktfamilie, A-K1-Vorlage mit Klassen-Entwurf, Migrationsplan der A-Boxen, Testabdeckungs-Impact) |
 | Erweiterungsstellen implementieren | erste Spez mit offener Erweiterungsstelle (freie Implementierung am benannten Ort, unter entwickle-im-zielsystem plus fallweisen Regeln) |
 | Bestandsabzug als Stufe-1-Quelle (QuellFragment) | erster Fall, der Vertragsdaten in die A-Box extrahieren muss — der Vorverdichter steht (`quellen/bestand_profil.py`) und der Weg in die Ziel-Ontologie ebenfalls (`transformiere-quellbestand` + `ontologie/transformation`); offen ist allein die Erweiterung von `extrahiere-quellfragment` um den Quelltyp Bestandsabzug |
 | Legacy-Code-Analyse | erster Fall mit Quellsystem-Code (AST/Callgraph-Vorverdichter, Terminologie-Lokalisierung, dort auch Embeddings-Freigabe) |
@@ -81,7 +85,7 @@ als eigener Skill mit demselben Muster:
    Nachweiskette, ihre Aenderung ist sichtbar).
 2. Paritaet `.claude`/`.agents` haelt der Test
    `tests/test_agent_workflow_docs.py`; Kernregeln der Migrations-
-   Skills sind dort zusaetzlich verankert (Loeschen faellt rot aus).
+   Skills sind dort zusaetzlich maschinell gesichert (Loeschen faellt rot aus).
 3. Ein Skill nennt seine Grenze so praezise wie seinen Auftrag —
    "Skip for" ist Pflicht, Ueberlappungen zwischen Skills sind ein
    Befund.

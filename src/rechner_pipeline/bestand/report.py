@@ -56,6 +56,7 @@ from rechner_pipeline.bestand.berichtstexte import (  # noqa: E402
     teilbestand,
 )
 from rechner_pipeline.bestand.config import BestandConfig  # noqa: E402
+from rechner_pipeline.models.bestand import validate_merkmale  # noqa: E402
 from rechner_pipeline.bestand.fuehrung import journalsicht, schnitt_am  # noqa: E402
 from rechner_pipeline.bestand.kennzahlen import (  # noqa: E402
     EREIGNIS_LABELS,
@@ -90,7 +91,9 @@ _FARBEN = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
 #: Feste Ereignis-Farben (Reihenfolge wie EREIGNIS_REIHENFOLGE).
 _EREIGNIS_FARBEN = {
     "ZUG": "#1f77b4",
+    "MIG": "#4c9be8",   # verwandt mit ZUG: beides ein Zugang in die Buecher
     "ERH": "#17becf",
+    "RED": "#7f7f7f",
     "PEX": "#9467bd",
     "INV": "#8c564b",
     "REA": "#bcbd22",
@@ -410,8 +413,9 @@ NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
         "titel": "Kapitalversicherung",
         "bezug": "Versicherungssumme",
         "erlaeuterung": (
-            "Zugang aus den Versicherungsbeginnen (die POL-Basiszeile ist der "
-            "Zugangs-Geschäftsvorfall) und aus dynamischen Erhöhungen (nur "
+            "Zugang am Bestandszugang — beim eigenen Geschäft der "
+            "Versicherungsbeginn, bei übernommenem Geschäft der "
+            "Migrationsstichtag (ADR-014) — und aus dynamischen Erhöhungen (nur "
             "Summe, kein Stück); Abgänge mit den abgehenden "
             "Versicherungssummen einschließlich Erhöhungsscheiben, nicht mit "
             "den Auszahlungsbeträgen. Die Beitragsfreistellung ist eine "
@@ -684,7 +688,7 @@ def _nachweisung_html(
         f"jedem Jahr, je Bestand, in Stück und {spec['bezug']} (Gate-geprüft)."
         if alle_ok else
         "WARNUNG: Bewegungs-Identität verletzt — Daten inkonsistent "
-        "(Gate B1 schlägt fehl)."
+        "(Gate P-B1 schlägt fehl)."
     )
 
     def tabelle(track: str, positionen, mass: str) -> str:
@@ -792,6 +796,7 @@ def render_html(
     ledger: Optional[pd.DataFrame] = None,
     config: Optional[BestandConfig] = None,
     scheiben: Optional[pd.DataFrame] = None,
+    merkmale: Optional[pd.DataFrame] = None,
     bis: Optional[_dt.date] = None,
     stichtag: Optional[_dt.date] = None,
 ) -> str:
@@ -822,6 +827,21 @@ def render_html(
         raise ValueError(
             "scheiben nur zusammen mit historie/ledger (ein fortschreiben-Lauf)"
         )
+    if merkmale is not None and config is not None:
+        # Die Merkmalstabelle waehlt die Tarifzelle; sie darf nur
+        # Auspraegungen nennen, die die Generation auch fuehrt. Ein Tippfehler
+        # waere sonst kein Fehler, sondern eine Zelle, die es nicht gibt --
+        # und die Bewertung braeche erst tief im Kern ab.
+        erlaubt = {
+            dim: {str(z.auspraegungen[dim]) for z in g.zellen if dim in z.auspraegungen}
+            for g in config.generationen
+            for dim in g.dimensionen()
+        }
+        fehler = validate_merkmale(df, merkmale, erlaubt or None)
+        if fehler:
+            raise ValueError(
+                f"Merkmale ungueltig: {'; '.join(fehler[:3])}"
+            )
     if ledger is not None:
         fremd = set(ledger["police_id"]) - set(df["police_id"])
         if fremd:
@@ -937,7 +957,8 @@ def render_html(
         reihe_ausw: List[Dict[str, Any]] = []
         if config is not None:
             reihe_ausw = auswertungs_verlauf(
-                df, historie, config, stichtage, scheiben=scheiben
+                df, historie, config, stichtage, scheiben=scheiben,
+                merkmale=merkmale
             )
             svg_dk = _chart_deckungskapital(reihe_ausw, stichtag=stichtag)
             svg_beitrag = _chart_beitraege(
@@ -978,12 +999,20 @@ def render_html(
         + "</tbody></table>"
     )
 
+    # Der Zeitraum des BESTANDS, nicht der Vertraege: Ein uebernommener
+    # Bestand beginnt in unseren Buechern am Migrationsstichtag, auch wenn
+    # seine aeltesten Vertraege Jahre frueher geschlossen wurden. Der
+    # Zusatz nennt nur, DASS uebernommen wurde -- die Daten stehen bereits
+    # in der Zeile.
+    erster_zugang = df["bestandszugang"].dt.date.min()
     zeitraum = (
-        f"{df['insurance_start'].dt.date.min().isoformat()} bis "
+        f"{erster_zugang.isoformat()} bis "
         f"{df['insurance_end'].dt.date.max().isoformat()}"
     )
+    if df["insurance_start"].dt.date.min() < erster_zugang:
+        zeitraum += " (übernommenes Geschäft)"
     quelle = (
-        f"<li>Quelle (SHA-256, gekürzt): <code>{quelle_hash[:16]}</code></li>"
+        f"<li>Prüfsumme der Quelle (SHA-256, gekürzt): <code>{quelle_hash[:16]}</code></li>"
         if quelle_hash
         else ""
     )
@@ -996,12 +1025,10 @@ def render_html(
         f"<p>{TEXTE['stichtag']}</p>" if stichtag is not None else ""
     )
     generationen_html = _generationen_uebersicht_html(config, df)
-    stichtag_zeile = (
-        f"<li>Referenzstichtag: {stichtag.isoformat()} — bis dahin Historie, "
-        "danach Prognose</li>"
-        if stichtag is not None else ""
-    )
-    fortschreibung_zeile = ""
+    # Referenzstichtag und Geschaeftsvorfall-Zaehler standen hier einmal
+    # als eigene Kopfzeilen; seit kopfzeilen() sie fuehrt, wurden sie noch
+    # gebaut und nie ausgegeben. Wer dort eine Formulierung aendert, aendert
+    # nichts -- deshalb weg statt stehenlassen.
     klv_hinweis = (
         "Beitragsfreie Verträge (PEX) bleiben in-force und gehen mit ihrer "
         "ursprünglichen Versicherungssumme in den Verlauf ein; die bei "
@@ -1016,11 +1043,6 @@ def render_html(
     if historie is not None:
         summen = ereignis_summen(gevo_ledger)
         if summen:
-            letzter = gevo_ledger["status_date"].max().date().isoformat()
-            fortschreibung_zeile = (
-                f"<li>Geschäftsvorfälle: {len(gevo_ledger)} "
-                f"(letzter am {letzter})</li>"
-            )
             summen_zeilen = "".join(
                 f"<tr><td>{s['label']} ({s['ereignis']})</td>"
                 f"<td class='num'>{s['anzahl']}</td>"
@@ -1046,7 +1068,6 @@ abgangsbereinigt: stornierte, gestorbene und abgelaufene Verträge verlassen
 den Bestand am Buchungstag. {klv_hinweis}Alle Beträge stammen aus dem
 stabilen Rechenkern.</p>"""
         else:
-            fortschreibung_zeile = "<li>Fortschreibung: keine Ereignisse im Horizont</li>"
             ereignis_html = (
                 f"\n<h2>Geschäftsvorfälle {stichtage[0].year} bis "
                 f"{stichtage[-1].year}</h2>"
@@ -1139,11 +1160,12 @@ stabilen Rechenkern.</p>"""
 <h2>Aktuarielle Kennzahlen je Stichtag, {ausw_zeitraum}</h2>
 <div class="charts">{svg_dk}</div>
 {ausw_tabelle}
-<p>Alle Werte kommen in-process aus dem stabilen Rechenkern.
-Deckungskapital: beitragspflichtig die Deckungsrückstellung kDRx_bpfl,
-nach Beitragsfreistellung die beitragsfreie Reserve (VS_bfr mal kVx_bfr).
-Rückkaufswert nur auf dem beitragspflichtigen Track (das Quell-Blatt
-definiert keine Rückkaufsregel für beitragsfreie Verträge).</p>
+<p>Alle Werte sind im Rechenkern gerechnet, nicht aus einer Lieferung
+übernommen. Deckungskapital: bei beitragspflichtigen Verträgen die
+Deckungsrückstellung (kDRx_bpfl), nach Beitragsfreistellung die
+beitragsfreie Reserve (VS_bfr mal kVx_bfr). Ein Rückkaufswert wird nur
+für beitragspflichtige Verträge ausgewiesen; für beitragsfreie Verträge
+ist im Tarifwerk keine Rückkaufsregel hinterlegt.</p>
 
 <h3>Beiträge</h3>
 <div class="charts">{svg_beitrag}</div>

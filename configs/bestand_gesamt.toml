@@ -751,7 +751,7 @@ var_i = "entry_age"
 var_j = "bu_rente"
 rho = 0.30
 # --------------------------------------------------------------------------
-# Plausibilitaets-Baender fuer das Sanity-Gate (B1).
+# Plausibilitaets-Baender fuer das Sanity-Gate (P-B1).
 # Die produktfuehrenden Leistungsspalten werden je Produkt geprueft
 # (sum_insured bei KLV, bu_rente bei BU) — die jeweils andere ist
 # strukturell 0.

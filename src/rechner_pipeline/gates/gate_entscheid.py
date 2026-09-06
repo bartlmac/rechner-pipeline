@@ -1,6 +1,7 @@
 """``gate_entscheid`` — der P9-Snapshot eines menschlichen Gates.
 
-Ein menschliches Gate (G-1 fachlich, G-2 Abnahme, G-T T-Box-Aenderung)
+Ein menschliches Gate (A-Q1 fachlich; A-M1, A-M2, A-M3 die drei
+aktuariellen Abnahmen; A-M4 Migrationsabnahme; A-K1 T-Box-Aenderung)
 endet nicht in einer Commit-Message, sondern in einem unveraenderlichen,
 inhaltsadressierten Snapshot: WER hat WAS auf WELCHEM Stand entschieden,
 mit welcher Begruendung. Der Snapshot haelt die SHA-256-Hashes aller
@@ -29,18 +30,25 @@ Schluesselmaterial liegt ausserhalb des frei editierbaren Falls und wird nie
 in Snapshot oder Ledger geschrieben. Damit kann der Fall seine eigene
 menschliche Freigabe nicht behaupten.
 
-G-2 leitet seine Pflichtbelegrollen aus dem expliziten Fall-Scope ab. Ein
-Tariffall braucht O1, G-1 und O3; ein Bestandsfall zusaetzlich den
-gruenen B1-Beleg, die vollstaendige Suite und den Abnahmebericht desselben
-Eingangs-, A-Box-, System-, Bestands- und Zwei-Stichtagsstands. G-2 validiert
-diese drei Rollen auf dem aktuellen Stand erneut. Im Abnahme-Ledger verlangt
-es ausserdem die vier festen Renderer-Artefaktrollen, prueft ihre aktuellen
-Bytes und leitet das Berichtsverdikt aus den gebundenen Inhalten neu ab.
+A-M1 und A-M4 leiten ihre Pflichtbelegrollen JE GATE aus dem expliziten
+Fall-Scope ab (ADR-009, fortgeschrieben durch ADR-010). A-M1 pinnt im
+Bestands-Scope Testergebnis und Bericht des aktuariellen Tests (gruener
+aktuartest-Ledger auf genau diesen Bytes); im Tarif-Scope ist seine
+Rollenmenge leer. A-M4 braucht im Tariffall P-Q3, A-Q1, A-M1 und P-K1; ein
+Bestandsfall zusaetzlich den gruenen P-B1-Beleg, die vollstaendige Suite
+und den Abnahmebericht desselben Eingangs-, A-Box-, System-, Bestands-
+und Zwei-Stichtagsstands. Die Reihenfolge ist erzwungen: Ein
+A-M4-Entscheid ohne geltende, signierte A-M1-Annahme auf demselben Stand
+ist unmoeglich (ADR-010); im Bestands-Scope gilt dasselbe fuer A-M2 und
+A-M3 (Entscheidung des Auftraggebers 2026-08-31), im Tarif-Scope bleibt
+es bei A-M1. Im Abnahme-Ledger verlangt A-M4 ausserdem die
+vier festen Renderer-Artefaktrollen, prueft ihre aktuellen Bytes und
+leitet das Berichtsverdikt aus den gebundenen Inhalten neu ab.
 
 Run via::
 
     python -m rechner_pipeline.gates.gate_entscheid --fall faelle/baldrian-klv-tg2015 \\
-        --gate G-1 --entscheid angenommen --entscheider "Bartek" \\
+        --gate A-Q1 --entscheid angenommen --entscheider "maintainer" \\
         --begruendung "..." --freigabe-schluessel /sicher/p9.key \
         [--repo-root .]
 
@@ -78,11 +86,12 @@ from rechner_pipeline.gates._fall_scope import (
 )
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GLOB,
-    pruefe_o3_beleg,
+    pruefe_pk1_beleg,
     systemstand,
 )
 from rechner_pipeline.models.schemas import (
     GateLedgerEntry,
+    P9_AKTUARIELLE_ABNAHMEN,
     P9_FREIGABE_VERFAHREN,
     P9_GATE_VERSION,
     P9_SNAPSHOT_SCHEMA_VERSION,
@@ -92,10 +101,26 @@ from rechner_pipeline.models.schemas import (
 )
 
 GATE_VERSION = P9_GATE_VERSION
-GUELTIGE_GATES = ("G-1", "G-2", "G-T")
+# Umzug 2026-09-01: der Rollen-/Gate-Vertrag lebt in models.zeichnung
+# (paketuebergreifend — auch ontologie.entscheide liest ihn seither).
+from rechner_pipeline.models.zeichnung import (  # noqa: E402
+    GUELTIGE_GATES,
+    lade_zeichnungsordnung as _models_lade_zeichnungsordnung,
+    zeichnungsrolle as _models_zeichnungsrolle,
+)
+#: Die drei aktuariellen Abnahmen desselben migrierten Bestands. Sie
+#: laufen ueber DENSELBEN Vertrag — je Abnahme ein Testergebnis, ein
+#: Bericht und ein Ledger des ``aktuartest``-Gates — und unterscheiden
+#: sich nur im Dateinamen, den das Gate aus der Abnahme bildet. Deshalb
+#: prueft sie ein Zweig und nicht drei: Eine Abnahme, die anders
+#: geprueft wuerde als ihre Geschwister, waere eine fachliche Aussage
+#: und keine Namensvariante. Die Liste selbst gehoert zum
+#: Snapshot-Vertrag (``models.schemas``) — sie hier zu wiederholen
+#: hiesse, dieselbe Aussage an zwei Orten zu pflegen.
+AKTUARIELLE_ABNAHMEN = P9_AKTUARIELLE_ABNAHMEN
 CLI_CONTRACT = GateCliContract(
     command="gate_entscheid",
-    gate="P9.?",
+    gate="entscheid.?",
     gate_version=GATE_VERSION,
     diagnostics_from="fall",
     decision_gate_choices=GUELTIGE_GATES,
@@ -207,6 +232,56 @@ def _freigabe_fuer(snapshot_ohne_freigabe: dict, key: bytes) -> Dict[str, str]:
     }
 
 
+#: Gates, die eine Zeichnungsordnung einer Rolle zuordnen kann. "*" heisst
+#: alle -- die Eskalationsrolle des Menschen. Massgeblich sind ALLE
+#: zeichenbaren Gates: Eine engere Liste war ein Loch der Ordnung --
+#: A-K1 liess sich zeichnen, aber keiner Rolle zuweisen (gefunden beim
+#: Aufsetzen der Vier-Rollen-Regie fuer Fall-Lauf 2).
+ZEICHNUNG_GATES = GUELTIGE_GATES
+
+
+def _lade_zeichnungsordnung(
+    raw: object, fall: Path
+) -> Tuple[Optional[dict], Optional[str], List[str]]:
+    """Zeichnungsordnung laden — delegiert an models.zeichnung.
+
+    Der Vertrag (Rollen an Fingerabdruecke, Gates an Rollen, Ordnung
+    ausserhalb des Falls, keine geteilten Schluessel) ist
+    paketuebergreifend und lebt seit dem Vier-Rollen-Modell in
+    ``models.zeichnung`` — ontologie.entscheide liest ihn ebenfalls.
+    Der Alias hier bleibt, weil Gates und Tests ihn kennen.
+    """
+    return _models_lade_zeichnungsordnung(raw, fall)
+
+
+def _zeichnungsrolle(
+    ordnung: dict, schluessel_sha256: str
+) -> Optional[str]:
+    """Die Rolle, der dieser Fingerabdruck gehoert (models.zeichnung)."""
+    return _models_zeichnungsrolle(ordnung, schluessel_sha256)
+
+def _zeichnungsfehler(
+    ordnung: Optional[dict], gate: str, schluessel_sha256: str
+) -> Optional[str]:
+    """Warum dieser Schluessel dieses Gate NICHT zeichnen darf (None = darf)."""
+    if ordnung is None:
+        return None
+    rolle = _zeichnungsrolle(ordnung, schluessel_sha256)
+    if rolle is None:
+        return (
+            "der Freigabeschluessel gehoert keiner Rolle der "
+            "Zeichnungsordnung -- wer nicht in der Ordnung steht, "
+            "zeichnet nicht"
+        )
+    gates = ordnung["rollen"][rolle].get("gates", [])
+    if "*" in gates or gate in gates:
+        return None
+    return (
+        f"die Rolle {rolle!r} ist fuer {gate} nicht zeichnungsberechtigt "
+        f"(ihre Gates: {gates or 'keine'})"
+    )
+
+
 def _pruefe_freigabe(snapshot: dict, schluesselring: Mapping[str, bytes]) -> List[str]:
     if snapshot.get("entscheid") != "angenommen":
         return []
@@ -232,23 +307,72 @@ def _snapshot_dateiname(gate: str, snapshot_sha256: str) -> str:
     return f"{gate}-{snapshot_sha256}.json"
 
 
+def pruefe_snapshot_ohne_schluessel(
+    daten: Any, dateiname: str
+) -> List[str]:
+    """Was sich an einem Entscheid-Snapshot OHNE Schluessel pruefen laesst.
+
+    Fuer Leser, die keinen Schluesselring haben duerfen — die
+    Darstellungswerkzeuge der Vorfuehrung sind genau solche Leser: Sie
+    zeigen Entscheide an, und Schluesselmaterial hat in einem
+    Darstellungswerkzeug nichts verloren.
+
+    Geprueft wird, was ohne Geheimnis pruefbar ist, und das ist mehr,
+    als es zunaechst scheint: das Schema (:class:`P9Snapshot`), die
+    Selbstadressierung (der kanonische Hash ueber alle Felder ausser
+    ihm selbst) und der Dateiname, der genau diesen Hash tragen muss.
+    Eine frei erfundene Datei scheitert daran, denn ihr Hash passt
+    nicht zu ihrem Inhalt.
+
+    NICHT geprueft wird die Freigabesignatur — sie braucht den
+    Schluessel. Wer diese Funktion benutzt, darf einen Snapshot
+    deshalb NIE als "gezeichnet" oder "signiert" ausweisen, sondern
+    nur als strukturell unversehrt; die Signaturpruefung leistet
+    ``pruefe_zeichnungskette`` mit Schluesselring. Der Unterschied ist
+    kein Detail: Externes Review T19-02 fand genau hier eine
+    kryptografische Aussage, die die Darstellungsschicht nie geprueft
+    hatte.
+
+    Rueckgabe: leere Liste = strukturell unversehrt, sonst die Befunde.
+    """
+    fehler = P9Snapshot.validate_payload(daten)
+    if fehler:
+        return fehler
+    sha = daten.get("snapshot_sha256")
+    erwarteter_hash = p9_snapshot_sha256(daten)
+    if sha != erwarteter_hash:
+        return [
+            "Selbstadressierung verletzt: der Inhalt ergibt "
+            f"{erwarteter_hash[:16]}…, der Snapshot behauptet "
+            f"{str(sha)[:16]}…"
+        ]
+    erwarteter_name = _snapshot_dateiname(str(daten.get("gate")), str(sha))
+    if dateiname != erwarteter_name:
+        return [
+            f"Dateiname {dateiname!r} passt nicht zum kanonischen "
+            f"Snapshot-Hash (erwartet {erwarteter_name!r})"
+        ]
+    return []
+
+
 def _pruefe_g2_snapshot_semantik(snapshot: dict) -> List[str]:
-    """Den aus dem Scope abgeleiteten Inhalt einer G-2-Annahme pruefen.
+    """Den aus dem Scope abgeleiteten Inhalt einer Annahme pruefen.
 
     Das paketweite P9-Schema prueft die JSON-Form. Die fachliche Rollenmenge
     wird deshalb hier auch beim LESEN eines bestehenden Snapshots erneut aus
-    dem Scope-Vertrag abgeleitet. Sonst koennte ein formal gueltiger,
-    signierter Snapshot eine Bestandsrolle auslassen und dennoch als gueltige
-    P9-Historie erscheinen.
+    dem Belegrollen-Vertrag (je Gate und Scope, ADR-009/ADR-010) abgeleitet.
+    Sonst koennte ein formal gueltiger, signierter Snapshot eine Pflichtrolle
+    auslassen und dennoch als gueltige P9-Historie erscheinen.
     """
-    if snapshot.get("gate") != "G-2" or snapshot.get("entscheid") != "angenommen":
+    gate = snapshot.get("gate")
+    if gate not in ("A-M1", "A-M4") or snapshot.get("entscheid") != "angenommen":
         return []
     fehler: List[str] = []
     scope = snapshot.get("fall_scope")
     try:
-        erwartete_rollen = fall_mod.g2_belegrollen(scope)
+        erwartete_rollen = fall_mod.belegrollen(gate, scope)
     except fall_mod.FallFehler as exc:
-        fehler.append(f"G-2-Scope ist ungueltig: {exc}")
+        fehler.append(f"{gate}-Scope ist ungueltig: {exc}")
         return fehler
     pflichtbelege = snapshot.get("pflichtbelege")
     if isinstance(pflichtbelege, dict) and set(pflichtbelege) != set(
@@ -258,17 +382,17 @@ def _pruefe_g2_snapshot_semantik(snapshot: dict) -> List[str]:
             "pflichtbelege enthaelt nicht exakt die aus dem Scope "
             f"abgeleiteten Rollen {erwartete_rollen}"
         )
-    o3_belege = snapshot.get("o3_belege")
-    if isinstance(pflichtbelege, dict) and isinstance(o3_belege, dict):
-        o3_hashes = sorted(
+    pk1_belege = snapshot.get("pk1_belege")
+    if isinstance(pflichtbelege, dict) and isinstance(pk1_belege, dict):
+        pk1_hashes = sorted(
             beleg
-            for belege_der_generation in o3_belege.values()
+            for belege_der_generation in pk1_belege.values()
             if isinstance(belege_der_generation, list)
             for beleg in belege_der_generation
         )
-        if pflichtbelege.get("o3_belege") != o3_hashes:
+        if pflichtbelege.get("pk1_belege") != pk1_hashes:
             fehler.append(
-                "pflichtbelege['o3_belege'] stimmt nicht mit der "
+                "pflichtbelege['pk1_belege'] stimmt nicht mit der "
                 "Generationen-Belegmenge ueberein"
             )
     return fehler
@@ -347,9 +471,10 @@ def _lade_snapshot_kette(
             fehler.append(
                 f"{pfad.name}: gate {daten['gate']!r} statt erwartet {gate!r}"
             )
-        if daten["fall"] != str(fall):
+        if daten["fall"] != fall.name:
             fehler.append(
-                f"{pfad.name}: Fallbindung {daten['fall']!r} statt {str(fall)!r}"
+                f"{pfad.name}: Fallbindung {daten['fall']!r} statt "
+                f"{fall.name!r}"
             )
         erwartet = _snapshot_dateiname(gate, sha)
         if pfad.name != erwartet:
@@ -379,7 +504,7 @@ def _pruefe_o1_ledger(
     abox_hash: str,
     eingang_hash: str,
 ) -> List[str]:
-    """Validate O1's full ledger schema plus its gate-specific binding."""
+    """Validate P-Q3's full ledger schema plus its gate-specific binding."""
     from rechner_pipeline.gates import abox_validate
 
     try:
@@ -456,7 +581,7 @@ def _o3_eingangsabweichungen(
     fall: Path,
     repo_root: Path,
 ) -> List[str]:
-    """Die im O3-Beleg gebundenen Dateien gegen den Jetztstand pruefen.
+    """Die im P-K1-Beleg gebundenen Dateien gegen den Jetztstand pruefen.
 
     A-Box, Spez, Quellerwartungen und ``tafeln.xml`` koennen sich auch
     ohne neuen Commit bewegen. Ein alter gruener Beleg darf dann nicht
@@ -490,7 +615,7 @@ def _passende_bestandsbelege(
     system: Mapping[str, str],
     repo_root: Path,
 ) -> Tuple[Optional[Dict[str, str]], List[str]]:
-    """B1, Suite und Abnahmebericht auf dem aktuellen Stand neu validieren."""
+    """P-B1, Suite und Abnahmebericht auf dem aktuellen Stand neu validieren."""
     from rechner_pipeline.gates import abnahmebericht
 
     ledger_pfad = diagnostics / "abnahmebericht.gate.json"
@@ -595,7 +720,7 @@ def _passende_bestandsbelege(
     input_eintraege = {
         rolle: eintrag
         for rolle, eintrag in {
-            "b1_ledger": belege["b1_ledger"],
+            "pb1_ledger": belege["pb1_ledger"],
             "migrationssuite": belege["migrationssuite"],
             **renderer_belege,
         }.items()
@@ -616,7 +741,7 @@ def _passende_bestandsbelege(
         }
         if ledger.input_hashes != erwartete_input_hashes:
             fehler.append(
-                "Abnahmebericht-Ledger.input_hashes muss exakt B1, Suite und "
+                "Abnahmebericht-Ledger.input_hashes muss exakt P-B1, Suite und "
                 "alle vier Renderer-Artefaktrollen binden"
             )
 
@@ -652,7 +777,7 @@ def _passende_bestandsbelege(
     physische_rollen = {
         **{
             rolle: pfade[rolle]
-            for rolle in ("b1_ledger", "migrationssuite")
+            for rolle in ("pb1_ledger", "migrationssuite")
             if rolle in pfade
         },
         **renderer_pfade,
@@ -835,10 +960,10 @@ def _passende_bestandsbelege(
                             fall=fall,
                         )
                     )
-        if "b1_ledger" in pfade:
+        if "pb1_ledger" in pfade:
             fehler.extend(
                 abnahmebericht._b1_fehler(
-                    ledger_pfad=pfade["b1_ledger"],
+                    ledger_pfad=pfade["pb1_ledger"],
                     fall=fall,
                     repo_root=repo_root,
                     suite=suite,
@@ -937,6 +1062,16 @@ def main(argv: Optional[List[str]] = None):
             "Die Datei muss ausserhalb des Falls liegen und privat sein."
         ),
     )
+    parser.add_argument(
+        "--zeichnungsordnung",
+        default=None,
+        help=(
+            "JSON ausserhalb des Falls: welche ROLLE (Schluessel-"
+            "Fingerabdruck) welches GATE zeichnen darf. Mit Ordnung wird "
+            "jede Annahme UND jede Vorbedingungs-Annahme dagegen "
+            "geprueft; ohne bleibt das bisherige Verhalten."
+        ),
+    )
     parser.add_argument("--repo-root", dest="repo_root", default=".")
     parser.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None)
     add_request_json_arg(parser)
@@ -954,7 +1089,7 @@ def main(argv: Optional[List[str]] = None):
         f"gate_entscheid_{ledger_gate.lower().replace('-', '')}"
         if ledger_gate else "gate_entscheid"
     )
-    ledger_gate_id = f"P9.{ledger_gate or '?'}"
+    ledger_gate_id = f"entscheid.{ledger_gate or '?'}"
     redigierte_command_line = _redigiere_schluessel_argv(
         list(argv if argv is not None else sys.argv[1:])
     )
@@ -1012,7 +1147,7 @@ def main(argv: Optional[List[str]] = None):
 
     def _sperre(code: str, message: str):
         return _finalize(build_result(
-            command=ledger_command, gate=f"P9.{args.gate}",
+            command=ledger_command, gate=f"entscheid.{args.gate}",
             gate_version=GATE_VERSION,
             exit_code=Exit.FILE_CONTRACT,
             errors=[{"code": code, "message": message}],
@@ -1020,17 +1155,17 @@ def main(argv: Optional[List[str]] = None):
         ))
 
     entscheid_systemstand = systemstand(Path(args.repo_root).resolve())
-    o3_belege: Dict[str, List[str]] = {}
+    pk1_belege: Dict[str, List[str]] = {}
     pflichtbelege: Dict[str, List[str]] = {}
     fall_scope: Optional[str] = None
-    if args.gate == "G-2":
+    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4",):
         try:
             fall_scope = fall_mod.lade_scope(fall)
         except fall_mod.FallFehler as exc:
             return _sperre(
                 "fall_scope",
-                "G-2 verweigert: Fall-Scope ist nicht maschinenlesbar "
-                f"deklariert: {exc}",
+                f"{args.gate} verweigert: Fall-Scope ist nicht "
+                f"maschinenlesbar deklariert: {exc}",
             )
     schluesselring: Dict[str, bytes] = {}
     aktiver_schluessel: Optional[str] = None
@@ -1045,6 +1180,12 @@ def main(argv: Optional[List[str]] = None):
             schluessel_geladen = True
             return fehler
         return []
+
+    zeichnungsordnung, zeichnungsordnung_sha, zo_fehler = (
+        _lade_zeichnungsordnung(args.zeichnungsordnung, fall)
+    )
+    if zo_fehler:
+        return _usage("; ".join(zo_fehler))
 
     # Annahme-Sperre: eine Annahme setzt einen integeren Fall und
     # endgueltige Entscheidungen voraus — sonst wuerde ein ungeloester
@@ -1114,53 +1255,238 @@ def main(argv: Optional[List[str]] = None):
 
         # Gate-Vorbedingungen (Systempruefung Befund 1): die Annahme
         # RECHNET ihre Voraussetzungen — sie glaubt sie nicht.
-        # Derselbe Byte-String wird validiert und gehasht: G-2 darf nicht
+        # Derselbe Byte-String wird validiert und gehasht: A-M4 darf nicht
         # versehentlich eine zwischen zwei Lesevorgaengen geaenderte A-Box
         # als den geprueften Stand protokollieren.
         abox_hash = hashlib.sha256(abox_roh).hexdigest()
         diagnostics = fall / "abgeleitet" / "diagnostics"
 
-        o1_pfad = diagnostics / "abox_validate.gate.json"
-        o1_kommando = (
+        pq3_pfad = diagnostics / "abox_validate.gate.json"
+        pq3_kommando = (
             "python -m rechner_pipeline.gates.abox_validate "
             f"--fall {fall} --repo-root {args.repo_root}"
         )
-        if not o1_pfad.is_file():
+        if not pq3_pfad.is_file():
             return _sperre(
                 "vorbedingung",
-                "Annahme verweigert: Gate O1 (abox_validate) ist nie "
-                f"gelaufen ({o1_pfad.name} fehlt) — nachholen mit: {o1_kommando}",
+                "Annahme verweigert: Gate P-Q3 (abox_validate) ist nie "
+                f"gelaufen ({pq3_pfad.name} fehlt) — nachholen mit: {pq3_kommando}",
             )
-        o1_fehler = _pruefe_o1_ledger(
-            o1_pfad,
+        pq3_fehler = _pruefe_o1_ledger(
+            pq3_pfad,
             abox_hash=abox_hash,
             eingang_hash=_sha256_datei(fall / "eingang.json"),
         )
-        if o1_fehler:
+        if pq3_fehler:
             return _sperre(
                 "vorbedingung",
-                "Annahme verweigert: Gate O1 (abox_validate) verletzt den "
+                "Annahme verweigert: Gate P-Q3 (abox_validate) verletzt den "
                 "Ledger-/Provenienzvertrag: "
-                + "; ".join(o1_fehler[:5])
-                    + f" — Gate auf dem aktuellen Stand neu fahren: {o1_kommando}",
+                + "; ".join(pq3_fehler[:5])
+                    + f" — Gate auf dem aktuellen Stand neu fahren: {pq3_kommando}",
                 )
-        if args.gate == "G-2":
-            pflichtbelege["o1_ledger"] = [_sha256_datei(o1_pfad)]
+        if args.gate == "A-M4":
+            pflichtbelege["pq3_ledger"] = [_sha256_datei(pq3_pfad)]
 
-        if args.gate == "G-2":
+        if args.gate in AKTUARIELLE_ABNAHMEN:
+            # Aktuarielle Abnahme (ADR-010): Im Bestands-Scope stuetzt
+            # sich der Entscheid auf das Testergebnis und den Bericht
+            # des aktuariellen Tests; beide werden als Pflichtbelege
+            # gepinnt und muessen vom aktuartest-Gate mit gruenem
+            # Ledger auf GENAU diesen Bytes belegt sein. Im Tarif-Scope
+            # gibt es keine Vertragslieferung und damit keine eigenen
+            # Testartefakte (Rollenmenge leer); die P-K1-Belege sind
+            # ueber artefakt_hashes ohnehin gepinnt.
+            abnahme = args.gate
+            # Dieselbe Namensbildung wie im aktuartest-Gate: A-M1 traegt
+            # den nackten Namen, die Geschwister ihr Suffix.
+            kennung = (
+                "aktuartest" if abnahme == "A-M1"
+                else f"aktuartest-{abnahme}"
+            )
+            beleg_rolle = (
+                "aktuartest" if abnahme == "A-M1"
+                else f"aktuartest_{abnahme.replace('-', '').lower()}"
+            )
+            if fall_scope == "bestand":
+                berichte = fall / "abgeleitet" / "berichte"
+                test_pfad = berichte / f"{kennung}.json"
+                bericht_pfad = berichte / f"{kennung}.html"
+                ledger_pfad = diagnostics / f"{kennung}.gate.json"
+                am1_kommando = (
+                    "python -m rechner_pipeline.gates.aktuartest "
+                    f"--fall {fall} --abnahme {abnahme} --titel <titel>"
+                )
+                fehlende = [
+                    pfad.name
+                    for pfad in (test_pfad, bericht_pfad, ledger_pfad)
+                    if not pfad.is_file()
+                ]
+                if fehlende:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: aktuarieller Test ohne "
+                        f"vollstaendige Belege ({', '.join(fehlende)} "
+                        f"fehlt) — nachholen mit: {am1_kommando}",
+                    )
+                try:
+                    am1_ledger = json.loads(
+                        ledger_pfad.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError) as exc:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: aktuartest-Ledger unlesbar: "
+                        f"{exc} — Gate neu fahren: {am1_kommando}",
+                    )
+                am1_fehler: List[str] = []
+                if am1_ledger.get("command") != kennung:
+                    am1_fehler.append(f"Ledger gehoert nicht zu {kennung}")
+                erwartete_belege = {
+                    f"abgeleitet/berichte/{kennung}.json":
+                        _sha256_datei(test_pfad),
+                    f"abgeleitet/berichte/{kennung}.html":
+                        _sha256_datei(bericht_pfad),
+                }
+                ledger_belege = am1_ledger.get("summary", {}).get("belege")
+                if ledger_belege != erwartete_belege:
+                    am1_fehler.append(
+                        "aktuartest-Ledger belegt nicht die aktuellen "
+                        "Bytes von Testergebnis und Bericht"
+                    )
+                if am1_fehler:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: "
+                        + "; ".join(am1_fehler[:5])
+                        + f" — Gate auf dem aktuellen Stand neu fahren: "
+                        f"{am1_kommando}",
+                    )
+                # Die Annahme RECHNET ihre Voraussetzungen — sie glaubt
+                # sie nicht: Das Testverdikt wird aus dem Artefakt neu
+                # abgeleitet und der Bericht bytegenau reproduziert. Ein
+                # editierter Ledger-Status oder ein handgeschriebenes
+                # Ergebnis ohne aktuellen Systemstand oeffnet die Abnahme nicht.
+                from rechner_pipeline.gates import aktuartest as am1_gate
+
+                try:
+                    am1_test = json.loads(
+                        test_pfad.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError) as exc:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: Testergebnis unlesbar: "
+                        f"{exc} — Gate neu fahren: {am1_kommando}",
+                    )
+                try:
+                    am1_test_fehler = am1_gate.test_fehler(am1_test)
+                except (TypeError, ValueError, KeyError, AttributeError) as exc:
+                    am1_test_fehler = [
+                        f"strukturell unlesbar ({type(exc).__name__}: {exc})"
+                    ]
+                if am1_test_fehler:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: Testergebnis verletzt den "
+                        "Aktuartest-Vertrag: "
+                        + "; ".join(am1_test_fehler[:5]),
+                    )
+                # Die Annahme glaubt dem Dateinamen nicht: Ein
+                # A-M1-Ergebnis, das jemand unter dem Namen des
+                # Verlaufstests ablegt, wuerde sonst den Ablauf
+                # zeichnen, ohne ihn geprueft zu haben.
+                gemeldete_abnahme = (
+                    am1_test.get("profil", {}).get("kennung")
+                    if isinstance(am1_test.get("profil"), dict) else None
+                )
+                if gemeldete_abnahme != abnahme:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: das Testergebnis gehoert zu "
+                        f"{gemeldete_abnahme!r}, gezeichnet werden soll "
+                        f"aber {abnahme} — Test der richtigen Abnahme "
+                        f"fahren: {am1_kommando}",
+                    )
+                if am1_test.get("test_bestanden") is not True:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: der aktuarielle Test ist "
+                        "nicht bestanden — eine Annahme ohne gruene "
+                        "Vorlage waere ohne Grundlage (Ablehnung bleibt "
+                        "moeglich)",
+                    )
+                if am1_test.get("system") != entscheid_systemstand:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: das Testergebnis traegt "
+                        "nicht den aktuellen Systemstand — Test und "
+                        f"Gate neu fahren: {am1_kommando}",
+                    )
+                am1_titel = (
+                    am1_ledger.get("summary", {})
+                    .get("bericht_erzeugung", {})
+                )
+                if not isinstance(am1_titel, dict):
+                    am1_titel = {}
+                try:
+                    am1_html = am1_gate.baue_bericht(
+                        titel=str(am1_titel.get("titel", "")),
+                        test=am1_test,
+                    )
+                except (TypeError, ValueError, KeyError) as exc:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: Vorlage nicht "
+                        f"reproduzierbar ({type(exc).__name__}: {exc})",
+                    )
+                if am1_html.encode("utf-8") != bericht_pfad.read_bytes():
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: der Bericht ist nicht die "
+                        "deterministische Wiedergabe des Testergebnisses "
+                        f"— Gate neu fahren: {am1_kommando}",
+                    )
+                pflichtbelege[beleg_rolle] = [
+                    erwartete_belege[f"abgeleitet/berichte/{kennung}.json"]
+                ]
+                pflichtbelege[f"{beleg_rolle}_bericht"] = [
+                    erwartete_belege[f"abgeleitet/berichte/{kennung}.html"]
+                ]
+            erwartete_rollen = fall_mod.belegrollen(
+                abnahme, fall_scope or ""
+            )
+            if set(pflichtbelege) != set(erwartete_rollen):
+                fehlende_rollen = sorted(
+                    set(erwartete_rollen) - set(pflichtbelege)
+                )
+                fremde_rollen = sorted(
+                    set(pflichtbelege) - set(erwartete_rollen)
+                )
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: aus dem Fall-Scope abgeleitete "
+                    f"Pflichtbelege unvollstaendig; fehlen="
+                    f"{fehlende_rollen}, fremd={fremde_rollen}",
+                )
+            pflichtbelege = {
+                rolle: pflichtbelege[rolle] for rolle in erwartete_rollen
+            }
+
+        if args.gate == "A-M4":
             # Die Generationen werden nicht geraten, sondern aus der A-Box
             # genommen — und JE GENERATION als eigene Zeile ausgegeben:
             # ein zusammengesetztes "klv/tg2012|klv/tg2015" waere in der
             # Shell eine Pipe und damit kein Kommando, das ein Bediener
-            # uebernehmen kann. O3 laeuft ohnehin je Generation.
+            # uebernehmen kann. P-K1 laeuft ohnehin je Generation.
             generationen = sorted(g.id for g in abox.generationen)
             if not generationen:
                 return _sperre(
                     "vorbedingung",
                     "Annahme verweigert: die A-Box enthaelt keine Generation - "
-                    "damit existiert keine O3-Pruefmenge",
+                    "damit existiert keine P-K1-Pruefmenge",
                 )
-            o3_kommando = "\n".join(
+            pk1_kommando = "\n".join(
                 "python -m rechner_pipeline.gates.generation_golden "
                 f"--fall {fall} --generation {generation} "
                 f"--repo-root {args.repo_root}"
@@ -1170,21 +1496,21 @@ def main(argv: Optional[List[str]] = None):
             if not beleg_dateien:
                 return _sperre(
                     "vorbedingung",
-                    "Annahme verweigert: kein unveraenderlicher O3-Beleg "
-                    f"vorhanden - je A-Box-Generation nachholen mit:\n{o3_kommando}",
+                    "Annahme verweigert: kein unveraenderlicher P-K1-Beleg "
+                    f"vorhanden - je A-Box-Generation nachholen mit:\n{pk1_kommando}",
                 )
 
             geladene_belege: List[dict] = []
             beleg_fehler: List[str] = []
             for pfad in beleg_dateien:
-                daten, fehler = pruefe_o3_beleg(pfad)
+                daten, fehler = pruefe_pk1_beleg(pfad)
                 beleg_fehler.extend(fehler)
                 if daten is not None and not fehler:
                     geladene_belege.append(daten)
             if beleg_fehler:
                 return _sperre(
                     "vorbedingung",
-                    "Annahme verweigert: O3-Belegvertrag verletzt: "
+                    "Annahme verweigert: P-K1-Belegvertrag verletzt: "
                     + "; ".join(beleg_fehler[:5]),
                 )
 
@@ -1210,10 +1536,10 @@ def main(argv: Optional[List[str]] = None):
                 fehlend = sorted(erwartet - belegt)
                 zusaetzlich = sorted(belegt - erwartet)
                 if fehlend:
-                    teile.append(f"O3-Beleg fehlt fuer {fehlend}")
+                    teile.append(f"P-K1-Beleg fehlt fuer {fehlend}")
                 if zusaetzlich:
                     teile.append(
-                        f"O3-Belegmenge enthaelt fremde Generationen {zusaetzlich}"
+                        f"P-K1-Belegmenge enthaelt fremde Generationen {zusaetzlich}"
                     )
                 abox_abweichend = sorted({
                     beleg["generation"] for beleg in geladene_belege
@@ -1246,16 +1572,16 @@ def main(argv: Optional[List[str]] = None):
                         )
                     ]
                     teile.append(
-                        "O3-Eingangsartefakte abweichend fuer "
+                        "P-K1-Eingangsartefakte abweichend fuer "
                         f"{input_abweichend}: " + "; ".join(details[:3])
                     )
                 return _sperre(
                     "vorbedingung",
                     "Annahme verweigert: " + "; ".join(teile)
-                    + f" - O3 auf dem aktuellen Stand neu fahren:\n{o3_kommando}",
+                    + f" - P-K1 auf dem aktuellen Stand neu fahren:\n{pk1_kommando}",
                 )
 
-            o3_belege = {
+            pk1_belege = {
                 generation: sorted(
                     beleg["beleg_sha256"]
                     for beleg in passende_belege
@@ -1263,12 +1589,12 @@ def main(argv: Optional[List[str]] = None):
                 )
                 for generation in generationen
             }
-            pflichtbelege["o3_belege"] = sorted(
+            pflichtbelege["pk1_belege"] = sorted(
                 beleg_sha
-                for belege_der_generation in o3_belege.values()
+                for belege_der_generation in pk1_belege.values()
                 for beleg_sha in belege_der_generation
             )
-            # Geltender G-1-Annahme-Snapshot auf DIESEM A-Box-Stand.
+            # Geltender A-Q1-Annahme-Snapshot auf DIESEM A-Box-Stand.
             schluessel_fehler = _schluessel_laden()
             if schluessel_fehler:
                 return _sperre(
@@ -1276,47 +1602,127 @@ def main(argv: Optional[List[str]] = None):
                     "Annahme verweigert: externe Freigabeschluessel "
                     "ungueltig: " + "; ".join(schluessel_fehler[:5]),
                 )
-            verzeichnis_g1 = entscheide_verzeichnis(fall)
-            g1_snapshots, g1_spitzen, g1_fehler = _lade_snapshot_kette(
-                verzeichnis_g1, "G-1", fall, schluesselring
+            verzeichnis_aq1 = entscheide_verzeichnis(fall)
+            aq1_snapshots, aq1_spitzen, aq1_fehler = _lade_snapshot_kette(
+                verzeichnis_aq1, "A-Q1", fall, schluesselring
             )
-            if g1_fehler:
+            if aq1_fehler:
                 return _sperre(
                     "vorbedingung",
-                    "Annahme verweigert: G-1-Snapshot-Vertrag verletzt: "
-                    + "; ".join(g1_fehler[:5]),
+                    "Annahme verweigert: A-Q1-Snapshot-Vertrag verletzt: "
+                    + "; ".join(aq1_fehler[:5]),
                 )
-            g1_spitze = (
-                g1_snapshots[g1_spitzen[0]][1] if len(g1_spitzen) == 1 else None
+            aq1_spitze = (
+                aq1_snapshots[aq1_spitzen[0]][1] if len(aq1_spitzen) == 1 else None
             )
             eingang_hash = _sha256_datei(fall / "eingang.json")
             passend = (
-                g1_spitze is not None
-                and g1_spitze["entscheid"] == "angenommen"
-                and g1_spitze["artefakt_hashes"].get(
+                aq1_spitze is not None
+                and aq1_spitze["entscheid"] == "angenommen"
+                and aq1_spitze["artefakt_hashes"].get(
                     "abgeleitet/abox/abox.json"
                 ) == abox_hash
-                and g1_spitze["artefakt_hashes"].get("eingang.json")
+                and aq1_spitze["artefakt_hashes"].get("eingang.json")
                 == eingang_hash
-                and g1_spitze["artefakt_hashes"].get("fall.json")
+                and aq1_spitze["artefakt_hashes"].get("fall.json")
                 == _sha256_datei(fall / "fall.json")
-                and g1_spitze["system"] == entscheid_systemstand
+                and aq1_spitze["system"] == entscheid_systemstand
             )
             if not passend:
                 return _sperre(
                     "vorbedingung",
-                    "Annahme verweigert: keine eindeutige, signierte G-1-"
+                    "Annahme verweigert: keine eindeutige, signierte A-Q1-"
                     "ANNAHME auf aktuellem Scope-, Eingangs-, A-Box- und "
                     "Systemstand "
-                    "— G-2 nimmt denselben Stand ab, den G-1 gesehen hat, "
-                    "oder gar keinen (G-1 auf diesem Stand entscheiden mit: python -m "
+                    "— A-M4 nimmt denselben Stand ab, den A-Q1 gesehen hat, "
+                    "oder gar keinen (A-Q1 auf diesem Stand entscheiden mit: python -m "
                     "rechner_pipeline.gates.gate_entscheid --fall "
-                    f"{fall} --gate G-1 --entscheid angenommen --rolle mensch "
+                    f"{fall} --gate A-Q1 --entscheid angenommen --rolle mensch "
                     "--entscheider <name> --begruendung <text> "
                     "--freigabe-schluessel <externe-datei>)",
                 )
-            assert g1_spitze is not None
-            pflichtbelege["g1_snapshot"] = [g1_spitze["snapshot_sha256"]]
+            assert aq1_spitze is not None
+            zf = _zeichnungsfehler(
+                zeichnungsordnung, "A-Q1",
+                aq1_spitze.get("freigabe", {}).get("schluessel_sha256", ""),
+            )
+            if zf:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: die geltende A-Q1-Annahme wurde "
+                    f"von einem unberechtigten Schluessel gezeichnet -- {zf}",
+                )
+            pflichtbelege["aq1_snapshot"] = [aq1_spitze["snapshot_sha256"]]
+
+            # Die aktuariellen Abnahmen gehen A-M4 voraus: A-M1 immer
+            # (ADR-010), im Bestands-Scope auch A-M2 und A-M3
+            # (Entscheidung Auftraggeber 2026-08-31). Vorher war nur A-M1
+            # Voraussetzung — ein Bestand mit richtigem Stichtagswert und
+            # falscher Ablaufleistung kam also durch das Controlling. Die
+            # Rueckschleife bleibt zulaessig (neue Snapshots), nur die
+            # Umkehrung nicht. Im Tarif-Scope gibt es keinen Bestand,
+            # dessen Verlauf oder Geschaeftsvorfaelle A-M2/A-M3 abnehmen
+            # koennten — dort bleibt es bei A-M1.
+            pflicht_abnahmen = ["A-M1"] + (
+                ["A-M2", "A-M3"] if fall_scope == "bestand" else []
+            )
+            for abnahme_gate in pflicht_abnahmen:
+                snapshots_a, spitzen_a, ketten_fehler_a = (
+                    _lade_snapshot_kette(
+                        verzeichnis_aq1, abnahme_gate, fall, schluesselring
+                    )
+                )
+                if ketten_fehler_a:
+                    return _sperre(
+                        "vorbedingung",
+                        f"Annahme verweigert: {abnahme_gate}-Snapshot-"
+                        "Vertrag verletzt: "
+                        + "; ".join(ketten_fehler_a[:5]),
+                    )
+                spitze_a = (
+                    snapshots_a[spitzen_a[0]][1]
+                    if len(spitzen_a) == 1 else None
+                )
+                passend_a = (
+                    spitze_a is not None
+                    and spitze_a["entscheid"] == "angenommen"
+                    and spitze_a["artefakt_hashes"].get(
+                        "abgeleitet/abox/abox.json"
+                    ) == abox_hash
+                    and spitze_a["artefakt_hashes"].get("eingang.json")
+                    == eingang_hash
+                    and spitze_a["artefakt_hashes"].get("fall.json")
+                    == _sha256_datei(fall / "fall.json")
+                    and spitze_a["system"] == entscheid_systemstand
+                )
+                if not passend_a:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: keine eindeutige, signierte "
+                        f"{abnahme_gate}-ANNAHME (aktuarielle Abnahme) auf "
+                        "aktuellem Eingangs-, A-Box- und Systemstand — die "
+                        "aktuariellen Abnahmen gehen A-M4 voraus (A-M1: "
+                        "ADR-010; A-M2/A-M3 im Bestands-Scope: Entscheidung "
+                        "2026-08-31; entscheiden mit: python -m "
+                        "rechner_pipeline.gates.gate_entscheid --fall "
+                        f"{fall} --gate {abnahme_gate} --entscheid angenommen "
+                        "--rolle mensch --entscheider <name> --begruendung "
+                        "<text> --freigabe-schluessel <externe-datei>)",
+                    )
+                assert spitze_a is not None
+                zf = _zeichnungsfehler(
+                    zeichnungsordnung, abnahme_gate,
+                    spitze_a.get("freigabe", {}).get("schluessel_sha256", ""),
+                )
+                if zf:
+                    return _sperre(
+                        "vorbedingung",
+                        f"Annahme verweigert: die geltende {abnahme_gate}-"
+                        "Annahme wurde von einem unberechtigten Schluessel "
+                        f"gezeichnet -- {zf}",
+                    )
+                rolle_a = f"am{abnahme_gate[-1]}_snapshot"
+                pflichtbelege[rolle_a] = [spitze_a["snapshot_sha256"]]
 
             if fall_scope == "bestand":
                 bestandsbelege, bestands_fehler = _passende_bestandsbelege(
@@ -1333,13 +1739,13 @@ def main(argv: Optional[List[str]] = None):
                         "Annahme verweigert: Bestandsbelege verletzen "
                         "den Beleg-/Provenienzvertrag: "
                         + "; ".join(bestands_fehler[:5])
-                        + " — B1, vollstaendige Migrationssuite und Abnahmebericht "
+                        + " — P-B1, vollstaendige Migrationssuite und Abnahmebericht "
                         "auf demselben Stand neu erzeugen",
                     )
                 for rolle, beleg_sha256 in bestandsbelege.items():
                     pflichtbelege[rolle] = [beleg_sha256]
 
-            erwartete_rollen = fall_mod.g2_belegrollen(fall_scope or "")
+            erwartete_rollen = fall_mod.am4_belegrollen(fall_scope or "")
             if set(pflichtbelege) != set(erwartete_rollen):
                 fehlende_rollen = sorted(set(erwartete_rollen) - set(pflichtbelege))
                 fremde_rollen = sorted(set(pflichtbelege) - set(erwartete_rollen))
@@ -1381,14 +1787,22 @@ def main(argv: Optional[List[str]] = None):
         "entscheider": args.entscheider,
         "rolle": args.rolle,
         "begruendung": args.begruendung,
-        "fall": str(fall),
+        # Der NAME des Falls, nicht sein Pfad. Das Feld dient der
+        # Identitaet ("gehoert dieser Snapshot zu diesem Fall?"), und
+        # dafuer ist ein absoluter Pfad schlecht: Er bricht, sobald der
+        # Fall umzieht, und er traegt das Heimatverzeichnis des
+        # Bedieners in ein signiertes und moeglicherweise
+        # veroeffentlichtes Artefakt. Der Name leistet dasselbe und ist
+        # neutral.
+        "fall": fall.name,
         "artefakt_hashes": _artefakt_hashes(fall, ausser_gate=args.gate),
         "system": entscheid_systemstand,
     }
-    if args.gate == "G-2":
-        kern_inhalt["o3_belege"] = o3_belege
+    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4",):
         kern_inhalt["fall_scope"] = fall_scope
         kern_inhalt["pflichtbelege"] = pflichtbelege
+    if args.gate == "A-M4":
+        kern_inhalt["pk1_belege"] = pk1_belege
     # Idempotenz gegen den GELTENDEN Snapshot: derselbe Entscheid auf
     # demselben Stand wird gemeldet, nicht dupliziert. Ein INHALTLICH
     # anderer Entscheid erzeugt einen neuen Snapshot, der alle
@@ -1396,7 +1810,7 @@ def main(argv: Optional[List[str]] = None):
     for pfad, daten in geltende:
         if all(daten.get(k) == v for k, v in kern_inhalt.items()):
             return _finalize(build_result(
-                command=ledger_command, gate=f"P9.{args.gate}",
+                command=ledger_command, gate=f"entscheid.{args.gate}",
                 gate_version=GATE_VERSION, exit_code=Exit.OK,
                 paths={"fall": str(fall), "snapshot": str(pfad)},
                 summary={"gate": args.gate, "entscheid": args.entscheid,
@@ -1421,6 +1835,21 @@ def main(argv: Optional[List[str]] = None):
                 "ist erforderlich; ein frei editierbarer Fall darf seine "
                 "menschliche Freigabe nicht selbst behaupten",
             )
+        zf = _zeichnungsfehler(zeichnungsordnung, args.gate, aktiver_schluessel)
+        if zf:
+            return _sperre(
+                "zeichnung",
+                f"Annahme verweigert: {zf}",
+            )
+        if zeichnungsordnung is not None:
+            # Die Rollenbindung wandert IN den Snapshot und wird
+            # mitsigniert: Wer spaeter prueft, sieht nicht nur DASS
+            # gezeichnet wurde, sondern als welche Rolle unter welcher
+            # Ordnung.
+            snapshot["zeichnung"] = {
+                "rolle": _zeichnungsrolle(zeichnungsordnung, aktiver_schluessel),
+                "ordnung_sha256": zeichnungsordnung_sha,
+            }
         snapshot["freigabe"] = _freigabe_fuer(
             snapshot, schluesselring[aktiver_schluessel]
         )
@@ -1458,12 +1887,12 @@ def main(argv: Optional[List[str]] = None):
         ergebnis_summary["freigabe_schluessel_sha256"] = snapshot["freigabe"][
             "schluessel_sha256"
         ]
-    if args.gate == "G-2":
-        ergebnis_summary["o3_belege"] = o3_belege
+    if args.gate == "A-M4":
+        ergebnis_summary["pk1_belege"] = pk1_belege
         ergebnis_summary["fall_scope"] = fall_scope
         ergebnis_summary["pflichtbelege"] = pflichtbelege
     return _finalize(build_result(
-        command=ledger_command, gate=f"P9.{args.gate}",
+        command=ledger_command, gate=f"entscheid.{args.gate}",
         gate_version=GATE_VERSION, exit_code=Exit.OK,
         paths={"fall": str(fall), "snapshot": str(ziel)},
         summary=ergebnis_summary,

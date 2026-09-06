@@ -7,11 +7,15 @@ format:
 ---
 
 > Tarifplan des **Zielrechenkerns** (`rechner_pipeline.kern`, ab Version
-> 2.0.0). Das Produkt ist in der Mathematik des Kerns beschrieben
-> (Zustandsmodell, Thiele-Rekursion); die Gliederung ist für alle
-> Produkte des Kerns dieselbe. Historische Provenienz: einmalige
+> 2.0.0): die **Ausgestaltung** dieses Produkts. Das gemeinsame
+> Rückgrat — Zustandsraum, Thiele-Rekursion, Rechnungsgrundlagen-Schicht,
+> Numerik — steht einmal in der
+> [Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md) und
+> wird hier nicht wiederholt; die
+> Gliederung ist für alle Produkte des Kerns dieselbe. Historische
+> Provenienz: einmalige
 > Migration aus dem Quell-Workbook (Übersetzungsbeleg: 617/617 am
-> 22.07.2026 — historisch, kein laufender Anker); Quellnamen
+> 22.07.2026 — historisch, kein laufender Referenzwert); Quellnamen
 > der Größen (`Bxt`, `kVx_MRV`, …) sind bewusst erhalten
 > (Provenienz-Prinzip).
 
@@ -39,29 +43,19 @@ Zwei Zustände, ein Übergang:
 Der Verbleib ist das Residuum $1 - q_x$; eine Dauerabhängigkeit gibt es
 nicht (Markov, Select-Periode 0).
 
-# 3 Bewertung: Thiele-Rückwärtsrekursion
+# 3 Bewertung
 
-Alle Produkte des Kerns rechnen auf demselben Rückgrat
-(`kern/zustandsmodell.py`). Der Barwert im Zustand $s$ zu Beginn des
-Jahres $j$ folgt der Rückwärtsrekursion
+Die Bewertungsgleichung ist nicht produktspezifisch: Zustandsraum,
+Thiele-Rückwärtsrekursion, Fälligkeits- und Diskontierungskonventionen
+stehen in der
+[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
+Abschnitte 3 und 4.
 
-$$
-V_j(s) \;=\; z(s, j) \;+\; v \cdot \sum_{s'} p_{s \to s'}(x_0 + j,\, d)
-\cdot \bigl( u(s, s', j) + V_{j+1}(s') \bigr),
-\qquad v = \tfrac{1}{1+i},
-$$
-
-mit vorschüssigen Zustandszahlungen $z$ und nachschüssigen
-Übergangszahlungen $u$ (fällig am Ende des Übergangsjahres). Die
-Übergangswahrscheinlichkeiten hängen neben dem erreichten Alter
-optional von der Verweildauer $d$ im Zustand ab (Semi-Markov über
-Zustandsraum-Erweiterung); der Verbleib ist stets das Residuum. Für
-dieses Produkt entfällt die Dauerabhängigkeit.
-
-Die klassische Kommutations-Schiene lebt als separater Zweitkern
-(`rechner_pipeline.kommutationskern`) ausschließlich für den
-Kreuz-Check weiter (Toleranz-Überleitung, `qa/ueberleitung`); sie ist
-kein Bestandteil des Zielkerns.
+Für dieses Produkt entfällt die Dauerabhängigkeit ($d_{\max} = 0$,
+Markov). Zusätzlich existiert eine Kommutations-Vergleichsschiene: Der
+klassische Zweitkern (`rechner_pipeline.kommutationskern`) rechnet
+dasselbe Produkt auf dem alten Weg, ausschließlich als Kreuz-Check
+(`qa/ueberleitung`).
 
 # 4 Zahlungsprofile
 
@@ -143,20 +137,86 @@ $a \ge n -$ `min_rlz_flex`.
 
 # 7 Geschäftsvorfälle (GeVo-Katalog)
 
-Buchung auf Vertragsjahrestagen (Jahr $a$ wirtschaftet, Buchung am
-Jahrestag $a{+}1$); jeder Betrag kommt aus dem Kern. Die
-Eintrittswahrscheinlichkeiten der Fortschreibung sind
-Erfahrungsannahmen (dritte Ordnung), nicht die Rechnungsgrundlagen —
-siehe Abschnitt 10.
+Buchungskonvention und die Einordnung der
+Eintrittswahrscheinlichkeiten:
+[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
+Abschnitt 7. Jeder Betrag kommt aus dem Kern.
 
 | GeVo | Wirkung | Betrag |
 |---|---|---|
 | **ZUG** Zugang | POL-Basiszeile ab Versicherungsbeginn | $S$ (Bestandsvolumen) |
 | **ERH** dynamische Erhöhung | neue Scheibe: eigener Modellpunkt mit $x' = x{+}a$, $n' = n{-}a$, $t' = t{-}a$, $S' = e \cdot S^{ges}$ (Zinseszins), ohne $\gamma_1$ (Bezugsgröße GrundVS); kein Statuswechsel | $S'$ |
 | **PEX** Beitragsfreistellung | Statuswechsel; fixiert $\sum_{\text{Scheiben}} S^{bfr}_a$; danach beitragsfreier Track | $\sum S^{bfr}_a$ |
+| **RED** Beitragsherabsetzung | Beitrag sinkt am Jahrestag $a_0$ auf den Anteil $f$; der Vertrag wird NICHT geteilt, sondern bekommt ein geknicktes Zahlungsprofil (7.1). Kein Statuswechsel; StoAb/RKW weiterhin vertragsweit; eine spätere PEX fixiert die Gesamtsumme | $\Delta DK$ (0 bei verlustfreier Umwandlung) |
 | **STO** Rückkauf | terminal; nur beitragspflichtig, $a < n$ | $\text{RKW}_a$ (vertragsweiter StoAb) |
 | **TOD** Tod | terminal | $S^{ges}$ bzw. nach PEX $\sum S^{bfr}$ |
 | **ABL** Ablauf | terminal bei $a = n$ | $S^{ges}$ bzw. $\sum S^{bfr}$ |
+
+## 7.1 Beitragsherabsetzung: Zahlungsprofil und Geltungsbereich
+
+Der herabgesetzte Vertrag ist **ein** Vertrag mit geknicktem Verlauf,
+nicht die Summe zweier Verträge. Ab dem Reduktionsjahr $a_0$ gilt,
+relativ zur Ursprungssumme $S$:
+
+| Größe | vor $a_0$ | ab $a_0$ |
+|---|---|---|
+| Beitrag | $1$ | $f$ |
+| Leistung (Todes- und Erlebensfall, Ablauf) | $1$ | $f + q$ |
+| beitragspflichtige Verwaltungskosten ($\gamma_2$) | $1$ | $f$ |
+| beitragsfreie Verwaltungskosten ($\gamma_3$) | $0$ | $q$ |
+
+$q$ ist die umgewandelte beitragsfreie Summe relativ zu $S$. Sie ist die
+**einzige** Größe, in der sich die beiden Verfahren unterscheiden:
+
+$$
+q^{\text{prospektiv}} = (1-f)\,\frac{{}_{a_0}V^{bpfl}}{{}_{a_0}V^{bfr}},
+\qquad
+q^{\text{mit Abzug}} = (1-f)\,
+\frac{{}_{a_0}DR^{bpfl} - \text{StoAb}_{a_0}}{S \cdot {}_{a_0}V^{bfr}} .
+$$
+
+Das prospektive Verfahren wandelt verlustfrei um; das Altverfahren
+behandelt den freiwerdenden Anteil wie eine Teilkündigung und erhebt den
+anteiligen Stornoabschlag, bevor es umwandelt. Bei $f = 0$ sind beide
+die vollständige Beitragsfreistellung, bei $f = 1$ ändert sich nichts.
+Welches Verfahren gilt, ist eine Eigenschaft des rechnenden **Systems**
+und keine des Vertrags — es steht deshalb im Beleg einer Migration, nicht
+im Modellpunkt.
+
+Die Reserve rechnet die Rekursion aus diesem Profil; sie skaliert keinen
+Ursprungsvertrag hoch. Der Unterschied ist nicht die Schreibweise:
+Skalierung setzt **Homogenität in der Versicherungssumme** voraus und
+gilt nur für den ungeteilten Vertrag exakt. Ein Profil beschreibt, was
+gezahlt wird, und braucht diese Voraussetzung nicht.
+
+**Bei geschichteten Verträgen wirkt die Herabsetzung anteilig.** Trägt
+der Vertrag dynamische Erhöhungsscheiben, so trägt jede Schicht denselben
+Faktor $f$ und wandelt ihren freiwerdenden Anteil mit **ihrem eigenen**
+beitragsfreien Reservesatz um; jede Schicht rechnet dabei in ihrem
+eigenen Vertragsjahr $a_i = a_0 - e_i$, wobei $e_i$ ihr Erhöhungsjahr ist.
+
+Anteilig ist keine Wahl unter mehreren, sondern die Folge der
+Beitragsdefinition: Weil der Jahresbeitrag jeder Schicht proportional zu
+ihrer Summe ist, ergibt derselbe Faktor je Schicht in der Summe genau den
+Zielbeitrag,
+
+$$
+\sum_i f \cdot \text{BJB}_i = f \sum_i \text{BJB}_i .
+$$
+
+**Der Stornoabschlag bleibt vertragsweit** (Abschnitt 6): einmal auf den
+Gesamtwerten gebildet und dann proportional zur Deckungsrückstellung der
+Schicht getragen —
+
+$$
+q_i^{\text{mit Abzug}} = (1-f)\,
+\Bigl(1 - \frac{\text{StoAb}^{ges}_{a_0}}{DR^{ges}_{a_0}}\Bigr)
+\frac{{}_{a_i}V^{bpfl}}{{}_{a_i}V^{bfr}} .
+$$
+
+Je Schicht gebildet griffen $u_{\min}$ und $u_{\max}$ mehrfach, und ein
+Vertrag mit zwei Erhöhungen verlöre beim Herabsetzen mehr als den
+zugesagten Abschlag.
 
 # 8 Modellpunkt und Tarif-Stellschrauben
 
@@ -188,34 +248,44 @@ Tarifgeneration ist eine Parametrierung, keine Formeländerung:
 * Tafelbereich: Alter ab der Tafel-Erschöpfung (erstes Alter nach
   $q_x \ge 1$, z. B. DAV 1994 T ab Alter 101) sind fail-fast; kein
   Alter über 123.
-* Wegzugsummen je Zustand müssen $\le 1$ sein (Engine fail-fast).
 * Kein Storno beitragsfreier Verträge (keine RKW-Regel definiert).
 
 # 10 Abgrenzung: Bewertung und Fortschreibung
 
 Dieser Tarifplan beschreibt die **Bewertung** auf den
-Rechnungsgrundlagen erster Ordnung. Wie sich ein Bestand über die Zeit
-entwickelt, steuern davon getrennte **Erfahrungsannahmen** (dritte
-Ordnung, `[annahmen]` der Bestands-Config): jede
-Ereigniswahrscheinlichkeit entsteht daraus als
-$a + b \cdot (\text{erste Ordnung})$. Beiträge und Reserven bleiben
-davon unberührt.
+Rechnungsgrundlagen erster Ordnung. Wie ein Bestand dieses Produkts im
+Vorzeigebetrieb fortgeschrieben wird, ist keine Eigenschaft des Tarifs,
+sondern des Simulationswerkzeugs
+(`docs/simulation/erfahrungsannahmen.md`); die dort verwendeten
+Annahmen wirken nie in Beitrag oder Reserve zurueck
+([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
+Abschnitt 5.2).
 
-# 11 Verankerung und Abnahme
+# 11 Referenzwerte und Abnahme
 
-Charakterisierungs-Anker in voller Float-Präzision (Voll-Präzisions-
-Verankerung des produktiven Pfads), Toleranz-Überleitung gegen den
-separaten Kommutations-Zweitkern (`qa/ueberleitung`), je Migrationsfall
-Gate O3 gegen den Quell-Rechner. Die einmalige 617/617-Excel-Parität
-(22.07.2026, 4 Nachkommastellen) ist der historische Übersetzungsbeleg,
-kein laufender Anker. Änderungen folgen dem
-Abnahme-Protokoll des Kerns (`kern/__init__`).
+Das Abnahme-Protokoll gilt für alle Produkte
+([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
+Abschnitt 11). Für dieses Produkt sind
+gesichert: die eingefrorenen Referenzwerte des produktiven Pfads, die
+Toleranz-Überleitung gegen den Kommutations-Zweitkern
+(`qa/ueberleitung`) und je Migrationsfall Gate P-K1 gegen den
+Quell-Rechner. Die einmalige 617/617-Excel-Parität (22.07.2026, 4
+Nachkommastellen) ist der historische Übersetzungsbeleg, kein
+laufender Referenzwert.
 
 # 12 Vorgesehene Erweiterungen
 
-Beitragsreduktion, Wiederinkraftsetzung, monatsgenaues Ereignisgitter,
+Wiederinkraftsetzung, monatsgenaues Ereignisgitter,
 Überschussbeteiligung — jeweils als GeVo-Formeln in Abschnitt 7 zu
 ergänzen, bevor sie implementiert werden.
+
+Die **Beitragsherabsetzung** stand hier, zuletzt nur noch mit ihrer
+Verteilungsregel für geschichtete Verträge; seit 2026-08-31 ist sie
+vollständig in 7.1 zugesagt (anteilig über alle Schichten,
+Stornoabschlag vertragsweit). Verworfen wurden dabei „jüngste Schicht
+zuerst" — wegabhängig und ohne Regel für die teilweise zurückgenommene
+Schicht — und „nur die Grundscheibe", das den Beitrag der
+Erhöhungsscheiben unsenkbar ließe.
 
 # 13 PLV-Bestandsgenerationen
 
@@ -225,7 +295,7 @@ Migrationsfälle übernehmen fremde Bestände in die PLV. Ihre neun
 KLV-Bestandsgenerationen sind konstruiert (kein Migrationsfall, keine
 Quell-Provenienz) und tragen — wie jede Generation, die das System
 rechnet — eine **Ontologie-Knoten-ID** (Pflichtfeld `knoten` der
-Bestand-Config, dieselbe Konvention wie A-Box und Gate O3; Wurzel =
+Bestand-Config, dieselbe Konvention wie A-Box und Gate P-K1; Wurzel =
 Produktfamilie, Präfix `plv_` = PLV-eigene Generation ohne
 Migrationsfall):
 
@@ -242,7 +312,7 @@ Migrationsfall):
 | `klv/plv_2022` | KLV-2022 | 2022-01–2035-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
 
 Migrierte Generationen kommen erst nach ihrer fachlichen Abnahme
-(G-1/G-2) in eine Bestand-Config — dann mit der Knoten-ID ihres
-Migrationsfalls (z. B. `klv/tg2015`) und der durch Gate O3 geprüften
-Parametrierung. Diese Tabelle ist test-verankert gegen die Config:
-weicht sie ab, fällt die Suite.
+(A-Q1/A-M1/A-M4) in eine Bestand-Config — dann mit der Knoten-ID ihres
+Migrationsfalls (z. B. `klv/tg2015`) und der durch Gate P-K1 geprüften
+Parametrierung. Diese Tabelle wird maschinell gegen die Bestandskonfiguration
+geprüft; eine Abweichung ist ein Fehler und blockiert.

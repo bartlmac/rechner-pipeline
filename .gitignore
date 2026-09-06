@@ -17,7 +17,8 @@ __pycache__/
 /faelle/
 # Artefakt-Simulationen der Showcase-Faelle (Regie-Bereich, ausserhalb
 # des Systems)
-/simulation/
+/simulation
+/regie/
 
 # Lokale Overrides und private Notizen (.claude/skills/ bleibt getrackt)
 .claude/settings.local.json
@@ -36,5 +37,6 @@ Thumbs.db
 
 # Doku-Engine-Renderings (Quellen sind die Markdown-Dateien)
 docs/**/*.pdf
+quellsystem/*.pdf
 docs/**/*.typ
 docs/**/*_files/

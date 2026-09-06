@@ -1,11 +1,11 @@
-"""Ledger wiring of the ``extract`` (G0) gate command.
+"""Ledger wiring of the ``extract`` (P-Q1) gate command.
 
 Current scope: ``extract`` is the only gate command covered here. The
 module asserts that it
 
 * accepts ``--diagnostics-dir``;
 * writes an ``extract.gate.json`` ledger entry into that dir on BOTH the
-  pass and the fail path, carrying the gate id ``G0.extraction-manifest``
+  pass and the fail path, carrying the gate id ``P-Q1.quellfragment``
   and the matching status;
 * keeps stdout JSON-pure — the ledger is a side artifact to disk, written by
   the command body, separate from the single stdout JSON emitted by
@@ -72,7 +72,7 @@ def _load_ledger(diag_dir: Path, command: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# extract (G0) — uses the KLV workbook when available
+# extract (P-Q1) — uses the KLV workbook when available
 # --------------------------------------------------------------------------- #
 
 
@@ -103,13 +103,13 @@ def test_extract_writes_ledger_on_pass(tmp_path: Path):
 
     assert result.exit_code == 0
     ledger = _load_ledger(diag, "extract")
-    assert ledger["gate"] == "G0.extraction-manifest"
+    assert ledger["gate"] == "P-Q1.quellfragment"
     assert ledger["command"] == "extract"
     assert ledger["status"] == "passed"
 
 
 def test_extract_writes_ledger_on_fail_missing_source(tmp_path: Path):
-    """extract resolves G0 from the dossier catalogue even on the fail path."""
+    """extract resolves P-Q1 from the dossier catalogue even on the fail path."""
     diag = tmp_path / "diag"
 
     result = extract_cmd.main(
@@ -127,7 +127,7 @@ def test_extract_writes_ledger_on_fail_missing_source(tmp_path: Path):
 
     assert result.exit_code != 0
     ledger = _load_ledger(diag, "extract")
-    assert ledger["gate"] == "G0.extraction-manifest"
+    assert ledger["gate"] == "P-Q1.quellfragment"
     assert ledger["status"] == "failed"
 
 

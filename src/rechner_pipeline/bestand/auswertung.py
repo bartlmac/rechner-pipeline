@@ -22,7 +22,7 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import datetime as _dt
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -85,23 +85,69 @@ def beitraege(kern: Rechenkern, jahr: int) -> Dict[str, float]:
     }
 
 
+def grundlagen_je_police(
+    config: BestandConfig, merkmale: Optional[pd.DataFrame] = None
+) -> Callable[[int, str], Dict[str, Any]]:
+    """(police_id, generation) -> die Rechnungsgrundlagen dieses Vertrags.
+
+    Eine Generation muss kein einziger Parametersatz sein. Ist sie in
+    Tarifzellen aufgeteilt (``[[generation.zelle]]``), sagt
+    ``merkmale.parquet``, welche Zelle ein Vertrag hat, und diese Zelle
+    liefert die Grundlagen. Ohne Zellen — der Eigenbestand — bleibt es
+    beim Satz der Generation; dann ist auch die Merkmalstabelle
+    unerheblich.
+
+    Fehlt die Tabelle, obwohl die Generation Zellen fuehrt, ist das ein
+    harter Fehler und keine Bewertung mit dem Rumpf: Der Rumpf gilt fuer
+    keinen einzigen Vertrag, und eine stille Naeherung waere hier eine
+    falsche Bilanzzahl statt einer Fehlermeldung.
+    """
+    generationen = {g.name: g for g in config.generationen}
+    hat_zellen = {n for n, g in generationen.items() if g.zellen}
+
+    je_police: Dict[int, Dict[str, str]] = {}
+    if merkmale is not None and len(merkmale):
+        for pid, dim, wert in zip(
+            merkmale["police_id"], merkmale["dimension"], merkmale["auspraegung"]
+        ):
+            je_police.setdefault(int(pid), {})[str(dim)] = str(wert)
+
+    def aufloesen(pid: int, name: str) -> Dict[str, Any]:
+        gen = generationen.get(name)
+        if gen is None:
+            raise ValueError(
+                f"police {pid}: Tarifgeneration {name!r} nicht in Config "
+                f"(bekannt: {sorted(generationen)})"
+            )
+        if name not in hat_zellen:
+            return gen.generation_fields()
+        auspraegungen = je_police.get(pid)
+        if not auspraegungen:
+            raise ValueError(
+                f"police {pid}: Generation {name!r} ist in "
+                f"{len(gen.zellen)} Tarifzellen ueber {list(gen.dimensionen())} "
+                "aufgeteilt, der Vertrag traegt aber keine "
+                "Merkmalsauspraegungen — merkmale.parquet mitgeben; ohne sie "
+                "waere jede Zelle geraten"
+            )
+        return gen.felder_fuer(auspraegungen)
+
+    return aufloesen
+
+
 def _kerne_je_police(
-    stamm: pd.DataFrame, config: BestandConfig
+    stamm: pd.DataFrame,
+    config: BestandConfig,
+    merkmale: Optional[pd.DataFrame] = None,
 ) -> Dict[int, Rechenkern]:
-    generationen = {g.name: g.generation_fields() for g in config.generationen}
+    grundlagen = grundlagen_je_police(config, merkmale)
     kerne: Dict[int, Rechenkern] = {}
     for row in stamm.to_dict("records"):
         if str(row.get("produkt", "klv")) != "klv":
             continue
-        name = str(row["tarif_generation"])
-        if name not in generationen:
-            raise ValueError(
-                f"police {row['police_id']}: Tarifgeneration {name!r} nicht in "
-                f"Config (bekannt: {sorted(generationen)})"
-            )
-        kerne[int(row["police_id"])] = Rechenkern(
-            ModelPoint(**model_point_kwargs(row, generationen[name]))
-        )
+        pid = int(row["police_id"])
+        felder = grundlagen(pid, str(row["tarif_generation"]))
+        kerne[pid] = Rechenkern(ModelPoint(**model_point_kwargs(row, felder)))
     return kerne
 
 
@@ -134,9 +180,10 @@ def _scheiben_kerne(
     stamm: pd.DataFrame,
     scheiben: pd.DataFrame,
     config: BestandConfig,
+    merkmale: Optional[pd.DataFrame] = None,
 ) -> Dict[int, List[Dict[str, Any]]]:
     """police_id -> Erhoehungsscheiben mit eigenem Rechenkern (Schichtungsprinzip)."""
-    generationen = {g.name: g.generation_fields() for g in config.generationen}
+    grundlagen = grundlagen_je_police(config, merkmale)
     haupt = stamm.set_index("police_id")
     je_police: Dict[int, List[Dict[str, Any]]] = {}
     for s in scheiben.to_dict("records"):
@@ -163,7 +210,8 @@ def _scheiben_kerne(
                 "ADR-011; den Lauf mit der aktuellen Fortschreibung neu "
                 "erzeugen (die Scheibe traegt ihre Rechnungsgrundlage selbst)"
             )
-        kwargs = model_point_kwargs(row, generationen[str(h["tarif_generation"])])
+        kwargs = model_point_kwargs(
+            row, grundlagen(pid, str(h["tarif_generation"])))
         # Schicht-eigene Rechnungsgrundlage der Scheibe (ADR-011): nicht aus
         # der Generation rekonstruieren — genau das hatte die Tarifwerk-Regel
         # (gamma1-Bezugsgroesse GrundVS => Scheibe 0) verloren.
@@ -185,6 +233,7 @@ def einzelwerte_am(
     config: BestandConfig,
     stichtag: _dt.date,
     scheiben: Optional[pd.DataFrame] = None,
+    merkmale: Optional[pd.DataFrame] = None,
 ) -> List[Dict[str, Any]]:
     """Einzelvertragliche Bewertung des in-force-Bestands am Stichtag.
 
@@ -229,13 +278,13 @@ def einzelwerte_am(
         )
     else:
         journal = historie
-    kerne = _kerne_je_police(stamm, config)
+    kerne = _kerne_je_police(stamm, config, merkmale)
     bu_produkte = _bu_produkte_je_police(stamm, config)
     bu_renten = (
         stamm.set_index("police_id")["bu_rente"] if len(bu_produkte) else None
     )
     scheiben_je_police: Dict[int, List[Dict[str, Any]]] = (
-        _scheiben_kerne(stamm, scheiben, config)
+        _scheiben_kerne(stamm, scheiben, config, merkmale)
         if scheiben is not None and len(scheiben) > 0
         else {}
     )
@@ -351,6 +400,7 @@ def auswertungs_verlauf(
     config: BestandConfig,
     stichtage: List[_dt.date],
     scheiben: Optional[pd.DataFrame] = None,
+    merkmale: Optional[pd.DataFrame] = None,
 ) -> List[Dict[str, Any]]:
     """Aggregierte aktuarielle Kennzahlen je Stichtag (in-force-Bestand).
 
@@ -368,7 +418,8 @@ def auswertungs_verlauf(
     """
     reihe: List[Dict[str, Any]] = []
     for stichtag in stichtage:
-        zeilen = einzelwerte_am(stamm, historie, config, stichtag, scheiben=scheiben)
+        zeilen = einzelwerte_am(stamm, historie, config, stichtag,
+                                scheiben=scheiben, merkmale=merkmale)
         agg: Dict[str, Any] = {
             "stichtag": stichtag.isoformat(),
             "vertraege": int(len(zeilen)),

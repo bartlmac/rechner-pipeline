@@ -28,6 +28,7 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import datetime as _dt
+import os
 import math
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -38,7 +39,7 @@ from rechner_pipeline.bestand.auswertung import einzelwerte_am
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.kern import __version__ as KERN_VERSION
-from rechner_pipeline.models.bestand import ABSCHLUSS_NAMES
+from rechner_pipeline.models.bestand import ABSCHLUSS_NAMES, validate_abschluss
 
 
 class AbschlussError(ValueError):
@@ -56,8 +57,10 @@ def _rechne(
     config: BestandConfig,
     stichtag: _dt.date,
     scheiben: Optional[pd.DataFrame],
+    merkmale: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
-    zeilen = einzelwerte_am(stamm, historie, config, stichtag, scheiben=scheiben)
+    zeilen = einzelwerte_am(stamm, historie, config, stichtag,
+                            scheiben=scheiben, merkmale=merkmale)
     if not zeilen:
         raise AbschlussError(
             f"Abschluss {stichtag.isoformat()}: kein in-force-Bestand am "
@@ -80,7 +83,18 @@ def _rechne(
         }
         for z in zeilen
     ])
-    return df[list(ABSCHLUSS_NAMES)]
+    df = df[list(ABSCHLUSS_NAMES)]
+    # Endlichkeit am Ausgang (T18-04): Was hier durchgeht, wird
+    # festgeschrieben und nie ueberschrieben. Ein nichtendlicher Wert ist
+    # kein Bilanzwert, sondern ein Rechen- oder Konfigurationsfehler, der
+    # VOR dem Publish anhalten muss — nicht erst in der Kontrolle danach.
+    befunde = validate_abschluss(df)
+    if befunde:
+        raise AbschlussError(
+            f"Abschluss {stichtag.isoformat()}: der gerechnete Stand ist "
+            "kein festschreibbarer Bilanzstand: " + "; ".join(befunde)
+        )
+    return df
 
 
 def schreibe_abschluss(
@@ -91,6 +105,7 @@ def schreibe_abschluss(
     ziel_dir: Path,
     *,
     scheiben: Optional[pd.DataFrame] = None,
+    merkmale: Optional[pd.DataFrame] = None,
 ) -> Path:
     """Bewertungsstand des Stichtags festschreiben (genau einmal).
 
@@ -105,21 +120,42 @@ def schreibe_abschluss(
             f"Abschluss {stichtag.isoformat()} ist bereits festgeschrieben "
             f"({pfad}) — festgeschriebene Staende werden nie ueberschrieben"
         )
-    df = _rechne(stamm, historie, config, stichtag, scheiben)
+    df = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
     ziel_dir.mkdir(parents=True, exist_ok=True)
-    # Die exists()-Pruefung oben ist eine Momentaufnahme: zwischen ihr und
-    # dem Schreiben liegt die Berechnung. Zwei parallele Aufrufe kamen
-    # beide durch, und os.replace ueberschrieb den zuerst veroeffentlichten
-    # Stand -- beide meldeten Erfolg. Der exklusive Publish macht die
-    # Zusage "genau einmal" wahr, ohne Lock: os.link scheitert atomar,
-    # wenn der Zielpfad schon existiert.
+    # Zwei Sicherungen, die einzeln beide zu wenig tragen und erst
+    # zusammen dicht sind -- die Reihenfolge ist deshalb wesentlich.
+    #
+    # Zuerst der exklusive Publish: Die exists()-Pruefung oben ist eine
+    # Momentaufnahme, zwischen ihr und dem Schreiben liegt die Berechnung.
+    # Zwei parallele Aufrufe kamen beide durch, und os.replace
+    # ueberschrieb den zuerst veroeffentlichten Stand -- beide meldeten
+    # Erfolg. os.link scheitert stattdessen atomar, wenn der Zielpfad
+    # schon existiert; das macht die Zusage "genau einmal" wahr, ohne
+    # Lock-Infrastruktur.
+    #
+    # Danach der Schreibschutz: Ein festgeschriebener Stand wehrt sich
+    # auch gegen die Hand -- 0444, damit ein versehentliches
+    # Ueberschreiben scheitert und ein rm ohne -f nachfragt statt still
+    # zu loeschen. Anlass war ein realer Verlust echter Laufdaten durch
+    # ein aufraeumendes rm -r (Backlog "runs/-Schutz").
+    #
+    # Warum beides: Nachgemessen ueberfaehrt os.replace eine 0444-Datei
+    # anstandslos und hinterlaesst sie mit 0600 -- der Schreibschutz
+    # allein hielt also gegen alles ausser gegen unseren eigenen
+    # Schreibpfad. Und der exklusive Publish schuetzt nur beim
+    # Veroeffentlichen, nicht danach. Gegen rm -rf schuetzt ohnehin kein
+    # Dateirecht; das bleibt eine Verhaltensregel: runs/ ist Wegwerf,
+    # Festzuhaltendes lebt im Fall oder in einem Abschluss.
     try:
-        return write_portfolio(df, pfad, exklusiv=True)
+        geschrieben = write_portfolio(df, pfad, exklusiv=True)
     except FileExistsError as exc:
         raise AbschlussError(
             f"Abschluss {stichtag.isoformat()} ist bereits festgeschrieben "
             f"({pfad}) — festgeschriebene Staende werden nie ueberschrieben"
         ) from exc
+    if os.name != "nt":
+        Path(geschrieben).chmod(0o444)
+    return geschrieben
 
 
 def pruefe_abschluss(
@@ -129,6 +165,7 @@ def pruefe_abschluss(
     config: BestandConfig,
     *,
     scheiben: Optional[pd.DataFrame] = None,
+    merkmale: Optional[pd.DataFrame] = None,
 ) -> List[str]:
     """Neuberechnung gegen den festgeschriebenen Stand stellen.
 
@@ -156,8 +193,11 @@ def pruefe_abschluss(
             f"abschluss: Datei heisst {Path(pfad).name}, enthaelt aber den "
             f"Stichtag {stichtag.isoformat()} (erwartet {erwartet.name})"
         ]
+    # Der festgeschriebene Stand selbst muss ein Bilanzstand sein — auch
+    # wenn er unter einem aelteren Stand ohne diese Pruefung entstand.
+    befunde.extend(validate_abschluss(fest))
 
-    neu = _rechne(stamm, historie, config, stichtag, scheiben)
+    neu = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
     kern_stand_alt = sorted(set(fest["kern_version"]))
     if kern_stand_alt != [KERN_VERSION]:
         befunde.append(

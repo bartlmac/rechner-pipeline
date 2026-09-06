@@ -1,0 +1,163 @@
+{
+  "profil": {
+    "bemerkung": "Rueckkauf, Tod und Ablauf beenden den Vertrag; dort IST der Wert die Auszahlung, und eine Abweichung bekommt der Kunde zu spueren. Sie tragen dieselbe centgenaue Grenze wie die Umwandlungen — nicht aus Bequemlichkeit, sondern weil alle gegen einen centgerundeten Betrag zum selben Zeitpunkt vergleichen. Zur Herabsetzung: Rechnet das abgebende Unternehmen sie mit Stornoabzug und das Zielsystem verlustfrei, weicht dDK um genau diesen Abzug ab. Diese Grenze aufzuweiten, um den Befund verschwinden zu lassen, waere falsch — die Abweichung ist der Sachverhalt, den die Abnahme sehen soll. Sie gehoert in die Abnahmeentscheidung, belegt durch die Beschreibung des Quellverfahrens, nicht in eine stillere Toleranz. Invalidisierung und Reaktivierung stehen nicht in der Tabelle: Die Engine rechnet ihr dDK nicht, solange die BU-Zustandsbewertung offen ist.",
+    "grundtoleranz": {
+      "abs_tol": 0.01,
+      "max_abs_residuum": 0.05,
+      "p95_abs_residuum": 0.02,
+      "rel_tol": 1e-09
+    },
+    "kennung": "A-M3",
+    "kriterien": {
+      "ERH": {
+        "abs_tol": 0.001,
+        "max_abs_residuum": 0.005,
+        "p95_abs_residuum": 0.005,
+        "rel_tol": 1e-09
+      }
+    },
+    "titel": "Geschaeftsvorfalltest",
+    "weite": "alle Geschaeftsvorfaelle des Migrationsjahres"
+  },
+  "stichprobe": {
+    "grundgesamtheit": 7,
+    "parameter": {},
+    "police_ids": [
+      "7000014",
+      "7000028",
+      "7000038",
+      "7000060",
+      "7000068",
+      "7000149",
+      "7000248"
+    ],
+    "profil": "vollbestand",
+    "umfang": 7,
+    "vollerhebung": true
+  },
+  "test": "A-M3",
+  "vertraege": [
+    {
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000014",
+      "punkte": [
+        {
+          "anlass": "STO",
+          "erwartet": {
+            "dDK": -44061.29
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 133
+        }
+      ]
+    },
+    {
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000028",
+      "punkte": [
+        {
+          "anlass": "TOD",
+          "erwartet": {
+            "dDK": -34052.32
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 112
+        }
+      ]
+    },
+    {
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000038",
+      "punkte": [
+        {
+          "anlass": "TOD",
+          "erwartet": {
+            "dDK": -23668.38
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 130
+        }
+      ]
+    },
+    {
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000060",
+      "punkte": [
+        {
+          "anlass": "ERH",
+          "erwartet": {
+            "dDK": 0.0
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000068",
+      "punkte": [
+        {
+          "anlass": "ERH",
+          "erwartet": {
+            "dDK": 0.0
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 120
+        }
+      ]
+    },
+    {
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000149",
+      "punkte": [
+        {
+          "anlass": "PEX",
+          "erwartet": {
+            "dDK": -0.01
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 120
+        }
+      ]
+    },
+    {
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 108,
+      "police_id": "7000248",
+      "punkte": [
+        {
+          "anlass": "RED",
+          "erwartet": {
+            "dDK": -23.97
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 120,
+          "parameter": {
+            "anteil": 0.6
+          }
+        }
+      ]
+    }
+  ]
+}

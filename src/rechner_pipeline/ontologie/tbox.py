@@ -2,7 +2,7 @@
 
 Menschlich verantwortet und versioniert — Agenten aendern diese Datei
 nie autonom; Aenderungsvorschlaege sind Artefakte, ueber die ein Mensch
-entscheidet (Gate G-T). Die A-Box (Instanzen) wird von Agenten
+entscheidet (Gate A-K1). Die A-Box (Instanzen) wird von Agenten
 befuellt und ist Single Source of Truth fuer die nachgelagerten
 Stufen; Code und Testfaelle sind Projektionen daraus.
 
@@ -12,7 +12,7 @@ KLV), Tarifgenerationen mit Merkmalsdimensionen (Tarifart,
 Raucherstatus) und Parametrierungszellen, deren Parameterfelder exakt
 auf die Stellschrauben des Kern-ModelPoints abbilden. Keine BU-,
 Renten- oder Fonds-Klassen (kommen mit ihren Faellen als
-T-Box-Erweiterung ueber G-T).
+T-Box-Erweiterung ueber A-K1).
 
 Knoten: klv
 """
@@ -121,7 +121,7 @@ class Parametrierungszelle(BaseModel):
         if unbekannt:
             raise ValueError(
                 f"Zelle {self.id}: unbekannte Parameter {sorted(unbekannt)} "
-                "— kein stiller Tippfehler-Parameter; T-Box erweitern (G-T) "
+                "— kein stiller Tippfehler-Parameter; T-Box erweitern (A-K1) "
                 "oder Feldname korrigieren"
             )
         return self
@@ -147,7 +147,7 @@ class Tarifgeneration(BaseModel):
     quellnamen: Dict[str, str] = Field(default_factory=dict)
     #: Beobachtungen der Extraktions-Agenten, die kein Schemafeld haben
     #: (z. B. Tarifsubstanz ausserhalb des Pflichtumfangs wie beta0) —
-    #: sie gehoeren ins G-1-Dokument, nicht in den Papierkorb des Merge
+    #: sie gehoeren ins A-Q1-Dokument, nicht in den Papierkorb des Merge
     #: (Systempruefung Befunde 9/30).
     anmerkungen: List[str] = Field(default_factory=list)
 

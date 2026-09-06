@@ -1,4 +1,4 @@
-"""``generation_golden`` gate command — Gate O3 (Generations-Golden-Master).
+"""``generation_golden`` gate command — Gate P-K1 (Generations-Golden-Master).
 
 DER Abnahme-Test einer migrierten Tarifgeneration: der stabile Kern,
 parametriert ueber die Tarif-Spez des Falls (Projektion der A-Box),
@@ -8,9 +8,15 @@ komplette Verlaufswerte-Tabelle, verglichen mit der bestehenden
 Golden-Master-Engine (Rundung auf 4 Nachkommastellen, positionsweise
 Zeilen, Namens-Matching).
 
-Der Beispiel-Modellpunkt (x, n, t, VS, zw, Sex, Status, Tarifart) wird
-deterministisch aus dem Names-Manager der Vorverdichtung gelesen; die
-Spez-Zelle waehlt sich ueber (tarifart, status). Erwartungs-Skalare,
+Der Beispiel-Modellpunkt (x, n, t, VS, zw, Geschlecht plus die
+Merkmalsauspraegungen der Spez-Dimensionen) wird deterministisch aus
+dem Names-Manager der Vorverdichtung gelesen. Die NAMEN dieser
+Eingabezellen sind eine Konvention des QUELLSYSTEMS, keine des Gates:
+aufgeloest wird ueber die ``quellnamen`` der A-Box-Generation
+(Semantik-Schluessel ``eingabe:<groesse>`` bzw. ``dimension:<id>``,
+siehe :data:`EINGABE_SEMANTIK`), mit den Namen der Erst-Lieferung als
+Rueckfall, wenn die A-Box keine Zuordnung traegt. Die Spez-Zelle
+waehlt sich ueber die Dimensions-Auspraegungen. Erwartungs-Skalare,
 die keine Rechenergebnisse sind (Zins, Tafel), werden gegen die Spez
 selbst geprueft; nicht zuordenbare Erwartungsreste werden AUSGEWIESEN,
 nie still uebersprungen (P6).
@@ -52,7 +58,7 @@ from rechner_pipeline.gates._common import (
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GATE,
     O3_BELEG_GATE_VERSION,
-    schreibe_o3_beleg,
+    schreibe_pk1_beleg,
     systemstand,
 )
 from rechner_pipeline.qa.golden_master import ROUND_DECIMALS, compare, load_expected
@@ -90,15 +96,73 @@ def _lese_names(names_csv: Path) -> Dict[str, str]:
     return namen
 
 
-def _modellpunkt_eingaben(namen: Dict[str, str]) -> Dict[str, Any]:
+#: Semantik-Schluessel der Modellpunkt-Eingaben, wie die Fragmente sie in
+#: ``quellnamen`` festhalten (``{"GESCHL": "eingabe:geschlecht"}``). Der
+#: Names-Manager einer fremden Mappe benennt seine Eingabezellen nach der
+#: Konvention des QUELLSYSTEMS — sie hier wortgleich zu verlangen hiesse,
+#: die Namen der ersten Lieferung zur Gate-Eigenschaft zu machen. Der
+#: Rueckfall-Name gilt, wenn die A-Box keine Zuordnung traegt (aeltere
+#: Fragmente, Fixtures).
+EINGABE_SEMANTIK: Dict[str, str] = {
+    "x": "eingabe:alter_bei_beginn",
+    "n": "eingabe:vertragsdauer",
+    "t": "eingabe:beitragszahlungsdauer",
+    "VS": "eingabe:versicherungssumme",
+    "zw": "eingabe:zahlweise",
+    "Sex": "eingabe:geschlecht",
+}
+
+
+def _quellname_fuer(
+    semantik: str, quellnamen: Dict[str, str], namen: Dict[str, str],
+    rueckfall: str,
+) -> str:
+    """Den Names-Manager-Namen einer Semantik bestimmen.
+
+    Kandidat ist jeder quellnamen-Eintrag, der die Semantik EXAKT nennt
+    (pipe-vereinte Eintraege werden aufgeteilt; ``dimension:tarifart``
+    trifft nicht ``dimension:tarifart=einzel``). Von den Kandidaten
+    zaehlen nur die, die im Names-Manager existieren: mehrere mit
+    verschiedenen Werten sind ein harter Fehler (kein stilles Raten),
+    keiner heisst Rueckfall auf den Namen der Erst-Lieferung.
+    """
+    kandidaten = sorted({
+        name for name, ziel in quellnamen.items()
+        if semantik in [t.strip() for t in str(ziel).split("|")]
+    })
+    vorhandene = [k for k in kandidaten if namen.get(k, "") != ""]
+    werte = {namen[k] for k in vorhandene}
+    if len(werte) > 1:
+        raise ValueError(
+            f"quellnamen nennen fuer {semantik!r} mehrere Names-Manager-"
+            f"Eintraege mit verschiedenen Werten ({sorted(vorhandene)}) — "
+            "die Zuordnung ist mehrdeutig und muss in den Fragmenten "
+            "geklaert werden"
+        )
+    return vorhandene[0] if vorhandene else rueckfall
+
+
+def _modellpunkt_eingaben(
+    namen: Dict[str, str], quellnamen: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
+    quellnamen = quellnamen or {}
+    name_von = {
+        feld: _quellname_fuer(semantik, quellnamen, namen, rueckfall=feld)
+        for feld, semantik in EINGABE_SEMANTIK.items()
+    }
     pflicht = ("x", "n", "t", "VS", "zw", "Sex")
-    fehlend = [p for p in pflicht if p not in namen or namen[p] == ""]
+    fehlend = [
+        f"{p} (Name {name_von[p]!r})" for p in pflicht
+        if name_von[p] not in namen or namen[name_von[p]] == ""
+    ]
     if fehlend:
         raise ValueError(
             f"Names-Manager ohne Modellpunkt-Eingaben {fehlend} — der "
-            "Beispiel-Modellpunkt ist nicht ableitbar"
+            "Beispiel-Modellpunkt ist nicht ableitbar (Zuordnung fremder "
+            "Namen: quellnamen der A-Box, Schluessel eingabe:<groesse>)"
         )
-    def _zahl(name: str, wandler) -> Any:
+    def _zahl(feld: str, wandler) -> Any:
+        name = name_von[feld]
         try:
             return wandler(float(namen[name]))
         except (TypeError, ValueError) as exc:
@@ -113,18 +177,111 @@ def _modellpunkt_eingaben(namen: Dict[str, str]) -> Dict[str, Any]:
         "t": _zahl("t", int),
         "sum_insured": _zahl("VS", float),
         "zw": _zahl("zw", int),
-        "sex_roh": namen["Sex"],
-        "status": namen.get("Status", ""),
-        "tarifart": namen.get("Tarifart", ""),
+        "sex_roh": namen[name_von["Sex"]],
     }
 
 
-def _waehle_zelle(spez, status: str, tarifart: str):
-    gesucht = {}
-    if status:
-        gesucht["status"] = status.strip().lower()
-    if tarifart:
-        gesucht["tarifart"] = tarifart.strip().lower()
+def _dimensions_auspraegungen(
+    spez, namen: Dict[str, str], quellnamen: Optional[Dict[str, str]] = None
+) -> Dict[str, str]:
+    """Die Merkmalsauspraegungen des Beispiel-Modellpunkts je Spez-Dimension.
+
+    Welche Dimensionen es gibt, sagt die SPEZ (die Auspraegungs-Schluessel
+    ihrer Zellen); wie die Eingabezelle im Quellsystem heisst, sagen die
+    ``quellnamen`` (``dimension:<id>``). Rueckfall ist der kapitalisierte
+    Dimensionsname — die Konvention der Erst-Lieferung (``Status``,
+    ``Tarifart``).
+    """
+    quellnamen = quellnamen or {}
+    ids = sorted({k for z in spez.zellen for k in z.auspraegungen})
+    auspraegungen: Dict[str, str] = {}
+    for dim_id in ids:
+        name = _quellname_fuer(
+            f"dimension:{dim_id}", quellnamen, namen,
+            rueckfall=dim_id.capitalize(),
+        )
+        wert = namen.get(name, "")
+        if wert:
+            auspraegungen[dim_id] = wert
+    return auspraegungen
+
+
+def _rechner_quelldatei(vorverdichtung: Path) -> str:
+    """Name der Quellmappe, aus der die Erwartungswerte stammen.
+
+    Steht im ``input_bundle.json`` der Vorverdichtung (``source_path``)
+    und ist damit dieselbe Datei, gegen die verglichen wird — nicht
+    geraten und nicht aus dem Verzeichnisnamen abgeleitet.
+    """
+    bundle = vorverdichtung / "input_bundle.json"
+    if not bundle.is_file():
+        return ""
+    try:
+        daten = json.loads(bundle.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return Path(str(daten.get("source_path", ""))).name
+
+
+def gegenprobe_felder(
+    abox, zelle_knoten: str, rechner_datei: str
+) -> Dict[str, Dict[str, Any]]:
+    """Felder, in denen die Spez den Quell-Rechner BEWUSST verlaesst.
+
+    Der Golden Master beweist, dass die Parametrierung eine korrekte
+    UEBERSETZUNG des Quell-Rechners ist. Wurde eine Diskrepanz zwischen
+    Meldung und Rechner menschlich GEGEN den Rechner entschieden (Gate
+    A-Q1, belegt etwa durch den Abzugsabgleich), traegt die Spez dort
+    absichtlich einen anderen Wert — der Rechner selbst ist in diesem
+    Feld nachweislich falsch. Ein Vergleich gegen seine Werte muesste
+    dann scheitern, und das Gate saehe aus wie ein Uebersetzungsfehler.
+
+    Deshalb prueft P-K1 in solchen Feldern gegen die VERWORFENE
+    Rechner-Lesart: Reproduziert der Kern den Rechner unter dessen
+    EIGENER Lesart exakt, ist die Uebersetzung fehlerfrei und die
+    einzige Ursache jeder Abweichung ist die dokumentierte
+    Entscheidung. Jede darueber hinausgehende Abweichung faellt
+    unveraendert hart — die Gegenprobe weicht keine Toleranz auf,
+    sie bildet den Vergleichsmodellpunkt richtig.
+
+    Streng an drei Stellen: nur ENDGUELTIGE menschliche Entscheidungen
+    (eine vorlaeufige Agenten-Aufloesung loest nichts aus), nur
+    Diskrepanzen GENAU DIESER Zelle, und nur Lesarten, deren Provenienz
+    auf die Mappe zeigt, aus der die Erwartungswerte stammen.
+    """
+    felder: Dict[str, Dict[str, Any]] = {}
+    if not rechner_datei:
+        return felder
+    for d in getattr(abox, "diskrepanzen", []):
+        if d.knoten != zelle_knoten or d.status != "aufgeloest":
+            continue
+        entscheidung = d.entscheidung
+        if entscheidung is None or entscheidung.vorlaeufig:
+            continue
+        rechner_lesarten = [
+            l for l in d.lesarten
+            if any(p.quelle_datei == rechner_datei for p in l.provenienz)
+        ]
+        if len(rechner_lesarten) != 1:
+            # Keine oder mehrdeutige Rechner-Lesart: nichts zu ersetzen.
+            continue
+        rechner_wert = rechner_lesarten[0].wert
+        if rechner_wert == entscheidung.gewaehlter_wert:
+            continue        # Entscheid folgte dem Rechner — kein Konflikt
+        felder[d.feld] = {
+            "rechner_wert": rechner_wert,
+            "spez_wert": entscheidung.gewaehlter_wert,
+            "entscheider": entscheidung.entscheider,
+            "entschieden_am": entscheidung.entschieden_am,
+        }
+    return felder
+
+
+def _waehle_zelle(spez, auspraegungen: Dict[str, str]):
+    gesucht = {
+        dim: wert.strip().lower()
+        for dim, wert in auspraegungen.items() if wert
+    }
     treffer = [z for z in spez.zellen if z.auspraegungen == gesucht]
     if not treffer:
         raise ValueError(
@@ -140,7 +297,7 @@ def main(argv: Optional[List[str]] = None):
         gate_contract=CLI_CONTRACT,
         prog="python -m rechner_pipeline.gates.generation_golden",
         description=(
-            "Gate O3: Kern (parametriert ueber die Tarif-Spez) gegen die "
+            "Gate P-K1: Kern (parametriert ueber die Tarif-Spez) gegen die "
             "aus dem Quell-Rechner extrahierten Erwartungswerte."
         ),
     )
@@ -172,7 +329,7 @@ def main(argv: Optional[List[str]] = None):
     def _finalize(result):
         if result.status == "passed":
             try:
-                beleg = schreibe_o3_beleg(
+                beleg = schreibe_pk1_beleg(
                     diagnostics_dir,
                     gate_version=result.gate_version,
                     status=result.status,
@@ -183,18 +340,18 @@ def main(argv: Optional[List[str]] = None):
                     input_hashes=result.input_hashes,
                     summary=result.summary,
                 )
-                result.paths["o3_beleg"] = str(beleg)
+                result.paths["pk1_beleg"] = str(beleg)
             except Exception as exc:  # noqa: BLE001 - Beweis muss gelingen
-                log(f"generation_golden: O3-Beleg write failed: {exc}")
+                log(f"generation_golden: P-K1-Beleg write failed: {exc}")
                 result = build_result(
                     command="generation_golden",
                     gate=GATE,
                     gate_version=GATE_VERSION,
                     exit_code=Exit.FILE_CONTRACT,
                     errors=[{
-                        "code": "o3_beleg",
+                        "code": "pk1_beleg",
                         "message": (
-                            "Gruener O3-Lauf ohne unveraenderlichen Beleg "
+                            "Gruener P-K1-Lauf ohne unveraenderlichen Beleg "
                             f"ist nicht abnahmefaehig: {exc}"
                         ),
                     }],
@@ -270,15 +427,32 @@ def main(argv: Optional[List[str]] = None):
         )
 
     namen = _lese_names(names_csv)
+    generation = next(
+        (g for g in abox.generationen if g.id == args.generation), None)
+    quellnamen = dict(generation.quellnamen) if generation is not None else {}
     try:
-        eingaben = _modellpunkt_eingaben(namen)
-        zelle = _waehle_zelle(spez, eingaben["status"], eingaben["tarifart"])
+        eingaben = _modellpunkt_eingaben(namen, quellnamen)
+        auspraegungen = _dimensions_auspraegungen(spez, namen, quellnamen)
+        zelle = _waehle_zelle(spez, auspraegungen)
     except ValueError as exc:
         return _usage(str(exc))
 
     from rechner_pipeline.kern import ModelPoint, Rechenkern
 
     mp_felder: Dict[str, Any] = dict(zelle.model_point)
+    # Felder, in denen die Spez den Rechner bewusst verlaesst (A-Q1):
+    # dort wird gegen SEINE Lesart geprueft, siehe gegenprobe_felder.
+    gegenprobe = gegenprobe_felder(
+        abox, zelle.knoten, _rechner_quelldatei(vorverdichtung))
+    unbekannte_gegenprobe = sorted(set(gegenprobe) - set(mp_felder))
+    if unbekannte_gegenprobe:
+        return _contract_fehler(
+            "gegenprobe",
+            "Entschiedene Diskrepanz betrifft Felder ausserhalb der "
+            f"Spez-Zelle: {unbekannte_gegenprobe}",
+        )
+    for feld, eintrag in gegenprobe.items():
+        mp_felder[feld] = eintrag["rechner_wert"]
     # 21: unbekannte Spez-Felder sind ein Contract-Befund, kein Crash.
     import dataclasses
 
@@ -318,7 +492,7 @@ def main(argv: Optional[List[str]] = None):
     # Quellsystem (Blattname -> Dateistamm der abgeleiteten Artefakte).
     # Hart verdrahtet war hier "Kalkulation"; ein anders benanntes Blatt
     # lief damit in eine irrefuehrende Coverage-Meldung statt in den
-    # Vergleich (Review-Befund, dieselbe Ursache wie in Gate O1).
+    # Vergleich (Review-Befund, dieselbe Ursache wie in Gate P-Q3).
     try:
         blatt = lies_vorverdichtung(vorverdichtung).kalkulationsblatt
     except (VorverdichtungFehlt, VorverdichtungFehler) as exc:
@@ -348,6 +522,11 @@ def main(argv: Optional[List[str]] = None):
                 continue
             feld = PARAMETER_SKALARE[name]
             soll = zelle.model_point.get(feld)
+            # In einem entschiedenen Feld wird gegen die gepruefte
+            # Rechner-Lesart gehalten — sonst meldete das Gate die
+            # dokumentierte Entscheidung als Parameterfehler.
+            if feld in gegenprobe:
+                soll = gegenprobe[feld]["rechner_wert"]
             if feld == "tafel":
                 # Erwartung nennt die BASIS; die Spez traegt den finalen
                 # Namen (Basis + ggf. Unisex-Ableitung).
@@ -362,6 +541,7 @@ def main(argv: Optional[List[str]] = None):
             parameter_pruefungen.append({
                 "name": name, "feld": feld,
                 "erwartet": wert, "spez": soll, "ok": ok,
+                "gegen_rechner_lesart": feld in gegenprobe,
             })
         else:
             uebersprungen.append(name)
@@ -422,7 +602,7 @@ def main(argv: Optional[List[str]] = None):
     )
     try:
         verwendeter_systemstand = systemstand(repo_root)
-    except Exception as exc:  # Beweisprovenienz ist Teil des O3-Contracts
+    except Exception as exc:  # Beweisprovenienz ist Teil des P-K1-Contracts
         return _contract_fehler(
             "systemstand", f"Systemstand nicht bestimmbar: {exc}"
         )
@@ -442,8 +622,14 @@ def main(argv: Optional[List[str]] = None):
         "zellen_ohne_erwartungswerte": andere_zellen,
         "modellpunkt": {k: eingaben[k] for k in
                         ("x", "n", "t", "sum_insured", "zw")}
-        | {"sex": eingaben["sex_roh"], "status": eingaben["status"],
-           "tarifart": eingaben["tarifart"], "tafel": mp.tafel},
+        | {"sex": eingaben["sex_roh"], "tafel": mp.tafel}
+        | {dim: wert for dim, wert in sorted(auspraegungen.items())},
+        # Wo die Spez den Rechner bewusst verlaesst, steht es HIER —
+        # ein gruener Beleg ohne diesen Ausweis waere die stillschweigende
+        # Behauptung, Spez und Rechner seien deckungsgleich.
+        "gegenprobe_gegen_rechner_lesart": {
+            feld: dict(eintrag) for feld, eintrag in sorted(gegenprobe.items())
+        },
         "skalare_verglichen": len(gefilterte_erwartung),
         "parameter_geprueft": [p["name"] for p in parameter_pruefungen],
         "tabellen_zeilen": anzahl_zeilen,
@@ -459,7 +645,7 @@ def main(argv: Optional[List[str]] = None):
                "vorverdichtung": str(vorverdichtung)},
         summary=summary,
         input_hashes={
-            # Stabiler Rollenschluessel: G-2 kann ohne Pfadheuristik den
+            # Stabiler Rollenschluessel: A-M4 kann ohne Pfadheuristik den
             # SHA der tatsaechlich geparsten A-Box pruefen.
             "abgeleitet/abox/abox.json": abox_sha256,
             **hash_files(

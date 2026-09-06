@@ -1,6 +1,6 @@
 """Architektur-Werkzeuge: Code-Karte-Regeln, Knoten-Hierarchie, Impact.
 
-Verankert die 1M-LOC-Mechanik: die Schichtenkarte ist nachrechenbar
+Sichert die 1M-LOC-Mechanik maschinell ab: die Schichtenkarte ist nachrechenbar
 (ADR-004-Regel inklusive), Knoten-Wurzeln sind validiert, jede
 Testdatei ist an Knoten gebunden, und der Impact einer Aenderung ist
 BERECHNET — selektiv bei sauberer Annotation, konservativ (volle
@@ -45,15 +45,23 @@ TESTS = REPO / "tests"
 def test_karte_des_repos_haelt_die_schichtregeln():
     karte = baue_karte(SRC)
     assert validate(karte) == []
-    # ADR-004 explizit: kein Zielkern-Modul importiert den Zweitkern.
+    # ADR-013: Der Zweitkern hat KEINEN Konsumenten im Produktivpfad
+    # mehr. Frueher verlangte dieser Test die Kreuz-Check-Kante
+    # qa -> Zweitkern; sie ist mit der Toleranz-Ueberleitung entfallen.
+    # Was den Zweitkern noch nutzt, sind die algebraischen
+    # Eigenschaftstests — testseitig, ohne Kante in der Code-Karte.
+    #
+    # Die Umkehrung ist jetzt die Aussage: Findet sich hier je wieder
+    # eine Kante, hat sich der Produktivpfad an eine stillgelegte
+    # Rechenschiene gebunden, und genau das soll nicht passieren.
     zweitkern_kanten = [
         (k["von"], k["nach"]) for k in karte["kanten"]
         if k["nach"].startswith("rechner_pipeline/kommutationskern/")
         and not k["von"].startswith("rechner_pipeline/kommutationskern/")
     ]
-    assert all(von.startswith("rechner_pipeline/qa/")
-               for von, _ in zweitkern_kanten), zweitkern_kanten
-    assert zweitkern_kanten, "Kreuz-Check-Kante qa -> Zweitkern fehlt"
+    assert not zweitkern_kanten, (
+        "Der Produktivpfad importiert den stillgelegten Zweitkern "
+        f"(ADR-013): {zweitkern_kanten}")
 
 
 def test_karte_ist_deterministisch():
@@ -340,6 +348,45 @@ def test_impact_skill_aenderung_trifft_workflow_doku_test():
     assert ergebnis["tests"] == ["test_agent_workflow_docs.py"]
 
 
+def test_impact_tarifplan_ist_test_tragend():
+    """Die Tarifplaene tragen die Generationen-Tabelle, die
+    test_bestand_config zeichengenau gegen die Config prueft — eine
+    Aenderung dort darf nicht als reine Doku durchgehen und null Tests
+    auswaehlen."""
+    ergebnis = berechne_impact(["docs/tarifplaene/bu.md"], *_repo_args())
+    assert ergebnis["knoten"] == ["bu"]
+    assert "test_bestand_config.py" in ergebnis["tests"]
+    assert not any("kein Code-/Vertrags-Impact" in h
+                   for h in ergebnis["hinweise"])
+
+    klv = berechne_impact(["docs/tarifplaene/klv.md"], *_repo_args())
+    assert klv["knoten"] == ["klv"]
+    assert "test_bestand_config.py" in klv["tests"]
+
+
+def test_impact_bindet_tarifplaene_ueber_den_dateinamen():
+    """Die Bindung ist generisch: Ein drittes Produkt bringt seinen
+    Tarifplan nicht stillschweigend ausserhalb der Testselektion mit
+    (Review-Befund — vorher waren klv.md und bu.md einzeln
+    aufgezaehlt)."""
+    neu = berechne_impact(["docs/tarifplaene/rlv.md"], *_repo_args())
+    assert neu["knoten"] == ["rlv"]
+    assert not any("kein Code-/Vertrags-Impact" in h
+                   for h in neu["hinweise"])
+    # Der README des Ordners ist kein Produkt:
+    readme = berechne_impact(
+        ["docs/tarifplaene/README.md"], *_repo_args())
+    assert readme["knoten"] == []
+
+
+def test_impact_grundsatzdokumentation_ist_konservativ():
+    """Die Mathematik, der die Umsetzung folgt, ist nie auf einen
+    Knoten begrenzt."""
+    ergebnis = berechne_impact(
+        ["docs/mathematik/grundsatzdokumentation.md"], *_repo_args())
+    assert ergebnis["konservativ"]
+
+
 def test_impact_geloeschtes_modul_ist_konservativ():
     ergebnis = berechne_impact(
         ["src/rechner_pipeline/kern/geloescht.py"],
@@ -362,7 +409,7 @@ def test_impact_faelle_hinweis_folgt_der_lineage(tmp_path: Path):
         ["src/rechner_pipeline/daten/tg2015.py"],
         SYNTH_INDEX, SYNTH_KARTE, SYNTH_TESTS, generationen, SYNTH_IMPORTS,
     )
-    # Nur die verwandte Generation braucht ihr O3 erneut — nicht das
+    # Nur die verwandte Generation braucht ihr P-K1 erneut — nicht das
     # Geschwister:
     assert [f["generation"] for f in ergebnis["faelle"]] == ["klv/tg2015"]
     # fail-soft ohne Fall-Verzeichnis:
@@ -450,9 +497,9 @@ def test_konservativ_behaelt_direkt_geaenderte_testdatei():
 
 def test_artefakte_ohne_bindung_sind_konservativ():
     """Review-Befund: Fixtures und unbekannte src-Artefakte galten als
-    'kein Impact' — eine geaenderte Anker-Fixture ergab 0 Tests."""
+    'kein Impact' — eine geaenderte Referenzwert-Fixture ergab 0 Tests."""
     for datei, muster in (
-        ("tests/fixtures/kern_anker/anker_dav2008.json", "Test-Artefakt"),
+        ("tests/fixtures/kern_referenzwerte/referenz_dav2008.json", "Test-Artefakt"),
         ("src/rechner_pipeline/quellen/neu.json", "ohne Daten-Bindung"),
         ("skripte/hilfs.py", "ausserhalb von src/ und tests/"),
     ):

@@ -59,7 +59,10 @@ erzeugt (1) einmalig"]
 erzeugt Lieferungen für (2)"]
         T6["(6) Tägliche Fortschreibung — geplant
 Vorfälle je Tag für (1)"]
-        T4 ~~~ T5 ~~~ T6
+        R7["(7) Regie — WIP
+Spielleitung der Vorführung: Drehbücher, Rollen,
+Auflösungen; bespielt (4)–(6)"]
+        T4 ~~~ T5 ~~~ T6 ~~~ R7
     end
     TOOLING -. "erzeugt die Vorzeigeobjekte" .-> OBJEKTE
 
@@ -70,8 +73,16 @@ Vorfälle je Tag für (1)"]
     class P1,F2 objekt
     class S3 system
     class T4,T5,T6 sim
-    class T6 geplant
+    classDef regie fill:#7a5c2e,stroke:#5d461f,color:#ffffff
+    class R7 regie
+    class T6,R7 geplant
 ```
+
+Die **Regie** (7) ist als Konzept benannt, ihre Dokumentation ist in
+Arbeit — Stub: `dev-docs/regie.md`. Sie legt fest, was vorgeführt wird
+und unter welchen Bedingungen (Spielleiter-Bereiche, Rollen samt
+Zeichnungsordnung, Abbruchkriterien); wie die Simulation gehört sie zum
+Gesamtbild, aber nicht zum System.
 
 
 ## Architektur
@@ -111,21 +122,27 @@ anlegen und Quellen registrieren (`eingang/` mit SHA-256-Register, nie
 still überschrieben — hier beginnt die Provenienzkette) -> je Quelle
 Vorverdichtung und Agenten-Extraktion -> deterministischer Merge zur
 A-Box -> Diskrepanzen als Entscheidungs-Dossier an den Menschen
-(Gate G-1) -> Spez -> parametrierter Kern -> Abnahme gegen die
-Lieferung (Gate O3, Bestandsabzugs-Abgleich) -> Transformation und
-Übernahme des Bestands -> **Migrationsabnahme über zwei Stichtage**:
+(Gate A-Q1) -> Spez -> parametrierter Kern -> Abnahme gegen die
+Lieferung (Gate P-K1, Bestandsabzugs-Abgleich) -> Transformation und
+Übernahme des Bestands -> **aktuarieller Test je Vertrag an seinen
+eigenen Rechenpunkten** auf belegten Stichproben
+(`qa/aktuarieller_test`, `qa/testprofil`, `gates/aktuartest`) in drei
+einzeln gezeichneten Abnahmen — `A-M1` Stichtagstest, `A-M2`
+Verlaufstest, `A-M3` Geschäftsvorfalltest —, die dem Controlling `A-M4`
+vorausgehen (ADR-010, ADR-012) ->
+**Migrationscontrolling über zwei Stichtage**:
 Deckungskapital am Migrations- und am Folgestichtag plus die
 Geschäftsvorfälle dazwischen, gegen die gelieferten Erwartungswerte
 (`qa/migrationssuite`), zusammengefasst im HTML-Abnahmebericht
 (`gates/abnahmebericht`) mit Transformationsspecifikation,
 Transformationsergebnis und Bestandsberichten vor/nach als Pflichtartefakte —
-als Vorlage für das menschliche Gate G-2. Prüflücken, Zeilenverlust,
+als Vorlage für das menschliche Gate A-M4. Prüflücken, Zeilenverlust,
 Transformationsbefunde oder nicht entschiedene Konflikte ergeben einen roten
 Kopfsatz, ein fehlgeschlagenes Ledger und einen blockierenden Exit-Code. Jede
 Eingabe-, Ausgabe- und Ledgerrolle muss dabei eine eigene Datei bezeichnen;
 Pfad- oder Hardlink-Aliase blockieren vor dem Rendern. Der in `fall.json`
 deklarierte Scope unterscheidet dabei reine Tariffälle von
-Bestandsfällen: Nur der Bestands-Scope verlangt und bindet B1, eine vollständig
+Bestandsfällen: Nur der Bestands-Scope verlangt und bindet P-B1, eine vollständig
 geprüfte Suite und den Abnahmebericht auf denselben Stand.
 `gates.transformation_anwenden.wende_an(spec, fall)` löst die Quelle anhand
 von `spec.quelle_datei` selbst über das
@@ -139,7 +156,7 @@ Quellspalten sowie Quell-/Zielzeilenzahl. Der Abnahmebericht liest die Quelle
 über `eingang.json` erneut und rechnet diese Bindungen nach; ohne diese
 physische Fallbindung bleibt auch ein ansonsten grüner Renderer-Aufruf
 ausdrücklich rot und nichtautoritativ. Im Bestands-Scope verlangt er als Ziel
-genau den von Suite und B1 geprüften Bestand. G-2 wiederholt diese Prüfung,
+genau den von Suite und P-B1 geprüften Bestand. A-M4 wiederholt diese Prüfung,
 verlangt Spec, Transformationsergebnis sowie Vor-/Nachbericht unter vier festen
 Pfad-/SHA-256-Rollen und rendert den Bericht aus den erneut gelesenen Inhalten
 zum Bytevergleich neu (ADR-009).
@@ -147,7 +164,7 @@ zum Bytevergleich neu (ADR-009).
 Braucht die Migration eine **Code-Änderung** (Berechnungskatalog,
 Bewertung, Produktdefinition), läuft sie als kleines, knotengebundenes
 Inkrement auf dem einen Trunk — Landung nur mit grüner Gesamt-Suite
-einschließlich der Anker aller anderen Fälle (ADR-007: parallele
+einschließlich der Referenzwerte aller anderen Fälle (ADR-007: parallele
 Migrationen in einem Kern).
 
 Die Agenten-Rollen samt Grenzen stehen im Katalog
@@ -173,13 +190,14 @@ startet keinen Gate-Lauf.
 
 | Gate | Kommando | Prüft |
 |---|---|---|
-| G0 | `gates.extract` | deterministische Vorverdichtung einer Quellmappe (Formeln, Werte, Namen, VBA) |
-| O0 | `gates.abox_merge` | Zusammenführung der Extraktions-Fragmente zur A-Box |
-| O1 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
-| O3 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
-| P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (G-1, G-2, G-T); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, G-2 verlangt die zum Fall-Scope passenden Pflichtbelege |
-| B1 (Version `2.0.0`) | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, endliche Beträge (`NaN` und `inf` sind Datenfehler), Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand), die Tarifwerk-Regel `gamma1 == 0` der Erhöhungsscheiben und Bewegungs-Identitäten je Jahr, Track und Maß. Die Version steht auf `2.0.0`, weil sich die normative Akzeptanzmenge geändert hat: vorher grüne Belege werden rot und umgekehrt |
-| G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |
+| P-Q1 | `gates.extract` | deterministische Vorverdichtung einer Quellmappe (Formeln, Werte, Namen, VBA) |
+| P-Q2 | `gates.abox_merge` | Zusammenführung der Extraktions-Fragmente zur A-Box |
+| P-Q3 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
+| P-K1 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
+| P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (A-Q1, A-M1, A-M4, A-K1); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, A-M1 und A-M4 verlangen die zum Fall-Scope passenden Pflichtbelege je Gate, und A-M4 verlangt die geltende, signierte A-M1-Annahme auf demselben Stand und pinnt sie als Pflichtrolle `am1_snapshot` (aktuarielle vor finanzieller Abnahme, ADR-010) |
+| P-B1 (Version `2.1.0`) | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, endliche Beträge in Stamm, Scheiben und Ledger (`NaN` und `inf` sind Datenfehler), Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand), die Tarifwerk-Regel `gamma1 == 0` der Erhöhungsscheiben, die Semantik jeder Ledger-Buchung (GeVo-Vokabular, Betragsart zum GeVo, Generation des Stammsatzes, Vertragsjahr zum Datum, Journalzeile zum Zustandswechsel) mit zeilenweiser Bindung jeder `ERH`-Buchung an genau eine Scheibe, mit `--config` die Betragsidentität jeder STO-/PEX-/TOD-/ABL-/ZUG-Buchung gegen die Kern-Herleitung für genau diese Police (Tarifzellen brauchen `--merkmale`), und Bewegungs-Identitäten je Jahr, Track und Maß; mit `--manifest` zusätzlich den belegten Horizont und die Bytes jeder Tabelle gegen das Laufmanifest. `2.0.0` änderte die normative Akzeptanzmenge (vorher grüne Belege werden rot und umgekehrt), `2.1.0` ergänzt die optionale Manifest-Bindung |
+| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
+| G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es P-B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |
 
 Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
 (`tests/test_kern_algebraisch.py`: qx-Schranken, Barwert-Bilanz
@@ -229,11 +247,34 @@ Die klassische Kommutationsrechnung lebt als **separater Zweitkern**
 Kreuz-Check (`qa/ueberleitung`) — sie ist kein Bestandteil des
 Zielkerns.
 
-**Die Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): die
-Fachdokumente des Zielkerns in seiner eigenen Mathematik
-(Zustandsmodell, GeVo-Katalog mit Betragsformeln, Stellschrauben,
-Gültigkeitsgrenzen), gerendert über eine gepinnte Doku-Engine
-(`docs/engine/`).
+**Die Fachdokumentation** ist zweistufig, produktseitig, und jede
+Aussage hat genau ein Zuhause (`tests/test_tarifplan_struktur.py` hält
+den Schnitt):
+
+1. **Die Grundsatzdokumentation**
+   (`docs/mathematik/grundsatzdokumentation.md`): Mathematik und
+   Numerik, der die Umsetzung folgt — das allen Produkten gemeinsame
+   Rückgrat (Zustandsraum und Semi-Markov-Modell, Thiele-Rekursion,
+   Rechnungsgrundlagen-Schicht, Diskretisierung und Rundung,
+   Schichtenbild) und in Abschnitt 9 die Methode des Migrationszugangs:
+   konstruktive Neuberechnung mit Korrekturschicht, also
+   Bestandsmigration ohne Historienmigration. Die Schicht rechnet
+   (`kern/korrekturschicht.py`) — sie ist keine zweite Rechenmaschine,
+   sondern dieselbe Thiele-Rekursion mit anderen Zahlungen; die
+   wertkontinuierlichen Übergänge fallen aus ihrer Dynamik heraus,
+   weshalb Stornoannahmen den Kalibrierungsfaktor nicht beeinflussen
+   können.
+2. **Die Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): die
+   Ausgestaltung je Produkt — Zustandsraum des Tarifs, Leistungen,
+   Beiträge, Reservebegriffe, GeVo-Katalog mit Betragsformeln,
+   Stellschrauben, Gültigkeitsgrenzen. Sie wiederholen das Rückgrat
+   nicht, sondern verweisen darauf. Gerendert über eine gepinnte
+   Doku-Engine (`docs/engine/`).
+
+Daneben — nicht darunter — steht projektseitig das
+**Migrationskonzept** (`docs/migrationskonzept/`): das Verfahren eines
+Migrationsfalls (Prüfebenen, Nachweise, Entscheidungen), je Bestand
+instanziiert.
 
 **Der Bestand** (`rechner_pipeline.bestand`): synthetische,
 deterministisch reproduzierbare Bestände, deren Datenmodell 1:1 auf dem
@@ -248,7 +289,7 @@ Struktur der BaFin-Nachweisungen. Der Bestand wird **geführt**
 und seit wann), das Journal die vollständige Aufzeichnung; die Auskunft
 rekonstruiert den Bestand zu jedem früheren Tag aus dem Journal, und
 die Bewertung liest ausschließlich den Zustand — kein Bewertungspfad
-liest das Journal. Gate B1 erzwingt die Deckungsgleichheit von
+liest das Journal. Gate P-B1 erzwingt die Deckungsgleichheit von
 Stammzustand und jüngstem Journalstand. Berichte rechnen jederzeit neu
 — **Abschlüsse nicht**: Ein festgeschriebener Stichtagsstand
 (`bestand/abschluss.py`, genau einer je Stichtag, mit Kern-Version je
@@ -258,7 +299,7 @@ dagegen und weist Abweichungen aus, statt sie still zu ersetzen.
 sondern der Publish selbst: existiert der Zielpfad, scheitert der Aufruf
 atomar. Und weil ein festgeschriebener Stand unumkehrbar ist, verlangt er
 das **ganze** Lauf-Bundle — Stamm, Historie, Ledger, Scheiben und Config,
-geprüft mit derselben Engine wie Gate B1, vor dem Schreiben wie vor dem
+geprüft mit derselben Engine wie Gate P-B1, vor dem Schreiben wie vor dem
 Prüfen. Eine Teilmenge des Laufs ergäbe sonst einen festgeschriebenen
 Falschstand, den die eigene Kontrolle bestätigt:
 
@@ -319,26 +360,25 @@ cd rechner-pipeline
 
 python -m venv .venv
 . .venv/bin/activate                 # Windows: .venv\Scripts\activate
-python -m pip install -e ".[dev]"
+python -m pip install -r requirements-dev.txt
+python -m pip install -e . --no-deps
 python -m pytest                     # volle Suite
 ```
 
-Dieser Weg pinnt die **direkten** Abhängigkeiten exakt und lässt pip
-alles Transitive frei auflösen — bequem, aber nicht reproduzierbar. Wer
-denselben Paketstand will, den die CI fährt, installiert über die
-Pin-Dateien:
-
-```bash
-python -m pip install -r requirements-dev.txt
-python -m pip install -e . --no-deps
-```
+Das ist der eine Installationsweg, derselbe wie in der CI: Die
+Pin-Dateien tragen die direkten Abhängigkeiten UND ihre vollständige
+transitive Hülle (ein Test hält sie geschlossen). `pip install -e
+".[dev]"` allein pinnt nur die direkten Abhängigkeiten und lässt pip
+alles Transitive tagesaktuell auflösen — mit `filterwarnings = error`
+wurde daraus wiederholt eine rote Suite ohne eigene Änderung; dieser Weg
+ist deshalb nicht dokumentiert.
 
 Die Pflicht-E2E-Tests laufen auch im frischen Clone ohne lokalen
 Fall-Arbeitsbereich. Das kleine anonymisierte Fixture unter
-`tests/fixtures/o3_g2_minimal/` bindet die synthetische Quell-XLSM mit ihrem
-vollen SHA-256. `tests/test_o3_fixture_e2e.py` materialisiert daraus pro Test
+`tests/fixtures/pk1_am4_minimal/` bindet die synthetische Quell-XLSM mit ihrem
+vollen SHA-256. `tests/test_pk1_fixture_e2e.py` materialisiert daraus pro Test
 einen temporaeren Fall und prueft echte Vorverdichtung, Formel-Rueckcheck und
-O3; `tests/test_o3_g2_beweisvertrag.py` fuehrt denselben Belegpfad bis G-2.
+P-K1; `tests/test_pk1_am4_beweisvertrag.py` fuehrt denselben Belegpfad bis A-M4.
 Fehlt oder driftet das Fixture, wird die Suite rot statt den E2E-Pfad zu
 ueberspringen. Details in `ONBOARDING.md`, Abschnitt 5.
 
@@ -351,17 +391,17 @@ python -m rechner_pipeline.fall registrieren --fall faelle/mein-fall --datei <qu
 python -m rechner_pipeline.fall status --fall faelle/mein-fall
 
 # Dazwischen liegen die Agenten-Stufen (Vorverdichtung, Extraktion je
-# Quelle, Merge zur A-Box) — ohne sie enden O1 und O3 planmäßig mit
+# Quelle, Merge zur A-Box) — ohne sie enden P-Q3 und P-K1 planmäßig mit
 # Exit 2 und nennen die fehlende Datei. Siehe ONBOARDING.md, Abschnitt 3.
-python -m rechner_pipeline.gates.abox_validate --fall faelle/mein-fall --repo-root .   # O1
+python -m rechner_pipeline.gates.abox_validate --fall faelle/mein-fall --repo-root .   # P-Q3
 python -m rechner_pipeline.quellen.tafel_import --fall faelle/mein-fall --generation klv/tgX
 python -m rechner_pipeline.gates.generation_golden --fall faelle/mein-fall \
-    --generation klv/tgX --repo-root .                                                 # O3
+    --generation klv/tgX --repo-root .                                                 # P-K1
 
 # menschliche Gates:
 python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ... \
     --wert ... --entscheider ... --begruendung ... --rolle mensch
-python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate G-1 \
+python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate A-Q1 \
     --entscheid angenommen --entscheider ... --begruendung ... --rolle mensch \
     --freigabe-schluessel /sicher/p9-freigabe.key
 ```
@@ -376,8 +416,8 @@ Der Tafelimport akzeptiert nur eine vollstaendige Exportkette: Das
 `export_manifest.json` muss die registrierte XLSM sowie die konkrete
 `Tafeln.csv` mit ihren vollstaendigen SHA-256-Werten binden. Fehlende Manifeste,
 alte Exporte oder nachtraeglich veraenderte Blatt-CSVs blockieren bereits den
-`--dry-run`; in diesem Fall die registrierte XLSM erneut mit G0 extrahieren.
-G0 plant die Dateinamen aller Blatt- und Folgeartefakte vor dem ersten
+`--dry-run`; in diesem Fall die registrierte XLSM erneut mit P-Q1 extrahieren.
+P-Q1 plant die Dateinamen aller Blatt- und Folgeartefakte vor dem ersten
 Blattexport kollisionsfrei. Treffen bereinigte Blattnamen oder reservierte
 Folgenamen aufeinander, erhaelt der spaetere Kandidat einen deterministischen
 `__<n>`-Suffix; `sheet_artifacts` im Exportmanifest bindet jeden
@@ -425,11 +465,12 @@ python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang knoten 
   ohne Ontologie-Knoten und Register-Abweichungen im Fall-Eingang sind
   harte Fehler, keine Warnungen.
 - **Gepinnte Abhängigkeiten:** die direkten exakt in `pyproject.toml`,
-  ihre transitive Hülle in `requirements.txt` /
-  `requirements-dev.txt` — das ist der Installationsweg für
-  reproduzierbare Läufe (Schnellstart oben) und der, den die CI fährt.
-  Der bequeme Weg `pip install -e ".[dev]"` löst das Transitive frei
-  auf und ist damit tagesabhängig.
+  ihre vollständige transitive Hülle in `requirements.txt` /
+  `requirements-dev.txt` — der eine Installationsweg (Schnellstart
+  oben), derselbe, den die CI fährt. `tests/test_abhaengigkeiten.py`
+  prüft, dass jede direkte Abhängigkeit mit ihrer Version in den
+  Pin-Dateien steht und die installierte transitive Hülle darin
+  geschlossen ist.
 
 ## Agenten-Anbindung
 

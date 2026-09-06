@@ -1,0 +1,216 @@
+{
+  "akteur": "claude-fable-5/transformiere-quellbestand@1c43737",
+  "anmerkungen": [
+    "Alle zehn Ziel-Pflichtfelder (ZIEL_PFLICHT) sind aus der Quelle gedeckt; die Anwendung bleibt dennoch blockiert, bis die drei offenen Konflikte (RK, BGRP, STORNO_KZ) menschlich entschieden sind — insbesondere die Bestandszugehoerigkeit der Zeilen mit gesetztem STORNO_KZ.",
+    "Optionale Zielfelder vertragsjahre_am_stichtag und brutto_zahlbeitrag bleiben ungedeckt: die Lieferung enthaelt weder eine Stichtagsspalte noch einen Zahlbeitrag je Zahlungsweise. vertragsjahre_am_stichtag waere nur gegen den Migrationsstichtag 2026-01-01 berechenbar, der keine Quellspalte ist — der Berechnungskatalog rechnet ausschliesslich aus Quellspalten.",
+    "Formate der Lieferung: Datumsspalten TT.MM.JJJJ (vom Katalog-Parser abgedeckt), Betragsspalten mit Dezimalpunkt ohne Tausendertrenner, Trenner Semikolon.",
+    "Alle kodierten Spalten sind laut Vorverdichtung vollstaendig beobachtet (beispiele_vollstaendig=true bei TARIF, VTG_STATUS, GESCHL, ZAHLW) — die Wertetabellen decken damit jeden gelieferten Wert; ein kuenftig fremder Wert faellt als Befund je Zeile, nie als stiller Default.",
+    "BZDAUER enthaelt die Werte 7 und 9 unterhalb der kuerzest moeglichen Laufzeit (rund 11 Jahre): der Bestand enthaelt Vertraege mit abgekuerzter Beitragszahlung; die Zielpruefung premium_duration <= duration greift je Vertrag in der Anwendung.",
+    "Revision durch den Lauf-Operator (Mensch-Hut, Fall-3-Mandat) nach der Rechner-Extraktion: RK->status und BGRP->tarifart als Dimensionsauspraegungen gemappt (vorher versuchsweise VTG_STATUS->status, TARIF->tarifart); VTG_STATUS und TARIF begruendet nicht uebernommen. STORNO_KZ bleibt offen bis zur Antwort der Zulieferung (Rueckfrage Nr. 1).",
+    "Konflikt STORNO_KZ am 2026-08-28 durch den Lauf-Operator (Mensch-Hut) aufgeloest: nicht uebernommen, Begruendung siehe Konflikt-Entscheidung. Die gelieferte Stichproben-Grundgesamtheit (474 = 500 - 26) erklaert sich damit als Ziehungsentscheidung der Zulieferung auf operativ unmarkierte Vertraege; fuer Uebernahme und Controlling zaehlen alle 500.",
+    "Revision 2026-08-28 (Mensch-Hut): entry_age von alter_aus_geburtsdatum_und_beginn auf alter_kalenderjahresmethode umgestellt — Beleg siehe Feld-Begruendung. Damit erklaert sich auch der Uebernahme-Hinweis '500 von 500 Geburtsdaten weichen ab' als Konventionsdifferenz, nicht als Datenfehler.",
+    "Fuer den Testschnitt auf den gekuerzten Abzug gebunden; die Feldabbildung ist unveraendert."
+  ],
+  "erhoben_am": "2026-08-28",
+  "felder": [
+    {
+      "begruendung": "POLNR ist die eindeutige Policennummer der Quelle (Kardinalitaet 500 bei 500 Zeilen, Leeranteil 0, Typ ganzzahl). Der Zielbestand fuehrt police_id als Ganzzahl (STAMM_SPALTEN: int64), daher Katalogberechnung ganzzahl statt String-Durchreichung.",
+      "berechnung": "ganzzahl",
+      "kodierung": {},
+      "quellen": [
+        "POLNR"
+      ],
+      "typ": "berechnung",
+      "ziel": "police_id"
+    },
+    {
+      "begruendung": "BEGINN ist der Versicherungsbeginn (Datum TT.MM.JJJJ, beobachtete Werte 2015/2016 — passend zur Tarifgeneration 2015). Ziel beginn als ISO-Datum via Katalog datum_nach_iso.",
+      "berechnung": "datum_nach_iso",
+      "kodierung": {},
+      "quellen": [
+        "BEGINN"
+      ],
+      "typ": "berechnung",
+      "ziel": "beginn"
+    },
+    {
+      "begruendung": "Alterskonvention der Quelle: Kalenderjahresmethode (Beginnjahr minus Geburtsjahr). BELEGT am 2026-08-28 ueber den Abzugsabgleich der 25 vorgeschichtsfreien Stichproben-Vertraege: Deckungskapital am Verankerungszeitpunkt trifft mit dieser Regel 25/25 centgenau, mit vollendetem Alter nur 12/25, mit Halbjahresregel 19/25. Entscheid des Lauf-Operators (Mensch-Hut, Fall-3-Mandat).",
+      "berechnung": "alter_kalenderjahresmethode",
+      "kodierung": {},
+      "quellen": [
+        "GEBDAT",
+        "BEGINN"
+      ],
+      "typ": "berechnung",
+      "ziel": "entry_age"
+    },
+    {
+      "begruendung": "GESCHL traegt vollstaendig M/W (deutsche Kodierung maennlich/weiblich, Leeranteil 0). Ziel sex verlangt die Zielwerte M/F (SEX_ZIELWERTE); W wird explizit auf F kodiert — ein durchgereichtes W loeste der Kern still zur Frauentafel auf, ohne Zielwert zu sein (P2).",
+      "berechnung": "",
+      "kodierung": {
+        "M": "M",
+        "W": "F"
+      },
+      "quellen": [
+        "GESCHL"
+      ],
+      "typ": "kodierung",
+      "ziel": "sex"
+    },
+    {
+      "begruendung": "Eine Versicherungsdauer liefert die Quelle nicht als Spalte; ABLAUF ist der Vertragsablauf (Datum, 2027-2046). duration (ModelPoint.n) per Katalog jahre_aus_datumsdifferenz aus BEGINN und ABLAUF; die beobachteten Spannen ergeben Laufzeiten von rund 11 bis 31 Jahren.",
+      "berechnung": "jahre_aus_datumsdifferenz",
+      "kodierung": {},
+      "quellen": [
+        "BEGINN",
+        "ABLAUF"
+      ],
+      "typ": "berechnung",
+      "ziel": "duration"
+    },
+    {
+      "begruendung": "BZDAUER ist die Beitragszahlungsdauer in Jahren (ganzzahlig, Werte 7-30, Leeranteil 0). Ziel premium_duration (ModelPoint.t) als Ganzzahl via Katalog ganzzahl. Werte unterhalb der kuerzest moeglichen Laufzeit (7, 9) zeigen abgekuerzte Beitragszahlung (t < n) — im Zielmodell zulaessig (premium_duration <= duration).",
+      "berechnung": "ganzzahl",
+      "kodierung": {},
+      "quellen": [
+        "BZDAUER"
+      ],
+      "typ": "berechnung",
+      "ziel": "premium_duration"
+    },
+    {
+      "begruendung": "ERLSUMME ist die Erlebensfallsumme der Quelle; bei der gemischten Kapitallebensversicherung (Zieltarifart klv) ist die Erlebensfallleistung die Versicherungssumme (Todesfall- gleich Erlebensfallleistung). Ziel sum_insured via Katalog zahl (Dezimalpunkt-Format ohne Tausendertrenner).",
+      "berechnung": "zahl",
+      "kodierung": {},
+      "quellen": [
+        "ERLSUMME"
+      ],
+      "typ": "berechnung",
+      "ziel": "sum_insured"
+    },
+    {
+      "begruendung": "ZAHLW traegt vollstaendig die vier ausgeschriebenen Zahlweisen (Leeranteil 0). Ziel zahlweise ist die Anzahl der Beitragszahlungen je Jahr (ZAHLWEISE_VALUES 1/2/4/12; ModelPoint.zw mit Ratenzuschlaegen ratzu_zw2/zw4/zw12): jaehrlich=1, halbjaehrlich=2, vierteljaehrlich=4, monatlich=12.",
+      "berechnung": "",
+      "kodierung": {
+        "halbjaehrlich": 2,
+        "jaehrlich": 1,
+        "monatlich": 12,
+        "vierteljaehrlich": 4
+      },
+      "quellen": [
+        "ZAHLW"
+      ],
+      "typ": "kodierung",
+      "ziel": "zahlweise"
+    },
+    {
+      "begruendung": "Der Tarifrechner fuehrt RK als Merkmalsdimension 'Status' (Raucherklasse, Tafel-Suffix R/NR und Zellwahl); das Zielfeld status ist die etablierte Zellwahl-Achse (P-K1 waehlt ueber (status, tarifart)). Menschlicher Entscheid im Lauf, siehe Konflikt RK.",
+      "berechnung": "",
+      "kodierung": {
+        "NR": "nichtraucher",
+        "R": "raucher"
+      },
+      "quellen": [
+        "RK"
+      ],
+      "typ": "kodierung",
+      "ziel": "status"
+    },
+    {
+      "begruendung": "Der Tarifrechner fuehrt BGRP als Merkmalsdimension 'Tarifart' (Einzel/Kollektiv/Haus, eigene Kosten-/Abzugsspalten). Menschlicher Entscheid im Lauf, siehe Konflikt BGRP.",
+      "berechnung": "",
+      "kodierung": {
+        "E": "einzel",
+        "H": "haus",
+        "K": "kollektiv"
+      },
+      "quellen": [
+        "BGRP"
+      ],
+      "typ": "kodierung",
+      "ziel": "tarifart"
+    },
+    {
+      "begruendung": "GEBDAT ist das Geburtsdatum der versicherten Person (Datum TT.MM.JJJJ, Jahrgaenge 1957-1995, Leeranteil 0). Optionales Herkunfts-Extra geburtsdatum als ISO-Datum; der Zielbestand fuehrt date_of_birth und prueft dessen Konsistenz zu entry_age (Monatszaehlung).",
+      "berechnung": "datum_nach_iso",
+      "kodierung": {},
+      "quellen": [
+        "GEBDAT"
+      ],
+      "typ": "berechnung",
+      "ziel": "geburtsdatum"
+    },
+    {
+      "begruendung": "JBRUTTO ist der Brutto-Jahresbeitrag der Quelle (Dezimalpunkt-Format; 0.00 bei beitragsfrei gestellten Vertraegen). Optionaler Abgleichswert brutto_jahresbeitrag via Katalog zahl.",
+      "berechnung": "zahl",
+      "kodierung": {},
+      "quellen": [
+        "JBRUTTO"
+      ],
+      "typ": "berechnung",
+      "ziel": "brutto_jahresbeitrag"
+    },
+    {
+      "begruendung": "DECKKAP ist das Deckungskapital der Quelle zum Abzugsstichtag (je Zeile ein eigener Wert, Kardinalitaet 500). Optionaler Abgleichswert deckungskapital via Katalog zahl — Vergleichsgroesse fuer aktuariellen Test und Migrationscontrolling.",
+      "berechnung": "zahl",
+      "kodierung": {},
+      "quellen": [
+        "DECKKAP"
+      ],
+      "typ": "berechnung",
+      "ziel": "deckungskapital"
+    },
+    {
+      "begruendung": "Der Zielzustand entsteht aus der registrierten GeVo-Vorgeschichte (Stamm bei Beginn, Folgezustaende in der Historie); ein gelieferter Statuscode wird nicht durchgereicht. AKT/BFR dient dem Controlling als Kreuzprobe gegen die abgeleitete Historie.",
+      "berechnung": "",
+      "kodierung": {},
+      "quellen": [
+        "VTG_STATUS"
+      ],
+      "typ": "nicht_uebernommen",
+      "ziel": ""
+    },
+    {
+      "begruendung": "Konstantes Tarifkuerzel KLV15 (Kardinalitaet 1); Produkt und Generation setzt der Migrationsfall (klv/tg2015), nicht der Abzug.",
+      "berechnung": "",
+      "kodierung": {},
+      "quellen": [
+        "TARIF"
+      ],
+      "typ": "nicht_uebernommen",
+      "ziel": ""
+    },
+    {
+      "begruendung": "Rein operatives Kennzeichen der Quell-Bestandsfuehrung ohne Bewertungs- oder Zustandsbedeutung (Auskunft der Zulieferung 2026-08-28, Rueckfrage Nr. 1); bewusst ohne Zielentsprechung — ausdruecklicher Ausweis statt stillschweigender Auslassung.",
+      "berechnung": "",
+      "kodierung": {},
+      "quellen": [
+        "STORNO_KZ"
+      ],
+      "typ": "nicht_uebernommen",
+      "ziel": ""
+    }
+  ],
+  "offene_konflikte": [
+    {
+      "entscheider": "Test-Operator (Fall-3-Mandat)",
+      "entscheidung": "RK ist die Raucherklasse und tarifbeitragswirksam (Dimension 'Status' des Tarifrechners). Mapping auf Zielfeld status mit R->raucher, NR->nichtraucher. Keine Ontologie-Erweiterung noetig.",
+      "frage": "RK traegt vollstaendig die Werte NR und R (Leeranteil 0). Naheliegende Lesart: Raucherkennzeichen (NR=Nichtraucher, R=Raucher); denkbar auch Risikoklasse (NR=Normalrisiko, R=erhoehtes Risiko). Die Ziel-Ontologie fuehrt kein entsprechendes Feld (weder Pflicht- noch Optionalziel; der Kern-Contract kennt keinen Raucher-/Risikostatus). (1) Was bedeutet RK genau? (2) War RK im Quellsystem tarif- oder beitragswirksam (z. B. Zuschlag), so dass die Uebernahme fachlich noetig ist — dann ist das eine Ontologie-Erweiterung (Gate A-K1)? (3) Falls nicht wirksam: darf RK mit dokumentiertem Grund entfallen?",
+      "quellspalte": "RK"
+    },
+    {
+      "entscheider": "Test-Operator (Fall-3-Mandat)",
+      "entscheidung": "BGRP ist die Bestandsgruppe/Tarifvariante (Dimension 'Tarifart' des Tarifrechners: E=einzel, K=kollektiv, H=haus) und kosten-/abzugswirksam. Mapping auf Zielfeld tarifart. Keine Ontologie-Erweiterung noetig.",
+      "frage": "BGRP traegt vollstaendig die Werte E, H und K (Leeranteil 0). Die Bedeutung ist aus der Lieferung nicht belegbar (Bestandsgruppe? Berufsgruppe? Beitragsgruppe? Einzel-/Haupt-/Kollektivgeschaeft?). (1) Wofuer steht BGRP, was bedeuten E/H/K? (2) Ist die Gruppe tarif- oder bewertungsrelevant (etwa Kollektivkonditionen oder abweichende Kosten)? (3) Uebernehmen (dann Ontologie-Erweiterung, Gate A-K1, da die Ziel-Ontologie kein Feld dafuer hat) oder mit dokumentiertem Grund auslassen?",
+      "quellspalte": "BGRP"
+    },
+    {
+      "entscheider": "Test-Operator (Fall-3-Mandat)",
+      "entscheidung": "NICHT uebernehmen. Auskunft der Zulieferung (Baldrian, 2026-08-28, auf Rueckfrage Nr. 1): 'R' und 'S' sind rein OPERATIVE Kennzeichen der Baldrian-Bestandsfuehrung — kein Vertragszustand, kein Zahlungsstatus, keine Rechengroesse; deshalb auch nicht in der Mitteilung 143. Alle 26 markierten Vertraege stehen in beiden Abzuegen mit VTG_STATUS AKT und migrieren als normale aktive Vertraege. Das Zielmodell erhaelt bewusst keine Entsprechung.",
+      "frage": "STORNO_KZ ist zu 94.8 Prozent leer und traegt sonst R oder S (rund 26 von 500 Zeilen). Lesarten: Abgangskennzeichen (R=Rueckkauf, S=Storno) oder Zahlungsstoerung (R=Rueckstand, S=Stundung). Spannung: VTG_STATUS kennt nur AKT und BFR — ein Abgangskennzeichen auf einer als aktiv gefuehrten Zeile waere widerspruechlich. (1) Was bedeuten R und S genau? (2) Gehoeren Zeilen mit gesetztem STORNO_KZ zum zu migrierenden Bestand am Stichtag 2026-01-01, oder sind es Abgaenge, die nicht zu uebernehmen sind? (3) Falls sie Bestand sind: welcher Zielstatus (STATUS_CODE_VALUES) bzw. welche Zielsemantik traegt das Kennzeichen?",
+      "quellspalte": "STORNO_KZ"
+    }
+  ],
+  "quelle_datei": "baldrian_bestandsabzug_2026-01-01.csv",
+  "quelle_sha256": "e26ba9f4418f44faa173d9254957ed4d9393f524a69a795900d0b5c0c88d21ed"
+}

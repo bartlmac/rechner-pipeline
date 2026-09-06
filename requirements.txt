@@ -6,6 +6,7 @@ oletools==0.60.2
 pandas==2.3.3
 pyarrow==25.0.1
 matplotlib==3.11.1
+pypdf==6.16.2
 # Transitive deps (pinned for reproducibility):
 cffi==2.0.0
 colorama==0.4.6
@@ -24,3 +25,15 @@ six==1.17.0
 tzdata==2026.2
 win_unicode_console==0.5
 pydantic==2.13.4
+# Transitive Huelle von matplotlib und pydantic (Review T19-04/T20-08: der
+# Schluss war unvollstaendig, pip loeste diese neun je Lauf frisch auf;
+# tests/test_abhaengigkeiten.py haelt die Huelle geschlossen):
+annotated-types==0.7.0
+contourpy==1.3.3
+cycler==0.12.1
+fonttools==4.63.0
+kiwisolver==1.5.0
+pillow==12.3.0
+pydantic-core==2.46.4
+typing-extensions==4.15.0
+typing-inspection==0.4.2

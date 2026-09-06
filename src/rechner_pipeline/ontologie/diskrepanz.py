@@ -12,11 +12,39 @@ Knoten: klv
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rechner_pipeline.ontologie.aussage import Lesart, Wert
+
+
+class Beleg(BaseModel):
+    """Die Rechnung, auf die sich eine Aufloesung stuetzt.
+
+    Eine Begruendung in Prosa kann auf eine Datei VERWEISEN; sie kann
+    nicht sichern, dass es noch dieselbe ist. Genau das fiel beim ersten
+    vollstaendigen Lauf auf: Alle acht Diskrepanzen beriefen sich woertlich
+    auf ``abgeleitet/berichte/abzugsabgleich.json`` — und deren Pruefsumme
+    stand in keinem Ledger und keinem Snapshot. Die Datei haette
+    ausgetauscht werden koennen, ohne dass ein Gate anschlaegt, und mit ihr
+    der Beweis fuer die gesamte Parametrierung.
+
+    Der Beleg macht daraus eine Bindung: Gate P-Q3 rechnet die Pruefsumme
+    nach, statt der Begruendung zu glauben.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Fall-relativer Pfad, z. B. ``abgeleitet/berichte/abzugsabgleich.json``.
+    datei: str = Field(min_length=1)
+    sha256: str = Field(min_length=64, max_length=64)
+
+    @model_validator(mode="after")
+    def _hexziffern(self) -> "Beleg":
+        if any(z not in "0123456789abcdef" for z in self.sha256):
+            raise ValueError("sha256 ist keine Hex-Zeichenkette")
+        return self
 
 
 class Entscheidung(BaseModel):
@@ -36,6 +64,17 @@ class Entscheidung(BaseModel):
     gewaehlter_wert: Wert
     entschieden_am: str = Field(min_length=1)  # ISO-8601 UTC
     vorlaeufig: bool = False
+    #: Die deterministische Rechnung, die die Lesart stuetzt — Datei und
+    #: Pruefsumme. Optional, weil nicht jede Aufloesung eine Rechnung hat
+    #: (manche entscheidet das Aktuariat aus dem Tarifwerk). Wo es eine
+    #: gibt, gehoert sie hierher und nicht nur in den Begruendungstext.
+    beleg: Optional[Beleg] = None
+    #: Rollenbindung der Entscheidung (Vier-Rollen-Modell, 2026-09-01):
+    #: ``{"rolle": ..., "ordnung_sha256": ...}`` — die Rolle wurde aus
+    #: dem Schluessel-Fingerabdruck der Zeichnungsordnung BESTIMMT,
+    #: nicht behauptet. None beim Alt-Weg (--rolle mensch ohne
+    #: Ordnung); dasselbe Muster wie die zeichnung im P9-Snapshot.
+    zeichnung: Optional[Dict[str, str]] = None
 
 
 class Diskrepanz(BaseModel):

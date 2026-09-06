@@ -8,7 +8,7 @@ ergibt byte-gleiche Datei, Laeufe bleiben diff- und hashbar.
 
 Die Kreuz-Objekt-Constraints laufen im Repo-Idiom
 ``validate() -> List[str]`` AUF den Pydantic-Objekten (P5): Pydantic
-traegt Struktur, dieser Code die Fachregeln — inklusive der Verankerung
+traegt Struktur, dieser Code die Fachregeln — inklusive der Bindung
 der Quellen im Eingang-Register des Falls (P1 bis zur Wurzel).
 
 Knoten: klv
@@ -55,7 +55,7 @@ def validate_abox(
 
     ``eingang_register`` ist das geladene ``eingang.json`` des Falls:
     damit wird jede A-Box-Quelle bis zur registrierten, gehashten
-    Eingangsdatei verankert — eine Aussage, deren Quelle nicht im
+    Eingangsdatei gebunden — eine Aussage, deren Quelle nicht im
     Eingang liegt, ist keine belegte Aussage.
     """
     fehler: List[str] = []

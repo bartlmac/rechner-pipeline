@@ -1,6 +1,6 @@
 # ADR-006: Der Portierungs-Anwendungsfall wird ausser Betrieb genommen
 
-Status: akzeptiert (Bartek, 2026-08-17). Umgesetzt: Entfernung aus dem
+Status: akzeptiert (Maintainer, 2026-08-17). Umgesetzt: Entfernung aus dem
 Hauptzweig; konserviert auf Branch `parked/portierung-excel`, Tag
 `portierung-excel-2026-08`. *(Nachtrag 2026-08-19: Branch und Tag
 wurden vor der Veröffentlichung aus dem Arbeits-Repo entfernt — sie
@@ -24,10 +24,10 @@ Dieser Beweis ist erbracht. Was danach entstand, hat den Gegenstand
 verschoben:
 
 * Der Zielkern ist eine eigenstaendige, versionierte Komponente in der
-  Zustandsmodell-Welt (ADR-004). Die Excel-Paritaet ist kein Anker mehr.
+  Zustandsmodell-Welt (ADR-004). Die Excel-Paritaet ist kein laufender Referenzwert mehr.
 * Eine neue Tarifgeneration ist **Parametrierung** — der Praezedenzfall
   TG2012 -> TG2015 lief ohne eine einzige Formelaenderung durch.
-* Ein neues Produkt kommt ueber die T-Box (Gate G-T) und wird IM
+* Ein neues Produkt kommt ueber die T-Box (Gate A-K1) und wird IM
   Zielsystem entwickelt — nicht durch die Uebersetzung einer weiteren
   Arbeitsmappe.
 
@@ -65,12 +65,12 @@ Portierung:
   `quellen/extract/`, `models/bundle`, `models/manifest`. Stufe 1 der
   Migrations-Pipeline liest ihre Quellen damit — ohne sie gibt es keine
   A-Box.
-* **Die Vergleichs-Engine** `qa/golden_master.py`: Gate O3 haelt damit
+* **Die Vergleichs-Engine** `qa/golden_master.py`: Gate P-K1 haelt damit
   den parametrierten Kern gegen den Quell-Rechner.
 * **Der Ledger-Contract** in `gates/_common.py`. Der Gate-Katalog und
   `load_gate_ledger` sind aus `orchestrate/dossier` dorthin gewandert;
-  er fuehrt jetzt die Gates, die es wirklich gibt (G0, O0, O1, O3, P9,
-  B1). Bei der Gelegenheit wurde eine Schein-Unterscheidung beseitigt:
+  er fuehrt jetzt die Gates, die es wirklich gibt (P-Q1, P-Q2, P-Q3, P-K1, P9,
+  P-B1). Bei der Gelegenheit wurde eine Schein-Unterscheidung beseitigt:
   `required` war schon immer fuer alle Gates wahr — das steht jetzt so
   im Code statt als Ableitung aus einer Liste, die mit sich selbst
   identisch war.

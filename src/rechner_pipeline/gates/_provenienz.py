@@ -1,7 +1,7 @@
-"""Gemeinsame System- und O3-Beweisprovenienz.
+"""Gemeinsame System- und P-K1-Beweisprovenienz.
 
 Ein ueberschreibbarer ``generation_golden.gate.json``-Ledger kann nicht
-beweisen, dass Gate O3 fuer *jede* Generation einer A-Box gelaufen ist.  Der
+beweisen, dass Gate P-K1 fuer *jede* Generation einer A-Box gelaufen ist.  Der
 Ledger bleibt das Prozessprotokoll des letzten Laufs; der Abnahmebeweis ist
 hingegen ein deterministischer, inhaltsadressierter Beleg je Generation.
 Sein Eigenhash wird beim Lesen nachgerechnet und sein Dateiname daraus
@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 O3_BELEG_SCHEMA_VERSION = 1
-O3_BELEG_GATE = "O3.generation-golden-master"
+O3_BELEG_GATE = "P-K1.generations-golden-master"
 O3_BELEG_COMMAND = "generation_golden"
 O3_BELEG_GATE_VERSION = "0.2.0"
 O3_BELEG_GLOB = "generation_golden.*.beleg.json"
@@ -61,7 +61,7 @@ def _git_stand(repo_root: Path) -> Dict[str, str]:
     """Den Git-Stand mit drei eng begrenzten, lesenden Aufrufen erfassen.
 
     Dies ist weiterhin die einzige Subprozess-Ausnahme im Paket.  Sie
-    protokolliert nur Beweisprovenienz fuer O3/P9 und beeinflusst keine
+    protokolliert nur Beweisprovenienz fuer P-K1/P9 und beeinflusst keine
     fachliche Rechnung.  Ist Git nicht verfuegbar, bleibt der Zustand mit
     ``unbekannt`` ausdruecklich benannt.
     """
@@ -106,7 +106,7 @@ def _quellcode_sha256() -> str:
 
 
 def systemstand(repo_root: Path) -> Dict[str, str]:
-    """Den fuer O3 und P9 gemeinsam vergleichbaren Systemstand liefern."""
+    """Den fuer P-K1 und P9 gemeinsam vergleichbaren Systemstand liefern."""
     return {**_git_stand(repo_root), "quellcode_sha256": _quellcode_sha256()}
 
 
@@ -123,19 +123,19 @@ def _beleg_hash(kern: Mapping[str, Any]) -> str:
 def _generation_dateiname(generation: str) -> str:
     name = re.sub(r"[^a-zA-Z0-9._-]+", "-", generation).strip("-")
     if not name:
-        raise ValueError("O3-Beleg: Generation ergibt keinen Dateinamen")
+        raise ValueError("P-K1-Beleg: Generation ergibt keinen Dateinamen")
     return name
 
 
-def o3_beleg_dateiname(generation: str, beleg_sha256: str) -> str:
-    """Den einzigen gueltigen Dateinamen eines O3-Belegs ableiten."""
+def pk1_beleg_dateiname(generation: str, beleg_sha256: str) -> str:
+    """Den einzigen gueltigen Dateinamen eines P-K1-Belegs ableiten."""
     return (
         f"generation_golden.{_generation_dateiname(generation)}."
         f"{beleg_sha256}.beleg.json"
     )
 
 
-def schreibe_o3_beleg(
+def schreibe_pk1_beleg(
     diagnostics_dir: Path,
     *,
     gate_version: str,
@@ -147,7 +147,7 @@ def schreibe_o3_beleg(
     input_hashes: Mapping[str, str],
     summary: Mapping[str, Any],
 ) -> Path:
-    """Einen gruenen O3-Beleg exklusiv und inhaltsadressiert schreiben."""
+    """Einen gruenen P-K1-Beleg exklusiv und inhaltsadressiert schreiben."""
     kern: Dict[str, Any] = {
         "schema_version": O3_BELEG_SCHEMA_VERSION,
         "gate": O3_BELEG_GATE,
@@ -165,10 +165,10 @@ def schreibe_o3_beleg(
     daten = {**kern, "beleg_sha256": beleg_sha256}
     fehler = _pruefe_o3_beleg_daten(daten)
     if fehler:
-        raise ValueError("O3-Beleg ungueltig: " + "; ".join(fehler))
+        raise ValueError("P-K1-Beleg ungueltig: " + "; ".join(fehler))
 
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
-    ziel = diagnostics_dir / o3_beleg_dateiname(generation, beleg_sha256)
+    ziel = diagnostics_dir / pk1_beleg_dateiname(generation, beleg_sha256)
     payload = (
         json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     ).encode("utf-8")
@@ -178,7 +178,7 @@ def schreibe_o3_beleg(
     except FileExistsError:
         if ziel.read_bytes() != payload:
             raise ValueError(
-                f"O3-Beleg {ziel.name} existiert mit anderem Inhalt - "
+                f"P-K1-Beleg {ziel.name} existiert mit anderem Inhalt - "
                 "ein inhaltsadressierter Beleg wird nie ueberschrieben"
             )
     return ziel
@@ -280,8 +280,8 @@ def _pruefe_o3_beleg_daten(daten: object) -> list[str]:
     return fehler
 
 
-def pruefe_o3_beleg(pfad: Path) -> Tuple[Optional[dict], list[str]]:
-    """Einen O3-Beleg samt Eigenhash und abgeleitetem Dateinamen pruefen."""
+def pruefe_pk1_beleg(pfad: Path) -> Tuple[Optional[dict], list[str]]:
+    """Einen P-K1-Beleg samt Eigenhash und abgeleitetem Dateinamen pruefen."""
     try:
         daten = json.loads(pfad.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -293,7 +293,7 @@ def pruefe_o3_beleg(pfad: Path) -> Tuple[Optional[dict], list[str]]:
         beleg_sha256 = daten.get("beleg_sha256")
         if isinstance(generation, str) and _ist_sha256(beleg_sha256):
             try:
-                erwartet = o3_beleg_dateiname(generation, beleg_sha256)
+                erwartet = pk1_beleg_dateiname(generation, beleg_sha256)
             except ValueError as exc:
                 fehler.append(f"Dateiname nicht ableitbar: {exc}")
             else:

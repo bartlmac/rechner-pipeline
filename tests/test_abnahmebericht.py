@@ -1,4 +1,4 @@
-"""Migrationsabnahmebericht (gates/abnahmebericht): G-2-Vorlage als HTML.
+"""Migrationsabnahmebericht (gates/abnahmebericht): A-M4-Vorlage als HTML.
 
 Die Suite-Urteile kommen aus der echten Migrationssuite (Kern-eigene,
 centgerundete Erwartungen). Diese Tests können deshalb KEINEN
@@ -13,7 +13,7 @@ unabhängig.
 Dazu das Kommando (Toolbox-Gate-Vertrag): genau EIN JSON auf stdout,
 ``abnahmebericht.gate.json`` auf JEDEM Pfad, Standard-Exit-Codes
 (0 / 2 / 20 / 30), Fall-Vorgaben — und die Grenze, die das Kommando
-nicht überschreitet: es nimmt nicht ab (Gate G-2 bleibt beim Menschen).
+nicht überschreitet: es nimmt nicht ab (Gate A-M4 bleibt beim Menschen).
 
 Knoten: klv
 """
@@ -178,14 +178,17 @@ def test_fallloser_renderer_bleibt_rot_mit_allen_abschnitten(tmp_path) -> None:
     assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
     assert "ohne Fallbindung nicht autoritativ" in text
     assert "ALLE ABNAHMETESTS BESTANDEN" not in text
-    assert "menschliche Entscheidung" in text and "G-2" in text
+    assert "menschliche Entscheidung" in text and "A-M4" in text
     assert "dk_stichtag_1" in text and "dk_stichtag_2" in text
-    assert "POLNR" in text and "police_id" in text
-    assert "NR -&gt; nichtraucher" in text          # Kodierung, escaped
-    assert "&lt;Tarif rechnet unisex&gt;" in text   # HTML-Escaping
-    assert ("entschieden (fachverantwortliche-rolle): "
-            "&lt;entschieden durch den Menschen&gt;") in text
-    assert "Transformationsergebnis" in text
+    # Entmischungs-Entscheid (Sichtung Lauf 2): Die Uebersetzung wird
+    # GEBUNDEN, nicht mehr eingebettet — Feldtabelle und Konfliktliste
+    # traegt der Uebersetzungsbericht des Produzenten.
+    assert "Datenübersetzung (gebundenes Artefakt)" in text
+    assert "Feldabbildungen" in text
+    assert "entschiedene Konflikte" in text
+    assert "Übersetzungsbericht" in text
+    assert "POLNR" not in text                       # Tabelle ist umgezogen
+    assert "Gate <b>A-M4</b> — Migrationscontrolling" in text
     assert text.count("<b>500</b>") >= 2
     assert "vor/index.html" in text and "nach/index.html" in text
     assert "Keine." in text                          # keine Fehlschlaege
@@ -403,13 +406,14 @@ def test_fallloses_kommando_schreibt_nur_roten_bericht_und_ledger(
     text = bericht.read_text(encoding="utf-8")
     assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
     assert "ohne Fallbindung nicht autoritativ" in text
-    assert "POLNR" in text and "vor/index.html" in text
+    assert "Datenübersetzung (gebundenes Artefakt)" in text
+    assert "POLNR" not in text and "vor/index.html" in text
     # Provenienz: Eingaben UND Ausgabe gehasht (ein bestandenes Gate ohne
     # input_hashes wuerde das Dossier blockieren).
     assert result.input_hashes and str(suite_pfad) in str(result.input_hashes)
     assert list(result.output_hashes) == [str(bericht)]
     assert result.summary["bestanden"] == 2
-    assert result.summary["mapping_tabelle"] is True
+    assert result.summary["uebersetzung_gebunden"] is True
     renderer_artefakte = result.summary["renderer_artefakte"]
     assert set(renderer_artefakte) == set(renderer_artefaktrollen())
     assert all(
@@ -417,7 +421,7 @@ def test_fallloses_kommando_schreibt_nur_roten_bericht_und_ledger(
         for eintrag in renderer_artefakte.values()
     )
     # Das Kommando nimmt NICHT ab — die Entscheidung bleibt beim Menschen.
-    assert "G-2" in result.summary["abnahme"]
+    assert "A-M4" in result.summary["abnahme"]
 
     eintrag = _ledger(tmp_path / "diagnostics")
     assert (eintrag.gate, eintrag.command) == (GATE, "abnahmebericht")
@@ -455,7 +459,7 @@ def test_kommando_rot_blockiert_und_schreibt_den_bericht_trotzdem(
     result = main(_basis_argv(tmp_path, suite_pfad))
 
     assert (result.exit_code, result.status) == (Exit.GOLDEN_MASTER, "failed")
-    # Gerade der rote Bericht ist das Beweisstueck fuer die G-2-Vorlage.
+    # Gerade der rote Bericht ist das Beweisstueck fuer die A-M4-Vorlage.
     text = (tmp_path / "berichte" / "abnahme.html").read_text(encoding="utf-8")
     assert "1 von 2 Verträgen FEHLGESCHLAGEN" in text
     meldungen = [e["message"] for e in result.errors]
@@ -1073,3 +1077,86 @@ def test_kommando_gibt_genau_ein_json_auf_stdout(tmp_path, capsys) -> None:
     assert daten["exit_code"] == rc == Exit.GOLDEN_MASTER
     assert daten["status"] == "failed"
     assert daten["schema_version"] == 1
+
+
+def test_gate_rechnet_die_komponentenskalierte_toleranz_nach(
+        tmp_path) -> None:
+    """Ausweitung Nr. 22 des zweiten Laufs: Das Gate verwarf exakt die
+    vier Urteile, die die Suite seit Korrektur 21 komponentenskaliert
+    richtig faellt — seine eigene Nachrechnung nutzte das flache
+    Toleranzpaar. Jetzt steht die Komponentenzahl als Zaehler an jeder
+    Pruefung und das Gate rechnet mit ihr nach: Ein 0,023-Residuum bei
+    sechs Komponenten ist gruen, OHNE den Zaehler bleibt es rot."""
+    import json
+
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    daten = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    p = daten["vertraege"][0]["pruefungen"][0]
+    # Delta ZWISCHEN der flachen Grenze (max aus abs 0,02 und
+    # rel 1e-6) und der 6-Komponenten-Grenze — nur die Skalierung
+    # entscheidet dann das Urteil (Zonen-Beleg).
+    flach = max(0.02, abs(p["erwartet"]) * 1e-6)
+    skaliert = max(0.02 + 5 * 0.005, abs(p["erwartet"]) * 1e-6)
+    assert flach < skaliert, "Fixture-Wert zu gross fuer den Zonen-Test"
+    delta = (flach + skaliert) / 2
+    p["system"] = p["erwartet"] + delta
+    p["residuum"] = p["system"] - p["erwartet"]
+    p["komponenten"] = 6
+    p["ok"] = True
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+    result = main(_basis_argv(tmp_path, suite_pfad))
+    meldungen = " ".join(e["message"] for e in result.errors)
+    assert "'ok'" not in meldungen, meldungen
+    assert result.exit_code != Exit.FILE_CONTRACT
+
+    # Ohne den Zaehler ist dasselbe Urteil eine Umetikettierung —
+    # der suite_contract-Fehler steht in den Meldungen (der Exit-Code
+    # kann von anderen, hier unbeteiligten Blockern der Fixture
+    # dominiert werden).
+    p.pop("komponenten")
+    suite_pfad.write_text(json.dumps(daten), encoding="utf-8")
+    result = main(_basis_argv(tmp_path, suite_pfad))
+    meldungen = " ".join(e["message"] for e in result.errors)
+    assert "'ok'" in meldungen
+
+
+def test_eingebettete_spec_ist_die_dateiform(tmp_path) -> None:
+    """Ausweitung Nr. 23 des zweiten Laufs (A-M4-Zeichnungsblocker):
+    Der Entscheid vergleicht bericht_erzeugung.spec strukturell mit
+    der per SHA gebundenen Datei — eine SPARSE geschriebene Spec
+    (Default-Felder ausgelassen, wie transformiere-quellbestand sie
+    erzeugt) kann einer vollstaendigen model_dump_json-Zweitform NIE
+    gleich sein (im Lauf: 17 fehlende Default-Felder). Eingebettet
+    wird jetzt die geparste DATEI-Form."""
+    import json
+
+    suite_pfad = _suite_datei(tmp_path, _pruefung("P-1"))
+    argv = _basis_argv(tmp_path, suite_pfad)
+    spec_pfad = tmp_path / "spec.json"
+    sparse = _spec().model_dump_json(exclude_defaults=True)
+    spec_pfad.write_text(sparse, encoding="utf-8")
+    assert json.loads(sparse) != json.loads(_spec().model_dump_json()), \
+        "Fixture-Spec traegt keine Default-Felder — Zonen-Beleg leer"
+
+    main(argv)
+
+    ledger_pfade = sorted((tmp_path / "diagnostics").glob("*.json"))
+    assert ledger_pfade, "kein Diagnostics-Ledger geschrieben"
+    daten = json.loads(ledger_pfade[-1].read_text(encoding="utf-8"))
+    def _finde_spec(obj):
+        if isinstance(obj, dict):
+            if "bericht_erzeugung" in obj:
+                return obj["bericht_erzeugung"]["spec"]
+            for wert in obj.values():
+                treffer = _finde_spec(wert)
+                if treffer is not None:
+                    return treffer
+        if isinstance(obj, list):
+            for wert in obj:
+                treffer = _finde_spec(wert)
+                if treffer is not None:
+                    return treffer
+        return None
+    eingebettet = _finde_spec(daten)
+    assert eingebettet is not None, "bericht_erzeugung.spec nicht im Ledger"
+    assert eingebettet == json.loads(sparse)

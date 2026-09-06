@@ -28,33 +28,33 @@ dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 %% Schichten — erzeugt von ontologie.landkarte
 flowchart TD
     n__init__["__init__<br/>1 Module"]
-    bestand["bestand<br/>17 Module"]
+    bestand["bestand<br/>20 Module"]
     fall["fall<br/>1 Module"]
-    gates["gates<br/>12 Module"]
-    kern["kern<br/>9 Module"]
+    gates["gates<br/>17 Module"]
+    kern["kern<br/>12 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
-    models["models<br/>5 Module"]
+    models["models<br/>6 Module"]
     ontologie["ontologie<br/>16 Module"]
-    qa["qa<br/>6 Module"]
+    qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>5 Module"]
-    bestand -- 10 --> kern
-    bestand -- 12 --> models
+    bestand -- 16 --> kern
+    bestand -- 15 --> models
     bestand -- 1 --> qa
-    gates -- 1 --> bestand
-    gates -- 4 --> fall
-    gates -- 1 --> kern
-    gates -- 5 --> models
+    gates -- 9 --> bestand
+    gates -- 8 --> fall
+    gates -- 8 --> kern
+    gates -- 10 --> models
     gates -- 12 --> ontologie
-    gates -- 2 --> qa
+    gates -- 9 --> qa
     gates -- 4 --> quellen
-    gates -- 1 --> spez
+    gates -- 5 --> spez
     kommutationskern -- 2 --> kern
     models -- 1 --> gates
     models -- 1 --> kern
     ontologie -- 1 --> kern
-    qa -- 7 --> kern
-    qa -- 2 --> kommutationskern
+    ontologie -- 1 --> models
+    qa -- 8 --> kern
     qa -- 1 --> models
     quellen -- 1 --> kern
     quellen -- 7 --> models
@@ -74,14 +74,16 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 ```mermaid
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
-    bu["bu<br/>25 Module"]
-    klv["klv<br/>63 Module"]
+    bu["bu<br/>28 Module"]
+    klv["klv<br/>76 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
+    system_entscheid["system/entscheid<br/>1 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 2 --> system_assurance
     klv -- 6 --> system_assurance
-    klv -- 4 --> system_fall
+    klv -- 2 --> system_entscheid
+    klv -- 8 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
     system_assurance -- 1 --> system_fall
@@ -98,19 +100,26 @@ darauf (ADR-004).
 %% kern — erzeugt von ontologie.landkarte
 flowchart TD
     rechner_pipeline_kern___init___py["__init__"]
+    rechner_pipeline_kern_beitragsreduktion_py["beitragsreduktion"]
     rechner_pipeline_kern_konventionen_py["konventionen"]
+    rechner_pipeline_kern_korrekturschicht_py["korrekturschicht"]
     rechner_pipeline_kern_model_point_py["model_point"]
     rechner_pipeline_kern_produkte___init___py["__init__"]
     rechner_pipeline_kern_produkte_bu_py["bu"]
     rechner_pipeline_kern_produkte_klv_py["klv"]
     rechner_pipeline_kern_rechenkern_py["rechenkern"]
     rechner_pipeline_kern_tafeln_py["tafeln"]
+    rechner_pipeline_kern_zahlungspfad_py["zahlungspfad"]
     rechner_pipeline_kern_zustandsmodell_py["zustandsmodell"]
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_konventionen_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_model_point_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_tafeln_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_zustandsmodell_py
+    rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_produkte_klv_py
+    rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_rechenkern_py
+    rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_zahlungspfad_py
+    rechner_pipeline_kern_korrekturschicht_py --> rechner_pipeline_kern_zustandsmodell_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_bu_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_produkte_bu_py --> rechner_pipeline_kern_tafeln_py
@@ -123,6 +132,10 @@ flowchart TD
     rechner_pipeline_kern_rechenkern_py --> rechner_pipeline_kern_produkte___init___py
     rechner_pipeline_kern_rechenkern_py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_tafeln_py --> rechner_pipeline_kern_konventionen_py
+    rechner_pipeline_kern_zahlungspfad_py --> rechner_pipeline_kern_model_point_py
+    rechner_pipeline_kern_zahlungspfad_py --> rechner_pipeline_kern_produkte_klv_py
+    rechner_pipeline_kern_zahlungspfad_py --> rechner_pipeline_kern_tafeln_py
+    rechner_pipeline_kern_zahlungspfad_py --> rechner_pipeline_kern_zustandsmodell_py
     rechner_pipeline_kern_zustandsmodell_py --> rechner_pipeline_kern_konventionen_py
     rechner_pipeline_kern_zustandsmodell_py --> rechner_pipeline_kern_tafeln_py
 ```

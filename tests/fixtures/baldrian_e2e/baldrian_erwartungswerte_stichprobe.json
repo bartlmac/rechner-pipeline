@@ -1,0 +1,71 @@
+{
+  "A-M1_A-M2": {
+    "grundgesamtheit": 20,
+    "parameter": {
+      "abdeckung": {
+        "beitragsfrei": {
+          "gezogen": 25,
+          "vorhanden": 40
+        },
+        "dynamik": {
+          "gezogen": 25,
+          "vorhanden": 90
+        },
+        "ohne_vorgeschichte": {
+          "gezogen": 25,
+          "vorhanden": 309
+        },
+        "reduziert": {
+          "gezogen": 25,
+          "vorhanden": 35
+        }
+      },
+      "je_schicht": 25,
+      "saat": "baldrian-uebernahme-2026"
+    },
+    "police_ids": [
+      "7000004",
+      "7000007",
+      "7000008",
+      "7000011",
+      "7000022",
+      "7000024",
+      "7000028",
+      "7000032",
+      "7000041",
+      "7000044",
+      "7000047",
+      "7000051",
+      "7000060",
+      "7000078",
+      "7000082",
+      "7000123",
+      "7000145",
+      "7000151",
+      "7000179",
+      "7000185"
+    ],
+    "profil": "geschichtet",
+    "umfang": 20,
+    "vollerhebung": true
+  },
+  "A-M3": {
+    "grundgesamtheit": 7,
+    "parameter": {},
+    "police_ids": [
+      "7000014",
+      "7000028",
+      "7000038",
+      "7000060",
+      "7000068",
+      "7000149",
+      "7000248"
+    ],
+    "profil": "vollbestand",
+    "umfang": 7,
+    "vollerhebung": true
+  },
+  "bestand": "baldrian_bestandsabzug_2026-01-01.csv",
+  "gezogen_am": "2026-01-01",
+  "hinweis": "Die Stichproben sind gezogen, BEVOR die Vergleichswerte vorlagen. Andersherum liesse sich die Stichprobe nach ihren Ergebnissen aussuchen. Fuer den Testschnitt auf eine Teilmenge gekuerzt; die Ziehung selbst blieb unveraendert."
+}

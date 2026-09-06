@@ -117,7 +117,7 @@ def test_klv_extract_full_coverage(tmp_path: Path):
         assert not key.startswith(str(REPO_ROOT))
 
     # input_hashes carries the genuine extraction input (the source workbook), so
-    # G0's ledger never has an empty input_hashes -> no dossier 'hashes.missing'.
+    # P-Q1's ledger never has an empty input_hashes -> no dossier 'hashes.missing'.
     assert out["input_hashes"]
     assert any(k.endswith("Tarifrechner_KLV_TG2012.xlsm") for k in out["input_hashes"])
     for key in out["input_hashes"]:

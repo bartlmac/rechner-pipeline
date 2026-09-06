@@ -34,7 +34,7 @@ from rechner_pipeline.kern.zustandsmodell import ZustandsBarwerte
 #: Jenseits von n sind die Zeilen ueber die Blattregeln definiert
 #: (Reserven/RKW 0, flexible Phase) — der Kern rechnet sie auf Anfrage
 #: bis zur Tafel-Erschoepfung (fail-fast), ein blattfester 0..50-Deckel
-#: existiert seit 3.0.0 nicht mehr (Beschluss Bartek 2026-08-16).
+#: existiert seit 3.0.0 nicht mehr (Beschluss Maintainer 2026-08-16).
 
 #: Golden-Master-View-Spalten (Blatt-Keys) — einzige Definitionsstelle.
 VERLAUFSWERTE_SPALTEN = (
@@ -101,7 +101,11 @@ class Monatsreserve:
     drx_bpfl: float      # Betrag (Deckungsrückstellung, beitragspfl. Track)
     vx_mrv: float        # Betrag (inkl. Zillmer-Tilgung) — Bilanzgröße
     stoab: float         # Stornoabschlag auf Basis der interpolierten DR
-    rkw: float           # max(0, vx_mrv - stoab)
+    # Vertragsweit: max(0, vx_mrv - stoab). Mit stoab_je_baustein wird
+    # JE Baustein auf null geklemmt und dann summiert; stoab bleibt die
+    # ungeklemmte Summe der Abzuege — rkw ist dann NICHT aus
+    # vx_mrv - stoab rueckrechenbar (Kern 3.3.0, Ziffer 4).
+    rkw: float
 
 
 class KLV:
@@ -111,24 +115,28 @@ class KLV:
     contract_prefix = "Kalkulation"  # Blattname des Quell-Workbooks
     # Vergleichsfenster des historischen Sechs-Datei-Contracts (Zeilen
     # 0..50 des Quell-Verlaufsblatts) — Eigenschaft der Vergleichs-View
-    # in ``berechne``, KEIN Kern-Anker.
+    # in ``berechne``, KEIN Referenzwert des Kerns.
     contract_verlauf_bis: int | None = 50
     model_point_cls = ModelPoint
 
-    def __init__(self, mp: ModelPoint, barwerte=None) -> None:
-        """``barwerte`` erlaubt ein alternatives Rechenrückgrat mit dem
-        ``Barwerte``-Interface. Produktiver Default ist seit der
-        abgenommenen Toleranz-Überleitung (kern 2.0.0, Bartek 2026-08-12;
-        6170 Werte, 0 abweichend, max. 4e-13 relativ) das
-        Zustandsmodell-Rückgrat; die Kommutations-Schiene bleibt als
-        Kreuz-Check-Schiene erhalten (``qa/ueberleitung`` injiziert beide
-        explizit)."""
+    def __init__(self, mp: ModelPoint) -> None:
+        """Das Rechenrückgrat ist das Zustandsmodell — ohne Alternative.
+
+        Bis ADR-013 nahm dieser Konstruktor ein austauschbares
+        ``Barwerte``-Rückgrat, damit die Toleranz-Überleitung denselben
+        Produktcode einmal mit der Kommutation und einmal mit dem
+        Zustandsmodell rechnen konnte. Diese Überleitung war der
+        Übersetzungsbeleg des Backbone-Wechsels (kern 2.0.0, 2026-08-12;
+        6170 Werte, 0 abweichend, max. 4e-13 relativ) und ist erbracht.
+
+        Die Einhängestelle fällt mit ihr. Sie war der Anspruch, den der
+        Zweitkern an den Zielkern hatte — und über ihn kam die Grenze
+        des Kommutationsmodells herein: Ein austauschbares
+        ``Barwerte``-Rückgrat kann nur Einheitsbarwerte liefern, also
+        konstante Summe und konstanten Beitrag."""
         self.mp = mp
         self.basis = tafeln.basis(mp.sex, mp.tafel)
-        self.bw = (
-            barwerte if barwerte is not None
-            else ZustandsBarwerte(self.basis, mp.zins)
-        )
+        self.bw = ZustandsBarwerte(self.basis, mp.zins)
         self._scalar_cache: Dict[str, float] = {}
         self._zeilen_cache: Dict[int, Verlaufszeile] = {}
 

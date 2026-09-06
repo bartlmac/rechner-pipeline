@@ -17,14 +17,14 @@ einen vorgeführten Stand zitierbar.
   Quelle, deterministischer Merge zur A-Box mit Provenienz je Aussage,
   Widersprüche als Diskrepanz-Objekte, Projektion zur Tarif-Spez,
   parametrierter Kern, Abnahme gegen die Lieferung.
-* **Sieben Gates** als je ein Kommando mit JSON auf stdout und Ledger:
-  `extract` (G0), `abox_merge` (O0), `abox_validate` (O1),
-  `generation_golden` (O3), `gate_entscheid` (P9), `bestand_validate`
-  (B1) und `abnahmebericht` (G2-Vorlage). Ein Nicht-Null-Exit blockiert
+* **Acht Gates** als je ein Kommando mit JSON auf stdout und Ledger:
+  `extract` (P-Q1), `abox_merge` (P-Q2), `abox_validate` (P-Q3),
+  `generation_golden` (P-K1), `gate_entscheid` (P9), `bestand_validate`
+  (P-B1), `aktuartest` (GA-Vorlage) und `abnahmebericht` (G2-Vorlage). Ein Nicht-Null-Exit blockiert
   und wird nie zur Warnung. Jeder Lauf ersetzt den alten Beleg vor der
   Facharbeit durch einen roten Startbeleg und publiziert den Abschluss
   atomar.
-* **Menschliche Gates G-1/G-2/G-T** mit unveränderlichen Snapshots;
+* **Menschliche Gates A-Q1/A-M1/A-M4/A-K1** mit unveränderlichen Snapshots;
   `--rolle mensch|agent` ist Pflicht, ein Agent kann ein menschliches
   Gate nur ablehnen.
 * **Zielrechenkern 3.0.1**: KLV und Berufsunfähigkeit auf einem
@@ -42,7 +42,7 @@ einen vorgeführten Stand zitierbar.
 * **Migrationsabnahme über zwei Stichtage**: Deckungskapital am
   Migrations- und am Folgestichtag plus die Geschäftsvorfälle
   dazwischen, gegen die gelieferten Erwartungswerte, zusammengefasst im
-  HTML-Abnahmebericht als Vorlage für Gate G-2.
+  HTML-Abnahmebericht als Vorlage für Gate A-M4.
 * **Code-Ontologie**: Module und Tests deklarieren ihren Fachknoten;
   Index, Schichtenkarte, Impact und Landkarte werden daraus berechnet
   statt gepflegt.
@@ -53,17 +53,17 @@ einen vorgeführten Stand zitierbar.
 ### Was es bewusst noch nicht kann
 
 * **Formelidentität ist keine Maschinenprüfung.** Der Formel-Rück-
-  Check in Gate O1 deckt die IF-Staffeln; jede andere Formelform meldet
+  Check in Gate P-Q3 deckt die IF-Staffeln; jede andere Formelform meldet
   er fail-fast als "nicht prüfbar". Ob Tarifmeldung und Quell-Rechner
   dieselbe Formel meinen, entscheidet heute ein Mensch gegen den
   Tarifplan.
-* **Gate O3 deckt die Beispielzelle** des Quell-Rechners
+* **Gate P-K1 deckt die Beispielzelle** des Quell-Rechners
   (einzel/nichtraucher); die übrigen Zellen brauchen weitere
   Erwartungswerte vom Lieferanten. Das Komplement weist das Gate aus.
-* **Das O3-/G-2-Pflicht-Fixture ist bewusst klein und synthetisch.** Es deckt
+* **Das P-K1-/A-M4-Pflicht-Fixture ist bewusst klein und synthetisch.** Es deckt
   einen Modellpunkt und eine Ratenzuschlagsstaffel ab, nicht die sechs Zellen
-  des archivierten TG2015-Falls. Dafür laufen echte Vorverdichtung, O3 und
-  G-2 im frischen Clone verpflichtend; ein fehlendes oder hashabweichendes
+  des archivierten TG2015-Falls. Dafür laufen echte Vorverdichtung, P-K1 und
+  A-M4 im frischen Clone verpflichtend; ein fehlendes oder hashabweichendes
   Fixture ist ein Testfehler statt eines Skips.
 * **Der Knoten-Lebenszyklus** (`in_migration` / `abgenommen`, ADR-007
   Regel 4) ist in der T-Box noch nicht umgesetzt.
@@ -93,7 +93,7 @@ einen vorgeführten Stand zitierbar.
   Nutzer-Configs.
 * **ADR-004 (16.08.): Der Zielkern ist Thiele-Welt** — Kern 3.0.0. Die
   Excel-Parität (617/617 Werte, 22.07.2026) ist Übersetzungsbeleg der
-  Vergangenheit, kein Anker mehr; die Kommutationsrechnung wandert in
+  Vergangenheit, kein laufender Referenzwert mehr; die Kommutationsrechnung wandert in
   einen separaten Zweitkern.
 * **ADR-005 (16.08.): Knoten-Hierarchie, Test-Bindung, Code-Karte,
   berechneter Impact** — Knoten-Annotation wird Pflicht und maschinell
@@ -126,7 +126,7 @@ einen vorgeführten Stand zitierbar.
   zwei Stichtage und HTML-Abnahmebericht mit Bestandsberichten
   vor/nach.
 * **Bestandsmodul erweitert** — GeVo-Strom mit Erhöhungsscheiben und
-  Bewegungskonto, Gate B1 auf Bewegungs-Identitäten je Jahr, Track und
+  Bewegungskonto, Gate P-B1 auf Bewegungs-Identitäten je Jahr, Track und
   Maß.
 * **Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`) als Fachdokumente
   des Zielkerns in seiner eigenen Mathematik, gerendert über eine
@@ -140,7 +140,7 @@ einen vorgeführten Stand zitierbar.
 
 Ein externes Review des Stands vom 19.08. hat Beweislücken der
 Abnahmekette aufgedeckt: Ein von Hand geschriebener P9-Snapshot konnte
-G-2 freischalten, ein grüner O3-Ledger schaltete G-2 nie frei, und der
+A-M4 freischalten, ein grüner P-K1-Ledger schaltete A-M4 nie frei, und der
 Abnahmebericht übernahm Selbstauskünfte der Suite, statt sie
 nachzurechnen. Daraus:
 
@@ -152,9 +152,9 @@ nachzurechnen. Daraus:
   möglich — der sichere Agentenpfad.
 * **ADR-009 (20.08.): Fall-Scope und Bestands-Pflichtbelege** — jeder
   Fall deklariert `tarif` oder `bestand` in `fall.json`; daraus leitet
-  G-2 seine Pflichtbelege ab und rechnet sie neu nach, statt dem
+  A-M4 seine Pflichtbelege ab und rechnet sie neu nach, statt dem
   Ledger zu glauben. Ein Altfall ohne Deklaration blockiert.
-* **O3-Belege** sind unveränderlich und inhaltsadressiert und binden
+* **P-K1-Belege** sind unveränderlich und inhaltsadressiert und binden
   A-Box, Systemstand und Eingangsartefakte.
 * **Abnahmebericht rechnet neu**: Residuen, Vertrags- und Suiteurteile,
   Mengenbefunde und Prüflücken werden aus den atomaren Fakten
@@ -162,13 +162,13 @@ nachzurechnen. Daraus:
   offene Konflikte blockieren als `abnahmehindernisse`.
 * **Fehlende GeVo-Erwartungsbeträge** (STO/TOD/ABL/PEX) werden zur
   benannten Prüflücke, statt still zu bestehen.
-* **Provenienz und Integrität**: O1 verwirft Belege aus abgelehnten
+* **Provenienz und Integrität**: P-Q3 verwirft Belege aus abgelehnten
   Lesarten; der Tafelimport prüft die Kette XLSM → Exportmanifest →
   Blatt-CSV per Vollhash; Sterbewahrscheinlichkeiten und Altersgitter
   werden an allen Ladepfaden validiert (Kern 3.0.1); Fall-Registrierung
   ist gegen Symlinks, Pfadtraversal und parallele Läufe gehärtet;
   Excel-Blattnamen werden bijektiv auf Dateinamen abgebildet.
-* **Ein eingechecktes O3-Fixture** löst die vier fallgebundenen
+* **Ein eingechecktes P-K1-Fixture** löst die vier fallgebundenen
   Test-Auslassungen ab; die CI fährt es als Pflichtstufe vor der
   Vollsuite.
 * **Bewusst nicht umgesetzt**: statische QS (Lint/Typprüfung/Security),
@@ -176,14 +176,117 @@ nachzurechnen. Daraus:
   mehrstufiges Statusmodell des Abnahmeberichts — der Gate-Vertrag
   bleibt binär und blockierend.
 
+### Geändert am 2026-08-27 (abends)
+
+* **ADR-012: Gate-Namen sagen, wer entscheidet und worüber.** Acht Namen
+  nach sieben Bildungsregeln wurden auf eine Ordnung gebracht:
+  `<Art>-<Gegenstand><Nummer>.<fachliche Kennung>`, mit `P` für die
+  maschinelle Prüfung und `A` für die menschliche Abnahme. Aus
+  `G0.extraction-manifest` wird `P-Q1.quellfragment`, aus `G-2` wird
+  `A-M4`, aus `P9.<gate>` wird `entscheid.<abnahme>`. Der Buchstabe `G`
+  hatte drei Bedeutungen, und `G-2` unterschied sich von
+  `G2.static-security` um einen Bindestrich bei völlig verschiedener
+  Bedeutung. Vollständige Umstellung in Code, Ledgern, Snapshots,
+  Belegrollen, Tests, Dokumentation, Skills und CI — möglich, weil nie
+  eine Migration nach außen gelaufen ist.
+* **Der aktuarielle Test besteht aus drei Abnahmen** (`A-M1`
+  Stichtagstest, `A-M2` Verlaufstest, `A-M3` Geschäftsvorfalltest),
+  jede mit eigener Stichprobe, eigenen Kriterien, eigenem Bericht und
+  eigener Unterschrift. Die Engine trägt statt eines Zeitpunkts eine
+  Liste von **Prüfpunkten** je Vertrag; ein Vertrag besteht nur, wenn
+  jeder seiner Punkte besteht. Die Verteilungsauswertung clustert nach
+  Historientyp **und Anlass**. Neue Prüfgröße `dDK`: die Veränderung des
+  Deckungskapitals durch einen Geschäftsvorfall — eine laufende Rente
+  ist keine Größe zu einem Zeitpunkt und taugt nicht als Vergleichswert.
+  Toleranzen kommen aus einem **Testprofil** (`qa.testprofil`) statt aus
+  einer Konstante; ein Profil, dessen Abnahmegrenze unter dem
+  Rundungsrauschen einer centgerundeten Lieferung liegt, wird abgelehnt.
+* **Der Korrekturterm des Bestandszugangs rechnet**
+  (`kern.korrekturschicht`, Grundsatzdokumentation Abschnitt 9). Es
+  brauchte keine zweite Rechenmaschine: Die Kollapsform entsteht aus der
+  vorhandenen Thiele-Rekursion, indem die wertkontinuierlichen Übergänge
+  aus der Übergangsfunktion genommen werden — ihre
+  Wahrscheinlichkeitsmasse bleibt per Residuum-Regel im Zustand. Die
+  **Optionsunabhängigkeit** aus 9.8 ist damit eine Eigenschaft der
+  Konstruktion und gemessen: über Stornoquoten von 0 bis 25 Prozent
+  bleibt der Kalibrierungsfaktor auf die letzte Stelle gleich, während
+  dieselbe Größe um 28 Prozent springt, sobald man den Storno
+  fälschlich als vererbend führt.
+* **Abschnitt 9.10 neu gefasst: die Degenerationsschwelle entfällt.**
+  Die alte Begründung („sonst explodiert der Kalibrierungsfaktor") trägt
+  nicht — er ist ein Zwischenwert, kein Ausweiswert, und wird mit einem
+  im selben Maß kleineren Einheitsstrom multipliziert. Nachgemessen
+  bleibt der Schichtwert bei jeder Restlaufzeit exakt beim Residuum.
+  Hart abgefangen wird nur noch der Fall ohne Amortisationsraum. Wer
+  kurze Restlaufzeiten ausbuchen statt verteilen will, parametriert das
+  je Bestandsgruppe — es ist eine Entscheidung des Rechnungswesens,
+  keine Eigenschaft der Methode.
+* **Externe Reviewrunde T14 zur Bestandsführung**: sieben Befunde, jeder
+  am Code nachgeprüft mit dem Auftrag, ihn zu widerlegen. Sechs
+  umgesetzt. Das Schreiben von Beständen ist jetzt **atomar** (zwei
+  gleichzeitige Schreiber erzeugten eine physisch defekte Datei, und der
+  Stichtag war danach eine Sackgasse); der **Abschluss trägt dieselben
+  Vorbedingungen wie der Bericht** (ohne Erhöhungsscheiben lag das
+  Deckungskapital 3.795.035,38 zu niedrig, bei Exit 0 — und die eigene
+  Kontrolle meldete „deckungsgleich"); die **Bewertung verlangt das
+  Journal zum geführten Stamm** (ohne es wies der Bericht 51 Prozent zu
+  viele Verträge und 70 Prozent zu viel Deckungskapital aus); **`gamma1`
+  wird geprüft** (ein negativer Wert erzeugte einen negativen
+  Jahresbeitrag, ein `NaN` einen Rückkaufswert von 0,00 statt
+  26.506,09); der Abschluss bindet den **Dateinamen an den
+  Inhaltsstichtag**. Gate `P-B1` steht auf Version 2.0.0.
+
+### Geändert am 2026-08-27
+
+* **Dreistufige Fachdokumentation** — das Fachkonzept „Konstruktive
+  Neuberechnung und Korrekturschicht" v0.2 ist inzwischen **vollständig
+  in die Grundsatzdokumentation aufgenommen und gelöscht**; sie ist die
+  normative Quelle, alle Verweise sind umgestellt. Neu ist damit die
+  **Grundsatzdokumentation**: Mathematik und Numerik, der die
+  Umsetzung folgt — Zustandsraum und Semi-Markov-Modell,
+  Thiele-Rekursion auf dem erweiterten Zustand, Rechnungsgrundlagen
+  und Ordnungs-Abgrenzung, die beiden unterjährigen Konventionen,
+  Rundung, Schichtenbild und Produkt-Contract. Die **Tarifpläne**
+  tragen seither nur noch die Ausgestaltung je Produkt und verweisen
+  für das gemeinsame Rückgrat; rund ein Viertel jedes Plans stand
+  vorher wortgleich im anderen. Ein Wächter hält den Schnitt
+  (`tests/test_tarifplan_struktur.py`): je Produkt ein Tarifplan und
+  umgekehrt, gemeinsame Gliederung, kein Backbone-Thema im Tarifplan,
+  keine widersprüchliche Abschnittszahl.
+* **Projektseitig** das Migrationskonzept (`docs/migrationskonzept/`)
+  mit den ausgearbeiteten Kapiteln 6 (Migrationscontrolling) und 7
+  (aktuarielle Abnahme), jeweils mit Deckungsgrad gegenüber
+  Fachkonzept Kapitel 6.
+* **Impact kennt die Doku-Bindungen**: Tarifpläne binden über ihren
+  Dateinamen an den Produktknoten (ein neues Produkt bringt seinen
+  Plan damit nicht an der Testselektion vorbei), das Fachkonzept fällt
+  konservativ aus.
+
 ### Geändert am 2026-08-26
 
+* **ADR-010 umgesetzt: aktuarieller Test und Migrationscontrolling sind
+  getrennte Gates** — die Test-Engine (`qa.aktuarieller_test`)
+  vergleicht je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt
+  ohne Interpolation und ohne Summation der Vergleichsgrößen (nur
+  Verteilungsgrößen der Residuen, geclustert nach Historientyp) auf
+  einer belegten Stichprobe (`qa.stichprobe`, v0-Profil `vollbestand`).
+  Das Gate `gates.aktuartest` rechnet das Ergebnis von innen nach außen
+  nach und rendert die Entscheidungsvorlage für das neue menschliche
+  Gate A-M1 (aktuarielle Abnahme, Verantwortlicher Aktuar).
+  Prüfsummen laufen als Transportsicherung getrennt und sind nie Teil
+  des fachlichen Urteils.
+* **A-M1 geht A-M4 voraus (erzwungen)** — `P9_GATES` wächst um `A-M1`, die
+  Pflichtbelegmenge wird je Gate aufgelöst (`fall.BELEGROLLEN`,
+  ADR-009-Nachtrag), A-M4 verlangt den geltenden signierten A-M1-Snapshot
+  auf demselben Stand und pinnt ihn als Rolle `am1_snapshot`. Das
+  P9-Schema hebt auf Version 5 (Gate-Version 0.6.0); Altketten mit
+  v4-Snapshots werden revisionsfest archiviert und neu entschieden.
 * **ADR-011: Bestandsführung mit geführtem Zustand und Journal** — der
   Stammsatz trägt den aktuellen Zustand (Status und seit wann), das
   Journal (Statushistorie + Ledger) ist die vollständige Aufzeichnung,
   aus der die Auskunft den Bestand zu jedem früheren Tag rekonstruiert.
   Kein Bewertungspfad liest das Journal; die Bewertung rechnet aus dem
-  Zustand. `bestand_gesamt.parquet` ist seither geführt; Gate B1 prüft
+  Zustand. `bestand_gesamt.parquet` ist seither geführt; Gate P-B1 prüft
   die Deckungsgleichheit von Stamm und Journal. Die rückwirkende
   Zeitscheiben-Sicht ist pensioniert. Erhöhungsscheiben tragen ihre
   Rechnungsgrundlage (`gamma1`) selbst — behebt einen Defekt, bei dem
@@ -198,35 +301,28 @@ nachzurechnen. Daraus:
   dieselbe einzelvertragliche Strecke (`auswertung.einzelwerte_am`),
   die auch die Berichts-Aggregation trägt.
 
-### Geändert am 2026-08-27 bis 2026-09-01 (externe Review-Runden T14 und T16)
+### Geändert am 2026-08-28 bis 2026-09-01 (externe Review-Runde T16)
 
-Zwei aufeinanderfolgende externe Prüfungen des Bestandsführungs-Standes.
-Die erste (T14) fand sieben Befunde, die zweite (T16) prüfte den
-Reparaturstand nach und fand neun weitere. Das durchgehende Muster der
-zweiten Runde: Die Reparaturen prüften jeweils den `None`-Fall, aber
-nicht den Fall „vorhanden, aber leer".
+Die Nachprüfung des Reparaturstandes der vorigen Runde (oben, 27.08.)
+fand neun weitere Befunde. Das durchgehende Muster: Die Reparaturen
+prüften jeweils den `None`-Fall, aber nicht den Fall „vorhanden, aber
+leer". Eine fehlende Scheibendatei blockierte, eine leere kam durch;
+dasselbe bei der Historie — beides am einzigen unumkehrbaren Stand des
+Systems, und beides gegenüber der eigenen Kontrolle unsichtbar.
 
-* **Gate B1 trägt Version `2.0.0`** — nicht `1.5.0`, weil sich die
-  normative Akzeptanzmenge geändert hat: Belege, die unter dem alten
+* **Warum `P-B1` auf `2.0.0` steht und nicht auf `1.5.0`** — weil sich
+  die normative Akzeptanzmenge geändert hat: Belege, die unter dem alten
   Vertrag grün waren, werden unter dem neuen rot, und umgekehrt.
-  Nachgelagerte Prüfer (Abnahmebericht, G-2) lesen die Version dynamisch
-  statt sie zu wiederholen. Wann eine Gate-Version steigen muss, ist im
-  Repository noch nirgends geregelt; die Regel ist als Folgearbeit
-  benannt. Ein Test kann sie nicht ersetzen: weil die nachgelagerten
-  Prüfer die Version dynamisch lesen, kann keine Zusicherung entscheiden,
-  ob eine Änderung Major oder Patch war — das ist eine Regel, kein
-  Assert.
-* **`gamma1` ist eine geprüfte Rechnungsgrundlage** — B1 prüft die
-  Tarifwerk-Regel selbst: `gamma1 == 0`, weil die Bezugsgröße der
-  Verwaltungskosten die GrundVS bleibt. Der Wert ging vorher ungeprüft
-  in Beitrag und Reserve ein. Gemessen: `gamma1 = -5.0` erzeugte einen
-  negativen Jahresbeitrag von −7.202,87 EUR, und bei `NaN` fiel der
-  Rückkaufswert auf 0,00 statt 26.506,09 — ein still plausibler
-  Falschwert ist schlimmer als eine sichtbare `NaN`. `NaN` wird getrennt
-  gemeldet, weil jeder Vergleich damit falsch ist.
+  Nachgelagerte Prüfer lesen die Version dynamisch statt sie zu
+  wiederholen. Dabei fiel auf, dass im Repository überhaupt nicht
+  geregelt ist, wann eine Gate-Version steigen muss; die Regel ist als
+  Folgearbeit benannt. Ein Test kann sie nicht ersetzen: gerade weil die
+  nachgelagerten Prüfer die Version dynamisch lesen, kann keine
+  Zusicherung entscheiden, ob eine Änderung Major oder Patch war — das
+  ist eine Regel, kein Assert.
 * **Der Abschluss konsumiert das ganze Lauf-Bundle** — Stamm, Historie,
   Ledger, Scheiben und Config werden vor dem Festschreiben *und* vor dem
-  Prüfen mit derselben Engine geprüft wie in Gate B1
+  Prüfen mit derselben Engine geprüft wie in Gate P-B1
   (`bestand/vorbedingungen.py`). Vorher sperrte die CLI nur bei
   fehlender Datei; eine vorhandene, aber leere Scheiben- oder
   Historiendatei kam durch und wurde festgeschrieben (Deckungskapital

@@ -148,7 +148,7 @@ var_i = "entry_age"
 var_j = "bu_rente"
 rho = 0.30
 # --------------------------------------------------------------------------
-# Plausibilitaets-Baender fuer das Sanity-Gate (B1)
+# Plausibilitaets-Baender fuer das Sanity-Gate (P-B1)
 # --------------------------------------------------------------------------
 [plausibilitaet]
 entry_age = [20, 55]

@@ -60,7 +60,7 @@ import ast
 import json
 import sys
 from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 SRC_PREFIX = "src/rechner_pipeline/"
 TEST_PREFIX = "tests/"
@@ -79,6 +79,9 @@ DATEN_BINDUNG: Dict[str, str] = {
 }
 
 #: Doku-/Vertrags-Pfade, die an einen Knoten gebunden sind (test-tragend).
+#: Die Tarifplaene gehoeren dazu: Sie tragen die Generationen-Tabelle,
+#: die ``test_bestand_config`` zeichengenau gegen die Bestand-Config
+#: prueft — eine Aenderung dort ist kein reiner Doku-Vorgang.
 DOKU_BINDUNG: Dict[str, str] = {
     "AGENTS.md": "system/skills",
     ".claude/skills/": "system/skills",
@@ -86,9 +89,21 @@ DOKU_BINDUNG: Dict[str, str] = {
     "docs/architektur/skill-architektur.md": "system/skills",
 }
 
+#: Doku-Ordner, deren Dateiname den Knoten bestimmt: ``<knoten>.md``.
+#: Generisch statt aufgezaehlt, damit ein neues Produkt seinen Tarifplan
+#: nicht stillschweigend ausserhalb der Testselektion mitbringt; der
+#: README des Ordners ist kein Produkt und faellt konservativ aus.
+DOKU_NAMENSBINDUNG: Dict[str, Tuple[str, ...]] = {
+    "docs/tarifplaene/": ("README",),
+}
+
 #: Aenderungen hier machen jede Selektion unsicher -> volle Suite.
+#: ``docs/mathematik/`` traegt die Mathematik, DER DIE UMSETZUNG FOLGT
+#: (Grundsatzdokumentation) — eine Aenderung daran ist nie auf einen
+#: Knoten begrenzt, auch wenn sie nur ein Produkt zu betreffen scheint.
 GLOBAL_KONSERVATIV = ("pyproject.toml", "tests/conftest.py",
-                      "tests/__init__.py", ".github/")
+                      "tests/__init__.py", ".github/",
+                      "docs/mathematik/")
 
 
 def verwandt(a: str, b: str) -> bool:
@@ -229,6 +244,15 @@ def berechne_impact(
             (k for pfx, k in DOKU_BINDUNG.items() if datei.startswith(pfx)),
             None,
         )
+        if doku is None:
+            for ordner, ausnahmen in DOKU_NAMENSBINDUNG.items():
+                if not datei.startswith(ordner) or not datei.endswith(".md"):
+                    continue
+                stamm = datei[len(ordner):-len(".md")]
+                if "/" in stamm or stamm in ausnahmen:
+                    break
+                doku = stamm
+                break
         if doku is not None:
             knoten.add(doku)
             continue
@@ -349,7 +373,7 @@ def berechne_impact(
         for g in treffer:
             betroffene_faelle.append({
                 "fall": fall, "generation": g,
-                "hinweis": f"Gate O3 fuer {fall} --generation {g} "
+                "hinweis": f"Gate P-K1 fuer {fall} --generation {g} "
                            "erneut fahren",
             })
 

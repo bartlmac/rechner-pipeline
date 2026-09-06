@@ -21,5 +21,65 @@ der Tarifrechner, die Tarifmeldung und die Bestandsdaten-Lieferung
 (Abzug zum Migrations- und zum Folgestichtag plus
 Geschäftsvorfall-Protokoll des Zwischenjahres).
 
+Ein Drittel der Verträge trägt eine **Vorgeschichte** — Erhöhungen,
+Beitragsfreistellungen und Herabsetzungen VOR dem Migrationsstichtag.
+Ihre Wirkung steckt im gelieferten Stand, ihre Beträge kommen nicht mit.
+Geliefert wird nur `baldrian_gevo_metadaten.csv`: Police, Art und Datum,
+ohne Beträge. Ohne diese Liste ist der Verankerungszeitpunkt nicht
+bestimmbar und die aktuarielle Abnahme nicht durchführbar; die Beträge
+dagegen bleiben beim abgebenden Unternehmen, weil das Zielsystem neu
+rechnet und keine fremde Historie liest.
+
+Die **aktuarielle Notiz zur Beitragsabsetzung** liegt bei, gehört aber
+nicht zur ursprünglichen Lieferung: Die Tarifmeldung beschreibt das
+Verfahren der Herabsetzung nicht, und das ist kein Versehen — der
+Vorgang ist in den Bedingungen als Möglichkeit eröffnet, ohne zugesagtes
+Ergebnis. Die Notiz wird deshalb erst registriert, wenn die Lücke
+aufgefallen und nachgefragt worden ist. Wer sie von Anfang an in den
+Fall nimmt, überspringt genau den Vorgang, den dieser Showcase zeigt.
+
+Dasselbe gilt für **zwei weitere Nachlieferungen**, die erst auf
+Rückfrage entstanden sind. Sie liegen bei, gehören aber ebenso wenig zur
+ursprünglichen Lieferung:
+
+* Die **aktuarielle Notiz zum Stornoabschlag** (2026/05) beantwortet die
+  Frage, nach welcher Regel der Abschlag eines bereits herabgesetzten
+  Vertrages gebildet wird — mit der Auskunft, dass es diese Regel nicht
+  gibt: Die Absetzung war der Werthöhe nach nie zugesagt, die damalige
+  Berechnung ist nicht mehr rekonstruierbar. Für die betroffenen
+  Verträge ist der gelieferte Rückkaufswert damit kein herleitbarer
+  Erwartungswert. Das ist eine realistische Auskunft, keine Panne:
+  Abgebende Unternehmen können ihre Altbestandsrechnungen oft nicht
+  vollständig herleiten. Ob ein Verfahren das aushält, statt es zu
+  übertünchen, entscheidet sich an solchen Stellen.
+* Die **Nachlieferung zu den Absetzungen** trägt eine einzige Zeile: den
+  fortgeführten Beitragsanteil einer Police, deren
+  Beitragszahlungsdauer am Migrationsstichtag bereits abgelaufen war.
+  Bei allen übrigen Absetzungen ist dieser Anteil aus dem gelieferten
+  Stand rückrechenbar; bei dieser einen fällt die Beitragsgleichung weg.
+  Geliefert wird also, was wirklich nicht ableitbar ist — nicht mehr.
+
+Beide Nachlieferungen sind Dokumente, nicht Zusagen per Zuruf: Die
+menschlichen Gates binden registrierte Eingänge über ihre Prüfsummen,
+und eine Auskunft, die nur im Gesprächsprotokoll steht, lässt sich dort
+nicht pinnen.
+
+Die **Erwartungswerte für den aktuariellen Test** liegen in vier
+Dateien: die Werte am Übernahmestichtag und am Folgejahrestag, die Werte
+im Verlauf (fünf und zehn Jahre nach der Übernahme sowie zum Ablauf),
+die Werte je Geschäftsvorfall, und der Beleg der vereinbarten
+Stichprobe. Baldrian rechnet nicht den ganzen Bestand nach, sondern die
+hundert Verträge einer nach Historientyp geschichteten Stichprobe plus
+alle zweiundvierzig Verträge mit Vorfall im Migrationsjahr — die
+Stichprobe ist deshalb Teil der Lieferung und nicht Sache des
+übernehmenden Unternehmens.
+
+Eine Abkürzung des Vorführfalls sei hier ausdrücklich genannt: Diese
+vier Dateien tragen bereits die Struktur der Prüfaufträge des
+aktuariellen Tests (Zeitpunkt, Anlass, erwartete Größen). Ein echtes
+abgebendes Unternehmen lieferte Werte in seinem eigenen Format, und die
+Übersetzung in Prüfaufträge wäre selbst ein Arbeitsschritt. Die
+Abkürzung spart diesen Schritt; sie ändert nichts an den Werten.
+
 **Durchführung:** siehe `ONBOARDING.md`, Abschnitt 3 („Run the
 showcase migration").

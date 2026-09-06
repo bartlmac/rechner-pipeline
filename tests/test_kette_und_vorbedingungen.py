@@ -12,7 +12,7 @@ import pytest
 
 from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates.abox_merge import main as merge_cli
-from rechner_pipeline.gates.abox_validate import main as o1
+from rechner_pipeline.gates.abox_validate import main as pq3
 from rechner_pipeline.gates.gate_entscheid import main as p9
 from rechner_pipeline.ontologie import PFLICHT_PARAMETER, belegt
 from rechner_pipeline.ontologie.abox import abox_pfad, lade, speichere
@@ -102,8 +102,8 @@ def test_kette_faengt_direkte_abox_edits(fall_mit_fragmenten):
     speichere(abox, f)
     befunde = pruefe_kette(f)
     assert any("Diskrepanzenmenge" in b for b in befunde)
-    # ... und Gate O1 faellt darauf:
-    result = o1(["--fall", str(f)])
+    # ... und Gate P-Q3 faellt darauf:
+    result = pq3(["--fall", str(f)])
     assert result.exit_code == 20
     assert any(e["code"] == "kette" for e in result.errors)
 
@@ -128,7 +128,7 @@ def test_kette_akzeptiert_dokumentierte_aufloesung(fall_mit_fragmenten):
                for b in pruefe_kette(f))
 
 
-def test_o1_akzeptiert_beleg_der_gewaehlten_lesart(fall_mit_fragmenten):
+def test_pq3_akzeptiert_beleg_der_gewaehlten_lesart(fall_mit_fragmenten):
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
     abox = lade(f)
@@ -143,13 +143,13 @@ def test_o1_akzeptiert_beleg_der_gewaehlten_lesart(fall_mit_fragmenten):
     )
     speichere(abox, f)
 
-    result = o1(["--fall", str(f)])
+    result = pq3(["--fall", str(f)])
     assert result.exit_code == 0
     aussage = lade(f).generationen[0].zellen[0].parameter["beta1"]
     assert aussage.provenienz == gewaehlte_lesart.provenienz
 
 
-def test_o1_lehnt_beleg_der_verworfenen_lesart_ab(fall_mit_fragmenten):
+def test_pq3_lehnt_beleg_der_verworfenen_lesart_ab(fall_mit_fragmenten):
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
     abox = lade(f)
@@ -167,7 +167,7 @@ def test_o1_lehnt_beleg_der_verworfenen_lesart_ab(fall_mit_fragmenten):
     )
     speichere(abox, f)
 
-    result = o1(["--fall", str(f)])
+    result = pq3(["--fall", str(f)])
     assert result.exit_code == 20
     assert any(
         error["code"] == "kette"
@@ -177,7 +177,7 @@ def test_o1_lehnt_beleg_der_verworfenen_lesart_ab(fall_mit_fragmenten):
     )
 
 
-def test_o1_lehnt_zusaetzlichen_beleg_der_verworfenen_lesart_ab(
+def test_pq3_lehnt_zusaetzlichen_beleg_der_verworfenen_lesart_ab(
     fall_mit_fragmenten,
 ):
     f = fall_mit_fragmenten
@@ -201,7 +201,7 @@ def test_o1_lehnt_zusaetzlichen_beleg_der_verworfenen_lesart_ab(
     )
     speichere(abox, f)
 
-    result = o1(["--fall", str(f)])
+    result = pq3(["--fall", str(f)])
     assert result.exit_code == 20
     assert any(
         error["code"] == "kette"
@@ -232,51 +232,51 @@ def test_merge_cli_erzwingt_akteur_konvention(fall_mit_fragmenten):
     assert any("Konvention" in e["message"] for e in result.errors)
 
 
-def test_g2_verlangt_o3_und_geltenden_g1(fall_mit_fragmenten):
-    """Befund 1 der Systempruefung: G-2 ohne O3 oder ohne G-1-Annahme
+def test_am4_verlangt_pk1_und_geltenden_aq1(fall_mit_fragmenten):
+    """Befund 1 der Systempruefung: A-M4 ohne P-K1 oder ohne A-Q1-Annahme
     auf demselben Stand ist nicht mehr snapshotbar."""
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
     abox = lade(f)
     [d] = abox.diskrepanzen
-    loese_diskrepanz_auf(abox, d.id, 0.03, "Bartek", "entschieden",
+    loese_diskrepanz_auf(abox, d.id, 0.03, "maintainer", "entschieden",
                          "2026-08-15T12:00:00+00:00", vorlaeufig=False)
     speichere(abox, f)
-    assert o1(["--fall", str(f)]).exit_code == 0
+    assert pq3(["--fall", str(f)]).exit_code == 0
 
     basis = ["--fall", str(f), "--rolle", "mensch", "--entscheider", "B",
              "--begruendung", "x", "--repo-root", ".", *_freigabe_arg(f)]
-    # G-2 ohne O3:
-    result = p9(["--gate", "G-2", "--entscheid", "angenommen", *basis])
+    # A-M4 ohne P-K1:
+    result = p9(["--gate", "A-M4", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
-    assert any("O3" in e["message"] for e in result.errors)
-    # G-1-Annahme geht (O1 gruen + verankert):
-    assert p9(["--gate", "G-1", "--entscheid", "angenommen", *basis]).exit_code == 0
-    # G-2 scheitert weiter an O3 (nie gelaufen) — nicht an G-1:
-    result = p9(["--gate", "G-2", "--entscheid", "angenommen", *basis])
-    assert any("O3" in e["message"] for e in result.errors)
+    assert any("P-K1" in e["message"] for e in result.errors)
+    # A-Q1-Annahme geht (P-Q3 gruen + an den geprueften A-Box-Stand gebunden):
+    assert p9(["--gate", "A-Q1", "--entscheid", "angenommen", *basis]).exit_code == 0
+    # A-M4 scheitert weiter an P-K1 (nie gelaufen) — nicht an A-Q1:
+    result = p9(["--gate", "A-M4", "--entscheid", "angenommen", *basis])
+    assert any("P-K1" in e["message"] for e in result.errors)
 
 
-def test_g1_annahme_verlangt_verankertes_o1(fall_mit_fragmenten):
+def test_aq1_annahme_verlangt_gebundenes_pq3(fall_mit_fragmenten):
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
     abox = lade(f)
     [d] = abox.diskrepanzen
-    loese_diskrepanz_auf(abox, d.id, 0.03, "Bartek", "entschieden",
+    loese_diskrepanz_auf(abox, d.id, 0.03, "maintainer", "entschieden",
                          "2026-08-15T12:00:00+00:00", vorlaeufig=False)
     speichere(abox, f)
     basis = ["--fall", str(f), "--rolle", "mensch", "--entscheider", "B",
              "--begruendung", "x", "--repo-root", "."]
-    # Ohne O1-Lauf:
-    result = p9(["--gate", "G-1", "--entscheid", "angenommen", *basis])
+    # Ohne P-Q3-Lauf:
+    result = p9(["--gate", "A-Q1", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
     assert any(e["code"] == "vorbedingung" for e in result.errors)
-    # O1 gruen, dann A-Box VERAENDERN -> Verankerung bricht:
-    assert o1(["--fall", str(f)]).exit_code == 0
+    # P-Q3 gruen, dann A-Box VERAENDERN -> Provenienzbindung bricht:
+    assert pq3(["--fall", str(f)]).exit_code == 0
     abox = lade(f)
     abox.generationen[0].anmerkungen.append("nachtraeglich")
     speichere(abox, f)
-    result = p9(["--gate", "G-1", "--entscheid", "angenommen", *basis])
+    result = p9(["--gate", "A-Q1", "--entscheid", "angenommen", *basis])
     assert result.exit_code == 20
     assert any("Provenienzvertrag" in e["message"] for e in result.errors)
 
@@ -286,7 +286,7 @@ def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):
     merge_cli(["--fall", str(f)])
     basis = ["--fall", str(f), "--entscheider", "claude-fable-5",
              "--begruendung", "Zwischenstand", "--repo-root", "."]
-    result = p9(["--gate", "G-1", "--entscheid", "angenommen",
+    result = p9(["--gate", "A-Q1", "--entscheid", "angenommen",
                  "--rolle", "agent", *basis])
     assert result.exit_code == 2
     assert any("Menschen vorbehalten" in e["message"] for e in result.errors)
@@ -300,7 +300,7 @@ def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):
         == "angenommen"
     ]
     assert angenommen == []
-    result = p9(["--gate", "G-1", "--entscheid", "abgelehnt",
+    result = p9(["--gate", "A-Q1", "--entscheid", "abgelehnt",
                  "--rolle", "agent", *basis])
     assert result.exit_code == 0
     snapshot = json.loads(Path(result.paths["snapshot"]).read_text(encoding="utf-8"))
@@ -317,22 +317,104 @@ def test_entscheide_verlangt_rolle_mensch_und_archiviert(fall_mit_fragmenten, ca
     loese_diskrepanz_auf(abox, d.id, 0.03, "agent (vorlaeufig)", "GM",
                          "2026-08-15T12:00:00+00:00", vorlaeufig=True)
     speichere(abox, f)
-    # Ohne --rolle mensch: argparse lehnt ab (SystemExit 2)
-    with pytest.raises(SystemExit):
-        entscheide(["--fall", str(f), "--diskrepanz", d.id, "--wert", "0.025",
-                    "--entscheider", "B", "--begruendung", "x"])
+    # Ohne Rolle: sauberer Usage-Fehler (seit dem Vier-Rollen-Modell
+    # prueft main selbst — behauptete Rollen ohne Ordnung zaehlen nicht)
+    assert entscheide(
+        ["--fall", str(f), "--diskrepanz", d.id, "--wert", "0.025",
+         "--entscheider", "B", "--begruendung", "x"]) == 2
     capsys.readouterr()
     rc = entscheide(["--fall", str(f), "--rolle", "mensch",
                      "--diskrepanz", d.id, "--wert", "0.025",
-                     "--entscheider", "Bartek", "--begruendung", "Meldung gilt"])
+                     "--entscheider", "maintainer", "--begruendung", "Meldung gilt"])
     assert rc == 0
     capsys.readouterr()
     abox = lade(f)
     [d2] = abox.diskrepanzen
     # Der Weg vorlaeufig -> endgueltig ist auditierbar (append-only):
-    assert d2.entscheidung.entscheider == "Bartek"
+    assert d2.entscheidung.entscheider == "maintainer"
     assert len(d2.entscheidungs_historie) == 1
     assert d2.entscheidungs_historie[0].vorlaeufig is True
     assert d2.entscheidungs_historie[0].entscheider == "agent (vorlaeufig)"
     # Und die Kette akzeptiert den neu entschiedenen Wert:
     assert pruefe_kette(f) == []
+
+
+def _ordnung_und_schluessel(tmp_path):
+    """Zeichnungsordnung + Rollen-Schluessel fuer die Entscheide-Tests."""
+    import hashlib as _hl
+
+    schluessel = {}
+    fingerprints = {}
+    for rolle, inhalt in (("plv-aktuar", b"aktuar-schluessel-fuer-tests!!!!" * 2),
+                          ("plv-it", b"it-schluessel-fuer-die-tests!!!!" * 2)):
+        pfad = tmp_path / f"{rolle}.key"
+        pfad.write_bytes(inhalt)
+        pfad.chmod(0o600)
+        schluessel[rolle] = pfad
+        fingerprints[rolle] = _hl.sha256(inhalt).hexdigest()
+    ordnung = tmp_path / "zeichnungsordnung.json"
+    ordnung.write_text(json.dumps({"schema_version": 1, "rollen": {
+        "plv-aktuar": {"schluessel_sha256": fingerprints["plv-aktuar"],
+                       "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
+        "plv-it": {"schluessel_sha256": fingerprints["plv-it"],
+                   "gates": ["A-K1"]},
+    }}), encoding="utf-8")
+    return ordnung, schluessel
+
+
+def test_entscheide_bestimmt_die_rolle_aus_dem_schluessel(
+        fall_mit_fragmenten, tmp_path):
+    """Vier-Rollen-Modell: Der plv-aktuar vollzieht seine fachliche
+    Entscheidung selbst — die Rolle kommt aus dem Schluessel, die
+    Bindung (Rolle, Ordnungs-Hash) steht in der Entscheidung."""
+    import hashlib as _hl
+
+    from rechner_pipeline.ontologie import entscheide as entscheide_cli
+
+    f = fall_mit_fragmenten
+    merge_cli(["--fall", str(f)])
+    abox = lade(f)
+    [d] = abox.diskrepanzen
+    ordnung, schluessel = _ordnung_und_schluessel(tmp_path)
+    assert entscheide_cli.main([
+        "--fall", str(f), "--diskrepanz", d.id, "--wert", "0.03",
+        "--entscheider", "Verantwortlicher Aktuar",
+        "--begruendung", "Meldung massgeblich",
+        "--zeichnungsordnung", str(ordnung),
+        "--freigabe-schluessel", str(schluessel["plv-aktuar"]),
+    ]) == 0
+    neu = lade(f)
+    [d2] = neu.diskrepanzen
+    assert d2.entscheidung is not None and not d2.entscheidung.vorlaeufig
+    assert d2.entscheidung.zeichnung["rolle"] == "plv-aktuar"
+    assert d2.entscheidung.zeichnung["ordnung_sha256"] == _hl.sha256(
+        ordnung.read_bytes()).hexdigest()
+
+
+def test_entscheide_weist_rollen_ohne_aq1_und_fremde_schluessel_ab(
+        fall_mit_fragmenten, tmp_path):
+    from rechner_pipeline.ontologie import entscheide as entscheide_cli
+
+    f = fall_mit_fragmenten
+    merge_cli(["--fall", str(f)])
+    abox = lade(f)
+    [d] = abox.diskrepanzen
+    ordnung, schluessel = _ordnung_und_schluessel(tmp_path)
+    basis = ["--fall", str(f), "--diskrepanz", d.id, "--wert", "0.03",
+             "--entscheider", "X", "--begruendung", "y",
+             "--zeichnungsordnung", str(ordnung)]
+    # plv-it zeichnet A-Q1 nicht — fachliche Entscheide sind Aktuars-Sache:
+    assert entscheide_cli.main(
+        basis + ["--freigabe-schluessel", str(schluessel["plv-it"])]) == 1
+    fremd = tmp_path / "fremd.key"
+    fremd.write_bytes(b"selbstgebauter-schluessel!!!!!!!" * 2)
+    assert entscheide_cli.main(
+        basis + ["--freigabe-schluessel", str(fremd)]) == 1
+    # Ohne Ordnung bleibt nur der Mensch — behauptete Rollen zaehlen nicht:
+    assert entscheide_cli.main([
+        "--fall", str(f), "--diskrepanz", d.id, "--wert", "0.03",
+        "--entscheider", "X", "--begruendung", "y",
+        "--rolle", "plv-aktuar"]) == 2
+    # Nichts davon hat entschieden:
+    [d3] = lade(f).diskrepanzen
+    assert d3.entscheidung is None or d3.entscheidung.vorlaeufig

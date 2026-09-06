@@ -1,0 +1,163 @@
+{
+  "profil": {
+    "bemerkung": "Rueckkauf, Tod und Ablauf beenden den Vertrag und raeumen die gefuehrte Reserve; dDK ist die Wirkung des Vorfalls auf das Deckungskapital im Buch der Quelle, festgehalten am Buchungstag. Die Quelle rechnet Beitragsfreistellung und Herabsetzung MIT Stornoabzug (je Baustein beziehungsweise anteilig auf der Grundscheibe); rechnet das Zielsystem verlustfrei um, weicht dDK um genau diese Abzuege ab. Diese Grenze aufzuweiten, um den Befund verschwinden zu lassen, waere falsch — die Abweichung ist der Sachverhalt, den die Abnahme sehen soll. Sie gehoert in die Abnahmeentscheidung, belegt durch die Beschreibung des Quellverfahrens, nicht in eine stillere Toleranz. Die Dynamik traegt am Buchungstag noch keine Reserve — ihr Kriterium ist entsprechend eng.",
+    "grundtoleranz": {
+      "abs_tol": 0.01,
+      "max_abs_residuum": 0.05,
+      "p95_abs_residuum": 0.02,
+      "rel_tol": 1e-09
+    },
+    "kennung": "A-M3",
+    "kriterien": {
+      "ERH": {
+        "abs_tol": 0.001,
+        "max_abs_residuum": 0.005,
+        "p95_abs_residuum": 0.005,
+        "rel_tol": 1e-09
+      }
+    },
+    "titel": "Geschaeftsvorfalltest",
+    "weite": "alle Geschaeftsvorfaelle des Migrationsjahres"
+  },
+  "stichprobe": {
+    "grundgesamtheit": 7,
+    "parameter": {},
+    "police_ids": [
+      "7000023",
+      "7000044",
+      "7000048",
+      "7000068",
+      "7000099",
+      "7000569",
+      "7000693"
+    ],
+    "profil": "vollbestand",
+    "umfang": 7,
+    "vollerhebung": true
+  },
+  "test": "A-M3",
+  "vertraege": [
+    {
+      "historientyp": "dynamik",
+      "monate_ta": 132,
+      "police_id": "7000023",
+      "punkte": [
+        {
+          "anlass": "ABL",
+          "erwartet": {
+            "dDK": -72930.38
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 144
+        }
+      ]
+    },
+    {
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000044",
+      "punkte": [
+        {
+          "anlass": "PEX",
+          "erwartet": {
+            "dDK": 0.0
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "historientyp": "ohne_vorgeschichte",
+      "monate_ta": 120,
+      "police_id": "7000048",
+      "punkte": [
+        {
+          "anlass": "STO",
+          "erwartet": {
+            "dDK": -87117.71
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "historientyp": "dynamik",
+      "monate_ta": 120,
+      "police_id": "7000068",
+      "punkte": [
+        {
+          "anlass": "ERH",
+          "erwartet": {
+            "dDK": 0.0
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 132
+        }
+      ]
+    },
+    {
+      "historientyp": "reduziert",
+      "monate_ta": 120,
+      "police_id": "7000099",
+      "punkte": [
+        {
+          "anlass": "RED",
+          "erwartet": {
+            "dDK": -9470.51
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 132,
+          "parameter": {
+            "anteil": 0.6
+          }
+        }
+      ]
+    },
+    {
+      "historientyp": "reduziert",
+      "monate_ta": 108,
+      "police_id": "7000569",
+      "punkte": [
+        {
+          "anlass": "ERH",
+          "erwartet": {
+            "dDK": 0.0
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 120
+        }
+      ]
+    },
+    {
+      "historientyp": "dynamik",
+      "monate_ta": 108,
+      "police_id": "7000693",
+      "punkte": [
+        {
+          "anlass": "TOD",
+          "erwartet": {
+            "dDK": -26674.4
+          },
+          "groessen": [
+            "dDK"
+          ],
+          "monate": 120
+        }
+      ]
+    }
+  ]
+}

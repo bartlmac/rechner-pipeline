@@ -53,15 +53,27 @@ Primitive Strukturen, kein Ontologie-Import — die Suite ist
 fallunabhängig; die Fall-Bindung (welche Lieferung, welche Lesart der
 Rechnungsgrundlagen) macht der Migrationsfall.
 
+ABGRENZUNG (ADR-010): Diese Suite ist das MIGRATIONSCONTROLLING am
+Migrationsstichtag — jeder Vertrag des Bestands, aggregierend, Vorlage
+fuer Gate A-M4. ``vollstaendig_geprueft`` traegt genau diese Bedeutung:
+jeder Vertrag wurde geprueft, ein ungeprueter ist eine Prueflücke. Der
+AKTUARIELLE TEST (``qa.aktuarieller_test``, Gate A-M1) ist die andere
+Pruefebene: je Vertrag am eigenen Verankerungszeitpunkt, auf einer
+Stichprobe — dort heisst Vollstaendigkeit ``stichprobe_vollstaendig``
+(die Stichprobe wurde abgearbeitet). Die Scope-Bindungen dieser Suite
+(``bestand_sha256``, ``system``) sind Transport- und
+Provenienzsicherung des Controllings, kein aktuarielles Urteil.
+
 Knoten: klv
 """
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as _dt
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from rechner_pipeline.kern import (
     MissingMortalityTableError,
@@ -70,9 +82,14 @@ from rechner_pipeline.kern import (
     erhoehungs_scheibe,
     vertrags_monatsreserve,
 )
+from rechner_pipeline.kern.beitragsreduktion import (
+    PROSPEKTIV,
+    TEILKUENDIGUNG,
+    ReduzierterVertrag,
+)
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 
-GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL")
+GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL", "RED")
 #: Diese Arten tragen einen eigenständig zu vergleichenden Leistungs-
 #: beziehungsweise Statuswechselbetrag. Fehlt er, darf ein zusätzlich
 #: erkannter Lieferungsbefund die konkrete Prüflücke nicht verdecken.
@@ -123,6 +140,10 @@ class GeVoErwartung:
     art: str
     monate: int
     betrag_erwartet: Optional[float] = None
+    #: Nur bei RED: der fortgeführte Bruchteil des Beitrags. Er steht im
+    #: Vorfall und nicht im Vertrag; ohne ihn ist die Herabsetzung nicht
+    #: bestimmt.
+    anteil: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +165,17 @@ class VertragsPruefung:
     Track und der Jahresbeitrag ist 0. Eine Beitragsfreistellung
     ZWISCHEN den Stichtagen ist kein Anfangszustand, sondern ein
     PEX-GeVo.
+
+    ``scheiben`` und ``reduktion`` sind die beiden anderen
+    Anfangszustaende eines uebernommenen Vertrags: dynamische
+    Erhoehungen der VORGESCHICHTE als ``(vertragsjahr,
+    erhoehungssumme)`` je Scheibe, bzw. eine Herabsetzung der
+    Vorgeschichte als ``(vertragsjahr, fortgefuehrter_anteil)`` —
+    bewertet als geteilter Vertrag (Kern 3.1.0, Zielverfahren
+    prospektiv). Die Anfangszustaende sind EXKLUSIV: eine Vorgeschichte
+    mit mehreren Welten (beitragsfrei UND reduziert, ...) ist kein
+    abgebildeter Fall und faellt als Auftragsfehler, nicht als stiller
+    Track.
     """
 
     police_id: str
@@ -155,16 +187,99 @@ class VertragsPruefung:
     gevos: Tuple[GeVoErwartung, ...] = field(default_factory=tuple)
     bjb_erwartet_1: Optional[float] = None
     beitragsfrei_seit_jahr: Optional[int] = None
+    scheiben: Tuple[Tuple[int, float], ...] = field(default_factory=tuple)
+    #: Volle Beitragsformel (mit gamma1) fuer die Scheiben —
+    #: Tarifwerks-Eigenschaft der Lieferung, siehe
+    #: kern.rechenkern.erhoehungs_scheibe.
+    scheiben_mit_gamma1: bool = False
+    #: Stornoabschlag-Grenzen je Baustein statt je Vertrag —
+    #: Tarifwerks-Eigenschaft der Lieferung, siehe
+    #: kern.rechenkern.vertrags_monatsreserve.
+    stoab_je_baustein: bool = False
+    reduktion: Optional[Tuple[int, float]] = None
+    #: Korrekturschicht des Migrationszugangs (9.11) — Nachzug des
+    #: zweiten Laufs: Ohne sie zeigt jeder Vertrag eines Falls, der
+    #: Schichten fuehrt, an den Stichtagen sein rohes, unabsorbiertes
+    #: Verankerungs-Residuum. Bewertet wird mit derselben Funktion wie
+    #: im aktuariellen Test (schichtwert_bei); ``monate_ta`` ist der
+    #: Verankerungszeitpunkt der hist-Schicht, ``monate_t0`` der der
+    #: conv-Zweitschicht.
+    schicht: Optional[Any] = None
+    schicht_conv: Optional[Any] = None
+    monate_ta: Optional[int] = None
+    monate_t0: Optional[int] = None
+    #: Buchungszeitpunkt der gelieferten DECKKAP-Spalte — eine
+    #: LIEFERUNGS-EIGENSCHAFT (zweiter Baldrian-Lauf, registrierte
+    #: Auskunft "DECKKAP Jahrestag"): Das Kommutations-Quellsystem
+    #: fuehrt das Deckungskapital zum letzten VERTRAGSJAHRESTAG vor dem
+    #: Abzugsstichtag, nicht kalendertaeglich interpoliert. Auf dem
+    #: falschen Zeitpunkt misst der Vergleich bis zu elf Monate
+    #: Reservezuwachs als Phantom-Residuum (im Lauf: vierstellig, alle
+    #: Vertraege mit unterjaehrigem Beginn). Kommt vom Lauf-Flag, wird
+    #: nie geraten.
+    dk_am_jahrestag: bool = False
+    #: Komponentenzahl der QUELL-Buchfuehrung, wo der Ziel-Rechenweg
+    #: sie kollabiert (Ein-Punkt-Inversion beitragsfreier Serien) —
+    #: dieselbe Groesse wie im aktuariellen Test (Korrektur 14): der
+    #: gelieferte Wert bleibt die Summe je fuer sich gerundeter
+    #: Baustein-Werte, auch wenn der Auftrag keine Scheiben traegt.
+    quell_komponenten: Optional[int] = None
 
 
-def _vergleich(groesse: str, system: float, erwartet: float) -> Dict[str, Any]:
-    ok = math.isclose(system, erwartet, rel_tol=REL_TOL, abs_tol=ABS_TOL)
+def _schichtsumme(
+    v: "VertragsPruefung", grund_mp: ModelPoint, monate: int
+) -> float:
+    """Wert der Korrekturschicht(en) am Vertragsmonat (0.0 ohne Schicht).
+
+    Dieselbe Bewertung wie im aktuariellen Test — die Schicht ist EIN
+    Vertragsattribut, das beide Engines identisch lesen muessen. Der
+    Import ist spaet, weil aktuarieller_test seinerseits aus diesem
+    Modul importiert (DATEN_AUSNAHMEN) — auf Modulebene waere das ein
+    Zirkel.
+    """
+    if v.schicht is None and v.schicht_conv is None:
+        return 0.0
+    from rechner_pipeline.qa.aktuarieller_test import schichtwert_bei
+
+    summe = 0.0
+    if v.schicht is not None:
+        summe += schichtwert_bei(v.schicht, v.monate_ta, grund_mp, monate)
+    if v.schicht_conv is not None:
+        summe += schichtwert_bei(
+            v.schicht_conv, v.monate_t0, grund_mp, monate)
+    return summe
+
+
+#: Rundungsunschaerfe je zusaetzlicher Baustein-Komponente — DERSELBE
+#: Wert wie qa.aktuarieller_test._CENT_UNSCHAERFE (dort Korrektur 14;
+#: hier Nachzug Nr. 21 des zweiten Laufs: vier Vertraege mit 6-7
+#: Komponenten rissen die pauschale Toleranz um exakt die
+#: Fehlerfortpflanzung, dev-docs/aktuarieller-test-at1-at2-at3.md
+#: Abschnitt 4). Ein Test haelt beide Konstanten synchron; der direkte
+#: Import waere ein Modul-Zirkel.
+_CENT_UNSCHAERFE = 0.005
+
+
+def _vergleich(
+    groesse: str, system: float, erwartet: float, komponenten: int = 1
+) -> Dict[str, Any]:
+    """Wertvergleich; die Toleranz waechst mit der Zahl der je fuer
+    sich gerundeten Komponenten des gelieferten Werts (Grund plus
+    Erhoehungsscheiben bzw. kollabierte Quell-Bausteine) — keine
+    Aufweichung, sondern Fehlerfortpflanzung."""
+    ok = math.isclose(
+        system, erwartet, rel_tol=REL_TOL,
+        abs_tol=ABS_TOL + _CENT_UNSCHAERFE * max(0, komponenten - 1))
     return {
         "groesse": groesse,
         "system": system,
         "erwartet": erwartet,
         "residuum": system - erwartet,
         "ok": ok,
+        # Zaehler fuer die unabhaengige Nachrechnung des Gates
+        # (gates.abnahmebericht) — ohne ihn koennte es die skalierte
+        # Toleranz nicht nachvollziehen und verwuerfe korrekte Urteile.
+        "komponenten": komponenten,
     }
 
 
@@ -224,30 +339,58 @@ def _terminale_leistung(
 
 
 def _bjb_system(
-    kern: Rechenkern, monate: int, pex_jahr: Optional[int]
+    kern: Rechenkern,
+    monate: int,
+    pex_jahr: Optional[int],
+    *,
+    scheiben: Sequence[Tuple[int, Rechenkern]] = (),
+    reduziert: Optional["ReduzierterVertrag"] = None,
 ) -> float:
     """Bruttojahresbeitrag des Vertrags am Monats-Stichtag.
 
     Nach dem Ende der Beitragszahlungsdauer (``monate >= 12 * t``) und
     ab einer Beitragsfreistellung wird kein Beitrag mehr gezahlt: der
     Systemwert ist dann ``0.0``, so wie die Bestandsabzüge das Feld
-    führen. Sonst der Jahresbeitrag des Grundvertrags
-    (``VS * Bxt``); Erhöhungsscheiben entstehen erst durch ERH-GeVos
-    NACH dem Migrationsstichtag und tragen hier deshalb nichts bei.
+    führen. Sonst der Jahresbeitrag des Grundvertrags (``VS * Bxt``) —
+    nach einer Herabsetzung der fortgeführte Anteil davon. Jede
+    Erhöhungsscheibe der Vorgeschichte ist ein eigener Modellpunkt mit
+    eigenem Beitrag bis zu IHRER Beitragszahlungsdauer (dieselbe Regel
+    wie ``bestand.auswertung.beitraege``): ohne sie wäre das
+    Beitragsvolumen so zu niedrig wie das Deckungskapital ohne
+    Scheiben.
     """
-    if pex_jahr is not None or monate >= 12 * kern.mp.t:
+    if pex_jahr is not None:
         return 0.0
-    return kern.gross_annual_premium()
+    if reduziert is not None:
+        gesamt = reduziert.bjb(monate)
+    elif monate >= 12 * kern.mp.t:
+        gesamt = 0.0
+    else:
+        gesamt = kern.gross_annual_premium()
+    for erh_jahr, k in scheiben:
+        if monate - 12 * erh_jahr < 12 * k.mp.t:
+            gesamt += k.gross_annual_premium()
+    return gesamt
 
 
-def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
+def pruefe_vertrag(
+    v: VertragsPruefung, *, red_verfahren: str = PROSPEKTIV
+) -> Dict[str, Any]:
     """Zwei-Stichtags-Urteil für einen Vertrag.
 
     Rückgabe: ``bestanden`` (alle Vergleiche innerhalb der Toleranz und
     kein Befund), ``befunde`` (Texte zu Lieferungs-Inkonsistenzen),
     ``pruefungen`` (je Größe System-/Erwartungswert und Residuum) und
     ``nicht_geprueft`` (Größen, zu denen die Lieferung keinen
-    Erwartungswert trägt — ausgewiesene Lücke, kein Bestehen).
+    Erwartungswert trägt).
+
+    ``bestanden`` und ``nicht_geprueft`` sind ABSICHTLICH getrennt: Das
+    Urteil sagt, ob das Gerechnete stimmt; die Lücke sagt, wozu die
+    Gegenseite nichts geliefert hat. Ein Vertrag kann bestanden UND
+    unvollständig geprüft sein. Für den Lauf führt ``pruefe_bestand`` das
+    unter ``vollstaendig_geprueft`` zusammen, und Gate A-M4 duldet im
+    Bestands-Scope keine Lücke — die Aussage geht also nicht verloren,
+    sie steht nur an der Stelle, an der sie hingehört.
 
     ABGEGANGENE VERTRÄGE — warum ``dk_stichtag_2`` dort WEDER verglichen
     noch als Lücke geführt wird: Bei einem terminalen GeVo ist das
@@ -260,6 +403,21 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     ``dk_stichtag_2`` steht deshalb in ``nicht_geprueft``. Die
     Asymmetrie ist gewollt: einmal ist die Größe geprüft, einmal ist
     sie ungeprüft.
+
+    HERABGESETZTE VERTRÄGE — seit Kern 3.1.0 werden sie FORTGEFÜHRT
+    (geteilter Vertrag, Zielverfahren prospektiv): eine Herabsetzung der
+    Vorgeschichte ist der Anfangszustand ``reduktion``, eine im
+    Prüfzeitraum ein RED-GeVo mit geliefertem Anteil. Nur ohne Anteil
+    bleibt der Folgestichtag eine ausgewiesene Prüflücke — nicht weil
+    die Rechnung fehlte, sondern weil die Herabsetzung unbestimmt ist.
+
+    ``red_verfahren`` ist eine Eigenschaft des QUELLSYSTEMS und damit des
+    Migrationsfalls, nicht des Vertrags (kern.beitragsreduktion): das
+    Zielverfahren ``prospektiv`` ist der Default; ein Fall, dessen
+    Quelle die Absetzung als Teilkündigung mit anteiligem Stornoabschlag
+    rechnet (Baldrian, Aktuarielle Notiz 2026/04), übergibt
+    ``mit_abzug`` — sonst misst das Controlling die Verfahrensdifferenz
+    statt der Migration.
     """
     if v.monate_stichtag_2 <= v.monate_stichtag_1:
         raise ValueError(
@@ -271,6 +429,19 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
     befunde: List[str] = []
     pruefungen: List[Dict[str, Any]] = []
     nicht_geprueft: List[str] = []
+
+    # Anfangszustaende sind EXKLUSIV: je Vertrag hoechstens EINE
+    # Vorgeschichts-Welt (beitragsfrei, Alt-Scheiben, herabgesetzt).
+    welten = [name for name, gesetzt in (
+        ("beitragsfrei_seit_jahr", v.beitragsfrei_seit_jahr is not None),
+        ("scheiben", bool(v.scheiben)),
+        ("reduktion", v.reduktion is not None),
+    ) if gesetzt]
+    if len(welten) > 1:
+        raise ValueError(
+            f"{v.police_id}: mehrere Anfangszustaende zugleich "
+            f"({', '.join(welten)}) — die Kombination ist nicht abgebildet"
+        )
 
     # Anfangszustand: schon vor dem Migrationsstichtag beitragsfrei.
     pex_jahr: Optional[int] = v.beitragsfrei_seit_jahr
@@ -287,22 +458,97 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                 f"(Monat {v.monate_stichtag_1}) — als PEX-GeVo liefern, "
                 "nicht als Anfangszustand"
             )
-        dk_1 = kern.monatsreserve_beitragsfrei(pex_jahr, v.monate_stichtag_1)
+
+    # Anfangszustand: Herabsetzung der Vorgeschichte (geteilter Vertrag).
+    alt_rv: Optional[ReduzierterVertrag] = None
+    if v.reduktion is not None:
+        red_jahr, red_anteil = v.reduktion
+        if 12 * red_jahr > v.monate_stichtag_1:
+            raise ValueError(
+                f"{v.police_id}: Herabsetzung in Jahr {red_jahr} liegt nach "
+                "dem Migrationsstichtag — als RED-GeVo liefern, nicht als "
+                "Anfangszustand"
+            )
+        # Jahr- und Anteilsgrenzen prueft der Kern (fail-fast).
+        alt_rv = ReduzierterVertrag.nach(
+            kern, red_jahr, red_anteil, verfahren=red_verfahren)
+
+    # Anfangszustand: dynamische Erhoehungen der Vorgeschichte.
+    scheiben: List[Tuple[int, Rechenkern]] = []
+    for erh_jahr, erh_summe in v.scheiben:
+        if 12 * erh_jahr > v.monate_stichtag_1:
+            raise ValueError(
+                f"{v.police_id}: Erhoehungsscheibe aus Jahr {erh_jahr} liegt "
+                "nach dem Migrationsstichtag — als ERH-GeVo liefern, nicht "
+                "als Anfangszustand"
+            )
+        scheiben.append(
+            (erh_jahr, Rechenkern(erhoehungs_scheibe(
+                grund_mp, erh_jahr, erh_summe,
+                gamma1_uebernehmen=v.scheiben_mit_gamma1))))
+
+    # Der dk-Vergleichszeitpunkt je Stichtag: kalendertaeglich (unsere
+    # Monatskonvention) oder der letzte Vertragsjahrestag davor
+    # (Quell-Konvention "DECKKAP Jahrestag").
+    def _dk_monat(stichtag_monate: int) -> int:
+        return (12 * (stichtag_monate // 12) if v.dk_am_jahrestag
+                else stichtag_monate)
+
+    dk_monat_1 = _dk_monat(v.monate_stichtag_1)
+    dk_monat_2 = _dk_monat(v.monate_stichtag_2)
+
+    if (v.schicht is not None or v.schicht_conv is not None):
+        if v.schicht is not None and v.monate_ta is None:
+            raise ValueError(
+                f"{v.police_id}: Korrekturschicht ohne monate_ta — die "
+                "Schicht rechnet ab dem Verankerungszeitpunkt, nicht ab "
+                "Vertragsbeginn"
+            )
+        if v.schicht_conv is not None and v.monate_t0 is None:
+            raise ValueError(
+                f"{v.police_id}: conv-Schicht ohne monate_t0 — die "
+                "Zweitverankerung rechnet ab t_0"
+            )
+        if alt_rv is not None:
+            raise ValueError(
+                f"{v.police_id}: Herabsetzungs-Anfangszustand zusammen "
+                "mit Korrekturschicht ist nicht definiert — dieselbe "
+                "Unvertraeglichkeit wie im aktuariellen Test"
+            )
+
+    if alt_rv is not None:
+        dk_1 = alt_rv.monatsreserve(dk_monat_1).vx_mrv
+    elif pex_jahr is not None:
+        dk_1 = kern.monatsreserve_beitragsfrei(pex_jahr, dk_monat_1)
+    elif scheiben:
+        dk_1 = vertrags_monatsreserve(kern, scheiben, dk_monat_1).vx_mrv
     else:
-        dk_1 = kern.monatsreserve(v.monate_stichtag_1).vx_mrv
-    pruefungen.append(_vergleich("dk_stichtag_1", dk_1, v.dk_erwartet_1))
+        dk_1 = kern.monatsreserve(dk_monat_1).vx_mrv
+    # Die Korrekturschicht traegt das Verankerungs-Residuum — der
+    # gefuehrte Stichtagswert ist Basis PLUS Schicht (Nachzug des
+    # zweiten Laufs; ohne sie zeigte jeder Vertrag sein rohes R).
+    dk_1 += _schichtsumme(v, grund_mp, dk_monat_1)
+    # Jede Erhoehungsscheibe (bzw. jeder kollabierte Quell-Baustein)
+    # ist eine eigene, fuer sich gerundete Komponente des Lieferwerts.
+    komponenten_1 = max(1 + len(scheiben), v.quell_komponenten or 1)
+    pruefungen.append(_vergleich(
+        "dk_stichtag_1", dk_1, v.dk_erwartet_1,
+        komponenten=komponenten_1))
 
     if v.bjb_erwartet_1 is not None:
         pruefungen.append(_vergleich(
             "bjb_stichtag_1",
-            _bjb_system(kern, v.monate_stichtag_1, pex_jahr),
+            _bjb_system(kern, v.monate_stichtag_1, pex_jahr,
+                        scheiben=scheiben, reduziert=alt_rv),
             v.bjb_erwartet_1,
+            komponenten=komponenten_1,
         ))
     else:
         nicht_geprueft.append("bjb_stichtag_1")
 
     terminal_monat: Optional[int] = None
-    scheiben: List[Tuple[int, Rechenkern]] = []
+    red_monat: Optional[int] = None
+    reduziert: Optional[ReduzierterVertrag] = None
     for g in sorted(v.gevos, key=lambda g: g.monate):
         if g.art not in GEVO_ARTEN:
             befunde.append(f"unbekannte GeVo-Art {g.art!r}")
@@ -322,6 +568,20 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
             befunde.append(
                 f"GeVo {g.art} bei Monat {g.monate} nach terminalem GeVo "
                 f"(Monat {terminal_monat}) — Lieferung inkonsistent"
+            )
+            continue
+        if red_monat is not None:
+            # Ein weiterer Vorfall NACH einer Herabsetzung im
+            # Prüfzeitraum: der geteilte Vertrag kann Folge-GeVos
+            # (zweites PEX-Fixieren, Erhöhung, Rückkauf) rechnen, aber
+            # keiner der Zweige unten tut es — sie rechnen auf dem
+            # UNGETEILTEN Kern. Ein stiller falscher Wert wäre schlimmer
+            # als ein Befund.
+            befunde.append(
+                f"GeVo {g.art} bei Monat {g.monate} nach Herabsetzung "
+                f"(Monat {red_monat}) — Folge-Geschäftsvorfälle eines im "
+                "Prüfzeitraum herabgesetzten Vertrags sind in der Suite "
+                "noch nicht abgebildet"
             )
             continue
         if g.art == "ERH":
@@ -358,17 +618,36 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     "Verträge)"
                 )
                 continue
+            if alt_rv is not None and scheiben:
+                befunde.append(
+                    f"STO bei Monat {g.monate}: Rückkauf eines "
+                    "herabgesetzten Vertrags MIT Erhöhungsscheiben ist "
+                    "nicht abgebildet"
+                )
+                continue
             if g.betrag_erwartet is not None:
+                rkw = (alt_rv.monatsreserve(g.monate).rkw
+                       if alt_rv is not None else
+                       vertrags_monatsreserve(
+                           kern, scheiben, g.monate,
+                           stoab_je_baustein=v.stoab_je_baustein).rkw)
                 pruefungen.append(_vergleich(
-                    f"gevo_sto_monat_{g.monate}",
-                    vertrags_monatsreserve(kern, scheiben, g.monate).rkw,
-                    g.betrag_erwartet,
+                    f"gevo_sto_monat_{g.monate}", rkw, g.betrag_erwartet,
                 ))
         elif g.art == "TOD":
+            if alt_rv is not None and scheiben:
+                befunde.append(
+                    f"TOD bei Monat {g.monate}: Leistung eines "
+                    "herabgesetzten Vertrags MIT Erhöhungsscheiben ist "
+                    "nicht abgebildet"
+                )
+                continue
             if g.betrag_erwartet is not None:
+                leistung = (alt_rv.terminale_leistung(pex_jahr)
+                            if alt_rv is not None else
+                            _terminale_leistung(kern, scheiben, pex_jahr))
                 pruefungen.append(_vergleich(
-                    f"gevo_tod_monat_{g.monate}",
-                    _terminale_leistung(kern, scheiben, pex_jahr),
+                    f"gevo_tod_monat_{g.monate}", leistung,
                     g.betrag_erwartet,
                 ))
         elif g.art == "ABL":
@@ -384,12 +663,96 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     f"n = {grund_mp.n} Jahre)"
                 )
                 continue
+            if alt_rv is not None and scheiben:
+                befunde.append(
+                    f"ABL bei Monat {g.monate}: Leistung eines "
+                    "herabgesetzten Vertrags MIT Erhöhungsscheiben ist "
+                    "nicht abgebildet"
+                )
+                continue
             if g.betrag_erwartet is not None:
+                leistung = (alt_rv.terminale_leistung(pex_jahr)
+                            if alt_rv is not None else
+                            _terminale_leistung(kern, scheiben, pex_jahr))
                 pruefungen.append(_vergleich(
-                    f"gevo_abl_monat_{g.monate}",
-                    _terminale_leistung(kern, scheiben, pex_jahr),
+                    f"gevo_abl_monat_{g.monate}", leistung,
                     g.betrag_erwartet,
                 ))
+        elif g.art == "RED":
+            # Der herabgesetzte Vertrag wird seit Kern 3.1.0 FORTGEFÜHRT
+            # (kern.beitragsreduktion.ReduzierterVertrag, Zweiteilung in
+            # fortgeführten Anteil und fixierte beitragsfreie Summe). Die
+            # Suite rechnet mit ``red_verfahren`` (Default: Zielverfahren
+            # prospektiv); weicht das Verfahren des Falls davon ab, zeigt
+            # der Vergleich am Folgestichtag die Verfahrensdifferenz —
+            # je Vertrag sichtbar, statt einer Prüflücke oder eines
+            # stillen Vergleichs auf der ursprünglichen Summe.
+            #
+            # Ohne gelieferten Anteil bleibt die Herabsetzung
+            # unbestimmt: Anteils-Vergleich UND Folgewert sind dann
+            # ausgewiesene Prüflücken.
+            #
+            # Die Wertänderung IM Moment der Herabsetzung prüft der
+            # Geschäftsvorfalltest A-M3 über kern.beitragsreduktion.
+            if pex_jahr is not None:
+                befunde.append(
+                    f"RED bei Monat {g.monate}: der Vertrag ist seit Jahr "
+                    f"{pex_jahr} beitragsfrei — es gibt keinen Beitrag, "
+                    "der sich herabsetzen ließe"
+                )
+                continue
+            if alt_rv is not None:
+                befunde.append(
+                    f"RED bei Monat {g.monate}: zweite Herabsetzung eines "
+                    "bereits herabgesetzten Vertrags ist nicht abgebildet"
+                )
+                continue
+            if scheiben and red_verfahren != TEILKUENDIGUNG:
+                befunde.append(
+                    f"RED bei Monat {g.monate} nach dynamischer Erhöhung — "
+                    "die anteilige Schichten-Teilung eines Vertrags mit "
+                    "Erhöhungsscheiben ist im Zielsystem nicht abgebildet; "
+                    "Wert nicht gerechnet (die TEILKUENDIGUNG der zweiten "
+                    "Lieferung rechnet diesen Fall)"
+                )
+                continue
+            if g.monate % 12:
+                befunde.append(
+                    f"RED bei Monat {g.monate}: die Herabsetzung wirkt am "
+                    "Vertragsjahrestag (Vielfaches von 12)"
+                )
+                continue
+            if g.anteil is None:
+                nicht_geprueft.append(f"gevo_red_monat_{g.monate}_anteil")
+                red_monat = g.monate
+            elif not 0.0 <= g.anteil <= 1.0:
+                befunde.append(
+                    f"RED bei Monat {g.monate}: Anteil {g.anteil} liegt "
+                    "nicht in [0, 1] — er ist der fortgeführte Bruchteil "
+                    "des Beitrags"
+                )
+                continue
+            elif red_verfahren == TEILKUENDIGUNG:
+                # Quell-Semantik (Bedingungswerk Ziffer 6, Ausweitung
+                # 16/19): Der Anteil (1-f) der GRUNDVERSICHERUNG ist
+                # gekündigt und ausgezahlt; der Vertrag läuft
+                # ZUSTANDSLOS mit f x S weiter, die Erhöhungsscheiben
+                # unberührt. Kein geteilter Zustand, keine
+                # Folge-GeVo-Sperre — nur der Grund-Kern wird auf die
+                # gekündigte Welt gebunden. ``grund_mp`` bleibt die
+                # VERANKERUNGS-Welt: Schichtbewertung und
+                # Scheiben-Versatz rechnen weiter auf ihr. Der Anteil
+                # ist der fortgeführte Bruchteil des JEWEILIGEN Stands
+                # (wie in der Serien-Rekonstruktion): eine zweite
+                # Teilkündigung im Prüfzeitraum kettet f1 x f2, sie
+                # ersetzt nicht.
+                kern = Rechenkern(dataclasses.replace(
+                    kern.mp,
+                    sum_insured=g.anteil * kern.mp.sum_insured))
+            else:
+                reduziert = ReduzierterVertrag.nach(
+                    kern, g.monate // 12, g.anteil, verfahren=red_verfahren)
+                red_monat = g.monate
         else:  # PEX
             if pex_jahr is not None:
                 befunde.append(
@@ -404,11 +767,20 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
                     "am Vertragsjahrestag (Vielfaches von 12)"
                 )
                 continue
+            if alt_rv is not None and scheiben:
+                befunde.append(
+                    f"PEX bei Monat {g.monate}: Beitragsfreistellung eines "
+                    "herabgesetzten Vertrags MIT Erhöhungsscheiben ist "
+                    "nicht abgebildet"
+                )
+                continue
             pex_jahr = g.monate // 12
             if g.betrag_erwartet is not None:
+                summe = (alt_rv.beitragsfreie_summe(pex_jahr)
+                         if alt_rv is not None else
+                         _bfr_gesamtsumme(kern, scheiben, pex_jahr))
                 pruefungen.append(_vergleich(
-                    f"gevo_pex_monat_{g.monate}",
-                    _bfr_gesamtsumme(kern, scheiben, pex_jahr),
+                    f"gevo_pex_monat_{g.monate}", summe,
                     g.betrag_erwartet,
                 ))
 
@@ -432,21 +804,68 @@ def pruefe_vertrag(v: VertragsPruefung) -> Dict[str, Any]:
             "Vertrag fehlt am Folgestichtag, aber die GeVos nennen keinen "
             "Abgang — Lieferung inkonsistent"
         )
+    elif red_monat is not None:
+        if reduziert is not None:
+            # Der geteilte Vertrag wird fortgeführt (Kern 3.1.0): der
+            # fortgeführte Anteil auf dem beitragspflichtigen Track, die
+            # fixierte beitragsfreie Summe auf dem bfr-Satz. Gerechnet
+            # wird das ZIELVERFAHREN; eine Verfahrensdifferenz der
+            # Quelle erscheint als Residuum dieses Vergleichs. Die
+            # Lieferungseigenschaften des DK-Vergleichs gelten hier wie
+            # in jedem anderen Zweig: Stichtags-Konvention (Jahrestag
+            # vs. Kalendertag) und Rundungs-Skalierung der gelieferten
+            # Komponenten.
+            pruefungen.append(_vergleich(
+                "dk_stichtag_2",
+                reduziert.monatsreserve(dk_monat_2).vx_mrv,
+                v.dk_erwartet_2,
+                komponenten=v.quell_komponenten or 1,
+            ))
+        else:
+            # Ohne gelieferten Anteil ist die Herabsetzung unbestimmt —
+            # eine ausgewiesene Prüflücke ist ehrlicher als eine Zahl,
+            # die aussieht, als sei sie geprüft.
+            nicht_geprueft.append(
+                f"dk_stichtag_2_nach_red_monat_{red_monat}")
     else:
-        if pex_jahr is not None:
+        if alt_rv is not None:
+            if pex_jahr is not None:
+                dk2 = alt_rv.reserve_beitragsfrei(pex_jahr, dk_monat_2)
+            else:
+                # Geteilter Vertrag plus etwaige Scheiben aus
+                # Prüfzeitraums-ERH — jede an ihrem versetzten Stichtag.
+                dk2 = alt_rv.monatsreserve(dk_monat_2).vx_mrv + sum(
+                    k.monatsreserve(dk_monat_2 - 12 * erh_jahr).vx_mrv
+                    for erh_jahr, k in scheiben)
+        elif pex_jahr is not None:
             dk2 = kern.monatsreserve_beitragsfrei(
-                pex_jahr, v.monate_stichtag_2) + sum(
+                pex_jahr, dk_monat_2) + sum(
                 k.monatsreserve_beitragsfrei(
                     pex_jahr - erh_jahr,
-                    v.monate_stichtag_2 - 12 * erh_jahr)
+                    dk_monat_2 - 12 * erh_jahr)
                 for erh_jahr, k in scheiben)
         else:
             dk2 = vertrags_monatsreserve(
-                kern, scheiben, v.monate_stichtag_2).vx_mrv
-        pruefungen.append(_vergleich("dk_stichtag_2", dk2, v.dk_erwartet_2))
+                kern, scheiben, dk_monat_2).vx_mrv
+        dk2 += _schichtsumme(v, grund_mp, dk_monat_2)
+        pruefungen.append(_vergleich(
+            "dk_stichtag_2", dk2, v.dk_erwartet_2,
+            komponenten=max(1 + len(scheiben),
+                            v.quell_komponenten or 1)))
 
     return {
         "police_id": v.police_id,
+        # Eine Luecke geht NICHT in dieses Urteil ein, und das ist
+        # Absicht: Sie sagt etwas ueber die LIEFERUNG, nicht ueber den
+        # Vertrag. Ein Vertrag, zu dessen Groesse die Gegenseite keinen
+        # Wert geliefert hat, ist deshalb nicht falsch gerechnet — er ist
+        # an dieser Stelle ungeprueft. Beides in ein Urteil zu werfen
+        # vermischte zwei verschiedene Aussagen und machte den Bericht
+        # aermer, nicht ehrlicher.
+        #
+        # Verdeckt wird dabei nichts: ``nicht_geprueft`` steht je Vertrag
+        # im Bericht, ``vollstaendig_geprueft`` fasst es fuer den Lauf
+        # zusammen, und A-M4 duldet im Bestands-Scope keine Luecke.
         "bestanden": not befunde and all(p["ok"] for p in pruefungen),
         "befunde": befunde,
         "pruefungen": pruefungen,
@@ -493,6 +912,7 @@ def pruefe_bestand(
     vertraege: List[VertragsPruefung],
     *,
     erwartete_anzahl: Optional[int] = None,
+    red_verfahren: str = PROSPEKTIV,
     stichtag_1: Optional[str] = None,
     stichtag_2: Optional[str] = None,
     bestand_sha256: Optional[str] = None,
@@ -519,9 +939,9 @@ def pruefe_bestand(
 
     SCOPE-BINDUNG: Für einen Bestandsfall werden ``stichtag_1``,
     ``stichtag_2`` und ``bestand_sha256`` gemeinsam übergeben. Fuer einen
-    G-2-Beleg kommt der vom Aufrufer berechnete ``system``-Stand hinzu. Die
+    A-M4-Beleg kommt der vom Aufrufer berechnete ``system``-Stand hinzu. Die
     Suite validiert und spiegelt diese Angaben in ihr Ergebnis. Ohne sie bleibt
-    die Funktion fallunabhängig, ihr Ergebnis ist aber kein G-2-Beleg eines
+    die Funktion fallunabhängig, ihr Ergebnis ist aber kein A-M4-Beleg eines
     Bestandsfalls.
 
     LEERE PRÜFMENGE: harter Fehler statt eines ausgewiesenen
@@ -596,7 +1016,7 @@ def pruefe_bestand(
     urteile: List[Dict[str, Any]] = []
     for v in vertraege:
         try:
-            urteile.append(pruefe_vertrag(v))
+            urteile.append(pruefe_vertrag(v, red_verfahren=red_verfahren))
         except DATEN_AUSNAHMEN as exc:
             urteile.append({
                 "police_id": v.police_id,
@@ -638,6 +1058,7 @@ def pruefe_bestand(
         "mengenbefunde": mengenbefunde,
         "pruefluecken": pruefluecken,
         "vollstaendig_geprueft": not pruefluecken,
+        "red_verfahren": red_verfahren,
         "vertraege": urteile,
     }
     if all(wert is not None for wert in scope_werte):

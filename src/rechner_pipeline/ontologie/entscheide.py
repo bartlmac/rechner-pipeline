@@ -1,7 +1,13 @@
-"""``entscheide`` — die menschliche Diskrepanz-Aufloesung als CLI (G-1).
+"""``entscheide`` — die endgueltige Diskrepanz-Aufloesung als CLI (A-Q1).
 
-Der Vorgang, den das Gate G-1 meint: ein benannter Mensch waehlt
-zwischen den Lesarten einer Diskrepanz und begruendet die Wahl. Eine
+Der Vorgang, den das Gate A-Q1 meint: Die fachlich ZEICHNENDE Instanz
+waehlt zwischen den Lesarten einer Diskrepanz und begruendet die Wahl.
+WER entscheiden darf (Vier-Rollen-Modell, 2026-09-01): Mit
+``--zeichnungsordnung`` und ``--freigabe-schluessel`` wird die Rolle
+aus dem Schluessel-Fingerabdruck BESTIMMT, nicht behauptet — zugelassen
+ist, wer die fachliche Abnahme A-Q1 zeichnen darf (die Entscheidungen
+sind deren Substanz); die Bindung (Rolle, Ordnungs-Hash) wandert in die
+Entscheidung. Ohne Ordnung bleibt der Alt-Weg ``--rolle mensch``. Eine
 VORLAEUFIGE (Agenten-)Aufloesung wird dabei ersetzt — das ist der
 einzige erlaubte Weg, eine Aufloesung zu aendern; eine endgueltige
 menschliche Entscheidung ist nur ueber eine neue T-Box-/A-Box-Revision
@@ -11,8 +17,10 @@ Run via::
 
     python -m rechner_pipeline.ontologie.entscheide --fall faelle/baldrian-klv-tg2015 \\
         --diskrepanz "klv/tg2015/zelle:nichtraucher,einzel#zins" \\
-        --wert 0.0175 --entscheider "Bartek" \\
-        --begruendung "Fachverantwortlicher bestaetigt: Rechner-Stand gilt, Meldung wird korrigiert"
+        --wert 0.0125 --entscheider "Verantwortlicher Aktuar" \\
+        --zeichnungsordnung faelle/zeichnungsordnung.json \\
+        --freigabe-schluessel <pfad-zum-rollen-schluessel> \\
+        --begruendung "Meldung massgeblich; Abzugsabgleich stuetzt 0,0125"
 
     # oder alle auf einmal derselben Lesart-Quelle folgend:
     ... --alle-vorlaeufigen --quelle Tarifrechner_KLV_TG2015.xlsm ...
@@ -24,12 +32,14 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import hashlib
 import json
 import sys
 from pathlib import Path
 from typing import List, Optional
 
 from rechner_pipeline.ontologie.abox import lade, speichere, validate_abox
+from rechner_pipeline.ontologie.diskrepanz import Beleg
 from rechner_pipeline.ontologie.befuellung import (
     BefuellungsFehler,
     loese_diskrepanz_auf,
@@ -50,15 +60,26 @@ def _wert_parsen(roh: str):
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.ontologie.entscheide",
-        description="Diskrepanz(en) menschlich aufloesen (Gate G-1).",
+        description="Diskrepanz(en) menschlich aufloesen (Gate A-Q1).",
     )
     parser.add_argument("--fall", required=True)
     parser.add_argument("--entscheider", required=True)
     parser.add_argument("--begruendung", required=True)
     parser.add_argument(
-        "--rolle", required=True, choices=["mensch"],
-        help="Endgueltige Aufloesungen sind Menschen vorbehalten; "
-        "Agenten nutzen die API mit vorlaeufig=True.",
+        "--rolle", default=None,
+        help="Ohne Zeichnungsordnung ist nur 'mensch' zulaessig "
+        "(Alt-Weg); mit Ordnung wird die Rolle aus dem Schluessel "
+        "BESTIMMT, ein gesetzter Wert muss dann uebereinstimmen.",
+    )
+    parser.add_argument(
+        "--zeichnungsordnung", default=None,
+        help="Rollenbindung AUSSERHALB des Falls (wie gate_entscheid); "
+        "zusammen mit --freigabe-schluessel.",
+    )
+    parser.add_argument(
+        "--freigabe-schluessel", dest="freigabe_schluessel", default=None,
+        help="Schluesseldatei der entscheidenden Rolle; ihr SHA-256 "
+        "bestimmt die Rolle ueber die Ordnung.",
     )
     parser.add_argument("--diskrepanz", default=None,
                         help="ID (<knoten>#<feld>); alternativ --alle-vorlaeufigen.")
@@ -71,9 +92,67 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--quelle", default=None,
                         help="Quelldatei, deren Lesart bei --alle-vorlaeufigen gilt.")
+    parser.add_argument(
+        "--beleg", default=None,
+        help="FALL-RELATIVER Pfad der deterministischen Rechnung, die die "
+             "Lesart stuetzt (z. B. abgeleitet/berichte/abzugsabgleich.json). "
+             "Ihre Pruefsumme wird in die Entscheidung aufgenommen und von "
+             "Gate P-Q3 nachgerechnet. Ohne Angabe traegt die Entscheidung "
+             "nur ihre Begruendung -- eine Prosa-Nennung im Text sichert "
+             "nichts.",
+    )
     args = parser.parse_args(argv)
 
     fall = Path(args.fall)
+    zeichnung = None
+    if args.zeichnungsordnung or args.freigabe_schluessel:
+        if not (args.zeichnungsordnung and args.freigabe_schluessel):
+            print("entscheide: --zeichnungsordnung und "
+                  "--freigabe-schluessel gehoeren zusammen",
+                  file=sys.stderr)
+            return 2
+        from rechner_pipeline.models.zeichnung import (
+            lade_zeichnungsordnung,
+            rolle_darf_gate,
+            zeichnungsrolle,
+        )
+
+        ordnung, ordnung_sha, fehler = lade_zeichnungsordnung(
+            args.zeichnungsordnung, fall)
+        if fehler:
+            for f in fehler:
+                print(f"entscheide: {f}", file=sys.stderr)
+            return 2
+        schluessel = Path(args.freigabe_schluessel)
+        if not schluessel.is_file():
+            print(f"entscheide: Schluesseldatei fehlt: {schluessel}",
+                  file=sys.stderr)
+            return 2
+        fingerprint = hashlib.sha256(schluessel.read_bytes()).hexdigest()
+        rolle = zeichnungsrolle(ordnung, fingerprint)
+        if rolle is None:
+            print("entscheide: der Schluessel gehoert keiner Rolle der "
+                  "Zeichnungsordnung — Entscheide werden nicht anonym "
+                  "vollzogen", file=sys.stderr)
+            return 1
+        if not rolle_darf_gate(ordnung, rolle, "A-Q1"):
+            print(f"entscheide: Rolle {rolle!r} zeichnet A-Q1 nicht — "
+                  "Diskrepanz-Entscheide vollzieht, wer die fachliche "
+                  "Abnahme zeichnet (ihre Substanz sind diese "
+                  "Entscheidungen)", file=sys.stderr)
+            return 1
+        if args.rolle and args.rolle != rolle:
+            print(f"entscheide: --rolle {args.rolle!r} widerspricht der "
+                  f"aus dem Schluessel bestimmten Rolle {rolle!r}",
+                  file=sys.stderr)
+            return 2
+        zeichnung = {"rolle": rolle, "ordnung_sha256": ordnung_sha}
+    elif args.rolle != "mensch":
+        print("entscheide: ohne Zeichnungsordnung ist nur --rolle mensch "
+              "zulaessig — Operator-Rollen werden per Schluessel "
+              "bestimmt, nicht behauptet (--zeichnungsordnung/"
+              "--freigabe-schluessel)", file=sys.stderr)
+        return 2
     try:
         abox = lade(fall)
     except Exception as exc:  # noqa: BLE001
@@ -88,6 +167,18 @@ def main(argv: Optional[List[str]] = None) -> int:
             file=sys.stderr,
         )
         return 1
+
+    beleg = None
+    if args.beleg:
+        beleg_pfad = fall / args.beleg
+        if not beleg_pfad.is_file():
+            print(f"entscheide: Beleg {args.beleg!r} liegt nicht im Fall "
+                  f"({beleg_pfad})", file=sys.stderr)
+            return 2
+        beleg = Beleg(
+            datei=args.beleg,
+            sha256=hashlib.sha256(beleg_pfad.read_bytes()).hexdigest(),
+        )
 
     jetzt = _jetzt()
     entschieden: List[str] = []
@@ -121,7 +212,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 _ersetze_vorlaeufig(abox, d.id)
                 loese_diskrepanz_auf(
                     abox, d.id, lesart.wert, args.entscheider,
-                    args.begruendung, jetzt, vorlaeufig=False,
+                    args.begruendung, jetzt, vorlaeufig=False, beleg=beleg,
+                    zeichnung=zeichnung,
                 )
                 entschieden.append(d.id)
         else:
@@ -134,6 +226,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             loese_diskrepanz_auf(
                 abox, args.diskrepanz, _wert_parsen(args.wert),
                 args.entscheider, args.begruendung, jetzt, vorlaeufig=False,
+                beleg=beleg, zeichnung=zeichnung,
             )
             entschieden.append(args.diskrepanz)
     except BefuellungsFehler as exc:
@@ -150,6 +243,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "fall": str(fall),
         "entschieden": entschieden,
         "entscheider": args.entscheider,
+        "rolle": (zeichnung or {}).get("rolle", args.rolle),
         "verbleibend_vorlaeufig": sorted(
             d.id for d in abox.diskrepanzen
             if d.entscheidung is not None and d.entscheidung.vorlaeufig

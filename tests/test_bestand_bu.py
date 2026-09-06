@@ -5,7 +5,7 @@ vier Ausscheideordnungen des Produkts (nicht freie Raten), geführt über
 die Erfahrungsannahmen dritter Ordnung — während die Bewertung
 unverändert auf erster Ordnung rechnet. Der Monte-Carlo-Abgleich prüft
 gegen ein Zustandsmodell DERSELBEN Ordnung wie die Simulation; die
-Zuordnung der Annahmen zu den Übergängen ist separat verankert.
+Zuordnung der Annahmen zu den Übergängen ist separat getestet.
 
 Knoten: bu
 """
@@ -94,6 +94,9 @@ def _bu_stamm(*vertraege: dict) -> pd.DataFrame:
                 "insurance_start": start,
                 "insurance_end": dt.date(start.year + v["n"], start.month, 1),
                 "payment_end": dt.date(start.year + v["n"], start.month, 1),
+                # Eigenes Geschaeft: Zugang = Beginn. "zugang"
+                # uebersteuert fuer uebernommene Vertraege.
+                "bestandszugang": v.get("zugang", start),
             }
         )
     df = pd.DataFrame(rows)
@@ -598,7 +601,7 @@ def test_klv_bewegungskonto_ignoriert_bu_vertraege():
 def test_reiner_bu_bestand_laeuft_durch_gate_und_bericht(config, portfolio, tmp_path):
     """End-to-End-Fund: bei einem Bestand OHNE KLV-Vertraege lief das
     KLV-Bewegungskonto auf einen leeren Frame (NaN beim Jahresraster) und
-    riss Gate B1 mit — die leere Nachweisung ist der Normalfall eines
+    riss Gate P-B1 mit — die leere Nachweisung ist der Normalfall eines
     reinen BU-Bestands, kein Fehler."""
     from rechner_pipeline.bestand.kennzahlen import bewegungskonto, bu_bewegungskonto
 
@@ -826,7 +829,7 @@ def test_bu_config_faengt_nicht_tarifierbare_endalter():
 def test_historie_validierung_ohne_produktspalte(config, portfolio):
     """Review-Fix: ein Bestand ohne produkt-Spalte (Parquet aus einem Lauf
     vor der Produkt-Einfuehrung) darf keine KeyError-Exception ausloesen —
-    Gate B1 waere sonst internal_error statt Contract-Fehler."""
+    Gate P-B1 waere sonst internal_error statt Contract-Fehler."""
     erg = fortschreiben(portfolio, config, dt.date(2030, 1, 1))
     alt = portfolio.drop(columns=["produkt"])
     fehler = validate_statushistorie(alt, erg.historie)

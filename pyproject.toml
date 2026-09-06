@@ -26,6 +26,7 @@ dependencies = [
     "pyarrow==25.0.1",
     "matplotlib==3.11.1",
     "pydantic==2.13.4",
+    "pypdf==6.16.2",
 ]
 
 [project.optional-dependencies]

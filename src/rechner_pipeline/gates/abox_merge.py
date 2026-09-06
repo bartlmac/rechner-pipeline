@@ -4,7 +4,7 @@ Die Systempruefung fand den Merge als einzige unprotokollierte Stelle
 der Kette. Dieses Kommando macht ihn zum Gate-artigen Producer: es
 merged die Fragmente eines Falls deterministisch zur A-Box UND
 schreibt den Ledger, der die Kette traegt — Fragment-Hashes, Akteure
-(Konvention erzwungen), Erhebungszeitpunkt. Gate O1 rechnet den Merge
+(Konvention erzwungen), Erhebungszeitpunkt. Gate P-Q3 rechnet den Merge
 daraus nach (``ontologie.kette``): eine A-Box, die nicht aus ihren
 Fragmenten folgt, faellt dort.
 
@@ -41,7 +41,7 @@ from rechner_pipeline.gates._common import (
     utc_now,
 )
 
-GATE = "O0.abox-merge"
+GATE = "P-Q2.zusammenfuehrung"
 GATE_VERSION = "0.1.0"
 CLI_CONTRACT = GateCliContract(
     command="abox_merge",

@@ -1,14 +1,14 @@
-"""``abox_validate`` gate command — Gate O1 (A-Box-Contract + Coverage).
+"""``abox_validate`` gate command — Gate P-Q3 (A-Box-Contract + Coverage).
 
 Prueft die A-Box eines Fall-Arbeitsbereichs:
 
 * Struktur- und Kreuz-Objekt-Contract (Pydantic-Validierung beim Laden
   plus :func:`rechner_pipeline.ontologie.abox.validate_abox`), inklusive
-  Verankerung jeder Quelle im Eingang-Register des Falls (P1),
+  Bindung jeder Quelle an das Eingang-Register des Falls (P1),
 * Coverage gegen den PFLICHTUMFANG der T-Box je Parametrierungszelle
   (P6) — eine unvollstaendige A-Box blockiert Stage 2,
 * offene Diskrepanzen (P2) — sie blockieren ebenfalls: die Aufloesung
-  ist ein menschlicher Vorgang (Gate G-1), kein Durchwinken.
+  ist ein menschlicher Vorgang (Gate A-Q1), kein Durchwinken.
 
 Blocking failures exit ``20`` (``Exit.FILE_CONTRACT``); Usage-Fehler
 exit ``2``. Schreibt den ``abox_validate.gate.json``-Ledger-Eintrag wie
@@ -25,10 +25,11 @@ Knoten: klv
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from rechner_pipeline.ontologie.abox import abox_pfad, lade, validate_abox
 from rechner_pipeline.ontologie.coverage import coverage_bericht
@@ -46,7 +47,7 @@ from rechner_pipeline.gates._common import (
     utc_now,
 )
 
-GATE = "O1.abox-contract"
+GATE = "P-Q3.fachliche-pruefung"
 GATE_VERSION = "0.3.0"
 CLI_CONTRACT = GateCliContract(
     command="abox_validate",
@@ -63,7 +64,7 @@ def _build_parser() -> GateArgumentParser:
         gate_contract=CLI_CONTRACT,
         prog="python -m rechner_pipeline.gates.abox_validate",
         description=(
-            "Gate O1: A-Box eines Falls gegen T-Box-Contract, "
+            "Gate P-Q3: A-Box eines Falls gegen T-Box-Contract, "
             "Eingang-Register und Pflicht-Coverage pruefen."
         ),
     )
@@ -80,6 +81,34 @@ def _build_parser() -> GateArgumentParser:
     )
     add_request_json_arg(parser)
     return parser
+
+
+def pruefe_belege(abox, fall: Path) -> Tuple[int, List[str]]:
+    """Die Belege der aufgeloesten Diskrepanzen nachrechnen (P2).
+
+    Gibt zurueck, wie viele Aufloesungen eine Rechnung mitfuehren, und
+    was daran nicht mehr stimmt. Fehlt der Beleg ganz, ist das KEIN
+    Fehler: Nicht jede Aufloesung hat eine Rechnung; manche entscheidet
+    das Aktuariat aus dem Tarifwerk. Erzwungen waere der Beleg eine
+    Einladung zur Attrappe.
+    """
+    geprueft = 0
+    fehler: List[str] = []
+    for d in abox.diskrepanzen:
+        beleg = getattr(d.entscheidung, "beleg", None) if d.entscheidung else None
+        if beleg is None:
+            continue
+        geprueft += 1
+        pfad = fall / beleg.datei
+        if not pfad.is_file():
+            fehler.append(f"{d.id}: Beleg {beleg.datei} fehlt")
+            continue
+        ist = hashlib.sha256(pfad.read_bytes()).hexdigest()
+        if ist != beleg.sha256:
+            fehler.append(
+                f"{d.id}: Beleg {beleg.datei} veraendert "
+                f"({ist[:12]}… statt {beleg.sha256[:12]}…)")
+    return geprueft, fehler
 
 
 def main(argv: Optional[List[str]] = None):
@@ -129,7 +158,7 @@ def main(argv: Optional[List[str]] = None):
         ])
 
     # Stabile Rollenschluessel statt zufaelliger absoluter Temp-Pfade: P9
-    # bindet O1 genau an diese beiden Eingaben und darf den A-Box-SHA nicht
+    # bindet P-Q3 genau an diese beiden Eingaben und darf den A-Box-SHA nicht
     # unter irgendeinem frei waehlbaren Hash-Key akzeptieren.
     input_hashes = {
         "eingang.json": hash_files([register_pfad], base=fall)["eingang.json"],
@@ -212,7 +241,32 @@ def main(argv: Optional[List[str]] = None):
             "code": "diskrepanzen_offen",
             "message": (
                 f"{len(offene)} offene Diskrepanz(en) — Aufloesung ist ein "
-                "menschlicher Vorgang (Gate G-1): " + ", ".join(offene)
+                "menschlicher Vorgang (Gate A-Q1): " + ", ".join(offene)
+            ),
+        })
+
+    # Die BELEGE der aufgeloesten Diskrepanzen nachrechnen (P2).
+    #
+    # Eine Begruendung in Prosa kann auf eine Rechnung VERWEISEN; sie kann
+    # nicht sichern, dass es noch dieselbe ist. Wo eine Aufloesung ihren
+    # Beleg strukturiert traegt, prueft das Gate ihn: Datei vorhanden,
+    # Pruefsumme unveraendert. Sonst haenge der Beweis fuer die
+    # Parametrierung an einer Datei, die niemand bindet.
+    #
+    # Fehlt der Beleg ganz, ist das KEIN Fehler: Nicht jede Aufloesung hat
+    # eine Rechnung; manche entscheidet das Aktuariat aus dem Tarifwerk.
+    # Gezaehlt wird sie trotzdem, damit sichtbar bleibt, wie viel der
+    # Aufloesungen nachrechenbar belegt ist.
+    belegt_geprueft, beleg_fehler = pruefe_belege(abox, fall)
+    if beleg_fehler:
+        errors.append({
+            "code": "beleg_veraendert",
+            "message": (
+                "Belege aufgeloester Diskrepanzen stimmen nicht mehr: "
+                + "; ".join(beleg_fehler[:10])
+                + " — die Aufloesung stuetzt sich auf eine Rechnung, die es "
+                  "so nicht mehr gibt. Beleg neu erzeugen und Diskrepanz neu "
+                  "entscheiden."
             ),
         })
 
@@ -282,6 +336,10 @@ def main(argv: Optional[List[str]] = None):
         "diskrepanzen_aufgeloest": sum(
             1 for d in abox.diskrepanzen if d.status == "aufgeloest"
         ),
+        # Wie viele Aufloesungen ihre Rechnung nachrechenbar mitfuehren.
+        # Der Rest stuetzt sich allein auf seine Begruendung — kein
+        # Fehler, aber ein Unterschied, den ein Leser kennen sollte.
+        "diskrepanzen_mit_beleg": belegt_geprueft,
         # Vorlaeufige (Agenten-)Aufloesungen tragen Stage 2/3, aber kein
         # menschliches Gate: hier sichtbar, geblockt wird im P9-Snapshot.
         "entscheidungen_vorlaeufig": sorted(

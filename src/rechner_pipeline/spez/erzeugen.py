@@ -1,6 +1,6 @@
 """Spez-Erzeugung: A-Box -> TarifSpez (deterministische Projektion).
 
-Vorbedingungen sind hart (Gate O1 zuerst): die Generation muss
+Vorbedingungen sind hart (Gate P-Q3 zuerst): die Generation muss
 vollstaendig belegt sein und darf keine offenen Diskrepanzen tragen —
 eine Spez aus unklaren Aussagen waere eine stille Entscheidung.
 
@@ -84,7 +84,7 @@ def _pruefe_vorbedingungen(abox: ABox, gen: Tarifgeneration) -> None:
         probleme.append(f"{gen.id}/unisex: {gen.unisex.zustand.value}")
     if probleme:
         raise SpezFehler(
-            "Spez nicht erzeugbar — erst Gate O1 bestehen (Coverage + "
+            "Spez nicht erzeugbar — erst Gate P-Q3 bestehen (Coverage + "
             "Diskrepanzen-Aufloesung): " + "; ".join(probleme[:10])
             + (f" (+{len(probleme) - 10} weitere)" if len(probleme) > 10 else "")
         )

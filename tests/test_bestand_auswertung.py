@@ -65,6 +65,9 @@ def _mini_stamm(*vertraege: dict) -> pd.DataFrame:
                 "insurance_start": start,
                 "insurance_end": dt.date(start.year + v["n"], start.month, 1),
                 "payment_end": dt.date(start.year + v["t"], start.month, 1),
+                # Eigenes Geschaeft: Zugang = Beginn. "zugang"
+                # uebersteuert fuer uebernommene Vertraege.
+                "bestandszugang": v.get("zugang", start),
             }
         )
     df = pd.DataFrame(rows)
@@ -165,7 +168,7 @@ def test_auswertungs_verlauf_beispielbestand(portfolio, config, fortschreibung):
 
 
 def test_auswertung_pex_versatz_der_scheiben(config):
-    """Review-Fix-Verankerung: Scheiben laufen nach PEX mit ihrem eigenen
+    """Review-Fix, maschinell gesichert: Scheiben laufen nach PEX mit ihrem eigenen
     Jahresversatz beitragsfrei weiter (hand-konstruiertes, validiertes Paar)."""
     import dataclasses
 

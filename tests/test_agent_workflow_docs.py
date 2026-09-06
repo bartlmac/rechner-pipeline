@@ -66,13 +66,19 @@ def test_migrations_skills_nennen_die_tragenden_regeln() -> None:
     runbook = _read(".claude/skills/migrationsfall-durchfuehren/SKILL.md")
     assert "vorlaeufig=True" in runbook
     assert "gate_entscheid" in runbook
-    assert "faelle/archiv/baldrian-klv-tg2015" in runbook      # Referenzfall (archiviert)
     assert "STOPP" in runbook                         # Abbruchkriterien
+    # Kein Test auf den NAMEN des Referenzfalls mehr. Er zeigte auf
+    # `faelle/`, einen gitignorierten Datenraum (ADR-002) — der Test
+    # konnte also nie pruefen, ob es den Fall gibt, sondern nur, ob eine
+    # Zeichenkette dasteht. Als der Fall umbenannt wurde, hielt er die
+    # veraltete Angabe fest, statt sie zu melden: ein Test, der einen
+    # Fehler konserviert. Was der Runbook-Text ueber den Referenzfall
+    # sagt, gehoert in den Skill, nicht in eine Wortliste.
 
 
 def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
     """Die Skill-Architektur lebt: jeder Rollen-Skill traegt Auftrag UND
-    Grenze; die nicht verhandelbaren Kerne sind verankert."""
+    Grenze; die nicht verhandelbaren Kerne sind festgehalten."""
     entwickler = _read(".claude/skills/entwickle-im-zielsystem/SKILL.md")
     assert "NICHT verhandelbar" in entwickler
     assert "Schichtenkarte" in entwickler
@@ -90,11 +96,18 @@ def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
     assert "du entscheidest NICHT" in konflikt
     assert "vorlaeufig=True" in konflikt
     assert "Auswirkungsanalyse" in konflikt
-    abnahme = _read(".claude/skills/pruefe-migrationsabnahme/SKILL.md")
-    assert "du rechnest NIE selbst" in abnahme
-    assert "G-2" in abnahme
-    assert "NIE" in abnahme and "aufgeweicht" in abnahme   # Toleranzen
-    assert "Golden-Master-Tests" in abnahme                # Ausbau-Anker
+    controlling = _read(
+        ".claude/skills/pruefe-migrationscontrolling/SKILL.md"
+    )
+    assert "du rechnest NIE selbst" in controlling
+    assert "A-M4" in controlling
+    assert "NIE" in controlling and "aufgeweicht" in controlling  # Toleranzen
+    aktuartest = _read(".claude/skills/aktuartest-durchfuehren/SKILL.md")
+    assert "du rechnest NIE selbst" in aktuartest
+    assert "A-M1" in aktuartest
+    assert "NIE" in aktuartest and "aufgeweicht" in aktuartest
+    assert "Golden-Master-Tests" in aktuartest             # Ausbaustufe festgehalten
+    assert "Stichprobe" in aktuartest
     ci = _read(".claude/skills/integriere-migrationsinkrement/SKILL.md")
     assert "ADR-007" in ci
     assert "Branch je INKREMENT" in ci
@@ -105,7 +118,8 @@ def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
     for name in ("migrationsfall-durchfuehren", "extrahiere-quellfragment",
                  "entwickle-im-zielsystem", "teste-adversarial",
                  "dokumentiere-system", "bereite-fachkonflikt-auf",
-                 "author-rechner-toolbox-gate", "pruefe-migrationsabnahme",
+                 "author-rechner-toolbox-gate", "pruefe-migrationscontrolling",
+                 "aktuartest-durchfuehren",
                  "integriere-migrationsinkrement"):
         assert name in katalog, name
         assert Path(f".claude/skills/{name}/SKILL.md").is_file(), name

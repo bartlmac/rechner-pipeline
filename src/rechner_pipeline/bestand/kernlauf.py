@@ -7,7 +7,7 @@ formulas of its own.
 
 :func:`berechne_vertrag` evaluates one contract against the stable, promoted
 kernel (:mod:`rechner_pipeline.kern`) in-process: no subprocess, no
-confinement — the kernel is reviewed, version-anchored repo code.
+confinement — the kernel is reviewed repo code, bound to a released version.
 
 Bis zur Ausserbetriebnahme des Portierungspfads gab es daneben einen zweiten
 Weg fuer TRANSIENTE, frisch generierte Kerne (ein abgeschotteter Kindprozess

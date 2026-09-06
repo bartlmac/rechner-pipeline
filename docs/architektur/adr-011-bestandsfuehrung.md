@@ -32,12 +32,12 @@ Journal fuer Nachweis und Auskunft, nicht die Eingabe der Bewertung.
 Die Vermischung war fuer den selbst erzeugten Schaubestand konsistent
 (der Ereignisstrom IST dort die Wahrheit) und bricht genau am
 eigentlichen Zweck des Systems: Ein migrierter Vertrag kommt als
-Zustandsschnappschuss ohne Historie (Fachkonzept "Konstruktive
-Neuberechnung" Kap. 5.4/5.5). Im heutigen Modell muesste man ihm eine
-Historie ERFINDEN, damit die Ableitung funktioniert — das
-Replay-Surrogat, das das Fachkonzept ausdruecklich ausschliesst. Drei
+Zustandsschnappschuss ohne Historie (Grundsatzdokumentation 9.12 und 9.14). Im heutigen
+Modell muesste man ihm eine Historie ERFINDEN, damit die Ableitung
+funktioniert — das Replay-Surrogat, das die Methode ausdruecklich
+ausschliesst. Drei
 zuvor getrennt gemeldete Befunde haben diese eine Ursache: die
-fehlenden Verankerungsattribute (i0, u0, t_a), der gamma1-Defekt der
+fehlenden Verankerungsattribute (s_0, d_0, t_a), der gamma1-Defekt der
 Erhoehungsscheiben (Rekonstruktion zur Bewertungszeit statt Persistenz
 der Schicht-Rechnungsgrundlagen; gemessen +2,0 % Jahresbeitrag der
 Scheibe) und die Ableitung des Zustands zur Bewertungszeit selbst.
@@ -59,7 +59,7 @@ Scheibe) und die Ableitung des Zustands zur Bewertungszeit selbst.
   ausschliesslich aus dem gefuehrten Zustand. Verweildauer =
   f(status_date, Stichtag); PEX-Jahr = f(insurance_start, status_date).
   **Kein Bewertungspfad liest das Journal.** Das ist dieselbe
-  Historienfreiheit, die das Fachkonzept (5.5) vom Rechenkern verlangt —
+  Historienfreiheit, die die Grundsatzdokumentation (9.14) vom Rechenkern verlangt —
   eine Ebene hoeher angewendet.
 * **Simulation** (`bestand/ereignisse.py`, Rolle geschaerft): erzeugt
   den Vorzeigebestand einmalig, als Strom von Buchungen. Ihr Ergebnis
@@ -100,7 +100,7 @@ festgeschrieben je Stichtag, nie überschrieben")]
 Die zwei Invarianten stehen bewusst als Text statt als Kanten im Bild
 (ein Verbot als gemalte Kante laese sich wie ein Datenfluss): Kein
 Bewertungspfad liest das Journal, und der Stammzustand ist der
-juengste Journalstand — Gate B1 erzwingt die Deckung.
+juengste Journalstand — Gate P-B1 erzwingt die Deckung.
 
 ### 2. Ein Buchungsweg
 
@@ -132,7 +132,7 @@ Erhoehungsscheiben tragen ihre Rechnungsgrundlagen selbst (zunaechst:
 `gamma1`, per Tarifwerk-Regel 0 — Bezugsgroesse bleibt die GrundVS).
 Die Bewertung liest die Schicht, statt sie aus der Tarifgeneration zu
 rekonstruieren. Das behebt den gemessenen Defekt und ist zugleich die
-Richtung des Fachkonzepts (4.7: Parameter persistieren, Werte
+Richtung der Grundsatzdokumentation (9.11: Parameter persistieren, Werte
 reproduzierbar).
 
 ### 5. Der Stammsatz traegt den aktuellen Zustand
@@ -143,14 +143,14 @@ den aktuellen Zustand am Fuehrungsstand, nicht mehr den Ursprung. Die
 Spaltenmenge bleibt unveraendert. `validate_portfolio` prueft kuenftig:
 gueltiger Status (auch terminal), `status_date` zwischen
 Versicherungsbeginn und Fuehrungsstand, `status_id` = Nummer des
-juengsten Statuswechsels; Gate B1 prueft zusaetzlich die
+juengsten Statuswechsels; Gate P-B1 prueft zusaetzlich die
 Deckungsgleichheit von Stamm und Journal. Die bisherige
 Ursprungszustands-Invariante gilt weiterhin — aber als Aussage ueber den
 JOURNALANFANG (erste Zeile je Vertrag), nicht ueber den Stammsatz.
 
 Damit hat auch der Migrationszugang seinen Platz, ohne dass hier gebaut
 wird: Ein uebernommener Vertrag ist ein Stammsatz mit geliefertem
-Zustand (i0, u0 via status_code/status_date, t_a), dessen Journal mit
+Zustand (s_0, d_0 via status_code/status_date, t_a), dessen Journal mit
 dem Uebernahme-Ereignis BEGINNT statt mit dem Vertragsbeginn.
 
 ### 6. Abschluesse sind festgeschrieben
@@ -175,6 +175,33 @@ gehoeren Abschluesse zum Datenhaushalt der Fuehrung
   den Abschluss nie. Eine Korrektur eines festgeschriebenen Standes
   ist eine menschliche Entscheidung mit eigenem Vorgang.
 
+### 7. Ein Lauf traegt seinen Lieferschein
+
+Die Teile eines Laufs (Stamm, Journal, Ledger, Scheiben, Config)
+gehoeren nur zusammen, wenn sie nachweislich aus DEMSELBEN Lauf
+stammen — und der Horizont, bis zu dem der GeVo-Strom simuliert wurde,
+ist eine Eigenschaft des Laufs, nicht des Aufrufs, der ihn spaeter
+liest. Beides stand bisher nirgends: Die Konsumenten nahmen `--bis`
+als Behauptung entgegen, und ein Bundle aus Teilen zweier Laeufe war,
+Teil fuer Teil, wohlgeformt (externe Reviews T16, T18-02).
+
+Deshalb schreibt `cli_fortschreibung` zuletzt ein **Laufmanifest**
+(`laufmanifest.json`, `bestand/manifest.py`): Horizont,
+Neuzugangs-Stichtag, Kern-Stand, SHA-256 der Config und jeder
+geschriebenen Ausgabe — deterministisch wie die Ausgaben selbst.
+
+* Der Abschluss-Produzent verlangt das Manifest: Ohne Manifest wird
+  nichts festgeschrieben, `--bis` muss der belegte Horizont sein, und
+  jede gelesene Datei muss bytegleich die vom Lauf geschriebene sein.
+  Pflicht und fail-fast, nicht "optional mit Vorbehalt" — ein
+  festgeschriebener Stand traegt keinen Vorbehalt.
+* Gate P-B1 bindet das Manifest auf Wunsch (`--manifest`) und traegt
+  die Bindung im Beleg. Optional, weil das Gate auch einzelne Tabellen
+  ohne Lauf prueft (ein Basisbestand aus dem Generator).
+* Die Pruefengine liest jede Datei genau einmal: gehasht und geparst
+  werden dieselben Bytes, und die geparsten Tabellen samt Config gehen
+  an den Konsumenten weiter (kein zweites Lesen, T18-03).
+
 ## Konsequenzen
 
 * Ausgewiesene Werte aendern sich dort, wo der gamma1-Defekt wirkte
@@ -185,16 +212,20 @@ gehoeren Abschluesse zum Datenhaushalt der Fuehrung
   Jahresbeitrag −2,0 %.)*
 * `bestand_mit_historie` + `zeitscheibe` als Bewertungs-Eingang
   entfallen; Leser des Bestands erhalten den gefuehrten Stamm.
-* ADR-009/B1: Die Basisstatus-Invarianten wandern semantisch vom Stamm
+* ADR-009/P-B1: Die Basisstatus-Invarianten wandern semantisch vom Stamm
   auf den Journalanfang. Das ist eine bewusste Nachfuehrung der gerade
   erst gehaerteten Pruefung, kein Aufweichen: Die Pruefmenge wird
   groesser (Stamm-Konsistenz UND Journal-Anfang), nicht kleiner.
 * Die Fortschreibungs-CLI schreibt dieselben fuenf Artefakte; `bestand*`
   tragen die neue Semantik. Ein Lauf bleibt byte-deterministisch.
+* Seit dem Laufmanifest (Abschnitt 7) ist ein Laufverzeichnis ohne
+  `laufmanifest.json` fuer den Abschluss kein Lauf: Aeltere Laeufe
+  werden neu fortgeschrieben, nicht nachtraeglich mit einem Manifest
+  versehen.
 
 ## Bewusst nicht Bestandteil dieser Entscheidung
 
-* Der Migrationszugang selbst und die Korrekturschicht (Fachkonzept
+* Der Migrationszugang selbst und die Korrekturschicht (Grundsatzdokumentation
   Kap. 3-5): Dieses ADR schafft den Ort, an dem beide andocken.
 * Eine transaktionale Einzel-Buchungs-API fuer den laufenden Betrieb:
   Die Simulation bucht weiterhin im Lauf; `fuehre_fort` ist der

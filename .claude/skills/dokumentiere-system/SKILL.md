@@ -30,9 +30,12 @@ zweimal teuer gewesen).
 |---|---|---|
 | Architektur-Entscheidungen | `docs/architektur/adr-NNN-*.md` | ADR-Format: Kontext, Entscheidung, Konsequenzen, verworfene Alternative(n); Status + Datum + Entscheider; Index in `docs/architektur/README.md` nachziehen |
 | Architektur-Beschreibung | `docs/architektur/*.md` | beschreibt IST und Absicht; "bewusst nicht"-Abschnitte sind Pflicht (Grenzen benennen, nie beschoenigen) |
-| Tarifplaene (Zielkern) | `docs/tarifplaene/*.md` | 12-Abschnitts-Gliederung, wortgleicher Thiele-Abschnitt, Rendering ueber die Doku-Engine |
+| Grundsatzmathematik (alle Produkte) | `docs/mathematik/grundsatzdokumentation.md` | normative Mathematik und Numerik ALLER Produkte, inkl. Migrationszugang und Korrekturschicht (Abschnitt 9) — was fuer mehr als ein Produkt gilt, gehoert dorthin, nicht in einen Tarifplan; substanzielle Aenderungen brauchen die Zustimmung des Aktuariats |
+| Tarifplaene (Zielkern) | `docs/tarifplaene/*.md` | AUSGESTALTUNG je Produkt; das gemeinsame Rueckgrat steht einmal in `docs/mathematik/grundsatzdokumentation.md` und wird nie wiederholt (Waechter: tests/test_tarifplan_struktur.py); einheitliche Gliederung ueber alle Produkte, Rendering ueber die Doku-Engine |
 | Agenten-Anweisungen (Team) | `AGENTS.md` + `.claude/skills/` (+ `.agents/`-Spiegel) | CLI-neutral; AGENTS.md-Aenderungen im Team abstimmen; Skill-Paritaet ist test-tragend |
 | README | `README.md` | erzaehlt das System entlang der Architektur; Kommandobeispiele muessen LAUFEN (nachpruefen, nicht abschreiben) |
+| Simulation der Vorzeigebestaende | `docs/simulation/` | wie ein Bestand ENTSTEHT und sich entwickelt (Erfahrungsannahmen dritter Ordnung, Werkzeuge). Gehoert NIE in Grundsatzdokumentation oder Tarifplan: die beschreiben, wie BEWERTET wird — in einem echten Unternehmen treibt die Wirklichkeit den Bestand, kein Modell |
+| Erkannte, aber nicht umgesetzte Arbeit | `dev-docs/` | ein groesseres Vorhaben je Datei (Problem, Warum es zaehlt, Loesungsskizze inkl. was sie NICHT leistet, Einordnung); Kleineres in offene-punkte.md; erledigt = geloescht, nicht abgehakt |
 | Private Notizen, Bauplaene, Erklaerungen | `docs-local/` (gitignored) | nie Klarnamen/Kontaktdaten des Kreises ins oeffentliche Repo (DSGVO) |
 | Fall-Dokumente | Fall-Arbeitsbereich | generiert (Fachspez, Coverage, Ledger), nie von Hand editiert |
 
@@ -48,9 +51,21 @@ zweimal teuer gewesen).
   welcher Fehler ohne sie passiert) statt Code nachzuerzaehlen; das
   Repo nutzt Docstrings als Traeger von Abnahme-Protokollen und
   Knoten-Annotationen — diese Teile nie beilaeufig umformulieren.
+- **Fachdokumente sprechen die Sprache des Unternehmens.** Wer die
+  Grundsatzdokumentation, einen Tarifplan, das Migrationskonzept oder
+  einen erzeugten Bericht liest, ist Aktuar, Pruefer, Revision oder
+  Vorstand. Dort gibt es keine Repositories, Commits, Branches,
+  Testsuiten, Fixtures, Pipelines oder Backlogs — und auch keinen
+  "gruenen Lauf". Stattdessen: Aenderungsverfahren, Aenderungsgrund,
+  maschinelle Pruefung, blockierender Befund, Nachweis.
+  Werkzeugsprache gehoert in README, AGENTS.md und die Skills.
+  Diese Regel ist NICHT test-bar — eine Wortliste faengt bekannte
+  Begriffe und keine neu erfundenen. Sie wird eingehalten, indem
+  Fachdokumentation unter diesem Skill geschrieben und vor der Abgabe
+  aus der Sicht ihres Lesers gegengelesen wird.
 - Aktualisierungs-Pflicht: wer Verhalten aendert, zieht betroffene
   Dokumente IM SELBEN Block nach (README-Kommandos, AGENTS-Eintraege,
-  ADR-Konsequenzen, Fachkonzept-Stand). Veraltete Doku ist ein Befund.
+  ADR-Konsequenzen, Grundsatzmathematik). Veraltete Doku ist ein Befund.
 
 ## Arbeitsweise
 

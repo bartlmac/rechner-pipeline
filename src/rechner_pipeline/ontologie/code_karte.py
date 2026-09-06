@@ -49,7 +49,11 @@ PAKET = "rechner_pipeline"
 SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     "kern": {"kern"},                                # rein: das Fundament
     "kommutationskern": {"kommutationskern", "kern"},  # Zweitkern liest Tafeln
-    "ontologie": {"ontologie", "kern"},              # kern: nur lesende
+    # models seit 2026-09-01: der Zeichnungsordnungs-Vertrag
+    # (models.zeichnung) wird von gates UND ontologie.entscheide
+    # gelesen (Vier-Rollen-Modell) — paketuebergreifende Vertraege
+    # sind genau die models-Zustaendigkeit.
+    "ontologie": {"ontologie", "kern", "models"},    # kern: nur lesende
     #                                                  Registry-Introspektion
     #                                                  (erlaubte_wurzeln)
     "models": {"models", "kern", "gates"},           # gates: Altlast
@@ -57,7 +61,7 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     "spez": {"spez", "ontologie", "kern"},           # kern: lesende
     #                                                  Introspektion (D2)
     "quellen": {"quellen", "models", "ontologie", "kern", "spez"},
-    "qa": {"qa", "models", "quellen", "kern", "kommutationskern"},
+    "qa": {"qa", "models", "quellen", "kern"},
     "bestand": {"bestand", "kern", "models", "qa"},
     "gates": {"gates", "ontologie", "quellen", "kern", "models", "qa",
               "spez", "bestand", "fall"},            # Pruef-CLIs lesen alles;
@@ -67,9 +71,15 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     "__init__": set(),                               # Paketwurzel
 }
 
-#: ADR-004: der Kommutations-Zweitkern hat genau einen Konsumenten.
+#: ADR-013: Der Kommutations-Zweitkern hat KEINEN Konsumenten mehr im
+#: Produktivpfad. Er lebt nur noch als unabhaengiger Zeuge der
+#: algebraischen Eigenschaftstests (tests/test_kern_algebraisch.py), die
+#: ihn testseitig direkt bauen — nicht ueber eine Schnittstelle, die der
+#: Zielkern seinetwegen aufrechterhaelt. Genau darin liegt der
+#: Unterschied zu vorher: Der Zweitkern hat keinen Anspruch mehr an den
+#: lebenden Code, und deshalb formt er ihn auch nicht mehr.
 ZWEITKERN = "kommutationskern"
-ZWEITKERN_KONSUMENTEN = {"qa", "kommutationskern"}
+ZWEITKERN_KONSUMENTEN = {"kommutationskern"}
 
 #: Verbotene SDK-Namensfamilien. Geprueft wird die FAMILIE, nicht der
 #: exakte Name: ``langchain_openai``, ``langgraph_sdk``,
@@ -150,7 +160,7 @@ def _absolut(modul: Optional[str], level: int, rel: str) -> Optional[str]:
     if len(basis) < level - 1 + 1:
         return None
     anker = basis[: len(basis) - (level - 1)]
-    dotted = ".".join(anker)
+    dotted = ".".join(paketpfad)
     return f"{dotted}.{modul}" if modul else dotted
 
 

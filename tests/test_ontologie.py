@@ -102,7 +102,7 @@ def test_diskrepanz_aufloesung_ist_expliziter_vorgang():
         id="k#f", knoten="k", feld="f", lesarten=lesarten,
         status="aufgeloest",
         entscheidung=Entscheidung(
-            entscheider="bartek", begruendung="Meldung ist massgeblich",
+            entscheider="maintainer", begruendung="Meldung ist massgeblich",
             gewaehlter_wert=1, entschieden_am="2026-08-15T09:00:00+00:00",
         ),
     )
@@ -238,7 +238,7 @@ def test_zellen_id_ist_abgeleitet_und_deterministisch():
 
 
 # --------------------------------------------------------------------------- #
-# A-Box: Determinismus, Kreuz-Validierung, Eingang-Verankerung
+# A-Box: Determinismus, Kreuz-Validierung, Bindung an das Eingang-Register
 # --------------------------------------------------------------------------- #
 
 
@@ -289,7 +289,7 @@ def test_validate_verwaiste_offene_diskrepanz():
     assert any("verwaist" in f for f in validate_abox(abox))
 
 
-def test_validate_verankert_quellen_im_eingang_register():
+def test_validate_bindet_quellen_an_das_eingang_register():
     abox = _abox()
     register = {"quellen": [
         {"datei": "Tarifrechner_KLV_TG2015.xlsm", "sha256": SHA_A},

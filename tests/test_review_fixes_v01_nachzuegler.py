@@ -62,7 +62,7 @@ def _frag(datei: str, art: str, generation: str = "tg2012", **override):
 # --- P9-Haertung: offene Diskrepanzen, fehlende A-Box, request-json --------
 
 
-@pytest.mark.parametrize("gate", ["G-1", "G-2", "G-T"])
+@pytest.mark.parametrize("gate", ["A-Q1", "A-M1", "A-M4", "A-K1"])
 def test_p9_annahme_blockt_offene_diskrepanzen_fuer_jedes_gate(
     tmp_path: Path, gate: str
 ):
@@ -89,7 +89,7 @@ def test_p9_annahme_verlangt_die_abox(tmp_path: Path):
     from rechner_pipeline.gates.gate_entscheid import main
 
     f = _fall(tmp_path)
-    result = main(["--fall", str(f), "--gate", "G-2",
+    result = main(["--fall", str(f), "--gate", "A-M4",
                    "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
@@ -98,7 +98,7 @@ def test_p9_annahme_verlangt_die_abox(tmp_path: Path):
     pfad = f / "abgeleitet" / "abox" / "abox.json"
     pfad.parent.mkdir(parents=True)
     pfad.write_text("{kaputt", encoding="utf-8")
-    result = main(["--fall", str(f), "--gate", "G-2",
+    result = main(["--fall", str(f), "--gate", "A-M4",
                    "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
@@ -129,7 +129,7 @@ def test_p9_manipulierter_eingang_blockt_annahme(tmp_path: Path):
     kopie = f / "eingang" / "rechner.xlsm"
     kopie.chmod(0o644)
     kopie.write_bytes(b"drift")
-    result = main(["--fall", str(f), "--gate", "G-1",
+    result = main(["--fall", str(f), "--gate", "A-Q1",
                    "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
@@ -146,7 +146,7 @@ def test_p9_idempotenz_und_vorgaenger_kette(tmp_path: Path):
     abox = baue_abox(str(f), [_frag("rechner.xlsm", "tarifrechner")],
                      _register(f), ["test/extraktion@abc1234"], ZEIT)
     speichere(abox, f)
-    argv = ["--fall", str(f), "--gate", "G-1", "--entscheid", "abgelehnt",
+    argv = ["--fall", str(f), "--gate", "A-Q1", "--entscheid", "abgelehnt",
             "--rolle", "mensch", "--entscheider", "X",
             "--begruendung", "Zwischenstand", "--repo-root", "."]
     erster = main(argv)
@@ -154,10 +154,10 @@ def test_p9_idempotenz_und_vorgaenger_kette(tmp_path: Path):
     zweiter = main(argv)                       # identischer Entscheid
     assert zweiter.exit_code == 0
     assert zweiter.summary.get("bereits_vorhanden") is True
-    snapshots = list((f / "entscheide").glob("G-1-*.json"))
+    snapshots = list((f / "entscheide").glob("A-Q1-*.json"))
     assert len(snapshots) == 1                 # NICHT zwei Dateien
     # Neuer, anderer Entscheid pinnt den ersten als Vorgaenger:
-    dritter = main(["--fall", str(f), "--gate", "G-1",
+    dritter = main(["--fall", str(f), "--gate", "A-Q1",
                     "--entscheid", "abgelehnt", "--rolle", "mensch", "--entscheider", "X",
                     "--begruendung", "Anderer Grund", "--repo-root", "."])
     assert dritter.exit_code == 0
@@ -179,11 +179,11 @@ def test_p9_artefakt_hashes_umfassen_eingang_spez_und_snapshots(tmp_path: Path):
     spez = baue_spez(abox, "klv/tg2012", vorhandene_tafeln=TAFELN)
     speichere_spez(spez, f)
     (f / "entscheide").mkdir()
-    (f / "entscheide" / "G-1-alt.json").write_text("{}", encoding="utf-8")
+    (f / "entscheide" / "A-Q1-alt.json").write_text("{}", encoding="utf-8")
     hashes = _artefakt_hashes(f)
     assert "eingang/rechner.xlsm" in hashes          # die Quelle selbst
     assert "abgeleitet/spez/klv-tg2012.spez.json" in hashes
-    assert "entscheide/G-1-alt.json" in hashes       # Gate-Verkettung
+    assert "entscheide/A-Q1-alt.json" in hashes       # Gate-Verkettung
     assert "abgeleitet/abox/abox.json" in hashes
 
 

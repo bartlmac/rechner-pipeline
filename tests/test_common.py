@@ -110,14 +110,14 @@ def test_write_gate_ledger_failed_path(tmp_path: Path) -> None:
 def test_write_gate_ledger_derives_gate_from_command(tmp_path: Path) -> None:
     """When result.gate is unset, the gate id is derived from the catalogue."""
     result = _common.build_result(
-        command="extract",  # -> G0.extraction-manifest in ALL_GATES
+        command="extract",  # -> P-Q1.quellfragment in ALL_GATES
         gate_version="1.0.0",
         exit_code=_common.Exit.OK,
         input_hashes={"generated/x.py": "c" * 64},
     )
     out = _common.write_gate_ledger(result, tmp_path)
     entry = GateLedgerEntry.from_dict(json.loads(out.read_text(encoding="utf-8")))
-    assert entry.gate == "G0.extraction-manifest"
+    assert entry.gate == "P-Q1.quellfragment"
     assert entry.required is True
     assert entry.validate() == []
 
@@ -198,10 +198,10 @@ def test_load_gate_ledger_lehnt_negative_laufzeit_ab(tmp_path: Path) -> None:
 
 def test_gate_katalog_traegt_die_tatsaechlichen_vertrags_ids() -> None:
     katalog, _ = _common._gate_catalogue()
-    assert katalog["abox_validate"] == "O1.abox-contract"
-    assert katalog["generation_golden"] == "O3.generation-golden-master"
-    assert katalog["bestand_validate"] == "B1.bestand-contract"
-    assert katalog["abnahmebericht"] == "G2-vorlage.migrationsabnahme"
+    assert katalog["abox_validate"] == "P-Q3.fachliche-pruefung"
+    assert katalog["generation_golden"] == "P-K1.generations-golden-master"
+    assert katalog["bestand_validate"] == "P-B1.bestandspruefung"
+    assert katalog["abnahmebericht"] == "A-M4.migrationscontrolling"
 
 
 # --------------------------------------------------------------------------- #
@@ -353,3 +353,70 @@ def test_force_utf8_stream_handles_none_and_missing_reconfigure() -> None:
     assert _common.force_utf8_stream(None) is None
     plain = io.StringIO()  # no reconfigure attribute
     assert _common.force_utf8_stream(plain) is plain
+
+
+# --------------------------------------------------------------------------- #
+# Der Laufverlauf je Kommando
+# --------------------------------------------------------------------------- #
+
+
+def _fahre_gate(diagnostics: Path, *, status: str, exit_code: int):
+    """Einen vollstaendigen Gate-Lauf simulieren (beginnen, abschliessen)."""
+    fehlstart = _common.begin_gate_ledger_attempt(
+        command="golden_master",
+        gate="G5.golden-master",
+        gate_version="1.0.0",
+        diagnostics_dir=diagnostics,
+    )
+    assert fehlstart is None
+    return _common.finalize_gate_ledger(
+        _golden_master_result(status=status, exit_code=exit_code))
+
+
+def test_die_rot_historie_eines_kommandos_bleibt_erhalten(tmp_path: Path):
+    """Das Ledger traegt den GELTENDEN Stand und wird ersetzt — sonst
+    laege ein ueberholtes Urteil als aktueller Beleg herum. Die Folge war
+    aber, dass jedes Ledger auf "bestanden, erster Versuch" stand, auch
+    nach einem Lauf, der mehrfach zurueckschleifen musste. Damit verlor
+    die Ablage genau das, was ein Migrationslauf an Erkenntnis erzeugt:
+    wo es geklemmt hat.
+    """
+    _fahre_gate(tmp_path, status="failed", exit_code=_common.Exit.GOLDEN_MASTER)
+    _fahre_gate(tmp_path, status="failed", exit_code=_common.Exit.GOLDEN_MASTER)
+    _fahre_gate(tmp_path, status="passed", exit_code=_common.Exit.OK)
+
+    historie = _common.lies_gate_historie(tmp_path, "golden_master")
+    assert [e["versuch"] for e in historie] == [1, 2, 3]
+    assert [e["status"] for e in historie] == ["failed", "failed", "passed"]
+    assert historie[0]["fehler"] == ["gm.mismatch"]
+    assert historie[-1]["fehler"] == []
+
+    # Das Ledger selbst traegt weiter NUR den geltenden Stand — und seine
+    # Versuchsnummer ist jetzt wahr statt immer 1.
+    ledger = json.loads(
+        (tmp_path / f"golden_master{_common.GATE_LEDGER_SUFFIX}")
+        .read_text(encoding="utf-8"))
+    assert ledger["status"] == "passed"
+    assert ledger["attempt"] == 3
+
+
+def test_ohne_lauf_gibt_es_keine_historie(tmp_path: Path):
+    assert _common.lies_gate_historie(tmp_path, "golden_master") == []
+
+
+def test_eine_unlesbare_historienzeile_haelt_kein_gate_auf(tmp_path: Path):
+    """Die Historie ist ein Zusatzbeleg, kein Vertrag. Sie darf einen
+    Gate-Lauf niemals aufhalten — sonst waere die Beobachtung teurer als
+    das Beobachtete."""
+    pfad = _common.gate_historie_pfad(tmp_path, "golden_master")
+    pfad.write_text('{"versuch": 1, "status": "failed"}\nkein json\n\n',
+                    encoding="utf-8")
+
+    assert len(_common.lies_gate_historie(tmp_path, "golden_master")) == 1
+
+    ergebnis = _fahre_gate(tmp_path, status="passed", exit_code=_common.Exit.OK)
+    assert ergebnis.exit_code == _common.Exit.OK
+    # Die kaputte Zeile wird uebersprungen, nicht repariert: Der neue Lauf
+    # zaehlt als zweiter, weil eine lesbare Zeile vorlag.
+    historie = _common.lies_gate_historie(tmp_path, "golden_master")
+    assert [e["versuch"] for e in historie] == [1, 2]

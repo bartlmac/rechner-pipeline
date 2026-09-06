@@ -128,7 +128,7 @@ def _provenienz_fabrik(
         raise BefuellungsFehler(
             f"Fragment-Quelle {fragment.quelle_datei!r} ist im "
             "Eingang-Register nicht registriert — keine Aussage ohne "
-            "verankerte Quelle (P1)"
+            "registrierte Quelle (P1)"
         )
     sha = registriert[fragment.quelle_datei]
 
@@ -337,6 +337,8 @@ def loese_diskrepanz_auf(
     begruendung: str,
     entschieden_am: str,
     vorlaeufig: bool = False,
+    beleg: Optional["Beleg"] = None,
+    zeichnung: Optional[Dict[str, str]] = None,
 ) -> ABox:
     """Menschliche Aufloesung anwenden: Diskrepanz + Aussage nachziehen.
 
@@ -345,7 +347,7 @@ def loese_diskrepanz_auf(
     neuer Wert waere eine neue Quelle und gehoert als solche erfasst).
     Die Aussage wird belegt mit der Provenienz der gewaehlten Lesart.
     """
-    from rechner_pipeline.ontologie.diskrepanz import Entscheidung
+    from rechner_pipeline.ontologie.diskrepanz import Beleg, Entscheidung  # noqa: F401
 
     kandidaten = [
         (i, d) for i, d in enumerate(abox.diskrepanzen) if d.id == diskrepanz_id
@@ -372,7 +374,7 @@ def loese_diskrepanz_auf(
     # Zustand (Diskrepanz aufgeloest, Aussage noch widerspruechlich).
     # Ziele finden sich ueber die Referenz (diskrepanz_id) ODER ueber die
     # Adresse (knoten, feld) — nach einer VORLAEUFIGEN Aufloesung traegt
-    # die Aussage keine Referenz mehr, die Neuentscheidung (G-1) muss die
+    # die Aussage keine Referenz mehr, die Neuentscheidung (A-Q1) muss die
     # Adresse treffen.
     ziele: List[Tuple[Dict[str, Aussage], str]] = []
     unisex_ziele: List[Any] = []
@@ -404,6 +406,8 @@ def loese_diskrepanz_auf(
             gewaehlter_wert=lesart.wert,
             entschieden_am=entschieden_am,
             vorlaeufig=vorlaeufig,
+            beleg=beleg,
+            zeichnung=zeichnung,
         ),
     })
     for parameter, feld in ziele:

@@ -84,7 +84,7 @@ def test_fachspez_traegt_herkunft_und_vorlaeufig_warnung(fall_mit_konflikt):
     text = erzeuge_fachspez(spez, abox)
     assert "GENERIERT aus der A-Box" in text
     assert "tarifmeldung+tarifrechner" in text          # Quellenlage
-    assert "VORLAEUFIG — G-1-Entscheidung steht aus" in text
+    assert "VORLAEUFIG — A-Q1-Entscheidung steht aus" in text
     assert "0.025 (tarifmeldung) vs. 0.03 (tarifrechner)" in text
     pfad = speichere_fachspez(spez, abox, f)
     assert pfad.read_text(encoding="utf-8") == text      # deterministisch
@@ -92,7 +92,7 @@ def test_fachspez_traegt_herkunft_und_vorlaeufig_warnung(fall_mit_konflikt):
 
 
 def test_fachspez_druckt_anmerkungen_der_abox(fall_mit_konflikt):
-    """Beobachtungen ohne Schemafeld erreichen den G-1-Leser (T-Box)."""
+    """Beobachtungen ohne Schemafeld erreichen den A-Q1-Leser (T-Box)."""
     f, abox, spez, _ = fall_mit_konflikt
     ueberschrift = "## 11 Anmerkungen der Extraktion (ohne Schemafeld)"
     # Ohne Anmerkungen bleibt der Abschnitt stehen — Abwesenheit ist
@@ -115,19 +115,19 @@ def test_p9_annahme_blockt_bei_vorlaeufigen(fall_mit_konflikt):
     from rechner_pipeline.gates.gate_entscheid import main
 
     f, *_ = fall_mit_konflikt
-    result = main(["--fall", str(f), "--gate", "G-1",
-                   "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "Bartek",
+    result = main(["--fall", str(f), "--gate", "A-Q1",
+                   "--entscheid", "angenommen", "--rolle", "mensch", "--entscheider", "maintainer",
                    "--begruendung", "ok", "--repo-root", "."])
     assert result.exit_code == 20
     assert any("vorlaeufig" in e["code"] for e in result.errors)
     # Ablehnung ist jederzeit snapshotbar:
-    result = main(["--fall", str(f), "--gate", "G-1",
-                   "--entscheid", "abgelehnt", "--rolle", "mensch", "--entscheider", "Bartek",
+    result = main(["--fall", str(f), "--gate", "A-Q1",
+                   "--entscheid", "abgelehnt", "--rolle", "mensch", "--entscheider", "maintainer",
                    "--begruendung", "Zins offen", "--repo-root", "."])
     assert result.exit_code == 0
     snapshot = json.loads(
         Path(result.paths["snapshot"]).read_text(encoding="utf-8"))
-    assert snapshot["entscheider"] == "Bartek"
+    assert snapshot["entscheider"] == "maintainer"
     assert snapshot["snapshot_sha256"]
     assert "eingang.json" in snapshot["artefakt_hashes"]
     assert "abgeleitet/abox/abox.json" in snapshot["artefakt_hashes"]
@@ -141,7 +141,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
     f, _, _, d_id = fall_mit_konflikt
     rc = entscheide([
         "--fall", str(f), "--rolle", "mensch", "--diskrepanz", d_id, "--wert", "0.025",
-        "--entscheider", "Bartek",
+        "--entscheider", "maintainer",
         "--begruendung", "Meldung ist die eingereichte Fassung",
     ])
     assert rc == 0
@@ -151,7 +151,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
     abox = lade(f)
     [d] = abox.diskrepanzen
     assert d.entscheidung.vorlaeufig is False
-    assert d.entscheidung.entscheider == "Bartek"
+    assert d.entscheidung.entscheider == "maintainer"
     # Die Aussage folgt der NEUEN Wahl (0.025, Meldungs-Lesart):
     assert abox.generationen[0].zellen[0].parameter["beta1"].wert == 0.025
     # Eine endgueltige Entscheidung ist nicht erneut ueberschreibbar:
@@ -161,21 +161,21 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
     ])
     assert rc == 1
     assert "nie ueberschrieben" in capsys.readouterr().err
-    # Vorbedingung der Annahme: Gate O1 muss auf DIESEM Stand gruen sein.
-    from rechner_pipeline.gates.abox_validate import main as o1
+    # Vorbedingung der Annahme: Gate P-Q3 muss auf DIESEM Stand gruen sein.
+    from rechner_pipeline.gates.abox_validate import main as pq3
 
-    result = p9(["--fall", str(f), "--gate", "G-1",
+    result = p9(["--fall", str(f), "--gate", "A-Q1",
                  "--entscheid", "angenommen", "--rolle", "mensch",
-                 "--entscheider", "Bartek",
+                 "--entscheider", "maintainer",
                  "--begruendung", "Alle Diskrepanzen entschieden",
                  "--repo-root", ".", *_freigabe_arg(f)])
-    assert result.exit_code == 20                    # O1 fehlt noch
+    assert result.exit_code == 20                    # P-Q3 fehlt noch
     assert any(e["code"] == "vorbedingung" for e in result.errors)
-    assert o1(["--fall", str(f)]).exit_code == 0
+    assert pq3(["--fall", str(f)]).exit_code == 0
     # Jetzt darf P9 annehmen:
-    result = p9(["--fall", str(f), "--gate", "G-1",
+    result = p9(["--fall", str(f), "--gate", "A-Q1",
                  "--entscheid", "angenommen", "--rolle", "mensch",
-                 "--entscheider", "Bartek",
+                 "--entscheider", "maintainer",
                  "--begruendung", "Alle Diskrepanzen entschieden",
                  "--repo-root", ".", *_freigabe_arg(f)])
     assert result.exit_code == 0
@@ -190,8 +190,8 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
     from rechner_pipeline.gates.gate_entscheid import main
     from rechner_pipeline.ontologie.entscheide import main as entscheide
 
-    basis = ["--gate", "G-1", "--entscheid", "angenommen", "--rolle", "mensch",
-             "--entscheider", "Bartek", "--begruendung", "ok", "--repo-root", "."]
+    basis = ["--gate", "A-Q1", "--entscheid", "angenommen", "--rolle", "mensch",
+             "--entscheider", "maintainer", "--begruendung", "ok", "--repo-root", "."]
 
     # (a) gar kein Arbeitsbereich -> das Anlege- UND das Registrier-Kommando
     leer = tmp_path / "kein_fall"
@@ -214,11 +214,11 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
     assert "rechner_pipeline.gates.abox_merge" in fehler["message"]
     assert f"--fall {ohne_abox}" in fehler["message"]
 
-    # (c) A-Box entschieden, aber Gate O1 nie gelaufen -> das O1-Kommando
+    # (c) A-Box entschieden, aber Gate P-Q3 nie gelaufen -> das P-Q3-Kommando
     f, _, _, d_id = fall_mit_konflikt
     assert entscheide([
         "--fall", str(f), "--rolle", "mensch", "--diskrepanz", d_id,
-        "--wert", "0.025", "--entscheider", "Bartek",
+        "--wert", "0.025", "--entscheider", "maintainer",
         "--begruendung", "Meldung ist die eingereichte Fassung",
     ]) == 0
     result = main(["--fall", str(f)] + basis)
@@ -272,15 +272,15 @@ def _os_prozessstarts(baum: ast.Module) -> list:
     return sorted(treffer)
 
 
-def test_o3_hinweis_ist_je_generation_eine_kopierbare_zeile(tmp_path: Path):
+def test_pk1_hinweis_ist_je_generation_eine_kopierbare_zeile(tmp_path: Path):
     """Ein Hinweis zum Kopieren muss sich kopieren lassen (Folgefund C11).
 
     Bei mehreren Generationen ergab die Zusammensetzung mit ``|`` ein
     ``--generation klv/tg2012|klv/tg2015`` — als Shell-Zeile eine Pipe,
     also gerade kein uebernehmbares Kommando. Es gibt je Generation
-    eine eigene Zeile, denn O3 laeuft je Generation.
+    eine eigene Zeile, denn P-K1 laeuft je Generation.
     """
-    from rechner_pipeline.gates.abox_validate import main as o1
+    from rechner_pipeline.gates.abox_validate import main as pq3
     from rechner_pipeline.gates.gate_entscheid import main
 
     f = tmp_path / "fall"
@@ -308,11 +308,11 @@ def test_o3_hinweis_ist_je_generation_eine_kopierbare_zeile(tmp_path: Path):
     )
     speichere(abox, f)
     assert [g.id for g in abox.generationen] == ["klv/tg2012", "klv/tg2015"]
-    assert o1(["--fall", str(f)]).exit_code == 0
+    assert pq3(["--fall", str(f)]).exit_code == 0
 
-    result = main(["--fall", str(f), "--gate", "G-2", "--entscheid",
+    result = main(["--fall", str(f), "--gate", "A-M4", "--entscheid",
                    "angenommen", "--rolle", "mensch", "--entscheider",
-                   "Bartek", "--begruendung", "ok", "--repo-root", "."])
+                   "maintainer", "--begruendung", "ok", "--repo-root", "."])
     assert result.exit_code == 20
     [fehler] = result.errors
     assert fehler["code"] == "vorbedingung"
@@ -354,7 +354,8 @@ def test_abnahme_runbook_reicht_die_neuen_pruefgroessen_durch():
 
     repo = Path(__file__).resolve().parents[1]
     for basis in (".claude", ".agents"):
-        for skill in ("pruefe-migrationsabnahme", "migrationsfall-durchfuehren"):
+        for skill in ("pruefe-migrationscontrolling",
+                      "migrationsfall-durchfuehren"):
             text = (repo / basis / "skills" / skill / "SKILL.md").read_text(
                 encoding="utf-8")
             assert "bjb_erwartet_1" in text, (basis, skill)
@@ -362,7 +363,7 @@ def test_abnahme_runbook_reicht_die_neuen_pruefgroessen_durch():
 
 
 def test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt():
-    """Genau EIN Subprozess in ``src/``: Git-Provenienz fuer O3 und P9.
+    """Genau EIN Subprozess in ``src/``: Git-Provenienz fuer P-K1 und P9.
 
     Die Nicht-Verhandelbare "kein Netz, kein Subprozess, keine dynamische
     Ausfuehrung" gilt dem RECHEN- und BEWERTUNGSPFAD; ``_git_stand``
@@ -452,7 +453,7 @@ def test_entscheide_alle_vorlaeufigen_nach_quelle(fall_mit_konflikt, capsys):
     f, *_ = fall_mit_konflikt
     rc = entscheide([
         "--fall", str(f), "--rolle", "mensch", "--alle-vorlaeufigen",
-        "--quelle", "rechner.xlsm", "--entscheider", "Bartek",
+        "--quelle", "rechner.xlsm", "--entscheider", "maintainer",
         "--begruendung", "Fachverantwortlicher bestaetigt den Rechner-Stand",
     ])
     assert rc == 0

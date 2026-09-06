@@ -1,0 +1,13 @@
+# Jekyll-Konfiguration der veroeffentlichten Vorfuehrung. Die
+# Artefakte werden ausdruecklich NICHT von Jekyll angefasst, damit
+# JSON und CSV unveraendert herunterladbar bleiben.
+theme: jekyll-theme-cayman
+title: Pfefferminzia Lebensversicherung AG
+description: >-
+  Fiktives Unternehmen — Vorfuehrung einer agentischen
+  Bestandsmigration. Erfundene Gesellschaften, synthetische Vertraege,
+  mit einem Simulationsschluessel gezeichnete Abnahmen.
+include:
+  - artefakte
+keep_files:
+  - artefakte
