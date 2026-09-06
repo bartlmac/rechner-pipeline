@@ -1,6 +1,9 @@
 # Rollentrennung der Agenten
 
-Stand: 2026-08-27 · Skizze, wartet auf Entscheidung · Auftraggeber
+Stand: 2026-08-27 · Skizze; ENTSCHIEDEN und umgesetzt am 2026-09-05 als
+ADR-017/ADR-018 (vier Agentenrollen unter `.claude/agents/`,
+Schluesselklassen, Besetzung im Snapshot). Dieses Dokument bleibt als
+Herleitung stehen. · Auftraggeber
 
 ## 1 Problem
 

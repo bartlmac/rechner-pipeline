@@ -20,6 +20,22 @@ Aufgaben:
    weiterentwickelt — unter einer Architektur, die Korrektheit erzwingt
    statt erhofft.
 
+Das Repository trägt dabei **vier Ebenen** (ADR-017), und jedes Modul,
+jedes Dokument und jede Rolle gehört genau einer davon an:
+
+| Ebene | Was sie ist | Hier |
+|---|---|---|
+| Entwickler und KI | die Arbeit an Tool und Vorzeige | Reviews, ADRs, Suite, Gate A-K1 |
+| KI-Tool | das agentische Migrationssystem, unabhängig vom Unternehmen | `ontologie/`, `spez/`, `gates/`, `models/`, `qa/`, `quellen/`, Skills und Agentenrollen, Berichts-Generatoren |
+| Vorzeige | ein fiktives Unternehmen, an dem sich das Tool zeigt und testen lässt | Referenz-Zielsystem `kern/`, Bestandsführung `bestand/`, der Migrationsfall, die Unternehmensseite |
+| Vorzeige-Werkzeuge | was die Vorzeige herstellt und in der Wirklichkeit ein Unternehmen oder Quellsystem liefern würde | Bestandssimulation, Quellsystem-Erzeugung, Regie-Mechanik |
+
+Abgrenzung: Was bei einem beliebigen Versicherer unverändert eingesetzt
+würde, ist Tool; was nur für die fiktiven Unternehmen gilt, ist
+Vorzeige. Der Generator eines Berichts ist Tool, die konfigurierte
+Instanz ist Vorzeige. Die Schichtenkarte trägt die Ebene je Schicht und
+hält die Kanten aus dem Tool in die Vorzeige als Ratsche fest.
+
 Die Arbeitsteilung ist der Kern der Methodik:
 
 - **Agenten schlagen vor** — als versionierte Rollen (Skills): Quellen
@@ -88,7 +104,12 @@ Gesamtbild, aber nicht zum System.
 ## Architektur
 
 **Schichten** (Import-Regeln maschinell erzwungen,
-`ontologie/code_karte`):
+`ontologie/code_karte`; jede Schicht trägt ihre Ebene nach ADR-017, und
+die 29 gemessenen Kanten aus dem Tool in die Vorzeige sind die
+Zielsystem-Schnittstelle — eine neue Kante ist ein Befund, bis ein ADR
+sie aufnimmt). Die Kette unten ist die Lesefassung; die erzwungene
+Erlaubnismatrix ist ein Netz mit Quer- und Rückkanten und steht in der
+erzeugten [Landkarte](docs/architektur/landkarte.md):
 
 ```
 quellen  ->  ontologie  ->  spez  ->  kern  ->  bestand  ->  qa  ->  gates
@@ -195,9 +216,11 @@ startet keinen Gate-Lauf.
 | P-Q3 | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check |
 | P-K1 | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands |
 | P9 | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (A-Q1, A-M1, A-M4, A-K1); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, A-M1 und A-M4 verlangen die zum Fall-Scope passenden Pflichtbelege je Gate, und A-M4 verlangt die geltende, signierte A-M1-Annahme auf demselben Stand und pinnt sie als Pflichtrolle `am1_snapshot` (aktuarielle vor finanzieller Abnahme, ADR-010) |
-| P-B1 (Version `2.1.0`) | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, endliche Beträge in Stamm, Scheiben und Ledger (`NaN` und `inf` sind Datenfehler), Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand), die Tarifwerk-Regel `gamma1 == 0` der Erhöhungsscheiben, die Semantik jeder Ledger-Buchung (GeVo-Vokabular, Betragsart zum GeVo, Generation des Stammsatzes, Vertragsjahr zum Datum, Journalzeile zum Zustandswechsel) mit zeilenweiser Bindung jeder `ERH`-Buchung an genau eine Scheibe, mit `--config` die Betragsidentität jeder STO-/PEX-/TOD-/ABL-/ZUG-Buchung gegen die Kern-Herleitung für genau diese Police (Tarifzellen brauchen `--merkmale`), und Bewegungs-Identitäten je Jahr, Track und Maß; mit `--manifest` zusätzlich den belegten Horizont und die Bytes jeder Tabelle gegen das Laufmanifest. `2.0.0` änderte die normative Akzeptanzmenge (vorher grüne Belege werden rot und umgekehrt), `2.1.0` ergänzt die optionale Manifest-Bindung |
+| P-B1 (Version `3.0.0`) | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, endliche Beträge in Stamm, Scheiben und Ledger (`NaN` und `inf` sind Datenfehler), Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand), die Tarifwerk-Regel `gamma1 == 0` der Erhöhungsscheiben, die Semantik jeder Ledger-Buchung (GeVo-Vokabular, Betragsart zum GeVo, Generation des Stammsatzes, Vertragsjahr zum Datum, Journalzeile zum Zustandswechsel) mit zeilenweiser Bindung jeder `ERH`-Buchung an genau eine Scheibe, mit `--config` die Betragsidentität jeder STO-/PEX-/TOD-/ABL-/ZUG-Buchung gegen die Kern-Herleitung für genau diese Police (Tarifzellen brauchen `--merkmale`), und Bewegungs-Identitäten je Jahr, Track und Maß; mit `--manifest` zusätzlich den belegten Horizont und die Bytes jeder Tabelle gegen das Laufmanifest. `2.0.0` änderte die normative Akzeptanzmenge (vorher grüne Belege werden rot und umgekehrt), `2.1.0` ergänzte die optionale Manifest-Bindung, `3.0.0` erweitert die Akzeptanzmenge um Ledger-Semantik, Betragsidentität und Herkunftsbindung — mit Config geprüfte, betragsfalsche Ledger werden rot (Review T21-09: eine geänderte Akzeptanzmenge braucht einen Versionssprung) |
 | A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
 | G2-Vorlage | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es P-B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen |
+
+Gate-Versionen folgen der Akzeptanzmenge (ADR-012, Nachtrag 2026-09-05): Major, wenn ein vorher grüner Beleg rot werden kann oder umgekehrt; Minor für eine optionale Rolle oder Prüfung, die bestehende Belege nicht berührt; Patch für Meldetexte und Summary-Felder. Trägt eine Zeile dieser Tabelle eine Version, hält `tests/test_gate_versionsregel.py` sie mit der `GATE_VERSION` des Moduls zusammen.
 
 Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
 (`tests/test_kern_algebraisch.py`: qx-Schranken, Barwert-Bilanz
@@ -399,12 +422,16 @@ python -m rechner_pipeline.quellen.tafel_import --fall faelle/mein-fall --genera
 python -m rechner_pipeline.gates.generation_golden --fall faelle/mein-fall \
     --generation klv/tgX --repo-root .                                                 # P-K1
 
-# menschliche Gates:
+# menschliche Gates (ADR-018: die zeichnende Rolle wird aus dem Schluessel
+# ueber die Zeichnungsordnung BESTIMMT, nicht behauptet):
 python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ... \
-    --wert ... --entscheider ... --begruendung ... --rolle mensch
+    --wert ... --entscheider ... --begruendung ... \
+    --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
 python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate A-Q1 \
-    --entscheid angenommen --entscheider ... --begruendung ... --rolle mensch \
-    --freigabe-schluessel /sicher/p9-freigabe.key
+    --entscheid angenommen --entscheider ... --begruendung ... \
+    --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
 ```
 
 Parallele `fall registrieren`-Aufrufe desselben Falls werden über eine
@@ -428,12 +455,15 @@ Zusaetzlich muessen alle Altersvektoren exakt die eindeutigen ganzzahligen Alter
 0 bis 123 tragen; jeder qx-Wert muss endlich sein und in `[0,1]` liegen. Diese
 Invarianten werden beim Import und erneut beim Laden des Kern-XML erzwungen.
 
-`--rolle` ist bei beiden Kommandos Pflicht (ohne das Flag brechen sie
-mit Exit-Code 2 ab) und trägt die Grenze zwischen Mensch und Agent:
-`entscheide` nimmt ausschließlich `--rolle mensch` — endgültige
-Diskrepanz-Auflösungen sind Menschen vorbehalten. Bei `gate_entscheid`
-ist `--rolle agent` zulässig, ein Agent kann ein menschliches Gate damit
-aber nur **ablehnen**, nie annehmen.
+Wer zeichnet, steht in der **Zeichnungsordnung** (ADR-018): Rollen
+heißen `mensch/<funktion>` oder `agent/<name>`, jede trägt eine
+Schlüsselklasse (`mensch`, `simulation`, `agent`) und die Gates, die sie
+zeichnen darf. Eine Annahme braucht Ordnung und Schlüssel; die Rolle wird
+aus dem Schlüssel bestimmt und wandert samt Klasse mitsigniert in den
+Snapshot. Agentenrollen legen vor und zeichnen nie; sie können ein
+menschliches Gate nur **ablehnen** (`--rolle agent/<name>`, dokumentierter
+Zwischenstand). In der Vorführung tragen die menschlichen Rollen die
+Schlüsselklasse `simulation`, und jeder Beleg sagt das.
 
 Eine Annahme braucht zusätzlich `--freigabe-schluessel`. Die Datei wird vom
 Menschen ausserhalb des Falls und ausserhalb des Agentenzugriffs verwahrt,

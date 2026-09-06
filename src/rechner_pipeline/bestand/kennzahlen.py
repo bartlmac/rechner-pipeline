@@ -320,10 +320,17 @@ def bu_bewegungskonto(
         inv = periode[periode["ereignis"] == "INV"]
         rea = periode[periode["ereignis"] == "REA"]
         terminal = periode[periode["ereignis"].isin(("TOD", "ABL"))]
-        # Der Track eines Abgangs ist der Zustand VOR dem Abgang: der
-        # Ledger-Betrag ist genau dann die (endende) Jahresrente, wenn der
-        # Vertrag im Leistungsbezug stand — Tod/Ablauf als Anwaerter zahlen 0.
-        aus_bezug = terminal["betrag"] > 0.0
+        # Der Track eines Abgangs ist der Zustand VOR dem Abgang — aus der
+        # Historie hergeleitet, nicht aus dem Ledger-Betrag (Review T21-01:
+        # der Betrag ist die zu pruefende Groesse; wer den Track daraus
+        # liest, laesst Pruefung und Konto einander bestaetigen).
+        from rechner_pipeline.bestand.ledger_bindung import zustand_vor
+
+        aus_bezug = pd.Series(
+            [zustand_vor(historie, int(p), d) == "BU"
+             for p, d in zip(terminal["police_id"], terminal["status_date"])],
+            index=terminal.index, dtype=bool,
+        )
         zeile: Dict[str, Any] = {
             "jahr": int(jahr),
             "anwaerter": {

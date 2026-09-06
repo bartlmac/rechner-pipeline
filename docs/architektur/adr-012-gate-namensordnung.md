@@ -142,6 +142,31 @@ Bisher musste man wissen, dass `G-A` vor `G-2` kommt.
   Hinweis in `docs/architektur/README.md` fuer die ganze Sammlung fest,
   damit nicht zehn Dokumente denselben Vermerk tragen.
 
+## Nachtrag 2026-09-05: Versionierungsregel der Gates
+
+Beschluss des Maintainers nach dem externen Review T21-09 (P-B1 hatte
+seine Akzeptanzmenge geaendert und trug weiter `2.1.0`); die Regel war
+seit der Runde T16 als Folgearbeit notiert und wurde dreimal als Befund
+gemeldet. Jedes Gate traegt eine `GATE_VERSION` nach dieser Regel:
+
+* **Major** (`x.0.0`), wenn sich die Akzeptanzmenge aendert: ein vorher
+  gruener Beleg kann rot werden oder umgekehrt. Dazu zaehlt jede neue
+  Pflichtpruefung, jede Verschaerfung einer bestehenden und jede neue
+  Pflichtrolle.
+* **Minor** (`0.x.0`), wenn eine optionale Rolle oder Pruefung
+  hinzukommt, die bestehende Belege nicht beruehrt (ein Beleg ohne die
+  neue Rolle bleibt, was er war).
+* **Patch** (`0.0.x`) fuer Meldetexte und Summary-Felder ohne Wirkung
+  auf das Urteil.
+
+Jede Aenderung der Version nennt im Commit den Grund und in der
+Gate-Tabelle des README die Zeile des Gates (Was hat sich geaendert,
+warum dieser Sprung). `tests/test_gate_versionsregel.py` haelt Version
+und README-Zeile zusammen: Traegt eine README-Zeile eine Version, muss
+sie der `GATE_VERSION` des Moduls entsprechen. Was die Regel NICHT
+leistet: Sie erkennt eine geaenderte Akzeptanzmenge nicht selbst —
+das bleibt Urteil des Autors und Gegenstand des Reviews.
+
 ## Verworfene Alternativen
 
 * **`G` fuer menschliche Abnahmen behalten** (`G-M1` statt `A-M1`).

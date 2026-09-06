@@ -111,7 +111,7 @@ from rechner_pipeline.gates._common import (
 from rechner_pipeline.gates._provenienz import systemstand
 
 GATE = "P-B1.bestandspruefung"
-GATE_VERSION = "2.1.0"
+GATE_VERSION = "3.0.0"
 CLI_CONTRACT = GateCliContract(
     command="bestand_validate",
     gate=GATE,

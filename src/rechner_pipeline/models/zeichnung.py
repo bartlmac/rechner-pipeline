@@ -15,6 +15,18 @@ Datei besitzt, deren SHA-256 die Ordnung einer Rolle zuordnet, handelt
 als diese Rolle. Zwei Rollen mit demselben Fingerabdruck sind ein
 Fehler — die Trennung der Operatoren waere sonst nur behauptet.
 
+**Schema 2 (ADR-018): Rollenkennung und Schluesselklasse.** Eine Rolle
+heisst ``mensch/<funktion>`` oder ``agent/<name>``; die Ebene steht im
+Namen. Jede Rolle traegt eine ``schluesselklasse``: ``mensch`` (eine
+natuerliche Person haelt den Schluessel), ``simulation`` (die Vorzeige
+ahmt eine menschliche Rolle nach — dieselbe Kennung, andere Klasse,
+jeder Beleg sagt es) oder ``agent`` (eine Agentenrolle des KI-Tools; sie
+legt vor und zeichnet nie, ihre gates-Liste ist leer). Die Reviews T20
+und U1 fanden, dass aus keinem Beleg ablesbar war, ob ein Mensch oder
+eine KI-Session gezeichnet hatte; die Klasse wandert deshalb in die
+Ordnung und von dort in jeden Snapshot. Ordnungen nach Schema 1 werden
+mit Hinweis abgewiesen, nicht still gemappt.
+
 Knoten: system/entscheid
 """
 
@@ -22,8 +34,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+#: Die Schluesselklassen (ADR-018).
+SCHLUESSELKLASSEN = ("mensch", "simulation", "agent")
+#: Klassen, deren Schluessel eine Annahme zeichnen duerfen.
+ZEICHNENDE_KLASSEN = ("mensch", "simulation")
+#: Rollenkennungen tragen die Ebene: mensch/<funktion> oder agent/<name>.
+ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
+ORDNUNG_SCHEMA_VERSION = 2
+
+
+def gueltige_rollenkennung(rolle: object) -> bool:
+    return isinstance(rolle, str) and ROLLEN_MUSTER.match(rolle) is not None
 
 #: Alle zeichenbaren Gates. Massgeblich fuer die gates-Listen der
 #: Ordnung: Ein Gate, das man zeichnen, aber keiner Rolle geben kann,
@@ -72,8 +97,17 @@ def lade_zeichnungsordnung(
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return None, None, [f"Zeichnungsordnung nicht als JSON lesbar: {exc}"]
     fehler: List[str] = []
-    if not isinstance(daten, dict) or daten.get("schema_version") != 1:
-        fehler.append("Zeichnungsordnung: schema_version 1 erwartet")
+    if not isinstance(daten, dict):
+        return None, None, ["Zeichnungsordnung: kein JSON-Objekt"]
+    if daten.get("schema_version") == 1:
+        return None, None, [
+            "Zeichnungsordnung nach Schema 1 wird nicht mehr gelesen "
+            "(ADR-018): Rollen heissen jetzt mensch/<funktion> oder "
+            "agent/<name> und tragen eine schluesselklasse (mensch, "
+            "simulation, agent); schema_version 2"
+        ]
+    if daten.get("schema_version") != ORDNUNG_SCHEMA_VERSION:
+        fehler.append(f"Zeichnungsordnung: schema_version {ORDNUNG_SCHEMA_VERSION} erwartet")
         return None, None, fehler
     rollen = daten.get("rollen")
     if not isinstance(rollen, dict) or not rollen:
@@ -82,6 +116,39 @@ def lade_zeichnungsordnung(
     for name, eintrag in rollen.items():
         if not isinstance(eintrag, dict):
             fehler.append(f"Zeichnungsordnung: Rolle {name!r} ist kein Objekt")
+            continue
+        if not gueltige_rollenkennung(name):
+            fehler.append(
+                f"Zeichnungsordnung: Rolle {name!r} traegt keine Ebene — "
+                "erwartet mensch/<funktion> oder agent/<name> (ADR-018)"
+            )
+            continue
+        klasse = eintrag.get("schluesselklasse")
+        if klasse not in SCHLUESSELKLASSEN:
+            fehler.append(
+                f"Zeichnungsordnung: Rolle {name!r} ohne gueltige "
+                f"schluesselklasse (erlaubt: {list(SCHLUESSELKLASSEN)})"
+            )
+            continue
+        ebene = name.split("/", 1)[0]
+        if ebene == "agent" and klasse != "agent":
+            fehler.append(
+                f"Zeichnungsordnung: Agentenrolle {name!r} muss die "
+                "Schluesselklasse 'agent' tragen"
+            )
+            continue
+        if ebene == "mensch" and klasse == "agent":
+            fehler.append(
+                f"Zeichnungsordnung: menschliche Rolle {name!r} kann nicht "
+                "die Schluesselklasse 'agent' tragen — Agenten zeichnen nicht"
+            )
+            continue
+        if klasse == "agent" and eintrag.get("gates"):
+            fehler.append(
+                f"Zeichnungsordnung: Agentenrolle {name!r} mit gates "
+                f"{eintrag.get('gates')} — Agentenrollen legen vor und "
+                "zeichnen nie (ADR-018); die Liste muss leer sein"
+            )
             continue
         fp = eintrag.get("schluessel_sha256")
         if not (isinstance(fp, str) and len(fp) == 64
@@ -124,6 +191,37 @@ def zeichnungsrolle(
 
 
 def rolle_darf_gate(ordnung: dict, rolle: str, gate: str) -> bool:
-    """Ob die Rolle das Gate zeichnen darf ('*' = alle)."""
+    """Ob die Rolle das Gate zeichnen darf ('*' = alle). Agentenrollen
+    haben nie Gates (die Ordnung erzwingt die leere Liste)."""
     gates = ordnung["rollen"].get(rolle, {}).get("gates", [])
     return "*" in gates or gate in gates
+
+
+def schluesselklasse(ordnung: dict, rolle: str) -> Optional[str]:
+    """Die Schluesselklasse einer Rolle der Ordnung (None = unbekannte Rolle)."""
+    eintrag = ordnung["rollen"].get(rolle)
+    return eintrag.get("schluesselklasse") if isinstance(eintrag, dict) else None
+
+
+def zeichnung_fuer(
+    ordnung: dict, ordnung_sha256: str, schluessel_sha256: str,
+    mandat_sha256: Optional[str] = None,
+) -> Optional[Dict[str, str]]:
+    """Der Zeichnungs-Eintrag eines Belegs: Rolle (aus dem Schluessel
+    bestimmt), Ordnungs-Hash, Schluesselklasse, optional das Mandat.
+
+    None, wenn der Schluessel keiner Rolle gehoert. Ein Mandat ist das
+    Dokument, unter dem eine simulierte Rolle handelte; sein Hash gehoert
+    in den Beleg, damit die Besetzung nachlesbar bleibt (ADR-018).
+    """
+    rolle = zeichnungsrolle(ordnung, schluessel_sha256)
+    if rolle is None:
+        return None
+    eintrag = {
+        "rolle": rolle,
+        "ordnung_sha256": ordnung_sha256,
+        "schluesselklasse": str(schluesselklasse(ordnung, rolle)),
+    }
+    if mandat_sha256:
+        eintrag["mandat_sha256"] = mandat_sha256
+    return eintrag

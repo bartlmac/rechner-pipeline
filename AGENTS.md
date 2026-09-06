@@ -31,6 +31,11 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   (2026-09-04, external review finding T19-06), because a rebase would
   break the merge plan's "additive only" rule for every branch built on
   it. New commits follow the rule.
+- The four agent roles of the KI-Tool (ADR-018: `agent/aktuariat`,
+  `agent/architektur`, `agent/rechenkern`, `agent/programmleitung`) are
+  defined under `.claude/agents/` and mirrored in `.agents/agents/`
+  (parity test-enforced). They prepare and hand over; they never sign a
+  human gate.
 - Use the repo-scoped skills in `.agents/skills/` when running Codex and
   `.claude/skills/` when running Claude. The two trees are mirrored and
   their parity is test-enforced (`tests/test_agent_workflow_docs.py`);
@@ -105,7 +110,11 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `python -m rechner_pipeline.ontologie.entscheide` and
   `python -m rechner_pipeline.gates.gate_entscheid` (human gates, P9
   snapshots). Agents never resolve discrepancies as final; provisional
-  resolutions carry `vorlaeufig=true` and block human acceptance.
+  resolutions carry `vorlaeufig=true` and block human acceptance. Who
+  signs is determined from the key via the Zeichnungsordnung (ADR-018:
+  roles `mensch/<funktion>` sign, `agent/<name>` roles only prepare and
+  may reject; the key class `mensch`/`simulation`/`agent` is recorded
+  in every snapshot).
 - Migration controlling: the two-reporting-date suite
   (`rechner_pipeline.qa.migrationssuite`) and the HTML acceptance
   report (`rechner_pipeline.gates.abnahmebericht`) are libraries driven

@@ -269,8 +269,11 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    (Schritt 8b). Die Seiten-Session arbeitet auf vorzeige-url
    unabhaengig weiter; veroeffentlicht wird ohnehin manuell und
    getrennt vom Code-Merge.
-8. [ ] fallbericht -> main als EIN PR mit Review-Leitfaden (Owner:
-   Maintainer). REVIDIERT 2026-09-02 (Maintainer-Entscheid nach
+8. [x] fallbericht -> main als EIN PR mit Review-Leitfaden (Owner:
+   Maintainer). ERLEDIGT 2026-09-06: PR #11 nach Reviewer-Approve als
+   Merge-Commit 96588b8 auf main (Eltern 33e9dec + 730fcb0); vier
+   Reviewrunden T18/T19/T20/T21 davor geschlossen bzw. als benannte
+   Folgearbeit im Backlog (dev-docs/review-t19-befunde.md). REVIDIERT 2026-09-02 (Maintainer-Entscheid nach
    Lauf-Ende): Der 2026-09-01 im Plan selbst angelegte Vorbehalt ist
    eingetreten — die 23 Lauf-Korrekturen liegen quer durch das A/B/C-
    Gebiet (Kern-Verfahren, QA-Engines, Gates, Bestand), ein
@@ -333,8 +336,13 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    an, ist der Schnitt danach neu zu bewerten, statt ihn jetzt
    festzuzurren. Die PR-Branches werden deshalb erst nach Lauf 2
    angelegt.
-9. [ ] Aufraeumen: Branches lauf/baldrian-uebernahme,
-   feat/migrationszugang loeschen.
+9. [x] Aufraeumen: Branches lauf/baldrian-uebernahme,
+   feat/migrationszugang loeschen. ERLEDIGT lokal 2026-09-06 (beide in
+   main enthalten; feat/test-controlling-trennung verworfen). Auf
+   origin stehen noch fallbericht, feat/bestandsfuehrung und
+   parked/toolbox-pipeline (alle in main enthalten) — Loeschen dort
+   ist Push-Arbeit des Maintainers; quellsystem lokal erst nach dem
+   Aufloesen seines Worktrees.
    feat/test-controlling-trennung: VERWERFEN, geprueft 2026-09-01. Der
    Branch traegt dieselben fuenf Dateien wie der aelteste
    fallbericht-Commit, aber in aelterer Fassung -- ADR-010 steht dort
@@ -342,3 +350,45 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    qa/stichprobe.py ist 91 Zeilen und tests/test_stichprobe.py
    75 Zeilen aermer. fallbericht ist strikt weiter; es geht nichts
    verloren.
+10. [ ] Folge-Straenge nach dem Merge von PR #11 (Plan validiert durch
+   die merge-session 2026-09-05, Einwendung angenommen):
+   KEIN REBASE. ebenen (5 Commits) und plv-betrieb (9 Commits)
+   sitzen exakt auf 730fcb0; sobald PR #11 als Merge-Commit auf main
+   ist, sind beide auf einem Vorfahren von main gebaut. Umbasieren
+   vergaebe neue Shas — dasselbe Argument, das gegen Squash spricht:
+   gates/_provenienz.py schreibt den Commit in jeden Systemstand, den
+   P9-Snapshots binden; main traegt Merge-Commits (PR #9, #10, #11).
+   Also: (a) PR "Architektur: Ebenen und Rollenmodell" (ebenen -> main,
+   Merge-Commit), (b) PR "PLV-Tagesbetrieb" (plv-betrieb -> main,
+   Merge-Commit); Reihenfolge frei; Beruehrungen: landkarte.md (nie von
+   Hand aufloesen, neu erzeugen), je ein Absatz in AGENTS.md und README
+   aus beiden Straengen (beide behalten), werkzeuge/falldaten.py additiv.
+   FRUEHER MERGE plv-betrieb -> vorzeige-url (Frage des
+   Maintainers, damit das Redesign Stands-Paket und "Bestand heute"
+   nutzen kann): unbedenklich, WEIL nicht umbasiert wird — plv erreicht
+   main mit denselben Shas; vorzeige-url bekommt damit auch 730fcb0
+   (T18/T19/T20-Fixes), der spaetere Seiten-PR zeigt nur das
+   Seiten-Delta. Verfahren wie Schritt 7: Wegwerf-Worktree, volle
+   Suite, dann erst den Arbeitsbaum der vorzeige-Session anfassen (in
+   Abstimmung mit ihr). Konfliktkandidaten: werkzeuge/falldaten.py
+   (Glob/Kennzahlenquellen gegen additives --stands-paket),
+   werkzeuge/vorzeigeseite.py + tests/test_werkzeuge.py (Regie-Sperre in
+   beiden Fassungen, fallbericht-Fassung gewinnt; plus T20-02/-03),
+   landkarte.md, werkzeuge/README.md.
+   COMMITS DER SEITE (iteratives Redesign): System-Straenge behalten
+   ihre Historie (Snapshots binden Shas). Der Seiten-Strang darf lokal
+   iterativ wachsen und vor dem PR zu wenigen BEGRUENDETEN Commits
+   verdichtet werden (kein Ein-Commit-Squash: die Botschaften tragen das
+   Warum) — mit zwei Klauseln: (1) verdichtet wird nur, was NIE
+   veroeffentlicht wurde, denn vorzeigeseite._systemstand() schreibt
+   den Commit in die erzeugte Seite und drift.py urteilt daran; (2) vor
+   dem Verdichten mechanisch pruefen, dass das Seiten-Delta nur den
+   vereinbarten Seiten-Pfadsatz beruehrt (git diff --name-only
+   <basis>...<seiten-branch>; werkzeuge/ traegt Seiten- UND
+   Systemcode nebeneinander — T19-01 sass dort), statt "keine
+   Systemaenderungen" zu versprechen; (3) REIHENFOLGE: verdichtet wird
+   erst, wenn plv-betrieb und 730fcb0 auf main sind — sonst faellt
+   der frueh gemergte Tagesbetrieb in das Seiten-Delta und wuerde ueber
+   Bande mit-gesquasht. Das ist eine Bedingung an den Zeitpunkt des
+   Verdichtens, nicht an den fruehen Merge; da waehrend des Redesigns
+   ohnehin nicht veroeffentlicht wird, ist sie im Normalfall erfuellt.

@@ -73,8 +73,16 @@ GATE_VERSION_DEFAULT = "1.0.0"
 #: Bedieners in ein signiertes Artefakt — in einer veroeffentlichten
 #: Kette ist das nicht mehr zu entfernen, weil der Pfad INNERHALB der
 #: gehashten Nutzlast und der Signaturnachricht liegt.
-P9_SNAPSHOT_SCHEMA_VERSION = 6
-P9_GATE_VERSION = "0.6.0"
+#: Aktuelles Snapshot-Schema (ADR-018: Rollenkennung mit Ebene und
+#: Schluesselklasse in der Zeichnung). Schema 6 bleibt LESBAR: Die
+#: Snapshots des zweiten Baldrian-Laufs sind als Ausnahme ausgewiesen und
+#: werden nicht nachsigniert.
+P9_SNAPSHOT_SCHEMA_VERSION = 7
+_ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
+P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7)
+P9_GATE_VERSION = "0.7.0"
+#: Gate-Version je lesbarem Schnappschuss-Schema.
+P9_GATE_VERSION_JE_SCHEMA = {6: "0.6.0", 7: P9_GATE_VERSION}
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
 #: Die menschlich entscheidbaren Gates. A-M2 (Verlaufstest) und A-M3
 #: (Geschaeftsvorfalltest) stehen hier gleichberechtigt neben A-M1: Alle
@@ -463,20 +471,44 @@ class P9Snapshot:
             expected_fields.add("freigabe")
         fields = set(data)
         missing = sorted(expected_fields - fields)
-        # "zeichnung" ist OPTIONAL: Sie entsteht nur, wenn eine
-        # Zeichnungsordnung uebergeben wurde (Rollenbindung der Annahme).
-        # Aeltere Snapshots ohne sie bleiben gueltig.
+        version = data.get("schema_version")
+        legacy = version == 6
+        # "zeichnung": in Schema 6 optional (nur mit Ordnung), in Schema 7
+        # bei jeder Annahme Pflicht und um die Schluesselklasse ergaenzt
+        # (ADR-018) — aus dem Beleg allein muss ablesbar sein, welche
+        # Rolle wie besetzt war.
         unknown = sorted(fields - expected_fields - {"zeichnung"})
         z = data.get("zeichnung")
-        if z is not None and not (
-            isinstance(z, dict)
-            and set(z) == {"rolle", "ordnung_sha256"}
-            and isinstance(z.get("rolle"), str)
-            and isinstance(z.get("ordnung_sha256"), str)
-        ):
-            errors.append(
-                "zeichnung muss {rolle, ordnung_sha256} mit Strings sein"
-            )
+        if legacy:
+            if z is not None and not (
+                isinstance(z, dict)
+                and set(z) == {"rolle", "ordnung_sha256"}
+                and isinstance(z.get("rolle"), str)
+                and isinstance(z.get("ordnung_sha256"), str)
+            ):
+                errors.append(
+                    "zeichnung muss {rolle, ordnung_sha256} mit Strings sein"
+                )
+        else:
+            pflicht = {"rolle", "ordnung_sha256", "schluesselklasse"}
+            if z is not None and not (
+                isinstance(z, dict)
+                and pflicht <= set(z) <= pflicht | {"mandat_sha256"}
+                and all(isinstance(z.get(k), str) and z[k] for k in pflicht)
+                and z.get("schluesselklasse") in ("mensch", "simulation")
+                and (z.get("mandat_sha256") is None or _is_sha256(z.get("mandat_sha256")))
+            ):
+                errors.append(
+                    "zeichnung muss {rolle, ordnung_sha256, schluesselklasse "
+                    "in (mensch, simulation)[, mandat_sha256]} sein"
+                )
+            if data.get("entscheid") == "angenommen" and z is None:
+                errors.append(
+                    "an accepted decision requires zeichnung (Rolle aus der "
+                    "Zeichnungsordnung, Schluesselklasse) — ADR-018"
+                )
+            if isinstance(z, dict) and z.get("rolle") != data.get("rolle"):
+                errors.append("zeichnung.rolle must equal rolle")
         if missing:
             errors.append(f"required fields missing: {missing}")
         if unknown:
@@ -484,24 +516,35 @@ class P9Snapshot:
         if missing:
             return errors
 
-        if type(data.get("schema_version")) is not int or data.get(
-            "schema_version"
-        ) != P9_SNAPSHOT_SCHEMA_VERSION:
+        if type(version) is not int or version not in P9_SNAPSHOT_SCHEMA_VERSIONEN:
             errors.append(
-                f"schema_version must be {P9_SNAPSHOT_SCHEMA_VERSION}"
+                f"schema_version must be one of {P9_SNAPSHOT_SCHEMA_VERSIONEN}"
             )
+            return errors
         if data.get("command") != "gate_entscheid":
             errors.append("command must be 'gate_entscheid'")
-        if data.get("gate_version") != P9_GATE_VERSION:
-            errors.append(f"gate_version must be {P9_GATE_VERSION!r}")
+        if data.get("gate_version") != P9_GATE_VERSION_JE_SCHEMA[version]:
+            errors.append(
+                f"gate_version must be {P9_GATE_VERSION_JE_SCHEMA[version]!r}"
+            )
         if gate not in P9_GATES:
             errors.append(f"gate must be one of {P9_GATES}, got {gate!r}")
         if data.get("entscheid") not in ("angenommen", "abgelehnt"):
             errors.append("entscheid must be 'angenommen' or 'abgelehnt'")
-        if data.get("rolle") not in ("mensch", "agent"):
-            errors.append("rolle must be 'mensch' or 'agent'")
-        if data.get("rolle") == "agent" and data.get("entscheid") == "angenommen":
-            errors.append("an agent cannot authorize an accepted human gate")
+        rolle = data.get("rolle")
+        if legacy:
+            if rolle not in ("mensch", "agent"):
+                errors.append("rolle must be 'mensch' or 'agent'")
+            if rolle == "agent" and data.get("entscheid") == "angenommen":
+                errors.append("an agent cannot authorize an accepted human gate")
+        else:
+            if not (isinstance(rolle, str) and _ROLLEN_MUSTER.match(rolle)):
+                errors.append(
+                    "rolle must be a role id with its level: mensch/<funktion> "
+                    "or agent/<name> (ADR-018)"
+                )
+            elif rolle.startswith("agent/") and data.get("entscheid") == "angenommen":
+                errors.append("an agent cannot authorize an accepted human gate")
         for name in ("entscheider", "begruendung", "fall"):
             if not isinstance(data.get(name), str) or not data[name].strip():
                 errors.append(f"{name} must be a non-empty string")

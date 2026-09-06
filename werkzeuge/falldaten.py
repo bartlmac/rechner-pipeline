@@ -590,6 +590,14 @@ def kette(fall: Path) -> Dict[str, Any]:
             "gate": d.get("gate"),
             "entscheid": d.get("entscheid"),
             "rolle": d.get("rolle"),
+            # Besetzung der Rolle (ADR-018): aus der mitsignierten
+            # Zeichnung. Altsnapshots (Schema 6) tragen sie nicht — das
+            # steht dann so da, statt eine Klasse zu erfinden.
+            "schluesselklasse": (d.get("zeichnung") or {}).get(
+                "schluesselklasse")
+            or ("nicht ausgewiesen (Schema 6)" if d.get("schema_version") == 6
+                else None),
+            "mandat_sha256": (d.get("zeichnung") or {}).get("mandat_sha256"),
             "entscheider": d.get("entscheider"),
             "entschieden_am": d.get("entschieden_am"),
             "schluessel_sha256": (freigabe.get("schluessel_sha256") or "")[:16],
@@ -788,13 +796,14 @@ def abgrenzungen(modell: Dict[str, Any]) -> List[Dict[str, Any]]:
 #: Pipeline — beides muss auffallen, statt einen Abschnitt still
 #: verschwinden zu lassen.
 ERWARTET = (
+    ("fall", "scope", "Fall-Scope (tarif oder bestand), streng gelesen"),
     ("lieferung", "quellen", "registrierte Quellen"),
     ("bestand", "anzahl", "uebernommener Bestand"),
     ("transformation", "felder", "Feldabbildung"),
     ("parameter", "generationen", "Tarifgeneration der A-Box"),
     ("abnahmen", "aktuariell", "aktuarielle Abnahmen"),
     ("abnahmen", "controlling", "Migrationscontrolling (A-M4)"),
-    ("kette", "entscheide", "menschliche Entscheide"),
+    ("kette", "entscheide", "Entscheid-Snapshots der Gates"),
     ("umbau", "vorhanden", "Umbaubudget des Fall-Laufs"),
 )
 
@@ -840,10 +849,29 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     """
     aus: List[Dict[str, str]] = []
     scope = (modell.get("fall") or {}).get("scope")
+    if scope not in ("tarif", "bestand"):
+        # Fail-closed (Review T21-04): Ein fehlender oder unbekannter Scope
+        # ist eine Luecke (unten, Gruppe fall) und wird mit dem VOLLEN
+        # Profil geprueft — nicht still wie ein Tarif-Fall, dem am
+        # wenigsten fehlen kann.
+        scope_luecke = True
+        scope = "bestand"
+    else:
+        scope_luecke = False
     for gruppe, feld, was in ERWARTET:
         if scope != "bestand" and (gruppe, feld) in NUR_BESTAND:
             continue
         inhalt = modell.get(gruppe) or {}
+        if (gruppe, feld) == ("fall", "scope"):
+            if scope_luecke:
+                aus.append({
+                    "gruppe": gruppe, "feld": feld, "was": was,
+                    "wirkung": (inhalt.get("scope_befund")
+                                or "Der Fall sagt nicht, ob er Tarif- oder "
+                                   "Bestandsfall ist") + " — die Darstellung "
+                               "verlangt deshalb das volle Bestandsprofil.",
+                })
+            continue
         if not inhalt.get(feld):
             aus.append({
                 "gruppe": gruppe, "feld": feld, "was": was,
@@ -871,7 +899,7 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
         if gate not in entschieden:
             aus.append({
                 "gruppe": "kette", "feld": f"entscheide:{gate}",
-                "was": f"menschlicher Entscheid zu {gate}",
+                "was": f"Entscheid-Snapshot zu {gate}",
                 "wirkung": "Kein strukturell unversehrter Snapshot fuer "
                            "dieses Gate — die Abnahme ist nicht belegt.",
             })
@@ -932,12 +960,23 @@ def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
 def sammle(fall: Path, abzuege: List[str],
            stands_paket: Optional[Path] = None) -> Dict[str, Any]:
     manifest = _json(fall / "fall.json") or {}
+    # Der Scope kommt aus demselben strengen Vertrag wie bei den Gates
+    # (fall.lade_scope, T21-04) — nicht aus dem roh gelesenen Manifest.
+    from rechner_pipeline.fall import FallFehler, lade_scope
+
+    scope: Optional[str] = None
+    scope_befund: Optional[str] = None
+    try:
+        scope = lade_scope(fall)
+    except FallFehler as exc:
+        scope_befund = f"Fall-Scope ungueltig: {exc}"
     modell: Dict[str, Any] = {
         "schema_version": 1,
         "fall": {
             "name": manifest.get("name") or fall.name,
             "beschreibung": manifest.get("beschreibung") or None,
-            "scope": (manifest.get("scope") or {}).get("typ"),
+            "scope": scope,
+            "scope_befund": scope_befund,
         },
         "lieferung": lieferung(fall),
         "bestand": bestand(fall, abzuege),

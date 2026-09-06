@@ -53,22 +53,18 @@ from rechner_pipeline.qa.aktuarieller_test import (
 from rechner_pipeline.qa.migrationssuite import VertragsPruefung, pruefe_bestand
 from rechner_pipeline.qa.stichprobe import ziehe
 from tests.e2e_fixture import bereite_pk1_fall, lade_pk1_fixture
+from tests.zeichnung_fixture import VA, annahme_args
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 def _p9_annahme(fall: Path, gate: str, begruendung: str):
-    schluessel = fall.parent / "p9-freigabe.key"
-    if not schluessel.exists():
-        schluessel.write_bytes(b"test-only-p9-authorization-key!" * 2)
-        schluessel.chmod(0o600)
     return gate_entscheid.main([
         "--fall", str(fall),
         "--gate", gate,
         "--entscheid", "angenommen",
-        "--rolle", "mensch",
         "--entscheider", "fachrolle",
         "--begruendung", begruendung,
         "--repo-root", str(REPO_ROOT),
-        "--freigabe-schluessel", str(schluessel),
+        *annahme_args(fall),
     ])
 
 
@@ -1376,14 +1372,13 @@ def test_am4_verlangt_geltendes_am1_vor_sich(tmp_path: Path):
     assert list((fall / "entscheide").glob("A-M4-*.json")) == []
 
     # Eine A-M1-ABLEHNUNG ist snapshotbar, oeffnet A-M4 aber nicht:
-    schluessel = fall.parent / "p9-freigabe.key"
     ablehnung = gate_entscheid.main([
         "--fall", str(fall), "--gate", "A-M1",
-        "--entscheid", "abgelehnt", "--rolle", "mensch",
+        "--entscheid", "abgelehnt", "--rolle", VA,
         "--entscheider", "fachrolle",
         "--begruendung", "Methode noch offen",
         "--repo-root", str(REPO_ROOT),
-        "--freigabe-schluessel", str(schluessel),
+        *annahme_args(fall),
     ])
     assert ablehnung.exit_code == 0
     weiterhin = _p9_annahme(fall, "A-M4", "trotz abgelehntem A-M1")
@@ -1420,14 +1415,13 @@ def test_am1_annahme_im_bestandsscope_verlangt_gruene_aktuartest_belege(
     rot = _p9_annahme(fall, "A-M1", "trotz rotem Test")
     assert rot.exit_code == 20
     assert "nicht bestanden" in rot.errors[0]["message"]
-    schluessel = fall.parent / "p9-freigabe.key"
     ablehnung = gate_entscheid.main([
         "--fall", str(fall), "--gate", "A-M1",
-        "--entscheid", "abgelehnt", "--rolle", "mensch",
+        "--entscheid", "abgelehnt", "--rolle", VA,
         "--entscheider", "fachrolle",
         "--begruendung", "Test nicht bestanden",
         "--repo-root", str(REPO_ROOT),
-        "--freigabe-schluessel", str(schluessel),
+        *annahme_args(fall),
     ])
     assert ablehnung.exit_code == 0
 

@@ -222,8 +222,14 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
                 entscheid = "OFFEN"
             else:
                 e = d.entscheidung
+                besetzung = ""
+                if e.zeichnung:
+                    besetzung = (
+                        f" ({_md(e.zeichnung.get('rolle'))}, Schluessel: "
+                        f"{_md(e.zeichnung.get('schluesselklasse') or 'nicht ausgewiesen')})"
+                    )
                 entscheid = (
-                    f"{_md(e.gewaehlter_wert)} — {_md(e.entscheider)}"
+                    f"{_md(e.gewaehlter_wert)} — {_md(e.entscheider)}{besetzung}"
                     + (" **[VORLAEUFIG — A-Q1-Entscheidung steht aus]**"
                        if e.vorlaeufig else "")
                 )
