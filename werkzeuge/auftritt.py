@@ -61,6 +61,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "Reihenfolge (mehrfach)")
     p.add_argument("--verlauf", default=None,
                    help="Verlaufsprotokoll der Operator-Sitzung")
+    p.add_argument("--stands-paket", dest="stands_paket", default=None,
+                   help="Stands-Paket der Laufzeitumgebung (betrieb.seite "
+                        "--paket): Kennzahlen des lebenden Bestands")
     p.add_argument("--out", default="runs/seite",
                    help="Push-Baum des Entwurfs (Vorgabe: runs/seite)")
     p.add_argument("--vorschau", default="runs/vorzeige-vorschau",
@@ -75,6 +78,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         [sys.executable, str(WERKZEUGE / "falldaten.py"),
          "--fall", args.fall,
          *(teil for a in args.abzug for teil in ("--abzug", a)),
+         *(("--stands-paket", args.stands_paket) if args.stands_paket else ()),
          "--out", str(daten)],
         erlaubt=(0, 3))
     if rc not in (0, 3):

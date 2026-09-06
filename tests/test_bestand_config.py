@@ -288,7 +288,8 @@ def test_beispiel_configs_tragen_knoten_konsistent():
     assert set(gesehen) == {
         "klv/plv_1994", "klv/plv_2000", "klv/plv_2004", "klv/plv_2007", "klv/plv_2008",
         "klv/plv_2012", "klv/plv_2015", "klv/plv_2017", "klv/plv_2022",
-        "bu/plv_2000", "bu/plv_2017",
+        "klv/plv_2025", "klv/tg2015",
+        "bu/plv_2000", "bu/plv_2017", "bu/plv_2025",
     }
 
 
@@ -303,6 +304,11 @@ def test_tarifplan_dokumentiert_die_plv_generationen():
     bu_md = (REPO_ROOT / "docs" / "tarifplaene" / "bu.md").read_text("utf-8")
     for g in cfg.generationen:
         doc = klv_md if g.produkt == "klv" else bu_md
+        if g.zellen:
+            # Eine in Tarifzellen aufgeteilte Generation hat keinen einen
+            # Parametersatz; ihre Zellen zeigt die erzeugte Tabelle (B6).
+            assert f"`{g.knoten}`" in doc, f"Tarifplan nennt {g.knoten} nicht"
+            continue
         if g.produkt == "klv":
             zeile = (
                 f"| `{g.knoten}` | {g.name} | "

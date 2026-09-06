@@ -199,13 +199,14 @@ the run, not of the call that reads it. Gate P-B1 binds the manifest
 on request (`--manifest`).
 
 **New business in this run: none — and that is deliberate.** The run
-above reports `3130 Basisvertraege, 0 Neuzugaenge`, and the zero is the
+above reports `4720 Basisvertraege, 0 Neuzugaenge`, and the zero is the
 one number that regularly gets misread. It does NOT mean the portfolio
 runs off from the reference date on: without `--neuzugang-ab`, the base
 generator populates each generation's full sales window in one batch, so
-the portfolio already carries the arrivals up to 2035 (255 of the 3130
+the portfolio already carries the arrivals up to 2035 (1517 of the 4720
 contracts start after 01.01.2026 — one generator per time window, never
-two). `neuzugang_pro_jahr` in the config is the rate of the OTHER
+two; since the PLV sells until today, the current generations KLV-2025
+and BU-2025 carry the batch density of their yearly target). `neuzugang_pro_jahr` in the config is the rate of the OTHER
 generator, the one that emits new business as dated GeVo events during
 the projection; it takes effect only when the run declares the reference
 date at which the batch stops and the event stream takes over:
@@ -214,9 +215,11 @@ python -m rechner_pipeline.bestand.cli_fortschreibung \
     --config configs/bestand_gesamt.toml --bis 2046-01-01 \
     --neuzugang-ab 2026-01-01 --out-dir runs/bestand-nz
 ```
-That run reports `2875 Basisvertraege, 695 Neuzugaenge` — same total
+That run reports `3203 Basisvertraege, 1213 Neuzugaenge` — same total
 order of magnitude, but arrivals after 01.01.2026 now come with a `ZUG`
-GeVo of their own in the ledger (695 of them, absent from the run above)
+GeVo of their own in the ledger (1213 of them, absent from the run above;
+the yearly target follows `neuzugang_trend`, so the stream shrinks year
+by year)
 instead of sitting in the base portfolio from the start. The
 documented run above stays without it because it is the reference run of
 the demo: its numbers appear in the portfolio report and in the
