@@ -488,8 +488,20 @@ def test_import_kante_bleibt_nicht_transitiv():
     bu.py 5 -> 21 Tests. Der Showcase muss selektiv bleiben."""
     ergebnis = berechne_impact(
         ["src/rechner_pipeline/kern/produkte/bu.py"], *_repo_args())
-    # Transitiv waeren es 21+ von 46; die Selektion bleibt eine Handvoll.
-    assert len(ergebnis["tests"]) <= 10
+    # Transitiv waeren es 21+ von 46 gewesen (fast die Haelfte). Die
+    # Selektion bleibt ein kleiner Bruchteil — und jeder gewaehlte Test
+    # traegt bu in seiner Knoten-Bindung. Eine absolute Obergrenze ("eine
+    # Handvoll") wuchs beim Merge zweier Straenge, die je einen legitim
+    # bu-gebundenen Test mitbrachten, ueber sich hinaus, ohne dass sich
+    # die Selektivitaet geaendert haette; die Invariante ist die Praezision,
+    # nicht die Zahl.
+    import re
+    testmodule = sorted(p.name for p in (REPO / "tests").glob("test_*.py"))
+    assert len(ergebnis["tests"]) * 4 < len(testmodule), ergebnis["tests"]
+    for name in ergebnis["tests"]:
+        text = (REPO / "tests" / name).read_text(encoding="utf-8")
+        m = re.search(r"Knoten:\s*(.+)", text)
+        assert m and "bu" in [k.strip() for k in m.group(1).split(",")], name
     for rein_klv in ("test_bestand_ereignisse.py", "test_bestand_bewegung_klv.py",
                      "test_kern.py", "test_tafel_import.py"):
         assert rein_klv not in ergebnis["tests"], rein_klv
