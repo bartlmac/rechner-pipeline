@@ -330,6 +330,28 @@ ABSCHLUSS_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("kern_version", "object"),
 )
 
+#: Tagesjournal des Tagesbetriebs (Fachkonzept docs/simulation/tagesbetrieb.md,
+#: Abschnitt 3): je Zeile ein Verweis auf genau eine Ledger-Zeile (Police,
+#: Ereignis, Wirkungstag ``status_date``) und der Kalendertag, an dem das
+#: Unternehmen sie in die Buecher nimmt. Der Ledger bleibt das
+#: Wirkungsjournal (Gate P-B1); diese Tabelle ist die Sicht der
+#: Buchungstage — nur-anfuegbar, nie ueberschrieben. Ableitungsregeln und
+#: Bijektions-Validator: ``rechner_pipeline.betrieb.tagesjournal``.
+TAGESJOURNAL_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("buchungsdatum", "datetime64[ns]"),   # Kalendertag der Buchung (Werktag)
+    ("police_id", "int64"),
+    ("ereignis", "object"),                # GeVo-Code der Ledger-Zeile
+    ("status_date", "datetime64[ns]"),     # Wirkungstag = Ledger.status_date
+    ("betrag", "float64"),                 # identisch zur Ledger-Zeile
+    ("betrag_art", "object"),
+    ("herkunft", "object"),                # fortschreibung | neugeschaeft | uebernahme
+)
+
+#: Zulaessige Werte von ``tagesjournal.herkunft``: die Buchung stammt aus
+#: der Fortschreibung des Bestands, aus dem Tagesneugeschaeft (Buchungstag
+#: = Verkaufstag) oder aus einer Uebernahme (gelieferte Buchung).
+HERKUNFT_VALUES: Tuple[str, ...] = ("fortschreibung", "neugeschaeft", "uebernahme")
+
 STAMM_NAMES: Tuple[str, ...] = tuple(n for n, _ in STAMM_SPALTEN)
 ZEITSCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in ZEITSCHEIBEN_SPALTEN)
 STATUS_HISTORIE_NAMES: Tuple[str, ...] = tuple(n for n, _ in STATUS_HISTORIE_SPALTEN)
@@ -338,6 +360,7 @@ SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
 ABSCHLUSS_NAMES: Tuple[str, ...] = tuple(n for n, _ in ABSCHLUSS_SPALTEN)
 MERKMALE_NAMES: Tuple[str, ...] = tuple(n for n, _ in MERKMALE_SPALTEN)
 VERANKERUNG_NAMES: Tuple[str, ...] = tuple(n for n, _ in VERANKERUNG_SPALTEN)
+TAGESJOURNAL_NAMES: Tuple[str, ...] = tuple(n for n, _ in TAGESJOURNAL_SPALTEN)
 
 
 def stamm_dtypes() -> Dict[str, str]:
@@ -851,6 +874,159 @@ def validate_ledger(
 
     if scheiben is not None:
         errors.extend(_ledger_scheiben_bindung(ledger, scheiben))
+    return errors
+
+
+def validate_tagesjournal(
+    journal: Any, sicht: Any, *, ab_tag: _dt.date, bis_tag: _dt.date
+) -> List[str]:
+    """Bijektion Tagesjournal <-> Buchungssicht des Ledgers (Fehlerlisten-Idiom).
+
+    ``sicht`` ist die abgeleitete Buchungssicht JEDER Ledger-Zeile (Spalten
+    wie das Tagesjournal; erzeugt von
+    ``rechner_pipeline.betrieb.tagesjournal.mit_buchungstagen`` — die
+    Ableitungsregeln wohnen dort, der Vertrag hier). Geprueft wird die
+    Tabelle, wie sie auf der Platte liegt, fuer alle Buchungen mit
+    Buchungstag in ``[ab_tag, bis_tag]`` (Betriebsbeginn bis gefuehrter
+    Tag):
+
+    * Spalten/dtypes, ``herkunft`` aus :data:`HERKUNFT_VALUES`;
+    * Schluessel (police_id, ereignis, status_date) eindeutig — eine
+      Buchung wird nicht zweimal gebucht;
+    * keine Zeile nach dem gefuehrten Tag, keine vor dem Betriebsbeginn
+      (die Vorgeschichte steht im Ledger, nicht im Journal);
+    * die Buchungstage steigen in Dateireihenfolge — die Tabelle ist nur
+      angefuegt worden;
+    * jede Journalzeile verweist auf genau eine Ledger-Zeile, mit
+      demselben Betrag, derselben Betragsart, demselben abgeleiteten
+      Buchungstag und derselben Herkunft;
+    * jede faellige Ledger-Zeile hat genau eine Journalzeile.
+
+    Dieselbe Klasse wie die ERH-Scheiben-Bindung (T18-01) und die
+    Betragsidentitaet je Buchung (T20-04): Eine Journalzeile ohne
+    Ledger-Gegenstueck oder ein verschobenes Datum ist ein Befund, keine
+    Sicht.
+    """
+    errors: List[str] = []
+    cols = list(journal.columns)
+    if cols != list(TAGESJOURNAL_NAMES):
+        return [f"tagesjournal: Spalten {cols} != erwartet {list(TAGESJOURNAL_NAMES)}"]
+    for name, dtype in TAGESJOURNAL_SPALTEN:
+        actual = str(journal[name].dtype)
+        if actual != dtype:
+            errors.append(f"tagesjournal {name}: dtype {actual}, erwartet {dtype}")
+    if errors:
+        return errors
+    if list(sicht.columns) != list(TAGESJOURNAL_NAMES):
+        return [f"tagesjournal: Buchungssicht mit Spalten {list(sicht.columns)} "
+                f"!= erwartet {list(TAGESJOURNAL_NAMES)}"]
+    schluessel_spalten = ["police_id", "ereignis", "status_date"]
+
+    def _schluessel(df: Any) -> Any:
+        import pandas as pd
+
+        return pd.MultiIndex.from_arrays(
+            [df["police_id"].astype("int64"), df["ereignis"].astype(str),
+             pd.to_datetime(df["status_date"])],
+            names=schluessel_spalten,
+        )
+
+    import pandas as pd
+
+    grenze, beginn = pd.Timestamp(bis_tag), pd.Timestamp(ab_tag)
+    sicht_schluessel = _schluessel(sicht)
+    if sicht_schluessel.duplicated().any():
+        return ["tagesjournal: Buchungssicht mit doppeltem Schluessel — der "
+                "Ledger ist nicht eindeutig je (police_id, ereignis, status_date)"]
+    faellig = sicht[(sicht["buchungsdatum"] >= beginn) & (sicht["buchungsdatum"] <= grenze)]
+    if len(journal) == 0:
+        if len(faellig):
+            errors.append(
+                f"tagesjournal: leer, aber {len(faellig)} Buchung(en) bis "
+                f"{pd.Timestamp(bis_tag).date().isoformat()} faellig"
+            )
+        return errors
+
+    def _policen(maske: Any) -> List[int]:
+        return sorted(set(int(p) for p in journal.loc[maske, "police_id"]))[:5]
+
+    fremd = ~journal["herkunft"].isin(HERKUNFT_VALUES)
+    if fremd.any():
+        errors.append(
+            f"tagesjournal: herkunft ausserhalb {list(HERKUNFT_VALUES)} "
+            f"(police {_policen(fremd)})"
+        )
+    schluessel = _schluessel(journal)
+    if schluessel.duplicated().any():
+        doppelt = journal[schluessel.duplicated()].iloc[0]
+        errors.append(
+            f"tagesjournal: Buchung doppelt (police {int(doppelt['police_id'])} "
+            f"{doppelt['ereignis']} {pd.Timestamp(doppelt['status_date']).date()})"
+        )
+    zukunft = journal["buchungsdatum"] > grenze
+    if zukunft.any():
+        errors.append(
+            f"tagesjournal: {int(zukunft.sum())} Buchung(en) nach dem gefuehrten "
+            f"Tag {pd.Timestamp(bis_tag).date().isoformat()} (police {_policen(zukunft)})"
+        )
+    vorher = journal["buchungsdatum"] < beginn
+    if vorher.any():
+        errors.append(
+            f"tagesjournal: {int(vorher.sum())} Buchung(en) vor dem Betriebsbeginn "
+            f"{pd.Timestamp(ab_tag).date().isoformat()} (police {_policen(vorher)}) "
+            "— die Vorgeschichte steht im Ledger, nicht im Tagesjournal"
+        )
+    daten = journal["buchungsdatum"].to_numpy()
+    if len(daten) > 1 and (daten[1:] < daten[:-1]).any():
+        stelle = int(_np.argmax(daten[1:] < daten[:-1])) + 1
+        errors.append(
+            f"tagesjournal: Buchungstage fallen in Zeile {stelle} "
+            f"({pd.Timestamp(daten[stelle]).date()} nach "
+            f"{pd.Timestamp(daten[stelle - 1]).date()}) — die Tabelle ist nicht "
+            "nur angefuegt worden"
+        )
+    soll = sicht.set_index(sicht_schluessel)
+    ohne: List[int] = []
+    abweichend: List[str] = []
+    for zeile, key in zip(journal.itertuples(index=False), schluessel):
+        if key not in soll.index:
+            ohne.append(int(zeile.police_id))
+            continue
+        erwartet = soll.loc[key]
+        kopf = (f"police {int(zeile.police_id)} {zeile.ereignis} "
+                f"{pd.Timestamp(zeile.status_date).date()}")
+        if (float(erwartet["betrag"]) != float(zeile.betrag)
+                or str(erwartet["betrag_art"]) != str(zeile.betrag_art)):
+            abweichend.append(
+                f"{kopf}: Betrag {zeile.betrag!r}/{zeile.betrag_art} statt "
+                f"{float(erwartet['betrag'])!r}/{erwartet['betrag_art']}"
+            )
+        if pd.Timestamp(erwartet["buchungsdatum"]) != pd.Timestamp(zeile.buchungsdatum):
+            abweichend.append(
+                f"{kopf}: Buchungstag {pd.Timestamp(zeile.buchungsdatum).date()} "
+                f"statt abgeleitet {pd.Timestamp(erwartet['buchungsdatum']).date()}"
+            )
+        if str(erwartet["herkunft"]) != str(zeile.herkunft):
+            abweichend.append(
+                f"{kopf}: herkunft {zeile.herkunft} statt {erwartet['herkunft']}"
+            )
+    if ohne:
+        errors.append(
+            f"tagesjournal: {len(ohne)} Buchung(en) ohne Ledger-Zeile (police "
+            f"{sorted(set(ohne))[:5]}) — ein Journal verweist auf Wirkung, es "
+            "erfindet keine"
+        )
+    errors.extend(f"tagesjournal: {a}" for a in abweichend[:5])
+    if len(abweichend) > 5:
+        errors.append(f"tagesjournal: ... und {len(abweichend) - 5} weitere Abweichungen")
+    fehlt = faellig[~_schluessel(faellig).isin(schluessel)]
+    if len(fehlt):
+        beispiel = fehlt.iloc[0]
+        errors.append(
+            f"tagesjournal: {len(fehlt)} faellige Buchung(en) fehlen (z. B. police "
+            f"{int(beispiel['police_id'])} {beispiel['ereignis']} mit Buchungstag "
+            f"{pd.Timestamp(beispiel['buchungsdatum']).date()})"
+        )
     return errors
 
 

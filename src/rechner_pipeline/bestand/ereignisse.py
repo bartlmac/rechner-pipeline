@@ -526,6 +526,7 @@ def fortschreiben(
     *,
     neuzugang_ab: _dt.date | None = None,
     merkmale: pd.DataFrame | None = None,
+    zugaenge: pd.DataFrame | None = None,
 ) -> Fortschreibung:
     """Roll the base portfolio forward to ``bis``.
 
@@ -539,6 +540,14 @@ def fortschreiben(
     Generation: ``neuzugang_pro_jahr``), erhalten einen ZUG-Ledger-Eintrag
     und werden ab ihrem Beginn mitsimuliert. Der Basisbestand darf dann
     keine Vertraege nach dem Referenzstichtag enthalten (Doppelzaehlung).
+
+    ``zugaenge`` (Tagesbetrieb, Fachkonzept docs/simulation/tagesbetrieb.md)
+    bringt die Neuzugaenge MIT, statt sie ueber den jaehrlichen Erzeuger
+    zu ziehen: POL-Basiszeilen, die genau wie der simulierte Neuzugang
+    ihren ZUG-Eintrag bekommen und ab ihrem Beginn mitsimuliert werden.
+    Der Beginn darf hinter ``bis`` liegen (verkauft, Beginn folgt) — dann
+    steht der Zugang im Ledger, und die Engine simuliert noch nichts.
+    Schliesst ``neuzugang_ab`` aus: ein Erzeuger je Lauf.
 
     ``stamm`` is the generator's base portfolio (one POL row per contract);
     the event assumptions come from ``config.annahmen``, the amounts from the
@@ -617,7 +626,15 @@ def fortschreiben(
     bis = pd.Timestamp(bis).date()
 
     hat_neuzugang = any(g.neuzugang_pro_jahr > 0 for g in config.generationen)
-    if neuzugang_ab is not None and hat_neuzugang:
+    if zugaenge is not None and neuzugang_ab is not None:
+        raise EreignisError(
+            "zugaenge und neuzugang_ab schliessen sich aus — entweder der "
+            "jaehrliche Erzeuger (neuzugang_ab) oder mitgebrachte Zugaenge "
+            "(Tagesbetrieb), nie beide in einem Lauf"
+        )
+    if zugaenge is not None:
+        zugaenge = _pruefe_mitgebrachte_zugaenge(stamm, zugaenge)
+    elif neuzugang_ab is not None and hat_neuzugang:
         neuzugang_ab = pd.Timestamp(neuzugang_ab).date()
         if neuzugang_ab > bis:
             raise EreignisError(
@@ -806,6 +823,55 @@ def fortschreiben(
         }
     ).reset_index(drop=True)
     return Fortschreibung(historie, ledger, scheiben_df, zugaenge)
+
+
+def _pruefe_mitgebrachte_zugaenge(
+    stamm: pd.DataFrame, zugaenge: pd.DataFrame
+) -> pd.DataFrame:
+    """Mitgebrachte Zugaenge muessen aussehen wie die des Erzeugers.
+
+    Dieselben Wachposten wie fuer den simulierten Neuzugang — nur dass
+    hier niemand den Erzeuger kontrolliert: POL-Ursprungszeilen mit
+    Zugang am Beginn, eindeutige und stammfremde Nummern, Laufzeiten im
+    Verlaufsfenster der Engine. Ein Fehler hier ist ein Fehler des
+    Aufrufers und wird ihm genannt, nicht still herausgefiltert.
+    """
+    fehlend = [c for c in STAMM_NAMES if c not in zugaenge.columns]
+    if fehlend:
+        raise EreignisError(f"zugaenge: Stamm-Spalten fehlen: {fehlend}")
+    zugaenge = zugaenge[list(STAMM_NAMES)].reset_index(drop=True)
+    if len(zugaenge) == 0:
+        return _leerer_frame(STAMM_SPALTEN)
+    if not (
+        (zugaenge["status_code"] == "POL").all()
+        and (zugaenge["status_id"] == 1).all()
+        and (
+            pd.to_datetime(zugaenge["bestandszugang"])
+            == pd.to_datetime(zugaenge["insurance_start"])
+        ).all()
+    ):
+        raise EreignisError(
+            "zugaenge: nur POL-Ursprungszeilen mit Zugang am Versicherungsbeginn "
+            "— ein Zugang ist ein neuer Vertrag, kein mitgebrachter Zustand"
+        )
+    if zugaenge["police_id"].duplicated().any():
+        raise EreignisError("zugaenge: police_id nicht eindeutig")
+    if int(zugaenge["police_id"].min()) <= 0:
+        raise EreignisError("zugaenge: police_id <= 0 (Substream-Konvention verlangt > 0)")
+    ueberschneidung = set(zugaenge["police_id"]) & set(stamm["police_id"])
+    if ueberschneidung:
+        raise EreignisError(
+            f"zugaenge: police_ids kollidieren mit dem Basisbestand: "
+            f"{sorted(ueberschneidung)[:5]}"
+        )
+    zu_lang = zugaenge[zugaenge["duration"] > 50]
+    if len(zu_lang):
+        raise EreignisError(
+            f"zugaenge: duration > 50 ({len(zu_lang)} Vertraege, z. B. police "
+            f"{int(zu_lang['police_id'].iloc[0])}): ausserhalb des "
+            "Verlaufsfensters der Bestand-Engine (0..50)"
+        )
+    return zugaenge
 
 
 def mit_zugaengen(stamm: pd.DataFrame, zugaenge: pd.DataFrame) -> pd.DataFrame:

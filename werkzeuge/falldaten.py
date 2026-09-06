@@ -915,7 +915,50 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     return aus
 
 
-def sammle(fall: Path, abzuege: List[str]) -> Dict[str, Any]:
+def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
+    """Der lebende Bestand aus dem Stands-Paket der Laufzeitumgebung.
+
+    Fachkonzept docs/simulation/tagesbetrieb.md, Abschnitt 8.3: Die
+    oeffentliche Seite bleibt eine gestempelte Momentaufnahme; ihre
+    Kennzahlen zum laufenden Bestand kommen aus einem exportierten
+    Stands-Paket (``python -m rechner_pipeline.betrieb.seite --paket``),
+    nicht aus einem Fall — erzeugt, nie abgetippt. Ohne Paket bleibt der
+    Abschnitt weg; er ist kein Pflichtabschnitt eines Falls.
+    """
+    if paket is None:
+        return {"vorhanden": False}
+    stand = _json(Path(paket) / "stand.json")
+    if not isinstance(stand, dict) or stand.get("schema_version") != 1:
+        raise FalldatenFehler(
+            f"{paket}: kein Stands-Paket (stand.json mit schema_version 1 fehlt)"
+        )
+    prov = stand.get("provenienz") or {}
+    if prov.get("pb1") != "gruen":
+        raise FalldatenFehler(
+            f"{paket}: der Stand ist nicht durch P-B1 gegangen "
+            f"(pb1 = {prov.get('pb1')!r}) — veroeffentlicht wird nichts, was "
+            "die Wache nicht passiert hat"
+        )
+    return {
+        "vorhanden": True,
+        "stand": stand.get("stand"),
+        "gefuehrt_seit": stand.get("gefuehrt_seit"),
+        "bestand": stand.get("bestand") or {},
+        "neugeschaeft": stand.get("neugeschaeft") or {},
+        "buchungen": {
+            "gesamt": (stand.get("buchungen") or {}).get("gesamt"),
+            "je_ereignis": (stand.get("buchungen") or {}).get("je_ereignis") or {},
+        },
+        "abschluesse": stand.get("abschluesse") or [],
+        "uebernahmen": stand.get("uebernahmen") or [],
+        "provenienz": prov,
+        "dateien": stand.get("dateien") or {},
+        "quelle": str(paket),
+    }
+
+
+def sammle(fall: Path, abzuege: List[str],
+           stands_paket: Optional[Path] = None) -> Dict[str, Any]:
     manifest = _json(fall / "fall.json") or {}
     # Der Scope kommt aus demselben strengen Vertrag wie bei den Gates
     # (fall.lade_scope, T21-04) — nicht aus dem roh gelesenen Manifest.
@@ -942,6 +985,7 @@ def sammle(fall: Path, abzuege: List[str]) -> Dict[str, Any]:
         "abnahmen": abnahmen(fall),
         "kette": kette(fall),
         "umbau": umbau(fall),
+        "betrieb": betrieb(stands_paket),
     }
     modell["abgrenzungen"] = abgrenzungen(modell)
     modell["luecken"] = luecken(modell)
@@ -958,6 +1002,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Registrierter Bestandsabzug je Stichtag, "
                         "in zeitlicher Reihenfolge (mehrfach angebbar)")
     p.add_argument("--out", default=None, help="Zieldatei (Vorgabe: stdout)")
+    p.add_argument("--stands-paket", dest="stands_paket", default=None,
+                   help="Stands-Paket der Laufzeitumgebung (betrieb.seite "
+                        "--paket): der lebende Bestand als Abschnitt der "
+                        "Darstellung")
     args = p.parse_args(argv)
 
     fall = Path(args.fall).resolve()
@@ -965,7 +1013,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Kein Fall-Arbeitsbereich: {fall}", file=sys.stderr)
         return 2
     try:
-        modell = sammle(fall, args.abzug)
+        modell = sammle(
+            fall, args.abzug,
+            Path(args.stands_paket) if args.stands_paket else None)
     except FalldatenFehler as exc:
         print(f"Nicht erhebbar: {exc}", file=sys.stderr)
         return 2

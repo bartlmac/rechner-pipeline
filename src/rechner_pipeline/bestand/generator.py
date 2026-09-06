@@ -231,8 +231,11 @@ def _generate_generation(
 NEUZUGANG_STREAM = 771177
 
 #: police_id-Offset der Neuzugaenge innerhalb des Generations-Nummernkreises
-#: (Batch belegt 1..1_000_000).
+#: (Batch belegt 1..1_000_000); der jaehrliche Erzeuger zaehlt ab hier
+#: jahrgangsweise weiter und endet vor ``_NEUZUGANG_ID_GRENZE`` — darueber
+#: (ab 5 Mio) liegt das Tagesneugeschaeft (``betrieb.neugeschaeft``).
 _NEUZUGANG_ID_OFFSET = 2_000_000
+_NEUZUGANG_ID_GRENZE = 5_000_000
 
 
 def neuzugaenge(
@@ -240,9 +243,13 @@ def neuzugaenge(
 ) -> pd.DataFrame:
     """Simulierter Neuzugang: POL-Basiszeilen mit Beginn in ``(von, bis]``.
 
-    Je Generation und Kalenderjahr werden ``neuzugang_pro_jahr`` Vertraege
-    aus einem eigenen Substream gezogen (Attribute wie im Batch-Generator,
-    Beginn gleichverteilt ueber ALLE Monatsersten des Kalenderjahres).
+    Je Generation und Kalenderjahr werden ``round(jahresziel(jahr))``
+    Vertraege aus einem eigenen Substream gezogen — das Jahresziel ist
+    ``neuzugang_pro_jahr`` mit dem Jahresfaktor ``neuzugang_trend``
+    (:meth:`~rechner_pipeline.bestand.config.TarifGeneration.jahresziel`;
+    ohne Trend der bisherige konstante Satz) — mit Attributen wie im
+    Batch-Generator und Beginn gleichverteilt ueber ALLE Monatsersten des
+    Kalenderjahres.
     Draws sind horizont- und fensterunabhaengig: pro Jahrgang wird immer
     voll gezogen und erst danach auf Gueltigkeitsfenster und ``(von, bis]``
     gefiltert — dadurch ist der Neuzugang bei Horizont-Erweiterung ein
@@ -263,11 +270,23 @@ def neuzugaenge(
             1 if gen.gueltig_von.day > 1 else 0
         )
         fenster_bis = gen.gueltig_bis.year * 12 + (gen.gueltig_bis.month - 1)
+        # Jahrgangsstabile Nummern auch bei Trend: Der Offset eines
+        # Jahrgangs ist die Summe der Ziele aller frueheren Jahrgaenge —
+        # ohne Trend genau ``(jahr - erstes Jahr) * anzahl`` wie bisher.
+        offset = _NEUZUGANG_ID_OFFSET
         for jahr in range(gen.gueltig_von.year, gen.gueltig_bis.year + 1):
+            anzahl = int(round(gen.jahresziel(jahr)))
             erster = max(fenster_von, jahr * 12)
             letzter = min(fenster_bis, jahr * 12 + 11)
-            if erster > letzter:
+            if erster > letzter or anzahl <= 0:
                 continue
+            # Nummernkreis-Guard VOR den Draws (jahrgangsstabile Offsets):
+            offset += anzahl
+            if offset >= _NEUZUGANG_ID_GRENZE:
+                raise ValueError(
+                    f"generation {gen.name}: Neuzugang-Nummernkreis erschoepft "
+                    "(neuzugang_pro_jahr x Jahrgaenge zu gross)"
+                )
             # Jahrgaenge ohne Schnitt mit (von, bis] draw-neutral ueberspringen
             # (eigener Substream je Jahr — fremde Jahre brauchen keine Draws):
             if (
@@ -275,13 +294,6 @@ def neuzugaenge(
                 or pd.Timestamp(_month_first(erster // 12, erster % 12 + 1)) > bis_ts
             ):
                 continue
-            # Nummernkreis-Guard VOR den Draws (jahrgangsstabile Offsets):
-            offset = _NEUZUGANG_ID_OFFSET + (jahr - gen.gueltig_von.year) * anzahl
-            if offset + anzahl >= 8_000_000:
-                raise ValueError(
-                    f"generation {gen.name}: Neuzugang-Nummernkreis erschoepft "
-                    "(neuzugang_pro_jahr x Jahrgaenge zu gross)"
-                )
             rng = np.random.Generator(
                 np.random.PCG64(
                     np.random.SeedSequence([config.seed, NEUZUGANG_STREAM, idx, jahr])
@@ -294,7 +306,7 @@ def neuzugaenge(
             police_ids = (
                 np.arange(1, anzahl + 1, dtype=np.int64)
                 + (idx + 1) * 10_000_000
-                + offset
+                + (offset - anzahl)
             )
             frame = _baue_frame(gen, attribute, starts, police_ids)
             # Erst NACH dem Ziehen filtern (Gueltigkeitsfenster + Horizont) —

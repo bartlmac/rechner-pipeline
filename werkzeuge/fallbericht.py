@@ -58,6 +58,8 @@ GROESSEN_TITEL = {
 GEVO_TITEL = {
     "ERH": "Erhöhung", "PEX": "Beitragsfreistellung", "RED": "Absetzung",
     "STO": "Rückkauf", "TOD": "Todesfall", "ABL": "Ablauf",
+    "ZUG": "Zugang", "MIG": "Migrationszugang", "INV": "Invalidisierung",
+    "REA": "Reaktivierung",
 }
 
 
@@ -191,6 +193,52 @@ def _fach(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
     z.append(_quelle(d, "abnahmen"))
     z.append(_befunde(d, texte, "fachlich"))
     z.append(_abgrenzungen(d, "fachlich"))
+    z.append("</div>")
+    return "".join(z)
+
+
+def _betrieb(d: Dict[str, Any]) -> str:
+    """Der lebende Bestand — aus dem Stands-Paket der Laufzeitumgebung.
+
+    Kein Fall-Artefakt, sondern der gefuehrte Stand des Unternehmens, in
+    das die Migration als datierter Zugang eingetreten ist. Erscheint nur,
+    wenn ein Paket uebergeben wurde; dann mit Stempel (Stand, Manifest).
+    """
+    b = d.get("betrieb") or {}
+    if not b.get("vorhanden"):
+        return ""
+    bestand = b.get("bestand") or {}
+    neu = b.get("neugeschaeft") or {}
+    prov = b.get("provenienz") or {}
+    z: List[str] = ['<div class="block f"><span class="marke">Der Bestand heute</span>']
+    z.append(f"<h2>Der lebende Bestand (Stand {_e(b.get('stand'))})</h2>")
+    z.append('<div class="zahlen">')
+    for wert, beschriftung in (
+        (_zahl(bestand.get("in_force")), "Verträge in Kraft"),
+        (_zahl(bestand.get("uebernommen_in_force")), "davon übernommen"),
+        (_zahl(bestand.get("policiert_beginn_folgt")), "policiert, Beginn folgt"),
+        (_zahl(neu.get("seit_betriebsbeginn")), f"Neugeschäft seit {_e(b.get('gefuehrt_seit'))}"),
+        (_zahl((b.get("buchungen") or {}).get("gesamt")), "Buchungen im Tagesjournal"),
+    ):
+        z.append(f'<div class="zahl"><b>{wert}</b><span>{beschriftung}</span></div>')
+    z.append("</div>")
+    je = (b.get("buchungen") or {}).get("je_ereignis") or {}
+    if je:
+        zeilen = [[_e(GEVO_TITEL.get(art, art)), _zahl(anzahl)] for art, anzahl in sorted(je.items())]
+        z.append(_tabelle(["Art", "Anzahl"], zeilen, "Buchungen seit Betriebsbeginn", rechts=[1]))
+    abschluesse = b.get("abschluesse") or []
+    if abschluesse:
+        zeilen = [[_e(a.get("stichtag")), f"<code>{_e(a.get('datei', '—'))}</code>",
+                   _e((a.get("sha256") or "")[:16])] for a in abschluesse]
+        z.append(_tabelle(["Stichtag", "Abschluss", "SHA-256"], zeilen,
+                          "Festgeschriebene Monatsabschlüsse"))
+    for u in b.get("uebernahmen") or []:
+        z.append(f'<p class="probe">Übernahme <b>{_e(u.get("fall"))}</b> zum '
+                 f'{_e(u.get("stichtag"))}: {_zahl(u.get("vertraege"))} Verträge '
+                 f'(A-M4-Snapshot {_e((u.get("snapshot_sha256") or "nicht erfasst")[:16])}).</p>')
+    z.append(f'<p class="quelle">Stands-Paket {_e(b.get("quelle"))} · Manifest '
+             f'<code>{_e((prov.get("manifest_sha256") or "")[:16])}</code> · Kern '
+             f'{_e(prov.get("kern_version"))} · Wache P-B1 {_e(prov.get("pb1"))}</p>')
     z.append("</div>")
     return "".join(z)
 
@@ -522,7 +570,8 @@ def _luecken_block(d: Dict[str, Any]) -> str:
 def baue(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
     titel = texte.get("titel") or d["fall"]["name"]
     z = [f"<title>{_e(titel)}</title><style>{STIL}</style><main>",
-         _kopf(d, texte), _luecken_block(d), _fach(d, texte), _it(d, texte)]
+         _kopf(d, texte), _luecken_block(d), _fach(d, texte), _betrieb(d),
+         _it(d, texte)]
     z.append('<p class="fuss">Erzeugt aus den Prüfartefakten des Falls '
              f'<code>{_e(d["fall"]["name"])}</code>. Alle Zahlen sind dort '
              'nachrechenbar; frei geschrieben sind ausschließlich der '

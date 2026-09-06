@@ -58,6 +58,15 @@ Unternehmensseiten den Fall verlinken. Die Schritte der Kette bleiben
 einzeln aufrufbar (`falldaten.py`, `vorzeigeseite.py
 --als-unterseite`, `unternehmensseite.py`, `vorschau.py`).
 
+`--stands-paket <verzeichnis>` (optional) gibt der Kette das
+Stands-Paket der Laufzeitumgebung des Tagesbetriebs mit (`python -m
+rechner_pipeline.betrieb.seite --stand <daten> --paket <verzeichnis>`,
+Fachkonzept `docs/simulation/tagesbetrieb.md`, Abschnitt 8.3): Der
+lebende Bestand der PLV wird ein Abschnitt des Datenmodells und des
+Fallberichts — mit Stand-Datum, Manifest-Hash und der Zeichnung der
+uebernommenen Faelle, aus dem Paket gelesen, nie abgetippt. Ein Paket,
+dessen Stand nicht durch P-B1 ging, weist `falldaten.py` ab.
+
 Die Zahlen der Seite kommen aus dem Datenmodell (`falldaten.py`) —
 demselben, aus dem auch der Fallbericht gerendert wird. Seite und
 Bericht tragen damit dieselben Zahlen aus derselben Quelle; frueher

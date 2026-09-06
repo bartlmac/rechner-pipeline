@@ -191,15 +191,29 @@ Abschnitt 7 zu ergänzen, bevor sie implementiert werden.
 
 # 13 PLV-Bestandsgenerationen
 
-Die beiden BU-Bestandsgenerationen der Pfefferminzia LV (fiktives
+Die drei BU-Bestandsgenerationen der Pfefferminzia LV (fiktives
 Unternehmen dieses Arbeitsraums, siehe KLV-Tarifplan § 13) sind
 konstruiert und tragen ihre Ontologie-Knoten-ID (Pflichtfeld `knoten`;
-Präfix `plv_` = PLV-eigene Generation ohne Migrationsfall):
+Präfix `plv_` = PLV-eigene Generation ohne Migrationsfall). Die
+Generation im Vertrieb ist BU-2025; ihre Rechnungsgrundlagen sind
+**vorläufig** (Höchstrechnungszins 2025, Grundlagen der
+Vorgängergeneration), bis das Aktuariat der Vorzeige sie festlegt
+(Fachkonzept Tagesbetrieb, offene Fachentscheidung):
 
-| Knoten | Name | gültig | Zins | Tafeln (aktiv/i/ri/ti) | Zuschlag |
-|---|---|---|---|---|---|
-| `bu/plv_2000` | BU-2000 | 2000-01–2016-12 | 1.75% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 |
-| `bu/plv_2017` | BU-2017 | 2017-01–2035-12 | 0.90% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 |
+<!-- erzeugt: python -m rechner_pipeline.bestand.tarifplan_tabellen --config configs/bestand_gesamt.toml --produkt bu -->
+| Knoten | Name | gültig | Zins | Tafeln (aktiv/i/ri/ti) | Zuschlag | Vertrieb |
+|---|---|---|---|---|---|---|
+| `bu/plv_2000` | BU-2000 | 2000-01–2016-12 | 1.75% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 | Batch 500 |
+| `bu/plv_2017` | BU-2017 | 2017-01–2024-12 | 0.90% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 | Batch 240 |
+| `bu/plv_2025` | BU-2025 | 2025-01–2035-12 | 1.00% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 | Batch 330; Neugeschäft 30/Jahr, Trend -3%/Jahr |
+
+Was sich von Generation zu Generation ändert (verkaufende Generationen in Verkaufsreihenfolge; leer heißt: nur das Fenster):
+
+| Wechsel | geänderte Rechnungsgrundlagen |
+|---|---|
+| BU-2000 → BU-2017 | zins 1.75% → 0.90% |
+| BU-2017 → BU-2025 | zins 0.90% → 1.00% |
+<!-- /erzeugt -->
 
 Diese Tabelle wird maschinell gegen die Bestandskonfiguration
 geprüft; eine Abweichung ist ein Fehler und blockiert.
