@@ -358,6 +358,8 @@ Der Freigabeschluessel gehoert ausserhalb des Falls und ausserhalb des
 Agentenzugriffs in die Autoritaetsumgebung des Menschen (mindestens 32
 kryptografisch zufaellige Byte, POSIX 0600, genau ein Hardlink).
 
+Zeichnet in der Vorzeige eine SIMULIERTE menschliche Rolle (Schluesselklasse `simulation` in der Zeichnungsordnung), ist `--mandat <datei>` Pflicht: Das Gate verweigert die Annahme ohne Mandat (ADR-018). Das Mandat ist das Dokument der Regie, unter dem die Rolle handelt; sein Hash steht mitsigniert im Snapshot.
+
 **Zeichnungsordnung (Zwei-Operatoren-Regie, Beschluss 2026-08-31).**
 Faehrt der Fall mit getrennten Rollen — `quelle-experte` (zeichnet nur
 Lieferungen, keine Gates), `plv-va` (zeichnet A-Q1 und A-M1..M4 mit

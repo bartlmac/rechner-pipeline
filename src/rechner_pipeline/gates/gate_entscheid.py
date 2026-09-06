@@ -1060,7 +1060,7 @@ def main(argv: Optional[List[str]] = None):
         "--mandat", default=None,
         help="Datei des Mandats, unter dem eine SIMULIERTE Rolle handelt; "
         "ihr SHA-256 wandert in die Zeichnung des Snapshots (ADR-018). "
-        "Optional; bei Schluesselklasse simulation empfohlen.",
+        "PFLICHT bei Schluesselklasse simulation, ohne Wirkung bei mensch.",
     )
     parser.add_argument(
         "--freigabe-schluessel",
@@ -1916,6 +1916,19 @@ def main(argv: Optional[List[str]] = None):
             zeichnungsordnung, zeichnungsordnung_sha, aktiver_schluessel,
             mandat_sha256,
         )
+        # Simulation ohne Mandat ist keine Besetzung, sondern eine Luecke
+        # (ADR-018; Review T22-07): Die Sperre greift VOR der Signatur.
+        if (
+            snapshot["zeichnung"].get("schluesselklasse") == "simulation"
+            and not snapshot["zeichnung"].get("mandat_sha256")
+        ):
+            return _sperre(
+                "mandat",
+                f"Annahme verweigert: die Rolle {snapshot['zeichnung']['rolle']!r} "
+                "ist mit einem Simulationsschluessel besetzt und handelt ohne "
+                "Mandat — --mandat <datei> ist bei Schluesselklasse simulation "
+                "Pflicht (ADR-018)",
+            )
         snapshot["freigabe"] = _freigabe_fuer(
             snapshot, schluesselring[aktiver_schluessel]
         )

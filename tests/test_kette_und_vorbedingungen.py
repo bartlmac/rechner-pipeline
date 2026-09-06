@@ -28,7 +28,7 @@ PLAUSIBEL = {
 AKTEUR = "test/extrahiere-quellfragment@abc1234"
 
 
-from tests.zeichnung_fixture import AGENT, VA, annahme_args
+from tests.zeichnung_fixture import AGENT, VA, annahme_args, mandat_datei
 
 
 def _freigabe_arg(fall: Path) -> list[str]:
@@ -385,6 +385,7 @@ def test_entscheide_bestimmt_die_rolle_aus_dem_schluessel(
         "--begruendung", "Meldung massgeblich",
         "--zeichnungsordnung", str(ordnung),
         "--freigabe-schluessel", str(schluessel["plv-aktuar"]),
+        "--mandat", str(mandat_datei(f)),
     ]) == 0
     neu = lade(f)
     [d2] = neu.diskrepanzen

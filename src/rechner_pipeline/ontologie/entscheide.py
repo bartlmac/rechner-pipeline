@@ -327,6 +327,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
         mandat_sha256 = hashlib.sha256(mandat.read_bytes()).hexdigest()
     zeichnung = zeichnung_fuer(ordnung, ordnung_sha, fingerprint, mandat_sha256)
+    if (zeichnung or {}).get("schluesselklasse") == "simulation" and not mandat_sha256:
+        print(f"entscheide: die Rolle {zeichnung['rolle']!r} ist mit einem "
+              "Simulationsschluessel besetzt und handelt ohne Mandat — --mandat "
+              "<datei> ist bei Schluesselklasse simulation Pflicht (ADR-018)",
+              file=sys.stderr)
+        return 2
     try:
         abox = lade(fall)
     except Exception as exc:  # noqa: BLE001

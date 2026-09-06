@@ -502,6 +502,20 @@ class P9Snapshot:
                     "zeichnung muss {rolle, ordnung_sha256, schluesselklasse "
                     "in (mensch, simulation)[, mandat_sha256]} sein"
                 )
+            # Eine simulierte Rolle handelt unter einem Mandat, und dessen
+            # Hash gehoert in den Beleg (ADR-018, Abschnitt 3). Optional war
+            # das nur im Hilfetext — Review T22-07: ohne Mandat ist die
+            # zentrale Aussage des Rollenmodells nicht durchgesetzt.
+            if (
+                isinstance(z, dict)
+                and z.get("schluesselklasse") == "simulation"
+                and not _is_sha256(z.get("mandat_sha256"))
+            ):
+                errors.append(
+                    "zeichnung mit schluesselklasse simulation braucht "
+                    "mandat_sha256 (ADR-018: eine simulierte Rolle handelt "
+                    "unter einem Mandat)"
+                )
             if data.get("entscheid") == "angenommen" and z is None:
                 errors.append(
                     "an accepted decision requires zeichnung (Rolle aus der "

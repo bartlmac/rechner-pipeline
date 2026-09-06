@@ -57,12 +57,17 @@ def _schreibe_ordnung(pfad: Path, rollen: dict) -> Path:
 
 
 def _entscheid(fall: Path, gate: str, schluessel: Path, *extra: str):
+    from tests.zeichnung_fixture import mandat_datei
+
+    # Das Mandat faehrt immer mit: Pflicht bei Schluesselklasse simulation
+    # (T22-07), ohne Wirkung bei mensch.
     return gate_entscheid.main([
         "--fall", str(fall), "--gate", gate,
         "--entscheid", "angenommen",
         "--entscheider", "fachrolle", "--begruendung", "geprueft",
         "--repo-root", str(REPO_ROOT),
         "--freigabe-schluessel", str(schluessel),
+        "--mandat", str(mandat_datei(fall)),
         *extra,
     ])
 

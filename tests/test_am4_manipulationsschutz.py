@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.fall import anlegen, registrieren
-from tests.zeichnung_fixture import VA, standard_ordnung
+from tests.zeichnung_fixture import VA, mandat_datei, standard_ordnung
 from rechner_pipeline.gates import gate_entscheid
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GATE_VERSION,
@@ -106,7 +106,8 @@ def _p9(fall: Path, key: Path | None, gate: str, entscheid: str = "angenommen"):
         # Schluessel absichtlich falsch liegt — geprueft wird der Schluessel.
         ordnung = standard_ordnung(fall.parent, key)
         argv.extend(["--freigabe-schluessel", str(key),
-                     "--zeichnungsordnung", str(ordnung)])
+                     "--zeichnungsordnung", str(ordnung),
+                     "--mandat", str(mandat_datei(fall))])
     return gate_entscheid.main(argv)
 
 
@@ -455,6 +456,7 @@ def test_p9_cli_emittiert_genau_ein_json_und_schema_valides_ledger(
         "--begruendung", "CLI-Vertrag geprueft", "--repo-root", str(REPO_ROOT),
         "--freigabe-schluessel", str(key),
         "--zeichnungsordnung", str(standard_ordnung(tmp_path, key)),
+        "--mandat", str(mandat_datei(tmp_path / "fall")),
     ]
 
     returncode = run_command(gate_entscheid.main, argv)

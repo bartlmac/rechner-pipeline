@@ -105,7 +105,11 @@ Simulationsschluessel ist. Neue Faelle laufen unter diesem ADR.
   neuen Kennungen; `agent`-Rollen ohne Gate-Berechtigung; die alten
   Kennungen werden mit Meldung abgewiesen, nicht still gemappt.
 - `gates.gate_entscheid` und `ontologie.entscheide`: `--rolle` entfaellt
-  zugunsten der Ordnung; ohne Ordnung keine Annahme; Ablehnung durch
+  zugunsten der Ordnung; ohne Ordnung keine Annahme; bei Schluesselklasse
+  `simulation` ist `--mandat` PFLICHT — Gate, Entscheidungskommando und
+  das Snapshot-Schema selbst verweigern eine simulierte Zeichnung ohne
+  Mandats-Hash (Review T22-07: "optional, empfohlen" hatte die
+  zentrale Aussage dieses ADR nicht durchgesetzt); Ablehnung durch
   Agentenrollen bleibt moeglich (ADR-008, Punkt 6). Snapshot- und
   Entscheidungs-Schema um Besetzung und Mandat; bricht das
   Snapshot-Schema (Version 7), Altsnapshots bleiben lesbar.

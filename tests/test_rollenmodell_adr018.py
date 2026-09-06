@@ -164,3 +164,73 @@ def test_behauptete_rolle_mit_schluessel_ohne_ordnung_nimmt_nicht_an(fall, tmp_p
     assert ergebnis.errors[0]["code"] == "zeichnung"
     assert "ADR-018" in ergebnis.errors[0]["message"]
     assert list((fall / "entscheide").glob("A-Q1-*.json")) == []
+
+
+# --------------------------------------------------------------------------- #
+# Review T22-07: Simulation ohne Mandat ist keine Besetzung
+# --------------------------------------------------------------------------- #
+
+def test_simulierte_rolle_ohne_mandat_wird_gesperrt(fall, tmp_path):
+    """Nachweis des Reviews: accept_exit 0, key_class simulation,
+    mandate_present False — die zentrale Aussage von ADR-018 war nicht
+    durchgesetzt. Mutationsprobe: die Sperre im Gate entfernen -> rot."""
+    key = tmp_path / "va.key"
+    fp = schluessel_anlegen(key)
+    ordnung = ordnung_schreiben(tmp_path / "ordnung.json", {
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["*"]},
+    })
+    ergebnis = _annahme(fall, key, ordnung)
+    assert ergebnis.exit_code == 20
+    assert ergebnis.errors[0]["code"] == "mandat"
+    assert "Mandat" in ergebnis.errors[0]["message"]
+    assert list((fall / "entscheide").glob("A-Q1-*.json")) == []
+
+
+def test_menschliche_rolle_braucht_kein_mandat(fall, tmp_path):
+    key = tmp_path / "va.key"
+    fp = schluessel_anlegen(key)
+    ordnung = ordnung_schreiben(tmp_path / "ordnung.json", {
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "mensch", "gates": ["*"]},
+    })
+    ergebnis = _annahme(fall, key, ordnung)
+    assert ergebnis.exit_code == 0
+    snapshot = json.loads(Path(ergebnis.paths["snapshot"]).read_text(encoding="utf-8"))
+    assert "mandat_sha256" not in snapshot["zeichnung"]
+
+
+def test_schema_verweigert_simulation_ohne_mandat_im_lesepfad():
+    """Auch ein fremd erzeugter Snapshot kommt nicht durch: Das Schema
+    selbst verlangt das Mandat bei Schluesselklasse simulation.
+    Mutationsprobe: die Schema-Regel entfernen -> rot."""
+    from rechner_pipeline.models.schemas import P9Snapshot
+
+    basis = {
+        "schema_version": 7, "gate": "A-Q1", "entscheid": "angenommen",
+        "rolle": VA, "entscheider": "x", "begruendung": "y",
+        "fall": "f", "entschieden_am": "2026-09-06T00:00:00+00:00",
+        "artefakt_hashes": {}, "vorbedingungen": {}, "pflichtbelege": {},
+        "systemstand": {}, "gate_version": "0.7.0",
+        "zeichnung": {"rolle": VA, "ordnung_sha256": "ab" * 32,
+                      "schluesselklasse": "simulation"},
+    }
+    fehler = P9Snapshot.validate_payload(basis)
+    assert any("mandat_sha256" in f for f in fehler), fehler
+    mit_mandat = {**basis, "zeichnung": {**basis["zeichnung"], "mandat_sha256": "cd" * 32}}
+    assert not any("mandat" in f for f in P9Snapshot.validate_payload(mit_mandat))
+
+
+def test_entscheide_verweigert_simulation_ohne_mandat(fall, tmp_path, capsys):
+    from rechner_pipeline.ontologie import entscheide as entscheide_cli
+
+    key = tmp_path / "va.key"
+    fp = schluessel_anlegen(key)
+    ordnung = ordnung_schreiben(tmp_path / "ordnung.json", {
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["*"]},
+    })
+    code = entscheide_cli.main([
+        "--fall", str(fall), "--diskrepanz", "D-gibt-es-nicht", "--wert", "1",
+        "--entscheider", "x", "--begruendung", "y",
+        "--zeichnungsordnung", str(ordnung), "--freigabe-schluessel", str(key),
+    ])
+    assert code == 2
+    assert "Mandat" in capsys.readouterr().err

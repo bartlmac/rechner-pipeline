@@ -64,5 +64,20 @@ def annahme_args(fall: Path, **kw) -> List[str]:
     ordnung = fall.parent / "zeichnungsordnung.json"
     if not ordnung.exists():
         standard_ordnung(fall.parent, schluessel, **kw)
-    return ["--zeichnungsordnung", str(ordnung),
+    args = ["--zeichnungsordnung", str(ordnung),
             "--freigabe-schluessel", str(schluessel)]
+    # Eine simulierte Rolle handelt unter einem Mandat — Pflicht seit
+    # Review T22-07 (ADR-018): das Mandat liegt wie die Ordnung neben dem Fall.
+    if kw.get("klasse", "simulation") == "simulation":
+        args += ["--mandat", str(mandat_datei(fall))]
+    return args
+
+
+def mandat_datei(fall: Path) -> Path:
+    """Das Mandatsdokument der simulierten Rolle dieses Falls (einmal angelegt)."""
+    mandat = fall.parent / "mandat.md"
+    if not mandat.exists():
+        mandat.write_text(
+            "Mandat der Vorzeige: die simulierte Rolle prueft die Vorlagen "
+            "und zeichnet die Gates dieses Falls.\n", encoding="utf-8")
+    return mandat
