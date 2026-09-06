@@ -205,7 +205,8 @@ Lueckenabschnitt, drei Exit-Codes, Sollmenge), jede gefangen.
 Externes Review auf Stand 730fcb0 (nach T20-Nacharbeit); zehn Befunde.
 Der Maintainer verlangte eine eigene Nachpruefung jeder Position vor
 der Antwort. Ergebnis: neun der zehn sind berechtigt und reproduziert;
-T21-08 war auf `ebenen` bereits geschlossen (ADR-018). Zwei Positionen
+T21-08 (code_karte-Absturz bei relativen Imports) war auf `ebenen` bereits
+geschlossen (Schritt 3 des Architektur-Strangs). Zwei Positionen
 brauchen eine Entscheidung des Maintainers, weil sie einen
 dokumentierten Vertrag umkehren (T21-02) oder einen neuen Vertrag
 verlangen (T21-06); der Rest ist umgesetzt.
@@ -219,7 +220,7 @@ verlangen (T21-06); der Rest ist umgesetzt.
 | T21-05 Darstellung nennt Snapshots "menschliche Entscheide", Kopfzeile behauptet pauschal Simulationsschluessel | mittel | **behoben** — Ueberschriften "Entscheid-Snapshots der Gates"; die Kopfzeile sagt nur, was ALLE Snapshots ueber ihre Schluesselklasse selbst sagen |
 | T21-06 T-Box-Version und A-K1-Vertrag | mittel | **entschieden 2026-09-05: wie vorgeschlagen, im Ebenen-Strang** (Backlog) — Vorschlag unten |
 | T21-07 `betrag_herkunft` nur Vokabular, nicht Semantik | mittel | **behoben** — `validate_ledger`: `geliefert` genau am Zugang eines uebernommenen Vertrags (Zugang nach Beginn), sonst `gerechnet`; beide Richtungen sind Fehler |
-| T21-08 Rolle "mensch" als Platzhalter | mittel | **bereits behoben** (ADR-018, Schema 2, Snapshot-Schema 7) |
+| T21-08 Der Architekturpruefer stuerzt bei relativen Imports ab (`code_karte._absolut` nutzte den undefinierten Namen `paketpfad`; latent, der Quellbaum hat keinen relativen Import) | mittel | **bereits behoben** auf ebenen (934ac3a, Schritt 3: `_absolut` rechnet mit `anker`; Test mit relativem Import). KORREKTUR 2026-09-06 (Nebenhinweis des Reviews T22): Diese Zeile nannte faelschlich den Rollenplatzhalter "mensch" — der ist Gegenstand von ADR-018, nicht von T21-08 |
 | T21-09 P-B1 aendert die Akzeptanzmenge ohne Versionssprung | mittel | **behoben** — `GATE_VERSION` 3.0.0, README-Zeile begruendet; die seit T16 offene Versionierungsregel ist jetzt festgeschrieben (ADR-012 Nachtrag, Skill author-rechner-toolbox-gate, README; `tests/test_gate_versionsregel.py`) |
 | T21-10 Build-System (`setuptools>=68`, `wheel`) nicht gepinnt | niedrig | **behoben** — exakte Pins, `tests/test_abhaengigkeiten.py` haelt sie |
 
