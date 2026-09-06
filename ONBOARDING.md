@@ -53,12 +53,33 @@ implicit input channel — sources enter a case only through explicit
 registration (below).
 
 ## 2. Setup
-Python **3.11+**. No LLM key needed.
+The reference environment is **Linux with CPython 3.11** and the exact
+pins below — what CI runs and what the runtime image is built from. The
+project does not harden its code for other operating systems (maintainer
+decision 2026-09-06): if you are not on Linux, run everything inside the
+container, which IS the reference environment.
+
+**On Linux**, no LLM key needed:
 ```
 python -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt   # Windows: .venv\Scripts\python
+.venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pip install -e . --no-deps
 ```
+**Anywhere else** (Windows with Docker Desktop and WSL2, macOS): build the
+development image once and run the suite in it; the working tree is
+mounted, so code changes need no rebuild.
+```
+docker build -f deploy/dev/Dockerfile -t rechner-pipeline-dev .
+docker run --rm -v "$PWD":/workspace rechner-pipeline-dev            # full suite
+docker run --rm -it -v "$PWD":/workspace rechner-pipeline-dev bash   # shell
+```
+VS Code users open the repo with the Dev Containers extension; the
+definition in `.devcontainer/` builds the same image. Keep the checkout on
+a Linux filesystem (your WSL2 home, not `/mnt/c`): the suite checks file
+permissions and umask, which an NTFS mount does not carry. Line endings
+are pinned to LF by `.gitattributes`; deliveries and fixtures are
+excluded from that rule because their bytes are hashed.
+
 This is the one documented install path, identical to CI. The pin files
 carry the direct dependencies (`pyproject.toml`: `openpyxl`, `oletools`,
 `pandas`, `pyarrow`, `matplotlib`, `pydantic`, `pypdf`; dev: `pytest`,
