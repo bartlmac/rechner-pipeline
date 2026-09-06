@@ -1,0 +1,18 @@
+# Referenzumgebung ist Linux (deploy/dev/Dockerfile): Textdateien tragen
+# im Repo UND im Checkout LF, auch auf einem Windows-Rechner — sonst laeuft
+# ein CRLF-Checkout im Container gegen byteweise Vergleiche und Hashes.
+* text=auto eol=lf
+
+# Lieferungen und Fixturen sind Bytes, keine Texte: Ihre SHA-256 stehen in
+# Fall-Eingaengen und Golden-Master-Vergleichen. Git laesst sie unangetastet,
+# einschliesslich der CRLF, die ein Quellsystem geschrieben hat.
+lieferungen/** -text
+tests/fixtures/** -text
+
+*.pdf binary
+*.xlsx binary
+*.xlsm binary
+*.xls binary
+*.parquet binary
+*.png binary
+*.woff2 binary

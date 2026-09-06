@@ -1,0 +1,23 @@
+{
+  "name": "rechner-pipeline (Referenzumgebung: Linux, Python 3.11, gepinnt)",
+  "build": {
+    "dockerfile": "../deploy/dev/Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "remoteUser": "dev",
+  "overrideCommand": true,
+  "postCreateCommand": "python -m pip install --quiet --no-deps -e /workspace",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["-q"],
+        "files.eol": "\n"
+      },
+      "extensions": ["ms-python.python"]
+    }
+  }
+}
