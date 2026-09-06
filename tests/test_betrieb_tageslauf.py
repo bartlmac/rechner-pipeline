@@ -171,13 +171,25 @@ def test_nachholen_ergibt_denselben_stand_wie_jede_nacht(gefuehrt, tmp_path):
         (direkt.abschluesse / "abschluss_2026-01-01.parquet").read_bytes()
 
 
-def test_ein_tag_wird_nicht_zweimal_und_nicht_rueckwaerts_gefuehrt(gefuehrt):
+def test_derselbe_tag_noch_einmal_ist_ein_benannter_noop(gefuehrt):
+    """Der Lauf ist idempotent: Der bereits gefuehrte Tag laeuft mit Exit 0
+    durch, ohne Protokollzeile, Stand und Manifest bytegleich. Sonst faerbt
+    eine Erstbefuellung am Tag des ersten Timers die erste Nacht rot.
+    Mutationsprobe: rueckwaerts darf nicht mit durchrutschen."""
     ablage, _ = gefuehrt
-    with pytest.raises(TageslaufError, match="nicht danach"):
-        tageslauf(ablage, dt.date(2026, 2, 4))
-    with pytest.raises(TageslaufError, match="nicht danach"):
-        tageslauf(ablage, dt.date(2026, 1, 15))
+    manifest_vorher = (ablage.stand / "laufmanifest.json").read_bytes()
+    protokoll_vorher = ablage.protokoll_pfad.read_bytes()
+    code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
+    assert code == EXIT_OK and zeile == {"heute": "2026-02-04", "bereits_gefuehrt": True}
+    assert (ablage.stand / "laufmanifest.json").read_bytes() == manifest_vorher
+    assert ablage.protokoll_pfad.read_bytes() == protokoll_vorher
     assert gefuehrter_tag(ablage) == dt.date(2026, 2, 4)
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-04"]) == EXIT_OK
+    assert ablage.protokoll_pfad.read_bytes() == protokoll_vorher
+    # Rueckwaerts bleibt ein Fehler (Exit 2 ueber main):
+    with pytest.raises(TageslaufError, match="rueckwaerts"):
+        tageslauf(ablage, dt.date(2026, 1, 15))
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-15"]) == EXIT_USAGE
     assert len(lies_protokoll(ablage.protokoll_pfad)) == 3
 
 
@@ -249,8 +261,12 @@ def test_cli(gefuehrt, tmp_path, capsys):
     # Was die Umgebung nicht liefert, ist ein benannter Zustand, kein leeres Feld:
     assert erste["image_revision"] == "nicht erfasst" and erste["image_tag"] == "nicht erfasst"
     assert tl.main(["--stand", str(ablage.wurzel), "--heute", "kein-datum"]) == EXIT_USAGE
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-06"]) == EXIT_USAGE
-    assert "nicht danach" in capsys.readouterr().err
+    # Derselbe Tag noch einmal: benannter No-op, keine zweite Protokollzeile.
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-06"]) == EXIT_OK
+    assert "bereits gefuehrt, nichts zu tun" in capsys.readouterr().err
+    assert len(lies_protokoll(ablage.protokoll_pfad)) == 1
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-05"]) == EXIT_USAGE
+    assert "rueckwaerts" in capsys.readouterr().err
 
 
 def test_monatserste_in():

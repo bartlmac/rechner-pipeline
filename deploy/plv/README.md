@@ -71,6 +71,12 @@ cd ~/apps/plv && docker compose run --rm tageslauf
 tail -n 1 daten/journal/protokoll.jsonl
 ```
 
+Faehrt der Timer am selben Tag noch einmal (Erstbefuellung am Tag des
+ersten Timers, ein Neustart), ist das kein Fehler: Der bereits gefuehrte
+Tag ist ein benannter No-op — Exit 0, `tageslauf: <Tag> bereits gefuehrt,
+nichts zu tun`, keine Protokollzeile, Stand unveraendert. Nur ein Tag VOR
+dem gefuehrten (rueckwaerts) bricht mit Exit 2 ab.
+
 **Timer:**
 
 ```

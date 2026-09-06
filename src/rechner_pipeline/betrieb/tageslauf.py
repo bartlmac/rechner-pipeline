@@ -442,6 +442,12 @@ def tageslauf(
     Rueckgabe ``(exit_code, protokollzeile)``. Die Protokollzeile ist in
     jedem Fall angefuegt worden, auch bei roter Wache — das Protokoll ist
     der Nachweis, dass gelaufen wurde, nicht nur, dass es gut ging.
+
+    Ausnahme: Ist ``heute`` der bereits gefuehrte Tag, laeuft nichts —
+    Rueckgabe ``(EXIT_OK, {"heute": ..., "bereits_gefuehrt": True})``, ohne
+    Protokollzeile, Stand unveraendert. Der Lauf ist idempotent; eine
+    Erstbefuellung am Tag des ersten Timers darf die erste Nacht nicht rot
+    faerben. Rueckwaerts (``heute`` vor dem gefuehrten Tag) bleibt ein Fehler.
     """
     from rechner_pipeline.kern import __version__ as kern_version
 
@@ -467,11 +473,13 @@ def tageslauf(
             f"{betriebsbeginn.isoformat()}"
         )
     letzter = gefuehrter_tag(ablage)
-    if letzter is not None and heute <= letzter:
+    if letzter is not None and heute == letzter:
+        return EXIT_OK, {"heute": heute.isoformat(), "bereits_gefuehrt": True}
+    if letzter is not None and heute < letzter:
         raise TageslaufError(
             f"der Stand fuehrt bereits {letzter.isoformat()}; heute "
-            f"{heute.isoformat()} liegt nicht danach — ein Tag wird nicht "
-            "zweimal und nicht rueckwaerts gefuehrt"
+            f"{heute.isoformat()} liegt davor — ein Tag wird nicht "
+            "rueckwaerts gefuehrt"
         )
     nachgeholt = []
     if letzter is not None:
@@ -660,6 +668,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     except TageslaufError as exc:
         print(f"tageslauf: {exc}", file=sys.stderr)
         return EXIT_USAGE
+    if zeile.get("bereits_gefuehrt"):
+        print(f"tageslauf: {heute.isoformat()} bereits gefuehrt, nichts zu tun",
+              file=sys.stderr)
+        return code
     if code == EXIT_OK:
         print(
             f"tageslauf: {heute.isoformat()} gefuehrt"
