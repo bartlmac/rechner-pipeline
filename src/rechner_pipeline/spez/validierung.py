@@ -19,7 +19,7 @@ from typing import List, Set
 
 from rechner_pipeline.ontologie.aussage import Zustand
 from rechner_pipeline.ontologie.merge import werte_gleich
-from rechner_pipeline.ontologie.tbox import ABox, PFLICHT_PARAMETER
+from rechner_pipeline.ontologie.tbox import TBOX_VERSION, ABox, PFLICHT_PARAMETER
 from rechner_pipeline.spez.schema import TarifSpez
 
 SPEZ_DATEI = "spez.json"
@@ -49,9 +49,18 @@ def lade_spez(fall: Path, generation: str) -> TarifSpez:
 
 def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
     fehler: List[str] = []
+    # Spez, A-Box und Code muessen dieselbe T-Box sprechen (Review T22-02).
+    if spez.tbox_version != abox.tbox_version or spez.tbox_version != TBOX_VERSION:
+        fehler.append(
+            f"tbox_version: Spez {spez.tbox_version!r}, A-Box "
+            f"{abox.tbox_version!r}, geltend {TBOX_VERSION!r} — die Spez ist "
+            "aus der A-Box neu zu erzeugen (spez.erzeugen), oder die "
+            "T-Box-Aenderung geht ueber A-K1"
+        )
     gen = next((g for g in abox.generationen if g.id == spez.generation), None)
     if gen is None:
-        return [f"Generation {spez.generation!r} nicht in der A-Box"]
+        fehler.append(f"Generation {spez.generation!r} nicht in der A-Box")
+        return fehler
 
     unisex_abox = (
         str(gen.unisex.wert)

@@ -48,7 +48,7 @@ from rechner_pipeline.gates._common import (
 )
 
 GATE = "P-Q3.fachliche-pruefung"
-GATE_VERSION = "0.3.0"
+GATE_VERSION = "1.0.0"
 CLI_CONTRACT = GateCliContract(
     command="abox_validate",
     gate=GATE,

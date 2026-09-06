@@ -60,6 +60,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import os
 import sys
 from pathlib import Path
@@ -357,6 +358,66 @@ def pruefe_snapshot_ohne_schluessel(
     return []
 
 
+#: Schema des A-K1-Belegs (Review T22-02).
+TBOX_AENDERUNG_SCHEMA_VERSION = 1
+_SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def pruefe_tbox_aenderung(pfad: Path, fall: Path) -> List[str]:
+    """Den Beleg einer T-Box-Aenderung gegen Code und Artefakt halten.
+
+    Der Beleg sagt, VON welcher Version NACH welcher die T-Box geht, mit
+    welchem Modul-Hash der Code das belegt und welches Artefakt
+    (ADR, Aenderungsvermerk) die Aenderung begruendet. Geprueft wird:
+    Schema; beide Versionen semver und verschieden; die neue Version ist
+    die, die der Code jetzt traegt (TBOX_VERSION); der Modul-Hash ist der
+    des geladenen T-Box-Moduls; das Artefakt liegt im Fall oder im Repo
+    und traegt seinen Hash. Rueckgabe: Fehlerliste (leer = in Ordnung).
+    """
+    from rechner_pipeline.ontologie import tbox as tbox_modul
+
+    if not pfad.is_file():
+        return ["Datei fehlt"]
+    try:
+        daten = json.loads(pfad.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"nicht lesbar: {exc}"]
+    if not isinstance(daten, dict):
+        return ["kein JSON-Objekt"]
+    fehler: List[str] = []
+    if daten.get("schema_version") != TBOX_AENDERUNG_SCHEMA_VERSION:
+        fehler.append(f"schema_version muss {TBOX_AENDERUNG_SCHEMA_VERSION} sein")
+    von, nach = daten.get("von_version"), daten.get("nach_version")
+    for name, wert in (("von_version", von), ("nach_version", nach)):
+        if not isinstance(wert, str) or not _SEMVER.match(wert):
+            fehler.append(f"{name} muss eine Version x.y.z sein")
+    if von == nach:
+        fehler.append("von_version und nach_version sind gleich — keine Aenderung")
+    if nach != tbox_modul.TBOX_VERSION:
+        fehler.append(
+            f"nach_version {nach!r} ist nicht die Version, die der Code traegt "
+            f"({tbox_modul.TBOX_VERSION!r}) — Beleg und Code muessen dieselbe "
+            "Aenderung meinen"
+        )
+    modul_hash = hashlib.sha256(Path(tbox_modul.__file__).read_bytes()).hexdigest()
+    if daten.get("tbox_sha256") != modul_hash:
+        fehler.append("tbox_sha256 ist nicht der Hash des geladenen T-Box-Moduls")
+    artefakt = daten.get("artefakt")
+    if not (isinstance(artefakt, dict) and isinstance(artefakt.get("pfad"), str)
+            and isinstance(artefakt.get("sha256"), str)):
+        fehler.append("artefakt {pfad, sha256} fehlt")
+    else:
+        kandidaten = [fall / artefakt["pfad"], Path(artefakt["pfad"])]
+        datei = next((k for k in kandidaten if k.is_file()), None)
+        if datei is None:
+            fehler.append(f"artefakt {artefakt['pfad']!r} nicht gefunden")
+        elif hashlib.sha256(datei.read_bytes()).hexdigest() != artefakt["sha256"]:
+            fehler.append(f"artefakt {artefakt['pfad']!r}: Hash stimmt nicht")
+    if not (isinstance(daten.get("begruendung"), str) and daten["begruendung"].strip()):
+        fehler.append("begruendung fehlt")
+    return fehler
+
+
 def _pruefe_g2_snapshot_semantik(snapshot: dict) -> List[str]:
     """Den aus dem Scope abgeleiteten Inhalt einer Annahme pruefen.
 
@@ -367,7 +428,7 @@ def _pruefe_g2_snapshot_semantik(snapshot: dict) -> List[str]:
     auslassen und dennoch als gueltige P9-Historie erscheinen.
     """
     gate = snapshot.get("gate")
-    if gate not in ("A-M1", "A-M4") or snapshot.get("entscheid") != "angenommen":
+    if gate not in ("A-M1", "A-M4", "A-K1") or snapshot.get("entscheid") != "angenommen":
         return []
     fehler: List[str] = []
     scope = snapshot.get("fall_scope")
@@ -1184,7 +1245,7 @@ def main(argv: Optional[List[str]] = None):
     pk1_belege: Dict[str, List[str]] = {}
     pflichtbelege: Dict[str, List[str]] = {}
     fall_scope: Optional[str] = None
-    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4",):
+    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4", "A-K1"):
         try:
             fall_scope = fall_mod.lade_scope(fall)
         except fall_mod.FallFehler as exc:
@@ -1313,6 +1374,22 @@ def main(argv: Optional[List[str]] = None):
                 )
         if args.gate == "A-M4":
             pflichtbelege["pq3_ledger"] = [_sha256_datei(pq3_pfad)]
+
+        if args.gate == "A-K1":
+            # T-Box-Aenderung (Review T22-02): Der Beleg bindet alte und
+            # neue Version, den Hash des T-Box-Moduls und das
+            # Aenderungsartefakt. Ohne ihn ist A-K1 eine Zeichnung ueber
+            # nichts.
+            aenderung_pfad = fall / "abgeleitet" / "tbox" / "aenderung.json"
+            ak1_fehler = pruefe_tbox_aenderung(aenderung_pfad, fall)
+            if ak1_fehler:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: A-K1 braucht den Beleg der "
+                    f"T-Box-Aenderung ({aenderung_pfad.relative_to(fall)}): "
+                    + "; ".join(ak1_fehler[:5]),
+                )
+            pflichtbelege["tbox_aenderung"] = [_sha256_datei(aenderung_pfad)]
 
         if args.gate in AKTUARIELLE_ABNAHMEN:
             # Aktuarielle Abnahme (ADR-010): Im Bestands-Scope stuetzt
@@ -1854,7 +1931,7 @@ def main(argv: Optional[List[str]] = None):
         "artefakt_hashes": _artefakt_hashes(fall, ausser_gate=args.gate),
         "system": entscheid_systemstand,
     }
-    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4",):
+    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4", "A-K1"):
         kern_inhalt["fall_scope"] = fall_scope
         kern_inhalt["pflichtbelege"] = pflichtbelege
     if args.gate == "A-M4":

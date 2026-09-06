@@ -28,7 +28,7 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 O3_BELEG_SCHEMA_VERSION = 1
 O3_BELEG_GATE = "P-K1.generations-golden-master"
 O3_BELEG_COMMAND = "generation_golden"
-O3_BELEG_GATE_VERSION = "0.2.0"
+O3_BELEG_GATE_VERSION = "1.0.0"
 O3_BELEG_GLOB = "generation_golden.*.beleg.json"
 
 _BELEG_FELDER = frozenset({

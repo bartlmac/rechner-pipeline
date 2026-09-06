@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from rechner_pipeline.ontologie.aussage import Zustand
-from rechner_pipeline.ontologie.tbox import ABox, PFLICHT_PARAMETER
+from rechner_pipeline.ontologie.tbox import ABox, PFLICHT_PARAMETER, TBOX_VERSION
 
 ABOX_DATEI = "abox.json"
 
@@ -59,6 +59,16 @@ def validate_abox(
     Eingang liegt, ist keine belegte Aussage.
     """
     fehler: List[str] = []
+    # Die A-Box spricht das Vokabular GENAU EINER T-Box-Version (Review
+    # T22-02): Eine A-Box mit fremder Version ist unter dem geltenden
+    # Vokabular nicht auslegbar — neu erzeugen (abox_merge) oder die
+    # T-Box-Aenderung ueber A-K1 zeichnen.
+    if abox.tbox_version != TBOX_VERSION:
+        fehler.append(
+            f"tbox_version: A-Box traegt {abox.tbox_version!r}, geltend ist "
+            f"{TBOX_VERSION!r} — A-Box aus den Fragmenten neu erzeugen "
+            "(gates.abox_merge) oder die T-Box-Aenderung ueber A-K1 zeichnen"
+        )
     gen_ids = [g.id for g in abox.generationen]
     if len(set(gen_ids)) != len(gen_ids):
         fehler.append("doppelte Generations-IDs")

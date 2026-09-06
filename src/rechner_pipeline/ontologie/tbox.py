@@ -27,6 +27,16 @@ from rechner_pipeline.ontologie.aussage import Aussage
 from rechner_pipeline.ontologie.diskrepanz import Diskrepanz
 from rechner_pipeline.ontologie.ids import knoten_id, zellen_segment
 
+#: Version der T-Box (des Vokabulars, das A-Box und Spez sprechen).
+#: REGEL (Review T22-02, Entscheid des Maintainers 2026-09-06): Jede
+#: Aenderung am Schema der T-Box hebt diese Version, und jede Hebung geht
+#: ueber das Gate A-K1 mit dem Pflichtbeleg ``abgeleitet/tbox/aenderung.json``
+#: (alte und neue Version, SHA-256 dieses Moduls, Aenderungsartefakt).
+#: Geprueft wird die Version an drei Stellen: P-Q3 haelt die A-Box gegen
+#: sie (validate_abox), P-K1 die Spez gegen A-Box und sie (validate_spez),
+#: A-K1 den Beleg gegen sie (gate_entscheid). Ein Mismatch ist ein
+#: Fehler, keine Warnung — vorher war die Version ein ueberschreibbarer
+#: Default, den niemand verglich.
 TBOX_VERSION = "0.1.0"
 
 #: Pflichtumfang einer Parametrierungszelle (P6-Referenz): ohne diese

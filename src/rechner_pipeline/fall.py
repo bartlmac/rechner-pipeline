@@ -107,6 +107,15 @@ BELEGROLLEN = {
         "tarif": (),
         "bestand": ("aktuartest_am3", "aktuartest_am3_bericht"),
     },
+    # A-K1 (T-Box-Aenderung, Review T22-02): der Beleg ist die
+    # Aenderungsdatei abgeleitet/tbox/aenderung.json — alte und neue
+    # Version, SHA-256 des T-Box-Moduls, Aenderungsartefakt. Scope-
+    # unabhaengig, weil eine T-Box-Aenderung das Vokabular aller Faelle
+    # betrifft.
+    "A-K1": {
+        "tarif": ("tbox_aenderung",),
+        "bestand": ("tbox_aenderung",),
+    },
     "A-M4": {
         "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege"),
         "bestand": (

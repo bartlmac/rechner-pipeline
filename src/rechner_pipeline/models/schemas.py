@@ -80,7 +80,7 @@ GATE_VERSION_DEFAULT = "1.0.0"
 P9_SNAPSHOT_SCHEMA_VERSION = 7
 _ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
 P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7)
-P9_GATE_VERSION = "0.7.0"
+P9_GATE_VERSION = "1.0.0"
 #: Gate-Version je lesbarem Schnappschuss-Schema.
 P9_GATE_VERSION_JE_SCHEMA = {6: "0.6.0", 7: P9_GATE_VERSION}
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
@@ -463,7 +463,7 @@ class P9Snapshot:
         errors: List[str] = []
         gate = data.get("gate")
         expected_fields = set(cls._BASE_FIELDS)
-        if gate in P9_AKTUARIELLE_ABNAHMEN or gate == "A-M4":
+        if gate in P9_AKTUARIELLE_ABNAHMEN or gate in ("A-M4", "A-K1"):
             expected_fields.update({"fall_scope", "pflichtbelege"})
         if gate == "A-M4":
             expected_fields.add("pk1_belege")
@@ -600,14 +600,14 @@ class P9Snapshot:
         if zeit_fehler:
             errors.append(zeit_fehler)
 
-        if gate in ("A-M1", "A-M4"):
+        if gate in ("A-M1", "A-M4", "A-K1"):
             if data.get("fall_scope") not in ("tarif", "bestand"):
                 errors.append("fall_scope must be 'tarif' or 'bestand'")
             pflichtbelege = data.get("pflichtbelege")
             if not isinstance(pflichtbelege, dict):
                 errors.append("pflichtbelege must be an object")
             elif (
-                gate == "A-M4"
+                gate in ("A-M4", "A-K1")
                 and data.get("entscheid") == "angenommen"
                 and not pflichtbelege
             ):

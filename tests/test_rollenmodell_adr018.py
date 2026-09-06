@@ -131,7 +131,7 @@ def test_altsnapshot_schema_6_bleibt_lesbar():
     assert P9Snapshot.validate_payload(daten) == []
 
     # Derselbe Inhalt als Schema 7 ohne Zeichnung ist keine Annahme.
-    neu = dict(daten, schema_version=7, gate_version="0.7.0", rolle=VA)
+    neu = dict(daten, schema_version=7, gate_version="1.0.0", rolle=VA)
     neu.pop("snapshot_sha256")
     neu["snapshot_sha256"] = p9_snapshot_sha256(neu)
     fehler = P9Snapshot.validate_payload(neu)
@@ -209,7 +209,7 @@ def test_schema_verweigert_simulation_ohne_mandat_im_lesepfad():
         "rolle": VA, "entscheider": "x", "begruendung": "y",
         "fall": "f", "entschieden_am": "2026-09-06T00:00:00+00:00",
         "artefakt_hashes": {}, "vorbedingungen": {}, "pflichtbelege": {},
-        "systemstand": {}, "gate_version": "0.7.0",
+        "systemstand": {}, "gate_version": "1.0.0",
         "zeichnung": {"rolle": VA, "ordnung_sha256": "ab" * 32,
                       "schluesselklasse": "simulation"},
     }
