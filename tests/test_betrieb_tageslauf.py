@@ -275,3 +275,97 @@ def test_monatserste_in():
         dt.date(2026, 2, 1), dt.date(2026, 3, 1), dt.date(2026, 4, 1)]
     assert monatserste_in(dt.date(2026, 2, 1), dt.date(2026, 2, 28)) == []
     assert monatserste_in(dt.date(2025, 12, 31), dt.date(2026, 1, 1)) == [dt.date(2026, 1, 1)]
+
+
+# --------------------------------------------------------------------------- #
+# Review T22-03: Der Standwechsel ist eine Transaktion
+# --------------------------------------------------------------------------- #
+
+def test_der_stand_ist_ein_symlink_auf_ein_versioniertes_verzeichnis(gefuehrt):
+    """Vorher zwei Renames mit einem Moment ohne stand/; jetzt zeigt der
+    Symlink immer auf einen vollstaendigen Stand, und nur EIN versioniertes
+    Verzeichnis lebt."""
+    ablage, _ = gefuehrt
+    assert ablage.stand.is_symlink()
+    ziel = ablage.stand.resolve()
+    assert ziel.name.startswith("stand-") and ziel.is_dir()
+    versioniert = sorted(p.name for p in ablage.wurzel.glob("stand-*") if p.is_dir())
+    assert versioniert == [ziel.name]
+    manifest = lies_manifest(ablage.stand)
+    assert manifest["horizont"] == "2026-02-04"
+    assert not (ablage.wurzel / "stand.alt").exists()
+
+
+def test_ein_gescheiterter_tausch_laesst_den_gestrigen_stand_stehen(tmp_path, monkeypatch):
+    """Fehlerinjektion des Reviews (stand_exists False, gefuehrter_tag None):
+    scheitert der Tausch, bleibt der alte Stand der gefuehrte, der Lauf ist
+    rot mit Protokollzeile. Mutationsprobe: os.replace durch die alten zwei
+    Renames ersetzen -> der Stand ist weg -> rot."""
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    alt = ablage.stand.resolve()
+
+    def _kaputt(*_a, **_k):
+        raise OSError("Platte weg")
+
+    monkeypatch.setattr(tl.os, "replace", _kaputt)
+    code, zeile = tageslauf(ablage, dt.date(2026, 2, 3))
+    monkeypatch.undo()
+    assert code != EXIT_OK and "OSError" in zeile["fehler"]
+    assert zeile["uebernommen"] is False
+    assert ablage.stand.is_symlink() and ablage.stand.resolve() == alt
+    assert gefuehrter_tag(ablage) == dt.date(2026, 1, 31)
+    assert lies_protokoll(ablage.protokoll_pfad)[-1]["heute"] == "2026-02-03"
+    # Der naechste Lauf raeumt den Rest auf und fuehrt den Tag.
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    assert gefuehrter_tag(ablage) == dt.date(2026, 2, 3)
+    assert sorted(p.name for p in ablage.wurzel.glob("stand-*") if p.is_dir()) == [
+        ablage.stand.resolve().name]
+
+
+def test_zwei_laeufe_auf_derselben_ablage_gibt_es_nicht(tmp_path):
+    """Kein Prozess-Lock (Review): zwei gleichzeitige Laeufe teilten
+    stand.neu, Journal und Protokoll. Mutationsprobe: flock entfernen -> rot."""
+    import fcntl
+
+    ablage = _ablage(tmp_path / "plv")
+    ablage.wurzel.mkdir(parents=True, exist_ok=True)
+    with open(ablage.sperre, "a+") as fremd:
+        fcntl.flock(fremd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(TageslaufError, match="Sperre"):
+            tageslauf(ablage, dt.date(2026, 1, 31))
+        assert not ablage.stand.exists()
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+
+
+def test_ein_stand_der_erstfassung_wird_in_die_symlink_form_ueberfuehrt(tmp_path):
+    """Die Laufzeit unter ~/apps/plv hat noch ein echtes Verzeichnis stand/;
+    der naechste Lauf fuehrt es in die Symlink-Form ueber, ohne den Tag zu
+    verlieren."""
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    # Erstfassung nachstellen: Symlink durch das echte Verzeichnis ersetzen.
+    ziel = ablage.stand.resolve()
+    ablage.stand.unlink()
+    os.rename(ziel, ablage.stand)
+    assert ablage.stand.is_dir() and not ablage.stand.is_symlink()
+    assert gefuehrter_tag(ablage) == dt.date(2026, 1, 31)
+    assert tageslauf(ablage, dt.date(2026, 2, 1))[0] == EXIT_OK
+    assert ablage.stand.is_symlink() and gefuehrter_tag(ablage) == dt.date(2026, 2, 1)
+    assert not (ablage.wurzel / "stand-erstfassung").exists()
+
+
+def test_verwaiste_standverzeichnisse_und_linkreste_werden_vor_dem_lauf_entfernt(tmp_path):
+    """Ein Rest eines abgebrochenen Tauschs (fremdes stand-*-Verzeichnis,
+    stand.link) darf nicht liegen bleiben. Mutationsprobe:
+    _verwaiste_staende_entfernen zu pass -> rot."""
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    verwaist = ablage.wurzel / "stand-deadbeefdeadbeef"
+    verwaist.mkdir()
+    (verwaist / "rest.txt").write_text("x", encoding="utf-8")
+    os.symlink(verwaist.name, ablage.wurzel / tl.STAND_LINK_TMP)
+    aktuell = ablage.stand.resolve()
+    assert tageslauf(ablage, dt.date(2026, 2, 1))[0] == EXIT_OK
+    assert not verwaist.exists() and not (ablage.wurzel / tl.STAND_LINK_TMP).exists()
+    assert ablage.stand.resolve() != aktuell and not aktuell.exists()

@@ -327,16 +327,24 @@ def eingang_anlegen(
             f"{ziel} existiert bereits — ein Eingang wird nie ueberschrieben; "
             "eine neue Lieferung ist ein neuer Eingang unter neuem Namen"
         )
-    ziel.mkdir(parents=True)
+    # Der Eingang entsteht VOLLSTAENDIG neben seinem Namen und wird dann in
+    # einem Zug umbenannt (Review T22-03): Ein halb geschriebener Eingang
+    # blockierte sonst dauerhaft, weil das Verzeichnis als "nie
+    # ueberschreiben" galt. Ein Rest eines abgebrochenen Anlegens wird
+    # entfernt — er war nie ein Eingang.
+    arbeit = ziel.with_name(ziel.name + ".neu")
+    if arbeit.exists():
+        shutil.rmtree(arbeit)
+    arbeit.mkdir(parents=True)
     dateien: Dict[str, str] = {}
     for name in list(PFLICHT) + list(OPTIONAL):
         datei = f"{name}.parquet"
         if not (quelle / datei).is_file():
             continue
         daten = (quelle / datei).read_bytes()
-        (ziel / datei).write_bytes(daten)
+        (arbeit / datei).write_bytes(daten)
         if os.name != "nt":
-            (ziel / datei).chmod(0o444)
+            (arbeit / datei).chmod(0o444)
         dateien[datei] = sha256_bytes(daten)
     eingang = {
         "schema_version": EINGANG_SCHEMA_VERSION,
@@ -349,11 +357,12 @@ def eingang_anlegen(
         "quelle": str(quelle),
         "dateien": dict(sorted(dateien.items())),
     }
-    pfad = ziel / EINGANG_DATEI
+    pfad = arbeit / EINGANG_DATEI
     pfad.write_text(json.dumps(eingang, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8", newline="\n")
     if os.name != "nt":
         pfad.chmod(0o444)
+    os.rename(arbeit, ziel)
     return ziel
 
 

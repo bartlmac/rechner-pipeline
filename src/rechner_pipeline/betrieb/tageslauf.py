@@ -69,12 +69,18 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as _dt
 import hashlib
 import json
 import os
 import shutil
 import sys
+
+try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
+    import fcntl
+except ImportError:  # pragma: no cover - fremde Plattform
+    fcntl = None  # type: ignore[assignment]
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -125,6 +131,10 @@ PROTOKOLL_DATEI = "protokoll.jsonl"
 CONFIG_DATEI = "bestand.toml"
 #: Arbeitsverzeichnis eines laufenden Tageslaufs (wird beim naechsten Lauf verworfen).
 ARBEIT_DIR = "stand.neu"
+#: Name der Sperrdatei (fcntl.flock, exklusiv, nicht blockierend).
+SPERRE_DATEI = "lauf.lock"
+#: Uebergangsname des Symlinks beim atomaren Tausch.
+STAND_LINK_TMP = "stand.link"
 
 #: Exit-Codes: 0 gruen und uebernommen, 2 Aufruf-/Eingangsfehler, 3 Wache rot
 #: (Stand nicht uebernommen), 4 Journal- oder Abschlussfehler nach gruener
@@ -153,6 +163,9 @@ class Ablage:
         self.berichte = self.wurzel / BERICHT_DIR
         self.configs = self.wurzel / CONFIG_DIR
         self.uebernahme = self.wurzel / UEBERNAHME_DIR
+        #: Prozess-Sperre des Laufs (Review T22-03): zwei gleichzeitige
+        #: Laeufe teilten sich Arbeitsverzeichnis, Journal und Protokoll.
+        self.sperre = self.wurzel / SPERRE_DATEI
 
     @property
     def config_pfad(self) -> Path:
@@ -361,16 +374,78 @@ def _wache(arbeit: Path, config_pfad: Path, heute: _dt.date) -> Tuple[Dict[str, 
     return tabellen, geprueft, usage + fehler
 
 
-def _uebernehmen(ablage: Ablage) -> None:
-    """Das Arbeitsverzeichnis atomar zum gefuehrten Stand machen."""
-    alt = ablage.wurzel / (STAND_DIR + ".alt")
-    if alt.exists():
-        shutil.rmtree(alt)
-    if ablage.stand.exists():
-        os.rename(ablage.stand, alt)
-    os.rename(ablage.arbeit, ablage.stand)
-    if alt.exists():
-        shutil.rmtree(alt)
+def _uebernehmen(ablage: Ablage, kennung: str) -> None:
+    """Das Arbeitsverzeichnis atomar zum gefuehrten Stand machen.
+
+    Review T22-03: Zwei Renames (stand -> stand.alt, stand.neu -> stand)
+    hatten dazwischen einen Moment OHNE Stand — ein Absturz dort liess die
+    Laufzeit ohne gefuehrten Tag zurueck, und die Zusage "der gestrige
+    bleibt" war falsch. Jetzt ist ``stand`` ein Symlink auf ein
+    versioniertes Verzeichnis ``stand-<manifest-kennung>``; der Tausch ist
+    EIN ``os.replace`` des Symlinks und damit atomar: Vorher zeigt er auf
+    den alten Stand, nachher auf den neuen, nie auf nichts. Das alte
+    Verzeichnis wird erst danach entfernt.
+
+    Ein Stand aus der Erstfassung (echtes Verzeichnis) wird einmalig in die
+    Symlink-Form ueberfuehrt; nur dieser eine Uebergang hat noch das alte
+    Fenster.
+    """
+    ziel = ablage.wurzel / f"{STAND_DIR}-{kennung}"
+    if ziel.exists():
+        shutil.rmtree(ziel)
+    os.rename(ablage.arbeit, ziel)
+    alt_ziel: Optional[Path] = None
+    if ablage.stand.is_symlink():
+        alt_ziel = ablage.stand.resolve()
+    elif ablage.stand.exists():
+        alt_ziel = ablage.wurzel / f"{STAND_DIR}-erstfassung"
+        if alt_ziel.exists():
+            shutil.rmtree(alt_ziel)
+        os.rename(ablage.stand, alt_ziel)
+    tmp = ablage.wurzel / STAND_LINK_TMP
+    if tmp.is_symlink() or tmp.exists():
+        tmp.unlink()
+    os.symlink(ziel.name, tmp)
+    os.replace(tmp, ablage.stand)
+    if alt_ziel is not None and alt_ziel.exists() and alt_ziel.resolve() != ziel.resolve():
+        shutil.rmtree(alt_ziel)
+
+
+def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
+    """Versionierte Standverzeichnisse, auf die der Symlink nicht zeigt
+    (Reste eines abgebrochenen Tauschs), aufraeumen — vor dem Lauf."""
+    aktuell = ablage.stand.resolve() if ablage.stand.is_symlink() else None
+    for kandidat in ablage.wurzel.glob(f"{STAND_DIR}-*"):
+        if kandidat.is_dir() and (aktuell is None or kandidat.resolve() != aktuell):
+            shutil.rmtree(kandidat)
+    tmp = ablage.wurzel / STAND_LINK_TMP
+    if tmp.is_symlink():
+        tmp.unlink()
+
+
+@contextlib.contextmanager
+def lauf_sperre(ablage: Ablage):
+    """Exklusive Prozess-Sperre der Laufzeitumgebung (nicht blockierend).
+
+    Zwei gleichzeitige Laeufe (Timer und Hand, zwei Timer nach einer
+    Haengepartie) teilten sich stand.neu, Journal und Protokoll (Review
+    T22-03). Der zweite bricht jetzt sofort ab, mit Meldung.
+    """
+    ablage.wurzel.mkdir(parents=True, exist_ok=True)
+    datei = open(ablage.sperre, "a+", encoding="utf-8")
+    try:
+        if fcntl is not None:
+            try:
+                fcntl.flock(datei.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, OSError) as exc:
+                raise TageslaufError(
+                    f"{ablage.wurzel}: ein anderer Lauf haelt die Sperre "
+                    f"{ablage.sperre.name} — zwei Laeufe auf derselben Ablage "
+                    "gibt es nicht; den laufenden Prozess enden lassen"
+                ) from exc
+        yield
+    finally:
+        datei.close()
 
 
 def _teilbestand(tabellen: Dict[str, Any], policen: List[int]) -> Dict[str, Any]:
@@ -432,6 +507,19 @@ def _datei_hash(pfad: Path) -> Optional[str]:
 
 
 def tageslauf(
+    ablage: Ablage,
+    heute: _dt.date,
+    *,
+    image_digest: Optional[str] = None,
+) -> Tuple[int, Dict[str, Any]]:
+    """Den Tag ``heute`` fuehren — unter der Prozess-Sperre der Ablage
+    (Review T22-03); siehe :func:`_tageslauf`."""
+    with lauf_sperre(ablage):
+        _verwaiste_staende_entfernen(ablage)
+        return _tageslauf(ablage, heute, image_digest=image_digest)
+
+
+def _tageslauf(
     ablage: Ablage,
     heute: _dt.date,
     *,
@@ -609,11 +697,13 @@ def tageslauf(
             ablage.journal.mkdir(parents=True, exist_ok=True)
             write_portfolio(journal, ablage.tagesjournal_pfad)
             zeile["tagesjournal"]["sha256"] = _datei_hash(ablage.tagesjournal_pfad)
-            _uebernehmen(ablage)
+            _uebernehmen(ablage, str(manifest_hash)[:16])
             zeile["manifest_sha256"] = manifest_hash
             zeile["uebernommen"] = True
     except (EreignisError, NeugeschaeftError, TagesjournalError, AbschlussError,
-            UebernahmeError, ManifestError, ValueError) as exc:
+            UebernahmeError, ManifestError, ValueError, OSError) as exc:
+        # OSError (Review T22-03): ein gescheiterter Tausch oder Schreibvorgang
+        # ist ein roter Lauf mit Protokollzeile — kein Traceback ohne Nachweis.
         zeile.pop("_uebernommene_policen", None)
         zeile.pop("_teilbestaende", None)
         zeile["fehler"] = f"{type(exc).__name__}: {exc}"

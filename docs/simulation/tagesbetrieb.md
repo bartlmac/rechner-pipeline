@@ -212,7 +212,7 @@ Die Simulation kennt keine Uhrzeit, nur den Kalendertag.
 
 | Verzeichnis | Inhalt | Schutz |
 |---|---|---|
-| `stand/` | der geführte Stand (sechs Ausgaben, Manifest, Merkmale) | überschreibbar, aber nur durch einen grünen Lauf |
+| `stand` | Symlink auf den geführten Stand `stand-<kennung>/` (sechs Ausgaben, Manifest, Merkmale) | wechselt nur durch einen grünen Lauf, atomar per Symlink-Tausch; eine Prozess-Sperre (`lauf.lock`) verhindert zwei gleichzeitige Läufe |
 | `journal/tagesjournal.parquet`, `journal/protokoll.jsonl` | nur-anfügbar | 0444 je Tagesabschnitt nicht praktikabel; Schutz über Prüfsumme im Protokoll |
 | `abschluesse/` | Monatsabschlüsse | 0444, genau einmal (ADR-011) |
 | `berichte/` | Tages- und Monatsberichte (HTML) | erzeugt, jederzeit neu renderbar |

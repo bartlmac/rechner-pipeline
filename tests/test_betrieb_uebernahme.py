@@ -237,3 +237,31 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
         encoding="utf-8")
     code, zeile = tageslauf(aus, dt.date(2026, 2, 2))
     assert code == EXIT_OK and "teilbestaende" not in zeile["abschluesse"][1]
+
+
+def test_ein_abgebrochenes_anlegen_hinterlaesst_keinen_halben_eingang(tmp_path, monkeypatch):
+    """Review T22-03: Ein halb geschriebener Eingang blockierte dauerhaft
+    ("existiert bereits"). Jetzt entsteht er neben seinem Namen und wird in
+    einem Zug umbenannt; der Rest eines Abbruchs zaehlt nicht als Eingang.
+    Mutationsprobe: direkt in ziel schreiben -> zweiter Versuch scheitert."""
+    fall = _fall(tmp_path)
+    stand = tmp_path / "daten"
+    aufrufe = {"n": 0}
+    echt = ueb.sha256_bytes
+
+    def _bricht_beim_zweiten(daten):
+        aufrufe["n"] += 1
+        if aufrufe["n"] == 2:
+            raise OSError("Platte weg")
+        return echt(daten)
+
+    monkeypatch.setattr(ueb, "sha256_bytes", _bricht_beim_zweiten)
+    with pytest.raises(OSError):
+        ueb.eingang_anlegen(stand, fall, STICHTAG)
+    monkeypatch.undo()
+    ziel = stand / "uebernahme" / "probe-uebernahme"
+    assert not ziel.exists()
+    assert (stand / "uebernahme" / "probe-uebernahme.neu").exists()
+    # Der zweite Versuch gelingt und raeumt den Rest weg.
+    assert ueb.eingang_anlegen(stand, fall, STICHTAG) == ziel
+    assert ziel.is_dir() and not (stand / "uebernahme" / "probe-uebernahme.neu").exists()

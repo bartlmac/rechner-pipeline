@@ -21,7 +21,8 @@ Laufzeitumgebung selbst ist kein Repo-Inhalt.
 |---|---|---|
 | `configs/bestand.toml` | die Config der PLV — eine Kopie von `configs/bestand_gesamt.toml`; ihr SHA-256 steht in jedem Protokolleintrag | vom Menschen gepflegt |
 | `uebernahme/<fall>/` | je Migrationsfall ein Zugangsstand mit `eingang.json` (Fallname, Stichtag, Snapshot-Hash, SHA-256 je Datei) | unantastbar wie ein Fall-Eingang; jede Datei wird beim Lesen gegen ihre Summe gehalten |
-| `stand/` | der gefuehrte Stand: die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` | ueberschreibbar, aber nur durch einen gruenen Lauf (atomarer Tausch) |
+| `stand/` | Symlink auf den gefuehrten Stand (`stand-<manifest-kennung>/`; der Pfad `daten/stand/` fuehrt durch den Symlink dorthin): die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` | wechselt nur durch einen gruenen Lauf, in EINEM atomaren Schritt (Symlink-Tausch; es gibt keinen Moment ohne Stand); das alte Verzeichnis wird danach entfernt |
+| `lauf.lock` | Prozess-Sperre: zwei gleichzeitige Laeufe auf derselben Ablage gibt es nicht, der zweite bricht sofort ab | — |
 | `journal/tagesjournal.parquet` | die Buchungstage, nur angefuegt | Bijektion zum Ledger wird bei jedem Lauf geprueft |
 | `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf: Tag, nachgeholte Tage, Neugeschaeft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des Baus), Image-Tag und -Digest | nur angefuegt; auch ein roter Lauf steht drin |
 | `abschluesse/` | `abschluss_<Monatserster>.parquet`, festgeschrieben 0444, genau einmal (ADR-011) | nie ueberschrieben |
