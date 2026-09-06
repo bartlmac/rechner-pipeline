@@ -360,11 +360,13 @@ git clone https://github.com/bartlmac/rechner-pipeline.git
 cd rechner-pipeline
 
 python -m venv .venv
-. .venv/bin/activate                 # Windows: .venv\Scripts\activate
+. .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 python -m pip install -e . --no-deps
 python -m pytest                     # volle Suite
 ```
+
+Referenzumgebung ist Linux mit Python 3.11 und exakt diesen Pins. Wer nicht auf Linux arbeitet, fährt die Suite im Container, der genau diese Umgebung ist (`deploy/dev/Dockerfile`, Devcontainer in `.devcontainer/`; Anleitung in `ONBOARDING.md`, Abschnitt 2). Der Code wird nicht auf weitere Betriebssysteme gehärtet.
 
 Das ist der eine Installationsweg, derselbe wie in der CI: Die
 Pin-Dateien tragen die direkten Abhängigkeiten UND ihre vollständige
