@@ -69,6 +69,65 @@ class UebernahmeError(ValueError):
 NICHT_AUSGEWIESEN = "nicht ausgewiesen"
 
 
+def pruefe_am4_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str, Any]:
+    """Den A-M4-Snapshot einer Uebernahme pruefen, soweit es ohne Schluessel geht.
+
+    Review T22-06: ``eingang_anlegen`` las irgendeinen 64-stelligen Wert aus
+    der editierbaren Gate-Summary, der Snapshot war optional, und
+    :func:`zeichnung_aus_snapshot` uebernahm Felder ohne jede Pruefung — eine
+    frei erfundene Datei ergab eine Uebernahme mit "Zeichnung". Jetzt gilt:
+    ohne A-M4-Snapshot keine Uebernahme (eine Migration ohne
+    Migrationsabnahme gibt es nicht); der Snapshot muss strukturell
+    unversehrt sein (Schema, Selbstadressierung, Dateiname — dieselbe
+    Pruefung wie in gates.gate_entscheid, hier ueber models.schemas), das
+    Gate A-M4, der Entscheid angenommen und der Fall der Fall sein. Die
+    SIGNATUR prueft auch das nicht (kein Schluesselring, T19-02) — deshalb
+    heisst es weiter "Angaben der Snapshot-Datei", nie "gezeichnet".
+    """
+    from rechner_pipeline.models.schemas import P9Snapshot, p9_snapshot_sha256
+
+    if not snapshot_sha256:
+        raise UebernahmeError(
+            f"{fall}: kein A-M4-Snapshot — eine Uebernahme ohne Migrationsabnahme "
+            "gibt es nicht (--snapshot <sha256> oder ein gruenes A-M4-Gate-Ledger "
+            "unter abgeleitet/diagnostics/)"
+        )
+    if not _ist_sha256(snapshot_sha256):
+        raise UebernahmeError(f"snapshot_sha256 {snapshot_sha256!r} ist keine SHA-256")
+    pfad = Path(fall) / "entscheide" / f"A-M4-{snapshot_sha256}.json"
+    if not pfad.is_file():
+        raise UebernahmeError(f"{pfad}: der A-M4-Snapshot liegt nicht im Fall")
+    try:
+        daten = json.loads(pfad.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise UebernahmeError(f"{pfad}: nicht lesbar: {exc}") from exc
+    fehler = P9Snapshot.validate_payload(daten)
+    if fehler:
+        raise UebernahmeError(f"{pfad.name}: Snapshot verletzt sein Schema: " + "; ".join(fehler[:3]))
+    if daten.get("snapshot_sha256") != p9_snapshot_sha256(daten) or daten["snapshot_sha256"] != snapshot_sha256:
+        raise UebernahmeError(
+            f"{pfad.name}: Selbstadressierung verletzt — Inhalt, behaupteter Hash und "
+            "Dateiname stimmen nicht ueberein; die Datei ist kein Snapshot des Gates"
+        )
+    if daten.get("gate") != "A-M4":
+        raise UebernahmeError(f"{pfad.name}: Gate {daten.get('gate')!r} ist nicht A-M4")
+    if daten.get("entscheid") != "angenommen":
+        raise UebernahmeError(
+            f"{pfad.name}: Entscheid {daten.get('entscheid')!r} — nur eine ANGENOMMENE "
+            "Migrationsabnahme begruendet eine Uebernahme"
+        )
+    try:
+        fallname = json.loads((Path(fall) / "fall.json").read_text(encoding="utf-8"))["name"]
+    except (OSError, json.JSONDecodeError, KeyError):
+        fallname = Path(fall).name
+    if daten.get("fall") != fallname:
+        raise UebernahmeError(
+            f"{pfad.name}: der Snapshot gehoert zum Fall {daten.get('fall')!r}, "
+            f"uebernommen wird {fallname!r}"
+        )
+    return zeichnung_aus_snapshot(fall, snapshot_sha256)
+
+
 def zeichnung_aus_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str, Any]:
     """Rolle, Entscheider und Schluesselklasse der A-M4-Annahme aus dem Snapshot.
 
@@ -319,8 +378,9 @@ def eingang_anlegen(
                 snapshot_sha256 = json.loads(beleg.read_text(encoding="utf-8"))["summary"]["snapshot_sha256"]
             except (OSError, json.JSONDecodeError, KeyError, TypeError):
                 snapshot_sha256 = None
-    if snapshot_sha256 is not None and not _ist_sha256(snapshot_sha256):
-        raise UebernahmeError(f"snapshot_sha256 {snapshot_sha256!r} ist keine SHA-256")
+    # Der Snapshot ist Pflicht und wird geprueft (T22-06), BEVOR irgendetwas
+    # angelegt wird.
+    zeichnung = pruefe_am4_snapshot(fall, snapshot_sha256)
     ziel = Path(stand) / "uebernahme" / fallname
     if ziel.exists():
         raise UebernahmeError(
@@ -352,8 +412,9 @@ def eingang_anlegen(
         "stichtag": stichtag.isoformat(),
         "snapshot_sha256": snapshot_sha256,
         # Rolle und Schluesselklasse der Zeichnung, wie die Fall-Seite sie
-        # ausweist — Angaben der Snapshot-Datei, hier nicht verifiziert.
-        "zeichnung": zeichnung_aus_snapshot(fall, snapshot_sha256),
+        # ausweist — Angaben der strukturell geprueften Snapshot-Datei, die
+        # Signatur hier nicht verifiziert (T22-06).
+        "zeichnung": zeichnung,
         "quelle": str(quelle),
         "dateien": dict(sorted(dateien.items())),
     }

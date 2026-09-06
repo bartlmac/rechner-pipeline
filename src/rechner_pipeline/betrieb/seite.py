@@ -242,6 +242,26 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     return aus
 
 
+def _klassenhinweis(modell: Dict[str, Any]) -> str:
+    """Was die Uebernahmen ueber die Schluesselklasse ihrer A-M4-Zeichnung
+    SAGEN — nichts wird behauptet, was nicht in den Eingaengen steht
+    (Review T22-06: die Banderole nannte unabhaengig von den Daten einen
+    Simulationsschluessel)."""
+    klassen = {
+        str((u.get("zeichnung") or {}).get("schluesselklasse") or "nicht ausgewiesen")
+        for u in modell.get("uebernahmen") or []
+    }
+    if not klassen:
+        return ""
+    if klassen == {"simulation"}:
+        return (", die Migrationsabnahmen ihrer Uebernahmen weisen sich als Zeichnung "
+                "mit einem Simulationsschluessel aus")
+    if klassen == {"mensch"}:
+        return ", die Migrationsabnahmen ihrer Uebernahmen weisen eine menschliche Zeichnung aus"
+    return (", die Migrationsabnahmen ihrer Uebernahmen weisen ihre Schluesselklasse "
+            f"als {', '.join(sorted(klassen))} aus")
+
+
 def rendere_html(modell: Dict[str, Any]) -> str:
     """Den Abschnitt "Bestand heute" als selbst-enthaltene Seite rendern."""
     b = modell["bestand"]
@@ -253,9 +273,8 @@ def rendere_html(modell: Dict[str, Any]) -> str:
         f"<style>{_STIL}</style>\n</head>\n<body>\n<main>\n",
         "<p class=\"banderole\"><b>Dies ist eine Vorfuehrung, kein echter Bestand.</b> "
         "Die Pfefferminzia LV ist ein fiktives Unternehmen, ihre Vertraege sind "
-        "synthetisch erzeugt, ihre Abnahmen mit einem Simulationsschluessel "
-        "gezeichnet. Diese Seite verifiziert keine Signatur; sie zeigt, was "
-        "Protokoll und Tagesjournal fuehren.</p>\n",
+        f"synthetisch erzeugt{_klassenhinweis(modell)}. Diese Seite verifiziert keine "
+        "Signatur; sie zeigt, was Protokoll und Tagesjournal fuehren.</p>\n",
         f"<h1>Bestand heute</h1>\n<p class=\"unter\">Pfefferminzia LV, gefuehrter Stand "
         f"<b>{_e(modell['stand'])}</b> (Tagesbetrieb seit {_e(modell['gefuehrt_seit'])}) · "
         f"Manifest <code>{_e((p.get('manifest_sha256') or '')[:16])}</code> · "

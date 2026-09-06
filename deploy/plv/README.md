@@ -39,7 +39,10 @@ cp configs/bestand_gesamt.toml ~/apps/plv/daten/configs/bestand.toml
 ```
 
 **Uebernahme-Eingang** (je Migrationsfall, aus dem Fall-Arbeitsbereich
-heraus; verlangt die Generation des Falls in `bestand.toml`). Der
+heraus; verlangt die Generation des Falls in `bestand.toml` und den
+A-M4-Snapshot des Falls: ohne angenommene Migrationsabnahme gibt es
+keine Uebernahme; der Snapshot wird strukturell geprueft — Schema,
+Selbstadressierung, Gate, Entscheid, Fall —, seine Signatur nicht). Der
 Eingang kommt von AUSSEN ins Volume: Das Kommando laeuft auf dem
 Betriebsrechner mit Zugriff auf den Fall, nicht im Container — der
 Container hat kein Netz und liest den Eingang nur:

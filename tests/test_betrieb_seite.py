@@ -122,21 +122,16 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
     import test_betrieb_uebernahme as tu
     from rechner_pipeline.betrieb import uebernahme as ueb
 
+    # Der Fall traegt einen strukturell gueltigen Schema-6-Snapshot (T22-06:
+    # ein frei erfundener, wie ihn dieser Test frueher schrieb, wird
+    # abgewiesen — siehe test_betrieb_uebernahme).
     fall = tu._fall(tmp_path)
-    snapshot = "ab" * 32
-    (fall / "entscheide").mkdir()
-    (fall / "entscheide" / f"A-M4-{snapshot}.json").write_text(json.dumps({
-        "gate": "A-M4", "entscheid": "angenommen", "rolle": "mensch",
-        "entscheider": "plv-aktuar", "schema_version": 6,
-        "freigabe": {"schluessel_sha256": "16" * 32, "verfahren": "hmac-sha256-v1"},
-        "zeichnung": {"rolle": "plv-aktuar"},
-    }), encoding="utf-8")
     ziel = ueb.eingang_anlegen(tmp_path / "daten", fall, dt.date(2026, 1, 1))
     eingang = json.loads((ziel / "eingang.json").read_text("utf-8"))
     z = eingang["zeichnung"]
-    assert z["rolle"] == "mensch" and z["entscheider"] == "plv-aktuar"
+    assert z["rolle"] == "mensch" and z["entscheider"] == "Verantwortlicher Aktuar"
     assert z["schluesselklasse"] == "nicht ausgewiesen" and z["schema_version"] == 6
-    assert z["schluessel_sha256"] == "16" * 8 and z["signatur_verifiziert"] is False
+    assert z["schluessel_sha256"] == "cd" * 8 and z["signatur_verifiziert"] is False
     gelesen = ueb.lies_uebernahmen(tmp_path / "daten" / "uebernahme",
                                    __import__("rechner_pipeline.bestand.config", fromlist=["load_config"]).load_config(PLV))
     assert gelesen[0].zeichnung == z
@@ -151,7 +146,25 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
         "buchungen": {"gesamt": 0, "je_ereignis": {}, "letzte": []},
         "abschluesse": [], "provenienz": {"pb1": "gruen", "manifest_sha256": "ed" * 32},
         "uebernahmen": [{"fall": "probe", "stichtag": "2026-01-01", "vertraege": 3,
-                         "snapshot_sha256": snapshot, "zeichnung": z}],
+                         "snapshot_sha256": eingang["snapshot_sha256"], "zeichnung": z}],
     })
-    assert "<td>mensch</td><td>plv-aktuar</td><td>nicht ausgewiesen</td>" in html
+    assert "<td>mensch</td><td>Verantwortlicher Aktuar</td><td>nicht ausgewiesen</td>" in html
     assert "Signatur hier nicht verifiziert" in html
+
+
+def test_die_banderole_behauptet_nur_was_die_uebernahmen_ausweisen(gefuehrt):
+    """Review T22-06: Die Banderole nannte unabhaengig von den Daten einen
+    Simulationsschluessel. Ohne Uebernahme steht da keiner; mit einer
+    simulierten Zeichnung steht er da; gemischt wird es benannt."""
+    modell = st.stand_modell(gefuehrt)
+    assert modell["uebernahmen"] == []
+    assert "Simulationsschluessel" not in st.rendere_html(modell)
+    modell["uebernahmen"] = [{"fall": "x", "stichtag": "2026-01-01", "vertraege": 1,
+                              "snapshot_sha256": "ab" * 32,
+                              "zeichnung": {"schluesselklasse": "simulation"}}]
+    assert "Simulationsschluessel" in st.rendere_html(modell)
+    modell["uebernahmen"].append({"fall": "y", "stichtag": "2026-01-01", "vertraege": 1,
+                                  "snapshot_sha256": "cd" * 32,
+                                  "zeichnung": {"schluesselklasse": "mensch"}})
+    html = st.rendere_html(modell)
+    assert "Simulationsschluessel" not in html and "mensch, simulation" in html
