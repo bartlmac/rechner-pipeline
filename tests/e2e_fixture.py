@@ -189,3 +189,40 @@ def bereite_pk1_fall(
     speichere(abox, fall)
     speichere_spez(baue_spez(abox, fixture.generation), fall)
     return fall
+
+
+def zellen_config(abschnitt: str, *, name: str, knoten: str) -> str:
+    """Den Zellen-Abschnitt, den ``gates.bestand_uebernehmen`` schreibt
+    (``generation-zellen.toml``), in eine vollstaendige Bestand-Config
+    einbetten — die Config DIESES Falls fuer die Kern-Herleitung in P-B1.
+
+    Die Uebernahme bucht die beitragsfreien Summen aus der Spez des Falls;
+    der Abschnitt traegt genau diese Grundlagen. Eine fremde Config (etwa
+    die PLV-Config des Repos, die aus einer anderen Lieferung stammt) leitet
+    andere Betraege her — kein Fehler des Bestands, sondern eine fremde
+    Parametrierung (Review T22-01, E2E-Vollprofil).
+    """
+    kopf, sep, rest = abschnitt.partition("[[generation.zelle]]")
+    gemeinsam = "\n".join(
+        z for z in kopf.splitlines() if z and not z.startswith("#")
+    )
+    return (
+        '[meta]\nseed = 1\nbeschreibung = "Probe"\n'
+        "referenzstichtag = 2026-01-01\n\n"
+        f'[[generation]]\nname = "{name}"\nknoten = "{knoten}"\n'
+        "gueltig_von = 2015-01-01\ngueltig_bis = 2016-12-31\n"
+        f"sample_size = 0\nmax_endalter = 85\n{gemeinsam}\n\n"
+        "[generation.verteilungen.entry_age]\n"
+        'typ = "normal_trunc"\nmean = 40.0\nsd = 12.0\nmin = 18.0\n'
+        "max = 62.0\nround = 0\n\n"
+        '[generation.verteilungen.sex]\ntyp = "empirical_discrete"\n'
+        'values = ["M", "F"]\nprobs = [0.5, 0.5]\n\n'
+        '[generation.verteilungen.duration]\ntyp = "empirical_discrete"\n'
+        "values = [25]\nprobs = [1.0]\n\n"
+        '[generation.verteilungen.premium_duration]\n'
+        'typ = "empirical_discrete"\nvalues = [25]\nprobs = [1.0]\n\n'
+        '[generation.verteilungen.sum_insured]\ntyp = "lognormal"\n'
+        "meanlog = 11.2\nsdlog = 0.5\nround = -3\n\n"
+        '[generation.verteilungen.zahlweise]\ntyp = "empirical_discrete"\n'
+        "values = [1]\nprobs = [1.0]\n\n" + sep + rest
+    )

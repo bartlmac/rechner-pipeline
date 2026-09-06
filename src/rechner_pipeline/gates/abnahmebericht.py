@@ -145,7 +145,7 @@ COMMAND = "abnahmebericht"
 #: Kommando erzeugt und protokolliert dessen Vorlage — der Gate-Name
 #: sagt das, damit ein Ledger-Leser die beiden nie verwechselt.
 GATE = "A-M4.migrationscontrolling"
-GATE_VERSION = "1.10.0"
+GATE_VERSION = "2.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -1322,6 +1322,14 @@ def _bestands_suite_fehler(
     return fehler
 
 
+#: Rollen, die ein P-B1-Beleg des Bestands-Scope tragen muss (T22-01);
+#: dazu der Horizont ``bis`` und ``summary.betraege_hergeleitet``.
+#: ``scheiben`` und ``merkmale`` sind optional, weil ein Bestand ohne
+#: Erhoehungen bzw. ohne Tarifzellen sie nicht hat — hat er sie, verlangt
+#: die Engine sie selbst.
+PB1_VOLLPROFIL = frozenset({"portfolio", "historie", "ledger", "config"})
+
+
 def _b1_fehler(
     *,
     ledger_pfad: Path,
@@ -1392,20 +1400,16 @@ def _b1_fehler(
     if rollen.get("portfolio") != portfolio_input:
         fehler.append("P-B1-Ledger benennt widerspruechliche Portfolio-Rollen")
 
-    # Der UMFANG der Vorpruefung gehoert in den Beleg.
-    #
-    # Die Bewegungs-Identitaet (Anfang + Zugang - Abgang = Endbestand) ist
-    # die einzige Pruefung, die den ZUSAMMENHANG der Zeilen prueft statt
-    # jede fuer sich. Lief P-B1 ohne die Rollen historie und ledger, hat
-    # sie nicht stattgefunden -- und ein gruenes A-M4 sagte darueber
-    # nichts, weder so noch so.
-    #
-    # Erzwungen wird sie trotzdem NICHT: Ein Bestandsausschnitt ohne
-    # Journal kann sie nicht liefern, und ein Gate, das Unmoegliches
-    # verlangt, wird umgangen statt befolgt. Stattdessen weist der Beleg
-    # aus, WAS geprueft wurde -- daraus leitet die Falldarstellung ihre
-    # Abgrenzung ab, und ein Leser sieht den Unterschied zwischen
-    # "geprueft" und "nicht geprueft" statt nur ein gruenes Gate.
+    # Der UMFANG der Vorpruefung gehoert in den Beleg — und im Bestands-
+    # Scope ist er PFLICHT (Review T21-02/T22-01, Entscheid des
+    # Maintainers 2026-09-06). Die T16-Fassung liess jedes Teilprofil zu
+    # ("ausweisen statt erzwingen"): Ein P-B1 nur mit --portfolio war ein
+    # gueltiger A-M4-Beleg, und die Betragsbindung (T20-04), die
+    # Bewegungs-Identitaet und die Ledger-Semantik liessen sich am
+    # A-M4-Uebergang durch Weglassen der Eingaben abschalten. Was P-B1 nur
+    # mit vollem Profil pruefen kann, muss der Beleg des Bestands-Scope
+    # geprueft haben: Stamm, Journal, Ledger, Config (Kern-Herleitung)
+    # und der Horizont. Die Pruefung selbst folgt unten (Vollprofil).
 
     aktuelle_eingaben: Dict[str, Path] = {}
     erwartete_hashes: Dict[str, str] = {}
@@ -1440,6 +1444,23 @@ def _b1_fehler(
         fehler.append("P-B1-Ledger-Rolle ledger verlangt historie und bis")
     if "ledger" not in rollen and bis_roh is not None:
         fehler.append("P-B1-Ledger.summary.bis ist nur mit ledger zulaessig")
+    # Vollprofil (T22-01): ohne diese Rollen hat P-B1 den Bestand nicht als
+    # Bestand geprueft, sondern eine Tabelle als Tabelle.
+    fehlende_rollen = sorted(PB1_VOLLPROFIL - set(rollen))
+    if fehlende_rollen:
+        fehler.append(
+            "P-B1-Beleg ohne Vollprofil: die Rollen "
+            f"{fehlende_rollen} fehlen — im Bestands-Scope verlangt A-M4 "
+            f"{sorted(PB1_VOLLPROFIL)} und einen Horizont (bis); ein "
+            "Teilprofil ist kein Beleg fuer die Migrationsabnahme"
+        )
+    if bis is None and not fehlende_rollen:
+        fehler.append("P-B1-Beleg ohne Vollprofil: der Horizont (bis) fehlt")
+    if type(entry.summary.get("betraege_hergeleitet")) is not int:
+        fehler.append(
+            "P-B1-Beleg ohne Betragsbindung: summary.betraege_hergeleitet fehlt "
+            "— die Kern-Herleitung jeder Buchung (T20-04) lief nicht"
+        )
 
     geprueft: Dict[str, int] = {}
     portfolio_gebunden = False

@@ -125,34 +125,61 @@ def _abnahmebericht(fall: Path):
     ])
 
 
+def einpolicen_config(tmp_path: Path) -> Path:
+    """Die KLV-Config auf ihre erste Generation mit sample_size 1 gekuerzt:
+    dieselben Rechnungsgrundlagen, Plausibilitaetsbaender und Annahmen,
+    eine einzige Police."""
+    text = (REPO_ROOT / "configs" / "bestand_klv.toml").read_text(encoding="utf-8")
+    erste = text.index("[[generation]]")
+    zweite = text.index("[[generation]]", erste + 1)
+    kopf = text[:zweite].replace("sample_size = 600", "sample_size = 1", 1)
+    assert "sample_size = 1\n" in kopf
+    schwanz = text[text.index("[plausibilitaet]"):]
+    pfad = tmp_path / "einpolice.toml"
+    pfad.write_text(kopf + schwanz, encoding="utf-8")
+    return pfad
+
+
+def pb1_vollprofil_argv(lauf: Path, config: Path, bis: str = "2020-01-01") -> list:
+    """Das P-B1-Vollprofil eines Fortschreibungslaufs (T22-01)."""
+    return [
+        "--portfolio", str(lauf / "bestand_gesamt.parquet"),
+        "--historie", str(lauf / "historie.parquet"),
+        "--ledger", str(lauf / "ledger.parquet"),
+        "--scheiben", str(lauf / "scheiben.parquet"),
+        "--config", str(config),
+        "--bis", bis,
+        "--manifest", str(lauf / "laufmanifest.json"),
+    ]
+
+
 def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     """Echte P-Q3/P-K1/P-B1-/Suite-/Berichtsbelege fuer einen Bestandsfall."""
     fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
     assert _o3_tg2012(fall).exit_code == 0
 
     lauf = fall / "abgeleitet" / "bestand"
+    # Der Bestandsfall hat exakt eine Police und die Suite prueft exakt
+    # diese eine. Bis Review T22-01 war das ein EIN-ZEILEN-AUSSCHNITT eines
+    # groesseren Laufs, ohne Journal und Ledger — und genau so ein
+    # Teilprofil nahm A-M4 als Beleg an. Jetzt ist es eine Ein-Policen-WELT:
+    # eine Generation mit sample_size 1, fortgeschrieben mit Journal,
+    # Ledger, Scheiben und Manifest, sodass P-B1 das Vollprofil pruefen
+    # kann, das A-M4 im Bestands-Scope verlangt.
+    config = einpolicen_config(tmp_path)
     assert cli_fortschreibung.main([
-        "--config", str(REPO_ROOT / "configs" / "bestand_klv.toml"),
+        "--config", str(config),
         "--bis", "2020-01-01",
         "--out-dir", str(lauf),
     ]) == 0
     ziel = lauf / "bestand_gesamt.parquet"
-    # Der Bestandsfall hat exakt eine P-B1-Zeile und die Suite prueft exakt
-    # diese eine Zeile. Eine Teilpruefung eines groesseren P-B1-Bestands waere
-    # kein positiver Vollstaendigkeitsbeleg. Gewaehlt wird eine Zeile im
-    # Ursprungszustand (status_id 1): der gefuehrte Gesamtbestand traegt
-    # seit ADR-011 aktuelle Zustaende, und ein Folgezustand verlangte sein
-    # Journal — das dieser Ein-Zeilen-Ausschnitt nicht mitfuehrt.
-    gesamt = read_portfolio(ziel)
-    ursprung = gesamt[gesamt["status_id"] == 1]
-    write_portfolio(ursprung.iloc[:1].copy(), ziel)
+    assert len(read_portfolio(ziel)) == 1
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    pb1 = bestand_validate.main([
-        "--portfolio", str(ziel),
+    pb1 = bestand_validate.main(pb1_vollprofil_argv(lauf, config) + [
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
     ])
-    assert pb1.exit_code == 0
+    assert pb1.exit_code == 0, pb1.errors
 
     ziel_hash = sha256(ziel.read_bytes()).hexdigest()
 
@@ -1203,13 +1230,12 @@ def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
     ]) == 0
     portfolio = lauf / "bestand_gesamt.parquet"
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    pb1 = bestand_validate.main([
-        "--portfolio", str(portfolio),
-        "--historie", str(lauf / "historie.parquet"),
+    pb1 = bestand_validate.main(pb1_vollprofil_argv(
+        lauf, REPO_ROOT / "configs" / "bestand_klv.toml") + [
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
     ])
-    assert pb1.exit_code == 0
+    assert pb1.exit_code == 0, pb1.errors
     assert pb1.summary["portfolio_zeilen"] > 1
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
