@@ -47,7 +47,11 @@ from rechner_pipeline.bestand.manifest import lies_manifest, sha256_bytes
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio
 from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 
-PAKET_SCHEMA_VERSION = 1
+#: Schema 2 (Review T22-05): das Paket traegt Protokoll und Manifest als
+#: Belegdateien; der Konsument prueft Kette, Hashes und Urteil selbst.
+PAKET_SCHEMA_VERSION = 2
+PAKET_PROTOKOLL = "protokoll.jsonl"
+PAKET_MANIFEST = "laufmanifest.json"
 SEITE_DIR = "seite"
 PAKET_DATEI = "stand.json"
 
@@ -378,6 +382,14 @@ def stands_paket(ablage, ziel: Path) -> Path:
     seite = ziel / "index.html"
     _schreibe(seite, rendere_html(modell))
     dateien["index.html"] = sha256_bytes(seite.read_bytes())
+    # Belege (T22-05): Protokoll (mit Kette) und Manifest des Stands — der
+    # Konsument haelt stand.json dagegen, statt dem Wort "gruen" zu glauben.
+    from rechner_pipeline.bestand.manifest import MANIFEST_DATEI
+
+    for quelle, name in ((ablage.protokoll_pfad, PAKET_PROTOKOLL),
+                         (ablage.stand / MANIFEST_DATEI, PAKET_MANIFEST)):
+        shutil.copyfile(quelle, ziel / name)
+        dateien[name] = sha256_bytes((ziel / name).read_bytes())
     modell["dateien"] = dict(sorted(dateien.items()))
     modell["luecken"] = luecken(modell)
     _schreibe(ziel / PAKET_DATEI, json.dumps(modell, ensure_ascii=False, indent=2, sort_keys=True) + "\n")

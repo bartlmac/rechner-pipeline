@@ -72,8 +72,11 @@ def test_modell_und_seite_sind_deterministisch(gefuehrt):
 def test_stands_paket_traegt_stempel_und_berichte(gefuehrt, tmp_path):
     paket = st.stands_paket(gefuehrt, tmp_path / "paket")
     stand = json.loads((paket / "stand.json").read_text("utf-8"))
-    assert stand["schema_version"] == 1 and stand["stand"] == "2026-02-03"
-    assert set(stand["dateien"]) == {"index.html", "bestandsbericht_2026-02-01.html"}
+    assert stand["schema_version"] == 2 and stand["stand"] == "2026-02-03"
+    # Belege (T22-05): Protokoll mit Kette und Manifest fahren mit.
+    assert set(stand["dateien"]) == {"index.html", "bestandsbericht_2026-02-01.html",
+                                     "protokoll.jsonl", "laufmanifest.json"}
+    assert stand["provenienz"]["manifest_sha256"] == stand["dateien"]["laufmanifest.json"]
     for name, summe in stand["dateien"].items():
         assert (paket / name).is_file() and len(summe) == 64
     # Ein Paket wird ersetzt, nie angesammelt:

@@ -24,7 +24,7 @@ Laufzeitumgebung selbst ist kein Repo-Inhalt.
 | `stand/` | Symlink auf den gefuehrten Stand (`stand-<manifest-kennung>/`; der Pfad `daten/stand/` fuehrt durch den Symlink dorthin): die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` | wechselt nur durch einen gruenen Lauf, in EINEM atomaren Schritt (Symlink-Tausch; es gibt keinen Moment ohne Stand); das alte Verzeichnis wird danach entfernt |
 | `lauf.lock` | Prozess-Sperre: zwei gleichzeitige Laeufe auf derselben Ablage gibt es nicht, der zweite bricht sofort ab | — |
 | `journal/tagesjournal.parquet` | die Buchungstage, nur angefuegt | Bijektion zum Ledger wird bei jedem Lauf geprueft |
-| `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf: Tag, nachgeholte Tage, Neugeschaeft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des Baus), Image-Tag und -Digest | nur angefuegt; auch ein roter Lauf steht drin |
+| `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf, verkettet (jede Zeile nennt den SHA-256 ihrer Vorgaengerin; eine entfernte, veraenderte oder umsortierte Zeile bricht die Kette, und der naechste Lauf verweigert); die letzte gruene Zeile bindet Manifest- und Journal-Hash des Stands: Tag, nachgeholte Tage, Neugeschaeft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des Baus), Image-Tag und -Digest | nur angefuegt; auch ein roter Lauf steht drin |
 | `abschluesse/` | `abschluss_<Monatserster>.parquet`, festgeschrieben 0444, genau einmal (ADR-011) | nie ueberschrieben |
 | `berichte/` | `bestandsbericht_<Monatserster>.html` je Monatsabschluss (dazu je Uebernahme ein Teilbestand-Bericht, solange `teilbestand_getrennt` steht) | jederzeit neu renderbar |
 | `seite/index.html` | "Bestand heute": Kennzahlen, Neugeschaeft der Woche, letzte Buchungen, Monatsabschluesse, Uebernahmen mit der Zeichnung ihrer A-M4-Annahme — nach jedem gruenen Lauf aus Protokoll und Journal gerendert, mit Banderole, Stand, Manifest-Hash und Luecken-Block | jederzeit neu renderbar; ein Caddy liefert das Verzeichnis read-only aus |
@@ -105,7 +105,10 @@ loginctl enable-linger "$USER"     # der Timer laeuft auch ohne Sitzung
   `daten/berichte/`. Die oeffentliche Seite bleibt eine vom Menschen
   veroeffentlichte Momentaufnahme (`werkzeuge/README.md`): Ihre Quelle
   ist das **Stands-Paket**, das der Mensch exportiert und dem Auftritt
-  uebergibt — nichts wird automatisch veroeffentlicht:
+  uebergibt — nichts wird automatisch veroeffentlicht. Das Paket traegt
+  seine Belege (Protokoll mit Kette, Manifest, Berichte, je mit SHA-256);
+  der Auftritt prueft sie und veroeffentlicht kein Paket, das sich selbst
+  widerspricht:
 
   ```
   python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten --paket runs/stands-paket

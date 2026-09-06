@@ -369,3 +369,62 @@ def test_verwaiste_standverzeichnisse_und_linkreste_werden_vor_dem_lauf_entfernt
     assert tageslauf(ablage, dt.date(2026, 2, 1))[0] == EXIT_OK
     assert not verwaist.exists() and not (ablage.wurzel / tl.STAND_LINK_TMP).exists()
     assert ablage.stand.resolve() != aktuell and not aktuell.exists()
+
+
+# --------------------------------------------------------------------------- #
+# Review T22-05: Das Protokoll ist ein Nachweis, keine Behauptung
+# --------------------------------------------------------------------------- #
+
+def test_jede_protokollzeile_nennt_den_hash_ihrer_vorgaengerin(gefuehrt):
+    ablage, _ = gefuehrt
+    roh = [z for z in ablage.protokoll_pfad.read_text(encoding="utf-8").splitlines() if z.strip()]
+    zeilen = [json.loads(z) for z in roh]
+    assert zeilen[0]["schema_version"] == 2 and zeilen[0]["vorgaenger_sha256"] == ""
+    for vorher, jetzt in zip(roh, zeilen[1:]):
+        assert jetzt["vorgaenger_sha256"] == tl._zeilen_hash(vorher)
+
+
+def test_eine_entfernte_mittlere_zeile_bricht_die_kette(tmp_path):
+    """Nachweis des Reviews: mittlere von drei Zeilen entfernt, letzter Tag
+    weiter akzeptiert. Mutationsprobe: die Kettenpruefung in lies_protokoll
+    entfernen -> rot."""
+    ablage = _ablage(tmp_path / "plv")
+    for tag in (dt.date(2026, 1, 31), dt.date(2026, 2, 3), dt.date(2026, 2, 4)):
+        assert tageslauf(ablage, tag)[0] == EXIT_OK
+    zeilen = ablage.protokoll_pfad.read_text(encoding="utf-8").splitlines()
+    assert len(zeilen) == 3
+    ablage.protokoll_pfad.write_text("\n".join([zeilen[0], zeilen[2]]) + "\n", encoding="utf-8")
+    with pytest.raises(TageslaufError, match="Protokollkette"):
+        lies_protokoll(ablage.protokoll_pfad)
+    with pytest.raises(TageslaufError, match="Protokollkette"):
+        gefuehrter_tag(ablage)
+    with pytest.raises(TageslaufError):
+        tageslauf(ablage, dt.date(2026, 2, 5))
+
+
+def test_ein_veraendertes_journal_passt_nicht_mehr_zum_protokoll(tmp_path):
+    """Nachweis des Reviews: Betragsaenderung im Journal, claimed_hash_matches
+    False, aber weiter gruen. Mutationsprobe: den Journal-Hash-Vergleich in
+    _pruefe_nachweis entfernen -> rot."""
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    journal = read_portfolio(ablage.tagesjournal_pfad)
+    assert len(journal) > 0
+    journal.loc[journal.index[0], "betrag"] = float(journal.loc[journal.index[0], "betrag"]) + 1.0
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    write_portfolio(journal, ablage.tagesjournal_pfad)
+    with pytest.raises(TageslaufError, match="Journal"):
+        gefuehrter_tag(ablage)
+
+
+def test_ein_fremder_stand_passt_nicht_zum_protokoll(tmp_path):
+    """Manifest-Hash der letzten gruenen Zeile gegen den Stand auf der Platte.
+    Mutationsprobe: den Manifest-Vergleich in _pruefe_nachweis entfernen -> rot."""
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    manifest = ablage.stand / "laufmanifest.json"
+    daten = json.loads(manifest.read_text(encoding="utf-8"))
+    daten["bemerkung"] = "angefasst"
+    manifest.write_text(json.dumps(daten, indent=2), encoding="utf-8")
+    with pytest.raises(TageslaufError):
+        gefuehrter_tag(ablage)

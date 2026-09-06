@@ -117,7 +117,11 @@ from rechner_pipeline.models.bestand import (
     TAGESJOURNAL_NAMES,
 )
 
-PROTOKOLL_SCHEMA_VERSION = 1
+#: Schema 2 (Review T22-05): jede Zeile traegt ``vorgaenger_sha256``, den
+#: SHA-256 der vorangehenden Zeile (Bytes ohne Zeilenende; "" fuer die
+#: erste). Zeilen der Erstfassung (Schema 1) bleiben lesbar; sobald eine
+#: Zeile Schema 2 traegt, ist die Kette ab dort Pflicht.
+PROTOKOLL_SCHEMA_VERSION = 2
 #: Benannter Zustand einer Protokollangabe, die die Umgebung nicht liefert.
 NICHT_ERFASST = "nicht erfasst"
 STAND_DIR = "stand"
@@ -180,23 +184,93 @@ class Ablage:
         return self.journal / PROTOKOLL_DATEI
 
 
+def _zeilen_hash(roh: str) -> str:
+    return hashlib.sha256(roh.encode("utf-8")).hexdigest()
+
+
 def lies_protokoll(pfad: Path) -> List[Dict[str, Any]]:
-    """Alle Zeilen des Tagesprotokolls (leer, wenn es noch keines gibt)."""
+    """Alle Zeilen des Tagesprotokolls (leer, wenn es noch keines gibt) —
+    mit Pruefung der Kette.
+
+    Review T22-05: Das Protokoll war editierbar, ohne dass es jemand
+    merkte — eine entfernte mittlere Zeile liess den letzten Tag weiter
+    gelten. Jede Zeile ab Schema 2 nennt den Hash ihrer Vorgaengerin; eine
+    Luecke, eine Aenderung oder eine Umsortierung bricht die Kette, und
+    ein gebrochenes Protokoll ist ein Befund, kein Nachweis.
+    """
     if not Path(pfad).is_file():
         return []
     zeilen: List[Dict[str, Any]] = []
+    vorgaenger_roh: Optional[str] = None
     for nummer, roh in enumerate(Path(pfad).read_text(encoding="utf-8").splitlines(), 1):
         if not roh.strip():
             continue
         try:
-            zeilen.append(json.loads(roh))
+            zeile = json.loads(roh)
         except json.JSONDecodeError as exc:
             raise TageslaufError(
                 f"{pfad}: Zeile {nummer} ist kein JSON ({exc}) — das Protokoll "
                 "ist nur-anfuegbar; eine kaputte Zeile ist ein Befund, kein "
                 "Grund zum Ueberschreiben"
             ) from exc
+        if isinstance(zeile, dict) and zeile.get("schema_version", 1) >= 2:
+            erwartet = _zeilen_hash(vorgaenger_roh) if vorgaenger_roh is not None else ""
+            if zeile.get("vorgaenger_sha256") != erwartet:
+                raise TageslaufError(
+                    f"{pfad}: Zeile {nummer} bricht die Protokollkette (vorgaenger_sha256 "
+                    f"passt nicht zur Zeile davor) — das Protokoll wurde veraendert, "
+                    "gekuerzt oder umsortiert; es ist damit kein Nachweis mehr"
+                )
+        zeilen.append(zeile)
+        vorgaenger_roh = roh
     return zeilen
+
+
+def _pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
+    """Der Nachweisvertrag zwischen Protokoll, Stand und Journal (T22-05).
+
+    Gruene Zeilen sind lueckenlos verkettet (jede nennt den vorigen Tag,
+    ihre nachgeholten Tage fuellen genau die Luecke), die letzte gruene
+    Zeile nennt den Manifest-Hash des Stands und den Hash des Journals —
+    was auf der Platte liegt, muss dem entsprechen, sonst ist das
+    Protokoll eine Behauptung ueber einen anderen Stand.
+    """
+    for vorher, jetzt in zip(gruene, gruene[1:]):
+        if jetzt.get("schema_version", 1) < 2:
+            continue
+        tag_vorher = _dt.date.fromisoformat(str(vorher["heute"]))
+        tag_jetzt = _dt.date.fromisoformat(str(jetzt["heute"]))
+        if jetzt.get("gefuehrt_vorher") != vorher["heute"]:
+            raise TageslaufError(
+                f"Protokoll: der Lauf {tag_jetzt.isoformat()} nennt als vorherigen Tag "
+                f"{jetzt.get('gefuehrt_vorher')!r}, der letzte gruene Lauf davor fuehrte "
+                f"{tag_vorher.isoformat()} — Tagesluecke oder fehlende Zeile"
+            )
+        erwartet = [
+            (tag_vorher + _dt.timedelta(days=k)).isoformat()
+            for k in range(1, (tag_jetzt - tag_vorher).days)
+        ]
+        if list(jetzt.get("nachgeholt") or []) != erwartet:
+            raise TageslaufError(
+                f"Protokoll: die nachgeholten Tage des Laufs {tag_jetzt.isoformat()} "
+                "fuellen die Luecke zum vorigen Tag nicht"
+            )
+    letzte = gruene[-1]
+    if letzte.get("schema_version", 1) >= 2:
+        manifest_hash = _datei_hash(ablage.stand / MANIFEST_DATEI)
+        if letzte.get("manifest_sha256") != manifest_hash:
+            raise TageslaufError(
+                "Protokoll und Stand passen nicht zusammen: die letzte gruene Zeile "
+                f"nennt Manifest {str(letzte.get('manifest_sha256'))[:16]}…, der Stand "
+                f"traegt {str(manifest_hash)[:16]}…"
+            )
+        journal_hash = (letzte.get("tagesjournal") or {}).get("sha256")
+        if journal_hash != _datei_hash(ablage.tagesjournal_pfad):
+            raise TageslaufError(
+                "Protokoll und Journal passen nicht zusammen: das Tagesjournal hat "
+                "nicht den Hash, den die letzte gruene Zeile nennt — das Journal "
+                "wurde veraendert oder gehoert zu einem anderen Stand"
+            )
 
 
 def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
@@ -205,7 +279,7 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
     Das Manifest ist die Aussage des Stands ueber sich selbst (Horizont);
     das Protokoll muss dieselbe Aussage machen, sonst passen Stand und
     Nachweis nicht zusammen, und der Lauf bricht ab statt einen der
-    beiden zu glauben.
+    beiden zu glauben. Dazu der Nachweisvertrag (:func:`_pruefe_nachweis`).
     """
     if not ablage.stand.is_dir():
         return None
@@ -231,6 +305,7 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
             f"Stand fuehrt {tag.isoformat()}, das Protokoll {letzte.isoformat()} "
             "— Stand und Nachweis passen nicht zusammen"
         )
+    _pruefe_nachweis(ablage, gruene)
     return tag
 
 
@@ -495,8 +570,15 @@ def _bericht(
 
 
 def _anfuegen(pfad: Path, zeile: Dict[str, Any]) -> None:
-    """Eine Protokollzeile anfuegen (nur-anfuegbar, sortierte Schluessel)."""
+    """Eine Protokollzeile anfuegen (nur-anfuegbar, sortierte Schluessel),
+    verkettet mit der Zeile davor (T22-05)."""
     pfad.parent.mkdir(parents=True, exist_ok=True)
+    vorgaenger = ""
+    if pfad.is_file():
+        letzte = [z for z in pfad.read_text(encoding="utf-8").splitlines() if z.strip()]
+        if letzte:
+            vorgaenger = _zeilen_hash(letzte[-1])
+    zeile["vorgaenger_sha256"] = vorgaenger
     text = json.dumps(zeile, ensure_ascii=False, sort_keys=True) + "\n"
     with open(pfad, "a", encoding="utf-8", newline="\n") as f:
         f.write(text)
