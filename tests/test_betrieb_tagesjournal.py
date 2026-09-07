@@ -169,7 +169,7 @@ def test_neugeschaeft_wird_am_verkaufstag_gebucht(config, lauf, sicht):
     assert set(neu["police_id"]) == set(zugaenge["police_id"])
     assert (neu["ereignis"] == "ZUG").all()
     assert (neu["buchungsdatum"] < neu["status_date"]).all()
-    index = {g.name: (i, g) for i, g in enumerate(config.generationen)}
+    index = {g.name: (config.nummernkreis(g), g) for g in config.generationen}
     for z in neu.head(15).itertuples(index=False):
         gen_name = str(zugaenge.set_index("police_id").loc[int(z.police_id), "tarif_generation"])
         i, gen = index[gen_name]
@@ -360,3 +360,63 @@ def test_buchungstag_der_einzelnen_regeln(config, lauf):
     with pytest.raises(TagesjournalError, match="Nummernkreis"):
         buchungstag(config, int(stamm["police_id"].iloc[0]), "ZUG", dt.date(2026, 9, 1),
                     "neugeschaeft", gen.name)
+
+
+def test_eine_gelieferte_zugangsbuchung_ist_eine_uebernahme_auch_im_tageskreis(config):
+    """Review T22-09: Eine ZUG-Zeile mit betrag_herkunft geliefert wurde als
+    neugeschaeft klassifiziert, wenn ihre Nummer im Tages-Abschnitt eines
+    Kreises lag; der dekodierte Buchungstag lag ausserhalb des Fensters.
+    Mutationsprobe: die Herkunfts-Abfrage wieder hinter den Nummernkreis
+    stellen -> rot."""
+    from rechner_pipeline.betrieb.tagesjournal import herkunft
+
+    gen = next(g for g in config.generationen if g.neuzugang_pro_jahr > 0)
+    kreis = config.nummernkreis(gen)
+    im_tageskreis = kreis * 10_000_000 + 5_000_000 + 12_345
+    assert herkunft(config, im_tageskreis, "ZUG", "gerechnet", gen.name) == "neugeschaeft"
+    assert herkunft(config, im_tageskreis, "ZUG", "geliefert", gen.name) == "uebernahme"
+
+
+# --------------------------------------------------------------------------- #
+# Review T22-04: Der Stand ist die gebuchte Sicht, nicht die Wirkungshistorie
+# --------------------------------------------------------------------------- #
+
+def test_gebuchte_sicht_nimmt_ungebuchte_ereignisse_aus_stand_und_scheiben(config):
+    """Ein Todesfall mit Wirkungstag vor heute, aber Buchungstag danach
+    (Meldeverzug), steht nicht im Stand; seine Zustandszeile fehlt, der
+    Vertrag ist weiter POL. Eine ERH am Wochenende bucht am naechsten
+    Werktag — ihre Scheibe fehlt bis dahin. Mutationsprobe: den Filter in
+    _stand_bauen entfernen -> rot (Integrationstest unten)."""
+    from rechner_pipeline.betrieb.tagesjournal import gebuchte_sicht, mit_buchungstagen
+    from rechner_pipeline.models.bestand import LEDGER_NAMES, SCHEIBEN_SPALTEN, STATUS_HISTORIE_NAMES
+
+    gen = config.generationen[0]
+    pid = 10_000_001
+    samstag = pd.Timestamp("2026-08-01")            # 2026-08-01 ist ein Samstag
+    tod = pd.Timestamp("2026-08-03")
+    ledger = pd.DataFrame([
+        {"police_id": pid, "tarif_generation": gen.name, "ereignis": "ERH", "vertragsjahr": 5,
+         "status_date": samstag, "betrag_art": "VS_erhoehung", "betrag": 1000.0, "betrag_herkunft": "gerechnet"},
+        {"police_id": pid, "tarif_generation": gen.name, "ereignis": "TOD", "vertragsjahr": 5,
+         "status_date": tod, "betrag_art": "Todesfallleistung", "betrag": 50000.0, "betrag_herkunft": "gerechnet"},
+    ])[list(LEDGER_NAMES)]
+    historie = pd.DataFrame([
+        {"police_id": pid, "status_id": 1, "status_code": "POL", "status_date": pd.Timestamp("2021-08-01")},
+        {"police_id": pid, "status_id": 2, "status_code": "TOD", "status_date": tod},
+    ])[list(STATUS_HISTORIE_NAMES)]
+    scheiben = pd.DataFrame([{n: v for n, v in zip(
+        [s for s, _ in SCHEIBEN_SPALTEN],
+        [pid, 1, 5, samstag, "F", 12, gen.name, 1000.0, 2021, 20, 15, 35][:len(SCHEIBEN_SPALTEN)])}])
+    sicht = mit_buchungstagen(config, ledger)
+    buchung_tod = sicht.loc[sicht["ereignis"] == "TOD", "buchungsdatum"].iloc[0]
+    buchung_erh = sicht.loc[sicht["ereignis"] == "ERH", "buchungsdatum"].iloc[0]
+    assert buchung_tod > tod and buchung_erh == pd.Timestamp("2026-08-03")
+    # Am Sonntag danach: weder ERH noch TOD gebucht.
+    h, l, s = gebuchte_sicht(config, historie, ledger, scheiben, dt.date(2026, 8, 2))
+    assert list(l["ereignis"]) == [] and list(h["status_code"]) == ["POL"] and len(s) == 0
+    # Am Buchungstag der ERH: die Scheibe ist da, der Tod noch nicht.
+    h, l, s = gebuchte_sicht(config, historie, ledger, scheiben, dt.date(2026, 8, 3))
+    assert list(l["ereignis"]) == ["ERH"] and list(h["status_code"]) == ["POL"] and len(s) == 1
+    # Am Buchungstag des Todes: alles da.
+    h, l, s = gebuchte_sicht(config, historie, ledger, scheiben, buchung_tod.date())
+    assert sorted(l["ereignis"]) == ["ERH", "TOD"] and list(h["status_code"]) == ["POL", "TOD"]

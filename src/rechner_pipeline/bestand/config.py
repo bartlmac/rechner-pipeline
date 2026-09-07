@@ -242,6 +242,17 @@ class TarifGeneration:
     #: Negativ laesst das Unternehmen schrumpfen, ohne dass jemand jedes
     #: Jahr eine Zahl pflegt; 0 (Default) ist der bisherige konstante Satz.
     neuzugang_trend: float = 0.0
+    #: Nummernkreis der Generation (Review T22-09): Die Police-Nummern
+    #: aller drei Erzeuger (Batch, Jahresneuzugang, Tagesneugeschaeft) und
+    #: ihre Seeds hingen an der POSITION der Generation in der Config —
+    #: eine vorn eingefuegte oder umsortierte Generation aenderte die
+    #: Identitaet jeder Police und damit jede Ereignishistorie. Der
+    #: Nummernkreis ist eine Eigenschaft der Generation, keine ihrer
+    #: Stellung: ``nummernkreis = k`` belegt die Nummern k * 10 Mio + 1 ..
+    #: (k + 1) * 10 Mio - 1. None = nicht gesetzt; dann gilt fuer ALLE
+    #: Generationen die Position (Erstfassung), und die Config sollte ihn
+    #: nachtragen. Setzt eine Generation ihn, muessen es alle.
+    nummernkreis: Optional[int] = None
     # Kernel-Tarifparameter (GENERATION_FIELDS des ModelPoint-Contracts):
     zins: float = 0.0
     tafel: str = ""
@@ -873,6 +884,36 @@ class BestandConfig:
     #: nicht des einzelnen Berichts-Aufrufs.
     referenzstichtag: Optional[_dt.date] = None
 
+    def _pruefe_nummernkreise(self) -> List[str]:
+        gesetzt = [g for g in self.generationen if g.nummernkreis is not None]
+        if not gesetzt:
+            return []
+        fehler: List[str] = []
+        if len(gesetzt) != len(self.generationen):
+            ohne = sorted(g.name for g in self.generationen if g.nummernkreis is None)
+            fehler.append(
+                f"nummernkreis: gesetzt fuer {len(gesetzt)} von {len(self.generationen)} "
+                f"Generationen — entweder alle oder keine (ohne: {ohne})"
+            )
+        for g in gesetzt:
+            if not 1 <= int(g.nummernkreis) <= 99:
+                fehler.append(f"generation {g.name}: nummernkreis {g.nummernkreis} nicht in 1..99")
+        kreise = [g.nummernkreis for g in gesetzt]
+        if len(kreise) != len(set(kreise)):
+            fehler.append("nummernkreis: nicht eindeutig — zwei Generationen teilten sich Police-Nummern")
+        return fehler
+
+    def nummernkreis(self, gen: TarifGeneration) -> int:
+        """Der Nummernkreis einer Generation: explizit aus der Config, sonst
+        ihre Position (1-basiert) — die Erstfassung, die die bestehenden
+        Bestaende nummeriert hat."""
+        if gen.nummernkreis is not None:
+            return int(gen.nummernkreis)
+        for i, g in enumerate(self.generationen):
+            if g is gen or g.name == gen.name:
+                return i + 1
+        raise ValueError(f"generation {gen.name!r} nicht in dieser Config")
+
     def validate(self) -> List[str]:
         errors: List[str] = []
         if self.seed <= 0:
@@ -882,6 +923,7 @@ class BestandConfig:
         names = [g.name for g in self.generationen]
         if len(names) != len(set(names)):
             errors.append("generation-Namen nicht eindeutig")
+        errors.extend(self._pruefe_nummernkreise())
         for gen in self.generationen:
             errors.extend(gen.validate())
         errors.extend(self._validate_verkaufsfenster())
@@ -1060,6 +1102,7 @@ def config_aus_text(text: str) -> BestandConfig:
                 knoten=str(g.get("knoten", "")),
                 neuzugang_pro_jahr=int(g.get("neuzugang_pro_jahr", 0)),
                 neuzugang_trend=float(g.get("neuzugang_trend", 0.0)),
+                nummernkreis=(int(g["nummernkreis"]) if g.get("nummernkreis") is not None else None),
                 zins=float(g.get("zins", 0.0)),
                 tafel=str(g.get("tafel", "")),
                 alpha=float(g.get("alpha", 0.0)),

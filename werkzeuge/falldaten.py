@@ -839,6 +839,10 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     vollstaendig aus und waere es nicht.
     """
     aus: List[Dict[str, str]] = []
+    # Die Luecken des Betriebsstands wandern in die Darstellung mit (T22-05).
+    for l in (modell.get("betrieb") or {}).get("luecken") or []:
+        aus.append({"gruppe": "betrieb", "feld": str(l.get("was")), "was": str(l.get("was")),
+                    "wirkung": str(l.get("wirkung"))})
     scope = (modell.get("fall") or {}).get("scope")
     for gruppe, feld, was in ERWARTET:
         if scope != "bestand" and (gruppe, feld) in NUR_BESTAND:
@@ -887,6 +891,64 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     return aus
 
 
+def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any]) -> None:
+    """Das Paket gegen seine eigenen Belege halten (Review T22-05).
+
+    Vorher genuegte der freie String ``pb1 == "gruen"`` in stand.json — ein
+    komplett erfundenes Paket wurde veroeffentlicht. Jetzt muss jede in
+    ``dateien`` genannte Datei da sein und ihren Hash tragen; das
+    Protokoll muss eine ungebrochene Kette sein (``lies_protokoll`` prueft
+    sie); seine letzte gruene Zeile muss den Stand, das Urteil, den
+    Manifest-Hash und den Journal-Hash nennen, die stand.json behauptet.
+    Die Signatur eines Snapshots prueft auch das nicht — aber ein Paket,
+    das sich selbst widerspricht, kommt nicht mehr auf die Seite.
+    """
+    import hashlib
+
+    from rechner_pipeline.betrieb.tageslauf import TageslaufError, lies_protokoll
+
+    dateien = stand.get("dateien") or {}
+    for name in ("protokoll.jsonl", "laufmanifest.json", "index.html"):
+        if name not in dateien:
+            raise FalldatenFehler(f"{paket}: Belegdatei {name!r} fehlt in stand.json")
+    for name, soll in sorted(dateien.items()):
+        datei = paket / name
+        if not datei.is_file():
+            raise FalldatenFehler(f"{paket}: Belegdatei {name!r} fehlt")
+        ist = hashlib.sha256(datei.read_bytes()).hexdigest()
+        if ist != soll:
+            raise FalldatenFehler(f"{paket}: Belegdatei {name!r} hat nicht den Hash aus stand.json")
+    try:
+        zeilen = lies_protokoll(paket / "protokoll.jsonl")
+    except TageslaufError as exc:
+        raise FalldatenFehler(f"{paket}: Protokollkette: {exc}") from exc
+    gruene = [z for z in zeilen if z.get("uebernommen")]
+    if not gruene:
+        raise FalldatenFehler(f"{paket}: das Protokoll kennt keinen uebernommenen Lauf")
+    letzte = gruene[-1]
+    if letzte.get("heute") != stand.get("stand"):
+        raise FalldatenFehler(
+            f"{paket}: stand.json behauptet Stand {stand.get('stand')!r}, die letzte "
+            f"gruene Protokollzeile fuehrt {letzte.get('heute')!r}")
+    urteil = (letzte.get("pb1") or {}).get("urteil")
+    if urteil != "gruen" or prov.get("pb1") != "gruen":
+        raise FalldatenFehler(
+            f"{paket}: der Stand ist nicht durch P-B1 gegangen "
+            f"(Protokoll {urteil!r}, stand.json {prov.get('pb1')!r}) — veroeffentlicht "
+            "wird nichts, was die Wache nicht passiert hat")
+    manifest_hash = dateien.get("laufmanifest.json")
+    if letzte.get("manifest_sha256") != manifest_hash or prov.get("manifest_sha256") != manifest_hash:
+        raise FalldatenFehler(
+            f"{paket}: Manifest-Hash von Protokoll, stand.json und Belegdatei stimmen nicht ueberein")
+    manifest = _json(paket / "laufmanifest.json") or {}
+    if str(manifest.get("horizont")) != str(stand.get("stand")):
+        raise FalldatenFehler(
+            f"{paket}: das Manifest fuehrt {manifest.get('horizont')!r}, stand.json {stand.get('stand')!r}")
+    journal_hash = (letzte.get("tagesjournal") or {}).get("sha256")
+    if prov.get("tagesjournal_sha256") != journal_hash:
+        raise FalldatenFehler(f"{paket}: Journal-Hash von Protokoll und stand.json stimmen nicht ueberein")
+
+
 def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
     """Der lebende Bestand aus dem Stands-Paket der Laufzeitumgebung.
 
@@ -899,18 +961,15 @@ def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
     """
     if paket is None:
         return {"vorhanden": False}
-    stand = _json(Path(paket) / "stand.json")
-    if not isinstance(stand, dict) or stand.get("schema_version") != 1:
+    paket = Path(paket)
+    stand = _json(paket / "stand.json")
+    if not isinstance(stand, dict) or stand.get("schema_version") != 2:
         raise FalldatenFehler(
-            f"{paket}: kein Stands-Paket (stand.json mit schema_version 1 fehlt)"
+            f"{paket}: kein Stands-Paket (stand.json mit schema_version 2 fehlt; "
+            "ein Paket der Erstfassung ohne Belegdateien wird nicht veroeffentlicht)"
         )
     prov = stand.get("provenienz") or {}
-    if prov.get("pb1") != "gruen":
-        raise FalldatenFehler(
-            f"{paket}: der Stand ist nicht durch P-B1 gegangen "
-            f"(pb1 = {prov.get('pb1')!r}) — veroeffentlicht wird nichts, was "
-            "die Wache nicht passiert hat"
-        )
+    _pruefe_stands_paket(paket, stand, prov)
     return {
         "vorhanden": True,
         "stand": stand.get("stand"),
@@ -925,6 +984,8 @@ def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
         "uebernahmen": stand.get("uebernahmen") or [],
         "provenienz": prov,
         "dateien": stand.get("dateien") or {},
+        # Die Luecken des Stands (T22-05: gingen beim Import verloren).
+        "luecken": list(stand.get("luecken") or []),
         "quelle": str(paket),
     }
 

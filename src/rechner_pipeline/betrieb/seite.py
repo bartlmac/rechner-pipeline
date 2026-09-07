@@ -47,7 +47,11 @@ from rechner_pipeline.bestand.manifest import lies_manifest, sha256_bytes
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio
 from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 
-PAKET_SCHEMA_VERSION = 1
+#: Schema 2 (Review T22-05): das Paket traegt Protokoll und Manifest als
+#: Belegdateien; der Konsument prueft Kette, Hashes und Urteil selbst.
+PAKET_SCHEMA_VERSION = 2
+PAKET_PROTOKOLL = "protokoll.jsonl"
+PAKET_MANIFEST = "laufmanifest.json"
 SEITE_DIR = "seite"
 PAKET_DATEI = "stand.json"
 
@@ -162,6 +166,7 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
         },
         "abschluesse": [abschluesse[k] for k in sorted(abschluesse)],
         "uebernahmen": list(zeile.get("uebernahmen") or []),
+        "verankerung": dict(zeile.get("verankerung") or {}),
         "provenienz": {
             "manifest_sha256": zeile.get("manifest_sha256"),
             "config_sha256": zeile.get("config_sha256"),
@@ -235,7 +240,32 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     if not modell.get("abschluesse"):
         aus.append({"was": "Monatsabschluss",
                     "wirkung": "Noch kein festgeschriebener Bewertungsstand."})
+    v = modell.get("verankerung") or {}
+    if v.get("registriert") and not v.get("angewandt"):
+        aus.append({"was": "Verankerung der uebernommenen Vertraege in der Fortschreibung",
+                    "wirkung": str(v.get("hinweis") or "Die Verankerung ist registriert, "
+                                   "geht aber nicht in Storno und Bewertung ein.")})
     return aus
+
+
+def _klassenhinweis(modell: Dict[str, Any]) -> str:
+    """Was die Uebernahmen ueber die Schluesselklasse ihrer A-M4-Zeichnung
+    SAGEN — nichts wird behauptet, was nicht in den Eingaengen steht
+    (Review T22-06: die Banderole nannte unabhaengig von den Daten einen
+    Simulationsschluessel)."""
+    klassen = {
+        str((u.get("zeichnung") or {}).get("schluesselklasse") or "nicht ausgewiesen")
+        for u in modell.get("uebernahmen") or []
+    }
+    if not klassen:
+        return ""
+    if klassen == {"simulation"}:
+        return (", die Migrationsabnahmen ihrer Uebernahmen weisen sich als Zeichnung "
+                "mit einem Simulationsschluessel aus")
+    if klassen == {"mensch"}:
+        return ", die Migrationsabnahmen ihrer Uebernahmen weisen eine menschliche Zeichnung aus"
+    return (", die Migrationsabnahmen ihrer Uebernahmen weisen ihre Schluesselklasse "
+            f"als {', '.join(sorted(klassen))} aus")
 
 
 def rendere_html(modell: Dict[str, Any]) -> str:
@@ -249,9 +279,8 @@ def rendere_html(modell: Dict[str, Any]) -> str:
         f"<style>{_STIL}</style>\n</head>\n<body>\n<main>\n",
         "<p class=\"banderole\"><b>Dies ist eine Vorfuehrung, kein echter Bestand.</b> "
         "Die Pfefferminzia LV ist ein fiktives Unternehmen, ihre Vertraege sind "
-        "synthetisch erzeugt, ihre Abnahmen mit einem Simulationsschluessel "
-        "gezeichnet. Diese Seite verifiziert keine Signatur; sie zeigt, was "
-        "Protokoll und Tagesjournal fuehren.</p>\n",
+        f"synthetisch erzeugt{_klassenhinweis(modell)}. Diese Seite verifiziert keine "
+        "Signatur; sie zeigt, was Protokoll und Tagesjournal fuehren.</p>\n",
         f"<h1>Bestand heute</h1>\n<p class=\"unter\">Pfefferminzia LV, gefuehrter Stand "
         f"<b>{_e(modell['stand'])}</b> (Tagesbetrieb seit {_e(modell['gefuehrt_seit'])}) · "
         f"Manifest <code>{_e((p.get('manifest_sha256') or '')[:16])}</code> · "
@@ -378,6 +407,14 @@ def stands_paket(ablage, ziel: Path) -> Path:
     seite = ziel / "index.html"
     _schreibe(seite, rendere_html(modell))
     dateien["index.html"] = sha256_bytes(seite.read_bytes())
+    # Belege (T22-05): Protokoll (mit Kette) und Manifest des Stands — der
+    # Konsument haelt stand.json dagegen, statt dem Wort "gruen" zu glauben.
+    from rechner_pipeline.bestand.manifest import MANIFEST_DATEI
+
+    for quelle, name in ((ablage.protokoll_pfad, PAKET_PROTOKOLL),
+                         (ablage.stand / MANIFEST_DATEI, PAKET_MANIFEST)):
+        shutil.copyfile(quelle, ziel / name)
+        dateien[name] = sha256_bytes((ziel / name).read_bytes())
     modell["dateien"] = dict(sorted(dateien.items()))
     modell["luecken"] = luecken(modell)
     _schreibe(ziel / PAKET_DATEI, json.dumps(modell, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
