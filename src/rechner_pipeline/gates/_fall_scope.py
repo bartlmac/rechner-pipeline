@@ -37,13 +37,18 @@ def stichtage_fehler(erster: _dt.date, zweiter: _dt.date) -> Optional[str]:
     """Die zwei Bestands-Stichtage des Migrationscontrollings. Leer = ok.
 
     Chronologie war schon Pflicht. Neu (Entscheid des Maintainers
-    2026-09-07, Fund der merge-session zu Review T23-05): A-M4 verlangt im
-    Bestands-Scope mindestens ein ausgewiesenes Bewegungsjahr, und das
-    Bewegungskonto weist nur vollstaendige Kalenderjahre aus (Periode
-    ``(1.1.J, 1.1.J+1]``, ausgewiesen wenn ``1.1.J+1 <= Horizont``). Zwei
-    Stichtage im selben Kalenderjahr koennen diese Anforderung strukturell
-    nicht erfuellen — das sagt der Fall-Scope am Eingang, nicht erst A-M4
-    am Ende mit einem Zaehlerbefund.
+    2026-09-07 zu Review T23-05): Das Migrationscontrolling verlangt ein
+    vollstaendiges Bewegungsjahr NACH der Uebernahme — Stichtag 2 liegt
+    mindestens am 1. Januar des Folgejahres von Stichtag 1. Das ist
+    bewusst STRENGER als der A-M4-Zaehler ``bewegungsjahre > 0``: Das
+    Bewegungskonto beginnt im Jahr von ``min(Zugang) - 1 Tag`` (Periode
+    ``(1.1.J, 1.1.J+1]``, ausgewiesen wenn ``1.1.J+1 <= Horizont``); bei
+    einer Uebernahme zum 1. Januar erfuellt deshalb schon ein entartetes
+    VORjahr, das nur die Zugangsbuchung am Rand enthaelt, den Zaehler —
+    zwei Stichtage im selben Kalenderjahr kaemen dort durch. Die Regel hier
+    ist nicht die Vorverlegung des Zaehlers, sondern die fachliche Aussage,
+    die der Zaehler nur naeherungsweise misst; sie darf nicht an den
+    Zaehler angepasst werden (Fund der merge-session).
     """
     if zweiter <= erster:
         return (

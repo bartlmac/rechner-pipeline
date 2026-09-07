@@ -1,10 +1,12 @@
 """Zwei Bestands-Stichtage brauchen einen Jahreswechsel (Entscheid des
 Maintainers 2026-09-07 zu Review T23-05).
 
-A-M4 verlangt im Bestands-Scope ein ausgewiesenes Bewegungsjahr; das
-Bewegungskonto weist nur vollstaendige Kalenderjahre aus. Zwei Stichtage im
-selben Kalenderjahr koennen das strukturell nicht erfuellen — der Fall-Scope
-sagt es am Eingang (fail-fast), nicht erst A-M4 mit einem Zaehlerbefund.
+Das Migrationscontrolling verlangt ein vollstaendiges Bewegungsjahr NACH
+der Uebernahme. Die Regel ist strenger als der A-M4-Zaehler
+``bewegungsjahre > 0``: Das Bewegungskonto beginnt ein Jahr vor dem ersten
+Zugang, bei einer Uebernahme zum 1. Januar erfuellt ein entartetes Vorjahr
+den Zaehler schon — zwei Stichtage im selben Jahr kaemen dort durch. Der
+Fall-Scope sagt die fachliche Anforderung am Eingang (fail-fast).
 
 Knoten: system/bestand
 """
@@ -29,7 +31,7 @@ def test_stichtage_mit_jahreswechsel_sind_zulaessig(erster, zweiter):
 
 
 @pytest.mark.parametrize("erster, zweiter, stichwort", [
-    ("2026-01-01", "2026-07-01", "1. Januar des Folgejahres"),   # der merge-session-Fall
+    ("2026-01-01", "2026-07-01", "1. Januar des Folgejahres"),   # der merge-session-Fall: der Zaehler liesse es durch (entartetes Vorjahr), die Regel nicht
     ("2026-01-01", "2026-12-31", "1. Januar des Folgejahres"),   # ein Tag zu frueh
     ("2026-07-01", "2026-07-01", "nach Stichtag 1"),             # gleich
     ("2027-01-01", "2026-01-01", "nach Stichtag 1"),             # rueckwaerts

@@ -514,15 +514,20 @@ freischaltung beim naechsten Vorwaerts-Merge (dort P-B1 mit
 bewegungsjahre 0, sanity_baender 0).
 
 Voraussetzung der Entscheidung, ausgesprochen (Fund der merge-session):
-Das Bewegungskonto weist nur vollstaendige Kalenderjahre aus (Periode
-(1.1.J, 1.1.J+1], ausgewiesen wenn 1.1.J+1 <= Horizont). Zwei Bestands-
-Stichtage im selben Kalenderjahr koennen die Pflicht strukturell nicht
-erfuellen. Der Fall-Scope prueft das jetzt am Eingang
+Das Migrationscontrolling verlangt ein vollstaendiges Bewegungsjahr NACH
+der Uebernahme. Der Fall-Scope prueft das am Eingang
 (`_fall_scope.stichtage_fehler`: Stichtag 2 mindestens der 1. Januar des
 Folgejahres von Stichtag 1), beim Erzeugen der Bindung UND bei der
 Pruefung einer persistierten Bindung — fail-fast statt eines
-Zaehlerbefunds am Ende. Die Nullzaehler-Meldung nennt je Zaehler Ursache
-und Ausweg (`PB1_PFLICHT_POSITIV_URSACHE`). Baldrian Lauf 2 und beide
+Zaehlerbefunds am Ende. Korrektur nach dem Testat (merge-session): Die
+Regel ist STRENGER als der Zaehler `bewegungsjahre > 0`, nicht
+aequivalent — das Bewegungskonto beginnt im Jahr von min(Zugang) - 1 Tag,
+bei einer Uebernahme zum 1. Januar erfuellt ein entartetes Vorjahr (nur
+die Zugangsbuchung am Rand) den Zaehler schon; 2026-01-01 -> 2026-07-01
+kaeme am Zaehler durch, an der Regel nicht. Die Regel ist die fachliche
+Aussage, der Zaehler ihre Naeherung; sie wird nicht an ihn angepasst.
+Die Nullzaehler-Meldung nennt je Zaehler Ursache und Ausweg
+(`PB1_PFLICHT_POSITIV_URSACHE`). Baldrian Lauf 2 und beide
 E2E-Faelle fahren 2026-01-01 -> 2027-01-01 und erfuellen die Regel; die
 drei mitgelieferten Configs tragen 5-6 Plausibilitaetsbaender.
 Test: tests/test_fall_scope_stichtage_t23.py.
