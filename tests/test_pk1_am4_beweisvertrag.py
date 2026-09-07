@@ -66,6 +66,9 @@ from tests.zeichnung_fixture import VA, annahme_args
 REPO_ROOT = Path(__file__).resolve().parents[1]
 #: Name der uebernommenen Generation in der Config (Stammspalte tarif_generation).
 TARIF_GENERATION = "TG2012"
+#: Horizont des Ein-Policen-Bestandsfalls: Uebernahme 2026-01-01, ein volles
+#: Bewegungsjahr bis zum Jahreswechsel (Entscheid 2026-09-07 zu T23-05).
+HORIZONT_BESTANDSFALL = "2027-01-01"
 def _p9_annahme(fall: Path, gate: str, begruendung: str):
     return gate_entscheid.main([
         "--fall", str(fall),
@@ -150,13 +153,16 @@ def einpolicen_config(tmp_path: Path, *, uebernahme: Optional[Path] = None) -> P
     pfad = tmp_path / "einpolice.toml"
     if pfad.is_file():
         return pfad
+    text = (REPO_ROOT / "configs" / "bestand_klv.toml").read_text(encoding="utf-8")
     if uebernahme is not None:
         abschnitt = (uebernahme / "generation-zellen.toml").read_text(encoding="utf-8")
-        pfad.write_text(
-            zellen_config(abschnitt, name=TARIF_GENERATION, knoten=O3_GENERATION),
-            encoding="utf-8")
+        config_text = zellen_config(abschnitt, name=TARIF_GENERATION, knoten=O3_GENERATION)
+        # Entscheid 2026-09-07 (Review T23-05): A-M4 verlangt Plausibilitaets-
+        # baender — die Uebernahme-Config traegt die Baender der KLV-Config.
+        assert "[plausibilitaet]" not in config_text
+        baender = text[text.index("[plausibilitaet]"):]
+        pfad.write_text(config_text.rstrip("\n") + "\n\n" + baender, encoding="utf-8")
         return pfad
-    text = (REPO_ROOT / "configs" / "bestand_klv.toml").read_text(encoding="utf-8")
     erste = text.index("[[generation]]")
     zweite = text.index("[[generation]]", erste + 1)
     kopf = text[:zweite].replace("sample_size = 600", "sample_size = 1", 1)
@@ -209,17 +215,20 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
         "--generation-spez", O3_GENERATION,
         "--out-dir", str(uebernahme),
     ]) == 0
-    config = einpolicen_config(tmp_path, uebernahme=uebernahme)
+    # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
+    config = einpolicen_config(fall / "abgeleitet", uebernahme=uebernahme)
     assert cli_fortschreibung.main([
         "--config", str(config),
-        "--bis", "2020-01-01",
+        # Entscheid 2026-09-07 (Review T23-05): A-M4 verlangt ein volles
+        # Bewegungsjahr — der Horizont liegt hinter dem Jahreswechsel.
+        "--bis", HORIZONT_BESTANDSFALL,
         "--uebernahme", str(uebernahme),
         "--out-dir", str(lauf),
     ]) == 0
     ziel = lauf / "bestand_gesamt.parquet"
     assert len(read_portfolio(ziel)) == 1
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    pb1 = bestand_validate.main(pb1_vollprofil_argv(lauf, config) + [
+    pb1 = bestand_validate.main(pb1_vollprofil_argv(lauf, config, bis=HORIZONT_BESTANDSFALL) + [
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
     ])
@@ -1348,15 +1357,17 @@ def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
 ):
     fall = _bereite_bestandsfall(tmp_path)
     lauf = fall / "abgeleitet" / "bestand"
+    # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
+    config = fall / "abgeleitet" / "bestand-config.toml"
+    config.write_bytes((REPO_ROOT / "configs" / "bestand_klv.toml").read_bytes())
     assert cli_fortschreibung.main([
-        "--config", str(REPO_ROOT / "configs" / "bestand_klv.toml"),
+        "--config", str(config),
         "--bis", "2020-01-01",
         "--out-dir", str(lauf),
     ]) == 0
     portfolio = lauf / "bestand_gesamt.parquet"
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    pb1 = bestand_validate.main(pb1_vollprofil_argv(
-        lauf, REPO_ROOT / "configs" / "bestand_klv.toml") + [
+    pb1 = bestand_validate.main(pb1_vollprofil_argv(lauf, config) + [
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
     ])

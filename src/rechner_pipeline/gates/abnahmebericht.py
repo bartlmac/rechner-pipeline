@@ -90,7 +90,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from rechner_pipeline import fall as fall_mod
-from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
+from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1, manifest_fuer_nachrechnung
 from rechner_pipeline.gates import bestand_validate
 from rechner_pipeline.gates._common import (
     Exit,
@@ -1347,6 +1347,56 @@ def _bestands_suite_fehler(
 #: Erhoehungen bzw. ohne Tarifzellen sie nicht hat — hat er sie, verlangt
 #: die Engine sie selbst.
 PB1_VOLLPROFIL = frozenset({"portfolio", "historie", "ledger", "config"})
+#: Zaehler der P-B1-Zusammenfassung, die BEZEUGEN, dass eine Pruefung
+#: stattgefunden hat. Fuer sie ist null ein Befund, auch wenn Beleg und
+#: Nachrechnung sich einig sind (Review T23-05): Ein Vollprofil mit
+#: betraege_hergeleitet == 0 hat keine einzige Buchung gegen den Kern
+#: hergeleitet, ein Portfolio mit null Zeilen nimmt nichts ab, ein
+#: mitgegebenes Manifest, das null Rollen bindet, bindet den Lauf nicht.
+#: "Geprueft" und "nie gelaufen" saehen im Beleg sonst gleich aus.
+#:
+#: bewegungsjahre und sanity_baender KOENNEN bei einem gueltigen Lauf null
+#: sein (Horizont ohne vollstaendiges Kalenderjahr; Config ohne
+#: Plausibilitaetsbaender) — sie sind trotzdem Pflicht, als fachliche
+#: Anforderung des Migrationscontrollings (Entscheid des Maintainers
+#: 2026-09-07): Ein uebernommener Bestand wird nur abgenommen, wenn die
+#: Fortschreibung mindestens ein volles Bewegungsjahr gegen das
+#: Bewegungskonto gehalten hat und die Rechnungsgrundlagen
+#: Plausibilitaetsbaender tragen. Ein Lauf, der das nicht kann, ist nicht
+#: abnahmereif — Horizont verlaengern bzw. Baender in der Config setzen.
+#: NICHT im Katalog: historie_/scheiben_/ledger_zeilen (ein Bestand ohne
+#: Vorgeschichte oder Erhoehungen ist fachlich moeglich).
+PB1_PFLICHT_POSITIV = frozenset({
+    "portfolio_zeilen", "bewegungsjahre", "sanity_baender",
+    "betraege_hergeleitet", "manifest_gebunden",
+})
+#: Ursache und Ausweg je Pflichtzaehler — die Meldung nennt den Sachverhalt,
+#: nicht den Zaehler (Fund der merge-session: "bewegungsjahre ist null"
+#: sagt dem Anwender nicht, dass zwischen Uebernahme und Horizont kein
+#: vollstaendiges Kalenderjahr liegt).
+PB1_PFLICHT_POSITIV_URSACHE = {
+    "portfolio_zeilen": (
+        "das Portfolio hat keine Zeilen — ein leerer Bestand wird nicht "
+        "abgenommen; Fortschreibung und Uebernahme pruefen"
+    ),
+    "bewegungsjahre": (
+        "zwischen Uebernahme und Horizont liegt kein vollstaendiges "
+        "Kalenderjahr, das Bewegungskonto kann nichts ausweisen — den Horizont "
+        "(--bis) mindestens bis zum 1. Januar des Folgejahres fuehren"
+    ),
+    "sanity_baender": (
+        "die Bestand-Config traegt keine [plausibilitaet]-Baender, die "
+        "Sanity-Pruefung hatte nichts zu pruefen — Baender in der Config setzen"
+    ),
+    "betraege_hergeleitet": (
+        "keine einzige Buchung wurde gegen den Kern hergeleitet — Ledger und "
+        "Horizont der Fortschreibung pruefen"
+    ),
+    "manifest_gebunden": (
+        "das Laufmanifest bindet keine Eingaberolle — Laufmanifest und "
+        "Eingaben stammen nicht aus demselben Lauf"
+    ),
+}
 
 
 def _json_beleg_aus(gelesene) -> Any:
@@ -1544,11 +1594,21 @@ def _b1_fehler(
         if rolle is not None:
             aktuelle_eingaben[rolle] = vorhanden
             erwartete_hashes[rolle] = erwartet_hash
-            if rolle == "portfolio":
-                try:
-                    vorhanden.relative_to(fall.resolve())
-                except ValueError:
-                    fehler.append("P-B1-Portfolio-Rolle liegt ausserhalb des Falls")
+            # JEDE P-B1-Eingabe, die ins A-M4-Urteil eingeht, liegt im Fall
+            # (Review T23-04): vorher galt die Fallgrenze nur fuer das
+            # Portfolio; eine selbst gewaehlte Config oder ein fremdes
+            # Bewegungskonto konnte Rechnungsgrundlagen und Ledgerbetraege
+            # passend machen — der P-B1-Hash belegt nur, WELCHE Bytes benutzt
+            # wurden, nicht ihre Herkunft.
+            try:
+                vorhanden.relative_to(fall.resolve())
+            except ValueError:
+                fehler.append(
+                    f"P-B1-Rolle {rolle!r} liegt ausserhalb des Falls ({name}) — "
+                    "die Datei in den Fall legen (z. B. <fall>/abgeleitet/) und "
+                    "P-B1 dort erneut fahren; ein Wiederholen mit demselben Pfad "
+                    "aendert nichts"
+                )
 
     bis_roh = entry.summary.get("bis")
     bis: Optional[_dt.date] = None
@@ -1573,18 +1633,43 @@ def _b1_fehler(
         )
     if bis is None and not fehlende_rollen:
         fehler.append("P-B1-Beleg ohne Vollprofil: der Horizont (bis) fehlt")
-    if type(entry.summary.get("betraege_hergeleitet")) is not int:
+    hergeleitet = entry.summary.get("betraege_hergeleitet")
+    if type(hergeleitet) is not int:
         fehler.append(
             "P-B1-Beleg ohne Betragsbindung: summary.betraege_hergeleitet fehlt "
             "— die Kern-Herleitung jeder Buchung (T20-04) lief nicht"
+        )
+    elif hergeleitet <= 0:
+        fehler.append(
+            "P-B1-Beleg ohne Betragsbindung: summary.betraege_hergeleitet ist "
+            "null — keine einzige Buchung wurde gegen den Kern hergeleitet "
+            "(Review T23-05); ein Bestand ohne Buchungen ist kein abnahmefaehiger "
+            "Bestand: Ledger und Horizont der Fortschreibung pruefen, nicht den "
+            "Lauf wiederholen"
         )
 
     geprueft: Dict[str, int] = {}
     portfolio_gebunden = False
     if set(aktuelle_eingaben) == set(rollen):
+        # Traegt der Beleg ein Manifest (summary.manifest: sha256 + Horizont),
+        # wird auch die MANIFESTBINDUNG nachgerechnet (adversarialer Review
+        # Block 3): ohne ``manifest=`` liefert die Engine weder
+        # ``manifest_gebunden`` noch die Horizontpruefung — der Zaehler im
+        # Beleg bliebe unverglichen, seine Positivschwelle unerreichbar. Das
+        # Manifest ist keine Eingangsrolle; es liegt, wie der Produzent es
+        # schreibt, NEBEN dem Portfolio, und seine Bytes muessen den Hash des
+        # Belegs tragen.
+        manifest = None
+        manifest_beleg = entry.summary.get("manifest")
+        if isinstance(manifest_beleg, dict):
+            manifest, manifest_fehler = manifest_fuer_nachrechnung(
+                aktuelle_eingaben["portfolio"], manifest_beleg.get("sha256")
+            )
+            fehler.extend(manifest_fehler)
         tabellen, geprueft, pb1_errors, pb1_usage_errors = lies_und_pruefe_pb1(
             aktuelle_eingaben,
             bis=bis,
+            manifest=manifest,
         )
         gelesen = tabellen.get("sha256", {})
         for rolle, erwartet_hash in erwartete_hashes.items():
@@ -1607,6 +1692,14 @@ def _b1_fehler(
                 fehler.append(
                     f"P-B1-Ledger.summary.{name} stimmt nicht mit der "
                     "erneuten P-B1-Pruefung ueberein"
+                )
+            # Gleichheit genuegt nicht: ein bezeugender Zaehler, der null ist,
+            # ist ein Befund — 0 == 0 waere sonst "konsistent gruen" (T23-05).
+            if name in PB1_PFLICHT_POSITIV and isinstance(wert, int) and wert <= 0:
+                fehler.append(
+                    f"P-B1-Beleg ohne Nachweis: summary.{name} ist null — "
+                    f"{PB1_PFLICHT_POSITIV_URSACHE[name]} (Review T23-05; kein "
+                    "Wiederholungsfall, sondern ein Sachverhalt der Eingaben)"
                 )
     if not portfolio_gebunden:
         fehler.append(
