@@ -117,9 +117,14 @@ def test_rolle_ausserhalb_des_falls_ist_kein_am4_beleg(bestandsfall, tmp_path, r
 
 def test_katalog_der_pflicht_positiven_zaehler_ist_benannt():
     assert {"betraege_hergeleitet", "portfolio_zeilen", "manifest_gebunden"} <= abnahmebericht.PB1_PFLICHT_POSITIV
-    # Fachlich legitim null (kurzer Horizont, Config ohne Baender) — bewusst
-    # NICHT im Katalog; ob A-M4 sie verlangt, ist eine offene Fachfrage.
-    assert not {"bewegungsjahre", "sanity_baender"} & abnahmebericht.PB1_PFLICHT_POSITIV
+    # Entscheid des Maintainers 2026-09-07: A-M4 verlangt im Bestands-Scope
+    # ein volles Bewegungsjahr und Plausibilitaetsbaender — beide koennen
+    # bei einem gueltigen Lauf null sein, sind aber Abnahmevoraussetzung.
+    assert {"bewegungsjahre", "sanity_baender"} <= abnahmebericht.PB1_PFLICHT_POSITIV
+    # Ein Bestand ohne Vorgeschichte oder Erhoehungen ist fachlich moeglich.
+    assert not {"historie_zeilen", "scheiben_zeilen", "ledger_zeilen"} & abnahmebericht.PB1_PFLICHT_POSITIV
+    # Jeder Pflichtzaehler hat eine benannte Ursache mit Ausweg.
+    assert set(abnahmebericht.PB1_PFLICHT_POSITIV_URSACHE) == set(abnahmebericht.PB1_PFLICHT_POSITIV)
 
 
 def test_am4_rechnet_die_manifestbindung_nach(bestandsfall, tmp_path):
@@ -181,6 +186,8 @@ def test_nullzaehler_ist_kein_beleg_auch_wenn_beleg_und_nachrechnung_einig_sind(
         "Positivschwelle kommen, nicht aus dem Gleichheitsvergleich"
     )
     assert any(zaehler in f and ("null" in f or " 0" in f) for f in fehler), fehler
+    # Die Meldung nennt die Ursache, nicht nur den Zaehler.
+    assert any(abnahmebericht.PB1_PFLICHT_POSITIV_URSACHE[zaehler][:40] in f for f in fehler), fehler
 
 
 def test_reviewer_beispiel_betraege_hergeleitet_null(bestandsfall, tmp_path, monkeypatch):

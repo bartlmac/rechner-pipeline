@@ -1354,15 +1354,48 @@ PB1_VOLLPROFIL = frozenset({"portfolio", "historie", "ledger", "config"})
 #: mitgegebenes Manifest, das null Rollen bindet, bindet den Lauf nicht.
 #: "Geprueft" und "nie gelaufen" saehen im Beleg sonst gleich aus.
 #:
-#: NICHT im Katalog (fachlich geprueft, adversarialer Review Block 3):
-#: bewegungsjahre (ein Horizont ohne vollstaendiges Kalenderjahr hat ein
-#: leeres Bewegungskonto — legitim) und sanity_baender (eine Config ohne
-#: Plausibilitaetsbaender ist gueltig). Ob A-M4 im Bestands-Scope beides
-#: VERLANGEN soll, ist eine fachliche Anforderung des Migrations-
-#: controllings, kein Zaehlerbefund — offen, dev-docs/befundliste-t23.md.
+#: bewegungsjahre und sanity_baender KOENNEN bei einem gueltigen Lauf null
+#: sein (Horizont ohne vollstaendiges Kalenderjahr; Config ohne
+#: Plausibilitaetsbaender) — sie sind trotzdem Pflicht, als fachliche
+#: Anforderung des Migrationscontrollings (Entscheid des Maintainers
+#: 2026-09-07): Ein uebernommener Bestand wird nur abgenommen, wenn die
+#: Fortschreibung mindestens ein volles Bewegungsjahr gegen das
+#: Bewegungskonto gehalten hat und die Rechnungsgrundlagen
+#: Plausibilitaetsbaender tragen. Ein Lauf, der das nicht kann, ist nicht
+#: abnahmereif — Horizont verlaengern bzw. Baender in der Config setzen.
+#: NICHT im Katalog: historie_/scheiben_/ledger_zeilen (ein Bestand ohne
+#: Vorgeschichte oder Erhoehungen ist fachlich moeglich).
 PB1_PFLICHT_POSITIV = frozenset({
-    "portfolio_zeilen", "betraege_hergeleitet", "manifest_gebunden",
+    "portfolio_zeilen", "bewegungsjahre", "sanity_baender",
+    "betraege_hergeleitet", "manifest_gebunden",
 })
+#: Ursache und Ausweg je Pflichtzaehler — die Meldung nennt den Sachverhalt,
+#: nicht den Zaehler (Fund der merge-session: "bewegungsjahre ist null"
+#: sagt dem Anwender nicht, dass zwischen Uebernahme und Horizont kein
+#: vollstaendiges Kalenderjahr liegt).
+PB1_PFLICHT_POSITIV_URSACHE = {
+    "portfolio_zeilen": (
+        "das Portfolio hat keine Zeilen — ein leerer Bestand wird nicht "
+        "abgenommen; Fortschreibung und Uebernahme pruefen"
+    ),
+    "bewegungsjahre": (
+        "zwischen Uebernahme und Horizont liegt kein vollstaendiges "
+        "Kalenderjahr, das Bewegungskonto kann nichts ausweisen — den Horizont "
+        "(--bis) mindestens bis zum 1. Januar des Folgejahres fuehren"
+    ),
+    "sanity_baender": (
+        "die Bestand-Config traegt keine [plausibilitaet]-Baender, die "
+        "Sanity-Pruefung hatte nichts zu pruefen — Baender in der Config setzen"
+    ),
+    "betraege_hergeleitet": (
+        "keine einzige Buchung wurde gegen den Kern hergeleitet — Ledger und "
+        "Horizont der Fortschreibung pruefen"
+    ),
+    "manifest_gebunden": (
+        "das Laufmanifest bindet keine Eingaberolle — Laufmanifest und "
+        "Eingaben stammen nicht aus demselben Lauf"
+    ),
+}
 
 
 def _b1_fehler(
@@ -1572,10 +1605,8 @@ def _b1_fehler(
             if name in PB1_PFLICHT_POSITIV and isinstance(wert, int) and wert <= 0:
                 fehler.append(
                     f"P-B1-Beleg ohne Nachweis: summary.{name} ist null — "
-                    "die Pruefung, die dieser Zaehler bezeugt, hat nichts "
-                    "geprueft (Review T23-05); meist ein fachlicher Sachverhalt "
-                    "der Eingaben (leeres Portfolio, Manifest ohne gebundene "
-                    "Rollen), kein Wiederholungsfall"
+                    f"{PB1_PFLICHT_POSITIV_URSACHE[name]} (Review T23-05; kein "
+                    "Wiederholungsfall, sondern ein Sachverhalt der Eingaben)"
                 )
     if not portfolio_gebunden:
         fehler.append(

@@ -500,8 +500,32 @@ ohne vollstaendiges Kalenderjahr hat ein leeres Bewegungskonto — legitim,
 `bewegungskonto` zaehlt nur volle Jahre) und sanity_baender (eine Config
 ohne Plausibilitaetsbaender ist gueltig, `plausibilitaet` ist optional).
 Ob A-M4 im Bestands-Scope Bewegungsjahre und Baender VERLANGEN soll, ist
-eine fachliche Anforderung des Migrationscontrollings, kein Zaehlerbefund
-— OFFEN, Entscheid des Maintainers/VA (siehe unten).
+eine fachliche Anforderung des Migrationscontrollings, kein Zaehlerbefund.
+ENTSCHEID des Maintainers 2026-09-07: JA — beide sind Pflicht; ein
+uebernommener Bestand wird nur abgenommen, wenn die Fortschreibung
+mindestens ein volles Bewegungsjahr gegen das Bewegungskonto gehalten hat
+und die Rechnungsgrundlagen Plausibilitaetsbaender tragen. Der Katalog
+traegt deshalb wieder fuenf Zaehler, die Begruendung steht am Katalog.
+Folge fuer Fixtures mit Uebernahme im laufenden Jahr (Horizont ohne volles
+Kalenderjahr) oder Config ohne Baender: sie sind nicht abnahmereif und
+muessen Horizont bzw. Config anpassen — betrifft keinen Test auf ebenen
+(Suite gruen), voraussichtlich aber die Ein-Policen-Uebernahme-Fixture auf
+freischaltung beim naechsten Vorwaerts-Merge (dort P-B1 mit
+bewegungsjahre 0, sanity_baender 0).
+
+Voraussetzung der Entscheidung, ausgesprochen (Fund der merge-session):
+Das Bewegungskonto weist nur vollstaendige Kalenderjahre aus (Periode
+(1.1.J, 1.1.J+1], ausgewiesen wenn 1.1.J+1 <= Horizont). Zwei Bestands-
+Stichtage im selben Kalenderjahr koennen die Pflicht strukturell nicht
+erfuellen. Der Fall-Scope prueft das jetzt am Eingang
+(`_fall_scope.stichtage_fehler`: Stichtag 2 mindestens der 1. Januar des
+Folgejahres von Stichtag 1), beim Erzeugen der Bindung UND bei der
+Pruefung einer persistierten Bindung — fail-fast statt eines
+Zaehlerbefunds am Ende. Die Nullzaehler-Meldung nennt je Zaehler Ursache
+und Ausweg (`PB1_PFLICHT_POSITIV_URSACHE`). Baldrian Lauf 2 und beide
+E2E-Faelle fahren 2026-01-01 -> 2027-01-01 und erfuellen die Regel; die
+drei mitgelieferten Configs tragen 5-6 Plausibilitaetsbaender.
+Test: tests/test_fall_scope_stichtage_t23.py.
 
 Manifestbindung nachgerechnet (Fund des adversarialen Reviews): Das
 Laufmanifest ist im P-B1-Beleg keine Eingangsrolle, sondern nur
@@ -537,14 +561,17 @@ drei hohe Befunde, zwei geschlossen, einer als Grenze benannt:
    als REGISTRIERTER Falleingang, dev-docs/offene-punkte.md) deckt die
    Herkunft am Ursprung; bis dahin gilt: A-M4 ist die Stelle, an der ein
    Fall seinen Beleg annimmt, und dort ist die Grenze vollstaendig.
-   ENTSCHEID OFFEN: Produzenten-Fallgrenze (Gate-Vertrag) ja/nein.
+   ENTSCHEID des Maintainers 2026-09-07: NEIN, keine Produzenten-
+   Fallgrenze; der Weg ist "Config als registrierter Falleingang".
 2. HOCH, GESCHLOSSEN — `manifest_gebunden` unerreichbar (siehe oben);
    der Test bestaetigte sich selbst, weil der Monkeypatch den Schluessel
    injizierte. Jetzt prueft der Test, dass der ECHTE Nachrechnungspfad den
    Zaehler liefert, und ein eigener Test faelscht den Zaehler und die
    Manifest-Bytes.
 3. HOCH, GESCHLOSSEN — bewegungsjahre und sanity_baender legitim null;
-   aus dem Katalog genommen, Anforderung als Fachfrage benannt (oben).
+   zunaechst aus dem Katalog genommen, Anforderung als Fachfrage benannt;
+   Entscheid des Maintainers 2026-09-07: als Abnahmevoraussetzung wieder
+   Pflicht (oben).
 4. NIEDRIG, GESCHLOSSEN — die Meldungen nennen jetzt den Ausweg (Datei in
    den Fall legen; Nullzaehler ist ein Sachverhalt der Eingaben, kein
    Wiederholungsfall).
