@@ -341,7 +341,7 @@ def _stand_bauen(
     ausgaben: List[Path] = []
     eingaben: Dict[str, Path] = {}
     if ablage.arbeit.exists():
-        shutil.rmtree(ablage.arbeit)
+        _entferne_ablageverzeichnis(ablage, ablage.arbeit)
     ablage.arbeit.mkdir(parents=True)
     ausgaben.append(write_portfolio(basis, ablage.arbeit / "bestand.parquet"))
 
@@ -482,6 +482,43 @@ def _wache(arbeit: Path, config_pfad: Path, heute: _dt.date) -> Tuple[Dict[str, 
     return tabellen, geprueft, usage + fehler
 
 
+def _entferne_ablageverzeichnis(ablage: Ablage, pfad: Path) -> None:
+    """Ein Verzeichnis der Ablage entfernen — und NUR eines der Ablage.
+
+    Review T24-07, als Klasse: ``shutil.rmtree`` loescht, was am Pfad LIEGT,
+    nicht was der Name verspricht. ``stand`` ist ein Symlink; zeigt er —
+    von Hand umgesetzt — auf ein Backup ausserhalb der Wurzel, haette der
+    Tausch das Backup geloescht. Erlaubt ist nur ein echtes Verzeichnis
+    UNMITTELBAR in der Wurzel, dessen Name ein Stand- (``stand-<kennung>``)
+    oder das Arbeitsverzeichnis ist. Alles andere bleibt stehen und ist
+    ein benannter Fehler.
+    """
+    fehler = _ablageverzeichnis_fehler(ablage, pfad)
+    if fehler:
+        raise TageslaufError(fehler)
+    shutil.rmtree(Path(pfad).resolve())
+
+
+def _ablageverzeichnis_fehler(ablage: Ablage, pfad: Path) -> Optional[str]:
+    """Darf ``pfad`` als Verzeichnis der Ablage entfernt werden? Leer = ja.
+    Getrennt von der Loeschung, damit ``_uebernehmen`` VOR dem atomaren
+    Tausch weiss, ob es den alten Stand danach entfernen darf."""
+    ziel = Path(pfad)
+    wurzel = ablage.wurzel.resolve()
+    aufgeloest = ziel.resolve()
+    if ziel.is_symlink() or aufgeloest.parent != wurzel or not (
+        aufgeloest.name == ARBEIT_DIR or aufgeloest.name.startswith(f"{STAND_DIR}-")
+    ):
+        return (
+            f"verweigert: {ziel} ist kein Stand- oder Arbeitsverzeichnis unmittelbar "
+            f"in der Ablage {ablage.wurzel} — nicht geloescht (Review T24-07). Ausweg: "
+            f"den Symlink {ablage.stand} von Hand auf das richtige stand-<kennung>-"
+            "Verzeichnis in der Ablage setzen bzw. das fremde Verzeichnis selbst "
+            "entfernen, dann den Lauf erneut starten"
+        )
+    return None
+
+
 def _uebernehmen(ablage: Ablage, kennung: str) -> None:
     """Das Arbeitsverzeichnis atomar zum gefuehrten Stand machen.
 
@@ -499,8 +536,19 @@ def _uebernehmen(ablage: Ablage, kennung: str) -> None:
     Fenster.
     """
     ziel = ablage.wurzel / f"{STAND_DIR}-{kennung}"
+    # Review T24-07 (adversarialer Review): Ob der ALTE Stand nach dem Tausch
+    # entfernt werden darf, wird VOR dem ersten irreversiblen Schritt
+    # entschieden. Faellt die Pruefung erst nach dem Tausch, zeigt ``stand``
+    # schon auf den neuen Tag, das Protokoll bucht "nicht uebernommen", und
+    # Stand und Nachweis passen dauerhaft nicht mehr zusammen.
+    if ablage.stand.is_symlink():
+        bisher = ablage.stand.resolve()
+        if bisher.exists() and bisher != ziel.resolve():
+            fehler = _ablageverzeichnis_fehler(ablage, bisher)
+            if fehler:
+                raise TageslaufError(f"Standwechsel nicht begonnen — alter Stand: {fehler}")
     if ziel.exists():
-        shutil.rmtree(ziel)
+        _entferne_ablageverzeichnis(ablage, ziel)
     os.rename(ablage.arbeit, ziel)
     alt_ziel: Optional[Path] = None
     if ablage.stand.is_symlink():
@@ -508,7 +556,7 @@ def _uebernehmen(ablage: Ablage, kennung: str) -> None:
     elif ablage.stand.exists():
         alt_ziel = ablage.wurzel / f"{STAND_DIR}-erstfassung"
         if alt_ziel.exists():
-            shutil.rmtree(alt_ziel)
+            _entferne_ablageverzeichnis(ablage, alt_ziel)
         os.rename(ablage.stand, alt_ziel)
     tmp = ablage.wurzel / STAND_LINK_TMP
     if tmp.is_symlink() or tmp.exists():
@@ -516,7 +564,8 @@ def _uebernehmen(ablage: Ablage, kennung: str) -> None:
     os.symlink(ziel.name, tmp)
     os.replace(tmp, ablage.stand)
     if alt_ziel is not None and alt_ziel.exists() and alt_ziel.resolve() != ziel.resolve():
-        shutil.rmtree(alt_ziel)
+        # Vor dem Tausch geprueft; hier nur noch die Loeschung.
+        _entferne_ablageverzeichnis(ablage, alt_ziel)
 
 
 def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
@@ -525,7 +574,7 @@ def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
     aktuell = ablage.stand.resolve() if ablage.stand.is_symlink() else None
     for kandidat in ablage.wurzel.glob(f"{STAND_DIR}-*"):
         if kandidat.is_dir() and (aktuell is None or kandidat.resolve() != aktuell):
-            shutil.rmtree(kandidat)
+            _entferne_ablageverzeichnis(ablage, kandidat)
     tmp = ablage.wurzel / STAND_LINK_TMP
     if tmp.is_symlink():
         tmp.unlink()

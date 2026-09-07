@@ -380,6 +380,43 @@ def rendere_bestand_heute(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = Non
 # --------------------------------------------------------------------------- #
 
 
+def _unter(pfad: Path, wurzel: Path) -> bool:
+    return pfad == wurzel or wurzel in pfad.parents
+
+
+def paketziel_fehler(ablage, ziel: Path) -> Optional[str]:
+    """Darf ``ziel`` als Stands-Paket ersetzt werden? Leer = ja.
+
+    Review T24-07: ``stands_paket`` entfernte JEDES vorhandene Zielverzeichnis
+    — ``--paket`` gleich ``--stand`` loeschte die Ablage mit Stand, Journal
+    und Protokoll; ein Tippfehler auf ein fremdes Verzeichnis dessen Inhalt.
+    Ein Produzent ersetzt nur, was er selbst erzeugt hat: Das Ziel liegt
+    weder in der Ablage noch enthaelt es sie, und ein vorhandenes Ziel ist
+    ein frueheres Paket (traegt ``stand.json``). Alles andere ist ein
+    benannter Fehler, kein Loeschen.
+    """
+    wurzel = Path(ablage.wurzel).resolve()
+    aufgeloest = Path(ziel).resolve()
+    if _unter(aufgeloest, wurzel) or _unter(wurzel, aufgeloest):
+        return (
+            f"Stands-Paket: Ziel {ziel} ist die Ablage {ablage.wurzel}, liegt in "
+            "ihr oder enthaelt sie — das Paket wuerde den Stand loeschen; ein "
+            "Verzeichnis ausserhalb der Ablage waehlen"
+        )
+    if Path(ziel).is_symlink():
+        return f"Stands-Paket: Ziel {ziel} ist ein Symlink — nur ein echtes Verzeichnis wird ersetzt"
+    if Path(ziel).exists():
+        if not Path(ziel).is_dir():
+            return f"Stands-Paket: Ziel {ziel} ist eine Datei, kein Verzeichnis"
+        if not (Path(ziel) / PAKET_DATEI).is_file():
+            return (
+                f"Stands-Paket: Ziel {ziel} existiert und ist kein frueheres "
+                f"Stands-Paket (keine {PAKET_DATEI}) — ersetzt wird nur ein Paket; "
+                "anderes Ziel waehlen oder das Verzeichnis von Hand entfernen"
+            )
+    return None
+
+
 def stands_paket(ablage, ziel: Path) -> Path:
     """Den Stand als Paket exportieren: ``stand.json`` plus die Berichte des
     juengsten Abschlusses und die Seite "Bestand heute".
@@ -389,9 +426,14 @@ def stands_paket(ablage, ziel: Path) -> Path:
     Journal-Hash, Kern-Version, Image), damit die Seite sagen kann, von
     welchem Stand sie spricht. Ein vorhandenes Paket wird ersetzt — es ist
     eine Momentaufnahme, kein Nachweis; der Nachweis liegt in der Ablage.
+    Ersetzt wird aber NUR ein frueheres Paket ausserhalb der Ablage
+    (``paketziel_fehler``, Review T24-07).
     """
-    modell = stand_modell(ablage)
     ziel = Path(ziel)
+    fehler = paketziel_fehler(ablage, ziel)
+    if fehler:
+        raise SeiteError(fehler)
+    modell = stand_modell(ablage)
     if ziel.exists():
         shutil.rmtree(ziel)
     ziel.mkdir(parents=True)
