@@ -340,15 +340,15 @@ festlegt (Fachkonzept Tagesbetrieb, offene Fachentscheidung):
 | `klv/plv_2022` | KLV-2022 | 2022-01–2024-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 150 |
 | `klv/plv_2025` | KLV-2025 | 2025-01–2035-12 | 1.00% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 1320; Neugeschäft 120/Jahr, Trend -4%/Jahr |
 
-Tarifzellen der übernommenen Generation **TG2015** (`klv/tg2015`, Rechnungszins 1.75%, Zellen über `status` × `tarifart`; je Zelle nur die vom Rumpf abweichenden Felder):
+Tarifzellen der übernommenen Generation **TG2015** (`klv/tg2015`, Rechnungszins 1.25%, Zellen über `status` × `tarifart`; je Zelle nur die vom Rumpf abweichenden Felder):
 
 | Zelle | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2}$ | $\kappa$ | StoAb Satz/min/max | Ratenzuschlag zw2/4/12 |
 |---|---|---|---|---|---|---|---|
 | nichtraucher/einzel | DAV2008_T_NR_U70 | 0.025 | 0.03 | 0.001/0.00125 | 12 | 0.005/50.0/200.0 | 0.02/0.03/0.05 |
-| nichtraucher/haus | DAV2008_T_NR_U70 | 0.0 | 0.0 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
+| nichtraucher/haus | DAV2008_T_NR_U70 | 0.0 | 0.01 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
 | nichtraucher/kollektiv | DAV2008_T_NR_U70 | 0.015 | 0.015 | 0.0008/0.001 | 12 | 0.005/50.0/200.0 | 0.01/0.015/0.025 |
 | raucher/einzel | DAV2008_T_R_U70 | 0.025 | 0.03 | 0.001/0.00125 | 12 | 0.005/50.0/200.0 | 0.02/0.03/0.05 |
-| raucher/haus | DAV2008_T_R_U70 | 0.0 | 0.0 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
+| raucher/haus | DAV2008_T_R_U70 | 0.0 | 0.01 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
 | raucher/kollektiv | DAV2008_T_R_U70 | 0.015 | 0.015 | 0.0008/0.001 | 12 | 0.005/50.0/200.0 | 0.01/0.015/0.025 |
 
 Tarifwerk der Generation **TG2015** (Ausgestaltung, Grundsatzdokumentation 10 Nr. 9): Erhöhungsscheiben mit $\gamma_1$: ja; Stornoabzug je Baustein: ja; Herabsetzungsverfahren: `teilkuendigung`.
@@ -376,7 +376,7 @@ erste ist die **TG2015 der Baldrian Leben** (`klv/tg2015`, Fall
 Zugang zum 2026-01-01, seither im Tagesbetrieb der PLV im selben Strom
 fortgeschrieben wie das eigene Geschäft. Sie hat keinen einen
 Parametersatz, sondern sechs Tarifzellen (`status` × `tarifart`;
-Rechnungszins 1,75 %, Tafeln DAV 2008 T Nichtraucher/Raucher U70); die
+Rechnungszins 1,25 % nach Mitteilung, entschieden in A-Q1 gegen die 1,75 % des Tarifrechners; Tafeln DAV 2008 T Nichtraucher/Raucher U70); die
 Zellen stehen in der Bestand-Config und werden nicht abgetippt. Diese
 Tabelle wird maschinell gegen die Bestandskonfiguration geprüft; eine
 Abweichung ist ein Fehler und blockiert.

@@ -922,28 +922,24 @@ gueltig_von = 2015-01-01
 gueltig_bis = 2017-01-01
 sample_size = 0
 max_endalter = 90
-zins = 0.0175
+zins = 0.0125
 gamma3 = 0.0025
 min_alter_flex = 60
 min_rlz_flex = 5
 zillmer_dauer = 5
-
-# Tarifwerks-Eigenschaften der uebernommenen Generation (Bedingungswerk
-# der zweiten Baldrian-Lieferung, in A-M1 bis A-M4 des Falls mit den
-# gleichnamigen Lauf-Schaltern abgenommen; Tarifplan KLV, Abschnitte 6
-# und 7): Erhoehungsscheiben rechnen die volle Beitragsformel (Ziffer 5),
-# der Stornoabzug greift je Baustein (Ziffer 4), eine Herabsetzung ist
-# eine Teilkuendigung der Grundversicherung mit Auszahlung (Ziffer 6).
-# Die Fuehrung liest die Schalter hier — im Betrieb gibt es keinen Lauf.
 scheiben_mit_gamma1 = true
 stoab_je_baustein = true
 red_verfahren = "teilkuendigung"
 
+# Grundlagen und Tarifwerk dieser Generation sind der Config-Abschnitt,
+# den die Uebernahme aus der abgenommenen Spez des Falls schreibt
+# (abgeleitet/bestand/generation-zellen.toml, A-Q1-Entscheide: Zins 1,25 %
+# nach Mitteilung, Inkassokosten Haus 0,01). Nicht abtippen, uebernehmen;
+# tests/test_bestand_config.py haelt den Block gegen die Spez-Fixture.
+
 # sample_size = 0 heisst: der Batch-Erzeuger legt NIE eine Zeile aus
 # diesen Verteilungen an (die Vertraege sind schon uebernommen). Sie sind
-# trotzdem Pflichtfelder der Config (BestandConfig.validate) -- inert,
-# nur zur Format-Erfuellung, Werte ohne fachliche Bedeutung fuer diese
-# Generation.
+# trotzdem Pflichtfelder der Config -- inert, nur zur Format-Erfuellung.
 [generation.verteilungen.entry_age]
 typ = "normal_trunc"
 mean = 40.0
@@ -997,7 +993,7 @@ ratzu_zw12 = 0.05
 auspraegungen = { status = "nichtraucher", tarifart = "haus" }
 tafel = "DAV2008_T_NR_U70"
 alpha = 0.0
-beta1 = 0.0
+beta1 = 0.01
 gamma1 = 0.0008
 gamma2 = 0.001
 policy_fee = 0.0
@@ -1042,7 +1038,7 @@ ratzu_zw12 = 0.05
 auspraegungen = { status = "raucher", tarifart = "haus" }
 tafel = "DAV2008_T_R_U70"
 alpha = 0.0
-beta1 = 0.0
+beta1 = 0.01
 gamma1 = 0.0008
 gamma2 = 0.001
 policy_fee = 0.0

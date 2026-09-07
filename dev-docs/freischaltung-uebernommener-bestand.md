@@ -69,10 +69,10 @@ Tooling; sie wird durch die Fuehrungsprobe (Schritt 6) ersetzt.
 | Groesse | Fuehrung heute | Pruefstrecke (abgenommen) |
 |---|---|---|
 | Vertraege, deren Stammsumme nicht die Grund-/Ursprungssumme ist | 550 von 834 | (390 mit 2307 Alt-Scheiben, 160 beitragsfrei) |
-| Umbuchung beitragsfrei bei der Uebernahme (160 Vertraege) | 1.716.338 EUR | 3.712.809 EUR (= gelieferte beitragsfreie Summen) |
+| Umbuchung beitragsfrei bei der Uebernahme (160 Vertraege) | 1.716.338 EUR | 3.646.718 EUR (= gelieferte beitragsfreie Summen) |
 | Zugangssumme der Uebernahme (834 Vertraege) | 55.135.289 EUR | 62.884.551 EUR (Gesamt-VS der Bausteine) |
 | Buchungen nach dem Stichtag, abweichend | 14 von 42 (STO 10/20, PEX 3/8, TOD 1/7, ABL 0/7) | groesste Einzelabweichung 16.254 EUR (Todesfall eines beitragsfreien Vertrags: 20.902 statt 37.156 EUR) |
-| Deckungskapital der 800 uebernommenen in-force am 2027-01-01 | 33.370.245 EUR | 33.960.716 EUR |
+| Deckungskapital der 800 uebernommenen in-force am 2027-01-01 | 33.370.245 EUR | 33.960.716 EUR (beide auf der Config-Welt gerechnet, siehe Mechanismus 4) |
 | Rueckkaufswerte derselben Vertraege | 31.322.652 EUR | 30.102.145 EUR |
 | Anteil der Korrekturschicht an allen Abweichungen | | hoechstens 0,02 EUR je Vertrag (rho in der Groessenordnung 1e-7) |
 
@@ -100,6 +100,16 @@ Drei Mechanismen, nach Gewicht:
    Das ist ein Befund ueber diese Lieferung, nicht ueber die
    Architektur: Ein Bestand mit echten Residuen wuerde in der Fuehrung
    ohne Schicht andere Rueckkaufswerte zahlen als abgenommen.
+4. **Die Config rechnete mit den Grundlagen von vor A-Q1** (gefunden
+   bei der Neuerzeugung, Schritt 8): Der TG2015-Block der Bestand-Config
+   des Falls und der PLV-Config trug den Rechnungszins 1,75 % des
+   Tarifrechners statt der in A-Q1 entschiedenen 1,25 % der Mitteilung,
+   und fuer die Haus-Zellen Inkassokosten 0 statt 0,01. Die Abnahmen
+   rechneten mit der Spez (1,25 %), die Fuehrung mit der Config
+   (1,75 %). Der Tarifplan KLV behauptete 1,75 %. P-B1 im Vollprofil
+   und die Fuehrungsprobe (Grundlagen der Config gegen die Spez-Zelle)
+   finden das jetzt; der Block wird aus dem Spez-Abschnitt der
+   Uebernahme uebernommen, ein Test haelt ihn gegen die Spez-Fixture.
 
 Vier Vertraege (7000539, 7000722, 7000754, 7000910) haben in der
 Pruefstrecken-Ableitung keinen bestimmbaren Anfangszustand (Serie mit
@@ -339,6 +349,10 @@ Handlung der Rollen des Falls (Regie), nicht der dev-Session.
 `docs/faelle/baldrian-lauf2.md` bekommt einen Nachtrag.
 Fertig, wenn: der Fall einen neuen A-M4-Snapshot mit Korrekturvermerk
 traegt und die Fuehrungsprobe im Fall gruen ist.
+STAND 2026-09-07: Produzenten und Pruef-Gates auf Systemstand 9573bfc neu
+gefahren (Korrektur-Protokoll Nr. 24), Fuehrungsprobe 834 Vertraege, 42
+Buchungen, 0 Befunde, Abnahmebericht gruen. Die fuenf Zeichnungen (A-Q1,
+A-M1, A-M2, A-M3, A-M4) stehen bei der Regie aus.
 
 ### Schritt 9: Den Betrieb aus der Uebernahme neu aufsetzen (Betriebsweg)
 
@@ -409,7 +423,7 @@ liegt beim Maintainer.
 | 5 Korrekturschicht in der Fuehrung | ERLEDIGT 2026-09-07 (schichten.parquet aus dem Schichtbeleg, Storno und Abschluss mit Schicht, P-B1 4.0.0) |
 | 6 Fuehrungsprobe vor A-M4 | ERLEDIGT 2026-09-07 (gates.fuehrungsprobe; Pflichtbelegrolle im Bestands-Scope, Abnahmebericht 3.0.0, P9 2.0.0) |
 | 7 Freischaltung im Skill | ERLEDIGT 2026-09-07 (Skill migrationsfall-durchfuehren, Stufe 1b und 3b; Befundliste, Backlog) |
-| 8 Fall Lauf 2 korrigieren | offen (Regie) |
+| 8 Fall Lauf 2 korrigieren | Produzenten neu (2026-09-07, Systemstand 9573bfc, Korrektur 24); Zeichnungen bei der Regie offen |
 | 9 Betrieb neu aufsetzen | offen (betrieb-haertung, Laufzeit) |
 | 10 Prozessregel Betriebsfunde | ERLEDIGT 2026-09-07 (docs/simulation/tagesbetrieb.md, Abschnitt 6.1) |
 | 11 Kommunikation | offen (run-Session, Go des Maintainers) |
