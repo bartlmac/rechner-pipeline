@@ -12,10 +12,21 @@ Akteure kommen aus ``fragmente/akteure.json``
 (``{"<fragment-datei>": "<modell>/<skill>@<git-sha>"}``) — der
 Orchestrator legt sie beim Extrahieren ab.
 
+**Einmal, nicht bei jeder Neuzeichnung.** Der Merge baut die A-Box
+FRISCH aus den Fragmenten. Traegt die vorhandene A-Box aufgeloeste
+Diskrepanzen (Entscheidungen des Verantwortlichen Aktuars, Gate A-Q1),
+wuerde ein erneuter Merge sie still ueberschreiben — genau das ist am
+2026-09-07 im zweiten Baldrian-Fall passiert (14 Entscheidungen weg,
+Recovery ueber Backup). Deshalb verweigert das Kommando dann den
+Lauf; ``--ueberschreiben`` ist die ausdrueckliche Entscheidung, die
+Aufloesungen zu verwerfen und A-Q1 neu zu entscheiden. Bei einer
+Neuzeichnung auf neuem Systemstand werden nur die PRUEF-Gates neu
+gefahren (P-Q3, P-K1, ...), nicht der Merge.
+
 Run via::
 
     python -m rechner_pipeline.gates.abox_merge --fall faelle/<fall> \\
-        [--repo-root .] [--diagnostics-dir DIR]
+        [--repo-root .] [--diagnostics-dir DIR] [--ueberschreiben]
 
 Knoten: klv
 """
@@ -51,6 +62,26 @@ CLI_CONTRACT = GateCliContract(
 )
 
 
+def _aufgeloeste_diskrepanzen(fall: Path) -> List[str]:
+    """Ids der aufgeloesten Diskrepanzen der vorhandenen A-Box (leer, wenn
+    keine A-Box da ist oder sie nicht lesbar ist — dann gibt es nichts zu
+    schuetzen, und der Merge darf schreiben)."""
+    pfad = fall / "abgeleitet" / "abox" / "abox.json"
+    if not pfad.is_file():
+        return []
+    try:
+        daten = json.loads(pfad.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(daten, dict):
+        return []
+    return sorted(
+        str(d.get("id"))
+        for d in (daten.get("diskrepanzen") or [])
+        if isinstance(d, dict) and d.get("status") == "aufgeloest"
+    )
+
+
 def main(argv: Optional[List[str]] = None):
     started_at = utc_now()
     parser = GateArgumentParser(
@@ -64,6 +95,12 @@ def main(argv: Optional[List[str]] = None):
     parser.add_argument("--fall", default=None)
     parser.add_argument("--repo-root", dest="repo_root", default=None)
     parser.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None)
+    parser.add_argument(
+        "--ueberschreiben", dest="ueberschreiben", action="store_true",
+        help="Eine vorhandene A-Box MIT aufgeloesten Diskrepanzen verwerfen "
+             "und neu mergen (die Entscheidungen von A-Q1 gehen verloren "
+             "und sind neu zu treffen). Ohne dieses Flag verweigert das "
+             "Kommando den Lauf.")
     add_request_json_arg(parser)
     args = parse_gate_args(parser, argv)
 
@@ -101,6 +138,22 @@ def main(argv: Optional[List[str]] = None):
     register_pfad = fall / "eingang.json"
     if not register_pfad.is_file():
         return _fehler(Exit.USAGE, "usage", f"kein Fall-Arbeitsbereich: {fall}")
+
+    # Kein stiller Overwrite von Entscheidungen: Eine A-Box mit
+    # aufgeloesten Diskrepanzen ist ein Entscheidungstraeger, kein
+    # Zwischenstand. Geprueft auf der JSON-Ebene, damit die Wache auch
+    # eine A-Box aelteren Schemas erkennt.
+    entschieden = _aufgeloeste_diskrepanzen(fall)
+    if entschieden and not args.ueberschreiben:
+        return _fehler(
+            Exit.FILE_CONTRACT, "abox_entschieden",
+            f"{fall / 'abgeleitet' / 'abox' / 'abox.json'} traegt "
+            f"{len(entschieden)} aufgeloeste Diskrepanz(en) (z. B. "
+            f"{entschieden[:3]}) — ein erneuter Merge wuerde die Entscheidungen "
+            "von A-Q1 verwerfen. Bei einer Neuzeichnung nur die Pruef-Gates "
+            "(P-Q3, P-K1, ...) neu fahren; wer die Aufloesungen wirklich "
+            "verwerfen will, sagt es mit --ueberschreiben.",
+        )
 
     from rechner_pipeline.ontologie.befuellung import (
         BefuellungsFehler,

@@ -70,6 +70,13 @@ beteiligten Module ableiten und im Zweifel den Menschen fragen.
 
 ## Reihenfolge-Zwaenge (was Belege rueckwirkend entwertet)
 
+**Der A-Box-Merge laeuft EINMAL.** `gates.abox_merge` baut die A-Box frisch
+aus den Fragmenten; die Aufloesungen der Diskrepanzen (A-Q1) leben nur in
+`abgeleitet/abox/abox.json`. Bei einer Neuzeichnung auf neuem Systemstand
+werden die Pruef-Gates neu gefahren (P-Q3, P-K1, P-B1, die Abnahmen), nie
+der Merge — er verweigert bei aufgeloesten Diskrepanzen den Lauf, und
+`--ueberschreiben` heisst: A-Q1 wird neu entschieden (Vorfall 2026-09-07).
+
 Erzwungen ist im Code nur zweierlei: **A-Q1 und A-M1 gehen A-M4
 voraus** — beide als Pflichtrollen im A-M4-Snapshot. Alles andere ist
 Datenabhaengigkeit ohne Gate-DAG; wer sie missachtet, bekommt keinen
