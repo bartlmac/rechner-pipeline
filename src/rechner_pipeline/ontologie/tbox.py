@@ -38,6 +38,17 @@ from rechner_pipeline.ontologie.ids import knoten_id, zellen_segment
 #: Fehler, keine Warnung — vorher war die Version ein ueberschreibbarer
 #: Default, den niemand verglich.
 TBOX_VERSION = "0.1.0"
+#: Die Versionslinie der T-Box, aelteste zuerst — der im CODE nachweisbare
+#: "alte Stand" fuer A-K1 (Review T23-03): ein Uebergang von_version ->
+#: nach_version ist nur zeichenbar, wenn von der unmittelbare Vorgaenger
+#: von nach in dieser Linie ist und nach die Version ist, die der Code
+#: traegt. Bei jedem Bump wird die neue Version ANGEHAENGT; die Linie wird
+#: nie umgeschrieben. Solange sie ein Element hat, gab es keinen Uebergang,
+#: und A-K1 hat nichts zu zeichnen.
+TBOX_VERSIONEN: tuple = ("0.1.0",)
+#: Schema der A-Box-DATEI (Struktur der Instanz-Datei, nicht das
+#: Vokabular); beim Laden gegen den deklarierten Schluessel gehalten.
+ABOX_SCHEMA_VERSION = 1
 
 #: Pflichtumfang einer Parametrierungszelle (P6-Referenz): ohne diese
 #: Felder ist ein Tarif nicht rechenbar. Die Namen SIND die Feldnamen
@@ -213,7 +224,7 @@ class ABox(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: int = 1
+    schema_version: int = ABOX_SCHEMA_VERSION
     tbox_version: str = TBOX_VERSION
     fall: str = Field(min_length=1)
     generationen: List[Tarifgeneration] = Field(default_factory=list)

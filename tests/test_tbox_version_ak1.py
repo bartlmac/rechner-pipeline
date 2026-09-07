@@ -28,6 +28,15 @@ from tests.zeichnung_fixture import annahme_args
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def versionslinie(monkeypatch):
+    """Die Belege dieses Moduls zeichnen den Uebergang 0.0.9 -> TBOX_VERSION.
+    Seit Review T23-03 muss der alte Stand im Code deklariert sein
+    (TBOX_VERSIONEN); die reale Linie hat noch keinen Vorgaenger, also traegt
+    das Modul eine testlokale Linie, die zu seinem Beleg passt."""
+    monkeypatch.setattr(tbox_modul, "TBOX_VERSIONEN", ("0.0.9", TBOX_VERSION))
+
+
 @pytest.fixture()
 def fall(tmp_path: Path) -> Path:
     f = bereite_pk1_fall(tmp_path, ("klv/tg2012",), scope="tarif")

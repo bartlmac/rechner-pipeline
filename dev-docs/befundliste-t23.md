@@ -396,3 +396,78 @@ gehasht UND gelesen werden; Reichweite benannt) und der Lese-Zaehl-Test
 P-Q3, P-K1, abox_merge, A-K1, Aktuartest, Abnahmebericht; Ausgaben und
 Quellcode ausgenommen, fall.json und verankerung_belegen als Grenze
 benannt). `extract` bleibt dokumentierte Reichweitengrenze (COM-Adapter).
+
+## Umsetzungsstand Block 2 — versionierter Evidence-Vertrag (T23-02, T23-03, T23-09)
+
+T23-02: Der Modell-Default fuer Versionsfelder bleibt fuer die KONSTRUKTION
+(eine frisch gebaute A-Box/Spez spricht das aktuelle Vokabular; befuellung,
+erzeugen und Fixtures bauen ohne Angabe). Die LADER verlangen die
+Deklaration im rohen JSON — `ontologie.abox.lade_aus_bytes`,
+`spez.validierung.lade_spez_aus_bytes` (fail-closed nach dem Muster
+`GateLedgerEntry.validate_payload`); die vier `from_dict` in
+`models/schemas.py` (`CommonResult`, `QaReport`, `QaContract`,
+`RunDossierV2Delta`) synthetisieren keine `schema_version` mehr
+(`_pflicht_schema_version`). Bisher unverglichene Felder werden verglichen:
+`spez.spez_version` gegen `SPEZ_VERSION`, `abox.schema_version` gegen
+`ABOX_SCHEMA_VERSION`. Kein getracktes Artefakt war ohne Versionsschluessel
+(geprueft), keine Fixture bricht.
+
+T23-03: Der alte Stand ist im CODE nachweisbar — die T-Box deklariert ihre
+Versionslinie `TBOX_VERSIONEN` (aelteste zuerst, wird bei jedem Bump
+angehaengt, nie umgeschrieben). A-K1 verlangt: `nach_version` ist die
+Version, die der Code traegt (wie bisher), `von_version` ist der
+unmittelbare Vorgaenger von `nach` in der Linie, Semver-Ordnung aufwaerts.
+Erfundene, rueckwaerts laufende und vorgaengerlose Uebergaenge werden
+nicht signiert. Konsequenz, ehrlich: Die reale Linie hat ein Element
+(`"0.1.0"`), es gab noch keinen Uebergang — derzeit ist kein A-K1
+zeichenbar. Die A-K1-Tests tragen eine testlokale Linie
+`("0.0.9", TBOX_VERSION)`, die zu ihrem Beleg passt. Die Alternative
+(Versionen in den Snapshot schreiben, P9-Schema 8) wurde nach T22-07
+(Schema 7) als zu schwer verworfen. Eine Kompatibilitaets-/
+Migrationsaussage im Beleg (neues Pflichtfeld, Schema 2 der
+Aenderungsdatei) ist NICHT Teil dieses Blocks — benannte Grenze; das
+Artefakt (ADR/Aenderungsvermerk) traegt die Begruendung.
+
+T23-09: Das A-K1-Artefakt muss ein relativer, kanonischer Pfad innerhalb
+des Falls oder des Repos sein (`repo_root` wird durchgereicht); absolute
+oder mit `..` hinausfuehrende Pfade werden abgewiesen. `--mandat` muss wie
+Ordnung und Schluessel AUSSERHALB des Falls liegen — im P9-Gate und in
+`ontologie.entscheide`, ueber `models.zeichnung.ausserhalb_des_falls`
+(lexikalisch UND aufgeloest, wie bei der Ordnung).
+
+Klassen-Test `tests/test_evidence_vertrag_t23.py`: je Leser ein JSON OHNE
+Versionsschluessel (A-Box, Spez, vier Ergebnis-Schemata); die bisher
+unverglichenen Felder; Linie konsistent zur Code-Version; Uebergang vom
+deklarierten Vorgaenger gueltig, erfunden/rueckwaerts/vorgaengerlos
+abgewiesen; Artefakt ausserhalb Fall+Repo abgewiesen, im Repo erlaubt;
+Mandat im Fall verweigert (Helfer und P9-Gate).
+
+Adversarialer Review Block 2 (ein Agent, Sonnet, Auftrag: widerlegen):
+Drei Befunde, alle geschlossen, keiner blieb offen.
+
+1. HOCH — der fail-closed Lader wurde an zwei lebenden Aufrufstellen
+   umgangen: `generation_golden` (P-K1) und die P9-Annahmesperre in
+   `gate_entscheid` parsten die A-Box direkt (`ABox.model_validate_json`).
+   P-K1 war damit ungeschuetzt (eine A-Box ohne `tbox_version` bekam ein
+   gruenes Golden-Master-Urteil), die Annahmesperre nur indirekt durch die
+   P-Q3-Hashbindung gedeckt. Genau die Lektion dieser Runde: T23-02 als
+   Fall (zwei Lader) haette die Luecke geschlossen, als Klasse (jeder
+   Leser der Datei) nicht — der Agent fand die dritte und vierte
+   Lesestelle. Beide laufen jetzt ueber `lade_aus_bytes`; der Test
+   `test_pk1_laedt_die_abox_nicht_am_fail_closed_lader_vorbei` faehrt
+   P-K1 gegen eine A-Box ohne Versionsdeklaration.
+2. MITTEL — `ausserhalb_des_falls` las `../mandat.txt`, aus dem Fall
+   heraus aufgerufen, lexikalisch als "im Fall" (pathlib.relative_to
+   kollabiert `..` nicht) und wies ein legitim externes Mandat ab. Der
+   Fehler war von `lade_zeichnungsordnung` geerbt (fail-safe, aber
+   falsch) und mit Block 2 dupliziert. Beide Stellen normalisieren jetzt
+   lexikalisch (`os.path.normpath`, ohne Symlinks aufzuloesen); die
+   aufgeloeste Pruefung darunter faengt weiterhin Symlinks aus dem Fall
+   hinaus. Test: `..`-Pfad nach aussen ist aussen, Symlink im Fall nach
+   aussen bleibt innen.
+3. Kosmetik — eine Leerzeile vor `@dataclass` in `models/schemas.py`.
+
+Bestaetigt ohne Befund: Linie einelementig gefuehrt (kein IndexError),
+Artefakt-Pfadbindung robust gegen absolute und `..`-Pfade, Produzenten
+schreiben die Versionsschluessel, `from_dict`-Aufrufer ausserhalb der
+Tests keine.

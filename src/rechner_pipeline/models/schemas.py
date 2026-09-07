@@ -177,6 +177,23 @@ def _ledger_summary_errors(
 # --------------------------------------------------------------------------- #
 
 
+def _pflicht_schema_version(data: Dict[str, Any]) -> int:
+    """``schema_version`` muss deklariert sein.
+
+    Ein fehlender Schluessel wird nie mit der aktuellen Version
+    synthetisiert (Review T23-02): sonst waeren "nicht deklariert" und
+    "aktuell" ununterscheidbar, und ``validate()`` liefe fuer alte oder
+    unvollstaendige Artefakte ins Leere — dasselbe Muster, das
+    :meth:`GateLedgerEntry.validate_payload` fuer den Ledger erzwingt.
+    """
+    if not isinstance(data, dict) or "schema_version" not in data:
+        raise ValueError(
+            "schema_version fehlt — ein Artefakt ohne Versionsdeklaration "
+            "gilt nicht als aktuell"
+        )
+    return int(data["schema_version"])
+
+
 @dataclass
 class CommonResult:
     """Common toolbox result (schema view)."""
@@ -238,7 +255,7 @@ class CommonResult:
             repair_hints=list(data.get("repair_hints") or []),
             output_hashes=dict(data.get("output_hashes") or {}),
             diagnostics_path=data.get("diagnostics_path"),
-            schema_version=int(data.get("schema_version", SCHEMA_VERSION)),
+            schema_version=_pflicht_schema_version(data),
         )
 
     def validate(self) -> List[str]:
@@ -777,7 +794,7 @@ class QaReport:
             ],
             dependency_versions=dict(data.get("dependency_versions") or {}),
             tafeln_xml_canonical_sha256=data.get("tafeln_xml_canonical_sha256"),
-            schema_version=int(data.get("schema_version", SCHEMA_VERSION)),
+            schema_version=_pflicht_schema_version(data),
         )
 
     def validate(self) -> List[str]:
@@ -882,7 +899,7 @@ class RunDossierV2Delta:
     def from_dict(cls, data: Dict[str, Any]) -> "RunDossierV2Delta":
         run = dict(data.get("run") or {})
         return cls(
-            schema_version=int(data.get("schema_version", 2)),
+            schema_version=_pflicht_schema_version(data),
             run_cli=dict(run.get("cli") or {}),
             options_extra=dict(run.get("options") or {}),
             qa_report=dict(data.get("qa_report") or {}),
@@ -978,7 +995,7 @@ class QaContract:
             tiers_enabled=list(data.get("tiers_enabled") or []),
             tolerances=dict(data.get("tolerances") or {}),
             property_engine=dict(data.get("property_engine") or {}),
-            schema_version=int(data.get("schema_version", SCHEMA_VERSION)),
+            schema_version=_pflicht_schema_version(data),
         )
 
     def validate(self) -> List[str]:

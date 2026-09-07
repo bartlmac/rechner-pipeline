@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from rechner_pipeline.ontologie.aussage import Zustand
-from rechner_pipeline.ontologie.tbox import ABox, PFLICHT_PARAMETER, TBOX_VERSION
+from rechner_pipeline.ontologie.tbox import ABOX_SCHEMA_VERSION, ABox, PFLICHT_PARAMETER, TBOX_VERSION
 
 ABOX_DATEI = "abox.json"
 
@@ -49,7 +49,23 @@ def lade_aus_bytes(roh: bytes) -> ABox:
     Damit ein Gate Beleg-Hash und Verarbeitung aus DENSELBEN Bytes bildet
     (Review T23-01) — es liest einmal, hasht die Bytes und parst sie hier,
     statt die Datei fuer das Parsen ein zweites Mal zu lesen.
+
+    Fail-closed bei fehlender Versionsdeklaration (Review T23-02): Der
+    Modell-Default gilt fuer die KONSTRUKTION (eine frisch gebaute A-Box
+    spricht das aktuelle Vokabular), nie fuer die DESERIALISIERUNG — eine
+    Datei ohne ``tbox_version``/``schema_version`` wuerde sonst still als
+    aktuell eingestuft, und der Versionsvergleich der Gates liefe ins Leere.
     """
+    daten = json.loads(roh)
+    if not isinstance(daten, dict):
+        raise ValueError("A-Box: kein JSON-Objekt")
+    fehlend = [k for k in ("schema_version", "tbox_version") if k not in daten]
+    if fehlend:
+        raise ValueError(
+            f"A-Box ohne Versionsdeklaration ({', '.join(fehlend)}) — sie "
+            "spricht kein bekanntes Vokabular; aus den Fragmenten neu "
+            "erzeugen (gates.abox_merge), nicht still als aktuell einstufen"
+        )
     return ABox.model_validate_json(roh)
 
 
@@ -72,6 +88,12 @@ def validate_abox(
     # T22-02): Eine A-Box mit fremder Version ist unter dem geltenden
     # Vokabular nicht auslegbar — neu erzeugen (abox_merge) oder die
     # T-Box-Aenderung ueber A-K1 zeichnen.
+    if abox.schema_version != ABOX_SCHEMA_VERSION:
+        fehler.append(
+            f"schema_version: A-Box-Datei traegt {abox.schema_version!r}, "
+            f"geltend ist {ABOX_SCHEMA_VERSION!r} — Datei stammt aus einem "
+            "anderen Dateischema; aus den Fragmenten neu erzeugen"
+        )
     if abox.tbox_version != TBOX_VERSION:
         fehler.append(
             f"tbox_version: A-Box traegt {abox.tbox_version!r}, geltend ist "

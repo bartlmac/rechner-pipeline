@@ -47,6 +47,8 @@ import pytest
 
 from rechner_pipeline.gates import abnahmebericht, abox_merge, abox_validate
 from rechner_pipeline.gates import aktuartest, gate_entscheid, generation_golden
+from rechner_pipeline.ontologie import tbox as tbox_modul
+from rechner_pipeline.ontologie.tbox import TBOX_VERSION
 from tests.e2e_fixture import bereite_pk1_fall
 from tests.test_abnahmebericht import _basis_argv, _pruefung, _suite_datei
 from tests.test_aktuartest_gate import _fall as _aktuartest_fall
@@ -216,6 +218,9 @@ def test_abox_merge_liest_fragmente_und_register_genau_einmal(tmp_path, monkeypa
 def test_ak1_liest_seine_pflichtbelege_genau_einmal(pk1_fall, monkeypatch):
     assert abox_validate.main(
         ["--fall", str(pk1_fall), "--repo-root", str(REPO_ROOT)]).exit_code == 0
+    # Der Beleg zeichnet 0.0.9 -> TBOX_VERSION; seit Review T23-03 muss der
+    # alte Stand im Code deklariert sein — hier testlokal.
+    monkeypatch.setattr(tbox_modul, "TBOX_VERSIONEN", ("0.0.9", TBOX_VERSION))
     _tbox_beleg(pk1_fall)
     zaehler, geschrieben = _zaehle_lesungen(monkeypatch)
     ergebnis = gate_entscheid.main([

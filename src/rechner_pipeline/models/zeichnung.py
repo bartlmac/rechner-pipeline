@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -65,6 +66,26 @@ def _unter(pfad: Path, wurzel: Path) -> bool:
         return False
 
 
+def ausserhalb_des_falls(pfad: Path, fall: Path) -> bool:
+    """Ob ein Belegpfad lexikalisch UND aufgeloest ausserhalb des Falls liegt.
+
+    Der Vertrag fuer alles, was eine Zeichnung autorisiert — Ordnung,
+    Freigabeschluessel, Mandat (ADR-018): Was der Fall selbst umschreiben
+    kann, autorisiert nichts. Bisher galt das nur fuer die Ordnung; das
+    Mandat war raeumlich ungebunden (Review T23-09). Ein nicht existierender
+    Pfad gilt nicht als "ausserhalb".
+    """
+    absolut = Path(os.path.normpath(pfad if pfad.is_absolute() else Path.cwd() / pfad))
+    fall_resolved = fall.resolve()
+    try:
+        resolved = absolut.resolve(strict=True)
+    except OSError:
+        return False
+    return not (
+        _unter(absolut.absolute(), fall_resolved) or _unter(resolved, fall_resolved)
+    )
+
+
 def lade_zeichnungsordnung(
     raw: object, fall: Path
 ) -> Tuple[Optional[dict], Optional[str], List[str]]:
@@ -80,6 +101,10 @@ def lade_zeichnungsordnung(
         return None, None, ["--zeichnungsordnung muss ein Pfad sein"]
     angegeben = Path(raw)
     absolut = angegeben if angegeben.is_absolute() else Path.cwd() / angegeben
+    # Lexikalisch normalisieren, ohne Symlinks aufzuloesen: '../ordnung.json'
+    # von innerhalb des Falls ist AUSSERHALB (Review Block 2); Symlinks
+    # faengt die aufgeloeste Pruefung darunter.
+    absolut = Path(os.path.normpath(absolut))
     fall_resolved = fall.resolve()
     try:
         resolved = absolut.resolve(strict=True)

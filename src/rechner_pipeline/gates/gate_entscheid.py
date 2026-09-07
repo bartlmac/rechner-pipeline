@@ -107,7 +107,8 @@ from rechner_pipeline.models.schemas import (
 GATE_VERSION = P9_GATE_VERSION
 # Umzug 2026-09-01: der Rollen-/Gate-Vertrag lebt in models.zeichnung
 # (paketuebergreifend — auch ontologie.entscheide liest ihn seither).
-from rechner_pipeline.models.zeichnung import (  # noqa: E402
+from rechner_pipeline.models.zeichnung import (
+    ausserhalb_des_falls,  # noqa: E402
     GUELTIGE_GATES,
     lade_zeichnungsordnung as _models_lade_zeichnungsordnung,
     zeichnungsrolle as _models_zeichnungsrolle,
@@ -366,8 +367,16 @@ TBOX_AENDERUNG_SCHEMA_VERSION = 1
 _SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
 
+def _semver_tuple(version: str) -> tuple:
+    return tuple(int(teil) for teil in version.split("."))
+
+
 def pruefe_tbox_aenderung(
-    pfad: Path, fall: Path, *, text: str | None = None,
+    pfad: Path,
+    fall: Path,
+    *,
+    text: str | None = None,
+    repo_root: Path | None = None,
 ) -> List[str]:
     """Den Beleg einer T-Box-Aenderung gegen Code und Artefakt halten.
 
@@ -378,6 +387,14 @@ def pruefe_tbox_aenderung(
     die, die der Code jetzt traegt (TBOX_VERSION); der Modul-Hash ist der
     des geladenen T-Box-Moduls; das Artefakt liegt im Fall oder im Repo
     und traegt seinen Hash. Rueckgabe: Fehlerliste (leer = in Ordnung).
+
+    Der ALTE Stand ist im Code nachweisbar (Review T23-03): Die T-Box
+    deklariert ihre Versionslinie (``TBOX_VERSIONEN``); ``von_version``
+    muss der unmittelbare Vorgaenger von ``nach_version`` in dieser Linie
+    sein, und die Ordnung laeuft aufwaerts — ein erfundener oder
+    rueckwaerts laufender Uebergang wird nicht signiert. Der Artefakt-Pfad
+    ist relativ und kanonisch und liegt im Fall oder im Repo (``repo_root``),
+    nirgends sonst (Review T23-09).
     """
     from rechner_pipeline.ontologie import tbox as tbox_modul
 
@@ -397,11 +414,36 @@ def pruefe_tbox_aenderung(
     if daten.get("schema_version") != TBOX_AENDERUNG_SCHEMA_VERSION:
         fehler.append(f"schema_version muss {TBOX_AENDERUNG_SCHEMA_VERSION} sein")
     von, nach = daten.get("von_version"), daten.get("nach_version")
+    semver_ok = True
     for name, wert in (("von_version", von), ("nach_version", nach)):
         if not isinstance(wert, str) or not _SEMVER.match(wert):
             fehler.append(f"{name} muss eine Version x.y.z sein")
+            semver_ok = False
     if von == nach:
         fehler.append("von_version und nach_version sind gleich — keine Aenderung")
+    if semver_ok and von != nach:
+        if _semver_tuple(von) >= _semver_tuple(nach):
+            fehler.append(
+                f"von_version {von!r} liegt nicht vor nach_version {nach!r} "
+                "— ein Uebergang laeuft aufwaerts"
+            )
+        linie = tuple(tbox_modul.TBOX_VERSIONEN)
+        if nach not in linie:
+            fehler.append(
+                f"nach_version {nach!r} steht nicht in der Versionslinie der "
+                f"T-Box {linie!r}"
+            )
+        elif linie.index(nach) == 0:
+            fehler.append(
+                f"nach_version {nach!r} ist die erste Version der T-Box-Linie "
+                f"{linie!r} — ohne Vorgaenger gibt es keinen Uebergang zu zeichnen"
+            )
+        elif linie[linie.index(nach) - 1] != von:
+            fehler.append(
+                f"von_version {von!r} ist nicht der Vorgaenger von {nach!r} in "
+                f"der Versionslinie {linie!r} — der alte Stand muss der im Code "
+                "nachweisbare sein"
+            )
     if nach != tbox_modul.TBOX_VERSION:
         fehler.append(
             f"nach_version {nach!r} ist nicht die Version, die der Code traegt "
@@ -416,12 +458,34 @@ def pruefe_tbox_aenderung(
             and isinstance(artefakt.get("sha256"), str)):
         fehler.append("artefakt {pfad, sha256} fehlt")
     else:
-        kandidaten = [fall / artefakt["pfad"], Path(artefakt["pfad"])]
-        datei = next((k for k in kandidaten if k.is_file()), None)
-        if datei is None:
-            fehler.append(f"artefakt {artefakt['pfad']!r} nicht gefunden")
-        elif hashlib.sha256(datei.read_bytes()).hexdigest() != artefakt["sha256"]:
-            fehler.append(f"artefakt {artefakt['pfad']!r}: Hash stimmt nicht")
+        # Relativ, kanonisch, innerhalb von Fall oder Repo — nirgends sonst
+        # (Review T23-09): ein absoluter oder hinausfuehrender Pfad liesse ein
+        # Artefakt ausserhalb jeder Nachvollziehbarkeit als Rechtfertigung zu.
+        pfad_roh = artefakt["pfad"]
+        wurzeln = [fall] + ([repo_root] if repo_root is not None else [])
+        datei: Path | None = None
+        if Path(pfad_roh).is_absolute() or ".." in Path(pfad_roh).parts:
+            fehler.append(
+                f"artefakt {pfad_roh!r} ist kein relativer, kanonischer Pfad — "
+                "erlaubt sind Pfade innerhalb des Falls oder des Repos"
+            )
+        else:
+            for wurzel in wurzeln:
+                kandidat = (wurzel / pfad_roh).resolve()
+                try:
+                    kandidat.relative_to(wurzel.resolve())
+                except ValueError:
+                    continue
+                if kandidat.is_file():
+                    datei = kandidat
+                    break
+            if datei is None:
+                fehler.append(
+                    f"artefakt {pfad_roh!r} nicht gefunden (innerhalb des Falls "
+                    "oder des Repos)"
+                )
+            elif hashlib.sha256(datei.read_bytes()).hexdigest() != artefakt["sha256"]:
+                fehler.append(f"artefakt {pfad_roh!r}: Hash stimmt nicht")
     if not (isinstance(daten.get("begruendung"), str) and daten["begruendung"].strip()):
         fehler.append("begruendung fehlt")
     return fehler
@@ -1261,6 +1325,13 @@ def main(argv: Optional[List[str]] = None):
         mandat_pfad = Path(args.mandat)
         if not mandat_pfad.is_file():
             return _usage(f"--mandat {args.mandat!r} ist keine Datei")
+        if not ausserhalb_des_falls(mandat_pfad, fall):
+            # Wie Ordnung und Schluessel (ADR-018): Was der Fall selbst
+            # umschreiben kann, autorisiert nichts (Review T23-09).
+            return _usage(
+                f"--mandat {args.mandat!r} liegt innerhalb des Falls; das "
+                "Mandat muss wie die Zeichnungsordnung extern verwahrt werden"
+            )
         mandat_sha256 = hashlib.sha256(mandat_pfad.read_bytes()).hexdigest()
     if not (fall / "eingang.json").is_file():
         return _usage(
@@ -1327,9 +1398,9 @@ def main(argv: Optional[List[str]] = None):
 
         from rechner_pipeline.ontologie.abox import (
             abox_pfad,
+            lade_aus_bytes,
             validate_abox,
         )
-        from rechner_pipeline.ontologie.tbox import ABox
 
         eingangs_fehler = fall_mod.pruefen(fall)
         if eingangs_fehler:
@@ -1350,7 +1421,8 @@ def main(argv: Optional[List[str]] = None):
             )
         try:
             abox_roh = abox_pfad(fall).read_bytes()
-            abox = ABox.model_validate_json(abox_roh)
+            # Ueber den fail-closed Lader (Review T23-02), nicht am Lader vorbei.
+            abox = lade_aus_bytes(abox_roh)
         except Exception as exc:  # Ladefehler ist Befund MIT Ledger
             return _sperre("abox", f"A-Box unlesbar: {exc}")
         # eingang.json einmal lesen: Validierung, P-Q3-Abgleich und die
@@ -1436,6 +1508,7 @@ def main(argv: Optional[List[str]] = None):
             ak1_fehler = pruefe_tbox_aenderung(
                 aenderung_pfad, fall,
                 text=aenderung_gelesen.text() if aenderung_gelesen else None,
+                repo_root=Path(args.repo_root).resolve() if args.repo_root else None,
             )
             if ak1_fehler:
                 return _sperre(

@@ -49,7 +49,7 @@ flowchart TD
     gates -- 8 --> fall
     gates -- 8 --> kern
     gates -- 11 --> models
-    gates -- 12 --> ontologie
+    gates -- 11 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
     gates -- 5 --> spez

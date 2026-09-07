@@ -407,8 +407,7 @@ def main(argv: Optional[List[str]] = None):
 
     # Die Spez ist Projektion der A-Box — ohne diese Pruefung koennte eine
     # editierte Spez eine eigene Wahrheit in den Golden Master tragen.
-    from rechner_pipeline.ontologie.abox import abox_pfad
-    from rechner_pipeline.ontologie.tbox import ABox
+    from rechner_pipeline.ontologie.abox import abox_pfad, lade_aus_bytes
 
     abox_datei = abox_pfad(fall)
     abox_sha256 = ""
@@ -419,7 +418,9 @@ def main(argv: Optional[List[str]] = None):
             # Aenderung einen Hash fuer eine andere A-Box protokollieren.
             abox_roh = abox_datei.read_bytes()
             abox_sha256 = hashlib.sha256(abox_roh).hexdigest()
-            abox = ABox.model_validate_json(abox_roh)
+            # Ueber den fail-closed Lader (Review T23-02): eine A-Box ohne
+            # Versionsdeklaration gilt nicht still als aktuell.
+            abox = lade_aus_bytes(abox_roh)
         except Exception as exc:
             return _contract_fehler("abox", f"A-Box unlesbar: {exc}")
         from rechner_pipeline.spez.validierung import validate_spez

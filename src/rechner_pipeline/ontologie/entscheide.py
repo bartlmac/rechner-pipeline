@@ -55,6 +55,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from rechner_pipeline.models.zeichnung import ausserhalb_des_falls
 from rechner_pipeline.ontologie.abox import (
     abox_pfad,
     lade,
@@ -333,6 +334,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not mandat.is_file():
             print(f"entscheide: --mandat {args.mandat!r} ist keine Datei",
                   file=sys.stderr)
+            return 2
+        if not ausserhalb_des_falls(mandat, fall):
+            # Wie Ordnung und Schluessel (ADR-018): Was der Fall selbst
+            # umschreiben kann, autorisiert nichts (Review T23-09).
+            print(f"entscheide: --mandat {args.mandat!r} liegt innerhalb des "
+                  "Falls; das Mandat muss wie die Zeichnungsordnung extern "
+                  "verwahrt werden", file=sys.stderr)
             return 2
         mandat_sha256 = hashlib.sha256(mandat.read_bytes()).hexdigest()
     zeichnung = zeichnung_fuer(ordnung, ordnung_sha, fingerprint, mandat_sha256)
