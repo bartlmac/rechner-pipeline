@@ -406,7 +406,7 @@ liegt beim Maintainer.
 | 2 Schalter je Generation | ERLEDIGT 2026-09-07 (ff18e03) |
 | 3 Uebernahme materialisiert Anfangszustand | ERLEDIGT 2026-09-07 (4a59730); Pruefstrecke nimmt ohne Zustand die gelieferte Summe |
 | 4 Fuehrung liest Anfangszustand | ERLEDIGT 2026-09-07 (Engine, Bewertung, Ledger-Herleitung, Fortschreibungs-Kommando); Tagesbetrieb folgt in Schritt 9 |
-| 5 Korrekturschicht in der Fuehrung | offen |
+| 5 Korrekturschicht in der Fuehrung | ERLEDIGT 2026-09-07 (schichten.parquet aus dem Schichtbeleg, Storno und Abschluss mit Schicht, P-B1 4.0.0) |
 | 6 Fuehrungsprobe vor A-M4 | offen |
 | 7 Freischaltung im Skill | offen |
 | 8 Fall Lauf 2 korrigieren | offen (Regie) |

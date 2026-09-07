@@ -87,6 +87,8 @@ import pandas as pd
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
+from rechner_pipeline.bestand.schichten import schichten_je_police
+from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
 from rechner_pipeline.models.bestand import (
     AKTIVE_STATUS,
     LEDGER_SPALTEN,
@@ -203,6 +205,7 @@ class _Vertrag:
         *,
         tarifwerk: Mapping[str, Any] | None = None,
         mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
+        schicht: Tuple[Any, int] | None = None,
     ) -> None:
         self.grund_mp = mp
         self.grund = Rechenkern(mp)
@@ -210,6 +213,13 @@ class _Vertrag:
         self.scheiben: List[Tuple[int, float, Rechenkern]] = [
             (int(jahr), float(vs), kern) for jahr, vs, kern in mitgebracht
         ]  # (jahr, vs, kern)
+        #: Korrekturschicht (Schichtparameter, monate_ta) eines uebernommenen
+        #: Vertrags — Storno zahlt Basiswert plus Schichtwert
+        #: (wertkontinuierlich, Ausgestaltung des Tarifplans; Grundsatz-
+        #: dokumentation 9.7). Tod und Ablauf sind unberuehrt (feste Summe,
+        #: Terminalbedingung), eine Beitragsfreistellung absorbiert — nach
+        #: ihr gibt es kein Storno mehr, die Schicht ist damit erledigt.
+        self.schicht = schicht
 
     def gesamt_vs(self) -> float:
         return self.grund_mp.sum_insured + sum(vs for _, vs, _ in self.scheiben)
@@ -225,10 +235,14 @@ class _Vertrag:
         return mp
 
     def rkw(self, jahr: int) -> float:
-        return vertrags_rkw(
+        wert = vertrags_rkw(
             self.grund, [(erh_jahr, kern) for erh_jahr, _, kern in self.scheiben], jahr,
             stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),
         )
+        if self.schicht is not None and 12 * jahr >= self.schicht[1]:
+            parameter, monate_ta = self.schicht
+            wert += schichtwert_bei(parameter, monate_ta, self.grund_mp, 12 * jahr)
+        return wert
 
     def beitragsfreie_summe(self, a0: int) -> float:
         return self.grund.beitragsfreie_summe(a0) + sum(
@@ -282,6 +296,7 @@ def _simuliere_vertrag(
     *,
     tarifwerk: Mapping[str, Any] | None = None,
     mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
+    schicht: Tuple[Any, int] | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Simulate one contract; returns (booked events, NEUE Erhoehungsscheiben).
 
@@ -302,7 +317,7 @@ def _simuliere_vertrag(
 
     vertrag = _Vertrag(
         ModelPoint(**model_point_kwargs(row, generation_fields)),
-        tarifwerk=tarifwerk, mitgebracht=mitgebracht,
+        tarifwerk=tarifwerk, mitgebracht=mitgebracht, schicht=schicht,
     )
     rng = np.random.Generator(
         np.random.PCG64(np.random.SeedSequence([seed, EREIGNIS_STREAM, police_id]))
@@ -565,8 +580,16 @@ def fortschreiben(
     merkmale: pd.DataFrame | None = None,
     zugaenge: pd.DataFrame | None = None,
     scheiben: pd.DataFrame | None = None,
+    schichten: pd.DataFrame | None = None,
+    verankerung: pd.DataFrame | None = None,
 ) -> Fortschreibung:
     """Roll the base portfolio forward to ``bis``.
+
+    ``schichten`` und ``verankerung`` (Freischaltung, Schritt 5) sind die
+    Korrekturschicht je uebernommenem Vertrag und ihr Verankerungs-
+    zeitpunkt (``schichten.parquet``, ``verankerung.parquet`` der
+    Uebernahme): Storno zahlt Basiswert plus Schichtwert. Beide Tabellen
+    gehoeren zusammen; eine Schicht ohne Anker ist ein Fehler.
 
     ``scheiben`` (Freischaltung, Schritt 4) sind die MITGEBRACHTEN
     Erhoehungsscheiben uebernommener Vertraege (``scheiben.parquet`` der
@@ -730,6 +753,21 @@ def fortschreiben(
     generationen = {g.name: g.generation_fields() for g in config.generationen}
     tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
     mitgebracht_je_police = _mitgebrachte_scheiben(stamm, scheiben, grundlagen)
+    try:
+        schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
+    except ValueError as exc:
+        raise EreignisError(str(exc)) from exc
+    if schicht_je_police:
+        haupt_zugang = stamm.set_index("police_id")
+        eigene = [
+            pid for pid in schicht_je_police
+            if pd.Timestamp(haupt_zugang.loc[pid, "bestandszugang"])
+            <= pd.Timestamp(haupt_zugang.loc[pid, "insurance_start"])
+        ]
+        if eigene:
+            raise EreignisError(
+                f"schichten: Korrekturschicht an einem eigenen Vertrag "
+                f"(police {eigene[:5]}) — nur ein uebernommener Vertrag ist verankert")
     bu_generationen = {
         g.name: g.bu_generation_fields()
         for g in config.generationen
@@ -797,6 +835,10 @@ def fortschreiben(
                     pex_jahr=seit if zustand == "PEX" else None,
                     tarifwerk=tarifwerk_je_generation[name],
                     mitgebracht=mitgebracht_je_police.get(int(row["police_id"]), ()),
+                    schicht=(
+                        schicht_je_police[int(row["police_id"])][:2]
+                        if int(row["police_id"]) in schicht_je_police else None
+                    ),
                 )
         except EreignisError:
             raise

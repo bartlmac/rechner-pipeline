@@ -260,7 +260,7 @@ def test_zugang_eines_uebernommenen_vertrags_muss_geliefert_tragen(klv_lauf):
 # --------------------------------------------------------------------------- #
 
 def test_pb1_version_und_readme_nennen_den_versionssprung():
-    assert bestand_validate.GATE_VERSION == "3.0.0"
+    assert bestand_validate.GATE_VERSION == "4.0.0"
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "P-B1 (Version `3.0.0`)" in readme
+    assert "P-B1 (Version `4.0.0`)" in readme
     assert "`2.1.0`" in readme and "T21-09" in readme

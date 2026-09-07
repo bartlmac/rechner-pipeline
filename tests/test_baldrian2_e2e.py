@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pytest
 
+from rechner_pipeline.bestand import cli_fortschreibung
 from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates import (
     aktuartest_lauf,
@@ -185,6 +186,8 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ] + _lieferungs_flags()) == 0, "Verankerung mit Schichtbeleg"
     schichten = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
     assert schichten.is_file(), "Schichtbeleg der Verankerung"
+    assert (bestand / "schichten.parquet").is_file(), (
+        "die Schicht als Vertragsattribut des Bestands (Freischaltung, Schritt 5)")
 
     for abnahme, erwartung in ABNAHMEN:
         assert aktuartest_lauf.main([
@@ -211,6 +214,32 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--schicht", str(schichten),
         "--repo-root", str(REPO_ROOT),
     ] + _lieferungs_flags()) == 0, "Migrationscontrolling"
+
+    # Freischaltung (Schritt 4 und 5): Der uebernommene Bestand wird mit
+    # der Config des Falls fortgeschrieben — auf seinen Bausteinen, mit
+    # seinem Tarifwerk und seiner Korrekturschicht — und P-B1 prueft das
+    # Vollprofil des Laufs, Schicht und Verankerung eingeschlossen.
+    nach = fall / "abgeleitet" / "bestand-nach"
+    assert cli_fortschreibung.main([
+        "--config", str(config_pfad), "--bis", STICHTAG_2,
+        "--uebernahme", str(bestand), "--out-dir", str(nach),
+    ]) == 0, "Fortschreibung des uebernommenen Bestands"
+    pb1_nach = bestand_validate.main([
+        "--portfolio", str(nach / "bestand_gesamt.parquet"),
+        "--historie", str(nach / "historie.parquet"),
+        "--ledger", str(nach / "ledger.parquet"),
+        "--scheiben", str(nach / "scheiben.parquet"),
+        "--merkmale", str(nach / "merkmale.parquet"),
+        "--schichten", str(nach / "schichten.parquet"),
+        "--verankerung", str(nach / "verankerung.parquet"),
+        "--config", str(config_pfad),
+        "--bis", STICHTAG_2,
+        "--manifest", str(nach / "laufmanifest.json"),
+        "--repo-root", str(REPO_ROOT),
+        "--diagnostics-dir", str(fall / "abgeleitet" / "diagnostics-nach"),
+    ])
+    assert pb1_nach.exit_code == 0, ("Gate P-B1 auf dem fortgeschriebenen Bestand",
+                                     pb1_nach.errors)
     return fall
 
 

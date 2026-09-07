@@ -37,11 +37,15 @@ from rechner_pipeline.models.bestand import (
     LEDGER_NAMES,
     MERKMALE_NAMES,
     SCHEIBEN_NAMES,
+    SCHICHTEN_NAMES,
+    VERANKERUNG_NAMES,
     STATUS_HISTORIE_NAMES,
     STAMM_NAMES,
     validate_ledger,
     validate_portfolio,
     validate_scheiben,
+    validate_schichten,
+    validate_verankerung,
     validate_stamm_journal,
     validate_statushistorie,
 )
@@ -104,7 +108,8 @@ def lies_und_pruefe_pb1(
     ``tabellen`` traegt die Rollen, die gelesen werden konnten, und unter
     ``config`` die geparste Config, wenn eine uebergeben wurde.
     """
-    erlaubt = {"portfolio", "historie", "scheiben", "ledger", "merkmale", "config"}
+    erlaubt = {"portfolio", "historie", "scheiben", "ledger", "merkmale", "config",
+               "schichten", "verankerung"}
     rollen = set(eingaben)
     errors: List[dict] = []
     usage_errors: List[dict] = []
@@ -141,8 +146,11 @@ def lies_und_pruefe_pb1(
         "scheiben": SCHEIBEN_NAMES,
         "ledger": LEDGER_NAMES,
         "merkmale": MERKMALE_NAMES,
+        "schichten": SCHICHTEN_NAMES,
+        "verankerung": VERANKERUNG_NAMES,
     }
-    for rolle in ("portfolio", "historie", "scheiben", "ledger", "merkmale"):
+    for rolle in ("portfolio", "historie", "scheiben", "ledger", "merkmale",
+                  "schichten", "verankerung"):
         if rolle not in eingaben:
             continue
         # Genau EIN Lesevorgang je Datei: Die Bytes, die gegen das Manifest
@@ -219,6 +227,25 @@ def lies_und_pruefe_pb1(
                 errors.append({"code": "scheiben", "message": meldung})
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
             errors.append({"code": "scheiben", "message": str(exc)})
+
+    schichten = tabellen.get("schichten")
+    verankerung = tabellen.get("verankerung")
+    if portfolio is not None and verankerung is not None:
+        geprueft["verankerung_zeilen"] = int(len(verankerung))
+        try:
+            for meldung in validate_verankerung(portfolio, verankerung):
+                errors.append({"code": "verankerung", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "verankerung", "message": str(exc)})
+    if portfolio is not None and schichten is not None:
+        # Korrekturschicht (Freischaltung, Schritt 5): Form, Zugehoerigkeit
+        # zum Stamm und zum Verankerungszeitpunkt.
+        geprueft["schichten_zeilen"] = int(len(schichten))
+        try:
+            for meldung in validate_schichten(portfolio, schichten, verankerung):
+                errors.append({"code": "schichten", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "schichten", "message": str(exc)})
 
     if portfolio is not None and ledger is not None:
         # Semantik der Buchungen (T18-06) und zeilenweise Bindung an die
@@ -328,6 +355,7 @@ def lies_und_pruefe_pb1(
                     for meldung in pruefe_ledger_betraege(
                         portfolio, ledger, config, scheiben=scheiben,
                         historie=historie, merkmale=tabellen.get("merkmale"),
+                        schichten=schichten, verankerung=verankerung,
                     ):
                         errors.append({"code": "ledger", "message": meldung})
                     geprueft["betraege_hergeleitet"] = int(

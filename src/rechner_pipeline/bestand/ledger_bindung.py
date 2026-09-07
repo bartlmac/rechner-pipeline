@@ -43,6 +43,8 @@ from rechner_pipeline.bestand.auswertung import grundlagen_je_police
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
+from rechner_pipeline.bestand.schichten import schichten_je_police
+from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
 from rechner_pipeline.models.bestand import model_point_kwargs
 
 #: Cent-Toleranz: Der Kern schreibt Buchung und Herleitung aus demselben
@@ -137,8 +139,14 @@ def pruefe_ledger_betraege(
     scheiben: Optional[pd.DataFrame] = None,
     historie: Optional[pd.DataFrame] = None,
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
 ) -> List[str]:
     """Betrag jeder Buchung gegen die Kern-Herleitung DIESER Police.
+
+    ``schichten``/``verankerung`` (Freischaltung, Schritt 5): Storno
+    eines uebernommenen Vertrags zahlt Basiswert plus Korrekturschicht —
+    dieselbe Herleitung wie in der Engine.
 
     Rueckgabe: Fehlerliste (leer = jede hergeleitete Buchung stimmt).
     Voraussetzung ist ein formal gueltiger Ledger (``validate_ledger``);
@@ -151,6 +159,10 @@ def pruefe_ledger_betraege(
     grundlagen = grundlagen_je_police(config, merkmale)
     tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
     haupt = stamm.set_index("police_id")
+    try:
+        schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
+    except ValueError as exc:
+        return [f"schichten: {exc}"]
 
     scheiben_je_police: Dict[int, List[Tuple[int, float]]] = {}
     if scheiben is not None:
@@ -225,6 +237,10 @@ def pruefe_ledger_betraege(
                 bfr_ab = pex_jahr.get(pid)
                 if art == "STO":
                     erwartet = v.rkw(jahr)
+                    schicht = schicht_je_police.get(pid)
+                    if schicht is not None and 12 * jahr >= schicht[1]:
+                        erwartet += schichtwert_bei(
+                            schicht[0], schicht[1], v.grund_mp, 12 * jahr)
                 elif art == "PEX":
                     # Uebernommene Vertraege buchen die Umbuchung zum
                     # Zugangsstichtag, die Summe wurde im Jahr der

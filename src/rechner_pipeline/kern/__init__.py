@@ -110,7 +110,12 @@ from rechner_pipeline.kern.rechenkern import (
 #: laufenden Beitrag voraus — die Beitragsende-Wache gilt nur den
 #: beitragssenkenden Verfahren; alle bestehenden Rechenwerte
 #: unveraendert.
-__version__ = "3.4.0"
+#: 3.5.0 = Schichtwert als Kern-API (korrekturschicht.schichtwert_bei,
+#: bisher qa.aktuarieller_test): die Bestandsfuehrung rechnet die
+#: Korrekturschicht in Storno und Abschluss mit (Freischaltung des
+#: uebernommenen Bestands, Schritt 5); reine Verschiebung, Rechenwerte
+#: unveraendert.
+__version__ = "3.5.0"
 
 __all__ = [
     "ModelPoint",

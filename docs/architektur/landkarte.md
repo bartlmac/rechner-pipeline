@@ -28,7 +28,7 @@ dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 %% Schichten — erzeugt von ontologie.landkarte
 flowchart TD
     n__init__["__init__<br/>1 Module"]
-    bestand["bestand<br/>21 Module"]
+    bestand["bestand<br/>22 Module"]
     betrieb["betrieb<br/>6 Module"]
     fall["fall<br/>1 Module"]
     gates["gates<br/>17 Module"]
@@ -39,8 +39,8 @@ flowchart TD
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>5 Module"]
-    bestand -- 17 --> kern
-    bestand -- 16 --> models
+    bestand -- 21 --> kern
+    bestand -- 17 --> models
     bestand -- 1 --> qa
     betrieb -- 17 --> bestand
     betrieb -- 1 --> kern
@@ -79,7 +79,7 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
     bu["bu<br/>34 Module"]
-    klv["klv<br/>82 Module"]
+    klv["klv<br/>83 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
     system_entscheid["system/entscheid<br/>1 Module"]
@@ -123,6 +123,7 @@ flowchart TD
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_zahlungspfad_py
+    rechner_pipeline_kern_korrekturschicht_py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern_korrekturschicht_py --> rechner_pipeline_kern_zustandsmodell_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_bu_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_klv_py

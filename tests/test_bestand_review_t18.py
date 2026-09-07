@@ -285,8 +285,8 @@ def test_validate_abschluss_prueft_den_stand_als_ganzes():
     df = pd.DataFrame([{
         "police_id": 1, "stichtag": pd.Timestamp("2016-01-01"), "produkt": "klv",
         "tarif_generation": "klv/x", "status_code": "POL", "leistung": 1.0,
-        "deckungskapital": 1.0, "rueckkaufswert": 1.0, "vs_bfr": 1.0,
-        "jahresbeitrag": 1.0, "kern_version": "3.4.0",
+        "deckungskapital": 1.0, "rueckkaufswert": 1.0, "korrekturschicht": 0.0,
+        "vs_bfr": 1.0, "jahresbeitrag": 1.0, "kern_version": "3.5.0",
     }])[list(ABSCHLUSS_NAMES)]
     assert validate_abschluss(df) == []
     kaputt = pd.concat([df, df], ignore_index=True)

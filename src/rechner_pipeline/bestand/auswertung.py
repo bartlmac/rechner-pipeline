@@ -29,6 +29,8 @@ import pandas as pd
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.fuehrung import bestand_am, months_between
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
+from rechner_pipeline.bestand.schichten import schichten_je_police
+from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
 from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.models.bestand import (
     STATUS_HISTORIE_SPALTEN,
@@ -234,8 +236,18 @@ def einzelwerte_am(
     stichtag: _dt.date,
     scheiben: Optional[pd.DataFrame] = None,
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
 ) -> List[Dict[str, Any]]:
     """Einzelvertragliche Bewertung des in-force-Bestands am Stichtag.
+
+    ``schichten``/``verankerung`` (Freischaltung, Schritt 5): die
+    Korrekturschicht uebernommener Vertraege geht als eigene Position
+    ``korrekturschicht`` in die Zeile ein und ist in ``deckungskapital``
+    und ``rueckkaufswert`` enthalten (Grundsatzdokumentation 9.11: nie
+    unsichtbar). Eine Beitragsfreistellung NACH der Verankerung hat sie
+    absorbiert (Klasse A); eine Freistellung VOR t_a ist ihr
+    Verankerungszustand, dort laeuft sie auf dem beitragsfreien Track.
 
     DIE eine Bewertungsstrecke (ADR-011): Aggregation
     (:func:`auswertungs_verlauf`), Abschluss
@@ -290,6 +302,7 @@ def einzelwerte_am(
     )
     generation_je_police = stamm.set_index("police_id")["tarif_generation"]
     tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
+    schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
 
     scheibe = bestand_am(stamm, journal, stichtag)
     zeilen: List[Dict[str, Any]] = []
@@ -308,6 +321,7 @@ def einzelwerte_am(
             "leistung": 0.0,
             "deckungskapital": 0.0,
             "rueckkaufswert": 0.0,
+            "korrekturschicht": 0.0,
             "vs_bfr": 0.0,
             "jahresbeitrag": 0.0,
             "bzb_jahr": 0.0,
@@ -389,6 +403,18 @@ def einzelwerte_am(
                 )
                 werte["vs_bfr"] += s["kern"].beitragsfreie_summe(pex_s)
                 zeile["leistung"] += float(s["kern"].mp.sum_insured)
+        schicht = schicht_je_police.get(pid)
+        if schicht is not None:
+            parameter, monate_ta, zustand_ta = schicht
+            # Beitragsfrei am Stichtag: Schicht nur, wenn die Freistellung
+            # ihr Verankerungszustand ist — eine spaetere hat absorbiert.
+            traegt = werte["status"] != "PEX" or zustand_ta == "beitragsfrei"
+            if traegt and int(months_exp) >= monate_ta:
+                korr = schichtwert_bei(
+                    parameter, monate_ta, kerne[pid].mp, int(months_exp))
+                zeile["korrekturschicht"] = korr
+                werte["deckungskapital"] += korr
+                werte["rueckkaufswert"] += korr
         zeile["status"] = werte["status"]
         zeile["deckungskapital"] = werte["deckungskapital"]
         zeile["rueckkaufswert"] = (
@@ -406,6 +432,8 @@ def auswertungs_verlauf(
     stichtage: List[_dt.date],
     scheiben: Optional[pd.DataFrame] = None,
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
 ) -> List[Dict[str, Any]]:
     """Aggregierte aktuarielle Kennzahlen je Stichtag (in-force-Bestand).
 
@@ -424,7 +452,8 @@ def auswertungs_verlauf(
     reihe: List[Dict[str, Any]] = []
     for stichtag in stichtage:
         zeilen = einzelwerte_am(stamm, historie, config, stichtag,
-                                scheiben=scheiben, merkmale=merkmale)
+                                scheiben=scheiben, merkmale=merkmale,
+                                schichten=schichten, verankerung=verankerung)
         agg: Dict[str, Any] = {
             "stichtag": stichtag.isoformat(),
             "vertraege": int(len(zeilen)),

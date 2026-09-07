@@ -133,6 +133,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     # sie; fehlt sie dort, meldet die Kern-Herleitung das selbst.
     if (lauf / "merkmale.parquet").is_file():
         eingaben["merkmale"] = lauf / "merkmale.parquet"
+    # Korrekturschicht und Verankerung uebernommener Vertraege (Freischaltung,
+    # Schritt 5): Nebentabellen, nur migrierte Bestaende tragen sie.
+    for rolle in ("schichten", "verankerung"):
+        if (lauf / f"{rolle}.parquet").is_file():
+            eingaben[rolle] = lauf / f"{rolle}.parquet"
     fehlend = [str(pfad) for pfad in eingaben.values() if not pfad.is_file()]
     if fehlend:
         print(
@@ -177,6 +182,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     historie = geprueft_tabellen["historie"]
     scheiben = geprueft_tabellen["scheiben"]
     merkmale = geprueft_tabellen.get("merkmale")
+    schichten = geprueft_tabellen.get("schichten")
+    verankerung = geprueft_tabellen.get("verankerung")
 
     if ns.pruefen:
         pfad = abschluss_pfad(out_dir, stichtag)
@@ -185,7 +192,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
         try:
             befunde = pruefe_abschluss(
-                pfad, stamm, historie, config, scheiben=scheiben, merkmale=merkmale
+                pfad, stamm, historie, config, scheiben=scheiben, merkmale=merkmale,
+                schichten=schichten, verankerung=verankerung,
             )
         except (AbschlussError, ValueError, MissingMortalityTableError) as exc:
             print(f"bestand_abschluss: {exc}", file=sys.stderr)
@@ -209,7 +217,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         pfad = schreibe_abschluss(
             stamm, historie, config, stichtag, out_dir, scheiben=scheiben,
-            merkmale=merkmale,
+            merkmale=merkmale, schichten=schichten, verankerung=verankerung,
         )
     except (AbschlussError, ValueError, MissingMortalityTableError) as exc:
         print(f"bestand_abschluss: {exc}", file=sys.stderr)

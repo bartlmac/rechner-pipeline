@@ -607,3 +607,63 @@ def absorbiere(parameter: Schichtparameter) -> Schichtparameter:
     eine nie vorhandene sind verschiedene Sachverhalte.
     """
     return dataclasses.replace(parameter, rho=0.0)
+
+
+def schichtwert_bei(
+    parameter: Schichtparameter, monate_anker: int, mp: Any, monate: int,
+) -> float:
+    """Der Wert EINER Schicht zu einem Vertragsmonat (Konsumenten-API).
+
+    Die Schicht rechnet ab ihrem Verankerungszeitpunkt; ein Zeitpunkt
+    DAVOR liegt ausserhalb ihrer Definition und ist ein Aufruffehler.
+    Auf dem Jahresgitter wird der Verlaufswert genommen, unterjaehrig
+    linear zwischen den Jahresraendern gemischt — dieselbe Konvention wie
+    fuer die Basisschicht (Grundsatzdokumentation 9.6), denn die Schicht
+    ist dieselbe Rekursion mit anderen Zahlungen und darf keine eigene
+    Zeitachse bekommen ("Overlay ohne dritte Uhr", 9.5).
+
+    ``mp`` ist der Grund-Modellpunkt des Vertrags (die Welt, auf der
+    verankert wurde); die Basis $V^{base}$ ist seine prospektive
+    Deckungsrueckstellung ab dem Gitterjahrestag vor dem Anker.
+
+    Im Kern, weil ALLE drei Rechenwege denselben Wert brauchen: die
+    Engines des aktuariellen Tests und des Migrationscontrollings
+    (Pruefstrecke) und seit der Freischaltung (Schritt 5) die
+    Bestandsfuehrung — Storno zahlt Basiswert plus Schichtwert, der
+    Abschluss weist ihn aus. Bis dahin lebte die Funktion in
+    ``qa.aktuarieller_test`` (dort weiter unter demselben Namen
+    erreichbar); Rechenwerte unveraendert.
+    """
+    from rechner_pipeline.kern.rechenkern import Rechenkern
+
+    # Das GITTER beginnt am Jahrestag vor dem Anker; bei einer
+    # Rumpfjahr-Verankerung (9.6-Nachtrag) liegt t_a mitten im ersten
+    # Gitterjahr. Abgelesen wird ab dem Gitterjahrestag, linear gemischt
+    # -- am t_a selbst ergibt das konstruktionsbedingt das Residuum.
+    jahr_ta = monate_anker // 12
+    kern = Rechenkern(mp)
+    # Zahlungsjahre jahr_ta .. n-1: das Ablaufjahr traegt keine
+    # Amortisations-Zahlung (Terminalbedingung V_korr(n) = 0, 9.7) —
+    # dieselbe Grenze wie bei der Verankerung
+    # (bestand.migrationszugang._basisverlauf), sonst passte rho nicht
+    # zur Form und das Residuum am t_a risse.
+    basis = [kern.verlaufszeile(a).drx_bpfl for a in range(jahr_ta, mp.n)]
+    if parameter.formfunktion == "konstantes_fenster":
+        fenster = int(parameter.formparameter["fenster"])
+        form = form_konstantes_fenster(len(basis), min(fenster, len(basis)))
+    else:
+        form = form_proportional_zur_basis(basis)
+    bw = kern.produkt.bw
+    schicht = Korrekturschicht(
+        bw.modell, tuple(tuple(pair) for pair in parameter.vererbend)
+    )
+    verlauf = schicht.verlauf(parameter, form, mp.x + jahr_ta)
+
+    seit_gitter = monate - 12 * jahr_ta
+    j, rest = divmod(seit_gitter, 12)
+    if j >= len(verlauf) - 1:
+        return verlauf[-1]
+    if rest == 0:
+        return verlauf[j]
+    anteil = rest / 12.0
+    return (1.0 - anteil) * verlauf[j] + anteil * verlauf[j + 1]

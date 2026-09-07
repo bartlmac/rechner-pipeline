@@ -405,6 +405,31 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
         return 2
 
+    # Die Schicht als Vertragsattribut des Bestands (Freischaltung, Schritt
+    # 5): schichten.parquet neben verankerung.parquet im Uebernahme-
+    # Verzeichnis. Der JSON-Beleg bleibt die provenienzgebundene Quelle der
+    # Pruefstrecke; die Fuehrung liest die Tabelle. Beide tragen dieselben
+    # Parameter — R_conv (zweite Schicht) ist in der Fuehrung nicht
+    # freigeschaltet und wuerde hier anhalten.
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.models.bestand import SCHICHTEN_NAMES, SCHICHTEN_SPALTEN, schichten_zeile
+
+    zeilen_schichten = []
+    for police, eintrag in sorted(beleg["schichten"].items(), key=lambda kv: int(kv[0])):
+        if "conv" in eintrag:
+            print("verankerung_belegen: Zweitschicht R_conv ist in der "
+                  "Bestandsfuehrung nicht freigeschaltet — schichten.parquet "
+                  "wird nicht geschrieben", file=sys.stderr)
+            zeilen_schichten = None
+            break
+        zeilen_schichten.append(schichten_zeile(int(police), eintrag["hist"]))
+    if zeilen_schichten:
+        tabelle = (pd.DataFrame(zeilen_schichten, columns=list(SCHICHTEN_NAMES))
+                   .astype(dict(SCHICHTEN_SPALTEN)))
+        write_portfolio(tabelle, ueber / "schichten.parquet")
+        print(f"  schichten.parquet: {len(tabelle)} Schichten im "
+              f"Uebernahme-Verzeichnis {ueber}")
+
     eingaben = {
         str(pfade["verankerung"].relative_to(fall)): _sha256(
             pfade["verankerung"]),

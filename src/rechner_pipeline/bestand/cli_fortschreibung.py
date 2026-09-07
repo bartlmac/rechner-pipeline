@@ -92,8 +92,10 @@ def _lies_uebernahme(verzeichnis: Path) -> dict:
         LEDGER_NAMES,
         MERKMALE_NAMES,
         SCHEIBEN_NAMES,
+        SCHICHTEN_NAMES,
         STAMM_NAMES,
         STATUS_HISTORIE_NAMES,
+        VERANKERUNG_NAMES,
     )
 
     vertraege = {
@@ -123,6 +125,13 @@ def _lies_uebernahme(verzeichnis: Path) -> dict:
         read_portfolio(scheiben_pfad, expected_columns=SCHEIBEN_NAMES)
         if scheiben_pfad.is_file() else None
     )
+    # Korrekturschicht und Verankerung (Freischaltung, Schritt 5).
+    for rolle, spalten in (("schichten", SCHICHTEN_NAMES),
+                           ("verankerung", VERANKERUNG_NAMES)):
+        pfad = verzeichnis / f"{rolle}.parquet"
+        tabellen[rolle] = (
+            read_portfolio(pfad, expected_columns=spalten) if pfad.is_file() else None
+        )
     return tabellen
 
 
@@ -304,6 +313,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         ergebnis = fortschreiben(
             basis, config, bis, neuzugang_ab=neuzugang_ab, merkmale=merkmale,
             scheiben=uebernahme["scheiben"] if uebernahme is not None else None,
+            schichten=uebernahme["schichten"] if uebernahme is not None else None,
+            verankerung=uebernahme["verankerung"] if uebernahme is not None else None,
         )
         # Das Journal der Uebernahme geht dem der Fortschreibung VORAUS:
         # Zugang und Umbuchung liegen am Bestandszugang, also vor dem
@@ -348,6 +359,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     ausgaben.append(write_portfolio(scheiben, out_dir / "scheiben.parquet"))
     ausgaben.append(write_portfolio(ergebnis.zugaenge, out_dir / "zugaenge.parquet"))
     ausgaben.append(write_portfolio(gesamt, out_dir / "bestand_gesamt.parquet"))
+    # Die Nebentabellen der Uebernahme wandern MIT in den Lauf: Merkmale,
+    # Schichten und Verankerung gehoeren zum Bestand, den Abschluss, Bericht
+    # und P-B1 lesen — ein Laufverzeichnis, das seine Bewertungsgrundlagen
+    # nicht traegt, ist keins (Manifest bindet sie als Ausgaben).
+    if uebernahme is not None:
+        for rolle in ("merkmale", "schichten", "verankerung"):
+            tabelle = uebernahme.get(rolle)
+            if tabelle is not None and len(tabelle):
+                ausgaben.append(write_portfolio(tabelle, out_dir / f"{rolle}.parquet"))
     # Der Lieferschein zuletzt, ueber die Bytes, die tatsaechlich auf der
     # Platte liegen: Er belegt den Horizont und bindet jede Ausgabe.
     schreibe_manifest(
