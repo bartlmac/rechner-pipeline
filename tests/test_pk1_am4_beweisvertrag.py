@@ -166,7 +166,9 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     # eine Generation mit sample_size 1, fortgeschrieben mit Journal,
     # Ledger, Scheiben und Manifest, sodass P-B1 das Vollprofil pruefen
     # kann, das A-M4 im Bestands-Scope verlangt.
-    config = einpolicen_config(tmp_path)
+    # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
+    (fall / "abgeleitet").mkdir(parents=True, exist_ok=True)
+    config = einpolicen_config(fall / "abgeleitet")
     assert cli_fortschreibung.main([
         "--config", str(config),
         "--bis", "2020-01-01",
@@ -1223,15 +1225,17 @@ def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
 ):
     fall = _bereite_bestandsfall(tmp_path)
     lauf = fall / "abgeleitet" / "bestand"
+    # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
+    config = fall / "abgeleitet" / "bestand-config.toml"
+    config.write_bytes((REPO_ROOT / "configs" / "bestand_klv.toml").read_bytes())
     assert cli_fortschreibung.main([
-        "--config", str(REPO_ROOT / "configs" / "bestand_klv.toml"),
+        "--config", str(config),
         "--bis", "2020-01-01",
         "--out-dir", str(lauf),
     ]) == 0
     portfolio = lauf / "bestand_gesamt.parquet"
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    pb1 = bestand_validate.main(pb1_vollprofil_argv(
-        lauf, REPO_ROOT / "configs" / "bestand_klv.toml") + [
+    pb1 = bestand_validate.main(pb1_vollprofil_argv(lauf, config) + [
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
     ])

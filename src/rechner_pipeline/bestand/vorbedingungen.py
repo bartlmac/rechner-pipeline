@@ -24,8 +24,12 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from rechner_pipeline.bestand.config import config_aus_text
 from rechner_pipeline.bestand.manifest import (
-    ROLLEN_DATEIEN,
     horizont as manifest_horizont,
+    lies_manifest_bytes,
+    manifest_aus_bytes,
+    MANIFEST_DATEI,
+    ManifestError,
+    ROLLEN_DATEIEN,
     sha256_bytes,
 )
 from rechner_pipeline.bestand.parquet_io import read_portfolio
@@ -64,6 +68,37 @@ def pruefe_pb1_eingaenge(
     _, geprueft, fehler, usage = lies_und_pruefe_pb1(
         eingaben, bis=bis, manifest=manifest)
     return geprueft, fehler, usage
+
+
+def manifest_fuer_nachrechnung(
+    portfolio: Path, erwarteter_sha256: Optional[str],
+) -> Tuple[Optional[Mapping[str, Any]], List[str]]:
+    """Das Laufmanifest eines P-B1-Belegs fuer die A-M4-Nachrechnung.
+
+    Das Manifest ist im Beleg keine Eingangsrolle, sondern nur
+    ``summary.manifest`` = {sha256, horizont}. Wer den Beleg nachrechnet,
+    braucht die Bytes: Sie liegen, wie der Produzent sie schreibt, NEBEN dem
+    Portfolio, und sie muessen den Hash des Belegs tragen — sonst rechnet
+    A-M4 mit einem anderen Manifest als P-B1. Rueckgabe (manifest, fehler);
+    ``manifest`` ist None, wenn ein Fehler vorliegt.
+    """
+    pfad = Path(portfolio).parent / MANIFEST_DATEI
+    try:
+        roh = lies_manifest_bytes(pfad)
+    except (ManifestError, OSError) as exc:
+        return None, [
+            f"P-B1-Beleg nennt ein Manifest, aber {pfad} ist nicht lesbar ({exc}) "
+            "— das Laufmanifest gehoert neben das Portfolio"
+        ]
+    if sha256_bytes(roh) != erwarteter_sha256:
+        return None, [
+            f"P-B1-Beleg: {pfad.name} neben dem Portfolio traegt einen anderen "
+            "SHA-256 als der Beleg — P-B1 auf dem aktuellen Lauf erneut fahren"
+        ]
+    try:
+        return manifest_aus_bytes(roh), []
+    except ManifestError as exc:
+        return None, [f"P-B1-Manifest nicht auslegbar: {exc}"]
 
 
 def lies_und_pruefe_pb1(

@@ -71,7 +71,8 @@ def test_ohne_config_fehlt_die_betragsbindung(tmp_path: Path):
 def test_vollprofil_ist_ein_am4_beleg(tmp_path: Path):
     fall = _bereite_bestandsfall(tmp_path)
     lauf = fall / "abgeleitet" / "bestand"
-    pb1 = _pb1(fall, pb1_vollprofil_argv(lauf, einpolicen_config(tmp_path)))
+    # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
+    pb1 = _pb1(fall, pb1_vollprofil_argv(lauf, einpolicen_config(fall / "abgeleitet")))
     assert pb1.exit_code == 0, pb1.errors
     assert isinstance(pb1.summary.get("betraege_hergeleitet"), int)
     assert _abnahmebericht(fall).exit_code == 0
