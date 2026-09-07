@@ -407,7 +407,7 @@ liegt beim Maintainer.
 | 3 Uebernahme materialisiert Anfangszustand | ERLEDIGT 2026-09-07 (4a59730); Pruefstrecke nimmt ohne Zustand die gelieferte Summe |
 | 4 Fuehrung liest Anfangszustand | ERLEDIGT 2026-09-07 (Engine, Bewertung, Ledger-Herleitung, Fortschreibungs-Kommando); Tagesbetrieb folgt in Schritt 9 |
 | 5 Korrekturschicht in der Fuehrung | ERLEDIGT 2026-09-07 (schichten.parquet aus dem Schichtbeleg, Storno und Abschluss mit Schicht, P-B1 4.0.0) |
-| 6 Fuehrungsprobe vor A-M4 | offen |
+| 6 Fuehrungsprobe vor A-M4 | ERLEDIGT 2026-09-07 (gates.fuehrungsprobe; Pflichtbelegrolle im Bestands-Scope, Abnahmebericht 3.0.0, P9 2.0.0) |
 | 7 Freischaltung im Skill | offen |
 | 8 Fall Lauf 2 korrigieren | offen (Regie) |
 | 9 Betrieb neu aufsetzen | offen (betrieb-haertung, Laufzeit) |

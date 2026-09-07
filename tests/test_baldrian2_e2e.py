@@ -36,6 +36,7 @@ from rechner_pipeline.gates import (
     aktuartest_lauf,
     bestand_uebernehmen,
     bestand_validate,
+    fuehrungsprobe,
     migrationssuite_lauf,
     transformation_anwenden,
     verankerung_belegen,
@@ -240,7 +241,121 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ])
     assert pb1_nach.exit_code == 0, ("Gate P-B1 auf dem fortgeschriebenen Bestand",
                                      pb1_nach.errors)
+
+    # Freischaltung (Schritt 6): Die Fuehrungsprobe stellt Uebernahme und
+    # Fortschreibung gegen die Pruefstrecke — mit denselben Lieferungs-
+    # Schaltern, demselben Anfangszustand, derselben Schicht.
+    assert fuehrungsprobe.main([
+        "--fall", str(fall), "--repo-root", str(REPO_ROOT),
+        "--generation", GENERATION,
+        "--uebernahme", str(bestand), "--fortschreibung", str(nach),
+        "--config", str(config_pfad), "--zeilen", str(zeilen),
+        "--vorgeschichte", METADATEN, "--stichtag", STICHTAG_1,
+        "--anker-erwartungswerte", ANKER,
+        "--schicht", str(schichten),
+        "--stoab-je-baustein",
+    ] + _lieferungs_flags()) == 0, "Fuehrungsprobe"
     return fall
+
+
+def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
+    gefahrener_fall: Path,
+):
+    """Freischaltung, Schritt 6: Der Beleg sagt, dass die Fuehrung die Welt
+    der Abnahmen traegt — und er faellt, sobald sie es nicht tut: ein
+    fremder Stornobetrag, ein anderer Schalter, ein Bestand als
+    Grundvertrag."""
+    import copy
+
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+    from rechner_pipeline.gates.migrationssuite_lauf import _lies_csv
+    from rechner_pipeline.spez.validierung import lade_spez
+
+    beleg = json.loads((gefahrener_fall / "abgeleitet" / "berichte"
+                        / "fuehrungsprobe.json").read_text(encoding="utf-8"))
+    assert beleg["bestanden"] is True and beleg["befunde"] == []
+    assert beleg["anfangszustand"] == "materialisieren"
+    assert beleg["fortschreibung_geprueft"] is True
+    assert beleg["vertraege"] == len(_policen()["policen"])
+    assert beleg["mit_anfangszustand"] > 0 and beleg["scheiben"] > 0
+    assert beleg["schichten"] == len(_policen()["policen"])
+    assert beleg["tarifwerk"] == {
+        "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+        "red_verfahren": RED_VERFAHREN,
+    }
+    # Der Bestand, den die Suite gehasht hat, ist eine Eingabe der Probe.
+    suite = _bericht(gefahrener_fall, "migrationssuite.json")
+    assert suite["bestand_sha256"] in set(beleg["provenienz"]["eingaben"].values())
+
+    # Dieselbe Probe auf denselben Tabellen, in-memory, mit drei Stoerungen.
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    nach = gefahrener_fall / "abgeleitet" / "bestand-nach"
+    ueb = {
+        "bestand": read_portfolio(bestand / "bestand.parquet"),
+        "historie": read_portfolio(bestand / "historie.parquet"),
+        "ledger": read_portfolio(bestand / "ledger.parquet"),
+        "scheiben": read_portfolio(bestand / "scheiben.parquet"),
+        "verankerung": read_portfolio(bestand / "verankerung.parquet"),
+        "schichten": read_portfolio(bestand / "schichten.parquet"),
+        "merkmale": read_portfolio(bestand / "merkmale.parquet"),
+        "beleg": json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8")),
+    }
+    fort = {
+        "ledger": read_portfolio(nach / "ledger.parquet"),
+        "scheiben": read_portfolio(nach / "scheiben.parquet"),
+        "historie": read_portfolio(nach / "historie.parquet"),
+    }
+    schichtbeleg = json.loads((gefahrener_fall / "abgeleitet" / "schichten"
+                               / "verankerung_schichten.json").read_text(encoding="utf-8"))["schichten"]
+    zeilen = json.loads((gefahrener_fall / "abgeleitet" / "transformation"
+                         / "zeilen.json").read_text(encoding="utf-8"))
+    anker = {}
+    for v in json.loads((FIXTURE / ANKER).read_text(encoding="utf-8"))["vertraege"]:
+        e = next((x for x in v.get("punkte", []) if x.get("anlass") == "uebernahme"
+                  and "kVx_MRV" in (x.get("erwartet") or {})), None)
+        if e:
+            anker[str(v["police_id"])] = (int(e["monate"]), float(e["erwartet"]["kVx_MRV"]))
+    basis = dict(
+        config=load_config(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
+        spez=lade_spez(gefahrener_fall, GENERATION), zeilen=zeilen,
+        vorgeschichte=_lies_csv(gefahrener_fall, METADATEN),
+        tarifwerk={"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+                   "red_verfahren": RED_VERFAHREN},
+        erhoehungssatz=float(ERHOEHUNGSSATZ),
+        red_anteile={a.split("=")[0]: float(a.split("=")[1]) for a in RED_ANTEILE},
+        red_anteile_je_datum={}, red_anteil_kandidaten=tuple(float(k) for k in KANDIDATEN),
+        anker=anker, schichtbeleg=schichtbeleg,
+        stichtag=__import__("datetime").date.fromisoformat(STICHTAG_1),
+    )
+    gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **basis)
+    assert gut["bestanden"], gut["befunde"]
+
+    # 1. Ein fremder Stornobetrag in der Fortschreibung.
+    sto = fort["ledger"][fort["ledger"]["ereignis"] == "STO"]
+    if len(sto):
+        kaputt = copy.deepcopy(fort)
+        kaputt["ledger"] = fort["ledger"].copy()
+        kaputt["ledger"].loc[sto.index[0], "betrag"] += 100.0
+        rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=kaputt, **basis)
+        assert not rot["bestanden"] and rot["befunde"][0]["art"] == "buchung"
+    # 2. Ein anderer Schalter als in Config und Beleg.
+    andere = dict(basis, tarifwerk=dict(basis["tarifwerk"], stoab_je_baustein=False))
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **andere)
+    assert any(b["art"] == "tarifwerk" for b in rot["befunde"])
+    # 3. Ein Bestand, der als Grundvertrag gefuehrt wird.
+    grund = dict(ueb, beleg=dict(ueb["beleg"], anfangszustand="grundvertrag",
+                                 nicht_freigeschaltet=["7000019"]))
+    rot = pruefe_fuehrung(uebernahme=grund, fortschreibung=fort, **basis)
+    assert any(b["art"] == "nicht_freigeschaltet" for b in rot["befunde"])
+    # 4. Eine Stammsumme in der falschen Welt (die alte Uebernahme).
+    alt = dict(ueb, bestand=ueb["bestand"].copy())
+    pid = int(ueb["scheiben"]["police_id"].iloc[0])
+    idx = alt["bestand"].index[alt["bestand"]["police_id"] == pid][0]
+    alt["bestand"].loc[idx, "sum_insured"] += 5000.0
+    rot = pruefe_fuehrung(uebernahme=alt, fortschreibung=fort, **basis)
+    assert any(b["art"] == "stammsumme" for b in rot["befunde"])
 
 
 def _bericht(fall: Path, name: str) -> dict:

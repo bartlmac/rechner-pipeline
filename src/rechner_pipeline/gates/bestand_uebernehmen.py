@@ -123,7 +123,8 @@ def _zellen_toml(spez, generation: str,
     allen Zellen gehoeren zur Generation, nur der Rest in die Zelle. So
     liest man am Abschnitt ab, was die Zellen ueberhaupt unterscheidet.
     """
-    zellen = [z for z in getattr(spez, "zellen", []) if z.auspraegungen]
+    zellen = list(getattr(spez, "zellen", []))
+    mit_auspraegungen = [z for z in zellen if z.auspraegungen]
 
     def _wert(v) -> str:
         if isinstance(v, bool):
@@ -175,7 +176,9 @@ def _zellen_toml(spez, generation: str,
     ]
     aus += [f"{f} = {_wert(saetze[0][f])}" for f in gemeinsam]
     aus += tarifwerk_zeilen
-    for z, satz in sorted(zip(zellen, saetze),
+    # Eine einzellige Spez ohne Auspraegungen ist die Generation selbst:
+    # ihre Grundlagen stehen oben, Zellbloecke gibt es nicht.
+    for z, satz in sorted(((z, s) for z, s in zip(zellen, saetze) if z.auspraegungen),
                           key=lambda p: sorted(p[0].auspraegungen.items())):
         paare = ", ".join(
             f'{k} = "{z.auspraegungen[k]}"' for k in sorted(z.auspraegungen)
@@ -1003,13 +1006,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         write_portfolio(merkmale, ziel / "merkmale.parquet")
         print(f"  merkmale.parquet: {len(merkmale)} Zeilen "
               f"({merkmale['dimension'].nunique()} Dimensionen)")
-        # Und die Grundlagen zu den Zellen -- sonst laege die Zuordnung
-        # vor, aber nichts, worauf sie zeigt.
+    if args.generation_spez:
+        # Die Grundlagen der Generation (und ihrer Zellen) samt Tarifwerk
+        # als Config-Abschnitt -- sonst laege die Zuordnung vor, aber
+        # nichts, worauf sie zeigt; und die Fuehrung rechnete mit einer
+        # Config, die niemand aus der abgenommenen Spez abgeleitet hat.
         abschnitt = _zellen_toml(spez, args.generation, tarifwerk)
         if abschnitt:
             pfad = ziel / "generation-zellen.toml"
             pfad.write_text(abschnitt, encoding="utf-8")
-            print(f"  generation-zellen.toml: {len(spez.zellen)} Zellen "
+            print(f"  generation-zellen.toml: {len(spez.zellen)} Zelle(n) "
                   "(in die Bestand-Config uebernehmen)")
 
     # Verankerungsattribute als NEBENTABELLE (K3): Bisher lebten t_a und

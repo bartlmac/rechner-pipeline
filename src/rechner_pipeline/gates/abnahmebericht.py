@@ -145,7 +145,7 @@ COMMAND = "abnahmebericht"
 #: Kommando erzeugt und protokolliert dessen Vorlage — der Gate-Name
 #: sagt das, damit ein Ledger-Leser die beiden nie verwechselt.
 GATE = "A-M4.migrationscontrolling"
-GATE_VERSION = "2.0.0"
+GATE_VERSION = "3.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -1330,6 +1330,57 @@ def _bestands_suite_fehler(
 PB1_VOLLPROFIL = frozenset({"portfolio", "historie", "ledger", "config"})
 
 
+def _lies_json_beleg(pfad: Path) -> Any:
+    try:
+        return json.loads(Path(pfad).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"_lesefehler": str(exc)}
+
+
+def _fuehrungsprobe_fehler(
+    probe: Any,
+    *,
+    suite: Dict[str, Any],
+    erwartetes_system: Dict[str, str],
+) -> List[str]:
+    """Der Beleg der Fuehrungsprobe: bestanden, auf diesem Stand, auf
+    dem Bestand der Suite (Freischaltung, Schritt 6).
+
+    Die Probe stellt den gefuehrten Bestand gegen die Pruefstrecke; hier
+    wird nur gebunden, was ein Beleg binden kann: dass sie bestanden hat
+    (keine Befunde, Modus materialisiert oder ohne Bausteine, mit
+    Fortschreibung), dass sie auf dem aktuellen Systemstand lief und
+    dass unter ihren Eingaben der Bestand liegt, den die Suite gehasht
+    hat — sonst waere sie eine Probe eines anderen Bestands.
+    """
+    if not isinstance(probe, dict) or "_lesefehler" in probe:
+        return ["Fuehrungsprobe-Beleg ist nicht lesbar: "
+                + str((probe or {}).get("_lesefehler", "kein JSON-Objekt"))]
+    fehler: List[str] = []
+    if probe.get("schema_version") != 1:
+        fehler.append("Fuehrungsprobe: schema_version muss 1 sein")
+    if probe.get("bestanden") is not True or probe.get("befunde") not in ([], None):
+        anzahl = len(probe.get("befunde") or [])
+        fehler.append(
+            f"Fuehrungsprobe nicht bestanden ({anzahl} Befunde) — die Fuehrung "
+            "traegt nicht die Welt, die die Abnahmen geprueft haben")
+    if probe.get("anfangszustand") not in ("materialisieren", "ohne_bausteine"):
+        fehler.append(
+            f"Fuehrungsprobe: Anfangszustand {probe.get('anfangszustand')!r} — "
+            "der Bestand ist nicht freigeschaltet")
+    if probe.get("fortschreibung_geprueft") is not True:
+        fehler.append("Fuehrungsprobe ohne Fortschreibung — die Buchungen nach "
+                      "dem Stichtag sind ungeprueft")
+    if probe.get("system") != erwartetes_system:
+        fehler.append("Fuehrungsprobe bindet nicht den aktuellen Systemstand")
+    eingaben = ((probe.get("provenienz") or {}).get("eingaben") or {})
+    if suite.get("bestand_sha256") not in set(eingaben.values()):
+        fehler.append(
+            "Fuehrungsprobe hat nicht den Bestand gelesen, den die "
+            "Migrationssuite gehasht hat (bestand_sha256 fehlt unter ihren Eingaben)")
+    return fehler
+
+
 def _b1_fehler(
     *,
     ledger_pfad: Path,
@@ -1551,6 +1602,11 @@ def _build_parser() -> GateArgumentParser:
         help="Gruenes P-B1-Ledger; im Bestands-Scope Default: "
         "<fall>/abgeleitet/diagnostics/bestand_validate.gate.json.")
     parser.add_argument(
+        "--fuehrungsprobe", dest="fuehrungsprobe", default=None,
+        help="Beleg der Fuehrungsprobe (gates.fuehrungsprobe); im "
+        "Bestands-Scope Pflicht, Default: "
+        "<fall>/abgeleitet/berichte/fuehrungsprobe.json.")
+    parser.add_argument(
         "--bericht", default=None,
         help="Zielpfad des HTML-Berichts (Vorgabe mit --fall: "
         "<fall>/abgeleitet/berichte/migrationsabnahme.html).")
@@ -1595,6 +1651,7 @@ def main(argv: Optional[List[str]] = None):
             ("--bestandsbericht-vor", args.bestandsbericht_vor),
             ("--bestandsbericht-nach", args.bestandsbericht_nach),
             ("--pb1-ledger", args.pb1_ledger),
+            ("--fuehrungsprobe", args.fuehrungsprobe),
             ("--bericht", args.bericht),
         )
         if wert
@@ -1695,6 +1752,10 @@ def main(argv: Optional[List[str]] = None):
             args.pb1_ledger = str(
                 fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
             )
+        if not args.fuehrungsprobe:
+            args.fuehrungsprobe = str(
+                fall / "abgeleitet" / "berichte" / "fuehrungsprobe.json"
+            )
 
     eingaben: Dict[str, Path] = {
         "suite": Path(args.suite),
@@ -1705,6 +1766,7 @@ def main(argv: Optional[List[str]] = None):
     }
     if bestands_scope:
         eingaben["pb1_ledger"] = Path(args.pb1_ledger)
+        eingaben["fuehrungsprobe"] = Path(args.fuehrungsprobe)
     fehlend = [str(p) for p in eingaben.values() if not p.is_file()]
     if fehlend:
         return _usage(f"Datei nicht gefunden: {'; '.join(fehlend)}")
@@ -1886,6 +1948,18 @@ def main(argv: Optional[List[str]] = None):
                 "Gate P-B1 und Migrationssuite auf demselben aktuellen "
                 "Bestandsartefakt erneut ausfuehren.",
             )
+        probe_fehler = _fuehrungsprobe_fehler(
+            _lies_json_beleg(eingaben["fuehrungsprobe"]),
+            suite=suite,
+            erwartetes_system=gemeinsame_bindung["system"],
+        )
+        if probe_fehler:
+            return _contract_fehler(
+                "fuehrungsprobe_contract",
+                probe_fehler,
+                "Fuehrungsprobe (gates.fuehrungsprobe) auf dem Bestand der "
+                "Suite und der Fortschreibung neu fahren; sie muss bestehen.",
+            )
         transformations_fehler, _, _ = _transformationsvertrag_fehler(
             fall=fall,
             spec_pfad=eingaben["spec"],
@@ -1976,6 +2050,7 @@ def main(argv: Optional[List[str]] = None):
                 bestandsbelege = {
                     "pb1_ledger": artefakt_eintrag(fall, eingaben["pb1_ledger"]),
                     "migrationssuite": artefakt_eintrag(fall, eingaben["suite"]),
+                    "fuehrungsprobe": artefakt_eintrag(fall, eingaben["fuehrungsprobe"]),
                     "abnahmebericht": artefakt_eintrag(fall, bericht_pfad),
                 }
             except ValueError as exc:

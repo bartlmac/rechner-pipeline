@@ -785,6 +785,7 @@ def _passende_bestandsbelege(
         for rolle, eintrag in {
             "pb1_ledger": belege["pb1_ledger"],
             "migrationssuite": belege["migrationssuite"],
+            "fuehrungsprobe": belege["fuehrungsprobe"],
             **renderer_belege,
         }.items()
         if isinstance(eintrag, dict)
@@ -792,7 +793,7 @@ def _passende_bestandsbelege(
         and isinstance(eintrag.get("pfad"), str)
         and isinstance(eintrag.get("sha256"), str)
     }
-    if len(input_eintraege) == 6:
+    if len(input_eintraege) == 7:
         pfadnamen = [eintrag["pfad"] for eintrag in input_eintraege.values()]
         if len(set(pfadnamen)) != len(pfadnamen):
             fehler.append(
@@ -804,8 +805,8 @@ def _passende_bestandsbelege(
         }
         if ledger.input_hashes != erwartete_input_hashes:
             fehler.append(
-                "Abnahmebericht-Ledger.input_hashes muss exakt P-B1, Suite und "
-                "alle vier Renderer-Artefaktrollen binden"
+                "Abnahmebericht-Ledger.input_hashes muss exakt P-B1, Suite, "
+                "Fuehrungsprobe und alle vier Renderer-Artefaktrollen binden"
             )
 
     bericht_eintrag = belege["abnahmebericht"]
@@ -1029,6 +1030,16 @@ def _passende_bestandsbelege(
                     ledger_pfad=pfade["pb1_ledger"],
                     fall=fall,
                     repo_root=repo_root,
+                    suite=suite,
+                    erwartetes_system=dict(system),
+                )
+            )
+        if "fuehrungsprobe" in pfade:
+            # Dieselbe Bindung wie im Abnahmebericht, auf den aktuellen
+            # Bytes des Belegs (Freischaltung, Schritt 6).
+            fehler.extend(
+                abnahmebericht._fuehrungsprobe_fehler(
+                    abnahmebericht._lies_json_beleg(pfade["fuehrungsprobe"]),
                     suite=suite,
                     erwartetes_system=dict(system),
                 )

@@ -80,7 +80,7 @@ GATE_VERSION_DEFAULT = "1.0.0"
 P9_SNAPSHOT_SCHEMA_VERSION = 7
 _ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
 P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7)
-P9_GATE_VERSION = "1.0.0"
+P9_GATE_VERSION = "2.0.0"
 #: Gate-Version je lesbarem Schnappschuss-Schema.
 P9_GATE_VERSION_JE_SCHEMA = {6: "0.6.0", 7: P9_GATE_VERSION}
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"

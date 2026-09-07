@@ -19,7 +19,9 @@ from typing import Any, Dict, List
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.gates._provenienz import systemstand
 
-BESTANDS_BELEGROLLEN = ("pb1_ledger", "migrationssuite", "abnahmebericht")
+#: Seit der Freischaltung (Schritt 6) gehoert die Fuehrungsprobe dazu:
+#: der Beleg, dass der gefuehrte Bestand die Welt der Pruefstrecke traegt.
+BESTANDS_BELEGROLLEN = ("pb1_ledger", "migrationssuite", "fuehrungsprobe", "abnahmebericht")
 _SYSTEM_FELDER = {"commit", "branch", "dirty", "quellcode_sha256"}
 
 
@@ -120,7 +122,7 @@ def validate_scope_bindung(bindung: Any) -> List[str]:
 
 
 def bestands_belegrollen() -> List[str]:
-    """Die drei gegenueber einem Tariffall zusaetzlichen Belegrollen."""
+    """Die vier gegenueber einem Tariffall zusaetzlichen Belegrollen."""
     return list(BESTANDS_BELEGROLLEN)
 
 

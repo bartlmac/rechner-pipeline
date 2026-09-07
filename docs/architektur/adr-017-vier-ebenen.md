@@ -98,6 +98,14 @@ still. Das gibt A-K1 den Inhalt, der ihm bisher fehlte (U1, Befund Z1-04).
   Fuehrung. Zwei Rechenwege fuer denselben Zustand waren der Befund;
   eine zweite Ableitung im Tool waere die Wiederholung davon. Keine
   neue Art von Kante, dieselbe Schnittstelle von einem weiteren Modul.
+  Dazu (Schritt 6) die Fuehrungsprobe `gates/fuehrungsprobe`: Sie
+  stellt den gefuehrten Bestand gegen die Pruefstrecke und liest dazu
+  die Config und die Tabellen der Fuehrung (`bestand/config`,
+  `bestand/parquet_io`, `bestand/auswertung` fuer die Grundlagen je
+  Police) und rechnet mit Kern, Verfahren und Schicht — sechs Kanten,
+  jede davon bei `migrationssuite_lauf` oder `bestand_validate` schon
+  vorhanden. Ein Tool-Modul, das die Fuehrung PRUEFT, muss die Fuehrung
+  lesen; erzeugen tut es nichts.
 - README, ONBOARDING und die Unternehmensseite werden nach Ebenen
   geschnitten: Was ist das Tool, was ist die Vorzeige, was stellt sie
   her. Fachdokumente der Vorzeige nennen KI-Beteiligung und
