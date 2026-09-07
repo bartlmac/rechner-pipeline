@@ -118,6 +118,19 @@ def _zellen_tabelle(g: TarifGeneration) -> List[str]:
             f"{f['stoab_satz']}/{f['stoab_min']}/{f['stoab_max']} | "
             f"{f['ratzu_zw2']}/{f['ratzu_zw4']}/{f['ratzu_zw12']} |"
         )
+    # Die Tarifwerks-Eigenschaften der Fuehrung (Abschnitte 6 und 7): fuer
+    # eine uebernommene Generation sind sie Teil ihrer Ausgestaltung und
+    # stehen deshalb hier, erzeugt aus der Config wie die Zellen selbst.
+    tw = g.tarifwerk()
+    ja_nein = {True: "ja", False: "nein"}
+    zeilen += [
+        "",
+        f"Tarifwerk der Generation **{g.name}** (Ausgestaltung, "
+        "Grundsatzdokumentation 10 Nr. 9): Erhöhungsscheiben mit "
+        f"$\\gamma_1$: {ja_nein[tw['scheiben_mit_gamma1']]}; Stornoabzug je "
+        f"Baustein: {ja_nein[tw['stoab_je_baustein']]}; Herabsetzungsverfahren: "
+        f"`{tw['red_verfahren']}`.",
+    ]
     return zeilen
 
 

@@ -928,6 +928,17 @@ min_alter_flex = 60
 min_rlz_flex = 5
 zillmer_dauer = 5
 
+# Tarifwerks-Eigenschaften der uebernommenen Generation (Bedingungswerk
+# der zweiten Baldrian-Lieferung, in A-M1 bis A-M4 des Falls mit den
+# gleichnamigen Lauf-Schaltern abgenommen; Tarifplan KLV, Abschnitte 6
+# und 7): Erhoehungsscheiben rechnen die volle Beitragsformel (Ziffer 5),
+# der Stornoabzug greift je Baustein (Ziffer 4), eine Herabsetzung ist
+# eine Teilkuendigung der Grundversicherung mit Auszahlung (Ziffer 6).
+# Die Fuehrung liest die Schalter hier — im Betrieb gibt es keinen Lauf.
+scheiben_mit_gamma1 = true
+stoab_je_baustein = true
+red_verfahren = "teilkuendigung"
+
 # sample_size = 0 heisst: der Batch-Erzeuger legt NIE eine Zeile aus
 # diesen Verteilungen an (die Vertraege sind schon uebernommen). Sie sind
 # trotzdem Pflichtfelder der Config (BestandConfig.validate) -- inert,
