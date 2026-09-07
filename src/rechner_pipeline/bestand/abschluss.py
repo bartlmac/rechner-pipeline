@@ -58,9 +58,12 @@ def _rechne(
     stichtag: _dt.date,
     scheiben: Optional[pd.DataFrame],
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     zeilen = einzelwerte_am(stamm, historie, config, stichtag,
-                            scheiben=scheiben, merkmale=merkmale)
+                            scheiben=scheiben, merkmale=merkmale,
+                            schichten=schichten, verankerung=verankerung)
     if not zeilen:
         raise AbschlussError(
             f"Abschluss {stichtag.isoformat()}: kein in-force-Bestand am "
@@ -77,6 +80,7 @@ def _rechne(
             "leistung": z["leistung"],
             "deckungskapital": z["deckungskapital"],
             "rueckkaufswert": z["rueckkaufswert"],
+            "korrekturschicht": z["korrekturschicht"],
             "vs_bfr": z["vs_bfr"],
             "jahresbeitrag": z["jahresbeitrag"],
             "kern_version": KERN_VERSION,
@@ -106,6 +110,8 @@ def schreibe_abschluss(
     *,
     scheiben: Optional[pd.DataFrame] = None,
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
 ) -> Path:
     """Bewertungsstand des Stichtags festschreiben (genau einmal).
 
@@ -120,7 +126,8 @@ def schreibe_abschluss(
             f"Abschluss {stichtag.isoformat()} ist bereits festgeschrieben "
             f"({pfad}) — festgeschriebene Staende werden nie ueberschrieben"
         )
-    df = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
+    df = _rechne(stamm, historie, config, stichtag, scheiben, merkmale,
+                 schichten, verankerung)
     ziel_dir.mkdir(parents=True, exist_ok=True)
     # Zwei Sicherungen, die einzeln beide zu wenig tragen und erst
     # zusammen dicht sind -- die Reihenfolge ist deshalb wesentlich.
@@ -166,6 +173,8 @@ def pruefe_abschluss(
     *,
     scheiben: Optional[pd.DataFrame] = None,
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
 ) -> List[str]:
     """Neuberechnung gegen den festgeschriebenen Stand stellen.
 
@@ -197,7 +206,8 @@ def pruefe_abschluss(
     # wenn er unter einem aelteren Stand ohne diese Pruefung entstand.
     befunde.extend(validate_abschluss(fest))
 
-    neu = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
+    neu = _rechne(stamm, historie, config, stichtag, scheiben, merkmale,
+                  schichten, verankerung)
     kern_stand_alt = sorted(set(fest["kern_version"]))
     if kern_stand_alt != [KERN_VERSION]:
         befunde.append(

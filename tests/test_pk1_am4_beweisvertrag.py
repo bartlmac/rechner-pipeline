@@ -16,6 +16,7 @@ import tempfile
 from dataclasses import asdict
 from hashlib import sha256
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
@@ -24,6 +25,8 @@ from rechner_pipeline.bestand import cli_fortschreibung
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.fall import registrieren
 from rechner_pipeline.gates import (
+    bestand_uebernehmen,
+    fuehrungsprobe,
     abnahmebericht,
     aktuartest,
     bestand_validate,
@@ -52,10 +55,20 @@ from rechner_pipeline.qa.aktuarieller_test import (
 )
 from rechner_pipeline.qa.migrationssuite import VertragsPruefung, pruefe_bestand
 from rechner_pipeline.qa.stichprobe import ziehe
-from tests.e2e_fixture import bereite_pk1_fall, lade_pk1_fixture
+from tests.e2e_fixture import (
+    O3_GENERATION,
+    bereite_pk1_fall,
+    lade_pk1_fixture,
+    zellen_config,
+)
 from tests.zeichnung_fixture import VA, annahme_args
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+#: Name der uebernommenen Generation in der Config (Stammspalte tarif_generation).
+TARIF_GENERATION = "TG2012"
+#: Horizont des Ein-Policen-Bestandsfalls: Uebernahme 2026-01-01, ein volles
+#: Bewegungsjahr bis zum Jahreswechsel (Entscheid 2026-09-07 zu T23-05).
+HORIZONT_BESTANDSFALL = "2027-01-01"
 def _p9_annahme(fall: Path, gate: str, begruendung: str):
     return gate_entscheid.main([
         "--fall", str(fall),
@@ -81,7 +94,7 @@ def _bereite_fall(
         bestandsquelle.write_text(
             ";".join(ZIEL_PFLICHT) + "\n"
             + ";".join([
-                "P-SCOPE-1", "2015-01-01", "35", "M", "20", "15",
+                "7000001", "2015-01-01", "35", "M", "20", "15",
                 "100000", "12", "POL", "Einzel",
             ]) + "\n",
             encoding="utf-8",
@@ -125,11 +138,31 @@ def _abnahmebericht(fall: Path):
     ])
 
 
-def einpolicen_config(tmp_path: Path) -> Path:
-    """Die KLV-Config auf ihre erste Generation mit sample_size 1 gekuerzt:
-    dieselben Rechnungsgrundlagen, Plausibilitaetsbaender und Annahmen,
-    eine einzige Police."""
+def einpolicen_config(tmp_path: Path, *, uebernahme: Optional[Path] = None) -> Path:
+    """Die Config des Ein-Policen-Bestandsfalls.
+
+    Seit der Freischaltung (Schritt 6) ist der Bestandsfall ein echter
+    UEBERNOMMENER Bestand: Die eine Police kommt aus der Uebernahme, die
+    Config entsteht aus dem Abschnitt, den die Uebernahme aus der
+    abgenommenen Spez schreibt (``generation-zellen.toml``) — Grundlagen
+    und Tarifwerk, kein eigenes Neugeschaeft (sample_size 0). Einmal
+    geschrieben (``_bereite_bestandsfall``), lesen alle Aufrufer dieselbe
+    Datei. Ohne Uebernahme-Verzeichnis bleibt die alte Form: die
+    KLV-Config auf ihre erste Generation mit sample_size 1 gekuerzt.
+    """
+    pfad = tmp_path / "einpolice.toml"
+    if pfad.is_file():
+        return pfad
     text = (REPO_ROOT / "configs" / "bestand_klv.toml").read_text(encoding="utf-8")
+    if uebernahme is not None:
+        abschnitt = (uebernahme / "generation-zellen.toml").read_text(encoding="utf-8")
+        config_text = zellen_config(abschnitt, name=TARIF_GENERATION, knoten=O3_GENERATION)
+        # Entscheid 2026-09-07 (Review T23-05): A-M4 verlangt Plausibilitaets-
+        # baender — die Uebernahme-Config traegt die Baender der KLV-Config.
+        assert "[plausibilitaet]" not in config_text
+        baender = text[text.index("[plausibilitaet]"):]
+        pfad.write_text(config_text.rstrip("\n") + "\n\n" + baender, encoding="utf-8")
+        return pfad
     erste = text.index("[[generation]]")
     zweite = text.index("[[generation]]", erste + 1)
     kopf = text[:zweite].replace("sample_size = 600", "sample_size = 1", 1)
@@ -162,22 +195,40 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     # Der Bestandsfall hat exakt eine Police und die Suite prueft exakt
     # diese eine. Bis Review T22-01 war das ein EIN-ZEILEN-AUSSCHNITT eines
     # groesseren Laufs, ohne Journal und Ledger — und genau so ein
-    # Teilprofil nahm A-M4 als Beleg an. Jetzt ist es eine Ein-Policen-WELT:
-    # eine Generation mit sample_size 1, fortgeschrieben mit Journal,
-    # Ledger, Scheiben und Manifest, sodass P-B1 das Vollprofil pruefen
-    # kann, das A-M4 im Bestands-Scope verlangt.
+    # Teilprofil nahm A-M4 als Beleg an. Seit T22-01 ist es eine
+    # Ein-Policen-WELT mit Journal, Ledger, Scheiben und Manifest. Seit der
+    # Freischaltung (Schritt 6) ist diese Police UEBERNOMMEN: transformierte
+    # Zeile, Uebernahme mit Beleg, Config aus der abgenommenen Spez,
+    # Fortschreibung darauf — nur so kann die Fuehrungsprobe, die A-M4 im
+    # Bestands-Scope verlangt, ueberhaupt etwas pruefen.
+    zeilen = fall / "abgeleitet" / "transformation" / "zeilen.json"
+    zeilen.parent.mkdir(parents=True, exist_ok=True)
+    zeilen.write_text(json.dumps([{
+        "police_id": 7000001, "beginn": "2015-01-01", "entry_age": 35,
+        "sex": "M", "duration": 20, "premium_duration": 15,
+        "sum_insured": 100000.0, "zahlweise": 12,
+    }]), encoding="utf-8")
+    uebernahme = fall / "abgeleitet" / "uebernahme"
+    assert bestand_uebernehmen.main([
+        "--fall", str(fall), "--zeilen", str(zeilen),
+        "--tarif-generation", TARIF_GENERATION, "--stichtag", "2026-01-01",
+        "--generation-spez", O3_GENERATION,
+        "--out-dir", str(uebernahme),
+    ]) == 0
     # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
-    (fall / "abgeleitet").mkdir(parents=True, exist_ok=True)
-    config = einpolicen_config(fall / "abgeleitet")
+    config = einpolicen_config(fall / "abgeleitet", uebernahme=uebernahme)
     assert cli_fortschreibung.main([
         "--config", str(config),
-        "--bis", "2020-01-01",
+        # Entscheid 2026-09-07 (Review T23-05): A-M4 verlangt ein volles
+        # Bewegungsjahr — der Horizont liegt hinter dem Jahreswechsel.
+        "--bis", HORIZONT_BESTANDSFALL,
+        "--uebernahme", str(uebernahme),
         "--out-dir", str(lauf),
     ]) == 0
     ziel = lauf / "bestand_gesamt.parquet"
     assert len(read_portfolio(ziel)) == 1
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    pb1 = bestand_validate.main(pb1_vollprofil_argv(lauf, config) + [
+    pb1 = bestand_validate.main(pb1_vollprofil_argv(lauf, config, bis=HORIZONT_BESTANDSFALL) + [
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
     ])
@@ -189,7 +240,7 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     s1, s2 = 12 * 9 + 5, 12 * 10 + 5
     suite = pruefe_bestand(
         [VertragsPruefung(
-            police_id="P-SCOPE-1",
+            police_id="7000001",
             model_point=asdict(KLV_DEFAULT),
             monate_stichtag_1=s1,
             monate_stichtag_2=s2,
@@ -205,6 +256,13 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     )
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite_pfad.write_text(json.dumps(suite, sort_keys=True), encoding="utf-8")
+    assert fuehrungsprobe.main([
+        "--fall", str(fall), "--repo-root", str(REPO_ROOT),
+        "--generation", O3_GENERATION,
+        "--uebernahme", str(uebernahme), "--fortschreibung", str(lauf),
+        "--config", str(config), "--zeilen", str(zeilen),
+        "--stichtag", "2026-01-01",
+    ]) == 0, "Fuehrungsprobe des uebernommenen Ein-Policen-Bestands"
 
     nachweise = fall / "abgeleitet" / "abnahmenachweise"
     nachweise.mkdir(parents=True, exist_ok=True)
@@ -256,7 +314,7 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     )
     assert abnahme_ledger["status"] == "passed"
     assert set(abnahme_ledger["summary"]["bestandsbelege"]) == {
-        "pb1_ledger", "migrationssuite", "abnahmebericht",
+        "pb1_ledger", "migrationssuite", "fuehrungsprobe", "abnahmebericht",
     }
     assert set(abnahme_ledger["summary"]["renderer_artefakte"]) == {
         "spec",
@@ -318,7 +376,7 @@ def _aktuartest_belege(
     kennung = "aktuartest" if abnahme == "A-M1" else f"aktuartest-{abnahme}"
     test = pruefe_stichprobe(
         [Vertragspruefung(
-            police_id="P-SCOPE-1",
+            police_id="7000001",
             model_point=asdict(KLV_DEFAULT),
             historientyp="ohne_gevo",
             punkte=(Pruefpunkt(
@@ -329,7 +387,7 @@ def _aktuartest_belege(
                 anlass,
             ),),
         )],
-        ziehe("vollbestand", ["P-SCOPE-1"]),
+        ziehe("vollbestand", ["7000001"]),
         profil,
         system=gate_entscheid.systemstand(REPO_ROOT),
     )
@@ -428,9 +486,83 @@ def test_bestands_scope_bindet_pb1_suite_und_abnahmebericht_bis_am4(
     assert set(snapshot["pflichtbelege"]) == {
         "pq3_ledger", "aq1_snapshot",
         "am1_snapshot", "am2_snapshot", "am3_snapshot",
-        "pk1_belege", "pb1_ledger", "migrationssuite", "abnahmebericht",
+        "pk1_belege", "pb1_ledger", "migrationssuite", "fuehrungsprobe",
+        "abnahmebericht",
     }
     assert all(snapshot["pflichtbelege"].values())
+
+
+def test_ohne_bestandene_fuehrungsprobe_gibt_es_keinen_gruenen_abnahmebericht(
+    tmp_path: Path,
+):
+    """Freischaltung, Schritt 6: Die Fuehrungsprobe ist im Bestands-Scope
+    Pflicht — fehlt sie, ist sie nicht bestanden oder gehoert sie zu einem
+    anderen Bestand, entsteht kein gruener Beleg, und A-M4 kann nichts
+    zeichnen. Vorher konnte A-M4 einen Bestand annehmen, dessen Fuehrung
+    eine andere Welt rechnete als die Abnahmen."""
+    fall = _bereite_bestandsfall(tmp_path)
+    probe_pfad = fall / "abgeleitet" / "berichte" / "fuehrungsprobe.json"
+    gut = json.loads(probe_pfad.read_text(encoding="utf-8"))
+    assert gut["bestanden"] is True
+
+    # 1. Nicht bestanden: ein Befund im Beleg.
+    kaputt = dict(gut, bestanden=False,
+                  befunde=[{"police_id": "7000001", "art": "stammsumme",
+                            "text": "Stammsumme in der falschen Welt"}])
+    probe_pfad.write_text(json.dumps(kaputt, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert bericht.errors[0]["code"] == "fuehrungsprobe_contract"
+    assert "nicht bestanden" in " ".join(f["message"] for f in bericht.errors)
+
+    # 2. Ein anderer Bestand: die Suite-Bindung fehlt unter den Eingaben.
+    fremd = dict(gut, provenienz={"eingaben": {"x": "0" * 64}, "parameter": {}})
+    probe_pfad.write_text(json.dumps(fremd, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert "bestand_sha256" in " ".join(f["message"] for f in bericht.errors)
+
+    # 3. Gar keine Probe.
+    probe_pfad.unlink()
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+
+    # 4. Eine stehengebliebene Probe neben einer ausgetauschten Eingabe
+    #    (Pilot-Review 2026-09-07): der Beleg sagt bestanden, aber die
+    #    Fortschreibung, die er gelesen hat, ist nicht mehr die auf der
+    #    Platte. Der Stamm bleibt gleich — die Suite-Bindung allein saehe
+    #    nichts.
+    probe_pfad.write_text(json.dumps(gut, sort_keys=True), encoding="utf-8")
+    # Der Uebernahmebeleg ist eine Eingabe, die NUR die Probe bindet (P-B1
+    # lief auf der Fortschreibung): ihn nachtraeglich zu aendern, saehe
+    # ohne Nachhashen niemand.
+    beleg_pfad = fall / "abgeleitet" / "uebernahme" / "uebernahme.json"
+    original = beleg_pfad.read_bytes()
+    beleg = json.loads(original.decode("utf-8"))
+    beleg["anfangszustand"] = "grundvertrag"
+    beleg_pfad.write_text(json.dumps(beleg, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert "veraendert" in " ".join(f["message"] for f in bericht.errors)
+    beleg_pfad.write_bytes(original)
+    # 5. Ein Beleg, der seine Pflichteingaben verschweigt.
+    ohne = dict(gut, provenienz={
+        "eingaben": {k: v for k, v in gut["provenienz"]["eingaben"].items()
+                     if not k.endswith("uebernahme.json")},
+        "parameter": gut["provenienz"]["parameter"]})
+    probe_pfad.write_text(json.dumps(ohne, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert "Pflichteingaben" in " ".join(f["message"] for f in bericht.errors)
+
+    # Und mit dem echten Beleg wieder gruen — bis A-M4.
+    probe_pfad.write_text(json.dumps(gut, sort_keys=True), encoding="utf-8")
+    assert _abnahmebericht(fall).exit_code == 0
+    am4 = _p9_annahme(fall, "A-M4", "mit Fuehrungsprobe")
+    assert am4.exit_code == 0
+    snapshot = json.loads(Path(am4.paths["snapshot"]).read_text(encoding="utf-8"))
+    assert snapshot["pflichtbelege"]["fuehrungsprobe"] == [
+        sha256(probe_pfad.read_bytes()).hexdigest()]
 
 
 def test_abnahmebericht_blockiert_falschen_quellhash_trotz_konsistenter_kopie(
@@ -467,7 +599,7 @@ def test_abnahmebericht_prueft_quellspalten_am_registrierten_csv_header_nach(
     quelle.write_text(
         ";".join(ZIEL_PFLICHT[:-1]) + "\n"
         + ";".join([
-            "P-SCOPE-1", "2015-01-01", "35", "M", "20", "15",
+            "7000001", "2015-01-01", "35", "M", "20", "15",
             "100000", "12", "POL",
         ]) + "\n",
         encoding="utf-8",
@@ -1508,7 +1640,7 @@ def test_am1_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
     kern = Rechenkern(KLV_DEFAULT)
     erfunden = _ps(
         [Vertragspruefung(
-            police_id="P-SCOPE-1", model_point=asdict(KLV_DEFAULT),
+            police_id="7000001", model_point=asdict(KLV_DEFAULT),
             historientyp="ohne_gevo",
             punkte=(Pruefpunkt(
                 12 * 9,
@@ -1516,7 +1648,7 @@ def test_am1_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
                 ANLASS_UEBERNAHME,
             ),),
         )],
-        _ziehe("vollbestand", ["P-SCOPE-1"]),
+        _ziehe("vollbestand", ["7000001"]),
         _am1_profil(),
         system={"commit": "0" * 40, "branch": "erfunden",
                 "dirty": "false", "quellcode_sha256": "1" * 64},

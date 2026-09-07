@@ -173,6 +173,50 @@ das Aktuariat es will (Config-Schalter).
 Ein weiterer Migrationsfall käme als weiterer Eingang hinzu; der
 Tagesbetrieb kennt keine Sonderbehandlung je Fall.
 
+**Was der Zugang trägt (seit der Freischaltung des übernommenen
+Bestands, 2026-09-07).** Die Übernahme schreibt den Anfangszustand, den
+die Abnahmen des Falls geprüft haben: die Grundsumme im Stamm, die
+Alt-Erhöhungen als Bausteine (`scheiben.parquet`), die Ursprungssumme
+beitragsfrei gelieferter Verträge, die Korrekturschicht
+(`schichten.parquet`) mit ihrer Verankerung, und im Beleg
+`uebernahme.json` die Tarifwerks-Schalter der Generation. Die
+Bestand-Config der PLV führt dieselben Schalter je Generation
+(`scheiben_mit_gamma1`, `stoab_je_baustein`, `red_verfahren`); die
+Führung rechnet Storno je Baustein, Scheiben mit voller Beitragsformel
+und den Rückkaufswert mit Schicht, so wie es das Bedingungswerk der
+Quelle zusagt. Ein Zugang ohne diese Tabellen ist ein Bestand in der
+falschen Welt; der Tageslauf muss Bausteine, Schicht und Verankerung
+des Eingangs in seinen Stand durchreichen (offen, Schritt 9 des
+Fachkonzepts `dev-docs/freischaltung-uebernommener-bestand.md`).
+
+### 6.1 Betriebsfunde: Entwicklerweg oder Betriebsweg
+
+Ein Befund im laufenden Betrieb, der den übernommenen Bestand betrifft,
+hat zwei mögliche Wege. Das Kriterium ist eine Frage: **Falsifiziert der
+Befund ein gezeichnetes Artefakt des Falls?**
+
+- Wenn ja — etwa weil der Bestandsbericht nach der Migration, den A-M4
+  gebunden hat, falsche Beträge trägt —, dann ist es der
+  **Entwicklerweg**: Das System wird korrigiert, das Artefakt im Fall neu
+  erzeugt, der Korrekturvermerk in das Korrektur-Protokoll des Falls
+  geschrieben, und das Gate wird neu gezeichnet (mit Vermerk, welcher
+  Befund die Neuzeichnung ausgelöst hat). Der Fall bleibt die Wahrheit
+  über die Migration; ein Betrieb, der etwas anderes rechnet als der
+  gezeichnete Fall, ist nicht "korrigiert", sondern abgekoppelt.
+- Wenn nein — der Befund liegt im Betrieb selbst (Tageslauf, Ablage,
+  Kennzahlen), das gezeichnete Artefakt bleibt richtig —, dann ist es der
+  **Betriebsweg**: Das System wird korrigiert, und der Betrieb wird aus
+  der Übernahme neu aufgesetzt: alte Ablage archivieren, Eingang erneut
+  einspielen, Stand ab Betriebsbeginn neu fahren, Stands-Paket neu
+  exportieren.
+
+Beide Wege sind Routinen mit Beleg, keine Handarbeit: Der Entwicklerweg
+läuft über die Kommandos des Migrationsfalls (Skill
+`migrationsfall-durchfuehren`), der Betriebsweg über die Werkzeuge der
+Laufzeitumgebung (Abschnitt 8.2; "Betrieb neu aufsetzen" ist als Routine
+noch zu bauen). Was nie geht: den Betrieb still weiterfahren, während
+der Fall etwas anderes bezeugt.
+
 ## 7 Der Tageslauf
 
 Ein Kommando, `python -m rechner_pipeline.betrieb.tageslauf --stand

@@ -32,20 +32,44 @@ class KernlaufError(RuntimeError):
 
 
 def vertrags_rkw(
-    grund: Rechenkern, scheiben: List[Tuple[int, Rechenkern]], jahr: int
+    grund: Rechenkern,
+    scheiben: List[Tuple[int, Rechenkern]],
+    jahr: int,
+    *,
+    stoab_je_baustein: bool = False,
 ) -> float:
-    """Vertragsweiter Rueckkaufswert ueber Grund- und Erhoehungsscheiben.
+    """Rueckkaufswert des Vertrags ueber Grund- und Erhoehungsscheiben.
 
-    Die Stornoabschlag-Grenzen des Tarifwerks (stoab_min/max) sind je
-    VERTRAG kalibriert: der Abzug wird einmal auf die Gesamtwerte gerechnet
-    (satz * (Gesamt-VS - Gesamt-Deckungsrueckstellung), begrenzt), nicht je
-    Scheibe — sonst wuerde die Untergrenze je Scheibe binden und der
-    Gesamtabzug mit der Scheibenzahl wachsen. Fuer Vertraege ohne Scheiben
-    ist das Ergebnis bit-identisch zur RKW-Spalte der Kern-Verlaufszeile.
+    WO die Stornoabschlag-Grenzen des Tarifwerks (stoab_min/max) greifen,
+    ist eine Eigenschaft der GENERATION (``TarifGeneration.tarifwerk()``,
+    Freischaltung Schritt 4), keine Konstante:
+
+    * Vorgabe ``stoab_je_baustein=False`` — Tarifplan KLV des eigenen
+      Geschaefts: die Grenzen sind je VERTRAG kalibriert, der Abzug wird
+      einmal auf die Gesamtwerte gerechnet (satz * (Gesamt-VS -
+      Gesamt-Deckungsrueckstellung), begrenzt), nicht je Scheibe — sonst
+      wuerde die Untergrenze je Scheibe binden und der Gesamtabzug mit
+      der Scheibenzahl wachsen. Fuer Vertraege ohne Scheiben ist das
+      Ergebnis bit-identisch zur RKW-Spalte der Kern-Verlaufszeile. Der
+      Rechenweg ist unveraendert der bisherige (Ratsche: kein Betrag des
+      eigenen Geschaefts aendert sich).
+    * ``stoab_je_baustein=True`` — Bedingungswerk einer uebernommenen
+      Generation (zweite Baldrian-Lieferung, Ziffer 4): jeder Baustein
+      traegt seinen eigenen Abzug mit eigenen Grenzen, der Rueckkaufswert
+      ist die Summe der auf null begrenzten Baustein-Rueckkaufswerte.
+      Genau dieser Weg wurde in A-M1 bis A-M4 abgenommen — er lebt im
+      Kern (``vertrags_monatsreserve``), und hier wird er nur gerufen,
+      nicht nachgebaut.
 
     Wohnt hier, weil Simulation UND Bewertung den Wert brauchen — beide
     ueber den Kern, keine ueber die jeweils andere (ADR-011).
     """
+    if stoab_je_baustein:
+        from rechner_pipeline.kern import vertrags_monatsreserve
+
+        return vertrags_monatsreserve(
+            grund, list(scheiben), 12 * jahr, stoab_je_baustein=True
+        ).rkw
     zeilen = [grund.verlaufszeile(jahr)] + [
         kern.verlaufszeile(jahr - erh_jahr) for erh_jahr, kern in scheiben
     ]

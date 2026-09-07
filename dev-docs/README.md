@@ -49,4 +49,5 @@ Vier Abschnitte, mehr braucht es nicht:
 | [Korrekturschicht umsetzen](korrekturschicht-umsetzung.md) | Stufe N7.1 gebaut; N7.2 bis N7.4 offen |
 | [Rollentrennung der Agenten](agenten-rollentrennung.md) | Skizze, wartet auf Entscheidung |
 | [Zahlungspfade migrierter Vertraege](zahlungspfade-migrierter-vertraege.md) | Richtung bejaht 2026-08-28; blockiert A-M4 des zweiten Baldrian-Falls |
+| [Freischaltung des uebernommenen Bestands](freischaltung-uebernommener-bestand.md) | Fachkonzept 2026-09-07; Schritt 1 gemessen, Umsetzung auf Branch `freischaltung` laeuft |
 | [Offene Punkte](offene-punkte.md) | laufend |

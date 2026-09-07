@@ -491,7 +491,9 @@ def pruefe_tbox_aenderung(
     return fehler
 
 
-def _pruefe_g2_snapshot_semantik(snapshot: dict) -> List[str]:
+def _pruefe_g2_snapshot_semantik(
+    snapshot: dict, aktueller_systemstand: Mapping[str, str]
+) -> List[str]:
     """Den aus dem Scope abgeleiteten Inhalt einer Annahme pruefen.
 
     Das paketweite P9-Schema prueft die JSON-Form. Die fachliche Rollenmenge
@@ -499,9 +501,24 @@ def _pruefe_g2_snapshot_semantik(snapshot: dict) -> List[str]:
     dem Belegrollen-Vertrag (je Gate und Scope, ADR-009/ADR-010) abgeleitet.
     Sonst koennte ein formal gueltiger, signierter Snapshot eine Pflichtrolle
     auslassen und dennoch als gueltige P9-Historie erscheinen.
+
+    Die Pflichtbelegmenge eines Gates WAECHST aber mit dem System: die
+    Fuehrungsprobe etwa kam als A-M4-Bestandsrolle erst mit der
+    Freischaltung hinzu. Ein Vorgaenger auf einem FRUEHEREN Stand wurde
+    gegen den Belegrollen-Vertrag SEINES Standes gezeichnet und ist durch
+    seine Signatur verankert; ihn gegen den heutigen, breiteren Vertrag zu
+    messen erklaerte ihn rueckwirkend fuer unvollstaendig und verhinderte,
+    dass eine neue Zeichnung ueberhaupt an ihn anknuepfen kann. Der aktuelle
+    Vertrag wird deshalb NUR auf Snapshots des aktuellen Standes angewandt;
+    fuer aeltere Vorgaenger buergt ihre Signatur (Neuzeichnung Fall-Lauf 2,
+    2026-09-07). Ein Schlupfloch entsteht nicht: ein neuer Snapshot wird
+    immer auf dem aktuellen Stand gebaut und traegt den vollen Vertrag von
+    Bau an, wird hier also geprueft.
     """
     gate = snapshot.get("gate")
     if gate not in ("A-M1", "A-M4", "A-K1") or snapshot.get("entscheid") != "angenommen":
+        return []
+    if snapshot.get("system") != dict(aktueller_systemstand):
         return []
     fehler: List[str] = []
     scope = snapshot.get("fall_scope")
@@ -584,6 +601,7 @@ def _lade_snapshot_kette(
     gate: str,
     fall: Path,
     schluesselring: Mapping[str, bytes],
+    aktueller_systemstand: Mapping[str, str],
 ) -> Tuple[Dict[str, Tuple[Path, dict]], List[str], List[str]]:
     """Validate schema, content address, signature and the complete DAG."""
     snapshots: Dict[str, Tuple[Path, dict]] = {}
@@ -600,7 +618,9 @@ def _lade_snapshot_kette(
             continue
         fehler.extend(
             f"{pfad.name}: {meldung}"
-            for meldung in _pruefe_g2_snapshot_semantik(daten)
+            for meldung in _pruefe_g2_snapshot_semantik(
+                daten, aktueller_systemstand
+            )
         )
         sha = daten["snapshot_sha256"]
         if daten["gate"] != gate:
@@ -877,6 +897,7 @@ def _passende_bestandsbelege(
         for rolle, eintrag in {
             "pb1_ledger": belege["pb1_ledger"],
             "migrationssuite": belege["migrationssuite"],
+            "fuehrungsprobe": belege["fuehrungsprobe"],
             **renderer_belege,
         }.items()
         if isinstance(eintrag, dict)
@@ -884,7 +905,7 @@ def _passende_bestandsbelege(
         and isinstance(eintrag.get("pfad"), str)
         and isinstance(eintrag.get("sha256"), str)
     }
-    if len(input_eintraege) == 6:
+    if len(input_eintraege) == 7:
         pfadnamen = [eintrag["pfad"] for eintrag in input_eintraege.values()]
         if len(set(pfadnamen)) != len(pfadnamen):
             fehler.append(
@@ -896,8 +917,8 @@ def _passende_bestandsbelege(
         }
         if ledger.input_hashes != erwartete_input_hashes:
             fehler.append(
-                "Abnahmebericht-Ledger.input_hashes muss exakt P-B1, Suite und "
-                "alle vier Renderer-Artefaktrollen binden"
+                "Abnahmebericht-Ledger.input_hashes muss exakt P-B1, Suite, "
+                "Fuehrungsprobe und alle vier Renderer-Artefaktrollen binden"
             )
 
     bericht_eintrag = belege["abnahmebericht"]
@@ -1116,6 +1137,18 @@ def _passende_bestandsbelege(
                     ledger_text=gelesen["pb1_ledger"].text(),
                     fall=fall,
                     repo_root=repo_root,
+                    suite=suite,
+                    erwartetes_system=dict(system),
+                )
+            )
+        if "fuehrungsprobe" in pfade:
+            # Dieselbe Bindung wie im Abnahmebericht, auf DENSELBEN Bytes,
+            # die oben gehasht wurden (Freischaltung Schritt 6; Belegidentitaet
+            # Review T23-01) — nicht ein zweites Mal von der Platte.
+            fehler.extend(
+                abnahmebericht._fuehrungsprobe_fehler(
+                    abnahmebericht._json_beleg_aus(gelesen["fuehrungsprobe"]),
+                    fall=fall,
                     suite=suite,
                     erwartetes_system=dict(system),
                 )
@@ -1840,7 +1873,8 @@ def main(argv: Optional[List[str]] = None):
                 )
             verzeichnis_aq1 = entscheide_verzeichnis(fall)
             aq1_snapshots, aq1_spitzen, aq1_fehler = _lade_snapshot_kette(
-                verzeichnis_aq1, "A-Q1", fall, schluesselring
+                verzeichnis_aq1, "A-Q1", fall, schluesselring,
+                entscheid_systemstand,
             )
             if aq1_fehler:
                 return _sperre(
@@ -1905,7 +1939,8 @@ def main(argv: Optional[List[str]] = None):
             for abnahme_gate in pflicht_abnahmen:
                 snapshots_a, spitzen_a, ketten_fehler_a = (
                     _lade_snapshot_kette(
-                        verzeichnis_aq1, abnahme_gate, fall, schluesselring
+                        verzeichnis_aq1, abnahme_gate, fall, schluesselring,
+                        entscheid_systemstand,
                     )
                 )
                 if ketten_fehler_a:
@@ -2006,7 +2041,7 @@ def main(argv: Optional[List[str]] = None):
             + "; ".join(schluessel_fehler[:5]),
         )
     bestehende, spitzen, ketten_fehler = _lade_snapshot_kette(
-        verzeichnis, args.gate, fall, schluesselring
+        verzeichnis, args.gate, fall, schluesselring, entscheid_systemstand
     )
     if ketten_fehler:
         return _sperre(

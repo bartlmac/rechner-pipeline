@@ -149,8 +149,15 @@ def baue_schichtbeleg(
     fenster: Optional[int] = None,
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     scheiben_mit_gamma1: bool = False,
+    summen: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
     """Schichtparameter je Police — der rechnende Kern des Producers.
+
+    ``summen`` (police -> gelieferte Summe aus den transformierten
+    Zeilen) ist die Grundlage, wo kein Anfangszustand eine Grund- oder
+    Ursprungssumme liefert: Der Stamm traegt seit der Freischaltung die
+    Grundsumme der Fuehrung; die Verankerung rechnet die Welt der
+    Lieferung.
 
     Rueckgabe: ``{"schichten": {police: {"hist": felder}},
     "befunde": [...], "summary": {...}}`` — das ``hist``-Format des
@@ -192,8 +199,11 @@ def baue_schichtbeleg(
         anfangszustand = (anfangszustaende or {}).get(police, {})
         if "sum_insured" in anfangszustand:
             # Die Bewertungs-Welt der Pruefstrecke: Ursprungs- bzw.
-            # Grundsumme statt der aktuellen Gesamtsumme des Stamms.
+            # Grundsumme.
             mp["sum_insured"] = float(anfangszustand["sum_insured"])
+        elif summen is not None and police in summen:
+            # Ohne Zustand die GELIEFERTE Summe als ein Vertrag.
+            mp["sum_insured"] = float(summen[police])
         vertraege.append(Uebernahme(
             police_id=int(police),
             model_point=mp,
@@ -326,6 +336,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     verankerung_gelesen = lies_gehasht(pfade["verankerung"])
 
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None
+    summen: Optional[Dict[str, float]] = None
     if args.vorgeschichte is not None:
         # Dieselbe Zustandsbau-Maschinerie wie in den Pruefstrecken —
         # die Verankerung MUSS auf derselben Welt stehen, auf der
@@ -344,6 +355,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             zeilen = json.loads(
                 Path(args.zeilen).read_text(encoding="utf-8"))
             auspraegungen = auspraegungen_je_police(spez, zeilen)
+            summen = {
+                str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
         elif len(spez.zellen) > 1:
             print("verankerung_belegen: mehrzellige Spez mit "
                   "Vorgeschichte verlangt --zeilen", file=sys.stderr)
@@ -397,10 +410,36 @@ def main(argv: Optional[List[str]] = None) -> int:
             fenster=args.fenster,
             anfangszustaende=anfangszustaende,
             scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+            summen=summen,
         )
     except MigrationszugangFehler as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
         return 2
+
+    # Die Schicht als Vertragsattribut des Bestands (Freischaltung, Schritt
+    # 5): schichten.parquet neben verankerung.parquet im Uebernahme-
+    # Verzeichnis. Der JSON-Beleg bleibt die provenienzgebundene Quelle der
+    # Pruefstrecke; die Fuehrung liest die Tabelle. Beide tragen dieselben
+    # Parameter — R_conv (zweite Schicht) ist in der Fuehrung nicht
+    # freigeschaltet und wuerde hier anhalten.
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.models.bestand import SCHICHTEN_NAMES, SCHICHTEN_SPALTEN, schichten_zeile
+
+    zeilen_schichten = []
+    for police, eintrag in sorted(beleg["schichten"].items(), key=lambda kv: int(kv[0])):
+        if "conv" in eintrag:
+            print("verankerung_belegen: Zweitschicht R_conv ist in der "
+                  "Bestandsfuehrung nicht freigeschaltet — schichten.parquet "
+                  "wird nicht geschrieben", file=sys.stderr)
+            zeilen_schichten = None
+            break
+        zeilen_schichten.append(schichten_zeile(int(police), eintrag["hist"]))
+    if zeilen_schichten:
+        tabelle = (pd.DataFrame(zeilen_schichten, columns=list(SCHICHTEN_NAMES))
+                   .astype(dict(SCHICHTEN_SPALTEN)))
+        write_portfolio(tabelle, ueber / "schichten.parquet")
+        print(f"  schichten.parquet: {len(tabelle)} Schichten im "
+              f"Uebernahme-Verzeichnis {ueber}")
 
     eingaben = {
         str(pfade["verankerung"].relative_to(fall)): verankerung_gelesen.sha256,

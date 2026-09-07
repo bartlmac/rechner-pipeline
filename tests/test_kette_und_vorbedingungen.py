@@ -10,10 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.fall import anlegen, registrieren
+from rechner_pipeline.fall import anlegen, belegrollen, registrieren
 from rechner_pipeline.gates.abox_merge import main as merge_cli
 from rechner_pipeline.gates.abox_validate import main as pq3
-from rechner_pipeline.gates.gate_entscheid import main as p9
+from rechner_pipeline.gates.gate_entscheid import (
+    _pruefe_g2_snapshot_semantik,
+    main as p9,
+)
 from rechner_pipeline.ontologie import PFLICHT_PARAMETER, belegt
 from rechner_pipeline.ontologie.abox import abox_pfad, lade, speichere
 from rechner_pipeline.ontologie.befuellung import loese_diskrepanz_auf
@@ -423,3 +426,55 @@ def test_entscheide_weist_rollen_ohne_aq1_und_fremde_schluessel_ab(
     # Nichts davon hat entschieden:
     [d3] = lade(f).diskrepanzen
     assert d3.entscheidung is None or d3.entscheidung.vorlaeufig
+
+
+# --- Kettenpruefung ist stand-bewusst: eine gewachsene Pflichtbelegmenge
+# darf einen aelteren Vorgaenger nicht rueckwirkend entwerten
+# (Neuzeichnung Fall-Lauf 2, 2026-09-07). Die Fuehrungsprobe kam als
+# A-M4-Bestandsrolle erst mit der Freischaltung hinzu; ohne Stand-Bewusstsein
+# koennte keine neue Zeichnung an den A-M4-Snapshot der Vor-Freischaltung
+# anknuepfen.
+
+STAND_FRUEHER = {"branch": "b", "commit": "a" * 40, "dirty": "nein",
+                 "quellcode_sha256": "1" * 64}
+STAND_JETZT = {"branch": "b", "commit": "c" * 40, "dirty": "nein",
+               "quellcode_sha256": "2" * 64}
+
+
+def _am4_snapshot(system: dict, rollen: list) -> dict:
+    pflicht = {rolle: ["beleghash"] for rolle in rollen}
+    if "pk1_belege" in pflicht:
+        pflicht["pk1_belege"] = []
+    return {
+        "gate": "A-M4",
+        "entscheid": "angenommen",
+        "fall_scope": "bestand",
+        "pflichtbelege": pflicht,
+        "pk1_belege": {},
+        "system": system,
+    }
+
+
+def test_g2_semantik_historischer_vorgaenger_ohne_neue_rolle_bleibt_gueltig():
+    voll = belegrollen("A-M4", "bestand")
+    schmal = [r for r in voll if r != "fuehrungsprobe"]
+    snap = _am4_snapshot(STAND_FRUEHER, schmal)
+    # Anderer Stand als der laufende Entscheid -> historisch, durch Signatur
+    # verankert, NICHT gegen den heutigen Vertrag gemessen.
+    assert _pruefe_g2_snapshot_semantik(snap, STAND_JETZT) == []
+
+
+def test_g2_semantik_aktueller_snapshot_ohne_pflichtrolle_wird_abgelehnt():
+    voll = belegrollen("A-M4", "bestand")
+    schmal = [r for r in voll if r != "fuehrungsprobe"]
+    snap = _am4_snapshot(STAND_JETZT, schmal)
+    # Auf dem aktuellen Stand greift der Vertrag: die fehlende Rolle ist ein
+    # Fehler -- kein Schlupfloch fuer eine neue, unvollstaendige Zeichnung.
+    fehler = _pruefe_g2_snapshot_semantik(snap, STAND_JETZT)
+    assert any("nicht exakt" in f for f in fehler)
+
+
+def test_g2_semantik_aktueller_snapshot_mit_vollprofil_ist_gueltig():
+    voll = belegrollen("A-M4", "bestand")
+    snap = _am4_snapshot(STAND_JETZT, voll)
+    assert _pruefe_g2_snapshot_semantik(snap, STAND_JETZT) == []

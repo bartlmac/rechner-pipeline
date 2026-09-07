@@ -50,6 +50,8 @@ ROLLEN_DATEIEN: Mapping[str, str] = {
     "ledger": "ledger.parquet",
     "scheiben": "scheiben.parquet",
     "merkmale": "merkmale.parquet",
+    "schichten": "schichten.parquet",
+    "verankerung": "verankerung.parquet",
 }
 
 

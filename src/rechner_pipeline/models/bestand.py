@@ -289,6 +289,32 @@ VERANKERUNG_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("dk_ta", "float64"),
 )
 
+#: Korrekturschicht je uebernommenem Vertrag (Grundsatzdokumentation 9.11,
+#: Freischaltung Schritt 5): persistiert werden PARAMETER, keine
+#: Zwischenwerte — genau die Felder von
+#: ``kern.korrekturschicht.Schichtparameter``; ``formparameter`` und
+#: ``vererbend`` als JSON-Text. Der Verankerungszeitpunkt steht in
+#: ``verankerung.parquet`` (dieselbe Police, ``monate_ta``); beide Tabellen
+#: gehoeren zusammen. NEBENTABELLE wie ``verankerung``: keine Datei heisst,
+#: der Bestand traegt keine Schichten. Erzeugt vom Schichtbeleg-Producer
+#: (``gates.verankerung_belegen``) in das Uebernahme-Verzeichnis, gelesen
+#: von Ereignis-Engine (Storno zahlt Basis plus Schicht), Bewertung
+#: (eigene Position im Abschluss) und P-B1 (Ledger-Herleitung).
+SCHICHTEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("schichttyp", "object"),
+    ("verankerungszustand", "object"),
+    ("verweildauer", "int64"),
+    ("rho", "float64"),
+    ("formfunktion", "object"),
+    ("formparameter", "object"),      # JSON-Text
+    ("vererbend", "object"),          # JSON-Text: [[von, nach], ...]
+    ("kohorte", "object"),
+    ("in_ueberschuss", "bool"),
+    ("in_zzr", "bool"),
+    ("rumpfmonate", "int64"),
+)
+
 #: Merkmalsauspraegungen je Vertrag — die Wahl der Tarifzelle.
 #:
 #: Eine Nebentabelle wie ``scheiben`` und ``historie``: Sie traegt NUR
@@ -325,6 +351,10 @@ ABSCHLUSS_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("leistung", "float64"),          # VS (KLV, inkl. Scheiben) bzw. Jahresrente (BU)
     ("deckungskapital", "float64"),
     ("rueckkaufswert", "float64"),
+    # Die Korrekturschicht je Vertrag als EIGENE Position (Grundsatz-
+    # dokumentation 9.11: nie unsichtbar im Deckungskapital); sie ist in
+    # deckungskapital und rueckkaufswert enthalten. 0 ohne Schicht.
+    ("korrekturschicht", "float64"),
     ("vs_bfr", "float64"),
     ("jahresbeitrag", "float64"),
     ("kern_version", "object"),
@@ -360,6 +390,7 @@ SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
 ABSCHLUSS_NAMES: Tuple[str, ...] = tuple(n for n, _ in ABSCHLUSS_SPALTEN)
 MERKMALE_NAMES: Tuple[str, ...] = tuple(n for n, _ in MERKMALE_SPALTEN)
 VERANKERUNG_NAMES: Tuple[str, ...] = tuple(n for n, _ in VERANKERUNG_SPALTEN)
+SCHICHTEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHICHTEN_SPALTEN)
 TAGESJOURNAL_NAMES: Tuple[str, ...] = tuple(n for n, _ in TAGESJOURNAL_SPALTEN)
 
 
@@ -873,7 +904,7 @@ def validate_ledger(
             )
 
     if scheiben is not None:
-        errors.extend(_ledger_scheiben_bindung(ledger, scheiben))
+        errors.extend(_ledger_scheiben_bindung(ledger, scheiben, stamm))
     return errors
 
 
@@ -1030,9 +1061,19 @@ def validate_tagesjournal(
     return errors
 
 
-def _ledger_scheiben_bindung(ledger: Any, scheiben: Any) -> List[str]:
+def _ledger_scheiben_bindung(
+    ledger: Any, scheiben: Any, stamm: Any = None
+) -> List[str]:
     """Jede ERH-Buchung genau eine Scheibe, jede Scheibe genau eine Buchung
-    — ueber Police, Datum, Betrag und Erhoehungsjahr (T18-01)."""
+    — ueber Police, Datum, Betrag und Erhoehungsjahr (T18-01).
+
+    Ausgenommen sind MITGEBRACHTE Scheiben: Die Alt-Erhoehungen eines
+    uebernommenen Vertrags liegen vor seinem Bestandszugang und haben
+    keine Buchung im Journal des aufnehmenden Unternehmens — die
+    Vorgeschichte wird nicht nachgefahren (Grundsatzdokumentation 9.14),
+    ihr Zugang bucht die Gesamtsumme. Eine Scheibe NACH dem Zugang ohne
+    Buchung bleibt ein Befund.
+    """
     import pandas as _pd
 
     errors: List[str] = []
@@ -1041,6 +1082,13 @@ def _ledger_scheiben_bindung(ledger: Any, scheiben: Any) -> List[str]:
     erh = ledger.loc[ledger["ereignis"] == "ERH",
                      ["police_id", "status_date", "vertragsjahr", "betrag"]]
     sch = scheiben[["police_id", "erhoehung_datum", "erhoehung_jahr", "sum_insured"]]
+    if stamm is not None and len(sch):
+        zugang = stamm.set_index("police_id")["bestandszugang"]
+        mitgebracht = (
+            sch["erhoehung_datum"].to_numpy()
+            <= zugang.reindex(sch["police_id"].to_numpy()).to_numpy()
+        )
+        sch = sch[~mitgebracht]
     doppelt_l = erh.duplicated(["police_id", "status_date"])
     if doppelt_l.any():
         errors.append(
@@ -1169,23 +1217,29 @@ def validate_scheiben(stamm: Any, scheiben: Any, historie: Any = None) -> List[s
     elif (scheiben["sum_insured"] <= 0).any():
         errors.append("scheiben: sum_insured <= 0")
     # gamma1 ist die Rechnungsgrundlage der Scheibe und geht in Beitrag und
-    # Reserve ein. Die Tarifwerk-Regel setzt sie auf null, weil die
-    # Bezugsgroesse der Verwaltungskosten die GrundVS bleibt
-    # (kern.rechenkern.erhoehungs_scheibe). Ein anderer Wert rechnet still
-    # falsch: NaN laesst den Rueckkaufswert auf 0,00 fallen statt auf NaN,
-    # ein negativer Wert erzeugt einen negativen Jahresbeitrag — beides
-    # plausibel aussehende Zahlen, die niemandem auffallen.
-    # NaN wird getrennt gemeldet, weil jeder Vergleich damit False ist;
-    # das != 0.0 danach faengt Unendlich und jeden Fremdwert mit.
+    # Reserve ein. Ein Fremdwert rechnet still falsch: NaN laesst den
+    # Rueckkaufswert auf 0,00 fallen statt auf NaN, ein negativer Wert
+    # erzeugt einen negativen Jahresbeitrag — beides plausibel aussehende
+    # Zahlen, die niemandem auffallen. WELCHER Wert richtig ist, sagt das
+    # Tarifwerk der Generation (0 fuer das eigene Geschaeft, das gamma1
+    # der Zelle bei uebernommenen Generationen mit voller Beitragsformel):
+    # das prueft bestand.ledger_bindung.pruefe_scheiben_tarifwerk mit der
+    # Config. Hier, ohne Config, bleibt die Form: endlich und nicht negativ.
+    # NaN wird getrennt gemeldet, weil jeder Vergleich damit False ist.
     if scheiben["gamma1"].isna().any():
         errors.append("scheiben: fehlende Werte (NaN) in gamma1")
-    elif (scheiben["gamma1"] != 0.0).any():
+    elif _nichtendlich(scheiben["gamma1"]):
+        errors.append(
+            "scheiben: gamma1 nicht endlich (inf) — eine Rechnungsgrundlage "
+            "ist eine Zahl"
+        )
+    elif (scheiben["gamma1"] < 0.0).any():
         abweichend = sorted(
-            set(scheiben.loc[scheiben["gamma1"] != 0.0, "police_id"])
+            set(scheiben.loc[scheiben["gamma1"] < 0.0, "police_id"])
         )[:5]
         errors.append(
-            "scheiben: gamma1 != 0 (Tarifwerk-Regel: die Bezugsgroesse der "
-            f"Verwaltungskosten bleibt die GrundVS), police {abweichend}"
+            "scheiben: gamma1 < 0 (ein Verwaltungskostensatz traegt kein "
+            f"Vorzeichen), police {abweichend}"
         )
     if not (scheiben["erhoehung_datum"].dt.day == 1).all():
         errors.append("scheiben: erhoehung_datum nicht auf Monatsersten normalisiert")
@@ -1417,4 +1471,86 @@ def validate_merkmale(
                 errors.append(
                     f"merkmale {dim}: Auspraegung(en) {falsch} nicht "
                     f"deklariert (erlaubt: {sorted(gueltig)})")
+    return errors
+
+
+# --------------------------------------------------------------------------- #
+# Korrekturschicht als Vertragsattribut (Freischaltung, Schritt 5)
+# --------------------------------------------------------------------------- #
+
+
+def schichten_zeile(police_id: int, beleg: Mapping[str, Any]) -> Dict[str, Any]:
+    """Der ``hist``-Belegeintrag (``Schichtparameter.als_beleg()``) als Zeile."""
+    import json as _json
+
+    return {
+        "police_id": int(police_id),
+        "schichttyp": str(beleg["schichttyp"]),
+        "verankerungszustand": str(beleg["verankerungszustand"]),
+        "verweildauer": int(beleg["verweildauer"]),
+        "rho": float(beleg["rho"]),
+        "formfunktion": str(beleg["formfunktion"]),
+        "formparameter": _json.dumps(dict(beleg.get("formparameter") or {}),
+                                     sort_keys=True),
+        "vererbend": _json.dumps([list(p) for p in beleg.get("vererbend") or []]),
+        "kohorte": str(beleg.get("kohorte", "t_a")),
+        "in_ueberschuss": bool(beleg.get("in_ueberschuss", True)),
+        "in_zzr": bool(beleg.get("in_zzr", True)),
+        "rumpfmonate": int(beleg.get("rumpfmonate", 0)),
+    }
+
+
+def validate_schichten(stamm: Any, schichten: Any, verankerung: Any) -> List[str]:
+    """Schichten gegen Stamm und Verankerung (Fehlerliste, leer = ok).
+
+    Jede Schicht gehoert zu genau einer Police des Stamms, die eine
+    Verankerung traegt (ohne t_a ist eine Schicht nicht bewertbar), und
+    ihre Zeile muss der Form nach ein Parametersatz sein — dieselben
+    Grenzen wie die Konstruktor-Wachen von ``Schichtparameter``
+    (Schichttyp, endliches rho, Verweildauer, Rumpfmonate, JSON-Felder),
+    hier ohne den Kern zu importieren; die Konstruktion selbst macht
+    ``bestand.schichten.schichten_je_police``.
+    """
+    import json as _json
+    import math as _math
+
+    errors: List[str] = []
+    cols = list(schichten.columns)
+    if cols != list(SCHICHTEN_NAMES):
+        return [f"schichten: Spalten {cols} != erwartet {list(SCHICHTEN_NAMES)}"]
+    for name, dtype in SCHICHTEN_SPALTEN:
+        actual = str(schichten[name].dtype)
+        if actual != dtype:
+            errors.append(f"schichten {name}: dtype {actual}, erwartet {dtype}")
+    if errors or len(schichten) == 0:
+        return errors
+    if schichten["police_id"].duplicated().any():
+        errors.append("schichten: police_id nicht eindeutig (eine Schicht je Police)")
+    unbekannt = sorted(set(schichten["police_id"]) - set(stamm["police_id"]))
+    if unbekannt:
+        errors.append(f"schichten: police_id unbekannt im Bestand: {unbekannt[:5]}")
+    if verankerung is None or len(verankerung) == 0:
+        errors.append(
+            "schichten ohne verankerung: eine Schicht braucht ihren "
+            "Verankerungszeitpunkt (verankerung.parquet)")
+    else:
+        ohne_anker = sorted(set(schichten["police_id"]) - set(verankerung["police_id"]))
+        if ohne_anker:
+            errors.append(
+                f"schichten: police ohne Verankerung: {ohne_anker[:5]}")
+    for zeile in schichten.to_dict("records"):
+        prefix = f"schichten police {zeile['police_id']}"
+        if str(zeile["schichttyp"]) not in ("hist", "conv"):
+            errors.append(f"{prefix}: schichttyp {zeile['schichttyp']!r} unbekannt")
+        if not _math.isfinite(float(zeile["rho"])):
+            errors.append(f"{prefix}: rho ist {zeile['rho']!r}")
+        if int(zeile["verweildauer"]) < 0:
+            errors.append(f"{prefix}: verweildauer negativ")
+        if not 0 <= int(zeile["rumpfmonate"]) < 12:
+            errors.append(f"{prefix}: rumpfmonate {zeile['rumpfmonate']} ausserhalb 0..11")
+        for feld in ("formparameter", "vererbend"):
+            try:
+                _json.loads(zeile[feld])
+            except (TypeError, ValueError):
+                errors.append(f"{prefix}: {feld} ist kein JSON")
     return errors

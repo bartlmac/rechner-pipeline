@@ -135,6 +135,17 @@ $$
 Flexible Phase: $y \ge$ `min_alter_flex` **und**
 $a \ge n -$ `min_rlz_flex`.
 
+**Übernommene Generationen.** Die Regel "Grenzen je Vertrag" ist eine
+Eigenschaft dieses Tarifwerks, nicht des Rechenkerns. Ein übernommener
+Bestand behält das Bedingungswerk seiner Quelle; sieht das den Abzug
+je Baustein vor (Grundversicherung und jede Erhöhungsscheibe einzeln,
+mit eigenem Mindest- und Höchstbetrag, Rückkaufswert = Summe der auf
+null begrenzten Baustein-Rückkaufswerte), steht das als
+`stoab_je_baustein = true` in der Generation der Bestand-Config, und
+die Führung rechnet so (Kern: `vertrags_monatsreserve`). Die Vorgabe
+ist die Regel dieses Abschnitts. Welche übernommene Generation welche
+Eigenschaft trägt, zeigt Abschnitt 13.
+
 # 7 Geschäftsvorfälle (GeVo-Katalog)
 
 Buchungskonvention und die Einordnung der
@@ -151,6 +162,19 @@ Abschnitt 7. Jeder Betrag kommt aus dem Kern.
 | **STO** Rückkauf | terminal; nur beitragspflichtig, $a < n$ | $\text{RKW}_a$ (vertragsweiter StoAb) |
 | **TOD** Tod | terminal | $S^{ges}$ bzw. nach PEX $\sum S^{bfr}$ |
 | **ABL** Ablauf | terminal bei $a = n$ | $S^{ges}$ bzw. $\sum S^{bfr}$ |
+
+Drei Einträge dieser Tabelle sind Tarifwerks-Eigenschaften, die eine
+übernommene Generation anders tragen kann als das eigene Geschäft:
+ob eine Erhöhungsscheibe $\gamma_1$ trägt (`scheiben_mit_gamma1`; die
+zweite Baldrian-Lieferung rechnet jeden Baustein mit voller
+Beitragsformel), ob der Stornoabzug je Baustein greift
+(`stoab_je_baustein`, Abschnitt 6) und nach welchem Verfahren eine
+Herabsetzung rechnet (`red_verfahren`, Abschnitt 7.1; die
+Teilkündigung der Quelle führt den Vertrag zustandslos mit kleinerer
+Grundsumme weiter). Alle drei stehen je Generation in der
+Bestand-Config, die Führung liest sie dort, und die Freischaltung
+eines Migrationsfalls überträgt sie aus den bestandenen Abnahmen
+(`dev-docs/freischaltung-uebernommener-bestand.md`).
 
 ## 7.1 Beitragsherabsetzung: Zahlungsprofil und Geltungsbereich
 
@@ -316,16 +340,18 @@ festlegt (Fachkonzept Tagesbetrieb, offene Fachentscheidung):
 | `klv/plv_2022` | KLV-2022 | 2022-01–2024-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 150 |
 | `klv/plv_2025` | KLV-2025 | 2025-01–2035-12 | 1.00% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 1320; Neugeschäft 120/Jahr, Trend -4%/Jahr |
 
-Tarifzellen der übernommenen Generation **TG2015** (`klv/tg2015`, Rechnungszins 1.75%, Zellen über `status` × `tarifart`; je Zelle nur die vom Rumpf abweichenden Felder):
+Tarifzellen der übernommenen Generation **TG2015** (`klv/tg2015`, Rechnungszins 1.25%, Zellen über `status` × `tarifart`; je Zelle nur die vom Rumpf abweichenden Felder):
 
 | Zelle | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2}$ | $\kappa$ | StoAb Satz/min/max | Ratenzuschlag zw2/4/12 |
 |---|---|---|---|---|---|---|---|
 | nichtraucher/einzel | DAV2008_T_NR_U70 | 0.025 | 0.03 | 0.001/0.00125 | 12 | 0.005/50.0/200.0 | 0.02/0.03/0.05 |
-| nichtraucher/haus | DAV2008_T_NR_U70 | 0.0 | 0.0 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
+| nichtraucher/haus | DAV2008_T_NR_U70 | 0.0 | 0.01 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
 | nichtraucher/kollektiv | DAV2008_T_NR_U70 | 0.015 | 0.015 | 0.0008/0.001 | 12 | 0.005/50.0/200.0 | 0.01/0.015/0.025 |
 | raucher/einzel | DAV2008_T_R_U70 | 0.025 | 0.03 | 0.001/0.00125 | 12 | 0.005/50.0/200.0 | 0.02/0.03/0.05 |
-| raucher/haus | DAV2008_T_R_U70 | 0.0 | 0.0 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
+| raucher/haus | DAV2008_T_R_U70 | 0.0 | 0.01 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
 | raucher/kollektiv | DAV2008_T_R_U70 | 0.015 | 0.015 | 0.0008/0.001 | 12 | 0.005/50.0/200.0 | 0.01/0.015/0.025 |
+
+Tarifwerk der Generation **TG2015** (Ausgestaltung, Grundsatzdokumentation 10 Nr. 9): Erhöhungsscheiben mit $\gamma_1$: ja; Stornoabzug je Baustein: ja; Herabsetzungsverfahren: `teilkuendigung`.
 
 Was sich von Generation zu Generation ändert (verkaufende Generationen in Verkaufsreihenfolge; leer heißt: nur das Fenster):
 
@@ -350,7 +376,7 @@ erste ist die **TG2015 der Baldrian Leben** (`klv/tg2015`, Fall
 Zugang zum 2026-01-01, seither im Tagesbetrieb der PLV im selben Strom
 fortgeschrieben wie das eigene Geschäft. Sie hat keinen einen
 Parametersatz, sondern sechs Tarifzellen (`status` × `tarifart`;
-Rechnungszins 1,75 %, Tafeln DAV 2008 T Nichtraucher/Raucher U70); die
+Rechnungszins 1,25 % nach Mitteilung, entschieden in A-Q1 gegen die 1,75 % des Tarifrechners; Tafeln DAV 2008 T Nichtraucher/Raucher U70); die
 Zellen stehen in der Bestand-Config und werden nicht abgetippt. Diese
 Tabelle wird maschinell gegen die Bestandskonfiguration geprüft; eine
 Abweichung ist ein Fehler und blockiert.

@@ -71,7 +71,10 @@ def test_scope_legt_die_am4_pflichten_fuer_tarif_und_bestand_fest(
         # Alle drei aktuariellen Abnahmen (Entscheidung 2026-08-31) --
         # im Tarif-Scope nur A-M1, dort gibt es keinen Bestand.
         "am1_snapshot", "am2_snapshot", "am3_snapshot",
-        "pk1_belege", "pb1_ledger", "migrationssuite", "abnahmebericht",
+        # Freischaltung (Schritt 6): der Beleg, dass die Fuehrung die
+        # abgenommene Welt traegt.
+        "pk1_belege", "pb1_ledger", "migrationssuite", "fuehrungsprobe",
+        "abnahmebericht",
     ]
     # Belegrollen JE GATE (ADR-010): A-M1 pinnt im Bestands-Scope die
     # Testartefakte, im Tarif-Scope ist die Rollenmenge leer.

@@ -111,7 +111,7 @@ from rechner_pipeline.gates._common import (
 from rechner_pipeline.gates._provenienz import systemstand
 
 GATE = "P-B1.bestandspruefung"
-GATE_VERSION = "3.0.0"
+GATE_VERSION = "4.0.0"
 CLI_CONTRACT = GateCliContract(
     command="bestand_validate",
     gate=GATE,
@@ -161,6 +161,15 @@ def _build_parser() -> GateArgumentParser:
         help="Merkmalsauspraegungen-Parquet (optional; Pflicht, sobald eine "
         "Generation der Config in Tarifzellen aufgeteilt ist und der Ledger "
         "gegen den Kern hergeleitet wird).",
+    )
+    parser.add_argument(
+        "--schichten", default=None,
+        help="Korrekturschicht-Parquet uebernommener Vertraege (optional; "
+        "mit --verankerung; geht in die Ledger-Herleitung des Stornos ein).",
+    )
+    parser.add_argument(
+        "--verankerung", default=None,
+        help="Verankerungs-Parquet uebernommener Vertraege (optional).",
     )
     parser.add_argument(
         "--manifest", default=None,
@@ -239,7 +248,8 @@ def main(argv: Optional[List[str]] = None):
         except ValueError as exc:
             return _usage([{"code": "bad_arg", "message": f"Ungueltiges --bis-Datum: {exc}"}])
     eingaben = {"portfolio": Path(args.portfolio)}
-    for name in ("historie", "scheiben", "ledger", "merkmale", "config"):
+    for name in ("historie", "scheiben", "ledger", "merkmale", "config",
+                 "schichten", "verankerung"):
         wert = getattr(args, name)
         if wert:
             eingaben[name] = Path(wert)
