@@ -268,7 +268,10 @@ Betrag; das ist die Ratsche, die ein Test haelt.
 Fertig, wenn: die Fortschreibung des Lauf-2-Bestands die Werte der
 Pruefstrecken-Welt bucht (Messung aus Schritt 1 auf null), P-B1 im
 Vollprofil gruen bleibt, und die Buchungen des eigenen Geschaefts
-bit-identisch zum Stand davor sind.
+bit-identisch zum Stand davor sind. Der Tagesbetrieb
+(`betrieb.tageslauf`, Branch `betrieb-haertung`) baut seinen Stand
+taeglich aus der Basis neu und muss die mitgebrachten Scheiben dabei
+durchreichen — das gehoert zu Schritt 9, nicht hierher.
 
 ### Schritt 5: Die Korrekturschicht in der Fuehrung
 
@@ -400,9 +403,9 @@ liegt beim Maintainer.
 | Schritt | Stand |
 |---|---|
 | 1 Zahlenwirkung messen | ERLEDIGT 2026-09-07 (Abschnitt 1.1) |
-| 2 Schalter je Generation | offen |
-| 3 Uebernahme materialisiert Anfangszustand | offen |
-| 4 Fuehrung liest Anfangszustand | offen |
+| 2 Schalter je Generation | ERLEDIGT 2026-09-07 (ff18e03) |
+| 3 Uebernahme materialisiert Anfangszustand | ERLEDIGT 2026-09-07 (4a59730); Pruefstrecke nimmt ohne Zustand die gelieferte Summe |
+| 4 Fuehrung liest Anfangszustand | ERLEDIGT 2026-09-07 (Engine, Bewertung, Ledger-Herleitung, Fortschreibungs-Kommando); Tagesbetrieb folgt in Schritt 9 |
 | 5 Korrekturschicht in der Fuehrung | offen |
 | 6 Fuehrungsprobe vor A-M4 | offen |
 | 7 Freischaltung im Skill | offen |

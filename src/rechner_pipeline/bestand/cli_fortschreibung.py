@@ -91,6 +91,7 @@ def _lies_uebernahme(verzeichnis: Path) -> dict:
     from rechner_pipeline.models.bestand import (
         LEDGER_NAMES,
         MERKMALE_NAMES,
+        SCHEIBEN_NAMES,
         STAMM_NAMES,
         STATUS_HISTORIE_NAMES,
     )
@@ -114,6 +115,13 @@ def _lies_uebernahme(verzeichnis: Path) -> dict:
     tabellen["merkmale"] = (
         read_portfolio(merkmale_pfad, expected_columns=MERKMALE_NAMES)
         if merkmale_pfad.is_file() else None
+    )
+    # Die mitgebrachten Bausteine (Freischaltung, Schritt 3): ohne Datei
+    # hat der Bestand keine Alt-Erhoehungen — nicht: sie gingen verloren.
+    scheiben_pfad = verzeichnis / "scheiben.parquet"
+    tabellen["scheiben"] = (
+        read_portfolio(scheiben_pfad, expected_columns=SCHEIBEN_NAMES)
+        if scheiben_pfad.is_file() else None
     )
     return tabellen
 
@@ -293,17 +301,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             # Die Uebernahme bringt ihre Merkmalstabelle mit; sie extra zu
             # verlangen hiesse, dieselbe Datei zweimal zu benennen.
             merkmale = uebernahme["merkmale"]
-        ergebnis = fortschreiben(basis, config, bis, neuzugang_ab=neuzugang_ab,
-                                 merkmale=merkmale)
+        ergebnis = fortschreiben(
+            basis, config, bis, neuzugang_ab=neuzugang_ab, merkmale=merkmale,
+            scheiben=uebernahme["scheiben"] if uebernahme is not None else None,
+        )
         # Das Journal der Uebernahme geht dem der Fortschreibung VORAUS:
         # Zugang und Umbuchung liegen am Bestandszugang, also vor dem
-        # ersten simulierten Vertragsjahr.
-        historie, ledger = ergebnis.historie, ergebnis.ledger
+        # ersten simulierten Vertragsjahr — ebenso die mitgebrachten
+        # Scheiben vor den neuen.
+        historie, ledger, scheiben = ergebnis.historie, ergebnis.ledger, ergebnis.scheiben
         if uebernahme is not None:
             historie = _voran(uebernahme["historie"], historie,
                               ["police_id", "status_id"])
             ledger = _voran(uebernahme["ledger"], ledger,
                             ["police_id", "status_date"])
+            if uebernahme["scheiben"] is not None:
+                scheiben = _voran(uebernahme["scheiben"], scheiben,
+                                  ["police_id", "scheiben_id"])
         # Der Gesamtbestand ist GEFUEHRT (ADR-011): der Stammsatz traegt den
         # aktuellen Zustand am Horizont, das Journal (historie/ledger) die
         # vollstaendige Aufzeichnung. bestand.parquet bleibt der Basisbestand
@@ -318,7 +332,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         _nichtendliche("bestand.parquet", basis) if basis_schreiben else "",
         _nichtendliche("historie.parquet", historie),
         _nichtendliche("ledger.parquet", ledger),
-        _nichtendliche("scheiben.parquet", ergebnis.scheiben),
+        _nichtendliche("scheiben.parquet", scheiben),
         _nichtendliche("zugaenge.parquet", ergebnis.zugaenge),
         _nichtendliche("bestand_gesamt.parquet", gesamt),
     ) if b]
@@ -331,7 +345,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         ausgaben.append(write_portfolio(basis, out_dir / "bestand.parquet"))
     ausgaben.append(write_portfolio(historie, out_dir / "historie.parquet"))
     ausgaben.append(write_portfolio(ledger, out_dir / "ledger.parquet"))
-    ausgaben.append(write_portfolio(ergebnis.scheiben, out_dir / "scheiben.parquet"))
+    ausgaben.append(write_portfolio(scheiben, out_dir / "scheiben.parquet"))
     ausgaben.append(write_portfolio(ergebnis.zugaenge, out_dir / "zugaenge.parquet"))
     ausgaben.append(write_portfolio(gesamt, out_dir / "bestand_gesamt.parquet"))
     # Der Lieferschein zuletzt, ueber die Bytes, die tatsaechlich auf der
@@ -350,7 +364,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         + (f" (davon {len(uebernahme['bestand'])} uebernommen)"
            if uebernahme is not None else "")
         + f", {len(ergebnis.zugaenge)} Neuzugaenge, {len(ledger)} GeVos, "
-        f"{len(ergebnis.scheiben)} Erhoehungsscheiben -> {out_dir}",
+        f"{len(scheiben)} Erhoehungsscheiben -> {out_dir}",
         file=sys.stderr,
     )
     return 0

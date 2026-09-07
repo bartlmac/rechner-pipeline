@@ -289,6 +289,7 @@ def einzelwerte_am(
         else {}
     )
     generation_je_police = stamm.set_index("police_id")["tarif_generation"]
+    tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
 
     scheibe = bestand_am(stamm, journal, stichtag)
     zeilen: List[Dict[str, Any]] = []
@@ -365,9 +366,13 @@ def einzelwerte_am(
                 zeile["jahresbeitrag"] += bt["bjb"]
                 zeile["bzb_jahr"] += bt["bzb_jahr"]
                 zeile["leistung"] += float(s["kern"].mp.sum_insured)
-            # Stornoabschlag-Grenzen gelten je Vertrag, nicht je Scheibe:
+            # Wo die Stornoabschlag-Grenzen greifen, sagt das Tarifwerk
+            # der Generation (je Vertrag, oder je Baustein bei einer
+            # uebernommenen Generation) — derselbe Weg wie in der Engine.
             werte["rueckkaufswert"] = vertrags_rkw(
-                kerne[pid], [(s["erh_jahr"], s["kern"]) for s in aktive], jahr
+                kerne[pid], [(s["erh_jahr"], s["kern"]) for s in aktive], jahr,
+                stoab_je_baustein=bool(tarifwerk_je_generation[
+                    str(generation_je_police.loc[pid])]["stoab_je_baustein"]),
             )
         elif aktive:
             jahr = int(months_exp) // 12

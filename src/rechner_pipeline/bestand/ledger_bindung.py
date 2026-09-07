@@ -62,14 +62,21 @@ class _Herleitung:
     """Grundscheibe und Erhoehungsscheiben einer Police als Rechenkerne."""
 
     def __init__(self, row: Dict[str, Any], felder: Dict[str, Any],
-                 scheiben: List[Tuple[int, float]]) -> None:
+                 scheiben: List[Tuple[int, float]],
+                 tarifwerk: Optional[Dict[str, Any]] = None) -> None:
         self.grund_mp = ModelPoint(**model_point_kwargs(row, felder))
         self.grund = Rechenkern(self.grund_mp)
+        self.tarifwerk = dict(tarifwerk or {
+            "scheiben_mit_gamma1": False, "stoab_je_baustein": False})
         # Dieselbe Scheiben-Regel wie die Engine (erhoehungs_scheibe): Die
         # Scheibe ist aus Grundscheibe, Erhoehungsjahr und Summe
-        # reproduzierbar.
+        # reproduzierbar; ob sie gamma1 traegt, sagt das Tarifwerk der
+        # Generation (pruefe_scheiben_tarifwerk haelt die Scheibenzeile
+        # dagegen).
         self.scheiben = [
-            (jahr, vs, Rechenkern(erhoehungs_scheibe(self.grund_mp, jahr, vs)))
+            (jahr, vs, Rechenkern(erhoehungs_scheibe(
+                self.grund_mp, jahr, vs,
+                gamma1_uebernehmen=bool(self.tarifwerk["scheiben_mit_gamma1"]))))
             for jahr, vs in sorted(scheiben)
         ]
 
@@ -82,7 +89,9 @@ class _Herleitung:
         return self.grund_mp.sum_insured + sum(vs for _, vs, _ in self._bis(jahr))
 
     def rkw(self, jahr: int) -> float:
-        return vertrags_rkw(self.grund, [(j, k) for j, _, k in self._bis(jahr)], jahr)
+        return vertrags_rkw(
+            self.grund, [(j, k) for j, _, k in self._bis(jahr)], jahr,
+            stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]))
 
     def beitragsfreie_summe(self, jahr: int) -> float:
         return self.grund.beitragsfreie_summe(jahr) + sum(
@@ -140,6 +149,7 @@ def pruefe_ledger_betraege(
     if len(ledger) == 0:
         return errors
     grundlagen = grundlagen_je_police(config, merkmale)
+    tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
     haupt = stamm.set_index("police_id")
 
     scheiben_je_police: Dict[int, List[Tuple[int, float]]] = {}
@@ -206,7 +216,8 @@ def pruefe_ledger_betraege(
                         felder = grundlagen(pid, str(h["tarif_generation"]))
                         herleitungen[pid] = _Herleitung(
                             h.to_dict() | {"police_id": pid}, felder,
-                            scheiben_je_police.get(pid, []))
+                            scheiben_je_police.get(pid, []),
+                            tarifwerk_je_generation.get(str(h["tarif_generation"])))
                     except (KeyError, ValueError) as exc:
                         errors.append(f"ledger police {pid}: Kern nicht herleitbar: {exc}")
                         continue
