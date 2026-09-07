@@ -144,6 +144,9 @@ def test_die_uebernahme_archiviert_die_gevo_metadatenliste(tmp_path):
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", "TG2015", "--stichtag", "2026-01-01",
         "--vorgeschichte", "gevo_metadaten.csv",
+        # Die Vorgeschichte traegt eine Erhoehung: ohne Antwort auf die
+        # Anfangszustands-Frage haelt die Uebernahme an (Freischaltung).
+        "--anfangszustand", "grundvertrag",
         "--out-dir", str(ziel),
     ]) == 0
 
@@ -195,6 +198,7 @@ def test_verankerung_wird_vertragsmerkmal_wenn_die_lieferung_sie_traegt(tmp_path
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", "TG2015", "--stichtag", "2026-02-01",
         "--vorgeschichte", "gevo_metadaten.csv",
+        "--anfangszustand", "grundvertrag",
         "--out-dir", str(ziel),
     ]) == 0
 

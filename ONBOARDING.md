@@ -279,7 +279,7 @@ Each gate is one command, writes one JSON to stdout plus a
 | P-Q2 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
 | P-Q3 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation; the A-Box must carry the current T-Box version |
 | P-K1 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state; spec, A-Box and code must speak the same T-Box version |
-| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-M1, A-M4, A-K1); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); A-K1 requires the T-Box change record `abgeleitet/tbox/aenderung.json` (old and new version, hash of the T-Box module, change artefact); a simulated role signs only with a mandate (ADR-018); agents may only reject |
+| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-M1, A-M4, A-K1); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); in scope `bestand` A-M4 also requires the release proof `gates.fuehrungsprobe` as evidence role `fuehrungsprobe` — the proof that the portfolio ledger carries the world the acceptances tested (Freischaltung, dev-docs/freischaltung-uebernommener-bestand.md); A-K1 requires the T-Box change record `abgeleitet/tbox/aenderung.json` (old and new version, hash of the T-Box module, change artefact); a simulated role signs only with a mandate (ADR-018); agents may only reject |
 | A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for the respective gate A-M1, A-M2 or A-M3 (in scope `bestand` all three are mandatory predecessors of A-M4, in scope `tarif` only A-M1); transport-security digests are reported separately |
 | P-B1 | `gates.bestand_validate` | portfolio contract and movement identities |
 | G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds P-B1, the suite and HTML report on one state |
@@ -296,11 +296,14 @@ tip on every read (ADR-008).
 
 For A-M4, `fall.json` also carries `scope.typ` (`tarif` or `bestand`). Missing
 declarations are never inferred from files. A tariff case requires no portfolio
-artifacts; a portfolio case requires a green P-B1 ledger, complete suite and HTML
-report bound by the green `abnahmebericht` ledger. A-M4 rehashes their current
-bytes, reruns the P-B1 engines, revalidates the suite, and deterministically
-rerenders the report for a byte comparison instead of trusting that editable
-ledger (ADR-009).
+artifacts; a portfolio case requires a green P-B1 ledger, complete suite, a
+passed release proof (`gates.fuehrungsprobe`: the migrated portfolio and its
+continuation are held against the acceptance engines — same initial state,
+same tariff switches, same correction layer) and the HTML report, all bound by
+the green `abnahmebericht` ledger. A-M4 rehashes their current bytes, reruns
+the P-B1 engines, revalidates the suite and the release proof, and
+deterministically rerenders the report for a byte comparison instead of
+trusting that editable ledger (ADR-009).
 
 ## 5. Non-negotiables
 - **Deterministic and SDK-free** in `src/`: no network, no dynamic execution,

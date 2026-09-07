@@ -95,9 +95,8 @@ def lauf_verzeichnis(tmp_path_factory, lauf_klv_ursprung):
     "wert, erwartet",
     [
         (float("nan"), "fehlende Werte (NaN) in gamma1"),
-        (float("inf"), "gamma1 != 0"),
-        (-5.0, "gamma1 != 0"),
-        (0.0008, "gamma1 != 0"),
+        (float("inf"), "gamma1 nicht endlich"),
+        (-5.0, "gamma1 < 0"),
     ],
 )
 def test_b1_lehnt_fremdes_gamma1_der_scheibe_ab(
@@ -108,7 +107,7 @@ def test_b1_lehnt_fremdes_gamma1_der_scheibe_ab(
     NaN laesst den Rueckkaufswert auf 0,00 fallen statt auf NaN, ein
     negatives gamma1 erzeugt einen negativen Jahresbeitrag. Beides sind
     plausibel aussehende Zahlen — deshalb muss das Gate sie fangen und
-    nicht der Leser.
+    nicht der Leser. Die FORM prueft validate_scheiben ohne Config.
     """
     stamm, _, scheiben, _ = lauf_klv
     assert validate_scheiben(stamm, scheiben) == [], "regulaer erzeugt: gruen"
@@ -118,6 +117,44 @@ def test_b1_lehnt_fremdes_gamma1_der_scheibe_ab(
     fehler = [e for e in validate_scheiben(stamm, manipuliert) if "gamma1" in e]
     assert fehler, f"gamma1={wert} wurde durchgelassen"
     assert erwartet in fehler[0]
+
+
+def test_b1_lehnt_gamma1_ausserhalb_des_tarifwerks_ab(lauf_klv) -> None:
+    """Ein plausibler, aber fremder Wert (0.0008 statt 0) faellt am
+    Tarifwerk der Generation — das kennt nur die Config (Freischaltung,
+    Schritt 4): das eigene Geschaeft rechnet Scheiben ohne gamma1, eine
+    uebernommene Generation mit scheiben_mit_gamma1 verlangt das gamma1
+    der Zelle. Vorher stand die Null als Konstante im Validator; damit
+    haette eine freigeschaltete Generation keinen einzigen Baustein
+    durch P-B1 gebracht.
+    """
+    import dataclasses
+
+    from rechner_pipeline.bestand.ledger_bindung import pruefe_scheiben_tarifwerk
+
+    stamm, _, scheiben, config = lauf_klv
+    assert pruefe_scheiben_tarifwerk(stamm, scheiben, config) == []
+
+    manipuliert = scheiben.copy()
+    manipuliert.loc[manipuliert.index[0], "gamma1"] = 0.0008
+    assert validate_scheiben(stamm, manipuliert) == [], "die Form stimmt"
+    fehler = pruefe_scheiben_tarifwerk(stamm, manipuliert, config)
+    assert fehler and "ausserhalb des Tarifwerks" in fehler[0]
+
+    # Dieselben Scheiben unter einer Generation MIT voller Beitragsformel:
+    # jetzt ist die Null der Fremdwert und das gamma1 der Generation richtig.
+    frei = dataclasses.replace(config, generationen=[
+        dataclasses.replace(g, scheiben_mit_gamma1=True)
+        for g in config.generationen
+    ])
+    assert pruefe_scheiben_tarifwerk(stamm, scheiben, frei), "0 ist dort fremd"
+    passend = scheiben.copy()
+    gamma1_je_generation = {g.name: g.gamma1 for g in config.generationen}
+    passend["gamma1"] = [
+        gamma1_je_generation[str(g)]
+        for g in stamm.set_index("police_id").loc[passend["police_id"], "tarif_generation"]
+    ]
+    assert pruefe_scheiben_tarifwerk(stamm, passend, frei) == []
 
 
 def test_regulaer_erzeugte_scheiben_tragen_gamma1_null(lauf_klv) -> None:

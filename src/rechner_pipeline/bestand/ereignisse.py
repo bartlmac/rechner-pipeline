@@ -51,10 +51,19 @@ Model (Stufe 1, annual):
   draw. Runs of different configs on the same portfolio are therefore
   pathwise comparable as long as their event histories agree (e.g. the
   lapse set at storno_rate=0.02 is a subset of the one at 0.03).
-* Stornoabschlag bei Scheiben: die Tarif-Grenzen (stoab_min/max) gelten je
-  VERTRAG, nicht je Scheibe — der Abzug wird einmal auf die Gesamtwerte
-  gerechnet (:func:`vertrags_rkw`); fuer Vertraege ohne Scheiben ist das
-  bit-identisch zur Kern-Verlaufszeile.
+* Stornoabschlag bei Scheiben: WO die Tarif-Grenzen (stoab_min/max)
+  greifen und ob eine Scheibe gamma1 traegt, sagt das Tarifwerk der
+  GENERATION (``TarifGeneration.tarifwerk()``, Freischaltung Schritt 4):
+  Vorgabe je VERTRAG und ohne gamma1 (Tarifplan KLV, :func:`vertrags_rkw`,
+  fuer Vertraege ohne Scheiben bit-identisch zur Kern-Verlaufszeile); eine
+  uebernommene Generation kann je Baustein abziehen und die Scheiben mit
+  voller Beitragsformel rechnen, so wie ihre Abnahmen es getan haben.
+* Mitgebrachte Scheiben: Ein uebernommener Vertrag bringt seine
+  Alt-Erhoehungen als Bausteine mit (``gates.bestand_uebernehmen``,
+  ``fortschreiben(..., scheiben=...)``); die Engine rechnet auf ihnen
+  weiter und nummeriert neue Scheiben dahinter. Zurueck gibt sie nur die
+  NEUEN Scheiben — wie Historie und Ledger, die der Aufrufer dem
+  Uebernahme-Journal nachstellt.
 
 Outputs (:class:`Fortschreibung`): a Statushistorie (follow-up status rows,
 schema :data:`~rechner_pipeline.models.bestand.STATUS_HISTORIE_SPALTEN`), an
@@ -78,9 +87,12 @@ import pandas as pd
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
+from rechner_pipeline.bestand.schichten import schichten_je_police
+from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
 from rechner_pipeline.models.bestand import (
     AKTIVE_STATUS,
     LEDGER_SPALTEN,
+    SCHEIBEN_NAMES,
     SCHEIBEN_SPALTEN,
     STAMM_NAMES,
     STAMM_SPALTEN,
@@ -171,33 +183,66 @@ def _leerer_frame(spalten) -> pd.DataFrame:
     return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in spalten})
 
 
+#: Tarifwerk des eigenen Geschaefts (Tarifplan KLV): die Vorgabe, wenn
+#: kein Generations-Tarifwerk uebergeben wird.
+TARIFWERK_VORGABE = {"scheiben_mit_gamma1": False, "stoab_je_baustein": False}
+
+
 class _Vertrag:
     """Grundscheibe + Erhoehungsscheiben eines Vertrags (Schichtungsprinzip).
 
     Kapselt die Aggregation der Kern-Betraege ueber alle Scheiben; jede
     Scheibe rechnet auf ihrem eigenen Modellpunkt, das Vertragsjahr einer
-    Scheibe ist um ihr Erhoehungsjahr versetzt.
+    Scheibe ist um ihr Erhoehungsjahr versetzt. ``tarifwerk`` sind die
+    Schalter der Generation (``TarifGeneration.tarifwerk()``),
+    ``mitgebracht`` die Bausteine, die ein uebernommener Vertrag schon
+    hat — sie liegen VOR dem ersten simulierten Jahr.
     """
 
-    def __init__(self, mp: ModelPoint) -> None:
+    def __init__(
+        self,
+        mp: ModelPoint,
+        *,
+        tarifwerk: Mapping[str, Any] | None = None,
+        mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
+        schicht: Tuple[Any, int] | None = None,
+    ) -> None:
         self.grund_mp = mp
         self.grund = Rechenkern(mp)
-        self.scheiben: List[Tuple[int, float, Rechenkern]] = []  # (jahr, vs, kern)
+        self.tarifwerk = dict(tarifwerk or TARIFWERK_VORGABE)
+        self.scheiben: List[Tuple[int, float, Rechenkern]] = [
+            (int(jahr), float(vs), kern) for jahr, vs, kern in mitgebracht
+        ]  # (jahr, vs, kern)
+        #: Korrekturschicht (Schichtparameter, monate_ta) eines uebernommenen
+        #: Vertrags — Storno zahlt Basiswert plus Schichtwert
+        #: (wertkontinuierlich, Ausgestaltung des Tarifplans; Grundsatz-
+        #: dokumentation 9.7). Tod und Ablauf sind unberuehrt (feste Summe,
+        #: Terminalbedingung), eine Beitragsfreistellung absorbiert — nach
+        #: ihr gibt es kein Storno mehr, die Schicht ist damit erledigt.
+        self.schicht = schicht
 
     def gesamt_vs(self) -> float:
         return self.grund_mp.sum_insured + sum(vs for _, vs, _ in self.scheiben)
 
     def erhoehe(self, jahr: int, vs: float) -> ModelPoint:
-        # Scheiben-Regel des Tarifwerks (inkl. gamma1-Bezugsgroesse
-        # GrundVS) zentral im Kern: erhoehungs_scheibe.
-        mp = erhoehungs_scheibe(self.grund_mp, jahr, vs)
+        # Scheiben-Regel zentral im Kern (erhoehungs_scheibe); ob die
+        # Scheibe gamma1 traegt, sagt das Tarifwerk der Generation.
+        mp = erhoehungs_scheibe(
+            self.grund_mp, jahr, vs,
+            gamma1_uebernehmen=bool(self.tarifwerk["scheiben_mit_gamma1"]),
+        )
         self.scheiben.append((jahr, vs, Rechenkern(mp)))
         return mp
 
     def rkw(self, jahr: int) -> float:
-        return vertrags_rkw(
-            self.grund, [(erh_jahr, kern) for erh_jahr, _, kern in self.scheiben], jahr
+        wert = vertrags_rkw(
+            self.grund, [(erh_jahr, kern) for erh_jahr, _, kern in self.scheiben], jahr,
+            stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),
         )
+        if self.schicht is not None and 12 * jahr >= self.schicht[1]:
+            parameter, monate_ta = self.schicht
+            wert += schichtwert_bei(parameter, monate_ta, self.grund_mp, 12 * jahr)
+        return wert
 
     def beitragsfreie_summe(self, a0: int) -> float:
         return self.grund.beitragsfreie_summe(a0) + sum(
@@ -248,8 +293,12 @@ def _simuliere_vertrag(
     bis: _dt.date,
     ab_jahr: int = 0,
     pex_jahr: int | None = None,
+    *,
+    tarifwerk: Mapping[str, Any] | None = None,
+    mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
+    schicht: Tuple[Any, int] | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Simulate one contract; returns (booked events, Erhoehungsscheiben).
+    """Simulate one contract; returns (booked events, NEUE Erhoehungsscheiben).
 
     ``ab_jahr`` ist das erste zu simulierende Vertragsjahr — 0 fuer
     eigenes Geschaeft, das Zugangsjahr fuer einen uebernommenen Vertrag.
@@ -266,7 +315,10 @@ def _simuliere_vertrag(
     t = int(row["premium_duration"])
     x = int(row["entry_age"])
 
-    vertrag = _Vertrag(ModelPoint(**model_point_kwargs(row, generation_fields)))
+    vertrag = _Vertrag(
+        ModelPoint(**model_point_kwargs(row, generation_fields)),
+        tarifwerk=tarifwerk, mitgebracht=mitgebracht, schicht=schicht,
+    )
     rng = np.random.Generator(
         np.random.PCG64(np.random.SeedSequence([seed, EREIGNIS_STREAM, police_id]))
     )
@@ -527,8 +579,26 @@ def fortschreiben(
     neuzugang_ab: _dt.date | None = None,
     merkmale: pd.DataFrame | None = None,
     zugaenge: pd.DataFrame | None = None,
+    scheiben: pd.DataFrame | None = None,
+    schichten: pd.DataFrame | None = None,
+    verankerung: pd.DataFrame | None = None,
 ) -> Fortschreibung:
     """Roll the base portfolio forward to ``bis``.
+
+    ``schichten`` und ``verankerung`` (Freischaltung, Schritt 5) sind die
+    Korrekturschicht je uebernommenem Vertrag und ihr Verankerungs-
+    zeitpunkt (``schichten.parquet``, ``verankerung.parquet`` der
+    Uebernahme): Storno zahlt Basiswert plus Schichtwert. Beide Tabellen
+    gehoeren zusammen; eine Schicht ohne Anker ist ein Fehler.
+
+    ``scheiben`` (Freischaltung, Schritt 4) sind die MITGEBRACHTEN
+    Erhoehungsscheiben uebernommener Vertraege (``scheiben.parquet`` der
+    Uebernahme): Bausteine vor dem Bestandszugang, auf denen die Engine
+    weiterrechnet — Rueckkaufswert, beitragsfreie Summe, Gesamtsumme und
+    die Bezugsgroesse neuer Erhoehungen. Jede Scheibe traegt ihr gamma1
+    selbst (ADR-011). Eine Scheibe NACH dem Zugang oder an einem eigenen
+    Vertrag ist ein Fehler: Der Bestand waere bereits fortgeschrieben.
+    Zurueck kommen nur die NEUEN Scheiben (siehe Modul-Docstring).
 
     Returns :class:`Fortschreibung` — Statushistorie (state changes only;
     a dynamische Erhoehung changes no state), Ereignis-Ledger (every GeVo
@@ -681,6 +751,23 @@ def fortschreiben(
 
     grundlagen = grundlagen_je_police(config, merkmale)
     generationen = {g.name: g.generation_fields() for g in config.generationen}
+    tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
+    mitgebracht_je_police = _mitgebrachte_scheiben(stamm, scheiben, grundlagen)
+    try:
+        schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
+    except ValueError as exc:
+        raise EreignisError(str(exc)) from exc
+    if schicht_je_police:
+        haupt_zugang = stamm.set_index("police_id")
+        eigene = [
+            pid for pid in schicht_je_police
+            if pd.Timestamp(haupt_zugang.loc[pid, "bestandszugang"])
+            <= pd.Timestamp(haupt_zugang.loc[pid, "insurance_start"])
+        ]
+        if eigene:
+            raise EreignisError(
+                f"schichten: Korrekturschicht an einem eigenen Vertrag "
+                f"(police {eigene[:5]}) — nur ein uebernommener Vertrag ist verankert")
     bu_generationen = {
         g.name: g.bu_generation_fields()
         for g in config.generationen
@@ -739,13 +826,19 @@ def fortschreiben(
                     ab_jahr=ab_jahr,
                     bu_seit=seit if zustand == "BU" else None,
                 )
-                scheiben = []
+                neue_scheiben = []
             else:
-                events, scheiben = _simuliere_vertrag(
+                events, neue_scheiben = _simuliere_vertrag(
                     row, grundlagen(int(row["police_id"]), name),
                     config.annahmen, config.seed, bis,
                     ab_jahr=ab_jahr,
                     pex_jahr=seit if zustand == "PEX" else None,
+                    tarifwerk=tarifwerk_je_generation[name],
+                    mitgebracht=mitgebracht_je_police.get(int(row["police_id"]), ()),
+                    schicht=(
+                        schicht_je_police[int(row["police_id"])][:2]
+                        if int(row["police_id"]) in schicht_je_police else None
+                    ),
                 )
         except EreignisError:
             raise
@@ -754,7 +847,7 @@ def fortschreiben(
                 f"police {row['police_id']}: {type(exc).__name__}: {exc}"
             ) from exc
         alle_events.extend(events)
-        alle_scheiben.extend(scheiben)
+        alle_scheiben.extend(neue_scheiben)
 
     if alle_scheiben:
         scheiben_df = (
@@ -823,6 +916,57 @@ def fortschreiben(
         }
     ).reset_index(drop=True)
     return Fortschreibung(historie, ledger, scheiben_df, zugaenge)
+
+
+def _mitgebrachte_scheiben(
+    stamm: pd.DataFrame,
+    scheiben: pd.DataFrame | None,
+    grundlagen,
+) -> Dict[int, List[Tuple[int, float, Rechenkern]]]:
+    """police_id -> mitgebrachte Bausteine als (Erhoehungsjahr, Summe, Kern).
+
+    Nur uebernommene Vertraege bringen Scheiben mit, und nur solche vor
+    ihrem Bestandszugang. Der Kern jeder Scheibe entsteht aus ihrer Zeile
+    (Alter, Restdauern, Summe, gamma1) und den Rechnungsgrundlagen des
+    Vertrags — genau wie in der Bewertung (``auswertung._scheiben_kerne``).
+    """
+    if scheiben is None or len(scheiben) == 0:
+        return {}
+    fehlend = [c for c in SCHEIBEN_NAMES if c not in scheiben.columns]
+    if fehlend:
+        raise EreignisError(f"scheiben: Spalten fehlen: {fehlend}")
+    haupt = stamm.set_index("police_id")
+    fremd = sorted(set(scheiben["police_id"]) - set(haupt.index))
+    if fremd:
+        raise EreignisError(
+            f"scheiben: police_id unbekannt im Bestand: {fremd[:5]}")
+    aus: Dict[int, List[Tuple[int, float, Rechenkern]]] = {}
+    for s in scheiben.sort_values(["police_id", "scheiben_id"]).to_dict("records"):
+        pid = int(s["police_id"])
+        h = haupt.loc[pid]
+        zugang = pd.Timestamp(h["bestandszugang"])
+        if zugang <= pd.Timestamp(h["insurance_start"]):
+            raise EreignisError(
+                f"police {pid}: mitgebrachte Scheibe an einem eigenen Vertrag "
+                "— nur ein uebernommener Vertrag bringt Bausteine mit")
+        if pd.Timestamp(s["erhoehung_datum"]) > zugang:
+            raise EreignisError(
+                f"police {pid}: mitgebrachte Scheibe vom "
+                f"{pd.Timestamp(s['erhoehung_datum']).date()} liegt NACH dem "
+                f"Bestandszugang {zugang.date()} — der Bestand ist bereits "
+                "fortgeschrieben und wuerde ein zweites Mal simuliert")
+        row = {
+            "entry_age": s["entry_age"], "sex": h["sex"],
+            "duration": s["duration"], "premium_duration": s["premium_duration"],
+            "sum_insured": s["sum_insured"], "zahlweise": h["zahlweise"],
+        }
+        kwargs = model_point_kwargs(row, grundlagen(pid, str(h["tarif_generation"])))
+        # Schicht-eigene Rechnungsgrundlage der Scheibe (ADR-011).
+        kwargs["gamma1"] = float(s["gamma1"])
+        aus.setdefault(pid, []).append(
+            (int(s["erhoehung_jahr"]), float(s["sum_insured"]),
+             Rechenkern(ModelPoint(**kwargs))))
+    return aus
 
 
 def _pruefe_mitgebrachte_zugaenge(

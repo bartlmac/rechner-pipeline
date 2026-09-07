@@ -28,10 +28,10 @@ dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 %% Schichten — erzeugt von ontologie.landkarte
 flowchart TD
     n__init__["__init__<br/>1 Module"]
-    bestand["bestand<br/>21 Module"]
+    bestand["bestand<br/>22 Module"]
     betrieb["betrieb<br/>6 Module"]
     fall["fall<br/>1 Module"]
-    gates["gates<br/>17 Module"]
+    gates["gates<br/>18 Module"]
     kern["kern<br/>12 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
     models["models<br/>6 Module"]
@@ -39,20 +39,20 @@ flowchart TD
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>5 Module"]
-    bestand -- 16 --> kern
-    bestand -- 16 --> models
+    bestand -- 21 --> kern
+    bestand -- 17 --> models
     bestand -- 1 --> qa
     betrieb -- 17 --> bestand
     betrieb -- 1 --> kern
     betrieb -- 6 --> models
-    gates -- 9 --> bestand
-    gates -- 8 --> fall
-    gates -- 8 --> kern
-    gates -- 11 --> models
+    gates -- 13 --> bestand
+    gates -- 9 --> fall
+    gates -- 12 --> kern
+    gates -- 12 --> models
     gates -- 11 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
-    gates -- 5 --> spez
+    gates -- 6 --> spez
     kommutationskern -- 2 --> kern
     models -- 1 --> gates
     models -- 1 --> kern
@@ -79,7 +79,7 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
     bu["bu<br/>34 Module"]
-    klv["klv<br/>82 Module"]
+    klv["klv<br/>84 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
     system_entscheid["system/entscheid<br/>1 Module"]
@@ -87,7 +87,7 @@ flowchart TD
     bu -- 3 --> system_assurance
     klv -- 8 --> system_assurance
     klv -- 2 --> system_entscheid
-    klv -- 8 --> system_fall
+    klv -- 9 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
     system_assurance -- 1 --> system_fall
@@ -123,6 +123,7 @@ flowchart TD
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_zahlungspfad_py
+    rechner_pipeline_kern_korrekturschicht_py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern_korrekturschicht_py --> rechner_pipeline_kern_zustandsmodell_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_bu_py
     rechner_pipeline_kern_produkte___init___py --> rechner_pipeline_kern_produkte_klv_py

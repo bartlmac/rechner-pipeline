@@ -127,10 +127,12 @@ def test_ak1_mit_beleg_pinnt_ihn_als_pflichtrolle(fall):
     assert snapshot["pflichtbelege"] == {
         "tbox_aenderung": [hashlib.sha256(beleg.read_bytes()).hexdigest()]}
     assert snapshot["fall_scope"] == "tarif"
-    # Der Lesepfad prueft die Rollenmenge auch fuer A-K1:
-    assert gate_entscheid._pruefe_g2_snapshot_semantik(snapshot) == []
+    # Der Lesepfad prueft die Rollenmenge auch fuer A-K1 -- aber nur fuer
+    # Snapshots des AKTUELLEN Standes; der frisch gezeichnete traegt ihn.
+    assert gate_entscheid._pruefe_g2_snapshot_semantik(
+        snapshot, snapshot["system"]) == []
     kaputt = dict(snapshot, pflichtbelege={})
-    assert gate_entscheid._pruefe_g2_snapshot_semantik(kaputt)
+    assert gate_entscheid._pruefe_g2_snapshot_semantik(kaputt, kaputt["system"])
 
 
 @pytest.mark.parametrize("feld, wert, stichwort", [

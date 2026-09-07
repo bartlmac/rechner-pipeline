@@ -193,3 +193,30 @@ natuerliche Person und kein Dokument eines realen Versicherers. Die
 Nachrechenbarkeit gilt fuer den lokalen Fall-Arbeitsbereich; wer nur
 das Repository hat, prueft die Rechenkette ueber die versionierten
 Fixturen, nicht die konkreten Snapshots.
+
+## Nachtrag 2026-09-07: Freischaltung des uebernommenen Bestands (Korrektur 24)
+
+Nach der Annahme von A-M4 stellte sich heraus, dass die Bestandsfuehrung
+fuer den uebernommenen Bestand eine andere Welt rechnete als die
+Abnahmen: Die Uebernahme nahm die gelieferte Summe als Versicherungssumme
+(550 von 834 Vertraege ohne ihre Bausteine, 160 beitragsfrei gelieferte
+Summen ein zweites Mal umgewandelt), und die Bestand-Config trug fuer die
+TG2015 den Rechnungszins des Tarifrechners (1,75 %) statt des in A-Q1
+entschiedenen (1,25 %). Der gezeichnete Bestandsbericht nach der
+Migration war damit falsch, kein Gate hatte die Fuehrung gegen die
+Pruefstrecke gestellt. Befund, Zahlen und Vorgehen:
+`dev-docs/freischaltung-uebernommener-bestand.md`; Korrektur-Protokoll
+des Falls, Eintrag 24.
+
+Die Uebernahme materialisiert seither den Anfangszustand der Abnahmen
+(Grundsumme, Alt-Erhoehungen als Bausteine, Ursprungssumme beitragsfreier
+Vertraege, Korrekturschicht), die Fuehrung rechnet nach dem Tarifwerk der
+Generation (Stornoabzug je Baustein, Scheiben mit voller Beitragsformel),
+und die Fuehrungsprobe belegt vor A-M4, dass der gefuehrte Bestand die
+abgenommene Welt traegt (834 Vertraege, 42 Buchungen nach dem Stichtag,
+0 Befunde). Die Abnahmen A-M1 bis A-M3 und das Migrationscontrolling sind
+auf dem neuen Stand unveraendert bestanden (100/100, 100/100, 166/166,
+834/834). Die Neuzeichnung der fuenf Gates mit Korrekturvermerk folgt;
+der Tagesbetrieb der PLV wird aus der neuen Uebernahme neu aufgesetzt
+(Betriebsweg).
+

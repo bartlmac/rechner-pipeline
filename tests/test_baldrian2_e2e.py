@@ -30,11 +30,13 @@ from pathlib import Path
 
 import pytest
 
+from rechner_pipeline.bestand import cli_fortschreibung
 from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates import (
     aktuartest_lauf,
     bestand_uebernehmen,
     bestand_validate,
+    fuehrungsprobe,
     migrationssuite_lauf,
     transformation_anwenden,
     verankerung_belegen,
@@ -124,13 +126,20 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ]) == 0, "Transformation der Quellzeilen"
 
     bestand = fall / "abgeleitet" / "bestand"
+    # Freischaltung (Schritt 3): Die Uebernahme rechnet den Anfangszustand
+    # mit DENSELBEN Lieferungs-Schaltern wie die Pruefstrecke und schreibt
+    # ihn in die Tabellen — Grundsumme im Stamm, Alt-Erhoehungen als
+    # Scheiben, Ursprungssumme der beitragsfreien Vertraege.
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
         "--vorgeschichte", METADATEN,
         "--generation-spez", GENERATION,
+        "--anfangszustand", "materialisieren",
+        "--anker-erwartungswerte", ANKER,
+        "--stoab-je-baustein",
         "--out-dir", str(bestand),
-    ]) == 0, "Uebernahme in das Zielmodell"
+    ] + _lieferungs_flags()) == 0, "Uebernahme in das Zielmodell"
 
     assert transformation_anwenden.main([
         "--fall", str(fall), "--spec", str(spec),
@@ -157,6 +166,7 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--portfolio", str(bestand / "bestand.parquet"),
         "--historie", str(bestand / "historie.parquet"),
         "--ledger", str(bestand / "ledger.parquet"),
+        "--scheiben", str(bestand / "scheiben.parquet"),
         "--merkmale", str(bestand / "merkmale.parquet"),
         "--config", str(config_pfad),
         "--bis", STICHTAG_1,
@@ -177,6 +187,8 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ] + _lieferungs_flags()) == 0, "Verankerung mit Schichtbeleg"
     schichten = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
     assert schichten.is_file(), "Schichtbeleg der Verankerung"
+    assert (bestand / "schichten.parquet").is_file(), (
+        "die Schicht als Vertragsattribut des Bestands (Freischaltung, Schritt 5)")
 
     for abnahme, erwartung in ABNAHMEN:
         assert aktuartest_lauf.main([
@@ -203,7 +215,202 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--schicht", str(schichten),
         "--repo-root", str(REPO_ROOT),
     ] + _lieferungs_flags()) == 0, "Migrationscontrolling"
+
+    # Freischaltung (Schritt 4 und 5): Der uebernommene Bestand wird mit
+    # der Config des Falls fortgeschrieben — auf seinen Bausteinen, mit
+    # seinem Tarifwerk und seiner Korrekturschicht — und P-B1 prueft das
+    # Vollprofil des Laufs, Schicht und Verankerung eingeschlossen.
+    nach = fall / "abgeleitet" / "bestand-nach"
+    assert cli_fortschreibung.main([
+        "--config", str(config_pfad), "--bis", STICHTAG_2,
+        "--uebernahme", str(bestand), "--out-dir", str(nach),
+    ]) == 0, "Fortschreibung des uebernommenen Bestands"
+    pb1_nach = bestand_validate.main([
+        "--portfolio", str(nach / "bestand_gesamt.parquet"),
+        "--historie", str(nach / "historie.parquet"),
+        "--ledger", str(nach / "ledger.parquet"),
+        "--scheiben", str(nach / "scheiben.parquet"),
+        "--merkmale", str(nach / "merkmale.parquet"),
+        "--schichten", str(nach / "schichten.parquet"),
+        "--verankerung", str(nach / "verankerung.parquet"),
+        "--config", str(config_pfad),
+        "--bis", STICHTAG_2,
+        "--manifest", str(nach / "laufmanifest.json"),
+        "--repo-root", str(REPO_ROOT),
+        "--diagnostics-dir", str(fall / "abgeleitet" / "diagnostics-nach"),
+    ])
+    assert pb1_nach.exit_code == 0, ("Gate P-B1 auf dem fortgeschriebenen Bestand",
+                                     pb1_nach.errors)
+
+    # Freischaltung (Schritt 6): Die Fuehrungsprobe stellt Uebernahme und
+    # Fortschreibung gegen die Pruefstrecke — mit denselben Lieferungs-
+    # Schaltern, demselben Anfangszustand, derselben Schicht.
+    assert fuehrungsprobe.main([
+        "--fall", str(fall), "--repo-root", str(REPO_ROOT),
+        "--generation", GENERATION,
+        "--uebernahme", str(bestand), "--fortschreibung", str(nach),
+        "--config", str(config_pfad), "--zeilen", str(zeilen),
+        "--vorgeschichte", METADATEN, "--stichtag", STICHTAG_1,
+        "--anker-erwartungswerte", ANKER,
+        "--schicht", str(schichten),
+        "--stoab-je-baustein",
+    ] + _lieferungs_flags()) == 0, "Fuehrungsprobe"
     return fall
+
+
+def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
+    gefahrener_fall: Path,
+):
+    """Freischaltung, Schritt 6: Der Beleg sagt, dass die Fuehrung die Welt
+    der Abnahmen traegt — und er faellt, sobald sie es nicht tut: ein
+    fremder Stornobetrag, ein anderer Schalter, ein Bestand als
+    Grundvertrag."""
+    import copy
+
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+    from rechner_pipeline.gates.migrationssuite_lauf import _lies_csv
+    from rechner_pipeline.spez.validierung import lade_spez
+
+    beleg = json.loads((gefahrener_fall / "abgeleitet" / "berichte"
+                        / "fuehrungsprobe.json").read_text(encoding="utf-8"))
+    assert beleg["bestanden"] is True and beleg["befunde"] == []
+    assert beleg["anfangszustand"] == "materialisieren"
+    assert beleg["fortschreibung_geprueft"] is True
+    assert beleg["vertraege"] == len(_policen()["policen"])
+    assert beleg["mit_anfangszustand"] > 0 and beleg["scheiben"] > 0
+    assert beleg["schichten"] == len(_policen()["policen"])
+    assert beleg["tarifwerk"] == {
+        "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+        "red_verfahren": RED_VERFAHREN,
+    }
+    # Der Bestand, den die Suite gehasht hat, ist eine Eingabe der Probe.
+    suite = _bericht(gefahrener_fall, "migrationssuite.json")
+    assert suite["bestand_sha256"] in set(beleg["provenienz"]["eingaben"].values())
+
+    # Dieselbe Probe auf denselben Tabellen, in-memory, mit drei Stoerungen.
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    nach = gefahrener_fall / "abgeleitet" / "bestand-nach"
+    ueb = {
+        "bestand": read_portfolio(bestand / "bestand.parquet"),
+        "historie": read_portfolio(bestand / "historie.parquet"),
+        "ledger": read_portfolio(bestand / "ledger.parquet"),
+        "scheiben": read_portfolio(bestand / "scheiben.parquet"),
+        "verankerung": read_portfolio(bestand / "verankerung.parquet"),
+        "schichten": read_portfolio(bestand / "schichten.parquet"),
+        "merkmale": read_portfolio(bestand / "merkmale.parquet"),
+        "beleg": json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8")),
+    }
+    fort = {
+        "ledger": read_portfolio(nach / "ledger.parquet"),
+        "scheiben": read_portfolio(nach / "scheiben.parquet"),
+        "historie": read_portfolio(nach / "historie.parquet"),
+    }
+    schichtbeleg = json.loads((gefahrener_fall / "abgeleitet" / "schichten"
+                               / "verankerung_schichten.json").read_text(encoding="utf-8"))["schichten"]
+    zeilen = json.loads((gefahrener_fall / "abgeleitet" / "transformation"
+                         / "zeilen.json").read_text(encoding="utf-8"))
+    anker = {}
+    for v in json.loads((FIXTURE / ANKER).read_text(encoding="utf-8"))["vertraege"]:
+        e = next((x for x in v.get("punkte", []) if x.get("anlass") == "uebernahme"
+                  and "kVx_MRV" in (x.get("erwartet") or {})), None)
+        if e:
+            anker[str(v["police_id"])] = (int(e["monate"]), float(e["erwartet"]["kVx_MRV"]))
+    basis = dict(
+        config=load_config(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
+        spez=lade_spez(gefahrener_fall, GENERATION), zeilen=zeilen,
+        vorgeschichte=_lies_csv(gefahrener_fall, METADATEN),
+        tarifwerk={"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+                   "red_verfahren": RED_VERFAHREN},
+        erhoehungssatz=float(ERHOEHUNGSSATZ),
+        red_anteile={a.split("=")[0]: float(a.split("=")[1]) for a in RED_ANTEILE},
+        red_anteile_je_datum={}, red_anteil_kandidaten=tuple(float(k) for k in KANDIDATEN),
+        anker=anker, schichtbeleg=schichtbeleg,
+        stichtag=__import__("datetime").date.fromisoformat(STICHTAG_1),
+    )
+    gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **basis)
+    assert gut["bestanden"], gut["befunde"]
+
+    # Die Config des Falls simuliert keine Ereignisse; damit die Buchungs-
+    # pfade der Probe (Storno, Umbuchung, Tod, Ablauf) wirklich gegen die
+    # Fuehrung laufen, wird der uebernommene Bestand hier ein zweites Mal
+    # fortgeschrieben — mit Annahmen und einem Horizont, der Ereignisse
+    # erzwingt. Jede dieser Buchungen muss die Pruefstrecken-Engine treffen.
+    import pandas as pd
+
+    from rechner_pipeline.bestand.config import config_aus_text
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+
+    text = (gefahrener_fall / "abgeleitet" / "bestand-config.toml").read_text(encoding="utf-8")
+    lebhaft = config_aus_text(text + (
+        "\n[annahmen.storno]\na = 0.10\nb = 0.0\n"
+        "[annahmen.beitragsfreistellung]\na = 0.05\nb = 0.0\n"
+        "[annahmen.tod]\na = 0.03\nb = 1.0\n"
+        "[annahmen]\nerh_prozent = 0.05\n"
+        "[annahmen.erhoehung]\na = 0.15\nb = 0.0\n"))
+    assert lebhaft.validate() == []
+    ergebnis = fortschreiben(
+        ueb["bestand"], lebhaft, __import__("datetime").date(2040, 1, 1),
+        merkmale=ueb["merkmale"], scheiben=ueb["scheiben"],
+        schichten=ueb["schichten"], verankerung=ueb["verankerung"])
+    lebhafte_fort = {
+        "ledger": ergebnis.ledger,
+        "scheiben": pd.concat([ueb["scheiben"], ergebnis.scheiben], ignore_index=True),
+        "historie": ergebnis.historie,
+    }
+    lebhaft_basis = dict(basis, config=lebhaft)
+    gut2 = pruefe_fuehrung(uebernahme=ueb, fortschreibung=lebhafte_fort, **lebhaft_basis)
+    assert gut2["bestanden"], gut2["befunde"]
+    geprueft = gut2["buchungen_geprueft"]
+    assert geprueft["STO"] >= 3 and geprueft["PEX"] >= 1 and geprueft["TOD"] >= 1, geprueft
+    # Storno-Buchungen mit Bausteinen sind dabei — sonst waere je Baustein ungeprueft.
+    sto_mit_bausteinen = lebhafte_fort["ledger"][
+        (lebhafte_fort["ledger"]["ereignis"] == "STO")
+        & lebhafte_fort["ledger"]["police_id"].isin(set(ueb["scheiben"]["police_id"]))]
+    assert len(sto_mit_bausteinen) >= 1
+
+    # 1. Ein fremder Stornobetrag in der Fortschreibung — um einen Cent mehr
+    #    als die Toleranz.
+    sto = lebhafte_fort["ledger"][lebhafte_fort["ledger"]["ereignis"] == "STO"]
+    kaputt = copy.deepcopy(lebhafte_fort)
+    kaputt["ledger"] = lebhafte_fort["ledger"].copy()
+    kaputt["ledger"].loc[sto.index[0], "betrag"] += 0.02
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=kaputt, **lebhaft_basis)
+    assert not rot["bestanden"] and rot["befunde"][0]["art"] == "buchung"
+    assert rot["buchungen_abweichend"] == 1
+    # 1b. Die Fuehrung ohne die Schalter der Generation (das alte Tarifwerk)
+    #     rechnet andere Stornobetraege — und die Probe sieht es.
+    alt_text = text.replace("stoab_je_baustein = true", "stoab_je_baustein = false")
+    assert alt_text != text
+    altes_tarifwerk = config_aus_text(alt_text + (
+        "\n[annahmen.storno]\na = 0.10\nb = 0.0\n[annahmen.tod]\na = 0.03\nb = 1.0\n"))
+    alt_ergebnis = fortschreiben(
+        ueb["bestand"], altes_tarifwerk, __import__("datetime").date(2040, 1, 1),
+        merkmale=ueb["merkmale"], scheiben=ueb["scheiben"],
+        schichten=ueb["schichten"], verankerung=ueb["verankerung"])
+    alt_fort = {"ledger": alt_ergebnis.ledger,
+                "scheiben": pd.concat([ueb["scheiben"], alt_ergebnis.scheiben], ignore_index=True),
+                "historie": alt_ergebnis.historie}
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=alt_fort, **lebhaft_basis)
+    assert any(b["art"] == "buchung" and b["ereignis"] == "STO" for b in rot["befunde"]), (
+        "Storno je Vertrag statt je Baustein muss die Probe rot machen")
+    # 2. Ein anderer Schalter als in Config und Beleg.
+    andere = dict(basis, tarifwerk=dict(basis["tarifwerk"], stoab_je_baustein=False))
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **andere)
+    assert any(b["art"] == "tarifwerk" for b in rot["befunde"])
+    # 3. Ein Bestand, der als Grundvertrag gefuehrt wird.
+    grund = dict(ueb, beleg=dict(ueb["beleg"], anfangszustand="grundvertrag",
+                                 nicht_freigeschaltet=["7000019"]))
+    rot = pruefe_fuehrung(uebernahme=grund, fortschreibung=fort, **basis)
+    assert any(b["art"] == "nicht_freigeschaltet" for b in rot["befunde"])
+    # 4. Eine Stammsumme in der falschen Welt (die alte Uebernahme).
+    alt = dict(ueb, bestand=ueb["bestand"].copy())
+    pid = int(ueb["scheiben"]["police_id"].iloc[0])
+    idx = alt["bestand"].index[alt["bestand"]["police_id"] == pid][0]
+    alt["bestand"].loc[idx, "sum_insured"] += 5000.0
+    rot = pruefe_fuehrung(uebernahme=alt, fortschreibung=fort, **basis)
+    assert any(b["art"] == "stammsumme" for b in rot["befunde"])
 
 
 def _bericht(fall: Path, name: str) -> dict:
@@ -226,8 +433,88 @@ def test_die_uebernahme_erzeugt_den_erwarteten_bestand(gefahrener_fall: Path):
     assert len(df) == len(policen)
     assert sorted(str(p) for p in df["police_id"]) == sorted(policen)
     assert set(df["tarif_generation"]) == {TARIF_GENERATION}
-    for tabelle in ("bestand", "historie", "ledger", "verankerung"):
+    for tabelle in ("bestand", "historie", "ledger", "verankerung", "scheiben"):
         assert (bestand / f"{tabelle}.parquet").is_file()
+
+
+def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
+    gefahrener_fall: Path,
+):
+    """Freischaltung, Schritt 3: Was die Abnahmen rechnen, steht in den
+    Tabellen — nicht nur im Pruefauftrag.
+
+    Die Alt-Erhoehungen jeder Serien-Police sind Scheiben mit dem gamma1
+    ihrer Zelle (volle Beitragsformel, Ziffer 3 der Lieferung); der Stamm
+    traegt die Grundsumme, der Zugang die Gesamtsumme; die beitragsfrei
+    gelieferten Vertraege buchen ihre GELIEFERTE beitragsfreie Summe um,
+    nicht eine zweite Umwandlung davon; der Beleg nennt Modus und Schalter.
+    Vorher: Gesamtsumme als ein Vertrag ab Beginn, keine Scheiben,
+    beitragsfreier Bestand um den Umwandlungsfaktor zu klein.
+    """
+    import csv
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import SCHEIBEN_NAMES, validate_scheiben
+
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    klassen = _policen()["klassen"]
+    stamm = read_portfolio(bestand / "bestand.parquet")
+    ledger = read_portfolio(bestand / "ledger.parquet")
+    scheiben = read_portfolio(bestand / "scheiben.parquet",
+                              expected_columns=SCHEIBEN_NAMES)
+    zeilen = {
+        int(z["police_id"]): z for z in json.loads(
+            (gefahrener_fall / "abgeleitet" / "transformation" / "zeilen.json")
+            .read_text(encoding="utf-8"))
+    }
+    vorgeschichte = {}
+    with (FIXTURE / METADATEN).open(encoding="utf-8") as datei:
+        for z in csv.DictReader(datei, delimiter=";"):
+            vorgeschichte.setdefault(int(z["POLNR"]), []).append(z["GEVO"])
+
+    # Scheiben: jede Serie ohne terminale Beitragsfreistellung ist als
+    # Bausteine im Bestand; PEX-Serien kollabieren (Ein-Punkt-Inversion).
+    mit_scheiben = set(int(p) for p in scheiben["police_id"])
+    erwartet = {
+        pid for pid, arten in vorgeschichte.items()
+        if "ERH" in arten and "PEX" not in arten
+    }
+    assert mit_scheiben == erwartet, (sorted(mit_scheiben), sorted(erwartet))
+    assert validate_scheiben(stamm, scheiben) == []
+    assert (scheiben["gamma1"] > 0.0).all(), "volle Beitragsformel je Baustein"
+    haupt = stamm.set_index("police_id")
+    zug = ledger[ledger["ereignis"] == "ZUG"].set_index("police_id")["betrag"]
+    for pid in sorted(mit_scheiben):
+        eigene = scheiben[scheiben["police_id"] == pid]
+        gesamt = float(haupt.loc[pid, "sum_insured"]) + float(eigene["sum_insured"].sum())
+        assert abs(gesamt - float(zeilen[pid]["sum_insured"])) <= 0.05, pid
+        assert abs(float(zug.loc[pid]) - gesamt) <= 0.005, pid
+        assert float(haupt.loc[pid, "sum_insured"]) < float(zeilen[pid]["sum_insured"])
+        assert list(eigene["scheiben_id"]) == list(range(1, len(eigene) + 1))
+    # Beitragsfrei geliefert: Umbuchung = gelieferte Summe, Stamm = Ursprung.
+    pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")["betrag"]
+    assert set(int(p) for p in pex.index) == {
+        pid for pid, arten in vorgeschichte.items() if "PEX" in arten}
+    for pid, betrag in pex.items():
+        assert abs(float(betrag) - float(zeilen[int(pid)]["sum_insured"])) <= 0.005
+        assert float(haupt.loc[pid, "sum_insured"]) > float(betrag)
+        assert abs(float(zug.loc[pid]) - float(haupt.loc[pid, "sum_insured"])) <= 0.005
+    # Der Beleg der Uebernahme.
+    beleg = json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8"))
+    assert beleg["anfangszustand"] == "materialisieren"
+    assert beleg["tarifwerk"] == {
+        "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+        "red_verfahren": RED_VERFAHREN,
+    }
+    assert beleg["mit_scheiben"] == len(mit_scheiben)
+    assert beleg["scheiben"] == len(scheiben)
+    assert beleg["beitragsfrei"] == len(pex)
+    assert beleg["ohne_anfangszustand"] == [] and beleg["nicht_freigeschaltet"] == []
+    # Und der Config-Abschnitt traegt die Schalter, die die Fuehrung liest.
+    abschnitt = (bestand / "generation-zellen.toml").read_text(encoding="utf-8")
+    for zeile in ("scheiben_mit_gamma1 = true", "stoab_je_baustein = true",
+                  f'red_verfahren = "{RED_VERFAHREN}"'):
+        assert zeile in abschnitt, zeile
 
 
 def test_die_verankerung_traegt_jede_police_mit_kleinem_residuum(

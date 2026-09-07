@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.models.bestand import (
     BU_GENERATION_FIELDS,
     GENERATION_FIELD_DEFAULTS,
@@ -242,6 +243,19 @@ class TarifGeneration:
     #: Negativ laesst das Unternehmen schrumpfen, ohne dass jemand jedes
     #: Jahr eine Zahl pflegt; 0 (Default) ist der bisherige konstante Satz.
     neuzugang_trend: float = 0.0
+    #: Tarifwerks-Eigenschaften der FUEHRUNG (Ausgestaltung des Tarifplans,
+    #: Grundsatzdokumentation 10 Nr. 9; dev-docs/freischaltung-
+    #: uebernommener-bestand.md, Schritt 2). Die Vorgaben sind der
+    #: Tarifplan KLV des eigenen Geschaefts: Erhoehungsscheiben ohne
+    #: gamma1 (Bezugsgroesse GrundVS), Stornoabzug je Vertrag,
+    #: Herabsetzung prospektiv. Eine UEBERNOMMENE Generation traegt hier,
+    #: was ihre Abnahmen mit den gleichnamigen Lauf-Schaltern der
+    #: Pruefstrecke bestanden haben (--scheiben-mit-gamma1,
+    #: --stoab-je-baustein, --red-verfahren) — im Betrieb gibt es keinen
+    #: Lauf, der einen Schalter setzen koennte; die Fuehrung liest ihn hier.
+    scheiben_mit_gamma1: bool = False
+    stoab_je_baustein: bool = False
+    red_verfahren: str = PROSPEKTIV
     #: Nummernkreis der Generation (Review T22-09): Die Police-Nummern
     #: aller drei Erzeuger (Batch, Jahresneuzugang, Tagesneugeschaeft) und
     #: ihre Seeds hingen an der POSITION der Generation in der Config —
@@ -289,6 +303,19 @@ class TarifGeneration:
     def generation_fields(self) -> Dict[str, Any]:
         """The kernel-side tariff parameters (joined into ModelPoint kwargs)."""
         return {name: getattr(self, name) for name in GENERATION_FIELDS}
+
+    def tarifwerk(self) -> Dict[str, Any]:
+        """Die Tarifwerks-Eigenschaften der Fuehrung — ein Satz, ein Name.
+
+        Jeder Konsument (Uebernahme, Ereignis-Engine, Bewertung,
+        Ledger-Herleitung, Fuehrungsprobe) liest die drei Schalter ueber
+        diese eine Methode, damit keiner einen davon still vergisst.
+        """
+        return {
+            "scheiben_mit_gamma1": bool(self.scheiben_mit_gamma1),
+            "stoab_je_baustein": bool(self.stoab_je_baustein),
+            "red_verfahren": str(self.red_verfahren),
+        }
 
     def jahresziel(self, jahr: int) -> float:
         """Das Neugeschaefts-Ziel des Kalenderjahres ``jahr`` (Konzept, Abschnitt 4).
@@ -408,6 +435,20 @@ class TarifGeneration:
             )
         if not 0 <= self.neuzugang_pro_jahr <= 10_000:
             errors.append(f"{prefix}: neuzugang_pro_jahr ausserhalb [0, 10000]")
+        # Tarifwerks-Schalter: TOML kennt true/false; "1" oder "ja" waere
+        # ein Tippfehler, der als wahr durchginge. Das Verfahren muss eines
+        # sein, das der Kern rechnet.
+        for schalter in ("scheiben_mit_gamma1", "stoab_je_baustein"):
+            if not isinstance(getattr(self, schalter), bool):
+                errors.append(
+                    f"{prefix}: {schalter} muss true oder false sein "
+                    f"(ist {getattr(self, schalter)!r})"
+                )
+        if self.red_verfahren not in VERFAHREN:
+            errors.append(
+                f"{prefix}: red_verfahren {self.red_verfahren!r} unbekannt "
+                f"(bekannt: {list(VERFAHREN)})"
+            )
         # Der Trend ist ein Faktor je Jahr: -1 waere ab dem zweiten Jahr
         # kein Verkauf mehr (und darunter ein negatives Ziel), ueber +1
         # eine Verdopplung je Jahr — beides ist kein Vertrieb, sondern ein
@@ -1102,6 +1143,9 @@ def config_aus_text(text: str) -> BestandConfig:
                 knoten=str(g.get("knoten", "")),
                 neuzugang_pro_jahr=int(g.get("neuzugang_pro_jahr", 0)),
                 neuzugang_trend=float(g.get("neuzugang_trend", 0.0)),
+                scheiben_mit_gamma1=g.get("scheiben_mit_gamma1", False),
+                stoab_je_baustein=g.get("stoab_je_baustein", False),
+                red_verfahren=str(g.get("red_verfahren", PROSPEKTIV)),
                 nummernkreis=(int(g["nummernkreis"]) if g.get("nummernkreis") is not None else None),
                 zins=float(g.get("zins", 0.0)),
                 tafel=str(g.get("tafel", "")),

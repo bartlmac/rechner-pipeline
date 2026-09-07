@@ -127,6 +127,9 @@ BELEGROLLEN = {
             "pk1_belege",
             "pb1_ledger",
             "migrationssuite",
+            # Freischaltung (Schritt 6): der Beleg, dass die Fuehrung die
+            # abgenommene Welt traegt — ohne ihn zeichnet A-M4 eine Fiktion.
+            "fuehrungsprobe",
             "abnahmebericht",
         ),
     },

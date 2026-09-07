@@ -34,6 +34,8 @@ from rechner_pipeline.models.bestand import (
     VERANKERUNG_SPALTEN,
     SCHEIBEN_NAMES,
     SCHEIBEN_SPALTEN,
+    SCHICHTEN_NAMES,
+    SCHICHTEN_SPALTEN,
     STAMM_NAMES,
     STAMM_SPALTEN,
     TAGESJOURNAL_NAMES,
@@ -51,6 +53,7 @@ _DTYPE_MAP = (
     | dict(SCHEIBEN_SPALTEN)
     | dict(MERKMALE_SPALTEN)
     | dict(VERANKERUNG_SPALTEN)
+    | dict(SCHICHTEN_SPALTEN)
     | dict(TAGESJOURNAL_SPALTEN)
 )
 
@@ -58,6 +61,7 @@ _ARROW_TYPES = {
     "int64": pa.int64(),
     "float64": pa.float64(),
     "object": pa.string(),
+    "bool": pa.bool_(),
     "datetime64[ns]": pa.date32(),
 }
 
@@ -211,6 +215,8 @@ def read_portfolio(
         return df[list(MERKMALE_NAMES)]
     if set(df.columns) == set(VERANKERUNG_NAMES):
         return df[list(VERANKERUNG_NAMES)]
+    if set(df.columns) == set(SCHICHTEN_NAMES):
+        return df[list(SCHICHTEN_NAMES)]
     if set(df.columns) == set(TAGESJOURNAL_NAMES):
         return df[list(TAGESJOURNAL_NAMES)]
     ordered = [c for c in list(STAMM_NAMES) + [n for n, _ in ZEITSCHEIBEN_SPALTEN] if c in df.columns]

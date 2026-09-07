@@ -544,7 +544,15 @@ def bewegungskonto(
             "jahr": int(jahr),
             "bpfl": {
                 "anfang": anfang["bpfl"],
-                "zugang_neuzugang": posten(zug, list(zug["sum_insured"])),
+                # Der Zugang tritt mit seinen Bausteinen ein: Ein
+                # uebernommener Vertrag bringt seine Alt-Erhoehungen mit
+                # (Scheiben vor dem Bestandszugang), der eigene Zugang hat
+                # am Beginn noch keine. Sonst stuende dem Abgang ueber
+                # vs_ges ein Zugang ohne Scheiben gegenueber.
+                "zugang_neuzugang": posten(zug, [
+                    vs_ges(p, pd.Timestamp(d))
+                    for p, d in zip(zug["police_id"], zug["bestandszugang"])
+                ]),
                 "zugang_erhoehung": {"stueck": 0, "summe": float(erh["betrag"].sum())},
                 "abgang_storno": posten(sto, vs_liste(sto)),
                 "abgang_tod": posten(tod_bpfl, vs_liste(tod_bpfl)),

@@ -43,6 +43,8 @@ from rechner_pipeline.bestand.auswertung import grundlagen_je_police
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
+from rechner_pipeline.bestand.schichten import schichten_je_police
+from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
 from rechner_pipeline.models.bestand import model_point_kwargs
 
 #: Cent-Toleranz: Der Kern schreibt Buchung und Herleitung aus demselben
@@ -62,14 +64,21 @@ class _Herleitung:
     """Grundscheibe und Erhoehungsscheiben einer Police als Rechenkerne."""
 
     def __init__(self, row: Dict[str, Any], felder: Dict[str, Any],
-                 scheiben: List[Tuple[int, float]]) -> None:
+                 scheiben: List[Tuple[int, float]],
+                 tarifwerk: Optional[Dict[str, Any]] = None) -> None:
         self.grund_mp = ModelPoint(**model_point_kwargs(row, felder))
         self.grund = Rechenkern(self.grund_mp)
+        self.tarifwerk = dict(tarifwerk or {
+            "scheiben_mit_gamma1": False, "stoab_je_baustein": False})
         # Dieselbe Scheiben-Regel wie die Engine (erhoehungs_scheibe): Die
         # Scheibe ist aus Grundscheibe, Erhoehungsjahr und Summe
-        # reproduzierbar.
+        # reproduzierbar; ob sie gamma1 traegt, sagt das Tarifwerk der
+        # Generation (pruefe_scheiben_tarifwerk haelt die Scheibenzeile
+        # dagegen).
         self.scheiben = [
-            (jahr, vs, Rechenkern(erhoehungs_scheibe(self.grund_mp, jahr, vs)))
+            (jahr, vs, Rechenkern(erhoehungs_scheibe(
+                self.grund_mp, jahr, vs,
+                gamma1_uebernehmen=bool(self.tarifwerk["scheiben_mit_gamma1"]))))
             for jahr, vs in sorted(scheiben)
         ]
 
@@ -82,7 +91,9 @@ class _Herleitung:
         return self.grund_mp.sum_insured + sum(vs for _, vs, _ in self._bis(jahr))
 
     def rkw(self, jahr: int) -> float:
-        return vertrags_rkw(self.grund, [(j, k) for j, _, k in self._bis(jahr)], jahr)
+        return vertrags_rkw(
+            self.grund, [(j, k) for j, _, k in self._bis(jahr)], jahr,
+            stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]))
 
     def beitragsfreie_summe(self, jahr: int) -> float:
         return self.grund.beitragsfreie_summe(jahr) + sum(
@@ -128,8 +139,14 @@ def pruefe_ledger_betraege(
     scheiben: Optional[pd.DataFrame] = None,
     historie: Optional[pd.DataFrame] = None,
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
 ) -> List[str]:
     """Betrag jeder Buchung gegen die Kern-Herleitung DIESER Police.
+
+    ``schichten``/``verankerung`` (Freischaltung, Schritt 5): Storno
+    eines uebernommenen Vertrags zahlt Basiswert plus Korrekturschicht —
+    dieselbe Herleitung wie in der Engine.
 
     Rueckgabe: Fehlerliste (leer = jede hergeleitete Buchung stimmt).
     Voraussetzung ist ein formal gueltiger Ledger (``validate_ledger``);
@@ -140,7 +157,12 @@ def pruefe_ledger_betraege(
     if len(ledger) == 0:
         return errors
     grundlagen = grundlagen_je_police(config, merkmale)
+    tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
     haupt = stamm.set_index("police_id")
+    try:
+        schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
+    except ValueError as exc:
+        return [f"schichten: {exc}"]
 
     scheiben_je_police: Dict[int, List[Tuple[int, float]]] = {}
     if scheiben is not None:
@@ -192,14 +214,22 @@ def pruefe_ledger_betraege(
             if art not in HERGELEITET:
                 continue
             if art == "ZUG":
-                erwartet = float(h["sum_insured"])
+                # Der Zugang bucht die Versicherungssumme MIT den
+                # mitgebrachten Bausteinen: Ein uebernommener Vertrag
+                # tritt mit seinen Alt-Erhoehungen ein (Freischaltung,
+                # Schritt 3); der eigene Zugang im Vertragsjahr 0 hat
+                # noch keine.
+                erwartet = float(h["sum_insured"]) + sum(
+                    vs for j, vs in scheiben_je_police.get(pid, []) if j <= jahr
+                )
             else:
                 if pid not in herleitungen:
                     try:
                         felder = grundlagen(pid, str(h["tarif_generation"]))
                         herleitungen[pid] = _Herleitung(
                             h.to_dict() | {"police_id": pid}, felder,
-                            scheiben_je_police.get(pid, []))
+                            scheiben_je_police.get(pid, []),
+                            tarifwerk_je_generation.get(str(h["tarif_generation"])))
                     except (KeyError, ValueError) as exc:
                         errors.append(f"ledger police {pid}: Kern nicht herleitbar: {exc}")
                         continue
@@ -207,6 +237,10 @@ def pruefe_ledger_betraege(
                 bfr_ab = pex_jahr.get(pid)
                 if art == "STO":
                     erwartet = v.rkw(jahr)
+                    schicht = schicht_je_police.get(pid)
+                    if schicht is not None and 12 * jahr >= schicht[1]:
+                        erwartet += schichtwert_bei(
+                            schicht[0], schicht[1], v.grund_mp, 12 * jahr)
                 elif art == "PEX":
                     # Uebernommene Vertraege buchen die Umbuchung zum
                     # Zugangsstichtag, die Summe wurde im Jahr der
@@ -231,5 +265,66 @@ def pruefe_ledger_betraege(
             + (" ..." if len(abweichungen) > 3 else "")
             + ". Ein Betrag, der zu einer anderen Police gehoert, ist keine "
             "Buchung dieser Police, auch wenn die Jahressumme aufgeht"
+        )
+    return errors
+
+
+def pruefe_scheiben_tarifwerk(
+    stamm: pd.DataFrame,
+    scheiben: Optional[pd.DataFrame],
+    config: BestandConfig,
+    *,
+    merkmale: Optional[pd.DataFrame] = None,
+) -> List[str]:
+    """Das gamma1 jeder Scheibe ist das, das das Tarifwerk ihrer
+    Generation vorgibt — null oder das gamma1 der Zelle.
+
+    Die Scheibe traegt ihre Rechnungsgrundlage selbst (ADR-011), und
+    die Form prueft ``validate_scheiben`` ohne Config. WELCHER Wert
+    richtig ist, weiss nur die Generation: Das eigene Geschaeft rechnet
+    Erhoehungsscheiben ohne gamma1 (Tarifplan KLV 7, Bezugsgroesse
+    GrundVS); eine uebernommene Generation mit ``scheiben_mit_gamma1``
+    rechnet jeden Baustein mit der vollen Beitragsformel, also mit dem
+    gamma1 seiner Zelle (Freischaltung, Schritt 2 und 4). Ein anderer
+    Wert waere ein Fremdwert, der still einen anderen Beitrag und eine
+    andere Reserve erzeugt.
+    """
+    errors: List[str] = []
+    if scheiben is None or len(scheiben) == 0:
+        return errors
+    generationen = {g.name: g for g in config.generationen}
+    grundlagen = grundlagen_je_police(config, merkmale)
+    haupt = stamm.set_index("police_id")
+    falsch: List[str] = []
+    for s in scheiben.itertuples(index=False):
+        pid = int(s.police_id)
+        if pid not in haupt.index:
+            continue    # validate_scheiben meldet die fremde Police
+        name = str(haupt.loc[pid, "tarif_generation"])
+        gen = generationen.get(name)
+        if gen is None:
+            errors.append(
+                f"scheiben police {pid}: Tarifgeneration {name!r} nicht in "
+                f"Config (bekannt: {sorted(generationen)})")
+            continue
+        try:
+            erwartet = (
+                float(grundlagen(pid, name)["gamma1"])
+                if gen.tarifwerk()["scheiben_mit_gamma1"] else 0.0
+            )
+        except ValueError as exc:
+            errors.append(f"scheiben police {pid}: {exc}")
+            continue
+        if float(s.gamma1) != erwartet:
+            falsch.append(
+                f"police {pid} Scheibe {int(s.scheiben_id)}: gamma1 "
+                f"{float(s.gamma1)!r}, Tarifwerk der Generation {name} "
+                f"verlangt {erwartet!r}")
+    if falsch:
+        errors.append(
+            f"scheiben: {len(falsch)} Scheibe(n) mit gamma1 ausserhalb des "
+            "Tarifwerks ihrer Generation (scheiben_mit_gamma1 der Config "
+            "entscheidet: 0 oder das gamma1 der Zelle) — z. B. "
+            + "; ".join(falsch[:3]) + (" ..." if len(falsch) > 3 else "")
         )
     return errors

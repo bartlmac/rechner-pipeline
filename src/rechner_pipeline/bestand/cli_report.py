@@ -172,6 +172,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(f"bestand_report: Scheiben nicht gefunden: {ns.scheiben}", file=sys.stderr)
                 return 2
             eingaben["scheiben"] = Path(ns.scheiben)
+        # Korrekturschicht/Verankerung (Freischaltung, Schritt 5): liegen
+        # sie neben dem Scheiben-Parquet, tragen sie die Bewertung mit.
+        if ns.scheiben:
+            for rolle in ("schichten", "verankerung"):
+                pfad = Path(ns.scheiben).parent / f"{rolle}.parquet"
+                if pfad.is_file():
+                    eingaben[rolle] = pfad
 
     merkmale = None
     if ns.merkmale:
@@ -244,6 +251,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             merkmale=merkmale,
             bis=bis,
             stichtag=stichtag,
+            schichten=tabellen.get("schichten"),
+            verankerung=tabellen.get("verankerung"),
         )
     except ValueError as exc:
         print(f"bestand_report: {exc}", file=sys.stderr)

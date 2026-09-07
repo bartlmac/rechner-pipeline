@@ -327,3 +327,75 @@ def test_tarifplan_dokumentiert_die_plv_generationen():
             f"Tarifplan-Paragraf 13 veraltet fuer {g.knoten} — erwartete "
             f"Zeile:\n{zeile}"
         )
+
+
+def test_tarifwerks_schalter_sind_eigenschaft_der_generation(tmp_path: Path):
+    """Freischaltung, Schritt 2 (dev-docs/freischaltung-uebernommener-bestand.md):
+    Die drei Tarifwerks-Eigenschaften der Fuehrung stehen je Generation in
+    der Config. Vorgabe ist der Tarifplan KLV des eigenen Geschaefts; die
+    uebernommene TG2015 traegt, was ihre Abnahmen bestanden haben. Ein
+    Tippfehler (Zeichenkette statt Wahrheitswert, unbekanntes Verfahren)
+    ist ein Ladefehler, kein stilles Verhalten."""
+    import tomllib
+
+    from rechner_pipeline.bestand.config import config_aus_text
+
+    gesamt = load_config(REPO_ROOT / "configs" / "bestand_gesamt.toml")
+    assert gesamt.validate() == []
+    je_name = {g.name: g.tarifwerk() for g in gesamt.generationen}
+    assert je_name["TG2015"] == {
+        "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+        "red_verfahren": "teilkuendigung",
+    }
+    eigene = {n: tw for n, tw in je_name.items() if n != "TG2015"}
+    assert eigene and all(
+        tw == {"scheiben_mit_gamma1": False, "stoab_je_baustein": False,
+               "red_verfahren": "prospektiv"}
+        for tw in eigene.values()
+    ), "das eigene Geschaeft rechnet nach dem Tarifplan KLV"
+
+    text = EXAMPLE.read_text(encoding="utf-8")
+    kopf, sep, rest = text.partition("[[generation]]")
+    for zeile, erwartet in (
+        ('stoab_je_baustein = "ja"', "muss true oder false sein"),
+        ('red_verfahren = "halbierung"', "red_verfahren 'halbierung' unbekannt"),
+    ):
+        kaputt = kopf + sep + "\n" + zeile + rest
+        cfg = config_aus_text(kaputt)
+        fehler = cfg.validate()
+        assert any(erwartet in f for f in fehler), (zeile, fehler)
+    # Und die Rohform bleibt lesbar: TOML-Wahrheitswerte kommen als bool an.
+    roh = tomllib.loads(kopf + sep + "\nscheiben_mit_gamma1 = true" + rest)
+    assert roh["generation"][0]["scheiben_mit_gamma1"] is True
+
+
+def test_uebernommene_generation_traegt_die_abgenommene_spez():
+    """Die TG2015 der PLV-Config rechnet mit den Grundlagen, die A-Q1 und
+    P-K1 des Falls abgenommen haben — Zelle fuer Zelle, Feld fuer Feld.
+
+    Gefunden 2026-09-07 bei der Neuerzeugung des zweiten Baldrian-Falls: Die
+    Config trug die Rechner-Lesart von VOR A-Q1 (Zins 1,75 % statt 1,25 %
+    nach Mitteilung, Inkassokosten Haus 0 statt 0,01); P-B1 im Vollprofil
+    und die Fuehrungsprobe fanden es, klv.md 13 behauptete 1,75 %. Die
+    Spez-Fixture des Lauf-2-E2E ist die abgenommene Spez des Falls.
+    """
+    import json
+
+    from rechner_pipeline.models.bestand import GENERATION_FIELDS
+
+    cfg = load_config(REPO_ROOT / "configs" / "bestand_gesamt.toml")
+    gen = next(g for g in cfg.generationen if g.name == "TG2015")
+    spez = json.loads((REPO_ROOT / "tests" / "fixtures" / "baldrian2_e2e"
+                       / "klv-tg2015.spez.json").read_text(encoding="utf-8"))
+    zellen = spez["zellen"] if "zellen" in spez else spez["generationen"][0]["zellen"]
+    assert len(zellen) == len(gen.zellen) == 6
+    for zelle in zellen:
+        felder = gen.felder_fuer({k: str(v) for k, v in zelle["auspraegungen"].items()})
+        mp = zelle["model_point"]
+        abweichend = {
+            f: (felder.get(f), mp.get(f)) for f in GENERATION_FIELDS
+            if f in mp and felder.get(f) != mp[f]
+        }
+        assert abweichend == {}, (zelle["auspraegungen"], abweichend)
+    assert gen.tarifwerk() == {"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+                               "red_verfahren": "teilkuendigung"}
