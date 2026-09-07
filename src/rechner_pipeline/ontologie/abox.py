@@ -43,9 +43,18 @@ def speichere(abox: ABox, fall: Path) -> Path:
     return pfad
 
 
+def lade_aus_bytes(roh: bytes) -> ABox:
+    """A-Box aus bereits gelesenen Bytes.
+
+    Damit ein Gate Beleg-Hash und Verarbeitung aus DENSELBEN Bytes bildet
+    (Review T23-01) — es liest einmal, hasht die Bytes und parst sie hier,
+    statt die Datei fuer das Parsen ein zweites Mal zu lesen.
+    """
+    return ABox.model_validate_json(roh)
+
+
 def lade(fall: Path) -> ABox:
-    pfad = abox_pfad(fall)
-    return ABox.model_validate_json(pfad.read_text(encoding="utf-8"))
+    return lade_aus_bytes(abox_pfad(fall).read_bytes())
 
 
 def validate_abox(

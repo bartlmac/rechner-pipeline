@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from rechner_pipeline import fall as fall_mod
+from rechner_pipeline.models.manifest import GeleseneDatei, lies_gehasht
 from rechner_pipeline.gates._provenienz import systemstand
 
 BESTANDS_BELEGROLLEN = ("pb1_ledger", "migrationssuite", "abnahmebericht")
@@ -124,8 +125,17 @@ def bestands_belegrollen() -> List[str]:
     return list(BESTANDS_BELEGROLLEN)
 
 
-def artefakt_eintrag(fall: Path, pfad: Path) -> Dict[str, str]:
-    """Einen regulaeren Belegpfad innerhalb des Falls kanonisch hashen."""
+def artefakt_eintrag(
+    fall: Path, pfad: Path, *, sha256: str | None = None,
+) -> Dict[str, str]:
+    """Einen regulaeren Belegpfad innerhalb des Falls kanonisch binden.
+
+    ``sha256`` ist der Hash der Bytes, die das Gate bereits gelesen hat
+    (Review T23-01): Wer die Datei fuer input_hashes schon gelesen hat,
+    reicht diesen Hash durch, statt sie hier ein zweites Mal zu lesen —
+    zwei getrennt gelesene Hashes derselben Datei koennten auseinanderlaufen.
+    Ohne Angabe wird die Datei hier gelesen.
+    """
     fall = fall.resolve()
     pfad = pfad.resolve()
     try:
@@ -134,15 +144,24 @@ def artefakt_eintrag(fall: Path, pfad: Path) -> Dict[str, str]:
         raise ValueError(f"Bestands-Pflichtbeleg liegt ausserhalb des Falls: {pfad}") from exc
     if not pfad.is_file():
         raise ValueError(f"Bestands-Pflichtbeleg fehlt: {pfad}")
-    return {"pfad": relativ.as_posix(), "sha256": sha256_datei(pfad)}
+    return {
+        "pfad": relativ.as_posix(),
+        "sha256": sha256 if sha256 is not None else sha256_datei(pfad),
+    }
 
 
-def pruefe_artefakt_eintrag(
+def lies_artefakt_eintrag(
     fall: Path,
     rolle: str,
     eintrag: Any,
-) -> tuple[Path | None, List[str]]:
-    """Fallpfad, SHA-Form und aktuelle Bytes eines Belegeintrags pruefen."""
+) -> tuple[GeleseneDatei | None, List[str]]:
+    """Fallpfad, SHA-Form und aktuelle Bytes eines Belegeintrags pruefen —
+    und die gelesenen Bytes ZURUECKGEBEN.
+
+    Der Aufrufer prueft den Beleg danach inhaltlich (Ledger, Suite, Spec,
+    Bericht) aus genau diesen Bytes; ein zweiter Lesepfad, der andere Bytes
+    prueft als hier gehasht wurden, entfaellt (Review T23-01).
+    """
     if not isinstance(eintrag, dict) or set(eintrag) != {"pfad", "sha256"}:
         return None, [f"{rolle} muss exakt pfad und sha256 enthalten"]
     pfad_roh = eintrag.get("pfad")
@@ -173,7 +192,18 @@ def pruefe_artefakt_eintrag(
         ]
     if not pfad.is_file():
         return None, [f"{rolle}: {pfad_roh} fehlt"]
-    gefunden = sha256_datei(pfad)
-    if gefunden != erwartet:
-        return None, [f"{rolle}: SHA-256 {gefunden} statt {erwartet}"]
-    return pfad, []
+    gelesen = lies_gehasht(pfad)
+    if gelesen.sha256 != erwartet:
+        return None, [f"{rolle}: SHA-256 {gelesen.sha256} statt {erwartet}"]
+    return gelesen, []
+
+
+def pruefe_artefakt_eintrag(
+    fall: Path,
+    rolle: str,
+    eintrag: Any,
+) -> tuple[Path | None, List[str]]:
+    """Wie :func:`lies_artefakt_eintrag`, nur der Pfad — fuer Aufrufer, die
+    die Bytes nicht weiterverarbeiten."""
+    gelesen, fehler = lies_artefakt_eintrag(fall, rolle, eintrag)
+    return (gelesen.pfad if gelesen is not None else None), fehler

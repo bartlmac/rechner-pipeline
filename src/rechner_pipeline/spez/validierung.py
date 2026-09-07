@@ -41,10 +41,14 @@ def speichere_spez(spez: TarifSpez, fall: Path) -> Path:
     return pfad
 
 
+def lade_spez_aus_bytes(roh: bytes) -> TarifSpez:
+    """Spez aus bereits gelesenen Bytes (Review T23-01): Ein Gate, das die
+    Spez hasht UND parst, tut beides aus denselben Bytes."""
+    return TarifSpez.model_validate_json(roh)
+
+
 def lade_spez(fall: Path, generation: str) -> TarifSpez:
-    return TarifSpez.model_validate_json(
-        spez_pfad(fall, generation).read_text(encoding="utf-8")
-    )
+    return lade_spez_aus_bytes(spez_pfad(fall, generation).read_bytes())
 
 
 def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:

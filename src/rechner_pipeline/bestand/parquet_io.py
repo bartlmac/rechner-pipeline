@@ -13,6 +13,7 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import secrets
 from pathlib import Path
@@ -214,6 +215,22 @@ def read_portfolio(
         return df[list(TAGESJOURNAL_NAMES)]
     ordered = [c for c in list(STAMM_NAMES) + [n for n, _ in ZEITSCHEIBEN_SPALTEN] if c in df.columns]
     return df[ordered]
+
+
+def read_portfolio_aus_bytes(
+    roh: bytes,
+    *,
+    expected_columns: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
+    """:func:`read_portfolio` aus bereits gelesenen Bytes.
+
+    Ein Gate, das eine Parquet-Tabelle fuer seinen Beleg hasht UND
+    verarbeitet, tut beides aus denselben Bytes (Review T23-01; dieselbe
+    Klasse wie T20-01, dort ueber die Pruefengine geloest). pyarrow liest
+    aus einem Dateiobjekt; alle Schema- und dtype-Pruefungen bleiben die
+    von :func:`read_portfolio`.
+    """
+    return read_portfolio(io.BytesIO(roh), expected_columns=expected_columns)  # type: ignore[arg-type]
 
 
 def portfolio_hash(path: Path) -> str:

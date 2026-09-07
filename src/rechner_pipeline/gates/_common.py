@@ -39,10 +39,18 @@ from pathlib import Path
 from typing import IO, Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 
 # Re-export the canonical hashing helpers so commands have a single import site.
-from rechner_pipeline.models.manifest import file_sha256, text_sha256
+from rechner_pipeline.models.manifest import (
+    GeleseneDatei,
+    file_sha256,
+    lies_gehasht,
+    text_sha256,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
+    "GeleseneDatei",
+    "lies_gehasht",
+    "hashes_von",
     "EXIT",
     "Exit",
     "STATUS_PASSED",
@@ -945,6 +953,27 @@ def hash_key(
         except ValueError:
             return str(path)
     return str(path)
+
+
+def hashes_von(
+    gelesene: Iterable[GeleseneDatei],
+    *,
+    base: Union[Path, None, Any] = _HASH_BASE_DEFAULT,
+) -> Dict[str, str]:
+    """``input_hashes`` aus bereits gelesenen Dateien — ohne erneutes Lesen.
+
+    Gegenstueck zu :func:`hash_files` fuer den Lese-einmal-Pfad (Review
+    T23-01): dieselben Schluessel (:func:`hash_key`), aber der Hash stammt
+    aus den Bytes, die das Gate tatsaechlich verarbeitet hat. Doppelte
+    Schluessel: die erste Nennung gewinnt, wie bei :func:`hash_files`.
+    """
+    out: Dict[str, str] = {}
+    for gelesen in gelesene:
+        key = hash_key(gelesen.pfad, base=base)
+        if key in out:
+            continue
+        out[key] = gelesen.sha256
+    return out
 
 
 # --------------------------------------------------------------------------- #

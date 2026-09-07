@@ -55,7 +55,13 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from rechner_pipeline.ontologie.abox import lade, speichere, validate_abox
+from rechner_pipeline.ontologie.abox import (
+    abox_pfad,
+    lade,
+    lade_aus_bytes,
+    speichere,
+    validate_abox,
+)
 from rechner_pipeline.ontologie.diskrepanz import Beleg
 from rechner_pipeline.ontologie.befuellung import (
     BefuellungsFehler,
@@ -115,11 +121,14 @@ def _vorlaeufig(args, fall: Path) -> int:
               "--alle-offenen --quelle)", file=sys.stderr)
         return 2
     try:
-        abox = lade(fall)
+        # Einmal lesen: der Beleg-Hash "vorher" ist der Hash der Bytes, die
+        # hier geparst werden (Review T23-01) — keine zweite Lesung.
+        abox_roh = abox_pfad(fall).read_bytes()
+        abox = lade_aus_bytes(abox_roh)
     except Exception as exc:  # noqa: BLE001
         print(f"entscheide: A-Box unlesbar: {exc}", file=sys.stderr)
         return 1
-    vorher = _abox_sha256(fall)
+    vorher = hashlib.sha256(abox_roh).hexdigest()
     jetzt = _jetzt()
     entschieden: List[dict] = []
     try:

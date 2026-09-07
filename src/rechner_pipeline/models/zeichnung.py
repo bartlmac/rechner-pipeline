@@ -93,7 +93,11 @@ def lade_zeichnungsordnung(
             "Rollenbindung muss extern verwahrt werden"
         ]
     try:
-        daten = json.loads(resolved.read_text(encoding="utf-8"))
+        # Einmal lesen: ordnung_sha256 in jedem Snapshot ist der Hash GENAU
+        # der Bytes, aus denen die Rollenbindung hier geparst wird (Review
+        # T23-01) — nicht der einer zweiten Lesung.
+        roh = resolved.read_bytes()
+        daten = json.loads(roh.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return None, None, [f"Zeichnungsordnung nicht als JSON lesbar: {exc}"]
     fehler: List[str] = []
@@ -176,7 +180,7 @@ def lade_zeichnungsordnung(
             )
     if fehler:
         return None, None, fehler
-    sha = hashlib.sha256(resolved.read_bytes()).hexdigest()
+    sha = hashlib.sha256(roh).hexdigest()
     return daten, sha, []
 
 

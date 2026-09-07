@@ -48,7 +48,7 @@ flowchart TD
     gates -- 9 --> bestand
     gates -- 8 --> fall
     gates -- 8 --> kern
-    gates -- 10 --> models
+    gates -- 11 --> models
     gates -- 12 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
@@ -57,12 +57,12 @@ flowchart TD
     models -- 1 --> gates
     models -- 1 --> kern
     ontologie -- 1 --> kern
-    ontologie -- 1 --> models
+    ontologie -- 2 --> models
     qa -- 8 --> kern
     qa -- 1 --> models
     quellen -- 1 --> kern
     quellen -- 7 --> models
-    quellen -- 3 --> ontologie
+    quellen -- 4 --> ontologie
     quellen -- 1 --> spez
     spez -- 1 --> kern
     spez -- 11 --> ontologie
@@ -85,7 +85,7 @@ flowchart TD
     system_entscheid["system/entscheid<br/>1 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 2 --> system_assurance
-    klv -- 6 --> system_assurance
+    klv -- 7 --> system_assurance
     klv -- 2 --> system_entscheid
     klv -- 8 --> system_fall
     system_architektur -- 1 --> bu
