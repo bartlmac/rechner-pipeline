@@ -55,7 +55,14 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from rechner_pipeline.ontologie.abox import lade, speichere, validate_abox
+from rechner_pipeline.models.zeichnung import ausserhalb_des_falls
+from rechner_pipeline.ontologie.abox import (
+    abox_pfad,
+    lade,
+    lade_aus_bytes,
+    speichere,
+    validate_abox,
+)
 from rechner_pipeline.ontologie.diskrepanz import Beleg
 from rechner_pipeline.ontologie.befuellung import (
     BefuellungsFehler,
@@ -115,11 +122,14 @@ def _vorlaeufig(args, fall: Path) -> int:
               "--alle-offenen --quelle)", file=sys.stderr)
         return 2
     try:
-        abox = lade(fall)
+        # Einmal lesen: der Beleg-Hash "vorher" ist der Hash der Bytes, die
+        # hier geparst werden (Review T23-01) — keine zweite Lesung.
+        abox_roh = abox_pfad(fall).read_bytes()
+        abox = lade_aus_bytes(abox_roh)
     except Exception as exc:  # noqa: BLE001
         print(f"entscheide: A-Box unlesbar: {exc}", file=sys.stderr)
         return 1
-    vorher = _abox_sha256(fall)
+    vorher = hashlib.sha256(abox_roh).hexdigest()
     jetzt = _jetzt()
     entschieden: List[dict] = []
     try:
@@ -324,6 +334,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not mandat.is_file():
             print(f"entscheide: --mandat {args.mandat!r} ist keine Datei",
                   file=sys.stderr)
+            return 2
+        if not ausserhalb_des_falls(mandat, fall):
+            # Wie Ordnung und Schluessel (ADR-018): Was der Fall selbst
+            # umschreiben kann, autorisiert nichts (Review T23-09).
+            print(f"entscheide: --mandat {args.mandat!r} liegt innerhalb des "
+                  "Falls; das Mandat muss wie die Zeichnungsordnung extern "
+                  "verwahrt werden", file=sys.stderr)
             return 2
         mandat_sha256 = hashlib.sha256(mandat.read_bytes()).hexdigest()
     zeichnung = zeichnung_fuer(ordnung, ordnung_sha, fingerprint, mandat_sha256)

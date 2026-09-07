@@ -20,7 +20,10 @@ import csv
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:  # nur fuer die Signatur, keine Laufzeit-Kante
+    from rechner_pipeline.ontologie.tbox import ABox
 
 from rechner_pipeline.quellen.vorverdichtung import (
     VorverdichtungFehler,
@@ -173,12 +176,18 @@ def _hinweis_ohne_vorverdichtung(
     )
 
 
-def pruefe_ratzu_staffeln(fall: Path, generation: str) -> FormelPruefung:
+def pruefe_ratzu_staffeln(
+    fall: Path, generation: str, *, abox: Optional["ABox"] = None,
+) -> FormelPruefung:
     """A-Box-Ratenzuschlaege gegen die IF-Formeln nachpruefen.
 
     Liest je Tarifart-Spalte der Parameter-Matrix die ratzu-Formel aus
     der Vorverdichtung, parst die Staffel deterministisch und vergleicht
     mit den ``ratzu_zw*``-Aussagen der A-Box-Zellen.
+
+    ``abox``: die A-Box, die der Aufrufer bereits aus den fuer seinen Beleg
+    gehashten Bytes geparst hat (Review T23-01) — dann prueft der Check
+    genau diese Bytes und liest die Datei nicht ein zweites Mal.
 
     Das Kalkulationsblatt wird aus der Vorverdichtung ERMITTELT
     (:mod:`rechner_pipeline.quellen.vorverdichtung`), nicht angenommen:
@@ -196,7 +205,8 @@ def pruefe_ratzu_staffeln(fall: Path, generation: str) -> FormelPruefung:
     from rechner_pipeline.ontologie.merge import werte_gleich
 
     verzeichnis = verzeichnis_der_generation(fall, generation)
-    abox = lade(fall)
+    if abox is None:
+        abox = lade(fall)
     gen = next((g for g in abox.generationen if g.id == generation), None)
     if gen is None:
         return FormelPruefung(

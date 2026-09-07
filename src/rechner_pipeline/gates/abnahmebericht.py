@@ -102,6 +102,9 @@ from rechner_pipeline.gates._common import (
     build_result,
     finalize_gate_ledger,
     hash_files,
+    hash_key,
+    hashes_von,
+    lies_gehasht,
     log,
     parse_gate_args,
     run_command,
@@ -337,6 +340,7 @@ def _transformationsvertrag_fehler(
     spec: TransformationsSpec,
     ergebnis: Any,
     suite: Dict[str, Any],
+    spec_hash: str | None = None,
 ) -> tuple[List[str], Optional[Path], Optional[str]]:
     """Quelle, Spec, Anwendung und P-B1-/Suite-Ziel lueckenlos verbinden.
 
@@ -359,7 +363,12 @@ def _transformationsvertrag_fehler(
     ) is not int:
         fehler.append("Transformationsergebnis.schema_version muss 1 sein")
 
-    spec_sha256 = sha256(spec_pfad.read_bytes()).hexdigest()
+    # spec_hash: Hash der Spec-Bytes, die der Aufrufer bereits gelesen hat
+    # (Review T23-01) — sonst wird die Datei hier ein zweites Mal gelesen.
+    spec_sha256 = (
+        spec_hash if spec_hash is not None
+        else sha256(spec_pfad.read_bytes()).hexdigest()
+    )
     if ergebnis.get("spec_sha256") != spec_sha256:
         fehler.append(
             "Transformationsergebnis.spec_sha256 bindet nicht die aktuelle Spec"
@@ -913,8 +922,14 @@ def _bericht_fehler(
     bericht_pfad: Path,
     erwartete_stichtage: List[str],
     fall: Path,
+    bericht_text: str | None = None,
 ) -> List[str]:
-    """HTML aus dem persistierten Renderer-Vertrag bytegenau reproduzieren."""
+    """HTML aus dem persistierten Renderer-Vertrag bytegenau reproduzieren.
+
+    ``bericht_text``: der Bericht, wie ihn der Aufrufer bereits fuer den
+    Beleg-Hash gelesen hat (Review T23-01) — verglichen wird dann gegen
+    genau diese Bytes, nicht gegen eine zweite Lesung.
+    """
     if not isinstance(erzeugung, dict) or set(erzeugung) != _BERICHT_ERZEUGUNG_FELDER:
         return [
             "Abnahmebericht-Erzeugung muss exakt die kanonischen "
@@ -981,7 +996,10 @@ def _bericht_fehler(
         )
         # Bytes lesen, nicht Text: read_text uebersetzt CRLF/CR still nach LF
         # und laesst damit eine umkodierte Fassung als "bytegenau" durchgehen.
-        gefunden = bericht_pfad.read_bytes().decode("utf-8")
+        gefunden = (
+            bericht_text if bericht_text is not None
+            else bericht_pfad.read_bytes().decode("utf-8")
+        )
     except Exception as exc:  # noqa: BLE001 — frei editierbarer Beleg blockiert
         return [f"Abnahmebericht ist nicht reproduzierbar: {exc}"]
     if gefunden != erwartet:
@@ -1331,10 +1349,14 @@ def _bestands_suite_fehler(
 PB1_VOLLPROFIL = frozenset({"portfolio", "historie", "ledger", "config"})
 
 
-def _lies_json_beleg(pfad: Path) -> Any:
+def _json_beleg_aus(gelesene) -> Any:
+    """JSON-Beleg aus bereits gelesenen Bytes (Review T23-01): Beleg-Hash
+    und Parsen stammen aus demselben Lesevorgang. Ein Parsefehler bleibt
+    ein benannter Befund fuer die Vertragspruefung, kein Abbruch.
+    """
     try:
-        return json.loads(Path(pfad).read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
+        return gelesene.json()
+    except ValueError as exc:
         return {"_lesefehler": str(exc)}
 
 
@@ -1422,6 +1444,7 @@ def _fuehrungsprobe_fehler(
 def _b1_fehler(
     *,
     ledger_pfad: Path,
+    ledger_text: str | None = None,
     fall: Path,
     repo_root: Path,
     suite: Dict[str, Any],
@@ -1436,7 +1459,12 @@ def _b1_fehler(
     koennte.
     """
     try:
-        payload = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+        # ledger_text: die Bytes, die der Aufrufer bereits fuer den Beleg
+        # gehasht hat (Review T23-01) — nicht ein zweites Mal lesen.
+        payload = json.loads(
+            ledger_text if ledger_text is not None
+            else ledger_pfad.read_text(encoding="utf-8")
+        )
         entry = GateLedgerEntry.from_dict(payload)
     except (OSError, UnicodeError, ValueError, TypeError) as exc:
         return [f"P-B1-Ledger ungueltig: {exc}"]
@@ -1842,7 +1870,12 @@ def main(argv: Optional[List[str]] = None):
     hash_basis = fall if bestands_scope else (
         repo_root if args.repo_root else None
     )
-    input_hashes = hash_files(list(eingaben.values()), base=hash_basis)
+    # Jede Pflichteingabe GENAU EINMAL lesen (Review T23-01): input_hashes,
+    # Renderer-Artefakt-Eintraege, Suite/Spec/Ergebnis-Parsing und die
+    # P-B1-Pruefung arbeiten auf denselben Bytes — vorher wurde der
+    # P-B1-Ledger viermal getrennt gelesen.
+    gelesen = {name: lies_gehasht(pfad) for name, pfad in eingaben.items()}
+    input_hashes = hashes_von(gelesen.values(), base=hash_basis)
 
     def _contract_fehler(code: str, meldungen: List[str], hinweis: str):
         gezeigt = meldungen[:20]
@@ -1863,7 +1896,8 @@ def main(argv: Optional[List[str]] = None):
         assert fall is not None
         try:
             renderer_artefakte = {
-                rolle: artefakt_eintrag(fall, eingaben[rolle])
+                rolle: artefakt_eintrag(
+                    fall, eingaben[rolle], sha256=gelesen[rolle].sha256)
                 for rolle in renderer_artefaktrollen()
             }
         except ValueError as exc:
@@ -1877,16 +1911,15 @@ def main(argv: Optional[List[str]] = None):
         # Auch der falllose Bibliotheks-/CLI-Pfad schreibt die Rollen explizit.
         # Nur im Bestands-Scope verlangt A-M4 darueber hinaus sichere Fallpfade.
         for rolle in renderer_artefaktrollen():
-            [(pfad, datei_hash)] = hash_files(
-                [eingaben[rolle]], base=hash_basis
-            ).items()
+            pfad = hash_key(eingaben[rolle], base=hash_basis)
+            datei_hash = gelesen[rolle].sha256
             renderer_artefakte[rolle] = {
                 "pfad": pfad,
                 "sha256": datei_hash,
             }
 
     try:
-        suite = json.loads(eingaben["suite"].read_text(encoding="utf-8"))
+        suite = gelesen["suite"].json()
     except (OSError, ValueError) as exc:
         return _contract_fehler(
             "suite_unlesbar", [f"{type(exc).__name__}: {exc}"],
@@ -1904,7 +1937,7 @@ def main(argv: Optional[List[str]] = None):
     spec = None
     spec_roh = None
     try:
-        spec_text = eingaben["spec"].read_text(encoding="utf-8")
+        spec_text = gelesen["spec"].text()
         spec = TransformationsSpec.model_validate_json(spec_text)
         # Die DATEI-Form fuer den eingebetteten Renderer-Vertrag — der
         # Entscheid vergleicht sie strukturell mit der gebundenen Datei
@@ -1919,8 +1952,7 @@ def main(argv: Optional[List[str]] = None):
     transformation_ergebnis = None
     gemeinsame_bindung: Optional[Dict[str, Any]] = None
     try:
-        transformation_ergebnis = json.loads(
-            eingaben["transformation_ergebnis"].read_text(encoding="utf-8"))
+        transformation_ergebnis = gelesen["transformation_ergebnis"].json()
     except (OSError, ValueError) as exc:
         return _contract_fehler(
             "transformation_ergebnis_unlesbar",
@@ -1974,6 +2006,7 @@ def main(argv: Optional[List[str]] = None):
             )
         pb1_fehler = _b1_fehler(
             ledger_pfad=eingaben["pb1_ledger"],
+            ledger_text=gelesen["pb1_ledger"].text(),
             fall=fall,
             repo_root=repo_root,
             suite=suite,
@@ -1987,7 +2020,7 @@ def main(argv: Optional[List[str]] = None):
                 "Bestandsartefakt erneut ausfuehren.",
             )
         probe_fehler = _fuehrungsprobe_fehler(
-            _lies_json_beleg(eingaben["fuehrungsprobe"]),
+            _json_beleg_aus(gelesen["fuehrungsprobe"]),
             fall=fall,
             suite=suite,
             erwartetes_system=gemeinsame_bindung["system"],
@@ -2002,6 +2035,7 @@ def main(argv: Optional[List[str]] = None):
         transformations_fehler, _, _ = _transformationsvertrag_fehler(
             fall=fall,
             spec_pfad=eingaben["spec"],
+            spec_hash=gelesen["spec"].sha256,
             spec=spec,
             ergebnis=transformation_ergebnis,
             suite=suite,
@@ -2071,8 +2105,7 @@ def main(argv: Optional[List[str]] = None):
     # Beleg gleich aus.
     if bestands_scope and eingaben.get("pb1_ledger"):
         try:
-            pb1_roh = json.loads(
-                Path(eingaben["pb1_ledger"]).read_text(encoding="utf-8"))
+            pb1_roh = gelesen["pb1_ledger"].json()
             pb1_rollen = sorted((pb1_roh.get("summary") or {})
                                 .get("eingangsrollen") or {})
         except (OSError, ValueError, AttributeError):
@@ -2087,9 +2120,15 @@ def main(argv: Optional[List[str]] = None):
             assert fall is not None and gemeinsame_bindung is not None
             try:
                 bestandsbelege = {
-                    "pb1_ledger": artefakt_eintrag(fall, eingaben["pb1_ledger"]),
-                    "migrationssuite": artefakt_eintrag(fall, eingaben["suite"]),
-                    "fuehrungsprobe": artefakt_eintrag(fall, eingaben["fuehrungsprobe"]),
+                    "pb1_ledger": artefakt_eintrag(
+                        fall, eingaben["pb1_ledger"],
+                        sha256=gelesen["pb1_ledger"].sha256),
+                    "migrationssuite": artefakt_eintrag(
+                        fall, eingaben["suite"],
+                        sha256=gelesen["suite"].sha256),
+                    "fuehrungsprobe": artefakt_eintrag(
+                        fall, eingaben["fuehrungsprobe"],
+                        sha256=gelesen["fuehrungsprobe"].sha256),
                     "abnahmebericht": artefakt_eintrag(fall, bericht_pfad),
                 }
             except ValueError as exc:

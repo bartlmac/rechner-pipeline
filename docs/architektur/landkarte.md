@@ -44,12 +44,12 @@ flowchart TD
     bestand -- 1 --> qa
     betrieb -- 17 --> bestand
     betrieb -- 1 --> kern
-    betrieb -- 5 --> models
+    betrieb -- 6 --> models
     gates -- 13 --> bestand
     gates -- 9 --> fall
     gates -- 12 --> kern
-    gates -- 11 --> models
-    gates -- 12 --> ontologie
+    gates -- 12 --> models
+    gates -- 11 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
     gates -- 6 --> spez
@@ -57,12 +57,12 @@ flowchart TD
     models -- 1 --> gates
     models -- 1 --> kern
     ontologie -- 1 --> kern
-    ontologie -- 1 --> models
+    ontologie -- 2 --> models
     qa -- 8 --> kern
     qa -- 1 --> models
     quellen -- 1 --> kern
     quellen -- 7 --> models
-    quellen -- 3 --> ontologie
+    quellen -- 4 --> ontologie
     quellen -- 1 --> spez
     spez -- 1 --> kern
     spez -- 11 --> ontologie
@@ -84,8 +84,8 @@ flowchart TD
     system_assurance["system/assurance<br/>14 Module"]
     system_entscheid["system/entscheid<br/>1 Module"]
     system_fall["system/fall<br/>1 Module"]
-    bu -- 2 --> system_assurance
-    klv -- 6 --> system_assurance
+    bu -- 3 --> system_assurance
+    klv -- 8 --> system_assurance
     klv -- 2 --> system_entscheid
     klv -- 9 --> system_fall
     system_architektur -- 1 --> bu

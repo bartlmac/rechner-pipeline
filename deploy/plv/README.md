@@ -19,11 +19,12 @@ Laufzeitumgebung selbst ist kein Repo-Inhalt.
 
 | Verzeichnis | Inhalt | Schutz |
 |---|---|---|
-| `configs/bestand.toml` | die Config der PLV — eine Kopie von `configs/bestand_gesamt.toml`; ihr SHA-256 steht in jedem Protokolleintrag | vom Menschen gepflegt |
+| `configs/bestand.toml` | die Config der PLV — eine Kopie von `configs/bestand_gesamt.toml`; ihr SHA-256 steht in jedem Protokolleintrag. Nach dem Nachziehen der Kopie aendert sich der Hash im Protokoll, nicht der Bestand: `nummernkreis` traegt die bisherigen Positionen explizit (T22-09) | vom Menschen gepflegt |
 | `uebernahme/<fall>/` | je Migrationsfall ein Zugangsstand mit `eingang.json` (Fallname, Stichtag, Snapshot-Hash, SHA-256 je Datei) | unantastbar wie ein Fall-Eingang; jede Datei wird beim Lesen gegen ihre Summe gehalten |
-| `stand/` | der gefuehrte Stand: die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` | ueberschreibbar, aber nur durch einen gruenen Lauf (atomarer Tausch) |
+| `stand/` | Symlink auf den gefuehrten Stand (`stand-<manifest-kennung>/`; der Pfad `daten/stand/` fuehrt durch den Symlink dorthin): die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` und `verankerung.parquet` der Uebernahmen. Der Stand ist die GEBUCHTE Sicht: Ereignisse mit Buchungstag nach heute (Meldeverzug, Werktagsregel) stehen noch nicht darin und kommen an ihrem Buchungstag, damit Stand, Seite und Journal dasselbe sagen | wechselt nur durch einen gruenen Lauf, in EINEM atomaren Schritt (Symlink-Tausch; es gibt keinen Moment ohne Stand); das alte Verzeichnis wird danach entfernt |
+| `lauf.lock` | Prozess-Sperre: zwei gleichzeitige Laeufe auf derselben Ablage gibt es nicht, der zweite bricht sofort ab | — |
 | `journal/tagesjournal.parquet` | die Buchungstage, nur angefuegt | Bijektion zum Ledger wird bei jedem Lauf geprueft |
-| `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf: Tag, nachgeholte Tage, Neugeschaeft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des Baus), Image-Tag und -Digest | nur angefuegt; auch ein roter Lauf steht drin |
+| `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf, verkettet (jede Zeile nennt den SHA-256 ihrer Vorgaengerin; eine entfernte, veraenderte oder umsortierte Zeile bricht die Kette, und der naechste Lauf verweigert); die letzte gruene Zeile bindet Manifest- und Journal-Hash des Stands: Tag, nachgeholte Tage, Neugeschaeft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des Baus), Image-Tag und -Digest | nur angefuegt; auch ein roter Lauf steht drin |
 | `abschluesse/` | `abschluss_<Monatserster>.parquet`, festgeschrieben 0444, genau einmal (ADR-011) | nie ueberschrieben |
 | `berichte/` | `bestandsbericht_<Monatserster>.html` je Monatsabschluss (dazu je Uebernahme ein Teilbestand-Bericht, solange `teilbestand_getrennt` steht) | jederzeit neu renderbar |
 | `seite/index.html` | "Bestand heute": Kennzahlen, Neugeschaeft der Woche, letzte Buchungen, Monatsabschluesse, Uebernahmen mit der Zeichnung ihrer A-M4-Annahme — nach jedem gruenen Lauf aus Protokoll und Journal gerendert, mit Banderole, Stand, Manifest-Hash und Luecken-Block | jederzeit neu renderbar; ein Caddy liefert das Verzeichnis read-only aus |
@@ -38,7 +39,10 @@ cp configs/bestand_gesamt.toml ~/apps/plv/daten/configs/bestand.toml
 ```
 
 **Uebernahme-Eingang** (je Migrationsfall, aus dem Fall-Arbeitsbereich
-heraus; verlangt die Generation des Falls in `bestand.toml`). Der
+heraus; verlangt die Generation des Falls in `bestand.toml` und den
+A-M4-Snapshot des Falls: ohne angenommene Migrationsabnahme gibt es
+keine Uebernahme; der Snapshot wird strukturell geprueft — Schema,
+Selbstadressierung, Gate, Entscheid, Fall —, seine Signatur nicht). Der
 Eingang kommt von AUSSEN ins Volume: Das Kommando laeuft auf dem
 Betriebsrechner mit Zugriff auf den Fall, nicht im Container — der
 Container hat kein Netz und liest den Eingang nur:
@@ -71,6 +75,12 @@ cd ~/apps/plv && docker compose run --rm tageslauf
 tail -n 1 daten/journal/protokoll.jsonl
 ```
 
+Faehrt der Timer am selben Tag noch einmal (Erstbefuellung am Tag des
+ersten Timers, ein Neustart), ist das kein Fehler: Der bereits gefuehrte
+Tag ist ein benannter No-op — Exit 0, `tageslauf: <Tag> bereits gefuehrt,
+nichts zu tun`, keine Protokollzeile, Stand unveraendert. Nur ein Tag VOR
+dem gefuehrten (rueckwaerts) bricht mit Exit 2 ab.
+
 **Timer:**
 
 ```
@@ -98,7 +108,10 @@ loginctl enable-linger "$USER"     # der Timer laeuft auch ohne Sitzung
   `daten/berichte/`. Die oeffentliche Seite bleibt eine vom Menschen
   veroeffentlichte Momentaufnahme (`werkzeuge/README.md`): Ihre Quelle
   ist das **Stands-Paket**, das der Mensch exportiert und dem Auftritt
-  uebergibt — nichts wird automatisch veroeffentlicht:
+  uebergibt — nichts wird automatisch veroeffentlicht. Das Paket traegt
+  seine Belege (Protokoll mit Kette, Manifest, Berichte, je mit SHA-256);
+  der Auftritt prueft sie und veroeffentlicht kein Paket, das sich selbst
+  widerspricht:
 
   ```
   python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten --paket runs/stands-paket

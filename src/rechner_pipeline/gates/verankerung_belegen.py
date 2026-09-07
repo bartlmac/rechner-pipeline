@@ -300,10 +300,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "verankerung_schichten.json)")
     args = p.parse_args(argv)
 
+    import io
+
     import pandas as pd
 
-    from rechner_pipeline.bestand.parquet_io import read_portfolio
-    from rechner_pipeline.spez.validierung import lade_spez, spez_pfad
+    from rechner_pipeline.bestand.parquet_io import read_portfolio_aus_bytes
+    from rechner_pipeline.gates._common import lies_gehasht
+    from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 
     fall = Path(args.fall)
     ueber = Path(args.uebernahme) if args.uebernahme else (
@@ -317,12 +320,20 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"verankerung_belegen: {name}-Tabelle fehlt: {pfad}",
                   file=sys.stderr)
             return 2
+    # Jede Eingabe GENAU EINMAL lesen: der Beleg (provenienz.eingaben)
+    # traegt den Hash der Bytes, die hier verarbeitet werden (Review
+    # T23-01) — vorher lasen Engine und _sha256 die Tabellen getrennt.
     merkmale_pfad = ueber / "merkmale.parquet"
-    merkmale = (pd.read_parquet(merkmale_pfad)
-                if merkmale_pfad.is_file() else None)
+    merkmale_gelesen = (
+        lies_gehasht(merkmale_pfad) if merkmale_pfad.is_file() else None)
+    merkmale = (pd.read_parquet(io.BytesIO(merkmale_gelesen.roh))
+                if merkmale_gelesen is not None else None)
 
-    spez = lade_spez(fall, args.generation)
-    bestand = read_portfolio(pfade["bestand"])
+    spez_gelesen = lies_gehasht(spez_pfad(fall, args.generation))
+    spez = lade_spez_aus_bytes(spez_gelesen.roh)
+    bestand_gelesen = lies_gehasht(pfade["bestand"])
+    bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
+    verankerung_gelesen = lies_gehasht(pfade["verankerung"])
 
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None
     summen: Optional[Dict[str, float]] = None
@@ -391,7 +402,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         beleg = baue_schichtbeleg(
-            pd.read_parquet(pfade["verankerung"]),
+            pd.read_parquet(io.BytesIO(verankerung_gelesen.roh)),
             bestand,
             merkmale,
             spez,
@@ -431,15 +442,14 @@ def main(argv: Optional[List[str]] = None) -> int:
               f"Uebernahme-Verzeichnis {ueber}")
 
     eingaben = {
-        str(pfade["verankerung"].relative_to(fall)): _sha256(
-            pfade["verankerung"]),
-        str(pfade["bestand"].relative_to(fall)): _sha256(pfade["bestand"]),
+        str(pfade["verankerung"].relative_to(fall)): verankerung_gelesen.sha256,
+        str(pfade["bestand"].relative_to(fall)): bestand_gelesen.sha256,
     }
-    if merkmale is not None:
-        eingaben[str(merkmale_pfad.relative_to(fall))] = _sha256(
-            merkmale_pfad)
+    if merkmale_gelesen is not None:
+        eingaben[str(merkmale_pfad.relative_to(fall))] = (
+            merkmale_gelesen.sha256)
     eingaben[str(spez_pfad(fall, args.generation).relative_to(fall))] = (
-        _sha256(spez_pfad(fall, args.generation)))
+        spez_gelesen.sha256)
     beleg["provenienz"] = {
         "systemstand": systemstand(Path(args.repo_root)),
         "eingaben": eingaben,

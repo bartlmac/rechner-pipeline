@@ -51,7 +51,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 SCHEMA_VERSION = 1
 
@@ -159,7 +159,22 @@ def lade_scope(fall: Path) -> str:
     geraten. Er muss bewusst mit der richtigen Scope-Deklaration migriert
     werden, bevor ein menschliches Gate angenommen werden kann.
     """
-    manifest = _lade_json(fall / FALL_MANIFEST, "Fall-Manifest")
+    return lade_scope_gehasht(fall)[0]
+
+
+def lade_scope_gehasht(fall: Path) -> Tuple[str, str]:
+    """Wie :func:`lade_scope`, zusaetzlich der SHA-256 der gelesenen Bytes.
+
+    Ein Gate, das den Scope auswertet UND fall.json als Beleg hasht, tut
+    beides aus denselben Bytes (Review T23-01) — und zwar ueber denselben
+    gehaerteten Leser (kein Symlink, regulaere Datei), nicht ueber eine
+    zweite, ungehaertete Lesung.
+    """
+    manifest, roh = _lade_json_roh(fall / FALL_MANIFEST, "Fall-Manifest")
+    return _scope_aus_manifest(manifest), hashlib.sha256(roh).hexdigest()
+
+
+def _scope_aus_manifest(manifest: Dict[str, Any]) -> str:
     scope = manifest.get("scope")
     felder = {"schema_version", "typ"}
     legacy_felder = {"schema_version", "typ", "gate_dag_version"}
@@ -334,6 +349,12 @@ def _entferne_angelegte_datei(pfad: Path) -> bool:
 
 def _lade_json(pfad: Path, was: str) -> Dict[str, Any]:
     """JSON eines Fall-Artefakts laden; Defekte sind FallFehler, kein Traceback."""
+    return _lade_json_roh(pfad, was)[0]
+
+
+def _lade_json_roh(pfad: Path, was: str) -> Tuple[Dict[str, Any], bytes]:
+    """Wie :func:`_lade_json`, zusaetzlich die gelesenen Bytes — fuer einen
+    Beleg-Hash aus DERSELBEN gehaerteten Lesung (Review T23-01)."""
     if pfad.is_symlink():
         raise FallFehler(
             f"{was} ist ein Symlink ({pfad}) — Symlinks sind unzulaessig"
@@ -361,7 +382,7 @@ def _lade_json(pfad: Path, was: str) -> Dict[str, Any]:
             os.close(fd)
     if not isinstance(daten, dict):
         raise FallFehler(f"{was} hat unerwartete Struktur ({pfad})")
-    return daten
+    return daten, roh
 
 
 def _sha256(pfad: Path) -> str:

@@ -27,6 +27,7 @@ from rechner_pipeline.ontologie.aussage import Aussage, Zustand
 from rechner_pipeline.ontologie.befuellung import QuellFragment, baue_abox
 from rechner_pipeline.ontologie.merge import werte_gleich
 from rechner_pipeline.ontologie.tbox import ABox
+from rechner_pipeline.models.manifest import lies_gehasht
 
 FRAGMENTE_ORDNER = "fragmente"
 MERGE_LEDGER = "abox_merge.gate.json"
@@ -36,16 +37,26 @@ def fragmente_ordner(fall: Path) -> Path:
     return fall / "abgeleitet" / "abox" / FRAGMENTE_ORDNER
 
 
-def lade_fragmente(fall: Path) -> Dict[str, QuellFragment]:
+def fragment_pfade(fall: Path) -> List[Path]:
+    """Die Fragmentdateien eines Falls in stabiler Reihenfolge (ohne
+    ``akteure.json``); leer, wenn es den Ordner nicht gibt."""
     ordner = fragmente_ordner(fall)
     if not ordner.is_dir():
-        return {}
+        return []
+    return [
+        p for p in sorted(ordner.glob("*.json")) if p.name != "akteure.json"
+    ]
+
+
+def fragment_aus_bytes(roh: bytes) -> QuellFragment:
+    """Fragment aus bereits gelesenen Bytes (Review T23-01): Wer ein
+    Fragment hasht UND parst, tut beides aus denselben Bytes."""
+    return QuellFragment.model_validate_json(roh)
+
+
+def lade_fragmente(fall: Path) -> Dict[str, QuellFragment]:
     return {
-        p.name: QuellFragment.model_validate_json(
-            p.read_text(encoding="utf-8")
-        )
-        for p in sorted(ordner.glob("*.json"))
-        if p.name != "akteure.json"
+        p.name: fragment_aus_bytes(p.read_bytes()) for p in fragment_pfade(fall)
     }
 
 
@@ -115,15 +126,26 @@ def _vergleiche_aussage(
     )
 
 
-def pruefe_kette(fall: Path) -> List[str]:
+def pruefe_kette(
+    fall: Path, *, abox: Optional[ABox] = None, register: Optional[dict] = None,
+) -> List[str]:
     """A-Box gegen Fragmente + Merge-Ledger pruefen (leer = in Ordnung).
 
     Ohne Fragmente (synthetische/gebaute A-Box) meldet die Pruefung das
     als eigenen Zustand — der Aufrufer entscheidet, ob das zulaessig ist.
+
+    ``abox``/``register``: A-Box und Eingang-Register, die der Aufrufer
+    bereits aus den fuer den Beleg gehashten Bytes geparst hat (Review
+    T23-01) — dann prueft die Kette genau diese Bytes und liest keine der
+    beiden Dateien ein zweites Mal.
     """
     import hashlib
 
-    fragmente = lade_fragmente(fall)
+    # Fragmente einmal lesen: Hash-Abgleich mit dem Merge-Ledger und
+    # Merge-Nachbau aus denselben Bytes (Review T23-01) — ein Pruefer, der
+    # andere Bytes vergleicht als er hasht, prueft nicht.
+    gelesene = {p.name: lies_gehasht(p) for p in fragment_pfade(fall)}
+    fragmente = {n: fragment_aus_bytes(g.roh) for n, g in gelesene.items()}
     ledger_pfad = fall / "abgeleitet" / "diagnostics" / MERGE_LEDGER
     if not fragmente:
         return ["keine_fragmente"]
@@ -142,9 +164,7 @@ def pruefe_kette(fall: Path) -> List[str]:
     fehler: List[str] = []
     ordner = fragmente_ordner(fall)
     for name in sorted(fragmente):
-        ist_hash = hashlib.sha256(
-            (ordner / name).read_bytes()
-        ).hexdigest()
+        ist_hash = gelesene[name].sha256
         if fragment_hashes.get(name) != ist_hash:
             fehler.append(
                 f"Fragment {name}: Hash weicht vom Merge-Ledger ab — "
@@ -159,7 +179,10 @@ def pruefe_kette(fall: Path) -> List[str]:
     if fehler:
         return fehler
 
-    register = json.loads((fall / "eingang.json").read_text(encoding="utf-8"))
+    if register is None:
+        register = json.loads(
+            (fall / "eingang.json").read_text(encoding="utf-8")
+        )
     namen = sorted(fragmente)
     try:
         soll_abox = baue_abox(
@@ -172,7 +195,7 @@ def pruefe_kette(fall: Path) -> List[str]:
     except KeyError as exc:
         return [f"Merge-Ledger ohne Akteur fuer Fragment {exc}"]
 
-    ist_abox = lade(fall)
+    ist_abox = abox if abox is not None else lade(fall)
     soll_gen = {g.id: g for g in soll_abox.generationen}
     ist_gen = {g.id: g for g in ist_abox.generationen}
     if set(soll_gen) != set(ist_gen):

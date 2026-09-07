@@ -39,6 +39,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from rechner_pipeline.gates._common import (
+    hashes_von,
+    lies_gehasht,
     Exit,
     GateArgumentParser,
     GateCliContract,
@@ -160,12 +162,19 @@ def main(argv: Optional[List[str]] = None):
         baue_abox,
     )
     from rechner_pipeline.ontologie.kette import (
+        fragment_aus_bytes,
+        fragment_pfade,
         fragmente_ordner,
-        lade_fragmente,
     )
 
+    # Fragmente genau einmal lesen: fragment_hashes, input_hashes UND das
+    # Parsen stammen aus denselben Bytes (Review T23-01) — vorher wurde jede
+    # Fragmentdatei dreimal getrennt gelesen.
     try:
-        fragmente = lade_fragmente(fall)
+        gelesene = {p.name: lies_gehasht(p) for p in fragment_pfade(fall)}
+        fragmente = {
+            name: fragment_aus_bytes(g.roh) for name, g in gelesene.items()
+        }
     except Exception as exc:  # Schema-Bruch eines Fragments
         return _fehler(Exit.FILE_CONTRACT, "fragment", f"Fragment unlesbar: {exc}")
     if not fragmente:
@@ -184,7 +193,8 @@ def main(argv: Optional[List[str]] = None):
         return _fehler(Exit.FILE_CONTRACT, "akteure",
                        f"Akteur fehlt fuer: {', '.join(fehlend)}")
 
-    register = json.loads(register_pfad.read_text(encoding="utf-8"))
+    register_gelesen = lies_gehasht(register_pfad)
+    register = register_gelesen.json()
     erhoben_am = utc_now()
     namen = sorted(fragmente)
     try:
@@ -202,13 +212,7 @@ def main(argv: Optional[List[str]] = None):
 
     abox_pfad_ = speichere(abox, fall)
 
-    ordner = fragmente_ordner(fall)
-    fragment_hashes = {
-        name: __import__("hashlib").sha256(
-            (ordner / name).read_bytes()
-        ).hexdigest()
-        for name in namen
-    }
+    fragment_hashes = {name: gelesene[name].sha256 for name in namen}
     return _finalize(build_result(
         command="abox_merge", gate=GATE, gate_version=GATE_VERSION,
         exit_code=Exit.OK,
@@ -221,10 +225,9 @@ def main(argv: Optional[List[str]] = None):
             "generationen": [g.id for g in abox.generationen],
             "diskrepanzen": len(abox.diskrepanzen),
         },
-        input_hashes=hash_files(
-            [register_pfad, *(ordner / n for n in namen)],
+        input_hashes=hashes_von(
+            [register_gelesen, *(gelesene[n] for n in namen)],
             base=Path(args.repo_root).resolve() if args.repo_root else None,
-            missing_ok=True,
         ),
         output_hashes=hash_files([abox_pfad_], missing_ok=True),
     ))

@@ -34,6 +34,7 @@ Knoten: klv
 from __future__ import annotations
 
 import csv
+import io
 import hashlib
 import json
 import re
@@ -42,6 +43,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from rechner_pipeline.gates._common import (
+    hashes_von,
+    lies_gehasht,
     Exit,
     GateArgumentParser,
     GateCliContract,
@@ -61,7 +64,7 @@ from rechner_pipeline.gates._provenienz import (
     schreibe_pk1_beleg,
     systemstand,
 )
-from rechner_pipeline.qa.golden_master import ROUND_DECIMALS, compare, load_expected
+from rechner_pipeline.qa.golden_master import ROUND_DECIMALS, compare, load_expected_aus
 from rechner_pipeline.quellen.vorverdichtung import (
     VorverdichtungFehler,
     VorverdichtungFehlt,
@@ -87,13 +90,18 @@ SKALAR_CONTRACT = ("Bxt", "BJB", "BZB", "Pxt")
 PARAMETER_SKALARE = {"Zins": "zins", "Tafel": "tafel"}
 
 
-def _lese_names(names_csv: Path) -> Dict[str, str]:
+def _lese_names_aus_text(text: str) -> Dict[str, str]:
+    """Namens-Manager aus bereits gelesenem Text (Review T23-01: das Gate
+    hasht und parst dieselben Bytes; hier wird nicht von der Platte gelesen)."""
     namen: Dict[str, str] = {}
-    with names_csv.open(encoding="utf-8") as f:
-        for zeile in csv.reader(f, delimiter=";"):
-            if len(zeile) >= 7 and zeile[0] and zeile[0] != "Name":
-                namen[zeile[0]] = zeile[6]
+    for zeile in csv.reader(io.StringIO(text), delimiter=";"):
+        if len(zeile) >= 7 and zeile[0] and zeile[0] != "Name":
+            namen[zeile[0]] = zeile[6]
     return namen
+
+
+def _lese_names(names_csv: Path) -> Dict[str, str]:
+    return _lese_names_aus_text(names_csv.read_bytes().decode("utf-8"))
 
 
 #: Semantik-Schluessel der Modellpunkt-Eingaben, wie die Fragmente sie in
@@ -379,7 +387,7 @@ def main(argv: Optional[List[str]] = None):
     if fehlend:
         return _usage(f"Datei nicht gefunden: {'; '.join(fehlend)}")
 
-    from rechner_pipeline.spez.validierung import lade_spez
+    from rechner_pipeline.spez.validierung import lade_spez_aus_bytes
 
     def _contract_fehler(code: str, message: str):
         return _finalize(build_result(
@@ -390,14 +398,16 @@ def main(argv: Optional[List[str]] = None):
         ))
 
     try:
-        spez = lade_spez(fall, args.generation)
+        # Einmal lesen: der Beleg-Hash der Spez stammt aus den Bytes, die
+        # hier geparst werden (Review T23-01).
+        spez_gelesen = lies_gehasht(spez_datei)
+        spez = lade_spez_aus_bytes(spez_gelesen.roh)
     except Exception as exc:  # Schema-Bruch der Spez ist ein Gate-Befund
         return _contract_fehler("spez", f"Spez unlesbar: {exc}")
 
     # Die Spez ist Projektion der A-Box — ohne diese Pruefung koennte eine
     # editierte Spez eine eigene Wahrheit in den Golden Master tragen.
-    from rechner_pipeline.ontologie.abox import abox_pfad
-    from rechner_pipeline.ontologie.tbox import ABox
+    from rechner_pipeline.ontologie.abox import abox_pfad, lade_aus_bytes
 
     abox_datei = abox_pfad(fall)
     abox_sha256 = ""
@@ -408,7 +418,9 @@ def main(argv: Optional[List[str]] = None):
             # Aenderung einen Hash fuer eine andere A-Box protokollieren.
             abox_roh = abox_datei.read_bytes()
             abox_sha256 = hashlib.sha256(abox_roh).hexdigest()
-            abox = ABox.model_validate_json(abox_roh)
+            # Ueber den fail-closed Lader (Review T23-02): eine A-Box ohne
+            # Versionsdeklaration gilt nicht still als aktuell.
+            abox = lade_aus_bytes(abox_roh)
         except Exception as exc:
             return _contract_fehler("abox", f"A-Box unlesbar: {exc}")
         from rechner_pipeline.spez.validierung import validate_spez
@@ -426,7 +438,8 @@ def main(argv: Optional[List[str]] = None):
             "Spez nicht als Projektion pruefbar",
         )
 
-    namen = _lese_names(names_csv)
+    names_gelesen = lies_gehasht(names_csv)
+    namen = _lese_names_aus_text(names_gelesen.text())
     generation = next(
         (g for g in abox.generationen if g.id == args.generation), None)
     quellnamen = dict(generation.quellnamen) if generation is not None else {}
@@ -499,14 +512,27 @@ def main(argv: Optional[List[str]] = None):
         return _contract_fehler("vorverdichtung", str(exc))
     praefix = blatt.stamm
 
-    expected = load_expected(vorverdichtung)
+    # Erwartungswerte GENAU EINMAL lesen (Review T23-01): GM-Loader,
+    # Rohskalare und Beleg-Hash stammen aus denselben Bytes — vorher wurde
+    # scalar.json dreimal und table_values.csv zweimal getrennt gelesen.
+    # Der Vergleich nutzt ohnehin nur das Praefix des Kalkulationsblatts;
+    # andere Praefixe im Ordner gingen nie ins Urteil ein.
+    scalar_pfad = vorverdichtung / f"{praefix}_scalar.json"
+    tabelle_pfad = vorverdichtung / f"{praefix}_table_values.csv"
+    scalar_gelesen = lies_gehasht(scalar_pfad) if scalar_pfad.is_file() else None
+    tabelle_gelesen = (
+        lies_gehasht(tabelle_pfad) if tabelle_pfad.is_file() else None
+    )
+    expected = load_expected_aus(
+        {praefix: scalar_gelesen.text()} if scalar_gelesen else {},
+        {praefix: tabelle_gelesen.text()} if tabelle_gelesen else {},
+    )
     erwartete_skalare = expected["scalars"].get(praefix, {})
     # Der GM-Loader floatet alle Skalare (Strings -> None); fuer die
     # PARAMETER-Pruefungen (Tafel!) brauchen wir die Rohwerte.
-    roh_skalare: Dict[str, Any] = {}
-    roh_pfad = vorverdichtung / f"{praefix}_scalar.json"
-    if roh_pfad.is_file():
-        roh_skalare = json.loads(roh_pfad.read_text(encoding="utf-8"))
+    roh_skalare: Dict[str, Any] = (
+        json.loads(scalar_gelesen.text()) if scalar_gelesen else {}
+    )
     # Erwartungs-Skalare dreiteilen: Rechenergebnis / Parametrierung /
     # nicht zuordenbar (AUSGEWIESEN, nie still verworfen).
     parameter_pruefungen: List[dict] = []
@@ -648,16 +674,24 @@ def main(argv: Optional[List[str]] = None):
             # Stabiler Rollenschluessel: A-M4 kann ohne Pfadheuristik den
             # SHA der tatsaechlich geparsten A-Box pruefen.
             "abgeleitet/abox/abox.json": abox_sha256,
-            **hash_files(
+            # Die uebrigen Eingaben tragen den Hash der Bytes, die oben
+            # geparst wurden (Review T23-01) — keine zweite Lesung.
+            **hashes_von(
                 [
-                    names_csv,
-                    spez_datei,
-                    vorverdichtung / f"{praefix}_scalar.json",
-                    vorverdichtung / f"{praefix}_table_values.csv",
-                    Path(__file__).resolve().parent.parent
-                    / "kern"
-                    / "tafeln.xml",
+                    g for g in (
+                        names_gelesen, spez_gelesen,
+                        scalar_gelesen, tabelle_gelesen,
+                    )
+                    if g is not None
                 ],
+                base=repo_root,
+            ),
+            # tafeln.xml ist Quellcode des Kerns: er liest sie ueber seinen
+            # eigenen Kanal, und der Systemstand (quellcode_sha256) bindet
+            # sie ohnehin — benannte Reichweitengrenze, keine zweite Lesung
+            # einer Fall-Eingabe.
+            **hash_files(
+                [Path(__file__).resolve().parent.parent / "kern" / "tafeln.xml"],
                 base=repo_root,
                 missing_ok=True,
             ),

@@ -46,3 +46,13 @@ nicht überlappen — ein Tag verkauft je Produkt genau eine Generation;
 die Config prüft das. Die Werte für 2025 sind **vorläufig** (offene
 Fachentscheidungen des Konzepts, Abschnitt 10) und in der Config als
 solche markiert.
+
+`nummernkreis = k` legt den Nummernkreis einer Generation fest: Police-Nummern
+`k * 10 Mio + 1 ..`, mit festen Abschnitten fuer Batch, Jahresneuzugang und
+Tagesneugeschaeft; auch die Seeds der Erzeuger haengen daran. Er ist eine
+Eigenschaft der Generation, nicht ihrer Position in der Datei (Review T22-09:
+vorher aenderte eine umsortierte Liste die Identitaet jeder Police und damit
+jede Ereignishistorie). Entweder alle Generationen tragen ihn oder keine; ohne
+ihn gilt die Position wie in der Erstfassung. `bestand_gesamt.toml` traegt ihn
+explizit in der bisherigen Reihenfolge, die bestehenden Bestaende sind damit
+bitidentisch.

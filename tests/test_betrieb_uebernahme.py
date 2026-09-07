@@ -89,14 +89,55 @@ def _zugangsstand(ziel: Path) -> None:
     write_portfolio(ledger, ziel / "ledger.parquet")
 
 
-def _fall(wurzel: Path, name: str = "probe-uebernahme") -> Path:
+def am4_snapshot(fall_name: str, *, gate: str = "A-M4", entscheid: str = "angenommen") -> dict:
+    """Ein strukturell gueltiger P9-Snapshot (Schema 6, Selbsthash), wie ihn
+    das Gate schreibt — die Signatur ist erfunden, sie prueft hier niemand.
+    (Schema 7 mit Schluesselklasse kommt mit dem Architektur-Strang.)"""
+    from rechner_pipeline.models.schemas import p9_snapshot_sha256
+
+    daten = {
+        "schema_version": 6, "command": "gate_entscheid", "gate_version": "0.6.0",
+        "gate": gate, "entscheid": entscheid, "entscheider": "Verantwortlicher Aktuar",
+        "rolle": "mensch", "begruendung": "Controlling bestanden",
+        "fall": fall_name,
+        "artefakt_hashes": {"eingang.json": "ab" * 32,
+                            "abgeleitet/abox/abox.json": "cd" * 32},
+        "system": {"branch": "main", "commit": "abc1234", "dirty": "nein",
+                   "quellcode_sha256": "ef" * 32},
+        "vorgaenger": [], "entschieden_am": "2026-01-01T10:00:00+00:00",
+        "fall_scope": "bestand",
+        "pflichtbelege": {"pb1_ledger": ["ab" * 32]},
+        "zeichnung": {"rolle": "mensch", "ordnung_sha256": "cd" * 32},
+        "freigabe": {"schluessel_sha256": "cd" * 32, "signatur": "ef" * 32,
+                     "verfahren": "hmac-sha256-v1"},
+    }
+    if gate == "A-M4":
+        daten["pk1_belege"] = {}
+    if entscheid != "angenommen":
+        del daten["freigabe"]          # nur Annahmen tragen eine Freigabe
+    daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
+    return daten
+
+
+def _fall(wurzel: Path, name: str = "probe-uebernahme", *, snapshot: "dict | None | str" = "echt") -> Path:
+    """Ein Fall mit Zugangsstand und (Standard) einem strukturell gueltigen
+    A-M4-Snapshot; ``snapshot=None`` legt keinen an, ein Dict wird so
+    geschrieben, wie es ist (Manipulationsproben)."""
     fall = wurzel / name
     (fall / "abgeleitet" / "diagnostics").mkdir(parents=True)
+    (fall / "entscheide").mkdir()
     (fall / "fall.json").write_text(json.dumps({"name": name, "schema_version": 1}), encoding="utf-8")
-    (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
-        json.dumps({"summary": {"snapshot_sha256": "ab" * 32}}), encoding="utf-8")
+    if snapshot is not None:
+        daten = am4_snapshot(name) if snapshot == "echt" else snapshot
+        (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
+            json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+        (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
+            json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}), encoding="utf-8")
     _zugangsstand(fall / "abgeleitet" / "bestand")
     return fall
+
+
+ECHTER_SHA = None  # wird je Test aus dem Snapshot gelesen
 
 
 @pytest.fixture()
@@ -111,7 +152,11 @@ def test_eingang_wird_registriert_und_ist_unantastbar(eingang):
     stand, fall, ziel = eingang
     daten = json.loads((ziel / "eingang.json").read_text(encoding="utf-8"))
     assert daten["fall"] == "probe-uebernahme" and daten["stichtag"] == "2026-01-01"
-    assert daten["snapshot_sha256"] == "ab" * 32
+    assert daten["snapshot_sha256"] == am4_snapshot("probe-uebernahme")["snapshot_sha256"]
+    # Schema 6 fuehrt keine Schluesselklasse — das steht dann so da.
+    assert daten["zeichnung"]["schluesselklasse"] == "nicht ausgewiesen"
+    assert daten["zeichnung"]["rolle"] == "mensch"
+    assert daten["zeichnung"]["signatur_verifiziert"] is False
     assert set(daten["dateien"]) == {"bestand.parquet", "historie.parquet", "ledger.parquet"}
     if os.name != "nt":
         for datei in ziel.iterdir():
@@ -172,10 +217,12 @@ def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
     assert zeile["uebernommen"] is True and zeile["pb1"]["urteil"] == "gruen"
     [u] = zeile["uebernahmen"]
     assert (u["fall"], u["stichtag"], u["vertraege"], u["snapshot_sha256"]) == (
-        "probe-uebernahme", "2026-01-01", 3, "ab" * 32)
-    # Der Fall des Fixtures hat keinen Snapshot: die Zeichnung ist "nicht
-    # ausgewiesen" — benannt, nicht leer (B8).
-    assert u["zeichnung"]["rolle"] == "nicht ausgewiesen"
+        "probe-uebernahme", "2026-01-01", 3, am4_snapshot("probe-uebernahme")["snapshot_sha256"])
+    # Der Fall des Fixtures traegt einen strukturell geprueften A-M4-Snapshot
+    # (T22-06): Rolle aus dem Snapshot, Schluesselklasse in Schema 6 nicht
+    # gefuehrt — benannt, nicht leer (B8); die Signatur prueft niemand.
+    assert u["zeichnung"]["rolle"] == "mensch"
+    assert u["zeichnung"]["schluesselklasse"] == "nicht ausgewiesen"
     assert u["zeichnung"]["signatur_verifiziert"] is False
     gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
     assert {7_000_001, 7_000_002, 7_000_003} <= set(gesamt["police_id"])
@@ -237,3 +284,110 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
         encoding="utf-8")
     code, zeile = tageslauf(aus, dt.date(2026, 2, 2))
     assert code == EXIT_OK and "teilbestaende" not in zeile["abschluesse"][1]
+
+
+def test_ein_abgebrochenes_anlegen_hinterlaesst_keinen_halben_eingang(tmp_path, monkeypatch):
+    """Review T22-03: Ein halb geschriebener Eingang blockierte dauerhaft
+    ("existiert bereits"). Jetzt entsteht er neben seinem Namen und wird in
+    einem Zug umbenannt; der Rest eines Abbruchs zaehlt nicht als Eingang.
+    Mutationsprobe: direkt in ziel schreiben -> zweiter Versuch scheitert."""
+    fall = _fall(tmp_path)
+    stand = tmp_path / "daten"
+    aufrufe = {"n": 0}
+    echt = ueb.sha256_bytes
+
+    def _bricht_beim_zweiten(daten):
+        aufrufe["n"] += 1
+        if aufrufe["n"] == 2:
+            raise OSError("Platte weg")
+        return echt(daten)
+
+    monkeypatch.setattr(ueb, "sha256_bytes", _bricht_beim_zweiten)
+    with pytest.raises(OSError):
+        ueb.eingang_anlegen(stand, fall, STICHTAG)
+    monkeypatch.undo()
+    ziel = stand / "uebernahme" / "probe-uebernahme"
+    assert not ziel.exists()
+    assert (stand / "uebernahme" / "probe-uebernahme.neu").exists()
+    # Der zweite Versuch gelingt und raeumt den Rest weg.
+    assert ueb.eingang_anlegen(stand, fall, STICHTAG) == ziel
+    assert ziel.is_dir() and not (stand / "uebernahme" / "probe-uebernahme.neu").exists()
+
+
+
+# --------------------------------------------------------------------------- #
+# Review T22-06: Der Uebernahmeweg glaubt keinem erfundenen Snapshot
+# --------------------------------------------------------------------------- #
+
+def test_ohne_am4_snapshot_gibt_es_keine_uebernahme(tmp_path):
+    """Nachweis des Reviews: Snapshot optional, takeover_gaps [].
+    Mutationsprobe: pruefe_am4_snapshot bei None durchwinken -> rot."""
+    fall = _fall(tmp_path, snapshot=None)
+    with pytest.raises(ueb.UebernahmeError, match="kein A-M4-Snapshot"):
+        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+    assert not (tmp_path / "daten" / "uebernahme").exists()
+
+
+def test_ein_erfundener_snapshot_faellt_an_der_selbstadressierung(tmp_path):
+    """Nachweis des Reviews: frei erfundene Datei -> read_gate KEIN-GATE,
+    Uebernahme trotzdem angelegt. Mutationsprobe: den Hash-Vergleich in
+    pruefe_am4_snapshot entfernen -> rot."""
+    daten = am4_snapshot("probe-uebernahme")
+    daten["entscheider"] = "jemand anderes"          # Inhalt geaendert, Hash nicht
+    fall = _fall(tmp_path, snapshot=daten)
+    with pytest.raises(ueb.UebernahmeError, match="Selbstadressierung|snapshot_sha256"):
+        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+
+
+@pytest.mark.parametrize("gate, entscheid, stichwort", [
+    ("A-M1", "angenommen", "nicht A-M4"),
+    ("A-M4", "abgelehnt", "ANGENOMMENE"),
+])
+def test_nur_eine_angenommene_migrationsabnahme_begruendet_die_uebernahme(tmp_path, gate, entscheid, stichwort):
+    daten = am4_snapshot("probe-uebernahme", gate=gate, entscheid=entscheid)
+    fall = _fall(tmp_path, snapshot=daten)
+    # Die Datei liegt unter dem A-M4-Namen, damit der Weg bis zur Pruefung fuehrt.
+    with pytest.raises(ueb.UebernahmeError, match=stichwort):
+        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=daten["snapshot_sha256"])
+
+
+def test_der_snapshot_muss_zum_fall_gehoeren(tmp_path):
+    daten = am4_snapshot("ein-anderer-fall")
+    fall = _fall(tmp_path, snapshot=daten)
+    with pytest.raises(ueb.UebernahmeError, match="gehoert zum Fall"):
+        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+
+
+
+def test_die_verankerung_wandert_in_den_stand_und_wird_als_nicht_angewandt_ausgewiesen(tmp_path):
+    """Review T22-11 (Stufe 1): Der Eingang registrierte und hashte
+    verankerung.parquet, der Tageslauf liess sie fallen — weder im Stand
+    noch im Protokoll war der Bedeutungsverlust sichtbar. Jetzt liegt sie
+    im Stand (gehasht im Manifest), das Protokoll weist sie als registriert
+    und NICHT angewandt aus, die Seite fuehrt die Luecke. Die fachliche
+    Anwendung selbst ist Stufe 2 (Fachentscheid offen).
+    Mutationsprobe: das Durchreichen in _stand_bauen entfernen -> rot."""
+    from rechner_pipeline.bestand.manifest import lies_manifest
+    from rechner_pipeline.betrieb import seite as st
+    from rechner_pipeline.betrieb.tageslauf import Ablage, EXIT_OK, tageslauf
+    from rechner_pipeline.models.bestand import VERANKERUNG_SPALTEN
+
+    fall = _fall(tmp_path)
+    quelle = fall / "abgeleitet" / "bestand"
+    verankerung = pd.DataFrame([{"police_id": 7_000_001, "monate_ta": 60, "zustand_ta": "POL",
+                                 "verweildauer_ta": 0, "dk_ta": 10_000.0}])
+    verankerung = verankerung[[s for s, _ in VERANKERUNG_SPALTEN]].astype(dict(VERANKERUNG_SPALTEN))
+    write_portfolio(verankerung, quelle / "verankerung.parquet")
+    stand = tmp_path / "daten"
+    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ablage = Ablage(stand)
+    ablage.configs.mkdir(parents=True, exist_ok=True)
+    ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
+    code, zeile = tageslauf(ablage, dt.date(2026, 1, 15))
+    assert code == EXIT_OK, zeile.get("fehler")
+    assert zeile["verankerung"]["registriert"] == 1 and zeile["verankerung"]["angewandt"] is False
+    assert (ablage.stand / "verankerung.parquet").is_file()
+    assert "verankerung.parquet" in " ".join(lies_manifest(ablage.stand)["ausgaben"].keys()) \
+        or any("verankerung" in k for k in lies_manifest(ablage.stand)["ausgaben"])
+    luecken = st.luecken(st.stand_modell(ablage))
+    assert any("Verankerung" in l["was"] for l in luecken)

@@ -20,7 +20,7 @@ from typing import List, Set
 from rechner_pipeline.ontologie.aussage import Zustand
 from rechner_pipeline.ontologie.merge import werte_gleich
 from rechner_pipeline.ontologie.tbox import TBOX_VERSION, ABox, PFLICHT_PARAMETER
-from rechner_pipeline.spez.schema import TarifSpez
+from rechner_pipeline.spez.schema import SPEZ_VERSION, TarifSpez
 
 SPEZ_DATEI = "spez.json"
 
@@ -41,14 +41,43 @@ def speichere_spez(spez: TarifSpez, fall: Path) -> Path:
     return pfad
 
 
+def lade_spez_aus_bytes(roh: bytes) -> TarifSpez:
+    """Spez aus bereits gelesenen Bytes (Review T23-01): Ein Gate, das die
+    Spez hasht UND parst, tut beides aus denselben Bytes.
+
+    Fail-closed bei fehlender Versionsdeklaration (Review T23-02): Der
+    Modell-Default gilt fuer die Konstruktion, nie fuer die Deserialisierung
+    — eine Spez-Datei ohne ``spez_version``/``tbox_version`` gilt nicht
+    still als aktuell (siehe ontologie.abox.lade_aus_bytes).
+    """
+    daten = json.loads(roh)
+    if not isinstance(daten, dict):
+        raise ValueError("Spez: kein JSON-Objekt")
+    fehlend = [k for k in ("spez_version", "tbox_version") if k not in daten]
+    if fehlend:
+        raise ValueError(
+            f"Spez ohne Versionsdeklaration ({', '.join(fehlend)}) — aus der "
+            "A-Box neu erzeugen (spez.erzeugen), nicht still als aktuell "
+            "einstufen"
+        )
+    return TarifSpez.model_validate_json(roh)
+
+
 def lade_spez(fall: Path, generation: str) -> TarifSpez:
-    return TarifSpez.model_validate_json(
-        spez_pfad(fall, generation).read_text(encoding="utf-8")
-    )
+    return lade_spez_aus_bytes(spez_pfad(fall, generation).read_bytes())
 
 
 def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
     fehler: List[str] = []
+    # Die Spez-Datei muss das geltende Spez-Schema tragen (Review T23-02:
+    # der Default machte "nicht deklariert" und "aktuell" ununterscheidbar,
+    # und verglichen wurde spez_version bisher nirgends).
+    if spez.spez_version != SPEZ_VERSION:
+        fehler.append(
+            f"spez_version: Spez traegt {spez.spez_version!r}, geltend ist "
+            f"{SPEZ_VERSION!r} — die Spez ist aus der A-Box neu zu erzeugen "
+            "(spez.erzeugen)"
+        )
     # Spez, A-Box und Code muessen dieselbe T-Box sprechen (Review T22-02).
     if spez.tbox_version != abox.tbox_version or spez.tbox_version != TBOX_VERSION:
         fehler.append(
