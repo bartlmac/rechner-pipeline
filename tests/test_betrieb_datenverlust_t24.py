@@ -178,16 +178,41 @@ def test_umgesetzter_stand_symlink_nach_aussen_loescht_kein_backup(tmp_path):
             (backup / name.name).write_bytes(name.read_bytes())
     ablage.stand.unlink()
     ablage.stand.symlink_to(backup)
-    rc = tageslauf(ablage, dt.date(2026, 2, 4))[0]
-    assert rc != EXIT_OK
+    staende_vorher = sorted(p.name for p in ablage.wurzel.glob(f"{tl.STAND_DIR}-*"))
+    assert echter_stand.name in staende_vorher
+    # Der Lauf bricht VOR dem ersten Loeschen ab — schon die Aufraeumung
+    # verwaister Staende verweigert, weil ihre Praemisse (Symlink zeigt in
+    # die Wurzel) nicht steht (Nachmessung T24-07).
+    with pytest.raises(TageslaufError, match="verweigert"):
+        tageslauf(ablage, dt.date(2026, 2, 4))
     assert backup.exists() and (backup / "bestand.parquet").exists()
-    # Nichts getauscht: der Symlink zeigt weiter auf das Backup, kein Wedge.
+    # Nichts getauscht, NICHTS geloescht: der Symlink zeigt weiter auf das
+    # Backup, und der bisherige Stand in der Ablage ist noch da — sonst
+    # waere der in der Meldung genannte Ausweg unmoeglich.
     assert ablage.stand.resolve() == backup.resolve()
-    # Handreparatur laut Meldung: Symlink zurueck auf den echten Stand.
+    assert echter_stand.is_dir() and (echter_stand / "bestand.parquet").is_file()
+    assert sorted(p.name for p in ablage.wurzel.glob(f"{tl.STAND_DIR}-*")) == staende_vorher
+    # Handreparatur laut Meldung: Symlink zurueck auf den echten,
+    # VORHANDENEN Stand — dann laeuft der Tag durch.
     ablage.stand.unlink()
     ablage.stand.symlink_to(echter_stand.name)
+    assert ablage.stand.resolve() == echter_stand
     assert tageslauf(ablage, dt.date(2026, 2, 4))[0] == EXIT_OK
     assert ablage.stand.resolve() != echter_stand and backup.exists()
+
+
+def test_haengender_stand_symlink_loescht_keine_staende(tmp_path):
+    """Zeigt ``stand`` ins Leere, waere jedes stand-* eine Waise. Die
+    Aufraeumung verweigert, alle Staende bleiben."""
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    staende = sorted(p.name for p in ablage.wurzel.glob(f"{tl.STAND_DIR}-*"))
+    assert staende
+    ablage.stand.unlink()
+    ablage.stand.symlink_to(f"{tl.STAND_DIR}-gibt-es-nicht")
+    with pytest.raises(TageslaufError, match="nicht vorhandenes"):
+        tageslauf(ablage, dt.date(2026, 2, 4))
+    assert sorted(p.name for p in ablage.wurzel.glob(f"{tl.STAND_DIR}-*")) == staende
 
 
 # --------------------------------------------------------------------------- #

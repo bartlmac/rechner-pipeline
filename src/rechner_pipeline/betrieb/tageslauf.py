@@ -570,8 +570,31 @@ def _uebernehmen(ablage: Ablage, kennung: str) -> None:
 
 def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
     """Versionierte Standverzeichnisse, auf die der Symlink nicht zeigt
-    (Reste eines abgebrochenen Tauschs), aufraeumen — vor dem Lauf."""
-    aktuell = ablage.stand.resolve() if ablage.stand.is_symlink() else None
+    (Reste eines abgebrochenen Tauschs), aufraeumen — vor dem Lauf.
+
+    Die Praemisse dieser Aufraeumung ist, dass ``stand`` auf ein
+    Standverzeichnis unmittelbar in der Wurzel zeigt. Steht sie nicht —
+    Symlink von Hand nach aussen gesetzt oder haengend —, waere JEDES
+    ``stand-*`` in der Wurzel eine "Waise", und die Aufraeumung loeschte den
+    einzigen Stand der Ablage, waehrend die spaetere Wache in
+    ``_uebernehmen`` als Ausweg noch auf ihn verweist (Nachmessung T24-07
+    durch die merge-session, reproduziert auf main). Dann wird NICHTS
+    entfernt: Abbruch vor dem ersten Loeschen, mit demselben Ausweg.
+    """
+    aktuell: Optional[Path] = None
+    if ablage.stand.is_symlink():
+        if not ablage.stand.exists():
+            raise TageslaufError(
+                f"verweigert: {ablage.stand} zeigt auf ein nicht vorhandenes "
+                f"Verzeichnis ({os.readlink(ablage.stand)}) — nichts aufgeraeumt. "
+                f"Ausweg: den Symlink von Hand auf ein vorhandenes "
+                f"{STAND_DIR}-<kennung>-Verzeichnis in der Ablage setzen, dann den "
+                "Lauf erneut starten"
+            )
+        aktuell = ablage.stand.resolve()
+        fehler = _ablageverzeichnis_fehler(ablage, aktuell)
+        if fehler:
+            raise TageslaufError(f"Aufraeumen nicht begonnen — gefuehrter Stand: {fehler}")
     for kandidat in ablage.wurzel.glob(f"{STAND_DIR}-*"):
         if kandidat.is_dir() and (aktuell is None or kandidat.resolve() != aktuell):
             _entferne_ablageverzeichnis(ablage, kandidat)
