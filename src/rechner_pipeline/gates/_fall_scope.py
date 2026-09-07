@@ -14,9 +14,10 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from rechner_pipeline import fall as fall_mod
+from rechner_pipeline.models.manifest import GeleseneDatei, lies_gehasht
 from rechner_pipeline.gates._provenienz import systemstand
 
 BESTANDS_BELEGROLLEN = ("pb1_ledger", "migrationssuite", "abnahmebericht")
@@ -30,6 +31,39 @@ def sha256_datei(pfad: Path) -> str:
         for block in iter(lambda: datei.read(1 << 20), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def stichtage_fehler(erster: _dt.date, zweiter: _dt.date) -> Optional[str]:
+    """Die zwei Bestands-Stichtage des Migrationscontrollings. Leer = ok.
+
+    Chronologie war schon Pflicht. Neu (Entscheid des Maintainers
+    2026-09-07 zu Review T23-05): Das Migrationscontrolling verlangt ein
+    vollstaendiges Bewegungsjahr NACH der Uebernahme — Stichtag 2 liegt
+    mindestens am 1. Januar des Folgejahres von Stichtag 1. Das ist
+    bewusst STRENGER als der A-M4-Zaehler ``bewegungsjahre > 0``: Das
+    Bewegungskonto beginnt im Jahr von ``min(Zugang) - 1 Tag`` (Periode
+    ``(1.1.J, 1.1.J+1]``, ausgewiesen wenn ``1.1.J+1 <= Horizont``); bei
+    einer Uebernahme zum 1. Januar erfuellt deshalb schon ein entartetes
+    VORjahr, das nur die Zugangsbuchung am Rand enthaelt, den Zaehler —
+    zwei Stichtage im selben Kalenderjahr kaemen dort durch. Die Regel hier
+    ist nicht die Vorverlegung des Zaehlers, sondern die fachliche Aussage,
+    die der Zaehler nur naeherungsweise misst; sie darf nicht an den
+    Zaehler angepasst werden (Fund der merge-session).
+    """
+    if zweiter <= erster:
+        return (
+            "Bestands-Stichtag 2 muss nach Stichtag 1 liegen — die "
+            "Migrationssuite prueft zwei chronologische Staende"
+        )
+    jahreswechsel = _dt.date(erster.year + 1, 1, 1)
+    if zweiter < jahreswechsel:
+        return (
+            f"Bestands-Stichtag 2 ({zweiter.isoformat()}) muss mindestens der "
+            f"1. Januar des Folgejahres von Stichtag 1 sein ({jahreswechsel.isoformat()}) "
+            "— das Migrationscontrolling verlangt ein vollstaendiges Bewegungsjahr, "
+            "und das Bewegungskonto weist nur ganze Kalenderjahre aus"
+        )
+    return None
 
 
 def scope_bindung(
@@ -53,11 +87,9 @@ def scope_bindung(
         raise fall_mod.FallFehler(
             f"Bestands-Stichtage muessen ISO-Daten sein: {exc}"
         ) from exc
-    if zweiter <= erster:
-        raise fall_mod.FallFehler(
-            "Bestands-Stichtag 2 muss nach Stichtag 1 liegen — die "
-            "Migrationssuite prueft zwei chronologische Staende"
-        )
+    stichtag_fehler = stichtage_fehler(erster, zweiter)
+    if stichtag_fehler:
+        raise fall_mod.FallFehler(stichtag_fehler)
     eingang = fall / "eingang.json"
     abox = fall / "abgeleitet" / "abox" / "abox.json"
     fehlend = [str(pfad) for pfad in (eingang, abox) if not pfad.is_file()]
@@ -112,8 +144,9 @@ def validate_scope_bindung(bindung: Any) -> List[str]:
     else:
         try:
             parsed = [_dt.date.fromisoformat(wert) for wert in stichtage]
-            if parsed[1] <= parsed[0]:
-                fehler.append("scope_bindung.stichtage sind nicht chronologisch")
+            stichtag_fehler = stichtage_fehler(parsed[0], parsed[1])
+            if stichtag_fehler:
+                fehler.append(f"scope_bindung.stichtage: {stichtag_fehler}")
         except (TypeError, ValueError):
             fehler.append("scope_bindung.stichtage enthaelt ein ungueltiges ISO-Datum")
     return fehler
@@ -124,8 +157,17 @@ def bestands_belegrollen() -> List[str]:
     return list(BESTANDS_BELEGROLLEN)
 
 
-def artefakt_eintrag(fall: Path, pfad: Path) -> Dict[str, str]:
-    """Einen regulaeren Belegpfad innerhalb des Falls kanonisch hashen."""
+def artefakt_eintrag(
+    fall: Path, pfad: Path, *, sha256: str | None = None,
+) -> Dict[str, str]:
+    """Einen regulaeren Belegpfad innerhalb des Falls kanonisch binden.
+
+    ``sha256`` ist der Hash der Bytes, die das Gate bereits gelesen hat
+    (Review T23-01): Wer die Datei fuer input_hashes schon gelesen hat,
+    reicht diesen Hash durch, statt sie hier ein zweites Mal zu lesen —
+    zwei getrennt gelesene Hashes derselben Datei koennten auseinanderlaufen.
+    Ohne Angabe wird die Datei hier gelesen.
+    """
     fall = fall.resolve()
     pfad = pfad.resolve()
     try:
@@ -134,15 +176,24 @@ def artefakt_eintrag(fall: Path, pfad: Path) -> Dict[str, str]:
         raise ValueError(f"Bestands-Pflichtbeleg liegt ausserhalb des Falls: {pfad}") from exc
     if not pfad.is_file():
         raise ValueError(f"Bestands-Pflichtbeleg fehlt: {pfad}")
-    return {"pfad": relativ.as_posix(), "sha256": sha256_datei(pfad)}
+    return {
+        "pfad": relativ.as_posix(),
+        "sha256": sha256 if sha256 is not None else sha256_datei(pfad),
+    }
 
 
-def pruefe_artefakt_eintrag(
+def lies_artefakt_eintrag(
     fall: Path,
     rolle: str,
     eintrag: Any,
-) -> tuple[Path | None, List[str]]:
-    """Fallpfad, SHA-Form und aktuelle Bytes eines Belegeintrags pruefen."""
+) -> tuple[GeleseneDatei | None, List[str]]:
+    """Fallpfad, SHA-Form und aktuelle Bytes eines Belegeintrags pruefen —
+    und die gelesenen Bytes ZURUECKGEBEN.
+
+    Der Aufrufer prueft den Beleg danach inhaltlich (Ledger, Suite, Spec,
+    Bericht) aus genau diesen Bytes; ein zweiter Lesepfad, der andere Bytes
+    prueft als hier gehasht wurden, entfaellt (Review T23-01).
+    """
     if not isinstance(eintrag, dict) or set(eintrag) != {"pfad", "sha256"}:
         return None, [f"{rolle} muss exakt pfad und sha256 enthalten"]
     pfad_roh = eintrag.get("pfad")
@@ -173,7 +224,18 @@ def pruefe_artefakt_eintrag(
         ]
     if not pfad.is_file():
         return None, [f"{rolle}: {pfad_roh} fehlt"]
-    gefunden = sha256_datei(pfad)
-    if gefunden != erwartet:
-        return None, [f"{rolle}: SHA-256 {gefunden} statt {erwartet}"]
-    return pfad, []
+    gelesen = lies_gehasht(pfad)
+    if gelesen.sha256 != erwartet:
+        return None, [f"{rolle}: SHA-256 {gelesen.sha256} statt {erwartet}"]
+    return gelesen, []
+
+
+def pruefe_artefakt_eintrag(
+    fall: Path,
+    rolle: str,
+    eintrag: Any,
+) -> tuple[Path | None, List[str]]:
+    """Wie :func:`lies_artefakt_eintrag`, nur der Pfad — fuer Aufrufer, die
+    die Bytes nicht weiterverarbeiten."""
+    gelesen, fehler = lies_artefakt_eintrag(fall, rolle, eintrag)
+    return (gelesen.pfad if gelesen is not None else None), fehler

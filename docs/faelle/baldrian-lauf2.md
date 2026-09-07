@@ -6,11 +6,22 @@ zweiter Migrationslauf. Der Lauf ersetzt den ersten Durchgang
 vollstaendig; er wurde auf einer neuen, umfangreicheren Lieferung der
 abgebenden Gesellschaft durchgefuehrt.
 
+**Vorfuehrfall.** Pfefferminzia und Baldrian sind erfundene Unternehmen,
+der Bestand ist synthetisch erzeugt. Die zeichnenden Rollen wurden in
+diesem Lauf von KI-Sitzungen im Mandat des Maintainers besetzt und haben
+mit einem Simulationsschluessel gezeichnet (Abschnitt 7). Dieser
+Bericht ist ein Erzeugnis der Vorfuehrung, kein Dokument eines realen
+Versicherers.
+
 ## 1 Ergebnis
 
 Der Migrationsfall ist vollstaendig geprueft und abgenommen. Alle
-fuenf Abnahme-Gates wurden vom Verantwortlichen Aktuar auf einem
-einzigen, unveraenderten Systemstand gezeichnet:
+fuenf Abnahme-Gates wurden von der Rolle des Verantwortlichen Aktuars
+auf demselben Systemstand gezeichnet (Stand 4b1abf0; die Quelltext-
+Pruefsumme jedes Snapshots entspricht diesem Stand). Waehrend des
+Laufs wurden 23 Korrekturen am System vorgenommen und die betroffenen
+Gates jeweils neu gezeichnet; der Umbaubericht des Falls weist sie aus
+(Abschnitt 7).
 
 | Gate | Gegenstand | Ergebnis |
 |---|---|---|
@@ -144,3 +155,41 @@ Einziger fachlich offener Punkt ist die vorstehende
 Falsifizierbarkeits-Auflage; sie ist kein Abnahmehindernis und in der
 Tarifplan-Ausgestaltung des Falls als Pflicht-Testpunkt kuenftiger
 Verlaufspruefungen festgehalten.
+
+## 7 Zeichnende Rollen, Mandate und eingesetzte Systeme
+
+Dieser Abschnitt legt offen, wer in diesem Lauf entschieden hat und
+womit — er gehoert in jeden Bericht einer Vorfuehrung (ADR-018).
+
+**Rollen und Besetzung.** Vorbereitet wurde der Fall von Agentenrollen
+des KI-Tools; entschieden und gezeichnet hat die Rolle des
+Verantwortlichen Aktuars der Pfefferminzia. Diese Rolle war im Lauf
+nicht durch eine natuerliche Person besetzt, sondern durch eine
+KI-Sitzung, die im Mandat des Maintainers handelte und die Abnahmen
+nach Pruefung der Vorlagen zeichnete. Alle sechzehn Entscheid-
+Snapshots des Falls (fuenf geltende und elf Vorgaenger aus der
+Neuzeichnung nach Korrekturen) tragen die Rolle in der Schreibweise
+des damaligen Vier-Rollen-Modells (``mensch``, Entscheider
+``plv-aktuar``); die heutige Schreibweise waere
+``mensch/verantwortlicher-aktuar`` mit der Schluesselklasse
+``simulation``.
+
+**Schluessel.** Gezeichnet wurde mit einem Simulationsschluessel,
+Fingerabdruck ``162817c937c33d0a…``. Er weist die Rolle nach, nicht die
+Identitaet einer Person. Die Snapshots sind mit HMAC-SHA-256 signiert
+und bleiben gueltig; sie werden nicht nachsigniert. Wer sie prueft,
+erkennt die Simulation am Fingerabdruck und an der Schema-Version 6.
+
+**Systemaenderungen waehrend des Laufs.** Das KI-Tool ist waehrend
+eines Falls eine Konstante; dieser Lauf lag in der ersten Ausbaustufe,
+in der Korrekturen am System erlaubt und vom Maintainer abgenommen
+wurden. 23 Korrekturen (Kern-Verfahren, Pruef-Engines, Gates,
+Bestandsfuehrung) sind im Umbaubericht des Falls einzeln begruendet;
+nach jeder wurden die betroffenen Gates auf dem neuen Stand neu
+gezeichnet, zuletzt auf 4b1abf0.
+
+**Was dieser Bericht nicht leistet.** Er ist keine Abnahme durch eine
+natuerliche Person und kein Dokument eines realen Versicherers. Die
+Nachrechenbarkeit gilt fuer den lokalen Fall-Arbeitsbereich; wer nur
+das Repository hat, prueft die Rechenkette ueber die versionierten
+Fixturen, nicht die konkreten Snapshots.

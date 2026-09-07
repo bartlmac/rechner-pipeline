@@ -43,11 +43,15 @@ from rechner_pipeline.gates import (
     migrationssuite_lauf,
     transformation_anwenden,
 )
+from tests.e2e_fixture import zellen_config
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "baldrian_e2e"
 
 GENERATION = "klv/tg2015"
+# Wert der Stammspalte tarif_generation (Name der Generation in der
+# PLV-Config) — nicht der Ontologie-Knoten; so lief auch der echte Lauf 2.
+TARIF_GENERATION = "TG2015"
 STICHTAG_1 = "2026-01-01"
 STICHTAG_2 = "2027-01-01"
 ABZUG_1 = "baldrian_bestandsabzug_2026-01-01.csv"
@@ -115,7 +119,7 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     bestand = fall / "abgeleitet" / "bestand"
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
-        "--tarif-generation", GENERATION, "--stichtag", STICHTAG_1,
+        "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
         "--vorgeschichte", METADATEN,
         "--generation-spez", GENERATION,
         "--out-dir", str(bestand),
@@ -131,12 +135,32 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ]) == 0, "Transformationsergebnis mit Zielbindung"
 
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    assert bestand_validate.main([
+    # Vollprofil (Review T22-01): Journal, Ledger, Merkmale (Tarifzellen),
+    # die PLV-Config mit der uebernommenen Generation und der Horizont —
+    # nur so prueft P-B1 Bewegungs-Identitaet, Ledger-Semantik und die
+    # Kern-Herleitung jeder Buchung, die A-M4 im Bestands-Scope verlangt.
+    # Die Config der Kern-Herleitung ist die dieses Falls: Die Uebernahme
+    # bucht die beitragsfreien Summen aus der Spez des Falls, und der
+    # Zellen-Abschnitt, den sie dazu schreibt (generation-zellen.toml),
+    # traegt genau diese Grundlagen. Die PLV-Config des Repos gehoert zum
+    # zweiten Lauf (andere Lieferung) und wuerde hier andere Betraege
+    # herleiten — das ist kein Fehler des Bestands, sondern eine fremde
+    # Parametrierung.
+    config_pfad = fall / "abgeleitet" / "bestand-config.toml"
+    config_pfad.write_text(
+        _zellen_config((bestand / "generation-zellen.toml").read_text("utf-8")),
+        encoding="utf-8")
+    pb1 = bestand_validate.main([
         "--portfolio", str(bestand / "bestand.parquet"),
         "--historie", str(bestand / "historie.parquet"),
+        "--ledger", str(bestand / "ledger.parquet"),
+        "--merkmale", str(bestand / "merkmale.parquet"),
+        "--config", str(config_pfad),
+        "--bis", STICHTAG_1,
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
-    ]).exit_code == 0, "Gate P-B1 auf dem uebernommenen Bestand"
+    ])
+    assert pb1.exit_code == 0, ("Gate P-B1 auf dem uebernommenen Bestand", pb1.errors)
 
     for abnahme, erwartung in ABNAHMEN:
         assert aktuartest_lauf.main([
@@ -188,7 +212,7 @@ def test_die_uebernahme_erzeugt_den_erwarteten_bestand(gefahrener_fall: Path):
     df = read_portfolio(bestand / "bestand.parquet")
     assert len(df) == len(policen)
     assert sorted(str(p) for p in df["police_id"]) == sorted(policen)
-    assert set(df["tarif_generation"]) == {GENERATION}
+    assert set(df["tarif_generation"]) == {TARIF_GENERATION}
     for tabelle in ("bestand", "historie", "ledger"):
         assert (bestand / f"{tabelle}.parquet").is_file()
 
@@ -400,7 +424,7 @@ def test_ohne_spez_verweigert_die_uebernahme_beitragsfreier_vertraege(
     with pytest.raises(SystemExit) as exc:
         bestand_uebernehmen.main([
             "--fall", str(gefahrener_fall), "--zeilen", str(zeilen),
-            "--tarif-generation", GENERATION, "--stichtag", STICHTAG_1,
+            "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
             "--vorgeschichte", METADATEN,
             "--out-dir", str(ziel),
         ])
@@ -456,30 +480,7 @@ def test_der_lauf_liefert_die_grundlagen_zu_seinen_zellen(gefahrener_fall: Path)
 
 def _zellen_config(abschnitt: str) -> str:
     """Den erzeugten Abschnitt in eine vollstaendige Config einbetten."""
-    kopf, sep, rest = abschnitt.partition("[[generation.zelle]]")
-    gemeinsam = "\n".join(
-        z for z in kopf.splitlines() if z and not z.startswith("#")
-    )
-    return (
-        '[meta]\nseed = 1\nbeschreibung = "Probe"\n'
-        "referenzstichtag = 2026-01-01\n\n"
-        f'[[generation]]\nname = "{GENERATION}"\nknoten = "{GENERATION}"\n'
-        "gueltig_von = 2015-01-01\ngueltig_bis = 2016-12-31\n"
-        f"sample_size = 0\nmax_endalter = 85\n{gemeinsam}\n\n"
-        "[generation.verteilungen.entry_age]\n"
-        'typ = "normal_trunc"\nmean = 40.0\nsd = 12.0\nmin = 18.0\n'
-        "max = 62.0\nround = 0\n\n"
-        '[generation.verteilungen.sex]\ntyp = "empirical_discrete"\n'
-        'values = ["M", "F"]\nprobs = [0.5, 0.5]\n\n'
-        '[generation.verteilungen.duration]\ntyp = "empirical_discrete"\n'
-        "values = [25]\nprobs = [1.0]\n\n"
-        '[generation.verteilungen.premium_duration]\n'
-        'typ = "empirical_discrete"\nvalues = [25]\nprobs = [1.0]\n\n'
-        '[generation.verteilungen.sum_insured]\ntyp = "lognormal"\n'
-        "meanlog = 11.2\nsdlog = 0.5\nround = -3\n\n"
-        '[generation.verteilungen.zahlweise]\ntyp = "empirical_discrete"\n'
-        "values = [1]\nprobs = [1.0]\n\n" + sep + rest
-    )
+    return zellen_config(abschnitt, name=TARIF_GENERATION, knoten=GENERATION)
 
 
 def test_der_uebernommene_bestand_beginnt_am_migrationsstichtag(

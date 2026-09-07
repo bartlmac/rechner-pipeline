@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from rechner_pipeline.ontologie.aussage import Zustand
-from rechner_pipeline.ontologie.tbox import ABox, PFLICHT_PARAMETER
+from rechner_pipeline.ontologie.tbox import ABOX_SCHEMA_VERSION, ABox, PFLICHT_PARAMETER, TBOX_VERSION
 
 ABOX_DATEI = "abox.json"
 
@@ -43,9 +43,34 @@ def speichere(abox: ABox, fall: Path) -> Path:
     return pfad
 
 
+def lade_aus_bytes(roh: bytes) -> ABox:
+    """A-Box aus bereits gelesenen Bytes.
+
+    Damit ein Gate Beleg-Hash und Verarbeitung aus DENSELBEN Bytes bildet
+    (Review T23-01) — es liest einmal, hasht die Bytes und parst sie hier,
+    statt die Datei fuer das Parsen ein zweites Mal zu lesen.
+
+    Fail-closed bei fehlender Versionsdeklaration (Review T23-02): Der
+    Modell-Default gilt fuer die KONSTRUKTION (eine frisch gebaute A-Box
+    spricht das aktuelle Vokabular), nie fuer die DESERIALISIERUNG — eine
+    Datei ohne ``tbox_version``/``schema_version`` wuerde sonst still als
+    aktuell eingestuft, und der Versionsvergleich der Gates liefe ins Leere.
+    """
+    daten = json.loads(roh)
+    if not isinstance(daten, dict):
+        raise ValueError("A-Box: kein JSON-Objekt")
+    fehlend = [k for k in ("schema_version", "tbox_version") if k not in daten]
+    if fehlend:
+        raise ValueError(
+            f"A-Box ohne Versionsdeklaration ({', '.join(fehlend)}) — sie "
+            "spricht kein bekanntes Vokabular; aus den Fragmenten neu "
+            "erzeugen (gates.abox_merge), nicht still als aktuell einstufen"
+        )
+    return ABox.model_validate_json(roh)
+
+
 def lade(fall: Path) -> ABox:
-    pfad = abox_pfad(fall)
-    return ABox.model_validate_json(pfad.read_text(encoding="utf-8"))
+    return lade_aus_bytes(abox_pfad(fall).read_bytes())
 
 
 def validate_abox(
@@ -59,6 +84,22 @@ def validate_abox(
     Eingang liegt, ist keine belegte Aussage.
     """
     fehler: List[str] = []
+    # Die A-Box spricht das Vokabular GENAU EINER T-Box-Version (Review
+    # T22-02): Eine A-Box mit fremder Version ist unter dem geltenden
+    # Vokabular nicht auslegbar — neu erzeugen (abox_merge) oder die
+    # T-Box-Aenderung ueber A-K1 zeichnen.
+    if abox.schema_version != ABOX_SCHEMA_VERSION:
+        fehler.append(
+            f"schema_version: A-Box-Datei traegt {abox.schema_version!r}, "
+            f"geltend ist {ABOX_SCHEMA_VERSION!r} — Datei stammt aus einem "
+            "anderen Dateischema; aus den Fragmenten neu erzeugen"
+        )
+    if abox.tbox_version != TBOX_VERSION:
+        fehler.append(
+            f"tbox_version: A-Box traegt {abox.tbox_version!r}, geltend ist "
+            f"{TBOX_VERSION!r} — A-Box aus den Fragmenten neu erzeugen "
+            "(gates.abox_merge) oder die T-Box-Aenderung ueber A-K1 zeichnen"
+        )
     gen_ids = [g.id for g in abox.generationen]
     if len(set(gen_ids)) != len(gen_ids):
         fehler.append("doppelte Generations-IDs")

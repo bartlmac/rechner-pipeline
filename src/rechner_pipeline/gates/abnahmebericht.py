@@ -90,7 +90,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from rechner_pipeline import fall as fall_mod
-from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
+from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1, manifest_fuer_nachrechnung
 from rechner_pipeline.gates import bestand_validate
 from rechner_pipeline.gates._common import (
     Exit,
@@ -102,6 +102,9 @@ from rechner_pipeline.gates._common import (
     build_result,
     finalize_gate_ledger,
     hash_files,
+    hash_key,
+    hashes_von,
+    lies_gehasht,
     log,
     parse_gate_args,
     run_command,
@@ -145,7 +148,7 @@ COMMAND = "abnahmebericht"
 #: Kommando erzeugt und protokolliert dessen Vorlage — der Gate-Name
 #: sagt das, damit ein Ledger-Leser die beiden nie verwechselt.
 GATE = "A-M4.migrationscontrolling"
-GATE_VERSION = "1.10.0"
+GATE_VERSION = "2.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -336,6 +339,7 @@ def _transformationsvertrag_fehler(
     spec: TransformationsSpec,
     ergebnis: Any,
     suite: Dict[str, Any],
+    spec_hash: str | None = None,
 ) -> tuple[List[str], Optional[Path], Optional[str]]:
     """Quelle, Spec, Anwendung und P-B1-/Suite-Ziel lueckenlos verbinden.
 
@@ -358,7 +362,12 @@ def _transformationsvertrag_fehler(
     ) is not int:
         fehler.append("Transformationsergebnis.schema_version muss 1 sein")
 
-    spec_sha256 = sha256(spec_pfad.read_bytes()).hexdigest()
+    # spec_hash: Hash der Spec-Bytes, die der Aufrufer bereits gelesen hat
+    # (Review T23-01) — sonst wird die Datei hier ein zweites Mal gelesen.
+    spec_sha256 = (
+        spec_hash if spec_hash is not None
+        else sha256(spec_pfad.read_bytes()).hexdigest()
+    )
     if ergebnis.get("spec_sha256") != spec_sha256:
         fehler.append(
             "Transformationsergebnis.spec_sha256 bindet nicht die aktuelle Spec"
@@ -912,8 +921,14 @@ def _bericht_fehler(
     bericht_pfad: Path,
     erwartete_stichtage: List[str],
     fall: Path,
+    bericht_text: str | None = None,
 ) -> List[str]:
-    """HTML aus dem persistierten Renderer-Vertrag bytegenau reproduzieren."""
+    """HTML aus dem persistierten Renderer-Vertrag bytegenau reproduzieren.
+
+    ``bericht_text``: der Bericht, wie ihn der Aufrufer bereits fuer den
+    Beleg-Hash gelesen hat (Review T23-01) — verglichen wird dann gegen
+    genau diese Bytes, nicht gegen eine zweite Lesung.
+    """
     if not isinstance(erzeugung, dict) or set(erzeugung) != _BERICHT_ERZEUGUNG_FELDER:
         return [
             "Abnahmebericht-Erzeugung muss exakt die kanonischen "
@@ -980,7 +995,10 @@ def _bericht_fehler(
         )
         # Bytes lesen, nicht Text: read_text uebersetzt CRLF/CR still nach LF
         # und laesst damit eine umkodierte Fassung als "bytegenau" durchgehen.
-        gefunden = bericht_pfad.read_bytes().decode("utf-8")
+        gefunden = (
+            bericht_text if bericht_text is not None
+            else bericht_pfad.read_bytes().decode("utf-8")
+        )
     except Exception as exc:  # noqa: BLE001 — frei editierbarer Beleg blockiert
         return [f"Abnahmebericht ist nicht reproduzierbar: {exc}"]
     if gefunden != erwartet:
@@ -1322,9 +1340,68 @@ def _bestands_suite_fehler(
     return fehler
 
 
+#: Rollen, die ein P-B1-Beleg des Bestands-Scope tragen muss (T22-01);
+#: dazu der Horizont ``bis`` und ``summary.betraege_hergeleitet``.
+#: ``scheiben`` und ``merkmale`` sind optional, weil ein Bestand ohne
+#: Erhoehungen bzw. ohne Tarifzellen sie nicht hat — hat er sie, verlangt
+#: die Engine sie selbst.
+PB1_VOLLPROFIL = frozenset({"portfolio", "historie", "ledger", "config"})
+#: Zaehler der P-B1-Zusammenfassung, die BEZEUGEN, dass eine Pruefung
+#: stattgefunden hat. Fuer sie ist null ein Befund, auch wenn Beleg und
+#: Nachrechnung sich einig sind (Review T23-05): Ein Vollprofil mit
+#: betraege_hergeleitet == 0 hat keine einzige Buchung gegen den Kern
+#: hergeleitet, ein Portfolio mit null Zeilen nimmt nichts ab, ein
+#: mitgegebenes Manifest, das null Rollen bindet, bindet den Lauf nicht.
+#: "Geprueft" und "nie gelaufen" saehen im Beleg sonst gleich aus.
+#:
+#: bewegungsjahre und sanity_baender KOENNEN bei einem gueltigen Lauf null
+#: sein (Horizont ohne vollstaendiges Kalenderjahr; Config ohne
+#: Plausibilitaetsbaender) — sie sind trotzdem Pflicht, als fachliche
+#: Anforderung des Migrationscontrollings (Entscheid des Maintainers
+#: 2026-09-07): Ein uebernommener Bestand wird nur abgenommen, wenn die
+#: Fortschreibung mindestens ein volles Bewegungsjahr gegen das
+#: Bewegungskonto gehalten hat und die Rechnungsgrundlagen
+#: Plausibilitaetsbaender tragen. Ein Lauf, der das nicht kann, ist nicht
+#: abnahmereif — Horizont verlaengern bzw. Baender in der Config setzen.
+#: NICHT im Katalog: historie_/scheiben_/ledger_zeilen (ein Bestand ohne
+#: Vorgeschichte oder Erhoehungen ist fachlich moeglich).
+PB1_PFLICHT_POSITIV = frozenset({
+    "portfolio_zeilen", "bewegungsjahre", "sanity_baender",
+    "betraege_hergeleitet", "manifest_gebunden",
+})
+#: Ursache und Ausweg je Pflichtzaehler — die Meldung nennt den Sachverhalt,
+#: nicht den Zaehler (Fund der merge-session: "bewegungsjahre ist null"
+#: sagt dem Anwender nicht, dass zwischen Uebernahme und Horizont kein
+#: vollstaendiges Kalenderjahr liegt).
+PB1_PFLICHT_POSITIV_URSACHE = {
+    "portfolio_zeilen": (
+        "das Portfolio hat keine Zeilen — ein leerer Bestand wird nicht "
+        "abgenommen; Fortschreibung und Uebernahme pruefen"
+    ),
+    "bewegungsjahre": (
+        "zwischen Uebernahme und Horizont liegt kein vollstaendiges "
+        "Kalenderjahr, das Bewegungskonto kann nichts ausweisen — den Horizont "
+        "(--bis) mindestens bis zum 1. Januar des Folgejahres fuehren"
+    ),
+    "sanity_baender": (
+        "die Bestand-Config traegt keine [plausibilitaet]-Baender, die "
+        "Sanity-Pruefung hatte nichts zu pruefen — Baender in der Config setzen"
+    ),
+    "betraege_hergeleitet": (
+        "keine einzige Buchung wurde gegen den Kern hergeleitet — Ledger und "
+        "Horizont der Fortschreibung pruefen"
+    ),
+    "manifest_gebunden": (
+        "das Laufmanifest bindet keine Eingaberolle — Laufmanifest und "
+        "Eingaben stammen nicht aus demselben Lauf"
+    ),
+}
+
+
 def _b1_fehler(
     *,
     ledger_pfad: Path,
+    ledger_text: str | None = None,
     fall: Path,
     repo_root: Path,
     suite: Dict[str, Any],
@@ -1339,7 +1416,12 @@ def _b1_fehler(
     koennte.
     """
     try:
-        payload = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+        # ledger_text: die Bytes, die der Aufrufer bereits fuer den Beleg
+        # gehasht hat (Review T23-01) — nicht ein zweites Mal lesen.
+        payload = json.loads(
+            ledger_text if ledger_text is not None
+            else ledger_pfad.read_text(encoding="utf-8")
+        )
         entry = GateLedgerEntry.from_dict(payload)
     except (OSError, UnicodeError, ValueError, TypeError) as exc:
         return [f"P-B1-Ledger ungueltig: {exc}"]
@@ -1392,20 +1474,16 @@ def _b1_fehler(
     if rollen.get("portfolio") != portfolio_input:
         fehler.append("P-B1-Ledger benennt widerspruechliche Portfolio-Rollen")
 
-    # Der UMFANG der Vorpruefung gehoert in den Beleg.
-    #
-    # Die Bewegungs-Identitaet (Anfang + Zugang - Abgang = Endbestand) ist
-    # die einzige Pruefung, die den ZUSAMMENHANG der Zeilen prueft statt
-    # jede fuer sich. Lief P-B1 ohne die Rollen historie und ledger, hat
-    # sie nicht stattgefunden -- und ein gruenes A-M4 sagte darueber
-    # nichts, weder so noch so.
-    #
-    # Erzwungen wird sie trotzdem NICHT: Ein Bestandsausschnitt ohne
-    # Journal kann sie nicht liefern, und ein Gate, das Unmoegliches
-    # verlangt, wird umgangen statt befolgt. Stattdessen weist der Beleg
-    # aus, WAS geprueft wurde -- daraus leitet die Falldarstellung ihre
-    # Abgrenzung ab, und ein Leser sieht den Unterschied zwischen
-    # "geprueft" und "nicht geprueft" statt nur ein gruenes Gate.
+    # Der UMFANG der Vorpruefung gehoert in den Beleg — und im Bestands-
+    # Scope ist er PFLICHT (Review T21-02/T22-01, Entscheid des
+    # Maintainers 2026-09-06). Die T16-Fassung liess jedes Teilprofil zu
+    # ("ausweisen statt erzwingen"): Ein P-B1 nur mit --portfolio war ein
+    # gueltiger A-M4-Beleg, und die Betragsbindung (T20-04), die
+    # Bewegungs-Identitaet und die Ledger-Semantik liessen sich am
+    # A-M4-Uebergang durch Weglassen der Eingaben abschalten. Was P-B1 nur
+    # mit vollem Profil pruefen kann, muss der Beleg des Bestands-Scope
+    # geprueft haben: Stamm, Journal, Ledger, Config (Kern-Herleitung)
+    # und der Horizont. Die Pruefung selbst folgt unten (Vollprofil).
 
     aktuelle_eingaben: Dict[str, Path] = {}
     erwartete_hashes: Dict[str, str] = {}
@@ -1423,11 +1501,21 @@ def _b1_fehler(
         if rolle is not None:
             aktuelle_eingaben[rolle] = vorhanden
             erwartete_hashes[rolle] = erwartet_hash
-            if rolle == "portfolio":
-                try:
-                    vorhanden.relative_to(fall.resolve())
-                except ValueError:
-                    fehler.append("P-B1-Portfolio-Rolle liegt ausserhalb des Falls")
+            # JEDE P-B1-Eingabe, die ins A-M4-Urteil eingeht, liegt im Fall
+            # (Review T23-04): vorher galt die Fallgrenze nur fuer das
+            # Portfolio; eine selbst gewaehlte Config oder ein fremdes
+            # Bewegungskonto konnte Rechnungsgrundlagen und Ledgerbetraege
+            # passend machen — der P-B1-Hash belegt nur, WELCHE Bytes benutzt
+            # wurden, nicht ihre Herkunft.
+            try:
+                vorhanden.relative_to(fall.resolve())
+            except ValueError:
+                fehler.append(
+                    f"P-B1-Rolle {rolle!r} liegt ausserhalb des Falls ({name}) — "
+                    "die Datei in den Fall legen (z. B. <fall>/abgeleitet/) und "
+                    "P-B1 dort erneut fahren; ein Wiederholen mit demselben Pfad "
+                    "aendert nichts"
+                )
 
     bis_roh = entry.summary.get("bis")
     bis: Optional[_dt.date] = None
@@ -1440,13 +1528,55 @@ def _b1_fehler(
         fehler.append("P-B1-Ledger-Rolle ledger verlangt historie und bis")
     if "ledger" not in rollen and bis_roh is not None:
         fehler.append("P-B1-Ledger.summary.bis ist nur mit ledger zulaessig")
+    # Vollprofil (T22-01): ohne diese Rollen hat P-B1 den Bestand nicht als
+    # Bestand geprueft, sondern eine Tabelle als Tabelle.
+    fehlende_rollen = sorted(PB1_VOLLPROFIL - set(rollen))
+    if fehlende_rollen:
+        fehler.append(
+            "P-B1-Beleg ohne Vollprofil: die Rollen "
+            f"{fehlende_rollen} fehlen — im Bestands-Scope verlangt A-M4 "
+            f"{sorted(PB1_VOLLPROFIL)} und einen Horizont (bis); ein "
+            "Teilprofil ist kein Beleg fuer die Migrationsabnahme"
+        )
+    if bis is None and not fehlende_rollen:
+        fehler.append("P-B1-Beleg ohne Vollprofil: der Horizont (bis) fehlt")
+    hergeleitet = entry.summary.get("betraege_hergeleitet")
+    if type(hergeleitet) is not int:
+        fehler.append(
+            "P-B1-Beleg ohne Betragsbindung: summary.betraege_hergeleitet fehlt "
+            "— die Kern-Herleitung jeder Buchung (T20-04) lief nicht"
+        )
+    elif hergeleitet <= 0:
+        fehler.append(
+            "P-B1-Beleg ohne Betragsbindung: summary.betraege_hergeleitet ist "
+            "null — keine einzige Buchung wurde gegen den Kern hergeleitet "
+            "(Review T23-05); ein Bestand ohne Buchungen ist kein abnahmefaehiger "
+            "Bestand: Ledger und Horizont der Fortschreibung pruefen, nicht den "
+            "Lauf wiederholen"
+        )
 
     geprueft: Dict[str, int] = {}
     portfolio_gebunden = False
     if set(aktuelle_eingaben) == set(rollen):
+        # Traegt der Beleg ein Manifest (summary.manifest: sha256 + Horizont),
+        # wird auch die MANIFESTBINDUNG nachgerechnet (adversarialer Review
+        # Block 3): ohne ``manifest=`` liefert die Engine weder
+        # ``manifest_gebunden`` noch die Horizontpruefung — der Zaehler im
+        # Beleg bliebe unverglichen, seine Positivschwelle unerreichbar. Das
+        # Manifest ist keine Eingangsrolle; es liegt, wie der Produzent es
+        # schreibt, NEBEN dem Portfolio, und seine Bytes muessen den Hash des
+        # Belegs tragen.
+        manifest = None
+        manifest_beleg = entry.summary.get("manifest")
+        if isinstance(manifest_beleg, dict):
+            manifest, manifest_fehler = manifest_fuer_nachrechnung(
+                aktuelle_eingaben["portfolio"], manifest_beleg.get("sha256")
+            )
+            fehler.extend(manifest_fehler)
         tabellen, geprueft, pb1_errors, pb1_usage_errors = lies_und_pruefe_pb1(
             aktuelle_eingaben,
             bis=bis,
+            manifest=manifest,
         )
         gelesen = tabellen.get("sha256", {})
         for rolle, erwartet_hash in erwartete_hashes.items():
@@ -1469,6 +1599,14 @@ def _b1_fehler(
                 fehler.append(
                     f"P-B1-Ledger.summary.{name} stimmt nicht mit der "
                     "erneuten P-B1-Pruefung ueberein"
+                )
+            # Gleichheit genuegt nicht: ein bezeugender Zaehler, der null ist,
+            # ist ein Befund — 0 == 0 waere sonst "konsistent gruen" (T23-05).
+            if name in PB1_PFLICHT_POSITIV and isinstance(wert, int) and wert <= 0:
+                fehler.append(
+                    f"P-B1-Beleg ohne Nachweis: summary.{name} ist null — "
+                    f"{PB1_PFLICHT_POSITIV_URSACHE[name]} (Review T23-05; kein "
+                    "Wiederholungsfall, sondern ein Sachverhalt der Eingaben)"
                 )
     if not portfolio_gebunden:
         fehler.append(
@@ -1721,7 +1859,12 @@ def main(argv: Optional[List[str]] = None):
     hash_basis = fall if bestands_scope else (
         repo_root if args.repo_root else None
     )
-    input_hashes = hash_files(list(eingaben.values()), base=hash_basis)
+    # Jede Pflichteingabe GENAU EINMAL lesen (Review T23-01): input_hashes,
+    # Renderer-Artefakt-Eintraege, Suite/Spec/Ergebnis-Parsing und die
+    # P-B1-Pruefung arbeiten auf denselben Bytes — vorher wurde der
+    # P-B1-Ledger viermal getrennt gelesen.
+    gelesen = {name: lies_gehasht(pfad) for name, pfad in eingaben.items()}
+    input_hashes = hashes_von(gelesen.values(), base=hash_basis)
 
     def _contract_fehler(code: str, meldungen: List[str], hinweis: str):
         gezeigt = meldungen[:20]
@@ -1742,7 +1885,8 @@ def main(argv: Optional[List[str]] = None):
         assert fall is not None
         try:
             renderer_artefakte = {
-                rolle: artefakt_eintrag(fall, eingaben[rolle])
+                rolle: artefakt_eintrag(
+                    fall, eingaben[rolle], sha256=gelesen[rolle].sha256)
                 for rolle in renderer_artefaktrollen()
             }
         except ValueError as exc:
@@ -1756,16 +1900,15 @@ def main(argv: Optional[List[str]] = None):
         # Auch der falllose Bibliotheks-/CLI-Pfad schreibt die Rollen explizit.
         # Nur im Bestands-Scope verlangt A-M4 darueber hinaus sichere Fallpfade.
         for rolle in renderer_artefaktrollen():
-            [(pfad, datei_hash)] = hash_files(
-                [eingaben[rolle]], base=hash_basis
-            ).items()
+            pfad = hash_key(eingaben[rolle], base=hash_basis)
+            datei_hash = gelesen[rolle].sha256
             renderer_artefakte[rolle] = {
                 "pfad": pfad,
                 "sha256": datei_hash,
             }
 
     try:
-        suite = json.loads(eingaben["suite"].read_text(encoding="utf-8"))
+        suite = gelesen["suite"].json()
     except (OSError, ValueError) as exc:
         return _contract_fehler(
             "suite_unlesbar", [f"{type(exc).__name__}: {exc}"],
@@ -1783,7 +1926,7 @@ def main(argv: Optional[List[str]] = None):
     spec = None
     spec_roh = None
     try:
-        spec_text = eingaben["spec"].read_text(encoding="utf-8")
+        spec_text = gelesen["spec"].text()
         spec = TransformationsSpec.model_validate_json(spec_text)
         # Die DATEI-Form fuer den eingebetteten Renderer-Vertrag — der
         # Entscheid vergleicht sie strukturell mit der gebundenen Datei
@@ -1798,8 +1941,7 @@ def main(argv: Optional[List[str]] = None):
     transformation_ergebnis = None
     gemeinsame_bindung: Optional[Dict[str, Any]] = None
     try:
-        transformation_ergebnis = json.loads(
-            eingaben["transformation_ergebnis"].read_text(encoding="utf-8"))
+        transformation_ergebnis = gelesen["transformation_ergebnis"].json()
     except (OSError, ValueError) as exc:
         return _contract_fehler(
             "transformation_ergebnis_unlesbar",
@@ -1853,6 +1995,7 @@ def main(argv: Optional[List[str]] = None):
             )
         pb1_fehler = _b1_fehler(
             ledger_pfad=eingaben["pb1_ledger"],
+            ledger_text=gelesen["pb1_ledger"].text(),
             fall=fall,
             repo_root=repo_root,
             suite=suite,
@@ -1868,6 +2011,7 @@ def main(argv: Optional[List[str]] = None):
         transformations_fehler, _, _ = _transformationsvertrag_fehler(
             fall=fall,
             spec_pfad=eingaben["spec"],
+            spec_hash=gelesen["spec"].sha256,
             spec=spec,
             ergebnis=transformation_ergebnis,
             suite=suite,
@@ -1937,8 +2081,7 @@ def main(argv: Optional[List[str]] = None):
     # Beleg gleich aus.
     if bestands_scope and eingaben.get("pb1_ledger"):
         try:
-            pb1_roh = json.loads(
-                Path(eingaben["pb1_ledger"]).read_text(encoding="utf-8"))
+            pb1_roh = gelesen["pb1_ledger"].json()
             pb1_rollen = sorted((pb1_roh.get("summary") or {})
                                 .get("eingangsrollen") or {})
         except (OSError, ValueError, AttributeError):
@@ -1953,8 +2096,12 @@ def main(argv: Optional[List[str]] = None):
             assert fall is not None and gemeinsame_bindung is not None
             try:
                 bestandsbelege = {
-                    "pb1_ledger": artefakt_eintrag(fall, eingaben["pb1_ledger"]),
-                    "migrationssuite": artefakt_eintrag(fall, eingaben["suite"]),
+                    "pb1_ledger": artefakt_eintrag(
+                        fall, eingaben["pb1_ledger"],
+                        sha256=gelesen["pb1_ledger"].sha256),
+                    "migrationssuite": artefakt_eintrag(
+                        fall, eingaben["suite"],
+                        sha256=gelesen["suite"].sha256),
                     "abnahmebericht": artefakt_eintrag(fall, bericht_pfad),
                 }
             except ValueError as exc:

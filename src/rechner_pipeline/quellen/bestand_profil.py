@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
 import json
 import re
 import sys
@@ -56,8 +57,10 @@ def _typ(werte: List[str]) -> str:
 
 def baue_profil(pfad: Path, trenner: str = ";") -> Dict[str, Any]:
     """Spaltenprofil eines CSV-Abzugs (deterministisch, sortiert)."""
+    # Einmal lesen: quelle_sha256 und das Spaltenprofil stammen aus
+    # denselben Bytes (Review T23-01).
     roh = pfad.read_bytes()
-    with pfad.open(encoding="utf-8", newline="") as f:
+    with io.StringIO(roh.decode("utf-8"), newline="") as f:
         reader = csv.reader(f, delimiter=trenner)
         try:
             kopf = next(reader)

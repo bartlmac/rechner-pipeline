@@ -199,3 +199,101 @@ Signaturwortlaut), `tests/test_klarnamen.py` (T20-07),
 einzeln entfernt (Gate- und A-M4-Hashing vor der Engine, Herleitung
 nicht verdrahtet, Verteilungs-Endlichkeit, Flexion, Signaturwortlaut,
 Lueckenabschnitt, drei Exit-Codes, Sollmenge), jede gefangen.
+
+## Nachzug: die Runde T21 (DORA ToDo 21, 2026-09-05) auf Branch `ebenen`
+
+Externes Review auf Stand 730fcb0 (nach T20-Nacharbeit); zehn Befunde.
+Der Maintainer verlangte eine eigene Nachpruefung jeder Position vor
+der Antwort. Ergebnis: neun der zehn sind berechtigt und reproduziert;
+T21-08 (code_karte-Absturz bei relativen Imports) war auf `ebenen` bereits
+geschlossen (Schritt 3 des Architektur-Strangs). Zwei Positionen
+brauchen eine Entscheidung des Maintainers, weil sie einen
+dokumentierten Vertrag umkehren (T21-02) oder einen neuen Vertrag
+verlangen (T21-06); der Rest ist umgesetzt.
+
+| Befund | Schwere | Status |
+|---|---|---|
+| T21-01 BU: Tod/Ablauf akzeptiert "0 oder Rente" unabhaengig vom Zustand davor; Bewegungskonto liest den Track aus dem Betrag | hoch | **behoben** — `ledger_bindung.zustand_vor` leitet den Vorzustand aus der geordneten Historie her (INV und ABL am selben Tag: BU); Konto und Pruefung nutzen dieselbe Herleitung, der Betrag ist nur noch Pruefgegenstand |
+| T21-02 A-M4 akzeptiert im Bestands-Scope jedes Teilprofil von P-B1 (`--config` optional, Betragsbindung damit optional) | hoch | **entschieden 2026-09-05: nach dem Landen von plv-betrieb** (Backlog dev-docs/offene-punkte.md) — bestaetigt; kehrt den T16-Vertrag "ausweisen statt erzwingen" um und verlangt eine Fall-Config, die kein Gate erzeugt (Lauf 2: von Hand beigestellt); Vorschlag unten |
+| T21-03 Endliche Verteilungsparameter, nichtendlicher Bestand (`meanlog = 1000`), Manifest geschrieben | hoch | **behoben** — Ueberlauf in den Verteilungen ist ein Fehler (numpy errstate), und jede Ausgabe wird vor dem ERSTEN Schreibvorgang auf Endlichkeit geprueft; Exit 2, kein Artefakt, kein Manifest |
+| T21-04 Falldarstellung behandelt fehlenden/unbekannten Scope wie Tarif (Fail-open) | hoch | **behoben** — `falldaten.sammle` liest den Scope streng ueber `fall.lade_scope`; ungueltig ist eine Luecke (Gruppe `fall`) und wird mit dem VOLLEN Bestandsprofil geprueft |
+| T21-05 Darstellung nennt Snapshots "menschliche Entscheide", Kopfzeile behauptet pauschal Simulationsschluessel | mittel | **behoben** — Ueberschriften "Entscheid-Snapshots der Gates"; die Kopfzeile sagt nur, was ALLE Snapshots ueber ihre Schluesselklasse selbst sagen |
+| T21-06 T-Box-Version und A-K1-Vertrag | mittel | **entschieden 2026-09-05: wie vorgeschlagen, im Ebenen-Strang** (Backlog) — Vorschlag unten |
+| T21-07 `betrag_herkunft` nur Vokabular, nicht Semantik | mittel | **behoben** — `validate_ledger`: `geliefert` genau am Zugang eines uebernommenen Vertrags (Zugang nach Beginn), sonst `gerechnet`; beide Richtungen sind Fehler |
+| T21-08 Der Architekturpruefer stuerzt bei relativen Imports ab (`code_karte._absolut` nutzte den undefinierten Namen `paketpfad`; latent, der Quellbaum hat keinen relativen Import) | mittel | **bereits behoben** auf ebenen (934ac3a, Schritt 3: `_absolut` rechnet mit `anker`; Test mit relativem Import). KORREKTUR 2026-09-06 (Nebenhinweis des Reviews T22): Diese Zeile nannte faelschlich den Rollenplatzhalter "mensch" — der ist Gegenstand von ADR-018, nicht von T21-08 |
+| T21-09 P-B1 aendert die Akzeptanzmenge ohne Versionssprung | mittel | **behoben** — `GATE_VERSION` 3.0.0, README-Zeile begruendet; die seit T16 offene Versionierungsregel ist jetzt festgeschrieben (ADR-012 Nachtrag, Skill author-rechner-toolbox-gate, README; `tests/test_gate_versionsregel.py`) |
+| T21-10 Build-System (`setuptools>=68`, `wheel`) nicht gepinnt | niedrig | **behoben** — exakte Pins, `tests/test_abhaengigkeiten.py` haelt sie |
+
+**Vorschlag zu T21-02.** A-M4 verlangt im Bestands-Scope ein
+vollstaendiges P-B1-Profil (portfolio, historie, ledger, config, `bis`;
+`merkmale` bei Zellen-Generationen) und `summary.geprueft.
+betraege_hergeleitet > 0`. Der Lauf-2-Beleg erfuellt das (nachgerechnet
+mit 3.0.0, gruen). Was dagegen bricht: der Ein-Zeilen-Ausschnitt in
+`tests/test_pk1_am4_beweisvertrag.py`, die beiden E2E-Faelle (P-B1 nur
+mit portfolio und historie), und die Fall-Config, die heute kein Gate
+erzeugt, sondern der Operator beistellt. Fuer die E2E-Faelle mit
+TG2015-Zellen liegt die passende Config erst mit `plv-betrieb`
+(`configs/bestand_gesamt.toml`) vor. Empfehlung: nach dem Landen von
+`plv-betrieb` als eigener Schritt umsetzen, mit der Config als
+registrierter Falleingang (Hash im Beleg), nicht als loses TOML.
+
+**Vorschlag zu T21-06.** `TBOX_VERSION` wird beim Laden gegen A-Box und
+Spez geprueft (Mismatch = Fehler, nicht Warnung) und in P-Q3 gebunden;
+ein A-K1-Snapshot bindet alte und neue Version, den T-Box-Hash und das
+Aenderungsartefakt; Versionsregel: jede Schemaaenderung hebt die Version.
+
+**Nachweise.** `tests/test_bestand_review_t21.py` (Repros des Reviews
+zu T21-01, -03, -04, -05, -07, -09; Vorzustand bei INV+ABL am selben
+Tag; Konto invariant gegen korrumpierten Betrag),
+`tests/test_abhaengigkeiten.py` (T21-10). Mutationsproben: acht Wachen
+einzeln entfernt (Vorzustand `<` statt `<=`, BU-Erwartung wieder aus dem
+Betrag, Konto-Track aus dem Betrag, beide Herkunftsregeln, Scope-Fallback
+`tarif`, Endlichkeitspruefung und errstate, Klassenhinweis
+bedingungslos) — jede rot.
+
+## Nachzug: die Runde T22 (DORA ToDo 22, 2026-09-06) — zwei Toepfe
+
+Externes Review auf Branch `ebenen` (b3ae0bf gegen main beecf3d): elf
+Befunde, neun hoch, zwei mittel; Urteil "nicht mergebereit". Kernsatz
+des Reviewers: Die Suite ist gruen, prueft aber mehrere zu schwache
+Vertraege ausdruecklich als Sollverhalten. Der Maintainer verlangte die
+eigene Nachpruefung jeder Position; alle elf sind am Code oder am echten
+Stand der Laufzeit bestaetigt. Sieben Befunde betreffen den Tagesbetrieb,
+der schon auf main liegt (PR #13), nicht das Delta von PR #14 — deshalb
+zwei Toepfe: `ebenen` (PR #14) und `betrieb-haertung` (eigener PR von
+main).
+
+| Befund | Schwere | Topf | Status |
+|---|---|---|---|
+| T22-01 A-M4 akzeptiert ein P-B1-Minimalprofil | hoch | ebenen | **behoben** 1c97707 — abnahmebericht 2.0.0 verlangt Vollprofil (portfolio, historie, ledger, config, bis, betraege_hergeleitet); pk1-Fixture ist eine Ein-Policen-Welt statt eines Ein-Zeilen-Ausschnitts; E2E fahren P-B1 mit der Zellen-Config des Falls |
+| T22-02 T-Box-Version nominal, A-K1 ohne Belegvertrag | hoch | ebenen | **behoben** 29891ec — P-Q3 haelt die A-Box, P-K1 die Spez gegen die geltende Version; A-K1 verlangt `abgeleitet/tbox/aenderung.json`; P-Q3, P-K1, P9 auf 1.0.0 |
+| T22-03 Standwechsel nicht atomar, kein Lock, halber Eingang | hoch | betrieb | **behoben** bdb457a — Stand als Symlink auf versioniertes Verzeichnis (ein atomarer Tausch), `lauf.lock`, OSError als roter Lauf mit Zeile, Eingang entsteht unter `.neu` und wird umbenannt |
+| T22-04 ungemeldete Todesfaelle im sichtbaren Bestand | hoch | betrieb | **behoben** cc55192 — der Stand ist die gebuchte Sicht (`gebuchte_sicht`); Vorgeschichte bleibt vollstaendig |
+| T22-05 Protokoll ohne Kette, Paket auf Zuruf | hoch | betrieb | **behoben** 4774602 — Protokoll Schema 2 mit Vorgaenger-Hash, Nachweisvertrag (Luecken, Manifest-, Journal-Hash), Paket Schema 2 mit Belegdateien, Konsument prueft; Luecken wandern in die Darstellung |
+| T22-06 Uebernahme prueft den A-M4-Snapshot nicht | hoch | betrieb | **behoben** d26053d — Snapshot Pflicht und strukturell geprueft (Schema, Selbstadressierung, Gate, Entscheid, Fall); Banderole aus den Daten |
+| T22-07 Mandat bei Simulation optional | hoch | ebenen | **behoben** 705ba4e — Pflicht im Gate, im Entscheidungskommando und im Schema |
+| T22-08 Ratsche kennt zwei Ebenen, nur src | hoch | ebenen | **behoben (im Paket) und benannt (ausserhalb)** 2ae5765 — Ebene 4 je Modul (fuenf Simulationsmodule), zweite Ratsche (sechs Kanten), ADR-017 nennt die Reichweite; werkzeuge/ und quellsystem/ bleiben Backlog |
+| T22-09 Policen-Identitaet haengt an der Listenposition | mittel | betrieb | **behoben** d0baf9f — `nummernkreis` je Generation, Erstfassung positional und bitidentisch, geliefert vor Nummernkreis |
+| T22-10 "bereits gefuehrt" kein No-op | mittel | betrieb | **behoben** 43d8a67 (Fix der vorzeige-Session, als Patch uebernommen) |
+| T22-11 Verankerung endet am Uebernahmeeingang | hoch | betrieb | **Stufe 1 behoben** cc55192 — Verankerung im Stand, Protokoll und Seite weisen "registriert, nicht angewandt" aus. **Stufe 2 offen**: die fachliche Anwendung (dk_ta, Korrekturschicht, AVB-Schalter) braucht den Fachentscheid des Verantwortlichen Aktuars; Backlog "AVB-Garantien uebernommener Bestaende" |
+
+**Nebenhinweise.** (a) T21-08 in dieser Liste richtig zugeordnet
+(94d5b6f). (b) Konzepttext zum Monatsabschluss folgt dem Code (cc55192).
+(c) main mit dem Devcontainer in ebenen nachgezogen (2293efc).
+
+**Was die Runde ueber die Klasse lehrt.** Dieselbe Bewegung wie T16 und
+T18, eine Ebene hoeher: Nachweise waren Behauptungen (Protokoll ohne
+Kette, stand.json mit dem Wort "gruen", Snapshot ohne Pruefung), Vertraege
+waren Hilfetexte ("optional, empfohlen"), Identitaet hing an Zufaellen
+(Position in einer Liste), und Zusagen der Doku ("der gestrige bleibt")
+hatte niemand gegen den Code gehalten. Jeder Fix hier macht den Nachweis
+pruefbar oder den Vertrag erzwungen — und benennt, was bleibt.
+
+**Nachweise.** ebenen: `tests/test_am4_vollprofil_t22.py`,
+`tests/test_tbox_version_ak1.py`, `tests/test_rollenmodell_adr018.py`
+(T22-07), `tests/test_code_karte_und_impact.py` (T22-08); betrieb:
+`tests/test_betrieb_tageslauf.py`, `tests/test_betrieb_uebernahme.py`,
+`tests/test_betrieb_seite.py`, `tests/test_betrieb_tagesjournal.py`,
+`tests/test_betrieb_neugeschaeft.py`, `tests/test_werkzeuge_betrieb.py` —
+je mit den Repros des Reviews; Mutationsproben je Befund (24 Wachen
+einzeln entfernt, jede rot).

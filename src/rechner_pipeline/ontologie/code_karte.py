@@ -10,6 +10,11 @@ deklarative Regeln:
 * **Schicht-Allowlist**: jedes Paket darf nur aus explizit erlaubten
   Paketen importieren. Eine neue Kante ist damit eine bewusste
   Architektur-Entscheidung, kein Nebeneffekt.
+* **Ebenen (ADR-017)**: jede Schicht gehoert dem KI-Tool (Ebene 2) oder
+  der Vorzeige (Ebene 3). Das Tool importiert aus der Vorzeige nur ueber
+  die Zielsystem-Schnittstelle — die heute gemessene Menge dieser Kanten
+  ist als Ratsche festgeschrieben (``TOOL_NACH_VORZEIGE_ERLAUBT``); jede
+  neue Kante Tool -> Vorzeige ist ein Befund, bis ein ADR sie aufnimmt.
 * **Zweitkern-Regel (ADR-004)**: ``kommutationskern`` konsumiert nur
   ``qa`` — der Zielkern rechnet ohne Kommutation.
 * **SDK-Verbot**: kein openai/anthropic/langgraph/langchain in src.
@@ -76,6 +81,100 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     "fall": set(),
     "__init__": set(),                               # Paketwurzel
 }
+
+#: Ebene je Schicht (ADR-017). "tool" = das agentische Migrationssystem,
+#: das bei jedem Versicherer unveraendert eingesetzt wuerde (Ebene 2);
+#: "vorzeige" = das Referenz-Zielsystem und die Bestandsfuehrung der
+#: fiktiven Unternehmen (Ebene 3); "werkzeug" = die Vorzeige-Werkzeuge,
+#: die synthetische Daten ERZEUGEN (Ebene 4). Die Ebene 4 hat innerhalb
+#: von src keine eigene Schicht, sondern einzelne Module (EBENE_JE_MODUL);
+#: ihre uebrigen Teile (simulation/, quellsystem/, werkzeuge/) liegen
+#: ausserhalb von src und werden hier NICHT gemessen — siehe validate()
+#: und ADR-017, Konsequenzen: Die Karte erzwingt die Ebenen-Grenzen nur
+#: innerhalb des Pakets (Review T22-08).
+EBENE_JE_SCHICHT: Dict[str, str] = {
+    "ontologie": "tool", "spez": "tool", "gates": "tool", "models": "tool",
+    "qa": "tool", "quellen": "tool", "fall": "tool", "cli": "tool",
+    "__init__": "tool",
+    "kern": "vorzeige", "bestand": "vorzeige", "betrieb": "vorzeige",
+    "kommutationskern": "vorzeige",
+}
+
+#: Module der Ebene 4 innerhalb von src: Sie erzeugen synthetische
+#: Bestaende, Ereignisse und Neugeschaeft — Simulation, nicht Fuehrung.
+#: Die Schicht (bestand, betrieb) sagt nur, WO sie liegen; die Ebene
+#: sagt, WAS sie sind (Review T22-08: aus dem ersten Paketsegment allein
+#: landete der Generator pauschal auf Ebene 3).
+EBENE_JE_MODUL: Dict[str, str] = {
+    "rechner_pipeline/bestand/generator.py": "werkzeug",
+    "rechner_pipeline/bestand/stochastik.py": "werkzeug",
+    "rechner_pipeline/bestand/ereignisse.py": "werkzeug",
+    "rechner_pipeline/bestand/cli_fortschreibung.py": "werkzeug",
+    "rechner_pipeline/betrieb/neugeschaeft.py": "werkzeug",
+}
+
+#: Kanten aus der Vorzeige (Ebene 3) in ihre Werkzeuge (Ebene 4), wie sie
+#: heute bestehen — dieselbe RATSCHE wie TOOL_NACH_VORZEIGE_ERLAUBT: Die
+#: Bestandsfuehrung ruft die Ereignis-Engine und das Neugeschaeft, weil
+#: die Vorzeige ein laufendes Unternehmen simuliert. Jede neue Kante ist
+#: ein Befund; aus dem Tool (Ebene 2) darf es KEINE Kante in Ebene 4
+#: geben (ein Gate, das den Generator importiert, prueft nicht mehr, es
+#: erzeugt).
+VORZEIGE_NACH_WERKZEUG_ERLAUBT: Set[tuple] = {
+    ("rechner_pipeline/bestand/config.py", "rechner_pipeline/bestand/stochastik.py"),
+    ("rechner_pipeline/bestand/kennzahlen.py", "rechner_pipeline/bestand/ereignisse.py"),
+    ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
+    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/bestand/ereignisse.py"),
+    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/bestand/generator.py"),
+    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
+}
+
+#: Die Zielsystem-Schnittstelle, wie sie heute benutzt wird: alle Kanten
+#: aus dem Tool in die Vorzeige, auf Modulebene, gemessen am Stand von
+#: ADR-017 (29 Kanten). Das ist eine RATSCHE: bestehende Kanten sind
+#: erlaubt, jede neue ist ein Befund. Ob daraus ein explizites
+#: Schnittstellen-Modul und eine Paketteilung folgen, entscheidet ein
+#: ADR nach der Messung — nicht ein Import nebenbei.
+TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
+    ("rechner_pipeline/gates/abnahmebericht.py", "rechner_pipeline/bestand/vorbedingungen.py"),
+    ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
+    ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+    ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/kern/korrekturschicht.py"),
+    ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/bestand/parquet_io.py"),
+    ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/__init__.py"),
+    ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/manifest.py"),
+    ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/vorbedingungen.py"),
+    ("rechner_pipeline/gates/generation_golden.py", "rechner_pipeline/kern/__init__.py"),
+    ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/migrationszugang.py"),
+    ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
+    ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/migrationszugang.py"),
+    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/parquet_io.py"),
+    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/__init__.py"),
+    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/rechenkern.py"),
+    ("rechner_pipeline/models/bestand.py", "rechner_pipeline/kern/model_point.py"),
+    ("rechner_pipeline/ontologie/code_index.py", "rechner_pipeline/kern/produkte/__init__.py"),
+    ("rechner_pipeline/qa/abzugsabgleich.py", "rechner_pipeline/kern/__init__.py"),
+    ("rechner_pipeline/qa/abzugsabgleich.py", "rechner_pipeline/kern/produkte/__init__.py"),
+    ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/__init__.py"),
+    ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+    ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/korrekturschicht.py"),
+    ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/rechenkern.py"),
+    ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/__init__.py"),
+    ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+    ("rechner_pipeline/quellen/tafel_import.py", "rechner_pipeline/kern/tafeln.py"),
+    ("rechner_pipeline/spez/erzeugen.py", "rechner_pipeline/kern/tafeln.py"),
+}
+
+
+def ebene(schicht: str, rel: Optional[str] = None) -> Optional[str]:
+    """Die Ebene eines Moduls (ADR-017): erst das Modul, dann die Schicht;
+    None fuer eine unbekannte Schicht."""
+    if rel is not None and rel in EBENE_JE_MODUL:
+        return EBENE_JE_MODUL[rel]
+    return EBENE_JE_SCHICHT.get(schicht)
+
 
 #: ADR-013: Der Kommutations-Zweitkern hat KEINEN Konsumenten mehr im
 #: Produktivpfad. Er lebt nur noch als unabhaengiger Zeuge der
@@ -163,10 +262,14 @@ def _absolut(modul: Optional[str], level: int, rel: str) -> Optional[str]:
     if level == 0:
         return modul
     basis = Path(rel).parts[:-1]           # Paket des importierenden Moduls
-    if len(basis) < level - 1 + 1:
+    if len(basis) < level:
         return None
+    # ``from . import x`` (level 1) meint das eigene Paket, ``from ..``
+    # (level 2) das darueber. Vorher stand hier eine nie definierte
+    # Variable — der Zweig war unerreichbar, weil src keine relativen
+    # Importe traegt, und ungetestet (Review U1, Befund Z1-09).
     anker = basis[: len(basis) - (level - 1)]
-    dotted = ".".join(paketpfad)
+    dotted = ".".join(anker)
     return f"{dotted}.{modul}" if modul else dotted
 
 
@@ -190,6 +293,7 @@ def baue_karte(src: Path) -> Dict[str, object]:
         )
         module[rel] = {
             "schicht": _schicht(rel),
+            "ebene": ebene(_schicht(rel), rel),
             "defs": defs,
             "zeilen": text.count("\n") + 1,
         }
@@ -258,15 +362,81 @@ def baue_karte(src: Path) -> Dict[str, object]:
             {"von": von, "nach": nach, "symbole": sorted(symbole)}
             for (von, nach), symbole in sorted(kanten.items())
         ],
+        "tool_nach_vorzeige": tool_nach_vorzeige(module, kanten),
+        "in_werkzeug": kanten_in_ebene(module, kanten, "werkzeug"),
         "extern": {k: sorted(v) for k, v in sorted(extern.items())},
         "dynamisch_unlesbar": dict(sorted(dynamisch_unlesbar.items())),
     }
+
+
+def tool_nach_vorzeige(
+    module: Dict[str, Dict[str, object]], kanten: Dict[tuple, Set[str]]
+) -> List[Dict[str, str]]:
+    """Alle Import-Kanten aus dem Tool in die Vorzeige (ADR-017), sortiert
+    — die Messung, auf der die Ratsche steht."""
+    aus: List[Dict[str, str]] = []
+    for (von, nach) in sorted(kanten):
+        e_von = module.get(von, {}).get("ebene") or ebene(_schicht(von), von)
+        e_nach = module.get(nach, {}).get("ebene") or ebene(_schicht(nach), nach)
+        if e_von == "tool" and e_nach == "vorzeige":
+            aus.append({"von": von, "nach": nach})
+    return aus
+
+
+def kanten_in_ebene(
+    module: Dict[str, Dict[str, object]], kanten: Dict[tuple, Set[str]], ziel: str
+) -> List[Dict[str, str]]:
+    """Alle Import-Kanten aus einer ANDEREN Ebene in die Ebene ``ziel``,
+    mit der Ebene des Importeurs — die Messung fuer die Ebene-4-Ratsche
+    (Review T22-08)."""
+    aus: List[Dict[str, str]] = []
+    for (von, nach) in sorted(kanten):
+        e_von = module.get(von, {}).get("ebene") or ebene(_schicht(von), von)
+        e_nach = module.get(nach, {}).get("ebene") or ebene(_schicht(nach), nach)
+        if e_nach == ziel and e_von != ziel:
+            aus.append({"von": von, "nach": nach, "von_ebene": str(e_von)})
+    return aus
 
 
 def validate(karte: Dict[str, object]) -> List[str]:
     """Regel-Befunde (leer = Architektur eingehalten)."""
     befunde: List[str] = []
     module = karte["module"]
+    # Jede Schicht hat eine Ebene (ADR-017); eine Schicht ohne Ebene ist
+    # weder Tool noch Vorzeige und damit nicht einordenbar.
+    for rel, daten in module.items():
+        if daten.get("ebene") is None and daten["schicht"] in SCHICHT_ERLAUBT:
+            befunde.append(
+                f"{rel}: Schicht {daten['schicht']!r} ohne Ebene — Tool oder "
+                "Vorzeige? (EBENE_JE_SCHICHT, ADR-017)"
+            )
+    # Ebene 4 (Werkzeuge): aus dem Tool nie, aus der Vorzeige nur ueber
+    # die gemessene Ratsche (Review T22-08).
+    for kante in karte.get("in_werkzeug", []):
+        paar = (kante["von"], kante["nach"])
+        if kante["von_ebene"] == "tool":
+            befunde.append(
+                f"{paar[0]} -> {paar[1]}: Kante aus dem KI-Tool in ein "
+                "Vorzeige-Werkzeug (Ebene 4) — das Tool prueft und erzeugt "
+                "nicht (ADR-017)"
+            )
+        elif paar not in VORZEIGE_NACH_WERKZEUG_ERLAUBT:
+            befunde.append(
+                f"{paar[0]} -> {paar[1]}: neue Kante aus der Vorzeige in ihre "
+                "Werkzeuge (Ebene 4) — die Fuehrung haengt an der Simulation "
+                "nur ueber die gemessene Menge (VORZEIGE_NACH_WERKZEUG_ERLAUBT, "
+                "ADR-017); eine neue Kante ist eine Architektur-Entscheidung"
+            )
+    # Ratsche: keine neue Kante aus dem Tool in die Vorzeige ohne ADR.
+    for kante in karte.get("tool_nach_vorzeige", []):
+        paar = (kante["von"], kante["nach"])
+        if paar not in TOOL_NACH_VORZEIGE_ERLAUBT:
+            befunde.append(
+                f"{paar[0]} -> {paar[1]}: neue Kante aus dem KI-Tool in die "
+                "Vorzeige — das Tool spricht das Zielsystem nur ueber die "
+                "gemessene Schnittstelle an (TOOL_NACH_VORZEIGE_ERLAUBT, "
+                "ADR-017); eine neue Kante ist eine Architektur-Entscheidung"
+            )
     # Jede vorkommende Schicht braucht einen Regel-Eintrag — auch eine
     # ohne jede Kante (ein neues Paket, das nur nach aussen telefoniert,
     # waere sonst unsichtbar; Review-Befund).

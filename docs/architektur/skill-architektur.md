@@ -1,6 +1,7 @@
 # Skill-Architektur: die Agenten-Rollen des Gesamtsystems
 
-Stand: 2026-08-19. Die Skills sind das Betriebsmodell des Systems: sie
+Stand: 2026-09-05 (Rollen-Katalog v2 nach ADR-018; v1 vom 2026-08-19
+darunter als Skill-Katalog). Die Skills sind das Betriebsmodell des Systems: sie
 tragen das Urteils-Wissen der Agenten-Rollen, versioniert im Repo,
 CLI-neutral gespiegelt (`.claude/skills/` + `.agents/skills/`,
 Paritaet test-tragend), und ihr Git-Stand gehoert in die Provenienz
@@ -16,7 +17,28 @@ Praezedenzfall. Ein Skill, der versucht, Geltung zu erzeugen
 ("bitte halte dich an ..."), ist ein Architekturfehler — die Regel
 gehoert dann in ein Gate oder einen Validator.
 
-## Rollen-Katalog v1
+## Rollen-Katalog v2: die vier Agentenrollen des KI-Tools (ADR-018)
+
+Skills sind Faehigkeiten; Rollen sind, wer sie in welchem Auftrag
+ausuebt. Seit ADR-018 gibt es genau vier Agentenrollen, versioniert als
+Definitionen unter `.claude/agents/` (gespiegelt in `.agents/agents/`,
+Paritaet test-tragend). Sie legen vor und zeichnen nie; jede hat ein
+menschliches Gegenstueck, das mit seinem Schluessel zeichnet.
+
+| Agentenrolle | Ziel (Perspektive eines laufenden Unternehmens) | Skills | Gegenstueck |
+|---|---|---|---|
+| `agent/aktuariat` | fachlich richtig abgebildet: Transformation, drei aktuarielle Abnahmen, Controlling, Bestandsfortfuehrung | transformiere-quellbestand, extrahiere-quellfragment, bereite-fachkonflikt-auf, aktuartest-durchfuehren, pruefe-migrationscontrolling | `mensch/verantwortlicher-aktuar` |
+| `agent/architektur` | in der vorgegebenen Architektur: Schichtenkarte, Nachweiskette, Vertrauensgrenzen, Betrieb | entwickle-im-zielsystem (als Massstab), author-rechner-toolbox-gate, teste-adversarial, integriere-migrationsinkrement, dokumentiere-system | `mensch/it-verantwortung` |
+| `agent/rechenkern` | stabiles Zielsystem: Regressionstests, Referenzwerte, Doku, Inkremente unter ADR-007 | entwickle-im-zielsystem, integriere-migrationsinkrement, teste-adversarial, dokumentiere-system | `mensch/entwicklungsverantwortung` |
+| `agent/programmleitung` | Migration effizient geliefert; orchestriert die drei anderen, haelt an jedem Gate an | migrationsfall-durchfuehren | `mensch/programmleitung` |
+
+Die Gegenseite des abgebenden Hauses (`mensch/quell-aktuar`) hat kein
+Agenten-Gegenstueck: Sie liefert, sie zeichnet keine Abnahme des
+aufnehmenden Unternehmens. In der Vorfuehrung werden alle menschlichen
+Rollen simuliert (Schluesselklasse `simulation`); die Regie der
+Vorzeige haelt ihre Auftragsprofile (ADR-017).
+
+## Skill-Katalog (v1, Faehigkeiten je Skill)
 
 | Rolle | Skill | Kern-Auftrag | Haerte-Grenze (was der Skill NICHT darf) |
 |---|---|---|---|
@@ -60,9 +82,11 @@ migrationsfall-durchfuehren
   '- Doku-Pflichten: dokumentiere-system (ADR, README, AGENTS)
 ```
 
-Menschliche Gates (A-Q1/A-M1/A-M4/A-K1, P9-Snapshots) sind KEINE Skills — sie
-sind Werkzeuge fuer Menschen (`ontologie.entscheide`,
-`gates.gate_entscheid`). Skills bereiten sie vor und halten an ihnen an.
+Menschliche Gates (A-Q1/A-M1/A-M2/A-M3/A-M4/A-K1, P9-Snapshots) sind
+KEINE Skills — sie sind Werkzeuge fuer Menschen (`ontologie.entscheide`,
+`gates.gate_entscheid`); wer zeichnet, wird aus dem Schluessel ueber die
+Zeichnungsordnung bestimmt (ADR-018). Skills bereiten sie vor und halten
+an ihnen an.
 
 ## Benannte, noch nicht gebaute Rollen (mit Ausloeser)
 

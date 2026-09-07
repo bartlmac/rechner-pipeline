@@ -5,12 +5,25 @@ A system for **life-insurance portfolio migration**, with **no LLM SDK in the
 codebase** (the CLI agent *is* the model; Python code pre-digests, validates,
 computes and accepts):
 
-1. **The target kernel** (`rechner_pipeline.kern`, version 3.0.1): a stable,
-   versioned calculation kernel formulated entirely in the state-model world
+The repository carries **four levels** (ADR-017): the developer's work
+with the AI (reviews, ADRs, the suite); the **KI-Tool**, the agentic
+migration system that any insurer could use unchanged (ontology, spec
+contract, gates, roles, skills, report generators); the **Vorzeige**, a
+fictional insurer at which the tool shows itself and can be tested
+(reference target kernel, portfolio management, the migration case, the
+company site); and the **Vorzeige tools** that produce the Vorzeige
+(portfolio simulation, source-system generation, direction mechanics).
+The layer map records the level of every layer and pins the edges from
+the tool into the Vorzeige as a ratchet.
+
+1. **The target kernel** (`rechner_pipeline.kern`, version 3.4.0, part of
+   the Vorzeige as the reference target system): a stable, versioned
+   calculation kernel formulated entirely in the state-model world
    (semi-Markov backbone, Thiele recursion on pure decrement probabilities).
    Two products — endowment (KLV) and disability (BU) — are *configurations*
-   of that backbone, not separate engines. Commutation values live in a
-   **separate second kernel** used only as a cross-check rail (ADR-004).
+   of that backbone, not separate engines. The commutation second kernel is
+   out of service (ADR-013); it survives only as an independent witness in
+   the algebraic property tests.
 2. **The portfolio module** (`rechner_pipeline.bestand`): synthetic,
    forward-projectable portfolios that the target kernel can compute directly.
    Every amount comes from the kernel; the module carries no actuarial
@@ -264,9 +277,9 @@ Each gate is one command, writes one JSON to stdout plus a
 |---|---|---|
 | P-Q1 | `gates.extract` | deterministic pre-digest of a source workbook (formulas, cached values, defined names via openpyxl; VBA via `oletools.olevba`) |
 | P-Q2 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
-| P-Q3 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
-| P-K1 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state |
-| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-M1, A-M4, A-K1); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); agents may only reject |
+| P-Q3 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation; the A-Box must carry the current T-Box version |
+| P-K1 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state; spec, A-Box and code must speak the same T-Box version |
+| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-M1, A-M4, A-K1); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); A-K1 requires the T-Box change record `abgeleitet/tbox/aenderung.json` (old and new version, hash of the T-Box module, change artefact); a simulated role signs only with a mandate (ADR-018); agents may only reject |
 | A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for the respective gate A-M1, A-M2 or A-M3 (in scope `bestand` all three are mandatory predecessors of A-M4, in scope `tarif` only A-M1); transport-security digests are reported separately |
 | P-B1 | `gates.bestand_validate` | portfolio contract and movement identities |
 | G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds P-B1, the suite and HTML report on one state |

@@ -39,11 +39,15 @@ from rechner_pipeline.gates import (
     transformation_anwenden,
     verankerung_belegen,
 )
+from tests.e2e_fixture import zellen_config
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "baldrian2_e2e"
 
 GENERATION = "klv/tg2015"
+# Wert der Stammspalte tarif_generation (Name der Generation in der
+# PLV-Config) — nicht der Ontologie-Knoten; so lief auch der echte Lauf 2.
+TARIF_GENERATION = "TG2015"
 STICHTAG_1 = "2026-01-01"
 STICHTAG_2 = "2027-01-01"
 ABZUG_1 = "baldrian_bestandsabzug_2026-01-01.csv"
@@ -122,7 +126,7 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     bestand = fall / "abgeleitet" / "bestand"
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
-        "--tarif-generation", GENERATION, "--stichtag", STICHTAG_1,
+        "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
         "--vorgeschichte", METADATEN,
         "--generation-spez", GENERATION,
         "--out-dir", str(bestand),
@@ -136,12 +140,30 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ]) == 0, "Transformationsergebnis mit Zielbindung"
 
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    assert bestand_validate.main([
+    # Vollprofil (Review T22-01): Journal, Ledger, Merkmale (Tarifzellen),
+    # die PLV-Config mit der uebernommenen Generation und der Horizont —
+    # nur so prueft P-B1 Bewegungs-Identitaet, Ledger-Semantik und die
+    # Kern-Herleitung jeder Buchung, die A-M4 im Bestands-Scope verlangt.
+    # Die Config der Kern-Herleitung ist die dieses Falls (zellen_config):
+    # Der Zellen-Abschnitt der Uebernahme traegt die Grundlagen, aus denen
+    # sie gebucht hat. Die PLV-Config des Repos gehoert zum ECHTEN zweiten
+    # Lauf; diese Fixture ist eine reduzierte Scheibe mit eigener Spez.
+    config_pfad = fall / "abgeleitet" / "bestand-config.toml"
+    config_pfad.write_text(
+        zellen_config((bestand / "generation-zellen.toml").read_text("utf-8"),
+                      name=TARIF_GENERATION, knoten=GENERATION),
+        encoding="utf-8")
+    pb1 = bestand_validate.main([
         "--portfolio", str(bestand / "bestand.parquet"),
         "--historie", str(bestand / "historie.parquet"),
+        "--ledger", str(bestand / "ledger.parquet"),
+        "--merkmale", str(bestand / "merkmale.parquet"),
+        "--config", str(config_pfad),
+        "--bis", STICHTAG_1,
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
-    ]).exit_code == 0, "Gate P-B1 auf dem uebernommenen Bestand"
+    ])
+    assert pb1.exit_code == 0, ("Gate P-B1 auf dem uebernommenen Bestand", pb1.errors)
 
     # Verankerung: Zustands-Welten rechnen, Residuen auf die
     # Korrekturschicht legen — die Suite liest daraus Schichtparameter
@@ -203,7 +225,7 @@ def test_die_uebernahme_erzeugt_den_erwarteten_bestand(gefahrener_fall: Path):
     df = read_portfolio(bestand / "bestand.parquet")
     assert len(df) == len(policen)
     assert sorted(str(p) for p in df["police_id"]) == sorted(policen)
-    assert set(df["tarif_generation"]) == {GENERATION}
+    assert set(df["tarif_generation"]) == {TARIF_GENERATION}
     for tabelle in ("bestand", "historie", "ledger", "verankerung"):
         assert (bestand / f"{tabelle}.parquet").is_file()
 

@@ -58,6 +58,26 @@ from rechner_pipeline.bestand.ereignisse import (
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
 from rechner_pipeline.bestand.manifest import schreibe_manifest
+
+
+def _nichtendliche(name: str, df) -> str:
+    """Spalten mit NaN/inf einer Ausgabe benennen (leer = alles endlich).
+
+    Review T21-03: Endliche Verteilungsparameter koennen numerisch
+    ueberlaufen (meanlog = 1000 -> exp -> inf); die Config-Pruefung ist
+    dann gruen, der Bestand nicht. Vor dem Publish wird deshalb jede
+    Ausgabe geprueft — und bei einem Befund wird NICHTS geschrieben, auch
+    kein Manifest, das einen erfolgreichen Lauf belegen wuerde.
+    """
+    import numpy as np
+
+    schlecht = []
+    for spalte in df.columns:
+        if str(df[spalte].dtype) in ("float64", "int64"):
+            werte = df[spalte].to_numpy(dtype="float64")
+            if not np.isfinite(werte).all():
+                schlecht.append(spalte)
+    return f"{name}: nichtendliche Werte in {schlecht}" if schlecht else ""
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 
 
@@ -231,6 +251,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ausgaben: List[Path] = []
     eingaben: dict = {}
     try:
+        basis_schreiben = False
         if ns.portfolio:
             portfolio_path = Path(ns.portfolio)
             if not portfolio_path.is_file():
@@ -242,8 +263,18 @@ def main(argv: Optional[List[str]] = None) -> int:
             basis = read_portfolio(portfolio_path)
             eingaben["portfolio"] = portfolio_path
         else:
-            basis = generate(config, bis=neuzugang_ab)
-            ausgaben.append(write_portfolio(basis, out_dir / "bestand.parquet"))
+            import numpy as np
+
+            with np.errstate(over="raise", invalid="raise", divide="raise"):
+                try:
+                    basis = generate(config, bis=neuzugang_ab)
+                except FloatingPointError as exc:
+                    raise ValueError(
+                        f"Basisbestand nicht erzeugbar: numerischer Ueberlauf in "
+                        f"einer Verteilung ({exc}) — Verteilungsparameter sind "
+                        "endlich, aber ausserhalb des sicheren Wertebereichs"
+                    ) from exc
+            basis_schreiben = True
         uebernahme = None
         if ns.uebernahme:
             uebernahme = _lies_uebernahme(Path(ns.uebernahme))
@@ -282,6 +313,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"bestand_fortschreibung: {exc}", file=sys.stderr)
         return 2
 
+    # Endlichkeit JEDER Ausgabe vor dem ersten Publish (T21-03).
+    befunde = [b for b in (
+        _nichtendliche("bestand.parquet", basis) if basis_schreiben else "",
+        _nichtendliche("historie.parquet", historie),
+        _nichtendliche("ledger.parquet", ledger),
+        _nichtendliche("scheiben.parquet", ergebnis.scheiben),
+        _nichtendliche("zugaenge.parquet", ergebnis.zugaenge),
+        _nichtendliche("bestand_gesamt.parquet", gesamt),
+    ) if b]
+    if befunde:
+        print("bestand_fortschreibung: " + "; ".join(befunde) + " — es wird "
+              "nichts geschrieben (Verteilungsparameter oder Rechnungsgrundlagen "
+              "pruefen)", file=sys.stderr)
+        return 2
+    if basis_schreiben:
+        ausgaben.append(write_portfolio(basis, out_dir / "bestand.parquet"))
     ausgaben.append(write_portfolio(historie, out_dir / "historie.parquet"))
     ausgaben.append(write_portfolio(ledger, out_dir / "ledger.parquet"))
     ausgaben.append(write_portfolio(ergebnis.scheiben, out_dir / "scheiben.parquet"))

@@ -21,8 +21,13 @@ faellt daran — unabhaengig davon, ob die Jahressumme aufgeht.
 
 Bewusste Grenzen: ``MIG`` (Residuum der Uebernahme) und ``RED``
 (Herabsetzung, von der Engine nicht erzeugt) werden nicht hergeleitet;
-``ERH`` ist ueber die Scheiben gebunden. Beim BU-Beispielprodukt sind
-alle Betraege die versicherte Jahresrente oder null.
+``ERH`` ist ueber die Scheiben gebunden. Beim BU-Beispielprodukt folgt der
+Betrag eines Todes- oder Ablaufereignisses aus dem ZUSTAND unmittelbar
+davor (Review T21-01): im Leistungsbezug die Jahresrente, als Anwaerter
+null — hergeleitet aus der geordneten Statushistorie, nicht aus dem zu
+pruefenden Betrag. Vorher genuegte "null oder Rente", und zwei
+BU-Ablaeufe gleicher Rente liessen sich zwischen einer aktiven und einer
+invaliden Police tauschen.
 
 Knoten: klv, bu
 """
@@ -83,6 +88,36 @@ class _Herleitung:
         return self.grund.beitragsfreie_summe(jahr) + sum(
             k.beitragsfreie_summe(jahr - j) for j, _, k in self._bis(jahr)
         )
+
+
+#: Zustaende, die eine Police beenden — eine Zeile mit diesem Code am
+#: Ereignisdatum IST das Ereignis, nicht sein Vorzustand.
+ENDZUSTAENDE = ("TOD", "ABL", "STO")
+
+
+def zustand_vor(
+    historie: Optional[pd.DataFrame], pid: int, datum: pd.Timestamp
+) -> str:
+    """Der Zustand einer Police unmittelbar VOR ihrem Ereignis an ``datum``.
+
+    Aus der geordneten Statushistorie (status_date, status_id): die
+    juengste Zeile bis einschliesslich ``datum``, wobei die Endzustands-
+    Zeile desselben Datums (das Ereignis selbst) nicht zaehlt. Der Ledger
+    traegt keine status_id, deshalb entscheidet der Code, nicht die
+    Reihenfolge. Faellt eine Invalidisierung mit dem Ablauf auf dasselbe
+    Datum (letztes Vertragsjahr), ist der Vorzustand des Ablaufs BU.
+    Ohne Historie oder Zeile gilt der Ursprungszustand POL. Dieselbe
+    Herleitung nutzt das Bewegungskonto (kennzahlen).
+    """
+    if historie is None or len(historie) == 0:
+        return "POL"
+    zeilen = historie[(historie["police_id"] == pid) & (historie["status_date"] <= datum)]
+    zeilen = zeilen[~((zeilen["status_date"] == datum)
+                      & zeilen["status_code"].isin(ENDZUSTAENDE))]
+    if len(zeilen) == 0:
+        return "POL"
+    juengste = zeilen.sort_values(["status_date", "status_id"], kind="stable").iloc[-1]
+    return str(juengste["status_code"])
 
 
 def pruefe_ledger_betraege(
@@ -147,11 +182,10 @@ def pruefe_ledger_betraege(
             if art in ("INV", "REA", "ZUG"):
                 erwartet = rente
             elif art in ("TOD", "ABL"):
-                if abs(betrag) > TOLERANZ and abs(betrag - rente) > TOLERANZ:
-                    abweichungen.append(
-                        f"police {pid} {art} Jahr {jahr}: Ledger {betrag:.2f}, "
-                        f"erwartet 0,00 oder Jahresrente {rente:.2f}")
-                continue
+                # Der Zustand VOR dem Ereignis entscheidet, nicht der Betrag
+                # (T21-01): Leistungsbezug -> Rente endet; Anwaerter -> 0.
+                im_bezug = zustand_vor(historie, pid, z.status_date) == "BU"
+                erwartet = rente if im_bezug else 0.0
             else:
                 continue
         else:

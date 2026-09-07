@@ -39,10 +39,11 @@ Knoten: klv, system/assurance
 from __future__ import annotations
 
 import csv
+import io
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 ROUND_DECIMALS = 4
 
@@ -71,25 +72,49 @@ def _eq4(a: float, b: float) -> bool:
 # --- Erwartungswerte laden -------------------------------------------------
 
 
-def load_expected_scalars(info_dir: Path) -> Dict[str, Dict[str, Optional[float]]]:
+def load_expected_scalars_aus(
+    inhalte: Mapping[str, str],
+) -> Dict[str, Dict[str, Optional[float]]]:
+    """Erwartungs-Skalare aus bereits gelesenem JSON-Text je Praefix.
+
+    Der Lese-einmal-Pfad (Review T23-01): Das Gate liest die Datei, hasht
+    ihre Bytes fuer den Beleg und reicht denselben Text hierher — der
+    Loader liest nicht ein zweites Mal von der Platte.
+    """
     out: Dict[str, Dict[str, Optional[float]]] = {}
-    for p in sorted(info_dir.glob("*_scalar.json")):
-        prefix = p.name[: -len("_scalar.json")]
-        data = json.loads(p.read_text(encoding="utf-8"))
+    for prefix, text in sorted(inhalte.items()):
+        data = json.loads(text)
         out[prefix] = {k: _to_float(v) for k, v in data.items()}
     return out
 
 
-def load_expected_tables(info_dir: Path) -> Dict[str, Tuple[List[str], List[Dict[str, str]]]]:
+def load_expected_scalars(info_dir: Path) -> Dict[str, Dict[str, Optional[float]]]:
+    return load_expected_scalars_aus({
+        p.name[: -len("_scalar.json")]: p.read_bytes().decode("utf-8")
+        for p in sorted(info_dir.glob("*_scalar.json"))
+    })
+
+
+def load_expected_tables_aus(
+    inhalte: Mapping[str, str],
+) -> Dict[str, Tuple[List[str], List[Dict[str, str]]]]:
+    """Erwartungs-Tabellen aus bereits gelesenem CSV-Text je Praefix
+    (Zeilenenden unveraendert, wie ``open(newline="")``); siehe
+    :func:`load_expected_scalars_aus`."""
     out: Dict[str, Tuple[List[str], List[Dict[str, str]]]] = {}
-    for p in sorted(info_dir.glob("*_table_values.csv")):
-        prefix = p.name[: -len("_table_values.csv")]
-        with p.open(encoding="utf-8", newline="") as f:
-            reader = csv.DictReader(f)
-            header = list(reader.fieldnames or [])
-            rows = [dict(r) for r in reader]
+    for prefix, text in sorted(inhalte.items()):
+        reader = csv.DictReader(io.StringIO(text, newline=""))
+        header = list(reader.fieldnames or [])
+        rows = [dict(r) for r in reader]
         out[prefix] = (header, rows)
     return out
+
+
+def load_expected_tables(info_dir: Path) -> Dict[str, Tuple[List[str], List[Dict[str, str]]]]:
+    return load_expected_tables_aus({
+        p.name[: -len("_table_values.csv")]: p.read_bytes().decode("utf-8")
+        for p in sorted(info_dir.glob("*_table_values.csv"))
+    })
 
 
 # --- Vergleich -------------------------------------------------------------
@@ -233,6 +258,17 @@ def compare(expected: Dict[str, Any], computed: Dict[str, Any]) -> Report:
     _compare_scalars(expected.get("scalars", {}), computed, report)
     _compare_tables(expected.get("tables", {}), computed, report)
     return report
+
+
+def load_expected_aus(
+    skalare: Mapping[str, str], tabellen: Mapping[str, str],
+) -> Dict[str, Any]:
+    """Erwartungswerte aus bereits gelesenem Text (je Praefix), siehe
+    :func:`load_expected_scalars_aus`."""
+    return {
+        "scalars": load_expected_scalars_aus(skalare),
+        "tables": load_expected_tables_aus(tabellen),
+    }
 
 
 def load_expected(info_dir: Path) -> Dict[str, Any]:

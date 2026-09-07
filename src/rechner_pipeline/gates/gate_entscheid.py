@@ -60,6 +60,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import os
 import sys
 from pathlib import Path
@@ -68,18 +69,21 @@ from typing import Dict, List, Mapping, Optional, Tuple
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.gates._common import (
     Exit,
+    GeleseneDatei,
     GateArgumentParser,
     GateCliContract,
     add_request_json_arg,
     begin_gate_ledger_attempt,
     build_result,
     finalize_gate_ledger,
+    lies_gehasht,
     parse_gate_args,
     run_command,
     utc_now,
 )
 from rechner_pipeline.gates._fall_scope import (
     bestands_belegrollen,
+    lies_artefakt_eintrag,
     pruefe_artefakt_eintrag,
     scope_bindung,
     validate_scope_bindung,
@@ -103,10 +107,13 @@ from rechner_pipeline.models.schemas import (
 GATE_VERSION = P9_GATE_VERSION
 # Umzug 2026-09-01: der Rollen-/Gate-Vertrag lebt in models.zeichnung
 # (paketuebergreifend — auch ontologie.entscheide liest ihn seither).
-from rechner_pipeline.models.zeichnung import (  # noqa: E402
+from rechner_pipeline.models.zeichnung import (
+    ausserhalb_des_falls,  # noqa: E402
     GUELTIGE_GATES,
     lade_zeichnungsordnung as _models_lade_zeichnungsordnung,
     zeichnungsrolle as _models_zeichnungsrolle,
+    gueltige_rollenkennung,
+    zeichnung_fuer,
 )
 #: Die drei aktuariellen Abnahmen desselben migrierten Bestands. Sie
 #: laufen ueber DENSELBEN Vertrag — je Abnahme ein Testergebnis, ein
@@ -355,6 +362,135 @@ def pruefe_snapshot_ohne_schluessel(
     return []
 
 
+#: Schema des A-K1-Belegs (Review T22-02).
+TBOX_AENDERUNG_SCHEMA_VERSION = 1
+_SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def _semver_tuple(version: str) -> tuple:
+    return tuple(int(teil) for teil in version.split("."))
+
+
+def pruefe_tbox_aenderung(
+    pfad: Path,
+    fall: Path,
+    *,
+    text: str | None = None,
+    repo_root: Path | None = None,
+) -> List[str]:
+    """Den Beleg einer T-Box-Aenderung gegen Code und Artefakt halten.
+
+    Der Beleg sagt, VON welcher Version NACH welcher die T-Box geht, mit
+    welchem Modul-Hash der Code das belegt und welches Artefakt
+    (ADR, Aenderungsvermerk) die Aenderung begruendet. Geprueft wird:
+    Schema; beide Versionen semver und verschieden; die neue Version ist
+    die, die der Code jetzt traegt (TBOX_VERSION); der Modul-Hash ist der
+    des geladenen T-Box-Moduls; das Artefakt liegt im Fall oder im Repo
+    und traegt seinen Hash. Rueckgabe: Fehlerliste (leer = in Ordnung).
+
+    Der ALTE Stand ist im Code nachweisbar (Review T23-03): Die T-Box
+    deklariert ihre Versionslinie (``TBOX_VERSIONEN``); ``von_version``
+    muss der unmittelbare Vorgaenger von ``nach_version`` in dieser Linie
+    sein, und die Ordnung laeuft aufwaerts — ein erfundener oder
+    rueckwaerts laufender Uebergang wird nicht signiert. Der Artefakt-Pfad
+    ist relativ und kanonisch und liegt im Fall oder im Repo (``repo_root``),
+    nirgends sonst (Review T23-09).
+    """
+    from rechner_pipeline.ontologie import tbox as tbox_modul
+
+    if not pfad.is_file():
+        return ["Datei fehlt"]
+    try:
+        # text: die Bytes, die der Aufrufer bereits fuer den Pflichtbeleg
+        # gehasht hat (Review T23-01) — nicht ein zweites Mal lesen.
+        daten = json.loads(
+            text if text is not None else pfad.read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"nicht lesbar: {exc}"]
+    if not isinstance(daten, dict):
+        return ["kein JSON-Objekt"]
+    fehler: List[str] = []
+    if daten.get("schema_version") != TBOX_AENDERUNG_SCHEMA_VERSION:
+        fehler.append(f"schema_version muss {TBOX_AENDERUNG_SCHEMA_VERSION} sein")
+    von, nach = daten.get("von_version"), daten.get("nach_version")
+    semver_ok = True
+    for name, wert in (("von_version", von), ("nach_version", nach)):
+        if not isinstance(wert, str) or not _SEMVER.match(wert):
+            fehler.append(f"{name} muss eine Version x.y.z sein")
+            semver_ok = False
+    if von == nach:
+        fehler.append("von_version und nach_version sind gleich — keine Aenderung")
+    if semver_ok and von != nach:
+        if _semver_tuple(von) >= _semver_tuple(nach):
+            fehler.append(
+                f"von_version {von!r} liegt nicht vor nach_version {nach!r} "
+                "— ein Uebergang laeuft aufwaerts"
+            )
+        linie = tuple(tbox_modul.TBOX_VERSIONEN)
+        if nach not in linie:
+            fehler.append(
+                f"nach_version {nach!r} steht nicht in der Versionslinie der "
+                f"T-Box {linie!r}"
+            )
+        elif linie.index(nach) == 0:
+            fehler.append(
+                f"nach_version {nach!r} ist die erste Version der T-Box-Linie "
+                f"{linie!r} — ohne Vorgaenger gibt es keinen Uebergang zu zeichnen"
+            )
+        elif linie[linie.index(nach) - 1] != von:
+            fehler.append(
+                f"von_version {von!r} ist nicht der Vorgaenger von {nach!r} in "
+                f"der Versionslinie {linie!r} — der alte Stand muss der im Code "
+                "nachweisbare sein"
+            )
+    if nach != tbox_modul.TBOX_VERSION:
+        fehler.append(
+            f"nach_version {nach!r} ist nicht die Version, die der Code traegt "
+            f"({tbox_modul.TBOX_VERSION!r}) — Beleg und Code muessen dieselbe "
+            "Aenderung meinen"
+        )
+    modul_hash = hashlib.sha256(Path(tbox_modul.__file__).read_bytes()).hexdigest()
+    if daten.get("tbox_sha256") != modul_hash:
+        fehler.append("tbox_sha256 ist nicht der Hash des geladenen T-Box-Moduls")
+    artefakt = daten.get("artefakt")
+    if not (isinstance(artefakt, dict) and isinstance(artefakt.get("pfad"), str)
+            and isinstance(artefakt.get("sha256"), str)):
+        fehler.append("artefakt {pfad, sha256} fehlt")
+    else:
+        # Relativ, kanonisch, innerhalb von Fall oder Repo — nirgends sonst
+        # (Review T23-09): ein absoluter oder hinausfuehrender Pfad liesse ein
+        # Artefakt ausserhalb jeder Nachvollziehbarkeit als Rechtfertigung zu.
+        pfad_roh = artefakt["pfad"]
+        wurzeln = [fall] + ([repo_root] if repo_root is not None else [])
+        datei: Path | None = None
+        if Path(pfad_roh).is_absolute() or ".." in Path(pfad_roh).parts:
+            fehler.append(
+                f"artefakt {pfad_roh!r} ist kein relativer, kanonischer Pfad — "
+                "erlaubt sind Pfade innerhalb des Falls oder des Repos"
+            )
+        else:
+            for wurzel in wurzeln:
+                kandidat = (wurzel / pfad_roh).resolve()
+                try:
+                    kandidat.relative_to(wurzel.resolve())
+                except ValueError:
+                    continue
+                if kandidat.is_file():
+                    datei = kandidat
+                    break
+            if datei is None:
+                fehler.append(
+                    f"artefakt {pfad_roh!r} nicht gefunden (innerhalb des Falls "
+                    "oder des Repos)"
+                )
+            elif hashlib.sha256(datei.read_bytes()).hexdigest() != artefakt["sha256"]:
+                fehler.append(f"artefakt {pfad_roh!r}: Hash stimmt nicht")
+    if not (isinstance(daten.get("begruendung"), str) and daten["begruendung"].strip()):
+        fehler.append("begruendung fehlt")
+    return fehler
+
+
 def _pruefe_g2_snapshot_semantik(snapshot: dict) -> List[str]:
     """Den aus dem Scope abgeleiteten Inhalt einer Annahme pruefen.
 
@@ -365,7 +501,7 @@ def _pruefe_g2_snapshot_semantik(snapshot: dict) -> List[str]:
     auslassen und dennoch als gueltige P9-Historie erscheinen.
     """
     gate = snapshot.get("gate")
-    if gate not in ("A-M1", "A-M4") or snapshot.get("entscheid") != "angenommen":
+    if gate not in ("A-M1", "A-M4", "A-K1") or snapshot.get("entscheid") != "angenommen":
         return []
     fehler: List[str] = []
     scope = snapshot.get("fall_scope")
@@ -503,12 +639,20 @@ def _pruefe_o1_ledger(
     *,
     abox_hash: str,
     eingang_hash: str,
+    text: str | None = None,
 ) -> List[str]:
-    """Validate P-Q3's full ledger schema plus its gate-specific binding."""
+    """Validate P-Q3's full ledger schema plus its gate-specific binding.
+
+    ``text``: die Bytes, die der Aufrufer bereits fuer den Pflichtbeleg
+    gehasht hat (Review T23-01) — der Ledger wird nicht ein zweites Mal
+    gelesen.
+    """
     from rechner_pipeline.gates import abox_validate
 
     try:
-        payload = json.loads(pfad.read_text(encoding="utf-8"))
+        payload = json.loads(
+            text if text is not None else pfad.read_text(encoding="utf-8")
+        )
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return [f"{pfad.name}: nicht als JSON lesbar: {exc}"]
     try:
@@ -614,8 +758,14 @@ def _passende_bestandsbelege(
     abox_sha256: str,
     system: Mapping[str, str],
     repo_root: Path,
+    bekannt: Optional[Dict[str, str]] = None,
 ) -> Tuple[Optional[Dict[str, str]], List[str]]:
-    """P-B1, Suite und Abnahmebericht auf dem aktuellen Stand neu validieren."""
+    """P-B1, Suite und Abnahmebericht auf dem aktuellen Stand neu validieren.
+
+    ``bekannt``: nimmt den Hash des hier gelesenen Abnahmebericht-Ledgers
+    auf, damit die Snapshot-Artefakthashes ihn uebernehmen statt die Datei
+    neu zu lesen (Review T23-01).
+    """
     from rechner_pipeline.gates import abnahmebericht
 
     ledger_pfad = diagnostics / "abnahmebericht.gate.json"
@@ -624,9 +774,10 @@ def _passende_bestandsbelege(
             "gruener Abnahmebericht-Beleg fehlt: abnahmebericht.gate.json"
         ]
     try:
-        ledger = GateLedgerEntry.from_dict(
-            json.loads(ledger_pfad.read_text(encoding="utf-8"))
-        )
+        # Einmal lesen: der Pflichtbeleg-Hash ist der Hash dieser Bytes
+        # (Review T23-01), nicht einer zweiten Lesung.
+        ledger_gelesen = lies_gehasht(ledger_pfad)
+        ledger = GateLedgerEntry.from_dict(ledger_gelesen.json())
     except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         return None, [f"Abnahmebericht-Ledger ungueltig: {exc}"]
 
@@ -687,14 +838,16 @@ def _passende_bestandsbelege(
 
     pfade: Dict[str, Path] = {}
     hashes: Dict[str, str] = {}
+    # Jeden Pflichtbeleg GENAU EINMAL lesen: der protokollierte Hash und die
+    # inhaltliche Neupruefung unten stammen aus denselben Bytes (T23-01).
+    gelesen: Dict[str, GeleseneDatei] = {}
     for rolle in rollen:
-        pfad, artefakt_fehler = pruefe_artefakt_eintrag(
-            fall, rolle, belege[rolle]
-        )
+        g, artefakt_fehler = lies_artefakt_eintrag(fall, rolle, belege[rolle])
         fehler.extend(artefakt_fehler)
-        if pfad is not None:
-            pfade[rolle] = pfad
-            hashes[rolle] = belege[rolle]["sha256"]
+        if g is not None:
+            pfade[rolle] = g.pfad
+            gelesen[rolle] = g
+            hashes[rolle] = g.sha256
 
     renderer_belege = ledger.summary.get("renderer_artefakte")
     renderer_rollen = abnahmebericht.renderer_artefaktrollen()
@@ -709,13 +862,15 @@ def _passende_bestandsbelege(
         return None, fehler
 
     renderer_pfade: Dict[str, Path] = {}
+    renderer_gelesen: Dict[str, GeleseneDatei] = {}
     for rolle in renderer_rollen:
-        pfad, artefakt_fehler = pruefe_artefakt_eintrag(
+        g, artefakt_fehler = lies_artefakt_eintrag(
             fall, rolle, renderer_belege[rolle]
         )
         fehler.extend(artefakt_fehler)
-        if pfad is not None:
-            renderer_pfade[rolle] = pfad
+        if g is not None:
+            renderer_pfade[rolle] = g.pfad
+            renderer_gelesen[rolle] = g
 
     input_eintraege = {
         rolle: eintrag
@@ -804,9 +959,7 @@ def _passende_bestandsbelege(
     suite: Optional[dict] = None
     if "migrationssuite" in pfade:
         try:
-            suite_roh = json.loads(
-                pfade["migrationssuite"].read_text(encoding="utf-8")
-            )
+            suite_roh = gelesen["migrationssuite"].json()
             if isinstance(suite_roh, dict):
                 suite = suite_roh
             else:
@@ -821,9 +974,7 @@ def _passende_bestandsbelege(
     transformation: object = None
     if "spec" in renderer_pfade:
         try:
-            spec_roh = json.loads(
-                renderer_pfade["spec"].read_text(encoding="utf-8")
-            )
+            spec_roh = renderer_gelesen["spec"].json()
             spec = abnahmebericht.TransformationsSpec.model_validate(spec_roh)
         except (
             OSError,
@@ -837,11 +988,7 @@ def _passende_bestandsbelege(
             )
     if "transformation_ergebnis" in renderer_pfade:
         try:
-            transformation = json.loads(
-                renderer_pfade["transformation_ergebnis"].read_text(
-                    encoding="utf-8"
-                )
-            )
+            transformation = renderer_gelesen["transformation_ergebnis"].json()
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             fehler.append(f"Gebundenes Transformationsergebnis unlesbar: {exc}")
         else:
@@ -894,6 +1041,7 @@ def _passende_bestandsbelege(
                     abnahmebericht._transformationsvertrag_fehler(
                         fall=fall,
                         spec_pfad=renderer_pfade["spec"],
+                        spec_hash=renderer_gelesen["spec"].sha256,
                         spec=spec,
                         ergebnis=transformation,
                         suite=suite,
@@ -956,6 +1104,7 @@ def _passende_bestandsbelege(
                             erzeugung=erzeugung_fuer_pruefung,
                             suite=suite,
                             bericht_pfad=pfade["abnahmebericht"],
+                            bericht_text=gelesen["abnahmebericht"].text(),
                             erwartete_stichtage=stichtage,
                             fall=fall,
                         )
@@ -964,6 +1113,7 @@ def _passende_bestandsbelege(
             fehler.extend(
                 abnahmebericht._b1_fehler(
                     ledger_pfad=pfade["pb1_ledger"],
+                    ledger_text=gelesen["pb1_ledger"].text(),
                     fall=fall,
                     repo_root=repo_root,
                     suite=suite,
@@ -983,7 +1133,9 @@ def _passende_bestandsbelege(
 
     if fehler:
         return None, fehler
-    hashes["abnahmebericht"] = _sha256_datei(ledger_pfad)
+    hashes["abnahmebericht"] = ledger_gelesen.sha256
+    if bekannt is not None:
+        bekannt[str(ledger_pfad.relative_to(fall))] = ledger_gelesen.sha256
     return hashes, []
 
 
@@ -993,12 +1145,21 @@ def entscheide_verzeichnis(fall: Path) -> Path:
     return fall / "entscheide"
 
 
-def _artefakt_hashes(fall: Path, ausser_gate: str = "") -> Dict[str, str]:
+def _artefakt_hashes(
+    fall: Path, ausser_gate: str = "", *, bekannt: Mapping[str, str] | None = None,
+) -> Dict[str, str]:
     """Alle entscheidungsrelevanten Artefakte des Falls, gehasht —
     inklusive der registrierten Eingangsdateien selbst und der
     Entscheid-Snapshots ANDERER Gates (Kreuz-Verkettung). Die eigenen
     Gate-Snapshots laufen ueber ``vorgaenger``, nicht ueber die
     Artefaktliste — sonst waere kein Wiederholungs-Aufruf je idempotent.
+
+    ``bekannt``: Hashes der Dateien, die dieser Lauf bereits gelesen und
+    verarbeitet hat (A-Box, Eingang, Fall-Manifest, Pflicht-Ledger). Sie
+    werden uebernommen, nicht neu gelesen — der Snapshot bezeugt dieselben
+    Bytes, die geprueft wurden (Review T23-01). Alle uebrigen Artefakte
+    sind Inventar des Fallstands und werden hier gehasht, ohne dass der
+    Lauf sie verarbeitet; fuer sie gibt es keinen zweiten Lesepfad.
     """
     kandidaten: List[Path] = [fall / "eingang.json", fall / "fall.json"]
     eingang = fall / "eingang"
@@ -1026,10 +1187,14 @@ def _artefakt_hashes(fall: Path, ausser_gate: str = "") -> Dict[str, str]:
             if pfad.name.startswith("gate_entscheid"):
                 continue
             kandidaten.append(pfad)
-    return {
-        str(p.relative_to(fall)): _sha256_datei(p)
-        for p in kandidaten if p.is_file()
-    }
+    vorhanden = dict(bekannt or {})
+    hashes: Dict[str, str] = {}
+    for p in kandidaten:
+        if not p.is_file():
+            continue
+        rel = str(p.relative_to(fall))
+        hashes[rel] = vorhanden.get(rel) or _sha256_datei(p)
+    return hashes
 
 
 def main(argv: Optional[List[str]] = None):
@@ -1046,10 +1211,19 @@ def main(argv: Optional[List[str]] = None):
     parser.add_argument("--entscheider", default=None)
     parser.add_argument("--begruendung", default=None)
     parser.add_argument(
-        "--rolle", default=None, choices=["mensch", "agent"],
-        help="Wer entscheidet. Agenten duerfen NUR ablehnen "
-        "(dokumentierter Zwischenstand) — die Annahme eines "
-            "menschlichen Gates ist Menschen vorbehalten.",
+        "--rolle", default=None,
+        help="Rollenkennung mit Ebene (ADR-018): mensch/<funktion> oder "
+        "agent/<name>. Fuer eine ANNAHME wird die Rolle aus dem "
+        "Freigabeschluessel ueber die Zeichnungsordnung BESTIMMT; ein "
+        "gesetzter Wert muss dann uebereinstimmen. Fuer eine ABLEHNUNG "
+        "ohne Schluessel ist die Kennung Pflicht (dokumentierter "
+        "Zwischenstand). Agentenrollen koennen nur ablehnen.",
+    )
+    parser.add_argument(
+        "--mandat", default=None,
+        help="Datei des Mandats, unter dem eine SIMULIERTE Rolle handelt; "
+        "ihr SHA-256 wandert in die Zeichnung des Snapshots (ADR-018). "
+        "PFLICHT bei Schluesselklasse simulation, ohne Wirkung bei mensch.",
     )
     parser.add_argument(
         "--freigabe-schluessel",
@@ -1128,15 +1302,37 @@ def main(argv: Optional[List[str]] = None):
                       + ", ".join(GUELTIGE_GATES) + ")")
     if args.entscheid not in ("angenommen", "abgelehnt"):
         return _usage(f"unbekannter Entscheid {args.entscheid!r}")
-    if args.rolle not in ("mensch", "agent"):
-        return _usage("--rolle mensch|agent ist erforderlich (Agenten "
-                      "koennen nur ablehnen)")
-    if args.rolle == "agent" and args.entscheid == "angenommen":
+    if args.rolle is not None and not gueltige_rollenkennung(args.rolle):
         return _usage(
-            "Rolle 'agent' darf nicht annehmen — die Annahme eines "
-            "menschlichen Gates ist Menschen vorbehalten (P2/P4); "
-            "Agenten dokumentieren Zwischenstaende als Ablehnung"
+            f"--rolle {args.rolle!r} ist keine Rollenkennung mit Ebene — "
+            "erwartet mensch/<funktion> oder agent/<name> (ADR-018); "
+            "die Werte 'mensch' und 'agent' ohne Ebene gelten nicht mehr"
         )
+    if args.entscheid == "abgelehnt" and args.rolle is None:
+        return _usage(
+            "--rolle <kennung> ist fuer eine Ablehnung erforderlich "
+            "(Agentenrollen dokumentieren Zwischenstaende so)"
+        )
+    if args.rolle is not None and args.rolle.startswith("agent/") \
+            and args.entscheid == "angenommen":
+        return _usage(
+            f"Rolle {args.rolle!r} darf nicht annehmen — die Annahme eines "
+            "menschlichen Gates ist Menschen vorbehalten (P2/P4, ADR-018); "
+            "Agenten legen vor und dokumentieren Zwischenstaende als Ablehnung"
+        )
+    mandat_sha256: Optional[str] = None
+    if args.mandat:
+        mandat_pfad = Path(args.mandat)
+        if not mandat_pfad.is_file():
+            return _usage(f"--mandat {args.mandat!r} ist keine Datei")
+        if not ausserhalb_des_falls(mandat_pfad, fall):
+            # Wie Ordnung und Schluessel (ADR-018): Was der Fall selbst
+            # umschreiben kann, autorisiert nichts (Review T23-09).
+            return _usage(
+                f"--mandat {args.mandat!r} liegt innerhalb des Falls; das "
+                "Mandat muss wie die Zeichnungsordnung extern verwahrt werden"
+            )
+        mandat_sha256 = hashlib.sha256(mandat_pfad.read_bytes()).hexdigest()
     if not (fall / "eingang.json").is_file():
         return _usage(
             f"kein Fall-Arbeitsbereich: {fall} (anlegen mit: python -m "
@@ -1157,10 +1353,15 @@ def main(argv: Optional[List[str]] = None):
     entscheid_systemstand = systemstand(Path(args.repo_root).resolve())
     pk1_belege: Dict[str, List[str]] = {}
     pflichtbelege: Dict[str, List[str]] = {}
+    # Hashes der in DIESEM Lauf gelesenen Dateien: die Snapshot-Artefakthashes
+    # uebernehmen sie, statt validierte Dateien fuer den Snapshot neu zu lesen
+    # (Review T23-01).
+    bekannte_hashes: Dict[str, str] = {}
     fall_scope: Optional[str] = None
-    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4",):
+    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4", "A-K1"):
         try:
-            fall_scope = fall_mod.lade_scope(fall)
+            fall_scope, fall_json_sha256 = fall_mod.lade_scope_gehasht(fall)
+            bekannte_hashes["fall.json"] = fall_json_sha256
         except fall_mod.FallFehler as exc:
             return _sperre(
                 "fall_scope",
@@ -1197,9 +1398,9 @@ def main(argv: Optional[List[str]] = None):
 
         from rechner_pipeline.ontologie.abox import (
             abox_pfad,
+            lade_aus_bytes,
             validate_abox,
         )
-        from rechner_pipeline.ontologie.tbox import ABox
 
         eingangs_fehler = fall_mod.pruefen(fall)
         if eingangs_fehler:
@@ -1220,12 +1421,15 @@ def main(argv: Optional[List[str]] = None):
             )
         try:
             abox_roh = abox_pfad(fall).read_bytes()
-            abox = ABox.model_validate_json(abox_roh)
+            # Ueber den fail-closed Lader (Review T23-02), nicht am Lader vorbei.
+            abox = lade_aus_bytes(abox_roh)
         except Exception as exc:  # Ladefehler ist Befund MIT Ledger
             return _sperre("abox", f"A-Box unlesbar: {exc}")
-        register = _json.loads(
-            (fall / "eingang.json").read_text(encoding="utf-8")
-        )
+        # eingang.json einmal lesen: Validierung, P-Q3-Abgleich und die
+        # Snapshot-Artefakthashes tragen den Hash derselben Bytes (T23-01).
+        eingang_gelesen = lies_gehasht(fall / "eingang.json")
+        register = eingang_gelesen.json()
+        bekannte_hashes["eingang.json"] = eingang_gelesen.sha256
         abox_fehler = validate_abox(abox, register)
         if abox_fehler:
             return _sperre("abox", "Annahme verweigert — A-Box "
@@ -1259,6 +1463,7 @@ def main(argv: Optional[List[str]] = None):
         # versehentlich eine zwischen zwei Lesevorgaengen geaenderte A-Box
         # als den geprueften Stand protokollieren.
         abox_hash = hashlib.sha256(abox_roh).hexdigest()
+        bekannte_hashes["abgeleitet/abox/abox.json"] = abox_hash
         diagnostics = fall / "abgeleitet" / "diagnostics"
 
         pq3_pfad = diagnostics / "abox_validate.gate.json"
@@ -1272,10 +1477,13 @@ def main(argv: Optional[List[str]] = None):
                 "Annahme verweigert: Gate P-Q3 (abox_validate) ist nie "
                 f"gelaufen ({pq3_pfad.name} fehlt) — nachholen mit: {pq3_kommando}",
             )
+        pq3_gelesen = lies_gehasht(pq3_pfad)
+        bekannte_hashes[str(pq3_pfad.relative_to(fall))] = pq3_gelesen.sha256
         pq3_fehler = _pruefe_o1_ledger(
             pq3_pfad,
+            text=pq3_gelesen.text(),
             abox_hash=abox_hash,
-            eingang_hash=_sha256_datei(fall / "eingang.json"),
+            eingang_hash=eingang_gelesen.sha256,
         )
         if pq3_fehler:
             return _sperre(
@@ -1286,7 +1494,30 @@ def main(argv: Optional[List[str]] = None):
                     + f" — Gate auf dem aktuellen Stand neu fahren: {pq3_kommando}",
                 )
         if args.gate == "A-M4":
-            pflichtbelege["pq3_ledger"] = [_sha256_datei(pq3_pfad)]
+            pflichtbelege["pq3_ledger"] = [pq3_gelesen.sha256]
+
+        if args.gate == "A-K1":
+            # T-Box-Aenderung (Review T22-02): Der Beleg bindet alte und
+            # neue Version, den Hash des T-Box-Moduls und das
+            # Aenderungsartefakt. Ohne ihn ist A-K1 eine Zeichnung ueber
+            # nichts.
+            aenderung_pfad = fall / "abgeleitet" / "tbox" / "aenderung.json"
+            aenderung_gelesen = (
+                lies_gehasht(aenderung_pfad) if aenderung_pfad.is_file() else None
+            )
+            ak1_fehler = pruefe_tbox_aenderung(
+                aenderung_pfad, fall,
+                text=aenderung_gelesen.text() if aenderung_gelesen else None,
+                repo_root=Path(args.repo_root).resolve() if args.repo_root else None,
+            )
+            if ak1_fehler:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: A-K1 braucht den Beleg der "
+                    f"T-Box-Aenderung ({aenderung_pfad.relative_to(fall)}): "
+                    + "; ".join(ak1_fehler[:5]),
+                )
+            pflichtbelege["tbox_aenderung"] = [aenderung_gelesen.sha256]
 
         if args.gate in AKTUARIELLE_ABNAHMEN:
             # Aktuarielle Abnahme (ADR-010): Im Bestands-Scope stuetzt
@@ -1330,8 +1561,15 @@ def main(argv: Optional[List[str]] = None):
                         f"fehlt) — nachholen mit: {am1_kommando}",
                     )
                 try:
-                    am1_ledger = json.loads(
-                        ledger_pfad.read_text(encoding="utf-8")
+                    # Ledger, Testergebnis und Bericht je einmal lesen:
+                    # Pflichtbeleg-Hashes und Nachrechnung aus denselben
+                    # Bytes (Review T23-01).
+                    ledger_gelesen = lies_gehasht(ledger_pfad)
+                    test_gelesen = lies_gehasht(test_pfad)
+                    bericht_gelesen = lies_gehasht(bericht_pfad)
+                    am1_ledger = ledger_gelesen.json()
+                    bekannte_hashes[str(ledger_pfad.relative_to(fall))] = (
+                        ledger_gelesen.sha256
                     )
                 except (OSError, ValueError) as exc:
                     return _sperre(
@@ -1344,9 +1582,9 @@ def main(argv: Optional[List[str]] = None):
                     am1_fehler.append(f"Ledger gehoert nicht zu {kennung}")
                 erwartete_belege = {
                     f"abgeleitet/berichte/{kennung}.json":
-                        _sha256_datei(test_pfad),
+                        test_gelesen.sha256,
                     f"abgeleitet/berichte/{kennung}.html":
-                        _sha256_datei(bericht_pfad),
+                        bericht_gelesen.sha256,
                 }
                 ledger_belege = am1_ledger.get("summary", {}).get("belege")
                 if ledger_belege != erwartete_belege:
@@ -1370,9 +1608,7 @@ def main(argv: Optional[List[str]] = None):
                 from rechner_pipeline.gates import aktuartest as am1_gate
 
                 try:
-                    am1_test = json.loads(
-                        test_pfad.read_text(encoding="utf-8")
-                    )
+                    am1_test = test_gelesen.json()
                 except (OSError, ValueError) as exc:
                     return _sperre(
                         "vorbedingung",
@@ -1440,7 +1676,7 @@ def main(argv: Optional[List[str]] = None):
                         "Annahme verweigert: Vorlage nicht "
                         f"reproduzierbar ({type(exc).__name__}: {exc})",
                     )
-                if am1_html.encode("utf-8") != bericht_pfad.read_bytes():
+                if am1_html.encode("utf-8") != bericht_gelesen.roh:
                     return _sperre(
                         "vorbedingung",
                         "Annahme verweigert: der Bericht ist nicht die "
@@ -1625,7 +1861,7 @@ def main(argv: Optional[List[str]] = None):
                 and aq1_spitze["artefakt_hashes"].get("eingang.json")
                 == eingang_hash
                 and aq1_spitze["artefakt_hashes"].get("fall.json")
-                == _sha256_datei(fall / "fall.json")
+                == fall_json_sha256
                 and aq1_spitze["system"] == entscheid_systemstand
             )
             if not passend:
@@ -1692,7 +1928,7 @@ def main(argv: Optional[List[str]] = None):
                     and spitze_a["artefakt_hashes"].get("eingang.json")
                     == eingang_hash
                     and spitze_a["artefakt_hashes"].get("fall.json")
-                    == _sha256_datei(fall / "fall.json")
+                    == fall_json_sha256
                     and spitze_a["system"] == entscheid_systemstand
                 )
                 if not passend_a:
@@ -1732,6 +1968,7 @@ def main(argv: Optional[List[str]] = None):
                     abox_sha256=abox_hash,
                     system=entscheid_systemstand,
                     repo_root=repo_root,
+                    bekannt=bekannte_hashes,
                 )
                 if bestands_fehler or bestandsbelege is None:
                     return _sperre(
@@ -1779,13 +2016,43 @@ def main(argv: Optional[List[str]] = None):
         )
     geltende = [bestehende[sha] for sha in spitzen]
 
+    # Die Rolle eines Belegs wird aus dem Schluessel BESTIMMT, wo ein
+    # Schluessel und eine Ordnung vorliegen; behauptet ist sie nur bei
+    # einer Ablehnung ohne Schluessel (ADR-018).
+    rolle = args.rolle
+    if zeichnungsordnung is not None and aktiver_schluessel is not None:
+        bestimmt = _zeichnungsrolle(zeichnungsordnung, aktiver_schluessel)
+        if bestimmt is None and args.entscheid == "angenommen":
+            return _sperre(
+                "zeichnung",
+                "Annahme verweigert: der Freigabeschluessel gehoert keiner "
+                "Rolle der Zeichnungsordnung -- wer nicht in der Ordnung "
+                "steht, zeichnet nicht",
+            )
+        if bestimmt is not None:
+            if rolle is not None and rolle != bestimmt:
+                return _usage(
+                    f"--rolle {rolle!r} widerspricht der aus dem Schluessel "
+                    f"bestimmten Rolle {bestimmt!r}"
+                )
+            rolle = bestimmt
+    if rolle is None:
+        # Eine Annahme ohne Ordnung kann keine Rolle bestimmen — das ist
+        # die Sperre aus ADR-018, kein Bedienfehler.
+        return _sperre(
+            "zeichnung",
+            "Annahme verweigert: --zeichnungsordnung fehlt — die zeichnende "
+            "Rolle wird aus dem Freigabeschluessel ueber die Ordnung "
+            "bestimmt, nicht behauptet (ADR-018)",
+        )
+
     kern_inhalt = {
         "command": "gate_entscheid",
         "gate_version": GATE_VERSION,
         "gate": args.gate,
         "entscheid": args.entscheid,
         "entscheider": args.entscheider,
-        "rolle": args.rolle,
+        "rolle": rolle,
         "begruendung": args.begruendung,
         # Der NAME des Falls, nicht sein Pfad. Das Feld dient der
         # Identitaet ("gehoert dieser Snapshot zu diesem Fall?"), und
@@ -1795,10 +2062,12 @@ def main(argv: Optional[List[str]] = None):
         # veroeffentlichtes Artefakt. Der Name leistet dasselbe und ist
         # neutral.
         "fall": fall.name,
-        "artefakt_hashes": _artefakt_hashes(fall, ausser_gate=args.gate),
+        "artefakt_hashes": _artefakt_hashes(
+            fall, ausser_gate=args.gate, bekannt=bekannte_hashes,
+        ),
         "system": entscheid_systemstand,
     }
-    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4",):
+    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4", "A-K1"):
         kern_inhalt["fall_scope"] = fall_scope
         kern_inhalt["pflichtbelege"] = pflichtbelege
     if args.gate == "A-M4":
@@ -1835,21 +2104,44 @@ def main(argv: Optional[List[str]] = None):
                 "ist erforderlich; ein frei editierbarer Fall darf seine "
                 "menschliche Freigabe nicht selbst behaupten",
             )
+        if zeichnungsordnung is None:
+            # Ohne Ordnung keine Annahme (ADR-018): Die zeichnende Rolle
+            # wird aus dem Schluessel bestimmt, nicht behauptet. Spaet
+            # geprueft, damit fachliche Sperren (offene Diskrepanz,
+            # fehlende Vorbedingung) weiterhin als solche gemeldet werden.
+            return _sperre(
+                "zeichnung",
+                "Annahme verweigert: --zeichnungsordnung fehlt — die "
+                "zeichnende Rolle wird aus dem Freigabeschluessel ueber die "
+                "Ordnung bestimmt, nicht behauptet (ADR-018)",
+            )
         zf = _zeichnungsfehler(zeichnungsordnung, args.gate, aktiver_schluessel)
         if zf:
             return _sperre(
                 "zeichnung",
                 f"Annahme verweigert: {zf}",
             )
-        if zeichnungsordnung is not None:
-            # Die Rollenbindung wandert IN den Snapshot und wird
-            # mitsigniert: Wer spaeter prueft, sieht nicht nur DASS
-            # gezeichnet wurde, sondern als welche Rolle unter welcher
-            # Ordnung.
-            snapshot["zeichnung"] = {
-                "rolle": _zeichnungsrolle(zeichnungsordnung, aktiver_schluessel),
-                "ordnung_sha256": zeichnungsordnung_sha,
-            }
+        # Die Rollenbindung wandert IN den Snapshot und wird mitsigniert:
+        # Wer spaeter prueft, sieht nicht nur DASS gezeichnet wurde,
+        # sondern als welche Rolle, unter welcher Ordnung und mit welcher
+        # Schluesselklasse — Mensch oder Simulation (ADR-018).
+        snapshot["zeichnung"] = zeichnung_fuer(
+            zeichnungsordnung, zeichnungsordnung_sha, aktiver_schluessel,
+            mandat_sha256,
+        )
+        # Simulation ohne Mandat ist keine Besetzung, sondern eine Luecke
+        # (ADR-018; Review T22-07): Die Sperre greift VOR der Signatur.
+        if (
+            snapshot["zeichnung"].get("schluesselklasse") == "simulation"
+            and not snapshot["zeichnung"].get("mandat_sha256")
+        ):
+            return _sperre(
+                "mandat",
+                f"Annahme verweigert: die Rolle {snapshot['zeichnung']['rolle']!r} "
+                "ist mit einem Simulationsschluessel besetzt und handelt ohne "
+                "Mandat — --mandat <datei> ist bei Schluesselklasse simulation "
+                "Pflicht (ADR-018)",
+            )
         snapshot["freigabe"] = _freigabe_fuer(
             snapshot, schluesselring[aktiver_schluessel]
         )
@@ -1876,7 +2168,7 @@ def main(argv: Optional[List[str]] = None):
         "gate": args.gate,
         "entscheid": args.entscheid,
         "entscheider": args.entscheider,
-        "rolle": args.rolle,
+        "rolle": rolle,
         "snapshot_sha256": inhalt_hash,
         "vorgaenger": len(vorgaenger),
         "artefakte": len(snapshot["artefakt_hashes"]),
@@ -1897,7 +2189,8 @@ def main(argv: Optional[List[str]] = None):
         paths={"fall": str(fall), "snapshot": str(ziel)},
         summary=ergebnis_summary,
         input_hashes=dict(snapshot["artefakt_hashes"]),
-        output_hashes={str(ziel): _sha256_datei(ziel)},
+        # Der Snapshot bezeugt die eben geschriebenen Bytes (Review T23-01).
+        output_hashes={str(ziel): hashlib.sha256(payload).hexdigest()},
     ))
 
 

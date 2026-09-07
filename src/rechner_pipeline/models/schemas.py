@@ -73,8 +73,16 @@ GATE_VERSION_DEFAULT = "1.0.0"
 #: Bedieners in ein signiertes Artefakt — in einer veroeffentlichten
 #: Kette ist das nicht mehr zu entfernen, weil der Pfad INNERHALB der
 #: gehashten Nutzlast und der Signaturnachricht liegt.
-P9_SNAPSHOT_SCHEMA_VERSION = 6
-P9_GATE_VERSION = "0.6.0"
+#: Aktuelles Snapshot-Schema (ADR-018: Rollenkennung mit Ebene und
+#: Schluesselklasse in der Zeichnung). Schema 6 bleibt LESBAR: Die
+#: Snapshots des zweiten Baldrian-Laufs sind als Ausnahme ausgewiesen und
+#: werden nicht nachsigniert.
+P9_SNAPSHOT_SCHEMA_VERSION = 7
+_ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
+P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7)
+P9_GATE_VERSION = "1.0.0"
+#: Gate-Version je lesbarem Schnappschuss-Schema.
+P9_GATE_VERSION_JE_SCHEMA = {6: "0.6.0", 7: P9_GATE_VERSION}
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
 #: Die menschlich entscheidbaren Gates. A-M2 (Verlaufstest) und A-M3
 #: (Geschaeftsvorfalltest) stehen hier gleichberechtigt neben A-M1: Alle
@@ -169,6 +177,23 @@ def _ledger_summary_errors(
 # --------------------------------------------------------------------------- #
 
 
+def _pflicht_schema_version(data: Dict[str, Any]) -> int:
+    """``schema_version`` muss deklariert sein.
+
+    Ein fehlender Schluessel wird nie mit der aktuellen Version
+    synthetisiert (Review T23-02): sonst waeren "nicht deklariert" und
+    "aktuell" ununterscheidbar, und ``validate()`` liefe fuer alte oder
+    unvollstaendige Artefakte ins Leere — dasselbe Muster, das
+    :meth:`GateLedgerEntry.validate_payload` fuer den Ledger erzwingt.
+    """
+    if not isinstance(data, dict) or "schema_version" not in data:
+        raise ValueError(
+            "schema_version fehlt — ein Artefakt ohne Versionsdeklaration "
+            "gilt nicht als aktuell"
+        )
+    return int(data["schema_version"])
+
+
 @dataclass
 class CommonResult:
     """Common toolbox result (schema view)."""
@@ -230,7 +255,7 @@ class CommonResult:
             repair_hints=list(data.get("repair_hints") or []),
             output_hashes=dict(data.get("output_hashes") or {}),
             diagnostics_path=data.get("diagnostics_path"),
-            schema_version=int(data.get("schema_version", SCHEMA_VERSION)),
+            schema_version=_pflicht_schema_version(data),
         )
 
     def validate(self) -> List[str]:
@@ -455,7 +480,7 @@ class P9Snapshot:
         errors: List[str] = []
         gate = data.get("gate")
         expected_fields = set(cls._BASE_FIELDS)
-        if gate in P9_AKTUARIELLE_ABNAHMEN or gate == "A-M4":
+        if gate in P9_AKTUARIELLE_ABNAHMEN or gate in ("A-M4", "A-K1"):
             expected_fields.update({"fall_scope", "pflichtbelege"})
         if gate == "A-M4":
             expected_fields.add("pk1_belege")
@@ -463,20 +488,58 @@ class P9Snapshot:
             expected_fields.add("freigabe")
         fields = set(data)
         missing = sorted(expected_fields - fields)
-        # "zeichnung" ist OPTIONAL: Sie entsteht nur, wenn eine
-        # Zeichnungsordnung uebergeben wurde (Rollenbindung der Annahme).
-        # Aeltere Snapshots ohne sie bleiben gueltig.
+        version = data.get("schema_version")
+        legacy = version == 6
+        # "zeichnung": in Schema 6 optional (nur mit Ordnung), in Schema 7
+        # bei jeder Annahme Pflicht und um die Schluesselklasse ergaenzt
+        # (ADR-018) — aus dem Beleg allein muss ablesbar sein, welche
+        # Rolle wie besetzt war.
         unknown = sorted(fields - expected_fields - {"zeichnung"})
         z = data.get("zeichnung")
-        if z is not None and not (
-            isinstance(z, dict)
-            and set(z) == {"rolle", "ordnung_sha256"}
-            and isinstance(z.get("rolle"), str)
-            and isinstance(z.get("ordnung_sha256"), str)
-        ):
-            errors.append(
-                "zeichnung muss {rolle, ordnung_sha256} mit Strings sein"
-            )
+        if legacy:
+            if z is not None and not (
+                isinstance(z, dict)
+                and set(z) == {"rolle", "ordnung_sha256"}
+                and isinstance(z.get("rolle"), str)
+                and isinstance(z.get("ordnung_sha256"), str)
+            ):
+                errors.append(
+                    "zeichnung muss {rolle, ordnung_sha256} mit Strings sein"
+                )
+        else:
+            pflicht = {"rolle", "ordnung_sha256", "schluesselklasse"}
+            if z is not None and not (
+                isinstance(z, dict)
+                and pflicht <= set(z) <= pflicht | {"mandat_sha256"}
+                and all(isinstance(z.get(k), str) and z[k] for k in pflicht)
+                and z.get("schluesselklasse") in ("mensch", "simulation")
+                and (z.get("mandat_sha256") is None or _is_sha256(z.get("mandat_sha256")))
+            ):
+                errors.append(
+                    "zeichnung muss {rolle, ordnung_sha256, schluesselklasse "
+                    "in (mensch, simulation)[, mandat_sha256]} sein"
+                )
+            # Eine simulierte Rolle handelt unter einem Mandat, und dessen
+            # Hash gehoert in den Beleg (ADR-018, Abschnitt 3). Optional war
+            # das nur im Hilfetext — Review T22-07: ohne Mandat ist die
+            # zentrale Aussage des Rollenmodells nicht durchgesetzt.
+            if (
+                isinstance(z, dict)
+                and z.get("schluesselklasse") == "simulation"
+                and not _is_sha256(z.get("mandat_sha256"))
+            ):
+                errors.append(
+                    "zeichnung mit schluesselklasse simulation braucht "
+                    "mandat_sha256 (ADR-018: eine simulierte Rolle handelt "
+                    "unter einem Mandat)"
+                )
+            if data.get("entscheid") == "angenommen" and z is None:
+                errors.append(
+                    "an accepted decision requires zeichnung (Rolle aus der "
+                    "Zeichnungsordnung, Schluesselklasse) — ADR-018"
+                )
+            if isinstance(z, dict) and z.get("rolle") != data.get("rolle"):
+                errors.append("zeichnung.rolle must equal rolle")
         if missing:
             errors.append(f"required fields missing: {missing}")
         if unknown:
@@ -484,24 +547,35 @@ class P9Snapshot:
         if missing:
             return errors
 
-        if type(data.get("schema_version")) is not int or data.get(
-            "schema_version"
-        ) != P9_SNAPSHOT_SCHEMA_VERSION:
+        if type(version) is not int or version not in P9_SNAPSHOT_SCHEMA_VERSIONEN:
             errors.append(
-                f"schema_version must be {P9_SNAPSHOT_SCHEMA_VERSION}"
+                f"schema_version must be one of {P9_SNAPSHOT_SCHEMA_VERSIONEN}"
             )
+            return errors
         if data.get("command") != "gate_entscheid":
             errors.append("command must be 'gate_entscheid'")
-        if data.get("gate_version") != P9_GATE_VERSION:
-            errors.append(f"gate_version must be {P9_GATE_VERSION!r}")
+        if data.get("gate_version") != P9_GATE_VERSION_JE_SCHEMA[version]:
+            errors.append(
+                f"gate_version must be {P9_GATE_VERSION_JE_SCHEMA[version]!r}"
+            )
         if gate not in P9_GATES:
             errors.append(f"gate must be one of {P9_GATES}, got {gate!r}")
         if data.get("entscheid") not in ("angenommen", "abgelehnt"):
             errors.append("entscheid must be 'angenommen' or 'abgelehnt'")
-        if data.get("rolle") not in ("mensch", "agent"):
-            errors.append("rolle must be 'mensch' or 'agent'")
-        if data.get("rolle") == "agent" and data.get("entscheid") == "angenommen":
-            errors.append("an agent cannot authorize an accepted human gate")
+        rolle = data.get("rolle")
+        if legacy:
+            if rolle not in ("mensch", "agent"):
+                errors.append("rolle must be 'mensch' or 'agent'")
+            if rolle == "agent" and data.get("entscheid") == "angenommen":
+                errors.append("an agent cannot authorize an accepted human gate")
+        else:
+            if not (isinstance(rolle, str) and _ROLLEN_MUSTER.match(rolle)):
+                errors.append(
+                    "rolle must be a role id with its level: mensch/<funktion> "
+                    "or agent/<name> (ADR-018)"
+                )
+            elif rolle.startswith("agent/") and data.get("entscheid") == "angenommen":
+                errors.append("an agent cannot authorize an accepted human gate")
         for name in ("entscheider", "begruendung", "fall"):
             if not isinstance(data.get(name), str) or not data[name].strip():
                 errors.append(f"{name} must be a non-empty string")
@@ -543,14 +617,14 @@ class P9Snapshot:
         if zeit_fehler:
             errors.append(zeit_fehler)
 
-        if gate in ("A-M1", "A-M4"):
+        if gate in ("A-M1", "A-M4", "A-K1"):
             if data.get("fall_scope") not in ("tarif", "bestand"):
                 errors.append("fall_scope must be 'tarif' or 'bestand'")
             pflichtbelege = data.get("pflichtbelege")
             if not isinstance(pflichtbelege, dict):
                 errors.append("pflichtbelege must be an object")
             elif (
-                gate == "A-M4"
+                gate in ("A-M4", "A-K1")
                 and data.get("entscheid") == "angenommen"
                 and not pflichtbelege
             ):
@@ -720,7 +794,7 @@ class QaReport:
             ],
             dependency_versions=dict(data.get("dependency_versions") or {}),
             tafeln_xml_canonical_sha256=data.get("tafeln_xml_canonical_sha256"),
-            schema_version=int(data.get("schema_version", SCHEMA_VERSION)),
+            schema_version=_pflicht_schema_version(data),
         )
 
     def validate(self) -> List[str]:
@@ -825,7 +899,7 @@ class RunDossierV2Delta:
     def from_dict(cls, data: Dict[str, Any]) -> "RunDossierV2Delta":
         run = dict(data.get("run") or {})
         return cls(
-            schema_version=int(data.get("schema_version", 2)),
+            schema_version=_pflicht_schema_version(data),
             run_cli=dict(run.get("cli") or {}),
             options_extra=dict(run.get("options") or {}),
             qa_report=dict(data.get("qa_report") or {}),
@@ -921,7 +995,7 @@ class QaContract:
             tiers_enabled=list(data.get("tiers_enabled") or []),
             tolerances=dict(data.get("tolerances") or {}),
             property_engine=dict(data.get("property_engine") or {}),
-            schema_version=int(data.get("schema_version", SCHEMA_VERSION)),
+            schema_version=_pflicht_schema_version(data),
         )
 
     def validate(self) -> List[str]:

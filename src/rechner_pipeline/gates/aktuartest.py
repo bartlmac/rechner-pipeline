@@ -46,6 +46,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
 from rechner_pipeline.gates._common import (
+    hashes_von,
+    lies_gehasht,
     Exit,
     GATE_LEDGER_SUFFIX,
     GateCliContract,
@@ -987,8 +989,12 @@ def main(argv: Optional[List[str]] = None):
             ],
         )
 
+    test_gelesen = None
     try:
-        test = json.loads(test_pfad.read_text(encoding="utf-8"))
+        # Einmal lesen: Beleg-Hash (input_hashes, belege) und Nachrechnung
+        # stammen aus denselben Bytes (Review T23-01).
+        test_gelesen = lies_gehasht(test_pfad)
+        test = test_gelesen.json()
     except (OSError, ValueError) as exc:
         return _finalize(build_result(
             command=kennung, gate=gate, gate_version=GATE_VERSION,
@@ -997,7 +1003,13 @@ def main(argv: Optional[List[str]] = None):
                 "code": "test_unlesbar",
                 "message": f"Testergebnis nicht lesbar: {exc}",
             }],
-            input_hashes=hash_files([test_pfad], missing_ok=True),
+            # Auch der rote Ledger nennt die Bytes, die gelesen wurden —
+            # nur wenn gar nichts lesbar war, bleibt die Datei ungehasht.
+            input_hashes=(
+                hashes_von([test_gelesen], base=fall)
+                if test_gelesen is not None
+                else hash_files([test_pfad], base=fall, missing_ok=True)
+            ),
         ))
 
     # Fremd erzeugte oder beschaedigte JSONs duerfen die Nachrechnung
@@ -1026,10 +1038,13 @@ def main(argv: Optional[List[str]] = None):
             "Ergebnis strukturell unlesbar: "
             f"{type(exc).__name__}: {exc}"
         ]
-    input_hashes = hash_files(
-        [test_pfad] + ([fall / "fall.json"] if fall else []),
-        base=fall, missing_ok=True,
+    # fall.json wird hier nur gebunden, nie geparst — einmal lesen genuegt;
+    # das Testergebnis traegt den Hash der Bytes der Nachrechnung.
+    fall_json = (
+        [lies_gehasht(fall / "fall.json")]
+        if fall is not None and (fall / "fall.json").is_file() else []
     )
+    input_hashes = hashes_von([test_gelesen, *fall_json], base=fall)
     if fehler:
         return _finalize(build_result(
             command=kennung, gate=gate, gate_version=GATE_VERSION,
@@ -1071,9 +1086,13 @@ def main(argv: Optional[List[str]] = None):
             for k in ("profil", "umfang", "grundgesamtheit", "vollerhebung")
         },
         "max_abs_residuum": test["verteilung"].get("max_abs_residuum", 0.0),
-        "belege": hash_files(
-            [test_pfad, bericht_pfad], base=fall, missing_ok=False,
-        ),
+        # Testergebnis: dieselben Bytes wie die Nachrechnung (Review T23-01);
+        # der Bericht ist die eben geschriebene Ausgabe — einmal gehasht,
+        # nie geparst.
+        "belege": {
+            **hashes_von([test_gelesen], base=fall),
+            **hash_files([bericht_pfad], base=fall, missing_ok=False),
+        },
         # Renderer-Vertrag: mit diesen Eingaben ist der Bericht
         # deterministisch reproduzierbar — A-M1 rendert ihn bytegenau
         # neu, statt dem Ledger-Status zu glauben.

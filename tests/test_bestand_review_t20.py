@@ -119,7 +119,12 @@ def test_pb1_beleg_hashes_sind_die_der_engine(lauf, tmp_path):
 
 
 def _pb1_ledger(lauf_dir: Path, diag: Path) -> tuple:
-    ergebnis = bestand_validate.main(_gate_argv(lauf_dir, diag))
+    # Vollprofil samt Config (Review T22-01): ein A-M4-Beleg ohne
+    # Kern-Herleitung ist seit abnahmebericht 2.0.0 keiner mehr.
+    # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
+    config = lauf_dir / "bestand-config.toml"
+    config.write_bytes(CONFIG.read_bytes())
+    ergebnis = bestand_validate.main(_gate_argv(lauf_dir, diag) + ["--config", str(config)])
     assert ergebnis.exit_code == 0
     ledger_pfad = diag / "bestand_validate.gate.json"
     eintrag = json.loads(ledger_pfad.read_text(encoding="utf-8"))

@@ -752,6 +752,30 @@ def validate_ledger(
             f"ledger: betrag_herkunft ausserhalb {BETRAG_HERKUNFT} "
             f"(police {_policen(herkunft_falsch)})"
         )
+    # Die Herkunft folgt aus dem Erzeugungspfad, sie ist kein freies
+    # Etikett (Review T21-07): "geliefert" traegt genau der Zugang eines
+    # UEBERNOMMENEN Vertrags (die Zugangssumme steht im Abzug der
+    # abgebenden Gesellschaft); alles andere rechnet der Kern.
+    stamm_idx = stamm.set_index("police_id")
+    uebernommen = (
+        stamm_idx.loc[ledger["police_id"].to_numpy(), "bestandszugang"].to_numpy()
+        > stamm_idx.loc[ledger["police_id"].to_numpy(), "insurance_start"].to_numpy()
+    )
+    darf_geliefert = (ledger["ereignis"].to_numpy() == "ZUG") & uebernommen
+    ist_geliefert = (ledger["betrag_herkunft"] == "geliefert").to_numpy()
+    falsch_geliefert = ist_geliefert & ~darf_geliefert
+    if falsch_geliefert.any():
+        errors.append(
+            "ledger: betrag_herkunft 'geliefert' nur fuer den Zugang eines "
+            "uebernommenen Vertrags — alles andere ist 'gerechnet' (police "
+            f"{_policen(falsch_geliefert)})"
+        )
+    fehlt_geliefert = darf_geliefert & ~ist_geliefert
+    if fehlt_geliefert.any():
+        errors.append(
+            "ledger: Zugang eines uebernommenen Vertrags muss betrag_herkunft "
+            f"'geliefert' tragen (police {_policen(fehlt_geliefert)})"
+        )
     if ledger["betrag"].isna().any():
         errors.append(
             f"ledger: fehlende Werte (NaN) in betrag (police "
