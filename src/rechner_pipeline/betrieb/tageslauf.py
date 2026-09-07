@@ -69,12 +69,18 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as _dt
 import hashlib
 import json
 import os
 import shutil
 import sys
+
+try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
+    import fcntl
+except ImportError:  # pragma: no cover - fremde Plattform
+    fcntl = None  # type: ignore[assignment]
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -98,6 +104,7 @@ from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.betrieb.neugeschaeft import NeugeschaeftError, neugeschaeft_zwischen
 from rechner_pipeline.betrieb.tagesjournal import (
     TagesjournalError,
+    gebuchte_sicht,
     leeres_tagesjournal,
     tagesjournal_ergaenzen,
     validate_tagesjournal,
@@ -111,7 +118,11 @@ from rechner_pipeline.models.bestand import (
     TAGESJOURNAL_NAMES,
 )
 
-PROTOKOLL_SCHEMA_VERSION = 1
+#: Schema 2 (Review T22-05): jede Zeile traegt ``vorgaenger_sha256``, den
+#: SHA-256 der vorangehenden Zeile (Bytes ohne Zeilenende; "" fuer die
+#: erste). Zeilen der Erstfassung (Schema 1) bleiben lesbar; sobald eine
+#: Zeile Schema 2 traegt, ist die Kette ab dort Pflicht.
+PROTOKOLL_SCHEMA_VERSION = 2
 #: Benannter Zustand einer Protokollangabe, die die Umgebung nicht liefert.
 NICHT_ERFASST = "nicht erfasst"
 STAND_DIR = "stand"
@@ -125,6 +136,10 @@ PROTOKOLL_DATEI = "protokoll.jsonl"
 CONFIG_DATEI = "bestand.toml"
 #: Arbeitsverzeichnis eines laufenden Tageslaufs (wird beim naechsten Lauf verworfen).
 ARBEIT_DIR = "stand.neu"
+#: Name der Sperrdatei (fcntl.flock, exklusiv, nicht blockierend).
+SPERRE_DATEI = "lauf.lock"
+#: Uebergangsname des Symlinks beim atomaren Tausch.
+STAND_LINK_TMP = "stand.link"
 
 #: Exit-Codes: 0 gruen und uebernommen, 2 Aufruf-/Eingangsfehler, 3 Wache rot
 #: (Stand nicht uebernommen), 4 Journal- oder Abschlussfehler nach gruener
@@ -153,6 +168,9 @@ class Ablage:
         self.berichte = self.wurzel / BERICHT_DIR
         self.configs = self.wurzel / CONFIG_DIR
         self.uebernahme = self.wurzel / UEBERNAHME_DIR
+        #: Prozess-Sperre des Laufs (Review T22-03): zwei gleichzeitige
+        #: Laeufe teilten sich Arbeitsverzeichnis, Journal und Protokoll.
+        self.sperre = self.wurzel / SPERRE_DATEI
 
     @property
     def config_pfad(self) -> Path:
@@ -167,23 +185,93 @@ class Ablage:
         return self.journal / PROTOKOLL_DATEI
 
 
+def _zeilen_hash(roh: str) -> str:
+    return hashlib.sha256(roh.encode("utf-8")).hexdigest()
+
+
 def lies_protokoll(pfad: Path) -> List[Dict[str, Any]]:
-    """Alle Zeilen des Tagesprotokolls (leer, wenn es noch keines gibt)."""
+    """Alle Zeilen des Tagesprotokolls (leer, wenn es noch keines gibt) —
+    mit Pruefung der Kette.
+
+    Review T22-05: Das Protokoll war editierbar, ohne dass es jemand
+    merkte — eine entfernte mittlere Zeile liess den letzten Tag weiter
+    gelten. Jede Zeile ab Schema 2 nennt den Hash ihrer Vorgaengerin; eine
+    Luecke, eine Aenderung oder eine Umsortierung bricht die Kette, und
+    ein gebrochenes Protokoll ist ein Befund, kein Nachweis.
+    """
     if not Path(pfad).is_file():
         return []
     zeilen: List[Dict[str, Any]] = []
+    vorgaenger_roh: Optional[str] = None
     for nummer, roh in enumerate(Path(pfad).read_text(encoding="utf-8").splitlines(), 1):
         if not roh.strip():
             continue
         try:
-            zeilen.append(json.loads(roh))
+            zeile = json.loads(roh)
         except json.JSONDecodeError as exc:
             raise TageslaufError(
                 f"{pfad}: Zeile {nummer} ist kein JSON ({exc}) — das Protokoll "
                 "ist nur-anfuegbar; eine kaputte Zeile ist ein Befund, kein "
                 "Grund zum Ueberschreiben"
             ) from exc
+        if isinstance(zeile, dict) and zeile.get("schema_version", 1) >= 2:
+            erwartet = _zeilen_hash(vorgaenger_roh) if vorgaenger_roh is not None else ""
+            if zeile.get("vorgaenger_sha256") != erwartet:
+                raise TageslaufError(
+                    f"{pfad}: Zeile {nummer} bricht die Protokollkette (vorgaenger_sha256 "
+                    f"passt nicht zur Zeile davor) — das Protokoll wurde veraendert, "
+                    "gekuerzt oder umsortiert; es ist damit kein Nachweis mehr"
+                )
+        zeilen.append(zeile)
+        vorgaenger_roh = roh
     return zeilen
+
+
+def _pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
+    """Der Nachweisvertrag zwischen Protokoll, Stand und Journal (T22-05).
+
+    Gruene Zeilen sind lueckenlos verkettet (jede nennt den vorigen Tag,
+    ihre nachgeholten Tage fuellen genau die Luecke), die letzte gruene
+    Zeile nennt den Manifest-Hash des Stands und den Hash des Journals —
+    was auf der Platte liegt, muss dem entsprechen, sonst ist das
+    Protokoll eine Behauptung ueber einen anderen Stand.
+    """
+    for vorher, jetzt in zip(gruene, gruene[1:]):
+        if jetzt.get("schema_version", 1) < 2:
+            continue
+        tag_vorher = _dt.date.fromisoformat(str(vorher["heute"]))
+        tag_jetzt = _dt.date.fromisoformat(str(jetzt["heute"]))
+        if jetzt.get("gefuehrt_vorher") != vorher["heute"]:
+            raise TageslaufError(
+                f"Protokoll: der Lauf {tag_jetzt.isoformat()} nennt als vorherigen Tag "
+                f"{jetzt.get('gefuehrt_vorher')!r}, der letzte gruene Lauf davor fuehrte "
+                f"{tag_vorher.isoformat()} — Tagesluecke oder fehlende Zeile"
+            )
+        erwartet = [
+            (tag_vorher + _dt.timedelta(days=k)).isoformat()
+            for k in range(1, (tag_jetzt - tag_vorher).days)
+        ]
+        if list(jetzt.get("nachgeholt") or []) != erwartet:
+            raise TageslaufError(
+                f"Protokoll: die nachgeholten Tage des Laufs {tag_jetzt.isoformat()} "
+                "fuellen die Luecke zum vorigen Tag nicht"
+            )
+    letzte = gruene[-1]
+    if letzte.get("schema_version", 1) >= 2:
+        manifest_hash = _datei_hash(ablage.stand / MANIFEST_DATEI)
+        if letzte.get("manifest_sha256") != manifest_hash:
+            raise TageslaufError(
+                "Protokoll und Stand passen nicht zusammen: die letzte gruene Zeile "
+                f"nennt Manifest {str(letzte.get('manifest_sha256'))[:16]}…, der Stand "
+                f"traegt {str(manifest_hash)[:16]}…"
+            )
+        journal_hash = (letzte.get("tagesjournal") or {}).get("sha256")
+        if journal_hash != _datei_hash(ablage.tagesjournal_pfad):
+            raise TageslaufError(
+                "Protokoll und Journal passen nicht zusammen: das Tagesjournal hat "
+                "nicht den Hash, den die letzte gruene Zeile nennt — das Journal "
+                "wurde veraendert oder gehoert zu einem anderen Stand"
+            )
 
 
 def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
@@ -192,7 +280,7 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
     Das Manifest ist die Aussage des Stands ueber sich selbst (Horizont);
     das Protokoll muss dieselbe Aussage machen, sonst passen Stand und
     Nachweis nicht zusammen, und der Lauf bricht ab statt einen der
-    beiden zu glauben.
+    beiden zu glauben. Dazu der Nachweisvertrag (:func:`_pruefe_nachweis`).
     """
     if not ablage.stand.is_dir():
         return None
@@ -218,6 +306,7 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
             f"Stand fuehrt {tag.isoformat()}, das Protokoll {letzte.isoformat()} "
             "— Stand und Nachweis passen nicht zusammen"
         )
+    _pruefe_nachweis(ablage, gruene)
     return tag
 
 
@@ -258,6 +347,7 @@ def _stand_bauen(
 
     uebernahmen = lies_uebernahmen(ablage.uebernahme, config)
     merkmale = None
+    verankerung: Optional[pd.DataFrame] = None
     historie_voran: List[pd.DataFrame] = []
     ledger_voran: List[pd.DataFrame] = []
     for ueb in uebernahmen:
@@ -276,6 +366,18 @@ def _stand_bauen(
                 ueb.merkmale if merkmale is None
                 else pd.concat([merkmale, ueb.merkmale], ignore_index=True)
             )
+        # Verankerung (Review T22-11, Stufe 1): Der Eingang registriert und
+        # hasht sie, die Fortschreibung KENNT sie nicht — bis der
+        # Verantwortliche Aktuar festlegt, wie die Korrekturschicht und der
+        # AVB-Schalter der uebernommenen Vertraege in Storno und Bewertung
+        # eingehen (Backlog "AVB-Garantien uebernommener Bestaende"). Bis
+        # dahin wandert sie in den Stand und wird als NICHT angewandt
+        # ausgewiesen, statt still zu verschwinden.
+        if ueb.verankerung is not None and len(ueb.verankerung):
+            verankerung = (
+                ueb.verankerung if verankerung is None
+                else pd.concat([verankerung, ueb.verankerung], ignore_index=True)
+            )
         eingaben[f"uebernahme:{ueb.fall}"] = ueb.manifest_pfad
 
     zugaenge = neugeschaeft_zwischen(config, betriebsbeginn, heute)
@@ -291,17 +393,26 @@ def _stand_bauen(
                           ["police_id", "status_id"])
         ledger = _voran(pd.concat(ledger_voran, ignore_index=True), ledger,
                         ["police_id", "status_date"])
+    # Tag = Sicht (Review T22-04): Der Stand von heute ist, was heute gebucht
+    # ist. Buchungen mit Buchungstag nach heute (Meldeverzug, Werktagsregel)
+    # bleiben mit ihren Zustandszeilen und Scheiben draussen und kommen an
+    # ihrem Buchungstag — Seite, Stand und Journal sagen dasselbe.
+    historie, ledger, scheiben = gebuchte_sicht(
+        config, historie, ledger, ergebnis.scheiben, heute, ab_tag=betriebsbeginn)
     gesamt = fuehre_fort(mit_zugaengen(basis, ergebnis.zugaenge), historie)
 
     ausgaben.append(write_portfolio(historie, ablage.arbeit / "historie.parquet"))
     ausgaben.append(write_portfolio(ledger, ablage.arbeit / "ledger.parquet"))
-    ausgaben.append(write_portfolio(ergebnis.scheiben, ablage.arbeit / "scheiben.parquet"))
+    ausgaben.append(write_portfolio(scheiben, ablage.arbeit / "scheiben.parquet"))
     ausgaben.append(write_portfolio(ergebnis.zugaenge, ablage.arbeit / "zugaenge.parquet"))
     ausgaben.append(write_portfolio(gesamt, ablage.arbeit / "bestand_gesamt.parquet"))
     if merkmale is not None:
         ausgaben.append(write_portfolio(
             merkmale[list(MERKMALE_NAMES)].reset_index(drop=True),
             ablage.arbeit / "merkmale.parquet"))
+    if verankerung is not None:
+        ausgaben.append(write_portfolio(
+            verankerung.reset_index(drop=True), ablage.arbeit / "verankerung.parquet"))
     schreibe_manifest(
         ablage.arbeit, horizont=heute, neuzugang_ab=None, config_pfad=config_pfad,
         ausgaben=ausgaben, eingaben=eingaben,
@@ -311,7 +422,17 @@ def _stand_bauen(
         "uebernommene_vertraege": int(sum(len(u.bestand) for u in uebernahmen)),
         "neugeschaeft_seit_betriebsbeginn": int(len(zugaenge)),
         "gevos": int(len(ledger)),
-        "erhoehungsscheiben": int(len(ergebnis.scheiben)),
+        "erhoehungsscheiben": int(len(scheiben)),
+        # Stufe 1 von T22-11: ausgewiesen, nicht angewandt.
+        "verankerung": {
+            "registriert": int(len(verankerung)) if verankerung is not None else 0,
+            "angewandt": False,
+            "hinweis": (
+                "Verankerung und AVB-Schalter der uebernommenen Vertraege gehen "
+                "nicht in Storno und Bewertung der Fortschreibung ein — Fachentscheid "
+                "des Verantwortlichen Aktuars offen"
+            ) if verankerung is not None else "keine Verankerung uebernommen",
+        },
         # Fall-Bezug jeder Uebernahme (Konzept, Abschnitt 6): Der Zugang
         # ist als datierter Eingang nachweisbar, nicht als anonyme Zeile.
         "uebernahmen": [
@@ -361,16 +482,78 @@ def _wache(arbeit: Path, config_pfad: Path, heute: _dt.date) -> Tuple[Dict[str, 
     return tabellen, geprueft, usage + fehler
 
 
-def _uebernehmen(ablage: Ablage) -> None:
-    """Das Arbeitsverzeichnis atomar zum gefuehrten Stand machen."""
-    alt = ablage.wurzel / (STAND_DIR + ".alt")
-    if alt.exists():
-        shutil.rmtree(alt)
-    if ablage.stand.exists():
-        os.rename(ablage.stand, alt)
-    os.rename(ablage.arbeit, ablage.stand)
-    if alt.exists():
-        shutil.rmtree(alt)
+def _uebernehmen(ablage: Ablage, kennung: str) -> None:
+    """Das Arbeitsverzeichnis atomar zum gefuehrten Stand machen.
+
+    Review T22-03: Zwei Renames (stand -> stand.alt, stand.neu -> stand)
+    hatten dazwischen einen Moment OHNE Stand — ein Absturz dort liess die
+    Laufzeit ohne gefuehrten Tag zurueck, und die Zusage "der gestrige
+    bleibt" war falsch. Jetzt ist ``stand`` ein Symlink auf ein
+    versioniertes Verzeichnis ``stand-<manifest-kennung>``; der Tausch ist
+    EIN ``os.replace`` des Symlinks und damit atomar: Vorher zeigt er auf
+    den alten Stand, nachher auf den neuen, nie auf nichts. Das alte
+    Verzeichnis wird erst danach entfernt.
+
+    Ein Stand aus der Erstfassung (echtes Verzeichnis) wird einmalig in die
+    Symlink-Form ueberfuehrt; nur dieser eine Uebergang hat noch das alte
+    Fenster.
+    """
+    ziel = ablage.wurzel / f"{STAND_DIR}-{kennung}"
+    if ziel.exists():
+        shutil.rmtree(ziel)
+    os.rename(ablage.arbeit, ziel)
+    alt_ziel: Optional[Path] = None
+    if ablage.stand.is_symlink():
+        alt_ziel = ablage.stand.resolve()
+    elif ablage.stand.exists():
+        alt_ziel = ablage.wurzel / f"{STAND_DIR}-erstfassung"
+        if alt_ziel.exists():
+            shutil.rmtree(alt_ziel)
+        os.rename(ablage.stand, alt_ziel)
+    tmp = ablage.wurzel / STAND_LINK_TMP
+    if tmp.is_symlink() or tmp.exists():
+        tmp.unlink()
+    os.symlink(ziel.name, tmp)
+    os.replace(tmp, ablage.stand)
+    if alt_ziel is not None and alt_ziel.exists() and alt_ziel.resolve() != ziel.resolve():
+        shutil.rmtree(alt_ziel)
+
+
+def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
+    """Versionierte Standverzeichnisse, auf die der Symlink nicht zeigt
+    (Reste eines abgebrochenen Tauschs), aufraeumen — vor dem Lauf."""
+    aktuell = ablage.stand.resolve() if ablage.stand.is_symlink() else None
+    for kandidat in ablage.wurzel.glob(f"{STAND_DIR}-*"):
+        if kandidat.is_dir() and (aktuell is None or kandidat.resolve() != aktuell):
+            shutil.rmtree(kandidat)
+    tmp = ablage.wurzel / STAND_LINK_TMP
+    if tmp.is_symlink():
+        tmp.unlink()
+
+
+@contextlib.contextmanager
+def lauf_sperre(ablage: Ablage):
+    """Exklusive Prozess-Sperre der Laufzeitumgebung (nicht blockierend).
+
+    Zwei gleichzeitige Laeufe (Timer und Hand, zwei Timer nach einer
+    Haengepartie) teilten sich stand.neu, Journal und Protokoll (Review
+    T22-03). Der zweite bricht jetzt sofort ab, mit Meldung.
+    """
+    ablage.wurzel.mkdir(parents=True, exist_ok=True)
+    datei = open(ablage.sperre, "a+", encoding="utf-8")
+    try:
+        if fcntl is not None:
+            try:
+                fcntl.flock(datei.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, OSError) as exc:
+                raise TageslaufError(
+                    f"{ablage.wurzel}: ein anderer Lauf haelt die Sperre "
+                    f"{ablage.sperre.name} — zwei Laeufe auf derselben Ablage "
+                    "gibt es nicht; den laufenden Prozess enden lassen"
+                ) from exc
+        yield
+    finally:
+        datei.close()
 
 
 def _teilbestand(tabellen: Dict[str, Any], policen: List[int]) -> Dict[str, Any]:
@@ -420,8 +603,15 @@ def _bericht(
 
 
 def _anfuegen(pfad: Path, zeile: Dict[str, Any]) -> None:
-    """Eine Protokollzeile anfuegen (nur-anfuegbar, sortierte Schluessel)."""
+    """Eine Protokollzeile anfuegen (nur-anfuegbar, sortierte Schluessel),
+    verkettet mit der Zeile davor (T22-05)."""
     pfad.parent.mkdir(parents=True, exist_ok=True)
+    vorgaenger = ""
+    if pfad.is_file():
+        letzte = [z for z in pfad.read_text(encoding="utf-8").splitlines() if z.strip()]
+        if letzte:
+            vorgaenger = _zeilen_hash(letzte[-1])
+    zeile["vorgaenger_sha256"] = vorgaenger
     text = json.dumps(zeile, ensure_ascii=False, sort_keys=True) + "\n"
     with open(pfad, "a", encoding="utf-8", newline="\n") as f:
         f.write(text)
@@ -437,11 +627,30 @@ def tageslauf(
     *,
     image_digest: Optional[str] = None,
 ) -> Tuple[int, Dict[str, Any]]:
+    """Den Tag ``heute`` fuehren — unter der Prozess-Sperre der Ablage
+    (Review T22-03); siehe :func:`_tageslauf`."""
+    with lauf_sperre(ablage):
+        _verwaiste_staende_entfernen(ablage)
+        return _tageslauf(ablage, heute, image_digest=image_digest)
+
+
+def _tageslauf(
+    ablage: Ablage,
+    heute: _dt.date,
+    *,
+    image_digest: Optional[str] = None,
+) -> Tuple[int, Dict[str, Any]]:
     """Den Tag ``heute`` fuehren (Bibliotheksform des Kommandos).
 
     Rueckgabe ``(exit_code, protokollzeile)``. Die Protokollzeile ist in
     jedem Fall angefuegt worden, auch bei roter Wache — das Protokoll ist
     der Nachweis, dass gelaufen wurde, nicht nur, dass es gut ging.
+
+    Ausnahme: Ist ``heute`` der bereits gefuehrte Tag, laeuft nichts —
+    Rueckgabe ``(EXIT_OK, {"heute": ..., "bereits_gefuehrt": True})``, ohne
+    Protokollzeile, Stand unveraendert. Der Lauf ist idempotent; eine
+    Erstbefuellung am Tag des ersten Timers darf die erste Nacht nicht rot
+    faerben. Rueckwaerts (``heute`` vor dem gefuehrten Tag) bleibt ein Fehler.
     """
     from rechner_pipeline.kern import __version__ as kern_version
 
@@ -467,11 +676,13 @@ def tageslauf(
             f"{betriebsbeginn.isoformat()}"
         )
     letzter = gefuehrter_tag(ablage)
-    if letzter is not None and heute <= letzter:
+    if letzter is not None and heute == letzter:
+        return EXIT_OK, {"heute": heute.isoformat(), "bereits_gefuehrt": True}
+    if letzter is not None and heute < letzter:
         raise TageslaufError(
             f"der Stand fuehrt bereits {letzter.isoformat()}; heute "
-            f"{heute.isoformat()} liegt nicht danach — ein Tag wird nicht "
-            "zweimal und nicht rueckwaerts gefuehrt"
+            f"{heute.isoformat()} liegt davor — ein Tag wird nicht "
+            "rueckwaerts gefuehrt"
         )
     nachgeholt = []
     if letzter is not None:
@@ -601,11 +812,13 @@ def tageslauf(
             ablage.journal.mkdir(parents=True, exist_ok=True)
             write_portfolio(journal, ablage.tagesjournal_pfad)
             zeile["tagesjournal"]["sha256"] = _datei_hash(ablage.tagesjournal_pfad)
-            _uebernehmen(ablage)
+            _uebernehmen(ablage, str(manifest_hash)[:16])
             zeile["manifest_sha256"] = manifest_hash
             zeile["uebernommen"] = True
     except (EreignisError, NeugeschaeftError, TagesjournalError, AbschlussError,
-            UebernahmeError, ManifestError, ValueError) as exc:
+            UebernahmeError, ManifestError, ValueError, OSError) as exc:
+        # OSError (Review T22-03): ein gescheiterter Tausch oder Schreibvorgang
+        # ist ein roter Lauf mit Protokollzeile — kein Traceback ohne Nachweis.
         zeile.pop("_uebernommene_policen", None)
         zeile.pop("_teilbestaende", None)
         zeile["fehler"] = f"{type(exc).__name__}: {exc}"
@@ -660,6 +873,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     except TageslaufError as exc:
         print(f"tageslauf: {exc}", file=sys.stderr)
         return EXIT_USAGE
+    if zeile.get("bereits_gefuehrt"):
+        print(f"tageslauf: {heute.isoformat()} bereits gefuehrt, nichts zu tun",
+              file=sys.stderr)
+        return code
     if code == EXIT_OK:
         print(
             f"tageslauf: {heute.isoformat()} gefuehrt"

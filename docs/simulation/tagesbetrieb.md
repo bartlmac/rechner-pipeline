@@ -195,10 +195,13 @@ gesetzt.
    der geführte, der Fehler steht im Tagesprotokoll. Ein Bestandsführungs-
    system, das einen roten Stand still übernimmt, wäre die schlechteste
    Variante.
-6. **Monatsabschluss** am letzten Kalendertag des Monats:
-   `cli_abschluss --stichtag <Erster des Folgemonats>` (Bewertung zum
-   Monatsersten, festgeschrieben, 0444, nie überschrieben) und der
-   Bestandsbericht des Monats.
+6. **Monatsabschluss** im Lauf des Ersten des Folgemonats (der erste Lauf,
+   der den Monatsersten führt, schreibt ihn; beim Nachholen jeder
+   übersprungene Monatserste): `cli_abschluss --stichtag <Erster des
+   Folgemonats>` (Bewertung zum Monatsersten, festgeschrieben, 0444, nie
+   überschrieben) und der Bestandsbericht des Monats. (Der normative Text
+   sagte „am letzten Kalendertag", Umsetzung und Begründung machten den
+   Ersten — Nebenhinweis des Reviews T22; der Text folgt jetzt dem Code.)
 7. **Tagesprotokoll**: eine JSON-Zeile je Lauf (Datum, Neugeschäft,
    Buchungen je Art, Bestandszahlen, P-B1-Urteil, Manifest-Hash,
    Kern-Version, Image-Digest). Das Protokoll ist der Nachweis, dass das
@@ -212,7 +215,7 @@ Die Simulation kennt keine Uhrzeit, nur den Kalendertag.
 
 | Verzeichnis | Inhalt | Schutz |
 |---|---|---|
-| `stand/` | der geführte Stand (sechs Ausgaben, Manifest, Merkmale) | überschreibbar, aber nur durch einen grünen Lauf |
+| `stand` | Symlink auf den geführten Stand `stand-<kennung>/` (sechs Ausgaben, Manifest, Merkmale) | wechselt nur durch einen grünen Lauf, atomar per Symlink-Tausch; eine Prozess-Sperre (`lauf.lock`) verhindert zwei gleichzeitige Läufe |
 | `journal/tagesjournal.parquet`, `journal/protokoll.jsonl` | nur-anfügbar | 0444 je Tagesabschnitt nicht praktikabel; Schutz über Prüfsumme im Protokoll |
 | `abschluesse/` | Monatsabschlüsse | 0444, genau einmal (ADR-011) |
 | `berichte/` | Tages- und Monatsberichte (HTML) | erzeugt, jederzeit neu renderbar |

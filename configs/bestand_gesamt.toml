@@ -30,6 +30,7 @@ referenzstichtag = 2026-01-01
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-1994"
+nummernkreis = 1  # Police-Nummern 1 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/plv_1994"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 1994-07-01
 gueltig_bis = 2000-06-30
@@ -101,6 +102,7 @@ rho = 0.65
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2000"
+nummernkreis = 2  # Police-Nummern 2 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/plv_2000"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2000-07-01
 gueltig_bis = 2003-12-31
@@ -167,6 +169,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2004"
+nummernkreis = 3  # Police-Nummern 3 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/plv_2004"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2004-01-01
 gueltig_bis = 2006-12-31
@@ -233,6 +236,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2007"
+nummernkreis = 4  # Police-Nummern 4 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/plv_2007"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2007-01-01
 gueltig_bis = 2007-12-31
@@ -299,6 +303,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2008"
+nummernkreis = 5  # Police-Nummern 5 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/plv_2008"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2008-01-01
 gueltig_bis = 2011-12-31
@@ -365,6 +370,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2012"
+nummernkreis = 6  # Police-Nummern 6 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/plv_2012"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2012-01-01
 gueltig_bis = 2014-12-31
@@ -431,6 +437,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2015"
+nummernkreis = 7  # Police-Nummern 7 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/plv_2015"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2015-01-01
 gueltig_bis = 2016-12-31
@@ -497,6 +504,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2017"
+nummernkreis = 8  # Police-Nummern 8 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/plv_2017"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2017-01-01
 gueltig_bis = 2021-12-31
@@ -565,6 +573,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2022"
+nummernkreis = 9  # Police-Nummern 9 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/plv_2022"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2022-01-01
 gueltig_bis = 2024-12-31
@@ -637,6 +646,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "KLV-2025"
+nummernkreis = 10  # Police-Nummern 10 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/plv_2025"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2025-01-01
 gueltig_bis = 2035-12-31
@@ -713,6 +723,7 @@ rho = 0.60
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2000"
+nummernkreis = 11  # Police-Nummern 11 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "bu/plv_2000"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2000-01-01
@@ -776,6 +787,7 @@ rho = 0.30
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2017"
+nummernkreis = 12  # Police-Nummern 12 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "bu/plv_2017"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2017-01-01
@@ -843,6 +855,7 @@ rho = 0.30
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2025"
+nummernkreis = 13  # Police-Nummern 13 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "bu/plv_2025"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2025-01-01
@@ -917,6 +930,7 @@ rho = 0.30
 # --------------------------------------------------------------------------
 [[generation]]
 name = "TG2015"
+nummernkreis = 14  # Police-Nummern 14 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
 knoten = "klv/tg2015"
 gueltig_von = 2015-01-01
 gueltig_bis = 2017-01-01

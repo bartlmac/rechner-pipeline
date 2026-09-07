@@ -143,21 +143,24 @@ def herkunft(
     tarif_generation: str,
 ) -> str:
     """Woher eine Buchung stammt: Tagesneugeschaeft, Uebernahme oder Fortschreibung."""
+    # Die Herkunft entscheidet VOR dem Nummernkreis (Review T22-09): Eine
+    # gelieferte Zugangsbuchung ist eine Uebernahme, auch wenn ihre Nummer
+    # zufaellig im Tages-Abschnitt eines Kreises liegt — die Nummer eines
+    # fremden Bestands sagt nichts ueber unseren Verkaufstag.
+    if betrag_herkunft == "geliefert":
+        return "uebernahme"
     if ereignis == "ZUG":
         index = _generationsindex(config)
         if tarif_generation in index and ist_tagesneugeschaeft(
             index[tarif_generation][0], police_id
         ):
             return "neugeschaeft"
-        if betrag_herkunft == "geliefert":
-            return "uebernahme"
-    elif betrag_herkunft == "geliefert":
-        return "uebernahme"
     return "fortschreibung"
 
 
 def _generationsindex(config: BestandConfig) -> Dict[str, Tuple[int, Any]]:
-    return {g.name: (i, g) for i, g in enumerate(config.generationen)}
+    """Name -> (Nummernkreis, Generation)."""
+    return {g.name: (config.nummernkreis(g), g) for g in config.generationen}
 
 
 def buchungstag(
@@ -177,9 +180,9 @@ def buchungstag(
                 f"police {police_id}: Tarifgeneration {tarif_generation!r} "
                 "nicht in der Config — der Verkaufstag ist nicht ableitbar"
             )
-        gen_index, gen = index[tarif_generation]
+        kreis, gen = index[tarif_generation]
         try:
-            tag = verkaufstag(gen, gen_index, police_id)
+            tag = verkaufstag(gen, kreis, police_id)
         except NeugeschaeftError as exc:
             raise TagesjournalError(str(exc)) from exc
         if tag >= wirkungstag:
@@ -231,6 +234,79 @@ def mit_buchungstagen(config: BestandConfig, ledger: pd.DataFrame) -> pd.DataFra
     return df.sort_values(
         ["buchungsdatum", "police_id", "ereignis", "status_date"], kind="stable"
     ).reset_index(drop=True)
+
+
+def gebuchte_sicht(
+    config: BestandConfig,
+    historie: pd.DataFrame,
+    ledger: pd.DataFrame,
+    scheiben: pd.DataFrame,
+    heute: _dt.date,
+    *,
+    ab_tag: Optional[_dt.date] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Historie, Ledger und Scheiben auf das beschraenken, was bis ``heute``
+    GEBUCHT ist (Review T22-04).
+
+    ``ab_tag`` ist der Betriebsbeginn: Ereignisse mit Wirkungstag davor sind
+    Vorgeschichte und gehoeren vollstaendig zum Eroeffnungsstand — sie
+    werden nie herausgefiltert, auch wenn ihr rechnerischer Buchungstag
+    nach dem Betriebsbeginn laege (die Bewegungs-Identitaet der Vorjahre
+    bleibt so unberuehrt).
+
+    Der Stand projizierte die volle Wirkungshistorie: Ein Todesfall mit
+    Wirkungstag 1.8. und Buchungstag 7.9. (Meldeverzug) stand am 6.9. als
+    TOD im sichtbaren Bestand, waehrend das Tagesjournal ihn noch nicht
+    kannte — Seite und Journal erzaehlten am selben Stichtag zwei
+    Unternehmenszustaende. Der Leitgedanke des Konzepts ist "Tag = Sicht":
+    Der Stand von heute ist, was heute gebucht ist. Was spaeter gebucht
+    wird, kommt an seinem Buchungstag in den Stand — der Lauf baut ihn
+    jeden Tag neu aus derselben deterministischen Wirkungshistorie.
+
+    Gefiltert wird der Ledger ueber seinen Buchungstag; die Historie
+    verliert genau die Zustandszeilen der weggefilterten Buchungen
+    (Police, Wirkungstag, Zielzustand); die Scheiben genau die Erhoehungen
+    der weggefilterten ERH-Buchungen (Police, Vertragsjahr).
+    """
+    from rechner_pipeline.models.bestand import EREIGNIS_ZUSTAND
+
+    if len(ledger) == 0:
+        return historie, ledger, scheiben
+    sicht = mit_buchungstagen(config, ledger)
+    offen = sicht[sicht["buchungsdatum"] > pd.Timestamp(heute)]
+    if ab_tag is not None:
+        offen = offen[offen["status_date"] >= pd.Timestamp(ab_tag)]
+    if len(offen) == 0:
+        return historie, ledger, scheiben
+    offen_schluessel = _schluessel(offen)
+    ledger_gebucht = ledger[~_schluessel(ledger).isin(offen_schluessel)].reset_index(drop=True)
+    # Zustandszeilen der offenen Buchungen aus der Historie nehmen.
+    ziele = pd.DataFrame({
+        "police_id": offen["police_id"].astype("int64"),
+        "status_code": [EREIGNIS_ZUSTAND.get(e) for e in offen["ereignis"].astype(str)],
+        "status_date": pd.to_datetime(offen["status_date"]),
+    }).dropna(subset=["status_code"])
+    if len(ziele) and len(historie):
+        hist_key = pd.MultiIndex.from_arrays(
+            [historie["police_id"].astype("int64"), historie["status_code"].astype(str),
+             pd.to_datetime(historie["status_date"])])
+        ziel_key = pd.MultiIndex.from_arrays(
+            [ziele["police_id"], ziele["status_code"].astype(str), ziele["status_date"]])
+        historie_gebucht = historie[~hist_key.isin(ziel_key)].reset_index(drop=True)
+    else:
+        historie_gebucht = historie
+    # Erhoehungsscheiben der offenen ERH-Buchungen.
+    erh = offen[offen["ereignis"] == "ERH"]
+    if len(erh) and scheiben is not None and len(scheiben):
+        offene_erh = pd.MultiIndex.from_arrays(
+            [erh["police_id"].astype("int64"),
+             ledger.set_index(_schluessel(ledger)).loc[_schluessel(erh), "vertragsjahr"].astype("int64").to_numpy()])
+        scheiben_key = pd.MultiIndex.from_arrays(
+            [scheiben["police_id"].astype("int64"), scheiben["erhoehung_jahr"].astype("int64")])
+        scheiben_gebucht = scheiben[~scheiben_key.isin(offene_erh)].reset_index(drop=True)
+    else:
+        scheiben_gebucht = scheiben
+    return historie_gebucht, ledger_gebucht, scheiben_gebucht
 
 
 def leeres_tagesjournal() -> pd.DataFrame:

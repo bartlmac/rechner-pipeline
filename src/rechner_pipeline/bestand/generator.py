@@ -206,9 +206,12 @@ def _baue_frame(
 
 
 def _generate_generation(
-    gen: TarifGeneration, gen_index: int, master_seed: int
+    gen: TarifGeneration, kreis: int, master_seed: int
 ) -> pd.DataFrame:
-    rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence([master_seed, gen_index])))
+    """``kreis`` ist der Nummernkreis der Generation (config.nummernkreis);
+    Seed-Beitrag und Nummern folgen ihm, nicht der Position (T22-09). Mit
+    kreis = Position + 1 bitidentisch zur Erstfassung."""
+    rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence([master_seed, kreis - 1])))
     n = gen.sample_size
     if n == 0:
         # Uebernommene Generation: ihre Vertraege kommen aus der
@@ -221,7 +224,7 @@ def _generate_generation(
     # 4) Time axis (month-first convention) — drawn AFTER the attributes,
     #    identical rng call order as before the refactoring.
     starts = _draw_insurance_start(rng, gen, n)
-    police_ids = np.arange(1, n + 1, dtype=np.int64) + (gen_index + 1) * 10_000_000
+    police_ids = np.arange(1, n + 1, dtype=np.int64) + kreis * 10_000_000
     return _baue_frame(gen, attribute, starts, police_ids)
 
 
@@ -262,7 +265,8 @@ def neuzugaenge(
         raise ValueError("Config ungueltig: " + "; ".join(fehler))
     von_ts, bis_ts = pd.Timestamp(von), pd.Timestamp(bis)
     frames: List[pd.DataFrame] = []
-    for idx, gen in enumerate(config.generationen):
+    for gen in config.generationen:
+        kreis = config.nummernkreis(gen)
         anzahl = gen.neuzugang_pro_jahr
         if anzahl <= 0:
             continue
@@ -296,7 +300,7 @@ def neuzugaenge(
                 continue
             rng = np.random.Generator(
                 np.random.PCG64(
-                    np.random.SeedSequence([config.seed, NEUZUGANG_STREAM, idx, jahr])
+                    np.random.SeedSequence([config.seed, NEUZUGANG_STREAM, kreis - 1, jahr])
                 )
             )
             attribute = _ziehe_attribute(gen, rng, anzahl)
@@ -305,7 +309,7 @@ def neuzugaenge(
             starts = [_month_first(int(m) // 12, int(m) % 12 + 1) for m in monate]
             police_ids = (
                 np.arange(1, anzahl + 1, dtype=np.int64)
-                + (idx + 1) * 10_000_000
+                + kreis * 10_000_000
                 + (offset - anzahl)
             )
             frame = _baue_frame(gen, attribute, starts, police_ids)
@@ -343,8 +347,8 @@ def generate(
     if errors:
         raise ValueError("Config ungueltig: " + "; ".join(errors))
     frames = [
-        _generate_generation(gen, idx, config.seed)
-        for idx, gen in enumerate(config.generationen)
+        _generate_generation(gen, config.nummernkreis(gen), config.seed)
+        for gen in config.generationen
     ]
     df = pd.concat(frames, ignore_index=True)
     if bis is not None:
