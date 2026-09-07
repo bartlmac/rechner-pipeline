@@ -518,6 +518,34 @@ def test_ohne_bestandene_fuehrungsprobe_gibt_es_keinen_gruenen_abnahmebericht(
     bericht = _abnahmebericht(fall)
     assert bericht.exit_code != 0
 
+    # 4. Eine stehengebliebene Probe neben einer ausgetauschten Eingabe
+    #    (Pilot-Review 2026-09-07): der Beleg sagt bestanden, aber die
+    #    Fortschreibung, die er gelesen hat, ist nicht mehr die auf der
+    #    Platte. Der Stamm bleibt gleich — die Suite-Bindung allein saehe
+    #    nichts.
+    probe_pfad.write_text(json.dumps(gut, sort_keys=True), encoding="utf-8")
+    # Der Uebernahmebeleg ist eine Eingabe, die NUR die Probe bindet (P-B1
+    # lief auf der Fortschreibung): ihn nachtraeglich zu aendern, saehe
+    # ohne Nachhashen niemand.
+    beleg_pfad = fall / "abgeleitet" / "uebernahme" / "uebernahme.json"
+    original = beleg_pfad.read_bytes()
+    beleg = json.loads(original.decode("utf-8"))
+    beleg["anfangszustand"] = "grundvertrag"
+    beleg_pfad.write_text(json.dumps(beleg, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert "veraendert" in " ".join(f["message"] for f in bericht.errors)
+    beleg_pfad.write_bytes(original)
+    # 5. Ein Beleg, der seine Pflichteingaben verschweigt.
+    ohne = dict(gut, provenienz={
+        "eingaben": {k: v for k, v in gut["provenienz"]["eingaben"].items()
+                     if not k.endswith("uebernahme.json")},
+        "parameter": gut["provenienz"]["parameter"]})
+    probe_pfad.write_text(json.dumps(ohne, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert "Pflichteingaben" in " ".join(f["message"] for f in bericht.errors)
+
     # Und mit dem echten Beleg wieder gruen — bis A-M4.
     probe_pfad.write_text(json.dumps(gut, sort_keys=True), encoding="utf-8")
     assert _abnahmebericht(fall).exit_code == 0

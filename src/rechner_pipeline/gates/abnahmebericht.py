@@ -108,6 +108,7 @@ from rechner_pipeline.gates._common import (
     utc_now,
 )
 from rechner_pipeline.gates._fall_scope import (
+    sha256_datei,
     artefakt_eintrag,
     bestands_belegrollen,
     pruefe_artefakt_eintrag,
@@ -1337,26 +1338,64 @@ def _lies_json_beleg(pfad: Path) -> Any:
         return {"_lesefehler": str(exc)}
 
 
+#: Eingaben, die eine Fuehrungsprobe mindestens gelesen haben muss, damit
+#: ihr Urteil den Bestand und seine Fortschreibung ueberhaupt betrifft.
+PROBE_PFLICHTEINGABEN = ("bestand.parquet", "historie.parquet", "ledger.parquet",
+                         "uebernahme.json")
+
+
 def _fuehrungsprobe_fehler(
     probe: Any,
     *,
+    fall: Path,
     suite: Dict[str, Any],
     erwartetes_system: Dict[str, str],
 ) -> List[str]:
     """Der Beleg der Fuehrungsprobe: bestanden, auf diesem Stand, auf
-    dem Bestand der Suite (Freischaltung, Schritt 6).
+    dem Bestand der Suite, auf den aktuellen Bytes (Freischaltung, Schritt 6).
 
-    Die Probe stellt den gefuehrten Bestand gegen die Pruefstrecke; hier
-    wird nur gebunden, was ein Beleg binden kann: dass sie bestanden hat
-    (keine Befunde, Modus materialisiert oder ohne Bausteine, mit
-    Fortschreibung), dass sie auf dem aktuellen Systemstand lief und
-    dass unter ihren Eingaben der Bestand liegt, den die Suite gehasht
-    hat — sonst waere sie eine Probe eines anderen Bestands.
+    Die Probe stellt den gefuehrten Bestand gegen die Pruefstrecke. Ein
+    Beleg ist eine Behauptung ueber Bytes; deshalb wird hier JEDE
+    Eingabe, die die Probe gelesen hat, auf ihren aktuellen Bytes
+    nachgehasht — sonst passierte eine stehengebliebene Probe neben
+    ausgetauschten Nebentabellen (Scheiben, Schicht, Fortschreibung),
+    solange nur der Stamm gleich blieb (Pilot-Review 2026-09-07; dasselbe
+    Muster wie ``_b1_fehler``). Dazu: bestanden (keine Befunde, Modus
+    materialisiert oder ohne Bausteine, mit Fortschreibung), der aktuelle
+    Systemstand, und unter den Eingaben der Bestand, den die Suite
+    gehasht hat, sowie die Pflichttabellen der Uebernahme und das Ledger
+    der Fortschreibung.
     """
     if not isinstance(probe, dict) or "_lesefehler" in probe:
         return ["Fuehrungsprobe-Beleg ist nicht lesbar: "
                 + str((probe or {}).get("_lesefehler", "kein JSON-Objekt"))]
     fehler: List[str] = []
+    provenienz = probe.get("provenienz") if isinstance(probe.get("provenienz"), dict) else {}
+    eingaben = provenienz.get("eingaben") if isinstance(provenienz.get("eingaben"), dict) else {}
+    parameter = provenienz.get("parameter") if isinstance(provenienz.get("parameter"), dict) else {}
+    fall = Path(fall).resolve()
+    veraendert: List[str] = []
+    for name, erwartet in sorted(eingaben.items()):
+        pfad = Path(name) if Path(name).is_absolute() else fall / name
+        if not pfad.is_file():
+            veraendert.append(f"{name} (fehlt)")
+            continue
+        if sha256_datei(pfad) != erwartet:
+            veraendert.append(name)
+    if veraendert:
+        fehler.append(
+            "Fuehrungsprobe-Eingaben haben sich seit der Probe veraendert oder "
+            f"fehlen: {veraendert[:5]} — die Probe neu fahren")
+    ueber = str(parameter.get("uebernahme") or "")
+    fort = str(parameter.get("fortschreibung") or "")
+    pflicht = [f"{ueber}/{n}" for n in PROBE_PFLICHTEINGABEN]
+    if fort:
+        pflicht.append(f"{fort}/ledger.parquet")
+    fehlend = [n for n in pflicht if n not in eingaben]
+    if not ueber or fehlend:
+        fehler.append(
+            "Fuehrungsprobe nennt ihre Pflichteingaben nicht (Uebernahme-"
+            f"Tabellen, Beleg, Ledger der Fortschreibung): {fehlend or 'kein Uebernahme-Verzeichnis'}")
     if probe.get("schema_version") != 1:
         fehler.append("Fuehrungsprobe: schema_version muss 1 sein")
     if probe.get("bestanden") is not True or probe.get("befunde") not in ([], None):
@@ -1373,7 +1412,6 @@ def _fuehrungsprobe_fehler(
                       "dem Stichtag sind ungeprueft")
     if probe.get("system") != erwartetes_system:
         fehler.append("Fuehrungsprobe bindet nicht den aktuellen Systemstand")
-    eingaben = ((probe.get("provenienz") or {}).get("eingaben") or {})
     if suite.get("bestand_sha256") not in set(eingaben.values()):
         fehler.append(
             "Fuehrungsprobe hat nicht den Bestand gelesen, den die "
@@ -1950,6 +1988,7 @@ def main(argv: Optional[List[str]] = None):
             )
         probe_fehler = _fuehrungsprobe_fehler(
             _lies_json_beleg(eingaben["fuehrungsprobe"]),
+            fall=fall,
             suite=suite,
             erwartetes_system=gemeinsame_bindung["system"],
         )

@@ -273,11 +273,15 @@ def pruefe_fuehrung(
         # Beitragsfreistellung
         pex_jahr = z.get("beitragsfrei_seit_jahr")
         beginn = pd.Timestamp(row["insurance_start"])
-        if pex_jahr is None and pid in pex_historie and vorgeschichte:
-            # PEX in der Historie ohne Zustand der Pruefstrecke: nur bei
-            # einem Vertrag ohne ableitbaren Zustand zulaessig.
-            if police not in ohne_zustand and not z:
-                pex_jahr = _jahre(beginn, pex_historie[pid])
+        if pex_jahr is None and pid in pex_historie and police not in ohne_zustand:
+            # Eine Beitragsfreistellung in der Historie, die die Pruefstrecke
+            # aus der Vorgeschichte DIESES Laufs nicht kennt: Uebernahme und
+            # Probe haben verschiedene Lieferungen gesehen — Befund, kein
+            # stiller Rueckgriff auf die Tabelle, die geprueft werden soll.
+            befund(pid, "beitragsfrei",
+                   "PEX in der Historie der Uebernahme, aber keine "
+                   "Beitragsfreistellung im Anfangszustand der Pruefstrecke "
+                   "(Vorgeschichte dieses Laufs)")
         if pex_jahr is not None:
             zahlen["beitragsfrei"] += 1
             if pid not in pex_historie:
@@ -476,12 +480,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     ueber = Path(args.uebernahme).resolve() if args.uebernahme else fall / "abgeleitet" / "bestand"
     eingaben: Dict[str, Path] = {}
 
+    def schluessel(pfad: Path) -> str:
+        # Eingaben im Fall relativ (portabler Beleg), ausserhalb absolut —
+        # der Abnahmebericht hasht jede davon auf den aktuellen Bytes nach.
+        pfad = pfad.resolve()
+        return str(pfad.relative_to(fall)) if fall in pfad.parents else str(pfad)
+
     def lies(pfad: Path, spalten, pflicht: bool):
         if not pfad.is_file():
             if pflicht:
                 raise SystemExit(f"fuehrungsprobe: Pflichttabelle fehlt: {pfad}")
             return None
-        eingaben[str(pfad.relative_to(fall))] = pfad
+        eingaben[schluessel(pfad)] = pfad
         return read_portfolio(pfad, expected_columns=spalten)
 
     try:
@@ -503,7 +513,7 @@ def main(argv: Optional[List[str]] = None) -> int:
               "hat keinen benannten Anfangszustand (gates.bestand_uebernehmen "
               "schreibt ihn)", file=sys.stderr)
         return 2
-    eingaben[str(beleg_pfad.relative_to(fall))] = beleg_pfad
+    eingaben[schluessel(beleg_pfad)] = beleg_pfad
     uebernahme["beleg"] = json.loads(beleg_pfad.read_text(encoding="utf-8"))
 
     fortschreibung = None
@@ -526,7 +536,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if fehler:
         print("fuehrungsprobe: Config ungueltig: " + "; ".join(fehler), file=sys.stderr)
         return 2
-    eingaben["config"] = config_pfad
+    eingaben[schluessel(config_pfad)] = config_pfad
     spez = lade_spez(fall, args.generation)
     zeilen_pfad = Path(args.zeilen).resolve()
     zeilen = json.loads(zeilen_pfad.read_text(encoding="utf-8"))
@@ -534,10 +544,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"{args.zeilen}: erwartet wird die Zeilenliste aus "
               "gates.transformation_anwenden --zeilen", file=sys.stderr)
         return 2
-    eingaben["zeilen"] = zeilen_pfad
+    eingaben[schluessel(zeilen_pfad)] = zeilen_pfad
     vorgeschichte = _lies_csv(fall, args.vorgeschichte) if args.vorgeschichte else []
     if args.vorgeschichte:
-        eingaben["vorgeschichte"] = fall_mod.eingang_datei(fall, args.vorgeschichte)
+        vg_pfad = fall_mod.eingang_datei(fall, args.vorgeschichte)
+        eingaben[schluessel(vg_pfad)] = vg_pfad
 
     red_anteile: Dict[str, float] = {}
     red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
@@ -557,7 +568,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     anker: Dict[str, Tuple[int, float]] = {}
     if args.anker_quelle is not None:
         quelle_pfad = fall_mod.eingang_datei(fall, args.anker_quelle)
-        eingaben["anker_erwartungswerte"] = quelle_pfad
+        eingaben[schluessel(quelle_pfad)] = quelle_pfad
         quelle = json.loads(quelle_pfad.read_text(encoding="utf-8"))
         for eintrag in quelle.get("vertraege", []):
             erster = next(
@@ -581,7 +592,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         schicht_pfad = (fall / args.schicht) if not Path(args.schicht).is_absolute() \
             else Path(args.schicht)
         if schicht_pfad.is_file():
-            eingaben["schicht"] = schicht_pfad
+            eingaben[schluessel(schicht_pfad)] = schicht_pfad
 
     tarifwerk = {
         "scheiben_mit_gamma1": bool(args.scheiben_mit_gamma1),
@@ -598,18 +609,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     ergebnis["system"] = systemstand(repo_root)
     ergebnis["provenienz"] = {
-        "eingaben": {
-            (str(pfad.relative_to(fall)) if fall in pfad.parents else name): _sha256(pfad)
-            for name, pfad in sorted(eingaben.items())
-        },
+        "eingaben": {name: _sha256(pfad) for name, pfad in sorted(eingaben.items())},
         "parameter": {
             "generation": args.generation, "erhoehungssatz": args.erhoehungssatz,
             "red_anteile": sorted(args.red_anteile),
             "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
             "anker_erwartungswerte": args.anker_quelle,
             "vorgeschichte": args.vorgeschichte, "schicht": args.schicht,
-            "uebernahme": str(ueber.relative_to(fall)) if fall in ueber.parents else str(ueber),
-            "fortschreibung": args.fortschreibung,
+            "uebernahme": schluessel(ueber),
+            "fortschreibung": (schluessel(Path(args.fortschreibung))
+                               if args.fortschreibung else None),
         },
     }
     out = Path(args.out) if args.out else fall / "abgeleitet" / "berichte" / "fuehrungsprobe.json"

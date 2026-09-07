@@ -1040,6 +1040,7 @@ def _passende_bestandsbelege(
             fehler.extend(
                 abnahmebericht._fuehrungsprobe_fehler(
                     abnahmebericht._lies_json_beleg(pfade["fuehrungsprobe"]),
+                    fall=fall,
                     suite=suite,
                     erwartetes_system=dict(system),
                 )
