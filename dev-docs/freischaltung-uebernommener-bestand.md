@@ -349,8 +349,10 @@ Handlung der Rollen des Falls (Regie), nicht der dev-Session.
 `docs/faelle/baldrian-lauf2.md` bekommt einen Nachtrag.
 Fertig, wenn: der Fall einen neuen A-M4-Snapshot mit Korrekturvermerk
 traegt und die Fuehrungsprobe im Fall gruen ist.
-STAND 2026-09-07: Produzenten und Pruef-Gates auf Systemstand 9573bfc neu
-gefahren (Korrektur-Protokoll Nr. 24), Fuehrungsprobe 834 Vertraege, 42
+STAND 2026-09-07: Produzenten und Pruef-Gates auf dem finalen Stand des
+Branches `freischaltung` neu gefahren (der konkrete Git-Kurz-SHA steht im
+Korrektur-Protokoll Nr. 24 des Falls, weil jeder Beleg den Systemstand
+bindet und die Neuzeichnung auf genau diesem Stand erfolgt), Fuehrungsprobe 834 Vertraege, 42
 Buchungen, 0 Befunde, Abnahmebericht gruen. Die fuenf Zeichnungen (A-Q1,
 A-M1, A-M2, A-M3, A-M4) stehen bei der Regie aus.
 
@@ -423,7 +425,7 @@ liegt beim Maintainer.
 | 5 Korrekturschicht in der Fuehrung | ERLEDIGT 2026-09-07 (schichten.parquet aus dem Schichtbeleg, Storno und Abschluss mit Schicht, P-B1 4.0.0) |
 | 6 Fuehrungsprobe vor A-M4 | ERLEDIGT 2026-09-07 (gates.fuehrungsprobe; Pflichtbelegrolle im Bestands-Scope, Abnahmebericht 3.0.0, P9 2.0.0) |
 | 7 Freischaltung im Skill | ERLEDIGT 2026-09-07 (Skill migrationsfall-durchfuehren, Stufe 1b und 3b; Befundliste, Backlog) |
-| 8 Fall Lauf 2 korrigieren | Produzenten neu (2026-09-07, Systemstand 9573bfc, Korrektur 24); Zeichnungen bei der Regie offen |
+| 8 Fall Lauf 2 korrigieren | Produzenten neu (2026-09-07, finaler Branch-Stand, Korrektur 24); Zeichnungen bei der Regie offen |
 | 9 Betrieb neu aufsetzen | offen (betrieb-haertung, Laufzeit) |
 | 10 Prozessregel Betriebsfunde | ERLEDIGT 2026-09-07 (docs/simulation/tagesbetrieb.md, Abschnitt 6.1) |
 | 11 Kommunikation | offen (run-Session, Go des Maintainers) |
