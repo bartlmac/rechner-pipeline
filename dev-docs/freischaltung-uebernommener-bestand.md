@@ -408,8 +408,8 @@ liegt beim Maintainer.
 | 4 Fuehrung liest Anfangszustand | ERLEDIGT 2026-09-07 (Engine, Bewertung, Ledger-Herleitung, Fortschreibungs-Kommando); Tagesbetrieb folgt in Schritt 9 |
 | 5 Korrekturschicht in der Fuehrung | ERLEDIGT 2026-09-07 (schichten.parquet aus dem Schichtbeleg, Storno und Abschluss mit Schicht, P-B1 4.0.0) |
 | 6 Fuehrungsprobe vor A-M4 | ERLEDIGT 2026-09-07 (gates.fuehrungsprobe; Pflichtbelegrolle im Bestands-Scope, Abnahmebericht 3.0.0, P9 2.0.0) |
-| 7 Freischaltung im Skill | offen |
+| 7 Freischaltung im Skill | ERLEDIGT 2026-09-07 (Skill migrationsfall-durchfuehren, Stufe 1b und 3b; Befundliste, Backlog) |
 | 8 Fall Lauf 2 korrigieren | offen (Regie) |
 | 9 Betrieb neu aufsetzen | offen (betrieb-haertung, Laufzeit) |
-| 10 Prozessregel Betriebsfunde | offen |
+| 10 Prozessregel Betriebsfunde | ERLEDIGT 2026-09-07 (docs/simulation/tagesbetrieb.md, Abschnitt 6.1) |
 | 11 Kommunikation | offen (run-Session, Go des Maintainers) |
