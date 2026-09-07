@@ -149,8 +149,15 @@ def baue_schichtbeleg(
     fenster: Optional[int] = None,
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     scheiben_mit_gamma1: bool = False,
+    summen: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
     """Schichtparameter je Police — der rechnende Kern des Producers.
+
+    ``summen`` (police -> gelieferte Summe aus den transformierten
+    Zeilen) ist die Grundlage, wo kein Anfangszustand eine Grund- oder
+    Ursprungssumme liefert: Der Stamm traegt seit der Freischaltung die
+    Grundsumme der Fuehrung; die Verankerung rechnet die Welt der
+    Lieferung.
 
     Rueckgabe: ``{"schichten": {police: {"hist": felder}},
     "befunde": [...], "summary": {...}}`` — das ``hist``-Format des
@@ -192,8 +199,11 @@ def baue_schichtbeleg(
         anfangszustand = (anfangszustaende or {}).get(police, {})
         if "sum_insured" in anfangszustand:
             # Die Bewertungs-Welt der Pruefstrecke: Ursprungs- bzw.
-            # Grundsumme statt der aktuellen Gesamtsumme des Stamms.
+            # Grundsumme.
             mp["sum_insured"] = float(anfangszustand["sum_insured"])
+        elif summen is not None and police in summen:
+            # Ohne Zustand die GELIEFERTE Summe als ein Vertrag.
+            mp["sum_insured"] = float(summen[police])
         vertraege.append(Uebernahme(
             police_id=int(police),
             model_point=mp,
@@ -315,6 +325,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     bestand = read_portfolio(pfade["bestand"])
 
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None
+    summen: Optional[Dict[str, float]] = None
     if args.vorgeschichte is not None:
         # Dieselbe Zustandsbau-Maschinerie wie in den Pruefstrecken —
         # die Verankerung MUSS auf derselben Welt stehen, auf der
@@ -333,6 +344,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             zeilen = json.loads(
                 Path(args.zeilen).read_text(encoding="utf-8"))
             auspraegungen = auspraegungen_je_police(spez, zeilen)
+            summen = {
+                str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
         elif len(spez.zellen) > 1:
             print("verankerung_belegen: mehrzellige Spez mit "
                   "Vorgeschichte verlangt --zeilen", file=sys.stderr)
@@ -386,6 +399,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             fenster=args.fenster,
             anfangszustaende=anfangszustaende,
             scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+            summen=summen,
         )
     except MigrationszugangFehler as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)

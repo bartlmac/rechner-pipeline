@@ -29,7 +29,10 @@ from rechner_pipeline.bestand.manifest import (
     sha256_bytes,
 )
 from rechner_pipeline.bestand.parquet_io import read_portfolio
-from rechner_pipeline.bestand.ledger_bindung import pruefe_ledger_betraege
+from rechner_pipeline.bestand.ledger_bindung import (
+    pruefe_ledger_betraege,
+    pruefe_scheiben_tarifwerk,
+)
 from rechner_pipeline.models.bestand import (
     LEDGER_NAMES,
     MERKMALE_NAMES,
@@ -298,6 +301,21 @@ def lies_und_pruefe_pb1(
                 geprueft["sanity_baender"] = len(config.plausibilitaet)
             except Exception as exc:  # noqa: BLE001 — malformed data blockiert
                 errors.append({"code": "sanity", "message": str(exc)})
+            # Das gamma1 jeder Scheibe gegen das Tarifwerk ihrer Generation
+            # (Freischaltung, Schritt 4): Form ohne Config oben, Wert mit
+            # Config hier.
+            if (
+                scheiben is not None
+                and not any(e["code"] in ("scheiben", "portfolio", "config") for e in errors)
+            ):
+                try:
+                    for meldung in pruefe_scheiben_tarifwerk(
+                        portfolio, scheiben, config,
+                        merkmale=tabellen.get("merkmale"),
+                    ):
+                        errors.append({"code": "scheiben", "message": meldung})
+                except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+                    errors.append({"code": "scheiben", "message": str(exc)})
             # Betragsidentitaet je Buchung (T20-04): erst mit den
             # Rechnungsgrundlagen der Config ist der Kern herleitbar. Nur
             # auf formal gueltigen Zeilen — sonst meldete jede

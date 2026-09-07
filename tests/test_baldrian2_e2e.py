@@ -124,13 +124,20 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ]) == 0, "Transformation der Quellzeilen"
 
     bestand = fall / "abgeleitet" / "bestand"
+    # Freischaltung (Schritt 3): Die Uebernahme rechnet den Anfangszustand
+    # mit DENSELBEN Lieferungs-Schaltern wie die Pruefstrecke und schreibt
+    # ihn in die Tabellen — Grundsumme im Stamm, Alt-Erhoehungen als
+    # Scheiben, Ursprungssumme der beitragsfreien Vertraege.
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
         "--vorgeschichte", METADATEN,
         "--generation-spez", GENERATION,
+        "--anfangszustand", "materialisieren",
+        "--anker-erwartungswerte", ANKER,
+        "--stoab-je-baustein",
         "--out-dir", str(bestand),
-    ]) == 0, "Uebernahme in das Zielmodell"
+    ] + _lieferungs_flags()) == 0, "Uebernahme in das Zielmodell"
 
     assert transformation_anwenden.main([
         "--fall", str(fall), "--spec", str(spec),
@@ -157,6 +164,7 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--portfolio", str(bestand / "bestand.parquet"),
         "--historie", str(bestand / "historie.parquet"),
         "--ledger", str(bestand / "ledger.parquet"),
+        "--scheiben", str(bestand / "scheiben.parquet"),
         "--merkmale", str(bestand / "merkmale.parquet"),
         "--config", str(config_pfad),
         "--bis", STICHTAG_1,
@@ -226,8 +234,88 @@ def test_die_uebernahme_erzeugt_den_erwarteten_bestand(gefahrener_fall: Path):
     assert len(df) == len(policen)
     assert sorted(str(p) for p in df["police_id"]) == sorted(policen)
     assert set(df["tarif_generation"]) == {TARIF_GENERATION}
-    for tabelle in ("bestand", "historie", "ledger", "verankerung"):
+    for tabelle in ("bestand", "historie", "ledger", "verankerung", "scheiben"):
         assert (bestand / f"{tabelle}.parquet").is_file()
+
+
+def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
+    gefahrener_fall: Path,
+):
+    """Freischaltung, Schritt 3: Was die Abnahmen rechnen, steht in den
+    Tabellen — nicht nur im Pruefauftrag.
+
+    Die Alt-Erhoehungen jeder Serien-Police sind Scheiben mit dem gamma1
+    ihrer Zelle (volle Beitragsformel, Ziffer 3 der Lieferung); der Stamm
+    traegt die Grundsumme, der Zugang die Gesamtsumme; die beitragsfrei
+    gelieferten Vertraege buchen ihre GELIEFERTE beitragsfreie Summe um,
+    nicht eine zweite Umwandlung davon; der Beleg nennt Modus und Schalter.
+    Vorher: Gesamtsumme als ein Vertrag ab Beginn, keine Scheiben,
+    beitragsfreier Bestand um den Umwandlungsfaktor zu klein.
+    """
+    import csv
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import SCHEIBEN_NAMES, validate_scheiben
+
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    klassen = _policen()["klassen"]
+    stamm = read_portfolio(bestand / "bestand.parquet")
+    ledger = read_portfolio(bestand / "ledger.parquet")
+    scheiben = read_portfolio(bestand / "scheiben.parquet",
+                              expected_columns=SCHEIBEN_NAMES)
+    zeilen = {
+        int(z["police_id"]): z for z in json.loads(
+            (gefahrener_fall / "abgeleitet" / "transformation" / "zeilen.json")
+            .read_text(encoding="utf-8"))
+    }
+    vorgeschichte = {}
+    with (FIXTURE / METADATEN).open(encoding="utf-8") as datei:
+        for z in csv.DictReader(datei, delimiter=";"):
+            vorgeschichte.setdefault(int(z["POLNR"]), []).append(z["GEVO"])
+
+    # Scheiben: jede Serie ohne terminale Beitragsfreistellung ist als
+    # Bausteine im Bestand; PEX-Serien kollabieren (Ein-Punkt-Inversion).
+    mit_scheiben = set(int(p) for p in scheiben["police_id"])
+    erwartet = {
+        pid for pid, arten in vorgeschichte.items()
+        if "ERH" in arten and "PEX" not in arten
+    }
+    assert mit_scheiben == erwartet, (sorted(mit_scheiben), sorted(erwartet))
+    assert validate_scheiben(stamm, scheiben) == []
+    assert (scheiben["gamma1"] > 0.0).all(), "volle Beitragsformel je Baustein"
+    haupt = stamm.set_index("police_id")
+    zug = ledger[ledger["ereignis"] == "ZUG"].set_index("police_id")["betrag"]
+    for pid in sorted(mit_scheiben):
+        eigene = scheiben[scheiben["police_id"] == pid]
+        gesamt = float(haupt.loc[pid, "sum_insured"]) + float(eigene["sum_insured"].sum())
+        assert abs(gesamt - float(zeilen[pid]["sum_insured"])) <= 0.05, pid
+        assert abs(float(zug.loc[pid]) - gesamt) <= 0.005, pid
+        assert float(haupt.loc[pid, "sum_insured"]) < float(zeilen[pid]["sum_insured"])
+        assert list(eigene["scheiben_id"]) == list(range(1, len(eigene) + 1))
+    # Beitragsfrei geliefert: Umbuchung = gelieferte Summe, Stamm = Ursprung.
+    pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")["betrag"]
+    assert set(int(p) for p in pex.index) == {
+        pid for pid, arten in vorgeschichte.items() if "PEX" in arten}
+    for pid, betrag in pex.items():
+        assert abs(float(betrag) - float(zeilen[int(pid)]["sum_insured"])) <= 0.005
+        assert float(haupt.loc[pid, "sum_insured"]) > float(betrag)
+        assert abs(float(zug.loc[pid]) - float(haupt.loc[pid, "sum_insured"])) <= 0.005
+    # Der Beleg der Uebernahme.
+    beleg = json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8"))
+    assert beleg["anfangszustand"] == "materialisieren"
+    assert beleg["tarifwerk"] == {
+        "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+        "red_verfahren": RED_VERFAHREN,
+    }
+    assert beleg["mit_scheiben"] == len(mit_scheiben)
+    assert beleg["scheiben"] == len(scheiben)
+    assert beleg["beitragsfrei"] == len(pex)
+    assert beleg["ohne_anfangszustand"] == [] and beleg["nicht_freigeschaltet"] == []
+    # Und der Config-Abschnitt traegt die Schalter, die die Fuehrung liest.
+    abschnitt = (bestand / "generation-zellen.toml").read_text(encoding="utf-8")
+    for zeile in ("scheiben_mit_gamma1 = true", "stoab_je_baustein = true",
+                  f'red_verfahren = "{RED_VERFAHREN}"'):
+        assert zeile in abschnitt, zeile
 
 
 def test_die_verankerung_traegt_jede_police_mit_kleinem_residuum(

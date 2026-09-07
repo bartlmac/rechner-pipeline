@@ -87,6 +87,17 @@ still. Das gibt A-K1 den Inhalt, der ihm bisher fehlte (U1, Befund Z1-04).
   Hand, nicht durch Pruefung — Backlog "werkzeuge/ in die
   Schichtenkarte". Der Satz "vier Ebenen erzwungen" waere zu gross;
   richtig ist: zwei Grenzen im Paket erzwungen, der Rest benannt.
+  NACHTRAG 2026-09-07 (Freischaltung des uebernommenen Bestands,
+  dev-docs/freischaltung-uebernommener-bestand.md, Schritt 3): Die
+  Zielsystem-Schnittstelle waechst um zwei Kanten aus der Uebernahme
+  (`gates/bestand_uebernehmen`) in `bestand/migrationszugang` und
+  `kern/beitragsreduktion`. Grund: Der Anfangszustand eines
+  uebernommenen Vertrags entsteht an EINEM Ort — derselben Ableitung,
+  die Pruefstrecke und Verankerung laengst ueber genau diese Kanten
+  rufen — und die Uebernahme materialisiert ihn in den Tabellen der
+  Fuehrung. Zwei Rechenwege fuer denselben Zustand waren der Befund;
+  eine zweite Ableitung im Tool waere die Wiederholung davon. Keine
+  neue Art von Kante, dieselbe Schnittstelle von einem weiteren Modul.
 - README, ONBOARDING und die Unternehmensseite werden nach Ebenen
   geschnitten: Was ist das Tool, was ist die Vorzeige, was stellt sie
   her. Fachdokumente der Vorzeige nennen KI-Beteiligung und

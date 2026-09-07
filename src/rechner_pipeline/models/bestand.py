@@ -873,7 +873,7 @@ def validate_ledger(
             )
 
     if scheiben is not None:
-        errors.extend(_ledger_scheiben_bindung(ledger, scheiben))
+        errors.extend(_ledger_scheiben_bindung(ledger, scheiben, stamm))
     return errors
 
 
@@ -1030,9 +1030,19 @@ def validate_tagesjournal(
     return errors
 
 
-def _ledger_scheiben_bindung(ledger: Any, scheiben: Any) -> List[str]:
+def _ledger_scheiben_bindung(
+    ledger: Any, scheiben: Any, stamm: Any = None
+) -> List[str]:
     """Jede ERH-Buchung genau eine Scheibe, jede Scheibe genau eine Buchung
-    — ueber Police, Datum, Betrag und Erhoehungsjahr (T18-01)."""
+    — ueber Police, Datum, Betrag und Erhoehungsjahr (T18-01).
+
+    Ausgenommen sind MITGEBRACHTE Scheiben: Die Alt-Erhoehungen eines
+    uebernommenen Vertrags liegen vor seinem Bestandszugang und haben
+    keine Buchung im Journal des aufnehmenden Unternehmens — die
+    Vorgeschichte wird nicht nachgefahren (Grundsatzdokumentation 9.14),
+    ihr Zugang bucht die Gesamtsumme. Eine Scheibe NACH dem Zugang ohne
+    Buchung bleibt ein Befund.
+    """
     import pandas as _pd
 
     errors: List[str] = []
@@ -1041,6 +1051,13 @@ def _ledger_scheiben_bindung(ledger: Any, scheiben: Any) -> List[str]:
     erh = ledger.loc[ledger["ereignis"] == "ERH",
                      ["police_id", "status_date", "vertragsjahr", "betrag"]]
     sch = scheiben[["police_id", "erhoehung_datum", "erhoehung_jahr", "sum_insured"]]
+    if stamm is not None and len(sch):
+        zugang = stamm.set_index("police_id")["bestandszugang"]
+        mitgebracht = (
+            sch["erhoehung_datum"].to_numpy()
+            <= zugang.reindex(sch["police_id"].to_numpy()).to_numpy()
+        )
+        sch = sch[~mitgebracht]
     doppelt_l = erh.duplicated(["police_id", "status_date"])
     if doppelt_l.any():
         errors.append(
@@ -1169,23 +1186,29 @@ def validate_scheiben(stamm: Any, scheiben: Any, historie: Any = None) -> List[s
     elif (scheiben["sum_insured"] <= 0).any():
         errors.append("scheiben: sum_insured <= 0")
     # gamma1 ist die Rechnungsgrundlage der Scheibe und geht in Beitrag und
-    # Reserve ein. Die Tarifwerk-Regel setzt sie auf null, weil die
-    # Bezugsgroesse der Verwaltungskosten die GrundVS bleibt
-    # (kern.rechenkern.erhoehungs_scheibe). Ein anderer Wert rechnet still
-    # falsch: NaN laesst den Rueckkaufswert auf 0,00 fallen statt auf NaN,
-    # ein negativer Wert erzeugt einen negativen Jahresbeitrag — beides
-    # plausibel aussehende Zahlen, die niemandem auffallen.
-    # NaN wird getrennt gemeldet, weil jeder Vergleich damit False ist;
-    # das != 0.0 danach faengt Unendlich und jeden Fremdwert mit.
+    # Reserve ein. Ein Fremdwert rechnet still falsch: NaN laesst den
+    # Rueckkaufswert auf 0,00 fallen statt auf NaN, ein negativer Wert
+    # erzeugt einen negativen Jahresbeitrag — beides plausibel aussehende
+    # Zahlen, die niemandem auffallen. WELCHER Wert richtig ist, sagt das
+    # Tarifwerk der Generation (0 fuer das eigene Geschaeft, das gamma1
+    # der Zelle bei uebernommenen Generationen mit voller Beitragsformel):
+    # das prueft bestand.ledger_bindung.pruefe_scheiben_tarifwerk mit der
+    # Config. Hier, ohne Config, bleibt die Form: endlich und nicht negativ.
+    # NaN wird getrennt gemeldet, weil jeder Vergleich damit False ist.
     if scheiben["gamma1"].isna().any():
         errors.append("scheiben: fehlende Werte (NaN) in gamma1")
-    elif (scheiben["gamma1"] != 0.0).any():
+    elif _nichtendlich(scheiben["gamma1"]):
+        errors.append(
+            "scheiben: gamma1 nicht endlich (inf) — eine Rechnungsgrundlage "
+            "ist eine Zahl"
+        )
+    elif (scheiben["gamma1"] < 0.0).any():
         abweichend = sorted(
-            set(scheiben.loc[scheiben["gamma1"] != 0.0, "police_id"])
+            set(scheiben.loc[scheiben["gamma1"] < 0.0, "police_id"])
         )[:5]
         errors.append(
-            "scheiben: gamma1 != 0 (Tarifwerk-Regel: die Bezugsgroesse der "
-            f"Verwaltungskosten bleibt die GrundVS), police {abweichend}"
+            "scheiben: gamma1 < 0 (ein Verwaltungskostensatz traegt kein "
+            f"Vorzeichen), police {abweichend}"
         )
     if not (scheiben["erhoehung_datum"].dt.day == 1).all():
         errors.append("scheiben: erhoehung_datum nicht auf Monatsersten normalisiert")

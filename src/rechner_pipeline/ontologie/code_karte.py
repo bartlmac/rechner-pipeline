@@ -140,8 +140,16 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/kern/beitragsreduktion.py"),
     ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/kern/korrekturschicht.py"),
+    # Freischaltung (dev-docs/freischaltung-uebernommener-bestand.md,
+    # Schritt 3; ADR-017 Nachtrag 2026-09-07): Die Uebernahme ruft
+    # DIESELBE Anfangszustands-Ableitung wie Pruefstrecke und Verankerung
+    # (bestand.migrationszugang) und kennt dieselben Verfahrenskonstanten
+    # (kern.beitragsreduktion) — zwei Kanten, die migrationssuite_lauf und
+    # verankerung_belegen laengst haben; ein Ort fuer den Anfangszustand.
+    ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/bestand/migrationszugang.py"),
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/__init__.py"),
+    ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/beitragsreduktion.py"),
     ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/manifest.py"),
     ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/vorbedingungen.py"),
     ("rechner_pipeline/gates/generation_golden.py", "rechner_pipeline/kern/__init__.py"),

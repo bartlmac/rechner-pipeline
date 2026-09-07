@@ -11,12 +11,30 @@ Es liegt in ``gates/``, nicht in ``bestand/``: Nur diese Schicht darf
 Schichtverstoss.
 
 **Was es tut.** Aus den transformierten Zeilen
-(``gates.transformation_anwenden --zeilen``) baut es die drei Tabellen
-des Zielsystems:
+(``gates.transformation_anwenden --zeilen``) baut es die Tabellen des
+Zielsystems:
 
 * ``bestand.parquet`` — der Stamm nach ``STAMM_SPALTEN``
 * ``historie.parquet`` — je Vertrag die erste Statuszeile
 * ``ledger.parquet`` — die Zugangsbuchung je Vertrag
+* ``scheiben.parquet`` — die Alt-Erhoehungen als Bausteine (Freischaltung)
+* ``uebernahme.json`` — der Beleg: Modus, Schalter, Ausnahmen
+
+**Der Anfangszustand ist der der Pruefstrecke** (Freischaltung,
+dev-docs/freischaltung-uebernommener-bestand.md, Schritt 3). Die
+Abnahmen A-M1 bis A-M4 rechnen jeden Vertrag auf seinem
+ANFANGSZUSTAND: Grund- statt Gesamtsumme, die Alt-Erhoehungen als
+eigene Bausteine, die beitragsfreie Summe aus der Ursprungssumme. Die
+Uebernahme rief bisher nichts davon: Sie nahm die gelieferte Summe als
+Versicherungssumme — bei 550 von 834 Vertraegen des zweiten
+Baldrian-Falls die falsche Welt — und wandelte eine beitragsfrei
+gelieferte Summe ein zweites Mal um. Jetzt ruft sie DIESELBE
+Ableitung (``migrationssuite_lauf.anfangszustaende_je_police``) und
+materialisiert das Ergebnis in den Tabellen; ``--anfangszustand``
+sagt, ob (``materialisieren``) oder ob der Bestand ausdruecklich als
+Grundvertrag gefuehrt wird (``grundvertrag``: nicht freigeschaltet,
+im Beleg ausgewiesen). Ohne Angabe haelt das Kommando an, sobald die
+Vorgeschichte Erhoehungen oder Herabsetzungen traegt.
 
 **Der Status kommt aus der HISTORIE, nicht aus dem Stamm.** Das
 Zielmodell fuehrt im Stamm immer den Ursprungssatz — ``status_id 1``,
@@ -50,6 +68,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -57,15 +76,31 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from rechner_pipeline import fall as fall_mod
+from rechner_pipeline.bestand.migrationszugang import (
+    MigrationszugangFehler,
+    leite_pex_ursprungssumme_ab,
+)
 from rechner_pipeline.bestand.parquet_io import write_portfolio
+from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
+from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.models.bestand import (
     GENERATION_FIELDS,
     MERKMALE_SPALTEN,
+    SCHEIBEN_NAMES,
+    SCHEIBEN_SPALTEN,
     VERANKERUNG_SPALTEN,
     STATUS_HISTORIE_NAMES,
     LEDGER_NAMES,
     STAMM_NAMES,
+    model_point_kwargs,
 )
+
+#: Schema des Uebernahmebelegs ``uebernahme.json``.
+BELEG_SCHEMA_VERSION = 1
+
+#: Die beiden Antworten auf ``--anfangszustand``.
+MATERIALISIEREN = "materialisieren"
+GRUNDVERTRAG = "grundvertrag"
 
 #: Welcher Geschaeftsvorfall welchen Zustand herstellt. ERH und RED
 #: fehlen mit Absicht: Sie aendern Summe und Beitrag, nicht den Zustand
@@ -74,7 +109,8 @@ from rechner_pipeline.models.bestand import (
 GEVO_STATUS = {"PEX": "PEX", "STO": "STO", "TOD": "TOD", "ABL": "ABL"}
 
 
-def _zellen_toml(spez, generation: str) -> str:
+def _zellen_toml(spez, generation: str,
+                 tarifwerk: Optional[Dict[str, Any]] = None) -> str:
     """Die Tarifzellen der Spez als Config-Abschnitt fuer den Bestand.
 
     Die Merkmalstabelle sagt, WELCHE Zelle ein Vertrag hat; welche
@@ -88,8 +124,6 @@ def _zellen_toml(spez, generation: str) -> str:
     liest man am Abschnitt ab, was die Zellen ueberhaupt unterscheidet.
     """
     zellen = [z for z in getattr(spez, "zellen", []) if z.auspraegungen]
-    if not zellen:
-        return ""
 
     def _wert(v) -> str:
         if isinstance(v, bool):
@@ -97,6 +131,32 @@ def _zellen_toml(spez, generation: str) -> str:
         if isinstance(v, str):
             return f'"{v}"'
         return repr(v)
+
+    # Die Tarifwerks-Eigenschaften der Fuehrung gehoeren in denselben
+    # Generationsblock wie die Rechnungsgrundlagen: So hat die
+    # Pruefstrecke des Falls abgenommen, so muss der Bestand fuehren
+    # (Freischaltung, Schritt 2 und 3). Wer sie von Hand in die Config
+    # traegt, vergisst einen — und die Fuehrung rechnet still das eigene
+    # Tarifwerk.
+    tarifwerk_zeilen: List[str] = []
+    if tarifwerk:
+        tarifwerk_zeilen = [
+            "",
+            "# Tarifwerks-Eigenschaften der Fuehrung (Freischaltung): mit",
+            "# diesen Schaltern hat die Pruefstrecke des Falls abgenommen.",
+        ] + [
+            f"{name} = {_wert(tarifwerk[name])}"
+            for name in ("scheiben_mit_gamma1", "stoab_je_baustein",
+                         "red_verfahren")
+        ]
+    if not zellen:
+        if not tarifwerk_zeilen:
+            return ""
+        return "\n".join(
+            [f"# Tarifwerk der Generation {generation}, erzeugt aus der",
+             "# Uebernahme. Die Zuweisungen gehoeren in den Generationsblock",
+             "# der Bestand-Config."] + tarifwerk_zeilen
+        ) + "\n"
 
     # model_point ist ein Pydantic-Modell: erst in ein Dict, sonst
     # iteriert "in" Paare statt Feldnamen und alles waere "nicht da".
@@ -114,6 +174,7 @@ def _zellen_toml(spez, generation: str) -> str:
         "",
     ]
     aus += [f"{f} = {_wert(saetze[0][f])}" for f in gemeinsam]
+    aus += tarifwerk_zeilen
     for z, satz in sorted(zip(zellen, saetze),
                           key=lambda p: sorted(p[0].auspraegungen.items())):
         paare = ", ".join(
@@ -432,9 +493,7 @@ def baue(
         pex_datum = next(
             (datum for art, datum in wechsel if art == "PEX"), None)
         if pex_datum is not None:
-            felder = generationsfelder or {}
-            if felder and police in felder:
-                felder = felder[police]
+            felder = _felder_fuer(generationsfelder, police)
             if not felder:
                 # Kein stiller Verzicht: Ohne Rechnungsgrundlagen laesst
                 # sich die beitragsfreie Summe nicht bilden, und ein
@@ -448,6 +507,19 @@ def baue(
                     "ist nicht berechenbar. --generation-spez mitgeben "
                     "(oder generationsfelder uebergeben)."
                 )
+            # Der Abzug fuehrt bei einem beitragsfreien Vertrag die
+            # BEITRAGSFREIE Summe. Der Stamm traegt den Ursprungssatz,
+            # also die Summe, aus der der Kern diese beitragsfreie Summe
+            # bildet — die Umkehrung ist exakt (leite_pex_ursprungssumme_ab).
+            # Vorher wurde die gelieferte Summe als Versicherungssumme
+            # genommen und daraus NOCH EINMAL eine beitragsfreie Summe
+            # gerechnet: 160 Vertraege des zweiten Baldrian-Falls um den
+            # Umwandlungsfaktor zu klein, 1,72 statt 3,71 Mio EUR
+            # beitragsfreier Bestand (Freischaltung, Abschnitt 1.1).
+            ursprung, vs_bfr = _beitragsfreie_uebernahme(
+                z, felder, _vertragsjahre(beginn, pex_datum))
+            stamm[-1]["sum_insured"] = ursprung
+            ledger[-1]["betrag"] = ursprung
             ledger.append({
                 "police_id": int(police),
                 "tarif_generation": tarif_generation,
@@ -455,8 +527,7 @@ def baue(
                 "vertragsjahr": _vertragsjahre(beginn, stichtag),
                 "status_date": pd.Timestamp(stichtag),
                 "betrag_art": "VS",
-                "betrag": _beitragsfreie_summe(
-                    z, felder, _vertragsjahre(beginn, pex_datum)),
+                "betrag": vs_bfr,
                 "betrag_herkunft": "gerechnet",
             })
 
@@ -497,27 +568,169 @@ def baue(
     )
 
 
-def _beitragsfreie_summe(
+def _felder_fuer(generationsfelder: Optional[Dict[str, Any]],
+                 police: str) -> Dict[str, Any]:
+    """Die Rechnungsgrundlagen einer Police: ein Satz fuer alle (einzellige
+    Spez) oder je Police der Satz ihrer Zelle (mehrzellige Spez)."""
+    felder = generationsfelder or {}
+    if felder and police in felder:
+        return dict(felder[police])
+    if felder and all(isinstance(v, dict) for v in felder.values()):
+        return {}      # je Police, aber diese fehlt
+    return dict(felder)
+
+
+def _beitragsfreie_uebernahme(
     zeile: Dict[str, Any], generationsfelder: Dict[str, Any], pex_jahr: int
-) -> float:
-    """Die beitragsfreie Summe eines uebernommenen Vertrags — gerechnet.
+) -> Tuple[float, float]:
+    """Ursprungssumme und beitragsfreie Summe eines beitragsfrei
+    uebernommenen Vertrags — gerechnet, und gegen die Lieferung gehalten.
 
-    Das Zielsystem bildet sie aus den Ursprungsparametern; die Lieferung
-    traegt sie nicht. Ist die gelieferte Summe bereits die beitragsfreie
-    (so fuehren Abzuege beitragsfrei gestellte Vertraege), ist sie
-    zugleich das Ergebnis — der Kern rechnet dann auf der
-    Ursprungssumme, die diese Summe erzeugt.
+    Die gelieferte Summe IST die beitragsfreie (so fuehren Abzuege
+    beitragsfrei gestellte Vertraege). Der Stamm des Zielmodells traegt
+    den Ursprungssatz; die Ursprungssumme ist die, aus der der Kern die
+    gelieferte beitragsfreie Summe bildet — dieselbe Umkehrung, die die
+    Pruefstrecke fuer ihren Anfangszustand nutzt. Dass der Kern auf der
+    Ursprungssumme die gelieferte Summe auf den Cent reproduziert, ist
+    hier Bedingung, kein Vertrauen.
     """
-    from rechner_pipeline.kern import ModelPoint, Rechenkern
-
     felder = {
         "x": int(zeile["entry_age"]), "sex": str(zeile["sex"]),
         "n": int(zeile["duration"]), "t": int(zeile["premium_duration"]),
-        "sum_insured": float(zeile["sum_insured"]),
         "zw": int(zeile["zahlweise"]),
         **{k: v for k, v in generationsfelder.items()},
     }
-    return float(Rechenkern(ModelPoint(**felder)).beitragsfreie_summe(pex_jahr))
+    geliefert = float(zeile["sum_insured"])
+    police = zeile.get("police_id")
+    try:
+        ursprung = leite_pex_ursprungssumme_ab(
+            {**felder, "sum_insured": geliefert},
+            pex_jahr=pex_jahr, vs_bfr=geliefert)
+    except MigrationszugangFehler as exc:
+        raise SystemExit(
+            f"Police {police}: beitragsfrei uebernommen, aber die "
+            f"Ursprungssumme ist nicht ableitbar — {exc}"
+        ) from exc
+    vs_bfr = float(
+        Rechenkern(ModelPoint(**felder, sum_insured=ursprung))
+        .beitragsfreie_summe(pex_jahr)
+    )
+    if abs(vs_bfr - geliefert) > 0.005:
+        raise SystemExit(
+            f"Police {police}: der Kern bildet aus der Ursprungssumme "
+            f"{ursprung:.2f} die beitragsfreie Summe {vs_bfr:.2f}, geliefert "
+            f"ist {geliefert:.2f} — die Umkehrung reproduziert die Lieferung "
+            "nicht; Lieferung oder Rechnungsgrundlagen klaeren"
+        )
+    return float(ursprung), vs_bfr
+
+
+def materialisiere_anfangszustand(
+    stamm: pd.DataFrame,
+    ledger: pd.DataFrame,
+    zustaende: Dict[str, Dict[str, Any]],
+    generationsfelder: Optional[Dict[str, Any]],
+    *,
+    scheiben_mit_gamma1: bool,
+) -> Tuple[pd.DataFrame, Dict[str, int]]:
+    """Den Anfangszustand der Pruefstrecke in die Tabellen schreiben.
+
+    ``zustaende`` ist das Ergebnis von
+    ``migrationssuite_lauf.anfangszustaende_je_police`` — je Police die
+    Grund- bzw. Ursprungssumme (``sum_insured``), die Alt-Erhoehungen
+    (``scheiben``: (Vertragsjahr, Summe)), ein Freistellungsjahr oder
+    eine Herabsetzung (``reduktion``). Hier wird daraus, was die
+    Fuehrung liest: die Stammsumme, ``scheiben.parquet`` mit derselben
+    Konstruktionsregel wie die Ereignis-Engine (``erhoehungs_scheibe``,
+    gamma1 nach dem Schalter der Generation) und der Zugang ueber die
+    Gesamtsumme aller Bausteine.
+
+    Eine Herabsetzung als ZUSTAND (die PLV-Verfahren prospektiv und
+    mit Abzug fuehren den Vertrag geteilt weiter) kann die Fuehrung
+    nicht tragen: harter Halt, "nicht freigeschaltet" ist ein benannter
+    Zustand. Die Teilkuendigung der Quelle fuehrt zustandslos mit
+    kleinerer Grundsumme weiter und erzeugt gar keinen Zustand.
+    Mutiert ``stamm`` und ``ledger`` in place; Rueckgabe sind die
+    Scheiben und Zaehler fuer den Beleg.
+    """
+    index_je_police = {int(pid): i for i, pid in enumerate(stamm["police_id"])}
+    rows: List[Dict[str, Any]] = []
+    gesperrt: List[str] = []
+    zahlen = {"mit_anfangszustand": 0, "mit_scheiben": 0, "scheiben": 0,
+              "beitragsfrei": 0}
+    for police in sorted(zustaende, key=int):
+        z = zustaende[police]
+        pid = int(police)
+        if pid not in index_je_police:
+            raise SystemExit(
+                f"Police {police}: Anfangszustand fuer eine Police, die "
+                "nicht im Stamm steht — Zeilen und Vorgeschichte gehoeren "
+                "zur selben Lieferung")
+        if z.get("reduktion") is not None:
+            gesperrt.append(police)
+            continue
+        zahlen["mit_anfangszustand"] += 1
+        i = index_je_police[pid]
+        if "sum_insured" in z:
+            stamm.loc[i, "sum_insured"] = float(z["sum_insured"])
+        if z.get("beitragsfrei_seit_jahr") is not None:
+            zahlen["beitragsfrei"] += 1
+        scheiben = tuple(z.get("scheiben", ()))
+        if not scheiben:
+            continue
+        felder = _felder_fuer(generationsfelder, police)
+        if not felder:
+            raise SystemExit(
+                f"Police {police}: Alt-Erhoehungen ohne Rechnungsgrundlagen "
+                "— --generation-spez mitgeben")
+        row = stamm.loc[i]
+        grund_mp = ModelPoint(**model_point_kwargs(row, felder))
+        start = pd.Timestamp(row["insurance_start"])
+        for nr, (jahr, vs) in enumerate(sorted(scheiben), start=1):
+            try:
+                sch = erhoehungs_scheibe(
+                    grund_mp, int(jahr), float(vs),
+                    gamma1_uebernehmen=scheiben_mit_gamma1)
+            except ValueError as exc:
+                raise SystemExit(
+                    f"Police {police}: Alt-Erhoehung im Vertragsjahr {jahr} "
+                    f"ist kein Baustein — {exc}") from exc
+            rows.append({
+                "police_id": pid,
+                "scheiben_id": nr,
+                "erhoehung_jahr": int(jahr),
+                "erhoehung_datum": pd.Timestamp(
+                    dt.date(start.year + int(jahr), start.month, 1)),
+                "entry_age": sch.x,
+                "duration": sch.n,
+                "premium_duration": sch.t,
+                "sum_insured": sch.sum_insured,
+                "gamma1": sch.gamma1,
+            })
+        zahlen["mit_scheiben"] += 1
+        zahlen["scheiben"] += len(scheiben)
+        # Der Zugang bucht die VERSICHERUNGSSUMME des Vertrags — mit
+        # seinen Bausteinen; die Bewegungsrechnung fuehrt die Gesamtsumme.
+        gesamt = grund_mp.sum_insured + sum(float(s) for _, s in scheiben)
+        zug = (ledger["police_id"] == pid) & (ledger["ereignis"] == "ZUG")
+        ledger.loc[zug, "betrag"] = gesamt
+    if gesperrt:
+        raise SystemExit(
+            f"{len(gesperrt)} Vertraege tragen eine Herabsetzung als "
+            f"Zustand (z. B. {gesperrt[:5]}): Die Fuehrung kann einen "
+            "geteilten Vertrag (Verfahren prospektiv/mit_abzug) nicht "
+            "tragen — nicht freigeschaltet. Nur die Teilkuendigung fuehrt "
+            "zustandslos weiter (--red-verfahren teilkuendigung, wenn das "
+            "Bedingungswerk der Quelle sie vorsieht)."
+        )
+    scheiben_df = (
+        pd.DataFrame(rows, columns=list(SCHEIBEN_NAMES))
+        .astype(dict(SCHEIBEN_SPALTEN))
+    )
+    if len(scheiben_df):
+        scheiben_df = scheiben_df.sort_values(
+            ["police_id", "scheiben_id"], kind="stable").reset_index(drop=True)
+    return scheiben_df, zahlen
 
 
 def _parse(wert: Any) -> dt.date:
@@ -551,6 +764,52 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "klv/tg2015). Mit ihr rechnet die Uebernahme die "
                         "beitragsfreie Summe mitgebrachter PEX-Zustaende — "
                         "ohne sie fehlt der Bewegungsrechnung ihre Buchung.")
+    p.add_argument(
+        "--anfangszustand", dest="anfangszustand", default=None,
+        choices=(MATERIALISIEREN, GRUNDVERTRAG),
+        help="Pflicht, sobald die Vorgeschichte ERH oder RED traegt: "
+             f"'{MATERIALISIEREN}' schreibt den Anfangszustand der "
+             "Pruefstrecke in die Tabellen (Grundsumme, Alt-Scheiben; "
+             "Freischaltung), "
+             f"'{GRUNDVERTRAG}' fuehrt die Vertraege ausdruecklich als "
+             "Grundvertrag mit der gelieferten Summe (nicht "
+             "freigeschaltet; im Beleg ausgewiesen).")
+    p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
+                   default=None, metavar="SATZ",
+                   help="BELEGTER Dynamiksatz der Alt-Erhoehungen — wie in "
+                        "aktuartest_lauf/migrationssuite_lauf")
+    p.add_argument("--red-verfahren", dest="red_verfahren",
+                   default=PROSPEKTIV, choices=sorted(VERFAHREN),
+                   help="Verfahren der Beitragsherabsetzung der Quelle — "
+                        "wie in der Pruefstrecke; nur 'teilkuendigung' "
+                        "ist in der Fuehrung freigeschaltet")
+    p.add_argument("--red-anteil", dest="red_anteile", action="append",
+                   default=[], metavar="POLNR=ANTEIL",
+                   help="nachgelieferter fortgefuehrter Beitragsanteil "
+                        "(wiederholbar) — wie in der Pruefstrecke")
+    p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
+                   action="append", type=float, default=[], metavar="ANTEIL",
+                   help="BELEGTER Tarif-Kandidat des Herabsetzungsanteils "
+                        "(wiederholbar) — wie in der Pruefstrecke")
+    p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
+                   default=None, metavar="REGISTRIERTE_DATEI",
+                   help="REGISTRIERTE Nachlieferung der Anteile "
+                        "(POLNR;GEVO;DATUM;ANTEIL)")
+    p.add_argument("--anker-erwartungswerte", dest="anker_quelle",
+                   default=None, metavar="REGISTRIERTE_DATEI",
+                   help="REGISTRIERTE Erwartungswerte am Verankerungs"
+                        "zeitpunkt (Ankerwerte fuer die Kalibrierung "
+                        "offener Anteile) — wie in der Pruefstrecke")
+    p.add_argument("--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
+                   action="store_true",
+                   help="Erhoehungsscheiben mit voller Beitragsformel "
+                        "(gamma1) — Tarifwerks-Eigenschaft der Lieferung; "
+                        "wird Eigenschaft der Generation in der Config")
+    p.add_argument("--stoab-je-baustein", dest="stoab_je_baustein",
+                   action="store_true",
+                   help="Stornoabschlag-Grenzen je Baustein — "
+                        "Tarifwerks-Eigenschaft der Lieferung; wird "
+                        "Eigenschaft der Generation in der Config")
     p.add_argument("--out-dir", dest="out_dir", required=True,
                    help="Zielverzeichnis im Fall")
     args = p.parse_args(argv)
@@ -594,18 +853,145 @@ def main(argv: Optional[List[str]] = None) -> int:
             if schluessel in zellen:
                 generationsfelder[str(z["police_id"])] = zellen[schluessel]
 
+    vorgeschichte = _vorgeschichte(fall, args.vorgeschichte)
+    arten = {art for eintraege in vorgeschichte.values() for art, _ in eintraege}
+    mit_bausteinen = sorted(
+        police for police, eintraege in vorgeschichte.items()
+        if any(art in ("ERH", "RED") for art, _ in eintraege)
+    )
+    if mit_bausteinen and args.anfangszustand is None:
+        print(
+            f"Die Vorgeschichte traegt Erhoehungen/Herabsetzungen fuer "
+            f"{len(mit_bausteinen)} Vertraege ({sorted(arten & {'ERH', 'RED'})}). "
+            f"--anfangszustand {MATERIALISIEREN} schreibt den Anfangszustand "
+            "der Pruefstrecke in die Tabellen (Freischaltung); "
+            f"--anfangszustand {GRUNDVERTRAG} fuehrt die Vertraege "
+            "ausdruecklich als Grundvertrag mit der gelieferten Summe "
+            "(nicht freigeschaltet). Ohne Angabe wird nichts geschrieben.",
+            file=sys.stderr)
+        return 2
+    if args.anfangszustand == MATERIALISIEREN and not args.generation_spez:
+        print(f"--anfangszustand {MATERIALISIEREN} braucht --generation-spez "
+              "(Rechnungsgrundlagen der Bausteine)", file=sys.stderr)
+        return 2
+    tarifwerk = {
+        "scheiben_mit_gamma1": bool(args.scheiben_mit_gamma1),
+        "stoab_je_baustein": bool(args.stoab_je_baustein),
+        "red_verfahren": str(args.red_verfahren),
+    }
+
     stamm, historie, ledger, hinweise = baue(
         zeilen,
         tarif_generation=args.generation,
         produkt=args.produkt,
         stichtag=_parse(args.stichtag),
-        vorgeschichte=_vorgeschichte(fall, args.vorgeschichte),
+        vorgeschichte=vorgeschichte,
         generationsfelder=generationsfelder,
     )
+
+    beleg: Dict[str, Any] = {
+        "schema_version": BELEG_SCHEMA_VERSION,
+        "anfangszustand": args.anfangszustand or "ohne_bausteine",
+        "tarifwerk": tarifwerk,
+        "erhoehungssatz": args.erhoehungssatz,
+        "red_anteile": sorted(args.red_anteile),
+        "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
+        "anker_erwartungswerte": args.anker_quelle,
+        "vorgeschichte": args.vorgeschichte,
+        "vertraege": int(len(stamm)),
+        "vertraege_mit_bausteinen": len(mit_bausteinen),
+        "mit_anfangszustand": 0,
+        "mit_scheiben": 0,
+        "scheiben": 0,
+        "beitragsfrei": int((ledger["ereignis"] == "PEX").sum()),
+        "ohne_anfangszustand": [],
+        "nicht_freigeschaltet": [],
+    }
+    scheiben = None
+    if args.anfangszustand == MATERIALISIEREN:
+        from rechner_pipeline.gates.migrationssuite_lauf import (
+            VORGABE,
+            _lies_csv,
+            anfangszustaende_je_police,
+            auspraegungen_je_police,
+        )
+
+        rohe_vorgeschichte = _lies_csv(fall, args.vorgeschichte)
+        auspraegungen = auspraegungen_je_police(spez, zeilen)
+        red_anteile: Dict[str, float] = {}
+        red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
+        if args.red_anteile_datei is not None:
+            for zeile in _lies_csv(fall, args.red_anteile_datei):
+                if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
+                    red_anteile[str(zeile["POLNR"])] = float(zeile["ANTEIL"])
+                    if zeile.get("DATUM"):
+                        red_anteile_je_datum.setdefault(
+                            str(zeile["POLNR"]), {})[str(zeile["DATUM"])] = (
+                                float(zeile["ANTEIL"]))
+        for eintrag in args.red_anteile:
+            police, _, wert = eintrag.partition("=")
+            if not police or not wert:
+                print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL",
+                      file=sys.stderr)
+                return 2
+            red_anteile[police.strip()] = float(wert)
+        anker: Dict[str, Tuple[int, float]] = {}
+        if args.anker_quelle is not None:
+            quelle = json.loads(fall_mod.eingang_datei(
+                fall, args.anker_quelle).read_text(encoding="utf-8"))
+            for eintrag in quelle.get("vertraege", []):
+                erster = next(
+                    (x for x in (eintrag.get("punkte") or [])
+                     if x.get("anlass") == "uebernahme"
+                     and "kVx_MRV" in (x.get("erwartet") or {})), None)
+                if erster:
+                    anker[str(eintrag["police_id"])] = (
+                        int(erster["monate"]),
+                        float(erster["erwartet"]["kVx_MRV"]))
+        # DIESELBE Ableitung wie aktuartest_lauf, verankerung_belegen und
+        # migrationssuite_lauf — ein Ort, an dem der Anfangszustand
+        # entsteht. Der Stamm dient ihr nur als Traeger der Vertragsdaten;
+        # ihre Summen nimmt sie aus den transformierten Zeilen.
+        zustaende, warnungen = anfangszustaende_je_police(
+            spez, zeilen, rohe_vorgeschichte, stamm, spalten=dict(VORGABE),
+            red_verfahren=args.red_verfahren, red_anteile=red_anteile,
+            auspraegungen=auspraegungen,
+            erhoehungssatz=args.erhoehungssatz, anker=anker,
+            red_anteile_je_datum=red_anteile_je_datum,
+            red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
+            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
+        scheiben, zahlen = materialisiere_anfangszustand(
+            stamm, ledger, zustaende, generationsfelder,
+            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
+        beleg.update(zahlen)
+        for w in warnungen:
+            # Wie in der Pruefstrecke: kein geratener Zustand, der Vertrag
+            # laeuft als Grundvertrag — und steht hier mit Namen und Grund.
+            treffer = re.match(r"Police (\S+?)[ :(]", w)
+            beleg["ohne_anfangszustand"].append({
+                "police_id": treffer.group(1) if treffer else None,
+                "grund": w,
+            })
+            print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
+                  file=sys.stderr)
+    elif mit_bausteinen:
+        beleg["nicht_freigeschaltet"] = mit_bausteinen
+        hinweise.append(
+            f"{len(mit_bausteinen)} Vertraege mit Erhoehungen/Herabsetzungen "
+            "werden als Grundvertrag mit der gelieferten Summe gefuehrt "
+            f"(--anfangszustand {GRUNDVERTRAG}): NICHT freigeschaltet. Die "
+            "Fuehrung rechnet diese Vertraege nicht so, wie die "
+            "Pruefstrecke sie abgenommen hat."
+        )
 
     write_portfolio(stamm, ziel / "bestand.parquet")
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(ledger, ziel / "ledger.parquet")
+    if scheiben is not None and len(scheiben):
+        write_portfolio(scheiben, ziel / "scheiben.parquet")
+        print(f"  scheiben.parquet  {len(scheiben)} Alt-Erhoehungen "
+              f"({beleg['mit_scheiben']} Vertraege; gamma1 "
+              f"{'uebernommen' if args.scheiben_mit_gamma1 else '0'})")
 
     # Die Merkmalsauspraegungen als NEBENTABELLE, wie Scheiben und
     # Historie: Sie entsteht nur, wenn die Tarifgeneration Dimensionen
@@ -619,7 +1005,7 @@ def main(argv: Optional[List[str]] = None) -> int:
               f"({merkmale['dimension'].nunique()} Dimensionen)")
         # Und die Grundlagen zu den Zellen -- sonst laege die Zuordnung
         # vor, aber nichts, worauf sie zeigt.
-        abschnitt = _zellen_toml(spez, args.generation)
+        abschnitt = _zellen_toml(spez, args.generation, tarifwerk)
         if abschnitt:
             pfad = ziel / "generation-zellen.toml"
             pfad.write_text(abschnitt, encoding="utf-8")
@@ -651,7 +1037,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"  quellarchiv/{quelle.name}: GeVo-Metadatenliste archiviert "
               "(E1: Archiv der PLV)")
 
-    print(f"{len(stamm)} Vertraege uebernommen nach {ziel}")
+    # Der Beleg der Uebernahme: Modus, Schalter, Zaehler, die namentlich
+    # ausgewiesenen Ausnahmen. Die Fuehrungsprobe liest ihn; ein Bestand
+    # ohne Beleg hat keinen benannten Anfangszustand.
+    (ziel / "uebernahme.json").write_text(
+        json.dumps(beleg, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+    print(f"{len(stamm)} Vertraege uebernommen nach {ziel} "
+          f"(Anfangszustand: {beleg['anfangszustand']})")
     print(f"  bestand.parquet   {len(stamm)} Zeilen")
     print(f"  historie.parquet  {len(historie)} Zeilen")
     print(f"  ledger.parquet    {len(ledger)} Zeilen")

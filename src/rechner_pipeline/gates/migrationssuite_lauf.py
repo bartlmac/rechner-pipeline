@@ -507,8 +507,17 @@ def baue_auftraege(
     schichten: Optional[Dict[str, Any]] = None,
     monate_ta_je_police: Optional[Dict[str, int]] = None,
     dk_am_jahrestag: bool = False,
+    summen: Optional[Dict[str, float]] = None,
 ) -> List[VertragsPruefung]:
-    """Je Vertrag genau einen Pruefauftrag."""
+    """Je Vertrag genau einen Pruefauftrag.
+
+    ``summen`` (police -> gelieferte Versicherungssumme aus den
+    transformierten Zeilen) ist die Grundlage des Modellpunkts, wo kein
+    Anfangszustand eine Grund- oder Ursprungssumme liefert. Die Welt der
+    Pruefstrecke ist die LIEFERUNG; der Stamm (``--bestand``) traegt seit
+    der Freischaltung die Grundsumme der Fuehrung und ist fuer eine Police
+    ohne ableitbaren Zustand keine Vergleichsbasis mehr.
+    """
     s = spalten
     ab1 = {z[s["police"]]: z for z in abzug_1}
     ab2 = {z[s["police"]]: z for z in abzug_2}
@@ -556,10 +565,13 @@ def baue_auftraege(
         mp_kwargs = model_point_kwargs(zeile, generation)
         zustand = (anfangszustaende or {}).get(police, {})
         if "sum_insured" in zustand:
-            # Der Stamm fuehrt die aktuelle Gesamtsumme; die Bewertung
-            # der Vorgeschichts-Welt rechnet auf dem Ursprungs- bzw.
-            # Grund-Modellpunkt (Fall-Ableitungsregel).
+            # Die Bewertung der Vorgeschichts-Welt rechnet auf dem
+            # Ursprungs- bzw. Grund-Modellpunkt (Fall-Ableitungsregel).
             mp_kwargs["sum_insured"] = float(zustand["sum_insured"])
+        elif summen is not None and police in summen:
+            # Ohne Zustand gilt die GELIEFERTE Summe als ein Vertrag —
+            # nicht die Stammsumme der Fuehrung (Freischaltung).
+            mp_kwargs["sum_insured"] = float(summen[police])
         auftraege.append(VertragsPruefung(
             police_id=police,
             model_point=mp_kwargs,
@@ -701,6 +713,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     abzug_1 = _lies_csv(fall, args.abzug_1)
 
     auspraegungen = None
+    summen: Optional[Dict[str, float]] = None
     if args.zeilen is not None:
         zeilen = json.loads(Path(args.zeilen).read_text(encoding="utf-8"))
         if not isinstance(zeilen, list):
@@ -708,6 +721,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                   "gates.transformation_anwenden --zeilen", file=sys.stderr)
             return 2
         auspraegungen = auspraegungen_je_police(spez, zeilen)
+        summen = {str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
 
     beitragsfrei_seit = None
     anfangszustaende = None
@@ -791,6 +805,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         schichten=schichten,
         monate_ta_je_police=monate_ta_je_police,
         dk_am_jahrestag=(args.dk_stichtag == "jahrestag"),
+        summen=summen,
     )
 
     # Die Pruefmenge wird an der LIEFERUNG gemessen, nicht an sich

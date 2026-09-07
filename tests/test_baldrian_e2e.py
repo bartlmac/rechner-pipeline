@@ -117,11 +117,17 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ]) == 0, "Transformation der Quellzeilen"
 
     bestand = fall / "abgeleitet" / "bestand"
+    # Der erste Lauf ist NICHT freigeschaltet: Seine Herabsetzungen
+    # rechnen nach dem PLV-Verfahren "mit Abzug" (geteilter Vertrag), das
+    # die Fuehrung nicht traegt. Die Uebernahme fuehrt die Vertraege mit
+    # Vorgeschichte ausdruecklich als Grundvertrag und weist es im Beleg
+    # aus (Freischaltung, Schritt 3); ohne die Angabe haelt sie an.
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
         "--vorgeschichte", METADATEN,
         "--generation-spez", GENERATION,
+        "--anfangszustand", "grundvertrag",
         "--out-dir", str(bestand),
     ]) == 0, "Uebernahme in das Zielmodell"
 
@@ -341,11 +347,19 @@ def test_das_bewegungskonto_beginnt_am_uebernahmestichtag(
 
     # Je umgebuchter Police genau eine PEX-Zeile, und ihr Betrag ist die
     # HERABGESETZTE Summe: Der beitragspflichtige Bestand gibt die volle
-    # Versicherungssumme ab, der beitragsfreie nimmt die kleinere auf.
+    # (Ursprungs-)Versicherungssumme ab, der beitragsfreie nimmt die
+    # kleinere auf — und die ist die GELIEFERTE beitragsfreie Summe, nicht
+    # eine zweite Umwandlung davon (Freischaltung, Abschnitt 1.1).
     assert len(pex) == len(set(pex["police_id"]))
     zug_summe = zug.set_index("police_id")["betrag"]
+    geliefert = {
+        int(z["police_id"]): float(z["sum_insured"])
+        for z in json.loads((gefahrener_fall / "abgeleitet" / "transformation"
+                             / "zeilen.json").read_text(encoding="utf-8"))
+    }
     for pid, betrag in zip(pex["police_id"], pex["betrag"]):
         assert 0.0 < betrag < zug_summe.loc[pid]
+        assert abs(betrag - geliefert[int(pid)]) <= 0.005, (pid, betrag)
 
     # Die Statushistorie fuehrt sie sehr wohl: Sie beschreibt den
     # Vertrag, und ohne sie waere sein Zustand am Stichtag unbestimmt.
@@ -426,6 +440,7 @@ def test_ohne_spez_verweigert_die_uebernahme_beitragsfreier_vertraege(
             "--fall", str(gefahrener_fall), "--zeilen", str(zeilen),
             "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
             "--vorgeschichte", METADATEN,
+            "--anfangszustand", "grundvertrag",
             "--out-dir", str(ziel),
         ])
     assert "--generation-spez" in str(exc.value)

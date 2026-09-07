@@ -192,7 +192,14 @@ def pruefe_ledger_betraege(
             if art not in HERGELEITET:
                 continue
             if art == "ZUG":
-                erwartet = float(h["sum_insured"])
+                # Der Zugang bucht die Versicherungssumme MIT den
+                # mitgebrachten Bausteinen: Ein uebernommener Vertrag
+                # tritt mit seinen Alt-Erhoehungen ein (Freischaltung,
+                # Schritt 3); der eigene Zugang im Vertragsjahr 0 hat
+                # noch keine.
+                erwartet = float(h["sum_insured"]) + sum(
+                    vs for j, vs in scheiben_je_police.get(pid, []) if j <= jahr
+                )
             else:
                 if pid not in herleitungen:
                     try:
@@ -231,5 +238,66 @@ def pruefe_ledger_betraege(
             + (" ..." if len(abweichungen) > 3 else "")
             + ". Ein Betrag, der zu einer anderen Police gehoert, ist keine "
             "Buchung dieser Police, auch wenn die Jahressumme aufgeht"
+        )
+    return errors
+
+
+def pruefe_scheiben_tarifwerk(
+    stamm: pd.DataFrame,
+    scheiben: Optional[pd.DataFrame],
+    config: BestandConfig,
+    *,
+    merkmale: Optional[pd.DataFrame] = None,
+) -> List[str]:
+    """Das gamma1 jeder Scheibe ist das, das das Tarifwerk ihrer
+    Generation vorgibt — null oder das gamma1 der Zelle.
+
+    Die Scheibe traegt ihre Rechnungsgrundlage selbst (ADR-011), und
+    die Form prueft ``validate_scheiben`` ohne Config. WELCHER Wert
+    richtig ist, weiss nur die Generation: Das eigene Geschaeft rechnet
+    Erhoehungsscheiben ohne gamma1 (Tarifplan KLV 7, Bezugsgroesse
+    GrundVS); eine uebernommene Generation mit ``scheiben_mit_gamma1``
+    rechnet jeden Baustein mit der vollen Beitragsformel, also mit dem
+    gamma1 seiner Zelle (Freischaltung, Schritt 2 und 4). Ein anderer
+    Wert waere ein Fremdwert, der still einen anderen Beitrag und eine
+    andere Reserve erzeugt.
+    """
+    errors: List[str] = []
+    if scheiben is None or len(scheiben) == 0:
+        return errors
+    generationen = {g.name: g for g in config.generationen}
+    grundlagen = grundlagen_je_police(config, merkmale)
+    haupt = stamm.set_index("police_id")
+    falsch: List[str] = []
+    for s in scheiben.itertuples(index=False):
+        pid = int(s.police_id)
+        if pid not in haupt.index:
+            continue    # validate_scheiben meldet die fremde Police
+        name = str(haupt.loc[pid, "tarif_generation"])
+        gen = generationen.get(name)
+        if gen is None:
+            errors.append(
+                f"scheiben police {pid}: Tarifgeneration {name!r} nicht in "
+                f"Config (bekannt: {sorted(generationen)})")
+            continue
+        try:
+            erwartet = (
+                float(grundlagen(pid, name)["gamma1"])
+                if gen.tarifwerk()["scheiben_mit_gamma1"] else 0.0
+            )
+        except ValueError as exc:
+            errors.append(f"scheiben police {pid}: {exc}")
+            continue
+        if float(s.gamma1) != erwartet:
+            falsch.append(
+                f"police {pid} Scheibe {int(s.scheiben_id)}: gamma1 "
+                f"{float(s.gamma1)!r}, Tarifwerk der Generation {name} "
+                f"verlangt {erwartet!r}")
+    if falsch:
+        errors.append(
+            f"scheiben: {len(falsch)} Scheibe(n) mit gamma1 ausserhalb des "
+            "Tarifwerks ihrer Generation (scheiben_mit_gamma1 der Config "
+            "entscheidet: 0 oder das gamma1 der Zelle) — z. B. "
+            + "; ".join(falsch[:3]) + (" ..." if len(falsch) > 3 else "")
         )
     return errors

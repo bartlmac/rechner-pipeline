@@ -118,8 +118,16 @@ def baue_auftraege(
     scheiben_mit_gamma1: bool = False,
     stoab_je_baustein: bool = False,
     red_anteil_kandidaten: Tuple[float, ...] = (),
+    summen_je_police: Optional[Dict[str, float]] = None,
 ) -> Tuple[List[Vertragspruefung], List[str], List[str]]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag.
+
+    ``summen_je_police`` (police -> gelieferte Versicherungssumme aus den
+    transformierten Zeilen) ist die Grundlage des Modellpunkts, wo kein
+    Anfangszustand eine Grund- oder Ursprungssumme liefert. Die Welt des
+    aktuariellen Tests ist die LIEFERUNG; der Stamm (``--bestand``)
+    traegt seit der Freischaltung die Grundsumme der Fuehrung und ist
+    fuer eine Police ohne ableitbaren Zustand keine Vergleichsbasis.
 
     Rueckgabe ``(auftraege, schicht_ausgelassen, zustandslos)``: Fuer
     Policen mit Herabsetzungs-Anfangszustand UND ersetztem
@@ -163,11 +171,14 @@ def baue_auftraege(
         mp = model_point_kwargs(zeile, _generationsfelder(zelle))
         zustand = (anfangszustaende or {}).get(police, {})
         if "sum_insured" in zustand:
-            # Der Stamm fuehrt die aktuelle Gesamtsumme; die Bewertung
-            # der Vorgeschichts-Welt rechnet auf dem Ursprungs- bzw.
-            # Grund-Modellpunkt (Fall-Ableitungsregel der
+            # Die Bewertung der Vorgeschichts-Welt rechnet auf dem
+            # Ursprungs- bzw. Grund-Modellpunkt (Fall-Ableitungsregel der
             # Uebernahmestrecke).
             mp["sum_insured"] = float(zustand["sum_insured"])
+        elif summen_je_police is not None and police in summen_je_police:
+            # Ohne Zustand gilt die GELIEFERTE Summe als ein Vertrag —
+            # nicht die Stammsumme der Fuehrung (Freischaltung).
+            mp["sum_insured"] = float(summen_je_police[police])
 
         punkte = []
         for p in eintrag["punkte"]:
@@ -577,6 +588,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         auspraegungen_je_police,
     )
 
+    summen_je_police: Optional[Dict[str, float]] = None
     if args.zeilen is not None:
         zeilen = json.loads(Path(args.zeilen).read_text(encoding="utf-8"))
         if not isinstance(zeilen, list):
@@ -584,6 +596,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                   "gates.transformation_anwenden --zeilen", file=sys.stderr)
             return 2
         auspraegungen = auspraegungen_je_police(spez, zeilen)
+        summen_je_police = {
+            str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
     elif len(spez.zellen) > 1:
         print(f"Spez traegt {len(spez.zellen)} Zellen — ohne --zeilen ist "
               "die Zellwahl je Police nicht bestimmbar", file=sys.stderr)
@@ -698,7 +712,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         schichten=schichten,
         scheiben_mit_gamma1=args.scheiben_mit_gamma1,
         stoab_je_baustein=args.stoab_je_baustein,
-        red_anteil_kandidaten=tuple(args.red_anteil_kandidaten))
+        red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
+        summen_je_police=summen_je_police)
     for police in schicht_ausgelassen:
         print(f"WARNUNG Police {police}: Korrekturschicht nicht im "
               "Pruefpfad — Herabsetzungs-Anfangszustand, Wertvergleich "

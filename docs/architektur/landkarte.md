@@ -45,9 +45,9 @@ flowchart TD
     betrieb -- 17 --> bestand
     betrieb -- 1 --> kern
     betrieb -- 5 --> models
-    gates -- 9 --> bestand
+    gates -- 10 --> bestand
     gates -- 8 --> fall
-    gates -- 8 --> kern
+    gates -- 9 --> kern
     gates -- 10 --> models
     gates -- 12 --> ontologie
     gates -- 9 --> qa
