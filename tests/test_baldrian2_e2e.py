@@ -332,14 +332,69 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
     gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **basis)
     assert gut["bestanden"], gut["befunde"]
 
-    # 1. Ein fremder Stornobetrag in der Fortschreibung.
-    sto = fort["ledger"][fort["ledger"]["ereignis"] == "STO"]
-    if len(sto):
-        kaputt = copy.deepcopy(fort)
-        kaputt["ledger"] = fort["ledger"].copy()
-        kaputt["ledger"].loc[sto.index[0], "betrag"] += 100.0
-        rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=kaputt, **basis)
-        assert not rot["bestanden"] and rot["befunde"][0]["art"] == "buchung"
+    # Die Config des Falls simuliert keine Ereignisse; damit die Buchungs-
+    # pfade der Probe (Storno, Umbuchung, Tod, Ablauf) wirklich gegen die
+    # Fuehrung laufen, wird der uebernommene Bestand hier ein zweites Mal
+    # fortgeschrieben — mit Annahmen und einem Horizont, der Ereignisse
+    # erzwingt. Jede dieser Buchungen muss die Pruefstrecken-Engine treffen.
+    import pandas as pd
+
+    from rechner_pipeline.bestand.config import config_aus_text
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+
+    text = (gefahrener_fall / "abgeleitet" / "bestand-config.toml").read_text(encoding="utf-8")
+    lebhaft = config_aus_text(text + (
+        "\n[annahmen.storno]\na = 0.10\nb = 0.0\n"
+        "[annahmen.beitragsfreistellung]\na = 0.05\nb = 0.0\n"
+        "[annahmen.tod]\na = 0.03\nb = 1.0\n"
+        "[annahmen]\nerh_prozent = 0.05\n"
+        "[annahmen.erhoehung]\na = 0.15\nb = 0.0\n"))
+    assert lebhaft.validate() == []
+    ergebnis = fortschreiben(
+        ueb["bestand"], lebhaft, __import__("datetime").date(2040, 1, 1),
+        merkmale=ueb["merkmale"], scheiben=ueb["scheiben"],
+        schichten=ueb["schichten"], verankerung=ueb["verankerung"])
+    lebhafte_fort = {
+        "ledger": ergebnis.ledger,
+        "scheiben": pd.concat([ueb["scheiben"], ergebnis.scheiben], ignore_index=True),
+        "historie": ergebnis.historie,
+    }
+    lebhaft_basis = dict(basis, config=lebhaft)
+    gut2 = pruefe_fuehrung(uebernahme=ueb, fortschreibung=lebhafte_fort, **lebhaft_basis)
+    assert gut2["bestanden"], gut2["befunde"]
+    geprueft = gut2["buchungen_geprueft"]
+    assert geprueft["STO"] >= 3 and geprueft["PEX"] >= 1 and geprueft["TOD"] >= 1, geprueft
+    # Storno-Buchungen mit Bausteinen sind dabei — sonst waere je Baustein ungeprueft.
+    sto_mit_bausteinen = lebhafte_fort["ledger"][
+        (lebhafte_fort["ledger"]["ereignis"] == "STO")
+        & lebhafte_fort["ledger"]["police_id"].isin(set(ueb["scheiben"]["police_id"]))]
+    assert len(sto_mit_bausteinen) >= 1
+
+    # 1. Ein fremder Stornobetrag in der Fortschreibung — um einen Cent mehr
+    #    als die Toleranz.
+    sto = lebhafte_fort["ledger"][lebhafte_fort["ledger"]["ereignis"] == "STO"]
+    kaputt = copy.deepcopy(lebhafte_fort)
+    kaputt["ledger"] = lebhafte_fort["ledger"].copy()
+    kaputt["ledger"].loc[sto.index[0], "betrag"] += 0.02
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=kaputt, **lebhaft_basis)
+    assert not rot["bestanden"] and rot["befunde"][0]["art"] == "buchung"
+    assert rot["buchungen_abweichend"] == 1
+    # 1b. Die Fuehrung ohne die Schalter der Generation (das alte Tarifwerk)
+    #     rechnet andere Stornobetraege — und die Probe sieht es.
+    alt_text = text.replace("stoab_je_baustein = true", "stoab_je_baustein = false")
+    assert alt_text != text
+    altes_tarifwerk = config_aus_text(alt_text + (
+        "\n[annahmen.storno]\na = 0.10\nb = 0.0\n[annahmen.tod]\na = 0.03\nb = 1.0\n"))
+    alt_ergebnis = fortschreiben(
+        ueb["bestand"], altes_tarifwerk, __import__("datetime").date(2040, 1, 1),
+        merkmale=ueb["merkmale"], scheiben=ueb["scheiben"],
+        schichten=ueb["schichten"], verankerung=ueb["verankerung"])
+    alt_fort = {"ledger": alt_ergebnis.ledger,
+                "scheiben": pd.concat([ueb["scheiben"], alt_ergebnis.scheiben], ignore_index=True),
+                "historie": alt_ergebnis.historie}
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=alt_fort, **lebhaft_basis)
+    assert any(b["art"] == "buchung" and b["ereignis"] == "STO" for b in rot["befunde"]), (
+        "Storno je Vertrag statt je Baustein muss die Probe rot machen")
     # 2. Ein anderer Schalter als in Config und Beleg.
     andere = dict(basis, tarifwerk=dict(basis["tarifwerk"], stoab_je_baustein=False))
     rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **andere)
