@@ -250,3 +250,50 @@ einzeln entfernt (Vorzustand `<` statt `<=`, BU-Erwartung wieder aus dem
 Betrag, Konto-Track aus dem Betrag, beide Herkunftsregeln, Scope-Fallback
 `tarif`, Endlichkeitspruefung und errstate, Klassenhinweis
 bedingungslos) — jede rot.
+
+## Nachzug: die Runde T22 (DORA ToDo 22, 2026-09-06) — zwei Toepfe
+
+Externes Review auf Branch `ebenen` (b3ae0bf gegen main beecf3d): elf
+Befunde, neun hoch, zwei mittel; Urteil "nicht mergebereit". Kernsatz
+des Reviewers: Die Suite ist gruen, prueft aber mehrere zu schwache
+Vertraege ausdruecklich als Sollverhalten. Der Maintainer verlangte die
+eigene Nachpruefung jeder Position; alle elf sind am Code oder am echten
+Stand der Laufzeit bestaetigt. Sieben Befunde betreffen den Tagesbetrieb,
+der schon auf main liegt (PR #13), nicht das Delta von PR #14 — deshalb
+zwei Toepfe: `ebenen` (PR #14) und `betrieb-haertung` (eigener PR von
+main).
+
+| Befund | Schwere | Topf | Status |
+|---|---|---|---|
+| T22-01 A-M4 akzeptiert ein P-B1-Minimalprofil | hoch | ebenen | **behoben** 1c97707 — abnahmebericht 2.0.0 verlangt Vollprofil (portfolio, historie, ledger, config, bis, betraege_hergeleitet); pk1-Fixture ist eine Ein-Policen-Welt statt eines Ein-Zeilen-Ausschnitts; E2E fahren P-B1 mit der Zellen-Config des Falls |
+| T22-02 T-Box-Version nominal, A-K1 ohne Belegvertrag | hoch | ebenen | **behoben** 29891ec — P-Q3 haelt die A-Box, P-K1 die Spez gegen die geltende Version; A-K1 verlangt `abgeleitet/tbox/aenderung.json`; P-Q3, P-K1, P9 auf 1.0.0 |
+| T22-03 Standwechsel nicht atomar, kein Lock, halber Eingang | hoch | betrieb | **behoben** bdb457a — Stand als Symlink auf versioniertes Verzeichnis (ein atomarer Tausch), `lauf.lock`, OSError als roter Lauf mit Zeile, Eingang entsteht unter `.neu` und wird umbenannt |
+| T22-04 ungemeldete Todesfaelle im sichtbaren Bestand | hoch | betrieb | **behoben** cc55192 — der Stand ist die gebuchte Sicht (`gebuchte_sicht`); Vorgeschichte bleibt vollstaendig |
+| T22-05 Protokoll ohne Kette, Paket auf Zuruf | hoch | betrieb | **behoben** 4774602 — Protokoll Schema 2 mit Vorgaenger-Hash, Nachweisvertrag (Luecken, Manifest-, Journal-Hash), Paket Schema 2 mit Belegdateien, Konsument prueft; Luecken wandern in die Darstellung |
+| T22-06 Uebernahme prueft den A-M4-Snapshot nicht | hoch | betrieb | **behoben** d26053d — Snapshot Pflicht und strukturell geprueft (Schema, Selbstadressierung, Gate, Entscheid, Fall); Banderole aus den Daten |
+| T22-07 Mandat bei Simulation optional | hoch | ebenen | **behoben** 705ba4e — Pflicht im Gate, im Entscheidungskommando und im Schema |
+| T22-08 Ratsche kennt zwei Ebenen, nur src | hoch | ebenen | **behoben (im Paket) und benannt (ausserhalb)** 2ae5765 — Ebene 4 je Modul (fuenf Simulationsmodule), zweite Ratsche (sechs Kanten), ADR-017 nennt die Reichweite; werkzeuge/ und quellsystem/ bleiben Backlog |
+| T22-09 Policen-Identitaet haengt an der Listenposition | mittel | betrieb | **behoben** d0baf9f — `nummernkreis` je Generation, Erstfassung positional und bitidentisch, geliefert vor Nummernkreis |
+| T22-10 "bereits gefuehrt" kein No-op | mittel | betrieb | **behoben** 43d8a67 (Fix der vorzeige-Session, als Patch uebernommen) |
+| T22-11 Verankerung endet am Uebernahmeeingang | hoch | betrieb | **Stufe 1 behoben** cc55192 — Verankerung im Stand, Protokoll und Seite weisen "registriert, nicht angewandt" aus. **Stufe 2 offen**: die fachliche Anwendung (dk_ta, Korrekturschicht, AVB-Schalter) braucht den Fachentscheid des Verantwortlichen Aktuars; Backlog "AVB-Garantien uebernommener Bestaende" |
+
+**Nebenhinweise.** (a) T21-08 in dieser Liste richtig zugeordnet
+(94d5b6f). (b) Konzepttext zum Monatsabschluss folgt dem Code (cc55192).
+(c) main mit dem Devcontainer in ebenen nachgezogen (2293efc).
+
+**Was die Runde ueber die Klasse lehrt.** Dieselbe Bewegung wie T16 und
+T18, eine Ebene hoeher: Nachweise waren Behauptungen (Protokoll ohne
+Kette, stand.json mit dem Wort "gruen", Snapshot ohne Pruefung), Vertraege
+waren Hilfetexte ("optional, empfohlen"), Identitaet hing an Zufaellen
+(Position in einer Liste), und Zusagen der Doku ("der gestrige bleibt")
+hatte niemand gegen den Code gehalten. Jeder Fix hier macht den Nachweis
+pruefbar oder den Vertrag erzwungen — und benennt, was bleibt.
+
+**Nachweise.** ebenen: `tests/test_am4_vollprofil_t22.py`,
+`tests/test_tbox_version_ak1.py`, `tests/test_rollenmodell_adr018.py`
+(T22-07), `tests/test_code_karte_und_impact.py` (T22-08); betrieb:
+`tests/test_betrieb_tageslauf.py`, `tests/test_betrieb_uebernahme.py`,
+`tests/test_betrieb_seite.py`, `tests/test_betrieb_tagesjournal.py`,
+`tests/test_betrieb_neugeschaeft.py`, `tests/test_werkzeuge_betrieb.py` —
+je mit den Repros des Reviews; Mutationsproben je Befund (24 Wachen
+einzeln entfernt, jede rot).
