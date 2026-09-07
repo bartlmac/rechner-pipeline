@@ -166,6 +166,7 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
         },
         "abschluesse": [abschluesse[k] for k in sorted(abschluesse)],
         "uebernahmen": list(zeile.get("uebernahmen") or []),
+        "verankerung": dict(zeile.get("verankerung") or {}),
         "provenienz": {
             "manifest_sha256": zeile.get("manifest_sha256"),
             "config_sha256": zeile.get("config_sha256"),
@@ -239,6 +240,11 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     if not modell.get("abschluesse"):
         aus.append({"was": "Monatsabschluss",
                     "wirkung": "Noch kein festgeschriebener Bewertungsstand."})
+    v = modell.get("verankerung") or {}
+    if v.get("registriert") and not v.get("angewandt"):
+        aus.append({"was": "Verankerung der uebernommenen Vertraege in der Fortschreibung",
+                    "wirkung": str(v.get("hinweis") or "Die Verankerung ist registriert, "
+                                   "geht aber nicht in Storno und Bewertung ein.")})
     return aus
 
 

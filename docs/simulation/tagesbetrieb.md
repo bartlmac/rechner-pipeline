@@ -195,10 +195,13 @@ gesetzt.
    der geführte, der Fehler steht im Tagesprotokoll. Ein Bestandsführungs-
    system, das einen roten Stand still übernimmt, wäre die schlechteste
    Variante.
-6. **Monatsabschluss** am letzten Kalendertag des Monats:
-   `cli_abschluss --stichtag <Erster des Folgemonats>` (Bewertung zum
-   Monatsersten, festgeschrieben, 0444, nie überschrieben) und der
-   Bestandsbericht des Monats.
+6. **Monatsabschluss** im Lauf des Ersten des Folgemonats (der erste Lauf,
+   der den Monatsersten führt, schreibt ihn; beim Nachholen jeder
+   übersprungene Monatserste): `cli_abschluss --stichtag <Erster des
+   Folgemonats>` (Bewertung zum Monatsersten, festgeschrieben, 0444, nie
+   überschrieben) und der Bestandsbericht des Monats. (Der normative Text
+   sagte „am letzten Kalendertag", Umsetzung und Begründung machten den
+   Ersten — Nebenhinweis des Reviews T22; der Text folgt jetzt dem Code.)
 7. **Tagesprotokoll**: eine JSON-Zeile je Lauf (Datum, Neugeschäft,
    Buchungen je Art, Bestandszahlen, P-B1-Urteil, Manifest-Hash,
    Kern-Version, Image-Digest). Das Protokoll ist der Nachweis, dass das

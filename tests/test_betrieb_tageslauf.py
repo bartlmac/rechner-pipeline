@@ -428,3 +428,61 @@ def test_ein_fremder_stand_passt_nicht_zum_protokoll(tmp_path):
     manifest.write_text(json.dumps(daten, indent=2), encoding="utf-8")
     with pytest.raises(TageslaufError):
         gefuehrter_tag(ablage)
+
+
+# --------------------------------------------------------------------------- #
+# Review T22-04: Stand, Seite und Journal sagen dasselbe
+# --------------------------------------------------------------------------- #
+
+def test_der_stand_enthaelt_nur_gebuchte_ereignisse(gefuehrt):
+    """Nachweis des Reviews: bestand_gesamt_status TOD, tod_im_tagesjournal
+    False. Jetzt ist jede Ledger-Zeile des Stands bis heute gebucht, das
+    Journal ist die Menge dieser Zeilen seit Betriebsbeginn, und kein
+    Vertrag traegt einen Zustand, dessen Buchung noch aussteht.
+    Mutationsprobe: gebuchte_sicht in _stand_bauen entfernen -> rot."""
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.betrieb.tagesjournal import mit_buchungstagen
+
+    ablage, _ = gefuehrt
+    config = load_config(ablage.config_pfad)
+    heute = gefuehrter_tag(ablage)
+    ledger = read_portfolio(ablage.stand / "ledger.parquet")
+    sicht = mit_buchungstagen(config, ledger)
+    assert (sicht["buchungsdatum"] <= pd.Timestamp(heute)).all()
+    journal = read_portfolio(ablage.tagesjournal_pfad)
+    seit_beginn = sicht[sicht["buchungsdatum"] >= pd.Timestamp(BETRIEBSBEGINN)]
+    assert len(journal) == len(seit_beginn)
+    gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
+    tod = gesamt[gesamt["status_code"] == "TOD"]
+    gebuchte_tode = set(ledger.loc[ledger["ereignis"] == "TOD", "police_id"])
+    assert set(tod["police_id"]) <= gebuchte_tode
+
+
+def test_ein_verzoegert_gemeldeter_tod_erscheint_erst_am_buchungstag(tmp_path, monkeypatch):
+    """Meldeverzug auf 400 Tage gesetzt: Kein Tod seit Betriebsbeginn ist
+    bis heute gebucht — und keiner steht im Stand, obwohl die volle
+    Wirkungshistorie welche kennt."""
+    from rechner_pipeline.betrieb import tagesjournal as tj
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+    from rechner_pipeline.bestand.generator import generate
+
+    monkeypatch.setattr(tj, "meldeverzug_tage", lambda config, police_id, jahr: 400)
+    ablage = _ablage(tmp_path / "plv")
+    # Groessere Stichprobe, damit seit Betriebsbeginn Todesfaelle vorkommen.
+    ablage.config_pfad.write_text(
+        _kleine_config().replace("sample_size = 8", "sample_size = 60"), encoding="utf-8")
+    heute = dt.date(2026, 9, 30)
+    assert tageslauf(ablage, heute)[0] == EXIT_OK
+    config = load_config(ablage.config_pfad)
+    voll = fortschreiben(generate(config, bis=BETRIEBSBEGINN), config, heute)
+    tode_voll = voll.ledger[(voll.ledger["ereignis"] == "TOD")
+                            & (voll.ledger["status_date"] > pd.Timestamp(BETRIEBSBEGINN))]
+    ledger = read_portfolio(ablage.stand / "ledger.parquet")
+    tode_stand = ledger[(ledger["ereignis"] == "TOD") & (ledger["status_date"] > pd.Timestamp(BETRIEBSBEGINN))]
+    assert len(tode_stand) == 0
+    gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
+    for pid in tode_voll["police_id"]:
+        assert gesamt.loc[gesamt["police_id"] == pid, "status_code"].iloc[0] != "TOD"
+    if len(tode_voll) == 0:
+        pytest.skip("kein Todesfall seit Betriebsbeginn in der kleinen Config — Aussage nicht pruefbar")

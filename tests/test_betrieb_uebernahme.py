@@ -356,3 +356,38 @@ def test_der_snapshot_muss_zum_fall_gehoeren(tmp_path):
     fall = _fall(tmp_path, snapshot=daten)
     with pytest.raises(ueb.UebernahmeError, match="gehoert zum Fall"):
         ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+
+
+
+def test_die_verankerung_wandert_in_den_stand_und_wird_als_nicht_angewandt_ausgewiesen(tmp_path):
+    """Review T22-11 (Stufe 1): Der Eingang registrierte und hashte
+    verankerung.parquet, der Tageslauf liess sie fallen — weder im Stand
+    noch im Protokoll war der Bedeutungsverlust sichtbar. Jetzt liegt sie
+    im Stand (gehasht im Manifest), das Protokoll weist sie als registriert
+    und NICHT angewandt aus, die Seite fuehrt die Luecke. Die fachliche
+    Anwendung selbst ist Stufe 2 (Fachentscheid offen).
+    Mutationsprobe: das Durchreichen in _stand_bauen entfernen -> rot."""
+    from rechner_pipeline.bestand.manifest import lies_manifest
+    from rechner_pipeline.betrieb import seite as st
+    from rechner_pipeline.betrieb.tageslauf import Ablage, EXIT_OK, tageslauf
+    from rechner_pipeline.models.bestand import VERANKERUNG_SPALTEN
+
+    fall = _fall(tmp_path)
+    quelle = fall / "abgeleitet" / "bestand"
+    verankerung = pd.DataFrame([{"police_id": 7_000_001, "monate_ta": 60, "zustand_ta": "POL",
+                                 "verweildauer_ta": 0, "dk_ta": 10_000.0}])
+    verankerung = verankerung[[s for s, _ in VERANKERUNG_SPALTEN]].astype(dict(VERANKERUNG_SPALTEN))
+    write_portfolio(verankerung, quelle / "verankerung.parquet")
+    stand = tmp_path / "daten"
+    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ablage = Ablage(stand)
+    ablage.configs.mkdir(parents=True, exist_ok=True)
+    ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
+    code, zeile = tageslauf(ablage, dt.date(2026, 1, 15))
+    assert code == EXIT_OK, zeile.get("fehler")
+    assert zeile["verankerung"]["registriert"] == 1 and zeile["verankerung"]["angewandt"] is False
+    assert (ablage.stand / "verankerung.parquet").is_file()
+    assert "verankerung.parquet" in " ".join(lies_manifest(ablage.stand)["ausgaben"].keys()) \
+        or any("verankerung" in k for k in lies_manifest(ablage.stand)["ausgaben"])
+    luecken = st.luecken(st.stand_modell(ablage))
+    assert any("Verankerung" in l["was"] for l in luecken)

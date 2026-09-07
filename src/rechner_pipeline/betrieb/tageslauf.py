@@ -104,6 +104,7 @@ from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.betrieb.neugeschaeft import NeugeschaeftError, neugeschaeft_zwischen
 from rechner_pipeline.betrieb.tagesjournal import (
     TagesjournalError,
+    gebuchte_sicht,
     leeres_tagesjournal,
     tagesjournal_ergaenzen,
     validate_tagesjournal,
@@ -346,6 +347,7 @@ def _stand_bauen(
 
     uebernahmen = lies_uebernahmen(ablage.uebernahme, config)
     merkmale = None
+    verankerung: Optional[pd.DataFrame] = None
     historie_voran: List[pd.DataFrame] = []
     ledger_voran: List[pd.DataFrame] = []
     for ueb in uebernahmen:
@@ -364,6 +366,18 @@ def _stand_bauen(
                 ueb.merkmale if merkmale is None
                 else pd.concat([merkmale, ueb.merkmale], ignore_index=True)
             )
+        # Verankerung (Review T22-11, Stufe 1): Der Eingang registriert und
+        # hasht sie, die Fortschreibung KENNT sie nicht — bis der
+        # Verantwortliche Aktuar festlegt, wie die Korrekturschicht und der
+        # AVB-Schalter der uebernommenen Vertraege in Storno und Bewertung
+        # eingehen (Backlog "AVB-Garantien uebernommener Bestaende"). Bis
+        # dahin wandert sie in den Stand und wird als NICHT angewandt
+        # ausgewiesen, statt still zu verschwinden.
+        if ueb.verankerung is not None and len(ueb.verankerung):
+            verankerung = (
+                ueb.verankerung if verankerung is None
+                else pd.concat([verankerung, ueb.verankerung], ignore_index=True)
+            )
         eingaben[f"uebernahme:{ueb.fall}"] = ueb.manifest_pfad
 
     zugaenge = neugeschaeft_zwischen(config, betriebsbeginn, heute)
@@ -379,17 +393,26 @@ def _stand_bauen(
                           ["police_id", "status_id"])
         ledger = _voran(pd.concat(ledger_voran, ignore_index=True), ledger,
                         ["police_id", "status_date"])
+    # Tag = Sicht (Review T22-04): Der Stand von heute ist, was heute gebucht
+    # ist. Buchungen mit Buchungstag nach heute (Meldeverzug, Werktagsregel)
+    # bleiben mit ihren Zustandszeilen und Scheiben draussen und kommen an
+    # ihrem Buchungstag — Seite, Stand und Journal sagen dasselbe.
+    historie, ledger, scheiben = gebuchte_sicht(
+        config, historie, ledger, ergebnis.scheiben, heute, ab_tag=betriebsbeginn)
     gesamt = fuehre_fort(mit_zugaengen(basis, ergebnis.zugaenge), historie)
 
     ausgaben.append(write_portfolio(historie, ablage.arbeit / "historie.parquet"))
     ausgaben.append(write_portfolio(ledger, ablage.arbeit / "ledger.parquet"))
-    ausgaben.append(write_portfolio(ergebnis.scheiben, ablage.arbeit / "scheiben.parquet"))
+    ausgaben.append(write_portfolio(scheiben, ablage.arbeit / "scheiben.parquet"))
     ausgaben.append(write_portfolio(ergebnis.zugaenge, ablage.arbeit / "zugaenge.parquet"))
     ausgaben.append(write_portfolio(gesamt, ablage.arbeit / "bestand_gesamt.parquet"))
     if merkmale is not None:
         ausgaben.append(write_portfolio(
             merkmale[list(MERKMALE_NAMES)].reset_index(drop=True),
             ablage.arbeit / "merkmale.parquet"))
+    if verankerung is not None:
+        ausgaben.append(write_portfolio(
+            verankerung.reset_index(drop=True), ablage.arbeit / "verankerung.parquet"))
     schreibe_manifest(
         ablage.arbeit, horizont=heute, neuzugang_ab=None, config_pfad=config_pfad,
         ausgaben=ausgaben, eingaben=eingaben,
@@ -399,7 +422,17 @@ def _stand_bauen(
         "uebernommene_vertraege": int(sum(len(u.bestand) for u in uebernahmen)),
         "neugeschaeft_seit_betriebsbeginn": int(len(zugaenge)),
         "gevos": int(len(ledger)),
-        "erhoehungsscheiben": int(len(ergebnis.scheiben)),
+        "erhoehungsscheiben": int(len(scheiben)),
+        # Stufe 1 von T22-11: ausgewiesen, nicht angewandt.
+        "verankerung": {
+            "registriert": int(len(verankerung)) if verankerung is not None else 0,
+            "angewandt": False,
+            "hinweis": (
+                "Verankerung und AVB-Schalter der uebernommenen Vertraege gehen "
+                "nicht in Storno und Bewertung der Fortschreibung ein — Fachentscheid "
+                "des Verantwortlichen Aktuars offen"
+            ) if verankerung is not None else "keine Verankerung uebernommen",
+        },
         # Fall-Bezug jeder Uebernahme (Konzept, Abschnitt 6): Der Zugang
         # ist als datierter Eingang nachweisbar, nicht als anonyme Zeile.
         "uebernahmen": [
