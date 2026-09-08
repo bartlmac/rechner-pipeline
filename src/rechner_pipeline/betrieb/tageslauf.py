@@ -74,7 +74,6 @@ import datetime as _dt
 import hashlib
 import json
 import os
-import shutil
 import sys
 
 try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
@@ -86,6 +85,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
 from rechner_pipeline.bestand.abschluss import AbschlussError, abschluss_pfad, schreibe_abschluss
 from rechner_pipeline.bestand.config import BestandConfig, load_config
 from rechner_pipeline.bestand.ereignisse import EreignisError, fortschreiben, mit_zugaengen
@@ -348,6 +348,8 @@ def _stand_bauen(
     uebernahmen = lies_uebernahmen(ablage.uebernahme, config)
     merkmale = None
     verankerung: Optional[pd.DataFrame] = None
+    scheiben_ueb: Optional[pd.DataFrame] = None
+    schichten: Optional[pd.DataFrame] = None
     historie_voran: List[pd.DataFrame] = []
     ledger_voran: List[pd.DataFrame] = []
     for ueb in uebernahmen:
@@ -366,17 +368,26 @@ def _stand_bauen(
                 ueb.merkmale if merkmale is None
                 else pd.concat([merkmale, ueb.merkmale], ignore_index=True)
             )
-        # Verankerung (Review T22-11, Stufe 1): Der Eingang registriert und
-        # hasht sie, die Fortschreibung KENNT sie nicht — bis der
-        # Verantwortliche Aktuar festlegt, wie die Korrekturschicht und der
-        # AVB-Schalter der uebernommenen Vertraege in Storno und Bewertung
-        # eingehen (Backlog "AVB-Garantien uebernommener Bestaende"). Bis
-        # dahin wandert sie in den Stand und wird als NICHT angewandt
-        # ausgewiesen, statt still zu verschwinden.
+        # Verankerung, Bausteine und Korrekturschicht (Freischaltung,
+        # Schritte 3-5, im Tagesbetrieb seit Schritt 9): Die Fuehrung liest
+        # den Anfangszustand der Abnahmen — Alt-Erhoehungen als Scheiben,
+        # die Korrekturschicht in Storno und Bewertung, die Verankerung als
+        # Grundlage der Schicht. Vorher (Review T22-11, Stufe 1) wurde die
+        # Verankerung nur registriert und als NICHT angewandt ausgewiesen.
         if ueb.verankerung is not None and len(ueb.verankerung):
             verankerung = (
                 ueb.verankerung if verankerung is None
                 else pd.concat([verankerung, ueb.verankerung], ignore_index=True)
+            )
+        if ueb.scheiben is not None and len(ueb.scheiben):
+            scheiben_ueb = (
+                ueb.scheiben if scheiben_ueb is None
+                else pd.concat([scheiben_ueb, ueb.scheiben], ignore_index=True)
+            )
+        if ueb.schichten is not None and len(ueb.schichten):
+            schichten = (
+                ueb.schichten if schichten is None
+                else pd.concat([schichten, ueb.schichten], ignore_index=True)
             )
         eingaben[f"uebernahme:{ueb.fall}"] = ueb.manifest_pfad
 
@@ -386,19 +397,25 @@ def _stand_bauen(
             "Neugeschaeft mit Beginn am oder vor dem Betriebsbeginn — der "
             "Batch besiedelt diesen Zeitraum bereits (ein Erzeuger je Zeitfenster)"
         )
-    ergebnis = fortschreiben(basis, config, heute, zugaenge=zugaenge, merkmale=merkmale)
+    ergebnis = fortschreiben(
+        basis, config, heute, zugaenge=zugaenge, merkmale=merkmale,
+        scheiben=scheiben_ueb, schichten=schichten, verankerung=verankerung,
+    )
     historie, ledger = ergebnis.historie, ergebnis.ledger
+    scheiben_fort = ergebnis.scheiben
     if historie_voran:
         historie = _voran(pd.concat(historie_voran, ignore_index=True), historie,
                           ["police_id", "status_id"])
         ledger = _voran(pd.concat(ledger_voran, ignore_index=True), ledger,
                         ["police_id", "status_date"])
+    if scheiben_ueb is not None and len(scheiben_ueb):
+        scheiben_fort = _voran(scheiben_ueb, scheiben_fort, ["police_id", "scheiben_id"])
     # Tag = Sicht (Review T22-04): Der Stand von heute ist, was heute gebucht
     # ist. Buchungen mit Buchungstag nach heute (Meldeverzug, Werktagsregel)
     # bleiben mit ihren Zustandszeilen und Scheiben draussen und kommen an
     # ihrem Buchungstag — Seite, Stand und Journal sagen dasselbe.
     historie, ledger, scheiben = gebuchte_sicht(
-        config, historie, ledger, ergebnis.scheiben, heute, ab_tag=betriebsbeginn)
+        config, historie, ledger, scheiben_fort, heute, ab_tag=betriebsbeginn)
     gesamt = fuehre_fort(mit_zugaengen(basis, ergebnis.zugaenge), historie)
 
     ausgaben.append(write_portfolio(historie, ablage.arbeit / "historie.parquet"))
@@ -413,6 +430,9 @@ def _stand_bauen(
     if verankerung is not None:
         ausgaben.append(write_portfolio(
             verankerung.reset_index(drop=True), ablage.arbeit / "verankerung.parquet"))
+    if schichten is not None:
+        ausgaben.append(write_portfolio(
+            schichten.reset_index(drop=True), ablage.arbeit / "schichten.parquet"))
     schreibe_manifest(
         ablage.arbeit, horizont=heute, neuzugang_ab=None, config_pfad=config_pfad,
         ausgaben=ausgaben, eingaben=eingaben,
@@ -426,12 +446,20 @@ def _stand_bauen(
         # Stufe 1 von T22-11: ausgewiesen, nicht angewandt.
         "verankerung": {
             "registriert": int(len(verankerung)) if verankerung is not None else 0,
-            "angewandt": False,
+            # Seit Schritt 9 gehen Verankerung und Korrekturschicht in die
+            # Fortschreibung ein (Schritte 4 und 5): angewandt heisst, die
+            # Schicht lag vor und wurde der Engine uebergeben.
+            "angewandt": bool(verankerung is not None and schichten is not None),
             "hinweis": (
-                "Verankerung und AVB-Schalter der uebernommenen Vertraege gehen "
-                "nicht in Storno und Bewertung der Fortschreibung ein — Fachentscheid "
-                "des Verantwortlichen Aktuars offen"
-            ) if verankerung is not None else "keine Verankerung uebernommen",
+                "Verankerung und Korrekturschicht der uebernommenen Vertraege gehen "
+                "in Storno und Bewertung der Fortschreibung ein (Freischaltung, "
+                "Schritte 4/5/9)"
+                if verankerung is not None and schichten is not None
+                else "Verankerung registriert, aber ohne Korrekturschicht (schichten.parquet) "
+                "nicht angewandt — der Eingang traegt keinen Schichtbeleg"
+                if verankerung is not None
+                else "keine Verankerung uebernommen"
+            ),
         },
         # Fall-Bezug jeder Uebernahme (Konzept, Abschnitt 6): Der Zugang
         # ist als datierter Eingang nachweisbar, nicht als anonyme Zeile.
@@ -496,7 +524,14 @@ def _entferne_ablageverzeichnis(ablage: Ablage, pfad: Path) -> None:
     fehler = _ablageverzeichnis_fehler(ablage, pfad)
     if fehler:
         raise TageslaufError(fehler)
-    shutil.rmtree(Path(pfad).resolve())
+    try:
+        entferne_verzeichnis(
+            Path(pfad), innerhalb=ablage.wurzel,
+            name_ok=lambda n: n == ARBEIT_DIR or n.startswith(f"{STAND_DIR}-"),
+            grund="Stand- oder Arbeitsverzeichnis der Ablage",
+        )
+    except LoeschFehler as exc:
+        raise TageslaufError(str(exc)) from exc
 
 
 def _ablageverzeichnis_fehler(ablage: Ablage, pfad: Path) -> Optional[str]:

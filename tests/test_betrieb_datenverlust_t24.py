@@ -219,17 +219,91 @@ def test_haengender_stand_symlink_loescht_keine_staende(tmp_path):
 # Ratsche: jedes rmtree in betrieb/ ist an die zwei geprueften Stellen gebunden
 # --------------------------------------------------------------------------- #
 
-def test_jedes_rmtree_in_betrieb_ist_an_eine_geprueft_stelle_gebunden():
+def test_jedes_rmtree_in_betrieb_geht_durch_die_eine_loeschfunktion():
+    """Ratsche als PRUEFUNG, nicht als Zaehlung (Klassenbeobachtung der
+    merge-session): In betrieb/ ruft ausser _loeschen.entferne_verzeichnis
+    niemand shutil.rmtree, os.rmdir oder ein Alias davon — per AST, damit
+    auch ``from shutil import rmtree`` und ``import shutil as s`` auffallen."""
+    import ast
     betrieb = REPO_ROOT / "src" / "rechner_pipeline" / "betrieb"
-    fundstellen = {}
+    LOESCHER = ("rmtree", "rmdir", "removedirs")
+    verstoesse = []
     for datei in sorted(betrieb.glob("*.py")):
-        text = datei.read_text(encoding="utf-8")
-        fundstellen[datei.name] = len(re.findall(r"\bshutil\.rmtree\(", text))
-    erlaubt = {"seite.py": 1, "tageslauf.py": 1, "uebernahme.py": 1}
-    zuviel = {k: v for k, v in fundstellen.items() if v and v != erlaubt.get(k)}
-    assert not zuviel, (
-        f"neue rmtree-Stelle(n) in betrieb/: {zuviel} — jede Loeschung eines "
-        "Verzeichnisses laeuft ueber tageslauf._entferne_ablageverzeichnis oder "
-        "hinter seite.paketziel_fehler; uebernahme.py loescht nur seinen eigenen "
-        "'.neu'-Rest neben dem Eingang"
+        baum = ast.parse(datei.read_text(encoding="utf-8"))
+        modul_aliase = {"shutil", "os"}          # import shutil as s / import os as o
+        funktions_namen = set()                  # from shutil import rmtree as r / from os import rmdir
+        for n in ast.walk(baum):
+            if isinstance(n, ast.Import):
+                for a in n.names:
+                    if a.name.split(".")[0] in ("shutil", "os"):
+                        modul_aliase.add(a.asname or a.name.split(".")[0])
+            elif isinstance(n, ast.ImportFrom) and n.module in ("shutil", "os"):
+                for a in n.names:
+                    if a.name in LOESCHER:
+                        funktions_namen.add(a.asname or a.name)
+        for n in ast.walk(baum):
+            if not isinstance(n, ast.Call):
+                continue
+            f = n.func
+            ist_loescher = (
+                # shutil.rmtree / os.rmdir / os.removedirs, auch ueber Aliase
+                (isinstance(f, ast.Attribute) and f.attr in LOESCHER
+                 and isinstance(f.value, ast.Name) and f.value.id in modul_aliase)
+                # Path(...).rmdir() auf irgendeinem Empfaenger
+                or (isinstance(f, ast.Attribute) and f.attr == "rmdir")
+                # from shutil import rmtree as r; r(...)
+                or (isinstance(f, ast.Name) and f.id in funktions_namen)
+            )
+            if ist_loescher and datei.name != "_loeschen.py":
+                verstoesse.append(f"{datei.name}:{n.lineno}")
+    assert not verstoesse, (
+        f"Verzeichnisloeschung ausserhalb von betrieb/_loeschen.py: {verstoesse} — "
+        "jede Loeschung geht durch entferne_verzeichnis (Wurzel, Name, Marker)"
     )
+    loeschen = (betrieb / "_loeschen.py").read_text(encoding="utf-8")
+    assert loeschen.count("shutil.rmtree(") == 1
+
+
+def test_die_ratsche_erkennt_jede_schreibweise_einer_verzeichnisloeschung(tmp_path):
+    """Die Ratsche prueft die KLASSE (Review Schritt 9): os-Aliase,
+    removedirs, from-Importe und Path.rmdir() muessen auffallen — sonst
+    faengt sie eine vierte Fundstelle nur in einer Schreibweise."""
+    import ast
+    LOESCHER = ("rmtree", "rmdir", "removedirs")
+
+    def verstoesse_in(quelltext: str) -> int:
+        baum = ast.parse(quelltext)
+        modul_aliase = {"shutil", "os"}
+        funktions_namen = set()
+        for n in ast.walk(baum):
+            if isinstance(n, ast.Import):
+                for a in n.names:
+                    if a.name.split(".")[0] in ("shutil", "os"):
+                        modul_aliase.add(a.asname or a.name.split(".")[0])
+            elif isinstance(n, ast.ImportFrom) and n.module in ("shutil", "os"):
+                for a in n.names:
+                    if a.name in LOESCHER:
+                        funktions_namen.add(a.asname or a.name)
+        treffer = 0
+        for n in ast.walk(baum):
+            if isinstance(n, ast.Call):
+                f = n.func
+                if ((isinstance(f, ast.Attribute) and f.attr in LOESCHER
+                     and isinstance(f.value, ast.Name) and f.value.id in modul_aliase)
+                        or (isinstance(f, ast.Attribute) and f.attr == "rmdir")
+                        or (isinstance(f, ast.Name) and f.id in funktions_namen)):
+                    treffer += 1
+        return treffer
+
+    for quelle in (
+        "import shutil\nshutil.rmtree(p)\n",
+        "import shutil as s\ns.rmtree(p)\n",
+        "from shutil import rmtree as r\nr(p)\n",
+        "import os\nos.rmdir(p)\n",
+        "import os as o\no.rmdir(p)\n",
+        "import os\nos.removedirs(p)\n",
+        "from os import rmdir\nrmdir(p)\n",
+        "from pathlib import Path\nPath(p).rmdir()\n",
+    ):
+        assert verstoesse_in(quelle) == 1, quelle
+    assert verstoesse_in("import os\nos.makedirs(p)\n") == 0

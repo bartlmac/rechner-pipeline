@@ -343,6 +343,49 @@ Architektur-Strangs: welche Rollen als Agentendefinitionen im Repo
 liegen, wie ein Mandat als Artefakt aussieht und wo die Modelle je Rolle
 protokolliert werden.
 
+### 8.5 Betrieb neu aufsetzen (Betriebsweg)
+
+Findet sich nach der Abnahme, dass der Betrieb den übernommenen Bestand
+in einer anderen Welt führt als die Abnahmen (Abschnitt 6.1, Betriebsfund
+vom 2026-09-07), wird der Fall auf dem Entwicklerweg korrigiert und der
+Betrieb aus der neuen Übernahme neu aufgesetzt. Dafür gibt es eine
+Routine, die nichts löscht:
+
+```
+python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
+    --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml]
+```
+
+Sie prüft, bevor sie etwas bewegt (keine Lauf-Sperre; die Tarifwerk-
+Schalter der Config stimmen mit dem Übernahmebeleg des Falls überein),
+baut die neue Ablage vollständig neben der alten auf (Config, Übernahme-
+Eingang mit Stamm, Journal, Ledger, Merkmalen, Bausteinen, Korrektur-
+schicht, Verankerung und Übernahmebeleg, dazu `neuaufsetzen.json` als
+Provenienz), archiviert die alte Ablage durch eine Umbenennung
+(`daten.archiv-<Zeit>`; Journal, Protokollkette, Abschlüsse und Berichte
+bleiben vollständig erhalten) und setzt die neue an ihre Stelle. Den
+Stand fährt sie nicht: Der nächste Tageslauf baut ihn vom Betriebsbeginn
+bis heute in einem Lauf, danach wird das Stands-Paket neu exportiert
+(Abschnitt 8.3). Die Protokollkette der neuen Ablage beginnt neu; die
+Provenienzdatei nennt das Archiv.
+
+Zwei Dinge sagt die Routine offen: Zwischen den zwei Umbenennungen gibt
+es einen Moment ohne Ablage (die Wurzel ist ein echtes Verzeichnis, kein
+Symlink wie `stand`), darum wird der Timer vorher angehalten; startet
+doch ein Tageslauf in diesem Moment, schlägt die zweite Umbenennung fehl,
+und die Meldung nennt den Ausweg (alte Ablage im Archiv, neue unter
+`daten.neu-<Zeit>`, von Hand an ihre Stelle setzen). Und die
+Host-Kommandos (`uebernahme`, `neuaufsetzen`, `seite`) laufen aus dem
+Repository-Checkout, nicht aus dem Image; der Checkout gehört auf den
+Commit des Image-Tags, sonst schreibt ein anderer Code-Stand den Eingang
+als der, der ihn liest.
+
+Der Übernahme-Eingang trägt seit dieser Routine auch die Bausteine
+(`scheiben.parquet`), die Korrekturschicht (`schichten.parquet`) und den
+Übernahmebeleg (`uebernahme.json`); der Tageslauf reicht sie in die
+Fortschreibung, die damit nach dem Tarifwerk der Generation rechnet,
+dieselbe Welt wie die Führungsprobe vor A-M4.
+
 ## 9 Umsetzung in Blöcken
 
 Jeder Block ist ein Commit mit Tests und Mutationsprobe; die volle Suite

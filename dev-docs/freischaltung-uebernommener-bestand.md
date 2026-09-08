@@ -426,6 +426,6 @@ liegt beim Maintainer.
 | 6 Fuehrungsprobe vor A-M4 | ERLEDIGT 2026-09-07 (gates.fuehrungsprobe; Pflichtbelegrolle im Bestands-Scope, Abnahmebericht 3.0.0, P9 2.0.0) |
 | 7 Freischaltung im Skill | ERLEDIGT 2026-09-07 (Skill migrationsfall-durchfuehren, Stufe 1b und 3b; Befundliste, Backlog) |
 | 8 Fall Lauf 2 korrigieren | Produzenten neu (2026-09-07, finaler Branch-Stand, Korrektur 24); Zeichnungen bei der Regie offen |
-| 9 Betrieb neu aufsetzen | offen (betrieb-haertung, Laufzeit) |
+| 9 Betrieb neu aufsetzen | Code ERLEDIGT 2026-09-08 (Eingang traegt Scheiben, Schichten, Uebernahmebeleg; Tageslauf reicht sie in die Fortschreibung; Config-Schalter gegen den Beleg; Routine betrieb.neuaufsetzen, Doku 8.5 und deploy/plv/README.md). AUSFUEHRUNG auf der Laufzeit offen (Maintainer: Timer anhalten, Routine, Erstbefuellung, Stands-Paket) |
 | 10 Prozessregel Betriebsfunde | ERLEDIGT 2026-09-07 (docs/simulation/tagesbetrieb.md, Abschnitt 6.1) |
 | 11 Kommunikation | offen (run-Session, Go des Maintainers) |

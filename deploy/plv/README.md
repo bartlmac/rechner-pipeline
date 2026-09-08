@@ -81,6 +81,25 @@ Tag ist ein benannter No-op — Exit 0, `tageslauf: <Tag> bereits gefuehrt,
 nichts zu tun`, keine Protokollzeile, Stand unveraendert. Nur ein Tag VOR
 dem gefuehrten (rueckwaerts) bricht mit Exit 2 ab.
 
+**Betrieb neu aufsetzen (Betriebsweg, Fachkonzept Abschnitt 8.5).** Wenn
+ein Fall auf dem Entwicklerweg korrigiert und seine Uebernahme neu erzeugt
+wurde, setzt diese Routine die Laufzeitumgebung daraus neu auf. Sie
+loescht nichts: Die alte Ablage wird zu `daten.archiv-<Zeit>` umbenannt,
+die neue entsteht daneben und tritt an ihre Stelle. Vorher haelt sie die
+Tarifwerk-Schalter der Config gegen den Uebernahmebeleg des Falls; passt
+das nicht, bricht sie ab und nennt den Config-Abschnitt, der zu
+uebernehmen ist. Timer anhalten, Routine fahren, Erstbefuellung von Hand,
+Timer wieder einschalten:
+
+```
+systemctl --user stop tageslauf.timer
+python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
+    --fall faelle/<fall> --stichtag 2026-01-01
+cd ~/apps/plv && docker compose run --rm tageslauf
+python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten --paket <paket>
+systemctl --user start tageslauf.timer
+```
+
 **Timer:**
 
 ```

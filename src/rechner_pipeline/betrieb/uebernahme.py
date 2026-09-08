@@ -29,16 +29,19 @@ import dataclasses
 import datetime as _dt
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import pandas as pd
 
+from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.models.bestand import (
     LEDGER_NAMES,
     MERKMALE_NAMES,
+    SCHEIBEN_NAMES,
+    SCHICHTEN_NAMES,
     STAMM_NAMES,
     STATUS_HISTORIE_NAMES,
     VERANKERUNG_NAMES,
@@ -55,7 +58,16 @@ PFLICHT = {
 OPTIONAL = {
     "merkmale": MERKMALE_NAMES,
     "verankerung": VERANKERUNG_NAMES,
+    # Freischaltung (Schritt 9): die Alt-Erhoehungen als Bausteine und die
+    # Korrekturschicht wandern mit in den Betrieb — sonst fuehrt der
+    # Tagesbetrieb eine andere Welt als die Abnahmen.
+    "scheiben": SCHEIBEN_NAMES,
+    "schichten": SCHICHTEN_NAMES,
 }
+#: Belegdateien der Uebernahme, die der Eingang mit registriert (Hash) und
+#: der Betrieb liest: der Uebernahmebeleg traegt Modus und Tarifwerk-
+#: Schalter, gegen die die Config der Laufzeit gehalten wird.
+BELEGE = ("uebernahme.json",)
 
 
 class UebernahmeError(ValueError):
@@ -186,6 +198,36 @@ class Uebernahme:
     ledger: pd.DataFrame
     merkmale: Optional[pd.DataFrame]
     verankerung: Optional[pd.DataFrame]
+    scheiben: Optional[pd.DataFrame]
+    schichten: Optional[pd.DataFrame]
+    #: Der Uebernahmebeleg (uebernahme.json) — Modus und Tarifwerk-Schalter,
+    #: gegen die die Config der Laufzeit gehalten wird; leer, wenn der
+    #: Eingang keinen traegt (Zugaenge vor der Freischaltung).
+    beleg: Dict[str, Any]
+
+
+def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: Dict[str, Any]) -> List[str]:
+    """Die Config der Laufzeit muss fuer die uebernommenen Generationen die
+    Tarifwerk-Schalter tragen, mit denen ihre Abnahmen bestanden wurden
+    (Freischaltung, Schritt 2 und 9). Leer = in Ordnung."""
+    soll = beleg.get("tarifwerk")
+    if not isinstance(soll, dict):
+        return []
+    fehler: List[str] = []
+    for name in sorted(set(generationen)):
+        gen = next((g for g in config.generationen if g.name == name), None)
+        if gen is None:
+            continue
+        ist = gen.tarifwerk()
+        abweichend = {k: (ist.get(k), v) for k, v in soll.items() if ist.get(k) != v}
+        if abweichend:
+            fehler.append(
+                f"Generation {name}: Tarifwerk der Config weicht vom Uebernahmebeleg ab — "
+                + ", ".join(f"{k}: Config {i!r}, Beleg {s!r}" for k, (i, s) in sorted(abweichend.items()))
+                + " — den Config-Abschnitt aus abgeleitet/bestand/generation-zellen.toml "
+                "des Falls uebernehmen, nicht abtippen"
+            )
+    return fehler
 
 
 def _lies_eingang(verzeichnis: Path) -> Dict[str, Any]:
@@ -291,6 +333,27 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
             "Eingang traegt aber keine merkmale.parquet — ohne sie waere jede "
             "Zelle geraten"
         )
+    beleg: Dict[str, Any] = {}
+    if "uebernahme.json" in eingang["dateien"]:
+        pfad = verzeichnis / "uebernahme.json"
+        if not pfad.is_file():
+            raise UebernahmeError(f"{verzeichnis}: uebernahme.json ist registriert, fehlt aber")
+        daten = pfad.read_bytes()
+        if sha256_bytes(daten) != eingang["dateien"]["uebernahme.json"]:
+            raise UebernahmeError(f"{pfad}: SHA-256 weicht von der registrierten Summe ab")
+        try:
+            beleg = json.loads(daten.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise UebernahmeError(f"{pfad}: Uebernahmebeleg nicht lesbar: {exc}") from exc
+        if not isinstance(beleg, dict):
+            raise UebernahmeError(f"{pfad}: Uebernahmebeleg ist kein JSON-Objekt")
+    # Die Fuehrung rechnet nach dem Tarifwerk der Generation (Freischaltung,
+    # Schritt 4); die Config der Laufzeit muss dasselbe sagen wie der Beleg
+    # der Uebernahme — sonst fuehrt der Betrieb eine andere Welt als die
+    # Abnahmen, und genau das war der Befund T22-11.
+    tw_fehler = tarifwerk_fehler(config, bestand["tarif_generation"], beleg)
+    if tw_fehler:
+        raise UebernahmeError(f"{verzeichnis}: " + "; ".join(tw_fehler))
     return Uebernahme(
         fall=str(eingang["fall"]),
         stichtag=stichtag,
@@ -303,6 +366,9 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
         ledger=tabellen["ledger"],
         merkmale=tabellen["merkmale"],
         verankerung=tabellen["verankerung"],
+        scheiben=tabellen["scheiben"],
+        schichten=tabellen["schichten"],
+        beleg=beleg,
     )
 
 
@@ -348,7 +414,6 @@ def eingang_anlegen(
     Fall-Bezug ist Provenienz, nicht Voraussetzung des Betriebs.
     """
     import os
-    import shutil
 
     fall = Path(fall)
     fall_json = fall / "fall.json"
@@ -394,11 +459,18 @@ def eingang_anlegen(
     # entfernt — er war nie ein Eingang.
     arbeit = ziel.with_name(ziel.name + ".neu")
     if arbeit.exists():
-        shutil.rmtree(arbeit)
+        try:
+            entferne_verzeichnis(
+                arbeit, innerhalb=Path(stand) / "uebernahme",
+                name_ok=lambda n: n.endswith(".neu"),
+                grund="Rest eines abgebrochenen Anlegens",
+            )
+        except LoeschFehler as exc:
+            raise UebernahmeError(str(exc)) from exc
     arbeit.mkdir(parents=True)
     dateien: Dict[str, str] = {}
-    for name in list(PFLICHT) + list(OPTIONAL):
-        datei = f"{name}.parquet"
+    kandidaten = [f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE)
+    for datei in kandidaten:
         if not (quelle / datei).is_file():
             continue
         daten = (quelle / datei).read_bytes()

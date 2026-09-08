@@ -43,6 +43,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
 from rechner_pipeline.bestand.manifest import lies_manifest, sha256_bytes
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio
 from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
@@ -435,7 +436,16 @@ def stands_paket(ablage, ziel: Path) -> Path:
         raise SeiteError(fehler)
     modell = stand_modell(ablage)
     if ziel.exists():
-        shutil.rmtree(ziel)
+        # Die Wache ist paketziel_fehler (Ablage-Grenze, Symlink, Marker);
+        # entferne_verzeichnis wiederholt Marker- und Symlink-Pruefung und
+        # bindet den Namen: ersetzt wird genau das genannte Paket.
+        try:
+            entferne_verzeichnis(
+                ziel, innerhalb=ziel.parent, name_ok=lambda n: n == ziel.name,
+                marker=PAKET_DATEI, grund="frueheres Stands-Paket",
+            )
+        except LoeschFehler as exc:
+            raise SeiteError(str(exc)) from exc
     ziel.mkdir(parents=True)
     dateien: Dict[str, str] = {}
     for a in modell["abschluesse"][-1:]:
