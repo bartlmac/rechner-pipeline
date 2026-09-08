@@ -553,6 +553,101 @@ def test_karte_faengt_dynamischen_import(tmp_path: Path):
     assert any("SDK-Import 'openai'" in b for b in befunde)
 
 
+@pytest.mark.parametrize("quelltext", [
+    # from-Import und blosser Aufruf
+    "from importlib import import_module\nimport_module('openai')\n",
+    # from-Import mit Alias
+    "from importlib import import_module as lade\nlade('openai')\n",
+    # Neuzuweisung von __import__
+    "imp = __import__\nimp('openai')\n",
+    # Kette von Zuweisungen
+    "a = __import__\nb = a\nb('openai')\n",
+    # Attributzugriff auf builtins
+    "import builtins\nbuiltins.__import__('openai')\n",
+    # from builtins
+    "from builtins import __import__ as i\ni('openai')\n",
+    # Zuweisung von importlib.import_module
+    "import importlib\nlade = importlib.import_module\nlade('openai')\n",
+    # Modul-Alias
+    "import importlib as il\nil.import_module('openai')\n",
+    # Review Block 5: Tupel-Entpacken, Annotation, Attributziel, Parameter-Default,
+    # Kette in umgekehrter Reihenfolge (Fixpunkt), importlib.util-Untermodul
+    "a, b = __import__, 1\na('openai')\n",
+    "from typing import Any\nimp: Any = __import__\nimp('openai')\n",
+    "class L:\n    def __init__(self):\n        self.imp = __import__\n    def h(self):\n        return self.imp('openai')\n",
+    "def f(i=__import__):\n    return i('openai')\n",
+    "def g(*, i=__import__):\n    return i('openai')\n",
+    "b = a\na = __import__\nb('openai')\n",
+    "import importlib.util\nimportlib.import_module('openai')\n",
+])
+def test_karte_faengt_jede_lesbare_schreibweise_des_dynamischen_imports(tmp_path: Path, quelltext: str):
+    """Review T23-07: der Detektor kannte nur die woertliche Form. Jede
+    Umbenennung, die die Datei selbst herstellt, muss auffallen — mit
+    'openai' als SDK-Marker."""
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "m.py", quelltext)
+    befunde = validate(baue_karte(src))
+    assert any("SDK-Import 'openai'" in b for b in befunde), befunde
+
+
+@pytest.mark.parametrize("quelltext", [
+    "imp = __import__\ndef laden(name):\n    return imp(name)\n",
+    "from importlib import import_module as lade\ndef laden(name):\n    return lade(name)\n",
+])
+def test_karte_meldet_berechneten_namen_auch_nach_umbenennung(tmp_path: Path, quelltext: str):
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "m.py", quelltext)
+    befunde = validate(baue_karte(src))
+    assert any("dynamische(r) Import(e) mit berechnetem Namen" in b for b in befunde), befunde
+
+
+@pytest.mark.parametrize("quelltext", [
+    "import sys\nm = sys.modules['rechner_pipeline.kommutationskern.kommutation']\n",
+    "import sys\nm = sys.modules.get('openai')\n",
+    # Review Block 5: Alias von sys, from sys import modules
+    "import sys as s\nm = s.modules['openai']\n",
+    "from sys import modules\nm = modules['openai']\n",
+    "from sys import modules as reg\nm = reg.get('openai')\n",
+])
+def test_karte_meldet_zugriff_auf_die_modulregistry(tmp_path: Path, quelltext: str):
+    """sys.modules holt ein Modul an jeder Kante vorbei — in src ein
+    Befund, kein stiller Weg (Review T23-07)."""
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "m.py", quelltext)
+    befunde = validate(baue_karte(src))
+    assert any("Modul-Registry" in b for b in befunde), befunde
+
+
+@pytest.mark.parametrize("quelltext", [
+    "import importlib.util\nspec = importlib.util.spec_from_file_location('openai', '/tmp/x.py')\n",
+    "from importlib import util\nmod = util.module_from_spec(None)\n",
+    "from importlib.util import spec_from_file_location as sffl\nsffl('openai', '/tmp/x.py')\n",
+    "def laden(spec, mod):\n    spec.loader.exec_module(mod)\n",
+    "import runpy\nrunpy.run_module('openai')\n",
+    "from runpy import run_path\nrun_path('/tmp/x.py')\n",
+])
+def test_karte_meldet_lader_ohne_importnamen(tmp_path: Path, quelltext: str):
+    """importlib.util und runpy laden aus Datei oder Spec — keine Kante
+    ableitbar, also Befund (Review Block 5)."""
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "m.py", quelltext)
+    befunde = validate(baue_karte(src))
+    assert any("Lader ohne Importnamen" in b for b in befunde), befunde
+
+
+def test_karte_meldet_keine_methode_die_nur_so_heisst(tmp_path: Path):
+    """Fehlalarm aus dem Review: eine Methode namens import_module auf einem
+    eigenen Objekt ist kein Importmechanismus."""
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "m.py",
+              "class Registrierung:\n"
+              "    def import_module(self, name):\n"
+              "        return f'registriert: {name}'\n"
+              "Registrierung().import_module('openai')\n")
+    befunde = validate(baue_karte(src))
+    assert not any("openai" in b or "berechnetem Namen" in b for b in befunde), befunde
+
+
 def test_karte_meldet_unlesbaren_dynamischen_import(tmp_path: Path):
     src = tmp_path / "rechner_pipeline"
     _schreibe(src / "kern" / "m.py",

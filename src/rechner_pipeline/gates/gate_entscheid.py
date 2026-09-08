@@ -2081,6 +2081,52 @@ def main(argv: Optional[List[str]] = None):
             "bestimmt, nicht behauptet (ADR-018)",
         )
 
+    # Die Sperren der Rollenbindung laufen bei JEDEM Annahme-Aufruf, VOR dem
+    # Idempotenz-Kurzschluss (Review T23-08): vorher liefen _zeichnungsfehler
+    # und die Mandatspflicht nur beim Bau eines NEUEN Snapshots — ein
+    # Wiederholungsaufruf mit anderem Schluessel, anderer Ordnung oder ohne
+    # Mandat bekam "bereits_vorhanden" mit Exit 0, ohne dass seine Zeichnung
+    # je geprueft wurde. Und die Zeichnung gehoert in den Vergleichsschluessel:
+    # ein Aufruf unter anderer Ordnung, Klasse oder anderem Mandat ist kein
+    # identischer Entscheid.
+    zeichnung: Optional[Dict[str, str]] = None
+    if args.entscheid == "angenommen":
+        if aktiver_schluessel is None:
+            return _sperre(
+                "freigabe",
+                "Annahme verweigert: --freigabe-schluessel <externe-datei> "
+                "ist erforderlich; ein frei editierbarer Fall darf seine "
+                "menschliche Freigabe nicht selbst behaupten",
+            )
+        if zeichnungsordnung is None:
+            return _sperre(
+                "zeichnung",
+                "Annahme verweigert: --zeichnungsordnung fehlt — die "
+                "zeichnende Rolle wird aus dem Freigabeschluessel ueber die "
+                "Ordnung bestimmt, nicht behauptet (ADR-018)",
+            )
+        zf = _zeichnungsfehler(zeichnungsordnung, args.gate, aktiver_schluessel)
+        if zf:
+            return _sperre("zeichnung", f"Annahme verweigert: {zf}")
+        zeichnung = zeichnung_fuer(
+            zeichnungsordnung, zeichnungsordnung_sha, aktiver_schluessel,
+            mandat_sha256,
+        )
+        # Simulation ohne Mandat ist keine Besetzung, sondern eine Luecke
+        # (ADR-018; Review T22-07): Die Sperre greift VOR der Signatur —
+        # und vor dem Kurzschluss (Review T23-08).
+        if (
+            zeichnung.get("schluesselklasse") == "simulation"
+            and not zeichnung.get("mandat_sha256")
+        ):
+            return _sperre(
+                "mandat",
+                f"Annahme verweigert: die Rolle {zeichnung['rolle']!r} "
+                "ist mit einem Simulationsschluessel besetzt und handelt ohne "
+                "Mandat — --mandat <datei> ist bei Schluesselklasse simulation "
+                "Pflicht (ADR-018)",
+            )
+
     kern_inhalt = {
         "command": "gate_entscheid",
         "gate_version": GATE_VERSION,
@@ -2107,10 +2153,13 @@ def main(argv: Optional[List[str]] = None):
         kern_inhalt["pflichtbelege"] = pflichtbelege
     if args.gate == "A-M4":
         kern_inhalt["pk1_belege"] = pk1_belege
+    if zeichnung is not None:
+        kern_inhalt["zeichnung"] = zeichnung
     # Idempotenz gegen den GELTENDEN Snapshot: derselbe Entscheid auf
-    # demselben Stand wird gemeldet, nicht dupliziert. Ein INHALTLICH
-    # anderer Entscheid erzeugt einen neuen Snapshot, der alle
-    # bisherigen pinnt (Kette).
+    # demselben Stand — unter derselben Rollenbindung — wird gemeldet,
+    # nicht dupliziert. Ein INHALTLICH anderer Entscheid (auch: andere
+    # Ordnung, Klasse, anderes Mandat) erzeugt einen neuen Snapshot, der
+    # alle bisherigen pinnt (Kette).
     for pfad, daten in geltende:
         if all(daten.get(k) == v for k, v in kern_inhalt.items()):
             return _finalize(build_result(
@@ -2132,51 +2181,12 @@ def main(argv: Optional[List[str]] = None):
         "entschieden_am": utc_now(),
     }
     if args.entscheid == "angenommen":
-        if aktiver_schluessel is None:
-            return _sperre(
-                "freigabe",
-                "Annahme verweigert: --freigabe-schluessel <externe-datei> "
-                "ist erforderlich; ein frei editierbarer Fall darf seine "
-                "menschliche Freigabe nicht selbst behaupten",
-            )
-        if zeichnungsordnung is None:
-            # Ohne Ordnung keine Annahme (ADR-018): Die zeichnende Rolle
-            # wird aus dem Schluessel bestimmt, nicht behauptet. Spaet
-            # geprueft, damit fachliche Sperren (offene Diskrepanz,
-            # fehlende Vorbedingung) weiterhin als solche gemeldet werden.
-            return _sperre(
-                "zeichnung",
-                "Annahme verweigert: --zeichnungsordnung fehlt — die "
-                "zeichnende Rolle wird aus dem Freigabeschluessel ueber die "
-                "Ordnung bestimmt, nicht behauptet (ADR-018)",
-            )
-        zf = _zeichnungsfehler(zeichnungsordnung, args.gate, aktiver_schluessel)
-        if zf:
-            return _sperre(
-                "zeichnung",
-                f"Annahme verweigert: {zf}",
-            )
-        # Die Rollenbindung wandert IN den Snapshot und wird mitsigniert:
-        # Wer spaeter prueft, sieht nicht nur DASS gezeichnet wurde,
-        # sondern als welche Rolle, unter welcher Ordnung und mit welcher
-        # Schluesselklasse — Mensch oder Simulation (ADR-018).
-        snapshot["zeichnung"] = zeichnung_fuer(
-            zeichnungsordnung, zeichnungsordnung_sha, aktiver_schluessel,
-            mandat_sha256,
-        )
-        # Simulation ohne Mandat ist keine Besetzung, sondern eine Luecke
-        # (ADR-018; Review T22-07): Die Sperre greift VOR der Signatur.
-        if (
-            snapshot["zeichnung"].get("schluesselklasse") == "simulation"
-            and not snapshot["zeichnung"].get("mandat_sha256")
-        ):
-            return _sperre(
-                "mandat",
-                f"Annahme verweigert: die Rolle {snapshot['zeichnung']['rolle']!r} "
-                "ist mit einem Simulationsschluessel besetzt und handelt ohne "
-                "Mandat — --mandat <datei> ist bei Schluesselklasse simulation "
-                "Pflicht (ADR-018)",
-            )
+        # Die Rollenbindung steht bereits im Snapshot (ueber kern_inhalt) und
+        # wird mitsigniert: Wer spaeter prueft, sieht nicht nur DASS
+        # gezeichnet wurde, sondern als welche Rolle, unter welcher Ordnung
+        # und mit welcher Schluesselklasse — Mensch oder Simulation
+        # (ADR-018). Geprueft wurde sie oben, vor dem Kurzschluss.
+        assert snapshot.get("zeichnung") is not None and aktiver_schluessel is not None
         snapshot["freigabe"] = _freigabe_fuer(
             snapshot, schluesselring[aktiver_schluessel]
         )

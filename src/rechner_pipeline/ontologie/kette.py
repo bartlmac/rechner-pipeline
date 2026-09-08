@@ -22,6 +22,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from rechner_pipeline.models.zeichnung import validiere_zeichnung
 from rechner_pipeline.ontologie.abox import lade
 from rechner_pipeline.ontologie.aussage import Aussage, Zustand
 from rechner_pipeline.ontologie.befuellung import QuellFragment, baue_abox
@@ -205,9 +206,15 @@ def pruefe_kette(
         ]
 
     # Diskrepanzen: Menge und Lesarten muessen dem Merge entsprechen;
-    # Status/Entscheidung sind der legitime Freiheitsgrad.
+    # Status/Entscheidung sind der legitime Freiheitsgrad — die WAHL. Ihre
+    # Rollenbindung ist es nicht (Review T23-06): eine Aufloesung, die eine
+    # Schluesselklasse behauptet, unterliegt derselben Regel wie die CLI.
     soll_d = {d.id: d for d in soll_abox.diskrepanzen}
     ist_d = {d.id: d for d in ist_abox.diskrepanzen}
+    for did, d in sorted(ist_d.items()):
+        if d.entscheidung is not None and d.entscheidung.zeichnung is not None:
+            for f in validiere_zeichnung(d.entscheidung.zeichnung, form="beide"):
+                fehler.append(f"Diskrepanz {did}: Rollenbindung der Aufloesung — {f}")
     if set(soll_d) != set(ist_d):
         fehler.append(
             f"Diskrepanzenmenge weicht ab (Merge: {sorted(soll_d)}, "

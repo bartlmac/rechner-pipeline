@@ -586,3 +586,140 @@ Bestaetigt ohne Befund: `relative_to` auf beidseitig aufgeloesten Pfaden
 Rollenvergleich, scheiben/merkmale laufen durch dieselbe Schleife, Bool/
 None/negative Werte koennen die Schwelle nicht unterlaufen, die E2E-Faelle
 legen ihre Config bereits im Fall ab.
+
+
+### Umsetzungsstand Block 4 (T23-06, T23-08) — Branch t23-block4-5 ab main
+
+T23-06: Die Regel der Rollenbindung steht an EINER Stelle,
+`models.zeichnung.validiere_zeichnung(zeichnung, form=...)`: Altform
+`{rolle, ordnung_sha256}` (P9-Schema 6; die 14 Aufloesungen des zweiten
+Laufs), Form mit Schluesselklasse `{rolle, ordnung_sha256,
+schluesselklasse[, mandat_sha256]}` (Schema 7); Schluesselklasse nur
+mensch oder simulation, Simulation nur mit Mandat-Hash, keine fremden
+Schluessel. Angewandt an jedem Eintritt: `models/schemas.py` (P9-Schema,
+statt der bisherigen Kopie), `Entscheidung` als field_validator
+(`ontologie/diskrepanz.py` — damit auch `befuellung.loese_diskrepanz_auf`
+und jede direkte Konstruktion), `validate_abox` als Kreuz-Objekt-Pruefung
+(laeuft in P-Q3 fuer jede A-Box), `kette.pruefe_kette` (der "legitime
+Freiheitsgrad" ist die Wahl, nicht ihre Rollenbindung),
+`betrieb/uebernahme.validate_eingang` (der Betriebseingang darf keine
+unbekannte Klasse behaupten und keine Simulation ohne Mandat;
+`zeichnung_aus_snapshot` reicht das Mandat durch; die Signatur prueft er
+weiterhin nicht, T19-02). Der zweite Lauf ist nicht betroffen: seine
+Aufloesungen tragen die Altform.
+
+T23-08: Im P9-Gate laufen `_zeichnungsfehler` und die Mandatspflicht
+bei JEDEM Annahme-Aufruf VOR dem Idempotenz-Kurzschluss, und die
+Zeichnung `{rolle, ordnung_sha256, schluesselklasse[, mandat_sha256]}` ist
+Teil des Vergleichsschluessels `kern_inhalt`: ein Wiederholungsaufruf ohne
+Mandat ist eine Sperre (Exit 20, Code mandat), einer unter anderer
+Ordnung oder mit anderem Schluessel derselben Rolle ist ein neuer,
+geketteter Snapshot — kein "bereits_vorhanden". Der identische Aufruf
+bleibt idempotent. Altsnapshots (Schema 6, ohne Klasse) treffen den
+Vergleich nicht mehr; ein Wiederholungsaufruf kettet dann einen neuen
+Snapshot an — beabsichtigt, weil die Rollenbindung sich geaendert hat.
+
+Klassen-Test `tests/test_zeichnungsvertrag_t23.py`: gueltige und
+ungueltige Formen der Regel; Entscheidung direkt konstruiert
+(Reviewer-Fall, leeres Dict, fremde Klasse) wird abgewiesen;
+validate_abox und pruefe_kette (Fixture mit Fragmenten) finden eine am
+Modell vorbei gebaute Aufloesung; eine von Hand geschriebene abox.json
+mit dem Defekt faellt in P-Q3 als Befund; loese_diskrepanz_auf direkt;
+Betriebseingang (fremde Klasse, Simulation ohne Mandat, Mandat aus dem
+Snapshot); Wiederholung ohne Mandat ist Sperre statt Treffer; andere
+Ordnung und anderer Schluessel derselben Rolle sind kein identischer
+Entscheid.
+
+Adversarialer Review Block 4 (ein Agent, Sonnet, Auftrag: widerlegen) —
+sechs Befunde, fuenf geschlossen, einer als Grenze benannt:
+
+1. HOCH, GESCHLOSSEN — `validiere_zeichnung` prueft Rolle und
+   Ordnungs-Hash nur auf Typ. Jetzt: in der Form mit Schluesselklasse muss
+   die Rolle eine Rollenkennung (`ebene/name`) und der Ordnungs-Hash ein
+   SHA-256 sein; in der Altform eine nichtleere Rolle (alte Schreibweise,
+   z. B. "plv-aktuar") und ein SHA-256. Die 14 Aufloesungen des zweiten
+   Laufs bestehen (nachgemessen: A-Box laedt, validate_abox ohne
+   zeichnungsbezogenen Befund).
+2. HOCH, GRENZE — die Altform `{rolle, ordnung_sha256}` bleibt fuer
+   frisch konstruierte Entscheidungen zulaessig (`form="beide"` am Modell,
+   in validate_abox und pruefe_kette). Das ist keine Nachlaessigkeit: Die
+   14 Aufloesungen des zweiten Laufs tragen die Altform, und das Modell
+   kennt keinen Zeitpunkt, ab dem sie nicht mehr NEU entstehen darf; die
+   CLI schreibt sie nie mehr (zeichnung_fuer setzt die Klasse immer).
+   Ein Stichtag, ab dem eine A-Box der aktuellen Schemaversion nur noch
+   die Form mit Schluesselklasse traegt, waere eine Ergaenzung von
+   ADR-018 — ENTSCHEID OFFEN (Maintainer). Der Test benennt die Grenze.
+3. MITTEL, GESCHLOSSEN — der Betriebseingang akzeptierte
+   `schluesselklasse: "agent"` (SCHLUESSELKLASSEN statt
+   ZEICHNENDE_KLASSEN); jetzt nur mensch/simulation, Test mit "agent".
+4. MITTEL, GESCHLOSSEN (ehrlich benannt) — der P-Q3-Test beweist den
+   Modell-Validator beim Laden, nicht die Kreuz-Objekt-Schleifen; diese
+   sind Verteidigung in der Tiefe und werden von den model_construct-
+   Tests geprueft (kein Produktivpfad benutzt model_construct). Docstring
+   des Tests sagt das jetzt.
+5. NIEDRIG, GESCHLOSSEN — ZEICHNENDE_KLASSEN war zweimal definiert.
+6. NIEDRIG, GESCHLOSSEN — die Meldungen nennen den Ausweg (mit dem
+   Kommando neu zeichnen, bei Simulation --mandat).
+
+Bestaetigt ohne Befund: kein model_copy(update=zeichnung) und kein
+model_construct im Produktivcode; die CLI schreibt nie die Altform; die
+Reihenfolge der Sperren (fachliche vor Zeichnung) haelt; mandat_sha256 und
+Ordnungs-Hash stehen vor dem neuen Block; der Snapshot traegt die
+Zeichnung genau einmal; Altsnapshots laden; eine Ablehnung erzeugt nichts
+Wirksames; die neue Kante betrieb -> models beruehrt ADR-017 nicht.
+
+
+### Umsetzungsstand Block 5 (T23-07) — Branch t23-block4-5
+
+Der Detektor der Code-Karte kannte dynamische Importe nur an der
+woertlichen Form (ast.Name "__import__", Attribut "import_module"). Jetzt
+sammelt die Karte je Datei die Namen, hinter denen ein Importmechanismus
+steht: __import__, from-Importe von import_module/__import__ (mit Alias),
+Aliase der Module importlib/builtins, und jede Zuweisung, die einen
+solchen Namen oder importlib.import_module bzw. builtins.__import__
+weiterreicht (Ketten eingeschlossen; Fixpunkt ueber die Zuweisungen der
+Datei). Der Attribut-Zweig kennt beide Namen. Jeder Zugriff auf
+sys.modules ist ein Befund (gemessen: null Vorkommen in src, kein
+legitimer Bedarf). Docstring und Befundtext sagen, was gilt.
+
+Grenze, ehrlich benannt (der T22-08-Weg, kein ADR): Musterabgleich, keine
+Datenflussanalyse. Ein Modulobjekt, das eine andere Datei geladen und
+weitergereicht hat, getattr(objekt, "modul") (58 getattr-Aufrufe in src,
+fast alle auf Konfigurations- und Modellobjekte) und Registry-Dispatch
+werden nicht aufgeloest — das braeuchte eine Points-to-Analyse, die
+bewusst nicht gebaut wird. Die Ratsche behauptet Entdeckung dieser
+Formen, nicht Vollstaendigkeit ueber alle Indirektionen.
+
+Tests: Matrix ueber acht Schreibweisen mit 'openai' als SDK-Marker;
+berechneter Name nach Umbenennung; sys.modules-Zugriff. Die zwei
+vorhandenen Tests (woertliche Form, berechneter Name) bleiben.
+
+Adversarialer Review Block 5 (ein Agent, Sonnet, mit ausgefuehrten
+Schnipseln) — sieben Befunde, alle geschlossen:
+
+1. HOCH — nur `ast.Assign` mit Namensziel wurde verfolgt; Tupel-Entpacken,
+   Annotation, Attributziel (`self.imp = __import__`) und Parameter-Default
+   blieben stumm. Jetzt: `_merke` ueber Name/Attribut/Tupel, AnnAssign,
+   Defaults von Funktionen und Lambdas (positional und keyword-only).
+2. HOCH — `importlib.util.spec_from_file_location`/`module_from_spec`/
+   `exec_module` und `runpy.run_module`/`run_path` laden ohne Importnamen.
+   Jetzt eigene Befundart "Lader ohne Importnamen" (`lader_ohne_namen`),
+   auch ueber `from importlib import util` und Aliase.
+3. HOCH — `sys` selbst war nicht verfolgt (`import sys as s`, `from sys
+   import modules`). Jetzt: `sys_aliase`, `registry_namen`; eigene
+   Befundart "Modul-Registry" (`registry_zugriffe`).
+4. HOCH — Fehlalarm: der Attribut-Zweig nahm JEDE Methode namens
+   import_module; das Alias-Set war toter Code. Jetzt greift der Zweig nur
+   auf importlib/builtins und ihre Aliase (`import importlib.util` bindet
+   den Kopf mit); Test mit einer eigenen Methode `import_module`.
+5. MITTEL — Scope-Blindheit: als Grenze im Docstring benannt (Fehlalarm,
+   keine Luecke).
+6. MITTEL — der Fixpunkt war nur in Deklarationsreihenfolge getestet; die
+   umgekehrte Kette (`b = a; a = __import__; b(...)`) ist jetzt in der
+   Matrix.
+7. NIEDRIG — ein Befundtext fuer zwei Ursachen; jetzt drei getrennte
+   Texte (berechneter Name, Modul-Registry, Lader ohne Importnamen).
+
+Bestaetigt: das echte src bleibt befundfrei (`from importlib import
+resources` wird nicht als Mechanismus gewertet); Tests werden nicht
+gescannt; Determinismus der Ausgabe.
