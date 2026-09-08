@@ -458,6 +458,11 @@ def auswertungs_verlauf(
             "stichtag": stichtag.isoformat(),
             "vertraege": int(len(zeilen)),
             "deckungskapital": 0.0,
+            # Anteil der Korrekturschicht uebernommener Vertraege am
+            # Deckungskapital — im Abschluss eine eigene Position (9.11),
+            # hier ebenso, damit ein Bericht MIT Schicht nicht nur andere
+            # Kurven zeigt, sondern sagt, woher (N-01).
+            "korrekturschicht": 0.0,
             "deckungskapital_bfr": 0.0,
             "rueckkaufswert": 0.0,
             "vs_bfr": 0.0,
@@ -477,6 +482,7 @@ def auswertungs_verlauf(
         }
         for z in zeilen:
             agg["deckungskapital"] += z["deckungskapital"]
+            agg["korrekturschicht"] += z["korrekturschicht"]
             if z["produkt"] == "bu":
                 agg["bu_vertraege"] += 1
                 agg["bu_jahresrente"] += z["leistung"]

@@ -49,14 +49,14 @@ from rechner_pipeline.bestand.migrationszugang import (
     uebernehmen,
 )
 from rechner_pipeline.gates._provenienz import systemstand
-from rechner_pipeline.models.bestand import model_point_kwargs
+from rechner_pipeline.models.bestand import ZUSTAENDE_TA, model_point_kwargs
 
 #: Zustandsuebersetzung Verankerungstabelle -> Uebernahme-Zustand.
-#: Die Tabelle spricht die Sprache des Zustandsmodells; die
-#: Uebernahme-API dieselbe — die Identitaet steht hier trotzdem
-#: explizit, damit ein neuer Tabellenwert hart faellt statt still
-#: durchzulaufen.
-ZUSTAENDE = ("beitragspflichtig", "beitragsfrei")
+#: Die Tabelle spricht die Sprache der Uebernahme; die Vokabel steht in
+#: ``models.bestand`` (EINE Stelle fuer Gate, P-B1-Engine und
+#: Betriebseingang, Betriebsbefund N-01), damit ein neuer Tabellenwert
+#: ueberall hart faellt statt still durchzulaufen.
+ZUSTAENDE = ZUSTAENDE_TA
 
 
 def _sha256(pfad: Path) -> str:

@@ -50,7 +50,7 @@ def _scheiben(police_id: int) -> pd.DataFrame:
 
 def _schichten(police_id: int) -> pd.DataFrame:
     zeile = {
-        "police_id": police_id, "schichttyp": "conv", "verankerungszustand": "POL",
+        "police_id": police_id, "schichttyp": "conv", "verankerungszustand": "aktiv",
         "verweildauer": 0, "rho": 0.02, "formfunktion": "konstant", "formparameter": "{}",
         "vererbend": "[]", "kohorte": "2026-01", "in_ueberschuss": False, "in_zzr": False,
         "rumpfmonate": 0,
@@ -59,7 +59,7 @@ def _schichten(police_id: int) -> pd.DataFrame:
 
 
 def _verankerung(police_id: int) -> pd.DataFrame:
-    zeile = {"police_id": police_id, "monate_ta": 94, "zustand_ta": "POL",
+    zeile = {"police_id": police_id, "monate_ta": 94, "zustand_ta": "beitragspflichtig",
              "verweildauer_ta": 0, "dk_ta": 12000.0}
     return pd.DataFrame([zeile])[list(VERANKERUNG_NAMES)].astype(dict(VERANKERUNG_SPALTEN))
 

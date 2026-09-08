@@ -374,7 +374,7 @@ def test_die_verankerung_wandert_in_den_stand_und_wird_als_nicht_angewandt_ausge
 
     fall = _fall(tmp_path)
     quelle = fall / "abgeleitet" / "bestand"
-    verankerung = pd.DataFrame([{"police_id": 7_000_001, "monate_ta": 60, "zustand_ta": "POL",
+    verankerung = pd.DataFrame([{"police_id": 7_000_001, "monate_ta": 60, "zustand_ta": "beitragspflichtig",
                                  "verweildauer_ta": 0, "dk_ta": 10_000.0}])
     verankerung = verankerung[[s for s, _ in VERANKERUNG_SPALTEN]].astype(dict(VERANKERUNG_SPALTEN))
     write_portfolio(verankerung, quelle / "verankerung.parquet")

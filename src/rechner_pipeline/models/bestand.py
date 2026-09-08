@@ -393,6 +393,25 @@ VERANKERUNG_NAMES: Tuple[str, ...] = tuple(n for n, _ in VERANKERUNG_SPALTEN)
 SCHICHTEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHICHTEN_SPALTEN)
 TAGESJOURNAL_NAMES: Tuple[str, ...] = tuple(n for n, _ in TAGESJOURNAL_SPALTEN)
 
+#: Die Vokabel der Nebentabellen uebernommener Vertraege — an EINER Stelle,
+#: damit Gate, Pruefengine und Betriebseingang dieselbe Sprache pruefen
+#: (Betriebsbefund N-01, 2026-09-08: der Betrieb las ``zustand_ta = "POL"``
+#: anstandslos, das Gate haette es abgewiesen, der Kern brach vier
+#: Schichten tiefer mit "Unbekannter Startzustand" ab).
+#:
+#: ``zustand_ta`` (verankerung.parquet): der Vertragszustand am
+#: Verankerungszeitpunkt in der Sprache der Uebernahme.
+ZUSTAENDE_TA: Tuple[str, ...] = ("beitragspflichtig", "beitragsfrei")
+#: ``verankerungszustand`` (schichten.parquet): der Startzustand der
+#: Korrekturschicht — ein ERLEBENSzustand des Zustandsmodells, mit dem sie
+#: bewertet wird ("aktiv" fuer Kapitalversicherungen, "aktiv"/"bu" fuer die
+#: Berufsunfaehigkeit). Beitragsfreiheit ist kein Zustand des Modells,
+#: sondern eine Eigenschaft des Modellpunkts; ein beitragsfrei verankerter
+#: Vertrag traegt deshalb ``zustand_ta = "beitragsfrei"`` und
+#: ``verankerungszustand = "aktiv"``. Der Test ``test_kern_algebraisch``
+#: haelt die Liste gegen die Zustaende der Kern-Modelle.
+VERANKERUNGSZUSTAENDE: Tuple[str, ...] = ("aktiv", "bu")
+
 
 def stamm_dtypes() -> Dict[str, str]:
     return dict(STAMM_SPALTEN)
@@ -1390,11 +1409,16 @@ def validate_verankerung(stamm: Any, verankerung: Any) -> List[str]:
         errors.append("verankerung: monate_ta negativ")
     if verankerung["dk_ta"].isna().any():
         errors.append("verankerung: dk_ta fehlt (NaN) — eine Verankerung ohne Wert ist keine")
-    leer = verankerung["zustand_ta"].map(
-        lambda z: not isinstance(z, str) or not z.strip()
+    fremd = verankerung["zustand_ta"].map(
+        lambda z: not isinstance(z, str) or z not in ZUSTAENDE_TA
     )
-    if leer.any():
-        errors.append("verankerung: zustand_ta leer")
+    if fremd.any():
+        werte = sorted({str(z) for z in verankerung.loc[fremd, "zustand_ta"]})[:5]
+        errors.append(
+            f"verankerung: zustand_ta {werte} nicht abgebildet (bekannt: "
+            f"{list(ZUSTAENDE_TA)}) — die Tabelle spricht die Sprache der "
+            "Uebernahme, ein fremder Wert faellt hier und nicht erst im Kern"
+        )
     if (verankerung["verweildauer_ta"] < 0).any():
         errors.append("verankerung: verweildauer_ta negativ")
     laufzeit = stamm.set_index("police_id")["duration"]
@@ -1542,6 +1566,12 @@ def validate_schichten(stamm: Any, schichten: Any, verankerung: Any) -> List[str
         prefix = f"schichten police {zeile['police_id']}"
         if str(zeile["schichttyp"]) not in ("hist", "conv"):
             errors.append(f"{prefix}: schichttyp {zeile['schichttyp']!r} unbekannt")
+        if str(zeile["verankerungszustand"]) not in VERANKERUNGSZUSTAENDE:
+            errors.append(
+                f"{prefix}: verankerungszustand {zeile['verankerungszustand']!r} "
+                f"ist kein Erlebenszustand des Zustandsmodells (bekannt: "
+                f"{list(VERANKERUNGSZUSTAENDE)})"
+            )
         if not _math.isfinite(float(zeile["rho"])):
             errors.append(f"{prefix}: rho ist {zeile['rho']!r}")
         if int(zeile["verweildauer"]) < 0:

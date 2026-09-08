@@ -46,6 +46,9 @@ from rechner_pipeline.models.bestand import (
     STAMM_NAMES,
     STATUS_HISTORIE_NAMES,
     VERANKERUNG_NAMES,
+    validate_scheiben,
+    validate_schichten,
+    validate_verankerung,
 )
 
 EINGANG_DATEI = "eingang.json"
@@ -73,6 +76,46 @@ BELEGE = ("uebernahme.json",)
 
 class UebernahmeError(ValueError):
     """Ein Uebernahme-Eingang ist unvollstaendig, veraendert oder unpassend."""
+
+
+def nebentabellen_fehler(
+    bestand: pd.DataFrame,
+    historie: Optional[pd.DataFrame],
+    scheiben: Optional[pd.DataFrame],
+    verankerung: Optional[pd.DataFrame],
+    schichten: Optional[pd.DataFrame],
+) -> List[str]:
+    """Die Nebentabellen eines Zugangsstands gegen dieselbe Pruefung halten wie das Gate.
+
+    Was der Betrieb an Nebentabellen liest, wird gegen dieselbe Vokabel und
+    dieselben Invarianten gehalten wie in Gate P-B1 (Betriebsbefund N-01,
+    2026-09-08): Vorher las der Betriebsweg ``zustand_ta = "POL"`` und einen
+    ``verankerungszustand``, den kein Zustandsmodell kennt, anstandslos ein
+    — das Gate haette beides abgewiesen, der Kern brach vier Schichten
+    tiefer ohne Bezug zum Eingang ab. Leer = in Ordnung.
+    """
+    fehler: List[str] = []
+    if scheiben is not None and len(scheiben):
+        fehler += validate_scheiben(bestand, scheiben, historie=historie)
+    if verankerung is not None and len(verankerung):
+        fehler += validate_verankerung(bestand, verankerung)
+    if schichten is not None and len(schichten):
+        fehler += validate_schichten(bestand, schichten, verankerung)
+    return fehler
+
+
+def _nebentabellen_fehler_im(verzeichnis: Path) -> List[str]:
+    """Dasselbe fuer die Dateien eines (halb) angelegten Eingangs."""
+    tabellen: Dict[str, Optional[pd.DataFrame]] = {}
+    for name, spalten in {**PFLICHT, **OPTIONAL}.items():
+        pfad = verzeichnis / f"{name}.parquet"
+        tabellen[name] = read_portfolio(pfad, expected_columns=spalten) if pfad.is_file() else None
+    if tabellen["bestand"] is None:
+        return ["bestand.parquet fehlt"]
+    return nebentabellen_fehler(
+        tabellen["bestand"], tabellen["historie"], tabellen["scheiben"],
+        tabellen["verankerung"], tabellen["schichten"],
+    )
 
 
 #: Was ueber die Zeichnung einer A-M4-Annahme NICHT bekannt ist, heisst so —
@@ -342,6 +385,18 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
             f"{verzeichnis}: bestandszugang weicht vom Stichtag "
             f"{stichtag.isoformat()} ab — ein Zugang hat genau einen Stichtag"
         )
+    # Dieselbe Pruefung wie das Gate, bevor irgendetwas davon in die
+    # Fortschreibung geht (N-01) — der Eingang ist unantastbar, aber nicht
+    # ungeprueft.
+    nt_fehler = nebentabellen_fehler(
+        bestand, tabellen["historie"], tabellen["scheiben"],
+        tabellen["verankerung"], tabellen["schichten"],
+    )
+    if nt_fehler:
+        raise UebernahmeError(
+            f"{verzeichnis}: Nebentabellen des Eingangs bestehen die Pruefung "
+            "des Gates nicht — " + "; ".join(nt_fehler[:5])
+        )
     bekannt = {g.name for g in config.generationen}
     fremd = sorted(set(bestand["tarif_generation"]) - bekannt)
     if fremd:
@@ -501,6 +556,16 @@ def eingang_anlegen(
         if os.name != "nt":
             (arbeit / datei).chmod(0o444)
         dateien[datei] = sha256_bytes(daten)
+    # Erst die Pruefung am Eingang des Betriebs, dann die Registrierung:
+    # Ein Zugangsstand, dessen Nebentabellen das Gate nicht annehmen
+    # wuerde, wird nicht Eingang (N-01). Der Rest unter ``.neu`` ist kein
+    # Eingang und wird beim naechsten Anlegen entfernt.
+    nt_fehler = _nebentabellen_fehler_im(arbeit)
+    if nt_fehler:
+        raise UebernahmeError(
+            f"{quelle}: der Zugangsstand traegt Nebentabellen, die das Gate "
+            "nicht annehmen wuerde — nichts registriert: " + "; ".join(nt_fehler[:5])
+        )
     eingang = {
         "schema_version": EINGANG_SCHEMA_VERSION,
         "fall": fallname,

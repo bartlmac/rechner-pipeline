@@ -1106,10 +1106,15 @@ stabilen Rechenkern.</p>"""
         if mit_bestand else f"{stichtage[0].year} bis {stichtage[-1].year}"
     )
     if config is not None:
+        # Traegt der Bestand eine Korrekturschicht (uebernommene Vertraege,
+        # 9.11), steht ihr Anteil als eigene Spalte — wie im Abschluss.
+        # Ohne Schicht bleibt die Tabelle, wie sie war (N-01).
+        mit_schicht = schichten is not None
         ausw_zeilen = "".join(
             f"<tr><td>{r['stichtag']}</td><td class='num'>{r['vertraege']}</td>"
             f"<td class='num'>{_zahl(r['deckungskapital'])}</td>"
-            f"<td class='num'>{_zahl(r['deckungskapital_bfr'])}</td>"
+            + (f"<td class='num'>{_zahl(r['korrekturschicht'])}</td>" if mit_schicht else "")
+            + f"<td class='num'>{_zahl(r['deckungskapital_bfr'])}</td>"
             f"<td class='num'>{_zahl(r['rueckkaufswert'])}</td>"
             f"<td class='num'>{_zahl(r['vs_bfr'])}</td></tr>"
             for r in reihe_ausw
@@ -1117,7 +1122,9 @@ stabilen Rechenkern.</p>"""
         )
         ausw_tabelle = (
             "<table><thead><tr><th>Stichtag</th><th>Verträge</th>"
-            "<th>Σ Deckungskapital</th><th>davon beitragsfrei</th>"
+            "<th>Σ Deckungskapital</th>"
+            + ("<th>davon Korrekturschicht</th>" if mit_schicht else "")
+            + "<th>davon beitragsfrei</th>"
             "<th>Σ Rückkaufswert (bpfl.)</th><th>Σ VS_bfr (fixiert)</th>"
             "</tr></thead><tbody>" + ausw_zeilen + "</tbody></table>"
         )
@@ -1158,12 +1165,19 @@ stabilen Rechenkern.</p>"""
             + beitrag_zeilen
             + "</tbody></table>"
         )
+        schicht_satz = (
+            " Die Spalte Korrekturschicht ist der Anteil der bei der Übernahme"
+            " verankerten Korrekturschicht am Deckungskapital (Grundsatz-"
+            "dokumentation 9.11); sie ist im Deckungskapital enthalten und"
+            " wird wie im Monatsabschluss gesondert ausgewiesen."
+            if mit_schicht else ""
+        )
         auswertung_html = f"""
 <h2>Aktuarielle Kennzahlen je Stichtag, {ausw_zeitraum}</h2>
 <div class="charts">{svg_dk}</div>
 {ausw_tabelle}
 <p>Alle Werte sind im Rechenkern gerechnet, nicht aus einer Lieferung
-übernommen. Deckungskapital: bei beitragspflichtigen Verträgen die
+übernommen.{schicht_satz} Deckungskapital: bei beitragspflichtigen Verträgen die
 Deckungsrückstellung (kDRx_bpfl), nach Beitragsfreistellung die
 beitragsfreie Reserve (VS_bfr mal kVx_bfr). Ein Rückkaufswert wird nur
 für beitragspflichtige Verträge ausgewiesen; für beitragsfreie Verträge

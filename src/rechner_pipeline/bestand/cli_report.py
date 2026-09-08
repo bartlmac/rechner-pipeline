@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from rechner_pipeline.bestand.manifest import nebentabellen_in
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.bestand.report import render_html
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
@@ -173,11 +174,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return 2
             eingaben["scheiben"] = Path(ns.scheiben)
         # Korrekturschicht/Verankerung (Freischaltung, Schritt 5): liegen
-        # sie neben dem Scheiben-Parquet, tragen sie die Bewertung mit.
+        # sie neben dem Scheiben-Parquet, tragen sie die Bewertung mit —
+        # aus der Rollentabelle des Erzeugers, nicht abgetippt (N-01).
+        # Merkmale sind hier ein eigener Pfad (--merkmale), nicht die
+        # Nachbarschaft der Scheiben.
         if ns.scheiben:
-            for rolle in ("schichten", "verankerung"):
-                pfad = Path(ns.scheiben).parent / f"{rolle}.parquet"
-                if pfad.is_file():
+            for rolle, pfad in nebentabellen_in(Path(ns.scheiben).parent).items():
+                if rolle != "merkmale":
                     eingaben[rolle] = pfad
 
     merkmale = None

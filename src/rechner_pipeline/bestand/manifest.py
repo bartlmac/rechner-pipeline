@@ -34,7 +34,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 #: Dateiname des Manifests im Laufverzeichnis.
 MANIFEST_DATEI = "laufmanifest.json"
@@ -53,6 +53,43 @@ ROLLEN_DATEIEN: Mapping[str, str] = {
     "schichten": "schichten.parquet",
     "verankerung": "verankerung.parquet",
 }
+#: Rollen, die JEDER Fortschreibungslauf traegt — ohne sie ist es kein Lauf.
+PFLICHT_ROLLEN: Tuple[str, ...] = ("portfolio", "historie", "ledger", "scheiben")
+#: Nebentabellen: nur Laeufe mit Tarifzellen (merkmale) oder uebernommenen
+#: Vertraegen (schichten, verankerung) tragen sie — abgeleitet, nicht
+#: abgetippt.
+NEBENTABELLEN: Tuple[str, ...] = tuple(r for r in ROLLEN_DATEIEN if r not in PFLICHT_ROLLEN)
+
+
+def nebentabellen_in(verzeichnis: Path) -> Dict[str, Path]:
+    """Die Nebentabellen, die in einem Verzeichnis tatsaechlich liegen (Rolle -> Pfad)."""
+    verzeichnis = Path(verzeichnis)
+    return {
+        rolle: verzeichnis / ROLLEN_DATEIEN[rolle]
+        for rolle in NEBENTABELLEN
+        if (verzeichnis / ROLLEN_DATEIEN[rolle]).is_file()
+    }
+
+
+def lauf_eingaben(lauf: Path, config_pfad: Optional[Path] = None) -> Dict[str, Path]:
+    """Das Eingaben-Mapping der P-B1-Engine fuer ein Laufverzeichnis.
+
+    Wer die Engine (``bestand.vorbedingungen.lies_und_pruefe_pb1``) ruft,
+    baut ihre Eingaben nicht selbst, sondern hier — aus ``ROLLEN_DATEIEN``
+    (Betriebsbefund N-01, 2026-09-08): Vier Aufrufer tippten die Rollen ab,
+    drei vollstaendig, die Wache des Tageslaufs ohne ``schichten`` und
+    ``verankerung``. Die Engine leitete den Storno eines uebernommenen
+    Vertrags dann ohne Korrekturschicht her und meldete das korrekt
+    gebuchte Ledger als falsch. Pflichtrollen werden immer genannt (fehlen
+    sie, meldet es der Aufrufer oder die Engine), Nebentabellen nur, wenn
+    sie im Verzeichnis liegen; ``config`` kommt vom Aufrufer.
+    """
+    lauf = Path(lauf)
+    eingaben: Dict[str, Path] = {rolle: lauf / ROLLEN_DATEIEN[rolle] for rolle in PFLICHT_ROLLEN}
+    eingaben.update(nebentabellen_in(lauf))
+    if config_pfad is not None:
+        eingaben["config"] = Path(config_pfad)
+    return eingaben
 
 
 class ManifestError(ValueError):

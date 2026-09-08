@@ -30,7 +30,8 @@ Was ein Lauf tut, in dieser Reihenfolge:
 4. **Tagesjournal.** Die bis heute faelligen, noch nicht gebuchten
    Buchungen anfuegen (:mod:`rechner_pipeline.betrieb.tagesjournal`).
 5. **Wache.** Die P-B1-Engine (``bestand.vorbedingungen.lies_und_pruefe_pb1``)
-   auf dem NEUEN Stand mit Config, Manifest und Merkmalen — dieselbe
+   auf dem NEUEN Stand mit Config, Manifest und JEDER Nebentabelle, die
+   der Stand traegt (``bestand.manifest.lauf_eingaben``) — dieselbe
    Pruefung, die Gate P-B1 faehrt, ueber die Bytes, die geschrieben
    wurden. Rot heisst: Der Stand wird nicht uebernommen, der gestrige
    bleibt der gefuehrte, der Befund steht im Protokoll, Exit 3. Ein
@@ -93,7 +94,9 @@ from rechner_pipeline.bestand.fuehrung import fuehre_fort
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.manifest import (
     MANIFEST_DATEI,
+    ROLLEN_DATEIEN,
     ManifestError,
+    lauf_eingaben,
     lies_manifest,
     schreibe_manifest,
     sha256_bytes,
@@ -495,16 +498,17 @@ def _voran(vorne: pd.DataFrame, hinten: pd.DataFrame, sortierung: List[str]) -> 
 
 
 def _wache(arbeit: Path, config_pfad: Path, heute: _dt.date) -> Tuple[Dict[str, Any], Dict[str, Any], List[dict]]:
-    """P-B1-Engine ueber die geschriebenen Bytes des neuen Stands."""
-    eingaben = {
-        "portfolio": arbeit / "bestand_gesamt.parquet",
-        "historie": arbeit / "historie.parquet",
-        "ledger": arbeit / "ledger.parquet",
-        "scheiben": arbeit / "scheiben.parquet",
-        "config": config_pfad,
-    }
-    if (arbeit / "merkmale.parquet").is_file():
-        eingaben["merkmale"] = arbeit / "merkmale.parquet"
+    """P-B1-Engine ueber die geschriebenen Bytes des neuen Stands.
+
+    Die Rollen kommen aus der Tabelle des Erzeugers (``lauf_eingaben``),
+    nicht aus einer abgetippten Liste: Die Wache las Bausteine und
+    Korrekturschicht des uebernommenen Bestands nicht zurueck, obwohl
+    ``_stand_bauen`` beide schreibt und in die Fortschreibung reicht — die
+    Herleitung rechnete den Storno ohne Schicht und meldete das korrekt
+    gebuchte Ledger als falsch (Betriebsbefund N-01, 2026-09-08: zwei
+    Rueckkaeufe im zehnten Jahr, je ein Cent).
+    """
+    eingaben = lauf_eingaben(arbeit, config_pfad)
     manifest = lies_manifest(arbeit)
     tabellen, geprueft, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=heute, manifest=manifest)
     return tabellen, geprueft, usage + fehler
@@ -666,14 +670,17 @@ def lauf_sperre(ablage: Ablage):
 def _teilbestand(tabellen: Dict[str, Any], policen: List[int]) -> Dict[str, Any]:
     """Die Tabellen eines uebernommenen Teilbestands — dieselben Zeilen, gefiltert.
 
-    Kein zweiter Datenraum: Stamm, Journal, Ledger, Scheiben und Merkmale
-    des Teilbestands sind die Zeilen des Gesamtstands, deren Police zum
-    Eingang gehoert. Der Bericht rendert sie mit denselben Renderern wie
-    den Gesamtbestand (Konzept, Abschnitt 6).
+    Kein zweiter Datenraum: Stamm, Journal, Ledger, Scheiben, Merkmale,
+    Korrekturschicht und Verankerung des Teilbestands sind die Zeilen des
+    Gesamtstands, deren Police zum Eingang gehoert — JEDE Rolle der
+    Tabelle, nicht eine abgetippte Auswahl (N-01: ohne Schicht und
+    Verankerung wich der Teilbestandsbericht um rund 13.700 EUR
+    Deckungskapital je Vertrag vom Fallbericht ab). Der Bericht rendert sie
+    mit denselben Renderern wie den Gesamtbestand (Konzept, Abschnitt 6).
     """
     auswahl = set(policen)
     teil: Dict[str, Any] = {}
-    for rolle in ("portfolio", "historie", "ledger", "scheiben", "merkmale"):
+    for rolle in ROLLEN_DATEIEN:
         tabelle = tabellen.get(rolle)
         teil[rolle] = (
             tabelle[tabelle["police_id"].isin(auswahl)].reset_index(drop=True)
@@ -697,6 +704,8 @@ def _bericht(
         merkmale=tabellen.get("merkmale"),
         bis=heute,
         stichtag=stichtag,
+        schichten=tabellen.get("schichten"),
+        verankerung=tabellen.get("verankerung"),
     )
     ziel.parent.mkdir(parents=True, exist_ok=True)
     tmp = neue_datei(ziel.parent, ziel.name)
@@ -886,10 +895,15 @@ def _tageslauf(
                     abschluesse.append({"stichtag": stichtag.isoformat(), "datei": pfad.name,
                                         "neu": False})
                     continue
+                # Der Abschluss bekommt dieselben Nebentabellen wie die Wache
+                # und der Bericht — sonst weist er die Korrekturschicht als
+                # null aus, obwohl die Fuehrung sie traegt (N-01).
                 geschrieben = schreibe_abschluss(
                     tabellen["portfolio"], tabellen["historie"], config, stichtag,
                     ablage.abschluesse, scheiben=tabellen["scheiben"],
                     merkmale=tabellen.get("merkmale"),
+                    schichten=tabellen.get("schichten"),
+                    verankerung=tabellen.get("verankerung"),
                 )
                 eintrag: Dict[str, Any] = {
                     "stichtag": stichtag.isoformat(), "datei": geschrieben.name,

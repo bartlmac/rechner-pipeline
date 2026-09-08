@@ -52,7 +52,7 @@ from rechner_pipeline.bestand.abschluss import (
     pruefe_abschluss,
     schreibe_abschluss,
 )
-from rechner_pipeline.bestand.manifest import ManifestError, lies_manifest
+from rechner_pipeline.bestand.manifest import ManifestError, lauf_eingaben, lies_manifest
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.kern import MissingMortalityTableError
 
@@ -122,22 +122,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Scheiben 25 Bewegungsfehler (Deckungskapital 3.795.035,38 zu niedrig),
     # leere Historie 1.076 Fuehrungsfehler (Deckungskapital 55,7 statt
     # 35,5 Mio) — beides bisher mit Exit 0 in einem unumkehrbaren Stand.
-    eingaben = {
-        "portfolio": lauf / "bestand_gesamt.parquet",
-        "historie": lauf / "historie.parquet",
-        "ledger": lauf / "ledger.parquet",
-        "scheiben": lauf / "scheiben.parquet",
-        "config": Path(ns.config),
-    }
-    # Merkmale sind eine Nebentabelle: Nur Laeufe mit Tarifzellen tragen
-    # sie; fehlt sie dort, meldet die Kern-Herleitung das selbst.
-    if (lauf / "merkmale.parquet").is_file():
-        eingaben["merkmale"] = lauf / "merkmale.parquet"
-    # Korrekturschicht und Verankerung uebernommener Vertraege (Freischaltung,
-    # Schritt 5): Nebentabellen, nur migrierte Bestaende tragen sie.
-    for rolle in ("schichten", "verankerung"):
-        if (lauf / f"{rolle}.parquet").is_file():
-            eingaben[rolle] = lauf / f"{rolle}.parquet"
+    # Die Rollen kommen aus der Tabelle des Erzeugers (ROLLEN_DATEIEN):
+    # Pflichtrollen immer, Nebentabellen (Merkmale nur bei Tarifzellen,
+    # Korrekturschicht und Verankerung nur bei uebernommenen Vertraegen),
+    # wenn sie im Lauf liegen; fehlt eine noetige Nebentabelle, meldet die
+    # Kern-Herleitung das selbst (Betriebsbefund N-01).
+    eingaben = lauf_eingaben(lauf, Path(ns.config))
     fehlend = [str(pfad) for pfad in eingaben.values() if not pfad.is_file()]
     if fehlend:
         print(

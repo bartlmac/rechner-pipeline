@@ -234,8 +234,10 @@ gesetzt.
    die sechs bekannten Ausgaben plus Laufmanifest.
 4. **Tagesjournal**: Differenz zum gestrigen Stand, Buchungstage nach
    Abschnitt 3; anfügen, nie überschreiben.
-5. **Wache**: Gate P-B1 mit Config, Manifest und Merkmalen auf dem neuen
-   Stand. Rot heißt: Der Stand wird nicht übernommen, der gestrige bleibt
+5. **Wache**: Gate P-B1 mit Config, Manifest und jeder Nebentabelle, die
+   der Stand trägt (Merkmale, Korrekturschicht, Verankerung — aus der
+   Rollentabelle des Erzeugers, nicht abgetippt), auf dem neuen Stand.
+   Rot heißt: Der Stand wird nicht übernommen, der gestrige bleibt
    der geführte, der Fehler steht im Tagesprotokoll. Ein Bestandsführungs-
    system, das einen roten Stand still übernimmt, wäre die schlechteste
    Variante.

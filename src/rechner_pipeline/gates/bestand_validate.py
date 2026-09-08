@@ -89,6 +89,7 @@ from typing import Dict, List, Optional
 # Abnahmebericht ruft ihn als bestand_validate.pruefe_pb1_eingaenge.
 from rechner_pipeline.bestand.manifest import (
     ManifestError,
+    ROLLEN_DATEIEN,
     lies_manifest_bytes,
     manifest_aus_bytes,
     sha256_bytes,
@@ -247,12 +248,14 @@ def main(argv: Optional[List[str]] = None):
             bis = _dt.date.fromisoformat(args.bis)
         except ValueError as exc:
             return _usage([{"code": "bad_arg", "message": f"Ungueltiges --bis-Datum: {exc}"}])
-    eingaben = {"portfolio": Path(args.portfolio)}
-    for name in ("historie", "scheiben", "ledger", "merkmale", "config",
-                 "schichten", "verankerung"):
-        wert = getattr(args, name)
-        if wert:
-            eingaben[name] = Path(wert)
+    # Die Rollen kommen aus der Tabelle des Erzeugers (ROLLEN_DATEIEN), nicht
+    # aus einer abgetippten Liste — eine neue Rolle erreicht das Gate, sobald
+    # sie ein Flag hat (Betriebsbefund N-01).
+    eingaben = {
+        rolle: Path(wert)
+        for rolle in (*ROLLEN_DATEIEN, "config")
+        if (wert := getattr(args, rolle, None))
+    }
     fehlend = [str(p) for p in eingaben.values() if not p.is_file()]
     if fehlend:
         return _usage(
