@@ -250,3 +250,28 @@ def test_ein_zugang_in_der_offenen_zeit_wird_gefuehrt(tmp_path):
     # Der Abschluss zum 1.1. entstand MIT dem Zugang:
     abschluss = read_portfolio(ablage.abschluesse / "abschluss_2026-01-01.parquet")
     assert 7_000_001 in set(abschluss["police_id"])
+
+
+def test_ein_zugang_genau_am_juengsten_abschluss_wird_verweigert(tmp_path):
+    """Die KANTE der Sperre: juengster Abschluss GLEICH Zugangsstichtag.
+
+    Ein Abschluss ist die Bewertung AN seinem Stichtag; ein Bestand, der an
+    diesem Tag zugeht, gehoert hinein. Liegt der Abschluss schon fest und
+    kommt der Zugang danach, kennt der eingefrorene Wert ihn nie, waehrend
+    der Stand ihn ab demselben Tag fuehrt. Der Annahmetest oben zeigt die
+    andere Haelfte: Entsteht der Abschluss IM SELBEN LAUF, traegt er den
+    Zugang (7000001 steht darin).
+
+    Mutationsprobe (Testat der merge-session zu a47f72d): ein Zeichen im
+    Guard, >= zu >, und die Suite blieb gruen — die Kante war ungebunden.
+    Jetzt nicht mehr."""
+    stand = tmp_path / "daten"
+    ablage = _ablage_ab(stand, dt.date(2026, 1, 1))
+    assert tageslauf(ablage, dt.date(2026, 1, 1))[0] == EXIT_OK
+    assert (ablage.abschluesse / "abschluss_2026-01-01.parquet").is_file()
+
+    fall = _fall_mit_nebentabellen(tmp_path)                  # Stichtag 2026-01-01
+    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    code, zeile = tageslauf(ablage, dt.date(2026, 1, 2))
+    assert code != EXIT_OK and zeile["uebernommen"] is False
+    assert "festgeschriebenen Monatsabschluss 2026-01-01" in zeile["fehler"]
