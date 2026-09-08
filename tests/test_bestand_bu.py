@@ -642,13 +642,18 @@ def test_bu_neuzugang_wird_mitsimuliert(config):
     erg = fortschreiben(basis, config, dt.date(2020, 1, 1), neuzugang_ab=ref)
     assert len(erg.zugaenge) > 0
     assert set(erg.zugaenge["produkt"]) == {"bu"}
-    zug = erg.ledger[erg.ledger["ereignis"] == "ZUG"]
+    # Ein Zugang bucht die versicherte Groesse UND den Beitrag — bei der
+    # Berufsunfaehigkeit die Jahresrente, nicht die (leere) VS.
+    alle_zug = erg.ledger[erg.ledger["ereignis"] == "ZUG"]
+    assert set(alle_zug["betrag_art"]) == {"BU_Jahresrente", "BJB"}
+    zug = alle_zug[alle_zug["betrag_art"] == "BU_Jahresrente"]
     assert len(zug) == len(erg.zugaenge)
-    # Zugangs-Betrag ist die versicherte Jahresrente, nicht die (leere) VS:
-    assert set(zug["betrag_art"]) == {"BU_Jahresrente"}
     erwartet = erg.zugaenge.set_index("police_id")["bu_rente"]
     for _, zeile in zug.iterrows():
         assert zeile["betrag"] == erwartet.loc[zeile["police_id"]]
+    # Der gebuchte Beitrag ist der Bruttobeitrag des BU-Produkts:
+    bjb = alle_zug[alle_zug["betrag_art"] == "BJB"]
+    assert len(bjb) == len(erg.zugaenge) and (bjb["betrag"] > 0).all()
     gesamt = mit_zugaengen(basis, erg.zugaenge)
     assert validate_portfolio(gesamt) == []
     assert validate_statushistorie(gesamt, erg.historie) == []

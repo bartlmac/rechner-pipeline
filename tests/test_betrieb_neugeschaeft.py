@@ -476,7 +476,12 @@ def test_fortschreiben_bucht_mitgebrachte_zugaenge(config):
     assert len(woche) > 0
     ergebnis = fortschreiben(stamm, config, dt.date(2026, 3, 1), zugaenge=woche)
     pd.testing.assert_frame_equal(ergebnis.zugaenge, woche)
-    zug = ergebnis.ledger[ergebnis.ledger["ereignis"] == "ZUG"].set_index("police_id")
+    # Je Zugang zwei Zeilen (Summe und Beitrag); verglichen wird die Summe.
+    alle_zug = ergebnis.ledger[ergebnis.ledger["ereignis"] == "ZUG"]
+    assert set(alle_zug["betrag_art"]) <= {"VS", "BU_Jahresrente", "BJB"}
+    zug = alle_zug[alle_zug["betrag_art"] != "BJB"].set_index("police_id")
+    bjb = alle_zug[alle_zug["betrag_art"] == "BJB"].set_index("police_id")
+    assert set(bjb.index) == set(woche["police_id"])
     assert set(zug.index) == set(woche["police_id"])
     for zeile in woche.itertuples(index=False):
         buchung = zug.loc[zeile.police_id]

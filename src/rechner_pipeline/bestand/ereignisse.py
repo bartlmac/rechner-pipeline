@@ -115,6 +115,21 @@ EREIGNIS_STREAM = 424242
 #: Leistungsbezug die endende Rente. Das Beispielprodukt zahlt weder
 #: Todesfall- noch Erlebensfallleistung; solche GeVos tragen 0.
 BU_BETRAG_ART = "BU_Jahresrente"
+#: Betragsart des gebuchten Bruttojahresbeitrags (Zugang und Erhoehung).
+BJB_BETRAG_ART = "BJB"
+
+
+def _bjb(kern: Rechenkern, jahr: int = 0) -> float:
+    """Der tarifliche Bruttojahresbeitrag im Vertragsjahr ``jahr``.
+
+    Dieselbe Groesse, die die Bewertung fuehrt (``auswertung.beitraege``):
+    VS mal Bxt, und null, sobald die Beitragszahlungsdauer abgelaufen ist.
+    Der Beitrag wird GERECHNET, nicht geliefert — er folgt aus dem Kern
+    dieses Vertrags (Betragsbindung T20-04).
+    """
+    if jahr >= kern.mp.t:
+        return 0.0
+    return float(kern.gross_annual_premium())
 
 #: Sentinel fuer "Argument nicht gesetzt" (None ist ein gueltiger Wert:
 #: GeVos ohne Zustandswechsel).
@@ -400,6 +415,12 @@ def _simuliere_vertrag(
                     }
                 )
                 buche("ERH", j + 1, "VS_erhoehung", betrag, status=None)
+                # Die Erhoehung bewegt eine Summe UND einen Beitrag: die
+                # neue Scheibe ist ein eigener Modellpunkt mit eigenem
+                # Bruttojahresbeitrag (dieselbe Zerlegung wie in der
+                # Bewertung). Eigene Zeile, eigene Betragsart.
+                buche("ERH", j + 1, BJB_BETRAG_ART,
+                      _bjb(vertrag.scheiben[-1][2]), status=None)
 
     if not horizont_erreicht:
         # Ablauf: alle n Jahre ueberlebt und insurance_end <= bis.
@@ -781,16 +802,36 @@ def fortschreiben(
     # die POL-Basiszeile ist der Zugangs-Satz selbst).
     for zugang in zugaenge.to_dict("records"):
         ist_bu = str(zugang.get("produkt", "klv")) == "bu"
+        beginn = pd.Timestamp(zugang["insurance_start"]).date()
         alle_events.append(
             _event(
                 int(zugang["police_id"]),
                 "ZUG",
                 0,
-                pd.Timestamp(zugang["insurance_start"]).date(),
+                beginn,
                 BU_BETRAG_ART if ist_bu else "VS",
                 float(zugang["bu_rente"] if ist_bu else zugang["sum_insured"]),
                 status_code=None,
             )
+        )
+        # Ein Zugang bewegt nicht nur eine Summe, sondern auch einen
+        # Beitrag — das Neugeschaeft eines Zeitraums wird in beidem
+        # gemessen. Zweite Zeile desselben Vorfalls, eigene Betragsart,
+        # Betrag aus dem Kern dieses Vertrags.
+        gen_name = str(zugang["tarif_generation"])
+        if ist_bu:
+            from rechner_pipeline.kern.produkte.bu import BU, BUModelPoint
+
+            bjb = float(BU(BUModelPoint(
+                **bu_model_point_kwargs(zugang, bu_generationen[gen_name])
+            )).bruttobeitrag())
+        else:
+            bjb = _bjb(Rechenkern(ModelPoint(
+                **model_point_kwargs(zugang, generationen[gen_name])
+            )))
+        alle_events.append(
+            _event(int(zugang["police_id"]), "ZUG", 0, beginn,
+                   BJB_BETRAG_ART, bjb, status_code=None)
         )
     gesamt = (
         pd.concat([stamm, zugaenge], ignore_index=True) if len(zugaenge) else stamm

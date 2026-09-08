@@ -7,7 +7,10 @@ Konvention) und den **Buchungstag**, an dem das Unternehmen ihn in die
 Buecher nimmt. Der Ledger bleibt das Wirkungsjournal, das Gate P-B1
 prueft; das Tagesjournal ist die zusaetzliche, nur-anfuegbare Tabelle
 der Buchungstage — je Zeile ein Verweis auf genau eine Ledger-Zeile
-(Police, Ereignis, Wirkungstag).
+(Police, Ereignis, Wirkungstag, Betragsart). Die Betragsart gehoert in den
+Schluessel, seit ein Vorfall mehr als eine Groesse bewegt: Ein Zugang
+bucht die Versicherungssumme UND den Bruttojahresbeitrag, jede als eigene
+Zeile desselben Vorfalls.
 
 Der Buchungstag wird deterministisch aus dem Wirkungstag abgeleitet:
 
@@ -80,7 +83,7 @@ MELDEVERZUG_STREAM = 552211
 _Z95 = NormalDist().inv_cdf(0.95)
 
 #: Schluessel einer Ledger-Zeile im Tagesjournal.
-SCHLUESSEL: Tuple[str, ...] = ("police_id", "ereignis", "status_date")
+SCHLUESSEL: Tuple[str, ...] = ("police_id", "ereignis", "status_date", "betrag_art")
 
 
 class TagesjournalError(ValueError):
@@ -329,7 +332,7 @@ def faellige_zeilen(
 def _schluessel(df: pd.DataFrame) -> pd.Index:
     return pd.MultiIndex.from_arrays(
         [df["police_id"].astype("int64"), df["ereignis"].astype(str),
-         pd.to_datetime(df["status_date"])],
+         pd.to_datetime(df["status_date"]), df["betrag_art"].astype(str)],
         names=list(SCHLUESSEL),
     )
 
@@ -378,7 +381,7 @@ def tagesjournal_ergaenzen(
             )
     faellig = faellige_zeilen(sicht, bis_tag, ab_tag)
     vorhanden = _schluessel(journal) if len(journal) else pd.MultiIndex.from_arrays(
-        [[], [], []], names=list(SCHLUESSEL))
+        [[], [], [], []], names=list(SCHLUESSEL))
     neu = faellig[~_schluessel(faellig).isin(vorhanden)].reset_index(drop=True)
     if len(neu) == 0:
         return journal, neu

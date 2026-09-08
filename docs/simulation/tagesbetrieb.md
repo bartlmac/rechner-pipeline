@@ -89,9 +89,20 @@ Der Buchungstag wird deterministisch aus dem Wirkungstag abgeleitet:
 Das Tagesjournal ist eine neue, nur-anfügbare Tabelle
 `tagesjournal.parquet`: `buchungsdatum`, `police_id`, `ereignis`,
 `status_date` (Wirkungstag), `betrag`, `betrag_art`, `herkunft`
-(`fortschreibung` oder `neugeschaeft`) — je Zeile ein Verweis auf genau
-eine Ledger-Zeile (Police, Ereignis, Wirkungstag). Der Ledger selbst
-ändert sein Schema nicht; P-B1 prüft ihn wie bisher. Ein neuer
+(`fortschreibung`, `neugeschaeft` oder `uebernahme`) — je Zeile ein
+Verweis auf genau eine Ledger-Zeile (Police, Ereignis, Wirkungstag,
+Betragsart). Die Betragsart gehört in den Schlüssel, weil ein Vorfall mehr
+als eine Größe bewegt: Ein Zugang bucht die Versicherungssumme **und** den
+Bruttojahresbeitrag, eine Erhöhung die Erhöhungssumme und den Beitrag der
+neuen Scheibe. So wird Neugeschäft gemessen, in Summe und in Beitrag. Der
+Beitrag wird aus dem Kern derselben Police hergeleitet, nicht geliefert;
+P-B1 rechnet ihn nach wie jeden anderen Betrag. Wer über einen Vorfall
+summiert, nennt deshalb die Betragsart — die Bewegungsrechnung führt
+Versicherungssummen, nicht Beiträge —, und wer Vorfälle zählt, zählt
+Vorfälle und nicht Zeilen. Noch offen und bewusst nicht in diesem Schritt:
+Die Abgänge (Storno, Tod, Ablauf) und die Beitragsfreistellung führen ihre
+Beitragswirkung noch nicht. Der Ledger selbst ändert sein Schema nicht;
+P-B1 prüft ihn wie bisher. Ein neuer
 Validator prüft die Bijektion Tagesjournal zu Ledger für alle Buchungen
 mit Buchungstag bis gestern (dieselbe Klasse wie die ERH-Scheiben-Bindung
 und die Betragsidentität aus T18 und T20).

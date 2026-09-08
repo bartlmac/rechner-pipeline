@@ -53,7 +53,23 @@ from rechner_pipeline.models.bestand import model_point_kwargs
 TOLERANZ = 0.005
 
 #: Ereignisse, deren Betrag hier hergeleitet wird (KLV).
-HERGELEITET = ("ZUG", "STO", "PEX", "TOD", "ABL")
+HERGELEITET = ("ZUG", "STO", "PEX", "TOD", "ABL", "ERH")
+#: Betragsart des gebuchten Bruttojahresbeitrags. Er folgt aus dem Kern
+#: derselben Police (VS mal Bxt) — deshalb wird er hergeleitet wie jeder
+#: andere Betrag, nicht geglaubt. Ohne die Unterscheidung nach Art haette
+#: die Herleitung den Beitrag gegen die Versicherungssumme gehalten.
+BJB_ART = "BJB"
+
+
+def _bjb_aus(kern: Rechenkern) -> float:
+    """Der tarifliche Bruttojahresbeitrag einer Scheibe im Jahr ihres Zugangs.
+
+    Dieselbe Groesse, die Engine und Bewertung fuehren: VS mal Bxt, null
+    ohne laufende Beitragszahlungsdauer.
+    """
+    if kern.mp.t <= 0:
+        return 0.0
+    return float(kern.gross_annual_premium())
 
 
 def _vollendete_jahre(start: pd.Timestamp, datum: pd.Timestamp) -> int:
@@ -198,8 +214,38 @@ def pruefe_ledger_betraege(
         produkt = str(h.get("produkt", "klv"))
         jahr = int(z.vertragsjahr)
         betrag = float(z.betrag)
+        betrag_art = str(z.betrag_art)
         erwartet: Optional[float] = None
-        if produkt == "bu":
+        if betrag_art == BJB_ART:
+            # Ein Vorfall bewegt Summe UND Beitrag; die Zeilen tragen
+            # dieselbe Police und denselben Tag, aber verschiedene Groessen.
+            # Der Beitrag des Zugangs ist der der Grundscheibe, der Beitrag
+            # einer Erhoehung der ihrer neuen Scheibe.
+            if produkt == "bu":
+                continue                     # BU-Beitrag: eigene Groesse, spaeter
+            if pid not in herleitungen:
+                try:
+                    felder = grundlagen(pid, str(h["tarif_generation"]))
+                    herleitungen[pid] = _Herleitung(
+                        h.to_dict() | {"police_id": pid}, felder,
+                        scheiben_je_police.get(pid, []),
+                        tarifwerk_je_generation.get(str(h["tarif_generation"])))
+                except (KeyError, ValueError) as exc:
+                    errors.append(f"ledger police {pid}: Kern nicht herleitbar: {exc}")
+                    continue
+            v = herleitungen[pid]
+            if art == "ZUG":
+                erwartet = _bjb_aus(v.grund)
+            else:
+                scheibe = next((k for j, _, k in v.scheiben if j == jahr), None)
+                if scheibe is None:
+                    errors.append(
+                        f"ledger police {pid}: ERH-Beitrag im Vertragsjahr {jahr} "
+                        "ohne zugehoerige Scheibe"
+                    )
+                    continue
+                erwartet = _bjb_aus(scheibe)
+        elif produkt == "bu":
             rente = float(h["bu_rente"])
             if art in ("INV", "REA", "ZUG"):
                 erwartet = rente
@@ -211,8 +257,8 @@ def pruefe_ledger_betraege(
             else:
                 continue
         else:
-            if art not in HERGELEITET:
-                continue
+            if art not in HERGELEITET or art == "ERH":
+                continue                     # ERH: nur der Beitrag ist hergeleitet
             if art == "ZUG":
                 # Der Zugang bucht die Versicherungssumme MIT den
                 # mitgebrachten Bausteinen: Ein uebernommener Vertrag

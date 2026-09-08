@@ -224,10 +224,17 @@ EREIGNIS_VALUES: Tuple[str, ...] = (
 #: Zwei Werte, wo zwei Produkte denselben GeVo buchen (KLV-Summe gegen
 #: BU-Jahresrente) oder die Uebernahme eine Umbuchung mit der gelieferten
 #: Bezugsgroesse bucht (``PEX`` mit ``VS``, gates.bestand_uebernehmen).
+#: ``BJB`` ist der Bruttojahresbeitrag: Ein Zugang und eine Erhoehung
+#: bewegen nicht nur eine Summe, sondern auch einen Beitrag, und das
+#: Neugeschaeft eines Zeitraums wird in beidem gemessen. Er steht als
+#: EIGENE Zeile desselben Vorfalls — ein Betrag, eine Art, wie bei jeder
+#: anderen Buchung. Die Abgaenge (STO, TOD, ABL) und die
+#: Beitragsfreistellung fuehren ihre Beitragswirkung noch nicht; das ist
+#: eine bekannte Asymmetrie und der naechste Schritt derselben Sache.
 BETRAG_ART_JE_EREIGNIS: Dict[str, Tuple[str, ...]] = {
-    "ZUG": ("VS", "BU_Jahresrente"),
+    "ZUG": ("VS", "BU_Jahresrente", "BJB"),
     "MIG": ("dDK_uebernahme",),
-    "ERH": ("VS_erhoehung",),
+    "ERH": ("VS_erhoehung", "BJB"),
     "RED": ("VS_herabsetzung",),
     "PEX": ("VS_bfr", "VS"),
     "INV": ("BU_Jahresrente",),
@@ -941,7 +948,7 @@ def validate_tagesjournal(
     Tag):
 
     * Spalten/dtypes, ``herkunft`` aus :data:`HERKUNFT_VALUES`;
-    * Schluessel (police_id, ereignis, status_date) eindeutig — eine
+    * Schluessel (police_id, ereignis, status_date, betrag_art) eindeutig — eine
       Buchung wird nicht zweimal gebucht;
     * keine Zeile nach dem gefuehrten Tag, keine vor dem Betriebsbeginn
       (die Vorgeschichte steht im Ledger, nicht im Journal);
@@ -970,14 +977,18 @@ def validate_tagesjournal(
     if list(sicht.columns) != list(TAGESJOURNAL_NAMES):
         return [f"tagesjournal: Buchungssicht mit Spalten {list(sicht.columns)} "
                 f"!= erwartet {list(TAGESJOURNAL_NAMES)}"]
-    schluessel_spalten = ["police_id", "ereignis", "status_date"]
+    # Die Betragsart gehoert in den Schluessel: Ein Vorfall bewegt mehr als
+    # eine Groesse (ein Zugang eine Summe UND einen Beitrag), und jede steht
+    # als eigene Zeile. Ohne sie waeren zwei Zeilen desselben Vorfalls ein
+    # doppelter Schluessel.
+    schluessel_spalten = ["police_id", "ereignis", "status_date", "betrag_art"]
 
     def _schluessel(df: Any) -> Any:
         import pandas as pd
 
         return pd.MultiIndex.from_arrays(
             [df["police_id"].astype("int64"), df["ereignis"].astype(str),
-             pd.to_datetime(df["status_date"])],
+             pd.to_datetime(df["status_date"]), df["betrag_art"].astype(str)],
             names=schluessel_spalten,
         )
 
@@ -987,7 +998,8 @@ def validate_tagesjournal(
     sicht_schluessel = _schluessel(sicht)
     if sicht_schluessel.duplicated().any():
         return ["tagesjournal: Buchungssicht mit doppeltem Schluessel — der "
-                "Ledger ist nicht eindeutig je (police_id, ereignis, status_date)"]
+                "Ledger ist nicht eindeutig je (police_id, ereignis, "
+                "status_date, betrag_art)"]
     faellig = sicht[(sicht["buchungsdatum"] >= beginn) & (sicht["buchungsdatum"] <= grenze)]
     if len(journal) == 0:
         if len(faellig):
@@ -1098,7 +1110,13 @@ def _ledger_scheiben_bindung(
     errors: List[str] = []
     if list(scheiben.columns) != list(SCHEIBEN_NAMES):
         return []  # validate_scheiben meldet den Spaltenfehler
-    erh = ledger.loc[ledger["ereignis"] == "ERH",
+    # Die Bindung gilt zwischen der SUMMEN-Buchung und der Scheibe: Eine
+    # Erhoehung bucht seit dem gebuchten Beitrag zwei Zeilen (Summe und
+    # Bruttojahresbeitrag), aber nur eine davon ist die Erhoehungssumme,
+    # die in der Scheibe steht. Ohne die Art waeren die zwei Zeilen eine
+    # Doppelbuchung derselben Police am selben Tag.
+    erh = ledger.loc[(ledger["ereignis"] == "ERH")
+                     & (ledger["betrag_art"] == "VS_erhoehung"),
                      ["police_id", "status_date", "vertragsjahr", "betrag"]]
     sch = scheiben[["police_id", "erhoehung_datum", "erhoehung_jahr", "sum_insured"]]
     if stamm is not None and len(sch):

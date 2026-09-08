@@ -348,9 +348,15 @@ def test_sichere_erhoehung_erzeugt_scheiben_mit_zinseszins(config):
     # Ablauf zahlt die Gesamt-VS ueber alle Scheiben:
     abl = ledger[ledger["ereignis"] == "ABL"]["betrag"].iloc[0]
     assert abl == pytest.approx(100000.0 * 1.05 ** 14, rel=1e-12)
-    # Ledger fuehrt die ERH-GeVos:
-    assert (ledger["ereignis"] == "ERH").sum() == 14
-    assert set(ledger[ledger["ereignis"] == "ERH"]["betrag_art"]) == {"VS_erhoehung"}
+    # Ledger fuehrt die ERH-GeVos — je Erhoehung ZWEI Zeilen: Sie bewegt
+    # eine Summe und einen Beitrag, jede als eigene Betragsart.
+    erh = ledger[ledger["ereignis"] == "ERH"]
+    assert set(erh["betrag_art"]) == {"VS_erhoehung", "BJB"}
+    assert (erh["betrag_art"] == "VS_erhoehung").sum() == 14
+    assert (erh["betrag_art"] == "BJB").sum() == 14
+    assert erh[["police_id", "status_date"]].drop_duplicates().shape[0] == 14
+    # Der gebuchte Beitrag ist der der neuen Scheibe, nicht null:
+    assert (erh.loc[erh["betrag_art"] == "BJB", "betrag"] > 0).all()
 
 
 @pytest.fixture(scope="module")

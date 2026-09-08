@@ -180,7 +180,13 @@ def test_erhoehung_nur_summe_und_abgang_mit_scheiben(config):
     assert len(scheiben) > 0
 
     konto = bewegungskonto(stamm, historie, ledger, scheiben, bis=dt.date(2045, 1, 1))
-    erh_ledger = ledger[ledger["ereignis"] == "ERH"]
+    # Die Bewegungsrechnung fuehrt die Versicherungssumme; der ebenfalls
+    # gebuchte Bruttojahresbeitrag derselben Erhoehung gehoert nicht in den
+    # Summen-Zugang. Mutationsprobe: den Art-Filter hier ODER in
+    # kennzahlen.bewegungskonto entfernen -> die Identitaet faellt.
+    erh_ledger = ledger[(ledger["ereignis"] == "ERH")
+                        & (ledger["betrag_art"] == "VS_erhoehung")]
+    assert len(erh_ledger) < (ledger["ereignis"] == "ERH").sum()
     for jahr, betrag in erh_ledger.groupby(erh_ledger["status_date"].dt.year)["betrag"]:
         zeile = _zeile(konto, int(jahr))
         # Erhoehung: Summen-Zugang ohne Stueck-Zugang.

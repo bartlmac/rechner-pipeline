@@ -144,17 +144,26 @@ def test_ereignis_kennzahlen_summen_und_jahresreihe(fortschreibung):
 
     _, ledger, *_ = fortschreibung
     summen = ereignis_summen(ledger)
-    assert [s["ereignis"] for s in summen] == [
-        c for c in EREIGNIS_REIHENFOLGE if (ledger["ereignis"] == c).any()
+    # Je Vorfall eine Zeile JE BETRAGSART: Ein Zugang und eine Erhoehung
+    # bewegen Summe und Bruttojahresbeitrag, und beide Groessen stehen
+    # getrennt — addierte man sie, waere die Zahl weder das eine noch das
+    # andere.
+    assert [(s["ereignis"], s["betrag_art"]) for s in summen] == [
+        (c, art)
+        for c in EREIGNIS_REIHENFOLGE
+        for art in sorted(set(ledger.loc[ledger["ereignis"] == c, "betrag_art"]))
     ]
     for s in summen:
-        rows = ledger[ledger["ereignis"] == s["ereignis"]]
+        rows = ledger[(ledger["ereignis"] == s["ereignis"])
+                      & (ledger["betrag_art"] == s["betrag_art"])]
         assert s["anzahl"] == len(rows)
         assert s["summe_betrag"] == pytest.approx(float(rows["betrag"].sum()))
     reihe = ereignisse_je_jahr(ledger)
     jahre = [r["jahr"] for r in reihe]
     assert jahre == list(range(jahre[0], jahre[-1] + 1))  # lueckenlos
-    assert sum(sum(r[c] for c in EREIGNIS_REIHENFOLGE) for r in reihe) == len(ledger)
+    # Gezaehlt werden VORFAELLE, nicht Zeilen:
+    vorfaelle = ledger[["police_id", "ereignis", "status_date"]].drop_duplicates()
+    assert sum(sum(r[c] for c in EREIGNIS_REIHENFOLGE) for r in reihe) == len(vorfaelle)
 
 
 def test_status_verlauf_zaehlt_pol_und_pex(portfolio, fortschreibung):

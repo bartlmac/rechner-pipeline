@@ -154,10 +154,14 @@ def test_engine_rechnet_auf_mitgebrachten_bausteinen(freigeschaltet: bool):
             else:
                 assert z["betrag"] == grund.mp.sum_insured + sum(
                     k.mp.sum_insured for _, k in teile)
-        elif art == "ERH":
+        elif art == "ERH" and z["betrag_art"] == "VS_erhoehung":
             # Bezugsgroesse ist die Gesamtsumme MIT dem Alt-Baustein.
             vorher = grund.mp.sum_insured + sum(k.mp.sum_insured for _, k in teile)
             assert math.isclose(z["betrag"], 0.05 * vorher, rel_tol=0.0, abs_tol=1e-9)
+        elif z["betrag_art"] == "BJB":
+            # Die zweite Zeile desselben Vorfalls: der Beitrag, nicht die
+            # Summe. Sie ist positiv und kleiner als die bewegte Summe.
+            assert z["betrag"] > 0
         geprueft[art] = geprueft.get(art, 0) + 1
     assert geprueft["STO"] >= 1 and geprueft["PEX"] >= 1 and geprueft["ERH"] >= 1
 

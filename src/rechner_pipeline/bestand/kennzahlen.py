@@ -216,7 +216,13 @@ def ereignisse_je_jahr(ledger: pd.DataFrame) -> List[Dict[str, Any]]:
         im_jahr = ledger[jahre == jahr]
         eintrag: Dict[str, Any] = {"jahr": jahr}
         for code in EREIGNIS_REIHENFOLGE:
-            eintrag[code] = int((im_jahr["ereignis"] == code).sum())
+            # Gezaehlt werden VORFAELLE, nicht Zeilen: Ein Zugang mit Summe
+            # und Beitrag ist ein Zugang (Police und Wirkungstag sind sein
+            # Schluessel, die Betragsart unterscheidet nur die Groesse).
+            eintrag[code] = int(
+                im_jahr.loc[im_jahr["ereignis"] == code,
+                            ["police_id", "status_date"]].drop_duplicates().shape[0]
+            )
         reihe.append(eintrag)
     return reihe
 
@@ -521,7 +527,13 @@ def bewegungskonto(
             (bestand["bestandszugang"] > von_ts)
             & (bestand["bestandszugang"] <= bis_ts)
         ]
-        erh = periode[periode["ereignis"] == "ERH"]
+        # Die Bewegung einer Summe zaehlt die Summen-Zeilen: Ein Vorfall
+        # bewegt seit dem gebuchten Beitrag mehr als eine Groesse, und die
+        # Bewegungsrechnung fuehrt die Versicherungssumme. Ohne die Art
+        # liefe der Bruttojahresbeitrag in den Zugang und die
+        # Bewegungs-Identitaet fiele.
+        erh = periode[(periode["ereignis"] == "ERH")
+                      & (periode["betrag_art"] == "VS_erhoehung")]
         pex = periode[periode["ereignis"] == "PEX"]
         sto = periode[periode["ereignis"] == "STO"]
         terminal = periode[periode["ereignis"].isin(("TOD", "ABL"))]
