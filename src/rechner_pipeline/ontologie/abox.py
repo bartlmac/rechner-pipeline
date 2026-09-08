@@ -21,6 +21,7 @@ import re
 from pathlib import Path
 from typing import List, Optional
 
+from rechner_pipeline.models.zeichnung import validiere_zeichnung
 from rechner_pipeline.ontologie.aussage import Zustand
 from rechner_pipeline.ontologie.tbox import ABOX_SCHEMA_VERSION, ABox, PFLICHT_PARAMETER, TBOX_VERSION
 
@@ -170,6 +171,13 @@ def validate_abox(
                 f"Diskrepanz {d.id} ist offen, aber keine Aussage "
                 "referenziert sie (verwaister Konflikt)"
             )
+        # Verteidigung in der Tiefe (Review T23-06): dieselbe Regel wie der
+        # Modell-Validator, hier fuer den Fall, dass eine A-Box je an
+        # Pydantic vorbei entsteht — die Gate-Pruefung P-Q3 laeuft fuer
+        # JEDE A-Box, unabhaengig vom Schreibweg.
+        if d.entscheidung is not None and d.entscheidung.zeichnung is not None:
+            for f in validiere_zeichnung(d.entscheidung.zeichnung, form="beide"):
+                fehler.append(f"Diskrepanz {d.id}: {f}")
 
     if eingang_register is not None:
         registriert = {

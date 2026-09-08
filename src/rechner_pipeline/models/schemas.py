@@ -23,6 +23,7 @@ Knoten: system/assurance
 """
 
 from __future__ import annotations
+from rechner_pipeline.models.zeichnung import validiere_zeichnung
 
 import hashlib
 import json
@@ -496,43 +497,13 @@ class P9Snapshot:
         # Rolle wie besetzt war.
         unknown = sorted(fields - expected_fields - {"zeichnung"})
         z = data.get("zeichnung")
-        if legacy:
-            if z is not None and not (
-                isinstance(z, dict)
-                and set(z) == {"rolle", "ordnung_sha256"}
-                and isinstance(z.get("rolle"), str)
-                and isinstance(z.get("ordnung_sha256"), str)
-            ):
-                errors.append(
-                    "zeichnung muss {rolle, ordnung_sha256} mit Strings sein"
-                )
-        else:
-            pflicht = {"rolle", "ordnung_sha256", "schluesselklasse"}
-            if z is not None and not (
-                isinstance(z, dict)
-                and pflicht <= set(z) <= pflicht | {"mandat_sha256"}
-                and all(isinstance(z.get(k), str) and z[k] for k in pflicht)
-                and z.get("schluesselklasse") in ("mensch", "simulation")
-                and (z.get("mandat_sha256") is None or _is_sha256(z.get("mandat_sha256")))
-            ):
-                errors.append(
-                    "zeichnung muss {rolle, ordnung_sha256, schluesselklasse "
-                    "in (mensch, simulation)[, mandat_sha256]} sein"
-                )
-            # Eine simulierte Rolle handelt unter einem Mandat, und dessen
-            # Hash gehoert in den Beleg (ADR-018, Abschnitt 3). Optional war
-            # das nur im Hilfetext — Review T22-07: ohne Mandat ist die
-            # zentrale Aussage des Rollenmodells nicht durchgesetzt.
-            if (
-                isinstance(z, dict)
-                and z.get("schluesselklasse") == "simulation"
-                and not _is_sha256(z.get("mandat_sha256"))
-            ):
-                errors.append(
-                    "zeichnung mit schluesselklasse simulation braucht "
-                    "mandat_sha256 (ADR-018: eine simulierte Rolle handelt "
-                    "unter einem Mandat)"
-                )
+        # Die Regel der Rollenbindung steht an EINER Stelle
+        # (models.zeichnung.validiere_zeichnung, Review T23-06); Schema 6
+        # kennt nur die Altform, Schema 7 verlangt die Schluesselklasse und
+        # bei Simulation das Mandat (ADR-018; Review T22-07).
+        if z is not None:
+            errors.extend(validiere_zeichnung(z, form="alt" if legacy else "neu"))
+        if not legacy:
             if data.get("entscheid") == "angenommen" and z is None:
                 errors.append(
                     "an accepted decision requires zeichnung (Rolle aus der "

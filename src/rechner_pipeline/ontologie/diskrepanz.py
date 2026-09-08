@@ -14,8 +14,9 @@ from __future__ import annotations
 
 from typing import List, Literal, Optional, Dict
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from rechner_pipeline.models.zeichnung import validiere_zeichnung
 from rechner_pipeline.ontologie.aussage import Lesart, Wert
 
 
@@ -75,6 +76,20 @@ class Entscheidung(BaseModel):
     #: nicht behauptet. None beim Alt-Weg (--rolle mensch ohne
     #: Ordnung); dasselbe Muster wie die zeichnung im P9-Snapshot.
     zeichnung: Optional[Dict[str, str]] = None
+
+    @field_validator("zeichnung")
+    @classmethod
+    def _zeichnung_nach_adr018(cls, z: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+        """Die Rollenbindung ist keine freie Tabelle (Review T23-06): Wer
+        eine Entscheidung direkt konstruiert — an ``ontologie.entscheide``
+        vorbei —, unterliegt derselben Regel wie die CLI: Altform oder
+        Form mit Schluesselklasse, und eine Simulation nur mit Mandat."""
+        if z is None:
+            return None
+        fehler = validiere_zeichnung(z, form="beide")
+        if fehler:
+            raise ValueError("; ".join(fehler))
+        return z
 
 
 class Diskrepanz(BaseModel):

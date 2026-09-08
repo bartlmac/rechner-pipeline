@@ -48,6 +48,80 @@ ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
 ORDNUNG_SCHEMA_VERSION = 2
 
 
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+AUSWEG = (
+    " — Ausweg: die Aufloesung bzw. Annahme mit dem Kommando neu zeichnen "
+    "(Zeichnungsordnung und Freigabeschluessel, bei Schluesselklasse simulation --mandat)"
+)
+
+
+def validiere_zeichnung(zeichnung: object, *, form: str = "beide") -> List[str]:
+    """Die Regel der Rollenbindung (ADR-018) — an EINER Stelle, fuer jeden
+    Eintrittspunkt (Review T23-06). Leer = in Ordnung.
+
+    Zwei Formen sind im Bestand: die Altform des Vier-Rollen-Modells
+    ``{rolle, ordnung_sha256}`` (P9-Schema 6; A-Box-Aufloesungen bis
+    2026-09) und die Form mit Schluesselklasse ``{rolle, ordnung_sha256,
+    schluesselklasse[, mandat_sha256]}`` (P9-Schema 7). ``form`` sagt, was
+    der Eintrittspunkt zulaesst: ``"alt"``, ``"neu"`` oder ``"beide"``.
+
+    Die zentrale Aussage des Rollenmodells gilt in jeder Form: Eine
+    simulierte Rolle handelt unter einem Mandat, und dessen Hash steht in
+    der Zeichnung. Vorher galt das nur in der Argumentverarbeitung von
+    ``ontologie.entscheide`` und im P9-Schema; wer eine Entscheidung direkt
+    konstruierte oder eine A-Box von Hand schrieb, konnte jede
+    Schluesselklasse behaupten.
+    """
+    if not isinstance(zeichnung, dict):
+        return ["zeichnung muss eine Tabelle sein" + AUSWEG]
+    schluessel = set(zeichnung)
+    altform = {"rolle", "ordnung_sha256"}
+    ordnung = zeichnung.get("ordnung_sha256")
+    ordnung_ok = isinstance(ordnung, str) and bool(_SHA256.match(ordnung))
+    if schluessel == altform:
+        if form == "neu":
+            return [
+                "zeichnung muss die Schluesselklasse tragen — {rolle, "
+                "ordnung_sha256, schluesselklasse[, mandat_sha256]} (ADR-018)" + AUSWEG
+            ]
+        # Altform des Vier-Rollen-Modells: die Rolle traegt noch die alte
+        # Schreibweise (z. B. "plv-aktuar"), der Ordnungs-Hash ist ein Hash.
+        rolle = zeichnung.get("rolle")
+        if not (isinstance(rolle, str) and rolle.strip() and ordnung_ok):
+            return [
+                "zeichnung (Altform) muss {rolle, ordnung_sha256} mit einer "
+                "nichtleeren Rolle und einem SHA-256 der Ordnung sein" + AUSWEG
+            ]
+        return []
+    if form == "alt":
+        return ["zeichnung muss {rolle, ordnung_sha256} mit Strings sein" + AUSWEG]
+    pflicht = {"rolle", "ordnung_sha256", "schluesselklasse"}
+    fehler: List[str] = []
+    mandat = zeichnung.get("mandat_sha256")
+    if not (
+        pflicht <= schluessel <= pflicht | {"mandat_sha256"}
+        and all(isinstance(zeichnung.get(k), str) and zeichnung[k] for k in pflicht)
+        and gueltige_rollenkennung(zeichnung.get("rolle"))
+        and ordnung_ok
+        and zeichnung.get("schluesselklasse") in ZEICHNENDE_KLASSEN
+        and (mandat is None or (isinstance(mandat, str) and _SHA256.match(mandat)))
+    ):
+        fehler.append(
+            "zeichnung muss {rolle (Rollenkennung ebene/name), ordnung_sha256 "
+            "(SHA-256), schluesselklasse in (mensch, simulation)[, mandat_sha256 "
+            "(SHA-256)]} sein" + AUSWEG
+        )
+    if zeichnung.get("schluesselklasse") == "simulation" and not (
+        isinstance(mandat, str) and _SHA256.match(mandat)
+    ):
+        fehler.append(
+            "zeichnung mit schluesselklasse simulation braucht "
+            "mandat_sha256 (ADR-018: eine simulierte Rolle handelt "
+            "unter einem Mandat)" + AUSWEG
+        )
+    return fehler
+
+
 def gueltige_rollenkennung(rolle: object) -> bool:
     return isinstance(rolle, str) and ROLLEN_MUSTER.match(rolle) is not None
 

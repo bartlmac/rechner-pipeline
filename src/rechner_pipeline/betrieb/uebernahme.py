@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from rechner_pipeline.models.zeichnung import ZEICHNENDE_KLASSEN
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio
@@ -167,6 +168,10 @@ def zeichnung_aus_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[s
             zeichnung.get("schluesselklasse") or freigabe.get("schluesselklasse")
             or NICHT_AUSGEWIESEN),
         "schluessel_sha256": schluessel[:16] if schluessel else NICHT_AUSGEWIESEN,
+        # Das Mandat einer simulierten Rolle wandert mit (Review T23-06):
+        # eine Simulation ohne Mandat ist auch im Betriebseingang keine
+        # Besetzung, sondern eine Luecke.
+        "mandat_sha256": str(zeichnung.get("mandat_sha256") or NICHT_AUSGEWIESEN),
         "schema_version": daten.get("schema_version"),
         "signatur_verifiziert": False,
         "quelle": pfad.name,
@@ -225,6 +230,24 @@ def validate_eingang(daten: Any) -> List[str]:
     zeichnung = daten.get("zeichnung")
     if zeichnung is not None and not isinstance(zeichnung, dict):
         fehler.append("zeichnung muss eine Tabelle sein")
+    elif isinstance(zeichnung, dict):
+        # Der Eingang berichtet die Rollenbindung des A-M4-Snapshots; er
+        # darf keine Schluesselklasse behaupten, die es nicht gibt, und
+        # eine Simulation nicht ohne Mandat (Review T23-06, ADR-018). Die
+        # Signatur selbst prueft dieses Kommando weiterhin nicht (T19-02).
+        klasse = zeichnung.get("schluesselklasse", NICHT_AUSGEWIESEN)
+        if klasse not in ZEICHNENDE_KLASSEN + (NICHT_AUSGEWIESEN,):
+            fehler.append(
+                f"zeichnung.schluesselklasse {klasse!r} ist keine zeichnende "
+                f"Schluesselklasse ({', '.join(ZEICHNENDE_KLASSEN)}; ein Agent "
+                "zeichnet nicht, ADR-018)"
+            )
+        if klasse == "simulation" and not _ist_sha256(zeichnung.get("mandat_sha256")):
+            fehler.append(
+                "zeichnung: Schluesselklasse simulation ohne mandat_sha256 — "
+                "eine simulierte Rolle handelt unter einem Mandat (ADR-018); "
+                "der A-M4-Snapshot muss das Mandat tragen"
+            )
     dateien = daten.get("dateien")
     if not isinstance(dateien, dict) or not dateien:
         fehler.append("dateien fehlen")
