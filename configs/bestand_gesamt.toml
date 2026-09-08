@@ -35,6 +35,13 @@ knoten = "klv/plv_1994"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 1994-07-01
 gueltig_bis = 2000-06-30
 sample_size = 600
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 100
 max_endalter = 85
 zins = 0.04
 tafel = "DAV1994_T"
@@ -107,6 +114,13 @@ knoten = "klv/plv_2000"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2000-07-01
 gueltig_bis = 2003-12-31
 sample_size = 280
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 80
 max_endalter = 85
 zins = 0.0325
 tafel = "DAV1994_T"
@@ -174,6 +188,13 @@ knoten = "klv/plv_2004"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2004-01-01
 gueltig_bis = 2006-12-31
 sample_size = 260
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 87
 max_endalter = 85
 zins = 0.0275
 tafel = "DAV1994_T"
@@ -241,6 +262,13 @@ knoten = "klv/plv_2007"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2007-01-01
 gueltig_bis = 2007-12-31
 sample_size = 70
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 70
 max_endalter = 85
 zins = 0.0225
 tafel = "DAV1994_T"
@@ -308,6 +336,13 @@ knoten = "klv/plv_2008"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2008-01-01
 gueltig_bis = 2011-12-31
 sample_size = 300
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 75
 max_endalter = 85
 zins = 0.0225
 tafel = "DAV2008_T"
@@ -375,6 +410,13 @@ knoten = "klv/plv_2012"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2012-01-01
 gueltig_bis = 2014-12-31
 sample_size = 240
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 80
 max_endalter = 85
 zins = 0.0175
 tafel = "DAV2008_T"
@@ -442,6 +484,13 @@ knoten = "klv/plv_2015"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2015-01-01
 gueltig_bis = 2016-12-31
 sample_size = 180
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 90
 max_endalter = 85
 zins = 0.0125
 tafel = "DAV2008_T"
@@ -509,6 +558,13 @@ knoten = "klv/plv_2017"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2017-01-01
 gueltig_bis = 2021-12-31
 sample_size = 250
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 50
 max_endalter = 85
 zins = 0.009
 tafel = "DAV2008_T"
@@ -578,6 +634,13 @@ knoten = "klv/plv_2022"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2022-01-01
 gueltig_bis = 2024-12-31
 sample_size = 150
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 50
 max_endalter = 85
 zins = 0.0025
 tafel = "DAV2008_T"
@@ -729,6 +792,13 @@ produkt = "bu"
 gueltig_von = 2000-01-01
 gueltig_bis = 2016-12-31
 sample_size = 500
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 29
 # Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
 # fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
 max_endalter = 67
@@ -795,6 +865,13 @@ gueltig_bis = 2024-12-31
 # 30 je Jahr ueber acht Fensterjahre — dieselbe Dichte wie der bisherige
 # Jahressatz des GeVo-Stroms.
 sample_size = 240
+# Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
+# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
+# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
+# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
+# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+neuzugang_pro_jahr = 30
 # Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
 # fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
 max_endalter = 67
@@ -1081,10 +1158,15 @@ ratzu_zw12 = 0.025
 # --------------------------------------------------------------------------
 # Tagesbetrieb der PLV (Fachkonzept docs/simulation/tagesbetrieb.md).
 #
-# betriebsbeginn: erster Tag, an dem Werktag fuer Werktag verkauft wird;
-# der Batch-Erzeuger besiedelt die Verkaufsfenster nur bis zu diesem Tag
-# (Beginn <= betriebsbeginn) — ein Erzeuger je Zeitfenster. Faellt mit dem
-# Referenzstichtag und dem Zugang der Baldrian-Uebernahme zusammen.
+# betriebsbeginn: der erste Tag der Unternehmensgeschichte — seither wird
+# Werktag fuer Werktag verkauft. Er ist zugleich die ERZEUGUNGSGRENZE: Der
+# Batch-Erzeuger besiedelt die Verkaufsfenster nur bis zu diesem Tag
+# (Beginn <= betriebsbeginn), der Tagesstrom danach — ein Erzeuger je
+# Zeitfenster. Seit dem 1. Juli 1994 liegt die Grenze am Anfang: Der Batch
+# zieht nichts, der Bestand entsteht Tag fuer Tag aus dem Neugeschaeft, und
+# der Bericht kennt keinen Zeitraum "vor dem Betriebsbeginn" mehr. Der
+# Zugang einer Uebernahme faellt nicht mehr mit ihm zusammen: Er darf
+# ueberall in der gefuehrten Zeit liegen (Baldrian: 2026-01-01).
 # wochentagsgewichte: kein Verkauf am Wochenende, etwas mehr am Montag,
 # sonst gleichmaessig (Abschnitt 4).
 # meldeverzug_tod: VORLAEUFIG (Abschnitt 10) — lognormal, Median 14 Tage,
@@ -1096,7 +1178,7 @@ ratzu_zw12 = 0.025
 # der Uebernahme ist offen).
 # --------------------------------------------------------------------------
 [tagesbetrieb]
-betriebsbeginn = 2026-01-01
+betriebsbeginn = 1994-07-01
 wochentagsgewichte = { mo = 1.3, di = 1.0, mi = 1.0, do = 1.0, fr = 1.0, sa = 0.0, so = 0.0 }
 meldeverzug_tod = { verteilung = "lognormal", median_tage = 14, p95_tage = 60 }
 teilbestand_getrennt = true

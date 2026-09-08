@@ -197,8 +197,11 @@ def test_eingang_prueft_seine_form(tmp_path):
 
 
 def _kleine_config() -> str:
+    """Sechs Vertraege je Generation und die Erzeugungsgrenze am 1.1.2026:
+    die echte PLV beginnt 1994 und zieht ihren Bestand Tag fuer Tag."""
     text = PLV.read_text(encoding="utf-8")
-    return re.sub(r"^sample_size = [1-9]\d*$", "sample_size = 6", text, flags=re.M)
+    text = re.sub(r"^sample_size = [1-9]\d*$", "sample_size = 6", text, flags=re.M)
+    return re.sub(r"^betriebsbeginn = .*$", "betriebsbeginn = 2026-01-01", text, flags=re.M)
 
 
 def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):

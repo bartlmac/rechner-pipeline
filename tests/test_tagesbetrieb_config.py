@@ -143,11 +143,14 @@ def test_plv_config_traegt_die_generationen_bis_heute():
     bu_2025 = next(g for g in cfg.generationen if g.name == "BU-2025")
     assert bu_2025.knoten == "bu/plv_2025"
     assert bu_2025.neuzugang_pro_jahr > 0
-    # Die Vorgaenger verkaufen nicht mehr in denselben Tagen:
+    # Die Vorgaenger verkaufen nicht mehr in denselben Tagen. Sie tragen
+    # seit dem Betriebsbeginn 1994 ein eigenes Jahresziel — es gilt aber nur
+    # in ihrem Fenster, und das ist geschlossen:
     for name in ("KLV-2022", "BU-2017"):
         gen = next(g for g in cfg.generationen if g.name == name)
         assert gen.gueltig_bis == dt.date(2024, 12, 31)
-        assert gen.neuzugang_pro_jahr == 0
+        assert gen.neuzugang_pro_jahr > 0
+        assert gen.jahresziel(2026) == 0.0
     # Lueckenlos je Produkt: jede verkaufende Generation beginnt am Tag nach
     # der vorigen; die uebernommene TG2015 traegt das Fenster des abgebenden
     # Unternehmens und verkauft nicht.
@@ -165,7 +168,7 @@ def test_plv_config_traegt_die_generationen_bis_heute():
 
 def test_plv_config_traegt_den_tagesbetrieb():
     tb = load_config(PLV).tagesbetrieb
-    assert tb.betriebsbeginn == dt.date(2026, 1, 1)
+    assert tb.betriebsbeginn == dt.date(1994, 7, 1)
     assert tb.wochentagsgewichte == WOCHENTAGSGEWICHTE_VORGABE
     assert tb.meldeverzug_tod == Meldeverzug("lognormal", 14.0, 60.0)
     # Das Gewicht haengt nur vom Wochentag ab: Samstag/Sonntag 0, Montag

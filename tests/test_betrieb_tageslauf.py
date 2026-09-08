@@ -46,10 +46,20 @@ BETRIEBSBEGINN = dt.date(2026, 1, 1)
 
 
 def _kleine_config() -> str:
-    """Die PLV-Config mit acht Vertraegen je verkaufender Generation und
-    Betriebsbeginn 2026-01-01 (die uebernommene TG2015 bleibt bei 0)."""
+    """Die PLV-Config als schnelle Testwelt: acht Vertraege je verkaufender
+    Generation (die uebernommene TG2015 bleibt bei 0) und die
+    Erzeugungsgrenze am 1.1.2026.
+
+    Die echte PLV beginnt am 1.7.1994 und baut ihren Bestand Tag fuer Tag
+    auf; das sind zweiunddreissig Jahre Tagesstrom und rund 34 Sekunden je
+    Lauf. Fuer die Tests wird die Grenze deshalb nach vorn gesetzt: Der
+    Batch stellt den Bestand, der Tagesstrom traegt nur die Tage des Tests.
+    Beides ist derselbe Mechanismus, nur an einer anderen Grenze — die
+    lange Geschichte prueft test_betrieb_lange_geschichte.
+    """
     text = PLV.read_text(encoding="utf-8")
     text = re.sub(r"^sample_size = [1-9]\d*$", "sample_size = 8", text, flags=re.M)
+    text = re.sub(r"^betriebsbeginn = .*$", "betriebsbeginn = 2026-01-01", text, flags=re.M)
     assert "betriebsbeginn = 2026-01-01" in text
     return text
 

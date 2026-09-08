@@ -86,11 +86,19 @@ def test_tagesziele_summieren_auf_das_jahresziel(config, verkaufend):
     """Mutationsprobe: Gewichtssumme nur ueber die Werktage statt ueber
     alle Tage — dann summierten die Tagesziele nicht mehr auf das Ziel."""
     assert verkaufend, "die PLV verkauft"
+    # Seit dem Betriebsbeginn 1994 traegt JEDE Generation ein Jahresziel —
+    # auch die laengst geschlossenen, weil der Tagesstrom ihren Bestand
+    # aufgebaut hat. Es gilt nur in ihrem Verkaufsfenster; davor und danach
+    # ist es null, und die Tagesziele summieren auf dieselbe Null.
+    geschlossen = [g for _, g in verkaufend if g.gueltig_bis.year < JAHR]
+    assert geschlossen, "geschlossene Generationen tragen weiterhin ihr Ziel"
     for _, gen in verkaufend:
         summe = sum(tagesziel(config, gen, tag) for tag in _tage(JAHR))
         ziel = jahresziel(gen, JAHR)
+        im_fenster = gen.gueltig_von.year <= JAHR <= gen.gueltig_bis.year
         assert ziel == pytest.approx(
             gen.neuzugang_pro_jahr * (1 + gen.neuzugang_trend) ** (JAHR - gen.gueltig_von.year)
+            if im_fenster else 0.0
         )
         assert summe == pytest.approx(ziel)
     # Ausserhalb des Fensters gibt es kein Ziel:

@@ -154,6 +154,15 @@ sondern kam als Zugang.
 
 ## 6 Baldrian als Zugang zum 01.01.2026
 
+Ein Zugang liegt in der **geführten Zeit**: zwischen dem ersten Tag, den
+das Unternehmen führt, und heute. Er fällt nicht mit dem Betriebsbeginn
+zusammen und muss es nicht — die PLV führt seit dem 1. Juli 1994, Baldrian
+tritt am 1. Januar 2026 ein, also mitten im laufenden Betrieb. Die Engine
+trägt das ohnehin: Sie simuliert einen übernommenen Vertrag erst ab seinem
+Bestandszugang, weil alles davor beim abgebenden Unternehmen geschah. Vor
+dem ersten geführten Tag gäbe es keine Bücher, in die ein Bestand
+eintreten könnte; nach heute ist nichts geschehen, was zu buchen wäre.
+
 Der zweite Baldrian-Lauf hat den übernommenen Bestand als
 `abgeleitet/bestand-nach/` hinterlassen (Stamm, Historie, Ledger mit
 ZUG-/PEX-Umbuchungen zum Stichtag, Merkmale). ADR-015 legt fest, dass ein
@@ -303,8 +312,38 @@ wie ADR-011 es verlangt — der Tagesbetrieb schreibt nichts um.
 
 Das Repository liefert unter `deploy/plv/` Compose-Datei, Timer, Service
 und eine README mit dem Einrichtungsweg; die Laufzeitumgebung selbst ist
-kein Repo-Inhalt. Erstbefüllung: Basisbestand aus der Config (einmalig
-bis zum Vortag des Betriebsbeginns) plus Übernahme-Eingang.
+kein Repo-Inhalt. Erstbefüllung: Basisbestand aus der Config (einmalig bis
+zum Betriebsbeginn) plus Übernahme-Eingänge plus der Tagesstrom seither.
+
+Der `betriebsbeginn` der Config ist die **Erzeugungsgrenze**: Bis zu ihr
+stellt der Batch-Erzeuger den Bestand, danach der Tagesstrom — ein
+Erzeuger je Zeitfenster. Beide beschreiben dieselbe Generation: Das
+Jahresziel (`neuzugang_pro_jahr`, konstant über das Verkaufsfenster) ist
+die Dichte, die auch der Batch zieht (`sample_size` über die
+Fensterjahre). Wo die Grenze liegt, ändert deshalb nicht die Größe des
+Bestands, sondern nur, welcher Erzeuger ihn aufgebaut hat. Die PLV setzt
+sie an den Anfang ihrer Geschichte (1994-07-01): Der Batch zieht nichts,
+jeder Vertrag entsteht Werktag für Werktag, und kein Bericht kennt einen
+Zeitraum "vor dem Betriebsbeginn". Eine vollständige Neugenerierung ist
+damit ein Neuaufsetzen (Abschnitt 8.5) und ein Lauf: rund eine
+Viertelstunde, davon der größte Teil die Monatsabschlüsse seit 1994.
+
+### 8.2a Der Betriebsbericht kennt keine Prognose
+
+Der Bestandsbericht des Monatsabschlusses endet am **Berichtsstichtag**:
+Er zeigt die geführte Geschichte des Bestands bis dahin — Zugang, Bewegung
+und Abgang, wie sie gebucht wurden — und nichts darüber hinaus. Das ist
+keine weggelassene Prognose, sondern eine andere Aussage: Der Betrieb
+kennt die Zukunft nicht, er entdeckt sie jeden Tag neu. Eine
+Prognosekurve wäre hier eine Behauptung über Tage, die noch nicht
+stattgefunden haben.
+
+Der Fallbericht behält seine Projektion. Im Migrationsfall IST der
+prognostizierte Verlauf der Gegenstand: Er zeigt, wie sich der
+übernommene Bestand nach der Migration entwickelt. Beide Formen sind
+derselbe Renderer mit zwei verschiedenen Fragen, und sie schließen
+einander aus — `berichtsstichtag` für den Betrieb, `stichtag` plus `bis`
+für den Fall.
 
 ### 8.3 Vorzeigeseite aus der Laufzeitumgebung
 

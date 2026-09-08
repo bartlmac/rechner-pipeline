@@ -72,18 +72,24 @@ def test_block_traegt_jede_generation_und_die_wechsel(config):
     assert "| KLV-2007 → KLV-2008 | tafel DAV1994_T → DAV2008_T; policy_fee 24 → 30 |" in klv
     assert "| KLV-2022 → KLV-2025 | zins 0.25% → 1.00% |" in klv
     assert "| BU-2017 → BU-2025 | zins 0.90% → 1.00% |" in bu
-    # Vertrieb: Batch, Jahresziel mit Trend, uebernommen.
-    assert "| Batch 600 |" in klv
+    # Vertrieb: Seit dem Betriebsbeginn 1994 traegt JEDE verkaufende
+    # Generation beides — die Batch-Menge und das Jahresziel, das dieselbe
+    # Dichte beschreibt. Nur die uebernommene Generation verkauft nicht.
+    assert "| Batch 600; Neugeschäft 100/Jahr |" in klv
     assert "Neugeschäft 120/Jahr, Trend -4%/Jahr" in klv
+    assert "| Batch 500; Neugeschäft 29/Jahr |" in bu
     assert "übernommen" in klv
 
 
 def test_einsetzen_ersetzt_genau_den_block(config, tmp_path):
     block = erzeuge_block(config, "bu", CONFIG)
     text = "# 13 Titel\n\nProsa davor.\n\n" + block + "\nProsa danach.\n"
-    neu = einsetzen(text, block.replace("| Batch 500 |", "| Batch 501 |"))
+    geaendert = block.replace("| Batch 500; Neugeschäft 29/Jahr |",
+                              "| Batch 501; Neugeschäft 29/Jahr |")
+    assert geaendert != block
+    neu = einsetzen(text, geaendert)
     assert "Batch 501" in neu and "Prosa davor." in neu and "Prosa danach." in neu
-    assert block_in_datei(neu) == block.replace("| Batch 500 |", "| Batch 501 |")
+    assert block_in_datei(neu) == geaendert
     with pytest.raises(ValueError, match="keinen erzeugten Block"):
         einsetzen("nur Prosa", block)
     pfad = tmp_path / "bu.md"

@@ -26,12 +26,14 @@ PLV = REPO_ROOT / "configs" / "bestand_gesamt.toml"
 
 
 def _ablage(wurzel: Path) -> Ablage:
+    """Die schnelle Testwelt von :func:`tests.test_betrieb_tageslauf._kleine_config`
+    — eine Fassung, nicht zwei: acht Vertraege je Generation und die
+    Erzeugungsgrenze am 1.1.2026 statt am Betriebsbeginn 1994 der echten PLV."""
+    from tests.test_betrieb_tageslauf import _kleine_config
+
     ablage = Ablage(wurzel)
     ablage.configs.mkdir(parents=True, exist_ok=True)
-    text = PLV.read_text(encoding="utf-8")
-    ablage.config_pfad.write_text(
-        re.sub(r"^sample_size = [1-9]\d*$", "sample_size = 8", text, flags=re.M),
-        encoding="utf-8")
+    ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
     return ablage
 
 

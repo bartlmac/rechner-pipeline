@@ -203,8 +203,8 @@ Vorgängergeneration), bis das Aktuariat der Vorzeige sie festlegt
 <!-- erzeugt: python -m rechner_pipeline.bestand.tarifplan_tabellen --config configs/bestand_gesamt.toml --produkt bu -->
 | Knoten | Name | gültig | Zins | Tafeln (aktiv/i/ri/ti) | Zuschlag | Vertrieb |
 |---|---|---|---|---|---|---|
-| `bu/plv_2000` | BU-2000 | 2000-01–2016-12 | 1.75% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 | Batch 500 |
-| `bu/plv_2017` | BU-2017 | 2017-01–2024-12 | 0.90% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 | Batch 240 |
+| `bu/plv_2000` | BU-2000 | 2000-01–2016-12 | 1.75% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 | Batch 500; Neugeschäft 29/Jahr |
+| `bu/plv_2017` | BU-2017 | 2017-01–2024-12 | 0.90% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 | Batch 240; Neugeschäft 30/Jahr |
 | `bu/plv_2025` | BU-2025 | 2025-01–2035-12 | 1.00% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 | Batch 330; Neugeschäft 30/Jahr, Trend -3%/Jahr |
 
 Was sich von Generation zu Generation ändert (verkaufende Generationen in Verkaufsreihenfolge; leer heißt: nur das Fenster):

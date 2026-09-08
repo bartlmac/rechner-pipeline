@@ -67,8 +67,19 @@ docker image inspect ghcr.io/<owner>/rechner-pipeline-plv:latest \
 **Erstbefuellung.** Der erste Lauf baut den Basisbestand aus der Config
 (Batch bis zum Betriebsbeginn), nimmt die Uebernahme-Eingaenge auf und
 holt alle Tage vom Betriebsbeginn bis heute in EINEM Lauf nach — der
-Stand ist derselbe, als haette der Lauf jede Nacht stattgefunden. Vor
-dem Timer einmal von Hand fahren und das Protokoll lesen:
+Stand ist derselbe, als haette der Lauf jede Nacht stattgefunden. Die PLV
+fuehrt seit dem 1. Juli 1994: Der Batch zieht nichts, jeder Vertrag
+entsteht aus dem Tagesstrom, und der Lauf schreibt jeden Monatsabschluss
+seit damals fest. Das dauert rund eine Viertelstunde und geschieht genau
+einmal je Ablage; jeder weitere Lauf findet die Abschluesse vor und
+rechnet sie nicht neu.
+
+Was JEDER Lauf tut, auch der naechtliche: Er zieht den Tagesstrom seit dem
+Betriebsbeginn neu und schreibt den Bestand von dort bis heute fort — der
+Stand entsteht jede Nacht aus derselben deterministischen Geschichte, nicht
+aus dem Stand von gestern. Das kostet derzeit rund eine halbe Minute und
+waechst mit der Geschichte des Unternehmens; nur die Monatsabschluesse sind
+einmalig. Vor dem Timer einmal von Hand fahren und das Protokoll lesen:
 
 ```
 cd ~/apps/plv && docker compose run --rm tageslauf

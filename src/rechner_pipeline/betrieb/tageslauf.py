@@ -334,6 +334,27 @@ def monatserste_in(von_exklusiv: _dt.date, bis_inklusiv: _dt.date) -> List[_dt.d
 # --------------------------------------------------------------------------- #
 
 
+def _festgeschriebene_abschluesse(ablage: Ablage) -> List[_dt.date]:
+    """Die Stichtage der bereits festgeschriebenen Monatsabschluesse."""
+    if not ablage.abschluesse.is_dir():
+        return []
+    tage: List[_dt.date] = []
+    for pfad in ablage.abschluesse.glob("abschluss_*.parquet"):
+        try:
+            tage.append(_dt.date.fromisoformat(pfad.stem[len("abschluss_"):]))
+        except ValueError:
+            continue
+    return sorted(tage)
+
+
+def _bereits_gefuehrte_eingaenge(ablage: Ablage) -> set:
+    """Die Faelle, die der letzte gruene Lauf schon gefuehrt hat."""
+    gruene = [z for z in lies_protokoll(ablage.protokoll_pfad) if z.get("uebernommen")]
+    if not gruene:
+        return set()
+    return {str(u.get("fall")) for u in gruene[-1].get("uebernahmen", [])}
+
+
 def _stand_bauen(
     config: BestandConfig, config_pfad: Path, ablage: Ablage, heute: _dt.date
 ) -> Tuple[Path, Dict[str, Any]]:
@@ -355,13 +376,47 @@ def _stand_bauen(
     schichten: Optional[pd.DataFrame] = None
     historie_voran: List[pd.DataFrame] = []
     ledger_voran: List[pd.DataFrame] = []
+    # Ein NEUER Eingang darf nicht hinter einen festgeschriebenen Abschluss
+    # zurueckreichen (ADR-011: genau einmal, nie ueberschrieben). Sonst
+    # traegt die Gegenwart den uebernommenen Bestand und die eingefrorene
+    # Vergangenheit nicht — ein Bilanzwert, der sich rueckwirkend bewegt
+    # haette, wenn er duerfte. Schon gefuehrte Eingaenge sind davon nicht
+    # betroffen: Ihre Abschluesse kennen sie.
+    schon_gefuehrt = _bereits_gefuehrte_eingaenge(ablage)
+    abschluesse_bisher = _festgeschriebene_abschluesse(ablage)
+    juengster_abschluss = abschluesse_bisher[-1] if abschluesse_bisher else None
     for ueb in uebernahmen:
-        if ueb.stichtag > betriebsbeginn:
+        # Ein Zugang gehoert in die GEFUEHRTE ZEIT: nicht vor den ersten Tag,
+        # den das Unternehmen fuehrt (davor gibt es keine Buecher, in die er
+        # eintreten koennte), und nicht in die Zukunft (gebucht wird, was
+        # geschehen ist). Dazwischen ist er frei — auch mitten im Betrieb.
+        # Vorher stand hier "hoechstens am Betriebsbeginn". Das war eine
+        # Regel der Ablauforganisation, keine des Modells: Die Engine
+        # simuliert einen uebernommenen Vertrag ohnehin erst ab seinem
+        # Bestandszugang (ereignisse._zugangslage), weil alles davor beim
+        # abgebenden Unternehmen geschah — ein Zugang mitten im Betrieb
+        # rechnet damit richtig, er war nur verboten.
+        if not betriebsbeginn <= ueb.stichtag <= heute:
             raise TageslaufError(
                 f"uebernahme {ueb.fall}: Stichtag {ueb.stichtag.isoformat()} "
-                f"liegt nach dem Betriebsbeginn {betriebsbeginn.isoformat()} — "
-                "ein Zugang waehrend des Betriebs ist im Tagesbetrieb nicht "
-                "vorgesehen (Konzept, Abschnitt 6)"
+                "liegt ausserhalb der gefuehrten Zeit "
+                f"[{betriebsbeginn.isoformat()}, {heute.isoformat()}] — ein "
+                "Bestand tritt in Buecher ein, die es schon gibt, und an "
+                "einem Tag, der geschehen ist"
+            )
+        if (
+            ueb.fall not in schon_gefuehrt
+            and juengster_abschluss is not None
+            and juengster_abschluss >= ueb.stichtag
+        ):
+            raise TageslaufError(
+                f"uebernahme {ueb.fall}: Stichtag {ueb.stichtag.isoformat()} "
+                f"liegt nicht nach dem juengsten festgeschriebenen "
+                f"Monatsabschluss {juengster_abschluss.isoformat()} — dieser "
+                "Abschluss kennt den Bestand nicht und wird nie neu gerechnet "
+                "(ADR-011). Der Zugang gehoert in die noch offene Zeit; soll "
+                "er weiter zurueckreichen, wird die Ablage aus dem Fall neu "
+                "aufgesetzt (betrieb.neuaufsetzen)"
             )
         basis = _zusammen(basis, ueb.bestand)
         historie_voran.append(ueb.historie)
@@ -703,7 +758,12 @@ def _bericht(
         scheiben=tabellen["scheiben"],
         merkmale=tabellen.get("merkmale"),
         bis=heute,
-        stichtag=stichtag,
+        # Betriebsbericht: Stand der Fuehrung bis zum Stichtag, keine
+        # Projektion. Der Betrieb kennt die Zukunft nicht — er entdeckt sie
+        # taeglich; eine Prognosekurve waere hier eine Behauptung ueber Tage,
+        # die noch nicht stattgefunden haben. Der Fallbericht behaelt seine
+        # Projektion (dort ist sie der Gegenstand).
+        berichtsstichtag=stichtag,
         schichten=tabellen.get("schichten"),
         verankerung=tabellen.get("verankerung"),
     )

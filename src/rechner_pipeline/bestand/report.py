@@ -801,6 +801,7 @@ def render_html(
     stichtag: Optional[_dt.date] = None,
     schichten: Optional[pd.DataFrame] = None,
     verankerung: Optional[pd.DataFrame] = None,
+    berichtsstichtag: Optional[_dt.date] = None,
 ) -> str:
     """Rendert den vollständigen Bericht als selbst-enthaltenes HTML.
 
@@ -819,7 +820,32 @@ def render_html(
     die Nachweisungen in **Historie** (Bestandsaufbau bis zum Stichtag) und
     **Prognose** (Entwicklung danach) — in den Tabellen als Trennzeile, in
     den Grafiken als senkrechte Linie.
+
+    ``berichtsstichtag`` schaltet den BETRIEBSBERICHT: Der Bericht endet am
+    Stichtag, bis zu dem geführt wurde, und zeigt keine Projektion. Das ist
+    kein Weglassen der Prognose, sondern eine andere Aussage — der Betrieb
+    kennt die Zukunft nicht, er entdeckt sie täglich. Historie/Prognose-Linie,
+    Trennzeile, Prognose-Zugangstext und der Projektionshorizont entfallen
+    damit; das Stichtagsraster endet am Berichtsstichtag. Der Fallbericht
+    behält seine Projektion (``stichtag`` plus ``bis``): dort IST sie der
+    Gegenstand. Beides zugleich ist ein Fehler, kein Vorrang.
     """
+    if berichtsstichtag is not None:
+        if stichtag is not None:
+            raise ValueError(
+                "berichtsstichtag und stichtag schliessen sich aus — entweder "
+                "der Betriebsbericht (Stand der Fuehrung, keine Projektion) "
+                "oder der Fallbericht (Historie und Prognose)"
+            )
+        if bis is not None and bis < berichtsstichtag:
+            raise ValueError(
+                f"berichtsstichtag {berichtsstichtag.isoformat()} liegt nach "
+                f"dem Fortschreibungshorizont {bis.isoformat()} — der Bericht "
+                "kann nicht weiter reichen als der Lauf"
+            )
+        # Der Bericht endet am Berichtsstichtag: dasselbe Datum begrenzt das
+        # Stichtagsraster, das sonst dem Horizont folgt.
+        bis = berichtsstichtag
     if (historie is None) != (ledger is None):
         raise ValueError(
             "historie und ledger gehoeren zusammen (ein fortschreiben-Lauf) — "
@@ -893,7 +919,7 @@ def render_html(
     # Struktur am Referenzstichtag (sonst am Bestands-Hoechststand): der
     # Bericht ist ein Stichtagsbericht, und beide Darstellungen muessen
     # denselben Schnitt zeigen.
-    struktur_stichtag = stichtag or _dt.date.fromisoformat(
+    struktur_stichtag = stichtag or berichtsstichtag or _dt.date.fromisoformat(
         hoechststand["stichtag"]
     )
     scheibe = schnitt_am(bestand, struktur_stichtag)
@@ -1021,10 +1047,13 @@ def render_html(
 
     kopf_html = "\n".join(
         f"<li>{_html.escape(z)}</li>"
-        for z in kopfzeilen(df, generationen, stichtage, stichtag, bis, quelle_hash)
+        for z in kopfzeilen(df, generationen, stichtage, stichtag, bis, quelle_hash,
+                            berichtsstichtag=berichtsstichtag)
     )
     stichtag_absatz = (
-        f"<p>{TEXTE['stichtag']}</p>" if stichtag is not None else ""
+        f"<p>{TEXTE['berichtsstichtag']}</p>" if berichtsstichtag is not None
+        else f"<p>{TEXTE['stichtag']}</p>" if stichtag is not None
+        else ""
     )
     generationen_html = _generationen_uebersicht_html(config, df)
     # Referenzstichtag und Geschaeftsvorfall-Zaehler standen hier einmal
@@ -1233,7 +1262,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 {auswertung_html}
 
 <h2>Zur Lesart</h2>
-<p>{TEXTE["lesart"]}</p>
+<p>{TEXTE["lesart_betrieb"] if berichtsstichtag is not None else TEXTE["lesart"]}</p>
 
 <footer>
 Erzeugt mit <code>python -m rechner_pipeline.bestand.cli_report</code>
