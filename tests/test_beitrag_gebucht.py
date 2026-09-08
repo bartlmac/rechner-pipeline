@@ -244,3 +244,43 @@ def test_wer_vorfaelle_meint_zaehlt_vorfaelle(tmp_path):
     modell = stand_modell(ablage)
     assert modell["buchungen"]["je_ereignis"]["ZUG"] == zug_vorfaelle
     assert modell["neugeschaeft"]["woche_summe"] <= zug_vorfaelle
+
+
+def test_das_inventar_ist_vollstaendig(tmp_path):
+    """Die Zaehlstellen des Betriebs, an EINEM Lauf gemessen.
+
+    Das erste Inventar (groupby/size/value_counts) uebersah `gevos`, weil
+    dort schlicht len(ledger) stand — das Muster war zu eng. Vollstaendig
+    ist es erst ueber JEDE Laenge auf Ledger und Journal. Diese Zahl steht
+    in der Protokollzeile zwischen lauter Stueckzahlen und ist verkettet:
+    Was der erste Lauf dort schreibt, steht dort fuer immer.
+
+    Die Regel, die dieser Test festhaelt: Jede Zahl heisst, was sie zaehlt.
+    Vorfaelle heissen gevos, je_ereignis, neugeschaeft; Zeilen heissen
+    gebucht, zeilen_gesamt, buchungen.gesamt.
+
+    Mutationsprobe: eine der Vorfall-Zahlen wieder ueber Zeilen zaehlen ->
+    sie springt ueber die Zahl der Vorfaelle."""
+    import datetime as _dt
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.betrieb.seite import stand_modell
+    from rechner_pipeline.betrieb.tageslauf import EXIT_OK, lies_protokoll, tageslauf
+    from tests.test_betrieb_seite import _ablage
+
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, _dt.date(2026, 2, 3))[0] == EXIT_OK
+    zeile = lies_protokoll(ablage.protokoll_pfad)[-1]
+    ledger = read_portfolio(ablage.stand / "ledger.parquet")
+    journal = read_portfolio(ablage.tagesjournal_pfad)
+    schluessel = ["police_id", "ereignis", "status_date"]
+    ledger_vorfaelle = ledger[schluessel].drop_duplicates().shape[0]
+    assert ledger_vorfaelle < len(ledger), "ohne zwei Zeilen je Vorfall prueft der Test nichts"
+
+    # Vorfall-Zahlen:
+    assert zeile["gevos"] == ledger_vorfaelle
+    assert sum(zeile["tagesjournal"]["je_ereignis"].values()) == \
+        journal[schluessel].drop_duplicates().shape[0]
+    # Zeilen-Zahlen, die auch so heissen:
+    assert zeile["tagesjournal"]["zeilen_gesamt"] == len(journal)
+    assert stand_modell(ablage)["buchungen"]["gesamt"] == len(journal)

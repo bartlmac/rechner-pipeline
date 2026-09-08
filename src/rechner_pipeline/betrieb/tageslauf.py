@@ -499,7 +499,13 @@ def _stand_bauen(
         "basisvertraege": int(len(basis)),
         "uebernommene_vertraege": int(sum(len(u.bestand) for u in uebernahmen)),
         "neugeschaeft_seit_betriebsbeginn": int(len(zugaenge)),
-        "gevos": int(len(ledger)),
+        # GeVo heisst Geschaeftsvorfall, und die Zahl steht zwischen lauter
+        # Stueckzahlen — also werden Vorfaelle gezaehlt, nicht Buchungszeilen.
+        # Ueber len(ledger) gemeldet, ueberzeichnete sie den Lauf um jede
+        # zweite Zugangs- und Erhoehungszeile (auf dem Messstand um 85 %).
+        # Was Zeilen meint, heisst im Protokoll gebucht und zeilen_gesamt.
+        "gevos": int(ledger[["police_id", "ereignis", "status_date"]]
+                     .drop_duplicates().shape[0]),
         "erhoehungsscheiben": int(len(scheiben)),
         # Stufe 1 von T22-11: ausgewiesen, nicht angewandt.
         "verankerung": {
