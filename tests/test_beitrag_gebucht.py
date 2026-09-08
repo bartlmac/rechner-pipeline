@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+import pandas as pd
 import pytest
 
 from rechner_pipeline.bestand.config import load_config
@@ -155,3 +156,91 @@ def test_gezaehlt_werden_vorfaelle_nicht_zeilen(lauf):
         ["police_id", "status_date"]].drop_duplicates()
     assert gezaehlt == len(vorfaelle)
     assert gezaehlt * 2 == int((erg.ledger["ereignis"] == "ZUG").sum())
+
+
+# --------------------------------------------------------------------------- #
+# Wer die Buchungen anzeigt, zeigt Verkaeufe — und die Ordnung ist der Schluessel
+# --------------------------------------------------------------------------- #
+
+def test_die_seite_meldet_verkaeufe_nicht_journalzeilen(tmp_path):
+    """Die vierte Stelle derselben Bauform (Testat der merge-session): Die
+    Seite zaehlte Journalzeilen. Seit ein Zugang zwei Zeilen bucht, haette
+    sie doppelt so viel Neugeschaeft gemeldet, wie es Vertraege gab — eine
+    Behauptung ueber Verkaeufe, die es nicht gab.
+
+    Mutationsprobe: in seite.stand_modell wieder ueber die Zeilen zaehlen
+    (size() statt der entdoppelten Vorfaelle) -> dieser Test faellt."""
+    import datetime as _dt
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.betrieb.seite import stand_modell
+    from rechner_pipeline.betrieb.tageslauf import EXIT_OK, tageslauf
+    from tests.test_betrieb_seite import _ablage
+
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, _dt.date(2026, 2, 3))[0] == EXIT_OK
+    modell = stand_modell(ablage)
+    journal = read_portfolio(ablage.tagesjournal_pfad)
+    woche_ab = pd.Timestamp(_dt.date(2026, 2, 3) - _dt.timedelta(days=6))
+    neu = journal[(journal["herkunft"] == "neugeschaeft")
+                  & (journal["buchungsdatum"] >= woche_ab)]
+    vorfaelle = neu[["police_id", "status_date"]].drop_duplicates()
+    assert len(vorfaelle) < len(neu), "ohne zwei Zeilen je Zugang prueft der Test nichts"
+    assert set(neu["betrag_art"]) == {"VS", "BJB"}
+    assert modell["neugeschaeft"]["woche_summe"] == len(vorfaelle)
+    assert sum(modell["neugeschaeft"]["woche"].values()) == len(vorfaelle)
+
+
+def test_die_ordnung_des_journals_ist_der_ganze_schluessel(lauf):
+    """Das Journal wird gehasht (tagesjournal_sha256 in Protokollzeile und
+    Stands-Paket). Eine Serialisierung, die nur bis zum Wirkungstag
+    sortiert, erbt die Reihenfolge der zwei Zeilen eines Vorfalls vom
+    Ledger, statt sie herzustellen.
+
+    Mutationsprobe: betrag_art aus der Sortierliste nehmen -> derselbe
+    Ledger in anderer Zeilenfolge ergibt ein anderes Journal."""
+    from rechner_pipeline.betrieb.tagesjournal import mit_buchungstagen
+
+    config, _, erg = lauf
+    vorwaerts = mit_buchungstagen(config, erg.ledger)
+    rueckwaerts = mit_buchungstagen(config, erg.ledger.iloc[::-1].reset_index(drop=True))
+    pd.testing.assert_frame_equal(vorwaerts, rueckwaerts)
+
+
+def test_wer_vorfaelle_meint_zaehlt_vorfaelle(tmp_path):
+    """Das Inventar der Klasse (Empfehlung der merge-session): Nicht die
+    Module, die RECHNEN, sind die Gefahr, sondern die, die ZAEHLEN.
+
+    Ein Zugang bucht zwei Zeilen. Wer nach Vertraegen fragt — wie viele
+    Zugaenge, wie viele Verkaeufe —, muss Vorfaelle zaehlen; wer nach
+    Buchungen fragt, Zeilen. Beides gibt es, und beides muss beim Namen
+    genannt sein. Geprueft an allen drei Zaehlstellen des Betriebs auf
+    einem echten Lauf.
+
+    Mutationsprobe: an einer der Stellen wieder ueber die Zeilen zaehlen
+    -> die Zahl verdoppelt sich gegenueber den Vorfaellen."""
+    import datetime as _dt
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.betrieb.seite import stand_modell
+    from rechner_pipeline.betrieb.tageslauf import EXIT_OK, lies_protokoll, tageslauf
+    from tests.test_betrieb_seite import _ablage
+
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, _dt.date(2026, 2, 3))[0] == EXIT_OK
+    journal = read_portfolio(ablage.tagesjournal_pfad)
+    vorfaelle = journal[["police_id", "ereignis", "status_date"]].drop_duplicates()
+    assert len(vorfaelle) < len(journal), "ohne zwei Zeilen je Zugang prueft der Test nichts"
+    zug_vorfaelle = int((vorfaelle["ereignis"] == "ZUG").sum())
+    assert zug_vorfaelle * 2 == int((journal["ereignis"] == "ZUG").sum())
+
+    # (1) Die Protokollzeile: Buchungen sind Zeilen, Ereignisse sind Vorfaelle.
+    zeile = lies_protokoll(ablage.protokoll_pfad)[-1]
+    tj = zeile["tagesjournal"]
+    assert tj["zeilen_gesamt"] == len(journal)
+    assert tj["je_ereignis"].get("ZUG", 0) <= zug_vorfaelle
+
+    # (2) und (3) Die Seite: Wochenzahl und Ereignistafel zaehlen Vorfaelle.
+    modell = stand_modell(ablage)
+    assert modell["buchungen"]["je_ereignis"]["ZUG"] == zug_vorfaelle
+    assert modell["neugeschaeft"]["woche_summe"] <= zug_vorfaelle

@@ -213,9 +213,10 @@ def mit_buchungstagen(config: BestandConfig, ledger: pd.DataFrame) -> pd.DataFra
     if len(ledger) and ledger[list(SCHLUESSEL)].duplicated().any():
         doppelt = ledger[ledger[list(SCHLUESSEL)].duplicated()].iloc[0]
         raise TagesjournalError(
-            "ledger: Schluessel (police_id, ereignis, status_date) nicht "
-            f"eindeutig, z. B. police {int(doppelt['police_id'])} "
-            f"{doppelt['ereignis']} {pd.Timestamp(doppelt['status_date']).date()}"
+            f"ledger: Schluessel {SCHLUESSEL} nicht eindeutig, z. B. police "
+            f"{int(doppelt['police_id'])} {doppelt['ereignis']} "
+            f"{pd.Timestamp(doppelt['status_date']).date()} "
+            f"{doppelt['betrag_art']}"
         )
     zeilen: List[Dict[str, Any]] = []
     for z in ledger.itertuples(index=False):
@@ -234,8 +235,14 @@ def mit_buchungstagen(config: BestandConfig, ledger: pd.DataFrame) -> pd.DataFra
     if not zeilen:
         return leeres_tagesjournal()
     df = pd.DataFrame(zeilen)[list(TAGESJOURNAL_NAMES)].astype(dict(TAGESJOURNAL_SPALTEN))
+    # Nach Buchungstag, dann den VOLLEN Schluessel: Zwei Zeilen desselben
+    # Vorfalls (Summe und Beitrag) unterscheiden sich nur in der
+    # Betragsart. Ohne sie stellte die Sortierung ihre Reihenfolge nicht
+    # her, sondern erbte sie vom Ledger — und das Journal wird gehasht
+    # (tagesjournal_sha256 in Protokollzeile und Stands-Paket). Eine
+    # Serialisierung, die nicht vollstaendig sortiert, ist keine.
     return df.sort_values(
-        ["buchungsdatum", "police_id", "ereignis", "status_date"], kind="stable"
+        ["buchungsdatum", *SCHLUESSEL], kind="stable"
     ).reset_index(drop=True)
 
 

@@ -114,9 +114,15 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
     )
     woche_ab = pd.Timestamp(heute - _dt.timedelta(days=6))
     neu = journal[(journal["herkunft"] == "neugeschaeft") & (journal["buchungsdatum"] >= woche_ab)]
+    # Gezaehlt werden VERKAEUFE, nicht Journalzeilen: Ein Zugang bucht seit
+    # dem gebuchten Beitrag zwei Zeilen (Summe und Bruttojahresbeitrag).
+    # Ueber size() gemeldet, waere das Neugeschaeft der Woche doppelt so
+    # gross wie die Zahl der Vertraege — die Seite behauptete Verkaeufe,
+    # die es nicht gab.
+    neu_vorfaelle = neu[["police_id", "status_date", "buchungsdatum"]].drop_duplicates()
     je_tag = {
         pd.Timestamp(t).date().isoformat(): int(n)
-        for t, n in sorted(neu.groupby("buchungsdatum").size().items())
+        for t, n in sorted(neu_vorfaelle.groupby("buchungsdatum").size().items())
     }
     letzte = journal.tail(20).iloc[::-1]
     buchungen = [
@@ -131,8 +137,15 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
         }
         for z in letzte.itertuples(index=False)
     ]
+    # Je Vorfall EINE Zaehlung: Wer liest, wie viele Zugaenge es gab, fragt
+    # nach Vertraegen, nicht nach Buchungszeilen (ein Zugang bucht Summe und
+    # Beitrag).
     je_ereignis = {
-        str(k): int(v) for k, v in sorted(journal["ereignis"].value_counts().items())
+        str(k): int(v)
+        for k, v in sorted(
+            journal[["police_id", "ereignis", "status_date"]]
+            .drop_duplicates()["ereignis"].value_counts().items()
+        )
     } if len(journal) else {}
     # Abschluesse: aus allen uebernommenen Protokollzeilen, je Stichtag einmal.
     abschluesse: Dict[str, Dict[str, Any]] = {}
@@ -158,7 +171,7 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
         "neugeschaeft": {
             "seit_betriebsbeginn": int(zeile.get("neugeschaeft_seit_betriebsbeginn", 0)),
             "woche": je_tag,
-            "woche_summe": int(len(neu)),
+            "woche_summe": int(len(neu_vorfaelle)),
         },
         "buchungen": {
             "gesamt": int(len(journal)),

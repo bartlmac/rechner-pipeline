@@ -916,12 +916,23 @@ def _tageslauf(
                 journal, tabellen["ledger"], config, heute, ab_tag=betriebsbeginn)
             if befunde_journal:
                 raise TagesjournalError("; ".join(befunde_journal[:5]))
+            # "gebucht" und "zeilen_gesamt" zaehlen BUCHUNGEN (Zeilen) — ein
+            # Zugang bucht seit dem gebuchten Beitrag zwei. "je_ereignis" und
+            # "neugeschaeft" zaehlen VORFAELLE, denn wer sie liest, fragt
+            # nach Vertraegen: Wie viele Zugaenge, wie viele Verkaeufe.
+            # Beides ueber Zeilen zu zaehlen hiesse, doppelt so viel Geschaeft
+            # zu melden, wie es gab.
+            neu_vorfaelle = neu[["police_id", "ereignis", "status_date", "herkunft"]] \
+                .drop_duplicates() if len(neu) else neu
             zeile["tagesjournal"] = {
                 "gebucht": int(len(neu)),
                 "je_ereignis": {
-                    str(k): int(v) for k, v in sorted(neu["ereignis"].value_counts().items())
+                    str(k): int(v)
+                    for k, v in sorted(neu_vorfaelle["ereignis"].value_counts().items())
                 } if len(neu) else {},
-                "neugeschaeft": int((neu["herkunft"] == "neugeschaeft").sum()) if len(neu) else 0,
+                "neugeschaeft": int(
+                    (neu_vorfaelle["herkunft"] == "neugeschaeft").sum()
+                ) if len(neu) else 0,
                 "zeilen_gesamt": int(len(journal)),
             }
             # Bestandszahlen am gefuehrten Tag.
