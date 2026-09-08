@@ -68,8 +68,9 @@ docker image inspect ghcr.io/<owner>/rechner-pipeline-plv:latest \
 (Batch bis zum Betriebsbeginn), nimmt die Uebernahme-Eingaenge auf und
 holt alle Tage vom Betriebsbeginn bis heute in EINEM Lauf nach — der
 Stand ist derselbe, als haette der Lauf jede Nacht stattgefunden. Die PLV
-fuehrt seit dem 1. Juli 1994: Der Batch zieht nichts, jeder Vertrag
-entsteht aus dem Tagesstrom, und der Lauf schreibt jeden Monatsabschluss
+fuehrt seit dem 1. Juli 1994: Der Batch zieht nur den Grenztag selbst
+(fuenf Vertraege mit Beginn am 1. Juli), jeder weitere entsteht aus dem
+Tagesstrom, und der Lauf schreibt jeden Monatsabschluss
 seit damals fest. Das dauert rund eine Viertelstunde und geschieht genau
 einmal je Ablage; jeder weitere Lauf findet die Abschluesse vor und
 rechnet sie nicht neu.

@@ -322,8 +322,9 @@ Jahresziel (`neuzugang_pro_jahr`, konstant über das Verkaufsfenster) ist
 die Dichte, die auch der Batch zieht (`sample_size` über die
 Fensterjahre). Wo die Grenze liegt, ändert deshalb nicht die Größe des
 Bestands, sondern nur, welcher Erzeuger ihn aufgebaut hat. Die PLV setzt
-sie an den Anfang ihrer Geschichte (1994-07-01): Der Batch zieht nichts,
-jeder Vertrag entsteht Werktag für Werktag, und kein Bericht kennt einen
+sie an den Anfang ihrer Geschichte (1994-07-01): Der Batch zieht nur die
+Verträge des Grenztages selbst (fünf mit Beginn am 1. Juli 1994), jeder
+weitere entsteht Werktag für Werktag, und kein Bericht kennt einen
 Zeitraum "vor dem Betriebsbeginn". Eine vollständige Neugenerierung ist
 damit ein Neuaufsetzen (Abschnitt 8.5) und ein Lauf: rund eine
 Viertelstunde, davon der größte Teil die Monatsabschlüsse seit 1994.

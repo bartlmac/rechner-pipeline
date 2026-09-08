@@ -11,8 +11,11 @@ GEFUEHRTEN ZEIT, also zwischen dem ersten gefuehrten Tag und heute.
 Damit faellt auch die Kopplung, die der Betriebsbeginn getragen hat. Er ist
 nur noch die ERZEUGUNGSGRENZE: Der Batch stellt den Bestand bis zu ihr, der
 Tagesstrom danach. Die PLV setzt sie an den Anfang ihrer Geschichte
-(1994-07-01) — der Batch zieht nichts, der Bestand entsteht Werktag fuer
-Werktag, und kein Bericht kennt mehr einen Zeitraum "vor dem Betriebsbeginn".
+(1994-07-01) — der Batch zieht nur den Grenztag selbst, der Bestand
+entsteht Werktag fuer Werktag, und kein Bericht kennt mehr einen Zeitraum
+"vor dem Betriebsbeginn". Gemessen am echten Lauf vom 2026-09-08: 3330
+Vertraege Eigengeschaeft, davon 3325 aus dem Tagesstrom und fuenf aus dem
+Batch (Beginn am 1. Juli 1994).
 
 Knoten: system/betrieb
 """
@@ -111,8 +114,8 @@ def test_ein_zugang_ausserhalb_der_gefuehrten_zeit_wird_verweigert(
 # --------------------------------------------------------------------------- #
 
 def test_die_plv_beginnt_1994_und_zieht_ihren_bestand_taeglich():
-    """Liegt die Erzeugungsgrenze am Anfang der Geschichte, zieht der Batch
-    nichts: Jeder Vertrag entsteht aus dem Tagesstrom."""
+    """Liegt die Erzeugungsgrenze am Anfang der Geschichte, bleibt dem Batch
+    nur der Grenztag: Jeder weitere Vertrag entsteht aus dem Tagesstrom."""
     config = load_config(PLV)
     beginn = config.tagesbetrieb.betriebsbeginn
     assert beginn == dt.date(1994, 7, 1)

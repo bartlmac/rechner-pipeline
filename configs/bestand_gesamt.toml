@@ -38,7 +38,8 @@ sample_size = 600
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 100
@@ -117,7 +118,8 @@ sample_size = 280
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 80
@@ -191,7 +193,8 @@ sample_size = 260
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 87
@@ -265,7 +268,8 @@ sample_size = 70
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 70
@@ -339,7 +343,8 @@ sample_size = 300
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 75
@@ -413,7 +418,8 @@ sample_size = 240
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 80
@@ -487,7 +493,8 @@ sample_size = 180
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 90
@@ -561,7 +568,8 @@ sample_size = 250
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 50
@@ -637,7 +645,8 @@ sample_size = 150
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 50
@@ -795,7 +804,8 @@ sample_size = 500
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 29
@@ -868,7 +878,8 @@ sample_size = 240
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
 # (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
 # die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nichts und der Tagesstrom
+# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
+# der Tagesstrom
 # baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
 # der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
 neuzugang_pro_jahr = 30
