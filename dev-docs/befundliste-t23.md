@@ -667,3 +667,59 @@ Reihenfolge der Sperren (fachliche vor Zeichnung) haelt; mandat_sha256 und
 Ordnungs-Hash stehen vor dem neuen Block; der Snapshot traegt die
 Zeichnung genau einmal; Altsnapshots laden; eine Ablehnung erzeugt nichts
 Wirksames; die neue Kante betrieb -> models beruehrt ADR-017 nicht.
+
+
+### Umsetzungsstand Block 5 (T23-07) — Branch t23-block4-5
+
+Der Detektor der Code-Karte kannte dynamische Importe nur an der
+woertlichen Form (ast.Name "__import__", Attribut "import_module"). Jetzt
+sammelt die Karte je Datei die Namen, hinter denen ein Importmechanismus
+steht: __import__, from-Importe von import_module/__import__ (mit Alias),
+Aliase der Module importlib/builtins, und jede Zuweisung, die einen
+solchen Namen oder importlib.import_module bzw. builtins.__import__
+weiterreicht (Ketten eingeschlossen; Fixpunkt ueber die Zuweisungen der
+Datei). Der Attribut-Zweig kennt beide Namen. Jeder Zugriff auf
+sys.modules ist ein Befund (gemessen: null Vorkommen in src, kein
+legitimer Bedarf). Docstring und Befundtext sagen, was gilt.
+
+Grenze, ehrlich benannt (der T22-08-Weg, kein ADR): Musterabgleich, keine
+Datenflussanalyse. Ein Modulobjekt, das eine andere Datei geladen und
+weitergereicht hat, getattr(objekt, "modul") (58 getattr-Aufrufe in src,
+fast alle auf Konfigurations- und Modellobjekte) und Registry-Dispatch
+werden nicht aufgeloest — das braeuchte eine Points-to-Analyse, die
+bewusst nicht gebaut wird. Die Ratsche behauptet Entdeckung dieser
+Formen, nicht Vollstaendigkeit ueber alle Indirektionen.
+
+Tests: Matrix ueber acht Schreibweisen mit 'openai' als SDK-Marker;
+berechneter Name nach Umbenennung; sys.modules-Zugriff. Die zwei
+vorhandenen Tests (woertliche Form, berechneter Name) bleiben.
+
+Adversarialer Review Block 5 (ein Agent, Sonnet, mit ausgefuehrten
+Schnipseln) — sieben Befunde, alle geschlossen:
+
+1. HOCH — nur `ast.Assign` mit Namensziel wurde verfolgt; Tupel-Entpacken,
+   Annotation, Attributziel (`self.imp = __import__`) und Parameter-Default
+   blieben stumm. Jetzt: `_merke` ueber Name/Attribut/Tupel, AnnAssign,
+   Defaults von Funktionen und Lambdas (positional und keyword-only).
+2. HOCH — `importlib.util.spec_from_file_location`/`module_from_spec`/
+   `exec_module` und `runpy.run_module`/`run_path` laden ohne Importnamen.
+   Jetzt eigene Befundart "Lader ohne Importnamen" (`lader_ohne_namen`),
+   auch ueber `from importlib import util` und Aliase.
+3. HOCH — `sys` selbst war nicht verfolgt (`import sys as s`, `from sys
+   import modules`). Jetzt: `sys_aliase`, `registry_namen`; eigene
+   Befundart "Modul-Registry" (`registry_zugriffe`).
+4. HOCH — Fehlalarm: der Attribut-Zweig nahm JEDE Methode namens
+   import_module; das Alias-Set war toter Code. Jetzt greift der Zweig nur
+   auf importlib/builtins und ihre Aliase (`import importlib.util` bindet
+   den Kopf mit); Test mit einer eigenen Methode `import_module`.
+5. MITTEL — Scope-Blindheit: als Grenze im Docstring benannt (Fehlalarm,
+   keine Luecke).
+6. MITTEL — der Fixpunkt war nur in Deklarationsreihenfolge getestet; die
+   umgekehrte Kette (`b = a; a = __import__; b(...)`) ist jetzt in der
+   Matrix.
+7. NIEDRIG — ein Befundtext fuer zwei Ursachen; jetzt drei getrennte
+   Texte (berechneter Name, Modul-Registry, Lader ohne Importnamen).
+
+Bestaetigt: das echte src bleibt befundfrei (`from importlib import
+resources` wird nicht als Mechanismus gewertet); Tests werden nicht
+gescannt; Determinismus der Ausgabe.
