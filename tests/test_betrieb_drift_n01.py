@@ -12,7 +12,7 @@ Nebentabellen niemand gegen die Vokabel des Gates hielt (die Fixture
 dieses Tests trug ``zustand_ta = "POL"``; der Kern brach vier Schichten
 tiefer ab).
 
-Zwei Invarianten, zwei Ratschen:
+Zwei Invarianten, eine Ratsche, ein Vokabeltest:
 * Wer die P-B1-Engine ruft, baut ihre Eingaben nicht selbst, sondern aus
   ``ROLLEN_DATEIEN`` (``bestand.manifest.lauf_eingaben``).
 * Was der Betrieb an Nebentabellen liest, wird gegen dieselbe Vokabel
@@ -227,18 +227,31 @@ def test_die_vokabel_ist_die_des_gates():
 ERBAUER = {SRC / "bestand" / "manifest.py", SRC / "bestand" / "vorbedingungen.py"}
 
 
+#: Die eine benannte Ausnahme: der Gate-Vertrag von A-M4 ist ein Literal,
+#: keine Eingabenliste — eine Ableitung aus der Tabelle liesse jede neue
+#: Pflichtrolle still zur Vertragsaenderung werden (Begruendung am Ort).
+GATE_VERTRAEGE = {("abnahmebericht.py", "PB1_VOLLPROFIL")}
+
+
 def _rollen_literale(quelle: str) -> list:
-    """Dict-/Tupel-/Listen-Literale, die zwei oder mehr P-B1-Rollen nennen."""
+    """Dict-/Tupel-/Listen-/Set-Literale mit zwei oder mehr P-B1-Rollen:
+    (Zeile, Rollen, Name der Zuweisung oder None)."""
     rollen = set(ROLLEN_DATEIEN)
+    baum = ast.parse(quelle)
+    zugewiesen: dict = {}
+    for knoten in ast.walk(baum):
+        if isinstance(knoten, ast.Assign) and len(knoten.targets) == 1 and isinstance(knoten.targets[0], ast.Name):
+            for unter in ast.walk(knoten.value):
+                zugewiesen[id(unter)] = knoten.targets[0].id
     treffer = []
-    for knoten in ast.walk(ast.parse(quelle)):
+    for knoten in ast.walk(baum):
         namen: set = set()
         if isinstance(knoten, ast.Dict):
             namen = {k.value for k in knoten.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)}
-        elif isinstance(knoten, (ast.Tuple, ast.List)):
+        elif isinstance(knoten, (ast.Tuple, ast.List, ast.Set)):
             namen = {e.value for e in knoten.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
         if len(namen & rollen) >= 2:
-            treffer.append((knoten.lineno, sorted(namen & rollen)))
+            treffer.append((knoten.lineno, sorted(namen & rollen), zugewiesen.get(id(knoten))))
     return treffer
 
 
@@ -253,18 +266,31 @@ def test_kein_aufrufer_der_engine_baut_die_rollen_von_hand():
     """Vier Aufrufer, vier abgetippte Listen, eine unvollstaendig — die
     Bauform war der Fehler. Wer die Engine ruft, nimmt die Tabelle."""
     aufrufer = _aufrufer_der_engine()
-    assert {p.name for p in aufrufer} >= {"tageslauf.py", "cli_abschluss.py", "cli_report.py", "bestand_validate.py"}
+    # Genau die fuenf Aufrufer — ein sechster muss hier benannt werden, damit
+    # die Ratsche ihn nicht still uebernimmt (Testat 5ca0306: der fuenfte,
+    # der Abnahmebericht, fuehrte seine Rollen als SET, das die erste Fassung
+    # der Ratsche nicht las).
+    assert {p.name for p in aufrufer} == {
+        "tageslauf.py", "cli_abschluss.py", "cli_report.py", "bestand_validate.py", "abnahmebericht.py",
+    }
     befunde = {
         str(p.relative_to(REPO_ROOT)): treffer
         for p in aufrufer
-        if (treffer := _rollen_literale(p.read_text("utf-8")))
+        if (treffer := [f for f in _rollen_literale(p.read_text("utf-8"))
+                        if (p.name, f[2]) not in GATE_VERTRAEGE])
     }
     assert befunde == {}, befunde
+    # Die Ausnahme ist keine Luecke: sie steht da, wo sie benannt ist.
+    ab = SRC / "gates" / "abnahmebericht.py"
+    assert any(f[2] == "PB1_VOLLPROFIL" for f in _rollen_literale(ab.read_text("utf-8")))
 
 
 def test_die_ratsche_faengt_die_abgetippte_liste():
     """Selbsttest der Ratsche gegen die Fassung vor dem Fix."""
     assert _rollen_literale(
-        'eingaben = {"portfolio": a / "x", "historie": a / "y", "config": c}\n') == [(1, ["historie", "portfolio"])]
-    assert _rollen_literale('for rolle in ("portfolio", "historie", "ledger"):\n    pass\n') == [(1, ["historie", "ledger", "portfolio"])]
+        'eingaben = {"portfolio": a / "x", "historie": a / "y", "config": c}\n') == [(1, ["historie", "portfolio"], "eingaben")]
+    assert _rollen_literale('for rolle in ("portfolio", "historie", "ledger"):\n    pass\n') == [(1, ["historie", "ledger", "portfolio"], None)]
     assert _rollen_literale('eingaben = {"portfolio": a}\nx = ("config", "portfolio")\n') == []
+    assert _rollen_literale('erlaubt = {"portfolio", "historie", "ledger"}\n') == [(1, ["historie", "ledger", "portfolio"], "erlaubt")]
+    assert _rollen_literale('voll = frozenset({"portfolio", "historie"})\n') == [(1, ["historie", "portfolio"], "voll")]
+    assert _rollen_literale('voll = frozenset({"portfolio", "config"})\n') == []

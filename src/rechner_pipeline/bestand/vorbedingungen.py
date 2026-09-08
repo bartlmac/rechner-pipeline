@@ -55,6 +55,13 @@ from rechner_pipeline.models.bestand import (
 )
 from rechner_pipeline.qa.bestand import sanity_check
 
+#: Die Rollen, die die Engine annimmt: die Rollentabelle des Erzeugers plus
+#: die Config — an EINER Stelle, damit kein Konsument (Gate, Abnahmebericht,
+#: Betrieb) sie abtippt (Betriebsbefund N-01). Der Abnahmebericht liest sie
+#: hier, nicht aus ``bestand.manifest``: die Kanten-Ratsche (ADR-017) kennt
+#: gates -> bestand.vorbedingungen, nicht gates -> bestand.manifest.
+PB1_ROLLEN = frozenset(ROLLEN_DATEIEN) | {"config"}
+
 
 def pruefe_pb1_eingaenge(
     eingaben: Mapping[str, Path],
@@ -143,8 +150,7 @@ def lies_und_pruefe_pb1(
     ``tabellen`` traegt die Rollen, die gelesen werden konnten, und unter
     ``config`` die geparste Config, wenn eine uebergeben wurde.
     """
-    erlaubt = {"portfolio", "historie", "scheiben", "ledger", "merkmale", "config",
-               "schichten", "verankerung"}
+    erlaubt = PB1_ROLLEN
     rollen = set(eingaben)
     errors: List[dict] = []
     usage_errors: List[dict] = []

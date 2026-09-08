@@ -210,3 +210,74 @@ def test_reviewer_beispiel_betraege_hergeleitet_null(bestandsfall, tmp_path, mon
     monkeypatch.setattr(abnahmebericht, "lies_und_pruefe_pb1", _keine_buchung)
     fehler = _b1(fall, ledger_pfad, eintrag, suite)
     assert any("betraege_hergeleitet" in f for f in fehler), fehler
+
+
+# --------------------------------------------------------------------------- #
+# N-01, fuenfter Aufrufer: der Abnahmebericht nimmt die Rollen der Engine
+# --------------------------------------------------------------------------- #
+
+def _mit_schicht(lauf: Path, police_id: int) -> None:
+    """Korrekturschicht und Verankerung fuer EINE Police des Laufs — wie ein
+    Freischaltungs-Fall sie neben den Lauf legt."""
+    import pandas as pd
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.models.bestand import (
+        SCHICHTEN_NAMES, SCHICHTEN_SPALTEN, VERANKERUNG_NAMES, VERANKERUNG_SPALTEN,
+    )
+
+    schichten = pd.DataFrame([{
+        "police_id": police_id, "schichttyp": "hist", "verankerungszustand": "aktiv",
+        "verweildauer": 0, "rho": 0.02, "formfunktion": "konstant", "formparameter": "{}",
+        "vererbend": "[]", "kohorte": "t_a", "in_ueberschuss": False, "in_zzr": False,
+        "rumpfmonate": 0,
+    }])[list(SCHICHTEN_NAMES)].astype(dict(SCHICHTEN_SPALTEN))
+    verankerung = pd.DataFrame([{
+        "police_id": police_id, "monate_ta": 24, "zustand_ta": "beitragspflichtig",
+        "verweildauer_ta": 0, "dk_ta": 1.0,
+    }])[list(VERANKERUNG_NAMES)].astype(dict(VERANKERUNG_SPALTEN))
+    write_portfolio(schichten, lauf / "schichten.parquet")
+    write_portfolio(verankerung, lauf / "verankerung.parquet")
+
+
+def test_ein_beleg_mit_schicht_und_verankerung_ist_kein_ungueltiger_rollenblock(bestandsfall, tmp_path):
+    """Der ehrliche Nach-Beleg eines Freischaltungs-Falls traegt acht Rollen.
+    Die abgetippte Positivliste des Abnahmeberichts kannte zwei davon nicht
+    und wies den Beleg als 'ungueltig' ab (Review T25-03, Testat 5ca0306).
+    Mutationsprobe: erlaubte_rollen wieder als Literal ohne die beiden -> rot."""
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+
+    fall = _kopie(bestandsfall, tmp_path)
+    lauf = fall / "lauf"
+    stamm = read_portfolio(lauf / "bestand_gesamt.parquet")
+    ledger = read_portfolio(lauf / "ledger.parquet")
+    # Eine Police OHNE Storno: der Lauf hat seine Stornos ohne Schicht
+    # gebucht, eine nachtraeglich angelegte Schicht widerlegte sie zu Recht.
+    storniert = set(ledger.loc[ledger["ereignis"] == "STO", "police_id"])
+    kandidaten = stamm[(stamm["duration"] >= 10) & ~stamm["police_id"].isin(storniert)]
+    police = int(kandidaten["police_id"].iloc[0])
+    _mit_schicht(lauf, police)
+    argv = [a for a in pb1_vollprofil_argv(lauf, fall / "abgeleitet" / "bestand-config.toml")
+            if not a.endswith("laufmanifest.json") and a != "--manifest"]
+    argv += ["--schichten", str(lauf / "schichten.parquet"),
+             "--verankerung", str(lauf / "verankerung.parquet")]
+    ledger_pfad, eintrag, suite = _pb1(fall, argv, tmp_path / "diag")
+    assert {"schichten", "verankerung"} <= set(eintrag["summary"]["eingangsrollen"])
+    fehler = _b1(fall, ledger_pfad, eintrag, suite)          # kein Absturz
+    assert not any("eingangsrollen" in f for f in fehler), fehler
+    assert not any("Neupruefung" in f for f in fehler), fehler
+
+
+def test_ein_ungueltiger_rollenblock_ist_ein_befund_kein_absturz(bestandsfall, tmp_path):
+    """Testat 5ca0306, Paar A/B: mit leerem Rollenblock waren ``rollen`` und
+    ``aktuelle_eingaben`` beide leer, die Nachrechnung lief an und brach mit
+    KeyError 'portfolio' ab — A-M4 konnte den Beleg nicht einmal ablehnen."""
+    fall = _kopie(bestandsfall, tmp_path)
+    ledger_pfad, eintrag, suite = _pb1(
+        fall, pb1_vollprofil_argv(fall / "lauf", fall / "abgeleitet" / "bestand-config.toml"),
+        tmp_path / "diag",
+    )
+    assert "manifest" in eintrag["summary"]                     # der Absturzpfad braucht es
+    eintrag["summary"]["eingangsrollen"]["fremd"] = "irgendwo/fremd.parquet"
+    ledger_pfad.write_text(json.dumps(eintrag), encoding="utf-8")
+    fehler = _b1(fall, ledger_pfad, eintrag, suite)
+    assert any("eingangsrollen ist ungueltig" in f for f in fehler), fehler

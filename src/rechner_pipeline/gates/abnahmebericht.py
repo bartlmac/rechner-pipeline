@@ -90,7 +90,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from rechner_pipeline import fall as fall_mod
-from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1, manifest_fuer_nachrechnung
+from rechner_pipeline.bestand.vorbedingungen import (
+    PB1_ROLLEN,
+    lies_und_pruefe_pb1,
+    manifest_fuer_nachrechnung,
+)
 from rechner_pipeline.gates import bestand_validate
 from rechner_pipeline.gates._common import (
     Exit,
@@ -1345,7 +1349,17 @@ def _bestands_suite_fehler(
 #: dazu der Horizont ``bis`` und ``summary.betraege_hergeleitet``.
 #: ``scheiben`` und ``merkmale`` sind optional, weil ein Bestand ohne
 #: Erhoehungen bzw. ohne Tarifzellen sie nicht hat — hat er sie, verlangt
-#: die Engine sie selbst.
+#: die Engine sie selbst; ``schichten`` und ``verankerung`` ebenso (ob sie
+#: PFLICHT werden, sobald der Fall sie fuehrt, ist ein offener Entscheid des
+#: Maintainers, Review T25-03).
+#:
+#: BEWUSST ein Literal und NICHT aus ``ROLLEN_DATEIEN`` abgeleitet: Das hier
+#: ist der Gate-Vertrag von A-M4, keine Eingabenliste der Engine. Eine
+#: Ableitung aus den Pflichtrollen des Laufs liesse jede kuenftige
+#: Pflichtrolle still ins Vollprofil wandern und jeden Altbeleg
+#: unvollstaendig werden — eine Vertragsaenderung als Nebeneffekt. Die
+#: Ratsche gegen abgetippte Rollen (tests/test_betrieb_drift_n01.py) fuehrt
+#: genau diese Stelle als benannte Ausnahme.
 PB1_VOLLPROFIL = frozenset({"portfolio", "historie", "ledger", "config"})
 #: Zaehler der P-B1-Zusammenfassung, die BEZEUGEN, dass eine Pruefung
 #: stattgefunden hat. Fuer sie ist null ein Befund, auch wenn Beleg und
@@ -1552,7 +1566,11 @@ def _b1_fehler(
         fehler.append("P-B1-Ledger und Migrationssuite binden verschiedene Bestaende")
 
     rollen = entry.summary.get("eingangsrollen")
-    erlaubte_rollen = {"portfolio", "historie", "scheiben", "ledger", "merkmale", "config"}
+    # Dieselben Rollen, die die Engine annimmt — aus ihrer Tabelle, nicht
+    # abgetippt (N-01): die abgetippte Liste kannte schichten und
+    # verankerung nicht und wies den ehrlichen Beleg eines
+    # Freischaltungs-Falls (acht Rollen) als "ungueltig" ab.
+    erlaubte_rollen = set(PB1_ROLLEN)
     if (
         not isinstance(rollen, dict)
         or "portfolio" not in rollen
@@ -1650,7 +1668,11 @@ def _b1_fehler(
 
     geprueft: Dict[str, int] = {}
     portfolio_gebunden = False
-    if set(aktuelle_eingaben) == set(rollen):
+    # Nur mit benannten Rollen nachrechnen: ein ungueltiger Rollenblock
+    # liess ``rollen`` und ``aktuelle_eingaben`` beide leer, die Gleichheit
+    # war erfuellt, und der Zugriff auf die Portfolio-Rolle brach mit
+    # KeyError ab statt mit dem Befund, der schon oben steht (N-01).
+    if rollen and set(aktuelle_eingaben) == set(rollen):
         # Traegt der Beleg ein Manifest (summary.manifest: sha256 + Horizont),
         # wird auch die MANIFESTBINDUNG nachgerechnet (adversarialer Review
         # Block 3): ohne ``manifest=`` liefert die Engine weder
