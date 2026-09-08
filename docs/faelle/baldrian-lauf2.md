@@ -17,9 +17,9 @@ Versicherers.
 
 Der Migrationsfall ist vollstaendig geprueft und abgenommen. Alle
 fuenf Abnahme-Gates wurden von der Rolle des Verantwortlichen Aktuars
-auf demselben Systemstand gezeichnet (Stand 4b1abf0; die Quelltext-
+auf demselben Systemstand gezeichnet (Stand f7c545d; die Quelltext-
 Pruefsumme jedes Snapshots entspricht diesem Stand). Waehrend des
-Laufs wurden 23 Korrekturen am System vorgenommen und die betroffenen
+Laufs wurden 25 Korrekturen am System vorgenommen und die betroffenen
 Gates jeweils neu gezeichnet; der Umbaubericht des Falls weist sie aus
 (Abschnitt 7).
 
@@ -166,27 +166,35 @@ des KI-Tools; entschieden und gezeichnet hat die Rolle des
 Verantwortlichen Aktuars der Pfefferminzia. Diese Rolle war im Lauf
 nicht durch eine natuerliche Person besetzt, sondern durch eine
 KI-Sitzung, die im Mandat des Maintainers handelte und die Abnahmen
-nach Pruefung der Vorlagen zeichnete. Alle sechzehn Entscheid-
-Snapshots des Falls (fuenf geltende und elf Vorgaenger aus der
-Neuzeichnung nach Korrekturen) tragen die Rolle in der Schreibweise
-des damaligen Vier-Rollen-Modells (``mensch``, Entscheider
-``plv-aktuar``); die heutige Schreibweise waere
-``mensch/verantwortlicher-aktuar`` mit der Schluesselklasse
-``simulation``.
+nach Pruefung der Vorlagen zeichnete. Der Fall traegt 25 Entscheid-
+Snapshots: die fuenf geltenden (Neuzeichnung nach Korrektur 25 am
+7. September 2026, Stand f7c545d) und zwanzig Vorgaenger aus den
+Neuzeichnungen nach frueheren Korrekturen. Die fuenf geltenden tragen
+die Rolle in der heutigen Schreibweise (``mensch/plv-aktuar``) mit der
+Schluesselklasse ``simulation`` und binden das Mandat des Maintainers
+und die Zeichnungsordnung als Dateihashes; die Vorgaenger tragen noch die
+Schreibweise des damaligen Vier-Rollen-Modells (``mensch``, Entscheider
+``plv-aktuar``) ohne Schluesselklasse.
 
 **Schluessel.** Gezeichnet wurde mit einem Simulationsschluessel,
 Fingerabdruck ``162817c937c33d0a…``. Er weist die Rolle nach, nicht die
-Identitaet einer Person. Die Snapshots sind mit HMAC-SHA-256 signiert
-und bleiben gueltig; sie werden nicht nachsigniert. Wer sie prueft,
-erkennt die Simulation am Fingerabdruck und an der Schema-Version 6.
+Identitaet einer Person; das Mandat, in dem die Rolle handelte, liegt
+ausserhalb des Falls und ist im Snapshot gebunden. Die Snapshots sind
+mit HMAC-SHA-256 signiert und bleiben gueltig; sie werden nicht
+nachsigniert. Wer sie prueft, erkennt die Simulation an der
+Schluesselklasse und am Fingerabdruck (geltende Snapshots: Schema-Version
+7; Vorgaenger: Schema-Version 6).
 
 **Systemaenderungen waehrend des Laufs.** Das KI-Tool ist waehrend
 eines Falls eine Konstante; dieser Lauf lag in der ersten Ausbaustufe,
 in der Korrekturen am System erlaubt und vom Maintainer abgenommen
-wurden. 23 Korrekturen (Kern-Verfahren, Pruef-Engines, Gates,
-Bestandsfuehrung) sind im Umbaubericht des Falls einzeln begruendet;
-nach jeder wurden die betroffenen Gates auf dem neuen Stand neu
-gezeichnet, zuletzt auf 4b1abf0.
+wurden. 25 Korrekturen (Kern-Verfahren, Pruef-Engines, Gates,
+Bestandsfuehrung, Freischaltung des uebernommenen Bestands) sind im
+Umbaubericht des Falls einzeln begruendet; nach jeder wurden die
+betroffenen Gates auf dem neuen Stand neu gezeichnet, zuletzt alle fuenf
+auf f7c545d. Dieser Stand ist auf dem Hauptzweig des Repositories
+erreichbar (ueber die Zusammenfuehrung c67eb8f); die Belege binden den
+Stand, nicht die Zweigspitze.
 
 **Was dieser Bericht nicht leistet.** Er ist keine Abnahme durch eine
 natuerliche Person und kein Dokument eines realen Versicherers. Die
@@ -216,7 +224,9 @@ und die Fuehrungsprobe belegt vor A-M4, dass der gefuehrte Bestand die
 abgenommene Welt traegt (834 Vertraege, 42 Buchungen nach dem Stichtag,
 0 Befunde). Die Abnahmen A-M1 bis A-M3 und das Migrationscontrolling sind
 auf dem neuen Stand unveraendert bestanden (100/100, 100/100, 166/166,
-834/834). Die Neuzeichnung der fuenf Gates mit Korrekturvermerk folgt;
-der Tagesbetrieb der PLV wird aus der neuen Uebernahme neu aufgesetzt
-(Betriebsweg).
+834/834). Die fuenf Gates wurden mit Korrekturvermerk neu gezeichnet
+(Korrektur 25: die Kettenpruefung der Entscheide unterscheidet seither
+den Stand, auf dem ein Vorgaenger gezeichnet wurde, von dem geltenden
+Belegvertrag; Stand f7c545d). Der Tagesbetrieb der PLV wird aus der neuen
+Uebernahme neu aufgesetzt (Betriebsweg, offen).
 
