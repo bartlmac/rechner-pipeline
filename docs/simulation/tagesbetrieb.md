@@ -315,6 +315,19 @@ und eine README mit dem Einrichtungsweg; die Laufzeitumgebung selbst ist
 kein Repo-Inhalt. Erstbefüllung: Basisbestand aus der Config (einmalig bis
 zum Betriebsbeginn) plus Übernahme-Eingänge plus der Tagesstrom seither.
 
+**Nummernkreise sind Pflicht, sobald eine Config einen Tagesbetrieb
+führt** (Entscheid des Maintainers, 2026-09-08). Ein Kreis reserviert
+seiner Generation das Band ab `k * 10 Mio + 1`; weil `k` mindestens eins
+ist, kann kein Erzeuger unter oder auf zehn Millionen vergeben. Genau
+dieser Bereich steht übernommenen Beständen offen, ohne mit dem
+Eigengeschäft zu kollidieren. Ohne Kreise fallen die Nummern auf die
+Position der Generation zurück, und dann liegt kein Band fest — die
+Zusicherung wäre eine Annahme. Der Tagesbetrieb ist der Ort, an dem
+fremder Bestand als Zugang eintritt, also gilt die Pflicht dort. Eine
+Config der Fall-Welt darf ohne Kreise bleiben: Ihre Bytes sind eine
+hashgebundene P-B1-Eingangsrolle und hängen an gezeichneten Abnahmen; eine
+Lesepflicht hätte bestehende Fälle unreproduzierbar gemacht.
+
 Der `betriebsbeginn` der Config ist die **Erzeugungsgrenze**: Bis zu ihr
 stellt der Batch-Erzeuger den Bestand, danach der Tagesstrom — ein
 Erzeuger je Zeitfenster. Beide beschreiben dieselbe Generation: Das

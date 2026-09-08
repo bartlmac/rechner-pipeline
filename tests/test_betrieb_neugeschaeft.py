@@ -24,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from rechner_pipeline.bestand.config import config_aus_text, load_config
+from rechner_pipeline.bestand.config import Tagesbetrieb, config_aus_text, load_config
 from rechner_pipeline.bestand.ereignisse import EreignisError, fortschreiben
 from rechner_pipeline.bestand.generator import generate, neuzugaenge
 from rechner_pipeline.betrieb.neugeschaeft import (
@@ -220,12 +220,15 @@ def test_seed_haengt_am_namen_nicht_an_der_position(config):
 
 
 def test_ohne_nummernkreis_gilt_die_position_der_erstfassung(config):
-    """Configs ohne das Feld (die bestehenden Bestaende) nummerieren wie
-    bisher — die PLV-Config traegt die Positionen jetzt explizit, also
-    bitidentisch."""
+    """Configs ohne das Feld (die bestehenden Faelle) nummerieren wie bisher
+    — die PLV-Config traegt die Positionen explizit, also bitidentisch.
+
+    Der Fallback lebt weiter, aber nur noch fuer die Fall-Welt: Wer einen
+    Tagesbetrieb fuehrt, setzt Kreise (siehe naechster Test)."""
     positional = copy.deepcopy(config)
     for g in positional.generationen:
         g.nummernkreis = None
+    positional.tagesbetrieb = Tagesbetrieb()          # Fall-Welt: kein Betrieb
     assert positional.validate() == []
     monat = neugeschaeft_zwischen(config, dt.date(JAHR, 5, 1), dt.date(JAHR, 5, 31))
     monat_pos = neugeschaeft_zwischen(positional, dt.date(JAHR, 5, 1), dt.date(JAHR, 5, 31))
@@ -237,6 +240,32 @@ def test_ohne_nummernkreis_gilt_die_position_der_erstfassung(config):
     doppelt = copy.deepcopy(config)
     doppelt.generationen[1].nummernkreis = doppelt.generationen[0].nummernkreis
     assert any("nicht eindeutig" in f for f in doppelt.validate())
+
+
+def test_wer_einen_tagesbetrieb_fuehrt_setzt_nummernkreise(config):
+    """Entscheid des Maintainers (2026-09-08): Kreise werden Pflicht — dort,
+    wo die Zusicherung gebraucht wird.
+
+    Der Kreis reserviert das Band ab k * 10 Mio + 1, k mindestens 1; damit
+    ist alles bis 10 000 000 fuer keinen Erzeuger erreichbar und steht
+    uebernommenen Bestaenden offen (Review T24-08). Ohne Kreise gibt es
+    dieses Band nicht — und ein Tagesbetrieb ist genau der Ort, an dem
+    fremder Bestand als Zugang eintritt. Die Fall-Welt bleibt ohne Pflicht:
+    Ihre Config-Bytes haengen an gezeichneten Abnahmen.
+
+    Mutationsprobe: die Pflicht entfernen -> eine PLV-Config ohne Kreise
+    ist wieder gueltig, und der geschuetzte Bereich ist eine Annahme."""
+    ohne = copy.deepcopy(config)
+    for g in ohne.generationen:
+        g.nummernkreis = None
+    assert ohne.tagesbetrieb.betriebsbeginn is not None
+    fehler = ohne.validate()
+    assert any("fuehrt aber einen Tagesbetrieb" in f for f in fehler), fehler
+    # Dieselbe Config ohne Tagesbetrieb ist die Fall-Welt und bleibt gueltig:
+    ohne.tagesbetrieb = Tagesbetrieb()
+    assert ohne.validate() == []
+    # Und die gesetzten Kreise halten die Zusicherung, auf die es ankommt:
+    assert min(config.nummernkreis(g) for g in config.generationen) >= 1
 
 
 def test_umsortierte_generationen_aendern_keine_policen_identitaet(config):

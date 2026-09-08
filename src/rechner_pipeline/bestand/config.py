@@ -926,10 +926,36 @@ class BestandConfig:
     referenzstichtag: Optional[_dt.date] = None
 
     def _pruefe_nummernkreise(self) -> List[str]:
+        """Nummernkreise pruefen — Pflicht, sobald ein Tagesbetrieb laeuft.
+
+        Der Kreis reserviert einer Generation das Band
+        ``k * 10 Mio + 1 .. (k+1) * 10 Mio - 1``; weil ``k`` mindestens 1
+        ist, kann kein Erzeuger unter oder auf 10 000 000 vergeben. Genau
+        das ist der Bereich, in dem uebernommene Bestaende liegen duerfen,
+        ohne mit dem Eigengeschaeft zu kollidieren (Review T24-08). Diese
+        Zusicherung gilt aber NUR bei gesetzten Kreisen: Ohne sie fallen die
+        Nummern auf die Position der Generation zurueck, und dann liegt kein
+        Band fest.
+
+        Deshalb sind Kreise Pflicht, sobald die Config einen Tagesbetrieb
+        fuehrt — dort tritt fremder Bestand als Zugang ein, dort braucht der
+        geschuetzte Bereich seinen Halt (Entscheid des Maintainers,
+        2026-09-08). Eine Config OHNE Tagesbetrieb (die Fall-Welt) darf ohne
+        Kreise bleiben: Ihre Nummern folgen der Erstfassung, und ihre
+        Bytes haengen an gezeichneten Abnahmen — eine Lesepflicht haette
+        bestehende Faelle unreproduzierbar gemacht.
+        """
         gesetzt = [g for g in self.generationen if g.nummernkreis is not None]
-        if not gesetzt:
-            return []
         fehler: List[str] = []
+        if not gesetzt:
+            if self.tagesbetrieb.betriebsbeginn is not None and self.generationen:
+                fehler.append(
+                    "nummernkreis: fehlt fuer alle Generationen, die Config "
+                    "fuehrt aber einen Tagesbetrieb — ohne Kreise liegt kein "
+                    "Nummernband fest, und ein uebernommener Bestand koennte "
+                    "mit dem Eigengeschaeft kollidieren (Review T24-08)"
+                )
+            return fehler
         if len(gesetzt) != len(self.generationen):
             ohne = sorted(g.name for g in self.generationen if g.nummernkreis is None)
             fehler.append(

@@ -30,6 +30,9 @@ referenzstichtag = 2026-01-01
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2000"
+# Police-Nummern 1 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer
+# Position (T22-09). Explizit, damit ein neuer Fall sie mitbringt.
+nummernkreis = 1
 knoten = "bu/plv_2000"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2000-01-01
@@ -91,6 +94,9 @@ rho = 0.30
 # --------------------------------------------------------------------------
 [[generation]]
 name = "BU-2017"
+# Police-Nummern 2 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer
+# Position (T22-09). Explizit, damit ein neuer Fall sie mitbringt.
+nummernkreis = 2
 knoten = "bu/plv_2017"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2017-01-01

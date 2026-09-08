@@ -41,6 +41,8 @@ from rechner_pipeline.betrieb.tageslauf import (
 from tests.test_betrieb_neuaufsetzen import _fall_mit_nebentabellen
 from tests.test_betrieb_uebernahme import STICHTAG, PLV
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 def _ablage_ab(wurzel: Path, betriebsbeginn: dt.date) -> Ablage:
     """Eine Ablage mit frei gesetzter Erzeugungsgrenze (sechs Vertraege je
@@ -278,3 +280,29 @@ def test_ein_zugang_genau_am_juengsten_abschluss_wird_verweigert(tmp_path):
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 2))
     assert code != EXIT_OK and zeile["uebernommen"] is False
     assert "festgeschriebenen Monatsabschluss 2026-01-01" in zeile["fehler"]
+
+
+def test_eine_bestehende_fall_config_bleibt_lesbar(tmp_path):
+    """Die Grenze der Kreise-Pflicht, an der Fall-Welt gemessen.
+
+    Die Config eines Falls ist eine hashgebundene P-B1-Eingangsrolle; ihre
+    Bytes haengen an gezeichneten Abnahmen. Eine Lesepflicht fuer
+    Nummernkreise haette jeden bestehenden Fall unreproduzierbar gemacht —
+    P-B1 liesse sich nicht mehr nachrechnen, und mit ihr faellt die
+    A-M4-Nachrechnung des Abnahmeberichts.
+
+    Geprueft wird die Form, nicht ein einzelner Fall: eine Config ohne
+    Tagesbetrieb und ohne Kreise ist gueltig. Liegt der echte Fall vor
+    (faelle/ ist gitignored), wird er zusaetzlich gelesen."""
+    from rechner_pipeline.bestand.config import config_aus_text
+
+    vorlage = (REPO_ROOT / "configs" / "bestand_klv.toml").read_text("utf-8")
+    wie_ein_fall = re.sub(r"^nummernkreis = .*\n", "", vorlage, flags=re.M)
+    fall_config = config_aus_text(wie_ein_fall)
+    assert fall_config.tagesbetrieb.betriebsbeginn is None
+    assert all(g.nummernkreis is None for g in fall_config.generationen)
+    assert fall_config.validate() == []
+
+    echt = REPO_ROOT / "faelle" / "baldrian-klv-tg2015-lauf2" / "abgeleitet" / "bestand-config.toml"
+    if echt.is_file():
+        assert load_config(echt).validate() == [], "der gezeichnete Fall muss lesbar bleiben"
