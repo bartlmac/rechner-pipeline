@@ -649,6 +649,13 @@ sechs Befunde, fuenf geschlossen, einer als Grenze benannt:
    Ein Stichtag, ab dem eine A-Box der aktuellen Schemaversion nur noch
    die Form mit Schluesselklasse traegt, waere eine Ergaenzung von
    ADR-018 — ENTSCHEID OFFEN (Maintainer). Der Test benennt die Grenze.
+   NACHTRAG (Anmerkung der merge-session zum Testat 25f1850): Solange die
+   Altform fuer NEUE Zeichnungen offen ist, kann eine Simulation ohne
+   Klasse entstehen, und die Mandatspflicht haengt an der Klasse. Der
+   einzige produktive Schreibpfad, `befuellung.loese_diskrepanz_auf`,
+   verlangt deshalb jetzt `form="neu"`; gelesen wird die Altform weiter.
+   Offen bleibt nur die direkte Konstruktion plus eigenes Speichern — das
+   ist der Stichtag in ADR-018 (Commit auf betrieb-schritt9).
 3. MITTEL, GESCHLOSSEN — der Betriebseingang akzeptierte
    `schluesselklasse: "agent"` (SCHLUESSELKLASSEN statt
    ZEICHNENDE_KLASSEN); jetzt nur mensch/simulation, Test mit "agent".

@@ -57,7 +57,7 @@ flowchart TD
     models -- 1 --> gates
     models -- 1 --> kern
     ontologie -- 1 --> kern
-    ontologie -- 5 --> models
+    ontologie -- 6 --> models
     qa -- 8 --> kern
     qa -- 1 --> models
     quellen -- 1 --> kern
@@ -87,7 +87,7 @@ flowchart TD
     bu -- 3 --> system_assurance
     bu -- 1 --> system_entscheid
     klv -- 8 --> system_assurance
-    klv -- 6 --> system_entscheid
+    klv -- 7 --> system_entscheid
     klv -- 9 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv

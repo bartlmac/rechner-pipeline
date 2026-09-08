@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from rechner_pipeline.models.zeichnung import validiere_zeichnung
 from rechner_pipeline.ontologie.aussage import (
     Aussage,
     Provenienz,
@@ -398,6 +399,17 @@ def loese_diskrepanz_auf(
             "und die Adresse (knoten, feld) trifft nichts"
         )
 
+    # Der Schreibpfad kennt nur die Form mit Schluesselklasse (Review T23-06,
+    # Anmerkung der merge-session zum Testat): Die Altform {rolle,
+    # ordnung_sha256} darf gelesen werden (die Aufloesungen des zweiten
+    # Laufs), aber nicht mehr NEU entstehen — sonst entstuende eine
+    # Simulation ohne Klasse, und die Mandatspflicht haengt an der Klasse.
+    if zeichnung is not None:
+        zeichnungsfehler = validiere_zeichnung(zeichnung, form="neu")
+        if zeichnungsfehler:
+            raise ValueError(
+                "Aufloesung nicht geschrieben — Rollenbindung: " + "; ".join(zeichnungsfehler)
+            )
     abox.diskrepanzen[index] = diskrepanz.model_copy(update={
         "status": "aufgeloest",
         "entscheidung": Entscheidung(

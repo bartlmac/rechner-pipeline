@@ -182,13 +182,37 @@ def test_pq3_weist_handgeschriebene_aufloesung_ohne_mandat_ab(fall):
     assert any("mandat_sha256" in e.get("message", "") for e in ergebnis.errors), ergebnis.errors
 
 
+def test_loese_diskrepanz_auf_schreibt_die_altform_nicht_mehr(fall):
+    """Anmerkung der merge-session zum Testat: solange die Altform fuer NEUE
+    Zeichnungen offen ist, kann eine Simulation ohne Klasse entstehen, und
+    die Mandatspflicht haengt an der Klasse. Der Schreibpfad verlangt die
+    Form mit Klasse; gelesen wird die Altform weiter."""
+    abox = lade(fall)
+    abox.diskrepanzen.append(Diskrepanz(
+        id="klv/tg2012/zelle:-#beta1", knoten="klv/tg2012/zelle:-", feld="beta1",
+        lesarten=_lesarten(),
+    ))
+    with pytest.raises(ValueError, match="Schluesselklasse"):
+        loese_diskrepanz_auf(
+            abox, "klv/tg2012/zelle:-#beta1", 0.025, "x", "y",
+            "2026-09-08T00:00:00+00:00", zeichnung=ALT,
+        )
+    neu = loese_diskrepanz_auf(
+        abox, "klv/tg2012/zelle:-#beta1", 0.025, "x", "y",
+        "2026-09-08T00:00:00+00:00", zeichnung=NEU_SIM,
+    )
+    assert neu.diskrepanzen[-1].entscheidung.zeichnung == NEU_SIM
+
+
 def test_loese_diskrepanz_auf_direkt_gerufen_verweigert(fall):
     abox = lade(fall)
     abox.diskrepanzen.append(Diskrepanz(
         id="klv/tg2012/zelle:-#beta1", knoten="klv/tg2012/zelle:-", feld="beta1",
         lesarten=_lesarten(),
     ))
-    with pytest.raises(ValidationError, match="zeichnung"):
+    # Der Schreibpfad prueft vor der Konstruktion (ValueError mit Ausweg);
+    # das Modell wuerde dieselbe Zeichnung ebenfalls verweigern.
+    with pytest.raises(ValueError, match="mandat_sha256"):
         loese_diskrepanz_auf(
             abox, "klv/tg2012/zelle:-#beta1", 0.025, "x", "y",
             "2026-09-08T00:00:00+00:00", zeichnung=SIM_OHNE_MANDAT,
