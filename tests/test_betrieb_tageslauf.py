@@ -496,3 +496,174 @@ def test_ein_verzoegert_gemeldeter_tod_erscheint_erst_am_buchungstag(tmp_path, m
         assert gesamt.loc[gesamt["police_id"] == pid, "status_code"].iloc[0] != "TOD"
     if len(tode_voll) == 0:
         pytest.skip("kein Todesfall seit Betriebsbeginn in der kleinen Config — Aussage nicht pruefbar")
+
+
+def test_ein_abschluss_ist_dieselbe_datei_ob_am_stichtag_oder_nachgeholt(tmp_path, monkeypatch):
+    """T24-02: Der Monatsabschluss ist der Stand, den das Unternehmen an
+    seinem Stichtag hatte — nicht der, den es spaeter rueckblickend fuer
+    diesen Stichtag ausrechnet.
+
+    Der Lauf baut seine Tabellen mit der gebuchten Sicht von heute. Die
+    Abschluss-Schleife schrieb damit jeden Stichtag: Wirkungsfilter auf dem
+    Stichtag, Buchungsschnitt auf dem Lauftag. Ein Todesfall mit Wirkung im
+    Januar und Buchung im Maerz fehlte dadurch schon im Februar-Abschluss,
+    obwohl das Unternehmen im Februar nichts von ihm wusste. Beide Wege
+    waren gruen und schrieben dieselbe 0444-Datei mit anderem Inhalt.
+
+    Gemessen wird das Versprechen aus deploy/plv/README und Fachkonzept
+    Abschnitt 7: derselbe Stand, als haette der Lauf jede Nacht
+    stattgefunden. Gegenprobe: Ohne den Stichtagsschnitt in
+    ``_stichtagssicht`` weichen genau die Abschluesse ab, in deren Monat
+    eine Buchung von jenseits der Monatsgrenze faellt.
+    """
+    from rechner_pipeline.betrieb import tagesjournal as tj
+
+    # Vierzig Tage Meldeverzug ueberschreiten jede Monatsgrenze — der
+    # Zufall der Verteilung wird durch eine feste Zahl ersetzt, damit der
+    # Test nicht manchmal nichts prueft.
+    monkeypatch.setattr(tj, "meldeverzug_tage", lambda config, police_id, jahr: 40)
+
+    def welt(name: str) -> Ablage:
+        ablage = _ablage(tmp_path / name)
+        ablage.config_pfad.write_text(
+            _kleine_config().replace("sample_size = 8", "sample_size = 60"),
+            encoding="utf-8")
+        return ablage
+
+    ende = dt.date(2026, 6, 30)
+    nachgeholt = welt("nachgeholt")
+    assert tageslauf(nachgeholt, ende)[0] == EXIT_OK
+
+    jede_nacht = welt("jede_nacht")
+    for tag in (dt.date(2026, 2, 1), dt.date(2026, 3, 1), dt.date(2026, 4, 1),
+                dt.date(2026, 5, 1), dt.date(2026, 6, 1), ende):
+        assert tageslauf(jede_nacht, tag)[0] == EXIT_OK
+
+    # Vorbedingung: Ohne eine Buchung jenseits der Monatsgrenze pruefte der
+    # Test nichts. Das ist eine Zusicherung, kein Skip — eine Testwelt ohne
+    # den Gegenstand ist ein Fehler der Testwelt.
+    journal = read_portfolio(nachgeholt.tagesjournal_pfad, expected_columns=TAGESJOURNAL_NAMES)
+    ueber_die_grenze = journal[
+        journal["buchungsdatum"].dt.to_period("M") > journal["status_date"].dt.to_period("M")]
+    assert len(ueber_die_grenze) > 0, (
+        "Testwelt ohne Buchung jenseits der Monatsgrenze — der Test kann "
+        "seinen Gegenstand nicht sehen")
+
+    dateien = sorted(p.name for p in nachgeholt.abschluesse.glob("abschluss_*.parquet"))
+    assert dateien == sorted(p.name for p in jede_nacht.abschluesse.glob("abschluss_*.parquet"))
+    assert len(dateien) == 6
+    for name in dateien:
+        assert (nachgeholt.abschluesse / name).read_bytes() == \
+            (jede_nacht.abschluesse / name).read_bytes(), (
+                f"{name} haengt davon ab, wann gerechnet wurde")
+
+
+def test_der_buchungsschnitt_komponiert(tmp_path):
+    """Die Annahme, auf der ``_stichtagssicht`` steht: Zweimal schneiden
+    (erst heute, dann Stichtag) ist dasselbe wie einmal auf den Stichtag.
+
+    Deshalb muss der Lauf die ungefilterte Wirkungshistorie nicht
+    mitfuehren — er schneidet die Tabellen, die er ohnehin hat, ein
+    zweites Mal. Traegt ``buchungstag`` je Zeile, gilt das; wuerde er
+    jemals von den uebrigen Zeilen der Tabelle abhaengen (eine laufende
+    Nummer, ein Kontingent je Tag), faellt dieser Test und mit ihm die
+    Vereinfachung.
+    """
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+    from rechner_pipeline.bestand.generator import generate
+    from rechner_pipeline.betrieb.tagesjournal import gebuchte_sicht
+
+    pfad = tmp_path / "bestand.toml"
+    pfad.write_text(_kleine_config().replace("sample_size = 8", "sample_size = 40"),
+                    encoding="utf-8")
+    config = load_config(pfad)
+    heute = dt.date(2026, 6, 30)
+    voll = fortschreiben(generate(config, bis=BETRIEBSBEGINN), config, heute)
+
+    for stichtag in (dt.date(2026, 2, 1), dt.date(2026, 4, 1), heute):
+        einmal = gebuchte_sicht(config, voll.historie, voll.ledger, voll.scheiben,
+                                stichtag, ab_tag=BETRIEBSBEGINN)
+        zwischen = gebuchte_sicht(config, voll.historie, voll.ledger, voll.scheiben,
+                                  heute, ab_tag=BETRIEBSBEGINN)
+        zweimal = gebuchte_sicht(config, *zwischen, stichtag, ab_tag=BETRIEBSBEGINN)
+        for a, b, rolle in zip(einmal, zweimal, ("historie", "ledger", "scheiben")):
+            pd.testing.assert_frame_equal(
+                a.reset_index(drop=True), b.reset_index(drop=True),
+                obj=f"{rolle} zum {stichtag.isoformat()}")
+
+
+def test_die_bewertung_am_stichtag_haengt_nicht_am_stand_des_stammes(gefuehrt):
+    """Die zweite Annahme von ``_stichtagssicht``: Der Stichtagsschnitt
+    laesst ``portfolio`` unberuehrt, weil die Bewertung ihren Zustand aus
+    dem Journal herleitet (``journalsicht``) und der Stamm nur Stammdaten
+    beisteuert.
+
+    Wuerde die Bewertung je auf den fortgeschriebenen Zustand des Stammes
+    zurueckfallen, traegt der Abschluss wieder das Wissen des Lauftags —
+    lautlos, denn beide Wege liefern eine vollstaendige Tabelle. Dieser
+    Test faellt dann, bevor es jemand an den Zahlen merkt.
+    """
+    from rechner_pipeline.bestand.auswertung import einzelwerte_am
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.fuehrung import fuehre_fort
+    from rechner_pipeline.betrieb.tagesjournal import gebuchte_sicht
+
+    ablage, _ = gefuehrt
+    config = load_config(ablage.config_pfad)
+    lies = lambda name: read_portfolio(ablage.stand / f"{name}.parquet")
+    port, hist, led, sch = (lies("bestand_gesamt"), lies("historie"),
+                            lies("ledger"), lies("scheiben"))
+    stichtag = dt.date(2026, 2, 1)
+    h_s, _, s_s = gebuchte_sicht(config, hist, led, sch, stichtag, ab_tag=BETRIEBSBEGINN)
+
+    mit_stamm_von_heute = einzelwerte_am(port, h_s, config, stichtag, scheiben=s_s)
+    mit_stamm_vom_stichtag = einzelwerte_am(
+        fuehre_fort(port, h_s), h_s, config, stichtag, scheiben=s_s)
+    assert mit_stamm_von_heute == mit_stamm_vom_stichtag
+
+
+def test_der_stichtagsschnitt_ruehrt_die_vorgeschichte_nicht_an(tmp_path, monkeypatch):
+    """Die Gegenrichtung zu T24-02: Der Schnitt darf auch nicht zu viel
+    nehmen. Ereignisse mit Wirkung VOR dem Betriebsbeginn sind
+    Eroeffnungsstand — sie gehoeren vollstaendig dazu, unabhaengig davon,
+    wann ihr rechnerischer Buchungstag laege.
+
+    Warum das eine eigene Zusicherung braucht: Der Abnahmetest vergleicht
+    zwei Welten. Faellt ``ab_tag`` weg, sind BEIDE gleich falsch, und der
+    Vergleich bleibt gruen — nachgemessen, alle 25 Tests des Moduls
+    blieben gruen. Eine Eigenschaft, die nur im Vergleich geprueft wird,
+    ist gegen einen Fehler blind, der beide Seiten trifft.
+    """
+    import rechner_pipeline.betrieb.tageslauf as tl
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+    from rechner_pipeline.bestand.generator import generate
+    from rechner_pipeline.betrieb import tagesjournal as tj
+    from rechner_pipeline.betrieb.tagesjournal import mit_buchungstagen
+
+    # Vierhundert Tage: Der Buchungstag eines Todes aus der Vorgeschichte
+    # rutscht damit hinter den Stichtag — genau der Fall, den ab_tag deckt.
+    monkeypatch.setattr(tj, "meldeverzug_tage", lambda config, police_id, jahr: 400)
+    pfad = tmp_path / "bestand.toml"
+    pfad.write_text(_kleine_config().replace("sample_size = 8", "sample_size = 60"),
+                    encoding="utf-8")
+    config = load_config(pfad)
+    stichtag = dt.date(2026, 2, 1)
+    voll = fortschreiben(generate(config, bis=BETRIEBSBEGINN), config, dt.date(2026, 6, 30))
+
+    vorgeschichte = voll.ledger[voll.ledger["status_date"] < pd.Timestamp(BETRIEBSBEGINN)]
+    spaet = mit_buchungstagen(config, vorgeschichte)
+    spaet = spaet[spaet["buchungsdatum"] > pd.Timestamp(stichtag)]
+    assert len(spaet) > 0, (
+        "Testwelt ohne Vorgeschichts-Buchung hinter dem Stichtag — ohne sie "
+        "koennte der Test den Verlust der Vorgeschichte nicht bemerken")
+
+    tabellen = {"historie": voll.historie, "ledger": voll.ledger, "scheiben": voll.scheiben}
+    sicht = tl._stichtagssicht(tabellen, config, stichtag, BETRIEBSBEGINN)
+
+    geblieben = sicht["ledger"][
+        sicht["ledger"]["status_date"] < pd.Timestamp(BETRIEBSBEGINN)]
+    pd.testing.assert_frame_equal(
+        vorgeschichte.reset_index(drop=True), geblieben.reset_index(drop=True),
+        obj="Ledger der Vorgeschichte")

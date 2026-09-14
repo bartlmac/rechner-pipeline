@@ -268,6 +268,25 @@ gesetzt.
    überschrieben) und der Bestandsbericht des Monats. (Der normative Text
    sagte „am letzten Kalendertag", Umsetzung und Begründung machten den
    Ersten — Nebenhinweis des Reviews T22; der Text folgt jetzt dem Code.)
+
+   **Bewertung zum Monatsersten heißt: die am Monatsersten GEBUCHTE
+   Sicht** (Review T24-02). Ein Abschluss ist der Stand, den das
+   Unternehmen an seinem Stichtag hatte, nicht der Stand, den es später
+   rückblickend für diesen Stichtag ausrechnet. Ein Todesfall mit Wirkung
+   zum 1.1. und Buchung am 13.3. gehört deshalb nicht in den
+   Februar-Abschluss: Im Februar wusste niemand von ihm. Er wirkt im
+   Abschluss des Monats, in dem er gebucht wurde.
+
+   Das ist keine Feinheit, sondern die Bedingung dafür, dass ein Abschluss
+   überhaupt festschreibbar ist. Mit dem Wissen von heute liefert derselbe
+   Stichtag zu verschiedenen Zeiten verschiedene Antworten; ihn dann
+   schreibgeschützt festzuhalten friert einen beliebigen Moment ein. Nur
+   mit dem Schnitt am Stichtag ist der Abschluss eine Funktion seines
+   Stichtags allein — und erst damit gilt die Zusage aus Punkt 1, dass ein
+   nachgeholter Lauf denselben Stand ergibt wie jede Nacht.
+
+   Für die Wache P-B1 und die Tagesseite gilt das Gegenteil: Sie berichten
+   über *heute* und arbeiten deshalb auf der heute gebuchten Sicht.
 7. **Tagesprotokoll**: eine JSON-Zeile je Lauf (Datum, Neugeschäft,
    Buchungen je Art, Bestandszahlen, P-B1-Urteil, Manifest-Hash,
    Kern-Version, Image-Digest). Das Protokoll ist der Nachweis, dass das

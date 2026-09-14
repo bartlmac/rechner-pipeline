@@ -750,6 +750,56 @@ def _teilbestand(tabellen: Dict[str, Any], policen: List[int]) -> Dict[str, Any]
     return teil
 
 
+def _stichtagssicht(
+    tabellen: Dict[str, Any], config: BestandConfig, stichtag: _dt.date,
+    betriebsbeginn: _dt.date,
+) -> Dict[str, Any]:
+    """Die Tabellen des Laufs auf den Buchungsstand des STICHTAGS zurueckschneiden.
+
+    Ein Monatsabschluss ist der Stand, den das Unternehmen an seinem
+    Stichtag hatte — nicht der Stand, den es heute rueckblickend fuer
+    diesen Stichtag ausrechnet (Review T24-02, Entscheid des Maintainers
+    2026-09-14: "wir simulieren das Innere eines Unternehmens").
+
+    Der Lauf baut seine Tabellen einmal mit der gebuchten Sicht von
+    ``heute``. Die Abschluss-Schleife schrieb damit JEDEN Stichtag — der
+    Wirkungsfilter sass auf dem Stichtag, der Buchungsschnitt aber auf dem
+    Lauftag. Ein Todesfall mit Wirkung zum 1.1. und Buchung am 13.3. fehlte
+    dadurch schon im Januar-Abschluss, obwohl das Unternehmen im Januar
+    nichts von ihm wusste; ein Nachtlauf am 1.2. haette den Vertrag als in
+    Kraft ausgewiesen. Beide Laeufe waren gruen und schrieben dieselbe
+    0444-Datei mit verschiedenem Inhalt — ein Abschluss war damit keine
+    Funktion seines Stichtags, sondern auch des Zufalls, wann gerechnet
+    wurde. Damit war er auch nicht festschreibbar (ADR-011).
+
+    Auf der Laufzeit der Vorzeige betraf das 29 der 387 Abschluesse: die
+    Erstbefuellung holte 1994 bis 2026 in EINEM Lauf nach und rechnete
+    jeden Monatsabschluss mit dem Wissen von 2026.
+
+    Der Schnitt darf auf den bereits nach ``heute`` gefilterten Tabellen
+    aufsetzen, statt die ungefilterte Wirkungshistorie mitzufuehren:
+    ``buchungstag`` ist eine reine Funktion der einzelnen Ledger-Zeile
+    (Police, Ereignis, Wirkungstag, Herkunft, Generation) und damit
+    unabhaengig davon, welche anderen Zeilen die Tabelle traegt. Fuer
+    ``stichtag <= heute`` entfernt erst der eine, dann der andere Schnitt
+    genau die Zeilen, die ein einziger Schnitt auf ``stichtag`` entfernt
+    haette.
+
+    ``portfolio`` bleibt unveraendert: die Bewertung leitet den Zustand am
+    Stichtag aus dem Journal her (``journalsicht``), der Stamm steuert
+    Stammdaten bei. Gemessen an zwei Stichtagen des echten Bestands ist ein
+    auf den Stichtag fortgeschriebener Stamm zeilengleich; ein Test haelt
+    die Annahme fest, damit sie nicht still wegbricht.
+    """
+    historie, ledger, scheiben = gebuchte_sicht(
+        config, tabellen["historie"], tabellen["ledger"], tabellen["scheiben"],
+        stichtag, ab_tag=betriebsbeginn,
+    )
+    sicht = dict(tabellen)
+    sicht["historie"], sicht["ledger"], sicht["scheiben"] = historie, ledger, scheiben
+    return sicht
+
+
 def _bericht(
     tabellen: Dict[str, Any], config: BestandConfig, stichtag: _dt.date, heute: _dt.date,
     ziel: Path, quelle_hash: str, titel: Optional[str] = None,
@@ -972,23 +1022,32 @@ def _tageslauf(
                     abschluesse.append({"stichtag": stichtag.isoformat(), "datei": pfad.name,
                                         "neu": False})
                     continue
+                # Buchungsschnitt am Stichtag, nicht am Lauftag (T24-02):
+                # Der Abschluss ist, was am Stichtag GEBUCHT war. Wache und
+                # Tagesseite bleiben auf der Sicht von heute — dort ist sie
+                # richtig, denn sie berichten ueber heute.
+                sicht = _stichtagssicht(tabellen, config, stichtag, betriebsbeginn)
                 # Der Abschluss bekommt dieselben Nebentabellen wie die Wache
                 # und der Bericht — sonst weist er die Korrekturschicht als
                 # null aus, obwohl die Fuehrung sie traegt (N-01).
                 geschrieben = schreibe_abschluss(
-                    tabellen["portfolio"], tabellen["historie"], config, stichtag,
-                    ablage.abschluesse, scheiben=tabellen["scheiben"],
-                    merkmale=tabellen.get("merkmale"),
-                    schichten=tabellen.get("schichten"),
-                    verankerung=tabellen.get("verankerung"),
+                    sicht["portfolio"], sicht["historie"], config, stichtag,
+                    ablage.abschluesse, scheiben=sicht["scheiben"],
+                    merkmale=sicht.get("merkmale"),
+                    schichten=sicht.get("schichten"),
+                    verankerung=sicht.get("verankerung"),
                 )
                 eintrag: Dict[str, Any] = {
                     "stichtag": stichtag.isoformat(), "datei": geschrieben.name,
                     "sha256": _datei_hash(geschrieben), "neu": True,
                 }
                 if stichtag == stichtage[-1]:
+                    # Derselbe Schnitt wie der Abschluss: Der Bericht legt
+                    # den Abschluss aus, den er begleitet — auf der Sicht
+                    # von heute erzaehlte er vom selben Stichtag eine
+                    # andere Geschichte als die Zahlen daneben.
                     bericht = _bericht(
-                        tabellen, config, stichtag, heute,
+                        sicht, config, stichtag, heute,
                         ablage.berichte / f"bestandsbericht_{stichtag.isoformat()}.html",
                         tabellen["sha256"]["portfolio"],
                     )
@@ -997,7 +1056,7 @@ def _tageslauf(
                         eintrag["teilbestaende"] = []
                         for fall, policen in sorted(teilbestaende.items()):
                             teil = _bericht(
-                                _teilbestand(tabellen, policen), config, stichtag, heute,
+                                _teilbestand(sicht, policen), config, stichtag, heute,
                                 ablage.berichte
                                 / f"bestandsbericht_{stichtag.isoformat()}_teilbestand-{fall}.html",
                                 tabellen["sha256"]["portfolio"],

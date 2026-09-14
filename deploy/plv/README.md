@@ -67,7 +67,10 @@ docker image inspect ghcr.io/<owner>/rechner-pipeline-plv:latest \
 **Erstbefuellung.** Der erste Lauf baut den Basisbestand aus der Config
 (Batch bis zum Betriebsbeginn), nimmt die Uebernahme-Eingaenge auf und
 holt alle Tage vom Betriebsbeginn bis heute in EINEM Lauf nach — der
-Stand ist derselbe, als haette der Lauf jede Nacht stattgefunden. Die PLV
+Stand ist derselbe, als haette der Lauf jede Nacht stattgefunden — auch
+die Monatsabschluesse, denn jeder wird mit der an SEINEM Stichtag
+gebuchten Sicht gerechnet, nicht mit dem Wissen des Lauftags (Review
+T24-02). Die PLV
 fuehrt seit dem 1. Juli 1994: Der Batch zieht nur den Grenztag selbst
 (fuenf Vertraege mit Beginn am 1. Juli), jeder weitere entsteht aus dem
 Tagesstrom, und der Lauf schreibt jeden Monatsabschluss
