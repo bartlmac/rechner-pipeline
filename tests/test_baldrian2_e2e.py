@@ -446,6 +446,30 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
     rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fremd, **basis)
     assert any("unbekannte Zustaende" in b["text"] for b in rot["befunde"])
 
+    # 6. Die Korrekturschicht (Review T25-03). Drei Luecken auf einmal:
+    #    Die ganze Pruefung hing an "if schichtbeleg:", verglichen wurde nur
+    #    die Richtung Beleg -> Tabelle, und von zwoelf Spalten nur rho.
+    assert len(ueb["schichten"]) > 0, "der Fall fuehrt keine Schicht — nichts zu pruefen"
+    # (a) Eine Tabelle, die keine Abnahme bezeugt.
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort,
+                          **dict(basis, schichtbeleg=None))
+    assert any("keinen Schichtbeleg" in b["text"] for b in rot["befunde"])
+    # (b) Die GEGENRICHTUNG: eine Zeile der Tabelle ohne Eintrag im Beleg.
+    #     Sie wurde nie gebildet.
+    zusatz = ueb["schichten"].iloc[[0]].copy()
+    zusatz["police_id"] = 9_999_999
+    mehr = dict(ueb, schichten=pd.concat([ueb["schichten"], zusatz], ignore_index=True))
+    rot = pruefe_fuehrung(uebernahme=mehr, fortschreibung=fort, **basis)
+    assert any("ohne Eintrag im Schichtbeleg" in b["text"] for b in rot["befunde"])
+    # (c) Ein Feld, das nicht rho heisst.
+    verstellt = dict(ueb, schichten=ueb["schichten"].copy())
+    i = verstellt["schichten"].index[0]
+    verstellt["schichten"].loc[i, "verweildauer"] = (
+        int(verstellt["schichten"].loc[i, "verweildauer"]) + 7)
+    rot = pruefe_fuehrung(uebernahme=verstellt, fortschreibung=fort, **basis)
+    assert any(b.get("feld") == "verweildauer" for b in rot["befunde"]), (
+        "eine Abweichung ausserhalb von rho blieb unbemerkt")
+
 
 def _bericht(fall: Path, name: str) -> dict:
     return json.loads(

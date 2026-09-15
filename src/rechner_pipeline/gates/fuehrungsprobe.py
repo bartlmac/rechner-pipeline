@@ -38,6 +38,7 @@ Knoten: klv
 from __future__ import annotations
 
 import argparse
+import dataclasses as _dataclasses
 import datetime as dt
 import hashlib
 import json
@@ -100,6 +101,30 @@ def _zelle(spez, auspraegungen: Dict[str, str]):
             f"keine Spez-Zelle fuer {gesucht!r} — vorhanden sind "
             f"{[z.auspraegungen for z in spez.zellen]}")
     return treffer[0]
+
+
+#: Die Felder der Korrekturschicht, die Tabelle und Beleg BEIDE fuehren.
+#: Verglichen wurde bisher nur ``rho`` — elf weitere Spalten standen
+#: unbezeugt daneben (Review T25-03). Aus der Datenklasse abgeleitet, nicht
+#: abgetippt: Wer ein Feld ergaenzt, ergaenzt den Vergleich mit.
+SCHICHT_FELDER: Tuple[str, ...] = tuple(
+    f.name for f in _dataclasses.fields(Schichtparameter))
+
+
+def _schichtwert(wert: Any) -> Any:
+    """Tabellen- und Belegwert vergleichbar machen.
+
+    ``formparameter`` und ``vererbend`` liegen in der Tabelle als
+    JSON-Text und im Beleg als Struktur; Tupel und Listen sind dasselbe.
+    """
+    if isinstance(wert, str) and wert[:1] in ("{", "["):
+        try:
+            wert = json.loads(wert)
+        except ValueError:
+            return wert
+    if isinstance(wert, (list, tuple)):
+        return [_schichtwert(x) for x in wert]
+    return wert
 
 
 def pruefe_fuehrung(
@@ -334,23 +359,49 @@ def pruefe_fuehrung(
                     }),
                     int(anker_ta.loc[pid]),
                 )
-        tabelle = uebernahme.get("schichten")
+    # Die Tabelle wird IMMER angesehen, nicht nur wenn ein Beleg vorliegt
+    # (Review T25-03): ``if schichtbeleg:`` machte die ganze Schichtpruefung
+    # optional — eine schichten.parquet ohne Beleg lief ungeprueft durch die
+    # Fuehrung, und niemand sagte es.
+    tabelle = uebernahme.get("schichten")
+    if tabelle is not None and len(tabelle) and not schichtbeleg:
+        befund(None, "schicht",
+               f"schichten.parquet fuehrt {len(tabelle)} Schichten, aber es gibt "
+               "keinen Schichtbeleg — die Fuehrung rechnet mit einer Korrektur, "
+               "die keine Abnahme bezeugt")
+    if schichtbeleg:
         if tabelle is None or len(tabelle) == 0:
             befund(None, "schicht",
                    "Schichtbeleg vorhanden, aber schichten.parquet fehlt im "
                    "Uebernahme-Verzeichnis — die Fuehrung kennt die Schicht nicht")
         else:
-            fehlend = sorted(set(schicht_je_police) - set(int(p) for p in tabelle["police_id"]))
+            in_tabelle = {int(p) for p in tabelle["police_id"]}
+            fehlend = sorted(set(schicht_je_police) - in_tabelle)
             if fehlend:
                 befund(None, "schicht",
                        f"{len(fehlend)} Schichten des Belegs fehlen in "
                        f"schichten.parquet (z. B. {fehlend[:5]})")
-            tabelle_rho = {int(z["police_id"]): float(z["rho"]) for z in tabelle.to_dict("records")}
-            for pid, (param, _) in schicht_je_police.items():
-                if pid in tabelle_rho and tabelle_rho[pid] != param.rho:
-                    befund(pid, "schicht",
-                           f"rho {tabelle_rho[pid]!r} in schichten.parquet, "
-                           f"{param.rho!r} im Schichtbeleg")
+            # Die GEGENRICHTUNG: Zeilen der Tabelle, die kein Beleg deckt.
+            # Sie wurde nie gebildet — eine Schicht, die die Fuehrung rechnet
+            # und keine Abnahme kennt, war unsichtbar (Review T25-03).
+            unbelegt = sorted(in_tabelle - set(schicht_je_police))
+            if unbelegt:
+                befund(None, "schicht",
+                       f"{len(unbelegt)} Schichten in schichten.parquet ohne Eintrag "
+                       f"im Schichtbeleg (z. B. {unbelegt[:5]}) — die Fuehrung rechnet "
+                       "eine Korrektur, die die Pruefstrecke nicht kennt")
+            # Und JEDES Feld, nicht nur rho: Ein Vergleich, der eine Spalte
+            # prueft und elf uebergeht, bezeugt die elf nicht.
+            je_police = {int(z["police_id"]): z for z in tabelle.to_dict("records")}
+            for pid, (param, _) in sorted(schicht_je_police.items()):
+                zeile = je_police.get(pid)
+                if zeile is None:
+                    continue
+                for feld in SCHICHT_FELDER:
+                    if _schichtwert(zeile[feld]) != _schichtwert(getattr(param, feld)):
+                        befund(pid, "schicht",
+                               f"{feld} {zeile[feld]!r} in schichten.parquet, "
+                               f"{getattr(param, feld)!r} im Schichtbeleg", feld=feld)
 
     # 4. Buchungen der Fortschreibung nach dem Stichtag ---------------------
     buchungen: Dict[str, int] = {art: 0 for art in GEPRUEFTE_BUCHUNGEN}

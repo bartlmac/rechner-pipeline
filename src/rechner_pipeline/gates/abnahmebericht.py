@@ -1361,6 +1361,13 @@ def _bestands_suite_fehler(
 #: Ratsche gegen abgetippte Rollen (tests/test_betrieb_drift_n01.py) fuehrt
 #: genau diese Stelle als benannte Ausnahme.
 PB1_VOLLPROFIL = frozenset({"portfolio", "historie", "ledger", "config"})
+#: Dazu, sobald der Fall eine materialisierte ``schichten.parquet`` fuehrt
+#: (Review T25-03, Entscheid des Maintainers 2026-09-15): Nimmt A-M4 einen
+#: Bestand ab, ohne dass P-B1 die Korrekturschicht gelesen hat, rechnet die
+#: Abnahme eine andere Welt als die Fuehrung. Bei N-01 gemessen: rund
+#: 13.700 EUR Deckungskapital je Vertrag. Ebenfalls bewusst ein Literal,
+#: aus demselben Grund wie PB1_VOLLPROFIL.
+PB1_VOLLPROFIL_SCHICHT = frozenset({"schichten", "verankerung"})
 #: Zaehler der P-B1-Zusammenfassung, die BEZEUGEN, dass eine Pruefung
 #: stattgefunden hat. Fuer sie ist null ein Befund, auch wenn Beleg und
 #: Nachrechnung sich einig sind (Review T23-05): Ein Vollprofil mit
@@ -1692,12 +1699,15 @@ def _b1_fehler(
         fehler.append("P-B1-Ledger.summary.bis ist nur mit ledger zulaessig")
     # Vollprofil (T22-01): ohne diese Rollen hat P-B1 den Bestand nicht als
     # Bestand geprueft, sondern eine Tabelle als Tabelle.
-    fehlende_rollen = sorted(PB1_VOLLPROFIL - set(rollen))
+    vollprofil = set(PB1_VOLLPROFIL)
+    if any((Path(fall) / "abgeleitet").rglob("schichten.parquet")):
+        vollprofil |= PB1_VOLLPROFIL_SCHICHT
+    fehlende_rollen = sorted(vollprofil - set(rollen))
     if fehlende_rollen:
         fehler.append(
             "P-B1-Beleg ohne Vollprofil: die Rollen "
             f"{fehlende_rollen} fehlen — im Bestands-Scope verlangt A-M4 "
-            f"{sorted(PB1_VOLLPROFIL)} und einen Horizont (bis); ein "
+            f"{sorted(vollprofil)} und einen Horizont (bis); ein "
             "Teilprofil ist kein Beleg fuer die Migrationsabnahme"
         )
     if bis is None and not fehlende_rollen:

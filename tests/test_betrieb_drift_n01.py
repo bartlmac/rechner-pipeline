@@ -294,6 +294,7 @@ ERBAUER = {SRC / "bestand" / "manifest.py", SRC / "bestand" / "vorbedingungen.py
 #: (Review T25-01). Die Ratsche kann das nicht unterscheiden; deshalb
 #: steht es hier statt dass sie es uebersieht.
 GATE_VERTRAEGE = {("abnahmebericht.py", "PB1_VOLLPROFIL"),
+                  ("abnahmebericht.py", "PB1_VOLLPROFIL_SCHICHT"),
                   ("abnahmebericht.py", "PROBE_PFLICHTFELDER")}
 
 

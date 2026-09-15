@@ -77,3 +77,45 @@ def test_vollprofil_ist_ein_am4_beleg(tmp_path: Path):
     assert pb1.exit_code == 0, pb1.errors
     assert isinstance(pb1.summary.get("betraege_hergeleitet"), int)
     assert _abnahmebericht(fall).exit_code == 0
+
+
+def test_mit_korrekturschicht_verlangt_das_vollprofil_schicht_und_verankerung(tmp_path: Path):
+    """Review T25-03, Entscheid des Maintainers 2026-09-15: Fuehrt der Fall
+    eine materialisierte schichten.parquet, sind schichten und verankerung
+    Pflichtrollen des A-M4-Vollprofils.
+
+    Vorher nahm A-M4 einen Bestand ab, dessen Korrekturschicht P-B1 nie
+    gelesen hatte — die Abnahme rechnete eine andere Welt als die Fuehrung.
+    Bei N-01 gemessen: rund 13.700 EUR Deckungskapital je Vertrag.
+
+    Mutationsprobe: PB1_VOLLPROFIL_SCHICHT leeren -> gruen, also rot hier.
+    """
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+    from rechner_pipeline.models.bestand import STAMM_NAMES
+    from tests.test_betrieb_neuaufsetzen import _schichten, _verankerung
+
+    fall = _bereite_bestandsfall(tmp_path)
+    lauf = fall / "abgeleitet" / "bestand"
+    # Der Minimalfall dieses Moduls fuehrt keine Schicht — der Test stellt
+    # seinen Gegenstand selbst her: eine materialisierte Korrekturschicht
+    # im Uebernahme-Verzeichnis, fuer die Police, die der Fall fuehrt.
+    police = int(read_portfolio(lauf / "bestand.parquet",
+                                expected_columns=STAMM_NAMES)["police_id"].iloc[0])
+    ueber = fall / "abgeleitet" / "uebernahme"
+    write_portfolio(_schichten(police), ueber / "schichten.parquet")
+    write_portfolio(_verankerung(police), ueber / "verankerung.parquet")
+    assert any((fall / "abgeleitet").rglob("schichten.parquet"))
+
+    # Ein sonst VOLLSTAENDIGES Profil, nur ohne Schicht und Verankerung.
+    ohne = _pb1(fall, ["--portfolio", str(lauf / "bestand_gesamt.parquet"),
+                       "--historie", str(lauf / "historie.parquet"),
+                       "--ledger", str(lauf / "ledger.parquet"),
+                       "--scheiben", str(lauf / "scheiben.parquet"),
+                       "--config", str(fall / "abgeleitet" / "einpolice.toml"),
+                       "--bis", "2026-01-01"])
+    assert ohne.exit_code == 0, ohne.errors        # P-B1 selbst ist gruen ...
+    bericht = _abnahmebericht(fall)                # ... aber kein A-M4-Beleg
+    assert bericht.exit_code != 0
+    meldung = " ".join(e["message"] for e in bericht.errors)
+    assert "Vollprofil" in meldung
+    assert "'schichten'" in meldung and "'verankerung'" in meldung
