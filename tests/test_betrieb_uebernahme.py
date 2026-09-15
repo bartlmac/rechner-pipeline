@@ -611,5 +611,12 @@ def test_keine_quellnummer_ueberlebt_in_irgendeiner_tabelle(eingang):
         ids = set(read_portfolio(pfad, expected_columns=spalten)["police_id"])
         assert not (ids & quellen), f"{name}.parquet fuehrt noch Quellnummern"
         assert ids <= ziele, f"{name}.parquet nennt eine Police ausserhalb der Uebersetzung"
+        if name == "bestand":
+            # Beim Stamm die GEGENRICHTUNG mit: Eine Uebersetzung, die mehr
+            # Policen nennt als der Bestand fuehrt, behauptet mehr, als der
+            # Zugangsstand hergibt. Die Nebentabellen sind per Konstruktion
+            # Teilmengen — dort waere die Gegenrichtung Laerm (nicht jeder
+            # Vertrag hat Scheiben oder eine Schicht).
+            assert ids == ziele, "die Uebersetzungstabelle und der Stamm gehen auseinander"
         gesehen += 1
     assert gesehen >= 3, "weniger Tabellen geprueft als der Zugangsstand fuehrt"

@@ -284,6 +284,20 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
     # hinlegt, haette ihn nie gesehen — nachgemessen.
     assert beleg["endbestand_geprueft"] > 0, (
         "die Probe des echten Laufs hat den Endbestand nicht angesehen")
+    # Jede Eingabe steht im Beleg, und sie steht mit dem Hash DER BYTES da,
+    # die geprueft wurden (Review T25-05). Die Spez war ueberhaupt nicht
+    # gebunden: Die Probe rechnete gegen die Zellen einer Datei, die ihr
+    # Beleg nicht nannte.
+    from hashlib import sha256
+
+    gebunden = beleg["provenienz"]["eingaben"]
+    assert any("spez" in name for name in gebunden), (
+        f"die Spez fehlt unter den gebundenen Eingaben: {sorted(gebunden)}")
+    for name, summe in gebunden.items():
+        pfad = (gefahrener_fall / name) if not Path(name).is_absolute() else Path(name)
+        assert pfad.is_file(), name
+        assert sha256(pfad.read_bytes()).hexdigest() == summe, (
+            f"{name}: der Beleg nennt einen anderen Hash als die Datei traegt")
     assert beleg["vertraege"] == len(_policen()["policen"])
     assert beleg["mit_anfangszustand"] > 0 and beleg["scheiben"] > 0
     assert beleg["schichten"] == len(_policen()["policen"])

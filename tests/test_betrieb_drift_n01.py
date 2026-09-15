@@ -284,24 +284,38 @@ ERBAUER = {SRC / "bestand" / "manifest.py", SRC / "bestand" / "vorbedingungen.py
 #: Benannte Ausnahmen: Literale, die AUSSEHEN wie eine abgetippte
 #: Rollenliste, aber keine sind.
 #:
-#: PB1_VOLLPROFIL ist der Gate-Vertrag von A-M4 — bewusst ein Literal,
-#: nicht aus ROLLEN_DATEIEN abgeleitet (eine neue Erzeugerrolle darf den
-#: Abnahmeumfang nicht stillschweigend erweitern).
+#: Benannte Ausnahmen: Literale, die WIRKLICH Rollenmengen sind und
+#: trotzdem stehen bleiben duerfen, weil sie einen Gate-Vertrag bilden.
+#: PB1_VOLLPROFIL und PB1_VOLLPROFIL_SCHICHT sind der Abnahmeumfang von
+#: A-M4 — bewusst Literale, nicht aus ROLLEN_DATEIEN abgeleitet: Eine neue
+#: Erzeugerrolle darf den Abnahmeumfang nicht stillschweigend erweitern.
 #:
-#: PROBE_PFLICHTFELDER nennt FELDER des Fuehrungsprobe-Belegs, nicht
-#: Rollen einer Tabelle — dass "scheiben" und "schichten" in beiden
-#: Vokabularen vorkommen, ist eine Namensgleichheit, keine Doppelpflege
-#: (Review T25-01). Die Ratsche kann das nicht unterscheiden; deshalb
-#: steht es hier statt dass sie es uebersieht.
+#: Hier stehen NUR Vertraege, keine Fehlalarme. Eine Liste, die beides
+#: mischt, verliert ihre Aussage — man sieht ihr nicht mehr an, ob sie
+#: waechst, weil es mehr Vertraege gibt oder weil der Detektor zu grob ist
+#: (merge-session, 2026-09-15). Fehlalarme gehoeren in den Detektor.
 GATE_VERTRAEGE = {("abnahmebericht.py", "PB1_VOLLPROFIL"),
-                  ("abnahmebericht.py", "PB1_VOLLPROFIL_SCHICHT"),
-                  ("abnahmebericht.py", "PROBE_PFLICHTFELDER")}
+                  ("abnahmebericht.py", "PB1_VOLLPROFIL_SCHICHT")}
 
 
 def _rollen_literale(quelle: str) -> list:
-    """Dict-/Tupel-/Listen-/Set-Literale mit zwei oder mehr P-B1-Rollen:
-    (Zeile, Rollen, Name der Zuweisung oder None)."""
+    """Dict-/Tupel-/Listen-/Set-Literale, die eine ROLLENMENGE sind:
+    (Zeile, Rollen, Name der Zuweisung oder None).
+
+    Zwei Bedingungen, nicht eine. Zwei oder mehr P-B1-Rollen — und KEIN
+    fremder Name daneben: Ein Eingaben-Mapping der Engine enthaelt
+    ausschliesslich Rollen und ``config`` (``vorbedingungen.PB1_ROLLEN``).
+    Ein Literal, das Rollennamen mit anderem mischt, ist keine abgetippte
+    Rollenliste, sondern ein anderes Vokabular, in dem zufaellig dieselben
+    Woerter vorkommen — ``PROBE_PFLICHTFELDER`` nennt Belegfelder, darunter
+    "scheiben" und "schichten" (Review T25-01).
+
+    Die zweite Bedingung gehoert in den Detektor und nicht in die
+    Ausnahmeliste: Eine Liste, die Vertraege und Fehlalarme mischt, sagt
+    nicht mehr, warum sie waechst.
+    """
     rollen = set(ROLLEN_DATEIEN)
+    erlaubt_daneben = rollen | {"config"}
     baum = ast.parse(quelle)
     zugewiesen: dict = {}
     for knoten in ast.walk(baum):
@@ -315,7 +329,7 @@ def _rollen_literale(quelle: str) -> list:
             namen = {k.value for k in knoten.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)}
         elif isinstance(knoten, (ast.Tuple, ast.List, ast.Set)):
             namen = {e.value for e in knoten.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
-        if len(namen & rollen) >= 2:
+        if len(namen & rollen) >= 2 and namen <= erlaubt_daneben:
             treffer.append((knoten.lineno, sorted(namen & rollen), zugewiesen.get(id(knoten))))
     return treffer
 
@@ -359,3 +373,10 @@ def test_die_ratsche_faengt_die_abgetippte_liste():
     assert _rollen_literale('erlaubt = {"portfolio", "historie", "ledger"}\n') == [(1, ["historie", "ledger", "portfolio"], "erlaubt")]
     assert _rollen_literale('voll = frozenset({"portfolio", "historie"})\n') == [(1, ["historie", "portfolio"], "voll")]
     assert _rollen_literale('voll = frozenset({"portfolio", "config"})\n') == []
+    # Ein Vokabular, das Rollennamen mit Fremdem mischt, ist keine
+    # Rollenliste (Review T25-01): PROBE_PFLICHTFELDER in Kurzform.
+    assert _rollen_literale(
+        'felder = ("scheiben", "schichten", "stichtag", "generation")\n') == []
+    # Aber dieselben zwei Namen allein sind eine (PB1_VOLLPROFIL_SCHICHT).
+    assert _rollen_literale('voll = frozenset({"scheiben", "schichten"})\n') == [
+        (1, ["scheiben", "schichten"], "voll")]

@@ -40,7 +40,6 @@ from __future__ import annotations
 import argparse
 import dataclasses as _dataclasses
 import datetime as dt
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -49,8 +48,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from rechner_pipeline import fall as fall_mod
-from rechner_pipeline.bestand.config import BestandConfig, load_config
-from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.bestand.config import BestandConfig, config_aus_text
+from rechner_pipeline.bestand.parquet_io import read_portfolio_aus_bytes
+from rechner_pipeline.gates._common import lies_gehasht
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.gates.bestand_uebernehmen import GRUNDVERTRAG, MATERIALISIEREN
 from rechner_pipeline.gates.migrationssuite_lauf import (
@@ -73,7 +73,8 @@ from rechner_pipeline.models.bestand import (
     VERANKERUNG_NAMES,
     model_point_kwargs,
 )
-from rechner_pipeline.spez.validierung import lade_spez
+from rechner_pipeline.models.manifest import GeleseneDatei
+from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 
 #: Schema des Probe-Belegs. 2 seit Review T25-02/T25-01: Der Beleg fuehrt
 #: ``endbestand_geprueft`` als Zahl, und der Abnahmebericht verlangt einen
@@ -522,10 +523,6 @@ def pruefe_fuehrung(
     }
 
 
-def _sha256(pfad: Path) -> str:
-    return hashlib.sha256(pfad.read_bytes()).hexdigest()
-
-
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.fuehrungsprobe",
@@ -569,7 +566,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     repo_root = Path(args.repo_root).resolve()
     ueber = Path(args.uebernahme).resolve() if args.uebernahme else fall / "abgeleitet" / "bestand"
-    eingaben: Dict[str, Path] = {}
+    # Jede Eingabe GENAU EINMAL lesen (Review T25-05, dieselbe Klasse wie
+    # T23-01/T20-01): Der Beleg traegt den Hash DER BYTES, die geprueft
+    # wurden. Vorher las die Probe jede Datei fachlich und hashte sie
+    # danach ein zweites Mal vom Pfad — dazwischen konnte eine andere
+    # Datei stehen, und der Beleg bezeugte einen Zustand, den niemand
+    # geprueft hat.
+    eingaben: Dict[str, str] = {}
 
     def schluessel(pfad: Path) -> str:
         # Eingaben im Fall relativ (portabler Beleg), ausserhalb absolut —
@@ -577,13 +580,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         pfad = pfad.resolve()
         return str(pfad.relative_to(fall)) if fall in pfad.parents else str(pfad)
 
+    def binde(pfad: Path) -> GeleseneDatei:
+        """Eine Eingabe lesen UND registrieren — ein Lesevorgang, ein Hash."""
+        gelesen = lies_gehasht(pfad)
+        eingaben[schluessel(pfad)] = gelesen.sha256
+        return gelesen
+
     def lies(pfad: Path, spalten, pflicht: bool):
         if not pfad.is_file():
             if pflicht:
                 raise SystemExit(f"fuehrungsprobe: Pflichttabelle fehlt: {pfad}")
             return None
-        eingaben[schluessel(pfad)] = pfad
-        return read_portfolio(pfad, expected_columns=spalten)
+        return read_portfolio_aus_bytes(binde(pfad).roh, expected_columns=spalten)
 
     try:
         uebernahme: Dict[str, Any] = {
@@ -604,8 +612,7 @@ def main(argv: Optional[List[str]] = None) -> int:
               "hat keinen benannten Anfangszustand (gates.bestand_uebernehmen "
               "schreibt ihn)", file=sys.stderr)
         return 2
-    eingaben[schluessel(beleg_pfad)] = beleg_pfad
-    uebernahme["beleg"] = json.loads(beleg_pfad.read_text(encoding="utf-8"))
+    uebernahme["beleg"] = json.loads(binde(beleg_pfad).text())
 
     fortschreibung = None
     if args.fortschreibung:
@@ -628,28 +635,32 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
 
     config_pfad = Path(args.config).resolve()
-    config = load_config(config_pfad)
+    config = config_aus_text(binde(config_pfad).text())
     fehler = config.validate()
     if fehler:
         print("fuehrungsprobe: Config ungueltig: " + "; ".join(fehler), file=sys.stderr)
         return 2
-    eingaben[schluessel(config_pfad)] = config_pfad
-    spez = lade_spez(fall, args.generation)
+    # Die Spez war ueberhaupt nicht gebunden (Review T25-05): Die Probe
+    # rechnete gegen die Zellen einer Datei, die ihr Beleg nicht nannte.
+    spez_datei = spez_pfad(fall, args.generation)
+    spez = lade_spez_aus_bytes(binde(spez_datei).roh)
     zeilen_pfad = Path(args.zeilen).resolve()
-    zeilen = json.loads(zeilen_pfad.read_text(encoding="utf-8"))
+    zeilen = json.loads(binde(zeilen_pfad).text())
     if not isinstance(zeilen, list):
         print(f"{args.zeilen}: erwartet wird die Zeilenliste aus "
               "gates.transformation_anwenden --zeilen", file=sys.stderr)
         return 2
-    eingaben[schluessel(zeilen_pfad)] = zeilen_pfad
-    vorgeschichte = _lies_csv(fall, args.vorgeschichte) if args.vorgeschichte else []
+    vorgeschichte = []
     if args.vorgeschichte:
-        vg_pfad = fall_mod.eingang_datei(fall, args.vorgeschichte)
-        eingaben[schluessel(vg_pfad)] = vg_pfad
+        binde(fall_mod.eingang_datei(fall, args.vorgeschichte))
+        vorgeschichte = _lies_csv(fall, args.vorgeschichte)
 
     red_anteile: Dict[str, float] = {}
     red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
     if args.red_anteile_datei is not None:
+        # Auch die Herabsetzungs-Anteile binden (Review T25-05): Sie gehen
+        # in jede Bewertung ein und standen nicht im Beleg.
+        binde(fall_mod.eingang_datei(fall, args.red_anteile_datei))
         for zeile in _lies_csv(fall, args.red_anteile_datei):
             if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
                 red_anteile[str(zeile["POLNR"])] = float(zeile["ANTEIL"])
@@ -665,8 +676,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     anker: Dict[str, Tuple[int, float]] = {}
     if args.anker_quelle is not None:
         quelle_pfad = fall_mod.eingang_datei(fall, args.anker_quelle)
-        eingaben[schluessel(quelle_pfad)] = quelle_pfad
-        quelle = json.loads(quelle_pfad.read_text(encoding="utf-8"))
+        quelle = json.loads(binde(quelle_pfad).text())
         for eintrag in quelle.get("vertraege", []):
             erster = next(
                 (x for x in (eintrag.get("punkte") or [])
@@ -689,7 +699,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         schicht_pfad = (fall / args.schicht) if not Path(args.schicht).is_absolute() \
             else Path(args.schicht)
         if schicht_pfad.is_file():
-            eingaben[schluessel(schicht_pfad)] = schicht_pfad
+            binde(schicht_pfad)
 
     tarifwerk = {
         "scheiben_mit_gamma1": bool(args.scheiben_mit_gamma1),
@@ -706,7 +716,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     ergebnis["system"] = systemstand(repo_root)
     ergebnis["provenienz"] = {
-        "eingaben": {name: _sha256(pfad) for name, pfad in sorted(eingaben.items())},
+        "eingaben": dict(sorted(eingaben.items())),
         "parameter": {
             "generation": args.generation, "erhoehungssatz": args.erhoehungssatz,
             "red_anteile": sorted(args.red_anteile),

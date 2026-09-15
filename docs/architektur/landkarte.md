@@ -48,7 +48,7 @@ flowchart TD
     gates -- 13 --> bestand
     gates -- 9 --> fall
     gates -- 12 --> kern
-    gates -- 12 --> models
+    gates -- 13 --> models
     gates -- 11 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
@@ -86,7 +86,7 @@ flowchart TD
     system_fall["system/fall<br/>1 Module"]
     bu -- 3 --> system_assurance
     bu -- 1 --> system_entscheid
-    klv -- 8 --> system_assurance
+    klv -- 9 --> system_assurance
     klv -- 7 --> system_entscheid
     klv -- 9 --> system_fall
     system_architektur -- 1 --> bu
