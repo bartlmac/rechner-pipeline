@@ -281,7 +281,20 @@ ERBAUER = {SRC / "bestand" / "manifest.py", SRC / "bestand" / "vorbedingungen.py
 #: Die eine benannte Ausnahme: der Gate-Vertrag von A-M4 ist ein Literal,
 #: keine Eingabenliste — eine Ableitung aus der Tabelle liesse jede neue
 #: Pflichtrolle still zur Vertragsaenderung werden (Begruendung am Ort).
-GATE_VERTRAEGE = {("abnahmebericht.py", "PB1_VOLLPROFIL")}
+#: Benannte Ausnahmen: Literale, die AUSSEHEN wie eine abgetippte
+#: Rollenliste, aber keine sind.
+#:
+#: PB1_VOLLPROFIL ist der Gate-Vertrag von A-M4 — bewusst ein Literal,
+#: nicht aus ROLLEN_DATEIEN abgeleitet (eine neue Erzeugerrolle darf den
+#: Abnahmeumfang nicht stillschweigend erweitern).
+#:
+#: PROBE_PFLICHTFELDER nennt FELDER des Fuehrungsprobe-Belegs, nicht
+#: Rollen einer Tabelle — dass "scheiben" und "schichten" in beiden
+#: Vokabularen vorkommen, ist eine Namensgleichheit, keine Doppelpflege
+#: (Review T25-01). Die Ratsche kann das nicht unterscheiden; deshalb
+#: steht es hier statt dass sie es uebersieht.
+GATE_VERTRAEGE = {("abnahmebericht.py", "PB1_VOLLPROFIL"),
+                  ("abnahmebericht.py", "PROBE_PFLICHTFELDER")}
 
 
 def _rollen_literale(quelle: str) -> list:

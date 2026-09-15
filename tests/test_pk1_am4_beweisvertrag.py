@@ -555,6 +555,40 @@ def test_ohne_bestandene_fuehrungsprobe_gibt_es_keinen_gruenen_abnahmebericht(
     assert bericht.exit_code != 0
     assert "Pflichteingaben" in " ".join(f["message"] for f in bericht.errors)
 
+    # 6. Ein Beleg, der nur Flags traegt und keine Zahl (Review T25-01).
+    #    Nachgemessen ging ein von Hand geschriebenes JSON mit fuenf
+    #    beliebigen Dateien, passenden Hashes und genau diesen Flags durch
+    #    — ohne stichtag, generation, tarifwerk, schichten oder eine
+    #    einzige Zaehlung. "Bestanden: true" war der ganze Beleg.
+    for feld in ("vertraege", "endbestand_geprueft"):
+        leer = dict(gut)
+        leer[feld] = 0
+        probe_pfad.write_text(json.dumps(leer, sort_keys=True), encoding="utf-8")
+        bericht = _abnahmebericht(fall)
+        assert bericht.exit_code != 0, feld
+        assert feld in " ".join(f["message"] for f in bericht.errors), feld
+    for feld in ("stichtag", "generation", "tarifwerk", "schichten",
+                 "buchungen_geprueft", "mit_anfangszustand"):
+        ohne_feld = {k: v for k, v in gut.items() if k != feld}
+        probe_pfad.write_text(json.dumps(ohne_feld, sort_keys=True), encoding="utf-8")
+        bericht = _abnahmebericht(fall)
+        assert bericht.exit_code != 0, feld
+        assert feld in " ".join(f["message"] for f in bericht.errors), feld
+
+    # 7. Der richtige Hash unter der falschen Rolle (Review T25-01):
+    #    bestand_sha256 an die ledger.parquet der Fortschreibung gebunden.
+    #    Die Pruefung fragte "steht der Hash irgendwo unter den Eingaben"
+    #    und war damit rollenblind.
+    ueber = gut["provenienz"]["parameter"]["uebernahme"]
+    vertauscht = dict(gut, provenienz={
+        "parameter": gut["provenienz"]["parameter"],
+        "eingaben": {**gut["provenienz"]["eingaben"],
+                     f"{ueber}/bestand.parquet": "a" * 64}})
+    probe_pfad.write_text(json.dumps(vertauscht, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert "bestand_sha256" in " ".join(f["message"] for f in bericht.errors)
+
     # Und mit dem echten Beleg wieder gruen — bis A-M4.
     probe_pfad.write_text(json.dumps(gut, sort_keys=True), encoding="utf-8")
     assert _abnahmebericht(fall).exit_code == 0

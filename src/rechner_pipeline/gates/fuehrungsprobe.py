@@ -74,8 +74,10 @@ from rechner_pipeline.models.bestand import (
 )
 from rechner_pipeline.spez.validierung import lade_spez
 
-#: Schema des Probe-Belegs.
-SCHEMA_VERSION = 1
+#: Schema des Probe-Belegs. 2 seit Review T25-02/T25-01: Der Beleg fuehrt
+#: ``endbestand_geprueft`` als Zahl, und der Abnahmebericht verlangt einen
+#: Katalog positiver Zaehler statt nur Flags.
+SCHEMA_VERSION = 2
 
 #: Cent-Toleranz wie in der Ledger-Herleitung von P-B1: Fuehrung und
 #: Pruefstrecke rufen dieselben Kern-Funktionen; ein vertragsweiter

@@ -1429,6 +1429,26 @@ def _json_beleg_aus(gelesene) -> Any:
 PROBE_PFLICHTEINGABEN = ("bestand.parquet", "historie.parquet", "ledger.parquet",
                          "uebernahme.json")
 
+#: Zaehler des Probe-Belegs, die BEZEUGEN, dass etwas angesehen wurde.
+#: Null und "nie gelaufen" saehen sonst gleich aus — dasselbe Muster wie
+#: ``PB1_PFLICHT_POSITIV`` (Review T25-01). Eine Probe ueber null
+#: Vertraege prueft nichts; ein Endbestand, von dem null Zeilen angesehen
+#: wurden, ist nicht angesehen worden.
+#: Das Belegschema der Probe kommt aus dem Produzenten, nicht aus einer
+#: zweiten Zahl hier — sonst waeren es zwei Vertraege (Review T23-06).
+from rechner_pipeline.gates.fuehrungsprobe import SCHEMA_VERSION as PROBE_SCHEMA_VERSION
+
+PROBE_PFLICHT_POSITIV = ("vertraege", "endbestand_geprueft")
+
+#: Felder, die der Beleg FUEHREN muss. Ihr Wert darf null sein — ein Fall
+#: ohne Korrekturschicht hat null Schichten, ein Horizont ohne Ereignisse
+#: null gepruefte Buchungen —, aber ihr FEHLEN heisst, dass der Beleg die
+#: Frage nicht beantwortet. Nachgemessen: Ein von Hand geschriebenes JSON
+#: ohne diese Felder wurde vorher angenommen.
+PROBE_PFLICHTFELDER = ("mit_anfangszustand", "scheiben", "beitragsfrei", "schichten",
+                       "buchungen_geprueft", "buchungen_abweichend",
+                       "stichtag", "generation", "tarifwerk")
+
 
 def _fuehrungsprobe_fehler(
     probe: Any,
@@ -1482,8 +1502,11 @@ def _fuehrungsprobe_fehler(
         fehler.append(
             "Fuehrungsprobe nennt ihre Pflichteingaben nicht (Uebernahme-"
             f"Tabellen, Beleg, Ledger der Fortschreibung): {fehlend or 'kein Uebernahme-Verzeichnis'}")
-    if probe.get("schema_version") != 1:
-        fehler.append("Fuehrungsprobe: schema_version muss 1 sein")
+    if probe.get("schema_version") != PROBE_SCHEMA_VERSION:
+        fehler.append(
+            f"Fuehrungsprobe: schema_version muss {PROBE_SCHEMA_VERSION} sein "
+            f"(gefunden {probe.get('schema_version')!r}) — ein Beleg des alten "
+            "Schemas bezeugt den Endbestand nicht; die Probe neu fahren")
     if probe.get("bestanden") is not True or probe.get("befunde") not in ([], None):
         anzahl = len(probe.get("befunde") or [])
         fehler.append(
@@ -1498,10 +1521,38 @@ def _fuehrungsprobe_fehler(
                       "dem Stichtag sind ungeprueft")
     if probe.get("system") != erwartetes_system:
         fehler.append("Fuehrungsprobe bindet nicht den aktuellen Systemstand")
-    if suite.get("bestand_sha256") not in set(eingaben.values()):
+    # Positive Zaehler und gefuehrte Felder (Review T25-01): Der Beleg
+    # sagte bisher nur "bestanden: true". Ein von Hand geschriebenes JSON
+    # mit fuenf beliebigen Dateien, passenden Hashes und den Flags kam
+    # durch — ohne stichtag, generation, tarifwerk, schichten oder eine
+    # einzige Zahl. Der Kontrast stand im selben Modul: _b1_fehler rechnet
+    # nach und verlangt PB1_PFLICHT_POSITIV.
+    for feld in PROBE_PFLICHT_POSITIV:
+        wert = probe.get(feld)
+        if not isinstance(wert, int) or isinstance(wert, bool) or wert <= 0:
+            fehler.append(
+                f"Fuehrungsprobe: {feld} = {wert!r} — ein Beleg, der nichts "
+                "gezaehlt hat, bezeugt keine Pruefung")
+    fehlende = [f for f in PROBE_PFLICHTFELDER if f not in probe]
+    if fehlende:
         fehler.append(
-            "Fuehrungsprobe hat nicht den Bestand gelesen, den die "
-            "Migrationssuite gehasht hat (bestand_sha256 fehlt unter ihren Eingaben)")
+            f"Fuehrungsprobe fuehrt {fehlende} nicht — der Beleg beantwortet "
+            "nicht, worueber er urteilt")
+    if probe.get("buchungen_abweichend") not in (0, None):
+        fehler.append(
+            f"Fuehrungsprobe: {probe.get('buchungen_abweichend')} abweichende "
+            "Buchungen — die Fuehrung rechnet anders als die Pruefstrecke")
+    # Rollenscharf statt "irgendwo unter den Eingaben" (Review T25-01):
+    # Nachgemessen ging bestand_sha256 durch, wenn er an den Hash der
+    # Fortschreibungs-ledger.parquet gebunden war — eine falsche Rolle mit
+    # richtigem Hash. Ein Beleg, der die Rolle nicht bindet, bindet nichts.
+    bestand_gelesen = eingaben.get(f"{ueber}/bestand.parquet") if ueber else None
+    if suite.get("bestand_sha256") != bestand_gelesen:
+        fehler.append(
+            "Fuehrungsprobe hat nicht den Bestand gelesen, den die Migrationssuite "
+            f"gehasht hat: bestand_sha256 der Suite ist "
+            f"{str(suite.get('bestand_sha256'))[:16]}…, die Probe las als "
+            f"bestand.parquet {str(bestand_gelesen)[:16]}…")
     return fehler
 
 
