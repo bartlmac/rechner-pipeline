@@ -127,6 +127,34 @@ def _gepruefte_zeilen(
     return zeilen, gruene[-1]
 
 
+def abschluesse_aus_protokoll(zeilen: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Die Monatsabschluesse eines Stands aus allen gruenen Protokollzeilen.
+
+    Je Stichtag EIN Eintrag: Die Zeile, die ihn geschrieben hat, nennt
+    Datei und Hash; spaetere Zeilen nennen ihn wieder (``neu: false``) und
+    ergaenzen hoechstens den Bericht.
+
+    Oeffentlich, weil zwei Seiten dieselbe Ableitung brauchen (Review
+    T24-04): Der Erzeuger baut daraus ``stand.json``, der Konsument haelt
+    ``stand.json`` dagegen. Zweimal geschrieben waeren es zwei Regeln, die
+    auseinanderlaufen — genau die Drift, gegen die der Beleg antritt.
+    """
+    abschluesse: Dict[str, Dict[str, Any]] = {}
+    for z in zeilen:
+        if not z.get("uebernommen"):
+            continue
+        for a in z.get("abschluesse") or []:
+            eintrag = abschluesse.setdefault(a["stichtag"], {"stichtag": a["stichtag"]})
+            if a.get("neu"):
+                eintrag["datei"] = a["datei"]
+                eintrag["sha256"] = a.get("sha256")
+            if a.get("bericht"):
+                eintrag["bericht"] = a["bericht"]
+            if a.get("teilbestaende"):
+                eintrag["teilbestaende"] = a["teilbestaende"]
+    return [abschluesse[k] for k in sorted(abschluesse)]
+
+
 def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Datum, Kennzahlen, Neugeschaeft, Buchungen, Abschluesse, Provenienz — aus
     Protokoll, Journal und Manifest des uebernommenen Stands."""
@@ -178,20 +206,6 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
             .drop_duplicates()["ereignis"].value_counts().items()
         )
     } if len(journal) else {}
-    # Abschluesse: aus allen uebernommenen Protokollzeilen, je Stichtag einmal.
-    abschluesse: Dict[str, Dict[str, Any]] = {}
-    for z in zeilen:
-        if not z.get("uebernommen"):
-            continue
-        for a in z.get("abschluesse") or []:
-            eintrag = abschluesse.setdefault(a["stichtag"], {"stichtag": a["stichtag"]})
-            if a.get("neu"):
-                eintrag["datei"] = a["datei"]
-                eintrag["sha256"] = a.get("sha256")
-            if a.get("bericht"):
-                eintrag["bericht"] = a["bericht"]
-            if a.get("teilbestaende"):
-                eintrag["teilbestaende"] = a["teilbestaende"]
     return {
         "schema_version": PAKET_SCHEMA_VERSION,
         "stand": heute.isoformat(),
@@ -209,7 +223,7 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
             "je_ereignis": je_ereignis,
             "letzte": buchungen,
         },
-        "abschluesse": [abschluesse[k] for k in sorted(abschluesse)],
+        "abschluesse": abschluesse_aus_protokoll(zeilen),
         "uebernahmen": list(zeile.get("uebernahmen") or []),
         "verankerung": dict(zeile.get("verankerung") or {}),
         "provenienz": {

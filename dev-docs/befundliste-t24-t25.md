@@ -24,6 +24,8 @@ vermutet, sondern am Code nachgesehen:
 | **T24-08** | GESCHRUMPFT durch d03a203 (Kreise sind Pflicht, sobald eine Config einen Tagesbetrieb fuehrt). Der Positions-Fallback liefert ebenfalls k >= 1, also beginnt jedes reservierte Band bei 10.000.001; ein Vergleich `police_id <= 10 Mio` am Eingang schliesst die Klasse. Der Vorbehalt "nummernkreis=None" der Triage ist damit erledigt. |
 | **T25-12** | ERLEDIGT in diesem Commit. |
 | **N-01** (Entscheid 10) | ERLEDIGT, auf main seit 2026-09-08. |
+| **T24-04 Teil 1** | ERLEDIGT, beide Haelften. Journalgespeist (602b935): Paketschema 3 traegt tagesjournal.parquet, der Konsument rechnet buchungen.gesamt und je_ereignis dagegen nach. Protokollgespeist: bestand, uebernahmen, verankerung, abschluesse, gefuehrt_seit, neugeschaeft.seit_betriebsbeginn und die fuenf uebrigen provenienz-Felder werden gegen die letzte gruene Protokollzeile gehalten; die Abschluss-Ableitung ist jetzt EINE Funktion (seite.abschluesse_aus_protokoll), die Erzeuger und Konsument teilen. Teil 2 (Verankerung ausserhalb des Pakets) bleibt offen — Entscheid 1. |
+| **T24-08** | ERLEDIGT (e02bec9): Das Zielsystem vergibt eigene Policennummern, ein Band je Fall im freien Raum 1..10 Mio, Uebersetzungstabelle im Eingang. Entscheid 8 = (b), nicht (a). |
 | Kleinkram "Reichweite der AST-Ratsche" | ERLEDIGT in diesem Commit (Modul-Docstring `betrieb/_loeschen.py` und `dev-docs/offene-punkte.md`). |
 
 **Entscheide des Maintainers, Stand 2026-09-15:** Nr. 6 entschieden (a),

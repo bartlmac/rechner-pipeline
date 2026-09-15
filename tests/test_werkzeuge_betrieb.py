@@ -169,3 +169,53 @@ def test_eine_buchungszahl_ohne_deckung_im_journal_faellt_auf(paket, tmp_path, f
     (kopie / "stand.json").write_text(json.dumps(stand, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(fd.FalldatenFehler, match="Tagesjournal"):
         fd.betrieb(kopie)
+
+
+@pytest.mark.parametrize("pfad, wert", [
+    (("bestand", "in_force"), 1067),
+    (("neugeschaeft", "seit_betriebsbeginn"), 4711),
+    (("verankerung", "registriert"), 99),
+    (("provenienz", "kern_version"), "9.9.9"),
+    (("provenienz", "image_revision"), "deadbeef"),
+    (("provenienz", "config_sha256"), "ab" * 32),
+])
+def test_ein_feld_ohne_deckung_im_protokoll_faellt_auf(paket, tmp_path, pfad, wert):
+    """T24-04, die protokollgespeiste Haelfte: Geprueft waren Stand, Urteil,
+    Manifest- und Journal-Hash. Alles andere aus der Protokollzeile stand
+    ungeprueft daneben — Bestandszahlen, Uebernahmen, Verankerung,
+    Abschluesse, Neugeschaeft und die uebrigen Provenienzfelder.
+
+    Der Reviewer hat genau das nachgestellt: in_force von 68 auf 1067
+    gesetzt, eine einzige Datei angefasst, Paket ANGENOMMEN, Konsument
+    liefert 1067. Der Beleg lag daneben und wurde nicht gelesen.
+
+    Geaendert wird auch hier NUR stand.json: Das Protokoll haengt an seiner
+    Kette, es zu faelschen ist ein anderer Angriff (Teil 2, Block C).
+    """
+    import shutil
+
+    kopie = tmp_path / ("kopie-" + "-".join(pfad))
+    shutil.copytree(paket, kopie)
+    assert fd.betrieb(kopie)["vorhanden"], "die unveraenderte Kopie muss durchgehen"
+    stand = json.loads((kopie / "stand.json").read_text(encoding="utf-8"))
+    gruppe, feld = pfad
+    assert stand[gruppe][feld] != wert, "die Mutation muss etwas veraendern"
+    stand[gruppe][feld] = wert
+    (kopie / "stand.json").write_text(json.dumps(stand, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(fd.FalldatenFehler, match="Protokoll"):
+        fd.betrieb(kopie)
+
+
+def test_ein_verschwiegener_abschluss_faellt_auf(paket, tmp_path):
+    """Dieselbe Klasse an der Liste statt am Einzelwert: Ein Paket, das einen
+    Monatsabschluss unterschlaegt, widerspricht seinem Protokoll."""
+    import shutil
+
+    kopie = tmp_path / "kopie-abschluesse"
+    shutil.copytree(paket, kopie)
+    stand = json.loads((kopie / "stand.json").read_text(encoding="utf-8"))
+    assert stand["abschluesse"], "die Testwelt hat keinen Abschluss — nichts zu unterschlagen"
+    stand["abschluesse"] = stand["abschluesse"][:-1]
+    (kopie / "stand.json").write_text(json.dumps(stand, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(fd.FalldatenFehler, match="abschluesse"):
+        fd.betrieb(kopie)

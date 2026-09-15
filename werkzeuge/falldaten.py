@@ -980,6 +980,54 @@ def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any
             f"{paket}: die Belegdatei 'tagesjournal.parquet' ist nicht das Journal, "
             "auf das die letzte gruene Protokollzeile sich festgelegt hat")
     _pruefe_buchungen_gegen_das_journal(paket, stand)
+    _pruefe_felder_gegen_das_protokoll(paket, stand, prov, zeilen, gruene, letzte)
+
+
+def _pruefe_felder_gegen_das_protokoll(
+    paket: Path, stand: Dict[str, Any], prov: Dict[str, Any],
+    zeilen: List[Dict[str, Any]], gruene: List[Dict[str, Any]], letzte: Dict[str, Any],
+) -> None:
+    """Die protokollgespeisten Bloecke von stand.json nachrechnen (Review T24-04).
+
+    Geprueft waren bisher Stand, Urteil, Manifest- und Journal-Hash. Alles
+    andere, was aus der Protokollzeile stammt — Bestandszahlen, Uebernahmen,
+    Verankerung, Abschluesse, Neugeschaeft und die uebrigen
+    Provenienzfelder — stand ungeprueft daneben: Wer das Paket las, musste
+    dem Feld glauben, obwohl der Beleg daneben lag. Nachgemessen ging ein
+    Paket durch, in dem in_force von 68 auf 1067 gesetzt war.
+
+    Die Abschluesse kommen aus derselben Funktion, die der Erzeuger
+    benutzt (``seite.abschluesse_aus_protokoll``) — zwei Ableitungen
+    waeren zwei Regeln, die auseinanderlaufen.
+    """
+    from rechner_pipeline.betrieb.seite import abschluesse_aus_protokoll
+
+    erwartet = {
+        "bestand": dict(letzte.get("bestand") or {}),
+        "uebernahmen": list(letzte.get("uebernahmen") or []),
+        "verankerung": dict(letzte.get("verankerung") or {}),
+        "abschluesse": abschluesse_aus_protokoll(zeilen),
+        "gefuehrt_seit": (
+            gruene[0]["nachgeholt"][0] if gruene[0].get("nachgeholt") else gruene[0]["heute"]
+        ),
+    }
+    for feld, soll in erwartet.items():
+        if stand.get(feld) != soll:
+            raise FalldatenFehler(
+                f"{paket}: stand.json und das Protokoll sagen Verschiedenes ueber "
+                f"{feld!r} — das Paket widerspricht seinem eigenen Beleg")
+    neu_soll = int(letzte.get("neugeschaeft_seit_betriebsbeginn", 0))
+    if (stand.get("neugeschaeft") or {}).get("seit_betriebsbeginn") != neu_soll:
+        raise FalldatenFehler(
+            f"{paket}: stand.json meldet ein anderes Neugeschaeft seit "
+            "Betriebsbeginn als die Protokollzeile")
+    for feld, quelle in (("config_sha256", "config_sha256"), ("kern_version", "kern_version"),
+                         ("image_digest", "image_digest"), ("image_revision", "image_revision"),
+                         ("image_tag", "image_tag")):
+        if prov.get(feld) != letzte.get(quelle):
+            raise FalldatenFehler(
+                f"{paket}: provenienz.{feld} steht nicht so in der letzten gruenen "
+                "Protokollzeile — die Herkunft ist behauptet, nicht belegt")
 
 
 def _pruefe_buchungen_gegen_das_journal(paket: Path, stand: Dict[str, Any]) -> None:
