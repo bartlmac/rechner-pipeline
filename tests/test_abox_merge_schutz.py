@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from rechner_pipeline.fall import anlegen
 from rechner_pipeline.gates import abox_merge
 from rechner_pipeline.gates._common import Exit
@@ -70,3 +72,81 @@ def test_offene_diskrepanzen_und_ueberschreiben_lassen_den_merge_weiterlaufen(tm
         "--diagnostics-dir", str(tmp_path / "diag-b"), "--ueberschreiben",
     ])
     assert ergebnis.errors[0]["code"] != "abox_entschieden"
+
+
+@pytest.mark.parametrize("inhalt", [
+    b'{"diskrepanzen": [{"id": "d1", "status": "aufgelo',   # abgeschnitten
+    b"[]",                                                   # kein JSON-Objekt
+    b"",                                                     # leer
+])
+def test_eine_unlesbare_abox_haelt_den_merge_an(tmp_path, inhalt):
+    """Review T25-11: "Datei fehlt" und "Datei ist kaputt" lieferten beide
+    eine leere Liste — und der Merge las daraus "keine aufgeloeste
+    Diskrepanz vorhanden, ich darf schreiben".
+
+    Ob dort Entscheidungen standen, weiss in diesem Moment niemand. Genau
+    deshalb darf nichts ueberschrieben werden: Unklarheit ist ein
+    benannter Zustand, kein stilles Ja. Die zweite Haelfte des Befundes
+    (abox.speichere schreibt nicht atomar) machte die Datei zur Quelle
+    genau dieser Beschaedigung.
+    """
+    fall = _fall_mit_abox(tmp_path, "aufgeloest")
+    pfad = fall / "abgeleitet" / "abox" / "abox.json"
+    pfad.write_bytes(inhalt)
+    ergebnis = abox_merge.main([
+        "--fall", str(fall), "--repo-root", str(REPO_ROOT),
+        "--diagnostics-dir", str(tmp_path / "diag"),
+    ])
+    assert ergebnis.exit_code == Exit.FILE_CONTRACT
+    assert ergebnis.errors[0]["code"] == "abox_unlesbar"
+    assert pfad.read_bytes() == inhalt, "der Merge hat die Datei angefasst"
+
+
+def test_auch_ueberschreiben_hilft_bei_einer_unlesbaren_abox_nicht(tmp_path):
+    """``--ueberschreiben`` heisst "ich verwerfe die Aufloesungen bewusst".
+    Bewusst kann das niemand tun, der nicht weiss, was dort steht."""
+    fall = _fall_mit_abox(tmp_path, "aufgeloest")
+    (fall / "abgeleitet" / "abox" / "abox.json").write_bytes(b"{kaputt")
+    ergebnis = abox_merge.main([
+        "--fall", str(fall), "--repo-root", str(REPO_ROOT),
+        "--diagnostics-dir", str(tmp_path / "diag"), "--ueberschreiben",
+    ])
+    assert ergebnis.errors[0]["code"] == "abox_unlesbar"
+
+
+def test_die_abox_wird_atomar_geschrieben(tmp_path, monkeypatch):
+    """Review T25-11, zweite Haelfte: ``write_text`` schrieb direkt in die
+    Zieldatei. Ein Absturz dabei hinterliess eine halbe abox.json — die
+    Datei machte sich selbst zu der Beschaedigung, gegen die ihre Leser
+    sich wappnen muessen.
+
+    Geprueft wird das Verhalten, nicht die Schreibweise: Scheitert die
+    Veroeffentlichung, steht die alte Datei unveraendert da und es bleibt
+    kein Rest liegen.
+    """
+    import os as _os
+
+    from rechner_pipeline.ontologie import abox as abox_mod
+
+    from rechner_pipeline.ontologie.tbox import ABOX_SCHEMA_VERSION, ABox, TBOX_VERSION
+
+    fall = _fall_mit_abox(tmp_path, "aufgeloest")
+    pfad = fall / "abgeleitet" / "abox" / "abox.json"
+    alt = pfad.read_bytes()
+    geladen = ABox(fall=fall.name, schema_version=ABOX_SCHEMA_VERSION,
+                   tbox_version=TBOX_VERSION, generationen=[], diskrepanzen=[])
+
+    def _bricht_ab(*args, **kwargs):
+        raise OSError("Platte voll")
+
+    monkeypatch.setattr(_os, "replace", _bricht_ab)
+    with pytest.raises(OSError):
+        abox_mod.speichere(geladen, fall)
+    monkeypatch.undo()
+
+    assert pfad.read_bytes() == alt, "die alte A-Box wurde angetastet"
+    assert not [p for p in pfad.parent.iterdir() if p.name.startswith(".")], (
+        "ein Rest des abgebrochenen Schreibens blieb liegen")
+    # Und der gelungene Schreibvorgang ersetzt sie vollstaendig.
+    abox_mod.speichere(geladen, fall)
+    assert pfad.read_bytes() != b"" and json.loads(pfad.read_text("utf-8"))

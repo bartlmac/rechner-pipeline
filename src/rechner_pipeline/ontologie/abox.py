@@ -17,7 +17,9 @@ Knoten: klv
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -28,19 +30,47 @@ from rechner_pipeline.ontologie.tbox import ABOX_SCHEMA_VERSION, ABox, PFLICHT_P
 ABOX_DATEI = "abox.json"
 
 
+class ABoxFehler(ValueError):
+    """Die A-Box laesst sich nicht schreiben oder nicht auslegen."""
+
+
 def abox_pfad(fall: Path) -> Path:
     return fall / "abgeleitet" / "abox" / ABOX_DATEI
 
 
 def speichere(abox: ABox, fall: Path) -> Path:
-    """A-Box deterministisch in den Fall-Arbeitsbereich schreiben."""
+    """A-Box deterministisch und ATOMAR in den Fall-Arbeitsbereich schreiben.
+
+    Vollstaendig daneben, dann in einem Zug an den Zielpfad (Review
+    T25-11). Vorher schrieb ein einfaches ``write_text`` direkt: Ein
+    Absturz waehrend des Schreibens hinterliess eine halbe ``abox.json``
+    — die Datei machte sich damit selbst zu der Beschaedigung, gegen die
+    ihre Leser sich wappnen. Dasselbe Muster wie ``fall._schreibe_json``;
+    dort liegt es ausserhalb dieser Schicht (``ontologie`` darf ``fall``
+    nicht importieren), deshalb hier noch einmal statt einer Abstraktion
+    ueber eine Schichtgrenze hinweg.
+
+    Ein Symlink als Ziel wird verweigert: Ein Schreibvorgang, der einem
+    Symlink folgt, schreibt woanders hin, als er meint.
+    """
     pfad = abox_pfad(fall)
+    if pfad.is_symlink():
+        raise ABoxFehler(f"A-Box-Ziel ist ein Symlink ({pfad}) — Schreiben verweigert")
     pfad.parent.mkdir(parents=True, exist_ok=True)
     daten = abox.model_dump(mode="json", exclude_none=True)
-    pfad.write_text(
-        json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    inhalt = (json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True)
+              + "\n").encode("utf-8")
+    fd, temp_name = tempfile.mkstemp(dir=pfad.parent, prefix=f".{pfad.name}.", suffix=".tmp")
+    temp_pfad = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as datei:
+            datei.write(inhalt)
+            datei.flush()
+            os.fsync(datei.fileno())
+        os.replace(temp_pfad, pfad)
+    except BaseException:
+        temp_pfad.unlink(missing_ok=True)
+        raise
     return pfad
 
 

@@ -64,19 +64,38 @@ CLI_CONTRACT = GateCliContract(
 )
 
 
+class ABoxUnlesbar(ValueError):
+    """Die vorhandene A-Box liegt da, laesst sich aber nicht lesen."""
+
+
 def _aufgeloeste_diskrepanzen(fall: Path) -> List[str]:
-    """Ids der aufgeloesten Diskrepanzen der vorhandenen A-Box (leer, wenn
-    keine A-Box da ist oder sie nicht lesbar ist — dann gibt es nichts zu
-    schuetzen, und der Merge darf schreiben)."""
+    """Ids der aufgeloesten Diskrepanzen der vorhandenen A-Box.
+
+    Leer NUR, wenn gar keine A-Box da ist — dann gibt es wirklich nichts
+    zu schuetzen. Liegt eine Datei da, die sich nicht lesen laesst, ist
+    das etwas anderes und wird zum Fehler (Review T25-11): Vorher lieferte
+    beides ``[]``, und der Merge las daraus "keine aufgeloeste Diskrepanz
+    vorhanden, ich darf schreiben". Ob dort Entscheidungen standen, weiss
+    gerade niemand — und genau deshalb darf sie nichts ueberschreiben.
+    Unklarheit ist ein benannter Zustand, kein stilles Ja.
+    """
     pfad = fall / "abgeleitet" / "abox" / "abox.json"
     if not pfad.is_file():
         return []
     try:
         daten = json.loads(pfad.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
+    except (OSError, ValueError) as exc:
+        raise ABoxUnlesbar(
+            f"{pfad} liegt vor, ist aber nicht lesbar ({exc}) — ob dort "
+            "aufgeloeste Diskrepanzen stehen, ist damit unbekannt, und der "
+            "Merge ueberschreibt sie nicht auf Verdacht. Datei pruefen, aus "
+            "den Fragmenten neu erzeugen oder beiseitelegen."
+        ) from exc
     if not isinstance(daten, dict):
-        return []
+        raise ABoxUnlesbar(
+            f"{pfad} ist kein JSON-Objekt — dieselbe Lage wie eine "
+            "unlesbare Datei: unbekannter Inhalt, kein stilles Ueberschreiben"
+        )
     return sorted(
         str(d.get("id"))
         for d in (daten.get("diskrepanzen") or [])
@@ -145,7 +164,13 @@ def main(argv: Optional[List[str]] = None):
     # aufgeloesten Diskrepanzen ist ein Entscheidungstraeger, kein
     # Zwischenstand. Geprueft auf der JSON-Ebene, damit die Wache auch
     # eine A-Box aelteren Schemas erkennt.
-    entschieden = _aufgeloeste_diskrepanzen(fall)
+    try:
+        entschieden = _aufgeloeste_diskrepanzen(fall)
+    except ABoxUnlesbar as exc:
+        # Fail-closed, und zwar UNABHAENGIG von --ueberschreiben: Das Flag
+        # sagt "ich verwerfe die Aufloesungen bewusst" — das kann niemand
+        # bewusst tun, der nicht weiss, was dort steht.
+        return _fehler(Exit.FILE_CONTRACT, "abox_unlesbar", str(exc))
     if entschieden and not args.ueberschreiben:
         return _fehler(
             Exit.FILE_CONTRACT, "abox_entschieden",
