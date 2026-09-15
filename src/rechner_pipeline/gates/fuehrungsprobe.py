@@ -61,7 +61,11 @@ from rechner_pipeline.gates.migrationssuite_lauf import (
 )
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe, vertrags_monatsreserve
 from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
-from rechner_pipeline.kern.korrekturschicht import Schichtparameter, schichtwert_bei
+from rechner_pipeline.kern.korrekturschicht import (
+    Schichtparameter,
+    schichtwert_bei,
+    zuschlag_bei_pex,
+)
 from rechner_pipeline.models.bestand import (
     GENERATION_FIELDS,
     LEDGER_NAMES,
@@ -480,8 +484,15 @@ def pruefe_fuehrung(
                 if schicht is not None and 12 * jahr >= schicht[1]:
                     erwartet += schichtwert_bei(schicht[0], schicht[1], grund_mp, 12 * jahr)
             elif art == "PEX":
-                erwartet = grund.beitragsfreie_summe(jahr) + sum(
-                    k.beitragsfreie_summe(jahr - j) for j, k in teile)
+                # Liegt die Freistellung nach der Verankerung, hat sie die
+                # Korrekturschicht wertstetig in die beitragsfreie Summe
+                # ueberfuehrt — die Probe rechnet dieselbe Regel nach, sonst
+                # bestaetigt sie den alten, unvollstaendigen Betrag.
+                erwartet = (
+                    grund.beitragsfreie_summe(jahr)
+                    + sum(k.beitragsfreie_summe(jahr - j) for j, k in teile)
+                    + zuschlag_bei_pex(schicht_je_police.get(pid), grund, jahr)
+                )
             else:
                 pex_f = pex_jahr
                 if pex_f is None:
@@ -490,9 +501,13 @@ def pruefe_fuehrung(
                     if len(eigene_pex):
                         pex_f = int(eigene_pex["vertragsjahr"].iloc[0])
                 if pex_f is not None:
-                    erwartet = grund.beitragsfreie_summe(int(pex_f)) + sum(
-                        k.beitragsfreie_summe(int(pex_f) - j) for j, k in teile
-                        if int(pex_f) - j > 0)
+                    erwartet = (
+                        grund.beitragsfreie_summe(int(pex_f))
+                        + sum(k.beitragsfreie_summe(int(pex_f) - j)
+                              for j, k in teile if int(pex_f) - j > 0)
+                        + zuschlag_bei_pex(
+                            schicht_je_police.get(pid), grund, int(pex_f))
+                    )
                 else:
                     erwartet = grund_mp.sum_insured + sum(k.mp.sum_insured for _, k in teile)
             buchungen[art] += 1

@@ -115,7 +115,7 @@ from rechner_pipeline.kern.rechenkern import (
 #: Korrekturschicht in Storno und Abschluss mit (Freischaltung des
 #: uebernommenen Bestands, Schritt 5); reine Verschiebung, Rechenwerte
 #: unveraendert.
-__version__ = "3.5.0"
+__version__ = "3.6.0"
 
 __all__ = [
     "ModelPoint",

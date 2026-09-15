@@ -1419,13 +1419,23 @@ def bu_model_point_kwargs(
     return kwargs
 
 
-def validate_verankerung(stamm: Any, verankerung: Any) -> List[str]:
+def validate_verankerung(
+    stamm: Any, verankerung: Any, historie: Any = None
+) -> List[str]:
     """Verankerungsattribute gegen den Stamm pruefen (leer = gueltig).
 
     Jede Zeile gehoert zu einem bekannten Vertrag, je Vertrag hoechstens
     eine Verankerung, und t_a liegt INNERHALB der Vertragslaufzeit — ein
     Rechenpunkt nach dem Ablauf verankert nichts. ``dk_ta`` muss belegt
     sein: Eine Verankerung ohne Wert ist keine.
+
+    Mit ``historie`` zusaetzlich die Invariante, dass Verankerung und
+    Vorgeschichte DIESELBE Geschichte erzaehlen: Wer eine
+    Beitragsfreistellung vor t_a bucht, darf t_a nicht als
+    beitragspflichtig ausweisen, und umgekehrt. Die Bewertung muesste aus
+    einer solchen Lieferung sonst eine Zahl machen, die aus keiner der
+    beiden Aussagen folgt — je nachdem, welchen der beiden Fakten sie
+    liest, kaeme ein anderer Wert heraus (Review T25-06).
     """
     errors: List[str] = []
     cols = list(verankerung.columns)
@@ -1458,6 +1468,43 @@ def validate_verankerung(stamm: Any, verankerung: Any) -> List[str]:
         errors.append("verankerung: monate_ta negativ")
     if verankerung["dk_ta"].isna().any():
         errors.append("verankerung: dk_ta fehlt (NaN) — eine Verankerung ohne Wert ist keine")
+    if historie is not None and len(historie):
+        # Vorgeschichte und Verankerungszustand muessen dieselbe Geschichte
+        # erzaehlen — sonst haengt der Wert davon ab, welchen der beiden
+        # Fakten ein Konsument liest (Review T25-06).
+        beginn = stamm.set_index("police_id")["insurance_start"]
+        pex_monate: Dict[int, int] = {}
+        for pid, code, datum in zip(
+            historie["police_id"], historie["status_code"],
+            historie["status_date"],
+        ):
+            pid = int(pid)
+            if code != "PEX" or pid not in beginn.index:
+                continue
+            b = beginn.loc[pid]
+            monate = (datum.year - b.year) * 12 + (datum.month - b.month)
+            pex_monate[pid] = min(monate, pex_monate.get(pid, monate))
+        for pid, monate, zustand in zip(
+            verankerung["police_id"], verankerung["monate_ta"],
+            verankerung["zustand_ta"],
+        ):
+            pid, monate = int(pid), int(monate)
+            if pid not in beginn.index:
+                continue
+            vor_ta = pid in pex_monate and pex_monate[pid] <= monate
+            if vor_ta and zustand != "beitragsfrei":
+                errors.append(
+                    f"verankerung: police {pid}: Beitragsfreistellung im "
+                    f"Vertragsmonat {pex_monate[pid]}, t_a aber bei {monate} "
+                    f"mit zustand_ta {zustand!r} — die Vorgeschichte und der "
+                    "Verankerungszustand widersprechen sich"
+                )
+            elif not vor_ta and zustand == "beitragsfrei":
+                errors.append(
+                    f"verankerung: police {pid}: zustand_ta 'beitragsfrei', "
+                    "aber keine Beitragsfreistellung bis zum Vertragsmonat "
+                    f"{monate} in der Vorgeschichte"
+                )
     fremd = verankerung["zustand_ta"].map(
         lambda z: not isinstance(z, str) or z not in ZUSTAENDE_TA
     )

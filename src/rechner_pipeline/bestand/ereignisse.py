@@ -88,7 +88,10 @@ from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.bestand.schichten import schichten_je_police
-from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
+from rechner_pipeline.kern.korrekturschicht import (
+    schichtwert_bei,
+    zuschlag_bei_pex,
+)
 from rechner_pipeline.models.bestand import (
     AKTIVE_STATUS,
     LEDGER_SPALTEN,
@@ -260,10 +263,17 @@ class _Vertrag:
         return wert
 
     def beitragsfreie_summe(self, a0: int) -> float:
-        return self.grund.beitragsfreie_summe(a0) + sum(
+        summe = self.grund.beitragsfreie_summe(a0) + sum(
             kern.beitragsfreie_summe(a0 - erh_jahr)
             for erh_jahr, _, kern in self.scheiben
         )
+        # Eine Beitragsfreistellung NACH der Verankerung fuehrt die
+        # Korrekturschicht wertstetig in die beitragsfreie Summe ueber
+        # (Entscheid des Maintainers 2026-09-15). Vorher fiel sie hier
+        # stillschweigend heraus — und das, obwohl rkw() eine Methode
+        # darueber dieselbe Schicht sehr wohl mitrechnet. Die gebuchte
+        # VS_bfr ist eine garantierte Leistung; sie traegt den Wert.
+        return summe + zuschlag_bei_pex(self.schicht, self.grund, a0)
 
 
 def _event(

@@ -169,6 +169,13 @@ def _fall_mit_schicht_auf_allen(wurzel: Path) -> Path:
     verankerung = pd.concat([_verankerung(p) for p in MONATE_TA], ignore_index=True)
     for police, monate in MONATE_TA.items():
         verankerung.loc[verankerung["police_id"] == police, "monate_ta"] = monate
+    # 7000003 bringt eine Beitragsfreistellung von 2023-11 mit, sein t_a
+    # liegt bei 2026-01: Am Verankerungspunkt war er laengst beitragsfrei.
+    # Die Fixture behauptete hier frueher "beitragspflichtig" — daraus kam
+    # die alte Erwartung, nur zwei der drei Vertraege truegen eine Schicht
+    # (Review T25-06: die Bewertung liess sie an dieser Naht fallen).
+    verankerung.loc[
+        verankerung["police_id"] == 7_000_003, "zustand_ta"] = "beitragsfrei"
     write_portfolio(schichten, quelle / "schichten.parquet")
     write_portfolio(verankerung, quelle / "verankerung.parquet")
     return fall
@@ -193,12 +200,14 @@ def test_ein_storno_mit_schicht_laeuft_gruen_durch_die_wache(tmp_path):
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
     abschluss = read_portfolio(ablage.abschluesse / zeile["abschluesse"][-1]["datei"])
     schichten = abschluss.loc[abschluss["police_id"].isin(ziele), "korrekturschicht"]
-    # Nicht JEDER traegt eine: Der beitragsfrei uebernommene Vertrag hat
-    # seine Schicht mit der Freistellung absorbiert (Klasse A,
-    # bestand.auswertung.einzelwerte_am). Gefordert ist, dass die Schicht
-    # ueberhaupt bis in den Abschluss durchschlaegt — vorher wies er sie
-    # als null aus, obwohl die Fuehrung sie trug.
-    assert len(schichten) == 3 and sum(1 for x in schichten if float(x) != 0.0) == 2
+    # JEDER traegt eine — auch der beitragsfrei uebernommene: Seine
+    # Freistellung IST sein Verankerungszustand, die Schicht laeuft also
+    # auf dem beitragsfreien Track als eigene Position weiter. Frueher
+    # stand hier "2 von 3", weil die Fixture fuer diesen Vertrag einen
+    # widerspruechlichen Verankerungszustand trug und die Bewertung den
+    # Schichtwert daraufhin fallen liess (Review T25-06). Gefordert ist,
+    # dass die Schicht bis in den Abschluss durchschlaegt.
+    assert len(schichten) == 3 and all(float(x) != 0.0 for x in schichten)
 
     # Das Jahr des Stornos wird GESUCHT, nicht behauptet: Welcher Vertrag
     # wann storniert, wuerfelt die Fortschreibung je police_id, und der

@@ -146,6 +146,31 @@ ohne "tut", ist das Thema.
 
 Diese Punkte sind entschieden und werden hier nicht neu verhandelt.
 
+**Nachtrag 2026-09-15 (Review T25-06).** Der Satz "PEX absorbierend"
+unten war zweideutig, und der Code fuehrte PEX deshalb weiter als
+`geprueft=False`. Beide Ereignisarten sind jetzt scharf gestellt:
+
+- **PEX: wertstetige Absorption.** Die beitragsfreie Summe ist eine
+  garantierte Leistung, die Umwandlung muss werthaltend sein. Das
+  Residuum wird ueber den Umwandlungssatz in die beitragsfreie Summe
+  ueberfuehrt; Deckungskapital und Rueckkaufswert sind an der Naht
+  stetig, danach gibt es keine eigene Schicht mehr. Der Abschluss weist
+  den ueberfuehrten Wert weiter in der Spalte `korrekturschicht` aus
+  (9.11), weil er im Deckungskapital enthalten bleibt.
+- **RED: volle Absorption in die Neuberechnung, ausgewiesen und
+  journalisiert.** Die Herabsetzung garantiert die Tat, nicht den Wert.
+  Sie ist eine Neuvereinbarung: Das Gesamt-Deckungskapital
+  EINSCHLIESSLICH Schicht ist der Startwert der Neuberechnung — kein
+  Wertsprung an der Naht —, danach fuehrt allein die Logik des
+  Zielsystems, und der Korrekturtermin entfaellt. Der absorbierte Betrag
+  wird einmal als eigene Ledger-Zeile gebucht, damit er nicht
+  unbemerkt aus dem Ausweis verschwindet.
+
+Der Unterschied liegt nicht in der Wertstetigkeit — die gilt fuer beide
+—, sondern darin, WOHIN der Wert geht: bei PEX in eine erhoehte
+garantierte Leistung, bei RED in die Neuberechnung des herabgesetzten
+Vertrags, ohne dass eine neue Garantie entsteht.
+
 - **Der Rueckkaufswert darf sich durch die Migration nicht aendern.**
   Was die Quelle zugesagt hat, zahlt die PLV. Der Rueckkaufswert eines
   uebernommenen Vertrags ist Basiswert plus Korrekturschicht, mit

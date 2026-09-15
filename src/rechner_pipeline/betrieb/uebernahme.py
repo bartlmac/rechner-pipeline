@@ -120,7 +120,7 @@ def nebentabellen_fehler(
     if scheiben is not None and len(scheiben):
         fehler += validate_scheiben(bestand, scheiben, historie=historie)
     if verankerung is not None and len(verankerung):
-        fehler += validate_verankerung(bestand, verankerung)
+        fehler += validate_verankerung(bestand, verankerung, historie=historie)
     if schichten is not None and len(schichten):
         fehler += validate_schichten(bestand, schichten, verankerung)
     return fehler

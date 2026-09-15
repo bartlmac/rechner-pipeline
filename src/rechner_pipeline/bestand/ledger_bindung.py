@@ -44,7 +44,10 @@ from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.bestand.schichten import schichten_je_police
-from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
+from rechner_pipeline.kern.korrekturschicht import (
+    schichtwert_bei,
+    zuschlag_bei_pex,
+)
 from rechner_pipeline.models.bestand import model_point_kwargs
 
 #: Cent-Toleranz: Der Kern schreibt Buchung und Herleitung aus demselben
@@ -291,11 +294,17 @@ def pruefe_ledger_betraege(
                     # Uebernommene Vertraege buchen die Umbuchung zum
                     # Zugangsstichtag, die Summe wurde im Jahr der
                     # Beitragsfreistellung fixiert (gates.bestand_uebernehmen).
-                    erwartet = v.beitragsfreie_summe(
-                        bfr_ab if bfr_ab is not None and bfr_ab <= jahr else jahr)
+                    pex_j = (bfr_ab if bfr_ab is not None and bfr_ab <= jahr
+                             else jahr)
+                    erwartet = v.beitragsfreie_summe(pex_j) + zuschlag_bei_pex(
+                        schicht_je_police.get(pid), v.grund, pex_j)
                 elif art in ("TOD", "ABL"):
                     if bfr_ab is not None and bfr_ab <= jahr:
-                        erwartet = v.beitragsfreie_summe(bfr_ab)
+                        # Nach einer absorbierenden Freistellung ist der
+                        # ueberfuehrte Wert Teil der GARANTIERTEN Summe —
+                        # die Todesfall-/Ablaufleistung traegt ihn mit.
+                        erwartet = v.beitragsfreie_summe(bfr_ab) + zuschlag_bei_pex(
+                            schicht_je_police.get(pid), v.grund, bfr_ab)
                     else:
                         erwartet = v.gesamt_vs(jahr)
         if erwartet is not None and abs(betrag - erwartet) > TOLERANZ:
