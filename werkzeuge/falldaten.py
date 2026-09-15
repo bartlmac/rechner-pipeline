@@ -1038,7 +1038,8 @@ def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
         raise FalldatenFehler(
             f"{paket}: kein Stands-Paket (stand.json mit schema_version 3 fehlt; "
             "ein aelteres Paket belegt seine Buchungszahlen nicht und wird nicht "
-            "veroeffentlicht)"
+            "veroeffentlicht) — ein neuer Export heilt es: python -m "
+            "rechner_pipeline.betrieb.seite --stand <daten> --paket <ziel>"
         )
     prov = stand.get("provenienz") or {}
     _pruefe_stands_paket(paket, stand, prov)
