@@ -6,6 +6,13 @@ Reichweite, ehrlich: Verzeichnisse. Dateiloeschungen (``unlink``,
 (Symlink-Tausch, Sperrdatei) und liegen ausserhalb dieser Ratsche —
 bewusst, nicht vergessen.
 
+Und ehrlich auch im Umfang: Die Ratsche liest ``betrieb/*.py``. Wuerde
+der Betrieb eine Loeschung ueber einen Helfer AUSSERHALB dieses Pakets
+fuehren, saehe sie ihn nicht — dieselbe Grenze wie bei der Import-Ratsche
+(T23 Block 5). Sie sichert also die Klasse innerhalb des Betriebs, nicht
+die Abwesenheit jeder Loeschung ueberhaupt. Wer den Betrieb um ein
+Hilfsmodul erweitert, das loescht, erweitert auch den Umfang hier.
+
 Nach T24-07 gab es in ``betrieb/`` drei ``rmtree`` mit drei verschiedenen
 Wachen — und eine Ratsche, die sie ZAEHLTE statt zu pruefen, was sie zu
 pruefen vorgab: eine vierte Fundstelle fiel auf, eine ungewachte an einer

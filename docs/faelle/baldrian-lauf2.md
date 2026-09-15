@@ -229,4 +229,3 @@ auf dem neuen Stand unveraendert bestanden (100/100, 100/100, 166/166,
 den Stand, auf dem ein Vorgaenger gezeichnet wurde, von dem geltenden
 Belegvertrag; Stand f7c545d). Der Tagesbetrieb der PLV wird aus der neuen
 Uebernahme neu aufgesetzt (Betriebsweg, offen).
-
