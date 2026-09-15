@@ -181,7 +181,44 @@ def pruefe_am4_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str,
             f"{pfad.name}: der Snapshot gehoert zum Fall {daten.get('fall')!r}, "
             f"uebernommen wird {fallname!r}"
         )
-    return zeichnung_aus_snapshot(fall, snapshot_sha256)
+    # Aus DIESEN Bytes, nicht aus einem zweiten Lesevorgang (Review
+    # T24-06): Die Pruefung oben lief auf dem gelesenen Inhalt; ein
+    # erneutes Lesen gaebe die Zeichnung einer Datei zurueck, die
+    # inzwischen eine andere sein kann. Nachgemessen mit einem Tausch
+    # zwischen beiden Lesevorgaengen: geprueft wurde "angenommen",
+    # registriert wurde "abgelehnt" — beides ohne Abbruch.
+    return _zeichnung_aus_daten(daten, pfad.name)
+
+
+def _zeichnung_aus_daten(daten: Dict[str, Any], quelle: str) -> Dict[str, Any]:
+    """Die Zeichnungsangaben aus einem BEREITS GELESENEN Snapshot.
+
+    Der Weg, auf dem Pruefung und Auswertung dieselben Bytes benutzen.
+    Wer erst prueft und dann neu liest, prueft eine andere Datei als die,
+    die er auswertet.
+    """
+    freigabe = daten.get("freigabe") or {}
+    zeichnung = daten.get("zeichnung") or {}
+    schluessel = str(freigabe.get("schluessel_sha256") or "")
+    return {
+        "gate": str(daten.get("gate") or "A-M4"),
+        "entscheid": str(daten.get("entscheid") or NICHT_AUSGEWIESEN),
+        "rolle": str(daten.get("rolle") or NICHT_AUSGEWIESEN),
+        "entscheider": str(daten.get("entscheider") or zeichnung.get("rolle") or NICHT_AUSGEWIESEN),
+        # Die Schluesselklasse fuehren erst Snapshots ab dem Vier-Rollen-
+        # Modell; ein Altsnapshot (Schema 6) traegt sie nicht.
+        "schluesselklasse": str(
+            zeichnung.get("schluesselklasse") or freigabe.get("schluesselklasse")
+            or NICHT_AUSGEWIESEN),
+        "schluessel_sha256": schluessel[:16] if schluessel else NICHT_AUSGEWIESEN,
+        # Das Mandat einer simulierten Rolle wandert mit (Review T23-06):
+        # eine Simulation ohne Mandat ist auch im Betriebseingang keine
+        # Besetzung, sondern eine Luecke.
+        "mandat_sha256": str(zeichnung.get("mandat_sha256") or NICHT_AUSGEWIESEN),
+        "schema_version": daten.get("schema_version"),
+        "signatur_verifiziert": False,
+        "quelle": quelle,
+    }
 
 
 def zeichnung_aus_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str, Any]:
@@ -209,28 +246,7 @@ def zeichnung_aus_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[s
         daten = json.loads(pfad.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {**leer, "quelle": f"{pfad.name} nicht lesbar"}
-    freigabe = daten.get("freigabe") or {}
-    zeichnung = daten.get("zeichnung") or {}
-    schluessel = str(freigabe.get("schluessel_sha256") or "")
-    return {
-        "gate": str(daten.get("gate") or "A-M4"),
-        "entscheid": str(daten.get("entscheid") or NICHT_AUSGEWIESEN),
-        "rolle": str(daten.get("rolle") or NICHT_AUSGEWIESEN),
-        "entscheider": str(daten.get("entscheider") or zeichnung.get("rolle") or NICHT_AUSGEWIESEN),
-        # Die Schluesselklasse fuehren erst Snapshots ab dem Vier-Rollen-
-        # Modell; ein Altsnapshot (Schema 6) traegt sie nicht.
-        "schluesselklasse": str(
-            zeichnung.get("schluesselklasse") or freigabe.get("schluesselklasse")
-            or NICHT_AUSGEWIESEN),
-        "schluessel_sha256": schluessel[:16] if schluessel else NICHT_AUSGEWIESEN,
-        # Das Mandat einer simulierten Rolle wandert mit (Review T23-06):
-        # eine Simulation ohne Mandat ist auch im Betriebseingang keine
-        # Besetzung, sondern eine Luecke.
-        "mandat_sha256": str(zeichnung.get("mandat_sha256") or NICHT_AUSGEWIESEN),
-        "schema_version": daten.get("schema_version"),
-        "signatur_verifiziert": False,
-        "quelle": pfad.name,
-    }
+    return _zeichnung_aus_daten(daten, pfad.name)
 
 
 @dataclasses.dataclass
@@ -309,13 +325,38 @@ def validate_eingang(daten: Any) -> List[str]:
         _dt.date.fromisoformat(str(daten.get("stichtag")))
     except ValueError:
         fehler.append(f"stichtag {daten.get('stichtag')!r} ist kein ISO-Datum")
+    # Der Eingang MUSS seine Abnahme nennen (Review T24-06, Teil B): Der
+    # Schreibpfad (eingang_anlegen -> pruefe_am4_snapshot) laesst keine
+    # Uebernahme ohne angenommenes A-M4 zu, der Leser nahm bisher aber
+    # jede Tabelle an, die er vorfand — snapshot_sha256 = None war
+    # fehlerfrei, und eine Zeichnung mit gate "KEIN-GATE" ebenso.
+    # Nachgemessen: ein von Hand editierter Eingang (0644, Feld getauscht,
+    # 0444) kam durch. Eine Regel, die nur der Schreiber kennt, schuetzt
+    # den nicht, der die Bytes spaeter liest — und gelesen wird der
+    # Eingang bei JEDEM Tageslauf.
     snapshot = daten.get("snapshot_sha256")
-    if snapshot is not None and not _ist_sha256(snapshot):
-        fehler.append("snapshot_sha256 ist keine SHA-256")
+    if not _ist_sha256(snapshot):
+        fehler.append(
+            f"snapshot_sha256 {snapshot!r} ist keine SHA-256 — eine Uebernahme "
+            "ohne Migrationsabnahme gibt es nicht (A-M4)"
+        )
     zeichnung = daten.get("zeichnung")
-    if zeichnung is not None and not isinstance(zeichnung, dict):
-        fehler.append("zeichnung muss eine Tabelle sein")
-    elif isinstance(zeichnung, dict):
+    if not isinstance(zeichnung, dict):
+        fehler.append(
+            "zeichnung fehlt oder ist keine Tabelle — der Eingang berichtet die "
+            "Rollenbindung seines A-M4-Snapshots"
+        )
+    else:
+        if zeichnung.get("gate") != "A-M4":
+            fehler.append(
+                f"zeichnung.gate {zeichnung.get('gate')!r} ist nicht A-M4 — nur die "
+                "Migrationsabnahme begruendet eine Uebernahme"
+            )
+        if zeichnung.get("entscheid") != "angenommen":
+            fehler.append(
+                f"zeichnung.entscheid {zeichnung.get('entscheid')!r} — nur eine "
+                "ANGENOMMENE Migrationsabnahme begruendet eine Uebernahme"
+            )
         # Der Eingang berichtet die Rollenbindung des A-M4-Snapshots; er
         # darf keine Schluesselklasse behaupten, die es nicht gibt, und
         # eine Simulation nicht ohne Mandat (Review T23-06, ADR-018). Die

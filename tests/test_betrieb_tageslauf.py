@@ -415,7 +415,7 @@ def test_eine_entfernte_mittlere_zeile_bricht_die_kette(tmp_path):
 def test_ein_veraendertes_journal_passt_nicht_mehr_zum_protokoll(tmp_path):
     """Nachweis des Reviews: Betragsaenderung im Journal, claimed_hash_matches
     False, aber weiter gruen. Mutationsprobe: den Journal-Hash-Vergleich in
-    _pruefe_nachweis entfernen -> rot."""
+    pruefe_nachweis entfernen -> rot."""
     ablage = _ablage(tmp_path / "plv")
     assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
     journal = read_portfolio(ablage.tagesjournal_pfad)
@@ -429,7 +429,7 @@ def test_ein_veraendertes_journal_passt_nicht_mehr_zum_protokoll(tmp_path):
 
 def test_ein_fremder_stand_passt_nicht_zum_protokoll(tmp_path):
     """Manifest-Hash der letzten gruenen Zeile gegen den Stand auf der Platte.
-    Mutationsprobe: den Manifest-Vergleich in _pruefe_nachweis entfernen -> rot."""
+    Mutationsprobe: den Manifest-Vergleich in pruefe_nachweis entfernen -> rot."""
     ablage = _ablage(tmp_path / "plv")
     assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
     manifest = ablage.stand / "laufmanifest.json"

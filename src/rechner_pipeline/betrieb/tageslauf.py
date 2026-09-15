@@ -230,8 +230,15 @@ def lies_protokoll(pfad: Path) -> List[Dict[str, Any]]:
     return zeilen
 
 
-def _pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
+def pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
     """Der Nachweisvertrag zwischen Protokoll, Stand und Journal (T22-05).
+
+    Oeffentlich seit Review T24-03: Der Vertrag galt nur fuer den, der ihn
+    durchlief. ``gefuehrter_tag`` lehnte ein veraendertes Journal ab, die
+    Seite und das Stands-Paket lasen dieselben Bytes ohne jede Pruefung
+    erneut und zeigten den manipulierten Betrag — waehrend die Provenienz
+    daneben weiter den alten Journal-Hash nannte. Wer Protokoll, Stand
+    oder Journal auswertet, ruft das hier ZUERST.
 
     Gruene Zeilen sind lueckenlos verkettet (jede nennt den vorigen Tag,
     ihre nachgeholten Tage fuellen genau die Luecke), die letzte gruene
@@ -283,7 +290,7 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
     Das Manifest ist die Aussage des Stands ueber sich selbst (Horizont);
     das Protokoll muss dieselbe Aussage machen, sonst passen Stand und
     Nachweis nicht zusammen, und der Lauf bricht ab statt einen der
-    beiden zu glauben. Dazu der Nachweisvertrag (:func:`_pruefe_nachweis`).
+    beiden zu glauben. Dazu der Nachweisvertrag (:func:`pruefe_nachweis`).
     """
     if not ablage.stand.is_dir():
         return None
@@ -309,7 +316,7 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
             f"Stand fuehrt {tag.isoformat()}, das Protokoll {letzte.isoformat()} "
             "— Stand und Nachweis passen nicht zusammen"
         )
-    _pruefe_nachweis(ablage, gruene)
+    pruefe_nachweis(ablage, gruene)
     return tag
 
 

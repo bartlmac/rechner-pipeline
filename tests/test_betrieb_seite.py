@@ -170,3 +170,45 @@ def test_die_banderole_behauptet_nur_was_die_uebernahmen_ausweisen(gefuehrt):
                                   "zeichnung": {"schluesselklasse": "mensch"}})
     html = st.rendere_html(modell)
     assert "Simulationsschluessel" not in html and "mensch, simulation" in html
+
+
+@pytest.mark.parametrize("was", ["journal", "manifest"])
+def test_seite_und_paket_lehnen_einen_stand_ohne_passenden_nachweis_ab(gefuehrt, tmp_path, was):
+    """T24-03: Eine Wache schuetzt nur den, der sie durchlaeuft.
+
+    ``gefuehrter_tag`` prueft den Nachweisvertrag und lehnt ein veraendertes
+    Tagesjournal ab. Seite und Stands-Paket lasen dieselben Bytes danach
+    ohne jede Pruefung erneut: Der manipulierte Betrag stand in den
+    Buchungen, waehrend die Provenienz daneben weiter den Journal-Hash der
+    Protokollzeile nannte — die Seite widersprach sich selbst und merkte es
+    nicht. Manipuliert wird hier ueber den GUELTIGEN Schreibpfad
+    (``write_portfolio``), nicht durch ein kaputtes Byte: Der Fall, den es
+    zu fangen gilt, ist der wohlgeformte.
+    """
+    from rechner_pipeline.bestand.manifest import MANIFEST_DATEI
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+    from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
+
+    kopie = tmp_path / f"kopie-{was}"
+    shutil.copytree(gefuehrt.wurzel, kopie, symlinks=True)
+    ablage = Ablage(kopie)
+    # Vorprobe: Die unveraenderte Kopie traegt ihren Nachweis — sonst
+    # pruefte der Test die Kopiererei statt die Wache.
+    assert st.stand_modell(ablage)["stand"]
+
+    if was == "journal":
+        journal = read_portfolio(ablage.tagesjournal_pfad, expected_columns=TAGESJOURNAL_NAMES)
+        journal.loc[0, "betrag"] = 999999.0
+        write_portfolio(journal, ablage.tagesjournal_pfad)
+    else:
+        pfad = ablage.stand / MANIFEST_DATEI
+        manifest = json.loads(pfad.read_text(encoding="utf-8"))
+        rolle = sorted(manifest["ausgaben"])[0]
+        manifest["ausgaben"][rolle] = "ff" * 32
+        pfad.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8")
+
+    with pytest.raises(st.SeiteError, match="Nachweis"):
+        st.stand_modell(ablage)
+    with pytest.raises(st.SeiteError, match="Nachweis"):
+        st.stands_paket(ablage, tmp_path / f"paket-{was}")

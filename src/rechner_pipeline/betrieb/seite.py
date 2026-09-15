@@ -39,7 +39,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -73,33 +73,53 @@ class SeiteError(ValueError):
 # --------------------------------------------------------------------------- #
 
 
-def _protokoll(ablage, aktuelle_zeile: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Die Protokollzeilen — plus die Zeile des laufenden Tages, wenn der
-    Tageslauf sie noch nicht angefuegt hat (er rendert vor dem Anfuegen,
-    damit die Zeile die Seite nennt)."""
-    from rechner_pipeline.betrieb.tageslauf import lies_protokoll
+def _gepruefte_zeilen(
+    ablage, aktuelle_zeile: Optional[Dict[str, Any]]
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Die Protokollzeilen und die letzte gruene — NACH dem Nachweisvertrag.
+
+    Plus die Zeile des laufenden Tages, wenn der Tageslauf sie noch nicht
+    angefuegt hat (er rendert vor dem Anfuegen, damit die Zeile die Seite
+    nennt); zu diesem Zeitpunkt liegen Stand und Journal bereits so auf der
+    Platte, wie die Zeile sie nennt.
+
+    Die Pruefung steht hier, weil sie sonst nur den schuetzt, der sie
+    durchlaeuft (Review T24-03, Klasse K1). ``gefuehrter_tag`` lehnte ein
+    veraendertes Tagesjournal ab; Seite und Stands-Paket lasen dieselben
+    Bytes danach ohne Pruefung erneut und zeigten den manipulierten Betrag.
+    Die Provenienz daneben nannte weiter den Journal-Hash der Protokollzeile
+    — die Seite widersprach sich selbst und merkte es nicht. Nachgemessen
+    mit einem gueltig neu geschriebenen Journal: kein Abbruch, kein Hinweis.
+
+    Es genuegt also nicht, dass irgendwo eine Wache steht. Sie muss dort
+    stehen, wo die Bytes gelesen werden.
+    """
+    from rechner_pipeline.betrieb.tageslauf import (
+        TageslaufError, lies_protokoll, pruefe_nachweis,
+    )
 
     zeilen = list(lies_protokoll(ablage.protokoll_pfad))
     if aktuelle_zeile is not None:
         zeilen.append(aktuelle_zeile)
-    return zeilen
-
-
-def _letzter_gruener(zeilen: List[Dict[str, Any]], ablage) -> Dict[str, Any]:
     gruene = [z for z in zeilen if z.get("uebernommen")]
     if not gruene:
         raise SeiteError(
             f"{ablage.protokoll_pfad}: kein uebernommener Lauf — ohne gefuehrten "
             "Stand gibt es keinen Bestand heute"
         )
-    return gruene[-1]
+    try:
+        pruefe_nachweis(ablage, gruene)
+    except TageslaufError as exc:
+        raise SeiteError(
+            f"Der Stand traegt seinen Nachweis nicht, es gibt nichts zu zeigen: {exc}"
+        ) from exc
+    return zeilen, gruene[-1]
 
 
 def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Datum, Kennzahlen, Neugeschaeft, Buchungen, Abschluesse, Provenienz — aus
     Protokoll, Journal und Manifest des uebernommenen Stands."""
-    zeilen = _protokoll(ablage, aktuelle_zeile)
-    zeile = _letzter_gruener(zeilen, ablage)
+    zeilen, zeile = _gepruefte_zeilen(ablage, aktuelle_zeile)
     heute = _dt.date.fromisoformat(str(zeile["heute"]))
     manifest = lies_manifest(ablage.stand)
     if str(manifest["horizont"]) != heute.isoformat():

@@ -394,3 +394,73 @@ def test_die_verankerung_wandert_in_den_stand_und_wird_als_nicht_angewandt_ausge
         or any("verankerung" in k for k in lies_manifest(ablage.stand)["ausgaben"])
     luecken = st.luecken(st.stand_modell(ablage))
     assert any("Verankerung" in l["was"] for l in luecken)
+
+
+def test_die_gepruefte_zeichnung_stammt_aus_den_gepruefte_bytes(tmp_path, monkeypatch):
+    """T24-06 Teil A: Wer erst prueft und dann neu liest, prueft eine andere
+    Datei als die, die er auswertet.
+
+    ``pruefe_am4_snapshot`` validierte Selbstadressierung, Gate, Entscheid und
+    Fall auf dem gelesenen Inhalt — und gab dann die Zeichnung aus einem
+    ZWEITEN Lesevorgang zurueck. Ein Tausch dazwischen lieferte eine
+    registrierte Zeichnung mit entscheid 'abgelehnt', obwohl 'angenommen'
+    geprueft worden war; ohne Abbruch, ohne Hinweis. Der Tausch hier ist der
+    Nachbau: die Datei wird nach dem ersten Lesen ersetzt.
+    """
+    import pathlib
+
+    fall = _fall(tmp_path)
+    echt = am4_snapshot("probe-uebernahme")
+    sha = echt["snapshot_sha256"]
+    pfad = fall / "entscheide" / f"A-M4-{sha}.json"
+    getauscht = json.dumps({**echt, "entscheid": "abgelehnt"}, ensure_ascii=False)
+
+    echtes_read_text = pathlib.Path.read_text
+    gelesen: list = []
+
+    def zaehlend(self, *args, **kw):
+        inhalt = echtes_read_text(self, *args, **kw)
+        if self == pfad:
+            gelesen.append(self)
+            if len(gelesen) == 1:
+                # Nach dem ersten Lesen die Bytes austauschen — ein zweiter
+                # Lesevorgang saehe jetzt eine abgelehnte Abnahme.
+                echtes_write = pathlib.Path.write_text
+                echtes_write(self, getauscht, encoding="utf-8")
+        return inhalt
+
+    monkeypatch.setattr(pathlib.Path, "read_text", zaehlend)
+    zeichnung = ueb.pruefe_am4_snapshot(fall, sha)
+    monkeypatch.undo()
+
+    assert len(gelesen) == 1, f"der Snapshot wurde {len(gelesen)}-mal gelesen"
+    assert zeichnung["entscheid"] == "angenommen"
+    assert zeichnung["gate"] == "A-M4"
+    # Die Bytes auf der Platte sind tatsaechlich die ausgetauschten — der
+    # Test haette also etwas zu finden gehabt.
+    assert json.loads(pfad.read_text(encoding="utf-8"))["entscheid"] == "abgelehnt"
+
+
+@pytest.mark.parametrize("feld, wert, meldung", [
+    ("snapshot_sha256", None, "keine SHA-256"),
+    ("snapshot_sha256", "kein-hash", "keine SHA-256"),
+    ("zeichnung", None, "zeichnung fehlt"),
+    ("zeichnung", {"gate": "KEIN-GATE", "entscheid": "angenommen"}, "nicht A-M4"),
+    ("zeichnung", {"gate": "A-M4", "entscheid": "abgelehnt"}, "ANGENOMMENE"),
+])
+def test_ein_eingang_ohne_angenommene_abnahme_wird_abgelehnt(eingang, feld, wert, meldung):
+    """T24-06 Teil B: Der Leser prueft, was der Schreiber verlangt.
+
+    ``eingang_anlegen`` laesst keine Uebernahme ohne angenommenes A-M4 zu —
+    ``validate_eingang`` nahm bis hierher jede Tabelle an, die es vorfand:
+    snapshot_sha256 = None war fehlerfrei, eine Zeichnung mit gate
+    'KEIN-GATE' ebenso. Eine Regel, die nur der Schreibpfad kennt, schuetzt
+    den nicht, der die Bytes spaeter liest — und gelesen wird der Eingang
+    bei JEDEM Tageslauf.
+    """
+    _, _, ziel = eingang
+    daten = json.loads((ziel / "eingang.json").read_text(encoding="utf-8"))
+    assert ueb.validate_eingang(daten) == [], "der unveraenderte Eingang muss gruen sein"
+    daten[feld] = wert
+    fehler = ueb.validate_eingang(daten)
+    assert any(meldung in f for f in fehler), f"{feld}={wert!r}: {fehler}"

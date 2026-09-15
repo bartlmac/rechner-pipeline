@@ -220,18 +220,31 @@ def test_loese_diskrepanz_auf_direkt_gerufen_verweigert(fall):
 
 
 def test_betriebseingang_behauptet_keine_fremde_klasse_und_keine_simulation_ohne_mandat():
+    """Gegenstand ist die SCHLUESSELKLASSE, sonst nichts.
+
+    Der Eingang muss seit Review T24-06 auch seine Abnahme nennen
+    (snapshot_sha256, gate A-M4, Entscheid angenommen). Die Fixtures hier
+    tragen das deshalb mit — nicht weil dieser Test es prueft, sondern
+    damit er weiter genau eine Sache prueft. Ein Fixture, das den
+    umgebenden Vertrag verletzt, laesst die Zusicherung
+    ``not any("zeichnung" in f)`` an einer fremden Meldung scheitern und
+    sagt nichts mehr ueber Schluesselklassen.
+    """
     basis = {"schema_version": ueb.EINGANG_SCHEMA_VERSION, "fall": "f", "stichtag": "2026-01-01",
-             "snapshot_sha256": None, "dateien": {"bestand.parquet": "d" * 64}}
-    ok = ueb.validate_eingang({**basis, "zeichnung": {"schluesselklasse": "simulation", "mandat_sha256": "b" * 64}})
+             "snapshot_sha256": "a" * 64, "dateien": {"bestand.parquet": "d" * 64}}
+    abnahme = {"gate": "A-M4", "entscheid": "angenommen"}
+    ok = ueb.validate_eingang({**basis, "zeichnung": {
+        **abnahme, "schluesselklasse": "simulation", "mandat_sha256": "b" * 64}})
     assert not any("zeichnung" in f for f in ok), ok
-    ohne = ueb.validate_eingang({**basis, "zeichnung": {"schluesselklasse": "simulation"}})
+    ohne = ueb.validate_eingang({**basis, "zeichnung": {**abnahme, "schluesselklasse": "simulation"}})
     assert any("mandat_sha256" in f for f in ohne), ohne
-    fremd = ueb.validate_eingang({**basis, "zeichnung": {"schluesselklasse": "orakel"}})
+    fremd = ueb.validate_eingang({**basis, "zeichnung": {**abnahme, "schluesselklasse": "orakel"}})
     assert any("keine zeichnende Schluesselklasse" in f for f in fremd), fremd
     # Ein Agent ist eine bekannte Klasse, aber keine zeichnende (Review Block 4).
-    agent = ueb.validate_eingang({**basis, "zeichnung": {"schluesselklasse": "agent"}})
+    agent = ueb.validate_eingang({**basis, "zeichnung": {**abnahme, "schluesselklasse": "agent"}})
     assert any("keine zeichnende Schluesselklasse" in f for f in agent), agent
-    nicht_ausgewiesen = ueb.validate_eingang({**basis, "zeichnung": {"schluesselklasse": ueb.NICHT_AUSGEWIESEN}})
+    nicht_ausgewiesen = ueb.validate_eingang({**basis, "zeichnung": {
+        **abnahme, "schluesselklasse": ueb.NICHT_AUSGEWIESEN}})
     assert not any("zeichnung" in f for f in nicht_ausgewiesen)
 
 
