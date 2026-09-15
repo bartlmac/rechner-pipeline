@@ -987,6 +987,39 @@ def main(argv: Optional[List[str]] = None) -> int:
             "Pruefstrecke sie abgenommen hat."
         )
 
+    # Kein Zielverzeichnis mit fremden Resten (Review T25-08, Klasse K3).
+    # Die Pflichttabellen schreibt jeder Lauf, die Nebentabellen NUR bei
+    # Bedarf — und nichts entfernte, was ein frueherer Lauf hinterlassen
+    # hatte. Ein Lauf ohne Scheiben in einem Verzeichnis mit alter
+    # scheiben.parquet erzeugte damit einen Bestand aus zwei Laeufen, und
+    # kein Konsument konnte das sehen: write_portfolio schreibt je Datei
+    # atomar, weiss aber nichts von seinen Geschwistern.
+    #
+    # Geloescht wird nicht — ein Produzent raeumt nicht weg, was er nicht
+    # erzeugt hat. Er verweigert die Arbeit und nennt den Ausweg.
+    merkmale = _merkmalstabelle(zeilen, spez) if args.generation_spez else None
+    verankerung = _verankerungstabelle(
+        zeilen, _vorgeschichte(fall, args.vorgeschichte))
+    zellen_abschnitt = (_zellen_toml(spez, args.generation, tarifwerk)
+                        if args.generation_spez else "")
+    nicht_erzeugt = {
+        "scheiben.parquet": scheiben is not None and len(scheiben) > 0,
+        "merkmale.parquet": merkmale is not None and len(merkmale) > 0,
+        "generation-zellen.toml": bool(zellen_abschnitt),
+        "verankerung.parquet": len(verankerung) > 0,
+    }
+    reste = sorted(
+        name for name, wird_erzeugt in nicht_erzeugt.items()
+        if not wird_erzeugt and (ziel / name).is_file())
+    if reste:
+        raise SystemExit(
+            f"bestand_uebernehmen: {ziel} traegt {reste} aus einem frueheren "
+            "Lauf, den dieser Lauf nicht ersetzt — der Zugangsstand waere aus "
+            "zwei Laeufen zusammengesetzt. Ein leeres Zielverzeichnis waehlen "
+            "(--out-dir) oder die Reste von Hand entfernen, nachdem geklaert "
+            "ist, wozu sie gehoeren."
+        )
+
     write_portfolio(stamm, ziel / "bestand.parquet")
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(ledger, ziel / "ledger.parquet")
@@ -1001,7 +1034,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     # fuehrt. Ohne Datei hat der Bestand keine Zellen -- das ist etwas
     # anderes als leere Stammspalten, in denen "trifft nicht zu" und
     # "unbekannt" gleich aussehen.
-    merkmale = _merkmalstabelle(zeilen, spez) if args.generation_spez else None
     if merkmale is not None and len(merkmale):
         write_portfolio(merkmale, ziel / "merkmale.parquet")
         print(f"  merkmale.parquet: {len(merkmale)} Zeilen "
@@ -1011,10 +1043,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         # als Config-Abschnitt -- sonst laege die Zuordnung vor, aber
         # nichts, worauf sie zeigt; und die Fuehrung rechnete mit einer
         # Config, die niemand aus der abgenommenen Spez abgeleitet hat.
-        abschnitt = _zellen_toml(spez, args.generation, tarifwerk)
-        if abschnitt:
+        if zellen_abschnitt:
             pfad = ziel / "generation-zellen.toml"
-            pfad.write_text(abschnitt, encoding="utf-8")
+            pfad.write_text(zellen_abschnitt, encoding="utf-8")
             print(f"  generation-zellen.toml: {len(spez.zellen)} Zelle(n) "
                   "(in die Bestand-Config uebernehmen)")
 
@@ -1022,8 +1053,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     # der dort gelieferte Wert nur im Pruefauftrag, je Lauf aus den
     # Erwartungswerten rekonstruiert. Traegt die Lieferung sie je Zeile,
     # werden sie hier Vertragsmerkmale des Bestands.
-    verankerung = _verankerungstabelle(
-        zeilen, _vorgeschichte(fall, args.vorgeschichte))
     if len(verankerung):
         write_portfolio(verankerung, ziel / "verankerung.parquet")
         print(f"  verankerung.parquet: {len(verankerung)} Zeilen "

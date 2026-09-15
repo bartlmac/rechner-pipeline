@@ -304,3 +304,52 @@ def test_validate_verankerung_findet_die_naheliegenden_fehler():
     zu_spaet = gut.assign(monate_ta=12 * (ZEILE["duration"] + 1))
     befunde = validate_verankerung(stamm, zu_spaet)
     assert any("nach Vertragsablauf" in b for b in befunde)
+
+
+def test_ein_zielverzeichnis_mit_fremden_resten_wird_verweigert(tmp_path):
+    """Review T25-08, Klasse K3: Die Pflichttabellen schreibt jeder Lauf,
+    die Nebentabellen NUR bei Bedarf — und nichts entfernte, was ein
+    frueherer Lauf hinterlassen hatte.
+
+    Ein Lauf ohne Merkmale in einem Verzeichnis mit alter
+    merkmale.parquet erzeugte damit einen Zugangsstand aus ZWEI Laeufen,
+    und kein Konsument konnte das sehen: write_portfolio schreibt je Datei
+    atomar, weiss aber nichts von seinen Geschwistern.
+
+    Geloescht wird nicht — ein Produzent raeumt nicht weg, was er nicht
+    erzeugt hat. Er verweigert die Arbeit und nennt den Ausweg.
+    """
+    import json
+
+    from rechner_pipeline.fall import anlegen, registrieren
+    from rechner_pipeline.gates import bestand_uebernehmen
+
+    fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
+    metadaten = tmp_path / "gevo_metadaten.csv"
+    metadaten.write_text(
+        "POLNR;GEVO;DATUM\n7000001;ERH;01.02.2020\n", encoding="utf-8")
+    registrieren(fall, metadaten)
+    zeilen = tmp_path / "zeilen.json"
+    zeilen.write_text(json.dumps([dict(ZEILE)]), encoding="utf-8")
+    ziel = fall / "abgeleitet" / "bestand"
+    ziel.mkdir(parents=True, exist_ok=True)
+    # Der Rest eines frueheren Laufs: eine Nebentabelle, die DIESER Lauf
+    # nicht erzeugt (ohne --generation-spez gibt es keine Merkmale).
+    (ziel / "merkmale.parquet").write_bytes(b"Rest eines frueheren Laufs")
+
+    argv = [
+        "--fall", str(fall), "--zeilen", str(zeilen),
+        "--tarif-generation", "TG2015", "--stichtag", "2026-01-01",
+        "--vorgeschichte", "gevo_metadaten.csv",
+        "--anfangszustand", "grundvertrag",
+        "--out-dir", str(ziel),
+    ]
+    with pytest.raises(SystemExit, match="frueheren Lauf"):
+        bestand_uebernehmen.main(argv)
+    # Nichts geschrieben: die Wache steht VOR dem ersten write_portfolio.
+    assert not (ziel / "bestand.parquet").exists()
+    # Und ohne den Rest laeuft derselbe Aufruf durch.
+    (ziel / "merkmale.parquet").unlink()
+    assert bestand_uebernehmen.main(argv) == 0
+    assert (ziel / "bestand.parquet").is_file()
