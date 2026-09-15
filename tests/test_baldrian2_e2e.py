@@ -278,6 +278,12 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
     assert beleg["bestanden"] is True and beleg["befunde"] == []
     assert beleg["anfangszustand"] == "materialisieren"
     assert beleg["fortschreibung_geprueft"] is True
+    # Aus dem ECHTEN Lauf, nicht aus einem selbstgebauten Dict: Der Fehler
+    # von T25-02 sass im LESEN (weggeworfener Rueckgabewert), nicht im
+    # Rechnen. Ein Test, der pruefe_fuehrung seine Tabellen selbst
+    # hinlegt, haette ihn nie gesehen — nachgemessen.
+    assert beleg["endbestand_geprueft"] > 0, (
+        "die Probe des echten Laufs hat den Endbestand nicht angesehen")
     assert beleg["vertraege"] == len(_policen()["policen"])
     assert beleg["mit_anfangszustand"] > 0 and beleg["scheiben"] > 0
     assert beleg["schichten"] == len(_policen()["policen"])
@@ -306,6 +312,7 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
         "ledger": read_portfolio(nach / "ledger.parquet"),
         "scheiben": read_portfolio(nach / "scheiben.parquet"),
         "historie": read_portfolio(nach / "historie.parquet"),
+        "bestand": read_portfolio(nach / "bestand_gesamt.parquet"),
     }
     schichtbeleg = json.loads((gefahrener_fall / "abgeleitet" / "schichten"
                                / "verankerung_schichten.json").read_text(encoding="utf-8"))["schichten"]
@@ -411,6 +418,33 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
     alt["bestand"].loc[idx, "sum_insured"] += 5000.0
     rot = pruefe_fuehrung(uebernahme=alt, fortschreibung=fort, **basis)
     assert any(b["art"] == "stammsumme" for b in rot["befunde"])
+
+    # 5. Der Endbestand der Fortschreibung (Review T25-02). Er wurde
+    # gelesen und weggeworfen — der Aufruf stand als freistehender
+    # Ausdruck da. Die Probe meldete "fortschreibung_geprueft: true" und
+    # hatte ihn nie angesehen; ein Endbestand mit einer fremden Nummer
+    # oder eine Endhistorie mit einem unbekannten Zustand bestand sie.
+    assert gut["endbestand_geprueft"] > 0, (
+        "die Probe meldet keine geprueften Endbestandszeilen — dann prueft sie "
+        "ihn wieder nicht")
+    # (a) Ein uebernommener Vertrag verschwindet aus dem Endbestand.
+    ohne = dict(fort, bestand=fort["bestand"].copy())
+    weg = int(ueb["bestand"]["police_id"].iloc[0])
+    ohne["bestand"] = ohne["bestand"][ohne["bestand"]["police_id"] != weg]
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=ohne, **basis)
+    assert any("nicht mehr vorhanden" in b["text"] for b in rot["befunde"])
+    # (b) Eine Identitaet wandert — die Fortschreibung bewegt Zustaende,
+    # nicht Geburtsdaten.
+    verdreht = dict(fort, bestand=fort["bestand"].copy())
+    i = verdreht["bestand"].index[verdreht["bestand"]["police_id"] == weg][0]
+    verdreht["bestand"].loc[i, "entry_age"] = int(verdreht["bestand"].loc[i, "entry_age"]) + 7
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=verdreht, **basis)
+    assert any("entry_age" in b["text"] for b in rot["befunde"])
+    # (c) Ein Zustand, den das Modell nicht kennt.
+    fremd = dict(fort, historie=fort["historie"].copy())
+    fremd["historie"].loc[fremd["historie"].index[0], "status_code"] = "XXX"
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fremd, **basis)
+    assert any("unbekannte Zustaende" in b["text"] for b in rot["befunde"])
 
 
 def _bericht(fall: Path, name: str) -> dict:

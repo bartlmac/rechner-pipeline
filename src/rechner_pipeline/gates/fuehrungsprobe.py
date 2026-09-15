@@ -67,6 +67,7 @@ from rechner_pipeline.models.bestand import (
     SCHEIBEN_NAMES,
     SCHICHTEN_NAMES,
     STAMM_NAMES,
+    STATUS_CODE_VALUES,
     STATUS_HISTORIE_NAMES,
     VERANKERUNG_NAMES,
     model_point_kwargs,
@@ -352,7 +353,41 @@ def pruefe_fuehrung(
     # 4. Buchungen der Fortschreibung nach dem Stichtag ---------------------
     buchungen: Dict[str, int] = {art: 0 for art in GEPRUEFTE_BUCHUNGEN}
     abweichungen = 0
+    endbestand_geprueft = 0
     if fortschreibung is not None:
+        # Der Endbestand wird jetzt angesehen (Review T25-02). Geprueft wird,
+        # was die Fortschreibung NICHT darf: einen uebernommenen Vertrag
+        # verlieren oder seine Identitaet aendern. Die Zustandsspalten sind
+        # ausgenommen — sie zu bewegen IST die Fortschreibung.
+        f_bestand = fortschreibung.get("bestand")
+        if f_bestand is not None:
+            identitaet = ["produkt", "tarif_generation", "date_of_birth",
+                          "insurance_start", "entry_age", "duration"]
+            ende = f_bestand.set_index("police_id")
+            for row in stamm.to_dict("records"):
+                pid = int(row["police_id"])
+                if pid not in ende.index:
+                    befund(pid, "endbestand",
+                           "im Endbestand der Fortschreibung nicht mehr vorhanden — "
+                           "ein uebernommener Vertrag verschwindet nicht")
+                    continue
+                zeile = ende.loc[pid]
+                for feld in identitaet:
+                    if pd.isna(row.get(feld)) and pd.isna(zeile[feld]):
+                        continue
+                    if row[feld] != zeile[feld]:
+                        befund(pid, "endbestand",
+                               f"{feld} im Endbestand {zeile[feld]!r}, uebernommen "
+                               f"wurde {row[feld]!r} — die Fortschreibung bewegt "
+                               "Zustaende, nicht Identitaeten", feld=feld)
+                endbestand_geprueft += 1
+        f_historie = fortschreibung.get("historie")
+        if f_historie is not None and len(f_historie):
+            fremd = sorted({str(s) for s in f_historie["status_code"]} - set(STATUS_CODE_VALUES))
+            if fremd:
+                befund(None, "endhistorie",
+                       f"Endhistorie der Fortschreibung: unbekannte Zustaende {fremd} — "
+                       f"bekannt sind {sorted(STATUS_CODE_VALUES)}")
         f_ledger: pd.DataFrame = fortschreibung["ledger"]
         f_scheiben = fortschreibung.get("scheiben")
         neue_je_police: Dict[int, List[Dict[str, Any]]] = {}
@@ -426,6 +461,9 @@ def pruefe_fuehrung(
         "buchungen_geprueft": buchungen,
         "buchungen_abweichend": abweichungen,
         "fortschreibung_geprueft": fortschreibung is not None,
+        # Positive Zahl statt Flag (Review T25-01/T25-02): "geprueft: ja"
+        # und "nichts angesehen" sahen bisher gleich aus.
+        "endbestand_geprueft": endbestand_geprueft,
         "befunde": befunde,
         "bestanden": not befunde,
     }
@@ -524,8 +562,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "ledger": lies(lauf / "ledger.parquet", LEDGER_NAMES, True),
                 "scheiben": lies(lauf / "scheiben.parquet", SCHEIBEN_NAMES, False),
                 "historie": lies(lauf / "historie.parquet", STATUS_HISTORIE_NAMES, False),
+                # Der Endbestand wurde bisher GELESEN und weggeworfen: der
+                # Aufruf stand als freistehender Ausdruck da, sein
+                # Rueckgabewert ging ins Leere (Review T25-02). Die Probe
+                # meldete "fortschreibung_geprueft: true" und hatte ihn nie
+                # angesehen — am echten Fall bestanden ein Endbestand mit
+                # +999999 und eine Endhistorie mit XXX die Probe.
+                "bestand": lies(lauf / "bestand_gesamt.parquet", STAMM_NAMES, False),
             }
-            lies(lauf / "bestand_gesamt.parquet", STAMM_NAMES, False)
         except SystemExit as exc:
             print(str(exc), file=sys.stderr)
             return 2
