@@ -30,12 +30,24 @@ vermutet, sondern am Code nachgesehen:
 Nr. 10 erledigt. Die uebrigen acht stehen aus; Nr. 8 ist durch die
 Kreise-Pflicht auf eine Ja/Nein-Frage geschrumpft.
 
-**Zur Messung von T24-02 an echten Daten** (Laufzeit `~/apps/plv`, Stand
-vom 2026-09-11): Die Erstbefuellung holte 1994 bis 2026 in EINEM Lauf
-nach und rechnete damit jeden der 387 Monatsabschluesse mit dem Wissen
-von 2026. 22 Vorfaelle des Bestands tragen eine Buchung jenseits der
-Monatsgrenze (alles Todesfaelle, 34 bis 114 Tage Verzug); sie betreffen
-29 der 387 Abschluesse. Nachgewiesen an Police 15435601 (Tod wirksam
+**Zur Messung von T24-02 an echten Daten** (Laufzeit `~/apps/plv`): Die
+Erstbefuellung holte 1994 bis 2026 in EINEM Lauf nach und rechnete damit
+jeden der 387 Monatsabschluesse mit dem Wissen von 2026. Nach dem Fix neu
+erzeugt und bytweise verglichen: **192 der 387 Abschluesse haben sich
+geaendert**, keiner unerwartet.
+
+Die erste Schaetzung lautete 29 und war falsch gestellt. Sie fragte, ob
+eine Buchung eine MONATSGRENZE ueberschreitet (22 Vorfaelle, alles
+Todesfaelle mit 34 bis 114 Tagen Verzug). Die richtige Frage ist, ob es
+einen Monatsersten gibt, an dem das Ereignis schon WIRKT, aber noch nicht
+GEBUCHT ist — und das ist der Regelfall, nicht die Ausnahme: Ereignisse
+wirken zum Monatsersten, gebucht wird am naechsten Werktag, und faellt
+der Erste auf ein Wochenende, liegt genau der Stichtag dazwischen. Von
+4625 verspaetet gebuchten Journalzeilen wirken ALLE 4625 zum
+Monatsersten (ERH 4024, ABL 191, STO 188, TOD 141, PEX 68, INV 12,
+REA 1). Vorhergesagt waren danach 193 Abschluesse, gemessen 192; die eine
+Abweichung (2020-04-01) ist ein Stichtag, an dem die entfernte Buchung
+keinen Wert der Tabelle bewegt. Nachgewiesen an Police 15435601 (Tod wirksam
 2006-01-01, gebucht 2006-03-13): im Abschluss per 2005-12-01 vorhanden,
 per 2006-01-01 und 2006-02-01 nicht — obwohl das Unternehmen erst im
 Maerz davon erfuhr. Diese Abschluesse gehoeren nach dem Fix neu erzeugt.

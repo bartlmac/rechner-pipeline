@@ -779,9 +779,16 @@ def _stichtagssicht(
     Funktion seines Stichtags, sondern auch des Zufalls, wann gerechnet
     wurde. Damit war er auch nicht festschreibbar (ADR-011).
 
-    Auf der Laufzeit der Vorzeige betraf das 29 der 387 Abschluesse: die
+    Auf der Laufzeit der Vorzeige betraf das 192 der 387 Abschluesse: die
     Erstbefuellung holte 1994 bis 2026 in EINEM Lauf nach und rechnete
-    jeden Monatsabschluss mit dem Wissen von 2026.
+    jeden Monatsabschluss mit dem Wissen von 2026. Die Zahl ist nach dem
+    Bau gemessen worden (Bytevergleich gegen den Lauf davor) und liegt
+    weit ueber der ersten Schaetzung von 29 — die fragte, ob eine Buchung
+    eine MONATSGRENZE ueberschreitet, und uebersah damit den Regelfall:
+    Ereignisse wirken zum Monatsersten, gebucht wird am naechsten
+    Werktag, und faellt der Erste auf ein Wochenende, liegt genau der
+    Stichtag zwischen Wirkung und Buchung. Von 4625 verspaetet gebuchten
+    Zeilen wirken ALLE 4625 zum Monatsersten.
 
     Der Schnitt darf auf den bereits nach ``heute`` gefilterten Tabellen
     aufsetzen, statt die ungefilterte Wirkungshistorie mitzufuehren:
