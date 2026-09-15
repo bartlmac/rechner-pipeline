@@ -64,10 +64,12 @@ def _rechne(
     merkmale: Optional[pd.DataFrame] = None,
     schichten: Optional[pd.DataFrame] = None,
     verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     zeilen = einzelwerte_am(stamm, historie, config, stichtag,
                             scheiben=scheiben, merkmale=merkmale,
-                            schichten=schichten, verankerung=verankerung)
+                            schichten=schichten, verankerung=verankerung,
+                            reduktionen=reduktionen)
     if not zeilen:
         raise AbschlussError(
             f"Abschluss {stichtag.isoformat()}: kein in-force-Bestand am "
@@ -116,6 +118,7 @@ def schreibe_abschluss(
     merkmale: Optional[pd.DataFrame] = None,
     schichten: Optional[pd.DataFrame] = None,
     verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
 ) -> Path:
     """Bewertungsstand des Stichtags festschreiben (genau einmal).
 
@@ -131,7 +134,7 @@ def schreibe_abschluss(
             f"({pfad}) — festgeschriebene Staende werden nie ueberschrieben"
         )
     df = _rechne(stamm, historie, config, stichtag, scheiben, merkmale,
-                 schichten, verankerung)
+                 schichten, verankerung, reduktionen)
     ziel_dir.mkdir(parents=True, exist_ok=True)
     # Zwei Sicherungen, die einzeln beide zu wenig tragen und erst
     # zusammen dicht sind -- die Reihenfolge ist deshalb wesentlich.
@@ -179,6 +182,7 @@ def pruefe_abschluss(
     merkmale: Optional[pd.DataFrame] = None,
     schichten: Optional[pd.DataFrame] = None,
     verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
 ) -> List[str]:
     """Neuberechnung gegen den festgeschriebenen Stand stellen.
 
@@ -211,7 +215,7 @@ def pruefe_abschluss(
     befunde.extend(validate_abschluss(fest))
 
     neu = _rechne(stamm, historie, config, stichtag, scheiben, merkmale,
-                  schichten, verankerung)
+                  schichten, verankerung, reduktionen)
     kern_stand_alt = sorted(set(fest["kern_version"]))
     if kern_stand_alt != [KERN_VERSION]:
         befunde.append(

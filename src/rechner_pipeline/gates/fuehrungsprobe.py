@@ -458,10 +458,28 @@ def pruefe_fuehrung(
             & (pd.to_datetime(f_ledger["status_date"]) > pd.Timestamp(stichtag))
             & f_ledger["ereignis"].isin(GEPRUEFTE_BUCHUNGEN)
         ]
+        # Herabgesetzte Policen: Ihre Folgebuchungen rechnen auf dem
+        # GEKNICKTEN Verlauf. Anteil und Verfahren stehen in
+        # reduktionen.parquet, nicht im Ledger — solange der Betriebsweg
+        # die Tabelle nicht mitfuehrt (Review T25-06), kann die Probe
+        # diese Buchungen nicht nachrechnen. Sie gegen den ungekuerzten
+        # Vertrag zu halten waere schlechter als gar nichts: Das Urteil
+        # bezeugte eine Uebereinstimmung, die es nicht gibt.
+        red_jahr = {
+            int(z["police_id"]): int(z["vertragsjahr"])
+            for z in f_ledger[f_ledger["ereignis"] == "RED"].to_dict("records")
+        }
         for z in nach.to_dict("records"):
             pid, art, jahr = int(z["police_id"]), str(z["ereignis"]), int(z["vertragsjahr"])
             welt = welten.get(pid)
             if welt is None:
+                continue
+            if pid in red_jahr and jahr >= red_jahr[pid]:
+                befund(pid, "herabsetzung",
+                       f"{art}-Buchung im Vertragsjahr {jahr} nach einer "
+                       f"Herabsetzung (Jahr {red_jahr[pid]}) — die Probe kennt "
+                       "den herabgesetzten Verlauf nicht; sie braucht dafuer "
+                       "reduktionen.parquet")
                 continue
             teile = list(welt["teile"])
             for s in neue_je_police.get(pid, []):

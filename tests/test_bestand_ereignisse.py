@@ -367,7 +367,7 @@ def beispiel_lauf(portfolio, config):
 def test_abgangsbetraege_summieren_ueber_scheiben(portfolio, config, beispiel_lauf):
     """Statistische Abdeckung im Beispielbestand: STO/PEX nach Erhoehungen
     zahlen exakt die Summe der Kern-Betraege ueber alle Scheiben."""
-    _, ledger, scheiben, _ = beispiel_lauf
+    _, ledger, scheiben, *_ = beispiel_lauf
     haupt = portfolio.set_index("police_id")
     generationen = {g.name: g.generation_fields() for g in config.generationen}
 
@@ -421,7 +421,7 @@ def test_auswertung_beruecksichtigt_scheiben(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
     )
     cfg = _mit_raten(config, erh_rate=0.999999, erh_prozent=0.05)
-    historie, _, scheiben, _ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    historie, _, scheiben, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     stichtag = dt.date(2020, 1, 1)
     ohne = auswertungs_verlauf(stamm, historie, cfg, [stichtag])
     mit = auswertungs_verlauf(stamm, historie, cfg, [stichtag], scheiben=scheiben)
@@ -432,7 +432,7 @@ def test_auswertung_beruecksichtigt_scheiben(config):
 def test_scheiben_parquet_roundtrip(tmp_path, beispiel_lauf):
     from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 
-    _, _, scheiben, _ = beispiel_lauf
+    _, _, scheiben, *_ = beispiel_lauf
     assert len(scheiben) > 0
     pfad = write_portfolio(scheiben, tmp_path / "scheiben.parquet")
     pd.testing.assert_frame_equal(read_portfolio(pfad), scheiben)
@@ -445,7 +445,7 @@ def test_validate_scheiben_findet_inkonsistenzen(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
     )
     cfg = _mit_raten(config, erh_rate=0.999999, erh_prozent=0.05)
-    _, _, scheiben, _ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    _, _, scheiben, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     kaputt = scheiben.copy()
     kaputt.loc[kaputt.index[0], "entry_age"] = 99
     fehler = validate_scheiben(stamm, kaputt)
@@ -465,7 +465,7 @@ def test_validate_scheiben_cross_check_gegen_historie(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 20, "t": 15}
     )
     cfg = _mit_raten(config, erh_rate=0.999999, erh_prozent=0.05)
-    _, _, scheiben, _ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
+    _, _, scheiben, *_ = fortschreiben(stamm, cfg, dt.date(2045, 1, 1))
     # Fremde Historie: PEX am zweiten Jahrestag — Scheiben ab Jahr 2 liegen
     # nicht mehr strikt davor:
     fremde_historie = pd.DataFrame(
@@ -502,8 +502,8 @@ def test_scheiben_praefix_bei_horizont_erweiterung(portfolio, config):
     """Review-Fix: auch die Scheiben-Tabelle ist bei bis-Erweiterung ein
     Praefix (fruehere Erhoehungen aendern sich nicht)."""
     frueh = dt.date(2015, 1, 1)
-    _, _, s_frueh, _ = fortschreiben(portfolio, config, frueh)
-    _, _, s_spaet, _ = fortschreiben(portfolio, config, dt.date(2030, 1, 1))
+    _, _, s_frueh, *_ = fortschreiben(portfolio, config, frueh)
+    _, _, s_spaet, *_ = fortschreiben(portfolio, config, dt.date(2030, 1, 1))
     praefix = s_spaet[s_spaet["erhoehung_datum"] <= pd.Timestamp(frueh)].reset_index(
         drop=True
     )

@@ -725,11 +725,19 @@ class Annahme:
 #: Die Ereignisarten der Fortschreibung — Name und fachliche Einordnung
 #: (der Text nennt, ob es zu der Art ueberhaupt eine Rechnungsgrundlage
 #: erster Ordnung gibt). Die Reihenfolge ist die Ausgabereihenfolge.
+#: Die SKALAREN Eintraege des Abschnitts ``[annahmen]`` — Hoehen, keine
+#: Wahrscheinlichkeiten, also keine Annahme-Tabellen ``{ a, b }``. Sie
+#: stehen hier, weil der Parser sie von den Ereignisarten unterscheiden
+#: muss: Was weder Ereignisart noch bekannter Skalar ist, ist ein
+#: Schreibfehler und faellt.
+SKALARE_ANNAHMEN: Tuple[str, ...] = ("erh_prozent", "red_anteil")
+
 ANNAHME_FELDER: Tuple[Tuple[str, str], ...] = (
     ("tod", "Sterblichkeit des Versicherten (KLV: Todesfallleistung)"),
     ("storno", "Storno (keine Rechnungsgrundlage)"),
     ("beitragsfreistellung", "Beitragsfreistellung (keine Rechnungsgrundlage)"),
     ("erhoehung", "dynamische Erhoehung (keine Rechnungsgrundlage)"),
+    ("herabsetzung", "Herabsetzung des Beitrags (keine Rechnungsgrundlage)"),
     ("invalidisierung", "Invalidisierung (BU)"),
     ("reaktivierung", "Reaktivierung (BU)"),
     ("aktivensterblichkeit", "Sterblichkeit im Anwaerterstand (BU)"),
@@ -765,11 +773,18 @@ class Annahmen:
     storno: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     beitragsfreistellung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     erhoehung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    herabsetzung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     invalidisierung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     reaktivierung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     aktivensterblichkeit: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     invalidensterblichkeit: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     erh_prozent: float = 0.0
+    #: Der FORTGEFUEHRTE Beitragsanteil einer Herabsetzung (0.6 = auf 60
+    #: Prozent gesenkt) — wie ``erh_prozent`` eine Hoehe, keine
+    #: Wahrscheinlichkeit. 0.0 heisst "nicht konfiguriert"; eine
+    #: Herabsetzung auf 0 waere eine Beitragsfreistellung und wird als
+    #: solche gefuehrt.
+    red_anteil: float = 0.0
 
     def validate(self) -> List[str]:
         errors: List[str] = []
@@ -779,6 +794,19 @@ class Annahmen:
             errors.append("annahmen: erh_prozent ist nicht endlich")
         elif self.erh_prozent < 0.0:
             errors.append("annahmen: erh_prozent < 0")
+        if not math.isfinite(self.red_anteil):
+            errors.append("annahmen: red_anteil ist nicht endlich")
+        elif not 0.0 <= self.red_anteil < 1.0:
+            errors.append(
+                "annahmen: red_anteil ausserhalb [0, 1) — 0 heisst nicht "
+                "konfiguriert, 1.0 waere keine Herabsetzung"
+            )
+        if self.herabsetzung.a > 0.0 and self.red_anteil == 0.0:
+            errors.append(
+                "annahmen: herabsetzung mit Rate > 0 verlangt red_anteil > 0 "
+                "— ohne Hoehe ist die Rate keine Herabsetzung, sondern eine "
+                "Beitragsfreistellung"
+            )
         if self.erhoehung.a > 0.0 and self.erh_prozent == 0.0:
             errors.append(
                 "annahmen: erhoehung mit Rate > 0 verlangt erh_prozent > 0"
@@ -1240,15 +1268,16 @@ def config_aus_text(text: str) -> BestandConfig:
             a=float(eintrag.get("a", 0.0)), b=float(eintrag.get("b", 1.0))
         )
     fremde = sorted(
-        set(roh_annahmen) - {n for n, _ in ANNAHME_FELDER} - {"erh_prozent"}
+        set(roh_annahmen) - {n for n, _ in ANNAHME_FELDER} - set(SKALARE_ANNAHMEN)
     )
     if fremde:
         errors.append(
             f"annahmen: unbekannte Ereignisarten {fremde} "
             f"(bekannt: {[n for n, _ in ANNAHME_FELDER]})"
         )
-    if "erh_prozent" in roh_annahmen:
-        annahme_kwargs["erh_prozent"] = float(roh_annahmen["erh_prozent"])
+    for name in SKALARE_ANNAHMEN:
+        if name in roh_annahmen:
+            annahme_kwargs[name] = float(roh_annahmen[name])
     annahmen = Annahmen(**annahme_kwargs)
 
     referenzstichtag: Optional[_dt.date] = None

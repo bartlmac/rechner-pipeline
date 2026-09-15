@@ -326,6 +326,7 @@ def reduziere_geschichtet(
     anteil: float,
     *,
     verfahren: str = PROSPEKTIV,
+    zusatz_dk: float = 0.0,
 ) -> List[Tuple[int, "Reduktion"]]:
     """Herabsetzung eines Vertrags MIT dynamischen Erhoehungsscheiben.
 
@@ -351,6 +352,12 @@ def reduziere_geschichtet(
     Deckungsrueckstellung der Schicht verteilt — dem Anteil, aus dem der
     umgewandelte Betrag stammt. Beim verlustfreien Verfahren entfaellt
     die Frage, dort wird kein Abzug erhoben.
+
+    **Die Korrekturschicht gehoert zur Grundscheibe.** ``zusatz_dk`` geht
+    dort in die Umwandlung ein und nirgends sonst: Die Schicht ist auf den
+    Modellpunkt des Grundvertrags kalibriert (``schichtwert_bei``), nicht
+    auf die Erhoehungen — eine Aufteilung ueber die Schichten waere eine
+    zweite Konvention ohne fachlichen Grund.
 
     Rueckgabe: je Schicht ihr Erhoehungsjahr und ihre Reduktion, in der
     Reihenfolge (Grundscheibe zuerst) von ``vertrags_monatsreserve``.
@@ -387,12 +394,15 @@ def reduziere_geschichtet(
     )
 
     aus: List[Tuple[int, "Reduktion"]] = []
-    for erh_jahr, kern in teile:
+    for i, (erh_jahr, kern) in enumerate(teile):
         # Die Schicht rechnet ihre eigene Reduktion — mit ihrem eigenen
         # Eintrittsalter, ihrer eigenen Restdauer und ihrem eigenen
-        # beitragsfreien Reservesatz. Nur der Abzug kommt von aussen.
+        # beitragsfreien Reservesatz. Nur der Abzug kommt von aussen, und
+        # die Korrekturschicht nur bei der Grundscheibe (teile[0]): Sie
+        # ist auf DEREN Modellpunkt kalibriert.
         aus.append((erh_jahr, _reduziere_eine_schicht(
-            kern, jahr - erh_jahr, anteil, nach_abzug, verfahren)))
+            kern, jahr - erh_jahr, anteil, nach_abzug, verfahren,
+            zusatz_dk=zusatz_dk if i == 0 else 0.0)))
     return aus
 
 

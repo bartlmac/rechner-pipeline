@@ -85,9 +85,17 @@ import numpy as np
 import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig
-from rechner_pipeline.bestand.kernlauf import vertrags_rkw
+from rechner_pipeline.bestand.kernlauf import (
+    absorbierte_schicht,
+    reduzierte_teile,
+    vertrags_rkw,
+)
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.bestand.schichten import schichten_je_police
+from rechner_pipeline.kern.beitragsreduktion import (
+    ReduzierterVertrag,
+    vertrags_monatsreserve_reduziert,
+)
 from rechner_pipeline.kern.korrekturschicht import (
     schichtwert_bei,
     zuschlag_bei_pex,
@@ -99,6 +107,7 @@ from rechner_pipeline.models.bestand import (
     SCHEIBEN_SPALTEN,
     STAMM_NAMES,
     STAMM_SPALTEN,
+    REDUKTIONEN_SPALTEN,
     STATUS_HISTORIE_SPALTEN,
     bu_model_point_kwargs,
     model_point_kwargs,
@@ -111,6 +120,13 @@ from rechner_pipeline.models.bestand import (
 #: :func:`fortschreiben`; the generator issues >= 10_000_001) and gen_index
 #: stays small — a third stream family needs a NEW distinct constant.
 EREIGNIS_STREAM = 424242
+#: EIGENER Substrom der Herabsetzung. Die feste Draw-Reihenfolge des
+#: Hauptstroms ist der Grund, warum Laeufe verschiedener Configs
+#: pfadweise vergleichbar sind — ein neuer Draw in ihr haette JEDEN
+#: bestehenden Bestand verschoben, obwohl sich fachlich nichts aendert.
+#: Das Haus fuehrt eigene Stroeme je Familie (NEUZUGANG_STREAM,
+#: MELDEVERZUG_STREAM); dies ist einer davon.
+HERABSETZUNG_STREAM = 606606
 
 #: Betrags-Art der BU-GeVos: die von diesem Geschaeftsvorfall betroffene
 #: versicherte Jahresrente (Bezugsgroesse der Nachweisung) — bei
@@ -144,7 +160,7 @@ class EreignisError(ValueError):
 
 
 class Fortschreibung(NamedTuple):
-    """Ergebnis von :func:`fortschreiben` (vier deterministische Tabellen).
+    """Ergebnis von :func:`fortschreiben` (fuenf deterministische Tabellen).
 
     ``zugaenge`` sind die waehrend der Fortschreibung entstandenen
     Neuzugaenge (POL-Basiszeilen). :func:`mit_zugaengen` (stamm, zugaenge)
@@ -158,6 +174,7 @@ class Fortschreibung(NamedTuple):
     ledger: pd.DataFrame
     scheiben: pd.DataFrame
     zugaenge: pd.DataFrame
+    reduktionen: pd.DataFrame
 
 
 def _add_years(d: _dt.date, years: int) -> _dt.date:
@@ -238,8 +255,36 @@ class _Vertrag:
         #: Terminalbedingung), eine Beitragsfreistellung absorbiert — nach
         #: ihr gibt es kein Storno mehr, die Schicht ist damit erledigt.
         self.schicht = schicht
+        #: (jahr, anteil, verfahren) der Herabsetzung, sobald eine
+        #: gezogen wurde — danach rechnet der Vertrag ueber
+        #: ``self.reduziert`` und nicht mehr ueber die Grundscheiben.
+        self.reduktion: Tuple[int, float, str] | None = None
+        self.reduziert: List[Tuple[int, ReduzierterVertrag]] = []
+
+    def herabsetzen(
+        self, jahr: int, anteil: float, verfahren: str
+    ) -> Tuple[float, float]:
+        """Den Vertrag herabsetzen; liefert (absorbierte Schicht, neue Summe).
+
+        Die Korrekturschicht geht VOLLSTAENDIG in die Neuberechnung ein
+        (Entscheid des Maintainers 2026-09-15): Die Herabsetzung
+        garantiert die Tat, nicht den Wert. Sie ist eine Neuvereinbarung
+        — das Gesamt-Deckungskapital einschliesslich Schicht ist der
+        Startwert, danach fuehrt allein die Logik des Zielsystems, und
+        einen Korrekturtermin gibt es nicht mehr. Deshalb faellt
+        ``self.schicht`` hier weg: nicht verloren, sondern aufgegangen.
+        """
+        zusatz = absorbierte_schicht(self.grund, jahr, self.schicht)
+        self.reduziert = reduzierte_teile(
+            self.grund, [(j, k) for j, _, k in self.scheiben], jahr, anteil,
+            verfahren, schicht=self.schicht)
+        self.reduktion = (jahr, anteil, verfahren)
+        self.schicht = None
+        return zusatz, sum(r.reduktion.vs_neu for _, r in self.reduziert)
 
     def gesamt_vs(self) -> float:
+        if self.reduziert:
+            return sum(r.reduktion.vs_neu for _, r in self.reduziert)
         return self.grund_mp.sum_insured + sum(vs for _, vs, _ in self.scheiben)
 
     def erhoehe(self, jahr: int, vs: float) -> ModelPoint:
@@ -253,6 +298,11 @@ class _Vertrag:
         return mp
 
     def rkw(self, jahr: int) -> float:
+        if self.reduziert:
+            # Der herabgesetzte Vertrag traegt seinen eigenen Verlauf;
+            # eine Korrekturschicht hat er nicht mehr.
+            return vertrags_monatsreserve_reduziert(
+                self.reduziert, 12 * jahr).rkw
         wert = vertrags_rkw(
             self.grund, [(erh_jahr, kern) for erh_jahr, _, kern in self.scheiben], jahr,
             stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),
@@ -263,6 +313,12 @@ class _Vertrag:
         return wert
 
     def beitragsfreie_summe(self, a0: int) -> float:
+        if self.reduziert:
+            # Nach einer Herabsetzung fuehrt jede Schicht ihren fixierten
+            # beitragsfreien Teil mit; die Schicht steckt dort schon drin.
+            return sum(
+                v.beitragsfreie_summe(a0 - erh_jahr)
+                for erh_jahr, v in self.reduziert)
         summe = self.grund.beitragsfreie_summe(a0) + sum(
             kern.beitragsfreie_summe(a0 - erh_jahr)
             for erh_jahr, _, kern in self.scheiben
@@ -322,8 +378,8 @@ def _simuliere_vertrag(
     tarifwerk: Mapping[str, Any] | None = None,
     mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
     schicht: Tuple[Any, int] | None = None,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Simulate one contract; returns (booked events, NEUE Erhoehungsscheiben).
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Simulate one contract; returns (events, NEUE Scheiben, Herabsetzungen).
 
     ``ab_jahr`` ist das erste zu simulierende Vertragsjahr — 0 fuer
     eigenes Geschaeft, das Zugangsjahr fuer einen uebernommenen Vertrag.
@@ -350,6 +406,11 @@ def _simuliere_vertrag(
 
     events: List[Dict[str, Any]] = []
     scheiben: List[Dict[str, Any]] = []
+    reduktionen: List[Dict[str, Any]] = []
+    rng_red = np.random.Generator(
+        np.random.PCG64(
+            np.random.SeedSequence([seed, HERABSETZUNG_STREAM, police_id]))
+    )
 
     def buche(
         code: str, jahr: int, art: str, betrag: float, status: Any = _KEIN_ARGUMENT
@@ -390,22 +451,56 @@ def _simuliere_vertrag(
                 buche("TOD", j + 1, "Todesfallleistung", vertrag.gesamt_vs())
             else:
                 buche("TOD", j + 1, "Todesfallleistung", pex_summe)
-            return events, scheiben
+            return events, scheiben, reduktionen
 
         if beitragsfrei_ab is None:
             # 2. Storno (nur beitragspflichtig, nicht im Ablaufjahr):
             if j + 1 < n and rng.random() < annahmen.storno(0.0):
                 buche("STO", j + 1, "RKW", vertrag.rkw(j + 1))
-                return events, scheiben
+                return events, scheiben, reduktionen
             # 3. Beitragsfreistellung (nur solange Beitraege laufen):
             if j + 1 < t and rng.random() < annahmen.beitragsfreistellung(0.0):
                 beitragsfrei_ab = j + 1
                 pex_summe = vertrag.beitragsfreie_summe(j + 1)
                 buche("PEX", j + 1, "VS_bfr", pex_summe)
         if beitragsfrei_ab is None:
-            # 4. Dynamische Erhoehung (nur beitragspflichtig, solange
+            # 4. Herabsetzung des Beitrags (nur beitragspflichtig, nur
+            #    einmal je Vertrag). Der Draw kommt aus einem EIGENEN
+            #    Strom (HERABSETZUNG_STREAM) — in der Reihenfolge oben
+            #    haette er jeden bestehenden Bestand verschoben. Die
+            #    Pruefung auf eine schon erfolgte Reduktion steht NACH
+            #    dem Draw, damit der Strom unabhaengig vom Ausgang
+            #    gleich weit laeuft.
+            if (j + 1 < t
+                    and rng_red.random() < annahmen.herabsetzung(0.0)
+                    and vertrag.reduktion is None):
+                verfahren = str(vertrag.tarifwerk["red_verfahren"])
+                absorbiert, vs_neu = vertrag.herabsetzen(
+                    j + 1, float(annahmen.red_anteil), verfahren)
+                # Die neue Gesamtsumme — fortgefuehrter plus umgewandelter
+                # Teil. Kein Statuswechsel: Der Vertrag bleibt POL.
+                buche("RED", j + 1, "VS_herabsetzung", vs_neu, status=None)
+                if absorbiert:
+                    # Die absorbierte Korrekturschicht als eigene Zeile.
+                    # Ohne sie verschwaende der Betrag aus dem Ausweis:
+                    # Die Spalte korrekturschicht des Abschlusses faellt
+                    # ab hier auf null, und niemand saehe, wohin er ging
+                    # (dieselbe Konstruktion wie dDK_uebernahme beim
+                    # Migrationszugang — eine Umbuchung ohne Zahlung).
+                    buche("RED", j + 1, "dDK_absorption", absorbiert,
+                          status=None)
+                reduktionen.append({
+                    "police_id": police_id,
+                    "reduktion_jahr": j + 1,
+                    "reduktion_datum": pd.Timestamp(_add_years(start, j + 1)),
+                    "anteil": float(annahmen.red_anteil),
+                    "verfahren": verfahren,
+                })
+        if beitragsfrei_ab is None:
+            # 5. Dynamische Erhoehung (nur beitragspflichtig, solange
             #    Beitraege laufen): neue Scheibe, kein Statuswechsel.
-            if j + 1 < t and rng.random() < annahmen.erhoehung(0.0):
+            if (j + 1 < t and rng.random() < annahmen.erhoehung(0.0)
+                    and vertrag.reduktion is None):
                 betrag = annahmen.erh_prozent * vertrag.gesamt_vs()
                 mp_s = vertrag.erhoehe(j + 1, betrag)
                 scheiben.append(
@@ -438,7 +533,7 @@ def _simuliere_vertrag(
             buche("ABL", n, "Ablaufleistung", vertrag.gesamt_vs())
         else:
             buche("ABL", n, "Ablaufleistung", pex_summe)
-    return events, scheiben
+    return events, scheiben, reduktionen
 
 
 def _pruefe_wegzuege(
@@ -808,6 +903,7 @@ def fortschreiben(
 
     alle_events: List[Dict[str, Any]] = []
     alle_scheiben: List[Dict[str, Any]] = []
+    alle_reduktionen: List[Dict[str, Any]] = []
     # Zugangs-GeVos: ein ZUG-Ledger-Eintrag je Neuzugang (kein Statuswechsel —
     # die POL-Basiszeile ist der Zugangs-Satz selbst).
     for zugang in zugaenge.to_dict("records"):
@@ -878,8 +974,9 @@ def fortschreiben(
                     bu_seit=seit if zustand == "BU" else None,
                 )
                 neue_scheiben = []
+                neue_reduktionen = []
             else:
-                events, neue_scheiben = _simuliere_vertrag(
+                events, neue_scheiben, neue_reduktionen = _simuliere_vertrag(
                     row, grundlagen(int(row["police_id"]), name),
                     config.annahmen, config.seed, bis,
                     ab_jahr=ab_jahr,
@@ -899,6 +996,17 @@ def fortschreiben(
             ) from exc
         alle_events.extend(events)
         alle_scheiben.extend(neue_scheiben)
+        alle_reduktionen.extend(neue_reduktionen)
+
+    if alle_reduktionen:
+        reduktionen_df = (
+            pd.DataFrame(alle_reduktionen)
+            .astype(dict(REDUKTIONEN_SPALTEN))
+            .sort_values(["police_id"], kind="stable")
+            .reset_index(drop=True)[[n for n, _ in REDUKTIONEN_SPALTEN]]
+        )
+    else:
+        reduktionen_df = _leerer_frame(REDUKTIONEN_SPALTEN)
 
     if alle_scheiben:
         scheiben_df = (
@@ -916,6 +1024,7 @@ def fortschreiben(
             _leerer_frame(LEDGER_SPALTEN),
             scheiben_df,
             zugaenge,
+            reduktionen_df,
         )
 
     ereignisse = pd.DataFrame(alle_events).sort_values(
@@ -944,7 +1053,8 @@ def fortschreiben(
     zustaende = ereignisse[ereignisse["status_code"].notna()].copy()
     if len(zustaende) == 0:
         return Fortschreibung(
-            _leerer_frame(STATUS_HISTORIE_SPALTEN), ledger, scheiben_df, zugaenge
+            _leerer_frame(STATUS_HISTORIE_SPALTEN), ledger, scheiben_df,
+            zugaenge, reduktionen_df,
         )
     # status_id je Police fortlaufend NACH dem mitgebrachten Stand. Beim
     # eigenen Geschaeft ist das die Basis-POL mit status_id 1, also wie
@@ -966,7 +1076,8 @@ def fortschreiben(
             "status_date": pd.to_datetime(zustaende["status_date"]),
         }
     ).reset_index(drop=True)
-    return Fortschreibung(historie, ledger, scheiben_df, zugaenge)
+    return Fortschreibung(
+        historie, ledger, scheiben_df, zugaenge, reduktionen_df)
 
 
 def _mitgebrachte_scheiben(

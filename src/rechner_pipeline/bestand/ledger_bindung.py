@@ -41,9 +41,16 @@ import pandas as pd
 
 from rechner_pipeline.bestand.auswertung import grundlagen_je_police
 from rechner_pipeline.bestand.config import BestandConfig
-from rechner_pipeline.bestand.kernlauf import vertrags_rkw
+from rechner_pipeline.bestand.kernlauf import (
+    absorbierte_schicht,
+    reduzierte_teile,
+    vertrags_rkw,
+)
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.bestand.schichten import schichten_je_police
+from rechner_pipeline.kern.beitragsreduktion import (
+    vertrags_monatsreserve_reduziert,
+)
 from rechner_pipeline.kern.korrekturschicht import (
     schichtwert_bei,
     zuschlag_bei_pex,
@@ -56,7 +63,7 @@ from rechner_pipeline.models.bestand import model_point_kwargs
 TOLERANZ = 0.005
 
 #: Ereignisse, deren Betrag hier hergeleitet wird (KLV).
-HERGELEITET = ("ZUG", "STO", "PEX", "TOD", "ABL", "ERH")
+HERGELEITET = ("ZUG", "STO", "PEX", "TOD", "ABL", "ERH", "RED")
 #: Betragsart des gebuchten Bruttojahresbeitrags. Er folgt aus dem Kern
 #: derselben Police (VS mal Bxt) — deshalb wird er hergeleitet wie jeder
 #: andere Betrag, nicht geglaubt. Ohne die Unterscheidung nach Art haette
@@ -100,21 +107,46 @@ class _Herleitung:
                 gamma1_uebernehmen=bool(self.tarifwerk["scheiben_mit_gamma1"]))))
             for jahr, vs in sorted(scheiben)
         ]
+        self.reduktion: Optional[Tuple[int, float, str]] = None
+        self.reduziert: List[Tuple[int, Any]] = []
+
+    def setze_reduktion(self, jahr, anteil, verfahren, schicht) -> None:
+        """Den herabgesetzten Verlauf setzen — dieselbe Rekonstruktion wie
+        in der Engine und in der Bewertung (``kernlauf.reduzierte_teile``).
+        Ein zweiter Rechenweg waere hier besonders schaedlich: Die
+        Herleitung soll die Buchung WIDERLEGEN koennen, nicht sie
+        nachplappern."""
+        self.reduktion = (int(jahr), float(anteil), str(verfahren))
+        self.reduziert = reduzierte_teile(
+            self.grund, [(j, k) for j, _, k in self.scheiben],
+            int(jahr), float(anteil), str(verfahren), schicht=schicht)
 
     def _bis(self, jahr: int):
         # Die Engine bucht STO/PEX/TOD des Jahres j+1 VOR der Erhoehung
         # desselben Jahres: Es zaehlen die Scheiben mit Erhoehungsjahr < jahr.
         return [(j, vs, k) for j, vs, k in self.scheiben if j < jahr]
 
+    def ist_reduziert(self, jahr: int) -> bool:
+        return bool(self.reduziert) and jahr >= self.reduktion[0]
+
     def gesamt_vs(self, jahr: int) -> float:
+        if self.ist_reduziert(jahr):
+            return sum(v.reduktion.vs_neu for _, v in self.reduziert)
         return self.grund_mp.sum_insured + sum(vs for _, vs, _ in self._bis(jahr))
 
     def rkw(self, jahr: int) -> float:
+        if self.ist_reduziert(jahr):
+            return vertrags_monatsreserve_reduziert(
+                self.reduziert, 12 * jahr).rkw
         return vertrags_rkw(
             self.grund, [(j, k) for j, _, k in self._bis(jahr)], jahr,
             stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]))
 
     def beitragsfreie_summe(self, jahr: int) -> float:
+        if self.ist_reduziert(jahr):
+            return sum(
+                v.beitragsfreie_summe(jahr - erh_jahr)
+                for erh_jahr, v in self.reduziert)
         return self.grund.beitragsfreie_summe(jahr) + sum(
             k.beitragsfreie_summe(jahr - j) for j, _, k in self._bis(jahr)
         )
@@ -160,6 +192,7 @@ def pruefe_ledger_betraege(
     merkmale: Optional[pd.DataFrame] = None,
     schichten: Optional[pd.DataFrame] = None,
     verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
 ) -> List[str]:
     """Betrag jeder Buchung gegen die Kern-Herleitung DIESER Police.
 
@@ -182,6 +215,12 @@ def pruefe_ledger_betraege(
         schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
     except ValueError as exc:
         return [f"schichten: {exc}"]
+    reduktion_je_police: Dict[int, Tuple[int, float, str]] = {}
+    if reduktionen is not None and len(reduktionen):
+        for z in reduktionen.to_dict("records"):
+            reduktion_je_police[int(z["police_id"])] = (
+                int(z["reduktion_jahr"]), float(z["anteil"]),
+                str(z["verfahren"]))
 
     scheiben_je_police: Dict[int, List[Tuple[int, float]]] = {}
     if scheiben is not None:
@@ -233,6 +272,10 @@ def pruefe_ledger_betraege(
                         h.to_dict() | {"police_id": pid}, felder,
                         scheiben_je_police.get(pid, []),
                         tarifwerk_je_generation.get(str(h["tarif_generation"])))
+                    if pid in reduktion_je_police:
+                        herleitungen[pid].setze_reduktion(
+                            *reduktion_je_police[pid],
+                            schicht_je_police.get(pid))
                 except (KeyError, ValueError) as exc:
                     errors.append(f"ledger police {pid}: Kern nicht herleitbar: {exc}")
                     continue
@@ -279,17 +322,28 @@ def pruefe_ledger_betraege(
                             h.to_dict() | {"police_id": pid}, felder,
                             scheiben_je_police.get(pid, []),
                             tarifwerk_je_generation.get(str(h["tarif_generation"])))
+                        if pid in reduktion_je_police:
+                            herleitungen[pid].setze_reduktion(
+                                *reduktion_je_police[pid],
+                                schicht_je_police.get(pid))
                     except (KeyError, ValueError) as exc:
                         errors.append(f"ledger police {pid}: Kern nicht herleitbar: {exc}")
                         continue
                 v = herleitungen[pid]
                 bfr_ab = pex_jahr.get(pid)
+                # NACH einer Herabsetzung traegt der Vertrag keine Schicht
+                # mehr — sie ist in die Neuberechnung eingegangen und
+                # steckt in seiner neuen Basis. Sie hier noch einmal zu
+                # addieren hiesse, denselben Betrag zweimal zu fuehren.
+                schicht_jetzt = (
+                    None if v.ist_reduziert(jahr)
+                    else schicht_je_police.get(pid))
                 if art == "STO":
                     erwartet = v.rkw(jahr)
-                    schicht = schicht_je_police.get(pid)
-                    if schicht is not None and 12 * jahr >= schicht[1]:
+                    if schicht_jetzt is not None and 12 * jahr >= schicht_jetzt[1]:
                         erwartet += schichtwert_bei(
-                            schicht[0], schicht[1], v.grund_mp, 12 * jahr)
+                            schicht_jetzt[0], schicht_jetzt[1], v.grund_mp,
+                            12 * jahr)
                 elif art == "PEX":
                     # Uebernommene Vertraege buchen die Umbuchung zum
                     # Zugangsstichtag, die Summe wurde im Jahr der
@@ -297,14 +351,24 @@ def pruefe_ledger_betraege(
                     pex_j = (bfr_ab if bfr_ab is not None and bfr_ab <= jahr
                              else jahr)
                     erwartet = v.beitragsfreie_summe(pex_j) + zuschlag_bei_pex(
-                        schicht_je_police.get(pid), v.grund, pex_j)
+                        schicht_jetzt, v.grund, pex_j)
+                elif art == "RED":
+                    # Zwei Betragsarten, zwei Erwartungen: die neue
+                    # Gesamtsumme des herabgesetzten Vertrags und — bei
+                    # einem uebernommenen — die Korrekturschicht, die in
+                    # die Neuberechnung eingegangen ist.
+                    if betrag_art == "dDK_absorption":
+                        erwartet = absorbierte_schicht(
+                            v.grund, jahr, schicht_je_police.get(pid))
+                    else:
+                        erwartet = v.gesamt_vs(jahr)
                 elif art in ("TOD", "ABL"):
                     if bfr_ab is not None and bfr_ab <= jahr:
                         # Nach einer absorbierenden Freistellung ist der
                         # ueberfuehrte Wert Teil der GARANTIERTEN Summe —
                         # die Todesfall-/Ablaufleistung traegt ihn mit.
                         erwartet = v.beitragsfreie_summe(bfr_ab) + zuschlag_bei_pex(
-                            schicht_je_police.get(pid), v.grund, bfr_ab)
+                            schicht_jetzt, v.grund, bfr_ab)
                     else:
                         erwartet = v.gesamt_vs(jahr)
         if erwartet is not None and abs(betrag - erwartet) > TOLERANZ:

@@ -235,7 +235,10 @@ BETRAG_ART_JE_EREIGNIS: Dict[str, Tuple[str, ...]] = {
     "ZUG": ("VS", "BU_Jahresrente", "BJB"),
     "MIG": ("dDK_uebernahme",),
     "ERH": ("VS_erhoehung", "BJB"),
-    "RED": ("VS_herabsetzung",),
+    # Zwei Zeilen: die neue Gesamtsumme, und — bei einem uebernommenen
+    # Vertrag — die Korrekturschicht, die in die Neuberechnung eingegangen
+    # ist. Eine Umbuchung ohne Zahlung, wie dDK_uebernahme beim Zugang.
+    "RED": ("VS_herabsetzung", "dDK_absorption"),
     "PEX": ("VS_bfr", "VS"),
     "INV": ("BU_Jahresrente",),
     "REA": ("BU_Jahresrente",),
