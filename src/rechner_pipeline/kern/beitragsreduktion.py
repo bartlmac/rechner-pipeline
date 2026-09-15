@@ -118,7 +118,8 @@ class Reduktion:
 
 
 def reduziere(
-    kern: Rechenkern, jahr: int, anteil: float, *, verfahren: str = PROSPEKTIV
+    kern: Rechenkern, jahr: int, anteil: float, *, verfahren: str = PROSPEKTIV,
+    zusatz_dk: float = 0.0,
 ) -> Reduktion:
     """Den Beitrag im Vertragsjahr ``jahr`` auf ``anteil`` senken.
 
@@ -137,8 +138,20 @@ def reduziere(
     kein Monatsparameter an dieser Signatur.
     """
     _pruefe_eingaben(kern.mp, jahr, anteil, verfahren)
+    if zusatz_dk < 0.0 or not math.isfinite(zusatz_dk):
+        raise BeitragsreduktionFehler(
+            f"zusatz_dk {zusatz_dk!r}: beitragsfreies Deckungskapital ohne "
+            "eigene Zusage ist nicht negativ und endlich")
 
     if verfahren == TEILKUENDIGUNG:
+        if zusatz_dk:
+            raise BeitragsreduktionFehler(
+                "Teilkuendigung mit Korrekturschicht: Der Vertrag danach ist "
+                "der ZUSTANDSLOSE Vertrag mit f x S — es gibt keinen "
+                "beitragsfreien Teil, in den die Schicht eingehen koennte. "
+                "Das Verfahren rekonstruiert die Praxis der QUELLE "
+                "(Bedingungswerk Ziffer 6); fuer die eigene Fuehrung eines "
+                "uebernommenen Vertrags ist es nicht vorgesehen")
         # Teilkuendigung der Grundversicherung MIT AUSZAHLUNG: Die
         # Reserve des gekuendigten Anteils verlaesst den Vertrag
         # (dDK = -(1-f) x kVx), der Rest laeuft ZUSTANDSLOS mit f x S
@@ -177,7 +190,8 @@ def reduziere(
         1.0 if verfahren == PROSPEKTIV
         else _abzugsfaktor(zeile.drx_bpfl, zeile.stoab, jahr)
     )
-    return _reduziere_eine_schicht(kern, jahr, anteil, nach_abzug, verfahren)
+    return _reduziere_eine_schicht(
+        kern, jahr, anteil, nach_abzug, verfahren, zusatz_dk=zusatz_dk)
 
 
 def _pruefe_eingaben(
@@ -244,6 +258,8 @@ def _reduziere_eine_schicht(
     anteil: float,
     nach_abzug: float,
     verfahren: str = PROSPEKTIV,
+    *,
+    zusatz_dk: float = 0.0,
 ) -> "Reduktion":
     """Die Reduktion EINER Schicht — der gemeinsame Rechenteil.
 
@@ -262,6 +278,21 @@ def _reduziere_eine_schicht(
     # Der fortgefuehrte Teil bleibt unveraendert; nur der freiwerdende
     # Anteil wird umgewandelt.
     umgewandelt = dk_vor * nach_abzug * (1.0 - anteil)
+    # ``zusatz_dk`` ist Deckungskapital OHNE eigene Zusage — die
+    # Korrekturschicht eines uebernommenen Vertrags. Sie traegt keinen
+    # Beitrag, gehoert also vollstaendig zum umgewandelten Teil, nicht
+    # anteilig zum fortgefuehrten: Die Herabsetzung ist eine
+    # Neuvereinbarung, das Gesamt-Deckungskapital EINSCHLIESSLICH Schicht
+    # ist der Startwert der Neuberechnung, und danach fuehrt allein die
+    # Logik des Zielsystems (Entscheid des Maintainers 2026-09-15; 9.7
+    # Klasse A). Beim verlustfreien Verfahren ist dk_nach damit exakt
+    # dk_vor + zusatz_dk — kein Sprung an der Naht.
+    #
+    # Als eigener Summand, nicht in den Ausdruck darueber gezogen: Ohne
+    # Schicht bleibt die Rechnung bitgleich zu der, die die
+    # Charakterisierungswerte des Kerns tragen.
+    if zusatz_dk:
+        umgewandelt += zusatz_dk * nach_abzug
 
     if zeile.vx_bfr <= 0.0:
         raise BeitragsreduktionFehler(
@@ -490,7 +521,7 @@ class ReduzierterVertrag:
     @classmethod
     def nach(
         cls, kern: Rechenkern, jahr: int, anteil: float,
-        *, verfahren: str = PROSPEKTIV,
+        *, verfahren: str = PROSPEKTIV, zusatz_dk: float = 0.0,
     ) -> "ReduzierterVertrag":
         if verfahren == TEILKUENDIGUNG:
             raise BeitragsreduktionFehler(
@@ -500,7 +531,7 @@ class ReduzierterVertrag:
                 "Teil zu fuehren"
             )
         return cls(kern=kern, reduktion=reduziere(
-            kern, jahr, anteil, verfahren=verfahren))
+            kern, jahr, anteil, verfahren=verfahren, zusatz_dk=zusatz_dk))
 
     @property
     def bfr_teil(self) -> float:

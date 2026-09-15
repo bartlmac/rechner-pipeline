@@ -26,6 +26,7 @@ from rechner_pipeline.kern import KLV_DEFAULT
 from rechner_pipeline.kern.beitragsreduktion import (
     MIT_ABZUG,
     PROSPEKTIV,
+    TEILKUENDIGUNG,
     BeitragsreduktionFehler,
     reduziere,
     verfahrensdifferenz,
@@ -507,3 +508,106 @@ class TestTeilkuendigung:
                            match="NUR die Grundversicherung"):
             reduziere_geschichtet(kern, _geschichtet(jahre=(4,)), 10, 0.6,
                                   verfahren=TEILKUENDIGUNG)
+
+
+# --------------------------------------------------------------------------- #
+# Die Korrekturschicht geht in die Neuberechnung ein (Entscheid 2026-09-15)
+# --------------------------------------------------------------------------- #
+#
+# Die Herabsetzung garantiert die Tat, nicht den Wert: Sie ist eine
+# Neuvereinbarung, und das Gesamt-Deckungskapital EINSCHLIESSLICH Schicht
+# ist der Startwert der Neuberechnung. Danach fuehrt allein die Logik des
+# Zielsystems — es gibt keinen Korrekturtermin mehr.
+
+ZUSATZ = 750.0          # Schichtwert im Reduktionsjahr
+
+
+#: Werte des Standes VOR der Schicht-Absorption (gemessen auf 6f5f40c,
+#: volle Float-Praezision). Sie sind die Charakterisierung des
+#: unveraenderten Rechenwegs: ``zusatz_dk`` darf ihn nicht anfassen —
+#: auch nicht in den letzten Bits. Ein umgestellter Ausdruck waere
+#: dieselbe Mathematik und ein anderes Ergebnis, und das
+#: Abnahme-Protokoll des Kerns verlangt fuer jede Bewegung hier eine
+#: fachliche Begruendung.
+VOR_DER_ABSORPTION = {
+    (PROSPEKTIV, 0.2): (55426.98696911103, 34562.66495146085, 893.1309405384706),
+    (PROSPEKTIV, 0.5): (72141.86685569439, 34562.66495146085, 2232.8273513461763),
+    (PROSPEKTIV, 0.8): (88856.74674227776, 34562.66495146085, 3572.523762153882),
+    (MIT_ABZUG, 0.2): (55273.23586071618, 34442.66495146085, 893.1309405384706),
+    (MIT_ABZUG, 0.5): (72045.77241294761, 34487.66495146085, 2232.8273513461763),
+    (MIT_ABZUG, 0.8): (88818.30896517905, 34532.66495146085, 3572.523762153882),
+}
+
+
+def test_ohne_schicht_rechnet_die_reduktion_bitgleich_wie_zuvor():
+    """Die Ratsche gegen Drift im alten Rechenweg.
+
+    Ein Vergleich von ``reduziere(...)`` mit ``reduziere(..., zusatz_dk=0)``
+    bewiese nichts — beides ist derselbe Aufruf. Verglichen wird deshalb
+    gegen FESTE Werte aus dem Stand vor der Aenderung."""
+    for (verfahren, anteil), erwartet in VOR_DER_ABSORPTION.items():
+        r = reduziere(KERN, JAHR, anteil, verfahren=verfahren)
+        assert (r.vs_neu, r.dk_nach, r.bjb_neu) == erwartet, (verfahren, anteil)
+        mit_null = reduziere(KERN, JAHR, anteil, verfahren=verfahren,
+                             zusatz_dk=0.0)
+        assert dataclasses.astuple(mit_null) == dataclasses.astuple(r)
+
+
+def test_die_schicht_bleibt_beim_verlustfreien_verfahren_vollstaendig_erhalten():
+    """Wertstetigkeit an der Naht — die eigentliche fachliche Zusage.
+
+    Unabhaengige Kontrolle: Der Startwert ist dk_vor + Schicht, und beim
+    verlustfreien Verfahren bleibt die Reserve im Vertrag. Also muss
+    dk_nach genau dieser Summe entsprechen, fuer JEDEN Anteil."""
+    for anteil in (0.0, 0.3, 0.7, 1.0):
+        r = reduziere(KERN, JAHR, anteil, verfahren=PROSPEKTIV,
+                      zusatz_dk=ZUSATZ)
+        assert r.dk_nach == pytest.approx(r.dk_vor + ZUSATZ, rel=1e-12)
+
+
+def test_die_schicht_traegt_keinen_beitrag():
+    """Sie erhoeht die beitragsfreie Summe, nicht den Beitrag — der
+    Versicherungsnehmer zahlt fuer die Korrektur nichts."""
+    ohne = reduziere(KERN, JAHR, 0.6, verfahren=PROSPEKTIV)
+    mit = reduziere(KERN, JAHR, 0.6, verfahren=PROSPEKTIV, zusatz_dk=ZUSATZ)
+    assert mit.bjb_neu == pytest.approx(ohne.bjb_neu, rel=1e-12)
+    assert mit.vs_neu > ohne.vs_neu
+    # Der Zuwachs ist der Schichtwert zum beitragsfreien Umwandlungssatz.
+    vx_bfr = KERN.verlaufszeile(JAHR).vx_bfr
+    assert mit.vs_neu - ohne.vs_neu == pytest.approx(ZUSATZ / vx_bfr, rel=1e-12)
+
+
+def test_beim_verfahren_mit_abzug_traegt_die_schicht_den_abzug_mit():
+    """Sie geht in die Umwandlung ein wie der freiwerdende Teil auch —
+    nicht privilegiert, nicht benachteiligt."""
+    ohne = reduziere(KERN, JAHR, 0.6, verfahren=MIT_ABZUG)
+    mit = reduziere(KERN, JAHR, 0.6, verfahren=MIT_ABZUG, zusatz_dk=ZUSATZ)
+    zuwachs = mit.dk_nach - ohne.dk_nach
+    assert 0.0 < zuwachs < ZUSATZ, "mit Abzug bleibt weniger als der Rohwert"
+
+
+def test_teilkuendigung_mit_schicht_faellt_hart_aus():
+    """Danach gibt es keinen beitragsfreien Teil, in den die Schicht
+    eingehen koennte — das Verfahren rekonstruiert fremde Praxis."""
+    with pytest.raises(BeitragsreduktionFehler, match="Teilkuendigung"):
+        reduziere(KERN, JAHR, 0.6, verfahren=TEILKUENDIGUNG, zusatz_dk=ZUSATZ)
+    # Ohne Schicht bleibt sie zulaessig.
+    assert reduziere(KERN, JAHR, 0.6, verfahren=TEILKUENDIGUNG).vs_neu > 0.0
+
+
+@pytest.mark.parametrize("wert", [-1.0, float("nan"), float("inf")])
+def test_unsinniger_zusatz_faellt_hart_aus(wert: float):
+    with pytest.raises(BeitragsreduktionFehler, match="zusatz_dk"):
+        reduziere(KERN, JAHR, 0.6, zusatz_dk=wert)
+
+
+def test_die_folgebewertung_traegt_die_absorbierte_schicht_weiter():
+    """Nach der Naht lebt sie im fixierten beitragsfreien Teil weiter —
+    und der herabgesetzte Vertrag kennt keine Schicht mehr."""
+    mit = ReduzierterVertrag.nach(KERN, JAHR, 0.6, verfahren=PROSPEKTIV,
+                                  zusatz_dk=ZUSATZ)
+    ohne = ReduzierterVertrag.nach(KERN, JAHR, 0.6, verfahren=PROSPEKTIV)
+    assert mit.bfr_teil > ohne.bfr_teil
+    # Die Wertstetigkeit gilt auch fuer den gefuehrten Verlauf.
+    assert mit.monatsreserve(12 * JAHR).vx_mrv > \
+        ohne.monatsreserve(12 * JAHR).vx_mrv
