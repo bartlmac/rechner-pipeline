@@ -358,6 +358,43 @@ Config der Fall-Welt darf ohne Kreise bleiben: Ihre Bytes sind eine
 hashgebundene P-B1-Eingangsrolle und hängen an gezeichneten Abnahmen; eine
 Lesepflicht hätte bestehende Fälle unreproduzierbar gemacht.
 
+**Das Zielsystem vergibt die Policennummern übernommener Bestände selbst**
+(Entscheid des Maintainers, 2026-09-15, Review T24-08). Niemand schreibt
+uns in einer Migration einen Datensatz um: Die Transformation ist Arbeit
+der Zielseite, und es ist ihre Aufgabe, sie kollisionsfrei zu machen.
+
+Der freie Bereich `1 .. 10 Mio` wird dafür in **Nummernbänder** geteilt,
+eines je Übernahme. Ein Band bekommt, was seine Lieferung braucht,
+aufgerundet auf volle Tausend, und wird monoton hinter dem höchsten
+belegten vergeben — bewusst kein festes Raster, denn eine feste Bandgröße
+wäre immer eine willkürliche Obergrenze: entweder für die Zahl der Fälle
+oder für ihre Größe. Bedarfsgerecht trägt derselbe Raum hundert kleine
+Migrationstranchen genauso wie wenige große Bestände. Ist er erschöpft,
+bricht das Registrieren ab und nennt den Ausweg (ein eigener
+Nummernkreis für Übernahmen) — kein stilles Überlaufen.
+
+Ein Band je Fall und nicht ein gemeinsamer Bereich: Der freie Raum ist
+frei von *Eigengeschäft*, nicht frei von *anderen Fällen*. Kollidierten
+zwei Übernahmen miteinander, fiele das später auf als die Kollision mit
+dem eigenen Geschäft — beide Seiten sind fremd, und keine Zusicherung
+trennt sie.
+
+Die **Übersetzungstabelle** `policennummern.parquet` liegt im Eingang,
+ist dort registriert wie jede andere Datei und beantwortet die Rückfrage
+an die Quelle: Was ist aus eurer Police 7000487 geworden? Sie ist der
+Träger der Nachvollziehbarkeit — und damit auch die Trennlinie zwischen
+zwei Welten: **Die Belege des Falls** (`uebernahme.json`, der
+A-M4-Snapshot, die Abnahmeberichte) **sprechen weiter in Quellnummern,
+die Tabellen des Betriebs in Zielnummern.** Ein Beleg, den der Betrieb
+umschreibt, bezeugt nicht mehr den Fall.
+
+Eine Folge, die man kennen muss: Die Fortschreibung würfelt je
+`police_id`. Ein umnummerierter Vertrag bekommt damit eine andere
+simulierte Zukunft als unter seiner Quellnummer — seine gelieferte
+Vergangenheit bleibt, was sie ist, sein künftiges Storno oder sein
+Todesfall verschieben sich. Für die Bewertung ist das folgenlos, für
+Fixtures, die auf einen bestimmten Vertrag getunt sind, nicht.
+
 Der `betriebsbeginn` der Config ist die **Erzeugungsgrenze**: Bis zu ihr
 stellt der Batch-Erzeuger den Bestand, danach der Tagesstrom — ein
 Erzeuger je Zeitfenster. Beide beschreiben dieselbe Generation: Das

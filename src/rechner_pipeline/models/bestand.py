@@ -400,6 +400,18 @@ VERANKERUNG_NAMES: Tuple[str, ...] = tuple(n for n, _ in VERANKERUNG_SPALTEN)
 SCHICHTEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHICHTEN_SPALTEN)
 TAGESJOURNAL_NAMES: Tuple[str, ...] = tuple(n for n, _ in TAGESJOURNAL_SPALTEN)
 
+
+#: Die Uebersetzungstabelle eines Uebernahme-Eingangs (Review T24-08): In
+#: welche Zielnummer das Zielsystem eine gelieferte Policennummer gehoben
+#: hat. Sie ist der Traeger der Nachvollziehbarkeit zur Quelle — die
+#: Belege des Falls (uebernahme.json, A-M4-Snapshot) sprechen weiter in
+#: QUELLnummern, die Tabellen des Betriebs in ZIELnummern.
+POLICENNUMMERN_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("quelle_police_id", "int64"),   # wie geliefert
+    ("ziel_police_id", "int64"),     # wie das Zielsystem sie fuehrt
+)
+POLICENNUMMERN_NAMES: Tuple[str, ...] = tuple(n for n, _ in POLICENNUMMERN_SPALTEN)
+
 #: Die Vokabel der Nebentabellen uebernommener Vertraege — an EINER Stelle,
 #: damit Gate, Pruefengine und Betriebseingang dieselbe Sprache pruefen
 #: (Betriebsbefund N-01, 2026-09-08: der Betrieb las ``zustand_ta = "POL"``

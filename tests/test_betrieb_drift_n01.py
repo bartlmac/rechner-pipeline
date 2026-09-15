@@ -106,6 +106,20 @@ def test_lauf_eingaben_ist_die_tabelle(tmp_path):
     assert nebentabellen_in(tmp_path) == {"schichten": tmp_path / "schichten.parquet"}
 
 
+def _ziel(ablage, quelle_nr: int) -> int:
+    """Die ZIELnummer einer gelieferten Police.
+
+    Der Betrieb fuehrt eigene Policennummern (Review T24-08); gefragt wird
+    ueber die registrierte Uebersetzungstabelle des Eingangs, nicht ueber
+    ein Literal. So prueft der Test die Kette und nicht eine abgetippte
+    Zahl — und er bleibt richtig, wenn ein zweiter Fall das Band
+    verschiebt."""
+    from rechner_pipeline.betrieb.uebernahme import zielnummern
+
+    [eingang] = [p for p in ablage.uebernahme.iterdir() if p.is_dir()]
+    return zielnummern(eingang)[quelle_nr]
+
+
 def test_abschluss_und_berichte_tragen_die_korrekturschicht(gefuehrt_mit_schicht):
     """Der Monatsabschluss weist die Schicht des uebernommenen Vertrags aus
     (rho != 0 in der Fixture), der Teilbestand traegt jede Rolle, und der
@@ -114,11 +128,12 @@ def test_abschluss_und_berichte_tragen_die_korrekturschicht(gefuehrt_mit_schicht
     eintraege = [e for z in lies_protokoll(ablage.protokoll_pfad) for e in z.get("abschluesse", [])]
     assert eintraege, "kein Monatsabschluss im gefuehrten Fenster"
     abschluss = read_portfolio(ablage.abschluesse / eintraege[0]["datei"])
-    schicht = abschluss.loc[abschluss["police_id"] == 7_000_001, "korrekturschicht"]
+    ziel = _ziel(ablage, 7_000_001)
+    schicht = abschluss.loc[abschluss["police_id"] == ziel, "korrekturschicht"]
     assert len(schicht) == 1 and float(schicht.iloc[0]) != 0.0
     tabellen = {rolle: read_portfolio(ablage.stand / datei)
                 for rolle, datei in ROLLEN_DATEIEN.items() if (ablage.stand / datei).is_file()}
-    teil = tl._teilbestand(tabellen, [7_000_001])
+    teil = tl._teilbestand(tabellen, [ziel])
     assert set(teil) == set(ROLLEN_DATEIEN)
     assert len(teil["schichten"]) == 1 and len(teil["verankerung"]) == 1
     mit_bericht = [e for e in eintraege if "bericht" in e]
@@ -131,15 +146,29 @@ def test_abschluss_und_berichte_tragen_die_korrekturschicht(gefuehrt_mit_schicht
             assert "davon Korrekturschicht" in teil_html
 
 
+#: Monate vom Versicherungsbeginn bis zum Uebernahmestichtag, je
+#: geliefertem Vertrag (Beginne 2018-03-01, 2019-07-01, 2017-11-01).
+MONATE_TA = {7_000_001: 94, 7_000_002: 78, 7_000_003: 98}
+
+
 def _fall_mit_schicht_auf_allen(wurzel: Path) -> Path:
-    """Wie _fall_mit_nebentabellen, aber Schicht und Verankerung auch fuer den
-    Vertrag, der im Fixture-Betrieb im zehnten Jahr storniert (7000002,
-    Beginn 2019-07-01: 78 Monate bis zum Stichtag)."""
+    """Wie _fall_mit_nebentabellen, aber Schicht und Verankerung fuer JEDEN
+    gelieferten Vertrag, jeweils mit seinen eigenen Monaten bis zum Stichtag.
+
+    Frueher trugen nur zwei Vertraege eine Schicht, und die Fixture war auf
+    genau den getunt, der im zehnten Jahr stornierte (7000002). Seit der
+    Betrieb eigene Policennummern vergibt (Review T24-08), ist das nicht
+    mehr derselbe Vertrag: Die Fortschreibung wuerfelt je ``police_id``,
+    und eine umnummerierte Police bekommt eine andere Zukunft. Eine Fixture,
+    die an einer solchen Uebereinstimmung haengt, prueft den Zufall mit —
+    also traegt jetzt jeder Vertrag seine Schicht, und der Test SUCHT den
+    Storno, statt ihn zu behaupten."""
     fall = _fall_mit_nebentabellen(wurzel)
     quelle = fall / "abgeleitet" / "bestand"
-    schichten = pd.concat([_schichten(7_000_001), _schichten(7_000_002)], ignore_index=True)
-    verankerung = pd.concat([_verankerung(7_000_001), _verankerung(7_000_002)], ignore_index=True)
-    verankerung.loc[verankerung["police_id"] == 7_000_002, "monate_ta"] = 78
+    schichten = pd.concat([_schichten(p) for p in MONATE_TA], ignore_index=True)
+    verankerung = pd.concat([_verankerung(p) for p in MONATE_TA], ignore_index=True)
+    for police, monate in MONATE_TA.items():
+        verankerung.loc[verankerung["police_id"] == police, "monate_ta"] = monate
     write_portfolio(schichten, quelle / "schichten.parquet")
     write_portfolio(verankerung, quelle / "verankerung.parquet")
     return fall
@@ -155,20 +184,42 @@ def test_ein_storno_mit_schicht_laeuft_gruen_durch_die_wache(tmp_path):
     stand = tmp_path / "daten"
     ueb.eingang_anlegen(stand, fall, STICHTAG)
     ablage = _ablage(stand)
-    # Vor dem Storno: der Abschluss weist die Schicht des Vertrags aus.
+    eingang = next(p for p in ablage.uebernahme.iterdir() if p.is_dir())
+    ziele = set(ueb.zielnummern(eingang).values())
+
+    # Vor dem Storno: der Abschluss weist die Schicht jedes uebernommenen
+    # Vertrags aus.
     code, zeile = tageslauf(ablage, dt.date(2029, 1, 4))
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
     abschluss = read_portfolio(ablage.abschluesse / zeile["abschluesse"][-1]["datei"])
-    schicht = abschluss.loc[abschluss["police_id"] == 7_000_002, "korrekturschicht"]
-    assert len(schicht) == 1 and float(schicht.iloc[0]) != 0.0
-    # Das Jahr des Stornos: gruen, und der Storno steht im Ledger.
-    code, zeile = tageslauf(ablage, dt.date(2030, 1, 4))
-    assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
+    schichten = abschluss.loc[abschluss["police_id"].isin(ziele), "korrekturschicht"]
+    # Nicht JEDER traegt eine: Der beitragsfrei uebernommene Vertrag hat
+    # seine Schicht mit der Freistellung absorbiert (Klasse A,
+    # bestand.auswertung.einzelwerte_am). Gefordert ist, dass die Schicht
+    # ueberhaupt bis in den Abschluss durchschlaegt — vorher wies er sie
+    # als null aus, obwohl die Fuehrung sie trug.
+    assert len(schichten) == 3 and sum(1 for x in schichten if float(x) != 0.0) == 2
+
+    # Das Jahr des Stornos wird GESUCHT, nicht behauptet: Welcher Vertrag
+    # wann storniert, wuerfelt die Fortschreibung je police_id, und der
+    # Betrieb vergibt seit Review T24-08 eigene Nummern. Eine feste
+    # Jahreszahl haette den Zufall mitgeprueft.
+    for jahr in range(2030, 2042):
+        code, zeile = tageslauf(ablage, dt.date(jahr, 1, 4))
+        assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
+        assert zeile["pb1"]["urteil"] == "gruen"
+        ledger = read_portfolio(ablage.stand / "ledger.parquet")
+        sto = ledger[(ledger["ereignis"] == "STO") & (ledger["police_id"].isin(ziele))]
+        if len(sto):
+            break
+    else:
+        pytest.fail("kein Storno eines uebernommenen Vertrags im Fenster 2030-2041")
+
+    # Der Punkt des Befundes: Die Wache hat den Betrag der Storno-Buchung
+    # hergeleitet — MIT Schicht, sonst waere sie rot (Exit 3).
     assert zeile["pb1"]["urteil"] == "gruen"
-    ledger = read_portfolio(ablage.stand / "ledger.parquet")
-    sto = ledger[(ledger["police_id"] == 7_000_002) & (ledger["ereignis"] == "STO")]
-    assert len(sto) == 1 and int(sto["vertragsjahr"].iloc[0]) == 10
-    assert zeile["pb1"]["geprueft"]["betraege_hergeleitet"] >= len(ledger[ledger["ereignis"] == "STO"])
+    assert zeile["pb1"]["geprueft"]["betraege_hergeleitet"] >= len(
+        ledger[ledger["ereignis"] == "STO"])
 
 
 # --------------------------------------------------------------------------- #

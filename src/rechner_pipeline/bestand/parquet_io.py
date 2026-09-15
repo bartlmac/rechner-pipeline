@@ -39,6 +39,8 @@ from rechner_pipeline.models.bestand import (
     STAMM_NAMES,
     STAMM_SPALTEN,
     TAGESJOURNAL_NAMES,
+    POLICENNUMMERN_NAMES,
+    POLICENNUMMERN_SPALTEN,
     TAGESJOURNAL_SPALTEN,
     ZEITSCHEIBEN_SPALTEN,
 )
@@ -55,6 +57,7 @@ _DTYPE_MAP = (
     | dict(VERANKERUNG_SPALTEN)
     | dict(SCHICHTEN_SPALTEN)
     | dict(TAGESJOURNAL_SPALTEN)
+    | dict(POLICENNUMMERN_SPALTEN)
 )
 
 _ARROW_TYPES = {
@@ -219,7 +222,23 @@ def read_portfolio(
         return df[list(SCHICHTEN_NAMES)]
     if set(df.columns) == set(TAGESJOURNAL_NAMES):
         return df[list(TAGESJOURNAL_NAMES)]
+    if set(df.columns) == set(POLICENNUMMERN_NAMES):
+        return df[list(POLICENNUMMERN_NAMES)]
+    # Rueckfall: Teilmengen des Stamms (Auskunfts-Schnitt, Zeitscheiben).
     ordered = [c for c in list(STAMM_NAMES) + [n for n, _ in ZEITSCHEIBEN_SPALTEN] if c in df.columns]
+    if df.columns.size and not ordered:
+        # Eine Tabelle, die in keine Familie passt, kam bisher als leere
+        # Tabelle zurueck — der Leser meldete Erfolg und lieferte nichts.
+        # Genau das ist der stille Zustand, den die Architektur verbietet:
+        # Der Fehler zeigte sich erst beim naechsten KeyError, weit weg von
+        # seiner Ursache (selbst erlebt beim Einfuehren der
+        # Uebersetzungstabelle, Review T24-08).
+        raise ValueError(
+            f"{path}: die Spalten {sorted(df.columns)} bilden keine bekannte "
+            "Portfolio-Familie und auch keine Teilmenge des Stamms — eine neue "
+            "Tabelle braucht ihren Spaltenvertrag in models.bestand und eine "
+            "Zeile in diesem Leser"
+        )
     return df[ordered]
 
 

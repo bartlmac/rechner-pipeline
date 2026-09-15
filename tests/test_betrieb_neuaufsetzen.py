@@ -83,6 +83,20 @@ def _fall_mit_nebentabellen(tmp_path: Path, *, tarifwerk: dict | None = None) ->
     return fall
 
 
+
+def _ziel(ablage, quelle_nr: int) -> int:
+    """Die ZIELnummer einer gelieferten Police.
+
+    Der Betrieb fuehrt eigene Policennummern (Review T24-08); gefragt wird
+    ueber die registrierte Uebersetzungstabelle des Eingangs, nicht ueber
+    ein Literal. So prueft der Test die Kette und nicht eine abgetippte
+    Zahl — und er bleibt richtig, wenn ein zweiter Fall das Band
+    verschiebt."""
+    from rechner_pipeline.betrieb.uebernahme import zielnummern
+
+    [eingang] = [p for p in ablage.uebernahme.iterdir() if p.is_dir()]
+    return zielnummern(eingang)[quelle_nr]
+
 # --------------------------------------------------------------------------- #
 # Eingang: Bausteine, Schicht und Beleg wandern mit
 # --------------------------------------------------------------------------- #
@@ -155,13 +169,15 @@ def test_tageslauf_fuehrt_die_uebernommenen_bausteine_im_stand(tmp_path, monkeyp
     assert rc == EXIT_OK
     for rolle in ("scheiben", "schichten", "verankerung"):
         assert gesehen.get(rolle) is not None, rolle
-        assert 7_000_001 in set(gesehen[rolle]["police_id"]), rolle
+        assert _ziel(ablage, 7_000_001) in set(gesehen[rolle]["police_id"]), rolle
     assert zeile["verankerung"]["angewandt"] is True
     scheiben = read_portfolio(ablage.stand / "scheiben.parquet")
-    assert 7_000_001 in set(scheiben["police_id"])
+    assert _ziel(ablage, 7_000_001) in set(scheiben["police_id"])
     schichten = read_portfolio(ablage.stand / "schichten.parquet")
-    assert list(schichten["police_id"]) == [7_000_001] and float(schichten["rho"].iloc[0]) == 0.02
-    assert 7_000_001 in set(read_portfolio(ablage.stand / "bestand_gesamt.parquet")["police_id"])
+    assert list(schichten["police_id"]) == [_ziel(ablage, 7_000_001)] \
+        and float(schichten["rho"].iloc[0]) == 0.02
+    assert _ziel(ablage, 7_000_001) in set(
+        read_portfolio(ablage.stand / "bestand_gesamt.parquet")["police_id"])
 
 
 # --------------------------------------------------------------------------- #
@@ -195,7 +211,8 @@ def test_neuaufsetzen_archiviert_und_setzt_neu_auf(gefuehrt, tmp_path):
     assert not neu.stand.exists()
     # Die Erstbefuellung baut den Stand mit dem uebernommenen Bestand.
     assert tageslauf(neu, dt.date(2026, 2, 3))[0] == EXIT_OK
-    assert 7_000_001 in set(read_portfolio(neu.stand / "bestand_gesamt.parquet")["police_id"])
+    assert _ziel(neu, 7_000_001) in set(
+        read_portfolio(neu.stand / "bestand_gesamt.parquet")["police_id"])
     assert len(lies_protokoll(neu.protokoll_pfad)) == 1
 
 

@@ -37,10 +37,11 @@ from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichni
 from rechner_pipeline.models.zeichnung import ZEICHNENDE_KLASSEN
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.manifest import sha256_bytes
-from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.models.bestand import (
     LEDGER_NAMES,
     MERKMALE_NAMES,
+    POLICENNUMMERN_NAMES,
     SCHEIBEN_NAMES,
     SCHICHTEN_NAMES,
     STAMM_NAMES,
@@ -52,7 +53,9 @@ from rechner_pipeline.models.bestand import (
 )
 
 EINGANG_DATEI = "eingang.json"
-EINGANG_SCHEMA_VERSION = 1
+#: Schema 2 (Review T24-08): Der Eingang nennt sein Nummernband und
+#: registriert die Uebersetzungstabelle Quell- auf Zielnummer.
+EINGANG_SCHEMA_VERSION = 2
 #: Pflichttabellen eines Zugangsstands und ihre Spaltenvertraege.
 PFLICHT = {
     "bestand": STAMM_NAMES,
@@ -72,6 +75,25 @@ OPTIONAL = {
 #: der Betrieb liest: der Uebernahmebeleg traegt Modus und Tarifwerk-
 #: Schalter, gegen die die Config der Laufzeit gehalten wird.
 BELEGE = ("uebernahme.json",)
+
+#: Die Uebersetzungstabelle Quellnummer -> Zielnummer eines Eingangs.
+POLICENNUMMERN_DATEI = "policennummern.parquet"
+
+#: Der Zahlenraum, den kein Erzeuger der PLV erreichen kann. Ein
+#: Nummernkreis ``k`` belegt ``k*10 Mio + 1 .. (k+1)*10 Mio - 1``, und
+#: ``k >= 1`` ist erzwungen (``config._pruefe_nummernkreise``; auch der
+#: Positions-Rueckfall zaehlt ab 1). Alles bis einschliesslich zehn
+#: Millionen ist damit konstruktiv frei und der Heimatraum uebernommener
+#: Bestaende.
+NAMENSRAUM_UEBERNAHME_BIS = 10_000_000
+
+#: Ein Band bekommt, was seine Lieferung braucht, aufgerundet auf volle
+#: Tausend. BEWUSST kein festes Raster (Review T24-08, Entscheid des
+#: Maintainers 2026-09-15): Eine feste Bandgroesse ist immer eine
+#: willkuerliche Obergrenze — entweder fuer die Zahl der Faelle oder fuer
+#: ihre Groesse. Bedarfsgerecht traegt derselbe Raum hundert kleine
+#: Migrationstranchen genauso wie wenige grosse Bestaende.
+BAND_SCHRITT = 1_000
 
 
 class UebernahmeError(ValueError):
@@ -123,6 +145,115 @@ def _nebentabellen_fehler_im(verzeichnis: Path) -> List[str]:
 #: Schluesselklasse; die Seite sagt dann "nicht ausgewiesen", wie die
 #: Fall-Seite.
 NICHT_AUSGEWIESEN = "nicht ausgewiesen"
+
+
+def _umnummeriert(tabelle: pd.DataFrame, abbildung: Dict[int, int], name: str) -> pd.DataFrame:
+    """Eine Tabelle des Zugangsstands auf die Zielnummern heben.
+
+    Die Zeilenreihenfolge bleibt, wie sie war: Die Abbildung ist monoton
+    (aufsteigende Quellnummern auf aufsteigende Zielnummern), eine nach
+    ``police_id`` sortierte Tabelle bleibt also sortiert, und eine nach
+    etwas anderem sortierte behaelt ihre fachliche Ordnung.
+    """
+    fremd = sorted({int(p) for p in tabelle["police_id"]} - set(abbildung))
+    if fremd:
+        raise UebernahmeError(
+            f"{name}: nennt Policen, die der Bestand nicht fuehrt ({fremd[:5]}"
+            f"{' …' if len(fremd) > 5 else ''}) — eine Nebentabelle ohne Vertrag "
+            "ist kein Zugangsstand, und ohne Vertrag gibt es keine Zielnummer"
+        )
+    neu = tabelle.copy()
+    neu["police_id"] = pd.Series(
+        [abbildung[int(p)] for p in tabelle["police_id"]], dtype="int64", index=tabelle.index)
+    return neu
+
+
+def zielnummern(eingang: Path) -> Dict[int, int]:
+    """Quellnummer -> Zielnummer eines Eingangs.
+
+    Die Antwort auf "Was ist aus eurer Police 7000487 geworden?". Der
+    Betrieb fuehrt eigene Policennummern (Review T24-08); die Belege des
+    Falls sprechen weiter in Quellnummern. Diese Tabelle ist die Bruecke,
+    und sie ist registriert wie jede andere Datei des Eingangs — wer sie
+    aendert, bricht den Hash.
+    """
+    pfad = Path(eingang) / POLICENNUMMERN_DATEI
+    if not pfad.is_file():
+        raise UebernahmeError(
+            f"{pfad}: die Uebersetzungstabelle fehlt — ohne sie ist der Bezug "
+            "zwischen gelieferten und gefuehrten Policennummern verloren"
+        )
+    tabelle = read_portfolio(pfad, expected_columns=POLICENNUMMERN_NAMES)
+    return {int(q): int(z) for q, z in zip(tabelle["quelle_police_id"], tabelle["ziel_police_id"])}
+
+
+def quellnummern(eingang: Path) -> Dict[int, int]:
+    """Zielnummer -> Quellnummer, die Gegenrichtung von :func:`zielnummern`.
+
+    Die haeufigere Frage im Betrieb: "Diese Police fuehren wir unter 42 —
+    wie hiess sie beim abgebenden Unternehmen?"
+    """
+    return {z: q for q, z in zielnummern(eingang).items()}
+
+
+def vergebene_baender(uebernahme: Path) -> List[Dict[str, Any]]:
+    """Die Nummernbaender der bereits registrierten Eingaenge, aufsteigend.
+
+    Das Register ist kein eigenes Verzeichnis, das jemand pflegen muesste,
+    sondern die Summe der Eingaenge selbst: Jeder nennt sein Band in
+    ``eingang.json``. Eine gepflegte Liste veraltet genau dann, wenn sie
+    gebraucht wird; eine abgeleitete kann es nicht.
+    """
+    uebernahme = Path(uebernahme)
+    if not uebernahme.is_dir():
+        return []
+    baender: List[Dict[str, Any]] = []
+    for kind in sorted(p for p in uebernahme.iterdir() if p.is_dir()):
+        pfad = kind / EINGANG_DATEI
+        if not pfad.is_file():
+            continue
+        try:
+            daten = json.loads(pfad.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise UebernahmeError(
+                f"{pfad}: nicht lesbar ({exc}) — ohne diesen Eingang ist nicht "
+                "bestimmbar, welches Nummernband schon vergeben ist"
+            ) from exc
+        band = daten.get("band")
+        if not isinstance(band, dict) or not isinstance(band.get("bis"), int):
+            raise UebernahmeError(
+                f"{pfad}: nennt kein Nummernband — ein Eingang ohne Band laesst "
+                "sich nicht gegen den naechsten abgrenzen; Eingang neu anlegen"
+            )
+        baender.append({"fall": daten.get("fall"), "von": int(band["von"]), "bis": int(band["bis"])})
+    return sorted(baender, key=lambda b: b["von"])
+
+
+def naechstes_band(uebernahme: Path, anzahl: int) -> Tuple[int, int]:
+    """Das naechste freie Nummernband fuer ``anzahl`` Vertraege.
+
+    Vergeben wird monoton hinter dem hoechsten belegten Band, in der
+    Groesse, die die Lieferung braucht (aufgerundet auf
+    :data:`BAND_SCHRITT`). Luecken entstehen nicht, weil Eingaenge nie
+    geloescht werden; ein freigewordenes Band wieder zu vergeben hiesse,
+    zwei Faelle ueber dieselben Nummern sprechen zu lassen.
+    """
+    if anzahl <= 0:
+        raise UebernahmeError("Nummernband fuer null Vertraege — der Zugangsstand ist leer")
+    belegt = vergebene_baender(uebernahme)
+    von = (belegt[-1]["bis"] + 1) if belegt else 1
+    breite = -(-int(anzahl) // BAND_SCHRITT) * BAND_SCHRITT
+    bis = von + breite - 1
+    if bis > NAMENSRAUM_UEBERNAHME_BIS:
+        raise UebernahmeError(
+            f"Nummernraum erschoepft: {anzahl} Vertraege brauchen das Band "
+            f"{von}..{bis}, frei ist nur bis {NAMENSRAUM_UEBERNAHME_BIS} "
+            f"({len(belegt)} Eingaenge bereits registriert). Der Ausweg ist ein "
+            "eigener Nummernkreis fuer Uebernahmen (configs, [[generation]] "
+            "nummernkreis) — nicht das stille Ueberlaufen in den Zahlenraum "
+            "des Eigengeschaefts"
+        )
+    return von, bis
 
 
 def pruefe_am4_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str, Any]:
@@ -374,6 +505,22 @@ def validate_eingang(daten: Any) -> List[str]:
                 "eine simulierte Rolle handelt unter einem Mandat (ADR-018); "
                 "der A-M4-Snapshot muss das Mandat tragen"
             )
+    # Das Nummernband (Review T24-08): Ohne Band laesst sich dieser Eingang
+    # nicht gegen den naechsten abgrenzen, und zwei Faelle koennten
+    # dieselben Nummern fuehren. Die Kollision zweier UEBERNOMMENER
+    # Bestaende faellt spaeter auf als die mit dem Eigengeschaeft, weil
+    # beide Seiten fremd sind und keine Zusicherung sie trennt.
+    band = daten.get("band")
+    if not isinstance(band, dict):
+        fehler.append("band fehlt — ein Eingang ohne Nummernband grenzt sich gegen keinen anderen ab")
+    else:
+        von, bis = band.get("von"), band.get("bis")
+        if not isinstance(von, int) or not isinstance(bis, int) or von < 1 or bis < von:
+            fehler.append(f"band {von!r}..{bis!r} ist kein Nummernband")
+        elif bis > NAMENSRAUM_UEBERNAHME_BIS:
+            fehler.append(
+                f"band endet bei {bis}, der freie Raum reicht bis "
+                f"{NAMENSRAUM_UEBERNAHME_BIS} — darueber beginnt das Eigengeschaeft")
     dateien = daten.get("dateien")
     if not isinstance(dateien, dict) or not dateien:
         fehler.append("dateien fehlen")
@@ -384,6 +531,11 @@ def validate_eingang(daten: Any) -> List[str]:
         for pflicht in PFLICHT:
             if f"{pflicht}.parquet" not in dateien:
                 fehler.append(f"dateien: {pflicht}.parquet fehlt")
+        if POLICENNUMMERN_DATEI not in dateien:
+            fehler.append(
+                f"dateien: {POLICENNUMMERN_DATEI} fehlt — der Betrieb fuehrt eigene "
+                "Policennummern, und ohne die Uebersetzung ist eine Rueckfrage an "
+                "die Quelle nicht beantwortbar")
     return fehler
 
 
@@ -587,16 +739,60 @@ def eingang_anlegen(
         except LoeschFehler as exc:
             raise UebernahmeError(str(exc)) from exc
     arbeit.mkdir(parents=True)
+    # Das Zielsystem vergibt seine eigenen Policennummern (Review T24-08,
+    # Entscheid des Maintainers 2026-09-15). Niemand schreibt uns in einer
+    # Migration einen Datensatz um; die Transformation ist unsere Arbeit
+    # auf der Zielseite, und es ist unsere Aufgabe, sie kollisionsfrei zu
+    # machen. Vorher lief eine gelieferte Nummer ungeprueft durch und
+    # kollidierte Jahre spaeter mit dem eigenen, deterministisch
+    # vorausberechenbaren Neugeschaeft — als harter Abbruch eines
+    # Nachtlaufs, zu einem Zeitpunkt, den niemand gewaehlt hat.
+    #
+    # Umnummeriert wird IMMER, nicht nur bei Kollision: Sonst haengt unsere
+    # Nummernvergabe davon ab, was die Quelle zufaellig geliefert hat, und
+    # die Uebersetzungstabelle waere mal die Identitaet und mal nicht — ein
+    # Leser baut sich dann zwei Lesewege.
+    stamm_quelle = read_portfolio(quelle / "bestand.parquet", expected_columns=STAMM_NAMES)
+    quelle_ids = sorted(int(p) for p in stamm_quelle["police_id"])
+    if len(quelle_ids) != len(set(quelle_ids)):
+        raise UebernahmeError(
+            f"{quelle}/bestand.parquet: police_id nicht eindeutig — ohne "
+            "eindeutige Quellnummern gibt es keine Uebersetzung"
+        )
+    band_von, band_bis = naechstes_band(Path(stand) / "uebernahme", len(quelle_ids))
+    abbildung = {q: band_von + i for i, q in enumerate(quelle_ids)}
+
     dateien: Dict[str, str] = {}
+    spalten_je_tabelle = {**PFLICHT, **OPTIONAL}
     kandidaten = [f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE)
     for datei in kandidaten:
         if not (quelle / datei).is_file():
             continue
-        daten = (quelle / datei).read_bytes()
-        (arbeit / datei).write_bytes(daten)
+        if datei in BELEGE:
+            # Belege sprechen die Sprache des FALLS und bleiben bei den
+            # Quellnummern: uebernahme.json dokumentiert, was die Migration
+            # getan hat, und seine Freitexte nennen Policen. Ein Beleg, den
+            # der Betrieb umschreibt, bezeugt nicht mehr den Fall. Die
+            # Uebersetzungstabelle ist die Bruecke zwischen beiden Welten.
+            daten = (quelle / datei).read_bytes()
+            (arbeit / datei).write_bytes(daten)
+        else:
+            tabelle = read_portfolio(
+                quelle / datei, expected_columns=spalten_je_tabelle[datei[:-len(".parquet")]])
+            write_portfolio(_umnummeriert(tabelle, abbildung, datei), arbeit / datei)
+            daten = (arbeit / datei).read_bytes()
         if os.name != "nt":
             (arbeit / datei).chmod(0o444)
         dateien[datei] = sha256_bytes(daten)
+
+    uebersetzung = pd.DataFrame({
+        "quelle_police_id": pd.Series(quelle_ids, dtype="int64"),
+        "ziel_police_id": pd.Series([abbildung[q] for q in quelle_ids], dtype="int64"),
+    })
+    write_portfolio(uebersetzung, arbeit / POLICENNUMMERN_DATEI)
+    if os.name != "nt":
+        (arbeit / POLICENNUMMERN_DATEI).chmod(0o444)
+    dateien[POLICENNUMMERN_DATEI] = sha256_bytes((arbeit / POLICENNUMMERN_DATEI).read_bytes())
     # Erst die Pruefung am Eingang des Betriebs, dann die Registrierung:
     # Ein Zugangsstand, dessen Nebentabellen das Gate nicht annehmen
     # wuerde, wird nicht Eingang (N-01). Der Rest unter ``.neu`` ist kein
@@ -617,6 +813,9 @@ def eingang_anlegen(
         # Signatur hier nicht verifiziert (T22-06).
         "zeichnung": zeichnung,
         "quelle": str(quelle),
+        # Das Nummernband dieses Eingangs. Es steht hier und nicht in einem
+        # gepflegten Register: Die Summe der Eingaenge IST das Register.
+        "band": {"von": band_von, "bis": band_bis},
         "dateien": dict(sorted(dateien.items())),
     }
     pfad = arbeit / EINGANG_DATEI

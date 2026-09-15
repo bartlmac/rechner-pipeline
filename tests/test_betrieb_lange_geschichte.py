@@ -61,6 +61,14 @@ def _ablage_ab(wurzel: Path, betriebsbeginn: dt.date) -> Ablage:
 # Der Zugang liegt in der gefuehrten Zeit
 # --------------------------------------------------------------------------- #
 
+def _ziel(ablage, quelle_nr: int) -> int:
+    """Die ZIELnummer einer gelieferten Police: Der Betrieb fuehrt seit
+    Review T24-08 eigene Nummern, gefragt wird ueber die registrierte
+    Uebersetzungstabelle statt ueber ein Literal."""
+    [eingang] = [p for p in ablage.uebernahme.iterdir() if p.is_dir()]
+    return ueb.zielnummern(eingang)[quelle_nr]
+
+
 def test_ein_zugang_mitten_im_betrieb_wird_gefuehrt(tmp_path):
     """Betriebsbeginn ein Jahr vor dem Zugang: Der uebernommene Bestand tritt
     mitten in die laufende Fuehrung ein, seine Buchungen stehen am Zugangstag
@@ -76,7 +84,7 @@ def test_ein_zugang_mitten_im_betrieb_wird_gefuehrt(tmp_path):
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
     assert zeile["pb1"]["urteil"] == "gruen"
     stamm = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
-    assert 7_000_001 in set(stamm["police_id"])
+    assert _ziel(ablage, 7_000_001) in set(stamm["police_id"])
     # Der Zugang ist eine Buchung DIESES Unternehmens an seinem Zugangstag —
     # die Vorgeschichte des abgebenden bleibt draussen. (Eigenes Neugeschaeft
     # bucht seinen ZUG an seinem eigenen Beginn, deshalb nur die
@@ -251,10 +259,11 @@ def test_ein_zugang_in_der_offenen_zeit_wird_gefuehrt(tmp_path):
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
     stamm = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
-    assert 7_000_001 in set(stamm["police_id"])
+    ziel = _ziel(ablage, 7_000_001)
+    assert ziel in set(stamm["police_id"])
     # Der Abschluss zum 1.1. entstand MIT dem Zugang:
     abschluss = read_portfolio(ablage.abschluesse / "abschluss_2026-01-01.parquet")
-    assert 7_000_001 in set(abschluss["police_id"])
+    assert ziel in set(abschluss["police_id"])
 
 
 def test_ein_zugang_genau_am_juengsten_abschluss_wird_verweigert(tmp_path):
@@ -265,7 +274,7 @@ def test_ein_zugang_genau_am_juengsten_abschluss_wird_verweigert(tmp_path):
     kommt der Zugang danach, kennt der eingefrorene Wert ihn nie, waehrend
     der Stand ihn ab demselben Tag fuehrt. Der Annahmetest oben zeigt die
     andere Haelfte: Entsteht der Abschluss IM SELBEN LAUF, traegt er den
-    Zugang (7000001 steht darin).
+    Zugang (der uebernommene Vertrag steht darin).
 
     Mutationsprobe (Testat der merge-session zu a47f72d): ein Zeichen im
     Guard, >= zu >, und die Suite blieb gruen — die Kante war ungebunden.

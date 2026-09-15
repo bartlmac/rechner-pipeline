@@ -31,6 +31,7 @@ from rechner_pipeline.models.bestand import (
     LEDGER_SPALTEN,
     STAMM_NAMES,
     STAMM_SPALTEN,
+    STATUS_HISTORIE_NAMES,
     STATUS_HISTORIE_SPALTEN,
 )
 
@@ -157,7 +158,15 @@ def test_eingang_wird_registriert_und_ist_unantastbar(eingang):
     assert daten["zeichnung"]["schluesselklasse"] == "nicht ausgewiesen"
     assert daten["zeichnung"]["rolle"] == "mensch"
     assert daten["zeichnung"]["signatur_verifiziert"] is False
-    assert set(daten["dateien"]) == {"bestand.parquet", "historie.parquet", "ledger.parquet"}
+    # Seit Review T24-08 traegt der Eingang die Uebersetzungstabelle mit:
+    # Das Zielsystem vergibt eigene Policennummern, und ohne die Tabelle
+    # waere eine Rueckfrage an die Quelle nicht beantwortbar.
+    assert set(daten["dateien"]) == {"bestand.parquet", "historie.parquet",
+                                     "ledger.parquet", "policennummern.parquet"}
+    # Das Nummernband: erster Eingang, drei Vertraege, auf volle Tausend
+    # aufgerundet — 1..1000. Der naechste Fall faengt bei 1001 an.
+    assert daten["band"] == {"von": 1, "bis": 1000}
+    assert daten["schema_version"] == ueb.EINGANG_SCHEMA_VERSION == 2
     if os.name != "nt":
         for datei in ziel.iterdir():
             assert (datei.stat().st_mode & 0o777) == 0o444
@@ -228,19 +237,34 @@ def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
     assert u["zeichnung"]["schluesselklasse"] == "nicht ausgewiesen"
     assert u["zeichnung"]["signatur_verifiziert"] is False
     gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
-    assert {7_000_001, 7_000_002, 7_000_003} <= set(gesamt["police_id"])
-    assert (gesamt.set_index("police_id").loc[7_000_003, "status_code"]) == "PEX"
+    # Die uebernommenen Vertraege fuehrt der Betrieb unter SEINEN Nummern
+    # (Review T24-08). Gefragt wird nicht nach Literalen, sondern ueber die
+    # Uebersetzungstabelle — so prueft der Test die Kette Quelle -> Tabelle
+    # -> Bestand und nicht eine abgetippte Zahl.
+    from rechner_pipeline.models.bestand import POLICENNUMMERN_NAMES
+
+    karte = read_portfolio(
+        ablage.uebernahme / "probe-uebernahme" / ueb.POLICENNUMMERN_DATEI,
+        expected_columns=POLICENNUMMERN_NAMES)
+    abbildung = dict(zip(karte["quelle_police_id"], karte["ziel_police_id"]))
+    assert abbildung == {7_000_001: 1, 7_000_002: 2, 7_000_003: 3}
+    assert set(abbildung.values()) <= set(gesamt["police_id"])
+    # Keine Quellnummer ueberlebt im Betrieb:
+    assert not ({7_000_001, 7_000_002, 7_000_003} & set(gesamt["police_id"]))
+    assert (gesamt.set_index("police_id").loc[abbildung[7_000_003], "status_code"]) == "PEX"
     ledger = read_portfolio(ablage.stand / "ledger.parquet")
     geliefert = ledger[ledger["betrag_herkunft"] == "geliefert"]
     assert len(geliefert) == 3 and set(geliefert["ereignis"]) == {"ZUG"}
-    umbuchung = ledger[(ledger["ereignis"] == "PEX") & (ledger["police_id"] == 7_000_003)]
+    umbuchung = ledger[(ledger["ereignis"] == "PEX")
+                       & (ledger["police_id"] == abbildung[7_000_003])]
     assert len(umbuchung) == 1 and umbuchung["status_date"].iloc[0] == pd.Timestamp(STICHTAG)
     journal = read_portfolio(ablage.tagesjournal_pfad)
     ueb_zeilen = journal[journal["herkunft"] == "uebernahme"]
     # Drei gelieferte Zugaenge; die gerechnete Umbuchung ist eine Buchung
     # der Fortschreibungsseite (herkunft fortschreibung), am selben Tag.
     assert len(ueb_zeilen) == 3
-    pex_journal = journal[(journal["ereignis"] == "PEX") & (journal["police_id"] == 7_000_003)]
+    pex_journal = journal[(journal["ereignis"] == "PEX")
+                          & (journal["police_id"] == abbildung[7_000_003])]
     assert len(pex_journal) == 1 and pex_journal["buchungsdatum"].iloc[0] == pd.Timestamp("2026-01-01")
     assert (ueb_zeilen["buchungsdatum"] == pd.Timestamp("2026-01-01")).all()   # Donnerstag
     assert zeile["bestand"]["uebernommen_in_force"] == 3
@@ -464,3 +488,128 @@ def test_ein_eingang_ohne_angenommene_abnahme_wird_abgelehnt(eingang, feld, wert
     daten[feld] = wert
     fehler = ueb.validate_eingang(daten)
     assert any(meldung in f for f in fehler), f"{feld}={wert!r}: {fehler}"
+
+
+# --------------------------------------------------------------------------- #
+# T24-08: Das Zielsystem vergibt eigene Policennummern
+# --------------------------------------------------------------------------- #
+
+def _fall_mit_nummern(wurzel: Path, nummern: list, name: str = "probe-uebernahme") -> Path:
+    """Ein Fall wie ``_fall``, dessen drei Vertraege die genannten
+    Quellnummern tragen — um eine Lieferung zu bauen, die mit dem eigenen
+    Neugeschaeft kollidieren WUERDE."""
+    fall = _fall(wurzel, name)
+    quelle = fall / "abgeleitet" / "bestand"
+    alt = sorted(int(p) for p in read_portfolio(quelle / "bestand.parquet",
+                                                expected_columns=STAMM_NAMES)["police_id"])
+    tausch = dict(zip(alt, nummern))
+    for datei, spalten in (("bestand.parquet", STAMM_NAMES),
+                           ("historie.parquet", STATUS_HISTORIE_NAMES),
+                           ("ledger.parquet", LEDGER_NAMES)):
+        tab = read_portfolio(quelle / datei, expected_columns=spalten)
+        tab["police_id"] = [tausch[int(p)] for p in tab["police_id"]]
+        write_portfolio(tab, quelle / datei)
+    return fall
+
+
+def test_eine_gelieferte_nummer_kollidiert_nie_mit_dem_eigenen_neugeschaeft(tmp_path):
+    """T24-08, der Klassentest: Die eigene Nummernvergabe ist deterministisch
+    und damit im Voraus berechenbar — eine Lieferung KANN genau die Nummer
+    tragen, die das Tagesneugeschaeft an einem kuenftigen Tag zieht.
+
+    Vorher lief so eine Lieferung ungeprueft durch, und der Lauf an genau
+    jenem Tag brach hart ab ("police_ids kollidieren mit dem Basisbestand")
+    — Jahre spaeter, zu einem Zeitpunkt, den niemand gewaehlt hat, ohne
+    automatischen Ausweg: Die kollidierende eigene Police laesst sich nicht
+    ueberspringen, ohne den deterministischen Strom und damit jede spaetere
+    ID zu verschieben.
+
+    Seit dem Entscheid des Maintainers (2026-09-15) vergibt das Zielsystem
+    eigene Nummern, und die Kollision ist nicht mehr moeglich, statt nur
+    frueh gemeldet zu werden.
+    """
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.betrieb.neugeschaeft import neugeschaeft_am
+    from tests.test_betrieb_tageslauf import _ablage as _welt
+
+    ablage = _welt(tmp_path / "plv")
+    config = load_config(ablage.config_pfad)
+    kollisionstag = dt.date(2026, 2, 10)
+    eigene = sorted(int(p) for p in neugeschaeft_am(config, kollisionstag)["police_id"])
+    assert eigene, "die Testwelt verkauft an diesem Tag nichts — der Test saehe nichts"
+
+    fall = _fall_mit_nummern(tmp_path, [eigene[0], eigene[0] + 1, eigene[0] + 2])
+    ueb.eingang_anlegen(ablage.wurzel, fall, STICHTAG)
+    abbildung = ueb.zielnummern(ablage.uebernahme / "probe-uebernahme")
+    assert set(abbildung) == {eigene[0], eigene[0] + 1, eigene[0] + 2}
+
+    # Der Lauf ueber den Kollisionstag hinaus: gruen, kein Abbruch.
+    code, zeile = tageslauf(ablage, dt.date(2026, 2, 20))
+    assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
+    gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
+    ids = set(gesamt["police_id"])
+    # Die gelieferte Nummer gehoert jetzt dem EIGENEN Neugeschaeft, der
+    # gelieferte Vertrag lebt unter seiner Zielnummer.
+    assert eigene[0] in ids and set(abbildung.values()) <= ids
+    eigen_zeile = gesamt.set_index("police_id").loc[eigene[0]]
+    assert str(eigen_zeile["tarif_generation"]) != "KLV-2017"
+
+
+def test_zwei_faelle_teilen_keine_einzige_nummer(tmp_path):
+    """Der Punkt, den die merge-session beim Entwurf gesehen hat: Der freie
+    Raum ist frei von EIGENGESCHAEFT, nicht frei von anderen Faellen.
+
+    Kollidieren zwei Uebernahmen miteinander, faellt das SPAETER auf als die
+    Kollision mit dem eigenen Geschaeft — beide Seiten sind fremd, keine
+    Zusicherung trennt sie. Deshalb bekommt jeder Fall sein eigenes Band.
+    """
+    stand = tmp_path / "daten"
+    # Beide Lieferungen tragen ABSICHTLICH dieselben Quellnummern.
+    ueb.eingang_anlegen(stand, _fall_mit_nummern(tmp_path / "a", [11, 12, 13], "fall-a"), STICHTAG)
+    ueb.eingang_anlegen(stand, _fall_mit_nummern(tmp_path / "b", [11, 12, 13], "fall-b"), STICHTAG)
+
+    a = ueb.zielnummern(stand / "uebernahme" / "fall-a")
+    b = ueb.zielnummern(stand / "uebernahme" / "fall-b")
+    assert set(a) == set(b) == {11, 12, 13}, "die Quellnummern sollen gleich sein"
+    assert not (set(a.values()) & set(b.values())), "zwei Faelle teilen eine Zielnummer"
+
+    baender = ueb.vergebene_baender(stand / "uebernahme")
+    assert [(x["von"], x["bis"]) for x in baender] == [(1, 1000), (1001, 2000)]
+    for band, karte in zip(baender, (a, b)):
+        assert all(band["von"] <= z <= band["bis"] for z in karte.values())
+
+
+def test_jede_zielnummer_liegt_im_freien_raum(tmp_path):
+    """Die Zusicherung, auf der alles steht: Kein Erzeuger der PLV kann
+    unter oder auf zehn Millionen vergeben (Nummernkreis k >= 1), also ist
+    genau dieser Raum der Heimatraum uebernommener Bestaende."""
+    stand = tmp_path / "daten"
+    ueb.eingang_anlegen(stand, _fall(tmp_path), STICHTAG)
+    ziele = ueb.zielnummern(stand / "uebernahme" / "probe-uebernahme").values()
+    assert ziele and all(1 <= z <= ueb.NAMENSRAUM_UEBERNAHME_BIS for z in ziele)
+
+
+def test_der_freie_raum_ist_endlich_und_sagt_es(tmp_path):
+    """Kein stilles Ueberlaufen in den Zahlenraum des Eigengeschaefts: Ist
+    der Raum erschoepft, bricht das Registrieren ab und nennt den Ausweg."""
+    with pytest.raises(ueb.UebernahmeError, match="Nummernraum erschoepft"):
+        ueb.naechstes_band(tmp_path / "leer", ueb.NAMENSRAUM_UEBERNAHME_BIS + 1)
+
+
+def test_keine_quellnummer_ueberlebt_in_irgendeiner_tabelle(eingang):
+    """Umnummeriert wird der GANZE Zugangsstand oder gar nicht: Ein halb
+    umnummerierter Bestand zerfaellt — die Historie spraeche dann ueber
+    Vertraege, die der Stamm nicht kennt."""
+    _, _, ziel = eingang
+    abbildung = ueb.zielnummern(ziel)
+    quellen, ziele = set(abbildung), set(abbildung.values())
+    gesehen = 0
+    for name, spalten in {**ueb.PFLICHT, **ueb.OPTIONAL}.items():
+        pfad = ziel / f"{name}.parquet"
+        if not pfad.is_file():
+            continue
+        ids = set(read_portfolio(pfad, expected_columns=spalten)["police_id"])
+        assert not (ids & quellen), f"{name}.parquet fuehrt noch Quellnummern"
+        assert ids <= ziele, f"{name}.parquet nennt eine Police ausserhalb der Uebersetzung"
+        gesehen += 1
+    assert gesehen >= 3, "weniger Tabellen geprueft als der Zugangsstand fuehrt"
