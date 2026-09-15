@@ -17,7 +17,7 @@ import io
 import os
 import secrets
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 import pandas as pd
 import pyarrow as pa
@@ -32,6 +32,8 @@ from rechner_pipeline.models.bestand import (
     MERKMALE_SPALTEN,
     VERANKERUNG_NAMES,
     VERANKERUNG_SPALTEN,
+    REDUKTIONEN_NAMES,
+    REDUKTIONEN_SPALTEN,
     SCHEIBEN_NAMES,
     SCHEIBEN_SPALTEN,
     SCHICHTEN_NAMES,
@@ -53,6 +55,7 @@ _DTYPE_MAP = (
     | dict(ZEITSCHEIBEN_SPALTEN)
     | dict(LEDGER_SPALTEN)
     | dict(SCHEIBEN_SPALTEN)
+    | dict(REDUKTIONEN_SPALTEN)
     | dict(MERKMALE_SPALTEN)
     | dict(VERANKERUNG_SPALTEN)
     | dict(SCHICHTEN_SPALTEN)
@@ -163,6 +166,24 @@ def write_portfolio(
     return path
 
 
+#: Die Tabellenfamilien mit EIGENER Spaltenordnung, in der Reihenfolge
+#: ihrer Pruefung. Die Kette stand hier achtmal als eigener Zweig; eine
+#: neunte Familie waere ein neunter Zweig gewesen, und wer einen vergisst,
+#: faellt still in die Rueckfall-Behandlung des Stamm-Schnitts. Als Liste
+#: ist eine neue Familie ein Eintrag.
+FAMILIEN: Tuple[Tuple[str, ...], ...] = (
+    ABSCHLUSS_NAMES,
+    LEDGER_NAMES,
+    SCHEIBEN_NAMES,
+    REDUKTIONEN_NAMES,
+    MERKMALE_NAMES,
+    VERANKERUNG_NAMES,
+    SCHICHTEN_NAMES,
+    TAGESJOURNAL_NAMES,
+    POLICENNUMMERN_NAMES,
+)
+
+
 def read_portfolio(
     path: Path,
     *,
@@ -208,22 +229,9 @@ def read_portfolio(
             df[name] = pd.to_datetime(df[name])
         elif _DTYPE_MAP.get(name) is not None:
             df[name] = df[name].astype(_DTYPE_MAP[name])
-    if set(df.columns) == set(ABSCHLUSS_NAMES):
-        return df[list(ABSCHLUSS_NAMES)]
-    if set(df.columns) == set(LEDGER_NAMES):
-        return df[list(LEDGER_NAMES)]
-    if set(df.columns) == set(SCHEIBEN_NAMES):
-        return df[list(SCHEIBEN_NAMES)]
-    if set(df.columns) == set(MERKMALE_NAMES):
-        return df[list(MERKMALE_NAMES)]
-    if set(df.columns) == set(VERANKERUNG_NAMES):
-        return df[list(VERANKERUNG_NAMES)]
-    if set(df.columns) == set(SCHICHTEN_NAMES):
-        return df[list(SCHICHTEN_NAMES)]
-    if set(df.columns) == set(TAGESJOURNAL_NAMES):
-        return df[list(TAGESJOURNAL_NAMES)]
-    if set(df.columns) == set(POLICENNUMMERN_NAMES):
-        return df[list(POLICENNUMMERN_NAMES)]
+    for namen in FAMILIEN:
+        if set(df.columns) == set(namen):
+            return df[list(namen)]
     # Rueckfall: Teilmengen des Stamms (Auskunfts-Schnitt, Zeitscheiben).
     ordered = [c for c in list(STAMM_NAMES) + [n for n, _ in ZEITSCHEIBEN_SPALTEN] if c in df.columns]
     if df.columns.size and not ordered:

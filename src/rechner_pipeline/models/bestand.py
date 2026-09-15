@@ -274,6 +274,31 @@ SCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("gamma1", "float64"),             # -> ModelPoint.gamma1 der Scheibe
 )
 
+#: Herabsetzungen je Police — die Spiegeltabelle zu ``scheiben``.
+#:
+#: Eine dynamische Erhoehung legt eine neue Scheibe an (eigener
+#: Modellpunkt, eigene Zeile in ``scheiben.parquet``). Eine Herabsetzung
+#: legt keine neue Scheibe an, sie KNICKT den Verlauf des bestehenden
+#: Vertrags: Ab dem Reduktionsjahr traegt er den fortgefuehrten
+#: Beitragsanteil und daneben die dort fixierte beitragsfreie Summe
+#: (``kern.beitragsreduktion.ReduzierterVertrag``, Tarifplan klv.md 7.1).
+#:
+#: Persistiert werden genau die drei Felder, aus denen sich dieser
+#: Vertrag rekonstruieren laesst — ``ReduzierterVertrag.nach(kern, jahr,
+#: anteil, verfahren=...)``. Mehr braucht die Folgebewertung nicht, und
+#: weniger reichte nicht: Ohne das Verfahren waere derselbe Anteil je
+#: nach Bedingungswerk ein anderer Vertrag.
+#:
+#: NEBENTABELLE wie ``scheiben``: Keine Datei heisst, der Bestand hat
+#: keine Herabsetzungen — nicht, dass niemand nachgesehen hat.
+REDUKTIONEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("reduktion_jahr", "int64"),         # Vertragsjahr (nur am Jahrestag)
+    ("reduktion_datum", "datetime64[ns]"),
+    ("anteil", "float64"),               # fortgefuehrter Beitragsanteil, 0 < f < 1
+    ("verfahren", "object"),             # prospektiv | mit_abzug | teilkuendigung
+)
+
 #: Verankerungsattribute je uebernommenem Vertrag (Grundsatzdokumentation
 #: 9.12, Korrekturschicht-Umsetzung K3): t_a ist der letzte exakte
 #: Rechenpunkt des Quellsystems in VERTRAGSMONATEN, ``dk_ta`` der dort
@@ -418,6 +443,7 @@ ABSCHLUSS_ZAHLEN: Tuple[str, ...] = tuple(
 MERKMALE_NAMES: Tuple[str, ...] = tuple(n for n, _ in MERKMALE_SPALTEN)
 VERANKERUNG_NAMES: Tuple[str, ...] = tuple(n for n, _ in VERANKERUNG_SPALTEN)
 SCHICHTEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHICHTEN_SPALTEN)
+REDUKTIONEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in REDUKTIONEN_SPALTEN)
 TAGESJOURNAL_NAMES: Tuple[str, ...] = tuple(n for n, _ in TAGESJOURNAL_SPALTEN)
 
 
@@ -441,6 +467,16 @@ POLICENNUMMERN_NAMES: Tuple[str, ...] = tuple(n for n, _ in POLICENNUMMERN_SPALT
 #: ``zustand_ta`` (verankerung.parquet): der Vertragszustand am
 #: Verankerungszeitpunkt in der Sprache der Uebernahme.
 ZUSTAENDE_TA: Tuple[str, ...] = ("beitragspflichtig", "beitragsfrei")
+
+#: Die Verfahren der Herabsetzung — Vokabel der Nebentabelle
+#: ``reduktionen``. Literal aus demselben Grund wie :data:`ZUSTAENDE_TA`:
+#: Gate, P-B1-Engine und Betriebseingang pruefen die Tabelle, ohne den
+#: Kern zu laden, und ``models`` darf die Vorzeige nicht importieren
+#: (ADR-017). Die QUELLE bleibt ``kern.beitragsreduktion.VERFAHREN`` —
+#: laeuft die Liste ihm davon, faellt das in
+#: ``tests/test_models_vokabel_kern.py``, nicht erst vier Schichten
+#: tiefer mit "unbekanntes Verfahren".
+RED_VERFAHREN: Tuple[str, ...] = ("prospektiv", "mit_abzug", "teilkuendigung")
 #: ``verankerungszustand`` (schichten.parquet): der Startzustand der
 #: Korrekturschicht — ein ERLEBENSzustand des Zustandsmodells, mit dem sie
 #: bewertet wird ("aktiv" fuer Kapitalversicherungen, "aktiv"/"bu" fuer die
@@ -1417,6 +1453,100 @@ def bu_model_point_kwargs(
             raise KeyError(f"BU-Generation-Feld fehlt: {name}")
         kwargs[name] = generation[name]
     return kwargs
+
+
+def validate_reduktionen(
+    stamm: Any, reduktionen: Any, historie: Any = None
+) -> List[str]:
+    """Herabsetzungen gegen den Stamm pruefen (leer = gueltig).
+
+    Jede Zeile gehoert zu einem bekannten Vertrag, das Reduktionsjahr
+    liegt in der Beitragszahlungsdauer, und der fortgefuehrte Anteil
+    liegt echt zwischen 0 und 1: ``1.0`` ist keine Herabsetzung, ``0.0``
+    ist eine Beitragsfreistellung und wird als PEX gefuehrt.
+
+    **Hoechstens EINE Reduktion je Police.** Der Kern traegt den
+    herabgesetzten Vertrag als EINEN Vertrag mit geknicktem Verlauf
+    (``kern.beitragsreduktion.ReduzierterVertrag``); eine zweite
+    Herabsetzung darauf ist nicht definiert. Lieber ein benannter Fehler
+    als eine Zahl, die niemand herleiten kann.
+
+    Mit ``historie`` zusaetzlich die Reihenfolge: Eine Herabsetzung setzt
+    einen laufenden Beitrag voraus, liegt also echt VOR einer
+    Beitragsfreistellung und vor jedem Endzustand.
+    """
+    errors: List[str] = []
+    cols = list(reduktionen.columns)
+    if cols != list(REDUKTIONEN_NAMES):
+        return [
+            f"reduktionen: Spalten weichen ab: erwartet "
+            f"{list(REDUKTIONEN_NAMES)}, vorhanden {cols}"
+        ]
+    for name, dtype in REDUKTIONEN_SPALTEN:
+        actual = str(reduktionen[name].dtype)
+        if actual != dtype:
+            errors.append(
+                f"reduktionen: Spalte {name}: dtype {actual}, erwartet {dtype}")
+    if errors:
+        return errors
+    unbekannt = set(reduktionen["police_id"]) - set(stamm["police_id"])
+    if unbekannt:
+        errors.append(
+            f"reduktionen: police_ids ausserhalb des Bestands: "
+            f"{sorted(unbekannt)[:5]}")
+    if reduktionen["police_id"].duplicated().any():
+        doppelt = sorted(
+            reduktionen.loc[reduktionen["police_id"].duplicated(), "police_id"]
+        )[:5]
+        errors.append(
+            f"reduktionen: mehrere Herabsetzungen je Police: {doppelt} — der "
+            "Kern fuehrt den herabgesetzten Vertrag als EINEN Vertrag mit "
+            "geknicktem Verlauf; eine zweite Reduktion darauf ist nicht "
+            "definiert")
+    ausser = [
+        float(a) for a in reduktionen["anteil"] if not 0.0 < float(a) < 1.0]
+    if ausser:
+        errors.append(
+            f"reduktionen: anteil ausserhalb (0, 1): {sorted(ausser)[:5]} — "
+            "1.0 ist keine Herabsetzung, 0.0 ist eine Beitragsfreistellung "
+            "und wird als PEX gefuehrt")
+    fremd = sorted({
+        str(v) for v in reduktionen["verfahren"]
+        if not isinstance(v, str) or v not in RED_VERFAHREN})
+    if fremd:
+        errors.append(
+            f"reduktionen: verfahren {fremd} unbekannt (bekannt: "
+            f"{list(RED_VERFAHREN)})")
+    haupt = stamm.set_index("police_id")
+    for pid, jahr in zip(reduktionen["police_id"],
+                         reduktionen["reduktion_jahr"]):
+        pid, jahr = int(pid), int(jahr)
+        if pid not in haupt.index:
+            continue
+        t = int(haupt.loc[pid, "premium_duration"])
+        if not 0 < jahr < t:
+            errors.append(
+                f"reduktionen: police {pid}: Reduktionsjahr {jahr} ausserhalb "
+                f"der Beitragszahlungsdauer (0, {t}) — ohne laufenden Beitrag "
+                "gibt es nichts herabzusetzen")
+    if historie is not None and len(historie):
+        grenz_status = ("PEX",) + TERMINALE_STATUS
+        grenzen = (
+            historie[historie["status_code"].isin(grenz_status)]
+            .groupby("police_id")["status_date"].min()
+        )
+        for pid, datum in zip(reduktionen["police_id"],
+                              reduktionen["reduktion_datum"]):
+            pid = int(pid)
+            if pid not in grenzen.index:
+                continue
+            if datum >= grenzen.loc[pid]:
+                errors.append(
+                    f"reduktionen: police {pid}: Herabsetzung am "
+                    f"{datum.date()} liegt nicht vor dem Zustandswechsel am "
+                    f"{grenzen.loc[pid].date()} — eine Herabsetzung setzt "
+                    "einen laufenden Beitrag voraus")
+    return errors
 
 
 def validate_verankerung(

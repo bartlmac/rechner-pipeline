@@ -29,3 +29,17 @@ def test_zustand_ta_spricht_die_sprache_der_uebernahme():
     Modells — deshalb zwei Vokabeln, die sich nicht ueberschneiden."""
     assert ZUSTAENDE_TA == ("beitragspflichtig", "beitragsfrei")
     assert not set(ZUSTAENDE_TA) & set(VERANKERUNGSZUSTAENDE)
+
+
+def test_die_verfahren_der_herabsetzung_sind_die_des_kerns():
+    """``models`` fuehrt sie als Literal, weil es die Vorzeige nicht
+    importieren darf (ADR-017) — die Quelle bleibt der Kern.
+
+    Ohne diesen Vergleich koennte der Kern ein Verfahren bekommen, das
+    die Nebentabelle nicht kennt: Die Validierung wiese eine gueltige
+    Herabsetzung als 'unbekanntes Verfahren' ab, und niemand faende den
+    Grund in models."""
+    from rechner_pipeline.kern.beitragsreduktion import VERFAHREN
+    from rechner_pipeline.models.bestand import RED_VERFAHREN
+
+    assert set(RED_VERFAHREN) == set(VERFAHREN)
