@@ -936,7 +936,7 @@ def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any
     from rechner_pipeline.betrieb.tageslauf import TageslaufError, lies_protokoll
 
     dateien = stand.get("dateien") or {}
-    for name in ("protokoll.jsonl", "laufmanifest.json", "index.html"):
+    for name in ("protokoll.jsonl", "laufmanifest.json", "tagesjournal.parquet", "index.html"):
         if name not in dateien:
             raise FalldatenFehler(f"{paket}: Belegdatei {name!r} fehlt in stand.json")
     for name, soll in sorted(dateien.items()):
@@ -975,6 +975,45 @@ def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any
     journal_hash = (letzte.get("tagesjournal") or {}).get("sha256")
     if prov.get("tagesjournal_sha256") != journal_hash:
         raise FalldatenFehler(f"{paket}: Journal-Hash von Protokoll und stand.json stimmen nicht ueberein")
+    if dateien.get("tagesjournal.parquet") != journal_hash:
+        raise FalldatenFehler(
+            f"{paket}: die Belegdatei 'tagesjournal.parquet' ist nicht das Journal, "
+            "auf das die letzte gruene Protokollzeile sich festgelegt hat")
+    _pruefe_buchungen_gegen_das_journal(paket, stand)
+
+
+def _pruefe_buchungen_gegen_das_journal(paket: Path, stand: Dict[str, Any]) -> None:
+    """Die journalgespeisten Zahlen gegen die Zeilen halten (Review T24-04, Teil 1).
+
+    Bis Paketschema 2 lagen Protokoll und Manifest als Belege im Paket —
+    damit waren die protokollgespeisten Bloecke von stand.json gedeckt.
+    ``buchungen.*`` kommt aber aus dem Tagesjournal, das nicht mitkam: Die
+    Zahl stand da und war zu glauben. Seit Schema 3 liegt das Journal
+    dabei, seine Bytes haengen ueber den Protokoll-Hash an der Kette, und
+    hier wird nachgerechnet.
+
+    Gezaehlt wird wie beim Erzeuger: ``gesamt`` sind ZEILEN, ``je_ereignis``
+    sind VORFAELLE (police_id, ereignis, status_date) — seit dem gebuchten
+    Bruttojahresbeitrag bucht ein Zugang zwei Zeilen, und wer hier Zeilen
+    zaehlte, meldete doppelt so viele Vorfaelle, wie es gab.
+    """
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
+
+    journal = read_portfolio(paket / "tagesjournal.parquet",
+                             expected_columns=TAGESJOURNAL_NAMES)
+    buchungen = stand.get("buchungen") or {}
+    if buchungen.get("gesamt") != len(journal):
+        raise FalldatenFehler(
+            f"{paket}: stand.json meldet {buchungen.get('gesamt')!r} Buchungen, das "
+            f"Tagesjournal traegt {len(journal)} Zeilen")
+    vorfaelle = journal[["police_id", "ereignis", "status_date"]].drop_duplicates()
+    gezaehlt = {str(k): int(v) for k, v in sorted(vorfaelle["ereignis"].value_counts().items())}
+    if (buchungen.get("je_ereignis") or {}) != gezaehlt:
+        raise FalldatenFehler(
+            f"{paket}: die Vorfaelle je Ereignis in stand.json stimmen nicht mit dem "
+            f"Tagesjournal ueberein (stand.json {buchungen.get('je_ereignis')!r}, "
+            f"Journal {gezaehlt!r})")
 
 
 def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
@@ -991,10 +1030,15 @@ def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
         return {"vorhanden": False}
     paket = Path(paket)
     stand = _json(paket / "stand.json")
-    if not isinstance(stand, dict) or stand.get("schema_version") != 2:
+    # Schema 3 seit Review T24-04 Teil 1: das Paket traegt auch das
+    # Tagesjournal. Ein Paket nach Schema 2 belegt seine Buchungszahlen
+    # nicht und wird deshalb nicht veroeffentlicht — wie schon die
+    # Erstfassung ohne Belegdateien.
+    if not isinstance(stand, dict) or stand.get("schema_version") != 3:
         raise FalldatenFehler(
-            f"{paket}: kein Stands-Paket (stand.json mit schema_version 2 fehlt; "
-            "ein Paket der Erstfassung ohne Belegdateien wird nicht veroeffentlicht)"
+            f"{paket}: kein Stands-Paket (stand.json mit schema_version 3 fehlt; "
+            "ein aelteres Paket belegt seine Buchungszahlen nicht und wird nicht "
+            "veroeffentlicht)"
         )
     prov = stand.get("provenienz") or {}
     _pruefe_stands_paket(paket, stand, prov)

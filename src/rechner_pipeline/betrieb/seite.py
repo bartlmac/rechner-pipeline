@@ -48,11 +48,22 @@ from rechner_pipeline.bestand.manifest import lies_manifest, sha256_bytes
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio
 from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 
-#: Schema 2 (Review T22-05): das Paket traegt Protokoll und Manifest als
-#: Belegdateien; der Konsument prueft Kette, Hashes und Urteil selbst.
-PAKET_SCHEMA_VERSION = 2
+#: Schema 3 (Review T24-04, Teil 1): das Paket traegt Protokoll, Manifest
+#: UND das Tagesjournal als Belegdateien; der Konsument prueft Kette,
+#: Hashes und Urteil selbst und leitet die Zahlen aus den Belegen ab,
+#: statt den Feldern von ``stand.json`` zu glauben.
+#:
+#: Schema 2 (T22-05) trug nur Protokoll und Manifest. Damit waren die
+#: protokollgespeisten Bloecke belegt, die journalgespeisten aber nicht:
+#: Geschaeftsentwicklung, ``buchungen.*`` und das Neugeschaeft der Woche
+#: standen als blosse Behauptung im Paket. Ein Auszug statt des vollen
+#: Journals waere eine zweite Serialisierungsregel gewesen — ein Vertrag,
+#: den ein Konsument aendert, statt einer, den nur der Produzent aendert
+#: (abgestimmt mit vorzeige-url, 2026-09-15).
+PAKET_SCHEMA_VERSION = 3
 PAKET_PROTOKOLL = "protokoll.jsonl"
 PAKET_MANIFEST = "laufmanifest.json"
+PAKET_JOURNAL = "tagesjournal.parquet"
 SEITE_DIR = "seite"
 PAKET_DATEI = "stand.json"
 
@@ -492,12 +503,22 @@ def stands_paket(ablage, ziel: Path) -> Path:
     seite = ziel / "index.html"
     _schreibe(seite, rendere_html(modell))
     dateien["index.html"] = sha256_bytes(seite.read_bytes())
-    # Belege (T22-05): Protokoll (mit Kette) und Manifest des Stands — der
-    # Konsument haelt stand.json dagegen, statt dem Wort "gruen" zu glauben.
+    # Belege: Protokoll (mit Kette) und Manifest des Stands (T22-05), dazu
+    # das Tagesjournal (T24-04, Teil 1) — der Konsument haelt stand.json
+    # dagegen, statt dem Wort "gruen" zu glauben, und leitet die
+    # journalgespeisten Zahlen aus Zeilen ab statt aus Feldern. Ohne das
+    # Journal war die halbe stand.json unbelegt: Geschaeftsentwicklung,
+    # buchungen.* und das Neugeschaeft der Woche kommen von dort.
     from rechner_pipeline.bestand.manifest import MANIFEST_DATEI
 
+    if not ablage.tagesjournal_pfad.is_file():
+        raise SeiteError(
+            f"{ablage.tagesjournal_pfad} fehlt — ein Stands-Paket ohne "
+            "Tagesjournal belegt seine Buchungszahlen nicht"
+        )
     for quelle, name in ((ablage.protokoll_pfad, PAKET_PROTOKOLL),
-                         (ablage.stand / MANIFEST_DATEI, PAKET_MANIFEST)):
+                         (ablage.stand / MANIFEST_DATEI, PAKET_MANIFEST),
+                         (ablage.tagesjournal_pfad, PAKET_JOURNAL)):
         shutil.copyfile(quelle, ziel / name)
         dateien[name] = sha256_bytes((ziel / name).read_bytes())
     modell["dateien"] = dict(sorted(dateien.items()))

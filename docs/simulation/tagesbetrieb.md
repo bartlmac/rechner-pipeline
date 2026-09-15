@@ -408,6 +408,29 @@ Wege, die sich nicht ausschließen:
   Laufzeitumgebung statt aus einem Fall — eine neue Quelle für
   `falldaten`, dieselbe Drift-Regel: erzeugt, nie abgetippt.
 
+Das Paket trägt seine **Belege** mit (Schema 3, Review T24-04 Teil 1):
+`protokoll.jsonl` mit der Kette, `laufmanifest.json` des Stands und
+`tagesjournal.parquet`. Die ersten beiden kamen mit T22-05 und belegten
+die protokollgespeisten Blöcke von `stand.json`; die journalgespeisten —
+Geschäftsentwicklung, `buchungen.*`, Neugeschäft der Woche — standen
+daneben als bloße Behauptung. Ein Konsument, der sie las, musste dem
+Feld glauben. Jetzt leitet er sie aus Zeilen ab.
+
+Das volle Journal und nicht ein Auszug: Ein Auszug wäre eine zweite
+Serialisierungsregel und damit ein Vertrag, den ein Konsument ändert,
+sobald jemand einen Block ergänzt — das volle Journal ist einer, den nur
+der Produzent ändert.
+
+Daraus folgt eine Unterscheidung, die vorher nicht nötig war: **Das Paket
+ist der Nachweis, der Auftritt ist die Veröffentlichung.** Das Journal
+führt Policennummern und Beträge je Buchung; ein Versicherer
+veröffentlicht das nicht, und die Vorzeige soll ein Muster sein, kein
+Sonderfall, der sich das leisten kann, weil die Daten erfunden sind. Das
+vollständige Paket geht deshalb an den Menschen, der es exportiert; in
+den veröffentlichten Baum wandern Tagesseite, Berichte, Protokoll und
+Manifest — Letztere tragen keine Vertragsebene und sind genau das, woran
+die Seite ihre Kette zeigt.
+
 Die Veröffentlichung nach außen bleibt menschlich (werkzeuge/README.md);
 die Regie-Sperre gilt unverändert. Automatisch veröffentlicht wird
 nichts, was nicht durch P-B1 ging.

@@ -74,10 +74,16 @@ def test_modell_und_seite_sind_deterministisch(gefuehrt):
 def test_stands_paket_traegt_stempel_und_berichte(gefuehrt, tmp_path):
     paket = st.stands_paket(gefuehrt, tmp_path / "paket")
     stand = json.loads((paket / "stand.json").read_text("utf-8"))
-    assert stand["schema_version"] == 2 and stand["stand"] == "2026-02-03"
-    # Belege (T22-05): Protokoll mit Kette und Manifest fahren mit.
+    # Die Zahl steht hier ABSICHTLICH als Literal: Der Paketvertrag ist ein
+    # Vertrag mit einem Konsumenten ausserhalb dieses Repos (vorzeige-url).
+    # Eine Aenderung soll hier auffallen und abgestimmt werden, nicht
+    # stillschweigend mitwandern. Schema 3 seit T24-04 Teil 1 (Journal).
+    assert stand["schema_version"] == 3 and stand["stand"] == "2026-02-03"
+    # Belege: Protokoll mit Kette und Manifest (T22-05), Tagesjournal
+    # (T24-04 Teil 1) fahren mit.
     assert set(stand["dateien"]) == {"index.html", "bestandsbericht_2026-02-01.html",
-                                     "protokoll.jsonl", "laufmanifest.json"}
+                                     "protokoll.jsonl", "laufmanifest.json",
+                                     "tagesjournal.parquet"}
     assert stand["provenienz"]["manifest_sha256"] == stand["dateien"]["laufmanifest.json"]
     for name, summe in stand["dateien"].items():
         assert (paket / name).is_file() and len(summe) == 64
@@ -212,3 +218,40 @@ def test_seite_und_paket_lehnen_einen_stand_ohne_passenden_nachweis_ab(gefuehrt,
         st.stand_modell(ablage)
     with pytest.raises(st.SeiteError, match="Nachweis"):
         st.stands_paket(ablage, tmp_path / f"paket-{was}")
+
+
+def test_das_paket_belegt_seine_buchungszahlen_mit_dem_journal(gefuehrt, tmp_path):
+    """T24-04 Teil 1: Ein Beleg, der nur danebenliegt, belegt nichts.
+
+    Schema 2 trug Protokoll und Manifest — damit waren die
+    protokollgespeisten Bloecke von stand.json belegt, die
+    journalgespeisten nicht: Geschaeftsentwicklung, buchungen.* und das
+    Neugeschaeft der Woche standen als blosse Behauptung im Paket. Wer sie
+    las, musste dem Feld glauben.
+
+    Geprueft wird deshalb dreierlei: dass das Journal im Paket liegt, dass
+    sein Hash zu seinen Bytes passt, und dass es GENAU das Journal ist, auf
+    das der gruene Lauf sich festgelegt hat. Das dritte ist das
+    eigentliche: ein beliebiges Journal neben einer beliebigen Zahl ergaebe
+    ein Paket, das sich selbst bezeugt.
+    """
+    from rechner_pipeline.bestand.manifest import sha256_bytes
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
+
+    paket = st.stands_paket(gefuehrt, tmp_path / "paket")
+    modell = json.loads((paket / st.PAKET_DATEI).read_text(encoding="utf-8"))
+    assert modell["schema_version"] == st.PAKET_SCHEMA_VERSION
+
+    beleg = paket / st.PAKET_JOURNAL
+    assert beleg.is_file(), "das Tagesjournal fehlt im Paket"
+    roh = beleg.read_bytes()
+    assert modell["dateien"][st.PAKET_JOURNAL] == sha256_bytes(roh)
+
+    gruen = [z for z in lies_protokoll(gefuehrt.protokoll_pfad) if z.get("uebernommen")][-1]
+    assert gruen["tagesjournal"]["sha256"] == sha256_bytes(roh), (
+        "das Paket traegt ein anderes Journal als der gruene Lauf")
+
+    journal = read_portfolio(beleg, expected_columns=TAGESJOURNAL_NAMES)
+    assert len(journal) == modell["buchungen"]["gesamt"]
+    assert sorted(journal["ereignis"].unique()) == sorted(modell["buchungen"]["je_ereignis"])

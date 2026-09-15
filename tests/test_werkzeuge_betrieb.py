@@ -40,7 +40,10 @@ def _erfunden(tmp_path: Path, pb1: str = "gruen") -> Path:
     paket = tmp_path / "erfunden"
     paket.mkdir()
     stand = {
-        "schema_version": 2, "stand": "2026-09-05", "gefuehrt_seit": "2026-01-01",
+        # Schema der GELTENDEN Fassung (3 seit T24-04 Teil 1): Das Paket
+        # soll an den Belegen scheitern, nicht schon an der Versionszahl —
+        # sonst prueft der Test den Schema-Pin statt die Belegpflicht.
+        "schema_version": 3, "stand": "2026-09-05", "gefuehrt_seit": "2026-01-01",
         "bestand": {"in_force": 2556, "je_produkt": {"klv": 1893, "bu": 663},
                     "uebernommen_in_force": 818, "policiert_beginn_folgt": 2},
         "neugeschaeft": {"seit_betriebsbeginn": 99, "woche": {}, "woche_summe": 0},
@@ -136,3 +139,33 @@ def test_die_kette_reicht_das_paket_durch(tmp_path, monkeypatch):
     auftritt.main(["--fall", "f", "--name", "n", "--stands-paket", str(tmp_path / "paket"),
                    "--vorschau", ""])
     assert "--stands-paket" in aufrufe[0] and str(tmp_path / "paket") in aufrufe[0]
+
+
+@pytest.mark.parametrize("feld", ["gesamt", "je_ereignis"])
+def test_eine_buchungszahl_ohne_deckung_im_journal_faellt_auf(paket, tmp_path, feld):
+    """T24-04 Teil 1, Konsumentenseite: Die Zahl muss aus dem Beleg folgen.
+
+    Bis Paketschema 2 lagen Protokoll und Manifest im Paket — damit waren
+    die protokollgespeisten Bloecke von stand.json gedeckt. ``buchungen.*``
+    kommt aber aus dem Tagesjournal, das nicht mitkam: Die Zahl stand da
+    und war zu glauben. Ein Paket, dessen stand.json die Buchungen frei
+    behauptet, kam auf die Seite.
+
+    Manipuliert wird hier NUR stand.json, nicht das Journal — das Journal
+    haengt ueber seinen Hash an der Protokollkette und ist damit schon
+    gedeckt. Offen war die Luecke zwischen einem echten Beleg und einer
+    Zahl, die nicht zu ihm passt.
+    """
+    import shutil
+
+    kopie = tmp_path / f"kopie-{feld}"
+    shutil.copytree(paket, kopie)
+    stand = json.loads((kopie / "stand.json").read_text(encoding="utf-8"))
+    assert fd.betrieb(kopie)["vorhanden"], "die unveraenderte Kopie muss durchgehen"
+    if feld == "gesamt":
+        stand["buchungen"]["gesamt"] = int(stand["buchungen"]["gesamt"]) + 1
+    else:
+        stand["buchungen"]["je_ereignis"] = {"ZUG": 999999}
+    (kopie / "stand.json").write_text(json.dumps(stand, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(fd.FalldatenFehler, match="Tagesjournal"):
+        fd.betrieb(kopie)
