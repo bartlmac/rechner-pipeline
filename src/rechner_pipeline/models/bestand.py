@@ -395,6 +395,26 @@ STATUS_HISTORIE_NAMES: Tuple[str, ...] = tuple(n for n, _ in STATUS_HISTORIE_SPA
 LEDGER_NAMES: Tuple[str, ...] = tuple(n for n, _ in LEDGER_SPALTEN)
 SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
 ABSCHLUSS_NAMES: Tuple[str, ...] = tuple(n for n, _ in ABSCHLUSS_SPALTEN)
+
+#: Die BEWERTUNGSGROESSEN des Abschlusses — jede Zahl, die ein Bilanzwert
+#: ist, abgeleitet statt aufgezaehlt (Review T25-09).
+#:
+#: Zwei Pruefungen fragen dieselbe Menge ab: die Endlichkeitswache vor dem
+#: Festschreiben (:func:`validate_abschluss`) und die Nachrechnung gegen den
+#: festgeschriebenen Stand (``bestand.abschluss.pruefe_abschluss``). Beide
+#: fuehrten sie als wortgleiches Literal, und beiden fehlte dieselbe Spalte:
+#: ``korrekturschicht`` — ausgerechnet die Position, die Grundsatz-
+#: dokumentation 9.11 fordert, weil die Schicht nie unsichtbar im
+#: Deckungskapital stehen darf. Eine unendliche Schicht durfte damit
+#: festgeschrieben werden, und eine wandernde Schicht fiel der Kontrolle
+#: nicht auf, solange die Summe stimmte.
+#:
+#: Die Ableitung ueber den Spaltentyp schliesst die Klasse: Wer dem
+#: Abschluss eine neue Bewertungsgroesse gibt, bekommt beide Pruefungen
+#: dafuer, ohne sie zu kennen.
+ABSCHLUSS_ZAHLEN: Tuple[str, ...] = tuple(
+    n for n, dtype in ABSCHLUSS_SPALTEN if dtype == "float64"
+)
 MERKMALE_NAMES: Tuple[str, ...] = tuple(n for n, _ in MERKMALE_SPALTEN)
 VERANKERUNG_NAMES: Tuple[str, ...] = tuple(n for n, _ in VERANKERUNG_SPALTEN)
 SCHICHTEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHICHTEN_SPALTEN)
@@ -1219,8 +1239,7 @@ def validate_abschluss(df: Any) -> List[str]:
         errors.append(f"abschluss: status_code ausserhalb {AKTIVE_STATUS} (nur in-force-Vertraege)")
     if df["kern_version"].map(lambda v: not isinstance(v, str) or not v).any():
         errors.append("abschluss: kern_version leer")
-    zahlen = ("leistung", "deckungskapital", "rueckkaufswert", "vs_bfr", "jahresbeitrag")
-    nichtendlich = [sp for sp in zahlen if _nichtendlich(df[sp])]
+    nichtendlich = [sp for sp in ABSCHLUSS_ZAHLEN if _nichtendlich(df[sp])]
     if nichtendlich:
         errors.append(
             f"abschluss: nichtendliche Werte in {nichtendlich} — ein "

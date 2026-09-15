@@ -39,7 +39,11 @@ from rechner_pipeline.bestand.auswertung import einzelwerte_am
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.kern import __version__ as KERN_VERSION
-from rechner_pipeline.models.bestand import ABSCHLUSS_NAMES, validate_abschluss
+from rechner_pipeline.models.bestand import (
+    ABSCHLUSS_NAMES,
+    ABSCHLUSS_ZAHLEN,
+    validate_abschluss,
+)
 
 
 class AbschlussError(ValueError):
@@ -226,7 +230,6 @@ def pruefe_abschluss(
         befunde.append(f"abschluss: Policen nur in der Neuberechnung: {nur_neu[:5]}")
 
     gemeinsam = fest_idx.index.intersection(neu_idx.index)
-    zahlen = ("leistung", "deckungskapital", "rueckkaufswert", "vs_bfr", "jahresbeitrag")
     for pid in gemeinsam:
         f, n = fest_idx.loc[pid], neu_idx.loc[pid]
         for sp in ("status_code", "produkt", "tarif_generation"):
@@ -234,7 +237,7 @@ def pruefe_abschluss(
                 befunde.append(
                     f"abschluss police {pid}: {sp} {f[sp]} -> {n[sp]}"
                 )
-        for sp in zahlen:
+        for sp in ABSCHLUSS_ZAHLEN:
             alt_wert, neu_wert = float(f[sp]), float(n[sp])
             # math.isclose(inf, inf) ist WAHR: ein nichtendlicher Bilanzwert
             # wuerde sich selbst decken und die Kontrolle bestaetigte einen

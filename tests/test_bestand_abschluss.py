@@ -30,8 +30,11 @@ from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.kern import __version__ as KERN_VERSION
 from rechner_pipeline.models.bestand import (
     ABSCHLUSS_NAMES,
+    ABSCHLUSS_SPALTEN,
+    ABSCHLUSS_ZAHLEN,
     SCHEIBEN_SPALTEN,
     STATUS_HISTORIE_SPALTEN,
+    validate_abschluss,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -436,3 +439,61 @@ def test_tausch_nach_bestandener_pruefung_wirkt_nicht_mehr(
     assert float(geschrieben[spalte].sum()) == pytest.approx(
         float(referenz[spalte].sum())), (
         "der getauschte Stand ist in den Abschluss gelangt")
+
+
+# --- T25-09: die geprueften Bewertungsgroessen kommen aus einer Quelle ----
+#
+# Zwei Pruefungen fuehrten dieselbe Spaltenmenge als Literal, und beiden
+# fehlte ``korrekturschicht``. Die Proben unten mutieren genau diese eine
+# Spalte: ohne die Ableitung bleiben beide still.
+
+
+def test_geprueft_werden_alle_bewertungsgroessen_des_abschlusses():
+    """Die Menge wird aus dem Spaltentyp abgeleitet, nicht gepflegt."""
+    assert ABSCHLUSS_ZAHLEN == tuple(
+        n for n, dtype in ABSCHLUSS_SPALTEN if dtype == "float64"
+    )
+    # Positivkontrolle: die Spalte, an der die Luecke haftete, ist drin —
+    # und jede abgeleitete Groesse ist wirklich eine Spalte des Abschlusses.
+    assert "korrekturschicht" in ABSCHLUSS_ZAHLEN
+    assert set(ABSCHLUSS_ZAHLEN) <= set(ABSCHLUSS_NAMES)
+
+
+def _mit_geaenderter_spalte(pfad, spalte, wert):
+    """Genau eine Zahl einer Police im festgeschriebenen Stand bewegen."""
+    tabelle = read_portfolio(pfad)
+    pid = int(tabelle.iloc[0]["police_id"])
+    tabelle.loc[tabelle.index[0], spalte] = wert
+    pfad.chmod(0o644)
+    write_portfolio(tabelle, pfad)
+    return pid
+
+
+def test_nachrechnung_faellt_auf_eine_bewegte_korrekturschicht(
+    lauf, config, tmp_path
+):
+    """Die Schicht ist ein eigener Bilanzposten (9.11) — bewegt sie sich,
+    ist der Stand ein anderer, auch wenn die Summe zufaellig stimmt."""
+    stamm, historie, scheiben = lauf
+    pfad = schreibe_abschluss(
+        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+    )
+    pid = _mit_geaenderter_spalte(pfad, "korrekturschicht", 5.0)
+
+    befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
+
+    assert any(f"police {pid}" in b and "korrekturschicht" in b for b in befunde)
+
+
+def test_unendliche_korrekturschicht_ist_kein_bilanzstand(
+    lauf, config, tmp_path
+):
+    stamm, historie, scheiben = lauf
+    pfad = schreibe_abschluss(
+        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+    )
+    _mit_geaenderter_spalte(pfad, "korrekturschicht", float("inf"))
+
+    fehler = validate_abschluss(read_portfolio(pfad))
+
+    assert any("korrekturschicht" in f and "nichtendlich" in f for f in fehler)
