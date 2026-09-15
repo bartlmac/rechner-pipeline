@@ -189,6 +189,35 @@ def test_schicht_ohne_anker_oder_an_eigenem_vertrag_ist_ein_fehler():
         fortschreiben(eigen, config, BIS, schichten=schichten, verankerung=verankerung)
 
 
+def test_eine_verankerte_police_ohne_schicht_ist_ein_fehler():
+    """Die GEGENRICHTUNG (Review T25-04): Verankerung und Schicht
+    beschreiben dieselbe Population.
+
+    Geprueft wurde nur "Schicht ohne Verankerung". Der umgekehrte Fall —
+    eine verankerte Police, fuer die keine Schicht in der Tabelle steht —
+    fiel nirgends auf, und die Bewertung dieses Vertrags rechnete still
+    ohne seine Korrektur weiter. Moeglich ist er, weil die beiden Tabellen
+    aus getrennten Dateien kommen: Ein Lauf schreibt sie zusammen, aber
+    nichts verlangte, dass die auf der Platte auch zusammengehoeren.
+
+    Der Produzent schreibt die Tabelle nur, wenn JEDE verankerte Police
+    eine getragene Schicht hat (T25-04, gleicher Commit) — ein Paar, das
+    auseinandergeht, stammt also nicht aus einem Lauf.
+    """
+    from rechner_pipeline.models.bestand import validate_schichten
+
+    stamm = _stamm([{"id": 900_001, "beginn": "2015-01-01", "zugang": "2026-01-01"},
+                    {"id": 900_002, "beginn": "2015-01-01", "zugang": "2026-01-01"}])
+    # Beide verankert, nur einer mit Schicht.
+    _, verankerung = _tabellen([900_001, 900_002])
+    schichten, _ = _tabellen([900_001])
+    fehler = validate_schichten(stamm, schichten, verankerung)
+    assert any("ohne Schicht" in f and "900002" in f.replace("_", "") for f in fehler), fehler
+    # Und das Paar aus EINEM Lauf ist in Ordnung.
+    schichten_beide, verankerung_beide = _tabellen([900_001, 900_002])
+    assert validate_schichten(stamm, schichten_beide, verankerung_beide) == []
+
+
 def test_der_beleg_und_die_tabelle_tragen_dieselben_parameter(tmp_path):
     """Roundtrip Beleg -> Tabelle -> Parquet -> Schichtparameter."""
     from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio

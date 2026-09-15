@@ -677,3 +677,59 @@ def test_der_schnitt_haelt_alle_verlaufsklassen(gefahrener_fall: Path):
     assert set(klassen) == erwartet
     for name, mitglieder in klassen.items():
         assert len(mitglieder) >= 2, f"Klasse {name}: {mitglieder}"
+
+
+def test_ein_roter_verankerungslauf_hinterlaesst_keine_schichttabelle(
+    gefahrener_fall: Path, tmp_path: Path,
+):
+    """Review T25-04, Klasse K3: Der Produzent veroeffentlichte sein
+    Datenartefakt VOR dem eigenen Urteil.
+
+    ``schichten.parquet`` wurde in einem Block weit vor der Befundpruefung
+    geschrieben; die Meldung am Ende sagte dann "keine halbe
+    Schichttabelle" — und die Tabelle lag schon da. Nachgemessen: ein Lauf
+    mit einem Befund hinterliess eine Tabelle mit einer von zwei Policen
+    und meldete exit 1. Wer danach nur auf die Datei sah, fand einen
+    Bestand, den dieser Lauf abgelehnt hat.
+
+    Geprueft wird, dass ein roter Lauf die Tabelle des gruenen Laufs NICHT
+    ersetzt: Sie ist danach byte-identisch.
+    """
+    import shutil
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+    from rechner_pipeline.gates import verankerung_belegen
+    from rechner_pipeline.models.bestand import VERANKERUNG_NAMES
+
+    kopie = tmp_path / "fall"
+    shutil.copytree(gefahrener_fall, kopie)
+    bestand = kopie / "abgeleitet" / "bestand"
+    tabelle = bestand / "schichten.parquet"
+    assert tabelle.is_file(), "der gruene Lauf hat keine Tabelle hinterlassen"
+    vorher = tabelle.read_bytes()
+
+    # Eine Verankerung am Ablauf: dafuer gibt es keinen Schichtparameter,
+    # der Produzent meldet einen Befund.
+    from rechner_pipeline.models.bestand import STAMM_NAMES
+
+    stamm = read_portfolio(bestand / "bestand.parquet", expected_columns=STAMM_NAMES)
+    v = read_portfolio(bestand / "verankerung.parquet", expected_columns=VERANKERUNG_NAMES)
+    police = int(v["police_id"].iloc[0])
+    # GENAU am Vertragsende: dafuer gibt es keinen Schichtparameter (der
+    # Vertrag ist dort abgelaufen), und der Produzent meldet einen Befund.
+    # Dahinter waere es ein harter Fehler, davor eine gueltige Schicht.
+    dauer = int(stamm.set_index("police_id").loc[police, "duration"])
+    v.loc[v.index[0], "monate_ta"] = dauer * 12
+    write_portfolio(v, bestand / "verankerung.parquet")
+
+    code = verankerung_belegen.main([
+        "--fall", str(kopie), "--repo-root", str(REPO_ROOT),
+        "--generation", GENERATION,
+        "--formfunktion", "proportional_zur_basis",
+        "--zeilen", str(kopie / "abgeleitet" / "transformation" / "zeilen.json"),
+        "--vorgeschichte", METADATEN,
+        "--anker-erwartungswerte", ANKER,
+    ] + _lieferungs_flags())
+    assert code == 1, "der Lauf muss rot sein — sonst prueft der Test nichts"
+    assert tabelle.read_bytes() == vorher, (
+        "der rote Lauf hat die Schichttabelle ueberschrieben")

@@ -434,12 +434,31 @@ def main(argv: Optional[List[str]] = None) -> int:
             zeilen_schichten = None
             break
         zeilen_schichten.append(schichten_zeile(int(police), eintrag["hist"]))
-    if zeilen_schichten:
+    # Das URTEIL steht vor dem Schreiben (Review T25-04, Klasse K3). Die
+    # Meldung unten sagte schon "keine halbe Schichttabelle" — geschrieben
+    # wurde sie trotzdem, in einem Block weit vor der Befundpruefung.
+    # Nachgemessen: ein Lauf mit einem Befund hinterliess eine
+    # schichten.parquet mit einer von zwei Policen und meldete exit 1. Wer
+    # danach nur auf die Datei sah, fand einen Bestand, den dieser Lauf
+    # abgelehnt hat.
+    schicht_tabelle = ueber / "schichten.parquet"
+    if zeilen_schichten and not beleg["befunde"]:
         tabelle = (pd.DataFrame(zeilen_schichten, columns=list(SCHICHTEN_NAMES))
                    .astype(dict(SCHICHTEN_SPALTEN)))
-        write_portfolio(tabelle, ueber / "schichten.parquet")
+        write_portfolio(tabelle, schicht_tabelle)
         print(f"  schichten.parquet: {len(tabelle)} Schichten im "
               f"Uebernahme-Verzeichnis {ueber}")
+    elif zeilen_schichten:
+        print(f"  schichten.parquet NICHT geschrieben: {len(beleg['befunde'])} "
+              "Befunde — erst entscheiden, dann neu erzeugen", file=sys.stderr)
+        if schicht_tabelle.is_file():
+            # Ein Rest eines frueheren, gruenen Laufs bleibt liegen — der
+            # Produzent loescht nicht, was er in diesem Lauf nicht erzeugt
+            # hat. Aber er sagt es: neben dem roten Beleg steht jetzt eine
+            # aeltere Tabelle, und wer beides liest, muss es wissen.
+            print(f"  ACHTUNG: {schicht_tabelle} liegt noch aus einem "
+                  "frueheren Lauf und gehoert NICHT zu diesem Beleg",
+                  file=sys.stderr)
 
     eingaben = {
         str(pfade["verankerung"].relative_to(fall)): verankerung_gelesen.sha256,

@@ -1592,6 +1592,20 @@ def validate_schichten(stamm: Any, schichten: Any, verankerung: Any) -> List[str
         if ohne_anker:
             errors.append(
                 f"schichten: police ohne Verankerung: {ohne_anker[:5]}")
+        # Die GEGENRICHTUNG (Review T25-04): Verankerung und Schicht
+        # beschreiben DIESELBE Population. Der Produzent
+        # (gates.verankerung_belegen) schreibt die Tabelle nur, wenn JEDE
+        # verankerte Police eine getragene Schicht hat — sonst ist der Lauf
+        # rot und es entsteht keine Tabelle. Eine verankerte Police ohne
+        # Schicht heisst also: Die beiden Tabellen stammen nicht aus
+        # demselben Lauf, und die Bewertung dieses Vertrags rechnet ohne
+        # seine Korrektur weiter, ohne dass jemand es sagt.
+        ohne_schicht = sorted(set(verankerung["police_id"]) - set(schichten["police_id"]))
+        if ohne_schicht:
+            errors.append(
+                f"verankerung: police ohne Schicht: {ohne_schicht[:5]} — "
+                "Verankerung und Korrekturschicht stammen nicht aus demselben "
+                "Lauf von gates.verankerung_belegen")
     for zeile in schichten.to_dict("records"):
         prefix = f"schichten police {zeile['police_id']}"
         if str(zeile["schichttyp"]) not in ("hist", "conv"):
