@@ -243,7 +243,20 @@ def test_ein_beleg_mit_schicht_und_verankerung_ist_kein_ungueltiger_rollenblock(
     """Der ehrliche Nach-Beleg eines Freischaltungs-Falls traegt acht Rollen.
     Die abgetippte Positivliste des Abnahmeberichts kannte zwei davon nicht
     und wies den Beleg als 'ungueltig' ab (Review T25-03, Testat 5ca0306).
-    Mutationsprobe: erlaubte_rollen wieder als Literal ohne die beiden -> rot."""
+    Mutationsprobe: erlaubte_rollen wieder als Literal ohne die beiden -> rot.
+
+    Der Beleg dieses Tests laesst `--manifest` bewusst weg: Er legt
+    `schichten.parquet` von Hand an, der Lauf nennt sie also nicht unter
+    seinen Ausgaben, und die Querpruefung des Abnahmeberichts wuerde
+    anschlagen. Seit dem Entscheid vom 2026-09-16 ist das Laufmanifest
+    aber PFLICHT — der Beleg ist damit kein gueltiger A-M4-Beleg mehr.
+    Der Gegenstand dieses Tests bleibt davon unberuehrt (die beiden
+    Rollen sind im Block ERLAUBT, es gibt keinen Absturz und keinen
+    Rollen-Befund), und genau das wird unten weiter geprueft. Die neue
+    Lage wird aber AUSDRUECKLICH mitgeprueft statt stillschweigend
+    ueberlebt — sonst stuende hier ein gruener Test auf einer Lage, die
+    es nicht mehr geben darf (Befund der merge-session, Delta-Testat
+    c6c9e17)."""
     from rechner_pipeline.bestand.parquet_io import read_portfolio
 
     fall = _kopie(bestandsfall, tmp_path)
@@ -265,6 +278,10 @@ def test_ein_beleg_mit_schicht_und_verankerung_ist_kein_ungueltiger_rollenblock(
     fehler = _b1(fall, ledger_pfad, eintrag, suite)          # kein Absturz
     assert not any("eingangsrollen" in f for f in fehler), fehler
     assert not any("Neupruefung" in f for f in fehler), fehler
+    # Die geaenderte Lage, ausdruecklich festgehalten: Derselbe Beleg
+    # faellt jetzt am fehlenden Laufmanifest. Wer die Manifest-Pflicht
+    # spaeter lockert, bemerkt es hier.
+    assert any("ohne Laufmanifest" in f for f in fehler), fehler
 
 
 def test_ein_ungueltiger_rollenblock_ist_ein_befund_kein_absturz(bestandsfall, tmp_path):
