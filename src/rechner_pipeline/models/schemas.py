@@ -23,7 +23,10 @@ Knoten: system/assurance
 """
 
 from __future__ import annotations
-from rechner_pipeline.models.zeichnung import validiere_zeichnung
+from rechner_pipeline.models.zeichnung import (
+    GUELTIGE_GATES,
+    validiere_zeichnung,
+)
 
 import hashlib
 import json
@@ -93,7 +96,14 @@ P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
 #: gezeichnet ist, dessen ABLAUFLEISTUNG aber niemand unterschrieben
 #: hat. Die Auszahlung an den Kunden ohne Unterschrift zu lassen, waere
 #: keine Vereinfachung, sondern eine Luecke in der Abnahme.
-P9_GATES: tuple[str, ...] = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1")
+#:
+#: ABGELEITET, nicht abgetippt (gefunden beim Bau von A-B1): Dieselbe
+#: Menge stand zweimal im Baum — hier und als ``GUELTIGE_GATES`` in
+#: ``models.zeichnung``. Wer ein Gate nur in eine der beiden eintraegt,
+#: bekommt ein Gate, das die CLI annimmt und das Schema ablehnt, oder
+#: umgekehrt. Die Richtung ist vorgegeben: ``schemas`` importiert
+#: ``zeichnung`` ohnehin, die Gegenrichtung waere ein Ring.
+P9_GATES: tuple[str, ...] = GUELTIGE_GATES
 #: Die aktuariellen Abnahmen. Sie tragen dieselben Zusatzfelder im
 #: Snapshot (Scope und Pflichtbelege), weil sie sich fachlich nur im
 #: Zeitpunkt unterscheiden. Einmal deklariert, nicht je Pruefstelle

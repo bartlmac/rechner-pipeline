@@ -116,6 +116,19 @@ BELEGROLLEN = {
         "tarif": ("tbox_aenderung",),
         "bestand": ("tbox_aenderung",),
     },
+    # A-B1 (Auslieferung, Entscheid des Maintainers 2026-09-16): Der
+    # Beleg ist der ANKERSATZ des auszuliefernden Pakets — der Satz, der
+    # ausserhalb des Pakets liegt und es bindet. Er ist der einzige
+    # Pflichtbeleg, und das ist kein Mangel: Was fachlich abgenommen ist,
+    # steht bereits gezeichnet IM Paket (A-M1 bis A-M4). Die Auslieferung
+    # zeichnet nicht die Zahlen, sondern den Akt: dieser Stand geht nach
+    # aussen.
+    #
+    # Nur im Bestands-Scope. Ein Tarif-Fall liefert keinen Bestand aus.
+    "A-B1": {
+        "tarif": (),
+        "bestand": ("anker",),
+    },
     "A-M4": {
         "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege"),
         "bestand": (

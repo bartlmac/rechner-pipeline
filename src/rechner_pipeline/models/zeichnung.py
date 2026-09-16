@@ -21,7 +21,23 @@ Namen. Jede Rolle traegt eine ``schluesselklasse``: ``mensch`` (eine
 natuerliche Person haelt den Schluessel), ``simulation`` (die Vorzeige
 ahmt eine menschliche Rolle nach — dieselbe Kennung, andere Klasse,
 jeder Beleg sagt es) oder ``agent`` (eine Agentenrolle des KI-Tools; sie
-legt vor und zeichnet nie, ihre gates-Liste ist leer). Die Reviews T20
+legt vor und zeichnet KEINE ABNAHME, ihre gates-Liste ist leer).
+
+**Nachtrag 2026-09-16 (Entscheid des Maintainers).** Die Regel hiess
+bis hierher "zeichnet nie". Das war eine Haelfte zu viel: Schuetzenswert
+ist die ABNAHME — die Aussage eines Menschen, dass er fuer etwas
+einsteht —, nicht jede Signatur. Ein Agent, der einen Ankersatz
+zeichnet, sagt "ich habe dieses Paket erzeugt"; das ist eine Aussage
+ueber Urheberschaft, keine Abnahme, und sein Beleg traegt die Klasse
+``agent``, sodass niemand es verwechselt. Genau dafuer wurde die Klasse
+eingefuehrt (T20/U1: aus keinem Beleg war ablesbar, ob ein Mensch oder
+eine KI-Session gezeichnet hatte). Die gates-Liste einer Agentenrolle
+bleibt leer — was ein Agent zeichnet, ist kein Gate.
+
+Der praktische Grund: Bei vielen kleinen Migrationstranchen mit
+taeglichen Exporten kann kein Mensch jeden Export zeichnen. Ein Agent
+kann es, und der Beleg sagt, dass es einer war. Der Mensch zeichnet
+dort, wo etwas nach aussen geht — einmal je Auslieferung (``A-B1``). Die Reviews T20
 und U1 fanden, dass aus keinem Beleg ablesbar war, ob ein Mensch oder
 eine KI-Session gezeichnet hatte; die Klasse wandert deshalb in die
 Ordnung und von dort in jeden Snapshot. Ordnungen nach Schema 1 werden
@@ -129,7 +145,14 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: Ordnung: Ein Gate, das man zeichnen, aber keiner Rolle geben kann,
 #: waere eine Ordnung mit Loch (so geschehen mit A-K1, gefunden beim
 #: Aufsetzen der Vier-Rollen-Regie fuer Fall-Lauf 2).
-GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1")
+#:
+#: ``A-B1.auslieferung`` (Entscheid des Maintainers 2026-09-16): die
+#: Abnahme der AUSLIEFERUNG eines Stands-Pakets — der Moment, in dem ein
+#: Stand nach aussen sichtbar wird. Sie gehoert einer FACHLICHEN Rolle
+#: (``mensch/plv-betrieb``, Kundenservice-Verantwortung fuer die
+#: Bestandsfuehrung), nicht der IT: Was ausgeliefert wird, verantwortet
+#: der Betrieb, nicht der, der die Maschine betreibt.
+GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1", "A-B1")
 
 
 def _unter(pfad: Path, wurzel: Path) -> bool:

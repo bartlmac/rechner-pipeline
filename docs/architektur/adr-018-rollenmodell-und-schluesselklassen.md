@@ -122,6 +122,41 @@ Simulationsschluessel ist. Neue Faelle laufen unter diesem ADR.
   der simulierten Menschen und erzeugt deren Mandate; die Auftragsprofile
   der Agentenrollen sind Tool und liegen im Repo.
 
+## Nachtrag 2026-09-16: Agenten zeichnen keine ABNAHME
+
+Die Regel hiess "Agentenrollen legen vor und zeichnen nie". Das war eine
+Haelfte zu viel.
+
+Schuetzenswert ist die **Abnahme** — die Aussage eines Menschen, dass er
+fuer etwas einsteht. Nicht schuetzenswert in diesem Sinn ist jede
+Signatur: Ein Agent, der einen Ankersatz zeichnet, sagt "ich habe dieses
+Paket erzeugt". Das ist eine Aussage ueber URHEBERSCHAFT, keine Abnahme,
+und sein Beleg traegt die Klasse `agent` — genau dafuer wurde die Klasse
+eingefuehrt (T20/U1: aus keinem Beleg war ablesbar, ob ein Mensch oder
+eine KI-Session gezeichnet hatte). Wer die Klasse liest, wird nicht
+getaeuscht; das Verbot war die zweite, staerkere Absicherung, und sie
+passt nicht mehr, seit Agentenrollen untereinander Pakete uebergeben.
+
+Praezisiert gilt also:
+
+* Eine Agentenrolle zeichnet **keine Abnahme**. Ihre `gates`-Liste bleibt
+  leer, und der Validator erzwingt das unveraendert — was ein Agent
+  zeichnet, ist kein Gate.
+* Eine Agentenrolle **darf** einen Satz zeichnen, der keine Abnahme ist
+  (heute: den Ankersatz eines Stands-Pakets, `betrieb.anker`).
+* Die Abnahmen bleiben `mensch` und `simulation` vorbehalten.
+
+**Der praktische Grund** (Entscheid des Maintainers 2026-09-16): Bei
+vielen kleinen Migrationstranchen mit taeglichen Exporten kann kein
+Mensch jeden Export zeichnen. Ein Agent kann es, und der Beleg sagt, dass
+es einer war. Der Mensch zeichnet dort, wo etwas nach AUSSEN geht —
+einmal je Auslieferung, ueber die neue Abnahme `A-B1.auslieferung`.
+
+**Verworfen: ein zweiter, eigener Signaturmechanismus** nur fuer
+Urheberschaft. Zwei Mechanismen waeren zwei Wahrheiten ueber dasselbe;
+wer prueft, muesste beide kennen und wissen, welcher wo gilt. Dieselbe
+Doppelung hat Review T25-06 in anderer Gestalt gekostet.
+
 ## Bewusst nicht Bestandteil
 
 Die Modellierung simulierter Rueckfragen (naechste Ausbaustufe der

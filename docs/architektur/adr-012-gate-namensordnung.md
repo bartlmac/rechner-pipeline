@@ -87,8 +87,18 @@ die Belege lesen.
 | `G-T` | `A-K1` | Tarifgeneration |
 | `G-A` | `A-M1` | Stichtagstest |
 | `G-2` | `A-M4` | Migrationscontrolling |
+| (neu) | `A-B1.auslieferung` | Auslieferung eines Stands-Pakets |
 | `P9.gate-entscheid` | `entscheid.vollzug` | das Entscheid-Kommando |
 | `P9.<gate>` | `entscheid.<abnahme>` | Ledger-Eintrag eines Vollzugs |
+
+**`A-B1.auslieferung`** (Entscheid des Maintainers 2026-09-16) ist die
+erste Abnahme mit Gegenstand `B`: Sie zeichnet den Moment, in dem ein
+Stands-Paket nach AUSSEN sichtbar wird. Die Nummer 1 ist frei, weil die
+Nummern je Art UND Gegenstand laufen — `P-B1.bestandspruefung` ist eine
+Pruefung, `A-B1.auslieferung` eine Abnahme. Gezeichnet wird sie von
+`mensch/plv-betrieb`, einer fachlichen Rolle (Kundenservice-Verantwortung
+fuer die Bestandsfuehrung), nicht von der IT: Was ausgeliefert wird,
+verantwortet der Betrieb, nicht der, der die Maschine betreibt.
 
 **`A-M2` (Verlaufstest) und `A-M3` (Geschaeftsvorfalltest)** waren bei
 Abfassung reserviert; sie sind inzwischen vergeben und gebaut
