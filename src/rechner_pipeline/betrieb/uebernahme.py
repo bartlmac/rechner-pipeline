@@ -449,7 +449,23 @@ def validate_eingang(daten: Any) -> List[str]:
     if not isinstance(daten, dict):
         return ["Eingang ist kein JSON-Objekt"]
     if daten.get("schema_version") != EINGANG_SCHEMA_VERSION:
-        fehler.append(f"schema_version {daten.get('schema_version')!r}, erwartet {EINGANG_SCHEMA_VERSION}")
+        # Den AUSWEG nennen, nicht nur den Befund (Betriebsbefund
+        # 2026-09-16): Eine Ablage, deren Eingang aus einem aelteren
+        # Codestand stammt, bricht den Tageslauf hart ab — und die
+        # naheliegende Reaktion ist die falsche. Wer hier nur
+        # "erwartet 2" liest, schreibt die 2 in die Datei und hat dann
+        # einen Eingang, der Schema 2 BEHAUPTET, ohne Nummernband und
+        # ohne Uebersetzungstabelle. Ein Eingang wird nie umgeschrieben;
+        # der Weg ist die Neuaufsetzung der Ablage aus dem Fall.
+        fehler.append(
+            f"schema_version {daten.get('schema_version')!r}, erwartet "
+            f"{EINGANG_SCHEMA_VERSION} — ein Eingang wird nie umgeschrieben "
+            "(eine neue Lieferung ist ein neuer Eingang). Der Weg ist "
+            "'python -m rechner_pipeline.betrieb.neuaufsetzen --stand "
+            "<ablage> --fall faelle/<fall> --stichtag <ISO>': Die "
+            "Umnummerierung geschieht beim Registrieren, die Gates werden "
+            "NICHT neu gezeichnet"
+        )
     if not isinstance(daten.get("fall"), str) or not daten["fall"].strip():
         fehler.append("fall fehlt")
     try:
