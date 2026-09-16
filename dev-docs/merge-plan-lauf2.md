@@ -164,7 +164,7 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    -0,14 EUR); 23 Korrekturen final, Bilanz in
    docs/faelle/baldrian-lauf2.md und dev-docs/lauf2-auswertung.md. Korrektur-Zaehlung fuer den
    PR-Schnitt-Vorbehalt (Gebiet Kern/Gates) beginnt mit 1:
-   Vorlauf-Fix der Zeichnungsordnungs-Allowlist (A-K1 war zeichenbar,
+   Vorlauf-Fix der Zeichnungsordnungs-Allowlist (A-O1 war zeichenbar,
    aber keiner Rolle zuweisbar; gate_entscheid, vor Laufstart).
    Stand 2026-09-01, waehrend des Laufs: acht Korrekturen (Details in
    regie/drehbuch-lauf2.md), davon im Kern/Gates-Gebiet die

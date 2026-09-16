@@ -11,11 +11,11 @@ frei zu behaupten.
   ununterscheidbar, und jeder Versionsvergleich laeuft ins Leere. Der Test
   laeuft ueber ALLE Leser mit Versionsfeld (A-Box, Spez, die vier
   from_dict der Ergebnis-Schemata), nicht nur die zwei Reviewer-Zitate.
-* T23-03: A-K1 belegt einen echten Uebergang: ``von_version`` ist der im
+* T23-03: A-O1 belegt einen echten Uebergang: ``von_version`` ist der im
   Code deklarierte Vorgaenger (``TBOX_VERSIONEN``), die Ordnung laeuft
   aufwaerts. Erfundene, rueckwaerts laufende und vorgaengerlose
   Uebergaenge werden nicht signiert.
-* T23-09: Belegpfade sind raeumlich gebunden — das A-K1-Artefakt im Fall
+* T23-09: Belegpfade sind raeumlich gebunden — das A-O1-Artefakt im Fall
   oder im Repo, das Mandat (wie Ordnung und Schluessel) AUSSERHALB des
   Falls; das galt bisher nur fuer die Ordnung.
 
@@ -40,7 +40,7 @@ from rechner_pipeline.ontologie.tbox import ABOX_SCHEMA_VERSION, TBOX_VERSION, A
 from rechner_pipeline.spez.schema import SPEZ_VERSION
 from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, validate_spez
 from tests.e2e_fixture import bereite_pk1_fall
-from tests.test_tbox_version_ak1 import _beleg
+from tests.test_tbox_version_ao1 import _beleg
 from tests.zeichnung_fixture import annahme_args
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -105,7 +105,7 @@ def test_ergebnis_schemata_synthetisieren_keine_schema_version(klasse):
 
 
 # --------------------------------------------------------------------------- #
-# T23-03: A-K1 belegt einen nachweisbaren Uebergang
+# T23-03: A-O1 belegt einen nachweisbaren Uebergang
 # --------------------------------------------------------------------------- #
 
 def _pruefe(fall: Path, beleg: Path) -> list:
@@ -183,7 +183,7 @@ def test_p9_gate_verweigert_mandat_im_fall(fall, monkeypatch):
     innen = fall / "abgeleitet" / "mandat.txt"
     innen.write_text("Mandat\n", encoding="utf-8")
     ergebnis = gate_entscheid.main([
-        "--fall", str(fall), "--gate", "A-K1", "--entscheid", "angenommen",
+        "--fall", str(fall), "--gate", "A-O1", "--entscheid", "angenommen",
         "--entscheider", "IT-Verantwortung", "--begruendung", "T-Box erweitert",
         "--repo-root", str(REPO_ROOT), *annahme_args(fall), "--mandat", str(innen),
     ])

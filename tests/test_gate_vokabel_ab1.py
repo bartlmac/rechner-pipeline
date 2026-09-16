@@ -196,7 +196,7 @@ ERLAUBTE_LITERALE = {
     # Die Nicht-Leer-Regel gilt bewusst nicht ueberall: A-M1 darf im
     # Tarif-Scope belegfrei angenommen werden, A-B1 hat dort gar keine
     # Rollen. Die exakte Rollenmenge erzwingt der Lesepfad.
-    ("A-M4", "A-K1", "A-K2"),
+    ("A-M4", "A-O1", "A-K2"),
 }
 
 

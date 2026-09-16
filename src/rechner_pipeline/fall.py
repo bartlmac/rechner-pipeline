@@ -107,14 +107,23 @@ BELEGROLLEN = {
         "tarif": (),
         "bestand": ("aktuartest_am3", "aktuartest_am3_bericht"),
     },
-    # A-K1 (T-Box-Aenderung, Review T22-02): der Beleg ist die
+    # A-O1 (T-Box-Aenderung, Review T22-02): der Beleg ist die
     # Aenderungsdatei abgeleitet/tbox/aenderung.json — alte und neue
     # Version, SHA-256 des T-Box-Moduls, Aenderungsartefakt. Scope-
     # unabhaengig, weil eine T-Box-Aenderung das Vokabular aller Faelle
     # betrifft.
-    "A-K1": {
-        "tarif": ("tbox_aenderung",),
-        "bestand": ("tbox_aenderung",),
+    # Zweiter Pflichtbeleg seit dem Entscheid des Maintainers
+    # 2026-09-16: die aktuarielle STELLUNGNAHME zur Wirksamkeit der
+    # betroffenen Felder. Gezeichnet wird A-O1 von mensch/architektur —
+    # wer verantwortet, welche Begriffe das Zielsystem fuehrt,
+    # verantwortet sein Datenmodell. Ob ein Feld tarif- oder
+    # bewertungswirksam ist und was verlorengeht, wenn es entfaellt, ist
+    # aber eine fachliche Frage und gehoert dem Aktuariat. Dasselbe
+    # Muster wie bei A-B1: Die Unterschrift gehoert einer Rolle, der
+    # Beleg kommt aus einer anderen.
+    "A-O1": {
+        "tarif": ("tbox_aenderung", "stellungnahme_aktuariat"),
+        "bestand": ("tbox_aenderung", "stellungnahme_aktuariat"),
     },
     # A-K2 (Kern-Aenderung, Entscheid des Maintainers 2026-09-16): ZWEI
     # Pflichtbelege, die verschiedene Dinge bezeugen. Der

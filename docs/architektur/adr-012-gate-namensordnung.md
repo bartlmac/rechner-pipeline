@@ -59,7 +59,8 @@ Gates hinzu. Jedes Gate, das vor der Umstellung entsteht, verteuert sie.
 
 | | |
 |---|---|
-| `Q` | Quellen und Ontologie |
+| `Q` | Quellen und ihre A-Box |
+| `O` | Ontologie: die T-Box, das Vokabular des Zielsystems |
 | `K` | Rechenkern |
 | `B` | Bestand |
 | `M` | Migration als Ganzes |
@@ -84,18 +85,49 @@ die Belege lesen.
 | `GA-vorlage.aktuarieller-test` | `A-M1.stichtagstest` | Vorlage der aktuariellen Abnahme |
 | `G2-vorlage.migrationsabnahme` | `A-M4.migrationscontrolling` | Vorlage der Controlling-Abnahme |
 | `G-1` | `A-Q1` | Quellenabnahme |
-| `G-T` | `A-K1` | Tarifgeneration |
+| `G-T` | `A-K1`, dann `A-O1` | T-Box-Aenderung (siehe unten) |
 | `G-A` | `A-M1` | Stichtagstest |
 | `G-2` | `A-M4` | Migrationscontrolling |
 | (neu) | `A-B1.auslieferung` | Auslieferung eines Stands-Pakets |
 | (neu) | `A-K2.kernaenderung` | Aenderung am Rechenkern |
+| `A-K1` | `A-O1.tbox-aenderung` | T-Box-Aenderung (Gegenstand `O`) |
 | `P9.gate-entscheid` | `entscheid.vollzug` | das Entscheid-Kommando |
 | `P9.<gate>` | `entscheid.<abnahme>` | Ledger-Eintrag eines Vollzugs |
+
+**`A-O1.tbox-aenderung`** (Entscheid des Maintainers 2026-09-16) ist die
+Abnahme einer T-Box-Aenderung. Sie hiess bis dahin `A-K1` und lag damit
+unter dem Gegenstand `K` — dem RECHENKERN, mit dem sie nichts zu tun
+hat. Der Rechner rechnet; die T-Box legt fest, welche Begriffe das
+Zielsystem ueberhaupt kennt.
+
+Der alte Name war ein unbereinigter Rest: `G-T` hiess "Gate Tarif" und
+nahm wirklich eine Tarifgeneration ab. Seit Review T22-02 verlangt der
+Belegvertrag aber `tbox_aenderung`, und die Tarifgeneration wird von
+`P-K1` und `A-M4` abgenommen. Register und Beleg sagten seither
+Verschiedenes; jetzt sagen sie dasselbe.
+
+Dafuer bekommt die Ontologie einen eigenen Gegenstand `O`, und `Q`
+schaerft sich auf "Quellen und ihre A-Box". Das ist keine Spitzfindigkeit:
+Die A-Box sind die Instanzen, die aus EINER Quelle kommen, je Fall; die
+T-Box ist das Vokabular des ZIELSYSTEMS, fallübergreifend. `P-Q1` bis
+`P-Q3` und `A-Q1` bleiben deshalb, wo sie sind — sie betreffen wirklich
+die Quelle.
+
+Gezeichnet wird `A-O1` von `mensch/architektur`: Wer verantwortet, welche
+Begriffe das Zielsystem fuehrt, verantwortet sein Datenmodell. Die
+FACHLICHE Seite der Frage — ist das Feld tarif- oder bewertungswirksam,
+was geht verloren, wenn es entfaellt — gehoert aber dem Aktuariat, und
+deshalb verlangt der Belegvertrag zusaetzlich dessen Stellungnahme.
+Dasselbe Muster wie bei `A-B1`: Die Unterschrift gehoert einer Rolle,
+der Beleg kommt aus einer anderen. Eine Doppelunterschrift kennt das
+System nicht — geteilte Verantwortung ist keine.
 
 **`A-K2.kernaenderung`** (Entscheid des Maintainers 2026-09-16) nimmt
 eine Aenderung an Code oder Dokumentation des RECHENKERNS ab. Art `A`,
 weil ein Mensch zeichnet; Gegenstand `K`, weil der Rechenkern gemeint
-ist; Nummer 2, weil `A-K1` vergeben ist und Nummern nicht nachruecken.
+ist; Nummer 2, weil die 1 unter `K` vergeben WAR — sie gehoerte dem
+Gate, das heute `A-O1` heisst. Nach der Regel dieses ADR rutscht
+nichts nach: `A-K1` bleibt eine Luecke.
 Gezeichnet wird sie von `mensch/rechenkern` — bis dahin war das
 folgenreichste, was am Zielsystem geschieht, nur durch Commit-Disziplin
 geregelt (Abnahme-Protokoll in `kern/__init__`): keine Zeichnung, kein

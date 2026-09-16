@@ -191,11 +191,11 @@ Fall die Auslieferung des Gesamtbestands gehoert. Der Ausweg waere ein
 Entscheidungsraum der ABLAGE neben dem des Falls. Das ist eine eigene
 Entscheidung und hier nur festgehalten, nicht getroffen.
 
-**Dieselbe Bauform ein zweites Mal: `A-K1`.** Das Register nennt sie
+**Dieselbe Bauform ein zweites Mal: `A-O1`.** Das Register nennt sie
 "Tarifgeneration", ihr Belegvertrag verlangt seit Review T22-02 aber eine
-T-Box-Aenderung (`fall.py`, `BELEGROLLEN["A-K1"]`), und zwar
+T-Box-Aenderung (`fall.py`, `BELEGROLLEN["A-O1"]`), und zwar
 scope-unabhaengig — "weil eine T-Box-Aenderung das Vokabular aller Faelle
-betrifft". Damit zeichnet A-K1 heute zwei verschiedene Dinge unter einem
+betrifft". Damit zeichnet A-O1 heute zwei verschiedene Dinge unter einem
 Namen: eine Tarifgeneration (Anlass Fall, Geltung Fall) und eine
 Erweiterung des Vokabulars (Anlass Fall, Geltung LINIE).
 
@@ -210,7 +210,7 @@ laufuebergreifend verglichen, was bei Fall-Eigentum sinnlos waere.
 Dasselbe Muster traegt der Rechenkern: veranlasst durch einen Fall,
 verantwortet von der Linie.
 
-**Entschieden am 2026-09-16, nachdem die Frage gestellt war:** `A-K1`
+**Entschieden am 2026-09-16, nachdem die Frage gestellt war:** `A-O1`
 zerfaellt nicht, aber der Rechenkern bekommt eine eigene Abnahme. Neu ist
 `A-K2.kernaenderung`, gezeichnet von `mensch/rechenkern`; sie nimmt die
 Aenderung an Code und Dokumentation des Rechenkerns ab. Sie ist eine
@@ -218,6 +218,17 @@ FALL-Abnahme: Kernaenderungen entstehen heute nur im Fall, und die
 spaeteren Anlaesse — Produkteinfuehrung, regulatorische Aenderung — haben
 denselben Charakter. Damit bleibt die Linie ohne eigene Abnahme, und die
 Frage nach dem Ort der Linien-Snapshots betrifft nur noch `A-B1`.
+
+Zugleich bekommt die T-Box ihren eigenen Gegenstand: `A-K1` heisst
+jetzt `A-O1.tbox-aenderung` und liegt nicht mehr unter `K` (Rechenkern),
+womit sie nichts zu tun hat. Gezeichnet wird sie von
+`mensch/architektur` — wer verantwortet, welche Begriffe das Zielsystem
+fuehrt, verantwortet sein Datenmodell. Die fachliche Seite der Frage
+gehoert dagegen dem Aktuariat, und deshalb verlangt der Belegvertrag
+zusaetzlich dessen Stellungnahme je betroffenem Feld. Dasselbe Muster
+wie bei `A-B1`: Die Unterschrift gehoert einer Rolle, der Beleg kommt
+aus einer anderen; eine Doppelunterschrift kennt das System nicht, denn
+geteilte Verantwortung ist keine.
 
 `A-K2` traegt `regression` als PFLICHTbeleg. Das ist die eigentliche
 Entscheidung dahinter: Der geaenderte Kern bewertet nach der Migration

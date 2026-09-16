@@ -1,9 +1,9 @@
 """Externes Review T22-02: Die T-Box-Version war nominal — kein Gate verglich sie.
 
-Nachweis des Reviews: ``abox_tbox 999.0.0 -> pq3_exit 0``. Und fuer A-K1
+Nachweis des Reviews: ``abox_tbox 999.0.0 -> pq3_exit 0``. Und fuer A-O1
 gab es keinen Beleg-Vertrag: Eine T-Box-Aenderung liess sich zeichnen,
 ohne dass irgendetwas die Aenderung belegte. Jetzt haelt P-Q3 die A-Box,
-P-K1 die Spez gegen die geltende Version, und A-K1 verlangt den Beleg
+P-K1 die Spez gegen die geltende Version, und A-O1 verlangt den Beleg
 ``abgeleitet/tbox/aenderung.json``.
 
 Knoten: system/entscheid
@@ -80,15 +80,36 @@ def test_validate_spez_haelt_spez_abox_und_code_zusammen(fall):
 
 
 # --------------------------------------------------------------------------- #
-# A-K1 hat einen Beleg-Vertrag
+# A-O1 hat einen Beleg-Vertrag
 # --------------------------------------------------------------------------- #
 
 def _ak1(fall: Path, *extra: str):
     return gate_entscheid.main([
-        "--fall", str(fall), "--gate", "A-K1", "--entscheid", "angenommen",
+        "--fall", str(fall), "--gate", "A-O1", "--entscheid", "angenommen",
         "--entscheider", "IT-Verantwortung", "--begruendung", "T-Box erweitert",
         "--repo-root", str(REPO_ROOT), *annahme_args(fall), *extra,
     ])
+
+
+def _stellungnahme(fall: Path, **ueberschreibung) -> Path:
+    """Die aktuarielle Stellungnahme — zweiter Pflichtbeleg seit dem
+    Entscheid des Maintainers 2026-09-16."""
+    tbox_dir = fall / "abgeleitet" / "tbox"
+    tbox_dir.mkdir(parents=True, exist_ok=True)
+    daten = {
+        "schema_version": 1,
+        "nach_version": TBOX_VERSION,
+        "verfasser_rolle": "mensch/aktuariat",
+        "felder": [{
+            "name": "RK",
+            "wirkung": "tariflich",
+            "begruendung": "Raucherkennzeichen war im Quellsystem beitragswirksam.",
+        }],
+    }
+    daten.update(ueberschreibung)
+    pfad = tbox_dir / "stellungnahme.json"
+    pfad.write_text(json.dumps(daten, indent=2), encoding="utf-8")
+    return pfad
 
 
 def _beleg(fall: Path, **ueberschreibung) -> Path:
@@ -116,18 +137,33 @@ def test_ak1_ohne_beleg_wird_gesperrt(fall):
     assert ergebnis.exit_code == 20
     assert ergebnis.errors[0]["code"] == "vorbedingung"
     assert "aenderung.json" in ergebnis.errors[0]["message"]
-    assert list((fall / "entscheide").glob("A-K1-*.json")) == []
+    assert list((fall / "entscheide").glob("A-O1-*.json")) == []
+
+
+def test_ao1_ohne_stellungnahme_wird_gesperrt(fall):
+    """Die fachliche Seite ist nicht optional: Wer ein Feld ins Vokabular
+    des Zielsystems hebt oder es weglaesst, entscheidet ueber eine
+    fachliche Wirkung — und die beurteilt das Aktuariat, nicht die IT."""
+    _beleg(fall)
+    ergebnis = _ak1(fall)
+    assert ergebnis.exit_code == 20
+    assert "Stellungnahme" in ergebnis.errors[0]["message"]
+    assert list((fall / "entscheide").glob("A-O1-*.json")) == []
 
 
 def test_ak1_mit_beleg_pinnt_ihn_als_pflichtrolle(fall):
     beleg = _beleg(fall)
+    stellung = _stellungnahme(fall)
     ergebnis = _ak1(fall)
     assert ergebnis.exit_code == 0, ergebnis.errors
     snapshot = json.loads(Path(ergebnis.paths["snapshot"]).read_text(encoding="utf-8"))
     assert snapshot["pflichtbelege"] == {
-        "tbox_aenderung": [hashlib.sha256(beleg.read_bytes()).hexdigest()]}
+        "tbox_aenderung": [hashlib.sha256(beleg.read_bytes()).hexdigest()],
+        "stellungnahme_aktuariat": [
+            hashlib.sha256(stellung.read_bytes()).hexdigest()],
+    }
     assert snapshot["fall_scope"] == "tarif"
-    # Der Lesepfad prueft die Rollenmenge auch fuer A-K1 -- aber nur fuer
+    # Der Lesepfad prueft die Rollenmenge auch fuer A-O1 -- aber nur fuer
     # Snapshots des AKTUELLEN Standes; der frisch gezeichnete traegt ihn.
     assert gate_entscheid._pruefe_g2_snapshot_semantik(
         snapshot, snapshot["system"]) == []
@@ -155,3 +191,43 @@ def test_ak1_beleg_artefakt_muss_existieren_und_stimmen(fall):
     assert "nicht gefunden" in _ak1(fall).errors[0]["message"]
     _beleg(fall, artefakt={"pfad": "abgeleitet/tbox/aenderungsvermerk.md", "sha256": "00" * 32})
     assert "Hash stimmt nicht" in _ak1(fall).errors[0]["message"]
+
+
+# --------------------------------------------- Die Stellungnahme selbst
+
+
+@pytest.mark.parametrize("ueberschreibung, stichwort", [
+    ({"schema_version": 99}, "schema_version"),
+    ({"nach_version": "999.0.0"}, "anderen T-Box-Aenderung"),
+    ({"verfasser_rolle": "mensch/architektur"}, "keine Aussage der IT"),
+    ({"felder": []}, "Unterschrift unter nichts"),
+    ({"felder": [{"name": "RK", "wirkung": "tariflich"}]}, "begruendung fehlt"),
+    ({"felder": [{"name": "RK", "wirkung": "vielleicht",
+                  "begruendung": "x"}]}, "wirkung muss"),
+    ({"felder": [{"wirkung": "tariflich", "begruendung": "x"}]}, "name fehlt"),
+])
+def test_die_stellungnahme_faengt_die_naheliegenden_faelschungen(
+    fall, ueberschreibung, stichwort
+):
+    _beleg(fall)
+    pfad = _stellungnahme(fall, **ueberschreibung)
+    aenderung = json.loads(
+        (fall / "abgeleitet" / "tbox" / "aenderung.json").read_text("utf-8"))
+    fehler = gate_entscheid.pruefe_stellungnahme_aktuariat(
+        pfad, fall, aenderung=aenderung)
+    assert any(stichwort in f for f in fehler), (ueberschreibung, fehler)
+
+
+def test_ohne_wirkung_ist_eine_gueltige_aussage(fall):
+    """"Wir haben hingesehen und nichts gefunden" ist etwas anderes als
+    Schweigen — und muss deshalb sagbar sein."""
+    _beleg(fall)
+    pfad = _stellungnahme(fall, felder=[{
+        "name": "BGRP", "wirkung": "ohne-wirkung",
+        "begruendung": "Weder tarif- noch bewertungsrelevant, Gruppe rein "
+                       "organisatorisch.",
+    }])
+    aenderung = json.loads(
+        (fall / "abgeleitet" / "tbox" / "aenderung.json").read_text("utf-8"))
+    assert gate_entscheid.pruefe_stellungnahme_aktuariat(
+        pfad, fall, aenderung=aenderung) == []

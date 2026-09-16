@@ -32,7 +32,7 @@ Quell-Rechner, Bestandsdaten) in einen abgenommenen Rechenkern. Das
 einzige Interface zwischen den Stufen ist eine Ontologie:
 
 * **T-Box** (`ontologie/tbox.py`): das Domaenenmodell — menschlich
-  verantwortet, versioniert; Agenten aendern es nie autonom (Gate A-K1).
+  verantwortet, versioniert; Agenten aendern es nie autonom (Gate A-O1).
 * **A-Box** (Instanzen eines Falls): von Agenten befuellt, von
   deterministischem Code gemergt und validiert; Single Source of Truth
   fuer alles Nachgelagerte. Kanonischer Speicher ist deterministisches
@@ -157,7 +157,7 @@ noch den O-/P9-Weg auf dem stabilen Zielkern.
   fail-fast als "nicht pruefbar" — ein breiterer Formel-Parser bleibt
   offen.
 * Kein Graph-Store, keine Embeddings, keine BU-/FLV-/Renten-Klassen in
-  der T-Box (kommen mit ihren Faellen ueber A-K1), kein Legacy-Code-
+  der T-Box (kommen mit ihren Faellen ueber A-O1), kein Legacy-Code-
   Vorverdichter, keine Bestandsdaten-Quelle in Stufe 1 (Quelltyp ist im
   Schema vorgesehen).
   UEBERHOLT, soweit es die Bestandsdaten betrifft: den Quelltyp
@@ -240,7 +240,7 @@ EINER Quelle, nicht zwischen zweien.
 (Zeichenkette plus Fundstelle je Ziffer), dazu ein Gate, das die
 extrahierten Formeln je Ziffer gegen die Paragrafen des Tarifplans
 stellt. Das aendert den Contract und ist damit eine T-Box-Frage
-(Gate A-K1). Ausloeser: der erste Fall, in dem der Quell-Rechner NICHT
+(Gate A-O1). Ausloeser: der erste Fall, in dem der Quell-Rechner NICHT
 die abzunehmende Lesart ist — etwa eine Lieferung ohne Rechner oder
 eine A-Q1-Entscheidung gegen den Rechner.
 
@@ -252,7 +252,7 @@ Schichten, jede versioniert, jede mit eigener Aenderungs-Disziplin:
 | Schicht | Traegt | Ort | Aendert sich durch |
 |---|---|---|---|
 | Deterministischer Code | das Verfahren selbst: Vorverdichtung, Merge, Konfliktbildung, Coverage, Struktur-Urteil, Projektion, Tafel-Ableitung, Vergleich, Gates | `quellen/`, `ontologie/`, `spez/`, `gates/` | Commits unter Test-Pflicht |
-| Contracts & T-Box | WAS zu extrahieren ist (QuellFragment-Schema, generiert), was Pflicht ist (PFLICHT_PARAMETER), wohin es mappt (ModelPoint-Felder) | `ontologie/tbox.py`, `ontologie/befuellung.py` | Gate A-K1 (T-Box-Aenderung, Mensch) |
+| Contracts & T-Box | WAS zu extrahieren ist (QuellFragment-Schema, generiert), was Pflicht ist (PFLICHT_PARAMETER), wohin es mappt (ModelPoint-Felder) | `ontologie/tbox.py`, `ontologie/befuellung.py` | Gate A-O1 (T-Box-Aenderung, Mensch) |
 | Skills (Agenten-Anweisungen) | WIE die probabilistischen Schritte urteilen: Extraktionsregeln je Quelltyp, das systematische Vorgehen eines Falls, Abbruchkriterien | `.claude/skills/` + `.agents/skills/` (Paritaet test-tragend): `migrationsfall-durchfuehren` (Runbook), `extrahiere-quellfragment` (Stage-1-Agent) | Commits; der Skill-Stand (Git-SHA) gehoert in den Akteur-String der Provenienz (P1) |
 | Praezedenzfall | WIE ein fertiges Ergebnis aussieht: A-Box, Spez, Fachspez, Diskrepanzen, Gate-Ledger des Falls KLV TG2012->TG2015 | `faelle/baldrian-klv-tg2015` (lokal; echte Faelle ausserhalb des Repos) | jeder abgeschlossene Fall wird Referenz des naechsten |
 

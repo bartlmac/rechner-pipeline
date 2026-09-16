@@ -143,7 +143,7 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 
 #: Alle zeichenbaren Gates. Massgeblich fuer die gates-Listen der
 #: Ordnung: Ein Gate, das man zeichnen, aber keiner Rolle geben kann,
-#: waere eine Ordnung mit Loch (so geschehen mit A-K1, gefunden beim
+#: waere eine Ordnung mit Loch (so geschehen mit A-O1, gefunden beim
 #: Aufsetzen der Vier-Rollen-Regie fuer Fall-Lauf 2).
 #:
 #: ``A-B1.auslieferung`` (Entscheid des Maintainers 2026-09-16): die
@@ -177,7 +177,7 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: Regressionsproduzenten bewusst nicht zeichenbar. Das ist Absicht: Der
 #: geaenderte Kern bewertet nach der Migration den laufenden Bestand
 #: weiter, und diese Wirkung sieht sonst niemand.
-GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1", "A-K2", "A-B1")
+GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-O1", "A-K2", "A-B1")
 
 #: Zeichenbare Gates OHNE Belegvertrag — die begruendete Ausnahme.
 #:

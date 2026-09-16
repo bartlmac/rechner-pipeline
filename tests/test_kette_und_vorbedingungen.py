@@ -363,7 +363,7 @@ def _ordnung_und_schluessel(tmp_path):
              "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
         "mensch/architektur": {"schluessel_sha256": fingerprints["plv-it"],
                                     "schluesselklasse": "simulation",
-                                    "gates": ["A-K1"]},
+                                    "gates": ["A-O1"]},
     }}), encoding="utf-8")
     return ordnung, schluessel
 

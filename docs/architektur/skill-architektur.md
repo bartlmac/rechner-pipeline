@@ -49,7 +49,7 @@ Vorzeige haelt ihre Auftragsprofile (ADR-017).
 | Entwicklung | `entwickle-im-zielsystem` | Code unter der nicht verhandelbaren Architektur bauen (Schichtenkarte, Determinismus, Fail-fast, Knoten-Annotation, Test-Pflicht) | Architektur "pragmatisch" brechen; ohne Tests committen; Kern-Verankerungen anfassen |
 | Qualitaetssicherung | `teste-adversarial` | Bloecke adversarial reviewen (Finden -> Widerlegen -> Fixen -> Regressionstest) und die Test-Disziplin tragen (Mutations-Denken, unabhaengige Kontrollrechnung) | Findings ungeprueft uebernehmen; gruene Suiten als Beleg fuer Vollstaendigkeit lesen |
 | Dokumentation | `dokumentiere-system` | Doku unter den Repo-Regeln (generiert schlaegt handgeschrieben, ein Zuhause je Typ, ADR-Format, Ehrlichkeits-Abschnitte) | Inhalte doppeln (Drift); Grenzen beschoenigen |
-| Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (A-K1) |
+| Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (A-O1) |
 | Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen RECHNEN, Entscheidungs-Dossier + Empfehlung liefern, dann STOPP | entscheiden (auch nicht "offensichtliche" Faelle); Quellen-Hierarchie festlegen |
 | Gate-Autorenschaft | `author-rechner-toolbox-gate` | neue Pruef-CLIs unter dem Ledger-/Exit-Contract | Fachlogik ausserhalb des Pruefens |
 | Aktuarieller Test | `aktuartest-durchfuehren` | die drei Abnahmen je Vertrag an seinen eigenen Rechenpunkten fahren (Engine, aktuartest-Gate) und je Abnahme eine Vorlage aufbereiten: A-M1 Stichtagstest, A-M2 Verlaufstest, A-M3 Geschaeftsvorfalltest | abnehmen (Mensch, A-M1); Werte selbst rechnen; interpolieren oder summieren (Engine verbietet es); Toleranzen aufweichen |
@@ -67,11 +67,11 @@ migrationsfall-durchfuehren
   |     --> transformiere-quellbestand --> TransformationsSpec
   |     --> ontologie/transformation validate_spec,
   |         gates/transformation_anwenden wende_an (Code)
-  |     offener Konflikt / fehlendes Zielfeld --> MENSCH (A-Q1 bzw. A-K1)
+  |     offener Konflikt / fehlendes Zielfeld --> MENSCH (A-Q1 bzw. A-O1)
   |- Stufe 2/3: Gates P-Q3/P-K1; Kern-Aenderung noetig?
   |     Parametrierung: quellen/tafel_import (Code, kein Skill)
-  |     mehr als Parametrierung: STOPP --> A-K1-Vorlage --> MENSCH
-  |         danach: entwickle-im-zielsystem (unter dem A-K1-Beschluss)
+  |     mehr als Parametrierung: STOPP --> A-O1-Vorlage --> MENSCH
+  |         danach: entwickle-im-zielsystem (unter dem A-O1-Beschluss)
   |- Stufe 3b (uebernommener Bestand), Reihenfolge erzwungen (ADR-010):
   |     1. aktuartest-durchfuehren (qa/stichprobe, qa/testprofil,
   |        qa/aktuarieller_test, gates/aktuartest) --> je Abnahme eine
@@ -84,7 +84,7 @@ migrationsfall-durchfuehren
   '- Doku-Pflichten: dokumentiere-system (ADR, README, AGENTS)
 ```
 
-Menschliche Gates (A-Q1/A-M1/A-M2/A-M3/A-M4/A-K1, P9-Snapshots) sind
+Menschliche Gates (A-Q1/A-M1/A-M2/A-M3/A-M4/A-O1, P9-Snapshots) sind
 KEINE Skills — sie sind Werkzeuge fuer Menschen (`ontologie.entscheide`,
 `gates.gate_entscheid`); wer zeichnet, wird aus dem Schluessel ueber die
 Zeichnungsordnung bestimmt (ADR-018). Skills bereiten sie vor und halten
@@ -97,7 +97,7 @@ als eigener Skill mit demselben Muster:
 
 | Rolle (geplant) | Ausloeser |
 |---|---|
-| T-Box-Erweiterung vorbereiten | erster Fall, den die T-Box nicht ausdrueckt (voraussichtlich FLV: neue Produktfamilie, A-K1-Vorlage mit Klassen-Entwurf, Migrationsplan der A-Boxen, Testabdeckungs-Impact) |
+| T-Box-Erweiterung vorbereiten | erster Fall, den die T-Box nicht ausdrueckt (voraussichtlich FLV: neue Produktfamilie, A-O1-Vorlage mit Klassen-Entwurf, Migrationsplan der A-Boxen, Testabdeckungs-Impact) |
 | Erweiterungsstellen implementieren | erste Spez mit offener Erweiterungsstelle (freie Implementierung am benannten Ort, unter entwickle-im-zielsystem plus fallweisen Regeln) |
 | Bestandsabzug als Stufe-1-Quelle (QuellFragment) | erster Fall, der Vertragsdaten in die A-Box extrahieren muss — der Vorverdichter steht (`quellen/bestand_profil.py`) und der Weg in die Ziel-Ontologie ebenfalls (`transformiere-quellbestand` + `ontologie/transformation`); offen ist allein die Erweiterung von `extrahiere-quellfragment` um den Quelltyp Bestandsabzug |
 | Legacy-Code-Analyse | erster Fall mit Quellsystem-Code (AST/Callgraph-Vorverdichter, Terminologie-Lokalisierung, dort auch Embeddings-Freigabe) |

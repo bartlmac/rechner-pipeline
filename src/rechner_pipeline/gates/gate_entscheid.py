@@ -1,7 +1,7 @@
 """``gate_entscheid`` — der P9-Snapshot eines menschlichen Gates.
 
 Ein menschliches Gate (A-Q1 fachlich; A-M1, A-M2, A-M3 die drei
-aktuariellen Abnahmen; A-M4 Migrationsabnahme; A-K1 T-Box-Aenderung)
+aktuariellen Abnahmen; A-M4 Migrationsabnahme; A-O1 T-Box-Aenderung)
 endet nicht in einer Commit-Message, sondern in einem unveraenderlichen,
 inhaltsadressierten Snapshot: WER hat WAS auf WELCHEM Stand entschieden,
 mit welcher Begruendung. Der Snapshot haelt die SHA-256-Hashes aller
@@ -247,7 +247,7 @@ def _freigabe_fuer(snapshot_ohne_freigabe: dict, key: bytes) -> Dict[str, str]:
 #: Gates, die eine Zeichnungsordnung einer Rolle zuordnen kann. "*" heisst
 #: alle -- die Eskalationsrolle des Menschen. Massgeblich sind ALLE
 #: zeichenbaren Gates: Eine engere Liste war ein Loch der Ordnung --
-#: A-K1 liess sich zeichnen, aber keiner Rolle zuweisen (gefunden beim
+#: A-O1 liess sich zeichnen, aber keiner Rolle zuweisen (gefunden beim
 #: Aufsetzen der Vier-Rollen-Regie fuer Fall-Lauf 2).
 ZEICHNUNG_GATES = GUELTIGE_GATES
 
@@ -367,7 +367,7 @@ def pruefe_snapshot_ohne_schluessel(
     return []
 
 
-#: Schema des A-K1-Belegs (Review T22-02).
+#: Schema des A-O1-Belegs (Review T22-02).
 TBOX_AENDERUNG_SCHEMA_VERSION = 1
 _SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -494,6 +494,87 @@ def pruefe_tbox_aenderung(
                 fehler.append(f"artefakt {pfad_roh!r}: Hash stimmt nicht")
     if not (isinstance(daten.get("begruendung"), str) and daten["begruendung"].strip()):
         fehler.append("begruendung fehlt")
+    return fehler
+
+
+#: Schema der aktuariellen Stellungnahme zu einer T-Box-Aenderung
+#: (Entscheid des Maintainers 2026-09-16).
+STELLUNGNAHME_SCHEMA_VERSION = 1
+
+#: Wie ein Feld wirken kann. "ohne-wirkung" ist ausdruecklich erlaubt —
+#: das ist die Aussage "wir haben hingesehen und nichts gefunden", und
+#: die ist etwas anderes als Schweigen.
+WIRKUNGSARTEN = ("tariflich", "bewertungsrelevant", "ohne-wirkung")
+
+
+def pruefe_stellungnahme_aktuariat(
+    pfad: Path,
+    fall: Path,
+    *,
+    text: str | None = None,
+    aenderung: Dict[str, object] | None = None,
+) -> List[str]:
+    """Die fachliche Stellungnahme zu einer T-Box-Aenderung pruefen.
+
+    A-O1 zeichnet `mensch/architektur`: Wer verantwortet, welche Begriffe
+    das Zielsystem fuehrt, verantwortet sein Datenmodell. Die Frage
+    DAHINTER ist aber keine technische — ob ein Feld tarif- oder
+    bewertungswirksam ist, und was verlorengeht, wenn es entfaellt,
+    beantwortet das Aktuariat. Der Beleg haelt diese Antwort fest, je
+    Feld und mit Begruendung.
+
+    Geprueft wird, dass die Stellungnahme zu DIESEM Uebergang gehoert und
+    dass sie zu jedem genannten Feld wirklich etwas sagt. Ein leeres
+    ``felder`` waere eine Unterschrift unter nichts.
+    """
+    if not pfad.is_file():
+        return ["Datei fehlt"]
+    try:
+        daten = json.loads(
+            text if text is not None else pfad.read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"nicht lesbar: {exc}"]
+    if not isinstance(daten, dict):
+        return ["kein JSON-Objekt"]
+    fehler: List[str] = []
+    if daten.get("schema_version") != STELLUNGNAHME_SCHEMA_VERSION:
+        fehler.append(f"schema_version muss {STELLUNGNAHME_SCHEMA_VERSION} sein")
+    if aenderung is not None and daten.get("nach_version") != aenderung.get(
+        "nach_version"
+    ):
+        fehler.append(
+            f"nach_version {daten.get('nach_version')!r} weicht vom "
+            f"Aenderungsbeleg ({aenderung.get('nach_version')!r}) ab — die "
+            "Stellungnahme gehoert zu einer anderen T-Box-Aenderung"
+        )
+    if daten.get("verfasser_rolle") != "mensch/aktuariat":
+        fehler.append(
+            "verfasser_rolle muss 'mensch/aktuariat' sein — die fachliche "
+            "Bewertung eines Feldes ist keine Aussage der IT"
+        )
+    felder = daten.get("felder")
+    if not isinstance(felder, list) or not felder:
+        fehler.append(
+            "felder fehlt oder ist leer — eine Stellungnahme ohne Feld ist "
+            "eine Unterschrift unter nichts"
+        )
+    else:
+        for i, eintrag in enumerate(felder):
+            if not isinstance(eintrag, dict):
+                fehler.append(f"felder[{i}] ist kein Objekt")
+                continue
+            if not (isinstance(eintrag.get("name"), str) and eintrag["name"].strip()):
+                fehler.append(f"felder[{i}]: name fehlt")
+            if eintrag.get("wirkung") not in WIRKUNGSARTEN:
+                fehler.append(
+                    f"felder[{i}]: wirkung muss eine von {list(WIRKUNGSARTEN)} sein"
+                )
+            if not (
+                isinstance(eintrag.get("begruendung"), str)
+                and eintrag["begruendung"].strip()
+            ):
+                fehler.append(f"felder[{i}]: begruendung fehlt")
     return fehler
 
 
@@ -1843,10 +1924,10 @@ def main(argv: Optional[List[str]] = None):
         if args.gate == "A-M4":
             pflichtbelege["pq3_ledger"] = [pq3_gelesen.sha256]
 
-        if args.gate == "A-K1":
+        if args.gate == "A-O1":
             # T-Box-Aenderung (Review T22-02): Der Beleg bindet alte und
             # neue Version, den Hash des T-Box-Moduls und das
-            # Aenderungsartefakt. Ohne ihn ist A-K1 eine Zeichnung ueber
+            # Aenderungsartefakt. Ohne ihn ist A-O1 eine Zeichnung ueber
             # nichts.
             aenderung_pfad = fall / "abgeleitet" / "tbox" / "aenderung.json"
             aenderung_gelesen = (
@@ -1860,15 +1941,35 @@ def main(argv: Optional[List[str]] = None):
             if ak1_fehler:
                 return _sperre(
                     "vorbedingung",
-                    "Annahme verweigert: A-K1 braucht den Beleg der "
+                    "Annahme verweigert: A-O1 braucht den Beleg der "
                     f"T-Box-Aenderung ({aenderung_pfad.relative_to(fall)}): "
                     + "; ".join(ak1_fehler[:5]),
                 )
+            # Zweiter Pflichtbeleg (Entscheid des Maintainers 2026-09-16):
+            # die aktuarielle Stellungnahme. Die Unterschrift gehoert der
+            # Architektur, die fachliche Bewertung dem Aktuariat.
+            stellung_pfad = fall / "abgeleitet" / "tbox" / "stellungnahme.json"
+            stellung_gelesen = (
+                lies_gehasht(stellung_pfad) if stellung_pfad.is_file() else None
+            )
+            stellung_fehler = pruefe_stellungnahme_aktuariat(
+                stellung_pfad, fall,
+                text=stellung_gelesen.text() if stellung_gelesen else None,
+                aenderung=json.loads(aenderung_gelesen.text()),
+            )
+            if stellung_fehler:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: A-O1 braucht die aktuarielle "
+                    f"Stellungnahme ({stellung_pfad.relative_to(fall)}): "
+                    + "; ".join(stellung_fehler[:5]),
+                )
             pflichtbelege["tbox_aenderung"] = [aenderung_gelesen.sha256]
+            pflichtbelege["stellungnahme_aktuariat"] = [stellung_gelesen.sha256]
 
         if args.gate == "A-K2":
             # Kern-Aenderung (Entscheid des Maintainers 2026-09-16): zwei
-            # Belege an festen Orten, wie bei A-K1 — kein CLI-Flag, damit
+            # Belege an festen Orten, wie bei A-O1 — kein CLI-Flag, damit
             # der Beleg nicht dorthin zeigen kann, wo es gerade passt.
             kern_pfad = fall / "abgeleitet" / "kern" / "aenderung.json"
             regr_pfad = fall / "abgeleitet" / "kern" / "regression.json"

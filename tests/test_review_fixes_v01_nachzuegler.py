@@ -63,7 +63,7 @@ def _frag(datei: str, art: str, generation: str = "tg2012", **override):
 # --- P9-Haertung: offene Diskrepanzen, fehlende A-Box, request-json --------
 
 
-@pytest.mark.parametrize("gate", ["A-Q1", "A-M1", "A-M4", "A-K1"])
+@pytest.mark.parametrize("gate", ["A-Q1", "A-M1", "A-M4", "A-O1"])
 def test_p9_annahme_blockt_offene_diskrepanzen_fuer_jedes_gate(
     tmp_path: Path, gate: str
 ):
