@@ -1,6 +1,6 @@
 # ADR-001: Repo-Zielstruktur entlang der Migrations-Pipeline
 
-Status: akzeptiert (Bartek, 2026-08-14). Umgesetzt in zwei Commits
+Status: akzeptiert (Maintainer, 2026-08-14). Umgesetzt in zwei Commits
 (src-Schnitt, runs/-Konsolidierung) vor dem Push des Branches
 `feat/bestandsdaten-modul`.
 

@@ -135,6 +135,17 @@ $$
 Flexible Phase: $y \ge$ `min_alter_flex` **und**
 $a \ge n -$ `min_rlz_flex`.
 
+**Übernommene Generationen.** Die Regel "Grenzen je Vertrag" ist eine
+Eigenschaft dieses Tarifwerks, nicht des Rechenkerns. Ein übernommener
+Bestand behält das Bedingungswerk seiner Quelle; sieht das den Abzug
+je Baustein vor (Grundversicherung und jede Erhöhungsscheibe einzeln,
+mit eigenem Mindest- und Höchstbetrag, Rückkaufswert = Summe der auf
+null begrenzten Baustein-Rückkaufswerte), steht das als
+`stoab_je_baustein = true` in der Generation der Bestand-Config, und
+die Führung rechnet so (Kern: `vertrags_monatsreserve`). Die Vorgabe
+ist die Regel dieses Abschnitts. Welche übernommene Generation welche
+Eigenschaft trägt, zeigt Abschnitt 13.
+
 # 7 Geschäftsvorfälle (GeVo-Katalog)
 
 Buchungskonvention und die Einordnung der
@@ -151,6 +162,19 @@ Abschnitt 7. Jeder Betrag kommt aus dem Kern.
 | **STO** Rückkauf | terminal; nur beitragspflichtig, $a < n$ | $\text{RKW}_a$ (vertragsweiter StoAb) |
 | **TOD** Tod | terminal | $S^{ges}$ bzw. nach PEX $\sum S^{bfr}$ |
 | **ABL** Ablauf | terminal bei $a = n$ | $S^{ges}$ bzw. $\sum S^{bfr}$ |
+
+Drei Einträge dieser Tabelle sind Tarifwerks-Eigenschaften, die eine
+übernommene Generation anders tragen kann als das eigene Geschäft:
+ob eine Erhöhungsscheibe $\gamma_1$ trägt (`scheiben_mit_gamma1`; die
+zweite Baldrian-Lieferung rechnet jeden Baustein mit voller
+Beitragsformel), ob der Stornoabzug je Baustein greift
+(`stoab_je_baustein`, Abschnitt 6) und nach welchem Verfahren eine
+Herabsetzung rechnet (`red_verfahren`, Abschnitt 7.1; die
+Teilkündigung der Quelle führt den Vertrag zustandslos mit kleinerer
+Grundsumme weiter). Alle drei stehen je Generation in der
+Bestand-Config, die Führung liest sie dort, und die Freischaltung
+eines Migrationsfalls überträgt sie aus den bestandenen Abnahmen
+(`dev-docs/freischaltung-uebernommener-bestand.md`).
 
 ## 7.1 Beitragsherabsetzung: Zahlungsprofil und Geltungsbereich
 
@@ -291,28 +315,68 @@ Erhöhungsscheiben unsenkbar ließe.
 
 Die **Pfefferminzia Lebensversicherung (PLV)** ist das fiktive
 Unternehmen dieses Arbeitsraums: Zielkern und Bestand gehören ihr,
-Migrationsfälle übernehmen fremde Bestände in die PLV. Ihre neun
+Migrationsfälle übernehmen fremde Bestände in die PLV. Ihre zehn
 KLV-Bestandsgenerationen sind konstruiert (kein Migrationsfall, keine
 Quell-Provenienz) und tragen — wie jede Generation, die das System
 rechnet — eine **Ontologie-Knoten-ID** (Pflichtfeld `knoten` der
 Bestand-Config, dieselbe Konvention wie A-Box und Gate P-K1; Wurzel =
 Produktfamilie, Präfix `plv_` = PLV-eigene Generation ohne
-Migrationsfall):
+Migrationsfall). Die Generation im Vertrieb ist KLV-2025; ihre
+Rechnungsgrundlagen sind **vorläufig** (Höchstrechnungszins 2025 und die
+Kosten der Vorgängergeneration), bis das Aktuariat der Vorzeige sie
+festlegt (Fachkonzept Tagesbetrieb, offene Fachentscheidung):
 
-| Knoten | Name | gültig | Zins | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2/3}$ | $\kappa$ |
-|---|---|---|---|---|---|---|---|---|
-| `klv/plv_1994` | KLV-1994 | 1994-07–2000-06 | 4.00% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 |
-| `klv/plv_2000` | KLV-2000 | 2000-07–2003-12 | 3.25% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 |
-| `klv/plv_2004` | KLV-2004 | 2004-01–2006-12 | 2.75% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 |
-| `klv/plv_2007` | KLV-2007 | 2007-01–2007-12 | 2.25% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 |
-| `klv/plv_2008` | KLV-2008 | 2008-01–2011-12 | 2.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/plv_2012` | KLV-2012 | 2012-01–2014-12 | 1.75% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/plv_2015` | KLV-2015 | 2015-01–2016-12 | 1.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/plv_2017` | KLV-2017 | 2017-01–2021-12 | 0.90% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
-| `klv/plv_2022` | KLV-2022 | 2022-01–2035-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 |
+<!-- erzeugt: python -m rechner_pipeline.bestand.tarifplan_tabellen --config configs/bestand_gesamt.toml --produkt klv -->
+| Knoten | Name | gültig | Zins | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2/3}$ | $\kappa$ | Vertrieb |
+|---|---|---|---|---|---|---|---|---|---|
+| `klv/plv_1994` | KLV-1994 | 1994-07–2000-06 | 4.00% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 | Batch 600; Neugeschäft 100/Jahr |
+| `klv/plv_2000` | KLV-2000 | 2000-07–2003-12 | 3.25% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 | Batch 280; Neugeschäft 80/Jahr |
+| `klv/plv_2004` | KLV-2004 | 2004-01–2006-12 | 2.75% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 | Batch 260; Neugeschäft 87/Jahr |
+| `klv/plv_2007` | KLV-2007 | 2007-01–2007-12 | 2.25% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 | Batch 70; Neugeschäft 70/Jahr |
+| `klv/plv_2008` | KLV-2008 | 2008-01–2011-12 | 2.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 300; Neugeschäft 75/Jahr |
+| `klv/plv_2012` | KLV-2012 | 2012-01–2014-12 | 1.75% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 240; Neugeschäft 80/Jahr |
+| `klv/plv_2015` | KLV-2015 | 2015-01–2016-12 | 1.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 180; Neugeschäft 90/Jahr |
+| `klv/plv_2017` | KLV-2017 | 2017-01–2021-12 | 0.90% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 250; Neugeschäft 50/Jahr |
+| `klv/plv_2022` | KLV-2022 | 2022-01–2024-12 | 0.25% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 150; Neugeschäft 50/Jahr |
+| `klv/plv_2025` | KLV-2025 | 2025-01–2035-12 | 1.00% | DAV2008_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 30 | Batch 1320; Neugeschäft 120/Jahr, Trend -4%/Jahr |
+
+Tarifzellen der übernommenen Generation **TG2015** (`klv/tg2015`, Rechnungszins 1.25%, Zellen über `status` × `tarifart`; je Zelle nur die vom Rumpf abweichenden Felder):
+
+| Zelle | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2}$ | $\kappa$ | StoAb Satz/min/max | Ratenzuschlag zw2/4/12 |
+|---|---|---|---|---|---|---|---|
+| nichtraucher/einzel | DAV2008_T_NR_U70 | 0.025 | 0.03 | 0.001/0.00125 | 12 | 0.005/50.0/200.0 | 0.02/0.03/0.05 |
+| nichtraucher/haus | DAV2008_T_NR_U70 | 0.0 | 0.01 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
+| nichtraucher/kollektiv | DAV2008_T_NR_U70 | 0.015 | 0.015 | 0.0008/0.001 | 12 | 0.005/50.0/200.0 | 0.01/0.015/0.025 |
+| raucher/einzel | DAV2008_T_R_U70 | 0.025 | 0.03 | 0.001/0.00125 | 12 | 0.005/50.0/200.0 | 0.02/0.03/0.05 |
+| raucher/haus | DAV2008_T_R_U70 | 0.0 | 0.01 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
+| raucher/kollektiv | DAV2008_T_R_U70 | 0.015 | 0.015 | 0.0008/0.001 | 12 | 0.005/50.0/200.0 | 0.01/0.015/0.025 |
+
+Tarifwerk der Generation **TG2015** (Ausgestaltung, Grundsatzdokumentation 10 Nr. 9): Erhöhungsscheiben mit $\gamma_1$: ja; Stornoabzug je Baustein: ja; Herabsetzungsverfahren: `teilkuendigung`.
+
+Was sich von Generation zu Generation ändert (verkaufende Generationen in Verkaufsreihenfolge; leer heißt: nur das Fenster):
+
+| Wechsel | geänderte Rechnungsgrundlagen |
+|---|---|
+| KLV-1994 → KLV-2000 | zins 4.00% → 3.25% |
+| KLV-2000 → KLV-2004 | zins 3.25% → 2.75% |
+| KLV-2004 → KLV-2007 | zins 2.75% → 2.25% |
+| KLV-2007 → KLV-2008 | tafel DAV1994_T → DAV2008_T; policy_fee 24 → 30 |
+| KLV-2008 → KLV-2012 | zins 2.25% → 1.75% |
+| KLV-2012 → KLV-2015 | zins 1.75% → 1.25% |
+| KLV-2015 → KLV-2017 | zins 1.25% → 0.90% |
+| KLV-2017 → KLV-2022 | zins 0.90% → 0.25% |
+| KLV-2022 → KLV-2025 | zins 0.25% → 1.00% |
+<!-- /erzeugt -->
 
 Migrierte Generationen kommen erst nach ihrer fachlichen Abnahme
 (A-Q1/A-M1/A-M4) in eine Bestand-Config — dann mit der Knoten-ID ihres
-Migrationsfalls (z. B. `klv/tg2015`) und der durch Gate P-K1 geprüften
-Parametrierung. Diese Tabelle wird maschinell gegen die Bestandskonfiguration
-geprüft; eine Abweichung ist ein Fehler und blockiert.
+Migrationsfalls und der durch Gate P-K1 geprüften Parametrierung. Die
+erste ist die **TG2015 der Baldrian Leben** (`klv/tg2015`, Fall
+`baldrian-klv-tg2015-lauf2`, A-M4 angenommen 2026-09-01): 834 Verträge,
+Zugang zum 2026-01-01, seither im Tagesbetrieb der PLV im selben Strom
+fortgeschrieben wie das eigene Geschäft. Sie hat keinen einen
+Parametersatz, sondern sechs Tarifzellen (`status` × `tarifart`;
+Rechnungszins 1,25 % nach Mitteilung, entschieden in A-Q1 gegen die 1,75 % des Tarifrechners; Tafeln DAV 2008 T Nichtraucher/Raucher U70); die
+Zellen stehen in der Bestand-Config und werden nicht abgetippt. Diese
+Tabelle wird maschinell gegen die Bestandskonfiguration geprüft; eine
+Abweichung ist ein Fehler und blockiert.

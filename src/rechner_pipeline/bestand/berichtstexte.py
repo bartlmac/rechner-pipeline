@@ -98,6 +98,26 @@ TEXTE: Dict[str, str] = {
         "selben Modell — der Unterschied ist nicht „gegeben gegen gerechnet“, "
         "sondern Bestandsaufbau gegen Projektion."
     ),
+    # Der Betriebsbericht kennt keine Prognose. Er ist der Stand der
+    # Führung bis zum Berichtsstichtag; was danach kommt, entdeckt der
+    # Betrieb Tag für Tag. Der Fallbericht behält seine Projektion — dort
+    # ist sie der Gegenstand, im Betrieb wäre sie eine Behauptung über
+    # Tage, die noch nicht stattgefunden haben.
+    "berichtsstichtag": (
+        "Dieser Bericht endet am Berichtsstichtag. Er zeigt die geführte "
+        "Geschichte des Bestands bis dahin — Zugang, Bewegung und Abgang, "
+        "wie sie gebucht wurden. Was danach kommt, steht nicht darin: Der "
+        "Betrieb schreibt jeden Tag fort, was an ihm geschehen ist."
+    ),
+    "lesart_betrieb": (
+        "Aggregierte Zahlen beziehen sich auf den im Abschnittstitel "
+        "genannten Zeitraum; Stichtagswerte sind als solche gekennzeichnet. "
+        "Ein Datum steuert diesen Bericht: der Berichtsstichtag, bis zu dem "
+        "der Bestand geführt ist. Alle Diagramme enden dort. Es gibt keine "
+        "Stichtagslinie und keinen Prognoseteil — jenseits des Stichtags "
+        "ist nichts gerechnet, weil nichts geschehen ist. Das Rendering ist "
+        "deterministisch: dieselben Eingabedateien ergeben denselben Bericht."
+    ),
 }
 
 
@@ -108,6 +128,7 @@ def kopfzeilen(
     stichtag: Optional[_dt.date],
     bis: Optional[_dt.date],
     quelle_hash: Optional[str] = None,
+    berichtsstichtag: Optional[_dt.date] = None,
 ) -> List[str]:
     """Die Kopfangaben des Berichts (Klartext, ohne Markup).
 
@@ -121,12 +142,21 @@ def kopfzeilen(
         f"Tarifgenerationen: {', '.join(generationen)}",
         f"Berichtszeitraum: {stichtage[0].year} bis {stichtage[-1].year}",
     ]
-    if stichtag is not None:
+    if berichtsstichtag is not None:
+        # Der Betriebsbericht kennt keine Prognose: Er endet am Stichtag, bis
+        # zu dem gefuehrt wurde. "Projektionshorizont" waere dort das falsche
+        # Wort — jenseits des Stichtags ist nichts gerechnet, weil nichts
+        # geschehen ist.
+        zeilen.append(
+            f"Berichtsstichtag: {berichtsstichtag.isoformat()} — Stand der "
+            "Fuehrung, keine Projektion darueber hinaus"
+        )
+    elif stichtag is not None:
         zeilen.append(
             f"Referenzstichtag: {stichtag.isoformat()} — bis dahin Historie, "
             "danach Prognose"
         )
-    if bis is not None:
+    if bis is not None and berichtsstichtag is None:
         zeilen.append(f"Projektionshorizont: {bis.isoformat()}")
     if quelle_hash:
         zeilen.append(f"Prüfsumme der Datenquelle (SHA-256): {quelle_hash[:8]}…")

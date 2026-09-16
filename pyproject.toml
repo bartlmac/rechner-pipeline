@@ -1,5 +1,9 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+# Exakt gepinnt (Review T21-10): der isolierte PEP-517-Build loeste
+# setuptools und wheel bei jedem frischen Aufbau neu auf — der eine
+# Installationsweg war fuer die Laufzeit, nicht fuer den Build
+# reproduzierbar. tests/test_abhaengigkeiten.py haelt die Pins exakt.
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
 build-backend = "setuptools.build_meta"
 
 [project]

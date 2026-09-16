@@ -212,6 +212,49 @@ LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
 #: Zulaessige Werte von ``betrag_herkunft``.
 BETRAG_HERKUNFT = ("geliefert", "gerechnet")
 
+#: GeVo-Codes des Ledgers. ``kennzahlen.EREIGNIS_REIHENFOLGE`` ist die
+#: Ausgabereihenfolge DERSELBEN Menge (Test haelt beide deckungsgleich).
+EREIGNIS_VALUES: Tuple[str, ...] = (
+    "ZUG", "MIG", "ERH", "RED", "PEX", "INV", "REA", "STO", "TOD", "ABL",
+)
+
+#: Welche Bezugsgroesse ein GeVo bucht — die Betragsart ist Teil der
+#: Buchung, nicht freier Text: Ein ``STO`` mit ``Todesfallleistung`` oder
+#: ein ``ERH`` mit ``RKW`` ist keine andere Sicht, sondern ein Fehler.
+#: Zwei Werte, wo zwei Produkte denselben GeVo buchen (KLV-Summe gegen
+#: BU-Jahresrente) oder die Uebernahme eine Umbuchung mit der gelieferten
+#: Bezugsgroesse bucht (``PEX`` mit ``VS``, gates.bestand_uebernehmen).
+#: ``BJB`` ist der Bruttojahresbeitrag: Ein Zugang und eine Erhoehung
+#: bewegen nicht nur eine Summe, sondern auch einen Beitrag, und das
+#: Neugeschaeft eines Zeitraums wird in beidem gemessen. Er steht als
+#: EIGENE Zeile desselben Vorfalls — ein Betrag, eine Art, wie bei jeder
+#: anderen Buchung. Die Abgaenge (STO, TOD, ABL) und die
+#: Beitragsfreistellung fuehren ihre Beitragswirkung noch nicht; das ist
+#: eine bekannte Asymmetrie und der naechste Schritt derselben Sache.
+BETRAG_ART_JE_EREIGNIS: Dict[str, Tuple[str, ...]] = {
+    "ZUG": ("VS", "BU_Jahresrente", "BJB"),
+    "MIG": ("dDK_uebernahme",),
+    "ERH": ("VS_erhoehung", "BJB"),
+    # Zwei Zeilen: die neue Gesamtsumme, und — bei einem uebernommenen
+    # Vertrag — die Korrekturschicht, die in die Neuberechnung eingegangen
+    # ist. Eine Umbuchung ohne Zahlung, wie dDK_uebernahme beim Zugang.
+    "RED": ("VS_herabsetzung", "dDK_absorption"),
+    "PEX": ("VS_bfr", "VS"),
+    "INV": ("BU_Jahresrente",),
+    "REA": ("BU_Jahresrente",),
+    "STO": ("RKW",),
+    "TOD": ("Todesfallleistung", "BU_Jahresrente"),
+    "ABL": ("Ablaufleistung", "BU_Jahresrente"),
+}
+
+#: Welchen Zustand ein GeVo herstellt (Historienzeile desselben Datums).
+#: ERH, RED, ZUG und MIG stellen keinen her: Sie aendern Summe, Beitrag
+#: oder Zugehoerigkeit, nicht den Zustand.
+EREIGNIS_ZUSTAND: Dict[str, str] = {
+    "PEX": "PEX", "STO": "STO", "TOD": "TOD", "ABL": "ABL",
+    "INV": "BU", "REA": "POL",
+}
+
 #: Erhoehungsscheiben (dynamische Erhoehung): each row is an own layer of a
 #: contract, actuarially an own model point (Schichtungsprinzip). The base
 #: layer (Grundscheibe) is the Stamm row itself; Scheiben start at id 1.
@@ -234,6 +277,31 @@ SCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("gamma1", "float64"),             # -> ModelPoint.gamma1 der Scheibe
 )
 
+#: Herabsetzungen je Police — die Spiegeltabelle zu ``scheiben``.
+#:
+#: Eine dynamische Erhoehung legt eine neue Scheibe an (eigener
+#: Modellpunkt, eigene Zeile in ``scheiben.parquet``). Eine Herabsetzung
+#: legt keine neue Scheibe an, sie KNICKT den Verlauf des bestehenden
+#: Vertrags: Ab dem Reduktionsjahr traegt er den fortgefuehrten
+#: Beitragsanteil und daneben die dort fixierte beitragsfreie Summe
+#: (``kern.beitragsreduktion.ReduzierterVertrag``, Tarifplan klv.md 7.1).
+#:
+#: Persistiert werden genau die drei Felder, aus denen sich dieser
+#: Vertrag rekonstruieren laesst — ``ReduzierterVertrag.nach(kern, jahr,
+#: anteil, verfahren=...)``. Mehr braucht die Folgebewertung nicht, und
+#: weniger reichte nicht: Ohne das Verfahren waere derselbe Anteil je
+#: nach Bedingungswerk ein anderer Vertrag.
+#:
+#: NEBENTABELLE wie ``scheiben``: Keine Datei heisst, der Bestand hat
+#: keine Herabsetzungen — nicht, dass niemand nachgesehen hat.
+REDUKTIONEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("reduktion_jahr", "int64"),         # Vertragsjahr (nur am Jahrestag)
+    ("reduktion_datum", "datetime64[ns]"),
+    ("anteil", "float64"),               # fortgefuehrter Beitragsanteil, 0 < f < 1
+    ("verfahren", "object"),             # prospektiv | mit_abzug | teilkuendigung
+)
+
 #: Verankerungsattribute je uebernommenem Vertrag (Grundsatzdokumentation
 #: 9.12, Korrekturschicht-Umsetzung K3): t_a ist der letzte exakte
 #: Rechenpunkt des Quellsystems in VERTRAGSMONATEN, ``dk_ta`` der dort
@@ -254,6 +322,32 @@ VERANKERUNG_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("zustand_ta", "object"),
     ("verweildauer_ta", "int64"),
     ("dk_ta", "float64"),
+)
+
+#: Korrekturschicht je uebernommenem Vertrag (Grundsatzdokumentation 9.11,
+#: Freischaltung Schritt 5): persistiert werden PARAMETER, keine
+#: Zwischenwerte — genau die Felder von
+#: ``kern.korrekturschicht.Schichtparameter``; ``formparameter`` und
+#: ``vererbend`` als JSON-Text. Der Verankerungszeitpunkt steht in
+#: ``verankerung.parquet`` (dieselbe Police, ``monate_ta``); beide Tabellen
+#: gehoeren zusammen. NEBENTABELLE wie ``verankerung``: keine Datei heisst,
+#: der Bestand traegt keine Schichten. Erzeugt vom Schichtbeleg-Producer
+#: (``gates.verankerung_belegen``) in das Uebernahme-Verzeichnis, gelesen
+#: von Ereignis-Engine (Storno zahlt Basis plus Schicht), Bewertung
+#: (eigene Position im Abschluss) und P-B1 (Ledger-Herleitung).
+SCHICHTEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("police_id", "int64"),
+    ("schichttyp", "object"),
+    ("verankerungszustand", "object"),
+    ("verweildauer", "int64"),
+    ("rho", "float64"),
+    ("formfunktion", "object"),
+    ("formparameter", "object"),      # JSON-Text
+    ("vererbend", "object"),          # JSON-Text: [[von, nach], ...]
+    ("kohorte", "object"),
+    ("in_ueberschuss", "bool"),
+    ("in_zzr", "bool"),
+    ("rumpfmonate", "int64"),
 )
 
 #: Merkmalsauspraegungen je Vertrag — die Wahl der Tarifzelle.
@@ -292,10 +386,36 @@ ABSCHLUSS_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("leistung", "float64"),          # VS (KLV, inkl. Scheiben) bzw. Jahresrente (BU)
     ("deckungskapital", "float64"),
     ("rueckkaufswert", "float64"),
+    # Die Korrekturschicht je Vertrag als EIGENE Position (Grundsatz-
+    # dokumentation 9.11: nie unsichtbar im Deckungskapital); sie ist in
+    # deckungskapital und rueckkaufswert enthalten. 0 ohne Schicht.
+    ("korrekturschicht", "float64"),
     ("vs_bfr", "float64"),
     ("jahresbeitrag", "float64"),
     ("kern_version", "object"),
 )
+
+#: Tagesjournal des Tagesbetriebs (Fachkonzept docs/simulation/tagesbetrieb.md,
+#: Abschnitt 3): je Zeile ein Verweis auf genau eine Ledger-Zeile (Police,
+#: Ereignis, Wirkungstag ``status_date``) und der Kalendertag, an dem das
+#: Unternehmen sie in die Buecher nimmt. Der Ledger bleibt das
+#: Wirkungsjournal (Gate P-B1); diese Tabelle ist die Sicht der
+#: Buchungstage — nur-anfuegbar, nie ueberschrieben. Ableitungsregeln und
+#: Bijektions-Validator: ``rechner_pipeline.betrieb.tagesjournal``.
+TAGESJOURNAL_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("buchungsdatum", "datetime64[ns]"),   # Kalendertag der Buchung (Werktag)
+    ("police_id", "int64"),
+    ("ereignis", "object"),                # GeVo-Code der Ledger-Zeile
+    ("status_date", "datetime64[ns]"),     # Wirkungstag = Ledger.status_date
+    ("betrag", "float64"),                 # identisch zur Ledger-Zeile
+    ("betrag_art", "object"),
+    ("herkunft", "object"),                # fortschreibung | neugeschaeft | uebernahme
+)
+
+#: Zulaessige Werte von ``tagesjournal.herkunft``: die Buchung stammt aus
+#: der Fortschreibung des Bestands, aus dem Tagesneugeschaeft (Buchungstag
+#: = Verkaufstag) oder aus einer Uebernahme (gelieferte Buchung).
+HERKUNFT_VALUES: Tuple[str, ...] = ("fortschreibung", "neugeschaeft", "uebernahme")
 
 STAMM_NAMES: Tuple[str, ...] = tuple(n for n, _ in STAMM_SPALTEN)
 ZEITSCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in ZEITSCHEIBEN_SPALTEN)
@@ -303,8 +423,72 @@ STATUS_HISTORIE_NAMES: Tuple[str, ...] = tuple(n for n, _ in STATUS_HISTORIE_SPA
 LEDGER_NAMES: Tuple[str, ...] = tuple(n for n, _ in LEDGER_SPALTEN)
 SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
 ABSCHLUSS_NAMES: Tuple[str, ...] = tuple(n for n, _ in ABSCHLUSS_SPALTEN)
+
+#: Die BEWERTUNGSGROESSEN des Abschlusses — jede Zahl, die ein Bilanzwert
+#: ist, abgeleitet statt aufgezaehlt (Review T25-09).
+#:
+#: Zwei Pruefungen fragen dieselbe Menge ab: die Endlichkeitswache vor dem
+#: Festschreiben (:func:`validate_abschluss`) und die Nachrechnung gegen den
+#: festgeschriebenen Stand (``bestand.abschluss.pruefe_abschluss``). Beide
+#: fuehrten sie als wortgleiches Literal, und beiden fehlte dieselbe Spalte:
+#: ``korrekturschicht`` — ausgerechnet die Position, die Grundsatz-
+#: dokumentation 9.11 fordert, weil die Schicht nie unsichtbar im
+#: Deckungskapital stehen darf. Eine unendliche Schicht durfte damit
+#: festgeschrieben werden, und eine wandernde Schicht fiel der Kontrolle
+#: nicht auf, solange die Summe stimmte.
+#:
+#: Die Ableitung ueber den Spaltentyp schliesst die Klasse: Wer dem
+#: Abschluss eine neue Bewertungsgroesse gibt, bekommt beide Pruefungen
+#: dafuer, ohne sie zu kennen.
+ABSCHLUSS_ZAHLEN: Tuple[str, ...] = tuple(
+    n for n, dtype in ABSCHLUSS_SPALTEN if dtype == "float64"
+)
 MERKMALE_NAMES: Tuple[str, ...] = tuple(n for n, _ in MERKMALE_SPALTEN)
 VERANKERUNG_NAMES: Tuple[str, ...] = tuple(n for n, _ in VERANKERUNG_SPALTEN)
+SCHICHTEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHICHTEN_SPALTEN)
+REDUKTIONEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in REDUKTIONEN_SPALTEN)
+TAGESJOURNAL_NAMES: Tuple[str, ...] = tuple(n for n, _ in TAGESJOURNAL_SPALTEN)
+
+
+#: Die Uebersetzungstabelle eines Uebernahme-Eingangs (Review T24-08): In
+#: welche Zielnummer das Zielsystem eine gelieferte Policennummer gehoben
+#: hat. Sie ist der Traeger der Nachvollziehbarkeit zur Quelle — die
+#: Belege des Falls (uebernahme.json, A-M4-Snapshot) sprechen weiter in
+#: QUELLnummern, die Tabellen des Betriebs in ZIELnummern.
+POLICENNUMMERN_SPALTEN: Tuple[Tuple[str, str], ...] = (
+    ("quelle_police_id", "int64"),   # wie geliefert
+    ("ziel_police_id", "int64"),     # wie das Zielsystem sie fuehrt
+)
+POLICENNUMMERN_NAMES: Tuple[str, ...] = tuple(n for n, _ in POLICENNUMMERN_SPALTEN)
+
+#: Die Vokabel der Nebentabellen uebernommener Vertraege — an EINER Stelle,
+#: damit Gate, Pruefengine und Betriebseingang dieselbe Sprache pruefen
+#: (Betriebsbefund N-01, 2026-09-08: der Betrieb las ``zustand_ta = "POL"``
+#: anstandslos, das Gate haette es abgewiesen, der Kern brach vier
+#: Schichten tiefer mit "Unbekannter Startzustand" ab).
+#:
+#: ``zustand_ta`` (verankerung.parquet): der Vertragszustand am
+#: Verankerungszeitpunkt in der Sprache der Uebernahme.
+ZUSTAENDE_TA: Tuple[str, ...] = ("beitragspflichtig", "beitragsfrei")
+
+#: Die Verfahren der Herabsetzung — Vokabel der Nebentabelle
+#: ``reduktionen``. Literal aus demselben Grund wie :data:`ZUSTAENDE_TA`:
+#: Gate, P-B1-Engine und Betriebseingang pruefen die Tabelle, ohne den
+#: Kern zu laden, und ``models`` darf die Vorzeige nicht importieren
+#: (ADR-017). Die QUELLE bleibt ``kern.beitragsreduktion.VERFAHREN`` —
+#: laeuft die Liste ihm davon, faellt das in
+#: ``tests/test_models_vokabel_kern.py``, nicht erst vier Schichten
+#: tiefer mit "unbekanntes Verfahren".
+RED_VERFAHREN: Tuple[str, ...] = ("prospektiv", "mit_abzug", "teilkuendigung")
+#: ``verankerungszustand`` (schichten.parquet): der Startzustand der
+#: Korrekturschicht — ein ERLEBENSzustand des Zustandsmodells, mit dem sie
+#: bewertet wird ("aktiv" fuer Kapitalversicherungen, "aktiv"/"bu" fuer die
+#: Berufsunfaehigkeit). Beitragsfreiheit ist kein Zustand des Modells,
+#: sondern eine Eigenschaft des Modellpunkts; ein beitragsfrei verankerter
+#: Vertrag traegt deshalb ``zustand_ta = "beitragsfrei"`` und
+#: ``verankerungszustand = "aktiv"``. Der Test ``test_kern_algebraisch``
+#: haelt die Liste gegen die Zustaende der Kern-Modelle.
+VERANKERUNGSZUSTAENDE: Tuple[str, ...] = ("aktiv", "bu")
 
 
 def stamm_dtypes() -> Dict[str, str]:
@@ -606,6 +790,503 @@ def validate_stamm_journal(stamm: Any, historie: Any) -> List[str]:
     return errors
 
 
+def _nichtendlich(reihe: Any) -> bool:
+    """NaN oder +/-inf in einer Zahlenreihe — beides faellt durch jede
+    Bandpruefung (NaN vergleicht immer falsch, inf > 0 ist wahr)."""
+    werte = reihe.to_numpy(dtype="float64")
+    return bool((~_np.isfinite(werte)).any())
+
+
+def validate_ledger(
+    stamm: Any, ledger: Any, historie: Any = None, scheiben: Any = None
+) -> List[str]:
+    """Semantik des Ereignis-Ledgers gegen Stamm, Journal und Scheiben.
+
+    Externes Review T18-06: Es gab keinen semantischen Ledger-Validator —
+    ``betrag = inf``, ``betrag_art = MANIPULIERT``, eine fremde
+    ``tarif_generation`` und ``vertragsjahr = 999`` passierten Gate P-B1
+    mit null Befunden. Geprueft wird jetzt, was eine Buchung IST:
+
+    * Spalten/dtypes, bekannte Police, ``ereignis`` und ``betrag_art``
+      aus dem Vokabular (die Bezugsgroesse gehoert zum GeVo),
+      ``betrag_herkunft`` aus ``BETRAG_HERKUNFT``;
+    * ``betrag`` endlich und, ausser beim Migrations-Residuum ``MIG``,
+      nicht negativ;
+    * ``tarif_generation`` die des Stammsatzes;
+    * ``status_date`` auf dem Monatsersten, innerhalb der Vertragslaufzeit,
+      und ``vertragsjahr`` die Zahl der VOLLENDETEN Vertragsjahre an
+      diesem Datum (``MIG`` ausgenommen: dort ist es das Jahr des letzten
+      exakten Rechenpunkts der Quelle, nicht des Stichtags);
+    * mit ``historie``: Jeder GeVo, der einen Zustand herstellt, hat
+      seine Journalzeile — gleiches Datum, hergestellter Zustand. Beim
+      ``PEX`` genuegt eine Beitragsfreistellung AM ODER VOR dem
+      Buchungsdatum: Ein beitragsfrei uebernommener Vertrag traegt die
+      Beitragsfreistellung der Quelle in der Historie und die Umbuchung
+      zum Zugangsstichtag im Ledger (gates.bestand_uebernehmen). Die
+      Gegenrichtung wird bewusst NICHT verlangt: Die Vorgeschichte eines
+      uebernommenen Vertrags steht in der Historie, ohne Bewegung des
+      aufnehmenden Unternehmens zu sein;
+    * mit ``scheiben`` (externes Review T18-01): ZEILENWEISE Bindung
+      statt Jahressummen — jede ``ERH``-Buchung hat genau eine Scheibe
+      derselben Police am selben Datum mit demselben Betrag und
+      Erhoehungsjahr, und jede Scheibe ihre Buchung. Vorher passierten
+      zwei zwischen Policen vertauschte Scheibenbetraege (3.850 gegen
+      2.350) mit null Befunden; der Abschluss verschob sich um 63,70 EUR,
+      weil die Summen danach auf anderen Vertragsaltern lagen.
+    """
+    errors: List[str] = []
+    cols = list(ledger.columns)
+    if cols != list(LEDGER_NAMES):
+        errors.append(f"ledger: Spalten {cols} != erwartet {list(LEDGER_NAMES)}")
+        return errors
+    for name, dtype in LEDGER_SPALTEN:
+        actual = str(ledger[name].dtype)
+        if actual != dtype:
+            errors.append(f"ledger {name}: dtype {actual}, erwartet {dtype}")
+    if errors or len(ledger) == 0:
+        return errors
+
+    unbekannt = set(ledger["police_id"]) - set(stamm["police_id"])
+    if unbekannt:
+        errors.append(f"ledger: police_id unbekannt: {sorted(unbekannt)[:5]}")
+        return errors
+
+    def _policen(maske: Any) -> List[int]:
+        return sorted(set(int(p) for p in ledger.loc[maske, "police_id"]))[:5]
+
+    fremd = ~ledger["ereignis"].isin(EREIGNIS_VALUES)
+    if fremd.any():
+        errors.append(
+            f"ledger: ereignis ausserhalb {list(EREIGNIS_VALUES)}: "
+            f"{sorted(set(ledger.loc[fremd, 'ereignis']))[:5]} "
+            f"(police {_policen(fremd)})"
+        )
+    art_falsch = ~fremd & ~ledger.apply(
+        lambda z: z["betrag_art"] in BETRAG_ART_JE_EREIGNIS.get(z["ereignis"], ()),
+        axis=1,
+    )
+    if art_falsch.any():
+        beispiele = sorted(set(
+            f"{e}/{a}" for e, a in zip(ledger.loc[art_falsch, "ereignis"],
+                                       ledger.loc[art_falsch, "betrag_art"])
+        ))[:5]
+        errors.append(
+            f"ledger: betrag_art passt nicht zum GeVo: {beispiele} "
+            f"(police {_policen(art_falsch)})"
+        )
+    herkunft_falsch = ~ledger["betrag_herkunft"].isin(BETRAG_HERKUNFT)
+    if herkunft_falsch.any():
+        errors.append(
+            f"ledger: betrag_herkunft ausserhalb {BETRAG_HERKUNFT} "
+            f"(police {_policen(herkunft_falsch)})"
+        )
+    # Die Herkunft folgt aus dem Erzeugungspfad, sie ist kein freies
+    # Etikett (Review T21-07): "geliefert" traegt genau der Zugang eines
+    # UEBERNOMMENEN Vertrags (die Zugangssumme steht im Abzug der
+    # abgebenden Gesellschaft); alles andere rechnet der Kern.
+    stamm_idx = stamm.set_index("police_id")
+    uebernommen = (
+        stamm_idx.loc[ledger["police_id"].to_numpy(), "bestandszugang"].to_numpy()
+        > stamm_idx.loc[ledger["police_id"].to_numpy(), "insurance_start"].to_numpy()
+    )
+    darf_geliefert = (ledger["ereignis"].to_numpy() == "ZUG") & uebernommen
+    ist_geliefert = (ledger["betrag_herkunft"] == "geliefert").to_numpy()
+    falsch_geliefert = ist_geliefert & ~darf_geliefert
+    if falsch_geliefert.any():
+        errors.append(
+            "ledger: betrag_herkunft 'geliefert' nur fuer den Zugang eines "
+            "uebernommenen Vertrags — alles andere ist 'gerechnet' (police "
+            f"{_policen(falsch_geliefert)})"
+        )
+    fehlt_geliefert = darf_geliefert & ~ist_geliefert
+    if fehlt_geliefert.any():
+        errors.append(
+            "ledger: Zugang eines uebernommenen Vertrags muss betrag_herkunft "
+            f"'geliefert' tragen (police {_policen(fehlt_geliefert)})"
+        )
+    if ledger["betrag"].isna().any():
+        errors.append(
+            f"ledger: fehlende Werte (NaN) in betrag (police "
+            f"{_policen(ledger['betrag'].isna())})"
+        )
+    elif _nichtendlich(ledger["betrag"]):
+        unendlich = _np.isinf(ledger["betrag"].to_numpy(dtype="float64"))
+        errors.append(
+            f"ledger: nichtendliche Werte (inf) in betrag (police "
+            f"{_policen(unendlich)}) — ein Buchungsbetrag ist endlich"
+        )
+    else:
+        negativ = (ledger["betrag"] < 0.0) & (ledger["ereignis"] != "MIG")
+        if negativ.any():
+            errors.append(
+                f"ledger: betrag < 0 (police {_policen(negativ)}) — nur das "
+                "Migrations-Residuum MIG traegt ein Vorzeichen"
+            )
+    if not (ledger["status_date"].dt.day == 1).all():
+        errors.append("ledger: status_date nicht auf Monatsersten normalisiert")
+
+    # Zeilenweise gegen den Stammsatz: Generation, Laufzeit, Vertragsjahr.
+    haupt = stamm.set_index("police_id")
+    stammteil = haupt.loc[
+        ledger["police_id"].to_numpy(),
+        ["tarif_generation", "insurance_start", "insurance_end", "duration"],
+    ].reset_index(drop=True)
+    gen_falsch = ledger["tarif_generation"].to_numpy() != stammteil["tarif_generation"].to_numpy()
+    if gen_falsch.any():
+        errors.append(
+            f"ledger: tarif_generation weicht vom Stammsatz ab (police "
+            f"{_policen(gen_falsch)})"
+        )
+    start = stammteil["insurance_start"]
+    datum = ledger["status_date"].reset_index(drop=True)
+    vor_beginn = datum < start
+    nach_ende = datum > stammteil["insurance_end"]
+    if vor_beginn.any():
+        errors.append(f"ledger: status_date vor insurance_start (police {_policen(vor_beginn.to_numpy())})")
+    if nach_ende.any():
+        errors.append(f"ledger: status_date nach insurance_end (police {_policen(nach_ende.to_numpy())})")
+    jahr = ledger["vertragsjahr"].reset_index(drop=True)
+    ausserhalb = (jahr < 0) | (jahr > stammteil["duration"])
+    if ausserhalb.any():
+        errors.append(
+            f"ledger: vertragsjahr ausserhalb [0, duration] (police "
+            f"{_policen(ausserhalb.to_numpy())})"
+        )
+    vollendet = (
+        (datum.dt.year * 12 + datum.dt.month) - (start.dt.year * 12 + start.dt.month)
+    ) // 12
+    kein_mig = (ledger["ereignis"] != "MIG").reset_index(drop=True)
+    unstimmig = kein_mig & ~ausserhalb & ~vor_beginn & (vollendet != jahr)
+    if unstimmig.any():
+        errors.append(
+            "ledger: vertragsjahr ist nicht die Zahl der vollendeten "
+            f"Vertragsjahre am status_date (police {_policen(unstimmig.to_numpy())})"
+        )
+
+    if historie is not None and len(historie) > 0:
+        zustaende = set(zip(
+            historie["police_id"].astype("int64"),
+            historie["status_code"],
+            historie["status_date"],
+        ))
+        pex_ab = (
+            historie[historie["status_code"] == "PEX"]
+            .groupby("police_id")["status_date"].min()
+        )
+        ohne_journal: List[int] = []
+        for z in ledger.itertuples(index=False):
+            ziel = EREIGNIS_ZUSTAND.get(str(z.ereignis))
+            if ziel is None:
+                continue
+            pid = int(z.police_id)
+            if ziel == "PEX":
+                gedeckt = pid in pex_ab.index and pex_ab.loc[pid] <= z.status_date
+            else:
+                gedeckt = (pid, ziel, z.status_date) in zustaende
+            if not gedeckt:
+                ohne_journal.append(pid)
+        if ohne_journal:
+            errors.append(
+                f"ledger: {len(ohne_journal)} GeVo(s) ohne passende "
+                f"Journalzeile (Zustand und Datum), police "
+                f"{sorted(set(ohne_journal))[:5]} — eine Buchung, die einen "
+                "Zustand herstellt, hat ihre Historienzeile"
+            )
+    elif historie is not None:
+        mit_zustand = ledger["ereignis"].isin(EREIGNIS_ZUSTAND)
+        if mit_zustand.any():
+            errors.append(
+                f"ledger: {int(mit_zustand.sum())} zustandsaendernde GeVo(s) "
+                "bei leerer Historie"
+            )
+
+    if scheiben is not None:
+        errors.extend(_ledger_scheiben_bindung(ledger, scheiben, stamm))
+    return errors
+
+
+def validate_tagesjournal(
+    journal: Any, sicht: Any, *, ab_tag: _dt.date, bis_tag: _dt.date
+) -> List[str]:
+    """Bijektion Tagesjournal <-> Buchungssicht des Ledgers (Fehlerlisten-Idiom).
+
+    ``sicht`` ist die abgeleitete Buchungssicht JEDER Ledger-Zeile (Spalten
+    wie das Tagesjournal; erzeugt von
+    ``rechner_pipeline.betrieb.tagesjournal.mit_buchungstagen`` — die
+    Ableitungsregeln wohnen dort, der Vertrag hier). Geprueft wird die
+    Tabelle, wie sie auf der Platte liegt, fuer alle Buchungen mit
+    Buchungstag in ``[ab_tag, bis_tag]`` (Betriebsbeginn bis gefuehrter
+    Tag):
+
+    * Spalten/dtypes, ``herkunft`` aus :data:`HERKUNFT_VALUES`;
+    * Schluessel (police_id, ereignis, status_date, betrag_art) eindeutig — eine
+      Buchung wird nicht zweimal gebucht;
+    * keine Zeile nach dem gefuehrten Tag, keine vor dem Betriebsbeginn
+      (die Vorgeschichte steht im Ledger, nicht im Journal);
+    * die Buchungstage steigen in Dateireihenfolge — die Tabelle ist nur
+      angefuegt worden;
+    * jede Journalzeile verweist auf genau eine Ledger-Zeile, mit
+      demselben Betrag, derselben Betragsart, demselben abgeleiteten
+      Buchungstag und derselben Herkunft;
+    * jede faellige Ledger-Zeile hat genau eine Journalzeile.
+
+    Dieselbe Klasse wie die ERH-Scheiben-Bindung (T18-01) und die
+    Betragsidentitaet je Buchung (T20-04): Eine Journalzeile ohne
+    Ledger-Gegenstueck oder ein verschobenes Datum ist ein Befund, keine
+    Sicht.
+    """
+    errors: List[str] = []
+    cols = list(journal.columns)
+    if cols != list(TAGESJOURNAL_NAMES):
+        return [f"tagesjournal: Spalten {cols} != erwartet {list(TAGESJOURNAL_NAMES)}"]
+    for name, dtype in TAGESJOURNAL_SPALTEN:
+        actual = str(journal[name].dtype)
+        if actual != dtype:
+            errors.append(f"tagesjournal {name}: dtype {actual}, erwartet {dtype}")
+    if errors:
+        return errors
+    if list(sicht.columns) != list(TAGESJOURNAL_NAMES):
+        return [f"tagesjournal: Buchungssicht mit Spalten {list(sicht.columns)} "
+                f"!= erwartet {list(TAGESJOURNAL_NAMES)}"]
+    # Die Betragsart gehoert in den Schluessel: Ein Vorfall bewegt mehr als
+    # eine Groesse (ein Zugang eine Summe UND einen Beitrag), und jede steht
+    # als eigene Zeile. Ohne sie waeren zwei Zeilen desselben Vorfalls ein
+    # doppelter Schluessel.
+    schluessel_spalten = ["police_id", "ereignis", "status_date", "betrag_art"]
+
+    def _schluessel(df: Any) -> Any:
+        import pandas as pd
+
+        return pd.MultiIndex.from_arrays(
+            [df["police_id"].astype("int64"), df["ereignis"].astype(str),
+             pd.to_datetime(df["status_date"]), df["betrag_art"].astype(str)],
+            names=schluessel_spalten,
+        )
+
+    import pandas as pd
+
+    grenze, beginn = pd.Timestamp(bis_tag), pd.Timestamp(ab_tag)
+    sicht_schluessel = _schluessel(sicht)
+    if sicht_schluessel.duplicated().any():
+        return ["tagesjournal: Buchungssicht mit doppeltem Schluessel — der "
+                "Ledger ist nicht eindeutig je (police_id, ereignis, "
+                "status_date, betrag_art)"]
+    faellig = sicht[(sicht["buchungsdatum"] >= beginn) & (sicht["buchungsdatum"] <= grenze)]
+    if len(journal) == 0:
+        if len(faellig):
+            errors.append(
+                f"tagesjournal: leer, aber {len(faellig)} Buchung(en) bis "
+                f"{pd.Timestamp(bis_tag).date().isoformat()} faellig"
+            )
+        return errors
+
+    def _policen(maske: Any) -> List[int]:
+        return sorted(set(int(p) for p in journal.loc[maske, "police_id"]))[:5]
+
+    fremd = ~journal["herkunft"].isin(HERKUNFT_VALUES)
+    if fremd.any():
+        errors.append(
+            f"tagesjournal: herkunft ausserhalb {list(HERKUNFT_VALUES)} "
+            f"(police {_policen(fremd)})"
+        )
+    schluessel = _schluessel(journal)
+    if schluessel.duplicated().any():
+        doppelt = journal[schluessel.duplicated()].iloc[0]
+        errors.append(
+            f"tagesjournal: Buchung doppelt (police {int(doppelt['police_id'])} "
+            f"{doppelt['ereignis']} {pd.Timestamp(doppelt['status_date']).date()})"
+        )
+    zukunft = journal["buchungsdatum"] > grenze
+    if zukunft.any():
+        errors.append(
+            f"tagesjournal: {int(zukunft.sum())} Buchung(en) nach dem gefuehrten "
+            f"Tag {pd.Timestamp(bis_tag).date().isoformat()} (police {_policen(zukunft)})"
+        )
+    vorher = journal["buchungsdatum"] < beginn
+    if vorher.any():
+        errors.append(
+            f"tagesjournal: {int(vorher.sum())} Buchung(en) vor dem Betriebsbeginn "
+            f"{pd.Timestamp(ab_tag).date().isoformat()} (police {_policen(vorher)}) "
+            "— die Vorgeschichte steht im Ledger, nicht im Tagesjournal"
+        )
+    daten = journal["buchungsdatum"].to_numpy()
+    if len(daten) > 1 and (daten[1:] < daten[:-1]).any():
+        stelle = int(_np.argmax(daten[1:] < daten[:-1])) + 1
+        errors.append(
+            f"tagesjournal: Buchungstage fallen in Zeile {stelle} "
+            f"({pd.Timestamp(daten[stelle]).date()} nach "
+            f"{pd.Timestamp(daten[stelle - 1]).date()}) — die Tabelle ist nicht "
+            "nur angefuegt worden"
+        )
+    soll = sicht.set_index(sicht_schluessel)
+    ohne: List[int] = []
+    abweichend: List[str] = []
+    for zeile, key in zip(journal.itertuples(index=False), schluessel):
+        if key not in soll.index:
+            ohne.append(int(zeile.police_id))
+            continue
+        erwartet = soll.loc[key]
+        kopf = (f"police {int(zeile.police_id)} {zeile.ereignis} "
+                f"{pd.Timestamp(zeile.status_date).date()}")
+        if (float(erwartet["betrag"]) != float(zeile.betrag)
+                or str(erwartet["betrag_art"]) != str(zeile.betrag_art)):
+            abweichend.append(
+                f"{kopf}: Betrag {zeile.betrag!r}/{zeile.betrag_art} statt "
+                f"{float(erwartet['betrag'])!r}/{erwartet['betrag_art']}"
+            )
+        if pd.Timestamp(erwartet["buchungsdatum"]) != pd.Timestamp(zeile.buchungsdatum):
+            abweichend.append(
+                f"{kopf}: Buchungstag {pd.Timestamp(zeile.buchungsdatum).date()} "
+                f"statt abgeleitet {pd.Timestamp(erwartet['buchungsdatum']).date()}"
+            )
+        if str(erwartet["herkunft"]) != str(zeile.herkunft):
+            abweichend.append(
+                f"{kopf}: herkunft {zeile.herkunft} statt {erwartet['herkunft']}"
+            )
+    if ohne:
+        errors.append(
+            f"tagesjournal: {len(ohne)} Buchung(en) ohne Ledger-Zeile (police "
+            f"{sorted(set(ohne))[:5]}) — ein Journal verweist auf Wirkung, es "
+            "erfindet keine"
+        )
+    errors.extend(f"tagesjournal: {a}" for a in abweichend[:5])
+    if len(abweichend) > 5:
+        errors.append(f"tagesjournal: ... und {len(abweichend) - 5} weitere Abweichungen")
+    fehlt = faellig[~_schluessel(faellig).isin(schluessel)]
+    if len(fehlt):
+        beispiel = fehlt.iloc[0]
+        errors.append(
+            f"tagesjournal: {len(fehlt)} faellige Buchung(en) fehlen (z. B. police "
+            f"{int(beispiel['police_id'])} {beispiel['ereignis']} mit Buchungstag "
+            f"{pd.Timestamp(beispiel['buchungsdatum']).date()})"
+        )
+    return errors
+
+
+def _ledger_scheiben_bindung(
+    ledger: Any, scheiben: Any, stamm: Any = None
+) -> List[str]:
+    """Jede ERH-Buchung genau eine Scheibe, jede Scheibe genau eine Buchung
+    — ueber Police, Datum, Betrag und Erhoehungsjahr (T18-01).
+
+    Ausgenommen sind MITGEBRACHTE Scheiben: Die Alt-Erhoehungen eines
+    uebernommenen Vertrags liegen vor seinem Bestandszugang und haben
+    keine Buchung im Journal des aufnehmenden Unternehmens — die
+    Vorgeschichte wird nicht nachgefahren (Grundsatzdokumentation 9.14),
+    ihr Zugang bucht die Gesamtsumme. Eine Scheibe NACH dem Zugang ohne
+    Buchung bleibt ein Befund.
+    """
+    import pandas as _pd
+
+    errors: List[str] = []
+    if list(scheiben.columns) != list(SCHEIBEN_NAMES):
+        return []  # validate_scheiben meldet den Spaltenfehler
+    # Die Bindung gilt zwischen der SUMMEN-Buchung und der Scheibe: Eine
+    # Erhoehung bucht seit dem gebuchten Beitrag zwei Zeilen (Summe und
+    # Bruttojahresbeitrag), aber nur eine davon ist die Erhoehungssumme,
+    # die in der Scheibe steht. Ohne die Art waeren die zwei Zeilen eine
+    # Doppelbuchung derselben Police am selben Tag.
+    erh = ledger.loc[(ledger["ereignis"] == "ERH")
+                     & (ledger["betrag_art"] == "VS_erhoehung"),
+                     ["police_id", "status_date", "vertragsjahr", "betrag"]]
+    sch = scheiben[["police_id", "erhoehung_datum", "erhoehung_jahr", "sum_insured"]]
+    if stamm is not None and len(sch):
+        zugang = stamm.set_index("police_id")["bestandszugang"]
+        mitgebracht = (
+            sch["erhoehung_datum"].to_numpy()
+            <= zugang.reindex(sch["police_id"].to_numpy()).to_numpy()
+        )
+        sch = sch[~mitgebracht]
+    doppelt_l = erh.duplicated(["police_id", "status_date"])
+    if doppelt_l.any():
+        errors.append(
+            "ledger: zwei ERH-Buchungen derselben Police am selben Datum "
+            f"(police {sorted(set(erh.loc[doppelt_l, 'police_id']))[:5]})"
+        )
+    doppelt_s = sch.duplicated(["police_id", "erhoehung_datum"])
+    if doppelt_s.any():
+        errors.append(
+            "scheiben: zwei Scheiben derselben Police am selben Datum "
+            f"(police {sorted(set(sch.loc[doppelt_s, 'police_id']))[:5]})"
+        )
+    if errors:
+        return errors
+    paar = _pd.merge(
+        erh, sch, how="outer",
+        left_on=["police_id", "status_date"],
+        right_on=["police_id", "erhoehung_datum"],
+        indicator=True,
+    )
+    nur_ledger = paar[paar["_merge"] == "left_only"]
+    nur_scheibe = paar[paar["_merge"] == "right_only"]
+    if len(nur_ledger):
+        errors.append(
+            f"ledger: {len(nur_ledger)} ERH-Buchung(en) ohne Scheibe "
+            f"(police {sorted(set(nur_ledger['police_id']))[:5]})"
+        )
+    if len(nur_scheibe):
+        errors.append(
+            f"scheiben: {len(nur_scheibe)} Scheibe(n) ohne ERH-Buchung "
+            f"(police {sorted(set(nur_scheibe['police_id']))[:5]})"
+        )
+    beide = paar[paar["_merge"] == "both"]
+    # Cent-Toleranz: Der Kern schreibt beide aus demselben Wert, eine
+    # Lieferung darf gerundet haben — ein vertauschter Betrag liegt weit
+    # darueber.
+    betrag_falsch = (beide["betrag"] - beide["sum_insured"]).abs() > 0.005
+    if betrag_falsch.any():
+        beispiel = beide[betrag_falsch].iloc[0]
+        errors.append(
+            f"ledger/scheiben: {int(betrag_falsch.sum())} ERH-Buchung(en) "
+            "mit anderem Betrag als ihre Scheibe (z. B. police "
+            f"{int(beispiel['police_id'])} am "
+            f"{_pd.Timestamp(beispiel['status_date']).date()}: Ledger "
+            f"{float(beispiel['betrag']):.2f}, Scheibe "
+            f"{float(beispiel['sum_insured']):.2f})"
+        )
+    jahr_falsch = beide["vertragsjahr"] != beide["erhoehung_jahr"]
+    if jahr_falsch.any():
+        errors.append(
+            f"ledger/scheiben: {int(jahr_falsch.sum())} ERH-Buchung(en) mit "
+            "anderem Vertragsjahr als ihre Scheibe (police "
+            f"{sorted(set(beide.loc[jahr_falsch, 'police_id']))[:5]})"
+        )
+    return errors
+
+
+def validate_abschluss(df: Any) -> List[str]:
+    """Der festgeschriebene Stand, bevor er festgeschrieben wird (T18-04).
+
+    Ein Abschluss ist unumkehrbar; was hineingeht, muss ein Bilanzwert
+    sein: eine Police je Zeile, ein Stichtag je Datei, jede Zahl endlich.
+    Vorher publizierte eine Config mit ``gamma2 = nan`` 394 nichtendliche
+    Zahlfelder — die Kontrolle wurde erst danach rot.
+    """
+    errors: List[str] = []
+    cols = list(df.columns)
+    if cols != list(ABSCHLUSS_NAMES):
+        return [f"abschluss: Spalten {cols} != erwartet {list(ABSCHLUSS_NAMES)}"]
+    if len(df) == 0:
+        return ["abschluss: leer — kein festgeschriebener Stand"]
+    if df["police_id"].duplicated().any():
+        errors.append("abschluss: police_id nicht eindeutig")
+    if df["stichtag"].nunique() != 1:
+        errors.append(f"abschluss: mehrere Stichtage in einer Datei ({df['stichtag'].nunique()})")
+    if not df["produkt"].isin(PRODUKT_VALUES).all():
+        errors.append(f"abschluss: produkt ausserhalb {PRODUKT_VALUES}")
+    if not df["status_code"].isin(AKTIVE_STATUS).all():
+        errors.append(f"abschluss: status_code ausserhalb {AKTIVE_STATUS} (nur in-force-Vertraege)")
+    if df["kern_version"].map(lambda v: not isinstance(v, str) or not v).any():
+        errors.append("abschluss: kern_version leer")
+    nichtendlich = [sp for sp in ABSCHLUSS_ZAHLEN if _nichtendlich(df[sp])]
+    if nichtendlich:
+        errors.append(
+            f"abschluss: nichtendliche Werte in {nichtendlich} — ein "
+            "Bilanzwert ist endlich"
+        )
+    return errors
+
+
 def validate_scheiben(stamm: Any, scheiben: Any, historie: Any = None) -> List[str]:
     """Validate Erhoehungsscheiben against their base contracts (error list).
 
@@ -637,26 +1318,35 @@ def validate_scheiben(stamm: Any, scheiben: Any, historie: Any = None) -> List[s
     # NaN-Vergleiche sind immer False — fehlende Summen explizit fangen.
     if scheiben["sum_insured"].isna().any():
         errors.append("scheiben: fehlende Werte (NaN) in sum_insured")
+    elif _nichtendlich(scheiben["sum_insured"]):
+        # inf > 0 ist wahr — die Bandpruefung darunter liesse es durch.
+        errors.append("scheiben: nichtendliche Werte (inf) in sum_insured")
     elif (scheiben["sum_insured"] <= 0).any():
         errors.append("scheiben: sum_insured <= 0")
     # gamma1 ist die Rechnungsgrundlage der Scheibe und geht in Beitrag und
-    # Reserve ein. Die Tarifwerk-Regel setzt sie auf null, weil die
-    # Bezugsgroesse der Verwaltungskosten die GrundVS bleibt
-    # (kern.rechenkern.erhoehungs_scheibe). Ein anderer Wert rechnet still
-    # falsch: NaN laesst den Rueckkaufswert auf 0,00 fallen statt auf NaN,
-    # ein negativer Wert erzeugt einen negativen Jahresbeitrag — beides
-    # plausibel aussehende Zahlen, die niemandem auffallen.
-    # NaN wird getrennt gemeldet, weil jeder Vergleich damit False ist;
-    # das != 0.0 danach faengt Unendlich und jeden Fremdwert mit.
+    # Reserve ein. Ein Fremdwert rechnet still falsch: NaN laesst den
+    # Rueckkaufswert auf 0,00 fallen statt auf NaN, ein negativer Wert
+    # erzeugt einen negativen Jahresbeitrag — beides plausibel aussehende
+    # Zahlen, die niemandem auffallen. WELCHER Wert richtig ist, sagt das
+    # Tarifwerk der Generation (0 fuer das eigene Geschaeft, das gamma1
+    # der Zelle bei uebernommenen Generationen mit voller Beitragsformel):
+    # das prueft bestand.ledger_bindung.pruefe_scheiben_tarifwerk mit der
+    # Config. Hier, ohne Config, bleibt die Form: endlich und nicht negativ.
+    # NaN wird getrennt gemeldet, weil jeder Vergleich damit False ist.
     if scheiben["gamma1"].isna().any():
         errors.append("scheiben: fehlende Werte (NaN) in gamma1")
-    elif (scheiben["gamma1"] != 0.0).any():
+    elif _nichtendlich(scheiben["gamma1"]):
+        errors.append(
+            "scheiben: gamma1 nicht endlich (inf) — eine Rechnungsgrundlage "
+            "ist eine Zahl"
+        )
+    elif (scheiben["gamma1"] < 0.0).any():
         abweichend = sorted(
-            set(scheiben.loc[scheiben["gamma1"] != 0.0, "police_id"])
+            set(scheiben.loc[scheiben["gamma1"] < 0.0, "police_id"])
         )[:5]
         errors.append(
-            "scheiben: gamma1 != 0 (Tarifwerk-Regel: die Bezugsgroesse der "
-            f"Verwaltungskosten bleibt die GrundVS), police {abweichend}"
+            "scheiben: gamma1 < 0 (ein Verwaltungskostensatz traegt kein "
+            f"Vorzeichen), police {abweichend}"
         )
     if not (scheiben["erhoehung_datum"].dt.day == 1).all():
         errors.append("scheiben: erhoehung_datum nicht auf Monatsersten normalisiert")
@@ -768,13 +1458,117 @@ def bu_model_point_kwargs(
     return kwargs
 
 
-def validate_verankerung(stamm: Any, verankerung: Any) -> List[str]:
+def validate_reduktionen(
+    stamm: Any, reduktionen: Any, historie: Any = None
+) -> List[str]:
+    """Herabsetzungen gegen den Stamm pruefen (leer = gueltig).
+
+    Jede Zeile gehoert zu einem bekannten Vertrag, das Reduktionsjahr
+    liegt in der Beitragszahlungsdauer, und der fortgefuehrte Anteil
+    liegt echt zwischen 0 und 1: ``1.0`` ist keine Herabsetzung, ``0.0``
+    ist eine Beitragsfreistellung und wird als PEX gefuehrt.
+
+    **Hoechstens EINE Reduktion je Police.** Der Kern traegt den
+    herabgesetzten Vertrag als EINEN Vertrag mit geknicktem Verlauf
+    (``kern.beitragsreduktion.ReduzierterVertrag``); eine zweite
+    Herabsetzung darauf ist nicht definiert. Lieber ein benannter Fehler
+    als eine Zahl, die niemand herleiten kann.
+
+    Mit ``historie`` zusaetzlich die Reihenfolge: Eine Herabsetzung setzt
+    einen laufenden Beitrag voraus, liegt also echt VOR einer
+    Beitragsfreistellung und vor jedem Endzustand.
+    """
+    errors: List[str] = []
+    cols = list(reduktionen.columns)
+    if cols != list(REDUKTIONEN_NAMES):
+        return [
+            f"reduktionen: Spalten weichen ab: erwartet "
+            f"{list(REDUKTIONEN_NAMES)}, vorhanden {cols}"
+        ]
+    for name, dtype in REDUKTIONEN_SPALTEN:
+        actual = str(reduktionen[name].dtype)
+        if actual != dtype:
+            errors.append(
+                f"reduktionen: Spalte {name}: dtype {actual}, erwartet {dtype}")
+    if errors:
+        return errors
+    unbekannt = set(reduktionen["police_id"]) - set(stamm["police_id"])
+    if unbekannt:
+        errors.append(
+            f"reduktionen: police_ids ausserhalb des Bestands: "
+            f"{sorted(unbekannt)[:5]}")
+    if reduktionen["police_id"].duplicated().any():
+        doppelt = sorted(
+            reduktionen.loc[reduktionen["police_id"].duplicated(), "police_id"]
+        )[:5]
+        errors.append(
+            f"reduktionen: mehrere Herabsetzungen je Police: {doppelt} — der "
+            "Kern fuehrt den herabgesetzten Vertrag als EINEN Vertrag mit "
+            "geknicktem Verlauf; eine zweite Reduktion darauf ist nicht "
+            "definiert")
+    ausser = [
+        float(a) for a in reduktionen["anteil"] if not 0.0 < float(a) < 1.0]
+    if ausser:
+        errors.append(
+            f"reduktionen: anteil ausserhalb (0, 1): {sorted(ausser)[:5]} — "
+            "1.0 ist keine Herabsetzung, 0.0 ist eine Beitragsfreistellung "
+            "und wird als PEX gefuehrt")
+    fremd = sorted({
+        str(v) for v in reduktionen["verfahren"]
+        if not isinstance(v, str) or v not in RED_VERFAHREN})
+    if fremd:
+        errors.append(
+            f"reduktionen: verfahren {fremd} unbekannt (bekannt: "
+            f"{list(RED_VERFAHREN)})")
+    haupt = stamm.set_index("police_id")
+    for pid, jahr in zip(reduktionen["police_id"],
+                         reduktionen["reduktion_jahr"]):
+        pid, jahr = int(pid), int(jahr)
+        if pid not in haupt.index:
+            continue
+        t = int(haupt.loc[pid, "premium_duration"])
+        if not 0 < jahr < t:
+            errors.append(
+                f"reduktionen: police {pid}: Reduktionsjahr {jahr} ausserhalb "
+                f"der Beitragszahlungsdauer (0, {t}) — ohne laufenden Beitrag "
+                "gibt es nichts herabzusetzen")
+    if historie is not None and len(historie):
+        grenz_status = ("PEX",) + TERMINALE_STATUS
+        grenzen = (
+            historie[historie["status_code"].isin(grenz_status)]
+            .groupby("police_id")["status_date"].min()
+        )
+        for pid, datum in zip(reduktionen["police_id"],
+                              reduktionen["reduktion_datum"]):
+            pid = int(pid)
+            if pid not in grenzen.index:
+                continue
+            if datum >= grenzen.loc[pid]:
+                errors.append(
+                    f"reduktionen: police {pid}: Herabsetzung am "
+                    f"{datum.date()} liegt nicht vor dem Zustandswechsel am "
+                    f"{grenzen.loc[pid].date()} — eine Herabsetzung setzt "
+                    "einen laufenden Beitrag voraus")
+    return errors
+
+
+def validate_verankerung(
+    stamm: Any, verankerung: Any, historie: Any = None
+) -> List[str]:
     """Verankerungsattribute gegen den Stamm pruefen (leer = gueltig).
 
     Jede Zeile gehoert zu einem bekannten Vertrag, je Vertrag hoechstens
     eine Verankerung, und t_a liegt INNERHALB der Vertragslaufzeit — ein
     Rechenpunkt nach dem Ablauf verankert nichts. ``dk_ta`` muss belegt
     sein: Eine Verankerung ohne Wert ist keine.
+
+    Mit ``historie`` zusaetzlich die Invariante, dass Verankerung und
+    Vorgeschichte DIESELBE Geschichte erzaehlen: Wer eine
+    Beitragsfreistellung vor t_a bucht, darf t_a nicht als
+    beitragspflichtig ausweisen, und umgekehrt. Die Bewertung muesste aus
+    einer solchen Lieferung sonst eine Zahl machen, die aus keiner der
+    beiden Aussagen folgt — je nachdem, welchen der beiden Fakten sie
+    liest, kaeme ein anderer Wert heraus (Review T25-06).
     """
     errors: List[str] = []
     cols = list(verankerung.columns)
@@ -807,11 +1601,53 @@ def validate_verankerung(stamm: Any, verankerung: Any) -> List[str]:
         errors.append("verankerung: monate_ta negativ")
     if verankerung["dk_ta"].isna().any():
         errors.append("verankerung: dk_ta fehlt (NaN) — eine Verankerung ohne Wert ist keine")
-    leer = verankerung["zustand_ta"].map(
-        lambda z: not isinstance(z, str) or not z.strip()
+    if historie is not None and len(historie):
+        # Vorgeschichte und Verankerungszustand muessen dieselbe Geschichte
+        # erzaehlen — sonst haengt der Wert davon ab, welchen der beiden
+        # Fakten ein Konsument liest (Review T25-06).
+        beginn = stamm.set_index("police_id")["insurance_start"]
+        pex_monate: Dict[int, int] = {}
+        for pid, code, datum in zip(
+            historie["police_id"], historie["status_code"],
+            historie["status_date"],
+        ):
+            pid = int(pid)
+            if code != "PEX" or pid not in beginn.index:
+                continue
+            b = beginn.loc[pid]
+            monate = (datum.year - b.year) * 12 + (datum.month - b.month)
+            pex_monate[pid] = min(monate, pex_monate.get(pid, monate))
+        for pid, monate, zustand in zip(
+            verankerung["police_id"], verankerung["monate_ta"],
+            verankerung["zustand_ta"],
+        ):
+            pid, monate = int(pid), int(monate)
+            if pid not in beginn.index:
+                continue
+            vor_ta = pid in pex_monate and pex_monate[pid] <= monate
+            if vor_ta and zustand != "beitragsfrei":
+                errors.append(
+                    f"verankerung: police {pid}: Beitragsfreistellung im "
+                    f"Vertragsmonat {pex_monate[pid]}, t_a aber bei {monate} "
+                    f"mit zustand_ta {zustand!r} — die Vorgeschichte und der "
+                    "Verankerungszustand widersprechen sich"
+                )
+            elif not vor_ta and zustand == "beitragsfrei":
+                errors.append(
+                    f"verankerung: police {pid}: zustand_ta 'beitragsfrei', "
+                    "aber keine Beitragsfreistellung bis zum Vertragsmonat "
+                    f"{monate} in der Vorgeschichte"
+                )
+    fremd = verankerung["zustand_ta"].map(
+        lambda z: not isinstance(z, str) or z not in ZUSTAENDE_TA
     )
-    if leer.any():
-        errors.append("verankerung: zustand_ta leer")
+    if fremd.any():
+        werte = sorted({str(z) for z in verankerung.loc[fremd, "zustand_ta"]})[:5]
+        errors.append(
+            f"verankerung: zustand_ta {werte} nicht abgebildet (bekannt: "
+            f"{list(ZUSTAENDE_TA)}) — die Tabelle spricht die Sprache der "
+            "Uebernahme, ein fremder Wert faellt hier und nicht erst im Kern"
+        )
     if (verankerung["verweildauer_ta"] < 0).any():
         errors.append("verankerung: verweildauer_ta negativ")
     laufzeit = stamm.set_index("police_id")["duration"]
@@ -888,4 +1724,106 @@ def validate_merkmale(
                 errors.append(
                     f"merkmale {dim}: Auspraegung(en) {falsch} nicht "
                     f"deklariert (erlaubt: {sorted(gueltig)})")
+    return errors
+
+
+# --------------------------------------------------------------------------- #
+# Korrekturschicht als Vertragsattribut (Freischaltung, Schritt 5)
+# --------------------------------------------------------------------------- #
+
+
+def schichten_zeile(police_id: int, beleg: Mapping[str, Any]) -> Dict[str, Any]:
+    """Der ``hist``-Belegeintrag (``Schichtparameter.als_beleg()``) als Zeile."""
+    import json as _json
+
+    return {
+        "police_id": int(police_id),
+        "schichttyp": str(beleg["schichttyp"]),
+        "verankerungszustand": str(beleg["verankerungszustand"]),
+        "verweildauer": int(beleg["verweildauer"]),
+        "rho": float(beleg["rho"]),
+        "formfunktion": str(beleg["formfunktion"]),
+        "formparameter": _json.dumps(dict(beleg.get("formparameter") or {}),
+                                     sort_keys=True),
+        "vererbend": _json.dumps([list(p) for p in beleg.get("vererbend") or []]),
+        "kohorte": str(beleg.get("kohorte", "t_a")),
+        "in_ueberschuss": bool(beleg.get("in_ueberschuss", True)),
+        "in_zzr": bool(beleg.get("in_zzr", True)),
+        "rumpfmonate": int(beleg.get("rumpfmonate", 0)),
+    }
+
+
+def validate_schichten(stamm: Any, schichten: Any, verankerung: Any) -> List[str]:
+    """Schichten gegen Stamm und Verankerung (Fehlerliste, leer = ok).
+
+    Jede Schicht gehoert zu genau einer Police des Stamms, die eine
+    Verankerung traegt (ohne t_a ist eine Schicht nicht bewertbar), und
+    ihre Zeile muss der Form nach ein Parametersatz sein — dieselben
+    Grenzen wie die Konstruktor-Wachen von ``Schichtparameter``
+    (Schichttyp, endliches rho, Verweildauer, Rumpfmonate, JSON-Felder),
+    hier ohne den Kern zu importieren; die Konstruktion selbst macht
+    ``bestand.schichten.schichten_je_police``.
+    """
+    import json as _json
+    import math as _math
+
+    errors: List[str] = []
+    cols = list(schichten.columns)
+    if cols != list(SCHICHTEN_NAMES):
+        return [f"schichten: Spalten {cols} != erwartet {list(SCHICHTEN_NAMES)}"]
+    for name, dtype in SCHICHTEN_SPALTEN:
+        actual = str(schichten[name].dtype)
+        if actual != dtype:
+            errors.append(f"schichten {name}: dtype {actual}, erwartet {dtype}")
+    if errors or len(schichten) == 0:
+        return errors
+    if schichten["police_id"].duplicated().any():
+        errors.append("schichten: police_id nicht eindeutig (eine Schicht je Police)")
+    unbekannt = sorted(set(schichten["police_id"]) - set(stamm["police_id"]))
+    if unbekannt:
+        errors.append(f"schichten: police_id unbekannt im Bestand: {unbekannt[:5]}")
+    if verankerung is None or len(verankerung) == 0:
+        errors.append(
+            "schichten ohne verankerung: eine Schicht braucht ihren "
+            "Verankerungszeitpunkt (verankerung.parquet)")
+    else:
+        ohne_anker = sorted(set(schichten["police_id"]) - set(verankerung["police_id"]))
+        if ohne_anker:
+            errors.append(
+                f"schichten: police ohne Verankerung: {ohne_anker[:5]}")
+        # Die GEGENRICHTUNG (Review T25-04): Verankerung und Schicht
+        # beschreiben DIESELBE Population. Der Produzent
+        # (gates.verankerung_belegen) schreibt die Tabelle nur, wenn JEDE
+        # verankerte Police eine getragene Schicht hat — sonst ist der Lauf
+        # rot und es entsteht keine Tabelle. Eine verankerte Police ohne
+        # Schicht heisst also: Die beiden Tabellen stammen nicht aus
+        # demselben Lauf, und die Bewertung dieses Vertrags rechnet ohne
+        # seine Korrektur weiter, ohne dass jemand es sagt.
+        ohne_schicht = sorted(set(verankerung["police_id"]) - set(schichten["police_id"]))
+        if ohne_schicht:
+            errors.append(
+                f"verankerung: police ohne Schicht: {ohne_schicht[:5]} — "
+                "Verankerung und Korrekturschicht stammen nicht aus demselben "
+                "Lauf von gates.verankerung_belegen")
+    for zeile in schichten.to_dict("records"):
+        prefix = f"schichten police {zeile['police_id']}"
+        if str(zeile["schichttyp"]) not in ("hist", "conv"):
+            errors.append(f"{prefix}: schichttyp {zeile['schichttyp']!r} unbekannt")
+        if str(zeile["verankerungszustand"]) not in VERANKERUNGSZUSTAENDE:
+            errors.append(
+                f"{prefix}: verankerungszustand {zeile['verankerungszustand']!r} "
+                f"ist kein Erlebenszustand des Zustandsmodells (bekannt: "
+                f"{list(VERANKERUNGSZUSTAENDE)})"
+            )
+        if not _math.isfinite(float(zeile["rho"])):
+            errors.append(f"{prefix}: rho ist {zeile['rho']!r}")
+        if int(zeile["verweildauer"]) < 0:
+            errors.append(f"{prefix}: verweildauer negativ")
+        if not 0 <= int(zeile["rumpfmonate"]) < 12:
+            errors.append(f"{prefix}: rumpfmonate {zeile['rumpfmonate']} ausserhalb 0..11")
+        for feld in ("formparameter", "vererbend"):
+            try:
+                _json.loads(zeile[feld])
+            except (TypeError, ValueError):
+                errors.append(f"{prefix}: {feld} ist kein JSON")
     return errors

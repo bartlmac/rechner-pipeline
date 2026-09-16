@@ -42,13 +42,18 @@ Knoten: klv
 from __future__ import annotations
 
 import argparse
+import io as _io
 import json
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from rechner_pipeline import fall as fall_mod
-from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.bestand.parquet_io import (
+    read_portfolio,
+    read_portfolio_aus_bytes,
+)
+from rechner_pipeline.gates._common import Eingangsbindung, lies_gehasht
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import model_point_kwargs
 from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
@@ -63,7 +68,11 @@ from rechner_pipeline.kern.korrekturschicht import (
 )
 from rechner_pipeline.qa.stichprobe import Stichprobe
 from rechner_pipeline.qa.testprofil import vorlage
-from rechner_pipeline.spez.validierung import lade_spez
+from rechner_pipeline.spez.validierung import (
+    lade_spez,
+    lade_spez_aus_bytes,
+    spez_pfad,
+)
 
 #: Zieldateiname je Abnahme. A-M1 traegt den nackten Namen, die anderen
 #: ihr Suffix — genauso liest ``gates.aktuartest`` sie
@@ -99,11 +108,17 @@ def _generationsfelder(zelle) -> Dict[str, Any]:
     return dict(zelle.model_point)
 
 
-def _lies_registriert(fall: Path, name: str) -> Any:
-    """Eine registrierte Quelle des Falls lesen (ADR-002)."""
-    return json.loads(
-        fall_mod.eingang_datei(fall, name).read_text(encoding="utf-8")
-    )
+def _lies_registriert(fall: Path, name: str, bindung=None) -> Any:
+    """Eine registrierte Quelle des Falls lesen (ADR-002).
+
+    Mit ``bindung`` GENAU EINMAL gelesen und im Beleg registriert
+    (Review T25-05): Das Urteil beruht auf diesen Bytes, also nennt der
+    Beleg ihren Hash.
+    """
+    pfad = fall_mod.eingang_datei(fall, name)
+    if bindung is not None:
+        return bindung.binde(pfad).json()
+    return json.loads(pfad.read_text(encoding="utf-8"))
 
 
 def baue_auftraege(
@@ -118,8 +133,16 @@ def baue_auftraege(
     scheiben_mit_gamma1: bool = False,
     stoab_je_baustein: bool = False,
     red_anteil_kandidaten: Tuple[float, ...] = (),
+    summen_je_police: Optional[Dict[str, float]] = None,
 ) -> Tuple[List[Vertragspruefung], List[str], List[str]]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag.
+
+    ``summen_je_police`` (police -> gelieferte Versicherungssumme aus den
+    transformierten Zeilen) ist die Grundlage des Modellpunkts, wo kein
+    Anfangszustand eine Grund- oder Ursprungssumme liefert. Die Welt des
+    aktuariellen Tests ist die LIEFERUNG; der Stamm (``--bestand``)
+    traegt seit der Freischaltung die Grundsumme der Fuehrung und ist
+    fuer eine Police ohne ableitbaren Zustand keine Vergleichsbasis.
 
     Rueckgabe ``(auftraege, schicht_ausgelassen, zustandslos)``: Fuer
     Policen mit Herabsetzungs-Anfangszustand UND ersetztem
@@ -163,11 +186,14 @@ def baue_auftraege(
         mp = model_point_kwargs(zeile, _generationsfelder(zelle))
         zustand = (anfangszustaende or {}).get(police, {})
         if "sum_insured" in zustand:
-            # Der Stamm fuehrt die aktuelle Gesamtsumme; die Bewertung
-            # der Vorgeschichts-Welt rechnet auf dem Ursprungs- bzw.
-            # Grund-Modellpunkt (Fall-Ableitungsregel der
+            # Die Bewertung der Vorgeschichts-Welt rechnet auf dem
+            # Ursprungs- bzw. Grund-Modellpunkt (Fall-Ableitungsregel der
             # Uebernahmestrecke).
             mp["sum_insured"] = float(zustand["sum_insured"])
+        elif summen_je_police is not None and police in summen_je_police:
+            # Ohne Zustand gilt die GELIEFERTE Summe als ein Vertrag —
+            # nicht die Stammsumme der Fuehrung (Freischaltung).
+            mp["sum_insured"] = float(summen_je_police[police])
 
         punkte = []
         for p in eintrag["punkte"]:
@@ -292,7 +318,8 @@ def _schicht_felder(eintrag: Any) -> Dict[str, Any]:
 
 
 def _schichten(
-    fall: Path, name: Optional[str], repo_root: Optional[Path] = None
+    fall: Path, name: Optional[str], repo_root: Optional[Path] = None,
+    bindung=None,
 ) -> Dict[str, Any]:
     """Die Korrekturschicht je Police aus einer BINDBAREN Quelle.
 
@@ -331,7 +358,9 @@ def _schichten(
     kandidat = Path(name) if Path(name).is_absolute() else fall / name
     abgeleitet = (fall / "abgeleitet").resolve()
     if kandidat.is_file() and kandidat.resolve().is_relative_to(abgeleitet):
-        roh = json.loads(kandidat.read_text(encoding="utf-8"))
+        gelesen = (bindung.binde(kandidat) if bindung is not None
+                   else lies_gehasht(kandidat))
+        roh = gelesen.json()
         prov = roh.get("provenienz") if isinstance(roh, dict) else None
         if not isinstance(prov, dict) or "schichten" not in roh:
             raise SystemExit(
@@ -356,7 +385,12 @@ def _schichten(
                 raise SystemExit(
                     f"Schichtbeleg-Eingabe fehlt: {rel} — die Kette ist "
                     "nicht nachrechenbar")
-            ist = _hashlib.sha256(pfad.read_bytes()).hexdigest()
+            # Ueber die Bindung: Hat dieser Lauf die Datei schon
+            # gelesen, wird GENAU DIESE Lesung nachgerechnet — sonst
+            # pruefte die Kette einen anderen Stand als den
+            # verarbeiteten (Review T25-05).
+            ist = (bindung.binde(pfad).sha256 if bindung is not None
+                   else _hashlib.sha256(pfad.read_bytes()).hexdigest())
             if ist != soll:
                 raise SystemExit(
                     f"Schichtbeleg-Eingabe {rel} wurde veraendert "
@@ -364,7 +398,7 @@ def _schichten(
                     "weiterverwenden")
         roh = roh["schichten"]
     else:
-        roh = _lies_registriert(fall, name)
+        roh = _lies_registriert(fall, name, bindung)
     if not isinstance(roh, dict):
         raise SystemExit(
             f"Schichtdatei {name!r} traegt kein Objekt "
@@ -559,10 +593,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Kein Fall-Arbeitsbereich: {fall}", file=sys.stderr)
         return 2
 
-    lieferung = _lies_registriert(fall, args.erwartungswerte)
-    beleg = _lies_registriert(fall, args.stichprobe)
-    spez = lade_spez(fall, args.generation)
-    bestand = read_portfolio(Path(args.bestand))
+    # Jede Eingabe genau einmal lesen und binden (Review T25-05,
+    # Haelfte b): Vorher trug das Ergebnis dieses Kommandos KEINE einzige
+    # Eingabe — nur ``system``. Ein Beleg, der nicht sagt, worueber
+    # geurteilt wurde, bindet nichts.
+    bindung = Eingangsbindung(fall)
+    lieferung = _lies_registriert(fall, args.erwartungswerte, bindung)
+    beleg = _lies_registriert(fall, args.stichprobe, bindung)
+    spez = lade_spez_aus_bytes(
+        bindung.binde(spez_pfad(fall, args.generation)).roh)
+    bestand = read_portfolio_aus_bytes(bindung.binde(Path(args.bestand)).roh)
 
     gemeldet = lieferung.get("test")
     if gemeldet and gemeldet != args.abnahme:
@@ -577,13 +617,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         auspraegungen_je_police,
     )
 
+    summen_je_police: Optional[Dict[str, float]] = None
     if args.zeilen is not None:
-        zeilen = json.loads(Path(args.zeilen).read_text(encoding="utf-8"))
+        zeilen = bindung.binde(Path(args.zeilen)).json()
         if not isinstance(zeilen, list):
             print(f"{args.zeilen}: erwartet wird die Zeilenliste aus "
                   "gates.transformation_anwenden --zeilen", file=sys.stderr)
             return 2
         auspraegungen = auspraegungen_je_police(spez, zeilen)
+        summen_je_police = {
+            str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
     elif len(spez.zellen) > 1:
         print(f"Spez traegt {len(spez.zellen)} Zellen — ohne --zeilen ist "
               "die Zellwahl je Police nicht bestimmbar", file=sys.stderr)
@@ -600,9 +643,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     vorgeschichte: List[Dict[str, str]] = []
     if args.vorgeschichte is not None:
-        with fall_mod.eingang_datei(fall, args.vorgeschichte).open(
-                encoding="utf-8") as datei:
-            vorgeschichte = list(csv.DictReader(datei, delimiter=";"))
+        vorgeschichte = list(csv.DictReader(_io.StringIO(bindung.binde(
+            fall_mod.eingang_datei(fall, args.vorgeschichte)).text()),
+            delimiter=";"))
 
     anfangszustaende = None
     if args.vorgeschichte is not None:
@@ -614,14 +657,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         red_anteile: Dict[str, float] = {}
         red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
         if args.red_anteile_datei is not None:
-            with fall_mod.eingang_datei(
-                    fall, args.red_anteile_datei).open(encoding="utf-8") as d:
-                for zeile in csv.DictReader(d, delimiter=";"):
-                    if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
-                        red_anteile[str(zeile["POLNR"])] = float(
-                            zeile["ANTEIL"])
-                        if zeile.get("DATUM"):
-                            red_anteile_je_datum.setdefault(
+            _red_roh = bindung.binde(fall_mod.eingang_datei(
+                fall, args.red_anteile_datei)).text()
+            for zeile in csv.DictReader(_io.StringIO(_red_roh),
+                                        delimiter=";"):
+                if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
+                    red_anteile[str(zeile["POLNR"])] = float(
+                        zeile["ANTEIL"])
+                    if zeile.get("DATUM"):
+                        red_anteile_je_datum.setdefault(
                                 str(zeile["POLNR"]), {})[
                                     str(zeile["DATUM"])] = float(
                                         zeile["ANTEIL"])
@@ -672,7 +716,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
         # Der Beleg muss REGISTRIERT sein — eine unregistrierte Datei
         # faellt hier hart auf, bevor irgendein Vergleich entfaellt.
+        # Der Beleg wird GELESEN, nicht nur benannt: Vorher zitierte das
+        # Kommando nur seinen Dateinamen und liess auf sein blosses
+        # Dasein hin Wertvergleiche einer ganzen Vorfallart entfallen —
+        # eine Eingabe, die das Urteil erweitert, ohne dass ihr Inhalt je
+        # angesehen wurde (Review T25-05, Haelfte b).
         beleg_pfad = fall_mod.eingang_datei(fall, args.plausibilitaet_beleg)
+        bindung.binde(beleg_pfad)
         art = args.plausibilitaet_vorfallart
         betroffen = sorted({
             str(z["POLNR"]) for z in vorgeschichte if z.get("GEVO") == art
@@ -690,7 +740,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             for police in betroffen
         }
 
-    schichten = _schichten(fall, args.schicht,
+    schichten = _schichten(fall, args.schicht, bindung=bindung,
                            repo_root=Path(args.repo_root).resolve())
     auftraege, schicht_ausgelassen, zustandslos = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
@@ -698,7 +748,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         schichten=schichten,
         scheiben_mit_gamma1=args.scheiben_mit_gamma1,
         stoab_je_baustein=args.stoab_je_baustein,
-        red_anteil_kandidaten=tuple(args.red_anteil_kandidaten))
+        red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
+        summen_je_police=summen_je_police)
     for police in schicht_ausgelassen:
         print(f"WARNUNG Police {police}: Korrekturschicht nicht im "
               "Pruefpfad — Herabsetzungs-Anfangszustand, Wertvergleich "
@@ -724,6 +775,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         system=systemstand(Path(args.repo_root).resolve()),
         red_verfahren=args.red_verfahren,
     )
+    # Der Beleg nennt, worueber geurteilt wurde.
+    ergebnis["eingaben"] = bindung.als_beleg()
     if schicht_ausgelassen:
         # Ausgewiesene Auslassung gehoert in den Beleg, nicht nur nach
         # stderr — A-M1 liest das Ergebnis, nicht das Terminal.

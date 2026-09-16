@@ -22,7 +22,16 @@ from rechner_pipeline.ontologie.code_index import (
     drift_report,
     erlaubte_wurzeln,
 )
-from rechner_pipeline.ontologie.code_karte import baue_karte, validate
+from rechner_pipeline.ontologie.code_karte import (
+    EBENE_JE_MODUL,
+    EBENE_JE_SCHICHT,
+    SCHICHT_ERLAUBT,
+    TOOL_NACH_VORZEIGE_ERLAUBT,
+    VORZEIGE_NACH_WERKZEUG_ERLAUBT,
+    _absolut,
+    baue_karte,
+    validate,
+)
 from rechner_pipeline.ontologie.impact import (
     berechne_impact,
     import_kanten_je_testmodul,
@@ -481,8 +490,20 @@ def test_import_kante_bleibt_nicht_transitiv():
     bu.py 5 -> 21 Tests. Der Showcase muss selektiv bleiben."""
     ergebnis = berechne_impact(
         ["src/rechner_pipeline/kern/produkte/bu.py"], *_repo_args())
-    # Transitiv waeren es 21+ von 46; die Selektion bleibt eine Handvoll.
-    assert len(ergebnis["tests"]) <= 10
+    # Transitiv waeren es 21+ von 46 gewesen (fast die Haelfte). Die
+    # Selektion bleibt ein kleiner Bruchteil — und jeder gewaehlte Test
+    # traegt bu in seiner Knoten-Bindung. Eine absolute Obergrenze ("eine
+    # Handvoll") wuchs beim Merge zweier Straenge, die je einen legitim
+    # bu-gebundenen Test mitbrachten, ueber sich hinaus, ohne dass sich
+    # die Selektivitaet geaendert haette; die Invariante ist die Praezision,
+    # nicht die Zahl.
+    import re
+    testmodule = sorted(p.name for p in (REPO / "tests").glob("test_*.py"))
+    assert len(ergebnis["tests"]) * 4 < len(testmodule), ergebnis["tests"]
+    for name in ergebnis["tests"]:
+        text = (REPO / "tests" / name).read_text(encoding="utf-8")
+        m = re.search(r"Knoten:\s*(.+)", text)
+        assert m and "bu" in [k.strip() for k in m.group(1).split(",")], name
     for rein_klv in ("test_bestand_ereignisse.py", "test_bestand_bewegung_klv.py",
                      "test_kern.py", "test_tafel_import.py"):
         assert rein_klv not in ergebnis["tests"], rein_klv
@@ -530,6 +551,101 @@ def test_karte_faengt_dynamischen_import(tmp_path: Path):
     befunde = validate(baue_karte(src))
     assert any("ADR-004" in b for b in befunde)
     assert any("SDK-Import 'openai'" in b for b in befunde)
+
+
+@pytest.mark.parametrize("quelltext", [
+    # from-Import und blosser Aufruf
+    "from importlib import import_module\nimport_module('openai')\n",
+    # from-Import mit Alias
+    "from importlib import import_module as lade\nlade('openai')\n",
+    # Neuzuweisung von __import__
+    "imp = __import__\nimp('openai')\n",
+    # Kette von Zuweisungen
+    "a = __import__\nb = a\nb('openai')\n",
+    # Attributzugriff auf builtins
+    "import builtins\nbuiltins.__import__('openai')\n",
+    # from builtins
+    "from builtins import __import__ as i\ni('openai')\n",
+    # Zuweisung von importlib.import_module
+    "import importlib\nlade = importlib.import_module\nlade('openai')\n",
+    # Modul-Alias
+    "import importlib as il\nil.import_module('openai')\n",
+    # Review Block 5: Tupel-Entpacken, Annotation, Attributziel, Parameter-Default,
+    # Kette in umgekehrter Reihenfolge (Fixpunkt), importlib.util-Untermodul
+    "a, b = __import__, 1\na('openai')\n",
+    "from typing import Any\nimp: Any = __import__\nimp('openai')\n",
+    "class L:\n    def __init__(self):\n        self.imp = __import__\n    def h(self):\n        return self.imp('openai')\n",
+    "def f(i=__import__):\n    return i('openai')\n",
+    "def g(*, i=__import__):\n    return i('openai')\n",
+    "b = a\na = __import__\nb('openai')\n",
+    "import importlib.util\nimportlib.import_module('openai')\n",
+])
+def test_karte_faengt_jede_lesbare_schreibweise_des_dynamischen_imports(tmp_path: Path, quelltext: str):
+    """Review T23-07: der Detektor kannte nur die woertliche Form. Jede
+    Umbenennung, die die Datei selbst herstellt, muss auffallen — mit
+    'openai' als SDK-Marker."""
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "m.py", quelltext)
+    befunde = validate(baue_karte(src))
+    assert any("SDK-Import 'openai'" in b for b in befunde), befunde
+
+
+@pytest.mark.parametrize("quelltext", [
+    "imp = __import__\ndef laden(name):\n    return imp(name)\n",
+    "from importlib import import_module as lade\ndef laden(name):\n    return lade(name)\n",
+])
+def test_karte_meldet_berechneten_namen_auch_nach_umbenennung(tmp_path: Path, quelltext: str):
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "m.py", quelltext)
+    befunde = validate(baue_karte(src))
+    assert any("dynamische(r) Import(e) mit berechnetem Namen" in b for b in befunde), befunde
+
+
+@pytest.mark.parametrize("quelltext", [
+    "import sys\nm = sys.modules['rechner_pipeline.kommutationskern.kommutation']\n",
+    "import sys\nm = sys.modules.get('openai')\n",
+    # Review Block 5: Alias von sys, from sys import modules
+    "import sys as s\nm = s.modules['openai']\n",
+    "from sys import modules\nm = modules['openai']\n",
+    "from sys import modules as reg\nm = reg.get('openai')\n",
+])
+def test_karte_meldet_zugriff_auf_die_modulregistry(tmp_path: Path, quelltext: str):
+    """sys.modules holt ein Modul an jeder Kante vorbei — in src ein
+    Befund, kein stiller Weg (Review T23-07)."""
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "m.py", quelltext)
+    befunde = validate(baue_karte(src))
+    assert any("Modul-Registry" in b for b in befunde), befunde
+
+
+@pytest.mark.parametrize("quelltext", [
+    "import importlib.util\nspec = importlib.util.spec_from_file_location('openai', '/tmp/x.py')\n",
+    "from importlib import util\nmod = util.module_from_spec(None)\n",
+    "from importlib.util import spec_from_file_location as sffl\nsffl('openai', '/tmp/x.py')\n",
+    "def laden(spec, mod):\n    spec.loader.exec_module(mod)\n",
+    "import runpy\nrunpy.run_module('openai')\n",
+    "from runpy import run_path\nrun_path('/tmp/x.py')\n",
+])
+def test_karte_meldet_lader_ohne_importnamen(tmp_path: Path, quelltext: str):
+    """importlib.util und runpy laden aus Datei oder Spec — keine Kante
+    ableitbar, also Befund (Review Block 5)."""
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "m.py", quelltext)
+    befunde = validate(baue_karte(src))
+    assert any("Lader ohne Importnamen" in b for b in befunde), befunde
+
+
+def test_karte_meldet_keine_methode_die_nur_so_heisst(tmp_path: Path):
+    """Fehlalarm aus dem Review: eine Methode namens import_module auf einem
+    eigenen Objekt ist kein Importmechanismus."""
+    src = tmp_path / "rechner_pipeline"
+    _schreibe(src / "kern" / "m.py",
+              "class Registrierung:\n"
+              "    def import_module(self, name):\n"
+              "        return f'registriert: {name}'\n"
+              "Registrierung().import_module('openai')\n")
+    befunde = validate(baue_karte(src))
+    assert not any("openai" in b or "berechnetem Namen" in b for b in befunde), befunde
 
 
 def test_karte_meldet_unlesbaren_dynamischen_import(tmp_path: Path):
@@ -823,3 +939,95 @@ def test_module_ohne_knoten_sind_harter_drift(tmp_path: Path):
     _schreibe(tmp_path / "paket" / "modul.py",
               '"""M.\n\nKnoten: klv\n"""\nWERT = 1\n')
     assert drift_report(baue_index(tmp_path / "paket"), []) == []
+
+
+# --------------------------------------------------------------------------- #
+# ADR-017: Ebenen in der Schichtenkarte (Schritt 3)
+# --------------------------------------------------------------------------- #
+
+def test_jede_regelschicht_hat_eine_ebene():
+    """Jede Schicht ist Tool oder Vorzeige; Ebene 4 gibt es nur je Modul."""
+    ohne = sorted(s for s in SCHICHT_ERLAUBT if s not in EBENE_JE_SCHICHT)
+    assert ohne == [], ohne
+    assert set(EBENE_JE_SCHICHT.values()) == {"tool", "vorzeige"}
+    karte = baue_karte(SRC)
+    ebenen = {m["ebene"] for m in karte["module"].values()}
+    assert ebenen == {"tool", "vorzeige", "werkzeug"}, ebenen
+    for rel, e in EBENE_JE_MODUL.items():
+        assert karte["module"][rel]["ebene"] == e, rel
+
+
+def test_die_werkzeug_ratsche_deckt_genau_die_gemessenen_kanten():
+    """Review T22-08: Der Generator lag pauschal auf Ebene 3. Jetzt ist die
+    Grenze 3 -> 4 gemessen und geratscht; 2 -> 4 gibt es nicht."""
+    karte = baue_karte(SRC)
+    gemessen = {(k["von"], k["nach"]) for k in karte["in_werkzeug"]}
+    assert gemessen <= VORZEIGE_NACH_WERKZEUG_ERLAUBT, sorted(gemessen - VORZEIGE_NACH_WERKZEUG_ERLAUBT)
+    veraltet = sorted(VORZEIGE_NACH_WERKZEUG_ERLAUBT - gemessen)
+    assert veraltet == [], f"Ratsche lockerer als der Code: {veraltet}"
+    assert all(k["von_ebene"] == "vorzeige" for k in karte["in_werkzeug"])
+    assert validate(karte) == []
+
+
+def test_kante_aus_dem_tool_in_ein_werkzeug_ist_ein_befund(tmp_path: Path):
+    """Mutationsprobe: die Ebene-4-Pruefung in validate entfernen -> rot."""
+    src = tmp_path / "rechner_pipeline"
+    (src / "gates").mkdir(parents=True)
+    (src / "bestand").mkdir()
+    for d in ("", "gates", "bestand"):
+        (src / d / "__init__.py").write_text("", encoding="utf-8")
+    (src / "bestand" / "generator.py").write_text("X = 1\n", encoding="utf-8")
+    (src / "gates" / "erzeuger.py").write_text(
+        "from rechner_pipeline.bestand.generator import X\n", encoding="utf-8")
+    befunde = validate(baue_karte(src))
+    assert any("Vorzeige-Werkzeug (Ebene 4)" in b for b in befunde), befunde
+    # ... und eine NEUE Kante aus der Vorzeige selbst ebenso:
+    (src / "gates" / "erzeuger.py").unlink()
+    (src / "bestand" / "fuehrung.py").write_text(
+        "from rechner_pipeline.bestand.generator import X\n", encoding="utf-8")
+    befunde = validate(baue_karte(src))
+    assert any("neue Kante aus der Vorzeige in ihre" in b for b in befunde), befunde
+
+
+def test_die_ratsche_deckt_genau_die_gemessenen_kanten():
+    """Die erlaubte Menge ist die GEMESSENE Menge: Eine Kante, die es nicht
+    mehr gibt, ist aus der Liste zu streichen (die Ratsche darf nicht
+    lockerer sein als der Code), und eine neue ist ein Befund."""
+    karte = baue_karte(SRC)
+    gemessen = {(k["von"], k["nach"]) for k in karte["tool_nach_vorzeige"]}
+    assert gemessen <= TOOL_NACH_VORZEIGE_ERLAUBT, sorted(gemessen - TOOL_NACH_VORZEIGE_ERLAUBT)
+    veraltet = sorted(TOOL_NACH_VORZEIGE_ERLAUBT - gemessen)
+    assert veraltet == [], f"Ratsche lockerer als der Code: {veraltet}"
+    assert all(karte["module"][k["von"]]["ebene"] == "tool" for k in karte["tool_nach_vorzeige"])
+
+
+def test_neue_kante_aus_dem_tool_in_die_vorzeige_ist_ein_befund(tmp_path: Path):
+    src = tmp_path / "rechner_pipeline"
+    (src / "gates").mkdir(parents=True)
+    (src / "kern").mkdir()
+    (src / "__init__.py").write_text("", encoding="utf-8")
+    (src / "gates" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "kern" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "kern" / "neu.py").write_text("X = 1\n", encoding="utf-8")
+    (src / "gates" / "neuer_konsument.py").write_text(
+        "from rechner_pipeline.kern.neu import X\n", encoding="utf-8")
+    befunde = validate(baue_karte(src))
+    assert any("neue Kante aus dem KI-Tool in die Vorzeige" in b for b in befunde), befunde
+
+
+def test_relative_importe_werden_aufgeloest(tmp_path: Path):
+    """U1, Befund Z1-09: _absolut referenzierte eine undefinierte Variable;
+    der Zweig war unerreichbar und ungetestet."""
+    assert _absolut("x", 1, "rechner_pipeline/kern/tafeln.py") == "rechner_pipeline.kern.x"
+    assert _absolut(None, 1, "rechner_pipeline/kern/tafeln.py") == "rechner_pipeline.kern"
+    assert _absolut("y", 2, "rechner_pipeline/kern/produkte/klv.py") == "rechner_pipeline.kern.y"
+    assert _absolut("z", 3, "rechner_pipeline/kern/tafeln.py") is None
+    src = tmp_path / "rechner_pipeline"
+    (src / "kern").mkdir(parents=True)
+    (src / "__init__.py").write_text("", encoding="utf-8")
+    (src / "kern" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "kern" / "a.py").write_text("A = 1\n", encoding="utf-8")
+    (src / "kern" / "b.py").write_text("from . import a\nfrom .a import A\n", encoding="utf-8")
+    karte = baue_karte(src)
+    kanten = {(k["von"], k["nach"]) for k in karte["kanten"]}
+    assert ("rechner_pipeline/kern/b.py", "rechner_pipeline/kern/a.py") in kanten

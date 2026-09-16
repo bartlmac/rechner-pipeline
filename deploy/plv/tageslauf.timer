@@ -1,0 +1,14 @@
+# 23:00 Uhr: spaet genug, dass der Tag vorbei ist, frueh genug, dass der Stand
+# vor Mitternacht steht (Konzept, Abschnitt 7). Persistent=true holt einen
+# verpassten Zeitpunkt beim naechsten Start nach; das Nachholen der Tage
+# selbst leistet der Tageslauf.
+[Unit]
+Description=PLV Tageslauf taeglich um 23:00
+
+[Timer]
+OnCalendar=*-*-* 23:00:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

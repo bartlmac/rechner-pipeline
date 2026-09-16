@@ -126,13 +126,13 @@ def test_aufloesung_waehlt_lesart_und_zieht_aussage_nach(fall: Path):
     )
     [d] = abox.diskrepanzen
     with pytest.raises(BefuellungsFehler, match="keine der Lesarten"):
-        loese_diskrepanz_auf(abox, d.id, 0.0275, "bartek", "Mittelwert", ZEIT)
+        loese_diskrepanz_auf(abox, d.id, 0.0275, "maintainer", "Mittelwert", ZEIT)
     loese_diskrepanz_auf(
-        abox, d.id, 0.025, "bartek",
+        abox, d.id, 0.025, "maintainer",
         "Die Tarifmeldung ist die eingereichte Fassung", ZEIT,
     )
     assert abox.diskrepanzen[0].status == "aufgeloest"
-    assert abox.diskrepanzen[0].entscheidung.entscheider == "bartek"
+    assert abox.diskrepanzen[0].entscheidung.entscheider == "maintainer"
     aussage = abox.generationen[0].zellen[0].parameter["beta1"]
     assert aussage.zustand is Zustand.BELEGT and aussage.wert == 0.025
     # Die Provenienz der gewaehlten Lesart bleibt erhalten:

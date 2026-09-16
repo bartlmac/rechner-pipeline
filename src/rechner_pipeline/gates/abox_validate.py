@@ -31,9 +31,10 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from rechner_pipeline.ontologie.abox import abox_pfad, lade, validate_abox
+from rechner_pipeline.ontologie.abox import abox_pfad, lade_aus_bytes, validate_abox
 from rechner_pipeline.ontologie.coverage import coverage_bericht
 from rechner_pipeline.gates._common import (
+    lies_gehasht,
     Exit,
     GateArgumentParser,
     GateCliContract,
@@ -48,7 +49,7 @@ from rechner_pipeline.gates._common import (
 )
 
 GATE = "P-Q3.fachliche-pruefung"
-GATE_VERSION = "0.3.0"
+GATE_VERSION = "1.0.0"
 CLI_CONTRACT = GateCliContract(
     command="abox_validate",
     gate=GATE,
@@ -160,16 +161,19 @@ def main(argv: Optional[List[str]] = None):
     # Stabile Rollenschluessel statt zufaelliger absoluter Temp-Pfade: P9
     # bindet P-Q3 genau an diese beiden Eingaben und darf den A-Box-SHA nicht
     # unter irgendeinem frei waehlbaren Hash-Key akzeptieren.
+    # Beleg und Pruefung aus DENSELBEN Bytes (Review T23-01): beide Eingaben
+    # werden genau einmal gelesen; der protokollierte Hash ist der Hash der
+    # Bytes, die unten validiert werden — nicht der einer zweiten Lesung.
+    register_gelesen = lies_gehasht(register_pfad)
+    abox_gelesen = lies_gehasht(abox_datei)
     input_hashes = {
-        "eingang.json": hash_files([register_pfad], base=fall)["eingang.json"],
-        "abgeleitet/abox/abox.json": hash_files(
-            [abox_datei], base=fall
-        )["abgeleitet/abox/abox.json"],
+        "eingang.json": register_gelesen.sha256,
+        "abgeleitet/abox/abox.json": abox_gelesen.sha256,
     }
 
     errors: List[dict] = []
     try:
-        abox = lade(fall)
+        abox = lade_aus_bytes(abox_gelesen.roh)
     except Exception as exc:  # Pydantic-Validierung ist Teil des Contracts
         return _finalize(build_result(
             command="abox_validate",
@@ -182,7 +186,7 @@ def main(argv: Optional[List[str]] = None):
         ))
 
     try:
-        register = json.loads(register_pfad.read_text(encoding="utf-8"))
+        register = register_gelesen.json()
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         return _finalize(build_result(
             command="abox_validate",
@@ -203,7 +207,9 @@ def main(argv: Optional[List[str]] = None):
     # Zustand (synthetische A-Box), kein stilles Gruen.
     from rechner_pipeline.ontologie.kette import pruefe_kette
 
-    ketten_befunde = pruefe_kette(fall)
+    # Die Kette prueft genau die A-Box-Bytes, die oben gehasht und
+    # validiert wurden — nicht eine zweite Lesung (Review T23-01).
+    ketten_befunde = pruefe_kette(fall, abox=abox, register=register)
     kette_status = "geprueft"
     if ketten_befunde == ["keine_fragmente"]:
         kette_status = "keine_fragmente"
@@ -290,7 +296,8 @@ def main(argv: Optional[List[str]] = None):
     formel_checks: Dict[str, object] = {}
     warnungen: List[dict] = []
     for gen in abox.generationen:
-        pruefung = pruefe_ratzu_staffeln(fall, gen.id)
+        # Formel-Check auf genau den gehashten A-Box-Bytes (Review T23-01).
+        pruefung = pruefe_ratzu_staffeln(fall, gen.id, abox=abox)
         eintrag: Dict[str, object] = {
             "status": pruefung.status,
             "geprueft": pruefung.geprueft,

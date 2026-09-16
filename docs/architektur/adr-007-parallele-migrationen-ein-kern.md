@@ -1,6 +1,6 @@
 # ADR-007: Parallele Migrationen in einem Kern — Trunk, knotengebundene Inkremente, Knoten-Lebenszyklus
 
-Status: akzeptiert (Bartek, 2026-08-18).
+Status: akzeptiert (Maintainer, 2026-08-18).
 
 ## Kontext
 
@@ -40,7 +40,7 @@ aber je INKREMENT (Lebensdauer Tage, nicht Monate).
 
 **Regel 2 — Die Trennung leistet die Ontologie, nicht Git.** Eine
 Migration erweitert den Kern um IHRE Knoten (neue Generationen, im
-A-K1-Fall neue Familien). Neuer knotengebundener Code ist fuer alle
+A-O1-Fall neue Familien). Neuer knotengebundener Code ist fuer alle
 anderen Faelle inert: Er wird erst wirksam, wenn die Spez eines Falls
 ihn parametriert. Die Frage "zu welcher unfertigen Migration gehoert
 dieser Baustein?" beantwortet der Knoten, nicht die Branch-Historie.

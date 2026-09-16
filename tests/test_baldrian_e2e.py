@@ -43,11 +43,15 @@ from rechner_pipeline.gates import (
     migrationssuite_lauf,
     transformation_anwenden,
 )
+from tests.e2e_fixture import zellen_config
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "baldrian_e2e"
 
 GENERATION = "klv/tg2015"
+# Wert der Stammspalte tarif_generation (Name der Generation in der
+# PLV-Config) — nicht der Ontologie-Knoten; so lief auch der echte Lauf 2.
+TARIF_GENERATION = "TG2015"
 STICHTAG_1 = "2026-01-01"
 STICHTAG_2 = "2027-01-01"
 ABZUG_1 = "baldrian_bestandsabzug_2026-01-01.csv"
@@ -113,11 +117,17 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ]) == 0, "Transformation der Quellzeilen"
 
     bestand = fall / "abgeleitet" / "bestand"
+    # Der erste Lauf ist NICHT freigeschaltet: Seine Herabsetzungen
+    # rechnen nach dem PLV-Verfahren "mit Abzug" (geteilter Vertrag), das
+    # die Fuehrung nicht traegt. Die Uebernahme fuehrt die Vertraege mit
+    # Vorgeschichte ausdruecklich als Grundvertrag und weist es im Beleg
+    # aus (Freischaltung, Schritt 3); ohne die Angabe haelt sie an.
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
-        "--tarif-generation", GENERATION, "--stichtag", STICHTAG_1,
+        "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
         "--vorgeschichte", METADATEN,
         "--generation-spez", GENERATION,
+        "--anfangszustand", "grundvertrag",
         "--out-dir", str(bestand),
     ]) == 0, "Uebernahme in das Zielmodell"
 
@@ -131,12 +141,32 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ]) == 0, "Transformationsergebnis mit Zielbindung"
 
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    assert bestand_validate.main([
+    # Vollprofil (Review T22-01): Journal, Ledger, Merkmale (Tarifzellen),
+    # die PLV-Config mit der uebernommenen Generation und der Horizont —
+    # nur so prueft P-B1 Bewegungs-Identitaet, Ledger-Semantik und die
+    # Kern-Herleitung jeder Buchung, die A-M4 im Bestands-Scope verlangt.
+    # Die Config der Kern-Herleitung ist die dieses Falls: Die Uebernahme
+    # bucht die beitragsfreien Summen aus der Spez des Falls, und der
+    # Zellen-Abschnitt, den sie dazu schreibt (generation-zellen.toml),
+    # traegt genau diese Grundlagen. Die PLV-Config des Repos gehoert zum
+    # zweiten Lauf (andere Lieferung) und wuerde hier andere Betraege
+    # herleiten — das ist kein Fehler des Bestands, sondern eine fremde
+    # Parametrierung.
+    config_pfad = fall / "abgeleitet" / "bestand-config.toml"
+    config_pfad.write_text(
+        _zellen_config((bestand / "generation-zellen.toml").read_text("utf-8")),
+        encoding="utf-8")
+    pb1 = bestand_validate.main([
         "--portfolio", str(bestand / "bestand.parquet"),
         "--historie", str(bestand / "historie.parquet"),
+        "--ledger", str(bestand / "ledger.parquet"),
+        "--merkmale", str(bestand / "merkmale.parquet"),
+        "--config", str(config_pfad),
+        "--bis", STICHTAG_1,
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
-    ]).exit_code == 0, "Gate P-B1 auf dem uebernommenen Bestand"
+    ])
+    assert pb1.exit_code == 0, ("Gate P-B1 auf dem uebernommenen Bestand", pb1.errors)
 
     for abnahme, erwartung in ABNAHMEN:
         assert aktuartest_lauf.main([
@@ -188,7 +218,7 @@ def test_die_uebernahme_erzeugt_den_erwarteten_bestand(gefahrener_fall: Path):
     df = read_portfolio(bestand / "bestand.parquet")
     assert len(df) == len(policen)
     assert sorted(str(p) for p in df["police_id"]) == sorted(policen)
-    assert set(df["tarif_generation"]) == {GENERATION}
+    assert set(df["tarif_generation"]) == {TARIF_GENERATION}
     for tabelle in ("bestand", "historie", "ledger"):
         assert (bestand / f"{tabelle}.parquet").is_file()
 
@@ -248,16 +278,18 @@ def test_das_datenmodell_der_darstellung_ist_vollstaendig(
     import falldaten  # noqa: E402
 
     modell = falldaten.sammle(gefahrener_fall, [ABZUG_1, ABZUG_2])
-    fehlend = [l["gruppe"] for l in falldaten.luecken(modell)]
-    # Drei Luecken sind erwartet und benannt. Die ENTSCHEIDE fehlen, weil
-    # der Test nicht zeichnet — das ist eine menschliche Handlung. Die
-    # PARAMETRIERUNG fehlt, weil das Fixture die A-Box nicht mitfuehrt:
-    # Es prueft die Migration ab dem Bestandsabzug, nicht noch einmal die
-    # Quellenauswertung. Das UMBAUBUDGET fehlt, weil der Test kein
-    # Operator-Lauf ist, dessen Umbau zu messen waere. Alles Uebrige muss
-    # die Kette liefern.
-    assert fehlend == ["parameter", "kette", "umbau"], (
-        f"unerwartete Luecken: {fehlend}")
+    fehlend = {l["gruppe"] for l in falldaten.luecken(modell)}
+    # Drei Luecken-GRUPPEN sind erwartet und benannt. Die ENTSCHEIDE
+    # fehlen, weil der Test nicht zeichnet — das ist eine menschliche
+    # Handlung; seit der Verschaerfung (Review T19-03) meldet die
+    # Pruefung jedes ungezeichnete Gate EINZELN, deshalb die Menge statt
+    # der Liste. Die PARAMETRIERUNG fehlt, weil das Fixture die A-Box
+    # nicht mitfuehrt: Es prueft die Migration ab dem Bestandsabzug,
+    # nicht noch einmal die Quellenauswertung. Das UMBAUBUDGET fehlt,
+    # weil der Test kein Operator-Lauf ist, dessen Umbau zu messen
+    # waere. Alles Uebrige muss die Kette liefern.
+    assert fehlend == {"parameter", "kette", "umbau"}, (
+        f"unerwartete Luecken: {sorted(fehlend)}")
     assert modell["bestand"]["anzahl"] == 25
     assert modell["transformation"]["zeilen_quelle"] == 25
     assert modell["transformation"]["stumm_weggelassen"] == []
@@ -315,11 +347,19 @@ def test_das_bewegungskonto_beginnt_am_uebernahmestichtag(
 
     # Je umgebuchter Police genau eine PEX-Zeile, und ihr Betrag ist die
     # HERABGESETZTE Summe: Der beitragspflichtige Bestand gibt die volle
-    # Versicherungssumme ab, der beitragsfreie nimmt die kleinere auf.
+    # (Ursprungs-)Versicherungssumme ab, der beitragsfreie nimmt die
+    # kleinere auf — und die ist die GELIEFERTE beitragsfreie Summe, nicht
+    # eine zweite Umwandlung davon (Freischaltung, Abschnitt 1.1).
     assert len(pex) == len(set(pex["police_id"]))
     zug_summe = zug.set_index("police_id")["betrag"]
+    geliefert = {
+        int(z["police_id"]): float(z["sum_insured"])
+        for z in json.loads((gefahrener_fall / "abgeleitet" / "transformation"
+                             / "zeilen.json").read_text(encoding="utf-8"))
+    }
     for pid, betrag in zip(pex["police_id"], pex["betrag"]):
         assert 0.0 < betrag < zug_summe.loc[pid]
+        assert abs(betrag - geliefert[int(pid)]) <= 0.005, (pid, betrag)
 
     # Die Statushistorie fuehrt sie sehr wohl: Sie beschreibt den
     # Vertrag, und ohne sie waere sein Zustand am Stichtag unbestimmt.
@@ -398,8 +438,9 @@ def test_ohne_spez_verweigert_die_uebernahme_beitragsfreier_vertraege(
     with pytest.raises(SystemExit) as exc:
         bestand_uebernehmen.main([
             "--fall", str(gefahrener_fall), "--zeilen", str(zeilen),
-            "--tarif-generation", GENERATION, "--stichtag", STICHTAG_1,
+            "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
             "--vorgeschichte", METADATEN,
+            "--anfangszustand", "grundvertrag",
             "--out-dir", str(ziel),
         ])
     assert "--generation-spez" in str(exc.value)
@@ -454,30 +495,7 @@ def test_der_lauf_liefert_die_grundlagen_zu_seinen_zellen(gefahrener_fall: Path)
 
 def _zellen_config(abschnitt: str) -> str:
     """Den erzeugten Abschnitt in eine vollstaendige Config einbetten."""
-    kopf, sep, rest = abschnitt.partition("[[generation.zelle]]")
-    gemeinsam = "\n".join(
-        z for z in kopf.splitlines() if z and not z.startswith("#")
-    )
-    return (
-        '[meta]\nseed = 1\nbeschreibung = "Probe"\n'
-        "referenzstichtag = 2026-01-01\n\n"
-        f'[[generation]]\nname = "{GENERATION}"\nknoten = "{GENERATION}"\n'
-        "gueltig_von = 2015-01-01\ngueltig_bis = 2016-12-31\n"
-        f"sample_size = 0\nmax_endalter = 85\n{gemeinsam}\n\n"
-        "[generation.verteilungen.entry_age]\n"
-        'typ = "normal_trunc"\nmean = 40.0\nsd = 12.0\nmin = 18.0\n'
-        "max = 62.0\nround = 0\n\n"
-        '[generation.verteilungen.sex]\ntyp = "empirical_discrete"\n'
-        'values = ["M", "F"]\nprobs = [0.5, 0.5]\n\n'
-        '[generation.verteilungen.duration]\ntyp = "empirical_discrete"\n'
-        "values = [25]\nprobs = [1.0]\n\n"
-        '[generation.verteilungen.premium_duration]\n'
-        'typ = "empirical_discrete"\nvalues = [25]\nprobs = [1.0]\n\n'
-        '[generation.verteilungen.sum_insured]\ntyp = "lognormal"\n'
-        "meanlog = 11.2\nsdlog = 0.5\nround = -3\n\n"
-        '[generation.verteilungen.zahlweise]\ntyp = "empirical_discrete"\n'
-        "values = [1]\nprobs = [1.0]\n\n" + sep + rest
-    )
+    return zellen_config(abschnitt, name=TARIF_GENERATION, knoten=GENERATION)
 
 
 def test_der_uebernommene_bestand_beginnt_am_migrationsstichtag(

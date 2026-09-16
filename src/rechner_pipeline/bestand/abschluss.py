@@ -39,7 +39,11 @@ from rechner_pipeline.bestand.auswertung import einzelwerte_am
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.kern import __version__ as KERN_VERSION
-from rechner_pipeline.models.bestand import ABSCHLUSS_NAMES
+from rechner_pipeline.models.bestand import (
+    ABSCHLUSS_NAMES,
+    ABSCHLUSS_ZAHLEN,
+    validate_abschluss,
+)
 
 
 class AbschlussError(ValueError):
@@ -58,9 +62,14 @@ def _rechne(
     stichtag: _dt.date,
     scheiben: Optional[pd.DataFrame],
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     zeilen = einzelwerte_am(stamm, historie, config, stichtag,
-                            scheiben=scheiben, merkmale=merkmale)
+                            scheiben=scheiben, merkmale=merkmale,
+                            schichten=schichten, verankerung=verankerung,
+                            reduktionen=reduktionen)
     if not zeilen:
         raise AbschlussError(
             f"Abschluss {stichtag.isoformat()}: kein in-force-Bestand am "
@@ -77,13 +86,25 @@ def _rechne(
             "leistung": z["leistung"],
             "deckungskapital": z["deckungskapital"],
             "rueckkaufswert": z["rueckkaufswert"],
+            "korrekturschicht": z["korrekturschicht"],
             "vs_bfr": z["vs_bfr"],
             "jahresbeitrag": z["jahresbeitrag"],
             "kern_version": KERN_VERSION,
         }
         for z in zeilen
     ])
-    return df[list(ABSCHLUSS_NAMES)]
+    df = df[list(ABSCHLUSS_NAMES)]
+    # Endlichkeit am Ausgang (T18-04): Was hier durchgeht, wird
+    # festgeschrieben und nie ueberschrieben. Ein nichtendlicher Wert ist
+    # kein Bilanzwert, sondern ein Rechen- oder Konfigurationsfehler, der
+    # VOR dem Publish anhalten muss — nicht erst in der Kontrolle danach.
+    befunde = validate_abschluss(df)
+    if befunde:
+        raise AbschlussError(
+            f"Abschluss {stichtag.isoformat()}: der gerechnete Stand ist "
+            "kein festschreibbarer Bilanzstand: " + "; ".join(befunde)
+        )
+    return df
 
 
 def schreibe_abschluss(
@@ -95,6 +116,9 @@ def schreibe_abschluss(
     *,
     scheiben: Optional[pd.DataFrame] = None,
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
 ) -> Path:
     """Bewertungsstand des Stichtags festschreiben (genau einmal).
 
@@ -109,7 +133,8 @@ def schreibe_abschluss(
             f"Abschluss {stichtag.isoformat()} ist bereits festgeschrieben "
             f"({pfad}) — festgeschriebene Staende werden nie ueberschrieben"
         )
-    df = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
+    df = _rechne(stamm, historie, config, stichtag, scheiben, merkmale,
+                 schichten, verankerung, reduktionen)
     ziel_dir.mkdir(parents=True, exist_ok=True)
     # Zwei Sicherungen, die einzeln beide zu wenig tragen und erst
     # zusammen dicht sind -- die Reihenfolge ist deshalb wesentlich.
@@ -155,6 +180,9 @@ def pruefe_abschluss(
     *,
     scheiben: Optional[pd.DataFrame] = None,
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
 ) -> List[str]:
     """Neuberechnung gegen den festgeschriebenen Stand stellen.
 
@@ -182,8 +210,12 @@ def pruefe_abschluss(
             f"abschluss: Datei heisst {Path(pfad).name}, enthaelt aber den "
             f"Stichtag {stichtag.isoformat()} (erwartet {erwartet.name})"
         ]
+    # Der festgeschriebene Stand selbst muss ein Bilanzstand sein — auch
+    # wenn er unter einem aelteren Stand ohne diese Pruefung entstand.
+    befunde.extend(validate_abschluss(fest))
 
-    neu = _rechne(stamm, historie, config, stichtag, scheiben, merkmale)
+    neu = _rechne(stamm, historie, config, stichtag, scheiben, merkmale,
+                  schichten, verankerung, reduktionen)
     kern_stand_alt = sorted(set(fest["kern_version"]))
     if kern_stand_alt != [KERN_VERSION]:
         befunde.append(
@@ -202,7 +234,6 @@ def pruefe_abschluss(
         befunde.append(f"abschluss: Policen nur in der Neuberechnung: {nur_neu[:5]}")
 
     gemeinsam = fest_idx.index.intersection(neu_idx.index)
-    zahlen = ("leistung", "deckungskapital", "rueckkaufswert", "vs_bfr", "jahresbeitrag")
     for pid in gemeinsam:
         f, n = fest_idx.loc[pid], neu_idx.loc[pid]
         for sp in ("status_code", "produkt", "tarif_generation"):
@@ -210,7 +241,7 @@ def pruefe_abschluss(
                 befunde.append(
                     f"abschluss police {pid}: {sp} {f[sp]} -> {n[sp]}"
                 )
-        for sp in zahlen:
+        for sp in ABSCHLUSS_ZAHLEN:
             alt_wert, neu_wert = float(f[sp]), float(n[sp])
             # math.isclose(inf, inf) ist WAHR: ein nichtendlicher Bilanzwert
             # wuerde sich selbst decken und die Kontrolle bestaetigte einen

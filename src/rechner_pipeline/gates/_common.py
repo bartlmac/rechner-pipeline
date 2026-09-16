@@ -39,10 +39,19 @@ from pathlib import Path
 from typing import IO, Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 
 # Re-export the canonical hashing helpers so commands have a single import site.
-from rechner_pipeline.models.manifest import file_sha256, text_sha256
+from rechner_pipeline.models.manifest import (
+    GeleseneDatei,
+    file_sha256,
+    lies_gehasht,
+    text_sha256,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
+    "Eingangsbindung",
+    "GeleseneDatei",
+    "lies_gehasht",
+    "hashes_von",
     "EXIT",
     "Exit",
     "STATUS_PASSED",
@@ -910,11 +919,6 @@ def hash_files(
     paths raise ``FileNotFoundError`` unless ``missing_ok`` is set, in which case
     they are skipped.
     """
-    if base is _HASH_BASE_DEFAULT:
-        resolved_base: Optional[Path] = REPO_ROOT
-    else:
-        resolved_base = base  # type: ignore[assignment]
-
     out: Dict[str, str] = {}
     for raw in paths:
         path = Path(raw)
@@ -922,16 +926,118 @@ def hash_files(
             if missing_ok:
                 continue
             raise FileNotFoundError(str(path))
-        if resolved_base is not None:
-            try:
-                key = str(path.resolve().relative_to(Path(resolved_base).resolve()))
-            except ValueError:
-                key = str(path)
-        else:
-            key = str(path)
+        key = hash_key(path, base=base)
         if key in out:
             continue
         out[key] = file_sha256(path)
+    return out
+
+
+def hash_key(
+    path: Any, *, base: Union[Path, None, Any] = _HASH_BASE_DEFAULT
+) -> str:
+    """Der Schluessel, unter dem :func:`hash_files` eine Datei fuehren wuerde
+    — OHNE die Datei zu lesen.
+
+    Fuer Gates, die ihre Eingaben ueber die Pruefengine genau einmal lesen
+    und deren Hashes uebernehmen (Review T20-01): Der Beleg muss die Bytes
+    nennen, die geprueft wurden, nicht die einer zweiten Lesung davor.
+    """
+    if base is _HASH_BASE_DEFAULT:
+        resolved_base: Optional[Path] = REPO_ROOT
+    else:
+        resolved_base = base  # type: ignore[assignment]
+    path = Path(path)
+    if resolved_base is not None:
+        try:
+            return str(path.resolve().relative_to(Path(resolved_base).resolve()))
+        except ValueError:
+            return str(path)
+    return str(path)
+
+
+class Eingangsbindung:
+    """Jede Eingabe GENAU EINMAL lesen und im Beleg registrieren.
+
+    Der Beleg eines Producers ist nur so viel wert wie die Bindung seiner
+    Eingaben: Er muss den Hash DER BYTES tragen, die verarbeitet wurden.
+    Zwei Verletzungen gibt es, und beide schliesst diese Klasse:
+
+    * Eine Eingabe wird gelesen, aber nicht gebunden — das Kommando
+      urteilt ueber etwas, das sein Beleg nicht nennt.
+    * Eine Datei wird ZWEIMAL gelesen, einmal zum Hashen und einmal zum
+      Verarbeiten. Dann bezeugt der Hash nicht die verarbeiteten Bytes;
+      dazwischen kann eine andere Datei gestanden haben.
+
+    Das Muster stand nach Haelfte (a) zweimal fast wortgleich in
+    ``verankerung_belegen`` und ``fuehrungsprobe``; mit den drei
+    uebrigen Producern waeren es fuenf Abschriften geworden — genau die
+    Wiederholung, die Review T25-05 benennt. Hier steht es einmal.
+
+    ``basis`` ist der Fall-Arbeitsbereich: Eingaben darunter werden
+    relativ gefuehrt (portabler Beleg), alles andere absolut.
+    """
+
+    def __init__(self, basis: Optional[Path] = None) -> None:
+        self.basis = Path(basis).resolve() if basis is not None else None
+        self.eingaben: Dict[str, str] = {}
+        self._gelesen: Dict[str, GeleseneDatei] = {}
+
+    def schluessel(self, pfad: Path) -> str:
+        pfad = Path(pfad).resolve()
+        if self.basis is not None and self.basis in pfad.parents:
+            return str(pfad.relative_to(self.basis))
+        return str(pfad)
+
+    def binde(self, pfad: Path) -> GeleseneDatei:
+        """Lesen UND registrieren — ein Lesevorgang, ein Hash.
+
+        Eine Datei, die dieser Lauf schon gebunden hat, wird NICHT noch
+        einmal gelesen: Wer sie fuer einen zweiten Zweck braucht — etwa
+        um die Kette eines fremden Belegs nachzurechnen — bekommt
+        dieselben Bytes. Sonst prueft die Nachrechnung einen anderen
+        Stand der Datei als den, den das Kommando verarbeitet, und der
+        Beleg sagte etwas ueber Bytes aus, die nie ins Urteil eingingen.
+        """
+        schluessel = self.schluessel(Path(pfad))
+        gelesen = self._gelesen.get(schluessel)
+        if gelesen is None:
+            gelesen = lies_gehasht(Path(pfad))
+            self._gelesen[schluessel] = gelesen
+        self.eingaben[schluessel] = gelesen.sha256
+        return gelesen
+
+    def registriere(self, pfad: Path, sha256: str) -> None:
+        """Einen anderswo gebildeten Hash uebernehmen.
+
+        Fuer Ketten, die eine fremde Provenienz nachrechnen und die
+        Hashes dabei ohnehin bilden: Sie gehoeren in den eigenen Beleg,
+        statt nach dem Vergleich verworfen zu werden.
+        """
+        self.eingaben[self.schluessel(Path(pfad))] = sha256
+
+    def als_beleg(self) -> Dict[str, str]:
+        return dict(sorted(self.eingaben.items()))
+
+
+def hashes_von(
+    gelesene: Iterable[GeleseneDatei],
+    *,
+    base: Union[Path, None, Any] = _HASH_BASE_DEFAULT,
+) -> Dict[str, str]:
+    """``input_hashes`` aus bereits gelesenen Dateien — ohne erneutes Lesen.
+
+    Gegenstueck zu :func:`hash_files` fuer den Lese-einmal-Pfad (Review
+    T23-01): dieselben Schluessel (:func:`hash_key`), aber der Hash stammt
+    aus den Bytes, die das Gate tatsaechlich verarbeitet hat. Doppelte
+    Schluessel: die erste Nennung gewinnt, wie bei :func:`hash_files`.
+    """
+    out: Dict[str, str] = {}
+    for gelesen in gelesene:
+        key = hash_key(gelesen.pfad, base=base)
+        if key in out:
+            continue
+        out[key] = gelesen.sha256
     return out
 
 

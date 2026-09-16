@@ -1,6 +1,6 @@
 # Regie (Stub — Konzept benannt, Dokumentation ausstehend)
 
-**Status:** Platzhalter, angelegt 2026-08-31 auf Barteks Wunsch: "ein
+**Status:** Platzhalter, angelegt 2026-08-31 auf Wunsch des Maintainers: "ein
 Zeichen setzen, dass wir das haben und dokumentieren brauchen."
 
 ## Was die Regie ist
@@ -23,7 +23,7 @@ wie die Simulation NICHT Teil des Systems. Heute gehoeren dazu:
   etwas davon in die Veroeffentlichung geriete.
 * **Rollenbesetzung je Fall** (Modell Lauf 2, 2026-09-01):
   `programmleiter` (Orchestrator der PLV, fuehrt den Fall E2E; in
-  Personalunion PLV-IT mit eigenem Schluessel fuer A-K1 und die
+  Personalunion PLV-IT mit eigenem Schluessel fuer A-O1 und die
   Katalog-Erweiterungen), `plv-aktuar` (unabhaengige zeichnende
   Fachinstanz: A-Q1, A-M1..M4, eigener Schluessel — wer den Prozess
   faehrt, nimmt ihn nicht selbst fachlich ab), `quelle-experte`

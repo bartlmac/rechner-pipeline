@@ -51,7 +51,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 SCHEMA_VERSION = 1
 
@@ -79,15 +79,21 @@ FALL_SCOPES = ("tarif", "bestand")
 #:   Uebernahmestand nicht belegt, und eine finanzielle Abnahme des
 #:   Gesamtbestands naehme etwas ab, dessen Grundlage offen ist.
 #:
-#: ``A-M2`` und ``A-M3`` sind BEWUSST keine Pflichtbelege von ``A-M4``.
-#: Sie sind eigene Gates, gerade damit an ihnen getrennt weitergearbeitet
-#: werden kann: Verlaufs- und Geschaeftsvorfallwerte liefert ein
-#: abgebendes Unternehmen oft erst in einer spaeteren Phase, waehrend die
-#: Migration auf dem belegten Stichtagstest bereits laeuft. Wer sie
-#: zwingend vorschaltet, blockiert die Migration an Daten, die es noch
-#: nicht gibt — und wer sie ganz weglaesst, hat den Test nicht
-#: vollstaendig gefahren. Beides ist eine Entscheidung des Aktuariats je
-#: Fall, keine Eigenschaft der Gate-Kette.
+#: ``A-M2`` und ``A-M3`` sind im Bestands-Scope EBENFALLS
+#: Pflichtbelege von ``A-M4`` (Entscheid des Aktuariats
+#: 2026-08-31, gebaut mit den drei Abnahmen): Wer den
+#: Gesamtbestand finanziell abnimmt, tut das auf Stichtags-,
+#: Verlaufs- und Geschaeftsvorfallwerten — ein Bestand, dessen
+#: Bewegungen ungeprueft sind, ist nicht abgenommen, sondern nur
+#: zum Stichtag betrachtet.
+#:
+#: Die frueher hier vermerkte Gegenposition (A-M2/A-M3 bewusst
+#: KEINE Pflichtbelege, damit eine Migration auf spaeter
+#: gelieferten Verlaufsdaten nicht blockiert) ist damit
+#: ueberholt; sie stand bis zum externen Review T19-05
+#: unmittelbar neben dem Code, der das Gegenteil erzwingt. Wer
+#: den Scope aendert, aendert BELEGROLLEN und diesen Absatz
+#: gemeinsam.
 BELEGROLLEN = {
     "A-M1": {
         "tarif": (),
@@ -101,6 +107,57 @@ BELEGROLLEN = {
         "tarif": (),
         "bestand": ("aktuartest_am3", "aktuartest_am3_bericht"),
     },
+    # A-O1 (T-Box-Aenderung, Review T22-02): der Beleg ist die
+    # Aenderungsdatei abgeleitet/tbox/aenderung.json — alte und neue
+    # Version, SHA-256 des T-Box-Moduls, Aenderungsartefakt. Scope-
+    # unabhaengig, weil eine T-Box-Aenderung das Vokabular aller Faelle
+    # betrifft.
+    # Zweiter Pflichtbeleg seit dem Entscheid des Maintainers
+    # 2026-09-16: die aktuarielle STELLUNGNAHME zur Wirksamkeit der
+    # betroffenen Felder. Gezeichnet wird A-O1 von mensch/architektur —
+    # wer verantwortet, welche Begriffe das Zielsystem fuehrt,
+    # verantwortet sein Datenmodell. Ob ein Feld tarif- oder
+    # bewertungswirksam ist und was verlorengeht, wenn es entfaellt, ist
+    # aber eine fachliche Frage und gehoert dem Aktuariat. Dasselbe
+    # Muster wie bei A-B1: Die Unterschrift gehoert einer Rolle, der
+    # Beleg kommt aus einer anderen.
+    "A-O1": {
+        "tarif": ("tbox_aenderung", "stellungnahme_aktuariat"),
+        "bestand": ("tbox_aenderung", "stellungnahme_aktuariat"),
+    },
+    # A-K2 (Kern-Aenderung, Entscheid des Maintainers 2026-09-16): ZWEI
+    # Pflichtbelege, die verschiedene Dinge bezeugen. Der
+    # Aenderungsbeleg sagt, WAS am Kern anders wurde (Versionsuebergang,
+    # Sammelhash der eingefrorenen Referenzwerte, welche sich geaendert
+    # haben, Begruendung). Der Regressionsbeleg sagt, was das fuer den
+    # bestehenden Bestand bedeutet — jeder Vertrag mit altem und neuem
+    # Kern durchgerechnet, Differenz JE VERTRAG.
+    #
+    # Die Regression ist Pflicht, nicht Kuer ("ohne das kann die
+    # Aenderung im Rechenkern nicht abgenommen werden"). Solange es den
+    # Produzenten nicht gibt, ist A-K2 damit nicht zeichenbar — das ist
+    # gewollt. Ein optionaler Beleg waere derselbe Fehler, den A-M4 im
+    # Bestands-Scope schon einmal gemacht hat (T21-02/T22-01:
+    # "ausweisen statt erzwingen" nahm jedes Teilprofil an).
+    #
+    # Scope-unabhaengig: Ein geaenderter Kern rechnet in jedem Scope.
+    "A-K2": {
+        "tarif": ("kernaenderung", "regression"),
+        "bestand": ("kernaenderung", "regression"),
+    },
+    # A-B1 (Auslieferung, Entscheid des Maintainers 2026-09-16): Der
+    # Beleg ist der ANKERSATZ des auszuliefernden Pakets — der Satz, der
+    # ausserhalb des Pakets liegt und es bindet. Er ist der einzige
+    # Pflichtbeleg, und das ist kein Mangel: Was fachlich abgenommen ist,
+    # steht bereits gezeichnet IM Paket (A-M1 bis A-M4). Die Auslieferung
+    # zeichnet nicht die Zahlen, sondern den Akt: dieser Stand geht nach
+    # aussen.
+    #
+    # Nur im Bestands-Scope. Ein Tarif-Fall liefert keinen Bestand aus.
+    "A-B1": {
+        "tarif": (),
+        "bestand": ("anker",),
+    },
     "A-M4": {
         "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege"),
         "bestand": (
@@ -112,6 +169,9 @@ BELEGROLLEN = {
             "pk1_belege",
             "pb1_ledger",
             "migrationssuite",
+            # Freischaltung (Schritt 6): der Beleg, dass die Fuehrung die
+            # abgenommene Welt traegt — ohne ihn zeichnet A-M4 eine Fiktion.
+            "fuehrungsprobe",
             "abnahmebericht",
         ),
     },
@@ -141,7 +201,22 @@ def lade_scope(fall: Path) -> str:
     geraten. Er muss bewusst mit der richtigen Scope-Deklaration migriert
     werden, bevor ein menschliches Gate angenommen werden kann.
     """
-    manifest = _lade_json(fall / FALL_MANIFEST, "Fall-Manifest")
+    return lade_scope_gehasht(fall)[0]
+
+
+def lade_scope_gehasht(fall: Path) -> Tuple[str, str]:
+    """Wie :func:`lade_scope`, zusaetzlich der SHA-256 der gelesenen Bytes.
+
+    Ein Gate, das den Scope auswertet UND fall.json als Beleg hasht, tut
+    beides aus denselben Bytes (Review T23-01) — und zwar ueber denselben
+    gehaerteten Leser (kein Symlink, regulaere Datei), nicht ueber eine
+    zweite, ungehaertete Lesung.
+    """
+    manifest, roh = _lade_json_roh(fall / FALL_MANIFEST, "Fall-Manifest")
+    return _scope_aus_manifest(manifest), hashlib.sha256(roh).hexdigest()
+
+
+def _scope_aus_manifest(manifest: Dict[str, Any]) -> str:
     scope = manifest.get("scope")
     felder = {"schema_version", "typ"}
     legacy_felder = {"schema_version", "typ", "gate_dag_version"}
@@ -316,6 +391,12 @@ def _entferne_angelegte_datei(pfad: Path) -> bool:
 
 def _lade_json(pfad: Path, was: str) -> Dict[str, Any]:
     """JSON eines Fall-Artefakts laden; Defekte sind FallFehler, kein Traceback."""
+    return _lade_json_roh(pfad, was)[0]
+
+
+def _lade_json_roh(pfad: Path, was: str) -> Tuple[Dict[str, Any], bytes]:
+    """Wie :func:`_lade_json`, zusaetzlich die gelesenen Bytes — fuer einen
+    Beleg-Hash aus DERSELBEN gehaerteten Lesung (Review T23-01)."""
     if pfad.is_symlink():
         raise FallFehler(
             f"{was} ist ein Symlink ({pfad}) — Symlinks sind unzulaessig"
@@ -343,7 +424,7 @@ def _lade_json(pfad: Path, was: str) -> Dict[str, Any]:
             os.close(fd)
     if not isinstance(daten, dict):
         raise FallFehler(f"{was} hat unerwartete Struktur ({pfad})")
-    return daten
+    return daten, roh
 
 
 def _sha256(pfad: Path) -> str:

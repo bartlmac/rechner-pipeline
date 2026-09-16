@@ -22,19 +22,34 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import datetime as _dt
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.fuehrung import bestand_am, months_between
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
+from rechner_pipeline.bestand.schichten import schichten_je_police
+from rechner_pipeline.kern.beitragsreduktion import (
+    reduzierte_teile,
+    vertrags_monatsreserve_reduziert,
+)
+from rechner_pipeline.kern.korrekturschicht import (
+    absorbierter_wert,
+    schichtwert_bei,
+    zuschlag_bei_pex,
+)
 from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.models.bestand import (
     STATUS_HISTORIE_SPALTEN,
     bu_model_point_kwargs,
     model_point_kwargs,
 )
+
+
+def monate_ta_von(schicht: Tuple[Any, int, str]) -> int:
+    """Der Verankerungszeitpunkt einer Schicht in Vertragsmonaten."""
+    return int(schicht[1])
 
 
 def vertragswerte(
@@ -227,6 +242,71 @@ def _scheiben_kerne(
     return je_police
 
 
+def werte_reduziert(
+    teile: List[Tuple[int, Any]], months_exp: int, pex_jahr: Optional[int],
+) -> Dict[str, Any]:
+    """Aktuarielle Werte eines HERABGESETZTEN Vertrags am Stichtag.
+
+    Spiegel von :func:`vertragswerte`. Der herabgesetzte Vertrag rechnet
+    ueber seinen geknickten Verlauf, nicht ueber zwei skalierte
+    Vertraege; der Stornoabschlag gilt je Vertrag und wird einmal auf den
+    Gesamtwerten gebildet (``vertrags_monatsreserve_reduziert``). Eine
+    Beitragsfreistellung NACH der Herabsetzung laesst die dort fixierte
+    Summe auf dem beitragsfreien Satz weiterlaufen.
+    """
+    jahr = int(months_exp) // 12
+    if pex_jahr is None:
+        reserve = vertrags_monatsreserve_reduziert(teile, int(months_exp))
+        return {
+            "jahr": jahr, "status": "POL",
+            "deckungskapital": reserve.drx_bpfl,
+            "rueckkaufswert": reserve.rkw,
+            "vs_bfr": 0.0,
+        }
+    return {
+        "jahr": jahr, "status": "PEX",
+        "deckungskapital": sum(
+            v.reserve_beitragsfrei(
+                int(pex_jahr) - erh_jahr, int(months_exp) - 12 * erh_jahr)
+            for erh_jahr, v in teile),
+        "rueckkaufswert": 0.0,
+        "vs_bfr": sum(
+            v.beitragsfreie_summe(int(pex_jahr) - erh_jahr)
+            for erh_jahr, v in teile),
+    }
+
+
+def _reduzierte_vertraege(
+    reduktionen: Optional[pd.DataFrame],
+    kerne: Dict[int, Rechenkern],
+    scheiben_je_police: Dict[int, List[Dict[str, Any]]],
+    schicht_je_police: Dict[int, Any],
+) -> Dict[int, List[Tuple[int, Any]]]:
+    """Je herabgesetzter Police ihr geknickter Verlauf, je Schicht.
+
+    Der Kern rekonstruiert den herabgesetzten Vertrag aus Jahr, Anteil
+    und Verfahren; mehr traegt die Tabelle nicht, und mehr braucht es
+    nicht. Die Korrekturschicht geht dabei in die Grundscheibe ein —
+    dieselbe Rechnung wie in der Ereignis-Engine, denn es ist dieselbe
+    Funktion (``reduziere_geschichtet``). Zwei Rechenwege waeren zwei
+    Ergebnisse.
+    """
+    if reduktionen is None or len(reduktionen) == 0:
+        return {}
+    aus: Dict[int, List[Tuple[int, Any]]] = {}
+    for zeile in reduktionen.to_dict("records"):
+        pid = int(zeile["police_id"])
+        if pid not in kerne:
+            continue
+        aus[pid] = reduzierte_teile(
+            kerne[pid],
+            [(int(sch["erh_jahr"]), sch["kern"])
+             for sch in scheiben_je_police.get(pid, ())],
+            int(zeile["reduktion_jahr"]), float(zeile["anteil"]),
+            str(zeile["verfahren"]), schicht=schicht_je_police.get(pid))
+    return aus
+
+
 def einzelwerte_am(
     stamm: pd.DataFrame,
     historie: Optional[pd.DataFrame],
@@ -234,8 +314,29 @@ def einzelwerte_am(
     stichtag: _dt.date,
     scheiben: Optional[pd.DataFrame] = None,
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
 ) -> List[Dict[str, Any]]:
     """Einzelvertragliche Bewertung des in-force-Bestands am Stichtag.
+
+    ``schichten``/``verankerung`` (Freischaltung, Schritt 5): die
+    Korrekturschicht uebernommener Vertraege geht als eigene Position
+    ``korrekturschicht`` in die Zeile ein und ist in ``deckungskapital``
+    und ``rueckkaufswert`` enthalten (Grundsatzdokumentation 9.11: nie
+    unsichtbar). Eine Beitragsfreistellung NACH der Verankerung hat sie
+    WERTSTETIG in die beitragsfreie Summe ueberfuehrt (Klasse A; der
+    ueberfuehrte Betrag bleibt ausgewiesen); eine Freistellung VOR t_a
+    ist ihr Verankerungszustand, dort laeuft sie auf dem beitragsfreien
+    Track.
+
+    ``reduktionen`` sind die Herabsetzungen je Police: Ab dem
+    Reduktionsjahr rechnet der Vertrag ueber seinen geknickten Verlauf
+    (``kern.beitragsreduktion.ReduzierterVertrag``), und eine
+    Korrekturschicht hat er nicht mehr — sie ist in die Neuberechnung
+    eingegangen (Entscheid des Maintainers 2026-09-15). Ohne die Tabelle
+    bewertete die Fuehrung einen herabgesetzten Vertrag wie einen
+    ungekuerzten: zu hohe Summe, zu hoher Beitrag.
 
     DIE eine Bewertungsstrecke (ADR-011): Aggregation
     (:func:`auswertungs_verlauf`), Abschluss
@@ -289,6 +390,10 @@ def einzelwerte_am(
         else {}
     )
     generation_je_police = stamm.set_index("police_id")["tarif_generation"]
+    tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
+    schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
+    reduziert_je_police = _reduzierte_vertraege(
+        reduktionen, kerne, scheiben_je_police, schicht_je_police)
 
     scheibe = bestand_am(stamm, journal, stichtag)
     zeilen: List[Dict[str, Any]] = []
@@ -307,6 +412,7 @@ def einzelwerte_am(
             "leistung": 0.0,
             "deckungskapital": 0.0,
             "rueckkaufswert": 0.0,
+            "korrekturschicht": 0.0,
             "vs_bfr": 0.0,
             "jahresbeitrag": 0.0,
             "bzb_jahr": 0.0,
@@ -341,6 +447,40 @@ def einzelwerte_am(
         if status == "PEX":
             # Das PEX-Jahr ist Zustand: Vertragsjahr des Statusbeginns.
             pex_jahr = months_between(beginn.date(), status_seit.date()) // 12
+        # Ein herabgesetzter Vertrag rechnet ueber seinen geknickten
+        # Verlauf: EIN Vertrag, alle Schichten darin, Stornoabschlag
+        # einmal vertragsweit. Deshalb ein eigener Zweig statt eines
+        # Zuschlags auf die ungekuerzte Rechnung — und deshalb weder
+        # Scheiben-Schleife noch Schicht-Position darunter: Beides steckt
+        # schon im reduzierten Verlauf.
+        reduziert = reduziert_je_police.get(pid)
+        if (reduziert is not None
+                and int(months_exp) < 12 * reduziert[0][1].reduktion.jahr):
+            # Vor ihrem Jahrestag gilt der ungekuerzte Vertrag. Die
+            # Tabelle steht je POLICE, die Herabsetzung wirkt ab ihrem
+            # DATUM — ein Stichtag davor rechnet den alten Verlauf.
+            reduziert = None
+        if reduziert is not None:
+            werte = werte_reduziert(reduziert, int(months_exp), pex_jahr)
+            zeile["leistung"] = sum(
+                v.reduktion.vs_neu for _, v in reduziert)
+            if pex_jahr is None:
+                anteil = reduziert[0][1].reduktion.anteil
+                bt = beitraege(kerne[pid], int(months_exp) // 12)
+                for s_ in [x for x in scheiben_je_police.get(pid, ())
+                           if x["erh_datum"].date() <= stichtag]:
+                    bt_s = beitraege(
+                        s_["kern"], int(months_exp) // 12 - s_["erh_jahr"])
+                    bt = {k: bt[k] + bt_s[k] for k in bt}
+                zeile["jahresbeitrag"] = bt["bjb"] * anteil
+                zeile["bzb_jahr"] = bt["bzb_jahr"] * anteil
+            zeile["status"] = werte["status"]
+            zeile["deckungskapital"] = werte["deckungskapital"]
+            zeile["rueckkaufswert"] = (
+                0.0 if werte["status"] == "PEX" else werte["rueckkaufswert"])
+            zeile["vs_bfr"] = werte["vs_bfr"] if werte["status"] == "PEX" else 0.0
+            zeilen.append(zeile)
+            continue
         werte = vertragswerte(kerne[pid], int(months_exp), pex_jahr)
         # Erhoehungsscheiben des Vertrags, die am Stichtag existieren —
         # jede mit ihrem Jahresversatz (PEX-Jahr entsprechend versetzt).
@@ -365,9 +505,13 @@ def einzelwerte_am(
                 zeile["jahresbeitrag"] += bt["bjb"]
                 zeile["bzb_jahr"] += bt["bzb_jahr"]
                 zeile["leistung"] += float(s["kern"].mp.sum_insured)
-            # Stornoabschlag-Grenzen gelten je Vertrag, nicht je Scheibe:
+            # Wo die Stornoabschlag-Grenzen greifen, sagt das Tarifwerk
+            # der Generation (je Vertrag, oder je Baustein bei einer
+            # uebernommenen Generation) — derselbe Weg wie in der Engine.
             werte["rueckkaufswert"] = vertrags_rkw(
-                kerne[pid], [(s["erh_jahr"], s["kern"]) for s in aktive], jahr
+                kerne[pid], [(s["erh_jahr"], s["kern"]) for s in aktive], jahr,
+                stoab_je_baustein=bool(tarifwerk_je_generation[
+                    str(generation_je_police.loc[pid])]["stoab_je_baustein"]),
             )
         elif aktive:
             jahr = int(months_exp) // 12
@@ -384,6 +528,52 @@ def einzelwerte_am(
                 )
                 werte["vs_bfr"] += s["kern"].beitragsfreie_summe(pex_s)
                 zeile["leistung"] += float(s["kern"].mp.sum_insured)
+        schicht = schicht_je_police.get(pid)
+        if schicht is not None and int(months_exp) >= monate_ta_von(schicht):
+            parameter, monate_ta, _zustand_ta = schicht
+            # Zwei Wege, je nachdem, WANN die Beitragsfreistellung liegt.
+            #
+            # Ist sie der Verankerungszustand selbst, laeuft die Schicht auf
+            # dem beitragsfreien Track als eigene Position weiter — wie bei
+            # einem beitragspflichtigen Vertrag auch.
+            #
+            # Liegt sie NACH der Verankerung, hat sie die Schicht wertstetig
+            # in die beitragsfreie Summe ueberfuehrt (Entscheid des
+            # Maintainers 2026-09-15): Die beitragsfreie Summe ist eine
+            # garantierte Leistung, die Umwandlung muss werthaltend sein.
+            # Vorher liess die Bewertung den Schichtwert an dieser Naht
+            # ersatzlos fallen — das Deckungskapital sprang ohne
+            # Gegenbuchung nach unten.
+            #
+            # Der ueberfuehrte Betrag steckt danach IN vs_bfr und damit im
+            # Deckungskapital; ausgewiesen wird er trotzdem weiter
+            # (Grundsatzdokumentation 9.11: nie unsichtbar im
+            # Deckungskapital), nur eben als ueberfuehrter Wert.
+            # Der Fakt, an dem beide Zweige haengen, ist die ZEIT: Lag die
+            # Freistellung am oder nach dem Verankerungspunkt? Genau
+            # danach entscheidet auch die Rechnung (zuschlag_bei_pex).
+            # ``zustand_ta`` sagt in stimmigen Daten dasselbe — aber die
+            # Entscheidung aus einem anderen Fakt zu ziehen als die
+            # Rechnung ist der Weg, auf dem die beiden auseinanderlaufen.
+            absorbiert = (
+                werte["status"] == "PEX"
+                and pex_jahr is not None
+                and 12 * int(pex_jahr) >= monate_ta
+            )
+            if absorbiert:
+                werte["vs_bfr"] += zuschlag_bei_pex(
+                    schicht, kerne[pid], pex_jahr)
+                ueberfuehrt = absorbierter_wert(
+                    parameter, monate_ta, kerne[pid], pex_jahr,
+                    int(months_exp) // 12)
+                zeile["korrekturschicht"] = ueberfuehrt
+                werte["deckungskapital"] += ueberfuehrt
+            else:
+                korr = schichtwert_bei(
+                    parameter, monate_ta, kerne[pid].mp, int(months_exp))
+                zeile["korrekturschicht"] = korr
+                werte["deckungskapital"] += korr
+                werte["rueckkaufswert"] += korr
         zeile["status"] = werte["status"]
         zeile["deckungskapital"] = werte["deckungskapital"]
         zeile["rueckkaufswert"] = (
@@ -401,6 +591,9 @@ def auswertungs_verlauf(
     stichtage: List[_dt.date],
     scheiben: Optional[pd.DataFrame] = None,
     merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
 ) -> List[Dict[str, Any]]:
     """Aggregierte aktuarielle Kennzahlen je Stichtag (in-force-Bestand).
 
@@ -419,11 +612,18 @@ def auswertungs_verlauf(
     reihe: List[Dict[str, Any]] = []
     for stichtag in stichtage:
         zeilen = einzelwerte_am(stamm, historie, config, stichtag,
-                                scheiben=scheiben, merkmale=merkmale)
+                                scheiben=scheiben, merkmale=merkmale,
+                                schichten=schichten, verankerung=verankerung,
+                                reduktionen=reduktionen)
         agg: Dict[str, Any] = {
             "stichtag": stichtag.isoformat(),
             "vertraege": int(len(zeilen)),
             "deckungskapital": 0.0,
+            # Anteil der Korrekturschicht uebernommener Vertraege am
+            # Deckungskapital — im Abschluss eine eigene Position (9.11),
+            # hier ebenso, damit ein Bericht MIT Schicht nicht nur andere
+            # Kurven zeigt, sondern sagt, woher (N-01).
+            "korrekturschicht": 0.0,
             "deckungskapital_bfr": 0.0,
             "rueckkaufswert": 0.0,
             "vs_bfr": 0.0,
@@ -443,6 +643,7 @@ def auswertungs_verlauf(
         }
         for z in zeilen:
             agg["deckungskapital"] += z["deckungskapital"]
+            agg["korrekturschicht"] += z["korrekturschicht"]
             if z["produkt"] == "bu":
                 agg["bu_vertraege"] += 1
                 agg["bu_jahresrente"] += z["leistung"]

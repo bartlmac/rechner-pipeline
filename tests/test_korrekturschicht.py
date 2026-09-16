@@ -422,7 +422,10 @@ def test_die_liste_ist_vollstaendig_und_weist_das_ungepruefte_aus():
     # GEVO_ARTEN sie mit; nur der Migrationszugang selbst bleibt extra,
     # denn er ist kein Vorfall des Quellsystems.
     assert set(GEVO_ARTEN) | {MIG_KENNUNG} <= set(HEILUNG)
-    assert ungeprueft() == ["INV", "PEX", "REA"]
+    # PEX ist seit dem Entscheid des Maintainers vom 2026-09-15 bestaetigt
+    # (wertstetige Absorption in die beitragsfreie Summe). Offen bleiben
+    # INV und REA — beide haengen an der noch offenen BU-Zustandsbewertung.
+    assert ungeprueft() == ["INV", "REA"]
     for kennung, regel in HEILUNG.items():
         assert regel.begruendung, f"{kennung} ohne Begruendung"
 

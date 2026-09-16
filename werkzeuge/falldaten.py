@@ -51,7 +51,7 @@ import json
 import statistics
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 #: Die drei aktuariellen Abnahmen mit dem Dateinamen des Gates.
 ABNAHMEN = (
@@ -542,6 +542,29 @@ def _suite_achsen(suite: Dict[str, Any]) -> Dict[str, int]:
 # E — Kette und Entscheide
 # --------------------------------------------------------------------------- #
 
+def _verifiziere_snapshot(daten: Any, dateiname: str) -> List[str]:
+    """Einen Entscheid-Snapshot pruefen, soweit es ohne Schluessel geht.
+
+    Externes Review T19-02: Dieses Werkzeug las die Dateien roh und die
+    Darstellung nannte sie "gezeichnet" — eine frei erfundene Datei
+    erschien so als Abnahme. Geprueft werden jetzt Schema,
+    Selbstadressierung und Dateiname (``gates.gate_entscheid``); die
+    SIGNATUR bleibt ungeprueft, denn Schluesselmaterial gehoert nicht in
+    ein Darstellungswerkzeug. Wer diese Ausgabe rendert, schreibt
+    deshalb "Signatur hier nicht verifiziert" — nie "gezeichnet".
+
+    Faellt der Import aus (Werkzeug ohne installiertes Paket), ist das
+    ein BEFUND und kein stilles Durchwinken.
+    """
+    try:
+        from rechner_pipeline.gates.gate_entscheid import (
+            pruefe_snapshot_ohne_schluessel,
+        )
+    except ImportError as exc:  # pragma: no cover - Umgebungsfehler
+        return [f"Verifikation nicht moeglich (Paket fehlt): {exc}"]
+    return list(pruefe_snapshot_ohne_schluessel(daten, dateiname))
+
+
 def kette(fall: Path) -> Dict[str, Any]:
     """Gate-Laeufe und menschliche Entscheide."""
     diagnostics = fall / "abgeleitet" / "diagnostics"
@@ -562,16 +585,31 @@ def kette(fall: Path) -> Dict[str, Any]:
     for pfad in sorted((fall / "entscheide").glob("*.json")):
         d = _json(pfad) or {}
         freigabe = d.get("freigabe") or {}
+        befunde = _verifiziere_snapshot(d, pfad.name)
         entscheide.append({
             "gate": d.get("gate"),
             "entscheid": d.get("entscheid"),
             "rolle": d.get("rolle"),
+            # Besetzung der Rolle (ADR-018): aus der mitsignierten
+            # Zeichnung. Altsnapshots (Schema 6) tragen sie nicht — das
+            # steht dann so da, statt eine Klasse zu erfinden.
+            "schluesselklasse": (d.get("zeichnung") or {}).get(
+                "schluesselklasse")
+            or ("nicht ausgewiesen (Schema 6)" if d.get("schema_version") == 6
+                else None),
+            "mandat_sha256": (d.get("zeichnung") or {}).get("mandat_sha256"),
             "entscheider": d.get("entscheider"),
             "entschieden_am": d.get("entschieden_am"),
             "schluessel_sha256": (freigabe.get("schluessel_sha256") or "")[:16],
             "pflichtbelege": sorted(d.get("pflichtbelege") or {}),
             "artefakte_gebunden": len(d.get("artefakt_hashes") or {}),
             "begruendung": d.get("begruendung"),
+            # Was dieses Werkzeug OHNE Schluessel pruefen kann (T19-02):
+            # Schema, Selbstadressierung, Dateiname. Die Signatur nicht —
+            # ein Darstellungswerkzeug bekommt keinen Schluesselring.
+            "strukturell_verifiziert": not befunde,
+            "verifikationsbefunde": befunde,
+            "signatur_verifiziert": False,
         })
     entscheide.sort(key=lambda e: str(e["entschieden_am"]))
 
@@ -581,11 +619,19 @@ def kette(fall: Path) -> Dict[str, Any]:
         for d in [_json(pfad) or {}]
         if d.get("system")
     })
+    unversehrt = [e for e in entscheide if e["strukturell_verifiziert"]]
     return {
         "gates": gates,
         "entscheide": entscheide,
         "anzahl_gate_laeufe": len(gates),
         "systemstaende_der_entscheide": len(systemstaende),
+        # Der Zaehler, den die Darstellung benutzen darf: strukturell
+        # unversehrte Snapshots. NICHT "gezeichnet" — die Signatur
+        # prueft dieses Werkzeug nicht (T19-02).
+        "entscheide_strukturell_verifiziert": len(unversehrt),
+        "entscheide_mit_befund": len(entscheide) - len(unversehrt),
+        "signaturpruefung": "nicht durchgefuehrt (kein Schluesselring "
+                            "im Darstellungswerkzeug)",
         "gelesen_aus": ["abgeleitet/diagnostics/*.gate.json",
                         "entscheide/*.json"],
     }
@@ -750,14 +796,45 @@ def abgrenzungen(modell: Dict[str, Any]) -> List[Dict[str, Any]]:
 #: Pipeline — beides muss auffallen, statt einen Abschnitt still
 #: verschwinden zu lassen.
 ERWARTET = (
+    ("fall", "scope", "Fall-Scope (tarif oder bestand), streng gelesen"),
     ("lieferung", "quellen", "registrierte Quellen"),
     ("bestand", "anzahl", "uebernommener Bestand"),
     ("transformation", "felder", "Feldabbildung"),
     ("parameter", "generationen", "Tarifgeneration der A-Box"),
     ("abnahmen", "aktuariell", "aktuarielle Abnahmen"),
-    ("kette", "entscheide", "menschliche Entscheide"),
+    ("abnahmen", "controlling", "Migrationscontrolling (A-M4)"),
+    ("kette", "entscheide", "Entscheid-Snapshots der Gates"),
     ("umbau", "vorhanden", "Umbaubudget des Fall-Laufs"),
 )
+
+#: Die aktuariellen Abnahmen eines Bestands-Falls — als MENGE, nicht als
+#: "irgendeine nichtleere Liste". Externes Review T19-03: Die alte
+#: Pruefung war schwaecher als der reale Scope, der A-M1..A-M3 vor A-M4
+#: erzwingt (gates.gate_entscheid) — ein Fall mit nur A-M1 galt als
+#: vollstaendig. Was der Fall-Scope verlangt, muss die Darstellung
+#: verlangen, sonst behauptet sie Vollstaendigkeit, die keine ist.
+ERWARTETE_ABNAHMEN = ("A-M1", "A-M2", "A-M3")
+
+#: Gates, fuer die ein abgeschlossener Bestands-Fall einen menschlichen
+#: Entscheid tragen muss.
+ERWARTETE_ENTSCHEIDE = ("A-M1", "A-M2", "A-M3", "A-M4")
+
+#: Gruppen des Modells, die es nur im Bestands-Scope gibt: Ein Tarif-Fall
+#: hat keinen Bestand, keine Transformation und kein Zwei-Stichtags-
+#: Controlling (gates.gate_entscheid verlangt dort nur A-M1 vor A-M4).
+NUR_BESTAND = {("bestand", "anzahl"), ("transformation", "felder"),
+               ("abnahmen", "controlling")}
+
+
+def erwartete_abnahmen(scope: Optional[str]) -> Tuple[str, ...]:
+    """Die Sollmenge folgt dem Fall-Scope — derselben Vertragsquelle wie
+    gates.gate_entscheid (Review T20-03: die globale Menge erklaerte einen
+    vertragsgemaessen Tarif-Fall fuer unvollstaendig)."""
+    return ERWARTETE_ABNAHMEN if scope == "bestand" else ("A-M1",)
+
+
+def erwartete_entscheide(scope: Optional[str]) -> Tuple[str, ...]:
+    return erwartete_abnahmen(scope) + ("A-M4",)
 
 
 def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -771,24 +848,397 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     vollstaendig aus und waere es nicht.
     """
     aus: List[Dict[str, str]] = []
+    # Die Luecken des Betriebsstands wandern in die Darstellung mit (T22-05).
+    for l in (modell.get("betrieb") or {}).get("luecken") or []:
+        aus.append({"gruppe": "betrieb", "feld": str(l.get("was")), "was": str(l.get("was")),
+                    "wirkung": str(l.get("wirkung"))})
+    scope = (modell.get("fall") or {}).get("scope")
+    if scope not in ("tarif", "bestand"):
+        # Fail-closed (Review T21-04): Ein fehlender oder unbekannter Scope
+        # ist eine Luecke (unten, Gruppe fall) und wird mit dem VOLLEN
+        # Profil geprueft — nicht still wie ein Tarif-Fall, dem am
+        # wenigsten fehlen kann.
+        scope_luecke = True
+        scope = "bestand"
+    else:
+        scope_luecke = False
     for gruppe, feld, was in ERWARTET:
+        if scope != "bestand" and (gruppe, feld) in NUR_BESTAND:
+            continue
         inhalt = modell.get(gruppe) or {}
+        if (gruppe, feld) == ("fall", "scope"):
+            if scope_luecke:
+                aus.append({
+                    "gruppe": gruppe, "feld": feld, "was": was,
+                    "wirkung": (inhalt.get("scope_befund")
+                                or "Der Fall sagt nicht, ob er Tarif- oder "
+                                   "Bestandsfall ist") + " — die Darstellung "
+                               "verlangt deshalb das volle Bestandsprofil.",
+                })
+            continue
         if not inhalt.get(feld):
             aus.append({
                 "gruppe": gruppe, "feld": feld, "was": was,
                 "wirkung": "Der Abschnitt fehlt in der Darstellung.",
             })
+
+    # Mengen statt Nichtleere (T19-03): Eine Abnahme zu haben ist nicht
+    # dasselbe wie DIE Abnahmen zu haben.
+    abnahmen = modell.get("abnahmen") or {}
+    vorhanden = {str(a.get("kennung")) for a in (abnahmen.get("aktuariell")
+                                                 or [])}
+    for kennung in erwartete_abnahmen(scope):
+        if kennung not in vorhanden:
+            aus.append({
+                "gruppe": "abnahmen", "feld": f"aktuariell:{kennung}",
+                "was": f"aktuarielle Abnahme {kennung}",
+                "wirkung": "Die Abnahme fehlt — der Fall ist nicht "
+                           "vollstaendig abgenommen.",
+            })
+
+    kette = modell.get("kette") or {}
+    entschieden = {str(e.get("gate")) for e in (kette.get("entscheide") or [])
+                   if e.get("strukturell_verifiziert") is not False}
+    for gate in erwartete_entscheide(scope):
+        if gate not in entschieden:
+            aus.append({
+                "gruppe": "kette", "feld": f"entscheide:{gate}",
+                "was": f"Entscheid-Snapshot zu {gate}",
+                "wirkung": "Kein strukturell unversehrter Snapshot fuer "
+                           "dieses Gate — die Abnahme ist nicht belegt.",
+            })
+
+    mit_befund = kette.get("entscheide_mit_befund") or 0
+    if mit_befund:
+        aus.append({
+            "gruppe": "kette", "feld": "verifikation",
+            "was": f"{mit_befund} Entscheid-Snapshot(s) mit Befund",
+            "wirkung": "Schema, Selbstadressierung oder Dateiname passen "
+                       "nicht — solche Dateien belegen nichts.",
+        })
     return aus
 
 
-def sammle(fall: Path, abzuege: List[str]) -> Dict[str, Any]:
+def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any]) -> None:
+    """Das Paket gegen seine eigenen Belege halten (Review T22-05).
+
+    Vorher genuegte der freie String ``pb1 == "gruen"`` in stand.json — ein
+    komplett erfundenes Paket wurde veroeffentlicht. Jetzt muss jede in
+    ``dateien`` genannte Datei da sein und ihren Hash tragen; das
+    Protokoll muss eine ungebrochene Kette sein (``lies_protokoll`` prueft
+    sie); seine letzte gruene Zeile muss den Stand, das Urteil, den
+    Manifest-Hash und den Journal-Hash nennen, die stand.json behauptet.
+    Die Signatur eines Snapshots prueft auch das nicht — aber ein Paket,
+    das sich selbst widerspricht, kommt nicht mehr auf die Seite.
+    """
+    import hashlib
+
+    from rechner_pipeline.betrieb.tageslauf import TageslaufError, lies_protokoll
+
+    dateien = stand.get("dateien") or {}
+    for name in ("protokoll.jsonl", "laufmanifest.json", "tagesjournal.parquet", "index.html"):
+        if name not in dateien:
+            raise FalldatenFehler(f"{paket}: Belegdatei {name!r} fehlt in stand.json")
+    for name, soll in sorted(dateien.items()):
+        datei = paket / name
+        if not datei.is_file():
+            raise FalldatenFehler(f"{paket}: Belegdatei {name!r} fehlt")
+        ist = hashlib.sha256(datei.read_bytes()).hexdigest()
+        if ist != soll:
+            raise FalldatenFehler(f"{paket}: Belegdatei {name!r} hat nicht den Hash aus stand.json")
+    try:
+        zeilen = lies_protokoll(paket / "protokoll.jsonl")
+    except TageslaufError as exc:
+        raise FalldatenFehler(f"{paket}: Protokollkette: {exc}") from exc
+    gruene = [z for z in zeilen if z.get("uebernommen")]
+    if not gruene:
+        raise FalldatenFehler(f"{paket}: das Protokoll kennt keinen uebernommenen Lauf")
+    letzte = gruene[-1]
+    if letzte.get("heute") != stand.get("stand"):
+        raise FalldatenFehler(
+            f"{paket}: stand.json behauptet Stand {stand.get('stand')!r}, die letzte "
+            f"gruene Protokollzeile fuehrt {letzte.get('heute')!r}")
+    urteil = (letzte.get("pb1") or {}).get("urteil")
+    if urteil != "gruen" or prov.get("pb1") != "gruen":
+        raise FalldatenFehler(
+            f"{paket}: der Stand ist nicht durch P-B1 gegangen "
+            f"(Protokoll {urteil!r}, stand.json {prov.get('pb1')!r}) — veroeffentlicht "
+            "wird nichts, was die Wache nicht passiert hat")
+    manifest_hash = dateien.get("laufmanifest.json")
+    if letzte.get("manifest_sha256") != manifest_hash or prov.get("manifest_sha256") != manifest_hash:
+        raise FalldatenFehler(
+            f"{paket}: Manifest-Hash von Protokoll, stand.json und Belegdatei stimmen nicht ueberein")
+    manifest = _json(paket / "laufmanifest.json") or {}
+    if str(manifest.get("horizont")) != str(stand.get("stand")):
+        raise FalldatenFehler(
+            f"{paket}: das Manifest fuehrt {manifest.get('horizont')!r}, stand.json {stand.get('stand')!r}")
+    journal_hash = (letzte.get("tagesjournal") or {}).get("sha256")
+    if prov.get("tagesjournal_sha256") != journal_hash:
+        raise FalldatenFehler(f"{paket}: Journal-Hash von Protokoll und stand.json stimmen nicht ueberein")
+    if dateien.get("tagesjournal.parquet") != journal_hash:
+        raise FalldatenFehler(
+            f"{paket}: die Belegdatei 'tagesjournal.parquet' ist nicht das Journal, "
+            "auf das die letzte gruene Protokollzeile sich festgelegt hat")
+    _pruefe_buchungen_gegen_das_journal(paket, stand)
+    _pruefe_felder_gegen_das_protokoll(paket, stand, prov, zeilen, gruene, letzte)
+
+
+def _pruefe_felder_gegen_das_protokoll(
+    paket: Path, stand: Dict[str, Any], prov: Dict[str, Any],
+    zeilen: List[Dict[str, Any]], gruene: List[Dict[str, Any]], letzte: Dict[str, Any],
+) -> None:
+    """Die protokollgespeisten Bloecke von stand.json nachrechnen (Review T24-04).
+
+    Geprueft waren bisher Stand, Urteil, Manifest- und Journal-Hash. Alles
+    andere, was aus der Protokollzeile stammt — Bestandszahlen, Uebernahmen,
+    Verankerung, Abschluesse, Neugeschaeft und die uebrigen
+    Provenienzfelder — stand ungeprueft daneben: Wer das Paket las, musste
+    dem Feld glauben, obwohl der Beleg daneben lag. Nachgemessen ging ein
+    Paket durch, in dem in_force von 68 auf 1067 gesetzt war.
+
+    Die Abschluesse kommen aus derselben Funktion, die der Erzeuger
+    benutzt (``seite.abschluesse_aus_protokoll``) — zwei Ableitungen
+    waeren zwei Regeln, die auseinanderlaufen.
+    """
+    from rechner_pipeline.betrieb.seite import abschluesse_aus_protokoll
+
+    erwartet = {
+        "bestand": dict(letzte.get("bestand") or {}),
+        "uebernahmen": list(letzte.get("uebernahmen") or []),
+        "verankerung": dict(letzte.get("verankerung") or {}),
+        "abschluesse": abschluesse_aus_protokoll(zeilen),
+        "gefuehrt_seit": (
+            gruene[0]["nachgeholt"][0] if gruene[0].get("nachgeholt") else gruene[0]["heute"]
+        ),
+    }
+    for feld, soll in erwartet.items():
+        if stand.get(feld) != soll:
+            raise FalldatenFehler(
+                f"{paket}: stand.json und das Protokoll sagen Verschiedenes ueber "
+                f"{feld!r} — das Paket widerspricht seinem eigenen Beleg")
+    neu_soll = int(letzte.get("neugeschaeft_seit_betriebsbeginn", 0))
+    if (stand.get("neugeschaeft") or {}).get("seit_betriebsbeginn") != neu_soll:
+        raise FalldatenFehler(
+            f"{paket}: stand.json meldet ein anderes Neugeschaeft seit "
+            "Betriebsbeginn als die Protokollzeile")
+    for feld, quelle in (("config_sha256", "config_sha256"), ("kern_version", "kern_version"),
+                         ("image_digest", "image_digest"), ("image_revision", "image_revision"),
+                         ("image_tag", "image_tag")):
+        if prov.get(feld) != letzte.get(quelle):
+            raise FalldatenFehler(
+                f"{paket}: provenienz.{feld} steht nicht so in der letzten gruenen "
+                "Protokollzeile — die Herkunft ist behauptet, nicht belegt")
+
+
+def _pruefe_buchungen_gegen_das_journal(paket: Path, stand: Dict[str, Any]) -> None:
+    """Die journalgespeisten Zahlen gegen die Zeilen halten (Review T24-04, Teil 1).
+
+    Bis Paketschema 2 lagen Protokoll und Manifest als Belege im Paket —
+    damit waren die protokollgespeisten Bloecke von stand.json gedeckt.
+    ``buchungen.*`` kommt aber aus dem Tagesjournal, das nicht mitkam: Die
+    Zahl stand da und war zu glauben. Seit Schema 3 liegt das Journal
+    dabei, seine Bytes haengen ueber den Protokoll-Hash an der Kette, und
+    hier wird nachgerechnet.
+
+    Gezaehlt wird wie beim Erzeuger: ``gesamt`` sind ZEILEN, ``je_ereignis``
+    sind VORFAELLE (police_id, ereignis, status_date) — seit dem gebuchten
+    Bruttojahresbeitrag bucht ein Zugang zwei Zeilen, und wer hier Zeilen
+    zaehlte, meldete doppelt so viele Vorfaelle, wie es gab.
+    """
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
+
+    journal = read_portfolio(paket / "tagesjournal.parquet",
+                             expected_columns=TAGESJOURNAL_NAMES)
+    buchungen = stand.get("buchungen") or {}
+    if buchungen.get("gesamt") != len(journal):
+        raise FalldatenFehler(
+            f"{paket}: stand.json meldet {buchungen.get('gesamt')!r} Buchungen, das "
+            f"Tagesjournal traegt {len(journal)} Zeilen")
+    vorfaelle = journal[["police_id", "ereignis", "status_date"]].drop_duplicates()
+    gezaehlt = {str(k): int(v) for k, v in sorted(vorfaelle["ereignis"].value_counts().items())}
+    if (buchungen.get("je_ereignis") or {}) != gezaehlt:
+        raise FalldatenFehler(
+            f"{paket}: die Vorfaelle je Ereignis in stand.json stimmen nicht mit dem "
+            f"Tagesjournal ueberein (stand.json {buchungen.get('je_ereignis')!r}, "
+            f"Journal {gezaehlt!r})")
+
+
+def _pruefe_auslieferung(paket: Path, fall: Optional[Path],
+                         satz_sha256: str) -> Dict[str, Any]:
+    """Eine AUSLIEFERUNG braucht die menschliche Abnahme A-B1.
+
+    Der Export zeichnet den Ankersatz — das sagt, WER das Paket erzeugt
+    hat, und ein Agent darf es sagen. Was nach aussen geht, verantwortet
+    dagegen ein Mensch: die fachliche Rolle mensch/betrieb, im
+    Vorzeigebetrieb ihr simuliertes Gegenstueck (Entscheid des
+    Maintainers 2026-09-16).
+
+    Geprueft wird der Snapshot STRUKTURELL und seine Bindung an genau
+    diesen Ankersatz — nicht die Signatur: Dafuer braeuchte es den
+    Schluesselring, den ein Konsument nicht hat. Deshalb heisst es hier
+    "Angaben der Snapshot-Datei" und nie "gezeichnet" (dieselbe
+    Ehrlichkeit wie im Betriebseingang, T19-02).
+    """
+    from rechner_pipeline.models.schemas import P9Snapshot, p9_snapshot_sha256
+
+    if fall is None:
+        raise FalldatenFehler(
+            f"{paket}: ausgeliefert, aber ohne Fall — die Abnahme A-B1 liegt "
+            "im Fall unter entscheide/, und ohne ihn ist sie nicht auffindbar")
+    verzeichnis = Path(fall) / "entscheide"
+    treffer = sorted(verzeichnis.glob("A-B1-*.json")) if verzeichnis.is_dir() else []
+    for pfad in treffer:
+        try:
+            daten = json.loads(pfad.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if P9Snapshot.validate_payload(daten):
+            continue
+        if daten.get("snapshot_sha256") != p9_snapshot_sha256(daten):
+            continue
+        if daten.get("gate") != "A-B1" or daten.get("entscheid") != "angenommen":
+            continue
+        belege = (daten.get("pflichtbelege") or {}).get("anker") or []
+        if satz_sha256 in [str(b) for b in belege]:
+            zeichnung = daten.get("zeichnung") or {}
+            return {
+                "snapshot_sha256": daten.get("snapshot_sha256"),
+                "rolle": zeichnung.get("rolle"),
+                "schluesselklasse": zeichnung.get("schluesselklasse"),
+                "entscheider": daten.get("entscheider"),
+            }
+    raise FalldatenFehler(
+        f"{paket}: das Paket ist als AUSLIEFERUNG ausgewiesen, aber keine "
+        f"angenommene A-B1-Abnahme im Fall bindet seinen Ankersatz "
+        f"({satz_sha256[:16]}…). Was nach aussen geht, zeichnet ein Mensch — "
+        "gates.gate_entscheid --gate A-B1")
+
+
+def _pruefe_anker(paket: Path, stand: Dict[str, Any],
+                  anker_datei: Optional[Path],
+                  fall: Optional[Path] = None) -> Dict[str, Any]:
+    """Das Paket gegen einen Anker AUSSERHALB des Pakets halten (T24-04 b).
+
+    Das Paket belegt sich bis hierher selbst: Jede Kennzahl ist aus
+    seinen Belegen nachgerechnet, die Protokollkette ist ungebrochen. Was
+    dabei NICHT geprueft werden kann, ist die letzte Zeile der Kette —
+    sie hat keinen Nachfolger, der sie bindet, und genau aus ihr leitet
+    stand.json ab. Wer beide zusammen umschreibt, kommt hier durch.
+
+    Der Anker schliesst das: ein Hash derselben Zeile, abgelegt an einem
+    Ort, den der schreibende Prozess nicht anfasst.
+    """
+    from rechner_pipeline.models.anker import (
+        AnkerFehler,
+        lies_anker,
+        pruefe,
+        satz_hash,
+    )
+
+    if anker_datei is None:
+        raise FalldatenFehler(
+            f"{paket}: kein Anker uebergeben. Ein Stands-Paket wird gegen "
+            "einen Bezug AUSSERHALB des Pakets geprueft — ohne ihn belegt es "
+            "nur sich selbst (Review T24-04, Teil 2). Aufruf mit "
+            "--anker <datei>; geschrieben hat sie der Export."
+        )
+    try:
+        satz = pruefe(paket, stand, paket / "protokoll.jsonl",
+                      lies_anker(Path(anker_datei)))
+    except AnkerFehler as exc:
+        raise FalldatenFehler(str(exc)) from exc
+    art = str(satz.get("art") or "momentaufnahme")
+    verankerung = {
+        "datei": str(anker_datei),
+        "stand": satz.get("stand"),
+        "erstellt": satz.get("erstellt"),
+        "art": art,
+        # Ausgewiesen, nicht behauptet: Wer den Ankersatz gezeichnet hat,
+        # steht hier — mit seiner Klasse, damit man Mensch und Agent
+        # unterscheiden kann (ADR-018).
+        "zeichnung": satz.get("zeichnung"),
+    }
+    if art == "auslieferung":
+        verankerung["abnahme"] = _pruefe_auslieferung(
+            paket, fall, satz_hash(satz))
+    return verankerung
+
+
+def betrieb(paket: Optional[Path],
+            anker_datei: Optional[Path] = None,
+            fall: Optional[Path] = None) -> Dict[str, Any]:
+    """Der lebende Bestand aus dem Stands-Paket der Laufzeitumgebung.
+
+    Fachkonzept docs/simulation/tagesbetrieb.md, Abschnitt 8.3: Die
+    oeffentliche Seite bleibt eine gestempelte Momentaufnahme; ihre
+    Kennzahlen zum laufenden Bestand kommen aus einem exportierten
+    Stands-Paket (``python -m rechner_pipeline.betrieb.seite --paket``),
+    nicht aus einem Fall — erzeugt, nie abgetippt. Ohne Paket bleibt der
+    Abschnitt weg; er ist kein Pflichtabschnitt eines Falls.
+    """
+    if paket is None:
+        return {"vorhanden": False}
+    paket = Path(paket)
+    stand = _json(paket / "stand.json")
+    # Schema 3 seit Review T24-04 Teil 1: das Paket traegt auch das
+    # Tagesjournal. Ein Paket nach Schema 2 belegt seine Buchungszahlen
+    # nicht und wird deshalb nicht veroeffentlicht — wie schon die
+    # Erstfassung ohne Belegdateien.
+    if not isinstance(stand, dict) or stand.get("schema_version") != 4:
+        raise FalldatenFehler(
+            f"{paket}: kein Stands-Paket (stand.json mit schema_version 4 fehlt; "
+            "ein aelteres Paket nennt keinen Anker und belegt damit nur sich "
+            "selbst — die Protokollkette schuetzt ihre letzte Zeile nicht, und "
+            "genau aus ihr leitet stand.json ab) — ein neuer Export heilt es: "
+            "python -m rechner_pipeline.betrieb.seite --stand <daten> "
+            "--paket <ziel> --anker <verzeichnis>"
+        )
+    prov = stand.get("provenienz") or {}
+    _pruefe_stands_paket(paket, stand, prov)
+    verankerung = _pruefe_anker(paket, stand, anker_datei, fall)
+    return {
+        "vorhanden": True,
+        "stand": stand.get("stand"),
+        "gefuehrt_seit": stand.get("gefuehrt_seit"),
+        "bestand": stand.get("bestand") or {},
+        "neugeschaeft": stand.get("neugeschaeft") or {},
+        "buchungen": {
+            "gesamt": (stand.get("buchungen") or {}).get("gesamt"),
+            "je_ereignis": (stand.get("buchungen") or {}).get("je_ereignis") or {},
+        },
+        "abschluesse": stand.get("abschluesse") or [],
+        "uebernahmen": stand.get("uebernahmen") or [],
+        "provenienz": prov,
+        "dateien": stand.get("dateien") or {},
+        # Die Luecken des Stands (T22-05: gingen beim Import verloren).
+        "luecken": list(stand.get("luecken") or []),
+        "quelle": str(paket),
+        "verankerung": verankerung,
+    }
+
+
+def sammle(fall: Path, abzuege: List[str],
+           stands_paket: Optional[Path] = None,
+           anker: Optional[Path] = None) -> Dict[str, Any]:
     manifest = _json(fall / "fall.json") or {}
+    # Der Scope kommt aus demselben strengen Vertrag wie bei den Gates
+    # (fall.lade_scope, T21-04) — nicht aus dem roh gelesenen Manifest.
+    from rechner_pipeline.fall import FallFehler, lade_scope
+
+    scope: Optional[str] = None
+    scope_befund: Optional[str] = None
+    try:
+        scope = lade_scope(fall)
+    except FallFehler as exc:
+        scope_befund = f"Fall-Scope ungueltig: {exc}"
     modell: Dict[str, Any] = {
         "schema_version": 1,
         "fall": {
             "name": manifest.get("name") or fall.name,
             "beschreibung": manifest.get("beschreibung") or None,
-            "scope": (manifest.get("scope") or {}).get("typ"),
+            "scope": scope,
+            "scope_befund": scope_befund,
         },
         "lieferung": lieferung(fall),
         "bestand": bestand(fall, abzuege),
@@ -797,6 +1247,7 @@ def sammle(fall: Path, abzuege: List[str]) -> Dict[str, Any]:
         "abnahmen": abnahmen(fall),
         "kette": kette(fall),
         "umbau": umbau(fall),
+        "betrieb": betrieb(stands_paket, anker, fall),
     }
     modell["abgrenzungen"] = abgrenzungen(modell)
     modell["luecken"] = luecken(modell)
@@ -813,6 +1264,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Registrierter Bestandsabzug je Stichtag, "
                         "in zeitlicher Reihenfolge (mehrfach angebbar)")
     p.add_argument("--out", default=None, help="Zieldatei (Vorgabe: stdout)")
+    p.add_argument("--anker", dest="anker", default=None,
+                   help="Ankerdatei des Stands-Pakets (Pflicht mit "
+                        "--stands-paket). Sie liegt AUSSERHALB des Pakets — "
+                        "das ist der Punkt.")
+    p.add_argument("--stands-paket", dest="stands_paket", default=None,
+                   help="Stands-Paket der Laufzeitumgebung (betrieb.seite "
+                        "--paket): der lebende Bestand als Abschnitt der "
+                        "Darstellung")
     args = p.parse_args(argv)
 
     fall = Path(args.fall).resolve()
@@ -820,7 +1279,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Kein Fall-Arbeitsbereich: {fall}", file=sys.stderr)
         return 2
     try:
-        modell = sammle(fall, args.abzug)
+        modell = sammle(
+            fall, args.abzug,
+            Path(args.stands_paket) if args.stands_paket else None,
+            Path(args.anker) if args.anker else None)
     except FalldatenFehler as exc:
         print(f"Nicht erhebbar: {exc}", file=sys.stderr)
         return 2

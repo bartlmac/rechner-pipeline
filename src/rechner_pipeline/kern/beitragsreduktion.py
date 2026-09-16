@@ -58,6 +58,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 if TYPE_CHECKING:  # pragma: no cover
     from rechner_pipeline.kern.produkte.klv import Monatsreserve
 
+from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
     vertrags_monatsreserve,
@@ -118,7 +119,8 @@ class Reduktion:
 
 
 def reduziere(
-    kern: Rechenkern, jahr: int, anteil: float, *, verfahren: str = PROSPEKTIV
+    kern: Rechenkern, jahr: int, anteil: float, *, verfahren: str = PROSPEKTIV,
+    zusatz_dk: float = 0.0,
 ) -> Reduktion:
     """Den Beitrag im Vertragsjahr ``jahr`` auf ``anteil`` senken.
 
@@ -137,8 +139,20 @@ def reduziere(
     kein Monatsparameter an dieser Signatur.
     """
     _pruefe_eingaben(kern.mp, jahr, anteil, verfahren)
+    if zusatz_dk < 0.0 or not math.isfinite(zusatz_dk):
+        raise BeitragsreduktionFehler(
+            f"zusatz_dk {zusatz_dk!r}: beitragsfreies Deckungskapital ohne "
+            "eigene Zusage ist nicht negativ und endlich")
 
     if verfahren == TEILKUENDIGUNG:
+        if zusatz_dk:
+            raise BeitragsreduktionFehler(
+                "Teilkuendigung mit Korrekturschicht: Der Vertrag danach ist "
+                "der ZUSTANDSLOSE Vertrag mit f x S — es gibt keinen "
+                "beitragsfreien Teil, in den die Schicht eingehen koennte. "
+                "Das Verfahren rekonstruiert die Praxis der QUELLE "
+                "(Bedingungswerk Ziffer 6); fuer die eigene Fuehrung eines "
+                "uebernommenen Vertrags ist es nicht vorgesehen")
         # Teilkuendigung der Grundversicherung MIT AUSZAHLUNG: Die
         # Reserve des gekuendigten Anteils verlaesst den Vertrag
         # (dDK = -(1-f) x kVx), der Rest laeuft ZUSTANDSLOS mit f x S
@@ -177,7 +191,8 @@ def reduziere(
         1.0 if verfahren == PROSPEKTIV
         else _abzugsfaktor(zeile.drx_bpfl, zeile.stoab, jahr)
     )
-    return _reduziere_eine_schicht(kern, jahr, anteil, nach_abzug, verfahren)
+    return _reduziere_eine_schicht(
+        kern, jahr, anteil, nach_abzug, verfahren, zusatz_dk=zusatz_dk)
 
 
 def _pruefe_eingaben(
@@ -244,6 +259,8 @@ def _reduziere_eine_schicht(
     anteil: float,
     nach_abzug: float,
     verfahren: str = PROSPEKTIV,
+    *,
+    zusatz_dk: float = 0.0,
 ) -> "Reduktion":
     """Die Reduktion EINER Schicht — der gemeinsame Rechenteil.
 
@@ -262,6 +279,21 @@ def _reduziere_eine_schicht(
     # Der fortgefuehrte Teil bleibt unveraendert; nur der freiwerdende
     # Anteil wird umgewandelt.
     umgewandelt = dk_vor * nach_abzug * (1.0 - anteil)
+    # ``zusatz_dk`` ist Deckungskapital OHNE eigene Zusage — die
+    # Korrekturschicht eines uebernommenen Vertrags. Sie traegt keinen
+    # Beitrag, gehoert also vollstaendig zum umgewandelten Teil, nicht
+    # anteilig zum fortgefuehrten: Die Herabsetzung ist eine
+    # Neuvereinbarung, das Gesamt-Deckungskapital EINSCHLIESSLICH Schicht
+    # ist der Startwert der Neuberechnung, und danach fuehrt allein die
+    # Logik des Zielsystems (Entscheid des Maintainers 2026-09-15; 9.7
+    # Klasse A). Beim verlustfreien Verfahren ist dk_nach damit exakt
+    # dk_vor + zusatz_dk — kein Sprung an der Naht.
+    #
+    # Als eigener Summand, nicht in den Ausdruck darueber gezogen: Ohne
+    # Schicht bleibt die Rechnung bitgleich zu der, die die
+    # Charakterisierungswerte des Kerns tragen.
+    if zusatz_dk:
+        umgewandelt += zusatz_dk * nach_abzug
 
     if zeile.vx_bfr <= 0.0:
         raise BeitragsreduktionFehler(
@@ -295,6 +327,7 @@ def reduziere_geschichtet(
     anteil: float,
     *,
     verfahren: str = PROSPEKTIV,
+    zusatz_dk: float = 0.0,
 ) -> List[Tuple[int, "Reduktion"]]:
     """Herabsetzung eines Vertrags MIT dynamischen Erhoehungsscheiben.
 
@@ -320,6 +353,12 @@ def reduziere_geschichtet(
     Deckungsrueckstellung der Schicht verteilt — dem Anteil, aus dem der
     umgewandelte Betrag stammt. Beim verlustfreien Verfahren entfaellt
     die Frage, dort wird kein Abzug erhoben.
+
+    **Die Korrekturschicht gehoert zur Grundscheibe.** ``zusatz_dk`` geht
+    dort in die Umwandlung ein und nirgends sonst: Die Schicht ist auf den
+    Modellpunkt des Grundvertrags kalibriert (``schichtwert_bei``), nicht
+    auf die Erhoehungen — eine Aufteilung ueber die Schichten waere eine
+    zweite Konvention ohne fachlichen Grund.
 
     Rueckgabe: je Schicht ihr Erhoehungsjahr und ihre Reduktion, in der
     Reihenfolge (Grundscheibe zuerst) von ``vertrags_monatsreserve``.
@@ -356,13 +395,67 @@ def reduziere_geschichtet(
     )
 
     aus: List[Tuple[int, "Reduktion"]] = []
-    for erh_jahr, kern in teile:
+    for i, (erh_jahr, kern) in enumerate(teile):
         # Die Schicht rechnet ihre eigene Reduktion — mit ihrem eigenen
         # Eintrittsalter, ihrer eigenen Restdauer und ihrem eigenen
-        # beitragsfreien Reservesatz. Nur der Abzug kommt von aussen.
+        # beitragsfreien Reservesatz. Nur der Abzug kommt von aussen, und
+        # die Korrekturschicht nur bei der Grundscheibe (teile[0]): Sie
+        # ist auf DEREN Modellpunkt kalibriert.
         aus.append((erh_jahr, _reduziere_eine_schicht(
-            kern, jahr - erh_jahr, anteil, nach_abzug, verfahren)))
+            kern, jahr - erh_jahr, anteil, nach_abzug, verfahren,
+            zusatz_dk=zusatz_dk if i == 0 else 0.0)))
     return aus
+
+
+def reduzierte_teile(
+    grund: Rechenkern,
+    scheiben: Sequence[Tuple[int, Rechenkern]],
+    jahr: int,
+    anteil: float,
+    verfahren: str,
+    *,
+    schicht: Optional[Tuple[Any, int]] = None,
+) -> List[Tuple[int, Any]]:
+    """Der herabgesetzte Vertrag, je Schicht — DIE eine Rekonstruktion.
+
+    Vier Stellen brauchen sie: die Ereignis-Engine beim Ziehen, die
+    Bewertung am Stichtag, die Ledger-Herleitung (P-B1) und die
+    Fuehrungsprobe. Genau solche Wiederholungen waren der Befund T25-06:
+    Vier Abschriften derselben Regel, und die beiden "unabhaengigen"
+    Gegenrechnungen bestaetigten den Fehler der Bewertung, statt ihn zu
+    widerlegen. Hier steht sie einmal.
+
+    ``schicht`` ist die Korrekturschicht (Parameter, Verankerungsmonat)
+    eines uebernommenen Vertrags. Liegt der Verankerungspunkt vor der
+    Herabsetzung, geht ihr Wert VOLLSTAENDIG in die Neuberechnung ein
+    (Entscheid des Maintainers 2026-09-15) — danach traegt der Vertrag
+    keine Schicht mehr.
+    """
+    zusatz = 0.0
+    if schicht is not None and 12 * jahr >= int(schicht[1]):
+        zusatz = schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
+    aktive = [(j, k) for j, k in scheiben if j < jahr]
+    teile = reduziere_geschichtet(
+        grund, aktive, jahr, anteil, verfahren=verfahren, zusatz_dk=zusatz)
+    kerne = [grund] + [k for _, k in aktive]
+    return [
+        (erh_jahr, ReduzierterVertrag(kern=kerne[i], reduktion=red))
+        for i, (erh_jahr, red) in enumerate(teile)
+    ]
+
+
+def absorbierte_schicht(
+    grund: Rechenkern, jahr: int, schicht: Optional[Tuple[Any, int]]
+) -> float:
+    """Der Schichtwert, den eine Herabsetzung im Jahr ``jahr`` aufnimmt.
+
+    Null, wenn der Vertrag keine Schicht traegt oder die Verankerung nach
+    der Herabsetzung liegt. Derselbe Wert, den :func:`reduzierte_teile`
+    einrechnet — die Buchung im Ledger weist ihn aus.
+    """
+    if schicht is None or 12 * jahr < int(schicht[1]):
+        return 0.0
+    return schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
 
 
 def vertrags_monatsreserve_reduziert(
@@ -490,7 +583,7 @@ class ReduzierterVertrag:
     @classmethod
     def nach(
         cls, kern: Rechenkern, jahr: int, anteil: float,
-        *, verfahren: str = PROSPEKTIV,
+        *, verfahren: str = PROSPEKTIV, zusatz_dk: float = 0.0,
     ) -> "ReduzierterVertrag":
         if verfahren == TEILKUENDIGUNG:
             raise BeitragsreduktionFehler(
@@ -500,7 +593,7 @@ class ReduzierterVertrag:
                 "Teil zu fuehren"
             )
         return cls(kern=kern, reduktion=reduziere(
-            kern, jahr, anteil, verfahren=verfahren))
+            kern, jahr, anteil, verfahren=verfahren, zusatz_dk=zusatz_dk))
 
     @property
     def bfr_teil(self) -> float:

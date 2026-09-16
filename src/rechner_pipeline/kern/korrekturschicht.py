@@ -530,10 +530,13 @@ HEILUNG: Mapping[str, Heilungsregel] = {
                     "die Neuberechnung ein (9.7, Klasse A)",
     ),
     "PEX": Heilungsregel(
-        heilt=True, geprueft=False,
-        begruendung="Beitragsfreistellung rechnet neu; 9.7 fuehrt sie als "
-                    "Klasse A. Zuordnung uebernommen, fachlich noch nicht "
-                    "bestaetigt",
+        heilt=True, geprueft=True,
+        begruendung="Beitragsfreistellung rechnet neu (9.7, Klasse A), und "
+                    "zwar WERTSTETIG: Das Residuum wird in die beitragsfreie "
+                    "Summe ueberfuehrt (absorptions_zuschlag), weil diese "
+                    "eine garantierte Leistung ist — der Wert bleibt an der "
+                    "Naht erhalten, danach gibt es keine eigene Schicht mehr "
+                    "(Maintainer, 2026-09-15)",
     ),
     "ERH": Heilungsregel(
         heilt=False, geprueft=True,
@@ -607,3 +610,160 @@ def absorbiere(parameter: Schichtparameter) -> Schichtparameter:
     eine nie vorhandene sind verschiedene Sachverhalte.
     """
     return dataclasses.replace(parameter, rho=0.0)
+
+
+def absorptions_zuschlag(
+    parameter: Schichtparameter, monate_anker: int, kern: Any, pex_jahr: int,
+) -> float:
+    """Der wertstetige Gegenwert der Schicht als Zuschlag auf ``VS_bfr``.
+
+    Eine Beitragsfreistellung NACH der Verankerung laesst das Residuum
+    nicht fallen, sondern fuehrt es in die beitragsfreie Summe ueber: Die
+    beitragsfreie Summe ist eine GARANTIERTE Leistung, die Umwandlung muss
+    werthaltend sein (Entscheid des Maintainers 2026-09-15 zu 9.7, Klasse
+    A). Vorher hoerte die Bewertung an dieser Naht einfach auf, den
+    Schichtwert zu addieren — Deckungskapital und Rueckkaufswert fielen
+    ohne Gegenbuchung, und dem Versicherten ginge im Moment einer
+    Beitragsfreistellung Wert verloren, nur weil sein Vertrag migriert
+    wurde.
+
+    Gerechnet wird ueber die Linearitaet des Blatts: Die beitragsfreie
+    Reserve ist proportional zur beitragsfreien Summe
+    (``reserve_beitragsfrei(a0, a) = VS_bfr(a0) * vx_bfr(a)``). Der
+    Zuschlag ist damit der Schichtwert geteilt durch den
+    Umwandlungssatz ``vx_bfr(a0)`` des Freistellungsjahres, und beide
+    Groessen kommen aus der oeffentlichen Kern-API — hier entsteht kein
+    zweiter Rechenweg neben dem Blatt.
+
+    **Fachliche Grenze, benannt statt gebaut:** Die Regel setzt voraus,
+    dass die beitragsfreie Summe RECHNERISCH aus der Reserve entsteht.
+    Sagt ein Bedingungswerk sie GARANTIERT zu, traegt die Zusage den Wert
+    und nicht die Reserve; dann ist die wertstetige Umwandlung nicht der
+    richtige Weg und die aktuarielle Logik ist anzupassen. Im Fall
+    Baldrian kommt das nicht vor (Maintainer, 2026-09-15). Kein Schalter,
+    solange kein Fall ihn braucht — eine tote Verzweigung waere schlechter
+    als ein benannter Vorbehalt (dev-docs/offene-punkte.md).
+    """
+    basis_reserve = _umwandlungsreserve(kern, pex_jahr)
+    wert = schichtwert_bei(parameter, monate_anker, kern.mp, 12 * pex_jahr)
+    return wert * kern.beitragsfreie_summe(pex_jahr) / basis_reserve
+
+
+def absorbierter_wert(
+    parameter: Schichtparameter, monate_anker: int, kern: Any,
+    pex_jahr: int, jahr: int,
+) -> float:
+    """Der ueberfuehrte Schichtwert im Vertragsjahr ``jahr`` nach der PEX.
+
+    Nach der Umwandlung ist das Residuum keine eigene Schicht mehr — es
+    laeuft als Teil der beitragsfreien Summe auf dem beitragsfreien
+    Reservesatz weiter, waechst also mit demselben Faktor wie sie. Der
+    Ausweis bleibt trotzdem noetig: Grundsatzdokumentation 9.11 verlangt,
+    dass die Schicht nie unsichtbar im Deckungskapital steht, und sie ist
+    nach der Absorption weiterhin darin enthalten. Deshalb fuehrt der
+    Abschluss diesen Betrag in der Spalte ``korrekturschicht`` fort,
+    statt sie auf null springen zu lassen.
+    """
+    basis_reserve = _umwandlungsreserve(kern, pex_jahr)
+    wert = schichtwert_bei(parameter, monate_anker, kern.mp, 12 * pex_jahr)
+    return wert * kern.reserve_beitragsfrei(pex_jahr, jahr) / basis_reserve
+
+
+def zuschlag_bei_pex(
+    schicht: Optional[Sequence[Any]], kern: Any, pex_jahr: int,
+) -> float:
+    """Der Zuschlag auf ``VS_bfr``, den eine Beitragsfreistellung ausloest.
+
+    Die EINE Tuer fuer alle Konsumenten — Ereignis-Engine, Bewertung,
+    Ledger-Herleitung und Fuehrungsprobe fragen dieselbe Regel hier ab,
+    statt sie je fuer sich abzutippen. Genau das Abtippen war der Befund
+    (Review T25-06): ``rkw()`` rechnete die Schicht mit,
+    ``beitragsfreie_summe()`` nicht, und die beiden Gegenrechnungen
+    wiederholten den Fehler, statt ihn zu widerlegen.
+
+    Null in zwei Faellen, die verschieden aussehen und dasselbe bedeuten:
+    kein uebernommener Vertrag (keine Schicht), oder die Freistellung
+    liegt VOR der Verankerung — dann ist sie der Verankerungszustand
+    selbst, und die Schicht laeuft als eigene Position auf dem
+    beitragsfreien Track weiter, statt in die Summe einzugehen.
+    """
+    if schicht is None:
+        return 0.0
+    parameter, monate_anker = schicht[0], int(schicht[1])
+    if 12 * pex_jahr < monate_anker:
+        return 0.0
+    return absorptions_zuschlag(parameter, monate_anker, kern, pex_jahr)
+
+
+def _umwandlungsreserve(kern: Any, pex_jahr: int) -> float:
+    """Die beitragsfreie Reserve im Freistellungsjahr — der Nenner beider
+    Umrechnungen; null ist kein Umrechnungspunkt, sondern ein Fehler."""
+    basis_reserve = kern.reserve_beitragsfrei(pex_jahr, pex_jahr)
+    if basis_reserve <= 0.0:
+        raise KorrekturschichtFehler(
+            f"Beitragsfreistellung in Jahr {pex_jahr}: die beitragsfreie "
+            f"Reserve ist {basis_reserve!r} — ein Schichtwert laesst sich "
+            "nicht wertstetig in eine beitragsfreie Summe ueberfuehren, "
+            "wenn es keine Reserve gibt, auf der sie aufsetzt"
+        )
+    return basis_reserve
+
+
+def schichtwert_bei(
+    parameter: Schichtparameter, monate_anker: int, mp: Any, monate: int,
+) -> float:
+    """Der Wert EINER Schicht zu einem Vertragsmonat (Konsumenten-API).
+
+    Die Schicht rechnet ab ihrem Verankerungszeitpunkt; ein Zeitpunkt
+    DAVOR liegt ausserhalb ihrer Definition und ist ein Aufruffehler.
+    Auf dem Jahresgitter wird der Verlaufswert genommen, unterjaehrig
+    linear zwischen den Jahresraendern gemischt — dieselbe Konvention wie
+    fuer die Basisschicht (Grundsatzdokumentation 9.6), denn die Schicht
+    ist dieselbe Rekursion mit anderen Zahlungen und darf keine eigene
+    Zeitachse bekommen ("Overlay ohne dritte Uhr", 9.5).
+
+    ``mp`` ist der Grund-Modellpunkt des Vertrags (die Welt, auf der
+    verankert wurde); die Basis $V^{base}$ ist seine prospektive
+    Deckungsrueckstellung ab dem Gitterjahrestag vor dem Anker.
+
+    Im Kern, weil ALLE drei Rechenwege denselben Wert brauchen: die
+    Engines des aktuariellen Tests und des Migrationscontrollings
+    (Pruefstrecke) und seit der Freischaltung (Schritt 5) die
+    Bestandsfuehrung — Storno zahlt Basiswert plus Schichtwert, der
+    Abschluss weist ihn aus. Bis dahin lebte die Funktion in
+    ``qa.aktuarieller_test`` (dort weiter unter demselben Namen
+    erreichbar); Rechenwerte unveraendert.
+    """
+    from rechner_pipeline.kern.rechenkern import Rechenkern
+
+    # Das GITTER beginnt am Jahrestag vor dem Anker; bei einer
+    # Rumpfjahr-Verankerung (9.6-Nachtrag) liegt t_a mitten im ersten
+    # Gitterjahr. Abgelesen wird ab dem Gitterjahrestag, linear gemischt
+    # -- am t_a selbst ergibt das konstruktionsbedingt das Residuum.
+    jahr_ta = monate_anker // 12
+    kern = Rechenkern(mp)
+    # Zahlungsjahre jahr_ta .. n-1: das Ablaufjahr traegt keine
+    # Amortisations-Zahlung (Terminalbedingung V_korr(n) = 0, 9.7) —
+    # dieselbe Grenze wie bei der Verankerung
+    # (bestand.migrationszugang._basisverlauf), sonst passte rho nicht
+    # zur Form und das Residuum am t_a risse.
+    basis = [kern.verlaufszeile(a).drx_bpfl for a in range(jahr_ta, mp.n)]
+    if parameter.formfunktion == "konstantes_fenster":
+        fenster = int(parameter.formparameter["fenster"])
+        form = form_konstantes_fenster(len(basis), min(fenster, len(basis)))
+    else:
+        form = form_proportional_zur_basis(basis)
+    bw = kern.produkt.bw
+    schicht = Korrekturschicht(
+        bw.modell, tuple(tuple(pair) for pair in parameter.vererbend)
+    )
+    verlauf = schicht.verlauf(parameter, form, mp.x + jahr_ta)
+
+    seit_gitter = monate - 12 * jahr_ta
+    j, rest = divmod(seit_gitter, 12)
+    if j >= len(verlauf) - 1:
+        return verlauf[-1]
+    if rest == 0:
+        return verlauf[j]
+    anteil = rest / 12.0
+    return (1.0 - anteil) * verlauf[j] + anteil * verlauf[j + 1]

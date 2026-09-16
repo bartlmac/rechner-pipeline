@@ -799,6 +799,10 @@ def render_html(
     merkmale: Optional[pd.DataFrame] = None,
     bis: Optional[_dt.date] = None,
     stichtag: Optional[_dt.date] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
+    berichtsstichtag: Optional[_dt.date] = None,
 ) -> str:
     """Rendert den vollständigen Bericht als selbst-enthaltenes HTML.
 
@@ -817,7 +821,32 @@ def render_html(
     die Nachweisungen in **Historie** (Bestandsaufbau bis zum Stichtag) und
     **Prognose** (Entwicklung danach) — in den Tabellen als Trennzeile, in
     den Grafiken als senkrechte Linie.
+
+    ``berichtsstichtag`` schaltet den BETRIEBSBERICHT: Der Bericht endet am
+    Stichtag, bis zu dem geführt wurde, und zeigt keine Projektion. Das ist
+    kein Weglassen der Prognose, sondern eine andere Aussage — der Betrieb
+    kennt die Zukunft nicht, er entdeckt sie täglich. Historie/Prognose-Linie,
+    Trennzeile, Prognose-Zugangstext und der Projektionshorizont entfallen
+    damit; das Stichtagsraster endet am Berichtsstichtag. Der Fallbericht
+    behält seine Projektion (``stichtag`` plus ``bis``): dort IST sie der
+    Gegenstand. Beides zugleich ist ein Fehler, kein Vorrang.
     """
+    if berichtsstichtag is not None:
+        if stichtag is not None:
+            raise ValueError(
+                "berichtsstichtag und stichtag schliessen sich aus — entweder "
+                "der Betriebsbericht (Stand der Fuehrung, keine Projektion) "
+                "oder der Fallbericht (Historie und Prognose)"
+            )
+        if bis is not None and bis < berichtsstichtag:
+            raise ValueError(
+                f"berichtsstichtag {berichtsstichtag.isoformat()} liegt nach "
+                f"dem Fortschreibungshorizont {bis.isoformat()} — der Bericht "
+                "kann nicht weiter reichen als der Lauf"
+            )
+        # Der Bericht endet am Berichtsstichtag: dasselbe Datum begrenzt das
+        # Stichtagsraster, das sonst dem Horizont folgt.
+        bis = berichtsstichtag
     if (historie is None) != (ledger is None):
         raise ValueError(
             "historie und ledger gehoeren zusammen (ein fortschreiben-Lauf) — "
@@ -891,7 +920,7 @@ def render_html(
     # Struktur am Referenzstichtag (sonst am Bestands-Hoechststand): der
     # Bericht ist ein Stichtagsbericht, und beide Darstellungen muessen
     # denselben Schnitt zeigen.
-    struktur_stichtag = stichtag or _dt.date.fromisoformat(
+    struktur_stichtag = stichtag or berichtsstichtag or _dt.date.fromisoformat(
         hoechststand["stichtag"]
     )
     scheibe = schnitt_am(bestand, struktur_stichtag)
@@ -958,7 +987,8 @@ def render_html(
         if config is not None:
             reihe_ausw = auswertungs_verlauf(
                 df, historie, config, stichtage, scheiben=scheiben,
-                merkmale=merkmale
+                merkmale=merkmale, schichten=schichten, verankerung=verankerung,
+                reduktionen=reduktionen,
             )
             svg_dk = _chart_deckungskapital(reihe_ausw, stichtag=stichtag)
             svg_beitrag = _chart_beitraege(
@@ -1019,10 +1049,13 @@ def render_html(
 
     kopf_html = "\n".join(
         f"<li>{_html.escape(z)}</li>"
-        for z in kopfzeilen(df, generationen, stichtage, stichtag, bis, quelle_hash)
+        for z in kopfzeilen(df, generationen, stichtage, stichtag, bis, quelle_hash,
+                            berichtsstichtag=berichtsstichtag)
     )
     stichtag_absatz = (
-        f"<p>{TEXTE['stichtag']}</p>" if stichtag is not None else ""
+        f"<p>{TEXTE['berichtsstichtag']}</p>" if berichtsstichtag is not None
+        else f"<p>{TEXTE['stichtag']}</p>" if stichtag is not None
+        else ""
     )
     generationen_html = _generationen_uebersicht_html(config, df)
     # Referenzstichtag und Geschaeftsvorfall-Zaehler standen hier einmal
@@ -1104,10 +1137,15 @@ stabilen Rechenkern.</p>"""
         if mit_bestand else f"{stichtage[0].year} bis {stichtage[-1].year}"
     )
     if config is not None:
+        # Traegt der Bestand eine Korrekturschicht (uebernommene Vertraege,
+        # 9.11), steht ihr Anteil als eigene Spalte — wie im Abschluss.
+        # Ohne Schicht bleibt die Tabelle, wie sie war (N-01).
+        mit_schicht = schichten is not None
         ausw_zeilen = "".join(
             f"<tr><td>{r['stichtag']}</td><td class='num'>{r['vertraege']}</td>"
             f"<td class='num'>{_zahl(r['deckungskapital'])}</td>"
-            f"<td class='num'>{_zahl(r['deckungskapital_bfr'])}</td>"
+            + (f"<td class='num'>{_zahl(r['korrekturschicht'])}</td>" if mit_schicht else "")
+            + f"<td class='num'>{_zahl(r['deckungskapital_bfr'])}</td>"
             f"<td class='num'>{_zahl(r['rueckkaufswert'])}</td>"
             f"<td class='num'>{_zahl(r['vs_bfr'])}</td></tr>"
             for r in reihe_ausw
@@ -1115,7 +1153,9 @@ stabilen Rechenkern.</p>"""
         )
         ausw_tabelle = (
             "<table><thead><tr><th>Stichtag</th><th>Verträge</th>"
-            "<th>Σ Deckungskapital</th><th>davon beitragsfrei</th>"
+            "<th>Σ Deckungskapital</th>"
+            + ("<th>davon Korrekturschicht</th>" if mit_schicht else "")
+            + "<th>davon beitragsfrei</th>"
             "<th>Σ Rückkaufswert (bpfl.)</th><th>Σ VS_bfr (fixiert)</th>"
             "</tr></thead><tbody>" + ausw_zeilen + "</tbody></table>"
         )
@@ -1156,12 +1196,19 @@ stabilen Rechenkern.</p>"""
             + beitrag_zeilen
             + "</tbody></table>"
         )
+        schicht_satz = (
+            " Die Spalte Korrekturschicht ist der Anteil der bei der Übernahme"
+            " verankerten Korrekturschicht am Deckungskapital (Grundsatz-"
+            "dokumentation 9.11); sie ist im Deckungskapital enthalten und"
+            " wird wie im Monatsabschluss gesondert ausgewiesen."
+            if mit_schicht else ""
+        )
         auswertung_html = f"""
 <h2>Aktuarielle Kennzahlen je Stichtag, {ausw_zeitraum}</h2>
 <div class="charts">{svg_dk}</div>
 {ausw_tabelle}
 <p>Alle Werte sind im Rechenkern gerechnet, nicht aus einer Lieferung
-übernommen. Deckungskapital: bei beitragspflichtigen Verträgen die
+übernommen.{schicht_satz} Deckungskapital: bei beitragspflichtigen Verträgen die
 Deckungsrückstellung (kDRx_bpfl), nach Beitragsfreistellung die
 beitragsfreie Reserve (VS_bfr mal kVx_bfr). Ein Rückkaufswert wird nur
 für beitragspflichtige Verträge ausgewiesen; für beitragsfreie Verträge
@@ -1217,7 +1264,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 {auswertung_html}
 
 <h2>Zur Lesart</h2>
-<p>{TEXTE["lesart"]}</p>
+<p>{TEXTE["lesart_betrieb"] if berichtsstichtag is not None else TEXTE["lesart"]}</p>
 
 <footer>
 Erzeugt mit <code>python -m rechner_pipeline.bestand.cli_report</code>

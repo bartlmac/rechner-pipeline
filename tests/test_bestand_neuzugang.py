@@ -119,14 +119,23 @@ def test_fortschreiben_mit_neuzugang_liefert_zug_gevos(config):
     ergebnis = fortschreiben(stamm, config, dt.date(2014, 1, 1), neuzugang_ab=REF)
     zugaenge = ergebnis.zugaenge
     assert len(zugaenge) > 0
-    zug = ergebnis.ledger[ergebnis.ledger["ereignis"] == "ZUG"]
+    # Ein Zugang bucht ZWEI Zeilen: die Versicherungssumme und den
+    # Bruttojahresbeitrag — dieselbe Police, derselbe Tag, zwei Groessen.
+    alle_zug = ergebnis.ledger[ergebnis.ledger["ereignis"] == "ZUG"]
+    assert set(alle_zug["betrag_art"]) == {"VS", "BJB"}
+    assert len(alle_zug) == 2 * len(zugaenge)
+    assert (alle_zug["vertragsjahr"] == 0).all()
+    assert set(alle_zug["tarif_generation"]) == {"KLV-2008"}
+    zug = alle_zug[alle_zug["betrag_art"] == "VS"]
     assert len(zug) == len(zugaenge)
-    assert set(zug["betrag_art"]) == {"VS"}
-    assert (zug["vertragsjahr"] == 0).all()
-    assert set(zug["tarif_generation"]) == {"KLV-2008"}
     erwartet = zugaenge.set_index("police_id")["sum_insured"]
     for _, zeile in zug.iterrows():
         assert zeile["betrag"] == erwartet.loc[zeile["police_id"]]
+    # Der Beitrag ist positiv und kleiner als die Summe — er wird
+    # hergeleitet, nicht geliefert (P-B1 haelt ihn gegen den Kern).
+    bjb = alle_zug[alle_zug["betrag_art"] == "BJB"].set_index("police_id")["betrag"]
+    assert (bjb > 0).all()
+    assert (bjb < erwartet.reindex(bjb.index)).all()
     # ZUG ist GeVo, kein Statuswechsel:
     assert "ZUG" not in set(ergebnis.historie["status_code"])
     # Gesamtbestand erfuellt den Basis-Contract:

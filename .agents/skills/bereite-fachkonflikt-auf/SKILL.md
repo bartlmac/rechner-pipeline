@@ -29,7 +29,7 @@ mit `gates.gate_entscheid` (P9).
 | Extraktionsfehler | eine Lesart haelt der Nachpruefung gegen die eigene Quelle nicht stand (falsche Zeile, falscher Satzteil, Normalisierungsfehler) | KEIN Fachkonflikt: Fragment korrigieren, Anmerkung dokumentieren, Akteur um `+verifikation` ergaenzen, neu mergen |
 | Echter Quell-Widerspruch | beide Lesarten sind in ihrer Quelle woertlich belegt | Dossier (unten) |
 | Referenzwert-Konflikt | ein Charakterisierungs-Referenzwert oder ein Gate-O3-Beleg weicht nach einer Aenderung ab | erst Eigenfehler ausschliessen; sonst Dossier mit Wert-Diff und Ursachenanalyse (Abnahme-Protokoll des Kerns gilt) |
-| Modell-Spannung | die T-Box kann einen Sachverhalt nicht ausdruecken (fehlendes Feld, fehlende Klasse) | A-K1-Vorlage: Aenderungsvorschlag als Artefakt, kein stilles Einbauen |
+| Modell-Spannung | die T-Box kann einen Sachverhalt nicht ausdruecken (fehlendes Feld, fehlende Klasse) | A-O1-Vorlage: Aenderungsvorschlag als Artefakt, kein stilles Einbauen |
 
 ## Schritt 2: Beide Lesarten VERIFIZIEREN
 
@@ -84,13 +84,14 @@ Lesarten ueber die Abzug-Vertraege und liefert das Urteil samt beider
 Residuen.
 
 - **Rechner-Lesart verworfen, Meldungs-Lesart belegt**: deterministisch
-  belegt — die Aufloesung darf OHNE Menschen erfolgen (Code auf
-  Evidenz, keine LLM-Entscheidung; P2/P4 intakt). Sie wird im
-  Migrationsprotokoll festgehalten und in der Fachspez als eigene
-  Kategorie berichtet.
+  belegt — der staerkste Beleg, den das Dossier tragen kann. Er ersetzt
+  die menschliche Entscheidung NICHT (ADR-018, Option a: der
+  Abzugsabgleich ist ausschliesslich Beleg-Erzeuger); er wandert als
+  `--beleg` in die Entscheidung der zeichnenden Rolle und wird in der
+  Fachspez als eigene Kategorie berichtet.
 - **Meldungs-Lesart verworfen**: NIEMALS automatisch. Fehler in der
   Tarifmeldung sind aufsichtsrechtlich relevant — dein Dossier legt den
   Beleg bei, die Bestaetigung und Berichtspflicht liegen IMMER beim
-  Menschen (Regel Bartek 2026-08-18).
+  Menschen (Regel Maintainer 2026-08-18).
 - **Kein eindeutiger Beleg** (beide passen, keine passt, keine
   Belege): das Dossier weist es aus, der Konflikt bleibt beim Menschen.

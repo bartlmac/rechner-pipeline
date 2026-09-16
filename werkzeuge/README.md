@@ -58,6 +58,15 @@ Unternehmensseiten den Fall verlinken. Die Schritte der Kette bleiben
 einzeln aufrufbar (`falldaten.py`, `vorzeigeseite.py
 --als-unterseite`, `unternehmensseite.py`, `vorschau.py`).
 
+`--stands-paket <verzeichnis>` (optional) gibt der Kette das
+Stands-Paket der Laufzeitumgebung des Tagesbetriebs mit (`python -m
+rechner_pipeline.betrieb.seite --stand <daten> --paket <verzeichnis>`,
+Fachkonzept `docs/simulation/tagesbetrieb.md`, Abschnitt 8.3): Der
+lebende Bestand der PLV wird ein Abschnitt des Datenmodells und des
+Fallberichts — mit Stand-Datum, Manifest-Hash und der Zeichnung der
+uebernommenen Faelle, aus dem Paket gelesen, nie abgetippt. Ein Paket,
+dessen Stand nicht durch P-B1 ging, weist `falldaten.py` ab.
+
 Die Zahlen der Seite kommen aus dem Datenmodell (`falldaten.py`) —
 demselben, aus dem auch der Fallbericht gerendert wird. Seite und
 Bericht tragen damit dieselben Zahlen aus derselben Quelle; frueher
@@ -137,9 +146,11 @@ Lauf von selbst, Struktur und Beschriftungen stehen im Renderer und
 bleiben.
 
 **Was frei geschrieben wird, sind vier Stellen** — und zwei davon fuellen
-sich aus signierten Quellen: ein Absatz zum Anlass, je Befund eine
-Wirkungszeile, die Begruendungen der Abnahmen (aus den
-Entscheid-Snapshots) und Auszuege aus registrierten Quellen. Ohne
+sich aus den Entscheid-Snapshots und registrierten Quellen (strukturell
+geprueft; die Signatur der Snapshots verifiziert das Werkzeug nicht): ein
+Absatz zum Anlass, je Befund eine Wirkungszeile, die Begruendungen der
+Abnahmen (aus den Entscheid-Snapshots) und Auszuege aus registrierten
+Quellen. Ohne
 Textdatei entsteht eine vollstaendige Seite ohne Erzaehlung; das ist
 Absicht.
 
@@ -261,9 +272,12 @@ die Seite, und `MANIPULATIONEN.md` sowie `NOTIZEN.md` sind gesperrt,
 egal wo sie liegen — dort stehen die Aufloesungen des Vorfuehrfalls. Das
 Werkzeug bricht ab, statt zu warnen. Ausserdem steht der
 Simulationshinweis vor allem anderen: erfundene Unternehmen,
-synthetische Vertraege, Abnahmen mit einem Simulationsschluessel
-gezeichnet. Ohne ihn saehe eine oeffentliche Seite mit signierten
-aktuariellen Abnahmen aus wie eine echte.
+synthetische Vertraege, Entscheid-Snapshots mit dem Fingerabdruck eines
+Simulationsschluessels — deren Signatur die Seite nicht verifiziert und
+deshalb auch nicht "gezeichnet" nennt (T20-02). Ohne den Hinweis saehe
+eine oeffentliche Seite mit aktuariellen Abnahmen aus wie eine echte.
+Fehlt dem Fall ein Pflichtabschnitt, steht das auf der Seite unter "Was
+diese Seite NICHT zeigt", und das Werkzeug endet mit Exit 3 (T20-03).
 
 **Beim Menschen:** Stehen Klarnamen im Verlaufsprotokoll? Trifft der
 Simulationshinweis noch zu? Traegt die Seite etwas, das die Vorfuehrung

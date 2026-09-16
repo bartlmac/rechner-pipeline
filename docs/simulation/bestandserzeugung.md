@@ -37,9 +37,9 @@ entscheidet nur, **wann** etwas passiert, nie **wieviel** etwas wert
 ist ([Erfahrungsannahmen](erfahrungsannahmen.md); die Trennung
 begründet das [Simulations-README](README.md)).
 
-# 2 Die sechs Ausgaben
+# 2 Die Ausgaben
 
-Alle unter `--out-dir`, alle Parquet:
+Alle unter `--out-dir`. Sechs schreibt jeder Lauf:
 
 | Datei | Rolle |
 |---|---|
@@ -49,6 +49,22 @@ Alle unter `--out-dir`, alle Parquet:
 | `scheiben.parquet` | dynamische Erhöhungen als eigene Bausteine |
 | `zugaenge.parquet` | Neuzugänge des Ereignis-Generators (siehe Abschnitt 3) |
 | `bestand_gesamt.parquet` | der **geführte** Gesamtbestand (ADR-011): Basis plus Neuzugänge, Statusspalten auf dem Stand des Horizonts — der Eingang für Auskunft, Auswertung und `cli_report` |
+
+Dazu kommen **bedingte** Ausgaben — sie fehlen nicht aus Versehen,
+sondern weil dieser Lauf sie nicht kennt. Keine Datei heißt „dieser
+Lauf führt keine", eine leere Datei hieße „geprüft und keine
+gefunden":
+
+| Datei | Wann |
+|---|---|
+| `reduktionen.parquet` | wenn der Lauf Herabsetzungen gebucht hat |
+| `merkmale.parquet`, `schichten.parquet`, `verankerung.parquet` | mit `--uebernahme`, wenn der übernommene Bestand sie trägt (Tarifzellen, Korrekturschicht, Verankerung) |
+
+Und zuletzt, kein Parquet: `laufmanifest.json` — der Lieferschein
+über die Bytes, die tatsächlich auf der Platte liegen. Er nennt den
+Horizont und bindet jede Ausgabe mit ihrem SHA-256. Die Gates lesen
+ihn; ohne ihn ist ein Lauf für die Abnahme kein Lauf, sondern eine
+Ansammlung von Dateien.
 
 # 3 Die zwei Daten — und die zwei Fehllesarten
 
@@ -88,13 +104,17 @@ python -m rechner_pipeline.bestand.cli_report \
     --historie runs/bestand/historie.parquet \
     --ledger runs/bestand/ledger.parquet \
     --scheiben runs/bestand/scheiben.parquet \
+    --merkmale runs/bestand/merkmale.parquet \
     --config configs/bestand_gesamt.toml \
     --bis 2046-01-01 --stichtag 2026-01-01 \
     --out runs/berichte/bestandsbericht.html
 ```
 
 Der erste Lauf erzeugt und bewegt den Bestand, der zweite liest die
-Tabellen und schreibt den Bestandsbericht. `runs/` ist
+Tabellen und schreibt den Bestandsbericht. `--merkmale` braucht nur,
+wer Tarifzellen führt; Schicht, Verankerung und Herabsetzungen sucht
+`cli_report` selbst im Verzeichnis neben `--scheiben` — wer sie
+weglässt, bekommt keinen Fehler, sondern einen Bericht ohne sie. `runs/` ist
 Wegwerf-Arbeitsfläche: Was bleiben soll, lebt im Fall oder als
 schreibgeschützter Abschluss.
 

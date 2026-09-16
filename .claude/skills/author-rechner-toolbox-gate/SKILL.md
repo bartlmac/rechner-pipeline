@@ -87,3 +87,17 @@ Two-step and BLOCKING (ADR-008/ToDo 10.12 — the old best-effort contract is vo
 
 ## Verification expectation
 Build `.tmp/` fixtures and run the command for real (`.venv\Scripts\python.exe -m rechner_pipeline.gates.<cmd> ...`). Prove the pass path AND each distinct failure mode (usage→2, your gate's blocking code, coverage→31 if applicable). Confirm: stdout is EXACTLY one parseable JSON object (`json.load` OK, 1 line); `<command>.gate.json` written on pass and fail and loadable via `_common.load_gate_ledger` (`read_errors == []`); shell exit code equals the JSON `exit_code`. Keep `pytest tests/` green; add a `tests/test_<command>.py`. Clean up `.tmp/`.
+
+
+## Versionierungsregel (ADR-012, Nachtrag 2026-09-05)
+
+`GATE_VERSION` folgt der Akzeptanzmenge, nicht dem Aenderungsumfang:
+**Major**, wenn ein vorher gruener Beleg rot werden kann oder umgekehrt
+(neue Pflichtpruefung, Verschaerfung, neue Pflichtrolle); **Minor** fuer
+eine optionale Rolle oder Pruefung, die bestehende Belege nicht
+beruehrt; **Patch** fuer Meldetexte und Summary-Felder ohne Wirkung auf
+das Urteil. Der Commit nennt den Grund, die README-Gate-Zeile den
+Sprung; `tests/test_gate_versionsregel.py` haelt Version und Zeile
+zusammen. Vor jeder Aenderung an einem Gate fragen: Kann ein
+bestehender Beleg damit anders ausgehen? Wenn ja: Major, und die
+Falldarstellung/A-M4-Neupruefung auf Altbelege pruefen.

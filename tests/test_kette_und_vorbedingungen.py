@@ -10,10 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.fall import anlegen, registrieren
+from rechner_pipeline.fall import anlegen, belegrollen, registrieren
 from rechner_pipeline.gates.abox_merge import main as merge_cli
 from rechner_pipeline.gates.abox_validate import main as pq3
-from rechner_pipeline.gates.gate_entscheid import main as p9
+from rechner_pipeline.gates.gate_entscheid import (
+    _pruefe_g2_snapshot_semantik,
+    main as p9,
+)
 from rechner_pipeline.ontologie import PFLICHT_PARAMETER, belegt
 from rechner_pipeline.ontologie.abox import abox_pfad, lade, speichere
 from rechner_pipeline.ontologie.befuellung import loese_diskrepanz_auf
@@ -28,12 +31,13 @@ PLAUSIBEL = {
 AKTEUR = "test/extrahiere-quellfragment@abc1234"
 
 
+from tests.zeichnung_fixture import AGENT, VA, annahme_args, mandat_datei
+
+
 def _freigabe_arg(fall: Path) -> list[str]:
-    schluessel = fall.parent / "p9-freigabe.key"
-    if not schluessel.exists():
-        schluessel.write_bytes(b"test-only-p9-authorization-key!" * 2)
-        schluessel.chmod(0o600)
-    return ["--freigabe-schluessel", str(schluessel)]
+    """Ordnung und Schluessel neben dem Fall (ADR-018): die Rolle wird
+    aus dem Schluessel bestimmt, nicht behauptet."""
+    return annahme_args(fall)
 
 
 def _fragment_json(datei: str, art: str, **override) -> dict:
@@ -239,12 +243,12 @@ def test_am4_verlangt_pk1_und_geltenden_aq1(fall_mit_fragmenten):
     merge_cli(["--fall", str(f)])
     abox = lade(f)
     [d] = abox.diskrepanzen
-    loese_diskrepanz_auf(abox, d.id, 0.03, "Bartek", "entschieden",
+    loese_diskrepanz_auf(abox, d.id, 0.03, "maintainer", "entschieden",
                          "2026-08-15T12:00:00+00:00", vorlaeufig=False)
     speichere(abox, f)
     assert pq3(["--fall", str(f)]).exit_code == 0
 
-    basis = ["--fall", str(f), "--rolle", "mensch", "--entscheider", "B",
+    basis = ["--fall", str(f), *_freigabe_arg(f), "--entscheider", "B",
              "--begruendung", "x", "--repo-root", ".", *_freigabe_arg(f)]
     # A-M4 ohne P-K1:
     result = p9(["--gate", "A-M4", "--entscheid", "angenommen", *basis])
@@ -262,10 +266,10 @@ def test_aq1_annahme_verlangt_gebundenes_pq3(fall_mit_fragmenten):
     merge_cli(["--fall", str(f)])
     abox = lade(f)
     [d] = abox.diskrepanzen
-    loese_diskrepanz_auf(abox, d.id, 0.03, "Bartek", "entschieden",
+    loese_diskrepanz_auf(abox, d.id, 0.03, "maintainer", "entschieden",
                          "2026-08-15T12:00:00+00:00", vorlaeufig=False)
     speichere(abox, f)
-    basis = ["--fall", str(f), "--rolle", "mensch", "--entscheider", "B",
+    basis = ["--fall", str(f), *_freigabe_arg(f), "--entscheider", "B",
              "--begruendung", "x", "--repo-root", "."]
     # Ohne P-Q3-Lauf:
     result = p9(["--gate", "A-Q1", "--entscheid", "angenommen", *basis])
@@ -287,7 +291,7 @@ def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):
     basis = ["--fall", str(f), "--entscheider", "claude-fable-5",
              "--begruendung", "Zwischenstand", "--repo-root", "."]
     result = p9(["--gate", "A-Q1", "--entscheid", "angenommen",
-                 "--rolle", "agent", *basis])
+                 "--rolle", AGENT, *basis])
     assert result.exit_code == 2
     assert any("Menschen vorbehalten" in e["message"] for e in result.errors)
     # Nicht nur der Exit-Code zaehlt, sondern die Wirkung: es darf kein
@@ -301,10 +305,10 @@ def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):
     ]
     assert angenommen == []
     result = p9(["--gate", "A-Q1", "--entscheid", "abgelehnt",
-                 "--rolle", "agent", *basis])
+                 "--rolle", AGENT, *basis])
     assert result.exit_code == 0
     snapshot = json.loads(Path(result.paths["snapshot"]).read_text(encoding="utf-8"))
-    assert snapshot["rolle"] == "agent"
+    assert snapshot["rolle"] == AGENT
 
 
 def test_entscheide_verlangt_rolle_mensch_und_archiviert(fall_mit_fragmenten, capsys):
@@ -323,15 +327,15 @@ def test_entscheide_verlangt_rolle_mensch_und_archiviert(fall_mit_fragmenten, ca
         ["--fall", str(f), "--diskrepanz", d.id, "--wert", "0.025",
          "--entscheider", "B", "--begruendung", "x"]) == 2
     capsys.readouterr()
-    rc = entscheide(["--fall", str(f), "--rolle", "mensch",
+    rc = entscheide(["--fall", str(f), *_freigabe_arg(f),
                      "--diskrepanz", d.id, "--wert", "0.025",
-                     "--entscheider", "Bartek", "--begruendung", "Meldung gilt"])
+                     "--entscheider", "maintainer", "--begruendung", "Meldung gilt"])
     assert rc == 0
     capsys.readouterr()
     abox = lade(f)
     [d2] = abox.diskrepanzen
     # Der Weg vorlaeufig -> endgueltig ist auditierbar (append-only):
-    assert d2.entscheidung.entscheider == "Bartek"
+    assert d2.entscheidung.entscheider == "maintainer"
     assert len(d2.entscheidungs_historie) == 1
     assert d2.entscheidungs_historie[0].vorlaeufig is True
     assert d2.entscheidungs_historie[0].entscheider == "agent (vorlaeufig)"
@@ -353,11 +357,13 @@ def _ordnung_und_schluessel(tmp_path):
         schluessel[rolle] = pfad
         fingerprints[rolle] = _hl.sha256(inhalt).hexdigest()
     ordnung = tmp_path / "zeichnungsordnung.json"
-    ordnung.write_text(json.dumps({"schema_version": 1, "rollen": {
-        "plv-aktuar": {"schluessel_sha256": fingerprints["plv-aktuar"],
-                       "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
-        "plv-it": {"schluessel_sha256": fingerprints["plv-it"],
-                   "gates": ["A-K1"]},
+    ordnung.write_text(json.dumps({"schema_version": 2, "rollen": {
+        VA: {"schluessel_sha256": fingerprints["plv-aktuar"],
+             "schluesselklasse": "simulation",
+             "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
+        "mensch/architektur": {"schluessel_sha256": fingerprints["plv-it"],
+                                    "schluesselklasse": "simulation",
+                                    "gates": ["A-O1"]},
     }}), encoding="utf-8")
     return ordnung, schluessel
 
@@ -382,11 +388,13 @@ def test_entscheide_bestimmt_die_rolle_aus_dem_schluessel(
         "--begruendung", "Meldung massgeblich",
         "--zeichnungsordnung", str(ordnung),
         "--freigabe-schluessel", str(schluessel["plv-aktuar"]),
+        "--mandat", str(mandat_datei(f)),
     ]) == 0
     neu = lade(f)
     [d2] = neu.diskrepanzen
     assert d2.entscheidung is not None and not d2.entscheidung.vorlaeufig
-    assert d2.entscheidung.zeichnung["rolle"] == "plv-aktuar"
+    assert d2.entscheidung.zeichnung["rolle"] == VA
+    assert d2.entscheidung.zeichnung["schluesselklasse"] == "simulation"
     assert d2.entscheidung.zeichnung["ordnung_sha256"] == _hl.sha256(
         ordnung.read_bytes()).hexdigest()
 
@@ -418,3 +426,55 @@ def test_entscheide_weist_rollen_ohne_aq1_und_fremde_schluessel_ab(
     # Nichts davon hat entschieden:
     [d3] = lade(f).diskrepanzen
     assert d3.entscheidung is None or d3.entscheidung.vorlaeufig
+
+
+# --- Kettenpruefung ist stand-bewusst: eine gewachsene Pflichtbelegmenge
+# darf einen aelteren Vorgaenger nicht rueckwirkend entwerten
+# (Neuzeichnung Fall-Lauf 2, 2026-09-07). Die Fuehrungsprobe kam als
+# A-M4-Bestandsrolle erst mit der Freischaltung hinzu; ohne Stand-Bewusstsein
+# koennte keine neue Zeichnung an den A-M4-Snapshot der Vor-Freischaltung
+# anknuepfen.
+
+STAND_FRUEHER = {"branch": "b", "commit": "a" * 40, "dirty": "nein",
+                 "quellcode_sha256": "1" * 64}
+STAND_JETZT = {"branch": "b", "commit": "c" * 40, "dirty": "nein",
+               "quellcode_sha256": "2" * 64}
+
+
+def _am4_snapshot(system: dict, rollen: list) -> dict:
+    pflicht = {rolle: ["beleghash"] for rolle in rollen}
+    if "pk1_belege" in pflicht:
+        pflicht["pk1_belege"] = []
+    return {
+        "gate": "A-M4",
+        "entscheid": "angenommen",
+        "fall_scope": "bestand",
+        "pflichtbelege": pflicht,
+        "pk1_belege": {},
+        "system": system,
+    }
+
+
+def test_g2_semantik_historischer_vorgaenger_ohne_neue_rolle_bleibt_gueltig():
+    voll = belegrollen("A-M4", "bestand")
+    schmal = [r for r in voll if r != "fuehrungsprobe"]
+    snap = _am4_snapshot(STAND_FRUEHER, schmal)
+    # Anderer Stand als der laufende Entscheid -> historisch, durch Signatur
+    # verankert, NICHT gegen den heutigen Vertrag gemessen.
+    assert _pruefe_g2_snapshot_semantik(snap, STAND_JETZT) == []
+
+
+def test_g2_semantik_aktueller_snapshot_ohne_pflichtrolle_wird_abgelehnt():
+    voll = belegrollen("A-M4", "bestand")
+    schmal = [r for r in voll if r != "fuehrungsprobe"]
+    snap = _am4_snapshot(STAND_JETZT, schmal)
+    # Auf dem aktuellen Stand greift der Vertrag: die fehlende Rolle ist ein
+    # Fehler -- kein Schlupfloch fuer eine neue, unvollstaendige Zeichnung.
+    fehler = _pruefe_g2_snapshot_semantik(snap, STAND_JETZT)
+    assert any("nicht exakt" in f for f in fehler)
+
+
+def test_g2_semantik_aktueller_snapshot_mit_vollprofil_ist_gueltig():
+    voll = belegrollen("A-M4", "bestand")
+    snap = _am4_snapshot(STAND_JETZT, voll)
+    assert _pruefe_g2_snapshot_semantik(snap, STAND_JETZT) == []

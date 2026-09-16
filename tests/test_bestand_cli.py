@@ -225,7 +225,10 @@ def test_gate_pb1_unerwartete_exception_schreibt_aktuellen_roten_ledger(
     def _crash(*args, **kwargs):
         raise RuntimeError("erzwungener P-B1-Crash")
 
-    monkeypatch.setattr(gate_cli, "hash_files", _crash)
+    # Seit T20-01 hasht das Gate nicht mehr selbst (die Engine liefert die
+    # Hashes der geprueften Bytes); der Crash sitzt jetzt in der
+    # Schluesselableitung — ein Fehler ausserhalb der Contract-Faenger.
+    monkeypatch.setattr(gate_cli, "hash_key", _crash)
     code = run_command(gate_cli.main, argv)
     ergebnis = json.loads(capsys.readouterr().out)
     aktueller_ledger = json.loads(ledger_pfad.read_text(encoding="utf-8"))

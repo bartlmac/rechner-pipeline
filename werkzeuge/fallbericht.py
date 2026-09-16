@@ -11,8 +11,10 @@ Das sind vier Stellen, und zwei davon füllen sich aus signierten Quellen:
 1. ``anlass`` — worum es in diesem Fall geht. Von Hand, ein Absatz.
 2. ``wirkung`` je Diskrepanz — was der Befund fachlich bedeutet, eine
    Zeile. Von Hand.
-3. die Begründungen der Abnahmen — aus den Entscheid-Snapshots, also
-   hashgebunden und gezeichnet.
+3. die Begründungen der Abnahmen — wörtlich aus den Entscheid-Snapshots.
+   Deren Schema, Selbstadressierung und Dateiname prüft dieses Werkzeug;
+   die Freigabesignatur NICHT (kein Schlüsselring in einem
+   Darstellungswerkzeug, externes Review T19-02).
 4. Auszüge aus registrierten Quellen — ebenfalls gebunden.
 
 Wer die Darstellung ohne Textdatei baut, bekommt eine vollständige Seite
@@ -28,7 +30,11 @@ Aufruf::
 
     python werkzeuge/falldaten.py --fall faelle/<fall> --out daten.json
     python werkzeuge/fallbericht.py --daten daten.json --out bericht.html \\
-        [--texte texte.json] [--sicht vorzeige|intern]
+        [--texte texte.json]
+
+Der Renderer gibt BEIDE Sichten gemeinsam aus; eine Auswahl ueber
+``--sicht`` stand hier frueher im Aufrufvertrag, war aber nie gebaut
+(externes Review T19-07).
 """
 
 from __future__ import annotations
@@ -52,6 +58,8 @@ GROESSEN_TITEL = {
 GEVO_TITEL = {
     "ERH": "Erhöhung", "PEX": "Beitragsfreistellung", "RED": "Absetzung",
     "STO": "Rückkauf", "TOD": "Todesfall", "ABL": "Ablauf",
+    "ZUG": "Zugang", "MIG": "Migrationszugang", "INV": "Invalidisierung",
+    "REA": "Reaktivierung",
 }
 
 
@@ -189,6 +197,52 @@ def _fach(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
     return "".join(z)
 
 
+def _betrieb(d: Dict[str, Any]) -> str:
+    """Der lebende Bestand — aus dem Stands-Paket der Laufzeitumgebung.
+
+    Kein Fall-Artefakt, sondern der gefuehrte Stand des Unternehmens, in
+    das die Migration als datierter Zugang eingetreten ist. Erscheint nur,
+    wenn ein Paket uebergeben wurde; dann mit Stempel (Stand, Manifest).
+    """
+    b = d.get("betrieb") or {}
+    if not b.get("vorhanden"):
+        return ""
+    bestand = b.get("bestand") or {}
+    neu = b.get("neugeschaeft") or {}
+    prov = b.get("provenienz") or {}
+    z: List[str] = ['<div class="block f"><span class="marke">Der Bestand heute</span>']
+    z.append(f"<h2>Der lebende Bestand (Stand {_e(b.get('stand'))})</h2>")
+    z.append('<div class="zahlen">')
+    for wert, beschriftung in (
+        (_zahl(bestand.get("in_force")), "Verträge in Kraft"),
+        (_zahl(bestand.get("uebernommen_in_force")), "davon übernommen"),
+        (_zahl(bestand.get("policiert_beginn_folgt")), "policiert, Beginn folgt"),
+        (_zahl(neu.get("seit_betriebsbeginn")), f"Neugeschäft seit {_e(b.get('gefuehrt_seit'))}"),
+        (_zahl((b.get("buchungen") or {}).get("gesamt")), "Buchungen im Tagesjournal"),
+    ):
+        z.append(f'<div class="zahl"><b>{wert}</b><span>{beschriftung}</span></div>')
+    z.append("</div>")
+    je = (b.get("buchungen") or {}).get("je_ereignis") or {}
+    if je:
+        zeilen = [[_e(GEVO_TITEL.get(art, art)), _zahl(anzahl)] for art, anzahl in sorted(je.items())]
+        z.append(_tabelle(["Art", "Anzahl"], zeilen, "Buchungen seit Betriebsbeginn", rechts=[1]))
+    abschluesse = b.get("abschluesse") or []
+    if abschluesse:
+        zeilen = [[_e(a.get("stichtag")), f"<code>{_e(a.get('datei', '—'))}</code>",
+                   _e((a.get("sha256") or "")[:16])] for a in abschluesse]
+        z.append(_tabelle(["Stichtag", "Abschluss", "SHA-256"], zeilen,
+                          "Festgeschriebene Monatsabschlüsse"))
+    for u in b.get("uebernahmen") or []:
+        z.append(f'<p class="probe">Übernahme <b>{_e(u.get("fall"))}</b> zum '
+                 f'{_e(u.get("stichtag"))}: {_zahl(u.get("vertraege"))} Verträge '
+                 f'(A-M4-Snapshot {_e((u.get("snapshot_sha256") or "nicht erfasst")[:16])}).</p>')
+    z.append(f'<p class="quelle">Stands-Paket {_e(b.get("quelle"))} · Manifest '
+             f'<code>{_e((prov.get("manifest_sha256") or "")[:16])}</code> · Kern '
+             f'{_e(prov.get("kern_version"))} · Wache P-B1 {_e(prov.get("pb1"))}</p>')
+    z.append("</div>")
+    return "".join(z)
+
+
 def _transformation(d: Dict[str, Any]) -> str:
     """Das Feldmapping — der Uebersetzungsakt als Tabelle.
 
@@ -293,17 +347,21 @@ def _it(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
                       f'{_zahl(k.get("anzahl_gate_laeufe"))} Gate-Läufe'))
 
     zeilen = [[_e(e.get("gate")), _e(e.get("entscheid")), _e(e.get("rolle")),
+               _e(e.get("schluesselklasse") or "—"),
                f'<code>{_e(e.get("schluessel_sha256"))}…</code>',
                _zahl(e.get("artefakte_gebunden"))]
               for e in k.get("entscheide", [])]
-    z.append(_tabelle(["Gate", "Entscheid", "Rolle", "Schlüssel", "gebundene Artefakte"],
-                      zeilen, "Die menschlichen Abnahmen", rechts=[4]))
+    z.append(_tabelle(["Gate", "Entscheid", "Rolle", "Schlüsselklasse", "Schlüssel",
+                       "gebundene Artefakte"],
+                      zeilen, "Die Entscheid-Snapshots der Gates", rechts=[5]))
 
     for e in k.get("entscheide", []):
         if e.get("begruendung"):
             z.append(f'<blockquote><p>{_e(e["begruendung"])}</p>'
                      f'<cite>Begründung im Snapshot {_e(e["gate"])}, '
-                     f'gezeichnet {_e(str(e.get("entschieden_am"))[:10])}</cite>'
+                     f'entschieden {_e(str(e.get("entschieden_am"))[:10])}'
+                     f'{"" if e.get("strukturell_verifiziert") else " — Snapshot mit Befund"}'
+                     f'</cite>'
                      f'</blockquote>')
 
     z.append(_quelle(d, "kette"))
@@ -386,7 +444,13 @@ def _kopf(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
     c = a.get("controlling") or {}
     abzug = (b.get("abzuege") or [{}])[0]
     dk = (abzug.get("deckkap") or {}).get("summe")
-    gezeichnet = len((d.get("kette") or {}).get("entscheide") or [])
+    _kette = d.get("kette") or {}
+    # T19-02: Dieses Werkzeug prueft keine Signaturen (kein
+    # Schluesselring) — gezaehlt werden strukturell unversehrte
+    # Snapshots, und die Kachel sagt genau das.
+    eingereicht = _kette.get("entscheide_strukturell_verifiziert")
+    if eingereicht is None:
+        eingereicht = len(_kette.get("entscheide") or [])
 
     kacheln = [
         (_zahl(b.get("anzahl")), "Verträge"),
@@ -395,7 +459,7 @@ def _kopf(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
         (f"{_zahl(dk)} €" if dk else "—", "Deckungskapital"),
         (f'{_e(c.get("stichtag_1"))} / {_e(c.get("stichtag_2"))}'
          if c else "—", "Stichtage"),
-        (_zahl(gezeichnet), "Abnahmen gezeichnet"),
+        (_zahl(eingereicht), "Abnahmen eingereicht"),
     ]
     z = [f'<h1>{_e(texte.get("titel") or d["fall"]["name"])}</h1>']
     if texte.get("anlass"):
@@ -478,16 +542,45 @@ color:var(--matt);font-size:.78rem}
 """
 
 
+def _luecken_block(d: Dict[str, Any]) -> str:
+    """Fehlendes SICHTBAR machen, nicht nur nach stderr melden.
+
+    Externes Review T19-03: Ein Modell mit Luecken erzeugte eine Seite,
+    die vollstaendig aussah — der Hinweis stand nur auf der Konsole des
+    Erzeugers, nicht im Dokument, das Menschen lesen. Ein Bericht, der
+    sein eigenes Fehlen verschweigt, ist schlimmer als ein fehlender
+    Bericht.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from falldaten import luecken  # noqa: E402 — Nachbarwerkzeug
+
+    offene = luecken(d)
+    if not offene:
+        return ""
+    zeilen = "".join(
+        f"<li><b>{_e(l['was'])}</b> — {_e(l['wirkung'])} "
+        f"<code>{_e(l['gruppe'])}.{_e(l['feld'])}</code></li>"
+        for l in offene)
+    return ('<section class="luecken"><h2>Was dieser Bericht NICHT zeigt'
+            '</h2><p>Der Fall traegt die folgenden Angaben nicht; die '
+            'Darstellung laesst sie offen, statt Vollstaendigkeit zu '
+            f'behaupten.</p><ul>{zeilen}</ul></section>')
+
+
 def baue(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
     titel = texte.get("titel") or d["fall"]["name"]
     z = [f"<title>{_e(titel)}</title><style>{STIL}</style><main>",
-         _kopf(d, texte), _fach(d, texte), _it(d, texte)]
+         _kopf(d, texte), _luecken_block(d), _fach(d, texte), _betrieb(d),
+         _it(d, texte)]
     z.append('<p class="fuss">Erzeugt aus den Prüfartefakten des Falls '
              f'<code>{_e(d["fall"]["name"])}</code>. Alle Zahlen sind dort '
              'nachrechenbar; frei geschrieben sind ausschließlich der '
              'einleitende Absatz und die Wirkungszeilen der Befunde. Die '
              'Begründungen der Abnahmen stammen wörtlich aus den '
-             'signierten Snapshots.</p></main>')
+             'Entscheid-Snapshots des Falls: Schema, Selbstadressierung '
+             'und Dateiname sind hier geprüft, die Freigabesignatur '
+             'NICHT — dafür fehlt diesem Werkzeug bewusst das '
+             'Schlüsselmaterial.</p></main>')
     return "".join(z)
 
 
@@ -511,7 +604,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     ziel.write_text(baue(daten, texte), encoding="utf-8")
     frei = (1 if texte.get("anlass") else 0) + len(texte.get("wirkung") or {})
     print(f"{ziel}  ({frei} frei geschriebene Textstellen)")
-    return 0
+    # Derselbe Vertrag wie falldaten.py (Review T20-03): Der Bericht wird
+    # geschrieben — mit sichtbarem Lueckenblock —, aber ein unvollstaendiger
+    # Fall endet nicht als normaler Erfolg. Exit 3 = geschrieben, mit
+    # Luecken; wer nur den Exit-Code weiterreicht, sieht es.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from falldaten import luecken  # noqa: E402 — Nachbarwerkzeug
+
+    offene = luecken(daten)
+    for l in offene:
+        print(f"  LUECKE: {l['was']} ({l['gruppe']}.{l['feld']}) — "
+              f"{l['wirkung']}", file=sys.stderr)
+    return 3 if offene else 0
 
 
 if __name__ == "__main__":  # pragma: no cover

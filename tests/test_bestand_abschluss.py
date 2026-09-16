@@ -25,15 +25,20 @@ from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben, mit_zugaengen
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
 from rechner_pipeline.bestand.generator import generate
+from rechner_pipeline.bestand.manifest import schreibe_manifest
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.kern import __version__ as KERN_VERSION
 from rechner_pipeline.models.bestand import (
     ABSCHLUSS_NAMES,
+    ABSCHLUSS_SPALTEN,
+    ABSCHLUSS_ZAHLEN,
     SCHEIBEN_SPALTEN,
     STATUS_HISTORIE_SPALTEN,
+    validate_abschluss,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+CONFIG = REPO_ROOT / "configs" / "bestand_klv.toml"
 STICHTAG = dt.date(2016, 1, 1)
 #: Fortschreibungs-Horizont des Fixture-Laufs. Der Abschluss
 #: braucht ihn, weil die Bewegungs-Identitaet nur fuer
@@ -43,7 +48,7 @@ HORIZONT = dt.date(2020, 1, 1)
 
 @pytest.fixture(scope="module")
 def config():
-    return load_config(REPO_ROOT / "configs" / "bestand_klv.toml")
+    return load_config(CONFIG)
 
 
 @pytest.fixture(scope="module")
@@ -77,7 +82,23 @@ def bundle(tmp_path_factory, lauf, _fortschreibung):
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(scheiben, ziel / "scheiben.parquet")
     write_portfolio(ergebnis.ledger, ziel / "ledger.parquet")
+    _manifest(ziel)
     return ziel
+
+
+def _manifest(lauf_dir):
+    """Der Lieferschein, wie cli_fortschreibung ihn schreibt (T18-02).
+
+    Die Negativtests unten mutieren Tabellen und schreiben das Manifest
+    danach NEU: Sie pruefen die semantischen Wachen (leere Scheiben,
+    gamma1, ...), nicht die Manifest-Bindung — ein Angreifer, der auch
+    das Manifest nachzieht, muss an der Semantik scheitern. Die
+    Manifest-Bindung selbst prueft tests/test_bestand_manifest.py.
+    """
+    schreibe_manifest(
+        lauf_dir, horizont=HORIZONT, neuzugang_ab=None, config_pfad=CONFIG,
+        ausgaben=sorted(lauf_dir.glob("*.parquet")),
+    )
 
 
 def _leere_tabelle(spalten):
@@ -92,12 +113,13 @@ def _bundle_kopie(bundle, tmp_path, entfernen=(), **ersatz):
         (ziel / f"{name}.parquet").unlink()
     for name, tabelle in ersatz.items():
         write_portfolio(tabelle, ziel / f"{name}.parquet")
+    _manifest(ziel)
     return ziel
 
 
 def _argv(lauf_dir, out_dir, *extra):
     return [
-        "--config", str(REPO_ROOT / "configs" / "bestand_klv.toml"),
+        "--config", str(CONFIG),
         "--lauf", str(lauf_dir),
         "--stichtag", STICHTAG.isoformat(),
         "--bis", HORIZONT.isoformat(),
@@ -299,7 +321,7 @@ def test_stichtag_hinter_dem_horizont_blockiert(bundle, tmp_path, capsys):
     mit irrefuehrenden Meldungen quittiert."""
     out = tmp_path / "abschluesse"
     argv = [
-        "--config", str(REPO_ROOT / "configs" / "bestand_klv.toml"),
+        "--config", str(CONFIG),
         "--lauf", str(bundle),
         "--stichtag", "2026-01-01",
         "--bis", HORIZONT.isoformat(),
@@ -360,3 +382,118 @@ def test_leere_historie_ist_wie_keine(lauf, config):
             stamm, _leere_tabelle(STATUS_HISTORIE_SPALTEN), config,
             STICHTAG, scheiben=scheiben,
         )
+
+
+# --------------------------------------------------------------------------- #
+# T18-03: Zwischen Pruefung und Verarbeitung darf nichts mehr passieren
+# --------------------------------------------------------------------------- #
+
+def test_tausch_nach_bestandener_pruefung_wirkt_nicht_mehr(
+    bundle, tmp_path, monkeypatch
+):
+    """Externes Review T18-03, als Regression festgeschrieben.
+
+    Im Nachweis wurde ``scheiben.parquet`` DIREKT NACH der bestandenen
+    P-B1-Pruefung atomar gegen eine gueltige leere Tabelle getauscht;
+    die CLI las erneut, endete mit Exit 0 und publizierte einen um
+    3.795.035,38 EUR zu niedrigen Stand. Der Fix beseitigt den zweiten
+    Lesevorgang: Was geprueft wurde, wird verarbeitet.
+
+    Der Test stellt den Angriff exakt nach — er tauscht die Datei im
+    Moment zwischen Pruefung und Rechnung — und verlangt, dass der
+    Abschluss die VOLLEN Scheiben traegt, nicht die leeren.
+    """
+    from rechner_pipeline.bestand import cli_abschluss, vorbedingungen
+    from rechner_pipeline.models.bestand import SCHEIBEN_SPALTEN
+
+    lauf_dir = _bundle_kopie(bundle, tmp_path)
+    out_dir = tmp_path / "abschluesse"
+    echt = vorbedingungen.lies_und_pruefe_pb1
+
+    def _pruefen_dann_tauschen(eingaben, **kwargs):
+        ergebnis = echt(eingaben, **kwargs)
+        # Der Angriff: nach dem Urteil, vor der Verarbeitung.
+        write_portfolio(_leere_tabelle(SCHEIBEN_SPALTEN),
+                        lauf_dir / "scheiben.parquet")
+        return ergebnis
+
+    monkeypatch.setattr(vorbedingungen, "lies_und_pruefe_pb1",
+                        _pruefen_dann_tauschen)
+    monkeypatch.setattr(cli_abschluss, "lies_und_pruefe_pb1",
+                        _pruefen_dann_tauschen)
+
+    assert cli_abschluss.main(_argv(lauf_dir, out_dir)) == 0
+
+    # Der festgeschriebene Stand muss die GEPRUEFTEN Scheiben tragen.
+    # Mit dem alten Verhalten (erneutes Lesen) waere er um die
+    # Erhoehungsscheiben zu niedrig.
+    geschrieben = read_portfolio(abschluss_pfad(out_dir, STICHTAG))
+    referenz_dir = _bundle_kopie(bundle, tmp_path / "referenz")
+    assert cli_abschluss.main(
+        _argv(referenz_dir, tmp_path / "referenz-abschluss")) == 0
+    referenz = read_portfolio(
+        abschluss_pfad(tmp_path / "referenz-abschluss", STICHTAG))
+
+    spalte = "deckungskapital" if "deckungskapital" in geschrieben.columns \
+        else [c for c in geschrieben.columns if "kapital" in c.lower()][0]
+    assert float(geschrieben[spalte].sum()) == pytest.approx(
+        float(referenz[spalte].sum())), (
+        "der getauschte Stand ist in den Abschluss gelangt")
+
+
+# --- T25-09: die geprueften Bewertungsgroessen kommen aus einer Quelle ----
+#
+# Zwei Pruefungen fuehrten dieselbe Spaltenmenge als Literal, und beiden
+# fehlte ``korrekturschicht``. Die Proben unten mutieren genau diese eine
+# Spalte: ohne die Ableitung bleiben beide still.
+
+
+def test_geprueft_werden_alle_bewertungsgroessen_des_abschlusses():
+    """Die Menge wird aus dem Spaltentyp abgeleitet, nicht gepflegt."""
+    assert ABSCHLUSS_ZAHLEN == tuple(
+        n for n, dtype in ABSCHLUSS_SPALTEN if dtype == "float64"
+    )
+    # Positivkontrolle: die Spalte, an der die Luecke haftete, ist drin —
+    # und jede abgeleitete Groesse ist wirklich eine Spalte des Abschlusses.
+    assert "korrekturschicht" in ABSCHLUSS_ZAHLEN
+    assert set(ABSCHLUSS_ZAHLEN) <= set(ABSCHLUSS_NAMES)
+
+
+def _mit_geaenderter_spalte(pfad, spalte, wert):
+    """Genau eine Zahl einer Police im festgeschriebenen Stand bewegen."""
+    tabelle = read_portfolio(pfad)
+    pid = int(tabelle.iloc[0]["police_id"])
+    tabelle.loc[tabelle.index[0], spalte] = wert
+    pfad.chmod(0o644)
+    write_portfolio(tabelle, pfad)
+    return pid
+
+
+def test_nachrechnung_faellt_auf_eine_bewegte_korrekturschicht(
+    lauf, config, tmp_path
+):
+    """Die Schicht ist ein eigener Bilanzposten (9.11) — bewegt sie sich,
+    ist der Stand ein anderer, auch wenn die Summe zufaellig stimmt."""
+    stamm, historie, scheiben = lauf
+    pfad = schreibe_abschluss(
+        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+    )
+    pid = _mit_geaenderter_spalte(pfad, "korrekturschicht", 5.0)
+
+    befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
+
+    assert any(f"police {pid}" in b and "korrekturschicht" in b for b in befunde)
+
+
+def test_unendliche_korrekturschicht_ist_kein_bilanzstand(
+    lauf, config, tmp_path
+):
+    stamm, historie, scheiben = lauf
+    pfad = schreibe_abschluss(
+        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+    )
+    _mit_geaenderter_spalte(pfad, "korrekturschicht", float("inf"))
+
+    fehler = validate_abschluss(read_portfolio(pfad))
+
+    assert any("korrekturschicht" in f and "nichtendlich" in f for f in fehler)

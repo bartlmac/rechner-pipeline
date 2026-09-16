@@ -9,6 +9,16 @@ Usage::
         --adapter excel \\
         --export-backend openpyxl
 
+Belegidentitaet, benannte Reichweitengrenze (Review T23-01): Die Quellmappe
+liest der Adapter ueber seinen eigenen Kanal (openpyxl bzw. Excel-COM, das
+nur einen Pfad annimmt); ``input_hashes`` hasht die Datei danach getrennt.
+Anders als bei den JSON-/CSV-Eingaben der Gates (dort: einmal lesen, aus
+denselben Bytes hashen und parsen) kann dieser Hash hier nicht aus den vom
+Adapter verarbeiteten Bytes stammen. Der Manifest-Vertrag bindet die
+Quelle zusaetzlich ueber ihren registrierten Eingangs-Hash; ein Wechsel der
+Datei zwischen Extraktion und Hash bleibt als Abweichung zum Register
+sichtbar, nicht als stiller Beleg.
+
 This is the source-neutral entry to the deterministic toolbox. It selects an
 :class:`~rechner_pipeline.quellen.adapters.base.InputAdapter`, cleans stale derived files
 from the out-dir so a re-run cannot inherit stale ``_compressed.csv`` /

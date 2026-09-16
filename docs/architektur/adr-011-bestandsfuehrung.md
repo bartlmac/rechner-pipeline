@@ -175,6 +175,33 @@ gehoeren Abschluesse zum Datenhaushalt der Fuehrung
   den Abschluss nie. Eine Korrektur eines festgeschriebenen Standes
   ist eine menschliche Entscheidung mit eigenem Vorgang.
 
+### 7. Ein Lauf traegt seinen Lieferschein
+
+Die Teile eines Laufs (Stamm, Journal, Ledger, Scheiben, Config)
+gehoeren nur zusammen, wenn sie nachweislich aus DEMSELBEN Lauf
+stammen — und der Horizont, bis zu dem der GeVo-Strom simuliert wurde,
+ist eine Eigenschaft des Laufs, nicht des Aufrufs, der ihn spaeter
+liest. Beides stand bisher nirgends: Die Konsumenten nahmen `--bis`
+als Behauptung entgegen, und ein Bundle aus Teilen zweier Laeufe war,
+Teil fuer Teil, wohlgeformt (externe Reviews T16, T18-02).
+
+Deshalb schreibt `cli_fortschreibung` zuletzt ein **Laufmanifest**
+(`laufmanifest.json`, `bestand/manifest.py`): Horizont,
+Neuzugangs-Stichtag, Kern-Stand, SHA-256 der Config und jeder
+geschriebenen Ausgabe — deterministisch wie die Ausgaben selbst.
+
+* Der Abschluss-Produzent verlangt das Manifest: Ohne Manifest wird
+  nichts festgeschrieben, `--bis` muss der belegte Horizont sein, und
+  jede gelesene Datei muss bytegleich die vom Lauf geschriebene sein.
+  Pflicht und fail-fast, nicht "optional mit Vorbehalt" — ein
+  festgeschriebener Stand traegt keinen Vorbehalt.
+* Gate P-B1 bindet das Manifest auf Wunsch (`--manifest`) und traegt
+  die Bindung im Beleg. Optional, weil das Gate auch einzelne Tabellen
+  ohne Lauf prueft (ein Basisbestand aus dem Generator).
+* Die Pruefengine liest jede Datei genau einmal: gehasht und geparst
+  werden dieselben Bytes, und die geparsten Tabellen samt Config gehen
+  an den Konsumenten weiter (kein zweites Lesen, T18-03).
+
 ## Konsequenzen
 
 * Ausgewiesene Werte aendern sich dort, wo der gamma1-Defekt wirkte
@@ -191,6 +218,10 @@ gehoeren Abschluesse zum Datenhaushalt der Fuehrung
   groesser (Stamm-Konsistenz UND Journal-Anfang), nicht kleiner.
 * Die Fortschreibungs-CLI schreibt dieselben fuenf Artefakte; `bestand*`
   tragen die neue Semantik. Ein Lauf bleibt byte-deterministisch.
+* Seit dem Laufmanifest (Abschnitt 7) ist ein Laufverzeichnis ohne
+  `laufmanifest.json` fuer den Abschluss kein Lauf: Aeltere Laeufe
+  werden neu fortgeschrieben, nicht nachtraeglich mit einem Manifest
+  versehen.
 
 ## Bewusst nicht Bestandteil dieser Entscheidung
 

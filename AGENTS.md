@@ -22,7 +22,20 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 - Tests before every commit (full suite), named staging (never
   `git add -A`), pushes are done by the human maintainer only.
 - No real names of team members, clients, or suppliers in tracked files
-  or commit messages — use roles instead.
+  or commit messages — use roles instead. Enforced by
+  `tests/test_klarnamen.py` (hash-based, so the check itself carries no
+  names); authorship fields (`pyproject.toml`, `LICENSE`) are the
+  documented exception — a role would be wrong there. Commit messages
+  written before the check existed are a documented exception too: the
+  maintainer decided against rewriting a pushed branch's history
+  (2026-09-04, external review finding T19-06), because a rebase would
+  break the merge plan's "additive only" rule for every branch built on
+  it. New commits follow the rule.
+- The four agent roles of the KI-Tool (ADR-018: `agent/aktuariat`,
+  `agent/architektur`, `agent/rechenkern`, `agent/programmleitung`) are
+  defined under `.claude/agents/` and mirrored in `.agents/agents/`
+  (parity test-enforced). They prepare and hand over; they never sign a
+  human gate.
 - Use the repo-scoped skills in `.agents/skills/` when running Codex and
   `.claude/skills/` when running Claude. The two trees are mirrored and
   their parity is test-enforced (`tests/test_agent_workflow_docs.py`);
@@ -76,7 +89,13 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 
 ## Common Commands
 
-- Install for development: `python -m pip install -e ".[dev]"`.
+- Install for development (the same pinned way CI uses; `pip install -e
+  ".[dev]"` alone resolves the transitive set freshly and is NOT the
+  documented way): `python -m pip install -r requirements-dev.txt`
+  followed by `python -m pip install -e . --no-deps`. Reference
+  environment is Linux + CPython 3.11; off Linux, run the suite in the
+  development container (`deploy/dev/Dockerfile`, `.devcontainer/`) —
+  the code is not hardened for other operating systems.
 - Run tests: `python -m pytest`.
 - Case workspace:
   `python -m rechner_pipeline.fall anlegen --fall faelle/<name>`,
@@ -94,7 +113,11 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `python -m rechner_pipeline.ontologie.entscheide` and
   `python -m rechner_pipeline.gates.gate_entscheid` (human gates, P9
   snapshots). Agents never resolve discrepancies as final; provisional
-  resolutions carry `vorlaeufig=true` and block human acceptance.
+  resolutions carry `vorlaeufig=true` and block human acceptance. Who
+  signs is determined from the key via the Zeichnungsordnung (ADR-018:
+  roles `mensch/<funktion>` sign, `agent/<name>` roles only prepare and
+  may reject; the key class `mensch`/`simulation`/`agent` is recorded
+  in every snapshot).
 - Migration controlling: the two-reporting-date suite
   (`rechner_pipeline.qa.migrationssuite`) and the HTML acceptance
   report (`rechner_pipeline.gates.abnahmebericht`) are libraries driven
@@ -120,6 +143,18 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `--stichtag` splits history from projection — default:
   `meta.referenzstichtag` from the config),
   `python -m rechner_pipeline.gates.bestand_validate` (P-B1).
+- Daily operations of the showcase insurer (concept
+  `docs/simulation/tagesbetrieb.md`; package `rechner_pipeline.betrieb`,
+  layer `betrieb/`): `python -m rechner_pipeline.betrieb.tageslauf --stand
+  <daten> [--heute <ISO>]` runs one day (catch-up of missed days, daily
+  new business, roll-forward, day journal, P-B1 guard via the engine,
+  month-end close, protocol line); `python -m
+  rechner_pipeline.betrieb.uebernahme --stand <daten> --fall <faelle/name>
+  --stichtag <ISO>` registers a migrated portfolio as a dated intake;
+  `python -m rechner_pipeline.betrieb.seite --stand <daten> [--paket
+  <dir>]` renders "Bestand heute" and exports the stand package that
+  `werkzeuge/falldaten.py --stands-paket` consumes. Runtime environment
+  and image: `deploy/plv/`.
 - Navigate and scope changes via the ontology index (ADR-005;
   fundstellen are derived, not searched):
   `python -m rechner_pipeline.ontologie.code_index --tests tests`,

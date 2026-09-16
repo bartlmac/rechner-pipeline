@@ -1,6 +1,6 @@
 # ADR-003: Pydantic fuer T-Box und A-Box
 
-Status: akzeptiert (Bartek, D1-Entscheidung der Architektur-Fragerunde
+Status: akzeptiert (Maintainer, D1-Entscheidung der Architektur-Fragerunde
 2026-08-14). Betrifft ausschliesslich `rechner_pipeline.ontologie` und
 `rechner_pipeline.spez`.
 

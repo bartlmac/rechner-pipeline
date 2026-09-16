@@ -1,0 +1,22 @@
+# Bau-Kontext des PLV-Images (deploy/plv/Dockerfile) ist das Repo — aber
+# ohne Datenraeume und lokale Umgebungen: Faelle, Laufdaten, Regie und
+# private Notizen sind kein Bestandteil des Systems (ADR-002).
+.git
+.venv
+.pytest_cache
+.hypothesis
+__pycache__
+*.pyc
+/faelle
+/runs
+/simulation
+/regie
+/docs-local
+/lieferungen
+/tests
+/dev-docs
+/vorzeige-seite
+/werkzeuge
+/quellsystem
+.env
+.env.*

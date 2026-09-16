@@ -12,10 +12,21 @@ Akteure kommen aus ``fragmente/akteure.json``
 (``{"<fragment-datei>": "<modell>/<skill>@<git-sha>"}``) — der
 Orchestrator legt sie beim Extrahieren ab.
 
+**Einmal, nicht bei jeder Neuzeichnung.** Der Merge baut die A-Box
+FRISCH aus den Fragmenten. Traegt die vorhandene A-Box aufgeloeste
+Diskrepanzen (Entscheidungen des Verantwortlichen Aktuars, Gate A-Q1),
+wuerde ein erneuter Merge sie still ueberschreiben — genau das ist am
+2026-09-07 im zweiten Baldrian-Fall passiert (14 Entscheidungen weg,
+Recovery ueber Backup). Deshalb verweigert das Kommando dann den
+Lauf; ``--ueberschreiben`` ist die ausdrueckliche Entscheidung, die
+Aufloesungen zu verwerfen und A-Q1 neu zu entscheiden. Bei einer
+Neuzeichnung auf neuem Systemstand werden nur die PRUEF-Gates neu
+gefahren (P-Q3, P-K1, ...), nicht der Merge.
+
 Run via::
 
     python -m rechner_pipeline.gates.abox_merge --fall faelle/<fall> \\
-        [--repo-root .] [--diagnostics-dir DIR]
+        [--repo-root .] [--diagnostics-dir DIR] [--ueberschreiben]
 
 Knoten: klv
 """
@@ -28,6 +39,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from rechner_pipeline.gates._common import (
+    hashes_von,
+    lies_gehasht,
     Exit,
     GateArgumentParser,
     GateCliContract,
@@ -51,6 +64,45 @@ CLI_CONTRACT = GateCliContract(
 )
 
 
+class ABoxUnlesbar(ValueError):
+    """Die vorhandene A-Box liegt da, laesst sich aber nicht lesen."""
+
+
+def _aufgeloeste_diskrepanzen(fall: Path) -> List[str]:
+    """Ids der aufgeloesten Diskrepanzen der vorhandenen A-Box.
+
+    Leer NUR, wenn gar keine A-Box da ist — dann gibt es wirklich nichts
+    zu schuetzen. Liegt eine Datei da, die sich nicht lesen laesst, ist
+    das etwas anderes und wird zum Fehler (Review T25-11): Vorher lieferte
+    beides ``[]``, und der Merge las daraus "keine aufgeloeste Diskrepanz
+    vorhanden, ich darf schreiben". Ob dort Entscheidungen standen, weiss
+    gerade niemand — und genau deshalb darf sie nichts ueberschreiben.
+    Unklarheit ist ein benannter Zustand, kein stilles Ja.
+    """
+    pfad = fall / "abgeleitet" / "abox" / "abox.json"
+    if not pfad.is_file():
+        return []
+    try:
+        daten = json.loads(pfad.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ABoxUnlesbar(
+            f"{pfad} liegt vor, ist aber nicht lesbar ({exc}) — ob dort "
+            "aufgeloeste Diskrepanzen stehen, ist damit unbekannt, und der "
+            "Merge ueberschreibt sie nicht auf Verdacht. Datei pruefen, aus "
+            "den Fragmenten neu erzeugen oder beiseitelegen."
+        ) from exc
+    if not isinstance(daten, dict):
+        raise ABoxUnlesbar(
+            f"{pfad} ist kein JSON-Objekt — dieselbe Lage wie eine "
+            "unlesbare Datei: unbekannter Inhalt, kein stilles Ueberschreiben"
+        )
+    return sorted(
+        str(d.get("id"))
+        for d in (daten.get("diskrepanzen") or [])
+        if isinstance(d, dict) and d.get("status") == "aufgeloest"
+    )
+
+
 def main(argv: Optional[List[str]] = None):
     started_at = utc_now()
     parser = GateArgumentParser(
@@ -64,6 +116,12 @@ def main(argv: Optional[List[str]] = None):
     parser.add_argument("--fall", default=None)
     parser.add_argument("--repo-root", dest="repo_root", default=None)
     parser.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None)
+    parser.add_argument(
+        "--ueberschreiben", dest="ueberschreiben", action="store_true",
+        help="Eine vorhandene A-Box MIT aufgeloesten Diskrepanzen verwerfen "
+             "und neu mergen (die Entscheidungen von A-Q1 gehen verloren "
+             "und sind neu zu treffen). Ohne dieses Flag verweigert das "
+             "Kommando den Lauf.")
     add_request_json_arg(parser)
     args = parse_gate_args(parser, argv)
 
@@ -102,17 +160,46 @@ def main(argv: Optional[List[str]] = None):
     if not register_pfad.is_file():
         return _fehler(Exit.USAGE, "usage", f"kein Fall-Arbeitsbereich: {fall}")
 
+    # Kein stiller Overwrite von Entscheidungen: Eine A-Box mit
+    # aufgeloesten Diskrepanzen ist ein Entscheidungstraeger, kein
+    # Zwischenstand. Geprueft auf der JSON-Ebene, damit die Wache auch
+    # eine A-Box aelteren Schemas erkennt.
+    try:
+        entschieden = _aufgeloeste_diskrepanzen(fall)
+    except ABoxUnlesbar as exc:
+        # Fail-closed, und zwar UNABHAENGIG von --ueberschreiben: Das Flag
+        # sagt "ich verwerfe die Aufloesungen bewusst" — das kann niemand
+        # bewusst tun, der nicht weiss, was dort steht.
+        return _fehler(Exit.FILE_CONTRACT, "abox_unlesbar", str(exc))
+    if entschieden and not args.ueberschreiben:
+        return _fehler(
+            Exit.FILE_CONTRACT, "abox_entschieden",
+            f"{fall / 'abgeleitet' / 'abox' / 'abox.json'} traegt "
+            f"{len(entschieden)} aufgeloeste Diskrepanz(en) (z. B. "
+            f"{entschieden[:3]}) — ein erneuter Merge wuerde die Entscheidungen "
+            "von A-Q1 verwerfen. Bei einer Neuzeichnung nur die Pruef-Gates "
+            "(P-Q3, P-K1, ...) neu fahren; wer die Aufloesungen wirklich "
+            "verwerfen will, sagt es mit --ueberschreiben.",
+        )
+
     from rechner_pipeline.ontologie.befuellung import (
         BefuellungsFehler,
         baue_abox,
     )
     from rechner_pipeline.ontologie.kette import (
+        fragment_aus_bytes,
+        fragment_pfade,
         fragmente_ordner,
-        lade_fragmente,
     )
 
+    # Fragmente genau einmal lesen: fragment_hashes, input_hashes UND das
+    # Parsen stammen aus denselben Bytes (Review T23-01) — vorher wurde jede
+    # Fragmentdatei dreimal getrennt gelesen.
     try:
-        fragmente = lade_fragmente(fall)
+        gelesene = {p.name: lies_gehasht(p) for p in fragment_pfade(fall)}
+        fragmente = {
+            name: fragment_aus_bytes(g.roh) for name, g in gelesene.items()
+        }
     except Exception as exc:  # Schema-Bruch eines Fragments
         return _fehler(Exit.FILE_CONTRACT, "fragment", f"Fragment unlesbar: {exc}")
     if not fragmente:
@@ -131,7 +218,8 @@ def main(argv: Optional[List[str]] = None):
         return _fehler(Exit.FILE_CONTRACT, "akteure",
                        f"Akteur fehlt fuer: {', '.join(fehlend)}")
 
-    register = json.loads(register_pfad.read_text(encoding="utf-8"))
+    register_gelesen = lies_gehasht(register_pfad)
+    register = register_gelesen.json()
     erhoben_am = utc_now()
     namen = sorted(fragmente)
     try:
@@ -149,13 +237,7 @@ def main(argv: Optional[List[str]] = None):
 
     abox_pfad_ = speichere(abox, fall)
 
-    ordner = fragmente_ordner(fall)
-    fragment_hashes = {
-        name: __import__("hashlib").sha256(
-            (ordner / name).read_bytes()
-        ).hexdigest()
-        for name in namen
-    }
+    fragment_hashes = {name: gelesene[name].sha256 for name in namen}
     return _finalize(build_result(
         command="abox_merge", gate=GATE, gate_version=GATE_VERSION,
         exit_code=Exit.OK,
@@ -168,10 +250,9 @@ def main(argv: Optional[List[str]] = None):
             "generationen": [g.id for g in abox.generationen],
             "diskrepanzen": len(abox.diskrepanzen),
         },
-        input_hashes=hash_files(
-            [register_pfad, *(ordner / n for n in namen)],
+        input_hashes=hashes_von(
+            [register_gelesen, *(gelesene[n] for n in namen)],
             base=Path(args.repo_root).resolve() if args.repo_root else None,
-            missing_ok=True,
         ),
         output_hashes=hash_files([abox_pfad_], missing_ok=True),
     ))

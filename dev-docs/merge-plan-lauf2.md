@@ -164,7 +164,7 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    -0,14 EUR); 23 Korrekturen final, Bilanz in
    docs/faelle/baldrian-lauf2.md und dev-docs/lauf2-auswertung.md. Korrektur-Zaehlung fuer den
    PR-Schnitt-Vorbehalt (Gebiet Kern/Gates) beginnt mit 1:
-   Vorlauf-Fix der Zeichnungsordnungs-Allowlist (A-K1 war zeichenbar,
+   Vorlauf-Fix der Zeichnungsordnungs-Allowlist (A-O1 war zeichenbar,
    aber keiner Rolle zuweisbar; gate_entscheid, vor Laufstart).
    Stand 2026-09-01, waehrend des Laufs: acht Korrekturen (Details in
    regie/drehbuch-lauf2.md), davon im Kern/Gates-Gebiet die
@@ -174,14 +174,51 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    (Kern 3.3.0) und der Kandidaten-Korridor 2c4e0b2 — der
    Schnitt-Vorbehalt von Schritt 8 ist damit sicher ausgeloest, die
    A/B/C-Grenzen sind nach Laufende neu zu bewerten.
-6b. [ ] T18-Korrekturen (Owner: nach Maintainer-Entscheid;
-   fruehestens nach Anstoss von Fall-Lauf 2 — so entschieden
-   2026-09-01): eigener Korrektur-PR gegen main, Geschwister zu
-   PR #10; danach main -> fallbericht nachziehen (klein). Der
-   A/B/C-Schnitt von Schritt 8 ist NICHT betroffen. Inhalt und
-   Konstruktionszwaenge: dev-docs/offene-punkte.md (T18) — vor
-   Baubeginn entscheiden, ob das Laufmanifest optional-mit-Vorbehalt
-   kommt oder die Lauf-2-Artefakte neu erzeugt werden.
+8b. [ ] Seiten-Folge-PR: vorzeige-url -> main NACH dem Haupt-Merge
+   (Owner: Maintainer; Vorbereitung merge-session). Eingefuehrt
+   2026-09-03: Die Vorzeigeseite braucht laenger, der Haupt-PR
+   wartet nicht auf Darstellung. SCHMAL, ABER UMFANGREICH
+   (Einordnung merge-session, damit die Erwartung stimmt): Die
+   Oberflaeche ist eng — werkzeuge/ (grafik/darstellung/falldaten),
+   vorzeige-seite/, tests/test_werkzeuge.py, Statische-Stellen-
+   Notiz —, das Volumen nicht: Stand 2026-09-03 bereits 99 Commits
+   seit a34342b, weiter wachsend; die Zahl gehoert bei PR-Anlage in
+   den Mini-Leitfaden.
+   ERWARTETER KONFLIKT (gemeldet von der vorzeige-session
+   2026-09-04): Beide Aeste haben regie/ in die
+   Veroeffentlichungssperre eingetragen — dort 4cf5a77, hier 3520883
+   (externer Review-Befund T19-01). Aufloesung abgestimmt: Die
+   fallbericht-Fassung GEWINNT (sie traegt zusaetzlich die
+   Sperrlisten-Zusicherung gegen dev-docs/regie.md und den echten
+   CLI-Weg); der dortige Parameterfall
+   "regie/drehbuch-baldrian-lauf2.md" entfaellt beim Rebase als
+   Dublette. Betroffen: werkzeuge/vorzeigeseite.py und
+   tests/test_werkzeuge.py.
+   Vormerkungen der merge-session fuer die
+   Vorbereitung: (1) eingefrorenen vorzeige-Stand bestaetigen
+   lassen (wie Schritt 7); (2) Basis ist main NACH dem Haupt-Merge
+   — a34342b ist dann enthalten, der Cherry-pick 759548f (=c8ca1d6)
+   laeuft als leerer Diff durch; (3) Kopplungs-Pruefung zuerst: die
+   zwei Testdateien sind gegen einen Fall-Stand geeicht, und der
+   Fall hat sich seit Lauf 2 bewegt. Vorbedingung: Sichtung durch den Maintainer
+   des Redesigns.
+6b. [x] T18-Korrekturen. REVIDIERT 2026-09-04 (Maintainer-Entscheid
+   nach dem externen Review T19): NICHT als eigener Korrektur-PR,
+   sondern IN PR #11 — die Themen waren faellig, nur aus Prio
+   verschoben, und der Stand soll DORA-sauber sein, bevor die
+   Vorzeigeseite weitergeht und nach aussen gepusht wird. Ein
+   paralleler PR war ohnehin unmoeglich: alle sieben Zieldateien
+   liegen bereits in PR #11. Konstruktionszwang entschieden:
+   Laufmanifest PFLICHT und fail-fast (kein "optional mit
+   Vorbehalt"); keine Neuzeichnung noetig, weil A-M4 keine
+   cli_fortschreibung-Artefakte bindet. ERLEDIGT 2026-09-04,
+   dev-session: e7e9907 (T18-03 pruefen und zurueckgeben), 9a96a11
+   (T18-02 Laufmanifest), 35374a3 (T18-01 zeilenweise
+   Ledger/Scheiben-Bindung, T18-04 Endlichkeit an Config und
+   Abschluss, T18-06 semantischer Ledger-Validator, T18-05
+   Berichts-Wachposten ueber die P-B1-Engine, T18-07 umask zum
+   Schreibzeitpunkt). Je Befund Regressionstest mit Mutationsprobe;
+   Stand: dev-docs/review-t19-befunde.md (Abschnitt T18).
 7. [x] vorzeige-url -> fallbericht (Owner: merge-session, mit der
    vorzeige-Session abstimmen; test_baldrian_e2e-Kopplung dort
    verifizieren). Pruefpunkt: Suite gruen, Vorzeigeseite rendert.
@@ -224,8 +261,19 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    liegt", der e2e-Test erwartet die Luecke "umbau" — beides
    korrekt, zwei Eingaben (echter Lauf-2-Fall mit Umbaubudget vs.
    Fixture ohne).
-8. [ ] fallbericht -> main als EIN PR mit Review-Leitfaden (Owner:
-   Maintainer). REVIDIERT 2026-09-02 (Maintainer-Entscheid nach
+   NACHTRAG 2026-09-03 (Maintainer-Entscheid, PR nicht blockieren):
+   Die NACH dem Merge 9c1f36a weitergelaufene Seiten-Arbeit
+   (Redesign, Kacheln, Sichtungsrunden; a34342b..vorzeige-url)
+   kommt NICHT mehr in diesen Strang — der geplante gesammelte
+   Rueck-Merge entfaellt zugunsten des Seiten-Folge-PR
+   (Schritt 8b). Die Seiten-Session arbeitet auf vorzeige-url
+   unabhaengig weiter; veroeffentlicht wird ohnehin manuell und
+   getrennt vom Code-Merge.
+8. [x] fallbericht -> main als EIN PR mit Review-Leitfaden (Owner:
+   Maintainer). ERLEDIGT 2026-09-06: PR #11 nach Reviewer-Approve als
+   Merge-Commit 96588b8 auf main (Eltern 33e9dec + 730fcb0); vier
+   Reviewrunden T18/T19/T20/T21 davor geschlossen bzw. als benannte
+   Folgearbeit im Backlog (dev-docs/review-t19-befunde.md). REVIDIERT 2026-09-02 (Maintainer-Entscheid nach
    Lauf-Ende): Der 2026-09-01 im Plan selbst angelegte Vorbehalt ist
    eingetreten — die 23 Lauf-Korrekturen liegen quer durch das A/B/C-
    Gebiet (Kern-Verfahren, QA-Engines, Gates, Bestand), ein
@@ -288,8 +336,13 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    an, ist der Schnitt danach neu zu bewerten, statt ihn jetzt
    festzuzurren. Die PR-Branches werden deshalb erst nach Lauf 2
    angelegt.
-9. [ ] Aufraeumen: Branches lauf/baldrian-uebernahme,
-   feat/migrationszugang loeschen.
+9. [x] Aufraeumen: Branches lauf/baldrian-uebernahme,
+   feat/migrationszugang loeschen. ERLEDIGT lokal 2026-09-06 (beide in
+   main enthalten; feat/test-controlling-trennung verworfen). Auf
+   origin stehen noch fallbericht, feat/bestandsfuehrung und
+   parked/toolbox-pipeline (alle in main enthalten) — Loeschen dort
+   ist Push-Arbeit des Maintainers; quellsystem lokal erst nach dem
+   Aufloesen seines Worktrees.
    feat/test-controlling-trennung: VERWERFEN, geprueft 2026-09-01. Der
    Branch traegt dieselben fuenf Dateien wie der aelteste
    fallbericht-Commit, aber in aelterer Fassung -- ADR-010 steht dort
@@ -297,3 +350,53 @@ lauf/baldrian-uebernahme, feat/migrationszugang.
    qa/stichprobe.py ist 91 Zeilen und tests/test_stichprobe.py
    75 Zeilen aermer. fallbericht ist strikt weiter; es geht nichts
    verloren.
+10. [ ] Folge-Straenge nach dem Merge von PR #11 (Plan validiert durch
+   die merge-session; STAND 2026-09-06: (b) plv-betrieb ist als PR #13
+   gemergt (f066b55, Merge-Commit, kein Rebase); (a) ebenen ist PR #14
+   (CI gruen, main ohne Rebase hineingemergt, Review bis 2026-09-11);
+   der fruehe Merge plv-betrieb -> vorzeige-url ist vollzogen (6abb4d5,
+   Bloecke 3/4 der Seite nach dev-Vorgabe umgebaut); dazugekommen und
+   gemergt: PR #15 Referenzumgebung als Container (beecf3d). Offen: der
+   Seiten-PR nach Verdichtung — alle drei Klauseln sind jetzt erfuellt.
+   Urspruenglicher Plan-Text, validiert durch
+   die merge-session 2026-09-05, Einwendung angenommen):
+   KEIN REBASE. ebenen (5 Commits) und plv-betrieb (9 Commits)
+   sitzen exakt auf 730fcb0; sobald PR #11 als Merge-Commit auf main
+   ist, sind beide auf einem Vorfahren von main gebaut. Umbasieren
+   vergaebe neue Shas — dasselbe Argument, das gegen Squash spricht:
+   gates/_provenienz.py schreibt den Commit in jeden Systemstand, den
+   P9-Snapshots binden; main traegt Merge-Commits (PR #9, #10, #11).
+   Also: (a) PR "Architektur: Ebenen und Rollenmodell" (ebenen -> main,
+   Merge-Commit), (b) PR "PLV-Tagesbetrieb" (plv-betrieb -> main,
+   Merge-Commit); Reihenfolge frei; Beruehrungen: landkarte.md (nie von
+   Hand aufloesen, neu erzeugen), je ein Absatz in AGENTS.md und README
+   aus beiden Straengen (beide behalten), werkzeuge/falldaten.py additiv.
+   FRUEHER MERGE plv-betrieb -> vorzeige-url (Frage des
+   Maintainers, damit das Redesign Stands-Paket und "Bestand heute"
+   nutzen kann): unbedenklich, WEIL nicht umbasiert wird — plv erreicht
+   main mit denselben Shas; vorzeige-url bekommt damit auch 730fcb0
+   (T18/T19/T20-Fixes), der spaetere Seiten-PR zeigt nur das
+   Seiten-Delta. Verfahren wie Schritt 7: Wegwerf-Worktree, volle
+   Suite, dann erst den Arbeitsbaum der vorzeige-Session anfassen (in
+   Abstimmung mit ihr). Konfliktkandidaten: werkzeuge/falldaten.py
+   (Glob/Kennzahlenquellen gegen additives --stands-paket),
+   werkzeuge/vorzeigeseite.py + tests/test_werkzeuge.py (Regie-Sperre in
+   beiden Fassungen, fallbericht-Fassung gewinnt; plus T20-02/-03),
+   landkarte.md, werkzeuge/README.md.
+   COMMITS DER SEITE (iteratives Redesign): System-Straenge behalten
+   ihre Historie (Snapshots binden Shas). Der Seiten-Strang darf lokal
+   iterativ wachsen und vor dem PR zu wenigen BEGRUENDETEN Commits
+   verdichtet werden (kein Ein-Commit-Squash: die Botschaften tragen das
+   Warum) — mit zwei Klauseln: (1) verdichtet wird nur, was NIE
+   veroeffentlicht wurde, denn vorzeigeseite._systemstand() schreibt
+   den Commit in die erzeugte Seite und drift.py urteilt daran; (2) vor
+   dem Verdichten mechanisch pruefen, dass das Seiten-Delta nur den
+   vereinbarten Seiten-Pfadsatz beruehrt (git diff --name-only
+   <basis>...<seiten-branch>; werkzeuge/ traegt Seiten- UND
+   Systemcode nebeneinander — T19-01 sass dort), statt "keine
+   Systemaenderungen" zu versprechen; (3) REIHENFOLGE: verdichtet wird
+   erst, wenn plv-betrieb und 730fcb0 auf main sind — sonst faellt
+   der frueh gemergte Tagesbetrieb in das Seiten-Delta und wuerde ueber
+   Bande mit-gesquasht. Das ist eine Bedingung an den Zeitpunkt des
+   Verdichtens, nicht an den fruehen Merge; da waehrend des Redesigns
+   ohnehin nicht veroeffentlicht wird, ist sie im Normalfall erfuellt.

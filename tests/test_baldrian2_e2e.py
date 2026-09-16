@@ -24,26 +24,38 @@ Knoten: klv/tg2015
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
 
 import pytest
 
+from rechner_pipeline.bestand import cli_fortschreibung
 from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates import (
     aktuartest_lauf,
     bestand_uebernehmen,
     bestand_validate,
+    fuehrungsprobe,
     migrationssuite_lauf,
     transformation_anwenden,
     verankerung_belegen,
 )
+from tests.e2e_fixture import zellen_config
+
+#: Wie oft eine Datei waehrend des Migrationscontrollings gelesen wurde
+#: (Review T25-05: die Behauptung "genau einmal" wird gezaehlt, nicht
+#: aus dem Beleg geschlossen).
+LESEZAEHLER: dict = {}
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "baldrian2_e2e"
 
 GENERATION = "klv/tg2015"
+# Wert der Stammspalte tarif_generation (Name der Generation in der
+# PLV-Config) — nicht der Ontologie-Knoten; so lief auch der echte Lauf 2.
+TARIF_GENERATION = "TG2015"
 STICHTAG_1 = "2026-01-01"
 STICHTAG_2 = "2027-01-01"
 ABZUG_1 = "baldrian_bestandsabzug_2026-01-01.csv"
@@ -120,13 +132,20 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ]) == 0, "Transformation der Quellzeilen"
 
     bestand = fall / "abgeleitet" / "bestand"
+    # Freischaltung (Schritt 3): Die Uebernahme rechnet den Anfangszustand
+    # mit DENSELBEN Lieferungs-Schaltern wie die Pruefstrecke und schreibt
+    # ihn in die Tabellen — Grundsumme im Stamm, Alt-Erhoehungen als
+    # Scheiben, Ursprungssumme der beitragsfreien Vertraege.
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
-        "--tarif-generation", GENERATION, "--stichtag", STICHTAG_1,
+        "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
         "--vorgeschichte", METADATEN,
         "--generation-spez", GENERATION,
+        "--anfangszustand", "materialisieren",
+        "--anker-erwartungswerte", ANKER,
+        "--stoab-je-baustein",
         "--out-dir", str(bestand),
-    ]) == 0, "Uebernahme in das Zielmodell"
+    ] + _lieferungs_flags()) == 0, "Uebernahme in das Zielmodell"
 
     assert transformation_anwenden.main([
         "--fall", str(fall), "--spec", str(spec),
@@ -136,12 +155,31 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ]) == 0, "Transformationsergebnis mit Zielbindung"
 
     diagnostics = fall / "abgeleitet" / "diagnostics"
-    assert bestand_validate.main([
+    # Vollprofil (Review T22-01): Journal, Ledger, Merkmale (Tarifzellen),
+    # die PLV-Config mit der uebernommenen Generation und der Horizont —
+    # nur so prueft P-B1 Bewegungs-Identitaet, Ledger-Semantik und die
+    # Kern-Herleitung jeder Buchung, die A-M4 im Bestands-Scope verlangt.
+    # Die Config der Kern-Herleitung ist die dieses Falls (zellen_config):
+    # Der Zellen-Abschnitt der Uebernahme traegt die Grundlagen, aus denen
+    # sie gebucht hat. Die PLV-Config des Repos gehoert zum ECHTEN zweiten
+    # Lauf; diese Fixture ist eine reduzierte Scheibe mit eigener Spez.
+    config_pfad = fall / "abgeleitet" / "bestand-config.toml"
+    config_pfad.write_text(
+        zellen_config((bestand / "generation-zellen.toml").read_text("utf-8"),
+                      name=TARIF_GENERATION, knoten=GENERATION),
+        encoding="utf-8")
+    pb1 = bestand_validate.main([
         "--portfolio", str(bestand / "bestand.parquet"),
         "--historie", str(bestand / "historie.parquet"),
+        "--ledger", str(bestand / "ledger.parquet"),
+        "--scheiben", str(bestand / "scheiben.parquet"),
+        "--merkmale", str(bestand / "merkmale.parquet"),
+        "--config", str(config_pfad),
+        "--bis", STICHTAG_1,
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
-    ]).exit_code == 0, "Gate P-B1 auf dem uebernommenen Bestand"
+    ])
+    assert pb1.exit_code == 0, ("Gate P-B1 auf dem uebernommenen Bestand", pb1.errors)
 
     # Verankerung: Zustands-Welten rechnen, Residuen auf die
     # Korrekturschicht legen — die Suite liest daraus Schichtparameter
@@ -155,6 +193,8 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ] + _lieferungs_flags()) == 0, "Verankerung mit Schichtbeleg"
     schichten = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
     assert schichten.is_file(), "Schichtbeleg der Verankerung"
+    assert (bestand / "schichten.parquet").is_file(), (
+        "die Schicht als Vertragsattribut des Bestands (Freischaltung, Schritt 5)")
 
     for abnahme, erwartung in ABNAHMEN:
         assert aktuartest_lauf.main([
@@ -168,20 +208,357 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             "--repo-root", str(REPO_ROOT),
         ] + _lieferungs_flags()) == 0, f"Aktuarieller Test {abnahme}"
 
-    assert migrationssuite_lauf.main([
-        "--fall", str(fall), "--generation", GENERATION,
-        "--abzug-1", ABZUG_1, "--abzug-2", ABZUG_2,
-        "--gevo-protokoll", PROTOKOLL,
-        "--bestand", str(bestand / "bestand.parquet"),
-        "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
-        "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
-        "--anker-erwartungswerte", ANKER,
-        "--stoab-je-baustein",
-        "--dk-stichtag", "jahrestag",
-        "--schicht", str(schichten),
+    # Review T25-05 (b): Der Beleg jedes Kommandos nennt die Eingaben, auf
+    # denen sein Urteil beruht — mit dem Hash DER BYTES, die es gelesen
+    # hat. Vorher trug dieses Ergebnis nur ``system``.
+    at_beleg = json.loads(
+        (fall / "abgeleitet" / "berichte"
+         / f"aktuartest-{ABNAHMEN[-1][0]}.json").read_text(encoding="utf-8"))
+    at_eingaben = at_beleg["eingaben"]
+    assert at_eingaben, "der aktuarielle Test nennt keine Eingabe"
+    assert any(k.endswith("bestand.parquet") for k in at_eingaben)
+    assert any(k.endswith("verankerung_schichten.json") for k in at_eingaben)
+    # Die Kette DES Schichtbelegs gehoert dazu: Ihre Hashes werden beim
+    # Nachrechnen ohnehin gebildet und wurden bisher verworfen.
+    assert any(k.endswith("verankerung.parquet") for k in at_eingaben)
+    for rel, summe in at_eingaben.items():
+        pfad = Path(rel)
+        pfad = pfad if pfad.is_absolute() else fall / rel
+        assert summe == hashlib.sha256(pfad.read_bytes()).hexdigest(), rel
+
+    # Wie oft wird der Bestand gelesen? Die Zusicherung des Belegs
+    # ("der Hash gehoert zu den verarbeiteten Bytes") ist in einem ruhigen
+    # Test nicht unterscheidbar von zwei Lesungen — die Datei aendert sich
+    # ja nicht dazwischen. Also wird gezaehlt: EINMAL, nicht einmal zum
+    # Verarbeiten und spaeter noch einmal zum Hashen (Review T25-05).
+    from rechner_pipeline.bestand import parquet_io as _pio
+
+    _echt_read_bytes = Path.read_bytes
+    _echt_read_table = _pio.pq.read_table
+    LESEZAEHLER.clear()
+
+    def _zaehle(pfad) -> None:
+        schluessel = str(Path(pfad).resolve())
+        LESEZAEHLER[schluessel] = LESEZAEHLER.get(schluessel, 0) + 1
+
+    def _zaehlend(self):
+        _zaehle(self)
+        return _echt_read_bytes(self)
+
+    def _zaehlend_table(quelle, *a, **k):
+        # Beide Wege zaehlen: lies_gehasht liest ueber read_bytes,
+        # read_portfolio ueber pyarrow direkt vom PFAD. Ein Zaehler, der
+        # nur einen davon sieht, bezeugt die Behauptung nicht — genau
+        # das ist mir hier zuerst passiert.
+        if isinstance(quelle, (str, Path)):
+            _zaehle(quelle)
+        return _echt_read_table(quelle, *a, **k)
+
+    Path.read_bytes = _zaehlend
+    _pio.pq.read_table = _zaehlend_table
+    try:
+        ms_code = migrationssuite_lauf.main([
+            "--fall", str(fall), "--generation", GENERATION,
+            "--abzug-1", ABZUG_1, "--abzug-2", ABZUG_2,
+            "--gevo-protokoll", PROTOKOLL,
+            "--bestand", str(bestand / "bestand.parquet"),
+            "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
+            "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
+            "--anker-erwartungswerte", ANKER,
+            "--stoab-je-baustein",
+            "--dk-stichtag", "jahrestag",
+            "--schicht", str(schichten),
+            "--repo-root", str(REPO_ROOT),
+        ] + _lieferungs_flags())
+    finally:
+        Path.read_bytes = _echt_read_bytes
+        _pio.pq.read_table = _echt_read_table
+    assert ms_code == 0, "Migrationscontrolling"
+
+    ms_beleg = json.loads((fall / "abgeleitet" / "berichte"
+                           / "migrationssuite.json").read_text(encoding="utf-8"))
+    ms_eingaben = ms_beleg["eingaben"]
+    # Zehn Eingaben, eine gebunden: so war der Stand. Und ausgerechnet die
+    # eine wurde ZWEIMAL gelesen — einmal zum Verarbeiten, viel spaeter
+    # noch einmal zum Hashen. Jetzt stammt beides aus einem Lesevorgang,
+    # und das ist hier nachpruefbar.
+    bestand_schluessel = next(
+        k for k in ms_eingaben if k.endswith("bestand.parquet"))
+    assert ms_beleg["bestand_sha256"] == ms_eingaben[bestand_schluessel]
+    for name in (ABZUG_1, ABZUG_2, PROTOKOLL, METADATEN, ANKER):
+        assert any(k.endswith(Path(name).name) for k in ms_eingaben), name
+    for rel, summe in ms_eingaben.items():
+        pfad = Path(rel)
+        pfad = pfad if pfad.is_absolute() else fall / rel
+        assert summe == hashlib.sha256(pfad.read_bytes()).hexdigest(), rel
+
+    # Freischaltung (Schritt 4 und 5): Der uebernommene Bestand wird mit
+    # der Config des Falls fortgeschrieben — auf seinen Bausteinen, mit
+    # seinem Tarifwerk und seiner Korrekturschicht — und P-B1 prueft das
+    # Vollprofil des Laufs, Schicht und Verankerung eingeschlossen.
+    nach = fall / "abgeleitet" / "bestand-nach"
+    assert cli_fortschreibung.main([
+        "--config", str(config_pfad), "--bis", STICHTAG_2,
+        "--uebernahme", str(bestand), "--out-dir", str(nach),
+    ]) == 0, "Fortschreibung des uebernommenen Bestands"
+    pb1_nach = bestand_validate.main([
+        "--portfolio", str(nach / "bestand_gesamt.parquet"),
+        "--historie", str(nach / "historie.parquet"),
+        "--ledger", str(nach / "ledger.parquet"),
+        "--scheiben", str(nach / "scheiben.parquet"),
+        "--merkmale", str(nach / "merkmale.parquet"),
+        "--schichten", str(nach / "schichten.parquet"),
+        "--verankerung", str(nach / "verankerung.parquet"),
+        "--config", str(config_pfad),
+        "--bis", STICHTAG_2,
+        "--manifest", str(nach / "laufmanifest.json"),
         "--repo-root", str(REPO_ROOT),
-    ] + _lieferungs_flags()) == 0, "Migrationscontrolling"
+        "--diagnostics-dir", str(fall / "abgeleitet" / "diagnostics-nach"),
+    ])
+    assert pb1_nach.exit_code == 0, ("Gate P-B1 auf dem fortgeschriebenen Bestand",
+                                     pb1_nach.errors)
+
+    # Freischaltung (Schritt 6): Die Fuehrungsprobe stellt Uebernahme und
+    # Fortschreibung gegen die Pruefstrecke — mit denselben Lieferungs-
+    # Schaltern, demselben Anfangszustand, derselben Schicht.
+    assert fuehrungsprobe.main([
+        "--fall", str(fall), "--repo-root", str(REPO_ROOT),
+        "--generation", GENERATION,
+        "--uebernahme", str(bestand), "--fortschreibung", str(nach),
+        "--config", str(config_pfad), "--zeilen", str(zeilen),
+        "--vorgeschichte", METADATEN, "--stichtag", STICHTAG_1,
+        "--anker-erwartungswerte", ANKER,
+        "--schicht", str(schichten),
+        "--stoab-je-baustein",
+    ] + _lieferungs_flags()) == 0, "Fuehrungsprobe"
     return fall
+
+
+def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
+    gefahrener_fall: Path,
+):
+    """Freischaltung, Schritt 6: Der Beleg sagt, dass die Fuehrung die Welt
+    der Abnahmen traegt — und er faellt, sobald sie es nicht tut: ein
+    fremder Stornobetrag, ein anderer Schalter, ein Bestand als
+    Grundvertrag."""
+    import copy
+
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+    from rechner_pipeline.gates.migrationssuite_lauf import _lies_csv
+    from rechner_pipeline.spez.validierung import lade_spez
+
+    beleg = json.loads((gefahrener_fall / "abgeleitet" / "berichte"
+                        / "fuehrungsprobe.json").read_text(encoding="utf-8"))
+    assert beleg["bestanden"] is True and beleg["befunde"] == []
+    assert beleg["anfangszustand"] == "materialisieren"
+    assert beleg["fortschreibung_geprueft"] is True
+    # Aus dem ECHTEN Lauf, nicht aus einem selbstgebauten Dict: Der Fehler
+    # von T25-02 sass im LESEN (weggeworfener Rueckgabewert), nicht im
+    # Rechnen. Ein Test, der pruefe_fuehrung seine Tabellen selbst
+    # hinlegt, haette ihn nie gesehen — nachgemessen.
+    assert beleg["endbestand_geprueft"] > 0, (
+        "die Probe des echten Laufs hat den Endbestand nicht angesehen")
+    # Jede Eingabe steht im Beleg, und sie steht mit dem Hash DER BYTES da,
+    # die geprueft wurden (Review T25-05). Die Spez war ueberhaupt nicht
+    # gebunden: Die Probe rechnete gegen die Zellen einer Datei, die ihr
+    # Beleg nicht nannte.
+    from hashlib import sha256
+
+    gebunden = beleg["provenienz"]["eingaben"]
+    assert any("spez" in name for name in gebunden), (
+        f"die Spez fehlt unter den gebundenen Eingaben: {sorted(gebunden)}")
+    for name, summe in gebunden.items():
+        pfad = (gefahrener_fall / name) if not Path(name).is_absolute() else Path(name)
+        assert pfad.is_file(), name
+        assert sha256(pfad.read_bytes()).hexdigest() == summe, (
+            f"{name}: der Beleg nennt einen anderen Hash als die Datei traegt")
+    assert beleg["vertraege"] == len(_policen()["policen"])
+    assert beleg["mit_anfangszustand"] > 0 and beleg["scheiben"] > 0
+    assert beleg["schichten"] == len(_policen()["policen"])
+    assert beleg["tarifwerk"] == {
+        "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+        "red_verfahren": RED_VERFAHREN,
+    }
+    # Der Bestand, den die Suite gehasht hat, ist eine Eingabe der Probe.
+    suite = _bericht(gefahrener_fall, "migrationssuite.json")
+    assert suite["bestand_sha256"] in set(beleg["provenienz"]["eingaben"].values())
+
+    # Dieselbe Probe auf denselben Tabellen, in-memory, mit drei Stoerungen.
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    nach = gefahrener_fall / "abgeleitet" / "bestand-nach"
+    ueb = {
+        "bestand": read_portfolio(bestand / "bestand.parquet"),
+        "historie": read_portfolio(bestand / "historie.parquet"),
+        "ledger": read_portfolio(bestand / "ledger.parquet"),
+        "scheiben": read_portfolio(bestand / "scheiben.parquet"),
+        "verankerung": read_portfolio(bestand / "verankerung.parquet"),
+        "schichten": read_portfolio(bestand / "schichten.parquet"),
+        "merkmale": read_portfolio(bestand / "merkmale.parquet"),
+        "beleg": json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8")),
+    }
+    fort = {
+        "ledger": read_portfolio(nach / "ledger.parquet"),
+        "scheiben": read_portfolio(nach / "scheiben.parquet"),
+        "historie": read_portfolio(nach / "historie.parquet"),
+        "bestand": read_portfolio(nach / "bestand_gesamt.parquet"),
+    }
+    schichtbeleg = json.loads((gefahrener_fall / "abgeleitet" / "schichten"
+                               / "verankerung_schichten.json").read_text(encoding="utf-8"))["schichten"]
+    zeilen = json.loads((gefahrener_fall / "abgeleitet" / "transformation"
+                         / "zeilen.json").read_text(encoding="utf-8"))
+    anker = {}
+    for v in json.loads((FIXTURE / ANKER).read_text(encoding="utf-8"))["vertraege"]:
+        e = next((x for x in v.get("punkte", []) if x.get("anlass") == "uebernahme"
+                  and "kVx_MRV" in (x.get("erwartet") or {})), None)
+        if e:
+            anker[str(v["police_id"])] = (int(e["monate"]), float(e["erwartet"]["kVx_MRV"]))
+    basis = dict(
+        config=load_config(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
+        spez=lade_spez(gefahrener_fall, GENERATION), zeilen=zeilen,
+        vorgeschichte=_lies_csv(gefahrener_fall, METADATEN),
+        tarifwerk={"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+                   "red_verfahren": RED_VERFAHREN},
+        erhoehungssatz=float(ERHOEHUNGSSATZ),
+        red_anteile={a.split("=")[0]: float(a.split("=")[1]) for a in RED_ANTEILE},
+        red_anteile_je_datum={}, red_anteil_kandidaten=tuple(float(k) for k in KANDIDATEN),
+        anker=anker, schichtbeleg=schichtbeleg,
+        stichtag=__import__("datetime").date.fromisoformat(STICHTAG_1),
+    )
+    gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **basis)
+    assert gut["bestanden"], gut["befunde"]
+
+    # Die Config des Falls simuliert keine Ereignisse; damit die Buchungs-
+    # pfade der Probe (Storno, Umbuchung, Tod, Ablauf) wirklich gegen die
+    # Fuehrung laufen, wird der uebernommene Bestand hier ein zweites Mal
+    # fortgeschrieben — mit Annahmen und einem Horizont, der Ereignisse
+    # erzwingt. Jede dieser Buchungen muss die Pruefstrecken-Engine treffen.
+    import pandas as pd
+
+    from rechner_pipeline.bestand.config import config_aus_text
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+
+    text = (gefahrener_fall / "abgeleitet" / "bestand-config.toml").read_text(encoding="utf-8")
+    lebhaft = config_aus_text(text + (
+        "\n[annahmen.storno]\na = 0.10\nb = 0.0\n"
+        "[annahmen.beitragsfreistellung]\na = 0.05\nb = 0.0\n"
+        "[annahmen.tod]\na = 0.03\nb = 1.0\n"
+        "[annahmen]\nerh_prozent = 0.05\n"
+        "[annahmen.erhoehung]\na = 0.15\nb = 0.0\n"))
+    assert lebhaft.validate() == []
+    ergebnis = fortschreiben(
+        ueb["bestand"], lebhaft, __import__("datetime").date(2040, 1, 1),
+        merkmale=ueb["merkmale"], scheiben=ueb["scheiben"],
+        schichten=ueb["schichten"], verankerung=ueb["verankerung"])
+    lebhafte_fort = {
+        "ledger": ergebnis.ledger,
+        "scheiben": pd.concat([ueb["scheiben"], ergebnis.scheiben], ignore_index=True),
+        "historie": ergebnis.historie,
+    }
+    lebhaft_basis = dict(basis, config=lebhaft)
+    gut2 = pruefe_fuehrung(uebernahme=ueb, fortschreibung=lebhafte_fort, **lebhaft_basis)
+    assert gut2["bestanden"], gut2["befunde"]
+    geprueft = gut2["buchungen_geprueft"]
+    assert geprueft["STO"] >= 3 and geprueft["PEX"] >= 1 and geprueft["TOD"] >= 1, geprueft
+    # Storno-Buchungen mit Bausteinen sind dabei — sonst waere je Baustein ungeprueft.
+    sto_mit_bausteinen = lebhafte_fort["ledger"][
+        (lebhafte_fort["ledger"]["ereignis"] == "STO")
+        & lebhafte_fort["ledger"]["police_id"].isin(set(ueb["scheiben"]["police_id"]))]
+    assert len(sto_mit_bausteinen) >= 1
+
+    # 1. Ein fremder Stornobetrag in der Fortschreibung — um einen Cent mehr
+    #    als die Toleranz.
+    sto = lebhafte_fort["ledger"][lebhafte_fort["ledger"]["ereignis"] == "STO"]
+    kaputt = copy.deepcopy(lebhafte_fort)
+    kaputt["ledger"] = lebhafte_fort["ledger"].copy()
+    kaputt["ledger"].loc[sto.index[0], "betrag"] += 0.02
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=kaputt, **lebhaft_basis)
+    assert not rot["bestanden"] and rot["befunde"][0]["art"] == "buchung"
+    assert rot["buchungen_abweichend"] == 1
+    # 1b. Die Fuehrung ohne die Schalter der Generation (das alte Tarifwerk)
+    #     rechnet andere Stornobetraege — und die Probe sieht es.
+    alt_text = text.replace("stoab_je_baustein = true", "stoab_je_baustein = false")
+    assert alt_text != text
+    altes_tarifwerk = config_aus_text(alt_text + (
+        "\n[annahmen.storno]\na = 0.10\nb = 0.0\n[annahmen.tod]\na = 0.03\nb = 1.0\n"))
+    alt_ergebnis = fortschreiben(
+        ueb["bestand"], altes_tarifwerk, __import__("datetime").date(2040, 1, 1),
+        merkmale=ueb["merkmale"], scheiben=ueb["scheiben"],
+        schichten=ueb["schichten"], verankerung=ueb["verankerung"])
+    alt_fort = {"ledger": alt_ergebnis.ledger,
+                "scheiben": pd.concat([ueb["scheiben"], alt_ergebnis.scheiben], ignore_index=True),
+                "historie": alt_ergebnis.historie}
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=alt_fort, **lebhaft_basis)
+    assert any(b["art"] == "buchung" and b["ereignis"] == "STO" for b in rot["befunde"]), (
+        "Storno je Vertrag statt je Baustein muss die Probe rot machen")
+    # 2. Ein anderer Schalter als in Config und Beleg.
+    andere = dict(basis, tarifwerk=dict(basis["tarifwerk"], stoab_je_baustein=False))
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **andere)
+    assert any(b["art"] == "tarifwerk" for b in rot["befunde"])
+    # 3. Ein Bestand, der als Grundvertrag gefuehrt wird.
+    grund = dict(ueb, beleg=dict(ueb["beleg"], anfangszustand="grundvertrag",
+                                 nicht_freigeschaltet=["7000019"]))
+    rot = pruefe_fuehrung(uebernahme=grund, fortschreibung=fort, **basis)
+    assert any(b["art"] == "nicht_freigeschaltet" for b in rot["befunde"])
+    # 4. Eine Stammsumme in der falschen Welt (die alte Uebernahme).
+    alt = dict(ueb, bestand=ueb["bestand"].copy())
+    pid = int(ueb["scheiben"]["police_id"].iloc[0])
+    idx = alt["bestand"].index[alt["bestand"]["police_id"] == pid][0]
+    alt["bestand"].loc[idx, "sum_insured"] += 5000.0
+    rot = pruefe_fuehrung(uebernahme=alt, fortschreibung=fort, **basis)
+    assert any(b["art"] == "stammsumme" for b in rot["befunde"])
+
+    # 5. Der Endbestand der Fortschreibung (Review T25-02). Er wurde
+    # gelesen und weggeworfen — der Aufruf stand als freistehender
+    # Ausdruck da. Die Probe meldete "fortschreibung_geprueft: true" und
+    # hatte ihn nie angesehen; ein Endbestand mit einer fremden Nummer
+    # oder eine Endhistorie mit einem unbekannten Zustand bestand sie.
+    assert gut["endbestand_geprueft"] > 0, (
+        "die Probe meldet keine geprueften Endbestandszeilen — dann prueft sie "
+        "ihn wieder nicht")
+    # (a) Ein uebernommener Vertrag verschwindet aus dem Endbestand.
+    ohne = dict(fort, bestand=fort["bestand"].copy())
+    weg = int(ueb["bestand"]["police_id"].iloc[0])
+    ohne["bestand"] = ohne["bestand"][ohne["bestand"]["police_id"] != weg]
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=ohne, **basis)
+    assert any("nicht mehr vorhanden" in b["text"] for b in rot["befunde"])
+    # (b) Eine Identitaet wandert — die Fortschreibung bewegt Zustaende,
+    # nicht Geburtsdaten.
+    verdreht = dict(fort, bestand=fort["bestand"].copy())
+    i = verdreht["bestand"].index[verdreht["bestand"]["police_id"] == weg][0]
+    verdreht["bestand"].loc[i, "entry_age"] = int(verdreht["bestand"].loc[i, "entry_age"]) + 7
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=verdreht, **basis)
+    assert any("entry_age" in b["text"] for b in rot["befunde"])
+    # (c) Ein Zustand, den das Modell nicht kennt.
+    fremd = dict(fort, historie=fort["historie"].copy())
+    fremd["historie"].loc[fremd["historie"].index[0], "status_code"] = "XXX"
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fremd, **basis)
+    assert any("unbekannte Zustaende" in b["text"] for b in rot["befunde"])
+
+    # 6. Die Korrekturschicht (Review T25-03). Drei Luecken auf einmal:
+    #    Die ganze Pruefung hing an "if schichtbeleg:", verglichen wurde nur
+    #    die Richtung Beleg -> Tabelle, und von zwoelf Spalten nur rho.
+    assert len(ueb["schichten"]) > 0, "der Fall fuehrt keine Schicht — nichts zu pruefen"
+    # (a) Eine Tabelle, die keine Abnahme bezeugt.
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort,
+                          **dict(basis, schichtbeleg=None))
+    assert any("keinen Schichtbeleg" in b["text"] for b in rot["befunde"])
+    # (b) Die GEGENRICHTUNG: eine Zeile der Tabelle ohne Eintrag im Beleg.
+    #     Sie wurde nie gebildet.
+    zusatz = ueb["schichten"].iloc[[0]].copy()
+    zusatz["police_id"] = 9_999_999
+    mehr = dict(ueb, schichten=pd.concat([ueb["schichten"], zusatz], ignore_index=True))
+    rot = pruefe_fuehrung(uebernahme=mehr, fortschreibung=fort, **basis)
+    assert any("ohne Eintrag im Schichtbeleg" in b["text"] for b in rot["befunde"])
+    # (c) Ein Feld, das nicht rho heisst.
+    verstellt = dict(ueb, schichten=ueb["schichten"].copy())
+    i = verstellt["schichten"].index[0]
+    verstellt["schichten"].loc[i, "verweildauer"] = (
+        int(verstellt["schichten"].loc[i, "verweildauer"]) + 7)
+    rot = pruefe_fuehrung(uebernahme=verstellt, fortschreibung=fort, **basis)
+    assert any(b.get("feld") == "verweildauer" for b in rot["befunde"]), (
+        "eine Abweichung ausserhalb von rho blieb unbemerkt")
 
 
 def _bericht(fall: Path, name: str) -> dict:
@@ -203,9 +580,89 @@ def test_die_uebernahme_erzeugt_den_erwarteten_bestand(gefahrener_fall: Path):
     df = read_portfolio(bestand / "bestand.parquet")
     assert len(df) == len(policen)
     assert sorted(str(p) for p in df["police_id"]) == sorted(policen)
-    assert set(df["tarif_generation"]) == {GENERATION}
-    for tabelle in ("bestand", "historie", "ledger", "verankerung"):
+    assert set(df["tarif_generation"]) == {TARIF_GENERATION}
+    for tabelle in ("bestand", "historie", "ledger", "verankerung", "scheiben"):
         assert (bestand / f"{tabelle}.parquet").is_file()
+
+
+def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
+    gefahrener_fall: Path,
+):
+    """Freischaltung, Schritt 3: Was die Abnahmen rechnen, steht in den
+    Tabellen — nicht nur im Pruefauftrag.
+
+    Die Alt-Erhoehungen jeder Serien-Police sind Scheiben mit dem gamma1
+    ihrer Zelle (volle Beitragsformel, Ziffer 3 der Lieferung); der Stamm
+    traegt die Grundsumme, der Zugang die Gesamtsumme; die beitragsfrei
+    gelieferten Vertraege buchen ihre GELIEFERTE beitragsfreie Summe um,
+    nicht eine zweite Umwandlung davon; der Beleg nennt Modus und Schalter.
+    Vorher: Gesamtsumme als ein Vertrag ab Beginn, keine Scheiben,
+    beitragsfreier Bestand um den Umwandlungsfaktor zu klein.
+    """
+    import csv
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import SCHEIBEN_NAMES, validate_scheiben
+
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    klassen = _policen()["klassen"]
+    stamm = read_portfolio(bestand / "bestand.parquet")
+    ledger = read_portfolio(bestand / "ledger.parquet")
+    scheiben = read_portfolio(bestand / "scheiben.parquet",
+                              expected_columns=SCHEIBEN_NAMES)
+    zeilen = {
+        int(z["police_id"]): z for z in json.loads(
+            (gefahrener_fall / "abgeleitet" / "transformation" / "zeilen.json")
+            .read_text(encoding="utf-8"))
+    }
+    vorgeschichte = {}
+    with (FIXTURE / METADATEN).open(encoding="utf-8") as datei:
+        for z in csv.DictReader(datei, delimiter=";"):
+            vorgeschichte.setdefault(int(z["POLNR"]), []).append(z["GEVO"])
+
+    # Scheiben: jede Serie ohne terminale Beitragsfreistellung ist als
+    # Bausteine im Bestand; PEX-Serien kollabieren (Ein-Punkt-Inversion).
+    mit_scheiben = set(int(p) for p in scheiben["police_id"])
+    erwartet = {
+        pid for pid, arten in vorgeschichte.items()
+        if "ERH" in arten and "PEX" not in arten
+    }
+    assert mit_scheiben == erwartet, (sorted(mit_scheiben), sorted(erwartet))
+    assert validate_scheiben(stamm, scheiben) == []
+    assert (scheiben["gamma1"] > 0.0).all(), "volle Beitragsformel je Baustein"
+    haupt = stamm.set_index("police_id")
+    zug = ledger[ledger["ereignis"] == "ZUG"].set_index("police_id")["betrag"]
+    for pid in sorted(mit_scheiben):
+        eigene = scheiben[scheiben["police_id"] == pid]
+        gesamt = float(haupt.loc[pid, "sum_insured"]) + float(eigene["sum_insured"].sum())
+        assert abs(gesamt - float(zeilen[pid]["sum_insured"])) <= 0.05, pid
+        assert abs(float(zug.loc[pid]) - gesamt) <= 0.005, pid
+        assert float(haupt.loc[pid, "sum_insured"]) < float(zeilen[pid]["sum_insured"])
+        assert list(eigene["scheiben_id"]) == list(range(1, len(eigene) + 1))
+    # Beitragsfrei geliefert: Umbuchung = gelieferte Summe, Stamm = Ursprung.
+    pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")["betrag"]
+    assert set(int(p) for p in pex.index) == {
+        pid for pid, arten in vorgeschichte.items() if "PEX" in arten}
+    for pid, betrag in pex.items():
+        assert abs(float(betrag) - float(zeilen[int(pid)]["sum_insured"])) <= 0.005
+        assert float(haupt.loc[pid, "sum_insured"]) > float(betrag)
+        assert abs(float(zug.loc[pid]) - float(haupt.loc[pid, "sum_insured"])) <= 0.005
+    # Der Beleg der Uebernahme.
+    beleg = json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8"))
+    assert beleg["anfangszustand"] == "materialisieren"
+    assert beleg["tarifwerk"] == {
+        "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+        "red_verfahren": RED_VERFAHREN,
+    }
+    assert beleg["mit_scheiben"] == len(mit_scheiben)
+    assert beleg["scheiben"] == len(scheiben)
+    assert beleg["beitragsfrei"] == len(pex)
+    assert beleg["ohne_anfangszustand"] == [] and beleg["nicht_freigeschaltet"] == []
+    # Und der Config-Abschnitt traegt die Schalter, die die Fuehrung liest.
+    abschnitt = (bestand / "generation-zellen.toml").read_text(encoding="utf-8")
+    for zeile in ("scheiben_mit_gamma1 = true", "stoab_je_baustein = true",
+                  f'red_verfahren = "{RED_VERFAHREN}"'):
+        assert zeile in abschnitt, zeile
 
 
 def test_die_verankerung_traegt_jede_police_mit_kleinem_residuum(
@@ -255,6 +712,21 @@ def test_die_aktuarielle_abnahme_trifft_die_gelieferten_werte(
     assert bericht["mengenbefunde"] == []
 
 
+def test_der_bestand_wird_genau_einmal_gelesen(gefahrener_fall: Path):
+    """Review T25-05, Haelfte (b), Klasse (2): Das Controlling las den
+    Bestand ZWEIMAL — einmal zum Verarbeiten, viel spaeter noch einmal
+    zum Hashen. Dazwischen lag der ganze Lauf; der Beleg bezeugte damit
+    nicht die verarbeiteten Bytes.
+
+    Der Hash-Vergleich im Beleg zeigt das NICHT: In einem ruhigen Test
+    aendert sich die Datei zwischen beiden Lesungen nicht, also stimmen
+    beide Hashes. Bezeugt wird die Behauptung erst durch Zaehlen."""
+    bestand = gefahrener_fall / "abgeleitet" / "bestand" / "bestand.parquet"
+    assert LESEZAEHLER, "der Zaehler hat nichts gesehen"
+    assert LESEZAEHLER.get(str(bestand.resolve())) == 1, sorted(
+        (n, k) for k, n in LESEZAEHLER.items() if n > 1)
+
+
 def test_das_controlling_prueft_jeden_vertrag(gefahrener_fall: Path):
     """Vollbestand des Schnitts, beide Stichtage, ohne Prueflucke."""
     suite = _bericht(gefahrener_fall, "migrationssuite.json")
@@ -296,3 +768,59 @@ def test_der_schnitt_haelt_alle_verlaufsklassen(gefahrener_fall: Path):
     assert set(klassen) == erwartet
     for name, mitglieder in klassen.items():
         assert len(mitglieder) >= 2, f"Klasse {name}: {mitglieder}"
+
+
+def test_ein_roter_verankerungslauf_hinterlaesst_keine_schichttabelle(
+    gefahrener_fall: Path, tmp_path: Path,
+):
+    """Review T25-04, Klasse K3: Der Produzent veroeffentlichte sein
+    Datenartefakt VOR dem eigenen Urteil.
+
+    ``schichten.parquet`` wurde in einem Block weit vor der Befundpruefung
+    geschrieben; die Meldung am Ende sagte dann "keine halbe
+    Schichttabelle" — und die Tabelle lag schon da. Nachgemessen: ein Lauf
+    mit einem Befund hinterliess eine Tabelle mit einer von zwei Policen
+    und meldete exit 1. Wer danach nur auf die Datei sah, fand einen
+    Bestand, den dieser Lauf abgelehnt hat.
+
+    Geprueft wird, dass ein roter Lauf die Tabelle des gruenen Laufs NICHT
+    ersetzt: Sie ist danach byte-identisch.
+    """
+    import shutil
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+    from rechner_pipeline.gates import verankerung_belegen
+    from rechner_pipeline.models.bestand import VERANKERUNG_NAMES
+
+    kopie = tmp_path / "fall"
+    shutil.copytree(gefahrener_fall, kopie)
+    bestand = kopie / "abgeleitet" / "bestand"
+    tabelle = bestand / "schichten.parquet"
+    assert tabelle.is_file(), "der gruene Lauf hat keine Tabelle hinterlassen"
+    vorher = tabelle.read_bytes()
+
+    # Eine Verankerung am Ablauf: dafuer gibt es keinen Schichtparameter,
+    # der Produzent meldet einen Befund.
+    from rechner_pipeline.models.bestand import STAMM_NAMES
+
+    stamm = read_portfolio(bestand / "bestand.parquet", expected_columns=STAMM_NAMES)
+    v = read_portfolio(bestand / "verankerung.parquet", expected_columns=VERANKERUNG_NAMES)
+    police = int(v["police_id"].iloc[0])
+    # GENAU am Vertragsende: dafuer gibt es keinen Schichtparameter (der
+    # Vertrag ist dort abgelaufen), und der Produzent meldet einen Befund.
+    # Dahinter waere es ein harter Fehler, davor eine gueltige Schicht.
+    dauer = int(stamm.set_index("police_id").loc[police, "duration"])
+    v.loc[v.index[0], "monate_ta"] = dauer * 12
+    write_portfolio(v, bestand / "verankerung.parquet")
+
+    code = verankerung_belegen.main([
+        "--fall", str(kopie), "--repo-root", str(REPO_ROOT),
+        "--generation", GENERATION,
+        "--formfunktion", "proportional_zur_basis",
+        "--zeilen", str(kopie / "abgeleitet" / "transformation" / "zeilen.json"),
+        "--vorgeschichte", METADATEN,
+        "--anker-erwartungswerte", ANKER,
+    ] + _lieferungs_flags())
+    assert code == 1, "der Lauf muss rot sein — sonst prueft der Test nichts"
+    assert tabelle.read_bytes() == vorher, (
+        "der rote Lauf hat die Schichttabelle ueberschrieben")

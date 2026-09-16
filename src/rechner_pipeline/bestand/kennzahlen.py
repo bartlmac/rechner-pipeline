@@ -216,7 +216,13 @@ def ereignisse_je_jahr(ledger: pd.DataFrame) -> List[Dict[str, Any]]:
         im_jahr = ledger[jahre == jahr]
         eintrag: Dict[str, Any] = {"jahr": jahr}
         for code in EREIGNIS_REIHENFOLGE:
-            eintrag[code] = int((im_jahr["ereignis"] == code).sum())
+            # Gezaehlt werden VORFAELLE, nicht Zeilen: Ein Zugang mit Summe
+            # und Beitrag ist ein Zugang (Police und Wirkungstag sind sein
+            # Schluessel, die Betragsart unterscheidet nur die Groesse).
+            eintrag[code] = int(
+                im_jahr.loc[im_jahr["ereignis"] == code,
+                            ["police_id", "status_date"]].drop_duplicates().shape[0]
+            )
         reihe.append(eintrag)
     return reihe
 
@@ -320,10 +326,17 @@ def bu_bewegungskonto(
         inv = periode[periode["ereignis"] == "INV"]
         rea = periode[periode["ereignis"] == "REA"]
         terminal = periode[periode["ereignis"].isin(("TOD", "ABL"))]
-        # Der Track eines Abgangs ist der Zustand VOR dem Abgang: der
-        # Ledger-Betrag ist genau dann die (endende) Jahresrente, wenn der
-        # Vertrag im Leistungsbezug stand — Tod/Ablauf als Anwaerter zahlen 0.
-        aus_bezug = terminal["betrag"] > 0.0
+        # Der Track eines Abgangs ist der Zustand VOR dem Abgang — aus der
+        # Historie hergeleitet, nicht aus dem Ledger-Betrag (Review T21-01:
+        # der Betrag ist die zu pruefende Groesse; wer den Track daraus
+        # liest, laesst Pruefung und Konto einander bestaetigen).
+        from rechner_pipeline.bestand.ledger_bindung import zustand_vor
+
+        aus_bezug = pd.Series(
+            [zustand_vor(historie, int(p), d) == "BU"
+             for p, d in zip(terminal["police_id"], terminal["status_date"])],
+            index=terminal.index, dtype=bool,
+        )
         zeile: Dict[str, Any] = {
             "jahr": int(jahr),
             "anwaerter": {
@@ -514,7 +527,13 @@ def bewegungskonto(
             (bestand["bestandszugang"] > von_ts)
             & (bestand["bestandszugang"] <= bis_ts)
         ]
-        erh = periode[periode["ereignis"] == "ERH"]
+        # Die Bewegung einer Summe zaehlt die Summen-Zeilen: Ein Vorfall
+        # bewegt seit dem gebuchten Beitrag mehr als eine Groesse, und die
+        # Bewegungsrechnung fuehrt die Versicherungssumme. Ohne die Art
+        # liefe der Bruttojahresbeitrag in den Zugang und die
+        # Bewegungs-Identitaet fiele.
+        erh = periode[(periode["ereignis"] == "ERH")
+                      & (periode["betrag_art"] == "VS_erhoehung")]
         pex = periode[periode["ereignis"] == "PEX"]
         sto = periode[periode["ereignis"] == "STO"]
         terminal = periode[periode["ereignis"].isin(("TOD", "ABL"))]
@@ -537,7 +556,15 @@ def bewegungskonto(
             "jahr": int(jahr),
             "bpfl": {
                 "anfang": anfang["bpfl"],
-                "zugang_neuzugang": posten(zug, list(zug["sum_insured"])),
+                # Der Zugang tritt mit seinen Bausteinen ein: Ein
+                # uebernommener Vertrag bringt seine Alt-Erhoehungen mit
+                # (Scheiben vor dem Bestandszugang), der eigene Zugang hat
+                # am Beginn noch keine. Sonst stuende dem Abgang ueber
+                # vs_ges ein Zugang ohne Scheiben gegenueber.
+                "zugang_neuzugang": posten(zug, [
+                    vs_ges(p, pd.Timestamp(d))
+                    for p, d in zip(zug["police_id"], zug["bestandszugang"])
+                ]),
                 "zugang_erhoehung": {"stueck": 0, "summe": float(erh["betrag"].sum())},
                 "abgang_storno": posten(sto, vs_liste(sto)),
                 "abgang_tod": posten(tod_bpfl, vs_liste(tod_bpfl)),

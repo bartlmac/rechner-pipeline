@@ -6,11 +6,22 @@ zweiter Migrationslauf. Der Lauf ersetzt den ersten Durchgang
 vollstaendig; er wurde auf einer neuen, umfangreicheren Lieferung der
 abgebenden Gesellschaft durchgefuehrt.
 
+**Vorfuehrfall.** Pfefferminzia und Baldrian sind erfundene Unternehmen,
+der Bestand ist synthetisch erzeugt. Die zeichnenden Rollen wurden in
+diesem Lauf von KI-Sitzungen im Mandat des Maintainers besetzt und haben
+mit einem Simulationsschluessel gezeichnet (Abschnitt 7). Dieser
+Bericht ist ein Erzeugnis der Vorfuehrung, kein Dokument eines realen
+Versicherers.
+
 ## 1 Ergebnis
 
 Der Migrationsfall ist vollstaendig geprueft und abgenommen. Alle
-fuenf Abnahme-Gates wurden vom Verantwortlichen Aktuar auf einem
-einzigen, unveraenderten Systemstand gezeichnet:
+fuenf Abnahme-Gates wurden von der Rolle des Verantwortlichen Aktuars
+auf demselben Systemstand gezeichnet (Stand f7c545d; die Quelltext-
+Pruefsumme jedes Snapshots entspricht diesem Stand). Waehrend des
+Laufs wurden 25 Korrekturen am System vorgenommen und die betroffenen
+Gates jeweils neu gezeichnet; der Umbaubericht des Falls weist sie aus
+(Abschnitt 7).
 
 | Gate | Gegenstand | Ergebnis |
 |---|---|---|
@@ -144,3 +155,77 @@ Einziger fachlich offener Punkt ist die vorstehende
 Falsifizierbarkeits-Auflage; sie ist kein Abnahmehindernis und in der
 Tarifplan-Ausgestaltung des Falls als Pflicht-Testpunkt kuenftiger
 Verlaufspruefungen festgehalten.
+
+## 7 Zeichnende Rollen, Mandate und eingesetzte Systeme
+
+Dieser Abschnitt legt offen, wer in diesem Lauf entschieden hat und
+womit — er gehoert in jeden Bericht einer Vorfuehrung (ADR-018).
+
+**Rollen und Besetzung.** Vorbereitet wurde der Fall von Agentenrollen
+des KI-Tools; entschieden und gezeichnet hat die Rolle des
+Verantwortlichen Aktuars der Pfefferminzia. Diese Rolle war im Lauf
+nicht durch eine natuerliche Person besetzt, sondern durch eine
+KI-Sitzung, die im Mandat des Maintainers handelte und die Abnahmen
+nach Pruefung der Vorlagen zeichnete. Der Fall traegt 25 Entscheid-
+Snapshots: die fuenf geltenden (Neuzeichnung nach Korrektur 25 am
+7. September 2026, Stand f7c545d) und zwanzig Vorgaenger aus den
+Neuzeichnungen nach frueheren Korrekturen. Die fuenf geltenden tragen
+die Rolle in der heutigen Schreibweise (``mensch/plv-aktuar``) mit der
+Schluesselklasse ``simulation`` und binden das Mandat des Maintainers
+und die Zeichnungsordnung als Dateihashes; die Vorgaenger tragen noch die
+Schreibweise des damaligen Vier-Rollen-Modells (``mensch``, Entscheider
+``plv-aktuar``) ohne Schluesselklasse.
+
+**Schluessel.** Gezeichnet wurde mit einem Simulationsschluessel,
+Fingerabdruck ``162817c937c33d0a…``. Er weist die Rolle nach, nicht die
+Identitaet einer Person; das Mandat, in dem die Rolle handelte, liegt
+ausserhalb des Falls und ist im Snapshot gebunden. Die Snapshots sind
+mit HMAC-SHA-256 signiert und bleiben gueltig; sie werden nicht
+nachsigniert. Wer sie prueft, erkennt die Simulation an der
+Schluesselklasse und am Fingerabdruck (geltende Snapshots: Schema-Version
+7; Vorgaenger: Schema-Version 6).
+
+**Systemaenderungen waehrend des Laufs.** Das KI-Tool ist waehrend
+eines Falls eine Konstante; dieser Lauf lag in der ersten Ausbaustufe,
+in der Korrekturen am System erlaubt und vom Maintainer abgenommen
+wurden. 25 Korrekturen (Kern-Verfahren, Pruef-Engines, Gates,
+Bestandsfuehrung, Freischaltung des uebernommenen Bestands) sind im
+Umbaubericht des Falls einzeln begruendet; nach jeder wurden die
+betroffenen Gates auf dem neuen Stand neu gezeichnet, zuletzt alle fuenf
+auf f7c545d. Dieser Stand ist auf dem Hauptzweig des Repositories
+erreichbar (ueber die Zusammenfuehrung c67eb8f); die Belege binden den
+Stand, nicht die Zweigspitze.
+
+**Was dieser Bericht nicht leistet.** Er ist keine Abnahme durch eine
+natuerliche Person und kein Dokument eines realen Versicherers. Die
+Nachrechenbarkeit gilt fuer den lokalen Fall-Arbeitsbereich; wer nur
+das Repository hat, prueft die Rechenkette ueber die versionierten
+Fixturen, nicht die konkreten Snapshots.
+
+## Nachtrag 2026-09-07: Freischaltung des uebernommenen Bestands (Korrektur 24)
+
+Nach der Annahme von A-M4 stellte sich heraus, dass die Bestandsfuehrung
+fuer den uebernommenen Bestand eine andere Welt rechnete als die
+Abnahmen: Die Uebernahme nahm die gelieferte Summe als Versicherungssumme
+(550 von 834 Vertraege ohne ihre Bausteine, 160 beitragsfrei gelieferte
+Summen ein zweites Mal umgewandelt), und die Bestand-Config trug fuer die
+TG2015 den Rechnungszins des Tarifrechners (1,75 %) statt des in A-Q1
+entschiedenen (1,25 %). Der gezeichnete Bestandsbericht nach der
+Migration war damit falsch, kein Gate hatte die Fuehrung gegen die
+Pruefstrecke gestellt. Befund, Zahlen und Vorgehen:
+`dev-docs/freischaltung-uebernommener-bestand.md`; Korrektur-Protokoll
+des Falls, Eintrag 24.
+
+Die Uebernahme materialisiert seither den Anfangszustand der Abnahmen
+(Grundsumme, Alt-Erhoehungen als Bausteine, Ursprungssumme beitragsfreier
+Vertraege, Korrekturschicht), die Fuehrung rechnet nach dem Tarifwerk der
+Generation (Stornoabzug je Baustein, Scheiben mit voller Beitragsformel),
+und die Fuehrungsprobe belegt vor A-M4, dass der gefuehrte Bestand die
+abgenommene Welt traegt (834 Vertraege, 42 Buchungen nach dem Stichtag,
+0 Befunde). Die Abnahmen A-M1 bis A-M3 und das Migrationscontrolling sind
+auf dem neuen Stand unveraendert bestanden (100/100, 100/100, 166/166,
+834/834). Die fuenf Gates wurden mit Korrekturvermerk neu gezeichnet
+(Korrektur 25: die Kettenpruefung der Entscheide unterscheidet seither
+den Stand, auf dem ein Vorgaenger gezeichnet wurde, von dem geltenden
+Belegvertrag; Stand f7c545d). Der Tagesbetrieb der PLV wird aus der neuen
+Uebernahme neu aufgesetzt (Betriebsweg, offen).

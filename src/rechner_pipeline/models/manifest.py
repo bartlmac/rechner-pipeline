@@ -11,6 +11,7 @@ Knoten: system/assurance
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -29,6 +30,41 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+@dataclass(frozen=True)
+class GeleseneDatei:
+    """Eine Eingabe, GENAU EINMAL gelesen: Pfad, Bytes und ihr SHA-256.
+
+    Beleg und Verarbeitung muessen aus denselben Bytes stammen (Review
+    T23-01, dieselbe Klasse wie T18-03 und T20-01): Wer eine Datei einmal
+    zum Hashen und ein zweites Mal zum Parsen liest, protokolliert einen
+    Hash fuer irgendeinen Zustand der Datei zu irgendeinem Zeitpunkt des
+    Laufs — nicht fuer den geprueften. Ein Gate liest deshalb ueber
+    :func:`lies_gehasht`, hasht ``roh`` und parst ``roh``; ein zweiter
+    Zugriff auf die Platte findet nicht statt.
+    """
+
+    pfad: Path
+    roh: bytes
+    sha256: str
+
+    def text(self, encoding: str = "utf-8") -> str:
+        return self.roh.decode(encoding)
+
+    def json(self) -> Any:
+        return json.loads(self.text())
+
+
+def lies_gehasht(pfad: Path) -> GeleseneDatei:
+    """Datei einmal lesen und aus DENSELBEN Bytes den Beleg-Hash bilden.
+
+    Ergibt denselben Hash wie :func:`file_sha256` (beide hashen die rohen
+    Bytes) — bestehende Belege bleiben byteidentisch.
+    """
+    p = Path(pfad)
+    roh = p.read_bytes()
+    return GeleseneDatei(pfad=p, roh=roh, sha256=sha256(roh).hexdigest())
 
 
 @dataclass(frozen=True)

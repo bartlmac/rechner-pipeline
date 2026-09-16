@@ -21,9 +21,19 @@ Usage::
 
 Beide Betriebsarten pruefen VORHER dasselbe vollstaendige Lauf-Bundle
 (Stamm, Historie, Ledger, Scheiben, Config) mit derselben Engine wie
-Gate P-B1 — ``bestand.vorbedingungen.pruefe_pb1_eingaenge``. Ein Abschluss
+Gate P-B1 — ``bestand.vorbedingungen.lies_und_pruefe_pb1``. Ein Abschluss
 auf einer Teilmenge waere ein festgeschriebener Falschstand, den die
 eigene Kontrolle bestaetigt.
+
+Das Bundle muss sein **Laufmanifest** tragen (``laufmanifest.json``,
+geschrieben von ``cli_fortschreibung``): Es belegt den simulierten
+Horizont und die Bytes jeder Ausgabe. Ohne Manifest wird nichts
+festgeschrieben — ``--bis`` waere sonst eine Behauptung des Aufrufers
+ueber den Lauf (externes Review T18-02: ein bis 2020-01-01 simulierter
+Lauf, festgeschrieben mit behauptetem ``--bis 2020-12-01``, Exit 0,
+Bewegungskonto um 1,37 Mio EUR ueberzeichnet). Pflicht und fail-fast,
+nicht "optional mit Vorbehalt": Ein festgeschriebener Stand traegt
+keinen Vorbehalt.
 
 Knoten: klv, bu
 """
@@ -42,9 +52,8 @@ from rechner_pipeline.bestand.abschluss import (
     pruefe_abschluss,
     schreibe_abschluss,
 )
-from rechner_pipeline.bestand.config import load_config
-from rechner_pipeline.bestand.parquet_io import read_portfolio
-from rechner_pipeline.bestand.vorbedingungen import pruefe_pb1_eingaenge
+from rechner_pipeline.bestand.manifest import ManifestError, lauf_eingaben, lies_manifest
+from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.kern import MissingMortalityTableError
 
 
@@ -113,13 +122,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Scheiben 25 Bewegungsfehler (Deckungskapital 3.795.035,38 zu niedrig),
     # leere Historie 1.076 Fuehrungsfehler (Deckungskapital 55,7 statt
     # 35,5 Mio) — beides bisher mit Exit 0 in einem unumkehrbaren Stand.
-    eingaben = {
-        "portfolio": lauf / "bestand_gesamt.parquet",
-        "historie": lauf / "historie.parquet",
-        "ledger": lauf / "ledger.parquet",
-        "scheiben": lauf / "scheiben.parquet",
-        "config": Path(ns.config),
-    }
+    # Die Rollen kommen aus der Tabelle des Erzeugers (ROLLEN_DATEIEN):
+    # Pflichtrollen immer, Nebentabellen (Merkmale nur bei Tarifzellen,
+    # Korrekturschicht und Verankerung nur bei uebernommenen Vertraegen),
+    # wenn sie im Lauf liegen; fehlt eine noetige Nebentabelle, meldet die
+    # Kern-Herleitung das selbst (Betriebsbefund N-01).
+    eingaben = lauf_eingaben(lauf, Path(ns.config))
     fehlend = [str(pfad) for pfad in eingaben.values() if not pfad.is_file()]
     if fehlend:
         print(
@@ -130,7 +138,20 @@ def main(argv: Optional[List[str]] = None) -> int:
             file=sys.stderr,
         )
         return 2
-    _, fehler, usage = pruefe_pb1_eingaenge(eingaben, bis=bis)
+    # Der Lieferschein des Erzeugers: ohne ihn ist --bis unbelegt und das
+    # Bundle nicht nachweislich EIN Lauf (T18-02). Fail-fast, kein
+    # Vorbehalt.
+    try:
+        manifest = lies_manifest(lauf)
+    except ManifestError as exc:
+        print(f"bestand_abschluss: {exc}", file=sys.stderr)
+        return 2
+    # Pruefen UND uebernehmen: Was hier geprueft wurde, wird unten
+    # verarbeitet — kein zweites Lesen zwischen Urteil und Rechnung
+    # (T18-03; im Nachweis wurde genau dazwischen getauscht). Die Engine
+    # haelt dabei jede gelesene Datei gegen das Manifest.
+    geprueft_tabellen, _, fehler, usage = lies_und_pruefe_pb1(
+        eingaben, bis=bis, manifest=manifest)
     if fehler or usage:
         for eintrag in (usage + fehler)[:5]:
             print(f"bestand_abschluss: {eintrag['message']}", file=sys.stderr)
@@ -145,14 +166,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return 2
 
-    try:
-        config = load_config(Path(ns.config))
-        stamm = read_portfolio(eingaben["portfolio"])
-        historie = read_portfolio(eingaben["historie"])
-        scheiben = read_portfolio(eingaben["scheiben"])
-    except (OSError, ValueError, MissingMortalityTableError) as exc:
-        print(f"bestand_abschluss: {exc}", file=sys.stderr)
-        return 2
+    # Tabellen UND Config kommen aus der Pruefung, nicht von der Platte.
+    config = geprueft_tabellen["config"]
+    stamm = geprueft_tabellen["portfolio"]
+    historie = geprueft_tabellen["historie"]
+    scheiben = geprueft_tabellen["scheiben"]
+    merkmale = geprueft_tabellen.get("merkmale")
+    schichten = geprueft_tabellen.get("schichten")
+    verankerung = geprueft_tabellen.get("verankerung")
+    reduktionen = geprueft_tabellen.get("reduktionen")
 
     if ns.pruefen:
         pfad = abschluss_pfad(out_dir, stichtag)
@@ -161,9 +183,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
         try:
             befunde = pruefe_abschluss(
-                pfad, stamm, historie, config, scheiben=scheiben
+                pfad, stamm, historie, config, scheiben=scheiben, merkmale=merkmale,
+                schichten=schichten, verankerung=verankerung,
+                reduktionen=reduktionen,
             )
-        except (AbschlussError, ValueError) as exc:
+        except (AbschlussError, ValueError, MissingMortalityTableError) as exc:
             print(f"bestand_abschluss: {exc}", file=sys.stderr)
             return 2
         if befunde:
@@ -184,9 +208,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         pfad = schreibe_abschluss(
-            stamm, historie, config, stichtag, out_dir, scheiben=scheiben
+            stamm, historie, config, stichtag, out_dir, scheiben=scheiben,
+            merkmale=merkmale, schichten=schichten, verankerung=verankerung,
+            reduktionen=reduktionen,
         )
-    except (AbschlussError, ValueError) as exc:
+    except (AbschlussError, ValueError, MissingMortalityTableError) as exc:
         print(f"bestand_abschluss: {exc}", file=sys.stderr)
         return 2
     print(

@@ -16,6 +16,9 @@ Layout (see ``configs/bestand_klv.toml``)::
     [plausibilitaet]            value bands for the sanity gate
     [annahmen]                  Erfahrungsannahmen (3. Ordnung) je Ereignisart
                                 als affine Transformation der ersten Ordnung
+    [tagesbetrieb]              Tagesbetrieb der Vorzeige (Fachkonzept
+                                docs/simulation/tagesbetrieb.md): Betriebsbeginn,
+                                Wochentagsgewichte des Neugeschaefts, Meldeverzug
 
 Knoten: klv, bu
 """
@@ -25,10 +28,13 @@ from __future__ import annotations
 import datetime as _dt
 import re
 import tomllib
+import dataclasses as _dc
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.models.bestand import (
     BU_GENERATION_FIELDS,
     GENERATION_FIELD_DEFAULTS,
@@ -86,6 +92,24 @@ class VerteilungsSpec:
                 f"verteilung {self.merkmal}: typ {self.typ!r} nicht unterstuetzt "
                 f"(unterstuetzt: {list(SUPPORTED_TYPES)}; gamma/beta erst bei realem Bedarf)"
             )
+            return errors
+        # Endlichkeit VOR den Bandpruefungen (Review T20-05): TOML laesst
+        # ``sdlog = nan`` zu, und ``nan <= 0`` ist falsch — der Produzent
+        # erzeugte 600 Vertraege mit sum_insured = NaN, Exit 0, Manifest
+        # geschrieben. Jeder Zahlparameter und jedes Gewicht muss endlich
+        # sein, bevor irgendein Vergleich etwas aussagt.
+        for name, wert in p.items():
+            werte = wert if isinstance(wert, (list, tuple)) else [wert]
+            for einzel in werte:
+                if isinstance(einzel, bool) or not isinstance(einzel, (int, float)):
+                    continue
+                if not math.isfinite(float(einzel)):
+                    errors.append(
+                        f"verteilung {self.merkmal}: {name} ist nicht endlich "
+                        f"({einzel!r}) — TOML laesst nan/inf zu, ein "
+                        "Verteilungsparameter nicht"
+                    )
+        if errors:
             return errors
         if self.typ in ("normal", "normal_trunc"):
             for k in ("mean", "sd"):
@@ -213,6 +237,36 @@ class TarifGeneration:
     #: Referenzstichtag); 0 = kein Neuzugang. Wirkt nur innerhalb des
     #: Gueltigkeitsfensters der Generation.
     neuzugang_pro_jahr: int = 0
+    #: Jahresfaktor des Neuzugangs (Fachkonzept Tagesbetrieb, Abschnitt 4):
+    #: Das Ziel des Kalenderjahres J ist
+    #: ``neuzugang_pro_jahr * (1 + neuzugang_trend) ** (J - gueltig_von.year)``.
+    #: Negativ laesst das Unternehmen schrumpfen, ohne dass jemand jedes
+    #: Jahr eine Zahl pflegt; 0 (Default) ist der bisherige konstante Satz.
+    neuzugang_trend: float = 0.0
+    #: Tarifwerks-Eigenschaften der FUEHRUNG (Ausgestaltung des Tarifplans,
+    #: Grundsatzdokumentation 10 Nr. 9; dev-docs/freischaltung-
+    #: uebernommener-bestand.md, Schritt 2). Die Vorgaben sind der
+    #: Tarifplan KLV des eigenen Geschaefts: Erhoehungsscheiben ohne
+    #: gamma1 (Bezugsgroesse GrundVS), Stornoabzug je Vertrag,
+    #: Herabsetzung prospektiv. Eine UEBERNOMMENE Generation traegt hier,
+    #: was ihre Abnahmen mit den gleichnamigen Lauf-Schaltern der
+    #: Pruefstrecke bestanden haben (--scheiben-mit-gamma1,
+    #: --stoab-je-baustein, --red-verfahren) — im Betrieb gibt es keinen
+    #: Lauf, der einen Schalter setzen koennte; die Fuehrung liest ihn hier.
+    scheiben_mit_gamma1: bool = False
+    stoab_je_baustein: bool = False
+    red_verfahren: str = PROSPEKTIV
+    #: Nummernkreis der Generation (Review T22-09): Die Police-Nummern
+    #: aller drei Erzeuger (Batch, Jahresneuzugang, Tagesneugeschaeft) und
+    #: ihre Seeds hingen an der POSITION der Generation in der Config —
+    #: eine vorn eingefuegte oder umsortierte Generation aenderte die
+    #: Identitaet jeder Police und damit jede Ereignishistorie. Der
+    #: Nummernkreis ist eine Eigenschaft der Generation, keine ihrer
+    #: Stellung: ``nummernkreis = k`` belegt die Nummern k * 10 Mio + 1 ..
+    #: (k + 1) * 10 Mio - 1. None = nicht gesetzt; dann gilt fuer ALLE
+    #: Generationen die Position (Erstfassung), und die Config sollte ihn
+    #: nachtragen. Setzt eine Generation ihn, muessen es alle.
+    nummernkreis: Optional[int] = None
     # Kernel-Tarifparameter (GENERATION_FIELDS des ModelPoint-Contracts):
     zins: float = 0.0
     tafel: str = ""
@@ -249,6 +303,34 @@ class TarifGeneration:
     def generation_fields(self) -> Dict[str, Any]:
         """The kernel-side tariff parameters (joined into ModelPoint kwargs)."""
         return {name: getattr(self, name) for name in GENERATION_FIELDS}
+
+    def tarifwerk(self) -> Dict[str, Any]:
+        """Die Tarifwerks-Eigenschaften der Fuehrung — ein Satz, ein Name.
+
+        Jeder Konsument (Uebernahme, Ereignis-Engine, Bewertung,
+        Ledger-Herleitung, Fuehrungsprobe) liest die drei Schalter ueber
+        diese eine Methode, damit keiner einen davon still vergisst.
+        """
+        return {
+            "scheiben_mit_gamma1": bool(self.scheiben_mit_gamma1),
+            "stoab_je_baustein": bool(self.stoab_je_baustein),
+            "red_verfahren": str(self.red_verfahren),
+        }
+
+    def jahresziel(self, jahr: int) -> float:
+        """Das Neugeschaefts-Ziel des Kalenderjahres ``jahr`` (Konzept, Abschnitt 4).
+
+        ``neuzugang_pro_jahr * (1 + neuzugang_trend) ** (jahr - gueltig_von.year)``
+        — ein Jahr ausserhalb des Verkaufsfensters hat kein Ziel. Beide
+        Erzeuger des Neuzugangs lesen das Ziel hier: der jaehrliche
+        (``generator.neuzugaenge``, auf ganze Vertraege gerundet) und der
+        tagesgranulare (``betrieb.neugeschaeft``, auf die Werktage verteilt).
+        """
+        if not self.gueltig_von.year <= jahr <= self.gueltig_bis.year:
+            return 0.0
+        return float(self.neuzugang_pro_jahr) * (1.0 + self.neuzugang_trend) ** (
+            jahr - self.gueltig_von.year
+        )
 
     def dimensionen(self) -> Tuple[str, ...]:
         """Die Merkmalsdimensionen, ueber die diese Generation aufgeteilt ist."""
@@ -293,6 +375,25 @@ class TarifGeneration:
         if not self.name:
             errors.append("generation: name fehlt")
         prefix = f"generation {self.name or '?'}"
+        # Endlichkeit dort, wo Zahlen eintreten (externes Review T18-04):
+        # TOML erlaubt ``gamma2 = nan`` und ``zins = inf``; beides passierte
+        # die Config-Pruefung, und der Abschluss publizierte hunderte
+        # nichtendlicher Zahlfelder, bevor die Kontrolle rot wurde. Eine
+        # Rechnungsgrundlage ist eine Zahl — jede, auch in den Zellen.
+        for feld in _dc.fields(self):
+            wert = getattr(self, feld.name)
+            if isinstance(wert, float) and not math.isfinite(wert):
+                errors.append(
+                    f"{prefix}: {feld.name} ist nicht endlich ({wert!r}) — "
+                    "TOML laesst nan/inf zu, eine Rechnungsgrundlage nicht"
+                )
+        for zelle in self.zellen:
+            for name, wert in zelle.felder.items():
+                if isinstance(wert, float) and not math.isfinite(wert):
+                    errors.append(
+                        f"{prefix}: zelle {dict(zelle.schluessel)}: {name} "
+                        f"ist nicht endlich ({wert!r})"
+                    )
         if self.gueltig_von >= self.gueltig_bis:
             errors.append(f"{prefix}: gueltig_von >= gueltig_bis")
         if self.gueltig_bis.year > 2200:
@@ -334,6 +435,31 @@ class TarifGeneration:
             )
         if not 0 <= self.neuzugang_pro_jahr <= 10_000:
             errors.append(f"{prefix}: neuzugang_pro_jahr ausserhalb [0, 10000]")
+        # Tarifwerks-Schalter: TOML kennt true/false; "1" oder "ja" waere
+        # ein Tippfehler, der als wahr durchginge. Das Verfahren muss eines
+        # sein, das der Kern rechnet.
+        for schalter in ("scheiben_mit_gamma1", "stoab_je_baustein"):
+            if not isinstance(getattr(self, schalter), bool):
+                errors.append(
+                    f"{prefix}: {schalter} muss true oder false sein "
+                    f"(ist {getattr(self, schalter)!r})"
+                )
+        if self.red_verfahren not in VERFAHREN:
+            errors.append(
+                f"{prefix}: red_verfahren {self.red_verfahren!r} unbekannt "
+                f"(bekannt: {list(VERFAHREN)})"
+            )
+        # Der Trend ist ein Faktor je Jahr: -1 waere ab dem zweiten Jahr
+        # kein Verkauf mehr (und darunter ein negatives Ziel), ueber +1
+        # eine Verdopplung je Jahr — beides ist kein Vertrieb, sondern ein
+        # Tippfehler. Nichtendlich wird oben schon gemeldet.
+        if math.isfinite(self.neuzugang_trend) and not (
+            -1.0 < self.neuzugang_trend <= 1.0
+        ):
+            errors.append(
+                f"{prefix}: neuzugang_trend {self.neuzugang_trend} ausserhalb "
+                "(-1, 1] (Jahresfaktor des Neuzugangs)"
+            )
         if not 0 < self.max_endalter <= 121:
             errors.append(f"{prefix}: max_endalter ausserhalb (0, 121]")
         if self.produkt not in PRODUKT_VALUES:
@@ -581,6 +707,12 @@ class Annahme:
 
     def validate(self, name: str) -> List[str]:
         errors: List[str] = []
+        # NaN vergleicht immer falsch und passierte jede Bandpruefung.
+        for feld in ("a", "b"):
+            if not math.isfinite(getattr(self, feld)):
+                errors.append(f"annahmen {name}: {feld} ist nicht endlich")
+        if errors:
+            return errors
         if self.a < 0.0:
             errors.append(f"annahmen {name}: a < 0")
         if self.b < 0.0:
@@ -593,11 +725,19 @@ class Annahme:
 #: Die Ereignisarten der Fortschreibung — Name und fachliche Einordnung
 #: (der Text nennt, ob es zu der Art ueberhaupt eine Rechnungsgrundlage
 #: erster Ordnung gibt). Die Reihenfolge ist die Ausgabereihenfolge.
+#: Die SKALAREN Eintraege des Abschnitts ``[annahmen]`` — Hoehen, keine
+#: Wahrscheinlichkeiten, also keine Annahme-Tabellen ``{ a, b }``. Sie
+#: stehen hier, weil der Parser sie von den Ereignisarten unterscheiden
+#: muss: Was weder Ereignisart noch bekannter Skalar ist, ist ein
+#: Schreibfehler und faellt.
+SKALARE_ANNAHMEN: Tuple[str, ...] = ("erh_prozent", "red_anteil")
+
 ANNAHME_FELDER: Tuple[Tuple[str, str], ...] = (
     ("tod", "Sterblichkeit des Versicherten (KLV: Todesfallleistung)"),
     ("storno", "Storno (keine Rechnungsgrundlage)"),
     ("beitragsfreistellung", "Beitragsfreistellung (keine Rechnungsgrundlage)"),
     ("erhoehung", "dynamische Erhoehung (keine Rechnungsgrundlage)"),
+    ("herabsetzung", "Herabsetzung des Beitrags (keine Rechnungsgrundlage)"),
     ("invalidisierung", "Invalidisierung (BU)"),
     ("reaktivierung", "Reaktivierung (BU)"),
     ("aktivensterblichkeit", "Sterblichkeit im Anwaerterstand (BU)"),
@@ -633,22 +773,169 @@ class Annahmen:
     storno: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     beitragsfreistellung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     erhoehung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    herabsetzung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     invalidisierung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     reaktivierung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     aktivensterblichkeit: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     invalidensterblichkeit: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     erh_prozent: float = 0.0
+    #: Der FORTGEFUEHRTE Beitragsanteil einer Herabsetzung (0.6 = auf 60
+    #: Prozent gesenkt) — wie ``erh_prozent`` eine Hoehe, keine
+    #: Wahrscheinlichkeit. 0.0 heisst "nicht konfiguriert"; eine
+    #: Herabsetzung auf 0 waere eine Beitragsfreistellung und wird als
+    #: solche gefuehrt.
+    red_anteil: float = 0.0
 
     def validate(self) -> List[str]:
         errors: List[str] = []
         for name, _ in ANNAHME_FELDER:
             errors.extend(getattr(self, name).validate(name))
-        if self.erh_prozent < 0.0:
+        if not math.isfinite(self.erh_prozent):
+            errors.append("annahmen: erh_prozent ist nicht endlich")
+        elif self.erh_prozent < 0.0:
             errors.append("annahmen: erh_prozent < 0")
+        if not math.isfinite(self.red_anteil):
+            errors.append("annahmen: red_anteil ist nicht endlich")
+        elif not 0.0 <= self.red_anteil < 1.0:
+            errors.append(
+                "annahmen: red_anteil ausserhalb [0, 1) — 0 heisst nicht "
+                "konfiguriert, 1.0 waere keine Herabsetzung"
+            )
+        if self.herabsetzung.a > 0.0 and self.red_anteil == 0.0:
+            errors.append(
+                "annahmen: herabsetzung mit Rate > 0 verlangt red_anteil > 0 "
+                "— ohne Hoehe ist die Rate keine Herabsetzung, sondern eine "
+                "Beitragsfreistellung"
+            )
         if self.erhoehung.a > 0.0 and self.erh_prozent == 0.0:
             errors.append(
                 "annahmen: erhoehung mit Rate > 0 verlangt erh_prozent > 0"
             )
+        return errors
+
+
+#: Wochentage der Neugeschaefts-Gewichtung, in der Reihenfolge von
+#: ``datetime.date.weekday()`` (Montag = 0).
+WOCHENTAGE: Tuple[str, ...] = ("mo", "di", "mi", "do", "fr", "sa", "so")
+
+#: Vorgabe des Fachkonzepts (docs/simulation/tagesbetrieb.md, Abschnitt 4):
+#: kein Verkauf am Wochenende, etwas mehr am Montag, sonst gleichmaessig.
+WOCHENTAGSGEWICHTE_VORGABE: Dict[str, float] = {
+    "mo": 1.3, "di": 1.0, "mi": 1.0, "do": 1.0, "fr": 1.0, "sa": 0.0, "so": 0.0,
+}
+
+#: Verteilungen, die der Meldeverzug ziehen kann. Nur die lognormale ist
+#: gebaut (Median und 95-Prozent-Quantil bestimmen sie vollstaendig);
+#: eine weitere waere eine Erweiterung des Tagesjournals, keine Config.
+MELDEVERZUG_VERTEILUNGEN: Tuple[str, ...] = ("lognormal",)
+
+
+@dataclass(frozen=True)
+class Meldeverzug:
+    """Wie lange das Unternehmen von einem Vorfall NICHT weiss.
+
+    Fachkonzept Tagesbetrieb, Abschnitt 3: Ein Tod wirkt am Wirkungstag,
+    gebucht wird er erst, wenn er gemeldet ist. Der Verzug wird je Police
+    und Jahr deterministisch aus dieser Verteilung gezogen — Median und
+    95-Prozent-Quantil in Tagen legen die lognormale Verteilung fest.
+
+    VORLAEUFIG (Abschnitt 10 des Konzepts, offene Fachentscheidung):
+    Median 14 Tage, 95 Prozent unter 60 Tagen sind der Vorschlag des
+    Konzepts, nicht die Entscheidung des Aktuariats der Vorzeige.
+    """
+
+    verteilung: str = "lognormal"
+    median_tage: float = 14.0
+    p95_tage: float = 60.0
+
+    def validate(self, name: str) -> List[str]:
+        errors: List[str] = []
+        if self.verteilung not in MELDEVERZUG_VERTEILUNGEN:
+            errors.append(
+                f"{name}: verteilung {self.verteilung!r} nicht unterstuetzt "
+                f"(unterstuetzt: {list(MELDEVERZUG_VERTEILUNGEN)})"
+            )
+        for feld in ("median_tage", "p95_tage"):
+            if not math.isfinite(getattr(self, feld)):
+                errors.append(f"{name}: {feld} ist nicht endlich")
+        if errors:
+            return errors
+        if self.median_tage <= 0.0:
+            errors.append(f"{name}: median_tage <= 0")
+        if self.p95_tage <= self.median_tage:
+            errors.append(
+                f"{name}: p95_tage ({self.p95_tage}) muss ueber median_tage "
+                f"({self.median_tage}) liegen — sonst ist die Verteilung "
+                "keine"
+            )
+        return errors
+
+
+@dataclass
+class Tagesbetrieb:
+    """Der Tagesbetrieb der Vorzeige (Fachkonzept docs/simulation/tagesbetrieb.md).
+
+    * ``betriebsbeginn``: der erste Kalendertag, an dem taeglich verkauft
+      wird. Der Basisbestand entsteht bis einschliesslich dieses Tages aus
+      dem Batch-Erzeuger (Beginn <= betriebsbeginn), danach bringt jeder
+      Werktag sein Neugeschaeft — ein Erzeuger je Zeitfenster, wie beim
+      Referenzstichtag der Fortschreibung. Ohne Angabe gibt es keinen
+      Tagesbetrieb; der Tageslauf bricht dann hart ab.
+    * ``wochentagsgewichte``: relatives Gewicht je Wochentag fuer die
+      Verteilung des Jahresziels auf die Kalendertage (Abschnitt 4).
+    * ``meldeverzug_tod``: Verteilung des Meldeverzugs bei Tod (Abschnitt 3).
+    * ``teilbestand_getrennt``: weist der Monatsbericht jeden uebernommenen
+      Teilbestand zusaetzlich getrennt aus (Abschnitt 6, Config-Schalter;
+      ob dauerhaft, ist eine offene Fachentscheidung). Default aus: Ein
+      Bericht, den niemand bestellt hat, ist kein stiller Default.
+
+    Die Werte gehoeren in die Config, nicht in den Code; ohne Abschnitt
+    ``[tagesbetrieb]`` gelten die Vorgaben des Konzepts fuer Gewichte und
+    Meldeverzug, und ``betriebsbeginn`` bleibt leer.
+    """
+
+    betriebsbeginn: Optional[_dt.date] = None
+    wochentagsgewichte: Dict[str, float] = field(
+        default_factory=lambda: dict(WOCHENTAGSGEWICHTE_VORGABE)
+    )
+    meldeverzug_tod: Meldeverzug = field(default_factory=Meldeverzug)
+    teilbestand_getrennt: bool = False
+
+    def gewicht(self, tag: _dt.date) -> float:
+        """Das Gewicht eines Kalendertags (nur vom Wochentag abhaengig)."""
+        return float(self.wochentagsgewichte[WOCHENTAGE[tag.weekday()]])
+
+    def validate(self) -> List[str]:
+        errors: List[str] = []
+        prefix = "tagesbetrieb"
+        if self.betriebsbeginn is not None and not isinstance(
+            self.betriebsbeginn, _dt.date
+        ):
+            errors.append(f"{prefix}: betriebsbeginn ist kein Datum")
+        if not isinstance(self.teilbestand_getrennt, bool):
+            errors.append(f"{prefix}: teilbestand_getrennt muss true oder false sein")
+        fehlend = sorted(set(WOCHENTAGE) - set(self.wochentagsgewichte))
+        fremd = sorted(set(self.wochentagsgewichte) - set(WOCHENTAGE))
+        if fehlend or fremd:
+            errors.append(
+                f"{prefix}: wochentagsgewichte brauchen genau die Schluessel "
+                f"{list(WOCHENTAGE)} (fehlend {fehlend}, unbekannt {fremd})"
+            )
+            return errors + self.meldeverzug_tod.validate(f"{prefix} meldeverzug_tod")
+        for tag in WOCHENTAGE:
+            wert = self.wochentagsgewichte[tag]
+            if isinstance(wert, bool) or not isinstance(wert, (int, float)):
+                errors.append(f"{prefix}: wochentagsgewicht {tag} ist keine Zahl")
+            elif not math.isfinite(float(wert)):
+                errors.append(f"{prefix}: wochentagsgewicht {tag} ist nicht endlich")
+            elif float(wert) < 0.0:
+                errors.append(f"{prefix}: wochentagsgewicht {tag} < 0")
+        if not errors and sum(float(v) for v in self.wochentagsgewichte.values()) <= 0.0:
+            errors.append(
+                f"{prefix}: wochentagsgewichte summieren auf 0 — an keinem "
+                "Tag wuerde verkauft, das Jahresziel waere unerreichbar"
+            )
+        errors.extend(self.meldeverzug_tod.validate(f"{prefix} meldeverzug_tod"))
         return errors
 
 
@@ -659,10 +946,68 @@ class BestandConfig:
     generationen: List[TarifGeneration]
     plausibilitaet: Dict[str, Tuple[float, float]] = field(default_factory=dict)
     annahmen: Annahmen = field(default_factory=Annahmen)
+    #: Tagesbetrieb der Vorzeige (Fachkonzept docs/simulation/tagesbetrieb.md).
+    tagesbetrieb: Tagesbetrieb = field(default_factory=Tagesbetrieb)
     #: Referenzstichtag des Bestands (Historie/Prognose-Grenze im
     #: Bericht): eine Eigenschaft des Bestands, in der Config gefuehrt —
     #: nicht des einzelnen Berichts-Aufrufs.
     referenzstichtag: Optional[_dt.date] = None
+
+    def _pruefe_nummernkreise(self) -> List[str]:
+        """Nummernkreise pruefen — Pflicht, sobald ein Tagesbetrieb laeuft.
+
+        Der Kreis reserviert einer Generation das Band
+        ``k * 10 Mio + 1 .. (k+1) * 10 Mio - 1``; weil ``k`` mindestens 1
+        ist, kann kein Erzeuger unter oder auf 10 000 000 vergeben. Genau
+        das ist der Bereich, in dem uebernommene Bestaende liegen duerfen,
+        ohne mit dem Eigengeschaeft zu kollidieren (Review T24-08). Diese
+        Zusicherung gilt aber NUR bei gesetzten Kreisen: Ohne sie fallen die
+        Nummern auf die Position der Generation zurueck, und dann liegt kein
+        Band fest.
+
+        Deshalb sind Kreise Pflicht, sobald die Config einen Tagesbetrieb
+        fuehrt — dort tritt fremder Bestand als Zugang ein, dort braucht der
+        geschuetzte Bereich seinen Halt (Entscheid des Maintainers,
+        2026-09-08). Eine Config OHNE Tagesbetrieb (die Fall-Welt) darf ohne
+        Kreise bleiben: Ihre Nummern folgen der Erstfassung, und ihre
+        Bytes haengen an gezeichneten Abnahmen — eine Lesepflicht haette
+        bestehende Faelle unreproduzierbar gemacht.
+        """
+        gesetzt = [g for g in self.generationen if g.nummernkreis is not None]
+        fehler: List[str] = []
+        if not gesetzt:
+            if self.tagesbetrieb.betriebsbeginn is not None and self.generationen:
+                fehler.append(
+                    "nummernkreis: fehlt fuer alle Generationen, die Config "
+                    "fuehrt aber einen Tagesbetrieb — ohne Kreise liegt kein "
+                    "Nummernband fest, und ein uebernommener Bestand koennte "
+                    "mit dem Eigengeschaeft kollidieren (Review T24-08)"
+                )
+            return fehler
+        if len(gesetzt) != len(self.generationen):
+            ohne = sorted(g.name for g in self.generationen if g.nummernkreis is None)
+            fehler.append(
+                f"nummernkreis: gesetzt fuer {len(gesetzt)} von {len(self.generationen)} "
+                f"Generationen — entweder alle oder keine (ohne: {ohne})"
+            )
+        for g in gesetzt:
+            if not 1 <= int(g.nummernkreis) <= 99:
+                fehler.append(f"generation {g.name}: nummernkreis {g.nummernkreis} nicht in 1..99")
+        kreise = [g.nummernkreis for g in gesetzt]
+        if len(kreise) != len(set(kreise)):
+            fehler.append("nummernkreis: nicht eindeutig — zwei Generationen teilten sich Police-Nummern")
+        return fehler
+
+    def nummernkreis(self, gen: TarifGeneration) -> int:
+        """Der Nummernkreis einer Generation: explizit aus der Config, sonst
+        ihre Position (1-basiert) — die Erstfassung, die die bestehenden
+        Bestaende nummeriert hat."""
+        if gen.nummernkreis is not None:
+            return int(gen.nummernkreis)
+        for i, g in enumerate(self.generationen):
+            if g is gen or g.name == gen.name:
+                return i + 1
+        raise ValueError(f"generation {gen.name!r} nicht in dieser Config")
 
     def validate(self) -> List[str]:
         errors: List[str] = []
@@ -673,12 +1018,49 @@ class BestandConfig:
         names = [g.name for g in self.generationen]
         if len(names) != len(set(names)):
             errors.append("generation-Namen nicht eindeutig")
+        errors.extend(self._pruefe_nummernkreise())
         for gen in self.generationen:
             errors.extend(gen.validate())
+        errors.extend(self._validate_verkaufsfenster())
         for merkmal, band in self.plausibilitaet.items():
-            if len(band) != 2 or float(band[0]) >= float(band[1]):
+            if len(band) != 2 or not all(math.isfinite(float(g)) for g in band):
+                errors.append(f"plausibilitaet {merkmal}: Band muss (min, max) aus endlichen Zahlen sein")
+            elif float(band[0]) >= float(band[1]):
                 errors.append(f"plausibilitaet {merkmal}: Band muss (min, max) mit min < max sein")
         errors.extend(self.annahmen.validate())
+        errors.extend(self.tagesbetrieb.validate())
+        return errors
+
+    def _validate_verkaufsfenster(self) -> List[str]:
+        """Ein Tag verkauft je Produkt genau EINE Generation.
+
+        Fachkonzept Tagesbetrieb, Abschnitt 4: Ein Tag verkauft die
+        Generation, deren Gueltigkeitsfenster ihn enthaelt — das ist nur
+        eindeutig, wenn die Fenster verkaufender Generationen desselben
+        Produkts nicht ueberlappen. Generationen, die nichts verkaufen
+        (uebernommene: ``sample_size = 0`` ohne Neuzugang), duerfen ihr
+        Fenster dagegen frei tragen — es beschreibt die Verkaufszeit beim
+        abgebenden Unternehmen. KLV und BU ueberlappen selbstverstaendlich.
+        """
+        errors: List[str] = []
+        verkaufend = [
+            g for g in self.generationen
+            if g.sample_size > 0 or g.neuzugang_pro_jahr > 0
+        ]
+        je_produkt: Dict[str, List[TarifGeneration]] = {}
+        for gen in verkaufend:
+            je_produkt.setdefault(gen.produkt, []).append(gen)
+        for produkt, gens in sorted(je_produkt.items()):
+            geordnet = sorted(gens, key=lambda g: (g.gueltig_von, g.name))
+            for vorher, danach in zip(geordnet, geordnet[1:]):
+                if danach.gueltig_von <= vorher.gueltig_bis:
+                    errors.append(
+                        f"generation {vorher.name} und {danach.name} "
+                        f"(produkt {produkt}): Verkaufsfenster ueberlappen "
+                        f"({vorher.gueltig_von.isoformat()}..{vorher.gueltig_bis.isoformat()} "
+                        f"und {danach.gueltig_von.isoformat()}..{danach.gueltig_bis.isoformat()}) "
+                        "— ein Tag verkauft je Produkt genau eine Generation"
+                    )
         return errors
 
 
@@ -696,9 +1078,82 @@ def _to_date(value: Any, label: str, errors: List[str]) -> _dt.date:
     return _dt.date(1900, 1, 1)
 
 
+def _lies_tagesbetrieb(roh: Any, errors: List[str]) -> Tagesbetrieb:
+    """``[tagesbetrieb]`` lesen — fehlender Abschnitt = Vorgaben des Konzepts.
+
+    Unbekannte Schluessel sind ein Ladefehler und kein stilles Ignorieren:
+    ein vertippter ``wochentagsgewicht`` liefe sonst mit der Vorgabe
+    durch, und niemand saehe, dass die Config nichts bewirkt.
+    """
+    if roh is None:
+        return Tagesbetrieb()
+    if not isinstance(roh, Mapping):
+        errors.append("[tagesbetrieb] muss eine Tabelle sein")
+        return Tagesbetrieb()
+    bekannt = {"betriebsbeginn", "wochentagsgewichte", "meldeverzug_tod",
+               "teilbestand_getrennt"}
+    fremd = sorted(set(roh) - bekannt)
+    if fremd:
+        errors.append(
+            f"tagesbetrieb: unbekannte Schluessel {fremd} "
+            f"(bekannt: {sorted(bekannt)})"
+        )
+    kwargs: Dict[str, Any] = {}
+    if "betriebsbeginn" in roh:
+        kwargs["betriebsbeginn"] = _to_date(
+            roh["betriebsbeginn"], "tagesbetrieb.betriebsbeginn", errors
+        )
+    if "wochentagsgewichte" in roh:
+        gewichte = roh["wochentagsgewichte"]
+        if not isinstance(gewichte, Mapping):
+            errors.append(
+                "tagesbetrieb: wochentagsgewichte muss eine Tabelle "
+                "{ mo = ..., ..., so = ... } sein"
+            )
+        else:
+            kwargs["wochentagsgewichte"] = {
+                str(k): v for k, v in gewichte.items()
+            }
+    if "teilbestand_getrennt" in roh:
+        kwargs["teilbestand_getrennt"] = roh["teilbestand_getrennt"]
+    if "meldeverzug_tod" in roh:
+        verzug = roh["meldeverzug_tod"]
+        if not isinstance(verzug, Mapping):
+            errors.append(
+                "tagesbetrieb: meldeverzug_tod muss eine Tabelle "
+                "{ verteilung = ..., median_tage = ..., p95_tage = ... } sein"
+            )
+        else:
+            fremd = sorted(set(verzug) - {"verteilung", "median_tage", "p95_tage"})
+            if fremd:
+                errors.append(
+                    f"tagesbetrieb meldeverzug_tod: unbekannte Schluessel {fremd}"
+                )
+            try:
+                kwargs["meldeverzug_tod"] = Meldeverzug(
+                    verteilung=str(verzug.get("verteilung", "lognormal")),
+                    median_tage=float(verzug.get("median_tage", 14.0)),
+                    p95_tage=float(verzug.get("p95_tage", 60.0)),
+                )
+            except (TypeError, ValueError) as exc:
+                errors.append(f"tagesbetrieb meldeverzug_tod: {exc}")
+    return Tagesbetrieb(**kwargs)
+
+
 def load_config(path: Path) -> BestandConfig:
     """Load and structurally parse a config; call ``.validate()`` afterwards."""
-    raw = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    return config_aus_text(Path(path).read_text(encoding="utf-8"))
+
+
+def config_aus_text(text: str) -> BestandConfig:
+    """Eine Config aus ihrem TOML-Text parsen.
+
+    Getrennt vom Dateizugriff, damit ein Konsument die Bytes, die er
+    gehasht hat (Laufmanifest), auch parst — und nicht die Datei ein
+    zweites Mal liest (T18-03: kein zweites Lesen zwischen Urteil und
+    Verarbeitung).
+    """
+    raw = tomllib.loads(text)
     errors: List[str] = []
     meta: Mapping[str, Any] = raw.get("meta", {})
 
@@ -741,6 +1196,11 @@ def load_config(path: Path) -> BestandConfig:
                 produkt=str(g.get("produkt", "klv")),
                 knoten=str(g.get("knoten", "")),
                 neuzugang_pro_jahr=int(g.get("neuzugang_pro_jahr", 0)),
+                neuzugang_trend=float(g.get("neuzugang_trend", 0.0)),
+                scheiben_mit_gamma1=g.get("scheiben_mit_gamma1", False),
+                stoab_je_baustein=g.get("stoab_je_baustein", False),
+                red_verfahren=str(g.get("red_verfahren", PROSPEKTIV)),
+                nummernkreis=(int(g["nummernkreis"]) if g.get("nummernkreis") is not None else None),
                 zins=float(g.get("zins", 0.0)),
                 tafel=str(g.get("tafel", "")),
                 alpha=float(g.get("alpha", 0.0)),
@@ -808,15 +1268,16 @@ def load_config(path: Path) -> BestandConfig:
             a=float(eintrag.get("a", 0.0)), b=float(eintrag.get("b", 1.0))
         )
     fremde = sorted(
-        set(roh_annahmen) - {n for n, _ in ANNAHME_FELDER} - {"erh_prozent"}
+        set(roh_annahmen) - {n for n, _ in ANNAHME_FELDER} - set(SKALARE_ANNAHMEN)
     )
     if fremde:
         errors.append(
             f"annahmen: unbekannte Ereignisarten {fremde} "
             f"(bekannt: {[n for n, _ in ANNAHME_FELDER]})"
         )
-    if "erh_prozent" in roh_annahmen:
-        annahme_kwargs["erh_prozent"] = float(roh_annahmen["erh_prozent"])
+    for name in SKALARE_ANNAHMEN:
+        if name in roh_annahmen:
+            annahme_kwargs[name] = float(roh_annahmen[name])
     annahmen = Annahmen(**annahme_kwargs)
 
     referenzstichtag: Optional[_dt.date] = None
@@ -825,12 +1286,15 @@ def load_config(path: Path) -> BestandConfig:
             meta.get("referenzstichtag"), "meta.referenzstichtag", errors
         )
 
+    tagesbetrieb = _lies_tagesbetrieb(raw.get("tagesbetrieb"), errors)
+
     config = BestandConfig(
         seed=int(meta.get("seed", 0)),
         beschreibung=str(meta.get("beschreibung", "")),
         generationen=generationen,
         plausibilitaet=plausibilitaet,
         annahmen=annahmen,
+        tagesbetrieb=tagesbetrieb,
         referenzstichtag=referenzstichtag,
     )
     if errors:

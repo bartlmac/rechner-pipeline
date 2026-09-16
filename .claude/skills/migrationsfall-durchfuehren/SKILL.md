@@ -70,6 +70,13 @@ beteiligten Module ableiten und im Zweifel den Menschen fragen.
 
 ## Reihenfolge-Zwaenge (was Belege rueckwirkend entwertet)
 
+**Der A-Box-Merge laeuft EINMAL.** `gates.abox_merge` baut die A-Box frisch
+aus den Fragmenten; die Aufloesungen der Diskrepanzen (A-Q1) leben nur in
+`abgeleitet/abox/abox.json`. Bei einer Neuzeichnung auf neuem Systemstand
+werden die Pruef-Gates neu gefahren (P-Q3, P-K1, P-B1, die Abnahmen), nie
+der Merge — er verweigert bei aufgeloesten Diskrepanzen den Lauf, und
+`--ueberschreiben` heisst: A-Q1 wird neu entschieden (Vorfall 2026-09-07).
+
 Erzwungen ist im Code nur zweierlei: **A-Q1 und A-M1 gehen A-M4
 voraus** — beide als Pflichtrollen im A-M4-Snapshot. Alles andere ist
 Datenabhaengigkeit ohne Gate-DAG; wer sie missachtet, bekommt keinen
@@ -159,9 +166,13 @@ erraten oder spaeter zur Umgehung einer Gate-Pflicht umetikettieren.
 5. Gate P-Q3: `python -m rechner_pipeline.gates.abox_validate --fall faelle/<fall> --repo-root .`
    Blockt bei Coverage-Luecken und offenen Diskrepanzen. Fuer den
    Weiterbau duerfen Diskrepanzen VORLAEUFIG zur Rechner-Lesart
-   aufgeloest werden (`loese_diskrepanz_auf(..., vorlaeufig=True)`,
-   Begruendung: der GM reproduziert den Rechner; fachliche Entscheidung
-   A-Q1) — niemals endgueltig durch einen Agenten.
+   aufgeloest werden — als Kommando, nie als Skript:
+   `python -m rechner_pipeline.ontologie.entscheide --fall faelle/<fall>
+   --vorlaeufig --akteur <modell>/<skill>@<git-sha> --alle-offenen
+   --quelle <rechner>.xlsm --begruendung "GM reproduziert den Rechner;
+   fachliche Entscheidung A-Q1"` (protokolliert unter
+   abgeleitet/protokoll/vorlaeufige_entscheide.jsonl) — niemals
+   endgueltig durch einen Agenten.
 
 GRENZE DIESER STUFE (bewusst, v0.1 — nenne sie, statt sie zu
 verschweigen): Das QuellFragment traegt PARAMETER, keine FORMELN. Ein
@@ -231,7 +242,7 @@ Quelle liest und beides an A-Q1 haengt.
    (`bereite-fachkonflikt-auf`).
 5. Offene Konflikte der Spec und die Befundliste gehen mit an A-Q1. Ein
    Ziel-Pflichtfeld, das die Quelle nicht hergibt, ist ein STOPP: die
-   Ziel-Ontologie zu erweitern ist Gate A-K1, nie deine Entscheidung.
+   Ziel-Ontologie zu erweitern ist Gate A-O1, nie deine Entscheidung.
 
 Von den transformierten Zeilen zum BESTAND des Zielsystems: `wende_an`
 liefert die VERTRAGSfelder (die Kern-Contract-Seite, `ZIEL_PFLICHT`).
@@ -254,11 +265,32 @@ Diesen Zusammenbau macht ein Kommando, kein fallweises Skript:
 ```
 python -m rechner_pipeline.gates.bestand_uebernehmen \
     --fall faelle/<fall> --zeilen <zeilen>.json \
-    --tarif-generation klv/tg2015 --stichtag <iso> \
+    --tarif-generation TG2015 --stichtag <iso> \
     --vorgeschichte <registrierte-gevo-metadaten>.csv \
     --generation-spez klv/tg2015 \
+    --anfangszustand materialisieren \
+    --erhoehungssatz <satz> --red-verfahren <verfahren> \
+    [--red-anteil POLNR=ANTEIL ...] [--red-anteil-kandidat <anteil> ...] \
+    [--anker-erwartungswerte <registriert>.json] \
+    [--scheiben-mit-gamma1] [--stoab-je-baustein] \
     --out-dir faelle/<fall>/abgeleitet/bestand
 ```
+
+`--tarif-generation` ist der NAME der Generation in der Bestand-Config
+(Stammspalte `tarif_generation`), nicht der Knoten. Die Lieferungs-
+Schalter sind DIESELBEN wie in `aktuartest_lauf`, `verankerung_belegen`
+und `migrationssuite_lauf`: Die Uebernahme rechnet den Anfangszustand
+mit derselben Ableitung wie die Abnahmen und schreibt ihn in die
+Tabellen (Freischaltung, dev-docs/freischaltung-uebernommener-bestand.md).
+`--anfangszustand` ist Pflicht, sobald die Vorgeschichte Erhoehungen
+oder Herabsetzungen traegt: `materialisieren` (Grundsumme im Stamm,
+Alt-Erhoehungen als `scheiben.parquet`, Ursprungssumme beitragsfreier
+Vertraege, Zugang ueber die Gesamtsumme) oder `grundvertrag` (nicht
+freigeschaltet, im Beleg `uebernahme.json` namentlich ausgewiesen —
+dann besteht die Fuehrungsprobe nicht, und A-M4 ist im Bestands-Scope
+unmoeglich). Eine Herabsetzung nach den PLV-Verfahren
+(prospektiv/mit_abzug) kann die Fuehrung nicht tragen und haelt an;
+die Teilkuendigung der Quelle fuehrt zustandslos weiter.
 
 Es schreibt `bestand.parquet`, `historie.parquet` und `ledger.parquet`
 deterministisch ueber `bestand/parquet_io.write_portfolio` und setzt die
@@ -334,6 +366,47 @@ Nichtrauchertafel auch die Raucher. Eine aufgeteilte Generation ohne
 Merkmalstabelle bricht die Bewertung hart ab; sie faellt nicht still auf
 den gemeinsamen Rumpf zurueck, denn der gilt fuer keinen Vertrag.
 
+**Freischaltung (Schritt vor A-M4).** Was die Abnahmen A-M1 bis A-M3
+bestanden haben, MUSS der gefuehrte Bestand rechnen — die Abnahmen sind
+die Entwicklungsroutine, die Freischaltung der Moment, in dem der Stand
+zur Eigenschaft des Bestands wird. Vier Handgriffe, alle Systemkommandos:
+
+1. Die Lieferungs-Schalter, mit denen die Abnahmen bestanden haben,
+   stehen in der Bestand-Config der Generation (`scheiben_mit_gamma1`,
+   `stoab_je_baustein`, `red_verfahren`); der erzeugte Abschnitt
+   `generation-zellen.toml` der Uebernahme traegt sie bereits — er wird
+   in die Config uebernommen, nicht abgetippt.
+2. Der Schichtbeleg (`verankerung_belegen`, unten) schreibt
+   `schichten.parquet` in das Uebernahme-Verzeichnis: Die Korrekturschicht
+   ist Vertragsattribut, Storno zahlt Basiswert plus Schicht, der
+   Abschluss weist sie aus.
+3. Die Fortschreibung (`cli_fortschreibung --uebernahme`, oben) liest
+   Bausteine, Schicht und Verankerung der Uebernahme und reicht sie in ihr
+   Laufverzeichnis durch; P-B1 auf dem Lauf bekommt `--schichten` und
+   `--verankerung` dazu (Storno-Herleitung mit Schicht).
+4. Die Fuehrungsprobe stellt beides gegen die Pruefstrecke:
+
+```
+python -m rechner_pipeline.gates.fuehrungsprobe \
+    --fall faelle/<fall> --repo-root . --generation klv/tg2015 \
+    --uebernahme faelle/<fall>/abgeleitet/bestand \
+    --fortschreibung faelle/<fall>/abgeleitet/bestand-nach \
+    --config <bestand-config>.toml --zeilen <zeilen>.json \
+    --vorgeschichte <registrierte-gevo-metadaten>.csv --stichtag <iso> \
+    --schicht abgeleitet/schichten/verankerung_schichten.json \
+    <dieselben Lieferungs-Schalter wie in der Pruefstrecke>
+```
+
+Sie prueft den Uebernahmebeleg (Modus, Schalter gleich Config gleich
+Lauf), je Vertrag Stammsumme, Bausteine, Beitragsfreistellung, Zugang
+und Umbuchung gegen den Anfangszustand der Abnahmen, die Grundlagen der
+Config gegen die Spez-Zelle, die Schicht, und jede Buchung nach dem
+Stichtag gegen die Pruefstrecken-Engine. Der Beleg
+`abgeleitet/berichte/fuehrungsprobe.json` ist Pflichtbelegrolle
+`fuehrungsprobe` von A-M4 im Bestands-Scope; der Abnahmebericht bindet
+ihn (`--fuehrungsprobe`, Vorgabe dieser Pfad). Exit 1 = nicht bestanden:
+dann ist die Fuehrung zu korrigieren, nicht der Beleg.
+
 ### Gate A-Q1 (Mensch — hier STOPPST du und uebergibst)
 
 Vorlegen: `abgeleitet/fachspez/<gen>.md` (Generator:
@@ -342,12 +415,19 @@ wenn Stufe 1b lief, die offenen Konflikte der TransformationsSpec, die
 Befunde der Anwendung und jede beim Lesen aufgefallene Formelabweichung
 (siehe Grenze der Stufe 1).
 Der Mensch entscheidet mit
-`python -m rechner_pipeline.ontologie.entscheide --rolle mensch ...` und
+`python -m rechner_pipeline.ontologie.entscheide --zeichnungsordnung
+<externe-ordnung> --freigabe-schluessel <externe-datei> ...` und
 snapshottet mit `python -m rechner_pipeline.gates.gate_entscheid
---gate A-Q1 --rolle mensch --freigabe-schluessel <externe-datei> ...`.
+--gate A-Q1 --zeichnungsordnung <externe-ordnung> --freigabe-schluessel
+<externe-datei> ...` — die zeichnende Rolle (`mensch/verantwortlicher-
+aktuar`) wird aus dem Schluessel bestimmt, nicht behauptet (ADR-018).
+Du selbst kannst ein Gate nur ABLEHNEN: `--entscheid abgelehnt --rolle
+agent/programmleitung` dokumentiert den Zwischenstand.
 Der Freigabeschluessel gehoert ausserhalb des Falls und ausserhalb des
 Agentenzugriffs in die Autoritaetsumgebung des Menschen (mindestens 32
 kryptografisch zufaellige Byte, POSIX 0600, genau ein Hardlink).
+
+Zeichnet in der Vorzeige eine SIMULIERTE menschliche Rolle (Schluesselklasse `simulation` in der Zeichnungsordnung), ist `--mandat <datei>` Pflicht: Das Gate verweigert die Annahme ohne Mandat (ADR-018). Das Mandat ist das Dokument der Regie, unter dem die Rolle handelt; sein Hash steht mitsigniert im Snapshot.
 
 **Zeichnungsordnung (Zwei-Operatoren-Regie, Beschluss 2026-08-31).**
 Faehrt der Fall mit getrennten Rollen — `quelle-experte` (zeichnet nur
@@ -385,7 +465,7 @@ A-Box- und Systemstands, einen geltenden signierten A-Q1-Annahme-Snapshot
    + `spez.validierung.speichere_spez`. Das Struktur-Urteil
    (Parametrierung vs. neue Produktfamilie) wird BERECHNET — nimm es
    ernst: `neue_produktfamilie` oder offene Erweiterungsstellen heissen
-   STOPP und Mensch fragen (T-Box-/Kern-Erweiterung ist Gate A-K1).
+   STOPP und Mensch fragen (T-Box-/Kern-Erweiterung ist Gate A-O1).
 2. Tafel-Import: `python -m rechner_pipeline.quellen.tafel_import --fall faelle/<fall> --generation <gen-id> --dry-run`,
    pruefen, dann scharf. Konflikte (wertverschiedene Tafeln gleichen
    Namens) sind ein Provenienz-Problem fuer den Menschen.
@@ -454,10 +534,14 @@ die Schritte selbst zu improvisieren:
    aus `qa` und werden NIE aufgeweicht. Das persistierte Suite-JSON bindet zusaetzlich
    `stichtag_1`, `stichtag_2`, `bestand_sha256` und den Systemstand; im
    Bestands-Scope muss `vollstaendig_geprueft=true` sein.
-3. Bestandsberichte vor/nach mit denselben Parametern (nur so ist der
+3. Freischaltung (Stufe 1b, Absatz "Freischaltung"): Fortschreibung des
+   uebernommenen Bestands, P-B1 darauf, Fuehrungsprobe
+   (`gates.fuehrungsprobe`) — ihr Beleg ist Pflicht fuer Schritt 4 und
+   fuer A-M4.
+4. Bestandsberichte vor/nach mit denselben Parametern (nur so ist der
    Vergleich fair):
    `python -m rechner_pipeline.bestand.cli_report --portfolio <bestand>.parquet --stichtage <liste> --out <ziel>.html`
-4. Abnahmebericht als Entscheidungsvorlage (keine Abnahme):
+5. Abnahmebericht als Entscheidungsvorlage (keine Abnahme):
    `python -m rechner_pipeline.gates.abnahmebericht --fall faelle/<fall> --suite <suite>.json --titel "..." --stichtag-1 <iso> --stichtag-2 <iso> --spec <transformation>.spec.json --transformation-ergebnis <ergebnis>.json --bestandsbericht-vor <pfad> --bestandsbericht-nach <pfad>`
    Alle vier nach der Suite genannten Artefakte sind Pflicht. Zeilenverlust,
    Transformationsbefunde und nicht entschiedene Konflikte erzeugen einen roten
@@ -467,14 +551,15 @@ die Schritte selbst zu improvisieren:
    Ablage mit `--fall`:
    `<fall>/abgeleitet/berichte/migrationsabnahme.html`, Ledger unter
    `<fall>/abgeleitet/diagnostics`. Das gruene
-   `abnahmebericht.gate.json` bindet P-B1, Suite und HTML-Bericht an Eingang,
-   A-Box, System, den von P-B1 benannten Bestand und beide Stichtage; ohne diese
-   konsistente Bindung darf A-M4 im Bestands-Scope nicht angenommen werden.
+   `abnahmebericht.gate.json` bindet P-B1, Suite, Fuehrungsprobe und
+   HTML-Bericht an Eingang, A-Box, System, den von P-B1 benannten Bestand
+   und beide Stichtage; ohne diese konsistente Bindung darf A-M4 im
+   Bestands-Scope nicht angenommen werden.
 
 ### Gate A-M4 (Mensch — hier STOPPST du wieder)
 
-`python -m rechner_pipeline.gates.gate_entscheid --gate A-M4 --rolle mensch
---freigabe-schluessel <externe-datei> ...`
+`python -m rechner_pipeline.gates.gate_entscheid --gate A-M4
+--zeichnungsordnung <externe-ordnung> --freigabe-schluessel <externe-datei> ...`
 — uebergeben, nicht selbst entscheiden. A-M4 verlangt die geltenden,
 signierten Abnahme-Snapshots desselben Stands als Vorgaenger und pinnt
 sie als Rollen `am1_snapshot`/`am2_snapshot`/`am3_snapshot`: A-M1 immer
@@ -484,8 +569,8 @@ Stichtagswert und falscher Ablaufleistung kam vorher durch das
 Controlling). A-M4 liest den Scope aus `fall.json`
 und leitet seine exakte Pflichtbelegmenge je Gate aus dem Fall-Scope ab. Im
 Bestands-Scope werden das Abnahme-Ledger, jedes von ihm gebundene Artefakt und
-das von P-B1 benannte Portfolio gegen die aktuellen Bytes nachgehasht. P-B1 und
-Suite werden semantisch erneut validiert; der HTML-Bericht wird aus der Suite
+das von P-B1 benannte Portfolio gegen die aktuellen Bytes nachgehasht. P-B1,
+Suite und Fuehrungsprobe werden semantisch erneut validiert; der HTML-Bericht wird aus der Suite
 deterministisch neu gerendert und bytegenau verglichen. Vorgelegt wird alles
 vollstaendig, ohne Stichproben-Beschoenigung.
 
@@ -501,7 +586,8 @@ python -m rechner_pipeline.gates.verankerung_belegen \
 
 aus `verankerung.parquet`, Stamm, Merkmalen und der Fall-Spez — mit
 Provenienzblock (Eingabe-Hashes + Systemstand), den der Testlauf
-NACHRECHNET. Kein Fall-Skript, keine Registrierung von
+NACHRECHNET — und schreibt die Schicht zugleich als `schichten.parquet`
+in das Uebernahme-Verzeichnis, wo die Fuehrung sie liest (Freischaltung). Kein Fall-Skript, keine Registrierung von
 Systemartefakten in den Eingang; nach jeder Codeaenderung neu
 erzeugen. Exit 0 nur bei vollstaendiger Tabelle — Befunde entscheiden,
 dann neu erzeugen. WICHTIG davor: alle offenen/vorlaeufigen
@@ -541,7 +627,7 @@ still zu ueberspringen.
 - Ein bestehender Charakterisierungstest des Kerns (eingefrorene Referenzwerte) wird rot.
 - Ein Ziel-Pflichtfeld der Transformation ist aus dem Abzug nicht
   ableitbar, oder die Quelle traegt ein fachlich uebernahmepflichtiges
-  Merkmal, fuer das die Ziel-Ontologie kein Feld hat (Gate A-K1).
+  Merkmal, fuer das die Ziel-Ontologie kein Feld hat (Gate A-O1).
 - Die Controlling-Suite (`qa.migrationssuite`) oder der aktuarielle
   Test melden Befunde zur Konsistenz der Lieferung
   (fehlende Vertraege ohne Abgangs-GeVo, unbekannte GeVo-Arten) — das

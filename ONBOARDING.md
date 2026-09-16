@@ -5,12 +5,25 @@ A system for **life-insurance portfolio migration**, with **no LLM SDK in the
 codebase** (the CLI agent *is* the model; Python code pre-digests, validates,
 computes and accepts):
 
-1. **The target kernel** (`rechner_pipeline.kern`, version 3.0.1): a stable,
-   versioned calculation kernel formulated entirely in the state-model world
+The repository carries **four levels** (ADR-017): the developer's work
+with the AI (reviews, ADRs, the suite); the **KI-Tool**, the agentic
+migration system that any insurer could use unchanged (ontology, spec
+contract, gates, roles, skills, report generators); the **Vorzeige**, a
+fictional insurer at which the tool shows itself and can be tested
+(reference target kernel, portfolio management, the migration case, the
+company site); and the **Vorzeige tools** that produce the Vorzeige
+(portfolio simulation, source-system generation, direction mechanics).
+The layer map records the level of every layer and pins the edges from
+the tool into the Vorzeige as a ratchet.
+
+1. **The target kernel** (`rechner_pipeline.kern`, version 3.4.0, part of
+   the Vorzeige as the reference target system): a stable, versioned
+   calculation kernel formulated entirely in the state-model world
    (semi-Markov backbone, Thiele recursion on pure decrement probabilities).
    Two products — endowment (KLV) and disability (BU) — are *configurations*
-   of that backbone, not separate engines. Commutation values live in a
-   **separate second kernel** used only as a cross-check rail (ADR-004).
+   of that backbone, not separate engines. The commutation second kernel is
+   out of service (ADR-013); it survives only as an independent witness in
+   the algebraic property tests.
 2. **The portfolio module** (`rechner_pipeline.bestand`): synthetic,
    forward-projectable portfolios that the target kernel can compute directly.
    Every amount comes from the kernel; the module carries no actuarial
@@ -53,26 +66,80 @@ implicit input channel — sources enter a case only through explicit
 registration (below).
 
 ## 2. Setup
-Python **3.11+**. No LLM key needed.
-```
-python -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"      # Windows: .venv\Scripts\python
-```
-This pins the **direct** dependencies exactly (`pyproject.toml`:
-`openpyxl`, `oletools`, `pandas`, `pyarrow`, `matplotlib`, `pydantic`;
-dev: `pytest`, `hypothesis`) and lets pip resolve everything transitive
-freely. Convenient, but not reproducible: a fresh upstream release can
-change the installed set from one day to the next, and because
-`filterwarnings = ["error"]` is on, a new warning in a third-party
-package turns the suite red without anything here having changed.
+The reference environment is **Linux with CPython 3.11** and the exact
+pins below — what CI runs and what the runtime image is built from. The
+project does not harden its code for other operating systems (maintainer
+decision 2026-09-06): if you are not on Linux, run everything inside the
+container, which IS the reference environment.
 
-For a **reproducible** install — the same set CI uses — go through the
-pin files instead:
+**On Linux**, no LLM key needed:
 ```
 python -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pip install -e . --no-deps
 ```
+**On Windows, check WSL 2 first.** Docker Desktop's WSL integration
+requires a distribution running **WSL version 2**. A Windows machine may
+already carry a WSL environment that is still on version 1; the
+integration then cannot be enabled at all, and the failure is not
+obvious. Check before building:
+```
+wsl -l -v
+```
+Every distribution you intend to use must show `VERSION 2`. If none does,
+install a fresh one — this is the route a team member actually ran:
+```
+wsl --install -d Ubuntu
+wsl -d Ubuntu
+```
+Converting an existing version-1 distribution in place is possible
+(`wsl --set-version <distribution> 2`, with the name from the first column
+of `wsl -l -v`), but nobody here has run that route.
+
+**Anywhere else** (Windows with Docker Desktop and WSL2, macOS): build the
+development image once and run the suite in it; the working tree is
+mounted, so code changes need no rebuild.
+```
+docker build -f deploy/dev/Dockerfile -t rechner-pipeline-dev .
+docker run --rm -v "$PWD":/workspace rechner-pipeline-dev            # full suite
+docker run --rm -it -v "$PWD":/workspace rechner-pipeline-dev bash   # shell
+```
+**Reporting an environment.** When you report a run — a new machine, a
+platform we have not verified — send the provenance of the code you ran,
+not just the suite line. Same container, one command:
+```
+docker run --rm -v "$PWD":/workspace rechner-pipeline-dev \
+  python -c "import json; from pathlib import Path; from rechner_pipeline.gates._provenienz import systemstand; print(json.dumps(systemstand(Path('/workspace')), indent=2))"
+```
+It prints four values. `quellcode_sha256` covers the package sources
+(`.py` and `.xml` under `src/rechner_pipeline/`) and nothing else — a
+docs-only or tests-only commit leaves it unchanged, a code change moves
+it. `dirty` must read `nein`; otherwise the checkout carries uncommitted
+edits and the hash is not comparable. If `commit` or `branch` read
+`unbekannt`, git cannot read the tree from inside the container — on
+Linux it can, elsewhere this is worth reporting.
+
+The expected `quellcode_sha256` is not printed here on purpose: it belongs
+to one commit and would age with the next code change. Whoever asks you to
+run this names the value together with the commit it belongs to.
+
+VS Code users open the repo with the Dev Containers extension; the
+definition in `.devcontainer/` builds the same image. Keep the checkout on
+a Linux filesystem (your WSL2 home, not `/mnt/c`): the suite checks file
+permissions and umask, which an NTFS mount does not carry. Line endings
+are pinned to LF by `.gitattributes`; deliveries and fixtures are
+excluded from that rule because their bytes are hashed.
+
+This is the one documented install path, identical to CI. The pin files
+carry the direct dependencies (`pyproject.toml`: `openpyxl`, `oletools`,
+`pandas`, `pyarrow`, `matplotlib`, `pydantic`, `pypdf`; dev: `pytest`,
+`hypothesis`) AND their complete transitive closure;
+`tests/test_abhaengigkeiten.py` keeps that closure closed. Installing
+with `pip install -e ".[dev]"` alone pins only the direct dependencies
+and lets pip resolve everything transitive freshly — with
+`filterwarnings = ["error"]` on, a new warning in a third-party package
+then turns the suite red without anything here having changed. That path
+is therefore not documented (external review T19-04/T20-08).
 `requirements.txt` / `requirements-dev.txt` pin the direct dependencies
 plus their transitive closure as installed from public pypi.org (verified
 under CPython 3.11 on 2026-08-19). Nine purely transitive packages
@@ -195,14 +262,22 @@ python -m rechner_pipeline.bestand.cli_report --portfolio runs/bestand/bestand_g
     --scheiben runs/bestand/scheiben.parquet --config configs/bestand_gesamt.toml \
     --bis 2046-01-01 --stichtag 2026-01-01 --out runs/berichte/bestandsbericht.html
 ```
+The run also writes `runs/bestand/laufmanifest.json`, its delivery
+note: the simulated horizon, the config hash and a SHA-256 per output.
+`cli_abschluss` refuses a run directory without it, and `--bis` must
+equal the horizon the manifest attests — the horizon is a property of
+the run, not of the call that reads it. Gate P-B1 binds the manifest
+on request (`--manifest`).
+
 **New business in this run: none — and that is deliberate.** The run
-above reports `3130 Basisvertraege, 0 Neuzugaenge`, and the zero is the
+above reports `4720 Basisvertraege, 0 Neuzugaenge`, and the zero is the
 one number that regularly gets misread. It does NOT mean the portfolio
 runs off from the reference date on: without `--neuzugang-ab`, the base
 generator populates each generation's full sales window in one batch, so
-the portfolio already carries the arrivals up to 2035 (255 of the 3130
+the portfolio already carries the arrivals up to 2035 (1517 of the 4720
 contracts start after 01.01.2026 — one generator per time window, never
-two). `neuzugang_pro_jahr` in the config is the rate of the OTHER
+two; since the PLV sells until today, the current generations KLV-2025
+and BU-2025 carry the batch density of their yearly target). `neuzugang_pro_jahr` in the config is the rate of the OTHER
 generator, the one that emits new business as dated GeVo events during
 the projection; it takes effect only when the run declares the reference
 date at which the batch stops and the event stream takes over:
@@ -211,9 +286,11 @@ python -m rechner_pipeline.bestand.cli_fortschreibung \
     --config configs/bestand_gesamt.toml --bis 2046-01-01 \
     --neuzugang-ab 2026-01-01 --out-dir runs/bestand-nz
 ```
-That run reports `2875 Basisvertraege, 695 Neuzugaenge` — same total
+That run reports `3203 Basisvertraege, 1213 Neuzugaenge` — same total
 order of magnitude, but arrivals after 01.01.2026 now come with a `ZUG`
-GeVo of their own in the ledger (695 of them, absent from the run above)
+GeVo of their own in the ledger (1213 of them, absent from the run above;
+the yearly target follows `neuzugang_trend`, so the stream shrinks year
+by year)
 instead of sitting in the base portfolio from the start. The
 documented run above stays without it because it is the reference run of
 the demo: its numbers appear in the portfolio report and in the
@@ -237,10 +314,10 @@ Each gate is one command, writes one JSON to stdout plus a
 |---|---|---|
 | P-Q1 | `gates.extract` | deterministic pre-digest of a source workbook (formulas, cached values, defined names via openpyxl; VBA via `oletools.olevba`) |
 | P-Q2 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
-| P-Q3 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation |
-| P-K1 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state |
-| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-M1, A-M4, A-K1); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); agents may only reject |
-| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for gate A-M1; transport-security digests are reported separately |
+| P-Q3 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation; the A-Box must carry the current T-Box version |
+| P-K1 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state; spec, A-Box and code must speak the same T-Box version |
+| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-M1, A-M4, A-K1); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); in scope `bestand` A-M4 also requires the release proof `gates.fuehrungsprobe` as evidence role `fuehrungsprobe` — the proof that the portfolio ledger carries the world the acceptances tested (Freischaltung, dev-docs/freischaltung-uebernommener-bestand.md); A-K1 requires the T-Box change record `abgeleitet/tbox/aenderung.json` (old and new version, hash of the T-Box module, change artefact); a simulated role signs only with a mandate (ADR-018); agents may only reject |
+| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for the respective gate A-M1, A-M2 or A-M3 (in scope `bestand` all three are mandatory predecessors of A-M4, in scope `tarif` only A-M1); transport-security digests are reported separately |
 | P-B1 | `gates.bestand_validate` | portfolio contract and movement identities |
 | G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds P-B1, the suite and HTML report on one state |
 
@@ -256,11 +333,14 @@ tip on every read (ADR-008).
 
 For A-M4, `fall.json` also carries `scope.typ` (`tarif` or `bestand`). Missing
 declarations are never inferred from files. A tariff case requires no portfolio
-artifacts; a portfolio case requires a green P-B1 ledger, complete suite and HTML
-report bound by the green `abnahmebericht` ledger. A-M4 rehashes their current
-bytes, reruns the P-B1 engines, revalidates the suite, and deterministically
-rerenders the report for a byte comparison instead of trusting that editable
-ledger (ADR-009).
+artifacts; a portfolio case requires a green P-B1 ledger, complete suite, a
+passed release proof (`gates.fuehrungsprobe`: the migrated portfolio and its
+continuation are held against the acceptance engines — same initial state,
+same tariff switches, same correction layer) and the HTML report, all bound by
+the green `abnahmebericht` ledger. A-M4 rehashes their current bytes, reruns
+the P-B1 engines, revalidates the suite and the release proof, and
+deterministically rerenders the report for a byte comparison instead of
+trusting that editable ledger (ADR-009).
 
 ## 5. Non-negotiables
 - **Deterministic and SDK-free** in `src/`: no network, no dynamic execution,

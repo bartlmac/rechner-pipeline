@@ -18,63 +18,218 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import datetime as _dt
+import io
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from rechner_pipeline.bestand.config import load_config
+from rechner_pipeline.bestand.config import config_aus_text
+from rechner_pipeline.bestand.manifest import (
+    horizont as manifest_horizont,
+    lies_manifest_bytes,
+    manifest_aus_bytes,
+    MANIFEST_DATEI,
+    ManifestError,
+    ROLLEN_DATEIEN,
+    sha256_bytes,
+)
 from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.bestand.ledger_bindung import (
+    HERGELEITET,
+    pruefe_ledger_betraege,
+    pruefe_scheiben_tarifwerk,
+)
 from rechner_pipeline.models.bestand import (
     LEDGER_NAMES,
+    MERKMALE_NAMES,
     SCHEIBEN_NAMES,
+    REDUKTIONEN_NAMES,
+    SCHICHTEN_NAMES,
+    VERANKERUNG_NAMES,
     STATUS_HISTORIE_NAMES,
     STAMM_NAMES,
+    validate_ledger,
     validate_portfolio,
     validate_scheiben,
+    validate_reduktionen,
+    validate_schichten,
+    validate_verankerung,
     validate_stamm_journal,
     validate_statushistorie,
 )
 from rechner_pipeline.qa.bestand import sanity_check
+
+#: Die Rollen, die die Engine annimmt: die Rollentabelle des Erzeugers plus
+#: die Config — an EINER Stelle, damit kein Konsument (Gate, Abnahmebericht,
+#: Betrieb) sie abtippt (Betriebsbefund N-01). Der Abnahmebericht liest sie
+#: hier, nicht aus ``bestand.manifest``: die Kanten-Ratsche (ADR-017) kennt
+#: gates -> bestand.vorbedingungen, nicht gates -> bestand.manifest.
+PB1_ROLLEN = frozenset(ROLLEN_DATEIEN) | {"config"}
+
+#: Welche Datei eine P-B1-Rolle traegt — hier weitergereicht, damit
+#: die gates-Schicht sie nicht abtippen und nicht selbst in die
+#: Vorzeige greifen muss (ADR-017, TOOL_NACH_VORZEIGE_ERLAUBT).
+PB1_ROLLEN_DATEIEN = ROLLEN_DATEIEN
 
 
 def pruefe_pb1_eingaenge(
     eingaben: Mapping[str, Path],
     *,
     bis: Optional[_dt.date] = None,
+    manifest: Optional[Mapping[str, Any]] = None,
 ) -> Tuple[Dict[str, int], List[dict], List[dict]]:
     """P-B1-Engines rein lesend auf einer benannten Eingabenkonfiguration.
+
+    Sicht fuer Konsumenten, die nur das URTEIL brauchen (die Gates). Wer
+    anschliessend mit den Daten WEITERRECHNET, nimmt
+    :func:`lies_und_pruefe_pb1` und verwendet die zurueckgegebenen
+    Tabellen — sonst entsteht die Luecke aus T18-03: zwischen Pruefung
+    und zweitem Lesen laesst sich die Datei tauschen.
+
+    Rueckgabe: ``(geprueft, contract_fehler, usage_fehler)``.
+    """
+    _, geprueft, fehler, usage = lies_und_pruefe_pb1(
+        eingaben, bis=bis, manifest=manifest)
+    return geprueft, fehler, usage
+
+
+def manifest_fuer_nachrechnung(
+    portfolio: Path, erwarteter_sha256: Optional[str],
+) -> Tuple[Optional[Mapping[str, Any]], List[str]]:
+    """Das Laufmanifest eines P-B1-Belegs fuer die A-M4-Nachrechnung.
+
+    Das Manifest ist im Beleg keine Eingangsrolle, sondern nur
+    ``summary.manifest`` = {sha256, horizont}. Wer den Beleg nachrechnet,
+    braucht die Bytes: Sie liegen, wie der Produzent sie schreibt, NEBEN dem
+    Portfolio, und sie muessen den Hash des Belegs tragen — sonst rechnet
+    A-M4 mit einem anderen Manifest als P-B1. Rueckgabe (manifest, fehler);
+    ``manifest`` ist None, wenn ein Fehler vorliegt.
+    """
+    pfad = Path(portfolio).parent / MANIFEST_DATEI
+    try:
+        roh = lies_manifest_bytes(pfad)
+    except (ManifestError, OSError) as exc:
+        return None, [
+            f"P-B1-Beleg nennt ein Manifest, aber {pfad} ist nicht lesbar ({exc}) "
+            "— das Laufmanifest gehoert neben das Portfolio"
+        ]
+    if sha256_bytes(roh) != erwarteter_sha256:
+        return None, [
+            f"P-B1-Beleg: {pfad.name} neben dem Portfolio traegt einen anderen "
+            "SHA-256 als der Beleg — P-B1 auf dem aktuellen Lauf erneut fahren"
+        ]
+    try:
+        return manifest_aus_bytes(roh), []
+    except ManifestError as exc:
+        return None, [f"P-B1-Manifest nicht auslegbar: {exc}"]
+
+
+def lies_und_pruefe_pb1(
+    eingaben: Mapping[str, Path],
+    *,
+    bis: Optional[_dt.date] = None,
+    manifest: Optional[Mapping[str, Any]] = None,
+) -> Tuple[Dict[str, Any], Dict[str, int], List[dict], List[dict]]:
+    """Pruefen UND die geprueften Tabellen zurueckgeben.
 
     Der CLI-Produzent und A-M4 benutzen bewusst dieselbe Funktion. So ist ein
     frei editierbares, passend neu gehashtes P-B1-Ledger keine Selbstaussage:
     A-M4 fuehrt Schema-, Invarianten-, Bewegungs- und optionale Sanity-Pruefung
     auf den aktuellen Bytes erneut aus.
 
-    Rueckgabe: ``(geprueft, contract_fehler, usage_fehler)``.
+    **Warum sie die Tabellen herausgibt** (externes Review T18-03): Wer
+    prueft und den Konsumenten danach SELBST lesen laesst, hat nur den
+    Zustand zwischen zwei Lesevorgaengen geprueft. Im Nachweis wurde
+    ``scheiben.parquet`` direkt nach bestandener Pruefung atomar gegen
+    eine gueltige leere Tabelle getauscht; der Abschluss lief mit Exit 0
+    durch und publizierte einen um 3,8 Mio EUR zu niedrigen Stand. Die
+    Reparatur ist nicht eine weitere Pruefung, sondern die Beseitigung
+    des zweiten Lesevorgangs: Was geprueft wurde, wird auch verarbeitet.
+
+    **Mit Laufmanifest** (externes Review T18-02): Ist ``manifest`` das
+    Manifest des Laufs (:mod:`rechner_pipeline.bestand.manifest`), dann
+    muss ``bis`` der dort belegte Horizont sein, und die Bytes JEDER
+    gelesenen Rolle muessen der dort eingetragenen Summe entsprechen —
+    ebenso die Config. Jede Datei wird genau einmal von der Platte
+    gelesen; gehasht und geparst werden dieselben Bytes. Damit sind
+    "Teile aus verschiedenen Laeufen" und "behaupteter Horizont" keine
+    Frage der Plausibilitaet mehr, sondern der Identitaet.
+
+    Rueckgabe: ``(tabellen, geprueft, contract_fehler, usage_fehler)``.
+    ``tabellen`` traegt die Rollen, die gelesen werden konnten, und unter
+    ``config`` die geparste Config, wenn eine uebergeben wurde.
     """
-    erlaubt = {"portfolio", "historie", "scheiben", "ledger", "config"}
+    erlaubt = PB1_ROLLEN
     rollen = set(eingaben)
     errors: List[dict] = []
     usage_errors: List[dict] = []
     if "portfolio" not in rollen:
-        return {}, [{"code": "portfolio", "message": "Portfolio-Rolle fehlt"}], []
+        return ({}, {},
+                [{"code": "portfolio", "message": "Portfolio-Rolle fehlt"}], [])
     if not rollen <= erlaubt:
-        return {}, [{
+        return ({}, {}, [{
             "code": "eingangsrollen",
             "message": f"Unbekannte P-B1-Eingangsrollen: {sorted(rollen - erlaubt)}",
-        }], []
+        }], [])
+
+    if manifest is not None and bis is not None:
+        belegt = manifest_horizont(manifest)
+        if belegt != bis:
+            errors.append({
+                "code": "manifest",
+                "message": (
+                    f"--bis {bis.isoformat()} widerspricht dem Laufmanifest: "
+                    f"der Lauf wurde bis {belegt.isoformat()} simuliert. "
+                    "Der Horizont ist eine Eigenschaft des Laufs, nicht des "
+                    "Aufrufs — --bis auf den belegten Wert setzen oder den "
+                    "Lauf neu fortschreiben"
+                ),
+            })
 
     tabellen: Dict[str, Any] = {}
+    # SHA-256 der Bytes, die geparst wurden — fuer Konsumenten, die den
+    # Stand benennen wollen (Berichtsfuss, Beleg), ohne erneut zu lesen.
+    hashes: Dict[str, str] = {}
     spaltenvertrag = {
         "portfolio": STAMM_NAMES,
         "historie": STATUS_HISTORIE_NAMES,
         "scheiben": SCHEIBEN_NAMES,
         "ledger": LEDGER_NAMES,
+        "merkmale": MERKMALE_NAMES,
+        "schichten": SCHICHTEN_NAMES,
+        "verankerung": VERANKERUNG_NAMES,
+        "reduktionen": REDUKTIONEN_NAMES,
     }
-    for rolle in ("portfolio", "historie", "scheiben", "ledger"):
+    # Die Schleife lief ueber eine ZWEITE, handgepflegte Rollenliste neben
+    # diesem Vertrag. Eine neue Erzeugerrolle fiel damit still hindurch:
+    # nicht gelesen, nicht geprueft — und die Engine meldete trotzdem
+    # Erfolg (gefunden beim Einbau der Herabsetzung, Review T25-06).
+    # Jetzt laeuft sie ueber die Tabelle des Erzeugers, und eine Rolle ohne
+    # Spaltenvertrag ist ein harter Fehler statt einer Luecke.
+    ohne_vertrag = sorted(set(ROLLEN_DATEIEN) - set(spaltenvertrag))
+    if ohne_vertrag:
+        raise ValueError(
+            f"Rollen ohne Spaltenvertrag: {ohne_vertrag} — die Engine kann "
+            "sie nicht lesen; wer dem Erzeuger eine Rolle gibt, gibt ihr "
+            "hier ihren Vertrag"
+        )
+    for rolle in ROLLEN_DATEIEN:
         if rolle not in eingaben:
             continue
+        # Genau EIN Lesevorgang je Datei: Die Bytes, die gegen das Manifest
+        # gehasht werden, sind die Bytes, die geparst werden.
+        try:
+            daten = Path(eingaben[rolle]).read_bytes()
+        except OSError as exc:
+            errors.append({
+                "code": rolle,
+                "message": f"{rolle}-Datei ist nicht lesbar: {exc}",
+            })
+            continue
+        hashes[rolle] = sha256_bytes(daten)
+        errors.extend(_manifest_befund(manifest, rolle, daten))
         try:
             tabellen[rolle] = read_portfolio(
-                eingaben[rolle], expected_columns=spaltenvertrag[rolle]
+                io.BytesIO(daten), expected_columns=spaltenvertrag[rolle]
             )
         except Exception as exc:  # noqa: BLE001 — Parquet-Backends variieren
             errors.append({
@@ -135,6 +290,51 @@ def pruefe_pb1_eingaenge(
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
             errors.append({"code": "scheiben", "message": str(exc)})
 
+    schichten = tabellen.get("schichten")
+    verankerung = tabellen.get("verankerung")
+    if portfolio is not None and verankerung is not None:
+        geprueft["verankerung_zeilen"] = int(len(verankerung))
+        try:
+            for meldung in validate_verankerung(portfolio, verankerung):
+                errors.append({"code": "verankerung", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "verankerung", "message": str(exc)})
+    if portfolio is not None and schichten is not None:
+        # Korrekturschicht (Freischaltung, Schritt 5): Form, Zugehoerigkeit
+        # zum Stamm und zum Verankerungszeitpunkt.
+        geprueft["schichten_zeilen"] = int(len(schichten))
+        try:
+            for meldung in validate_schichten(portfolio, schichten, verankerung):
+                errors.append({"code": "schichten", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "schichten", "message": str(exc)})
+
+    reduktionen = tabellen.get("reduktionen")
+    if portfolio is not None and reduktionen is not None:
+        # Herabsetzungen (Review T25-06): Form, Zugehoerigkeit zum Stamm,
+        # hoechstens eine je Police und die Reihenfolge gegen die Historie.
+        geprueft["reduktionen_zeilen"] = int(len(reduktionen))
+        try:
+            for meldung in validate_reduktionen(
+                portfolio, reduktionen, historie
+            ):
+                errors.append({"code": "reduktionen", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "reduktionen", "message": str(exc)})
+
+    if portfolio is not None and ledger is not None:
+        # Semantik der Buchungen (T18-06) und zeilenweise Bindung an die
+        # Scheiben (T18-01) — vor der Bewegungs-Identitaet, die nur
+        # Jahressummen sieht.
+        geprueft["ledger_zeilen"] = int(len(ledger))
+        try:
+            for meldung in validate_ledger(
+                portfolio, ledger, historie=historie, scheiben=scheiben
+            ):
+                errors.append({"code": "ledger", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "ledger", "message": str(exc)})
+
     if ledger is not None and scheiben is None:
         try:
             hat_erhoehungen = bool((ledger["ereignis"] == "ERH").any())
@@ -187,10 +387,14 @@ def pruefe_pb1_eingaenge(
 
     if "config" in eingaben and portfolio is not None:
         try:
-            config = load_config(eingaben["config"])
-        except (OSError, ValueError) as exc:
+            config_bytes = Path(eingaben["config"]).read_bytes()
+            hashes["config"] = sha256_bytes(config_bytes)
+            errors.extend(_manifest_befund(manifest, "config", config_bytes))
+            config = config_aus_text(config_bytes.decode("utf-8"))
+        except (OSError, UnicodeError, ValueError) as exc:
             errors.append({"code": "config", "message": str(exc)})
         else:
+            tabellen["config"] = config
             try:
                 for meldung in config.validate():
                     errors.append({"code": "config", "message": meldung})
@@ -199,4 +403,80 @@ def pruefe_pb1_eingaenge(
                 geprueft["sanity_baender"] = len(config.plausibilitaet)
             except Exception as exc:  # noqa: BLE001 — malformed data blockiert
                 errors.append({"code": "sanity", "message": str(exc)})
-    return geprueft, errors, usage_errors
+            # Das gamma1 jeder Scheibe gegen das Tarifwerk ihrer Generation
+            # (Freischaltung, Schritt 4): Form ohne Config oben, Wert mit
+            # Config hier.
+            if (
+                scheiben is not None
+                and not any(e["code"] in ("scheiben", "portfolio", "config") for e in errors)
+            ):
+                try:
+                    for meldung in pruefe_scheiben_tarifwerk(
+                        portfolio, scheiben, config,
+                        merkmale=tabellen.get("merkmale"),
+                    ):
+                        errors.append({"code": "scheiben", "message": meldung})
+                except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+                    errors.append({"code": "scheiben", "message": str(exc)})
+            # Betragsidentitaet je Buchung (T20-04): erst mit den
+            # Rechnungsgrundlagen der Config ist der Kern herleitbar. Nur
+            # auf formal gueltigen Zeilen — sonst meldete jede
+            # Formverletzung zusaetzlich einen Herleitungsfehler.
+            if (
+                ledger is not None
+                and not any(e["code"] in ("ledger", "portfolio", "config") for e in errors)
+            ):
+                try:
+                    for meldung in pruefe_ledger_betraege(
+                        portfolio, ledger, config, scheiben=scheiben,
+                        historie=historie, merkmale=tabellen.get("merkmale"),
+                        schichten=schichten, verankerung=verankerung,
+                        reduktionen=reduktionen,
+                    ):
+                        errors.append({"code": "ledger", "message": meldung})
+                    # Der Beleg zaehlt, was die Herleitung wirklich
+                    # abgedeckt hat — abgeleitet aus der Liste des
+                    # Herleiters plus den BU-Vorfaellen, nicht abgetippt.
+                    # Ein Literal hier haette RED unterschlagen und ein zu
+                    # kleines Testat ausgewiesen.
+                    geprueft["betraege_hergeleitet"] = int(
+                        ledger["ereignis"].isin(
+                            set(HERGELEITET) | {"INV", "REA"}).sum())
+                except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+                    errors.append({"code": "ledger", "message": str(exc)})
+    if manifest is not None:
+        geprueft["manifest_gebunden"] = len(
+            [r for r in eingaben if r in tabellen])
+    tabellen["sha256"] = hashes
+    return tabellen, geprueft, errors, usage_errors
+
+
+def _manifest_befund(
+    manifest: Optional[Mapping[str, Any]], rolle: str, daten: bytes
+) -> List[dict]:
+    """Die gelesenen Bytes einer Rolle gegen den Manifest-Eintrag halten."""
+    if manifest is None:
+        return []
+    if rolle == "config":
+        erwartet = manifest["config"]["sha256"]
+        was = "die Config"
+    else:
+        datei = ROLLEN_DATEIEN[rolle]
+        erwartet = manifest.get("ausgaben", {}).get(datei)
+        was = datei
+        if erwartet is None:
+            return [{
+                "code": "manifest",
+                "message": f"{was} ist im Laufmanifest nicht als Ausgabe "
+                "eingetragen — sie stammt nicht aus diesem Lauf",
+            }]
+    if sha256_bytes(daten) != erwartet:
+        return [{
+            "code": "manifest",
+            "message": (
+                f"{was} ({rolle}) hat nicht die im Laufmanifest belegte "
+                "SHA-256 — die Datei ist nicht die, die der Lauf geschrieben "
+                "hat (anderer Lauf oder nachtraeglich veraendert)"
+            ),
+        }]
+    return []

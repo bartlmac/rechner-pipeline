@@ -20,7 +20,8 @@ from rechner_pipeline.bestand.kennzahlen import (
     verlauf,
 )
 from rechner_pipeline.bestand.parquet_io import write_portfolio
-from rechner_pipeline.bestand.fuehrung import schnitt_am
+from rechner_pipeline.bestand.ereignisse import mit_zugaengen
+from rechner_pipeline.bestand.fuehrung import fuehre_fort, schnitt_am
 from rechner_pipeline.bestand import cli_report as cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -143,17 +144,26 @@ def test_ereignis_kennzahlen_summen_und_jahresreihe(fortschreibung):
 
     _, ledger, *_ = fortschreibung
     summen = ereignis_summen(ledger)
-    assert [s["ereignis"] for s in summen] == [
-        c for c in EREIGNIS_REIHENFOLGE if (ledger["ereignis"] == c).any()
+    # Je Vorfall eine Zeile JE BETRAGSART: Ein Zugang und eine Erhoehung
+    # bewegen Summe und Bruttojahresbeitrag, und beide Groessen stehen
+    # getrennt — addierte man sie, waere die Zahl weder das eine noch das
+    # andere.
+    assert [(s["ereignis"], s["betrag_art"]) for s in summen] == [
+        (c, art)
+        for c in EREIGNIS_REIHENFOLGE
+        for art in sorted(set(ledger.loc[ledger["ereignis"] == c, "betrag_art"]))
     ]
     for s in summen:
-        rows = ledger[ledger["ereignis"] == s["ereignis"]]
+        rows = ledger[(ledger["ereignis"] == s["ereignis"])
+                      & (ledger["betrag_art"] == s["betrag_art"])]
         assert s["anzahl"] == len(rows)
         assert s["summe_betrag"] == pytest.approx(float(rows["betrag"].sum()))
     reihe = ereignisse_je_jahr(ledger)
     jahre = [r["jahr"] for r in reihe]
     assert jahre == list(range(jahre[0], jahre[-1] + 1))  # lueckenlos
-    assert sum(sum(r[c] for c in EREIGNIS_REIHENFOLGE) for r in reihe) == len(ledger)
+    # Gezaehlt werden VORFAELLE, nicht Zeilen:
+    vorfaelle = ledger[["police_id", "ereignis", "status_date"]].drop_duplicates()
+    assert sum(sum(r[c] for c in EREIGNIS_REIHENFOLGE) for r in reihe) == len(vorfaelle)
 
 
 def test_status_verlauf_zaehlt_pol_und_pex(portfolio, fortschreibung):
@@ -292,8 +302,13 @@ def test_cli_bad_stichtag_exits_2(portfolio, tmp_path):
 
 
 def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
-    historie, ledger, scheiben, *_ = fortschreibung
-    parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
+    historie, ledger, scheiben, zugaenge = fortschreibung[:4]
+    # Der Bericht verlangt den GEFUEHRTEN Stamm zu seinem Journal (T18-05):
+    # ein Basisbestand, dessen Stamm POL sagt, waehrend das Journal STO
+    # sagt, ist keine Fuehrung.
+    parquet = write_portfolio(
+        fuehre_fort(mit_zugaengen(portfolio, zugaenge), historie),
+        tmp_path / "b.parquet")
     h = write_portfolio(historie, tmp_path / "h.parquet")
     l = write_portfolio(ledger, tmp_path / "l.parquet")
     s = write_portfolio(scheiben, tmp_path / "s.parquet")
@@ -431,8 +446,10 @@ def test_beide_produkte_teilen_dieselbe_nachweisungs_struktur(config):
 
 
 def test_cli_stichtag(portfolio, fortschreibung, tmp_path):
-    historie, ledger, scheiben, *_ = fortschreibung
-    parquet = write_portfolio(portfolio, tmp_path / "b.parquet")
+    historie, ledger, scheiben, zugaenge = fortschreibung[:4]
+    parquet = write_portfolio(
+        fuehre_fort(mit_zugaengen(portfolio, zugaenge), historie),
+        tmp_path / "b.parquet")
     h = write_portfolio(historie, tmp_path / "h.parquet")
     l = write_portfolio(ledger, tmp_path / "l.parquet")
     s = write_portfolio(scheiben, tmp_path / "s.parquet")

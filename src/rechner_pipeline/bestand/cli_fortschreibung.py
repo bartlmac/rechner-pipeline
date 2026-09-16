@@ -31,7 +31,12 @@ Outputs in ``--out-dir``: ``bestand.parquet`` (Basis; nur ohne --portfolio),
 ``zugaenge.parquet`` und ``bestand_gesamt.parquet`` — der GEFUEHRTE
 Gesamtbestand (ADR-011): Basis + Neuzugaenge, Statusspalten auf dem
 aktuellen Zustand am Horizont; Eingang fuer Auskunft, Auswertung und
-``bestand_report``.
+``bestand_report``. Dazu ``laufmanifest.json``, der Lieferschein des
+Laufs (:mod:`rechner_pipeline.bestand.manifest`): Horizont,
+Neuzugangs-Stichtag, Kern-Stand, SHA-256 der Config und jeder Ausgabe.
+Der Abschluss-Produzent verlangt es; Gate P-B1 bindet es auf Wunsch
+(``--manifest``). Ohne Manifest ist ``--bis`` bei den Konsumenten eine
+Behauptung ueber den Lauf, die niemand belegt (T18-02).
 
 Knoten: klv, bu
 """
@@ -52,6 +57,27 @@ from rechner_pipeline.bestand.ereignisse import (
 )
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
+from rechner_pipeline.bestand.manifest import schreibe_manifest
+
+
+def _nichtendliche(name: str, df) -> str:
+    """Spalten mit NaN/inf einer Ausgabe benennen (leer = alles endlich).
+
+    Review T21-03: Endliche Verteilungsparameter koennen numerisch
+    ueberlaufen (meanlog = 1000 -> exp -> inf); die Config-Pruefung ist
+    dann gruen, der Bestand nicht. Vor dem Publish wird deshalb jede
+    Ausgabe geprueft — und bei einem Befund wird NICHTS geschrieben, auch
+    kein Manifest, das einen erfolgreichen Lauf belegen wuerde.
+    """
+    import numpy as np
+
+    schlecht = []
+    for spalte in df.columns:
+        if str(df[spalte].dtype) in ("float64", "int64"):
+            werte = df[spalte].to_numpy(dtype="float64")
+            if not np.isfinite(werte).all():
+                schlecht.append(spalte)
+    return f"{name}: nichtendliche Werte in {schlecht}" if schlecht else ""
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 
 
@@ -65,8 +91,11 @@ def _lies_uebernahme(verzeichnis: Path) -> dict:
     from rechner_pipeline.models.bestand import (
         LEDGER_NAMES,
         MERKMALE_NAMES,
+        SCHEIBEN_NAMES,
+        SCHICHTEN_NAMES,
         STAMM_NAMES,
         STATUS_HISTORIE_NAMES,
+        VERANKERUNG_NAMES,
     )
 
     vertraege = {
@@ -89,6 +118,20 @@ def _lies_uebernahme(verzeichnis: Path) -> dict:
         read_portfolio(merkmale_pfad, expected_columns=MERKMALE_NAMES)
         if merkmale_pfad.is_file() else None
     )
+    # Die mitgebrachten Bausteine (Freischaltung, Schritt 3): ohne Datei
+    # hat der Bestand keine Alt-Erhoehungen — nicht: sie gingen verloren.
+    scheiben_pfad = verzeichnis / "scheiben.parquet"
+    tabellen["scheiben"] = (
+        read_portfolio(scheiben_pfad, expected_columns=SCHEIBEN_NAMES)
+        if scheiben_pfad.is_file() else None
+    )
+    # Korrekturschicht und Verankerung (Freischaltung, Schritt 5).
+    for rolle, spalten in (("schichten", SCHICHTEN_NAMES),
+                           ("verankerung", VERANKERUNG_NAMES)):
+        pfad = verzeichnis / f"{rolle}.parquet"
+        tabellen[rolle] = (
+            read_portfolio(pfad, expected_columns=spalten) if pfad.is_file() else None
+        )
     return tabellen
 
 
@@ -222,7 +265,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     out_dir = Path(ns.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    ausgaben: List[Path] = []
+    eingaben: dict = {}
     try:
+        basis_schreiben = False
         if ns.portfolio:
             portfolio_path = Path(ns.portfolio)
             if not portfolio_path.is_file():
@@ -232,9 +278,20 @@ def main(argv: Optional[List[str]] = None) -> int:
                 )
                 return 2
             basis = read_portfolio(portfolio_path)
+            eingaben["portfolio"] = portfolio_path
         else:
-            basis = generate(config, bis=neuzugang_ab)
-            write_portfolio(basis, out_dir / "bestand.parquet")
+            import numpy as np
+
+            with np.errstate(over="raise", invalid="raise", divide="raise"):
+                try:
+                    basis = generate(config, bis=neuzugang_ab)
+                except FloatingPointError as exc:
+                    raise ValueError(
+                        f"Basisbestand nicht erzeugbar: numerischer Ueberlauf in "
+                        f"einer Verteilung ({exc}) — Verteilungsparameter sind "
+                        "endlich, aber ausserhalb des sicheren Wertebereichs"
+                    ) from exc
+            basis_schreiben = True
         uebernahme = None
         if ns.uebernahme:
             uebernahme = _lies_uebernahme(Path(ns.uebernahme))
@@ -248,21 +305,30 @@ def main(argv: Optional[List[str]] = None) -> int:
                     file=sys.stderr)
                 return 2
             merkmale = read_portfolio(merkmale_path)
+            eingaben["merkmale"] = merkmale_path
         elif uebernahme is not None:
             # Die Uebernahme bringt ihre Merkmalstabelle mit; sie extra zu
             # verlangen hiesse, dieselbe Datei zweimal zu benennen.
             merkmale = uebernahme["merkmale"]
-        ergebnis = fortschreiben(basis, config, bis, neuzugang_ab=neuzugang_ab,
-                                 merkmale=merkmale)
+        ergebnis = fortschreiben(
+            basis, config, bis, neuzugang_ab=neuzugang_ab, merkmale=merkmale,
+            scheiben=uebernahme["scheiben"] if uebernahme is not None else None,
+            schichten=uebernahme["schichten"] if uebernahme is not None else None,
+            verankerung=uebernahme["verankerung"] if uebernahme is not None else None,
+        )
         # Das Journal der Uebernahme geht dem der Fortschreibung VORAUS:
         # Zugang und Umbuchung liegen am Bestandszugang, also vor dem
-        # ersten simulierten Vertragsjahr.
-        historie, ledger = ergebnis.historie, ergebnis.ledger
+        # ersten simulierten Vertragsjahr — ebenso die mitgebrachten
+        # Scheiben vor den neuen.
+        historie, ledger, scheiben = ergebnis.historie, ergebnis.ledger, ergebnis.scheiben
         if uebernahme is not None:
             historie = _voran(uebernahme["historie"], historie,
                               ["police_id", "status_id"])
             ledger = _voran(uebernahme["ledger"], ledger,
                             ["police_id", "status_date"])
+            if uebernahme["scheiben"] is not None:
+                scheiben = _voran(uebernahme["scheiben"], scheiben,
+                                  ["police_id", "scheiben_id"])
         # Der Gesamtbestand ist GEFUEHRT (ADR-011): der Stammsatz traegt den
         # aktuellen Zustand am Horizont, das Journal (historie/ledger) die
         # vollstaendige Aufzeichnung. bestand.parquet bleibt der Basisbestand
@@ -272,18 +338,59 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"bestand_fortschreibung: {exc}", file=sys.stderr)
         return 2
 
-    write_portfolio(historie, out_dir / "historie.parquet")
-    write_portfolio(ledger, out_dir / "ledger.parquet")
-    write_portfolio(ergebnis.scheiben, out_dir / "scheiben.parquet")
-    write_portfolio(ergebnis.zugaenge, out_dir / "zugaenge.parquet")
-    write_portfolio(gesamt, out_dir / "bestand_gesamt.parquet")
+    # Endlichkeit JEDER Ausgabe vor dem ersten Publish (T21-03).
+    befunde = [b for b in (
+        _nichtendliche("bestand.parquet", basis) if basis_schreiben else "",
+        _nichtendliche("historie.parquet", historie),
+        _nichtendliche("ledger.parquet", ledger),
+        _nichtendliche("scheiben.parquet", scheiben),
+        _nichtendliche("zugaenge.parquet", ergebnis.zugaenge),
+        _nichtendliche("bestand_gesamt.parquet", gesamt),
+    ) if b]
+    if befunde:
+        print("bestand_fortschreibung: " + "; ".join(befunde) + " — es wird "
+              "nichts geschrieben (Verteilungsparameter oder Rechnungsgrundlagen "
+              "pruefen)", file=sys.stderr)
+        return 2
+    if basis_schreiben:
+        ausgaben.append(write_portfolio(basis, out_dir / "bestand.parquet"))
+    ausgaben.append(write_portfolio(historie, out_dir / "historie.parquet"))
+    ausgaben.append(write_portfolio(ledger, out_dir / "ledger.parquet"))
+    ausgaben.append(write_portfolio(scheiben, out_dir / "scheiben.parquet"))
+    # Herabsetzungen nur, wenn es welche gibt: Eine leere Datei hiesse
+    # "geprueft und keine gefunden", keine Datei heisst "dieser Lauf kennt
+    # keine" — dieselbe Unterscheidung wie bei den uebrigen Nebentabellen.
+    if len(ergebnis.reduktionen):
+        ausgaben.append(write_portfolio(
+            ergebnis.reduktionen, out_dir / "reduktionen.parquet"))
+    ausgaben.append(write_portfolio(ergebnis.zugaenge, out_dir / "zugaenge.parquet"))
+    ausgaben.append(write_portfolio(gesamt, out_dir / "bestand_gesamt.parquet"))
+    # Die Nebentabellen der Uebernahme wandern MIT in den Lauf: Merkmale,
+    # Schichten und Verankerung gehoeren zum Bestand, den Abschluss, Bericht
+    # und P-B1 lesen — ein Laufverzeichnis, das seine Bewertungsgrundlagen
+    # nicht traegt, ist keins (Manifest bindet sie als Ausgaben).
+    if uebernahme is not None:
+        for rolle in ("merkmale", "schichten", "verankerung"):
+            tabelle = uebernahme.get(rolle)
+            if tabelle is not None and len(tabelle):
+                ausgaben.append(write_portfolio(tabelle, out_dir / f"{rolle}.parquet"))
+    # Der Lieferschein zuletzt, ueber die Bytes, die tatsaechlich auf der
+    # Platte liegen: Er belegt den Horizont und bindet jede Ausgabe.
+    schreibe_manifest(
+        out_dir,
+        horizont=bis,
+        neuzugang_ab=neuzugang_ab,
+        config_pfad=config_path,
+        ausgaben=ausgaben,
+        eingaben=eingaben,
+    )
 
     print(
         f"bestand_fortschreibung: {len(basis)} Basisvertraege"
         + (f" (davon {len(uebernahme['bestand'])} uebernommen)"
            if uebernahme is not None else "")
         + f", {len(ergebnis.zugaenge)} Neuzugaenge, {len(ledger)} GeVos, "
-        f"{len(ergebnis.scheiben)} Erhoehungsscheiben -> {out_dir}",
+        f"{len(scheiben)} Erhoehungsscheiben -> {out_dir}",
         file=sys.stderr,
     )
     return 0

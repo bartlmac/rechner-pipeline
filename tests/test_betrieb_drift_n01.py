@@ -1,0 +1,391 @@
+"""Der Betriebsweg prueft und liest, was der Fallweg prueft und liest (Betriebsbefund N-01).
+
+Beim Neuaufsetzen des Betriebsstands aus dem Fall endete der Tageslauf in
+der Wache rot: zwei Rueckkaeufe im zehnten Jahr wichen je einen Cent vom
+Ledger ab. Das Ledger war richtig (Basis plus Korrekturschicht, Kern
+3.5.0), die Wache falsch — sie hatte Korrekturschicht und Verankerung
+nicht an die P-B1-Engine gereicht, obwohl ``_stand_bauen`` beide schreibt
+und in die Fortschreibung gibt. Dieselbe Luecke, dreimal an demselben Weg:
+der Teilbestandsbericht ohne Schicht (rund 13.700 EUR Deckungskapital je
+Vertrag), der Monatsabschluss ohne Schicht, und ein Eingang, dessen
+Nebentabellen niemand gegen die Vokabel des Gates hielt (die Fixture
+dieses Tests trug ``zustand_ta = "POL"``; der Kern brach vier Schichten
+tiefer ab).
+
+Zwei Invarianten, eine Ratsche, ein Vokabeltest:
+* Wer die P-B1-Engine ruft, baut ihre Eingaben nicht selbst, sondern aus
+  ``ROLLEN_DATEIEN`` (``bestand.manifest.lauf_eingaben``).
+* Was der Betrieb an Nebentabellen liest, wird gegen dieselbe Vokabel
+  gehalten wie im Gate (``models.bestand``).
+
+Knoten: system/betrieb
+"""
+
+from __future__ import annotations
+
+import ast
+import datetime as dt
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from rechner_pipeline.bestand.manifest import (
+    NEBENTABELLEN,
+    PFLICHT_ROLLEN,
+    ROLLEN_DATEIEN,
+    lauf_eingaben,
+    nebentabellen_in,
+)
+from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+from rechner_pipeline.betrieb import tageslauf as tl
+from rechner_pipeline.betrieb import uebernahme as ueb
+from rechner_pipeline.betrieb.tageslauf import EXIT_OK, lies_protokoll, tageslauf
+from rechner_pipeline.models.bestand import (
+    VERANKERUNGSZUSTAENDE,
+    ZUSTAENDE_TA,
+    validate_schichten,
+    validate_verankerung,
+)
+from tests.test_betrieb_neuaufsetzen import _fall_mit_nebentabellen, _schichten, _verankerung
+from tests.test_betrieb_seite import _ablage
+from tests.test_betrieb_uebernahme import STICHTAG, _fall
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC = REPO_ROOT / "src" / "rechner_pipeline"
+
+
+@pytest.fixture(scope="module")
+def gefuehrt_mit_schicht(tmp_path_factory):
+    """Ein Betrieb mit uebernommenem Vertrag samt Bausteinen, Schicht und Verankerung."""
+    wurzel = tmp_path_factory.mktemp("n01")
+    fall = _fall_mit_nebentabellen(wurzel)
+    stand = wurzel / "daten"
+    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ablage = _ablage(stand)
+    code, zeile = tageslauf(ablage, dt.date(2026, 2, 3))
+    assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
+    return ablage
+
+
+# --------------------------------------------------------------------------- #
+# Invariante 1: die Wache liest jede Rolle, die der Stand traegt
+# --------------------------------------------------------------------------- #
+
+def test_die_wache_bekommt_jede_rolle_die_der_stand_schreibt(gefuehrt_mit_schicht, monkeypatch):
+    """Klasse, nicht Einzelfall: JEDE Datei der Rollentabelle, die im Stand
+    liegt, erreicht die P-B1-Engine — auch eine kuenftige Nebentabelle.
+    Mutationsprobe: die Rollen in _wache wieder von Hand bauen -> rot."""
+    ablage = gefuehrt_mit_schicht
+    gesehen: list = []
+    echt = tl.lies_und_pruefe_pb1
+
+    def spion(eingaben, **kw):
+        gesehen.append(dict(eingaben))
+        return echt(eingaben, **kw)
+
+    monkeypatch.setattr(tl, "lies_und_pruefe_pb1", spion)
+    code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
+    assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
+    assert gesehen, "die Wache hat die Engine nicht gerufen"
+    im_stand = {rolle for rolle, datei in ROLLEN_DATEIEN.items() if (ablage.stand / datei).is_file()}
+    assert {"schichten", "verankerung"} <= im_stand          # die Fixture traegt sie
+    assert im_stand <= set(gesehen[-1]), sorted(im_stand - set(gesehen[-1]))
+    # Die Engine hat sie auch geprueft, nicht nur bekommen:
+    assert zeile["pb1"]["geprueft"]["schichten_zeilen"] == 1
+    assert zeile["pb1"]["geprueft"]["verankerung_zeilen"] == 1
+
+
+def test_lauf_eingaben_ist_die_tabelle(tmp_path):
+    for rolle in PFLICHT_ROLLEN:
+        assert rolle in ROLLEN_DATEIEN
+    assert set(PFLICHT_ROLLEN) | set(NEBENTABELLEN) == set(ROLLEN_DATEIEN)
+    (tmp_path / ROLLEN_DATEIEN["schichten"]).write_bytes(b"")
+    eingaben = lauf_eingaben(tmp_path, tmp_path / "c.toml")
+    assert set(eingaben) == set(PFLICHT_ROLLEN) | {"schichten", "config"}
+    assert nebentabellen_in(tmp_path) == {"schichten": tmp_path / "schichten.parquet"}
+
+
+def _ziel(ablage, quelle_nr: int) -> int:
+    """Die ZIELnummer einer gelieferten Police.
+
+    Der Betrieb fuehrt eigene Policennummern (Review T24-08); gefragt wird
+    ueber die registrierte Uebersetzungstabelle des Eingangs, nicht ueber
+    ein Literal. So prueft der Test die Kette und nicht eine abgetippte
+    Zahl — und er bleibt richtig, wenn ein zweiter Fall das Band
+    verschiebt."""
+    from rechner_pipeline.betrieb.uebernahme import zielnummern
+
+    [eingang] = [p for p in ablage.uebernahme.iterdir() if p.is_dir()]
+    return zielnummern(eingang)[quelle_nr]
+
+
+def test_abschluss_und_berichte_tragen_die_korrekturschicht(gefuehrt_mit_schicht):
+    """Der Monatsabschluss weist die Schicht des uebernommenen Vertrags aus
+    (rho != 0 in der Fixture), der Teilbestand traegt jede Rolle, und der
+    Bericht nennt die Schicht als Position statt nur andere Kurven zu zeigen."""
+    ablage = gefuehrt_mit_schicht
+    eintraege = [e for z in lies_protokoll(ablage.protokoll_pfad) for e in z.get("abschluesse", [])]
+    assert eintraege, "kein Monatsabschluss im gefuehrten Fenster"
+    abschluss = read_portfolio(ablage.abschluesse / eintraege[0]["datei"])
+    ziel = _ziel(ablage, 7_000_001)
+    schicht = abschluss.loc[abschluss["police_id"] == ziel, "korrekturschicht"]
+    assert len(schicht) == 1 and float(schicht.iloc[0]) != 0.0
+    tabellen = {rolle: read_portfolio(ablage.stand / datei)
+                for rolle, datei in ROLLEN_DATEIEN.items() if (ablage.stand / datei).is_file()}
+    teil = tl._teilbestand(tabellen, [ziel])
+    assert set(teil) == set(ROLLEN_DATEIEN)
+    assert len(teil["schichten"]) == 1 and len(teil["verankerung"]) == 1
+    mit_bericht = [e for e in eintraege if "bericht" in e]
+    assert mit_bericht, "kein Bestandsbericht im gefuehrten Fenster"
+    for eintrag in mit_bericht:
+        html = (ablage.berichte / eintrag["bericht"]).read_text("utf-8")
+        assert "davon Korrekturschicht" in html
+        for teilbestand in eintrag.get("teilbestaende", []):
+            teil_html = (ablage.berichte / teilbestand["bericht"]).read_text("utf-8")
+            assert "davon Korrekturschicht" in teil_html
+
+
+#: Monate vom Versicherungsbeginn bis zum Uebernahmestichtag, je
+#: geliefertem Vertrag (Beginne 2018-03-01, 2019-07-01, 2017-11-01).
+MONATE_TA = {7_000_001: 94, 7_000_002: 78, 7_000_003: 98}
+
+
+def _fall_mit_schicht_auf_allen(wurzel: Path) -> Path:
+    """Wie _fall_mit_nebentabellen, aber Schicht und Verankerung fuer JEDEN
+    gelieferten Vertrag, jeweils mit seinen eigenen Monaten bis zum Stichtag.
+
+    Frueher trugen nur zwei Vertraege eine Schicht, und die Fixture war auf
+    genau den getunt, der im zehnten Jahr stornierte (7000002). Seit der
+    Betrieb eigene Policennummern vergibt (Review T24-08), ist das nicht
+    mehr derselbe Vertrag: Die Fortschreibung wuerfelt je ``police_id``,
+    und eine umnummerierte Police bekommt eine andere Zukunft. Eine Fixture,
+    die an einer solchen Uebereinstimmung haengt, prueft den Zufall mit —
+    also traegt jetzt jeder Vertrag seine Schicht, und der Test SUCHT den
+    Storno, statt ihn zu behaupten."""
+    fall = _fall_mit_nebentabellen(wurzel)
+    quelle = fall / "abgeleitet" / "bestand"
+    schichten = pd.concat([_schichten(p) for p in MONATE_TA], ignore_index=True)
+    verankerung = pd.concat([_verankerung(p) for p in MONATE_TA], ignore_index=True)
+    for police, monate in MONATE_TA.items():
+        verankerung.loc[verankerung["police_id"] == police, "monate_ta"] = monate
+    # 7000003 bringt eine Beitragsfreistellung von 2023-11 mit, sein t_a
+    # liegt bei 2026-01: Am Verankerungspunkt war er laengst beitragsfrei.
+    # Die Fixture behauptete hier frueher "beitragspflichtig" — daraus kam
+    # die alte Erwartung, nur zwei der drei Vertraege truegen eine Schicht
+    # (Review T25-06: die Bewertung liess sie an dieser Naht fallen).
+    verankerung.loc[
+        verankerung["police_id"] == 7_000_003, "zustand_ta"] = "beitragsfrei"
+    write_portfolio(schichten, quelle / "schichten.parquet")
+    write_portfolio(verankerung, quelle / "verankerung.parquet")
+    return fall
+
+
+def test_ein_storno_mit_schicht_laeuft_gruen_durch_die_wache(tmp_path):
+    """Der Betriebsbefund selbst: Storno eines uebernommenen Vertrags mit
+    Korrekturschicht (rho = 0,02). Die Buchung traegt Basis plus Schicht;
+    die Wache leitet denselben Betrag her — vorher rechnete sie ohne
+    Schicht und meldete das richtige Ledger als falsch (Exit 3).
+    Mutationsprobe: schichten/verankerung aus lauf_eingaben nehmen -> rot."""
+    fall = _fall_mit_schicht_auf_allen(tmp_path)
+    stand = tmp_path / "daten"
+    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ablage = _ablage(stand)
+    eingang = next(p for p in ablage.uebernahme.iterdir() if p.is_dir())
+    ziele = set(ueb.zielnummern(eingang).values())
+
+    # Vor dem Storno: der Abschluss weist die Schicht jedes uebernommenen
+    # Vertrags aus.
+    code, zeile = tageslauf(ablage, dt.date(2029, 1, 4))
+    assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
+    abschluss = read_portfolio(ablage.abschluesse / zeile["abschluesse"][-1]["datei"])
+    schichten = abschluss.loc[abschluss["police_id"].isin(ziele), "korrekturschicht"]
+    # JEDER traegt eine — auch der beitragsfrei uebernommene: Seine
+    # Freistellung IST sein Verankerungszustand, die Schicht laeuft also
+    # auf dem beitragsfreien Track als eigene Position weiter. Frueher
+    # stand hier "2 von 3", weil die Fixture fuer diesen Vertrag einen
+    # widerspruechlichen Verankerungszustand trug und die Bewertung den
+    # Schichtwert daraufhin fallen liess (Review T25-06). Gefordert ist,
+    # dass die Schicht bis in den Abschluss durchschlaegt.
+    assert len(schichten) == 3 and all(float(x) != 0.0 for x in schichten)
+
+    # Das Jahr des Stornos wird GESUCHT, nicht behauptet: Welcher Vertrag
+    # wann storniert, wuerfelt die Fortschreibung je police_id, und der
+    # Betrieb vergibt seit Review T24-08 eigene Nummern. Eine feste
+    # Jahreszahl haette den Zufall mitgeprueft.
+    for jahr in range(2030, 2042):
+        code, zeile = tageslauf(ablage, dt.date(jahr, 1, 4))
+        assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
+        assert zeile["pb1"]["urteil"] == "gruen"
+        ledger = read_portfolio(ablage.stand / "ledger.parquet")
+        sto = ledger[(ledger["ereignis"] == "STO") & (ledger["police_id"].isin(ziele))]
+        if len(sto):
+            break
+    else:
+        pytest.fail("kein Storno eines uebernommenen Vertrags im Fenster 2030-2041")
+
+    # Der Punkt des Befundes: Die Wache hat den Betrag der Storno-Buchung
+    # hergeleitet — MIT Schicht, sonst waere sie rot (Exit 3).
+    assert zeile["pb1"]["urteil"] == "gruen"
+    assert zeile["pb1"]["geprueft"]["betraege_hergeleitet"] >= len(
+        ledger[ledger["ereignis"] == "STO"])
+
+
+# --------------------------------------------------------------------------- #
+# Invariante 2: der Betriebseingang haelt die Vokabel des Gates
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("tabelle,spalte,wert", [
+    ("verankerung", "zustand_ta", "POL"),
+    ("verankerung", "zustand_ta", ""),
+    ("schichten", "verankerungszustand", "POL"),
+    ("schichten", "verankerungszustand", "beitragspflichtig"),
+])
+def test_ein_zugangsstand_mit_fremder_vokabel_wird_kein_eingang(tmp_path, tabelle, spalte, wert):
+    """Die alte Fixture dieses Betriebs trug genau diese Werte, und der
+    Tageslauf lief gruen — bis der Kern sie bewerten sollte."""
+    fall = _fall_mit_nebentabellen(tmp_path)
+    quelle = fall / "abgeleitet" / "bestand"
+    df = read_portfolio(quelle / f"{tabelle}.parquet")
+    df[spalte] = wert
+    write_portfolio(df, quelle / f"{tabelle}.parquet")
+    stand = tmp_path / "daten"
+    with pytest.raises(ueb.UebernahmeError, match="Gate"):
+        ueb.eingang_anlegen(stand, fall, STICHTAG)
+    assert not (stand / "uebernahme" / "probe-uebernahme").exists()
+    # Dieselbe Pruefung faengt es auch beim Lesen — ein Eingang, der die
+    # Registrierung umgangen hat, kommt nicht in die Fortschreibung.
+    fehler = ueb.nebentabellen_fehler(
+        read_portfolio(quelle / "bestand.parquet"), read_portfolio(quelle / "historie.parquet"),
+        read_portfolio(quelle / "scheiben.parquet"), read_portfolio(quelle / "verankerung.parquet"),
+        read_portfolio(quelle / "schichten.parquet"))
+    assert any(spalte in f for f in fehler), fehler
+
+
+def test_die_vokabel_ist_die_des_gates():
+    """Gate, Engine und Betrieb sprechen dieselbe Sprache: die Verankerung
+    die der Uebernahme, die Schicht die Erlebenszustaende der Kern-Modelle
+    (gegen den Kern gehalten in test_korrekturschicht)."""
+    from rechner_pipeline.gates.verankerung_belegen import ZUSTAENDE
+
+    assert ZUSTAENDE == ZUSTAENDE_TA
+    assert "aktiv" in VERANKERUNGSZUSTAENDE
+    # Die korrigierte Fixture besteht die Pruefung, die alte ("POL") nicht.
+    stamm = pd.DataFrame([{"police_id": 7_000_001, "duration": 25}])
+    assert validate_verankerung(stamm, _verankerung(7_000_001)) == []
+    assert validate_schichten(stamm, _schichten(7_000_001), _verankerung(7_000_001)) == []
+    alt = _verankerung(7_000_001); alt["zustand_ta"] = "POL"
+    assert any("zustand_ta" in f for f in validate_verankerung(stamm, alt))
+    alt = _schichten(7_000_001); alt["verankerungszustand"] = "POL"
+    assert any("verankerungszustand" in f for f in validate_schichten(stamm, alt, _verankerung(7_000_001)))
+
+
+# --------------------------------------------------------------------------- #
+# Ratsche: kein Aufrufer der Engine tippt die Rollen ab
+# --------------------------------------------------------------------------- #
+
+ERBAUER = {SRC / "bestand" / "manifest.py", SRC / "bestand" / "vorbedingungen.py"}
+
+
+#: Die eine benannte Ausnahme: der Gate-Vertrag von A-M4 ist ein Literal,
+#: keine Eingabenliste — eine Ableitung aus der Tabelle liesse jede neue
+#: Pflichtrolle still zur Vertragsaenderung werden (Begruendung am Ort).
+#: Benannte Ausnahmen: Literale, die AUSSEHEN wie eine abgetippte
+#: Rollenliste, aber keine sind.
+#:
+#: Benannte Ausnahmen: Literale, die WIRKLICH Rollenmengen sind und
+#: trotzdem stehen bleiben duerfen, weil sie einen Gate-Vertrag bilden.
+#: PB1_VOLLPROFIL und PB1_VOLLPROFIL_SCHICHT sind der Abnahmeumfang von
+#: A-M4 — bewusst Literale, nicht aus ROLLEN_DATEIEN abgeleitet: Eine neue
+#: Erzeugerrolle darf den Abnahmeumfang nicht stillschweigend erweitern.
+#:
+#: Hier stehen NUR Vertraege, keine Fehlalarme. Eine Liste, die beides
+#: mischt, verliert ihre Aussage — man sieht ihr nicht mehr an, ob sie
+#: waechst, weil es mehr Vertraege gibt oder weil der Detektor zu grob ist
+#: (merge-session, 2026-09-15). Fehlalarme gehoeren in den Detektor.
+GATE_VERTRAEGE = {("abnahmebericht.py", "PB1_VOLLPROFIL"),
+                  ("abnahmebericht.py", "PB1_VOLLPROFIL_SCHICHT")}
+
+
+def _rollen_literale(quelle: str) -> list:
+    """Dict-/Tupel-/Listen-/Set-Literale, die eine ROLLENMENGE sind:
+    (Zeile, Rollen, Name der Zuweisung oder None).
+
+    Zwei Bedingungen, nicht eine. Zwei oder mehr P-B1-Rollen — und KEIN
+    fremder Name daneben: Ein Eingaben-Mapping der Engine enthaelt
+    ausschliesslich Rollen und ``config`` (``vorbedingungen.PB1_ROLLEN``).
+    Ein Literal, das Rollennamen mit anderem mischt, ist keine abgetippte
+    Rollenliste, sondern ein anderes Vokabular, in dem zufaellig dieselben
+    Woerter vorkommen — ``PROBE_PFLICHTFELDER`` nennt Belegfelder, darunter
+    "scheiben" und "schichten" (Review T25-01).
+
+    Die zweite Bedingung gehoert in den Detektor und nicht in die
+    Ausnahmeliste: Eine Liste, die Vertraege und Fehlalarme mischt, sagt
+    nicht mehr, warum sie waechst.
+    """
+    rollen = set(ROLLEN_DATEIEN)
+    erlaubt_daneben = rollen | {"config"}
+    baum = ast.parse(quelle)
+    zugewiesen: dict = {}
+    for knoten in ast.walk(baum):
+        if isinstance(knoten, ast.Assign) and len(knoten.targets) == 1 and isinstance(knoten.targets[0], ast.Name):
+            for unter in ast.walk(knoten.value):
+                zugewiesen[id(unter)] = knoten.targets[0].id
+    treffer = []
+    for knoten in ast.walk(baum):
+        namen: set = set()
+        if isinstance(knoten, ast.Dict):
+            namen = {k.value for k in knoten.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+        elif isinstance(knoten, (ast.Tuple, ast.List, ast.Set)):
+            namen = {e.value for e in knoten.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+        if len(namen & rollen) >= 2 and namen <= erlaubt_daneben:
+            treffer.append((knoten.lineno, sorted(namen & rollen), zugewiesen.get(id(knoten))))
+    return treffer
+
+
+def _aufrufer_der_engine() -> list:
+    return sorted(
+        p for p in SRC.rglob("*.py")
+        if "lies_und_pruefe_pb1" in p.read_text("utf-8") and p not in ERBAUER
+    )
+
+
+def test_kein_aufrufer_der_engine_baut_die_rollen_von_hand():
+    """Vier Aufrufer, vier abgetippte Listen, eine unvollstaendig — die
+    Bauform war der Fehler. Wer die Engine ruft, nimmt die Tabelle."""
+    aufrufer = _aufrufer_der_engine()
+    # Genau die fuenf Aufrufer — ein sechster muss hier benannt werden, damit
+    # die Ratsche ihn nicht still uebernimmt (Testat 5ca0306: der fuenfte,
+    # der Abnahmebericht, fuehrte seine Rollen als SET, das die erste Fassung
+    # der Ratsche nicht las).
+    assert {p.name for p in aufrufer} == {
+        "tageslauf.py", "cli_abschluss.py", "cli_report.py", "bestand_validate.py", "abnahmebericht.py",
+    }
+    befunde = {
+        str(p.relative_to(REPO_ROOT)): treffer
+        for p in aufrufer
+        if (treffer := [f for f in _rollen_literale(p.read_text("utf-8"))
+                        if (p.name, f[2]) not in GATE_VERTRAEGE])
+    }
+    assert befunde == {}, befunde
+    # Die Ausnahme ist keine Luecke: sie steht da, wo sie benannt ist.
+    ab = SRC / "gates" / "abnahmebericht.py"
+    assert any(f[2] == "PB1_VOLLPROFIL" for f in _rollen_literale(ab.read_text("utf-8")))
+
+
+def test_die_ratsche_faengt_die_abgetippte_liste():
+    """Selbsttest der Ratsche gegen die Fassung vor dem Fix."""
+    assert _rollen_literale(
+        'eingaben = {"portfolio": a / "x", "historie": a / "y", "config": c}\n') == [(1, ["historie", "portfolio"], "eingaben")]
+    assert _rollen_literale('for rolle in ("portfolio", "historie", "ledger"):\n    pass\n') == [(1, ["historie", "ledger", "portfolio"], None)]
+    assert _rollen_literale('eingaben = {"portfolio": a}\nx = ("config", "portfolio")\n') == []
+    assert _rollen_literale('erlaubt = {"portfolio", "historie", "ledger"}\n') == [(1, ["historie", "ledger", "portfolio"], "erlaubt")]
+    assert _rollen_literale('voll = frozenset({"portfolio", "historie"})\n') == [(1, ["historie", "portfolio"], "voll")]
+    assert _rollen_literale('voll = frozenset({"portfolio", "config"})\n') == []
+    # Ein Vokabular, das Rollennamen mit Fremdem mischt, ist keine
+    # Rollenliste (Review T25-01): PROBE_PFLICHTFELDER in Kurzform.
+    assert _rollen_literale(
+        'felder = ("scheiben", "schichten", "stichtag", "generation")\n') == []
+    # Aber dieselben zwei Namen allein sind eine (PB1_VOLLPROFIL_SCHICHT).
+    assert _rollen_literale('voll = frozenset({"scheiben", "schichten"})\n') == [
+        (1, ["scheiben", "schichten"], "voll")]

@@ -49,14 +49,14 @@ from rechner_pipeline.bestand.migrationszugang import (
     uebernehmen,
 )
 from rechner_pipeline.gates._provenienz import systemstand
-from rechner_pipeline.models.bestand import model_point_kwargs
+from rechner_pipeline.models.bestand import ZUSTAENDE_TA, model_point_kwargs
 
 #: Zustandsuebersetzung Verankerungstabelle -> Uebernahme-Zustand.
-#: Die Tabelle spricht die Sprache des Zustandsmodells; die
-#: Uebernahme-API dieselbe — die Identitaet steht hier trotzdem
-#: explizit, damit ein neuer Tabellenwert hart faellt statt still
-#: durchzulaufen.
-ZUSTAENDE = ("beitragspflichtig", "beitragsfrei")
+#: Die Tabelle spricht die Sprache der Uebernahme; die Vokabel steht in
+#: ``models.bestand`` (EINE Stelle fuer Gate, P-B1-Engine und
+#: Betriebseingang, Betriebsbefund N-01), damit ein neuer Tabellenwert
+#: ueberall hart faellt statt still durchzulaufen.
+ZUSTAENDE = ZUSTAENDE_TA
 
 
 def _sha256(pfad: Path) -> str:
@@ -149,8 +149,15 @@ def baue_schichtbeleg(
     fenster: Optional[int] = None,
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     scheiben_mit_gamma1: bool = False,
+    summen: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
     """Schichtparameter je Police — der rechnende Kern des Producers.
+
+    ``summen`` (police -> gelieferte Summe aus den transformierten
+    Zeilen) ist die Grundlage, wo kein Anfangszustand eine Grund- oder
+    Ursprungssumme liefert: Der Stamm traegt seit der Freischaltung die
+    Grundsumme der Fuehrung; die Verankerung rechnet die Welt der
+    Lieferung.
 
     Rueckgabe: ``{"schichten": {police: {"hist": felder}},
     "befunde": [...], "summary": {...}}`` — das ``hist``-Format des
@@ -192,8 +199,11 @@ def baue_schichtbeleg(
         anfangszustand = (anfangszustaende or {}).get(police, {})
         if "sum_insured" in anfangszustand:
             # Die Bewertungs-Welt der Pruefstrecke: Ursprungs- bzw.
-            # Grundsumme statt der aktuellen Gesamtsumme des Stamms.
+            # Grundsumme.
             mp["sum_insured"] = float(anfangszustand["sum_insured"])
+        elif summen is not None and police in summen:
+            # Ohne Zustand die GELIEFERTE Summe als ein Vertrag.
+            mp["sum_insured"] = float(summen[police])
         vertraege.append(Uebernahme(
             police_id=int(police),
             model_point=mp,
@@ -290,10 +300,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "verankerung_schichten.json)")
     args = p.parse_args(argv)
 
+    import io
+
     import pandas as pd
 
-    from rechner_pipeline.bestand.parquet_io import read_portfolio
-    from rechner_pipeline.spez.validierung import lade_spez, spez_pfad
+    from rechner_pipeline.bestand.parquet_io import read_portfolio_aus_bytes
+    from rechner_pipeline.gates._common import lies_gehasht
+    from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 
     fall = Path(args.fall)
     ueber = Path(args.uebernahme) if args.uebernahme else (
@@ -307,14 +320,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"verankerung_belegen: {name}-Tabelle fehlt: {pfad}",
                   file=sys.stderr)
             return 2
+    # Jede Eingabe GENAU EINMAL lesen: der Beleg (provenienz.eingaben)
+    # traegt den Hash der Bytes, die hier verarbeitet werden (Review
+    # T23-01) — vorher lasen Engine und _sha256 die Tabellen getrennt.
     merkmale_pfad = ueber / "merkmale.parquet"
-    merkmale = (pd.read_parquet(merkmale_pfad)
-                if merkmale_pfad.is_file() else None)
+    merkmale_gelesen = (
+        lies_gehasht(merkmale_pfad) if merkmale_pfad.is_file() else None)
+    merkmale = (pd.read_parquet(io.BytesIO(merkmale_gelesen.roh))
+                if merkmale_gelesen is not None else None)
 
-    spez = lade_spez(fall, args.generation)
-    bestand = read_portfolio(pfade["bestand"])
+    spez_gelesen = lies_gehasht(spez_pfad(fall, args.generation))
+    spez = lade_spez_aus_bytes(spez_gelesen.roh)
+    bestand_gelesen = lies_gehasht(pfade["bestand"])
+    bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
+    verankerung_gelesen = lies_gehasht(pfade["verankerung"])
 
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None
+    summen: Optional[Dict[str, float]] = None
     if args.vorgeschichte is not None:
         # Dieselbe Zustandsbau-Maschinerie wie in den Pruefstrecken —
         # die Verankerung MUSS auf derselben Welt stehen, auf der
@@ -333,6 +355,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             zeilen = json.loads(
                 Path(args.zeilen).read_text(encoding="utf-8"))
             auspraegungen = auspraegungen_je_police(spez, zeilen)
+            summen = {
+                str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
         elif len(spez.zellen) > 1:
             print("verankerung_belegen: mehrzellige Spez mit "
                   "Vorgeschichte verlangt --zeilen", file=sys.stderr)
@@ -378,7 +402,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         beleg = baue_schichtbeleg(
-            pd.read_parquet(pfade["verankerung"]),
+            pd.read_parquet(io.BytesIO(verankerung_gelesen.roh)),
             bestand,
             merkmale,
             spez,
@@ -386,21 +410,65 @@ def main(argv: Optional[List[str]] = None) -> int:
             fenster=args.fenster,
             anfangszustaende=anfangszustaende,
             scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+            summen=summen,
         )
     except MigrationszugangFehler as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
         return 2
 
+    # Die Schicht als Vertragsattribut des Bestands (Freischaltung, Schritt
+    # 5): schichten.parquet neben verankerung.parquet im Uebernahme-
+    # Verzeichnis. Der JSON-Beleg bleibt die provenienzgebundene Quelle der
+    # Pruefstrecke; die Fuehrung liest die Tabelle. Beide tragen dieselben
+    # Parameter — R_conv (zweite Schicht) ist in der Fuehrung nicht
+    # freigeschaltet und wuerde hier anhalten.
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.models.bestand import SCHICHTEN_NAMES, SCHICHTEN_SPALTEN, schichten_zeile
+
+    zeilen_schichten = []
+    for police, eintrag in sorted(beleg["schichten"].items(), key=lambda kv: int(kv[0])):
+        if "conv" in eintrag:
+            print("verankerung_belegen: Zweitschicht R_conv ist in der "
+                  "Bestandsfuehrung nicht freigeschaltet — schichten.parquet "
+                  "wird nicht geschrieben", file=sys.stderr)
+            zeilen_schichten = None
+            break
+        zeilen_schichten.append(schichten_zeile(int(police), eintrag["hist"]))
+    # Das URTEIL steht vor dem Schreiben (Review T25-04, Klasse K3). Die
+    # Meldung unten sagte schon "keine halbe Schichttabelle" — geschrieben
+    # wurde sie trotzdem, in einem Block weit vor der Befundpruefung.
+    # Nachgemessen: ein Lauf mit einem Befund hinterliess eine
+    # schichten.parquet mit einer von zwei Policen und meldete exit 1. Wer
+    # danach nur auf die Datei sah, fand einen Bestand, den dieser Lauf
+    # abgelehnt hat.
+    schicht_tabelle = ueber / "schichten.parquet"
+    if zeilen_schichten and not beleg["befunde"]:
+        tabelle = (pd.DataFrame(zeilen_schichten, columns=list(SCHICHTEN_NAMES))
+                   .astype(dict(SCHICHTEN_SPALTEN)))
+        write_portfolio(tabelle, schicht_tabelle)
+        print(f"  schichten.parquet: {len(tabelle)} Schichten im "
+              f"Uebernahme-Verzeichnis {ueber}")
+    elif zeilen_schichten:
+        print(f"  schichten.parquet NICHT geschrieben: {len(beleg['befunde'])} "
+              "Befunde — erst entscheiden, dann neu erzeugen", file=sys.stderr)
+        if schicht_tabelle.is_file():
+            # Ein Rest eines frueheren, gruenen Laufs bleibt liegen — der
+            # Produzent loescht nicht, was er in diesem Lauf nicht erzeugt
+            # hat. Aber er sagt es: neben dem roten Beleg steht jetzt eine
+            # aeltere Tabelle, und wer beides liest, muss es wissen.
+            print(f"  ACHTUNG: {schicht_tabelle} liegt noch aus einem "
+                  "frueheren Lauf und gehoert NICHT zu diesem Beleg",
+                  file=sys.stderr)
+
     eingaben = {
-        str(pfade["verankerung"].relative_to(fall)): _sha256(
-            pfade["verankerung"]),
-        str(pfade["bestand"].relative_to(fall)): _sha256(pfade["bestand"]),
+        str(pfade["verankerung"].relative_to(fall)): verankerung_gelesen.sha256,
+        str(pfade["bestand"].relative_to(fall)): bestand_gelesen.sha256,
     }
-    if merkmale is not None:
-        eingaben[str(merkmale_pfad.relative_to(fall))] = _sha256(
-            merkmale_pfad)
+    if merkmale_gelesen is not None:
+        eingaben[str(merkmale_pfad.relative_to(fall))] = (
+            merkmale_gelesen.sha256)
     eingaben[str(spez_pfad(fall, args.generation).relative_to(fall))] = (
-        _sha256(spez_pfad(fall, args.generation)))
+        spez_gelesen.sha256)
     beleg["provenienz"] = {
         "systemstand": systemstand(Path(args.repo_root)),
         "eingaben": eingaben,

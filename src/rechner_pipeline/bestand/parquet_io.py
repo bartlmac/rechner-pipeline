@@ -13,10 +13,11 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import hashlib
+import io
 import os
-import tempfile
+import secrets
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 import pandas as pd
 import pyarrow as pa
@@ -31,10 +32,18 @@ from rechner_pipeline.models.bestand import (
     MERKMALE_SPALTEN,
     VERANKERUNG_NAMES,
     VERANKERUNG_SPALTEN,
+    REDUKTIONEN_NAMES,
+    REDUKTIONEN_SPALTEN,
     SCHEIBEN_NAMES,
     SCHEIBEN_SPALTEN,
+    SCHICHTEN_NAMES,
+    SCHICHTEN_SPALTEN,
     STAMM_NAMES,
     STAMM_SPALTEN,
+    TAGESJOURNAL_NAMES,
+    POLICENNUMMERN_NAMES,
+    POLICENNUMMERN_SPALTEN,
+    TAGESJOURNAL_SPALTEN,
     ZEITSCHEIBEN_SPALTEN,
 )
 
@@ -46,14 +55,19 @@ _DTYPE_MAP = (
     | dict(ZEITSCHEIBEN_SPALTEN)
     | dict(LEDGER_SPALTEN)
     | dict(SCHEIBEN_SPALTEN)
+    | dict(REDUKTIONEN_SPALTEN)
     | dict(MERKMALE_SPALTEN)
     | dict(VERANKERUNG_SPALTEN)
+    | dict(SCHICHTEN_SPALTEN)
+    | dict(TAGESJOURNAL_SPALTEN)
+    | dict(POLICENNUMMERN_SPALTEN)
 )
 
 _ARROW_TYPES = {
     "int64": pa.int64(),
     "float64": pa.float64(),
     "object": pa.string(),
+    "bool": pa.bool_(),
     "datetime64[ns]": pa.date32(),
 }
 
@@ -67,22 +81,33 @@ def _schema_for(columns: List[str]) -> pa.schema:
     return pa.schema(fields)
 
 
-def _dateimodus() -> int:
-    """Der Modus, den ein normal erzeugter Lauf-Output tragen soll.
+def neue_datei(verzeichnis: Path, name: str) -> Path:
+    """Eine je AUFRUF eindeutige, leere Datei mit dem Modus, den die umask
+    JETZT ergibt (T18-07).
 
-    ``tempfile.mkstemp`` legt den neuen Inode mit 0600 an, und ``os.replace``
-    nimmt DIESEN Modus mit -- nicht den des bisherigen Ziels. Ohne
-    Korrektur wurde aus einer 0664-Datei still eine 0600-Datei, und der
-    Berechtigungsvertrag der sechs Lauf-Ausgaben aenderte sich, ohne dass
-    es irgendwo stand. Einmal beim Import ermittelt: os.umask ist
-    prozessweit und laesst sich nur lesen, indem man sie kurz setzt.
+    ``tempfile.mkstemp`` legt den Inode immer mit 0600 an, und ``os.replace``
+    nimmt DIESEN Modus mit -- nicht den des bisherigen Ziels. Die erste
+    Korrektur las die umask beim Import und setzte den Modus nach; sie
+    folgte damit der umask des Importzeitpunkts, nicht der des Schreibens
+    (externes Review T18-07: nach ``umask 077`` schrieb der Writer weiter
+    0644). Die umask laesst sich nur lesen, indem man sie setzt -- und
+    das rennt nebenlaeufig gegen jeden anderen Thread, der gerade eine
+    Datei anlegt. Deshalb wird sie hier gar nicht gelesen: ``os.open`` mit
+    0666 ueberlaesst dem Kernel die Anwendung der aktuellen umask, atomar
+    und ohne Fenster. Der Name muss je Aufruf eindeutig sein, nicht je
+    Prozess: Zwei Threads teilen sich die PID und wuerden sonst dieselbe
+    Datei beschreiben und einander wegziehen; O_EXCL macht die Kollision
+    zum Fehler statt zum Ueberschreiben.
     """
-    maske = os.umask(0)
-    os.umask(maske)
-    return 0o666 & ~maske
-
-
-_DATEIMODUS = _dateimodus()
+    for _ in range(100):
+        tmp = verzeichnis / f".{name}.{secrets.token_hex(8)}.tmp"
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        except FileExistsError:
+            continue
+        os.close(fd)
+        return tmp
+    raise OSError(f"kein freier temporaerer Dateiname neben {verzeichnis / name}")
 
 
 def write_portfolio(
@@ -120,17 +145,11 @@ def write_portfolio(
     # einen Stumpf mit kaputtem Parquet-Fuss, und der ist eine Sackgasse:
     # Fuer schreibe_abschluss existiert der Stichtag dann bereits, waehrend
     # ihn niemand mehr lesen kann.
-    # Der temporaere Name muss je AUFRUF eindeutig sein, nicht je Prozess:
-    # zwei Threads teilen sich die PID und wuerden sonst dieselbe Datei
-    # beschreiben und einander wegziehen.
-    fd, tmp_name = tempfile.mkstemp(
-        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
-    )
-    os.close(fd)
-    tmp = Path(tmp_name)
+    # Die temporaere Datei traegt den Modus der umask zum Schreibzeitpunkt
+    # (neue_datei); os.replace nimmt ihn an den Zielpfad mit.
+    tmp = neue_datei(path.parent, path.name)
     try:
         pq.write_table(table, tmp, compression="zstd")
-        os.chmod(tmp, _DATEIMODUS)
         if exklusiv:
             # Genau-einmal-Publish: os.link legt den Zielnamen an und
             # scheitert mit FileExistsError, wenn es ihn schon gibt --
@@ -145,6 +164,24 @@ def write_portfolio(
         tmp.unlink(missing_ok=True)
         raise
     return path
+
+
+#: Die Tabellenfamilien mit EIGENER Spaltenordnung, in der Reihenfolge
+#: ihrer Pruefung. Die Kette stand hier achtmal als eigener Zweig; eine
+#: neunte Familie waere ein neunter Zweig gewesen, und wer einen vergisst,
+#: faellt still in die Rueckfall-Behandlung des Stamm-Schnitts. Als Liste
+#: ist eine neue Familie ein Eintrag.
+FAMILIEN: Tuple[Tuple[str, ...], ...] = (
+    ABSCHLUSS_NAMES,
+    LEDGER_NAMES,
+    SCHEIBEN_NAMES,
+    REDUKTIONEN_NAMES,
+    MERKMALE_NAMES,
+    VERANKERUNG_NAMES,
+    SCHICHTEN_NAMES,
+    TAGESJOURNAL_NAMES,
+    POLICENNUMMERN_NAMES,
+)
 
 
 def read_portfolio(
@@ -192,18 +229,41 @@ def read_portfolio(
             df[name] = pd.to_datetime(df[name])
         elif _DTYPE_MAP.get(name) is not None:
             df[name] = df[name].astype(_DTYPE_MAP[name])
-    if set(df.columns) == set(ABSCHLUSS_NAMES):
-        return df[list(ABSCHLUSS_NAMES)]
-    if set(df.columns) == set(LEDGER_NAMES):
-        return df[list(LEDGER_NAMES)]
-    if set(df.columns) == set(SCHEIBEN_NAMES):
-        return df[list(SCHEIBEN_NAMES)]
-    if set(df.columns) == set(MERKMALE_NAMES):
-        return df[list(MERKMALE_NAMES)]
-    if set(df.columns) == set(VERANKERUNG_NAMES):
-        return df[list(VERANKERUNG_NAMES)]
+    for namen in FAMILIEN:
+        if set(df.columns) == set(namen):
+            return df[list(namen)]
+    # Rueckfall: Teilmengen des Stamms (Auskunfts-Schnitt, Zeitscheiben).
     ordered = [c for c in list(STAMM_NAMES) + [n for n, _ in ZEITSCHEIBEN_SPALTEN] if c in df.columns]
+    if df.columns.size and not ordered:
+        # Eine Tabelle, die in keine Familie passt, kam bisher als leere
+        # Tabelle zurueck — der Leser meldete Erfolg und lieferte nichts.
+        # Genau das ist der stille Zustand, den die Architektur verbietet:
+        # Der Fehler zeigte sich erst beim naechsten KeyError, weit weg von
+        # seiner Ursache (selbst erlebt beim Einfuehren der
+        # Uebersetzungstabelle, Review T24-08).
+        raise ValueError(
+            f"{path}: die Spalten {sorted(df.columns)} bilden keine bekannte "
+            "Portfolio-Familie und auch keine Teilmenge des Stamms — eine neue "
+            "Tabelle braucht ihren Spaltenvertrag in models.bestand und eine "
+            "Zeile in diesem Leser"
+        )
     return df[ordered]
+
+
+def read_portfolio_aus_bytes(
+    roh: bytes,
+    *,
+    expected_columns: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
+    """:func:`read_portfolio` aus bereits gelesenen Bytes.
+
+    Ein Gate, das eine Parquet-Tabelle fuer seinen Beleg hasht UND
+    verarbeitet, tut beides aus denselben Bytes (Review T23-01; dieselbe
+    Klasse wie T20-01, dort ueber die Pruefengine geloest). pyarrow liest
+    aus einem Dateiobjekt; alle Schema- und dtype-Pruefungen bleiben die
+    von :func:`read_portfolio`.
+    """
+    return read_portfolio(io.BytesIO(roh), expected_columns=expected_columns)  # type: ignore[arg-type]
 
 
 def portfolio_hash(path: Path) -> str:

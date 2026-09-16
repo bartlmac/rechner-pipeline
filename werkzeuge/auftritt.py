@@ -61,6 +61,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "Reihenfolge (mehrfach)")
     p.add_argument("--verlauf", default=None,
                    help="Verlaufsprotokoll der Operator-Sitzung")
+    p.add_argument("--stands-paket", dest="stands_paket", default=None,
+                   help="Stands-Paket der Laufzeitumgebung (betrieb.seite "
+                        "--paket): Kennzahlen des lebenden Bestands")
+    p.add_argument("--anker", default=None,
+                   help="Ankerdatei des Stands-Pakets (betrieb.seite "
+                        "--anker). Pflicht mit --stands-paket: Das Paket wird "
+                        "gegen einen Bezug AUSSERHALB des Pakets geprueft")
     p.add_argument("--out", default="runs/seite",
                    help="Push-Baum des Entwurfs (Vorgabe: runs/seite)")
     p.add_argument("--vorschau", default="runs/vorzeige-vorschau",
@@ -75,6 +82,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         [sys.executable, str(WERKZEUGE / "falldaten.py"),
          "--fall", args.fall,
          *(teil for a in args.abzug for teil in ("--abzug", a)),
+         *(("--stands-paket", args.stands_paket) if args.stands_paket else ()),
+         *(("--anker", args.anker) if args.anker else ()),
          "--out", str(daten)],
         erlaubt=(0, 3))
     if rc not in (0, 3):
@@ -86,8 +95,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                  "--als-unterseite"]
     if args.verlauf:
         fallseite += ["--verlauf", args.verlauf]
-    if (zwischen := _schritt(fallseite)) != 0:
+    # Auch die Fall-Seite meldet Luecken mit Exit 3 (T20-03): Sie steht,
+    # traegt die Luecken sichtbar, und die Kette baut weiter — aber der
+    # Gesamt-Exit bleibt 3.
+    zwischen = _schritt(fallseite, erlaubt=(0, 3))
+    if zwischen not in (0, 3):
         return zwischen
+    rc = 3 if 3 in (rc, zwischen) else rc
 
     if (zwischen := _schritt(
             [sys.executable, str(WERKZEUGE / "unternehmensseite.py"),

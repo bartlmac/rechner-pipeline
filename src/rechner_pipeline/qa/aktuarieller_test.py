@@ -92,6 +92,7 @@ from rechner_pipeline.kern.rechenkern import (
 )
 from rechner_pipeline.kern.korrekturschicht import (
     Korrekturschicht,
+    schichtwert_bei as _schichtwert_bei_kern,
     Schichtparameter,
     form_konstantes_fenster,
     form_proportional_zur_basis,
@@ -834,51 +835,14 @@ def schichtwert_bei(
 ) -> float:
     """Der Wert EINER Schicht zu einem Vertragsmonat.
 
-    Die Schicht rechnet ab ihrem Verankerungszeitpunkt; ein Zeitpunkt
-    DAVOR liegt ausserhalb ihrer Definition und ist ein Auftragsfehler.
-    Auf dem Jahresgitter wird der Verlaufswert genommen, unterjaehrig
-    linear zwischen den Jahresraendern gemischt — dieselbe Konvention wie
-    fuer die Basisschicht (Abschnitt 6), denn die Schicht ist dieselbe
-    Rekursion mit anderen Zahlungen und darf keine eigene Zeitachse
-    bekommen ("Overlay ohne dritte Uhr", 9.5).
-
-    Oeffentlich, weil BEIDE Vergleichs-Engines dieselbe Bewertung
-    brauchen (A-M1..A-M3 hier, das Migrationscontrolling A-M4 in
-    qa.migrationssuite — Nachzug des zweiten Laufs: die Suite stammte
-    aus der Vor-Schicht-Aera und zeigte jedem Vertrag sein rohes,
-    unabsorbiertes Verankerungs-Residuum).
+    Seit der Freischaltung (Schritt 5) lebt die Bewertung im Kern
+    (:func:`rechner_pipeline.kern.korrekturschicht.schichtwert_bei`),
+    weil auch die Bestandsfuehrung sie braucht; hier bleibt der Name,
+    unter dem die beiden Vergleichs-Engines (A-M1..A-M3 hier, A-M4 in
+    qa.migrationssuite) sie rufen. Dieselbe Funktion, kein zweiter
+    Rechenweg.
     """
-    # Das GITTER beginnt am Jahrestag vor dem Anker; bei einer
-    # Rumpfjahr-Verankerung (9.6-Nachtrag) liegt t_a mitten im ersten
-    # Gitterjahr. Abgelesen wird ab dem Gitterjahrestag, linear gemischt
-    # -- am t_a selbst ergibt das konstruktionsbedingt das Residuum.
-    jahr_ta = monate_anker // 12
-    kern = Rechenkern(mp)
-    # Zahlungsjahre jahr_ta .. n-1: das Ablaufjahr traegt keine
-    # Amortisations-Zahlung (Terminalbedingung V_korr(n) = 0, 9.7) —
-    # dieselbe Grenze wie bei der Verankerung
-    # (bestand.migrationszugang._basisverlauf), sonst passte rho nicht
-    # zur Form und das Residuum am t_a risse.
-    basis = [kern.verlaufszeile(a).drx_bpfl for a in range(jahr_ta, mp.n)]
-    if parameter.formfunktion == "konstantes_fenster":
-        fenster = int(parameter.formparameter["fenster"])
-        form = form_konstantes_fenster(len(basis), min(fenster, len(basis)))
-    else:
-        form = form_proportional_zur_basis(basis)
-    bw = kern.produkt.bw
-    schicht = Korrekturschicht(
-        bw.modell, tuple(tuple(pair) for pair in parameter.vererbend)
-    )
-    verlauf = schicht.verlauf(parameter, form, mp.x + jahr_ta)
-
-    seit_gitter = monate - 12 * jahr_ta
-    j, rest = divmod(seit_gitter, 12)
-    if j >= len(verlauf) - 1:
-        return verlauf[-1]
-    if rest == 0:
-        return verlauf[j]
-    anteil = rest / 12.0
-    return (1.0 - anteil) * verlauf[j] + anteil * verlauf[j + 1]
+    return _schichtwert_bei_kern(parameter, monate_anker, mp, monate)
 
 
 def _system_werte(

@@ -31,11 +31,23 @@ eingebaut sind und wie die Beispieldaten entstehen. Wer das
 mitveroeffentlicht, verschenkt die Vorfuehrung. Das Werkzeug bricht ab,
 statt zu warnen.
 
-*Es kennzeichnet die Simulation.* Auf der Seite stehen signierte
-Abnahmen. Ein Aussenstehender muss auf den ersten Blick erkennen, dass
-ein Simulationsschluessel gezeichnet hat und kein Verantwortlicher
-Aktuar. Der Fingerabdruck steht ohnehin in jedem Snapshot; die Seite
+*Es kennzeichnet die Simulation.* Auf der Seite stehen die
+Entscheid-Snapshots des Falls. Ein Aussenstehender muss auf den ersten
+Blick erkennen, dass ihr Schluessel-Fingerabdruck der eines
+Simulationsschluessels ist und kein Verantwortlicher Aktuar dahinter
+steht. Der Fingerabdruck steht ohnehin in jedem Snapshot; die Seite
 erklaert ihn.
+
+*Es behauptet keine Signaturpruefung.* Dieses Werkzeug hat keinen
+Schluesselring (T19-02). Es prueft Schema, Selbstadressierung und
+Dateiname der Snapshots — nicht die HMAC-Signatur. Die Seite sagt
+deshalb "Snapshot strukturell geprueft, Signatur hier nicht
+verifiziert" und nennt nichts "signiert" oder "gezeichnet", was sie
+nicht verifiziert hat (Review T20-02).
+
+*Es verschweigt keine Luecke.* Fehlt dem Fall ein Pflichtabschnitt,
+steht das auf der Seite selbst, und das Werkzeug endet mit Exit 3 —
+geschrieben, aber unvollstaendig (Review T20-03).
 
 *Es stempelt die Provenienz.* Welcher Systemstand, welche Lieferung mit
 welchen Pruefsummen, welche Schluesselrolle. Dieselbe Disziplin, die das
@@ -61,8 +73,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 #: Verzeichnisse, aus denen NICHTS auf die Seite gelangen darf. Sie
-#: tragen die Aufloesungen des Vorfuehrfalls.
-REGIE = ("simulation", "docs-local")
+#: tragen die Aufloesungen des Vorfuehrfalls. Die Liste MUSS alle
+#: Spielleiter-Bereiche aus dev-docs/regie.md tragen — dort steht die
+#: Zusicherung, die dieser Code halten muss ("die Vorzeigeseite bricht
+#: ab, wenn etwas davon in die Veroeffentlichung geriete"). ``regie/``
+#: fehlte bis zum externen Review T19-01 und war damit die einzige
+#: Zusicherung ohne Deckung.
+REGIE = ("simulation", "docs-local", "regie")
 
 #: Dateien, die auch einzeln nie veroeffentlicht werden — der Name
 #: allein genuegt, egal wo sie liegen.
@@ -80,7 +97,7 @@ UEBERNEHMEN = (
     # gehoeren NICHT in diese Liste.
     ("abgeleitet/bestand-nach", "Fortschreibung des uebernommenen Bestands"),
     ("abgeleitet/diagnostics", "Gate-Ledger"),
-    ("entscheide", "Entscheid-Snapshots der menschlichen Gates"),
+    ("entscheide", "Entscheid-Snapshots der Gates"),
 )
 
 
@@ -92,8 +109,8 @@ JEKYLL = """theme: jekyll-theme-cayman
 title: Migrationsfall — Vorfuehrung
 description: >-
   Vorfuehrung einer agentischen Bestandsmigration. Erfundene Unternehmen,
-  synthetische Vertraege, mit einem Simulationsschluessel gezeichnete
-  Abnahmen.
+  synthetische Vertraege, Entscheid-Snapshots mit dem Fingerabdruck eines
+  Simulationsschluessels (Signatur auf dieser Seite nicht verifiziert).
 include:
   - artefakte
 keep_files:
@@ -207,6 +224,73 @@ def _kopiere(fall: Path, ziel: Path) -> List[str]:
     return kopiert
 
 
+def _klassenhinweis(entscheide: List[Dict[str, Any]]) -> str:
+    """Was die Snapshots ueber ihre Schluesselklasse SAGEN (mitsigniert,
+    hier nicht verifiziert) — nichts wird behauptet, was nicht in den
+    gelesenen Bytes steht (Review T21-05)."""
+    klassen = {str(e.get("schluesselklasse") or "") for e in entscheide}
+    if not entscheide:
+        return ""
+    if klassen == {"simulation"}:
+        return (" — alle Snapshots weisen sich als Zeichnung mit einem "
+                "**Simulationsschlüssel** aus")
+    if all(k.startswith("nicht ausgewiesen") or k == "" for k in klassen):
+        return (" — die Snapshots weisen ihre Schlüsselklasse nicht aus "
+                "(Schema 6)")
+    return ""
+
+
+def _pruefstand(e: Dict[str, Any]) -> str:
+    """Was DIESE Seite ueber einen Snapshot festgestellt hat — und was nicht.
+
+    T19-02/T20-02: Ohne Schluesselring ist die Signatur eine Behauptung der
+    Datei. Die Seite nennt nur verifizierte Snapshots "gezeichnet"; alles
+    andere heisst beim Namen: strukturell geprueft, Signatur nicht
+    verifiziert. Ein Snapshot mit Befund belegt nichts.
+    """
+    if e.get("strukturell_verifiziert") is False:
+        return "**Snapshot mit Befund** — belegt nichts"
+    if e.get("signatur_verifiziert") is True:
+        return "Signatur verifiziert, gezeichnet"
+    return "strukturell geprüft, Signatur hier nicht verifiziert"
+
+
+def _signaturhinweis(entscheide: List[Dict[str, Any]]) -> List[str]:
+    verifiziert = sum(1 for e in entscheide if e.get("signatur_verifiziert") is True)
+    z: List[str] = []
+    if verifiziert == len(entscheide):
+        z.append("Alle Annahmen sind mit dem extern verwahrten Schlüssel")
+        z.append("signiert und hier verifiziert; der Fingerabdruck weist die")
+        z.append("**Schlüsselrolle** nach, nicht die Identität einer natürlichen")
+        z.append("Person — hier die der Simulation.")
+    else:
+        z.append("Das Schlüsselmaterial liegt außerhalb des Falls, und diese")
+        z.append("Seite hat es nicht: Sie prüft Schema, Selbstadressierung und")
+        z.append("Dateiname jedes Snapshots, **nicht die HMAC-Signatur**. Der")
+        z.append("Fingerabdruck in der Tabelle ist eine Angabe der Datei, kein")
+        z.append("Nachweis einer Zeichnung. Ein Fall kann seine eigene")
+        z.append("menschliche Freigabe nicht behaupten — genau deshalb nennt")
+        z.append("diese Seite nichts gezeichnet, was sie nicht verifiziert hat.")
+    return z
+
+
+def _luecken_abschnitt(modell: Dict[str, Any]) -> List[str]:
+    """Fehlendes SICHTBAR auf der Seite, nicht nur auf stderr (T20-03)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from falldaten import luecken  # noqa: E402 — Nachbarwerkzeug
+
+    offene = luecken(modell)
+    if not offene:
+        return []
+    z = ["## Was diese Seite NICHT zeigt", "",
+         "Der Fall trägt die folgenden Angaben nicht. Die Seite lässt sie",
+         "offen, statt Vollständigkeit zu behaupten:", ""]
+    for l in offene:
+        z.append(f"- **{l['was']}** — {l['wirkung']} (`{l['gruppe']}.{l['feld']}`)")
+    z.append("")
+    return z
+
+
 def _seite(fall: Path, modell: Dict[str, Any], repo: Path,
            kopiert: List[str], verlauf: Optional[str],
            unterseite: bool = False) -> str:
@@ -228,12 +312,15 @@ def _seite(fall: Path, modell: Dict[str, Any], repo: Path,
     z.append("")
     z.append("> **Dies ist eine Vorführung, kein echter Bestand.** Die")
     z.append("> beteiligten Unternehmen sind frei erfunden, die Verträge")
-    z.append("> synthetisch erzeugt. Die fachlichen Abnahmen auf dieser")
-    z.append("> Seite sind mit einem **Simulationsschlüssel** gezeichnet")
-    z.append("> und nicht von einem Verantwortlichen Aktuar. Wer die")
-    z.append("> Snapshots prüft, erkennt das am Fingerabdruck des")
-    z.append("> Schlüssels — er ist unten ausgewiesen.")
+    z.append("> synthetisch erzeugt. Diese Seite prüft an den")
+    z.append("> Entscheid-Snapshots Schema, Selbstadressierung und Dateinamen;")
+    z.append("> ihre **Signatur und die Besetzung der zeichnenden Rolle")
+    z.append("> verifiziert sie nicht** — dafür fehlt ihr bewusst das")
+    z.append("> Schlüsselmaterial. Was die Snapshots über sich selbst sagen,")
+    z.append("> steht unten je Snapshot in den Spalten Schlüsselklasse und")
+    z.append("> Prüfstand" + _klassenhinweis(entscheide) + ".")
     z.append("")
+    z.extend(_luecken_abschnitt(modell))
     if unterseite:
         z.append("[← Unsere Bestandsmigrationen](../)")
         z.append("")
@@ -362,22 +449,19 @@ def _seite(fall: Path, modell: Dict[str, Any], repo: Path,
         z.append("*(noch keine Gate-Ledger im Fall)*")
     z.append("")
 
-    z.append("## Die menschlichen Entscheide")
+    z.append("## Die Entscheid-Snapshots der Gates")
     z.append("")
     if entscheide:
-        z.append("| Gate | Entscheid | Entscheider | Rolle | Schlüssel |")
-        z.append("|---|---|---|---|---|")
+        z.append("| Gate | Entscheid | Entscheider | Rolle | Schlüsselklasse | Schlüssel (laut Snapshot) | Prüfstand |")
+        z.append("|---|---|---|---|---|---|---|")
         for e in entscheide:
             schl = (f"`{e['schluessel_sha256']}…`"
-                    if e.get("schluessel_sha256") else "*(ohne Signatur)*")
+                    if e.get("schluessel_sha256") else "*(ohne Freigabe-Eintrag)*")
             z.append(f"| {e['gate']} | {e['entscheid']} | {e['entscheider']} "
-                     f"| {e['rolle']} | {schl} |")
+                     f"| {e['rolle']} | {e.get('schluesselklasse') or '—'} "
+                     f"| {schl} | {_pruefstand(e)} |")
         z.append("")
-        z.append("Eine Annahme ist HMAC-signiert; das Schlüsselmaterial liegt")
-        z.append("außerhalb des Falls. Ein Fall kann seine eigene menschliche")
-        z.append("Freigabe deshalb nicht behaupten. Der Fingerabdruck oben")
-        z.append("weist die **Schlüsselrolle** nach, nicht die Identität einer")
-        z.append("natürlichen Person — hier die der Simulation.")
+        z.extend(_signaturhinweis(entscheide))
     else:
         z.append("*(noch keine Entscheide im Fall)*")
     z.append("")
@@ -480,13 +564,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     print(f"  {len(kopiert)} Artefakte kopiert")
     if verlauf_text:
         print(f"  Verlaufsprotokoll uebernommen ({len(verlauf_text):,} Zeichen)")
-    # Das Modell meldet fehlende Pflichtabschnitte selbst (falldaten.py,
-    # Exit 3); hier werden sie wiederholt, weil JETZT der Moment vor der
-    # Veroeffentlichung ist — eine Seite, die vollstaendig aussieht und
-    # es nicht ist, waere die schlechteste Variante.
-    for l in modell.get("luecken") or []:
-        print(f"  LUECKE im Modell: {l.get('was')} — der Abschnitt fehlt "
-              "auf der Seite.", file=sys.stderr)
+    # Luecken stehen auf der Seite selbst (_luecken_abschnitt) UND setzen
+    # den Exit-Code (T20-03): Wer nur den letzten Render-Schritt sieht,
+    # darf einen unvollstaendigen Fall nicht fuer einen fertigen
+    # Veroeffentlichungsentwurf halten. Exit 3 = geschrieben, mit Luecken.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from falldaten import luecken  # noqa: E402 — Nachbarwerkzeug
+
+    offene = luecken(modell)
+    for l in offene:
+        print(f"  LUECKE im Modell: {l.get('was')} — steht auf der Seite "
+              "unter 'Was diese Seite NICHT zeigt'.", file=sys.stderr)
     print()
     print("Vor der Veroeffentlichung von Hand pruefen:")
     print("  - Stehen Klarnamen im Verlaufsprotokoll?")
@@ -497,7 +585,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     print(f"  git worktree add /tmp/gh-pages gh-pages")
     print(f"  cp -r {ziel}/. /tmp/gh-pages/")
     print(f"  cd /tmp/gh-pages && git add -A && git commit && git push")
-    return 0
+    return 3 if offene else 0
 
 
 if __name__ == "__main__":

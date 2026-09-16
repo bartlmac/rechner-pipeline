@@ -307,15 +307,27 @@ def _schreibe_uebernahme(verzeichnis):
          "vertragsjahr": 11, "status_date": pd.Timestamp("2026-01-01"),
          "betrag_art": "VS", "betrag": betrag, "betrag_herkunft": herkunft}
         for pid, ev, betrag, herkunft in (
-            (900_001, "ZUG", 100_000.0, "geliefert"),
+            # Der Zugang bucht die Gesamtsumme MIT dem mitgebrachten Baustein.
+            (900_001, "ZUG", 105_000.0, "geliefert"),
             (900_002, "ZUG", 100_000.0, "geliefert"),
             (900_002, "PEX", 61_000.0, "gerechnet"),
         )
     ])[[n for n, _ in LEDGER_SPALTEN]].astype(dict(LEDGER_SPALTEN))
+    # Eine mitgebrachte Alt-Erhoehung (Freischaltung, Schritt 3): Baustein
+    # vor dem Bestandszugang, wie gates.bestand_uebernehmen ihn schreibt.
+    from rechner_pipeline.models.bestand import SCHEIBEN_SPALTEN
+
+    scheiben = pd.DataFrame([{
+        "police_id": 900_001, "scheiben_id": 1, "erhoehung_jahr": 3,
+        "erhoehung_datum": pd.Timestamp("2018-01-01"), "entry_age": 43,
+        "duration": 22, "premium_duration": 22, "sum_insured": 5000.0,
+        "gamma1": 0.0,
+    }])[[n for n, _ in SCHEIBEN_SPALTEN]].astype(dict(SCHEIBEN_SPALTEN))
 
     write_portfolio(stamm, verzeichnis / "bestand.parquet")
     write_portfolio(historie, verzeichnis / "historie.parquet")
     write_portfolio(ledger, verzeichnis / "ledger.parquet")
+    write_portfolio(scheiben, verzeichnis / "scheiben.parquet")
     return stamm, historie, ledger
 
 
@@ -363,6 +375,15 @@ def test_cli_faehrt_eigenen_und_uebernommenen_bestand_in_einem_lauf(tmp_path):
     abgang = uebern[uebern["ereignis"].isin(("ABL", "STO", "TOD"))]
     assert len(abgang) == 2, "beide uebernommenen Vertraege enden vor 2046"
     assert (abgang["status_date"].dt.date > ZUGANG).all()
+    # Der mitgebrachte Baustein steht im Scheiben-Ergebnis voran, neue
+    # Scheiben derselben Police zaehlen dahinter (Freischaltung, Schritt 4).
+    from rechner_pipeline.models.bestand import SCHEIBEN_NAMES
+
+    scheiben = read_portfolio(out / "scheiben.parquet", expected_columns=SCHEIBEN_NAMES)
+    alt = scheiben[(scheiben["police_id"] == 900_001) & (scheiben["scheiben_id"] == 1)]
+    assert len(alt) == 1 and int(alt["erhoehung_jahr"].iloc[0]) == 3
+    neue = scheiben[(scheiben["police_id"] == 900_001) & (scheiben["scheiben_id"] > 1)]
+    assert (neue["erhoehung_datum"] > pd.Timestamp("2026-01-01")).all()
 
 
 def test_cli_weist_kollidierende_policennummern_ab(tmp_path):

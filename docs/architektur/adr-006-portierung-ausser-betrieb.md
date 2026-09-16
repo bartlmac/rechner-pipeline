@@ -1,6 +1,6 @@
 # ADR-006: Der Portierungs-Anwendungsfall wird ausser Betrieb genommen
 
-Status: akzeptiert (Bartek, 2026-08-17). Umgesetzt: Entfernung aus dem
+Status: akzeptiert (Maintainer, 2026-08-17). Umgesetzt: Entfernung aus dem
 Hauptzweig; konserviert auf Branch `parked/portierung-excel`, Tag
 `portierung-excel-2026-08`. *(Nachtrag 2026-08-19: Branch und Tag
 wurden vor der Veröffentlichung aus dem Arbeits-Repo entfernt — sie
@@ -27,7 +27,7 @@ verschoben:
   Zustandsmodell-Welt (ADR-004). Die Excel-Paritaet ist kein laufender Referenzwert mehr.
 * Eine neue Tarifgeneration ist **Parametrierung** — der Praezedenzfall
   TG2012 -> TG2015 lief ohne eine einzige Formelaenderung durch.
-* Ein neues Produkt kommt ueber die T-Box (Gate A-K1) und wird IM
+* Ein neues Produkt kommt ueber die T-Box (Gate A-O1) und wird IM
   Zielsystem entwickelt — nicht durch die Uebersetzung einer weiteren
   Arbeitsmappe.
 
