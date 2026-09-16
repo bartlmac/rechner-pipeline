@@ -27,6 +27,26 @@ vermutet, sondern am Code nachgesehen:
 | **T24-04 Teil 1** | ERLEDIGT, beide Haelften. Journalgespeist (602b935): Paketschema 3 traegt tagesjournal.parquet, der Konsument rechnet buchungen.gesamt und je_ereignis dagegen nach. Protokollgespeist: bestand, uebernahmen, verankerung, abschluesse, gefuehrt_seit, neugeschaeft.seit_betriebsbeginn und die fuenf uebrigen provenienz-Felder werden gegen die letzte gruene Protokollzeile gehalten; die Abschluss-Ableitung ist jetzt EINE Funktion (seite.abschluesse_aus_protokoll), die Erzeuger und Konsument teilen. Teil 2 (Verankerung ausserhalb des Pakets) bleibt offen — Entscheid 1. |
 | **T24-08** | ERLEDIGT (e02bec9): Das Zielsystem vergibt eigene Policennummern, ein Band je Fall im freien Raum 1..10 Mio, Uebersetzungstabelle im Eingang. Entscheid 8 = (b), nicht (a). |
 | Kleinkram "Reichweite der AST-Ratsche" | ERLEDIGT in diesem Commit (Modul-Docstring `betrieb/_loeschen.py` und `dev-docs/offene-punkte.md`). |
+| **T25-09** | ERLEDIGT (5d74113). Die Endlichkeitswache und die Nachrechnung fuehrten dieselbe Spaltenmenge als wortgleiches Literal, und beiden fehlte `korrekturschicht` — ausgerechnet die Position, die 9.11 fordert. Jetzt `ABSCHLUSS_ZAHLEN`, abgeleitet ueber den Spaltentyp: Wer dem Abschluss eine Bewertungsgroesse gibt, bekommt beide Pruefungen dafuer. Der rho-Nurvergleich der Fuehrungsprobe war bereits mit T25-03 (c9714d6) geschlossen; der Befund war also schmaler als berichtet. |
+| **T25-06 PEX** | ERLEDIGT (2e257b6). Entscheid des Maintainers 2026-09-15: WERTSTETIGE Absorption — die beitragsfreie Summe ist eine garantierte Leistung, also muss die Umwandlung werthaltend sein. Vier Stellen fragen die Regel jetzt bei `kern.korrekturschicht.zuschlag_bei_pex`; das Abtippen an vier Stellen WAR der Befund. `HEILUNG["PEX"]` ist geprueft, Kern auf 3.6.0. Mitrepariert: Bewertung entschied den Zweig an `zustand_ta`, die Rechnung an der Zeit der Freistellung — in widerspruechlichen Daten zwei Antworten; `validate_verankerung` weist den Widerspruch jetzt aus. |
+| **T25-06 RED** | ERLEDIGT (6f5f40c, 55c341b, 9ee8eb4 und der Betriebsweg). Entscheid: volle Absorption in die Neuberechnung, ausgewiesen und journalisiert. Vier Commits: Datenvertrag `reduktionen.parquet`, Schicht in die Neuberechnung (`zusatz_dk`), Engine erzeugt und Bewertung bewertet, Betriebsweg. Eigener Zufallsstrom (`HERABSETZUNG_STREAM`), damit kein bestehender Bestand verrutscht — belegt durch einen Fingerabdruck des Laufs vom Stand davor. |
+
+**Drei Funde beim Bauen, die der Review nicht hatte** (alle derselben
+Klasse "dieselbe Menge an zwei Orten gepflegt"):
+
+1. `read_portfolio` fuehrte die Tabellenfamilien als acht `if`-Zweige.
+   Wer eine vergisst, faellt nicht in einen Fehler, sondern still in die
+   Rueckfall-Behandlung des Stamm-Schnitts. Jetzt eine Liste.
+2. **Die P-B1-Engine lief ueber eine zweite, handgepflegte Rollenliste**
+   neben ihrem Spaltenvertrag. Eine neue Erzeugerrolle fiel still
+   hindurch: nicht gelesen, nicht geprueft — und die Engine meldete
+   trotzdem Erfolg. Das ist der schwerste der drei: Er betrifft das
+   Testat, nicht nur die Lesbarkeit. Jetzt laeuft sie ueber
+   `ROLLEN_DATEIEN`, und eine Rolle ohne Spaltenvertrag ist ein harter
+   Fehler.
+3. `betraege_hergeleitet` (der Zaehler im P-B1-Beleg) war ein Literal und
+   haette RED unterschlagen — das Testat wiese weniger nach, als
+   geprueft wurde. Jetzt aus der Liste des Herleiters abgeleitet.
 
 **Entscheide des Maintainers, Stand 2026-09-15:** Nr. 6 entschieden (a),
 Nr. 10 erledigt. Die uebrigen acht stehen aus; Nr. 8 ist durch die

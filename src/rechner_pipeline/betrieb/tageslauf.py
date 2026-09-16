@@ -498,6 +498,10 @@ def _stand_bauen(
     if schichten is not None:
         ausgaben.append(write_portfolio(
             schichten.reset_index(drop=True), ablage.arbeit / "schichten.parquet"))
+    reduktionen = _gebuchte_reduktionen(ergebnis.reduktionen, ledger)
+    if reduktionen is not None and len(reduktionen):
+        ausgaben.append(write_portfolio(
+            reduktionen, ablage.arbeit / "reduktionen.parquet"))
     schreibe_manifest(
         ablage.arbeit, horizont=heute, neuzugang_ab=None, config_pfad=config_pfad,
         ausgaben=ausgaben, eingaben=eingaben,
@@ -757,6 +761,22 @@ def _teilbestand(tabellen: Dict[str, Any], policen: List[int]) -> Dict[str, Any]
     return teil
 
 
+def _gebuchte_reduktionen(reduktionen, ledger):
+    """Die Herabsetzungen, deren Buchung in dieser Sicht steht.
+
+    Kein zweiter Buchungsschnitt, sondern DERSELBE, abgeleitet: Eine
+    Herabsetzung gehoert in den Stand, wenn ihre RED-Zeile darin steht.
+    Ein eigener Filter auf ``reduktion_datum`` waere eine zweite Regel
+    fuer dieselbe Frage — und damit die naechste Stelle, an der zwei
+    Antworten auseinanderlaufen (Review T25-06).
+    """
+    if reduktionen is None or not len(reduktionen):
+        return reduktionen
+    gebucht = set(ledger.loc[ledger["ereignis"] == "RED", "police_id"])
+    return reduktionen[
+        reduktionen["police_id"].isin(gebucht)].reset_index(drop=True)
+
+
 def _stichtagssicht(
     tabellen: Dict[str, Any], config: BestandConfig, stichtag: _dt.date,
     betriebsbeginn: _dt.date,
@@ -811,6 +831,8 @@ def _stichtagssicht(
     )
     sicht = dict(tabellen)
     sicht["historie"], sicht["ledger"], sicht["scheiben"] = historie, ledger, scheiben
+    sicht["reduktionen"] = _gebuchte_reduktionen(
+        tabellen.get("reduktionen"), ledger)
     return sicht
 
 
@@ -836,6 +858,7 @@ def _bericht(
         berichtsstichtag=stichtag,
         schichten=tabellen.get("schichten"),
         verankerung=tabellen.get("verankerung"),
+        reduktionen=tabellen.get("reduktionen"),
     )
     ziel.parent.mkdir(parents=True, exist_ok=True)
     tmp = neue_datei(ziel.parent, ziel.name)
@@ -1050,6 +1073,7 @@ def _tageslauf(
                     merkmale=sicht.get("merkmale"),
                     schichten=sicht.get("schichten"),
                     verankerung=sicht.get("verankerung"),
+                    reduktionen=sicht.get("reduktionen"),
                 )
                 eintrag: Dict[str, Any] = {
                     "stichtag": stichtag.isoformat(), "datei": geschrieben.name,

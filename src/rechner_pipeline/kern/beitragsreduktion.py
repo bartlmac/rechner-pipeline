@@ -58,6 +58,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 if TYPE_CHECKING:  # pragma: no cover
     from rechner_pipeline.kern.produkte.klv import Monatsreserve
 
+from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
     vertrags_monatsreserve,
@@ -404,6 +405,57 @@ def reduziere_geschichtet(
             kern, jahr - erh_jahr, anteil, nach_abzug, verfahren,
             zusatz_dk=zusatz_dk if i == 0 else 0.0)))
     return aus
+
+
+def reduzierte_teile(
+    grund: Rechenkern,
+    scheiben: Sequence[Tuple[int, Rechenkern]],
+    jahr: int,
+    anteil: float,
+    verfahren: str,
+    *,
+    schicht: Optional[Tuple[Any, int]] = None,
+) -> List[Tuple[int, Any]]:
+    """Der herabgesetzte Vertrag, je Schicht — DIE eine Rekonstruktion.
+
+    Vier Stellen brauchen sie: die Ereignis-Engine beim Ziehen, die
+    Bewertung am Stichtag, die Ledger-Herleitung (P-B1) und die
+    Fuehrungsprobe. Genau solche Wiederholungen waren der Befund T25-06:
+    Vier Abschriften derselben Regel, und die beiden "unabhaengigen"
+    Gegenrechnungen bestaetigten den Fehler der Bewertung, statt ihn zu
+    widerlegen. Hier steht sie einmal.
+
+    ``schicht`` ist die Korrekturschicht (Parameter, Verankerungsmonat)
+    eines uebernommenen Vertrags. Liegt der Verankerungspunkt vor der
+    Herabsetzung, geht ihr Wert VOLLSTAENDIG in die Neuberechnung ein
+    (Entscheid des Maintainers 2026-09-15) — danach traegt der Vertrag
+    keine Schicht mehr.
+    """
+    zusatz = 0.0
+    if schicht is not None and 12 * jahr >= int(schicht[1]):
+        zusatz = schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
+    aktive = [(j, k) for j, k in scheiben if j < jahr]
+    teile = reduziere_geschichtet(
+        grund, aktive, jahr, anteil, verfahren=verfahren, zusatz_dk=zusatz)
+    kerne = [grund] + [k for _, k in aktive]
+    return [
+        (erh_jahr, ReduzierterVertrag(kern=kerne[i], reduktion=red))
+        for i, (erh_jahr, red) in enumerate(teile)
+    ]
+
+
+def absorbierte_schicht(
+    grund: Rechenkern, jahr: int, schicht: Optional[Tuple[Any, int]]
+) -> float:
+    """Der Schichtwert, den eine Herabsetzung im Jahr ``jahr`` aufnimmt.
+
+    Null, wenn der Vertrag keine Schicht traegt oder die Verankerung nach
+    der Herabsetzung liegt. Derselbe Wert, den :func:`reduzierte_teile`
+    einrechnet — die Buchung im Ledger weist ihn aus.
+    """
+    if schicht is None or 12 * jahr < int(schicht[1]):
+        return 0.0
+    return schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
 
 
 def vertrags_monatsreserve_reduziert(

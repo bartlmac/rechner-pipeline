@@ -34,6 +34,7 @@ from rechner_pipeline.bestand.manifest import (
 )
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.bestand.ledger_bindung import (
+    HERGELEITET,
     pruefe_ledger_betraege,
     pruefe_scheiben_tarifwerk,
 )
@@ -41,6 +42,7 @@ from rechner_pipeline.models.bestand import (
     LEDGER_NAMES,
     MERKMALE_NAMES,
     SCHEIBEN_NAMES,
+    REDUKTIONEN_NAMES,
     SCHICHTEN_NAMES,
     VERANKERUNG_NAMES,
     STATUS_HISTORIE_NAMES,
@@ -48,6 +50,7 @@ from rechner_pipeline.models.bestand import (
     validate_ledger,
     validate_portfolio,
     validate_scheiben,
+    validate_reduktionen,
     validate_schichten,
     validate_verankerung,
     validate_stamm_journal,
@@ -189,9 +192,22 @@ def lies_und_pruefe_pb1(
         "merkmale": MERKMALE_NAMES,
         "schichten": SCHICHTEN_NAMES,
         "verankerung": VERANKERUNG_NAMES,
+        "reduktionen": REDUKTIONEN_NAMES,
     }
-    for rolle in ("portfolio", "historie", "scheiben", "ledger", "merkmale",
-                  "schichten", "verankerung"):
+    # Die Schleife lief ueber eine ZWEITE, handgepflegte Rollenliste neben
+    # diesem Vertrag. Eine neue Erzeugerrolle fiel damit still hindurch:
+    # nicht gelesen, nicht geprueft — und die Engine meldete trotzdem
+    # Erfolg (gefunden beim Einbau der Herabsetzung, Review T25-06).
+    # Jetzt laeuft sie ueber die Tabelle des Erzeugers, und eine Rolle ohne
+    # Spaltenvertrag ist ein harter Fehler statt einer Luecke.
+    ohne_vertrag = sorted(set(ROLLEN_DATEIEN) - set(spaltenvertrag))
+    if ohne_vertrag:
+        raise ValueError(
+            f"Rollen ohne Spaltenvertrag: {ohne_vertrag} — die Engine kann "
+            "sie nicht lesen; wer dem Erzeuger eine Rolle gibt, gibt ihr "
+            "hier ihren Vertrag"
+        )
+    for rolle in ROLLEN_DATEIEN:
         if rolle not in eingaben:
             continue
         # Genau EIN Lesevorgang je Datei: Die Bytes, die gegen das Manifest
@@ -287,6 +303,19 @@ def lies_und_pruefe_pb1(
                 errors.append({"code": "schichten", "message": meldung})
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
             errors.append({"code": "schichten", "message": str(exc)})
+
+    reduktionen = tabellen.get("reduktionen")
+    if portfolio is not None and reduktionen is not None:
+        # Herabsetzungen (Review T25-06): Form, Zugehoerigkeit zum Stamm,
+        # hoechstens eine je Police und die Reihenfolge gegen die Historie.
+        geprueft["reduktionen_zeilen"] = int(len(reduktionen))
+        try:
+            for meldung in validate_reduktionen(
+                portfolio, reduktionen, historie
+            ):
+                errors.append({"code": "reduktionen", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "reduktionen", "message": str(exc)})
 
     if portfolio is not None and ledger is not None:
         # Semantik der Buchungen (T18-06) und zeilenweise Bindung an die
@@ -397,11 +426,17 @@ def lies_und_pruefe_pb1(
                         portfolio, ledger, config, scheiben=scheiben,
                         historie=historie, merkmale=tabellen.get("merkmale"),
                         schichten=schichten, verankerung=verankerung,
+                        reduktionen=reduktionen,
                     ):
                         errors.append({"code": "ledger", "message": meldung})
+                    # Der Beleg zaehlt, was die Herleitung wirklich
+                    # abgedeckt hat — abgeleitet aus der Liste des
+                    # Herleiters plus den BU-Vorfaellen, nicht abgetippt.
+                    # Ein Literal hier haette RED unterschlagen und ein zu
+                    # kleines Testat ausgewiesen.
                     geprueft["betraege_hergeleitet"] = int(
-                        ledger["ereignis"].isin(("ZUG", "STO", "PEX", "TOD", "ABL",
-                                                 "INV", "REA")).sum())
+                        ledger["ereignis"].isin(
+                            set(HERGELEITET) | {"INV", "REA"}).sum())
                 except Exception as exc:  # noqa: BLE001 — malformed data blockiert
                     errors.append({"code": "ledger", "message": str(exc)})
     if manifest is not None:

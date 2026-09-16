@@ -28,9 +28,10 @@ import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.fuehrung import bestand_am, months_between
-from rechner_pipeline.bestand.kernlauf import reduzierte_teile, vertrags_rkw
+from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.bestand.schichten import schichten_je_police
 from rechner_pipeline.kern.beitragsreduktion import (
+    reduzierte_teile,
     vertrags_monatsreserve_reduziert,
 )
 from rechner_pipeline.kern.korrekturschicht import (

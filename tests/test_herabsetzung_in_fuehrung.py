@@ -233,3 +233,131 @@ def test_eine_rate_ohne_hoehe_ist_ein_config_fehler():
     assert any("red_anteil" in b for b in befunde)
     # Und mit Hoehe ist sie in Ordnung.
     assert _config(True).validate() == []
+
+
+# --- Der Betriebsweg: die Tabelle laeuft mit -----------------------------
+#
+# Eine Nebentabelle, die der Erzeuger schreibt und der Betrieb nicht
+# mitfuehrt, ist der Betriebsbefund N-01 in neuer Gestalt: Die Fuehrung
+# rechnet mit ihr, die Wache ohne sie, und das richtige Ledger faellt als
+# falsch auf. Deshalb steht reduktionen in ROLLEN_DATEIEN — Manifest,
+# P-B1-Rolle, Wache und Teilbestand folgen daraus.
+
+
+def _lauf_mit_herabsetzung(tmp_path):
+    from rechner_pipeline.bestand import cli_fortschreibung as fs_cli
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+
+    stamm = _stamm([{"id": p, "beginn": "2015-01-01"} for p in POLICEN])
+    portfolio = tmp_path / "eigen.parquet"
+    write_portfolio(stamm, portfolio)
+    cfg = tmp_path / "cfg.toml"
+    cfg.write_text(
+        _CONFIG_TOML.replace(
+            "[annahmen]\nerh_prozent = 0.05",
+            f"[annahmen]\nerh_prozent = 0.05\nred_anteil = {ANTEIL}",
+        ) + "\n[annahmen.herabsetzung]\na = 0.08\nb = 0.0\n",
+        encoding="utf-8")
+    out = tmp_path / "lauf"
+    code = fs_cli.main([
+        "--config", str(cfg), "--bis", "2046-01-01",
+        "--portfolio", str(portfolio), "--out-dir", str(out),
+    ])
+    assert code == 0
+    return out, cfg
+
+
+def test_der_lauf_schreibt_die_tabelle_und_das_manifest_bindet_sie(tmp_path):
+    from rechner_pipeline.bestand.manifest import (
+        NEBENTABELLEN,
+        ROLLEN_DATEIEN,
+        lauf_eingaben,
+        lies_manifest,
+    )
+
+    out, cfg = _lauf_mit_herabsetzung(tmp_path)
+    assert "reduktionen" in ROLLEN_DATEIEN and "reduktionen" in NEBENTABELLEN
+    pfad = out / ROLLEN_DATEIEN["reduktionen"]
+    assert pfad.is_file(), "der Lauf traegt seine Herabsetzungen nicht"
+    # Der Lieferschein bindet sie wie jede andere Ausgabe.
+    manifest = lies_manifest(out)
+    assert ROLLEN_DATEIEN["reduktionen"] in manifest["ausgaben"]
+    # Und die Rollentabelle reicht sie an jeden Konsumenten weiter.
+    assert "reduktionen" in lauf_eingaben(out, cfg)
+
+
+def test_p_b1_prueft_die_tabelle_und_leitet_die_buchungen_her(tmp_path):
+    """Die Wache bekommt dieselben Eingaben wie der Erzeuger — sonst
+    rechnet sie den herabgesetzten Vertrag ungekuerzt nach und meldet das
+    richtige Ledger als falsch (N-01)."""
+    from rechner_pipeline.bestand.manifest import lauf_eingaben, lies_manifest
+    from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
+
+    out, cfg = _lauf_mit_herabsetzung(tmp_path)
+    eingaben = lauf_eingaben(out, cfg)
+    _tabellen, geprueft, fehler, _usage = lies_und_pruefe_pb1(
+        eingaben, bis=_dt.date(2046, 1, 1), manifest=lies_manifest(out))
+    assert fehler == [], fehler[:3]
+    assert geprueft["reduktionen_zeilen"] > 0
+    # Der Beleg zaehlt die hergeleiteten Betraege — RED eingeschlossen.
+    # Ein Literal an dieser Stelle haette sie unterschlagen und ein zu
+    # kleines Testat ausgewiesen.
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    ledger = read_portfolio(out / "ledger.parquet")
+    assert geprueft["betraege_hergeleitet"] >= int(
+        (ledger["ereignis"] == "RED").sum())
+
+
+def test_die_wache_ohne_die_tabelle_meldet_das_richtige_ledger_als_falsch(
+    tmp_path,
+):
+    """Die Gegenprobe zu N-01, an der neuen Tabelle: Wird sie nicht
+    mitgefuehrt, ist der Lauf gruen und die Pruefung rot."""
+    from rechner_pipeline.bestand.manifest import lauf_eingaben, lies_manifest
+    from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
+
+    out, cfg = _lauf_mit_herabsetzung(tmp_path)
+    manifest = lies_manifest(out)
+    eingaben = {r: p for r, p in lauf_eingaben(out, cfg).items()
+                if r != "reduktionen"}
+    _t, _g, fehler, _u = lies_und_pruefe_pb1(
+        eingaben, bis=_dt.date(2046, 1, 1), manifest=manifest)
+    assert any("RED" in str(f.get("message", "")) for f in fehler), fehler[:2]
+
+
+def test_jede_erzeugerrolle_braucht_einen_spaltenvertrag(monkeypatch, tmp_path):
+    """Die Ratsche hinter dem Fund beim Einbau: Die P-B1-Engine lief ueber
+    eine ZWEITE, handgepflegte Rollenliste neben ihrem Spaltenvertrag. Eine
+    neue Erzeugerrolle fiel still hindurch — nicht gelesen, nicht geprueft,
+    und trotzdem Exit 0. Ohne Positivkontrolle waere diese Ableitung eine
+    Ratsche mit null Treffern."""
+    from rechner_pipeline.bestand import manifest as m
+    from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
+
+    monkeypatch.setitem(m.ROLLEN_DATEIEN, "phantom", "phantom.parquet")
+    with pytest.raises(ValueError, match="ohne Spaltenvertrag"):
+        lies_und_pruefe_pb1({"portfolio": tmp_path / "x.parquet"},
+                            bis=None, manifest=None)
+
+
+def test_in_den_stand_kommt_nur_eine_gebuchte_herabsetzung():
+    """Der Tagesbetrieb schneidet auf den Buchungsstand. Eine Herabsetzung
+    gehoert in den Stand, wenn ihre RED-Zeile darin steht — abgeleitet aus
+    dem Ledger, nicht als zweite Regel auf dem Reduktionsdatum."""
+    from rechner_pipeline.betrieb.tageslauf import _gebuchte_reduktionen
+
+    reduktionen = pd.DataFrame({
+        "police_id": [1, 2],
+        "reduktion_jahr": [5, 6],
+        "reduktion_datum": [pd.Timestamp("2020-01-01"),
+                            pd.Timestamp("2021-01-01")],
+        "anteil": [0.6, 0.6],
+        "verfahren": ["prospektiv", "prospektiv"],
+    })
+    ledger = pd.DataFrame({
+        "police_id": [1, 2], "ereignis": ["RED", "STO"],
+    })
+    gebucht = _gebuchte_reduktionen(reduktionen, ledger)
+    assert list(gebucht["police_id"]) == [1]
+    # Ohne Tabelle bleibt es dabei.
+    assert _gebuchte_reduktionen(None, ledger) is None

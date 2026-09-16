@@ -801,6 +801,7 @@ def render_html(
     stichtag: Optional[_dt.date] = None,
     schichten: Optional[pd.DataFrame] = None,
     verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
     berichtsstichtag: Optional[_dt.date] = None,
 ) -> str:
     """Rendert den vollständigen Bericht als selbst-enthaltenes HTML.
@@ -987,6 +988,7 @@ def render_html(
             reihe_ausw = auswertungs_verlauf(
                 df, historie, config, stichtage, scheiben=scheiben,
                 merkmale=merkmale, schichten=schichten, verankerung=verankerung,
+                reduktionen=reduktionen,
             )
             svg_dk = _chart_deckungskapital(reihe_ausw, stichtag=stichtag)
             svg_beitrag = _chart_beitraege(

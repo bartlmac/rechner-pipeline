@@ -52,12 +52,13 @@ ROLLEN_DATEIEN: Mapping[str, str] = {
     "merkmale": "merkmale.parquet",
     "schichten": "schichten.parquet",
     "verankerung": "verankerung.parquet",
+    "reduktionen": "reduktionen.parquet",
 }
 #: Rollen, die JEDER Fortschreibungslauf traegt — ohne sie ist es kein Lauf.
 PFLICHT_ROLLEN: Tuple[str, ...] = ("portfolio", "historie", "ledger", "scheiben")
-#: Nebentabellen: nur Laeufe mit Tarifzellen (merkmale) oder uebernommenen
-#: Vertraegen (schichten, verankerung) tragen sie — abgeleitet, nicht
-#: abgetippt.
+#: Nebentabellen: nur Laeufe mit Tarifzellen (merkmale), uebernommenen
+#: Vertraegen (schichten, verankerung) oder Herabsetzungen (reduktionen)
+#: tragen sie — abgeleitet, nicht abgetippt.
 NEBENTABELLEN: Tuple[str, ...] = tuple(r for r in ROLLEN_DATEIEN if r not in PFLICHT_ROLLEN)
 
 

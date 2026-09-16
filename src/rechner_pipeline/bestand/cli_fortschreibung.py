@@ -357,6 +357,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     ausgaben.append(write_portfolio(historie, out_dir / "historie.parquet"))
     ausgaben.append(write_portfolio(ledger, out_dir / "ledger.parquet"))
     ausgaben.append(write_portfolio(scheiben, out_dir / "scheiben.parquet"))
+    # Herabsetzungen nur, wenn es welche gibt: Eine leere Datei hiesse
+    # "geprueft und keine gefunden", keine Datei heisst "dieser Lauf kennt
+    # keine" — dieselbe Unterscheidung wie bei den uebrigen Nebentabellen.
+    if len(ergebnis.reduktionen):
+        ausgaben.append(write_portfolio(
+            ergebnis.reduktionen, out_dir / "reduktionen.parquet"))
     ausgaben.append(write_portfolio(ergebnis.zugaenge, out_dir / "zugaenge.parquet"))
     ausgaben.append(write_portfolio(gesamt, out_dir / "bestand_gesamt.parquet"))
     # Die Nebentabellen der Uebernahme wandern MIT in den Lauf: Merkmale,

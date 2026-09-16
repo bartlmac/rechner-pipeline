@@ -85,15 +85,13 @@ import numpy as np
 import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig
-from rechner_pipeline.bestand.kernlauf import (
-    absorbierte_schicht,
-    reduzierte_teile,
-    vertrags_rkw,
-)
+from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.bestand.schichten import schichten_je_police
 from rechner_pipeline.kern.beitragsreduktion import (
     ReduzierterVertrag,
+    absorbierte_schicht,
+    reduzierte_teile,
     vertrags_monatsreserve_reduziert,
 )
 from rechner_pipeline.kern.korrekturschicht import (

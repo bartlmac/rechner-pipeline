@@ -39,7 +39,7 @@ flowchart TD
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>5 Module"]
-    bestand -- 26 --> kern
+    bestand -- 24 --> kern
     bestand -- 17 --> models
     bestand -- 1 --> qa
     betrieb -- 20 --> bestand
@@ -122,6 +122,7 @@ flowchart TD
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_tafeln_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_zustandsmodell_py
+    rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_korrekturschicht_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_zahlungspfad_py

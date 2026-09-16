@@ -61,6 +61,10 @@ from rechner_pipeline.gates.migrationssuite_lauf import (
 )
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe, vertrags_monatsreserve
 from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
+from rechner_pipeline.kern.beitragsreduktion import (
+    reduzierte_teile,
+    vertrags_monatsreserve_reduziert,
+)
 from rechner_pipeline.kern.korrekturschicht import (
     Schichtparameter,
     schichtwert_bei,
@@ -70,6 +74,7 @@ from rechner_pipeline.models.bestand import (
     GENERATION_FIELDS,
     LEDGER_NAMES,
     SCHEIBEN_NAMES,
+    REDUKTIONEN_NAMES,
     SCHICHTEN_NAMES,
     STAMM_NAMES,
     STATUS_CODE_VALUES,
@@ -460,27 +465,35 @@ def pruefe_fuehrung(
         ]
         # Herabgesetzte Policen: Ihre Folgebuchungen rechnen auf dem
         # GEKNICKTEN Verlauf. Anteil und Verfahren stehen in
-        # reduktionen.parquet, nicht im Ledger — solange der Betriebsweg
-        # die Tabelle nicht mitfuehrt (Review T25-06), kann die Probe
-        # diese Buchungen nicht nachrechnen. Sie gegen den ungekuerzten
+        # reduktionen.parquet — ohne die Tabelle kann die Probe diese
+        # Buchungen NICHT nachrechnen, und sie gegen den ungekuerzten
         # Vertrag zu halten waere schlechter als gar nichts: Das Urteil
         # bezeugte eine Uebereinstimmung, die es nicht gibt.
+        f_reduktionen = fortschreibung.get("reduktionen")
+        reduktion_je_police: Dict[int, Tuple[int, float, str]] = {}
+        if f_reduktionen is not None and len(f_reduktionen):
+            for z in f_reduktionen.to_dict("records"):
+                reduktion_je_police[int(z["police_id"])] = (
+                    int(z["reduktion_jahr"]), float(z["anteil"]),
+                    str(z["verfahren"]))
         red_jahr = {
             int(z["police_id"]): int(z["vertragsjahr"])
             for z in f_ledger[f_ledger["ereignis"] == "RED"].to_dict("records")
         }
+        ohne_tabelle = sorted(set(red_jahr) - set(reduktion_je_police))
+        if ohne_tabelle:
+            befund(None, "herabsetzung",
+                   f"{len(ohne_tabelle)} Police(n) mit RED-Buchung, aber ohne "
+                   f"Zeile in reduktionen.parquet (z. B. {ohne_tabelle[:5]}) — "
+                   "die Probe kann ihre Folgebuchungen nicht nachrechnen")
         for z in nach.to_dict("records"):
             pid, art, jahr = int(z["police_id"]), str(z["ereignis"]), int(z["vertragsjahr"])
             welt = welten.get(pid)
             if welt is None:
                 continue
-            if pid in red_jahr and jahr >= red_jahr[pid]:
-                befund(pid, "herabsetzung",
-                       f"{art}-Buchung im Vertragsjahr {jahr} nach einer "
-                       f"Herabsetzung (Jahr {red_jahr[pid]}) — die Probe kennt "
-                       "den herabgesetzten Verlauf nicht; sie braucht dafuer "
-                       "reduktionen.parquet")
-                continue
+            if pid in red_jahr and jahr >= red_jahr[pid] \
+                    and pid not in reduktion_je_police:
+                continue                       # oben als Befund gemeldet
             teile = list(welt["teile"])
             for s in neue_je_police.get(pid, []):
                 if int(s["erhoehung_jahr"]) < jahr:
@@ -494,6 +507,42 @@ def pruefe_fuehrung(
             teile = [(j, k) for j, k in teile if j < jahr]
             grund, grund_mp = welt["grund"], welt["grund_mp"]
             pex_jahr = welt["pex_jahr"]
+            red = reduktion_je_police.get(pid)
+            if red is not None and jahr >= red[0]:
+                # Der herabgesetzte Vertrag, ueber DIESELBE Rekonstruktion
+                # wie Engine, Bewertung und Ledger-Herleitung
+                # (kernlauf.reduzierte_teile). Eine eigene Formel hier
+                # waere die vierte Abschrift — und genau die hat bei der
+                # Beitragsfreistellung den Fehler bestaetigt, statt ihn zu
+                # widerlegen (Review T25-06).
+                teile_red = reduzierte_teile(
+                    grund, teile, red[0], red[1], red[2],
+                    schicht=schicht_je_police.get(pid))
+                pex_f = pex_jahr
+                if pex_f is None:
+                    eigene = f_ledger[(f_ledger["police_id"] == pid)
+                                      & (f_ledger["ereignis"] == "PEX")]
+                    if len(eigene):
+                        pex_f = int(eigene["vertragsjahr"].iloc[0])
+                if art == "STO":
+                    erwartet = vertrags_monatsreserve_reduziert(
+                        teile_red, 12 * jahr).rkw
+                elif art == "PEX":
+                    erwartet = sum(
+                        v.beitragsfreie_summe(jahr - e) for e, v in teile_red)
+                elif pex_f is not None and pex_f <= jahr:
+                    erwartet = sum(
+                        v.beitragsfreie_summe(int(pex_f) - e)
+                        for e, v in teile_red)
+                else:
+                    erwartet = sum(v.reduktion.vs_neu for _, v in teile_red)
+                buchungen[art] += 1
+                if abs(float(z["betrag"]) - erwartet) > TOLERANZ:
+                    abweichungen += 1
+                    befund(pid, "buchung",
+                           f"{art} Jahr {jahr}: Ledger {float(z['betrag']):.2f}, "
+                           f"herabgesetzter Vertrag {erwartet:.2f}")
+                continue
             if art == "STO":
                 erwartet = vertrags_monatsreserve(
                     grund, teile, 12 * jahr,
@@ -662,6 +711,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 # angesehen — am echten Fall bestanden ein Endbestand mit
                 # +999999 und eine Endhistorie mit XXX die Probe.
                 "bestand": lies(lauf / "bestand_gesamt.parquet", STAMM_NAMES, False),
+                "reduktionen": lies(
+                    lauf / "reduktionen.parquet", REDUKTIONEN_NAMES, False),
             }
         except SystemExit as exc:
             print(str(exc), file=sys.stderr)

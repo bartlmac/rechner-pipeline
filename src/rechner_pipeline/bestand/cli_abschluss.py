@@ -174,6 +174,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     merkmale = geprueft_tabellen.get("merkmale")
     schichten = geprueft_tabellen.get("schichten")
     verankerung = geprueft_tabellen.get("verankerung")
+    reduktionen = geprueft_tabellen.get("reduktionen")
 
     if ns.pruefen:
         pfad = abschluss_pfad(out_dir, stichtag)
@@ -184,6 +185,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             befunde = pruefe_abschluss(
                 pfad, stamm, historie, config, scheiben=scheiben, merkmale=merkmale,
                 schichten=schichten, verankerung=verankerung,
+                reduktionen=reduktionen,
             )
         except (AbschlussError, ValueError, MissingMortalityTableError) as exc:
             print(f"bestand_abschluss: {exc}", file=sys.stderr)
@@ -208,6 +210,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         pfad = schreibe_abschluss(
             stamm, historie, config, stichtag, out_dir, scheiben=scheiben,
             merkmale=merkmale, schichten=schichten, verankerung=verankerung,
+            reduktionen=reduktionen,
         )
     except (AbschlussError, ValueError, MissingMortalityTableError) as exc:
         print(f"bestand_abschluss: {exc}", file=sys.stderr)
