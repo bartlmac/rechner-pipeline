@@ -32,7 +32,9 @@ def paket(tmp_path_factory) -> Path:
     Belegdateien und erwartete Veroeffentlichung — genau die Luecke."""
     ablage = _ablage(tmp_path_factory.mktemp("plv"))
     assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
-    return st.stands_paket(ablage, tmp_path_factory.mktemp("paket") / "paket")
+    basis = tmp_path_factory.mktemp("paket")
+    return st.stands_paket(ablage, basis / "paket",
+                           anker_verzeichnis=basis / "anker")
 
 
 def _erfunden(tmp_path: Path, pb1: str = "gruen") -> Path:
@@ -40,10 +42,10 @@ def _erfunden(tmp_path: Path, pb1: str = "gruen") -> Path:
     paket = tmp_path / "erfunden"
     paket.mkdir()
     stand = {
-        # Schema der GELTENDEN Fassung (3 seit T24-04 Teil 1): Das Paket
+        # Schema der GELTENDEN Fassung (4 seit T24-04 Teil 2): Das Paket
         # soll an den Belegen scheitern, nicht schon an der Versionszahl —
         # sonst prueft der Test den Schema-Pin statt die Belegpflicht.
-        "schema_version": 3, "stand": "2026-09-05", "gefuehrt_seit": "2026-01-01",
+        "schema_version": 4, "stand": "2026-09-05", "gefuehrt_seit": "2026-01-01",
         "bestand": {"in_force": 2556, "je_produkt": {"klv": 1893, "bu": 663},
                     "uebernommen_in_force": 818, "policiert_beginn_folgt": 2},
         "neugeschaeft": {"seit_betriebsbeginn": 99, "woche": {}, "woche_summe": 0},
@@ -59,8 +61,24 @@ def _erfunden(tmp_path: Path, pb1: str = "gruen") -> Path:
     return paket
 
 
+def _mit_anker(paket):
+    """``betrieb`` mit dem Anker, den das Paket NENNT.
+
+    Der Anker liegt ausserhalb des Pakets und reist nicht mit — auch eine
+    Kopie des Pakets wird gegen die eine Ankerdatei geprueft, die der
+    Export geschrieben hat. Genau das ist seine Aufgabe."""
+    import json as _json
+
+    try:
+        stand = _json.loads((paket / "stand.json").read_text("utf-8"))
+        datei = (stand.get("anker") or {}).get("datei")
+    except (OSError, ValueError, AttributeError):
+        datei = None
+    return fd.betrieb(paket, Path(datei) if datei else None)
+
+
 def test_das_paket_wird_zum_abschnitt_der_darstellung(paket):
-    b = fd.betrieb(paket)
+    b = _mit_anker(paket)
     assert b["vorhanden"] and b["stand"] == "2026-02-03"
     assert b["bestand"]["in_force"] > 0 and b["provenienz"]["pb1"] == "gruen"
     assert set(b["dateien"]) >= {"index.html", "protokoll.jsonl", "laufmanifest.json"}
@@ -83,9 +101,9 @@ def test_ein_erfundenes_paket_wird_nicht_veroeffentlicht(tmp_path):
     Belegdateien in _pruefe_stands_paket entfernen -> rot (die Hash-Pruefung
     faengt test_ein_veraendertes_protokoll_im_paket_faellt_auf)."""
     with pytest.raises(fd.FalldatenFehler, match="Belegdatei"):
-        fd.betrieb(_erfunden(tmp_path))
+        _mit_anker(_erfunden(tmp_path))
     with pytest.raises(fd.FalldatenFehler, match="kein Stands-Paket"):
-        fd.betrieb(tmp_path)
+        _mit_anker(tmp_path)
 
 
 def test_ein_roter_stand_wird_nicht_dargestellt(paket, tmp_path):
@@ -99,7 +117,7 @@ def test_ein_roter_stand_wird_nicht_dargestellt(paket, tmp_path):
     stand["provenienz"]["pb1"] = "rot"
     (kopie / "stand.json").write_text(json.dumps(stand), encoding="utf-8")
     with pytest.raises(fd.FalldatenFehler, match="nicht durch P-B1"):
-        fd.betrieb(kopie)
+        _mit_anker(kopie)
 
 
 def test_ein_veraendertes_protokoll_im_paket_faellt_auf(paket, tmp_path):
@@ -118,7 +136,7 @@ def test_ein_veraendertes_protokoll_im_paket_faellt_auf(paket, tmp_path):
     zeilen[-1] = json.dumps(zeile, ensure_ascii=False, sort_keys=True)
     protokoll.write_text("\n".join(zeilen) + "\n", encoding="utf-8")
     with pytest.raises(fd.FalldatenFehler, match="Belegdatei 'protokoll.jsonl'"):
-        fd.betrieb(kopie)
+        _mit_anker(kopie)
     # Wer auch den Hash in stand.json nachzieht, scheitert an der Kette,
     # sobald er eine mittlere Zeile antastet:
     stand = json.loads((kopie / "stand.json").read_text(encoding="utf-8"))
@@ -128,7 +146,7 @@ def test_ein_veraendertes_protokoll_im_paket_faellt_auf(paket, tmp_path):
         stand["dateien"]["protokoll.jsonl"] = hashlib.sha256(protokoll.read_bytes()).hexdigest()
         (kopie / "stand.json").write_text(json.dumps(stand), encoding="utf-8")
         with pytest.raises(fd.FalldatenFehler, match="Protokollkette|passen nicht"):
-            fd.betrieb(kopie)
+            _mit_anker(kopie)
 
 
 def test_die_kette_reicht_das_paket_durch(tmp_path, monkeypatch):
@@ -161,14 +179,14 @@ def test_eine_buchungszahl_ohne_deckung_im_journal_faellt_auf(paket, tmp_path, f
     kopie = tmp_path / f"kopie-{feld}"
     shutil.copytree(paket, kopie)
     stand = json.loads((kopie / "stand.json").read_text(encoding="utf-8"))
-    assert fd.betrieb(kopie)["vorhanden"], "die unveraenderte Kopie muss durchgehen"
+    assert _mit_anker(kopie)["vorhanden"], "die unveraenderte Kopie muss durchgehen"
     if feld == "gesamt":
         stand["buchungen"]["gesamt"] = int(stand["buchungen"]["gesamt"]) + 1
     else:
         stand["buchungen"]["je_ereignis"] = {"ZUG": 999999}
     (kopie / "stand.json").write_text(json.dumps(stand, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(fd.FalldatenFehler, match="Tagesjournal"):
-        fd.betrieb(kopie)
+        _mit_anker(kopie)
 
 
 @pytest.mark.parametrize("pfad, wert", [
@@ -196,14 +214,14 @@ def test_ein_feld_ohne_deckung_im_protokoll_faellt_auf(paket, tmp_path, pfad, we
 
     kopie = tmp_path / ("kopie-" + "-".join(pfad))
     shutil.copytree(paket, kopie)
-    assert fd.betrieb(kopie)["vorhanden"], "die unveraenderte Kopie muss durchgehen"
+    assert _mit_anker(kopie)["vorhanden"], "die unveraenderte Kopie muss durchgehen"
     stand = json.loads((kopie / "stand.json").read_text(encoding="utf-8"))
     gruppe, feld = pfad
     assert stand[gruppe][feld] != wert, "die Mutation muss etwas veraendern"
     stand[gruppe][feld] = wert
     (kopie / "stand.json").write_text(json.dumps(stand, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(fd.FalldatenFehler, match="Protokoll"):
-        fd.betrieb(kopie)
+        _mit_anker(kopie)
 
 
 def test_ein_verschwiegener_abschluss_faellt_auf(paket, tmp_path):
@@ -218,4 +236,4 @@ def test_ein_verschwiegener_abschluss_faellt_auf(paket, tmp_path):
     stand["abschluesse"] = stand["abschluesse"][:-1]
     (kopie / "stand.json").write_text(json.dumps(stand, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(fd.FalldatenFehler, match="abschluesse"):
-        fd.betrieb(kopie)
+        _mit_anker(kopie)

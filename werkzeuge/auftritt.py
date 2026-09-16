@@ -64,6 +64,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--stands-paket", dest="stands_paket", default=None,
                    help="Stands-Paket der Laufzeitumgebung (betrieb.seite "
                         "--paket): Kennzahlen des lebenden Bestands")
+    p.add_argument("--anker", default=None,
+                   help="Ankerdatei des Stands-Pakets (betrieb.seite "
+                        "--anker). Pflicht mit --stands-paket: Das Paket wird "
+                        "gegen einen Bezug AUSSERHALB des Pakets geprueft")
     p.add_argument("--out", default="runs/seite",
                    help="Push-Baum des Entwurfs (Vorgabe: runs/seite)")
     p.add_argument("--vorschau", default="runs/vorzeige-vorschau",
@@ -79,6 +83,7 @@ def main(argv: Optional[List[str]] = None) -> int:
          "--fall", args.fall,
          *(teil for a in args.abzug for teil in ("--abzug", a)),
          *(("--stands-paket", args.stands_paket) if args.stands_paket else ()),
+         *(("--anker", args.anker) if args.anker else ()),
          "--out", str(daten)],
         erlaubt=(0, 3))
     if rc not in (0, 3):

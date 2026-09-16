@@ -1064,7 +1064,46 @@ def _pruefe_buchungen_gegen_das_journal(paket: Path, stand: Dict[str, Any]) -> N
             f"Journal {gezaehlt!r})")
 
 
-def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
+def _pruefe_anker(paket: Path, stand: Dict[str, Any],
+                  anker_datei: Optional[Path]) -> Dict[str, Any]:
+    """Das Paket gegen einen Anker AUSSERHALB des Pakets halten (T24-04 b).
+
+    Das Paket belegt sich bis hierher selbst: Jede Kennzahl ist aus
+    seinen Belegen nachgerechnet, die Protokollkette ist ungebrochen. Was
+    dabei NICHT geprueft werden kann, ist die letzte Zeile der Kette —
+    sie hat keinen Nachfolger, der sie bindet, und genau aus ihr leitet
+    stand.json ab. Wer beide zusammen umschreibt, kommt hier durch.
+
+    Der Anker schliesst das: ein Hash derselben Zeile, abgelegt an einem
+    Ort, den der schreibende Prozess nicht anfasst.
+    """
+    from rechner_pipeline.betrieb.anker import AnkerFehler, lies_anker, pruefe
+
+    if anker_datei is None:
+        raise FalldatenFehler(
+            f"{paket}: kein Anker uebergeben. Ein Stands-Paket wird gegen "
+            "einen Bezug AUSSERHALB des Pakets geprueft — ohne ihn belegt es "
+            "nur sich selbst (Review T24-04, Teil 2). Aufruf mit "
+            "--anker <datei>; geschrieben hat sie der Export."
+        )
+    try:
+        satz = pruefe(paket, stand, paket / "protokoll.jsonl",
+                      lies_anker(Path(anker_datei)))
+    except AnkerFehler as exc:
+        raise FalldatenFehler(str(exc)) from exc
+    return {
+        "datei": str(anker_datei),
+        "stand": satz.get("stand"),
+        "erstellt": satz.get("erstellt"),
+        # Ausgewiesen, nicht behauptet: Die Zeichnung des Exports ist
+        # festgelegt, aber noch nicht gebaut (offener Punkt) — die Seite
+        # sagt, was da ist, statt Vollstaendigkeit zu suggerieren.
+        "zeichnung": (stand.get("anker") or {}).get("zeichnung"),
+    }
+
+
+def betrieb(paket: Optional[Path],
+            anker_datei: Optional[Path] = None) -> Dict[str, Any]:
     """Der lebende Bestand aus dem Stands-Paket der Laufzeitumgebung.
 
     Fachkonzept docs/simulation/tagesbetrieb.md, Abschnitt 8.3: Die
@@ -1082,15 +1121,18 @@ def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
     # Tagesjournal. Ein Paket nach Schema 2 belegt seine Buchungszahlen
     # nicht und wird deshalb nicht veroeffentlicht — wie schon die
     # Erstfassung ohne Belegdateien.
-    if not isinstance(stand, dict) or stand.get("schema_version") != 3:
+    if not isinstance(stand, dict) or stand.get("schema_version") != 4:
         raise FalldatenFehler(
-            f"{paket}: kein Stands-Paket (stand.json mit schema_version 3 fehlt; "
-            "ein aelteres Paket belegt seine Buchungszahlen nicht und wird nicht "
-            "veroeffentlicht) — ein neuer Export heilt es: python -m "
-            "rechner_pipeline.betrieb.seite --stand <daten> --paket <ziel>"
+            f"{paket}: kein Stands-Paket (stand.json mit schema_version 4 fehlt; "
+            "ein aelteres Paket nennt keinen Anker und belegt damit nur sich "
+            "selbst — die Protokollkette schuetzt ihre letzte Zeile nicht, und "
+            "genau aus ihr leitet stand.json ab) — ein neuer Export heilt es: "
+            "python -m rechner_pipeline.betrieb.seite --stand <daten> "
+            "--paket <ziel> --anker <verzeichnis>"
         )
     prov = stand.get("provenienz") or {}
     _pruefe_stands_paket(paket, stand, prov)
+    verankerung = _pruefe_anker(paket, stand, anker_datei)
     return {
         "vorhanden": True,
         "stand": stand.get("stand"),
@@ -1108,11 +1150,13 @@ def betrieb(paket: Optional[Path]) -> Dict[str, Any]:
         # Die Luecken des Stands (T22-05: gingen beim Import verloren).
         "luecken": list(stand.get("luecken") or []),
         "quelle": str(paket),
+        "verankerung": verankerung,
     }
 
 
 def sammle(fall: Path, abzuege: List[str],
-           stands_paket: Optional[Path] = None) -> Dict[str, Any]:
+           stands_paket: Optional[Path] = None,
+           anker: Optional[Path] = None) -> Dict[str, Any]:
     manifest = _json(fall / "fall.json") or {}
     # Der Scope kommt aus demselben strengen Vertrag wie bei den Gates
     # (fall.lade_scope, T21-04) — nicht aus dem roh gelesenen Manifest.
@@ -1139,7 +1183,7 @@ def sammle(fall: Path, abzuege: List[str],
         "abnahmen": abnahmen(fall),
         "kette": kette(fall),
         "umbau": umbau(fall),
-        "betrieb": betrieb(stands_paket),
+        "betrieb": betrieb(stands_paket, anker),
     }
     modell["abgrenzungen"] = abgrenzungen(modell)
     modell["luecken"] = luecken(modell)
@@ -1156,6 +1200,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Registrierter Bestandsabzug je Stichtag, "
                         "in zeitlicher Reihenfolge (mehrfach angebbar)")
     p.add_argument("--out", default=None, help="Zieldatei (Vorgabe: stdout)")
+    p.add_argument("--anker", dest="anker", default=None,
+                   help="Ankerdatei des Stands-Pakets (Pflicht mit "
+                        "--stands-paket). Sie liegt AUSSERHALB des Pakets — "
+                        "das ist der Punkt.")
     p.add_argument("--stands-paket", dest="stands_paket", default=None,
                    help="Stands-Paket der Laufzeitumgebung (betrieb.seite "
                         "--paket): der lebende Bestand als Abschnitt der "
@@ -1169,7 +1217,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         modell = sammle(
             fall, args.abzug,
-            Path(args.stands_paket) if args.stands_paket else None)
+            Path(args.stands_paket) if args.stands_paket else None,
+            Path(args.anker) if args.anker else None)
     except FalldatenFehler as exc:
         print(f"Nicht erhebbar: {exc}", file=sys.stderr)
         return 2

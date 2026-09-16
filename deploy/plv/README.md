@@ -111,7 +111,8 @@ systemctl --user stop tageslauf.timer
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01
 cd ~/apps/plv && docker compose run --rm tageslauf
-python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten --paket <paket>
+python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten \
+    --paket <paket> --anker faelle/<fall>/abgeleitet/anker
 systemctl --user start tageslauf.timer
 ```
 
@@ -145,12 +146,22 @@ loginctl enable-linger "$USER"     # der Timer laeuft auch ohne Sitzung
   uebergibt — nichts wird automatisch veroeffentlicht. Das Paket traegt
   seine Belege (Protokoll mit Kette, Manifest, Berichte, je mit SHA-256);
   der Auftritt prueft sie und veroeffentlicht kein Paket, das sich selbst
-  widerspricht:
+  widerspricht.
+
+  Das genuegt aber nicht: Die Protokollkette bindet jede Zeile an ihre
+  Vorgaengerin und schuetzt damit alles AUSSER DER LETZTEN — und genau
+  aus der letzten leitet `stand.json` ab. Wer beide zusammen umschreibt,
+  bekommt ein Paket, das sich selbst bestaetigt. Deshalb schreibt der
+  Export einen ANKER in den Fall-Datenraum (den der Tagesbetrieb nicht
+  anfasst) und nennt ihn im Paket; der Auftritt prueft dagegen. Ein
+  Export ohne `--anker` wird abgelehnt.
 
   ```
-  python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten --paket runs/stands-paket
+  python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten \
+      --paket runs/stands-paket --anker faelle/<fall>/abgeleitet/anker
   python werkzeuge/auftritt.py --fall faelle/<fall> --name <kurzname> \
-      --abzug ... --stands-paket runs/stands-paket
+      --abzug ... --stands-paket runs/stands-paket \
+      --anker faelle/<fall>/abgeleitet/anker/anker.jsonl
   ```
 
 Lokal, ohne Container (Entwicklerrechner), tut dasselbe:

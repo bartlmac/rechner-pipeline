@@ -72,13 +72,20 @@ def test_modell_und_seite_sind_deterministisch(gefuehrt):
 
 
 def test_stands_paket_traegt_stempel_und_berichte(gefuehrt, tmp_path):
-    paket = st.stands_paket(gefuehrt, tmp_path / "paket")
+    paket = st.stands_paket(gefuehrt, tmp_path / "paket",
+                            anker_verzeichnis=tmp_path / "anker")
     stand = json.loads((paket / "stand.json").read_text("utf-8"))
     # Die Zahl steht hier ABSICHTLICH als Literal: Der Paketvertrag ist ein
     # Vertrag mit einem Konsumenten ausserhalb dieses Repos (vorzeige-url).
     # Eine Aenderung soll hier auffallen und abgestimmt werden, nicht
-    # stillschweigend mitwandern. Schema 3 seit T24-04 Teil 1 (Journal).
-    assert stand["schema_version"] == 3 and stand["stand"] == "2026-02-03"
+    # stillschweigend mitwandern. Schema 4 seit T24-04 Teil 2: stand.json
+    # NENNT seinen Anker, und der Konsument verlangt ihn.
+    assert stand["schema_version"] == 4 and stand["stand"] == "2026-02-03"
+    # Der Anker liegt AUSSERHALB des Pakets — das ist der Punkt.
+    assert stand["anker"]["stand"] == "2026-02-03"
+    assert len(stand["anker"]["sha256"]) == 64
+    anker_datei = Path(stand["anker"]["datei"])
+    assert anker_datei.is_file() and paket not in anker_datei.parents
     # Belege: Protokoll mit Kette und Manifest (T22-05), Tagesjournal
     # (T24-04 Teil 1) fahren mit.
     assert set(stand["dateien"]) == {"index.html", "bestandsbericht_2026-02-01.html",
@@ -89,10 +96,18 @@ def test_stands_paket_traegt_stempel_und_berichte(gefuehrt, tmp_path):
         assert (paket / name).is_file() and len(summe) == 64
     # Ein Paket wird ersetzt, nie angesammelt:
     (paket / "fremd.txt").write_text("x", encoding="utf-8")
-    st.stands_paket(gefuehrt, paket)
+    st.stands_paket(gefuehrt, paket, anker_verzeichnis=tmp_path / "anker")
     assert not (paket / "fremd.txt").exists()
-    assert st.main(["--stand", str(gefuehrt.wurzel), "--paket", str(tmp_path / "p2")]) == 0
+    # Ohne Anker exportiert das Kommando nicht — ein Paket ohne Bezug
+    # nach aussen belegt nur sich selbst (T24-04, Teil 2).
+    assert st.main(["--stand", str(gefuehrt.wurzel),
+                    "--paket", str(tmp_path / "p2")]) == 2
+    assert not (tmp_path / "p2").exists()
+    assert st.main(["--stand", str(gefuehrt.wurzel),
+                    "--paket", str(tmp_path / "p2"),
+                    "--anker", str(tmp_path / "anker2")]) == 0
     assert (tmp_path / "p2" / "stand.json").is_file()
+    assert (tmp_path / "anker2" / "anker.jsonl").is_file()
 
 
 def test_luecken_werden_benannt():
@@ -217,7 +232,8 @@ def test_seite_und_paket_lehnen_einen_stand_ohne_passenden_nachweis_ab(gefuehrt,
     with pytest.raises(st.SeiteError, match="Nachweis"):
         st.stand_modell(ablage)
     with pytest.raises(st.SeiteError, match="Nachweis"):
-        st.stands_paket(ablage, tmp_path / f"paket-{was}")
+        st.stands_paket(ablage, tmp_path / f"paket-{was}",
+                        anker_verzeichnis=tmp_path / "anker")
 
 
 def test_das_paket_belegt_seine_buchungszahlen_mit_dem_journal(gefuehrt, tmp_path):
@@ -239,7 +255,8 @@ def test_das_paket_belegt_seine_buchungszahlen_mit_dem_journal(gefuehrt, tmp_pat
     from rechner_pipeline.bestand.parquet_io import read_portfolio
     from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 
-    paket = st.stands_paket(gefuehrt, tmp_path / "paket")
+    paket = st.stands_paket(gefuehrt, tmp_path / "paket",
+                            anker_verzeichnis=tmp_path / "anker")
     modell = json.loads((paket / st.PAKET_DATEI).read_text(encoding="utf-8"))
     assert modell["schema_version"] == st.PAKET_SCHEMA_VERSION
 
