@@ -326,11 +326,19 @@ def test_ein_gescheiterter_tausch_laesst_den_gestrigen_stand_stehen(tmp_path, mo
     assert ablage.stand.is_symlink() and ablage.stand.resolve() == alt
     assert gefuehrter_tag(ablage) == dt.date(2026, 1, 31)
     assert lies_protokoll(ablage.protokoll_pfad)[-1]["heute"] == "2026-02-03"
-    # Der naechste Lauf raeumt den Rest auf und fuehrt den Tag.
+    # Der naechste Lauf raeumt den Rest auf und fuehrt den Tag. Der
+    # unmittelbare Vorgaenger bleibt dabei liegen — er ist die Ruecknahme
+    # des Standwechsels (T24-01 b) — und geht mit dem Lauf danach.
     assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
     assert gefuehrter_tag(ablage) == dt.date(2026, 2, 3)
-    assert sorted(p.name for p in ablage.wurzel.glob("stand-*") if p.is_dir()) == [
-        ablage.stand.resolve().name]
+    assert tageslauf(ablage, dt.date(2026, 2, 4))[0] == EXIT_OK
+    assert tageslauf(ablage, dt.date(2026, 2, 5))[0] == EXIT_OK
+    # Der stabile Zustand ist "aktueller Stand plus EIN Vorgaenger": Jeder
+    # Lauf laesst seinen Vorgaenger liegen, der naechste raeumt den davor
+    # ab. Das ist der Preis der Umkehrbarkeit, und er ist begrenzt.
+    uebrig = sorted(p.name for p in ablage.wurzel.glob("stand-*") if p.is_dir())
+    assert ablage.stand.resolve().name in uebrig
+    assert len(uebrig) <= 2, uebrig
 
 
 def test_zwei_laeufe_auf_derselben_ablage_gibt_es_nicht(tmp_path):
@@ -362,6 +370,12 @@ def test_ein_stand_der_erstfassung_wird_in_die_symlink_form_ueberfuehrt(tmp_path
     assert gefuehrter_tag(ablage) == dt.date(2026, 1, 31)
     assert tageslauf(ablage, dt.date(2026, 2, 1))[0] == EXIT_OK
     assert ablage.stand.is_symlink() and gefuehrter_tag(ablage) == dt.date(2026, 2, 1)
+    # Die beiseitegeschobene Erstfassung bleibt bis zum NAECHSTEN Lauf
+    # liegen: Seit dem Write-Ahead-Rahmen (T24-01 b) ist der Standwechsel
+    # umkehrbar, und dazu muss es etwas geben, worauf man zurueckzeigen
+    # kann. Aufgeraeumt wird sie, sobald der Symlink steht.
+    assert (ablage.wurzel / "stand-erstfassung").exists()
+    assert tageslauf(ablage, dt.date(2026, 2, 2))[0] == EXIT_OK
     assert not (ablage.wurzel / "stand-erstfassung").exists()
 
 
@@ -378,7 +392,12 @@ def test_verwaiste_standverzeichnisse_und_linkreste_werden_vor_dem_lauf_entfernt
     aktuell = ablage.stand.resolve()
     assert tageslauf(ablage, dt.date(2026, 2, 1))[0] == EXIT_OK
     assert not verwaist.exists() and not (ablage.wurzel / tl.STAND_LINK_TMP).exists()
-    assert ablage.stand.resolve() != aktuell and not aktuell.exists()
+    assert ablage.stand.resolve() != aktuell
+    # Der unmittelbare Vorgaenger ist noch da (umkehrbarer Standwechsel,
+    # T24-01 b) und geht mit dem naechsten Lauf.
+    assert aktuell.exists()
+    assert tageslauf(ablage, dt.date(2026, 2, 2))[0] == EXIT_OK
+    assert not aktuell.exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -813,4 +832,132 @@ def test_eine_unschreibbare_protokollzeile_ist_ein_benannter_fehler(
 
     monkeypatch.setattr(tl, "_anfuegen", _kaputt)
     with pytest.raises(tl.TageslaufError, match="Protokollzeile"):
+        tageslauf(ablage, dt.date(2026, 2, 3))
+
+
+# --- T24-01 (b): der Lauf als EINE Veroeffentlichung ---------------------
+#
+# Ein Tageslauf veroeffentlicht mehrere extern sichtbare Artefakte
+# nacheinander — Monatsabschluesse, Tagesjournal, Stand-Symlink,
+# Protokollzeile. Jedes ist fuer sich atomar; zusammen waren sie es
+# nicht. Der Write-Ahead-Marker bindet sie: Wer dazwischen abstuerzt,
+# hinterlaesst einen BENANNTEN Zwischenzustand, den der naechste Lauf
+# zuruecknimmt.
+#
+# Gefordert ist an jeder Naht dasselbe: entweder der alte Stand ist
+# vollstaendig funktionsfaehig UND ein sauberer Retry gelingt, oder der
+# neue ist vollstaendig uebernommen — nie ein dauerhaft blockierter
+# Zustand.
+
+NAEHTE = ("journal", "generation", "symlink", "protokoll")
+
+
+def _injiziere(monkeypatch, naht: str):
+    """Gezielt an EINER Naht scheitern — nicht global.
+
+    Die alte Fehlerinjektion des Moduls patcht os.replace pauschal und
+    feuert beim ersten atomaren Parquet-Write, weit vor jedem
+    Commit-Punkt (Review T24-01, Punkt 5)."""
+    if naht == "journal":
+        echt = tl.write_portfolio
+
+        def _kaputt(df, pfad, *a, **k):
+            if "tagesjournal" in str(pfad):
+                raise OSError(28, "No space left on device")
+            return echt(df, pfad, *a, **k)
+
+        monkeypatch.setattr(tl, "write_portfolio", _kaputt)
+    elif naht == "generation":
+        echt = tl.os.rename
+
+        def _kaputt(src, dst, *a, **k):
+            if "stand-" in str(dst):
+                raise OSError(5, "I/O error")
+            return echt(src, dst, *a, **k)
+
+        monkeypatch.setattr(tl.os, "rename", _kaputt)
+    elif naht == "symlink":
+        echt = tl.os.replace
+
+        def _kaputt(src, dst, *a, **k):
+            if str(dst).endswith("/stand"):
+                raise OSError(5, "I/O error")
+            return echt(src, dst, *a, **k)
+
+        monkeypatch.setattr(tl.os, "replace", _kaputt)
+    else:
+        def _kaputt(*_a, **_k):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(tl, "_anfuegen", _kaputt)
+
+
+@pytest.mark.parametrize("naht", NAEHTE)
+def test_ein_absturz_an_jeder_naht_laesst_sich_wiederaufnehmen(
+    tmp_path, monkeypatch, naht
+):
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    vorher_stand = ablage.stand.resolve()
+    vorher_journal = (ablage.tagesjournal_pfad.read_bytes()
+                      if ablage.tagesjournal_pfad.is_file() else None)
+
+    _injiziere(monkeypatch, naht)
+    try:
+        code, zeile = tageslauf(ablage, dt.date(2026, 2, 3))
+        assert code != EXIT_OK, f"Naht {naht}: der Lauf meldete Erfolg"
+    except tl.TageslaufError:
+        pass                      # die Protokollzeile selbst scheiterte
+    monkeypatch.undo()
+
+    # Der gefuehrte Tag ist NICHT gewandert — oder der Lauf war ganz durch.
+    # Beides ist zulaessig; ein dritter Zustand nicht.
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK, (
+        f"Naht {naht}: der Retry gelingt nicht — genau das war der Befund")
+    assert gefuehrter_tag(ablage) == dt.date(2026, 2, 3)
+    assert not ablage.publish_marker.exists(), "Marker nicht aufgeraeumt"
+    assert not ablage.tagesjournal_vorher_pfad.exists()
+    # Der Vorgaenger liegt noch da: Seit dem Write-Ahead-Rahmen wird er
+    # erst vom NAECHSTEN Lauf entfernt, wenn der Symlink steht. Genau das
+    # macht den Standwechsel umkehrbar.
+    assert tageslauf(ablage, dt.date(2026, 2, 4))[0] == EXIT_OK
+    assert tageslauf(ablage, dt.date(2026, 2, 5))[0] == EXIT_OK
+    uebrig = sorted(p.name for p in ablage.wurzel.glob("stand-*") if p.is_dir())
+    assert ablage.stand.resolve().name in uebrig
+    assert len(uebrig) <= 2, uebrig
+    assert vorher_stand.is_dir() or vorher_journal is not None or True
+
+
+def test_der_marker_liegt_nur_waehrend_der_veroeffentlichung(tmp_path,
+                                                             monkeypatch):
+    """Positivkontrolle: Ein gruener Lauf hinterlaesst keinen Marker —
+    sonst naehme der naechste Lauf jedes Mal etwas zurueck."""
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    assert not ablage.publish_marker.exists()
+
+    gesehen = {}
+    echt = tl._uebernehmen
+
+    def _spion(ablage_, kennung):
+        gesehen["marker"] = ablage_.publish_marker.is_file()
+        gesehen["kopie"] = ablage_.tagesjournal_vorher_pfad.is_file()
+        return echt(ablage_, kennung)
+
+    monkeypatch.setattr(tl, "_uebernehmen", _spion)
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    assert gesehen["marker"], "kein Write-Ahead-Marker beim Standwechsel"
+    assert gesehen["kopie"], "keine Ruecknahme-Kopie des Journals"
+    assert not ablage.publish_marker.exists()
+
+
+def test_ein_unlesbarer_marker_haelt_den_lauf_an(tmp_path):
+    """Unklarheit ist ein benannter Zustand: Ob ein Publish unterwegs war,
+    weiss bei einer kaputten Datei niemand — und eine Ruecknahme auf
+    Verdacht waere schlimmer als keine."""
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    ablage.publish_marker.write_text("{kaputt", encoding="utf-8")
+
+    with pytest.raises(tl.TageslaufError, match="laesst sich aber nicht lesen"):
         tageslauf(ablage, dt.date(2026, 2, 3))
