@@ -179,6 +179,39 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: weiter, und diese Wirkung sieht sonst niemand.
 GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1", "A-K2", "A-B1")
 
+#: Zeichenbare Gates OHNE Belegvertrag — die begruendete Ausnahme.
+#:
+#: ``A-Q1`` (Quellenabnahme) stuetzt sich nicht auf Dateirollen im Fall,
+#: sondern auf den A-Box-Stand, den der Entscheid selbst pinnt: A-M4
+#: verlangt spaeter einen geltenden, signierten A-Q1-Snapshot AUF DIESEM
+#: Stand. Die Bindung existiert also, sie laeuft nur nicht ueber
+#: ``fall.BELEGROLLEN``.
+#:
+#: Hier stehen NUR begruendete Ausnahmen. Eine Liste, die Ausnahmen und
+#: Versehen mischt, verliert ihre Aussage.
+GATES_OHNE_BELEGVERTRAG: tuple[str, ...] = ("A-Q1",)
+
+#: Gates, deren Snapshot ``fall_scope`` und ``pflichtbelege`` traegt —
+#: ABGELEITET, nicht abgetippt.
+#:
+#: Das ist die Reparatur einer Klasse, die zweimal zugeschlagen hat. Beim
+#: ersten Mal war es die Liste der Gates selbst ("eine vierte Liste
+#: derselben Gates war genau der Grund, warum A-M2 zwar entschieden, aber
+#: nicht gespeichert werden konnte"). Beim zweiten Mal, mit A-B1, eine
+#: Ebene tiefer: die Liste der Gates MIT Pflichtbelegen, gefuehrt als
+#: Literal an sechs Stellen. A-B1 stand in keiner — mit der Folge, dass
+#: das Entscheid-Kommando den Ankersatz zwar ausrechnete, ihn aber nicht
+#: in den signierten Inhalt schrieb. Die Unterschrift bezeugte danach
+#: alles ausser dem, was sie bezeugen sollte: WELCHES Paket ausgeliefert
+#: wurde.
+#:
+#: Ein Kommentar, der eine Invariante beschreibt, erzwingt sie nicht.
+#: Deshalb steht sie jetzt hier, und eine Ratsche haelt sie gegen
+#: ``fall.BELEGROLLEN`` (tests/test_gate_vokabel_ab1.py).
+GATES_MIT_PFLICHTBELEGEN: tuple[str, ...] = tuple(
+    gate for gate in GUELTIGE_GATES if gate not in GATES_OHNE_BELEGVERTRAG
+)
+
 
 def _unter(pfad: Path, wurzel: Path) -> bool:
     try:

@@ -24,6 +24,7 @@ Knoten: system/assurance
 
 from __future__ import annotations
 from rechner_pipeline.models.zeichnung import (
+    GATES_MIT_PFLICHTBELEGEN,
     GUELTIGE_GATES,
     validiere_zeichnung,
 )
@@ -491,7 +492,7 @@ class P9Snapshot:
         errors: List[str] = []
         gate = data.get("gate")
         expected_fields = set(cls._BASE_FIELDS)
-        if gate in P9_AKTUARIELLE_ABNAHMEN or gate in ("A-M4", "A-K1"):
+        if gate in GATES_MIT_PFLICHTBELEGEN:
             expected_fields.update({"fall_scope", "pflichtbelege"})
         if gate == "A-M4":
             expected_fields.add("pk1_belege")
@@ -598,14 +599,26 @@ class P9Snapshot:
         if zeit_fehler:
             errors.append(zeit_fehler)
 
-        if gate in ("A-M1", "A-M4", "A-K1"):
+        # Frueher eine dritte abgetippte Menge, die A-M2/A-M3 ausliess:
+        # Deren Felder waren oben PFLICHT, ihr Inhalt wurde nie geprueft
+        # — ein Snapshot mit erfundenem Scope und leeren Pflichtbelegen
+        # kam ohne Beanstandung durch, und A-M4 pinnte ihn danach als
+        # eigenen Pflichtbeleg.
+        if gate in GATES_MIT_PFLICHTBELEGEN:
             if data.get("fall_scope") not in ("tarif", "bestand"):
                 errors.append("fall_scope must be 'tarif' or 'bestand'")
             pflichtbelege = data.get("pflichtbelege")
             if not isinstance(pflichtbelege, dict):
                 errors.append("pflichtbelege must be an object")
             elif (
-                gate in ("A-M4", "A-K1")
+                # Die Nicht-Leer-Regel gilt NICHT ueberall, und das ist
+                # eine Ausnahme mit Grund, kein vergessener Nachtrag:
+                # A-M1 darf im Tarif-Scope belegfrei angenommen werden,
+                # A-B1 hat im Tarif-Scope ueberhaupt keine Rollen (ein
+                # Tarif-Fall liefert keinen Bestand aus). Die EXAKTE
+                # Rollenmenge je Gate und Scope erzwingt ohnehin der
+                # Lesepfad in gate_entscheid gegen fall.BELEGROLLEN.
+                gate in ("A-M4", "A-K1", "A-K2")
                 and data.get("entscheid") == "angenommen"
                 and not pflichtbelege
             ):

@@ -112,6 +112,7 @@ GATE_VERSION = P9_GATE_VERSION
 # Umzug 2026-09-01: der Rollen-/Gate-Vertrag lebt in models.zeichnung
 # (paketuebergreifend — auch ontologie.entscheide liest ihn seither).
 from rechner_pipeline.models.zeichnung import (
+    GATES_MIT_PFLICHTBELEGEN,
     ausserhalb_des_falls,  # noqa: E402
     GUELTIGE_GATES,
     lade_zeichnungsordnung as _models_lade_zeichnungsordnung,
@@ -822,7 +823,7 @@ def _pruefe_g2_snapshot_semantik(
     Bau an, wird hier also geprueft.
     """
     gate = snapshot.get("gate")
-    if gate not in ("A-M1", "A-M4", "A-K1") or snapshot.get("entscheid") != "angenommen":
+    if gate not in GATES_MIT_PFLICHTBELEGEN or snapshot.get("entscheid") != "angenommen":
         return []
     if snapshot.get("system") != dict(aktueller_systemstand):
         return []
@@ -1704,7 +1705,7 @@ def main(argv: Optional[List[str]] = None):
     # (Review T23-01).
     bekannte_hashes: Dict[str, str] = {}
     fall_scope: Optional[str] = None
-    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4", "A-K1"):
+    if args.gate in GATES_MIT_PFLICHTBELEGEN:
         try:
             fall_scope, fall_json_sha256 = fall_mod.lade_scope_gehasht(fall)
             bekannte_hashes["fall.json"] = fall_json_sha256
@@ -2539,7 +2540,10 @@ def main(argv: Optional[List[str]] = None):
         ),
         "system": entscheid_systemstand,
     }
-    if args.gate in AKTUARIELLE_ABNAHMEN + ("A-M4", "A-K1"):
+    # DIE Stelle, an der A-B1 seinen Ankersatz verlor: kern_inhalt ist
+    # das, was signiert wird. Ein Gate, das hier fehlt, rechnet seine
+    # Pflichtbelege aus und wirft sie still weg.
+    if args.gate in GATES_MIT_PFLICHTBELEGEN:
         kern_inhalt["fall_scope"] = fall_scope
         kern_inhalt["pflichtbelege"] = pflichtbelege
     if args.gate == "A-M4":
