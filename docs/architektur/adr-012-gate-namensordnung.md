@@ -88,8 +88,32 @@ die Belege lesen.
 | `G-A` | `A-M1` | Stichtagstest |
 | `G-2` | `A-M4` | Migrationscontrolling |
 | (neu) | `A-B1.auslieferung` | Auslieferung eines Stands-Pakets |
+| (neu) | `A-K2.kernaenderung` | Aenderung am Rechenkern |
 | `P9.gate-entscheid` | `entscheid.vollzug` | das Entscheid-Kommando |
 | `P9.<gate>` | `entscheid.<abnahme>` | Ledger-Eintrag eines Vollzugs |
+
+**`A-K2.kernaenderung`** (Entscheid des Maintainers 2026-09-16) nimmt
+eine Aenderung an Code oder Dokumentation des RECHENKERNS ab. Art `A`,
+weil ein Mensch zeichnet; Gegenstand `K`, weil der Rechenkern gemeint
+ist; Nummer 2, weil `A-K1` vergeben ist und Nummern nicht nachruecken.
+Gezeichnet wird sie von `mensch/rechenkern` — bis dahin war das
+folgenreichste, was am Zielsystem geschieht, nur durch Commit-Disziplin
+geregelt (Abnahme-Protokoll in `kern/__init__`): keine Zeichnung, kein
+Schluessel, kein Snapshot.
+
+Ausloeser ist die AENDERUNG am Kern, gleich aus welchem Anlass. Eine
+neue Tarifgeneration loest sie ausdruecklich NICHT aus: Sie ist
+Parametrierung (ADR-006 — "der Praezedenzfall TG2012 -> TG2015 lief ohne
+eine einzige Formelaenderung durch") und wird von `P-K1` deterministisch
+und von `A-M4` menschlich abgenommen, das `pk1_belege` in beiden Scopes
+pinnt. Machte man sie zum Ausloeser, entstuende regelmaessig eine
+Unterschrift ueber einen unveraenderten Kern.
+
+Sie traegt `regression` als PFLICHTbeleg: jeder Vertrag mit altem und
+neuem Kern durchgerechnet, Differenz je Vertrag. Solange es den
+Produzenten dafuer nicht gibt, ist A-K2 nicht zeichenbar — gewollt, denn
+der geaenderte Kern bewertet nach der Migration den laufenden Bestand
+weiter, und diese Wirkung sieht sonst niemand.
 
 **`A-B1.auslieferung`** (Entscheid des Maintainers 2026-09-16) ist die
 erste Abnahme mit Gegenstand `B`: Sie zeichnet den Moment, in dem ein

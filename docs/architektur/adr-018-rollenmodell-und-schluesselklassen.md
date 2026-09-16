@@ -210,10 +210,22 @@ laufuebergreifend verglichen, was bei Fall-Eigentum sinnlos waere.
 Dasselbe Muster traegt der Rechenkern: veranlasst durch einen Fall,
 verantwortet von der Linie.
 
-Offen und hier NICHT entschieden ist daher zweierlei: ob `A-K1` einen
-ehrlichen Namen bekommt oder in zwei Abnahmen zerfaellt, und wo die
-Snapshots von Abnahmen mit Linien-Geltung liegen. Beide Fragen sind
-dieselbe Frage.
+**Entschieden am 2026-09-16, nachdem die Frage gestellt war:** `A-K1`
+zerfaellt nicht, aber der Rechenkern bekommt eine eigene Abnahme. Neu ist
+`A-K2.kernaenderung`, gezeichnet von `mensch/rechenkern`; sie nimmt die
+Aenderung an Code und Dokumentation des Rechenkerns ab. Sie ist eine
+FALL-Abnahme: Kernaenderungen entstehen heute nur im Fall, und die
+spaeteren Anlaesse — Produkteinfuehrung, regulatorische Aenderung — haben
+denselben Charakter. Damit bleibt die Linie ohne eigene Abnahme, und die
+Frage nach dem Ort der Linien-Snapshots betrifft nur noch `A-B1`.
+
+`A-K2` traegt `regression` als PFLICHTbeleg. Das ist die eigentliche
+Entscheidung dahinter: Der geaenderte Kern bewertet nach der Migration
+den LAUFENDEN Bestand weiter, und diese Wirkung sieht sonst niemand. Der
+Beleg rechnet jeden Vertrag mit altem und neuem Kern durch und weist die
+Differenz je Vertrag aus — kein Aggregat, denn gegenlaeufige
+Abweichungen heben sich in der Summe auf, und keine Stichprobe, denn der
+Fehler, der einen von tausend Vertraegen trifft, ist der gesuchte.
 
 **Nicht Teil des Rollenmodells ist der Maintainer** dieses Repos. Er
 gehoert zur Entwicklungsumgebung des Werkzeugs, nicht zum Unternehmen,

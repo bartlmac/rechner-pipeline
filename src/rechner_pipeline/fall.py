@@ -116,6 +116,26 @@ BELEGROLLEN = {
         "tarif": ("tbox_aenderung",),
         "bestand": ("tbox_aenderung",),
     },
+    # A-K2 (Kern-Aenderung, Entscheid des Maintainers 2026-09-16): ZWEI
+    # Pflichtbelege, die verschiedene Dinge bezeugen. Der
+    # Aenderungsbeleg sagt, WAS am Kern anders wurde (Versionsuebergang,
+    # Sammelhash der eingefrorenen Referenzwerte, welche sich geaendert
+    # haben, Begruendung). Der Regressionsbeleg sagt, was das fuer den
+    # bestehenden Bestand bedeutet — jeder Vertrag mit altem und neuem
+    # Kern durchgerechnet, Differenz JE VERTRAG.
+    #
+    # Die Regression ist Pflicht, nicht Kuer ("ohne das kann die
+    # Aenderung im Rechenkern nicht abgenommen werden"). Solange es den
+    # Produzenten nicht gibt, ist A-K2 damit nicht zeichenbar — das ist
+    # gewollt. Ein optionaler Beleg waere derselbe Fehler, den A-M4 im
+    # Bestands-Scope schon einmal gemacht hat (T21-02/T22-01:
+    # "ausweisen statt erzwingen" nahm jedes Teilprofil an).
+    #
+    # Scope-unabhaengig: Ein geaenderter Kern rechnet in jedem Scope.
+    "A-K2": {
+        "tarif": ("kernaenderung", "regression"),
+        "bestand": ("kernaenderung", "regression"),
+    },
     # A-B1 (Auslieferung, Entscheid des Maintainers 2026-09-16): Der
     # Beleg ist der ANKERSATZ des auszuliefernden Pakets — der Satz, der
     # ausserhalb des Pakets liegt und es bindet. Er ist der einzige

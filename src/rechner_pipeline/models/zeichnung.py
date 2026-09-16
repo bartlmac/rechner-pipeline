@@ -158,7 +158,26 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: davon, ob gerade eine Migration laeuft. Wo ihr Snapshot liegt, ist
 #: damit eine offene Frage — heute im Fall, weil das Entscheid-Kommando
 #: keinen anderen Ort kennt.
-GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1", "A-B1")
+#:
+#: ``A-K2.kernaenderung`` (Entscheid des Maintainers 2026-09-16): die
+#: menschliche Abnahme einer Aenderung an Code oder Dokumentation des
+#: RECHENKERNS. Bis dahin war das folgenreichste, was am Zielsystem
+#: geschieht, nur durch Commit-Disziplin geregelt (Abnahme-Protokoll in
+#: ``kern/__init__``) — keine Zeichnung, kein Schluessel, kein Snapshot.
+#: Sie gehoert ``mensch/rechenkern``; deren Agent legt vor.
+#:
+#: Ausloeser ist die AENDERUNG am Kern, gleich aus welchem Anlass. Eine
+#: neue Tarifgeneration loest sie NICHT aus: Sie ist Parametrierung
+#: (ADR-006, TG2012 -> TG2015 lief ohne eine einzige Formelaenderung) und
+#: wird von ``P-K1`` deterministisch und von ``A-M4`` menschlich
+#: abgenommen. Nur wenn sie ausnahmsweise einen neuen Rechenweg erzwingt,
+#: ist sie eine Kern-Aenderung — und der Beleg zeigt dann genau das.
+#:
+#: Sie traegt ``regression`` als PFLICHTbeleg und ist damit ohne den
+#: Regressionsproduzenten bewusst nicht zeichenbar. Das ist Absicht: Der
+#: geaenderte Kern bewertet nach der Migration den laufenden Bestand
+#: weiter, und diese Wirkung sieht sonst niemand.
+GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1", "A-K2", "A-B1")
 
 
 def _unter(pfad: Path, wurzel: Path) -> bool:
