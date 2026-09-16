@@ -86,13 +86,15 @@ obvious. Check before building:
 ```
 wsl -l -v
 ```
-Every distribution you intend to use must show `VERSION 2`. Convert one
-in place with `wsl --set-version <name> 2`, or install a fresh one and
-enter it explicitly:
+Every distribution you intend to use must show `VERSION 2`. If none does,
+install a fresh one — this is the route a team member actually ran:
 ```
 wsl --install -d Ubuntu
 wsl -d Ubuntu
 ```
+Converting an existing version-1 distribution in place is possible
+(`wsl --set-version <distribution> 2`, with the name from the first column
+of `wsl -l -v`), but nobody here has run that route.
 
 **Anywhere else** (Windows with Docker Desktop and WSL2, macOS): build the
 development image once and run the suite in it; the working tree is
@@ -102,6 +104,25 @@ docker build -f deploy/dev/Dockerfile -t rechner-pipeline-dev .
 docker run --rm -v "$PWD":/workspace rechner-pipeline-dev            # full suite
 docker run --rm -it -v "$PWD":/workspace rechner-pipeline-dev bash   # shell
 ```
+**Reporting an environment.** When you report a run — a new machine, a
+platform we have not verified — send the provenance of the code you ran,
+not just the suite line. Same container, one command:
+```
+docker run --rm -v "$PWD":/workspace rechner-pipeline-dev \
+  python -c "import json; from pathlib import Path; from rechner_pipeline.gates._provenienz import systemstand; print(json.dumps(systemstand(Path('/workspace')), indent=2))"
+```
+It prints four values. `quellcode_sha256` covers the package sources
+(`.py` and `.xml` under `src/rechner_pipeline/`) and nothing else — a
+docs-only or tests-only commit leaves it unchanged, a code change moves
+it. `dirty` must read `nein`; otherwise the checkout carries uncommitted
+edits and the hash is not comparable. If `commit` or `branch` read
+`unbekannt`, git cannot read the tree from inside the container — on
+Linux it can, elsewhere this is worth reporting.
+
+The expected `quellcode_sha256` is not printed here on purpose: it belongs
+to one commit and would age with the next code change. Whoever asks you to
+run this names the value together with the commit it belongs to.
+
 VS Code users open the repo with the Dev Containers extension; the
 definition in `.devcontainer/` builds the same image. Keep the checkout on
 a Linux filesystem (your WSL2 home, not `/mnt/c`): the suite checks file
