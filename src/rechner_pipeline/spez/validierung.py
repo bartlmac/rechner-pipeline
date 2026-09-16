@@ -84,7 +84,7 @@ def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
             f"tbox_version: Spez {spez.tbox_version!r}, A-Box "
             f"{abox.tbox_version!r}, geltend {TBOX_VERSION!r} — die Spez ist "
             "aus der A-Box neu zu erzeugen (spez.erzeugen), oder die "
-            "T-Box-Aenderung geht ueber A-K1"
+            "T-Box-Aenderung geht ueber A-O1"
         )
     gen = next((g for g in abox.generationen if g.id == spez.generation), None)
     if gen is None:

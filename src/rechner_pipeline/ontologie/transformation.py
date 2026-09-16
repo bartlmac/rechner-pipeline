@@ -261,7 +261,7 @@ def validate_spec(
         if ziel not in ZIEL_PFLICHT + ZIEL_OPTIONAL:
             fehler.append(
                 f"unbekanntes Zielfeld {ziel!r} — die Ziel-Ontologie "
-                "kennt es nicht (Erweiterung waere Gate A-K1)"
+                "kennt es nicht (Erweiterung waere Gate A-O1)"
             )
         if ziele.count(ziel) > 1:
             fehler.append(f"Zielfeld {ziel!r} ist mehrfach gemappt")

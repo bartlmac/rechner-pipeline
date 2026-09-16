@@ -23,14 +23,16 @@ Skills sind Faehigkeiten; Rollen sind, wer sie in welchem Auftrag
 ausuebt. Seit ADR-018 gibt es genau vier Agentenrollen, versioniert als
 Definitionen unter `.claude/agents/` (gespiegelt in `.agents/agents/`,
 Paritaet test-tragend). Sie legen vor und zeichnen nie; jede hat ein
-menschliches Gegenstueck, das mit seinem Schluessel zeichnet.
+menschliches Gegenstueck, das mit seinem Schluessel zeichnet. Es traegt
+seit dem Entscheid vom 2026-09-16 DENSELBEN Namen mit dem Praefix
+`mensch/` — `agent/rechenkern` legt vor, `mensch/rechenkern` zeichnet.
 
-| Agentenrolle | Ziel (Perspektive eines laufenden Unternehmens) | Skills | Gegenstueck |
-|---|---|---|---|
-| `agent/aktuariat` | fachlich richtig abgebildet: Transformation, drei aktuarielle Abnahmen, Controlling, Bestandsfortfuehrung | transformiere-quellbestand, extrahiere-quellfragment, bereite-fachkonflikt-auf, aktuartest-durchfuehren, pruefe-migrationscontrolling | `mensch/verantwortlicher-aktuar` |
-| `agent/architektur` | in der vorgegebenen Architektur: Schichtenkarte, Nachweiskette, Vertrauensgrenzen, Betrieb | entwickle-im-zielsystem (als Massstab), author-rechner-toolbox-gate, teste-adversarial, integriere-migrationsinkrement, dokumentiere-system | `mensch/it-verantwortung` |
-| `agent/rechenkern` | stabiles Zielsystem: Regressionstests, Referenzwerte, Doku, Inkremente unter ADR-007 | entwickle-im-zielsystem, integriere-migrationsinkrement, teste-adversarial, dokumentiere-system | `mensch/entwicklungsverantwortung` |
-| `agent/programmleitung` | Migration effizient geliefert; orchestriert die drei anderen, haelt an jedem Gate an | migrationsfall-durchfuehren | `mensch/programmleitung` |
+| Agentenrolle | Ziel (Perspektive eines laufenden Unternehmens) | Skills |
+|---|---|---|
+| `agent/aktuariat` | fachlich richtig abgebildet: Transformation, drei aktuarielle Abnahmen, Controlling, Bestandsfortfuehrung | transformiere-quellbestand, extrahiere-quellfragment, bereite-fachkonflikt-auf, aktuartest-durchfuehren, pruefe-migrationscontrolling |
+| `agent/architektur` | in der vorgegebenen Architektur: Schichtenkarte, Nachweiskette, Vertrauensgrenzen, Betrieb | entwickle-im-zielsystem (als Massstab), author-rechner-toolbox-gate, teste-adversarial, integriere-migrationsinkrement, dokumentiere-system |
+| `agent/rechenkern` | stabiles Zielsystem: Regressionstests, Referenzwerte, Doku, Inkremente unter ADR-007 | entwickle-im-zielsystem, integriere-migrationsinkrement, teste-adversarial, dokumentiere-system |
+| `agent/programmleitung` | Migration effizient geliefert; orchestriert die drei anderen, haelt an jedem Gate an | migrationsfall-durchfuehren |
 
 Die Gegenseite des abgebenden Hauses (`mensch/quell-aktuar`) hat kein
 Agenten-Gegenstueck: Sie liefert, sie zeichnet keine Abnahme des
@@ -47,7 +49,7 @@ Vorzeige haelt ihre Auftragsprofile (ADR-017).
 | Entwicklung | `entwickle-im-zielsystem` | Code unter der nicht verhandelbaren Architektur bauen (Schichtenkarte, Determinismus, Fail-fast, Knoten-Annotation, Test-Pflicht) | Architektur "pragmatisch" brechen; ohne Tests committen; Kern-Verankerungen anfassen |
 | Qualitaetssicherung | `teste-adversarial` | Bloecke adversarial reviewen (Finden -> Widerlegen -> Fixen -> Regressionstest) und die Test-Disziplin tragen (Mutations-Denken, unabhaengige Kontrollrechnung) | Findings ungeprueft uebernehmen; gruene Suiten als Beleg fuer Vollstaendigkeit lesen |
 | Dokumentation | `dokumentiere-system` | Doku unter den Repo-Regeln (generiert schlaegt handgeschrieben, ein Zuhause je Typ, ADR-Format, Ehrlichkeits-Abschnitte) | Inhalte doppeln (Drift); Grenzen beschoenigen |
-| Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (A-K1) |
+| Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (A-O1) |
 | Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen RECHNEN, Entscheidungs-Dossier + Empfehlung liefern, dann STOPP | entscheiden (auch nicht "offensichtliche" Faelle); Quellen-Hierarchie festlegen |
 | Gate-Autorenschaft | `author-rechner-toolbox-gate` | neue Pruef-CLIs unter dem Ledger-/Exit-Contract | Fachlogik ausserhalb des Pruefens |
 | Aktuarieller Test | `aktuartest-durchfuehren` | die drei Abnahmen je Vertrag an seinen eigenen Rechenpunkten fahren (Engine, aktuartest-Gate) und je Abnahme eine Vorlage aufbereiten: A-M1 Stichtagstest, A-M2 Verlaufstest, A-M3 Geschaeftsvorfalltest | abnehmen (Mensch, A-M1); Werte selbst rechnen; interpolieren oder summieren (Engine verbietet es); Toleranzen aufweichen |
@@ -65,11 +67,11 @@ migrationsfall-durchfuehren
   |     --> transformiere-quellbestand --> TransformationsSpec
   |     --> ontologie/transformation validate_spec,
   |         gates/transformation_anwenden wende_an (Code)
-  |     offener Konflikt / fehlendes Zielfeld --> MENSCH (A-Q1 bzw. A-K1)
+  |     offener Konflikt / fehlendes Zielfeld --> MENSCH (A-Q1 bzw. A-O1)
   |- Stufe 2/3: Gates P-Q3/P-K1; Kern-Aenderung noetig?
   |     Parametrierung: quellen/tafel_import (Code, kein Skill)
-  |     mehr als Parametrierung: STOPP --> A-K1-Vorlage --> MENSCH
-  |         danach: entwickle-im-zielsystem (unter dem A-K1-Beschluss)
+  |     mehr als Parametrierung: STOPP --> A-O1-Vorlage --> MENSCH
+  |         danach: entwickle-im-zielsystem (unter dem A-O1-Beschluss)
   |- Stufe 3b (uebernommener Bestand), Reihenfolge erzwungen (ADR-010):
   |     1. aktuartest-durchfuehren (qa/stichprobe, qa/testprofil,
   |        qa/aktuarieller_test, gates/aktuartest) --> je Abnahme eine
@@ -82,7 +84,7 @@ migrationsfall-durchfuehren
   '- Doku-Pflichten: dokumentiere-system (ADR, README, AGENTS)
 ```
 
-Menschliche Gates (A-Q1/A-M1/A-M2/A-M3/A-M4/A-K1, P9-Snapshots) sind
+Menschliche Gates (A-Q1/A-M1/A-M2/A-M3/A-M4/A-O1, P9-Snapshots) sind
 KEINE Skills — sie sind Werkzeuge fuer Menschen (`ontologie.entscheide`,
 `gates.gate_entscheid`); wer zeichnet, wird aus dem Schluessel ueber die
 Zeichnungsordnung bestimmt (ADR-018). Skills bereiten sie vor und halten
@@ -95,7 +97,7 @@ als eigener Skill mit demselben Muster:
 
 | Rolle (geplant) | Ausloeser |
 |---|---|
-| T-Box-Erweiterung vorbereiten | erster Fall, den die T-Box nicht ausdrueckt (voraussichtlich FLV: neue Produktfamilie, A-K1-Vorlage mit Klassen-Entwurf, Migrationsplan der A-Boxen, Testabdeckungs-Impact) |
+| T-Box-Erweiterung vorbereiten | erster Fall, den die T-Box nicht ausdrueckt (voraussichtlich FLV: neue Produktfamilie, A-O1-Vorlage mit Klassen-Entwurf, Migrationsplan der A-Boxen, Testabdeckungs-Impact) |
 | Erweiterungsstellen implementieren | erste Spez mit offener Erweiterungsstelle (freie Implementierung am benannten Ort, unter entwickle-im-zielsystem plus fallweisen Regeln) |
 | Bestandsabzug als Stufe-1-Quelle (QuellFragment) | erster Fall, der Vertragsdaten in die A-Box extrahieren muss — der Vorverdichter steht (`quellen/bestand_profil.py`) und der Weg in die Ziel-Ontologie ebenfalls (`transformiere-quellbestand` + `ontologie/transformation`); offen ist allein die Erweiterung von `extrahiere-quellfragment` um den Quelltyp Bestandsabzug |
 | Legacy-Code-Analyse | erster Fall mit Quellsystem-Code (AST/Callgraph-Vorverdichter, Terminologie-Lokalisierung, dort auch Embeddings-Freigabe) |

@@ -21,7 +21,23 @@ Namen. Jede Rolle traegt eine ``schluesselklasse``: ``mensch`` (eine
 natuerliche Person haelt den Schluessel), ``simulation`` (die Vorzeige
 ahmt eine menschliche Rolle nach — dieselbe Kennung, andere Klasse,
 jeder Beleg sagt es) oder ``agent`` (eine Agentenrolle des KI-Tools; sie
-legt vor und zeichnet nie, ihre gates-Liste ist leer). Die Reviews T20
+legt vor und zeichnet KEINE ABNAHME, ihre gates-Liste ist leer).
+
+**Nachtrag 2026-09-16 (Entscheid des Maintainers).** Die Regel hiess
+bis hierher "zeichnet nie". Das war eine Haelfte zu viel: Schuetzenswert
+ist die ABNAHME — die Aussage eines Menschen, dass er fuer etwas
+einsteht —, nicht jede Signatur. Ein Agent, der einen Ankersatz
+zeichnet, sagt "ich habe dieses Paket erzeugt"; das ist eine Aussage
+ueber Urheberschaft, keine Abnahme, und sein Beleg traegt die Klasse
+``agent``, sodass niemand es verwechselt. Genau dafuer wurde die Klasse
+eingefuehrt (T20/U1: aus keinem Beleg war ablesbar, ob ein Mensch oder
+eine KI-Session gezeichnet hatte). Die gates-Liste einer Agentenrolle
+bleibt leer — was ein Agent zeichnet, ist kein Gate.
+
+Der praktische Grund: Bei vielen kleinen Migrationstranchen mit
+taeglichen Exporten kann kein Mensch jeden Export zeichnen. Ein Agent
+kann es, und der Beleg sagt, dass es einer war. Der Mensch zeichnet
+dort, wo etwas nach aussen geht — einmal je Auslieferung (``A-B1``). Die Reviews T20
 und U1 fanden, dass aus keinem Beleg ablesbar war, ob ein Mensch oder
 eine KI-Session gezeichnet hatte; die Klasse wandert deshalb in die
 Ordnung und von dort in jeden Snapshot. Ordnungen nach Schema 1 werden
@@ -127,9 +143,74 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 
 #: Alle zeichenbaren Gates. Massgeblich fuer die gates-Listen der
 #: Ordnung: Ein Gate, das man zeichnen, aber keiner Rolle geben kann,
-#: waere eine Ordnung mit Loch (so geschehen mit A-K1, gefunden beim
+#: waere eine Ordnung mit Loch (so geschehen mit A-O1, gefunden beim
 #: Aufsetzen der Vier-Rollen-Regie fuer Fall-Lauf 2).
-GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1")
+#:
+#: ``A-B1.auslieferung`` (Entscheid des Maintainers 2026-09-16): die
+#: Abnahme der AUSLIEFERUNG eines Stands-Pakets — der Moment, in dem ein
+#: Stand nach aussen sichtbar wird. Sie gehoert einer FACHLICHEN Rolle
+#: (``mensch/betrieb``, Kundenservice-Verantwortung fuer die
+#: Bestandsfuehrung), nicht der IT: Was ausgeliefert wird, verantwortet
+#: der Betrieb, nicht der, der die Maschine betreibt.
+#:
+#: Sie ist die erste Abnahme der LINIE statt eines Falls (ADR-018,
+#: Nachtrag 2026-09-16): Der Bestand wird taeglich gefuehrt, unabhaengig
+#: davon, ob gerade eine Migration laeuft. Wo ihr Snapshot liegt, ist
+#: damit eine offene Frage — heute im Fall, weil das Entscheid-Kommando
+#: keinen anderen Ort kennt.
+#:
+#: ``A-K2.kernaenderung`` (Entscheid des Maintainers 2026-09-16): die
+#: menschliche Abnahme einer Aenderung an Code oder Dokumentation des
+#: RECHENKERNS. Bis dahin war das folgenreichste, was am Zielsystem
+#: geschieht, nur durch Commit-Disziplin geregelt (Abnahme-Protokoll in
+#: ``kern/__init__``) — keine Zeichnung, kein Schluessel, kein Snapshot.
+#: Sie gehoert ``mensch/rechenkern``; deren Agent legt vor.
+#:
+#: Ausloeser ist die AENDERUNG am Kern, gleich aus welchem Anlass. Eine
+#: neue Tarifgeneration loest sie NICHT aus: Sie ist Parametrierung
+#: (ADR-006, TG2012 -> TG2015 lief ohne eine einzige Formelaenderung) und
+#: wird von ``P-K1`` deterministisch und von ``A-M4`` menschlich
+#: abgenommen. Nur wenn sie ausnahmsweise einen neuen Rechenweg erzwingt,
+#: ist sie eine Kern-Aenderung — und der Beleg zeigt dann genau das.
+#:
+#: Sie traegt ``regression`` als PFLICHTbeleg und ist damit ohne den
+#: Regressionsproduzenten bewusst nicht zeichenbar. Das ist Absicht: Der
+#: geaenderte Kern bewertet nach der Migration den laufenden Bestand
+#: weiter, und diese Wirkung sieht sonst niemand.
+GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-O1", "A-K2", "A-B1")
+
+#: Zeichenbare Gates OHNE Belegvertrag — die begruendete Ausnahme.
+#:
+#: ``A-Q1`` (Quellenabnahme) stuetzt sich nicht auf Dateirollen im Fall,
+#: sondern auf den A-Box-Stand, den der Entscheid selbst pinnt: A-M4
+#: verlangt spaeter einen geltenden, signierten A-Q1-Snapshot AUF DIESEM
+#: Stand. Die Bindung existiert also, sie laeuft nur nicht ueber
+#: ``fall.BELEGROLLEN``.
+#:
+#: Hier stehen NUR begruendete Ausnahmen. Eine Liste, die Ausnahmen und
+#: Versehen mischt, verliert ihre Aussage.
+GATES_OHNE_BELEGVERTRAG: tuple[str, ...] = ("A-Q1",)
+
+#: Gates, deren Snapshot ``fall_scope`` und ``pflichtbelege`` traegt —
+#: ABGELEITET, nicht abgetippt.
+#:
+#: Das ist die Reparatur einer Klasse, die zweimal zugeschlagen hat. Beim
+#: ersten Mal war es die Liste der Gates selbst ("eine vierte Liste
+#: derselben Gates war genau der Grund, warum A-M2 zwar entschieden, aber
+#: nicht gespeichert werden konnte"). Beim zweiten Mal, mit A-B1, eine
+#: Ebene tiefer: die Liste der Gates MIT Pflichtbelegen, gefuehrt als
+#: Literal an sechs Stellen. A-B1 stand in keiner — mit der Folge, dass
+#: das Entscheid-Kommando den Ankersatz zwar ausrechnete, ihn aber nicht
+#: in den signierten Inhalt schrieb. Die Unterschrift bezeugte danach
+#: alles ausser dem, was sie bezeugen sollte: WELCHES Paket ausgeliefert
+#: wurde.
+#:
+#: Ein Kommentar, der eine Invariante beschreibt, erzwingt sie nicht.
+#: Deshalb steht sie jetzt hier, und eine Ratsche haelt sie gegen
+#: ``fall.BELEGROLLEN`` (tests/test_gate_vokabel_ab1.py).
+GATES_MIT_PFLICHTBELEGEN: tuple[str, ...] = tuple(
+    gate for gate in GUELTIGE_GATES if gate not in GATES_OHNE_BELEGVERTRAG
+)
 
 
 def _unter(pfad: Path, wurzel: Path) -> bool:

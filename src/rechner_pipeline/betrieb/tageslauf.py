@@ -76,6 +76,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 
 try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
     import fcntl
@@ -140,12 +141,19 @@ BERICHT_DIR = "berichte"
 CONFIG_DIR = "configs"
 UEBERNAHME_DIR = "uebernahme"
 TAGESJOURNAL_DATEI = "tagesjournal.parquet"
+#: Kopie des Journals waehrend eines Publish (Review T24-01, Schritt b):
+#: die einzige Veroeffentlichung, die sich nicht aus dem Stand
+#: wiederherstellen laesst, also wird sie zurueckgelegt.
+TAGESJOURNAL_VORHER_DATEI = "tagesjournal.vorher.parquet"
 PROTOKOLL_DATEI = "protokoll.jsonl"
 CONFIG_DATEI = "bestand.toml"
 #: Arbeitsverzeichnis eines laufenden Tageslaufs (wird beim naechsten Lauf verworfen).
 ARBEIT_DIR = "stand.neu"
 #: Name der Sperrdatei (fcntl.flock, exklusiv, nicht blockierend).
 SPERRE_DATEI = "lauf.lock"
+#: Write-Ahead-Marker der Veroeffentlichung: liegt zwischen dem ersten
+#: und dem letzten irreversiblen Schritt eines Laufs.
+PUBLISH_MARKER_DATEI = "publish.json"
 #: Uebergangsname des Symlinks beim atomaren Tausch.
 STAND_LINK_TMP = "stand.link"
 
@@ -179,6 +187,11 @@ class Ablage:
         #: Prozess-Sperre des Laufs (Review T22-03): zwei gleichzeitige
         #: Laeufe teilten sich Arbeitsverzeichnis, Journal und Protokoll.
         self.sperre = self.wurzel / SPERRE_DATEI
+        #: Write-Ahead-Marker der Veroeffentlichung (Review T24-01,
+        #: Schritt b): Er liegt genau zwischen dem ersten und dem letzten
+        #: irreversiblen Schritt eines Laufs und sagt dem naechsten, dass
+        #: ein Publish unterwegs war.
+        self.publish_marker = self.wurzel / PUBLISH_MARKER_DATEI
 
     @property
     def config_pfad(self) -> Path:
@@ -189,8 +202,152 @@ class Ablage:
         return self.journal / TAGESJOURNAL_DATEI
 
     @property
+    def tagesjournal_vorher_pfad(self) -> Path:
+        """Die Kopie des Journals VOR dem Publish — die Ruecknahme.
+
+        Das Journal ist die einzige Veroeffentlichung eines Laufs, die
+        sich nicht aus dem Stand wiederherstellen laesst: Es wird ganz
+        geschrieben, und die alten Bytes waeren weg. Ein Absturz nach
+        dem Journal und vor dem Standwechsel liess den Lauf DAUERHAFT
+        blockiert zurueck — jeder Retry fiel ueber den Nachweisvertrag
+        (Review T24-01, Reproduktion 1).
+        """
+        return self.journal / TAGESJOURNAL_VORHER_DATEI
+
+    @property
     def protokoll_pfad(self) -> Path:
         return self.journal / PROTOKOLL_DATEI
+
+
+def _schreibe_json_atomar(pfad: Path, daten: Dict[str, Any]) -> None:
+    """Vollstaendig daneben, dann in einem Zug an den Zielpfad.
+
+    Ein halb geschriebener Marker waere genau der unklare Zustand, gegen
+    den er schuetzt (dieselbe Figur wie ``ontologie.abox.speichere``,
+    Review T25-11).
+    """
+    inhalt = (json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True)
+              + "\n").encode("utf-8")
+    pfad.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(dir=pfad.parent, prefix=f".{pfad.name}.",
+                                     suffix=".tmp")
+    temp_pfad = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as datei:
+            datei.write(inhalt)
+            datei.flush()
+            os.fsync(datei.fileno())
+        os.replace(temp_pfad, pfad)
+    except BaseException:
+        temp_pfad.unlink(missing_ok=True)
+        raise
+
+
+def schreibe_publish_marker(
+    ablage: "Ablage", heute: _dt.date, generation: str,
+) -> None:
+    """Den Write-Ahead-Marker setzen — VOR dem ersten irreversiblen Schritt.
+
+    Ein Tageslauf veroeffentlicht mehrere extern sichtbare Artefakte
+    nacheinander: Monatsabschluesse, Tagesjournal, Stand-Symlink,
+    Protokollzeile. Jedes ist fuer sich atomar geschuetzt; ZUSAMMEN waren
+    sie es nicht. Ein gewoehnlicher I/O-Fehler dazwischen liess vier
+    Endzustaende zu, und einer davon — Journal geschrieben, Stand nicht
+    getauscht — blockierte den Betrieb dauerhaft: Jeder saubere Retry
+    fiel ueber den Nachweisvertrag, ohne Ausweg im Code.
+
+    Der Marker macht daraus einen benannten Zwischenzustand. Er nennt
+    den Tag, die Generation, auf die getauscht werden soll, und den
+    Stand, auf den ``stand`` vorher zeigte. Zusammen mit der Kopie des
+    Journals reicht das, um den Lauf ZURUECKZUNEHMEN — der naechste Lauf
+    findet die Ablage so vor, wie sie vor dem Publish war, und fuehrt den
+    Tag erneut. Die Alternative waere ein Vorwaerts-Wiederaufnehmen; sie
+    braeuchte die ganze Protokollzeile im Marker und damit eine zweite
+    Quelle fuer denselben Inhalt.
+    """
+    vorher = None
+    if ablage.stand.is_symlink():
+        vorher = ablage.stand.resolve().name
+    elif ablage.stand.is_dir():
+        vorher = STAND_DIR
+    ablage.journal.mkdir(parents=True, exist_ok=True)
+    if ablage.tagesjournal_pfad.is_file():
+        ablage.tagesjournal_vorher_pfad.write_bytes(
+            ablage.tagesjournal_pfad.read_bytes())
+    _schreibe_json_atomar(ablage.publish_marker, {
+        "schema_version": 1,
+        "heute": heute.isoformat(),
+        "generation": generation,
+        "stand_vorher": vorher,
+        "journal_vorher": (
+            _datei_hash(ablage.tagesjournal_vorher_pfad)
+            if ablage.tagesjournal_vorher_pfad.is_file() else None),
+    })
+
+
+def entferne_publish_marker(ablage: "Ablage") -> None:
+    """Der Publish ist durch — der Zwischenzustand endet hier."""
+    ablage.publish_marker.unlink(missing_ok=True)
+    ablage.tagesjournal_vorher_pfad.unlink(missing_ok=True)
+
+
+def nimm_publish_zurueck(ablage: "Ablage") -> Optional[Dict[str, Any]]:
+    """Einen unterbrochenen Publish zuruecknehmen; liefert den Marker.
+
+    Der Lauf ist idempotent und deterministisch — der sauberste Weg aus
+    einem halben Publish ist deshalb nicht, ihn fortzusetzen, sondern ihn
+    zurueckzunehmen und den Tag erneut zu fuehren.
+
+    Zurueckgenommen wird, was sich zuruecknehmen LAESST: das Journal aus
+    seiner Kopie, der Symlink auf die vorherige Generation. Die
+    Monatsabschluesse bleiben — sie sind unwiderruflich (0444, ADR-011),
+    und der erneute Lauf rechnet sie nach, statt sie zu glauben (Schritt
+    a desselben Reviews). Ist der Publish bereits vollstaendig gewesen
+    (die Protokollzeile steht), wird nur aufgeraeumt.
+    """
+    if not ablage.publish_marker.is_file():
+        return None
+    try:
+        marker = json.loads(ablage.publish_marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise TageslaufError(
+            f"{ablage.publish_marker} liegt vor, laesst sich aber nicht lesen "
+            f"({exc}) — ob ein Publish unterwegs war, ist damit unbekannt, und "
+            "eine Ruecknahme auf Verdacht waere schlimmer als keine. Datei "
+            "pruefen und von Hand entfernen, wenn die Ablage stimmig ist"
+        ) from exc
+    tag = str(marker.get("heute"))
+    gruene = [z for z in lies_protokoll(ablage.protokoll_pfad)
+              if z.get("uebernommen")]
+    if gruene and str(gruene[-1].get("heute")) == tag:
+        # Der Publish war durch, nur das Aufraeumen fehlte.
+        entferne_publish_marker(ablage)
+        return marker
+    if ablage.tagesjournal_vorher_pfad.is_file():
+        ablage.tagesjournal_pfad.write_bytes(
+            ablage.tagesjournal_vorher_pfad.read_bytes())
+    elif marker.get("journal_vorher") is None:
+        # Vor dem Publish gab es kein Journal — dann gehoert auch keines
+        # in die zurueckgenommene Ablage.
+        ablage.tagesjournal_pfad.unlink(missing_ok=True)
+    vorher = marker.get("stand_vorher")
+    if (vorher and vorher != STAND_DIR
+            and ablage.stand.is_symlink()
+            and ablage.stand.resolve().name != vorher
+            and (ablage.wurzel / str(vorher)).is_dir()):
+        tmp = ablage.wurzel / STAND_LINK_TMP
+        tmp.unlink(missing_ok=True)
+        os.symlink(str(vorher), tmp)
+        os.replace(tmp, ablage.stand)
+    entferne_publish_marker(ablage)
+    print(
+        f"tageslauf: unterbrochener Publish vom {tag} zurueckgenommen — die "
+        "Ablage steht wieder auf dem Stand davor; der Tag wird erneut "
+        "gefuehrt. Festgeschriebene Monatsabschluesse bleiben stehen und "
+        "werden nachgerechnet.",
+        file=sys.stderr,
+    )
+    return marker
 
 
 def _zeilen_hash(roh: str) -> str:
@@ -679,9 +836,17 @@ def _uebernehmen(ablage: Ablage, kennung: str) -> None:
         tmp.unlink()
     os.symlink(ziel.name, tmp)
     os.replace(tmp, ablage.stand)
-    if alt_ziel is not None and alt_ziel.exists() and alt_ziel.resolve() != ziel.resolve():
-        # Vor dem Tausch geprueft; hier nur noch die Loeschung.
-        _entferne_ablageverzeichnis(ablage, alt_ziel)
+    # Der alte Stand bleibt LIEGEN, bis der Publish vollstaendig ist
+    # (Review T24-01, Schritt b). Vorher wurde er hier sofort entfernt —
+    # und damit war der Standwechsel unumkehrbar: Ein Absturz zwischen
+    # Tausch und Protokollzeile hinterliess einen Stand, auf den kein
+    # Nachweis zeigt, und nichts, worauf man zurueckzeigen koennte.
+    #
+    # Aufgeraeumt wird er vom naechsten Lauf (_verwaiste_staende_entfernen),
+    # sobald der Symlink steht und die Praemisse wieder klar ist. Das ist
+    # dieselbe Regel wie dort: aufgeraeumt wird nur, wo man weiss, was man
+    # wegraeumt.
+    _ = alt_ziel
 
 
 def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
@@ -935,6 +1100,12 @@ def tageslauf(
     """Den Tag ``heute`` fuehren — unter der Prozess-Sperre der Ablage
     (Review T22-03); siehe :func:`_tageslauf`."""
     with lauf_sperre(ablage):
+        # ZUERST einen unterbrochenen Publish zuruecknehmen (Review
+        # T24-01, Schritt b): Danach ist die Ablage wieder in einem
+        # Zustand, ueber den Nachweisvertrag und Aufraeumung urteilen
+        # koennen. Vorher fiel jeder Retry ueber genau diesen
+        # Zwischenzustand — und zwar dauerhaft.
+        nimm_publish_zurueck(ablage)
         _verwaiste_staende_entfernen(ablage)
         return _tageslauf(ablage, heute, image_digest=image_digest)
 
@@ -1166,11 +1337,15 @@ def _tageslauf(
                             eintrag["teilbestaende"].append({"fall": fall, "bericht": teil.name})
                 abschluesse.append(eintrag)
             zeile["abschluesse"] = abschluesse
-            # Journal schreiben, dann den Stand uebernehmen.
-            ablage.journal.mkdir(parents=True, exist_ok=True)
+            # Ab hier veroeffentlicht der Lauf. Der Marker liegt VOR dem
+            # ersten irreversiblen Schritt und sagt dem naechsten Lauf,
+            # dass ein Publish unterwegs war — samt allem, was er
+            # braucht, um ihn zurueckzunehmen (Review T24-01, Schritt b).
+            kennung = str(manifest_hash)[:16]
+            schreibe_publish_marker(ablage, heute, f"{STAND_DIR}-{kennung}")
             write_portfolio(journal, ablage.tagesjournal_pfad)
             zeile["tagesjournal"]["sha256"] = _datei_hash(ablage.tagesjournal_pfad)
-            _uebernehmen(ablage, str(manifest_hash)[:16])
+            _uebernehmen(ablage, kennung)
             zeile["manifest_sha256"] = manifest_hash
             zeile["uebernommen"] = True
     except (EreignisError, NeugeschaeftError, TagesjournalError, AbschlussError,
@@ -1196,6 +1371,12 @@ def _tageslauf(
             zeile["seite"] = f"nicht gerendert: {type(exc).__name__}: {exc}"
     try:
         _anfuegen(ablage.protokoll_pfad, zeile)
+        # NUR wenn der Publish wirklich durch ist: Stand, Journal und
+        # Nachweis sagen dasselbe. Ein ROTER Lauf laesst den Marker
+        # liegen — sonst naehme der naechste Lauf nichts zurueck, und der
+        # halbe Publish bliebe stehen.
+        if zeile.get("uebernommen"):
+            entferne_publish_marker(ablage)
     except OSError as exc:
         # Der Stand ist uebernommen, die Zeile fehlt: Stand und Nachweis
         # sagen ab jetzt Verschiedenes, und der naechste gefuehrter_tag()

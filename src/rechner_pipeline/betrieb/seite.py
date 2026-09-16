@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import hashlib
 import html as _html
 import json
 import os
@@ -43,6 +44,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from rechner_pipeline.models.anker import (
+    ART_AUSLIEFERUNG,
+    ART_MOMENTAUFNAHME,
+    ankersatz,
+    haenge_an,
+    satz_hash,
+    zeichne,
+)
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
 from rechner_pipeline.bestand.manifest import lies_manifest, sha256_bytes
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio
@@ -60,7 +69,12 @@ from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 #: Journals waere eine zweite Serialisierungsregel gewesen — ein Vertrag,
 #: den ein Konsument aendert, statt einer, den nur der Produzent aendert
 #: (abgestimmt mit vorzeige-url, 2026-09-15).
-PAKET_SCHEMA_VERSION = 3
+#: Schema 4 (Review T24-04, Teil 2): ``stand.json`` NENNT seinen Anker.
+#: Ein Paket ohne Anker belegt nur sich selbst — die Protokollkette
+#: schuetzt ihre letzte Zeile nicht, und genau aus ihr leitet stand.json
+#: ab. Der Sprung macht die Kopplung sichtbar: Ein Konsument des alten
+#: Schemas bekommt eine klare Meldung statt stiller Drift.
+PAKET_SCHEMA_VERSION = 4
 PAKET_PROTOKOLL = "protokoll.jsonl"
 PAKET_MANIFEST = "laufmanifest.json"
 PAKET_JOURNAL = "tagesjournal.parquet"
@@ -476,14 +490,77 @@ def paketziel_fehler(ablage, ziel: Path) -> Optional[str]:
     return None
 
 
-def stands_paket(ablage, ziel: Path) -> Path:
+def _zeichnung_des_exports(
+    satz: Dict[str, Any], schluessel: Path, ordnung_pfad: Optional[Path],
+    ablage_wurzel: Path,
+) -> Dict[str, Any]:
+    """Rolle aus der Ordnung bestimmen und den Ankersatz zeichnen.
+
+    Die Rolle wird nicht behauptet, sondern aus dem SCHLUESSEL bestimmt:
+    Wer die Datei besitzt, deren Fingerabdruck die Ordnung einer Rolle
+    zuordnet, handelt als diese Rolle (ADR-018). Eine Zeichnung ohne
+    Ordnung waere eine Rolle, die sich selbst vergibt.
+    """
+    from rechner_pipeline.models.zeichnung import (
+        lade_zeichnungsordnung,
+        schluesselklasse,
+        zeichnungsrolle,
+    )
+
+    if ordnung_pfad is None:
+        raise SeiteError(
+            "--schluessel verlangt --zeichnungsordnung: Die Rolle wird aus "
+            "dem Schluessel BESTIMMT, nicht behauptet (ADR-018)")
+    # Die Ordnung darf nicht in der ABLAGE liegen — dieselbe Regel wie
+    # "nicht im Fall": Die Rollenbindung wird nicht dort verwahrt, wo der
+    # Prozess schreibt, der sich auf sie beruft.
+    ordnung, _sha, fehler = lade_zeichnungsordnung(
+        str(ordnung_pfad), Path(ablage_wurzel))
+    if fehler or ordnung is None:
+        raise SeiteError("Zeichnungsordnung: " + "; ".join(fehler[:3]))
+    try:
+        roh = Path(schluessel).read_bytes()
+    except OSError as exc:
+        raise SeiteError(f"Schluessel nicht lesbar: {exc}") from exc
+    fingerabdruck = hashlib.sha256(roh).hexdigest()
+    rolle = zeichnungsrolle(ordnung, fingerabdruck)
+    if rolle is None:
+        raise SeiteError(
+            f"Der Schluessel ({fingerabdruck[:16]}…) gehoert zu keiner Rolle "
+            "der Zeichnungsordnung — ohne Rolle keine Zeichnung")
+    return zeichne(satz, roh, rolle=rolle,
+                   klasse=str(schluesselklasse(ordnung, rolle)))
+
+
+def stands_paket(
+    ablage, ziel: Path, *, anker_verzeichnis: Path,
+    art: str = ART_MOMENTAUFNAHME,
+    schluessel: Optional[Path] = None,
+    zeichnungsordnung: Optional[Path] = None,
+) -> Path:
     """Den Stand als Paket exportieren: ``stand.json`` plus die Berichte des
     juengsten Abschlusses und die Seite "Bestand heute".
 
     Das Paket ist die Quelle der Vorzeigeseite (``werkzeuge/falldaten.py
     --stands-paket``). Es traegt seine Provenienz (Manifest-, Config- und
     Journal-Hash, Kern-Version, Image), damit die Seite sagen kann, von
-    welchem Stand sie spricht. Ein vorhandenes Paket wird ersetzt — es ist
+    welchem Stand sie spricht.
+
+    ``art`` unterscheidet die MOMENTAUFNAHME (ein gewoehnlicher Export)
+    von der AUSLIEFERUNG, bei der der Stand nach aussen sichtbar wird.
+    Nur die Auslieferung braucht die menschliche Abnahme A-B1; sie kommt
+    nicht von hier, sondern vom Entscheid-Kommando. Der Export selbst
+    zeichnet den Ankersatz, wenn ein Schluessel gegeben ist — das ist eine
+    Aussage ueber URHEBERSCHAFT, und ein Agent darf sie machen (ADR-018,
+    Nachtrag 2026-09-16).
+
+    ``anker_verzeichnis`` ist PFLICHT (Review T24-04, Teil 2): Der Export
+    legt dort den Hash der letzten Protokollzeile ab und nennt den
+    Ankersatz in ``stand.json``. Ohne diesen Bezug nach aussen belegt das
+    Paket nur sich selbst — die Kette schuetzt ihre letzte Zeile nicht,
+    und aus genau ihr leitet stand.json ab. Der Ort gehoert NICHT in die
+    Ablage: Ein Wert, den der schreibende Prozess selbst aendern kann,
+    ist kein Anker. Ein vorhandenes Paket wird ersetzt — es ist
     eine Momentaufnahme, kein Nachweis; der Nachweis liegt in der Ablage.
     Ersetzt wird aber NUR ein frueheres Paket ausserhalb der Ablage
     (``paketziel_fehler``, Review T24-07).
@@ -537,6 +614,26 @@ def stands_paket(ablage, ziel: Path) -> Path:
         dateien[name] = sha256_bytes((ziel / name).read_bytes())
     modell["dateien"] = dict(sorted(dateien.items()))
     modell["luecken"] = luecken(modell)
+    # Der Anker: Erst den Satz bilden, dann ablegen, dann NENNEN. Genannt
+    # wird sein eigener Hash — sonst genuegte einem Faelscher irgendein
+    # passender Satz derselben Ablage.
+    satz = ankersatz(
+        ablage.protokoll_pfad, str(modell.get("stand")),
+        dateien[PAKET_MANIFEST], dateien[PAKET_JOURNAL], art=art,
+    )
+    if schluessel is not None:
+        satz["zeichnung"] = _zeichnung_des_exports(
+            satz, Path(schluessel), zeichnungsordnung, ablage.wurzel)
+    pfad = haenge_an(Path(anker_verzeichnis), satz)
+    modell["anker"] = {
+        "datei": str(pfad),
+        "sha256": satz_hash(satz),
+        "stand": satz["stand"],
+        "art": satz["art"],
+        # Der Konsument weist aus, WER gezeichnet hat — und verlangt bei
+        # einer Auslieferung zusaetzlich die Abnahme A-B1.
+        "zeichnung": satz.get("zeichnung"),
+    }
     _schreibe(ziel / PAKET_DATEI, json.dumps(modell, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     return ziel
 
@@ -550,13 +647,42 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--stand", required=True, help="Datenverzeichnis der Laufzeitumgebung.")
     parser.add_argument("--paket", default=None, help="Zielverzeichnis des Stands-Pakets (optional).")
+    parser.add_argument(
+        "--auslieferung", action="store_true",
+        help="Dieses Paket geht nach AUSSEN. Es braucht zusaetzlich die "
+             "menschliche Abnahme A-B1 (gates.gate_entscheid --gate A-B1); "
+             "ohne sie veroeffentlicht der Auftritt es nicht.")
+    parser.add_argument(
+        "--schluessel", default=None,
+        help="Freigabeschluessel, mit dem der ANKERSATZ gezeichnet wird "
+             "(Urheberschaft, keine Abnahme). Die Rolle wird aus dem "
+             "Schluessel bestimmt, nicht behauptet.")
+    parser.add_argument(
+        "--zeichnungsordnung", default=None,
+        help="Zeichnungsordnung (Pflicht mit --schluessel).")
+    parser.add_argument(
+        "--anker", default=None,
+        help="Verzeichnis der Ankerdatei (Pflicht mit --paket). Es gehoert "
+             "NICHT in die Ablage: Der Anker bindet das Paket an einen Ort, "
+             "den der Tagesbetrieb nicht anfasst.")
     ns = parser.parse_args(argv)
     ablage = Ablage(Path(ns.stand))
     try:
         seite = rendere_bestand_heute(ablage)
         print(f"seite: {seite}", file=sys.stderr)
+        if ns.paket and not ns.anker:
+            print("seite: --paket verlangt --anker — ein Stands-Paket ohne "
+                  "Bezug nach aussen belegt nur sich selbst (T24-04)",
+                  file=sys.stderr)
+            return 2
         if ns.paket:
-            paket = stands_paket(ablage, Path(ns.paket))
+            paket = stands_paket(
+                ablage, Path(ns.paket), anker_verzeichnis=Path(ns.anker),
+                art=(ART_AUSLIEFERUNG if ns.auslieferung
+                     else ART_MOMENTAUFNAHME),
+                schluessel=Path(ns.schluessel) if ns.schluessel else None,
+                zeichnungsordnung=(Path(ns.zeichnungsordnung)
+                                   if ns.zeichnungsordnung else None))
             print(f"seite: Stands-Paket -> {paket}", file=sys.stderr)
     except (SeiteError, TageslaufError, ValueError) as exc:
         print(f"seite: {exc}", file=sys.stderr)

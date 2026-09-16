@@ -51,7 +51,7 @@ ist: die Vorlage des Migrationscontrollings am $t_0$.
 
 ### 2. Zwei menschliche Gates in fester Reihenfolge
 
-Neben A-Q1 (fachliche Konflikte), A-M4 und A-K1 tritt **A-M1: aktuarielle
+Neben A-Q1 (fachliche Konflikte), A-M4 und A-O1 tritt **A-M1: aktuarielle
 Abnahme**. Die Reihenfolge ist nicht empfohlen, sondern erzwungen:
 
 > **A-M1 geht A-M4 voraus.** Ein A-M4-Entscheid ohne geltende, signierte

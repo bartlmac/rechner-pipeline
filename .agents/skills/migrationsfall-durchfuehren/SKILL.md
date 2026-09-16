@@ -242,7 +242,7 @@ Quelle liest und beides an A-Q1 haengt.
    (`bereite-fachkonflikt-auf`).
 5. Offene Konflikte der Spec und die Befundliste gehen mit an A-Q1. Ein
    Ziel-Pflichtfeld, das die Quelle nicht hergibt, ist ein STOPP: die
-   Ziel-Ontologie zu erweitern ist Gate A-K1, nie deine Entscheidung.
+   Ziel-Ontologie zu erweitern ist Gate A-O1, nie deine Entscheidung.
 
 Von den transformierten Zeilen zum BESTAND des Zielsystems: `wende_an`
 liefert die VERTRAGSfelder (die Kern-Contract-Seite, `ZIEL_PFLICHT`).
@@ -465,7 +465,7 @@ A-Box- und Systemstands, einen geltenden signierten A-Q1-Annahme-Snapshot
    + `spez.validierung.speichere_spez`. Das Struktur-Urteil
    (Parametrierung vs. neue Produktfamilie) wird BERECHNET — nimm es
    ernst: `neue_produktfamilie` oder offene Erweiterungsstellen heissen
-   STOPP und Mensch fragen (T-Box-/Kern-Erweiterung ist Gate A-K1).
+   STOPP und Mensch fragen (T-Box-/Kern-Erweiterung ist Gate A-O1).
 2. Tafel-Import: `python -m rechner_pipeline.quellen.tafel_import --fall faelle/<fall> --generation <gen-id> --dry-run`,
    pruefen, dann scharf. Konflikte (wertverschiedene Tafeln gleichen
    Namens) sind ein Provenienz-Problem fuer den Menschen.
@@ -627,7 +627,7 @@ still zu ueberspringen.
 - Ein bestehender Charakterisierungstest des Kerns (eingefrorene Referenzwerte) wird rot.
 - Ein Ziel-Pflichtfeld der Transformation ist aus dem Abzug nicht
   ableitbar, oder die Quelle traegt ein fachlich uebernahmepflichtiges
-  Merkmal, fuer das die Ziel-Ontologie kein Feld hat (Gate A-K1).
+  Merkmal, fuer das die Ziel-Ontologie kein Feld hat (Gate A-O1).
 - Die Controlling-Suite (`qa.migrationssuite`) oder der aktuarielle
   Test melden Befunde zur Konsistenz der Lieferung
   (fehlende Vertraege ohne Abgangs-GeVo, unbekannte GeVo-Arten) — das

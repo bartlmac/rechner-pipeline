@@ -64,7 +64,8 @@ def test_ziel_in_oder_um_die_ablage_wird_verweigert(gefuehrt, ziel):
     fehler = st.paketziel_fehler(gefuehrt, pfad)
     assert fehler and "Ablage" in fehler
     with pytest.raises(st.SeiteError):
-        st.stands_paket(gefuehrt, pfad)
+        st.stands_paket(gefuehrt, pfad,
+                        anker_verzeichnis=gefuehrt.wurzel.parent / "anker")
     assert _ablage_intakt(gefuehrt)
 
 
@@ -74,7 +75,7 @@ def test_fremdes_verzeichnis_wird_nicht_ersetzt(gefuehrt, tmp_path):
     fremd.mkdir()
     (fremd / "wichtig.txt").write_text("nicht loeschen\n", encoding="utf-8")
     with pytest.raises(st.SeiteError, match="kein frueheres Stands-Paket"):
-        st.stands_paket(gefuehrt, fremd)
+        st.stands_paket(gefuehrt, fremd, anker_verzeichnis=tmp_path / "anker")
     assert (fremd / "wichtig.txt").read_text(encoding="utf-8") == "nicht loeschen\n"
 
 
@@ -95,10 +96,10 @@ def test_neues_ziel_und_frueheres_paket_werden_geschrieben(gefuehrt, tmp_path):
     """Positivkontrolle: leeres Ziel wird angelegt, ein Paket wird ersetzt."""
     ziel = tmp_path / "paket"
     assert st.paketziel_fehler(gefuehrt, ziel) is None
-    st.stands_paket(gefuehrt, ziel)
+    st.stands_paket(gefuehrt, ziel, anker_verzeichnis=tmp_path / "anker")
     assert (ziel / st.PAKET_DATEI).is_file()
     (ziel / "alt.txt").write_text("vom letzten Export\n", encoding="utf-8")
-    st.stands_paket(gefuehrt, ziel)
+    st.stands_paket(gefuehrt, ziel, anker_verzeichnis=tmp_path / "anker")
     assert (ziel / st.PAKET_DATEI).is_file() and not (ziel / "alt.txt").exists()
 
 

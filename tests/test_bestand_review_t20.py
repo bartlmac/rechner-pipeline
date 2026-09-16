@@ -58,6 +58,11 @@ def _gate_argv(lauf_dir: Path, diag: Path) -> list:
         "--ledger", str(lauf_dir / "ledger.parquet"),
         "--scheiben", str(lauf_dir / "scheiben.parquet"),
         "--bis", HORIZONT.isoformat(),
+        # Das Laufmanifest ist Pflicht (Entscheid des Maintainers
+        # 2026-09-16): Ein Beleg ohne Manifest sagt nichts darueber, welche
+        # Tabellen der Lauf gefuehrt hat. Die Fixture faehrt einen echten
+        # Fortschreibungslauf, das Manifest liegt also daneben.
+        "--manifest", str(lauf_dir / "laufmanifest.json"),
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diag),
     ]

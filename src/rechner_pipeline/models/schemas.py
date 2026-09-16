@@ -23,7 +23,11 @@ Knoten: system/assurance
 """
 
 from __future__ import annotations
-from rechner_pipeline.models.zeichnung import validiere_zeichnung
+from rechner_pipeline.models.zeichnung import (
+    GATES_MIT_PFLICHTBELEGEN,
+    GUELTIGE_GATES,
+    validiere_zeichnung,
+)
 
 import hashlib
 import json
@@ -93,7 +97,14 @@ P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
 #: gezeichnet ist, dessen ABLAUFLEISTUNG aber niemand unterschrieben
 #: hat. Die Auszahlung an den Kunden ohne Unterschrift zu lassen, waere
 #: keine Vereinfachung, sondern eine Luecke in der Abnahme.
-P9_GATES: tuple[str, ...] = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1")
+#:
+#: ABGELEITET, nicht abgetippt (gefunden beim Bau von A-B1): Dieselbe
+#: Menge stand zweimal im Baum — hier und als ``GUELTIGE_GATES`` in
+#: ``models.zeichnung``. Wer ein Gate nur in eine der beiden eintraegt,
+#: bekommt ein Gate, das die CLI annimmt und das Schema ablehnt, oder
+#: umgekehrt. Die Richtung ist vorgegeben: ``schemas`` importiert
+#: ``zeichnung`` ohnehin, die Gegenrichtung waere ein Ring.
+P9_GATES: tuple[str, ...] = GUELTIGE_GATES
 #: Die aktuariellen Abnahmen. Sie tragen dieselben Zusatzfelder im
 #: Snapshot (Scope und Pflichtbelege), weil sie sich fachlich nur im
 #: Zeitpunkt unterscheiden. Einmal deklariert, nicht je Pruefstelle
@@ -481,7 +492,7 @@ class P9Snapshot:
         errors: List[str] = []
         gate = data.get("gate")
         expected_fields = set(cls._BASE_FIELDS)
-        if gate in P9_AKTUARIELLE_ABNAHMEN or gate in ("A-M4", "A-K1"):
+        if gate in GATES_MIT_PFLICHTBELEGEN:
             expected_fields.update({"fall_scope", "pflichtbelege"})
         if gate == "A-M4":
             expected_fields.add("pk1_belege")
@@ -588,14 +599,26 @@ class P9Snapshot:
         if zeit_fehler:
             errors.append(zeit_fehler)
 
-        if gate in ("A-M1", "A-M4", "A-K1"):
+        # Frueher eine dritte abgetippte Menge, die A-M2/A-M3 ausliess:
+        # Deren Felder waren oben PFLICHT, ihr Inhalt wurde nie geprueft
+        # — ein Snapshot mit erfundenem Scope und leeren Pflichtbelegen
+        # kam ohne Beanstandung durch, und A-M4 pinnte ihn danach als
+        # eigenen Pflichtbeleg.
+        if gate in GATES_MIT_PFLICHTBELEGEN:
             if data.get("fall_scope") not in ("tarif", "bestand"):
                 errors.append("fall_scope must be 'tarif' or 'bestand'")
             pflichtbelege = data.get("pflichtbelege")
             if not isinstance(pflichtbelege, dict):
                 errors.append("pflichtbelege must be an object")
             elif (
-                gate in ("A-M4", "A-K1")
+                # Die Nicht-Leer-Regel gilt NICHT ueberall, und das ist
+                # eine Ausnahme mit Grund, kein vergessener Nachtrag:
+                # A-M1 darf im Tarif-Scope belegfrei angenommen werden,
+                # A-B1 hat im Tarif-Scope ueberhaupt keine Rollen (ein
+                # Tarif-Fall liefert keinen Bestand aus). Die EXAKTE
+                # Rollenmenge je Gate und Scope erzwingt ohnehin der
+                # Lesepfad in gate_entscheid gegen fall.BELEGROLLEN.
+                gate in ("A-M4", "A-O1", "A-K2")
                 and data.get("entscheid") == "angenommen"
                 and not pflichtbelege
             ):

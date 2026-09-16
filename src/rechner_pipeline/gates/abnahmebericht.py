@@ -91,6 +91,7 @@ from typing import Any, Dict, List, Optional
 
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.vorbedingungen import (
+    PB1_ROLLEN_DATEIEN,
     PB1_ROLLEN,
     lies_und_pruefe_pb1,
     manifest_fuer_nachrechnung,
@@ -1697,11 +1698,59 @@ def _b1_fehler(
         fehler.append("P-B1-Ledger-Rolle ledger verlangt historie und bis")
     if "ledger" not in rollen and bis_roh is not None:
         fehler.append("P-B1-Ledger.summary.bis ist nur mit ledger zulaessig")
+    # Das Laufmanifest ist PFLICHT (Entscheid des Maintainers 2026-09-16).
+    # Vorher war es optional: kein ``summary.manifest`` hiess "keine
+    # Manifestbindung", ohne Befund — und damit liess sich jede Aussage,
+    # die nur im Manifest steht, durch Weglassen von ``--manifest``
+    # abschalten. Ein Beleg, der nichts sagt, ist kein Beleg.
+    manifest = None
+    manifest_beleg = entry.summary.get("manifest")
+    if not isinstance(manifest_beleg, dict):
+        fehler.append(
+            "P-B1-Beleg ohne Laufmanifest: summary.manifest fehlt — ohne es "
+            "sagt der Lauf NICHTS darueber, welche Tabellen er gefuehrt hat, "
+            "und A-M4 muesste aus der Abwesenheit schliessen. P-B1 mit "
+            "--manifest erneut fahren"
+        )
+    else:
+        manifest, manifest_fehler = manifest_fuer_nachrechnung(
+            aktuelle_eingaben.get("portfolio"), manifest_beleg.get("sha256")
+        ) if aktuelle_eingaben.get("portfolio") else (None, [])
+        fehler.extend(manifest_fehler)
+
     # Vollprofil (T22-01): ohne diese Rollen hat P-B1 den Bestand nicht als
     # Bestand geprueft, sondern eine Tabelle als Tabelle.
+    #
+    # Die Schicht-Pflicht kommt seit dem 2026-09-16 aus der AUSSAGE des
+    # Produzenten, nicht aus der Anwesenheit einer Datei. Vorher entschied
+    # ein ``rglob`` ueber den Fall: Fehlte ``schichten.parquet``, WEIL der
+    # Produzent sie nicht geschrieben hatte, feuerte die Pflicht nicht —
+    # "nichts noetig" und "nichts erzeugt" sahen gleich aus. Das Manifest
+    # zaehlt unter ``ausgaben`` abschliessend auf, was der Lauf geschrieben
+    # hat; damit gibt es drei Zustaende statt zwei: genannt (Schicht
+    # gefuehrt), Manifest da und nicht genannt (geprueft, dieser Lauf fuehrt
+    # keine), kein Manifest (nichts gesagt — oben bereits ein Befund).
     vollprofil = set(PB1_VOLLPROFIL)
-    if any((Path(fall) / "abgeleitet").rglob("schichten.parquet")):
+    schicht_datei = PB1_ROLLEN_DATEIEN["schichten"]
+    ausgaben = (manifest or {}).get("ausgaben") or {}
+    lauf_fuehrt_schicht = schicht_datei in ausgaben
+    if lauf_fuehrt_schicht:
         vollprofil |= PB1_VOLLPROFIL_SCHICHT
+    # Querpruefung, die der rglob frueher als Ausloeser mitgemacht hat und
+    # die als PRUEFUNG erhalten bleibt: Der Fall fuehrt eine Schicht, der
+    # abgenommene Lauf nennt sie nicht. Das ist kein Teilprofil, sondern
+    # ein Lauf, der an der Korrekturschicht vorbeigerechnet hat.
+    if manifest is not None and not lauf_fuehrt_schicht and any(
+        (Path(fall) / "abgeleitet").rglob(schicht_datei)
+    ):
+        fehler.append(
+            f"P-B1-Beleg: der Fall fuehrt eine {schicht_datei}, der belegte "
+            "Lauf nennt sie aber nicht unter seinen Ausgaben — die Abnahme "
+            "rechnete an der Korrekturschicht vorbei. Damit fehlen dem "
+            f"Vollprofil die Rollen {sorted(PB1_VOLLPROFIL_SCHICHT)}. Die "
+            "Fortschreibung mit --uebernahme fahren und P-B1 auf diesem Lauf "
+            "wiederholen"
+        )
     fehlende_rollen = sorted(vollprofil - set(rollen))
     if fehlende_rollen:
         fehler.append(
@@ -1742,13 +1791,7 @@ def _b1_fehler(
         # Manifest ist keine Eingangsrolle; es liegt, wie der Produzent es
         # schreibt, NEBEN dem Portfolio, und seine Bytes muessen den Hash des
         # Belegs tragen.
-        manifest = None
-        manifest_beleg = entry.summary.get("manifest")
-        if isinstance(manifest_beleg, dict):
-            manifest, manifest_fehler = manifest_fuer_nachrechnung(
-                aktuelle_eingaben["portfolio"], manifest_beleg.get("sha256")
-            )
-            fehler.extend(manifest_fehler)
+        # manifest wurde oben gelesen und ist Pflicht.
         tabellen, geprueft, pb1_errors, pb1_usage_errors = lies_und_pruefe_pb1(
             aktuelle_eingaben,
             bis=bis,

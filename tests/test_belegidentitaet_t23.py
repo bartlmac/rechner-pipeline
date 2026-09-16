@@ -1,7 +1,7 @@
 """Belegidentitaet ueber alle Gates (Review T23-01): Eine Datei, deren Hash
 im Beleg steht, wird GENAU EINMAL gelesen.
 
-Der Reviewer fand in P-Q3, P-K1 und A-K1 die Read/Hash-Naht aus T18-03 an
+Der Reviewer fand in P-Q3, P-K1 und A-O1 die Read/Hash-Naht aus T18-03 an
 neuer Stelle: Die Datei wurde einmal zum Hashen und ein zweites Mal zum
 Parsen gelesen; der protokollierte Hash bezeugt dann irgendeinen Zustand
 der Datei, nicht den geprueften. Die Mustersuche fand dieselbe Klasse in
@@ -54,7 +54,8 @@ from tests.test_abnahmebericht import _basis_argv, _pruefung, _suite_datei
 from tests.test_aktuartest_gate import _fall as _aktuartest_fall
 from tests.test_aktuartest_gate import _testergebnis
 from tests.test_kette_und_vorbedingungen import AKTEUR, _fragment_json
-from tests.test_tbox_version_ak1 import _beleg as _tbox_beleg
+from tests.test_tbox_version_ao1 import _beleg as _tbox_beleg
+from tests.test_tbox_version_ao1 import _stellungnahme as _tbox_stellungnahme
 from tests.zeichnung_fixture import annahme_args
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -149,7 +150,7 @@ def _pruefe_belegidentitaet(
 
 
 # --------------------------------------------------------------------------- #
-# Fixtures: der P-K1-Fall traegt P-Q3, P-K1 und A-K1; Fragmente fuer den Merge
+# Fixtures: der P-K1-Fall traegt P-Q3, P-K1 und A-O1; Fragmente fuer den Merge
 # --------------------------------------------------------------------------- #
 
 @pytest.fixture()
@@ -222,9 +223,12 @@ def test_ak1_liest_seine_pflichtbelege_genau_einmal(pk1_fall, monkeypatch):
     # alte Stand im Code deklariert sein — hier testlokal.
     monkeypatch.setattr(tbox_modul, "TBOX_VERSIONEN", ("0.0.9", TBOX_VERSION))
     _tbox_beleg(pk1_fall)
+    # Zweiter Pflichtbeleg seit dem Entscheid des Maintainers 2026-09-16:
+    # Auch er muss genau einmal gelesen werden.
+    _tbox_stellungnahme(pk1_fall)
     zaehler, geschrieben = _zaehle_lesungen(monkeypatch)
     ergebnis = gate_entscheid.main([
-        "--fall", str(pk1_fall), "--gate", "A-K1", "--entscheid", "angenommen",
+        "--fall", str(pk1_fall), "--gate", "A-O1", "--entscheid", "angenommen",
         "--entscheider", "IT-Verantwortung", "--begruendung", "T-Box erweitert",
         "--repo-root", str(REPO_ROOT), *annahme_args(pk1_fall),
     ])

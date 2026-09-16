@@ -65,6 +65,11 @@ from rechner_pipeline.qa.bestand import sanity_check
 #: gates -> bestand.vorbedingungen, nicht gates -> bestand.manifest.
 PB1_ROLLEN = frozenset(ROLLEN_DATEIEN) | {"config"}
 
+#: Welche Datei eine P-B1-Rolle traegt — hier weitergereicht, damit
+#: die gates-Schicht sie nicht abtippen und nicht selbst in die
+#: Vorzeige greifen muss (ADR-017, TOOL_NACH_VORZEIGE_ERLAUBT).
+PB1_ROLLEN_DATEIEN = ROLLEN_DATEIEN
+
 
 def pruefe_pb1_eingaenge(
     eingaben: Mapping[str, Path],

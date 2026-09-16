@@ -355,7 +355,7 @@ def test_unbekanntes_zielfeld_ist_ak1_grenze():
     fehler = validate_spec(
         TransformationsSpec(**{**spec.model_dump(), "felder": felder}),
         QUELLSPALTEN)
-    assert any("provisionssatz" in f and "A-K1" in f for f in fehler)
+    assert any("provisionssatz" in f and "A-O1" in f for f in fehler)
 
 
 def test_anwendung_ist_deterministisch_und_vollstaendig(tmp_path):
@@ -989,7 +989,7 @@ def test_transformations_skill_ist_abgesichert():
     assert claude == codex                            # Paritaet
     assert "ERFINDEST nichts" in claude
     assert "OffenerKonflikt" in claude
-    assert "A-K1" in claude
+    assert "A-O1" in claude
     assert "Abbruchkriterien" in claude
     konflikt = (repo / ".claude/skills/bereite-fachkonflikt-auf/SKILL.md"
                 ).read_text(encoding="utf-8")

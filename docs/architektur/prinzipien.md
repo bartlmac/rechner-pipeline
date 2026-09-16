@@ -2,7 +2,7 @@
 
 Die normative Grundlage des Systems (beschlossen in der
 Architektur-Fragerunde 2026-08-14, hier team-sichtbar in Vollform).
-Nicht verhandelbar; Aenderungen sind ein A-K1-artiger Vorgang mit
+Nicht verhandelbar; Aenderungen sind ein A-O1-artiger Vorgang mit
 dem Maintainer.
 
 **P1 — Provenance auf Attributebene.** Jede Aussage in der A-Box

@@ -218,7 +218,7 @@ verlangen (T21-06); der Rest ist umgesetzt.
 | T21-03 Endliche Verteilungsparameter, nichtendlicher Bestand (`meanlog = 1000`), Manifest geschrieben | hoch | **behoben** — Ueberlauf in den Verteilungen ist ein Fehler (numpy errstate), und jede Ausgabe wird vor dem ERSTEN Schreibvorgang auf Endlichkeit geprueft; Exit 2, kein Artefakt, kein Manifest |
 | T21-04 Falldarstellung behandelt fehlenden/unbekannten Scope wie Tarif (Fail-open) | hoch | **behoben** — `falldaten.sammle` liest den Scope streng ueber `fall.lade_scope`; ungueltig ist eine Luecke (Gruppe `fall`) und wird mit dem VOLLEN Bestandsprofil geprueft |
 | T21-05 Darstellung nennt Snapshots "menschliche Entscheide", Kopfzeile behauptet pauschal Simulationsschluessel | mittel | **behoben** — Ueberschriften "Entscheid-Snapshots der Gates"; die Kopfzeile sagt nur, was ALLE Snapshots ueber ihre Schluesselklasse selbst sagen |
-| T21-06 T-Box-Version und A-K1-Vertrag | mittel | **entschieden 2026-09-05: wie vorgeschlagen, im Ebenen-Strang** (Backlog) — Vorschlag unten |
+| T21-06 T-Box-Version und A-O1-Vertrag | mittel | **entschieden 2026-09-05: wie vorgeschlagen, im Ebenen-Strang** (Backlog) — Vorschlag unten |
 | T21-07 `betrag_herkunft` nur Vokabular, nicht Semantik | mittel | **behoben** — `validate_ledger`: `geliefert` genau am Zugang eines uebernommenen Vertrags (Zugang nach Beginn), sonst `gerechnet`; beide Richtungen sind Fehler |
 | T21-08 Der Architekturpruefer stuerzt bei relativen Imports ab (`code_karte._absolut` nutzte den undefinierten Namen `paketpfad`; latent, der Quellbaum hat keinen relativen Import) | mittel | **bereits behoben** auf ebenen (934ac3a, Schritt 3: `_absolut` rechnet mit `anker`; Test mit relativem Import). KORREKTUR 2026-09-06 (Nebenhinweis des Reviews T22): Diese Zeile nannte faelschlich den Rollenplatzhalter "mensch" — der ist Gegenstand von ADR-018, nicht von T21-08 |
 | T21-09 P-B1 aendert die Akzeptanzmenge ohne Versionssprung | mittel | **behoben** — `GATE_VERSION` 3.0.0, README-Zeile begruendet; die seit T16 offene Versionierungsregel ist jetzt festgeschrieben (ADR-012 Nachtrag, Skill author-rechner-toolbox-gate, README; `tests/test_gate_versionsregel.py`) |
@@ -239,7 +239,7 @@ registrierter Falleingang (Hash im Beleg), nicht als loses TOML.
 
 **Vorschlag zu T21-06.** `TBOX_VERSION` wird beim Laden gegen A-Box und
 Spez geprueft (Mismatch = Fehler, nicht Warnung) und in P-Q3 gebunden;
-ein A-K1-Snapshot bindet alte und neue Version, den T-Box-Hash und das
+ein A-O1-Snapshot bindet alte und neue Version, den T-Box-Hash und das
 Aenderungsartefakt; Versionsregel: jede Schemaaenderung hebt die Version.
 
 **Nachweise.** `tests/test_bestand_review_t21.py` (Repros des Reviews
@@ -266,7 +266,7 @@ main).
 | Befund | Schwere | Topf | Status |
 |---|---|---|---|
 | T22-01 A-M4 akzeptiert ein P-B1-Minimalprofil | hoch | ebenen | **behoben** 1c97707 — abnahmebericht 2.0.0 verlangt Vollprofil (portfolio, historie, ledger, config, bis, betraege_hergeleitet); pk1-Fixture ist eine Ein-Policen-Welt statt eines Ein-Zeilen-Ausschnitts; E2E fahren P-B1 mit der Zellen-Config des Falls |
-| T22-02 T-Box-Version nominal, A-K1 ohne Belegvertrag | hoch | ebenen | **behoben** 29891ec — P-Q3 haelt die A-Box, P-K1 die Spez gegen die geltende Version; A-K1 verlangt `abgeleitet/tbox/aenderung.json`; P-Q3, P-K1, P9 auf 1.0.0 |
+| T22-02 T-Box-Version nominal, A-O1 ohne Belegvertrag | hoch | ebenen | **behoben** 29891ec — P-Q3 haelt die A-Box, P-K1 die Spez gegen die geltende Version; A-O1 verlangt `abgeleitet/tbox/aenderung.json`; P-Q3, P-K1, P9 auf 1.0.0 |
 | T22-03 Standwechsel nicht atomar, kein Lock, halber Eingang | hoch | betrieb | **behoben** bdb457a — Stand als Symlink auf versioniertes Verzeichnis (ein atomarer Tausch), `lauf.lock`, OSError als roter Lauf mit Zeile, Eingang entsteht unter `.neu` und wird umbenannt |
 | T22-04 ungemeldete Todesfaelle im sichtbaren Bestand | hoch | betrieb | **behoben** cc55192 — der Stand ist die gebuchte Sicht (`gebuchte_sicht`); Vorgeschichte bleibt vollstaendig |
 | T22-05 Protokoll ohne Kette, Paket auf Zuruf | hoch | betrieb | **behoben** 4774602 — Protokoll Schema 2 mit Vorgaenger-Hash, Nachweisvertrag (Luecken, Manifest-, Journal-Hash), Paket Schema 2 mit Belegdateien, Konsument prueft; Luecken wandern in die Darstellung |

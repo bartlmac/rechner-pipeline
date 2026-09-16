@@ -620,3 +620,30 @@ def test_keine_quellnummer_ueberlebt_in_irgendeiner_tabelle(eingang):
             assert ids == ziele, "die Uebersetzungstabelle und der Stamm gehen auseinander"
         gesehen += 1
     assert gesehen >= 3, "weniger Tabellen geprueft als der Zugangsstand fuehrt"
+
+
+def test_ein_eingang_aus_altem_codestand_nennt_den_ausweg():
+    """Betriebsbefund 2026-09-16: Eine Ablage, deren Eingang aus einem
+    aelteren Codestand stammt, bricht den Tageslauf hart ab — gemessen an
+    der laufenden Vorzeige, die seit T24-08 keinen Stand mehr uebernahm.
+
+    Die Meldung nannte nur den Befund. Die naheliegende Reaktion darauf
+    ist die FALSCHE: Wer "erwartet 2" liest, schreibt die 2 in die Datei
+    und hat dann einen Eingang, der Schema 2 behauptet, ohne Nummernband
+    und ohne Uebersetzungstabelle. Die Regel des Hauses lautet: ein
+    harter Fehler mit sprechender Meldung, DIE DEN AUSWEG NENNT.
+    """
+    fehler = ueb.validate_eingang({
+        "schema_version": 1, "fall": "x", "stichtag": "2026-01-01",
+        "dateien": {"bestand.parquet": "0" * 64,
+                    "historie.parquet": "0" * 64,
+                    "ledger.parquet": "0" * 64},
+    })
+    schema = [f for f in fehler if "schema_version" in f]
+    assert schema, fehler
+    text = " ".join(schema)
+    assert "neuaufsetzen" in text, (
+        "die Meldung nennt den Ausweg nicht — sie laedt damit zum "
+        "Umschreiben der Datei ein")
+    assert "nie umgeschrieben" in text, (
+        "die Meldung sagt nicht, dass ein Eingang unveraenderlich ist")

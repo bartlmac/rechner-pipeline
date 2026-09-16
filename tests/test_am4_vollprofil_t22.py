@@ -88,7 +88,15 @@ def test_mit_korrekturschicht_verlangt_das_vollprofil_schicht_und_verankerung(tm
     gelesen hatte — die Abnahme rechnete eine andere Welt als die Fuehrung.
     Bei N-01 gemessen: rund 13.700 EUR Deckungskapital je Vertrag.
 
-    Mutationsprobe: PB1_VOLLPROFIL_SCHICHT leeren -> gruen, also rot hier.
+    Seit dem Entscheid vom 2026-09-16 trennt das Gate zwei Faelle, die
+    vorher beide unter "Vollprofil" liefen, und dieser Test zeigt den
+    ZWEITEN: Der Fall fuehrt eine Schicht, der BELEGTE LAUF nennt sie
+    nicht unter seinen Ausgaben — er hat an der Korrekturschicht
+    vorbeigerechnet. Frueher entschied ein ``rglob`` ueber das
+    Dateisystem, ob die Rollen Pflicht sind; jetzt entscheidet die
+    Aussage des Produzenten im Laufmanifest, und der ``rglob`` bleibt als
+    Querpruefung. Beide Wege verweigern die Abnahme, aber nur der zweite
+    sagt, WAS schiefgelaufen ist.
     """
     from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
     from rechner_pipeline.models.bestand import STAMM_NAMES
@@ -112,10 +120,13 @@ def test_mit_korrekturschicht_verlangt_das_vollprofil_schicht_und_verankerung(tm
                        "--ledger", str(lauf / "ledger.parquet"),
                        "--scheiben", str(lauf / "scheiben.parquet"),
                        "--config", str(fall / "abgeleitet" / "einpolice.toml"),
-                       "--bis", "2026-01-01"])
+                       "--manifest", str(lauf / "laufmanifest.json"),
+                       # Der Horizont ist eine Eigenschaft des LAUFS, nicht
+                       # des Aufrufs — das Manifest bindet ihn.
+                       "--bis", HORIZONT_BESTANDSFALL])
     assert ohne.exit_code == 0, ohne.errors        # P-B1 selbst ist gruen ...
     bericht = _abnahmebericht(fall)                # ... aber kein A-M4-Beleg
     assert bericht.exit_code != 0
     meldung = " ".join(e["message"] for e in bericht.errors)
-    assert "Vollprofil" in meldung
+    assert "nennt sie aber nicht unter seinen Ausgaben" in meldung, meldung
     assert "'schichten'" in meldung and "'verankerung'" in meldung

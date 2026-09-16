@@ -30,7 +30,7 @@ jeder Schluessel gehoert genau einer davon an.
 
 | Ebene | Was sie ist | Beispiele | Waehrend eines Falls |
 |---|---|---|---|
-| 1 Entwickler und KI | die Arbeit an Tool und Vorzeige | diese Sitzungen, Reviews, ADRs, Suite | aendert das Tool nur ueber A-K1 |
+| 1 Entwickler und KI | die Arbeit an Tool und Vorzeige | diese Sitzungen, Reviews, ADRs, Suite | der Fall haelt an; die Tool-Version wechselt ausserhalb |
 | 2 KI-Tool | das agentische Migrationssystem, unabhaengig vom Unternehmen | Ontologie, Spez-Vertrag, Gates und Ledger, Zeichnungsordnung, Skills, Agentenrollen, Berichts-GENERATOREN | fix; im Rahmen konfigurierbar |
 | 3 Vorzeige | ein Unternehmen, an dem das Tool greifbar und testbar wird | Referenz-Zielsystem (Rechenkern, Produkte, Tarifplaene), Bestand und Bestandsfuehrung, der Migrationsfall mit seinen Zeichnungen, die Unternehmensseite, konfigurierte Berichts-INSTANZEN | lebt |
 | 4 Vorzeige-Werkzeuge | was die Vorzeige herstellt und in der Wirklichkeit ein Unternehmen oder Quellsystem liefern wuerde | Bestandssimulation, Quellsystem-Erzeugung, Regie-Mechanik | ausserhalb des Falls |
@@ -57,10 +57,26 @@ liegen als lokale, nicht eingecheckte Daten, nach demselben Muster wie
 reproduzierbar und die Regie testbar, ohne die Vorfuehrung zu verraten.
 
 **Das Tool ist waehrend eines Falls fix.** Aenderungen am Tool waehrend
-eines laufenden Falls sind ein Ereignis der Ebene 1 und laufen ueber das
-Gate A-K1; die Vorzeige darf in den ersten Ausbaustufen davon abweichen,
-und der Entwickler nimmt solche Aenderungen ab — ausgewiesen, nicht
-still. Das gibt A-K1 den Inhalt, der ihm bisher fehlte (U1, Befund Z1-04).
+eines laufenden Falls sind ein Ereignis der Ebene 1 — und sie laufen
+ueber KEIN Laufzeit-Gate.
+
+*Korrigiert am 2026-09-16 (Entscheid des Maintainers).* Hier stand, sie
+liefen ueber das Gate A-K1, und das sei "der Inhalt, der ihm bisher
+fehlte". Beides ist mit der Einfuehrung von `A-O1.tbox-aenderung` und
+`A-K2.kernaenderung` ueberholt: Die T-Box ist ein Teil des Tools, nicht
+das ganze Tool — Gates und Ledger, Zeichnungsordnung, Skills und
+Agentenrollen gehoeren ebenfalls dazu, und fuer die gibt es kein Gate.
+
+Es soll auch keines geben. Ein Fall, der sein Werkzeug waehrend des
+Laufs nachschaerft, hat keinen festen Boden mehr, auf dem seine Belege
+stehen — genau dafuer pinnen wir Systemstaende. Der Fall HAELT AN und
+wartet auf eine neue Tool-Version; die Version wechselt kontrolliert
+ausserhalb, und der Fall laeuft auf dem neuen Stand weiter. Das ist eine
+Entscheidung des Maintainers und in der Regel eine kollektive eines
+menschlichen Teams — also ausdruecklich KEINE Rolle des Laufzeitmodells
+(ADR-018 haelt den Maintainer aus dem Rollenmodell heraus).
+
+Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
 
 ## Konsequenzen
 

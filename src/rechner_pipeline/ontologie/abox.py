@@ -118,7 +118,7 @@ def validate_abox(
     # Die A-Box spricht das Vokabular GENAU EINER T-Box-Version (Review
     # T22-02): Eine A-Box mit fremder Version ist unter dem geltenden
     # Vokabular nicht auslegbar — neu erzeugen (abox_merge) oder die
-    # T-Box-Aenderung ueber A-K1 zeichnen.
+    # T-Box-Aenderung ueber A-O1 zeichnen.
     if abox.schema_version != ABOX_SCHEMA_VERSION:
         fehler.append(
             f"schema_version: A-Box-Datei traegt {abox.schema_version!r}, "
@@ -129,7 +129,7 @@ def validate_abox(
         fehler.append(
             f"tbox_version: A-Box traegt {abox.tbox_version!r}, geltend ist "
             f"{TBOX_VERSION!r} — A-Box aus den Fragmenten neu erzeugen "
-            "(gates.abox_merge) oder die T-Box-Aenderung ueber A-K1 zeichnen"
+            "(gates.abox_merge) oder die T-Box-Aenderung ueber A-O1 zeichnen"
         )
     gen_ids = [g.id for g in abox.generationen]
     if len(set(gen_ids)) != len(gen_ids):

@@ -27,7 +27,7 @@ verschoben:
   Zustandsmodell-Welt (ADR-004). Die Excel-Paritaet ist kein laufender Referenzwert mehr.
 * Eine neue Tarifgeneration ist **Parametrierung** — der Praezedenzfall
   TG2012 -> TG2015 lief ohne eine einzige Formelaenderung durch.
-* Ein neues Produkt kommt ueber die T-Box (Gate A-K1) und wird IM
+* Ein neues Produkt kommt ueber die T-Box (Gate A-O1) und wird IM
   Zielsystem entwickelt — nicht durch die Uebersetzung einer weiteren
   Arbeitsmappe.
 

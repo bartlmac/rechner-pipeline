@@ -34,7 +34,7 @@ flowchart TD
     gates["gates<br/>18 Module"]
     kern["kern<br/>12 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
-    models["models<br/>6 Module"]
+    models["models<br/>7 Module"]
     ontologie["ontologie<br/>16 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
@@ -44,11 +44,11 @@ flowchart TD
     bestand -- 1 --> qa
     betrieb -- 20 --> bestand
     betrieb -- 1 --> kern
-    betrieb -- 7 --> models
+    betrieb -- 9 --> models
     gates -- 13 --> bestand
     gates -- 9 --> fall
     gates -- 12 --> kern
-    gates -- 13 --> models
+    gates -- 14 --> models
     gates -- 11 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
@@ -78,16 +78,16 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 ```mermaid
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
-    bu["bu<br/>36 Module"]
-    klv["klv<br/>86 Module"]
+    bu["bu<br/>37 Module"]
+    klv["klv<br/>87 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
     system_entscheid["system/entscheid<br/>1 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 3 --> system_assurance
-    bu -- 1 --> system_entscheid
+    bu -- 2 --> system_entscheid
     klv -- 9 --> system_assurance
-    klv -- 7 --> system_entscheid
+    klv -- 8 --> system_entscheid
     klv -- 9 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv

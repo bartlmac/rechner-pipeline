@@ -87,6 +87,48 @@ def _git_stand(repo_root: Path) -> Dict[str, str]:
     return stand
 
 
+#: Der produktive Stand des Rechenkerns. Entwicklung im Fall laeuft auf
+#: einem Branch, der abgenommene Kern liegt auf main (Entscheid des
+#: Maintainers 2026-09-16) — damit ist der ALTE Kern nicht erfunden,
+#: sondern benennbar.
+#:
+#: Ausdruecklich der FERNE Ref, nicht der lokale (Entscheid 2026-09-16,
+#: zweiter Teil): Was geteilt ist, ist produktiv; ein lokaler
+#: ``main``-Ref ist eine Privatmeinung. Der Fall ist nicht theoretisch —
+#: beim Aufsetzen des Reviews lag das lokale ``main`` dieses Arbeitsbaums
+#: hinter ``origin/main``, und eine Regression dagegen haette gegen einen
+#: Kern gerechnet, der nirgends produktiv ist. Aufgefallen waere es
+#: nicht: Der Zweig enthaelt den veralteten Ref, die Aktualitaetspruefung
+#: meldet gruen.
+PRODUKTIVER_ZWEIG = "origin/main"
+
+
+def git_stand(repo_root: Path) -> Dict[str, str]:
+    """Der Git-Stand des Arbeitsbaums — oeffentlicher Name fuer ``_git_stand``.
+
+    A-K2 haelt den Git-Teil seines Belegs gegen den LEBENDEN Stand
+    (Commit, dirty). Dafuer reichen die drei lesenden Aufrufe, die dieses
+    Modul ohnehin macht; ein vierter waere eine zweite Ausnahme, und die
+    gibt es hier nicht (Waechter: test_subprozess_bleibt_auf_die_
+    beweisprovenienz_beschraenkt).
+    """
+    return _git_stand(repo_root)
+
+
+def zweig_ist_aktuell(vergleich: Mapping[str, str]) -> bool:
+    """Liegt der Branch auf der Spitze des Referenzzweigs auf?
+
+    Reine Funktion ueber die FESTGEHALTENEN Werte — ohne Subprozess. Der
+    Merge-Base ist die eine Angabe, die das Entscheid-Kommando nicht
+    selbst nachrechnen kann, ohne eine zweite Subprozess-Ausnahme
+    aufzumachen; sie bleibt deshalb eine Angabe des Produzenten. Was das
+    Gate SELBST nachprueft, sind Commit und ``dirty`` gegen den lebenden
+    Stand — das faengt den Beleg eines fremden Laufs.
+    """
+    basis, spitze = vergleich.get("merge_base"), vergleich.get("referenz_commit")
+    return bool(basis) and basis == spitze and basis != "unbekannt"
+
+
 def _quellcode_sha256() -> str:
     """SHA-256 des ausfuehrbaren Paketstands, pfad- und laengengetrennt."""
     paket = Path(__file__).resolve().parents[1]

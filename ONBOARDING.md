@@ -78,6 +78,22 @@ python -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pip install -e . --no-deps
 ```
+**On Windows, check WSL 2 first.** Docker Desktop's WSL integration
+requires a distribution running **WSL version 2**. A Windows machine may
+already carry a WSL environment that is still on version 1; the
+integration then cannot be enabled at all, and the failure is not
+obvious. Check before building:
+```
+wsl -l -v
+```
+Every distribution you intend to use must show `VERSION 2`. Convert one
+in place with `wsl --set-version <name> 2`, or install a fresh one and
+enter it explicitly:
+```
+wsl --install -d Ubuntu
+wsl -d Ubuntu
+```
+
 **Anywhere else** (Windows with Docker Desktop and WSL2, macOS): build the
 development image once and run the suite in it; the working tree is
 mounted, so code changes need no rebuild.
