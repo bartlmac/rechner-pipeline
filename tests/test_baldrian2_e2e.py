@@ -24,6 +24,7 @@ Knoten: klv/tg2015
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -42,6 +43,11 @@ from rechner_pipeline.gates import (
     verankerung_belegen,
 )
 from tests.e2e_fixture import zellen_config
+
+#: Wie oft eine Datei waehrend des Migrationscontrollings gelesen wurde
+#: (Review T25-05: die Behauptung "genau einmal" wird gezaehlt, nicht
+#: aus dem Beleg geschlossen).
+LESEZAEHLER: dict = {}
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "baldrian2_e2e"
@@ -202,19 +208,89 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             "--repo-root", str(REPO_ROOT),
         ] + _lieferungs_flags()) == 0, f"Aktuarieller Test {abnahme}"
 
-    assert migrationssuite_lauf.main([
-        "--fall", str(fall), "--generation", GENERATION,
-        "--abzug-1", ABZUG_1, "--abzug-2", ABZUG_2,
-        "--gevo-protokoll", PROTOKOLL,
-        "--bestand", str(bestand / "bestand.parquet"),
-        "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
-        "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
-        "--anker-erwartungswerte", ANKER,
-        "--stoab-je-baustein",
-        "--dk-stichtag", "jahrestag",
-        "--schicht", str(schichten),
-        "--repo-root", str(REPO_ROOT),
-    ] + _lieferungs_flags()) == 0, "Migrationscontrolling"
+    # Review T25-05 (b): Der Beleg jedes Kommandos nennt die Eingaben, auf
+    # denen sein Urteil beruht — mit dem Hash DER BYTES, die es gelesen
+    # hat. Vorher trug dieses Ergebnis nur ``system``.
+    at_beleg = json.loads(
+        (fall / "abgeleitet" / "berichte"
+         / f"aktuartest-{ABNAHMEN[-1][0]}.json").read_text(encoding="utf-8"))
+    at_eingaben = at_beleg["eingaben"]
+    assert at_eingaben, "der aktuarielle Test nennt keine Eingabe"
+    assert any(k.endswith("bestand.parquet") for k in at_eingaben)
+    assert any(k.endswith("verankerung_schichten.json") for k in at_eingaben)
+    # Die Kette DES Schichtbelegs gehoert dazu: Ihre Hashes werden beim
+    # Nachrechnen ohnehin gebildet und wurden bisher verworfen.
+    assert any(k.endswith("verankerung.parquet") for k in at_eingaben)
+    for rel, summe in at_eingaben.items():
+        pfad = Path(rel)
+        pfad = pfad if pfad.is_absolute() else fall / rel
+        assert summe == hashlib.sha256(pfad.read_bytes()).hexdigest(), rel
+
+    # Wie oft wird der Bestand gelesen? Die Zusicherung des Belegs
+    # ("der Hash gehoert zu den verarbeiteten Bytes") ist in einem ruhigen
+    # Test nicht unterscheidbar von zwei Lesungen — die Datei aendert sich
+    # ja nicht dazwischen. Also wird gezaehlt: EINMAL, nicht einmal zum
+    # Verarbeiten und spaeter noch einmal zum Hashen (Review T25-05).
+    from rechner_pipeline.bestand import parquet_io as _pio
+
+    _echt_read_bytes = Path.read_bytes
+    _echt_read_table = _pio.pq.read_table
+    LESEZAEHLER.clear()
+
+    def _zaehle(pfad) -> None:
+        schluessel = str(Path(pfad).resolve())
+        LESEZAEHLER[schluessel] = LESEZAEHLER.get(schluessel, 0) + 1
+
+    def _zaehlend(self):
+        _zaehle(self)
+        return _echt_read_bytes(self)
+
+    def _zaehlend_table(quelle, *a, **k):
+        # Beide Wege zaehlen: lies_gehasht liest ueber read_bytes,
+        # read_portfolio ueber pyarrow direkt vom PFAD. Ein Zaehler, der
+        # nur einen davon sieht, bezeugt die Behauptung nicht — genau
+        # das ist mir hier zuerst passiert.
+        if isinstance(quelle, (str, Path)):
+            _zaehle(quelle)
+        return _echt_read_table(quelle, *a, **k)
+
+    Path.read_bytes = _zaehlend
+    _pio.pq.read_table = _zaehlend_table
+    try:
+        ms_code = migrationssuite_lauf.main([
+            "--fall", str(fall), "--generation", GENERATION,
+            "--abzug-1", ABZUG_1, "--abzug-2", ABZUG_2,
+            "--gevo-protokoll", PROTOKOLL,
+            "--bestand", str(bestand / "bestand.parquet"),
+            "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
+            "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
+            "--anker-erwartungswerte", ANKER,
+            "--stoab-je-baustein",
+            "--dk-stichtag", "jahrestag",
+            "--schicht", str(schichten),
+            "--repo-root", str(REPO_ROOT),
+        ] + _lieferungs_flags())
+    finally:
+        Path.read_bytes = _echt_read_bytes
+        _pio.pq.read_table = _echt_read_table
+    assert ms_code == 0, "Migrationscontrolling"
+
+    ms_beleg = json.loads((fall / "abgeleitet" / "berichte"
+                           / "migrationssuite.json").read_text(encoding="utf-8"))
+    ms_eingaben = ms_beleg["eingaben"]
+    # Zehn Eingaben, eine gebunden: so war der Stand. Und ausgerechnet die
+    # eine wurde ZWEIMAL gelesen — einmal zum Verarbeiten, viel spaeter
+    # noch einmal zum Hashen. Jetzt stammt beides aus einem Lesevorgang,
+    # und das ist hier nachpruefbar.
+    bestand_schluessel = next(
+        k for k in ms_eingaben if k.endswith("bestand.parquet"))
+    assert ms_beleg["bestand_sha256"] == ms_eingaben[bestand_schluessel]
+    for name in (ABZUG_1, ABZUG_2, PROTOKOLL, METADATEN, ANKER):
+        assert any(k.endswith(Path(name).name) for k in ms_eingaben), name
+    for rel, summe in ms_eingaben.items():
+        pfad = Path(rel)
+        pfad = pfad if pfad.is_absolute() else fall / rel
+        assert summe == hashlib.sha256(pfad.read_bytes()).hexdigest(), rel
 
     # Freischaltung (Schritt 4 und 5): Der uebernommene Bestand wird mit
     # der Config des Falls fortgeschrieben — auf seinen Bausteinen, mit
@@ -634,6 +710,21 @@ def test_die_aktuarielle_abnahme_trifft_die_gelieferten_werte(
     assert bericht["test_bestanden"] is True
     assert bericht["grenzbefunde"] == []
     assert bericht["mengenbefunde"] == []
+
+
+def test_der_bestand_wird_genau_einmal_gelesen(gefahrener_fall: Path):
+    """Review T25-05, Haelfte (b), Klasse (2): Das Controlling las den
+    Bestand ZWEIMAL — einmal zum Verarbeiten, viel spaeter noch einmal
+    zum Hashen. Dazwischen lag der ganze Lauf; der Beleg bezeugte damit
+    nicht die verarbeiteten Bytes.
+
+    Der Hash-Vergleich im Beleg zeigt das NICHT: In einem ruhigen Test
+    aendert sich die Datei zwischen beiden Lesungen nicht, also stimmen
+    beide Hashes. Bezeugt wird die Behauptung erst durch Zaehlen."""
+    bestand = gefahrener_fall / "abgeleitet" / "bestand" / "bestand.parquet"
+    assert LESEZAEHLER, "der Zaehler hat nichts gesehen"
+    assert LESEZAEHLER.get(str(bestand.resolve())) == 1, sorted(
+        (n, k) for k, n in LESEZAEHLER.items() if n > 1)
 
 
 def test_das_controlling_prueft_jeden_vertrag(gefahrener_fall: Path):

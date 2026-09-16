@@ -48,6 +48,7 @@ from rechner_pipeline.models.manifest import (
 
 __all__ = [
     "SCHEMA_VERSION",
+    "Eingangsbindung",
     "GeleseneDatei",
     "lies_gehasht",
     "hashes_von",
@@ -953,6 +954,70 @@ def hash_key(
         except ValueError:
             return str(path)
     return str(path)
+
+
+class Eingangsbindung:
+    """Jede Eingabe GENAU EINMAL lesen und im Beleg registrieren.
+
+    Der Beleg eines Producers ist nur so viel wert wie die Bindung seiner
+    Eingaben: Er muss den Hash DER BYTES tragen, die verarbeitet wurden.
+    Zwei Verletzungen gibt es, und beide schliesst diese Klasse:
+
+    * Eine Eingabe wird gelesen, aber nicht gebunden — das Kommando
+      urteilt ueber etwas, das sein Beleg nicht nennt.
+    * Eine Datei wird ZWEIMAL gelesen, einmal zum Hashen und einmal zum
+      Verarbeiten. Dann bezeugt der Hash nicht die verarbeiteten Bytes;
+      dazwischen kann eine andere Datei gestanden haben.
+
+    Das Muster stand nach Haelfte (a) zweimal fast wortgleich in
+    ``verankerung_belegen`` und ``fuehrungsprobe``; mit den drei
+    uebrigen Producern waeren es fuenf Abschriften geworden — genau die
+    Wiederholung, die Review T25-05 benennt. Hier steht es einmal.
+
+    ``basis`` ist der Fall-Arbeitsbereich: Eingaben darunter werden
+    relativ gefuehrt (portabler Beleg), alles andere absolut.
+    """
+
+    def __init__(self, basis: Optional[Path] = None) -> None:
+        self.basis = Path(basis).resolve() if basis is not None else None
+        self.eingaben: Dict[str, str] = {}
+        self._gelesen: Dict[str, GeleseneDatei] = {}
+
+    def schluessel(self, pfad: Path) -> str:
+        pfad = Path(pfad).resolve()
+        if self.basis is not None and self.basis in pfad.parents:
+            return str(pfad.relative_to(self.basis))
+        return str(pfad)
+
+    def binde(self, pfad: Path) -> GeleseneDatei:
+        """Lesen UND registrieren — ein Lesevorgang, ein Hash.
+
+        Eine Datei, die dieser Lauf schon gebunden hat, wird NICHT noch
+        einmal gelesen: Wer sie fuer einen zweiten Zweck braucht — etwa
+        um die Kette eines fremden Belegs nachzurechnen — bekommt
+        dieselben Bytes. Sonst prueft die Nachrechnung einen anderen
+        Stand der Datei als den, den das Kommando verarbeitet, und der
+        Beleg sagte etwas ueber Bytes aus, die nie ins Urteil eingingen.
+        """
+        schluessel = self.schluessel(Path(pfad))
+        gelesen = self._gelesen.get(schluessel)
+        if gelesen is None:
+            gelesen = lies_gehasht(Path(pfad))
+            self._gelesen[schluessel] = gelesen
+        self.eingaben[schluessel] = gelesen.sha256
+        return gelesen
+
+    def registriere(self, pfad: Path, sha256: str) -> None:
+        """Einen anderswo gebildeten Hash uebernehmen.
+
+        Fuer Ketten, die eine fremde Provenienz nachrechnen und die
+        Hashes dabei ohnehin bilden: Sie gehoeren in den eigenen Beleg,
+        statt nach dem Vergleich verworfen zu werden.
+        """
+        self.eingaben[self.schluessel(Path(pfad))] = sha256
+
+    def als_beleg(self) -> Dict[str, str]:
+        return dict(sorted(self.eingaben.items()))
 
 
 def hashes_von(

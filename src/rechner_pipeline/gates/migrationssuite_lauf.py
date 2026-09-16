@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io as _io
 import datetime as dt
 import hashlib
 import json
@@ -38,7 +39,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline import fall as fall_mod
-from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.bestand.parquet_io import (
+    read_portfolio,
+    read_portfolio_aus_bytes,
+)
+from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import model_point_kwargs
 from rechner_pipeline.kern.beitragsreduktion import (
@@ -51,7 +56,11 @@ from rechner_pipeline.qa.migrationssuite import (
     VertragsPruefung,
     pruefe_bestand,
 )
-from rechner_pipeline.spez.validierung import lade_spez
+from rechner_pipeline.spez.validierung import (
+    lade_spez,
+    lade_spez_aus_bytes,
+    spez_pfad,
+)
 
 #: Vorgabe-Spaltennamen der Lieferung. Sie passen zur
 #: Baldrian-Lieferung; jede andere setzt sie ueber die Schalter um.
@@ -67,9 +76,18 @@ VORGABE = {
 }
 
 
-def _lies_csv(fall: Path, name: str) -> List[Dict[str, str]]:
-    """Eine REGISTRIERTE Lieferdatei lesen (ADR-002: kein freier Pfad)."""
-    with fall_mod.eingang_datei(fall, name).open(encoding="utf-8") as datei:
+def _lies_csv(fall: Path, name: str, bindung=None) -> List[Dict[str, str]]:
+    """Eine REGISTRIERTE Lieferdatei lesen (ADR-002: kein freier Pfad).
+
+    Mit ``bindung`` GENAU EINMAL gelesen und im Beleg registriert
+    (Review T25-05): Diese Zeilen tragen das Urteil, also nennt der Beleg
+    ihren Hash.
+    """
+    pfad = fall_mod.eingang_datei(fall, name)
+    if bindung is not None:
+        return list(csv.DictReader(
+            _io.StringIO(bindung.binde(pfad).text()), delimiter=";"))
+    with pfad.open(encoding="utf-8") as datei:
         return list(csv.DictReader(datei, delimiter=";"))
 
 
@@ -707,15 +725,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     spalten = {n: getattr(args, f"spalte_{n}") for n in VORGABE}
+    # Jede Eingabe genau einmal lesen und binden (Review T25-05,
+    # Haelfte b). Vorher band dieses Kommando GENAU EINE Eingabe — den
+    # Bestand — und las ausgerechnet die zweimal: einmal zum Verarbeiten
+    # (read_portfolio vom Pfad), viel spaeter noch einmal zum Hashen.
+    # Dazwischen lag der ganze Lauf; der Beleg bezeugte damit nicht die
+    # verarbeiteten Bytes.
+    bindung = Eingangsbindung(fall)
     bestand_pfad = Path(args.bestand)
-    bestand = read_portfolio(bestand_pfad)
-    spez = lade_spez(fall, args.generation)
-    abzug_1 = _lies_csv(fall, args.abzug_1)
+    bestand_gelesen = bindung.binde(bestand_pfad)
+    bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
+    spez = lade_spez_aus_bytes(
+        bindung.binde(spez_pfad(fall, args.generation)).roh)
+    abzug_1 = _lies_csv(fall, args.abzug_1, bindung)
 
     auspraegungen = None
     summen: Optional[Dict[str, float]] = None
     if args.zeilen is not None:
-        zeilen = json.loads(Path(args.zeilen).read_text(encoding="utf-8"))
+        zeilen = bindung.binde(Path(args.zeilen)).json()
         if not isinstance(zeilen, list):
             print(f"{args.zeilen}: erwartet wird die Zeilenliste aus "
                   "gates.transformation_anwenden --zeilen", file=sys.stderr)
@@ -726,13 +753,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     beitragsfrei_seit = None
     anfangszustaende = None
     if args.vorgeschichte is not None:
-        vorgeschichte = _lies_csv(fall, args.vorgeschichte)
+        vorgeschichte = _lies_csv(fall, args.vorgeschichte, bindung)
         beitragsfrei_seit = beitragsfrei_seit_jahr_je_police(
             vorgeschichte, bestand, spalten=spalten)
         red_anteile: Dict[str, float] = {}
         red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
         if args.red_anteile_datei is not None:
-            for zeile in _lies_csv(fall, args.red_anteile_datei):
+            for zeile in _lies_csv(fall, args.red_anteile_datei, bindung):
                 if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
                     red_anteile[str(zeile["POLNR"])] = float(zeile["ANTEIL"])
                     if zeile.get("DATUM"):
@@ -741,8 +768,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                                 float(zeile["ANTEIL"]))
         anker: Dict[str, Any] = {}
         if args.anker_quelle is not None:
-            quelle = json.loads(fall_mod.eingang_datei(
-                fall, args.anker_quelle).read_text(encoding="utf-8"))
+            quelle = bindung.binde(
+                fall_mod.eingang_datei(fall, args.anker_quelle)).json()
             for eintrag in quelle.get("vertraege", []):
                 erster = next(
                     (x for x in (eintrag.get("punkte") or [])
@@ -779,12 +806,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         # importiert seinerseits lazy aus diesem Modul).
         from rechner_pipeline.gates.aktuartest_lauf import _schichten
 
-        schichten = _schichten(fall, args.schicht,
+        schichten = _schichten(fall, args.schicht, bindung=bindung,
                                repo_root=Path(args.repo_root).resolve())
-        import pandas as pd
-
-        ver = pd.read_parquet(
-            fall / "abgeleitet" / "bestand" / "verankerung.parquet")
+        ver = read_portfolio_aus_bytes(bindung.binde(
+            fall / "abgeleitet" / "bestand" / "verankerung.parquet").roh)
         monate_ta_je_police = {
             str(z.police_id): int(z.monate_ta) for z in ver.itertuples()}
 
@@ -792,8 +817,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         bestand,
         spez,
         abzug_1,
-        _lies_csv(fall, args.abzug_2),
-        _lies_csv(fall, args.protokoll),
+        _lies_csv(fall, args.abzug_2, bindung),
+        _lies_csv(fall, args.protokoll, bindung),
         stichtag_1=_parse(args.stichtag_1),
         stichtag_2=_parse(args.stichtag_2),
         spalten=spalten,
@@ -818,9 +843,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         red_verfahren=args.red_verfahren,
         stichtag_1=_parse(args.stichtag_1).isoformat(),
         stichtag_2=_parse(args.stichtag_2).isoformat(),
-        bestand_sha256=hashlib.sha256(bestand_pfad.read_bytes()).hexdigest(),
+        bestand_sha256=bestand_gelesen.sha256,
         system=systemstand(Path(args.repo_root).resolve()),
     )
+    # Der Beleg nennt, worueber geurteilt wurde — nicht nur den Bestand.
+    ergebnis["eingaben"] = bindung.als_beleg()
 
     ziel = Path(args.out) if args.out else (
         fall / "abgeleitet" / "berichte" / "migrationssuite.json")

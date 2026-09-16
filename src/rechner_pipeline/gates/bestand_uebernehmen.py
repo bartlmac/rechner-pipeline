@@ -81,7 +81,9 @@ from rechner_pipeline.bestand.migrationszugang import (
     leite_pex_ursprungssumme_ab,
 )
 from rechner_pipeline.bestand.parquet_io import write_portfolio
+from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
+from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.models.bestand import (
     GENERATION_FIELDS,
@@ -324,8 +326,9 @@ def _jahrestag(beginn: dt.date, jahre: int) -> dt.date:
         return beginn.replace(year=beginn.year + jahre, day=28)
 
 
-def _lies_zeilen(pfad: Path) -> List[Dict[str, Any]]:
-    daten = json.loads(pfad.read_text(encoding="utf-8"))
+def _lies_zeilen(pfad: Path, bindung=None) -> List[Dict[str, Any]]:
+    daten = (bindung.binde(pfad).json() if bindung is not None
+             else json.loads(pfad.read_text(encoding="utf-8")))
     if not isinstance(daten, list):
         raise SystemExit(
             f"{pfad}: erwartet wird die Zeilenliste aus "
@@ -828,11 +831,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"--out-dir muss im Fall liegen: {ziel}", file=sys.stderr)
         return 2
 
+    # Jede Eingabe genau einmal lesen und binden (Review T25-05,
+    # Haelfte b). Dieses Kommando trug bisher GAR KEINEN Eingaben-Block:
+    # Der Beleg uebernahme.json nannte zwei Eingaben beim DATEINAMEN
+    # (anker_erwartungswerte, vorgeschichte) und keine einzige mit ihrem
+    # Hash. Ein Beleg, der nicht sagt, aus welchen Bytes der Zugangsstand
+    # entstanden ist, bindet die Uebernahme an nichts.
+    bindung = Eingangsbindung(fall)
     generationsfelder = None
     if args.generation_spez:
-        from rechner_pipeline.spez.validierung import lade_spez
-
-        spez = lade_spez(fall, args.generation_spez)
+        spez = lade_spez_aus_bytes(
+            bindung.binde(spez_pfad(fall, args.generation_spez)).roh)
         if len(spez.zellen) != 1:
             # Mehrzellige Spez: die Zellwahl je Vertrag traegt die
             # transformierte Zeile; hier genuegt die Zelle, deren
@@ -841,11 +850,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             generationsfelder = dict(spez.zellen[0].model_point)
 
-    zeilen = _lies_zeilen(Path(args.zeilen))
+    zeilen = _lies_zeilen(Path(args.zeilen), bindung)
     if args.generation_spez and generationsfelder is None:
-        from rechner_pipeline.spez.validierung import lade_spez
-
-        spez = lade_spez(fall, args.generation_spez)
         zellen = {tuple(sorted(z.auspraegungen.items())): dict(z.model_point)
                   for z in spez.zellen}
         dimensionen = sorted({k for z in spez.zellen for k in z.auspraegungen})
@@ -919,12 +925,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             auspraegungen_je_police,
         )
 
-        rohe_vorgeschichte = _lies_csv(fall, args.vorgeschichte)
+        rohe_vorgeschichte = _lies_csv(fall, args.vorgeschichte, bindung)
         auspraegungen = auspraegungen_je_police(spez, zeilen)
         red_anteile: Dict[str, float] = {}
         red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
         if args.red_anteile_datei is not None:
-            for zeile in _lies_csv(fall, args.red_anteile_datei):
+            for zeile in _lies_csv(fall, args.red_anteile_datei, bindung):
                 if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
                     red_anteile[str(zeile["POLNR"])] = float(zeile["ANTEIL"])
                     if zeile.get("DATUM"):
@@ -940,8 +946,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             red_anteile[police.strip()] = float(wert)
         anker: Dict[str, Tuple[int, float]] = {}
         if args.anker_quelle is not None:
-            quelle = json.loads(fall_mod.eingang_datei(
-                fall, args.anker_quelle).read_text(encoding="utf-8"))
+            quelle = bindung.binde(
+                fall_mod.eingang_datei(fall, args.anker_quelle)).json()
             for eintrag in quelle.get("vertraege", []):
                 erster = next(
                     (x for x in (eintrag.get("punkte") or [])
@@ -1068,13 +1074,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         quelle = fall_mod.eingang_datei(fall, args.vorgeschichte)
         archiv = ziel / "quellarchiv"
         archiv.mkdir(parents=True, exist_ok=True)
-        (archiv / quelle.name).write_bytes(quelle.read_bytes())
+        # Ueber die Bindung gelesen: Das Archiv IST eine Kopie dieser
+        # Bytes, und der Beleg nennt ihren Hash — sonst waere die Kopie
+        # an nichts gebunden (Review T25-05, Haelfte b).
+        (archiv / quelle.name).write_bytes(bindung.binde(quelle).roh)
         print(f"  quellarchiv/{quelle.name}: GeVo-Metadatenliste archiviert "
               "(E1: Archiv der PLV)")
 
     # Der Beleg der Uebernahme: Modus, Schalter, Zaehler, die namentlich
     # ausgewiesenen Ausnahmen. Die Fuehrungsprobe liest ihn; ein Bestand
     # ohne Beleg hat keinen benannten Anfangszustand.
+    # Nicht nur die NAMEN der Eingaben, sondern ihre Bytes: Der Beleg
+    # bindet den Zugangsstand an das, woraus er entstanden ist. ZULETZT
+    # gesetzt, nach der letzten Lesung — sonst fehlte, was nach dem
+    # Anlegen des Belegs noch gelesen wird (die archivierte Liste).
+    beleg["eingaben"] = bindung.als_beleg()
     (ziel / "uebernahme.json").write_text(
         json.dumps(beleg, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8")
