@@ -359,3 +359,17 @@ def test_die_regression_ist_an_dieselben_kernhashes_gebunden(tmp_path):
     fehler = pruefe_kernregression(pfad, tmp_path, aenderung=_aenderung())
     assert any("kern_alt_sha256" in f and "anderen Uebergang" in f
                for f in fehler), fehler
+
+
+def test_der_produktive_zweig_ist_der_ferne_ref():
+    """Entscheid des Maintainers 2026-09-16: Was geteilt ist, ist
+    produktiv.
+
+    Ein lokaler ``main``-Ref kann hinter dem fernen liegen, ohne dass es
+    auffaellt — der Zweig ENTHAELT ihn dann, und ``zweig_ist_aktuell``
+    meldet gruen, waehrend die Regression gegen einen Kern gerechnet hat,
+    der nirgends produktiv ist. Genau das lag beim Aufsetzen des Reviews
+    vor.
+    """
+    assert PRODUKTIVER_ZWEIG.startswith("origin/"), (
+        "ein lokaler Ref taugt nicht als Massstab fuer 'produktiv'")

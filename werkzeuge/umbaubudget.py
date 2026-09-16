@@ -355,8 +355,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         description="Wie weit ein Lauf das System umgebaut hat "
                     "(Beobachtungshilfe, kein Gate).")
     p.add_argument("--repo", default=".", help="Repo-Wurzel")
-    p.add_argument("--basis", default="main",
-                   help="Vergleichsstand (Vorgabe: main)")
+    p.add_argument("--basis", default="origin/main",
+                   help="Vergleichsstand (Vorgabe: origin/main). Bewusst der "
+                        "FERNE Ref: Ein lokales main ist eine Behauptung ueber "
+                        "diesen Arbeitsbaum, kein Stand des Systems. Steht es "
+                        "zurueck, misst das Werkzeug ein zu grosses Fenster.")
     p.add_argument("--json", dest="json_ziel", default=None,
                    help="Ergebnis zusaetzlich als JSON schreiben")
     p.add_argument("--html", dest="html_ziel", default=None,

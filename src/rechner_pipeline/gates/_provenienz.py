@@ -88,10 +88,19 @@ def _git_stand(repo_root: Path) -> Dict[str, str]:
 
 
 #: Der produktive Stand des Rechenkerns. Entwicklung im Fall laeuft auf
-#: einem Branch, der abgenommene Kern liegt auf ``main`` (Entscheid des
+#: einem Branch, der abgenommene Kern liegt auf main (Entscheid des
 #: Maintainers 2026-09-16) — damit ist der ALTE Kern nicht erfunden,
 #: sondern benennbar.
-PRODUKTIVER_ZWEIG = "main"
+#:
+#: Ausdruecklich der FERNE Ref, nicht der lokale (Entscheid 2026-09-16,
+#: zweiter Teil): Was geteilt ist, ist produktiv; ein lokaler
+#: ``main``-Ref ist eine Privatmeinung. Der Fall ist nicht theoretisch —
+#: beim Aufsetzen des Reviews lag das lokale ``main`` dieses Arbeitsbaums
+#: hinter ``origin/main``, und eine Regression dagegen haette gegen einen
+#: Kern gerechnet, der nirgends produktiv ist. Aufgefallen waere es
+#: nicht: Der Zweig enthaelt den veralteten Ref, die Aktualitaetspruefung
+#: meldet gruen.
+PRODUKTIVER_ZWEIG = "origin/main"
 
 
 def git_stand(repo_root: Path) -> Dict[str, str]:
