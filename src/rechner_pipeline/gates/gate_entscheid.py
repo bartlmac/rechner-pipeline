@@ -67,6 +67,7 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Tuple
 
 from rechner_pipeline import fall as fall_mod
+from rechner_pipeline.models import anker as anker_mod
 from rechner_pipeline.gates._common import (
     Exit,
     GeleseneDatei,
@@ -1242,6 +1243,13 @@ def main(argv: Optional[List[str]] = None):
     parser.add_argument("--entscheid", default=None,
                         choices=["angenommen", "abgelehnt"])
     parser.add_argument("--entscheider", default=None)
+    parser.add_argument(
+        "--anker", default=None,
+        help="Ankerdatei des auszuliefernden Pakets (A-B1).")
+    parser.add_argument(
+        "--ankersatz", default=None,
+        help="SHA-256 des Ankersatzes, den diese Auslieferung zeichnet "
+             "(A-B1); stand.json des Pakets nennt ihn.")
     parser.add_argument("--begruendung", default=None)
     parser.add_argument(
         "--rolle", default=None,
@@ -1551,6 +1559,45 @@ def main(argv: Optional[List[str]] = None):
                     + "; ".join(ak1_fehler[:5]),
                 )
             pflichtbelege["tbox_aenderung"] = [aenderung_gelesen.sha256]
+
+        if args.gate == "A-B1":
+            # Auslieferung (Entscheid des Maintainers 2026-09-16): Der
+            # Beleg ist der ANKERSATZ des Pakets, das nach aussen geht —
+            # der Satz, der ausserhalb des Pakets liegt und es bindet.
+            # Was fachlich abgenommen ist, steht bereits gezeichnet IM
+            # Paket (A-M1 bis A-M4); diese Abnahme zeichnet nicht die
+            # Zahlen, sondern den Akt.
+            if not args.anker or not args.ankersatz:
+                return _sperre(
+                    "usage",
+                    "Annahme verweigert: A-B1 braucht --anker <datei> und "
+                    "--ankersatz <sha256> — ohne den Satz zeichnete die "
+                    "Auslieferung kein bestimmtes Paket",
+                )
+            try:
+                saetze = anker_mod.lies_anker(Path(args.anker))
+            except anker_mod.AnkerFehler as exc:
+                return _sperre("vorbedingung", f"Annahme verweigert: {exc}")
+            treffer = [z for z in saetze
+                       if anker_mod.satz_hash(z) == args.ankersatz]
+            if not treffer:
+                return _sperre(
+                    "vorbedingung",
+                    f"Annahme verweigert: kein Ankersatz {args.ankersatz[:16]}… "
+                    f"in {args.anker} — die Auslieferung zeichnete ein Paket, "
+                    "das diese Ankerdatei nicht kennt",
+                )
+            satz = treffer[-1]
+            if satz.get("art") != anker_mod.ART_AUSLIEFERUNG:
+                return _sperre(
+                    "vorbedingung",
+                    f"Annahme verweigert: der Ankersatz ist als "
+                    f"{satz.get('art')!r} ausgewiesen, nicht als "
+                    "Auslieferung — ein Paket, das nicht nach aussen geht, "
+                    "braucht keine Abnahme (und bekaeme sonst eine, die "
+                    "nichts bedeutet)",
+                )
+            pflichtbelege["anker"] = [args.ankersatz]
 
         if args.gate in AKTUARIELLE_ABNAHMEN:
             # Aktuarielle Abnahme (ADR-010): Im Bestands-Scope stuetzt

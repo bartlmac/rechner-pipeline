@@ -26,6 +26,15 @@ ist ein Lauf oder ein Agent, der etwas Falsches KONSISTENT hinschreibt.
 Gegen den hilft keine innere Stimmigkeit, sondern nur ein Bezug nach
 aussen.
 
+**Warum hier und nicht in ``betrieb``:** Der Ankersatz ist ein
+Datenvertrag zwischen DREI Beteiligten — dem Export, der ihn schreibt
+(``betrieb.seite``), der Abnahme, die ihn bindet
+(``gates.gate_entscheid --gate A-B1``), und dem Konsumenten, der dagegen
+prueft (``werkzeuge/falldaten.py``). In ``betrieb`` gelegen, waere er
+fuer die Gates unerreichbar: Die Schichtenkarte laesst ``gates ->
+betrieb`` nicht zu, und aus gutem Grund — ein Gate, das den Betrieb
+importiert, prueft nicht mehr, es fuehrt mit.
+
 Knoten: klv, bu
 """
 
@@ -33,12 +42,29 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+import hmac
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 ANKER_DATEI = "anker.jsonl"
-ANKER_SCHEMA_VERSION = 1
+#: Schema 2 (Entscheid des Maintainers 2026-09-16): Der Satz sagt, WAS er
+#: ist und WER ihn gezeichnet hat.
+ANKER_SCHEMA_VERSION = 2
+
+#: Ein gewoehnlicher Export: eine Momentaufnahme des Stands. Der
+#: Betriebsagent zeichnet sie — eine Aussage ueber Urheberschaft.
+ART_MOMENTAUFNAHME = "momentaufnahme"
+#: Eine Auslieferung: Der Stand wird nach AUSSEN sichtbar. Sie braucht
+#: zusaetzlich die menschliche Abnahme A-B1 (mensch/betriebsverantwortung; im
+#: Vorzeigebetrieb der simulierte Mensch). Ein Agent kann sie NICHT
+#: ersetzen: Was nach aussen geht, verantwortet ein Mensch.
+ART_AUSLIEFERUNG = "auslieferung"
+ARTEN = (ART_MOMENTAUFNAHME, ART_AUSLIEFERUNG)
+
+#: Dasselbe Verfahren wie bei den Abnahmen (P9_FREIGABE_VERFAHREN). Ein
+#: zweiter Mechanismus waere eine zweite Wahrheit ueber dasselbe.
+VERFAHREN = "hmac-sha256-v1"
 
 
 class AnkerFehler(ValueError):
@@ -72,11 +98,14 @@ def _letzte_zeile(protokoll: Path) -> str:
 
 def ankersatz(
     protokoll: Path, stand: str, manifest_sha256: str, journal_sha256: str,
-    *, erstellt: Optional[str] = None,
+    *, art: str = ART_MOMENTAUFNAHME, erstellt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Der Satz, der ein Paket bindet — ohne ihn irgendwo abzulegen."""
+    if art not in ARTEN:
+        raise AnkerFehler(f"unbekannte Art {art!r} (bekannt: {list(ARTEN)})")
     return {
         "schema_version": ANKER_SCHEMA_VERSION,
+        "art": art,
         "stand": str(stand),
         "protokoll_letzte_sha256": zeilen_hash(_letzte_zeile(protokoll)),
         "manifest_sha256": str(manifest_sha256),
@@ -84,6 +113,64 @@ def ankersatz(
         "erstellt": erstellt or _dt.datetime.now(
             _dt.timezone.utc).replace(microsecond=0).isoformat(),
     }
+
+
+def _ohne_zeichnung(satz: Dict[str, Any]) -> Dict[str, Any]:
+    """Der Satz OHNE seine Zeichnung — das, was gezeichnet wird.
+
+    Eine Signatur ueber sich selbst gibt es nicht; gezeichnet wird der
+    Inhalt, und die Zeichnung kommt daneben.
+    """
+    return {k: v for k, v in satz.items() if k != "zeichnung"}
+
+
+def zeichne(
+    satz: Dict[str, Any], schluessel: bytes, *, rolle: str, klasse: str,
+) -> Dict[str, Any]:
+    """Den Ankersatz zeichnen — URHEBERSCHAFT, keine Abnahme.
+
+    Ein Agent darf das (ADR-018, Nachtrag 2026-09-16): Er sagt "ich habe
+    dieses Paket erzeugt", nicht "ich stehe dafuer ein". Der Beleg traegt
+    die Klasse, also verwechselt es niemand. Was ein Agent NICHT zeichnet,
+    ist eine Abnahme — dafuer gibt es Gates, und seine gates-Liste ist
+    leer.
+    """
+    nachricht = json.dumps(_ohne_zeichnung(satz), ensure_ascii=False,
+                           sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {
+        "verfahren": VERFAHREN,
+        "rolle": str(rolle),
+        "schluesselklasse": str(klasse),
+        "schluessel_sha256": hashlib.sha256(schluessel).hexdigest(),
+        "signatur": hmac.new(schluessel, nachricht, hashlib.sha256).hexdigest(),
+    }
+
+
+def pruefe_zeichnung(
+    satz: Dict[str, Any], schluesselring: Dict[str, bytes],
+) -> List[str]:
+    """Die Zeichnung eines Ankersatzes gegen einen Schluesselring halten.
+
+    Ohne passenden Schluessel wird NICHT bestaetigt und nicht abgelehnt,
+    sondern gesagt, dass es nicht prueflbar war — dieselbe Ehrlichkeit wie
+    beim A-M4-Snapshot des Betriebseingangs, der ohne Schluesselring
+    "Angaben der Datei" heisst und nie "gezeichnet".
+    """
+    zeichnung = satz.get("zeichnung")
+    if not isinstance(zeichnung, dict):
+        return ["Ankersatz ohne Zeichnung"]
+    if zeichnung.get("verfahren") != VERFAHREN:
+        return [f"unbekanntes Verfahren {zeichnung.get('verfahren')!r}"]
+    kennung = zeichnung.get("schluessel_sha256")
+    schluessel = schluesselring.get(str(kennung))
+    if schluessel is None:
+        return [f"Schluessel {str(kennung)[:16]}… nicht bereitgestellt"]
+    nachricht = json.dumps(_ohne_zeichnung(satz), ensure_ascii=False,
+                           sort_keys=True, separators=(",", ":")).encode("utf-8")
+    erwartet = hmac.new(schluessel, nachricht, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(erwartet, str(zeichnung.get("signatur", ""))):
+        return ["Signatur stimmt nicht mit dem Inhalt des Ankersatzes ueberein"]
+    return []
 
 
 def satz_hash(satz: Dict[str, Any]) -> str:

@@ -149,9 +149,15 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: ``A-B1.auslieferung`` (Entscheid des Maintainers 2026-09-16): die
 #: Abnahme der AUSLIEFERUNG eines Stands-Pakets — der Moment, in dem ein
 #: Stand nach aussen sichtbar wird. Sie gehoert einer FACHLICHEN Rolle
-#: (``mensch/plv-betrieb``, Kundenservice-Verantwortung fuer die
+#: (``mensch/betriebsverantwortung``, Kundenservice-Verantwortung fuer die
 #: Bestandsfuehrung), nicht der IT: Was ausgeliefert wird, verantwortet
 #: der Betrieb, nicht der, der die Maschine betreibt.
+#:
+#: Sie ist die erste Abnahme der LINIE statt eines Falls (ADR-018,
+#: Nachtrag 2026-09-16): Der Bestand wird taeglich gefuehrt, unabhaengig
+#: davon, ob gerade eine Migration laeuft. Wo ihr Snapshot liegt, ist
+#: damit eine offene Frage — heute im Fall, weil das Entscheid-Kommando
+#: keinen anderen Ort kennt.
 GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-K1", "A-B1")
 
 

@@ -122,6 +122,88 @@ Simulationsschluessel ist. Neue Faelle laufen unter diesem ADR.
   der simulierten Menschen und erzeugt deren Mandate; die Auftragsprofile
   der Agentenrollen sind Tool und liegen im Repo.
 
+## Nachtrag 2026-09-16: Die Betriebsrolle, und zwei Sorten Rollen
+
+Das Rollenmodell hatte eine Luecke, die sich im Betrieb immer wieder
+gemeldet hat: **Wer verantwortet die Bestandsfuehrung?** Vier
+Agentenrollen und fuenf menschliche — und keine davon fuer das, was nach
+der Migration JEDEN TAG laeuft. Die Frage fiel deshalb abwechselnd der
+IT-Verantwortung und dem Verantwortlichen Aktuar zu, und beides war
+falsch: Der eine betreibt die Maschine, der andere verantwortet die
+Rechnung; den Bestand fuehrt keiner von beiden.
+
+Neu, als fuenfte Agentenrolle und sechste menschliche:
+
+| Kennung | Anzeige | Gegenstueck |
+|---|---|---|
+| `agent/betrieb` | Betriebs-Agent | — |
+| `mensch/betriebsverantwortung` | Betriebsverantwortung | Betriebs-Agent |
+
+Die Betriebsverantwortung ist eine **fachliche** Rolle mit
+Kundenservice-Verantwortung, nicht die IT: Sie verantwortet, was dem
+Versicherungsnehmer gegenueber gilt, nicht den Rechner, auf dem es
+entsteht. Sie zeichnet die Auslieferung (`A-B1`).
+
+### Linie und Fall — zwei Sorten Rollen
+
+Dabei faellt eine Unterscheidung auf, die das Modell bisher gar nicht
+kannte. Das Unternehmen tut ZWEIERLEI: Es fuehrt einen Bestand (Linie,
+taeglich, fallunabhaengig) und es migriert (Projekt, je Fall, endlich).
+
+| Rolle | Linie | Fall |
+|---|---|---|
+| `mensch/betriebsverantwortung` | ja | ja |
+| `mensch/verantwortlicher-aktuar` | ja | ja |
+| `mensch/entwicklungsverantwortung` | ja | ja |
+| `mensch/it-verantwortung` | ja | ja |
+| `mensch/programmleitung` | nein | ja |
+| `mensch/quell-aktuar` | nein | ja |
+
+Die ersten vier gibt es, solange es das Unternehmen gibt. Die
+Programmleitung entsteht mit einem Fall und endet mit ihm; der Aktuar
+des abgebenden Hauses ohnehin. Das ist keine Feinheit: Eine Fallrolle
+hat im Tagesbetrieb nichts zu zeichnen, und eine Linienrolle zeichnet
+Dinge, die kein Fall abdeckt — die Auslieferung des laufenden Bestands
+ist genau so ein Ding.
+
+**Offen und ausdruecklich benannt:** `A-B1.auslieferung` ist eine
+LINIEN-Abnahme, ihr Snapshot liegt aber heute im FALL
+(`<fall>/entscheide/`), weil das Entscheid-Kommando keinen anderen Ort
+kennt. Solange eine Laufzeitumgebung genau einen Fall traegt, faellt das
+nicht auf; sobald sie mehrere traegt, ist nicht mehr bestimmt, in welchen
+Fall die Auslieferung des Gesamtbestands gehoert. Der Ausweg waere ein
+Entscheidungsraum der ABLAGE neben dem des Falls. Das ist eine eigene
+Entscheidung und hier nur festgehalten, nicht getroffen.
+
+**Dieselbe Bauform ein zweites Mal: `A-K1`.** Das Register nennt sie
+"Tarifgeneration", ihr Belegvertrag verlangt seit Review T22-02 aber eine
+T-Box-Aenderung (`fall.py`, `BELEGROLLEN["A-K1"]`), und zwar
+scope-unabhaengig — "weil eine T-Box-Aenderung das Vokabular aller Faelle
+betrifft". Damit zeichnet A-K1 heute zwei verschiedene Dinge unter einem
+Namen: eine Tarifgeneration (Anlass Fall, Geltung Fall) und eine
+Erweiterung des Vokabulars (Anlass Fall, Geltung LINIE).
+
+Die Aufloesung der scheinbaren Inkonsequenz — "eine T-Box definiert man
+fuer einen Fall" gegen "das Vokabular aller Faelle" — ist die
+Unterscheidung dieses Abschnitts: **Anlass ist der Fall, Geltung ist die
+Linie.** Niemand erfindet eine T-Box; sie waechst, weil ein Fall eine
+Frage erzwingt (Baldrian liefert `RK`, die Ziel-Ontologie kennt kein
+Raucherkennzeichen). Ist die Erweiterung abgenommen, erbt der naechste
+Fall sie, ohne gefragt zu haben — deshalb wird die T-Box-Version
+laufuebergreifend verglichen, was bei Fall-Eigentum sinnlos waere.
+Dasselbe Muster traegt der Rechenkern: veranlasst durch einen Fall,
+verantwortet von der Linie.
+
+Offen und hier NICHT entschieden ist daher zweierlei: ob `A-K1` einen
+ehrlichen Namen bekommt oder in zwei Abnahmen zerfaellt, und wo die
+Snapshots von Abnahmen mit Linien-Geltung liegen. Beide Fragen sind
+dieselbe Frage.
+
+**Nicht Teil des Rollenmodells ist der Maintainer** dieses Repos. Er
+gehoert zur Entwicklungsumgebung des Werkzeugs, nicht zum Unternehmen,
+das damit arbeitet — der Platzhalter `mensch` mit `gates: ["*"]` entfaellt
+wie in Abschnitt 1 angekuendigt und bekommt keinen Nachfolger.
+
 ## Nachtrag 2026-09-16: Agenten zeichnen keine ABNAHME
 
 Die Regel hiess "Agentenrollen legen vor und zeichnen nie". Das war eine
@@ -143,7 +225,7 @@ Praezisiert gilt also:
   leer, und der Validator erzwingt das unveraendert — was ein Agent
   zeichnet, ist kein Gate.
 * Eine Agentenrolle **darf** einen Satz zeichnen, der keine Abnahme ist
-  (heute: den Ankersatz eines Stands-Pakets, `betrieb.anker`).
+  (heute: den Ankersatz eines Stands-Pakets, `models.anker`).
 * Die Abnahmen bleiben `mensch` und `simulation` vorbehalten.
 
 **Der praktische Grund** (Entscheid des Maintainers 2026-09-16): Bei
