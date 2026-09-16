@@ -91,8 +91,11 @@ from rechner_pipeline.gates._fall_scope import (
 )
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GLOB,
+    PRODUKTIVER_ZWEIG,
+    git_stand,
     pruefe_pk1_beleg,
     systemstand,
+    zweig_ist_aktuell,
 )
 from rechner_pipeline.models.schemas import (
     GateLedgerEntry,
@@ -497,7 +500,7 @@ def pruefe_tbox_aenderung(
 #: Maintainers 2026-09-16). Getrennt gehalten, weil sie verschiedene Dinge
 #: bezeugen: Der AENDERUNGSbeleg sagt, WAS am Kern anders wurde; der
 #: REGRESSIONSbeleg sagt, was das fuer den bestehenden Bestand bedeutet.
-KERN_AENDERUNG_SCHEMA_VERSION = 1
+KERN_AENDERUNG_SCHEMA_VERSION = 2
 KERN_REGRESSION_SCHEMA_VERSION = 1
 
 #: Die eingefrorenen Referenzwerte des Kerns — die Regressionssicherung
@@ -625,6 +628,61 @@ def pruefe_kernaenderung(
             "Referenzwerten ueberein — der Beleg gehoert zu einem anderen "
             "Stand des Kerns"
         )
+    # Der ALTE Stand (Entscheid des Maintainers 2026-09-16): Entwicklung
+    # im Fall laeuft auf einem Branch, der produktive Kern liegt auf
+    # ``main``. Damit ist die Vorher-Seite nicht mehr behauptet, sondern
+    # benennbar — und der Vergleich ist reproduzierbar, weil der Hash
+    # inhaltsadressiert ist und der Commit dazu im Beleg steht.
+    kern_alt = daten.get("kern_alt_sha256")
+    if not (isinstance(kern_alt, str) and _SHA256.match(kern_alt)):
+        fehler.append("kern_alt_sha256 fehlt oder ist kein SHA-256")
+    elif isinstance(kern_soll, str) and kern_alt == kern_soll:
+        fehler.append(
+            "kern_alt_sha256 ist kern_sha256 — der Kern hat sich nicht "
+            "geaendert, es gibt nichts abzunehmen"
+        )
+    git_beleg = daten.get("git")
+    if not isinstance(git_beleg, dict):
+        fehler.append("git fehlt oder ist kein Objekt")
+    else:
+        if git_beleg.get("dirty") != "nein":
+            fehler.append(
+                "git.dirty ist nicht 'nein' — eine Regression gegen "
+                "uncommittete Aenderungen ist nicht reproduzierbar"
+            )
+        if not zweig_ist_aktuell(git_beleg):
+            fehler.append(
+                f"der Zweig liegt nicht auf der Spitze von "
+                f"{git_beleg.get('referenz', PRODUKTIVER_ZWEIG)!r} "
+                "(merge_base != referenz_commit) — die Differenz mischte "
+                "die eigene Aenderung mit einer fremden"
+            )
+        if wurzel is not None:
+            # Gegen den LEBENDEN Git-Stand halten, nicht nur gegen sich
+            # selbst: Ein Beleg, der nur innerlich stimmig ist, bezeugt
+            # nichts (T24-04). Geprueft wird, was die DREI vorhandenen
+            # lesenden git-Aufrufe hergeben — Commit und dirty. Der
+            # Merge-Base bliebe ein vierter Aufruf und damit eine zweite
+            # Subprozess-Ausnahme; die gibt es hier nicht.
+            jetzt = git_stand(wurzel)
+            if jetzt.get("commit") == "unbekannt":
+                fehler.append(
+                    "der gegenwaertige Git-Stand ist nicht lesbar — der "
+                    "Beleg ist nicht gegen den Arbeitsbaum haltbar"
+                )
+            elif git_beleg.get("aktuell") != jetzt.get("commit"):
+                fehler.append(
+                    f"git.aktuell {str(git_beleg.get('aktuell'))[:12]!r} ist "
+                    f"nicht der gegenwaertige Commit "
+                    f"({str(jetzt.get('commit'))[:12]!r}) — der Beleg "
+                    "gehoert zu einem anderen Lauf"
+                )
+            # dirty wird NICHT gegen den lebenden Stand gehalten: Ob die
+            # Regression reproduzierbar ist, entscheidet der Baum zur
+            # MESSZEIT, nicht zur Unterschrift — die kann Tage spaeter
+            # fallen. Der festgehaltene Wert ist der richtige; und ein
+            # zwischenzeitlich veraenderter Kern faellt ohnehin ueber
+            # kern_sha256 auf.
     geaendert = daten.get("geaenderte_referenzwerte")
     if not isinstance(geaendert, list) or not all(
         isinstance(x, str) for x in geaendert
@@ -673,7 +731,8 @@ def pruefe_kernregression(
     if daten.get("schema_version") != KERN_REGRESSION_SCHEMA_VERSION:
         fehler.append(f"schema_version muss {KERN_REGRESSION_SCHEMA_VERSION} sein")
     if aenderung is not None:
-        for feld in ("von_version", "nach_version"):
+        for feld in ("von_version", "nach_version", "kern_alt_sha256",
+                     "kern_sha256"):
             if daten.get(feld) != aenderung.get(feld):
                 fehler.append(
                     f"{feld} {daten.get(feld)!r} weicht vom Aenderungsbeleg "

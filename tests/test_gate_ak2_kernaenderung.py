@@ -23,6 +23,11 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.fall import FALL_SCOPES, belegrollen
+from rechner_pipeline.gates._provenienz import (
+    PRODUKTIVER_ZWEIG,
+    git_stand,
+    zweig_ist_aktuell,
+)
 from rechner_pipeline.gates.gate_entscheid import (
     KERN_AENDERUNG_SCHEMA_VERSION,
     KERN_REGRESSION_SCHEMA_VERSION,
@@ -37,6 +42,30 @@ REPO = Path(__file__).resolve().parents[1]
 
 NULL = "0" * 64
 
+#: Der lebende Git-Stand. Die POSITIVEN Proben brauchen ihn, weil der
+#: Aenderungsbeleg seit Schema 2 gegen ihn gehalten wird (Entscheid des
+#: Maintainers 2026-09-16: der alte Kern liegt auf ``main``). Fehlt Git
+#: oder ist der Zweig nicht aktuell, wird ausdruecklich uebersprungen —
+#: ein gruener Test waere hier eine Luege ueber die Umgebung.
+_STAND = git_stand(REPO)
+#: Merge-Base und Referenz-Commit sind Angaben des Produzenten (das Gate
+#: kann sie ohne einen VIERTEN git-Aufruf nicht nachrechnen, und einen
+#: vierten gibt es nicht). Sie muessen nur gleich sein — das ist die
+#: Aussage "der Zweig liegt auf der Spitze". Der lebende Anteil ist
+#: ``aktuell``: Er MUSS der gegenwaertige Commit sein.
+_BASIS = "f" * 40
+_VERGLEICH = {
+    "referenz": PRODUKTIVER_ZWEIG,
+    "referenz_commit": _BASIS,
+    "merge_base": _BASIS,
+    "aktuell": _STAND.get("commit"),
+    "dirty": "nein",
+}
+ohne_git = pytest.mark.skipif(
+    _STAND.get("commit") == "unbekannt",
+    reason=f"kein lesbarer Git-Stand im Repo ({_STAND})",
+)
+
 
 def _aenderung(**abweichend):
     daten = {
@@ -44,7 +73,9 @@ def _aenderung(**abweichend):
         "von_version": "3.5.0",
         "nach_version": "3.6.0",
         "kern_sha256": kern_modul_hash(REPO),
+        "kern_alt_sha256": "b" * 64,
         "referenzwerte_sha256": referenzwerte_hash(REPO),
+        "git": dict(_VERGLEICH, dirty="nein"),
         "geaenderte_referenzwerte": ["referenz_jung.json"],
         "begruendung": "PEX wertstetig absorbiert (Entscheid 2026-09-15).",
     }
@@ -58,6 +89,8 @@ def _regression(**abweichend):
         "von_version": "3.5.0",
         "nach_version": "3.6.0",
         "bestand_sha256": "a" * 64,
+        "kern_sha256": kern_modul_hash(REPO),
+        "kern_alt_sha256": "b" * 64,
         "vertraege_gesamt": 834,
         "vertraege_geprueft": 834,
         "abweichungen": [
@@ -102,6 +135,7 @@ def test_die_regression_ist_pflicht_in_jedem_scope():
 # ------------------------------------------------- Beleg der Aenderung
 
 
+@ohne_git
 def test_ein_gueltiger_aenderungsbeleg_geht_durch(tmp_path):
     pfad = _schreibe(tmp_path / "aenderung.json", _aenderung())
     assert pruefe_kernaenderung(pfad, tmp_path, repo_root=REPO) == []
@@ -142,6 +176,7 @@ def test_ohne_repo_root_ist_der_kern_nicht_pruefbar_und_das_steht_da(tmp_path):
     assert any("nicht pruefbar" in f for f in fehler), fehler
 
 
+@ohne_git
 def test_die_leere_liste_geaenderter_referenzwerte_ist_erlaubt(tmp_path):
     """Nicht jede Kern-Aenderung verschiebt einen Referenzwert — fehlen
     darf die Liste aber nicht, sonst bliebe offen, ob niemand hingesehen
@@ -252,3 +287,75 @@ def test_die_regression_muss_zum_selben_uebergang_gehoeren(tmp_path):
     )
     fehler = pruefe_kernregression(pfad, tmp_path, aenderung=_aenderung())
     assert any("anderen Uebergang" in f for f in fehler), fehler
+
+
+# ------------------------------------------- Bindung an den Zweig main
+
+
+@pytest.mark.parametrize(
+    "abweichend, erwartet",
+    [
+        ({"kern_alt_sha256": "kurz"}, "kern_alt_sha256 fehlt"),
+        ({"git": "keins"}, "git fehlt oder ist kein Objekt"),
+    ],
+)
+def test_die_zweig_bindung_faengt_die_naheliegenden_faelschungen(
+    tmp_path, abweichend, erwartet
+):
+    pfad = _schreibe(tmp_path / "aenderung.json", _aenderung(**abweichend))
+    fehler = pruefe_kernaenderung(pfad, tmp_path, repo_root=REPO)
+    assert any(erwartet in f for f in fehler), (abweichend, fehler)
+
+
+def test_ein_unveraenderter_kern_hat_nichts_abzunehmen(tmp_path):
+    """kern_alt == kern_neu heisst: Es gibt keine Aenderung. Eine
+    Unterschrift darueber waere eine Unterschrift ueber nichts."""
+    gleich = kern_modul_hash(REPO)
+    pfad = _schreibe(
+        tmp_path / "aenderung.json", _aenderung(kern_alt_sha256=gleich)
+    )
+    fehler = pruefe_kernaenderung(pfad, tmp_path, repo_root=REPO)
+    assert any("hat sich nicht geaendert" in f for f in fehler), fehler
+
+
+def test_ein_schmutziger_arbeitsbaum_sperrt(tmp_path):
+    """Eine Regression gegen uncommittete Aenderungen ist nicht
+    reproduzierbar — also bezeugt sie nichts."""
+    pfad = _schreibe(
+        tmp_path / "aenderung.json",
+        _aenderung(git=dict(_VERGLEICH, dirty="ja")),
+    )
+    fehler = pruefe_kernaenderung(pfad, tmp_path, repo_root=REPO)
+    assert any("nicht reproduzierbar" in f for f in fehler), fehler
+
+
+def test_ein_zweig_neben_main_sperrt(tmp_path):
+    """Laeuft main weiter, mischt die Differenz die eigene Aenderung mit
+    einer fremden. Das ist genau der Fall, in dem ein Regressionsbeleg
+    still etwas anderes bezeugt, als er behauptet."""
+    danebenliegend = dict(_VERGLEICH, merge_base="c" * 40)
+    pfad = _schreibe(tmp_path / "aenderung.json", _aenderung(git=danebenliegend))
+    fehler = pruefe_kernaenderung(pfad, tmp_path, repo_root=REPO)
+    assert any("nicht auf der Spitze" in f for f in fehler), fehler
+
+
+def test_der_beleg_wird_gegen_den_lebenden_git_stand_gehalten(tmp_path):
+    """Innere Stimmigkeit beweist nichts: Ein Beleg, der einen fremden,
+    in sich schluessigen Commit nennt, muss auffallen — geprueft wird
+    ``aktuell`` gegen den gegenwaertigen Commit des Arbeitsbaums."""
+    erfunden = "d" * 40
+    fremd = dict(_VERGLEICH, aktuell=erfunden)
+    pfad = _schreibe(tmp_path / "aenderung.json", _aenderung(git=fremd))
+    fehler = pruefe_kernaenderung(pfad, tmp_path, repo_root=REPO)
+    assert any("gegenwaertige Commit" in f for f in fehler), fehler
+
+
+def test_die_regression_ist_an_dieselben_kernhashes_gebunden(tmp_path):
+    """Versionsstrings sind Behauptungen, Hashes nicht. Eine Regression
+    mit fremdem Kern-Hash gehoert zu einem anderen Uebergang."""
+    pfad = _schreibe(
+        tmp_path / "regression.json", _regression(kern_alt_sha256="e" * 64)
+    )
+    fehler = pruefe_kernregression(pfad, tmp_path, aenderung=_aenderung())
+    assert any("kern_alt_sha256" in f and "anderen Uebergang" in f
+               for f in fehler), fehler

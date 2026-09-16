@@ -115,6 +115,27 @@ Produzenten dafuer nicht gibt, ist A-K2 nicht zeichenbar — gewollt, denn
 der geaenderte Kern bewertet nach der Migration den laufenden Bestand
 weiter, und diese Wirkung sieht sonst niemand.
 
+**Woher der ALTE Kern kommt** (Entscheid des Maintainers 2026-09-16):
+Entwicklung im Fall laeuft auf einem Branch, der produktive Kern liegt
+auf `main`. Damit ist die Vorher-Seite nicht erfunden, sondern
+benennbar, und der Beleg traegt beide Kern-Hashes plus den Git-Stand.
+Zwei Bedingungen machen den Vergleich erst ehrlich, und beide sperren:
+`dirty` muss `nein` sein — eine Regression gegen uncommittete
+Aenderungen ist nicht reproduzierbar —, und der Zweig muss auf der
+Spitze von `main` liegen (`merge_base == referenz_commit`). Laeuft
+`main` weiter, mischt die Differenz die eigene Aenderung mit einer
+fremden; dann wird rebast und neu gerechnet.
+
+Der Git-Stand im Beleg wird gegen den LEBENDEN Stand gehalten, nicht nur
+gegen sich selbst: Ein Beleg, der einen fremden, in sich schluessigen
+Commit nennt, faellt auf. Innere Stimmigkeit bezeugt nichts (T24-04).
+
+Zwei Kernstaende in EINEM Lauf gibt es dabei nicht: Dynamische Lader
+sind in `src` ein Befund der Code-Karte, weil sie ein Modul an jeder
+Kante vorbeiholen. Der Produzent rechnet deshalb zweimal — im
+`main`-Worktree und im Branch — und ein Vergleicher, der nur Daten liest
+und keinen Kern importiert, bildet die Differenz.
+
 **`A-B1.auslieferung`** (Entscheid des Maintainers 2026-09-16) ist die
 erste Abnahme mit Gegenstand `B`: Sie zeichnet den Moment, in dem ein
 Stands-Paket nach AUSSEN sichtbar wird. Die Nummer 1 ist frei, weil die
