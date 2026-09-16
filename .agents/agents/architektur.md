@@ -15,7 +15,7 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 # Architektur-Agent — ``agent/architektur``
 
 **Ebene:** KI-Tool. **Menschliches Gegenstueck:** die IT-Verantwortung
-(``mensch/it-verantwortung``), die zeichnet.
+(``mensch/architektur``), die zeichnet.
 
 ## Ziel
 

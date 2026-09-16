@@ -13,7 +13,7 @@ description: >-
 # Rechenkern-Agent — ``agent/rechenkern``
 
 **Ebene:** KI-Tool. **Menschliches Gegenstueck:** die
-Entwicklungsverantwortung (``mensch/entwicklungsverantwortung``), die
+Rechenkern-Verantwortung (``mensch/rechenkern``), die
 zeichnet.
 
 ## Ziel

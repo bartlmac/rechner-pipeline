@@ -40,16 +40,32 @@ Sie zeichnen NIE.
 
 **Menschliche Rollen** (Funktionen des Unternehmens). Sie pruefen die
 Vorlagen, stellen Rueckfragen, sehen selbst nach und zeichnen mit ihrem
-Schluessel. Jede hat ein Gegenstueck unter den Agentenrollen, dazu die
-Gegenseite des abgebenden Hauses.
+Schluessel. Sie tragen DENSELBEN Namen wie die Agentenrolle, die ihnen
+zuarbeitet; die Ebene steht im Praefix, nicht im Namen.
 
-| Kennung | Anzeige | Gegenstueck |
-|---|---|---|
-| `mensch/verantwortlicher-aktuar` | Verantwortlicher Aktuar | Aktuariats-Agent |
-| `mensch/it-verantwortung` | IT-Verantwortung | Architektur-Agent |
-| `mensch/entwicklungsverantwortung` | Entwicklungsverantwortung | Rechenkern-Agent |
-| `mensch/programmleitung` | Programmleitung | Programmleitungs-Agent |
-| `mensch/quell-aktuar` | Aktuar des abgebenden Hauses | keines (Gegenseite) |
+| Kennung | Anzeige |
+|---|---|
+| `mensch/aktuariat` | Verantwortlicher Aktuar |
+| `mensch/architektur` | IT-Verantwortung |
+| `mensch/rechenkern` | Rechenkern-Verantwortung |
+| `mensch/betrieb` | Betriebsverantwortung |
+| `mensch/programmleitung` | Programmleitung |
+| `mensch/quell-aktuar` | Aktuar des abgebenden Hauses |
+
+**Entscheid des Maintainers 2026-09-16: gleiche Namen auf beiden Ebenen.**
+Zuvor hiessen die menschlichen Rollen nach ihrer Verantwortung
+(`verantwortlicher-aktuar`, `it-verantwortung`, `entwicklungsverantwortung`,
+`betriebsverantwortung`), die Agentenrollen nach ihrem Fachgebiet
+(`aktuariat`, `architektur`, `rechenkern`, `betrieb`). Die Paare waren
+nicht ablesbar, die Tabelle brauchte dafuer eine eigene Spalte
+"Gegenstueck". Jetzt traegt die Kennung das Fachgebiet und das Praefix die
+Ebene: `agent/rechenkern` legt vor, `mensch/rechenkern` zeichnet. Die
+Spalte entfaellt, weil der Name die Paarung IST — dasselbe Prinzip, das
+bei der Simulation schon galt ("die Rollenkennung bleibt dieselbe wie in
+der Wirklichkeit"), eine Ebene hoeher angewandt. Der gesetzliche Titel
+geht dabei nicht verloren: Die Kennung ist `mensch/aktuariat`, angezeigt
+wird "Verantwortlicher Aktuar". `mensch/quell-aktuar` behaelt seinen
+Namen, er hat als Gegenseite kein Agenten-Gegenstueck.
 
 Die bisherigen Kennungen `plv-aktuar`, `plv-va`, `quelle-experte`,
 `programmleiter` und der Platzhalter `mensch` entfallen; die Vorzeige
@@ -134,10 +150,10 @@ Rechnung; den Bestand fuehrt keiner von beiden.
 
 Neu, als fuenfte Agentenrolle und sechste menschliche:
 
-| Kennung | Anzeige | Gegenstueck |
-|---|---|---|
-| `agent/betrieb` | Betriebs-Agent | — |
-| `mensch/betriebsverantwortung` | Betriebsverantwortung | Betriebs-Agent |
+| Kennung | Anzeige |
+|---|---|
+| `agent/betrieb` | Betriebs-Agent |
+| `mensch/betrieb` | Betriebsverantwortung |
 
 Die Betriebsverantwortung ist eine **fachliche** Rolle mit
 Kundenservice-Verantwortung, nicht die IT: Sie verantwortet, was dem
@@ -152,10 +168,10 @@ taeglich, fallunabhaengig) und es migriert (Projekt, je Fall, endlich).
 
 | Rolle | Linie | Fall |
 |---|---|---|
-| `mensch/betriebsverantwortung` | ja | ja |
-| `mensch/verantwortlicher-aktuar` | ja | ja |
-| `mensch/entwicklungsverantwortung` | ja | ja |
-| `mensch/it-verantwortung` | ja | ja |
+| `mensch/betrieb` | ja | ja |
+| `mensch/aktuariat` | ja | ja |
+| `mensch/rechenkern` | ja | ja |
+| `mensch/architektur` | ja | ja |
 | `mensch/programmleitung` | nein | ja |
 | `mensch/quell-aktuar` | nein | ja |
 

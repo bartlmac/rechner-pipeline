@@ -149,7 +149,7 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: ``A-B1.auslieferung`` (Entscheid des Maintainers 2026-09-16): die
 #: Abnahme der AUSLIEFERUNG eines Stands-Pakets — der Moment, in dem ein
 #: Stand nach aussen sichtbar wird. Sie gehoert einer FACHLICHEN Rolle
-#: (``mensch/betriebsverantwortung``, Kundenservice-Verantwortung fuer die
+#: (``mensch/betrieb``, Kundenservice-Verantwortung fuer die
 #: Bestandsfuehrung), nicht der IT: Was ausgeliefert wird, verantwortet
 #: der Betrieb, nicht der, der die Maschine betreibt.
 #:

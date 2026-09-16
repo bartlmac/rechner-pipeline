@@ -96,7 +96,7 @@ erste Abnahme mit Gegenstand `B`: Sie zeichnet den Moment, in dem ein
 Stands-Paket nach AUSSEN sichtbar wird. Die Nummer 1 ist frei, weil die
 Nummern je Art UND Gegenstand laufen — `P-B1.bestandspruefung` ist eine
 Pruefung, `A-B1.auslieferung` eine Abnahme. Gezeichnet wird sie von
-`mensch/betriebsverantwortung`, einer fachlichen Rolle (Kundenservice-Verantwortung
+`mensch/betrieb`, einer fachlichen Rolle (Kundenservice-Verantwortung
 fuer die Bestandsfuehrung), nicht von der IT: Was ausgeliefert wird,
 verantwortet der Betrieb, nicht der, der die Maschine betreibt.
 

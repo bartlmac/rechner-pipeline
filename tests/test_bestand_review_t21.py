@@ -182,7 +182,7 @@ def test_die_kopfzeile_behauptet_keinen_simulationsschluessel_ohne_snapshots(tmp
     assert "Schlüsselklasse" in seite
     def _e(gate, klasse):
         return {"gate": gate, "entscheid": "angenommen", "entscheider": "x",
-                "rolle": "mensch/verantwortlicher-aktuar", "schluesselklasse": klasse,
+                "rolle": "mensch/aktuariat", "schluesselklasse": klasse,
                 "schluessel_sha256": "", "strukturell_verifiziert": True,
                 "verifikationsbefunde": [], "signatur_verifiziert": False}
 

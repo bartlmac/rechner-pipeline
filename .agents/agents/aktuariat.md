@@ -15,7 +15,7 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 # Aktuariats-Agent — ``agent/aktuariat``
 
 **Ebene:** KI-Tool. **Menschliches Gegenstueck:** der Verantwortliche
-Aktuar (``mensch/verantwortlicher-aktuar``), der zeichnet.
+Aktuar (``mensch/aktuariat``), der zeichnet.
 
 ## Ziel
 

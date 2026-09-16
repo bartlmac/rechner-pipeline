@@ -39,9 +39,9 @@ def _schluessel(pfad: Path, inhalt: bytes) -> str:
     return hashlib.sha256(inhalt).hexdigest()
 
 
-VA = "mensch/verantwortlicher-aktuar"
+VA = "mensch/aktuariat"
 QUELLE = "mensch/quell-aktuar"
-IT = "mensch/it-verantwortung"
+IT = "mensch/architektur"
 
 
 def _schreibe_ordnung(pfad: Path, rollen: dict) -> Path:

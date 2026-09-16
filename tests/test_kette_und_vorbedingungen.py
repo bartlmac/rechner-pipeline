@@ -361,7 +361,7 @@ def _ordnung_und_schluessel(tmp_path):
         VA: {"schluessel_sha256": fingerprints["plv-aktuar"],
              "schluesselklasse": "simulation",
              "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
-        "mensch/it-verantwortung": {"schluessel_sha256": fingerprints["plv-it"],
+        "mensch/architektur": {"schluessel_sha256": fingerprints["plv-it"],
                                     "schluesselklasse": "simulation",
                                     "gates": ["A-K1"]},
     }}), encoding="utf-8")

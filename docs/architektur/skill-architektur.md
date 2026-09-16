@@ -23,14 +23,16 @@ Skills sind Faehigkeiten; Rollen sind, wer sie in welchem Auftrag
 ausuebt. Seit ADR-018 gibt es genau vier Agentenrollen, versioniert als
 Definitionen unter `.claude/agents/` (gespiegelt in `.agents/agents/`,
 Paritaet test-tragend). Sie legen vor und zeichnen nie; jede hat ein
-menschliches Gegenstueck, das mit seinem Schluessel zeichnet.
+menschliches Gegenstueck, das mit seinem Schluessel zeichnet. Es traegt
+seit dem Entscheid vom 2026-09-16 DENSELBEN Namen mit dem Praefix
+`mensch/` — `agent/rechenkern` legt vor, `mensch/rechenkern` zeichnet.
 
-| Agentenrolle | Ziel (Perspektive eines laufenden Unternehmens) | Skills | Gegenstueck |
-|---|---|---|---|
-| `agent/aktuariat` | fachlich richtig abgebildet: Transformation, drei aktuarielle Abnahmen, Controlling, Bestandsfortfuehrung | transformiere-quellbestand, extrahiere-quellfragment, bereite-fachkonflikt-auf, aktuartest-durchfuehren, pruefe-migrationscontrolling | `mensch/verantwortlicher-aktuar` |
-| `agent/architektur` | in der vorgegebenen Architektur: Schichtenkarte, Nachweiskette, Vertrauensgrenzen, Betrieb | entwickle-im-zielsystem (als Massstab), author-rechner-toolbox-gate, teste-adversarial, integriere-migrationsinkrement, dokumentiere-system | `mensch/it-verantwortung` |
-| `agent/rechenkern` | stabiles Zielsystem: Regressionstests, Referenzwerte, Doku, Inkremente unter ADR-007 | entwickle-im-zielsystem, integriere-migrationsinkrement, teste-adversarial, dokumentiere-system | `mensch/entwicklungsverantwortung` |
-| `agent/programmleitung` | Migration effizient geliefert; orchestriert die drei anderen, haelt an jedem Gate an | migrationsfall-durchfuehren | `mensch/programmleitung` |
+| Agentenrolle | Ziel (Perspektive eines laufenden Unternehmens) | Skills |
+|---|---|---|
+| `agent/aktuariat` | fachlich richtig abgebildet: Transformation, drei aktuarielle Abnahmen, Controlling, Bestandsfortfuehrung | transformiere-quellbestand, extrahiere-quellfragment, bereite-fachkonflikt-auf, aktuartest-durchfuehren, pruefe-migrationscontrolling |
+| `agent/architektur` | in der vorgegebenen Architektur: Schichtenkarte, Nachweiskette, Vertrauensgrenzen, Betrieb | entwickle-im-zielsystem (als Massstab), author-rechner-toolbox-gate, teste-adversarial, integriere-migrationsinkrement, dokumentiere-system |
+| `agent/rechenkern` | stabiles Zielsystem: Regressionstests, Referenzwerte, Doku, Inkremente unter ADR-007 | entwickle-im-zielsystem, integriere-migrationsinkrement, teste-adversarial, dokumentiere-system |
+| `agent/programmleitung` | Migration effizient geliefert; orchestriert die drei anderen, haelt an jedem Gate an | migrationsfall-durchfuehren |
 
 Die Gegenseite des abgebenden Hauses (`mensch/quell-aktuar`) hat kein
 Agenten-Gegenstueck: Sie liefert, sie zeichnet keine Abnahme des

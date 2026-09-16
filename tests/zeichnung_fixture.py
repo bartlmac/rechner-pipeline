@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
-VA = "mensch/verantwortlicher-aktuar"
+VA = "mensch/aktuariat"
 QUELLE = "mensch/quell-aktuar"
 AGENT = "agent/programmleitung"
 

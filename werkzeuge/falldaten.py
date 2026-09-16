@@ -1070,7 +1070,7 @@ def _pruefe_auslieferung(paket: Path, fall: Optional[Path],
 
     Der Export zeichnet den Ankersatz — das sagt, WER das Paket erzeugt
     hat, und ein Agent darf es sagen. Was nach aussen geht, verantwortet
-    dagegen ein Mensch: die fachliche Rolle mensch/betriebsverantwortung, im
+    dagegen ein Mensch: die fachliche Rolle mensch/betrieb, im
     Vorzeigebetrieb ihr simuliertes Gegenstueck (Entscheid des
     Maintainers 2026-09-16).
 

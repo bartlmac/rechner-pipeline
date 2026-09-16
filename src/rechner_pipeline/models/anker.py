@@ -56,7 +56,7 @@ ANKER_SCHEMA_VERSION = 2
 #: Betriebsagent zeichnet sie — eine Aussage ueber Urheberschaft.
 ART_MOMENTAUFNAHME = "momentaufnahme"
 #: Eine Auslieferung: Der Stand wird nach AUSSEN sichtbar. Sie braucht
-#: zusaetzlich die menschliche Abnahme A-B1 (mensch/betriebsverantwortung; im
+#: zusaetzlich die menschliche Abnahme A-B1 (mensch/betrieb; im
 #: Vorzeigebetrieb der simulierte Mensch). Ein Agent kann sie NICHT
 #: ersetzen: Was nach aussen geht, verantwortet ein Mensch.
 ART_AUSLIEFERUNG = "auslieferung"
