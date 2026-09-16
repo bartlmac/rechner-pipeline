@@ -667,3 +667,150 @@ def test_der_stichtagsschnitt_ruehrt_die_vorgeschichte_nicht_an(tmp_path, monkey
     pd.testing.assert_frame_equal(
         vorgeschichte.reset_index(drop=True), geblieben.reset_index(drop=True),
         obj="Ledger der Vorgeschichte")
+
+
+# --- T24-01 (a): die drei Stellen, die ein Lauf nicht still hinnimmt -----
+#
+# Der Review hat vier Fehlerfenster reproduziert. Drei davon sind
+# Einzelstellen und hier geschlossen; das vierte — ein gemeinsamer
+# Commit-Punkt fuer den ganzen Lauf — ist Schritt (b).
+#
+# Die vorhandene Fehlerinjektion oben patcht os.replace GLOBAL und feuert
+# damit beim allerersten atomaren Parquet-Write, weit vor dem eigentlichen
+# Tausch: Sie bezeugt den alten Stand bei einem fruehen, harmlosen
+# Dateifehler, nicht am Commit-Punkt. Die Proben hier treffen gezielt.
+
+
+def _nur_bei(ziel_teil: str):
+    """os.replace/os.rename, das NUR beim benannten Ziel scheitert."""
+    echt_replace, echt_rename = os.replace, os.rename
+
+    def _replace(src, dst, *a, **k):
+        if ziel_teil in str(dst):
+            raise OSError(5, f"injiziert bei {dst}")
+        return echt_replace(src, dst, *a, **k)
+
+    def _rename(src, dst, *a, **k):
+        if ziel_teil in str(dst):
+            raise OSError(5, f"injiziert bei {dst}")
+        return echt_rename(src, dst, *a, **k)
+
+    return _replace, _rename
+
+
+def test_fehlender_stand_mit_versionierten_resten_raeumt_nichts_auf(tmp_path):
+    """Der Zustand nach einem Absturz im Erstuebergang: stand fehlt, die
+    versionierten Verzeichnisse liegen da. Vorher hielt die Aufraeumung
+    JEDES davon fuer eine Waise und loeschte den gefuehrten Bestand — der
+    T24-07-Fix deckte nur den haengenden Symlink.
+
+    Der Lauf wird NICHT abgebrochen: Eine Ablage ohne stand ist ein
+    legitimer Ausgangspunkt. Gefaehrlich ist das Loeschen, und genau das
+    unterbleibt, solange die Praemisse unklar ist."""
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    ziel = ablage.stand.resolve()
+    ablage.stand.unlink()                      # Symlink weg, Stand bleibt
+    assert not ablage.stand.exists() and ziel.is_dir()
+
+    tl._verwaiste_staende_entfernen(ablage)
+    assert ziel.is_dir(), "der gefuehrte Stand wurde geloescht"
+
+    # Der benannte Ausweg funktioniert: Symlink von Hand setzen.
+    ablage.stand.symlink_to(ziel.name)
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+
+
+def test_ohne_versionierte_reste_bleibt_das_aufraeumen_still(tmp_path):
+    """Positivkontrolle: Eine frische Ablage hat keinen stand und keine
+    Reste — dort ist nichts unklar, und die Wache darf nicht feuern."""
+    ablage = _ablage(tmp_path / "plv")
+    assert not ablage.stand.exists()
+    tl._verwaiste_staende_entfernen(ablage)    # kein Fehler
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+
+
+def _abschluss_aus_gescheitertem_lauf(ablage, monkeypatch):
+    """Ein Lauf, der den Monatsabschluss SCHREIBT und danach scheitert.
+
+    Genau der Zustand, den die Fehlerinjektion des Reviews hinterlaesst:
+    Die 0444-Datei liegt da, der gefuehrte Tag ist nicht gewandert — also
+    faellt der naechste Lauf noch einmal auf denselben Monatsersten.
+    """
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    echt = tl.write_portfolio
+
+    def _journal_kaputt(df, pfad, *a, **k):
+        if "tagesjournal" in str(pfad):
+            raise OSError(28, "No space left on device")
+        return echt(df, pfad, *a, **k)
+
+    monkeypatch.setattr(tl, "write_portfolio", _journal_kaputt)
+    code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
+    monkeypatch.undo()
+    assert code != EXIT_OK and zeile["uebernommen"] is False
+    neu_geschrieben = [a for a in zeile["abschluesse"] if a["neu"]]
+    assert neu_geschrieben, "Fixture ohne Monatsabschluss bezeugt nichts"
+    datei = ablage.abschluesse / neu_geschrieben[0]["datei"]
+    assert datei.is_file()
+    return datei
+
+
+def test_ein_vorhandener_abschluss_wird_nachgerechnet(tmp_path, monkeypatch):
+    """Vorher galt eine vorhandene Abschlussdatei ungeprueft als gueltig —
+    auch eine aus einem technisch gescheiterten Lauf. Jetzt rechnet der
+    Lauf sie nach; unveraendert heisst befundfrei."""
+    ablage = _ablage(tmp_path / "plv")
+    datei = _abschluss_aus_gescheitertem_lauf(ablage, monkeypatch)
+
+    _code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
+    vorhanden = [a for a in zeile["abschluesse"]
+                 if a["datei"] == datei.name and not a["neu"]]
+    assert vorhanden, "der vorhandene Abschluss wurde nicht wieder betrachtet"
+    assert all(a.get("nachgerechnet") for a in vorhanden)
+    assert not any("befunde" in a for a in vorhanden)
+
+
+def test_ein_abweichender_abschluss_wird_ausgewiesen_und_bleibt_stehen(
+    tmp_path, monkeypatch
+):
+    """Die Probe: Passt der festgeschriebene Stand nicht mehr zur
+    Neuberechnung, nennt die Protokollzeile es — und die 0444-Datei bewegt
+    sich nicht (ADR-011). Ohne die Nachrechnung sah das niemand."""
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+
+    ablage = _ablage(tmp_path / "plv")
+    datei = _abschluss_aus_gescheitertem_lauf(ablage, monkeypatch)
+
+    davor = datei.read_bytes()
+    datei.chmod(0o644)
+    tabelle = read_portfolio(datei)
+    tabelle.loc[tabelle.index[0], "deckungskapital"] += 1000.0
+    write_portfolio(tabelle, datei)
+    manipuliert = datei.read_bytes()
+    assert manipuliert != davor
+
+    _code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
+    betroffen = [a for a in zeile["abschluesse"]
+                 if a["datei"] == datei.name and not a["neu"]]
+    assert betroffen and betroffen[0].get("befunde"), \
+        "die Abweichung wurde nicht ausgewiesen"
+    assert any("deckungskapital" in b for b in betroffen[0]["befunde"])
+    assert datei.read_bytes() == manipuliert, "der Abschluss wurde angefasst"
+
+
+def test_eine_unschreibbare_protokollzeile_ist_ein_benannter_fehler(
+    tmp_path, monkeypatch
+):
+    """Der Stand ist uebernommen, die Zeile fehlt: Stand und Nachweis sagen
+    ab jetzt Verschiedenes. Vorher lief hier ein roher OSError bis zur CLI
+    durch — ohne Nachweis und ohne Ausweg."""
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+
+    def _kaputt(*_a, **_k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(tl, "_anfuegen", _kaputt)
+    with pytest.raises(tl.TageslaufError, match="Protokollzeile"):
+        tageslauf(ablage, dt.date(2026, 2, 3))

@@ -87,7 +87,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
-from rechner_pipeline.bestand.abschluss import AbschlussError, abschluss_pfad, schreibe_abschluss
+from rechner_pipeline.bestand.abschluss import (
+    AbschlussError,
+    abschluss_pfad,
+    pruefe_abschluss,
+    schreibe_abschluss,
+)
 from rechner_pipeline.bestand.config import BestandConfig, load_config
 from rechner_pipeline.bestand.ereignisse import EreignisError, fortschreiben, mit_zugaengen
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
@@ -706,8 +711,39 @@ def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
         fehler = _ablageverzeichnis_fehler(ablage, aktuell)
         if fehler:
             raise TageslaufError(f"Aufraeumen nicht begonnen — gefuehrter Stand: {fehler}")
-    for kandidat in ablage.wurzel.glob(f"{STAND_DIR}-*"):
-        if kandidat.is_dir() and (aktuell is None or kandidat.resolve() != aktuell):
+    kandidaten = [k for k in ablage.wurzel.glob(f"{STAND_DIR}-*") if k.is_dir()]
+    if aktuell is None and kandidaten and not ablage.stand.exists():
+        # ``stand`` gibt es nicht, aber versionierte Staende liegen da:
+        # unter anderem der Zustand nach einem Absturz zwischen den zwei
+        # Umbenennungen des Erstuebergangs (_uebernehmen) — die erste hat
+        # ``stand`` beiseitegeschoben, die zweite kam nicht mehr. Welcher
+        # der Kandidaten gefuehrt war, sagt hier nichts.
+        #
+        # Es wird NICHTS entfernt. Das ist der ganze Punkt: Gefaehrlich
+        # ist nicht der Lauf, sondern das Loeschen — vorher hielt die
+        # Aufraeumung jeden Kandidaten fuer eine Waise und raeumte den
+        # alten Stand UND die fertig geschriebene neue Generation ab
+        # (Review T24-01, Reproduktion 3). Der T24-07-Fix deckte nur den
+        # HAENGENDEN Symlink.
+        #
+        # Abbrechen waere zu scharf: Eine Ablage ohne ``stand`` ist ein
+        # legitimer Ausgangspunkt (Neuaufbau aus dem Eingang). Der Lauf
+        # baut einen neuen Stand, setzt den Symlink, und der NAECHSTE
+        # Lauf raeumt auf — dann ist die Praemisse wieder klar.
+        # Aufgeraeumt wird nur, wo man weiss, was man wegraeumt.
+        print(
+            f"tageslauf: {ablage.stand} gibt es nicht, aber die Ablage traegt "
+            f"{len(kandidaten)} versionierte(n) Stand "
+            f"({', '.join(sorted(k.name for k in kandidaten)[:3])}) — nichts "
+            "aufgeraeumt, weil unklar ist, welcher gefuehrt war. Der Lauf "
+            "baut einen neuen Stand; der naechste raeumt die Reste ab. Wer "
+            "einen der Staende weiterfuehren will, setzt den Symlink von "
+            "Hand darauf (das Protokoll nennt den zuletzt uebernommenen).",
+            file=sys.stderr,
+        )
+        return
+    for kandidat in kandidaten:
+        if aktuell is None or kandidat.resolve() != aktuell:
             _entferne_ablageverzeichnis(ablage, kandidat)
     tmp = ablage.wurzel / STAND_LINK_TMP
     if tmp.is_symlink():
@@ -1056,8 +1092,35 @@ def _tageslauf(
             for stichtag in stichtage:
                 pfad = abschluss_pfad(ablage.abschluesse, stichtag)
                 if pfad.exists():
-                    abschluesse.append({"stichtag": stichtag.isoformat(), "datei": pfad.name,
-                                        "neu": False})
+                    # Nachrechnen statt glauben (Review T24-01). Der
+                    # Kurzschluss umging den No-clobber-Schutz von
+                    # schreibe_abschluss vollstaendig: Ein Abschluss aus
+                    # einem technisch GESCHEITERTEN Lauf — die
+                    # Fehlerinjektion des Reviews hinterlaesst genau das —
+                    # galt beim naechsten Versuch ungeprueft als gueltig.
+                    #
+                    # Der Befund wird AUSGEWIESEN, nicht geheilt: Ein
+                    # festgeschriebener Stand bewegt sich nicht (ADR-011),
+                    # und eine Abweichung nach einer Kern-Aenderung ist
+                    # erwartbar. Die Protokollzeile nennt sie, damit ein
+                    # Mensch sie sieht — vorher sah sie niemand.
+                    sicht = _stichtagssicht(
+                        tabellen, config, stichtag, betriebsbeginn)
+                    befunde = pruefe_abschluss(
+                        pfad, sicht["portfolio"], sicht["historie"], config,
+                        scheiben=sicht["scheiben"],
+                        merkmale=sicht.get("merkmale"),
+                        schichten=sicht.get("schichten"),
+                        verankerung=sicht.get("verankerung"),
+                        reduktionen=sicht.get("reduktionen"),
+                    )
+                    eintrag_alt: Dict[str, Any] = {
+                        "stichtag": stichtag.isoformat(), "datei": pfad.name,
+                        "neu": False, "nachgerechnet": True,
+                    }
+                    if befunde:
+                        eintrag_alt["befunde"] = befunde[:20]
+                    abschluesse.append(eintrag_alt)
                     continue
                 # Buchungsschnitt am Stichtag, nicht am Lauftag (T24-02):
                 # Der Abschluss ist, was am Stichtag GEBUCHT war. Wache und
@@ -1131,7 +1194,21 @@ def _tageslauf(
             zeile["seite"] = rendere_bestand_heute(ablage, aktuelle_zeile=zeile).name
         except (SeiteError, OSError, ValueError) as exc:
             zeile["seite"] = f"nicht gerendert: {type(exc).__name__}: {exc}"
-    _anfuegen(ablage.protokoll_pfad, zeile)
+    try:
+        _anfuegen(ablage.protokoll_pfad, zeile)
+    except OSError as exc:
+        # Der Stand ist uebernommen, die Zeile fehlt: Stand und Nachweis
+        # sagen ab jetzt Verschiedenes, und der naechste gefuehrter_tag()
+        # bricht dauerhaft ab. Vorher lief hier ein roher OSError bis zur
+        # CLI durch — ohne Nachweis, ohne Ausweg (Review T24-01).
+        raise TageslaufError(
+            f"Protokollzeile fuer {heute.isoformat()} nicht geschrieben "
+            f"({type(exc).__name__}: {exc}). Der Stand ist "
+            f"{'uebernommen' if zeile.get('uebernommen') else 'nicht uebernommen'}"
+            f" — Stand und Nachweis passen damit nicht mehr zusammen. Ausweg: "
+            f"{ablage.protokoll_pfad} schreibbar machen und den Lauf erneut "
+            "starten; der Lauf ist idempotent"
+        ) from exc
     return exit_code, zeile
 # --------------------------------------------------------------------------- #
 # CLI

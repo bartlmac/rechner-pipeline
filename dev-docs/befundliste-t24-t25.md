@@ -48,9 +48,35 @@ Klasse "dieselbe Menge an zwei Orten gepflegt"):
    haette RED unterschlagen — das Testat wiese weniger nach, als
    geprueft wurde. Jetzt aus der Liste des Herleiters abgeleitet.
 
-**Entscheide des Maintainers, Stand 2026-09-15:** Nr. 6 entschieden (a),
-Nr. 10 erledigt. Die uebrigen acht stehen aus; Nr. 8 ist durch die
-Kreise-Pflicht auf eine Ja/Nein-Frage geschrumpft.
+**Entscheide des Maintainers, Stand 2026-09-16.** Nr. 6 (a), Nr. 8 (b),
+Nr. 10 erledigt; Nr. 4 am 2026-09-15 entschieden (PEX wertstetig, RED
+volle Absorption in die Neuberechnung, beides gebaut). Neu am 2026-09-16:
+
+- **Nr. 5 (T24-01, Umfang der Tageslauf-Transaktion): in ZWEI Schritten.**
+  Zuerst (a) — die vier Einzelstellen: fail-closed, wenn `stand` gar
+  nicht existiert; `pruefe_abschluss` statt `pfad.exists()`-Kurzschluss;
+  `_anfuegen` in den Fehlerrahmen; Fehlerinjektion gezielt je Naht statt
+  global gepatchtem `os.replace`. Eigener Commit. Danach (b) — der
+  gemeinsame Commit-Rahmen mit Write-Ahead-Marker, eigener Commit.
+  Begruendung des Schnitts: (a) ist fuer sich richtig und nimmt drei der
+  vier reproduzierten Endzustaende weg; die Klasse schliesst erst (b),
+  denn nur dort wird ein blockierter Lauf wieder aufnehmbar — und genau
+  der haelt den Nachtbetrieb an.
+- **Nr. 1 (T24-04 Teil 2, Form der Verankerung): externer Anker PLUS
+  Zeichnung des Paketmanifests beim Export.** Der Anker ist der Hash der
+  letzten Protokollzeile, geschrieben in den FALL (neben die
+  A-M4-Snapshot-Hashes, die er ohnehin haelt) — dorthin reicht der
+  Tagesbetrieb nicht. Genau das ist der Punkt: Ein Wert, den der
+  schreibende Prozess selbst aendern kann, ist kein Anker. Verworfen:
+  Zeichnung jeder Protokollzeile beim Lauf (legte einen Schluessel in
+  einen unbeaufsichtigten Nachtlauf), und "der Konsument prueft die
+  Ablage statt des Pakets" (dann ist das Paket kein Nachweis mehr,
+  sondern ein Zeiger auf ein laufendes System). Das Angreifermodell ist
+  gesetzt: die ganze Kette, und der wahrscheinliche Angreifer ist kein
+  Faelscher, sondern ein Lauf oder ein Agent, der etwas Falsches
+  konsistent hinschreibt.
+
+Offen bleiben Nr. 2, 3, 7, 9.
 
 **Zur Messung von T24-02 an echten Daten** (Laufzeit `~/apps/plv`): Die
 Erstbefuellung holte 1994 bis 2026 in EINEM Lauf nach und rechnete damit
