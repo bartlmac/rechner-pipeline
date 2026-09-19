@@ -961,3 +961,60 @@ def test_ein_unlesbarer_marker_haelt_den_lauf_an(tmp_path):
 
     with pytest.raises(tl.TageslaufError, match="laesst sich aber nicht lesen"):
         tageslauf(ablage, dt.date(2026, 2, 3))
+
+
+def test_jeder_abschluss_traegt_seine_monatskennzahlen(gefuehrt):
+    """Die Monatszeile der Unternehmensseite konsumiert das Modell, sie
+    rechnet nicht selbst (Auftrag des Maintainers 2026-09-19).
+
+    Geprueft wird am ECHTEN Protokoll des Laufs, nicht an einer selbst
+    gebauten Sicht: Die Zahlen sollen aus derselben Stichtagssicht
+    stammen, aus der auch der Abschluss entsteht.
+    """
+    ablage, _ = gefuehrt
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    abschluesse = [a for z in zeilen for a in z["abschluesse"]]
+    assert abschluesse, "kein Abschluss im Protokoll"
+    for a in abschluesse:
+        for feld in ("in_kraft", "zugaenge", "leistungen"):
+            assert feld in a, (a["stichtag"], feld)
+            assert isinstance(a[feld], int), (a["stichtag"], feld)
+            assert a[feld] >= 0, (a["stichtag"], feld)
+
+
+def test_in_kraft_des_abschlusses_ist_der_stand_seines_stichtags(gefuehrt):
+    """Nicht der Stand von heute: Auf der Sicht von heute erzaehlte die
+    Zahl vom selben Stichtag eine andere Geschichte als der Abschluss
+    daneben (T24-02)."""
+    from rechner_pipeline.bestand.fuehrung import bestand_am
+
+    ablage, _ = gefuehrt
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    for z in zeilen:
+        for a in z["abschluesse"]:
+            stichtag = dt.date.fromisoformat(a["stichtag"])
+            abschluss = read_portfolio(ablage.abschluesse / a["datei"])
+            # Der Abschluss IST der in-force-Stand seines Stichtags; seine
+            # Zeilenzahl muss die gemeldete Zahl sein.
+            assert a["in_kraft"] == len(abschluss), a["stichtag"]
+
+
+def test_die_zaehler_zaehlen_vorfaelle_und_nicht_buchungszeilen(gefuehrt):
+    """Ein Zugang bucht Summe UND Bruttojahresbeitrag — zwei Zeilen
+    desselben Vorfalls (BETRAG_ART_JE_EREIGNIS). Wer Zeilen zaehlt,
+    meldet doppelt so viele Zugaenge, wie es gab."""
+    from rechner_pipeline.models.bestand import ZUGANG_EREIGNISSE
+
+    ablage, _ = gefuehrt
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    gemeldet = sum(a["zugaenge"] for z in zeilen for a in z["abschluesse"])
+    journal = read_portfolio(ablage.stand / ".." / "journal" / "tagesjournal.parquet") \
+        if (ablage.stand / ".." / "journal" / "tagesjournal.parquet").exists() else None
+    if journal is None:
+        pytest.skip("kein Tagesjournal in dieser Ablage")
+    zug = journal[journal["ereignis"].isin(ZUGANG_EREIGNISSE)]
+    zeilenzahl = len(zug)
+    vorfaelle = len(zug.drop_duplicates(subset=["police_id", "ereignis", "status_date"]))
+    if zeilenzahl == vorfaelle:
+        pytest.skip("in dieser Ablage bucht kein Zugang zwei Betragsarten")
+    assert gemeldet <= vorfaelle, (gemeldet, vorfaelle, zeilenzahl)
