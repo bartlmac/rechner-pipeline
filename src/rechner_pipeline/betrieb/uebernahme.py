@@ -52,6 +52,23 @@ from rechner_pipeline.models.bestand import (
     validate_verankerung,
 )
 
+#: Wurzel der VEROEFFENTLICHTEN Eingaenge in der Laufzeitablage.
+UEBERNAHME_DIR = "uebernahme"
+#: Wurzel der Eingaenge IM BAU — daneben, nicht darin (Befund T26-01).
+#:
+#: Vorher entstand ein Eingang als ``<fallname>.neu`` NEBEN seinem
+#: spaeteren Namen, im selben Verzeichnis. Das Suffix war die einzige
+#: Unterscheidung zwischen "Arbeitsrest" und "Eingang" — und ``fall.neu``
+#: ist ein gueltiger Fallname. Wer danach den Fall ``fall`` registrierte,
+#: loeschte den fremden, regulaer registrierten Eingang ``fall.neu``.
+#:
+#: Zwei getrennte Wurzeln machen die Ueberschneidung unmoeglich, statt
+#: sie zu verbieten: Kein Fallname kann einen Pfad unter der einen Wurzel
+#: auf einen Pfad unter der anderen abbilden. Derselbe Schnitt schliesst
+#: Befund T26-15 mit — der Leser sieht unter ``uebernahme/`` nur noch
+#: Veroeffentlichtes, und ein abgebrochenes Anlegen blockiert den
+#: Tagesbetrieb nicht mehr.
+STAGING_DIR = "uebernahme.neu"
 EINGANG_DATEI = "eingang.json"
 #: Schema 2 (Review T24-08): Der Eingang nennt sein Nummernband und
 #: registriert die Uebersetzungstabelle Quell- auf Zielnummer.
@@ -733,7 +750,7 @@ def eingang_anlegen(
     # Der Snapshot ist Pflicht und wird geprueft (T22-06), BEVOR irgendetwas
     # angelegt wird.
     zeichnung = pruefe_am4_snapshot(fall, snapshot_sha256)
-    ziel = Path(stand) / "uebernahme" / fallname
+    ziel = Path(stand) / UEBERNAHME_DIR / fallname
     if ziel.exists():
         raise UebernahmeError(
             f"{ziel} existiert bereits — ein Eingang wird nie ueberschrieben; "
@@ -744,17 +761,26 @@ def eingang_anlegen(
     # blockierte sonst dauerhaft, weil das Verzeichnis als "nie
     # ueberschreiben" galt. Ein Rest eines abgebrochenen Anlegens wird
     # entfernt — er war nie ein Eingang.
-    arbeit = ziel.with_name(ziel.name + ".neu")
+    # Die Staging-Wurzel liegt NEBEN der Eingangswurzel (T26-01). Der
+    # ``ohne_marker`` darunter ist die zweite Sicherung derselben Aussage:
+    # Selbst wenn jemand die Wurzeln wieder zusammenlegte, verbietet er
+    # die Loeschung eines Verzeichnisses, das eine eingang.json traegt.
+    staging = Path(stand) / STAGING_DIR
+    arbeit = staging / fallname
     if arbeit.exists():
         try:
             entferne_verzeichnis(
-                arbeit, innerhalb=Path(stand) / "uebernahme",
-                name_ok=lambda n: n.endswith(".neu"),
+                arbeit, innerhalb=staging,
+                name_ok=lambda n: n == fallname,
+                ohne_marker=EINGANG_DATEI,
                 grund="Rest eines abgebrochenen Anlegens",
             )
         except LoeschFehler as exc:
             raise UebernahmeError(str(exc)) from exc
     arbeit.mkdir(parents=True)
+    # Die Eingangswurzel muss es geben, bevor umbenannt wird — frueher
+    # entstand sie beilaeufig, weil das Arbeitsverzeichnis darin lag.
+    ziel.parent.mkdir(parents=True, exist_ok=True)
     # Das Zielsystem vergibt seine eigenen Policennummern (Review T24-08,
     # Entscheid des Maintainers 2026-09-15). Niemand schreibt uns in einer
     # Migration einen Datensatz um; die Transformation ist unsere Arbeit
@@ -775,7 +801,7 @@ def eingang_anlegen(
             f"{quelle}/bestand.parquet: police_id nicht eindeutig — ohne "
             "eindeutige Quellnummern gibt es keine Uebersetzung"
         )
-    band_von, band_bis = naechstes_band(Path(stand) / "uebernahme", len(quelle_ids))
+    band_von, band_bis = naechstes_band(Path(stand) / UEBERNAHME_DIR, len(quelle_ids))
     abbildung = {q: band_von + i for i, q in enumerate(quelle_ids)}
 
     dateien: Dict[str, str] = {}
@@ -811,8 +837,10 @@ def eingang_anlegen(
     dateien[POLICENNUMMERN_DATEI] = sha256_bytes((arbeit / POLICENNUMMERN_DATEI).read_bytes())
     # Erst die Pruefung am Eingang des Betriebs, dann die Registrierung:
     # Ein Zugangsstand, dessen Nebentabellen das Gate nicht annehmen
-    # wuerde, wird nicht Eingang (N-01). Der Rest unter ``.neu`` ist kein
-    # Eingang und wird beim naechsten Anlegen entfernt.
+    # wuerde, wird nicht Eingang (N-01). Der Rest in der Staging-Wurzel
+    # ist kein Eingang und wird beim naechsten Anlegen desselben Falls
+    # entfernt. Er blockiert niemanden: Der Leser sieht ihn nicht, weil
+    # er ausserhalb der Eingangswurzel liegt (T26-15).
     nt_fehler = _nebentabellen_fehler_im(arbeit)
     if nt_fehler:
         raise UebernahmeError(

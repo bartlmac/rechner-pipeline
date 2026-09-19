@@ -119,7 +119,9 @@ from rechner_pipeline.betrieb.tagesjournal import (
     tagesjournal_ergaenzen,
     validate_tagesjournal,
 )
-from rechner_pipeline.betrieb.uebernahme import UebernahmeError, lies_uebernahmen
+from rechner_pipeline.betrieb.uebernahme import (
+    UEBERNAHME_DIR, UebernahmeError, lies_uebernahmen,
+)
 from rechner_pipeline.models.bestand import (
     LEDGER_NAMES,
     MERKMALE_NAMES,
@@ -140,7 +142,10 @@ JOURNAL_DIR = "journal"
 ABSCHLUSS_DIR = "abschluesse"
 BERICHT_DIR = "berichte"
 CONFIG_DIR = "configs"
-UEBERNAHME_DIR = "uebernahme"
+# UEBERNAHME_DIR kommt aus betrieb.uebernahme — der Schreiber der
+# Eingaenge besitzt den Namen. Zweimal gepflegt waere es dieselbe
+# Menge an zwei Orten, und die Staging-Wurzel daneben (STAGING_DIR)
+# liefe beim naechsten Umbau still auseinander.
 TAGESJOURNAL_DATEI = "tagesjournal.parquet"
 #: Kopie des Journals waehrend eines Publish (Review T24-01, Schritt b):
 #: die einzige Veroeffentlichung, die sich nicht aus dem Stand
@@ -854,14 +859,20 @@ def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
     """Versionierte Standverzeichnisse, auf die der Symlink nicht zeigt
     (Reste eines abgebrochenen Tauschs), aufraeumen — vor dem Lauf.
 
-    Die Praemisse dieser Aufraeumung ist, dass ``stand`` auf ein
-    Standverzeichnis unmittelbar in der Wurzel zeigt. Steht sie nicht —
-    Symlink von Hand nach aussen gesetzt oder haengend —, waere JEDES
-    ``stand-*`` in der Wurzel eine "Waise", und die Aufraeumung loeschte den
-    einzigen Stand der Ablage, waehrend die spaetere Wache in
-    ``_uebernehmen`` als Ausweg noch auf ihn verweist (Nachmessung T24-07
-    durch die merge-session, reproduziert auf main). Dann wird NICHTS
-    entfernt: Abbruch vor dem ersten Loeschen, mit demselben Ausweg.
+    Die Praemisse dieser Aufraeumung ist, dass ``stand`` ein SYMLINK auf
+    ein Standverzeichnis unmittelbar in der Wurzel ist. Nur dann steht
+    fest, welche Generation gefuehrt wird und welche Waisen sind.
+
+    Gilt die Praemisse nicht, waere JEDES ``stand-*`` in der Wurzel eine
+    "Waise", und die Aufraeumung loeschte den einzigen Stand der Ablage.
+    Zwei Auspraegungen davon sind belegt: der von Hand nach aussen
+    gesetzte oder haengende Symlink (Nachmessung T24-07) und der
+    Legacy-Zustand, in dem ``stand`` ein echtes Verzeichnis ist — dort
+    verschwand ``stand-erstfassung`` (Befund T26-02).
+
+    Deshalb fragt der Code nach der Praemisse und nicht nach den
+    bekannten Ausnahmen. Ein haengender Symlink ist ein Abbruch mit
+    Ausweg; jeder andere unklare Zustand raeumt NICHTS auf und sagt es.
     """
     aktuell: Optional[Path] = None
     if ablage.stand.is_symlink():
@@ -878,28 +889,49 @@ def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
         if fehler:
             raise TageslaufError(f"Aufraeumen nicht begonnen — gefuehrter Stand: {fehler}")
     kandidaten = [k for k in ablage.wurzel.glob(f"{STAND_DIR}-*") if k.is_dir()]
-    if aktuell is None and kandidaten and not ablage.stand.exists():
-        # ``stand`` gibt es nicht, aber versionierte Staende liegen da:
-        # unter anderem der Zustand nach einem Absturz zwischen den zwei
-        # Umbenennungen des Erstuebergangs (_uebernehmen) — die erste hat
-        # ``stand`` beiseitegeschoben, die zweite kam nicht mehr. Welcher
-        # der Kandidaten gefuehrt war, sagt hier nichts.
+    if aktuell is None and kandidaten:
+        # Die Praemisse dieser Aufraeumung ist ein SYMLINK ``stand`` auf
+        # eine Generation in der Wurzel. Gilt sie nicht, sagt hier nichts,
+        # welcher Kandidat gefuehrt war — dann wird NICHTS entfernt.
         #
-        # Es wird NICHTS entfernt. Das ist der ganze Punkt: Gefaehrlich
-        # ist nicht der Lauf, sondern das Loeschen — vorher hielt die
-        # Aufraeumung jeden Kandidaten fuer eine Waise und raeumte den
-        # alten Stand UND die fertig geschriebene neue Generation ab
-        # (Review T24-01, Reproduktion 3). Der T24-07-Fix deckte nur den
-        # HAENGENDEN Symlink.
+        # Drei Zustaende fallen darunter, und zwei davon haben bereits
+        # Daten gekostet:
+        # * ``stand`` fehlt — unter anderem der Zustand nach einem Absturz
+        #   zwischen den zwei Umbenennungen des Erstuebergangs. Vorher
+        #   hielt die Aufraeumung jeden Kandidaten fuer eine Waise und
+        #   raeumte den alten Stand UND die fertig geschriebene neue
+        #   Generation ab (Review T24-01, Reproduktion 3).
+        # * ``stand`` ist ein echtes Verzeichnis — der unterstuetzte
+        #   Legacy-Zustand vor dem Erstuebergang. Hier fiel der Code bis
+        #   zur Schleife durch, und weil ``aktuell`` None blieb, galt
+        #   JEDER Kandidat als Waise: geloescht wurde unter anderem
+        #   ``stand-erstfassung``, der letzte belegte alte Stand (Befund
+        #   T26-02, Szenario 2).
+        # * ``stand`` ist etwas anderes, etwa eine Datei — nie beobachtet,
+        #   aber von derselben Bauart.
+        #
+        # Gefragt wird deshalb nach der PRAEMISSE und nicht nach den
+        # bekannten Ausnahmen: Eine Aufzaehlung haette den dritten Fall
+        # wieder durchgelassen, so wie die Aufzaehlung nach T24-07 den
+        # zweiten durchliess. Dieselbe Klasse wie T26-01 — wer aus der
+        # Form eines Pfades auf seinen Lebenszyklus schliesst, loescht
+        # frueher oder spaeter etwas Gueltiges.
         #
         # Abbrechen waere zu scharf: Eine Ablage ohne ``stand`` ist ein
-        # legitimer Ausgangspunkt (Neuaufbau aus dem Eingang). Der Lauf
-        # baut einen neuen Stand, setzt den Symlink, und der NAECHSTE
-        # Lauf raeumt auf — dann ist die Praemisse wieder klar.
-        # Aufgeraeumt wird nur, wo man weiss, was man wegraeumt.
+        # legitimer Ausgangspunkt (Neuaufbau aus dem Eingang), und der
+        # Legacy-Zustand ist ausdruecklich unterstuetzt. Der Lauf baut
+        # einen neuen Stand, setzt den Symlink, und der NAECHSTE Lauf
+        # raeumt auf — dann ist die Praemisse wieder klar.
+        zustand = (
+            "fehlt" if not ablage.stand.exists()
+            else "ein echtes Verzeichnis (Legacy-Zustand vor dem Erstuebergang)"
+            if ablage.stand.is_dir()
+            else "weder Symlink noch Verzeichnis"
+        )
         print(
-            f"tageslauf: {ablage.stand} gibt es nicht, aber die Ablage traegt "
-            f"{len(kandidaten)} versionierte(n) Stand "
+            f"tageslauf: {ablage.stand} ist kein Symlink auf eine Generation "
+            f"({zustand}), aber die Ablage traegt {len(kandidaten)} "
+            f"versionierte(n) Stand "
             f"({', '.join(sorted(k.name for k in kandidaten)[:3])}) — nichts "
             "aufgeraeumt, weil unklar ist, welcher gefuehrt war. Der Lauf "
             "baut einen neuen Stand; der naechste raeumt die Reste ab. Wer "
@@ -909,7 +941,7 @@ def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
         )
         return
     for kandidat in kandidaten:
-        if aktuell is None or kandidat.resolve() != aktuell:
+        if kandidat.resolve() != aktuell:
             _entferne_ablageverzeichnis(ablage, kandidat)
     tmp = ablage.wurzel / STAND_LINK_TMP
     if tmp.is_symlink():

@@ -333,12 +333,15 @@ def test_ein_abgebrochenes_anlegen_hinterlaesst_keinen_halben_eingang(tmp_path, 
     with pytest.raises(OSError):
         ueb.eingang_anlegen(stand, fall, STICHTAG)
     monkeypatch.undo()
-    ziel = stand / "uebernahme" / "probe-uebernahme"
+    ziel = stand / ueb.UEBERNAHME_DIR / "probe-uebernahme"
+    rest = stand / ueb.STAGING_DIR / "probe-uebernahme"
     assert not ziel.exists()
-    assert (stand / "uebernahme" / "probe-uebernahme.neu").exists()
+    # Der Rest liegt in der Staging-Wurzel, NEBEN der Eingangswurzel — ein
+    # Fallname kann ihn dort nicht mehr treffen (T26-01).
+    assert rest.exists()
     # Der zweite Versuch gelingt und raeumt den Rest weg.
     assert ueb.eingang_anlegen(stand, fall, STICHTAG) == ziel
-    assert ziel.is_dir() and not (stand / "uebernahme" / "probe-uebernahme.neu").exists()
+    assert ziel.is_dir() and not rest.exists()
 
 
 

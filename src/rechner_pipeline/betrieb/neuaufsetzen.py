@@ -52,7 +52,10 @@ from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.betrieb.tageslauf import Ablage, TageslaufError, lauf_sperre
-from rechner_pipeline.betrieb.uebernahme import UebernahmeError, eingang_anlegen, lies_uebernahme, tarifwerk_fehler
+from rechner_pipeline.betrieb.uebernahme import (
+    UEBERNAHME_DIR, UebernahmeError, eingang_anlegen, lies_uebernahme,
+    tarifwerk_fehler,
+)
 
 #: Provenienz des Neuaufbaus in der neuen Ablage.
 PROVENIENZ_DATEI = "neuaufsetzen.json"
@@ -174,7 +177,7 @@ def _neu_aufsetzen_unter_sperre(
         "config_sha256": sha256_bytes(config_bytes),
         "fall": eingang.name,
         "stichtag": stichtag.isoformat(),
-        "eingang": str(stand / "uebernahme" / eingang.name),
+        "eingang": str(stand / UEBERNAHME_DIR / eingang.name),
         "naechste_schritte": [
             f"python -m rechner_pipeline.betrieb.tageslauf --stand {stand}",
             f"python -m rechner_pipeline.betrieb.seite --stand {stand} --paket <paketverzeichnis>",

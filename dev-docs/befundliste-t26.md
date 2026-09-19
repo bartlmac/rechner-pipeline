@@ -53,11 +53,11 @@ mutiert.
 
 | ID | Schwere | Block | Stand | Kurz |
 |---|---|---|---|---|
-| T26-01 | hoch | 1 | OFFEN | Registrierung von `fall` loescht den gueltigen Eingang `fall.neu` |
-| T26-02 | hoch | 1+2 | OFFEN | Vier Wiederanlaufszenarien defekt; Legacy-Uebergang loescht den letzten belegten alten Stand |
+| T26-01 | hoch | 1 | GESCHLOSSEN | Registrierung von `fall` loescht den gueltigen Eingang `fall.neu` |
+| T26-02 | hoch | 1+2 | TEILWEISE | Legacy-Verlust geschlossen; drei Wiederanlaufszenarien offen (Block 2) |
 | T26-08 | hoch | 1+4 | OFFEN | Externer Anker darf im Paket/in der Ablage liegen; Reexport loescht seine Historie |
 | T26-14 | mittel | 2 | OFFEN | Parallele Eingaenge erhalten dasselbe Nummernband |
-| T26-15 | mittel | 2 | OFFEN | Unpublizierter Arbeitsrest blockiert den Tagesbetrieb |
+| T26-15 | mittel | 2 | GESCHLOSSEN | Unpublizierter Arbeitsrest blockiert den Tagesbetrieb |
 | T26-03 | hoch | 3 | OFFEN | Betriebseingang akzeptiert semantisch ungueltige A-M4-Belege ohne Tabellenbindung |
 | T26-04 | hoch | 3 | OFFEN | Fuehrungsbeleg-Consumer akzeptiert selbst behauptete Ergebnisse |
 | T26-05 | hoch | 3 | OFFEN | Fuehrungsprobe bestaetigt eine von 43.000 auf 1.042.999 EUR veraenderte Stammsumme |
@@ -84,4 +84,55 @@ zweite Runde.
 Je Befund: was der Gutachter nachgewiesen hat, welche KLASSE dahinter steht,
 was gebaut wurde, und womit die Klasse gegen einen Rueckbau gesichert ist.
 
-(wird waehrend der Arbeit gefuellt)
+### Block 1, Teil 1 — T26-01, T26-15 und der Legacy-Verlust aus T26-02
+
+**Die Klasse.** Eine Loeschung schloss aus der GESTALT eines Pfades — seinem
+Namen, seiner Form — auf seinen Lebenszyklus-Zustand. Dreimal belegt, jedes
+Mal mit Datenverlust:
+
+* T24-01/T24-07: `stand` war ein haengender Symlink, also galt jedes
+  `stand-*` als Waise; aufgeraeumt wurde der einzige Stand der Ablage.
+* T26-01: `fall.neu` sah aus wie der Arbeitsrest eines Anlegens von `fall`.
+  Es war der regulaer registrierte Eingang eines Falls, der zufaellig so
+  heisst. Zwei gewoehnliche Aufrufe, keine Manipulation; geloescht wurden
+  auch schreibgeschuetzte Dateien, und das Nummernband wurde wiederverwendet.
+* T26-02 Szenario 2: `stand` war ein echtes Verzeichnis (unterstuetzter
+  Legacy-Zustand), damit war wieder alles Waise; verschwunden ist
+  `stand-erstfassung`, der letzte belegte alte Stand.
+
+**Was gebaut ist — drei Instrumente, nicht drei Einzelfixes.**
+
+1. *Getrennte Wurzeln statt einer Namensregel.* Ein Eingang entsteht jetzt
+   unter `uebernahme.neu/<fallname>` und wird von dort nach
+   `uebernahme/<fallname>` umbenannt. Solange beide dieselbe Wurzel teilten,
+   war jede Unterscheidung eine Konvention ueber Namen — und ein Fallname ist
+   frei waehlbar. Zwei Wurzeln machen die Ueberschneidung unmoeglich.
+   Derselbe Schnitt schliesst T26-15: Der Leser sieht unter `uebernahme/`
+   nur noch Veroeffentlichtes, ein abgebrochenes Anlegen blockiert den
+   Tagesbetrieb nicht mehr.
+2. *`ohne_marker` in `entferne_verzeichnis`.* Die Gegenrichtung des
+   vorhandenen `marker`: Dieser sagt „das hier ist meins", jener sagt „das
+   hier ist noch nicht veroeffentlicht". Ein Verzeichnis mit `eingang.json`
+   wird nicht geloescht, auch wenn Name und Lage passen. Ein HAENGENDER
+   Symlink dieses Namens zaehlt mit — er ist `exists() == False` und saehe
+   sonst aus wie ein Verzeichnis ohne Marker.
+3. *Die Aufraeumung fragt nach ihrer PRAEMISSE, nicht nach Ausnahmen.*
+   `_verwaiste_staende_entfernen` raeumt nur, wenn `stand` ein Symlink auf
+   eine Generation in der Wurzel ist. Jeder andere Zustand — fehlend,
+   echtes Verzeichnis, Datei — raeumt NICHTS auf und sagt warum. Die
+   Aufzaehlung der bekannten Ausnahmen war genau der Fehler: Nach T24-07
+   war der haengende Symlink abgedeckt und der Legacy-Zustand nicht.
+
+**Gegen Rueckbau gesichert.** `tests/test_lebenszyklus_vor_loeschung.py`
+prueft die Klasse, nicht die Faelle: sechs Namenspaare (darunter der
+gemeldete in beiden Reihenfolgen, zwei Staffelungen, ein Paar mit dem Namen
+der Staging-Wurzel selbst und ein unbeteiligtes Kontrollpaar) und vier
+Zustaende der Ablage, darunter einer, der nie beobachtet wurde (`stand` ist
+eine Datei). Jede Wache hat ihre Positivkontrolle: Die echte Waise MUSS
+verschwinden, ein Arbeitsrest ohne Marker MUSS geloescht werden — eine
+Regel, die immer sperrt, waere genauso falsch wie eine, die nie sperrt.
+
+**Mutationsproben, alle drei nachgefahren.** Staging zurueck in die
+Eingangswurzel: drei Namenspaare und der Lesertest werden rot. `ohne_marker`
+ausgeschaltet: beide Markertests rot. Praemisse-Wache ausgeschaltet: alle
+drei Zustandsfaelle rot, die Positivkontrolle bleibt gruen.

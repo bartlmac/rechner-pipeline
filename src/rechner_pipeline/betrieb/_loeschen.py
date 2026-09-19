@@ -50,6 +50,7 @@ def entferne_verzeichnis(
     innerhalb: Path,
     name_ok: Optional[Callable[[str], bool]] = None,
     marker: Optional[str] = None,
+    ohne_marker: Optional[str] = None,
     grund: str = "",
 ) -> None:
     """``pfad`` entfernen — wenn es ein eigenes Verzeichnis des Produzenten ist.
@@ -59,6 +60,20 @@ def entferne_verzeichnis(
     ``name_ok``: Namensregel des Produzenten (z. B. ``stand-<kennung>``).
     ``marker``: Datei, die das Verzeichnis als Erzeugnis ausweist (z. B.
     ``stand.json`` des Stands-Pakets). ``grund``: fuer die Meldung.
+
+    ``ohne_marker``: Datei, die das Verzeichnis als VEROEFFENTLICHT
+    ausweist und deren Anwesenheit die Loeschung verbietet (z. B.
+    ``eingang.json`` eines registrierten Eingangs). Die beiden Marker
+    sind die zwei Richtungen derselben Frage, und beide braucht es:
+    ``marker`` sagt "das hier ist meins", ``ohne_marker`` sagt "das hier
+    ist noch nicht veroeffentlicht".
+
+    Der Anlass ist Befund T26-01. Ein Arbeitsverzeichnis wurde am
+    NAMENSSUFFIX erkannt — und ein regulaer registrierter Eingang, der
+    zufaellig so hiess, wurde geloescht, schreibgeschuetzte Dateien
+    eingeschlossen. Ein Name ist keine Aussage ueber den Lebenszyklus.
+    Vor jeder Bereinigung muss die Lebenszyklus-Identitaet FESTSTEHEN,
+    nicht plausibel sein.
     """
     ziel = Path(pfad)
     wurzel = Path(innerhalb).resolve()
@@ -74,6 +89,15 @@ def entferne_verzeichnis(
     if name_ok is not None and not name_ok(aufgeloest.name):
         raise LoeschFehler(
             f"verweigert: {ziel} traegt keinen Namen, den dieser Produzent vergibt — nicht geloescht ({grund})"
+        )
+    verboten = aufgeloest / ohne_marker if ohne_marker is not None else None
+    # ``is_symlink`` mitgefragt: Ein HAENGENDER Symlink dieses Namens ist
+    # ``exists() == False``. Er saehe aus wie ein Verzeichnis ohne Marker,
+    # und genau in die Richtung darf der Zweifel nicht ausschlagen.
+    if verboten is not None and (verboten.exists() or verboten.is_symlink()):
+        raise LoeschFehler(
+            f"verweigert: {ziel} traegt {ohne_marker} und ist damit ein "
+            f"veroeffentlichtes Erzeugnis, kein Arbeitsrest — nicht geloescht ({grund})"
         )
     if marker is not None and (
         (aufgeloest / marker).is_symlink() or not (aufgeloest / marker).is_file()
