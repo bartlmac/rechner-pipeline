@@ -849,7 +849,34 @@ def test_eine_unschreibbare_protokollzeile_ist_ein_benannter_fehler(
 # neue ist vollstaendig uebernommen — nie ein dauerhaft blockierter
 # Zustand.
 
-NAEHTE = ("journal", "generation", "symlink", "protokoll")
+#: Die Naehte, an denen ein Lauf abbrechen kann. "bericht" und
+#: "protokoll-teilweise" sind nach Befund T26-02 dazugekommen: Der Bericht
+#: entsteht NACH dem festgeschriebenen Abschluss, und ein Protokoll-Append
+#: kann mitten in der Zeile abbrechen statt davor.
+NAEHTE = ("abschluss", "bericht", "journal", "generation", "symlink",
+          "protokoll", "protokoll-teilweise")
+
+#: Die Ablage-Zustaende, aus denen heraus ein Lauf startet. Bisher wurde
+#: ausschliesslich aus dem Symlink-Zustand geprueft — die Tests
+#: initialisierten immer erst einen gruenen Stand. Genau daran ist der
+#: Wiederanlauf aus der Erstbefuellung und aus dem Legacy-Zustand
+#: vorbeigelaufen (Befund T26-02, Szenarien 1 und 2).
+AUSGANGSZUSTAENDE = ("leer", "legacy", "symlink")
+
+
+def _ausgangszustand(tmp_path, zustand: str):
+    """Eine Ablage im genannten Zustand, plus der bis dahin gefuehrte Tag."""
+    ablage = _ablage(tmp_path / "plv")
+    if zustand == "leer":
+        return ablage, None
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    if zustand == "legacy":
+        # Die Symlinkform bytegleich in ein echtes Verzeichnis ueberfuehren —
+        # der unterstuetzte Zustand vor dem Erstuebergang.
+        ziel = ablage.stand.resolve()
+        ablage.stand.unlink()
+        os.rename(ziel, ablage.stand)
+    return ablage, dt.date(2026, 1, 31)
 
 
 def _injiziere(monkeypatch, naht: str):
@@ -885,6 +912,30 @@ def _injiziere(monkeypatch, naht: str):
             return echt(src, dst, *a, **k)
 
         monkeypatch.setattr(tl.os, "replace", _kaputt)
+    elif naht == "abschluss":
+        def _kaputt(*_a, **_k):
+            # Abbruch WAEHREND des Festschreibens. Der Abschluss ist der
+            # erste unwiderrufliche Schritt (0444, nie neu gerechnet); die
+            # Naht davor war bisher ungeprueft, weil der Marker erst
+            # dahinter lag.
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(tl, "schreibe_abschluss", _kaputt)
+    elif naht == "bericht":
+        def _kaputt(*_a, **_k):
+            raise OSError(5, "I/O error")
+
+        monkeypatch.setattr(tl, "_bericht", _kaputt)
+    elif naht == "protokoll-teilweise":
+        def _kaputt(pfad, zeile):
+            # Der Anfang der Zeile steht, der Rest nicht — der Teilwrite,
+            # den ein Absturz hinterlaesst. Ohne Zeilenumbruch: Die Zeile
+            # ist nie eine geworden.
+            with open(pfad, "a", encoding="utf-8", newline="\n") as f:
+                f.write(json.dumps(zeile, ensure_ascii=False, sort_keys=True)[:60])
+            raise OSError(5, "I/O error")
+
+        monkeypatch.setattr(tl, "_anfuegen", _kaputt)
     else:
         def _kaputt(*_a, **_k):
             raise OSError(28, "No space left on device")
@@ -892,13 +943,21 @@ def _injiziere(monkeypatch, naht: str):
         monkeypatch.setattr(tl, "_anfuegen", _kaputt)
 
 
+@pytest.mark.parametrize("zustand", AUSGANGSZUSTAENDE)
 @pytest.mark.parametrize("naht", NAEHTE)
 def test_ein_absturz_an_jeder_naht_laesst_sich_wiederaufnehmen(
-    tmp_path, monkeypatch, naht
+    tmp_path, monkeypatch, naht, zustand
 ):
-    ablage = _ablage(tmp_path / "plv")
-    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
-    vorher_stand = ablage.stand.resolve()
+    """Jede Naht mal jeder Ausgangszustand — die Klasse, nicht der Fall.
+
+    Der Befund T26-02 war nicht, dass EIN Wiederanlauf fehlte, sondern
+    dass die Pruefung nur eine Spalte der Matrix kannte: Sie legte immer
+    erst einen gruenen Symlink-Stand an. Aus der Erstbefuellung heraus
+    blieb der neue Stand stehen, waehrend Journal und Marker
+    zurueckgenommen wurden; aus dem Legacy-Zustand heraus verschwand der
+    letzte belegte alte Stand.
+    """
+    ablage, _vorher_tag = _ausgangszustand(tmp_path, zustand)
     vorher_journal = (ablage.tagesjournal_pfad.read_bytes()
                       if ablage.tagesjournal_pfad.is_file() else None)
 
@@ -913,10 +972,13 @@ def test_ein_absturz_an_jeder_naht_laesst_sich_wiederaufnehmen(
     # Der gefuehrte Tag ist NICHT gewandert — oder der Lauf war ganz durch.
     # Beides ist zulaessig; ein dritter Zustand nicht.
     assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK, (
-        f"Naht {naht}: der Retry gelingt nicht — genau das war der Befund")
+        f"{zustand}/{naht}: der Retry gelingt nicht — genau das war der Befund")
     assert gefuehrter_tag(ablage) == dt.date(2026, 2, 3)
     assert not ablage.publish_marker.exists(), "Marker nicht aufgeraeumt"
     assert not ablage.tagesjournal_vorher_pfad.exists()
+    # Das Protokoll ist wieder eine ungebrochene Kette — sonst haette der
+    # Retry einen Zustand hinterlassen, der beim naechsten Lesen platzt.
+    assert [z for z in lies_protokoll(ablage.protokoll_pfad) if z.get("uebernommen")]
     # Der Vorgaenger liegt noch da: Seit dem Write-Ahead-Rahmen wird er
     # erst vom NAECHSTEN Lauf entfernt, wenn der Symlink steht. Genau das
     # macht den Standwechsel umkehrbar.
@@ -925,7 +987,10 @@ def test_ein_absturz_an_jeder_naht_laesst_sich_wiederaufnehmen(
     uebrig = sorted(p.name for p in ablage.wurzel.glob("stand-*") if p.is_dir())
     assert ablage.stand.resolve().name in uebrig
     assert len(uebrig) <= 2, uebrig
-    assert vorher_stand.is_dir() or vorher_journal is not None or True
+    # Das Journal ist entweder das alte oder das neue — nie ein Mischling.
+    # (Der Ausgangszustand "leer" hat keines; dort ist nichts zu halten.)
+    if vorher_journal is not None:
+        assert ablage.tagesjournal_pfad.is_file()
 
 
 def test_der_marker_liegt_nur_waehrend_der_veroeffentlichung(tmp_path,

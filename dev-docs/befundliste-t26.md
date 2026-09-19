@@ -54,7 +54,7 @@ mutiert.
 | ID | Schwere | Block | Stand | Kurz |
 |---|---|---|---|---|
 | T26-01 | hoch | 1 | GESCHLOSSEN | Registrierung von `fall` loescht den gueltigen Eingang `fall.neu` |
-| T26-02 | hoch | 1+2 | TEILWEISE | Legacy-Verlust geschlossen; drei Wiederanlaufszenarien offen (Block 2) |
+| T26-02 | hoch | 1+2 | GESCHLOSSEN | alle vier Szenarien; Naht-Matrix auf 21 Kombinationen erweitert |
 | T26-08 | hoch | 1+4 | GESCHLOSSEN | Externer Anker darf im Paket/in der Ablage liegen; Reexport loescht seine Historie |
 | T26-14 | mittel | 2 | OFFEN | Parallele Eingaenge erhalten dasselbe Nummernband |
 | T26-15 | mittel | 2 | GESCHLOSSEN | Unpublizierter Arbeitsrest blockiert den Tagesbetrieb |
@@ -77,7 +77,19 @@ Reparatur getroffen habe, weil niemand erreichbar war. Sie sind umgesetzt und
 stehen zur Bestaetigung; sieht der Maintainer Korrekturbedarf, folgt eine
 zweite Runde.
 
-(noch keine — wird waehrend der Arbeit gefuellt)
+1. **Eingang gilt als eingerechnet, wenn der Abschluss seine Zielnummern
+   traegt** (T26-02, Szenario 4). Alternative waere ein neues Feld im
+   Abschluss gewesen, das die absorbierten Eingaenge nennt — das haette das
+   Abschlussformat geaendert, das 0444 geschrieben und in A-B1 gehasht wird.
+   Die gewaehlte Loesung fragt die vorhandene Tabelle. Benannte Grenze steht
+   im Docstring.
+2. **Die Staging-Wurzel heisst `uebernahme.neu`** und liegt neben
+   `uebernahme` (T26-01). Jeder andere Name taete es auch; entscheidend ist,
+   dass es eine ZWEITE Wurzel ist. Bestehende Laufzeitumgebungen haben dort
+   nichts liegen, ein Umzug ist nicht noetig.
+3. **Eine angefangene Protokollzeile wird weggeschnitten** (T26-02,
+   Szenario 3), aber nur ohne abschliessenden Zeilenumbruch und nur, wenn
+   ein Marker bezeugt, dass ein Publish unterwegs war.
 
 ## Die Befunde im Einzelnen
 
@@ -177,3 +189,61 @@ drei Reexporte und den Konsumenten samt Positivkontrolle.
 **Mutationsproben.** Ankerpruefung entfernt: zwei Erzeugertests rot.
 Konsumentenpruefung entfernt: Konsumententest rot. Aufgeloeste Haelfte der
 Regel entfernt: Regeltabelle und Symlink-Test rot.
+
+### Block 2, Teil 1 — T26-02 vollstaendig
+
+**Die Klasse.** Die Wiederanlauf-Zustandsmaschine kannte genau EINEN
+Ausgangszustand und EINE Abbruchstelle. Sichtbar war das an den Tests: Sie
+legten immer zuerst einen gruenen Symlink-Stand an und injizierten den
+Fehler nur VOR dem ersten Schreibvorgang. Was ausserhalb dieser einen Spalte
+lag, war nie gelaufen — und "gruen" und "nie gelaufen" sehen gleich aus.
+
+**Die vier Szenarien und was jeweils fehlte.**
+
+1. *Erstbefuellung.* `stand_vorher` ist None; die einzige Ruecksetzbedingung
+   verlangte einen vorherigen Stand. Journal und Marker wurden
+   zurueckgenommen, der neue Stand blieb stehen — danach meldete jeder Lauf
+   dauerhaft "Protokoll kennt keinen uebernommenen Lauf". Jetzt nimmt die
+   Ruecknahme auch den neuen Stand zurueck, und zwar mit FESTSTEHENDER
+   Identitaet: Der Marker nennt die Generation, der Symlink zeigt auf sie.
+2. *Legacy-Verzeichnis.* `stand_vorher == "stand"` wurde ausdruecklich
+   uebersprungen. Der Erstuebergang schiebt das echte Verzeichnis nach
+   `stand-erstfassung` und setzt den Symlink; zurueckgenommen ist das erst,
+   wenn beides wieder steht. Zwei Abbruchstellen fallen darunter und sehen
+   verschieden aus — `stand` fehlt, oder `stand` ist ein Symlink —, deshalb
+   fragt der Code, ob `stand` noch das echte Verzeichnis von vorher ist.
+   (Der Datenverlust desselben Szenarios steckte in der Aufraeumung und ist
+   in Block 1 geschlossen.)
+3. *Angefangene Protokollzeile.* Die Ruecknahme liest das Protokoll, bevor
+   sie irgendetwas zuruecksetzen kann — und starb am JSON-Fehler der
+   Teilzeile. Jetzt wird ein Fragment OHNE Zeilenumbruch weggeschnitten: Es
+   ist nie eine Zeile geworden. Bewusst eng — eine vollstaendige Zeile, die
+   kein JSON ist, bleibt ein Fehler, denn dort gibt es keinen Ausweg, der
+   nicht Beweismaterial vernichtet.
+4. *Abschluss geschrieben, Bericht gescheitert.* Zwei Fehler in einem. Der
+   Marker lag HINTER der Abschluss-Schleife und behauptete im Kommentar,
+   er stehe davor; er steht jetzt davor, denn der Abschluss ist der erste
+   unwiderrufliche Schritt (0444, nie neu gerechnet). Und die Frage "ist
+   dieser Eingang schon eingerechnet" ging an einen STELLVERTRETER — das
+   Protokoll —, obwohl die Sache selbst danebenliegt: Der Abschluss traegt
+   die Zielnummern des Eingangs oder er traegt sie nicht. Gefragt wird
+   jetzt die Tabelle.
+
+**Gegen Rueckbau gesichert.** Die Naht-Matrix steht auf 21 Kombinationen
+statt vier: sieben Abbruchstellen (Abschluss, Bericht, Journal, Generation,
+Symlink, Protokoll, Protokoll-Teilwrite) mal drei Ausgangszustaenden (leer,
+Legacy-Verzeichnis, Symlink). Jede Kombination verlangt, dass der Retry
+gelingt, der gefuehrte Tag stimmt, Marker und Journalkopie aufgeraeumt sind
+und die Protokollkette wieder ungebrochen ist. Dazu zwei gezielte Tests fuer
+Szenario 4 — einer fuer den Retry, einer fuer die Gegenrichtung: Ein
+Eingang, den der Abschluss NICHT kennt, bleibt abgewiesen (ADR-011).
+
+**Mutationsproben.** Abschluss-Frage entfernt: Szenario-4-Test rot, die
+Gegenrichtung bleibt gruen. Teilzeilen-Schnitt entfernt: alle drei
+Teilwrite-Kombinationen rot.
+
+**Annahme zur Bestaetigung (siehe oben):** Ein Eingang gilt als
+eingerechnet, wenn der juengste festgeschriebene Abschluss MINDESTENS EINE
+seiner Zielnummern traegt. Ein Eingang, dessen Vertraege am Stichtag alle
+schon beendet waeren, hinterliesse keine Zeile und zaehlte als unbekannt —
+fuer einen Zugang zum eigenen Stichtag kann das nicht eintreten.

@@ -213,6 +213,73 @@ def _kleine_config() -> str:
     return re.sub(r"^betriebsbeginn = .*$", "betriebsbeginn = 2026-01-01", text, flags=re.M)
 
 
+def test_ein_abschluss_der_den_eingang_traegt_macht_ihn_nicht_neu(eingang, monkeypatch):
+    """Befund T26-02, Szenario 4: Der Abschluss kannte den Bestand doch.
+
+    Ein Lauf schreibt den Monatsabschluss — unwiderruflich, 0444 — und
+    scheitert danach am Bericht. Die Protokollzeile sagt "nicht
+    uebernommen", also kennt der naechste Lauf keinen gruenen Vorgaenger,
+    der diesen Eingang gefuehrt haette. Er hielt ihn deshalb fuer NEU und
+    wies ihn ab: "Stichtag 2026-01-01 liegt nicht nach dem juengsten
+    festgeschriebenen Monatsabschluss 2026-01-01". Dauerhaft, ohne Ausweg.
+
+    Die Frage "ist dieser Eingang schon eingerechnet" wurde an einen
+    STELLVERTRETER gestellt (das Protokoll), obwohl die Sache selbst
+    danebenliegt: Der Abschluss traegt die Zielnummern des Eingangs oder
+    er traegt sie nicht.
+
+    Mutationsprobe in der Gegenrichtung steht daneben: Ein Eingang, den
+    der Abschluss NICHT kennt, muss weiterhin abgewiesen werden — sonst
+    haette die Reparatur die Regel aus ADR-011 aufgehoben statt sie
+    genauer zu beantworten.
+    """
+    from rechner_pipeline.betrieb import tageslauf as tl
+
+    stand, _, _ = eingang
+    ablage = Ablage(stand)
+    ablage.configs.mkdir(parents=True, exist_ok=True)
+    ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
+
+    def _kein_bericht(*_a, **_k):
+        raise OSError(5, "I/O error")
+
+    monkeypatch.setattr(tl, "_bericht", _kein_bericht)
+    code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
+    monkeypatch.undo()
+    assert code != EXIT_OK and zeile["uebernommen"] is False
+    abschluss = ablage.abschluesse / "abschluss_2026-01-01.parquet"
+    assert abschluss.is_file(), "ohne festgeschriebenen Abschluss prueft der Test nichts"
+    assert not [z for z in lies_protokoll(ablage.protokoll_pfad) if z.get("uebernommen")]
+
+    code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
+    assert code == EXIT_OK, f"der Retry gelingt nicht: {zeile.get('fehler')}"
+    assert zeile["uebernommen"] is True
+    assert [u["fall"] for u in zeile["uebernahmen"]] == ["probe-uebernahme"]
+
+
+def test_ein_eingang_hinter_einem_fremden_abschluss_bleibt_abgewiesen(eingang, tmp_path):
+    """Die Gegenrichtung derselben Grenze (ADR-011).
+
+    Ein Abschluss wird nie neu gerechnet. Ein Zugang, der hinter ihn
+    zurueckreicht und den er NICHT kennt, bewegte einen Bilanzwert
+    rueckwirkend — er bleibt abgewiesen, auch nachdem die Frage genauer
+    gestellt wird.
+    """
+    stand, _, _ = eingang
+    ablage = Ablage(stand)
+    ablage.configs.mkdir(parents=True, exist_ok=True)
+    ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+
+    # Ein ZWEITER Fall, zum 1.1. — hinter dem inzwischen festgeschriebenen
+    # Februar-Abschluss, und in keinem von beiden enthalten.
+    zweiter = _fall(tmp_path / "zweiter", "spaeter-eingang")
+    ueb.eingang_anlegen(stand, zweiter, dt.date(2026, 1, 1))
+    code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
+    assert code != EXIT_OK
+    assert "liegt nicht nach dem juengsten festgeschriebenen" in zeile["fehler"]
+
+
 def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
     """Der uebernommene Bestand steht ab dem Stichtag im Stand, seine
     gelieferten Buchungen im Ledger und im Tagesjournal, der Fall-Bezug
