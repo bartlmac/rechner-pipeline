@@ -218,6 +218,40 @@ EREIGNIS_VALUES: Tuple[str, ...] = (
     "ZUG", "MIG", "ERH", "RED", "PEX", "INV", "REA", "STO", "TOD", "ABL",
 )
 
+#: Welche GeVo einen ZUGANG zum Bestand bilden und welche eine LEISTUNG.
+#: Die Zuordnung ist fachlich und vom Maintainer abgenommen (2026-09-17);
+#: sie steht hier, weil zwei Konsumenten sie brauchen — der Tagesbetrieb
+#: fuer die Monatskennzahlen und die Unternehmensseite fuer ihre
+#: Bewegungsreihen. Zweimal gefuehrt wuerde sie auseinanderlaufen, sobald
+#: jemand eine Art ergaenzt; dann saegten Tabelle und Kennzahl
+#: Verschiedenes, beide fuer sich plausibel.
+#:
+#: Die ANZEIGENAMEN gehoeren nicht hierher: Wie eine Seite "STO"
+#: beschriftet (Rueckkauf) ist ihre Sache, welche GeVo eine Leistung ist,
+#: nicht.
+#:
+#: ``PEX`` steht in keiner der beiden Mengen. Eine Beitragsfreistellung
+#: ist weder Zugang noch Leistung — sie wandelt um. Zugaenge und
+#: Leistungen summieren sich deshalb NICHT auf alle Vorfaelle einer
+#: Periode.
+ZUGANG_EREIGNISSE: Tuple[str, ...] = ("ZUG", "ERH")
+LEISTUNG_EREIGNISSE: Tuple[str, ...] = ("ABL", "STO", "TOD", "INV", "REA")
+
+#: GeVo, die WEDER Zugang NOCH Leistung sind — je mit Grund. Hier stehen
+#: nur begruendete Ausnahmen: Eine Liste, die Ausnahmen und Versehen
+#: mischt, sagt nicht mehr, ob sie waechst, weil es mehr Ausnahmen gibt
+#: oder weil jemand eine Zuordnung vergessen hat. Ein Test haelt sie
+#: gegen EREIGNIS_VALUES, damit ein neuer Code eingeordnet oder hier
+#: benannt werden MUSS.
+WEDER_ZUGANG_NOCH_LEISTUNG: Mapping[str, str] = {
+    "PEX": "Beitragsfreistellung wandelt um, sie zahlt nicht aus und "
+           "bringt nichts hinzu",
+    "RED": "Herabsetzung senkt die Summe eines laufenden Vertrags; kein "
+           "Zugang, und ausgezahlt wird nichts",
+    "MIG": "im Ledger nicht als eigene Art gebucht — ein Migrationszugang "
+           "ist ein ZUG mit Quelle 'uebernahme'",
+}
+
 #: Welche Bezugsgroesse ein GeVo bucht — die Betragsart ist Teil der
 #: Buchung, nicht freier Text: Ein ``STO`` mit ``Todesfallleistung`` oder
 #: ein ``ERH`` mit ``RKW`` ist keine andere Sicht, sondern ein Fehler.
