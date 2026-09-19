@@ -682,7 +682,7 @@ wechselt die Rolle:
 
 | Rolle | Inhalt | Adressat |
 |---|---|---|
-| **Zustandsextrakt** | Historien*ergebnisse* als Vertragsattribute — Verankerungszustand und Verweildauer, Options- und Rechtszustände, Restzillmerstand, Beitragsrückstände, Steueraggregate | Rechenkern |
+| **Zustandsextrakt** | Historienergebnisse als Vertragsattribute — Verankerungszustand und Verweildauer, Options- und Rechtszustände, Restzillmerstand, Beitragsrückstände, Steueraggregate | Rechenkern |
 | **Migrationsanalytik** | Geschäftsvorfall-Metadatenliste für die $t_a$-Ermittlung, die Historien-Clusterung der Residuum-Verteilung und die Ausreißerdiagnose | Migrationsprojekt, Abnahme |
 | **Archiv** | Vollhistorie dauerhaft auskunftsfähig: Aufbewahrungspflichten, Auskunftsersuchen, Rückabwicklung bei Widerruf — **Letzteres kann ein prospektiv verankerter Vertrag konstruktionsbedingt nicht liefern** | Auskunftssystem außerhalb des Rechenkerns |
 
