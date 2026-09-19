@@ -70,6 +70,44 @@ mutiert.
 | T26-13 | mittel | 4 | OFFEN | Registrierte Uebersetzung Quell- zu Zielpolicen wird nicht geprueft |
 | T26-16 | mittel | 4 | OFFEN | Anker-HMAC schuetzt Rolle und Schluesselklasse nicht |
 
+## Neue Befunde, waehrend dieser Runde gefunden
+
+Nicht vom Gutachter gemeldet, sondern beim Arbeiten aufgefallen. Sie stehen
+hier, damit sie nicht in einer Nachricht verschwinden.
+
+### N-03 — Das Bewegungskonto setzt eine Praemisse voraus, die bei einem uebernommenen Bestand nicht gilt
+
+**Gefunden** 2026-09-20 von der Seiten-Session, beim Versuch, Berichte fuer
+aeltere Stichtage zu rendern. Von mir am Code nachgemessen.
+
+**Was passiert.** `bewegungskonto` bricht ab mit „Historie hat PEX-Status
+ohne PEX-Ledger-Zeile: [3] — Historie und Ledger stammen nicht aus demselben
+fortschreiben-Lauf". Gemessen an der Reproduktion (Betriebsbeginn 2025-01-01,
+Zugang 2026-01-01, Lauf bis 2026-01-09), Stichtagssicht zum 2025-01-01:
+
+* Historie der Police 3: `PEX` mit `status_date = 2023-11-01`
+* Ledger derselben Police: `PEX` mit `status_date = 2026-01-01`
+
+**Die Ursache ist nicht der Schnitt der Sicht.** Beide Zeilen sind richtig.
+Die uebernommene Historie traegt die Vorgeschichte des ABGEBENDEN
+Unternehmens an ihren echten Daten; der Ledger bucht dieselbe Tatsache am
+Migrationsstichtag, weil unsere Buecher dort beginnen. Die Praemisse „beide
+stammen aus demselben fortschreiben-Lauf" gilt fuer einen uebernommenen
+Bestand schlicht nicht.
+
+**Reichweite — ungeklaert und groesser als ein Renderer-Befund.** Der
+Abschluss zu demselben Stichtag entsteht anstandslos, weil er diese Pruefung
+nicht hat. Ob seine Zahlen richtig sind, ist damit NICHT gesagt: Die
+Stichtagssicht zum 2025-01-01 traegt eine Police, die erst 2026 in die
+Buecher kam. `jahresraster` kennt die richtige Regel bereits („vom ZUGANG,
+nicht vom Vertragsbeginn"); `bewegungskonto` wendet sie auf seine Population
+nicht an.
+
+**Einordnung.** Dieselbe Funktionsfamilie wie T26-11 (Bewegungsrechnung
+ignoriert RED) und dieselbe Achse wie T24-02. Wird deshalb zusammen mit
+T26-11 in Block 4 bearbeitet, nicht davor — die Reihenfolge des Gutachters
+bleibt.
+
 ## Annahmen, die der Maintainer bestaetigen muss
 
 Hier stehen fachliche und Zuschnitt-Entscheidungen, die ich waehrend der
