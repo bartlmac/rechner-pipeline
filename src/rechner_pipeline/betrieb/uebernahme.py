@@ -25,9 +25,15 @@ Knoten: klv, bu
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import datetime as _dt
 import json
+
+try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
+    import fcntl
+except ImportError:  # pragma: no cover - fremde Plattform
+    fcntl = None  # type: ignore[assignment]
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -246,6 +252,72 @@ def vergebene_baender(uebernahme: Path) -> List[Dict[str, Any]]:
     return sorted(baender, key=lambda b: b["von"])
 
 
+#: Sperrdatei des Eingangsschreibers, neben der Eingangswurzel.
+EINGANG_SPERRE = "uebernahme.lock"
+
+
+@contextlib.contextmanager
+def eingang_sperre(stand: Path):
+    """Exklusive Sperre fuer das Registrieren eines Eingangs (nicht blockierend).
+
+    Das Register der Nummernbaender ist die Summe der Eingaenge selbst
+    (:func:`vergebene_baender`) — es wird gelesen, um das naechste Band zu
+    bestimmen, und durch die Publikation fortgeschrieben. Lesen und
+    Fortschreiben muessen deshalb EIN Schritt sein.
+
+    Ohne die Sperre bekamen zwei gleichzeitige Registrierungen dasselbe
+    Band und veroeffentlichten beide erfolgreich; auffallen konnte das
+    erst Tage spaeter im Tagesbetrieb, als "police_id-Kollision zwischen
+    eigenem und uebernommenem Bestand" (Befund T26-14). Die Trennung der
+    Zahlenraeume war damit nur behauptet.
+
+    Nicht blockierend und mit Meldung, wie die Laufsperre: Ein zweiter
+    Schreiber soll wissen, dass er wartet, statt es zu tun.
+    """
+    stand = Path(stand)
+    stand.mkdir(parents=True, exist_ok=True)
+    pfad = stand / EINGANG_SPERRE
+    datei = open(pfad, "a+", encoding="utf-8")
+    try:
+        if fcntl is not None:
+            try:
+                fcntl.flock(datei.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, OSError) as exc:
+                raise UebernahmeError(
+                    f"{stand}: ein anderer Eingang wird gerade registriert "
+                    f"({pfad.name}) — zwei Registrierungen zugleich teilen sich "
+                    "sonst ein Nummernband; den laufenden Vorgang enden lassen"
+                ) from exc
+        yield
+    finally:
+        datei.close()
+
+
+def baender_fehler(eintraege: List[Dict[str, Any]]) -> List[str]:
+    """Ueberschneiden sich die Nummernbaender der Eingaenge? Leer = nein.
+
+    Die Leseseite derselben Aussage. Eine Sperre schuetzt nur Prozesse,
+    die sie nehmen; ob die Baender tatsaechlich disjunkt sind, steht in
+    den Eingaengen und laesst sich jederzeit nachrechnen. Der Gutachter
+    verlangt ausdruecklich beides (T26-14): gemeinsame Sperre UND
+    Readersicherung gegen ueberlappende Baender.
+
+    ``eintraege`` sind Paare aus Fallname und Band, aufsteigend nach
+    ``von`` geprueft.
+    """
+    fehler: List[str] = []
+    sortiert = sorted(eintraege, key=lambda e: (int(e["von"]), int(e["bis"])))
+    for vorher, jetzt in zip(sortiert, sortiert[1:]):
+        if int(jetzt["von"]) <= int(vorher["bis"]):
+            fehler.append(
+                f"Nummernbaender ueberschneiden sich: {vorher['fall']} "
+                f"{vorher['von']}..{vorher['bis']} und {jetzt['fall']} "
+                f"{jetzt['von']}..{jetzt['bis']} — zwei Faelle sprechen ueber "
+                "dieselben Policennummern"
+            )
+    return fehler
+
+
 def naechstes_band(uebernahme: Path, anzahl: int) -> Tuple[int, int]:
     """Das naechste freie Nummernband fuer ``anzahl`` Vertraege.
 
@@ -416,6 +488,10 @@ class Uebernahme:
     #: gegen die die Config der Laufzeit gehalten wird; leer, wenn der
     #: Eingang keinen traegt (Zugaenge vor der Freischaltung).
     beleg: Dict[str, Any]
+    #: Das Nummernband dieses Eingangs (``von``/``bis``). Es steht hier,
+    #: damit der Leser die Disjunktheit nachrechnen kann, ohne eingang.json
+    #: ein zweites Mal zu oeffnen (T26-14).
+    band: Dict[str, int] = dataclasses.field(default_factory=dict)
 
 
 def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: Dict[str, Any]) -> List[str]:
@@ -673,6 +749,7 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
         scheiben=tabellen["scheiben"],
         schichten=tabellen["schichten"],
         beleg=beleg,
+        band={k: int(v) for k, v in (eingang.get("band") or {}).items()},
     )
 
 
@@ -685,6 +762,18 @@ def lies_uebernahmen(wurzel: Path, config: BestandConfig) -> List[Uebernahme]:
     faelle = [u.fall for u in eingaenge]
     if len(faelle) != len(set(faelle)):
         raise UebernahmeError(f"uebernahme: Fallname doppelt: {faelle}")
+    # Die Baender muessen disjunkt sein — geprueft beim LESEN, nicht nur
+    # verhindert beim Schreiben (T26-14). Eine Sperre schuetzt nur
+    # Prozesse, die sie nehmen; ob die Trennung der Zahlenraeume
+    # tatsaechlich gilt, steht in den Eingaengen und wird hier
+    # nachgerechnet. Vorher fiel eine Ueberschneidung erst Tage spaeter im
+    # Tagesbetrieb auf, als Policennummern-Kollision.
+    fehler = baender_fehler([
+        {"fall": u.fall, "von": u.band["von"], "bis": u.band["bis"]}
+        for u in eingaenge if {"von", "bis"} <= set(u.band)
+    ])
+    if fehler:
+        raise UebernahmeError("; ".join(fehler))
     return eingaenge
 
 
@@ -756,118 +845,124 @@ def eingang_anlegen(
             f"{ziel} existiert bereits — ein Eingang wird nie ueberschrieben; "
             "eine neue Lieferung ist ein neuer Eingang unter neuem Namen"
         )
-    # Der Eingang entsteht VOLLSTAENDIG neben seinem Namen und wird dann in
-    # einem Zug umbenannt (Review T22-03): Ein halb geschriebener Eingang
-    # blockierte sonst dauerhaft, weil das Verzeichnis als "nie
-    # ueberschreiben" galt. Ein Rest eines abgebrochenen Anlegens wird
-    # entfernt — er war nie ein Eingang.
-    # Die Staging-Wurzel liegt NEBEN der Eingangswurzel (T26-01). Der
-    # ``ohne_marker`` darunter ist die zweite Sicherung derselben Aussage:
-    # Selbst wenn jemand die Wurzeln wieder zusammenlegte, verbietet er
-    # die Loeschung eines Verzeichnisses, das eine eingang.json traegt.
-    staging = Path(stand) / STAGING_DIR
-    arbeit = staging / fallname
-    if arbeit.exists():
-        try:
-            entferne_verzeichnis(
-                arbeit, innerhalb=staging,
-                name_ok=lambda n: n == fallname,
-                ohne_marker=EINGANG_DATEI,
-                grund="Rest eines abgebrochenen Anlegens",
+    # Bandvergabe UND Publikation unter einer Sperre (T26-14): Das
+    # Register der Baender ist die Summe der Eingaenge selbst — es wird
+    # gelesen, um das naechste Band zu bestimmen, und durch die
+    # Publikation fortgeschrieben. Zwei gleichzeitige Registrierungen
+    # bekamen sonst dasselbe Band und veroeffentlichten beide.
+    with eingang_sperre(stand):
+        # Der Eingang entsteht VOLLSTAENDIG neben seinem Namen und wird dann in
+        # einem Zug umbenannt (Review T22-03): Ein halb geschriebener Eingang
+        # blockierte sonst dauerhaft, weil das Verzeichnis als "nie
+        # ueberschreiben" galt. Ein Rest eines abgebrochenen Anlegens wird
+        # entfernt — er war nie ein Eingang.
+        # Die Staging-Wurzel liegt NEBEN der Eingangswurzel (T26-01). Der
+        # ``ohne_marker`` darunter ist die zweite Sicherung derselben Aussage:
+        # Selbst wenn jemand die Wurzeln wieder zusammenlegte, verbietet er
+        # die Loeschung eines Verzeichnisses, das eine eingang.json traegt.
+        staging = Path(stand) / STAGING_DIR
+        arbeit = staging / fallname
+        if arbeit.exists():
+            try:
+                entferne_verzeichnis(
+                    arbeit, innerhalb=staging,
+                    name_ok=lambda n: n == fallname,
+                    ohne_marker=EINGANG_DATEI,
+                    grund="Rest eines abgebrochenen Anlegens",
+                )
+            except LoeschFehler as exc:
+                raise UebernahmeError(str(exc)) from exc
+        arbeit.mkdir(parents=True)
+        # Die Eingangswurzel muss es geben, bevor umbenannt wird — frueher
+        # entstand sie beilaeufig, weil das Arbeitsverzeichnis darin lag.
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        # Das Zielsystem vergibt seine eigenen Policennummern (Review T24-08,
+        # Entscheid des Maintainers 2026-09-15). Niemand schreibt uns in einer
+        # Migration einen Datensatz um; die Transformation ist unsere Arbeit
+        # auf der Zielseite, und es ist unsere Aufgabe, sie kollisionsfrei zu
+        # machen. Vorher lief eine gelieferte Nummer ungeprueft durch und
+        # kollidierte Jahre spaeter mit dem eigenen, deterministisch
+        # vorausberechenbaren Neugeschaeft — als harter Abbruch eines
+        # Nachtlaufs, zu einem Zeitpunkt, den niemand gewaehlt hat.
+        #
+        # Umnummeriert wird IMMER, nicht nur bei Kollision: Sonst haengt unsere
+        # Nummernvergabe davon ab, was die Quelle zufaellig geliefert hat, und
+        # die Uebersetzungstabelle waere mal die Identitaet und mal nicht — ein
+        # Leser baut sich dann zwei Lesewege.
+        stamm_quelle = read_portfolio(quelle / "bestand.parquet", expected_columns=STAMM_NAMES)
+        quelle_ids = sorted(int(p) for p in stamm_quelle["police_id"])
+        if len(quelle_ids) != len(set(quelle_ids)):
+            raise UebernahmeError(
+                f"{quelle}/bestand.parquet: police_id nicht eindeutig — ohne "
+                "eindeutige Quellnummern gibt es keine Uebersetzung"
             )
-        except LoeschFehler as exc:
-            raise UebernahmeError(str(exc)) from exc
-    arbeit.mkdir(parents=True)
-    # Die Eingangswurzel muss es geben, bevor umbenannt wird — frueher
-    # entstand sie beilaeufig, weil das Arbeitsverzeichnis darin lag.
-    ziel.parent.mkdir(parents=True, exist_ok=True)
-    # Das Zielsystem vergibt seine eigenen Policennummern (Review T24-08,
-    # Entscheid des Maintainers 2026-09-15). Niemand schreibt uns in einer
-    # Migration einen Datensatz um; die Transformation ist unsere Arbeit
-    # auf der Zielseite, und es ist unsere Aufgabe, sie kollisionsfrei zu
-    # machen. Vorher lief eine gelieferte Nummer ungeprueft durch und
-    # kollidierte Jahre spaeter mit dem eigenen, deterministisch
-    # vorausberechenbaren Neugeschaeft — als harter Abbruch eines
-    # Nachtlaufs, zu einem Zeitpunkt, den niemand gewaehlt hat.
-    #
-    # Umnummeriert wird IMMER, nicht nur bei Kollision: Sonst haengt unsere
-    # Nummernvergabe davon ab, was die Quelle zufaellig geliefert hat, und
-    # die Uebersetzungstabelle waere mal die Identitaet und mal nicht — ein
-    # Leser baut sich dann zwei Lesewege.
-    stamm_quelle = read_portfolio(quelle / "bestand.parquet", expected_columns=STAMM_NAMES)
-    quelle_ids = sorted(int(p) for p in stamm_quelle["police_id"])
-    if len(quelle_ids) != len(set(quelle_ids)):
-        raise UebernahmeError(
-            f"{quelle}/bestand.parquet: police_id nicht eindeutig — ohne "
-            "eindeutige Quellnummern gibt es keine Uebersetzung"
-        )
-    band_von, band_bis = naechstes_band(Path(stand) / UEBERNAHME_DIR, len(quelle_ids))
-    abbildung = {q: band_von + i for i, q in enumerate(quelle_ids)}
+        band_von, band_bis = naechstes_band(Path(stand) / UEBERNAHME_DIR, len(quelle_ids))
+        abbildung = {q: band_von + i for i, q in enumerate(quelle_ids)}
 
-    dateien: Dict[str, str] = {}
-    spalten_je_tabelle = {**PFLICHT, **OPTIONAL}
-    kandidaten = [f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE)
-    for datei in kandidaten:
-        if not (quelle / datei).is_file():
-            continue
-        if datei in BELEGE:
-            # Belege sprechen die Sprache des FALLS und bleiben bei den
-            # Quellnummern: uebernahme.json dokumentiert, was die Migration
-            # getan hat, und seine Freitexte nennen Policen. Ein Beleg, den
-            # der Betrieb umschreibt, bezeugt nicht mehr den Fall. Die
-            # Uebersetzungstabelle ist die Bruecke zwischen beiden Welten.
-            daten = (quelle / datei).read_bytes()
-            (arbeit / datei).write_bytes(daten)
-        else:
-            tabelle = read_portfolio(
-                quelle / datei, expected_columns=spalten_je_tabelle[datei[:-len(".parquet")]])
-            write_portfolio(_umnummeriert(tabelle, abbildung, datei), arbeit / datei)
-            daten = (arbeit / datei).read_bytes()
+        dateien: Dict[str, str] = {}
+        spalten_je_tabelle = {**PFLICHT, **OPTIONAL}
+        kandidaten = [f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE)
+        for datei in kandidaten:
+            if not (quelle / datei).is_file():
+                continue
+            if datei in BELEGE:
+                # Belege sprechen die Sprache des FALLS und bleiben bei den
+                # Quellnummern: uebernahme.json dokumentiert, was die Migration
+                # getan hat, und seine Freitexte nennen Policen. Ein Beleg, den
+                # der Betrieb umschreibt, bezeugt nicht mehr den Fall. Die
+                # Uebersetzungstabelle ist die Bruecke zwischen beiden Welten.
+                daten = (quelle / datei).read_bytes()
+                (arbeit / datei).write_bytes(daten)
+            else:
+                tabelle = read_portfolio(
+                    quelle / datei, expected_columns=spalten_je_tabelle[datei[:-len(".parquet")]])
+                write_portfolio(_umnummeriert(tabelle, abbildung, datei), arbeit / datei)
+                daten = (arbeit / datei).read_bytes()
+            if os.name != "nt":
+                (arbeit / datei).chmod(0o444)
+            dateien[datei] = sha256_bytes(daten)
+
+        uebersetzung = pd.DataFrame({
+            "quelle_police_id": pd.Series(quelle_ids, dtype="int64"),
+            "ziel_police_id": pd.Series([abbildung[q] for q in quelle_ids], dtype="int64"),
+        })
+        write_portfolio(uebersetzung, arbeit / POLICENNUMMERN_DATEI)
         if os.name != "nt":
-            (arbeit / datei).chmod(0o444)
-        dateien[datei] = sha256_bytes(daten)
-
-    uebersetzung = pd.DataFrame({
-        "quelle_police_id": pd.Series(quelle_ids, dtype="int64"),
-        "ziel_police_id": pd.Series([abbildung[q] for q in quelle_ids], dtype="int64"),
-    })
-    write_portfolio(uebersetzung, arbeit / POLICENNUMMERN_DATEI)
-    if os.name != "nt":
-        (arbeit / POLICENNUMMERN_DATEI).chmod(0o444)
-    dateien[POLICENNUMMERN_DATEI] = sha256_bytes((arbeit / POLICENNUMMERN_DATEI).read_bytes())
-    # Erst die Pruefung am Eingang des Betriebs, dann die Registrierung:
-    # Ein Zugangsstand, dessen Nebentabellen das Gate nicht annehmen
-    # wuerde, wird nicht Eingang (N-01). Der Rest in der Staging-Wurzel
-    # ist kein Eingang und wird beim naechsten Anlegen desselben Falls
-    # entfernt. Er blockiert niemanden: Der Leser sieht ihn nicht, weil
-    # er ausserhalb der Eingangswurzel liegt (T26-15).
-    nt_fehler = _nebentabellen_fehler_im(arbeit)
-    if nt_fehler:
-        raise UebernahmeError(
-            f"{quelle}: der Zugangsstand traegt Nebentabellen, die das Gate "
-            "nicht annehmen wuerde — nichts registriert: " + "; ".join(nt_fehler[:5])
-        )
-    eingang = {
-        "schema_version": EINGANG_SCHEMA_VERSION,
-        "fall": fallname,
-        "stichtag": stichtag.isoformat(),
-        "snapshot_sha256": snapshot_sha256,
-        # Rolle und Schluesselklasse der Zeichnung, wie die Fall-Seite sie
-        # ausweist — Angaben der strukturell geprueften Snapshot-Datei, die
-        # Signatur hier nicht verifiziert (T22-06).
-        "zeichnung": zeichnung,
-        "quelle": str(quelle),
-        # Das Nummernband dieses Eingangs. Es steht hier und nicht in einem
-        # gepflegten Register: Die Summe der Eingaenge IST das Register.
-        "band": {"von": band_von, "bis": band_bis},
-        "dateien": dict(sorted(dateien.items())),
-    }
-    pfad = arbeit / EINGANG_DATEI
-    pfad.write_text(json.dumps(eingang, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8", newline="\n")
-    if os.name != "nt":
-        pfad.chmod(0o444)
-    os.rename(arbeit, ziel)
+            (arbeit / POLICENNUMMERN_DATEI).chmod(0o444)
+        dateien[POLICENNUMMERN_DATEI] = sha256_bytes((arbeit / POLICENNUMMERN_DATEI).read_bytes())
+        # Erst die Pruefung am Eingang des Betriebs, dann die Registrierung:
+        # Ein Zugangsstand, dessen Nebentabellen das Gate nicht annehmen
+        # wuerde, wird nicht Eingang (N-01). Der Rest in der Staging-Wurzel
+        # ist kein Eingang und wird beim naechsten Anlegen desselben Falls
+        # entfernt. Er blockiert niemanden: Der Leser sieht ihn nicht, weil
+        # er ausserhalb der Eingangswurzel liegt (T26-15).
+        nt_fehler = _nebentabellen_fehler_im(arbeit)
+        if nt_fehler:
+            raise UebernahmeError(
+                f"{quelle}: der Zugangsstand traegt Nebentabellen, die das Gate "
+                "nicht annehmen wuerde — nichts registriert: " + "; ".join(nt_fehler[:5])
+            )
+        eingang = {
+            "schema_version": EINGANG_SCHEMA_VERSION,
+            "fall": fallname,
+            "stichtag": stichtag.isoformat(),
+            "snapshot_sha256": snapshot_sha256,
+            # Rolle und Schluesselklasse der Zeichnung, wie die Fall-Seite sie
+            # ausweist — Angaben der strukturell geprueften Snapshot-Datei, die
+            # Signatur hier nicht verifiziert (T22-06).
+            "zeichnung": zeichnung,
+            "quelle": str(quelle),
+            # Das Nummernband dieses Eingangs. Es steht hier und nicht in einem
+            # gepflegten Register: Die Summe der Eingaenge IST das Register.
+            "band": {"von": band_von, "bis": band_bis},
+            "dateien": dict(sorted(dateien.items())),
+        }
+        pfad = arbeit / EINGANG_DATEI
+        pfad.write_text(json.dumps(eingang, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8", newline="\n")
+        if os.name != "nt":
+            pfad.chmod(0o444)
+        os.rename(arbeit, ziel)
     return ziel
 
 

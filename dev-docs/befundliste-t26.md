@@ -56,7 +56,7 @@ mutiert.
 | T26-01 | hoch | 1 | GESCHLOSSEN | Registrierung von `fall` loescht den gueltigen Eingang `fall.neu` |
 | T26-02 | hoch | 1+2 | GESCHLOSSEN | alle vier Szenarien; Naht-Matrix auf 21 Kombinationen erweitert |
 | T26-08 | hoch | 1+4 | GESCHLOSSEN | Externer Anker darf im Paket/in der Ablage liegen; Reexport loescht seine Historie |
-| T26-14 | mittel | 2 | OFFEN | Parallele Eingaenge erhalten dasselbe Nummernband |
+| T26-14 | mittel | 2 | GESCHLOSSEN | Parallele Eingaenge erhalten dasselbe Nummernband |
 | T26-15 | mittel | 2 | GESCHLOSSEN | Unpublizierter Arbeitsrest blockiert den Tagesbetrieb |
 | T26-03 | hoch | 3 | OFFEN | Betriebseingang akzeptiert semantisch ungueltige A-M4-Belege ohne Tabellenbindung |
 | T26-04 | hoch | 3 | OFFEN | Fuehrungsbeleg-Consumer akzeptiert selbst behauptete Ergebnisse |
@@ -247,3 +247,37 @@ eingerechnet, wenn der juengste festgeschriebene Abschluss MINDESTENS EINE
 seiner Zielnummern traegt. Ein Eingang, dessen Vertraege am Stichtag alle
 schon beendet waeren, hinterliesse keine Zeile und zaehlte als unbekannt —
 fuer einen Zugang zum eigenen Stichtag kann das nicht eintreten.
+
+### Block 2, Teil 2 — T26-14
+
+**Die Klasse.** Das Register der Nummernbaender ist die Summe der Eingaenge
+selbst: Jeder nennt sein Band in `eingang.json`, und das naechste wird daraus
+abgeleitet. Lesen und Fortschreiben sind damit ZWEI Schritte, und was
+dazwischen passiert, hat niemand verhindert. Zwei gleichzeitige
+Registrierungen bekamen dasselbe Band und veroeffentlichten beide;
+aufgefallen ist es erst Tage spaeter im Tagesbetrieb als
+Policennummern-Kollision. Die Trennung der Zahlenraeume war bis dahin
+behauptet, nicht gesichert.
+
+**Was gebaut ist — beide Seiten, wie der Gutachter verlangt.**
+
+1. *Eine Sperre um Lesen und Veroeffentlichen.* `eingang_sperre(stand)`,
+   nicht blockierend wie die Laufsperre, mit Meldung. Sie umschliesst die
+   Bandberechnung UND die Publikation, also genau das Fenster, in dem der
+   Befund sass.
+2. *Die Nachrechnung beim Lesen.* `lies_uebernahmen` prueft jetzt, dass die
+   Baender paarweise disjunkt sind. Eine Sperre schuetzt nur Prozesse, die
+   sie nehmen; ob die Baender disjunkt SIND, steht in den Eingaengen und
+   laesst sich jederzeit nachrechnen. Dafuer traegt `Uebernahme` ihr Band.
+
+**Gegen Rueckbau gesichert.** `tests/test_nummernband_disjunkt.py`: zehn
+Bandlagen als Tabelle, darunter die Grenze in beide Richtungen — buendig
+aneinander ist erlaubt, um genau eins ueberlappend nicht. Dazu die
+Sperre deterministisch geprueft (im Test gehalten, kein Zeitfenster) und
+der Befund von innen nachgestellt: Waehrend der erste Schreiber im Register
+liest, versucht ein zweiter zu registrieren — ohne Sperre kommt er durch.
+Die Leserpruefung mit Positivkontrolle.
+
+**Mutationsproben.** Sperre ausgeschaltet: beide Sperrtests rot, und der
+Zwischenruf meldet "durchgekommen" — der Befund selbst. Leserpruefung
+ausgeschaltet: Lesertest rot.
