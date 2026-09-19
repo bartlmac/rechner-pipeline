@@ -42,7 +42,7 @@ flowchart TD
     bestand -- 24 --> kern
     bestand -- 17 --> models
     bestand -- 1 --> qa
-    betrieb -- 20 --> bestand
+    betrieb -- 22 --> bestand
     betrieb -- 1 --> kern
     betrieb -- 9 --> models
     gates -- 13 --> bestand

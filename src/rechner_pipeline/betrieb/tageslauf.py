@@ -107,6 +107,7 @@ from rechner_pipeline.bestand.manifest import (
     schreibe_manifest,
     sha256_bytes,
 )
+from rechner_pipeline.bestand.kennzahlen import monatskennzahlen
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio, write_portfolio
 from rechner_pipeline.bestand.report import render_html
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
@@ -978,57 +979,6 @@ def _gebuchte_reduktionen(reduktionen, ledger):
         reduktionen["police_id"].isin(gebucht)].reset_index(drop=True)
 
 
-def _monatskennzahlen(
-    sicht: Dict[str, Any], config: BestandConfig, stichtag: _dt.date,
-) -> Dict[str, int]:
-    """Die drei Zahlen der Monatszeile, aus der Sicht DIESES Stichtags.
-
-    Gerechnet wird auf ``sicht`` — denselben Tabellen, aus denen der
-    Abschluss entsteht. Auf der Sicht von heute erzaehlten die Zahlen vom
-    selben Stichtag eine andere Geschichte als der Abschluss daneben
-    (T24-02).
-
-    Periode eines Monatsabschlusses ist ``(Vormonatserster, stichtag]`` —
-    linksoffen, rechtsgeschlossen, wie die Jahresperiode
-    ``(1.1.J, 1.1.J+1]`` in ``bestand.kennzahlen``. Ein Ereignis genau am
-    Stichtag gehoert in diesen Monat, nicht in den naechsten.
-
-    Welche GeVo ein Zugang und welche eine Leistung ist, steht in
-    ``models.bestand`` und nicht hier: Die Unternehmensseite braucht
-    dieselbe Zuordnung fuer ihre Bewegungsreihen, und zweimal gefuehrt
-    liefe sie auseinander. ``PEX``, ``RED`` und ``MIG`` sind dort als
-    weder-noch benannt; Zugaenge und Leistungen summieren sich deshalb
-    NICHT auf alle Vorfaelle des Monats.
-    """
-    from rechner_pipeline.bestand.fuehrung import bestand_am
-    from rechner_pipeline.models.bestand import (
-        LEISTUNG_EREIGNISSE, ZUGANG_EREIGNISSE,
-    )
-
-    schnitt = bestand_am(sicht["portfolio"], sicht["historie"], stichtag)
-    vormonat = (stichtag.replace(day=1) - _dt.timedelta(days=1)).replace(day=1)
-    ledger = sicht["ledger"]
-    periode = ledger[
-        (ledger["status_date"] > pd.Timestamp(vormonat))
-        & (ledger["status_date"] <= pd.Timestamp(stichtag))
-    ]
-    # Je Vorfall EINE Zaehlung, nicht je Buchungszeile: Ein Zugang bucht
-    # Summe und Bruttojahresbeitrag als zwei Zeilen desselben Vorfalls
-    # (models.bestand, BETRAG_ART_JE_EREIGNIS).
-    def vorfaelle(arten: Tuple[str, ...]) -> int:
-        auswahl = periode[periode["ereignis"].isin(arten)]
-        if not len(auswahl):
-            return 0
-        return int(len(auswahl.drop_duplicates(
-            subset=["police_id", "ereignis", "status_date"])))
-
-    return {
-        "in_kraft": int(len(schnitt)),
-        "zugaenge": vorfaelle(ZUGANG_EREIGNISSE),
-        "leistungen": vorfaelle(LEISTUNG_EREIGNISSE),
-    }
-
-
 def _stichtagssicht(
     tabellen: Dict[str, Any], config: BestandConfig, stichtag: _dt.date,
     betriebsbeginn: _dt.date,
@@ -1363,7 +1313,15 @@ def _tageslauf(
                 eintrag: Dict[str, Any] = {
                     "stichtag": stichtag.isoformat(), "datei": geschrieben.name,
                     "sha256": _datei_hash(geschrieben), "neu": True,
-                    **_monatskennzahlen(sicht, config, stichtag),
+                    # Das TAGESJOURNAL, nicht sicht["ledger"]: Nur das
+                    # Journal traegt das Buchungsdatum, und ohne das
+                    # faellt jeder spaet gebuchte Vorfall auf einem
+                    # Stichtag aus der Zaehlung. Den Schnitt auf den
+                    # Stichtag macht die Periode selbst — ein Vorfall,
+                    # der erst heute gebucht wurde, wird erst in seinem
+                    # Monat sichtbar.
+                    **monatskennzahlen(
+                        read_portfolio(geschrieben), journal, stichtag),
                 }
                 if stichtag == stichtage[-1]:
                     # Derselbe Schnitt wie der Abschluss: Der Bericht legt

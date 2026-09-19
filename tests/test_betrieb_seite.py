@@ -78,19 +78,23 @@ def test_stands_paket_traegt_stempel_und_berichte(gefuehrt, tmp_path):
     # Die Zahl steht hier ABSICHTLICH als Literal: Der Paketvertrag ist ein
     # Vertrag mit einem Konsumenten ausserhalb dieses Repos (vorzeige-url).
     # Eine Aenderung soll hier auffallen und abgestimmt werden, nicht
-    # stillschweigend mitwandern. Schema 4 seit T24-04 Teil 2: stand.json
-    # NENNT seinen Anker, und der Konsument verlangt ihn.
-    assert stand["schema_version"] == 4 and stand["stand"] == "2026-02-03"
+    # stillschweigend mitwandern. Schema 5 seit 2026-09-19: die juengsten
+    # Monatsabschluesse fahren mit (abgestimmt mit vorzeige-url); Schema 4
+    # brachte den Anker (T24-04 Teil 2), den der Konsument verlangt.
+    assert stand["schema_version"] == 5 and stand["stand"] == "2026-02-03"
     # Der Anker liegt AUSSERHALB des Pakets — das ist der Punkt.
     assert stand["anker"]["stand"] == "2026-02-03"
     assert len(stand["anker"]["sha256"]) == 64
     anker_datei = Path(stand["anker"]["datei"])
     assert anker_datei.is_file() and paket not in anker_datei.parents
     # Belege: Protokoll mit Kette und Manifest (T22-05), Tagesjournal
-    # (T24-04 Teil 1) fahren mit.
+    # (T24-04 Teil 1) und die Abschluesse, deren Vertragszahl stand.json
+    # nennt (Schema 5), fahren mit.
     assert set(stand["dateien"]) == {"index.html", "bestandsbericht_2026-02-01.html",
                                      "protokoll.jsonl", "laufmanifest.json",
-                                     "tagesjournal.parquet"}
+                                     "tagesjournal.parquet",
+                                     "abschluesse/abschluss_2026-01-01.parquet",
+                                     "abschluesse/abschluss_2026-02-01.parquet"}
     assert stand["provenienz"]["manifest_sha256"] == stand["dateien"]["laufmanifest.json"]
     for name, summe in stand["dateien"].items():
         assert (paket / name).is_file() and len(summe) == 64
@@ -272,3 +276,53 @@ def test_das_paket_belegt_seine_buchungszahlen_mit_dem_journal(gefuehrt, tmp_pat
     journal = read_portfolio(beleg, expected_columns=TAGESJOURNAL_NAMES)
     assert len(journal) == modell["buchungen"]["gesamt"]
     assert sorted(journal["ereignis"].unique()) == sorted(modell["buchungen"]["je_ereignis"])
+
+
+def test_das_paket_belegt_jede_vertragszahl_mit_ihrem_abschluss(gefuehrt, tmp_path):
+    """Schema 5: Wer eine Zahl nennt, liefert den Beleg mit.
+
+    ``stand.json`` fuehrt je Monatsabschluss eine Vertragszahl. Bis
+    Schema 4 lag der festgeschriebene Abschluss, aus dem sie stammt, nur
+    in der Ablage des Erzeugers — der Leser des Pakets musste sie
+    glauben. Das ist dieselbe Figur, die T24-04 fuer ``in_force``
+    geschlossen hat, eine Ebene tiefer: ein Beleg, der nur sich selbst
+    bezeugt.
+
+    Geprueft wird die ganze Kette: Der Abschluss liegt im Paket, sein
+    Hash steht in ``dateien``, seine ZEILENZAHL ist die genannte Zahl —
+    und die Ableitung allein aus Paket-Bytes ergibt exakt die Liste, die
+    im Paket steht. Ohne das letzte waere es ein Beleg neben einer Zahl
+    statt ein Beleg FUER sie.
+    """
+    from rechner_pipeline.bestand.manifest import sha256_bytes
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
+
+    paket = st.stands_paket(gefuehrt, tmp_path / "paket",
+                            anker_verzeichnis=tmp_path / "anker")
+    modell = json.loads((paket / st.PAKET_DATEI).read_text(encoding="utf-8"))
+
+    mit_zahl = [a for a in modell["abschluesse"] if "in_kraft" in a]
+    # Positivkontrolle: Ohne einen einzigen Abschluss mit Zahl pruefte
+    # dieser Test nichts und bliebe trotzdem gruen.
+    assert mit_zahl, "kein Abschluss mit in_kraft — der Test saehe nichts"
+    assert len(mit_zahl) <= st.PAKET_ABSCHLUESSE_ANZAHL
+
+    for a in mit_zahl:
+        name = f"{st.PAKET_ABSCHLUESSE_DIR}/{a['datei']}"
+        beleg = paket / name
+        assert beleg.is_file(), f"{name} fehlt im Paket"
+        assert modell["dateien"][name] == sha256_bytes(beleg.read_bytes())
+        assert len(read_portfolio(beleg)) == a["in_kraft"], (
+            f"{a['stichtag']}: stand.json nennt {a['in_kraft']} Vertraege, "
+            f"der mitgelieferte Abschluss traegt {len(read_portfolio(beleg))}")
+
+    # Die Gegenprobe des Konsumenten: NUR aus Paket-Bytes abgeleitet.
+    journal = read_portfolio(paket / st.PAKET_JOURNAL,
+                             expected_columns=TAGESJOURNAL_NAMES)
+    abgeleitet = st.abschluesse_aus_protokoll(
+        lies_protokoll(paket / st.PAKET_PROTOKOLL),
+        journal=journal,
+        abschluesse_dir=paket / st.PAKET_ABSCHLUESSE_DIR,
+    )
+    assert abgeleitet == modell["abschluesse"]

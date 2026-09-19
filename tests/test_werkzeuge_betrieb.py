@@ -45,7 +45,7 @@ def _erfunden(tmp_path: Path, pb1: str = "gruen") -> Path:
         # Schema der GELTENDEN Fassung (4 seit T24-04 Teil 2): Das Paket
         # soll an den Belegen scheitern, nicht schon an der Versionszahl —
         # sonst prueft der Test den Schema-Pin statt die Belegpflicht.
-        "schema_version": 4, "stand": "2026-09-05", "gefuehrt_seit": "2026-01-01",
+        "schema_version": 5, "stand": "2026-09-05", "gefuehrt_seit": "2026-01-01",
         "bestand": {"in_force": 2556, "je_produkt": {"klv": 1893, "bu": 663},
                     "uebernommen_in_force": 818, "policiert_beginn_folgt": 2},
         "neugeschaeft": {"seit_betriebsbeginn": 99, "woche": {}, "woche_summe": 0},

@@ -53,6 +53,7 @@ from rechner_pipeline.models.anker import (
     zeichne,
 )
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
+from rechner_pipeline.bestand.kennzahlen import bewegungskennzahlen
 from rechner_pipeline.bestand.manifest import lies_manifest, sha256_bytes
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio
 from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
@@ -74,10 +75,26 @@ from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 #: schuetzt ihre letzte Zeile nicht, und genau aus ihr leitet stand.json
 #: ab. Der Sprung macht die Kopplung sichtbar: Ein Konsument des alten
 #: Schemas bekommt eine klare Meldung statt stiller Drift.
-PAKET_SCHEMA_VERSION = 4
+#: Schema 5: Das Paket traegt die juengsten Monatsabschluesse selbst.
+#: Bis Schema 4 nannte ``stand.json`` je Abschluss eine Vertragszahl, die
+#: der Konsument nicht nachrechnen konnte — der festgeschriebene Abschluss
+#: lag nur in der Ablage des Erzeugers. Die Zahl war damit dieselbe Figur
+#: wie ``in_force`` vor T24-04: belegt daneben stehend, tatsaechlich zu
+#: glauben. Mitgeliefert werden die juengsten
+#: :data:`PAKET_ABSCHLUESSE_ANZAHL`, nicht alle: Ein gefuehrter Bestand
+#: hat nach Jahren hunderte, und ein Paket soll tragen, was es zeigt.
+PAKET_SCHEMA_VERSION = 5
 PAKET_PROTOKOLL = "protokoll.jsonl"
 PAKET_MANIFEST = "laufmanifest.json"
 PAKET_JOURNAL = "tagesjournal.parquet"
+#: Verzeichnis der mitgelieferten Abschluesse IM Paket.
+PAKET_ABSCHLUESSE_DIR = "abschluesse"
+#: Zwoelf — ein Jahr Monatsabschluesse. Die Zahl ist zugleich die Grenze,
+#: bis zu der ``in_kraft`` abgeleitet wird, und sie gilt auf BEIDEN
+#: Seiten: Der Erzeuger haette alle Abschluesse zur Hand und wuerde sonst
+#: mehr Zahlen bilden als der Konsument nachrechnen kann — der Vergleich
+#: der beiden Ableitungen schluege fehl, obwohl niemand gelogen hat.
+PAKET_ABSCHLUESSE_ANZAHL = 12
 SEITE_DIR = "seite"
 PAKET_DATEI = "stand.json"
 
@@ -141,7 +158,11 @@ def _gepruefte_zeilen(
     return zeilen, gruene[-1]
 
 
-def abschluesse_aus_protokoll(zeilen: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def abschluesse_aus_protokoll(
+    zeilen: List[Dict[str, Any]],
+    journal: Optional[pd.DataFrame] = None,
+    abschluesse_dir: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
     """Die Monatsabschluesse eines Stands aus allen gruenen Protokollzeilen.
 
     Je Stichtag EIN Eintrag: Die Zeile, die ihn geschrieben hat, nennt
@@ -152,6 +173,16 @@ def abschluesse_aus_protokoll(zeilen: List[Dict[str, Any]]) -> List[Dict[str, An
     T24-04): Der Erzeuger baut daraus ``stand.json``, der Konsument haelt
     ``stand.json`` dagegen. Zweimal geschrieben waeren es zwei Regeln, die
     auseinanderlaufen — genau die Drift, gegen die der Beleg antritt.
+
+    Genau deshalb nimmt sie QUELLEN entgegen und keine Ablage: Der
+    Erzeuger reicht Journal und Abschlussverzeichnis seiner Ablage, der
+    Konsument dieselben Dateien aus dem Paket. Eine Ablage koennte nur
+    der Erzeuger stellen; die Ableitung waere dann seine allein, und der
+    Konsument muesste ihr Ergebnis glauben statt es nachzubilden.
+
+    Fehlt eine Quelle, bleiben die zugehoerigen Felder WEG — sie werden
+    nicht genullt. "Nicht gerechnet" und "null Vorfaelle" sind
+    verschiedene Aussagen, und nur eine davon ist hier wahr.
     """
     abschluesse: Dict[str, Dict[str, Any]] = {}
     for z in zeilen:
@@ -166,7 +197,78 @@ def abschluesse_aus_protokoll(zeilen: List[Dict[str, Any]]) -> List[Dict[str, An
                 eintrag["bericht"] = a["bericht"]
             if a.get("teilbestaende"):
                 eintrag["teilbestaende"] = a["teilbestaende"]
-    return [abschluesse[k] for k in sorted(abschluesse)]
+            for feld in KENNZAHL_FELDER:
+                if a.get(feld) is not None:
+                    eintrag[feld] = a[feld]
+    liste = [abschluesse[k] for k in sorted(abschluesse)]
+    _ergaenze_kennzahlen(liste, journal, abschluesse_dir)
+    return liste
+
+
+#: Die Zahlen der Monatszeile. Abschluesse aus Laeufen VOR ihrer
+#: Einfuehrung tragen sie nicht; sie werden beim Export aus gebundenen
+#: Bytes nachgerechnet, nicht behauptet.
+KENNZAHL_FELDER = ("in_kraft", "zugaenge", "leistungen")
+#: Die beiden Felder, die das Tagesjournal ALLEIN traegt — es reicht ueber
+#: die ganze Buchungshistorie, waehrend der festgeschriebene Abschluss nur
+#: fuer die juengsten Monate mitgeliefert wird.
+BEWEGUNGS_FELDER = ("zugaenge", "leistungen")
+
+
+def _ergaenze_kennzahlen(
+    liste: List[Dict[str, Any]],
+    journal: Optional[pd.DataFrame],
+    abschluesse_dir: Optional[Path],
+) -> None:
+    """Fehlende Monatskennzahlen aus den gegebenen Quellen nachrechnen.
+
+    Aeltere Abschluesse entstanden, bevor der Tagesbetrieb die Zahlen
+    schrieb. Sie neu zu erzeugen ginge nicht — ein Abschluss ist
+    festgeschrieben und wird nie zweimal geschrieben. Sie sind aber
+    ABLEITBAR, aus zwei verschieden weit reichenden Quellen:
+
+    * Das Tagesjournal traegt die ganze Buchungshistorie. Daraus kommen
+      ``zugaenge`` und ``leistungen`` fuer JEDEN Eintrag der Liste.
+    * ``in_kraft`` ist die Zeilenzahl des festgeschriebenen Abschlusses.
+      Der liegt beim Konsumenten nur fuer die juengsten
+      :data:`PAKET_ABSCHLUESSE_ANZAHL` Monate — mehr traegt das Paket
+      nicht.
+
+    Gerechnet wird mit denselben Funktionen, die der Tageslauf ruft
+    (``bestand.kennzahlen``); zwei Implementierungen liefen auseinander,
+    sobald jemand eine Ereignisart ergaenzt.
+
+    Ein fehlender Abschluss laesst den Eintrag ohne ``in_kraft`` — und
+    das bleibt trotzdem vergleichbar: Der Erzeuger legt genau die
+    Abschluesse ins Paket, die er selbst hat, also fehlt beiden Seiten
+    derselbe. Wer eine Datei nachtraeglich aus dem Paket nimmt, faellt
+    eine Stufe frueher auf, weil ``dateien`` sie mit Hash nennt.
+    """
+    if journal is not None:
+        for eintrag in liste:
+            if any(f not in eintrag for f in BEWEGUNGS_FELDER):
+                eintrag.update(bewegungskennzahlen(
+                    journal, _dt.date.fromisoformat(eintrag["stichtag"])))
+    if abschluesse_dir is None:
+        return
+    for eintrag in juengste_abschluesse(liste):
+        if "in_kraft" in eintrag:
+            continue
+        pfad = Path(abschluesse_dir) / eintrag["datei"]
+        if pfad.is_file():
+            eintrag["in_kraft"] = int(len(read_portfolio(pfad)))
+
+
+def juengste_abschluesse(liste: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Die Abschluesse, die mit dem Paket reisen — juengste zuletzt.
+
+    EINE Auswahlregel fuer zwei Zwecke: ``stands_paket`` kopiert genau
+    diese Dateien, und :func:`_ergaenze_kennzahlen` rechnet genau fuer
+    diese Eintraege ``in_kraft`` nach. Zwei getrennte Regeln liefen
+    auseinander, und das Ergebnis waere ein Paket, das eine Zahl nennt,
+    deren Beleg es nicht mitbringt.
+    """
+    return [e for e in liste if e.get("datei")][-PAKET_ABSCHLUESSE_ANZAHL:]
 
 
 def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -180,9 +282,10 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
             f"Stand fuehrt {manifest['horizont']}, das Protokoll {heute.isoformat()} "
             "— Stand und Nachweis passen nicht zusammen"
         )
+    journal_vorhanden = ablage.tagesjournal_pfad.is_file()
     journal = (
         read_portfolio(ablage.tagesjournal_pfad, expected_columns=TAGESJOURNAL_NAMES)
-        if ablage.tagesjournal_pfad.is_file()
+        if journal_vorhanden
         else pd.DataFrame({n: pd.Series(dtype="object") for n in TAGESJOURNAL_NAMES})
     )
     woche_ab = pd.Timestamp(heute - _dt.timedelta(days=6))
@@ -237,7 +340,15 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
             "je_ereignis": je_ereignis,
             "letzte": buchungen,
         },
-        "abschluesse": abschluesse_aus_protokoll(zeilen),
+        # Die leere Ersatztabelle oben traegt die uebrigen Bloecke; als
+        # Kennzahlenquelle taugt sie nicht. Sie lieferte lauter Nullen,
+        # und eine Null waere hier die Behauptung "kein Vorfall" statt
+        # der Wahrheit "nicht gerechnet".
+        "abschluesse": abschluesse_aus_protokoll(
+            zeilen,
+            journal=journal if journal_vorhanden else None,
+            abschluesse_dir=ablage.abschluesse,
+        ),
         "uebernahmen": list(zeile.get("uebernahmen") or []),
         "verankerung": dict(zeile.get("verankerung") or {}),
         "provenienz": {
@@ -591,6 +702,18 @@ def stands_paket(
             if quelle.is_file():
                 shutil.copyfile(quelle, ziel / name)
                 dateien[name] = sha256_bytes((ziel / name).read_bytes())
+    # Die juengsten Monatsabschluesse selbst (Schema 5). stand.json nennt
+    # je Abschluss eine Vertragszahl; ohne den Abschluss daneben bliebe
+    # sie zu glauben — dieselbe Figur wie in_force vor T24-04. Kopiert
+    # wird genau die Auswahl, fuer die auch in_kraft abgeleitet wird.
+    for a in juengste_abschluesse(modell["abschluesse"]):
+        quelle = ablage.abschluesse / a["datei"]
+        if not quelle.is_file():
+            continue
+        name = f"{PAKET_ABSCHLUESSE_DIR}/{a['datei']}"
+        (ziel / PAKET_ABSCHLUESSE_DIR).mkdir(exist_ok=True)
+        shutil.copyfile(quelle, ziel / name)
+        dateien[name] = sha256_bytes((ziel / name).read_bytes())
     seite = ziel / "index.html"
     _schreibe(seite, rendere_html(modell))
     dateien["index.html"] = sha256_bytes(seite.read_bytes())

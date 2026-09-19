@@ -636,3 +636,102 @@ def status_verlauf(
             eintrag[status] = int(counts.get(status, 0))
         reihe.append(eintrag)
     return reihe
+
+def bewegungskennzahlen(journal: pd.DataFrame, stichtag: _dt.date) -> Dict[str, int]:
+    """Zugaenge und Leistungen des Monats, der auf ``stichtag`` endet.
+
+    Eigenstaendig, weil sie aus dem LEDGER ALLEIN ableitbar sind: Das
+    Tagesjournal liegt jedem Stands-Paket bei, der festgeschriebene
+    Abschluss nur fuer die juengsten Monate. Wer bloss das Journal hat,
+    bekommt diese beiden Zahlen — fuer ``in_kraft`` braucht es den
+    Abschluss selbst (:func:`monatskennzahlen`). Ohne diesen Schnitt
+    muesste eine Seite, der ein Abschluss fehlt, alle drei Zahlen
+    weglassen: Zwei belegbare Werte gingen mit dem dritten unter.
+
+    Periode ist ``(Vormonatserster, stichtag]`` — linksoffen,
+    rechtsgeschlossen wie die Jahresperiode ``(1.1.J, 1.1.J+1]`` oben.
+    Gezaehlt werden VORFAELLE, nicht Buchungszeilen: Ein Zugang bucht
+    Summe und Bruttojahresbeitrag als zwei Zeilen desselben Vorfalls.
+
+    **Die Periodenachse ist der SICHTBARKEITSTAG**, also
+    ``max(status_date, buchungsdatum)``, und nicht der Wirkungstag. Das
+    ist keine Feinheit, sondern die Bedingung dafuer, dass ueberhaupt
+    gezaehlt wird: Ein Abschluss zum Stichtag S kennt einen Vorfall
+    genau dann, wenn beide Daten ``<= S`` sind. Er wird also zwischen dem
+    Abschluss davor und dem zum Stichtag S sichtbar — und genau dieser
+    Monat meldet ihn.
+
+    Auf dem Wirkungstag mit einem zusaetzlichen Buchungsschnitt gezaehlt,
+    fiel ein Vorfall durch, dessen Wirkungstag GENAU auf einen Stichtag
+    faellt und der danach gebucht wird: Fuer seinen eigenen Monat war er
+    zu spaet gebucht, fuer den naechsten wirkte er zu frueh. Am
+    betriebenen Bestand gemessen (2026-09-19, 387 Monate) traf das 2621
+    von 13144 Vorfaellen — darunter 191 Ablaeufe, 188 Stornos und 141
+    Todesfaelle, die in keinem einzigen Monat auftauchten. Auf dem
+    Sichtbarkeitstag bleiben genau die neun Vorfaelle ungezaehlt, deren
+    Monat noch keinen Abschluss hat.
+
+    Deshalb nimmt sie das TAGESJOURNAL und nicht den Ledger: Nur das
+    Journal traegt ``buchungsdatum``. Der Ledger fuehrt die Spalte nicht,
+    und ein Aufrufer, der ihn hier hineingibt, wuerde ohne diese Sperre
+    stillschweigend auf dem Wirkungstag zaehlen.
+
+    **Benannte Grenze:** Die Zaehlung liest die Ereignisse des Ledgers.
+    Der EROEFFNUNGSBESTAND eines Unternehmens (Batch-Historie) traegt
+    keine ZUG-Buchung — er war am ersten Tag da, er kam nicht hinzu. Der
+    erste Monat des Betriebsbeginns weist seine Vertraege deshalb nicht
+    als Zugaenge aus. Das ist bewusst dieselbe Zaehlweise, die die
+    Unternehmensseite fuer ihre Bewegungsreihen verwendet; eine zweite,
+    abweichende Definition waere schlimmer als diese Grenze.
+    """
+    from rechner_pipeline.models.bestand import (
+        LEISTUNG_EREIGNISSE, ZUGANG_EREIGNISSE,
+    )
+
+    if "buchungsdatum" not in journal.columns:
+        raise ValueError(
+            "bewegungskennzahlen braucht das Tagesjournal mit Spalte "
+            "'buchungsdatum' — ohne sie laesst sich der Sichtbarkeitstag "
+            "nicht bilden, und die Zaehlung verlore die spaet gebuchten "
+            "Vorfaelle auf einem Stichtag")
+    vormonat = (stichtag.replace(day=1) - _dt.timedelta(days=1)).replace(day=1)
+    sichtbar = journal[["status_date", "buchungsdatum"]].max(axis=1)
+    periode = journal[
+        (sichtbar > pd.Timestamp(vormonat))
+        & (sichtbar <= pd.Timestamp(stichtag))
+    ]
+
+    def vorfaelle(arten) -> int:
+        auswahl = periode[periode["ereignis"].isin(arten)]
+        if not len(auswahl):
+            return 0
+        return int(len(auswahl.drop_duplicates(
+            subset=["police_id", "ereignis", "status_date"])))
+
+    return {
+        "zugaenge": vorfaelle(ZUGANG_EREIGNISSE),
+        "leistungen": vorfaelle(LEISTUNG_EREIGNISSE),
+    }
+
+
+def monatskennzahlen(
+    abschluss: pd.DataFrame, journal: pd.DataFrame, stichtag: _dt.date,
+) -> Dict[str, int]:
+    """Die drei Zahlen der Monatszeile eines Abschlusses.
+
+    EINE Implementierung fuer zwei Wege: Der Tagesbetrieb ruft sie beim
+    Schreiben eines Abschlusses, der Paket-Export ergaenzt damit die
+    Abschluesse, die die Felder noch nicht tragen. Zwei Stellen, die
+    dieselbe Groesse rechnen, liefen auseinander, sobald jemand eine
+    Ereignisart ergaenzt.
+
+    ``in_kraft`` ist die Zeilenzahl des ABSCHLUSSES, nicht ein neu
+    gerechneter Stand: Der Abschluss IST der in-force-Stand seines
+    Stichtags, festgeschrieben und unveraenderlich. Wer ihn aus heutigen
+    Tabellen nachrechnet, erzaehlt vom selben Stichtag eine andere
+    Geschichte (T24-02).
+    """
+    return {
+        "in_kraft": int(len(abschluss)),
+        **bewegungskennzahlen(journal, stichtag),
+    }

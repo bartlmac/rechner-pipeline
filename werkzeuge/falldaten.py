@@ -999,14 +999,31 @@ def _pruefe_felder_gegen_das_protokoll(
     Die Abschluesse kommen aus derselben Funktion, die der Erzeuger
     benutzt (``seite.abschluesse_aus_protokoll``) — zwei Ableitungen
     waeren zwei Regeln, die auseinanderlaufen.
-    """
-    from rechner_pipeline.betrieb.seite import abschluesse_aus_protokoll
 
+    Ihre Quellen kommen aus dem PAKET, nicht aus einer Ablage: Journal
+    und die juengsten Monatsabschluesse liegen seit Schema 5 dabei und
+    haengen ueber ``dateien`` mit Hash an der Kette. Wer hier stattdessen
+    die Ablage des Erzeugers laese, pruefte das Paket gegen etwas, das
+    gar nicht im Paket steht.
+    """
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.betrieb.seite import (
+        PAKET_ABSCHLUESSE_DIR, PAKET_JOURNAL, abschluesse_aus_protokoll,
+    )
+    from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
+
+    journal_pfad = paket / PAKET_JOURNAL
+    journal = (
+        read_portfolio(journal_pfad, expected_columns=TAGESJOURNAL_NAMES)
+        if journal_pfad.is_file() else None
+    )
     erwartet = {
         "bestand": dict(letzte.get("bestand") or {}),
         "uebernahmen": list(letzte.get("uebernahmen") or []),
         "verankerung": dict(letzte.get("verankerung") or {}),
-        "abschluesse": abschluesse_aus_protokoll(zeilen),
+        "abschluesse": abschluesse_aus_protokoll(
+            zeilen, journal=journal,
+            abschluesse_dir=paket / PAKET_ABSCHLUESSE_DIR),
         "gefuehrt_seit": (
             gruene[0]["nachgeholt"][0] if gruene[0].get("nachgeholt") else gruene[0]["heute"]
         ),
@@ -1181,16 +1198,17 @@ def betrieb(paket: Optional[Path],
         return {"vorhanden": False}
     paket = Path(paket)
     stand = _json(paket / "stand.json")
-    # Schema 3 seit Review T24-04 Teil 1: das Paket traegt auch das
-    # Tagesjournal. Ein Paket nach Schema 2 belegt seine Buchungszahlen
-    # nicht und wird deshalb nicht veroeffentlicht — wie schon die
-    # Erstfassung ohne Belegdateien.
-    if not isinstance(stand, dict) or stand.get("schema_version") != 4:
+    # Schema 5: das Paket traegt Tagesjournal (seit 3), Anker (seit 4) und
+    # die juengsten Monatsabschluesse. Ein aelteres Paket belegt jeweils
+    # einen Teil seiner eigenen Zahlen nicht und wird deshalb nicht
+    # veroeffentlicht — wie schon die Erstfassung ohne Belegdateien.
+    if not isinstance(stand, dict) or stand.get("schema_version") != 5:
         raise FalldatenFehler(
-            f"{paket}: kein Stands-Paket (stand.json mit schema_version 4 fehlt; "
-            "ein aelteres Paket nennt keinen Anker und belegt damit nur sich "
-            "selbst — die Protokollkette schuetzt ihre letzte Zeile nicht, und "
-            "genau aus ihr leitet stand.json ab) — ein neuer Export heilt es: "
+            f"{paket}: kein Stands-Paket (stand.json mit schema_version 5 fehlt; "
+            "ein aelteres Paket nennt keinen Anker oder keine Abschluesse und "
+            "belegt damit einen Teil seiner Zahlen nicht — die Protokollkette "
+            "schuetzt ihre letzte Zeile nicht, und genau aus ihr leitet "
+            "stand.json ab) — ein neuer Export heilt es: "
             "python -m rechner_pipeline.betrieb.seite --stand <daten> "
             "--paket <ziel> --anker <verzeichnis>"
         )

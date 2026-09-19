@@ -1018,3 +1018,77 @@ def test_die_zaehler_zaehlen_vorfaelle_und_nicht_buchungszeilen(gefuehrt):
     if zeilenzahl == vorfaelle:
         pytest.skip("in dieser Ablage bucht kein Zugang zwei Betragsarten")
     assert gemeldet <= vorfaelle, (gemeldet, vorfaelle, zeilenzahl)
+
+
+def test_geschriebene_und_nachgerechnete_kennzahlen_stimmen_ueberein(gefuehrt):
+    """Zwei Wege, eine Zahl — und genau das wird hier geprueft.
+
+    Der Tagesbetrieb SCHREIBT die Kennzahlen, wenn er einen Abschluss
+    anlegt. Der Paket-Export RECHNET sie nach fuer Abschluesse, die sie
+    noch nicht tragen (aeltere Laeufe). Zwei Stellen, die dieselbe
+    Groesse bestimmen, sind die Klasse, die in diesem Repo mehrfach
+    zugeschlagen hat — zuletzt als A-B1 funktional tot war und als die
+    Bewegungsrechnung RED auf beiden Seiten derselben Identitaet
+    auslaesst (T26-11).
+
+    Deshalb rufen beide Wege dieselbe Funktion, und dieser Test haelt
+    ihre Ergebnisse gegeneinander: Die Protokollwerte werden entfernt,
+    der Export rechnet sie nach, und beide muessen gleich sein.
+    """
+    from rechner_pipeline.betrieb.seite import (
+        KENNZAHL_FELDER, abschluesse_aus_protokoll,
+    )
+
+    ablage, _ = gefuehrt
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    geschrieben = {a["stichtag"]: {f: a[f] for f in KENNZAHL_FELDER}
+                   for z in zeilen for a in z["abschluesse"]}
+    assert geschrieben, "kein Abschluss mit Kennzahlen im Protokoll"
+
+    # Dieselben Zeilen OHNE die Zahlen — so sehen Protokolle aus, die vor
+    # der Einfuehrung der Felder entstanden sind.
+    ohne = [
+        {**z, "abschluesse": [{k: v for k, v in a.items()
+                               if k not in KENNZAHL_FELDER}
+                              for a in z["abschluesse"]]}
+        for z in zeilen
+    ]
+    # Die Quellen einzeln, wie sie auch der Konsument aus dem Paket
+    # stellt — nicht die Ablage: Eine Ablage koennte nur der Erzeuger
+    # reichen, und der Test pruefte dann einen Weg, den es beim Leser
+    # des Pakets gar nicht gibt.
+    journal = read_portfolio(ablage.tagesjournal_pfad,
+                             expected_columns=TAGESJOURNAL_NAMES)
+    nachgerechnet = {
+        e["stichtag"]: {f: e.get(f) for f in KENNZAHL_FELDER}
+        for e in abschluesse_aus_protokoll(
+            ohne, journal=journal, abschluesse_dir=ablage.abschluesse)
+    }
+
+    for stichtag, werte in geschrieben.items():
+        assert nachgerechnet[stichtag] == werte, (
+            f"{stichtag}: geschrieben {werte}, nachgerechnet "
+            f"{nachgerechnet[stichtag]}")
+
+
+def test_ohne_quelle_bleibt_die_zahl_leer_statt_null(gefuehrt, tmp_path):
+    """Eine erfundene Null waere schlimmer als eine Luecke: "nicht
+    gerechnet" und "null Vorfaelle" sind verschiedene Aussagen."""
+    from rechner_pipeline.betrieb.seite import (
+        KENNZAHL_FELDER, abschluesse_aus_protokoll,
+    )
+
+    ablage, _ = gefuehrt
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    ohne = [
+        {**z, "abschluesse": [{k: v for k, v in a.items()
+                               if k not in KENNZAHL_FELDER}
+                              for a in z["abschluesse"]]}
+        for z in zeilen
+    ]
+    # Keine Quellen: kein Journal, ein Abschlussverzeichnis, das es nicht
+    # gibt. So sieht ein Aufrufer aus, der nur das Protokoll hat.
+    for eintrag in abschluesse_aus_protokoll(
+            ohne, journal=None, abschluesse_dir=tmp_path / "leer"):
+        for feld in KENNZAHL_FELDER:
+            assert feld not in eintrag, (eintrag["stichtag"], feld)
