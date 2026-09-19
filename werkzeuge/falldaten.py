@@ -1153,6 +1153,15 @@ def _pruefe_anker(paket: Path, stand: Dict[str, Any],
         satz_hash,
     )
 
+    from rechner_pipeline.models.zeichnung import ausserhalb_von
+
+    if anker_datei is not None and not ausserhalb_von(Path(anker_datei), Path(paket)):
+        raise FalldatenFehler(
+            f"{paket}: der Anker {anker_datei} liegt IM Paket — ein Bezug, der "
+            "mit dem Paket kommt, bindet es nicht: Er wird mit ihm geschrieben "
+            "und mit ihm ersetzt. Ein Anker ausserhalb des Pakets waehlen "
+            "(Befund T26-08)."
+        )
     if anker_datei is None:
         raise FalldatenFehler(
             f"{paket}: kein Anker uebergeben. Ein Stands-Paket wird gegen "

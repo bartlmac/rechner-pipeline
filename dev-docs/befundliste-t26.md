@@ -55,7 +55,7 @@ mutiert.
 |---|---|---|---|---|
 | T26-01 | hoch | 1 | GESCHLOSSEN | Registrierung von `fall` loescht den gueltigen Eingang `fall.neu` |
 | T26-02 | hoch | 1+2 | TEILWEISE | Legacy-Verlust geschlossen; drei Wiederanlaufszenarien offen (Block 2) |
-| T26-08 | hoch | 1+4 | OFFEN | Externer Anker darf im Paket/in der Ablage liegen; Reexport loescht seine Historie |
+| T26-08 | hoch | 1+4 | GESCHLOSSEN | Externer Anker darf im Paket/in der Ablage liegen; Reexport loescht seine Historie |
 | T26-14 | mittel | 2 | OFFEN | Parallele Eingaenge erhalten dasselbe Nummernband |
 | T26-15 | mittel | 2 | GESCHLOSSEN | Unpublizierter Arbeitsrest blockiert den Tagesbetrieb |
 | T26-03 | hoch | 3 | OFFEN | Betriebseingang akzeptiert semantisch ungueltige A-M4-Belege ohne Tabellenbindung |
@@ -136,3 +136,44 @@ Regel, die immer sperrt, waere genauso falsch wie eine, die nie sperrt.
 Eingangswurzel: drei Namenspaare und der Lesertest werden rot. `ohne_marker`
 ausgeschaltet: beide Markertests rot. Praemisse-Wache ausgeschaltet: alle
 drei Zustandsfaelle rot, die Positivkontrolle bleibt gruen.
+
+
+### Block 1, Teil 2 — T26-08
+
+**Die Klasse.** Ein Bezug, der Vertrauen stiften soll, muss ausserhalb des
+Geltungsbereichs dessen liegen, der ihn belegt. Die Regel gab es schon — fuer
+alles, was eine ZEICHNUNG autorisiert (Ordnung, Freigabeschluessel, Mandat,
+ADR-018). Sie war aber zweimal implementiert: einmal als
+`ausserhalb_des_falls`, einmal woertlich in `lade_zeichnungsordnung`. Der
+ANKER eines Stands-Pakets folgt derselben Regel und war von keiner der beiden
+gedeckt.
+
+**Was der Gutachter gemessen hat.** Ein Anker im Paket: `anchor_rows_before_
+reexport 2`, `anchor_rows_after_reexport 1` — die Historie, die laut Vertrag
+nur wachsen darf, verschwand beim naechsten Export. Und weil der Anker mit
+dem Paket reist, prueft der Konsument die Faelschung gegen ihre eigene
+Beilage: `forged_in_force 1068 true_in_force 68 accepted True`. Die
+Positivkontrolle mit getrennt verwahrtem Anker lehnte dieselbe Aenderung ab.
+
+**Was gebaut ist.** Eine Implementierung, `ausserhalb_von(pfad, bereich,
+muss_existieren=)`, angewandt an vier Stellen: Ordnung, Mandat (beide ueber
+den unveraenderten Namen `ausserhalb_des_falls`), Ankerverzeichnis im
+Erzeuger, Ankerdatei im Konsumenten. `muss_existieren` trennt zwei Faelle,
+die vorher verschwommen: Ein Beleg, den es nicht gibt, autorisiert nichts und
+gilt nicht als aussen; ein Verzeichnis, in das erst geschrieben wird, gibt es
+bei der Pruefung noch nicht.
+
+`ankerziel_fehler` laeuft VOR der Loeschung des Zielverzeichnisses. Der
+Zeitpunkt ist der Punkt: Eine Pruefung danach haette das vorhandene Paket
+schon gekostet.
+
+**Gegen Rueckbau gesichert.** `tests/test_bezug_ausserhalb.py` prueft die
+Regel als Tabelle (drinnen, gleich, ueber `..`, Symlink von innen nach
+aussen, Symlink von aussen nach innen, und die Gegenprobe draussen), dann
+sieben Ankerlagen gegen den Erzeuger — jedes Mal mit der Zusicherung, dass
+das vorhandene Paket unangetastet bleibt —, die wachsende Ankerreihe ueber
+drei Reexporte und den Konsumenten samt Positivkontrolle.
+
+**Mutationsproben.** Ankerpruefung entfernt: zwei Erzeugertests rot.
+Konsumentenpruefung entfernt: Konsumententest rot. Aufgeloeste Haelfte der
+Regel entfernt: Regeltabelle und Symlink-Test rot.

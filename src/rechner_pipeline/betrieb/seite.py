@@ -601,6 +601,45 @@ def paketziel_fehler(ablage, ziel: Path) -> Optional[str]:
     return None
 
 
+def ankerziel_fehler(ablage, paket_ziel: Path, anker_verzeichnis: Path) -> Optional[str]:
+    """Liegt das Ankerverzeichnis ausserhalb dessen, was dieser Export
+    anfasst? Leer = ja.
+
+    Der Anker ist der einzige Bezug des Pakets nach aussen (models.anker):
+    der Hash der letzten Protokollzeile, abgelegt dort, wo der schreibende
+    Prozess nicht hinlangt.
+
+    Liegt er IM PAKET, ist er keiner. Der Export ersetzt das Paket bei
+    jedem Lauf und nimmt die Ankerhistorie mit — gemessen zwei Saetze vor
+    dem Reexport und einer danach, obwohl die Reihe laut Vertrag nur
+    wachsen darf. Und der Konsument haelt die Faelschung dann gegen ihre
+    eigene Beilage: Eine konsistent von 68 auf 1068 Vertraege
+    umgeschriebene Lieferung wurde angenommen (Befund T26-08).
+
+    Liegt er in der ABLAGE, schreibt der Tagesbetrieb selbst an den Ort,
+    der ihn binden soll. Beides ist dieselbe Aussage: Ein Wert, den der
+    schreibende Prozess aendern kann, ist kein Anker.
+
+    Geprueft wird mit derselben Regel wie fuer Ordnung, Schluessel und
+    Mandat (``models.zeichnung.ausserhalb_von``): lexikalisch UND
+    aufgeloest, damit weder ``paket/../paket/anker`` noch ein Symlink
+    daran vorbeikommt.
+    """
+    from rechner_pipeline.models.zeichnung import ausserhalb_von
+
+    anker = Path(anker_verzeichnis)
+    for was, bereich in (("die Ablage", Path(ablage.wurzel)),
+                         ("das Stands-Paket", Path(paket_ziel))):
+        if not ausserhalb_von(anker, bereich, muss_existieren=False):
+            return (
+                f"Anker: {anker_verzeichnis} liegt in oder auf {was} "
+                f"({bereich}) — ein Bezug, den der schreibende Prozess selbst "
+                "anfassen kann, bindet nichts. Ein Verzeichnis ausserhalb von "
+                "Ablage und Paket waehlen (Fall-Datenraum)."
+            )
+    return None
+
+
 def _zeichnung_des_exports(
     satz: Dict[str, Any], schluessel: Path, ordnung_pfad: Optional[Path],
     ablage_wurzel: Path,
@@ -678,6 +717,11 @@ def stands_paket(
     """
     ziel = Path(ziel)
     fehler = paketziel_fehler(ablage, ziel)
+    if fehler:
+        raise SeiteError(fehler)
+    # VOR jeder Loeschung: Ein Anker im Paket wuerde mit dem Paket
+    # verschwinden, und ein Anker in der Ablage waere keiner (T26-08).
+    fehler = ankerziel_fehler(ablage, ziel, anker_verzeichnis)
     if fehler:
         raise SeiteError(fehler)
     modell = stand_modell(ablage)
