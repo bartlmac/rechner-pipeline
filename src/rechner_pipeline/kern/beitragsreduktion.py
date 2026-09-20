@@ -58,7 +58,10 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 if TYPE_CHECKING:  # pragma: no cover
     from rechner_pipeline.kern.produkte.klv import Monatsreserve
 
-from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
+from rechner_pipeline.kern.korrekturschicht import (
+    schicht_traegt,
+    schichtwert_bei,
+)
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
     vertrags_monatsreserve,
@@ -432,7 +435,7 @@ def reduzierte_teile(
     keine Schicht mehr.
     """
     zusatz = 0.0
-    if schicht is not None and 12 * jahr >= int(schicht[1]):
+    if schicht_traegt(schicht, 12 * jahr):
         zusatz = schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
     aktive = [(j, k) for j, k in scheiben if j < jahr]
     teile = reduziere_geschichtet(
@@ -453,7 +456,7 @@ def absorbierte_schicht(
     der Herabsetzung liegt. Derselbe Wert, den :func:`reduzierte_teile`
     einrechnet — die Buchung im Ledger weist ihn aus.
     """
-    if schicht is None or 12 * jahr < int(schicht[1]):
+    if not schicht_traegt(schicht, 12 * jahr):
         return 0.0
     return schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
 

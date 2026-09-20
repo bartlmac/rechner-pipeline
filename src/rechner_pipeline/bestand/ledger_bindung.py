@@ -50,6 +50,7 @@ from rechner_pipeline.kern.beitragsreduktion import (
     vertrags_monatsreserve_reduziert,
 )
 from rechner_pipeline.kern.korrekturschicht import (
+    schicht_traegt,
     schichtwert_bei,
     zuschlag_bei_pex,
 )
@@ -338,7 +339,7 @@ def pruefe_ledger_betraege(
                     else schicht_je_police.get(pid))
                 if art == "STO":
                     erwartet = v.rkw(jahr)
-                    if schicht_jetzt is not None and 12 * jahr >= schicht_jetzt[1]:
+                    if schicht_traegt(schicht_jetzt, 12 * jahr):
                         erwartet += schichtwert_bei(
                             schicht_jetzt[0], schicht_jetzt[1], v.grund_mp,
                             12 * jahr)

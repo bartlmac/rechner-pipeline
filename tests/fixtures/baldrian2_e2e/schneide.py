@@ -11,10 +11,21 @@ zweiten Laufs; der Schnitt haelt deshalb ueber die vier Historientypen
 hinaus je VERLAUFSKLASSE der Vorgeschichte mindestens zwei Vertraege
 (reine Erhoehungsserie, terminale Beitragsfreistellung mit und ohne
 Serie, Herabsetzung vor und nach Erhoehungen, kombinierte Verlaeufe)
-und vier namentlich entscheidende Policen: 7000396 und 7000679 (die
+und sieben namentlich entscheidende Policen: 7000396 und 7000679 (die
 dokumentierte Arbeits-Lesart f=0,60 mit Falsifizierbarkeits-Auflage),
 7000586 (Anteils-Bestimmung ueber den Ankerwert) und 7000569
 (nachgewiesene Anteils-Unerheblichkeit).
+
+**Der Zuschlag der Korrekturschicht bei PEX.** Dazu drei Policen, deren
+Beitragsfreistellung im LETZTEN Vertragsjahr vor dem Stichtag liegt
+(``12 * pex_jahr >= monate_ta``) — nur dort traegt die Umbuchung den
+Schichtzuschlag, und nur dort kann die Uebernahme von der Fuehrung
+abweichen. Der Schnitt haelt beide Vorzeichen und den Nullfall:
+7000863 (Zuschlag +0,014, hebt den gebuchten Cent), 7001003 (Zuschlag
+-0,005, senkt ihn) und 7000316 (Zuschlag -0,0001, bleibt unter dem
+Cent). Ohne sie ist die Zuschlagspruefung ein Detektor ohne Treffer:
+der alte Schnitt lief gruen, waehrend der echte Lauf vier Buchungen
+falsch hatte.
 
 Aufruf (aus der Repo-Wurzel)::
 
@@ -41,7 +52,8 @@ JE_TYP = 4
 #: Vertraege je Verlaufsklasse der Vorgeschichte (zusaetzlich).
 JE_KLASSE = 2
 #: Namentlich entscheidende Policen des zweiten Laufs (siehe Docstring).
-PFLICHT = ("7000396", "7000679", "7000586", "7000569")
+PFLICHT = ("7000396", "7000679", "7000586", "7000569",
+           "7000863", "7001003", "7000316")
 
 
 def _lies_csv(pfad: Path):

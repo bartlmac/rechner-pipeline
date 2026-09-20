@@ -67,6 +67,7 @@ from rechner_pipeline.kern.beitragsreduktion import (
 )
 from rechner_pipeline.kern.korrekturschicht import (
     Schichtparameter,
+    schicht_traegt,
     schichtwert_bei,
     zuschlag_bei_pex,
 )
@@ -334,14 +335,10 @@ def pruefe_fuehrung(
                 befund(pid, "beitragsfrei",
                        f"PEX-Jahr {_jahre(beginn, pex_historie[pid])} in der "
                        f"Historie, {int(pex_jahr)} in der Pruefstrecke")
-            vs_bfr = grund.beitragsfreie_summe(int(pex_jahr)) + sum(
-                k.beitragsfreie_summe(int(pex_jahr) - j) for j, k in teile)
             if pid not in ledger_pex.index:
                 befund(pid, "umbuchung", "keine PEX-Umbuchung im Uebernahme-Ledger")
-            elif abs(float(ledger_pex.loc[pid]) - vs_bfr) > TOLERANZ:
-                befund(pid, "umbuchung",
-                       f"Umbuchung {float(ledger_pex.loc[pid]):.2f} statt "
-                       f"{vs_bfr:.2f} (beitragsfreie Summe der Pruefstrecke)")
+            # Der BETRAG wird erst nach Abschnitt 3 geprueft: Er traegt
+            # die Korrekturschicht, und die steht hier noch nicht.
         gesamt = grund_mp.sum_insured + sum(k.mp.sum_insured for _, k in teile)
         if pid not in ledger_zug.index:
             befund(pid, "zugang", "keine Zugangsbuchung im Uebernahme-Ledger")
@@ -417,6 +414,29 @@ def pruefe_fuehrung(
                         befund(pid, "schicht",
                                f"{feld} {zeile[feld]!r} in schichten.parquet, "
                                f"{getattr(param, feld)!r} im Schichtbeleg", feld=feld)
+
+    # 3b. Die Umbuchung der Uebernahme, MIT Korrekturschicht ----------------
+    # Sie stand vorher in Abschnitt 2 und rechnete die beitragsfreie Summe
+    # ohne Zuschlag — dieselbe Luecke, die die Uebernahme selbst hatte
+    # (Entscheid des Maintainers 2026-09-20): Die beitragsfreie Summe ist
+    # eine garantierte Leistung und traegt den absorbierten Schichtwert.
+    # Gerechnet wird durch dieselbe Tuer wie unten in Abschnitt 4
+    # (``zuschlag_bei_pex``); zwei Rechenwege waren der Befund T25-06.
+    for pid, welt in welten.items():
+        pex_jahr = welt["pex_jahr"]
+        if pex_jahr is None or pid not in ledger_pex.index:
+            continue
+        grund, teile = welt["grund"], welt["teile"]
+        vs_bfr = (
+            grund.beitragsfreie_summe(int(pex_jahr))
+            + sum(k.beitragsfreie_summe(int(pex_jahr) - j) for j, k in teile)
+            + zuschlag_bei_pex(schicht_je_police.get(pid), grund, int(pex_jahr))
+        )
+        if abs(float(ledger_pex.loc[pid]) - vs_bfr) > TOLERANZ:
+            befund(pid, "umbuchung",
+                   f"Umbuchung {float(ledger_pex.loc[pid]):.2f} statt "
+                   f"{vs_bfr:.2f} (beitragsfreie Summe der Pruefstrecke "
+                   "einschliesslich Korrekturschicht)")
 
     # 4. Buchungen der Fortschreibung nach dem Stichtag ---------------------
     buchungen: Dict[str, int] = {art: 0 for art in GEPRUEFTE_BUCHUNGEN}
@@ -569,7 +589,7 @@ def pruefe_fuehrung(
                     grund, teile, 12 * jahr,
                     stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
                 schicht = schicht_je_police.get(pid)
-                if schicht is not None and 12 * jahr >= schicht[1]:
+                if schicht_traegt(schicht, 12 * jahr):
                     erwartet += schichtwert_bei(schicht[0], schicht[1], grund_mp, 12 * jahr)
             elif art == "PEX":
                 # Liegt die Freistellung nach der Verankerung, hat sie die

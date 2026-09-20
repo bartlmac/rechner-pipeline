@@ -14,7 +14,7 @@ dem Dynamiksatz, Kandidaten-Bestimmung offener Herabsetzungsanteile
 Arbeits-Lesarten je Police, Teilkuendigungs-Semantik, volle
 Beitragsformel je Scheibe, Stornoabzug je Baustein, die
 Jahrestags-Konvention des DK-Vergleichs und die Korrekturschicht bis in
-das Migrationscontrolling. Der Schnitt (26 von 834) haelt alle
+das Migrationscontrolling. Der Schnitt (29 von 834) haelt alle
 Verlaufsklassen der Vorgeschichte und die vier namentlich
 entscheidenden Policen; erzeugt von
 ``tests/fixtures/baldrian2_e2e/schneide.py``.
@@ -168,19 +168,6 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         zellen_config((bestand / "generation-zellen.toml").read_text("utf-8"),
                       name=TARIF_GENERATION, knoten=GENERATION),
         encoding="utf-8")
-    pb1 = bestand_validate.main([
-        "--portfolio", str(bestand / "bestand.parquet"),
-        "--historie", str(bestand / "historie.parquet"),
-        "--ledger", str(bestand / "ledger.parquet"),
-        "--scheiben", str(bestand / "scheiben.parquet"),
-        "--merkmale", str(bestand / "merkmale.parquet"),
-        "--config", str(config_pfad),
-        "--bis", STICHTAG_1,
-        "--repo-root", str(REPO_ROOT),
-        "--diagnostics-dir", str(diagnostics),
-    ])
-    assert pb1.exit_code == 0, ("Gate P-B1 auf dem uebernommenen Bestand", pb1.errors)
-
     # Verankerung: Zustands-Welten rechnen, Residuen auf die
     # Korrekturschicht legen — die Suite liest daraus Schichtparameter
     # und Verankerungsmonate.
@@ -207,6 +194,27 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             sorted(gebunden))
     assert (bestand / "schichten.parquet").is_file(), (
         "die Schicht als Vertragsattribut des Bestands (Freischaltung, Schritt 5)")
+
+    # P-B1 NACH der Verankerung und MIT der Schicht. Die Reihenfolge ist
+    # keine Geschmacksfrage: Seit die Uebernahme den Schichtzuschlag in die
+    # PEX-Umbuchung bucht, folgt dieser Betrag nur noch aus dem Kern mit
+    # Schicht — ein P-B1 davor prueft gegen einen Bestand, den es so nicht
+    # gibt. Das Gate laesst sich das nicht mehr antun: ohne --schichten
+    # haelt es auf dem Beleg der Uebernahme an.
+    pb1 = bestand_validate.main([
+        "--portfolio", str(bestand / "bestand.parquet"),
+        "--historie", str(bestand / "historie.parquet"),
+        "--ledger", str(bestand / "ledger.parquet"),
+        "--scheiben", str(bestand / "scheiben.parquet"),
+        "--merkmale", str(bestand / "merkmale.parquet"),
+        "--schichten", str(bestand / "schichten.parquet"),
+        "--verankerung", str(bestand / "verankerung.parquet"),
+        "--config", str(config_pfad),
+        "--bis", STICHTAG_1,
+        "--repo-root", str(REPO_ROOT),
+        "--diagnostics-dir", str(diagnostics),
+    ])
+    assert pb1.exit_code == 0, ("Gate P-B1 auf dem uebernommenen Bestand", pb1.errors)
 
     for abnahme, erwartung in ABNAHMEN:
         assert aktuartest_lauf.main([
@@ -668,16 +676,42 @@ def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
         assert abs(float(zug.loc[pid]) - gesamt) <= 0.005, pid
         assert float(haupt.loc[pid, "sum_insured"]) < float(zeilen[pid]["sum_insured"])
         assert list(eigene["scheiben_id"]) == list(range(1, len(eigene) + 1))
-    # Beitragsfrei geliefert: Umbuchung = gelieferte Summe, Stamm = Ursprung.
+    # Der Beleg der Uebernahme.
+    beleg = json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8"))
+    # Beitragsfrei geliefert: Umbuchung = gelieferte Summe PLUS dem
+    # Zuschlag der Korrekturschicht, Stamm = Ursprung. Der Zuschlag ist
+    # keine Kosmetik: fuer dieselben Vertraege bucht die Fuehrung TOD und
+    # ABL laengst MIT ihm, und P-B1 leitet jede Buchung aus dem Kern her.
+    # Wer hier die gelieferte Summe festschreibt, schreibt den Bruch
+    # zwischen Uebernahme und Fuehrung fest — genau daran hielt die
+    # Vorzeige-Laufzeit an (vier Buchungen, je ein Cent).
+    zuschlag = {int(z["police_id"]): float(z["zuschlag"])
+                for z in beleg["pex_zuschlaege"]}
     pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")["betrag"]
     assert set(int(p) for p in pex.index) == {
         pid for pid, arten in vorgeschichte.items() if "PEX" in arten}
     for pid, betrag in pex.items():
-        assert abs(float(betrag) - float(zeilen[int(pid)]["sum_insured"])) <= 0.005
+        geliefert = float(zeilen[int(pid)]["sum_insured"])
+        erwartet = geliefert + zuschlag.get(int(pid), 0.0)
+        # Scharf, nicht auf Cent-Toleranz: die Toleranz war die Luecke,
+        # durch die der Zuschlag jahrelang unbemerkt fehlte.
+        assert abs(float(betrag) - erwartet) <= 5e-7, (pid, betrag, erwartet)
         assert float(haupt.loc[pid, "sum_insured"]) > float(betrag)
         assert abs(float(zug.loc[pid]) - float(haupt.loc[pid, "sum_insured"])) <= 0.005
-    # Der Beleg der Uebernahme.
-    beleg = json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8"))
+    # Positivkontrolle des Detektors (Auswahl siehe ``schneide.py``): Der
+    # Schnitt MUSS alle drei Zuschlagslagen halten — gehobener Cent,
+    # gesenkter Cent, Zuschlag unter dem Cent. Ohne sie ist die Zeile oben
+    # ein Detektor ohne Treffer, und genau so lief der alte Schnitt gruen,
+    # waehrend der echte Lauf vier Buchungen falsch hatte.
+    lagen = {"gehoben": set(), "gesenkt": set(), "unter_cent": set()}
+    for pid, z in zuschlag.items():
+        geliefert = float(zeilen[pid]["sum_insured"])
+        vorher, nachher = round(geliefert, 2), round(geliefert + z, 2)
+        lagen["gehoben" if nachher > vorher
+              else "gesenkt" if nachher < vorher
+              else "unter_cent"].add(pid)
+    assert all(lagen.values()), (
+        "Schnitt ohne alle drei Zuschlagslagen", lagen, sorted(zuschlag.items()))
     assert beleg["anfangszustand"] == "materialisieren"
     assert beleg["tarifwerk"] == {
         "scheiben_mit_gamma1": True, "stoab_je_baustein": True,

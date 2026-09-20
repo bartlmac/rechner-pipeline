@@ -47,7 +47,7 @@ flowchart TD
     betrieb -- 9 --> models
     gates -- 13 --> bestand
     gates -- 9 --> fall
-    gates -- 12 --> kern
+    gates -- 13 --> kern
     gates -- 14 --> models
     gates -- 11 --> ontologie
     gates -- 9 --> qa

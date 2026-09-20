@@ -95,6 +95,7 @@ from rechner_pipeline.kern.beitragsreduktion import (
     vertrags_monatsreserve_reduziert,
 )
 from rechner_pipeline.kern.korrekturschicht import (
+    schicht_traegt,
     schichtwert_bei,
     zuschlag_bei_pex,
 )
@@ -305,7 +306,7 @@ class _Vertrag:
             self.grund, [(erh_jahr, kern) for erh_jahr, _, kern in self.scheiben], jahr,
             stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),
         )
-        if self.schicht is not None and 12 * jahr >= self.schicht[1]:
+        if schicht_traegt(self.schicht, 12 * jahr):
             parameter, monate_ta = self.schicht
             wert += schichtwert_bei(parameter, monate_ta, self.grund_mp, 12 * jahr)
         return wert

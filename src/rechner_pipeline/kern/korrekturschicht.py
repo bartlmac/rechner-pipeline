@@ -669,6 +669,31 @@ def absorbierter_wert(
     return wert * kern.reserve_beitragsfrei(pex_jahr, jahr) / basis_reserve
 
 
+def ab_verankerung(monate_anker: int, monate: int) -> bool:
+    """Die EINE Grenze der Korrekturschicht: ab dem Verankerungsmonat.
+
+    ``schichtwert_bei`` ist vor dem Verankerungspunkt nicht definiert,
+    also muss jeder Konsument vorher fragen, ob die Schicht ueberhaupt
+    schon traegt. Genau diese Frage stand in sechs Modulen abgetippt
+    (Ereignis-Engine, Ledger-Herleitung, Herabsetzung zweimal,
+    Absorption, Uebernahme) — und eine der Abschriften geriet aus dem
+    Tritt: die Uebernahme filterte ihre PEX-Buchungen mit einer eigenen
+    Kopie, waehrend die Fuehrung dieselben Vertraege laengst mit
+    Zuschlag buchte. Wer die Grenze verschieben will, verschiebt sie
+    hier, und alle sechs folgen.
+    """
+    return monate >= monate_anker
+
+
+def schicht_traegt(schicht: Optional[Sequence[Any]], monate: int) -> bool:
+    """Traegt ``schicht`` im Vertragsmonat ``monate`` zu einer Groesse bei?
+
+    Null-Fall und Grenzfall in einer Frage: kein uebernommener Vertrag
+    (keine Schicht) oder ein Zeitpunkt vor der Verankerung.
+    """
+    return schicht is not None and ab_verankerung(int(schicht[1]), monate)
+
+
 def zuschlag_bei_pex(
     schicht: Optional[Sequence[Any]], kern: Any, pex_jahr: int,
 ) -> float:
@@ -687,12 +712,9 @@ def zuschlag_bei_pex(
     selbst, und die Schicht laeuft als eigene Position auf dem
     beitragsfreien Track weiter, statt in die Summe einzugehen.
     """
-    if schicht is None:
+    if not schicht_traegt(schicht, 12 * pex_jahr):
         return 0.0
-    parameter, monate_anker = schicht[0], int(schicht[1])
-    if 12 * pex_jahr < monate_anker:
-        return 0.0
-    return absorptions_zuschlag(parameter, monate_anker, kern, pex_jahr)
+    return absorptions_zuschlag(schicht[0], int(schicht[1]), kern, pex_jahr)
 
 
 def _umwandlungsreserve(kern: Any, pex_jahr: int) -> float:
