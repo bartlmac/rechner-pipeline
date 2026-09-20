@@ -940,3 +940,48 @@ Aufrufer, `--schichten` mitzugeben. Der saubere Ort dafuer ist das
 Laufmanifest — eigene Aenderung, eigene Messung, nicht in diesen Commit
 gezogen. Gemessener Defekt liegt dort bisher keiner vor: die
 `-nach`-Laeufe des Falls geben die Schicht mit.
+
+### ANNAHME A-3 (bitte bestaetigen) — `VS_bfr` heisst zweimal Verschiedenes
+
+Beim Nachziehen der Klasse ist der achte Konsument aufgefallen, der die
+Schicht nicht ueber die eine Tuer fragt — und diesmal ist es die
+Pruefstrecke selbst:
+
+    qa/aktuarieller_test.py (beitragsfrei-Zweig)
+      VS_bfr = kern.beitragsfreie_summe(a0) + Summe(Scheiben)
+
+    bestand/ereignisse.py und gates/fuehrungsprobe.py
+      VS_bfr = kern.beitragsfreie_summe(a0) + Summe(Scheiben)
+               + zuschlag_bei_pex(...)
+
+Der Zweig kehrt frueh zurueck und laeuft an `_mit_schicht` vorbei;
+`SCHICHT_GROESSEN` nennt `VS_bfr` bewusst nicht ("Beitrag und
+beitragsfreie Summe beruehrt sie nicht").
+
+**Ich habe das NICHT geaendert**, und zwar begruendet: Es sind
+moeglicherweise zwei verschiedene Groessen mit demselben Namen.
+
+- Der aktuarielle Test vergleicht gegen die GELIEFERTE beitragsfreie
+  Summe. Die Uebernahme hat die Ursprungssumme so zurueckgerechnet, dass
+  der Kern genau diesen Wert auf den Cent reproduziert. Ein Zuschlag
+  obendrauf machte den Vergleich falsch.
+- Die Fuehrung bucht die Summe, die das ZIELSYSTEM garantiert — nach
+  dem Entscheid vom 2026-09-15 einschliesslich der absorbierten Schicht,
+  damit dem Versicherten durch die Migration kein Wert verloren geht.
+
+Beides kann gleichzeitig richtig sein. Nur steht nirgends, dass es zwei
+Groessen sind, und beide heissen `VS_bfr`. Solange [[A-1]] offen ist,
+waere eine Aenderung hier das zweite Raten auf dieselbe Frage.
+
+Vorschlag fuer den Fall, dass A-1 so bleibt: die beiden Groessen
+benennen (etwa `VS_bfr_geliefert` gegen `VS_bfr_gefuehrt`) und den
+Kommentar an `SCHICHT_GROESSEN` auf diesen Unterschied umstellen, statt
+zu sagen, die Schicht beruehre die beitragsfreie Summe nicht — das
+stimmt seit dem 2026-09-15 nicht mehr.
+
+Warum es heute niemand merkt: Am Verankerungspunkt ist der Zuschlag
+sub-Cent (0,0001 bis 0,015), und alle zwoelf Faelle liegen genau dort.
+Die Pruefstrecke kann den Unterschied bei centgerundeten Erwartungswerten
+nicht sehen. Ein Vertrag mit Beitragsfreistellung deutlich NACH der
+Verankerung wuerde ihn sofort sichtbar machen — den gibt es im Fall
+Baldrian nicht.
