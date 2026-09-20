@@ -288,18 +288,7 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
         if journal_vorhanden
         else pd.DataFrame({n: pd.Series(dtype="object") for n in TAGESJOURNAL_NAMES})
     )
-    woche_ab = pd.Timestamp(heute - _dt.timedelta(days=6))
-    neu = journal[(journal["herkunft"] == "neugeschaeft") & (journal["buchungsdatum"] >= woche_ab)]
-    # Gezaehlt werden VERKAEUFE, nicht Journalzeilen: Ein Zugang bucht seit
-    # dem gebuchten Beitrag zwei Zeilen (Summe und Bruttojahresbeitrag).
-    # Ueber size() gemeldet, waere das Neugeschaeft der Woche doppelt so
-    # gross wie die Zahl der Vertraege — die Seite behauptete Verkaeufe,
-    # die es nicht gab.
-    neu_vorfaelle = neu[["police_id", "status_date", "buchungsdatum"]].drop_duplicates()
-    je_tag = {
-        pd.Timestamp(t).date().isoformat(): int(n)
-        for t, n in sorted(neu_vorfaelle.groupby("buchungsdatum").size().items())
-    }
+    woche = neugeschaeft_der_woche(journal, heute)
     letzte = journal.tail(20).iloc[::-1]
     buchungen = [
         {
@@ -332,8 +321,7 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
         "bestand": dict(zeile["bestand"]),
         "neugeschaeft": {
             "seit_betriebsbeginn": int(zeile.get("neugeschaeft_seit_betriebsbeginn", 0)),
-            "woche": je_tag,
-            "woche_summe": int(len(neu_vorfaelle)),
+            **woche,
         },
         "buchungen": {
             "gesamt": int(len(journal)),
@@ -395,6 +383,36 @@ def _e(x: Any) -> str:
 
 def _zahl(x: float, dez: int = 2) -> str:
     return f"{x:,.{dez}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def neugeschaeft_der_woche(
+    journal: pd.DataFrame, heute: _dt.date
+) -> Dict[str, Any]:
+    """Das Neugeschaeft der letzten sieben Tage: je Tag und in Summe.
+
+    Oeffentlich, weil zwei Seiten dieselbe Ableitung brauchen (Befund
+    T26-09): Der Erzeuger baut daraus ``stand.json``, der Konsument haelt
+    ``stand.json`` dagegen. Vorher rechnete nur der Erzeuger, und der
+    Konsument uebernahm die Zahlen ungeprueft ins veroeffentlichte
+    Datenmodell — ``woche_summe`` liess sich auf 1.000.000 setzen, bei
+    unveraendertem Anker und unveraendertem Journal.
+
+    Gezaehlt werden VERKAEUFE, nicht Journalzeilen: Ein Zugang bucht seit
+    dem gebuchten Beitrag zwei Zeilen (Summe und Bruttojahresbeitrag).
+    Ueber ``size()`` gemeldet, waere das Neugeschaeft der Woche doppelt so
+    gross wie die Zahl der Vertraege.
+    """
+    woche_ab = pd.Timestamp(heute - _dt.timedelta(days=6))
+    neu = journal[(journal["herkunft"] == "neugeschaeft")
+                  & (journal["buchungsdatum"] >= woche_ab)]
+    vorfaelle = neu[["police_id", "status_date", "buchungsdatum"]].drop_duplicates()
+    return {
+        "woche": {
+            pd.Timestamp(t).date().isoformat(): int(n)
+            for t, n in sorted(vorfaelle.groupby("buchungsdatum").size().items())
+        },
+        "woche_summe": int(len(vorfaelle)),
+    }
 
 
 def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:

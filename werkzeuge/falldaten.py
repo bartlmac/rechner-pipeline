@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import datetime as _dt
 import csv
 import json
 import statistics
@@ -1045,6 +1046,35 @@ def _pruefe_felder_gegen_das_protokoll(
             raise FalldatenFehler(
                 f"{paket}: provenienz.{feld} steht nicht so in der letzten gruenen "
                 "Protokollzeile — die Herkunft ist behauptet, nicht belegt")
+
+    # Die WOCHENZAHLEN und der LUECKENAUSWEIS wurden bisher ungeprueft ins
+    # veroeffentlichte Datenmodell uebernommen (Befund T26-09): Bei
+    # unveraendertem Journal, unveraendertem Protokoll und korrekt
+    # externem, unveraendertem Anker liess sich woche_summe auf 1.000.000
+    # setzen und der Luecken-Block leeren — und der oeffentliche Bericht
+    # baut seinen sichtbaren Lueckenblock aus genau dieser Funktion.
+    #
+    # Abgeleitet wird mit DERSELBEN Funktion wie beim Erzeuger; zwei
+    # Ableitungen waeren zwei Regeln, die auseinanderlaufen.
+    from rechner_pipeline.betrieb.seite import luecken as _luecken
+    from rechner_pipeline.betrieb.seite import neugeschaeft_der_woche
+
+    neugeschaeft = stand.get("neugeschaeft") or {}
+    soll_woche = neugeschaeft_der_woche(
+        journal, _dt.date.fromisoformat(str(stand.get("stand"))))
+    for feld, soll in soll_woche.items():
+        if neugeschaeft.get(feld) != soll:
+            raise FalldatenFehler(
+                f"{paket}: neugeschaeft.{feld} steht nicht so im Tagesjournal "
+                f"— stand.json sagt {neugeschaeft.get(feld)!r}, gerechnet "
+                f"{soll!r}")
+    soll_luecken = _luecken(stand)
+    if list(stand.get("luecken") or []) != soll_luecken:
+        raise FalldatenFehler(
+            f"{paket}: der Lueckenausweis stimmt nicht mit dem Stand ueberein "
+            f"— stand.json nennt {len(stand.get('luecken') or [])} Luecke(n), "
+            f"abgeleitet sind es {len(soll_luecken)}. Ein geleerter Block "
+            "verschweigt genau das, was der Bericht ausweisen soll")
 
 
 def _pruefe_buchungen_gegen_das_journal(paket: Path, stand: Dict[str, Any]) -> None:

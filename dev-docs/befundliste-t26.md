@@ -66,7 +66,7 @@ mutiert.
 | T26-11 | hoch | 4 | GESCHLOSSEN | Bewegungsrechnung ignoriert RED; P-B1 bestaetigt die falschen Summen |
 | T26-12 | mittel | 4 | OFFEN | Tarifverfahren `teilkuendigung` scheitert im produktiven RED-Pfad |
 | T26-10 | hoch | 4 | OFFEN | Interne Seite mischt bei gleichzeitigem Tageslauf zwei Generationen |
-| T26-09 | mittel | 4 | OFFEN | Wochenzahlen und Lueckenausweis bleiben trotz korrektem Anker manipulierbar |
+| T26-09 | mittel | 4 | GESCHLOSSEN | Wochenzahlen und Lueckenausweis bleiben trotz korrektem Anker manipulierbar |
 | T26-13 | mittel | 4 | GESCHLOSSEN | Registrierte Uebersetzung Quell- zu Zielpolicen wird nicht geprueft |
 | T26-16 | mittel | 4 | GESCHLOSSEN | Anker-HMAC schuetzt Rolle und Schluesselklasse nicht |
 
@@ -595,3 +595,44 @@ HERZULEITEN und gegen Endbestand, Historie, Scheiben und Ledger zu halten.
 Die Buchungspruefung nach dem Stichtag tut das fuer die Buchungen bereits;
 eine vollstaendige Herleitung des Endzustands ist nicht gebaut. Der gemeldete
 Befund ist damit geschlossen, der weitergehende Anspruch nicht.
+
+### Block 4, Teil 2 — T26-09
+
+**Der Befund.** Der Konsument prueft `neugeschaeft.seit_betriebsbeginn`
+gegen das Protokoll und `buchungen.gesamt`/`je_ereignis` gegen das Journal.
+`neugeschaeft.woche`, `woche_summe` und `luecken` reichte er UNGEPRUEFT ins
+veroeffentlichte Datenmodell weiter. Bei unveraendertem Journal,
+unveraendertem Protokoll und korrekt externem, unveraendertem Anker liess
+sich `woche_summe` auf 1.000.000 setzen und der Lueckenblock leeren.
+
+Der oeffentliche Fallbericht baut seinen sichtbaren Lueckenblock aus genau
+dieser Funktion: Ein geleerter Block verschweigt den
+Image-Digest-Vorbehalt, den der Leser sehen soll.
+
+**Die Klasse.** Dieselbe wie bei den Abschluessen (T24-04) und beim
+Schichtbeleg (T26-06): Ein Wert, der weitergereicht statt abgeleitet wird,
+ist eine Behauptung — auch wenn alles um ihn herum belegt ist. Der Anker
+schuetzt die Kette, nicht jedes Feld in `stand.json`.
+
+**Was gebaut ist.** Die Wochenableitung ist als
+`seite.neugeschaeft_der_woche(journal, heute)` oeffentlich; Erzeuger und
+Konsument rufen dieselbe Funktion. Der Lueckenausweis wird ueber
+`seite.luecken(stand)` nachgerechnet. Beide Pruefungen stehen am ENDE der
+Feldpruefung gegen das Protokoll — sonst faengt die abgeleitete Zahl einen
+Befund ab, der einer bestimmten Protokollzeile gilt, und die Meldung
+zeigte auf die falsche Stelle.
+
+**Gegen Rueckbau gesichert.** Drei Manipulationen an `stand.json` allein:
+`woche_summe` auf 1.000.000, `woche` durch eine erfundene Tagesreihe, und
+der Lueckenblock geleert. Anker, Journal und Protokoll bleiben unangetastet
+— genau die Lage des Gutachters.
+
+**Mutationsprobe.** Beide Ableitungen ausgeschaltet: alle drei rot.
+
+### Anmerkung zur Reihenfolge
+
+Der Gutachter ordnet T26-04 vor T26-09 ein. Ich habe T26-09 vorgezogen,
+weil bis zum Limit noch genau ein voller Suitenlauf Platz hatte und T26-04
+eine Entwurfsentscheidung verlangt — ein enges, typisiertes Belegschema —,
+die der Maintainer sehen sollte, bevor sie gebaut wird. Ein halb gebautes
+T26-04 im Baum waere schlechter gewesen als ein geschlossenes T26-09.

@@ -237,3 +237,48 @@ def test_ein_verschwiegener_abschluss_faellt_auf(paket, tmp_path):
     (kopie / "stand.json").write_text(json.dumps(stand, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(fd.FalldatenFehler, match="abschluesse"):
         _mit_anker(kopie)
+
+
+#: Die Felder, die der Konsument bisher UNGEPRUEFT weitergereicht hat —
+#: bei unveraendertem Journal, unveraendertem Protokoll und korrekt
+#: externem, unveraendertem Anker (Befund T26-09).
+WEITERGEREICHTE_FELDER = [
+    ("woche_summe", ("neugeschaeft", "woche_summe"), 1_000_000),
+    ("woche_je_tag", ("neugeschaeft", "woche"), {"2026-02-03": 1_000_000}),
+    ("luecken_geleert", ("luecken",), []),
+]
+
+
+@pytest.mark.parametrize("was,pfad,wert", WEITERGEREICHTE_FELDER,
+                         ids=[w for w, _, _ in WEITERGEREICHTE_FELDER])
+def test_eine_weitergereichte_zahl_wird_abgeleitet_statt_geglaubt(
+    paket, tmp_path, was, pfad, wert
+):
+    """Befund T26-09: Der Anker war korrekt extern und unveraendert, das
+    Journal unveraendert, das Protokoll unveraendert — und trotzdem ging
+    ``woche_summe = 1.000.000`` durch, und der Lueckenblock liess sich
+    leeren.
+
+    Der oeffentliche Fallbericht baut seinen sichtbaren Lueckenblock aus
+    genau dieser Funktion: Ein geleerter Block verschweigt den
+    Image-Digest-Vorbehalt, den der Leser sehen soll.
+
+    Abgeleitet wird jetzt mit DERSELBEN Funktion wie beim Erzeuger —
+    ``neugeschaeft_der_woche`` und ``luecken``. Zwei Ableitungen waeren
+    zwei Regeln, die auseinanderlaufen.
+    """
+    import shutil
+
+    kopie = tmp_path / ("kopie-" + was)
+    shutil.copytree(paket, kopie)
+    assert _mit_anker(kopie)["vorhanden"], "die unveraenderte Kopie muss durchgehen"
+    stand = json.loads((kopie / "stand.json").read_text(encoding="utf-8"))
+    ziel = stand
+    for schluessel in pfad[:-1]:
+        ziel = ziel[schluessel]
+    assert ziel[pfad[-1]] != wert, "die Mutation muss etwas veraendern"
+    ziel[pfad[-1]] = wert
+    (kopie / "stand.json").write_text(json.dumps(stand, ensure_ascii=False),
+                                      encoding="utf-8")
+    with pytest.raises(fd.FalldatenFehler):
+        _mit_anker(kopie)
