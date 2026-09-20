@@ -511,6 +511,14 @@ def belegte_tabellen(fall: Path, snapshot: Dict[str, Any]) -> Dict[str, str]:
     (``input_hashes`` der Gate-Ledger, ``provenienz.eingaben`` der
     Producer-Belege) und sammelt daraus die Hashes der Quelltabellen.
 
+    Geschluesselt wird nach dem PFAD, nicht nach dem Dateinamen. Ein Fall
+    traegt denselben Tabellennamen an mehreren Orten, und alle sind
+    richtig: ``abgeleitet/bestand/historie.parquet`` ist der uebernommene
+    Stand, ``abgeleitet/bestand-nach/historie.parquet`` der
+    fortgeschriebene. Auf den Namen verkuerzt sahen zwei Zeugen, die sich
+    einig sind, wie ein Widerspruch aus — gemessen an einem echten Fall
+    mit vier Verzeichnissen dieses Namens.
+
     Benannte Grenze: Gebunden wird, was der Graph NENNT. Ein aelterer
     P-B1-Ledger fuehrt etwa Bestand und Historie, aber nicht den Ledger.
     Der Eingang haelt fest, welche Tabellen belegt waren und welche nicht —
@@ -553,18 +561,46 @@ def belegte_tabellen(fall: Path, snapshot: Dict[str, Any]) -> Dict[str, str]:
                 if not isinstance(block, dict):
                     continue
                 for rel, sha in block.items():
-                    name = Path(str(rel)).name
-                    if name not in tabellen or not _ist_sha256(str(sha)):
+                    schluessel = _fallpfad(fall, rel)
+                    if (Path(schluessel).name not in tabellen
+                            or not _ist_sha256(str(sha))):
                         continue
-                    vorher = gefunden.get(name)
+                    vorher = gefunden.get(schluessel)
                     if vorher is not None and vorher != str(sha):
                         raise UebernahmeError(
                             f"{fall}: der Beleggraph widerspricht sich ueber "
-                            f"{name} ({vorher[:16]}… und {str(sha)[:16]}…) — "
-                            "die Abnahme bezeugt zwei verschiedene Tabellen"
+                            f"{schluessel} ({vorher[:16]}… und "
+                            f"{str(sha)[:16]}…) — zwei Belege sagen "
+                            "Verschiedenes ueber DIESELBE Tabelle"
                         )
-                    gefunden[name] = str(sha)
+                    gefunden[schluessel] = str(sha)
     return gefunden
+
+
+def _fallpfad(fall: Path, rel: object) -> str:
+    """Einen Belegpfad auf den Fall beziehen, soweit er dazugehoert."""
+    pfad = Path(str(rel))
+    try:
+        return str(pfad.resolve().relative_to(Path(fall).resolve()))
+    except (ValueError, OSError):
+        return str(pfad)
+
+
+def bezeugter_hash(
+    belegt: Dict[str, str], fall: Path, quell_pfad: Path, datei: str
+) -> Optional[str]:
+    """Welchen Hash bezeugt der Graph fuer GENAU diese Datei?
+
+    Erst der Pfad, dann — wenn der Graph diesen Ort nicht kennt — der
+    Name, aber nur wenn er eindeutig ist. Mehrere gleichnamige Tabellen
+    an verschiedenen Orten sind der Normalfall eines Falls; welche davon
+    uebernommen wird, entscheidet der Pfad und nicht die Hoffnung.
+    """
+    schluessel = _fallpfad(fall, quell_pfad)
+    if schluessel in belegt:
+        return belegt[schluessel]
+    treffer = {sha for pfad, sha in belegt.items() if Path(pfad).name == datei}
+    return treffer.pop() if len(treffer) == 1 else None
 
 
 def _zeichnung_aus_daten(daten: Dict[str, Any], quelle: str) -> Dict[str, Any]:
@@ -1021,7 +1057,7 @@ def eingang_anlegen(
         if not quell_pfad.is_file():
             continue
         ist = sha256_bytes(quell_pfad.read_bytes())
-        soll = belegt.get(datei)
+        soll = bezeugter_hash(belegt, fall, quell_pfad, datei)
         if soll is None:
             unbelegt.append(datei)
         elif soll != ist:

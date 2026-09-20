@@ -1005,3 +1005,67 @@ def test_die_bruecke_muss_eine_bijektion_sein(was, abbildung, gefuehrt, fehlerha
     bestand = pd.DataFrame({"police_id": gefuehrt})
     fehler = ueb.uebersetzung_fehler(abbildung, bestand, {"von": 1, "bis": 1000})
     assert bool(fehler) is fehlerhaft, (was, fehler)
+
+
+def test_gleichnamige_tabellen_an_zwei_orten_sind_kein_widerspruch(tmp_path):
+    """Ein Fall traegt denselben Tabellennamen an mehreren Orten, und alle
+    sind richtig: ``abgeleitet/bestand/historie.parquet`` ist der
+    uebernommene Stand, ``abgeleitet/bestand-nach/historie.parquet`` der
+    fortgeschriebene.
+
+    Auf den Basisnamen verkuerzt sahen zwei Zeugen, die sich einig sind,
+    wie ein Widerspruch aus — und das Neuaufsetzen brach ab. Gemessen an
+    faelle/baldrian-klv-tg2015-lauf2: VIER Verzeichnisse mit
+    historie.parquet, zwei davon in den Pflichtbelegen.
+
+    Die Gegenrichtung steht daneben: Zwei Belege, die ueber DENSELBEN
+    Pfad Verschiedenes sagen, bleiben ein Widerspruch
+    (test_uebernommen_wird_nur_was_die_abnahme_gesehen_hat).
+    """
+    import hashlib
+
+    fall = _fall(tmp_path)
+    nach = fall / "abgeleitet" / "bestand-nach"
+    nach.mkdir(parents=True)
+    # Ein zweiter, ANDERER Stand derselben Tabellennamen — wie ihn die
+    # Fortschreibung erzeugt.
+    for datei in ("historie.parquet", "bestand.parquet", "ledger.parquet"):
+        (nach / datei).write_bytes(
+            (fall / "abgeleitet" / "bestand" / datei).read_bytes() + b"\x00")
+    zweiter = {
+        "schema_version": 1, "command": "fuehrungsprobe", "gate": "A-M4",
+        "status": "passed",
+        "provenienz": {"eingaben": {
+            f"abgeleitet/bestand-nach/{d}": hashlib.sha256(
+                (nach / d).read_bytes()).hexdigest()
+            for d in ("historie.parquet", "bestand.parquet", "ledger.parquet")}},
+    }
+    pfad = fall / "abgeleitet" / "diagnostics" / "fuehrungsprobe.gate.json"
+    roh = json.dumps(zweiter, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    pfad.write_bytes(roh)
+    erster = fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
+    daten = am4_snapshot(
+        "probe-uebernahme",
+        pb1_ledger_sha=hashlib.sha256(erster.read_bytes()).hexdigest())
+    daten["pflichtbelege"]["fuehrungsprobe"] = [hashlib.sha256(roh).hexdigest()]
+    daten["snapshot_sha256"] = ueb_p9_sha(daten)
+    for alt in (fall / "entscheide").glob("A-M4-*.json"):
+        alt.unlink()
+    (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
+        json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
+        encoding="utf-8")
+
+    # Beide Belege werden gelesen, beide Orte sind bezeugt — und der
+    # Eingang entsteht, gebunden an den Stand SEINES Pfades.
+    ziel = ueb.eingang_anlegen(stand := tmp_path / "daten", fall, STICHTAG)
+    assert ziel.is_dir()
+    snapshot, _ = ueb.lies_am4_snapshot(fall, _snapshot_sha(fall))
+    belegt = ueb.belegte_tabellen(fall, snapshot)
+    quelle = fall / "abgeleitet" / "bestand"
+    for datei in ("historie.parquet", "bestand.parquet", "ledger.parquet"):
+        assert ueb.bezeugter_hash(belegt, fall, quelle / datei, datei) == (
+            hashlib.sha256((quelle / datei).read_bytes()).hexdigest()), datei
+        assert ueb.bezeugter_hash(belegt, fall, nach / datei, datei) == (
+            hashlib.sha256((nach / datei).read_bytes()).hexdigest()), datei
