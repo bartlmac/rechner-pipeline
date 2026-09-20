@@ -63,7 +63,7 @@ mutiert.
 | T26-05 | hoch | 3 | OFFEN | Fuehrungsprobe bestaetigt eine von 43.000 auf 1.042.999 EUR veraenderte Stammsumme |
 | T26-06 | hoch | 3 | GESCHLOSSEN | Roter Schichtbeleg fuehrt zu drei gruenen aktuariellen Vorlagenlaeufen |
 | T26-07 | hoch | 3 | GESCHLOSSEN | Schichteingaben fehlen in der Bindung; ungelesenes ungueltiges JSON wird unter gruenem Urteil gehasht |
-| T26-11 | hoch | 4 | OFFEN | Bewegungsrechnung ignoriert RED; P-B1 bestaetigt die falschen Summen |
+| T26-11 | hoch | 4 | GESCHLOSSEN | Bewegungsrechnung ignoriert RED; P-B1 bestaetigt die falschen Summen |
 | T26-12 | mittel | 4 | OFFEN | Tarifverfahren `teilkuendigung` scheitert im produktiven RED-Pfad |
 | T26-10 | hoch | 4 | OFFEN | Interne Seite mischt bei gleichzeitigem Tageslauf zwei Generationen |
 | T26-09 | mittel | 4 | OFFEN | Wochenzahlen und Lueckenausweis bleiben trotz korrektem Anker manipulierbar |
@@ -104,9 +104,19 @@ nicht vom Vertragsbeginn"); `bewegungskonto` wendet sie auf seine Population
 nicht an.
 
 **Einordnung.** Dieselbe Funktionsfamilie wie T26-11 (Bewegungsrechnung
-ignoriert RED) und dieselbe Achse wie T24-02. Wird deshalb zusammen mit
-T26-11 in Block 4 bearbeitet, nicht davor — die Reihenfolge des Gutachters
-bleibt.
+ignoriert RED) und dieselbe Achse wie T24-02. Zusammen mit T26-11
+bearbeitet.
+
+**GESCHLOSSEN.** Die Ursache war die POPULATION, nicht die Pruefung: Die
+Sicht zum 2025-01-01 trug eine Police, die erst 2026 in die Buecher kam —
+samt ihrer uebernommenen Vorgeschichte. `bewegungskonto` schneidet seine
+Population jetzt auf `bestandszugang <= bis`. Die Regel stand schon in
+`jahresraster` („vom ZUGANG, nicht vom Vertragsbeginn"); sie galt nur fuer
+das Jahresraster und nicht fuer die Population darunter.
+
+Nachgemessen an der Reproduktion: Alle dreizehn Monatsstichtage rechnen jetzt
+durch, vorher fiel der erste. Damit ist auch der Blocker der Seiten-Session
+weg.
 
 ## Annahmen, die der Maintainer bestaetigen muss
 
@@ -499,3 +509,46 @@ fiel, weil seine Manipulation die Zielnummern aus dem Band schob — die neue
 Pruefung sah es zuerst. Der Test manipuliert jetzt so, dass er seinen eigenen
 Gegenstand trifft. Zwei Pruefungen, die sich gegenseitig fangen, sind kein
 Problem, sondern der Beleg, dass beide etwas tun.
+
+### Block 4, Teil 1 — T26-11 und N-03
+
+**T26-11.** `vs_ges` kannte nur Stamm und Erhoehungen. Eine auf 67.606,49 EUR
+herabgesetzte Police stand mit 100.000 EUR im Konto, und P-B1 bestaetigte es.
+Der Grund ist die Klasse, nicht der Einzelfall: BEIDE SEITEN der Identitaet
+liessen dieselbe fachliche Aenderung aus. Die Identitaet faengt so etwas
+nie — sie hielt vorher genauso wie nachher.
+
+Deshalb misst der Test gegen eine UNABHAENGIGE Quelle: die Einzelbewertung,
+die den geknickten Verlauf kennt. Ihre Summe ueber die beitragspflichtigen
+Vertraege ist der Endbestand, den das Konto ausweisen muss.
+
+`vs_ges` fuehrt jetzt die Herabsetzung mit: Eine RED setzt die Summe ABSOLUT
+neu (der Ledgerbetrag ist die neue Gesamtsumme, „fortgefuehrter plus
+umgewandelter Teil"); Erhoehungen davor stecken in ihr, Erhoehungen danach
+kommen obendrauf. Die zweite RED-Zeile `dDK_absorption` ist eine Umbuchung im
+Deckungskapital und bleibt draussen.
+
+**FACHLICHE FRAGE AN DAS AKTUARIAT — bitte bestaetigen oder korrigieren.**
+Beim Bauen gemessen: Die „Herabsetzung" HEBT die Versicherungssumme, sie
+senkt sie nicht. Am Fixture (40 Policen, `red_anteil` 0,6) steigt die neue
+Gesamtsumme in JEDEM der zehn betroffenen Jahre — Police 900002 etwa von
+100.000 auf 113.642,40, und ueber alle Jahre summiert +202.338.
+
+Der Grund ist plausibel: Der nicht mehr beitragspflichtige Teil kommt als
+beitragsfreie Summe zurueck, und die kann ueber dem anteiligen Wegfall
+liegen. Ob das so gewollt ist, entscheidet nicht die Nachweisung.
+
+Die Bewegungszeile heisst deshalb `veraenderung_herabsetzung` und traegt ihr
+VORZEICHEN, wie der Kern es liefert; sie steht auf der Zugangsseite der
+Identitaet. Der Test bindet, DASS die Aenderung gefuehrt wird — nicht, in
+welche Richtung sie faellt. Faellt die fachliche Entscheidung anders aus,
+aendert sich eine Zeile und ihr Name, nicht die Mechanik.
+
+**Gegen Rueckbau gesichert.** Zwei Tests: der Endbestand gegen die
+Einzelbewertung (unabhaengige Quelle) und die Bewegung selbst (nicht null,
+Stueck null, Identitaet in jedem Jahr). Dazu der N-03-Test, der das
+Bewegungskonto auf JEDER Stichtagssicht rechnet — genau das, was der
+Monatsbericht tut.
+
+**Mutationsproben.** Populationsschnitt entfernt: der N-03-Test rot. RED in
+`vs_ges` entfernt: beide T26-11-Tests rot.

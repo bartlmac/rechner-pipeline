@@ -31,6 +31,7 @@ import pytest
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.betrieb import tageslauf as tl
 from rechner_pipeline.betrieb import uebernahme as ueb
 from rechner_pipeline.betrieb.neugeschaeft import tagesziel
 from rechner_pipeline.betrieb.tageslauf import (
@@ -315,3 +316,50 @@ def test_eine_bestehende_fall_config_bleibt_lesbar(tmp_path):
     echt = REPO_ROOT / "faelle" / "baldrian-klv-tg2015-lauf2" / "abgeleitet" / "bestand-config.toml"
     if echt.is_file():
         assert load_config(echt).validate() == [], "der gezeichnete Fall muss lesbar bleiben"
+
+
+def test_jede_stichtagssicht_traegt_ein_bewegungskonto(tmp_path):
+    """Befund N-03: Der Bericht eines AELTEREN Stichtags brach ab.
+
+    "Historie hat PEX-Status ohne PEX-Ledger-Zeile" — und beide Zeilen
+    waren richtig: Die uebernommene Historie fuehrt die Vorgeschichte des
+    ABGEBENDEN Unternehmens an ihren echten Daten (PEX 2023-11-01), der
+    Ledger bucht dieselbe Tatsache am Migrationsstichtag (2026-01-01).
+    Die Praemisse der Pruefung — "aus demselben fortschreiben-Lauf" —
+    gilt fuer uebernommenen Bestand nicht.
+
+    Die Ursache war die POPULATION: Die Sicht zum 2025-01-01 trug eine
+    Police, die erst 2026 in die Buecher kam. ``jahresraster`` kennt die
+    Regel laengst ("vom ZUGANG, nicht vom Vertragsbeginn"); das
+    Bewegungskonto wandte sie auf seine Population nicht an.
+
+    Gefunden hat es die Seiten-Session beim Rendern der Monatsberichte —
+    im Dunkeln lag es, weil nie jemand einen Bericht fuer einen aelteren
+    Stichtag gebaut hat.
+    """
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.kennzahlen import bewegungskonto
+    from rechner_pipeline.betrieb.tageslauf import monatserste_in
+
+    fall = _fall_mit_nebentabellen(tmp_path)
+    stand = tmp_path / "daten"
+    ueb.eingang_anlegen(stand, fall, STICHTAG)                # Zugang 2026-01-01
+    betriebsbeginn = dt.date(2025, 1, 1)
+    ablage = _ablage_ab(stand, betriebsbeginn)               # gefuehrt seit 2025
+    heute = dt.date(2026, 1, 9)
+    assert tageslauf(ablage, heute)[0] == EXIT_OK
+
+    config = load_config(ablage.config_pfad)
+    tabellen = {n: read_portfolio(ablage.stand / f"{n}.parquet")
+                for n in ("historie", "ledger", "scheiben")}
+    tabellen["portfolio"] = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
+    stichtage = monatserste_in(betriebsbeginn - dt.timedelta(days=1), heute)
+    assert len(stichtage) > 1, "ohne aeltere Stichtage prueft der Test nichts"
+    for stichtag in stichtage:
+        sicht = tl._stichtagssicht(tabellen, config, stichtag, betriebsbeginn)
+        konto = bewegungskonto(sicht["portfolio"], sicht["historie"],
+                               sicht["ledger"], scheiben=sicht["scheiben"],
+                               bis=stichtag)
+        for zeile in konto:
+            for track, oks in zeile["identitaet"].items():
+                assert all(oks.values()), (stichtag, zeile["jahr"], track, oks)
