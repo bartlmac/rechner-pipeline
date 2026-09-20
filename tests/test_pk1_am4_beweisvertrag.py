@@ -1848,3 +1848,82 @@ def test_am4_verlangt_im_bestandsscope_auch_am2_und_am3(tmp_path: Path):
         Path(am4.paths["snapshot"]).read_text(encoding="utf-8"))
     assert snapshot["pflichtbelege"]["am2_snapshot"]
     assert snapshot["pflichtbelege"]["am3_snapshot"]
+
+
+#: Selbstbehauptungen im Fuehrungsbeleg — jede eine andere Art, ein Urteil
+#: zu schreiben statt es zu belegen (Befund T26-04). Der Gutachter hat
+#: EINE davon vorgefuehrt; hier steht die Familie.
+SELBSTBEHAUPTUNGEN = [
+    ("stichtag_null", {"stichtag": None}, "leer"),
+    ("generation_null", {"generation": None}, "leer"),
+    ("tarifwerk_null", {"tarifwerk": None}, "leer"),
+    ("tarifwerk_kein_objekt", {"tarifwerk": "ja"}, "kein Objekt"),
+    # Nicht 1: Der Fall des Fixtures fuehrt genau einen Vertrag, und eine
+    # "Mutation", die nichts aendert, pruefte nichts.
+    ("vertraege_erfunden", {"vertraege": 4711}, "vertraege"),
+    ("endbestand_ueberzaehlt", {"endbestand_geprueft": 1_000_000},
+     "endbestand_geprueft"),
+]
+
+
+@pytest.mark.parametrize("was,aenderung,stichwort", SELBSTBEHAUPTUNGEN,
+                         ids=[w for w, _, _ in SELBSTBEHAUPTUNGEN])
+def test_der_fuehrungsbeleg_darf_sein_urteil_nicht_selbst_schreiben(
+    tmp_path: Path, was, aenderung, stichwort
+):
+    """Befund T26-04: Ein vollstaendig selbst geschriebener Beleg kam durch.
+
+    Fuenf Dateien mit gewoehnlichem Text statt Parquet, ``bestanden =
+    true``, ``befunde = []``, positive Zaehler ``vertraege = 1`` und
+    ``endbestand_geprueft = 1`` — und alle uebrigen geforderten Felder
+    vorhanden, aber ``null``. Der echte A-M4-Consumer nahm ihn an.
+
+    Der Fix von T25-01 hatte die Zaehler verlangt, aber nicht gebunden:
+    "Zaehler und Feldnamen lassen sich genauso frei schreiben wie
+    bestanden". Jetzt wird ``vertraege`` gegen die ZEILENZAHL der
+    gebundenen Bestandstabelle gehalten — wer zaehlen muss, muss lesen —
+    und die beschreibenden Felder duerfen nicht leer sein.
+    """
+    fall = _bereite_bestandsfall(tmp_path)
+    probe_pfad = fall / "abgeleitet" / "berichte" / "fuehrungsprobe.json"
+    gut = json.loads(probe_pfad.read_text(encoding="utf-8"))
+    assert _abnahmebericht(fall).exit_code == 0, "der unveraenderte Fall muss gruen sein"
+
+    probe_pfad.write_text(json.dumps({**gut, **aenderung}, sort_keys=True),
+                          encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0, f"{was} kam durch"
+    meldungen = " ".join(f["message"] for f in bericht.errors)
+    assert stichwort in meldungen, (was, meldungen[:300])
+
+
+def test_eine_gebundene_tabelle_muss_eine_tabelle_sein(tmp_path: Path):
+    """Der Kern des Befunds: Die fuenf Dateien waren gewoehnlicher Text.
+
+    Hashes allein bezeugen nur, dass sich nichts geaendert hat — nicht,
+    dass die Datei ist, was der Beleg behauptet. Wer die Vertraege zaehlen
+    muss, muss die Tabelle LESEN; damit faellt ein Textfile auf, ohne dass
+    es dafuer eine eigene Formatpruefung braucht.
+    """
+    import hashlib
+
+    fall = _bereite_bestandsfall(tmp_path)
+    probe_pfad = fall / "abgeleitet" / "berichte" / "fuehrungsprobe.json"
+    probe = json.loads(probe_pfad.read_text(encoding="utf-8"))
+    assert _abnahmebericht(fall).exit_code == 0
+
+    ueber = probe["provenienz"]["parameter"]["uebernahme"]
+    stamm = fall / ueber / "bestand.parquet"
+    stamm.chmod(0o644)
+    stamm.write_text("das ist kein Parquet, sondern Text\n", encoding="utf-8")
+    # Der Beleg wird mitgezogen, damit NICHT der Hashvergleich anschlaegt,
+    # sondern die Frage, ob die Datei eine Bestandstabelle ist.
+    probe["provenienz"]["eingaben"][f"{ueber}/bestand.parquet"] = (
+        hashlib.sha256(stamm.read_bytes()).hexdigest())
+    probe_pfad.write_text(json.dumps(probe, sort_keys=True), encoding="utf-8")
+
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    meldungen = " ".join(f["message"] for f in bericht.errors)
+    assert "lesbare Bestandstabelle" in meldungen or "vertraege" in meldungen, (
+        meldungen[:300])

@@ -71,6 +71,27 @@ PB1_ROLLEN = frozenset(ROLLEN_DATEIEN) | {"config"}
 PB1_ROLLEN_DATEIEN = ROLLEN_DATEIEN
 
 
+
+def bestandszeilen(pfad) -> int:
+    """Die Zeilenzahl einer Bestandstabelle — die eine Tuer des Tools.
+
+    Das KI-Tool spricht das Zielsystem nur ueber die gemessene
+    Schnittstelle an (ADR-017, ``TOOL_NACH_VORZEIGE_ERLAUBT``), und fuer
+    ``gates.abnahmebericht`` ist diese Tuer dieses Modul. Der
+    A-M4-Consumer braucht die Zeilenzahl, um einen BEHAUPTETEN Zaehler an
+    die gebundene Tabelle zu halten (Befund T26-04) — er liest sie
+    deshalb hier statt selbst ueber ``parquet_io``.
+
+    Wirft weiter, was das Lesen wirft: Eine Datei, die keine
+    Bestandstabelle ist, ist ein Befund und kein stiller Null-Wert.
+    """
+    from pathlib import Path
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+
+    return int(len(read_portfolio(Path(pfad))))
+
+
 def pruefe_pb1_eingaenge(
     eingaben: Mapping[str, Path],
     *,

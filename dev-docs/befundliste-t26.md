@@ -33,10 +33,10 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
 
 | | Befunde |
 |---|---|
-| **Geschlossen** | T26-01, T26-02, T26-05, T26-06, T26-07, T26-08, T26-09, T26-11, T26-13, T26-14, T26-15, T26-16 |
+| **Geschlossen** | T26-01, T26-02, T26-04, T26-05, T26-06, T26-07, T26-08, T26-09, T26-11, T26-13, T26-14, T26-15, T26-16 |
 | **Geschlossen als dokumentierte Abweisung** | T26-12 |
 | **Teilweise** | T26-03 — die Tabellenbindung steht, die Rollenpruefung braucht eine Entscheidung zur Schichtenkarte |
-| **Offen** | T26-04, T26-10 |
+| **Offen** | T26-10 |
 | **Zusaetzlich geschlossen** | N-03 (nicht vom Gutachter, von der Seiten-Session gefunden) |
 
 **Was der Maintainer entscheiden muss**, bevor der Rest gebaut wird:
@@ -49,9 +49,8 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
    Steht bei T26-12.
 4. Die fuenf Annahmen im Abschnitt darunter.
 
-**Was noch zu bauen ist:** T26-04 (der Fuehrungsbeleg bleibt selbst
-behauptbar) und T26-10 (die Seite mischt bei gleichzeitigem Tageslauf zwei
-Generationen). Dazu Block 5 des Gutachters — erneute Verifikation, volle
+**Was noch zu bauen ist:** T26-10 (die Seite mischt bei gleichzeitigem
+Tageslauf zwei Generationen). Dazu Block 5 des Gutachters — erneute Verifikation, volle
 Suite in der Linux-Referenzumgebung, und die Korrektur der Aussage im PR.
 
 ## Der Massstabsunterschied — der eigentliche Punkt
@@ -89,7 +88,7 @@ mutiert.
 | T26-14 | mittel | 2 | GESCHLOSSEN | Parallele Eingaenge erhalten dasselbe Nummernband |
 | T26-15 | mittel | 2 | GESCHLOSSEN | Unpublizierter Arbeitsrest blockiert den Tagesbetrieb |
 | T26-03 | hoch | 3 | TEILWEISE | Betriebseingang akzeptiert semantisch ungueltige A-M4-Belege ohne Tabellenbindung |
-| T26-04 | hoch | 3 | OFFEN | Fuehrungsbeleg-Consumer akzeptiert selbst behauptete Ergebnisse |
+| T26-04 | hoch | 3 | GESCHLOSSEN | Fuehrungsbeleg-Consumer akzeptiert selbst behauptete Ergebnisse |
 | T26-05 | hoch | 3 | GESCHLOSSEN | Fuehrungsprobe bestaetigt eine von 43.000 auf 1.042.999 EUR veraenderte Stammsumme |
 | T26-06 | hoch | 3 | GESCHLOSSEN | Roter Schichtbeleg fuehrt zu drei gruenen aktuariellen Vorlagenlaeufen |
 | T26-07 | hoch | 3 | GESCHLOSSEN | Schichteingaben fehlen in der Bindung; ungelesenes ungueltiges JSON wird unter gruenem Urteil gehasht |
@@ -714,3 +713,45 @@ erlaubten Verfahren bleiben mit Rate erlaubt. Dazu die Forderung, dass die
 Meldung einen Ausweg nennt.
 
 **Mutationsprobe.** Pruefung entfernt: genau die eine Lage rot.
+
+### Block 3, Teil 4 — T26-04
+
+**Der Befund.** Ein vollstaendig selbst geschriebener Beleg kam durch:
+fuenf Dateien mit gewoehnlichem Text statt Parquet, `bestanden = true`,
+`befunde = []`, positive Zaehler `vertraege = 1` und
+`endbestand_geprueft = 1` — und alle uebrigen geforderten Felder
+vorhanden, aber `null`. Der echte A-M4-Consumer nahm ihn an.
+
+Der Fix von T25-01 hatte die Zaehler verlangt, aber nicht GEBUNDEN. Der
+Gutachter dazu: „Zaehler und Feldnamen lassen sich genauso frei schreiben
+wie `bestanden`."
+
+**Was gebaut ist — die Zaehler haengen jetzt an den Bytes.**
+
+1. `vertraege` wird gegen die ZEILENZAHL der gebundenen
+   `<uebernahme>/bestand.parquet` gehalten. Wer zaehlen muss, muss lesen —
+   damit faellt derselbe Beleg zweimal: am Zaehler und daran, dass Text
+   kein Parquet ist. Eine eigene Formatpruefung braucht es nicht.
+2. `endbestand_geprueft` darf die Zahl der uebernommenen Vertraege nicht
+   uebersteigen.
+3. Die BESCHREIBENDEN Felder (`stichtag`, `generation`, `tarifwerk`) sind
+   aus der Liste heraus, deren Vertrag `null` ausdruecklich zulaesst, und
+   duerfen nicht leer sein; `tarifwerk` muss ein Objekt sein. Fuer die
+   Zaehler bleibt `null`/`0` erlaubt — ein Horizont ohne Ereignisse hat
+   null gepruefte Buchungen, und das ist eine Aussage.
+
+**Eine Architekturgrenze dabei, die beachtet wurde:** Der erste Entwurf las
+die Tabelle ueber `bestand.parquet_io` — und die Ratsche
+`TOOL_NACH_VORZEIGE_ERLAUBT` (ADR-017) hat die neue Kante abgewiesen, zu
+Recht. Das KI-Tool spricht das Zielsystem nur ueber die gemessene
+Schnittstelle an; fuer `gates.abnahmebericht` ist diese Tuer
+`bestand.vorbedingungen`. Die Zeilenzahl kommt jetzt von dort.
+
+**Gegen Rueckbau gesichert.** Sechs Selbstbehauptungen als Tabelle — der
+Gutachter hat EINE vorgefuehrt, hier steht die Familie — plus ein Test, der
+die gebundene Tabelle durch Text ersetzt UND den Hash im Beleg nachzieht,
+damit nicht der Hashvergleich anschlaegt, sondern die Frage, ob die Datei
+eine Bestandstabelle ist.
+
+**Mutationsprobe.** Zaehlerbindung und Leerpruefung ausgeschaltet: vier der
+sieben rot.
