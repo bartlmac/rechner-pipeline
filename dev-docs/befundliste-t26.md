@@ -24,6 +24,36 @@ Tests so bauen, dass sie eine **Auspraegung von Problemfaellen** abdecken und
 nicht einen bestimmten Fall. Fachliche Annahmen werden hier angeschrieben und
 nach der Umsetzung vom Maintainer bestaetigt.
 
+## Stand am Morgen des 2026-09-20
+
+Gearbeitet in der Nacht vom 19. auf den 20.09., auf dem Zweig `dora-t26`
+(abgezweigt von `berichte-monat-jahr`, das auf `origin/main` @ `f518b6a`
+sitzt). Jeder Commit hat seine eigene volle Suite am Stueck gesehen, vom
+ersten mit 2245 bis zum letzten mit 2337 Tests.
+
+| | Befunde |
+|---|---|
+| **Geschlossen** | T26-01, T26-02, T26-05, T26-06, T26-07, T26-08, T26-09, T26-11, T26-13, T26-14, T26-15, T26-16 |
+| **Geschlossen als dokumentierte Abweisung** | T26-12 |
+| **Teilweise** | T26-03 — die Tabellenbindung steht, die Rollenpruefung braucht eine Entscheidung zur Schichtenkarte |
+| **Offen** | T26-04, T26-10 |
+| **Zusaetzlich geschlossen** | N-03 (nicht vom Gutachter, von der Seiten-Session gefunden) |
+
+**Was der Maintainer entscheiden muss**, bevor der Rest gebaut wird:
+
+1. **Die Schichtenkarte** — darf `betrieb` den Fall lesen? Drei Wege mit
+   Empfehlung stehen bei T26-03.
+2. **Die Herabsetzung** — darf sie die Versicherungssumme HEBEN? Gemessen
+   hebt sie sie (+202.338 ueber alle Jahre des Fixtures). Steht bei T26-11.
+3. **Die Teilkuendigung** — Tarifplan und Kernkommentar widersprechen sich.
+   Steht bei T26-12.
+4. Die fuenf Annahmen im Abschnitt darunter.
+
+**Was noch zu bauen ist:** T26-04 (der Fuehrungsbeleg bleibt selbst
+behauptbar) und T26-10 (die Seite mischt bei gleichzeitigem Tageslauf zwei
+Generationen). Dazu Block 5 des Gutachters — erneute Verifikation, volle
+Suite in der Linux-Referenzumgebung, und die Korrektur der Aussage im PR.
+
 ## Der Massstabsunterschied — der eigentliche Punkt
 
 Wir haben einen Befund geschlossen, wenn der GEMELDETE FALL behoben war. Der
