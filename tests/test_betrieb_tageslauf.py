@@ -162,7 +162,10 @@ def test_monatsabschluss_genau_einmal_und_schreibgeschuetzt(gefuehrt):
     abschluss = read_portfolio(pfad)
     assert len(abschluss) > 0 and set(abschluss["stichtag"].dt.date) == {dt.date(2026, 2, 1)}
     bericht = ablage.berichte / "bestandsbericht_2026-02-01.html"
-    assert bericht.is_file() and "Bestandsbericht PLV zum 2026-02-01" in bericht.read_text("utf-8")
+    # Monatsbericht, nicht Gesamtbericht: Er zeigt die zwoelf Monate bis
+    # zum Stichtag. Die Entwicklung seit Betriebsbeginn traegt der
+    # Jahresbericht zum Jahreswechsel.
+    assert bericht.is_file() and "Monatsbericht PLV zum 2026-02-01" in bericht.read_text("utf-8")
 
 
 def test_tagesjournal_ist_bijektiv_und_nur_angefuegt(gefuehrt):

@@ -1158,9 +1158,15 @@ def _stands_paket_unter_sperre(
     ziel.mkdir()
     (ziel / PAKET_BAU_MARKER).write_bytes(b"")
     dateien: Dict[str, str] = {}
-    for a in modell["abschluesse"][-1:]:
-        for name, soll in [(a.get("bericht"), a.get("bericht_sha256"))] + [
-                (t["bericht"], t.get("bericht_sha256")) for t in a.get("teilbestaende") or []]:
+    # Dieselbe Auswahl wie fuer die Abschluesse selbst: Die Seite
+    # verlinkt zu jedem dieser Monate einen Bericht, und ein Verweis,
+    # der im Paket ins Leere zeigt, belegt nichts. Der Jahresbericht
+    # reist mit, gebunden wie der Monatsbericht.
+    for a in juengste_abschluesse(modell["abschluesse"]):
+        for name, soll in ([(a.get("bericht"), a.get("bericht_sha256")),
+                            (a.get("jahresbericht"), a.get("jahresbericht_sha256"))]
+                           + [(t["bericht"], t.get("bericht_sha256"))
+                              for t in a.get("teilbestaende") or []]):
             if not name:
                 continue
             quelle = ablage.berichte / name

@@ -653,7 +653,15 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     assert code == EXIT_OK, zeile
     abschluesse = zeile["abschluesse"]
     assert [a["stichtag"] for a in abschluesse] == ["2026-01-01", "2026-02-01"]
-    assert "bericht" not in abschluesse[0]            # nur der juengste Abschluss wird gerendert
+    # Jeder Abschluss, den das Paket traegt, bekommt seinen Bericht —
+    # die Unternehmensseite verlinkt zwoelf Monate, nicht einen.
+    assert abschluesse[0]["bericht"] == "bestandsbericht_2026-01-01.html"
+    # Zum Jahreswechsel zusaetzlich der Jahresbericht: derselbe Stichtag,
+    # zwei Dokumente. Der Monatsbericht zeigt zwoelf Monate, der
+    # Jahresbericht die Entwicklung seit Betriebsbeginn.
+    assert abschluesse[0]["jahresbericht"] == "jahresbericht_2025.html"
+    assert (ablage.berichte / "jahresbericht_2025.html").is_file()
+    assert "jahresbericht" not in abschluesse[1]
     assert abschluesse[1]["bericht"] == "bestandsbericht_2026-02-01.html"
     # Runde D, Fund 7: die Zeile bindet den Teilbestandsbericht per Hash.
     teil_pfad = ablage.berichte / "bestandsbericht_2026-02-01_teilbestand-probe-uebernahme.html"
