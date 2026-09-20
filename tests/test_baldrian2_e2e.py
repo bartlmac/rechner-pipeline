@@ -193,6 +193,18 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     ] + _lieferungs_flags()) == 0, "Verankerung mit Schichtbeleg"
     schichten = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
     assert schichten.is_file(), "Schichtbeleg der Verankerung"
+    # Befund T26-07 a: Der Beleg nennt JEDE gelesene Eingabe, nicht eine
+    # ausgewaehlte Liste. Zeilen, Vorgeschichte und Ankerquelle sind
+    # fachlich wirksam — sie stecken in den Anfangszustaenden, aus denen
+    # die Schichten entstehen. Gebunden waren bisher nur Bestand,
+    # Verankerung, Merkmale und Spez; mit geaenderter zeilen.json nahm
+    # der Consumer denselben alten Beleg weiter an.
+    gebunden = json.loads(schichten.read_text("utf-8"))["provenienz"]["eingaben"]
+    for datei in ("zeilen.json", METADATEN, ANKER,
+                  "bestand.parquet", "verankerung.parquet"):
+        assert any(k.endswith(datei) for k in gebunden), (
+            f"{datei} fehlt in der Eingabenbindung des Schichtbelegs",
+            sorted(gebunden))
     assert (bestand / "schichten.parquet").is_file(), (
         "die Schicht als Vertragsattribut des Bestands (Freischaltung, Schritt 5)")
 

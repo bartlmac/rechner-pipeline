@@ -50,7 +50,7 @@ import pandas as pd
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.config import BestandConfig, config_aus_text
 from rechner_pipeline.bestand.parquet_io import read_portfolio_aus_bytes
-from rechner_pipeline.gates._common import lies_gehasht
+from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.gates.bestand_uebernehmen import GRUNDVERTRAG, MATERIALISIEREN
 from rechner_pipeline.gates.migrationssuite_lauf import (
@@ -654,19 +654,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     # danach ein zweites Mal vom Pfad — dazwischen konnte eine andere
     # Datei stehen, und der Beleg bezeugte einen Zustand, den niemand
     # geprueft hat.
-    eingaben: Dict[str, str] = {}
-
-    def schluessel(pfad: Path) -> str:
-        # Eingaben im Fall relativ (portabler Beleg), ausserhalb absolut —
-        # der Abnahmebericht hasht jede davon auf den aktuellen Bytes nach.
-        pfad = pfad.resolve()
-        return str(pfad.relative_to(fall)) if fall in pfad.parents else str(pfad)
-
-    def binde(pfad: Path) -> GeleseneDatei:
-        """Eine Eingabe lesen UND registrieren — ein Lesevorgang, ein Hash."""
-        gelesen = lies_gehasht(pfad)
-        eingaben[schluessel(pfad)] = gelesen.sha256
-        return gelesen
+    # EINE Bindung, die gemeinsame (Befund T26-07, Teil b). Die eigene
+    # Fassung hier las bei jedem Aufruf neu — wer eine Datei fuer einen
+    # zweiten Zweck brauchte, bekam einen zweiten Lesevorgang. Genau
+    # daran haengt der nachgewiesene Bruch: Der Schichtbeleg wurde
+    # fachlich gelesen und danach ein zweites Mal gehasht; gebunden
+    # wurden die Bytes der zweiten Lesung, geprueft die der ersten. Ein
+    # Producer band damit unter gruenem Urteil eine Datei, die er nie
+    # verarbeitet hatte.
+    bindung = Eingangsbindung(fall)
+    schluessel = bindung.schluessel
+    binde = bindung.binde
 
     def lies(pfad: Path, spalten, pflicht: bool):
         if not pfad.is_file():
@@ -774,16 +772,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.schicht:
         from rechner_pipeline.gates.aktuartest_lauf import _schichten
 
-        roh = _schichten(fall, args.schicht, repo_root=repo_root)
+        # Dieselbe Bindung weitergereicht: Der Beleg wird EINMAL gelesen,
+        # und genau diese Bytes stehen danach im eigenen Beleg (T26-07 b).
+        roh = _schichten(fall, args.schicht, repo_root=repo_root,
+                         bindung=bindung)
         schichtbeleg = {
             police: {k: (v.als_beleg() if hasattr(v, "als_beleg") else v)
                      for k, v in eintrag.items()}
             for police, eintrag in roh.items()
         }
-        schicht_pfad = (fall / args.schicht) if not Path(args.schicht).is_absolute() \
-            else Path(args.schicht)
-        if schicht_pfad.is_file():
-            binde(schicht_pfad)
+        # Kein zweiter Lesevorgang mehr: _schichten hat ueber dieselbe
+        # Bindung gelesen und dabei registriert.
 
     tarifwerk = {
         "scheiben_mit_gamma1": bool(args.scheiben_mit_gamma1),
@@ -800,7 +799,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     ergebnis["system"] = systemstand(repo_root)
     ergebnis["provenienz"] = {
-        "eingaben": dict(sorted(eingaben.items())),
+        "eingaben": bindung.als_beleg(),
         "parameter": {
             "generation": args.generation, "erhoehungssatz": args.erhoehungssatz,
             "red_anteile": sorted(args.red_anteile),

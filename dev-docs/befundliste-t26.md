@@ -61,8 +61,8 @@ mutiert.
 | T26-03 | hoch | 3 | OFFEN | Betriebseingang akzeptiert semantisch ungueltige A-M4-Belege ohne Tabellenbindung |
 | T26-04 | hoch | 3 | OFFEN | Fuehrungsbeleg-Consumer akzeptiert selbst behauptete Ergebnisse |
 | T26-05 | hoch | 3 | OFFEN | Fuehrungsprobe bestaetigt eine von 43.000 auf 1.042.999 EUR veraenderte Stammsumme |
-| T26-06 | hoch | 3 | OFFEN | Roter Schichtbeleg fuehrt zu drei gruenen aktuariellen Vorlagenlaeufen |
-| T26-07 | hoch | 3 | OFFEN | Schichteingaben fehlen in der Bindung; ungelesenes ungueltiges JSON wird unter gruenem Urteil gehasht |
+| T26-06 | hoch | 3 | GESCHLOSSEN | Roter Schichtbeleg fuehrt zu drei gruenen aktuariellen Vorlagenlaeufen |
+| T26-07 | hoch | 3 | GESCHLOSSEN | Schichteingaben fehlen in der Bindung; ungelesenes ungueltiges JSON wird unter gruenem Urteil gehasht |
 | T26-11 | hoch | 4 | OFFEN | Bewegungsrechnung ignoriert RED; P-B1 bestaetigt die falschen Summen |
 | T26-12 | mittel | 4 | OFFEN | Tarifverfahren `teilkuendigung` scheitert im produktiven RED-Pfad |
 | T26-10 | hoch | 4 | OFFEN | Interne Seite mischt bei gleichzeitigem Tageslauf zwei Generationen |
@@ -319,3 +319,55 @@ Die Leserpruefung mit Positivkontrolle.
 **Mutationsproben.** Sperre ausgeschaltet: beide Sperrtests rot, und der
 Zwischenruf meldet "durchgekommen" — der Befund selbst. Leserpruefung
 ausgeschaltet: Lesertest rot.
+
+### Block 3, Teil 1 — T26-06 und T26-07
+
+Beide sitzen am Schichtbeleg und gehoeren deshalb zusammen: der eine im
+Consumer, der andere im Producer, und dazwischen dieselbe Datei.
+
+**T26-06 — der Consumer las die Kette nach und uebersah das Urteil.**
+`aktuartest_lauf._schichten` prueft Systemstand und Eingabe-Hashes und
+reduziert danach direkt auf `roh["schichten"]`. `befunde` und `summary` sah
+er nie. Ein echter roter Producerlauf (25 von 26 Policen getragen) fuehrte so
+zu drei gruenen aktuariellen Vorlagenlaeufen.
+
+Geprueft wird jetzt dreierlei, und jedes faengt eine andere Manipulation:
+dass der Producer keine Befunde meldet, dass seine Zusammenfassung dasselbe
+sagt wie seine Befundliste, und dass die Schichttabelle so viele Policen
+traegt, wie die Zusammenfassung behauptet. Wer nur das erste prueft,
+akzeptiert einen Beleg mit geleerter Befundliste und unveraendertem summary.
+
+**T26-07 — zwei Haelften, eine Ursache: jeder Producer trug seine eigene
+Bindung.**
+
+*Teil a:* `verankerung_belegen` band vier Dateien und las daneben Zeilen,
+Vorgeschichte und Ankerquelle, ohne sie zu nennen. Mit geaenderter
+`zeilen.json` nahm der Consumer denselben alten Beleg weiter an — die
+Eingaben waren fachlich wirksam, der Beleg schwieg ueber sie.
+
+*Teil b:* `fuehrungsprobe` rief `_schichten` OHNE Bindung und hashte die
+Datei danach ein zweites Mal. Gebunden wurden die Bytes der zweiten Lesung,
+geprueft die der ersten. Der Gutachter hat das nachgestellt: Der Producer
+band unter gruenem Urteil eine Datei, die er nie verarbeitet hatte.
+
+Beide benutzen jetzt `gates._common.Eingangsbindung` — dieselbe Instanz wird
+an `_schichten` weitergereicht, und ihr Cache garantiert, dass eine bereits
+gebundene Datei nicht noch einmal gelesen wird. Der Beleg nennt, was
+`als_beleg()` sagt, nicht eine ausgewaehlte Liste, die beim naechsten neuen
+Parameter still unvollstaendig wird.
+
+Damit ist auch der Backlog-Eintrag „Zwei Producer tragen ihre eigene Fassung
+der Eingabenbindung" erledigt — und die Einschaetzung „gleichwertig, ohne
+fachliche Aussage" widerlegt.
+
+**Gegen Rueckbau gesichert.** Vier Urteilslagen als Tabelle (roter Beleg, nur
+das summary rot, unvollstaendig, Tabelle passt nicht zur Zusammenfassung) mit
+der vorhandenen Positivkontrolle daneben. Die e2e-Kette prueft, dass der
+Schichtbeleg jede gelesene Eingabe nennt — Zeilen, Vorgeschichte,
+Ankerquelle, Bestand, Verankerung. Dazu eine AST-Ratsche gegen eine eigene
+Bindungs-Fassung in den fuenf bindenden Kommandos, mit ihrer Gegenrichtung
+(jedes nennt `Eingangsbindung` auch tatsaechlich). Die Ratsche ist am ALTEN
+Stand gegengeprobt: Sie findet dort `schluessel:659` und `binde:665`.
+
+**Mutationsprobe.** Die alte, ausgewaehlte Eingabenliste wiederhergestellt:
+die ganze e2e-Kette faellt.

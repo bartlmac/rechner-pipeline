@@ -150,6 +150,22 @@ def _wrapper_datei(tmp_path: Path, *, kaputt: str = "") -> Path:
         beleg["provenienz"]["systemstand"] = {"gefaelscht": "x"}
     if kaputt == "ohne_provenienz":
         del beleg["provenienz"]
+    # Die vier Lagen, in denen der Beleg sein eigenes Urteil verraet
+    # (Befund T26-06). Provenienz und Eingabe-Hashes bleiben dabei
+    # KORREKT — genau das war der Punkt: Der Consumer rechnete die Kette
+    # nach und uebersah, dass der Producer rot war.
+    if kaputt == "rot":
+        beleg["befunde"] = [{"police_id": 7000001,
+                             "befund": "Verankerung am Ablauf",
+                             "residuum": -21931.59}]
+        beleg["summary"]["befunde"] = 1
+    if kaputt == "nur_summary_rot":
+        beleg["summary"]["befunde"] = 1
+    if kaputt == "unvollstaendig":
+        beleg["summary"]["vertraege"] = 2
+    if kaputt == "tabelle_passt_nicht":
+        beleg["summary"]["getragen"] = 2
+        beleg["summary"]["vertraege"] = 2
     pfad = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
     pfad.write_text(json.dumps(beleg), encoding="utf-8")
     if kaputt == "eingabe":
@@ -169,6 +185,38 @@ def test_abgeleiteter_beleg_wird_nur_mit_nachgerechneter_bindung_akzeptiert(
 def test_manipulation_der_eingabe_faellt_hart(tmp_path):
     fall = _wrapper_datei(tmp_path, kaputt="eingabe")
     with pytest.raises(SystemExit, match="veraendert"):
+        _schichten(fall, "abgeleitet/schichten/verankerung_schichten.json",
+                   repo_root=REPO_ROOT)
+
+
+#: Die Lagen, in denen ein Beleg sein eigenes Urteil verraet, samt dem
+#: Stichwort, an dem der Consumer sie benennen muss. Als Tabelle, nicht als
+#: Einzelfall: Wer nur den roten Producerlauf prueft, akzeptiert einen
+#: Beleg mit geleerter Befundliste und unveraendertem summary.
+URTEILSLAGEN = [
+    ("rot", "ROT"),
+    ("nur_summary_rot", "ROT"),
+    ("unvollstaendig", "unvollstaendig"),
+    ("tabelle_passt_nicht", "passt nicht"),
+]
+
+
+@pytest.mark.parametrize("kaputt,stichwort", URTEILSLAGEN)
+def test_ein_beleg_mit_eigenem_befund_wird_nicht_fachlich_verwendet(
+        tmp_path, kaputt, stichwort):
+    """Befund T26-06: Ein echter ROTER Producerlauf (25 von 26 Policen
+    getragen) fuehrte zu drei gruenen aktuariellen Vorlagenlaeufen.
+
+    Der Consumer rechnete Systemstand und Eingabe-Hashes nach — und
+    reduzierte danach direkt auf ``schichten``. ``befunde`` und
+    ``summary`` sah er nie. Die Kette war belegt, das Urteil nicht.
+
+    Die Positivkontrolle steht als eigener Test daneben: Derselbe Beleg
+    unveraendert wird angenommen. Ohne sie koennte der Consumer alles
+    ablehnen und saehe genauso gruen aus.
+    """
+    fall = _wrapper_datei(tmp_path, kaputt=kaputt)
+    with pytest.raises(SystemExit, match=stichwort):
         _schichten(fall, "abgeleitet/schichten/verankerung_schichten.json",
                    repo_root=REPO_ROOT)
 
