@@ -37,6 +37,10 @@ dependencies = [
 dev = [
     "pytest==9.0.3",
     "hypothesis==6.155.5",
+    # ADR-019: Die volle Suite ist die Commit-Vorbedingung und war mit
+    # 20:30 untragbar geworden. Mit -n 12 --dist loadfile laeuft sie in
+    # 7:25 — gleiche 2373 Tests, gleiches Urteil.
+    "pytest-xdist==3.6.1",
 ]
 
 [project.urls]

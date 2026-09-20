@@ -3,7 +3,10 @@
 -r requirements.txt
 pytest==9.0.3
 hypothesis==6.155.5
+# ADR-019: parallele Suite (20:30 -> 7:25 bei gleichem Urteil).
+pytest-xdist==3.6.1
 # Transitive dev deps (pinned for reproducibility):
+execnet==2.1.2
 iniconfig==2.3.0
 packaging==26.2
 pluggy==1.6.0

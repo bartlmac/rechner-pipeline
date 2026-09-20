@@ -96,7 +96,28 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   environment is Linux + CPython 3.11; off Linux, run the suite in the
   development container (`deploy/dev/Dockerfile`, `.devcontainer/`) —
   the code is not hardened for other operating systems.
-- Run tests: `python -m pytest`.
+- Run tests: `python -m pytest -n 12 --dist loadfile` (ADR-019). The
+  full suite is still the pre-commit condition, but it now takes about
+  seven minutes instead of twenty; `-n 12 --dist loadfile` gives one
+  test FILE to one worker, so the module-scoped fixtures stay intact.
+  Plain `python -m pytest` still works and is what CI uses.
+  Partial runs while building (never as a substitute for the full suite
+  before a commit):
+  `python -m pytest -m "not langsam"` — everything except the measured
+  heavyweights; `python -m pytest -m system_betrieb` — one NODE line
+  (markers are derived from the `Knoten:` annotations, so the vocabulary
+  is klv, bu, system_betrieb, system_bestand, system_assurance,
+  system_entscheid, system_architektur, system_gates, system_fall,
+  system_skills, klv_tg2015, klv_tg2012 — a LAYER name such as `kern`
+  selects nothing and says so only by running empty; see
+  `tests/conftest.py`);
+  `python -m pytest $(git diff --name-only | python -m
+  rechner_pipeline.ontologie.impact | python -c "import json,sys;
+  print(' '.join(json.load(sys.stdin)['pytest_args']))")` — exactly the
+  test modules the changed files can reach.
+  Only ONE suite per working tree at a time, and wrap concurrent runs in
+  `flock /tmp/suite.lock` (bundle several modules into ONE call — many
+  short calls starve a long one).
 - Case workspace:
   `python -m rechner_pipeline.fall anlegen --fall faelle/<name>`,
   `... registrieren --fall faelle/<name> --datei <quelle>`,
