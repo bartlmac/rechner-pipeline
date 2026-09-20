@@ -68,7 +68,7 @@ mutiert.
 | T26-10 | hoch | 4 | OFFEN | Interne Seite mischt bei gleichzeitigem Tageslauf zwei Generationen |
 | T26-09 | mittel | 4 | OFFEN | Wochenzahlen und Lueckenausweis bleiben trotz korrektem Anker manipulierbar |
 | T26-13 | mittel | 4 | OFFEN | Registrierte Uebersetzung Quell- zu Zielpolicen wird nicht geprueft |
-| T26-16 | mittel | 4 | OFFEN | Anker-HMAC schuetzt Rolle und Schluesselklasse nicht |
+| T26-16 | mittel | 4 | GESCHLOSSEN | Anker-HMAC schuetzt Rolle und Schluesselklasse nicht |
 
 ## Neue Befunde, waehrend dieser Runde gefunden
 
@@ -433,3 +433,34 @@ abgewiesen werden UND darf keinen halben Eingang hinterlassen.
 
 **Mutationsproben.** Tabellenbindung entfernt: drei der vier Lagen rot.
 pk1-Semantik entfernt: die vierte rot.
+
+### Vorgezogen aus Block 4 — T26-16
+
+Vorgezogen, weil er klein und abgeschlossen ist und weil er dieselbe Datei
+betrifft wie T26-08 aus Block 1.
+
+**Der Befund.** Die HMAC lief ueber den Ankersatz OHNE das gesamte
+`zeichnung`-Objekt. Rolle und Schluesselklasse standen damit UNSIGNIERT
+daneben: Aus `agent/betrieb`/`agent` wurde `mensch/betrieb`/`mensch`, und
+der Schluesselring bestaetigte die Zeichnung weiterhin. Genau diese
+Unterscheidung begruendet ADR-018 damit, dass sie am BELEG ablesbar sei.
+
+**Was gebaut ist.** Das Verfahren heisst jetzt `hmac-sha256-v2` und
+signiert Rolle, Klasse, Verfahren und Schluesselkennung mit; ausgenommen
+ist nur das Signaturfeld selbst.
+
+Alte Saetze bleiben PRUEFBAR — die Ankerreihe ist nur anfuegbar, und was
+einmal gezeichnet wurde, bleibt stehen. `deckt_urheberschaft(zeichnung)`
+sagt, ob ein Satz seine Urheberangaben unter der Signatur traegt. Ohne
+diese Auskunft waere „geprueft" fuer beide Verfahren dasselbe Wort mit zwei
+Bedeutungen.
+
+**Gegen Rueckbau gesichert.** Jedes Feld der Zeichnung, das eine Aussage
+ueber den Urheber traegt, wird einzeln verbogen — nicht nur die zwei
+gemeldeten. Dazu die Negativkontrolle des Gutachters (eine echte
+Inhaltsaenderung faellt) und ein Test, der einen v1-Satz baut, ihn erfolgreich
+prueft, seine Luecke vorfuehrt und `deckt_urheberschaft` dazu befragt.
+
+**Nebenbei erledigt:** die beiden Whitespace-Befunde aus dem Abschnitt
+Verifikation (`dev-docs/review-u1-befunde.md`, `tests/test_paket_anker_t2404.py`).
+`git diff --check` ist sauber.

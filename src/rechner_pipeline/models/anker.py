@@ -64,7 +64,34 @@ ARTEN = (ART_MOMENTAUFNAHME, ART_AUSLIEFERUNG)
 
 #: Dasselbe Verfahren wie bei den Abnahmen (P9_FREIGABE_VERFAHREN). Ein
 #: zweiter Mechanismus waere eine zweite Wahrheit ueber dasselbe.
-VERFAHREN = "hmac-sha256-v1"
+#: Das Zeichenverfahren. v1 signierte den Satz OHNE das gesamte
+#: ``zeichnung``-Objekt: Rolle und Schluesselklasse standen UNSIGNIERT
+#: daneben und liessen sich austauschen, ohne dass die Signatur fiel —
+#: aus ``agent/betrieb``/``agent`` wurde ``mensch/betrieb``/``mensch``,
+#: und der Schluesselring bestaetigte es (Befund T26-16). Genau diese
+#: Klasse ist es, um derentwillen ADR-018 die Trennung von Agent und
+#: Mensch am BELEG ablesbar macht.
+#:
+#: v2 signiert Rolle, Klasse, Verfahren und Schluesselkennung mit;
+#: ausgenommen ist nur das Signaturfeld selbst, denn eine Signatur ueber
+#: sich selbst gibt es nicht.
+VERFAHREN = "hmac-sha256-v2"
+#: Aeltere Saetze bleiben PRUEFBAR. Ein Verfahren zu wechseln darf nicht
+#: heissen, dass die Geschichte unlesbar wird; die Ankerreihe ist nur
+#: anfuegbar, und was einmal gezeichnet wurde, bleibt stehen. Was v1
+#: NICHT deckt, sagt :func:`deckt_urheberschaft`.
+VERFAHREN_ALT = "hmac-sha256-v1"
+BEKANNTE_VERFAHREN = (VERFAHREN, VERFAHREN_ALT)
+
+
+def deckt_urheberschaft(zeichnung: Dict[str, Any]) -> bool:
+    """Ob das Verfahren dieser Zeichnung Rolle und Klasse mitsigniert.
+
+    Der Unterschied ist keine Feinheit: Eine v1-Zeichnung bezeugt den
+    INHALT des Ankersatzes, aber nicht, WER ihn erzeugt hat. Wer die
+    Urheberklassifikation liest, muss wissen, ob sie getragen ist.
+    """
+    return isinstance(zeichnung, dict) and zeichnung.get("verfahren") == VERFAHREN
 
 
 class AnkerFehler(ValueError):
@@ -115,13 +142,21 @@ def ankersatz(
     }
 
 
-def _ohne_zeichnung(satz: Dict[str, Any]) -> Dict[str, Any]:
-    """Der Satz OHNE seine Zeichnung — das, was gezeichnet wird.
+def _nachricht(satz: Dict[str, Any], *, verfahren: str) -> bytes:
+    """Die Bytes, ueber die gezeichnet wird — je nach Verfahren.
 
-    Eine Signatur ueber sich selbst gibt es nicht; gezeichnet wird der
-    Inhalt, und die Zeichnung kommt daneben.
+    v1 liess das ganze ``zeichnung``-Objekt weg. v2 nimmt es mit und
+    laesst nur das Signaturfeld aus: Eine Signatur ueber sich selbst gibt
+    es nicht, aber Rolle und Klasse gehoeren in die Aussage.
     """
-    return {k: v for k, v in satz.items() if k != "zeichnung"}
+    rumpf = {k: v for k, v in satz.items() if k != "zeichnung"}
+    if verfahren != VERFAHREN_ALT:
+        zeichnung = satz.get("zeichnung")
+        rumpf["zeichnung"] = {
+            k: v for k, v in (zeichnung or {}).items() if k != "signatur"
+        }
+    return json.dumps(rumpf, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":")).encode("utf-8")
 
 
 def zeichne(
@@ -135,13 +170,15 @@ def zeichne(
     ist eine Abnahme — dafuer gibt es Gates, und seine gates-Liste ist
     leer.
     """
-    nachricht = json.dumps(_ohne_zeichnung(satz), ensure_ascii=False,
-                           sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return {
+    kopf = {
         "verfahren": VERFAHREN,
         "rolle": str(rolle),
         "schluesselklasse": str(klasse),
         "schluessel_sha256": hashlib.sha256(schluessel).hexdigest(),
+    }
+    nachricht = _nachricht({**satz, "zeichnung": kopf}, verfahren=VERFAHREN)
+    return {
+        **kopf,
         "signatur": hmac.new(schluessel, nachricht, hashlib.sha256).hexdigest(),
     }
 
@@ -159,14 +196,14 @@ def pruefe_zeichnung(
     zeichnung = satz.get("zeichnung")
     if not isinstance(zeichnung, dict):
         return ["Ankersatz ohne Zeichnung"]
-    if zeichnung.get("verfahren") != VERFAHREN:
+    verfahren = str(zeichnung.get("verfahren"))
+    if verfahren not in BEKANNTE_VERFAHREN:
         return [f"unbekanntes Verfahren {zeichnung.get('verfahren')!r}"]
     kennung = zeichnung.get("schluessel_sha256")
     schluessel = schluesselring.get(str(kennung))
     if schluessel is None:
         return [f"Schluessel {str(kennung)[:16]}… nicht bereitgestellt"]
-    nachricht = json.dumps(_ohne_zeichnung(satz), ensure_ascii=False,
-                           sort_keys=True, separators=(",", ":")).encode("utf-8")
+    nachricht = _nachricht(satz, verfahren=verfahren)
     erwartet = hmac.new(schluessel, nachricht, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(erwartet, str(zeichnung.get("signatur", ""))):
         return ["Signatur stimmt nicht mit dem Inhalt des Ankersatzes ueberein"]

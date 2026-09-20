@@ -187,3 +187,105 @@ def test_der_konsument_weist_einen_anker_aus_dem_paket_ab(gefuehrt, tmp_path):
     beilage.write_bytes((anker / "anker.jsonl").read_bytes())
     with pytest.raises(fd.FalldatenFehler, match="IM Paket"):
         fd.betrieb(paket, beilage)
+
+
+# --------------------------------------------------------------------------- #
+# T26-16 — die Zeichnung deckt, wer gezeichnet hat
+# --------------------------------------------------------------------------- #
+
+#: Jedes Feld der Zeichnung, das eine Aussage ueber den URHEBER macht.
+#: Als Tabelle, weil der gemeldete Fall nur zwei davon betraf — und die
+#: naechste Runde sonst das dritte findet.
+URHEBERFELDER = [
+    ("rolle", "mensch/betrieb"),
+    ("schluesselklasse", "mensch"),
+    ("schluessel_sha256", "ff" * 32),
+    ("verfahren", "hmac-sha256-v1"),
+]
+
+
+def _satz_mit_zeichnung(schluessel: bytes = b"probe-schluessel"):
+    from rechner_pipeline.models import anker as ak
+
+    satz = {"schema_version": 2, "art": "momentaufnahme", "stand": "2026-02-03",
+            "protokoll_letzte_sha256": "aa" * 32, "manifest_sha256": "bb" * 32,
+            "journal_sha256": "cc" * 32, "erstellt": "2026-02-03T00:00:00+00:00"}
+    satz["zeichnung"] = ak.zeichne(satz, schluessel,
+                                   rolle="agent/betrieb", klasse="agent")
+    return satz
+
+
+@pytest.mark.parametrize("feld,wert", URHEBERFELDER)
+def test_die_urheberangaben_liegen_unter_der_signatur(feld, wert):
+    """Befund T26-16: Die HMAC lief ueber den Satz OHNE das gesamte
+    zeichnung-Objekt. Rolle und Schluesselklasse standen unsigniert
+    daneben — aus agent/betrieb/agent wurde mensch/betrieb/mensch, und
+    der Schluesselring bestaetigte es.
+
+    Genau diese Klasse ist es, um derentwillen ADR-018 die Trennung von
+    Agent und Mensch am BELEG ablesbar macht. Geprueft wird deshalb jedes
+    Feld, das eine Aussage ueber den Urheber traegt, nicht nur die zwei
+    gemeldeten.
+    """
+    from rechner_pipeline.models import anker as ak
+
+    schluessel = b"probe-schluessel"
+    satz = _satz_mit_zeichnung(schluessel)
+    ring = {satz["zeichnung"]["schluessel_sha256"]: schluessel}
+    assert ak.pruefe_zeichnung(satz, ring) == [], "die echte Zeichnung muss tragen"
+
+    verbogen = {**satz, "zeichnung": {**satz["zeichnung"], feld: wert}}
+    assert ak.pruefe_zeichnung(verbogen, ring), (
+        f"{feld} liess sich austauschen, ohne dass die Signatur faellt")
+
+
+def test_eine_echte_inhaltsaenderung_faellt_weiterhin():
+    """Negativkontrolle des Gutachters, unveraendert: Wer den Inhalt
+    aendert, faellt — sonst pruefte die Signatur gar nichts."""
+    from rechner_pipeline.models import anker as ak
+
+    schluessel = b"probe-schluessel"
+    satz = _satz_mit_zeichnung(schluessel)
+    ring = {satz["zeichnung"]["schluessel_sha256"]: schluessel}
+    verbogen = {**satz, "stand": "2026-02-10"}
+    assert ak.pruefe_zeichnung(verbogen, ring) == [
+        "Signatur stimmt nicht mit dem Inhalt des Ankersatzes ueberein"]
+
+
+def test_alte_saetze_bleiben_pruefbar_und_sagen_was_sie_nicht_decken():
+    """Ein Verfahrenswechsel darf die Geschichte nicht unlesbar machen.
+
+    Die Ankerreihe ist nur anfuegbar; was einmal gezeichnet wurde, bleibt
+    stehen. Ein v1-Satz wird deshalb weiter geprueft — und
+    ``deckt_urheberschaft`` sagt, dass seine Urheberangaben NICHT unter
+    der Signatur liegen. Ohne diese Auskunft waere "geprueft" fuer beide
+    Verfahren dasselbe Wort mit zwei Bedeutungen.
+    """
+    import hashlib
+    import hmac
+    import json
+
+    from rechner_pipeline.models import anker as ak
+
+    schluessel = b"probe-schluessel"
+    satz = {"schema_version": 2, "art": "momentaufnahme", "stand": "2026-02-03",
+            "protokoll_letzte_sha256": "aa" * 32, "manifest_sha256": "bb" * 32,
+            "journal_sha256": "cc" * 32, "erstellt": "2026-02-03T00:00:00+00:00"}
+    nachricht = json.dumps(satz, ensure_ascii=False, sort_keys=True,
+                           separators=(",", ":")).encode("utf-8")
+    satz["zeichnung"] = {
+        "verfahren": ak.VERFAHREN_ALT, "rolle": "agent/betrieb",
+        "schluesselklasse": "agent",
+        "schluessel_sha256": hashlib.sha256(schluessel).hexdigest(),
+        "signatur": hmac.new(schluessel, nachricht, hashlib.sha256).hexdigest(),
+    }
+    ring = {satz["zeichnung"]["schluessel_sha256"]: schluessel}
+    assert ak.pruefe_zeichnung(satz, ring) == []
+    assert ak.deckt_urheberschaft(satz["zeichnung"]) is False
+    # Und die Luecke von damals ist an ihm immer noch da — das ist der
+    # Grund, warum die Auskunft noetig ist:
+    verbogen = {**satz, "zeichnung": {**satz["zeichnung"], "rolle": "mensch/betrieb"}}
+    assert ak.pruefe_zeichnung(verbogen, ring) == []
+
+    neu = _satz_mit_zeichnung(schluessel)
+    assert ak.deckt_urheberschaft(neu["zeichnung"]) is True
