@@ -60,7 +60,7 @@ mutiert.
 | T26-15 | mittel | 2 | GESCHLOSSEN | Unpublizierter Arbeitsrest blockiert den Tagesbetrieb |
 | T26-03 | hoch | 3 | TEILWEISE | Betriebseingang akzeptiert semantisch ungueltige A-M4-Belege ohne Tabellenbindung |
 | T26-04 | hoch | 3 | OFFEN | Fuehrungsbeleg-Consumer akzeptiert selbst behauptete Ergebnisse |
-| T26-05 | hoch | 3 | OFFEN | Fuehrungsprobe bestaetigt eine von 43.000 auf 1.042.999 EUR veraenderte Stammsumme |
+| T26-05 | hoch | 3 | GESCHLOSSEN | Fuehrungsprobe bestaetigt eine von 43.000 auf 1.042.999 EUR veraenderte Stammsumme |
 | T26-06 | hoch | 3 | GESCHLOSSEN | Roter Schichtbeleg fuehrt zu drei gruenen aktuariellen Vorlagenlaeufen |
 | T26-07 | hoch | 3 | GESCHLOSSEN | Schichteingaben fehlen in der Bindung; ungelesenes ungueltiges JSON wird unter gruenem Urteil gehasht |
 | T26-11 | hoch | 4 | GESCHLOSSEN | Bewegungsrechnung ignoriert RED; P-B1 bestaetigt die falschen Summen |
@@ -552,3 +552,46 @@ Monatsbericht tut.
 
 **Mutationsproben.** Populationsschnitt entfernt: der N-03-Test rot. RED in
 `vs_ges` entfernt: beide T26-11-Tests rot.
+
+### Block 3, Teil 3 — T26-05
+
+**Der Befund.** Die Fuehrungsprobe verglich SECHS Identitaetsfelder
+(`produkt`, `tarif_generation`, `date_of_birth`, `insurance_start`,
+`entry_age`, `duration`). Eine von 43.000 auf 1.042.999 EUR erhoehte
+Stammsumme lief durch die echte Probe und durch ihren A-M4-Consumer —
+gruen, mit positivem Zaehler. Der Gutachter dazu: „Der positive Zaehler
+sagt lediglich, dass eine Zeile auf sechs Attribute angesehen wurde. Er
+bezeugt nicht die Uebereinstimmung des gefuehrten Vertrags."
+
+**Die Klasse.** Eine handverlesene Liste dessen, was GEPRUEFT wird, veraltet
+mit jeder neuen Spalte — und schweigt darueber. Gedreht wird die Richtung:
+Benannt wird jetzt, was sich BEWEGEN darf.
+
+Gemessen am gefahrenen Fall (500 Policen, achtzehn Stammspalten) aendert die
+Fortschreibung GENAU DREI: `status_id`, `status_code`, `status_date`.
+Erhoehungen leben in den Scheiben, die Herabsetzung im Ledger, die
+beitragsfreie Summe in ihrer eigenen Spalte. Alles andere ist Identitaet und
+wird verglichen — vierzehn Spalten statt sechs. Eine neue Stammspalte ist
+damit von Anfang an geprueft.
+
+**Gegen Rueckbau gesichert.** Ein parametrisierter Test verbiegt JEDE der
+vierzehn Spalten im Endbestand des ECHTEN Laufs und verlangt, dass die Probe
+faellt UND die Spalte im Befund nennt. Die unveraenderte Probe muss in
+derselben Zeile bestehen — ohne diese Positivkontrolle waere eine Probe, die
+alles ablehnt, nicht zu unterscheiden.
+
+Dafuer ist das Material des echten Laufs in einen Helfer gewandert
+(`_probe_material`). Ein Test, der sich seine Tabellen selbst hinlegt,
+pruefte eine Welt, die der Lauf nie erzeugt hat — genau die Blindheit, an
+der T25-02 haengen blieb.
+
+**Mutationsprobe.** Zurueck auf die sechs Felder: ACHT der vierzehn Spalten
+werden rot, die urspruenglichen sechs bleiben gruen. `sum_insured` — der
+gemeldete Fall — ist unter den acht.
+
+**Was darueber hinaus offen bleibt:** Der Gutachter nennt als Reparaturziel
+zusaetzlich, den Soll-Endzustand aus Anfangszustand und Ereignisstrom
+HERZULEITEN und gegen Endbestand, Historie, Scheiben und Ledger zu halten.
+Die Buchungspruefung nach dem Stichtag tut das fuer die Buchungen bereits;
+eine vollstaendige Herleitung des Endzustands ist nicht gebaut. Der gemeldete
+Befund ist damit geschlossen, der weitergehende Anspruch nicht.

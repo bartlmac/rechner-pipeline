@@ -82,6 +82,11 @@ from rechner_pipeline.models.bestand import (
     VERANKERUNG_NAMES,
     model_point_kwargs,
 )
+
+#: Die drei Spalten des Stamms, die die Fortschreibung BEWEGEN darf.
+#: Sie zu bewegen IST die Fortschreibung; jede andere Stammspalte ist
+#: Identitaet und wird verglichen (Befund T26-05).
+ZUSTANDSSPALTEN = ("status_id", "status_code", "status_date")
 from rechner_pipeline.models.manifest import GeleseneDatei
 from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 
@@ -424,8 +429,24 @@ def pruefe_fuehrung(
         # ausgenommen — sie zu bewegen IST die Fortschreibung.
         f_bestand = fortschreibung.get("bestand")
         if f_bestand is not None:
-            identitaet = ["produkt", "tarif_generation", "date_of_birth",
-                          "insurance_start", "entry_age", "duration"]
+            # Benannt wird, was sich BEWEGEN darf — nicht, was geprueft
+            # wird (Befund T26-05). Vorher stand hier eine handverlesene
+            # Auswahl von sechs Feldern, und ``sum_insured`` war nicht
+            # darin: Eine von 43.000 auf 1.042.999 EUR erhoehte Stammsumme
+            # lief durch die echte Probe und durch ihren Consumer, gruen,
+            # mit positivem Zaehler. Der Zaehler sagte nur, dass eine
+            # Zeile auf sechs Attribute angesehen wurde.
+            #
+            # Gemessen am gefahrenen Fall (500 Policen) aendert die
+            # Fortschreibung GENAU DREI Spalten. Alles andere ist
+            # Identitaet — Erhoehungen leben in den Scheiben, die
+            # Herabsetzung im Ledger, die beitragsfreie Summe in ihrer
+            # eigenen Spalte. Eine neue Stammspalte ist damit von Anfang
+            # an geprueft, statt stillschweigend ungeprueft zu bleiben.
+            identitaet = [feld for feld in STAMM_NAMES
+                          if feld not in ZUSTANDSSPALTEN
+                          and feld != "police_id"
+                          and feld in f_bestand.columns]
             ende = f_bestand.set_index("police_id")
             for row in stamm.to_dict("records"):
                 pid = int(row["police_id"])

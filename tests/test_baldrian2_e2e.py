@@ -346,6 +346,62 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     return fall
 
 
+def _probe_material(gefahrener_fall: Path):
+    """Die Tabellen und Parameter des ECHTEN Laufs fuer eine In-memory-Probe.
+
+    Einmal gebaut, von mehreren Tests benutzt: Wer sie sich selbst
+    hinlegt, prueft eine Welt, die der Lauf nie erzeugt hat — genau die
+    Blindheit, an der T25-02 haengen blieb.
+    """
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.gates.migrationssuite_lauf import _lies_csv
+    from rechner_pipeline.spez.validierung import lade_spez
+
+    # Dieselbe Probe auf denselben Tabellen, in-memory, mit drei Stoerungen.
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    nach = gefahrener_fall / "abgeleitet" / "bestand-nach"
+    ueb = {
+        "bestand": read_portfolio(bestand / "bestand.parquet"),
+        "historie": read_portfolio(bestand / "historie.parquet"),
+        "ledger": read_portfolio(bestand / "ledger.parquet"),
+        "scheiben": read_portfolio(bestand / "scheiben.parquet"),
+        "verankerung": read_portfolio(bestand / "verankerung.parquet"),
+        "schichten": read_portfolio(bestand / "schichten.parquet"),
+        "merkmale": read_portfolio(bestand / "merkmale.parquet"),
+        "beleg": json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8")),
+    }
+    fort = {
+        "ledger": read_portfolio(nach / "ledger.parquet"),
+        "scheiben": read_portfolio(nach / "scheiben.parquet"),
+        "historie": read_portfolio(nach / "historie.parquet"),
+        "bestand": read_portfolio(nach / "bestand_gesamt.parquet"),
+    }
+    schichtbeleg = json.loads((gefahrener_fall / "abgeleitet" / "schichten"
+                               / "verankerung_schichten.json").read_text(encoding="utf-8"))["schichten"]
+    zeilen = json.loads((gefahrener_fall / "abgeleitet" / "transformation"
+                         / "zeilen.json").read_text(encoding="utf-8"))
+    anker = {}
+    for v in json.loads((FIXTURE / ANKER).read_text(encoding="utf-8"))["vertraege"]:
+        e = next((x for x in v.get("punkte", []) if x.get("anlass") == "uebernahme"
+                  and "kVx_MRV" in (x.get("erwartet") or {})), None)
+        if e:
+            anker[str(v["police_id"])] = (int(e["monate"]), float(e["erwartet"]["kVx_MRV"]))
+    basis = dict(
+        config=load_config(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
+        spez=lade_spez(gefahrener_fall, GENERATION), zeilen=zeilen,
+        vorgeschichte=_lies_csv(gefahrener_fall, METADATEN),
+        tarifwerk={"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+                   "red_verfahren": RED_VERFAHREN},
+        erhoehungssatz=float(ERHOEHUNGSSATZ),
+        red_anteile={a.split("=")[0]: float(a.split("=")[1]) for a in RED_ANTEILE},
+        red_anteile_je_datum={}, red_anteil_kandidaten=tuple(float(k) for k in KANDIDATEN),
+        anker=anker, schichtbeleg=schichtbeleg,
+        stichtag=__import__("datetime").date.fromisoformat(STICHTAG_1),
+    )
+    return ueb, fort, basis
+
+
 def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
     gefahrener_fall: Path,
 ):
@@ -397,47 +453,8 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
     suite = _bericht(gefahrener_fall, "migrationssuite.json")
     assert suite["bestand_sha256"] in set(beleg["provenienz"]["eingaben"].values())
 
-    # Dieselbe Probe auf denselben Tabellen, in-memory, mit drei Stoerungen.
-    bestand = gefahrener_fall / "abgeleitet" / "bestand"
-    nach = gefahrener_fall / "abgeleitet" / "bestand-nach"
-    ueb = {
-        "bestand": read_portfolio(bestand / "bestand.parquet"),
-        "historie": read_portfolio(bestand / "historie.parquet"),
-        "ledger": read_portfolio(bestand / "ledger.parquet"),
-        "scheiben": read_portfolio(bestand / "scheiben.parquet"),
-        "verankerung": read_portfolio(bestand / "verankerung.parquet"),
-        "schichten": read_portfolio(bestand / "schichten.parquet"),
-        "merkmale": read_portfolio(bestand / "merkmale.parquet"),
-        "beleg": json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8")),
-    }
-    fort = {
-        "ledger": read_portfolio(nach / "ledger.parquet"),
-        "scheiben": read_portfolio(nach / "scheiben.parquet"),
-        "historie": read_portfolio(nach / "historie.parquet"),
-        "bestand": read_portfolio(nach / "bestand_gesamt.parquet"),
-    }
-    schichtbeleg = json.loads((gefahrener_fall / "abgeleitet" / "schichten"
-                               / "verankerung_schichten.json").read_text(encoding="utf-8"))["schichten"]
-    zeilen = json.loads((gefahrener_fall / "abgeleitet" / "transformation"
-                         / "zeilen.json").read_text(encoding="utf-8"))
-    anker = {}
-    for v in json.loads((FIXTURE / ANKER).read_text(encoding="utf-8"))["vertraege"]:
-        e = next((x for x in v.get("punkte", []) if x.get("anlass") == "uebernahme"
-                  and "kVx_MRV" in (x.get("erwartet") or {})), None)
-        if e:
-            anker[str(v["police_id"])] = (int(e["monate"]), float(e["erwartet"]["kVx_MRV"]))
-    basis = dict(
-        config=load_config(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
-        spez=lade_spez(gefahrener_fall, GENERATION), zeilen=zeilen,
-        vorgeschichte=_lies_csv(gefahrener_fall, METADATEN),
-        tarifwerk={"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
-                   "red_verfahren": RED_VERFAHREN},
-        erhoehungssatz=float(ERHOEHUNGSSATZ),
-        red_anteile={a.split("=")[0]: float(a.split("=")[1]) for a in RED_ANTEILE},
-        red_anteile_je_datum={}, red_anteil_kandidaten=tuple(float(k) for k in KANDIDATEN),
-        anker=anker, schichtbeleg=schichtbeleg,
-        stichtag=__import__("datetime").date.fromisoformat(STICHTAG_1),
-    )
+    ueb, fort, basis = _probe_material(gefahrener_fall)
+
     gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **basis)
     assert gut["bestanden"], gut["befunde"]
 
@@ -836,3 +853,62 @@ def test_ein_roter_verankerungslauf_hinterlaesst_keine_schichttabelle(
     assert code == 1, "der Lauf muss rot sein — sonst prueft der Test nichts"
     assert tabelle.read_bytes() == vorher, (
         "der rote Lauf hat die Schichttabelle ueberschrieben")
+
+
+#: Jede Stammspalte, die die Fortschreibung NICHT bewegen darf — gemessen
+#: am gefahrenen Fall: von achtzehn Spalten aendern sich genau drei
+#: (status_id, status_code, status_date). Die Probe prueft deshalb alles
+#: ausser diesen dreien, statt eine handverlesene Auswahl.
+def _unveraenderliche_stammspalten():
+    from rechner_pipeline.gates.fuehrungsprobe import ZUSTANDSSPALTEN
+    from rechner_pipeline.models.bestand import STAMM_NAMES
+
+    return [f for f in STAMM_NAMES
+            if f not in ZUSTANDSSPALTEN and f != "police_id"]
+
+
+@pytest.mark.parametrize("feld", _unveraenderliche_stammspalten())
+def test_die_fuehrungsprobe_sieht_jede_veraenderte_stammspalte(
+    gefahrener_fall: Path, feld: str
+):
+    """Befund T26-05: Die Probe verglich SECHS Identitaetsfelder.
+
+    Eine von 43.000 auf 1.042.999 EUR erhoehte Stammsumme lief durch die
+    echte Probe und durch ihren A-M4-Consumer — gruen, mit positivem
+    Zaehler. Der Zaehler sagte nur, dass eine Zeile auf sechs Attribute
+    angesehen wurde; er bezeugte nicht die Uebereinstimmung des
+    gefuehrten Vertrags.
+
+    Geprueft wird deshalb JEDE Spalte, die sich nicht bewegen darf, nicht
+    die sechs von damals. Eine neue Stammspalte ist damit von Anfang an
+    dabei — sonst findet die naechste Pruefrunde genau sie.
+    """
+    import pandas as pd
+
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+
+    ueb, fort, basis = _probe_material(gefahrener_fall)
+    gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **basis)
+    assert gut["bestanden"], ("die unveraenderte Probe muss bestehen",
+                              gut["befunde"][:3])
+
+    verbogen = {**fort, "bestand": fort["bestand"].copy()}
+    spalte = verbogen["bestand"][feld]
+    # Eine Aenderung, die zum Typ passt: Zahlen hoch, Datum verschoben,
+    # Text anders. Die konkrete Groesse ist egal — die Probe darf keine
+    # davon durchlassen.
+    if pd.api.types.is_numeric_dtype(spalte):
+        verbogen["bestand"].loc[verbogen["bestand"].index[0], feld] = (
+            float(spalte.iloc[0]) + 999_999.0)
+    elif pd.api.types.is_datetime64_any_dtype(spalte):
+        verbogen["bestand"].loc[verbogen["bestand"].index[0], feld] = (
+            pd.Timestamp(spalte.iloc[0]) + pd.DateOffset(years=3))
+    else:
+        verbogen["bestand"].loc[verbogen["bestand"].index[0], feld] = "FREMD"
+
+    schlecht = pruefe_fuehrung(uebernahme=ueb, fortschreibung=verbogen, **basis)
+    assert not schlecht["bestanden"], (
+        f"{feld} liess sich im Endbestand aendern, ohne dass die Probe faellt")
+    assert any(feld in str(b) for b in schlecht["befunde"]), (
+        f"{feld} faellt, aber der Befund nennt die Spalte nicht: "
+        f"{schlecht['befunde'][:2]}")
