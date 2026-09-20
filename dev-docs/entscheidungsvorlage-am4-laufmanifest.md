@@ -139,3 +139,36 @@ Folge fuer die Vorzeige: `betrieb.uebernahme` verlangt einen
 angenommenen A-M4-Snapshot ("eine Uebernahme ohne Migrationsabnahme gibt
 es nicht"). Die Vorzeige-Session bleibt bis zu dieser Entscheidung
 blockiert — an diesem Punkt, nicht mehr am PEX-Zuschlag.
+
+## Was Weg D konkret kostet (ausgemessen, nicht geschaetzt)
+
+Ein zweiter `erzeuger`-Wert ist nur dann sicher, wenn jeder Leser eines
+Manifests sagt, welche Sorte Lauf er erwartet. Sonst nimmt ein
+Betriebs-Kommando klaglos das Manifest eines Migrationszugangs. Alle
+Leser, vollstaendig:
+
+| Modul | liest | unter D zu tun |
+|---|---|---|
+| `bestand/vorbedingungen.py` (P-B1-Engine) | Rollen ueber `ROLLEN_DATEIEN` | Rollentabelle je Erzeuger nachschlagen |
+| `gates/abnahmebericht.py` (A-M4) | dieselbe Tabelle ueber `PB1_ROLLEN_DATEIEN` | dito |
+| `bestand/cli_abschluss.py` | `lies_manifest` + Rollen | `erzeuger == bestand_fortschreibung` verlangen |
+| `betrieb/tageslauf.py` | `lies_manifest` + Rollen | dito |
+| `betrieb/seite.py` | `lies_manifest` (Horizont) | dito |
+
+`ERZEUGER` in `gates/bestand_validate.py` ist eine Namensgleichheit
+(`ERZEUGER_HINWEIS`, der Ausweg-Text), kein Manifest-Leser.
+
+Summe: zwei Stellen werden erzeuger-abhaengig, drei bekommen eine
+Zusicherung, die sie heute implizit machen. Kein Leser wird schwaecher.
+
+## Und der Test, der gefehlt hat
+
+Zur Reparatur gehoert — unabhaengig davon, welcher Weg gewaehlt wird —
+ein Test, der A-M4 auf der Ablage eines ECHTEN Migrationsfalls fahrt:
+Uebernahme in `abgeleitet/bestand`, Fortschreibung in
+`abgeleitet/bestand-nach`, Schicht aus `verankerung_belegen`. Heute legen
+alle A-M4-Tests ihren belegten Lauf als Fortschreibung an, und
+`tests/test_baldrian2_e2e.py` faehrt `gates.abnahmebericht` nicht mit —
+deshalb ist die Luecke monatelang gruen geblieben. Der Test kann erst
+mit der Entscheidung geschrieben werden; vorher waere er rot und wuerde
+nur den Defekt festschreiben.
