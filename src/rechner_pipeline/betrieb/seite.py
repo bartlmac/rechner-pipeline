@@ -35,6 +35,7 @@ import argparse
 import datetime as _dt
 import hashlib
 import html as _html
+import io
 import json
 import os
 import shutil
@@ -54,7 +55,11 @@ from rechner_pipeline.models.anker import (
 )
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
 from rechner_pipeline.bestand.kennzahlen import bewegungskennzahlen
-from rechner_pipeline.bestand.manifest import lies_manifest, sha256_bytes
+from rechner_pipeline.bestand.manifest import (
+    lies_manifest,
+    manifest_aus_bytes,
+    sha256_bytes,
+)
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio
 from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 
@@ -117,7 +122,7 @@ class SeiteError(ValueError):
 
 def _gepruefte_zeilen(
     ablage, aktuelle_zeile: Optional[Dict[str, Any]]
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
     """Die Protokollzeilen und die letzte gruene — NACH dem Nachweisvertrag.
 
     Plus die Zeile des laufenden Tages, wenn der Tageslauf sie noch nicht
@@ -135,6 +140,12 @@ def _gepruefte_zeilen(
 
     Es genuegt also nicht, dass irgendwo eine Wache steht. Sie muss dort
     stehen, wo die Bytes gelesen werden.
+
+    Und sie muss DIESELBEN Bytes weiterreichen (Befund T26-10). Vorher
+    prueften wir die Hashes und lasen Manifest und Journal danach erneut;
+    an der Naht dazwischen passt ein ganzer Tageslauf. Die Gegenprobe des
+    Gutachters hat genau dort einen zweiten, regulaeren Lauf gestartet —
+    die Seite nannte danach den alten Tag und zeigte die neuen Buchungen.
     """
     from rechner_pipeline.betrieb.tageslauf import (
         TageslaufError, lies_protokoll, pruefe_nachweis,
@@ -150,12 +161,12 @@ def _gepruefte_zeilen(
             "Stand gibt es keinen Bestand heute"
         )
     try:
-        pruefe_nachweis(ablage, gruene)
+        gelesen = pruefe_nachweis(ablage, gruene)
     except TageslaufError as exc:
         raise SeiteError(
             f"Der Stand traegt seinen Nachweis nicht, es gibt nichts zu zeigen: {exc}"
         ) from exc
-    return zeilen, gruene[-1]
+    return zeilen, gruene[-1], gelesen
 
 
 def abschluesse_aus_protokoll(
@@ -274,17 +285,38 @@ def juengste_abschluesse(liste: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Datum, Kennzahlen, Neugeschaeft, Buchungen, Abschluesse, Provenienz — aus
     Protokoll, Journal und Manifest des uebernommenen Stands."""
-    zeilen, zeile = _gepruefte_zeilen(ablage, aktuelle_zeile)
+    return stand_modell_mit_bytes(ablage, aktuelle_zeile)[0]
+
+
+def stand_modell_mit_bytes(
+    ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Wie :func:`stand_modell`, plus die GEPRUEFTEN Bytes von Manifest
+    und Journal.
+
+    Der Paket-Export braucht sie (Befund T26-10): Er legt Manifest und
+    Journal als Belege ins Paket, und wenn er sie dafuer ein zweites Mal
+    von der Platte liest, kann zwischen Pruefung und Kopie ein Tageslauf
+    liegen — das Paket truege dann Belege einer anderen Generation als
+    die Zahlen daneben."""
+    zeilen, zeile, gelesen = _gepruefte_zeilen(ablage, aktuelle_zeile)
     heute = _dt.date.fromisoformat(str(zeile["heute"]))
-    manifest = lies_manifest(ablage.stand)
+    # Die GEPRUEFTEN Bytes, nicht ein zweiter Lesevorgang (Befund
+    # T26-10): Zwischen Pruefung und Auswertung passt ein ganzer
+    # Tageslauf, und die Seite nannte danach den alten Tag mit den neuen
+    # Buchungen.
+    manifest = (manifest_aus_bytes(gelesen["manifest"])
+                if gelesen.get("manifest") is not None
+                else lies_manifest(ablage.stand))
     if str(manifest["horizont"]) != heute.isoformat():
         raise SeiteError(
             f"Stand fuehrt {manifest['horizont']}, das Protokoll {heute.isoformat()} "
             "— Stand und Nachweis passen nicht zusammen"
         )
-    journal_vorhanden = ablage.tagesjournal_pfad.is_file()
+    journal_roh = gelesen.get("journal")
+    journal_vorhanden = journal_roh is not None
     journal = (
-        read_portfolio(ablage.tagesjournal_pfad, expected_columns=TAGESJOURNAL_NAMES)
+        read_portfolio(io.BytesIO(journal_roh), expected_columns=TAGESJOURNAL_NAMES)
         if journal_vorhanden
         else pd.DataFrame({n: pd.Series(dtype="object") for n in TAGESJOURNAL_NAMES})
     )
@@ -312,7 +344,7 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
             .drop_duplicates()["ereignis"].value_counts().items()
         )
     } if len(journal) else {}
-    return {
+    modell = {
         "schema_version": PAKET_SCHEMA_VERSION,
         "stand": heute.isoformat(),
         "gefuehrt_seit": (
@@ -350,6 +382,7 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
             "tagesjournal_sha256": (zeile.get("tagesjournal") or {}).get("sha256"),
         },
     }
+    return modell, gelesen
 
 
 # --------------------------------------------------------------------------- #
@@ -742,7 +775,7 @@ def stands_paket(
     fehler = ankerziel_fehler(ablage, ziel, anker_verzeichnis)
     if fehler:
         raise SeiteError(fehler)
-    modell = stand_modell(ablage)
+    modell, gelesen = stand_modell_mit_bytes(ablage)
     if ziel.exists():
         # Die Wache ist paketziel_fehler (Ablage-Grenze, Symlink, Marker);
         # entferne_verzeichnis wiederholt Marker- und Symlink-Pruefung und
@@ -792,11 +825,22 @@ def stands_paket(
             f"{ablage.tagesjournal_pfad} fehlt — ein Stands-Paket ohne "
             "Tagesjournal belegt seine Buchungszahlen nicht"
         )
-    for quelle, name in ((ablage.protokoll_pfad, PAKET_PROTOKOLL),
-                         (ablage.stand / MANIFEST_DATEI, PAKET_MANIFEST),
-                         (ablage.tagesjournal_pfad, PAKET_JOURNAL)):
-        shutil.copyfile(quelle, ziel / name)
-        dateien[name] = sha256_bytes((ziel / name).read_bytes())
+    # Manifest und Journal kommen aus den GEPRUEFTEN Bytes, nicht von der
+    # Platte (Befund T26-10): Zwischen Pruefung und Kopie kann ein
+    # Tageslauf liegen, und das Paket truege dann Belege einer anderen
+    # Generation als die Zahlen daneben. Das Protokoll wird kopiert — es
+    # ist nur anfuegbar, und seine Kette prueft der Konsument selbst.
+    shutil.copyfile(ablage.protokoll_pfad, ziel / PAKET_PROTOKOLL)
+    dateien[PAKET_PROTOKOLL] = sha256_bytes(
+        (ziel / PAKET_PROTOKOLL).read_bytes())
+    for name, roh in ((PAKET_MANIFEST, gelesen.get("manifest")),
+                      (PAKET_JOURNAL, gelesen.get("journal"))):
+        if roh is None:
+            raise SeiteError(
+                f"{name}: der gepruefte Nachweis traegt diese Bytes nicht — "
+                "ein Paket ohne sie belegt seine Zahlen nicht")
+        (ziel / name).write_bytes(roh)
+        dateien[name] = sha256_bytes(roh)
     modell["dateien"] = dict(sorted(dateien.items()))
     modell["luecken"] = luecken(modell)
     # Der Anker: Erst den Satz bilden, dann ablegen, dann NENNEN. Genannt

@@ -33,10 +33,10 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
 
 | | Befunde |
 |---|---|
-| **Geschlossen** | T26-01, T26-02, T26-04, T26-05, T26-06, T26-07, T26-08, T26-09, T26-11, T26-13, T26-14, T26-15, T26-16 |
+| **Geschlossen** | T26-01, T26-02, T26-04, T26-05, T26-06, T26-07, T26-08, T26-09, T26-10, T26-11, T26-13, T26-14, T26-15, T26-16 |
 | **Geschlossen als dokumentierte Abweisung** | T26-12 |
 | **Teilweise** | T26-03 — die Tabellenbindung steht, die Rollenpruefung braucht eine Entscheidung zur Schichtenkarte |
-| **Offen** | T26-10 |
+| **Offen** | keiner |
 | **Zusaetzlich geschlossen** | N-03 (nicht vom Gutachter, von der Seiten-Session gefunden) |
 
 **Was der Maintainer entscheiden muss**, bevor der Rest gebaut wird:
@@ -94,7 +94,7 @@ mutiert.
 | T26-07 | hoch | 3 | GESCHLOSSEN | Schichteingaben fehlen in der Bindung; ungelesenes ungueltiges JSON wird unter gruenem Urteil gehasht |
 | T26-11 | hoch | 4 | GESCHLOSSEN | Bewegungsrechnung ignoriert RED; P-B1 bestaetigt die falschen Summen |
 | T26-12 | mittel | 4 | GESCHLOSSEN (als Abweisung) | Tarifverfahren `teilkuendigung` scheitert im produktiven RED-Pfad |
-| T26-10 | hoch | 4 | OFFEN | Interne Seite mischt bei gleichzeitigem Tageslauf zwei Generationen |
+| T26-10 | hoch | 4 | GESCHLOSSEN | Interne Seite mischt bei gleichzeitigem Tageslauf zwei Generationen |
 | T26-09 | mittel | 4 | GESCHLOSSEN | Wochenzahlen und Lueckenausweis bleiben trotz korrektem Anker manipulierbar |
 | T26-13 | mittel | 4 | GESCHLOSSEN | Registrierte Uebersetzung Quell- zu Zielpolicen wird nicht geprueft |
 | T26-16 | mittel | 4 | GESCHLOSSEN | Anker-HMAC schuetzt Rolle und Schluesselklasse nicht |
@@ -755,3 +755,44 @@ eine Bestandstabelle ist.
 
 **Mutationsprobe.** Zaehlerbindung und Leerpruefung ausgeschaltet: vier der
 sieben rot.
+
+### Block 4, Teil 4 — T26-10
+
+**Der Befund.** Zwei autonom gueltige Generationen, zu einem Stand
+vermischt, den es nie gab. Der Gutachter hat die natuerliche
+Scheduling-Naht getroffen: unmittelbar NACH dem Lesen des alten Manifests
+einen zweiten, voellig regulaeren Tageslauf gestartet. Der aeussere Leser
+behielt alte Protokollzeile und altes Manifest im Speicher und las das
+gerade veroeffentlichte NEUE Journal.
+
+Gemessen: `mixed_model_date 2026-02-03`, `actual_stand_date 2026-02-10`,
+`mixed_last_booking_date 2026-02-10`, `mixed_pb1 gruen`,
+`mixed_journal_hash_matches False`. Die Seite nannte einen Tag, zeigte die
+Buchungen eines anderen und einen Hash, der zu keinem von beiden passte.
+
+**Warum keine Sperre.** Der Gutachter laesst beides zu — einmal lesen und
+weiterreichen ODER Reader und Export ueber dieselbe Lauftransaktion sperren.
+Eine Sperre schuetzt den Weg, den sie umschliesst; sie haette den
+standalone-Seitenleser gebraucht, den Export, und jeden kuenftigen
+Konsumenten. Die geprueften BYTES weiterzureichen schuetzt jeden, der die
+Pruefung durchlaeuft — und niemand wertet aus, ohne sie zu durchlaufen.
+
+**Was gebaut ist.** `pruefe_nachweis` gibt die geprueften Bytes von Manifest
+und Journal zurueck, statt sie nach dem Hashen wegzuwerfen. `stand_modell`
+liest daraus, nicht erneut von der Platte. Das Stands-Paket schreibt
+Manifest und Journal aus denselben Bytes — vorher kopierte es sie noch
+einmal, und zwischen Pruefung und Kopie passt derselbe Tageslauf. Das
+Protokoll bleibt eine Kopie: Es ist nur anfuegbar, und seine Kette prueft
+der Konsument selbst.
+
+**Gegen Rueckbau gesichert.** Ein Test trifft dieselbe Naht — der zweite
+Lauf startet aus dem Inneren der Nachweispruefung heraus, also genau
+zwischen Pruefung und Auswertung. Geprueft wird dreierlei: Die Seite nennt
+ihren Tag, ihre Provenienz nennt den Journalstand, den sie ausgewertet hat,
+und ihre Buchungen enden nicht nach ihrem eigenen Stand. Dazu zwei
+Positivkontrollen: Der zweite Lauf MUSS gelaufen sein, und er MUSS das
+Journal veraendert haben — sonst traegt die Naht nicht.
+
+**Mutationsprobe.** Das Journal wieder von der Platte gelesen: Der Test
+faellt mit genau der Messung des Gutachters — Buchungen bis 2026-02-10 neben
+einem Modell, das 2026-02-03 nennt.

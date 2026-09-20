@@ -479,7 +479,9 @@ def lies_protokoll(pfad: Path) -> List[Dict[str, Any]]:
     return zeilen
 
 
-def pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
+def pruefe_nachweis(
+    ablage: Ablage, gruene: List[Dict[str, Any]]
+) -> Dict[str, Optional[bytes]]:
     """Der Nachweisvertrag zwischen Protokoll, Stand und Journal (T22-05).
 
     Oeffentlich seit Review T24-03: Der Vertrag galt nur fuer den, der ihn
@@ -494,6 +496,19 @@ def pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
     Zeile nennt den Manifest-Hash des Stands und den Hash des Journals —
     was auf der Platte liegt, muss dem entsprechen, sonst ist das
     Protokoll eine Behauptung ueber einen anderen Stand.
+
+    ZURUECKGEGEBEN werden die geprueften BYTES (Befund T26-10). Vorher
+    hat diese Funktion gehasht und die Bytes weggeworfen; der Aufrufer
+    las dieselben Dateien danach erneut. An der Naht dazwischen passt ein
+    ganzer Tageslauf: Die Gegenprobe des Gutachters hat unmittelbar nach
+    dem Lesen des alten Manifests einen zweiten, voellig regulaeren Lauf
+    gestartet. Die Seite nannte danach den 03.02. und P-B1 gruen, zeigte
+    Buchungen bis zum 10.02. und einen Journal-Hash, der nicht zum
+    ausgewerteten Journal passte — zwei autonom gueltige Generationen zu
+    einem Stand vermischt, den es nie gab.
+
+    Eine Sperre haette den einen Weg geschuetzt, den sie umschliesst.
+    Wer die geprueften Bytes weiterreicht, schuetzt jeden.
     """
     for vorher, jetzt in zip(gruene, gruene[1:]):
         if jetzt.get("schema_version", 1) < 2:
@@ -516,8 +531,14 @@ def pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
                 "fuellen die Luecke zum vorigen Tag nicht"
             )
     letzte = gruene[-1]
+    gelesen: Dict[str, Optional[bytes]] = {"manifest": None, "journal": None}
     if letzte.get("schema_version", 1) >= 2:
-        manifest_hash = _datei_hash(ablage.stand / MANIFEST_DATEI)
+        manifest_pfad = ablage.stand / MANIFEST_DATEI
+        gelesen["manifest"] = (
+            manifest_pfad.read_bytes() if manifest_pfad.is_file() else None)
+        manifest_hash = (
+            sha256_bytes(gelesen["manifest"])
+            if gelesen["manifest"] is not None else None)
         if letzte.get("manifest_sha256") != manifest_hash:
             raise TageslaufError(
                 "Protokoll und Stand passen nicht zusammen: die letzte gruene Zeile "
@@ -525,12 +546,18 @@ def pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
                 f"traegt {str(manifest_hash)[:16]}…"
             )
         journal_hash = (letzte.get("tagesjournal") or {}).get("sha256")
-        if journal_hash != _datei_hash(ablage.tagesjournal_pfad):
+        gelesen["journal"] = (
+            ablage.tagesjournal_pfad.read_bytes()
+            if ablage.tagesjournal_pfad.is_file() else None)
+        ist = (sha256_bytes(gelesen["journal"])
+               if gelesen["journal"] is not None else None)
+        if journal_hash != ist:
             raise TageslaufError(
                 "Protokoll und Journal passen nicht zusammen: das Tagesjournal hat "
                 "nicht den Hash, den die letzte gruene Zeile nennt — das Journal "
                 "wurde veraendert oder gehoert zu einem anderen Stand"
             )
+    return gelesen
 
 
 def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:

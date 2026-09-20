@@ -326,3 +326,62 @@ def test_das_paket_belegt_jede_vertragszahl_mit_ihrem_abschluss(gefuehrt, tmp_pa
         abschluesse_dir=paket / st.PAKET_ABSCHLUESSE_DIR,
     )
     assert abgeleitet == modell["abschluesse"]
+
+
+def test_ein_zweiter_lauf_an_der_lesenaht_ergibt_keinen_mischstand(tmp_path, monkeypatch):
+    """Befund T26-10: Zwei autonom gueltige Generationen, zu einem Stand
+    vermischt, den es nie gab.
+
+    Der Gutachter hat die natuerliche Scheduling-Naht getroffen:
+    unmittelbar NACH dem Lesen des alten Manifests einen zweiten, voellig
+    regulaeren Tageslauf gestartet. Der aeussere Leser behielt alte
+    Protokollzeile und altes Manifest im Speicher und las das gerade
+    veroeffentlichte NEUE Journal. Ergebnis: Die Darstellung nannte den
+    03.02. und P-B1 gruen, zeigte Buchungen bis zum 10.02. und einen
+    Journal-Hash, der nicht zum ausgewerteten Journal passte.
+
+    Kein falscher Datenbestand wurde dafuer geschrieben — beide
+    Generationen sind gueltig. Genau deshalb hilft keine weitere Wache:
+    Wer die GEPRUEFTEN Bytes weiterreicht, statt sie danach erneut zu
+    lesen, kann diesen Zustand nicht erzeugen.
+
+    Hier wird dieselbe Naht getroffen: Der zweite Lauf startet aus dem
+    Inneren der Nachweispruefung heraus, also genau zwischen Pruefung und
+    Auswertung.
+    """
+    from rechner_pipeline.betrieb import tageslauf as tl
+
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    vorher = ablage.tagesjournal_pfad.read_bytes()
+
+    echt = tl.pruefe_nachweis
+    gesehen: list = []
+
+    def _mit_zweitem_lauf(a, gruene):
+        gelesen = echt(a, gruene)
+        if not gesehen:
+            gesehen.append(True)          # vor dem Lauf setzen: der rendert selbst
+            assert tageslauf(a, dt.date(2026, 2, 10))[0] == EXIT_OK
+        return gelesen
+
+    monkeypatch.setattr(tl, "pruefe_nachweis", _mit_zweitem_lauf)
+    modell = st.stand_modell(ablage)
+    monkeypatch.undo()
+
+    assert gesehen, "der zweite Lauf ist nie gelaufen — der Test saehe nichts"
+    assert ablage.tagesjournal_pfad.read_bytes() != vorher, (
+        "der zweite Lauf hat das Journal nicht veraendert — die Naht traegt nicht")
+
+    # Die Seite spricht von EINER Generation: dem Tag, den sie nennt.
+    assert modell["stand"] == "2026-02-03"
+    from rechner_pipeline.bestand.manifest import sha256_bytes
+
+    assert modell["provenienz"]["tagesjournal_sha256"] == sha256_bytes(vorher), (
+        "die Provenienz nennt einen anderen Journalstand als den ausgewerteten")
+    # Und die Buchungen enden am gemeldeten Tag — das war die Messung des
+    # Gutachters: mixed_last_booking_date 2026-02-10 neben mixed_model_date
+    # 2026-02-03.
+    letzte = [b["buchungsdatum"] for b in modell["buchungen"]["letzte"]]
+    assert letzte and max(letzte) <= "2026-02-03", (
+        f"die Seite zeigt Buchungen nach ihrem eigenen Stand: {max(letzte)}")
