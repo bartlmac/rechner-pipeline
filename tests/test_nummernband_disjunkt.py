@@ -160,6 +160,11 @@ def test_der_leser_rechnet_die_baender_nach(tmp_path):
     assert all(u.band for u in gelesen), "das Band gehoert in den gelesenen Eingang"
 
     erstes_band = json.loads((erst / EINGANG_DATEI).read_text(encoding="utf-8"))["band"]
-    _ueberschneide(zweit, int(erstes_band["von"]), int(erstes_band["bis"]))
+    zweites_band = json.loads((zweit / EINGANG_DATEI).read_text(encoding="utf-8"))["band"]
+    # Das zweite Band nach VORNE ziehen, bis es das erste schneidet — und
+    # dabei so, dass es seine eigenen Zielnummern weiter enthaelt. Sonst
+    # faellt schon die Bijektionspruefung des Eingangs (T26-13), und der
+    # Test pruefte nicht mehr die Ueberschneidung, sondern sie.
+    _ueberschneide(zweit, int(erstes_band["bis"]), int(zweites_band["bis"]))
     with pytest.raises(UebernahmeError, match="ueberschneiden"):
         ueb.lies_uebernahmen(stand / UEBERNAHME_DIR, config)

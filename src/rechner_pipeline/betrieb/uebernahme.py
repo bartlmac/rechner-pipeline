@@ -202,14 +202,76 @@ def zielnummern(eingang: Path) -> Dict[int, int]:
     und sie ist registriert wie jede andere Datei des Eingangs — wer sie
     aendert, bricht den Hash.
     """
-    pfad = Path(eingang) / POLICENNUMMERN_DATEI
+    import io
+
+    eingang = Path(eingang)
+    pfad = eingang / POLICENNUMMERN_DATEI
     if not pfad.is_file():
         raise UebernahmeError(
             f"{pfad}: die Uebersetzungstabelle fehlt — ohne sie ist der Bezug "
             "zwischen gelieferten und gefuehrten Policennummern verloren"
         )
-    tabelle = read_portfolio(pfad, expected_columns=POLICENNUMMERN_NAMES)
-    return {int(q): int(z) for q, z in zip(tabelle["quelle_police_id"], tabelle["ziel_police_id"])}
+    # Der Satz oben stand schon da, geprueft hat ihn niemand (Befund
+    # T26-13): Die Tabelle war im Manifest gehasht, wurde aber unabhaengig
+    # davon gelesen. Eine Mutation nur an der Map — Manifest unveraendert
+    # — lieferte eine falsche Zielidentitaet, und bei vollstaendigem
+    # Verlust der Bruecke blieb die Tagesfuehrung gruen.
+    daten = pfad.read_bytes()
+    registriert = (_lies_eingang(eingang).get("dateien") or {}).get(
+        POLICENNUMMERN_DATEI)
+    if registriert is None:
+        raise UebernahmeError(
+            f"{eingang / EINGANG_DATEI}: nennt {POLICENNUMMERN_DATEI} nicht — "
+            "eine Bruecke, die das Manifest nicht fuehrt, ist keine"
+        )
+    if sha256_bytes(daten) != registriert:
+        raise UebernahmeError(
+            f"{pfad}: SHA-256 weicht von der registrierten Summe ab — die "
+            "Uebersetzung ist unantastbar wie jede andere Datei des Eingangs"
+        )
+    tabelle = read_portfolio(io.BytesIO(daten),
+                             expected_columns=POLICENNUMMERN_NAMES)
+    return {int(q): int(z)
+            for q, z in zip(tabelle["quelle_police_id"], tabelle["ziel_police_id"])}
+
+
+def uebersetzung_fehler(
+    abbildung: Dict[int, int], bestand: "pd.DataFrame",
+    band: Optional[Dict[str, int]] = None,
+) -> List[str]:
+    """Ist die Uebersetzung eine Bijektion auf den gefuehrten Bestand? Leer = ja.
+
+    Ein gehashter Beleg sagt nur, dass die Datei nicht veraendert wurde —
+    nicht, dass sie stimmt. Die Bruecke muss ausserdem VOLLSTAENDIG sein
+    (jede gefuehrte Police hat genau eine Quellnummer), EINDEUTIG in
+    beiden Richtungen und innerhalb des Nummernbands dieses Eingangs
+    (Befund T26-13).
+    """
+    fehler: List[str] = []
+    quellen, ziele = list(abbildung), list(abbildung.values())
+    if len(set(ziele)) != len(ziele):
+        fehler.append("Zielnummern sind nicht eindeutig — zwei Quellpolicen "
+                      "zeigen auf dieselbe gefuehrte Police")
+    gefuehrt = {int(p) for p in bestand["police_id"]}
+    ohne_quelle = sorted(gefuehrt - set(ziele))
+    ohne_ziel = sorted(set(ziele) - gefuehrt)
+    if ohne_quelle:
+        fehler.append(
+            f"gefuehrte Policen ohne Quellnummer: {ohne_quelle[:5]} — die "
+            "Rueckfrage nach ihrer Herkunft waere nicht beantwortbar")
+    if ohne_ziel:
+        fehler.append(
+            f"Uebersetzung nennt Policen, die der Eingang nicht fuehrt: "
+            f"{ohne_ziel[:5]}")
+    if band and {"von", "bis"} <= set(band):
+        von, bis = int(band["von"]), int(band["bis"])
+        daneben = sorted(z for z in ziele if not von <= z <= bis)
+        if daneben:
+            fehler.append(
+                f"Zielnummern ausserhalb des Bands {von}..{bis}: {daneben[:5]}")
+    if len(set(quellen)) != len(quellen):  # pragma: no cover - dict-Schluessel
+        fehler.append("Quellnummern sind nicht eindeutig")
+    return fehler
 
 
 def quellnummern(eingang: Path) -> Dict[int, int]:
@@ -587,6 +649,9 @@ class Uebernahme:
     #: damit der Leser die Disjunktheit nachrechnen kann, ohne eingang.json
     #: ein zweites Mal zu oeffnen (T26-14).
     band: Dict[str, int] = dataclasses.field(default_factory=dict)
+    #: Quellnummer -> Zielnummer. Geprueft gelesen (T26-13), damit eine
+    #: Rueckfrage nach der Herkunft einer Police beantwortbar bleibt.
+    uebersetzung: Dict[int, int] = dataclasses.field(default_factory=dict)
 
 
 def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: Dict[str, Any]) -> List[str]:
@@ -773,9 +838,19 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
 
         tabellen[name] = read_portfolio(io.BytesIO(daten), expected_columns=spalten)
     bestand = tabellen["bestand"]
+    # Die Bruecke gehoert zum Eingang wie jede Pflichttabelle: gelesen,
+    # gegen ihre registrierte Summe gehalten und auf Bijektivitaet
+    # geprueft (T26-13). Vorher las sie niemand — sie fehlte sogar in
+    # dieser Schleife, obwohl das Manifest sie fuehrt.
+    uebersetzung = zielnummern(verzeichnis)
     stichtag = _dt.date.fromisoformat(str(eingang["stichtag"]))
     if len(bestand) == 0:
         raise UebernahmeError(f"{verzeichnis}: leerer Zugangsstand")
+    bruecke = uebersetzung_fehler(uebersetzung, bestand, eingang.get("band"))
+    if bruecke:
+        raise UebernahmeError(
+            f"{verzeichnis}: die Uebersetzung Quell- zu Zielpolicen traegt "
+            "nicht — " + "; ".join(bruecke[:3]))
     zugang = pd.to_datetime(bestand["bestandszugang"])
     if not (zugang == pd.Timestamp(stichtag)).all():
         raise UebernahmeError(
@@ -845,6 +920,7 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
         schichten=tabellen["schichten"],
         beleg=beleg,
         band={k: int(v) for k, v in (eingang.get("band") or {}).items()},
+        uebersetzung=uebersetzung,
     )
 
 

@@ -67,7 +67,7 @@ mutiert.
 | T26-12 | mittel | 4 | OFFEN | Tarifverfahren `teilkuendigung` scheitert im produktiven RED-Pfad |
 | T26-10 | hoch | 4 | OFFEN | Interne Seite mischt bei gleichzeitigem Tageslauf zwei Generationen |
 | T26-09 | mittel | 4 | OFFEN | Wochenzahlen und Lueckenausweis bleiben trotz korrektem Anker manipulierbar |
-| T26-13 | mittel | 4 | OFFEN | Registrierte Uebersetzung Quell- zu Zielpolicen wird nicht geprueft |
+| T26-13 | mittel | 4 | GESCHLOSSEN | Registrierte Uebersetzung Quell- zu Zielpolicen wird nicht geprueft |
 | T26-16 | mittel | 4 | GESCHLOSSEN | Anker-HMAC schuetzt Rolle und Schluesselklasse nicht |
 
 ## Neue Befunde, waehrend dieser Runde gefunden
@@ -464,3 +464,38 @@ prueft, seine Luecke vorfuehrt und `deckt_urheberschaft` dazu befragt.
 **Nebenbei erledigt:** die beiden Whitespace-Befunde aus dem Abschnitt
 Verifikation (`dev-docs/review-u1-befunde.md`, `tests/test_paket_anker_t2404.py`).
 `git diff --check` ist sauber.
+
+### Vorgezogen aus Block 4 — T26-13
+
+**Der Befund.** `policennummern.parquet` ist im Manifest verpflichtend und
+gehasht — gelesen hat sie niemand gegen diesen Hash. Sie fehlte sogar in der
+Schleife ueber PFLICHT/OPTIONAL, und `zielnummern` las sie unabhaengig davon.
+Eine Mutation nur an der Map, Manifest unveraendert, lieferte eine falsche
+Zielidentitaet; bei vollstaendigem Verlust der Bruecke blieb sogar die
+Tagesfuehrung gruen.
+
+Der Docstring versprach dabei ausdruecklich „wer sie aendert, bricht den
+Hash" — ein Satz, den niemand geprueft hat. Genau die Klasse aus
+[[feedback-text-driftet-code-nicht]], nur im Code statt im Backlog.
+
+**Was gebaut ist.** Die Bruecke wird gegen ihre registrierte Summe gelesen
+(einmal, aus denselben Bytes) und auf Bijektivitaet geprueft: Jede gefuehrte
+Police hat genau eine Quellnummer, Zielnummern sind eindeutig, und sie liegen
+im Nummernband dieses Eingangs. Eine fehlende Map faellt wie jede andere
+Pflichtdatei.
+
+**Gegen Rueckbau gesichert.** Vier Verbiegungen der registrierten Datei und
+fuenf Bijektionslagen als Tabelle. Die wichtigste Zeile ist die vierte
+Verbiegung: Map UND Manifest zusammen geaendert. Ohne sie pruefte nichts den
+inhaltlichen Teil — die drei anderen fallen schon am Hash, und der
+Tabellentest ruft die Funktion direkt auf. Ein Aufruf, der aus
+`lies_uebernahme` verschwindet, faellt nur an dieser einen Zeile auf.
+
+**Mutationsproben.** Hashpruefung entfernt: drei Verbiegungen rot.
+Bijektionspruefung entfernt: die vierte rot.
+
+**Nebenwirkung, die etwas zeigt:** Der Bandueberschneidungs-Test aus T26-14
+fiel, weil seine Manipulation die Zielnummern aus dem Band schob — die neue
+Pruefung sah es zuerst. Der Test manipuliert jetzt so, dass er seinen eigenen
+Gegenstand trifft. Zwei Pruefungen, die sich gegenseitig fangen, sind kein
+Problem, sondern der Beleg, dass beide etwas tun.

@@ -902,3 +902,106 @@ def test_uebernommen_wird_nur_was_die_abnahme_gesehen_hat(
         ueb.eingang_anlegen(stand, fall, STICHTAG)
     assert not (stand / ueb.UEBERNAHME_DIR).exists()
     assert not (stand / ueb.STAGING_DIR).exists()
+
+
+# --------------------------------------------------------------------------- #
+# T26-13: Die Bruecke zwischen Quell- und Zielnummern wird geprueft
+# --------------------------------------------------------------------------- #
+
+def _verbiege_map(eingang: Path, wie: str) -> None:
+    """Die registrierte Uebersetzungstabelle nachtraeglich veraendern."""
+    pfad = eingang / ueb.POLICENNUMMERN_DATEI
+    pfad.chmod(0o644)
+    if wie == "geloescht":
+        pfad.unlink()
+        return
+    tab = read_portfolio(pfad, expected_columns=ueb.POLICENNUMMERN_NAMES)
+    if wie == "falsche_zielnummer":
+        tab.loc[0, "ziel_police_id"] = 999
+    elif wie == "doppelte_zielnummer":
+        tab.loc[0, "ziel_police_id"] = int(tab.loc[1, "ziel_police_id"])
+    elif wie == "eine_zeile_fehlt":
+        tab = tab.iloc[1:].reset_index(drop=True)
+    elif wie == "mitsamt_manifest":
+        # Der harte Fall: Die Map wird verbogen UND das Manifest
+        # nachgezogen. Der Hash stimmt dann wieder — es bleibt nur die
+        # Frage, ob die Bruecke inhaltlich traegt.
+        tab = tab.iloc[1:].reset_index(drop=True)
+    else:  # pragma: no cover
+        raise AssertionError(wie)
+    write_portfolio(tab, pfad)
+    if wie == "mitsamt_manifest":
+        manifest = eingang / ueb.EINGANG_DATEI
+        manifest.chmod(0o644)
+        daten = json.loads(manifest.read_text(encoding="utf-8"))
+        daten["dateien"][ueb.POLICENNUMMERN_DATEI] = ueb.sha256_bytes(
+            pfad.read_bytes())
+        manifest.write_text(
+            json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+
+
+#: Die Lagen, in denen die Bruecke nicht mehr traegt. "geloescht" ist der
+#: Fall, bei dem der Tageslauf frueher GRUEN blieb.
+BRUECKENLAGEN = [
+    ("falsche_zielnummer", "SHA-256"),
+    ("doppelte_zielnummer", "SHA-256"),
+    ("eine_zeile_fehlt", "SHA-256"),
+    ("geloescht", "fehlt"),
+    # Ohne diese Zeile pruefte nichts die INHALTLICHE Bruecke: Die drei
+    # oberen fallen schon am Hash, und der Bijektions-Test daneben ruft
+    # die Funktion direkt auf. Ein Aufruf, der aus lies_uebernahme
+    # verschwindet, faellt nur hier auf.
+    ("mitsamt_manifest", "Uebersetzung"),
+]
+
+
+@pytest.mark.parametrize("wie,stichwort", BRUECKENLAGEN)
+def test_eine_verbogene_uebersetzung_faellt_beim_lesen(tmp_path, wie, stichwort):
+    """Befund T26-13: policennummern.parquet war im Manifest verpflichtend
+    und gehasht — gelesen hat sie niemand gegen diesen Hash.
+
+    Eine Mutation nur an der Map, Manifest unveraendert, lieferte eine
+    falsche Zielidentitaet; bei vollstaendigem Verlust der Bruecke blieb
+    sogar die Tagesfuehrung gruen. Der Docstring versprach dabei
+    ausdruecklich "wer sie aendert, bricht den Hash" — ein Satz, den
+    niemand geprueft hat.
+    """
+    from rechner_pipeline.bestand.config import load_config
+
+    stand = tmp_path / "daten"
+    ziel = ueb.eingang_anlegen(stand, _fall(tmp_path), STICHTAG)
+    cfg_pfad = tmp_path / "bestand.toml"
+    cfg_pfad.write_text(_kleine_config(), encoding="utf-8")
+    config = load_config(cfg_pfad)
+    # Positivkontrolle: unveraendert wird gelesen, und die Bruecke steht
+    # im gelesenen Eingang.
+    [gelesen] = ueb.lies_uebernahmen(stand / ueb.UEBERNAHME_DIR, config)
+    assert len(gelesen.uebersetzung) == 3
+
+    _verbiege_map(ziel, wie)
+    with pytest.raises(ueb.UebernahmeError, match=stichwort):
+        ueb.lies_uebernahmen(stand / ueb.UEBERNAHME_DIR, config)
+
+
+#: Die Bijektivitaet als Tabelle — geprueft an der reinen Funktion, damit
+#: jede Verletzung einzeln sichtbar wird und nicht hinter dem Hash
+#: verschwindet.
+UEBERSETZUNGSLAGEN = [
+    ("vollstaendig und eindeutig", {1: 10, 2: 11, 3: 12}, [10, 11, 12], False),
+    ("zwei Quellen auf dieselbe Police", {1: 10, 2: 10}, [10], True),
+    ("gefuehrte Police ohne Quellnummer", {1: 10}, [10, 11], True),
+    ("Uebersetzung nennt eine fremde Police", {1: 10, 2: 99}, [10], True),
+    ("Zielnummer ausserhalb des Bands", {1: 10, 2: 5000}, [10, 5000], True),
+]
+
+
+@pytest.mark.parametrize("was,abbildung,gefuehrt,fehlerhaft",
+                         UEBERSETZUNGSLAGEN)
+def test_die_bruecke_muss_eine_bijektion_sein(was, abbildung, gefuehrt, fehlerhaft):
+    """Ein gehashter Beleg sagt nur, dass die Datei nicht veraendert
+    wurde — nicht, dass sie stimmt. Beide Richtungen geprueft: Die
+    vollstaendige, eindeutige Bruecke MUSS durchgehen."""
+    bestand = pd.DataFrame({"police_id": gefuehrt})
+    fehler = ueb.uebersetzung_fehler(abbildung, bestand, {"von": 1, "bis": 1000})
+    assert bool(fehler) is fehlerhaft, (was, fehler)
