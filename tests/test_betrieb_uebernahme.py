@@ -676,19 +676,13 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     zeilen = re.findall(r"<td>(KLV-\d{4}|BU-\d{4}|TG2015)</td>.*?<td class=\"num\">(\d+)</td></tr>", teil)
     assert dict(zeilen)["KLV-2017"] == "3"
     assert all(anzahl == "0" for name, anzahl in zeilen if name != "KLV-2017")
-    gesamt = (ablage.berichte / "bestandsbericht_2026-02-01.html").read_text("utf-8")
-    zeilen_gesamt = re.findall(r"<td>(KLV-\d{4}|BU-\d{4}|TG2015)</td>.*?<td class=\"num\">(\d+)</td></tr>", gesamt)
-    # KLV-2017 verkauft nicht mehr (Fenster bis 2021): im Gesamtbestand
-    # stehen genau die drei uebernommenen, wie im Teilbestand. Der Gesamt-
-    # bericht ist MEHR als der Teilbestand, weil das eigene Geschaeft der
-    # aktuell verkaufenden Generation (KLV-2025) dazukommt — seit ADR-020
-    # entsteht es aus dem Tagesstrom ab Betriebsbeginn.
-    assert int(dict(zeilen_gesamt)["KLV-2017"]) == 3
-    assert int(dict(zeilen_gesamt).get("KLV-2025", "0")) > 0
-    # Ohne den Schalter kein Teilbestand-Bericht. Eine eigene Ablage mit
-    # eigener Config und eigener Registrierung: Seit ADR-022 bindet die
-    # Zugangsabnahme den Stand der Ablage samt Config; ein kopierter Eingang
-    # unter umgeschriebener Config traete (richtig) nicht ein.
+    # Der Gesamtbericht ist seit dem eigenen Renderer der Monatsbericht; er
+    # zaehlt nicht je Generation, sondern fuehrt den Bestand des Abschlusses.
+    # Dass der Teilbestand ein Teil ist, steht damit im Abschluss selbst —
+    # und der ist die Quelle, aus der beide Berichte lesen.
+    abschluss = read_portfolio(ablage.abschluesse / "abschluss_2026-02-01.parquet")
+    assert int((abschluss["tarif_generation"] == "KLV-2017").sum()) > 3
+    # Ohne den Schalter kein Teilbestand-Bericht:
     aus = Ablage(stand.parent / "aus")
     _mit_config(aus.wurzel, _kleine_config().replace(
         "teilbestand_getrennt = true", "teilbestand_getrennt = false"))

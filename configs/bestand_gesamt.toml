@@ -1154,6 +1154,15 @@ betriebsbeginn = 1994-07-01
 wochentagsgewichte = { mo = 1.3, di = 1.0, mi = 1.0, do = 1.0, fr = 1.0, sa = 0.0, so = 0.0 }
 meldeverzug_tod = { verteilung = "lognormal", median_tage = 14, p95_tage = 60 }
 teilbestand_getrennt = true
+# Jeder erzeugte Bericht traegt diesen Satz im Fuss. Er gehoert dorthin
+# und nicht nur auf die Unternehmensseite: Ein Bericht ist eine
+# selbst-enthaltene Datei, die weitergegeben wird, und wer nur ihren Link
+# bekommt, sieht die Seite nicht, die sie einordnet.
+#
+# Der Wert ist die EINZIGE Stelle dieser Datei mit Umlauten, und das mit
+# Absicht: Alles andere hier ist Parametrierung, dieser Satz ist Text
+# fuer Leser. Repo-ASCII gehoert nicht auf eine Seite, die jemand liest.
+berichtshinweis = "Fiktives Unternehmen: Die Pfefferminzia Lebensversicherung AG ist frei erfunden, Bestand und Geschäftsvorfälle sind synthetisch erzeugt."
 
 # --------------------------------------------------------------------------
 # Plausibilitaets-Baender fuer das Sanity-Gate (P-B1).

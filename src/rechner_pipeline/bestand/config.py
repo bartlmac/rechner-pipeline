@@ -917,6 +917,13 @@ class Tagesbetrieb:
       Teilbestand zusaetzlich getrennt aus (Abschnitt 6, Config-Schalter;
       ob dauerhaft, ist eine offene Fachentscheidung). Default aus: Ein
       Bericht, den niemand bestellt hat, ist kein stiller Default.
+    * ``berichtshinweis``: ein Satz, den jeder erzeugte Bericht in seinem
+      Fuss traegt. Gedacht fuer Aussagen, die zum BETRIEB gehoeren und
+      nicht zum Berichtsbaustein — bei der Vorzeige der Hinweis, dass die
+      Gesellschaft erfunden ist. Ein Bericht ist eine selbst-enthaltene
+      Datei; wer ihren Link bekommt, sieht die Seite nicht, die ihn
+      einordnet, und damit auch deren Fusszeile nicht. Leer heisst: kein
+      Hinweis, und der generische Renderer erfindet keinen.
 
     Die Werte gehoeren in die Config, nicht in den Code; ohne Abschnitt
     ``[tagesbetrieb]`` gelten die Vorgaben des Konzepts fuer Gewichte und
@@ -929,6 +936,7 @@ class Tagesbetrieb:
     )
     meldeverzug_tod: Meldeverzug = field(default_factory=Meldeverzug)
     teilbestand_getrennt: bool = False
+    berichtshinweis: str = ""
 
     def gewicht(self, tag: _dt.date) -> float:
         """Das Gewicht eines Kalendertags (nur vom Wochentag abhaengig)."""
@@ -943,6 +951,8 @@ class Tagesbetrieb:
             errors.append(f"{prefix}: betriebsbeginn ist kein Datum")
         if not isinstance(self.teilbestand_getrennt, bool):
             errors.append(f"{prefix}: teilbestand_getrennt muss true oder false sein")
+        if not isinstance(self.berichtshinweis, str):
+            errors.append(f"{prefix}: berichtshinweis muss Text sein")
         fehlend = sorted(set(WOCHENTAGE) - set(self.wochentagsgewichte))
         fremd = sorted(set(self.wochentagsgewichte) - set(WOCHENTAGE))
         if fehlend or fremd:
@@ -1145,7 +1155,7 @@ def _lies_tagesbetrieb(roh: Any, errors: List[str]) -> Tagesbetrieb:
         errors.append("[tagesbetrieb] muss eine Tabelle sein")
         return Tagesbetrieb()
     bekannt = {"betriebsbeginn", "wochentagsgewichte", "meldeverzug_tod",
-               "teilbestand_getrennt"}
+               "teilbestand_getrennt", "berichtshinweis"}
     fremd = sorted(set(roh) - bekannt)
     if fremd:
         errors.append(
@@ -1170,6 +1180,8 @@ def _lies_tagesbetrieb(roh: Any, errors: List[str]) -> Tagesbetrieb:
             }
     if "teilbestand_getrennt" in roh:
         kwargs["teilbestand_getrennt"] = roh["teilbestand_getrennt"]
+    if "berichtshinweis" in roh:
+        kwargs["berichtshinweis"] = roh["berichtshinweis"]
     if "meldeverzug_tod" in roh:
         verzug = roh["meldeverzug_tod"]
         if not isinstance(verzug, Mapping):

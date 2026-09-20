@@ -134,6 +134,11 @@ from rechner_pipeline.bestand.manifest import (
     sha256_bytes,
 )
 from rechner_pipeline.bestand.kennzahlen import monatskennzahlen
+from rechner_pipeline.bestand.monatsbericht import (
+    MONATE as BERICHT_MONATE,
+    monatsraster,
+    render_html as monatsbericht_html,
+)
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio, write_portfolio
 from rechner_pipeline.bestand.report import render_html
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
@@ -2608,28 +2613,73 @@ def _stamm_am_stichtag(stamm: pd.DataFrame, historie: pd.DataFrame) -> pd.DataFr
     return aus.astype({"status_id": "int64"})
 
 
-def _monatsraster(stichtag: _dt.date, anzahl: int) -> List[_dt.date]:
-    """Die letzten ``anzahl`` Monatsersten bis einschliesslich ``stichtag``.
+def _schreibe_bericht(html: str, ziel: Path) -> Path:
+    """Einen fertigen Bericht atomar ablegen (erst daneben, dann umlegen).
 
-    Der Monatsbericht zeigt den Stand zum Monatsende und die Entwicklung
-    der zwoelf Monate davor — nicht die Gesamtentwicklung seit 1994. Die
-    traegt der Jahresbericht.
+    Eine Stelle fuer beide Erzeuger: Monatsbericht und Jahresbericht sollen
+    nicht auf verschiedene Weise auf die Platte kommen, und ein halb
+    geschriebener Bericht darf nie unter seinem Namen stehen.
     """
-    raster = [stichtag]
-    for _ in range(anzahl - 1):
-        erster = raster[0]
-        raster.insert(0, (erster - _dt.timedelta(days=1)).replace(day=1))
-    return raster
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    tmp = neue_datei(ziel.parent, ziel.name)
+    try:
+        tmp.write_text(html, encoding="utf-8", newline="\n")
+        os.replace(tmp, ziel)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return ziel
+
+
+def _monatsbericht(
+    ablage: Ablage, journal: pd.DataFrame, config: BestandConfig,
+    stichtag: _dt.date, heute: _dt.date, ziel: Path, quelle_hash: str,
+) -> Path:
+    """Den Monatsbericht zu einem Abschluss schreiben.
+
+    Eigener Renderer, nicht der grosse Bericht mit engerem Stichtagsraster:
+    Das Raster steuert dort nur die Verlaufskurven, waehrend Ereignissummen
+    und Nachweisungen unabhaengig davon die ganze Historie zeigen — der
+    Bericht traegt dann eine Zwoelf-Monats-Kurve unter der Ueberschrift
+    "Geschaeftsvorfaelle 1994 bis 2026". Siehe
+    :mod:`rechner_pipeline.bestand.monatsbericht`.
+
+    Quelle sind die FESTGESCHRIEBENEN Abschluesse des Rasters, gelesen von
+    der Platte, plus das Tagesjournal. Nicht die Stichtagssicht: Der
+    Abschluss ist der Stand seines Stichtags, und wer ihn nachrechnet,
+    weicht um die Buchungen ab, die es an dem Tag noch nicht gab (T24-02).
+    Fehlt ein aelterer Abschluss — vor dem Betriebsbeginn —, entfaellt
+    seine Zeile; erfunden wird keine.
+    """
+    abschluesse = {}
+    for tag in monatsraster(stichtag, BERICHT_MONATE):
+        pfad = ablage.abschluesse / f"abschluss_{tag.isoformat()}.parquet"
+        if pfad.is_file():
+            abschluesse[tag] = read_portfolio(pfad)
+    html = monatsbericht_html(
+        abschluesse, journal, stichtag, monate=BERICHT_MONATE, stand=heute,
+        titel=f"Monatsbericht zum {stichtag.isoformat()}",
+        quelle_hash=quelle_hash,
+        hinweis=config.tagesbetrieb.berichtshinweis,
+    )
+    return _schreibe_bericht(html, ziel)
 
 
 def _bericht(
     tabellen: Dict[str, Any], config: BestandConfig, stichtag: _dt.date, heute: _dt.date,
     ziel: Path, quelle_hash: str, titel: Optional[str] = None,
-    stichtage: Optional[List[_dt.date]] = None,
 ) -> Path:
+    """Der grosse Bericht: Gesamtentwicklung seit Betriebsbeginn.
+
+    Jahresbericht und Teilbestandsbericht. Der Monatsbericht geht seit
+    seinem eigenen Renderer nicht mehr hier durch (:func:`_monatsbericht`);
+    ein enger gestelltes Stichtagsraster hat den grossen Bericht nie zu
+    einem Monatsbericht gemacht, weil Ereignissummen und Nachweisungen
+    nicht am Raster haengen.
+    """
     html = render_html(
         tabellen["portfolio"],
-        titel=titel or f"Bestandsbericht PLV zum {stichtag.isoformat()}",
+        titel=titel or f"Bestandsbericht zum {stichtag.isoformat()}",
         quelle_hash=quelle_hash,
         historie=tabellen["historie"],
         ledger=tabellen["ledger"],
@@ -2643,23 +2693,15 @@ def _bericht(
         # die noch nicht stattgefunden haben. Der Fallbericht behaelt seine
         # Projektion (dort ist sie der Gegenstand).
         berichtsstichtag=stichtag,
-        # Ohne Raster das Jahresraster des Renderers: die Gesamtentwicklung
-        # ueber die Vertragslaufzeiten. Der Monatsbericht gibt stattdessen
-        # seine zwoelf Monatsersten mit.
-        stichtage=stichtage,
         schichten=tabellen.get("schichten"),
         verankerung=tabellen.get("verankerung"),
         reduktionen=tabellen.get("reduktionen"),
+        # Derselbe Hinweis wie im Monatsbericht: Beide Dokumente werden
+        # verlinkt und weitergegeben, und beide muessen ohne die Seite
+        # verstaendlich sein, die sie einordnet.
+        hinweis=config.tagesbetrieb.berichtshinweis,
     )
-    ziel.parent.mkdir(parents=True, exist_ok=True)
-    tmp = neue_datei(ziel.parent, ziel.name)
-    try:
-        tmp.write_text(html, encoding="utf-8", newline="\n")
-        os.replace(tmp, ziel)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
-    return ziel
+    return _schreibe_bericht(html, ziel)
 
 
 def _anfuegen(
@@ -3282,17 +3324,16 @@ def _tageslauf_mit_config(
                 # Nachholen nicht — das waere Rechenzeit fuer Seiten, die niemand
                 # liest.
                 if stichtag in stichtage[-PAKET_ABSCHLUESSE_ANZAHL:]:
-                    # Derselbe Schnitt wie der Abschluss: Der Bericht legt
-                    # den Abschluss aus, den er begleitet — auf der Sicht
-                    # von heute erzaehlte er vom selben Stichtag eine
-                    # andere Geschichte als die Zahlen daneben.
-                    bericht = _bericht(
-                        sicht, config, stichtag, heute,
+                    # Der Bericht legt den Abschluss aus, den er begleitet,
+                    # und liest ihn dafuer selbst — samt der zwoelf davor.
+                    # Auf der Sicht von heute nachgerechnet erzaehlte er
+                    # vom selben Stichtag eine andere Geschichte als die
+                    # Zahlen daneben (T24-02).
+                    bericht = _monatsbericht(
+                        ablage, journal, config, stichtag, heute,
                         schreibziel(ablage, ablage.berichte
                                     / f"bestandsbericht_{stichtag.isoformat()}.html"),
                         tabellen["sha256"]["portfolio"],
-                        titel=f"Monatsbericht PLV zum {stichtag.isoformat()}",
-                        stichtage=_monatsraster(stichtag, PAKET_ABSCHLUESSE_ANZAHL),
                     )
                     eintrag["bericht"] = bericht.name
                     # Der Bericht wird GEBUNDEN, nicht nur genannt (Runde D,
@@ -3310,9 +3351,9 @@ def _tageslauf_mit_config(
                         jahr = stichtag.year - 1
                         jahres = _bericht(
                             sicht, config, stichtag, heute,
-                            ablage.berichte / f"jahresbericht_{jahr}.html",
+                            schreibziel(ablage, ablage.berichte / f"jahresbericht_{jahr}.html"),
                             tabellen["sha256"]["portfolio"],
-                            titel=f"Jahresbericht PLV {jahr}",
+                            titel=f"Jahresbericht {jahr}",
                         )
                         eintrag["jahresbericht"] = jahres.name
                         # Gebunden wie der Monatsbericht (Runde D, Fund 7): Das

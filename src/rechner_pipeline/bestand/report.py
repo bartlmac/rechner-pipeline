@@ -828,6 +828,7 @@ def render_html(
     verankerung: Optional[pd.DataFrame] = None,
     reduktionen: Optional[pd.DataFrame] = None,
     berichtsstichtag: Optional[_dt.date] = None,
+    hinweis: str = "",
 ) -> str:
     """Rendert den vollständigen Bericht als selbst-enthaltenes HTML.
 
@@ -846,6 +847,11 @@ def render_html(
     die Nachweisungen in **Historie** (Bestandsaufbau bis zum Stichtag) und
     **Prognose** (Entwicklung danach) — in den Tabellen als Trennzeile, in
     den Grafiken als senkrechte Linie.
+
+    ``hinweis`` steht im Fuss, wenn er gesetzt ist. Der Bericht ist eine
+    selbst-enthaltene Datei und wandert ohne die Seite, die ihn verlinkt;
+    was zu seinem Verstaendnis gehoert, muss deshalb in ihm stehen. Leer
+    heisst: kein Hinweis -- dieser Baustein erfindet keinen.
 
     ``berichtsstichtag`` schaltet den BETRIEBSBERICHT: Der Bericht endet am
     Stichtag, bis zu dem geführt wurde, und zeigt keine Projektion. Das ist
@@ -1330,6 +1336,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 <footer>
 Erzeugt mit <code>python -m rechner_pipeline.bestand.cli_report</code>
 (Version {REPORT_VERSION}).
+{f"<br>{_html.escape(hinweis)}" if hinweis else ""}
 </footer>
 </body>
 </html>
