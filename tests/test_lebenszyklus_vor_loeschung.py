@@ -117,15 +117,19 @@ def test_ein_abgebrochenes_anlegen_blockiert_den_leser_nicht(tmp_path, monkeypat
     gut = ueb.eingang_anlegen(stand, _fall(tmp_path, "gut"), STICHTAG)
 
     aufrufe = {"n": 0}
-    echt = ueb.sha256_bytes
+    echt = ueb.write_portfolio
 
-    def _bricht(daten):
+    def _bricht(tabelle, pfad, *a, **k):
+        # Beim SCHREIBEN abbrechen: Seit der Eingang seine Tabellen an den
+        # Beleggraphen bindet (T26-03), wird schon vor dem Anlegen
+        # gehasht — ein Zaehler auf sha256_bytes traefe eine Stelle ohne
+        # Arbeitsverzeichnis.
         aufrufe["n"] += 1
         if aufrufe["n"] == 2:
             raise OSError("Platte weg")
-        return echt(daten)
+        return echt(tabelle, pfad, *a, **k)
 
-    monkeypatch.setattr(ueb, "sha256_bytes", _bricht)
+    monkeypatch.setattr(ueb, "write_portfolio", _bricht)
     with pytest.raises(OSError):
         ueb.eingang_anlegen(stand, _fall(tmp_path, "abgebrochen"), STICHTAG)
     monkeypatch.undo()

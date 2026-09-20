@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import sys as _sys
 import datetime as _dt
 import json
 
@@ -41,6 +42,7 @@ import pandas as pd
 
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
 from rechner_pipeline.models.zeichnung import ZEICHNENDE_KLASSEN
+from rechner_pipeline.models.schemas import p9_semantik_fehler
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
@@ -346,6 +348,14 @@ def naechstes_band(uebernahme: Path, anzahl: int) -> Tuple[int, int]:
 
 
 def pruefe_am4_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str, Any]:
+    """Die Zeichnungsangaben des geprueften Snapshots (siehe
+    :func:`lies_am4_snapshot`)."""
+    return _zeichnung_aus_daten(*lies_am4_snapshot(fall, snapshot_sha256))
+
+
+def lies_am4_snapshot(
+    fall: Path, snapshot_sha256: Optional[str]
+) -> Tuple[Dict[str, Any], str]:
     """Den A-M4-Snapshot einer Uebernahme pruefen, soweit es ohne Schluessel geht.
 
     Review T22-06: ``eingang_anlegen`` las irgendeinen 64-stelligen Wert aus
@@ -401,13 +411,98 @@ def pruefe_am4_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str,
             f"{pfad.name}: der Snapshot gehoert zum Fall {daten.get('fall')!r}, "
             f"uebernommen wird {fallname!r}"
         )
+    # Der aus dem Inhalt ableitbare Teil der Semantik (Befund T26-03).
+    # Die FORM prueft das Schema; dass pflichtbelege['pk1_belege'] die
+    # Generationen-Belegmenge ist, prueft niemand ausser dieser Stelle
+    # und dem Gate — und beide ueber dieselbe Funktion in models.
+    semantik = p9_semantik_fehler(daten)
+    if semantik:
+        raise UebernahmeError(
+            f"{pfad.name}: Snapshot ist in sich nicht stimmig: "
+            + "; ".join(semantik[:3]))
     # Aus DIESEN Bytes, nicht aus einem zweiten Lesevorgang (Review
     # T24-06): Die Pruefung oben lief auf dem gelesenen Inhalt; ein
     # erneutes Lesen gaebe die Zeichnung einer Datei zurueck, die
     # inzwischen eine andere sein kann. Nachgemessen mit einem Tausch
     # zwischen beiden Lesevorgaengen: geprueft wurde "angenommen",
     # registriert wurde "abgelehnt" — beides ohne Abbruch.
-    return _zeichnung_aus_daten(daten, pfad.name)
+    return daten, pfad.name
+
+
+#: Die Verzeichnisse eines Falls, in denen Belege des Snapshot-Graphen
+#: liegen. Der Eingang selbst wird NICHT gelesen (ADR-002: unantastbar,
+#: und ein Beleg liegt dort ohnehin nicht).
+BELEGORTE = ("abgeleitet", "entscheide")
+
+
+def belegte_tabellen(fall: Path, snapshot: Dict[str, Any]) -> Dict[str, str]:
+    """Welche Quelltabellen bezeugt der Beleggraph dieses Snapshots?
+
+    Befund T26-03: Der Laufzeiteingang las die drei Quelltabellen, nummerierte
+    sie um und registrierte sie — ohne jeden Bezug zu dem, was die
+    Migrationsabnahme eigentlich abgenommen hat. "Kein Quelltabellenhash steht
+    in den behaupteten Snapshot-Artefakten." Die Abnahme galt damit einem
+    Stand, und uebernommen wurde ein anderer.
+
+    Der Snapshot nennt seine Pflichtbelege als Hashes. Diese Funktion sucht
+    die zugehoerigen Dateien IM FALL, liest ihre Eingabenbloecke
+    (``input_hashes`` der Gate-Ledger, ``provenienz.eingaben`` der
+    Producer-Belege) und sammelt daraus die Hashes der Quelltabellen.
+
+    Benannte Grenze: Gebunden wird, was der Graph NENNT. Ein aelterer
+    P-B1-Ledger fuehrt etwa Bestand und Historie, aber nicht den Ledger.
+    Der Eingang haelt fest, welche Tabellen belegt waren und welche nicht —
+    eine Luecke, die im Eingang steht, ist etwas anderes als eine, die
+    niemand sieht.
+    """
+    gesucht = {
+        str(h)
+        for hashes in (snapshot.get("pflichtbelege") or {}).values()
+        if isinstance(hashes, list)
+        for h in hashes
+        if _ist_sha256(str(h))
+    }
+    if not gesucht:
+        return {}
+    tabellen = {f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)}
+    gefunden: Dict[str, str] = {}
+    for ort in BELEGORTE:
+        wurzel = Path(fall) / ort
+        if not wurzel.is_dir():
+            continue
+        for pfad in sorted(wurzel.rglob("*.json")):
+            try:
+                roh = pfad.read_bytes()
+            except OSError:
+                continue
+            if sha256_bytes(roh) not in gesucht:
+                continue
+            try:
+                daten = json.loads(roh.decode("utf-8"))
+            except (UnicodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(daten, dict):
+                continue
+            bloecke = [daten.get("input_hashes")]
+            prov = daten.get("provenienz")
+            if isinstance(prov, dict):
+                bloecke.append(prov.get("eingaben"))
+            for block in bloecke:
+                if not isinstance(block, dict):
+                    continue
+                for rel, sha in block.items():
+                    name = Path(str(rel)).name
+                    if name not in tabellen or not _ist_sha256(str(sha)):
+                        continue
+                    vorher = gefunden.get(name)
+                    if vorher is not None and vorher != str(sha):
+                        raise UebernahmeError(
+                            f"{fall}: der Beleggraph widerspricht sich ueber "
+                            f"{name} ({vorher[:16]}… und {str(sha)[:16]}…) — "
+                            "die Abnahme bezeugt zwei verschiedene Tabellen"
+                        )
+                    gefunden[name] = str(sha)
+    return gefunden
 
 
 def _zeichnung_aus_daten(daten: Dict[str, Any], quelle: str) -> Dict[str, Any]:
@@ -838,7 +933,46 @@ def eingang_anlegen(
                 snapshot_sha256 = None
     # Der Snapshot ist Pflicht und wird geprueft (T22-06), BEVOR irgendetwas
     # angelegt wird.
-    zeichnung = pruefe_am4_snapshot(fall, snapshot_sha256)
+    snapshot, snapshot_name = lies_am4_snapshot(fall, snapshot_sha256)
+    zeichnung = _zeichnung_aus_daten(snapshot, snapshot_name)
+    # Was uebernommen wird, muss das sein, was die Abnahme gesehen hat
+    # (Befund T26-03). Geprueft VOR dem ersten Seiteneffekt: Ein Eingang,
+    # dessen Tabellen die Migrationsabnahme nicht bezeugt, entsteht nicht.
+    belegt = belegte_tabellen(fall, snapshot)
+    unbelegt: List[str] = []
+    for datei in (f"{name}.parquet" for name in PFLICHT):
+        quell_pfad = quelle / datei
+        if not quell_pfad.is_file():
+            continue
+        ist = sha256_bytes(quell_pfad.read_bytes())
+        soll = belegt.get(datei)
+        if soll is None:
+            unbelegt.append(datei)
+        elif soll != ist:
+            raise UebernahmeError(
+                f"{quell_pfad}: die Tabelle ist nicht die, die der "
+                f"A-M4-Snapshot bezeugt ({ist[:16]}… statt {soll[:16]}…) — "
+                "die Abnahme galt einem anderen Stand. Entweder die "
+                "abgenommenen Tabellen uebernehmen oder den Fall neu "
+                "abnehmen"
+            )
+    if "bestand.parquet" in unbelegt:
+        raise UebernahmeError(
+            f"{fall}: der Beleggraph des A-M4-Snapshots nennt keinen Hash "
+            "fuer bestand.parquet — die Abnahme bezeugt die Tabelle nicht, "
+            "die uebernommen werden soll. Ohne diesen Bezug ist der Eingang "
+            "eine Behauptung (Befund T26-03)"
+        )
+    if unbelegt:
+        # Benannte Luecke statt stiller: Ein aelterer P-B1-Ledger fuehrt
+        # Bestand und Historie, aber nicht jeden Nebenstand.
+        print(
+            f"uebernahme: der Beleggraph nennt keine Hashes fuer "
+            f"{', '.join(sorted(unbelegt))} — diese Tabellen sind von der "
+            "Migrationsabnahme nicht bezeugt und werden ungeprueft "
+            "uebernommen",
+            file=_sys.stderr,
+        )
     ziel = Path(stand) / UEBERNAHME_DIR / fallname
     if ziel.exists():
         raise UebernahmeError(

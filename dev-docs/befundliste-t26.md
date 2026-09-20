@@ -58,7 +58,7 @@ mutiert.
 | T26-08 | hoch | 1+4 | GESCHLOSSEN | Externer Anker darf im Paket/in der Ablage liegen; Reexport loescht seine Historie |
 | T26-14 | mittel | 2 | GESCHLOSSEN | Parallele Eingaenge erhalten dasselbe Nummernband |
 | T26-15 | mittel | 2 | GESCHLOSSEN | Unpublizierter Arbeitsrest blockiert den Tagesbetrieb |
-| T26-03 | hoch | 3 | OFFEN | Betriebseingang akzeptiert semantisch ungueltige A-M4-Belege ohne Tabellenbindung |
+| T26-03 | hoch | 3 | TEILWEISE | Betriebseingang akzeptiert semantisch ungueltige A-M4-Belege ohne Tabellenbindung |
 | T26-04 | hoch | 3 | OFFEN | Fuehrungsbeleg-Consumer akzeptiert selbst behauptete Ergebnisse |
 | T26-05 | hoch | 3 | OFFEN | Fuehrungsprobe bestaetigt eine von 43.000 auf 1.042.999 EUR veraenderte Stammsumme |
 | T26-06 | hoch | 3 | GESCHLOSSEN | Roter Schichtbeleg fuehrt zu drei gruenen aktuariellen Vorlagenlaeufen |
@@ -128,6 +128,13 @@ zweite Runde.
 3. **Eine angefangene Protokollzeile wird weggeschnitten** (T26-02,
    Szenario 3), aber nur ohne abschliessenden Zeilenumbruch und nur, wenn
    ein Marker bezeugt, dass ein Publish unterwegs war.
+4. **`bestand.parquet` MUSS vom Beleggraphen genannt sein**, die uebrigen
+   Pflichttabellen werden geprueft, wenn der Graph sie nennt (T26-03). Ein
+   aelterer P-B1-Ledger fuehrt Bestand und Historie, aber nicht jeden
+   Nebenstand; ihn zur Pflicht zu machen haette bestehende Faelle
+   unbrauchbar gemacht. Die Luecke wird auf stderr benannt, nicht
+   verschwiegen. Wenn du es strenger willst, sag es — dann muss der
+   P-B1-Ledger alle drei fuehren.
 
 ## Die Befunde im Einzelnen
 
@@ -371,3 +378,58 @@ Stand gegengeprobt: Sie findet dort `schluessel:659` und `binde:665`.
 
 **Mutationsprobe.** Die alte, ausgewaehlte Eingabenliste wiederhergestellt:
 die ganze e2e-Kette faellt.
+
+### Block 3, Teil 2 — T26-03 (teilweise) und eine Architekturfrage
+
+**Was gebaut ist.** Der Betriebseingang bindet die Tabellen, die er
+uebernimmt, an das, was die Migrationsabnahme gesehen hat. Der A-M4-Snapshot
+nennt seine Pflichtbelege als Hashes; `belegte_tabellen` sucht die
+zugehoerigen Dateien im Fall, liest ihre Eingabenbloecke (`input_hashes` der
+Gate-Ledger, `provenienz.eingaben` der Producer-Belege) und sammelt daraus
+die Hashes der Quelltabellen. Stimmt eine Tabelle nicht mit dem ueberein,
+was die Abnahme bezeugt, entsteht kein Eingang — geprueft VOR dem ersten
+Seiteneffekt.
+
+Dazu der aus dem Inhalt ableitbare Teil der Snapshot-Semantik: dass
+`pflichtbelege['pk1_belege']` die Generationen-Belegmenge ist. Die Mechanik
+steht jetzt in `models.schemas.p9_semantik_fehler` und wird von BEIDEN
+Seiten benutzt — dem Gate und dem Betriebseingang.
+
+**Was NICHT gebaut ist, und warum.** Der Gutachter verlangt, den vorhandenen
+Gate-Lesevertrag fuer Scope, Rollen, Graph und geltende Spitze zu verwenden.
+Die Rollenpruefung braucht `fall.belegrollen(gate, scope)` — und die
+Schichtenkarte laesst `betrieb -> fall` und `betrieb -> gates` ausdruecklich
+nicht zu (`SCHICHT_ERLAUBT`, mit dem Kommentar „keine Kante betrieb ->
+gates"). Der Betriebseingang kann den Rollenvertrag also nicht erreichen.
+
+Damit bleibt DoRAs schaerfster Einzelfall offen: ein Snapshot, dessen
+einzige Pflichtrolle `pb1_ledger` ist, wird weiterhin angenommen, solange
+sein Beleggraph existiert und die Tabellen stimmen.
+
+**ENTSCHEIDUNG DES MAINTAINERS NOETIG.** Drei Wege, mit meiner Empfehlung
+zuerst:
+
+1. **`betrieb -> fall` erlauben.** Der Betriebseingang operiert ohnehin auf
+   einem Fall — er liest `fall.json` und `entscheide/` schon heute, nur mit
+   eigenem Wissen ueber das Layout statt ueber das Modul. Die Kante wuerde
+   eine bestehende Doppelpflege beseitigen statt eine neue Abhaengigkeit
+   schaffen. Ein ADR-Satz, eine Zeile in `SCHICHT_ERLAUBT`.
+2. **Den Belegrollen-Vertrag nach `models` ziehen.** Fachlich richtig
+   (paketuebergreifender Vertrag), aber `fall.py` darf NICHTS importieren
+   (`"fall": set()`), muesste die Tabelle also selbst behalten — womit sie
+   an zwei Orten staende. Das ist die Klasse, die wir gerade schliessen.
+3. **So lassen und benennen.** Dann steht im Backlog, dass der
+   Betriebseingang die Rollenmenge nicht prueft, und der Gutachter wird den
+   Punkt zu Recht offen fuehren.
+
+Ich habe NICHT entschieden, weil es die Schichtenkarte aendert — genau das
+STOPP-Kriterium des Entwicklungs-Skills.
+
+**Gegen Rueckbau gesichert.** Vier Manipulationslagen als Tabelle: die nach
+der Abnahme getauschte Stammtabelle (Summe 43.000 -> 1.042.999, derselbe
+Griff wie in T26-05), der Snapshot ohne existierenden Beleggraphen, der sich
+widersprechende Graph und die Luege in den Generationenbelegen. Jede muss
+abgewiesen werden UND darf keinen halben Eingang hinterlassen.
+
+**Mutationsproben.** Tabellenbindung entfernt: drei der vier Lagen rot.
+pk1-Semantik entfernt: die vierte rot.

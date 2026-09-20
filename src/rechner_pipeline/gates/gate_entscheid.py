@@ -104,6 +104,7 @@ from rechner_pipeline.models.schemas import (
     P9_GATE_VERSION,
     P9_SNAPSHOT_SCHEMA_VERSION,
     P9Snapshot,
+    p9_semantik_fehler,
     p9_freigabe_nachricht,
     p9_snapshot_sha256,
 )
@@ -908,35 +909,16 @@ def _pruefe_g2_snapshot_semantik(
         return []
     if snapshot.get("system") != dict(aktueller_systemstand):
         return []
-    fehler: List[str] = []
     scope = snapshot.get("fall_scope")
     try:
         erwartete_rollen = fall_mod.belegrollen(gate, scope)
     except fall_mod.FallFehler as exc:
-        fehler.append(f"{gate}-Scope ist ungueltig: {exc}")
-        return fehler
-    pflichtbelege = snapshot.get("pflichtbelege")
-    if isinstance(pflichtbelege, dict) and set(pflichtbelege) != set(
-        erwartete_rollen
-    ):
-        fehler.append(
-            "pflichtbelege enthaelt nicht exakt die aus dem Scope "
-            f"abgeleiteten Rollen {erwartete_rollen}"
-        )
-    pk1_belege = snapshot.get("pk1_belege")
-    if isinstance(pflichtbelege, dict) and isinstance(pk1_belege, dict):
-        pk1_hashes = sorted(
-            beleg
-            for belege_der_generation in pk1_belege.values()
-            if isinstance(belege_der_generation, list)
-            for beleg in belege_der_generation
-        )
-        if pflichtbelege.get("pk1_belege") != pk1_hashes:
-            fehler.append(
-                "pflichtbelege['pk1_belege'] stimmt nicht mit der "
-                "Generationen-Belegmenge ueberein"
-            )
-    return fehler
+        return [f"{gate}-Scope ist ungueltig: {exc}"]
+    # Die Mechanik steht in models (p9_semantik_fehler) — dieselbe
+    # Funktion liest der Betriebseingang, der den Rollenvertrag nicht
+    # erreichen darf und deshalb ohne ``erwartete_rollen`` prueft
+    # (Befund T26-03). Zweimal geschrieben waeren es zwei Regeln.
+    return p9_semantik_fehler(snapshot, erwartete_rollen=erwartete_rollen)
 
 
 def _pruefe_snapshot_graph(
