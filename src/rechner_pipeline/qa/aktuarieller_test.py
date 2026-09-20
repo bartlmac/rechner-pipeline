@@ -940,11 +940,29 @@ def _system_werte(
     return _mit_schicht(v, mp, p, werte)
 
 
-#: Groessen, auf die die Korrekturschicht wirkt. Das Deckungskapital
-#: traegt sie unmittelbar; der Rueckkaufswert folgt ihr, weil die Schicht
-#: sich bei Rueckkauf mit auszahlt (Grundsatzdokumentation 9.7, Klasse B
-#: wertkontinuierlich). Beitrag und beitragsfreie Summe beruehrt sie
-#: nicht — sie sind Groessen des Vertrags, nicht seiner Bewertung.
+#: Groessen, auf die die Korrekturschicht in DIESEM Test wirkt. Das
+#: Deckungskapital traegt sie unmittelbar; der Rueckkaufswert folgt ihr,
+#: weil die Schicht sich bei Rueckkauf mit auszahlt
+#: (Grundsatzdokumentation 9.7, Klasse B wertkontinuierlich). Der Beitrag
+#: bleibt unberuehrt — er ist eine Groesse des Vertrags, nicht seiner
+#: Bewertung.
+#:
+#: ``VS_bfr`` fehlt hier ABSICHTLICH, und das ist nicht dasselbe wie
+#: "die Schicht beruehrt sie nicht" (so stand es hier bis 2026-09-20,
+#: und seit dem Entscheid vom 2026-09-15 stimmte es nicht mehr). Es sind
+#: zwei Groessen mit demselben Namen:
+#:
+#: * Dieser Test vergleicht gegen die GELIEFERTE beitragsfreie Summe.
+#:   Die Uebernahme hat die Ursprungssumme so zurueckgerechnet, dass der
+#:   Kern genau diesen Wert auf den Cent reproduziert — ein Zuschlag
+#:   obendrauf machte den Vergleich falsch.
+#: * Die Fuehrung (``bestand.ereignisse.beitragsfreie_summe``) bucht die
+#:   Summe, die das ZIELSYSTEM garantiert: einschliesslich der bei der
+#:   Beitragsfreistellung absorbierten Schicht (``zuschlag_bei_pex``),
+#:   damit dem Versicherten durch die Migration kein Wert verloren geht.
+#:
+#: Wer hier ``VS_bfr`` ergaenzt, ohne diesen Unterschied aufzuloesen,
+#: bricht den Vergleich gegen die Lieferung.
 SCHICHT_GROESSEN = ("kVx_MRV", "RKW", "dDK")
 
 

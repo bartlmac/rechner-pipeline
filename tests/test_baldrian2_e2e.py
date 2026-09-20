@@ -31,9 +31,10 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.bestand import cli_fortschreibung
+from rechner_pipeline.bestand import cli_fortschreibung, cli_report
 from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates import (
+    abnahmebericht,
     aktuartest_lauf,
     bestand_uebernehmen,
     bestand_validate,
@@ -177,6 +178,12 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--formfunktion", "proportional_zur_basis",
         "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
         "--anker-erwartungswerte", ANKER,
+        # Weg D (Entscheid des Maintainers 2026-09-20): Dieser Lauf
+        # schreibt das LAUFMANIFEST des Migrationszugangs. Er ist der
+        # letzte, der in das Uebernahme-Verzeichnis schreibt, und der
+        # erste, der Schicht UND Config kennt — die Uebernahme kennt
+        # keine von beiden.
+        "--config", str(config_pfad), "--stichtag", STICHTAG_1,
     ] + _lieferungs_flags()) == 0, "Verankerung mit Schichtbeleg"
     schichten = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
     assert schichten.is_file(), "Schichtbeleg der Verankerung"
@@ -211,6 +218,10 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--verankerung", str(bestand / "verankerung.parquet"),
         "--config", str(config_pfad),
         "--bis", STICHTAG_1,
+        # Das Laufmanifest des Migrationszugangs: Ohne es sagt der Beleg
+        # nichts darueber, welche Tabellen zu diesem Lauf gehoeren — und
+        # A-M4 lehnt ihn ab (Entscheid 2026-09-16).
+        "--manifest", str(bestand / "laufmanifest.json"),
         "--repo-root", str(REPO_ROOT),
         "--diagnostics-dir", str(diagnostics),
     ])
@@ -351,6 +362,44 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--schicht", str(schichten),
         "--stoab-je-baustein",
     ] + _lieferungs_flags()) == 0, "Fuehrungsprobe"
+
+    # Und zuletzt die Migrationsabnahme selbst. Dass sie hier fehlte, ist
+    # der Grund, warum A-M4 seit dem Manifest-Entscheid (2026-09-16) auf
+    # einem ECHTEN Migrationsfall nicht mehr erfuellbar war, ohne dass
+    # die Suite es merkte: Die A-M4-Tests legen ihren belegten Lauf als
+    # Fortschreibung an, und diese Kette hoerte vor dem Gate auf.
+    berichte = fall / "abgeleitet" / "berichte"
+    for name, lauf, portfolio, bis in (
+            ("bestandsbericht-vor.html", bestand, "bestand.parquet", STICHTAG_1),
+            ("bestandsbericht-nach.html", nach, "bestand_gesamt.parquet", STICHTAG_2)):
+        assert cli_report.main([
+            "--portfolio", str(lauf / portfolio),
+            "--historie", str(lauf / "historie.parquet"),
+            "--ledger", str(lauf / "ledger.parquet"),
+            "--bis", bis,
+            "--out", str(berichte / name),
+        ]) == 0, name
+    am4 = abnahmebericht.main([
+        "--fall", str(fall), "--suite", str(berichte / "migrationssuite.json"),
+        "--titel", "Migrationsabnahme Testschnitt",
+        "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
+        "--spec", str(spec),
+        "--transformation-ergebnis", str(ergebnis),
+        "--bestandsbericht-vor", str(berichte / "bestandsbericht-vor.html"),
+        "--bestandsbericht-nach", str(berichte / "bestandsbericht-nach.html"),
+        "--repo-root", str(REPO_ROOT),
+        "--diagnostics-dir", str(diagnostics),
+    ])
+    # Die Zusicherung ist scharf auf den REPARIERTEN Befund, nicht auf
+    # "gruen": Dieser Schnitt fuehrt keine A-Box (er prueft die Migration,
+    # nicht die Quellenauswertung), und A-M4 verlangt sie zu Recht. Was
+    # hier bezeugt wird, ist, dass die Bestandsbindung des Gates den
+    # Migrationslauf ANNIMMT — vor der Reparatur stand an dieser Stelle
+    # "P-B1-Beleg ohne Laufmanifest", und es gab keinen Weg daran vorbei.
+    codes = {e["code"] for e in am4.errors}
+    assert "pb1_contract" not in codes, (
+        "A-M4 lehnt den P-B1-Beleg des Migrationszugangs ab", am4.errors)
+    assert codes <= {"scope_bindung"}, am4.errors
     return fall
 
 

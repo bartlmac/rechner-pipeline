@@ -45,7 +45,7 @@ flowchart TD
     betrieb -- 22 --> bestand
     betrieb -- 1 --> kern
     betrieb -- 9 --> models
-    gates -- 13 --> bestand
+    gates -- 14 --> bestand
     gates -- 9 --> fall
     gates -- 13 --> kern
     gates -- 14 --> models

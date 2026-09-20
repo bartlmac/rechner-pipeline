@@ -56,8 +56,10 @@ from rechner_pipeline.models.anker import (
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
 from rechner_pipeline.bestand.kennzahlen import bewegungskennzahlen
 from rechner_pipeline.bestand.manifest import (
+    ERZEUGER,
     lies_manifest,
     manifest_aus_bytes,
+    pruefe_erzeuger,
     sha256_bytes,
 )
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio
@@ -308,6 +310,11 @@ def stand_modell_mit_bytes(
     manifest = (manifest_aus_bytes(gelesen["manifest"])
                 if gelesen.get("manifest") is not None
                 else lies_manifest(ablage.stand))
+    # Die Seite zeigt den Stand eines laufenden Unternehmens; das ist ein
+    # Fortschreibungslauf. Ein Migrationszugang haette einen Horizont und
+    # kaeme durch die Datumspruefung unten, zeigte aber einen Bestand
+    # ohne eigenes Geschaeft.
+    pruefe_erzeuger(manifest, ERZEUGER)
     if str(manifest["horizont"]) != heute.isoformat():
         raise SeiteError(
             f"Stand fuehrt {manifest['horizont']}, das Protokoll {heute.isoformat()} "

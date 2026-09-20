@@ -193,6 +193,12 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/migrationszugang.py"),
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+    # Laufmanifest des Migrationszugangs (ADR-017 Nachtrag 2026-09-20,
+    # Entscheid des Maintainers): Ein Migrationslauf hat zwei
+    # Produzenten; der zweite kennt Schicht UND Config und schreibt
+    # deshalb das Manifest fuer beide. Dieselbe Tuer, die
+    # bestand_validate schon hat.
+    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/manifest.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/migrationszugang.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/__init__.py"),

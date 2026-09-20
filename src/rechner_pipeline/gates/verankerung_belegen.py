@@ -36,6 +36,7 @@ Knoten: klv
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import hashlib
 import json
 import sys
@@ -295,6 +296,19 @@ def main(argv: Optional[List[str]] = None) -> int:
                    default=None, metavar="REGISTRIERTE_DATEI",
                    help="registrierte Erwartungswerte am "
                         "Verankerungszeitpunkt (siehe migrationssuite_lauf)")
+    p.add_argument("--config", dest="config", default=None,
+                   help="Bestand-Config der Fuehrung (TOML). Mit ihr und "
+                        "--stichtag schreibt dieser Lauf das LAUFMANIFEST "
+                        "des Migrationszugangs neben die Tabellen der "
+                        "Uebernahme — die Aussage des Produzenten darueber, "
+                        "welche Tabellen zu diesem Lauf gehoeren. A-M4 "
+                        "verlangt sie (Entscheid 2026-09-16); ohne sie "
+                        "bleibt der Fall abnahmefaehig nur, solange niemand "
+                        "die Migrationsabnahme fahrt.")
+    p.add_argument("--stichtag", default=None,
+                   help="Migrationsstichtag (ISO) — der Horizont des "
+                        "Migrationszugangs im Laufmanifest; Pflicht mit "
+                        "--config.")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/schichten/"
                         "verankerung_schichten.json)")
@@ -468,6 +482,45 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"  ACHTUNG: {schicht_tabelle} liegt noch aus einem "
                   "frueheren Lauf und gehoert NICHT zu diesem Beleg",
                   file=sys.stderr)
+
+    # Das Laufmanifest des Migrationszugangs (Entscheid des Maintainers
+    # 2026-09-20, Weg D). WARUM HIER und nicht in der Uebernahme: Ein
+    # Migrationslauf hat zwei Produzenten. Die Uebernahme schreibt die
+    # Tabellen, kennt aber weder die Korrekturschicht (die entsteht
+    # gerade hier) noch die Config der Fuehrung — die wird erst NACH ihr
+    # aus dem generation-zellen.toml zusammengesetzt, das sie selbst
+    # schreibt. Dieser Lauf ist der letzte, der in dasselbe Verzeichnis
+    # schreibt, und der erste, der beides kennt. Also sagt er fuer beide,
+    # was zu diesem Lauf gehoert.
+    if args.config:
+        if not args.stichtag:
+            print("verankerung_belegen: --config verlangt --stichtag (der "
+                  "Horizont des Migrationszugangs)", file=sys.stderr)
+            return 2
+        if beleg["befunde"] or not zeilen_schichten:
+            # Kein Manifest ueber einen Lauf, dessen Schicht dieser Lauf
+            # abgelehnt hat — sonst belegte es einen Bestand, den es so
+            # nicht gibt (dieselbe Klasse wie die halbe schichten.parquet
+            # oben, Review T25-04).
+            print("  laufmanifest.json NICHT geschrieben: dieser Lauf hat "
+                  "keine vollstaendige Schicht erzeugt", file=sys.stderr)
+        else:
+            from rechner_pipeline.bestand.manifest import (
+                ERZEUGER_MIGRATIONSZUGANG,
+                schreibe_manifest,
+            )
+            ausgaben = sorted(
+                d for d in ueber.glob("*.parquet") if d.is_file())
+            schreibe_manifest(
+                ueber,
+                horizont=_dt.date.fromisoformat(args.stichtag),
+                neuzugang_ab=None,
+                config_pfad=Path(args.config),
+                ausgaben=ausgaben,
+                erzeuger=ERZEUGER_MIGRATIONSZUGANG,
+            )
+            print(f"  laufmanifest.json: {len(ausgaben)} Tabellen des "
+                  f"Migrationszugangs gebunden ({ueber})")
 
     # Der Beleg nennt JEDE gelesene Eingabe — nicht eine ausgewaehlte
     # Liste, die beim naechsten neuen Parameter still unvollstaendig wird.

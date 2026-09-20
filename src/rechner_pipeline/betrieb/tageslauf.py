@@ -100,10 +100,12 @@ from rechner_pipeline.bestand.fuehrung import fuehre_fort
 from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.manifest import (
     MANIFEST_DATEI,
+    ERZEUGER,
     ROLLEN_DATEIEN,
     ManifestError,
     lauf_eingaben,
     lies_manifest,
+    pruefe_erzeuger,
     schreibe_manifest,
     sha256_bytes,
 )
@@ -572,6 +574,12 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
         return None
     try:
         manifest = lies_manifest(ablage.stand)
+        # Seit es zwei Manifest-Erzeuger gibt, ist "wohlgeformt" nicht
+        # mehr "passend": Der Stand einer Fuehrung ist ein
+        # Fortschreibungslauf. Ein Migrationszugang traegt nur die
+        # uebernommenen Vertraege — wer ihn als Stand fuehrte, verlore
+        # das eigene Geschaeft still.
+        pruefe_erzeuger(manifest, ERZEUGER)
     except ManifestError as exc:
         raise TageslaufError(
             f"{ablage.stand}: {exc} — ein Stand ohne gueltiges Manifest ist "
@@ -894,6 +902,7 @@ def _wache(arbeit: Path, config_pfad: Path, heute: _dt.date) -> Tuple[Dict[str, 
     """
     eingaben = lauf_eingaben(arbeit, config_pfad)
     manifest = lies_manifest(arbeit)
+    pruefe_erzeuger(manifest, ERZEUGER)
     tabellen, geprueft, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=heute, manifest=manifest)
     return tabellen, geprueft, usage + fehler
 

@@ -29,6 +29,7 @@ from rechner_pipeline.bestand.manifest import (
     manifest_aus_bytes,
     MANIFEST_DATEI,
     ManifestError,
+    rollen_dateien,
     ROLLEN_DATEIEN,
     sha256_bytes,
 )
@@ -482,7 +483,12 @@ def _manifest_befund(
         erwartet = manifest["config"]["sha256"]
         was = "die Config"
     else:
-        datei = ROLLEN_DATEIEN[rolle]
+        # Die Rollentabelle DES ERZEUGERS, nicht die des Normalfalls: Im
+        # Migrationszugang traegt die Portfolio-Rolle bestand.parquet.
+        # Mit der festen Tabelle suchte die Engine dort nach einer
+        # bestand_gesamt.parquet und meldete "stammt nicht aus diesem
+        # Lauf" fuer eine Datei, die sehr wohl daraus stammt.
+        datei = rollen_dateien(str(manifest.get("erzeuger")))[rolle]
         erwartet = manifest.get("ausgaben", {}).get(datei)
         was = datei
         if erwartet is None:

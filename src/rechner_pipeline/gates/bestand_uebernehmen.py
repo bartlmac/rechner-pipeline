@@ -1220,6 +1220,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Verzeichnis mit alter schichten.parquet erzeugte einen Bestand
         # aus zwei Laeufen, dessen Ledger zur Schicht des anderen passt.
         "schichten.parquet": False,
+        # Dasselbe fuer das Laufmanifest: Es BEHAUPTET, welche Tabellen zu
+        # einem Lauf gehoeren, und zwar mit deren SHA-256. Ein Manifest
+        # des Vorlaufs neben den Tabellen dieses Laufs ist die
+        # gefaehrlichste Sorte Rest — es sieht aus wie ein Beleg und
+        # bezeugt einen anderen Bestand. Geschrieben wird es ohnehin erst
+        # von verankerung_belegen (Weg D), also nie von diesem Lauf.
+        "laufmanifest.json": False,
     }
     reste = sorted(
         name for name, wird_erzeugt in nicht_erzeugt.items()

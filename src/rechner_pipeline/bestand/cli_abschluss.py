@@ -52,7 +52,13 @@ from rechner_pipeline.bestand.abschluss import (
     pruefe_abschluss,
     schreibe_abschluss,
 )
-from rechner_pipeline.bestand.manifest import ManifestError, lauf_eingaben, lies_manifest
+from rechner_pipeline.bestand.manifest import (
+    ERZEUGER,
+    ManifestError,
+    lauf_eingaben,
+    lies_manifest,
+    pruefe_erzeuger,
+)
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.kern import MissingMortalityTableError
 
@@ -143,6 +149,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Vorbehalt.
     try:
         manifest = lies_manifest(lauf)
+        # Der Abschluss schreibt einen Fortschreibungslauf fest; ein
+        # Migrationszugang ist kein Abschluss-Gegenstand.
+        pruefe_erzeuger(manifest, ERZEUGER)
     except ManifestError as exc:
         print(f"bestand_abschluss: {exc}", file=sys.stderr)
         return 2
