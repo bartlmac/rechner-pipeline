@@ -1029,7 +1029,47 @@ class BestandConfig:
                 errors.append(f"plausibilitaet {merkmal}: Band muss (min, max) mit min < max sein")
         errors.extend(self.annahmen.validate())
         errors.extend(self.tagesbetrieb.validate())
+        errors.extend(self._validate_red_verfahren())
         return errors
+
+    def _validate_red_verfahren(self) -> List[str]:
+        """Eine gueltige Config, die im Lauf abbricht, ist keine gueltige.
+
+        Befund T26-12: ``red_verfahren = 'teilkuendigung'`` ist ein
+        erlaubter Schalter, die integrierte TG2015 traegt ihn, und
+        ``validate()`` meldete nichts. Der produktive Fortschreibungslauf
+        scheitert dann beim ERSTEN Vorfall — er ruft grundsaetzlich
+        ``reduziere_geschichtet()``, und das verweigert die
+        Teilkuendigung auch ohne Schicht und ohne Erhoehungsscheiben:
+        "Teilkuendigung trifft NUR die Grundversicherung".
+
+        Die Kombination wird deshalb VOR Laufbeginn abgewiesen, statt
+        mitten im Lauf zu platzen. Das ist die zweite der beiden
+        Moeglichkeiten, die der Gutachter nennt; die erste — das
+        Verfahren im produktiven Pfad zu implementieren — ist eine
+        fachliche Entscheidung und keine Reparatur: Der Tarifplan sagt,
+        die Fuehrung lese alle drei Schalter, der Kernkommentar erklaert
+        das Verfahren zur Rekonstruktion der Quelle und schliesst es fuer
+        die eigene Fuehrung aus. Der Widerspruch steht in
+        dev-docs/befundliste-t26.md und gehoert dem Aktuariat.
+        """
+        from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+
+        if self.annahmen.herabsetzung.a <= 0.0:
+            return []   # keine Herabsetzung, kein Pfad, kein Problem
+        betroffen = sorted(g.name for g in self.generationen
+                           if str(g.red_verfahren) == TEILKUENDIGUNG)
+        if not betroffen:
+            return []
+        return [
+            f"generation {betroffen}: red_verfahren "
+            f"{TEILKUENDIGUNG!r} zusammen mit annahmen.herabsetzung "
+            f"(Rate {self.annahmen.herabsetzung.a}) — die Fuehrung ruft "
+            "reduziere_geschichtet(), und das Verfahren trifft NUR die "
+            "Grundversicherung. Der Lauf braeche beim ersten Vorfall ab. "
+            "Ausweg: red_verfahren auf 'prospektiv' oder 'mit_abzug' "
+            "setzen, oder die Herabsetzungsrate dieser Generation auf 0"
+        ]
 
     def _validate_verkaufsfenster(self) -> List[str]:
         """Ein Tag verkauft je Produkt genau EINE Generation.

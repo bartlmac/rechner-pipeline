@@ -428,3 +428,46 @@ def test_die_herabsetzung_ist_eine_summenbewegung_ohne_stueck(welt):
     for zeile in konto:
         for track, oks in zeile["identitaet"].items():
             assert all(oks.values()), (zeile["jahr"], track, oks)
+
+
+# --------------------------------------------------------------------------- #
+# T26-12: Eine Config, die im Lauf abbricht, ist keine gueltige Config
+# --------------------------------------------------------------------------- #
+
+#: (Verfahren, Rate > 0?, erwarteter Fehler?) — beide Richtungen, damit die
+#: Regel ihren Geltungsbereich bindet: Ein Verfahren ohne Herabsetzung ist
+#: harmlos, und die erlaubten Verfahren bleiben erlaubt.
+VERFAHRENSLAGEN = [
+    ("teilkuendigung", True, True),
+    ("teilkuendigung", False, False),
+    ("prospektiv", True, False),
+    ("mit_abzug", True, False),
+]
+
+
+@pytest.mark.parametrize("verfahren,mit_rate,fehlerhaft", VERFAHRENSLAGEN)
+def test_ein_verfahren_das_die_fuehrung_nicht_faehrt_faellt_vor_dem_lauf(
+    verfahren, mit_rate, fehlerhaft
+):
+    """Befund T26-12: ``red_verfahren = 'teilkuendigung'`` ist ein
+    erlaubter Schalter, die integrierte TG2015 traegt ihn, und
+    ``cfg.validate()`` meldete nichts. Der Lauf scheiterte dann beim
+    ERSTEN Vorfall — ``reduziere_geschichtet()`` verweigert die
+    Teilkuendigung auch ohne Schicht und ohne Erhoehungsscheiben.
+
+    Abgewiesen wird jetzt VOR Laufbeginn, mit einer Meldung, die den
+    Ausweg nennt. Die andere Moeglichkeit — das Verfahren im produktiven
+    Pfad zu implementieren — ist eine fachliche Entscheidung und steht
+    als Widerspruch zwischen Tarifplan und Kernkommentar in
+    dev-docs/befundliste-t26.md.
+    """
+    import dataclasses
+
+    cfg = _config(mit_rate)
+    cfg.generationen[0] = dataclasses.replace(
+        cfg.generationen[0], red_verfahren=verfahren)
+    fehler = cfg.validate()
+    passend = [f for f in fehler if "red_verfahren" in f and verfahren in f]
+    assert bool(passend) is fehlerhaft, (verfahren, mit_rate, fehler[:3])
+    if fehlerhaft:
+        assert "prospektiv" in passend[0], "die Meldung nennt keinen Ausweg"

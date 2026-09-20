@@ -64,7 +64,7 @@ mutiert.
 | T26-06 | hoch | 3 | GESCHLOSSEN | Roter Schichtbeleg fuehrt zu drei gruenen aktuariellen Vorlagenlaeufen |
 | T26-07 | hoch | 3 | GESCHLOSSEN | Schichteingaben fehlen in der Bindung; ungelesenes ungueltiges JSON wird unter gruenem Urteil gehasht |
 | T26-11 | hoch | 4 | GESCHLOSSEN | Bewegungsrechnung ignoriert RED; P-B1 bestaetigt die falschen Summen |
-| T26-12 | mittel | 4 | OFFEN | Tarifverfahren `teilkuendigung` scheitert im produktiven RED-Pfad |
+| T26-12 | mittel | 4 | GESCHLOSSEN (als Abweisung) | Tarifverfahren `teilkuendigung` scheitert im produktiven RED-Pfad |
 | T26-10 | hoch | 4 | OFFEN | Interne Seite mischt bei gleichzeitigem Tageslauf zwei Generationen |
 | T26-09 | mittel | 4 | GESCHLOSSEN | Wochenzahlen und Lueckenausweis bleiben trotz korrektem Anker manipulierbar |
 | T26-13 | mittel | 4 | GESCHLOSSEN | Registrierte Uebersetzung Quell- zu Zielpolicen wird nicht geprueft |
@@ -138,7 +138,12 @@ zweite Runde.
 3. **Eine angefangene Protokollzeile wird weggeschnitten** (T26-02,
    Szenario 3), aber nur ohne abschliessenden Zeilenumbruch und nur, wenn
    ein Marker bezeugt, dass ein Publish unterwegs war.
-4. **`bestand.parquet` MUSS vom Beleggraphen genannt sein**, die uebrigen
+4. **Die Kombination `teilkuendigung` + Herabsetzungsrate > 0 wird
+   ABGEWIESEN**, nicht implementiert (T26-12). Der Gutachter laesst beide
+   Wege zu; ich habe den gewaehlt, der keine fachliche Entscheidung
+   vorwegnimmt. Wenn die Fuehrung das Verfahren tatsaechlich fahren soll,
+   ist das ein Bauauftrag und kein Fix.
+5. **`bestand.parquet` MUSS vom Beleggraphen genannt sein**, die uebrigen
    Pflichttabellen werden geprueft, wenn der Graph sie nennt (T26-03). Ein
    aelterer P-B1-Ledger fuehrt Bestand und Historie, aber nicht jeden
    Nebenstand; ihn zur Pflicht zu machen haette bestehende Faelle
@@ -636,3 +641,46 @@ weil bis zum Limit noch genau ein voller Suitenlauf Platz hatte und T26-04
 eine Entwurfsentscheidung verlangt — ein enges, typisiertes Belegschema —,
 die der Maintainer sehen sollte, bevor sie gebaut wird. Ein halb gebautes
 T26-04 im Baum waere schlechter gewesen als ein geschlossenes T26-09.
+
+### Block 4, Teil 3 — T26-12
+
+**Der Befund.** `red_verfahren = 'teilkuendigung'` ist ein erlaubter
+Schalter, die integrierte TG2015 traegt ihn, und `cfg.validate()` meldete
+nichts. Der produktive Fortschreibungslauf scheitert dann beim ERSTEN
+Vorfall: Er ruft grundsaetzlich `reduziere_geschichtet()`, und das
+verweigert die Teilkuendigung auch ohne Schicht und ohne
+Erhoehungsscheiben — „Teilkuendigung trifft NUR die Grundversicherung".
+
+**Was gebaut ist.** Die Kombination wird VOR Laufbeginn abgewiesen, mit
+einer Meldung, die den Ausweg nennt. Eine gueltige Config, die im Lauf
+abbricht, ist keine gueltige.
+
+**WARUM NICHT DIE ANDERE MOEGLICHKEIT.** Der Gutachter laesst beide zu:
+„Zusage und produktiven Tarifwerkspfad konsistent implementieren ODER die
+nicht tragfaehige Kombination vor Laufbeginn ausdruecklich abweisen und
+dokumentieren." Die erste ist keine Reparatur, sondern eine fachliche
+Entscheidung — und sie steht gegen einen WIDERSPRUCH IN UNSERER EIGENEN
+DOKUMENTATION:
+
+* `docs/tarifplaene/klv.md:165-175` sagt, die Fuehrung lese alle drei
+  uebernommenen Tarifwerkschalter, diesen eingeschlossen.
+* `kern/beitragsreduktion.py` erklaert das Verfahren zur Rekonstruktion der
+  QUELLE und schliesst es fuer die eigene Fuehrung aus.
+
+**FRAGE AN DAS AKTUARIAT:** Welcher der beiden Saetze gilt? Soll die
+Fuehrung die Teilkuendigung fahren koennen — dann ist es ein Bauauftrag
+(der produktive Pfad braucht einen Zweig fuer den Grundvertrag ohne
+Scheiben-Teilung) —, oder gilt der Kernkommentar, dann gehoert der
+Widerspruch aus dem Tarifplan entfernt. Bis dahin ist die Kombination
+abgewiesen und niemand faehrt versehentlich in den Abbruch.
+
+**Reichweite heute:** Die unveraenderte PLV-Config hat Rate und `red_anteil`
+null; kein aktueller Ausfall. Der Schalter ist aber erlaubt, und wer ihn
+setzt, bekam bisher einen Abbruch mitten im Lauf statt einer Meldung davor.
+
+**Gegen Rueckbau gesichert.** Vier Lagen als Tabelle, beide Richtungen: das
+Verfahren MIT Rate faellt, das Verfahren OHNE Rate nicht, und die beiden
+erlaubten Verfahren bleiben mit Rate erlaubt. Dazu die Forderung, dass die
+Meldung einen Ausweg nennt.
+
+**Mutationsprobe.** Pruefung entfernt: genau die eine Lage rot.
