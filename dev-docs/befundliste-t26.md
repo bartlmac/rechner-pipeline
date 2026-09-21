@@ -796,192 +796,23 @@ Journal veraendert haben — sonst traegt die Naht nicht.
 **Mutationsprobe.** Das Journal wieder von der Platte gelesen: Der Test
 faellt mit genau der Messung des Gutachters — Buchungen bis 2026-02-10 neben
 einem Modell, das 2026-02-03 nennt.
+
+
 ---
 
-## Nachtrag 2026-09-20 — der PEX-Zuschlag der Uebernahme (Laufzeit-Blocker)
+## Was NICHT zu dieser Runde gehoert
 
-Kein DoRA-Befund, sondern der Blocker der Vorzeige-Laufzeit, der die
-T26-Reihenfolge unterbrochen hat. Er gehoert hierher, weil er dieselbe
-KLASSE ist wie T25-06 — und weil die Reparatur eine angeschriebene
-Annahme enthaelt, die der Maintainer bestaetigen muss.
+Der PEX-Zuschlag der Uebernahme und das Laufmanifest des
+Migrationszugangs sind keine Befunde des Gutachters. Sie kamen aus dem
+Blocker der Vorzeige-Laufzeit und aus dem Manifest-Entscheid des
+Maintainers vom 2026-09-16. Sie standen bis zum 2026-09-21 hier
+angehaengt und haben damit zwei Gegenstaende in einem Dokument
+vermischt; sie stehen jetzt vollstaendig in
+`dev-docs/annahmen-2026-09-20.md`, zusammen mit den Entscheidungen D1
+bis D4 und den Nebenentscheidungen N1 bis N5.
 
-### Der Befund
-
-P-B1 hielt auf dem uebernommenen Bestand an: vier PEX-Buchungen, deren
-Betrag nicht aus dem Kern folgte, je um einen Cent. Gemessen auf
-`faelle/baldrian-klv-tg2015-lauf2`, Policen 7000537, 7000844, 7000863
-und 7001003.
-
-Ursache: Die Fuehrung bucht die beitragsfreie Summe uebernommener
-Vertraege MIT dem Zuschlag der Korrekturschicht
-(`bestand.ereignisse.beitragsfreie_summe` ruft `zuschlag_bei_pex`,
-Entscheid des Maintainers 2026-09-15) — die Uebernahme buchte sie ohne.
-Zwei Wahrheiten ueber denselben Vertrag, und P-B1 hat sie gegeneinander
-gestellt, sobald es die Schicht kannte.
-
-Beidseitige Gegenprobe (ohne Fix / mit Fix), beide auf demselben Stand:
-
-    Ledger vor dem Fix + Schicht  -> exit 20, "4 Buchung(en), deren
-                                     Betrag nicht aus dem Kern folgt"
-    Ledger nach dem Fix + Schicht -> exit 0, 994/994 Betraege hergeleitet
-
-### Die Entscheidung des Maintainers
-
-"Ja, die Uebernahme bucht den pex mit Korrektur bitte, das ist wichtig."
-(2026-09-20). Umgesetzt: `gates.bestand_uebernehmen.pex_zuschlag_nachtragen`
-traegt den Zuschlag nach und weist ihn je Police im Uebernahmebeleg aus
-(`pex_zuschlaege`: gelieferte Summe, Zuschlag, gebuchter Betrag).
-
-### Die Klasse, nicht der Fall
-
-Die Grenze "eine Schicht traegt ab ihrem Verankerungsmonat" stand in
-SIEBEN Modulen abgetippt. Eine Abschrift zu vergessen kostet nichts,
-solange niemand den Betrag nachrechnet — sobald ein Gate ihn herleitet,
-faellt der Lauf. Genau das ist hier passiert.
-
-Jetzt steht sie EINMAL: `kern.korrekturschicht.ab_verankerung` (die
-Grenze) und `schicht_traegt` (Grenze plus Nullfall). Umgestellt sind
-`korrekturschicht.zuschlag_bei_pex`, `beitragsreduktion` (zwei
-Fundstellen), `bestand.ledger_bindung`, `bestand.ereignisse`,
-`gates.fuehrungsprobe` und die neue Fundstelle in
-`gates.bestand_uebernehmen`.
-
-Drei Instrumente in `tests/test_schichtgrenze_eine_aussage.py`:
-Tabellentest ueber die Grenze in BEIDE Richtungen (ein Jahr davor, ein
-Monat davor, genau darauf, ein Monat danach, ein Jahr danach), ein
-Klassentest, der die Grenze verbiegt und misst, dass jeder Konsument
-mitgeht, und eine statische Ratsche gegen die achte Abschrift — mit
-Positivkontrolle ueber alle vier frueheren Schreibweisen und einer
-Gegenprobe, dass sie nicht auf beliebige Monatsvergleiche anschlaegt.
-
-### Was daneben noch aufgefallen ist
-
-**P-B1 durfte blind pruefen.** Ein Lauf ohne `--schichten` auf einem
-Bestand MIT Schicht rechnet gegen eine andere Welt und meldet
-Cent-Abweichungen, deren Ursache nirgends steht. Das Gate liest jetzt
-den Beleg des Erzeugers neben dem Ledger: Weist er Zuschlaege aus, sind
-`--schichten` und `--verankerung` Pflicht (fail-fast, kein Raten).
-Dazu die Umkehrung: `--schichten` ohne `--verankerung` haelt ebenfalls
-an. Die Klasse dahinter: **ein Pruefer, der Betraege herleitet, braucht
-dieselben Vertragsattribute, mit denen der Erzeuger gebucht hat.**
-
-**Der Fixture-Schnitt war ein Detektor ohne Treffer.** Der alte Schnitt
-(26 Policen) hielt keine einzige Police mit Beitragsfreistellung im
-letzten Vertragsjahr vor dem Stichtag — die Zusicherung "gebucht =
-geliefert" lief gruen, waehrend der echte Lauf vier Buchungen falsch
-hatte. Der Schnitt haelt jetzt 29 Policen; die drei neuen decken beide
-Vorzeichen und den Nullfall ab: 7000863 (Zuschlag hebt den Cent),
-7001003 (senkt ihn), 7000316 (bleibt unter dem Cent). Die e2e-Zusicherung
-prueft die REGEL (`gebucht == geliefert + zuschlag`, scharf auf 5e-7
-statt auf Cent-Toleranz) und haelt zusaetzlich fest, dass der Schnitt
-alle drei Lagen traegt — sonst bezeugt sie wieder nichts.
-
-**Die Reihenfolge der Kette hat sich geaendert.** P-B1 laeuft jetzt NACH
-`verankerung_belegen` und MIT der Schicht. Davor gibt es die Schicht
-nicht, und der gebuchte Betrag folgt ohne sie nicht aus dem Kern.
-
-### ANNAHME A-1 (bitte bestaetigen) — der Grenzfall ist der Regelfall
-
-Alle zwoelf Zuschlaege des echten Laufs liegen GENAU auf der Grenze:
-`12 * pex_jahr == monate_ta`, `zustand_ta = "beitragsfrei"`. Kein
-einziger liegt echt danach. Das ist kein Zufall — die Lieferung
-verankert einen beitragsfrei uebernommenen Vertrag auf seiner
-Beitragsfreistellung.
-
-Der Code liest die Grenze EINSCHLIESSLICH (`>=`): Eine Freistellung AUF
-dem Verankerungspunkt absorbiert die Schicht in die beitragsfreie Summe.
-Der Docstring von `zuschlag_bei_pex` argumentiert an einer Stelle
-anders — er nennt als Null-Fall, "die Freistellung liegt VOR der
-Verankerung, dann ist sie der Verankerungszustand selbst" — und genau
-das trifft auf diese zwoelf zu: Ihre Freistellung IST der
-Verankerungszustand. Mit `<=` statt `>=` waere der Zuschlag null, und
-die Uebernahme haette von Anfang an gestimmt; dann waere der Fehler in
-der FUEHRUNG.
-
-**Meine Umsetzung folgt der Entscheidung des Maintainers (Uebernahme
-bucht mit Zuschlag) und laesst die Grenze wie sie ist.** Sie steht
-jetzt an genau einer Stelle; eine Umkehrung waere eine Zeile plus die
-Neuzeichnung der Kette.
-
-Groessenordnung fuer die Einordnung: Die Zuschlaege liegen zwischen
-0,0001 und 0,015 Waehrungseinheiten — das ist die Rundungsreserve der
-Lieferung (Summen auf den Cent geliefert), kein wirtschaftlicher
-Effekt. Nur vier der zwoelf verschieben den gebuchten Cent ueberhaupt.
-Die Frage ist also nicht, wieviel Geld bewegt wird, sondern welche der
-beiden konsistenten Lesarten die Kette fuehrt.
-
-### ANNAHME A-2 (bitte bestaetigen) — eine neue Kante in ADR-017
-
-`gates/bestand_uebernehmen.py -> kern/korrekturschicht.py` ist neu in
-`TOOL_NACH_VORZEIGE_ERLAUBT` (Nachtrag 2026-09-20). Begruendung: Die
-Uebernahme fragt dieselbe EINE Tuer, die `aktuartest_lauf`,
-`fuehrungsprobe` und `qa.aktuarieller_test` schon haben. Die Alternative
-waere gewesen, `zuschlag_bei_pex` ueber `kern/__init__` zu holen (die
-Kante besteht dort schon) — das haette die Nutzung verSTECKT statt sie
-zu messen, und die Ratsche ist zum Messen da.
-
-### Mutationsproben
-
-    M1  Zuschlag nicht buchen                 -> rot (P-B1 der e2e-Kette)
-    M2  Grenze auf ">" (enger)                -> rot (e2e + Tabellentest)
-    M3  Grenze ein Jahr weiter                -> gruen, ERWARTET: die
-        Tuer selbst liefert ausserhalb des Fensters null, der Filter der
-        Uebernahme ist eine Abkuerzung, keine zweite Aussage
-    M4  achte Abschrift der Grenze eingebaut  -> rot (statische Ratsche)
-    M5  Grenze exklusiv (">" in ab_verankerung) -> rot (4 Tests, darunter
-        die Positivkontrolle des Fixture-Schnitts)
-
-### Offener Punkt aus diesem Nachtrag
-
-Die neue P-B1-Sperre erkennt den Ledger der UEBERNAHME (sie fuehrt einen
-Beleg neben ihren Tabellen). Der Ledger eines Fortschreibungs-Laufs
-(`bestand-nach`) traegt diese Auskunft nicht; dort haengt es weiter am
-Aufrufer, `--schichten` mitzugeben. Der saubere Ort dafuer ist das
-Laufmanifest — eigene Aenderung, eigene Messung, nicht in diesen Commit
-gezogen. Gemessener Defekt liegt dort bisher keiner vor: die
-`-nach`-Laeufe des Falls geben die Schicht mit.
-
-### ANNAHME A-3 (bitte bestaetigen) — `VS_bfr` heisst zweimal Verschiedenes
-
-Beim Nachziehen der Klasse ist der achte Konsument aufgefallen, der die
-Schicht nicht ueber die eine Tuer fragt — und diesmal ist es die
-Pruefstrecke selbst:
-
-    qa/aktuarieller_test.py (beitragsfrei-Zweig)
-      VS_bfr = kern.beitragsfreie_summe(a0) + Summe(Scheiben)
-
-    bestand/ereignisse.py und gates/fuehrungsprobe.py
-      VS_bfr = kern.beitragsfreie_summe(a0) + Summe(Scheiben)
-               + zuschlag_bei_pex(...)
-
-Der Zweig kehrt frueh zurueck und laeuft an `_mit_schicht` vorbei;
-`SCHICHT_GROESSEN` nennt `VS_bfr` bewusst nicht ("Beitrag und
-beitragsfreie Summe beruehrt sie nicht").
-
-**Ich habe das NICHT geaendert**, und zwar begruendet: Es sind
-moeglicherweise zwei verschiedene Groessen mit demselben Namen.
-
-- Der aktuarielle Test vergleicht gegen die GELIEFERTE beitragsfreie
-  Summe. Die Uebernahme hat die Ursprungssumme so zurueckgerechnet, dass
-  der Kern genau diesen Wert auf den Cent reproduziert. Ein Zuschlag
-  obendrauf machte den Vergleich falsch.
-- Die Fuehrung bucht die Summe, die das ZIELSYSTEM garantiert — nach
-  dem Entscheid vom 2026-09-15 einschliesslich der absorbierten Schicht,
-  damit dem Versicherten durch die Migration kein Wert verloren geht.
-
-Beides kann gleichzeitig richtig sein. Nur steht nirgends, dass es zwei
-Groessen sind, und beide heissen `VS_bfr`. Solange [[A-1]] offen ist,
-waere eine Aenderung hier das zweite Raten auf dieselbe Frage.
-
-Vorschlag fuer den Fall, dass A-1 so bleibt: die beiden Groessen
-benennen (etwa `VS_bfr_geliefert` gegen `VS_bfr_gefuehrt`) und den
-Kommentar an `SCHICHT_GROESSEN` auf diesen Unterschied umstellen, statt
-zu sagen, die Schicht beruehre die beitragsfreie Summe nicht — das
-stimmt seit dem 2026-09-15 nicht mehr.
-
-Warum es heute niemand merkt: Am Verankerungspunkt ist der Zuschlag
-sub-Cent (0,0001 bis 0,015), und alle zwoelf Faelle liegen genau dort.
-Die Pruefstrecke kann den Unterschied bei centgerundeten Erwartungswerten
-nicht sehen. Ein Vertrag mit Beitragsfreistellung deutlich NACH der
-Verankerung wuerde ihn sofort sichtbar machen — den gibt es im Fall
-Baldrian nicht.
+Beruehrungspunkt, damit beim Lesen nichts fehlt: Der Fall
+`baldrian-klv-tg2015-lauf2` ist inzwischen auf einem spaeteren Stand neu
+gefahren und gezeichnet. Die Befunde dieser Runde sind davon nicht
+betroffen; die Zahlen in den Abschnitten oben gelten fuer den Stand, auf
+dem sie gemessen wurden, und der steht dort jeweils dabei.
