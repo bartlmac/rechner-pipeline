@@ -68,15 +68,17 @@ def _kleine_config(faktor: float = 1.0) -> str:
     return text
 
 
-def _voll(config, heute: dt.date, ab: dt.date = BETRIEBSBEGINN):
-    """Dieselbe Welt unabhaengig vom Tageslauf gerechnet: leer beginnen, den
-    Tagesstrom ab ``ab`` einspielen, bis ``heute`` fortschreiben — die volle
-    Wirkungshistorie ohne Buchungstage und Stichtagssicht."""
+def _voll(config, heute: dt.date, ab: dt.date = BETRIEBSBEGINN, basis=None):
+    """Dieselbe Welt unabhaengig vom Tageslauf gerechnet: mit ``basis``
+    beginnen (Standard: leer), den Tagesstrom ab ``ab`` einspielen, bis
+    ``heute`` fortschreiben — die volle Wirkungshistorie ohne Buchungstage
+    und Stichtagssicht. ``basis`` traegt eine uebernommene (umnummerierte)
+    Startpopulation ein, deren Tode das eigene Geschaeft nicht liefert."""
     from rechner_pipeline.bestand.ereignisse import fortschreiben
     from rechner_pipeline.betrieb.neugeschaeft import neugeschaeft_zwischen
     from rechner_pipeline.models.bestand import leerer_stamm
 
-    return fortschreiben(leerer_stamm(), config, heute,
+    return fortschreiben(leerer_stamm() if basis is None else basis, config, heute,
                          zugaenge=neugeschaeft_zwischen(config, ab, heute))
 
 
@@ -504,31 +506,49 @@ def test_der_stand_enthaelt_nur_gebuchte_ereignisse(gefuehrt):
 
 
 def test_ein_verzoegert_gemeldeter_tod_erscheint_erst_am_buchungstag(tmp_path, monkeypatch):
-    """Meldeverzug auf 400 Tage gesetzt: Kein Tod seit Betriebsbeginn ist
-    bis heute gebucht — und keiner steht im Stand, obwohl die volle
-    Wirkungshistorie welche kennt."""
+    """Meldeverzug auf 400 Tage gesetzt: Kein seit Betriebsbeginn
+    eingetretener Tod ist bis heute gebucht — und keiner steht im Stand,
+    obwohl die volle Wirkungshistorie welche kennt.
+
+    Die Sterblichkeit tragen gealterte uebernommene Vertraege: Eine junge
+    Firma, die 2026 leer beginnt (ADR-020), stirbt im Fenster nicht (siehe
+    test_ein_abschluss_ist_dieselbe_datei). Frueher half hier eine groessere
+    Stichprobe des jungen Geschaefts und ein Skip, wenn doch keiner starb —
+    ein Detektor, der gruen sein konnte, ohne je seinen Gegenstand gesehen zu
+    haben. Jetzt garantiert die Uebernahme ihn.
+    """
     from rechner_pipeline.betrieb import tagesjournal as tj
     from rechner_pipeline.bestand.config import load_config
-    from rechner_pipeline.bestand.ereignisse import fortschreiben
+    from rechner_pipeline.models.bestand import STAMM_NAMES
 
     monkeypatch.setattr(tj, "meldeverzug_tage", lambda config, police_id, jahr: 400)
     ablage = _ablage(tmp_path / "plv")
-    # Groessere Stichprobe, damit seit Betriebsbeginn Todesfaelle vorkommen.
-    ablage.config_pfad.write_text(_kleine_config(faktor=8), encoding="utf-8")
+    eingang = _gealterte_uebernahme(ablage, tmp_path / "plv-fall")
     heute = dt.date(2026, 9, 30)
     assert tageslauf(ablage, heute)[0] == EXIT_OK
     config = load_config(ablage.config_pfad)
-    voll = _voll(config, heute)
+
+    # Die volle Wirkungshistorie: die uebernommene (umnummerierte) Basis plus
+    # eigenes Geschaeft, ganz ohne Buchungsschnitt. fortschreiben kennt die
+    # Tode nach ihrem Wirkungstag; der Meldeverzug wirkt erst beim Buchen.
+    basis = read_portfolio(eingang / "bestand.parquet", expected_columns=STAMM_NAMES)
+    voll = _voll(config, heute, basis=basis)
     tode_voll = voll.ledger[(voll.ledger["ereignis"] == "TOD")
                             & (voll.ledger["status_date"] > pd.Timestamp(BETRIEBSBEGINN))]
+    # Zusicherung, kein Skip: Ohne einen eingetretenen Tod pruefte der Test
+    # nichts (der Detektor ohne Treffer). Eine Testwelt ohne den Gegenstand
+    # ist ein Fehler der Testwelt, kein Grund zu ueberspringen.
+    assert len(tode_voll) > 0, (
+        "Testwelt ohne eingetretenen Tod seit Betriebsbeginn — der Test kann "
+        "seinen Gegenstand nicht sehen")
+
     ledger = read_portfolio(ablage.stand / "ledger.parquet")
-    tode_stand = ledger[(ledger["ereignis"] == "TOD") & (ledger["status_date"] > pd.Timestamp(BETRIEBSBEGINN))]
+    tode_stand = ledger[(ledger["ereignis"] == "TOD")
+                        & (ledger["status_date"] > pd.Timestamp(BETRIEBSBEGINN))]
     assert len(tode_stand) == 0
     gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
     for pid in tode_voll["police_id"]:
         assert gesamt.loc[gesamt["police_id"] == pid, "status_code"].iloc[0] != "TOD"
-    if len(tode_voll) == 0:
-        pytest.skip("kein Todesfall seit Betriebsbeginn in der kleinen Config — Aussage nicht pruefbar")
 
 
 def _gealterter_zugangsstand(ziel: Path, n: int = 400) -> None:
@@ -591,13 +611,14 @@ def _gealterter_zugangsstand(ziel: Path, n: int = 400) -> None:
 
 
 def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
-                          name: str = "gealterte-uebernahme") -> None:
+                          name: str = "gealterte-uebernahme") -> Path:
     """Einen Fall mit gealtertem Zugangsstand als Eingang der Ablage
     registrieren — mit echtem P-B1-Ledger und A-M4-Snapshot wie ein
     Migrationsfall. Die Belegbauteile (``_pb1_ledger``, ``am4_snapshot``)
     sind populationsagnostisch und kommen aus ``test_betrieb_uebernahme``;
     der Eingang ist deterministisch, zwei Aufrufe liefern Byte fuer Byte
-    dasselbe (leeres Nummernband -> gleiche Zielnummern)."""
+    dasselbe (leeres Nummernband -> gleiche Zielnummern). Rueckgabe: das
+    Eingangsverzeichnis mit den umnummerierten Tabellen des Zielsystems."""
     from rechner_pipeline.betrieb import uebernahme as ueb
     from tests.test_betrieb_uebernahme import _pb1_ledger, am4_snapshot
 
@@ -614,7 +635,7 @@ def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
     (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
         json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
         encoding="utf-8")
-    ueb.eingang_anlegen(ablage.wurzel, fall, BETRIEBSBEGINN)
+    return ueb.eingang_anlegen(ablage.wurzel, fall, BETRIEBSBEGINN)
 
 
 def test_ein_abschluss_ist_dieselbe_datei_ob_am_stichtag_oder_nachgeholt(tmp_path, monkeypatch):
