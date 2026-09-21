@@ -104,6 +104,29 @@ docker build -f deploy/dev/Dockerfile -t rechner-pipeline-dev .
 docker run --rm -v "$PWD":/workspace rechner-pipeline-dev            # full suite
 docker run --rm -it -v "$PWD":/workspace rechner-pipeline-dev bash   # shell
 ```
+**Platforms that have been verified.** The container route is not a
+theory here; two team members have run it and reported provenance, not
+just a suite line:
+
+| Platform | Measured |
+|---|---|
+| Windows 11, WSL 2 (Ubuntu), Docker Desktop | suite green 2026-09-14; provenance 2026-09-20 on commit `f518b6a`: 2212 passed, 3 skipped in 908 s |
+| macOS 26.6.2, arm64 | same commit `f518b6a`: 2212 passed, 3 skipped in 595 s |
+
+Two results matter beyond "it ran". First, both platforms reported the
+SAME `quellcode_sha256` on the same commit (`c4bffa4f...`) — so the
+checkout is byte-identical across platforms and the LF pinning in
+`.gitattributes` does what it claims; a Windows checkout is not a
+different tree. Second, `systemstand` carried real values on Windows,
+not `unbekannt`: git reads the mounted tree from inside the container
+there too, so gate belege produced on Windows carry the same provenance
+as on Linux. That was the actual worry, and it is answered.
+
+The pitfall is the one described above: the WSL environment
+preinstalled on a machine may still be version 1, and the Docker Desktop
+integration then cannot be enabled at all. Installing a fresh Ubuntu and
+working in it is the route that was actually run.
+
 **Reporting an environment.** When you report a run — a new machine, a
 platform we have not verified — send the provenance of the code you ran,
 not just the suite line. Same container, one command:
@@ -133,7 +156,7 @@ excluded from that rule because their bytes are hashed.
 This is the one documented install path, identical to CI. The pin files
 carry the direct dependencies (`pyproject.toml`: `openpyxl`, `oletools`,
 `pandas`, `pyarrow`, `matplotlib`, `pydantic`, `pypdf`; dev: `pytest`,
-`hypothesis`) AND their complete transitive closure;
+`hypothesis`, `pytest-xdist`) AND their complete transitive closure;
 `tests/test_abhaengigkeiten.py` keeps that closure closed. Installing
 with `pip install -e ".[dev]"` alone pins only the direct dependencies
 and lets pip resolve everything transitive freshly — with
