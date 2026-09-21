@@ -531,19 +531,92 @@ def test_ein_verzoegert_gemeldeter_tod_erscheint_erst_am_buchungstag(tmp_path, m
         pytest.skip("kein Todesfall seit Betriebsbeginn in der kleinen Config — Aussage nicht pruefbar")
 
 
-@pytest.mark.xfail(
-    reason="ADR-020: Der Gegenstand ist ein spaet gebuchter TODESFALL ueber "
-    "eine Monatsgrenze (Meldeverzug). Eine Firma, die 2026 jung startet, hat "
-    "in einem kurzen Fenster keine Tode (gemessen: 0 bei 4275 Vertraegen) — "
-    "frueher lieferte der Batch die 1994-gealterten Vertraege. Der Ende-zu-"
-    "Ende-Vergleich (nachgeholt == jede Nacht) braucht deshalb eine Uebernahme "
-    "mit vielen gealterten Vertraegen (betriebsbeginn bleibt 2026, die "
-    "Uebernahme bringt die Sterblichkeit) — eine eigene Fixture, noch nicht "
-    "gebaut. Die Sicht-Determinismus-Aussage dahinter ist unabhaengig geprueft "
-    "(test_der_stichtagsschnitt_ruehrt_die_vorgeschichte_nicht_an, gealtert, "
-    "und test_der_buchungsschnitt_komponiert).",
-    strict=True,
-)
+def _gealterter_zugangsstand(ziel: Path, n: int = 400) -> None:
+    """Der bewaehrte Zugangsstand (drei Fremdvertraege, einer beitragsfrei)
+    plus ``n`` gealterte POL-Vertraege — die Population, aus der im kurzen
+    Testfenster ueberhaupt Todesfaelle entstehen.
+
+    Eine junge Firma, die 2026 leer beginnt (ADR-020), hat in sechs Monaten
+    keine (gemessen: 0 bei 4275 Vertraegen); der Gegenstand dieses Tests — ein
+    spaet gebuchter Tod ueber eine Monatsgrenze — braucht Alter, und Alter
+    kommt in den Betrieb nur ueber eine Uebernahme. Gemessen liefern die
+    gealterten Zeilen zehn Tode mit Wirkung Februar bis Mai und Buchung
+    (Meldeverzug 40) im Folgemonat, alle noch vor dem 30.6. — genau das, was
+    der Stichtagsschnitt in ``_stichtagssicht`` je Abschluss ausblenden muss.
+
+    Die PEX-Historienzeile aus ``_zugangsstand`` ist kein Beiwerk: Ohne sie
+    laesst ``gebuchte_sicht`` den Eroeffnungsabschluss zum 1.1. mit LEERER
+    Historie zurueck, und die Auswertung verweigert eine Stammtabelle mit
+    spaeteren Folgezustaenden (den Toden) ohne Journal (ADR-011). Ein echter
+    uebernommener Bestand traegt seine Statushistorie ohnehin."""
+    import pandas as pd
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+    from rechner_pipeline.models.bestand import (
+        LEDGER_NAMES, LEDGER_SPALTEN, STAMM_NAMES, STAMM_SPALTEN)
+    from tests.test_betrieb_uebernahme import _zugangsstand
+
+    _zugangsstand(ziel)
+    stamm = read_portfolio(ziel / "bestand.parquet", expected_columns=STAMM_NAMES)
+    ledger = read_portfolio(ziel / "ledger.parquet", expected_columns=LEDGER_NAMES)
+
+    zeilen, zug = [], []
+    for k in range(n):
+        # Alt genug fuer Sterblichkeit (Alter heute ~77-83), aber Eintritts-
+        # alter im Sanity-Band [18, 64] von P-B1 und Restlaufzeit weit ueber
+        # das Fenster hinaus (Ende ab 2037), damit im Fenster Tode fallen und
+        # keine Ablaeufe. Beginnmonat variiert ueber alle zwoelf, damit die
+        # Tode sich ueber die Monate verteilen (Wirkung Feb-Mai).
+        monat = (k % 12) + 1
+        alter = 60 + (k % 5)                       # 60..64, im Band [18, 64]
+        b = pd.Timestamp(f"20{7 + (k % 3):02d}-{monat:02d}-01")   # 2007..2009
+        zeilen.append({
+            "police_id": 7_000_010 + k, "tarif_generation": "KLV-2017", "produkt": "klv",
+            "status_id": 1, "status_code": "POL", "status_date": b,
+            "sex": "F" if k % 2 else "M", "date_of_birth": b - pd.DateOffset(years=alter),
+            "entry_age": alter, "duration": 30, "premium_duration": 20,
+            "sum_insured": 50000.0, "bu_rente": 0.0, "zahlweise": 12,
+            "insurance_start": b, "insurance_end": b + pd.DateOffset(years=30),
+            "payment_end": b + pd.DateOffset(years=20),
+            "bestandszugang": pd.Timestamp(BETRIEBSBEGINN)})
+        zug.append({
+            "police_id": 7_000_010 + k, "tarif_generation": "KLV-2017", "ereignis": "ZUG",
+            "vertragsjahr": int((BETRIEBSBEGINN.year * 12 + 1
+                                 - (b.year * 12 + b.month)) // 12),
+            "status_date": pd.Timestamp(BETRIEBSBEGINN), "betrag_art": "VS",
+            "betrag": 50000.0, "betrag_herkunft": "geliefert"})
+    aged = pd.DataFrame(zeilen)[list(STAMM_NAMES)].astype(dict(STAMM_SPALTEN))
+    aged_zug = pd.DataFrame(zug)[list(LEDGER_NAMES)].astype(dict(LEDGER_SPALTEN))
+    write_portfolio(pd.concat([stamm, aged], ignore_index=True), ziel / "bestand.parquet")
+    write_portfolio(pd.concat([ledger, aged_zug], ignore_index=True), ziel / "ledger.parquet")
+
+
+def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
+                          name: str = "gealterte-uebernahme") -> None:
+    """Einen Fall mit gealtertem Zugangsstand als Eingang der Ablage
+    registrieren — mit echtem P-B1-Ledger und A-M4-Snapshot wie ein
+    Migrationsfall. Die Belegbauteile (``_pb1_ledger``, ``am4_snapshot``)
+    sind populationsagnostisch und kommen aus ``test_betrieb_uebernahme``;
+    der Eingang ist deterministisch, zwei Aufrufe liefern Byte fuer Byte
+    dasselbe (leeres Nummernband -> gleiche Zielnummern)."""
+    from rechner_pipeline.betrieb import uebernahme as ueb
+    from tests.test_betrieb_uebernahme import _pb1_ledger, am4_snapshot
+
+    fall = fall_wurzel / name
+    (fall / "abgeleitet" / "diagnostics").mkdir(parents=True)
+    (fall / "entscheide").mkdir()
+    (fall / "fall.json").write_text(
+        json.dumps({"name": name, "schema_version": 1}), encoding="utf-8")
+    _gealterter_zugangsstand(fall / "abgeleitet" / "bestand")
+    ledger_sha = _pb1_ledger(fall)
+    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha)
+    (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
+        json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
+        encoding="utf-8")
+    ueb.eingang_anlegen(ablage.wurzel, fall, BETRIEBSBEGINN)
+
+
 def test_ein_abschluss_ist_dieselbe_datei_ob_am_stichtag_oder_nachgeholt(tmp_path, monkeypatch):
     """T24-02: Der Monatsabschluss ist der Stand, den das Unternehmen an
     seinem Stichtag hatte — nicht der, den es spaeter rueckblickend fuer
@@ -570,10 +643,14 @@ def test_ein_abschluss_ist_dieselbe_datei_ob_am_stichtag_oder_nachgeholt(tmp_pat
     monkeypatch.setattr(tj, "meldeverzug_tage", lambda config, police_id, jahr: 40)
 
     def welt(name: str) -> Ablage:
+        # Leer beginnende PLV (ADR-020) plus eine Uebernahme gealterter
+        # Fremdvertraege: aus ihnen — nicht aus dem jungen Neugeschaeft von
+        # 2026 — entstehen die spaet gebuchten Tode ueber die Monatsgrenze,
+        # den Gegenstand dieses Tests. Der Eingang ist deterministisch, beide
+        # Welten sehen ihn Byte fuer Byte gleich; die einzige Variable bleibt
+        # die Fahrweise (nachgeholt vs. jede Nacht).
         ablage = _ablage(tmp_path / name)
-        ablage.config_pfad.write_text(
-            _kleine_config(faktor=8),
-            encoding="utf-8")
+        _gealterte_uebernahme(ablage, tmp_path / f"{name}-fall")
         return ablage
 
     ende = dt.date(2026, 6, 30)
