@@ -730,11 +730,11 @@ def fortschreiben(
     incl. ERH/ZUG), the created Erhoehungsscheiben and the Neuzugaenge.
 
     ``neuzugang_ab`` (Referenzstichtag) schaltet den simulierten Neuzugang
-    frei: neue Vertraege mit Beginn in ``(neuzugang_ab, bis]`` entstehen aus
+    frei: neue Vertraege mit Beginn in ``[neuzugang_ab, bis]`` entstehen aus
     :func:`rechner_pipeline.bestand.generator.neuzugaenge` (Volumen je
     Generation: ``neuzugang_pro_jahr``), erhalten einen ZUG-Ledger-Eintrag
     und werden ab ihrem Beginn mitsimuliert. Der Basisbestand darf dann
-    keine Vertraege nach dem Referenzstichtag enthalten (Doppelzaehlung).
+    keine Vertraege am oder nach dem Referenzstichtag enthalten (Doppelzaehlung).
 
     ``zugaenge`` (Tagesbetrieb, Fachkonzept docs/simulation/tagesbetrieb.md)
     bringt die Neuzugaenge MIT, statt sie ueber den jaehrlichen Erzeuger
@@ -837,13 +837,13 @@ def fortschreiben(
                 f"Horizont bis {bis.isoformat()} (vertauschte Argumente?)"
             )
         if len(stamm) and (
-            stamm["insurance_start"] > pd.Timestamp(neuzugang_ab)
+            stamm["insurance_start"] >= pd.Timestamp(neuzugang_ab)
         ).any():
             raise EreignisError(
-                "Basisbestand enthaelt Vertraege mit Beginn nach dem "
+                "Basisbestand enthaelt Vertraege mit Beginn am oder nach dem "
                 f"Referenzstichtag {neuzugang_ab.isoformat()} — Neuzugang wuerde "
-                "den Zeitraum doppelt besiedeln (ein Erzeuger je Zeitfenster). "
-                "Basisbestand mit generate(config, bis=Referenzstichtag) erzeugen"
+                "den Zeitraum doppelt besiedeln (ein Erzeuger je Zeitfenster) — "
+                "der Basisbestand darf nur Vertraege bis zum Referenzstichtag tragen"
             )
         from rechner_pipeline.bestand.generator import neuzugaenge
 

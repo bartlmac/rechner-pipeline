@@ -24,7 +24,7 @@ from rechner_pipeline.bestand.auswertung import auswertungs_verlauf
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben, mit_zugaengen
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.manifest import schreibe_manifest
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.kern import __version__ as KERN_VERSION
@@ -53,7 +53,7 @@ def config():
 
 @pytest.fixture(scope="module")
 def _fortschreibung(config):
-    basis = generate(config)
+    basis = bestand_aus_zugangsstrom(config)
     return basis, fortschreiben(basis, config, HORIZONT)
 
 
@@ -225,13 +225,21 @@ def test_pruefung_benennt_geaenderten_kernstand(lauf, config, tmp_path, monkeypa
     assert any("bleibt stehen" in b for b in befunde)
 
 
-def test_leerer_stichtag_ist_kein_abschluss(lauf, config, tmp_path):
+def test_leerer_stichtag_ist_eine_gueltige_leere_bilanz(lauf, config, tmp_path):
+    """ADR-020: Ein Unternehmen beginnt leer. Ein Stichtag ohne
+    in-force-Vertrag (vor dem ersten Beginn) traegt eine gueltige, leere
+    Eroeffnungsbilanz — kein Aufruffehler mehr. Der festgeschriebene Stand
+    hat die Abschlussspalten und null Zeilen."""
+    from rechner_pipeline.models.bestand import ABSCHLUSS_NAMES, validate_abschluss
+
     stamm, historie, scheiben = lauf
-    with pytest.raises(AbschlussError, match="kein in-force-Bestand"):
-        schreibe_abschluss(
-            stamm, historie, config, dt.date(1980, 1, 1), tmp_path,
-            scheiben=scheiben,
-        )
+    pfad = schreibe_abschluss(
+        stamm, historie, config, dt.date(1980, 1, 1), tmp_path,
+        scheiben=scheiben,
+    )
+    fest = pd.read_parquet(pfad)
+    assert len(fest) == 0 and list(fest.columns) == list(ABSCHLUSS_NAMES)
+    assert validate_abschluss(fest) == []
 
 
 def test_vorhandene_abschluesse_listet_sortiert(lauf, config, tmp_path):

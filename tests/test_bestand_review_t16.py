@@ -33,7 +33,7 @@ from rechner_pipeline.bestand.abschluss import (
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben, mit_zugaengen
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.models.bestand import validate_portfolio
 
@@ -50,7 +50,7 @@ def _config():
 
 @pytest.fixture(scope="module")
 def lauf_klv(_config):
-    basis = generate(_config)
+    basis = bestand_aus_zugangsstrom(_config)
     ergebnis = fortschreiben(basis, _config, HORIZONT)
     stamm = fuehre_fort(mit_zugaengen(basis, ergebnis.zugaenge), ergebnis.historie)
     return stamm, ergebnis.historie, ergebnis.scheiben, _config

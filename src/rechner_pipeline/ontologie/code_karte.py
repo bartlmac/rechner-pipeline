@@ -141,7 +141,6 @@ VORZEIGE_NACH_WERKZEUG_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/bestand/kennzahlen.py", "rechner_pipeline/bestand/ereignisse.py"),
     ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
     ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/bestand/ereignisse.py"),
-    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/bestand/generator.py"),
     ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
 }
 

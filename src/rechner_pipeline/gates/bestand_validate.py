@@ -127,7 +127,7 @@ ERZEUGER_HINWEIS = {
     "code": "bestand_erzeugen",
     "hint": "Bestand erzeugen mit: python -m "
     "rechner_pipeline.bestand.cli_fortschreibung --config <config>.toml "
-    "--bis <ISO-Datum> --out-dir <lauf>. Der Lauf schreibt "
+    "--neuzugang-ab <ISO-Datum> --bis <ISO-Datum> --out-dir <lauf>. Der Lauf schreibt "
     "<lauf>/bestand_gesamt.parquet (--portfolio), historie.parquet, "
     "ledger.parquet, scheiben.parquet und laufmanifest.json (--manifest); "
     "--bis ist derselbe Horizont, den dieses Gate erwartet — mit "

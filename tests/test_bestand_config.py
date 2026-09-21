@@ -59,7 +59,6 @@ name = "G"
 knoten = "klv/plv_test"
 gueltig_von = 2000-01-01
 gueltig_bis = 2001-01-01
-sample_size = 10
 max_endalter = 85
 zins = 0.02
 tafel = "DAV1994_T"
@@ -86,7 +85,6 @@ name = "G"
 knoten = "klv/plv_test"
 gueltig_von = 2000-01-01
 gueltig_bis = 2001-01-01
-sample_size = 10
 max_endalter = 85
 zins = 0.02
 tafel = "DAV1994_T"
@@ -141,7 +139,6 @@ name = "G"
 knoten = "klv/plv_test"
 gueltig_von = 2000-01-01
 gueltig_bis = 2001-01-01
-sample_size = {sample_size}
 max_endalter = 85
 zins = 0.02
 tafel = "DAV1994_T"
@@ -193,22 +190,29 @@ var_j = "sum_insured"
 rho = -0.9
 """
     p = tmp_path / "c.toml"
-    p.write_text(_BASE_GEN.format(sample_size=10, extra=extra), encoding="utf-8")
+    p.write_text(_BASE_GEN.format(extra=extra), encoding="utf-8")
     errors = load_config(p).validate()
     assert any("nicht positiv semidefinit" in e for e in errors)
 
 
-def test_sample_size_upper_bound(tmp_path: Path):
+def test_sample_size_wird_toleriert_und_verworfen(tmp_path: Path):
+    """ADR-020: Den gezogenen Anfangsbestand gibt es nicht mehr, aber eine
+    Config, die ``sample_size`` noch traegt, bleibt LESBAR: Sie ist eine
+    hashgebundene P-B1-Eingangsrolle, deren Bytes an gezeichneten Abnahmen
+    haengen. Ein harter Fehler haette jeden gezeichneten Fall
+    unreproduzierbar gemacht. Der Schluessel wird verworfen, nicht
+    abgewiesen — und der Generationentyp traegt ihn nicht mehr als Feld."""
     p = tmp_path / "c.toml"
-    p.write_text(_BASE_GEN.format(sample_size=2_000_000, extra=""), encoding="utf-8")
-    errors = load_config(p).validate()
-    assert any("sample_size > 1_000_000" in e for e in errors)
+    p.write_text(_BASE_GEN.replace("max_endalter = 85\n", "max_endalter = 85\nsample_size = 600\n", 1).format(extra=""), encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.validate() == []
+    assert not hasattr(cfg.generationen[0], "sample_size")
 
 
 def test_malformed_plausibilitaet_band_is_load_error(tmp_path: Path):
     import pytest
 
-    toml = _BASE_GEN.format(sample_size=10, extra="") + """
+    toml = _BASE_GEN.format(extra="") + """
 [plausibilitaet]
 entry_age = [18, 30, 60]
 """
@@ -230,7 +234,7 @@ def _generation_kwargs(**override):
     basis = dict(
         name="G", knoten="klv/plv_test",
         gueltig_von=dt.date(2000, 1, 1), gueltig_bis=dt.date(2010, 12, 31),
-        sample_size=10, max_endalter=85, zins=0.02, tafel="DAV2008_T",
+        max_endalter=85, zins=0.02, tafel="DAV2008_T",
         alpha=0.025, beta1=0.025, gamma1=0.0008, gamma2=0.00125,
         gamma3=0.0025, policy_fee=24.0, min_alter_flex=60, min_rlz_flex=5,
     )

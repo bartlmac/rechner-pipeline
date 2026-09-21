@@ -16,20 +16,22 @@ direkt, `impact` führt sie als Daten-Bindung, und der Bestandsbericht
 läuft auf ihnen (siehe `ONBOARDING.md`, Abschnitt 3). Format:
 `src/rechner_pipeline/bestand/config.py`.
 
-## `neuzugang_pro_jahr` wirkt nur mit `--neuzugang-ab`
+## Der Bestand entsteht aus dem Zugangsstrom — es gibt keinen gezogenen Anfangsbestand
 
-Ein Erzeuger je Zeitfenster: Ohne `--neuzugang-ab` besiedelt der
-Batch-Erzeuger das volle Verkaufsfenster jeder Generation
-(`sample_size`), und `neuzugang_pro_jahr` bleibt ohne Wirkung — der Lauf
-meldet dann `0 Neuzugaenge`. Das ist **kein** Run-off: Die Zugänge nach
-dem Referenzstichtag stecken im Basisbestand statt im GeVo-Strom.
+Jeder Vertrag der PLV kommt als Zugang ins Journal (Ereignis `ZUG`),
+mit `neuzugang_pro_jahr` je Kalenderjahr und Generation als Dichte. Zwei
+Erzeuger teilen sich dieselbe Attributziehung: der Tagesbetrieb
+(`betrieb.tageslauf`, Werktag für Werktag ab `betriebsbeginn`) und der
+jährliche Strom der Prüfstrecke (`cli_fortschreibung --neuzugang-ab`).
+Ein Lauf ohne `--portfolio`, ohne `--uebernahme` und ohne
+`--neuzugang-ab` hat nichts, was er führen könnte, und sagt das.
 
-Mit `--neuzugang-ab <Datum>` stoppt der Batch an diesem Stichtag, und
-ab da erzeugt der GeVo-Strom Neuzugang mit `neuzugang_pro_jahr` je
-Kalenderjahr und Generation (Ereignis `ZUG`). Beide Modi sind
-deterministisch; sie ergeben unterschiedliche Bestände, also nie beide
-im selben Vergleich mischen. Zahlenbeispiel und Kommandos:
-`ONBOARDING.md`, Abschnitt 3.
+Bis zum 2026-09-21 gab es daneben `sample_size`: einen auf einmal
+gezogenen Bestand ohne eine einzige Buchung. Er war nirgends mehr als
+Kulisse — gemessen: die Vorzeige holte daraus fünf Verträge, die
+Prüfstrecke des Migrationsfalls 2220, und alle Gates blieben ohne sie
+grün (ADR-020). Eine Config, die den Schlüssel noch trägt, wird
+abgewiesen, nicht still anders gelesen.
 
 ## `[tagesbetrieb]`: die PLV als laufendes Unternehmen
 

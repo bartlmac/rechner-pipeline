@@ -33,7 +33,7 @@ PLV = REPO_ROOT / "configs" / "bestand_gesamt.toml"
 KLV = REPO_ROOT / "configs" / "bestand_klv.toml"
 
 
-def _generation(name: str, von: str, bis: str, sample_size: int = 10,
+def _generation(name: str, von: str, bis: str, neuzugang_pro_jahr: int = 10,
                 produkt: str = "klv", extra: str = "") -> str:
     """Ein kleiner, gueltiger Generationsblock als TOML-Text."""
     knoten = f"{produkt}/plv_{name.lower()}"
@@ -45,7 +45,7 @@ knoten = "{knoten}"
 produkt = "bu"
 gueltig_von = {von}
 gueltig_bis = {bis}
-sample_size = {sample_size}
+neuzugang_pro_jahr = {neuzugang_pro_jahr}
 max_endalter = 67
 zins = 0.01
 tafel = "DAV1997_TAA"
@@ -75,7 +75,7 @@ name = "{name}"
 knoten = "{knoten}"
 gueltig_von = {von}
 gueltig_bis = {bis}
-sample_size = {sample_size}
+neuzugang_pro_jahr = {neuzugang_pro_jahr}
 max_endalter = 85
 zins = 0.01
 tafel = "DAV2008_T"
@@ -133,7 +133,7 @@ def test_plv_config_traegt_die_generationen_bis_heute():
     im_vertrieb = {
         g.produkt: g.name for g in cfg.generationen
         if g.gueltig_von <= heute <= g.gueltig_bis
-        and (g.sample_size > 0 or g.neuzugang_pro_jahr > 0)
+        and g.neuzugang_pro_jahr > 0
     }
     assert im_vertrieb == {"klv": "KLV-2025", "bu": "BU-2025"}
     klv_2025 = next(g for g in cfg.generationen if g.name == "KLV-2025")
@@ -157,12 +157,12 @@ def test_plv_config_traegt_die_generationen_bis_heute():
     for produkt in ("klv", "bu"):
         gens = sorted(
             (g for g in cfg.generationen
-             if g.produkt == produkt and (g.sample_size > 0 or g.neuzugang_pro_jahr > 0)),
+             if g.produkt == produkt and g.neuzugang_pro_jahr > 0),
             key=lambda g: g.gueltig_von,
         )
         for vorher, danach in zip(gens, gens[1:]):
             assert danach.gueltig_von == vorher.gueltig_bis + dt.timedelta(days=1)
-    uebernommen = [g for g in cfg.generationen if g.sample_size == 0 and g.neuzugang_pro_jahr == 0]
+    uebernommen = [g for g in cfg.generationen if g.neuzugang_pro_jahr == 0]
     assert [g.name for g in uebernommen] == ["TG2015"] and uebernommen[0].zellen
 
 
@@ -322,19 +322,18 @@ def test_ueberlappende_verkaufsfenster_sind_ein_fehler():
 
 
 def test_nicht_verkaufende_generationen_duerfen_ueberlappen():
-    """Eine uebernommene Generation (sample_size 0, kein Neuzugang)
+    """Eine uebernommene Generation (kein Neuzugang)
     traegt das Fenster des abgebenden Unternehmens — es sagt nichts
     darueber, was die PLV an diesem Tag verkauft."""
     cfg = config_aus_text(_config(
         _generation("G1", "2020-01-01", "2030-12-31"),
-        _generation("UEB", "2015-01-01", "2030-12-31", sample_size=0),
+        _generation("UEB", "2015-01-01", "2030-12-31", neuzugang_pro_jahr=0),
     ))
     assert cfg.validate() == []
     # ... aber mit Neuzugang verkauft sie, und dann zaehlt das Fenster:
     cfg = config_aus_text(_config(
         _generation("G1", "2020-01-01", "2030-12-31"),
-        _generation("UEB", "2015-01-01", "2030-12-31", sample_size=0,
-                    extra="neuzugang_pro_jahr = 5\n"),
+        _generation("UEB", "2015-01-01", "2030-12-31", neuzugang_pro_jahr=5),
     ))
     assert any("Verkaufsfenster ueberlappen" in f for f in cfg.validate())
 
@@ -353,7 +352,7 @@ def test_tagesbetrieb_dataclass_prueft_sich_selbst():
     assert Tagesbetrieb().validate() == []
     gen = TarifGeneration(
         name="G", knoten="klv/plv_g", gueltig_von=dt.date(2020, 1, 1),
-        gueltig_bis=dt.date(2021, 1, 1), sample_size=0, max_endalter=85,
+        gueltig_bis=dt.date(2021, 1, 1), max_endalter=85,
         neuzugang_trend=-2.0,
     )
     assert any("neuzugang_trend" in f for f in gen.validate())

@@ -41,6 +41,7 @@ from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.kern import __version__ as KERN_VERSION
 from rechner_pipeline.models.bestand import (
     ABSCHLUSS_NAMES,
+    ABSCHLUSS_SPALTEN,
     ABSCHLUSS_ZAHLEN,
     validate_abschluss,
 )
@@ -71,11 +72,15 @@ def _rechne(
                             schichten=schichten, verankerung=verankerung,
                             reduktionen=reduktionen)
     if not zeilen:
-        raise AbschlussError(
-            f"Abschluss {stichtag.isoformat()}: kein in-force-Bestand am "
-            "Stichtag — ein leerer Abschluss ist kein Stand, sondern ein "
-            "Aufruffehler"
-        )
+        # Ein leerer Abschluss ist seit ADR-020 eine gueltige (leere)
+        # Bilanz, kein Aufruffehler: Ein Unternehmen beginnt leer, und die
+        # ersten Vertraege beginnen am Monatsersten nach dem ersten
+        # Verkaufstag; sein Eroeffnungsmonat traegt keinen in-force-Vertrag.
+        # Der Bericht darueber ist leer, aber gueltig (die Diagramme ohne
+        # Datenreihe zeichnen keine Legende, siehe report._legende).
+        return pd.DataFrame(
+            {name: pd.Series(dtype=dtype) for name, dtype in ABSCHLUSS_SPALTEN}
+        )[list(ABSCHLUSS_NAMES)]
     df = pd.DataFrame([
         {
             "police_id": z["police_id"],

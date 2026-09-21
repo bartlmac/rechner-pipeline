@@ -23,7 +23,7 @@ import pytest
 
 from rechner_pipeline.bestand.config import Annahme, load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.betrieb.neugeschaeft import neugeschaeft_am, neugeschaeft_zwischen, verkaufstag
 from rechner_pipeline.betrieb.tagesjournal import (
@@ -50,12 +50,17 @@ FRUEHER = dt.date(2026, 3, 31)
 
 @pytest.fixture(scope="module")
 def config():
-    """Die PLV-Config mit kleinem Bestand und hohen Raten, damit jede
-    Ereignisart im Fenster vorkommt."""
+    """Die PLV-Config mit kleinem Zugangsstrom und hohen Raten, damit jede
+    Ereignisart im Fenster vorkommt. Jahresziele so gewaehlt, dass ueber
+    das Verkaufsfenster etwa die frueheren Bestandsgroessen entstehen
+    (KLV-2004 rund 40, KLV-2017 rund 400, KLV-2022 rund 150, BU-2017 rund
+    100 Vertraege)."""
     cfg = copy.deepcopy(load_config(PLV))
     for g in cfg.generationen:
-        g.sample_size = {"KLV-2004": 40, "KLV-2017": 400, "KLV-2022": 150,
-                         "BU-2017": 100}.get(g.name, 0)
+        # KLV-2025 verkauft bis 2035 — sonst gibt es im Fenster (2026) keinen
+        # ZUG, und der Bestand entsteht seit ADR-020 nur aus dem Strom.
+        g.neuzugang_pro_jahr = {"KLV-2004": 13, "KLV-2017": 80, "KLV-2022": 50,
+                                "BU-2017": 13, "KLV-2025": 80}.get(g.name, 0)
     cfg.annahmen.tod = Annahme(a=0.03, b=0.8)
     cfg.annahmen.storno = Annahme(a=0.12, b=0.0)
     cfg.annahmen.beitragsfreistellung = Annahme(a=0.08, b=0.0)
@@ -67,7 +72,7 @@ def config():
 
 @pytest.fixture(scope="module")
 def lauf(config):
-    stamm = generate(config, bis=BETRIEBSBEGINN)
+    stamm = bestand_aus_zugangsstrom(config, bis=BETRIEBSBEGINN)
     zugaenge = neugeschaeft_zwischen(config, BETRIEBSBEGINN, HEUTE)
     ergebnis = fortschreiben(stamm, config, HEUTE, zugaenge=zugaenge)
     ledger = ergebnis.ledger

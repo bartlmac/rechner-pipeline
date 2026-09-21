@@ -23,7 +23,7 @@ Was ein Lauf tut, in dieser Reihenfolge:
 2. **Neugeschaeft.** Alle Verkaufstage vom Betriebsbeginn bis heute
    (:mod:`rechner_pipeline.betrieb.neugeschaeft`) — je Tag fuer sich
    reproduzierbar.
-3. **Fortschreibung bis heute.** Basisbestand (Batch bis Betriebsbeginn)
+3. **Fortschreibung bis heute.** Basisbestand (die uebernommenen Vertraege; eigenes Geschaeft entsteht Werktag fuer Werktag)
    plus Uebernahme-Eingaenge plus Neugeschaeft, EIN Lauf der bestehenden
    Engine (``bestand.ereignisse.fortschreiben``); die Buchungen der
    Uebernahmen stehen dem Journal voran wie in ``cli_fortschreibung``.
@@ -45,8 +45,9 @@ Was ein Lauf tut, in dieser Reihenfolge:
    ist der gefuehrte Tag selbst; der Stand des Ersten enthaelt dessen
    Buchungen, deshalb entsteht der Abschluss zum Ersten im Lauf des
    Ersten — der Ultimo-Lauf koennte ihn noch nicht bewerten
-   (``stichtag <= bis``). Die Erstbefuellung schreibt so auch den
-   Eroeffnungsstand zum Betriebsbeginn.
+   (``stichtag <= bis``). Ein Monat ohne in-force-Vertrag bekommt keinen
+   Abschluss (ADR-020): Ein Unternehmen beginnt leer, und der erste
+   Versicherungsbeginn liegt am Monatsersten nach dem ersten Verkaufstag.
 7. **Tagesprotokoll**: eine JSON-Zeile je Lauf.
 
 Der Stand wird erst uebernommen, wenn die Wache gruen ist: Der Lauf
@@ -97,7 +98,6 @@ from rechner_pipeline.bestand.abschluss import (
 from rechner_pipeline.bestand.config import BestandConfig, load_config
 from rechner_pipeline.bestand.ereignisse import EreignisError, fortschreiben, mit_zugaengen
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
-from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.manifest import (
     MANIFEST_DATEI,
     ERZEUGER,
@@ -130,6 +130,7 @@ from rechner_pipeline.models.bestand import (
     STAMM_NAMES,
     STATUS_HISTORIE_NAMES,
     TAGESJOURNAL_NAMES,
+    leerer_stamm,
 )
 
 #: Schema 2 (Review T22-05): jede Zeile traegt ``vorgaenger_sha256``, den
@@ -680,7 +681,10 @@ def _stand_bauen(
     """Den Stand fuer ``heute`` im Arbeitsverzeichnis erzeugen (noch nicht uebernommen)."""
     betriebsbeginn = config.tagesbetrieb.betriebsbeginn
     assert betriebsbeginn is not None
-    basis = generate(config, bis=betriebsbeginn)
+    # Kein gezogener Anfangsbestand mehr (ADR-020): Der Stand beginnt leer,
+    # das eigene Geschaeft entsteht Werktag fuer Werktag ab dem
+    # Betriebsbeginn — jeder Vertrag mit seinem Zugang im Journal.
+    basis = leerer_stamm()
     ausgaben: List[Path] = []
     eingaben: Dict[str, Path] = {}
     if ablage.arbeit.exists():
@@ -777,11 +781,6 @@ def _stand_bauen(
         eingaben[f"uebernahme:{ueb.fall}"] = ueb.manifest_pfad
 
     zugaenge = neugeschaeft_zwischen(config, betriebsbeginn, heute)
-    if len(zugaenge) and (zugaenge["insurance_start"] <= pd.Timestamp(betriebsbeginn)).any():
-        raise TageslaufError(
-            "Neugeschaeft mit Beginn am oder vor dem Betriebsbeginn — der "
-            "Batch besiedelt diesen Zeitraum bereits (ein Erzeuger je Zeitfenster)"
-        )
     ergebnis = fortschreiben(
         basis, config, heute, zugaenge=zugaenge, merkmale=merkmale,
         scheiben=scheiben_ueb, schichten=schichten, verankerung=verankerung,
@@ -1501,6 +1500,7 @@ def _tageslauf(
                 # Der Abschluss bekommt dieselben Nebentabellen wie die Wache
                 # und der Bericht — sonst weist er die Korrekturschicht als
                 # null aus, obwohl die Fuehrung sie traegt (N-01).
+                #
                 geschrieben = schreibe_abschluss(
                     sicht["portfolio"], sicht["historie"], config, stichtag,
                     ablage.abschluesse, scheiben=sicht["scheiben"],

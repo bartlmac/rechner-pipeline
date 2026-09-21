@@ -138,6 +138,12 @@ def _abnahmebericht(fall: Path):
     ])
 
 
+#: Das eine Verkaufsjahr des Ein-Policen-Bestandsfalls: Jahresziel 1 ueber
+#: ein volles Kalenderjahr ergibt genau einen Vertrag (draw-then-filter
+#: verwirft nichts, weil das Fenster das ganze Jahr deckt).
+EINPOLICE_VERKAUFSJAHR = 1995
+
+
 def einpolicen_config(tmp_path: Path, *, uebernahme: Optional[Path] = None) -> Path:
     """Die Config des Ein-Policen-Bestandsfalls.
 
@@ -145,10 +151,13 @@ def einpolicen_config(tmp_path: Path, *, uebernahme: Optional[Path] = None) -> P
     UEBERNOMMENER Bestand: Die eine Police kommt aus der Uebernahme, die
     Config entsteht aus dem Abschnitt, den die Uebernahme aus der
     abgenommenen Spez schreibt (``generation-zellen.toml``) — Grundlagen
-    und Tarifwerk, kein eigenes Neugeschaeft (sample_size 0). Einmal
-    geschrieben (``_bereite_bestandsfall``), lesen alle Aufrufer dieselbe
-    Datei. Ohne Uebernahme-Verzeichnis bleibt die alte Form: die
-    KLV-Config auf ihre erste Generation mit sample_size 1 gekuerzt.
+    und Tarifwerk, kein eigenes Neugeschaeft. Einmal geschrieben
+    (``_bereite_bestandsfall``), lesen alle Aufrufer dieselbe Datei. Ohne
+    Uebernahme-Verzeichnis bleibt die alte Form: die KLV-Config auf ihre
+    erste Generation gekuerzt, deren Zugangsstrom genau EINEN Vertrag
+    liefert (Jahresziel 1, Verkaufsfenster ein volles Kalenderjahr —
+    seit ADR-020 gibt es keinen gezogenen Bestand mehr, die eine Police
+    kommt als Zugang).
     """
     pfad = tmp_path / "einpolice.toml"
     if pfad.is_file():
@@ -165,8 +174,11 @@ def einpolicen_config(tmp_path: Path, *, uebernahme: Optional[Path] = None) -> P
         return pfad
     erste = text.index("[[generation]]")
     zweite = text.index("[[generation]]", erste + 1)
-    kopf = text[:zweite].replace("sample_size = 600", "sample_size = 1", 1)
-    assert "sample_size = 1\n" in kopf
+    kopf = (text[:zweite]
+            .replace("neuzugang_pro_jahr = 100", "neuzugang_pro_jahr = 1", 1)
+            .replace("gueltig_von = 1994-07-01", f"gueltig_von = {EINPOLICE_VERKAUFSJAHR}-01-01", 1)
+            .replace("gueltig_bis = 2000-06-30", f"gueltig_bis = {EINPOLICE_VERKAUFSJAHR}-12-31", 1))
+    assert "neuzugang_pro_jahr = 1\n" in kopf and f"gueltig_von = {EINPOLICE_VERKAUFSJAHR}-01-01" in kopf
     schwanz = text[text.index("[plausibilitaet]"):]
     pfad = tmp_path / "einpolice.toml"
     pfad.write_text(kopf + schwanz, encoding="utf-8")
@@ -1396,6 +1408,7 @@ def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
     config.write_bytes((REPO_ROOT / "configs" / "bestand_klv.toml").read_bytes())
     assert cli_fortschreibung.main([
         "--config", str(config),
+        "--neuzugang-ab", f"{EINPOLICE_VERKAUFSJAHR}-01-01",
         "--bis", "2020-01-01",
         "--out-dir", str(lauf),
     ]) == 0

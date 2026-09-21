@@ -529,6 +529,18 @@ def stamm_dtypes() -> Dict[str, str]:
     return dict(STAMM_SPALTEN)
 
 
+def leerer_stamm() -> Any:
+    """Ein Stamm ohne Zeilen, mit den Spalten und Typen des Vertrags.
+
+    Der Ausgangspunkt jedes Laufs, der seinen Bestand aus dem Zugangsstrom
+    aufbaut (ADR-020): Es gibt keinen gezogenen Anfangsbestand mehr, also
+    beginnt die Fuehrung leer und bucht jeden Vertrag als Zugang.
+    """
+    import pandas as pd
+
+    return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in STAMM_SPALTEN})
+
+
 # --------------------------------------------------------------------------- #
 # Validation (error-list idiom)
 # --------------------------------------------------------------------------- #
@@ -1301,7 +1313,10 @@ def validate_abschluss(df: Any) -> List[str]:
     if cols != list(ABSCHLUSS_NAMES):
         return [f"abschluss: Spalten {cols} != erwartet {list(ABSCHLUSS_NAMES)}"]
     if len(df) == 0:
-        return ["abschluss: leer — kein festgeschriebener Stand"]
+        # Leer ist seit ADR-020 eine gueltige Eroeffnungsbilanz (der Vertrag
+        # der DATEI ist mit null Zeilen erfuellt); ob er an DIESEM Stichtag
+        # legitim leer ist, entscheidet der Erzeuger, nicht der Spaltenvertrag.
+        return errors
     if df["police_id"].duplicated().any():
         errors.append("abschluss: police_id nicht eindeutig")
     if df["stichtag"].nunique() != 1:

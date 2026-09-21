@@ -160,7 +160,7 @@ KLV-2022 (gültig bis 2035) und BU-2000, BU-2017. Für "bis heute" fehlt:
   eine Parametrierung nicht still driftet.
 
 Die Übernahme-Generation der Baldrian (KLV TG2015, in Tarifzellen) bleibt
-eine eigene Generation mit `sample_size = 0`: Sie wird nicht erzeugt,
+eine eigene Generation ohne `neuzugang_pro_jahr`: Sie verkauft nichts,
 sondern kam als Zugang.
 
 ## 6 Baldrian als Zugang zum 01.01.2026
@@ -395,19 +395,21 @@ Vergangenheit bleibt, was sie ist, sein künftiges Storno oder sein
 Todesfall verschieben sich. Für die Bewertung ist das folgenlos, für
 Fixtures, die auf einen bestimmten Vertrag getunt sind, nicht.
 
-Der `betriebsbeginn` der Config ist die **Erzeugungsgrenze**: Bis zu ihr
-stellt der Batch-Erzeuger den Bestand, danach der Tagesstrom — ein
-Erzeuger je Zeitfenster. Beide beschreiben dieselbe Generation: Das
-Jahresziel (`neuzugang_pro_jahr`, konstant über das Verkaufsfenster) ist
-die Dichte, die auch der Batch zieht (`sample_size` über die
-Fensterjahre). Wo die Grenze liegt, ändert deshalb nicht die Größe des
-Bestands, sondern nur, welcher Erzeuger ihn aufgebaut hat. Die PLV setzt
-sie an den Anfang ihrer Geschichte (1994-07-01): Der Batch zieht nur die
-Verträge des Grenztages selbst (fünf mit Beginn am 1. Juli 1994), jeder
-weitere entsteht Werktag für Werktag, und kein Bericht kennt einen
-Zeitraum "vor dem Betriebsbeginn". Eine vollständige Neugenerierung ist
-damit ein Neuaufsetzen (Abschnitt 8.5) und ein Lauf: rund eine
-Viertelstunde, davon der größte Teil die Monatsabschlüsse seit 1994.
+Der `betriebsbeginn` der Config ist der **erste Verkaufstag**: Der
+Stand beginnt leer, und jeder Vertrag der PLV entsteht Werktag für
+Werktag als eigener Zugang im Journal — die PLV hat ihre ganze
+Geschichte, ab dem 1. Juli 1994. Kein Bericht kennt einen Zeitraum "vor
+dem Betriebsbeginn". Eine vollständige Neugenerierung ist damit ein
+Neuaufsetzen (Abschnitt 8.5) und ein Lauf: rund eine Viertelstunde,
+davon der größte Teil die Monatsabschlüsse seit 1994.
+
+Bis zum 2026-09-21 stellte bis zum Betriebsbeginn ein Batch-Erzeuger den
+Bestand (`sample_size`, gezogen ohne Buchungen). Weil die PLV den
+Betriebsbeginn an den Anfang ihrer Geschichte setzt, lieferte er genau
+die Verträge des Grenztages — fünf, mit Beginn am 1. Juli 1994. Ein
+Bestand ohne Geschichte hat in einem Unternehmen, dessen Zweck die
+Nachrechenbarkeit ist, keinen Platz; der Erzeuger ist entfernt
+(ADR-020).
 
 ### 8.2a Der Betriebsbericht kennt keine Prognose
 

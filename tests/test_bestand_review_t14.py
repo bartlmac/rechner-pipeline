@@ -40,9 +40,9 @@ def _config():
 @pytest.fixture(scope="module")
 def lauf_klv_ursprung(_config):
     """Der erzeugte Basisbestand: lauter Ursprungszustaende, kein Journal."""
-    from rechner_pipeline.bestand.generator import generate
+    from tests.zugangsstrom import bestand_aus_zugangsstrom
 
-    return generate(_config), _config
+    return bestand_aus_zugangsstrom(_config), _config
 
 
 @pytest.fixture(scope="module")

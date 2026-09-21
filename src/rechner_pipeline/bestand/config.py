@@ -10,7 +10,7 @@ Layout (see ``configs/bestand_klv.toml``)::
 
     [meta]                      seed, beschreibung
     [[generation]]              tariff generation (validity window, produkt,
-                                zins, tafel(n), cost loadings, sample_size, ...)
+                                zins, tafel(n), cost loadings, neuzugang_pro_jahr, ...)
     [generation.verteilungen.<merkmal>]   distribution spec per attribute
     [[generation.korrelation]]  pairwise Spearman rank correlations
     [plausibilitaet]            value bands for the sanity gate
@@ -220,7 +220,6 @@ class TarifGeneration:
     name: str
     gueltig_von: _dt.date
     gueltig_bis: _dt.date
-    sample_size: int
     max_endalter: int
     #: Produkt der Generation (Kern-Registry-Kennung, vgl. PRODUKT_VALUES).
     #: "klv" = Kapitallebensversicherung (Default, Bestandsaufbau Stufe 1),
@@ -257,7 +256,7 @@ class TarifGeneration:
     stoab_je_baustein: bool = False
     red_verfahren: str = PROSPEKTIV
     #: Nummernkreis der Generation (Review T22-09): Die Police-Nummern
-    #: aller drei Erzeuger (Batch, Jahresneuzugang, Tagesneugeschaeft) und
+    #: beider Erzeuger (Jahresneuzugang, Tagesneugeschaeft) und
     #: ihre Seeds hingen an der POSITION der Generation in der Config —
     #: eine vorn eingefuegte oder umsortierte Generation aenderte die
     #: Identitaet jeder Police und damit jede Ereignishistorie. Der
@@ -401,14 +400,9 @@ class TarifGeneration:
                 f"{prefix}: gueltig_bis nach 2200 (Zeitachse: pandas-Timestamps "
                 "enden 2262; Vertragsenden muessen darstellbar bleiben)"
             )
-        if self.sample_size < 0:
-            errors.append(f"{prefix}: sample_size negativ")
-        # sample_size = 0 ist der UEBERNOMMENE Fall: Eine Generation, die
-        # aus einer Migration in den Bestand kommt, wird nicht erzeugt —
-        # ihre Vertraege liegen schon vor. Ihre Rechnungsgrundlagen
-        # braucht die Config trotzdem, sonst kann der Bericht sie nicht
-        # bewerten. Das Verbot der Null stammte aus der Zeit, in der jede
-        # Generation eine erzeugte war.
+        # Eine UEBERNOMMENE Generation (aus einer Migration) verkauft
+        # nichts: neuzugang_pro_jahr = 0. Ihre Rechnungsgrundlagen braucht
+        # die Config trotzdem, sonst kann der Bericht sie nicht bewerten.
         if not self.knoten:
             errors.append(
                 f"{prefix}: knoten fehlt — jede Generation traegt ihre "
@@ -427,11 +421,6 @@ class TarifGeneration:
                 f"{prefix}: knoten {self.knoten!r} hat die Wurzel "
                 f"{self.knoten.split('/', 1)[0]!r}, das Produkt ist aber "
                 f"{self.produkt!r} — die Knoten-Wurzel ist die Produktfamilie"
-            )
-        if self.sample_size > 1_000_000:
-            errors.append(
-                f"{prefix}: sample_size > 1_000_000 (police_id-Nummernkreis je "
-                "Generation ist 10 Mio; Obergrenze schuetzt vor Kollisionen)"
             )
         if not 0 <= self.neuzugang_pro_jahr <= 10_000:
             errors.append(f"{prefix}: neuzugang_pro_jahr ausserhalb [0, 10000]")
@@ -876,11 +865,10 @@ class Tagesbetrieb:
     """Der Tagesbetrieb der Vorzeige (Fachkonzept docs/simulation/tagesbetrieb.md).
 
     * ``betriebsbeginn``: der erste Kalendertag, an dem taeglich verkauft
-      wird. Der Basisbestand entsteht bis einschliesslich dieses Tages aus
-      dem Batch-Erzeuger (Beginn <= betriebsbeginn), danach bringt jeder
-      Werktag sein Neugeschaeft — ein Erzeuger je Zeitfenster, wie beim
-      Referenzstichtag der Fortschreibung. Ohne Angabe gibt es keinen
-      Tagesbetrieb; der Tageslauf bricht dann hart ab.
+      wird. Der Stand beginnt leer; ab diesem Tag bringt jeder Werktag sein
+      Neugeschaeft, und jeder Vertrag kommt als Zugang ins Journal — einen
+      gezogenen Anfangsbestand gibt es nicht mehr (ADR-020). Ohne Angabe
+      gibt es keinen Tagesbetrieb; der Tageslauf bricht dann hart ab.
     * ``wochentagsgewichte``: relatives Gewicht je Wochentag fuer die
       Verteilung des Jahresziels auf die Kalendertage (Abschnitt 4).
     * ``meldeverzug_tod``: Verteilung des Meldeverzugs bei Tod (Abschnitt 3).
@@ -1078,15 +1066,12 @@ class BestandConfig:
         Generation, deren Gueltigkeitsfenster ihn enthaelt — das ist nur
         eindeutig, wenn die Fenster verkaufender Generationen desselben
         Produkts nicht ueberlappen. Generationen, die nichts verkaufen
-        (uebernommene: ``sample_size = 0`` ohne Neuzugang), duerfen ihr
+        (uebernommene, ohne Neuzugang), duerfen ihr
         Fenster dagegen frei tragen — es beschreibt die Verkaufszeit beim
         abgebenden Unternehmen. KLV und BU ueberlappen selbstverstaendlich.
         """
         errors: List[str] = []
-        verkaufend = [
-            g for g in self.generationen
-            if g.sample_size > 0 or g.neuzugang_pro_jahr > 0
-        ]
+        verkaufend = [g for g in self.generationen if g.neuzugang_pro_jahr > 0]
         je_produkt: Dict[str, List[TarifGeneration]] = {}
         for gen in verkaufend:
             je_produkt.setdefault(gen.produkt, []).append(gen)
@@ -1226,12 +1211,20 @@ def config_aus_text(text: str) -> BestandConfig:
             )
             for z in g.get("zelle", [])
         ]
+        # ``sample_size`` gibt es seit ADR-020 nicht mehr (der Bestand
+        # entsteht aus dem Zugangsstrom). Der Schluessel wird beim Lesen
+        # VERWORFEN, nicht abgewiesen: Eine Fall-Config ist eine
+        # hashgebundene P-B1-Eingangsrolle, ihre Bytes haengen an
+        # gezeichneten Abnahmen. Ein harter Fehler haette jeden bereits
+        # gezeichneten Fall unlesbar gemacht und A-M4 nicht mehr
+        # nachrechenbar. Das ist die eine Ausnahme von der
+        # Fail-fast-Regel, und sie ist benannt: ein toter Schluessel, den
+        # niemand mehr schreibt, kein stiller Umgang mit lebender Semantik.
         generationen.append(
             TarifGeneration(
                 name=str(g.get("name", "")),
                 gueltig_von=_to_date(g.get("gueltig_von"), "gueltig_von", errors),
                 gueltig_bis=_to_date(g.get("gueltig_bis"), "gueltig_bis", errors),
-                sample_size=int(g.get("sample_size", 0)),
                 max_endalter=int(g.get("max_endalter", 85)),
                 produkt=str(g.get("produkt", "klv")),
                 knoten=str(g.get("knoten", "")),

@@ -46,7 +46,7 @@ def lauf(tmp_path_factory) -> Path:
     """Ein echter Lauf ueber die CLI — so, wie er auf der Platte landet."""
     ziel = tmp_path_factory.mktemp("lauf")
     assert cli_fortschreibung.main([
-        "--config", str(CONFIG), "--bis", HORIZONT.isoformat(),
+        "--config", str(CONFIG), "--neuzugang-ab", "1994-07-01", "--bis", HORIZONT.isoformat(),
         "--out-dir", str(ziel),
     ]) == 0
     return ziel
@@ -78,7 +78,9 @@ def test_der_lauf_schreibt_sein_manifest_ueber_die_geschriebenen_bytes(lauf):
     manifest = lies_manifest(lauf)
 
     assert manifest["horizont"] == HORIZONT.isoformat()
-    assert manifest["neuzugang_ab"] is None
+    # ADR-020: der Bestand entsteht aus dem Zugangsstrom, der Lauf traegt
+    # deshalb seinen ersten Verkaufstag als neuzugang_ab.
+    assert manifest["neuzugang_ab"] == "1994-07-01"
     assert manifest["config"]["sha256"] == _sha(CONFIG)
     # Unabhaengige Kontrollrechnung: jede Ausgabe, jede Summe.
     erwartet = {
@@ -95,7 +97,7 @@ def test_das_manifest_ist_deterministisch(lauf, tmp_path):
     """Wie die Parquet-Ausgaben: derselbe Lauf, dieselben Bytes."""
     zweit = tmp_path / "zweit"
     assert cli_fortschreibung.main([
-        "--config", str(CONFIG), "--bis", HORIZONT.isoformat(),
+        "--config", str(CONFIG), "--neuzugang-ab", "1994-07-01", "--bis", HORIZONT.isoformat(),
         "--out-dir", str(zweit),
     ]) == 0
     assert (zweit / MANIFEST_DATEI).read_bytes() == (lauf / MANIFEST_DATEI).read_bytes()
@@ -133,7 +135,7 @@ def test_datei_aus_anderem_lauf_faellt_auf(lauf, tmp_path, capsys):
     einem ANDEREN Lauf (gleiche Config, anderer Horizont) im Bundle."""
     anderer = tmp_path / "anderer"
     assert cli_fortschreibung.main([
-        "--config", str(CONFIG), "--bis", "2022-01-01", "--out-dir", str(anderer),
+        "--config", str(CONFIG), "--neuzugang-ab", "1994-07-01", "--bis", "2022-01-01", "--out-dir", str(anderer),
     ]) == 0
     lauf_dir = _kopie(lauf, tmp_path)
     shutil.copy(anderer / "scheiben.parquet", lauf_dir / "scheiben.parquet")

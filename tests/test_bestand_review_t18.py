@@ -48,7 +48,7 @@ STICHTAG = _dt.date(2016, 1, 1)
 def lauf(tmp_path_factory) -> Path:
     ziel = tmp_path_factory.mktemp("lauf")
     assert cli_fortschreibung.main([
-        "--config", str(CONFIG), "--bis", HORIZONT.isoformat(),
+        "--config", str(CONFIG), "--neuzugang-ab", "1994-07-01", "--bis", HORIZONT.isoformat(),
         "--out-dir", str(ziel),
     ]) == 0
     return ziel

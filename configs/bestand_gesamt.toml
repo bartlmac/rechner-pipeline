@@ -34,14 +34,12 @@ nummernkreis = 1  # Police-Nummern 1 * 10 Mio + ..; Eigenschaft der Generation, 
 knoten = "klv/plv_1994"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 1994-07-01
 gueltig_bis = 2000-06-30
-sample_size = 600
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 100
 max_endalter = 85
 zins = 0.04
@@ -114,14 +112,12 @@ nummernkreis = 2  # Police-Nummern 2 * 10 Mio + ..; Eigenschaft der Generation, 
 knoten = "klv/plv_2000"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2000-07-01
 gueltig_bis = 2003-12-31
-sample_size = 280
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 80
 max_endalter = 85
 zins = 0.0325
@@ -189,14 +185,12 @@ nummernkreis = 3  # Police-Nummern 3 * 10 Mio + ..; Eigenschaft der Generation, 
 knoten = "klv/plv_2004"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2004-01-01
 gueltig_bis = 2006-12-31
-sample_size = 260
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 87
 max_endalter = 85
 zins = 0.0275
@@ -264,14 +258,12 @@ nummernkreis = 4  # Police-Nummern 4 * 10 Mio + ..; Eigenschaft der Generation, 
 knoten = "klv/plv_2007"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2007-01-01
 gueltig_bis = 2007-12-31
-sample_size = 70
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 70
 max_endalter = 85
 zins = 0.0225
@@ -339,14 +331,12 @@ nummernkreis = 5  # Police-Nummern 5 * 10 Mio + ..; Eigenschaft der Generation, 
 knoten = "klv/plv_2008"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2008-01-01
 gueltig_bis = 2011-12-31
-sample_size = 300
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 75
 max_endalter = 85
 zins = 0.0225
@@ -414,14 +404,12 @@ nummernkreis = 6  # Police-Nummern 6 * 10 Mio + ..; Eigenschaft der Generation, 
 knoten = "klv/plv_2012"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2012-01-01
 gueltig_bis = 2014-12-31
-sample_size = 240
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 80
 max_endalter = 85
 zins = 0.0175
@@ -489,14 +477,12 @@ nummernkreis = 7  # Police-Nummern 7 * 10 Mio + ..; Eigenschaft der Generation, 
 knoten = "klv/plv_2015"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2015-01-01
 gueltig_bis = 2016-12-31
-sample_size = 180
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 90
 max_endalter = 85
 zins = 0.0125
@@ -564,14 +550,12 @@ nummernkreis = 8  # Police-Nummern 8 * 10 Mio + ..; Eigenschaft der Generation, 
 knoten = "klv/plv_2017"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2017-01-01
 gueltig_bis = 2021-12-31
-sample_size = 250
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 50
 max_endalter = 85
 zins = 0.009
@@ -641,14 +625,12 @@ nummernkreis = 9  # Police-Nummern 9 * 10 Mio + ..; Eigenschaft der Generation, 
 knoten = "klv/plv_2022"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2022-01-01
 gueltig_bis = 2024-12-31
-sample_size = 150
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 50
 max_endalter = 85
 zins = 0.0025
@@ -722,11 +704,6 @@ nummernkreis = 10  # Police-Nummern 10 * 10 Mio + ..; Eigenschaft der Generation
 knoten = "klv/plv_2025"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2025-01-01
 gueltig_bis = 2035-12-31
-# Batch-Dichte wie das Jahresziel (120 je Jahr ueber elf Fensterjahre),
-# damit der Bestand am Betriebsbeginn keinen Sprung zeigt: Der Batch
-# besiedelt das Fenster nur bis zum Betriebsbeginn (Beginn <= 2026-01-01),
-# danach verkauft der Tagesbetrieb Werktag fuer Werktag.
-sample_size = 1320
 # Jahresziel des Neugeschaefts und sein Trend (Fachkonzept Abschnitt 4):
 # Ziel des Jahres J = neuzugang_pro_jahr * (1 + neuzugang_trend)^(J - 2025).
 # Im Tagesbetrieb wird das Ziel wochentagsgewichtet auf die Werktage
@@ -800,14 +777,12 @@ knoten = "bu/plv_2000"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2000-01-01
 gueltig_bis = 2016-12-31
-sample_size = 500
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 29
 # Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
 # fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
@@ -874,14 +849,12 @@ gueltig_von = 2017-01-01
 gueltig_bis = 2024-12-31
 # 30 je Jahr ueber acht Fensterjahre — dieselbe Dichte wie der bisherige
 # Jahressatz des GeVo-Stroms.
-sample_size = 240
 # Jahresziel des Neugeschaefts, konstant ueber das Verkaufsfenster
-# (kein Trend): dieselbe Dichte, die der Batch zieht — sample_size ueber
-# die Fensterjahre. Liegt die Erzeugungsgrenze (betriebsbeginn) am Anfang
-# der Unternehmensgeschichte, zieht der Batch nur den Grenztag selbst und
-# der Tagesstrom
-# baut den Bestand Werktag fuer Werktag auf; liegt sie spaeter, tut es
-# der Batch bis dorthin. Beide Wege ergeben denselben Bestand.
+# (kein Trend). Im Tagesbetrieb verteilt es sich mit den
+# Wochentagsgewichten auf die Werktage ab betriebsbeginn, in der
+# Pruefstrecke (cli_fortschreibung --neuzugang-ab) auf die Monatsersten
+# des Kalenderjahres. Jeder Vertrag kommt als Zugang ins Journal; einen
+# gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 30
 # Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
 # fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
@@ -948,9 +921,6 @@ knoten = "bu/plv_2025"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2025-01-01
 gueltig_bis = 2035-12-31
-# Batch-Dichte wie das Jahresziel (30 je Jahr ueber elf Fensterjahre);
-# der Batch besiedelt nur bis zum Betriebsbeginn, danach der Tagesbetrieb.
-sample_size = 330
 # Jahresziel und Trend wie bei KLV-2025 erklaert.
 neuzugang_pro_jahr = 30
 neuzugang_trend = -0.03
@@ -1007,7 +977,7 @@ rho = 0.30
 
 # --------------------------------------------------------------------------
 # Generation TG2015 (Baldrian Leben, Migrationsfall baldrian-klv-tg2015-lauf2):
-# UEBERNOMMENE Generation, sample_size = 0 und kein Neuzugang -- ihre 834
+# UEBERNOMMENE Generation ohne Neuzugang -- ihre 834
 # Vertraege kamen zum 2026-01-01 als Zugang in den Tagesbetrieb
 # (uebernahme/<fall>/ der Laufzeitumgebung, Konzept Abschnitt 6), keine
 # synthetische Erzeugung. Rechnungsgrundlagen aus der Spez des Falls in
@@ -1022,7 +992,6 @@ nummernkreis = 14  # Police-Nummern 14 * 10 Mio + ..; Eigenschaft der Generation
 knoten = "klv/tg2015"
 gueltig_von = 2015-01-01
 gueltig_bis = 2017-01-01
-sample_size = 0
 max_endalter = 90
 zins = 0.0125
 gamma3 = 0.0025
@@ -1039,9 +1008,9 @@ red_verfahren = "teilkuendigung"
 # nach Mitteilung, Inkassokosten Haus 0,01). Nicht abtippen, uebernehmen;
 # tests/test_bestand_config.py haelt den Block gegen die Spez-Fixture.
 
-# sample_size = 0 heisst: der Batch-Erzeuger legt NIE eine Zeile aus
-# diesen Verteilungen an (die Vertraege sind schon uebernommen). Sie sind
-# trotzdem Pflichtfelder der Config -- inert, nur zur Format-Erfuellung.
+# Ohne neuzugang_pro_jahr wird aus diesen Verteilungen NIE eine Zeile
+# gezogen (die Vertraege sind schon uebernommen). Sie sind trotzdem
+# Pflichtfelder der Config -- inert, nur zur Format-Erfuellung.
 [generation.verteilungen.entry_age]
 typ = "normal_trunc"
 mean = 40.0
@@ -1170,12 +1139,9 @@ ratzu_zw12 = 0.025
 # Tagesbetrieb der PLV (Fachkonzept docs/simulation/tagesbetrieb.md).
 #
 # betriebsbeginn: der erste Tag der Unternehmensgeschichte — seither wird
-# Werktag fuer Werktag verkauft. Er ist zugleich die ERZEUGUNGSGRENZE: Der
-# Batch-Erzeuger besiedelt die Verkaufsfenster nur bis zu diesem Tag
-# (Beginn <= betriebsbeginn), der Tagesstrom danach — ein Erzeuger je
-# Zeitfenster. Seit dem 1. Juli 1994 liegt die Grenze am Anfang: Der Batch
-# zieht nichts, der Bestand entsteht Tag fuer Tag aus dem Neugeschaeft, und
-# der Bericht kennt keinen Zeitraum "vor dem Betriebsbeginn" mehr. Der
+# Werktag fuer Werktag verkauft. Der Stand beginnt leer; der Bestand
+# entsteht Tag fuer Tag aus dem Neugeschaeft (ADR-020), und der Bericht
+# kennt keinen Zeitraum "vor dem Betriebsbeginn". Der
 # Zugang einer Uebernahme faellt nicht mehr mit ihm zusammen: Er darf
 # ueberall in der gefuehrten Zeit liegen (Baldrian: 2026-01-01).
 # wochentagsgewichte: kein Verkauf am Wochenende, etwas mehr am Montag,

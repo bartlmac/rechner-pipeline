@@ -18,7 +18,7 @@ from rechner_pipeline.bestand.auswertung import (
 )
 from rechner_pipeline.bestand.config import Annahme, Annahmen, load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.fuehrung import schnitt_am
 from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.models.bestand import STAMM_SPALTEN, model_point_kwargs
@@ -34,7 +34,7 @@ def config():
 
 @pytest.fixture(scope="module")
 def portfolio(config):
-    return generate(config)
+    return bestand_aus_zugangsstrom(config)
 
 
 @pytest.fixture(scope="module")

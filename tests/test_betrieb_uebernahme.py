@@ -272,10 +272,10 @@ def test_eingang_prueft_seine_form(tmp_path):
 
 
 def _kleine_config() -> str:
-    """Sechs Vertraege je Generation und die Erzeugungsgrenze am 1.1.2026:
-    die echte PLV beginnt 1994 und zieht ihren Bestand Tag fuer Tag."""
+    """Betriebsbeginn am 1.1.2026: das Unternehmen beginnt leer und baut
+    seinen Bestand Tag fuer Tag auf (ADR-020) — die echte PLV tut das seit
+    1994, die Testwelt nur ueber die Tage des Tests."""
     text = PLV.read_text(encoding="utf-8")
-    text = re.sub(r"^sample_size = [1-9]\d*$", "sample_size = 6", text, flags=re.M)
     return re.sub(r"^betriebsbeginn = .*$", "betriebsbeginn = 2026-01-01", text, flags=re.M)
 
 
@@ -431,7 +431,13 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     assert all(anzahl == "0" for name, anzahl in zeilen if name != "KLV-2017")
     gesamt = (ablage.berichte / "bestandsbericht_2026-02-01.html").read_text("utf-8")
     zeilen_gesamt = re.findall(r"<td>(KLV-\d{4}|BU-\d{4}|TG2015)</td>.*?<td class=\"num\">(\d+)</td></tr>", gesamt)
-    assert int(dict(zeilen_gesamt)["KLV-2017"]) > 3
+    # KLV-2017 verkauft nicht mehr (Fenster bis 2021): im Gesamtbestand
+    # stehen genau die drei uebernommenen, wie im Teilbestand. Der Gesamt-
+    # bericht ist MEHR als der Teilbestand, weil das eigene Geschaeft der
+    # aktuell verkaufenden Generation (KLV-2025) dazukommt — seit ADR-020
+    # entsteht es aus dem Tagesstrom ab Betriebsbeginn.
+    assert int(dict(zeilen_gesamt)["KLV-2017"]) == 3
+    assert int(dict(zeilen_gesamt).get("KLV-2025", "0")) > 0
     # Ohne den Schalter kein Teilbestand-Bericht:
     aus = Ablage(stand.parent / "aus")
     import shutil

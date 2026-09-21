@@ -211,7 +211,7 @@ def zellen_config(abschnitt: str, *, name: str, knoten: str) -> str:
         "referenzstichtag = 2026-01-01\n\n"
         f'[[generation]]\nname = "{name}"\nknoten = "{knoten}"\n'
         "gueltig_von = 2015-01-01\ngueltig_bis = 2016-12-31\n"
-        f"sample_size = 0\nmax_endalter = 85\n{gemeinsam}\n\n"
+        f"max_endalter = 85\n{gemeinsam}\n\n"
         "[generation.verteilungen.entry_age]\n"
         'typ = "normal_trunc"\nmean = 40.0\nsd = 12.0\nmin = 18.0\n'
         "max = 62.0\nround = 0\n\n"

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.bestand.config import load_config
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.fuehrung import derived_age, months_between, schnitt_am
 from rechner_pipeline.qa.bestand import auskunfts_invarianten
 
@@ -21,7 +21,7 @@ EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
 
 @pytest.fixture(scope="module")
 def portfolio():
-    return generate(load_config(EXAMPLE))
+    return bestand_aus_zugangsstrom(load_config(EXAMPLE))
 
 
 def test_months_between_full_months_only():
