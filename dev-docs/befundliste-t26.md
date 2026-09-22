@@ -861,6 +861,9 @@ Was sich aendert (Bauauftraege, in dieser Reihenfolge):
    dahinter (der naechste rechnende Vorfall konsumiert die Schicht in die
    Leistungsseite, soweit der Tarifplan nichts anderes festlegt) steht
    seit b88bfcb in 9.7 der Grundsatzdokumentation, je Vorfall mit Ziel.
+   Die Ausnahme vom „alle" — Tod vererbend (Leistung ist Anker, Schicht
+   verfaellt), Ablauf null — hat der Maintainer am 2026-09-22 bestaetigt:
+   bleibt wie in 9.7, kein Bauauftrag.
 3. Der Ausweg des Wachpostens (config.py:1055) wird zu „Faehigkeit fehlt —
    Bauauftrag", nie „Config anpassen"; der Kernkommentar „nicht
    vorgesehen" faellt mit 2. **Ausweg korrigiert: ff21da4.**
