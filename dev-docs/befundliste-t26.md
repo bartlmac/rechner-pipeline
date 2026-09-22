@@ -90,7 +90,7 @@ Abnahmegrenzen, Korrektur der Aussage im PR.
   regeneriert (models 7 -> 9 Module), Testgruppen konsistent.
 * **PR-Aussage**: `dev-docs/pr-text-dora-t26.md` — behauptet 16/16 mit
   Belegen und ausdruecklich KEINE Betriebsfreigabe (die folgt aus der
-  erneuten Pruefung des Gutachters); Annahme 6 offen fuer das Aktuariat.
+  erneuten Pruefung des Gutachters); alle sechs Annahmen bestaetigt.
 
 ## Der Massstabsunterschied — der eigentliche Punkt
 
@@ -247,7 +247,8 @@ zweite Runde.
    Korrekturtermin. Der Abzug wirkt proportional ueber den Rueckkaufswert
    der Grundscheibe allein ((1-f) x RKW_grund). Real sind Schichten
    Cent-Betraege (rho 1e-8); die Regel ist trotzdem als Regel
-   festzuhalten. **Zur Bestaetigung durch das Aktuariat.**
+   festzuhalten. **BESTAETIGT 2026-09-22 (Maintainer: "genau richtig
+   gebaut, die Annahme haette ich genauso bestaetigt").**
 
 ## Die Befunde im Einzelnen
 
@@ -856,7 +857,7 @@ Was sich aendert (Bauauftraege, in dieser Reihenfolge):
    TG2015 fuer Herabsetzungen — richtig so. **GEBAUT b637898:** Grund gekuendigt, Scheiben
    unveraendert (Zahlungspfad q = 0 == zustandsloser Kern, 1e-15),
    Auszahlung RKW_teilkuendigung gebucht und in P-B1 hergeleitet. Annahme 6
-   unten (Schicht in die Auszahlung) zur Bestaetigung.
+   unten (Schicht in die Auszahlung) — bestaetigt 2026-09-22.
 3. Der Ausweg des Wachpostens (config.py:1055) wird zu „Faehigkeit fehlt —
    Bauauftrag", nie „Config anpassen"; der Kernkommentar „nicht
    vorgesehen" faellt mit 2. **Ausweg korrigiert: ff21da4.**

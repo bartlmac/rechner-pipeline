@@ -20,8 +20,7 @@ Container, auf dem Host laeuft der Test).
 **Nicht behauptet.** Eine Betriebsfreigabe. Sie folgt aus der erneuten
 Pruefung des Gutachters, nicht aus dem Schliessen dieser Liste — sein
 Schlusssatz gilt weiter. Sechs fachliche Annahmen stehen angeschrieben
-(fuenf am 2026-09-22 vom Maintainer bestaetigt bzw. revidiert; Annahme 6
-offen fuer das Aktuariat, siehe unten).
+(alle sechs am 2026-09-22 vom Maintainer bestaetigt bzw. revidiert).
 
 ## Entscheide und Bauten vom 2026-09-22 (seit dem Stand vom Morgen des 20.09.)
 
@@ -45,7 +44,10 @@ offen fuer das Aktuariat, siehe unten).
   laeuft im produktiven Pfad (b637898) — Grund gekuendigt, Scheiben
   unveraendert, Auszahlung gebucht und in P-B1 hergeleitet; die
   Folgebewertung braucht keinen Sonderweg (Zahlungspfad mit q = 0 ==
-  zustandsloser Kern, 1e-15). Annahme 4 (Abweisung) ist damit revidiert.
+  zustandsloser Kern, 1e-15). Annahme 4 (Abweisung) ist damit revidiert;
+  Annahme 6 (die Korrekturschicht geht bei der Teilkuendigung vollstaendig
+  in die Auszahlung, Abzug proportional ueber den Rueckkaufswert der
+  Grundscheibe) hat der Maintainer am 2026-09-22 bestaetigt.
 * **Annahme 5 — streng.** Alle drei Pflichttabellen muessen vom
   Beleggraphen bezeugt sein; ein unbezeugter Ledger ist eine Luecke.
 * Im Branch, aber keine Gutachter-Befunde: ADR-019 (Suite parallel,
@@ -90,10 +92,6 @@ offen fuer das Aktuariat, siehe unten).
 
 ## Offen — benannt, nicht versteckt
 
-* Annahme 6: Bei der Teilkuendigung geht die Korrekturschicht
-  vollstaendig in die Auszahlung (Anwendung des Entscheids vom
-  2026-09-15). Zur Bestaetigung durch das Aktuariat; real sind
-  Schichten Cent-Betraege.
 * Der Betrieb prueft Signatur und Schluesselklasse, nicht die
   Zeichnungsordnung — bewusst (ADR-021).
 * Die Betriebsfreigabe — beim Gutachter.
