@@ -52,6 +52,9 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
    1e-8). Folgeauftrag: Fixture realistisch, nicht gebaut.
 3. **Die Teilkuendigung** — Tarifplan und Kernkommentar widersprechen sich.
    Steht bei T26-12.
+   **AUFGELOEST 2026-09-22: als Klasse** — Ratsche „Schalterwert ⊆
+   produktiv ausfuehrbar" bei der Freischaltung, Teilkuendigung als erster
+   Bauauftrag, Annahme 4 revidiert. Nichts gebaut; siehe T26-12.
 4. Die fuenf Annahmen im Abschnitt darunter.
 
 **Was noch zu bauen ist:** T26-10 (die Seite mischt bei gleichzeitigem
@@ -177,6 +180,9 @@ zweite Runde.
    Wege zu; ich habe den gewaehlt, der keine fachliche Entscheidung
    vorwegnimmt. Wenn die Fuehrung das Verfahren tatsaechlich fahren soll,
    ist das ein Bauauftrag und kein Fix.
+   **REVIDIERT 2026-09-22:** Die Abweisung bleibt nur Notausgang bis zum
+   Bau, sie ist keine Aufloesung. Aufloesung ist die Ratsche (Klasse) plus
+   die Teilkuendigung als Bauauftrag — siehe T26-12.
 5. **`bestand.parquet` MUSS vom Beleggraphen genannt sein**, die uebrigen
    Pflichttabellen werden geprueft, wenn der Graph sie nennt (T26-03). Ein
    aelterer P-B1-Ledger fuehrt Bestand und Historie, aber nicht jeden
@@ -747,6 +753,48 @@ Fuehrung die Teilkuendigung fahren koennen — dann ist es ein Bauauftrag
 Scheiben-Teilung) —, oder gilt der Kernkommentar, dann gehoert der
 Widerspruch aus dem Tarifplan entfernt. Bis dahin ist die Kombination
 abgewiesen und niemand faehrt versehentlich in den Abbruch.
+
+**AUFGELOEST 2026-09-22 (Maintainer) — als KLASSE, nicht als Einzelfall;
+nichts davon gebaut.** Die Frage „welcher Satz gilt" war falsch gestellt.
+Die Teilkuendigung ist das VERTRAGLICHE Verfahren der TG2015
+(Bedingungswerk Ziffer 6, A-M3-Befund des zweiten Laufs); nach der
+Uebernahme muss das Zielsystem die Vertraege nach ihrem Bedingungswerk
+fuehren. Das „nicht vorgesehen" im Kern war Unfertigkeit, kein Design;
+der Tarifplan (klv.md:165-175) ist der Vertrag und hat recht. Die Luecke
+ist heute nur latent (herabsetzung.a = 0.0 in beiden echten Configs).
+
+Die Klasse: Ein uebernommener Bestand bringt ein Tarifwerks-Merkmal mit,
+das der produktive Pfad nicht ausfuehren kann. Heute gibt es drei Mengen,
+zwei werden geprueft: (1) BEKANNT — config.py:436 prueft `red_verfahren
+in VERFAHREN` (drei Werte); (2) UEBERTRAGEN — `tarifwerk_fehler`
+(uebernahme.py:693) prueft Config == Uebernahmebeleg; (3) PRODUKTIV
+AUSFUEHRBAR — `reduziere_geschichtet` kann nur zwei der drei, und NIEMAND
+prueft Config ⊆ ausfuehrbar. Durch dieses Loch fiel die Teilkuendigung;
+durch dasselbe faellt jeder kuenftige Schalterwert, den das Zielsystem
+nicht kann. Der Wachposten oben kennt genau EIN Merkmal, und sein Ausweg
+(„red_verfahren umstellen") ist falsch: Er hiesse, migrierte Vertraege
+nach einem Verfahren zu fuehren, das nicht ihres ist.
+
+Was sich aendert (Bauauftraege, in dieser Reihenfolge):
+
+1. **Ratsche (die Klasse):** je Schalter EINE Deklaration dessen, was der
+   produktive Pfad ausfuehrt; bei Freischaltung/Config-Validierung die
+   Pruefung „jeder Schalterwert jeder uebernommenen Generation ist
+   ausfuehrbar, sonst Migration blockiert mit benanntem Bauauftrag"; ein
+   Test, dass die Deklaration zum Code passt. Generisch — faengt das
+   naechste Merkmal ohne neuen Wachposten.
+2. **Teilkuendigung im produktiven Pfad** (die erste Instanz, die die
+   Ratsche anzeigt): eigener Zweig fuer den Grundvertrag ohne
+   Scheiben-Teilung, Spezifikation aus Bedingungswerk Ziffer 6 /
+   A-M3-Befund, mit aktuarieller Abnahme. Bis dahin blockiert die Ratsche
+   TG2015 fuer Herabsetzungen — richtig so.
+3. Der Ausweg des Wachpostens (config.py:1055) wird zu „Faehigkeit fehlt —
+   Bauauftrag", nie „Config anpassen"; der Kernkommentar „nicht
+   vorgesehen" faellt mit 2.
+
+Entdecken bleibt Aufgabe von A-M1/2/3 (Quelle gegen Ziel auf echten
+Vertraegen — so wurde die Teilkuendigung gefunden); Erzwingen macht die
+Ratsche. Zusammen ist die Klasse zu.
 
 **Reichweite heute:** Die unveraenderte PLV-Config hat Rate und `red_anteil`
 null; kein aktueller Ausfall. Der Schalter ist aber erlaubt, und wer ihn
