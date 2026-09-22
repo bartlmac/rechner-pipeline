@@ -64,6 +64,34 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
 Tageslauf zwei Generationen). Dazu Block 5 des Gutachters — erneute Verifikation, volle
 Suite in der Linux-Referenzumgebung, und die Korrektur der Aussage im PR.
 
+## Block 5 — erneute Verifikation (2026-09-22, Stand a68fa63)
+
+Der Gutachter verlangt als letzten Block: volle Suite in der
+Linux-Referenzumgebung, gezielte Gegenproben an den Commit-/Lese-/
+Abnahmegrenzen, Korrektur der Aussage im PR.
+
+* **Host** (Debian, CPython 3.11, `-n 12 --dist loadfile`): 2401 passed,
+  0 skipped, 2:22.
+* **Container-Referenzumgebung** (`docker build -f deploy/dev/Dockerfile`,
+  `docker run --rm -v "$PWD":/workspace rechner-pipeline-dev`, also der
+  dokumentierte serielle Aufruf, auf dem Arbeitsbaum): 2400 passed, 1 skipped in 786.42s (0:13:06), Exit 0
+  (13:06). 2400 + 1 = 2401 — dieselbe Sammlung; der Skip ist
+  umgebungsinhaerent (`tests/test_quellsystem_dokumente.py`: Docker fuer
+  die Doku-Engine fehlt im Container, auf dem Host laeuft der Test).
+  Benannte Falle fuer den naechsten: Ein erster Lauf auf einem
+  git-WORKTREE zeigte zwei Fehler — `.git` ist dort eine Datei mit
+  Host-Pfad, im Container nicht lesbar (`git ls-files` Exit 128). Die
+  Referenz mountet den echten Baum.
+* **Gegenproben**: je Fix als Mutationsprobe gefahren und in der
+  Commit-Botschaft dokumentiert — Ratsche 3, Teilkuendigung 3,
+  Belegrollen/Zeichnung 4, Stichtags-/Verzoegerungs-Test 2, realistisches
+  Fixture 1; alle rot wie versprochen, alle Quellen zurueckgesetzt.
+* **Drift**: `code_index --tests` und `code_karte` befundfrei, Landkarte
+  regeneriert (models 7 -> 9 Module), Testgruppen konsistent.
+* **PR-Aussage**: `dev-docs/pr-text-dora-t26.md` — behauptet 16/16 mit
+  Belegen und ausdruecklich KEINE Betriebsfreigabe (die folgt aus der
+  erneuten Pruefung des Gutachters); Annahme 6 offen fuer das Aktuariat.
+
 ## Der Massstabsunterschied — der eigentliche Punkt
 
 Wir haben einen Befund geschlossen, wenn der GEMELDETE FALL behoben war. Der
