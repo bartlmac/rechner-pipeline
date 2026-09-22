@@ -142,7 +142,7 @@ def test_ohne_uebernommenen_stand_gibt_es_keine_seite(tmp_path):
 
 def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
     """Wie die Fall-Seite: Rolle und Entscheider aus dem Snapshot, die
-    Schluesselklasse eines Altsnapshots (Schema 6) als "nicht ausgewiesen"."""
+    Schluesselklasse der Zeichnung (Schema 7, seit dem Ausbau der Zeichnungsschicht)."""
     import sys
 
     sys.path.insert(0, str(REPO_ROOT / "tests"))
@@ -156,9 +156,9 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
     ziel = ueb.eingang_anlegen(tmp_path / "daten", fall, dt.date(2026, 1, 1))
     eingang = json.loads((ziel / "eingang.json").read_text("utf-8"))
     z = eingang["zeichnung"]
-    assert z["rolle"] == "mensch" and z["entscheider"] == "Verantwortlicher Aktuar"
-    assert z["schluesselklasse"] == "nicht ausgewiesen" and z["schema_version"] == 6
-    assert z["schluessel_sha256"] == "cd" * 8 and z["signatur_verifiziert"] is False
+    assert z["rolle"] == "mensch/aktuar" and z["entscheider"] == "Verantwortlicher Aktuar"
+    assert z["schluesselklasse"] == "mensch" and z["schema_version"] == 7
+    assert len(z["schluessel_sha256"]) == 16 and z["signatur_verifiziert"] is True
     gelesen = ueb.lies_uebernahmen(tmp_path / "daten" / "uebernahme",
                                    __import__("rechner_pipeline.bestand.config", fromlist=["load_config"]).load_config(PLV))
     assert gelesen[0].zeichnung == z
@@ -175,7 +175,7 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
         "uebernahmen": [{"fall": "probe", "stichtag": "2026-01-01", "vertraege": 3,
                          "snapshot_sha256": eingang["snapshot_sha256"], "zeichnung": z}],
     })
-    assert "<td>mensch</td><td>Verantwortlicher Aktuar</td><td>nicht ausgewiesen</td>" in html
+    assert "<td>mensch/aktuar</td><td>Verantwortlicher Aktuar</td><td>mensch</td>" in html
     assert "Signatur hier nicht verifiziert" in html
 
 

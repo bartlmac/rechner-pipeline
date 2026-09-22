@@ -97,6 +97,18 @@ from rechner_pipeline.gates._provenienz import (
     systemstand,
     zweig_ist_aktuell,
 )
+from rechner_pipeline.models.belegrollen import (
+    BelegrollenFehler,
+    am4_belegrollen,
+    belegrollen,
+)
+from rechner_pipeline.models.freigabe import (
+    FREIGABE_SCHLUESSEL_MIN_BYTES as _FREIGABE_SCHLUESSEL_MIN_BYTES,
+    freigabe_fuer,
+    lade_schluesselring,
+    pruefe_freigabe,
+)
+from rechner_pipeline.models.freigabe import _ist_unter as _models_ist_unter
 from rechner_pipeline.models.schemas import (
     GateLedgerEntry,
     P9_AKTUARIELLE_ABNAHMEN,
@@ -139,7 +151,7 @@ CLI_CONTRACT = GateCliContract(
     decision_gate_choices=GUELTIGE_GATES,
     sensitive_options=("freigabe_schluessel",),
 )
-FREIGABE_SCHLUESSEL_MIN_BYTES = 32
+FREIGABE_SCHLUESSEL_MIN_BYTES = _FREIGABE_SCHLUESSEL_MIN_BYTES
 
 
 def _sha256_datei(pfad: Path) -> str:
@@ -151,98 +163,26 @@ def _sha256_datei(pfad: Path) -> str:
 
 
 def _ist_unter(pfad: Path, wurzel: Path) -> bool:
-    try:
-        pfad.relative_to(wurzel)
-    except ValueError:
-        return False
-    return True
+    return _models_ist_unter(pfad, wurzel)
 
 
 def _lade_freigabe_schluessel(
     pfade: object,
     fall: Path,
 ) -> Tuple[Dict[str, bytes], List[str], Optional[str]]:
-    """Load an external HMAC keyring; the last key authorizes new decisions.
-
-    Key bytes are deliberately never returned in a result, ledger, snapshot or
-    error.  A path inside the freely editable case would make the signature a
-    self-assertion and is therefore rejected even when it is a symlink whose
-    resolved target happens to be outside the case.
-    """
-    if pfade is None:
-        liste: List[str] = []
-    elif isinstance(pfade, str):
-        liste = [pfade]
-    elif isinstance(pfade, list) and all(isinstance(p, str) for p in pfade):
-        liste = pfade
-    else:
-        return {}, ["--freigabe-schluessel muss ein Pfad oder eine Pfadliste sein"], None
-
-    ring: Dict[str, bytes] = {}
-    aktiv: Optional[str] = None
-    fehler: List[str] = []
-    fall_resolved = fall.resolve()
-    for raw in liste:
-        angegeben = Path(raw)
-        absolut = angegeben if angegeben.is_absolute() else Path.cwd() / angegeben
-        # Sowohl der lexikalische als auch der aufgeloeste Ort muessen ausserhalb
-        # des Falls liegen; damit helfen Symlinks nicht ueber die Vertrauensgrenze.
-        try:
-            resolved = absolut.resolve(strict=True)
-        except OSError as exc:
-            fehler.append(f"Freigabeschluessel nicht lesbar ({raw!r}): {exc}")
-            continue
-        if _ist_unter(absolut.absolute(), fall_resolved) or _ist_unter(
-            resolved, fall_resolved
-        ):
-            fehler.append(
-                f"Freigabeschluessel {raw!r} liegt innerhalb des Falls; "
-                "menschliche Autorisierung muss extern verwahrt werden"
-            )
-            continue
-        if not resolved.is_file():
-            fehler.append(f"Freigabeschluessel ist keine regulaere Datei: {raw!r}")
-            continue
-        try:
-            key = resolved.read_bytes()
-        except OSError as exc:
-            fehler.append(f"Freigabeschluessel nicht lesbar ({raw!r}): {exc}")
-            continue
-        if not (FREIGABE_SCHLUESSEL_MIN_BYTES <= len(key) <= 4096):
-            fehler.append(
-                f"Freigabeschluessel {raw!r} muss zwischen "
-                f"{FREIGABE_SCHLUESSEL_MIN_BYTES} und 4096 Byte lang sein"
-            )
-            continue
-        if os.name != "nt":
-            dateistand = resolved.stat()
-            if dateistand.st_mode & 0o077:
-                fehler.append(
-                    f"Freigabeschluessel {raw!r} ist fuer Gruppe/Andere "
-                    "lesbar; Dateirechte auf 0600 begrenzen"
-                )
-                continue
-            if dateistand.st_nlink != 1:
-                fehler.append(
-                    f"Freigabeschluessel {raw!r} hat "
-                    f"{dateistand.st_nlink} Hardlinks; ein externer "
-                    "Schluessel darf nicht in den Fall gespiegelt sein"
-                )
-                continue
-        key_id = hashlib.sha256(key).hexdigest()
-        ring[key_id] = key
-        aktiv = key_id
-    return ring, fehler, aktiv
+    """Schluesselring laden — delegiert an ``models.freigabe`` (T26-03, Weg 2):
+    dieselbe Pruefung, die der Betriebseingang faehrt. Der Fall ist der
+    Vertrauensraum, in dem kein Schluessel liegen darf."""
+    ring, fehler, aktiv = lade_schluesselring(pfade, ausserhalb=fall)
+    return ring, [
+        f.replace("freigabe-schluessel muss", "--freigabe-schluessel muss")
+         .replace("innerhalb des Vertrauensraums (Fall bzw. Ablage)", "innerhalb des Falls")
+        for f in fehler
+    ], aktiv
 
 
 def _freigabe_fuer(snapshot_ohne_freigabe: dict, key: bytes) -> Dict[str, str]:
-    return {
-        "verfahren": P9_FREIGABE_VERFAHREN,
-        "schluessel_sha256": hashlib.sha256(key).hexdigest(),
-        "signatur": hmac.new(
-            key, p9_freigabe_nachricht(snapshot_ohne_freigabe), hashlib.sha256
-        ).hexdigest(),
-    }
+    return freigabe_fuer(snapshot_ohne_freigabe, key)
 
 
 #: Gates, die eine Zeichnungsordnung einer Rolle zuordnen kann. "*" heisst
@@ -296,24 +236,7 @@ def _zeichnungsfehler(
 
 
 def _pruefe_freigabe(snapshot: dict, schluesselring: Mapping[str, bytes]) -> List[str]:
-    if snapshot.get("entscheid") != "angenommen":
-        return []
-    freigabe = snapshot.get("freigabe")
-    if not isinstance(freigabe, dict):
-        return ["menschliche Annahme traegt keine Freigabesignatur"]
-    key_id = freigabe.get("schluessel_sha256")
-    key = schluesselring.get(key_id) if isinstance(key_id, str) else None
-    if key is None:
-        return [
-            "Freigabesignatur verwendet einen nicht bereitgestellten "
-            f"Schluessel ({key_id!r})"
-        ]
-    erwartet = hmac.new(
-        key, p9_freigabe_nachricht(snapshot), hashlib.sha256
-    ).hexdigest()
-    if not hmac.compare_digest(erwartet, str(freigabe.get("signatur", ""))):
-        return ["Freigabesignatur stimmt nicht mit dem Snapshot-Inhalt ueberein"]
-    return []
+    return pruefe_freigabe(snapshot, schluesselring)
 
 
 def _snapshot_dateiname(gate: str, snapshot_sha256: str) -> str:
@@ -911,13 +834,13 @@ def _pruefe_g2_snapshot_semantik(
         return []
     scope = snapshot.get("fall_scope")
     try:
-        erwartete_rollen = fall_mod.belegrollen(gate, scope)
-    except fall_mod.FallFehler as exc:
+        erwartete_rollen = belegrollen(gate, scope)
+    except BelegrollenFehler as exc:
         return [f"{gate}-Scope ist ungueltig: {exc}"]
     # Die Mechanik steht in models (p9_semantik_fehler) — dieselbe
-    # Funktion liest der Betriebseingang, der den Rollenvertrag nicht
-    # erreichen darf und deshalb ohne ``erwartete_rollen`` prueft
-    # (Befund T26-03). Zweimal geschrieben waeren es zwei Regeln.
+    # Funktion und derselbe Vertrag (models.belegrollen), die der
+    # Betriebseingang liest (T26-03, Weg 2). Zweimal geschrieben waeren
+    # es zwei Regeln.
     return p9_semantik_fehler(snapshot, erwartete_rollen=erwartete_rollen)
 
 
@@ -1772,7 +1695,7 @@ def main(argv: Optional[List[str]] = None):
         try:
             fall_scope, fall_json_sha256 = fall_mod.lade_scope_gehasht(fall)
             bekannte_hashes["fall.json"] = fall_json_sha256
-        except fall_mod.FallFehler as exc:
+        except (fall_mod.FallFehler, BelegrollenFehler) as exc:
             return _sperre(
                 "fall_scope",
                 f"{args.gate} verweigert: Fall-Scope ist nicht "
@@ -2197,7 +2120,7 @@ def main(argv: Optional[List[str]] = None):
                 pflichtbelege[f"{beleg_rolle}_bericht"] = [
                     erwartete_belege[f"abgeleitet/berichte/{kennung}.html"]
                 ]
-            erwartete_rollen = fall_mod.belegrollen(
+            erwartete_rollen = belegrollen(
                 abnahme, fall_scope or ""
             )
             if set(pflichtbelege) != set(erwartete_rollen):
@@ -2492,7 +2415,7 @@ def main(argv: Optional[List[str]] = None):
                 for rolle, beleg_sha256 in bestandsbelege.items():
                     pflichtbelege[rolle] = [beleg_sha256]
 
-            erwartete_rollen = fall_mod.am4_belegrollen(fall_scope or "")
+            erwartete_rollen = am4_belegrollen(fall_scope or "")
             if set(pflichtbelege) != set(erwartete_rollen):
                 fehlende_rollen = sorted(set(erwartete_rollen) - set(pflichtbelege))
                 fremde_rollen = sorted(set(pflichtbelege) - set(erwartete_rollen))

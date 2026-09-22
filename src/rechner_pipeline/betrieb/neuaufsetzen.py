@@ -46,7 +46,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.manifest import sha256_bytes
@@ -79,6 +79,7 @@ def neu_aufsetzen(
     config: Optional[Path] = None,
     archiv: Optional[Path] = None,
     jetzt: Optional[_dt.datetime] = None,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
 ) -> Dict[str, Any]:
     """Die Laufzeitumgebung ``stand`` aus dem Fall ``fall`` neu aufsetzen.
 
@@ -102,6 +103,7 @@ def neu_aufsetzen(
         with lauf_sperre(alt):
             return _neu_aufsetzen_unter_sperre(
                 stand, fall, stichtag, alt, config=config, archiv=archiv, jetzt=jetzt,
+                schluesselring=schluesselring,
             )
     except TageslaufError as exc:
         raise NeuaufsetzenError(
@@ -119,6 +121,7 @@ def _neu_aufsetzen_unter_sperre(
     config: Optional[Path],
     archiv: Optional[Path],
     jetzt: Optional[_dt.datetime],
+    schluesselring: Optional[Mapping[str, bytes]] = None,
 ) -> Dict[str, Any]:
     config_quelle = Path(config) if config is not None else alt.config_pfad
     if not config_quelle.is_file():
@@ -159,7 +162,7 @@ def _neu_aufsetzen_unter_sperre(
     neu = Ablage(neu_pfad)
     neu.configs.mkdir(parents=True)
     neu.config_pfad.write_bytes(config_bytes)
-    eingang = eingang_anlegen(neu_pfad, fall, stichtag)
+    eingang = eingang_anlegen(neu_pfad, fall, stichtag, schluesselring=schluesselring)
     # Der neue Eingang muss lesbar sein, BEVOR die alte Ablage bewegt wird:
     # dieselbe Pruefung, die der Tageslauf bei der Erstbefuellung macht.
     try:
@@ -211,17 +214,29 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--stichtag", required=True, help="Zugangsstichtag (ISO-Datum).")
     parser.add_argument("--config", default=None, help="Config der neuen Ablage (Standard: die der bestehenden).")
     parser.add_argument("--archiv", default=None, help="Archivziel der alten Ablage (Standard: <stand>.archiv-<zeit>).")
+    parser.add_argument("--freigabe-schluessel", action="append", default=None,
+                        help="Pfad eines Freigabeschluessels (mehrfach moeglich), ausserhalb des Falls; "
+                             "prueft die Signatur des A-M4-Snapshots beim Anlegen des Eingangs.")
     ns = parser.parse_args(argv)
     try:
         stichtag = _dt.date.fromisoformat(ns.stichtag)
     except ValueError as exc:
         print(f"neuaufsetzen: --stichtag: {exc}", file=sys.stderr)
         return 2
+    ring: Optional[Mapping[str, bytes]] = None
+    if ns.freigabe_schluessel:
+        from rechner_pipeline.models.freigabe import lade_schluesselring
+        ring, ring_fehler, _aktiv = lade_schluesselring(
+            list(ns.freigabe_schluessel), ausserhalb=Path(ns.fall))
+        if ring_fehler:
+            print("neuaufsetzen: " + "; ".join(ring_fehler), file=sys.stderr)
+            return 2
     try:
         provenienz = neu_aufsetzen(
             Path(ns.stand), Path(ns.fall), stichtag,
             config=Path(ns.config) if ns.config else None,
             archiv=Path(ns.archiv) if ns.archiv else None,
+            schluesselring=ring,
         )
     except (NeuaufsetzenError, UebernahmeError, ValueError) as exc:
         print(f"neuaufsetzen: {exc}", file=sys.stderr)

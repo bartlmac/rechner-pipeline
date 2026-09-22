@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.fall import anlegen, belegrollen, registrieren
+from rechner_pipeline.fall import anlegen, registrieren
+from rechner_pipeline.models.belegrollen import belegrollen
 from rechner_pipeline.gates.abox_merge import main as merge_cli
 from rechner_pipeline.gates.abox_validate import main as pq3
 from rechner_pipeline.gates.gate_entscheid import (

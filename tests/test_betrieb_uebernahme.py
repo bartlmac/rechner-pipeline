@@ -14,6 +14,7 @@ Knoten: system/betrieb
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -92,35 +93,57 @@ def _zugangsstand(ziel: Path) -> None:
 
 def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                  entscheid: str = "angenommen",
-                 pb1_ledger_sha: str = "ab" * 32) -> dict:
-    """Ein strukturell gueltiger P9-Snapshot (Schema 6, Selbsthash), wie ihn
-    das Gate schreibt — die Signatur ist erfunden, sie prueft hier niemand.
-    (Schema 7 mit Schluesselklasse kommt mit dem Architektur-Strang.)"""
-    from rechner_pipeline.models.schemas import p9_snapshot_sha256
+                 pb1_ledger_sha: str = "ab" * 32,
+                 rollen: "tuple[str, ...] | None" = None,
+                 schema: int = 7,
+                 schluessel: "bytes | None" = None) -> dict:
+    """Ein gueltiger P9-Snapshot, wie ihn das Gate schreibt — Schema 7 mit
+    Zeichnung (Rolle, Schluesselklasse), EXAKT den Pflichtrollen seines
+    Scopes und einer ECHTEN Freigabesignatur (Testschluessel; conftest
+    reicht den Ring an den Betriebseingang). Nur ``pb1_ledger`` zeigt auf
+    einen echten Beleg (er bindet die Tabellen, T26-03); die uebrigen
+    Rollen tragen Platzhalter-Hashes, fuer die der Beleggraph nichts
+    findet — im echten Fall schreibt das Gate sie, hier buergt die
+    Signatur. ``rollen`` ueberschreibt die Rollenmenge (DoRAs Fall: nur
+    pb1_ledger), ``schema=6`` baut einen Altsnapshot ohne Klasse.
+    """
+    from rechner_pipeline.models.belegrollen import am4_belegrollen
+    from rechner_pipeline.models.freigabe import freigabe_fuer
+    from rechner_pipeline.models.schemas import P9_GATE_VERSION, p9_snapshot_sha256
+    from tests.freigabe_testschluessel import TESTKEY
 
+    scope = "bestand"
+    alle = list(rollen) if rollen is not None else (am4_belegrollen(scope) if gate == "A-M4" else ["pb1_ledger"])
+    gen_beleg = hashlib.sha256(b"pk1:klv/plv_2017").hexdigest()
+    pflichtbelege = {}
+    for rolle in alle:
+        if rolle == "pb1_ledger":
+            pflichtbelege[rolle] = [pb1_ledger_sha]
+        elif rolle == "pk1_belege":
+            pflichtbelege[rolle] = [gen_beleg]
+        else:
+            pflichtbelege[rolle] = [hashlib.sha256(rolle.encode()).hexdigest()]
+    rolle_id = "mensch" if schema == 6 else "mensch/aktuar"
     daten = {
-        "schema_version": 6, "command": "gate_entscheid", "gate_version": "0.6.0",
+        "schema_version": schema, "command": "gate_entscheid",
+        "gate_version": "0.6.0" if schema == 6 else P9_GATE_VERSION,
         "gate": gate, "entscheid": entscheid, "entscheider": "Verantwortlicher Aktuar",
-        "rolle": "mensch", "begruendung": "Controlling bestanden",
+        "rolle": rolle_id, "begruendung": "Controlling bestanden",
         "fall": fall_name,
         "artefakt_hashes": {"eingang.json": "ab" * 32,
                             "abgeleitet/abox/abox.json": "cd" * 32},
         "system": {"branch": "main", "commit": "abc1234", "dirty": "nein",
                    "quellcode_sha256": "ef" * 32},
         "vorgaenger": [], "entschieden_am": "2026-01-01T10:00:00+00:00",
-        "fall_scope": "bestand",
-        # Der Pflichtbeleg zeigt auf einen ECHTEN P-B1-Ledger im Fall
-        # (T26-03): Ueber ihn bindet der Betriebseingang die Tabellen, die
-        # er uebernimmt, an das, was die Abnahme gesehen hat.
-        "pflichtbelege": {"pb1_ledger": [pb1_ledger_sha]},
-        "zeichnung": {"rolle": "mensch", "ordnung_sha256": "cd" * 32},
-        "freigabe": {"schluessel_sha256": "cd" * 32, "signatur": "ef" * 32,
-                     "verfahren": "hmac-sha256-v1"},
+        "fall_scope": scope,
+        "pflichtbelege": pflichtbelege,
     }
+    daten["zeichnung"] = ({"rolle": rolle_id, "ordnung_sha256": "cd" * 32} if schema == 6
+                          else {"rolle": rolle_id, "ordnung_sha256": "cd" * 32, "schluesselklasse": "mensch"})
     if gate == "A-M4":
-        daten["pk1_belege"] = {}
-    if entscheid != "angenommen":
-        del daten["freigabe"]          # nur Annahmen tragen eine Freigabe
+        daten["pk1_belege"] = {"klv/plv_2017": [gen_beleg]} if "pk1_belege" in pflichtbelege else {}   # Schluessel: familie/generation
+    if entscheid == "angenommen":
+        daten["freigabe"] = freigabe_fuer(daten, schluessel or TESTKEY)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
     return daten
 
@@ -221,9 +244,9 @@ def test_eingang_wird_registriert_und_ist_unantastbar(eingang):
     # sich nicht mehr aus dem Namen allein nachbauen.
     assert daten["snapshot_sha256"] == _snapshot_sha(fall)
     # Schema 6 fuehrt keine Schluesselklasse — das steht dann so da.
-    assert daten["zeichnung"]["schluesselklasse"] == "nicht ausgewiesen"
-    assert daten["zeichnung"]["rolle"] == "mensch"
-    assert daten["zeichnung"]["signatur_verifiziert"] is False
+    assert daten["zeichnung"]["schluesselklasse"] == "mensch"   # Schema 7
+    assert daten["zeichnung"]["rolle"] == "mensch/aktuar"   # Rollen-Id mit Ebene (ADR-018)
+    assert daten["zeichnung"]["signatur_verifiziert"] is True   # mit dem Testring geprueft
     # Seit Review T24-08 traegt der Eingang die Uebersetzungstabelle mit:
     # Das Zielsystem vergibt eigene Policennummern, und ohne die Tabelle
     # waere eine Rueckfrage an die Quelle nicht beantwortbar.
@@ -366,9 +389,9 @@ def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
     # Der Fall des Fixtures traegt einen strukturell geprueften A-M4-Snapshot
     # (T22-06): Rolle aus dem Snapshot, Schluesselklasse in Schema 6 nicht
     # gefuehrt — benannt, nicht leer (B8); die Signatur prueft niemand.
-    assert u["zeichnung"]["rolle"] == "mensch"
-    assert u["zeichnung"]["schluesselklasse"] == "nicht ausgewiesen"
-    assert u["zeichnung"]["signatur_verifiziert"] is False
+    assert u["zeichnung"]["rolle"] == "mensch/aktuar"
+    assert u["zeichnung"]["schluesselklasse"] == "mensch"
+    assert u["zeichnung"]["signatur_verifiziert"] is True
     gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
     # Die uebernommenen Vertraege fuehrt der Betrieb unter SEINEN Nummern
     # (Review T24-08). Gefragt wird nicht nach Literalen, sondern ueber die
@@ -870,8 +893,19 @@ def _pk1_luege(fall: Path) -> None:
 
 
 def ueb_p9_sha(daten: dict) -> str:
+    """Einen MUTIERTEN Snapshot schliessen: nachsignieren (Testschluessel),
+    dann selbstadressieren — wie das Gate einen echten schliesst. Seit der
+    Betriebseingang die Freigabesignatur prueft (T26-03, Weg 2), faellt ein
+    nur neu adressierter Snapshot an der Signatur, bevor die Tabellenbindung
+    gelesen wird; die Manipulationslagen unten pruefen aber gerade die
+    Bindung. Wer eine KAPUTTE Signatur will, baut sie ausdruecklich
+    (tests/test_belegrollen_und_zeichnung_t2603.py)."""
+    from rechner_pipeline.models.freigabe import freigabe_fuer
     from rechner_pipeline.models.schemas import p9_snapshot_sha256
-
+    from tests.freigabe_testschluessel import TESTKEY
+    if daten.get("entscheid") == "angenommen":
+        ohne = {k: v for k, v in daten.items() if k not in ("freigabe", "snapshot_sha256")}
+        daten["freigabe"] = freigabe_fuer(ohne, TESTKEY)
     return p9_snapshot_sha256(daten)
 
 
@@ -1067,7 +1101,7 @@ def test_gleichnamige_tabellen_an_zwei_orten_sind_kein_widerspruch(tmp_path):
     # Eingang entsteht, gebunden an den Stand SEINES Pfades.
     ziel = ueb.eingang_anlegen(stand := tmp_path / "daten", fall, STICHTAG)
     assert ziel.is_dir()
-    snapshot, _ = ueb.lies_am4_snapshot(fall, _snapshot_sha(fall))
+    snapshot, _, _verifiziert = ueb.lies_am4_snapshot(fall, _snapshot_sha(fall))
     belegt = ueb.belegte_tabellen(fall, snapshot)
     quelle = fall / "abgeleitet" / "bestand"
     for datei in ("historie.parquet", "bestand.parquet", "ledger.parquet"):

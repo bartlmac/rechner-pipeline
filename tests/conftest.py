@@ -144,3 +144,26 @@ def pytest_collection_finish(session) -> None:
             + ", ".join(sorted(
                 {n for p in TESTS.glob("test_*.py") for n in _marker_namen(p)}))
         )
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _testschluesselring():
+    """Jede Registrierung im Testlauf prueft die Freigabesignatur mit dem
+    Testring (tests/freigabe_testschluessel.py) — die Naht
+    ``betrieb.uebernahme._STANDARD_SCHLUESSELRING``. Produktiv ist sie
+    None; dort kommt der Ring aus ``--freigabe-schluessel``.
+
+    SESSION-weit, nicht je Funktion: Modul-weite Fixtures (etwa
+    ``gefuehrt_mit_schicht`` in test_betrieb_drift_n01) registrieren ihren
+    Eingang, BEVOR eine funktionsweite Naht greift — der Eingang stuende
+    dann als "nicht verifiziert" da, und der Tageslauf verweigerte ihn,
+    genau wie entschieden. Tests, die den unverifizierten Zustand pruefen,
+    setzen die Naht per monkeypatch selbst auf None (funktionsweit,
+    darunter bleibt der Testring)."""
+    from rechner_pipeline.betrieb import uebernahme as _ueb
+    from tests.freigabe_testschluessel import TESTRING
+
+    vorher = _ueb._STANDARD_SCHLUESSELRING
+    _ueb._STANDARD_SCHLUESSELRING = TESTRING
+    yield
+    _ueb._STANDARD_SCHLUESSELRING = vorher

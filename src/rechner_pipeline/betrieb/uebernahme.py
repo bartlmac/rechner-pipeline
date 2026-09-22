@@ -25,6 +25,8 @@ Knoten: klv, bu
 
 from __future__ import annotations
 
+from typing import Mapping
+
 import contextlib
 import dataclasses
 import sys as _sys
@@ -170,6 +172,17 @@ def _nebentabellen_fehler_im(verzeichnis: Path) -> List[str]:
 #: Schluesselklasse; die Seite sagt dann "nicht ausgewiesen", wie die
 #: Fall-Seite.
 NICHT_AUSGEWIESEN = "nicht ausgewiesen"
+
+#: Der Schluesselring, mit dem ``eingang_anlegen`` eine Freigabesignatur
+#: prueft, wenn der Aufrufer keinen uebergibt. Produktiv bleibt er None —
+#: der Ring kommt aus ``--freigabe-schluessel`` der CLI und wird
+#: ausdruecklich uebergeben. Die Naht ist fuer Tests da (conftest setzt
+#: den Testschluessel), damit jede Registrierung im Testlauf verifiziert
+#: ist, ohne dass jede Aufrufstelle einen Ring tragen muss. Ohne Ring
+#: wird registriert mit ``signatur_verifiziert: False`` als benanntem
+#: Zustand — und ``lies_uebernahme`` nimmt so einen Eingang NICHT in die
+#: Fuehrung (zwei Zeugen, Entscheid 2026-09-22).
+_STANDARD_SCHLUESSELRING: Optional[Mapping[str, bytes]] = None
 
 
 def _umnummeriert(tabelle: pd.DataFrame, abbildung: Dict[int, int], name: str) -> pd.DataFrame:
@@ -412,12 +425,14 @@ def naechstes_band(uebernahme: Path, anzahl: int) -> Tuple[int, int]:
 def pruefe_am4_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str, Any]:
     """Die Zeichnungsangaben des geprueften Snapshots (siehe
     :func:`lies_am4_snapshot`)."""
-    return _zeichnung_aus_daten(*lies_am4_snapshot(fall, snapshot_sha256))
+    daten, name, verifiziert = lies_am4_snapshot(fall, snapshot_sha256)
+    return _zeichnung_aus_daten(daten, name, verifiziert=verifiziert)
 
 
 def lies_am4_snapshot(
-    fall: Path, snapshot_sha256: Optional[str]
-) -> Tuple[Dict[str, Any], str]:
+    fall: Path, snapshot_sha256: Optional[str], *,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
+) -> Tuple[Dict[str, Any], str, bool]:
     """Den A-M4-Snapshot einer Uebernahme pruefen, soweit es ohne Schluessel geht.
 
     Review T22-06: ``eingang_anlegen`` las irgendeinen 64-stelligen Wert aus
@@ -477,18 +492,32 @@ def lies_am4_snapshot(
     # Die FORM prueft das Schema; dass pflichtbelege['pk1_belege'] die
     # Generationen-Belegmenge ist, prueft niemand ausser dieser Stelle
     # und dem Gate — und beide ueber dieselbe Funktion in models.
-    semantik = p9_semantik_fehler(daten)
+    # Der Rollenvertrag (models.belegrollen, T26-03 Weg 2): Ein Snapshot,
+    # der nicht EXAKT die Pflichtrollen seines Scopes traegt — DoRAs
+    # Fall: eine einzige Rolle pb1_ledger — ist keine Abnahme. Bis zum
+    # Entscheid vom 2026-09-22 konnte der Betriebseingang das nicht
+    # pruefen; jetzt liest er denselben Vertrag wie das Gate.
+    from rechner_pipeline.models.belegrollen import BelegrollenFehler, belegrollen
+    try:
+        erwartete_rollen = belegrollen("A-M4", str(daten.get("fall_scope")))
+    except BelegrollenFehler as exc:
+        raise UebernahmeError(f"{pfad.name}: {exc}") from exc
+    semantik = p9_semantik_fehler(daten, erwartete_rollen=erwartete_rollen)
     if semantik:
         raise UebernahmeError(
             f"{pfad.name}: Snapshot ist in sich nicht stimmig: "
             + "; ".join(semantik[:3]))
-    # Aus DIESEN Bytes, nicht aus einem zweiten Lesevorgang (Review
-    # T24-06): Die Pruefung oben lief auf dem gelesenen Inhalt; ein
-    # erneutes Lesen gaebe die Zeichnung einer Datei zurueck, die
-    # inzwischen eine andere sein kann. Nachgemessen mit einem Tausch
-    # zwischen beiden Lesevorgaengen: geprueft wurde "angenommen",
-    # registriert wurde "abgelehnt" — beides ohne Abbruch.
-    return daten, pfad.name
+    # Der zweite Zeuge: die Freigabesignatur (models.freigabe, dieselbe
+    # Pruefung wie im Gate). Ohne Ring bleibt "nicht verifiziert" ein
+    # benannter Zustand; mit Ring ist eine falsche Signatur ein Abbruch.
+    verifiziert = False
+    if schluesselring:
+        from rechner_pipeline.models.freigabe import pruefe_freigabe
+        sig_fehler = pruefe_freigabe(daten, schluesselring)
+        if sig_fehler:
+            raise UebernahmeError(f"{pfad.name}: " + "; ".join(sig_fehler))
+        verifiziert = True
+    return daten, pfad.name, verifiziert
 
 
 #: Die Verzeichnisse eines Falls, in denen Belege des Snapshot-Graphen
@@ -603,7 +632,9 @@ def bezeugter_hash(
     return treffer.pop() if len(treffer) == 1 else None
 
 
-def _zeichnung_aus_daten(daten: Dict[str, Any], quelle: str) -> Dict[str, Any]:
+def _zeichnung_aus_daten(
+    daten: Dict[str, Any], quelle: str, *, verifiziert: bool = False,
+) -> Dict[str, Any]:
     """Die Zeichnungsangaben aus einem BEREITS GELESENEN Snapshot.
 
     Der Weg, auf dem Pruefung und Auswertung dieselben Bytes benutzen.
@@ -629,7 +660,7 @@ def _zeichnung_aus_daten(daten: Dict[str, Any], quelle: str) -> Dict[str, Any]:
         # Besetzung, sondern eine Luecke.
         "mandat_sha256": str(zeichnung.get("mandat_sha256") or NICHT_AUSGEWIESEN),
         "schema_version": daten.get("schema_version"),
-        "signatur_verifiziert": False,
+        "signatur_verifiziert": bool(verifiziert),
         "quelle": quelle,
     }
 
@@ -937,6 +968,15 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
     # Schritt 4); die Config der Laufzeit muss dasselbe sagen wie der Beleg
     # der Uebernahme — sonst fuehrt der Betrieb eine andere Welt als die
     # Abnahmen, und genau das war der Befund T22-11.
+    # Zwei Zeugen (Entscheid 2026-09-22): Ohne verifizierte Freigabesignatur
+    # tritt kein Bestand in die Fuehrung — der Eingang traegt den Zustand,
+    # den seine Registrierung hinterliess.
+    if (eingang.get("zeichnung") or {}).get("signatur_verifiziert") is not True:
+        raise UebernahmeError(
+            f"{verzeichnis}: Eingang ohne verifizierte Freigabesignatur — "
+            "mit --freigabe-schluessel registrieren (betrieb.uebernahme), "
+            "sonst fuehrt der Betrieb eine unbezeugte Abnahme"
+        )
     tw_fehler = tarifwerk_fehler(config, bestand["tarif_generation"], beleg)
     if tw_fehler:
         raise UebernahmeError(f"{verzeichnis}: " + "; ".join(tw_fehler))
@@ -1013,6 +1053,7 @@ def eingang_anlegen(
     *,
     quelle: Optional[Path] = None,
     snapshot_sha256: Optional[str] = None,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
 ) -> Path:
     """Den Zugangsstand eines Falls als Eingang der Laufzeitumgebung registrieren.
 
@@ -1062,8 +1103,21 @@ def eingang_anlegen(
                 snapshot_sha256 = None
     # Der Snapshot ist Pflicht und wird geprueft (T22-06), BEVOR irgendetwas
     # angelegt wird.
-    snapshot, snapshot_name = lies_am4_snapshot(fall, snapshot_sha256)
-    zeichnung = _zeichnung_aus_daten(snapshot, snapshot_name)
+    ring = schluesselring if schluesselring is not None else _STANDARD_SCHLUESSELRING
+    snapshot, snapshot_name, verifiziert = lies_am4_snapshot(
+        fall, snapshot_sha256, schluesselring=ring)
+    # Zeichnungsschicht zu Ende (Entscheid 2026-09-22): Registriert wird
+    # nur ein Snapshot des aktuellen Schemas — mit Schluesselklasse und
+    # Rolle aus der Zeichnungsordnung. Ein Altsnapshot (Schema 6) traegt
+    # beides nicht; lesen laesst er sich weiter (Seite), eintreten nicht.
+    from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION
+    if snapshot.get("schema_version") != P9_SNAPSHOT_SCHEMA_VERSION:
+        raise UebernahmeError(
+            f"{snapshot_name}: Schema {snapshot.get('schema_version')!r} — ein "
+            f"Eingang braucht eine Zeichnung mit Schluesselklasse (Schema "
+            f"{P9_SNAPSHOT_SCHEMA_VERSION}); den Fall neu zeichnen"
+        )
+    zeichnung = _zeichnung_aus_daten(snapshot, snapshot_name, verifiziert=verifiziert)
     # Was uebernommen wird, muss das sein, was die Abnahme gesehen hat
     # (Befund T26-03). Geprueft VOR dem ersten Seiteneffekt: Ein Eingang,
     # dessen Tabellen die Migrationsabnahme nicht bezeugt, entsteht nicht.
@@ -1239,9 +1293,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--stichtag", required=True, help="Zugangsstichtag (ISO-Datum).")
     parser.add_argument("--quelle", default=None,
                         help="Verzeichnis des Zugangsstands (Default: <fall>/abgeleitet/bestand).")
+    parser.add_argument("--freigabe-schluessel", action="append", default=None,
+                        help="Pfad eines Freigabeschluessels (mehrfach moeglich), ausserhalb des "
+                             "Falls; prueft die Signatur des A-M4-Snapshots. Ohne ihn wird "
+                             "unverifiziert registriert, und der Tageslauf nimmt den Eingang nicht.")
     parser.add_argument("--snapshot", default=None,
                         help="Snapshot-Hash der A-M4-Annahme (Default: aus dem Gate-Beleg des Falls).")
     ns = parser.parse_args(argv)
+    ring: Optional[Mapping[str, bytes]] = None
+    if ns.freigabe_schluessel:
+        from rechner_pipeline.models.freigabe import lade_schluesselring
+        ring, ring_fehler, _aktiv = lade_schluesselring(
+            list(ns.freigabe_schluessel), ausserhalb=Path(ns.fall))
+        if ring_fehler:
+            print("uebernahme: " + "; ".join(ring_fehler), file=sys.stderr)
+            return 2
     try:
         stichtag = _dt.date.fromisoformat(ns.stichtag)
     except ValueError as exc:
@@ -1251,6 +1317,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         ziel = eingang_anlegen(
             Path(ns.stand), Path(ns.fall), stichtag,
             quelle=Path(ns.quelle) if ns.quelle else None, snapshot_sha256=ns.snapshot,
+            schluesselring=ring,
         )
     except UebernahmeError as exc:
         print(f"uebernahme: {exc}", file=sys.stderr)

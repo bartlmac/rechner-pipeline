@@ -34,7 +34,7 @@ flowchart TD
     gates["gates<br/>18 Module"]
     kern["kern<br/>12 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
-    models["models<br/>7 Module"]
+    models["models<br/>9 Module"]
     ontologie["ontologie<br/>16 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
@@ -44,11 +44,11 @@ flowchart TD
     bestand -- 1 --> qa
     betrieb -- 21 --> bestand
     betrieb -- 1 --> kern
-    betrieb -- 9 --> models
+    betrieb -- 12 --> models
     gates -- 14 --> bestand
     gates -- 9 --> fall
     gates -- 13 --> kern
-    gates -- 14 --> models
+    gates -- 16 --> models
     gates -- 11 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
@@ -82,17 +82,18 @@ flowchart TD
     klv["klv<br/>87 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
-    system_entscheid["system/entscheid<br/>1 Module"]
+    system_entscheid["system/entscheid<br/>3 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 3 --> system_assurance
-    bu -- 2 --> system_entscheid
+    bu -- 5 --> system_entscheid
     klv -- 9 --> system_assurance
-    klv -- 8 --> system_entscheid
+    klv -- 13 --> system_entscheid
     klv -- 9 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
     system_assurance -- 1 --> system_entscheid
     system_assurance -- 1 --> system_fall
+    system_entscheid -- 1 --> system_assurance
 ```
 
 ## 3 Der Zielrechenkern von innen

@@ -185,7 +185,7 @@ GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-O1", "A-K2", "A-B1"
 #: sondern auf den A-Box-Stand, den der Entscheid selbst pinnt: A-M4
 #: verlangt spaeter einen geltenden, signierten A-Q1-Snapshot AUF DIESEM
 #: Stand. Die Bindung existiert also, sie laeuft nur nicht ueber
-#: ``fall.BELEGROLLEN``.
+#: ``models.belegrollen.BELEGROLLEN``.
 #:
 #: Hier stehen NUR begruendete Ausnahmen. Eine Liste, die Ausnahmen und
 #: Versehen mischt, verliert ihre Aussage.
@@ -207,7 +207,7 @@ GATES_OHNE_BELEGVERTRAG: tuple[str, ...] = ("A-Q1",)
 #:
 #: Ein Kommentar, der eine Invariante beschreibt, erzwingt sie nicht.
 #: Deshalb steht sie jetzt hier, und eine Ratsche haelt sie gegen
-#: ``fall.BELEGROLLEN`` (tests/test_gate_vokabel_ab1.py).
+#: ``models.belegrollen.BELEGROLLEN`` (tests/test_gate_vokabel_ab1.py).
 GATES_MIT_PFLICHTBELEGEN: tuple[str, ...] = tuple(
     gate for gate in GUELTIGE_GATES if gate not in GATES_OHNE_BELEGVERTRAG
 )

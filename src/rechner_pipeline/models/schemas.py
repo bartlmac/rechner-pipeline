@@ -669,7 +669,7 @@ class P9Snapshot:
                 # A-B1 hat im Tarif-Scope ueberhaupt keine Rollen (ein
                 # Tarif-Fall liefert keinen Bestand aus). Die EXAKTE
                 # Rollenmenge je Gate und Scope erzwingt ohnehin der
-                # Lesepfad in gate_entscheid gegen fall.BELEGROLLEN.
+                # Lesepfad in gate_entscheid gegen models.belegrollen.BELEGROLLEN.
                 gate in ("A-M4", "A-O1", "A-K2")
                 and data.get("entscheid") == "angenommen"
                 and not pflichtbelege
