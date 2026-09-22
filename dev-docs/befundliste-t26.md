@@ -55,7 +55,7 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
    **AUFGELOEST 2026-09-22: als Klasse** — Ratsche „Schalterwert ⊆
    produktiv ausfuehrbar" bei der Freischaltung, Teilkuendigung als erster
    Bauauftrag, Annahme 4 revidiert. Ratsche und Ausweg gebaut (ff21da4); Teilkuendigung als
-   Bauauftrag offen; siehe T26-12.
+   Bauauftrag GEBAUT (b637898); siehe T26-12 und Annahme 6.
 4. Die fuenf Annahmen im Abschnitt darunter.
 
 **Was noch zu bauen ist:** T26-10 (die Seite mischt bei gleichzeitigem
@@ -208,6 +208,16 @@ zweite Runde.
    auf stderr zu warnen; aeltere P-B1-Ledger reichen nicht mehr, der
    Migrationsfall wird ohnehin auf dem neuen Stand neu gefahren und
    gezeichnet. **GEBAUT ff21da4.**
+6. **Teilkuendigung mit Korrekturschicht: die Schicht geht vollstaendig
+   in die AUSZAHLUNG** (Bau b637898, T26-12). Es gibt keinen beitragsfreien
+   Teil, in den sie eingehen koennte; das ist die Anwendung des Entscheids
+   vom 2026-09-15 („Schicht geht vollstaendig in die Neuberechnung ein")
+   auf dieses Verfahren — wertkontinuierlich nach 9.7, der fortgefuehrte
+   Vertrag ist danach ein reiner f x S-Vertrag ohne Schicht und ohne
+   Korrekturtermin. Der Abzug wirkt proportional ueber den Rueckkaufswert
+   der Grundscheibe allein ((1-f) x RKW_grund). Real sind Schichten
+   Cent-Betraege (rho 1e-8); die Regel ist trotzdem als Regel
+   festzuhalten. **Zur Bestaetigung durch das Aktuariat.**
 
 ## Die Befunde im Einzelnen
 
@@ -808,7 +818,10 @@ Was sich aendert (Bauauftraege, in dieser Reihenfolge):
    Ratsche anzeigt): eigener Zweig fuer den Grundvertrag ohne
    Scheiben-Teilung, Spezifikation aus Bedingungswerk Ziffer 6 /
    A-M3-Befund, mit aktuarieller Abnahme. Bis dahin blockiert die Ratsche
-   TG2015 fuer Herabsetzungen — richtig so.
+   TG2015 fuer Herabsetzungen — richtig so. **GEBAUT b637898:** Grund gekuendigt, Scheiben
+   unveraendert (Zahlungspfad q = 0 == zustandsloser Kern, 1e-15),
+   Auszahlung RKW_teilkuendigung gebucht und in P-B1 hergeleitet. Annahme 6
+   unten (Schicht in die Auszahlung) zur Bestaetigung.
 3. Der Ausweg des Wachpostens (config.py:1055) wird zu „Faehigkeit fehlt —
    Bauauftrag", nie „Config anpassen"; der Kernkommentar „nicht
    vorgesehen" faellt mit 2. **Ausweg korrigiert: ff21da4.**
