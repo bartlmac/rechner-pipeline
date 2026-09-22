@@ -54,7 +54,8 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
    Steht bei T26-12.
    **AUFGELOEST 2026-09-22: als Klasse** — Ratsche „Schalterwert ⊆
    produktiv ausfuehrbar" bei der Freischaltung, Teilkuendigung als erster
-   Bauauftrag, Annahme 4 revidiert. Nichts gebaut; siehe T26-12.
+   Bauauftrag, Annahme 4 revidiert. Ratsche und Ausweg gebaut (ff21da4); Teilkuendigung als
+   Bauauftrag offen; siehe T26-12.
 4. Die fuenf Annahmen im Abschnitt darunter.
 
 **Was noch zu bauen ist:** T26-10 (die Seite mischt bei gleichzeitigem
@@ -206,7 +207,7 @@ zweite Runde.
    Konsequenz: `eingang_anlegen` weist unbelegte historie/ledger ab statt
    auf stderr zu warnen; aeltere P-B1-Ledger reichen nicht mehr, der
    Migrationsfall wird ohnehin auf dem neuen Stand neu gefahren und
-   gezeichnet. Bau folgt mit der Ratsche (T26-12).
+   gezeichnet. **GEBAUT ff21da4.**
 
 ## Die Befunde im Einzelnen
 
@@ -799,7 +800,10 @@ Was sich aendert (Bauauftraege, in dieser Reihenfolge):
    Pruefung „jeder Schalterwert jeder uebernommenen Generation ist
    ausfuehrbar, sonst Migration blockiert mit benanntem Bauauftrag"; ein
    Test, dass die Deklaration zum Code passt. Generisch — faengt das
-   naechste Merkmal ohne neuen Wachposten.
+   naechste Merkmal ohne neuen Wachposten. **GEBAUT ff21da4** —
+   Deklaration im Kern (`PRODUKTIV_AUSFUEHRBAR`), `TARIFWERK_AUSFUEHRBAR`
+   und `tarifwerk_luecken` in config, harter Block in `lies_uebernahme`,
+   drei Instrumente in `tests/test_tarifwerk_ausfuehrbar_t2612.py`.
 2. **Teilkuendigung im produktiven Pfad** (die erste Instanz, die die
    Ratsche anzeigt): eigener Zweig fuer den Grundvertrag ohne
    Scheiben-Teilung, Spezifikation aus Bedingungswerk Ziffer 6 /
@@ -807,7 +811,7 @@ Was sich aendert (Bauauftraege, in dieser Reihenfolge):
    TG2015 fuer Herabsetzungen — richtig so.
 3. Der Ausweg des Wachpostens (config.py:1055) wird zu „Faehigkeit fehlt —
    Bauauftrag", nie „Config anpassen"; der Kernkommentar „nicht
-   vorgesehen" faellt mit 2.
+   vorgesehen" faellt mit 2. **Ausweg korrigiert: ff21da4.**
 
 Entdecken bleibt Aufgabe von A-M1/2/3 (Quelle gegen Ziel auf echten
 Vertraegen — so wurde die Teilkuendigung gefunden); Erzwingen macht die
