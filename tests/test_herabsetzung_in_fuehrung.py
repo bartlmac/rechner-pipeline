@@ -434,11 +434,13 @@ def test_die_herabsetzung_ist_eine_summenbewegung_ohne_stueck(welt):
 # T26-12: Eine Config, die im Lauf abbricht, ist keine gueltige Config
 # --------------------------------------------------------------------------- #
 
-#: (Verfahren, Rate > 0?, erwarteter Fehler?) — beide Richtungen, damit die
-#: Regel ihren Geltungsbereich bindet: Ein Verfahren ohne Herabsetzung ist
-#: harmlos, und die erlaubten Verfahren bleiben erlaubt.
+#: (Verfahren, Rate > 0?, erwarteter Fehler?) — beide Richtungen. Seit dem
+#: Bauauftrag T26-12 (2026-09-22) fuehrt der produktive Pfad ALLE drei
+#: bekannten Verfahren; die Wache hat heute keinen Treffer mehr, und ein
+#: Detektor ohne Treffer bezeugt nichts. Deshalb prueft der zweite Test
+#: unten die Wache an einer SIMULIERTEN Luecke.
 VERFAHRENSLAGEN = [
-    ("teilkuendigung", True, True),
+    ("teilkuendigung", True, False),
     ("teilkuendigung", False, False),
     ("prospektiv", True, False),
     ("mit_abzug", True, False),
@@ -449,17 +451,12 @@ VERFAHRENSLAGEN = [
 def test_ein_verfahren_das_die_fuehrung_nicht_faehrt_faellt_vor_dem_lauf(
     verfahren, mit_rate, fehlerhaft
 ):
-    """Befund T26-12: ``red_verfahren = 'teilkuendigung'`` ist ein
-    erlaubter Schalter, die integrierte TG2015 traegt ihn, und
-    ``cfg.validate()`` meldete nichts. Der Lauf scheiterte dann beim
-    ERSTEN Vorfall — ``reduziere_geschichtet()`` verweigert die
-    Teilkuendigung auch ohne Schicht und ohne Erhoehungsscheiben.
-
-    Abgewiesen wird jetzt VOR Laufbeginn, mit einer Meldung, die den
-    Ausweg nennt. Die andere Moeglichkeit — das Verfahren im produktiven
-    Pfad zu implementieren — ist eine fachliche Entscheidung und steht
-    als Widerspruch zwischen Tarifplan und Kernkommentar in
-    dev-docs/befundliste-t26.md.
+    """Befund T26-12, als Klasse geschlossen (Entscheid 2026-09-22): Jeder
+    Schalterwert wird gegen ``TARIFWERK_AUSFUEHRBAR`` gehalten — das, was
+    der produktive Pfad kann. Die Teilkuendigung war die Luecke und ist
+    gebaut; heute ist jedes bekannte Verfahren ausfuehrbar, die Config
+    gueltig. Die Wache selbst prueft der naechste Test an einer
+    simulierten Luecke.
     """
     import dataclasses
 
@@ -469,5 +466,31 @@ def test_ein_verfahren_das_die_fuehrung_nicht_faehrt_faellt_vor_dem_lauf(
     fehler = cfg.validate()
     passend = [f for f in fehler if "red_verfahren" in f and verfahren in f]
     assert bool(passend) is fehlerhaft, (verfahren, mit_rate, fehler[:3])
-    if fehlerhaft:
-        assert "prospektiv" in passend[0], "die Meldung nennt keinen Ausweg"
+
+
+def test_ein_unbebautes_verfahren_faellt_vor_dem_lauf_als_bauauftrag(monkeypatch):
+    """Die Wache an einer simulierten Luecke: ``mit_abzug`` aus der
+    Deklaration genommen, als waere es nicht gebaut. Mit Herabsetzungsrate
+    ist die Config keine gueltige; der Befund ist ein BAUAUFTRAG und raet
+    nie, die Config anzupassen (der alte Ausweg "auf 'prospektiv'
+    setzen" hiesse, uebernommene Vertraege nach fremdem Verfahren zu
+    fuehren). Ohne Rate bleibt die Luecke latent — die Pruefstrecke
+    braucht dieselbe Config.
+
+    Mutationsprobe: die Ratsche aus ``validate`` nehmen -> rot.
+    """
+    import dataclasses
+
+    from rechner_pipeline.bestand import config as cfgmod
+    from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
+
+    monkeypatch.setitem(cfgmod.TARIFWERK_AUSFUEHRBAR, "red_verfahren", (PROSPEKTIV,))
+    for mit_rate, fehlerhaft in ((True, True), (False, False)):
+        cfg = _config(mit_rate)
+        cfg.generationen[0] = dataclasses.replace(
+            cfg.generationen[0], red_verfahren="mit_abzug")
+        passend = [f for f in cfg.validate() if "mit_abzug" in f]
+        assert bool(passend) is fehlerhaft, (mit_rate, passend)
+        if fehlerhaft:
+            assert "Bauauftrag" in passend[0]
+            assert "auf 'prospektiv'" not in passend[0] and "umstellen" not in passend[0]

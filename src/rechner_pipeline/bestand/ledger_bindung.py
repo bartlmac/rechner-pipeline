@@ -359,6 +359,21 @@ def pruefe_ledger_betraege(
                     if betrag_art == "dDK_absorption":
                         erwartet = absorbierte_schicht(
                             v.grund, jahr, schicht_je_police.get(pid))
+                    elif betrag_art == "RKW_teilkuendigung":
+                        # Teilkuendigung (Ziffer 6): Rueckkaufswert des
+                        # gekuendigten Grundanteils plus absorbierte
+                        # Schicht — derselbe Weg wie in der Engine
+                        # (_Vertrag.herabsetzen). Ohne registrierte
+                        # Reduktion ist eine Auszahlung unbelegt: 0.
+                        if v.reduktion is None:
+                            erwartet = 0.0
+                        else:
+                            erwartet = (1.0 - v.reduktion[1]) * vertrags_rkw(
+                                v.grund, [], jahr,
+                                stoab_je_baustein=bool(
+                                    v.tarifwerk["stoab_je_baustein"])
+                            ) + absorbierte_schicht(
+                                v.grund, jahr, schicht_je_police.get(pid))
                     else:
                         erwartet = v.gesamt_vs(jahr)
                 elif art in ("TOD", "ABL"):

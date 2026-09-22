@@ -80,8 +80,9 @@ def test_die_deklaration_stimmt_mit_dem_produktiven_pfad_ueberein():
         else:
             with pytest.raises(BeitragsreduktionFehler):
                 reduziere_geschichtet(kern, [], 5, 0.6, verfahren=verfahren)
-    # Positivkontrolle der Probe: heute ist genau die Teilkuendigung die Luecke.
-    assert set(VERFAHREN) - set(PRODUKTIV_AUSFUEHRBAR) == {TEILKUENDIGUNG}
+    # Exakt: seit dem Bauauftrag T26-12 (2026-09-22) ist jedes bekannte
+    # Verfahren ausfuehrbar — die Menge der Luecken ist LEER, nicht >= 0.
+    assert set(VERFAHREN) == set(PRODUKTIV_AUSFUEHRBAR)
 
 
 def test_jeder_schalter_der_fuehrung_ist_deklariert():
@@ -102,30 +103,46 @@ def test_jeder_schalter_der_fuehrung_ist_deklariert():
 
 # --- Instrument 2: die Ratsche, generisch ---------------------------------------
 
-def test_tarifwerk_luecken_sieht_die_teilkuendigung_und_sonst_nichts():
-    """Die PLV-Config traegt die TG2015 mit ihrem Bedingungswerk — genau
-    diese eine Luecke, kein Beifang beim eigenen Geschaeft."""
+def test_tarifwerk_luecken_sieht_heute_keine_luecke_und_findet_eine_simulierte(monkeypatch):
+    """Die PLV-Config (TG2015 mit Teilkuendigung) hat seit dem Bau keine
+    Luecke. Die Ratsche ist trotzdem scharf: Eine simulierte — ``mit_abzug``
+    aus der Deklaration genommen — findet sie generisch, und der Befund ist
+    ein Bauauftrag ohne Config-Rat."""
     cfg = load_config(PLV)
-    assert tarifwerk_luecken(cfg.generationen) == [("TG2015", "red_verfahren", TEILKUENDIGUNG)]
+    assert tarifwerk_luecken(cfg.generationen) == []
     text = bauauftrag_text("TG2015", "red_verfahren", TEILKUENDIGUNG)
     assert "Bauauftrag" in text and "NICHT anzupassen" in text
-    # Der alte, falsche Ausweg darf nirgends mehr stehen.
     assert "auf 'prospektiv'" not in text and "umstellen" not in text
+    from rechner_pipeline.kern.beitragsreduktion import MIT_ABZUG, PROSPEKTIV
+    monkeypatch.setitem(TARIFWERK_AUSFUEHRBAR, "red_verfahren", (PROSPEKTIV, TEILKUENDIGUNG))
+    kaputt = config_aus_text(_CONFIG_TOML.replace(
+        '[[generation]]\nname = "klv/zellen"\n',
+        '[[generation]]\nname = "klv/zellen"\nred_verfahren = "mit_abzug"\n', 1))
+    assert tarifwerk_luecken(kaputt.generationen) == [("klv/zellen", "red_verfahren", MIT_ABZUG)]
 
 
-def test_config_wache_latent_bei_rate_null_und_hart_bei_erreichbarem_pfad():
-    """Die echte Config ist gueltig (Rate 0, Luecke latent; die Pruefstrecke
-    rekonstruiert die Teilkuendigung absichtlich). Wird der Pfad
-    erreichbar, ist die Config keine gueltige — und der Befund ist ein
-    Bauauftrag, kein Config-Rat.
+def test_config_wache_latent_bei_rate_null_und_hart_bei_erreichbarem_pfad(monkeypatch):
+    """Die echte Config ist gueltig — mit und ohne Herabsetzungsrate, denn
+    jedes ihrer Verfahren ist gebaut. Die Wache prueft der Test an einer
+    simulierten Luecke: Rate 0 -> latent (die Pruefstrecke braucht dieselbe
+    Config), Rate > 0 -> keine gueltige Config, Befund = Bauauftrag.
 
-    Mutationsprobe: die Erreichbarkeits-Bedingung streichen -> die echte
-    Config wird ungueltig (erste Zusicherung rot); den Aufruf der Ratsche
-    in ``validate`` entfernen -> zweite Zusicherung rot.
+    Mutationsprobe: die Erreichbarkeits-Bedingung streichen -> der latente
+    Fall wird rot; den Aufruf der Ratsche in ``validate`` entfernen -> der
+    harte Fall wird rot.
     """
     assert load_config(PLV).validate() == []
-    kaputt = PLV.read_text(encoding="utf-8") + "\n[annahmen.herabsetzung]\na = 0.08\nb = 0.0\n"
-    fehler = config_aus_text(kaputt).validate()
+    # Rate UND Anteil: die Annahmen-Validierung verlangt zu einer
+    # Herabsetzungsrate den fortgefuehrten Anteil (wie das T26-11-Fixture).
+    mit_rate = PLV.read_text(encoding="utf-8").replace(
+        "[annahmen]\n", "[annahmen]\nred_anteil = 0.6\n", 1
+    ) + "\n[annahmen.herabsetzung]\na = 0.08\nb = 0.0\n"
+    assert "red_anteil = 0.6" in mit_rate
+    assert config_aus_text(mit_rate).validate() == []
+    from rechner_pipeline.kern.beitragsreduktion import MIT_ABZUG, PROSPEKTIV
+    monkeypatch.setitem(TARIFWERK_AUSFUEHRBAR, "red_verfahren", (PROSPEKTIV, MIT_ABZUG))
+    assert load_config(PLV).validate() == [], "Rate 0: die Luecke bleibt latent"
+    fehler = config_aus_text(mit_rate).validate()
     treffer = [f for f in fehler if "TG2015" in f and TEILKUENDIGUNG in f]
     assert len(treffer) == 1, fehler
     assert "Bauauftrag" in treffer[0]
@@ -157,39 +174,49 @@ def _fall_mit_generation(wurzel: Path, generation: str, name: str) -> Path:
     return fall
 
 
-def test_die_freischaltung_blockiert_eine_generation_die_der_betrieb_nicht_fuehren_kann(tmp_path):
+def test_die_freischaltung_blockiert_eine_generation_die_der_betrieb_nicht_fuehren_kann(tmp_path, monkeypatch):
     """DoRAs Fall, an der richtigen Stelle: Eine Lieferung, deren Generation
-    per Bedingungswerk die Teilkuendigung traegt, wird registriert — aber
-    der Betrieb nimmt sie NICHT in die Fuehrung, unabhaengig davon, ob heute
-    eine Herabsetzung simuliert wird. Der Befund nennt den Bauauftrag.
+    ein Verfahren traegt, das der produktive Pfad nicht kann, wird
+    registriert — aber der Betrieb nimmt sie NICHT in die Fuehrung,
+    unabhaengig davon, ob heute eine Herabsetzung simuliert wird. Der
+    Befund nennt den Bauauftrag.
 
-    Dieselbe Lieferung, dieselben Bytes: Nur der Schalter der Generation in
-    der Config der Laufzeit entscheidet. Die Testwelt ist die etablierte
-    kleine Config (keine Tarifzellen, also keine merkmale-Pflicht, die den
-    Eingang VOR der Ratsche abwiese — das war der erste Entwurf dieses
-    Tests, und er war blind). Die Vorbedingungen stehen als Zusicherung.
+    Seit dem Bau der Teilkuendigung gibt es keine echte Luecke mehr; die
+    Probe simuliert eine (``mit_abzug`` aus der Deklaration genommen).
+    Dieselbe Lieferung, dieselben Bytes: Nur der Schalter der Generation
+    in der Config der Laufzeit und die Deklaration entscheiden. Testwelt
+    ist die kleine Config ohne Tarifzellen (sonst wiese die merkmale-
+    Pflicht den Eingang VOR der Ratsche ab — der erste Entwurf dieses
+    Tests war so blind); die Vorbedingungen stehen als Zusicherung.
 
+    Positivkontrollen: die Teilkuendigung tritt heute ein (gebaut), und
+    dieselbe Lieferung unter ``prospektiv`` tritt ein.
     Mutationsprobe: den Ratschen-Block in ``lies_uebernahme`` entfernen ->
-    die erste Zusicherung rot, die Positivkontrolle bleibt gruen.
+    die Blockade-Zusicherung rot, die Positivkontrollen bleiben gruen.
     """
+    from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
+
     anker = '[[generation]]\nname = "klv/zellen"\n'
     assert anker in _CONFIG_TOML, "Fixture-Anker der Testwelt hat sich bewegt"
-    mit = config_aus_text(_CONFIG_TOML.replace(
-        anker, anker + 'red_verfahren = "teilkuendigung"\n', 1))
-    ohne = config_aus_text(_CONFIG_TOML)
-    gen = mit.generationen[0]
-    assert gen.tarifwerk()["red_verfahren"] == TEILKUENDIGUNG
+    def cfg(verfahren):
+        return config_aus_text(_CONFIG_TOML.replace(
+            anker, anker + f'red_verfahren = "{verfahren}"\n', 1))
+    tk, ab, pro = cfg("teilkuendigung"), cfg("mit_abzug"), config_aus_text(_CONFIG_TOML)
+    gen = tk.generationen[0]
     assert not gen.zellen, "Fixture: ohne Zellen, sonst greift die merkmale-Pflicht vor der Ratsche"
-    assert mit.annahmen.herabsetzung.a == 0.0, "Fixture: die Luecke muss LATENT sein"
-    assert ohne.generationen[0].tarifwerk()["red_verfahren"] != TEILKUENDIGUNG
+    assert tk.annahmen.herabsetzung.a == 0.0, "Fixture: die Luecke muss LATENT sein"
 
     stand = tmp_path / "daten"
     ueb.eingang_anlegen(stand, _fall_mit_generation(tmp_path / "fall", gen.name, "quell-lieferung"), STICHTAG)
     eingang = stand / "uebernahme" / "quell-lieferung"
-    with pytest.raises(ueb.UebernahmeError, match="Migration blockiert.*Bauauftrag.*teilkuendigung"):
-        ueb.lies_uebernahme(eingang, mit)
-    # Positivkontrolle: dieselben Bytes, ein ausfuehrbares Verfahren -> tritt ein.
-    assert len(ueb.lies_uebernahme(eingang, ohne).bestand) == 3
+    # Positivkontrolle 1: die Teilkuendigung ist gebaut — sie tritt ein.
+    assert len(ueb.lies_uebernahme(eingang, tk).bestand) == 3
+    # Die simulierte Luecke: mit_abzug gilt als nicht gebaut.
+    monkeypatch.setitem(TARIFWERK_AUSFUEHRBAR, "red_verfahren", (PROSPEKTIV, TEILKUENDIGUNG))
+    with pytest.raises(ueb.UebernahmeError, match="Migration blockiert.*Bauauftrag.*mit_abzug"):
+        ueb.lies_uebernahme(eingang, ab)
+    # Positivkontrolle 2: dieselben Bytes, ein ausfuehrbares Verfahren -> tritt ein.
+    assert len(ueb.lies_uebernahme(eingang, pro).bestand) == 3
 
 
 # --- Annahme 5, streng -----------------------------------------------------------

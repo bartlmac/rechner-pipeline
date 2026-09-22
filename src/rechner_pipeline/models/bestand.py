@@ -191,7 +191,7 @@ LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("status_date", "datetime64[ns]"),
     # Bezugsgroesse des Betrags — je Produkt verschieden: KLV fuehrt
     # Versicherungssummen/Rueckkaufswerte, BU die betroffene Jahresrente.
-    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS_herabsetzung | VS (ZUG) | BU_Jahresrente
+    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS_herabsetzung | dDK_absorption | RKW_teilkuendigung | VS (ZUG) | BU_Jahresrente
     ("betrag", "float64"),
     # Woher der BETRAG stammt. Im eigenen Bestand ist er immer
     # ``gerechnet`` — der Kern erzeugt ihn, und das ist der Normalfall.
@@ -272,7 +272,10 @@ BETRAG_ART_JE_EREIGNIS: Dict[str, Tuple[str, ...]] = {
     # Zwei Zeilen: die neue Gesamtsumme, und — bei einem uebernommenen
     # Vertrag — die Korrekturschicht, die in die Neuberechnung eingegangen
     # ist. Eine Umbuchung ohne Zahlung, wie dDK_uebernahme beim Zugang.
-    "RED": ("VS_herabsetzung", "dDK_absorption"),
+    # Dritte Zeile bei der TEILKUENDIGUNG (Bedingungswerk Ziffer 6,
+    # Bauauftrag T26-12): die Auszahlung des gekuendigten Grundanteils —
+    # Rueckkaufswert plus absorbierte Schicht. Eine Zahlung, wie RKW.
+    "RED": ("VS_herabsetzung", "dDK_absorption", "RKW_teilkuendigung"),
     "PEX": ("VS_bfr", "VS"),
     "INV": ("BU_Jahresrente",),
     "REA": ("BU_Jahresrente",),

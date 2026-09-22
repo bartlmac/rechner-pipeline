@@ -89,6 +89,7 @@ from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.bestand.schichten import schichten_je_police
 from rechner_pipeline.kern.beitragsreduktion import (
+    TEILKUENDIGUNG,
     ReduzierterVertrag,
     absorbierte_schicht,
     reduzierte_teile,
@@ -262,8 +263,9 @@ class _Vertrag:
 
     def herabsetzen(
         self, jahr: int, anteil: float, verfahren: str
-    ) -> Tuple[float, float]:
-        """Den Vertrag herabsetzen; liefert (absorbierte Schicht, neue Summe).
+    ) -> Tuple[float, float, float]:
+        """Den Vertrag herabsetzen; liefert (absorbierte Schicht, neue
+        Summe, Auszahlung).
 
         Die Korrekturschicht geht VOLLSTAENDIG in die Neuberechnung ein
         (Entscheid des Maintainers 2026-09-15): Die Herabsetzung
@@ -272,14 +274,30 @@ class _Vertrag:
         Startwert, danach fuehrt allein die Logik des Zielsystems, und
         einen Korrekturtermin gibt es nicht mehr. Deshalb faellt
         ``self.schicht`` hier weg: nicht verloren, sondern aufgegangen.
+
+        Bei den PLV-Verfahren geht sie in die beitragsfreie Summe des
+        umgewandelten Teils (Auszahlung 0). Bei der TEILKUENDIGUNG
+        (Bedingungswerk Ziffer 6, Bauauftrag T26-12) gibt es keinen
+        umgewandelten Teil: Der Anteil (1-f) der GRUNDVERSICHERUNG wird
+        gekuendigt und AUSGEZAHLT — sein Rueckkaufswert (die
+        Grundscheibe allein, mit ihrem Abzug) plus die vollstaendig
+        absorbierte Schicht (9.7: Rueckkauf wertkontinuierlich). Die
+        Scheiben laufen unveraendert, der Vertrag danach ist f x S ohne
+        Schicht.
         """
         zusatz = absorbierte_schicht(self.grund, jahr, self.schicht)
+        auszahlung = 0.0
+        if verfahren == TEILKUENDIGUNG:
+            rkw_grund = vertrags_rkw(
+                self.grund, [], jahr,
+                stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]))
+            auszahlung = (1.0 - anteil) * rkw_grund + zusatz
         self.reduziert = reduzierte_teile(
             self.grund, [(j, k) for j, _, k in self.scheiben], jahr, anteil,
             verfahren, schicht=self.schicht)
         self.reduktion = (jahr, anteil, verfahren)
         self.schicht = None
-        return zusatz, sum(r.reduktion.vs_neu for _, r in self.reduziert)
+        return zusatz, sum(r.reduktion.vs_neu for _, r in self.reduziert), auszahlung
 
     def gesamt_vs(self) -> float:
         if self.reduziert:
@@ -474,7 +492,7 @@ def _simuliere_vertrag(
                     and rng_red.random() < annahmen.herabsetzung(0.0)
                     and vertrag.reduktion is None):
                 verfahren = str(vertrag.tarifwerk["red_verfahren"])
-                absorbiert, vs_neu = vertrag.herabsetzen(
+                absorbiert, vs_neu, auszahlung = vertrag.herabsetzen(
                     j + 1, float(annahmen.red_anteil), verfahren)
                 # Die neue Gesamtsumme — fortgefuehrter plus umgewandelter
                 # Teil. Kein Statuswechsel: Der Vertrag bleibt POL.
@@ -487,6 +505,13 @@ def _simuliere_vertrag(
                     # (dieselbe Konstruktion wie dDK_uebernahme beim
                     # Migrationszugang — eine Umbuchung ohne Zahlung).
                     buche("RED", j + 1, "dDK_absorption", absorbiert,
+                          status=None)
+                if auszahlung > 0.0:
+                    # Teilkuendigung (Ziffer 6): Der gekuendigte Anteil der
+                    # Grundversicherung wird AUSGEZAHLT — Rueckkaufswert
+                    # dieses Anteils plus die vollstaendig absorbierte
+                    # Korrekturschicht. Eine Zahlung, kein Statuswechsel.
+                    buche("RED", j + 1, "RKW_teilkuendigung", auszahlung,
                           status=None)
                 reduktionen.append({
                     "police_id": police_id,
