@@ -657,7 +657,12 @@ Groessenordnung (Rundungsresiduum), damit die Richtung der Herabsetzung
 im Test bindbar wird (senkt) und die Frage bei der naechsten Pruefung
 nicht wiederkommt. Die Mechanik-Probe der Absorption braucht weiter eine
 sichtbare Schicht (bei 1e-8 saehe kein Test sie — Detektor ohne
-Treffer); das sind zwei Fixtures, nicht eins.
+Treffer); das sind zwei Fixtures, nicht eins. **GEBAUT (Block C):**
+`tests/test_herabsetzung_realistisch_t2611.py` — rho 2e-8 (Spanne des
+echten Falls), bindet die Richtung (senkt, jede Herabsetzung, Summe ueber
+alle Jahre negativ) und haelt als Positivkontrolle fest, dass das
+Mechanik-Fixture (rho 0.04) hebt — die Richtung ist eine Eigenschaft der
+Schicht-Groesse, nicht des Verfahrens.
 
 **Gegen Rueckbau gesichert.** Zwei Tests: der Endbestand gegen die
 Einzelbewertung (unabhaengige Quelle) und die Bewegung selbst (nicht null,
