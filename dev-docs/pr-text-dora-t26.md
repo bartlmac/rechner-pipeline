@@ -47,7 +47,9 @@ Schlusssatz gilt weiter. Sechs fachliche Annahmen stehen angeschrieben
   zustandsloser Kern, 1e-15). Annahme 4 (Abweisung) ist damit revidiert;
   Annahme 6 (die Korrekturschicht geht bei der Teilkuendigung vollstaendig
   in die Auszahlung, Abzug proportional ueber den Rueckkaufswert der
-  Grundscheibe) hat der Maintainer am 2026-09-22 bestaetigt.
+  Grundscheibe) hat der Maintainer am 2026-09-22 bestaetigt; der
+  Grundsatz dahinter steht seit b88bfcb in 9.7 der Grundsatzdokumentation
+  (Default je Geschaeftsvorfall des Systems, Tarifplan-Vorbehalt).
 * **Annahme 5 — streng.** Alle drei Pflichttabellen muessen vom
   Beleggraphen bezeugt sein; ein unbezeugter Ledger ist eine Luecke.
 * Im Branch, aber keine Gutachter-Befunde: ADR-019 (Suite parallel,
