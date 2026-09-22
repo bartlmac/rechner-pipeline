@@ -47,6 +47,9 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
    Zeichnungsschicht. Noch nicht gebaut; Begruendung bei T26-03.
 2. **Die Herabsetzung** — darf sie die Versicherungssumme HEBEN? Gemessen
    hebt sie sie (+202.338 ueber alle Jahre des Fixtures). Steht bei T26-11.
+   **ERLEDIGT 2026-09-22: keine Entscheidung** — die Herabsetzung senkt
+   (85.856); die Hebung war ein Fixture-Artefakt (`rho=0.04` statt real
+   1e-8). Folgeauftrag: Fixture realistisch, nicht gebaut.
 3. **Die Teilkuendigung** — Tarifplan und Kernkommentar widersprechen sich.
    Steht bei T26-12.
 4. Die fuenf Annahmen im Abschnitt darunter.
@@ -587,21 +590,38 @@ umgewandelter Teil"); Erhoehungen davor stecken in ihr, Erhoehungen danach
 kommen obendrauf. Die zweite RED-Zeile `dDK_absorption` ist eine Umbuchung im
 Deckungskapital und bleibt draussen.
 
-**FACHLICHE FRAGE AN DAS AKTUARIAT — bitte bestaetigen oder korrigieren.**
-Beim Bauen gemessen: Die „Herabsetzung" HEBT die Versicherungssumme, sie
-senkt sie nicht. Am Fixture (40 Policen, `red_anteil` 0,6) steigt die neue
-Gesamtsumme in JEDEM der zehn betroffenen Jahre — Police 900002 etwa von
-100.000 auf 113.642,40, und ueber alle Jahre summiert +202.338.
+**RICHTIGGESTELLT 2026-09-22 — keine fachliche Frage, keine Entscheidung.**
+Die Aussage „die Herabsetzung HEBT die Versicherungssumme" war falsch.
+Nachgemessen an Police 900002, Vertragsjahr 16, Anteil 0,6
+(`kern.beitragsreduktion.reduziere`, mit und ohne `zusatz_dk`):
 
-Der Grund ist plausibel: Der nicht mehr beitragspflichtige Teil kommt als
-beitragsfreie Summe zurueck, und die kann ueber dem anteiligen Wegfall
-liegen. Ob das so gewollt ist, entscheidet nicht die Nachweisung.
+* OHNE Korrekturschicht: 100.000 -> **85.856** (60.000 fortgefuehrt +
+  25.856 beitragsfrei). Die Herabsetzung SENKT, wie sie per Definition muss.
+* MIT der Korrekturschicht des Fixtures: 113.642 — die gesamte Hebung
+  (+27.787) ist die absorbierte Schicht (`dDK_absorption` 25.501).
 
-Die Bewegungszeile heisst deshalb `veraenderung_herabsetzung` und traegt ihr
-VORZEICHEN, wie der Kern es liefert; sie steht auf der Zugangsseite der
-Identitaet. Der Test bindet, DASS die Aenderung gefuehrt wird — nicht, in
-welche Richtung sie faellt. Faellt die fachliche Entscheidung anders aus,
-aendert sich eine Zeile und ihr Name, nicht die Mechanik.
+Die Schicht des Fixtures ist unrealistisch: `_parameter(rho=0.04)` in
+`tests/test_schicht_in_fuehrung.py`, darauf baut der T26-11-Test auf. Im
+echten Fall (baldrian, 834 Vertraege, `abgeleitet/bestand/schichten.parquet`)
+liegt `rho` bei 1e-8 bis 1e-9 — Rundungsresiduen, Cent-Betraege, genau
+das, was der Entscheid vom 2026-09-15 meinte. Das Fixture ist rund vier
+Millionen Mal groesser. Die +202.338 sind dieses Artefakt; ueber die
+Wirklichkeit sagen sie nichts. Der Mechanismus (Schicht geht vollstaendig
+in die Neuberechnung ein, Entscheid 2026-09-15) bleibt richtig; bei
+Cent-Schichten hebt nichts.
+
+Die Bewegungszeile `veraenderung_herabsetzung` traegt weiter ihr Vorzeichen
+aus dem Kern; in der Wirklichkeit ist es negativ. Der Test bindet, DASS
+die Aenderung gefuehrt wird — die Richtung bindet er auf diesem Fixture
+nicht, weil dort die Schicht dominiert.
+
+**Folgeauftrag (Maintainer 2026-09-22, nicht gebaut):** Das Fixture
+fachlich vernuenftig ausgestalten — eine Schicht in realistischer
+Groessenordnung (Rundungsresiduum), damit die Richtung der Herabsetzung
+im Test bindbar wird (senkt) und die Frage bei der naechsten Pruefung
+nicht wiederkommt. Die Mechanik-Probe der Absorption braucht weiter eine
+sichtbare Schicht (bei 1e-8 saehe kein Test sie — Detektor ohne
+Treffer); das sind zwei Fixtures, nicht eins.
 
 **Gegen Rueckbau gesichert.** Zwei Tests: der Endbestand gegen die
 Einzelbewertung (unabhaengige Quelle) und die Bewegung selbst (nicht null,
