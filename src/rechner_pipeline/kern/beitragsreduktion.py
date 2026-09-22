@@ -81,6 +81,15 @@ MIT_ABZUG = "mit_abzug"
 #: den freiwerdenden Teil in eine beitragsfreie Summe um (Zweiteilung).
 TEILKUENDIGUNG = "teilkuendigung"
 VERFAHREN = (PROSPEKTIV, MIT_ABZUG, TEILKUENDIGUNG)
+#: Was der PRODUKTIVE Pfad (``reduziere_geschichtet``, der eine Eingang
+#: der Fuehrung) tatsaechlich ausfuehrt. ``VERFAHREN`` sagt, welche Worte
+#: bekannt sind; dieses Tupel sagt, welche die Fuehrung rechnen kann. Die
+#: Teilkuendigung ist bekannt — die Pruefstrecke rekonstruiert damit die
+#: Praxis der Quelle (``reduziere``, A-M3) — im produktiven Pfad aber nicht
+#: gebaut (Bauauftrag T26-12). Ein Test haelt dieses Tupel gegen
+#: ``reduziere_geschichtet``: Was hier steht, laeuft; was fehlt, wird
+#: verweigert. Wer die Teilkuendigung baut, traegt sie hier ein.
+PRODUKTIV_AUSFUEHRBAR = (PROSPEKTIV, MIT_ABZUG)
 
 
 class BeitragsreduktionFehler(ValueError):

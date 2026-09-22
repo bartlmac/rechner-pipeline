@@ -940,6 +940,23 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
     tw_fehler = tarifwerk_fehler(config, bestand["tarif_generation"], beleg)
     if tw_fehler:
         raise UebernahmeError(f"{verzeichnis}: " + "; ".join(tw_fehler))
+    # Ratsche (Befund T26-12, Entscheid des Maintainers 2026-09-22): Was der
+    # Betrieb fuehrt, muss er auch KOENNEN. Bekannt und uebertragen waren
+    # die Schalter schon geprueft; die dritte Menge — produktiv
+    # ausfuehrbar — pruefte niemand, und die Teilkuendigung der TG2015
+    # (ihr Bedingungswerk, Ziffer 6) fiel im Lauf um. Hier beginnt die
+    # Fuehrung: Eine uebernommene Generation, deren Tarifwerk der
+    # produktive Pfad nicht rechnet, tritt nicht ein — Migration blockiert,
+    # mit benanntem Bauauftrag, nie mit einem Config-Rat.
+    from rechner_pipeline.bestand.config import bauauftrag_text, tarifwerk_luecken
+
+    uebernommen = {str(g) for g in bestand["tarif_generation"]}
+    luecken = tarifwerk_luecken(g for g in config.generationen if g.name in uebernommen)
+    if luecken:
+        raise UebernahmeError(
+            f"{verzeichnis}: Migration blockiert — "
+            + "; ".join(bauauftrag_text(*l) for l in luecken)
+        )
     return Uebernahme(
         fall=str(eingang["fall"]),
         stichtag=stichtag,
@@ -1068,22 +1085,18 @@ def eingang_anlegen(
                 "abgenommenen Tabellen uebernehmen oder den Fall neu "
                 "abnehmen"
             )
-    if "bestand.parquet" in unbelegt:
+    if unbelegt:
+        # Annahme 5, ENTSCHIEDEN STRENG (Maintainer 2026-09-22): Jede der drei
+        # Pflichttabellen muss vom Beleggraphen der Abnahme bezeugt sein — ein
+        # unbezeugter Ledger ist eine Luecke, keine Warnung. Vorher wurde nur
+        # bestand.parquet verlangt und der Rest auf stderr benannt; ein
+        # aelterer P-B1-Ledger reicht damit nicht mehr, der Fall ist neu
+        # abzunehmen (Befund T26-03).
         raise UebernahmeError(
             f"{fall}: der Beleggraph des A-M4-Snapshots nennt keinen Hash "
-            "fuer bestand.parquet — die Abnahme bezeugt die Tabelle nicht, "
-            "die uebernommen werden soll. Ohne diesen Bezug ist der Eingang "
-            "eine Behauptung (Befund T26-03)"
-        )
-    if unbelegt:
-        # Benannte Luecke statt stiller: Ein aelterer P-B1-Ledger fuehrt
-        # Bestand und Historie, aber nicht jeden Nebenstand.
-        print(
-            f"uebernahme: der Beleggraph nennt keine Hashes fuer "
-            f"{', '.join(sorted(unbelegt))} — diese Tabellen sind von der "
-            "Migrationsabnahme nicht bezeugt und werden ungeprueft "
-            "uebernommen",
-            file=_sys.stderr,
+            f"fuer {', '.join(sorted(unbelegt))} — die Abnahme bezeugt diese "
+            "Tabelle(n) nicht. Ohne diesen Bezug ist der Eingang eine "
+            "Behauptung (Befund T26-03; Annahme 5 streng)"
         )
     ziel = Path(stand) / UEBERNAHME_DIR / fallname
     if ziel.exists():
