@@ -168,13 +168,23 @@ zweite Runde.
    Abschlussformat geaendert, das 0444 geschrieben und in A-B1 gehasht wird.
    Die gewaehlte Loesung fragt die vorhandene Tabelle. Benannte Grenze steht
    im Docstring.
+   **BESTAETIGT 2026-09-22** (Maintainer, nach Erklaerung des Eingangs;
+   Widerspruch bis zum Bau moeglich).
 2. **Die Staging-Wurzel heisst `uebernahme.neu`** und liegt neben
    `uebernahme` (T26-01). Jeder andere Name taete es auch; entscheidend ist,
    dass es eine ZWEITE Wurzel ist. Bestehende Laufzeitumgebungen haben dort
    nichts liegen, ein Umzug ist nicht noetig.
+   **BESTAETIGT 2026-09-22** (Maintainer delegiert an dev, "wenn nicht
+   kritisch, sauber"): Der Punkt ist die ZWEITE Wurzel — ein halb
+   geschriebener Eingang kann strukturell nie fuer einen registrierten
+   gehalten werden. Der Name ist gleichgueltig. Sauber, bestaetigt.
 3. **Eine angefangene Protokollzeile wird weggeschnitten** (T26-02,
    Szenario 3), aber nur ohne abschliessenden Zeilenumbruch und nur, wenn
    ein Marker bezeugt, dass ein Publish unterwegs war.
+   **BESTAETIGT 2026-09-22** (Maintainer delegiert an dev): Beide
+   Bedingungen muessen gelten — ohne Zeilenumbruch UND mit Publish-Marker.
+   Eine vollstaendige Zeile wird nie geschnitten; der Schnitt ist auf das
+   eine Absturzszenario (T26-02 Sz. 3) begrenzt. Sauber, bestaetigt.
 4. **Die Kombination `teilkuendigung` + Herabsetzungsrate > 0 wird
    ABGEWIESEN**, nicht implementiert (T26-12). Der Gutachter laesst beide
    Wege zu; ich habe den gewaehlt, der keine fachliche Entscheidung
@@ -190,6 +200,13 @@ zweite Runde.
    unbrauchbar gemacht. Die Luecke wird auf stderr benannt, nicht
    verschwiegen. Wenn du es strenger willst, sag es — dann muss der
    P-B1-Ledger alle drei fuehren.
+   **ENTSCHIEDEN 2026-09-22: STRENG** (Maintainer). Alle drei
+   Pflichttabellen (bestand, historie, ledger) muessen vom Beleggraphen
+   bezeugt sein; ein unbezeugter Ledger ist eine Luecke, keine Warnung.
+   Konsequenz: `eingang_anlegen` weist unbelegte historie/ledger ab statt
+   auf stderr zu warnen; aeltere P-B1-Ledger reichen nicht mehr, der
+   Migrationsfall wird ohnehin auf dem neuen Stand neu gefahren und
+   gezeichnet. Bau folgt mit der Ratsche (T26-12).
 
 ## Die Befunde im Einzelnen
 
