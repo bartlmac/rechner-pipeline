@@ -33,9 +33,9 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
 
 | | Befunde |
 |---|---|
-| **Geschlossen** | T26-01, T26-02, T26-04, T26-05, T26-06, T26-07, T26-08, T26-09, T26-10, T26-11, T26-13, T26-14, T26-15, T26-16 |
+| **Geschlossen** | T26-01, T26-02, T26-03 (Weg 2 + Zeichnungsschicht, 5a6667f), T26-04, T26-05, T26-06, T26-07, T26-08, T26-09, T26-10, T26-11, T26-13, T26-14, T26-15, T26-16 |
 | **Geschlossen als dokumentierte Abweisung** | T26-12 |
-| **Teilweise** | T26-03 — die Tabellenbindung steht, die Rollenpruefung braucht eine Entscheidung zur Schichtenkarte |
+| **Teilweise** | keiner (T26-03 seit 5a6667f geschlossen) |
 | **Offen** | keiner |
 | **Zusaetzlich geschlossen** | N-03 (nicht vom Gutachter, von der Seiten-Session gefunden) |
 
@@ -44,7 +44,9 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
 1. **Die Schichtenkarte** — darf `betrieb` den Fall lesen? Drei Wege mit
    Empfehlung stehen bei T26-03. **ENTSCHIEDEN 2026-09-22: Weg 2** — der
    Vertrag wandert nach `models`, gekoppelt mit dem Ausbau der
-   Zeichnungsschicht. Noch nicht gebaut; Begruendung bei T26-03.
+   Zeichnungsschicht. **GEBAUT 5a6667f** (ADR-021): models.belegrollen,
+   models.freigabe, Betriebseingang prueft Rollen exakt, Signatur mit
+   Ring, Schema 7; Tageslauf verlangt signatur_verifiziert.
 2. **Die Herabsetzung** — darf sie die Versicherungssumme HEBEN? Gemessen
    hebt sie sie (+202.338 ueber alle Jahre des Fixtures). Steht bei T26-11.
    **ERLEDIGT 2026-09-22: keine Entscheidung** — die Herabsetzung senkt
@@ -96,7 +98,7 @@ mutiert.
 | T26-08 | hoch | 1+4 | GESCHLOSSEN | Externer Anker darf im Paket/in der Ablage liegen; Reexport loescht seine Historie |
 | T26-14 | mittel | 2 | GESCHLOSSEN | Parallele Eingaenge erhalten dasselbe Nummernband |
 | T26-15 | mittel | 2 | GESCHLOSSEN | Unpublizierter Arbeitsrest blockiert den Tagesbetrieb |
-| T26-03 | hoch | 3 | TEILWEISE | Betriebseingang akzeptiert semantisch ungueltige A-M4-Belege ohne Tabellenbindung |
+| T26-03 | hoch | 3 | GESCHLOSSEN | Betriebseingang akzeptiert semantisch ungueltige A-M4-Belege ohne Tabellenbindung |
 | T26-04 | hoch | 3 | GESCHLOSSEN | Fuehrungsbeleg-Consumer akzeptiert selbst behauptete Ergebnisse |
 | T26-05 | hoch | 3 | GESCHLOSSEN | Fuehrungsprobe bestaetigt eine von 43.000 auf 1.042.999 EUR veraenderte Stammsumme |
 | T26-06 | hoch | 3 | GESCHLOSSEN | Roter Schichtbeleg fuehrt zu drei gruenen aktuariellen Vorlagenlaeufen |
@@ -509,7 +511,7 @@ Ich habe NICHT entschieden, weil es die Schichtenkarte aendert — genau das
 STOPP-Kriterium des Entwicklungs-Skills.
 
 **ENTSCHIEDEN 2026-09-22 (Maintainer): Weg 2, gekoppelt mit der
-Zeichnungsschicht — noch nicht gebaut.** Der Belegrollen-Vertrag wandert
+Zeichnungsschicht — GEBAUT 5a6667f (ADR-021).** Der Belegrollen-Vertrag wandert
 nach `models`, die Schicht, die fuer paketuebergreifend lesbare Vertraege
 da ist. Nicht `betrieb -> fall`: Das Verbot versteckt den Vertrag nicht,
 es sagt, wo er hingehoert — sonst haengt die Laufzeit an einem
