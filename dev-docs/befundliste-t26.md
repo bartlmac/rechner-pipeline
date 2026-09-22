@@ -42,7 +42,9 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
 **Was der Maintainer entscheiden muss**, bevor der Rest gebaut wird:
 
 1. **Die Schichtenkarte** — darf `betrieb` den Fall lesen? Drei Wege mit
-   Empfehlung stehen bei T26-03.
+   Empfehlung stehen bei T26-03. **ENTSCHIEDEN 2026-09-22: Weg 2** — der
+   Vertrag wandert nach `models`, gekoppelt mit dem Ausbau der
+   Zeichnungsschicht. Noch nicht gebaut; Begruendung bei T26-03.
 2. **Die Herabsetzung** — darf sie die Versicherungssumme HEBEN? Gemessen
    hebt sie sie (+202.338 ueber alle Jahre des Fixtures). Steht bei T26-11.
 3. **Die Teilkuendigung** — Tarifplan und Kernkommentar widersprechen sich.
@@ -468,6 +470,29 @@ zuerst:
 
 Ich habe NICHT entschieden, weil es die Schichtenkarte aendert — genau das
 STOPP-Kriterium des Entwicklungs-Skills.
+
+**ENTSCHIEDEN 2026-09-22 (Maintainer): Weg 2, gekoppelt mit der
+Zeichnungsschicht — noch nicht gebaut.** Der Belegrollen-Vertrag wandert
+nach `models`, die Schicht, die fuer paketuebergreifend lesbare Vertraege
+da ist. Nicht `betrieb -> fall`: Das Verbot versteckt den Vertrag nicht,
+es sagt, wo er hingehoert — sonst haengt die Laufzeit an einem
+Werkstatt-Modul. Dasselbe Muster wie die P-B1-Engine
+(`bestand.vorbedingungen`, von Gate UND Betrieb gerufen): eine Definition,
+Gate und Betrieb koennen nicht auseinanderlaufen.
+
+Der Vorbehalt oben gegen Weg 2 („fall muesste die Tabelle selbst
+behalten") gilt bei Nachpruefen nicht: `fall.py` NUTZT `belegrollen`
+nicht selbst, es beherbergt und exponiert es nur (`fall.py:97,254`);
+Verbraucher ist das Gate (`gate_entscheid.py:914`). Mitwandern muss die
+Scope-Validierung (`scope_dokument`), auf die `belegrollen` sich stuetzt.
+
+Dazu wird die Zeichnungsschicht zu Ende gebaut (Schema 7,
+Schluesselklasse, Signaturpruefung im Betriebseingang), damit der Betrieb
+ZWEI unabhaengige Zeugen hat: den eigenen Vollstaendigkeitscheck gegen
+den Vertrag und das verifizierte Siegel — kein Beleg, der nur sich selbst
+bezeugt. Der Bau traegt sein eigenes ADR (Schichtenkarte: `belegrollen`
+aus `fall` nach `models`; Kanten gates -> models und betrieb -> models
+sind schon erlaubt) und die Schema-7-Arbeit des Architektur-Strangs.
 
 **Gegen Rueckbau gesichert.** Vier Manipulationslagen als Tabelle: die nach
 der Abnahme getauschte Stammtabelle (Summe 43.000 -> 1.042.999, derselbe
