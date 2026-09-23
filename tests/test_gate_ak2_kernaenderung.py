@@ -22,7 +22,8 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.fall import FALL_SCOPES, belegrollen
+from rechner_pipeline.fall import FALL_SCOPES
+from rechner_pipeline.models.belegrollen import belegrollen
 from rechner_pipeline.gates._provenienz import (
     PRODUKTIVER_ZWEIG,
     git_stand,

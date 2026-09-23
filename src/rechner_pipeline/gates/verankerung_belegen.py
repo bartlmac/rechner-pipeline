@@ -36,6 +36,7 @@ Knoten: klv
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import hashlib
 import json
 import sys
@@ -295,6 +296,19 @@ def main(argv: Optional[List[str]] = None) -> int:
                    default=None, metavar="REGISTRIERTE_DATEI",
                    help="registrierte Erwartungswerte am "
                         "Verankerungszeitpunkt (siehe migrationssuite_lauf)")
+    p.add_argument("--config", dest="config", default=None,
+                   help="Bestand-Config der Fuehrung (TOML). Mit ihr und "
+                        "--stichtag schreibt dieser Lauf das LAUFMANIFEST "
+                        "des Migrationszugangs neben die Tabellen der "
+                        "Uebernahme — die Aussage des Produzenten darueber, "
+                        "welche Tabellen zu diesem Lauf gehoeren. A-M4 "
+                        "verlangt sie (Entscheid 2026-09-16); ohne sie "
+                        "bleibt der Fall abnahmefaehig nur, solange niemand "
+                        "die Migrationsabnahme fahrt.")
+    p.add_argument("--stichtag", default=None,
+                   help="Migrationsstichtag (ISO) — der Horizont des "
+                        "Migrationszugangs im Laufmanifest; Pflicht mit "
+                        "--config.")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/schichten/"
                         "verankerung_schichten.json)")
@@ -305,7 +319,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     import pandas as pd
 
     from rechner_pipeline.bestand.parquet_io import read_portfolio_aus_bytes
-    from rechner_pipeline.gates._common import lies_gehasht
+    from rechner_pipeline.gates._common import Eingangsbindung
     from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 
     fall = Path(args.fall)
@@ -324,16 +338,24 @@ def main(argv: Optional[List[str]] = None) -> int:
     # traegt den Hash der Bytes, die hier verarbeitet werden (Review
     # T23-01) — vorher lasen Engine und _sha256 die Tabellen getrennt.
     merkmale_pfad = ueber / "merkmale.parquet"
+    # EINE Bindung fuer alle Eingaben dieses Producers (Befund T26-07,
+    # Teil a). Vorher trug er seine eigene Fassung: vier Dateien gebunden,
+    # die uebrigen fachlich wirksamen Eingaben — Zeilen, Vorgeschichte,
+    # Ankerquelle — gelesen und benutzt, aber nicht im Beleg genannt. Der
+    # Beleg sagte damit nichts ueber Bytes aus, die in sein Urteil
+    # eingingen: Mit geaenderter zeilen.json nahm der Consumer denselben
+    # alten Beleg weiter an.
+    bindung = Eingangsbindung(fall)
     merkmale_gelesen = (
-        lies_gehasht(merkmale_pfad) if merkmale_pfad.is_file() else None)
+        bindung.binde(merkmale_pfad) if merkmale_pfad.is_file() else None)
     merkmale = (pd.read_parquet(io.BytesIO(merkmale_gelesen.roh))
                 if merkmale_gelesen is not None else None)
 
-    spez_gelesen = lies_gehasht(spez_pfad(fall, args.generation))
+    spez_gelesen = bindung.binde(spez_pfad(fall, args.generation))
     spez = lade_spez_aus_bytes(spez_gelesen.roh)
-    bestand_gelesen = lies_gehasht(pfade["bestand"])
+    bestand_gelesen = bindung.binde(pfade["bestand"])
     bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
-    verankerung_gelesen = lies_gehasht(pfade["verankerung"])
+    verankerung_gelesen = bindung.binde(pfade["verankerung"])
 
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None
     summen: Optional[Dict[str, float]] = None
@@ -352,8 +374,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
 
         if args.zeilen is not None:
-            zeilen = json.loads(
-                Path(args.zeilen).read_text(encoding="utf-8"))
+            zeilen = bindung.binde(Path(args.zeilen)).json()
             auspraegungen = auspraegungen_je_police(spez, zeilen)
             summen = {
                 str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
@@ -365,9 +386,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             zeilen = []
             auspraegungen = {
                 str(r["police_id"]): {} for _, r in bestand.iterrows()}
-        with fall_mod.eingang_datei(fall, args.vorgeschichte).open(
-                encoding="utf-8") as datei:
-            vorgeschichte = list(csv.DictReader(datei, delimiter=";"))
+        vorgeschichte_gelesen = bindung.binde(
+            fall_mod.eingang_datei(fall, args.vorgeschichte))
+        vorgeschichte = list(csv.DictReader(
+            io.StringIO(vorgeschichte_gelesen.roh.decode("utf-8")),
+            delimiter=";"))
         red_anteile: Dict[str, float] = {}
         for eintrag in args.red_anteile:
             police, _, wert = eintrag.partition("=")
@@ -378,8 +401,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             red_anteile[police.strip()] = float(wert)
         anker: Dict[str, Tuple[int, float]] = {}
         if args.anker_quelle is not None:
-            quelle = json.loads(fall_mod.eingang_datei(
-                fall, args.anker_quelle).read_text(encoding="utf-8"))
+            quelle = bindung.binde(
+                fall_mod.eingang_datei(fall, args.anker_quelle)).json()
             for v in quelle.get("vertraege", []):
                 erster = next(
                     (pkt for pkt in v.get("punkte", [])
@@ -460,15 +483,48 @@ def main(argv: Optional[List[str]] = None) -> int:
                   "frueheren Lauf und gehoert NICHT zu diesem Beleg",
                   file=sys.stderr)
 
-    eingaben = {
-        str(pfade["verankerung"].relative_to(fall)): verankerung_gelesen.sha256,
-        str(pfade["bestand"].relative_to(fall)): bestand_gelesen.sha256,
-    }
-    if merkmale_gelesen is not None:
-        eingaben[str(merkmale_pfad.relative_to(fall))] = (
-            merkmale_gelesen.sha256)
-    eingaben[str(spez_pfad(fall, args.generation).relative_to(fall))] = (
-        spez_gelesen.sha256)
+    # Das Laufmanifest des Migrationszugangs (Entscheid des Maintainers
+    # 2026-09-20, Weg D). WARUM HIER und nicht in der Uebernahme: Ein
+    # Migrationslauf hat zwei Produzenten. Die Uebernahme schreibt die
+    # Tabellen, kennt aber weder die Korrekturschicht (die entsteht
+    # gerade hier) noch die Config der Fuehrung — die wird erst NACH ihr
+    # aus dem generation-zellen.toml zusammengesetzt, das sie selbst
+    # schreibt. Dieser Lauf ist der letzte, der in dasselbe Verzeichnis
+    # schreibt, und der erste, der beides kennt. Also sagt er fuer beide,
+    # was zu diesem Lauf gehoert.
+    if args.config:
+        if not args.stichtag:
+            print("verankerung_belegen: --config verlangt --stichtag (der "
+                  "Horizont des Migrationszugangs)", file=sys.stderr)
+            return 2
+        if beleg["befunde"] or not zeilen_schichten:
+            # Kein Manifest ueber einen Lauf, dessen Schicht dieser Lauf
+            # abgelehnt hat — sonst belegte es einen Bestand, den es so
+            # nicht gibt (dieselbe Klasse wie die halbe schichten.parquet
+            # oben, Review T25-04).
+            print("  laufmanifest.json NICHT geschrieben: dieser Lauf hat "
+                  "keine vollstaendige Schicht erzeugt", file=sys.stderr)
+        else:
+            from rechner_pipeline.bestand.manifest import (
+                ERZEUGER_MIGRATIONSZUGANG,
+                schreibe_manifest,
+            )
+            ausgaben = sorted(
+                d for d in ueber.glob("*.parquet") if d.is_file())
+            schreibe_manifest(
+                ueber,
+                horizont=_dt.date.fromisoformat(args.stichtag),
+                neuzugang_ab=None,
+                config_pfad=Path(args.config),
+                ausgaben=ausgaben,
+                erzeuger=ERZEUGER_MIGRATIONSZUGANG,
+            )
+            print(f"  laufmanifest.json: {len(ausgaben)} Tabellen des "
+                  f"Migrationszugangs gebunden ({ueber})")
+
+    # Der Beleg nennt JEDE gelesene Eingabe — nicht eine ausgewaehlte
+    # Liste, die beim naechsten neuen Parameter still unvollstaendig wird.
+    eingaben = bindung.als_beleg()
     beleg["provenienz"] = {
         "systemstand": systemstand(Path(args.repo_root)),
         "eingaben": eingaben,

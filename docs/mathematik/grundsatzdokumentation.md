@@ -490,6 +490,31 @@ die noch besteht.
 | Vertragsablauf | B | Terminalbedingung $V^{\mathrm{korr}}(T) = 0$; nicht verhandelbar, sonst wäre die Ablaufleistung ungleich dem Deckungskapital. |
 | Fortführender Übergang ohne Neuberechnung (etwa Beitragsbefreiung aus einer Zusatzversicherung, Ende einer Stundung) | C | stetiger Übertrag und **Neuverankerung** im Zielzustand (9.8). |
 
+**Default in den Geschäftsvorfällen des Systems.** Soweit der Tarifplan
+eines migrierten Produkts nichts anderes festlegt (Abschnitt 10 Nr. 9),
+gilt: Eine verankerte Korrekturschicht (9.12) wird mit dem **nächsten
+rechnenden Geschäftsvorfall** konsumiert. Der Vertrag wird dabei
+konstruktiv neu gerechnet — Startwert ist das Gesamt-Deckungskapital
+einschließlich Schicht —, und der Schichtwert geht in die Leistungsseite
+dieses Vorfalls ein; danach führt allein die Logik des Zielsystems, eine
+eigene Schicht gibt es nicht mehr. Vor der Verankerung trägt die Schicht
+nicht, und ein nicht rechnender Vorfall lässt sie stehen. Die
+nachrechenbare Fassung dieser Zuordnung ist `HEILUNG` in
+`kern/korrekturschicht.py`; die Betragsarten des Ledgers stehen in
+`models/bestand.py`.
+
+| Geschäftsvorfall | Schicht | Leistungsseite |
+|---|---|---|
+| Beitragsfreistellung (`PEX`) | konsumiert | wertstetig als Zuschlag auf die beitragsfreie Summe (`VS_bfr`) |
+| Herabsetzung, prospektiv oder mit Abzug (`RED`) | konsumiert | in die beitragsfreie Summe des umgewandelten Teils; Ledger-Zeile `dDK_absorption`, keine Auszahlung |
+| Herabsetzung als Teilkündigung (`RED`) | konsumiert | **vollständig in die Auszahlung** des gekündigten Grundanteils: `RKW_teilkuendigung` $= (1-f)\cdot$ Rückkaufswert der Grundversicherung $+$ Schichtwert. Der Stornoabzug trifft nur den Rückkaufswert der Grundversicherung, nicht die Schicht (Konvention wie beim Rückkauf). *Präzisierung 2026-09-22.* |
+| Rückkauf (`STO`) | ausgezahlt | im Rückkaufswert (`RKW`); wertkontinuierlich |
+| Dynamische Erhöhung (`ERH`) | bleibt | nicht rechnend — die Schicht wartet auf den nächsten rechnenden Vorfall |
+| Tod (`TOD`) | verfällt | Todesfallleistung ist die feste Summe (Anker, 9.2); vererbend |
+| Ablauf (`ABL`) | null | Terminalbedingung; Ablaufleistung ist die Summe |
+| Migrationszugang (`MIG`) | entsteht | Umbuchung `dDK_uebernahme`, keine Leistung |
+| Invalidisierung, Reaktivierung (`INV`, `REA`) | offen | bis zur Ausgestaltung der BU-Zustandsbewertung nicht zugeordnet |
+
 ## 9.8 Verankerungsoperator
 
 $$\mathcal{A}(t, s, d, R):\qquad

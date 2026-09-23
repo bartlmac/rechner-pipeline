@@ -31,7 +31,7 @@ auf 32 Bit gekuerzt), nicht ueber ihre Position in der Config: Eine
 spaeter eingefuegte Generation — etwa eine uebernommene — darf die
 Verkaufstage der anderen nicht verschieben. Der erste Zug entscheidet
 den Bernoulli-Rest, danach folgen die Vertragsmerkmale in derselben
-Reihenfolge wie beim Batch-Erzeuger
+Reihenfolge wie beim jaehrlichen Neuzugang
 (:func:`rechner_pipeline.bestand.generator._ziehe_attribute`). Ein Tag
 ist damit fuer sich reproduzierbar — unabhaengig davon, ob er allein, im
 Nachholen oder als Teil eines Jahres erzeugt wird — und kein Tag
@@ -39,8 +39,8 @@ verschiebt einen anderen.
 
 Police-Nummern tragen den Verkaufstag: ``nummernkreis * 10_000_000 +
 5_000_000 + Fensterjahr * 100_000 + Tag_des_Jahres * 100 + k``. Der
-Bereich ab 5 Mio liegt ueber dem Batch (bis 1 Mio) und dem jaehrlichen
-Neuzugang (ab 2 Mio); mehr als 99 Vertraege an einem Tag oder ein
+Bereich ab 5 Mio liegt ueber dem jaehrlichen Neuzugang (ab 2 Mio; 1 bis
+1 Mio gehoerte dem entfernten Batch-Erzeuger und bleibt frei, ADR-020); mehr als 99 Vertraege an einem Tag oder ein
 Fenster ueber 30 Jahre sind ein harter Fehler, kein stiller Ueberlauf.
 
 Versicherungsbeginn ist der naechste Monatserste NACH dem Verkaufstag
@@ -65,10 +65,10 @@ import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig, TarifGeneration
 from rechner_pipeline.bestand.generator import _baue_frame, _ziehe_attribute
-from rechner_pipeline.models.bestand import STAMM_NAMES, STAMM_SPALTEN, stamm_dtypes
+from rechner_pipeline.models.bestand import STAMM_NAMES, leerer_stamm, stamm_dtypes
 
-#: SeedSequence-Konstante des Tagesneugeschaefts — getrennt vom Batch
-#: ([seed, gen_index]), vom jaehrlichen Neuzugang ([seed, 771177, ...])
+#: SeedSequence-Konstante des Tagesneugeschaefts — getrennt vom
+#: jaehrlichen Neuzugang ([seed, 771177, ...])
 #: und von der Ereignis-Engine ([seed, 424242, police_id]).
 NEUGESCHAEFT_STREAM = 918273
 
@@ -170,10 +170,6 @@ def _police_ids(gen: TarifGeneration, kreis: int, tag: _dt.date, anzahl: int) ->
     return basis + np.arange(1, anzahl + 1, dtype=np.int64)
 
 
-def _leerer_stamm() -> pd.DataFrame:
-    return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in STAMM_SPALTEN})
-
-
 def neugeschaeft_am(config: BestandConfig, tag: _dt.date) -> pd.DataFrame:
     """Die an ``tag`` abgeschlossenen Vertraege aller Generationen (POL-Basiszeilen).
 
@@ -205,7 +201,7 @@ def neugeschaeft_am(config: BestandConfig, tag: _dt.date) -> pd.DataFrame:
         beginn = naechster_monatserster(tag)
         frames.append(_baue_frame(gen, attribute, [beginn] * anzahl, police_ids))
     if not frames:
-        return _leerer_stamm()
+        return leerer_stamm()
     df = pd.concat(frames, ignore_index=True)
     df = df[list(STAMM_NAMES)].astype(stamm_dtypes())
     return df.sort_values("police_id", kind="stable").reset_index(drop=True)
@@ -234,7 +230,7 @@ def neugeschaeft_zwischen(
             frames.append(frame)
         tag += _dt.timedelta(days=1)
     if not frames:
-        return _leerer_stamm()
+        return leerer_stamm()
     df = pd.concat(frames, ignore_index=True)
     if df["police_id"].duplicated().any():
         raise NeugeschaeftError("police_id-Kollision im Tagesneugeschaeft")

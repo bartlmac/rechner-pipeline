@@ -361,3 +361,136 @@ def test_in_den_stand_kommt_nur_eine_gebuchte_herabsetzung():
     assert list(gebucht["police_id"]) == [1]
     # Ohne Tabelle bleibt es dabei.
     assert _gebuchte_reduktionen(None, ledger) is None
+
+
+# --------------------------------------------------------------------------- #
+# T26-11: Die Bewegungsrechnung fuehrt die Herabsetzung mit
+# --------------------------------------------------------------------------- #
+
+def test_das_bewegungskonto_folgt_der_einzelbewertung(welt):
+    """Befund T26-11: ``vs_ges`` kannte nur Stamm und Erhoehungen.
+
+    Eine auf 67.606,49 EUR herabgesetzte Police stand mit 100.000 EUR im
+    Konto — und P-B1 bestaetigte es, weil BEIDE SEITEN der Identitaet
+    dieselbe fachliche Aenderung auslassen. Die Identitaet allein faengt
+    diesen Fehler deshalb nicht; sie hielt vorher genauso.
+
+    Gemessen wird gegen eine UNABHAENGIGE Quelle: die Einzelbewertung,
+    die den geknickten Verlauf kennt (``auswertung``: "Ein herabgesetzter
+    Vertrag rechnet ueber seinen geknickten Verlauf"). Ihre Summe ueber
+    die beitragspflichtigen Vertraege ist der Endbestand, den das Konto
+    ausweisen muss.
+    """
+    from rechner_pipeline.bestand.kennzahlen import bewegungskonto
+
+    stamm, sch, ver, _ohne, mit = welt
+    cfg = _config(True)
+    assert len(mit.reduktionen) > 0, "ohne Herabsetzung prueft der Test nichts"
+
+    stichtag = _dt.date(2035, 1, 1)
+    einzeln = einzelwerte_am(
+        stamm, mit.historie, cfg, stichtag, reduktionen=mit.reduktionen,
+        scheiben=mit.scheiben, schichten=sch, verankerung=ver)
+    soll = sum(z["leistung"] for z in einzeln if z["status"] == "POL")
+    stueck = sum(1 for z in einzeln if z["status"] == "POL")
+
+    konto = bewegungskonto(stamm, mit.historie, mit.ledger, mit.scheiben,
+                           bis=stichtag)
+    [jahr] = [z for z in konto if z["jahr"] == stichtag.year - 1]
+    assert jahr["bpfl"]["ende"]["stueck"] == stueck
+    assert jahr["bpfl"]["ende"]["summe"] == pytest.approx(soll, rel=1e-9)
+
+
+def test_die_herabsetzung_ist_eine_summenbewegung_ohne_stueck(welt):
+    """Sie bewegt die Summe, nicht den Bestand: Der Vertrag bleibt POL.
+
+    Die Gegenrichtung steht daneben — ohne eine ausgewiesene Bewegung
+    waere der Endbestand oben nur dann richtig, wenn die Identitaet
+    faellt. Beides zusammen bindet die Aussage.
+    """
+    from rechner_pipeline.bestand.kennzahlen import bewegungskonto
+
+    stamm, _sch, _ver, _ohne, mit = welt
+    konto = bewegungskonto(stamm, mit.historie, mit.ledger, mit.scheiben,
+                           bis=BIS)
+    herab = [z["bpfl"]["veraenderung_herabsetzung"] for z in konto]
+    # Ein Detektor ohne Treffer waere hier genauso gruen wie ein
+    # richtiger: Es MUSS eine Bewegung geben.
+    assert any(abs(h["summe"]) > 1e-9 for h in herab), (
+        "keine Herabsetzung im Konto — der Test saehe nichts")
+    assert all(h["stueck"] == 0 for h in herab), (
+        "eine Herabsetzung nimmt keinen Vertrag aus dem Bestand")
+    # Das VORZEICHEN wird hier bewusst nicht festgeschrieben: Am
+    # Fixture ist es positiv, und ob eine "Herabsetzung" die
+    # Versicherungssumme heben darf, ist eine fachliche Frage (siehe
+    # dev-docs/befundliste-t26.md). Der Test bindet, DASS die Aenderung
+    # gefuehrt wird — nicht, in welche Richtung sie faellt.
+    for zeile in konto:
+        for track, oks in zeile["identitaet"].items():
+            assert all(oks.values()), (zeile["jahr"], track, oks)
+
+
+# --------------------------------------------------------------------------- #
+# T26-12: Eine Config, die im Lauf abbricht, ist keine gueltige Config
+# --------------------------------------------------------------------------- #
+
+#: (Verfahren, Rate > 0?, erwarteter Fehler?) — beide Richtungen. Seit dem
+#: Bauauftrag T26-12 (2026-09-22) fuehrt der produktive Pfad ALLE drei
+#: bekannten Verfahren; die Wache hat heute keinen Treffer mehr, und ein
+#: Detektor ohne Treffer bezeugt nichts. Deshalb prueft der zweite Test
+#: unten die Wache an einer SIMULIERTEN Luecke.
+VERFAHRENSLAGEN = [
+    ("teilkuendigung", True, False),
+    ("teilkuendigung", False, False),
+    ("prospektiv", True, False),
+    ("mit_abzug", True, False),
+]
+
+
+@pytest.mark.parametrize("verfahren,mit_rate,fehlerhaft", VERFAHRENSLAGEN)
+def test_ein_verfahren_das_die_fuehrung_nicht_faehrt_faellt_vor_dem_lauf(
+    verfahren, mit_rate, fehlerhaft
+):
+    """Befund T26-12, als Klasse geschlossen (Entscheid 2026-09-22): Jeder
+    Schalterwert wird gegen ``TARIFWERK_AUSFUEHRBAR`` gehalten — das, was
+    der produktive Pfad kann. Die Teilkuendigung war die Luecke und ist
+    gebaut; heute ist jedes bekannte Verfahren ausfuehrbar, die Config
+    gueltig. Die Wache selbst prueft der naechste Test an einer
+    simulierten Luecke.
+    """
+    import dataclasses
+
+    cfg = _config(mit_rate)
+    cfg.generationen[0] = dataclasses.replace(
+        cfg.generationen[0], red_verfahren=verfahren)
+    fehler = cfg.validate()
+    passend = [f for f in fehler if "red_verfahren" in f and verfahren in f]
+    assert bool(passend) is fehlerhaft, (verfahren, mit_rate, fehler[:3])
+
+
+def test_ein_unbebautes_verfahren_faellt_vor_dem_lauf_als_bauauftrag(monkeypatch):
+    """Die Wache an einer simulierten Luecke: ``mit_abzug`` aus der
+    Deklaration genommen, als waere es nicht gebaut. Mit Herabsetzungsrate
+    ist die Config keine gueltige; der Befund ist ein BAUAUFTRAG und raet
+    nie, die Config anzupassen (der alte Ausweg "auf 'prospektiv'
+    setzen" hiesse, uebernommene Vertraege nach fremdem Verfahren zu
+    fuehren). Ohne Rate bleibt die Luecke latent — die Pruefstrecke
+    braucht dieselbe Config.
+
+    Mutationsprobe: die Ratsche aus ``validate`` nehmen -> rot.
+    """
+    import dataclasses
+
+    from rechner_pipeline.bestand import config as cfgmod
+    from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
+
+    monkeypatch.setitem(cfgmod.TARIFWERK_AUSFUEHRBAR, "red_verfahren", (PROSPEKTIV,))
+    for mit_rate, fehlerhaft in ((True, True), (False, False)):
+        cfg = _config(mit_rate)
+        cfg.generationen[0] = dataclasses.replace(
+            cfg.generationen[0], red_verfahren="mit_abzug")
+        passend = [f for f in cfg.validate() if "mit_abzug" in f]
+        assert bool(passend) is fehlerhaft, (mit_rate, passend)
+        if fehlerhaft:
+            assert "Bauauftrag" in passend[0]
+            assert "auf 'prospektiv'" not in passend[0] and "umstellen" not in passend[0]

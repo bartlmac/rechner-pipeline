@@ -25,7 +25,7 @@ from rechner_pipeline.bestand.ereignisse import (
     bu_uebergang,
     fortschreiben,
 )
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.fuehrung import journalsicht, schnitt_am
 from rechner_pipeline.kern.produkte.bu import AKTIV, BU, BU_ZUSTAND, TOT, BUModelPoint
 from rechner_pipeline.kern.zustandsmodell import Zustandsmodell
@@ -48,7 +48,7 @@ def config():
 
 @pytest.fixture(scope="module")
 def portfolio(config):
-    return generate(config)
+    return bestand_aus_zugangsstrom(config)
 
 
 def _ohne_marge(config):
@@ -114,7 +114,8 @@ def _bu_stamm(*vertraege: dict) -> pd.DataFrame:
 
 
 def test_bu_bestand_erfuellt_den_contract(portfolio, config):
-    assert len(portfolio) == sum(g.sample_size for g in config.generationen)
+    assert len(portfolio) > 0
+    assert set(portfolio["tarif_generation"]) == {g.name for g in config.generationen if g.neuzugang_pro_jahr > 0}
     assert validate_portfolio(portfolio) == []
     assert set(portfolio["produkt"]) == {"bu"}
     # Produktfuehrende Leistungsspalte ist die Jahresrente:
@@ -128,7 +129,7 @@ def test_bu_bestand_erfuellt_den_contract(portfolio, config):
 
 
 def test_bu_erzeugung_ist_deterministisch(config):
-    pd.testing.assert_frame_equal(generate(config), generate(config))
+    pd.testing.assert_frame_equal(bestand_aus_zugangsstrom(config), bestand_aus_zugangsstrom(config))
 
 
 def test_klv_bestand_bleibt_produkt_klv():
@@ -136,7 +137,7 @@ def test_klv_bestand_bleibt_produkt_klv():
     in der TOML bleibt eine Generation KLV."""
     klv = load_config(KLV_EXAMPLE)
     assert all(g.produkt == "klv" for g in klv.generationen)
-    df = generate(klv)
+    df = bestand_aus_zugangsstrom(klv)
     assert set(df["produkt"]) == {"klv"}
     assert (df["bu_rente"] == 0.0).all()
 
@@ -387,7 +388,7 @@ def test_gemischter_bestand_simuliert_beide_produkte():
     )
     assert gemischt.validate() == []
 
-    df = generate(gemischt)
+    df = bestand_aus_zugangsstrom(gemischt)
     assert set(df["produkt"]) == {"klv", "bu"}
     assert validate_portfolio(df) == []
     erg = fortschreiben(df, gemischt, dt.date(2035, 1, 1))
@@ -580,7 +581,7 @@ def test_klv_bewegungskonto_ignoriert_bu_vertraege():
         aktivensterblichkeit=bu.annahmen.aktivensterblichkeit,
         invalidensterblichkeit=bu.annahmen.invalidensterblichkeit,
     )
-    df = generate(gemischt)
+    df = bestand_aus_zugangsstrom(gemischt)
     bis = dt.date(2035, 1, 1)
     erg = fortschreiben(df, gemischt, bis)
 
@@ -638,7 +639,7 @@ def test_bu_neuzugang_wird_mitsimuliert(config):
     from rechner_pipeline.bestand.ereignisse import mit_zugaengen
 
     ref = dt.date(2010, 1, 1)
-    basis = generate(config, bis=ref)
+    basis = bestand_aus_zugangsstrom(config, bis=ref)
     erg = fortschreiben(basis, config, dt.date(2020, 1, 1), neuzugang_ab=ref)
     assert len(erg.zugaenge) > 0
     assert set(erg.zugaenge["produkt"]) == {"bu"}
@@ -753,7 +754,7 @@ def test_ereignis_summen_trennt_bezugsgroessen():
         aktivensterblichkeit=bu.annahmen.aktivensterblichkeit,
         invalidensterblichkeit=bu.annahmen.invalidensterblichkeit,
     )
-    df = generate(gemischt)
+    df = bestand_aus_zugangsstrom(gemischt)
     erg = fortschreiben(df, gemischt, dt.date(2035, 1, 1))
 
     summen = ereignis_summen(erg.ledger)

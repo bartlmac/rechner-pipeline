@@ -214,6 +214,20 @@ def _zeichne_stichtagsgrenze(
     ax.axvline(pos, color="#333333", linewidth=1.0, linestyle="--")
 
 
+def _legende(ax, **kw) -> None:
+    """``_legende(ax)`` nur, wenn es ueberhaupt beschriftete Kurven gibt.
+
+    Ein leerer Eroeffnungsmonat (ADR-020: das Unternehmen beginnt leer)
+    erzeugt Diagramme ohne Datenreihe; ``_legende(ax)`` warnt dann ("No
+    artists with labels") und liesse unter ``filterwarnings = error`` die
+    Figur offen (Folgewarnung "More than 20 figures"). Kein Datenpunkt,
+    keine Legende — der Bericht bleibt gueltig, nur leer.
+    """
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(**kw)
+
+
 def _chart_verlauf_vertraege(
     reihe: List[Dict[str, Any]], generationen: List[str],
     stichtag: Optional[_dt.date] = None,
@@ -231,7 +245,7 @@ def _chart_verlauf_vertraege(
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel("aktive Verträge")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
-    ax.legend(loc="upper right", fontsize=8)
+    _legende(ax, loc="upper right", fontsize=8)
     _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag)
     return _svg(fig)
 
@@ -276,7 +290,7 @@ def _chart_histogramm(
     ax.set_title(titel, fontsize=10)
     ax.set_xlabel(xlabel)
     ax.set_ylabel("Verträge")
-    ax.legend(fontsize=7)
+    _legende(ax, fontsize=7)
     return _svg(fig)
 
 
@@ -289,7 +303,7 @@ def _chart_scatter_alter_laufzeit(df: pd.DataFrame, generationen: List[str]) -> 
     ax.set_xlabel("Eintrittsalter")
     ax.set_ylabel("Laufzeit (Jahre)")
     ax.set_title("Abhängigkeit Eintrittsalter ↔ Laufzeit (Copula)", fontsize=10)
-    ax.legend(fontsize=8)
+    _legende(ax, fontsize=8)
     return _svg(fig)
 
 
@@ -312,7 +326,7 @@ def _chart_status_verlauf(
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel("in-force-Verträge")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
-    ax.legend(loc="upper right", fontsize=8)
+    _legende(ax, loc="upper right", fontsize=8)
     _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag)
     return _svg(fig)
 
@@ -332,7 +346,7 @@ def _chart_deckungskapital(
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel("Deckungskapital (Mio.)")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
-    ax.legend(loc="upper right", fontsize=8)
+    _legende(ax, loc="upper right", fontsize=8)
     _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag)
     return _svg(fig)
 
@@ -362,7 +376,7 @@ def _chart_beitraege(
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel("Beitragsvolumen p. a. (Mio.)")
     ax.set_xlabel("Stichtag (1.1. des Jahres)")
-    ax.legend(loc="upper right", fontsize=8)
+    _legende(ax, loc="upper right", fontsize=8)
     _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag)
     return _svg(fig)
 
@@ -386,7 +400,7 @@ def _chart_ereignisse_je_jahr(
     ax.set_xticks(x[::schritt], labels[::schritt])
     ax.set_ylabel("Ereignisse")
     ax.set_xlabel("Kalenderjahr")
-    ax.legend(loc="upper right", fontsize=8)
+    _legende(ax, loc="upper right", fontsize=8)
     _zeichne_stichtagsgrenze(ax, [int(l) for l in labels], stichtag,
                              zwischen=True)
     return _svg(fig)

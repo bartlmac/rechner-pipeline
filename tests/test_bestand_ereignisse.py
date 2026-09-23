@@ -27,7 +27,7 @@ from rechner_pipeline.bestand.ereignisse import (
     EreignisError,
     fortschreiben,
 )
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.fuehrung import journalsicht, schnitt_am
 from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.models.bestand import (
@@ -49,7 +49,7 @@ def config():
 
 @pytest.fixture(scope="module")
 def portfolio(config):
-    return generate(config)
+    return bestand_aus_zugangsstrom(config)
 
 
 def _mini_stamm(*vertraege: dict) -> pd.DataFrame:

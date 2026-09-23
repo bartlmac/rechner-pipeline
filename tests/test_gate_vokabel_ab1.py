@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import pytest
 
-from rechner_pipeline.fall import FALL_SCOPES, FallFehler, belegrollen
+from rechner_pipeline.fall import FALL_SCOPES
+from rechner_pipeline.models.belegrollen import BelegrollenFehler, belegrollen
 from rechner_pipeline.models.schemas import P9_GATES
 from rechner_pipeline.models.zeichnung import (
     GUELTIGE_GATES,
@@ -68,13 +69,13 @@ def test_die_ausnahmeliste_nennt_nur_wirkliche_ausnahmen():
     nicht darin stehen — sonst waere die Ausnahme eine Tarnung."""
     for gate in OHNE_BELEGVERTRAG:
         assert gate in GUELTIGE_GATES, gate
-        with pytest.raises(FallFehler):
+        with pytest.raises(BelegrollenFehler):
             belegrollen(gate, "bestand")
 
 
 def test_ein_unbekanntes_gate_hat_keinen_vertrag():
     """Positivkontrolle: Der Test oben prueft wirklich etwas."""
-    with pytest.raises(FallFehler, match="kein Belegrollen-Vertrag"):
+    with pytest.raises(BelegrollenFehler, match="kein Belegrollen-Vertrag"):
         belegrollen("A-X9", "bestand")
 
 
@@ -116,7 +117,7 @@ def test_agenten_zeichnen_keine_abnahme():
 import ast
 from pathlib import Path
 
-from rechner_pipeline.fall import BELEGROLLEN
+from rechner_pipeline.models.belegrollen import BELEGROLLEN
 from rechner_pipeline.models.schemas import P9Snapshot
 from rechner_pipeline.models.zeichnung import (
     GATES_MIT_PFLICHTBELEGEN,
@@ -130,7 +131,7 @@ def test_die_menge_deckt_sich_mit_dem_belegvertrag():
     """Die eigentliche Ratsche, und die einzige nicht-zirkulaere:
 
     ``GATES_MIT_PFLICHTBELEGEN`` lebt in models (das Schema darf fall
-    nicht importieren), ``BELEGROLLEN`` in fall. Wer kuenftig einem Gate
+    nicht importieren), ``BELEGROLLEN`` in models.belegrollen. Wer kuenftig einem Gate
     einen Belegvertrag gibt, ohne die Menge zu erweitern — oder
     umgekehrt —, faellt hier auf, nicht erst an einem stillen Snapshot.
     """

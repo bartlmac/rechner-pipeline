@@ -44,7 +44,7 @@ def bestandsfall(tmp_path_factory) -> Path:
     config = fall / "abgeleitet" / "bestand-config.toml"
     shutil.copy(REPO_ROOT / "configs" / "bestand_klv.toml", config)
     assert cli_fortschreibung.main([
-        "--config", str(config), "--bis", HORIZONT,
+        "--config", str(config), "--neuzugang-ab", "1994-07-01", "--bis", HORIZONT,
         "--out-dir", str(fall / "lauf"),
     ]) == 0
     return fall
@@ -263,10 +263,16 @@ def test_ein_beleg_mit_schicht_und_verankerung_ist_kein_ungueltiger_rollenblock(
     lauf = fall / "lauf"
     stamm = read_portfolio(lauf / "bestand_gesamt.parquet")
     ledger = read_portfolio(lauf / "ledger.parquet")
-    # Eine Police OHNE Storno: der Lauf hat seine Stornos ohne Schicht
-    # gebucht, eine nachtraeglich angelegte Schicht widerlegte sie zu Recht.
-    storniert = set(ledger.loc[ledger["ereignis"] == "STO", "police_id"])
-    kandidaten = stamm[(stamm["duration"] >= 10) & ~stamm["police_id"].isin(storniert)]
+    # Eine Police, deren Buchungen die Schicht NICHT beruehrt: Der Lauf hat
+    # sie ohne Schicht gebucht, und eine nachtraeglich angelegte Schicht
+    # wuerde jede schichtabhaengige Buchung zu Recht widerlegen. Storno
+    # traegt den Schichtwert, und seit dem PEX-Zuschlag (ADR zu Review
+    # T25-06) traegt ihn auch die Beitragsfreistellung — beide Arten also
+    # ausschliessen, sonst prueft der Test eine echte Betragsabweichung
+    # statt der Rollenliste.
+    schicht_beruehrt = set(
+        ledger.loc[ledger["ereignis"].isin(["STO", "PEX"]), "police_id"])
+    kandidaten = stamm[(stamm["duration"] >= 10) & ~stamm["police_id"].isin(schicht_beruehrt)]
     police = int(kandidaten["police_id"].iloc[0])
     _mit_schicht(lauf, police)
     argv = [a for a in pb1_vollprofil_argv(lauf, fall / "abgeleitet" / "bestand-config.toml")

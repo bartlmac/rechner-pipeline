@@ -79,6 +79,7 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -126,7 +127,7 @@ ERZEUGER_HINWEIS = {
     "code": "bestand_erzeugen",
     "hint": "Bestand erzeugen mit: python -m "
     "rechner_pipeline.bestand.cli_fortschreibung --config <config>.toml "
-    "--bis <ISO-Datum> --out-dir <lauf>. Der Lauf schreibt "
+    "--neuzugang-ab <ISO-Datum> --bis <ISO-Datum> --out-dir <lauf>. Der Lauf schreibt "
     "<lauf>/bestand_gesamt.parquet (--portfolio), historie.parquet, "
     "ledger.parquet, scheiben.parquet und laufmanifest.json (--manifest); "
     "--bis ist derselbe Horizont, den dieses Gate erwartet — mit "
@@ -265,6 +266,51 @@ def main(argv: Optional[List[str]] = None):
             ],
             [ERZEUGER_HINWEIS],
         )
+
+    # Die Korrekturschicht ist ein VERTRAGSATTRIBUT des uebernommenen
+    # Bestands, kein Zusatz: bucht die Uebernahme den Schichtzuschlag in
+    # eine PEX-Umbuchung, dann folgt dieser Betrag nur noch aus dem Kern
+    # MIT Schicht. Ein P-B1-Lauf ohne --schichten rechnet dann gegen eine
+    # andere Welt und meldet Cent-Abweichungen, deren Ursache nirgends
+    # steht. Der Erzeuger sagt es selbst: sein Beleg neben dem Ledger
+    # fuehrt die nachgetragenen Zuschlaege. Also wird hier nicht geraten,
+    # sondern gelesen — und fail-fast angehalten (Klasse: ein Pruefer,
+    # der Betraege herleitet, braucht dieselben Vertragsattribute, mit
+    # denen der Erzeuger gebucht hat).
+    #
+    # Reichweite, benannt statt behauptet: Erkannt wird der Ledger der
+    # UEBERNAHME, weil nur sie einen Beleg neben ihren Tabellen fuehrt.
+    # Der Ledger eines Fortschreibungs-Laufs (bestand-nach) traegt diese
+    # Auskunft nicht; dort haengt es weiter am Aufrufer, --schichten
+    # mitzugeben. Eine Heuristik "es liegt eine schichten.parquet daneben"
+    # waere geraten, nicht gelesen — sie gehoert an das Laufmanifest, und
+    # das ist eine eigene Aenderung mit eigener Messung.
+    if args.ledger and not args.schichten:
+        beleg_pfad = Path(args.ledger).resolve().parent / "uebernahme.json"
+        zuschlaege: list = []
+        if beleg_pfad.is_file():
+            try:
+                zuschlaege = json.loads(
+                    beleg_pfad.read_text(encoding="utf-8")).get(
+                        "pex_zuschlaege") or []
+            except (ValueError, OSError):
+                zuschlaege = []
+        if zuschlaege:
+            return _usage([{
+                "code": "missing_arg",
+                "message": (
+                    f"{beleg_pfad.name} weist {len(zuschlaege)} PEX-Buchung(en) "
+                    "mit Zuschlag der Korrekturschicht aus; diese Betraege "
+                    "folgen nur aus dem Kern MIT Schicht. --schichten und "
+                    "--verankerung sind hier Pflicht, sonst prueft P-B1 gegen "
+                    "einen Bestand ohne Korrekturschicht"),
+            }], [ERZEUGER_HINWEIS])
+    if args.schichten and not args.verankerung:
+        return _usage([{
+            "code": "missing_arg",
+            "message": "--schichten verlangt --verankerung (die Schicht "
+                       "rechnet auf dem Verankerungszeitpunkt)",
+        }], [ERZEUGER_HINWEIS])
 
     manifest = None
     manifest_sha256 = None

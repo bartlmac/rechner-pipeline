@@ -631,6 +631,173 @@ def _beitragsfreie_uebernahme(
     return float(ursprung), vs_bfr
 
 
+def pex_zuschlag_nachtragen(
+    stamm: "pd.DataFrame",
+    historie: "pd.DataFrame",
+    ledger: "pd.DataFrame",
+    verankerung: "pd.DataFrame",
+    merkmale: Optional["pd.DataFrame"],
+    spez: Any,
+    *,
+    generationsfelder: Optional[Dict[str, Any]],
+    formfunktion: str,
+    fenster: Optional[int] = None,
+    anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
+    scheiben_mit_gamma1: bool = False,
+    summen: Optional[Dict[str, float]] = None,
+) -> List[Dict[str, Any]]:
+    """Die Korrekturschicht in die PEX-Buchung nachtragen. Mutiert ``ledger``.
+
+    Entscheid des Maintainers vom 2026-09-20: Die Uebernahme bucht die
+    Beitragsfreistellung MIT Korrektur.
+
+    **Warum.** Die beitragsfreie Summe ist eine garantierte Leistung, und
+    die Umwandlung ist ein Wertumformungsakt, kein Wertvernichtungsakt.
+    Ohne den Zuschlag faellt der Wert im Moment der Freistellung ohne
+    Gegenbuchung — dem Versicherten ginge Anwartschaft verloren, nur weil
+    sein Vertrag migriert wurde.
+
+    Und die Luecke steckte bereits in den DATEN, nicht erst im
+    Pruefurteil: Die Fortschreibung bucht fuer dieselben Vertraege TOD und
+    ABL laengst MIT Zuschlag (``bestand.ereignisse``, ueber dieselbe
+    Tuer). Zwei Produzenten schrieben in denselben Ledger und waren um
+    genau diesen Betrag uneins — der Bestand buchte bei Zugang X und
+    zahlte bei Ablauf X + Zuschlag.
+
+    **Warum hier und nicht in** :func:`baue`. Der Zuschlag braucht die
+    Korrekturschicht, die Schicht braucht die Verankerung, und die
+    entsteht erst spaeter im selben Lauf. Eine Zirkularitaet ist das
+    nicht: Die Schicht haengt nie am Ledger (``baue_schichtbeleg`` liest
+    ihn nicht), der Stamm haengt nicht an der Schicht. Es war eine Frage
+    der Platzierung, nicht der Daten.
+
+    **Die eine Tuer.** Gerechnet wird mit
+    :func:`kern.korrekturschicht.zuschlag_bei_pex` — derselben Funktion,
+    die Ereignis-Engine, Bewertung, Ledger-Herleitung und Fuehrungsprobe
+    fragen. Genau das Abtippen war der Befund T25-06; die Uebernahme war
+    der letzte Konsument, der nicht angeklopft hat.
+
+    **Nur die betroffenen Policen.** Gefiltert wird auf PEX-Zeilen, deren
+    Freistellungsjahr die Verankerung erreicht oder ueberschreitet — die
+    uebrigen bekaemen ohnehin null. Die Grenze wird nicht abgeschrieben,
+    sondern bei :func:`ab_verankerung` erfragt; sonst haette diese
+    Funktion die siebte Kopie einer Aussage angelegt, deren sechste
+    gerade den Bruch zwischen Uebernahme und Fuehrung verursacht hat.
+    Das Filtern ist kein Tempo-Argument: ``baue_schichtbeleg`` haelt bei
+    Verankerungspathologien hart an, und ein Vertrag, der mit der
+    Freistellung nichts zu tun hat, darf die Uebernahme nicht umbringen.
+
+    **Die Umkehrprobe bleibt unberuehrt.** ``_beitragsfreie_uebernahme``
+    prueft weiter, dass der Kern aus der Ursprungssumme die GELIEFERTE
+    Summe auf den Cent reproduziert; der Zuschlag kommt obendrauf und
+    laeuft nie in ``sum_insured`` zurueck. Beide Saetze sind damit
+    gleichzeitig wahr und belegt: Der Kern reproduziert die Lieferung
+    exakt, und gebucht wird die Garantie des Zielsystems.
+
+    Rueckgabe: je betroffener Police Lieferung, Zuschlag und Buchung —
+    die Differenz ist eine AUSGEWIESENE Position, keine stille.
+    """
+    from rechner_pipeline.gates.verankerung_belegen import baue_schichtbeleg
+    from rechner_pipeline.kern.korrekturschicht import (
+        Schichtparameter,
+        ab_verankerung,
+        zuschlag_bei_pex,
+    )
+
+    if not len(ledger) or not len(verankerung):
+        return []
+    pex_zeilen = ledger.index[ledger["ereignis"] == "PEX"]
+    if not len(pex_zeilen):
+        return []
+    anker = verankerung.set_index("police_id")
+    haupt = stamm.set_index("police_id")
+    # Das Jahr der FREISTELLUNG, nicht das der Buchung: Die Zeile traegt
+    # den Zugangsstichtag, die Summe wurde im Jahr der Freistellung
+    # fixiert — dieselbe Unterscheidung, die die Ledger-Herleitung ueber
+    # ``bfr_ab`` trifft.
+    pex_jahr: Dict[int, int] = {}
+    if len(historie):
+        for pid, datum in zip(historie.loc[historie["status_code"] == "PEX",
+                                           "police_id"],
+                              historie.loc[historie["status_code"] == "PEX",
+                                           "status_date"]):
+            pid = int(pid)
+            if pid not in haupt.index:
+                continue
+            j = _vertragsjahre(haupt.loc[pid, "insurance_start"], datum)
+            pex_jahr[pid] = min(j, pex_jahr.get(pid, j))
+
+    betroffen: Dict[int, int] = {}
+    for i in pex_zeilen:
+        pid = int(ledger.at[i, "police_id"])
+        jahr = pex_jahr.get(pid, int(ledger.at[i, "vertragsjahr"]))
+        if pid in anker.index and ab_verankerung(
+                int(anker.loc[pid, "monate_ta"]), 12 * jahr):
+            betroffen[pid] = jahr
+    if not betroffen:
+        return []
+
+    auswahl = sorted(betroffen)
+    beleg = baue_schichtbeleg(
+        verankerung[verankerung["police_id"].isin(auswahl)],
+        stamm[stamm["police_id"].isin(auswahl)],
+        (merkmale[merkmale["police_id"].isin(auswahl)]
+         if merkmale is not None and len(merkmale) else None),
+        spez,
+        formfunktion=formfunktion, fenster=fenster,
+        anfangszustaende=anfangszustaende,
+        scheiben_mit_gamma1=scheiben_mit_gamma1, summen=summen,
+    )
+    if beleg["befunde"]:
+        erster = beleg["befunde"][0]
+        raise SystemExit(
+            "bestand_uebernehmen: die Korrekturschicht der beitragsfrei "
+            f"uebernommenen Vertraege traegt nicht ({len(beleg['befunde'])} "
+            f"Befund(e), erster: {erster}) — ohne sie waere die PEX-Buchung "
+            "um den absorbierten Wert zu klein. Verankerung klaeren, nicht "
+            "ohne Zuschlag buchen."
+        )
+
+    ausweis: List[Dict[str, Any]] = []
+    for i in pex_zeilen:
+        pid = int(ledger.at[i, "police_id"])
+        if pid not in betroffen:
+            continue
+        zeile = beleg["schichten"].get(str(pid))
+        if zeile is None:
+            continue
+        # Aus dem BELEG-Format, nicht aus einer Parquet-Zeile:
+        # ``als_beleg()`` gibt formparameter als Objekt zurueck, die
+        # Tabelle als JSON-Text. Dieselbe Konstruktion wie in der
+        # Fuehrungsprobe.
+        parameter = Schichtparameter(**{
+            **zeile["hist"],
+            "vererbend": tuple(tuple(x) for x in zeile["hist"]["vererbend"]),
+        })
+        h = haupt.loc[pid]
+        felder = _felder_fuer(generationsfelder, str(pid))
+        if not felder:
+            raise SystemExit(
+                f"Police {pid}: beitragsfrei uebernommen und von der "
+                "Korrekturschicht betroffen, aber ohne Rechnungsgrundlagen "
+                "— der Zuschlag ist nicht berechenbar (--generation-spez)")
+        kern = Rechenkern(ModelPoint(**model_point_kwargs(h, felder)))
+        jahr = betroffen[pid]
+        zuschlag = float(zuschlag_bei_pex(
+            (parameter, int(anker.loc[pid, "monate_ta"])), kern, jahr))
+        if not zuschlag:
+            continue
+        geliefert = float(ledger.at[i, "betrag"])
+        ledger.at[i, "betrag"] = geliefert + zuschlag
+        ausweis.append({
+            "police_id": str(pid), "pex_jahr": int(jahr),
+            "geliefert": round(geliefert, 6),
+            "zuschlag": round(zuschlag, 6),
+            "gebucht": round(geliefert + zuschlag, 6),
+        })
+    return ausweis
+
+
 def materialisiere_anfangszustand(
     stamm: pd.DataFrame,
     ledger: pd.DataFrame,
@@ -816,6 +983,19 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Stornoabschlag-Grenzen je Baustein — "
                         "Tarifwerks-Eigenschaft der Lieferung; wird "
                         "Eigenschaft der Generation in der Config")
+    # Die AUSGESTALTUNG der Korrekturschicht ist eine Entscheidung des
+    # Operators, kein abgeleiteter Wert (gates.verankerung_belegen). Seit
+    # die PEX-Buchung die Schicht traegt, braucht die Uebernahme sie
+    # auch — und sie muss DIESELBE sein, die der Schichtbeleg spaeter
+    # bekommt. Der Beleg schreibt sie mit, damit der Abgleich nicht auf
+    # Erinnerung beruht.
+    p.add_argument("--formfunktion", dest="formfunktion",
+                   default="proportional_zur_basis",
+                   help="Formfunktion der Korrekturschicht — MUSS mit der "
+                        "von gates.verankerung_belegen uebereinstimmen")
+    p.add_argument("--fenster", dest="fenster", type=int, default=None,
+                   help="Amortisationsfenster der Korrekturschicht "
+                        "(optional; wie in gates.verankerung_belegen)")
     p.add_argument("--out-dir", dest="out_dir", required=True,
                    help="Zielverzeichnis im Fall")
     args = p.parse_args(argv)
@@ -889,6 +1069,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         "red_verfahren": str(args.red_verfahren),
     }
 
+    zustaende: Optional[Dict[str, Dict[str, Any]]] = None
+    summen: Optional[Dict[str, float]] = None
     stamm, historie, ledger, hinweise = baue(
         zeilen,
         tarif_generation=args.generation,
@@ -961,6 +1143,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         # migrationssuite_lauf — ein Ort, an dem der Anfangszustand
         # entsteht. Der Stamm dient ihr nur als Traeger der Vertragsdaten;
         # ihre Summen nimmt sie aus den transformierten Zeilen.
+        summen = {str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
         zustaende, warnungen = anfangszustaende_je_police(
             spez, zeilen, rohe_vorgeschichte, stamm, spalten=dict(VORGABE),
             red_verfahren=args.red_verfahren, red_anteile=red_anteile,
@@ -1006,6 +1189,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     merkmale = _merkmalstabelle(zeilen, spez) if args.generation_spez else None
     verankerung = _verankerungstabelle(
         zeilen, _vorgeschichte(fall, args.vorgeschichte))
+    # Die PEX-Buchung traegt die Korrekturschicht (Entscheid des
+    # Maintainers 2026-09-20). Hier und nicht in baue(): Der Zuschlag
+    # braucht die Verankerung, und die steht erst jetzt.
+    beleg["formfunktion"] = str(args.formfunktion)
+    beleg["fenster"] = args.fenster
+    beleg["pex_zuschlaege"] = pex_zuschlag_nachtragen(
+        stamm, historie, ledger, verankerung, merkmale, spez,
+        generationsfelder=generationsfelder,
+        formfunktion=args.formfunktion, fenster=args.fenster,
+        anfangszustaende=zustaende,
+        scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+        summen=summen,
+    ) if args.generation_spez else []
+    if beleg["pex_zuschlaege"]:
+        summe = sum(e["zuschlag"] for e in beleg["pex_zuschlaege"])
+        print(f"  Korrekturschicht in {len(beleg['pex_zuschlaege'])} "
+              f"PEX-Buchung(en) nachgetragen (Summe {summe:.2f}) — die "
+              "beitragsfreie Summe des Zielsystems liegt um diesen Betrag "
+              "ueber der gelieferten", file=sys.stderr)
     zellen_abschnitt = (_zellen_toml(spez, args.generation, tarifwerk)
                         if args.generation_spez else "")
     nicht_erzeugt = {
@@ -1013,6 +1215,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         "merkmale.parquet": merkmale is not None and len(merkmale) > 0,
         "generation-zellen.toml": bool(zellen_abschnitt),
         "verankerung.parquet": len(verankerung) > 0,
+        # Seit die PEX-Buchung die Korrekturschicht traegt, haengt ein
+        # gebuchter BETRAG an dieser Tabelle. Ein zweiter Lauf in ein
+        # Verzeichnis mit alter schichten.parquet erzeugte einen Bestand
+        # aus zwei Laeufen, dessen Ledger zur Schicht des anderen passt.
+        "schichten.parquet": False,
+        # Dasselbe fuer das Laufmanifest: Es BEHAUPTET, welche Tabellen zu
+        # einem Lauf gehoeren, und zwar mit deren SHA-256. Ein Manifest
+        # des Vorlaufs neben den Tabellen dieses Laufs ist die
+        # gefaehrlichste Sorte Rest — es sieht aus wie ein Beleg und
+        # bezeugt einen anderen Bestand. Geschrieben wird es ohnehin erst
+        # von verankerung_belegen (Weg D), also nie von diesem Lauf.
+        "laufmanifest.json": False,
     }
     reste = sorted(
         name for name, wird_erzeugt in nicht_erzeugt.items()

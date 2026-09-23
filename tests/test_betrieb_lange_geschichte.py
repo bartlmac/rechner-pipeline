@@ -9,13 +9,14 @@ geschah. Jetzt gilt die fachliche Ordnung: Ein Zugang liegt in der
 GEFUEHRTEN ZEIT, also zwischen dem ersten gefuehrten Tag und heute.
 
 Damit faellt auch die Kopplung, die der Betriebsbeginn getragen hat. Er ist
-nur noch die ERZEUGUNGSGRENZE: Der Batch stellt den Bestand bis zu ihr, der
-Tagesstrom danach. Die PLV setzt sie an den Anfang ihrer Geschichte
-(1994-07-01) — der Batch zieht nur den Grenztag selbst, der Bestand
-entsteht Werktag fuer Werktag, und kein Bericht kennt mehr einen Zeitraum
-"vor dem Betriebsbeginn". Gemessen am echten Lauf vom 2026-09-08: 3330
-Vertraege Eigengeschaeft, davon 3325 aus dem Tagesstrom und fuenf aus dem
-Batch (Beginn am 1. Juli 1994).
+nur noch der ERSTE VERKAUFSTAG: Der Stand beginnt leer, jeder Vertrag der
+PLV entsteht Werktag fuer Werktag aus dem Tagesstrom (ADR-020), und kein
+Bericht kennt einen Zeitraum "vor dem Betriebsbeginn". Bis zum 2026-09-21
+stellte ein Batch-Erzeuger den Bestand bis zum Betriebsbeginn; weil die
+PLV ihn an den Anfang ihrer Geschichte setzt (1994-07-01), lieferte er
+genau fuenf Vertraege des Grenztages — gemessen am Lauf vom 2026-09-08:
+3330 Vertraege Eigengeschaeft, 3325 aus dem Tagesstrom, fuenf aus dem
+Batch. Die fuenf sind weg; an ihnen hing nichts.
 
 Knoten: system/betrieb
 """
@@ -29,8 +30,9 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.bestand.config import load_config
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.parquet_io import read_portfolio
+from rechner_pipeline.betrieb import tageslauf as tl
 from rechner_pipeline.betrieb import uebernahme as ueb
 from rechner_pipeline.betrieb.neugeschaeft import tagesziel
 from rechner_pipeline.betrieb.tageslauf import (
@@ -45,10 +47,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _ablage_ab(wurzel: Path, betriebsbeginn: dt.date) -> Ablage:
-    """Eine Ablage mit frei gesetzter Erzeugungsgrenze (sechs Vertraege je
-    Generation, damit der Tagesstrom kurz bleibt)."""
+    """Eine Ablage mit frei gesetztem Betriebsbeginn."""
     text = PLV.read_text(encoding="utf-8")
-    text = re.sub(r"^sample_size = [1-9]\d*$", "sample_size = 6", text, flags=re.M)
     text = re.sub(r"^betriebsbeginn = .*$",
                   f"betriebsbeginn = {betriebsbeginn.isoformat()}", text, flags=re.M)
     ablage = Ablage(wurzel)
@@ -120,23 +120,30 @@ def test_ein_zugang_ausserhalb_der_gefuehrten_zeit_wird_verweigert(
 
 
 # --------------------------------------------------------------------------- #
-# Der Betriebsbeginn ist nur noch die Erzeugungsgrenze
+# Der Betriebsbeginn ist der erste Verkaufstag
 # --------------------------------------------------------------------------- #
 
 def test_die_plv_beginnt_1994_und_zieht_ihren_bestand_taeglich():
-    """Liegt die Erzeugungsgrenze am Anfang der Geschichte, bleibt dem Batch
-    nur der Grenztag: Jeder weitere Vertrag entsteht aus dem Tagesstrom."""
+    """Der Betriebsbeginn ist der erste Tag, an dem verkauft wird: Jeder
+    Vertrag entsteht aus dem Tagesstrom (Beginn ab dem naechsten
+    Monatsersten), einen gezogenen Anfangsbestand gibt es nicht."""
     config = load_config(PLV)
     beginn = config.tagesbetrieb.betriebsbeginn
     assert beginn == dt.date(1994, 7, 1)
-    # Vor dem ersten Verkaufstag gibt es kein Fenster — der Batch findet
-    # nichts vor, was er ziehen koennte. Was er liefert, sind genau die
-    # Vertraege des Grenztages selbst; jeden weiteren verkauft der
-    # Tagesstrom (Beginn ab dem naechsten Monatsersten).
+    # Vor dem ersten Verkaufstag gibt es kein Fenster — nichts, was ein
+    # Erzeuger liefern koennte.
     assert min(g.gueltig_von for g in config.generationen) == beginn
-    batch = generate(config, bis=beginn)
-    assert len(batch) < 10
-    assert set(batch["insurance_start"].dt.date) <= {beginn}
+    # bis=beginn schneidet VOR dem ersten Verkaufstag: nichts. Der Bestand
+    # entsteht ab dem Betriebsbeginn, jeder Vertrag mit seinem Zugang.
+    vor_beginn = bestand_aus_zugangsstrom(config, bis=beginn)
+    assert len(vor_beginn) == 0
+    ab_beginn = bestand_aus_zugangsstrom(config, bis=dt.date(beginn.year + 1, 1, 1))
+    assert len(ab_beginn) > 0
+    # Der jaehrliche Strom beginnt am Fensteranfang selbst (Beginn = ein
+    # Monatserster im Fenster); der Tagesstrom des Betriebs beginnt erst am
+    # Monatsersten NACH dem Verkaufstag — beide sind gueltig, sie loesen
+    # nur verschieden fein auf.
+    assert ab_beginn["insurance_start"].dt.date.min() == beginn
 
 
 def test_batchdichte_und_jahresziel_beschreiben_dieselbe_generation():
@@ -152,9 +159,9 @@ def test_batchdichte_und_jahresziel_beschreiben_dieselbe_generation():
     geprueft = 0
     for gen in config.generationen:
         jahre = ((gen.gueltig_bis - gen.gueltig_von).days + 1) / 365.25
-        if gen.sample_size == 0 and gen.neuzugang_pro_jahr == 0:
+        if gen.neuzugang_pro_jahr == 0:
             continue                      # uebernommene Generation (TG2015)
-        assert gen.neuzugang_pro_jahr > 0, gen.name
+        ziel_trendfrei = gen.neuzugang_pro_jahr * jahre
         # Die tatsaechliche Strommenge: die Tagesziele ueber die Tage des
         # Verkaufsfensters, mit Trend, wo einer gesetzt ist. Weder die
         # lineare Naeherung (sieht den Trend nicht) noch die Summe ueber
@@ -165,17 +172,14 @@ def test_batchdichte_und_jahresziel_beschreiben_dieselbe_generation():
             for k in range((gen.gueltig_bis - gen.gueltig_von).days + 1)
         )
         if gen.neuzugang_trend == 0.0:
-            assert abs(aus_dem_strom - gen.sample_size) <= 0.05 * gen.sample_size, (
-                gen.name, gen.sample_size, aus_dem_strom)
+            assert abs(aus_dem_strom - ziel_trendfrei) <= 0.05 * ziel_trendfrei, (
+                gen.name, ziel_trendfrei, aus_dem_strom)
         else:
-            # Mit Trend ist sample_size die trendfreie Dichte des ersten
-            # Jahres mal Fensterjahre; der Strom liegt darunter (schrumpfendes
-            # Unternehmen) und darf sich nicht davon loesen.
+            # Mit Trend liegt der Strom unter der trendfreien Dichte
+            # (schrumpfendes Unternehmen) und darf sich nicht davon loesen.
             assert gen.neuzugang_trend < 0, gen.name
-            assert gen.neuzugang_pro_jahr * jahre == pytest.approx(
-                gen.sample_size, rel=0.05), gen.name
-            assert 0.7 * gen.sample_size < aus_dem_strom < gen.sample_size, (
-                gen.name, gen.sample_size, aus_dem_strom)
+            assert 0.7 * ziel_trendfrei < aus_dem_strom < ziel_trendfrei, (
+                gen.name, ziel_trendfrei, aus_dem_strom)
         geprueft += 1
     assert geprueft == 13
 
@@ -280,7 +284,13 @@ def test_ein_zugang_genau_am_juengsten_abschluss_wird_verweigert(tmp_path):
     Guard, >= zu >, und die Suite blieb gruen — die Kante war ungebunden.
     Jetzt nicht mehr."""
     stand = tmp_path / "daten"
-    ablage = _ablage_ab(stand, dt.date(2026, 1, 1))
+    # Betriebsbeginn ein Jahr vor dem Stichtag, damit der Stand am
+    # 2026-01-01 in-force-Vertraege traegt (ADR-020: ein Unternehmen
+    # beginnt leer; sein Eroeffnungsmonat traegt nichts, und die Wache
+    # eines leeren Stands haette nichts zu pruefen). Der Abschluss zum
+    # 2026-01-01 wird dadurch nicht-leer und festgeschrieben — genau die
+    # Kante, die dieser Test braucht.
+    ablage = _ablage_ab(stand, dt.date(2025, 1, 1))
     assert tageslauf(ablage, dt.date(2026, 1, 1))[0] == EXIT_OK
     assert (ablage.abschluesse / "abschluss_2026-01-01.parquet").is_file()
 
@@ -315,3 +325,50 @@ def test_eine_bestehende_fall_config_bleibt_lesbar(tmp_path):
     echt = REPO_ROOT / "faelle" / "baldrian-klv-tg2015-lauf2" / "abgeleitet" / "bestand-config.toml"
     if echt.is_file():
         assert load_config(echt).validate() == [], "der gezeichnete Fall muss lesbar bleiben"
+
+
+def test_jede_stichtagssicht_traegt_ein_bewegungskonto(tmp_path):
+    """Befund N-03: Der Bericht eines AELTEREN Stichtags brach ab.
+
+    "Historie hat PEX-Status ohne PEX-Ledger-Zeile" — und beide Zeilen
+    waren richtig: Die uebernommene Historie fuehrt die Vorgeschichte des
+    ABGEBENDEN Unternehmens an ihren echten Daten (PEX 2023-11-01), der
+    Ledger bucht dieselbe Tatsache am Migrationsstichtag (2026-01-01).
+    Die Praemisse der Pruefung — "aus demselben fortschreiben-Lauf" —
+    gilt fuer uebernommenen Bestand nicht.
+
+    Die Ursache war die POPULATION: Die Sicht zum 2025-01-01 trug eine
+    Police, die erst 2026 in die Buecher kam. ``jahresraster`` kennt die
+    Regel laengst ("vom ZUGANG, nicht vom Vertragsbeginn"); das
+    Bewegungskonto wandte sie auf seine Population nicht an.
+
+    Gefunden hat es die Seiten-Session beim Rendern der Monatsberichte —
+    im Dunkeln lag es, weil nie jemand einen Bericht fuer einen aelteren
+    Stichtag gebaut hat.
+    """
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.kennzahlen import bewegungskonto
+    from rechner_pipeline.betrieb.tageslauf import monatserste_in
+
+    fall = _fall_mit_nebentabellen(tmp_path)
+    stand = tmp_path / "daten"
+    ueb.eingang_anlegen(stand, fall, STICHTAG)                # Zugang 2026-01-01
+    betriebsbeginn = dt.date(2025, 1, 1)
+    ablage = _ablage_ab(stand, betriebsbeginn)               # gefuehrt seit 2025
+    heute = dt.date(2026, 1, 9)
+    assert tageslauf(ablage, heute)[0] == EXIT_OK
+
+    config = load_config(ablage.config_pfad)
+    tabellen = {n: read_portfolio(ablage.stand / f"{n}.parquet")
+                for n in ("historie", "ledger", "scheiben")}
+    tabellen["portfolio"] = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
+    stichtage = monatserste_in(betriebsbeginn - dt.timedelta(days=1), heute)
+    assert len(stichtage) > 1, "ohne aeltere Stichtage prueft der Test nichts"
+    for stichtag in stichtage:
+        sicht = tl._stichtagssicht(tabellen, config, stichtag, betriebsbeginn)
+        konto = bewegungskonto(sicht["portfolio"], sicht["historie"],
+                               sicht["ledger"], scheiben=sicht["scheiben"],
+                               bis=stichtag)
+        for zeile in konto:
+            for track, oks in zeile["identitaet"].items():
+                assert all(oks.values()), (stichtag, zeile["jahr"], track, oks)

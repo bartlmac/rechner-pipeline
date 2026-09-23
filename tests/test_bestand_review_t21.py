@@ -19,7 +19,7 @@ import pytest
 from rechner_pipeline.bestand import cli_fortschreibung
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.kennzahlen import bu_bewegungskonto
 from rechner_pipeline.bestand.ledger_bindung import pruefe_ledger_betraege, zustand_vor
 from rechner_pipeline.bestand.parquet_io import read_portfolio
@@ -42,7 +42,7 @@ import vorzeigeseite as vz  # noqa: E402
 @pytest.fixture(scope="module")
 def bu_lauf():
     config = load_config(BU_CONFIG)
-    stamm = generate(config)
+    stamm = bestand_aus_zugangsstrom(config)
     erg = fortschreiben(stamm, config, _dt.date(2060, 1, 1))
     return config, stamm, erg
 
@@ -126,7 +126,8 @@ def test_ueberlaufende_lognormal_stoppt_den_produzenten_vor_dem_publish(tmp_path
     assert load_config(config).validate() == [], "die Parameter SIND endlich"
     out = tmp_path / "lauf"
     assert cli_fortschreibung.main([
-        "--config", str(config), "--bis", "2020-01-01", "--out-dir", str(out),
+        "--config", str(config), "--neuzugang-ab", "1994-07-01",
+        "--bis", "2020-01-01", "--out-dir", str(out),
     ]) == 2
     assert not out.exists() or not list(out.iterdir()), "nichts darf publiziert sein"
 
@@ -209,7 +210,8 @@ def test_keine_darstellung_nennt_snapshots_menschliche_entscheide():
 def klv_lauf(tmp_path_factory) -> Path:
     ziel = tmp_path_factory.mktemp("klv")
     assert cli_fortschreibung.main([
-        "--config", str(KLV_CONFIG), "--bis", "2020-01-01", "--out-dir", str(ziel),
+        "--config", str(KLV_CONFIG), "--neuzugang-ab", "1994-07-01",
+        "--bis", "2020-01-01", "--out-dir", str(ziel),
     ]) == 0
     return ziel
 
@@ -238,15 +240,22 @@ def test_zugang_eines_uebernommenen_vertrags_muss_geliefert_tragen(klv_lauf):
     scheiben = read_portfolio(klv_lauf / "scheiben.parquet")
     i = stamm.index[0]
     pid = int(stamm.loc[i, "police_id"])
-    zugang = stamm.loc[i, "insurance_start"] + pd.Timedelta(days=400)
+    # Aus einem eigenen Vertrag einen UEBERNOMMENEN machen: sein Zugang
+    # liegt nach dem Beginn. Seit ADR-020 traegt jeder eigene Vertrag
+    # seinen Zugang am Beginn im Journal — der muss erst weichen, sonst
+    # stuenden zwei Zugaenge nebeneinander (frueher hatte der Batch-Bestand
+    # gar kein Journal, deshalb entfiel dieser Schritt).
+    monatserster = (stamm.loc[i, "insurance_start"] + pd.Timedelta(days=400)).replace(day=1)
+    zugang = pd.Timestamp(monatserster)
     stamm.loc[i, "bestandszugang"] = zugang
+    ohne_alten_zug = ledger[~((ledger["police_id"] == pid) & (ledger["ereignis"] == "ZUG"))]
     zug = pd.DataFrame([{
         "police_id": pid, "tarif_generation": stamm.loc[i, "tarif_generation"],
-        "ereignis": "ZUG", "vertragsjahr": 0, "status_date": zugang,
+        "ereignis": "ZUG", "vertragsjahr": 1, "status_date": zugang,
         "betrag_art": "VS", "betrag": float(stamm.loc[i, "sum_insured"]),
         "betrag_herkunft": "gerechnet",
     }])
-    mit_zug = pd.concat([ledger, zug[ledger.columns]], ignore_index=True)
+    mit_zug = pd.concat([ohne_alten_zug, zug[ledger.columns]], ignore_index=True)
     mit_zug["status_date"] = pd.to_datetime(mit_zug["status_date"])
     fehler = validate_ledger(stamm, mit_zug, historie, scheiben)
     assert any("muss betrag_herkunft 'geliefert'" in f and str(pid) in f for f in fehler), fehler

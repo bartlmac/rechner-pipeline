@@ -24,7 +24,9 @@ nummernkreis = 1
 knoten = "klv/plv_1994"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 1994-07-01
 gueltig_bis = 2000-06-30
-sample_size = 600
+# Jahresziel des Neugeschaefts (ADR-020: der Bestand entsteht aus dem
+# Zugangsstrom; dieselben Ziele wie in bestand_gesamt.toml).
+neuzugang_pro_jahr = 100
 max_endalter = 85
 zins = 0.04
 tafel = "DAV1994_T"
@@ -98,7 +100,9 @@ nummernkreis = 2
 knoten = "klv/plv_2000"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2000-07-01
 gueltig_bis = 2003-12-31
-sample_size = 280
+# Jahresziel des Neugeschaefts (ADR-020: der Bestand entsteht aus dem
+# Zugangsstrom; dieselben Ziele wie in bestand_gesamt.toml).
+neuzugang_pro_jahr = 80
 max_endalter = 85
 zins = 0.0325
 tafel = "DAV1994_T"
@@ -167,7 +171,9 @@ nummernkreis = 3
 knoten = "klv/plv_2004"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2004-01-01
 gueltig_bis = 2006-12-31
-sample_size = 260
+# Jahresziel des Neugeschaefts (ADR-020: der Bestand entsteht aus dem
+# Zugangsstrom; dieselben Ziele wie in bestand_gesamt.toml).
+neuzugang_pro_jahr = 87
 max_endalter = 85
 zins = 0.0275
 tafel = "DAV1994_T"
@@ -236,7 +242,9 @@ nummernkreis = 4
 knoten = "klv/plv_2007"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2007-01-01
 gueltig_bis = 2007-12-31
-sample_size = 70
+# Jahresziel des Neugeschaefts (ADR-020: der Bestand entsteht aus dem
+# Zugangsstrom; dieselben Ziele wie in bestand_gesamt.toml).
+neuzugang_pro_jahr = 70
 max_endalter = 85
 zins = 0.0225
 tafel = "DAV1994_T"
@@ -305,7 +313,9 @@ nummernkreis = 5
 knoten = "klv/plv_2008"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2008-01-01
 gueltig_bis = 2011-12-31
-sample_size = 300
+# Jahresziel des Neugeschaefts (ADR-020: der Bestand entsteht aus dem
+# Zugangsstrom; dieselben Ziele wie in bestand_gesamt.toml).
+neuzugang_pro_jahr = 75
 max_endalter = 85
 zins = 0.0225
 tafel = "DAV2008_T"
@@ -374,7 +384,9 @@ nummernkreis = 6
 knoten = "klv/plv_2012"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2012-01-01
 gueltig_bis = 2014-12-31
-sample_size = 240
+# Jahresziel des Neugeschaefts (ADR-020: der Bestand entsteht aus dem
+# Zugangsstrom; dieselben Ziele wie in bestand_gesamt.toml).
+neuzugang_pro_jahr = 80
 max_endalter = 85
 zins = 0.0175
 tafel = "DAV2008_T"
@@ -443,7 +455,9 @@ nummernkreis = 7
 knoten = "klv/plv_2015"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2015-01-01
 gueltig_bis = 2016-12-31
-sample_size = 180
+# Jahresziel des Neugeschaefts (ADR-020: der Bestand entsteht aus dem
+# Zugangsstrom; dieselben Ziele wie in bestand_gesamt.toml).
+neuzugang_pro_jahr = 90
 max_endalter = 85
 zins = 0.0125
 tafel = "DAV2008_T"
@@ -512,7 +526,9 @@ nummernkreis = 8
 knoten = "klv/plv_2017"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2017-01-01
 gueltig_bis = 2021-12-31
-sample_size = 250
+# Jahresziel des Neugeschaefts (ADR-020: der Bestand entsteht aus dem
+# Zugangsstrom; dieselben Ziele wie in bestand_gesamt.toml).
+neuzugang_pro_jahr = 50
 max_endalter = 85
 zins = 0.009
 tafel = "DAV2008_T"
@@ -581,13 +597,10 @@ nummernkreis = 9
 knoten = "klv/plv_2022"  # PLV-Tarifgeneration (Ontologie-Knoten)
 gueltig_von = 2022-01-01
 gueltig_bis = 2035-12-31
-sample_size = 150
-# Wirkt NUR mit --neuzugang-ab: dann besiedelt der Batch-Erzeuger das
-# Verkaufsfenster bis zum Referenzstichtag (sample_size) und der
-# GeVo-Strom setzt danach mit diesem Jahressatz als ZUG fort. Ohne
-# --neuzugang-ab besiedelt der Batch das ganze Fenster (Ein Erzeuger je
-# Zeitfenster) und der Lauf meldet 0 Neuzugaenge — kein Run-off, nur ein
-# anderer Erzeuger. Siehe ONBOARDING.md Abschnitt 3.
+# Jahresziel des Neugeschaefts je Kalenderjahr — wirksam ab
+# --neuzugang-ab (cli_fortschreibung) bzw. ab betriebsbeginn im
+# Tagesbetrieb; jeder Vertrag kommt als Zugang (ZUG) ins Journal.
+# Einen gezogenen Anfangsbestand gibt es nicht mehr (ADR-020).
 neuzugang_pro_jahr = 40
 max_endalter = 85
 zins = 0.0025

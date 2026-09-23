@@ -34,7 +34,7 @@ from rechner_pipeline.models.bestand import (
     VERANKERUNG_NAMES, VERANKERUNG_SPALTEN,
 )
 from tests.test_betrieb_seite import _ablage
-from tests.test_betrieb_uebernahme import STICHTAG, _fall
+from tests.test_betrieb_uebernahme import STICHTAG, _beleg_neu, _fall
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -80,6 +80,10 @@ def _fall_mit_nebentabellen(tmp_path: Path, *, tarifwerk: dict | None = None) ->
     if tarifwerk is not None:
         beleg["tarifwerk"] = tarifwerk
     (quelle / "uebernahme.json").write_text(json.dumps(beleg), encoding="utf-8")
+    # Die Tabellen sind nach dem Bau des Falls noch einmal angefasst
+    # worden — also bezeugt die Abnahme jetzt andere Bytes. Beleg und
+    # Snapshot neu, sonst weist der Eingang den Fall zu Recht ab (T26-03).
+    _beleg_neu(fall)
     return fall
 
 

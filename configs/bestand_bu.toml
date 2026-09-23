@@ -37,7 +37,9 @@ knoten = "bu/plv_2000"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2000-01-01
 gueltig_bis = 2016-12-31
-sample_size = 500
+# Jahresziel des Neugeschaefts (ADR-020: der Bestand entsteht aus dem
+# Zugangsstrom; dasselbe Ziel wie in bestand_gesamt.toml).
+neuzugang_pro_jahr = 29
 # Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
 # fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).
 max_endalter = 67
@@ -101,7 +103,6 @@ knoten = "bu/plv_2017"  # PLV-Tarifgeneration (Ontologie-Knoten)
 produkt = "bu"
 gueltig_von = 2017-01-01
 gueltig_bis = 2035-12-31
-sample_size = 300
 neuzugang_pro_jahr = 30
 # Endalter 67: das Produkt endet mit dem Rentenalter — und die DAV 1997 I
 # fuehrt ab Alter 70 keine verwendbaren Uebergaenge mehr (i = 1).

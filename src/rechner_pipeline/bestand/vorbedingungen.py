@@ -29,6 +29,7 @@ from rechner_pipeline.bestand.manifest import (
     manifest_aus_bytes,
     MANIFEST_DATEI,
     ManifestError,
+    rollen_dateien,
     ROLLEN_DATEIEN,
     sha256_bytes,
 )
@@ -69,6 +70,27 @@ PB1_ROLLEN = frozenset(ROLLEN_DATEIEN) | {"config"}
 #: die gates-Schicht sie nicht abtippen und nicht selbst in die
 #: Vorzeige greifen muss (ADR-017, TOOL_NACH_VORZEIGE_ERLAUBT).
 PB1_ROLLEN_DATEIEN = ROLLEN_DATEIEN
+
+
+
+def bestandszeilen(pfad) -> int:
+    """Die Zeilenzahl einer Bestandstabelle — die eine Tuer des Tools.
+
+    Das KI-Tool spricht das Zielsystem nur ueber die gemessene
+    Schnittstelle an (ADR-017, ``TOOL_NACH_VORZEIGE_ERLAUBT``), und fuer
+    ``gates.abnahmebericht`` ist diese Tuer dieses Modul. Der
+    A-M4-Consumer braucht die Zeilenzahl, um einen BEHAUPTETEN Zaehler an
+    die gebundene Tabelle zu halten (Befund T26-04) — er liest sie
+    deshalb hier statt selbst ueber ``parquet_io``.
+
+    Wirft weiter, was das Lesen wirft: Eine Datei, die keine
+    Bestandstabelle ist, ist ein Befund und kein stiller Null-Wert.
+    """
+    from pathlib import Path
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+
+    return int(len(read_portfolio(Path(pfad))))
 
 
 def pruefe_pb1_eingaenge(
@@ -461,7 +483,12 @@ def _manifest_befund(
         erwartet = manifest["config"]["sha256"]
         was = "die Config"
     else:
-        datei = ROLLEN_DATEIEN[rolle]
+        # Die Rollentabelle DES ERZEUGERS, nicht die des Normalfalls: Im
+        # Migrationszugang traegt die Portfolio-Rolle bestand.parquet.
+        # Mit der festen Tabelle suchte die Engine dort nach einer
+        # bestand_gesamt.parquet und meldete "stammt nicht aus diesem
+        # Lauf" fuer eine Datei, die sehr wohl daraus stammt.
+        datei = rollen_dateien(str(manifest.get("erzeuger")))[rolle]
         erwartet = manifest.get("ausgaben", {}).get(datei)
         was = datei
         if erwartet is None:

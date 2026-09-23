@@ -25,9 +25,18 @@ Knoten: klv, bu
 
 from __future__ import annotations
 
+from typing import Mapping
+
+import contextlib
 import dataclasses
+import sys as _sys
 import datetime as _dt
 import json
+
+try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
+    import fcntl
+except ImportError:  # pragma: no cover - fremde Plattform
+    fcntl = None  # type: ignore[assignment]
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -35,6 +44,7 @@ import pandas as pd
 
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
 from rechner_pipeline.models.zeichnung import ZEICHNENDE_KLASSEN
+from rechner_pipeline.models.schemas import p9_semantik_fehler
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
@@ -52,6 +62,23 @@ from rechner_pipeline.models.bestand import (
     validate_verankerung,
 )
 
+#: Wurzel der VEROEFFENTLICHTEN Eingaenge in der Laufzeitablage.
+UEBERNAHME_DIR = "uebernahme"
+#: Wurzel der Eingaenge IM BAU — daneben, nicht darin (Befund T26-01).
+#:
+#: Vorher entstand ein Eingang als ``<fallname>.neu`` NEBEN seinem
+#: spaeteren Namen, im selben Verzeichnis. Das Suffix war die einzige
+#: Unterscheidung zwischen "Arbeitsrest" und "Eingang" — und ``fall.neu``
+#: ist ein gueltiger Fallname. Wer danach den Fall ``fall`` registrierte,
+#: loeschte den fremden, regulaer registrierten Eingang ``fall.neu``.
+#:
+#: Zwei getrennte Wurzeln machen die Ueberschneidung unmoeglich, statt
+#: sie zu verbieten: Kein Fallname kann einen Pfad unter der einen Wurzel
+#: auf einen Pfad unter der anderen abbilden. Derselbe Schnitt schliesst
+#: Befund T26-15 mit — der Leser sieht unter ``uebernahme/`` nur noch
+#: Veroeffentlichtes, und ein abgebrochenes Anlegen blockiert den
+#: Tagesbetrieb nicht mehr.
+STAGING_DIR = "uebernahme.neu"
 EINGANG_DATEI = "eingang.json"
 #: Schema 2 (Review T24-08): Der Eingang nennt sein Nummernband und
 #: registriert die Uebersetzungstabelle Quell- auf Zielnummer.
@@ -146,6 +173,17 @@ def _nebentabellen_fehler_im(verzeichnis: Path) -> List[str]:
 #: Fall-Seite.
 NICHT_AUSGEWIESEN = "nicht ausgewiesen"
 
+#: Der Schluesselring, mit dem ``eingang_anlegen`` eine Freigabesignatur
+#: prueft, wenn der Aufrufer keinen uebergibt. Produktiv bleibt er None —
+#: der Ring kommt aus ``--freigabe-schluessel`` der CLI und wird
+#: ausdruecklich uebergeben. Die Naht ist fuer Tests da (conftest setzt
+#: den Testschluessel), damit jede Registrierung im Testlauf verifiziert
+#: ist, ohne dass jede Aufrufstelle einen Ring tragen muss. Ohne Ring
+#: wird registriert mit ``signatur_verifiziert: False`` als benanntem
+#: Zustand — und ``lies_uebernahme`` nimmt so einen Eingang NICHT in die
+#: Fuehrung (zwei Zeugen, Entscheid 2026-09-22).
+_STANDARD_SCHLUESSELRING: Optional[Mapping[str, bytes]] = None
+
 
 def _umnummeriert(tabelle: pd.DataFrame, abbildung: Dict[int, int], name: str) -> pd.DataFrame:
     """Eine Tabelle des Zugangsstands auf die Zielnummern heben.
@@ -177,14 +215,76 @@ def zielnummern(eingang: Path) -> Dict[int, int]:
     und sie ist registriert wie jede andere Datei des Eingangs — wer sie
     aendert, bricht den Hash.
     """
-    pfad = Path(eingang) / POLICENNUMMERN_DATEI
+    import io
+
+    eingang = Path(eingang)
+    pfad = eingang / POLICENNUMMERN_DATEI
     if not pfad.is_file():
         raise UebernahmeError(
             f"{pfad}: die Uebersetzungstabelle fehlt — ohne sie ist der Bezug "
             "zwischen gelieferten und gefuehrten Policennummern verloren"
         )
-    tabelle = read_portfolio(pfad, expected_columns=POLICENNUMMERN_NAMES)
-    return {int(q): int(z) for q, z in zip(tabelle["quelle_police_id"], tabelle["ziel_police_id"])}
+    # Der Satz oben stand schon da, geprueft hat ihn niemand (Befund
+    # T26-13): Die Tabelle war im Manifest gehasht, wurde aber unabhaengig
+    # davon gelesen. Eine Mutation nur an der Map — Manifest unveraendert
+    # — lieferte eine falsche Zielidentitaet, und bei vollstaendigem
+    # Verlust der Bruecke blieb die Tagesfuehrung gruen.
+    daten = pfad.read_bytes()
+    registriert = (_lies_eingang(eingang).get("dateien") or {}).get(
+        POLICENNUMMERN_DATEI)
+    if registriert is None:
+        raise UebernahmeError(
+            f"{eingang / EINGANG_DATEI}: nennt {POLICENNUMMERN_DATEI} nicht — "
+            "eine Bruecke, die das Manifest nicht fuehrt, ist keine"
+        )
+    if sha256_bytes(daten) != registriert:
+        raise UebernahmeError(
+            f"{pfad}: SHA-256 weicht von der registrierten Summe ab — die "
+            "Uebersetzung ist unantastbar wie jede andere Datei des Eingangs"
+        )
+    tabelle = read_portfolio(io.BytesIO(daten),
+                             expected_columns=POLICENNUMMERN_NAMES)
+    return {int(q): int(z)
+            for q, z in zip(tabelle["quelle_police_id"], tabelle["ziel_police_id"])}
+
+
+def uebersetzung_fehler(
+    abbildung: Dict[int, int], bestand: "pd.DataFrame",
+    band: Optional[Dict[str, int]] = None,
+) -> List[str]:
+    """Ist die Uebersetzung eine Bijektion auf den gefuehrten Bestand? Leer = ja.
+
+    Ein gehashter Beleg sagt nur, dass die Datei nicht veraendert wurde —
+    nicht, dass sie stimmt. Die Bruecke muss ausserdem VOLLSTAENDIG sein
+    (jede gefuehrte Police hat genau eine Quellnummer), EINDEUTIG in
+    beiden Richtungen und innerhalb des Nummernbands dieses Eingangs
+    (Befund T26-13).
+    """
+    fehler: List[str] = []
+    quellen, ziele = list(abbildung), list(abbildung.values())
+    if len(set(ziele)) != len(ziele):
+        fehler.append("Zielnummern sind nicht eindeutig — zwei Quellpolicen "
+                      "zeigen auf dieselbe gefuehrte Police")
+    gefuehrt = {int(p) for p in bestand["police_id"]}
+    ohne_quelle = sorted(gefuehrt - set(ziele))
+    ohne_ziel = sorted(set(ziele) - gefuehrt)
+    if ohne_quelle:
+        fehler.append(
+            f"gefuehrte Policen ohne Quellnummer: {ohne_quelle[:5]} — die "
+            "Rueckfrage nach ihrer Herkunft waere nicht beantwortbar")
+    if ohne_ziel:
+        fehler.append(
+            f"Uebersetzung nennt Policen, die der Eingang nicht fuehrt: "
+            f"{ohne_ziel[:5]}")
+    if band and {"von", "bis"} <= set(band):
+        von, bis = int(band["von"]), int(band["bis"])
+        daneben = sorted(z for z in ziele if not von <= z <= bis)
+        if daneben:
+            fehler.append(
+                f"Zielnummern ausserhalb des Bands {von}..{bis}: {daneben[:5]}")
+    if len(set(quellen)) != len(quellen):  # pragma: no cover - dict-Schluessel
+        fehler.append("Quellnummern sind nicht eindeutig")
+    return fehler
 
 
 def quellnummern(eingang: Path) -> Dict[int, int]:
@@ -229,6 +329,72 @@ def vergebene_baender(uebernahme: Path) -> List[Dict[str, Any]]:
     return sorted(baender, key=lambda b: b["von"])
 
 
+#: Sperrdatei des Eingangsschreibers, neben der Eingangswurzel.
+EINGANG_SPERRE = "uebernahme.lock"
+
+
+@contextlib.contextmanager
+def eingang_sperre(stand: Path):
+    """Exklusive Sperre fuer das Registrieren eines Eingangs (nicht blockierend).
+
+    Das Register der Nummernbaender ist die Summe der Eingaenge selbst
+    (:func:`vergebene_baender`) — es wird gelesen, um das naechste Band zu
+    bestimmen, und durch die Publikation fortgeschrieben. Lesen und
+    Fortschreiben muessen deshalb EIN Schritt sein.
+
+    Ohne die Sperre bekamen zwei gleichzeitige Registrierungen dasselbe
+    Band und veroeffentlichten beide erfolgreich; auffallen konnte das
+    erst Tage spaeter im Tagesbetrieb, als "police_id-Kollision zwischen
+    eigenem und uebernommenem Bestand" (Befund T26-14). Die Trennung der
+    Zahlenraeume war damit nur behauptet.
+
+    Nicht blockierend und mit Meldung, wie die Laufsperre: Ein zweiter
+    Schreiber soll wissen, dass er wartet, statt es zu tun.
+    """
+    stand = Path(stand)
+    stand.mkdir(parents=True, exist_ok=True)
+    pfad = stand / EINGANG_SPERRE
+    datei = open(pfad, "a+", encoding="utf-8")
+    try:
+        if fcntl is not None:
+            try:
+                fcntl.flock(datei.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, OSError) as exc:
+                raise UebernahmeError(
+                    f"{stand}: ein anderer Eingang wird gerade registriert "
+                    f"({pfad.name}) — zwei Registrierungen zugleich teilen sich "
+                    "sonst ein Nummernband; den laufenden Vorgang enden lassen"
+                ) from exc
+        yield
+    finally:
+        datei.close()
+
+
+def baender_fehler(eintraege: List[Dict[str, Any]]) -> List[str]:
+    """Ueberschneiden sich die Nummernbaender der Eingaenge? Leer = nein.
+
+    Die Leseseite derselben Aussage. Eine Sperre schuetzt nur Prozesse,
+    die sie nehmen; ob die Baender tatsaechlich disjunkt sind, steht in
+    den Eingaengen und laesst sich jederzeit nachrechnen. Der Gutachter
+    verlangt ausdruecklich beides (T26-14): gemeinsame Sperre UND
+    Readersicherung gegen ueberlappende Baender.
+
+    ``eintraege`` sind Paare aus Fallname und Band, aufsteigend nach
+    ``von`` geprueft.
+    """
+    fehler: List[str] = []
+    sortiert = sorted(eintraege, key=lambda e: (int(e["von"]), int(e["bis"])))
+    for vorher, jetzt in zip(sortiert, sortiert[1:]):
+        if int(jetzt["von"]) <= int(vorher["bis"]):
+            fehler.append(
+                f"Nummernbaender ueberschneiden sich: {vorher['fall']} "
+                f"{vorher['von']}..{vorher['bis']} und {jetzt['fall']} "
+                f"{jetzt['von']}..{jetzt['bis']} — zwei Faelle sprechen ueber "
+                "dieselben Policennummern"
+            )
+    return fehler
+
+
 def naechstes_band(uebernahme: Path, anzahl: int) -> Tuple[int, int]:
     """Das naechste freie Nummernband fuer ``anzahl`` Vertraege.
 
@@ -257,6 +423,16 @@ def naechstes_band(uebernahme: Path, anzahl: int) -> Tuple[int, int]:
 
 
 def pruefe_am4_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str, Any]:
+    """Die Zeichnungsangaben des geprueften Snapshots (siehe
+    :func:`lies_am4_snapshot`)."""
+    daten, name, verifiziert = lies_am4_snapshot(fall, snapshot_sha256)
+    return _zeichnung_aus_daten(daten, name, verifiziert=verifiziert)
+
+
+def lies_am4_snapshot(
+    fall: Path, snapshot_sha256: Optional[str], *,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
+) -> Tuple[Dict[str, Any], str, bool]:
     """Den A-M4-Snapshot einer Uebernahme pruefen, soweit es ohne Schluessel geht.
 
     Review T22-06: ``eingang_anlegen`` las irgendeinen 64-stelligen Wert aus
@@ -312,16 +488,153 @@ def pruefe_am4_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str,
             f"{pfad.name}: der Snapshot gehoert zum Fall {daten.get('fall')!r}, "
             f"uebernommen wird {fallname!r}"
         )
-    # Aus DIESEN Bytes, nicht aus einem zweiten Lesevorgang (Review
-    # T24-06): Die Pruefung oben lief auf dem gelesenen Inhalt; ein
-    # erneutes Lesen gaebe die Zeichnung einer Datei zurueck, die
-    # inzwischen eine andere sein kann. Nachgemessen mit einem Tausch
-    # zwischen beiden Lesevorgaengen: geprueft wurde "angenommen",
-    # registriert wurde "abgelehnt" — beides ohne Abbruch.
-    return _zeichnung_aus_daten(daten, pfad.name)
+    # Der aus dem Inhalt ableitbare Teil der Semantik (Befund T26-03).
+    # Die FORM prueft das Schema; dass pflichtbelege['pk1_belege'] die
+    # Generationen-Belegmenge ist, prueft niemand ausser dieser Stelle
+    # und dem Gate — und beide ueber dieselbe Funktion in models.
+    # Der Rollenvertrag (models.belegrollen, T26-03 Weg 2): Ein Snapshot,
+    # der nicht EXAKT die Pflichtrollen seines Scopes traegt — DoRAs
+    # Fall: eine einzige Rolle pb1_ledger — ist keine Abnahme. Bis zum
+    # Entscheid vom 2026-09-22 konnte der Betriebseingang das nicht
+    # pruefen; jetzt liest er denselben Vertrag wie das Gate.
+    from rechner_pipeline.models.belegrollen import BelegrollenFehler, belegrollen
+    try:
+        erwartete_rollen = belegrollen("A-M4", str(daten.get("fall_scope")))
+    except BelegrollenFehler as exc:
+        raise UebernahmeError(f"{pfad.name}: {exc}") from exc
+    semantik = p9_semantik_fehler(daten, erwartete_rollen=erwartete_rollen)
+    if semantik:
+        raise UebernahmeError(
+            f"{pfad.name}: Snapshot ist in sich nicht stimmig: "
+            + "; ".join(semantik[:3]))
+    # Der zweite Zeuge: die Freigabesignatur (models.freigabe, dieselbe
+    # Pruefung wie im Gate). Ohne Ring bleibt "nicht verifiziert" ein
+    # benannter Zustand; mit Ring ist eine falsche Signatur ein Abbruch.
+    verifiziert = False
+    if schluesselring:
+        from rechner_pipeline.models.freigabe import pruefe_freigabe
+        sig_fehler = pruefe_freigabe(daten, schluesselring)
+        if sig_fehler:
+            raise UebernahmeError(f"{pfad.name}: " + "; ".join(sig_fehler))
+        verifiziert = True
+    return daten, pfad.name, verifiziert
 
 
-def _zeichnung_aus_daten(daten: Dict[str, Any], quelle: str) -> Dict[str, Any]:
+#: Die Verzeichnisse eines Falls, in denen Belege des Snapshot-Graphen
+#: liegen. Der Eingang selbst wird NICHT gelesen (ADR-002: unantastbar,
+#: und ein Beleg liegt dort ohnehin nicht).
+BELEGORTE = ("abgeleitet", "entscheide")
+
+
+def belegte_tabellen(fall: Path, snapshot: Dict[str, Any]) -> Dict[str, str]:
+    """Welche Quelltabellen bezeugt der Beleggraph dieses Snapshots?
+
+    Befund T26-03: Der Laufzeiteingang las die drei Quelltabellen, nummerierte
+    sie um und registrierte sie — ohne jeden Bezug zu dem, was die
+    Migrationsabnahme eigentlich abgenommen hat. "Kein Quelltabellenhash steht
+    in den behaupteten Snapshot-Artefakten." Die Abnahme galt damit einem
+    Stand, und uebernommen wurde ein anderer.
+
+    Der Snapshot nennt seine Pflichtbelege als Hashes. Diese Funktion sucht
+    die zugehoerigen Dateien IM FALL, liest ihre Eingabenbloecke
+    (``input_hashes`` der Gate-Ledger, ``provenienz.eingaben`` der
+    Producer-Belege) und sammelt daraus die Hashes der Quelltabellen.
+
+    Geschluesselt wird nach dem PFAD, nicht nach dem Dateinamen. Ein Fall
+    traegt denselben Tabellennamen an mehreren Orten, und alle sind
+    richtig: ``abgeleitet/bestand/historie.parquet`` ist der uebernommene
+    Stand, ``abgeleitet/bestand-nach/historie.parquet`` der
+    fortgeschriebene. Auf den Namen verkuerzt sahen zwei Zeugen, die sich
+    einig sind, wie ein Widerspruch aus — gemessen an einem echten Fall
+    mit vier Verzeichnissen dieses Namens.
+
+    Benannte Grenze: Gebunden wird, was der Graph NENNT. Ein aelterer
+    P-B1-Ledger fuehrt etwa Bestand und Historie, aber nicht den Ledger.
+    Der Eingang haelt fest, welche Tabellen belegt waren und welche nicht —
+    eine Luecke, die im Eingang steht, ist etwas anderes als eine, die
+    niemand sieht.
+    """
+    gesucht = {
+        str(h)
+        for hashes in (snapshot.get("pflichtbelege") or {}).values()
+        if isinstance(hashes, list)
+        for h in hashes
+        if _ist_sha256(str(h))
+    }
+    if not gesucht:
+        return {}
+    tabellen = {f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)}
+    gefunden: Dict[str, str] = {}
+    for ort in BELEGORTE:
+        wurzel = Path(fall) / ort
+        if not wurzel.is_dir():
+            continue
+        for pfad in sorted(wurzel.rglob("*.json")):
+            try:
+                roh = pfad.read_bytes()
+            except OSError:
+                continue
+            if sha256_bytes(roh) not in gesucht:
+                continue
+            try:
+                daten = json.loads(roh.decode("utf-8"))
+            except (UnicodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(daten, dict):
+                continue
+            bloecke = [daten.get("input_hashes")]
+            prov = daten.get("provenienz")
+            if isinstance(prov, dict):
+                bloecke.append(prov.get("eingaben"))
+            for block in bloecke:
+                if not isinstance(block, dict):
+                    continue
+                for rel, sha in block.items():
+                    schluessel = _fallpfad(fall, rel)
+                    if (Path(schluessel).name not in tabellen
+                            or not _ist_sha256(str(sha))):
+                        continue
+                    vorher = gefunden.get(schluessel)
+                    if vorher is not None and vorher != str(sha):
+                        raise UebernahmeError(
+                            f"{fall}: der Beleggraph widerspricht sich ueber "
+                            f"{schluessel} ({vorher[:16]}… und "
+                            f"{str(sha)[:16]}…) — zwei Belege sagen "
+                            "Verschiedenes ueber DIESELBE Tabelle"
+                        )
+                    gefunden[schluessel] = str(sha)
+    return gefunden
+
+
+def _fallpfad(fall: Path, rel: object) -> str:
+    """Einen Belegpfad auf den Fall beziehen, soweit er dazugehoert."""
+    pfad = Path(str(rel))
+    try:
+        return str(pfad.resolve().relative_to(Path(fall).resolve()))
+    except (ValueError, OSError):
+        return str(pfad)
+
+
+def bezeugter_hash(
+    belegt: Dict[str, str], fall: Path, quell_pfad: Path, datei: str
+) -> Optional[str]:
+    """Welchen Hash bezeugt der Graph fuer GENAU diese Datei?
+
+    Erst der Pfad, dann — wenn der Graph diesen Ort nicht kennt — der
+    Name, aber nur wenn er eindeutig ist. Mehrere gleichnamige Tabellen
+    an verschiedenen Orten sind der Normalfall eines Falls; welche davon
+    uebernommen wird, entscheidet der Pfad und nicht die Hoffnung.
+    """
+    schluessel = _fallpfad(fall, quell_pfad)
+    if schluessel in belegt:
+        return belegt[schluessel]
+    treffer = {sha for pfad, sha in belegt.items() if Path(pfad).name == datei}
+    return treffer.pop() if len(treffer) == 1 else None
+
+
+def _zeichnung_aus_daten(
+    daten: Dict[str, Any], quelle: str, *, verifiziert: bool = False,
+) -> Dict[str, Any]:
     """Die Zeichnungsangaben aus einem BEREITS GELESENEN Snapshot.
 
     Der Weg, auf dem Pruefung und Auswertung dieselben Bytes benutzen.
@@ -347,7 +660,7 @@ def _zeichnung_aus_daten(daten: Dict[str, Any], quelle: str) -> Dict[str, Any]:
         # Besetzung, sondern eine Luecke.
         "mandat_sha256": str(zeichnung.get("mandat_sha256") or NICHT_AUSGEWIESEN),
         "schema_version": daten.get("schema_version"),
-        "signatur_verifiziert": False,
+        "signatur_verifiziert": bool(verifiziert),
         "quelle": quelle,
     }
 
@@ -399,6 +712,13 @@ class Uebernahme:
     #: gegen die die Config der Laufzeit gehalten wird; leer, wenn der
     #: Eingang keinen traegt (Zugaenge vor der Freischaltung).
     beleg: Dict[str, Any]
+    #: Das Nummernband dieses Eingangs (``von``/``bis``). Es steht hier,
+    #: damit der Leser die Disjunktheit nachrechnen kann, ohne eingang.json
+    #: ein zweites Mal zu oeffnen (T26-14).
+    band: Dict[str, int] = dataclasses.field(default_factory=dict)
+    #: Quellnummer -> Zielnummer. Geprueft gelesen (T26-13), damit eine
+    #: Rueckfrage nach der Herkunft einer Police beantwortbar bleibt.
+    uebersetzung: Dict[int, int] = dataclasses.field(default_factory=dict)
 
 
 def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: Dict[str, Any]) -> List[str]:
@@ -585,9 +905,19 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
 
         tabellen[name] = read_portfolio(io.BytesIO(daten), expected_columns=spalten)
     bestand = tabellen["bestand"]
+    # Die Bruecke gehoert zum Eingang wie jede Pflichttabelle: gelesen,
+    # gegen ihre registrierte Summe gehalten und auf Bijektivitaet
+    # geprueft (T26-13). Vorher las sie niemand — sie fehlte sogar in
+    # dieser Schleife, obwohl das Manifest sie fuehrt.
+    uebersetzung = zielnummern(verzeichnis)
     stichtag = _dt.date.fromisoformat(str(eingang["stichtag"]))
     if len(bestand) == 0:
         raise UebernahmeError(f"{verzeichnis}: leerer Zugangsstand")
+    bruecke = uebersetzung_fehler(uebersetzung, bestand, eingang.get("band"))
+    if bruecke:
+        raise UebernahmeError(
+            f"{verzeichnis}: die Uebersetzung Quell- zu Zielpolicen traegt "
+            "nicht — " + "; ".join(bruecke[:3]))
     zugang = pd.to_datetime(bestand["bestandszugang"])
     if not (zugang == pd.Timestamp(stichtag)).all():
         raise UebernahmeError(
@@ -611,7 +941,7 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
     if fremd:
         raise UebernahmeError(
             f"{verzeichnis}: Tarifgenerationen {fremd} nicht in der Config der "
-            "PLV — die uebernommene Generation gehoert in configs/ (sample_size 0)"
+            "PLV — die uebernommene Generation gehoert in configs/ (ohne Neuzugang)"
         )
     mit_zellen = {g.name for g in config.generationen if g.zellen}
     if (set(bestand["tarif_generation"]) & mit_zellen) and tabellen["merkmale"] is None:
@@ -638,9 +968,35 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
     # Schritt 4); die Config der Laufzeit muss dasselbe sagen wie der Beleg
     # der Uebernahme — sonst fuehrt der Betrieb eine andere Welt als die
     # Abnahmen, und genau das war der Befund T22-11.
+    # Zwei Zeugen (Entscheid 2026-09-22): Ohne verifizierte Freigabesignatur
+    # tritt kein Bestand in die Fuehrung — der Eingang traegt den Zustand,
+    # den seine Registrierung hinterliess.
+    if (eingang.get("zeichnung") or {}).get("signatur_verifiziert") is not True:
+        raise UebernahmeError(
+            f"{verzeichnis}: Eingang ohne verifizierte Freigabesignatur — "
+            "mit --freigabe-schluessel registrieren (betrieb.uebernahme), "
+            "sonst fuehrt der Betrieb eine unbezeugte Abnahme"
+        )
     tw_fehler = tarifwerk_fehler(config, bestand["tarif_generation"], beleg)
     if tw_fehler:
         raise UebernahmeError(f"{verzeichnis}: " + "; ".join(tw_fehler))
+    # Ratsche (Befund T26-12, Entscheid des Maintainers 2026-09-22): Was der
+    # Betrieb fuehrt, muss er auch KOENNEN. Bekannt und uebertragen waren
+    # die Schalter schon geprueft; die dritte Menge — produktiv
+    # ausfuehrbar — pruefte niemand, und die Teilkuendigung der TG2015
+    # (ihr Bedingungswerk, Ziffer 6) fiel im Lauf um. Hier beginnt die
+    # Fuehrung: Eine uebernommene Generation, deren Tarifwerk der
+    # produktive Pfad nicht rechnet, tritt nicht ein — Migration blockiert,
+    # mit benanntem Bauauftrag, nie mit einem Config-Rat.
+    from rechner_pipeline.bestand.config import bauauftrag_text, tarifwerk_luecken
+
+    uebernommen = {str(g) for g in bestand["tarif_generation"]}
+    luecken = tarifwerk_luecken(g for g in config.generationen if g.name in uebernommen)
+    if luecken:
+        raise UebernahmeError(
+            f"{verzeichnis}: Migration blockiert — "
+            + "; ".join(bauauftrag_text(*l) for l in luecken)
+        )
     return Uebernahme(
         fall=str(eingang["fall"]),
         stichtag=stichtag,
@@ -656,6 +1012,8 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
         scheiben=tabellen["scheiben"],
         schichten=tabellen["schichten"],
         beleg=beleg,
+        band={k: int(v) for k, v in (eingang.get("band") or {}).items()},
+        uebersetzung=uebersetzung,
     )
 
 
@@ -668,6 +1026,18 @@ def lies_uebernahmen(wurzel: Path, config: BestandConfig) -> List[Uebernahme]:
     faelle = [u.fall for u in eingaenge]
     if len(faelle) != len(set(faelle)):
         raise UebernahmeError(f"uebernahme: Fallname doppelt: {faelle}")
+    # Die Baender muessen disjunkt sein — geprueft beim LESEN, nicht nur
+    # verhindert beim Schreiben (T26-14). Eine Sperre schuetzt nur
+    # Prozesse, die sie nehmen; ob die Trennung der Zahlenraeume
+    # tatsaechlich gilt, steht in den Eingaengen und wird hier
+    # nachgerechnet. Vorher fiel eine Ueberschneidung erst Tage spaeter im
+    # Tagesbetrieb auf, als Policennummern-Kollision.
+    fehler = baender_fehler([
+        {"fall": u.fall, "von": u.band["von"], "bis": u.band["bis"]}
+        for u in eingaenge if {"von", "bis"} <= set(u.band)
+    ])
+    if fehler:
+        raise UebernahmeError("; ".join(fehler))
     return eingaenge
 
 
@@ -683,6 +1053,7 @@ def eingang_anlegen(
     *,
     quelle: Optional[Path] = None,
     snapshot_sha256: Optional[str] = None,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
 ) -> Path:
     """Den Zugangsstand eines Falls als Eingang der Laufzeitumgebung registrieren.
 
@@ -732,114 +1103,179 @@ def eingang_anlegen(
                 snapshot_sha256 = None
     # Der Snapshot ist Pflicht und wird geprueft (T22-06), BEVOR irgendetwas
     # angelegt wird.
-    zeichnung = pruefe_am4_snapshot(fall, snapshot_sha256)
-    ziel = Path(stand) / "uebernahme" / fallname
+    ring = schluesselring if schluesselring is not None else _STANDARD_SCHLUESSELRING
+    snapshot, snapshot_name, verifiziert = lies_am4_snapshot(
+        fall, snapshot_sha256, schluesselring=ring)
+    # Zeichnungsschicht zu Ende (Entscheid 2026-09-22): Registriert wird
+    # nur ein Snapshot des aktuellen Schemas — mit Schluesselklasse und
+    # Rolle aus der Zeichnungsordnung. Ein Altsnapshot (Schema 6) traegt
+    # beides nicht; lesen laesst er sich weiter (Seite), eintreten nicht.
+    from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION
+    if snapshot.get("schema_version") != P9_SNAPSHOT_SCHEMA_VERSION:
+        raise UebernahmeError(
+            f"{snapshot_name}: Schema {snapshot.get('schema_version')!r} — ein "
+            f"Eingang braucht eine Zeichnung mit Schluesselklasse (Schema "
+            f"{P9_SNAPSHOT_SCHEMA_VERSION}); den Fall neu zeichnen"
+        )
+    zeichnung = _zeichnung_aus_daten(snapshot, snapshot_name, verifiziert=verifiziert)
+    # Was uebernommen wird, muss das sein, was die Abnahme gesehen hat
+    # (Befund T26-03). Geprueft VOR dem ersten Seiteneffekt: Ein Eingang,
+    # dessen Tabellen die Migrationsabnahme nicht bezeugt, entsteht nicht.
+    belegt = belegte_tabellen(fall, snapshot)
+    unbelegt: List[str] = []
+    for datei in (f"{name}.parquet" for name in PFLICHT):
+        quell_pfad = quelle / datei
+        if not quell_pfad.is_file():
+            continue
+        ist = sha256_bytes(quell_pfad.read_bytes())
+        soll = bezeugter_hash(belegt, fall, quell_pfad, datei)
+        if soll is None:
+            unbelegt.append(datei)
+        elif soll != ist:
+            raise UebernahmeError(
+                f"{quell_pfad}: die Tabelle ist nicht die, die der "
+                f"A-M4-Snapshot bezeugt ({ist[:16]}… statt {soll[:16]}…) — "
+                "die Abnahme galt einem anderen Stand. Entweder die "
+                "abgenommenen Tabellen uebernehmen oder den Fall neu "
+                "abnehmen"
+            )
+    if unbelegt:
+        # Annahme 5, ENTSCHIEDEN STRENG (Maintainer 2026-09-22): Jede der drei
+        # Pflichttabellen muss vom Beleggraphen der Abnahme bezeugt sein — ein
+        # unbezeugter Ledger ist eine Luecke, keine Warnung. Vorher wurde nur
+        # bestand.parquet verlangt und der Rest auf stderr benannt; ein
+        # aelterer P-B1-Ledger reicht damit nicht mehr, der Fall ist neu
+        # abzunehmen (Befund T26-03).
+        raise UebernahmeError(
+            f"{fall}: der Beleggraph des A-M4-Snapshots nennt keinen Hash "
+            f"fuer {', '.join(sorted(unbelegt))} — die Abnahme bezeugt diese "
+            "Tabelle(n) nicht. Ohne diesen Bezug ist der Eingang eine "
+            "Behauptung (Befund T26-03; Annahme 5 streng)"
+        )
+    ziel = Path(stand) / UEBERNAHME_DIR / fallname
     if ziel.exists():
         raise UebernahmeError(
             f"{ziel} existiert bereits — ein Eingang wird nie ueberschrieben; "
             "eine neue Lieferung ist ein neuer Eingang unter neuem Namen"
         )
-    # Der Eingang entsteht VOLLSTAENDIG neben seinem Namen und wird dann in
-    # einem Zug umbenannt (Review T22-03): Ein halb geschriebener Eingang
-    # blockierte sonst dauerhaft, weil das Verzeichnis als "nie
-    # ueberschreiben" galt. Ein Rest eines abgebrochenen Anlegens wird
-    # entfernt — er war nie ein Eingang.
-    arbeit = ziel.with_name(ziel.name + ".neu")
-    if arbeit.exists():
-        try:
-            entferne_verzeichnis(
-                arbeit, innerhalb=Path(stand) / "uebernahme",
-                name_ok=lambda n: n.endswith(".neu"),
-                grund="Rest eines abgebrochenen Anlegens",
+    # Bandvergabe UND Publikation unter einer Sperre (T26-14): Das
+    # Register der Baender ist die Summe der Eingaenge selbst — es wird
+    # gelesen, um das naechste Band zu bestimmen, und durch die
+    # Publikation fortgeschrieben. Zwei gleichzeitige Registrierungen
+    # bekamen sonst dasselbe Band und veroeffentlichten beide.
+    with eingang_sperre(stand):
+        # Der Eingang entsteht VOLLSTAENDIG neben seinem Namen und wird dann in
+        # einem Zug umbenannt (Review T22-03): Ein halb geschriebener Eingang
+        # blockierte sonst dauerhaft, weil das Verzeichnis als "nie
+        # ueberschreiben" galt. Ein Rest eines abgebrochenen Anlegens wird
+        # entfernt — er war nie ein Eingang.
+        # Die Staging-Wurzel liegt NEBEN der Eingangswurzel (T26-01). Der
+        # ``ohne_marker`` darunter ist die zweite Sicherung derselben Aussage:
+        # Selbst wenn jemand die Wurzeln wieder zusammenlegte, verbietet er
+        # die Loeschung eines Verzeichnisses, das eine eingang.json traegt.
+        staging = Path(stand) / STAGING_DIR
+        arbeit = staging / fallname
+        if arbeit.exists():
+            try:
+                entferne_verzeichnis(
+                    arbeit, innerhalb=staging,
+                    name_ok=lambda n: n == fallname,
+                    ohne_marker=EINGANG_DATEI,
+                    grund="Rest eines abgebrochenen Anlegens",
+                )
+            except LoeschFehler as exc:
+                raise UebernahmeError(str(exc)) from exc
+        arbeit.mkdir(parents=True)
+        # Die Eingangswurzel muss es geben, bevor umbenannt wird — frueher
+        # entstand sie beilaeufig, weil das Arbeitsverzeichnis darin lag.
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        # Das Zielsystem vergibt seine eigenen Policennummern (Review T24-08,
+        # Entscheid des Maintainers 2026-09-15). Niemand schreibt uns in einer
+        # Migration einen Datensatz um; die Transformation ist unsere Arbeit
+        # auf der Zielseite, und es ist unsere Aufgabe, sie kollisionsfrei zu
+        # machen. Vorher lief eine gelieferte Nummer ungeprueft durch und
+        # kollidierte Jahre spaeter mit dem eigenen, deterministisch
+        # vorausberechenbaren Neugeschaeft — als harter Abbruch eines
+        # Nachtlaufs, zu einem Zeitpunkt, den niemand gewaehlt hat.
+        #
+        # Umnummeriert wird IMMER, nicht nur bei Kollision: Sonst haengt unsere
+        # Nummernvergabe davon ab, was die Quelle zufaellig geliefert hat, und
+        # die Uebersetzungstabelle waere mal die Identitaet und mal nicht — ein
+        # Leser baut sich dann zwei Lesewege.
+        stamm_quelle = read_portfolio(quelle / "bestand.parquet", expected_columns=STAMM_NAMES)
+        quelle_ids = sorted(int(p) for p in stamm_quelle["police_id"])
+        if len(quelle_ids) != len(set(quelle_ids)):
+            raise UebernahmeError(
+                f"{quelle}/bestand.parquet: police_id nicht eindeutig — ohne "
+                "eindeutige Quellnummern gibt es keine Uebersetzung"
             )
-        except LoeschFehler as exc:
-            raise UebernahmeError(str(exc)) from exc
-    arbeit.mkdir(parents=True)
-    # Das Zielsystem vergibt seine eigenen Policennummern (Review T24-08,
-    # Entscheid des Maintainers 2026-09-15). Niemand schreibt uns in einer
-    # Migration einen Datensatz um; die Transformation ist unsere Arbeit
-    # auf der Zielseite, und es ist unsere Aufgabe, sie kollisionsfrei zu
-    # machen. Vorher lief eine gelieferte Nummer ungeprueft durch und
-    # kollidierte Jahre spaeter mit dem eigenen, deterministisch
-    # vorausberechenbaren Neugeschaeft — als harter Abbruch eines
-    # Nachtlaufs, zu einem Zeitpunkt, den niemand gewaehlt hat.
-    #
-    # Umnummeriert wird IMMER, nicht nur bei Kollision: Sonst haengt unsere
-    # Nummernvergabe davon ab, was die Quelle zufaellig geliefert hat, und
-    # die Uebersetzungstabelle waere mal die Identitaet und mal nicht — ein
-    # Leser baut sich dann zwei Lesewege.
-    stamm_quelle = read_portfolio(quelle / "bestand.parquet", expected_columns=STAMM_NAMES)
-    quelle_ids = sorted(int(p) for p in stamm_quelle["police_id"])
-    if len(quelle_ids) != len(set(quelle_ids)):
-        raise UebernahmeError(
-            f"{quelle}/bestand.parquet: police_id nicht eindeutig — ohne "
-            "eindeutige Quellnummern gibt es keine Uebersetzung"
-        )
-    band_von, band_bis = naechstes_band(Path(stand) / "uebernahme", len(quelle_ids))
-    abbildung = {q: band_von + i for i, q in enumerate(quelle_ids)}
+        band_von, band_bis = naechstes_band(Path(stand) / UEBERNAHME_DIR, len(quelle_ids))
+        abbildung = {q: band_von + i for i, q in enumerate(quelle_ids)}
 
-    dateien: Dict[str, str] = {}
-    spalten_je_tabelle = {**PFLICHT, **OPTIONAL}
-    kandidaten = [f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE)
-    for datei in kandidaten:
-        if not (quelle / datei).is_file():
-            continue
-        if datei in BELEGE:
-            # Belege sprechen die Sprache des FALLS und bleiben bei den
-            # Quellnummern: uebernahme.json dokumentiert, was die Migration
-            # getan hat, und seine Freitexte nennen Policen. Ein Beleg, den
-            # der Betrieb umschreibt, bezeugt nicht mehr den Fall. Die
-            # Uebersetzungstabelle ist die Bruecke zwischen beiden Welten.
-            daten = (quelle / datei).read_bytes()
-            (arbeit / datei).write_bytes(daten)
-        else:
-            tabelle = read_portfolio(
-                quelle / datei, expected_columns=spalten_je_tabelle[datei[:-len(".parquet")]])
-            write_portfolio(_umnummeriert(tabelle, abbildung, datei), arbeit / datei)
-            daten = (arbeit / datei).read_bytes()
+        dateien: Dict[str, str] = {}
+        spalten_je_tabelle = {**PFLICHT, **OPTIONAL}
+        kandidaten = [f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE)
+        for datei in kandidaten:
+            if not (quelle / datei).is_file():
+                continue
+            if datei in BELEGE:
+                # Belege sprechen die Sprache des FALLS und bleiben bei den
+                # Quellnummern: uebernahme.json dokumentiert, was die Migration
+                # getan hat, und seine Freitexte nennen Policen. Ein Beleg, den
+                # der Betrieb umschreibt, bezeugt nicht mehr den Fall. Die
+                # Uebersetzungstabelle ist die Bruecke zwischen beiden Welten.
+                daten = (quelle / datei).read_bytes()
+                (arbeit / datei).write_bytes(daten)
+            else:
+                tabelle = read_portfolio(
+                    quelle / datei, expected_columns=spalten_je_tabelle[datei[:-len(".parquet")]])
+                write_portfolio(_umnummeriert(tabelle, abbildung, datei), arbeit / datei)
+                daten = (arbeit / datei).read_bytes()
+            if os.name != "nt":
+                (arbeit / datei).chmod(0o444)
+            dateien[datei] = sha256_bytes(daten)
+
+        uebersetzung = pd.DataFrame({
+            "quelle_police_id": pd.Series(quelle_ids, dtype="int64"),
+            "ziel_police_id": pd.Series([abbildung[q] for q in quelle_ids], dtype="int64"),
+        })
+        write_portfolio(uebersetzung, arbeit / POLICENNUMMERN_DATEI)
         if os.name != "nt":
-            (arbeit / datei).chmod(0o444)
-        dateien[datei] = sha256_bytes(daten)
-
-    uebersetzung = pd.DataFrame({
-        "quelle_police_id": pd.Series(quelle_ids, dtype="int64"),
-        "ziel_police_id": pd.Series([abbildung[q] for q in quelle_ids], dtype="int64"),
-    })
-    write_portfolio(uebersetzung, arbeit / POLICENNUMMERN_DATEI)
-    if os.name != "nt":
-        (arbeit / POLICENNUMMERN_DATEI).chmod(0o444)
-    dateien[POLICENNUMMERN_DATEI] = sha256_bytes((arbeit / POLICENNUMMERN_DATEI).read_bytes())
-    # Erst die Pruefung am Eingang des Betriebs, dann die Registrierung:
-    # Ein Zugangsstand, dessen Nebentabellen das Gate nicht annehmen
-    # wuerde, wird nicht Eingang (N-01). Der Rest unter ``.neu`` ist kein
-    # Eingang und wird beim naechsten Anlegen entfernt.
-    nt_fehler = _nebentabellen_fehler_im(arbeit)
-    if nt_fehler:
-        raise UebernahmeError(
-            f"{quelle}: der Zugangsstand traegt Nebentabellen, die das Gate "
-            "nicht annehmen wuerde — nichts registriert: " + "; ".join(nt_fehler[:5])
-        )
-    eingang = {
-        "schema_version": EINGANG_SCHEMA_VERSION,
-        "fall": fallname,
-        "stichtag": stichtag.isoformat(),
-        "snapshot_sha256": snapshot_sha256,
-        # Rolle und Schluesselklasse der Zeichnung, wie die Fall-Seite sie
-        # ausweist — Angaben der strukturell geprueften Snapshot-Datei, die
-        # Signatur hier nicht verifiziert (T22-06).
-        "zeichnung": zeichnung,
-        "quelle": str(quelle),
-        # Das Nummernband dieses Eingangs. Es steht hier und nicht in einem
-        # gepflegten Register: Die Summe der Eingaenge IST das Register.
-        "band": {"von": band_von, "bis": band_bis},
-        "dateien": dict(sorted(dateien.items())),
-    }
-    pfad = arbeit / EINGANG_DATEI
-    pfad.write_text(json.dumps(eingang, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8", newline="\n")
-    if os.name != "nt":
-        pfad.chmod(0o444)
-    os.rename(arbeit, ziel)
+            (arbeit / POLICENNUMMERN_DATEI).chmod(0o444)
+        dateien[POLICENNUMMERN_DATEI] = sha256_bytes((arbeit / POLICENNUMMERN_DATEI).read_bytes())
+        # Erst die Pruefung am Eingang des Betriebs, dann die Registrierung:
+        # Ein Zugangsstand, dessen Nebentabellen das Gate nicht annehmen
+        # wuerde, wird nicht Eingang (N-01). Der Rest in der Staging-Wurzel
+        # ist kein Eingang und wird beim naechsten Anlegen desselben Falls
+        # entfernt. Er blockiert niemanden: Der Leser sieht ihn nicht, weil
+        # er ausserhalb der Eingangswurzel liegt (T26-15).
+        nt_fehler = _nebentabellen_fehler_im(arbeit)
+        if nt_fehler:
+            raise UebernahmeError(
+                f"{quelle}: der Zugangsstand traegt Nebentabellen, die das Gate "
+                "nicht annehmen wuerde — nichts registriert: " + "; ".join(nt_fehler[:5])
+            )
+        eingang = {
+            "schema_version": EINGANG_SCHEMA_VERSION,
+            "fall": fallname,
+            "stichtag": stichtag.isoformat(),
+            "snapshot_sha256": snapshot_sha256,
+            # Rolle und Schluesselklasse der Zeichnung, wie die Fall-Seite sie
+            # ausweist — Angaben der strukturell geprueften Snapshot-Datei, die
+            # Signatur hier nicht verifiziert (T22-06).
+            "zeichnung": zeichnung,
+            "quelle": str(quelle),
+            # Das Nummernband dieses Eingangs. Es steht hier und nicht in einem
+            # gepflegten Register: Die Summe der Eingaenge IST das Register.
+            "band": {"von": band_von, "bis": band_bis},
+            "dateien": dict(sorted(dateien.items())),
+        }
+        pfad = arbeit / EINGANG_DATEI
+        pfad.write_text(json.dumps(eingang, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8", newline="\n")
+        if os.name != "nt":
+            pfad.chmod(0o444)
+        os.rename(arbeit, ziel)
     return ziel
 
 
@@ -857,9 +1293,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--stichtag", required=True, help="Zugangsstichtag (ISO-Datum).")
     parser.add_argument("--quelle", default=None,
                         help="Verzeichnis des Zugangsstands (Default: <fall>/abgeleitet/bestand).")
+    parser.add_argument("--freigabe-schluessel", action="append", default=None,
+                        help="Pfad eines Freigabeschluessels (mehrfach moeglich), ausserhalb des "
+                             "Falls; prueft die Signatur des A-M4-Snapshots. Ohne ihn wird "
+                             "unverifiziert registriert, und der Tageslauf nimmt den Eingang nicht.")
     parser.add_argument("--snapshot", default=None,
                         help="Snapshot-Hash der A-M4-Annahme (Default: aus dem Gate-Beleg des Falls).")
     ns = parser.parse_args(argv)
+    ring: Optional[Mapping[str, bytes]] = None
+    if ns.freigabe_schluessel:
+        from rechner_pipeline.models.freigabe import lade_schluesselring
+        ring, ring_fehler, _aktiv = lade_schluesselring(
+            list(ns.freigabe_schluessel), ausserhalb=Path(ns.fall))
+        if ring_fehler:
+            print("uebernahme: " + "; ".join(ring_fehler), file=sys.stderr)
+            return 2
     try:
         stichtag = _dt.date.fromisoformat(ns.stichtag)
     except ValueError as exc:
@@ -869,6 +1317,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         ziel = eingang_anlegen(
             Path(ns.stand), Path(ns.fall), stichtag,
             quelle=Path(ns.quelle) if ns.quelle else None, snapshot_sha256=ns.snapshot,
+            schluesselring=ring,
         )
     except UebernahmeError as exc:
         print(f"uebernahme: {exc}", file=sys.stderr)

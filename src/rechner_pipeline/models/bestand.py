@@ -191,7 +191,7 @@ LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("status_date", "datetime64[ns]"),
     # Bezugsgroesse des Betrags — je Produkt verschieden: KLV fuehrt
     # Versicherungssummen/Rueckkaufswerte, BU die betroffene Jahresrente.
-    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS_herabsetzung | VS (ZUG) | BU_Jahresrente
+    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS_herabsetzung | dDK_absorption | RKW_teilkuendigung | VS (ZUG) | BU_Jahresrente
     ("betrag", "float64"),
     # Woher der BETRAG stammt. Im eigenen Bestand ist er immer
     # ``gerechnet`` — der Kern erzeugt ihn, und das ist der Normalfall.
@@ -218,6 +218,40 @@ EREIGNIS_VALUES: Tuple[str, ...] = (
     "ZUG", "MIG", "ERH", "RED", "PEX", "INV", "REA", "STO", "TOD", "ABL",
 )
 
+#: Welche GeVo einen ZUGANG zum Bestand bilden und welche eine LEISTUNG.
+#: Die Zuordnung ist fachlich und vom Maintainer abgenommen (2026-09-17);
+#: sie steht hier, weil zwei Konsumenten sie brauchen — der Tagesbetrieb
+#: fuer die Monatskennzahlen und die Unternehmensseite fuer ihre
+#: Bewegungsreihen. Zweimal gefuehrt wuerde sie auseinanderlaufen, sobald
+#: jemand eine Art ergaenzt; dann saegten Tabelle und Kennzahl
+#: Verschiedenes, beide fuer sich plausibel.
+#:
+#: Die ANZEIGENAMEN gehoeren nicht hierher: Wie eine Seite "STO"
+#: beschriftet (Rueckkauf) ist ihre Sache, welche GeVo eine Leistung ist,
+#: nicht.
+#:
+#: ``PEX`` steht in keiner der beiden Mengen. Eine Beitragsfreistellung
+#: ist weder Zugang noch Leistung — sie wandelt um. Zugaenge und
+#: Leistungen summieren sich deshalb NICHT auf alle Vorfaelle einer
+#: Periode.
+ZUGANG_EREIGNISSE: Tuple[str, ...] = ("ZUG", "ERH")
+LEISTUNG_EREIGNISSE: Tuple[str, ...] = ("ABL", "STO", "TOD", "INV", "REA")
+
+#: GeVo, die WEDER Zugang NOCH Leistung sind — je mit Grund. Hier stehen
+#: nur begruendete Ausnahmen: Eine Liste, die Ausnahmen und Versehen
+#: mischt, sagt nicht mehr, ob sie waechst, weil es mehr Ausnahmen gibt
+#: oder weil jemand eine Zuordnung vergessen hat. Ein Test haelt sie
+#: gegen EREIGNIS_VALUES, damit ein neuer Code eingeordnet oder hier
+#: benannt werden MUSS.
+WEDER_ZUGANG_NOCH_LEISTUNG: Mapping[str, str] = {
+    "PEX": "Beitragsfreistellung wandelt um, sie zahlt nicht aus und "
+           "bringt nichts hinzu",
+    "RED": "Herabsetzung senkt die Summe eines laufenden Vertrags; kein "
+           "Zugang, und ausgezahlt wird nichts",
+    "MIG": "im Ledger nicht als eigene Art gebucht — ein Migrationszugang "
+           "ist ein ZUG mit Quelle 'uebernahme'",
+}
+
 #: Welche Bezugsgroesse ein GeVo bucht — die Betragsart ist Teil der
 #: Buchung, nicht freier Text: Ein ``STO`` mit ``Todesfallleistung`` oder
 #: ein ``ERH`` mit ``RKW`` ist keine andere Sicht, sondern ein Fehler.
@@ -238,7 +272,10 @@ BETRAG_ART_JE_EREIGNIS: Dict[str, Tuple[str, ...]] = {
     # Zwei Zeilen: die neue Gesamtsumme, und — bei einem uebernommenen
     # Vertrag — die Korrekturschicht, die in die Neuberechnung eingegangen
     # ist. Eine Umbuchung ohne Zahlung, wie dDK_uebernahme beim Zugang.
-    "RED": ("VS_herabsetzung", "dDK_absorption"),
+    # Dritte Zeile bei der TEILKUENDIGUNG (Bedingungswerk Ziffer 6,
+    # Bauauftrag T26-12): die Auszahlung des gekuendigten Grundanteils —
+    # Rueckkaufswert plus absorbierte Schicht. Eine Zahlung, wie RKW.
+    "RED": ("VS_herabsetzung", "dDK_absorption", "RKW_teilkuendigung"),
     "PEX": ("VS_bfr", "VS"),
     "INV": ("BU_Jahresrente",),
     "REA": ("BU_Jahresrente",),
@@ -493,6 +530,18 @@ VERANKERUNGSZUSTAENDE: Tuple[str, ...] = ("aktiv", "bu")
 
 def stamm_dtypes() -> Dict[str, str]:
     return dict(STAMM_SPALTEN)
+
+
+def leerer_stamm() -> Any:
+    """Ein Stamm ohne Zeilen, mit den Spalten und Typen des Vertrags.
+
+    Der Ausgangspunkt jedes Laufs, der seinen Bestand aus dem Zugangsstrom
+    aufbaut (ADR-020): Es gibt keinen gezogenen Anfangsbestand mehr, also
+    beginnt die Fuehrung leer und bucht jeden Vertrag als Zugang.
+    """
+    import pandas as pd
+
+    return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in STAMM_SPALTEN})
 
 
 # --------------------------------------------------------------------------- #
@@ -1267,7 +1316,10 @@ def validate_abschluss(df: Any) -> List[str]:
     if cols != list(ABSCHLUSS_NAMES):
         return [f"abschluss: Spalten {cols} != erwartet {list(ABSCHLUSS_NAMES)}"]
     if len(df) == 0:
-        return ["abschluss: leer — kein festgeschriebener Stand"]
+        # Leer ist seit ADR-020 eine gueltige Eroeffnungsbilanz (der Vertrag
+        # der DATEI ist mit null Zeilen erfuellt); ob er an DIESEM Stichtag
+        # legitim leer ist, entscheidet der Erzeuger, nicht der Spaltenvertrag.
+        return errors
     if df["police_id"].duplicated().any():
         errors.append("abschluss: police_id nicht eindeutig")
     if df["stichtag"].nunique() != 1:

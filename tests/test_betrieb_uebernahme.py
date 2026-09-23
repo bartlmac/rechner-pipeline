@@ -14,6 +14,7 @@ Knoten: system/betrieb
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -90,34 +91,115 @@ def _zugangsstand(ziel: Path) -> None:
     write_portfolio(ledger, ziel / "ledger.parquet")
 
 
-def am4_snapshot(fall_name: str, *, gate: str = "A-M4", entscheid: str = "angenommen") -> dict:
-    """Ein strukturell gueltiger P9-Snapshot (Schema 6, Selbsthash), wie ihn
-    das Gate schreibt — die Signatur ist erfunden, sie prueft hier niemand.
-    (Schema 7 mit Schluesselklasse kommt mit dem Architektur-Strang.)"""
-    from rechner_pipeline.models.schemas import p9_snapshot_sha256
+def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
+                 entscheid: str = "angenommen",
+                 pb1_ledger_sha: str = "ab" * 32,
+                 rollen: "tuple[str, ...] | None" = None,
+                 schema: int = 7,
+                 schluessel: "bytes | None" = None) -> dict:
+    """Ein gueltiger P9-Snapshot, wie ihn das Gate schreibt — Schema 7 mit
+    Zeichnung (Rolle, Schluesselklasse), EXAKT den Pflichtrollen seines
+    Scopes und einer ECHTEN Freigabesignatur (Testschluessel; conftest
+    reicht den Ring an den Betriebseingang). Nur ``pb1_ledger`` zeigt auf
+    einen echten Beleg (er bindet die Tabellen, T26-03); die uebrigen
+    Rollen tragen Platzhalter-Hashes, fuer die der Beleggraph nichts
+    findet — im echten Fall schreibt das Gate sie, hier buergt die
+    Signatur. ``rollen`` ueberschreibt die Rollenmenge (DoRAs Fall: nur
+    pb1_ledger), ``schema=6`` baut einen Altsnapshot ohne Klasse.
+    """
+    from rechner_pipeline.models.belegrollen import am4_belegrollen
+    from rechner_pipeline.models.freigabe import freigabe_fuer
+    from rechner_pipeline.models.schemas import P9_GATE_VERSION, p9_snapshot_sha256
+    from tests.freigabe_testschluessel import TESTKEY
 
+    scope = "bestand"
+    alle = list(rollen) if rollen is not None else (am4_belegrollen(scope) if gate == "A-M4" else ["pb1_ledger"])
+    gen_beleg = hashlib.sha256(b"pk1:klv/plv_2017").hexdigest()
+    pflichtbelege = {}
+    for rolle in alle:
+        if rolle == "pb1_ledger":
+            pflichtbelege[rolle] = [pb1_ledger_sha]
+        elif rolle == "pk1_belege":
+            pflichtbelege[rolle] = [gen_beleg]
+        else:
+            pflichtbelege[rolle] = [hashlib.sha256(rolle.encode()).hexdigest()]
+    rolle_id = "mensch" if schema == 6 else "mensch/aktuar"
     daten = {
-        "schema_version": 6, "command": "gate_entscheid", "gate_version": "0.6.0",
+        "schema_version": schema, "command": "gate_entscheid",
+        "gate_version": "0.6.0" if schema == 6 else P9_GATE_VERSION,
         "gate": gate, "entscheid": entscheid, "entscheider": "Verantwortlicher Aktuar",
-        "rolle": "mensch", "begruendung": "Controlling bestanden",
+        "rolle": rolle_id, "begruendung": "Controlling bestanden",
         "fall": fall_name,
         "artefakt_hashes": {"eingang.json": "ab" * 32,
                             "abgeleitet/abox/abox.json": "cd" * 32},
         "system": {"branch": "main", "commit": "abc1234", "dirty": "nein",
                    "quellcode_sha256": "ef" * 32},
         "vorgaenger": [], "entschieden_am": "2026-01-01T10:00:00+00:00",
-        "fall_scope": "bestand",
-        "pflichtbelege": {"pb1_ledger": ["ab" * 32]},
-        "zeichnung": {"rolle": "mensch", "ordnung_sha256": "cd" * 32},
-        "freigabe": {"schluessel_sha256": "cd" * 32, "signatur": "ef" * 32,
-                     "verfahren": "hmac-sha256-v1"},
+        "fall_scope": scope,
+        "pflichtbelege": pflichtbelege,
     }
+    daten["zeichnung"] = ({"rolle": rolle_id, "ordnung_sha256": "cd" * 32} if schema == 6
+                          else {"rolle": rolle_id, "ordnung_sha256": "cd" * 32, "schluesselklasse": "mensch"})
     if gate == "A-M4":
-        daten["pk1_belege"] = {}
-    if entscheid != "angenommen":
-        del daten["freigabe"]          # nur Annahmen tragen eine Freigabe
+        daten["pk1_belege"] = {"klv/plv_2017": [gen_beleg]} if "pk1_belege" in pflichtbelege else {}   # Schluessel: familie/generation
+    if entscheid == "angenommen":
+        daten["freigabe"] = freigabe_fuer(daten, schluessel or TESTKEY)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
     return daten
+
+
+def _pb1_ledger(fall: Path) -> str:
+    """Ein P-B1-Gate-Ledger ueber die Tabellen des Zugangsstands.
+
+    Er ist der Beleg, ueber den der Betriebseingang die uebernommenen
+    Tabellen an die Migrationsabnahme bindet (Befund T26-03): Der
+    A-M4-Snapshot nennt seinen Hash als Pflichtbeleg, der Ledger nennt
+    die Hashes der Tabellen.
+    """
+    import hashlib
+
+    bestand = fall / "abgeleitet" / "bestand"
+    eingaben = {
+        str(pfad.relative_to(fall)): hashlib.sha256(pfad.read_bytes()).hexdigest()
+        for pfad in sorted(bestand.glob("*.parquet"))
+    }
+    ledger = {
+        "schema_version": 1, "command": "bestand_validate",
+        "gate": "P-B1.bestandspruefung", "gate_version": "0.1.0",
+        "status": "passed", "attempt": 1,
+        "input_hashes": eingaben,
+        "summary": {"vertraege": 3},
+    }
+    pfad = fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
+    roh = json.dumps(ledger, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    pfad.write_bytes(roh)
+    return hashlib.sha256(roh).hexdigest()
+
+
+def _beleg_neu(fall: Path, name: str = "probe-uebernahme") -> None:
+    """P-B1-Ledger und A-M4-Snapshot auf den JETZIGEN Tabellen neu bauen.
+
+    Wer die Tabellen eines Falls nachtraeglich aendert, aendert damit
+    auch das, was die Abnahme bezeugt. Frueher fiel das nicht auf, weil
+    der Eingang keinen Bezug zwischen beidem herstellte (T26-03).
+    """
+    ledger_sha = _pb1_ledger(fall)
+    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha)
+    for alt in (fall / "entscheide").glob("A-M4-*.json"):
+        alt.unlink()
+    (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
+        json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
+        encoding="utf-8")
+
+
+def _snapshot_sha(fall: Path) -> str:
+    """Der Snapshot-Hash, den DIESER Fall traegt — nicht ein zweiter,
+    neu gebauter: Seit der Pflichtbeleg auf einen echten Ledger zeigt,
+    haengt der Hash am Inhalt des Falls."""
+    beleg = fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json"
+    return json.loads(beleg.read_text(encoding="utf-8"))["summary"]["snapshot_sha256"]
 
 
 def _fall(wurzel: Path, name: str = "probe-uebernahme", *, snapshot: "dict | None | str" = "echt") -> Path:
@@ -128,13 +210,17 @@ def _fall(wurzel: Path, name: str = "probe-uebernahme", *, snapshot: "dict | Non
     (fall / "abgeleitet" / "diagnostics").mkdir(parents=True)
     (fall / "entscheide").mkdir()
     (fall / "fall.json").write_text(json.dumps({"name": name, "schema_version": 1}), encoding="utf-8")
+    # Erst die Tabellen, dann ihr P-B1-Ledger, dann der Snapshot, der ihn
+    # nennt — dieselbe Reihenfolge wie im echten Fall.
+    _zugangsstand(fall / "abgeleitet" / "bestand")
+    ledger_sha = _pb1_ledger(fall)
     if snapshot is not None:
-        daten = am4_snapshot(name) if snapshot == "echt" else snapshot
+        daten = (am4_snapshot(name, pb1_ledger_sha=ledger_sha)
+                 if snapshot == "echt" else snapshot)
         (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
             json.dumps(daten, ensure_ascii=False), encoding="utf-8")
         (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
             json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}), encoding="utf-8")
-    _zugangsstand(fall / "abgeleitet" / "bestand")
     return fall
 
 
@@ -153,11 +239,14 @@ def test_eingang_wird_registriert_und_ist_unantastbar(eingang):
     stand, fall, ziel = eingang
     daten = json.loads((ziel / "eingang.json").read_text(encoding="utf-8"))
     assert daten["fall"] == "probe-uebernahme" and daten["stichtag"] == "2026-01-01"
-    assert daten["snapshot_sha256"] == am4_snapshot("probe-uebernahme")["snapshot_sha256"]
+    # Der Hash DIESES Falls: Seit der Pflichtbeleg auf einen echten
+    # P-B1-Ledger zeigt (T26-03), haengt er am Inhalt des Falls und laesst
+    # sich nicht mehr aus dem Namen allein nachbauen.
+    assert daten["snapshot_sha256"] == _snapshot_sha(fall)
     # Schema 6 fuehrt keine Schluesselklasse — das steht dann so da.
-    assert daten["zeichnung"]["schluesselklasse"] == "nicht ausgewiesen"
-    assert daten["zeichnung"]["rolle"] == "mensch"
-    assert daten["zeichnung"]["signatur_verifiziert"] is False
+    assert daten["zeichnung"]["schluesselklasse"] == "mensch"   # Schema 7
+    assert daten["zeichnung"]["rolle"] == "mensch/aktuar"   # Rollen-Id mit Ebene (ADR-018)
+    assert daten["zeichnung"]["signatur_verifiziert"] is True   # mit dem Testring geprueft
     # Seit Review T24-08 traegt der Eingang die Uebersetzungstabelle mit:
     # Das Zielsystem vergibt eigene Policennummern, und ohne die Tabelle
     # waere eine Rueckfrage an die Quelle nicht beantwortbar.
@@ -206,11 +295,78 @@ def test_eingang_prueft_seine_form(tmp_path):
 
 
 def _kleine_config() -> str:
-    """Sechs Vertraege je Generation und die Erzeugungsgrenze am 1.1.2026:
-    die echte PLV beginnt 1994 und zieht ihren Bestand Tag fuer Tag."""
+    """Betriebsbeginn am 1.1.2026: das Unternehmen beginnt leer und baut
+    seinen Bestand Tag fuer Tag auf (ADR-020) — die echte PLV tut das seit
+    1994, die Testwelt nur ueber die Tage des Tests."""
     text = PLV.read_text(encoding="utf-8")
-    text = re.sub(r"^sample_size = [1-9]\d*$", "sample_size = 6", text, flags=re.M)
     return re.sub(r"^betriebsbeginn = .*$", "betriebsbeginn = 2026-01-01", text, flags=re.M)
+
+
+def test_ein_abschluss_der_den_eingang_traegt_macht_ihn_nicht_neu(eingang, monkeypatch):
+    """Befund T26-02, Szenario 4: Der Abschluss kannte den Bestand doch.
+
+    Ein Lauf schreibt den Monatsabschluss — unwiderruflich, 0444 — und
+    scheitert danach am Bericht. Die Protokollzeile sagt "nicht
+    uebernommen", also kennt der naechste Lauf keinen gruenen Vorgaenger,
+    der diesen Eingang gefuehrt haette. Er hielt ihn deshalb fuer NEU und
+    wies ihn ab: "Stichtag 2026-01-01 liegt nicht nach dem juengsten
+    festgeschriebenen Monatsabschluss 2026-01-01". Dauerhaft, ohne Ausweg.
+
+    Die Frage "ist dieser Eingang schon eingerechnet" wurde an einen
+    STELLVERTRETER gestellt (das Protokoll), obwohl die Sache selbst
+    danebenliegt: Der Abschluss traegt die Zielnummern des Eingangs oder
+    er traegt sie nicht.
+
+    Mutationsprobe in der Gegenrichtung steht daneben: Ein Eingang, den
+    der Abschluss NICHT kennt, muss weiterhin abgewiesen werden — sonst
+    haette die Reparatur die Regel aus ADR-011 aufgehoben statt sie
+    genauer zu beantworten.
+    """
+    from rechner_pipeline.betrieb import tageslauf as tl
+
+    stand, _, _ = eingang
+    ablage = Ablage(stand)
+    ablage.configs.mkdir(parents=True, exist_ok=True)
+    ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
+
+    def _kein_bericht(*_a, **_k):
+        raise OSError(5, "I/O error")
+
+    monkeypatch.setattr(tl, "_bericht", _kein_bericht)
+    code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
+    monkeypatch.undo()
+    assert code != EXIT_OK and zeile["uebernommen"] is False
+    abschluss = ablage.abschluesse / "abschluss_2026-01-01.parquet"
+    assert abschluss.is_file(), "ohne festgeschriebenen Abschluss prueft der Test nichts"
+    assert not [z for z in lies_protokoll(ablage.protokoll_pfad) if z.get("uebernommen")]
+
+    code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
+    assert code == EXIT_OK, f"der Retry gelingt nicht: {zeile.get('fehler')}"
+    assert zeile["uebernommen"] is True
+    assert [u["fall"] for u in zeile["uebernahmen"]] == ["probe-uebernahme"]
+
+
+def test_ein_eingang_hinter_einem_fremden_abschluss_bleibt_abgewiesen(eingang, tmp_path):
+    """Die Gegenrichtung derselben Grenze (ADR-011).
+
+    Ein Abschluss wird nie neu gerechnet. Ein Zugang, der hinter ihn
+    zurueckreicht und den er NICHT kennt, bewegte einen Bilanzwert
+    rueckwirkend — er bleibt abgewiesen, auch nachdem die Frage genauer
+    gestellt wird.
+    """
+    stand, _, _ = eingang
+    ablage = Ablage(stand)
+    ablage.configs.mkdir(parents=True, exist_ok=True)
+    ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+
+    # Ein ZWEITER Fall, zum 1.1. — hinter dem inzwischen festgeschriebenen
+    # Februar-Abschluss, und in keinem von beiden enthalten.
+    zweiter = _fall(tmp_path / "zweiter", "spaeter-eingang")
+    ueb.eingang_anlegen(stand, zweiter, dt.date(2026, 1, 1))
+    code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
+    assert code != EXIT_OK
+    assert "liegt nicht nach dem juengsten festgeschriebenen" in zeile["fehler"]
 
 
 def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
@@ -220,7 +376,7 @@ def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
 
     Mutationsprobe: Uebernahme-Eingang ignoriert — dann fehlen die drei
     Vertraege im Stand und die ZUG-Buchungen im Journal."""
-    stand, _, _ = eingang
+    stand, fall, _ = eingang
     ablage = Ablage(stand)
     ablage.configs.mkdir(parents=True, exist_ok=True)
     ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
@@ -229,13 +385,13 @@ def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
     assert zeile["uebernommen"] is True and zeile["pb1"]["urteil"] == "gruen"
     [u] = zeile["uebernahmen"]
     assert (u["fall"], u["stichtag"], u["vertraege"], u["snapshot_sha256"]) == (
-        "probe-uebernahme", "2026-01-01", 3, am4_snapshot("probe-uebernahme")["snapshot_sha256"])
+        "probe-uebernahme", "2026-01-01", 3, _snapshot_sha(fall))
     # Der Fall des Fixtures traegt einen strukturell geprueften A-M4-Snapshot
     # (T22-06): Rolle aus dem Snapshot, Schluesselklasse in Schema 6 nicht
     # gefuehrt — benannt, nicht leer (B8); die Signatur prueft niemand.
-    assert u["zeichnung"]["rolle"] == "mensch"
-    assert u["zeichnung"]["schluesselklasse"] == "nicht ausgewiesen"
-    assert u["zeichnung"]["signatur_verifiziert"] is False
+    assert u["zeichnung"]["rolle"] == "mensch/aktuar"
+    assert u["zeichnung"]["schluesselklasse"] == "mensch"
+    assert u["zeichnung"]["signatur_verifiziert"] is True
     gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
     # Die uebernommenen Vertraege fuehrt der Betrieb unter SEINEN Nummern
     # (Review T24-08). Gefragt wird nicht nach Literalen, sondern ueber die
@@ -298,7 +454,13 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     assert all(anzahl == "0" for name, anzahl in zeilen if name != "KLV-2017")
     gesamt = (ablage.berichte / "bestandsbericht_2026-02-01.html").read_text("utf-8")
     zeilen_gesamt = re.findall(r"<td>(KLV-\d{4}|BU-\d{4}|TG2015)</td>.*?<td class=\"num\">(\d+)</td></tr>", gesamt)
-    assert int(dict(zeilen_gesamt)["KLV-2017"]) > 3
+    # KLV-2017 verkauft nicht mehr (Fenster bis 2021): im Gesamtbestand
+    # stehen genau die drei uebernommenen, wie im Teilbestand. Der Gesamt-
+    # bericht ist MEHR als der Teilbestand, weil das eigene Geschaeft der
+    # aktuell verkaufenden Generation (KLV-2025) dazukommt — seit ADR-020
+    # entsteht es aus dem Tagesstrom ab Betriebsbeginn.
+    assert int(dict(zeilen_gesamt)["KLV-2017"]) == 3
+    assert int(dict(zeilen_gesamt).get("KLV-2025", "0")) > 0
     # Ohne den Schalter kein Teilbestand-Bericht:
     aus = Ablage(stand.parent / "aus")
     import shutil
@@ -321,24 +483,32 @@ def test_ein_abgebrochenes_anlegen_hinterlaesst_keinen_halben_eingang(tmp_path, 
     fall = _fall(tmp_path)
     stand = tmp_path / "daten"
     aufrufe = {"n": 0}
-    echt = ueb.sha256_bytes
+    echt = ueb.write_portfolio
 
-    def _bricht_beim_zweiten(daten):
+    def _bricht_beim_zweiten(tabelle, pfad, *a, **k):
+        # Beim SCHREIBEN abbrechen, nicht beim Hashen: Seit der Eingang
+        # seine Tabellen an den Beleggraphen bindet (T26-03), wird schon
+        # vor dem Anlegen gehasht — ein Zaehler auf sha256_bytes traefe
+        # dann eine Stelle, an der es noch gar kein Arbeitsverzeichnis
+        # gibt, und der Test pruefte nichts mehr.
         aufrufe["n"] += 1
         if aufrufe["n"] == 2:
             raise OSError("Platte weg")
-        return echt(daten)
+        return echt(tabelle, pfad, *a, **k)
 
-    monkeypatch.setattr(ueb, "sha256_bytes", _bricht_beim_zweiten)
+    monkeypatch.setattr(ueb, "write_portfolio", _bricht_beim_zweiten)
     with pytest.raises(OSError):
         ueb.eingang_anlegen(stand, fall, STICHTAG)
     monkeypatch.undo()
-    ziel = stand / "uebernahme" / "probe-uebernahme"
+    ziel = stand / ueb.UEBERNAHME_DIR / "probe-uebernahme"
+    rest = stand / ueb.STAGING_DIR / "probe-uebernahme"
     assert not ziel.exists()
-    assert (stand / "uebernahme" / "probe-uebernahme.neu").exists()
+    # Der Rest liegt in der Staging-Wurzel, NEBEN der Eingangswurzel — ein
+    # Fallname kann ihn dort nicht mehr treffen (T26-01).
+    assert rest.exists()
     # Der zweite Versuch gelingt und raeumt den Rest weg.
     assert ueb.eingang_anlegen(stand, fall, STICHTAG) == ziel
-    assert ziel.is_dir() and not (stand / "uebernahme" / "probe-uebernahme.neu").exists()
+    assert ziel.is_dir() and not rest.exists()
 
 
 
@@ -434,9 +604,9 @@ def test_die_gepruefte_zeichnung_stammt_aus_den_gepruefte_bytes(tmp_path, monkey
     import pathlib
 
     fall = _fall(tmp_path)
-    echt = am4_snapshot("probe-uebernahme")
-    sha = echt["snapshot_sha256"]
+    sha = _snapshot_sha(fall)
     pfad = fall / "entscheide" / f"A-M4-{sha}.json"
+    echt = json.loads(pfad.read_text(encoding="utf-8"))
     getauscht = json.dumps({**echt, "entscheid": "abgelehnt"}, ensure_ascii=False)
 
     echtes_read_text = pathlib.Path.read_text
@@ -509,6 +679,7 @@ def _fall_mit_nummern(wurzel: Path, nummern: list, name: str = "probe-uebernahme
         tab = read_portfolio(quelle / datei, expected_columns=spalten)
         tab["police_id"] = [tausch[int(p)] for p in tab["police_id"]]
         write_portfolio(tab, quelle / datei)
+    _beleg_neu(fall, name)
     return fall
 
 
@@ -647,3 +818,294 @@ def test_ein_eingang_aus_altem_codestand_nennt_den_ausweg():
         "Umschreiben der Datei ein")
     assert "nie umgeschrieben" in text, (
         "die Meldung sagt nicht, dass ein Eingang unveraenderlich ist")
+
+
+# --------------------------------------------------------------------------- #
+# T26-03: Uebernommen wird, was die Abnahme gesehen hat
+# --------------------------------------------------------------------------- #
+
+def _tausche_bestand(fall: Path) -> None:
+    """Die Stammtabelle NACH der Abnahme veraendern — eine Summe hoch."""
+    pfad = fall / "abgeleitet" / "bestand" / "bestand.parquet"
+    tab = read_portfolio(pfad, expected_columns=STAMM_NAMES)
+    tab.loc[0, "sum_insured"] = 1_042_999.0
+    write_portfolio(tab, pfad)
+
+
+def _ohne_beleggraph(fall: Path) -> None:
+    """Der Snapshot nennt einen Pflichtbeleg, den es nicht gibt."""
+    (fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json").unlink()
+    daten = am4_snapshot("probe-uebernahme", pb1_ledger_sha="ab" * 32)
+    for alt in (fall / "entscheide").glob("A-M4-*.json"):
+        alt.unlink()
+    (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
+        json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
+        encoding="utf-8")
+
+
+def _widersprechender_graph(fall: Path) -> None:
+    """Zwei Belege desselben Snapshots nennen verschiedene Stammtabellen."""
+    import hashlib
+
+    zweiter = {
+        "schema_version": 1, "command": "abnahmebericht", "gate": "A-M4",
+        "status": "passed",
+        "provenienz": {"eingaben": {
+            "abgeleitet/bestand/bestand.parquet": "cd" * 32}},
+    }
+    pfad = fall / "abgeleitet" / "diagnostics" / "abnahmebericht.gate.json"
+    roh = json.dumps(zweiter, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    pfad.write_bytes(roh)
+    erster = (fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json")
+    daten = am4_snapshot(
+        "probe-uebernahme",
+        pb1_ledger_sha=hashlib.sha256(erster.read_bytes()).hexdigest())
+    daten["pflichtbelege"]["abnahmebericht"] = [hashlib.sha256(roh).hexdigest()]
+    daten["snapshot_sha256"] = ueb_p9_sha(daten)
+    for alt in (fall / "entscheide").glob("A-M4-*.json"):
+        alt.unlink()
+    (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
+        json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
+        encoding="utf-8")
+
+
+def _pk1_luege(fall: Path) -> None:
+    """Der Snapshot behauptet Generationenbelege, die er nicht auffuehrt."""
+    import hashlib
+
+    erster = (fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json")
+    daten = am4_snapshot(
+        "probe-uebernahme",
+        pb1_ledger_sha=hashlib.sha256(erster.read_bytes()).hexdigest())
+    daten["pk1_belege"] = {"klv/tg2015": ["ef" * 32]}
+    daten["snapshot_sha256"] = ueb_p9_sha(daten)
+    for alt in (fall / "entscheide").glob("A-M4-*.json"):
+        alt.unlink()
+    (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
+        json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
+        encoding="utf-8")
+
+
+def ueb_p9_sha(daten: dict) -> str:
+    """Einen MUTIERTEN Snapshot schliessen: nachsignieren (Testschluessel),
+    dann selbstadressieren — wie das Gate einen echten schliesst. Seit der
+    Betriebseingang die Freigabesignatur prueft (T26-03, Weg 2), faellt ein
+    nur neu adressierter Snapshot an der Signatur, bevor die Tabellenbindung
+    gelesen wird; die Manipulationslagen unten pruefen aber gerade die
+    Bindung. Wer eine KAPUTTE Signatur will, baut sie ausdruecklich
+    (tests/test_belegrollen_und_zeichnung_t2603.py)."""
+    from rechner_pipeline.models.freigabe import freigabe_fuer
+    from rechner_pipeline.models.schemas import p9_snapshot_sha256
+    from tests.freigabe_testschluessel import TESTKEY
+    if daten.get("entscheid") == "angenommen":
+        ohne = {k: v for k, v in daten.items() if k not in ("freigabe", "snapshot_sha256")}
+        daten["freigabe"] = freigabe_fuer(ohne, TESTKEY)
+    return p9_snapshot_sha256(daten)
+
+
+#: Die Lagen, in denen die Uebernahme etwas anderes waere als das
+#: Abgenommene — samt dem Stichwort, an dem der Eingang sie benennt.
+ABNAHMELAGEN = [
+    (_tausche_bestand, "bezeugt"),
+    (_ohne_beleggraph, "keinen Hash"),
+    (_widersprechender_graph, "widerspricht sich"),
+    (_pk1_luege, "nicht stimmig"),
+]
+
+
+@pytest.mark.parametrize("manipulation,stichwort",
+                         ABNAHMELAGEN,
+                         ids=[m.__name__ for m, _ in ABNAHMELAGEN])
+def test_uebernommen_wird_nur_was_die_abnahme_gesehen_hat(
+        tmp_path, manipulation, stichwort):
+    """Befund T26-03: Der Laufzeiteingang las die Quelltabellen, nummerierte
+    sie um und registrierte sie — ohne jeden Bezug zu dem, was die
+    Migrationsabnahme abgenommen hat. "Kein Quelltabellenhash steht in den
+    behaupteten Snapshot-Artefakten."
+
+    Geprueft wird die Klasse, nicht der gemeldete Fall: die nach der
+    Abnahme getauschte Tabelle, der Snapshot ohne existierenden
+    Beleggraphen, der sich widersprechende Graph und die Luege in den
+    Generationenbelegen. Und nichts davon darf einen halben Eingang
+    hinterlassen — geprueft wird VOR dem ersten Seiteneffekt.
+    """
+    fall = _fall(tmp_path)
+    manipulation(fall)
+    stand = tmp_path / "daten"
+    with pytest.raises(ueb.UebernahmeError, match=stichwort):
+        ueb.eingang_anlegen(stand, fall, STICHTAG)
+    assert not (stand / ueb.UEBERNAHME_DIR).exists()
+    assert not (stand / ueb.STAGING_DIR).exists()
+
+
+# --------------------------------------------------------------------------- #
+# T26-13: Die Bruecke zwischen Quell- und Zielnummern wird geprueft
+# --------------------------------------------------------------------------- #
+
+def _verbiege_map(eingang: Path, wie: str) -> None:
+    """Die registrierte Uebersetzungstabelle nachtraeglich veraendern."""
+    pfad = eingang / ueb.POLICENNUMMERN_DATEI
+    pfad.chmod(0o644)
+    if wie == "geloescht":
+        pfad.unlink()
+        return
+    tab = read_portfolio(pfad, expected_columns=ueb.POLICENNUMMERN_NAMES)
+    if wie == "falsche_zielnummer":
+        tab.loc[0, "ziel_police_id"] = 999
+    elif wie == "doppelte_zielnummer":
+        tab.loc[0, "ziel_police_id"] = int(tab.loc[1, "ziel_police_id"])
+    elif wie == "eine_zeile_fehlt":
+        tab = tab.iloc[1:].reset_index(drop=True)
+    elif wie == "mitsamt_manifest":
+        # Der harte Fall: Die Map wird verbogen UND das Manifest
+        # nachgezogen. Der Hash stimmt dann wieder — es bleibt nur die
+        # Frage, ob die Bruecke inhaltlich traegt.
+        tab = tab.iloc[1:].reset_index(drop=True)
+    else:  # pragma: no cover
+        raise AssertionError(wie)
+    write_portfolio(tab, pfad)
+    if wie == "mitsamt_manifest":
+        manifest = eingang / ueb.EINGANG_DATEI
+        manifest.chmod(0o644)
+        daten = json.loads(manifest.read_text(encoding="utf-8"))
+        daten["dateien"][ueb.POLICENNUMMERN_DATEI] = ueb.sha256_bytes(
+            pfad.read_bytes())
+        manifest.write_text(
+            json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+
+
+#: Die Lagen, in denen die Bruecke nicht mehr traegt. "geloescht" ist der
+#: Fall, bei dem der Tageslauf frueher GRUEN blieb.
+BRUECKENLAGEN = [
+    ("falsche_zielnummer", "SHA-256"),
+    ("doppelte_zielnummer", "SHA-256"),
+    ("eine_zeile_fehlt", "SHA-256"),
+    ("geloescht", "fehlt"),
+    # Ohne diese Zeile pruefte nichts die INHALTLICHE Bruecke: Die drei
+    # oberen fallen schon am Hash, und der Bijektions-Test daneben ruft
+    # die Funktion direkt auf. Ein Aufruf, der aus lies_uebernahme
+    # verschwindet, faellt nur hier auf.
+    ("mitsamt_manifest", "Uebersetzung"),
+]
+
+
+@pytest.mark.parametrize("wie,stichwort", BRUECKENLAGEN)
+def test_eine_verbogene_uebersetzung_faellt_beim_lesen(tmp_path, wie, stichwort):
+    """Befund T26-13: policennummern.parquet war im Manifest verpflichtend
+    und gehasht — gelesen hat sie niemand gegen diesen Hash.
+
+    Eine Mutation nur an der Map, Manifest unveraendert, lieferte eine
+    falsche Zielidentitaet; bei vollstaendigem Verlust der Bruecke blieb
+    sogar die Tagesfuehrung gruen. Der Docstring versprach dabei
+    ausdruecklich "wer sie aendert, bricht den Hash" — ein Satz, den
+    niemand geprueft hat.
+    """
+    from rechner_pipeline.bestand.config import load_config
+
+    stand = tmp_path / "daten"
+    ziel = ueb.eingang_anlegen(stand, _fall(tmp_path), STICHTAG)
+    cfg_pfad = tmp_path / "bestand.toml"
+    cfg_pfad.write_text(_kleine_config(), encoding="utf-8")
+    config = load_config(cfg_pfad)
+    # Positivkontrolle: unveraendert wird gelesen, und die Bruecke steht
+    # im gelesenen Eingang.
+    [gelesen] = ueb.lies_uebernahmen(stand / ueb.UEBERNAHME_DIR, config)
+    assert len(gelesen.uebersetzung) == 3
+
+    _verbiege_map(ziel, wie)
+    with pytest.raises(ueb.UebernahmeError, match=stichwort):
+        ueb.lies_uebernahmen(stand / ueb.UEBERNAHME_DIR, config)
+
+
+#: Die Bijektivitaet als Tabelle — geprueft an der reinen Funktion, damit
+#: jede Verletzung einzeln sichtbar wird und nicht hinter dem Hash
+#: verschwindet.
+UEBERSETZUNGSLAGEN = [
+    ("vollstaendig und eindeutig", {1: 10, 2: 11, 3: 12}, [10, 11, 12], False),
+    ("zwei Quellen auf dieselbe Police", {1: 10, 2: 10}, [10], True),
+    ("gefuehrte Police ohne Quellnummer", {1: 10}, [10, 11], True),
+    ("Uebersetzung nennt eine fremde Police", {1: 10, 2: 99}, [10], True),
+    ("Zielnummer ausserhalb des Bands", {1: 10, 2: 5000}, [10, 5000], True),
+]
+
+
+@pytest.mark.parametrize("was,abbildung,gefuehrt,fehlerhaft",
+                         UEBERSETZUNGSLAGEN)
+def test_die_bruecke_muss_eine_bijektion_sein(was, abbildung, gefuehrt, fehlerhaft):
+    """Ein gehashter Beleg sagt nur, dass die Datei nicht veraendert
+    wurde — nicht, dass sie stimmt. Beide Richtungen geprueft: Die
+    vollstaendige, eindeutige Bruecke MUSS durchgehen."""
+    bestand = pd.DataFrame({"police_id": gefuehrt})
+    fehler = ueb.uebersetzung_fehler(abbildung, bestand, {"von": 1, "bis": 1000})
+    assert bool(fehler) is fehlerhaft, (was, fehler)
+
+
+def test_gleichnamige_tabellen_an_zwei_orten_sind_kein_widerspruch(tmp_path):
+    """Ein Fall traegt denselben Tabellennamen an mehreren Orten, und alle
+    sind richtig: ``abgeleitet/bestand/historie.parquet`` ist der
+    uebernommene Stand, ``abgeleitet/bestand-nach/historie.parquet`` der
+    fortgeschriebene.
+
+    Auf den Basisnamen verkuerzt sahen zwei Zeugen, die sich einig sind,
+    wie ein Widerspruch aus — und das Neuaufsetzen brach ab. Gemessen an
+    faelle/baldrian-klv-tg2015-lauf2: VIER Verzeichnisse mit
+    historie.parquet, zwei davon in den Pflichtbelegen.
+
+    Die Gegenrichtung steht daneben: Zwei Belege, die ueber DENSELBEN
+    Pfad Verschiedenes sagen, bleiben ein Widerspruch
+    (test_uebernommen_wird_nur_was_die_abnahme_gesehen_hat).
+    """
+    import hashlib
+
+    fall = _fall(tmp_path)
+    nach = fall / "abgeleitet" / "bestand-nach"
+    nach.mkdir(parents=True)
+    # Ein zweiter, ANDERER Stand derselben Tabellennamen — wie ihn die
+    # Fortschreibung erzeugt.
+    for datei in ("historie.parquet", "bestand.parquet", "ledger.parquet"):
+        (nach / datei).write_bytes(
+            (fall / "abgeleitet" / "bestand" / datei).read_bytes() + b"\x00")
+    zweiter = {
+        "schema_version": 1, "command": "fuehrungsprobe", "gate": "A-M4",
+        "status": "passed",
+        "provenienz": {"eingaben": {
+            f"abgeleitet/bestand-nach/{d}": hashlib.sha256(
+                (nach / d).read_bytes()).hexdigest()
+            for d in ("historie.parquet", "bestand.parquet", "ledger.parquet")}},
+    }
+    pfad = fall / "abgeleitet" / "diagnostics" / "fuehrungsprobe.gate.json"
+    roh = json.dumps(zweiter, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    pfad.write_bytes(roh)
+    erster = fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
+    daten = am4_snapshot(
+        "probe-uebernahme",
+        pb1_ledger_sha=hashlib.sha256(erster.read_bytes()).hexdigest())
+    daten["pflichtbelege"]["fuehrungsprobe"] = [hashlib.sha256(roh).hexdigest()]
+    daten["snapshot_sha256"] = ueb_p9_sha(daten)
+    for alt in (fall / "entscheide").glob("A-M4-*.json"):
+        alt.unlink()
+    (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
+        json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
+        encoding="utf-8")
+
+    # Beide Belege werden gelesen, beide Orte sind bezeugt — und der
+    # Eingang entsteht, gebunden an den Stand SEINES Pfades.
+    ziel = ueb.eingang_anlegen(stand := tmp_path / "daten", fall, STICHTAG)
+    assert ziel.is_dir()
+    snapshot, _, _verifiziert = ueb.lies_am4_snapshot(fall, _snapshot_sha(fall))
+    belegt = ueb.belegte_tabellen(fall, snapshot)
+    quelle = fall / "abgeleitet" / "bestand"
+    for datei in ("historie.parquet", "bestand.parquet", "ledger.parquet"):
+        assert ueb.bezeugter_hash(belegt, fall, quelle / datei, datei) == (
+            hashlib.sha256((quelle / datei).read_bytes()).hexdigest()), datei
+        assert ueb.bezeugter_hash(belegt, fall, nach / datei, datei) == (
+            hashlib.sha256((nach / datei).read_bytes()).hexdigest()), datei

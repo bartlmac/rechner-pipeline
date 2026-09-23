@@ -41,6 +41,36 @@ MANIFEST_DATEI = "laufmanifest.json"
 MANIFEST_SCHEMA_VERSION = 1
 ERZEUGER = "bestand_fortschreibung"
 
+#: Der zweite Lauftyp, der ein Manifest schreibt: der Migrationszugang.
+#: Ein Migrationsfall hat ZWEI Produzenten — ``gates.bestand_uebernehmen``
+#: schreibt die Tabellen, ``gates.verankerung_belegen`` die
+#: Korrekturschicht — und erst der zweite kennt die Config, mit der die
+#: Fuehrung rechnet (sie entsteht aus dem ``generation-zellen.toml`` des
+#: ersten). Deshalb schreibt der ZWEITE das Manifest, fuer beide.
+#: Ohne diesen Erzeuger war die Migrationsabnahme A-M4 seit dem
+#: Manifest-Entscheid (2026-09-16) unerfuellbar: Sie verlangt ein
+#: Laufmanifest im P-B1-Beleg, und den Bestand, den sie abnimmt, erzeugt
+#: kein Fortschreibungslauf.
+ERZEUGER_MIGRATIONSZUGANG = "bestand_migrationszugang"
+
+#: Welche Erzeuger ein gueltiges Manifest schreiben duerfen. Die Liste
+#: ist kein Freibrief: Wer ein Manifest LIEST, sagt mit
+#: :func:`pruefe_erzeuger`, welche Sorte Lauf er erwartet — ein
+#: Betriebskommando nimmt kein Migrationsmanifest an und umgekehrt.
+ERZEUGER_ERLAUBT: Tuple[str, ...] = (ERZEUGER, ERZEUGER_MIGRATIONSZUGANG)
+
+#: Die Portfolio-Rolle traegt je Erzeuger eine andere Datei: Die
+#: Fortschreibung fuehrt Uebernahme UND eigenes Geschaeft zusammen
+#: (``bestand_gesamt.parquet``), der Migrationszugang nur die
+#: uebernommenen Vertraege (``bestand.parquet``). Das ist kein
+#: Namensschoenheitsfehler, sondern der Unterschied zwischen zwei
+#: Mengen: A-M4 prueft, dass genau die uebernommene Menge abgenommen
+#: wurde, und vergleicht sie mit der Pruefmenge der Migrationssuite.
+PORTFOLIO_JE_ERZEUGER: Mapping[str, str] = {
+    ERZEUGER: "bestand_gesamt.parquet",
+    ERZEUGER_MIGRATIONSZUGANG: "bestand.parquet",
+}
+
 #: Welche Datei des Laufs eine P-B1-Eingangsrolle traegt. Die Engine
 #: vergleicht die gelesenen Bytes einer Rolle mit dem Manifest-Eintrag
 #: dieser Datei.
@@ -60,6 +90,42 @@ PFLICHT_ROLLEN: Tuple[str, ...] = ("portfolio", "historie", "ledger", "scheiben"
 #: Vertraegen (schichten, verankerung) oder Herabsetzungen (reduktionen)
 #: tragen sie — abgeleitet, nicht abgetippt.
 NEBENTABELLEN: Tuple[str, ...] = tuple(r for r in ROLLEN_DATEIEN if r not in PFLICHT_ROLLEN)
+
+
+def rollen_dateien(erzeuger: str = ERZEUGER) -> Mapping[str, str]:
+    """Die Rollentabelle DIESES Erzeugers (Rolle -> Dateiname).
+
+    Nur die Portfolio-Rolle unterscheidet sich; alles andere heisst in
+    beiden Lauftypen gleich. Wer ein Manifest liest, schlaegt hier nach
+    statt in :data:`ROLLEN_DATEIEN`, sonst sucht er im Migrationslauf
+    nach einer ``bestand_gesamt.parquet``, die es dort nicht gibt — und
+    meldete "stammt nicht aus diesem Lauf" fuer eine Datei, die sehr
+    wohl daraus stammt.
+    """
+    if erzeuger not in PORTFOLIO_JE_ERZEUGER:
+        raise ManifestError(
+            f"unbekannter Erzeuger {erzeuger!r} — bekannt: "
+            f"{list(PORTFOLIO_JE_ERZEUGER)}"
+        )
+    return {**ROLLEN_DATEIEN, "portfolio": PORTFOLIO_JE_ERZEUGER[erzeuger]}
+
+
+def pruefe_erzeuger(daten: Mapping[str, Any], erwartet: str) -> None:
+    """Sagen, welche Sorte Lauf man erwartet — und sonst hart anhalten.
+
+    Seit es zwei Erzeuger gibt, ist ``validate_manifest`` allein keine
+    Zusicherung mehr: Es sagt nur, dass das Manifest WOHLGEFORMT ist,
+    nicht, dass es zum Kommando passt. Ein Betriebskommando, das den
+    Stand eines Migrationszugangs als Tageslauf-Stand nimmt, rechnete
+    auf der halben Wahrheit weiter (die uebernommenen Vertraege ohne das
+    eigene Geschaeft). Deshalb nennt jeder Leser seine Erwartung.
+    """
+    tatsaechlich = daten.get("erzeuger")
+    if tatsaechlich != erwartet:
+        raise ManifestError(
+            f"Laufmanifest von {tatsaechlich!r}, erwartet {erwartet!r} — "
+            "dieses Kommando arbeitet auf einem anderen Lauftyp"
+        )
 
 
 def nebentabellen_in(verzeichnis: Path) -> Dict[str, Path]:
@@ -113,6 +179,7 @@ def schreibe_manifest(
     config_pfad: Path,
     ausgaben: Sequence[Path],
     eingaben: Optional[Mapping[str, Path]] = None,
+    erzeuger: str = ERZEUGER,
 ) -> Path:
     """Das Manifest NACH den Ausgaben schreiben — ueber deren Bytes.
 
@@ -126,7 +193,7 @@ def schreibe_manifest(
     lauf = Path(lauf)
     inhalt: Dict[str, Any] = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
-        "erzeuger": ERZEUGER,
+        "erzeuger": erzeuger,
         "kern_version": kern_version,
         "horizont": horizont.isoformat(),
         "neuzugang_ab": neuzugang_ab.isoformat() if neuzugang_ab else None,
@@ -207,8 +274,11 @@ def validate_manifest(daten: Any) -> List[str]:
             f"schema_version {daten.get('schema_version')!r}, "
             f"erwartet {MANIFEST_SCHEMA_VERSION}"
         )
-    if daten.get("erzeuger") != ERZEUGER:
-        fehler.append(f"erzeuger {daten.get('erzeuger')!r}, erwartet {ERZEUGER!r}")
+    if daten.get("erzeuger") not in ERZEUGER_ERLAUBT:
+        fehler.append(
+            f"erzeuger {daten.get('erzeuger')!r}, erwartet einen von "
+            f"{list(ERZEUGER_ERLAUBT)}"
+        )
     try:
         _dt.date.fromisoformat(str(daten.get("horizont")))
     except ValueError:

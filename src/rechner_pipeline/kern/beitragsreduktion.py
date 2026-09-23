@@ -58,7 +58,10 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 if TYPE_CHECKING:  # pragma: no cover
     from rechner_pipeline.kern.produkte.klv import Monatsreserve
 
-from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
+from rechner_pipeline.kern.korrekturschicht import (
+    schicht_traegt,
+    schichtwert_bei,
+)
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
     vertrags_monatsreserve,
@@ -78,6 +81,15 @@ MIT_ABZUG = "mit_abzug"
 #: den freiwerdenden Teil in eine beitragsfreie Summe um (Zweiteilung).
 TEILKUENDIGUNG = "teilkuendigung"
 VERFAHREN = (PROSPEKTIV, MIT_ABZUG, TEILKUENDIGUNG)
+#: Was der PRODUKTIVE Pfad (``reduziere_geschichtet``, der eine Eingang
+#: der Fuehrung) tatsaechlich ausfuehrt. ``VERFAHREN`` sagt, welche Worte
+#: bekannt sind; dieses Tupel sagt, welche die Fuehrung rechnen kann. Ein
+#: Test haelt es gegen ``reduziere_geschichtet``: Was hier steht, laeuft;
+#: was fehlt, wird verweigert. Die Teilkuendigung war die Luecke (Befund
+#: T26-12) und ist seit dem Bauauftrag des Maintainers (2026-09-22) im
+#: produktiven Pfad gebaut: Grund gekuendigt, Scheiben unveraendert, die
+#: Auszahlung bucht die Engine.
+PRODUKTIV_AUSFUEHRBAR = (PROSPEKTIV, MIT_ABZUG, TEILKUENDIGUNG)
 
 
 class BeitragsreduktionFehler(ValueError):
@@ -150,9 +162,10 @@ def reduziere(
                 "Teilkuendigung mit Korrekturschicht: Der Vertrag danach ist "
                 "der ZUSTANDSLOSE Vertrag mit f x S — es gibt keinen "
                 "beitragsfreien Teil, in den die Schicht eingehen koennte. "
-                "Das Verfahren rekonstruiert die Praxis der QUELLE "
-                "(Bedingungswerk Ziffer 6); fuer die eigene Fuehrung eines "
-                "uebernommenen Vertrags ist es nicht vorgesehen")
+                "Sie geht vollstaendig in die AUSZAHLUNG des gekuendigten "
+                "Anteils (Entscheid 2026-09-15); reduziere_geschichtet ruft "
+                "deshalb ohne zusatz_dk, die Engine bucht sie mit aus. Ein "
+                "direkter Aufruf mit zusatz_dk ist ein Programmierfehler")
         # Teilkuendigung der Grundversicherung MIT AUSZAHLUNG: Die
         # Reserve des gekuendigten Anteils verlaesst den Vertrag
         # (dDK = -(1-f) x kVx), der Rest laeuft ZUSTANDSLOS mit f x S
@@ -320,6 +333,23 @@ def _reduziere_eine_schicht(
     )
 
 
+def _unveraendert(kern: Rechenkern, jahr: int) -> "Reduktion":
+    """Die Identitaet als Reduktion: eine Erhoehungsscheibe, die eine
+    Teilkuendigung NICHT trifft. Anteil 1, Summe und Beitrag unveraendert,
+    dDK = 0. Als ``Reduktion`` getragen, damit der herabgesetzte Vertrag
+    ueberall dieselbe Form hat (``reduzierte_teile`` -> ein
+    ``ReduzierterVertrag`` je Schicht); der Zahlungspfad mit f = 1 und
+    q = 0 ist die unveraenderte Scheibe."""
+    zeile = kern.verlaufszeile(jahr)
+    vs = kern.mp.sum_insured
+    bjb = kern.gross_annual_premium()
+    return Reduktion(
+        jahr=jahr, anteil=1.0, verfahren=TEILKUENDIGUNG,
+        vs_alt=vs, vs_neu=vs, bjb_alt=bjb, bjb_neu=bjb,
+        dk_vor=zeile.vx_mrv, dk_nach=zeile.vx_mrv,
+    )
+
+
 def reduziere_geschichtet(
     grund: Rechenkern,
     scheiben: Sequence[Tuple[int, Rechenkern]],
@@ -364,12 +394,37 @@ def reduziere_geschichtet(
     Reihenfolge (Grundscheibe zuerst) von ``vertrags_monatsreserve``.
     """
     if verfahren == TEILKUENDIGUNG:
-        raise BeitragsreduktionFehler(
-            "Teilkuendigung trifft NUR die Grundversicherung "
-            "(Bedingungswerk Ziffer 6) — die anteilige Schichten-Teilung "
-            "ist die PLV-Regel; fuer die Teilkuendigung den Grundvertrag "
-            "mit reduziere() senken, die Scheiben laufen unveraendert"
-        )
+        # Teilkuendigung (Bedingungswerk Ziffer 6) trifft NUR die
+        # Grundversicherung: Ihr Anteil (1-f) wird gekuendigt und
+        # ausgezahlt, der Rest laeuft zustandslos mit f x S; die
+        # Erhoehungsscheiben laufen UNVERAENDERT weiter (A-M3-Befund des
+        # zweiten Laufs: derselbe dDK mit und ohne Scheiben). Gebaut als
+        # Bauauftrag T26-12 (Entscheid des Maintainers 2026-09-22).
+        #
+        # ``zusatz_dk`` — die Korrekturschicht — geht NICHT in die Teile:
+        # Es gibt keinen beitragsfreien Teil, in den sie eingehen koennte.
+        # Sie geht vollstaendig in die AUSZAHLUNG (Entscheid 2026-09-15:
+        # "Schicht geht vollstaendig in die Neuberechnung ein" — deren
+        # einziges Vehikel ist hier die Zahlung an den Kunden); die Engine
+        # bucht sie dort (``ereignisse._Vertrag.herabsetzen``). Der Vertrag
+        # danach traegt keine Schicht mehr.
+        #
+        # Die Folgebewertung braucht keinen Sonderweg: Der Zahlungspfad mit
+        # q = 0 IST der zustandslose Vertrag mit f x S — nachgemessen gegen
+        # den unabhaengigen Kern mit gesenkter Summe auf 1e-15
+        # (tests/test_teilkuendigung_produktiv_t2612.py).
+        _pruefe_eingaben(grund.mp, jahr, anteil, verfahren)
+        for erh_jahr, _kern in scheiben:
+            if jahr - erh_jahr < 0:
+                raise BeitragsreduktionFehler(
+                    f"Erhoehungsscheibe aus Jahr {erh_jahr} existiert im "
+                    f"Vertragsjahr {jahr} noch nicht"
+                )
+        aus_tk: List[Tuple[int, "Reduktion"]] = [
+            (0, reduziere(grund, jahr, anteil, verfahren=verfahren))]
+        for erh_jahr, kern in scheiben:
+            aus_tk.append((erh_jahr, _unveraendert(kern, jahr - erh_jahr)))
+        return aus_tk
     teile: List[Tuple[int, Rechenkern]] = [(0, grund)] + list(scheiben)
     _pruefe_eingaben(grund.mp, jahr, anteil, verfahren)
 
@@ -432,7 +487,7 @@ def reduzierte_teile(
     keine Schicht mehr.
     """
     zusatz = 0.0
-    if schicht is not None and 12 * jahr >= int(schicht[1]):
+    if schicht_traegt(schicht, 12 * jahr):
         zusatz = schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
     aktive = [(j, k) for j, k in scheiben if j < jahr]
     teile = reduziere_geschichtet(
@@ -453,7 +508,7 @@ def absorbierte_schicht(
     der Herabsetzung liegt. Derselbe Wert, den :func:`reduzierte_teile`
     einrechnet — die Buchung im Ledger weist ihn aus.
     """
-    if schicht is None or 12 * jahr < int(schicht[1]):
+    if not schicht_traegt(schicht, 12 * jahr):
         return 0.0
     return schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
 

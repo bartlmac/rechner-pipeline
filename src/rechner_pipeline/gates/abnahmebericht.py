@@ -1454,8 +1454,17 @@ PROBE_PFLICHT_POSITIV = ("vertraege", "endbestand_geprueft")
 #: Frage nicht beantwortet. Nachgemessen: Ein von Hand geschriebenes JSON
 #: ohne diese Felder wurde vorher angenommen.
 PROBE_PFLICHTFELDER = ("mit_anfangszustand", "scheiben", "beitragsfrei", "schichten",
-                       "buchungen_geprueft", "buchungen_abweichend",
-                       "stichtag", "generation", "tarifwerk")
+                       "buchungen_geprueft", "buchungen_abweichend")
+
+#: Felder, die den GEGENSTAND der Probe benennen. Hier ist ``null`` keine
+#: Aussage, sondern das Fehlen einer: Eine Probe ohne Stichtag, ohne
+#: Generation und ohne Tarifwerk sagt nicht, worueber sie geurteilt hat.
+#:
+#: Befund T26-04: Sie standen bisher in der Liste darueber, deren Vertrag
+#: ausdruecklich ``null`` zulaesst — geprueft wurde nur ihre ANWESENHEIT.
+#: Ein von Hand geschriebener Beleg mit ``stichtag = generation =
+#: tarifwerk = buchungen_geprueft = null`` kam durch.
+PROBE_BESCHREIBENDE_FELDER = ("stichtag", "generation", "tarifwerk")
 
 
 def _fuehrungsprobe_fehler(
@@ -1546,6 +1555,49 @@ def _fuehrungsprobe_fehler(
         fehler.append(
             f"Fuehrungsprobe fuehrt {fehlende} nicht — der Beleg beantwortet "
             "nicht, worueber er urteilt")
+    leer = [f for f in PROBE_BESCHREIBENDE_FELDER
+            if probe.get(f) in (None, "", {}, [])]
+    if leer:
+        fehler.append(
+            f"Fuehrungsprobe: {leer} sind leer — ein Beleg, der seinen "
+            "Gegenstand nicht benennt, urteilt ueber nichts")
+    if "tarifwerk" not in leer and not isinstance(probe.get("tarifwerk"), dict):
+        fehler.append(
+            f"Fuehrungsprobe: tarifwerk {probe.get('tarifwerk')!r} ist kein "
+            "Objekt — die Schalter, unter denen geprueft wurde, sind nicht "
+            "ablesbar")
+    # Der Zaehler wird an die gebundene Tabelle GEHALTEN (Befund T26-04).
+    # Positiv zu sein war zu wenig: Zaehler lassen sich genauso frei
+    # schreiben wie ``bestanden``. Fuenf Dateien mit gewoehnlichem Text
+    # und passenden Hashes, dazu ``vertraege = 1``, kamen durch. Wer die
+    # Zeilen zaehlen muss, muss die Datei LESEN — damit faellt derselbe
+    # Beleg jetzt zweimal: am Zaehler und daran, dass Text kein Parquet
+    # ist.
+    if ueber:
+        stamm_pfad = fall / ueber / "bestand.parquet"
+        if stamm_pfad.is_file():
+            from rechner_pipeline.bestand.vorbedingungen import bestandszeilen
+
+            try:
+                zeilen = bestandszeilen(stamm_pfad)
+            except Exception as exc:  # noqa: BLE001 — jede Leseform zaehlt
+                fehler.append(
+                    f"Fuehrungsprobe: {ueber}/bestand.parquet ist keine lesbare "
+                    f"Bestandstabelle ({type(exc).__name__}) — der Beleg nennt "
+                    "eine Datei, die niemand als Bestand lesen kann")
+            else:
+                if probe.get("vertraege") != zeilen:
+                    fehler.append(
+                        f"Fuehrungsprobe: vertraege = "
+                        f"{probe.get('vertraege')!r}, die gebundene Tabelle "
+                        f"{ueber}/bestand.parquet traegt {zeilen} Zeilen — ein "
+                        "Zaehler, den nichts stuetzt, bezeugt keine Pruefung")
+                geprueft = probe.get("endbestand_geprueft")
+                if isinstance(geprueft, int) and not isinstance(geprueft, bool) \
+                        and geprueft > zeilen:
+                    fehler.append(
+                        f"Fuehrungsprobe: endbestand_geprueft = {geprueft}, "
+                        f"aber nur {zeilen} Vertraege wurden uebernommen")
     if probe.get("buchungen_abweichend") not in (0, None):
         fehler.append(
             f"Fuehrungsprobe: {probe.get('buchungen_abweichend')} abweichende "

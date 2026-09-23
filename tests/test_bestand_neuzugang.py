@@ -1,10 +1,9 @@
 """Neuzugang: zeitindexierte Zugangs-Draws, Praefix-Konstanz, GeVo-Strom.
 
-Design (Beschluss 2026-08-12): EIN GeVo-Strom und EIN Datenmodell — der
-Generator ist die Batch-Auswertung bis zum Referenzstichtag, der Neuzugang
-setzt denselben Erzeuger inkrementell fort (Substream je Generation und
-Kalenderjahr, jahrgangsstabile police_ids, Filterung statt horizontabhaengiger
-Draws).
+Design (Beschluss 2026-08-12, seit ADR-020 ohne Batch): EIN GeVo-Strom und
+EIN Datenmodell — der Neuzugang ist der einzige Erzeuger eigenen Geschaefts
+(Substream je Generation und Kalenderjahr, jahrgangsstabile police_ids,
+Filterung statt horizontabhaengiger Draws).
 
 Knoten: klv
 """
@@ -39,6 +38,11 @@ def config():
     cfg = copy.deepcopy(load_config(EXAMPLE))
     # Namenswahl statt Index: die PLV-Generationenleiter darf wachsen,
     # ohne dass dieser Test still eine andere Generation trifft.
+    # Nur EINE Generation verkauft in dieser Testwelt: Die Beispiel-Config
+    # traegt seit ADR-020 Jahresziele fuer alle Generationen; die Aussagen
+    # hier haengen daran, dass Zugaenge genau aus KLV-2008 kommen.
+    for g in cfg.generationen:
+        g.neuzugang_pro_jahr = 0
     gen = next(g for g in cfg.generationen if g.name == "KLV-2008")
     gen.neuzugang_pro_jahr = 20  # Fenster 2008-01..2011-12
     return cfg
@@ -86,7 +90,7 @@ def test_neuzugaenge_liegen_im_fenster_und_gueltigkeitsraum(config):
     zugaenge = neuzugaenge(config, REF, bis)
     assert len(zugaenge) > 0
     starts = zugaenge["insurance_start"]
-    assert (starts > pd.Timestamp(REF)).all()
+    assert (starts >= pd.Timestamp(REF)).all()   # [von, bis]: der erste Tag gehoert dazu
     assert (starts <= pd.Timestamp(bis)).all()
     # Nur KLV-2008 hat Neuzugang konfiguriert; Fenster 2008..2011:
     assert set(zugaenge["tarif_generation"]) == {"KLV-2008"}
@@ -198,13 +202,12 @@ def test_ohne_neuzugang_bleibt_alles_beim_alten(config):
 
 
 def test_generate_mit_referenzstichtag_ist_exakte_teilmenge(config):
-    """Review-Fix (HOCH): generate(config, bis=REF) = Batch-Auswertung des
-    Zugangs-Stroms bis REF — draw-then-filter, exakte Teilmenge des vollen
-    Laufs."""
-    from rechner_pipeline.bestand.generator import generate
+    """Der Strom bis REF ist die exakte Teilmenge des vollen Stroms —
+    draw-then-filter im Erzeuger (Praefix-Eigenschaft)."""
+    from tests.zugangsstrom import bestand_aus_zugangsstrom
 
-    voll = generate(config)
-    beschnitten = generate(config, bis=REF)
+    voll = bestand_aus_zugangsstrom(config)
+    beschnitten = bestand_aus_zugangsstrom(config, bis=REF)
     erwartet = voll[voll["insurance_start"] <= pd.Timestamp(REF)].reset_index(
         drop=True
     )
@@ -215,9 +218,9 @@ def test_generate_mit_referenzstichtag_ist_exakte_teilmenge(config):
 def test_ein_config_workflow_funktioniert_ende_zu_ende(config):
     """Der dokumentierte Hauptpfad mit EINER Config: Batch bis REF,
     Fortschreibung mit Neuzugang danach — ohne Guard-Konflikt."""
-    from rechner_pipeline.bestand.generator import generate
+    from tests.zugangsstrom import bestand_aus_zugangsstrom
 
-    basis = generate(config, bis=REF)
+    basis = bestand_aus_zugangsstrom(config, bis=REF)
     ergebnis = fortschreiben(basis, config, dt.date(2014, 1, 1), neuzugang_ab=REF)
     assert len(ergebnis.zugaenge) > 0
     bestand = mit_zugaengen(basis, ergebnis.zugaenge)
@@ -257,7 +260,7 @@ def test_kaputte_config_wird_in_neuzugaenge_validiert(config):
     cfg.generationen.append(
         TarifGeneration(
             name="KAPUTT", gueltig_von=dt.date(2005, 1, 1),
-            gueltig_bis=dt.date(2015, 12, 31), sample_size=10,
+            gueltig_bis=dt.date(2015, 12, 31),
             max_endalter=85, neuzugang_pro_jahr=5,
         )
     )
@@ -282,9 +285,9 @@ def test_randjahrgang_traegt_anteiliges_volumen():
 
 def test_report_lehnt_ledger_mit_fremden_policen_ab(config):
     from rechner_pipeline.bestand import report
-    from rechner_pipeline.bestand.generator import generate
+    from tests.zugangsstrom import bestand_aus_zugangsstrom
 
-    basis = generate(config, bis=REF)
+    basis = bestand_aus_zugangsstrom(config, bis=REF)
     ergebnis = fortschreiben(basis, config, dt.date(2014, 1, 1), neuzugang_ab=REF)
     with pytest.raises(ValueError, match="Gesamtbestand"):
         report.render_html(

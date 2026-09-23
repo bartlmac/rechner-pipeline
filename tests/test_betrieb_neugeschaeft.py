@@ -26,7 +26,8 @@ import pytest
 
 from rechner_pipeline.bestand.config import Tagesbetrieb, config_aus_text, load_config
 from rechner_pipeline.bestand.ereignisse import EreignisError, fortschreiben
-from rechner_pipeline.bestand.generator import generate, neuzugaenge
+from rechner_pipeline.bestand.generator import neuzugaenge
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.betrieb.neugeschaeft import (
     NeugeschaeftError,
     generationsseed,
@@ -271,12 +272,12 @@ def test_wer_einen_tagesbetrieb_fuehrt_setzt_nummernkreise(config):
 def test_umsortierte_generationen_aendern_keine_policen_identitaet(config):
     """Der Nachweis des Reviews: same_policy_ids False, same_event_histories
     False, ledger_rows 24 vs 29 nach Umdrehen der Generationsliste."""
-    from rechner_pipeline.bestand.generator import generate
+    from tests.zugangsstrom import bestand_aus_zugangsstrom
 
     umgestellt = copy.deepcopy(config)
     umgestellt.generationen = list(reversed(umgestellt.generationen))
-    a = generate(config).sort_values("police_id").reset_index(drop=True)
-    b = generate(umgestellt).sort_values("police_id").reset_index(drop=True)
+    a = bestand_aus_zugangsstrom(config).sort_values("police_id").reset_index(drop=True)
+    b = bestand_aus_zugangsstrom(umgestellt).sort_values("police_id").reset_index(drop=True)
     pd.testing.assert_frame_equal(a, b)
 
 
@@ -307,7 +308,7 @@ def test_beginn_ist_der_naechste_monatserste(config, jahr_2027):
 def test_vertraege_sind_gueltig_und_kollisionsfrei(config, jahr_2027):
     assert validate_portfolio(jahr_2027) == []
     assert not jahr_2027["police_id"].duplicated().any()
-    batch = generate(config)
+    batch = bestand_aus_zugangsstrom(config)
     assert not set(jahr_2027["police_id"]) & set(batch["police_id"])
     jaehrlich = neuzugaenge(config, dt.date(2026, 1, 1), dt.date(2036, 1, 1))
     assert not set(jahr_2027["police_id"]) & set(jaehrlich["police_id"])
@@ -323,7 +324,7 @@ def test_verkaufstag_ist_aus_der_nummer_rueckrechenbar(config, jahr_2027):
         assert int(pid) in set(neugeschaeft_am(config, tag)["police_id"])
     gen0 = config.generationen[0]
     with pytest.raises(NeugeschaeftError, match="Nummernkreis"):
-        verkaufstag(gen0, config.nummernkreis(gen0), 10_000_001)   # eine Batch-Nummer
+        verkaufstag(gen0, config.nummernkreis(gen0), 10_000_001)   # eine Nummer ausserhalb des Tagesbereichs
 
 
 def _zwei_generationen(neuzugang: int, gewichte: str = "") -> str:
@@ -334,7 +335,6 @@ name = "{name}"
 knoten = "klv/plv_{name.lower()}"
 gueltig_von = {von}
 gueltig_bis = {bis}
-sample_size = 0
 neuzugang_pro_jahr = {neuzugang}
 max_endalter = 85
 zins = 0.01

@@ -78,19 +78,23 @@ def test_stands_paket_traegt_stempel_und_berichte(gefuehrt, tmp_path):
     # Die Zahl steht hier ABSICHTLICH als Literal: Der Paketvertrag ist ein
     # Vertrag mit einem Konsumenten ausserhalb dieses Repos (vorzeige-url).
     # Eine Aenderung soll hier auffallen und abgestimmt werden, nicht
-    # stillschweigend mitwandern. Schema 4 seit T24-04 Teil 2: stand.json
-    # NENNT seinen Anker, und der Konsument verlangt ihn.
-    assert stand["schema_version"] == 4 and stand["stand"] == "2026-02-03"
+    # stillschweigend mitwandern. Schema 5 seit 2026-09-19: die juengsten
+    # Monatsabschluesse fahren mit (abgestimmt mit vorzeige-url); Schema 4
+    # brachte den Anker (T24-04 Teil 2), den der Konsument verlangt.
+    assert stand["schema_version"] == 5 and stand["stand"] == "2026-02-03"
     # Der Anker liegt AUSSERHALB des Pakets — das ist der Punkt.
     assert stand["anker"]["stand"] == "2026-02-03"
     assert len(stand["anker"]["sha256"]) == 64
     anker_datei = Path(stand["anker"]["datei"])
     assert anker_datei.is_file() and paket not in anker_datei.parents
     # Belege: Protokoll mit Kette und Manifest (T22-05), Tagesjournal
-    # (T24-04 Teil 1) fahren mit.
+    # (T24-04 Teil 1) und die Abschluesse, deren Vertragszahl stand.json
+    # nennt (Schema 5), fahren mit.
     assert set(stand["dateien"]) == {"index.html", "bestandsbericht_2026-02-01.html",
                                      "protokoll.jsonl", "laufmanifest.json",
-                                     "tagesjournal.parquet"}
+                                     "tagesjournal.parquet",
+                                     "abschluesse/abschluss_2026-01-01.parquet",
+                                     "abschluesse/abschluss_2026-02-01.parquet"}
     assert stand["provenienz"]["manifest_sha256"] == stand["dateien"]["laufmanifest.json"]
     for name, summe in stand["dateien"].items():
         assert (paket / name).is_file() and len(summe) == 64
@@ -138,7 +142,7 @@ def test_ohne_uebernommenen_stand_gibt_es_keine_seite(tmp_path):
 
 def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
     """Wie die Fall-Seite: Rolle und Entscheider aus dem Snapshot, die
-    Schluesselklasse eines Altsnapshots (Schema 6) als "nicht ausgewiesen"."""
+    Schluesselklasse der Zeichnung (Schema 7, seit dem Ausbau der Zeichnungsschicht)."""
     import sys
 
     sys.path.insert(0, str(REPO_ROOT / "tests"))
@@ -152,9 +156,9 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
     ziel = ueb.eingang_anlegen(tmp_path / "daten", fall, dt.date(2026, 1, 1))
     eingang = json.loads((ziel / "eingang.json").read_text("utf-8"))
     z = eingang["zeichnung"]
-    assert z["rolle"] == "mensch" and z["entscheider"] == "Verantwortlicher Aktuar"
-    assert z["schluesselklasse"] == "nicht ausgewiesen" and z["schema_version"] == 6
-    assert z["schluessel_sha256"] == "cd" * 8 and z["signatur_verifiziert"] is False
+    assert z["rolle"] == "mensch/aktuar" and z["entscheider"] == "Verantwortlicher Aktuar"
+    assert z["schluesselklasse"] == "mensch" and z["schema_version"] == 7
+    assert len(z["schluessel_sha256"]) == 16 and z["signatur_verifiziert"] is True
     gelesen = ueb.lies_uebernahmen(tmp_path / "daten" / "uebernahme",
                                    __import__("rechner_pipeline.bestand.config", fromlist=["load_config"]).load_config(PLV))
     assert gelesen[0].zeichnung == z
@@ -171,7 +175,7 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
         "uebernahmen": [{"fall": "probe", "stichtag": "2026-01-01", "vertraege": 3,
                          "snapshot_sha256": eingang["snapshot_sha256"], "zeichnung": z}],
     })
-    assert "<td>mensch</td><td>Verantwortlicher Aktuar</td><td>nicht ausgewiesen</td>" in html
+    assert "<td>mensch/aktuar</td><td>Verantwortlicher Aktuar</td><td>mensch</td>" in html
     assert "Signatur hier nicht verifiziert" in html
 
 
@@ -272,3 +276,112 @@ def test_das_paket_belegt_seine_buchungszahlen_mit_dem_journal(gefuehrt, tmp_pat
     journal = read_portfolio(beleg, expected_columns=TAGESJOURNAL_NAMES)
     assert len(journal) == modell["buchungen"]["gesamt"]
     assert sorted(journal["ereignis"].unique()) == sorted(modell["buchungen"]["je_ereignis"])
+
+
+def test_das_paket_belegt_jede_vertragszahl_mit_ihrem_abschluss(gefuehrt, tmp_path):
+    """Schema 5: Wer eine Zahl nennt, liefert den Beleg mit.
+
+    ``stand.json`` fuehrt je Monatsabschluss eine Vertragszahl. Bis
+    Schema 4 lag der festgeschriebene Abschluss, aus dem sie stammt, nur
+    in der Ablage des Erzeugers — der Leser des Pakets musste sie
+    glauben. Das ist dieselbe Figur, die T24-04 fuer ``in_force``
+    geschlossen hat, eine Ebene tiefer: ein Beleg, der nur sich selbst
+    bezeugt.
+
+    Geprueft wird die ganze Kette: Der Abschluss liegt im Paket, sein
+    Hash steht in ``dateien``, seine ZEILENZAHL ist die genannte Zahl —
+    und die Ableitung allein aus Paket-Bytes ergibt exakt die Liste, die
+    im Paket steht. Ohne das letzte waere es ein Beleg neben einer Zahl
+    statt ein Beleg FUER sie.
+    """
+    from rechner_pipeline.bestand.manifest import sha256_bytes
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
+
+    paket = st.stands_paket(gefuehrt, tmp_path / "paket",
+                            anker_verzeichnis=tmp_path / "anker")
+    modell = json.loads((paket / st.PAKET_DATEI).read_text(encoding="utf-8"))
+
+    mit_zahl = [a for a in modell["abschluesse"] if "in_kraft" in a]
+    # Positivkontrolle: Ohne einen einzigen Abschluss mit Zahl pruefte
+    # dieser Test nichts und bliebe trotzdem gruen.
+    assert mit_zahl, "kein Abschluss mit in_kraft — der Test saehe nichts"
+    assert len(mit_zahl) <= st.PAKET_ABSCHLUESSE_ANZAHL
+
+    for a in mit_zahl:
+        name = f"{st.PAKET_ABSCHLUESSE_DIR}/{a['datei']}"
+        beleg = paket / name
+        assert beleg.is_file(), f"{name} fehlt im Paket"
+        assert modell["dateien"][name] == sha256_bytes(beleg.read_bytes())
+        assert len(read_portfolio(beleg)) == a["in_kraft"], (
+            f"{a['stichtag']}: stand.json nennt {a['in_kraft']} Vertraege, "
+            f"der mitgelieferte Abschluss traegt {len(read_portfolio(beleg))}")
+
+    # Die Gegenprobe des Konsumenten: NUR aus Paket-Bytes abgeleitet.
+    journal = read_portfolio(paket / st.PAKET_JOURNAL,
+                             expected_columns=TAGESJOURNAL_NAMES)
+    abgeleitet = st.abschluesse_aus_protokoll(
+        lies_protokoll(paket / st.PAKET_PROTOKOLL),
+        journal=journal,
+        abschluesse_dir=paket / st.PAKET_ABSCHLUESSE_DIR,
+    )
+    assert abgeleitet == modell["abschluesse"]
+
+
+def test_ein_zweiter_lauf_an_der_lesenaht_ergibt_keinen_mischstand(tmp_path, monkeypatch):
+    """Befund T26-10: Zwei autonom gueltige Generationen, zu einem Stand
+    vermischt, den es nie gab.
+
+    Der Gutachter hat die natuerliche Scheduling-Naht getroffen:
+    unmittelbar NACH dem Lesen des alten Manifests einen zweiten, voellig
+    regulaeren Tageslauf gestartet. Der aeussere Leser behielt alte
+    Protokollzeile und altes Manifest im Speicher und las das gerade
+    veroeffentlichte NEUE Journal. Ergebnis: Die Darstellung nannte den
+    03.02. und P-B1 gruen, zeigte Buchungen bis zum 10.02. und einen
+    Journal-Hash, der nicht zum ausgewerteten Journal passte.
+
+    Kein falscher Datenbestand wurde dafuer geschrieben — beide
+    Generationen sind gueltig. Genau deshalb hilft keine weitere Wache:
+    Wer die GEPRUEFTEN Bytes weiterreicht, statt sie danach erneut zu
+    lesen, kann diesen Zustand nicht erzeugen.
+
+    Hier wird dieselbe Naht getroffen: Der zweite Lauf startet aus dem
+    Inneren der Nachweispruefung heraus, also genau zwischen Pruefung und
+    Auswertung.
+    """
+    from rechner_pipeline.betrieb import tageslauf as tl
+
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    vorher = ablage.tagesjournal_pfad.read_bytes()
+
+    echt = tl.pruefe_nachweis
+    gesehen: list = []
+
+    def _mit_zweitem_lauf(a, gruene):
+        gelesen = echt(a, gruene)
+        if not gesehen:
+            gesehen.append(True)          # vor dem Lauf setzen: der rendert selbst
+            assert tageslauf(a, dt.date(2026, 2, 10))[0] == EXIT_OK
+        return gelesen
+
+    monkeypatch.setattr(tl, "pruefe_nachweis", _mit_zweitem_lauf)
+    modell = st.stand_modell(ablage)
+    monkeypatch.undo()
+
+    assert gesehen, "der zweite Lauf ist nie gelaufen — der Test saehe nichts"
+    assert ablage.tagesjournal_pfad.read_bytes() != vorher, (
+        "der zweite Lauf hat das Journal nicht veraendert — die Naht traegt nicht")
+
+    # Die Seite spricht von EINER Generation: dem Tag, den sie nennt.
+    assert modell["stand"] == "2026-02-03"
+    from rechner_pipeline.bestand.manifest import sha256_bytes
+
+    assert modell["provenienz"]["tagesjournal_sha256"] == sha256_bytes(vorher), (
+        "die Provenienz nennt einen anderen Journalstand als den ausgewerteten")
+    # Und die Buchungen enden am gemeldeten Tag — das war die Messung des
+    # Gutachters: mixed_last_booking_date 2026-02-10 neben mixed_model_date
+    # 2026-02-03.
+    letzte = [b["buchungsdatum"] for b in modell["buchungen"]["letzte"]]
+    assert letzte and max(letzte) <= "2026-02-03", (
+        f"die Seite zeigt Buchungen nach ihrem eigenen Stand: {max(letzte)}")

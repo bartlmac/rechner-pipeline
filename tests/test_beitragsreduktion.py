@@ -504,10 +504,18 @@ class TestTeilkuendigung:
         with pytest.raises(BeitragsreduktionFehler, match="ZUSTANDSLOSE"):
             ReduzierterVertrag.nach(kern, 10, 0.6,
                                     verfahren=TEILKUENDIGUNG)
-        with pytest.raises(BeitragsreduktionFehler,
-                           match="NUR die Grundversicherung"):
-            reduziere_geschichtet(kern, _geschichtet(jahre=(4,)), 10, 0.6,
-                                  verfahren=TEILKUENDIGUNG)
+        # Der geschichtete Produktivpfad (Bauauftrag T26-12): Der Grund
+        # wird gekuendigt, die Scheibe laeuft unveraendert — derselbe dDK
+        # wie ohne Scheibe (A-M3-Befund des zweiten Laufs).
+        teile = reduziere_geschichtet(kern, _geschichtet(jahre=(4,)), 10, 0.6,
+                                      verfahren=TEILKUENDIGUNG)
+        (e0, grund_red), (e1, scheibe_red) = teile
+        assert (e0, e1) == (0, 4)
+        assert grund_red.vs_neu == pytest.approx(0.6 * KLV_DEFAULT.sum_insured)
+        assert grund_red.d_dk == pytest.approx(
+            -0.4 * kern.verlaufszeile(10).vx_mrv, rel=1e-9)
+        assert scheibe_red.anteil == 1.0 and scheibe_red.vs_neu == scheibe_red.vs_alt
+        assert scheibe_red.d_dk == 0.0 and scheibe_red.bjb_neu == scheibe_red.bjb_alt
 
 
 # --------------------------------------------------------------------------- #

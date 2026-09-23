@@ -10,7 +10,7 @@ Layout (see ``configs/bestand_klv.toml``)::
 
     [meta]                      seed, beschreibung
     [[generation]]              tariff generation (validity window, produkt,
-                                zins, tafel(n), cost loadings, sample_size, ...)
+                                zins, tafel(n), cost loadings, neuzugang_pro_jahr, ...)
     [generation.verteilungen.<merkmal>]   distribution spec per attribute
     [[generation.korrelation]]  pairwise Spearman rank correlations
     [plausibilitaet]            value bands for the sanity gate
@@ -34,7 +34,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
+from rechner_pipeline.kern.beitragsreduktion import (
+    PRODUKTIV_AUSFUEHRBAR, PROSPEKTIV, VERFAHREN,
+)
 from rechner_pipeline.models.bestand import (
     BU_GENERATION_FIELDS,
     GENERATION_FIELD_DEFAULTS,
@@ -220,7 +222,6 @@ class TarifGeneration:
     name: str
     gueltig_von: _dt.date
     gueltig_bis: _dt.date
-    sample_size: int
     max_endalter: int
     #: Produkt der Generation (Kern-Registry-Kennung, vgl. PRODUKT_VALUES).
     #: "klv" = Kapitallebensversicherung (Default, Bestandsaufbau Stufe 1),
@@ -257,7 +258,7 @@ class TarifGeneration:
     stoab_je_baustein: bool = False
     red_verfahren: str = PROSPEKTIV
     #: Nummernkreis der Generation (Review T22-09): Die Police-Nummern
-    #: aller drei Erzeuger (Batch, Jahresneuzugang, Tagesneugeschaeft) und
+    #: beider Erzeuger (Jahresneuzugang, Tagesneugeschaeft) und
     #: ihre Seeds hingen an der POSITION der Generation in der Config —
     #: eine vorn eingefuegte oder umsortierte Generation aenderte die
     #: Identitaet jeder Police und damit jede Ereignishistorie. Der
@@ -401,14 +402,9 @@ class TarifGeneration:
                 f"{prefix}: gueltig_bis nach 2200 (Zeitachse: pandas-Timestamps "
                 "enden 2262; Vertragsenden muessen darstellbar bleiben)"
             )
-        if self.sample_size < 0:
-            errors.append(f"{prefix}: sample_size negativ")
-        # sample_size = 0 ist der UEBERNOMMENE Fall: Eine Generation, die
-        # aus einer Migration in den Bestand kommt, wird nicht erzeugt —
-        # ihre Vertraege liegen schon vor. Ihre Rechnungsgrundlagen
-        # braucht die Config trotzdem, sonst kann der Bericht sie nicht
-        # bewerten. Das Verbot der Null stammte aus der Zeit, in der jede
-        # Generation eine erzeugte war.
+        # Eine UEBERNOMMENE Generation (aus einer Migration) verkauft
+        # nichts: neuzugang_pro_jahr = 0. Ihre Rechnungsgrundlagen braucht
+        # die Config trotzdem, sonst kann der Bericht sie nicht bewerten.
         if not self.knoten:
             errors.append(
                 f"{prefix}: knoten fehlt — jede Generation traegt ihre "
@@ -427,11 +423,6 @@ class TarifGeneration:
                 f"{prefix}: knoten {self.knoten!r} hat die Wurzel "
                 f"{self.knoten.split('/', 1)[0]!r}, das Produkt ist aber "
                 f"{self.produkt!r} — die Knoten-Wurzel ist die Produktfamilie"
-            )
-        if self.sample_size > 1_000_000:
-            errors.append(
-                f"{prefix}: sample_size > 1_000_000 (police_id-Nummernkreis je "
-                "Generation ist 10 Mio; Obergrenze schuetzt vor Kollisionen)"
             )
         if not 0 <= self.neuzugang_pro_jahr <= 10_000:
             errors.append(f"{prefix}: neuzugang_pro_jahr ausserhalb [0, 10000]")
@@ -876,11 +867,10 @@ class Tagesbetrieb:
     """Der Tagesbetrieb der Vorzeige (Fachkonzept docs/simulation/tagesbetrieb.md).
 
     * ``betriebsbeginn``: der erste Kalendertag, an dem taeglich verkauft
-      wird. Der Basisbestand entsteht bis einschliesslich dieses Tages aus
-      dem Batch-Erzeuger (Beginn <= betriebsbeginn), danach bringt jeder
-      Werktag sein Neugeschaeft — ein Erzeuger je Zeitfenster, wie beim
-      Referenzstichtag der Fortschreibung. Ohne Angabe gibt es keinen
-      Tagesbetrieb; der Tageslauf bricht dann hart ab.
+      wird. Der Stand beginnt leer; ab diesem Tag bringt jeder Werktag sein
+      Neugeschaeft, und jeder Vertrag kommt als Zugang ins Journal — einen
+      gezogenen Anfangsbestand gibt es nicht mehr (ADR-020). Ohne Angabe
+      gibt es keinen Tagesbetrieb; der Tageslauf bricht dann hart ab.
     * ``wochentagsgewichte``: relatives Gewicht je Wochentag fuer die
       Verteilung des Jahresziels auf die Kalendertage (Abschnitt 4).
     * ``meldeverzug_tod``: Verteilung des Meldeverzugs bei Tod (Abschnitt 3).
@@ -1029,7 +1019,35 @@ class BestandConfig:
                 errors.append(f"plausibilitaet {merkmal}: Band muss (min, max) mit min < max sein")
         errors.extend(self.annahmen.validate())
         errors.extend(self.tagesbetrieb.validate())
+        errors.extend(self._validate_tarifwerk_ausfuehrbar())
         return errors
+
+    def _validate_tarifwerk_ausfuehrbar(self) -> List[str]:
+        """Eine gueltige Config, die im Lauf abbricht, ist keine gueltige.
+
+        Befund T26-12, als KLASSE geschlossen (Entscheid des Maintainers
+        2026-09-22): Nicht ein Verfahren wird abgewiesen, sondern jeder
+        Schalterwert jeder Generation wird gegen ``TARIFWERK_AUSFUEHRBAR``
+        gehalten — das, was der produktive Pfad kann. Eine Luecke ist ein
+        BAUAUFTRAG, nie ein Config-Rat: Der fruehere Ausweg ("red_verfahren
+        umstellen") hiesse, uebernommene Vertraege nach einem Verfahren zu
+        fuehren, das nicht ihr Bedingungswerk ist.
+
+        Fuer ``red_verfahren`` greift die Abweisung erst, wenn der Pfad
+        erreichbar ist (Herabsetzungsrate > 0): Dieselbe Config traegt auch
+        die Pruefstrecke, und die rekonstruiert die Teilkuendigung der
+        Quelle absichtlich (``reduziere``, A-M3). Ohne Herabsetzung bleibt
+        die Luecke hier latent — bei der FREISCHALTUNG in den Betrieb wird
+        sie hart abgewiesen (``betrieb.uebernahme.lies_uebernahme``), denn
+        dort beginnt die Fuehrung, die sie nicht kann. Alle anderen
+        Schalter kennen keine Erreichbarkeit: Luecke = Befund.
+        """
+        fehler: List[str] = []
+        for name, schalter, wert in tarifwerk_luecken(self.generationen):
+            if schalter == "red_verfahren" and self.annahmen.herabsetzung.a <= 0.0:
+                continue   # latent: kein Pfad — siehe Docstring
+            fehler.append(bauauftrag_text(name, schalter, wert))
+        return fehler
 
     def _validate_verkaufsfenster(self) -> List[str]:
         """Ein Tag verkauft je Produkt genau EINE Generation.
@@ -1038,15 +1056,12 @@ class BestandConfig:
         Generation, deren Gueltigkeitsfenster ihn enthaelt — das ist nur
         eindeutig, wenn die Fenster verkaufender Generationen desselben
         Produkts nicht ueberlappen. Generationen, die nichts verkaufen
-        (uebernommene: ``sample_size = 0`` ohne Neuzugang), duerfen ihr
+        (uebernommene, ohne Neuzugang), duerfen ihr
         Fenster dagegen frei tragen — es beschreibt die Verkaufszeit beim
         abgebenden Unternehmen. KLV und BU ueberlappen selbstverstaendlich.
         """
         errors: List[str] = []
-        verkaufend = [
-            g for g in self.generationen
-            if g.sample_size > 0 or g.neuzugang_pro_jahr > 0
-        ]
+        verkaufend = [g for g in self.generationen if g.neuzugang_pro_jahr > 0]
         je_produkt: Dict[str, List[TarifGeneration]] = {}
         for gen in verkaufend:
             je_produkt.setdefault(gen.produkt, []).append(gen)
@@ -1186,12 +1201,20 @@ def config_aus_text(text: str) -> BestandConfig:
             )
             for z in g.get("zelle", [])
         ]
+        # ``sample_size`` gibt es seit ADR-020 nicht mehr (der Bestand
+        # entsteht aus dem Zugangsstrom). Der Schluessel wird beim Lesen
+        # VERWORFEN, nicht abgewiesen: Eine Fall-Config ist eine
+        # hashgebundene P-B1-Eingangsrolle, ihre Bytes haengen an
+        # gezeichneten Abnahmen. Ein harter Fehler haette jeden bereits
+        # gezeichneten Fall unlesbar gemacht und A-M4 nicht mehr
+        # nachrechenbar. Das ist die eine Ausnahme von der
+        # Fail-fast-Regel, und sie ist benannt: ein toter Schluessel, den
+        # niemand mehr schreibt, kein stiller Umgang mit lebender Semantik.
         generationen.append(
             TarifGeneration(
                 name=str(g.get("name", "")),
                 gueltig_von=_to_date(g.get("gueltig_von"), "gueltig_von", errors),
                 gueltig_bis=_to_date(g.get("gueltig_bis"), "gueltig_bis", errors),
-                sample_size=int(g.get("sample_size", 0)),
                 max_endalter=int(g.get("max_endalter", 85)),
                 produkt=str(g.get("produkt", "klv")),
                 knoten=str(g.get("knoten", "")),
@@ -1300,3 +1323,55 @@ def config_aus_text(text: str) -> BestandConfig:
     if errors:
         raise ValueError("Config-Ladefehler: " + "; ".join(errors))
     return config
+
+
+# --------------------------------------------------------------------------- #
+# Ratsche (Befund T26-12, Entscheid des Maintainers 2026-09-22):
+# Schalterwert produktiv ausfuehrbar
+# --------------------------------------------------------------------------- #
+#: Je Tarifwerks-Schalter der Fuehrung (``Generation.tarifwerk()``) die
+#: Werte, die der PRODUKTIVE Pfad ausfuehren kann. Drei Mengen gab es schon:
+#: bekannt (``VERFAHREN``, ``Generation.validate``), uebertragen
+#: (``betrieb.uebernahme.tarifwerk_fehler``) — und niemand pruefte die
+#: dritte. Durch dieses Loch fiel die Teilkuendigung: erlaubter Schalter,
+#: uebertragen, im Lauf verweigert. Ein Test haelt die Schluessel dieser
+#: Tabelle EXAKT gegen ``tarifwerk()`` — ein neuer Schalter ohne
+#: Deklaration ist ein Befund, kein stilles Durchwinken — und die Werte
+#: gegen den Kern, der sie ausfuehrt.
+TARIFWERK_AUSFUEHRBAR: Dict[str, Tuple[Any, ...]] = {
+    "scheiben_mit_gamma1": (False, True),
+    "stoab_je_baustein": (False, True),
+    "red_verfahren": tuple(PRODUKTIV_AUSFUEHRBAR),
+}
+
+
+def tarifwerk_luecken(generationen) -> List[Tuple[str, str, Any]]:
+    """Jede (Generation, Schalter, Wert)-Kombination, die der produktive Pfad
+    NICHT ausfuehren kann — generisch ueber alle Schalter, ohne ein einzelnes
+    Verfahren zu kennen. Leer = alles ausfuehrbar."""
+    luecken: List[Tuple[str, str, Any]] = []
+    for gen in generationen:
+        for schalter, wert in gen.tarifwerk().items():
+            erlaubt = TARIFWERK_AUSFUEHRBAR.get(schalter)
+            if erlaubt is None or wert not in erlaubt:
+                luecken.append((gen.name, schalter, wert))
+    return luecken
+
+
+def bauauftrag_text(name: str, schalter: str, wert: Any) -> str:
+    """Der Befund einer Luecke — als BAUAUFTRAG formuliert, nie als Config-Rat.
+
+    Ein Tarifwerks-Merkmal, das der produktive Pfad nicht kann, ist eine
+    fehlende Faehigkeit des Zielsystems. Die Vertraege tragen ihr
+    Bedingungswerk; die Config daran anzupassen hiesse, sie nach einem
+    fremden Verfahren zu fuehren.
+    """
+    erlaubt = TARIFWERK_AUSFUEHRBAR.get(schalter, ())
+    return (
+        f"Generation {name}: {schalter} = {wert!r} kann der produktive Pfad "
+        f"nicht ausfuehren (ausfuehrbar: {list(erlaubt)}). Faehigkeit fehlt — "
+        f"Bauauftrag: {schalter} = {wert!r} in der produktiven Fuehrung "
+        "implementieren und in TARIFWERK_AUSFUEHRBAR eintragen; diese "
+        "Generation bis dahin nicht produktiv fahren. Die Config ist NICHT "
+        "anzupassen — die Vertraege tragen ihr Bedingungswerk"
+    )

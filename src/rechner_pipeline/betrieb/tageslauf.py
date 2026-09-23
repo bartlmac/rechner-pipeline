@@ -23,7 +23,7 @@ Was ein Lauf tut, in dieser Reihenfolge:
 2. **Neugeschaeft.** Alle Verkaufstage vom Betriebsbeginn bis heute
    (:mod:`rechner_pipeline.betrieb.neugeschaeft`) — je Tag fuer sich
    reproduzierbar.
-3. **Fortschreibung bis heute.** Basisbestand (Batch bis Betriebsbeginn)
+3. **Fortschreibung bis heute.** Basisbestand (die uebernommenen Vertraege; eigenes Geschaeft entsteht Werktag fuer Werktag)
    plus Uebernahme-Eingaenge plus Neugeschaeft, EIN Lauf der bestehenden
    Engine (``bestand.ereignisse.fortschreiben``); die Buchungen der
    Uebernahmen stehen dem Journal voran wie in ``cli_fortschreibung``.
@@ -45,8 +45,9 @@ Was ein Lauf tut, in dieser Reihenfolge:
    ist der gefuehrte Tag selbst; der Stand des Ersten enthaelt dessen
    Buchungen, deshalb entsteht der Abschluss zum Ersten im Lauf des
    Ersten — der Ultimo-Lauf koennte ihn noch nicht bewerten
-   (``stichtag <= bis``). Die Erstbefuellung schreibt so auch den
-   Eroeffnungsstand zum Betriebsbeginn.
+   (``stichtag <= bis``). Ein Monat ohne in-force-Vertrag bekommt keinen
+   Abschluss (ADR-020): Ein Unternehmen beginnt leer, und der erste
+   Versicherungsbeginn liegt am Monatsersten nach dem ersten Verkaufstag.
 7. **Tagesprotokoll**: eine JSON-Zeile je Lauf.
 
 Der Stand wird erst uebernommen, wenn die Wache gruen ist: Der Lauf
@@ -97,16 +98,18 @@ from rechner_pipeline.bestand.abschluss import (
 from rechner_pipeline.bestand.config import BestandConfig, load_config
 from rechner_pipeline.bestand.ereignisse import EreignisError, fortschreiben, mit_zugaengen
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
-from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.manifest import (
     MANIFEST_DATEI,
+    ERZEUGER,
     ROLLEN_DATEIEN,
     ManifestError,
     lauf_eingaben,
     lies_manifest,
+    pruefe_erzeuger,
     schreibe_manifest,
     sha256_bytes,
 )
+from rechner_pipeline.bestand.kennzahlen import monatskennzahlen
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio, write_portfolio
 from rechner_pipeline.bestand.report import render_html
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
@@ -118,13 +121,16 @@ from rechner_pipeline.betrieb.tagesjournal import (
     tagesjournal_ergaenzen,
     validate_tagesjournal,
 )
-from rechner_pipeline.betrieb.uebernahme import UebernahmeError, lies_uebernahmen
+from rechner_pipeline.betrieb.uebernahme import (
+    UEBERNAHME_DIR, UebernahmeError, lies_uebernahmen,
+)
 from rechner_pipeline.models.bestand import (
     LEDGER_NAMES,
     MERKMALE_NAMES,
     STAMM_NAMES,
     STATUS_HISTORIE_NAMES,
     TAGESJOURNAL_NAMES,
+    leerer_stamm,
 )
 
 #: Schema 2 (Review T22-05): jede Zeile traegt ``vorgaenger_sha256``, den
@@ -139,7 +145,10 @@ JOURNAL_DIR = "journal"
 ABSCHLUSS_DIR = "abschluesse"
 BERICHT_DIR = "berichte"
 CONFIG_DIR = "configs"
-UEBERNAHME_DIR = "uebernahme"
+# UEBERNAHME_DIR kommt aus betrieb.uebernahme — der Schreiber der
+# Eingaenge besitzt den Namen. Zweimal gepflegt waere es dieselbe
+# Menge an zwei Orten, und die Staging-Wurzel daneben (STAGING_DIR)
+# liefe beim naechsten Umbau still auseinander.
 TAGESJOURNAL_DATEI = "tagesjournal.parquet"
 #: Kopie des Journals waehrend eines Publish (Review T24-01, Schritt b):
 #: die einzige Veroeffentlichung, die sich nicht aus dem Stand
@@ -291,6 +300,42 @@ def entferne_publish_marker(ablage: "Ablage") -> None:
     ablage.tagesjournal_vorher_pfad.unlink(missing_ok=True)
 
 
+def _schneide_teilzeile(pfad: Path) -> bool:
+    """Eine angefangene, nie abgeschlossene Protokollzeile entfernen.
+
+    Eine Zeile des Protokolls gilt als geschrieben, wenn sie mit einem
+    Zeilenumbruch endet — das ist die Commitgrenze eines anfuegbaren
+    Journals. Bricht der Schreibvorgang mittendrin ab, steht ein Fragment
+    ohne Umbruch am Ende der Datei. Es ist nie eine Zeile geworden, und es
+    wegzuschneiden nimmt nichts zurueck, was jemals galt.
+
+    Ohne diesen Schnitt endete JEDER Wiederanlauf im JSON-Fehler von
+    ``lies_protokoll``: Die Ruecknahme liest das Protokoll, bevor sie
+    irgendetwas zuruecksetzen kann, und blieb damit dauerhaft haengen
+    (Befund T26-02, Szenario 3).
+
+    Bewusst eng: Endet die Datei mit einem Umbruch, wird nichts angefasst.
+    Eine vollstaendige Zeile, die kein JSON ist, ist echte Beschaedigung
+    und bleibt ein Fehler — dafuer gibt es keinen Ausweg, der nicht
+    Beweismaterial vernichtet. Gerufen wird nur aus der Ruecknahme, also
+    nur, wenn ein Marker bezeugt, dass ein Publish unterwegs war.
+    """
+    if not pfad.is_file():
+        return False
+    roh = pfad.read_bytes()
+    if not roh or roh.endswith(b"\n"):
+        return False
+    schnitt = roh.rfind(b"\n") + 1
+    pfad.write_bytes(roh[:schnitt])
+    print(
+        f"tageslauf: {pfad} endete mit einer angefangenen Zeile "
+        f"({len(roh) - schnitt} Bytes ohne Zeilenumbruch) — sie ist nie "
+        "geschrieben worden und wurde entfernt; der Tag wird erneut gefuehrt.",
+        file=sys.stderr,
+    )
+    return True
+
+
 def nimm_publish_zurueck(ablage: "Ablage") -> Optional[Dict[str, Any]]:
     """Einen unterbrochenen Publish zuruecknehmen; liefert den Marker.
 
@@ -317,6 +362,9 @@ def nimm_publish_zurueck(ablage: "Ablage") -> Optional[Dict[str, Any]]:
             "pruefen und von Hand entfernen, wenn die Ablage stimmig ist"
         ) from exc
     tag = str(marker.get("heute"))
+    # Erst die angefangene Zeile wegschneiden, dann lesen: Sonst stirbt die
+    # Ruecknahme an dem Zustand, den sie zuruecknehmen soll (T26-02).
+    _schneide_teilzeile(ablage.protokoll_pfad)
     gruene = [z for z in lies_protokoll(ablage.protokoll_pfad)
               if z.get("uebernommen")]
     if gruene and str(gruene[-1].get("heute")) == tag:
@@ -339,6 +387,48 @@ def nimm_publish_zurueck(ablage: "Ablage") -> Optional[Dict[str, Any]]:
         tmp.unlink(missing_ok=True)
         os.symlink(str(vorher), tmp)
         os.replace(tmp, ablage.stand)
+    elif vorher == STAND_DIR and (
+            ablage.stand.is_symlink() or not ablage.stand.exists()):
+        # Vor dem Publish war ``stand`` ein echtes VERZEICHNIS (Legacy).
+        # Der Erstuebergang schiebt es nach stand-erstfassung und setzt den
+        # Symlink; zurueckgenommen ist das erst, wenn beides wieder steht.
+        #
+        # Die einzige Ruecksetzbedingung schloss diesen Zustand
+        # ausdruecklich aus (``vorher != STAND_DIR``). Danach fuehrte der
+        # Symlink den neuen Tag, das Protokoll den alten, und jeder
+        # weitere Lauf meldete "Stand und Nachweis passen nicht zusammen"
+        # — dauerhaft (Befund T26-02, Szenario 2).
+        #
+        # Zwei Abbruchstellen fallen darunter, und sie sehen verschieden
+        # aus: Bricht der Tausch NACH dem Beiseiteschieben ab, gibt es
+        # ``stand`` gar nicht mehr; bricht er danach ab, ist es ein
+        # Symlink auf die neue Generation. Gefragt wird deshalb, ob
+        # ``stand`` noch das echte Verzeichnis von vorher ist — nicht,
+        # welche der beiden Formen gerade vorliegt.
+        erstfassung = ablage.wurzel / f"{STAND_DIR}-erstfassung"
+        if erstfassung.is_dir():
+            if ablage.stand.is_symlink():
+                ablage.stand.unlink()
+            os.rename(erstfassung, ablage.stand)
+    elif vorher is None:
+        # Vor dem Publish gab es KEINEN Stand (Erstbefuellung). Die einzige
+        # Ruecksetzbedingung darueber verlangte einen vorherigen Stand, und
+        # ohne einen blieb der neue stehen, waehrend Journal und Marker
+        # zurueckgenommen wurden: Danach meldete jeder Lauf dauerhaft
+        # "Protokoll kennt keinen uebernommenen Lauf" (Befund T26-02,
+        # Szenario 1). Zurueckgenommen ist die Ablage erst, wenn auch der
+        # neue Stand wieder weg ist.
+        #
+        # Geloescht wird hier mit FESTSTEHENDER Identitaet, nicht nach
+        # Gestalt: Der Marker nennt die Generation, die veroeffentlicht
+        # werden sollte, und der Symlink zeigt genau auf sie.
+        generation = str(marker.get("generation") or "")
+        if (generation and ablage.stand.is_symlink()
+                and ablage.stand.resolve().name == generation):
+            ablage.stand.unlink()
+            neu = ablage.wurzel / generation
+            if neu.is_dir():
+                _entferne_ablageverzeichnis(ablage, neu)
     entferne_publish_marker(ablage)
     print(
         f"tageslauf: unterbrochener Publish vom {tag} zurueckgenommen — die "
@@ -392,7 +482,9 @@ def lies_protokoll(pfad: Path) -> List[Dict[str, Any]]:
     return zeilen
 
 
-def pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
+def pruefe_nachweis(
+    ablage: Ablage, gruene: List[Dict[str, Any]]
+) -> Dict[str, Optional[bytes]]:
     """Der Nachweisvertrag zwischen Protokoll, Stand und Journal (T22-05).
 
     Oeffentlich seit Review T24-03: Der Vertrag galt nur fuer den, der ihn
@@ -407,6 +499,19 @@ def pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
     Zeile nennt den Manifest-Hash des Stands und den Hash des Journals —
     was auf der Platte liegt, muss dem entsprechen, sonst ist das
     Protokoll eine Behauptung ueber einen anderen Stand.
+
+    ZURUECKGEGEBEN werden die geprueften BYTES (Befund T26-10). Vorher
+    hat diese Funktion gehasht und die Bytes weggeworfen; der Aufrufer
+    las dieselben Dateien danach erneut. An der Naht dazwischen passt ein
+    ganzer Tageslauf: Die Gegenprobe des Gutachters hat unmittelbar nach
+    dem Lesen des alten Manifests einen zweiten, voellig regulaeren Lauf
+    gestartet. Die Seite nannte danach den 03.02. und P-B1 gruen, zeigte
+    Buchungen bis zum 10.02. und einen Journal-Hash, der nicht zum
+    ausgewerteten Journal passte — zwei autonom gueltige Generationen zu
+    einem Stand vermischt, den es nie gab.
+
+    Eine Sperre haette den einen Weg geschuetzt, den sie umschliesst.
+    Wer die geprueften Bytes weiterreicht, schuetzt jeden.
     """
     for vorher, jetzt in zip(gruene, gruene[1:]):
         if jetzt.get("schema_version", 1) < 2:
@@ -429,8 +534,14 @@ def pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
                 "fuellen die Luecke zum vorigen Tag nicht"
             )
     letzte = gruene[-1]
+    gelesen: Dict[str, Optional[bytes]] = {"manifest": None, "journal": None}
     if letzte.get("schema_version", 1) >= 2:
-        manifest_hash = _datei_hash(ablage.stand / MANIFEST_DATEI)
+        manifest_pfad = ablage.stand / MANIFEST_DATEI
+        gelesen["manifest"] = (
+            manifest_pfad.read_bytes() if manifest_pfad.is_file() else None)
+        manifest_hash = (
+            sha256_bytes(gelesen["manifest"])
+            if gelesen["manifest"] is not None else None)
         if letzte.get("manifest_sha256") != manifest_hash:
             raise TageslaufError(
                 "Protokoll und Stand passen nicht zusammen: die letzte gruene Zeile "
@@ -438,12 +549,18 @@ def pruefe_nachweis(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
                 f"traegt {str(manifest_hash)[:16]}…"
             )
         journal_hash = (letzte.get("tagesjournal") or {}).get("sha256")
-        if journal_hash != _datei_hash(ablage.tagesjournal_pfad):
+        gelesen["journal"] = (
+            ablage.tagesjournal_pfad.read_bytes()
+            if ablage.tagesjournal_pfad.is_file() else None)
+        ist = (sha256_bytes(gelesen["journal"])
+               if gelesen["journal"] is not None else None)
+        if journal_hash != ist:
             raise TageslaufError(
                 "Protokoll und Journal passen nicht zusammen: das Tagesjournal hat "
                 "nicht den Hash, den die letzte gruene Zeile nennt — das Journal "
                 "wurde veraendert oder gehoert zu einem anderen Stand"
             )
+    return gelesen
 
 
 def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
@@ -458,6 +575,12 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
         return None
     try:
         manifest = lies_manifest(ablage.stand)
+        # Seit es zwei Manifest-Erzeuger gibt, ist "wohlgeformt" nicht
+        # mehr "passend": Der Stand einer Fuehrung ist ein
+        # Fortschreibungslauf. Ein Migrationszugang traegt nur die
+        # uebernommenen Vertraege — wer ihn als Stand fuehrte, verlore
+        # das eigene Geschaeft still.
+        pruefe_erzeuger(manifest, ERZEUGER)
     except ManifestError as exc:
         raise TageslaufError(
             f"{ablage.stand}: {exc} — ein Stand ohne gueltiges Manifest ist "
@@ -524,13 +647,44 @@ def _bereits_gefuehrte_eingaenge(ablage: Ablage) -> set:
     return {str(u.get("fall")) for u in gruene[-1].get("uebernahmen", [])}
 
 
+def _abschluss_kennt_eingang(ablage: Ablage, stichtag: _dt.date, police_ids) -> bool:
+    """Ob der festgeschriebene Abschluss diesen Eingang bereits traegt.
+
+    Die Frage "ist dieser Eingang schon eingerechnet" wurde bisher an das
+    PROTOKOLL gestellt: Welche Faelle hat der letzte gruene Lauf gefuehrt?
+    Das ist ein Stellvertreter, und er faellt aus, sobald ein Lauf den
+    Abschluss schreibt und danach scheitert — der Abschluss kennt den
+    Bestand, die Protokollzeile sagt "nicht uebernommen", und der Retry
+    haelt den Eingang fuer neu. Genau so blieb ein Betrieb dauerhaft
+    stehen (Befund T26-02, Szenario 4): "Abschluss kennt den Bestand
+    nicht", obwohl er ihn kannte.
+
+    Gefragt wird deshalb die Tabelle selbst. Ein Abschluss, der die
+    Zielnummern des Eingangs traegt, hat ihn eingerechnet — das ist keine
+    Ableitung ueber einen Stellvertreter, sondern die Sache.
+
+    Benannte Grenze: Ein Eingang, dessen Vertraege am Stichtag des
+    Abschlusses ALLE schon beendet waeren, hinterliesse keine Zeile und
+    zaehlte hier als unbekannt. Fuer einen Zugang zum eigenen Stichtag
+    kann das nicht eintreten — er tritt an diesem Tag in die Buecher ein.
+    """
+    pfad = abschluss_pfad(ablage.abschluesse, stichtag)
+    if not pfad.is_file():
+        return False
+    tabelle = read_portfolio(pfad)
+    return bool(set(int(p) for p in tabelle["police_id"]) & {int(p) for p in police_ids})
+
+
 def _stand_bauen(
     config: BestandConfig, config_pfad: Path, ablage: Ablage, heute: _dt.date
 ) -> Tuple[Path, Dict[str, Any]]:
     """Den Stand fuer ``heute`` im Arbeitsverzeichnis erzeugen (noch nicht uebernommen)."""
     betriebsbeginn = config.tagesbetrieb.betriebsbeginn
     assert betriebsbeginn is not None
-    basis = generate(config, bis=betriebsbeginn)
+    # Kein gezogener Anfangsbestand mehr (ADR-020): Der Stand beginnt leer,
+    # das eigene Geschaeft entsteht Werktag fuer Werktag ab dem
+    # Betriebsbeginn — jeder Vertrag mit seinem Zugang im Journal.
+    basis = leerer_stamm()
     ausgaben: List[Path] = []
     eingaben: Dict[str, Path] = {}
     if ablage.arbeit.exists():
@@ -551,6 +705,12 @@ def _stand_bauen(
     # Vergangenheit nicht — ein Bilanzwert, der sich rueckwirkend bewegt
     # haette, wenn er duerfte. Schon gefuehrte Eingaenge sind davon nicht
     # betroffen: Ihre Abschluesse kennen sie.
+    #
+    # "Schon gefuehrt" wird an ZWEI Quellen gefragt (T26-02, Szenario 4):
+    # am Protokoll, das den letzten gruenen Lauf nennt, und am Abschluss
+    # selbst. Die zweite ist die belastbare — ein Lauf, der den Abschluss
+    # schreibt und danach scheitert, hinterlaesst keine gruene Zeile, und
+    # der Stellvertreter "Protokoll" hielt den Eingang dann fuer neu.
     schon_gefuehrt = _bereits_gefuehrte_eingaenge(ablage)
     abschluesse_bisher = _festgeschriebene_abschluesse(ablage)
     juengster_abschluss = abschluesse_bisher[-1] if abschluesse_bisher else None
@@ -577,6 +737,8 @@ def _stand_bauen(
             ueb.fall not in schon_gefuehrt
             and juengster_abschluss is not None
             and juengster_abschluss >= ueb.stichtag
+            and not _abschluss_kennt_eingang(
+                ablage, juengster_abschluss, ueb.bestand["police_id"])
         ):
             raise TageslaufError(
                 f"uebernahme {ueb.fall}: Stichtag {ueb.stichtag.isoformat()} "
@@ -619,11 +781,6 @@ def _stand_bauen(
         eingaben[f"uebernahme:{ueb.fall}"] = ueb.manifest_pfad
 
     zugaenge = neugeschaeft_zwischen(config, betriebsbeginn, heute)
-    if len(zugaenge) and (zugaenge["insurance_start"] <= pd.Timestamp(betriebsbeginn)).any():
-        raise TageslaufError(
-            "Neugeschaeft mit Beginn am oder vor dem Betriebsbeginn — der "
-            "Batch besiedelt diesen Zeitraum bereits (ein Erzeuger je Zeitfenster)"
-        )
     ergebnis = fortschreiben(
         basis, config, heute, zugaenge=zugaenge, merkmale=merkmale,
         scheiben=scheiben_ueb, schichten=schichten, verankerung=verankerung,
@@ -744,6 +901,7 @@ def _wache(arbeit: Path, config_pfad: Path, heute: _dt.date) -> Tuple[Dict[str, 
     """
     eingaben = lauf_eingaben(arbeit, config_pfad)
     manifest = lies_manifest(arbeit)
+    pruefe_erzeuger(manifest, ERZEUGER)
     tabellen, geprueft, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=heute, manifest=manifest)
     return tabellen, geprueft, usage + fehler
 
@@ -853,14 +1011,20 @@ def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
     """Versionierte Standverzeichnisse, auf die der Symlink nicht zeigt
     (Reste eines abgebrochenen Tauschs), aufraeumen — vor dem Lauf.
 
-    Die Praemisse dieser Aufraeumung ist, dass ``stand`` auf ein
-    Standverzeichnis unmittelbar in der Wurzel zeigt. Steht sie nicht —
-    Symlink von Hand nach aussen gesetzt oder haengend —, waere JEDES
-    ``stand-*`` in der Wurzel eine "Waise", und die Aufraeumung loeschte den
-    einzigen Stand der Ablage, waehrend die spaetere Wache in
-    ``_uebernehmen`` als Ausweg noch auf ihn verweist (Nachmessung T24-07
-    durch die merge-session, reproduziert auf main). Dann wird NICHTS
-    entfernt: Abbruch vor dem ersten Loeschen, mit demselben Ausweg.
+    Die Praemisse dieser Aufraeumung ist, dass ``stand`` ein SYMLINK auf
+    ein Standverzeichnis unmittelbar in der Wurzel ist. Nur dann steht
+    fest, welche Generation gefuehrt wird und welche Waisen sind.
+
+    Gilt die Praemisse nicht, waere JEDES ``stand-*`` in der Wurzel eine
+    "Waise", und die Aufraeumung loeschte den einzigen Stand der Ablage.
+    Zwei Auspraegungen davon sind belegt: der von Hand nach aussen
+    gesetzte oder haengende Symlink (Nachmessung T24-07) und der
+    Legacy-Zustand, in dem ``stand`` ein echtes Verzeichnis ist — dort
+    verschwand ``stand-erstfassung`` (Befund T26-02).
+
+    Deshalb fragt der Code nach der Praemisse und nicht nach den
+    bekannten Ausnahmen. Ein haengender Symlink ist ein Abbruch mit
+    Ausweg; jeder andere unklare Zustand raeumt NICHTS auf und sagt es.
     """
     aktuell: Optional[Path] = None
     if ablage.stand.is_symlink():
@@ -877,28 +1041,49 @@ def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
         if fehler:
             raise TageslaufError(f"Aufraeumen nicht begonnen — gefuehrter Stand: {fehler}")
     kandidaten = [k for k in ablage.wurzel.glob(f"{STAND_DIR}-*") if k.is_dir()]
-    if aktuell is None and kandidaten and not ablage.stand.exists():
-        # ``stand`` gibt es nicht, aber versionierte Staende liegen da:
-        # unter anderem der Zustand nach einem Absturz zwischen den zwei
-        # Umbenennungen des Erstuebergangs (_uebernehmen) — die erste hat
-        # ``stand`` beiseitegeschoben, die zweite kam nicht mehr. Welcher
-        # der Kandidaten gefuehrt war, sagt hier nichts.
+    if aktuell is None and kandidaten:
+        # Die Praemisse dieser Aufraeumung ist ein SYMLINK ``stand`` auf
+        # eine Generation in der Wurzel. Gilt sie nicht, sagt hier nichts,
+        # welcher Kandidat gefuehrt war — dann wird NICHTS entfernt.
         #
-        # Es wird NICHTS entfernt. Das ist der ganze Punkt: Gefaehrlich
-        # ist nicht der Lauf, sondern das Loeschen — vorher hielt die
-        # Aufraeumung jeden Kandidaten fuer eine Waise und raeumte den
-        # alten Stand UND die fertig geschriebene neue Generation ab
-        # (Review T24-01, Reproduktion 3). Der T24-07-Fix deckte nur den
-        # HAENGENDEN Symlink.
+        # Drei Zustaende fallen darunter, und zwei davon haben bereits
+        # Daten gekostet:
+        # * ``stand`` fehlt — unter anderem der Zustand nach einem Absturz
+        #   zwischen den zwei Umbenennungen des Erstuebergangs. Vorher
+        #   hielt die Aufraeumung jeden Kandidaten fuer eine Waise und
+        #   raeumte den alten Stand UND die fertig geschriebene neue
+        #   Generation ab (Review T24-01, Reproduktion 3).
+        # * ``stand`` ist ein echtes Verzeichnis — der unterstuetzte
+        #   Legacy-Zustand vor dem Erstuebergang. Hier fiel der Code bis
+        #   zur Schleife durch, und weil ``aktuell`` None blieb, galt
+        #   JEDER Kandidat als Waise: geloescht wurde unter anderem
+        #   ``stand-erstfassung``, der letzte belegte alte Stand (Befund
+        #   T26-02, Szenario 2).
+        # * ``stand`` ist etwas anderes, etwa eine Datei — nie beobachtet,
+        #   aber von derselben Bauart.
+        #
+        # Gefragt wird deshalb nach der PRAEMISSE und nicht nach den
+        # bekannten Ausnahmen: Eine Aufzaehlung haette den dritten Fall
+        # wieder durchgelassen, so wie die Aufzaehlung nach T24-07 den
+        # zweiten durchliess. Dieselbe Klasse wie T26-01 — wer aus der
+        # Form eines Pfades auf seinen Lebenszyklus schliesst, loescht
+        # frueher oder spaeter etwas Gueltiges.
         #
         # Abbrechen waere zu scharf: Eine Ablage ohne ``stand`` ist ein
-        # legitimer Ausgangspunkt (Neuaufbau aus dem Eingang). Der Lauf
-        # baut einen neuen Stand, setzt den Symlink, und der NAECHSTE
-        # Lauf raeumt auf — dann ist die Praemisse wieder klar.
-        # Aufgeraeumt wird nur, wo man weiss, was man wegraeumt.
+        # legitimer Ausgangspunkt (Neuaufbau aus dem Eingang), und der
+        # Legacy-Zustand ist ausdruecklich unterstuetzt. Der Lauf baut
+        # einen neuen Stand, setzt den Symlink, und der NAECHSTE Lauf
+        # raeumt auf — dann ist die Praemisse wieder klar.
+        zustand = (
+            "fehlt" if not ablage.stand.exists()
+            else "ein echtes Verzeichnis (Legacy-Zustand vor dem Erstuebergang)"
+            if ablage.stand.is_dir()
+            else "weder Symlink noch Verzeichnis"
+        )
         print(
-            f"tageslauf: {ablage.stand} gibt es nicht, aber die Ablage traegt "
-            f"{len(kandidaten)} versionierte(n) Stand "
+            f"tageslauf: {ablage.stand} ist kein Symlink auf eine Generation "
+            f"({zustand}), aber die Ablage traegt {len(kandidaten)} "
+            f"versionierte(n) Stand "
             f"({', '.join(sorted(k.name for k in kandidaten)[:3])}) — nichts "
             "aufgeraeumt, weil unklar ist, welcher gefuehrt war. Der Lauf "
             "baut einen neuen Stand; der naechste raeumt die Reste ab. Wer "
@@ -908,7 +1093,7 @@ def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
         )
         return
     for kandidat in kandidaten:
-        if aktuell is None or kandidat.resolve() != aktuell:
+        if kandidat.resolve() != aktuell:
             _entferne_ablageverzeichnis(ablage, kandidat)
     tmp = ablage.wurzel / STAND_LINK_TMP
     if tmp.is_symlink():
@@ -1256,6 +1441,20 @@ def _tageslauf(
             # liest. Mit teilbestand_getrennt kommt je Uebernahme ein
             # Bericht ueber ihren Teilbestand dazu (Konzept, Abschnitt 6).
             manifest_hash = _datei_hash(arbeit / MANIFEST_DATEI)
+            kennung = str(manifest_hash)[:16]
+            # Der Marker liegt VOR dem ersten irreversiblen Schritt — und
+            # der ist der Monatsabschluss, nicht der Standwechsel. Ein
+            # Abschluss wird 0444 geschrieben und nie neu gerechnet
+            # (ADR-011); er ist damit unwiderruflicher als der Symlink,
+            # den ein Rename zuruecknimmt.
+            #
+            # Vorher stand der Marker hinter der Abschluss-Schleife und
+            # behauptete im Kommentar, er stehe davor. Ein Fehler dazwischen
+            # — etwa im Monatsbericht — hinterliess einen festgeschriebenen
+            # Abschluss OHNE Marker, und dem naechsten Lauf fehlte jeder
+            # Hinweis, dass ein Publish unterwegs war (Befund T26-02,
+            # Szenario 4).
+            schreibe_publish_marker(ablage, heute, f"{STAND_DIR}-{kennung}")
             teilbestaende: Dict[str, List[int]] = zeile.pop("_teilbestaende")
             abschluesse: List[Dict[str, Any]] = []
             stichtage = monatserste_in(
@@ -1301,6 +1500,7 @@ def _tageslauf(
                 # Der Abschluss bekommt dieselben Nebentabellen wie die Wache
                 # und der Bericht — sonst weist er die Korrekturschicht als
                 # null aus, obwohl die Fuehrung sie traegt (N-01).
+                #
                 geschrieben = schreibe_abschluss(
                     sicht["portfolio"], sicht["historie"], config, stichtag,
                     ablage.abschluesse, scheiben=sicht["scheiben"],
@@ -1312,6 +1512,15 @@ def _tageslauf(
                 eintrag: Dict[str, Any] = {
                     "stichtag": stichtag.isoformat(), "datei": geschrieben.name,
                     "sha256": _datei_hash(geschrieben), "neu": True,
+                    # Das TAGESJOURNAL, nicht sicht["ledger"]: Nur das
+                    # Journal traegt das Buchungsdatum, und ohne das
+                    # faellt jeder spaet gebuchte Vorfall auf einem
+                    # Stichtag aus der Zaehlung. Den Schnitt auf den
+                    # Stichtag macht die Periode selbst — ein Vorfall,
+                    # der erst heute gebucht wurde, wird erst in seinem
+                    # Monat sichtbar.
+                    **monatskennzahlen(
+                        read_portfolio(geschrieben), journal, stichtag),
                 }
                 if stichtag == stichtage[-1]:
                     # Derselbe Schnitt wie der Abschluss: Der Bericht legt
@@ -1337,12 +1546,11 @@ def _tageslauf(
                             eintrag["teilbestaende"].append({"fall": fall, "bericht": teil.name})
                 abschluesse.append(eintrag)
             zeile["abschluesse"] = abschluesse
-            # Ab hier veroeffentlicht der Lauf. Der Marker liegt VOR dem
-            # ersten irreversiblen Schritt und sagt dem naechsten Lauf,
-            # dass ein Publish unterwegs war — samt allem, was er
-            # braucht, um ihn zurueckzunehmen (Review T24-01, Schritt b).
-            kennung = str(manifest_hash)[:16]
-            schreibe_publish_marker(ablage, heute, f"{STAND_DIR}-{kennung}")
+            # Ab hier veroeffentlicht der Lauf nach aussen. Der Marker
+            # liegt seit dem Beginn der Abschluesse (siehe oben) und sagt
+            # dem naechsten Lauf, dass ein Publish unterwegs war — samt
+            # allem, was er braucht, um ihn zurueckzunehmen (Review T24-01,
+            # Schritt b).
             write_portfolio(journal, ablage.tagesjournal_pfad)
             zeile["tagesjournal"]["sha256"] = _datei_hash(ablage.tagesjournal_pfad)
             _uebernehmen(ablage, kennung)

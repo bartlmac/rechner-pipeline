@@ -396,6 +396,53 @@ def _schichten(
                     f"Schichtbeleg-Eingabe {rel} wurde veraendert "
                     "(SHA-256 weicht ab) — Beleg neu erzeugen, nicht "
                     "weiterverwenden")
+        # Der Beleg wird auf sein EIGENES URTEIL geprueft, bevor er
+        # fachlich verwendet wird (Befund T26-06). Vorher las der Consumer
+        # Systemstand und Eingabenhashes nach und reduzierte dann direkt
+        # auf ``schichten`` — ``befunde`` und ``summary`` sah er nie. Ein
+        # echter ROTER Producerlauf (25 von 26 Policen getragen) fuehrte
+        # damit zu drei gruenen aktuariellen Vorlagenlaeufen.
+        #
+        # Geprueft wird dreierlei, und jedes faengt eine andere
+        # Manipulation: dass der Producer keine Befunde meldet, dass seine
+        # Zusammenfassung dasselbe sagt wie seine Befundliste, und dass
+        # die Schichttabelle so viele Policen traegt, wie die
+        # Zusammenfassung behauptet. Wer nur das erste prueft, akzeptiert
+        # einen Beleg mit geleerter Befundliste und unveraendertem
+        # summary.
+        befunde = roh.get("befunde")
+        summary = roh.get("summary")
+        if not isinstance(befunde, list) or not isinstance(summary, dict):
+            raise SystemExit(
+                f"Schichtbeleg {name!r} traegt kein eigenes Urteil "
+                "(befunde/summary fehlen oder haben die falsche Form) — "
+                "bindbare Belege erzeugt nur der Producer "
+                "gates.verankerung_belegen")
+        gemeldet = summary.get("befunde")
+        if befunde or gemeldet:
+            erster = befunde[0] if befunde else "(nur in summary gezaehlt)"
+            raise SystemExit(
+                f"Schichtbeleg {name!r} ist ROT: {len(befunde)} Befund(e) in "
+                f"der Liste, {gemeldet} in der Zusammenfassung; erster: "
+                f"{erster} — ein roter Beleg wird nicht fachlich verwendet. "
+                "Erst entscheiden, dann neu erzeugen "
+                "(gates.verankerung_belegen)")
+        if len(befunde) != int(gemeldet or 0):
+            raise SystemExit(
+                f"Schichtbeleg {name!r}: {len(befunde)} Befunde in der Liste, "
+                f"{gemeldet} in der Zusammenfassung — der Beleg widerspricht "
+                "sich selbst")
+        getragen, vertraege = summary.get("getragen"), summary.get("vertraege")
+        if getragen != vertraege:
+            raise SystemExit(
+                f"Schichtbeleg {name!r} ist unvollstaendig: {getragen} von "
+                f"{vertraege} Policen getragen — eine halbe Schichttabelle "
+                "traegt keine Bewertung")
+        if len(roh["schichten"]) != getragen:
+            raise SystemExit(
+                f"Schichtbeleg {name!r}: {len(roh['schichten'])} Schichten, "
+                f"aber {getragen} getragene Policen behauptet — die Tabelle "
+                "passt nicht zu ihrer Zusammenfassung")
         roh = roh["schichten"]
     else:
         roh = _lies_registriert(fall, name, bindung)

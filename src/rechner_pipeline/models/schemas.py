@@ -34,7 +34,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from rechner_pipeline.models.manifest import FileHashRecord, ManifestWarning
 
@@ -454,6 +454,58 @@ def p9_freigabe_nachricht(data: Dict[str, Any]) -> bytes:
     return b"rechner-pipeline:p9-freigabe:v1\0" + _kanonisches_json(kern)
 
 
+def p9_semantik_fehler(
+    snapshot: Mapping[str, Any],
+    *,
+    erwartete_rollen: Optional[Sequence[str]] = None,
+) -> List[str]:
+    """Der Teil der Snapshot-Semantik, der aus dem INHALT folgt. Leer = ok.
+
+    Das Schema prueft die FORM eines P9-Snapshots. Zwei Aussagen darueber
+    hinaus entscheiden, ob er als Abnahme taugt:
+
+    * ``pflichtbelege['pk1_belege']`` muss die Generationen-Belegmenge
+      sein. Das ist eine Aussage ueber den Snapshot ALLEIN und deshalb
+      ueberall pruefbar, wo er gelesen wird.
+    * ``pflichtbelege`` muss exakt die Rollen des Scopes sein. Dafuer
+      braucht es den Belegrollen-Vertrag; wer ihn hat, reicht ihn als
+      ``erwartete_rollen``.
+
+    Die Trennung ist keine Feinheit, sondern die Schichtenkarte: Der
+    Betriebseingang darf weder ``gates`` noch ``fall`` importieren
+    (``SCHICHT_ERLAUBT``) und hat den Rollenvertrag deshalb NICHT. Er
+    prueft, was er pruefen kann, und die Luecke ist benannt statt
+    verschwiegen (Befund T26-03).
+
+    Gerechnet wird nur, wenn eine Seite etwas behauptet: Ein Snapshot
+    ohne ``pk1_belege`` und ohne entsprechenden Pflichtbeleg-Eintrag sagt
+    ueber Generationen nichts und wird hier nicht beanstandet.
+    """
+    fehler: List[str] = []
+    pflichtbelege = snapshot.get("pflichtbelege")
+    if erwartete_rollen is not None and isinstance(pflichtbelege, dict):
+        if set(pflichtbelege) != set(erwartete_rollen):
+            fehler.append(
+                "pflichtbelege enthaelt nicht exakt die aus dem Scope "
+                f"abgeleiteten Rollen {list(erwartete_rollen)}"
+            )
+    pk1_belege = snapshot.get("pk1_belege")
+    if isinstance(pflichtbelege, dict) and isinstance(pk1_belege, dict):
+        pk1_hashes = sorted(
+            beleg
+            for belege_der_generation in pk1_belege.values()
+            if isinstance(belege_der_generation, list)
+            for beleg in belege_der_generation
+        )
+        behauptet = pflichtbelege.get("pk1_belege")
+        if (behauptet is not None or pk1_hashes) and (behauptet or []) != pk1_hashes:
+            fehler.append(
+                "pflichtbelege['pk1_belege'] stimmt nicht mit der "
+                "Generationen-Belegmenge ueberein"
+            )
+    return fehler
+
+
 def p9_snapshot_sha256(data: Dict[str, Any]) -> str:
     """Hash every persisted field except the self-addressing hash itself."""
     kern = {key: value for key, value in data.items() if key != "snapshot_sha256"}
@@ -617,7 +669,7 @@ class P9Snapshot:
                 # A-B1 hat im Tarif-Scope ueberhaupt keine Rollen (ein
                 # Tarif-Fall liefert keinen Bestand aus). Die EXAKTE
                 # Rollenmenge je Gate und Scope erzwingt ohnehin der
-                # Lesepfad in gate_entscheid gegen fall.BELEGROLLEN.
+                # Lesepfad in gate_entscheid gegen models.belegrollen.BELEGROLLEN.
                 gate in ("A-M4", "A-O1", "A-K2")
                 and data.get("entscheid") == "angenommen"
                 and not pflichtbelege

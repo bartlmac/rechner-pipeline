@@ -14,7 +14,7 @@ dem Dynamiksatz, Kandidaten-Bestimmung offener Herabsetzungsanteile
 Arbeits-Lesarten je Police, Teilkuendigungs-Semantik, volle
 Beitragsformel je Scheibe, Stornoabzug je Baustein, die
 Jahrestags-Konvention des DK-Vergleichs und die Korrekturschicht bis in
-das Migrationscontrolling. Der Schnitt (26 von 834) haelt alle
+das Migrationscontrolling. Der Schnitt (29 von 834) haelt alle
 Verlaufsklassen der Vorgeschichte und die vier namentlich
 entscheidenden Policen; erzeugt von
 ``tests/fixtures/baldrian2_e2e/schneide.py``.
@@ -31,9 +31,10 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.bestand import cli_fortschreibung
+from rechner_pipeline.bestand import cli_fortschreibung, cli_report
 from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates import (
+    abnahmebericht,
     aktuartest_lauf,
     bestand_uebernehmen,
     bestand_validate,
@@ -168,19 +169,6 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         zellen_config((bestand / "generation-zellen.toml").read_text("utf-8"),
                       name=TARIF_GENERATION, knoten=GENERATION),
         encoding="utf-8")
-    pb1 = bestand_validate.main([
-        "--portfolio", str(bestand / "bestand.parquet"),
-        "--historie", str(bestand / "historie.parquet"),
-        "--ledger", str(bestand / "ledger.parquet"),
-        "--scheiben", str(bestand / "scheiben.parquet"),
-        "--merkmale", str(bestand / "merkmale.parquet"),
-        "--config", str(config_pfad),
-        "--bis", STICHTAG_1,
-        "--repo-root", str(REPO_ROOT),
-        "--diagnostics-dir", str(diagnostics),
-    ])
-    assert pb1.exit_code == 0, ("Gate P-B1 auf dem uebernommenen Bestand", pb1.errors)
-
     # Verankerung: Zustands-Welten rechnen, Residuen auf die
     # Korrekturschicht legen — die Suite liest daraus Schichtparameter
     # und Verankerungsmonate.
@@ -190,11 +178,54 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--formfunktion", "proportional_zur_basis",
         "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
         "--anker-erwartungswerte", ANKER,
+        # Weg D (Entscheid des Maintainers 2026-09-20): Dieser Lauf
+        # schreibt das LAUFMANIFEST des Migrationszugangs. Er ist der
+        # letzte, der in das Uebernahme-Verzeichnis schreibt, und der
+        # erste, der Schicht UND Config kennt — die Uebernahme kennt
+        # keine von beiden.
+        "--config", str(config_pfad), "--stichtag", STICHTAG_1,
     ] + _lieferungs_flags()) == 0, "Verankerung mit Schichtbeleg"
     schichten = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
     assert schichten.is_file(), "Schichtbeleg der Verankerung"
+    # Befund T26-07 a: Der Beleg nennt JEDE gelesene Eingabe, nicht eine
+    # ausgewaehlte Liste. Zeilen, Vorgeschichte und Ankerquelle sind
+    # fachlich wirksam — sie stecken in den Anfangszustaenden, aus denen
+    # die Schichten entstehen. Gebunden waren bisher nur Bestand,
+    # Verankerung, Merkmale und Spez; mit geaenderter zeilen.json nahm
+    # der Consumer denselben alten Beleg weiter an.
+    gebunden = json.loads(schichten.read_text("utf-8"))["provenienz"]["eingaben"]
+    for datei in ("zeilen.json", METADATEN, ANKER,
+                  "bestand.parquet", "verankerung.parquet"):
+        assert any(k.endswith(datei) for k in gebunden), (
+            f"{datei} fehlt in der Eingabenbindung des Schichtbelegs",
+            sorted(gebunden))
     assert (bestand / "schichten.parquet").is_file(), (
         "die Schicht als Vertragsattribut des Bestands (Freischaltung, Schritt 5)")
+
+    # P-B1 NACH der Verankerung und MIT der Schicht. Die Reihenfolge ist
+    # keine Geschmacksfrage: Seit die Uebernahme den Schichtzuschlag in die
+    # PEX-Umbuchung bucht, folgt dieser Betrag nur noch aus dem Kern mit
+    # Schicht — ein P-B1 davor prueft gegen einen Bestand, den es so nicht
+    # gibt. Das Gate laesst sich das nicht mehr antun: ohne --schichten
+    # haelt es auf dem Beleg der Uebernahme an.
+    pb1 = bestand_validate.main([
+        "--portfolio", str(bestand / "bestand.parquet"),
+        "--historie", str(bestand / "historie.parquet"),
+        "--ledger", str(bestand / "ledger.parquet"),
+        "--scheiben", str(bestand / "scheiben.parquet"),
+        "--merkmale", str(bestand / "merkmale.parquet"),
+        "--schichten", str(bestand / "schichten.parquet"),
+        "--verankerung", str(bestand / "verankerung.parquet"),
+        "--config", str(config_pfad),
+        "--bis", STICHTAG_1,
+        # Das Laufmanifest des Migrationszugangs: Ohne es sagt der Beleg
+        # nichts darueber, welche Tabellen zu diesem Lauf gehoeren — und
+        # A-M4 lehnt ihn ab (Entscheid 2026-09-16).
+        "--manifest", str(bestand / "laufmanifest.json"),
+        "--repo-root", str(REPO_ROOT),
+        "--diagnostics-dir", str(diagnostics),
+    ])
+    assert pb1.exit_code == 0, ("Gate P-B1 auf dem uebernommenen Bestand", pb1.errors)
 
     for abnahme, erwartung in ABNAHMEN:
         assert aktuartest_lauf.main([
@@ -331,7 +362,101 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--schicht", str(schichten),
         "--stoab-je-baustein",
     ] + _lieferungs_flags()) == 0, "Fuehrungsprobe"
+
+    # Und zuletzt die Migrationsabnahme selbst. Dass sie hier fehlte, ist
+    # der Grund, warum A-M4 seit dem Manifest-Entscheid (2026-09-16) auf
+    # einem ECHTEN Migrationsfall nicht mehr erfuellbar war, ohne dass
+    # die Suite es merkte: Die A-M4-Tests legen ihren belegten Lauf als
+    # Fortschreibung an, und diese Kette hoerte vor dem Gate auf.
+    berichte = fall / "abgeleitet" / "berichte"
+    for name, lauf, portfolio, bis in (
+            ("bestandsbericht-vor.html", bestand, "bestand.parquet", STICHTAG_1),
+            ("bestandsbericht-nach.html", nach, "bestand_gesamt.parquet", STICHTAG_2)):
+        assert cli_report.main([
+            "--portfolio", str(lauf / portfolio),
+            "--historie", str(lauf / "historie.parquet"),
+            "--ledger", str(lauf / "ledger.parquet"),
+            "--bis", bis,
+            "--out", str(berichte / name),
+        ]) == 0, name
+    am4 = abnahmebericht.main([
+        "--fall", str(fall), "--suite", str(berichte / "migrationssuite.json"),
+        "--titel", "Migrationsabnahme Testschnitt",
+        "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
+        "--spec", str(spec),
+        "--transformation-ergebnis", str(ergebnis),
+        "--bestandsbericht-vor", str(berichte / "bestandsbericht-vor.html"),
+        "--bestandsbericht-nach", str(berichte / "bestandsbericht-nach.html"),
+        "--repo-root", str(REPO_ROOT),
+        "--diagnostics-dir", str(diagnostics),
+    ])
+    # Die Zusicherung ist scharf auf den REPARIERTEN Befund, nicht auf
+    # "gruen": Dieser Schnitt fuehrt keine A-Box (er prueft die Migration,
+    # nicht die Quellenauswertung), und A-M4 verlangt sie zu Recht. Was
+    # hier bezeugt wird, ist, dass die Bestandsbindung des Gates den
+    # Migrationslauf ANNIMMT — vor der Reparatur stand an dieser Stelle
+    # "P-B1-Beleg ohne Laufmanifest", und es gab keinen Weg daran vorbei.
+    codes = {e["code"] for e in am4.errors}
+    assert "pb1_contract" not in codes, (
+        "A-M4 lehnt den P-B1-Beleg des Migrationszugangs ab", am4.errors)
+    assert codes <= {"scope_bindung"}, am4.errors
     return fall
+
+
+def _probe_material(gefahrener_fall: Path):
+    """Die Tabellen und Parameter des ECHTEN Laufs fuer eine In-memory-Probe.
+
+    Einmal gebaut, von mehreren Tests benutzt: Wer sie sich selbst
+    hinlegt, prueft eine Welt, die der Lauf nie erzeugt hat — genau die
+    Blindheit, an der T25-02 haengen blieb.
+    """
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.gates.migrationssuite_lauf import _lies_csv
+    from rechner_pipeline.spez.validierung import lade_spez
+
+    # Dieselbe Probe auf denselben Tabellen, in-memory, mit drei Stoerungen.
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    nach = gefahrener_fall / "abgeleitet" / "bestand-nach"
+    ueb = {
+        "bestand": read_portfolio(bestand / "bestand.parquet"),
+        "historie": read_portfolio(bestand / "historie.parquet"),
+        "ledger": read_portfolio(bestand / "ledger.parquet"),
+        "scheiben": read_portfolio(bestand / "scheiben.parquet"),
+        "verankerung": read_portfolio(bestand / "verankerung.parquet"),
+        "schichten": read_portfolio(bestand / "schichten.parquet"),
+        "merkmale": read_portfolio(bestand / "merkmale.parquet"),
+        "beleg": json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8")),
+    }
+    fort = {
+        "ledger": read_portfolio(nach / "ledger.parquet"),
+        "scheiben": read_portfolio(nach / "scheiben.parquet"),
+        "historie": read_portfolio(nach / "historie.parquet"),
+        "bestand": read_portfolio(nach / "bestand_gesamt.parquet"),
+    }
+    schichtbeleg = json.loads((gefahrener_fall / "abgeleitet" / "schichten"
+                               / "verankerung_schichten.json").read_text(encoding="utf-8"))["schichten"]
+    zeilen = json.loads((gefahrener_fall / "abgeleitet" / "transformation"
+                         / "zeilen.json").read_text(encoding="utf-8"))
+    anker = {}
+    for v in json.loads((FIXTURE / ANKER).read_text(encoding="utf-8"))["vertraege"]:
+        e = next((x for x in v.get("punkte", []) if x.get("anlass") == "uebernahme"
+                  and "kVx_MRV" in (x.get("erwartet") or {})), None)
+        if e:
+            anker[str(v["police_id"])] = (int(e["monate"]), float(e["erwartet"]["kVx_MRV"]))
+    basis = dict(
+        config=load_config(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
+        spez=lade_spez(gefahrener_fall, GENERATION), zeilen=zeilen,
+        vorgeschichte=_lies_csv(gefahrener_fall, METADATEN),
+        tarifwerk={"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
+                   "red_verfahren": RED_VERFAHREN},
+        erhoehungssatz=float(ERHOEHUNGSSATZ),
+        red_anteile={a.split("=")[0]: float(a.split("=")[1]) for a in RED_ANTEILE},
+        red_anteile_je_datum={}, red_anteil_kandidaten=tuple(float(k) for k in KANDIDATEN),
+        anker=anker, schichtbeleg=schichtbeleg,
+        stichtag=__import__("datetime").date.fromisoformat(STICHTAG_1),
+    )
+    return ueb, fort, basis
 
 
 def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
@@ -385,47 +510,8 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
     suite = _bericht(gefahrener_fall, "migrationssuite.json")
     assert suite["bestand_sha256"] in set(beleg["provenienz"]["eingaben"].values())
 
-    # Dieselbe Probe auf denselben Tabellen, in-memory, mit drei Stoerungen.
-    bestand = gefahrener_fall / "abgeleitet" / "bestand"
-    nach = gefahrener_fall / "abgeleitet" / "bestand-nach"
-    ueb = {
-        "bestand": read_portfolio(bestand / "bestand.parquet"),
-        "historie": read_portfolio(bestand / "historie.parquet"),
-        "ledger": read_portfolio(bestand / "ledger.parquet"),
-        "scheiben": read_portfolio(bestand / "scheiben.parquet"),
-        "verankerung": read_portfolio(bestand / "verankerung.parquet"),
-        "schichten": read_portfolio(bestand / "schichten.parquet"),
-        "merkmale": read_portfolio(bestand / "merkmale.parquet"),
-        "beleg": json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8")),
-    }
-    fort = {
-        "ledger": read_portfolio(nach / "ledger.parquet"),
-        "scheiben": read_portfolio(nach / "scheiben.parquet"),
-        "historie": read_portfolio(nach / "historie.parquet"),
-        "bestand": read_portfolio(nach / "bestand_gesamt.parquet"),
-    }
-    schichtbeleg = json.loads((gefahrener_fall / "abgeleitet" / "schichten"
-                               / "verankerung_schichten.json").read_text(encoding="utf-8"))["schichten"]
-    zeilen = json.loads((gefahrener_fall / "abgeleitet" / "transformation"
-                         / "zeilen.json").read_text(encoding="utf-8"))
-    anker = {}
-    for v in json.loads((FIXTURE / ANKER).read_text(encoding="utf-8"))["vertraege"]:
-        e = next((x for x in v.get("punkte", []) if x.get("anlass") == "uebernahme"
-                  and "kVx_MRV" in (x.get("erwartet") or {})), None)
-        if e:
-            anker[str(v["police_id"])] = (int(e["monate"]), float(e["erwartet"]["kVx_MRV"]))
-    basis = dict(
-        config=load_config(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
-        spez=lade_spez(gefahrener_fall, GENERATION), zeilen=zeilen,
-        vorgeschichte=_lies_csv(gefahrener_fall, METADATEN),
-        tarifwerk={"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
-                   "red_verfahren": RED_VERFAHREN},
-        erhoehungssatz=float(ERHOEHUNGSSATZ),
-        red_anteile={a.split("=")[0]: float(a.split("=")[1]) for a in RED_ANTEILE},
-        red_anteile_je_datum={}, red_anteil_kandidaten=tuple(float(k) for k in KANDIDATEN),
-        anker=anker, schichtbeleg=schichtbeleg,
-        stichtag=__import__("datetime").date.fromisoformat(STICHTAG_1),
-    )
+    ueb, fort, basis = _probe_material(gefahrener_fall)
+
     gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **basis)
     assert gut["bestanden"], gut["befunde"]
 
@@ -639,16 +725,42 @@ def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
         assert abs(float(zug.loc[pid]) - gesamt) <= 0.005, pid
         assert float(haupt.loc[pid, "sum_insured"]) < float(zeilen[pid]["sum_insured"])
         assert list(eigene["scheiben_id"]) == list(range(1, len(eigene) + 1))
-    # Beitragsfrei geliefert: Umbuchung = gelieferte Summe, Stamm = Ursprung.
+    # Der Beleg der Uebernahme.
+    beleg = json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8"))
+    # Beitragsfrei geliefert: Umbuchung = gelieferte Summe PLUS dem
+    # Zuschlag der Korrekturschicht, Stamm = Ursprung. Der Zuschlag ist
+    # keine Kosmetik: fuer dieselben Vertraege bucht die Fuehrung TOD und
+    # ABL laengst MIT ihm, und P-B1 leitet jede Buchung aus dem Kern her.
+    # Wer hier die gelieferte Summe festschreibt, schreibt den Bruch
+    # zwischen Uebernahme und Fuehrung fest — genau daran hielt die
+    # Vorzeige-Laufzeit an (vier Buchungen, je ein Cent).
+    zuschlag = {int(z["police_id"]): float(z["zuschlag"])
+                for z in beleg["pex_zuschlaege"]}
     pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")["betrag"]
     assert set(int(p) for p in pex.index) == {
         pid for pid, arten in vorgeschichte.items() if "PEX" in arten}
     for pid, betrag in pex.items():
-        assert abs(float(betrag) - float(zeilen[int(pid)]["sum_insured"])) <= 0.005
+        geliefert = float(zeilen[int(pid)]["sum_insured"])
+        erwartet = geliefert + zuschlag.get(int(pid), 0.0)
+        # Scharf, nicht auf Cent-Toleranz: die Toleranz war die Luecke,
+        # durch die der Zuschlag jahrelang unbemerkt fehlte.
+        assert abs(float(betrag) - erwartet) <= 5e-7, (pid, betrag, erwartet)
         assert float(haupt.loc[pid, "sum_insured"]) > float(betrag)
         assert abs(float(zug.loc[pid]) - float(haupt.loc[pid, "sum_insured"])) <= 0.005
-    # Der Beleg der Uebernahme.
-    beleg = json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8"))
+    # Positivkontrolle des Detektors (Auswahl siehe ``schneide.py``): Der
+    # Schnitt MUSS alle drei Zuschlagslagen halten — gehobener Cent,
+    # gesenkter Cent, Zuschlag unter dem Cent. Ohne sie ist die Zeile oben
+    # ein Detektor ohne Treffer, und genau so lief der alte Schnitt gruen,
+    # waehrend der echte Lauf vier Buchungen falsch hatte.
+    lagen = {"gehoben": set(), "gesenkt": set(), "unter_cent": set()}
+    for pid, z in zuschlag.items():
+        geliefert = float(zeilen[pid]["sum_insured"])
+        vorher, nachher = round(geliefert, 2), round(geliefert + z, 2)
+        lagen["gehoben" if nachher > vorher
+              else "gesenkt" if nachher < vorher
+              else "unter_cent"].add(pid)
+    assert all(lagen.values()), (
+        "Schnitt ohne alle drei Zuschlagslagen", lagen, sorted(zuschlag.items()))
     assert beleg["anfangszustand"] == "materialisieren"
     assert beleg["tarifwerk"] == {
         "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
@@ -824,3 +936,62 @@ def test_ein_roter_verankerungslauf_hinterlaesst_keine_schichttabelle(
     assert code == 1, "der Lauf muss rot sein — sonst prueft der Test nichts"
     assert tabelle.read_bytes() == vorher, (
         "der rote Lauf hat die Schichttabelle ueberschrieben")
+
+
+#: Jede Stammspalte, die die Fortschreibung NICHT bewegen darf — gemessen
+#: am gefahrenen Fall: von achtzehn Spalten aendern sich genau drei
+#: (status_id, status_code, status_date). Die Probe prueft deshalb alles
+#: ausser diesen dreien, statt eine handverlesene Auswahl.
+def _unveraenderliche_stammspalten():
+    from rechner_pipeline.gates.fuehrungsprobe import ZUSTANDSSPALTEN
+    from rechner_pipeline.models.bestand import STAMM_NAMES
+
+    return [f for f in STAMM_NAMES
+            if f not in ZUSTANDSSPALTEN and f != "police_id"]
+
+
+@pytest.mark.parametrize("feld", _unveraenderliche_stammspalten())
+def test_die_fuehrungsprobe_sieht_jede_veraenderte_stammspalte(
+    gefahrener_fall: Path, feld: str
+):
+    """Befund T26-05: Die Probe verglich SECHS Identitaetsfelder.
+
+    Eine von 43.000 auf 1.042.999 EUR erhoehte Stammsumme lief durch die
+    echte Probe und durch ihren A-M4-Consumer — gruen, mit positivem
+    Zaehler. Der Zaehler sagte nur, dass eine Zeile auf sechs Attribute
+    angesehen wurde; er bezeugte nicht die Uebereinstimmung des
+    gefuehrten Vertrags.
+
+    Geprueft wird deshalb JEDE Spalte, die sich nicht bewegen darf, nicht
+    die sechs von damals. Eine neue Stammspalte ist damit von Anfang an
+    dabei — sonst findet die naechste Pruefrunde genau sie.
+    """
+    import pandas as pd
+
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+
+    ueb, fort, basis = _probe_material(gefahrener_fall)
+    gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **basis)
+    assert gut["bestanden"], ("die unveraenderte Probe muss bestehen",
+                              gut["befunde"][:3])
+
+    verbogen = {**fort, "bestand": fort["bestand"].copy()}
+    spalte = verbogen["bestand"][feld]
+    # Eine Aenderung, die zum Typ passt: Zahlen hoch, Datum verschoben,
+    # Text anders. Die konkrete Groesse ist egal — die Probe darf keine
+    # davon durchlassen.
+    if pd.api.types.is_numeric_dtype(spalte):
+        verbogen["bestand"].loc[verbogen["bestand"].index[0], feld] = (
+            float(spalte.iloc[0]) + 999_999.0)
+    elif pd.api.types.is_datetime64_any_dtype(spalte):
+        verbogen["bestand"].loc[verbogen["bestand"].index[0], feld] = (
+            pd.Timestamp(spalte.iloc[0]) + pd.DateOffset(years=3))
+    else:
+        verbogen["bestand"].loc[verbogen["bestand"].index[0], feld] = "FREMD"
+
+    schlecht = pruefe_fuehrung(uebernahme=ueb, fortschreibung=verbogen, **basis)
+    assert not schlecht["bestanden"], (
+        f"{feld} liess sich im Endbestand aendern, ohne dass die Probe faellt")
+    assert any(feld in str(b) for b in schlecht["befunde"]), (
+        f"{feld} faellt, aber der Befund nennt die Spalte nicht: "
+        f"{schlecht['befunde'][:2]}")

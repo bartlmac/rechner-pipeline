@@ -45,23 +45,41 @@ PLV = REPO_ROOT / "configs" / "bestand_gesamt.toml"
 BETRIEBSBEGINN = dt.date(2026, 1, 1)
 
 
-def _kleine_config() -> str:
-    """Die PLV-Config als schnelle Testwelt: acht Vertraege je verkaufender
-    Generation (die uebernommene TG2015 bleibt bei 0) und die
-    Erzeugungsgrenze am 1.1.2026.
+def _kleine_config(faktor: float = 1.0) -> str:
+    """Die PLV-Config als schnelle Testwelt: Betriebsbeginn am 1.1.2026.
 
     Die echte PLV beginnt am 1.7.1994 und baut ihren Bestand Tag fuer Tag
-    auf; das sind zweiunddreissig Jahre Tagesstrom und rund 34 Sekunden je
-    Lauf. Fuer die Tests wird die Grenze deshalb nach vorn gesetzt: Der
-    Batch stellt den Bestand, der Tagesstrom traegt nur die Tage des Tests.
-    Beides ist derselbe Mechanismus, nur an einer anderen Grenze — die
-    lange Geschichte prueft test_betrieb_lange_geschichte.
+    auf; das sind zweiunddreissig Jahre Tagesstrom. Fuer die Tests beginnt
+    das Unternehmen deshalb erst 2026 — leer, wie jedes Unternehmen an
+    seinem ersten Tag (ADR-020): der Tagesstrom traegt nur die Tage des
+    Tests, und der Eroeffnungsabschluss zum 1.1.2026 ist leer. Die lange
+    Geschichte prueft test_betrieb_lange_geschichte.
+
+    ``faktor`` vervielfacht die Jahresziele — fuer Tests, die genug
+    Vertraege brauchen, damit seltene Ereignisse im Fenster vorkommen.
     """
     text = PLV.read_text(encoding="utf-8")
-    text = re.sub(r"^sample_size = [1-9]\d*$", "sample_size = 8", text, flags=re.M)
+    if faktor != 1.0:
+        text = re.sub(r"^neuzugang_pro_jahr = (\d+)$",
+                      lambda m: f"neuzugang_pro_jahr = {max(1, round(int(m.group(1)) * faktor))}",
+                      text, flags=re.M)
     text = re.sub(r"^betriebsbeginn = .*$", "betriebsbeginn = 2026-01-01", text, flags=re.M)
     assert "betriebsbeginn = 2026-01-01" in text
     return text
+
+
+def _voll(config, heute: dt.date, ab: dt.date = BETRIEBSBEGINN, basis=None):
+    """Dieselbe Welt unabhaengig vom Tageslauf gerechnet: mit ``basis``
+    beginnen (Standard: leer), den Tagesstrom ab ``ab`` einspielen, bis
+    ``heute`` fortschreiben — die volle Wirkungshistorie ohne Buchungstage
+    und Stichtagssicht. ``basis`` traegt eine uebernommene (umnummerierte)
+    Startpopulation ein, deren Tode das eigene Geschaeft nicht liefert."""
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+    from rechner_pipeline.betrieb.neugeschaeft import neugeschaeft_zwischen
+    from rechner_pipeline.models.bestand import leerer_stamm
+
+    return fortschreiben(leerer_stamm() if basis is None else basis, config, heute,
+                         zugaenge=neugeschaeft_zwischen(config, ab, heute))
 
 
 def _ablage(wurzel: Path) -> Ablage:
@@ -488,33 +506,136 @@ def test_der_stand_enthaelt_nur_gebuchte_ereignisse(gefuehrt):
 
 
 def test_ein_verzoegert_gemeldeter_tod_erscheint_erst_am_buchungstag(tmp_path, monkeypatch):
-    """Meldeverzug auf 400 Tage gesetzt: Kein Tod seit Betriebsbeginn ist
-    bis heute gebucht — und keiner steht im Stand, obwohl die volle
-    Wirkungshistorie welche kennt."""
+    """Meldeverzug auf 400 Tage gesetzt: Kein seit Betriebsbeginn
+    eingetretener Tod ist bis heute gebucht — und keiner steht im Stand,
+    obwohl die volle Wirkungshistorie welche kennt.
+
+    Die Sterblichkeit tragen gealterte uebernommene Vertraege: Eine junge
+    Firma, die 2026 leer beginnt (ADR-020), stirbt im Fenster nicht (siehe
+    test_ein_abschluss_ist_dieselbe_datei). Frueher half hier eine groessere
+    Stichprobe des jungen Geschaefts und ein Skip, wenn doch keiner starb —
+    ein Detektor, der gruen sein konnte, ohne je seinen Gegenstand gesehen zu
+    haben. Jetzt garantiert die Uebernahme ihn.
+    """
     from rechner_pipeline.betrieb import tagesjournal as tj
     from rechner_pipeline.bestand.config import load_config
-    from rechner_pipeline.bestand.ereignisse import fortschreiben
-    from rechner_pipeline.bestand.generator import generate
+    from rechner_pipeline.models.bestand import STAMM_NAMES
 
     monkeypatch.setattr(tj, "meldeverzug_tage", lambda config, police_id, jahr: 400)
     ablage = _ablage(tmp_path / "plv")
-    # Groessere Stichprobe, damit seit Betriebsbeginn Todesfaelle vorkommen.
-    ablage.config_pfad.write_text(
-        _kleine_config().replace("sample_size = 8", "sample_size = 60"), encoding="utf-8")
+    eingang = _gealterte_uebernahme(ablage, tmp_path / "plv-fall")
     heute = dt.date(2026, 9, 30)
     assert tageslauf(ablage, heute)[0] == EXIT_OK
     config = load_config(ablage.config_pfad)
-    voll = fortschreiben(generate(config, bis=BETRIEBSBEGINN), config, heute)
+
+    # Die volle Wirkungshistorie: die uebernommene (umnummerierte) Basis plus
+    # eigenes Geschaeft, ganz ohne Buchungsschnitt. fortschreiben kennt die
+    # Tode nach ihrem Wirkungstag; der Meldeverzug wirkt erst beim Buchen.
+    basis = read_portfolio(eingang / "bestand.parquet", expected_columns=STAMM_NAMES)
+    voll = _voll(config, heute, basis=basis)
     tode_voll = voll.ledger[(voll.ledger["ereignis"] == "TOD")
                             & (voll.ledger["status_date"] > pd.Timestamp(BETRIEBSBEGINN))]
+    # Zusicherung, kein Skip: Ohne einen eingetretenen Tod pruefte der Test
+    # nichts (der Detektor ohne Treffer). Eine Testwelt ohne den Gegenstand
+    # ist ein Fehler der Testwelt, kein Grund zu ueberspringen.
+    assert len(tode_voll) > 0, (
+        "Testwelt ohne eingetretenen Tod seit Betriebsbeginn — der Test kann "
+        "seinen Gegenstand nicht sehen")
+
     ledger = read_portfolio(ablage.stand / "ledger.parquet")
-    tode_stand = ledger[(ledger["ereignis"] == "TOD") & (ledger["status_date"] > pd.Timestamp(BETRIEBSBEGINN))]
+    tode_stand = ledger[(ledger["ereignis"] == "TOD")
+                        & (ledger["status_date"] > pd.Timestamp(BETRIEBSBEGINN))]
     assert len(tode_stand) == 0
     gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
     for pid in tode_voll["police_id"]:
         assert gesamt.loc[gesamt["police_id"] == pid, "status_code"].iloc[0] != "TOD"
-    if len(tode_voll) == 0:
-        pytest.skip("kein Todesfall seit Betriebsbeginn in der kleinen Config — Aussage nicht pruefbar")
+
+
+def _gealterter_zugangsstand(ziel: Path, n: int = 400) -> None:
+    """Der bewaehrte Zugangsstand (drei Fremdvertraege, einer beitragsfrei)
+    plus ``n`` gealterte POL-Vertraege — die Population, aus der im kurzen
+    Testfenster ueberhaupt Todesfaelle entstehen.
+
+    Eine junge Firma, die 2026 leer beginnt (ADR-020), hat in sechs Monaten
+    keine (gemessen: 0 bei 4275 Vertraegen); der Gegenstand dieses Tests — ein
+    spaet gebuchter Tod ueber eine Monatsgrenze — braucht Alter, und Alter
+    kommt in den Betrieb nur ueber eine Uebernahme. Gemessen liefern die
+    gealterten Zeilen zehn Tode mit Wirkung Februar bis Mai und Buchung
+    (Meldeverzug 40) im Folgemonat, alle noch vor dem 30.6. — genau das, was
+    der Stichtagsschnitt in ``_stichtagssicht`` je Abschluss ausblenden muss.
+
+    Die PEX-Historienzeile aus ``_zugangsstand`` ist kein Beiwerk: Ohne sie
+    laesst ``gebuchte_sicht`` den Eroeffnungsabschluss zum 1.1. mit LEERER
+    Historie zurueck, und die Auswertung verweigert eine Stammtabelle mit
+    spaeteren Folgezustaenden (den Toden) ohne Journal (ADR-011). Ein echter
+    uebernommener Bestand traegt seine Statushistorie ohnehin."""
+    import pandas as pd
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+    from rechner_pipeline.models.bestand import (
+        LEDGER_NAMES, LEDGER_SPALTEN, STAMM_NAMES, STAMM_SPALTEN)
+    from tests.test_betrieb_uebernahme import _zugangsstand
+
+    _zugangsstand(ziel)
+    stamm = read_portfolio(ziel / "bestand.parquet", expected_columns=STAMM_NAMES)
+    ledger = read_portfolio(ziel / "ledger.parquet", expected_columns=LEDGER_NAMES)
+
+    zeilen, zug = [], []
+    for k in range(n):
+        # Alt genug fuer Sterblichkeit (Alter heute ~77-83), aber Eintritts-
+        # alter im Sanity-Band [18, 64] von P-B1 und Restlaufzeit weit ueber
+        # das Fenster hinaus (Ende ab 2037), damit im Fenster Tode fallen und
+        # keine Ablaeufe. Beginnmonat variiert ueber alle zwoelf, damit die
+        # Tode sich ueber die Monate verteilen (Wirkung Feb-Mai).
+        monat = (k % 12) + 1
+        alter = 60 + (k % 5)                       # 60..64, im Band [18, 64]
+        b = pd.Timestamp(f"20{7 + (k % 3):02d}-{monat:02d}-01")   # 2007..2009
+        zeilen.append({
+            "police_id": 7_000_010 + k, "tarif_generation": "KLV-2017", "produkt": "klv",
+            "status_id": 1, "status_code": "POL", "status_date": b,
+            "sex": "F" if k % 2 else "M", "date_of_birth": b - pd.DateOffset(years=alter),
+            "entry_age": alter, "duration": 30, "premium_duration": 20,
+            "sum_insured": 50000.0, "bu_rente": 0.0, "zahlweise": 12,
+            "insurance_start": b, "insurance_end": b + pd.DateOffset(years=30),
+            "payment_end": b + pd.DateOffset(years=20),
+            "bestandszugang": pd.Timestamp(BETRIEBSBEGINN)})
+        zug.append({
+            "police_id": 7_000_010 + k, "tarif_generation": "KLV-2017", "ereignis": "ZUG",
+            "vertragsjahr": int((BETRIEBSBEGINN.year * 12 + 1
+                                 - (b.year * 12 + b.month)) // 12),
+            "status_date": pd.Timestamp(BETRIEBSBEGINN), "betrag_art": "VS",
+            "betrag": 50000.0, "betrag_herkunft": "geliefert"})
+    aged = pd.DataFrame(zeilen)[list(STAMM_NAMES)].astype(dict(STAMM_SPALTEN))
+    aged_zug = pd.DataFrame(zug)[list(LEDGER_NAMES)].astype(dict(LEDGER_SPALTEN))
+    write_portfolio(pd.concat([stamm, aged], ignore_index=True), ziel / "bestand.parquet")
+    write_portfolio(pd.concat([ledger, aged_zug], ignore_index=True), ziel / "ledger.parquet")
+
+
+def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
+                          name: str = "gealterte-uebernahme") -> Path:
+    """Einen Fall mit gealtertem Zugangsstand als Eingang der Ablage
+    registrieren — mit echtem P-B1-Ledger und A-M4-Snapshot wie ein
+    Migrationsfall. Die Belegbauteile (``_pb1_ledger``, ``am4_snapshot``)
+    sind populationsagnostisch und kommen aus ``test_betrieb_uebernahme``;
+    der Eingang ist deterministisch, zwei Aufrufe liefern Byte fuer Byte
+    dasselbe (leeres Nummernband -> gleiche Zielnummern). Rueckgabe: das
+    Eingangsverzeichnis mit den umnummerierten Tabellen des Zielsystems."""
+    from rechner_pipeline.betrieb import uebernahme as ueb
+    from tests.test_betrieb_uebernahme import _pb1_ledger, am4_snapshot
+
+    fall = fall_wurzel / name
+    (fall / "abgeleitet" / "diagnostics").mkdir(parents=True)
+    (fall / "entscheide").mkdir()
+    (fall / "fall.json").write_text(
+        json.dumps({"name": name, "schema_version": 1}), encoding="utf-8")
+    _gealterter_zugangsstand(fall / "abgeleitet" / "bestand")
+    ledger_sha = _pb1_ledger(fall)
+    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha)
+    (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
+        json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
+        encoding="utf-8")
+    return ueb.eingang_anlegen(ablage.wurzel, fall, BETRIEBSBEGINN)
 
 
 def test_ein_abschluss_ist_dieselbe_datei_ob_am_stichtag_oder_nachgeholt(tmp_path, monkeypatch):
@@ -543,10 +664,14 @@ def test_ein_abschluss_ist_dieselbe_datei_ob_am_stichtag_oder_nachgeholt(tmp_pat
     monkeypatch.setattr(tj, "meldeverzug_tage", lambda config, police_id, jahr: 40)
 
     def welt(name: str) -> Ablage:
+        # Leer beginnende PLV (ADR-020) plus eine Uebernahme gealterter
+        # Fremdvertraege: aus ihnen — nicht aus dem jungen Neugeschaeft von
+        # 2026 — entstehen die spaet gebuchten Tode ueber die Monatsgrenze,
+        # den Gegenstand dieses Tests. Der Eingang ist deterministisch, beide
+        # Welten sehen ihn Byte fuer Byte gleich; die einzige Variable bleibt
+        # die Fahrweise (nachgeholt vs. jede Nacht).
         ablage = _ablage(tmp_path / name)
-        ablage.config_pfad.write_text(
-            _kleine_config().replace("sample_size = 8", "sample_size = 60"),
-            encoding="utf-8")
+        _gealterte_uebernahme(ablage, tmp_path / f"{name}-fall")
         return ablage
 
     ende = dt.date(2026, 6, 30)
@@ -590,15 +715,13 @@ def test_der_buchungsschnitt_komponiert(tmp_path):
     """
     from rechner_pipeline.bestand.config import load_config
     from rechner_pipeline.bestand.ereignisse import fortschreiben
-    from rechner_pipeline.bestand.generator import generate
     from rechner_pipeline.betrieb.tagesjournal import gebuchte_sicht
 
     pfad = tmp_path / "bestand.toml"
-    pfad.write_text(_kleine_config().replace("sample_size = 8", "sample_size = 40"),
-                    encoding="utf-8")
+    pfad.write_text(_kleine_config(faktor=5), encoding="utf-8")
     config = load_config(pfad)
     heute = dt.date(2026, 6, 30)
-    voll = fortschreiben(generate(config, bis=BETRIEBSBEGINN), config, heute)
+    voll = _voll(config, heute)
 
     for stichtag in (dt.date(2026, 2, 1), dt.date(2026, 4, 1), heute):
         einmal = gebuchte_sicht(config, voll.historie, voll.ledger, voll.scheiben,
@@ -657,7 +780,6 @@ def test_der_stichtagsschnitt_ruehrt_die_vorgeschichte_nicht_an(tmp_path, monkey
     import rechner_pipeline.betrieb.tageslauf as tl
     from rechner_pipeline.bestand.config import load_config
     from rechner_pipeline.bestand.ereignisse import fortschreiben
-    from rechner_pipeline.bestand.generator import generate
     from rechner_pipeline.betrieb import tagesjournal as tj
     from rechner_pipeline.betrieb.tagesjournal import mit_buchungstagen
 
@@ -665,11 +787,17 @@ def test_der_stichtagsschnitt_ruehrt_die_vorgeschichte_nicht_an(tmp_path, monkey
     # rutscht damit hinter den Stichtag — genau der Fall, den ab_tag deckt.
     monkeypatch.setattr(tj, "meldeverzug_tage", lambda config, police_id, jahr: 400)
     pfad = tmp_path / "bestand.toml"
-    pfad.write_text(_kleine_config().replace("sample_size = 8", "sample_size = 60"),
-                    encoding="utf-8")
+    pfad.write_text(_kleine_config(faktor=8), encoding="utf-8")
     config = load_config(pfad)
     stichtag = dt.date(2026, 2, 1)
-    voll = fortschreiben(generate(config, bis=BETRIEBSBEGINN), config, dt.date(2026, 6, 30))
+    # Vorgeschichte gibt es im eigenen Geschaeft nicht mehr (ADR-020): Sie
+    # entsteht nur durch Uebernahme. Die Welt hier stellt sie nach, indem
+    # der Strom LANGE vor dem Betriebsbeginn einsetzt — so, wie ein
+    # uebernommener Bestand die gealterte Geschichte des abgebenden
+    # Unternehmens mitbringt. Erst gealterte Vertraege sterben oft genug,
+    # dass ein Tod mit Meldeverzug hinter den Stichtag rutscht (junge
+    # Vertraege eines kurzen Fensters sterben praktisch nie).
+    voll = _voll(config, dt.date(2026, 6, 30), ab=dt.date(2008, 1, 1))
 
     vorgeschichte = voll.ledger[voll.ledger["status_date"] < pd.Timestamp(BETRIEBSBEGINN)]
     spaet = mit_buchungstagen(config, vorgeschichte)
@@ -849,7 +977,34 @@ def test_eine_unschreibbare_protokollzeile_ist_ein_benannter_fehler(
 # neue ist vollstaendig uebernommen — nie ein dauerhaft blockierter
 # Zustand.
 
-NAEHTE = ("journal", "generation", "symlink", "protokoll")
+#: Die Naehte, an denen ein Lauf abbrechen kann. "bericht" und
+#: "protokoll-teilweise" sind nach Befund T26-02 dazugekommen: Der Bericht
+#: entsteht NACH dem festgeschriebenen Abschluss, und ein Protokoll-Append
+#: kann mitten in der Zeile abbrechen statt davor.
+NAEHTE = ("abschluss", "bericht", "journal", "generation", "symlink",
+          "protokoll", "protokoll-teilweise")
+
+#: Die Ablage-Zustaende, aus denen heraus ein Lauf startet. Bisher wurde
+#: ausschliesslich aus dem Symlink-Zustand geprueft — die Tests
+#: initialisierten immer erst einen gruenen Stand. Genau daran ist der
+#: Wiederanlauf aus der Erstbefuellung und aus dem Legacy-Zustand
+#: vorbeigelaufen (Befund T26-02, Szenarien 1 und 2).
+AUSGANGSZUSTAENDE = ("leer", "legacy", "symlink")
+
+
+def _ausgangszustand(tmp_path, zustand: str):
+    """Eine Ablage im genannten Zustand, plus der bis dahin gefuehrte Tag."""
+    ablage = _ablage(tmp_path / "plv")
+    if zustand == "leer":
+        return ablage, None
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    if zustand == "legacy":
+        # Die Symlinkform bytegleich in ein echtes Verzeichnis ueberfuehren —
+        # der unterstuetzte Zustand vor dem Erstuebergang.
+        ziel = ablage.stand.resolve()
+        ablage.stand.unlink()
+        os.rename(ziel, ablage.stand)
+    return ablage, dt.date(2026, 1, 31)
 
 
 def _injiziere(monkeypatch, naht: str):
@@ -885,6 +1040,30 @@ def _injiziere(monkeypatch, naht: str):
             return echt(src, dst, *a, **k)
 
         monkeypatch.setattr(tl.os, "replace", _kaputt)
+    elif naht == "abschluss":
+        def _kaputt(*_a, **_k):
+            # Abbruch WAEHREND des Festschreibens. Der Abschluss ist der
+            # erste unwiderrufliche Schritt (0444, nie neu gerechnet); die
+            # Naht davor war bisher ungeprueft, weil der Marker erst
+            # dahinter lag.
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(tl, "schreibe_abschluss", _kaputt)
+    elif naht == "bericht":
+        def _kaputt(*_a, **_k):
+            raise OSError(5, "I/O error")
+
+        monkeypatch.setattr(tl, "_bericht", _kaputt)
+    elif naht == "protokoll-teilweise":
+        def _kaputt(pfad, zeile):
+            # Der Anfang der Zeile steht, der Rest nicht — der Teilwrite,
+            # den ein Absturz hinterlaesst. Ohne Zeilenumbruch: Die Zeile
+            # ist nie eine geworden.
+            with open(pfad, "a", encoding="utf-8", newline="\n") as f:
+                f.write(json.dumps(zeile, ensure_ascii=False, sort_keys=True)[:60])
+            raise OSError(5, "I/O error")
+
+        monkeypatch.setattr(tl, "_anfuegen", _kaputt)
     else:
         def _kaputt(*_a, **_k):
             raise OSError(28, "No space left on device")
@@ -892,13 +1071,21 @@ def _injiziere(monkeypatch, naht: str):
         monkeypatch.setattr(tl, "_anfuegen", _kaputt)
 
 
+@pytest.mark.parametrize("zustand", AUSGANGSZUSTAENDE)
 @pytest.mark.parametrize("naht", NAEHTE)
 def test_ein_absturz_an_jeder_naht_laesst_sich_wiederaufnehmen(
-    tmp_path, monkeypatch, naht
+    tmp_path, monkeypatch, naht, zustand
 ):
-    ablage = _ablage(tmp_path / "plv")
-    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
-    vorher_stand = ablage.stand.resolve()
+    """Jede Naht mal jeder Ausgangszustand — die Klasse, nicht der Fall.
+
+    Der Befund T26-02 war nicht, dass EIN Wiederanlauf fehlte, sondern
+    dass die Pruefung nur eine Spalte der Matrix kannte: Sie legte immer
+    erst einen gruenen Symlink-Stand an. Aus der Erstbefuellung heraus
+    blieb der neue Stand stehen, waehrend Journal und Marker
+    zurueckgenommen wurden; aus dem Legacy-Zustand heraus verschwand der
+    letzte belegte alte Stand.
+    """
+    ablage, _vorher_tag = _ausgangszustand(tmp_path, zustand)
     vorher_journal = (ablage.tagesjournal_pfad.read_bytes()
                       if ablage.tagesjournal_pfad.is_file() else None)
 
@@ -913,10 +1100,13 @@ def test_ein_absturz_an_jeder_naht_laesst_sich_wiederaufnehmen(
     # Der gefuehrte Tag ist NICHT gewandert — oder der Lauf war ganz durch.
     # Beides ist zulaessig; ein dritter Zustand nicht.
     assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK, (
-        f"Naht {naht}: der Retry gelingt nicht — genau das war der Befund")
+        f"{zustand}/{naht}: der Retry gelingt nicht — genau das war der Befund")
     assert gefuehrter_tag(ablage) == dt.date(2026, 2, 3)
     assert not ablage.publish_marker.exists(), "Marker nicht aufgeraeumt"
     assert not ablage.tagesjournal_vorher_pfad.exists()
+    # Das Protokoll ist wieder eine ungebrochene Kette — sonst haette der
+    # Retry einen Zustand hinterlassen, der beim naechsten Lesen platzt.
+    assert [z for z in lies_protokoll(ablage.protokoll_pfad) if z.get("uebernommen")]
     # Der Vorgaenger liegt noch da: Seit dem Write-Ahead-Rahmen wird er
     # erst vom NAECHSTEN Lauf entfernt, wenn der Symlink steht. Genau das
     # macht den Standwechsel umkehrbar.
@@ -925,7 +1115,10 @@ def test_ein_absturz_an_jeder_naht_laesst_sich_wiederaufnehmen(
     uebrig = sorted(p.name for p in ablage.wurzel.glob("stand-*") if p.is_dir())
     assert ablage.stand.resolve().name in uebrig
     assert len(uebrig) <= 2, uebrig
-    assert vorher_stand.is_dir() or vorher_journal is not None or True
+    # Das Journal ist entweder das alte oder das neue — nie ein Mischling.
+    # (Der Ausgangszustand "leer" hat keines; dort ist nichts zu halten.)
+    if vorher_journal is not None:
+        assert ablage.tagesjournal_pfad.is_file()
 
 
 def test_der_marker_liegt_nur_waehrend_der_veroeffentlichung(tmp_path,
@@ -961,3 +1154,134 @@ def test_ein_unlesbarer_marker_haelt_den_lauf_an(tmp_path):
 
     with pytest.raises(tl.TageslaufError, match="laesst sich aber nicht lesen"):
         tageslauf(ablage, dt.date(2026, 2, 3))
+
+
+def test_jeder_abschluss_traegt_seine_monatskennzahlen(gefuehrt):
+    """Die Monatszeile der Unternehmensseite konsumiert das Modell, sie
+    rechnet nicht selbst (Auftrag des Maintainers 2026-09-19).
+
+    Geprueft wird am ECHTEN Protokoll des Laufs, nicht an einer selbst
+    gebauten Sicht: Die Zahlen sollen aus derselben Stichtagssicht
+    stammen, aus der auch der Abschluss entsteht.
+    """
+    ablage, _ = gefuehrt
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    abschluesse = [a for z in zeilen for a in z["abschluesse"]]
+    assert abschluesse, "kein Abschluss im Protokoll"
+    for a in abschluesse:
+        for feld in ("in_kraft", "zugaenge", "leistungen"):
+            assert feld in a, (a["stichtag"], feld)
+            assert isinstance(a[feld], int), (a["stichtag"], feld)
+            assert a[feld] >= 0, (a["stichtag"], feld)
+
+
+def test_in_kraft_des_abschlusses_ist_der_stand_seines_stichtags(gefuehrt):
+    """Nicht der Stand von heute: Auf der Sicht von heute erzaehlte die
+    Zahl vom selben Stichtag eine andere Geschichte als der Abschluss
+    daneben (T24-02)."""
+    from rechner_pipeline.bestand.fuehrung import bestand_am
+
+    ablage, _ = gefuehrt
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    for z in zeilen:
+        for a in z["abschluesse"]:
+            stichtag = dt.date.fromisoformat(a["stichtag"])
+            abschluss = read_portfolio(ablage.abschluesse / a["datei"])
+            # Der Abschluss IST der in-force-Stand seines Stichtags; seine
+            # Zeilenzahl muss die gemeldete Zahl sein.
+            assert a["in_kraft"] == len(abschluss), a["stichtag"]
+
+
+def test_die_zaehler_zaehlen_vorfaelle_und_nicht_buchungszeilen(gefuehrt):
+    """Ein Zugang bucht Summe UND Bruttojahresbeitrag — zwei Zeilen
+    desselben Vorfalls (BETRAG_ART_JE_EREIGNIS). Wer Zeilen zaehlt,
+    meldet doppelt so viele Zugaenge, wie es gab."""
+    from rechner_pipeline.models.bestand import ZUGANG_EREIGNISSE
+
+    ablage, _ = gefuehrt
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    gemeldet = sum(a["zugaenge"] for z in zeilen for a in z["abschluesse"])
+    journal = read_portfolio(ablage.stand / ".." / "journal" / "tagesjournal.parquet") \
+        if (ablage.stand / ".." / "journal" / "tagesjournal.parquet").exists() else None
+    if journal is None:
+        pytest.skip("kein Tagesjournal in dieser Ablage")
+    zug = journal[journal["ereignis"].isin(ZUGANG_EREIGNISSE)]
+    zeilenzahl = len(zug)
+    vorfaelle = len(zug.drop_duplicates(subset=["police_id", "ereignis", "status_date"]))
+    if zeilenzahl == vorfaelle:
+        pytest.skip("in dieser Ablage bucht kein Zugang zwei Betragsarten")
+    assert gemeldet <= vorfaelle, (gemeldet, vorfaelle, zeilenzahl)
+
+
+def test_geschriebene_und_nachgerechnete_kennzahlen_stimmen_ueberein(gefuehrt):
+    """Zwei Wege, eine Zahl — und genau das wird hier geprueft.
+
+    Der Tagesbetrieb SCHREIBT die Kennzahlen, wenn er einen Abschluss
+    anlegt. Der Paket-Export RECHNET sie nach fuer Abschluesse, die sie
+    noch nicht tragen (aeltere Laeufe). Zwei Stellen, die dieselbe
+    Groesse bestimmen, sind die Klasse, die in diesem Repo mehrfach
+    zugeschlagen hat — zuletzt als A-B1 funktional tot war und als die
+    Bewegungsrechnung RED auf beiden Seiten derselben Identitaet
+    auslaesst (T26-11).
+
+    Deshalb rufen beide Wege dieselbe Funktion, und dieser Test haelt
+    ihre Ergebnisse gegeneinander: Die Protokollwerte werden entfernt,
+    der Export rechnet sie nach, und beide muessen gleich sein.
+    """
+    from rechner_pipeline.betrieb.seite import (
+        KENNZAHL_FELDER, abschluesse_aus_protokoll,
+    )
+
+    ablage, _ = gefuehrt
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    geschrieben = {a["stichtag"]: {f: a[f] for f in KENNZAHL_FELDER}
+                   for z in zeilen for a in z["abschluesse"]}
+    assert geschrieben, "kein Abschluss mit Kennzahlen im Protokoll"
+
+    # Dieselben Zeilen OHNE die Zahlen — so sehen Protokolle aus, die vor
+    # der Einfuehrung der Felder entstanden sind.
+    ohne = [
+        {**z, "abschluesse": [{k: v for k, v in a.items()
+                               if k not in KENNZAHL_FELDER}
+                              for a in z["abschluesse"]]}
+        for z in zeilen
+    ]
+    # Die Quellen einzeln, wie sie auch der Konsument aus dem Paket
+    # stellt — nicht die Ablage: Eine Ablage koennte nur der Erzeuger
+    # reichen, und der Test pruefte dann einen Weg, den es beim Leser
+    # des Pakets gar nicht gibt.
+    journal = read_portfolio(ablage.tagesjournal_pfad,
+                             expected_columns=TAGESJOURNAL_NAMES)
+    nachgerechnet = {
+        e["stichtag"]: {f: e.get(f) for f in KENNZAHL_FELDER}
+        for e in abschluesse_aus_protokoll(
+            ohne, journal=journal, abschluesse_dir=ablage.abschluesse)
+    }
+
+    for stichtag, werte in geschrieben.items():
+        assert nachgerechnet[stichtag] == werte, (
+            f"{stichtag}: geschrieben {werte}, nachgerechnet "
+            f"{nachgerechnet[stichtag]}")
+
+
+def test_ohne_quelle_bleibt_die_zahl_leer_statt_null(gefuehrt, tmp_path):
+    """Eine erfundene Null waere schlimmer als eine Luecke: "nicht
+    gerechnet" und "null Vorfaelle" sind verschiedene Aussagen."""
+    from rechner_pipeline.betrieb.seite import (
+        KENNZAHL_FELDER, abschluesse_aus_protokoll,
+    )
+
+    ablage, _ = gefuehrt
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    ohne = [
+        {**z, "abschluesse": [{k: v for k, v in a.items()
+                               if k not in KENNZAHL_FELDER}
+                              for a in z["abschluesse"]]}
+        for z in zeilen
+    ]
+    # Keine Quellen: kein Journal, ein Abschlussverzeichnis, das es nicht
+    # gibt. So sieht ein Aufrufer aus, der nur das Protokoll hat.
+    for eintrag in abschluesse_aus_protokoll(
+            ohne, journal=None, abschluesse_dir=tmp_path / "leer"):
+        for feld in KENNZAHL_FELDER:
+            assert feld not in eintrag, (eintrag["stichtag"], feld)

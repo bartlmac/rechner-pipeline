@@ -185,7 +185,7 @@ GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-O1", "A-K2", "A-B1"
 #: sondern auf den A-Box-Stand, den der Entscheid selbst pinnt: A-M4
 #: verlangt spaeter einen geltenden, signierten A-Q1-Snapshot AUF DIESEM
 #: Stand. Die Bindung existiert also, sie laeuft nur nicht ueber
-#: ``fall.BELEGROLLEN``.
+#: ``models.belegrollen.BELEGROLLEN``.
 #:
 #: Hier stehen NUR begruendete Ausnahmen. Eine Liste, die Ausnahmen und
 #: Versehen mischt, verliert ihre Aussage.
@@ -207,7 +207,7 @@ GATES_OHNE_BELEGVERTRAG: tuple[str, ...] = ("A-Q1",)
 #:
 #: Ein Kommentar, der eine Invariante beschreibt, erzwingt sie nicht.
 #: Deshalb steht sie jetzt hier, und eine Ratsche haelt sie gegen
-#: ``fall.BELEGROLLEN`` (tests/test_gate_vokabel_ab1.py).
+#: ``models.belegrollen.BELEGROLLEN`` (tests/test_gate_vokabel_ab1.py).
 GATES_MIT_PFLICHTBELEGEN: tuple[str, ...] = tuple(
     gate for gate in GUELTIGE_GATES if gate not in GATES_OHNE_BELEGVERTRAG
 )
@@ -221,24 +221,51 @@ def _unter(pfad: Path, wurzel: Path) -> bool:
         return False
 
 
-def ausserhalb_des_falls(pfad: Path, fall: Path) -> bool:
-    """Ob ein Belegpfad lexikalisch UND aufgeloest ausserhalb des Falls liegt.
+def ausserhalb_von(
+    pfad: Path, bereich: Path, *, muss_existieren: bool = True
+) -> bool:
+    """Ob ein Pfad lexikalisch UND aufgeloest ausserhalb eines Bereichs liegt.
 
-    Der Vertrag fuer alles, was eine Zeichnung autorisiert — Ordnung,
-    Freigabeschluessel, Mandat (ADR-018): Was der Fall selbst umschreiben
-    kann, autorisiert nichts. Bisher galt das nur fuer die Ordnung; das
-    Mandat war raeumlich ungebunden (Review T23-09). Ein nicht existierender
-    Pfad gilt nicht als "ausserhalb".
+    Die eine Regel fuer jeden Bezug, der Vertrauen stiften soll: **Was der
+    schreibende Prozess selbst umschreiben kann, belegt nichts.** Sie gilt
+    fuer alles, was eine Zeichnung autorisiert — Ordnung, Freigabe-
+    schluessel, Mandat (ADR-018) — und fuer den Anker eines Stands-Pakets,
+    der genau deshalb ausserhalb von Ablage und Paket liegen muss
+    (models/anker).
+
+    Zwei Pruefungen, weil eine von beiden umgangen werden kann: lexikalisch
+    (``../ordnung.json`` von innen ist aussen) und aufgeloest (ein Symlink
+    nach aussen fuehrt nicht hinaus, wenn er drinnen liegt).
+
+    ``muss_existieren`` trennt zwei Faelle, die frueher verschwommen:
+    Ein Beleg, den es nicht gibt, autorisiert nichts und gilt deshalb NICHT
+    als aussen. Ein VERZEICHNIS dagegen, in das erst geschrieben werden
+    soll, existiert bei der Pruefung regelmaessig noch nicht — dort wird
+    der vorhandene Anfang des Pfades aufgeloest und der Rest normalisiert.
     """
     absolut = Path(os.path.normpath(pfad if pfad.is_absolute() else Path.cwd() / pfad))
-    fall_resolved = fall.resolve()
+    bereich_resolved = bereich.resolve()
     try:
         resolved = absolut.resolve(strict=True)
     except OSError:
-        return False
+        if muss_existieren:
+            return False
+        resolved = absolut.resolve()
     return not (
-        _unter(absolut.absolute(), fall_resolved) or _unter(resolved, fall_resolved)
+        _unter(absolut.absolute(), bereich_resolved) or _unter(resolved, bereich_resolved)
     )
+
+
+def ausserhalb_des_falls(pfad: Path, fall: Path) -> bool:
+    """Ob ein Belegpfad ausserhalb des Falls liegt (:func:`ausserhalb_von`).
+
+    Eigener Name, weil die Aussage eine andere ist als die Mechanik: Was
+    der Fall selbst umschreiben kann, autorisiert nichts. Vorher stand
+    dieselbe Mechanik zweimal im Code — hier und in
+    :func:`lade_zeichnungsordnung` — und keine der beiden Fassungen deckte
+    den Anker ab (Befund T26-08).
+    """
+    return ausserhalb_von(pfad, fall)
 
 
 def lade_zeichnungsordnung(
@@ -255,19 +282,15 @@ def lade_zeichnungsordnung(
     if not isinstance(raw, str):
         return None, None, ["--zeichnungsordnung muss ein Pfad sein"]
     angegeben = Path(raw)
-    absolut = angegeben if angegeben.is_absolute() else Path.cwd() / angegeben
-    # Lexikalisch normalisieren, ohne Symlinks aufzuloesen: '../ordnung.json'
-    # von innerhalb des Falls ist AUSSERHALB (Review Block 2); Symlinks
-    # faengt die aufgeloeste Pruefung darunter.
-    absolut = Path(os.path.normpath(absolut))
-    fall_resolved = fall.resolve()
+    absolut = Path(os.path.normpath(
+        angegeben if angegeben.is_absolute() else Path.cwd() / angegeben))
     try:
         resolved = absolut.resolve(strict=True)
     except OSError as exc:
         return None, None, [f"Zeichnungsordnung nicht lesbar ({raw!r}): {exc}"]
-    if _unter(absolut.absolute(), fall_resolved) or _unter(
-        resolved, fall_resolved
-    ):
+    # Dieselbe Regel wie fuer Schluessel, Mandat und Anker — eine
+    # Implementierung, nicht vier (Befund T26-08).
+    if not ausserhalb_von(angegeben, fall):
         return None, None, [
             f"Zeichnungsordnung {raw!r} liegt innerhalb des Falls; die "
             "Rollenbindung muss extern verwahrt werden"

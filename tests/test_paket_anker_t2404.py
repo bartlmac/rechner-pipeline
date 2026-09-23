@@ -184,7 +184,7 @@ def test_der_export_zeichnet_den_ankersatz(paket_und_anker, tmp_path):
     paket, _anker = paket_und_anker
     schluessel, ordnung = _agentenordnung(tmp_path)
     ablage = Ablage(paket.parent / "plv")
-    neu = st.stands_paket(ablage, tmp_path / "paket", 
+    neu = st.stands_paket(ablage, tmp_path / "paket",
                           anker_verzeichnis=tmp_path / "anker",
                           schluessel=schluessel, zeichnungsordnung=ordnung)
 
@@ -192,7 +192,11 @@ def test_der_export_zeichnet_den_ankersatz(paket_und_anker, tmp_path):
     z = stand["anker"]["zeichnung"]
     assert z["rolle"] == "agent/betrieb"
     assert z["schluesselklasse"] == "agent"
-    assert z["verfahren"] == "hmac-sha256-v1"
+    # Das Verfahren steht hier ABSICHTLICH als Literal: Es ist ein
+    # Vertrag mit jedem, der eine Ankerreihe liest. Seit T26-16 liegen
+    # Rolle und Schluesselklasse unter der Signatur — v1 liess sie
+    # daneben stehen und austauschbar.
+    assert z["verfahren"] == "hmac-sha256-v2"
     # Und die Signatur haelt: gegen den Inhalt, nicht gegen sich selbst.
     satz = ak.lies_anker(tmp_path / "anker" / ak.ANKER_DATEI)[-1]
     ring = {z["schluessel_sha256"]: schluessel.read_bytes()}

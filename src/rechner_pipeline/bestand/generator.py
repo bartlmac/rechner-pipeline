@@ -1,23 +1,32 @@
-"""Seed-deterministic portfolio generator (Bestandsaufbau, Stufe 1: KLV).
+"""Der Zugangsstrom der Simulation: Vertragsattribute und jaehrlicher Neuzugang.
 
-Draws contract attributes per tariff generation — marginals and pairwise
-Spearman correlations from the TOML config, dependence via Gaussian copula
-(:mod:`rechner_pipeline.bestand.stochastik`) — and assembles the canonical
-portfolio DataFrame (:mod:`rechner_pipeline.models.bestand`).
+Zieht je Tarifgeneration die Vertragsattribute — Randverteilungen und
+paarweise Spearman-Korrelationen aus der TOML-Config, Abhaengigkeit ueber
+eine Gauss-Copula (:mod:`rechner_pipeline.bestand.stochastik`) — und baut
+daraus die kanonischen Stammzeilen (:mod:`rechner_pipeline.models.bestand`).
 
-The generator computes NOTHING actuarial: no premiums, no present values, no
-reserves (project decision — calculated quantities come from the stable
-kernel via :func:`rechner_pipeline.bestand.kernlauf.berechne_vertrag`).
+Zwei Konsumenten teilen sich die Attributziehung: der jaehrliche
+Zugangsstrom :func:`neuzugaenge` (Pruefstrecke, ``cli_fortschreibung
+--neuzugang-ab``) und das tagesgenaue Neugeschaeft der Vorzeige
+(:mod:`rechner_pipeline.betrieb.neugeschaeft`). Beide buchen jeden Vertrag
+als Zugang; einen Bestand OHNE Geschichte gibt es nicht mehr.
 
-Determinism: one master seed from the config; every generation draws from its
-own child stream ``PCG64(SeedSequence([seed, generation_index]))``, so adding
-a generation never changes the contracts of earlier generations.
+Bis zum 2026-09-21 stand hier ausserdem der Batch-Erzeuger (``generate``,
+``sample_size``): ein auf einmal gezogener Bestand ohne eine einzige
+Buchung. Er war nie mehr als Kulisse — die Vorzeige holte daraus fuenf
+Vertraege des Grenztages, die Pruefstrecke des Migrationsfalls 2220
+Vertraege, an denen keine Pruefung hing (gemessen: alle Gates gruen ohne
+sie). Entfernt, ADR-020.
 
-Seed discipline: NEVER seed anything with the bare master seed —
-``SeedSequence(seed)`` is bit-identical to ``SeedSequence([seed, 0])``
-(trailing-zero normalization), i.e. the stream of generation 0. New stream
-families need their own distinct constant (Neuzugang: ``NEUZUGANG_STREAM``,
-Ereignis-Engine: 424242).
+Rechnet NICHTS Aktuarielles: keine Beitraege, keine Barwerte, keine
+Reserven — gerechnete Groessen kommen aus dem stabilen Kern
+(:func:`rechner_pipeline.bestand.kernlauf.berechne_vertrag`).
+
+Seed-Disziplin: NIE mit dem nackten Master-Seed seeden —
+``SeedSequence(seed)`` ist bitidentisch zu ``SeedSequence([seed, 0])``
+(Trailing-Zero-Normalisierung). Jede Stromfamilie traegt ihre eigene
+Konstante (Neuzugang: ``NEUZUGANG_STREAM``, Tagesneugeschaeft:
+``betrieb.neugeschaeft.NEUGESCHAEFT_STREAM``, Ereignis-Engine: 424242).
 
 Knoten: klv, bu
 """
@@ -63,23 +72,12 @@ def _add_years(d: _dt.date, years: int) -> _dt.date:
     return _dt.date(d.year + years, d.month, 1)
 
 
-def _draw_insurance_start(
-    rng: np.random.Generator, gen: TarifGeneration, n: int
-) -> List[_dt.date]:
-    """Uniform month-first start dates within the generation's validity window."""
-    von, bis = gen.gueltig_von, gen.gueltig_bis
-    first = von.year * 12 + (von.month - 1) + (1 if von.day > 1 else 0)
-    last = bis.year * 12 + (bis.month - 1)
-    months = rng.integers(first, last + 1, size=n)
-    return [_month_first(int(m) // 12, int(m) % 12 + 1) for m in months]
-
-
 def _ziehe_attribute(
     gen: TarifGeneration, rng: np.random.Generator, n: int
 ) -> Dict[str, np.ndarray]:
     """Vertragsattribute ziehen (Copula-Block, dann Zahlweise — feste Reihenfolge).
 
-    Wird von Batch-Generator und Neuzugang identisch genutzt; die
+    Wird von jaehrlichem Neuzugang und Tagesneugeschaeft identisch genutzt; die
     rng-Aufrufreihenfolge ist Teil des Determinismus-Contracts. Fuer
     BU-Generationen gilt eine eigene, kuerzere Zugreihenfolge
     (:data:`COPULA_ORDER_JE_PRODUKT`) — der KLV-Pfad bleibt bit-identisch.
@@ -205,38 +203,17 @@ def _baue_frame(
     )
 
 
-def _generate_generation(
-    gen: TarifGeneration, kreis: int, master_seed: int
-) -> pd.DataFrame:
-    """``kreis`` ist der Nummernkreis der Generation (config.nummernkreis);
-    Seed-Beitrag und Nummern folgen ihm, nicht der Position (T22-09). Mit
-    kreis = Position + 1 bitidentisch zur Erstfassung."""
-    rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence([master_seed, kreis - 1])))
-    n = gen.sample_size
-    if n == 0:
-        # Uebernommene Generation: ihre Vertraege kommen aus der
-        # Migration, nicht aus der Ziehung (siehe config.TarifGeneration).
-        return _baue_frame(
-            gen, _ziehe_attribute(gen, rng, 0),
-            _draw_insurance_start(rng, gen, 0),
-            np.arange(0, dtype=np.int64))
-    attribute = _ziehe_attribute(gen, rng, n)
-    # 4) Time axis (month-first convention) — drawn AFTER the attributes,
-    #    identical rng call order as before the refactoring.
-    starts = _draw_insurance_start(rng, gen, n)
-    police_ids = np.arange(1, n + 1, dtype=np.int64) + kreis * 10_000_000
-    return _baue_frame(gen, attribute, starts, police_ids)
-
-
 #: SeedSequence-Konstante der Neuzugangs-Stroeme ([seed, NEUZUGANG_STREAM,
-#: gen_index, kalenderjahr]) — getrennt von Generator ([seed, gen_index])
-#: und Ereignis-Engine ([seed, 424242, police_id]).
+#: gen_index, kalenderjahr]) — getrennt von der Ereignis-Engine
+#: ([seed, 424242, police_id]) und dem Tagesneugeschaeft.
 NEUZUGANG_STREAM = 771177
 
-#: police_id-Offset der Neuzugaenge innerhalb des Generations-Nummernkreises
-#: (Batch belegt 1..1_000_000); der jaehrliche Erzeuger zaehlt ab hier
-#: jahrgangsweise weiter und endet vor ``_NEUZUGANG_ID_GRENZE`` — darueber
-#: (ab 5 Mio) liegt das Tagesneugeschaeft (``betrieb.neugeschaeft``).
+#: police_id-Offset der Neuzugaenge innerhalb des Generations-Nummernkreises.
+#: 1..1_000_000 gehoerte dem Batch-Erzeuger; der ist weg (ADR-020), der
+#: Bereich bleibt frei, damit bestehende Laeufe und Belege ihre Nummern
+#: behalten. Der jaehrliche Erzeuger zaehlt ab hier jahrgangsweise weiter
+#: und endet vor ``_NEUZUGANG_ID_GRENZE`` — darueber (ab 5 Mio) liegt das
+#: Tagesneugeschaeft (``betrieb.neugeschaeft``).
 _NEUZUGANG_ID_OFFSET = 2_000_000
 _NEUZUGANG_ID_GRENZE = 5_000_000
 
@@ -244,21 +221,21 @@ _NEUZUGANG_ID_GRENZE = 5_000_000
 def neuzugaenge(
     config: BestandConfig, von: _dt.date, bis: _dt.date
 ) -> pd.DataFrame:
-    """Simulierter Neuzugang: POL-Basiszeilen mit Beginn in ``(von, bis]``.
+    """Simulierter Neuzugang: POL-Basiszeilen mit Beginn in ``[von, bis]``.
 
     Je Generation und Kalenderjahr werden ``round(jahresziel(jahr))``
     Vertraege aus einem eigenen Substream gezogen — das Jahresziel ist
     ``neuzugang_pro_jahr`` mit dem Jahresfaktor ``neuzugang_trend``
     (:meth:`~rechner_pipeline.bestand.config.TarifGeneration.jahresziel`;
-    ohne Trend der bisherige konstante Satz) — mit Attributen wie im
-    Batch-Generator und Beginn gleichverteilt ueber ALLE Monatsersten des
+    ohne Trend der bisherige konstante Satz) — mit Attributen aus derselben
+    Ziehung wie das Tagesneugeschaeft und Beginn gleichverteilt ueber ALLE Monatsersten des
     Kalenderjahres.
     Draws sind horizont- und fensterunabhaengig: pro Jahrgang wird immer
-    voll gezogen und erst danach auf Gueltigkeitsfenster und ``(von, bis]``
+    voll gezogen und erst danach auf Gueltigkeitsfenster und ``[von, bis]``
     gefiltert — dadurch ist der Neuzugang bei Horizont-Erweiterung ein
     Praefix (fruehere Zugaenge aendern sich nicht), die police_ids sind
     jahrgangsstabil, und Rand-Jahrgaenge tragen anteilig weniger Volumen
-    (gleiche Monatsdichte wie volle Jahrgaenge, konsistent zum Batch).
+    (gleiche Monatsdichte wie volle Jahrgaenge).
     """
     fehler = config.validate()
     if fehler:
@@ -291,10 +268,10 @@ def neuzugaenge(
                     f"generation {gen.name}: Neuzugang-Nummernkreis erschoepft "
                     "(neuzugang_pro_jahr x Jahrgaenge zu gross)"
                 )
-            # Jahrgaenge ohne Schnitt mit (von, bis] draw-neutral ueberspringen
+            # Jahrgaenge ohne Schnitt mit [von, bis] draw-neutral ueberspringen
             # (eigener Substream je Jahr — fremde Jahre brauchen keine Draws):
             if (
-                pd.Timestamp(_month_first(letzter // 12, letzter % 12 + 1)) <= von_ts
+                pd.Timestamp(_month_first(letzter // 12, letzter % 12 + 1)) < von_ts
                 or pd.Timestamp(_month_first(erster // 12, erster % 12 + 1)) > bis_ts
             ):
                 continue
@@ -318,7 +295,7 @@ def neuzugaenge(
             im_fenster = (monate >= erster) & (monate <= letzter)
             maske = (
                 im_fenster
-                & (frame["insurance_start"] > von_ts)
+                & (frame["insurance_start"] >= von_ts)
                 & (frame["insurance_start"] <= bis_ts)
             )
             frames.append(frame[maske])
@@ -329,35 +306,3 @@ def neuzugaenge(
     df = pd.concat(frames, ignore_index=True)
     df = df[list(STAMM_NAMES)].astype(stamm_dtypes())
     return df.sort_values("police_id", kind="stable").reset_index(drop=True)
-
-
-def generate(
-    config: BestandConfig, bis: _dt.date | None = None
-) -> pd.DataFrame:
-    """Generate the full portfolio for all configured tariff generations.
-
-    ``bis`` (Referenzstichtag) macht den Generator zur Batch-Auswertung des
-    Zugangs-Stroms bis zu diesem Datum: gezogen wird identisch (draw-then-
-    filter), behalten werden nur Vertraege mit ``insurance_start <= bis`` —
-    das Ergebnis ist die exakte Teilmenge des vollen Laufs. Zusammen mit
-    ``fortschreiben(..., neuzugang_ab=bis)`` besiedelt so genau ein Erzeuger
-    jedes Zeitfenster. Ohne ``bis`` unveraendert der volle Bestand.
-    """
-    errors = config.validate()
-    if errors:
-        raise ValueError("Config ungueltig: " + "; ".join(errors))
-    frames = [
-        _generate_generation(gen, config.nummernkreis(gen), config.seed)
-        for gen in config.generationen
-    ]
-    df = pd.concat(frames, ignore_index=True)
-    if bis is not None:
-        df = df[df["insurance_start"] <= pd.Timestamp(bis)]
-    df = df[list(STAMM_NAMES)].astype(stamm_dtypes())
-    df = df.sort_values("police_id", kind="stable").reset_index(drop=True)
-    if df["police_id"].duplicated().any():
-        raise ValueError(
-            "police_id-Kollision zwischen Generationen — Nummernkreis verletzt "
-            "(sample_size-Obergrenze der Config umgangen?)"
-        )
-    return df

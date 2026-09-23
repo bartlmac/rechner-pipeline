@@ -407,7 +407,15 @@ def bewegungskonto(
     jeweils in Stück und Versicherungssumme. GeVo-Mapping: ZUG/ERH = Zugang
     (Erhöhungen nur Summe, kein Stück), STO/TOD/ABL = Abgang, PEX =
     Umbuchung (Abgang bpfl mit der Gesamt-VS, Zugang bfr mit der
-    beitragsfreien Summe). Abgangs-Summen sind VERSICHERUNGSSUMMEN
+    beitragsfreien Summe), RED = Veränderung der Summe ohne Stück (der
+    Vertrag bleibt, seine Versicherungssumme ändert sich).
+
+    **RED war hier lange nicht vorhanden** (Befund T26-11). ``vs_ges``
+    kannte nur Stamm und Erhöhungen; eine auf 67.606,49 EUR herabgesetzte
+    Police stand mit 100.000 EUR im Konto, und P-B1 bestätigte es — beide
+    Seiten der Identität ließen dieselbe fachliche Änderung aus. Die
+    Einzelbewertung (``auswertung``) war die ganze Zeit richtig; falsch
+    waren die Nachweisung und das positive Kontrollurteil darüber. Abgangs-Summen sind VERSICHERUNGSSUMMEN
     (inkl. Erhöhungsscheiben) bzw. beitragsfreie Summen — nicht die
     Auszahlungsbeträge des Ledgers. Dadurch gelten die Identitäten exakt
     und werden je Jahr, Track und Maß mitgeliefert (``identitaet``) —
@@ -444,6 +452,29 @@ def bewegungskonto(
     bestand, historie, ledger = _nur_produkt(bestand, historie, ledger, "klv")
     if len(bestand) == 0:
         return []   # reiner BU-Bestand: die KLV-Nachweisung ist leer
+    # Die Population sind die Verträge, die zum Horizont IN DEN BÜCHERN
+    # stehen — ``bestandszugang``, nicht Vertragsbeginn. Dieselbe Regel
+    # steht schon in :func:`jahresraster`: Ein übernommener Bestand
+    # beginnt in unseren Büchern am Migrationsstichtag.
+    #
+    # Befund N-03: Ohne diesen Schnitt trug eine Stichtagssicht Verträge,
+    # die erst später zugingen — samt ihrer übernommenen Vorgeschichte.
+    # Deren Historie führt die PEX-Zeile des ABGEBENDEN Unternehmens an
+    # ihrem echten Datum, der Ledger bucht dieselbe Tatsache am
+    # Migrationsstichtag. Beide Zeilen sind richtig; die Prüfung darunter
+    # hielt sie für Bruch, weil ihre Prämisse ("aus demselben
+    # fortschreiben-Lauf") für übernommenen Bestand nicht gilt.
+    if bis is not None:
+        in_buechern = bestand["bestandszugang"] <= pd.Timestamp(bis)
+        if not bool(in_buechern.all()):
+            bestand = bestand[in_buechern].reset_index(drop=True)
+            gefuehrt = set(bestand["police_id"])
+            historie = historie[
+                historie["police_id"].isin(gefuehrt)].reset_index(drop=True)
+            ledger = ledger[
+                ledger["police_id"].isin(gefuehrt)].reset_index(drop=True)
+            if len(bestand) == 0:
+                return []
     sicht = journalsicht(bestand, historie)
     stamm_vs = bestand.set_index("police_id")["sum_insured"]
 
@@ -471,10 +502,44 @@ def bewegungskonto(
                 (s["erhoehung_datum"], float(s["sum_insured"]))
             )
 
-    def vs_ges(pid: int, stichtag: pd.Timestamp) -> float:
-        summe = float(stamm_vs.loc[pid])
+    # Die Herabsetzungen je Police, aufsteigend. Der RED-Ledgerbetrag ist
+    # die NEUE Gesamtsumme (ereignisse: "fortgeführter plus umgewandelter
+    # Teil") — nicht die Differenz. Die zweite RED-Zeile,
+    # ``dDK_absorption``, ist eine Umbuchung im Deckungskapital und keine
+    # Summenbewegung; sie bleibt draußen.
+    red_je_police: Dict[int, List] = {}
+    if len(ledger):
+        _red = ledger[(ledger["ereignis"] == "RED")
+                      & (ledger["betrag_art"] == "VS_herabsetzung")]
+        for r in _red.to_dict("records"):
+            red_je_police.setdefault(int(r["police_id"]), []).append(
+                (pd.Timestamp(r["status_date"]), float(r["betrag"])))
+        for _liste in red_je_police.values():
+            _liste.sort()
+
+    def vs_ges(pid: int, stichtag: pd.Timestamp,
+               ohne_red_ab: Any = None) -> float:
+        """Die geführte Versicherungssumme einer Police am Stichtag.
+
+        Stamm, Erhöhungen — und seit T26-11 die Herabsetzungen. Eine RED
+        setzt die Summe ABSOLUT neu; Erhöhungen davor stecken in ihrem
+        Betrag, Erhöhungen danach kommen obendrauf.
+
+        ``ohne_red_ab`` blendet Herabsetzungen ab diesem Tag aus. Damit
+        lässt sich der Wert UNMITTELBAR VOR einer Herabsetzung bilden —
+        die Differenz beider ist ihre Bewegung.
+        """
+        gueltig = [
+            (datum, betrag) for datum, betrag in red_je_police.get(int(pid), ())
+            if datum <= stichtag
+            and (ohne_red_ab is None or datum < pd.Timestamp(ohne_red_ab))
+        ]
+        if gueltig:
+            ab, summe = max(gueltig)
+        else:
+            ab, summe = None, float(stamm_vs.loc[pid])
         for datum, betrag in scheiben_je_police.get(int(pid), ()):
-            if datum <= stichtag:
+            if datum <= stichtag and (ab is None or datum > ab):
                 summe += betrag
         return summe
 
@@ -535,6 +600,10 @@ def bewegungskonto(
         erh = periode[(periode["ereignis"] == "ERH")
                       & (periode["betrag_art"] == "VS_erhoehung")]
         pex = periode[periode["ereignis"] == "PEX"]
+        # Die Herabsetzung bewegt die Summe, nicht den Bestand: Der
+        # Vertrag bleibt POL (ereignisse: "Kein Statuswechsel").
+        red = periode[(periode["ereignis"] == "RED")
+                      & (periode["betrag_art"] == "VS_herabsetzung")]
         sto = periode[periode["ereignis"] == "STO"]
         terminal = periode[periode["ereignis"].isin(("TOD", "ABL"))]
         war_bfr = terminal["police_id"].isin(pex_summen.index)
@@ -566,6 +635,28 @@ def bewegungskonto(
                     for p, d in zip(zug["police_id"], zug["bestandszugang"])
                 ]),
                 "zugang_erhoehung": {"stueck": 0, "summe": float(erh["betrag"].sum())},
+                # Stück 0 wie bei der Erhöhung: Der Vertrag bleibt im
+                # Bestand, nur seine Summe ändert sich. Gebucht wird die
+                # VERÄNDERUNG (neue Gesamtsumme minus der Summe
+                # unmittelbar davor) — mit Vorzeichen, wie der Kern sie
+                # liefert.
+                #
+                # Das Vorzeichen ist bewusst nicht festgelegt: Am
+                # betriebenen Fixture ist es POSITIV (die neue
+                # Gesamtsumme liegt über der alten, weil der umgewandelte
+                # Teil als beitragsfreie Summe zurückkommt). Ob das
+                # fachlich so gewollt ist, ist eine Frage an das
+                # Aktuariat und steht in dev-docs/befundliste-t26.md; die
+                # Nachweisung führt jedenfalls, was der Kern rechnet,
+                # statt die Änderung wegzulassen (Befund T26-11).
+                "veraenderung_herabsetzung": {
+                    "stueck": 0,
+                    "summe": float(sum(
+                        vs_ges(p, pd.Timestamp(d))
+                        - vs_ges(p, pd.Timestamp(d), ohne_red_ab=d)
+                        for p, d in zip(red["police_id"], red["status_date"])
+                    )),
+                },
                 "abgang_storno": posten(sto, vs_liste(sto)),
                 "abgang_tod": posten(tod_bpfl, vs_liste(tod_bpfl)),
                 "abgang_ablauf": posten(abl_bpfl, vs_liste(abl_bpfl)),
@@ -602,8 +693,10 @@ def bewegungskonto(
         zeile["identitaet"] = {
             "bpfl": identitaet(
                 zeile["bpfl"],
-                ["zugang_neuzugang", "zugang_erhoehung"],
-                ["abgang_storno", "abgang_tod", "abgang_ablauf", "umbuchung_beitragsfrei"],
+                ["zugang_neuzugang", "zugang_erhoehung",
+                 "veraenderung_herabsetzung"],
+                ["abgang_storno", "abgang_tod", "abgang_ablauf",
+                 "umbuchung_beitragsfrei"],
             ),
             "bfr": identitaet(
                 zeile["bfr"], ["zugang_umbuchung"], ["abgang_tod", "abgang_ablauf"]
@@ -636,3 +729,102 @@ def status_verlauf(
             eintrag[status] = int(counts.get(status, 0))
         reihe.append(eintrag)
     return reihe
+
+def bewegungskennzahlen(journal: pd.DataFrame, stichtag: _dt.date) -> Dict[str, int]:
+    """Zugaenge und Leistungen des Monats, der auf ``stichtag`` endet.
+
+    Eigenstaendig, weil sie aus dem LEDGER ALLEIN ableitbar sind: Das
+    Tagesjournal liegt jedem Stands-Paket bei, der festgeschriebene
+    Abschluss nur fuer die juengsten Monate. Wer bloss das Journal hat,
+    bekommt diese beiden Zahlen — fuer ``in_kraft`` braucht es den
+    Abschluss selbst (:func:`monatskennzahlen`). Ohne diesen Schnitt
+    muesste eine Seite, der ein Abschluss fehlt, alle drei Zahlen
+    weglassen: Zwei belegbare Werte gingen mit dem dritten unter.
+
+    Periode ist ``(Vormonatserster, stichtag]`` — linksoffen,
+    rechtsgeschlossen wie die Jahresperiode ``(1.1.J, 1.1.J+1]`` oben.
+    Gezaehlt werden VORFAELLE, nicht Buchungszeilen: Ein Zugang bucht
+    Summe und Bruttojahresbeitrag als zwei Zeilen desselben Vorfalls.
+
+    **Die Periodenachse ist der SICHTBARKEITSTAG**, also
+    ``max(status_date, buchungsdatum)``, und nicht der Wirkungstag. Das
+    ist keine Feinheit, sondern die Bedingung dafuer, dass ueberhaupt
+    gezaehlt wird: Ein Abschluss zum Stichtag S kennt einen Vorfall
+    genau dann, wenn beide Daten ``<= S`` sind. Er wird also zwischen dem
+    Abschluss davor und dem zum Stichtag S sichtbar — und genau dieser
+    Monat meldet ihn.
+
+    Auf dem Wirkungstag mit einem zusaetzlichen Buchungsschnitt gezaehlt,
+    fiel ein Vorfall durch, dessen Wirkungstag GENAU auf einen Stichtag
+    faellt und der danach gebucht wird: Fuer seinen eigenen Monat war er
+    zu spaet gebucht, fuer den naechsten wirkte er zu frueh. Am
+    betriebenen Bestand gemessen (2026-09-19, 387 Monate) traf das 2621
+    von 13144 Vorfaellen — darunter 191 Ablaeufe, 188 Stornos und 141
+    Todesfaelle, die in keinem einzigen Monat auftauchten. Auf dem
+    Sichtbarkeitstag bleiben genau die neun Vorfaelle ungezaehlt, deren
+    Monat noch keinen Abschluss hat.
+
+    Deshalb nimmt sie das TAGESJOURNAL und nicht den Ledger: Nur das
+    Journal traegt ``buchungsdatum``. Der Ledger fuehrt die Spalte nicht,
+    und ein Aufrufer, der ihn hier hineingibt, wuerde ohne diese Sperre
+    stillschweigend auf dem Wirkungstag zaehlen.
+
+    **Benannte Grenze:** Die Zaehlung liest die Ereignisse des Ledgers.
+    Der EROEFFNUNGSBESTAND eines Unternehmens (Batch-Historie) traegt
+    keine ZUG-Buchung — er war am ersten Tag da, er kam nicht hinzu. Der
+    erste Monat des Betriebsbeginns weist seine Vertraege deshalb nicht
+    als Zugaenge aus. Das ist bewusst dieselbe Zaehlweise, die die
+    Unternehmensseite fuer ihre Bewegungsreihen verwendet; eine zweite,
+    abweichende Definition waere schlimmer als diese Grenze.
+    """
+    from rechner_pipeline.models.bestand import (
+        LEISTUNG_EREIGNISSE, ZUGANG_EREIGNISSE,
+    )
+
+    if "buchungsdatum" not in journal.columns:
+        raise ValueError(
+            "bewegungskennzahlen braucht das Tagesjournal mit Spalte "
+            "'buchungsdatum' — ohne sie laesst sich der Sichtbarkeitstag "
+            "nicht bilden, und die Zaehlung verlore die spaet gebuchten "
+            "Vorfaelle auf einem Stichtag")
+    vormonat = (stichtag.replace(day=1) - _dt.timedelta(days=1)).replace(day=1)
+    sichtbar = journal[["status_date", "buchungsdatum"]].max(axis=1)
+    periode = journal[
+        (sichtbar > pd.Timestamp(vormonat))
+        & (sichtbar <= pd.Timestamp(stichtag))
+    ]
+
+    def vorfaelle(arten) -> int:
+        auswahl = periode[periode["ereignis"].isin(arten)]
+        if not len(auswahl):
+            return 0
+        return int(len(auswahl.drop_duplicates(
+            subset=["police_id", "ereignis", "status_date"])))
+
+    return {
+        "zugaenge": vorfaelle(ZUGANG_EREIGNISSE),
+        "leistungen": vorfaelle(LEISTUNG_EREIGNISSE),
+    }
+
+
+def monatskennzahlen(
+    abschluss: pd.DataFrame, journal: pd.DataFrame, stichtag: _dt.date,
+) -> Dict[str, int]:
+    """Die drei Zahlen der Monatszeile eines Abschlusses.
+
+    EINE Implementierung fuer zwei Wege: Der Tagesbetrieb ruft sie beim
+    Schreiben eines Abschlusses, der Paket-Export ergaenzt damit die
+    Abschluesse, die die Felder noch nicht tragen. Zwei Stellen, die
+    dieselbe Groesse rechnen, liefen auseinander, sobald jemand eine
+    Ereignisart ergaenzt.
+
+    ``in_kraft`` ist die Zeilenzahl des ABSCHLUSSES, nicht ein neu
+    gerechneter Stand: Der Abschluss IST der in-force-Stand seines
+    Stichtags, festgeschrieben und unveraenderlich. Wer ihn aus heutigen
+    Tabellen nachrechnet, erzaehlt vom selben Stichtag eine andere
+    Geschichte (T24-02).
+    """
+    return {
+        "in_kraft": int(len(abschluss)),
+        **bewegungskennzahlen(journal, stichtag),
+    }

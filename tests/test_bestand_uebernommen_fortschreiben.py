@@ -74,7 +74,6 @@ name = "klv/zellen"
 knoten = "klv/zellen"
 gueltig_von = 2000-01-01
 gueltig_bis = 2040-12-31
-sample_size = 0
 max_endalter = 85
 zins = 0.0125
 tafel = "DAV2008_T_NR_U70"

@@ -13,7 +13,7 @@ ist damit dasselbe, was der Bestand rechnet.
 Drei Tabellen je Produkt:
 
 * die Generationen mit ihren Rechnungsgrundlagen und ihrem Vertrieb
-  (Batch-Stichprobe, Jahresziel mit Trend, uebernommen);
+  (Jahresziel mit Trend, uebernommen);
 * je Generation in Tarifzellen (uebernommene Bestaende) die Zellen mit
   ihren abweichenden Grundlagen;
 * was sich von Generation zu Generation aendert — die Felder, die
@@ -68,8 +68,6 @@ def _wert(name: str, wert: Any) -> str:
 
 def _vertrieb(gen: TarifGeneration) -> str:
     teile: List[str] = []
-    if gen.sample_size > 0:
-        teile.append(f"Batch {gen.sample_size}")
     if gen.neuzugang_pro_jahr > 0:
         trend = (
             f", Trend {gen.neuzugang_trend:+.0%}/Jahr" if gen.neuzugang_trend else ""
@@ -144,7 +142,7 @@ def _wechsel(gens: Sequence[TarifGeneration], produkt: str) -> List[str]:
         "| Wechsel | geänderte Rechnungsgrundlagen |",
         "|---|---|",
     ]
-    verkaufend = [g for g in gens if g.sample_size > 0 or g.neuzugang_pro_jahr > 0]
+    verkaufend = [g for g in gens if g.neuzugang_pro_jahr > 0]
     for vorher, danach in zip(verkaufend, verkaufend[1:]):
         a = {**vorher.generation_fields(), **vorher.bu_generation_fields()}
         b = {**danach.generation_fields(), **danach.bu_generation_fields()}

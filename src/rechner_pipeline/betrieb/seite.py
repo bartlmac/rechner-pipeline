@@ -35,6 +35,7 @@ import argparse
 import datetime as _dt
 import hashlib
 import html as _html
+import io
 import json
 import os
 import shutil
@@ -53,7 +54,14 @@ from rechner_pipeline.models.anker import (
     zeichne,
 )
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
-from rechner_pipeline.bestand.manifest import lies_manifest, sha256_bytes
+from rechner_pipeline.bestand.kennzahlen import bewegungskennzahlen
+from rechner_pipeline.bestand.manifest import (
+    ERZEUGER,
+    lies_manifest,
+    manifest_aus_bytes,
+    pruefe_erzeuger,
+    sha256_bytes,
+)
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio
 from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 
@@ -74,10 +82,26 @@ from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 #: schuetzt ihre letzte Zeile nicht, und genau aus ihr leitet stand.json
 #: ab. Der Sprung macht die Kopplung sichtbar: Ein Konsument des alten
 #: Schemas bekommt eine klare Meldung statt stiller Drift.
-PAKET_SCHEMA_VERSION = 4
+#: Schema 5: Das Paket traegt die juengsten Monatsabschluesse selbst.
+#: Bis Schema 4 nannte ``stand.json`` je Abschluss eine Vertragszahl, die
+#: der Konsument nicht nachrechnen konnte — der festgeschriebene Abschluss
+#: lag nur in der Ablage des Erzeugers. Die Zahl war damit dieselbe Figur
+#: wie ``in_force`` vor T24-04: belegt daneben stehend, tatsaechlich zu
+#: glauben. Mitgeliefert werden die juengsten
+#: :data:`PAKET_ABSCHLUESSE_ANZAHL`, nicht alle: Ein gefuehrter Bestand
+#: hat nach Jahren hunderte, und ein Paket soll tragen, was es zeigt.
+PAKET_SCHEMA_VERSION = 5
 PAKET_PROTOKOLL = "protokoll.jsonl"
 PAKET_MANIFEST = "laufmanifest.json"
 PAKET_JOURNAL = "tagesjournal.parquet"
+#: Verzeichnis der mitgelieferten Abschluesse IM Paket.
+PAKET_ABSCHLUESSE_DIR = "abschluesse"
+#: Zwoelf — ein Jahr Monatsabschluesse. Die Zahl ist zugleich die Grenze,
+#: bis zu der ``in_kraft`` abgeleitet wird, und sie gilt auf BEIDEN
+#: Seiten: Der Erzeuger haette alle Abschluesse zur Hand und wuerde sonst
+#: mehr Zahlen bilden als der Konsument nachrechnen kann — der Vergleich
+#: der beiden Ableitungen schluege fehl, obwohl niemand gelogen hat.
+PAKET_ABSCHLUESSE_ANZAHL = 12
 SEITE_DIR = "seite"
 PAKET_DATEI = "stand.json"
 
@@ -100,7 +124,7 @@ class SeiteError(ValueError):
 
 def _gepruefte_zeilen(
     ablage, aktuelle_zeile: Optional[Dict[str, Any]]
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
     """Die Protokollzeilen und die letzte gruene — NACH dem Nachweisvertrag.
 
     Plus die Zeile des laufenden Tages, wenn der Tageslauf sie noch nicht
@@ -118,6 +142,12 @@ def _gepruefte_zeilen(
 
     Es genuegt also nicht, dass irgendwo eine Wache steht. Sie muss dort
     stehen, wo die Bytes gelesen werden.
+
+    Und sie muss DIESELBEN Bytes weiterreichen (Befund T26-10). Vorher
+    prueften wir die Hashes und lasen Manifest und Journal danach erneut;
+    an der Naht dazwischen passt ein ganzer Tageslauf. Die Gegenprobe des
+    Gutachters hat genau dort einen zweiten, regulaeren Lauf gestartet —
+    die Seite nannte danach den alten Tag und zeigte die neuen Buchungen.
     """
     from rechner_pipeline.betrieb.tageslauf import (
         TageslaufError, lies_protokoll, pruefe_nachweis,
@@ -133,15 +163,19 @@ def _gepruefte_zeilen(
             "Stand gibt es keinen Bestand heute"
         )
     try:
-        pruefe_nachweis(ablage, gruene)
+        gelesen = pruefe_nachweis(ablage, gruene)
     except TageslaufError as exc:
         raise SeiteError(
             f"Der Stand traegt seinen Nachweis nicht, es gibt nichts zu zeigen: {exc}"
         ) from exc
-    return zeilen, gruene[-1]
+    return zeilen, gruene[-1], gelesen
 
 
-def abschluesse_aus_protokoll(zeilen: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def abschluesse_aus_protokoll(
+    zeilen: List[Dict[str, Any]],
+    journal: Optional[pd.DataFrame] = None,
+    abschluesse_dir: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
     """Die Monatsabschluesse eines Stands aus allen gruenen Protokollzeilen.
 
     Je Stichtag EIN Eintrag: Die Zeile, die ihn geschrieben hat, nennt
@@ -152,6 +186,16 @@ def abschluesse_aus_protokoll(zeilen: List[Dict[str, Any]]) -> List[Dict[str, An
     T24-04): Der Erzeuger baut daraus ``stand.json``, der Konsument haelt
     ``stand.json`` dagegen. Zweimal geschrieben waeren es zwei Regeln, die
     auseinanderlaufen — genau die Drift, gegen die der Beleg antritt.
+
+    Genau deshalb nimmt sie QUELLEN entgegen und keine Ablage: Der
+    Erzeuger reicht Journal und Abschlussverzeichnis seiner Ablage, der
+    Konsument dieselben Dateien aus dem Paket. Eine Ablage koennte nur
+    der Erzeuger stellen; die Ableitung waere dann seine allein, und der
+    Konsument muesste ihr Ergebnis glauben statt es nachzubilden.
+
+    Fehlt eine Quelle, bleiben die zugehoerigen Felder WEG — sie werden
+    nicht genullt. "Nicht gerechnet" und "null Vorfaelle" sind
+    verschiedene Aussagen, und nur eine davon ist hier wahr.
     """
     abschluesse: Dict[str, Dict[str, Any]] = {}
     for z in zeilen:
@@ -166,37 +210,124 @@ def abschluesse_aus_protokoll(zeilen: List[Dict[str, Any]]) -> List[Dict[str, An
                 eintrag["bericht"] = a["bericht"]
             if a.get("teilbestaende"):
                 eintrag["teilbestaende"] = a["teilbestaende"]
-    return [abschluesse[k] for k in sorted(abschluesse)]
+            for feld in KENNZAHL_FELDER:
+                if a.get(feld) is not None:
+                    eintrag[feld] = a[feld]
+    liste = [abschluesse[k] for k in sorted(abschluesse)]
+    _ergaenze_kennzahlen(liste, journal, abschluesse_dir)
+    return liste
+
+
+#: Die Zahlen der Monatszeile. Abschluesse aus Laeufen VOR ihrer
+#: Einfuehrung tragen sie nicht; sie werden beim Export aus gebundenen
+#: Bytes nachgerechnet, nicht behauptet.
+KENNZAHL_FELDER = ("in_kraft", "zugaenge", "leistungen")
+#: Die beiden Felder, die das Tagesjournal ALLEIN traegt — es reicht ueber
+#: die ganze Buchungshistorie, waehrend der festgeschriebene Abschluss nur
+#: fuer die juengsten Monate mitgeliefert wird.
+BEWEGUNGS_FELDER = ("zugaenge", "leistungen")
+
+
+def _ergaenze_kennzahlen(
+    liste: List[Dict[str, Any]],
+    journal: Optional[pd.DataFrame],
+    abschluesse_dir: Optional[Path],
+) -> None:
+    """Fehlende Monatskennzahlen aus den gegebenen Quellen nachrechnen.
+
+    Aeltere Abschluesse entstanden, bevor der Tagesbetrieb die Zahlen
+    schrieb. Sie neu zu erzeugen ginge nicht — ein Abschluss ist
+    festgeschrieben und wird nie zweimal geschrieben. Sie sind aber
+    ABLEITBAR, aus zwei verschieden weit reichenden Quellen:
+
+    * Das Tagesjournal traegt die ganze Buchungshistorie. Daraus kommen
+      ``zugaenge`` und ``leistungen`` fuer JEDEN Eintrag der Liste.
+    * ``in_kraft`` ist die Zeilenzahl des festgeschriebenen Abschlusses.
+      Der liegt beim Konsumenten nur fuer die juengsten
+      :data:`PAKET_ABSCHLUESSE_ANZAHL` Monate — mehr traegt das Paket
+      nicht.
+
+    Gerechnet wird mit denselben Funktionen, die der Tageslauf ruft
+    (``bestand.kennzahlen``); zwei Implementierungen liefen auseinander,
+    sobald jemand eine Ereignisart ergaenzt.
+
+    Ein fehlender Abschluss laesst den Eintrag ohne ``in_kraft`` — und
+    das bleibt trotzdem vergleichbar: Der Erzeuger legt genau die
+    Abschluesse ins Paket, die er selbst hat, also fehlt beiden Seiten
+    derselbe. Wer eine Datei nachtraeglich aus dem Paket nimmt, faellt
+    eine Stufe frueher auf, weil ``dateien`` sie mit Hash nennt.
+    """
+    if journal is not None:
+        for eintrag in liste:
+            if any(f not in eintrag for f in BEWEGUNGS_FELDER):
+                eintrag.update(bewegungskennzahlen(
+                    journal, _dt.date.fromisoformat(eintrag["stichtag"])))
+    if abschluesse_dir is None:
+        return
+    for eintrag in juengste_abschluesse(liste):
+        if "in_kraft" in eintrag:
+            continue
+        pfad = Path(abschluesse_dir) / eintrag["datei"]
+        if pfad.is_file():
+            eintrag["in_kraft"] = int(len(read_portfolio(pfad)))
+
+
+def juengste_abschluesse(liste: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Die Abschluesse, die mit dem Paket reisen — juengste zuletzt.
+
+    EINE Auswahlregel fuer zwei Zwecke: ``stands_paket`` kopiert genau
+    diese Dateien, und :func:`_ergaenze_kennzahlen` rechnet genau fuer
+    diese Eintraege ``in_kraft`` nach. Zwei getrennte Regeln liefen
+    auseinander, und das Ergebnis waere ein Paket, das eine Zahl nennt,
+    deren Beleg es nicht mitbringt.
+    """
+    return [e for e in liste if e.get("datei")][-PAKET_ABSCHLUESSE_ANZAHL:]
 
 
 def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Datum, Kennzahlen, Neugeschaeft, Buchungen, Abschluesse, Provenienz — aus
     Protokoll, Journal und Manifest des uebernommenen Stands."""
-    zeilen, zeile = _gepruefte_zeilen(ablage, aktuelle_zeile)
+    return stand_modell_mit_bytes(ablage, aktuelle_zeile)[0]
+
+
+def stand_modell_mit_bytes(
+    ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Wie :func:`stand_modell`, plus die GEPRUEFTEN Bytes von Manifest
+    und Journal.
+
+    Der Paket-Export braucht sie (Befund T26-10): Er legt Manifest und
+    Journal als Belege ins Paket, und wenn er sie dafuer ein zweites Mal
+    von der Platte liest, kann zwischen Pruefung und Kopie ein Tageslauf
+    liegen — das Paket truege dann Belege einer anderen Generation als
+    die Zahlen daneben."""
+    zeilen, zeile, gelesen = _gepruefte_zeilen(ablage, aktuelle_zeile)
     heute = _dt.date.fromisoformat(str(zeile["heute"]))
-    manifest = lies_manifest(ablage.stand)
+    # Die GEPRUEFTEN Bytes, nicht ein zweiter Lesevorgang (Befund
+    # T26-10): Zwischen Pruefung und Auswertung passt ein ganzer
+    # Tageslauf, und die Seite nannte danach den alten Tag mit den neuen
+    # Buchungen.
+    manifest = (manifest_aus_bytes(gelesen["manifest"])
+                if gelesen.get("manifest") is not None
+                else lies_manifest(ablage.stand))
+    # Die Seite zeigt den Stand eines laufenden Unternehmens; das ist ein
+    # Fortschreibungslauf. Ein Migrationszugang haette einen Horizont und
+    # kaeme durch die Datumspruefung unten, zeigte aber einen Bestand
+    # ohne eigenes Geschaeft.
+    pruefe_erzeuger(manifest, ERZEUGER)
     if str(manifest["horizont"]) != heute.isoformat():
         raise SeiteError(
             f"Stand fuehrt {manifest['horizont']}, das Protokoll {heute.isoformat()} "
             "— Stand und Nachweis passen nicht zusammen"
         )
+    journal_roh = gelesen.get("journal")
+    journal_vorhanden = journal_roh is not None
     journal = (
-        read_portfolio(ablage.tagesjournal_pfad, expected_columns=TAGESJOURNAL_NAMES)
-        if ablage.tagesjournal_pfad.is_file()
+        read_portfolio(io.BytesIO(journal_roh), expected_columns=TAGESJOURNAL_NAMES)
+        if journal_vorhanden
         else pd.DataFrame({n: pd.Series(dtype="object") for n in TAGESJOURNAL_NAMES})
     )
-    woche_ab = pd.Timestamp(heute - _dt.timedelta(days=6))
-    neu = journal[(journal["herkunft"] == "neugeschaeft") & (journal["buchungsdatum"] >= woche_ab)]
-    # Gezaehlt werden VERKAEUFE, nicht Journalzeilen: Ein Zugang bucht seit
-    # dem gebuchten Beitrag zwei Zeilen (Summe und Bruttojahresbeitrag).
-    # Ueber size() gemeldet, waere das Neugeschaeft der Woche doppelt so
-    # gross wie die Zahl der Vertraege — die Seite behauptete Verkaeufe,
-    # die es nicht gab.
-    neu_vorfaelle = neu[["police_id", "status_date", "buchungsdatum"]].drop_duplicates()
-    je_tag = {
-        pd.Timestamp(t).date().isoformat(): int(n)
-        for t, n in sorted(neu_vorfaelle.groupby("buchungsdatum").size().items())
-    }
+    woche = neugeschaeft_der_woche(journal, heute)
     letzte = journal.tail(20).iloc[::-1]
     buchungen = [
         {
@@ -220,7 +351,7 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
             .drop_duplicates()["ereignis"].value_counts().items()
         )
     } if len(journal) else {}
-    return {
+    modell = {
         "schema_version": PAKET_SCHEMA_VERSION,
         "stand": heute.isoformat(),
         "gefuehrt_seit": (
@@ -229,15 +360,22 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
         "bestand": dict(zeile["bestand"]),
         "neugeschaeft": {
             "seit_betriebsbeginn": int(zeile.get("neugeschaeft_seit_betriebsbeginn", 0)),
-            "woche": je_tag,
-            "woche_summe": int(len(neu_vorfaelle)),
+            **woche,
         },
         "buchungen": {
             "gesamt": int(len(journal)),
             "je_ereignis": je_ereignis,
             "letzte": buchungen,
         },
-        "abschluesse": abschluesse_aus_protokoll(zeilen),
+        # Die leere Ersatztabelle oben traegt die uebrigen Bloecke; als
+        # Kennzahlenquelle taugt sie nicht. Sie lieferte lauter Nullen,
+        # und eine Null waere hier die Behauptung "kein Vorfall" statt
+        # der Wahrheit "nicht gerechnet".
+        "abschluesse": abschluesse_aus_protokoll(
+            zeilen,
+            journal=journal if journal_vorhanden else None,
+            abschluesse_dir=ablage.abschluesse,
+        ),
         "uebernahmen": list(zeile.get("uebernahmen") or []),
         "verankerung": dict(zeile.get("verankerung") or {}),
         "provenienz": {
@@ -251,6 +389,7 @@ def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dic
             "tagesjournal_sha256": (zeile.get("tagesjournal") or {}).get("sha256"),
         },
     }
+    return modell, gelesen
 
 
 # --------------------------------------------------------------------------- #
@@ -284,6 +423,36 @@ def _e(x: Any) -> str:
 
 def _zahl(x: float, dez: int = 2) -> str:
     return f"{x:,.{dez}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def neugeschaeft_der_woche(
+    journal: pd.DataFrame, heute: _dt.date
+) -> Dict[str, Any]:
+    """Das Neugeschaeft der letzten sieben Tage: je Tag und in Summe.
+
+    Oeffentlich, weil zwei Seiten dieselbe Ableitung brauchen (Befund
+    T26-09): Der Erzeuger baut daraus ``stand.json``, der Konsument haelt
+    ``stand.json`` dagegen. Vorher rechnete nur der Erzeuger, und der
+    Konsument uebernahm die Zahlen ungeprueft ins veroeffentlichte
+    Datenmodell — ``woche_summe`` liess sich auf 1.000.000 setzen, bei
+    unveraendertem Anker und unveraendertem Journal.
+
+    Gezaehlt werden VERKAEUFE, nicht Journalzeilen: Ein Zugang bucht seit
+    dem gebuchten Beitrag zwei Zeilen (Summe und Bruttojahresbeitrag).
+    Ueber ``size()`` gemeldet, waere das Neugeschaeft der Woche doppelt so
+    gross wie die Zahl der Vertraege.
+    """
+    woche_ab = pd.Timestamp(heute - _dt.timedelta(days=6))
+    neu = journal[(journal["herkunft"] == "neugeschaeft")
+                  & (journal["buchungsdatum"] >= woche_ab)]
+    vorfaelle = neu[["police_id", "status_date", "buchungsdatum"]].drop_duplicates()
+    return {
+        "woche": {
+            pd.Timestamp(t).date().isoformat(): int(n)
+            for t, n in sorted(vorfaelle.groupby("buchungsdatum").size().items())
+        },
+        "woche_summe": int(len(vorfaelle)),
+    }
 
 
 def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -490,6 +659,45 @@ def paketziel_fehler(ablage, ziel: Path) -> Optional[str]:
     return None
 
 
+def ankerziel_fehler(ablage, paket_ziel: Path, anker_verzeichnis: Path) -> Optional[str]:
+    """Liegt das Ankerverzeichnis ausserhalb dessen, was dieser Export
+    anfasst? Leer = ja.
+
+    Der Anker ist der einzige Bezug des Pakets nach aussen (models.anker):
+    der Hash der letzten Protokollzeile, abgelegt dort, wo der schreibende
+    Prozess nicht hinlangt.
+
+    Liegt er IM PAKET, ist er keiner. Der Export ersetzt das Paket bei
+    jedem Lauf und nimmt die Ankerhistorie mit — gemessen zwei Saetze vor
+    dem Reexport und einer danach, obwohl die Reihe laut Vertrag nur
+    wachsen darf. Und der Konsument haelt die Faelschung dann gegen ihre
+    eigene Beilage: Eine konsistent von 68 auf 1068 Vertraege
+    umgeschriebene Lieferung wurde angenommen (Befund T26-08).
+
+    Liegt er in der ABLAGE, schreibt der Tagesbetrieb selbst an den Ort,
+    der ihn binden soll. Beides ist dieselbe Aussage: Ein Wert, den der
+    schreibende Prozess aendern kann, ist kein Anker.
+
+    Geprueft wird mit derselben Regel wie fuer Ordnung, Schluessel und
+    Mandat (``models.zeichnung.ausserhalb_von``): lexikalisch UND
+    aufgeloest, damit weder ``paket/../paket/anker`` noch ein Symlink
+    daran vorbeikommt.
+    """
+    from rechner_pipeline.models.zeichnung import ausserhalb_von
+
+    anker = Path(anker_verzeichnis)
+    for was, bereich in (("die Ablage", Path(ablage.wurzel)),
+                         ("das Stands-Paket", Path(paket_ziel))):
+        if not ausserhalb_von(anker, bereich, muss_existieren=False):
+            return (
+                f"Anker: {anker_verzeichnis} liegt in oder auf {was} "
+                f"({bereich}) — ein Bezug, den der schreibende Prozess selbst "
+                "anfassen kann, bindet nichts. Ein Verzeichnis ausserhalb von "
+                "Ablage und Paket waehlen (Fall-Datenraum)."
+            )
+    return None
+
+
 def _zeichnung_des_exports(
     satz: Dict[str, Any], schluessel: Path, ordnung_pfad: Optional[Path],
     ablage_wurzel: Path,
@@ -569,7 +777,12 @@ def stands_paket(
     fehler = paketziel_fehler(ablage, ziel)
     if fehler:
         raise SeiteError(fehler)
-    modell = stand_modell(ablage)
+    # VOR jeder Loeschung: Ein Anker im Paket wuerde mit dem Paket
+    # verschwinden, und ein Anker in der Ablage waere keiner (T26-08).
+    fehler = ankerziel_fehler(ablage, ziel, anker_verzeichnis)
+    if fehler:
+        raise SeiteError(fehler)
+    modell, gelesen = stand_modell_mit_bytes(ablage)
     if ziel.exists():
         # Die Wache ist paketziel_fehler (Ablage-Grenze, Symlink, Marker);
         # entferne_verzeichnis wiederholt Marker- und Symlink-Pruefung und
@@ -591,6 +804,18 @@ def stands_paket(
             if quelle.is_file():
                 shutil.copyfile(quelle, ziel / name)
                 dateien[name] = sha256_bytes((ziel / name).read_bytes())
+    # Die juengsten Monatsabschluesse selbst (Schema 5). stand.json nennt
+    # je Abschluss eine Vertragszahl; ohne den Abschluss daneben bliebe
+    # sie zu glauben — dieselbe Figur wie in_force vor T24-04. Kopiert
+    # wird genau die Auswahl, fuer die auch in_kraft abgeleitet wird.
+    for a in juengste_abschluesse(modell["abschluesse"]):
+        quelle = ablage.abschluesse / a["datei"]
+        if not quelle.is_file():
+            continue
+        name = f"{PAKET_ABSCHLUESSE_DIR}/{a['datei']}"
+        (ziel / PAKET_ABSCHLUESSE_DIR).mkdir(exist_ok=True)
+        shutil.copyfile(quelle, ziel / name)
+        dateien[name] = sha256_bytes((ziel / name).read_bytes())
     seite = ziel / "index.html"
     _schreibe(seite, rendere_html(modell))
     dateien["index.html"] = sha256_bytes(seite.read_bytes())
@@ -607,11 +832,22 @@ def stands_paket(
             f"{ablage.tagesjournal_pfad} fehlt — ein Stands-Paket ohne "
             "Tagesjournal belegt seine Buchungszahlen nicht"
         )
-    for quelle, name in ((ablage.protokoll_pfad, PAKET_PROTOKOLL),
-                         (ablage.stand / MANIFEST_DATEI, PAKET_MANIFEST),
-                         (ablage.tagesjournal_pfad, PAKET_JOURNAL)):
-        shutil.copyfile(quelle, ziel / name)
-        dateien[name] = sha256_bytes((ziel / name).read_bytes())
+    # Manifest und Journal kommen aus den GEPRUEFTEN Bytes, nicht von der
+    # Platte (Befund T26-10): Zwischen Pruefung und Kopie kann ein
+    # Tageslauf liegen, und das Paket truege dann Belege einer anderen
+    # Generation als die Zahlen daneben. Das Protokoll wird kopiert — es
+    # ist nur anfuegbar, und seine Kette prueft der Konsument selbst.
+    shutil.copyfile(ablage.protokoll_pfad, ziel / PAKET_PROTOKOLL)
+    dateien[PAKET_PROTOKOLL] = sha256_bytes(
+        (ziel / PAKET_PROTOKOLL).read_bytes())
+    for name, roh in ((PAKET_MANIFEST, gelesen.get("manifest")),
+                      (PAKET_JOURNAL, gelesen.get("journal"))):
+        if roh is None:
+            raise SeiteError(
+                f"{name}: der gepruefte Nachweis traegt diese Bytes nicht — "
+                "ein Paket ohne sie belegt seine Zahlen nicht")
+        (ziel / name).write_bytes(roh)
+        dateien[name] = sha256_bytes(roh)
     modell["dateien"] = dict(sorted(dateien.items()))
     modell["luecken"] = luecken(modell)
     # Der Anker: Erst den Satz bilden, dann ablegen, dann NENNEN. Genannt

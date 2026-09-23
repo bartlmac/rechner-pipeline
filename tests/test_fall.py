@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline import fall as fall_mod
+from rechner_pipeline.models import belegrollen as belegrollen_mod
 from rechner_pipeline.fall import (
     FallFehler,
     anlegen,
@@ -63,10 +64,10 @@ def test_scope_legt_die_am4_pflichten_fuer_tarif_und_bestand_fest(
 
     assert fall_mod.lade_scope(tarif) == "tarif"
     assert fall_mod.lade_scope(bestand) == "bestand"
-    assert fall_mod.am4_belegrollen("tarif") == [
+    assert belegrollen_mod.am4_belegrollen("tarif") == [
         "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
     ]
-    assert fall_mod.am4_belegrollen("bestand") == [
+    assert belegrollen_mod.am4_belegrollen("bestand") == [
         "pq3_ledger", "aq1_snapshot",
         # Alle drei aktuariellen Abnahmen (Entscheidung 2026-08-31) --
         # im Tarif-Scope nur A-M1, dort gibt es keinen Bestand.
@@ -78,12 +79,12 @@ def test_scope_legt_die_am4_pflichten_fuer_tarif_und_bestand_fest(
     ]
     # Belegrollen JE GATE (ADR-010): A-M1 pinnt im Bestands-Scope die
     # Testartefakte, im Tarif-Scope ist die Rollenmenge leer.
-    assert fall_mod.belegrollen("A-M1", "tarif") == []
-    assert fall_mod.belegrollen("A-M1", "bestand") == [
+    assert belegrollen_mod.belegrollen("A-M1", "tarif") == []
+    assert belegrollen_mod.belegrollen("A-M1", "bestand") == [
         "aktuartest", "aktuartest_bericht",
     ]
-    with pytest.raises(FallFehler, match="kein Belegrollen-Vertrag"):
-        fall_mod.belegrollen("A-Q1", "tarif")
+    with pytest.raises(belegrollen_mod.BelegrollenFehler, match="kein Belegrollen-Vertrag"):
+        belegrollen_mod.belegrollen("A-Q1", "tarif")
     ungueltig = tmp_path / "ungueltig"
     with pytest.raises(FallFehler, match="unbekannter Fall-Scope"):
         anlegen(ungueltig, scope="geraten")

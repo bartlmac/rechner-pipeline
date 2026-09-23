@@ -104,6 +104,29 @@ docker build -f deploy/dev/Dockerfile -t rechner-pipeline-dev .
 docker run --rm -v "$PWD":/workspace rechner-pipeline-dev            # full suite
 docker run --rm -it -v "$PWD":/workspace rechner-pipeline-dev bash   # shell
 ```
+**Platforms that have been verified.** The container route is not a
+theory here; two team members have run it and reported provenance, not
+just a suite line:
+
+| Platform | Measured |
+|---|---|
+| Windows 11, WSL 2 (Ubuntu), Docker Desktop | suite green 2026-09-14; provenance 2026-09-20 on commit `f518b6a`: 2212 passed, 3 skipped in 908 s |
+| macOS 26.6.2, arm64 | same commit `f518b6a`: 2212 passed, 3 skipped in 595 s |
+
+Two results matter beyond "it ran". First, both platforms reported the
+SAME `quellcode_sha256` on the same commit (`c4bffa4f...`) — so the
+checkout is byte-identical across platforms and the LF pinning in
+`.gitattributes` does what it claims; a Windows checkout is not a
+different tree. Second, `systemstand` carried real values on Windows,
+not `unbekannt`: git reads the mounted tree from inside the container
+there too, so gate belege produced on Windows carry the same provenance
+as on Linux. That was the actual worry, and it is answered.
+
+The pitfall is the one described above: the WSL environment
+preinstalled on a machine may still be version 1, and the Docker Desktop
+integration then cannot be enabled at all. Installing a fresh Ubuntu and
+working in it is the route that was actually run.
+
 **Reporting an environment.** When you report a run — a new machine, a
 platform we have not verified — send the provenance of the code you ran,
 not just the suite line. Same container, one command:
@@ -133,7 +156,7 @@ excluded from that rule because their bytes are hashed.
 This is the one documented install path, identical to CI. The pin files
 carry the direct dependencies (`pyproject.toml`: `openpyxl`, `oletools`,
 `pandas`, `pyarrow`, `matplotlib`, `pydantic`, `pypdf`; dev: `pytest`,
-`hypothesis`) AND their complete transitive closure;
+`hypothesis`, `pytest-xdist`) AND their complete transitive closure;
 `tests/test_abhaengigkeiten.py` keeps that closure closed. Installing
 with `pip install -e ".[dev]"` alone pins only the direct dependencies
 and lets pip resolve everything transitive freshly — with
@@ -245,23 +268,34 @@ code-ontology tools, the actuarial documentation
 `docs/tarifplaene/` for each product's elaboration), and the
 test suite.
 
-**Generate a portfolio and its report.** Two DIFFERENT dates: `--bis` is
-the simulation horizon (how far events are projected), `--stichtag` only
-marks the history/projection boundary in the report. `--stichtag` is
-optional: without it the report takes `meta.referenzstichtag` from the
-config (so it only applies when `--config` is passed) — the reference
-date is a property of the portfolio, kept in its config, and the flag
-merely overrides it. Setting `--bis` to "today" silently kills the
-projection — everything beyond the reference date then degenerates to
-planned new business:
+**Generate a portfolio and its report.** A portfolio is built from its
+access stream: the run starts empty and every contract enters as a
+dated `ZUG` event (ADR-020). `--neuzugang-ab` names the day the stream
+starts — for a portfolio built from scratch that is the first sales day
+of the oldest generation; `--bis` is the simulation horizon (how far
+events are projected). The report's `--stichtag` only marks the
+history/projection boundary; it is optional and defaults to
+`meta.referenzstichtag` from the config (so it only applies when
+`--config` is passed) — the reference date is a property of the
+portfolio, kept in its config, and the flag merely overrides it. Setting
+`--bis` to "today" silently kills the projection.
 ```
 python -m rechner_pipeline.bestand.cli_fortschreibung \
-    --config configs/bestand_gesamt.toml --bis 2046-01-01 --out-dir runs/bestand
+    --config configs/bestand_gesamt.toml --neuzugang-ab 1994-07-01 \
+    --bis 2046-01-01 --out-dir runs/bestand
 python -m rechner_pipeline.bestand.cli_report --portfolio runs/bestand/bestand_gesamt.parquet \
     --historie runs/bestand/historie.parquet --ledger runs/bestand/ledger.parquet \
     --scheiben runs/bestand/scheiben.parquet --config configs/bestand_gesamt.toml \
     --bis 2046-01-01 --stichtag 2026-01-01 --out runs/berichte/bestandsbericht.html
 ```
+The run reports `0 Basisvertraege, 4441 Neuzugaenge` — the zero is
+correct and the one number that invites misreading: there is no base
+portfolio any more, every one of the 4441 contracts is a new entry with
+its own `ZUG` in the ledger (1213 of them start after 01.01.2026, the
+yearly target shrinks with `neuzugang_trend`). A run given neither
+`--portfolio` nor `--uebernahme` nor `--neuzugang-ab` has nothing to
+carry and says so (exit 2) instead of inventing a portfolio.
+
 The run also writes `runs/bestand/laufmanifest.json`, its delivery
 note: the simulated horizon, the config hash and a SHA-256 per output.
 `cli_abschluss` refuses a run directory without it, and `--bis` must
@@ -269,33 +303,12 @@ equal the horizon the manifest attests — the horizon is a property of
 the run, not of the call that reads it. Gate P-B1 binds the manifest
 on request (`--manifest`).
 
-**New business in this run: none — and that is deliberate.** The run
-above reports `4720 Basisvertraege, 0 Neuzugaenge`, and the zero is the
-one number that regularly gets misread. It does NOT mean the portfolio
-runs off from the reference date on: without `--neuzugang-ab`, the base
-generator populates each generation's full sales window in one batch, so
-the portfolio already carries the arrivals up to 2035 (1517 of the 4720
-contracts start after 01.01.2026 — one generator per time window, never
-two; since the PLV sells until today, the current generations KLV-2025
-and BU-2025 carry the batch density of their yearly target). `neuzugang_pro_jahr` in the config is the rate of the OTHER
-generator, the one that emits new business as dated GeVo events during
-the projection; it takes effect only when the run declares the reference
-date at which the batch stops and the event stream takes over:
-```
-python -m rechner_pipeline.bestand.cli_fortschreibung \
-    --config configs/bestand_gesamt.toml --bis 2046-01-01 \
-    --neuzugang-ab 2026-01-01 --out-dir runs/bestand-nz
-```
-That run reports `3203 Basisvertraege, 1213 Neuzugaenge` — same total
-order of magnitude, but arrivals after 01.01.2026 now come with a `ZUG`
-GeVo of their own in the ledger (1213 of them, absent from the run above;
-the yearly target follows `neuzugang_trend`, so the stream shrinks year
-by year)
-instead of sitting in the base portfolio from the start. The
-documented run above stays without it because it is the reference run of
-the demo: its numbers appear in the portfolio report and in the
-before/after pair of the migration acceptance, and switching generators
-would move every one of them.
+The demo itself does not use this command for its own business: the
+Pfefferminzia is run day by day (`betrieb.tageslauf`, same access
+stream at daily resolution, see `docs/simulation/tagesbetrieb.md`).
+`cli_fortschreibung` is the test track of a migration case
+(`--uebernahme`, see the migration skill) and the quickest way to a
+synthetic portfolio with full history.
 
 **Navigate the codebase** (fundstellen are derived, not searched — ADR-005):
 ```

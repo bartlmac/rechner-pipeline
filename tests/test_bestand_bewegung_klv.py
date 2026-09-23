@@ -25,7 +25,7 @@ import pytest
 
 from rechner_pipeline.bestand.config import Annahme, Annahmen, load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.kennzahlen import bewegungskonto
 from rechner_pipeline.models.bestand import STAMM_SPALTEN
 
@@ -225,7 +225,7 @@ def test_horizont_begrenzt_die_pruefbaren_jahre(config):
 
 
 def test_voller_lauf_identitaeten_und_verkettung(config):
-    portfolio = generate(config)
+    portfolio = bestand_aus_zugangsstrom(config)
     bis = dt.date(2035, 1, 1)
     historie, ledger, scheiben, *_ = fortschreiben(portfolio, config, bis)
     konto = bewegungskonto(portfolio, historie, ledger, scheiben, bis=bis)

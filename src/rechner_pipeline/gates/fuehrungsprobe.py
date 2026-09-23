@@ -50,7 +50,7 @@ import pandas as pd
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.config import BestandConfig, config_aus_text
 from rechner_pipeline.bestand.parquet_io import read_portfolio_aus_bytes
-from rechner_pipeline.gates._common import lies_gehasht
+from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.gates.bestand_uebernehmen import GRUNDVERTRAG, MATERIALISIEREN
 from rechner_pipeline.gates.migrationssuite_lauf import (
@@ -67,6 +67,7 @@ from rechner_pipeline.kern.beitragsreduktion import (
 )
 from rechner_pipeline.kern.korrekturschicht import (
     Schichtparameter,
+    schicht_traegt,
     schichtwert_bei,
     zuschlag_bei_pex,
 )
@@ -82,6 +83,11 @@ from rechner_pipeline.models.bestand import (
     VERANKERUNG_NAMES,
     model_point_kwargs,
 )
+
+#: Die drei Spalten des Stamms, die die Fortschreibung BEWEGEN darf.
+#: Sie zu bewegen IST die Fortschreibung; jede andere Stammspalte ist
+#: Identitaet und wird verglichen (Befund T26-05).
+ZUSTANDSSPALTEN = ("status_id", "status_code", "status_date")
 from rechner_pipeline.models.manifest import GeleseneDatei
 from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 
@@ -329,14 +335,10 @@ def pruefe_fuehrung(
                 befund(pid, "beitragsfrei",
                        f"PEX-Jahr {_jahre(beginn, pex_historie[pid])} in der "
                        f"Historie, {int(pex_jahr)} in der Pruefstrecke")
-            vs_bfr = grund.beitragsfreie_summe(int(pex_jahr)) + sum(
-                k.beitragsfreie_summe(int(pex_jahr) - j) for j, k in teile)
             if pid not in ledger_pex.index:
                 befund(pid, "umbuchung", "keine PEX-Umbuchung im Uebernahme-Ledger")
-            elif abs(float(ledger_pex.loc[pid]) - vs_bfr) > TOLERANZ:
-                befund(pid, "umbuchung",
-                       f"Umbuchung {float(ledger_pex.loc[pid]):.2f} statt "
-                       f"{vs_bfr:.2f} (beitragsfreie Summe der Pruefstrecke)")
+            # Der BETRAG wird erst nach Abschnitt 3 geprueft: Er traegt
+            # die Korrekturschicht, und die steht hier noch nicht.
         gesamt = grund_mp.sum_insured + sum(k.mp.sum_insured for _, k in teile)
         if pid not in ledger_zug.index:
             befund(pid, "zugang", "keine Zugangsbuchung im Uebernahme-Ledger")
@@ -413,6 +415,29 @@ def pruefe_fuehrung(
                                f"{feld} {zeile[feld]!r} in schichten.parquet, "
                                f"{getattr(param, feld)!r} im Schichtbeleg", feld=feld)
 
+    # 3b. Die Umbuchung der Uebernahme, MIT Korrekturschicht ----------------
+    # Sie stand vorher in Abschnitt 2 und rechnete die beitragsfreie Summe
+    # ohne Zuschlag — dieselbe Luecke, die die Uebernahme selbst hatte
+    # (Entscheid des Maintainers 2026-09-20): Die beitragsfreie Summe ist
+    # eine garantierte Leistung und traegt den absorbierten Schichtwert.
+    # Gerechnet wird durch dieselbe Tuer wie unten in Abschnitt 4
+    # (``zuschlag_bei_pex``); zwei Rechenwege waren der Befund T25-06.
+    for pid, welt in welten.items():
+        pex_jahr = welt["pex_jahr"]
+        if pex_jahr is None or pid not in ledger_pex.index:
+            continue
+        grund, teile = welt["grund"], welt["teile"]
+        vs_bfr = (
+            grund.beitragsfreie_summe(int(pex_jahr))
+            + sum(k.beitragsfreie_summe(int(pex_jahr) - j) for j, k in teile)
+            + zuschlag_bei_pex(schicht_je_police.get(pid), grund, int(pex_jahr))
+        )
+        if abs(float(ledger_pex.loc[pid]) - vs_bfr) > TOLERANZ:
+            befund(pid, "umbuchung",
+                   f"Umbuchung {float(ledger_pex.loc[pid]):.2f} statt "
+                   f"{vs_bfr:.2f} (beitragsfreie Summe der Pruefstrecke "
+                   "einschliesslich Korrekturschicht)")
+
     # 4. Buchungen der Fortschreibung nach dem Stichtag ---------------------
     buchungen: Dict[str, int] = {art: 0 for art in GEPRUEFTE_BUCHUNGEN}
     abweichungen = 0
@@ -424,8 +449,24 @@ def pruefe_fuehrung(
         # ausgenommen — sie zu bewegen IST die Fortschreibung.
         f_bestand = fortschreibung.get("bestand")
         if f_bestand is not None:
-            identitaet = ["produkt", "tarif_generation", "date_of_birth",
-                          "insurance_start", "entry_age", "duration"]
+            # Benannt wird, was sich BEWEGEN darf — nicht, was geprueft
+            # wird (Befund T26-05). Vorher stand hier eine handverlesene
+            # Auswahl von sechs Feldern, und ``sum_insured`` war nicht
+            # darin: Eine von 43.000 auf 1.042.999 EUR erhoehte Stammsumme
+            # lief durch die echte Probe und durch ihren Consumer, gruen,
+            # mit positivem Zaehler. Der Zaehler sagte nur, dass eine
+            # Zeile auf sechs Attribute angesehen wurde.
+            #
+            # Gemessen am gefahrenen Fall (500 Policen) aendert die
+            # Fortschreibung GENAU DREI Spalten. Alles andere ist
+            # Identitaet — Erhoehungen leben in den Scheiben, die
+            # Herabsetzung im Ledger, die beitragsfreie Summe in ihrer
+            # eigenen Spalte. Eine neue Stammspalte ist damit von Anfang
+            # an geprueft, statt stillschweigend ungeprueft zu bleiben.
+            identitaet = [feld for feld in STAMM_NAMES
+                          if feld not in ZUSTANDSSPALTEN
+                          and feld != "police_id"
+                          and feld in f_bestand.columns]
             ende = f_bestand.set_index("police_id")
             for row in stamm.to_dict("records"):
                 pid = int(row["police_id"])
@@ -548,7 +589,7 @@ def pruefe_fuehrung(
                     grund, teile, 12 * jahr,
                     stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
                 schicht = schicht_je_police.get(pid)
-                if schicht is not None and 12 * jahr >= schicht[1]:
+                if schicht_traegt(schicht, 12 * jahr):
                     erwartet += schichtwert_bei(schicht[0], schicht[1], grund_mp, 12 * jahr)
             elif art == "PEX":
                 # Liegt die Freistellung nach der Verankerung, hat sie die
@@ -654,19 +695,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     # danach ein zweites Mal vom Pfad — dazwischen konnte eine andere
     # Datei stehen, und der Beleg bezeugte einen Zustand, den niemand
     # geprueft hat.
-    eingaben: Dict[str, str] = {}
-
-    def schluessel(pfad: Path) -> str:
-        # Eingaben im Fall relativ (portabler Beleg), ausserhalb absolut —
-        # der Abnahmebericht hasht jede davon auf den aktuellen Bytes nach.
-        pfad = pfad.resolve()
-        return str(pfad.relative_to(fall)) if fall in pfad.parents else str(pfad)
-
-    def binde(pfad: Path) -> GeleseneDatei:
-        """Eine Eingabe lesen UND registrieren — ein Lesevorgang, ein Hash."""
-        gelesen = lies_gehasht(pfad)
-        eingaben[schluessel(pfad)] = gelesen.sha256
-        return gelesen
+    # EINE Bindung, die gemeinsame (Befund T26-07, Teil b). Die eigene
+    # Fassung hier las bei jedem Aufruf neu — wer eine Datei fuer einen
+    # zweiten Zweck brauchte, bekam einen zweiten Lesevorgang. Genau
+    # daran haengt der nachgewiesene Bruch: Der Schichtbeleg wurde
+    # fachlich gelesen und danach ein zweites Mal gehasht; gebunden
+    # wurden die Bytes der zweiten Lesung, geprueft die der ersten. Ein
+    # Producer band damit unter gruenem Urteil eine Datei, die er nie
+    # verarbeitet hatte.
+    bindung = Eingangsbindung(fall)
+    schluessel = bindung.schluessel
+    binde = bindung.binde
 
     def lies(pfad: Path, spalten, pflicht: bool):
         if not pfad.is_file():
@@ -774,16 +813,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.schicht:
         from rechner_pipeline.gates.aktuartest_lauf import _schichten
 
-        roh = _schichten(fall, args.schicht, repo_root=repo_root)
+        # Dieselbe Bindung weitergereicht: Der Beleg wird EINMAL gelesen,
+        # und genau diese Bytes stehen danach im eigenen Beleg (T26-07 b).
+        roh = _schichten(fall, args.schicht, repo_root=repo_root,
+                         bindung=bindung)
         schichtbeleg = {
             police: {k: (v.als_beleg() if hasattr(v, "als_beleg") else v)
                      for k, v in eintrag.items()}
             for police, eintrag in roh.items()
         }
-        schicht_pfad = (fall / args.schicht) if not Path(args.schicht).is_absolute() \
-            else Path(args.schicht)
-        if schicht_pfad.is_file():
-            binde(schicht_pfad)
+        # Kein zweiter Lesevorgang mehr: _schichten hat ueber dieselbe
+        # Bindung gelesen und dabei registriert.
 
     tarifwerk = {
         "scheiben_mit_gamma1": bool(args.scheiben_mit_gamma1),
@@ -800,7 +840,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     ergebnis["system"] = systemstand(repo_root)
     ergebnis["provenienz"] = {
-        "eingaben": dict(sorted(eingaben.items())),
+        "eingaben": bindung.als_beleg(),
         "parameter": {
             "generation": args.generation, "erhoehungssatz": args.erhoehungssatz,
             "red_anteile": sorted(args.red_anteile),

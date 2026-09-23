@@ -39,7 +39,7 @@ import pytest
 
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben
-from rechner_pipeline.bestand.generator import generate
+from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.kennzahlen import bewegungskonto, ereignisse_je_jahr
 from rechner_pipeline.bestand.ledger_bindung import pruefe_ledger_betraege
 from rechner_pipeline.models.bestand import BETRAG_ART_JE_EREIGNIS, validate_ledger
@@ -55,7 +55,7 @@ def lauf():
     from rechner_pipeline.bestand.ereignisse import mit_zugaengen
 
     config = load_config(KLV)
-    basis = generate(config, bis=REF)
+    basis = bestand_aus_zugangsstrom(config, bis=REF)
     erg = fortschreiben(basis, config, BIS, neuzugang_ab=REF)
     return config, mit_zugaengen(basis, erg.zugaenge), erg
 

@@ -5,14 +5,14 @@ following the toolbox split like ``bestand_report``: a PRODUCER, not a gate —
 it writes no ledger entry and takes no part in acceptance. It runs the full
 decided workflow (ein GeVo-Strom, ein Erzeuger)::
 
-    Basisbestand (Batch bis Referenzstichtag)  ->  Fortschreibung bis Horizont
+    Basisbestand (uebernommen und/oder --portfolio)  ->  Fortschreibung bis Horizont
     (Ereignisse, dynamische Erhoehungen, Neuzugang)  ->  Parquet-Tabellen
 
 Usage::
 
     python -m rechner_pipeline.bestand.cli_fortschreibung \\
         --config configs/bestand_klv.toml --bis 2035-01-01 \\
-        [--portfolio bestand.parquet]           # sonst: aus der Config erzeugt \\
+        [--portfolio bestand.parquet]           # sonst: leer (ADR-020) \\
         [--uebernahme faelle/<fall>/abgeleitet/bestand]   # migrierter Bestand \\
         [--neuzugang-ab 2010-01-01] --out-dir lauf/
 
@@ -55,9 +55,9 @@ from rechner_pipeline.bestand.ereignisse import (
     fortschreiben,
     mit_zugaengen,
 )
-from rechner_pipeline.bestand.generator import generate
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
 from rechner_pipeline.bestand.manifest import schreibe_manifest
+from rechner_pipeline.models.bestand import leerer_stamm
 
 
 def _nichtendliche(name: str, df) -> str:
@@ -209,14 +209,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--portfolio",
         default=None,
         help=(
-            "Basisbestand-Parquet; ohne Angabe wird er aus der Config erzeugt "
-            "(Batch bis --neuzugang-ab, sonst volles Gueltigkeitsfenster)."
+            "Basisbestand-Parquet. Ohne Angabe beginnt der Lauf LEER — einen "
+            "gezogenen Anfangsbestand gibt es nicht mehr (ADR-020); der "
+            "Bestand kommt aus --uebernahme und/oder dem Zugangsstrom "
+            "(--neuzugang-ab)."
         ),
     )
     parser.add_argument(
         "--neuzugang-ab",
         default=None,
-        help="Referenzstichtag (ISO-Datum): simulierter Neuzugang danach.",
+        help="Erster Tag des simulierten Neuzugangs (ISO-Datum, einschliesslich); "
+             "fuer einen Bestand aus dem Nichts der erste Verkaufstag der aeltesten "
+             "Generation.",
     )
     parser.add_argument("--out-dir", required=True, help="Zielverzeichnis.")
     ns = parser.parse_args(argv)
@@ -243,8 +247,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     # Der Referenzstichtag ist eine Eigenschaft des Bestands (Config);
-    # --neuzugang-ab SOLL mit ihm uebereinstimmen -- er ist genau die
-    # Grenze zwischen Batch-Erzeugung und simuliertem Neuzugang. Eine
+    # --neuzugang-ab SOLL mit ihm uebereinstimmen -- ab ihm entsteht der
+    # simulierte Neuzugang, davor traegt nur der Basisbestand. Eine
     # Abweichung kann gewollt sein (Sonderlaeufe), faellt aber sonst
     # still auseinander: Bestand und Bericht meinen dann verschiedene
     # Grenzen. Deshalb ein Hinweis, kein Fehler.
@@ -257,7 +261,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "bestand_fortschreibung: HINWEIS: --neuzugang-ab "
             f"{neuzugang_ab.isoformat()} weicht vom referenzstichtag der "
             f"Config ab ({config.referenzstichtag.isoformat()}) — der "
-            "Referenzstichtag ist die Grenze zwischen Batch und Neuzugang; "
+            "Referenzstichtag ist der Beginn des simulierten Neuzugangs; "
             "eine Abweichung gehoert begruendet",
             file=sys.stderr,
         )
@@ -267,6 +271,16 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     ausgaben: List[Path] = []
     eingaben: dict = {}
+    if not (ns.portfolio or ns.uebernahme or neuzugang_ab is not None):
+        print(
+            "bestand_fortschreibung: kein Basisbestand — --portfolio, "
+            "--uebernahme oder --neuzugang-ab angeben. Der Bestand entsteht "
+            "aus dem Zugangsstrom, nicht aus einer Ziehung ohne Geschichte "
+            "(ADR-020).",
+            file=sys.stderr,
+        )
+        return 2
+
     try:
         basis_schreiben = False
         if ns.portfolio:
@@ -280,17 +294,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             basis = read_portfolio(portfolio_path)
             eingaben["portfolio"] = portfolio_path
         else:
-            import numpy as np
-
-            with np.errstate(over="raise", invalid="raise", divide="raise"):
-                try:
-                    basis = generate(config, bis=neuzugang_ab)
-                except FloatingPointError as exc:
-                    raise ValueError(
-                        f"Basisbestand nicht erzeugbar: numerischer Ueberlauf in "
-                        f"einer Verteilung ({exc}) — Verteilungsparameter sind "
-                        "endlich, aber ausserhalb des sicheren Wertebereichs"
-                    ) from exc
+            # Kein gezogener Anfangsbestand mehr (ADR-020): Ohne --portfolio
+            # beginnt der Lauf leer; was er fuehrt, kommt aus --uebernahme
+            # und aus dem Zugangsstrom ab --neuzugang-ab — jeder Vertrag mit
+            # seinem Zugang im Journal.
+            basis = leerer_stamm()
             basis_schreiben = True
         uebernahme = None
         if ns.uebernahme:
@@ -310,12 +318,28 @@ def main(argv: Optional[List[str]] = None) -> int:
             # Die Uebernahme bringt ihre Merkmalstabelle mit; sie extra zu
             # verlangen hiesse, dieselbe Datei zweimal zu benennen.
             merkmale = uebernahme["merkmale"]
-        ergebnis = fortschreiben(
-            basis, config, bis, neuzugang_ab=neuzugang_ab, merkmale=merkmale,
-            scheiben=uebernahme["scheiben"] if uebernahme is not None else None,
-            schichten=uebernahme["schichten"] if uebernahme is not None else None,
-            verankerung=uebernahme["verankerung"] if uebernahme is not None else None,
-        )
+        # Endlichkeit am Zug (T21): meanlog = 1000 ist endlich, exp(1000)
+        # nicht. Seit ADR-020 zieht der Zugangsstrom seine Attribute IN der
+        # Fortschreibung (neuzugaenge), nicht mehr vorab im Batch — der
+        # Ueberlauf-Schutz gehoert deshalb um diesen Aufruf, nicht mehr um
+        # generate(). Ein nichtendlicher Modellpunkt haelt den Produzenten
+        # VOR dem Publish an, nicht erst in der Kontrolle danach.
+        import numpy as np
+
+        with np.errstate(over="raise", invalid="raise", divide="raise"):
+            try:
+                ergebnis = fortschreiben(
+                    basis, config, bis, neuzugang_ab=neuzugang_ab, merkmale=merkmale,
+                    scheiben=uebernahme["scheiben"] if uebernahme is not None else None,
+                    schichten=uebernahme["schichten"] if uebernahme is not None else None,
+                    verankerung=uebernahme["verankerung"] if uebernahme is not None else None,
+                )
+            except FloatingPointError as exc:
+                raise ValueError(
+                    f"Bestand nicht erzeugbar: numerischer Ueberlauf in einer "
+                    f"Verteilung ({exc}) — Verteilungsparameter sind endlich, "
+                    "aber ausserhalb des sicheren Wertebereichs"
+                ) from exc
         # Das Journal der Uebernahme geht dem der Fortschreibung VORAUS:
         # Zugang und Umbuchung liegen am Bestandszugang, also vor dem
         # ersten simulierten Vertragsjahr — ebenso die mitgebrachten

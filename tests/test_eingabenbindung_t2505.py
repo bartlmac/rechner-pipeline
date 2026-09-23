@@ -121,3 +121,65 @@ def test_die_uebernahme_bindet_ihre_eingaben(tmp_path):
         pfad = Path(rel)
         pfad = pfad if pfad.is_absolute() else fall / rel
         assert summe == _sha256(pfad), rel
+
+
+# --------------------------------------------------------------------------- #
+# Ratsche: EINE Bindung, nicht fuenf Abschriften (Befund T26-07)
+# --------------------------------------------------------------------------- #
+
+#: Kommandos, deren Ergebnis eine Abnahme traegt. Sie muessen die
+#: gemeinsame Bindung benutzen, nicht eine eigene Fassung.
+BINDENDE_KOMMANDOS = (
+    "bestand_uebernehmen.py",
+    "aktuartest_lauf.py",
+    "migrationssuite_lauf.py",
+    "verankerung_belegen.py",
+    "fuehrungsprobe.py",
+)
+
+
+def test_kein_producer_traegt_eine_eigene_bindung():
+    """Die Klasse hinter T26-07: dieselbe Mechanik an zwei Orten gepflegt.
+
+    ``verankerung_belegen`` und ``fuehrungsprobe`` trugen ihre eigene
+    Fassung — ein lokales ``eingaben``-Dict mit ``schluessel`` und
+    ``binde``. Der Backlog nannte sie "gleichwertig" und ihre Umstellung
+    "ohne fachliche Aussage". Beides war falsch: Die eigene Fassung las
+    bei JEDEM Aufruf neu, und genau daran haengt der nachgewiesene Bruch
+    (Schichtbeleg fachlich gelesen, danach ein zweites Mal gehasst; im
+    Beleg standen die Bytes der zweiten Lesung).
+
+    Die Ratsche ist statisch und ihr Umfang ist benannt: Sie sieht eine
+    Funktion namens ``binde`` INNERHALB einer Funktion in den unten
+    genannten Modulen. Wer die Mechanik unter anderem Namen abschreibt,
+    faellt hier nicht auf — dagegen hilft nur der Zaehl-Test darueber.
+    """
+    import ast
+
+    gates = Path(__file__).resolve().parents[1] / "src" / "rechner_pipeline" / "gates"
+    treffer = []
+    for name in BINDENDE_KOMMANDOS:
+        pfad = gates / name
+        assert pfad.is_file(), f"{name} gibt es nicht mehr — Liste nachziehen"
+        baum = ast.parse(pfad.read_text(encoding="utf-8"))
+        for knoten in ast.walk(baum):
+            if not isinstance(knoten, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for kind in ast.walk(knoten):
+                if (isinstance(kind, ast.FunctionDef) and kind is not knoten
+                        and kind.name in ("binde", "schluessel")):
+                    treffer.append(f"{name}:{kind.lineno} {kind.name}")
+    assert not treffer, (
+        "eigene Bindungs-Fassung statt gates._common.Eingangsbindung: "
+        + ", ".join(treffer))
+
+
+@pytest.mark.parametrize("name", BINDENDE_KOMMANDOS)
+def test_jedes_bindende_kommando_nennt_die_gemeinsame_bindung(name):
+    """Die Gegenrichtung der Ratsche oben: nicht nur KEINE eigene
+    Fassung, sondern die gemeinsame tatsaechlich benutzt. Ohne diese
+    Haelfte waere ein Modul, das gar nichts bindet, unauffaellig."""
+    gates = Path(__file__).resolve().parents[1] / "src" / "rechner_pipeline" / "gates"
+    text = (gates / name).read_text(encoding="utf-8")
+    assert "Eingangsbindung" in text, (
+        f"{name} nennt Eingangsbindung nicht — bindet es seine Eingaben?")

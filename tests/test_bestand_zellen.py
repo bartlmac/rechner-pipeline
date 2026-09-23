@@ -42,7 +42,6 @@ name = "klv/zellen"
 knoten = "klv/zellen"
 gueltig_von = 2015-01-01
 gueltig_bis = 2016-12-31
-sample_size = 0
 max_endalter = 85
 zins = 0.0125
 tafel = "DAV2008_T_NR_U70"
@@ -219,7 +218,7 @@ def test_luecke_und_doppelung_im_merkmalsraum_fallen_beim_lesen_auf():
     """
     gen = TarifGeneration(
         name="klv/x", gueltig_von=_dt.date(2015, 1, 1),
-        gueltig_bis=_dt.date(2016, 1, 1), sample_size=0, max_endalter=85,
+        gueltig_bis=_dt.date(2016, 1, 1), max_endalter=85,
         knoten="klv/x", tafel="DAV2008_T_NR_U70",
         zellen=[
             TarifZelle({"status": "raucher", "tarifart": "einzel"}),

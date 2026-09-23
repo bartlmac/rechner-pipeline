@@ -141,7 +141,6 @@ VORZEIGE_NACH_WERKZEUG_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/bestand/kennzahlen.py", "rechner_pipeline/bestand/ereignisse.py"),
     ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
     ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/bestand/ereignisse.py"),
-    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/bestand/generator.py"),
     ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
 }
 
@@ -166,6 +165,15 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/__init__.py"),
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+    # Zuschlag der Korrekturschicht bei Beitragsfreistellung (ADR-017
+    # Nachtrag 2026-09-20, Entscheid des Maintainers): Die Uebernahme
+    # bucht die PEX-Umbuchung uebernommener Vertraege mit demselben
+    # Zuschlag, den die Fuehrung laengst bucht — und fragt dazu
+    # dieselbe EINE Tuer (kern.korrekturschicht.zuschlag_bei_pex), die
+    # aktuartest_lauf, fuehrungsprobe und qa.aktuarieller_test schon
+    # haben. Ohne diese Kante haette die Uebernahme die Regel
+    # abgeschrieben; genau das Abtippen war Befund T25-06.
+    ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/korrekturschicht.py"),
     ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/manifest.py"),
     # Freischaltung, Schritt 6 (ADR-017 Nachtrag 2026-09-07): Die
     # Fuehrungsprobe stellt den gefuehrten Bestand gegen die Pruefstrecke
@@ -184,6 +192,12 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/migrationszugang.py"),
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+    # Laufmanifest des Migrationszugangs (ADR-017 Nachtrag 2026-09-20,
+    # Entscheid des Maintainers): Ein Migrationslauf hat zwei
+    # Produzenten; der zweite kennt Schicht UND Config und schreibt
+    # deshalb das Manifest fuer beide. Dieselbe Tuer, die
+    # bestand_validate schon hat.
+    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/manifest.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/migrationszugang.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/__init__.py"),

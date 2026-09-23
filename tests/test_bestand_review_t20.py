@@ -37,7 +37,7 @@ def _sha(pfad: Path) -> str:
 def lauf(tmp_path_factory) -> Path:
     ziel = tmp_path_factory.mktemp("lauf")
     assert cli_fortschreibung.main([
-        "--config", str(CONFIG), "--bis", HORIZONT.isoformat(),
+        "--config", str(CONFIG), "--neuzugang-ab", "1994-07-01", "--bis", HORIZONT.isoformat(),
         "--out-dir", str(ziel),
     ]) == 0
     return ziel
@@ -200,7 +200,8 @@ def test_nichtendlicher_verteilungsparameter_stoppt_den_produzenten(tmp_path, al
 
     out = tmp_path / "lauf"
     assert cli_fortschreibung.main([
-        "--config", str(config), "--bis", HORIZONT.isoformat(), "--out-dir", str(out),
+        "--config", str(config), "--neuzugang-ab", "1994-07-01",
+        "--bis", HORIZONT.isoformat(), "--out-dir", str(out),
     ]) == 2
     assert not out.exists() or not list(out.iterdir()), "nichts darf publiziert sein"
 

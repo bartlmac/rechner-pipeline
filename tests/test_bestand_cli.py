@@ -26,15 +26,33 @@ EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
 GEMISCHT = REPO_ROOT / "configs" / "bestand_gesamt.toml"
 
 
+#: Der erste Verkaufstag der Beispiel-Config — ab hier laeuft der
+#: Zugangsstrom, aus dem seit ADR-020 jeder Bestand entsteht.
+ERSTER_VERKAUFSTAG = "1994-07-01"
+
+
 @pytest.fixture()
 def lauf(tmp_path):
-    """Ein kompletter CLI-Lauf: erzeugen + fortschreiben in tmp_path."""
+    """Ein kompletter CLI-Lauf: Zugangsstrom ab Betriebsbeginn, fortgeschrieben."""
     out = tmp_path / "lauf"
-    code = fs_cli.main(
-        ["--config", str(EXAMPLE), "--bis", "2020-01-01", "--out-dir", str(out)]
-    )
+    code = fs_cli.main([
+        "--config", str(EXAMPLE), "--neuzugang-ab", ERSTER_VERKAUFSTAG,
+        "--bis", "2020-01-01", "--out-dir", str(out),
+    ])
     assert code == 0
     return out
+
+
+def _stamm_pfad(lauf: Path) -> Path:
+    """Die Ursprungszustaende des Laufs als Stamm — zum Verbiegen in den
+    P-B1-Tests. Seit ADR-020 beginnt ein Lauf leer (``bestand.parquet``
+    traegt null Zeilen); der Stamm, den ein Gate ohne Journal prueft, sind
+    die Zeilen mit ``status_id`` 1 aus ``bestand_gesamt.parquet``."""
+    pfad = lauf / "stamm_ursprung.parquet"
+    if not pfad.is_file():
+        gesamt = read_portfolio(lauf / "bestand_gesamt.parquet")
+        write_portfolio(gesamt[gesamt["status_id"] == 1].reset_index(drop=True), pfad)
+    return pfad
 
 
 def test_fortschreibung_cli_schreibt_alle_tabellen(lauf):
@@ -43,42 +61,34 @@ def test_fortschreibung_cli_schreibt_alle_tabellen(lauf):
         "bestand.parquet", "historie.parquet", "ledger.parquet",
         "scheiben.parquet", "zugaenge.parquet", "bestand_gesamt.parquet",
     }
-    bestand = read_portfolio(lauf / "bestand.parquet")
+    # ADR-020: Der Lauf beginnt leer — bestand.parquet ist die (leere)
+    # Basis, jeder Vertrag steht in zugaenge.parquet und damit im Journal.
+    basis = read_portfolio(lauf / "bestand.parquet")
+    zugaenge = read_portfolio(lauf / "zugaenge.parquet")
+    gesamt = read_portfolio(lauf / "bestand_gesamt.parquet")
     ledger = read_portfolio(lauf / "ledger.parquet")
-    erwartet = sum(
-        g.sample_size for g in load_config(EXAMPLE).generationen
-    )
-    assert len(bestand) == erwartet and len(ledger) > 0
-    # Ohne --neuzugang-ab: keine Zugaenge, gesamt == basis.
-    assert len(read_portfolio(lauf / "zugaenge.parquet")) == 0
+    assert len(basis) == 0
+    assert len(zugaenge) > 0 and len(gesamt) == len(zugaenge)
+    assert set(zugaenge["police_id"]) <= set(ledger.loc[ledger["ereignis"] == "ZUG", "police_id"])
 
 
 def test_fortschreibung_cli_mit_neuzugang(tmp_path):
-    import copy
-    import tomllib
-
-    # Config-Kopie mit Neuzugang (TOML um eine Zeile ergaenzt):
-    quelle = EXAMPLE.read_text(encoding="utf-8")
-    angepasst = quelle.replace(
-        "# neuzugang_pro_jahr = 40", "", 1
-    ).replace(
-        'name = "KLV-2008"', 'name = "KLV-2008"\nneuzugang_pro_jahr = 30', 1
-    )
-    cfg_pfad = tmp_path / "cfg.toml"
-    cfg_pfad.write_text(angepasst, encoding="utf-8")
+    # Ein Lauf, der erst 2010 zu verkaufen beginnt: Er traegt genau die
+    # Zugaenge der Jahrgaenge 2010 bis 2013 und sonst nichts.
     out = tmp_path / "lauf"
     code = fs_cli.main(
-        ["--config", str(cfg_pfad), "--bis", "2014-01-01",
+        ["--config", str(EXAMPLE), "--bis", "2014-01-01",
          "--neuzugang-ab", "2010-01-01", "--out-dir", str(out)]
     )
     assert code == 0
     zugaenge = read_portfolio(out / "zugaenge.parquet")
     gesamt = read_portfolio(out / "bestand_gesamt.parquet")
     basis = read_portfolio(out / "bestand.parquet")
+    assert len(basis) == 0
     assert len(zugaenge) > 0
-    assert len(gesamt) == len(basis) + len(zugaenge)
-    # Basis wurde bis zum Referenzstichtag beschnitten erzeugt:
-    assert (basis["insurance_start"] <= "2010-01-01").all()
+    assert len(gesamt) == len(zugaenge)
+    assert (zugaenge["insurance_start"] >= "2010-01-01").all()   # [ref, bis]
+    assert (zugaenge["insurance_start"] <= "2014-01-01").all()
 
 
 def test_fortschreibung_cli_usage_fehler(tmp_path):
@@ -99,9 +109,10 @@ def lauf_gemischt(tmp_path):
     reinen KLV-Bestand laeuft der BU-Zweig leer durch und belegt nichts.
     """
     out = tmp_path / "lauf_gemischt"
-    code = fs_cli.main(
-        ["--config", str(GEMISCHT), "--bis", "2020-01-01", "--out-dir", str(out)]
-    )
+    code = fs_cli.main([
+        "--config", str(GEMISCHT), "--neuzugang-ab", ERSTER_VERKAUFSTAG,
+        "--bis", "2020-01-01", "--out-dir", str(out),
+    ])
     assert code == 0
     return out
 
@@ -168,8 +179,8 @@ def test_gate_pb1_passed_und_ledger(lauf, tmp_path, capsys):
     assert code == 0
     assert ergebnis["status"] == "passed"
     assert ergebnis["summary"]["all_passed"] is True
-    assert ergebnis["summary"]["portfolio_zeilen"] == sum(
-        g.sample_size for g in load_config(EXAMPLE).generationen
+    assert ergebnis["summary"]["portfolio_zeilen"] == len(
+        read_portfolio(lauf / "bestand_gesamt.parquet")
     )
     assert (diagnostics / "bestand_validate.gate.json").is_file()
 
@@ -341,7 +352,7 @@ def test_gate_pb1_bewegungsidentitaet(lauf, tmp_path, capsys):
 
 
 def test_gate_pb1_findet_verletzungen(lauf, tmp_path, capsys):
-    kaputt = read_portfolio(lauf / "bestand.parquet")
+    kaputt = read_portfolio(_stamm_pfad(lauf))
     kaputt.loc[kaputt.index[0], "sum_insured"] = -1.0
     pfad = write_portfolio(kaputt, tmp_path / "kaputt.parquet")
     code = run_command(gate_cli.main, [
@@ -364,7 +375,7 @@ def test_gate_pb1_findet_verletzungen(lauf, tmp_path, capsys):
 def test_gate_pb1_lehnt_unbekannte_physische_parquet_spalte_ab(
     lauf, tmp_path, capsys, zusatzspalte
 ):
-    quelle = lauf / "bestand.parquet"
+    quelle = _stamm_pfad(lauf)
     tabelle = pq.read_table(quelle)
     tabelle = tabelle.append_column(
         zusatzspalte,
@@ -397,7 +408,7 @@ def test_gate_pb1_lehnt_physischen_status_id_float_typ_ab(
     Alle Werte bleiben absichtlich ``1.0``: eine nachtraegliche Konvertierung
     zu ``int64`` wuerde die gemeldete fehlerhafte Datei sonst gruen machen.
     """
-    tabelle = pq.read_table(lauf / "bestand.parquet")
+    tabelle = pq.read_table(_stamm_pfad(lauf))
     index = tabelle.schema.get_field_index("status_id")
     status_id = pa.array([1.0] * tabelle.num_rows, type=pa.float64())
     tabelle = tabelle.set_column(index, "status_id", status_id)
@@ -433,7 +444,7 @@ def test_gate_pb1_lehnt_leere_tarif_generation_ab(
 ):
     pfad = tmp_path / "tarif_generation_leer.parquet"
     if leerwert is None:
-        tabelle = pq.read_table(lauf / "bestand.parquet")
+        tabelle = pq.read_table(_stamm_pfad(lauf))
         index = tabelle.schema.get_field_index("tarif_generation")
         generationen = tabelle.column("tarif_generation").to_pylist()
         generationen[0] = None
@@ -444,7 +455,7 @@ def test_gate_pb1_lehnt_leere_tarif_generation_ab(
         )
         pq.write_table(tabelle, pfad, compression="zstd")
     else:
-        bestand = read_portfolio(lauf / "bestand.parquet")
+        bestand = read_portfolio(_stamm_pfad(lauf))
         bestand.loc[bestand.index[0], "tarif_generation"] = leerwert
         write_portfolio(bestand, pfad)
 
@@ -486,7 +497,7 @@ def test_gate_pb1_lehnt_leere_tarif_generation_ab(
 def test_gate_pb1_prueft_jede_basisstatus_invariante(
     lauf, tmp_path, capsys, mutation, erwartete_meldung
 ):
-    bestand = read_portfolio(lauf / "bestand.parquet")
+    bestand = read_portfolio(_stamm_pfad(lauf))
     index = bestand.index[0]
     if mutation == "status_id":
         bestand.loc[index, "status_id"] = 99
@@ -542,20 +553,18 @@ def test_gate_pb1_nennt_den_erzeuger_wenn_der_eingang_fehlt(tmp_path, capsys):
             assert teil in texte, teil
 
 
-def test_gate_pb1_akzeptiert_beginne_nach_dem_horizont(lauf, tmp_path, capsys):
-    """--bis ist der Fortschreibungs-HORIZONT, kein Stichtag.
-
-    Der Basis-Erzeuger besiedelt das volle Verkaufsfenster jeder
-    Generation in einem Batch; Vertragsbeginne nach --bis sind deshalb
-    Datenmodell, nicht Datenfehler (Systempruefung F3, geprueft und
-    widerlegt). Der Test haelt das fest: wer P-B1 um die Invariante
-    'max(insurance_start) <= --bis' erweitert, macht diesen Lauf rot.
+def test_kein_beginn_liegt_nach_dem_horizont(lauf, tmp_path, capsys):
+    """Seit ADR-020 kommt jeder Vertrag ueber den Zugangsstrom, und der
+    endet am Horizont: Ein Beginn nach --bis kann in einem Lauf nicht
+    mehr vorkommen. Bis dahin besiedelte der Batch das volle
+    Verkaufsfenster, und Beginne nach dem Horizont waren Datenmodell —
+    genau die Aussage, die dieser Test frueher festhielt. Jetzt haelt er
+    die Umkehrung fest, und P-B1 besteht auf dem Lauf.
     """
     portfolio = read_portfolio(lauf / "bestand_gesamt.parquet")
     horizont = dt.date(2020, 1, 1)
     spaeter = (portfolio["insurance_start"].dt.date > horizont).sum()
-    # Ohne diese Vorbedingung wuerde der Test nichts pruefen:
-    assert spaeter > 0, "Beispiel-Bestand traegt keine Beginne nach dem Horizont"
+    assert spaeter == 0, spaeter
 
     code = run_command(gate_cli.main, [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
@@ -572,7 +581,7 @@ def test_gate_pb1_akzeptiert_beginne_nach_dem_horizont(lauf, tmp_path, capsys):
 
 
 def test_abweichender_neuzugang_ab_wird_angesagt(tmp_path, capsys):
-    """Der Referenzstichtag ist die Grenze zwischen Batch und Neuzugang.
+    """Der Referenzstichtag ist der Beginn des simulierten Neuzugangs.
 
     Weicht --neuzugang-ab von ihm ab, meinen Bestand und Bericht
     verschiedene Grenzen — das fiel bisher still auseinander. Ein
