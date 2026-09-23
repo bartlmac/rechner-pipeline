@@ -74,9 +74,9 @@ Pipeline · Gates · Agenten-Skills"]
     subgraph TOOLING["Simulations-Tooling"]
         direction TB
         T4["(4) Bestands-Simulation
-erzeugt (1) einmalig"]
+erzeugt (1) einmalig · bestand.cli_fortschreibung"]
         T5["(5) Quellbestand-Simulation
-erzeugt Lieferungen für (2)"]
+erzeugt Lieferungen für (2) · quellsystem/"]
         T6["(6) Tagesbetrieb der PLV
 Neugeschäft, Vorfälle und Abschlüsse je Tag für (1)"]
         R7["(7) Regie — WIP
@@ -97,6 +97,15 @@ Auflösungen; bespielt (4)–(6)"]
     class R7 regie
     class R7 geplant
 ```
+
+Die Bestands-Simulation (4) und die Fortschreibung stecken heute in
+**einem** Werkzeug: `bestand.cli_fortschreibung` erzeugt den
+Basisbestand und schreibt ihn bis zum Horizont fort. Der Tagesbetrieb
+(6) ist seit dem Sommer gebaut und hat eigene Werkzeuge
+(`betrieb.neugeschaeft`, `betrieb.tageslauf`). Die Quellbestand-Simulation
+(5) ist das eingecheckte `quellsystem/`. Der Weg vom leeren
+Verzeichnis zum geführten Bestand steht in
+[docs/simulation/bestandserzeugung.md](docs/simulation/bestandserzeugung.md).
 
 Die **Regie** (7) ist als Konzept benannt, ihre Dokumentation ist in
 Arbeit — Stub: `dev-docs/regie.md`. Sie legt fest, was vorgeführt wird
@@ -361,6 +370,7 @@ festgeschrieben, nie überschrieben")]
 Der Bestandsbericht rendert das als selbst-enthaltene HTML-Seite:
 
 ```bash
+# Doku: docs/simulation/bestandserzeugung.md (Kommando, Ausgaben, Datums-Fallen)
 python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml ...
 python -m rechner_pipeline.bestand.cli_report --portfolio <parquet> --out bericht.html ...
 python -m rechner_pipeline.bestand.cli_abschluss --config ... --lauf runs/bestand --stichtag 2026-01-01 --bis 2026-01-01
