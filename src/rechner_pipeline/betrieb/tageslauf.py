@@ -125,6 +125,7 @@ from rechner_pipeline.betrieb.uebernahme import (
     UEBERNAHME_DIR, UebernahmeError, lies_uebernahmen,
 )
 from rechner_pipeline.models.bestand import (
+    BASIS_STATUS,
     LEDGER_NAMES,
     MERKMALE_NAMES,
     STAMM_NAMES,
@@ -317,8 +318,21 @@ def _schneide_teilzeile(pfad: Path) -> bool:
     Bewusst eng: Endet die Datei mit einem Umbruch, wird nichts angefasst.
     Eine vollstaendige Zeile, die kein JSON ist, ist echte Beschaedigung
     und bleibt ein Fehler — dafuer gibt es keinen Ausweg, der nicht
-    Beweismaterial vernichtet. Gerufen wird nur aus der Ruecknahme, also
-    nur, wenn ein Marker bezeugt, dass ein Publish unterwegs war.
+    Beweismaterial vernichtet. Gerufen wird am Anfang JEDES Laufs unter
+    der Sperre und noch einmal aus der Ruecknahme: Ein Fragment ohne
+    Umbruch ist nie eine Zeile geworden — ob ein Marker daneben liegt oder
+    nicht. Die erste Fassung schnitt nur unter dem Publish-Marker; die
+    angefangene Zeile eines ROTEN Laufs (der keinen Marker setzt) sperrte
+    die Ablage dauerhaft (Kalibrierungsfund N7 der Pruefrunde T27).
+
+    Abgeschnitten wird IN DER DATEI (``os.truncate``), nie durch
+    Neuschreiben: Die erste Fassung schrieb ``roh[:schnitt]`` mit
+    ``write_bytes`` — sie leerte die Datei und schrieb die belegten Zeilen
+    zurueck. Ein zweiter Ausfall zwischen beidem liess ein Protokoll mit
+    null Bytes zurueck, und jeder Wiederanlauf verweigerte dauerhaft, weil
+    der belegte Vortag darin nicht mehr vorkam (Pruefrunde T27, Befund 01).
+    Belegte Bytes gehen durch keinen Schreibpfad; scheitert der Schnitt,
+    bleibt die Datei, wie sie war, und der naechste Lauf schneidet.
     """
     if not pfad.is_file():
         return False
@@ -326,7 +340,7 @@ def _schneide_teilzeile(pfad: Path) -> bool:
     if not roh or roh.endswith(b"\n"):
         return False
     schnitt = roh.rfind(b"\n") + 1
-    pfad.write_bytes(roh[:schnitt])
+    os.truncate(pfad, schnitt)
     print(
         f"tageslauf: {pfad} endete mit einer angefangenen Zeile "
         f"({len(roh) - schnitt} Bytes ohne Zeilenumbruch) — sie ist nie "
@@ -675,6 +689,37 @@ def _abschluss_kennt_eingang(ablage: Ablage, stichtag: _dt.date, police_ids) -> 
     return bool(set(int(p) for p in tabelle["police_id"]) & {int(p) for p in police_ids})
 
 
+def _erster_abschluss_ab(ablage: Ablage, stichtag: _dt.date) -> Optional[_dt.date]:
+    """Der erste festgeschriebene Abschluss am oder nach ``stichtag`` — der
+    Abschluss, in dem ein Zugang zu diesem Stichtag in die Buecher trat."""
+    return next((t for t in _festgeschriebene_abschluesse(ablage) if t >= stichtag), None)
+
+
+def _eingang_eingerechnet(ablage: Ablage, stichtag: _dt.date, police_ids) -> Optional[bool]:
+    """Ob ein Eingang mit diesem Stichtag schon eingerechnet ist — gefragt
+    am RICHTIGEN Zeitpunkt.
+
+    Die Frage geht an den Abschluss, in dem der Zugang in die Buecher trat:
+    den ersten festgeschriebenen am oder nach seinem Stichtag. Traegt der
+    seine Zielnummern, ist er eingerechnet — auch wenn jeder spaetere
+    Abschluss sie nicht mehr traegt, weil die Vertraege inzwischen
+    abgelaufen sind. Genau daran scheiterte der Wiederanlauf eines
+    Nachhollaufs ueber Vertragsablaeufe hinweg (Pruefrunde T27, Befund 02):
+    Die Frage wurde dem JUENGSTEN Abschluss gestellt, Monate spaeter, und
+    der kannte die abgelaufenen Vertraege nicht mehr — "kennt den Bestand
+    nicht", dauerhaft.
+
+    Rueckgabe: ``None`` — es gibt noch keinen Abschluss ab dem Stichtag
+    (offen, kein Widerspruch); ``True`` — eingerechnet; ``False`` — der
+    Abschluss seines Stichtags kennt ihn nicht (ADR-011: der wird nie neu
+    gerechnet, der Zugang gehoert in die offene Zeit).
+    """
+    erster = _erster_abschluss_ab(ablage, stichtag)
+    if erster is None:
+        return None
+    return _abschluss_kennt_eingang(ablage, erster, police_ids)
+
+
 def _stand_bauen(
     config: BestandConfig, config_pfad: Path, ablage: Ablage, heute: _dt.date
 ) -> Tuple[Path, Dict[str, Any]]:
@@ -735,15 +780,14 @@ def _stand_bauen(
             )
         if (
             ueb.fall not in schon_gefuehrt
-            and juengster_abschluss is not None
-            and juengster_abschluss >= ueb.stichtag
-            and not _abschluss_kennt_eingang(
-                ablage, juengster_abschluss, ueb.bestand["police_id"])
+            and _eingang_eingerechnet(
+                ablage, ueb.stichtag, ueb.bestand["police_id"]) is False
         ):
+            erster = _erster_abschluss_ab(ablage, ueb.stichtag)
             raise TageslaufError(
                 f"uebernahme {ueb.fall}: Stichtag {ueb.stichtag.isoformat()} "
                 f"liegt nicht nach dem juengsten festgeschriebenen "
-                f"Monatsabschluss {juengster_abschluss.isoformat()} — dieser "
+                f"Monatsabschluss {erster.isoformat()} — dieser "
                 "Abschluss kennt den Bestand nicht und wird nie neu gerechnet "
                 "(ADR-011). Der Zugang gehoert in die noch offene Zeit; soll "
                 "er weiter zurueckreichen, wird die Ablage aus dem Fall neu "
@@ -1217,9 +1261,41 @@ def _stichtagssicht(
     )
     sicht = dict(tabellen)
     sicht["historie"], sicht["ledger"], sicht["scheiben"] = historie, ledger, scheiben
+    if "portfolio" in tabellen:
+        sicht["portfolio"] = _stamm_am_stichtag(tabellen["portfolio"], historie)
     sicht["reduktionen"] = _gebuchte_reduktionen(
         tabellen.get("reduktionen"), ledger)
     return sicht
+
+
+def _stamm_am_stichtag(stamm: pd.DataFrame, historie: pd.DataFrame) -> pd.DataFrame:
+    """Den Zustand des Stammes auf die zurueckgeschnittene Historie setzen.
+
+    Der Stamm des Laufs traegt den Zustand von HEUTE. Fuer einen Abschluss
+    zu einem frueheren Stichtag wird die Historie auf den Buchungsstand
+    dieses Stichtags geschnitten — der Stamm blieb stehen. Ist ein Vertrag
+    seither abgelaufen oder gestorben und war das sein einziges Ereignis,
+    ist die geschnittene Historie leer, waehrend der Stamm den terminalen
+    Zustand traegt; die Bewertung verweigert diese Kombination zu Recht
+    ("Folgezustand ohne Historie", ADR-011), und der Lauf endete mit Exit 4,
+    dauerhaft (Pruefrunde T27, Altdefekt A27-01). Stamm und Historie
+    gehoeren gemeinsam auf den Stichtag: Zustand = letzte Historienzeile bis
+    zum Stichtag, sonst der Ursprung (POL am Versicherungsbeginn) — dieselbe
+    Regel, nach der ``journalsicht`` den Zustand herleitet.
+    """
+    aus = stamm.copy()
+    aus["status_id"] = pd.Series(1, index=aus.index, dtype="int64")
+    aus["status_code"] = BASIS_STATUS[0]
+    aus["status_date"] = aus["insurance_start"]
+    if historie is not None and len(historie):
+        letzte = (historie.sort_values(["police_id", "status_id"], kind="stable")
+                  .drop_duplicates("police_id", keep="last").set_index("police_id"))
+        treffer = aus["police_id"].isin(letzte.index)
+        pids = aus.loc[treffer, "police_id"]
+        aus.loc[treffer, "status_id"] = letzte.loc[pids, "status_id"].to_numpy()
+        aus.loc[treffer, "status_code"] = letzte.loc[pids, "status_code"].to_numpy()
+        aus.loc[treffer, "status_date"] = letzte.loc[pids, "status_date"].to_numpy()
+    return aus.astype({"status_id": "int64"})
 
 
 def _bericht(
@@ -1285,6 +1361,11 @@ def tageslauf(
     """Den Tag ``heute`` fuehren — unter der Prozess-Sperre der Ablage
     (Review T22-03); siehe :func:`_tageslauf`."""
     with lauf_sperre(ablage):
+        # Eine angefangene Protokollzeile ist nie eine Zeile geworden —
+        # sie faellt VOR allem anderen, sonst stirbt jeder Leser des
+        # Protokolls an ihr (auch ohne Publish-Marker: die Zeile eines
+        # roten Laufs).
+        _schneide_teilzeile(ablage.protokoll_pfad)
         # ZUERST einen unterbrochenen Publish zuruecknehmen (Review
         # T24-01, Schritt b): Danach ist die Ablage wieder in einem
         # Zustand, ueber den Nachweisvertrag und Aufraeumung urteilen

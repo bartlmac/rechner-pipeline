@@ -1,0 +1,290 @@
+"""Wiederanlauf und Registrierung als Klasse — Pruefrunde T27, Befunde 01, 02, 03 und A27-01.
+
+Die Klasse hinter den vier Befunden: Ein Reparatur- oder Wiederanlaufpfad
+darf belegte Bytes nie neu schreiben, muss den Publikationszustand aus der
+Sache lesen (nicht aus einem Stellvertreter, nicht zum falschen Zeitpunkt),
+und eine historische Sicht setzt Stamm und Historie gemeinsam auf den
+Stichtag. Jeder Test hier injiziert einen Ausfall oder einen
+Betriebszustand, den der Gutachter gemessen hat, und verlangt den Zustand
+des ungestoerten Laufs.
+
+Knoten: system/betrieb
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import os
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from rechner_pipeline.bestand.config import load_config
+from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+from rechner_pipeline.betrieb import tageslauf as tl
+from rechner_pipeline.betrieb import uebernahme as ueb
+from rechner_pipeline.betrieb.tageslauf import EXIT_OK, Ablage, lies_protokoll, tageslauf
+from rechner_pipeline.kern import ModelPoint, Rechenkern
+from rechner_pipeline.models.bestand import (
+    LEDGER_NAMES,
+    LEDGER_SPALTEN,
+    STAMM_NAMES,
+    STAMM_SPALTEN,
+    STATUS_HISTORIE_SPALTEN,
+)
+from tests.test_betrieb_uebernahme import (
+    PLV,
+    STICHTAG,
+    _fall,
+    _kleine_config,
+    _pb1_ledger,
+    am4_snapshot,
+)
+
+
+# --------------------------------------------------------------------------- #
+# T27-01: der Teilzeilenschnitt schreibt belegte Zeilen nie neu
+# --------------------------------------------------------------------------- #
+
+
+def _protokoll(pfad: Path, zeilen: int = 3) -> bytes:
+    voll = b"".join(
+        json.dumps({"heute": f"2026-01-0{i + 1}", "uebernommen": True}).encode() + b"\n"
+        for i in range(zeilen))
+    pfad.write_bytes(voll + b'{"heute": "2026-01-0')
+    return voll
+
+
+def test_der_teilzeilenschnitt_schreibt_belegte_zeilen_nie_neu(tmp_path, monkeypatch):
+    """Die Ratsche am Verhalten: Waehrend des Schnitts ist jeder Schreibpfad
+    verboten, der die Datei neu anlegt — belegte Zeilen sind Beweismaterial
+    (T24-04). Mutationsprobe: ``write_bytes(roh[:schnitt])`` -> rot."""
+    pfad = tmp_path / "protokoll.jsonl"
+    voll = _protokoll(pfad)
+
+    def _verboten(self, *a, **k):
+        raise AssertionError(f"Neuschreiben von {self}: belegte Zeilen gehen durch keinen Schreibpfad")
+
+    monkeypatch.setattr(Path, "write_bytes", _verboten)
+    monkeypatch.setattr(Path, "write_text", _verboten)
+    assert tl._schneide_teilzeile(pfad) is True
+    assert pfad.read_bytes() == voll
+    assert tl._schneide_teilzeile(pfad) is False
+
+
+def test_ein_ausfall_im_schnitt_laesst_die_datei_wie_sie_war(tmp_path, monkeypatch):
+    """Der zweite Ausfall des Gutachters (T27-01): Scheitert der Schnitt
+    selbst, bleibt die Datei, wie sie war — nicht leer. Der saubere Retry
+    schneidet dann."""
+    pfad = tmp_path / "protokoll.jsonl"
+    voll = _protokoll(pfad)
+    vorher = pfad.read_bytes()
+
+    def _kaputt(*_a, **_k):
+        raise OSError(5, "I/O error")
+
+    monkeypatch.setattr(tl.os, "truncate", _kaputt)
+    with pytest.raises(OSError):
+        tl._schneide_teilzeile(pfad)
+    monkeypatch.undo()
+    assert pfad.read_bytes() == vorher, "der Reparaturpfad hat belegte Bytes angefasst"
+    assert tl._schneide_teilzeile(pfad) is True
+    assert pfad.read_bytes() == voll
+
+
+def test_die_angefangene_zeile_eines_roten_laufs_sperrt_die_ablage_nicht(tmp_path):
+    """Kalibrierungsfund N7: Der Schnitt lief nur unter dem Publish-Marker;
+    ein roter Lauf setzt keinen. Sein Fragment machte das Protokoll fuer
+    jeden folgenden Lauf unlesbar — dauerhaft. Mutationsprobe: den Schnitt
+    am Laufanfang entfernen -> rot."""
+    from tests.test_betrieb_tageslauf import _ablage
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    vorher = ablage.protokoll_pfad.read_bytes()
+    assert vorher.endswith(b"\n") and not ablage.publish_marker.exists()
+    with open(ablage.protokoll_pfad, "ab") as f:
+        f.write(b'{"heute": "2026-02-03", "uebernommen": false, "fehler": "Pl')
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    zeilen = lies_protokoll(ablage.protokoll_pfad)
+    assert [z["heute"] for z in zeilen] == ["2026-01-31", "2026-02-03"]
+    assert ablage.protokoll_pfad.read_bytes().startswith(vorher)
+
+
+# --------------------------------------------------------------------------- #
+# T27-02: ein eingerechneter Eingang bleibt erkannt, auch wenn seine
+# Vertraege spaeter ablaufen — gefragt wird der Abschluss seines Stichtags
+# --------------------------------------------------------------------------- #
+
+
+def _abschluss(ablage: Ablage, tag: dt.date, police_ids) -> None:
+    ablage.abschluesse.mkdir(parents=True, exist_ok=True)
+    write_portfolio(pd.DataFrame({"police_id": pd.Series(list(police_ids), dtype="int64")}),
+                    tl.abschluss_pfad(ablage.abschluesse, tag))
+
+
+def test_der_abschluss_des_zugangsstichtags_entscheidet_nicht_der_juengste(tmp_path):
+    """Mutationsprobe: wieder den juengsten Abschluss fragen -> rot (Februar
+    und Maerz kennen die abgelaufenen Vertraege nicht mehr)."""
+    ablage = Ablage(tmp_path / "daten")
+    ids = [1, 2, 3]
+    _abschluss(ablage, dt.date(2026, 1, 1), ids)     # hier trat der Eingang ein
+    _abschluss(ablage, dt.date(2026, 2, 1), [])      # danach: alle abgelaufen
+    _abschluss(ablage, dt.date(2026, 3, 1), [])
+    assert tl._eingang_eingerechnet(ablage, dt.date(2026, 1, 1), ids) is True
+    # Gegenrichtung (ADR-011): den Eingang kennt der Abschluss seines
+    # Stichtags NICHT -> nicht eingerechnet, der Lauf muss ihn abweisen.
+    assert tl._eingang_eingerechnet(ablage, dt.date(2026, 1, 1), [9]) is False
+    # Noch kein Abschluss ab dem Stichtag: offen, kein Widerspruch.
+    assert tl._eingang_eingerechnet(ablage, dt.date(2026, 4, 1), ids) is None
+
+
+def _kurzer_zugangsstand(ziel: Path, *, mit_pex: bool) -> None:
+    """Drei (bzw. ein) Vertraege der Generation KLV-2017, Beginn 2021-02-01,
+    Laufzeit fuenf Jahre: Sie laufen am 2026-02-01 ab — einen Monat nach
+    dem Zugang. Genau der Betriebszustand des Gutachters (T27-02, A27-01)."""
+    beginn = pd.Timestamp("2021-02-01")
+    zeilen = []
+    lagen = [("POL", 7_000_001), ("POL", 7_000_002), ("PEX", 7_000_003)] if mit_pex else [("POL", 7_000_001)]
+    for status, pid in lagen:
+        zeilen.append({
+            "police_id": pid, "tarif_generation": "KLV-2017", "produkt": "klv",
+            "status_id": 2 if status == "PEX" else 1, "status_code": status,
+            "status_date": pd.Timestamp("2023-11-01") if status == "PEX" else beginn,
+            "sex": "F", "date_of_birth": beginn - pd.DateOffset(years=35), "entry_age": 35,
+            "duration": 5, "premium_duration": 5, "sum_insured": 60000.0, "bu_rente": 0.0,
+            "zahlweise": 12, "insurance_start": beginn, "insurance_end": beginn + pd.DateOffset(years=5),
+            "payment_end": beginn + pd.DateOffset(years=5), "bestandszugang": pd.Timestamp(STICHTAG),
+        })
+    stamm = pd.DataFrame(zeilen)[list(STAMM_NAMES)].astype(dict(STAMM_SPALTEN))
+    hist_zeilen = [{"police_id": 7_000_003, "status_id": 2, "status_code": "PEX",
+                    "status_date": pd.Timestamp("2023-11-01")}] if mit_pex else []
+    historie = pd.DataFrame(hist_zeilen, columns=[n for n, _ in STATUS_HISTORIE_SPALTEN]).astype(
+        dict(STATUS_HISTORIE_SPALTEN))
+    vj = (pd.Timestamp(STICHTAG).year * 12 + 1 - (beginn.year * 12 + beginn.month)) // 12
+    ledger_zeilen = [{
+        "police_id": int(z["police_id"]), "tarif_generation": "KLV-2017", "ereignis": "ZUG",
+        "vertragsjahr": int(vj), "status_date": pd.Timestamp(STICHTAG), "betrag_art": "VS",
+        "betrag": 60000.0, "betrag_herkunft": "geliefert",
+    } for z in zeilen]
+    if mit_pex:
+        gen = next(g for g in load_config(PLV).generationen if g.name == "KLV-2017")
+        kern = Rechenkern(ModelPoint(x=35, sex="F", n=5, t=5, sum_insured=60000.0, zw=12,
+                                     **gen.generation_fields()))
+        ledger_zeilen.append({
+            "police_id": 7_000_003, "tarif_generation": "KLV-2017", "ereignis": "PEX",
+            "vertragsjahr": int(vj), "status_date": pd.Timestamp(STICHTAG), "betrag_art": "VS",
+            "betrag": float(kern.beitragsfreie_summe(2)), "betrag_herkunft": "gerechnet",
+        })
+    ledger = pd.DataFrame(ledger_zeilen)[list(LEDGER_NAMES)].astype(dict(LEDGER_SPALTEN))
+    ziel.mkdir(parents=True, exist_ok=True)
+    write_portfolio(stamm, ziel / "bestand.parquet")
+    write_portfolio(historie, ziel / "historie.parquet")
+    write_portfolio(ledger, ziel / "ledger.parquet")
+
+
+def _kurzer_fall(wurzel: Path, *, mit_pex: bool, name: str = "kurz-uebernahme") -> Path:
+    fall = wurzel / name
+    (fall / "abgeleitet" / "diagnostics").mkdir(parents=True)
+    (fall / "entscheide").mkdir()
+    (fall / "fall.json").write_text(json.dumps({"name": name, "schema_version": 1}), encoding="utf-8")
+    _kurzer_zugangsstand(fall / "abgeleitet" / "bestand", mit_pex=mit_pex)
+    daten = am4_snapshot(name, pb1_ledger_sha=_pb1_ledger(fall))
+    (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
+        json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}), encoding="utf-8")
+    return fall
+
+
+def _betrieb(tmp_path, *, mit_pex: bool):
+    fall = _kurzer_fall(tmp_path, mit_pex=mit_pex)
+    stand = tmp_path / "daten"
+    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ablage = Ablage(stand)
+    ablage.configs.mkdir(parents=True, exist_ok=True)
+    ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
+    return ablage
+
+
+def test_ein_nachhollauf_ueber_den_ablauf_hinweg_laeuft_nach_einem_berichtsfehler_wieder_an(tmp_path, monkeypatch):
+    """T27-02 in der Welt des Gutachters: Zugang 01.01., Ablauf 01.02.,
+    Nachholen bis 02.03.; nur der Monatsbericht scheitert. Der Retry muss
+    Exit 0 sein — der Eingang ist eingerechnet, der Januarabschluss
+    traegt ihn, dass Februar und Maerz ihn nicht mehr tragen, ist der
+    normale Lauf der Dinge."""
+    ablage = _betrieb(tmp_path, mit_pex=True)
+
+    def _kein_bericht(*_a, **_k):
+        raise OSError(5, "I/O error")
+
+    monkeypatch.setattr(tl, "_bericht", _kein_bericht)
+    code, zeile = tageslauf(ablage, dt.date(2026, 3, 2))
+    monkeypatch.undo()
+    assert code != EXIT_OK and zeile["uebernommen"] is False
+    januar = tl.abschluss_pfad(ablage.abschluesse, dt.date(2026, 1, 1))
+    maerz = tl.abschluss_pfad(ablage.abschluesse, dt.date(2026, 3, 1))
+    assert januar.is_file() and maerz.is_file(), "ohne Abschluesse ueber den Ablauf hinweg prueft der Test nichts"
+    # Der Eingang wird auf das Nummernband des Betriebs umnummeriert (1..3);
+    # der Januarabschluss traegt genau diese Zielnummern, der Maerz keine mehr.
+    ziel_ids = {1, 2, 3}
+    assert ziel_ids <= set(int(p) for p in read_portfolio(januar)["police_id"])
+    assert not (set(int(p) for p in read_portfolio(maerz)["police_id"]) & ziel_ids)
+
+    code, zeile = tageslauf(ablage, dt.date(2026, 3, 2))
+    assert code == EXIT_OK, f"der Retry gelingt nicht: {zeile.get('fehler')}"
+    assert zeile["uebernommen"] is True
+    # Positivkontrolle: ohne den Berichtsfehler ist derselbe Lauf gruen.
+    frisch = _betrieb(tmp_path / "kontrolle", mit_pex=True)
+    assert tageslauf(frisch, dt.date(2026, 3, 2))[0] == EXIT_OK
+
+
+# --------------------------------------------------------------------------- #
+# A27-01: die historische Sicht setzt Stamm und Historie auf denselben Stichtag
+# --------------------------------------------------------------------------- #
+
+
+def test_ein_historischer_abschluss_vor_dem_ablauf_ist_rechenbar(tmp_path):
+    """Ein Vertrag ohne Vorgeschichte, der am 01.02. ablaeuft: Der
+    Januarabschluss schneidet die Historie vor den Ablauf (leer), der Stamm
+    trug den terminalen Status von heute — die Bewertung verweigerte
+    ("Folgezustand ... keine Historie"), Exit 4, dauerhaft. Stamm und
+    Historie gehoeren gemeinsam auf den Stichtag."""
+    ablage = _betrieb(tmp_path, mit_pex=False)
+    code, zeile = tageslauf(ablage, dt.date(2026, 3, 2))
+    assert code == EXIT_OK, zeile.get("fehler")
+    januar = read_portfolio(tl.abschluss_pfad(ablage.abschluesse, dt.date(2026, 1, 1)))
+    assert 1 in set(int(p) for p in januar["police_id"])        # Zielnummer des einen Vertrags
+    maerz = read_portfolio(tl.abschluss_pfad(ablage.abschluesse, dt.date(2026, 3, 1)))
+    assert 1 not in set(int(p) for p in maerz["police_id"])
+
+
+# --------------------------------------------------------------------------- #
+# T27-03: ein vollstaendiges, nie veroeffentlichtes Staging sperrt den
+# Writer nicht — der Publikationszustand ist das Ziel, nicht der Marker
+# --------------------------------------------------------------------------- #
+
+
+def test_ein_vollstaendiges_staging_ohne_publikation_blockiert_die_wiederholung_nicht(tmp_path, monkeypatch):
+    fall = _fall(tmp_path)
+    stand = tmp_path / "daten"
+
+    def _kein_rename(*_a, **_k):
+        raise OSError(5, "I/O error")
+
+    monkeypatch.setattr(os, "rename", _kein_rename)
+    with pytest.raises(OSError):
+        ueb.eingang_anlegen(stand, fall, STICHTAG)
+    monkeypatch.undo()
+    rest = stand / ueb.STAGING_DIR / "probe-uebernahme"
+    ziel = stand / ueb.UEBERNAHME_DIR / "probe-uebernahme"
+    assert rest.is_dir() and (rest / ueb.EINGANG_DATEI).is_file() and not ziel.exists()
+    # Der Reader bleibt frei: nichts ist veroeffentlicht.
+    assert ueb.lies_uebernahmen(stand / ueb.UEBERNAHME_DIR, load_config(PLV)) == []
+    # Die Wiederholung derselben Registrierung gelingt und raeumt den Rest weg.
+    assert ueb.eingang_anlegen(stand, fall, STICHTAG) == ziel
+    assert ziel.is_dir() and not rest.exists()
+    # Ein VEROEFFENTLICHTER Eingang wird weiterhin nie ueberschrieben.
+    with pytest.raises(ueb.UebernahmeError, match="nie ueberschrieben"):
+        ueb.eingang_anlegen(stand, fall, STICHTAG)

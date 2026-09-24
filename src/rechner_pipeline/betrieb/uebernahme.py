@@ -1176,11 +1176,19 @@ def eingang_anlegen(
         staging = Path(stand) / STAGING_DIR
         arbeit = staging / fallname
         if arbeit.exists():
+            # Publikationszustand und Arbeitswurzel GEMEINSAM: ``ziel``
+            # existiert nicht (oben geprueft), also ist nichts unter diesem
+            # Namen veroeffentlicht — auch ein vollstaendig geschriebenes
+            # Staging mit eingang.json ist dann ein Rest, dessen finaler
+            # Rename scheiterte. Die erste Fassung hielt den Marker fuer
+            # den Beweis einer Publikation und verweigerte; die Wiederholung
+            # derselben Registrierung scheiterte dauerhaft (Pruefrunde T27,
+            # Befund 03). Der Marker sperrt, sobald das Ziel steht.
             try:
                 entferne_verzeichnis(
                     arbeit, innerhalb=staging,
                     name_ok=lambda n: n == fallname,
-                    ohne_marker=EINGANG_DATEI,
+                    ohne_marker=EINGANG_DATEI if ziel.exists() else None,
                     grund="Rest eines abgebrochenen Anlegens",
                 )
             except LoeschFehler as exc:
