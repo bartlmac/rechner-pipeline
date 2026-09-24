@@ -49,7 +49,7 @@ from rechner_pipeline.models.bestand import (
 )
 from tests.test_betrieb_neuaufsetzen import _fall_mit_nebentabellen, _schichten, _verankerung
 from tests.test_betrieb_seite import _ablage
-from tests.test_betrieb_uebernahme import STICHTAG, _fall
+from tests.test_betrieb_uebernahme import STICHTAG, _beleg_neu, _fall
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src" / "rechner_pipeline"
@@ -178,6 +178,10 @@ def _fall_mit_schicht_auf_allen(wurzel: Path) -> Path:
         verankerung["police_id"] == 7_000_003, "zustand_ta"] = "beitragsfrei"
     write_portfolio(schichten, quelle / "schichten.parquet")
     write_portfolio(verankerung, quelle / "verankerung.parquet")
+    # Die Nebentabellen sind nach der Abnahme angefasst worden — seit der
+    # Eingang auch sie gegen den Beleggraphen haelt (T27, Fund N21), muss
+    # die Abnahme die neuen Bytes bezeugen.
+    _beleg_neu(fall)
     return fall
 
 
@@ -249,6 +253,7 @@ def test_ein_zugangsstand_mit_fremder_vokabel_wird_kein_eingang(tmp_path, tabell
     df = read_portfolio(quelle / f"{tabelle}.parquet")
     df[spalte] = wert
     write_portfolio(df, quelle / f"{tabelle}.parquet")
+    _beleg_neu(fall)   # bezeugte Bytes, damit die VOKABEL-Wache greift, nicht die Hash-Wache
     stand = tmp_path / "daten"
     with pytest.raises(ueb.UebernahmeError, match="Gate"):
         ueb.eingang_anlegen(stand, fall, STICHTAG)

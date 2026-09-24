@@ -776,16 +776,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     vorgeschichte = []
     if args.vorgeschichte:
-        binde(fall_mod.eingang_datei(fall, args.vorgeschichte))
-        vorgeschichte = _lies_csv(fall, args.vorgeschichte)
+        # Durch DIESELBE Bindung lesen, nicht daneben (Pruefrunde T27,
+        # Befund 08): ``binde`` registrierte die Datei, ``_lies_csv``
+        # oeffnete sie danach ein zweites Mal — verarbeitet wurden andere
+        # Bytes, als der Beleg nannte.
+        vorgeschichte = _lies_csv(fall, args.vorgeschichte, bindung)
 
     red_anteile: Dict[str, float] = {}
     red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
     if args.red_anteile_datei is not None:
         # Auch die Herabsetzungs-Anteile binden (Review T25-05): Sie gehen
         # in jede Bewertung ein und standen nicht im Beleg.
-        binde(fall_mod.eingang_datei(fall, args.red_anteile_datei))
-        for zeile in _lies_csv(fall, args.red_anteile_datei):
+        for zeile in _lies_csv(fall, args.red_anteile_datei, bindung):
             if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
                 red_anteile[str(zeile["POLNR"])] = float(zeile["ANTEIL"])
                 if zeile.get("DATUM"):

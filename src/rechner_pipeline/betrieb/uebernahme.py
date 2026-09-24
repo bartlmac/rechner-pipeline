@@ -576,6 +576,10 @@ def _pruefe_geltende_spitze(
             raise UebernahmeError(
                 f"{eintrag.name}: Glied der A-M4-Kette nicht lesbar ({exc}) — "
                 "die geltende Spitze ist damit unbekannt") from exc
+        if not isinstance(glied, dict):
+            raise UebernahmeError(
+                f"{eintrag.name}: Glied der A-M4-Kette ist kein Objekt — die "
+                "geltende Spitze ist damit unbekannt")
         sha = str(glied.get("snapshot_sha256") or "")
         if not _ist_sha256(sha) or eintrag.name != f"A-M4-{sha}.json" \
                 or not isinstance(glied.get("vorgaenger"), list):
@@ -1214,14 +1218,22 @@ def eingang_anlegen(
     for datei in [f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE):
         if (quelle / datei).is_file():
             roh[datei] = (quelle / datei).read_bytes()
-    for datei in (f"{name}.parquet" for name in PFLICHT):
+    # Gebunden wird JEDE Tabelle, die der Graph bezeugt — auch Scheiben,
+    # Schichten, Verankerung und Merkmale (Angriffsrunde 2 Betrieb, Fund
+    # N21: die Schleife lief nur ueber die Pflichttabellen, obwohl
+    # belegte_tabellen die Hashes der Nebentabellen laengst gesammelt
+    # hatte; eine getauschte Scheibentabelle ging ungeprueft ein). Eine
+    # Nebentabelle, die der Graph NICHT nennt, ist keine Luecke im Sinne
+    # von Annahme 5 (die gilt den drei Pflichttabellen) — Annahme A14.
+    for datei in (f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)):
         quell_pfad = quelle / datei
         if datei not in roh:
             continue
         ist = sha256_bytes(roh[datei])
         soll = bezeugter_hash(belegt, fall, quell_pfad, datei)
         if soll is None:
-            unbelegt.append(datei)
+            if datei[:-len(".parquet")] in PFLICHT:
+                unbelegt.append(datei)
         elif soll != ist:
             raise UebernahmeError(
                 f"{quell_pfad}: die Tabelle ist nicht die, die der "

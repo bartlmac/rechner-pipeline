@@ -158,3 +158,37 @@ def test_eine_widerspruechliche_bruecke_wird_abgewiesen_nicht_wegreduziert(tmp_p
                         encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="keine Abbildung"):
         ueb.lies_uebernahmen(stand / ueb.UEBERNAHME_DIR, config)
+
+
+# --------------------------------------------------------------------------- #
+# Angriffsrunde 2 (Betrieb): N21 und N24
+# --------------------------------------------------------------------------- #
+
+
+def test_auch_eine_bezeugte_nebentabelle_wird_gegen_den_beleggraphen_gehalten(tmp_path):
+    """N21: Die Registrierung hielt nur die drei Pflichttabellen gegen den
+    Graphen; eine nach der Abnahme getauschte Scheibentabelle ging
+    ungeprueft ein, obwohl der Graph ihren Hash nannte. Mutationsprobe:
+    die Schleife zurueck auf PFLICHT -> rot."""
+    from tests.test_betrieb_neuaufsetzen import _fall_mit_nebentabellen
+
+    fall = _fall_mit_nebentabellen(tmp_path)
+    scheiben = fall / "abgeleitet" / "bestand" / "scheiben.parquet"
+    tabelle = read_portfolio(scheiben)
+    tabelle["sum_insured"] = tabelle["sum_insured"] * 2.0
+    write_portfolio(tabelle, scheiben)
+    with pytest.raises(ueb.UebernahmeError, match="bezeugt"):
+        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+    # Positivkontrolle: unveraendert registriert sich der Fall.
+    frisch = _fall_mit_nebentabellen(tmp_path / "b")
+    assert ueb.eingang_anlegen(tmp_path / "daten-b", frisch, STICHTAG).is_dir()
+
+
+def test_ein_kettenglied_in_rohform_ist_ein_benannter_fehler(tmp_path):
+    """N24: ein Glied, das JSON ist, aber kein Objekt (Liste, Zahl), liess
+    die Registrierung mit AttributeError abstuerzen."""
+    fall = _fall(tmp_path)
+    alt = _spitze_laut_gate_ledger(fall)
+    (fall / "entscheide" / ("A-M4-" + "e" * 64 + ".json")).write_text("[1, 2, 3]", encoding="utf-8")
+    with pytest.raises(ueb.UebernahmeError, match="kein Objekt"):
+        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=alt)

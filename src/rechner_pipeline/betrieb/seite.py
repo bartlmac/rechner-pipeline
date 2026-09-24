@@ -683,18 +683,33 @@ def ankerziel_fehler(ablage, paket_ziel: Path, anker_verzeichnis: Path) -> Optio
     aufgeloest, damit weder ``paket/../paket/anker`` noch ein Symlink
     daran vorbeikommt.
     """
+    from rechner_pipeline.models.anker import ANKER_DATEI
     from rechner_pipeline.models.zeichnung import ausserhalb_von
 
     anker = Path(anker_verzeichnis)
+    datei = anker / ANKER_DATEI
+    # Geprueft wird das Pfadobjekt, das GESCHRIEBEN wird: die Ankerdatei,
+    # nicht nur ihr Verzeichnis (Pruefrunde T27, Befund 09). Ein
+    # Dateisymlink im externen Verzeichnis zeigte in die Ablage oder in ein
+    # Paket, ``open("a")`` folgte ihm, und der Export loeschte mit dem alten
+    # Paket zwei belegte Ankerzeilen. Ein Symlink als Ankerdatei bindet
+    # nichts — egal wohin er zeigt.
+    if datei.is_symlink():
+        return (
+            f"Anker: {datei} ist ein Symlink — die Ankerdatei muss eine "
+            "gewoehnliche Datei im Ankerverzeichnis sein, sonst schreibt der "
+            "Export, wohin der Link zeigt."
+        )
     for was, bereich in (("die Ablage", Path(ablage.wurzel)),
                          ("das Stands-Paket", Path(paket_ziel))):
-        if not ausserhalb_von(anker, bereich, muss_existieren=False):
-            return (
-                f"Anker: {anker_verzeichnis} liegt in oder auf {was} "
-                f"({bereich}) — ein Bezug, den der schreibende Prozess selbst "
-                "anfassen kann, bindet nichts. Ein Verzeichnis ausserhalb von "
-                "Ablage und Paket waehlen (Fall-Datenraum)."
-            )
+        for pfad in (anker, datei):
+            if not ausserhalb_von(pfad, bereich, muss_existieren=False):
+                return (
+                    f"Anker: {pfad} liegt in oder auf {was} "
+                    f"({bereich}) — ein Bezug, den der schreibende Prozess selbst "
+                    "anfassen kann, bindet nichts. Ein Verzeichnis ausserhalb von "
+                    "Ablage und Paket waehlen (Fall-Datenraum)."
+                )
     return None
 
 
@@ -782,6 +797,28 @@ def stands_paket(
     fehler = ankerziel_fehler(ablage, ziel, anker_verzeichnis)
     if fehler:
         raise SeiteError(fehler)
+    # Unter der Lauf-Sperre (Pruefrunde T27, Befund 11): Der Export las
+    # Manifest und Journal aus den geprueften Bytes, das Protokoll und den
+    # Anker aber spaeter von der Platte — ein Tageslauf dazwischen lieferte
+    # ein Paket mit Stand 03.02. und Protokollende 10.02., erfolgreich
+    # geschrieben, vom Konsumenten zu Recht abgewiesen. Mit der Sperre gibt
+    # es kein Dazwischen: Export und Lauf schliessen sich aus, wie zwei
+    # Laeufe (Review T22-03).
+    from rechner_pipeline.betrieb.tageslauf import TageslaufError, lauf_sperre
+
+    try:
+        with lauf_sperre(ablage):
+            return _stands_paket_unter_sperre(
+                ablage, ziel, anker_verzeichnis=anker_verzeichnis, art=art,
+                schluessel=schluessel, zeichnungsordnung=zeichnungsordnung)
+    except TageslaufError as exc:
+        raise SeiteError(str(exc)) from exc
+
+
+def _stands_paket_unter_sperre(
+    ablage, ziel: Path, *, anker_verzeichnis: Path, art: str,
+    schluessel: Optional[Path], zeichnungsordnung: Optional[Path],
+) -> Path:
     modell, gelesen = stand_modell_mit_bytes(ablage)
     if ziel.exists():
         # Die Wache ist paketziel_fehler (Ablage-Grenze, Symlink, Marker);
