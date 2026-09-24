@@ -179,6 +179,20 @@ def _build_parser() -> GateArgumentParser:
         "--bis an den belegten Horizont und jede Tabelle an die vom Lauf "
         "geschriebenen Bytes.",
     )
+    # Jede Rolle des Erzeugers hat ein Flag — ABGELEITET aus ROLLEN_DATEIEN,
+    # nicht abgetippt. Die Eingabenliste unten liest die Rollen aus derselben
+    # Tabelle; eine Rolle ohne Flag war dort still None (A27-02: die
+    # Reduktionstabelle stand in der Tabelle, hatte kein Flag, und auch der
+    # Weg ueber --request-json kannte den Schluessel deshalb nicht — Exit 20
+    # mit 89 "falschen" Buchungen fuer einen korrekten Lauf).
+    vorhanden = {a.dest for a in parser._actions}
+    for rolle, datei in ROLLEN_DATEIEN.items():
+        if rolle not in vorhanden:
+            parser.add_argument(
+                f"--{rolle}", default=None,
+                help=f"{datei} des fortschreiben-Laufs (optional; Rolle {rolle!r}, "
+                "geht in die Ledger-Herleitung ein).",
+            )
     parser.add_argument("--repo-root", dest="repo_root", default=None)
     parser.add_argument(
         "--diagnostics-dir", dest="diagnostics_dir", default=None,

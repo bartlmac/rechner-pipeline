@@ -115,7 +115,12 @@ from rechner_pipeline.kern.rechenkern import (
 #: Korrekturschicht in Storno und Abschluss mit (Freischaltung des
 #: uebernommenen Bestands, Schritt 5); reine Verschiebung, Rechenwerte
 #: unveraendert.
-__version__ = "3.6.0"
+#: 3.7.0 = Das Tarifwerk gilt auch NACH der Herabsetzung: die
+#: Folgebewertung des reduzierten Verlaufs (vertrags_monatsreserve_
+#: reduziert) traegt stoab_je_baustein als Pflichtargument ohne Default,
+#: Abzug je Baustein auf der herabgesetzten Summe (Pruefrunde T27,
+#: Befund 12); Rechenwerte der Vorgabe (vertragsweit) unveraendert.
+__version__ = "3.7.0"
 
 __all__ = [
     "ModelPoint",

@@ -390,7 +390,8 @@ def test_die_folgebewertung_bildet_den_abschlag_einmal():
     ]
 
     monate = 12 * (jahr + 3)
-    ges = vertrags_monatsreserve_reduziert(vertraege, monate)
+    # Tarifplan KLV: der Abschlag gilt je Vertrag (stoab_je_baustein=False).
+    ges = vertrags_monatsreserve_reduziert(vertraege, monate, stoab_je_baustein=False)
 
     # Reserven summieren sich ueber die Schichten ...
     einzeln = sum(

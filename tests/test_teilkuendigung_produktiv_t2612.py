@@ -100,7 +100,8 @@ def test_der_geschichtete_zweig_kuendigt_nur_den_grund():
     m = 12 * 10
     reduziert = vertrags_monatsreserve_reduziert(
         [(0, ReduzierterVertrag(kern=grund, reduktion=g)),
-         (5, ReduzierterVertrag(kern=scheibe, reduktion=sch))], m)
+         (5, ReduzierterVertrag(kern=scheibe, reduktion=sch))], m,
+        stoab_je_baustein=False)
     neu = Rechenkern(dataclasses.replace(grund.mp, sum_insured=f * grund.mp.sum_insured))
     erwartet = vertrags_monatsreserve(neu, [], m).vx_mrv + vertrags_monatsreserve(scheibe, [], m - 60).vx_mrv
     assert reduziert.vx_mrv == pytest.approx(erwartet, rel=1e-9)

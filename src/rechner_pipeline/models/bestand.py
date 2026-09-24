@@ -236,6 +236,14 @@ EREIGNIS_VALUES: Tuple[str, ...] = (
 #: Periode.
 ZUGANG_EREIGNISSE: Tuple[str, ...] = ("ZUG", "ERH")
 LEISTUNG_EREIGNISSE: Tuple[str, ...] = ("ABL", "STO", "TOD", "INV", "REA")
+#: Vorfaelle, die NUR MIT einer Zahlung eine Leistung sind: Ereignis -> die
+#: Betragsarten, die die Zahlung tragen. Die Herabsetzung als
+#: Teilkuendigung (Bedingungswerk Ziffer 6) zahlt den gekuendigten
+#: Grundanteil aus, die prospektive wandelt nur um — beide buchen ``RED``.
+#: Gezaehlt wird der VORFALL (Police, Ereignis, Wirkungstag), nicht die
+#: Zeile (Pruefrunde T27, Befund 15: die Zaehlung hielt RED pauschal fuer
+#: zahlungsfrei, obwohl der Ledger 7.751 EUR auszahlte).
+LEISTUNG_BEI_ZAHLUNG: Mapping[str, Tuple[str, ...]] = {"RED": ("RKW_teilkuendigung",)}
 
 #: GeVo, die WEDER Zugang NOCH Leistung sind — je mit Grund. Hier stehen
 #: nur begruendete Ausnahmen: Eine Liste, die Ausnahmen und Versehen
@@ -247,7 +255,8 @@ WEDER_ZUGANG_NOCH_LEISTUNG: Mapping[str, str] = {
     "PEX": "Beitragsfreistellung wandelt um, sie zahlt nicht aus und "
            "bringt nichts hinzu",
     "RED": "Herabsetzung senkt die Summe eines laufenden Vertrags; kein "
-           "Zugang, und ausgezahlt wird nichts",
+           "Zugang. Zahlt sie als Teilkuendigung aus, zaehlt dieser Vorfall "
+           "ueber LEISTUNG_BEI_ZAHLUNG als Leistung; die prospektive nicht",
     "MIG": "im Ledger nicht als eigene Art gebucht — ein Migrationszugang "
            "ist ein ZUG mit Quelle 'uebernahme'",
 }

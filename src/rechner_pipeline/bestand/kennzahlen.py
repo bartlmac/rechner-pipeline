@@ -778,7 +778,7 @@ def bewegungskennzahlen(journal: pd.DataFrame, stichtag: _dt.date) -> Dict[str, 
     abweichende Definition waere schlimmer als diese Grenze.
     """
     from rechner_pipeline.models.bestand import (
-        LEISTUNG_EREIGNISSE, ZUGANG_EREIGNISSE,
+        LEISTUNG_BEI_ZAHLUNG, LEISTUNG_EREIGNISSE, ZUGANG_EREIGNISSE,
     )
 
     if "buchungsdatum" not in journal.columns:
@@ -794,16 +794,23 @@ def bewegungskennzahlen(journal: pd.DataFrame, stichtag: _dt.date) -> Dict[str, 
         & (sichtbar <= pd.Timestamp(stichtag))
     ]
 
-    def vorfaelle(arten) -> int:
-        auswahl = periode[periode["ereignis"].isin(arten)]
+    def vorfaelle(auswahl: pd.DataFrame) -> int:
         if not len(auswahl):
             return 0
         return int(len(auswahl.drop_duplicates(
             subset=["police_id", "ereignis", "status_date"])))
 
+    # Eine Leistung ist ein Vorfall, der zahlt: die Leistungsereignisse
+    # immer, die bedingten (Teilkuendigung) nur mit ihrer Zahlungszeile —
+    # gezaehlt je Vorfall, nicht je Zeile (T27-15).
+    leistung = periode["ereignis"].isin(LEISTUNG_EREIGNISSE)
+    for ereignis, arten in LEISTUNG_BEI_ZAHLUNG.items():
+        leistung |= ((periode["ereignis"] == ereignis)
+                     & periode["betrag_art"].isin(arten)
+                     & (periode["betrag"] > 0.0))
     return {
-        "zugaenge": vorfaelle(ZUGANG_EREIGNISSE),
-        "leistungen": vorfaelle(LEISTUNG_EREIGNISSE),
+        "zugaenge": vorfaelle(periode[periode["ereignis"].isin(ZUGANG_EREIGNISSE)]),
+        "leistungen": vorfaelle(periode[leistung]),
     }
 
 

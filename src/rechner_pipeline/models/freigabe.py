@@ -147,5 +147,3 @@ def pruefe_freigabe(snapshot: dict, schluesselring: Mapping[str, bytes]) -> List
     if not hmac.compare_digest(erwartet, str(freigabe.get("signatur", ""))):
         return ["Freigabesignatur stimmt nicht mit dem Snapshot-Inhalt ueberein"]
     return []
-
-

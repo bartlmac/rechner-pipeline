@@ -45,6 +45,7 @@ from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.bestand.schichten import schichten_je_police
 from rechner_pipeline.kern.beitragsreduktion import (
+    TEILKUENDIGUNG,
     absorbierte_schicht,
     reduzierte_teile,
     vertrags_monatsreserve_reduziert,
@@ -136,7 +137,8 @@ class _Herleitung:
     def rkw(self, jahr: int) -> float:
         if self.ist_reduziert(jahr):
             return vertrags_monatsreserve_reduziert(
-                self.reduziert, 12 * jahr).rkw
+                self.reduziert, 12 * jahr,
+                stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"])).rkw
         return vertrags_rkw(
             self.grund, [(j, k) for j, _, k in self._bis(jahr)], jahr,
             stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]))
@@ -149,6 +151,38 @@ class _Herleitung:
         return self.grund.beitragsfreie_summe(jahr) + sum(
             k.beitragsfreie_summe(jahr - j) for j, _, k in self._bis(jahr)
         )
+
+
+    def red_buchungen(self, schicht) -> Dict[str, float]:
+        """Die Buchungen, die die registrierte Herabsetzung dieser Police im
+        Ledger haben MUSS — Betragsart -> Betrag, hergeleitet wie in der
+        Engine (``_Vertrag.herabsetzen``): die neue Gesamtsumme immer; die
+        absorbierte Korrekturschicht, wenn eine traegt; bei der
+        Teilkuendigung die Auszahlung des gekuendigten Grundanteils, wenn
+        sie positiv ist (der Grund-Rueckkaufswert kann in fruehen Jahren
+        null sein, dann bucht die Engine keine Zeile).
+
+        EINE Menge fuer beide Richtungen: Jede RED-Zeile muss darin stehen,
+        und jeder Eintrag muss genau einmal gebucht sein. Bisher prueften
+        wir nur die Zeilen, die da waren — 28 Teilkuendigungen ohne eine
+        einzige Auszahlung passierten mit leerer Fehlerliste (Pruefrunde
+        T27, Befund 14).
+        """
+        if self.reduktion is None:
+            return {}
+        jahr, anteil, verfahren = self.reduktion
+        aus: Dict[str, float] = {"VS_herabsetzung": self.gesamt_vs(jahr)}
+        absorbiert = absorbierte_schicht(self.grund, jahr, schicht)
+        if absorbiert:
+            aus["dDK_absorption"] = absorbiert
+        if verfahren == TEILKUENDIGUNG:
+            auszahlung = (1.0 - anteil) * vertrags_rkw(
+                self.grund, [], jahr,
+                stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),
+            ) + absorbiert
+            if auszahlung > 0.0:
+                aus["RKW_teilkuendigung"] = auszahlung
+        return aus
 
 
 #: Zustaende, die eine Police beenden — eine Zeile mit diesem Code am
@@ -245,6 +279,28 @@ def pruefe_ledger_betraege(
 
     herleitungen: Dict[int, _Herleitung] = {}
     abweichungen: List[str] = []
+    unbelegt: List[str] = []
+
+    def _herleitung(pid: int, h: Any) -> Optional[_Herleitung]:
+        """Grund- und Erhoehungsscheiben der Police als Rechenkerne, samt
+        registrierter Herabsetzung — einmal je Police, fuer die Zeilen
+        der Schleife und fuer die Vollstaendigkeitspruefung darunter."""
+        if pid not in herleitungen:
+            try:
+                felder = grundlagen(pid, str(h["tarif_generation"]))
+                herleitungen[pid] = _Herleitung(
+                    h.to_dict() | {"police_id": pid}, felder,
+                    scheiben_je_police.get(pid, []),
+                    tarifwerk_je_generation.get(str(h["tarif_generation"])))
+                if pid in reduktion_je_police:
+                    herleitungen[pid].setze_reduktion(
+                        *reduktion_je_police[pid],
+                        schicht_je_police.get(pid))
+            except (KeyError, ValueError) as exc:
+                errors.append(f"ledger police {pid}: Kern nicht herleitbar: {exc}")
+                return None
+        return herleitungen[pid]
+
     for z in ledger.itertuples(index=False):
         pid = int(z.police_id)
         art = str(z.ereignis)
@@ -264,21 +320,9 @@ def pruefe_ledger_betraege(
             # einer Erhoehung der ihrer neuen Scheibe.
             if produkt == "bu":
                 continue                     # BU-Beitrag: eigene Groesse, spaeter
-            if pid not in herleitungen:
-                try:
-                    felder = grundlagen(pid, str(h["tarif_generation"]))
-                    herleitungen[pid] = _Herleitung(
-                        h.to_dict() | {"police_id": pid}, felder,
-                        scheiben_je_police.get(pid, []),
-                        tarifwerk_je_generation.get(str(h["tarif_generation"])))
-                    if pid in reduktion_je_police:
-                        herleitungen[pid].setze_reduktion(
-                            *reduktion_je_police[pid],
-                            schicht_je_police.get(pid))
-                except (KeyError, ValueError) as exc:
-                    errors.append(f"ledger police {pid}: Kern nicht herleitbar: {exc}")
-                    continue
-            v = herleitungen[pid]
+            v = _herleitung(pid, h)
+            if v is None:
+                continue
             if art == "ZUG":
                 erwartet = _bjb_aus(v.grund)
             else:
@@ -314,21 +358,9 @@ def pruefe_ledger_betraege(
                     vs for j, vs in scheiben_je_police.get(pid, []) if j <= jahr
                 )
             else:
-                if pid not in herleitungen:
-                    try:
-                        felder = grundlagen(pid, str(h["tarif_generation"]))
-                        herleitungen[pid] = _Herleitung(
-                            h.to_dict() | {"police_id": pid}, felder,
-                            scheiben_je_police.get(pid, []),
-                            tarifwerk_je_generation.get(str(h["tarif_generation"])))
-                        if pid in reduktion_je_police:
-                            herleitungen[pid].setze_reduktion(
-                                *reduktion_je_police[pid],
-                                schicht_je_police.get(pid))
-                    except (KeyError, ValueError) as exc:
-                        errors.append(f"ledger police {pid}: Kern nicht herleitbar: {exc}")
-                        continue
-                v = herleitungen[pid]
+                v = _herleitung(pid, h)
+                if v is None:
+                    continue
                 bfr_ab = pex_jahr.get(pid)
                 # NACH einer Herabsetzung traegt der Vertrag keine Schicht
                 # mehr — sie ist in die Neuberechnung eingegangen und
@@ -352,30 +384,19 @@ def pruefe_ledger_betraege(
                     erwartet = v.beitragsfreie_summe(pex_j) + zuschlag_bei_pex(
                         schicht_jetzt, v.grund, pex_j)
                 elif art == "RED":
-                    # Zwei Betragsarten, zwei Erwartungen: die neue
-                    # Gesamtsumme des herabgesetzten Vertrags und — bei
-                    # einem uebernommenen — die Korrekturschicht, die in
-                    # die Neuberechnung eingegangen ist.
-                    if betrag_art == "dDK_absorption":
-                        erwartet = absorbierte_schicht(
-                            v.grund, jahr, schicht_je_police.get(pid))
-                    elif betrag_art == "RKW_teilkuendigung":
-                        # Teilkuendigung (Ziffer 6): Rueckkaufswert des
-                        # gekuendigten Grundanteils plus absorbierte
-                        # Schicht — derselbe Weg wie in der Engine
-                        # (_Vertrag.herabsetzen). Ohne registrierte
-                        # Reduktion ist eine Auszahlung unbelegt: 0.
-                        if v.reduktion is None:
-                            erwartet = 0.0
-                        else:
-                            erwartet = (1.0 - v.reduktion[1]) * vertrags_rkw(
-                                v.grund, [], jahr,
-                                stoab_je_baustein=bool(
-                                    v.tarifwerk["stoab_je_baustein"])
-                            ) + absorbierte_schicht(
-                                v.grund, jahr, schicht_je_police.get(pid))
-                    else:
-                        erwartet = v.gesamt_vs(jahr)
+                    # Die Buchungen einer Herabsetzung folgen aus der
+                    # registrierten Reduktion — Soll-Menge UND Betraege aus
+                    # EINER Herleitung (red_buchungen); dieselbe Menge
+                    # prueft unten die Vollstaendigkeit (T27-14). Eine
+                    # RED-Zeile, die keine registrierte Herabsetzung
+                    # erzeugt, ist unbelegt — nicht "Betrag 0".
+                    soll = v.red_buchungen(schicht_je_police.get(pid))
+                    if (v.reduktion is None or jahr != v.reduktion[0]
+                            or betrag_art not in soll):
+                        unbelegt.append(
+                            f"police {pid} RED Jahr {jahr} {betrag_art}")
+                        continue
+                    erwartet = soll[betrag_art]
                 elif art in ("TOD", "ABL"):
                     if bfr_ab is not None and bfr_ab <= jahr:
                         # Nach einer absorbierenden Freistellung ist der
@@ -390,6 +411,44 @@ def pruefe_ledger_betraege(
                 f"police {pid} {art} Jahr {jahr}: Ledger {betrag:.2f}, "
                 f"Kern {erwartet:.2f}")
 
+    # Vollstaendigkeit (T27-14): Jede registrierte Herabsetzung hat ihre
+    # Buchungen — GENAU EINMAL. Die Soll-Menge ist dieselbe, aus der oben
+    # die Betraege kommen; fehlt eine Zeile, fehlt sie hier.
+    fehlend: List[str] = []
+    red_zeilen = ledger[ledger["ereignis"] == "RED"]
+    for pid, (jahr, _anteil, _verfahren) in sorted(reduktion_je_police.items()):
+        if pid not in haupt.index:
+            errors.append(f"reduktionen police {pid}: nicht im Stamm")
+            continue
+        h = haupt.loc[pid]
+        if str(h.get("produkt", "klv")) == "bu":
+            continue
+        v = _herleitung(pid, h)
+        if v is None:
+            continue
+        eigene = red_zeilen[(red_zeilen["police_id"] == pid)
+                            & (red_zeilen["vertragsjahr"] == jahr)]
+        for art in v.red_buchungen(schicht_je_police.get(pid)):
+            n = int((eigene["betrag_art"] == art).sum())
+            if n != 1:
+                fehlend.append(
+                    f"police {pid} RED Jahr {jahr}: {art} "
+                    + ("fehlt" if n == 0 else f"{n}-mal gebucht"))
+    if fehlend:
+        errors.append(
+            f"ledger: {len(fehlend)} Buchung(en) registrierter Herabsetzungen "
+            "fehlen oder sind mehrfach gebucht — z. B. "
+            + "; ".join(fehlend[:3])
+            + (" ..." if len(fehlend) > 3 else "")
+            + ". Die Reduktionstabelle kennt die Herabsetzung, der Ledger "
+            "muss jede ihrer Buchungen genau einmal tragen"
+        )
+    if unbelegt:
+        errors.append(
+            f"ledger: {len(unbelegt)} RED-Buchung(en), die keine registrierte "
+            "Herabsetzung erzeugt — z. B. " + "; ".join(unbelegt[:3])
+            + (" ..." if len(unbelegt) > 3 else "")
+        )
     if abweichungen:
         errors.append(
             f"ledger: {len(abweichungen)} Buchung(en), deren Betrag nicht aus "

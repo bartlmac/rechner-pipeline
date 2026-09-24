@@ -21,6 +21,7 @@ Knoten: klv, bu
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as _dt
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -244,19 +245,21 @@ def _scheiben_kerne(
 
 def werte_reduziert(
     teile: List[Tuple[int, Any]], months_exp: int, pex_jahr: Optional[int],
+    *, stoab_je_baustein: bool,
 ) -> Dict[str, Any]:
     """Aktuarielle Werte eines HERABGESETZTEN Vertrags am Stichtag.
 
     Spiegel von :func:`vertragswerte`. Der herabgesetzte Vertrag rechnet
     ueber seinen geknickten Verlauf, nicht ueber zwei skalierte
-    Vertraege; der Stornoabschlag gilt je Vertrag und wird einmal auf den
-    Gesamtwerten gebildet (``vertrags_monatsreserve_reduziert``). Eine
-    Beitragsfreistellung NACH der Herabsetzung laesst die dort fixierte
-    Summe auf dem beitragsfreien Satz weiterlaufen.
+    Vertraege; WO der Stornoabschlag greift, sagt das Tarifwerk der
+    Generation — auch nach der Herabsetzung (T27-12), deshalb ohne
+    Default. Eine Beitragsfreistellung NACH der Herabsetzung laesst die
+    dort fixierte Summe auf dem beitragsfreien Satz weiterlaufen.
     """
     jahr = int(months_exp) // 12
     if pex_jahr is None:
-        reserve = vertrags_monatsreserve_reduziert(teile, int(months_exp))
+        reserve = vertrags_monatsreserve_reduziert(
+            teile, int(months_exp), stoab_je_baustein=stoab_je_baustein)
         return {
             "jahr": jahr, "status": "POL",
             "deckungskapital": reserve.drx_bpfl,
@@ -274,6 +277,29 @@ def werte_reduziert(
             v.beitragsfreie_summe(int(pex_jahr) - erh_jahr)
             for erh_jahr, v in teile),
     }
+
+
+def beitraege_reduziert(teile: List[Tuple[int, Any]], jahr: int) -> Dict[str, float]:
+    """Beitraege eines herabgesetzten Vertrags — KOMPONENTENWEISE.
+
+    Jeder Baustein zahlt den Beitrag seiner fortgefuehrten Summe
+    (``anteil x S_i``): Bei der Teilkuendigung tragen die Scheiben den
+    Anteil 1 und bleiben unveraendert, bei den PLV-Verfahren tragen alle
+    Bausteine denselben Faktor (klv.md 7.1). Die Stueckkosten sind je
+    Baustein fix und werden NICHT mit der Summe skaliert — die Summe
+    ueber alle Bausteine mal Anteil hatte beides falsch (Pruefrunde T27,
+    Befund 13: Scheiben und Stueckkosten mitreduziert). Der Beitrag der
+    fortgefuehrten Summe ist der Beitrag eines gewoehnlichen Kerns mit
+    dieser Summe — kein zweiter Rechenweg.
+    """
+    aus = {"bjb": 0.0, "bzb_jahr": 0.0}
+    for erh_jahr, v in teile:
+        anteil = float(v.reduktion.anteil)
+        kern = Rechenkern(dataclasses.replace(
+            v.kern.mp, sum_insured=anteil * v.kern.mp.sum_insured))
+        bt = beitraege(kern, jahr - int(erh_jahr))
+        aus = {n: aus[n] + bt[n] for n in aus}
+    return aus
 
 
 def _reduzierte_vertraege(
@@ -461,19 +487,16 @@ def einzelwerte_am(
             # DATUM — ein Stichtag davor rechnet den alten Verlauf.
             reduziert = None
         if reduziert is not None:
-            werte = werte_reduziert(reduziert, int(months_exp), pex_jahr)
+            werte = werte_reduziert(
+                reduziert, int(months_exp), pex_jahr,
+                stoab_je_baustein=bool(tarifwerk_je_generation[
+                    str(generation_je_police.loc[pid])]["stoab_je_baustein"]))
             zeile["leistung"] = sum(
                 v.reduktion.vs_neu for _, v in reduziert)
             if pex_jahr is None:
-                anteil = reduziert[0][1].reduktion.anteil
-                bt = beitraege(kerne[pid], int(months_exp) // 12)
-                for s_ in [x for x in scheiben_je_police.get(pid, ())
-                           if x["erh_datum"].date() <= stichtag]:
-                    bt_s = beitraege(
-                        s_["kern"], int(months_exp) // 12 - s_["erh_jahr"])
-                    bt = {k: bt[k] + bt_s[k] for k in bt}
-                zeile["jahresbeitrag"] = bt["bjb"] * anteil
-                zeile["bzb_jahr"] = bt["bzb_jahr"] * anteil
+                bt = beitraege_reduziert(reduziert, int(months_exp) // 12)
+                zeile["jahresbeitrag"] = bt["bjb"]
+                zeile["bzb_jahr"] = bt["bzb_jahr"]
             zeile["status"] = werte["status"]
             zeile["deckungskapital"] = werte["deckungskapital"]
             zeile["rueckkaufswert"] = (

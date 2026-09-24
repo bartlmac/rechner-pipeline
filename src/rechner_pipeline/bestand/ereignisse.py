@@ -319,7 +319,8 @@ class _Vertrag:
             # Der herabgesetzte Vertrag traegt seinen eigenen Verlauf;
             # eine Korrekturschicht hat er nicht mehr.
             return vertrags_monatsreserve_reduziert(
-                self.reduziert, 12 * jahr).rkw
+                self.reduziert, 12 * jahr,
+                stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"])).rkw
         wert = vertrags_rkw(
             self.grund, [(erh_jahr, kern) for erh_jahr, _, kern in self.scheiben], jahr,
             stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),

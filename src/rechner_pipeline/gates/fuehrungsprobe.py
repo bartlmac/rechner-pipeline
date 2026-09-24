@@ -567,7 +567,8 @@ def pruefe_fuehrung(
                         pex_f = int(eigene["vertragsjahr"].iloc[0])
                 if art == "STO":
                     erwartet = vertrags_monatsreserve_reduziert(
-                        teile_red, 12 * jahr).rkw
+                        teile_red, 12 * jahr,
+                        stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
                 elif art == "PEX":
                     erwartet = sum(
                         v.beitragsfreie_summe(jahr - e) for e, v in teile_red)

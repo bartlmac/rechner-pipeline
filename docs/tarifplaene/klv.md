@@ -242,6 +242,22 @@ Je Schicht gebildet griffen $u_{\min}$ und $u_{\max}$ mehrfach, und ein
 Vertrag mit zwei Erhöhungen verlöre beim Herabsetzen mehr als den
 zugesagten Abschlag.
 
+**Übernommene Generationen mit Abzug je Baustein.** Führt das
+Bedingungswerk einer übernommenen Generation den Stornoabschlag je
+Baustein (`stoab_je_baustein`, Abschnitt 13; Bedingungswerk der zweiten
+Baldrian-Lieferung, Ziffer 4), so gilt das auch **nach** einer
+Herabsetzung: jeder Baustein trägt seinen Abzug mit eigenen Grenzen,
+bezogen auf seine herabgesetzte Summe. Die Teilkündigung (Ziffer 6)
+lässt die Erhöhungsscheiben unverändert; der fortgeführte Vertrag ist
+die Grundversicherung mit $f \cdot S$ plus diese Scheiben, unter dem
+vollständigen Tarifwerk der Generation, und sein Beitrag rechnet
+komponentenweise: $f \cdot \text{BJB}_{\text{Grund}} + \sum_i
+\text{BJB}_i$, die Stückkosten bleiben je Baustein fix und werden nicht
+mit der Summe skaliert. Das gilt gleichermaßen für die PLV-Verfahren:
+jeder Baustein zahlt den Beitrag seiner fortgeführten Summe $f \cdot
+S_i$ zuzüglich seiner Stückkosten. *Präzisierung 2026-09-24 (Prüfrunde
+T27, Befunde 12 und 13).*
+
 # 8 Modellpunkt und Tarif-Stellschrauben
 
 Alle Größen sind Felder des Modellpunkts (`ModelPoint`) — eine neue

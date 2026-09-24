@@ -514,20 +514,37 @@ def absorbierte_schicht(
 
 
 def vertrags_monatsreserve_reduziert(
-    teile: Sequence[Tuple[int, "ReduzierterVertrag"]], monate: int
+    teile: Sequence[Tuple[int, "ReduzierterVertrag"]], monate: int,
+    *, stoab_je_baustein: bool,
 ) -> "Monatsreserve":
     """Vertragsweite Monatsreserve eines herabgesetzten GESCHICHTETEN Vertrags.
 
     Spiegel von
     :func:`rechner_pipeline.kern.rechenkern.vertrags_monatsreserve`, nur
     dass jede Schicht ihren herabgesetzten Verlauf rechnet: Reserven sind
-    die Summe der Schichtwerte, jede an ihrem versetzten Stichtag; der
-    Stornoabschlag gilt je VERTRAG und wird einmal auf den Gesamtwerten
-    gebildet.
+    die Summe der Schichtwerte, jede an ihrem versetzten Stichtag.
 
-    Bezugsgroesse des Abschlags ist die NEUE Gesamtsumme — die Summe der
-    ``vs_neu`` aller Schichten, also fortgefuehrter plus umgewandelter
-    Teil. Die alte waere die Summe eines Vertrags, den es nicht mehr gibt.
+    WO der Stornoabschlag greift, sagt das Tarifwerk der Generation — und
+    zwar auch NACH der Herabsetzung (Pruefrunde T27, Befund 12: der
+    reduzierte Verlauf kannte den Schalter nicht, ein Folge-Rueckkauf nach
+    Teilkuendigung verlor den Abzug je Baustein, und die P-B1-Kontrolle
+    rechnete ueber denselben Weg). Deshalb hat ``stoab_je_baustein`` hier
+    KEINEN Default: Wer den reduzierten Verlauf bewertet, schreibt das
+    Tarifwerk hin, sonst laeuft er nicht.
+
+    * ``False`` (Tarifplan KLV, Abschnitt 6/7.1): der Abschlag gilt je
+      VERTRAG, einmal auf den Gesamtwerten gebildet. Bezugsgroesse ist die
+      NEUE Gesamtsumme — die Summe der ``vs_neu`` aller Schichten, also
+      fortgefuehrter plus umgewandelter Teil. Die alte waere die Summe
+      eines Vertrags, den es nicht mehr gibt.
+    * ``True`` (Bedingungswerk einer uebernommenen Generation, Ziffer 4):
+      jeder Baustein traegt seinen eigenen Abzug mit eigenen Grenzen,
+      bezogen auf SEINE herabgesetzte Summe ``vs_neu`` und seine eigene
+      Reserve, mit eigener Ablauf-/Flexphasenpruefung am versetzten
+      Stichtag; der Rueckkaufswert ist die Summe der auf null begrenzten
+      Baustein-Rueckkaufswerte — derselbe Weg wie
+      ``vertrags_monatsreserve(stoab_je_baustein=True)``, nur mit der
+      Summe nach der Herabsetzung.
     """
     from rechner_pipeline.kern.produkte.klv import Monatsreserve
 
@@ -535,6 +552,7 @@ def vertrags_monatsreserve_reduziert(
         raise BeitragsreduktionFehler(
             "keine Schichten — ein Vertrag ohne Grundscheibe ist keiner")
     dr = mrv = 0.0
+    stuecke: List[Tuple[Any, int, Any]] = []
     for erh_jahr, vertrag in teile:
         versetzt = monate - 12 * erh_jahr
         if versetzt < 0:
@@ -545,20 +563,37 @@ def vertrags_monatsreserve_reduziert(
         reserve = vertrag.monatsreserve(versetzt)
         dr += reserve.drx_bpfl
         mrv += reserve.vx_mrv
+        stuecke.append((vertrag, versetzt, reserve))
 
     grund = teile[0][1].kern
     mp = grund.mp
     a = monate // 12
-    if a > mp.n or grund.produkt.ist_flex_phase(a):
-        stoab = 0.0
+    if stoab_je_baustein:
+        stoab = rkw = 0.0
+        for vertrag, versetzt, reserve in stuecke:
+            mp_k = vertrag.kern.mp
+            a_k = versetzt // 12
+            if a_k > mp_k.n or vertrag.kern.produkt.ist_flex_phase(a_k):
+                teil_stoab = 0.0
+            else:
+                teil_stoab = min(
+                    mp_k.stoab_max,
+                    max(mp_k.stoab_min,
+                        mp_k.stoab_satz
+                        * (vertrag.reduktion.vs_neu - reserve.drx_bpfl)))
+            stoab += teil_stoab
+            rkw += max(0.0, reserve.vx_mrv - teil_stoab)
     else:
-        vs = sum(v.reduktion.vs_neu for _, v in teile)
-        stoab = min(mp.stoab_max,
-                    max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+        if a > mp.n or grund.produkt.ist_flex_phase(a):
+            stoab = 0.0
+        else:
+            vs = sum(v.reduktion.vs_neu for _, v in teile)
+            stoab = min(mp.stoab_max,
+                        max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+        rkw = max(0.0, mrv - stoab)
     return Monatsreserve(
         monate=monate, jahr=a, monatsanteil=(monate % 12) / 12.0,
-        drx_bpfl=dr, vx_mrv=mrv, stoab=stoab,
-        rkw=max(0.0, mrv - stoab),
+        drx_bpfl=dr, vx_mrv=mrv, stoab=stoab, rkw=rkw,
     )
 
 

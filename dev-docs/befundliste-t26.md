@@ -60,7 +60,7 @@ ersten mit 2245 bis zum letzten mit 2337 Tests.
    Bauauftrag GEBAUT (b637898); siehe T26-12 und Annahme 6.
 4. Die fuenf Annahmen im Abschnitt darunter.
 
-**Was noch zu bauen ist:** T26-10 (die Seite mischt bei gleichzeitigem
+**Was zu bauen war (Stand 2026-09-22: gebaut, siehe Block 4 und 5):** T26-10 (die Seite mischt bei gleichzeitigem
 Tageslauf zwei Generationen). Dazu Block 5 des Gutachters — erneute Verifikation, volle
 Suite in der Linux-Referenzumgebung, und die Korrektur der Aussage im PR.
 
@@ -132,7 +132,7 @@ mutiert.
 | T26-06 | hoch | 3 | GESCHLOSSEN | Roter Schichtbeleg fuehrt zu drei gruenen aktuariellen Vorlagenlaeufen |
 | T26-07 | hoch | 3 | GESCHLOSSEN | Schichteingaben fehlen in der Bindung; ungelesenes ungueltiges JSON wird unter gruenem Urteil gehasht |
 | T26-11 | hoch | 4 | GESCHLOSSEN | Bewegungsrechnung ignoriert RED; P-B1 bestaetigt die falschen Summen |
-| T26-12 | mittel | 4 | GESCHLOSSEN (als Abweisung) | Tarifverfahren `teilkuendigung` scheitert im produktiven RED-Pfad |
+| T26-12 | mittel | 4 | GEBAUT als Teilkuendigung (b637898; die fruehere Abweisung ist ersetzt) | Tarifverfahren `teilkuendigung` scheitert im produktiven RED-Pfad |
 | T26-10 | hoch | 4 | GESCHLOSSEN | Interne Seite mischt bei gleichzeitigem Tageslauf zwei Generationen |
 | T26-09 | mittel | 4 | GESCHLOSSEN | Wochenzahlen und Lueckenausweis bleiben trotz korrektem Anker manipulierbar |
 | T26-13 | mittel | 4 | GESCHLOSSEN | Registrierte Uebersetzung Quell- zu Zielpolicen wird nicht geprueft |
