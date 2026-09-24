@@ -48,7 +48,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
-from rechner_pipeline.bestand.config import load_config
+from rechner_pipeline.bestand.config import config_aus_text, load_config
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.betrieb.tageslauf import Ablage, TageslaufError, lauf_sperre
@@ -130,7 +130,12 @@ def _neu_aufsetzen_unter_sperre(
             "die Config der bestehenden Ablage pflegen"
         )
     config_bytes = config_quelle.read_bytes()
-    cfg = load_config(config_quelle)
+    # Geprueft wird, was geschrieben wird (Kalibrierungsfund N9 der
+    # Pruefrunde T27, dieselbe Naht wie T27-04): Die erste Fassung las die
+    # Config fuer die Pruefung ein zweites Mal von der Platte und schrieb
+    # die zuerst gelesenen Bytes in die neue Ablage — geprueft und
+    # geschrieben konnten zwei verschiedene Dateien sein.
+    cfg = config_aus_text(config_bytes.decode("utf-8"))
     zugangsstand = fall / "abgeleitet" / "bestand"
     if not (zugangsstand / "bestand.parquet").is_file():
         raise NeuaufsetzenError(

@@ -249,11 +249,13 @@ def pruefe_ledger_betraege(
     except ValueError as exc:
         return [f"schichten: {exc}"]
     reduktion_je_police: Dict[int, Tuple[int, float, str]] = {}
+    reduktion_datum: Dict[int, pd.Timestamp] = {}
     if reduktionen is not None and len(reduktionen):
         for z in reduktionen.to_dict("records"):
             reduktion_je_police[int(z["police_id"])] = (
                 int(z["reduktion_jahr"]), float(z["anteil"]),
                 str(z["verfahren"]))
+            reduktion_datum[int(z["police_id"])] = pd.Timestamp(z["reduktion_datum"])
 
     scheiben_je_police: Dict[int, List[Tuple[int, float]]] = {}
     if scheiben is not None:
@@ -428,6 +430,14 @@ def pruefe_ledger_betraege(
             continue
         eigene = red_zeilen[(red_zeilen["police_id"] == pid)
                             & (red_zeilen["vertragsjahr"] == jahr)]
+        # Der Wirkungstag der Buchung IST der Wirkungstag der Tabelle —
+        # sonst bewerten zwei Sichten denselben Bestand verschieden (N16).
+        falscher_tag = eigene[eigene["status_date"] != reduktion_datum[pid]]
+        if len(falscher_tag):
+            fehlend.append(
+                f"police {pid} RED Jahr {jahr}: Wirkungstag der Buchung "
+                f"{pd.Timestamp(falscher_tag['status_date'].iloc[0]).date()} "
+                f"ist nicht der der Reduktionstabelle {reduktion_datum[pid].date()}")
         for art in v.red_buchungen(schicht_je_police.get(pid)):
             n = int((eigene["betrag_art"] == art).sum())
             if n != 1:

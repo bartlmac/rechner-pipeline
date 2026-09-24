@@ -288,3 +288,63 @@ def test_ein_vollstaendiges_staging_ohne_publikation_blockiert_die_wiederholung_
     # Ein VEROEFFENTLICHTER Eingang wird weiterhin nie ueberschrieben.
     with pytest.raises(ueb.UebernahmeError, match="nie ueberschrieben"):
         ueb.eingang_anlegen(stand, fall, STICHTAG)
+
+
+# --------------------------------------------------------------------------- #
+# Kalibrierungsfunde der zweiten Runde: N8 (Ankerreihe) und N9 (Config-Naht)
+# --------------------------------------------------------------------------- #
+
+
+def test_ein_abgebrochenes_anfuegen_macht_die_ankerreihe_nicht_unlesbar(tmp_path):
+    """N8: Teilwrite ohne Umbruch, danach ein sauberer Export. Vorher: beide
+    Saetze verschmolzen, lies_anker warf dauerhaft 'Zeile 3 ist kein JSON'.
+    Mutationsprobe: _schneide_fragment in haenge_an nicht rufen -> rot."""
+    from rechner_pipeline.models import anker
+
+    d = tmp_path / "anker"
+    anker.haenge_an(d, {"n": 1})
+    anker.haenge_an(d, {"n": 2})
+    pfad = d / anker.ANKER_DATEI
+    vorher = pfad.read_bytes()
+    with open(pfad, "ab") as f:
+        f.write(b'{"n": 3, "abgebro')
+    assert [s["n"] for s in anker.lies_anker(pfad)] == [1, 2]
+    anker.haenge_an(d, {"n": 4})
+    assert [s["n"] for s in anker.lies_anker(pfad)] == [1, 2, 4]
+    assert pfad.read_bytes().startswith(vorher)
+
+
+def test_neuaufsetzen_prueft_die_config_die_es_schreibt(tmp_path, monkeypatch):
+    """N9: Nach dem ersten Lesen der Config wird die Datei getauscht (hier:
+    unbrauchbar gemacht). Die Pruefung muss auf den gelesenen Bytes laufen —
+    die neue Ablage traegt sie. Mutationsprobe: load_config(pfad) statt
+    config_aus_text(bytes) -> der zweite Lesevorgang sieht Muell -> rot."""
+    import pathlib
+
+    from rechner_pipeline.betrieb import neuaufsetzen as na
+    from tests.test_betrieb_neuaufsetzen import _fall_mit_nebentabellen
+    from tests.test_betrieb_seite import _ablage
+
+    ablage = _ablage(tmp_path / "daten")
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    fall = _fall_mit_nebentabellen(tmp_path)
+    original = ablage.config_pfad.read_bytes()
+    echtes_read_bytes = pathlib.Path.read_bytes
+    gelesen: list = []
+
+    def tauschend(self):
+        inhalt = echtes_read_bytes(self)
+        if self == ablage.config_pfad:
+            gelesen.append(self)
+            if len(gelesen) == 1:
+                echtes_write = pathlib.Path.write_bytes
+                echtes_write(self, b"[meta]\nkaputt = \n")
+        return inhalt
+
+    monkeypatch.setattr(pathlib.Path, "read_bytes", tauschend)
+    provenienz = na.neu_aufsetzen(ablage.wurzel, fall, STICHTAG,
+                                  jetzt=dt.datetime(2026, 9, 8, 6, 0, tzinfo=dt.timezone.utc))
+    monkeypatch.undo()
+    assert gelesen, "die Config wurde nie ueber read_bytes gelesen"
+    assert Ablage(ablage.wurzel).config_pfad.read_bytes() == original
+    assert provenienz["config_sha256"] == ueb.sha256_bytes(original)

@@ -690,6 +690,33 @@ class ReduzierterVertrag:
         """Die bei der Reduktion fixierte beitragsfreie Summe."""
         return self.reduktion.vs_neu - self.reduktion.anteil * self.reduktion.vs_alt
 
+    @property
+    def ist_teilkuendigung(self) -> bool:
+        return self.reduktion.verfahren == TEILKUENDIGUNG
+
+    @property
+    def folgekern(self) -> Rechenkern:
+        """Der Vertrag nach der TEILKUENDIGUNG: der ZUSTANDSLOSE Kern mit der
+        fortgefuehrten Summe — ein gewoehnlicher Vertrag mit kleinerer Summe
+        (Bedingungswerk Ziffer 6; klv.md 7.1).
+
+        Der Zahlungspfad mit q = 0 ist ihm NICHT gleich: Er rechnet den
+        Zillmer-Rueckstand alpha * t * BJB des UNGEKUERZTEN Vertrags weiter
+        (zahlungspfad, Skalare des Ursprungsvertrags), waehrend der Kern
+        mit f x S nur f mal diesen Rueckstand traegt. In den Jahren der
+        Zillmerdauer lag der Rueckkaufswert damit um (1-f) x alpha x t x
+        BJB x azd/azd_full zu hoch, und ein Storno zahlte zu viel — der
+        gekuendigte Anteil und der verbliebene Vertrag fuehrten den
+        Rueckstand beide (Angriffsrunde 2 der Pruefrunde T27, Fund N10;
+        der Test von T26-12 verglich erst ab Jahr 10, nach der
+        Zillmerdauer, und war blind). Fuer eine unveraenderte Scheibe
+        (anteil 1) ist der Folgekern der Kern selbst.
+        """
+        if self.reduktion.vs_neu == self.kern.mp.sum_insured:
+            return self.kern
+        return Rechenkern(dataclasses.replace(
+            self.kern.mp, sum_insured=self.reduktion.vs_neu))
+
     def _pruefe_monat(self, monate: int) -> None:
         if monate < 12 * self.reduktion.jahr:
             raise BeitragsreduktionFehler(
@@ -734,6 +761,8 @@ class ReduzierterVertrag:
         )
 
         self._pruefe_monat(monate)
+        if self.ist_teilkuendigung:
+            return self.folgekern.monatsreserve(int(monate))
         mp = self.kern.mp
         werte = pfad_monatsreserve(
             mp, als_zahlungspfad(self.reduktion, mp), self.kern.basis,
@@ -765,6 +794,8 @@ class ReduzierterVertrag:
                 f"Beitragsfreistellung im Jahr {pex_jahr} vor der Reduktion "
                 f"(Jahr {self.reduktion.jahr})"
             )
+        if self.ist_teilkuendigung:
+            return self.folgekern.beitragsfreie_summe(pex_jahr)
         return (self.reduktion.anteil * self.kern.beitragsfreie_summe(pex_jahr)
                 + self.bfr_teil)
 
@@ -778,6 +809,8 @@ class ReduzierterVertrag:
                 f"Monats-Stichtag {monate} vor der Beitragsfreistellung "
                 f"(Jahr {pex_jahr})"
             )
+        if self.ist_teilkuendigung:
+            return self.folgekern.monatsreserve_beitragsfrei(pex_jahr, int(monate))
         return self.beitragsfreie_summe(pex_jahr) * self._bfr_satz(monate)
 
     def terminale_leistung(self, pex_jahr: Optional[int] = None) -> float:

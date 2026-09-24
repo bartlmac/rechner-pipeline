@@ -273,11 +273,13 @@ def werte_reduziert(
             "rueckkaufswert": reserve.rkw,
             "vs_bfr": 0.0,
         }
+    # Auch nach einer Beitragsfreistellung die Jahreszeile (Angriffsrunde 2,
+    # Fund N11): der PEX-Zweig interpolierte als einziger monatsgenau.
     return {
         "jahr": jahr, "status": "PEX",
         "deckungskapital": sum(
             v.reserve_beitragsfrei(
-                int(pex_jahr) - erh_jahr, int(months_exp) - 12 * erh_jahr)
+                int(pex_jahr) - erh_jahr, 12 * jahr - 12 * erh_jahr)
             for erh_jahr, v in teile),
         "rueckkaufswert": 0.0,
         "vs_bfr": sum(

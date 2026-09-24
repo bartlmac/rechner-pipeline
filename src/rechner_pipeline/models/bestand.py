@@ -974,11 +974,17 @@ def validate_ledger(
             f"{_policen(unendlich)}) — ein Buchungsbetrag ist endlich"
         )
     else:
-        negativ = (ledger["betrag"] < 0.0) & (ledger["ereignis"] != "MIG")
+        # Umbuchungen tragen ein Vorzeichen: das Migrations-Residuum (MIG)
+        # und die absorbierte Korrekturschicht (dDK_absorption) — eine
+        # negative Schicht ist ein negatives Residuum, kein Fehler. Der
+        # Erzeuger buchte sie so, sein eigenes Gate wies den korrekten Lauf
+        # ab (Angriffsrunde 2, Fund N15).
+        negativ = ((ledger["betrag"] < 0.0) & (ledger["ereignis"] != "MIG")
+                   & (ledger["betrag_art"] != "dDK_absorption"))
         if negativ.any():
             errors.append(
-                f"ledger: betrag < 0 (police {_policen(negativ)}) — nur das "
-                "Migrations-Residuum MIG traegt ein Vorzeichen"
+                f"ledger: betrag < 0 (police {_policen(negativ)}) — nur die "
+                "Umbuchungen MIG und dDK_absorption tragen ein Vorzeichen"
             )
     if not (ledger["status_date"].dt.day == 1).all():
         errors.append("ledger: status_date nicht auf Monatsersten normalisiert")
@@ -1581,18 +1587,42 @@ def validate_reduktionen(
         errors.append(
             f"reduktionen: verfahren {fremd} unbekannt (bekannt: "
             f"{list(RED_VERFAHREN)})")
+    import pandas as pd
+
     haupt = stamm.set_index("police_id")
-    for pid, jahr in zip(reduktionen["police_id"],
-                         reduktionen["reduktion_jahr"]):
+    for pid, jahr, verfahren, datum in zip(
+            reduktionen["police_id"], reduktionen["reduktion_jahr"],
+            reduktionen["verfahren"], reduktionen["reduktion_datum"]):
         pid, jahr = int(pid), int(jahr)
         if pid not in haupt.index:
             continue
         t = int(haupt.loc[pid, "premium_duration"])
-        if not 0 < jahr < t:
+        n = int(haupt.loc[pid, "duration"])
+        if str(verfahren) == "teilkuendigung":
+            # Ziffer 6 kuendigt einen Summen-Anteil und setzt keinen
+            # laufenden Beitrag voraus (Kern 3.4.0) — die Grenze ist die
+            # Versicherungsdauer, nicht die Beitragszahlungsdauer. Vorher
+            # widersprachen sich Datenmodell und Kern (Fund N6).
+            if not 0 < jahr < n:
+                errors.append(
+                    f"reduktionen: police {pid}: Reduktionsjahr {jahr} ausserhalb "
+                    f"der Versicherungsdauer (0, {n}) — nach dem Ablauf gibt "
+                    "es nichts mehr zu kuendigen")
+        elif not 0 < jahr < t:
             errors.append(
                 f"reduktionen: police {pid}: Reduktionsjahr {jahr} ausserhalb "
                 f"der Beitragszahlungsdauer (0, {t}) — ohne laufenden Beitrag "
                 "gibt es nichts herabzusetzen")
+        # Der Wirkungstag ist der Jahrestag des Reduktionsjahres — an nichts
+        # anderem haengt die Bewertung (Angriffsrunde 2, Fund N16: zwei
+        # Sichten desselben Bestands zum selben Stichtag wichen um 20.880 EUR
+        # ab, bei gruenem P-B1, weil das Datum frei war).
+        beginn = pd.Timestamp(haupt.loc[pid, "insurance_start"])
+        jahrestag = beginn + pd.DateOffset(years=jahr)
+        if pd.Timestamp(datum) != jahrestag:
+            errors.append(
+                f"reduktionen: police {pid}: reduktion_datum {pd.Timestamp(datum).date()} "
+                f"ist nicht der Jahrestag {jahrestag.date()} des Reduktionsjahres {jahr}")
     if historie is not None and len(historie):
         grenz_status = ("PEX",) + TERMINALE_STATUS
         grenzen = (

@@ -394,3 +394,134 @@ def test_das_tarifwerk_hat_im_reduzierten_pfad_keinen_default(funktion):
     p = inspect.signature(funktion).parameters["stoab_je_baustein"]
     assert p.kind is inspect.Parameter.KEYWORD_ONLY
     assert p.default is inspect.Parameter.empty, funktion.__name__
+
+
+# --------------------------------------------------------------------------- #
+# Angriffsrunde 2 auf den gefixten Stand: N10/N14, N11, N12, N15, N16, N6
+# --------------------------------------------------------------------------- #
+
+
+def test_der_folgevertrag_traegt_nur_seinen_zillmer_rest():
+    """N10: Der Zahlungspfad mit q = 0 fuehrte den Zillmer-Rueckstand des
+    UNGEKUERZTEN Vertrags weiter; in der Zillmerdauer lag der
+    Rueckkaufswert um (1-f) x alpha x t x BJB x azd/azd_full zu hoch. Der
+    Test von T26-12 verglich ab Jahr 10 — nach der Zillmerdauer — und war
+    blind. Hier: Reduktion in Jahr 1, Vergleich in JEDEM Jahr, Soll ist der
+    zustandslose Kern mit f x S. Mutationsprobe: die Delegation an den
+    folgekern in monatsreserve entfernen -> rot in den Jahren 1-4."""
+    from rechner_pipeline.kern import KLV_DEFAULT
+    from rechner_pipeline.kern.beitragsreduktion import reduzierte_teile
+
+    grund = Rechenkern(KLV_DEFAULT)
+    f = 0.6
+    teile = reduzierte_teile(grund, [], 1, f, TEILKUENDIGUNG)
+    soll_kern = Rechenkern(dataclasses.replace(KLV_DEFAULT, sum_insured=f * KLV_DEFAULT.sum_insured))
+    for j in range(1, 8):
+        ist = vertrags_monatsreserve_reduziert(teile, 12 * j, stoab_je_baustein=False)
+        soll = soll_kern.monatsreserve(12 * j)
+        assert ist.vx_mrv == pytest.approx(soll.vx_mrv, rel=1e-9), j
+        assert ist.rkw == pytest.approx(soll.rkw, rel=1e-9), j
+        assert ist.drx_bpfl == pytest.approx(soll.drx_bpfl, rel=1e-9), j
+    # N14: auch die beitragsfreie Fortfuehrung nach der Teilkuendigung ist
+    # die des f x S-Kerns — kein Sprung zwischen Reserve und Summe.
+    v = teile[0][1]
+    assert v.beitragsfreie_summe(3) == pytest.approx(soll_kern.beitragsfreie_summe(3), rel=1e-12)
+    assert v.reserve_beitragsfrei(3, 12 * 5) == pytest.approx(
+        soll_kern.monatsreserve_beitragsfrei(3, 12 * 5), rel=1e-12)
+
+
+def test_die_bewertung_nach_beitragsfreistellung_nimmt_die_jahreszeile():
+    """N11: der PEX-Zweig von werte_reduziert interpolierte monatsgenau —
+    Saegezahn auf einer Bilanzzahl. Mutationsprobe: months_exp statt
+    12 * jahr im PEX-Zweig -> rot."""
+    from rechner_pipeline.kern import KLV_DEFAULT
+    from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, reduzierte_teile
+
+    teile = reduzierte_teile(Rechenkern(KLV_DEFAULT), [], 8, 0.6, PROSPEKTIV)
+    am_jahrestag = werte_reduziert(teile, 168, 12, stoab_je_baustein=False)["deckungskapital"]
+    mitten_im_jahr = werte_reduziert(teile, 174, 12, stoab_je_baustein=False)["deckungskapital"]
+    naechster = werte_reduziert(teile, 180, 12, stoab_je_baustein=False)["deckungskapital"]
+    assert mitten_im_jahr == pytest.approx(am_jahrestag, rel=1e-12)
+    assert naechster != pytest.approx(am_jahrestag, rel=1e-6)
+
+
+def test_der_bestandsbericht_bekommt_die_reduktionstabelle(tmp_path, monkeypatch):
+    """N12: cli_report las reduktionen.parquet und reichte es nicht an die
+    Bewertung weiter — jeder herabgesetzte Vertrag stand ungekuerzt im
+    Bericht (+32 bis +48 % Deckungskapital). Mutationsprobe: das Argument
+    im render_html-Aufruf entfernen -> rot."""
+    from rechner_pipeline.bestand import cli_report as cli
+    from tests.test_herabsetzung_in_fuehrung import _lauf_mit_herabsetzung
+
+    out, cfg = _lauf_mit_herabsetzung(tmp_path)
+    gesehen = {}
+    echt = cli.render_html
+
+    def merkend(*a, **kw):
+        gesehen.update(kw)
+        return echt(*a, **kw)
+
+    monkeypatch.setattr(cli, "render_html", merkend)
+    code = cli.main([
+        "--portfolio", str(out / "bestand_gesamt.parquet"), "--historie", str(out / "historie.parquet"),
+        "--ledger", str(out / "ledger.parquet"), "--scheiben", str(out / "scheiben.parquet"),
+        "--bis", "2046-01-01", "--stichtag", "2030-01-01", "--out", str(tmp_path / "bericht.html"),
+    ])
+    assert code == 0
+    assert gesehen.get("reduktionen") is not None and len(gesehen["reduktionen"]) > 0
+
+
+def test_eine_negative_korrekturschicht_ist_eine_umbuchung_mit_vorzeichen(welt):
+    """N15: der Erzeuger bucht dDK_absorption mit Vorzeichen (negatives
+    Residuum), das Datenmodell wies jeden Betrag < 0 ausser MIG ab — ein
+    korrekter Lauf war nicht validierbar. Mutationsprobe: die Ausnahme fuer
+    dDK_absorption entfernen -> rot."""
+    from rechner_pipeline.models.bestand import validate_ledger
+
+    config, stamm, schichten, verankerung, erg = welt
+    led = erg.ledger.copy()
+    idx = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "dDK_absorption")][:1]
+    assert len(idx) == 1
+    led.loc[idx, "betrag"] = -0.02
+    fehler = validate_ledger(stamm, led, erg.historie, erg.scheiben)
+    assert not any("betrag < 0" in f for f in fehler), fehler
+    sto = led.index[led["ereignis"] == "STO"][:1]
+    if len(sto):
+        led.loc[sto, "betrag"] = -1.0
+        assert any("betrag < 0" in f for f in validate_ledger(stamm, led, erg.historie, erg.scheiben))
+
+
+def test_die_reduktionstabelle_ist_an_jahrestag_und_buchung_gebunden(welt):
+    """N16: reduktion_datum war an nichts gebunden — zwei Sichten desselben
+    Bestands zum selben Stichtag wichen um 20.880 EUR ab, bei gruenem P-B1.
+    Jetzt: das Datum ist der Jahrestag des Reduktionsjahres (Datenmodell),
+    und die RED-Buchung traegt genau diesen Wirkungstag (P-B1)."""
+    from rechner_pipeline.models.bestand import validate_reduktionen
+
+    config, stamm, schichten, verankerung, erg = welt
+    red = erg.reduktionen.copy()
+    assert validate_reduktionen(stamm, red, erg.historie) == []
+    red.loc[red.index[0], "reduktion_datum"] = red.loc[red.index[0], "reduktion_datum"] + pd.DateOffset(months=1)
+    fehler = validate_reduktionen(stamm, red, erg.historie)
+    assert any("Jahrestag" in f for f in fehler), fehler
+    # P-B1: Tabelle verschoben, Ledger unveraendert -> Wirkungstag passt nicht.
+    pb1 = _pb1(welt, erg.ledger, reduktionen=red)
+    assert any("Wirkungstag" in f for f in pb1), pb1
+
+
+def test_die_teilkuendigung_im_beitragsfreien_nachlauf_ist_im_datenmodell_zulaessig(welt):
+    """N6: der Kern rechnet die Teilkuendigung auch nach dem Beitragsende
+    (t <= jahr < n, Kern 3.4.0), validate_reduktionen wies sie ab — ein
+    Vertragsbruch zwischen Kern und Datenmodell."""
+    from rechner_pipeline.models.bestand import validate_reduktionen
+
+    config, stamm, schichten, verankerung, erg = welt
+    stamm2 = stamm.copy()
+    pid = int(stamm2["police_id"].iloc[0])
+    stamm2.loc[stamm2["police_id"] == pid, "premium_duration"] = 20
+    beginn = pd.Timestamp(stamm2.loc[stamm2["police_id"] == pid, "insurance_start"].iloc[0])
+    zeile = lambda verfahren: pd.DataFrame([{
+        "police_id": pid, "reduktion_jahr": 22, "reduktion_datum": beginn + pd.DateOffset(years=22),
+        "anteil": ANTEIL, "verfahren": verfahren}])
+    assert validate_reduktionen(stamm2, zeile(TEILKUENDIGUNG), None) == []
+    assert any("Beitragszahlungsdauer" in f for f in validate_reduktionen(stamm2, zeile("prospektiv"), None))

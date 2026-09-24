@@ -44,6 +44,7 @@ import datetime as _dt
 import hashlib
 import hmac
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -219,11 +220,39 @@ def satz_hash(satz: Dict[str, Any]) -> str:
     return zeilen_hash(json.dumps(satz, ensure_ascii=False, sort_keys=True))
 
 
+def _schneide_fragment(pfad: Path) -> bool:
+    """Ein angefangenes, nie abgeschlossenes Fragment am Ende entfernen.
+
+    Eine Zeile der Ankerdatei gilt als geschrieben, wenn sie mit einem
+    Zeilenumbruch endet — die Commitgrenze eines anfuegbaren Journals,
+    dieselbe wie im Tagesprotokoll (betrieb.tageslauf._schneide_teilzeile).
+    Ein Prozessende mitten im Anfuegen liess ein Fragment ohne Umbruch
+    zurueck; ``lies_anker`` brach an ihm ab, und der naechste Export
+    schrieb seinen Satz DAHINTER — beide verschmolzen zu einer kaputten
+    Zeile, die ganze Ankerhistorie war dauerhaft unlesbar, jede spaetere
+    Auslieferung nicht mehr pruefbar (Kalibrierungsfund N8 der Pruefrunde
+    T27). Abgeschnitten wird IN der Datei (``os.truncate``): belegte
+    Saetze gehen durch keinen Schreibpfad.
+    """
+    if not pfad.is_file():
+        return False
+    roh = pfad.read_bytes()
+    if not roh or roh.endswith(b"\n"):
+        return False
+    os.truncate(pfad, roh.rfind(b"\n") + 1)
+    return True
+
+
 def haenge_an(verzeichnis: Path, satz: Dict[str, Any]) -> Path:
-    """Den Satz an die Ankerdatei anfuegen (nur anfuegbar)."""
+    """Den Satz an die Ankerdatei anfuegen (nur anfuegbar).
+
+    Vorher faellt ein Fragment eines abgebrochenen Anfuegens — der neue
+    Satz beginnt an einer Commitgrenze, nie hinter einem halben Satz.
+    """
     verzeichnis = Path(verzeichnis)
     verzeichnis.mkdir(parents=True, exist_ok=True)
     pfad = verzeichnis / ANKER_DATEI
+    _schneide_fragment(pfad)
     with pfad.open("a", encoding="utf-8") as datei:
         datei.write(json.dumps(satz, ensure_ascii=False, sort_keys=True) + "\n")
     return pfad
@@ -239,7 +268,13 @@ def lies_anker(pfad: Path) -> List[Dict[str, Any]]:
             "selbst (Review T24-04, Teil 2)"
         )
     saetze: List[Dict[str, Any]] = []
-    for nr, roh in enumerate(pfad.read_text(encoding="utf-8").splitlines(), 1):
+    text = pfad.read_text(encoding="utf-8")
+    if text and not text.endswith("\n"):
+        # Ein Fragment ohne Umbruch ist nie ein Satz geworden (siehe
+        # _schneide_fragment) — es zaehlt nicht, und es macht die
+        # belegten Saetze davor nicht unlesbar.
+        text = text[: text.rfind("\n") + 1]
+    for nr, roh in enumerate(text.splitlines(), 1):
         if not roh.strip():
             continue
         try:

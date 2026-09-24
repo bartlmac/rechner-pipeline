@@ -256,6 +256,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             stichtag=stichtag,
             schichten=tabellen.get("schichten"),
             verankerung=tabellen.get("verankerung"),
+            # Ohne die Tabelle bewertet der Bericht jeden herabgesetzten
+            # Vertrag ungekuerzt (Angriffsrunde 2, Fund N12: +32 bis +48 %
+            # Deckungskapital) — gelesen wurde sie schon, weitergereicht nicht.
+            reduktionen=tabellen.get("reduktionen"),
         )
     except ValueError as exc:
         print(f"bestand_report: {exc}", file=sys.stderr)
