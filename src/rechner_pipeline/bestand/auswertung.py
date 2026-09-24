@@ -258,8 +258,15 @@ def werte_reduziert(
     """
     jahr = int(months_exp) // 12
     if pex_jahr is None:
+        # Dieselbe Stichtagskonvention wie fuer jeden anderen Vertrag
+        # (``vertragswerte`` -> ``zustand_am``: die Zeile des angebrochenen
+        # Vertragsjahres). Der reduzierte Verlauf kann monatsgenau
+        # interpolieren; hier taete er es als einziger und wiese am 1.12.
+        # ein um 11/12 des Jahreszuwachses hoeheres Deckungskapital aus als
+        # der gewoehnliche Vertrag daneben (Kalibrierungsfund N5 der
+        # Pruefrunde T27, bis +3.370 EUR je Vertrag).
         reserve = vertrags_monatsreserve_reduziert(
-            teile, int(months_exp), stoab_je_baustein=stoab_je_baustein)
+            teile, 12 * jahr, stoab_je_baustein=stoab_je_baustein)
         return {
             "jahr": jahr, "status": "POL",
             "deckungskapital": reserve.drx_bpfl,

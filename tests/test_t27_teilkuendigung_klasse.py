@@ -166,10 +166,10 @@ def test_p_b1_leitet_den_folgevertrag_mit_dem_tarifwerk_her(welt):
     assert geprueft > 0
 
 
-def _stichtag_nach(erg, pid: int, jahre: int = 1):
+def _stichtag_nach(erg, pid: int, jahre: int = 1, monate: int = 0):
     red = erg.reduktionen
     datum = pd.Timestamp(red.loc[red["police_id"] == pid, "reduktion_datum"].iloc[0])
-    stichtag = (datum + pd.DateOffset(years=jahre)).date()
+    stichtag = (datum + pd.DateOffset(years=jahre, months=monate)).date()
     h = erg.historie
     terminal = h[(h["police_id"] == pid) & (h["status_code"].isin(["STO", "TOD", "ABL"]))
                  & (h["status_date"] <= pd.Timestamp(stichtag))]
@@ -198,6 +198,31 @@ def test_die_bewertung_weist_den_rueckkaufswert_des_folgevertrags_aus(welt):
         zeile = _bewertung(welt, pid, stichtag)
         assert zeile["rueckkaufswert"] == pytest.approx(
             _soll_rkw(grund_neu, kerne, jahr + 1), rel=1e-9), pid
+        geprueft += 1
+    assert geprueft > 0
+
+
+def test_die_bewertung_am_unterjaehrigen_stichtag_nimmt_die_jahreszeile(welt):
+    """Kalibrierungsfund N5: Der reduzierte Verlauf interpolierte innerhalb
+    des Vertragsjahres, jeder gewoehnliche Vertrag rechnet die Zeile des
+    angebrochenen Jahres. Am 1.12. lag das Deckungskapital um 11/12 des
+    Jahreszuwachses zu hoch. Mutationsprobe: ``12 * jahr`` zurueck auf
+    ``months_exp`` -> rot."""
+    config, stamm, schichten, verankerung, erg = welt
+    geprueft = 0
+    for z in _reduktionen(erg).to_dict("records"):
+        pid, jahr = int(z["police_id"]), int(z["reduktion_jahr"])
+        stichtag = _stichtag_nach(erg, pid, jahre=1, monate=7)
+        if stichtag is None:
+            continue
+        scheiben = _scheiben_vor(erg, pid, jahr)
+        mp, grund_neu = _folgevertrag(config, stamm, pid, jahr)
+        kerne = _scheiben_kerne(mp, config, scheiben)
+        soll = vertrags_monatsreserve(
+            grund_neu, [(j, k) for j, _, k in kerne], 12 * (jahr + 1), stoab_je_baustein=True)
+        zeile = _bewertung(welt, pid, stichtag)
+        assert zeile["deckungskapital"] == pytest.approx(soll.drx_bpfl, rel=1e-9), pid
+        assert zeile["rueckkaufswert"] == pytest.approx(soll.rkw, rel=1e-9), pid
         geprueft += 1
     assert geprueft > 0
 
@@ -285,6 +310,18 @@ def test_p_b1_vermisst_eine_einzelne_auszahlung(welt):
     idx = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "RKW_teilkuendigung")][:1]
     fehler = _pb1(welt, led.drop(idx))
     assert fehler and any("RKW_teilkuendigung" in f for f in fehler), fehler
+
+
+def test_p_b1_weist_eine_auszahlung_ab_die_das_verfahren_nicht_erzeugt(welt):
+    """Kalibrierungsfund N2: Die Auszahlung wurde hergeleitet, ohne das
+    Verfahren zu befragen — eine prospektive Herabsetzung mit
+    RKW_teilkuendigung-Zeile passierte. Die Soll-Menge ist je Verfahren."""
+    erg = welt[4]
+    red = erg.reduktionen.copy()
+    pid = int(red["police_id"].iloc[0])
+    red.loc[red["police_id"] == pid, "verfahren"] = "prospektiv"
+    fehler = _pb1(welt, erg.ledger, reduktionen=red)
+    assert any("RKW_teilkuendigung" in f and str(pid) in f for f in fehler), fehler
 
 
 def test_p_b1_erkennt_eine_reduktion_ohne_tabellenzeile(welt):
