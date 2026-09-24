@@ -31,6 +31,7 @@ import contextlib
 import dataclasses
 import sys as _sys
 import datetime as _dt
+import io
 import json
 
 try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
@@ -244,6 +245,22 @@ def zielnummern(eingang: Path) -> Dict[int, int]:
         )
     tabelle = read_portfolio(io.BytesIO(daten),
                              expected_columns=POLICENNUMMERN_NAMES)
+    # Eindeutigkeit auf der ROHTABELLE, bevor sie zur Abbildung wird
+    # (Pruefrunde T27, Befund 16): Ein Dict kollabiert doppelte
+    # Quellnummern still — die letzte Zeile gewinnt —, und die
+    # Bijektionspruefung dahinter sah nur noch eindeutige Schluessel.
+    # Zwei widerspruechliche Zuordnungen vertauschten so die Quellen
+    # zweier Zielpolicen, und der Reader nahm die Bruecke an.
+    doppelt_q = sorted(int(q) for q in tabelle["quelle_police_id"][
+        tabelle["quelle_police_id"].duplicated()].unique())
+    doppelt_z = sorted(int(z) for z in tabelle["ziel_police_id"][
+        tabelle["ziel_police_id"].duplicated()].unique())
+    if doppelt_q or doppelt_z:
+        raise UebernahmeError(
+            f"{pfad}: die Uebersetzung ist keine Abbildung — Quellnummern "
+            f"mehrfach: {doppelt_q[:5]}, Zielnummern mehrfach: {doppelt_z[:5]}; "
+            "eine widerspruechliche Bruecke wird nicht wegreduziert, sondern "
+            "abgewiesen")
     return {int(q): int(z)
             for q, z in zip(tabelle["quelle_police_id"], tabelle["ziel_police_id"])}
 
@@ -507,6 +524,12 @@ def lies_am4_snapshot(
         raise UebernahmeError(
             f"{pfad.name}: Snapshot ist in sich nicht stimmig: "
             + "; ".join(semantik[:3]))
+    # Gueltigkeit, nicht nur Echtheit (Pruefrunde T27, Befund 05): Der
+    # Snapshot muss die GELTENDE SPITZE der A-M4-Kette des Falls sein.
+    # Eine spaetere Ablehnung mit Vorgaengerbezug ueberholt eine alte
+    # Annahme — das Gate liest die Kette so (ADR-008, ADR-010), der
+    # Eingang liest sie ueber denselben Vertrag (models.snapshot_kette).
+    _pruefe_geltende_spitze(Path(fall) / "entscheide", snapshot_sha256, pfad.name, daten)
     # Der zweite Zeuge: die Freigabesignatur (models.freigabe, dieselbe
     # Pruefung wie im Gate). Ohne Ring bleibt "nicht verifiziert" ein
     # benannter Zustand; mit Ring ist eine falsche Signatur ein Abbruch.
@@ -518,6 +541,62 @@ def lies_am4_snapshot(
             raise UebernahmeError(f"{pfad.name}: " + "; ".join(sig_fehler))
         verifiziert = True
     return daten, pfad.name, verifiziert
+
+
+def _pruefe_geltende_spitze(
+    verzeichnis: Path, snapshot_sha256: str, name: str, daten: Dict[str, Any],
+) -> None:
+    """Die A-M4-Kette des Falls lesen und verlangen, dass ``snapshot_sha256``
+    ihre eindeutige Spitze ist.
+
+    Jede ``A-M4-*.json`` unter ``entscheide/`` zaehlt — auch eine, die
+    nicht das Schema erfuellt: Sie ist ein Fehler der Kette, kein Grund,
+    sie zu ueberlesen. Der geprueft Snapshot selbst wird NICHT ein
+    zweites Mal gelesen (T24-06: geprueft wird, was verwendet wird) —
+    seine ``daten`` kommen vom Aufrufer. Belegt ist damit die
+    Neuregistrierung NACH einer Ablehnung; ob ein frueher rechtmaessig
+    uebernommener Bestand rueckwirkend zu loeschen waere, entscheidet
+    nicht dieser Eingang.
+    """
+    from rechner_pipeline.models.snapshot_kette import (
+        nachfolger_von,
+        pruefe_snapshot_graph,
+    )
+
+    kette: Dict[str, Dict[str, Any]] = {}
+    namen: Dict[str, str] = {}
+    for eintrag in sorted(verzeichnis.glob("A-M4-*.json")):
+        if eintrag.name == f"A-M4-{snapshot_sha256}.json":
+            kette[snapshot_sha256] = daten
+            namen[snapshot_sha256] = eintrag.name
+            continue
+        try:
+            glied = json.loads(eintrag.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise UebernahmeError(
+                f"{eintrag.name}: Glied der A-M4-Kette nicht lesbar ({exc}) — "
+                "die geltende Spitze ist damit unbekannt") from exc
+        sha = str(glied.get("snapshot_sha256") or "")
+        if not _ist_sha256(sha) or eintrag.name != f"A-M4-{sha}.json" \
+                or not isinstance(glied.get("vorgaenger"), list):
+            raise UebernahmeError(
+                f"{eintrag.name}: Glied der A-M4-Kette ohne gueltige "
+                "Selbstadressierung oder Vorgaengerliste — die geltende Spitze "
+                "ist damit unbekannt")
+        kette[sha] = glied
+        namen[sha] = eintrag.name
+    spitzen, fehler = pruefe_snapshot_graph(kette, namen)
+    if fehler:
+        raise UebernahmeError(
+            f"{name}: die A-M4-Kette des Falls ist verletzt — " + "; ".join(fehler[:3]))
+    if snapshot_sha256 not in spitzen:
+        folgen = nachfolger_von(kette, snapshot_sha256)
+        beschreibung = ", ".join(
+            f"{namen[s]} (entscheid={kette[s].get('entscheid')!r})" for s in folgen)
+        raise UebernahmeError(
+            f"{name}: nicht die geltende Spitze der A-M4-Kette — ueberholt "
+            f"durch {beschreibung or spitzen}. Uebernommen wird nur, was "
+            "heute gilt; eine alte Annahme ist echt, aber nicht gueltig")
 
 
 #: Die Verzeichnisse eines Falls, in denen Belege des Snapshot-Graphen
@@ -1123,11 +1202,23 @@ def eingang_anlegen(
     # dessen Tabellen die Migrationsabnahme nicht bezeugt, entsteht nicht.
     belegt = belegte_tabellen(fall, snapshot)
     unbelegt: List[str] = []
+    # EINMAL lesen, dann nur noch diese Bytes verwenden (Pruefrunde T27,
+    # Befund 04): Die erste Fassung hashte die Quelldateien hier und las
+    # sie nach dem Eintritt in die Sperre ein zweites Mal von der Platte.
+    # Wer die Quelle dazwischen tauschte, bekam andere Tabellen in den
+    # Eingang als die, die die Abnahme bezeugt — mit gruener Hashpruefung
+    # und verifizierter Signatur. Die Sperre schuetzt konkurrierende
+    # Eingangsschreiber, nicht den Produzenten der Quelle; nur die Bytes
+    # selbst tun das.
+    roh: Dict[str, bytes] = {}
+    for datei in [f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE):
+        if (quelle / datei).is_file():
+            roh[datei] = (quelle / datei).read_bytes()
     for datei in (f"{name}.parquet" for name in PFLICHT):
         quell_pfad = quelle / datei
-        if not quell_pfad.is_file():
+        if datei not in roh:
             continue
-        ist = sha256_bytes(quell_pfad.read_bytes())
+        ist = sha256_bytes(roh[datei])
         soll = bezeugter_hash(belegt, fall, quell_pfad, datei)
         if soll is None:
             unbelegt.append(datei)
@@ -1210,7 +1301,7 @@ def eingang_anlegen(
         # Nummernvergabe davon ab, was die Quelle zufaellig geliefert hat, und
         # die Uebersetzungstabelle waere mal die Identitaet und mal nicht — ein
         # Leser baut sich dann zwei Lesewege.
-        stamm_quelle = read_portfolio(quelle / "bestand.parquet", expected_columns=STAMM_NAMES)
+        stamm_quelle = read_portfolio(io.BytesIO(roh["bestand.parquet"]), expected_columns=STAMM_NAMES)
         quelle_ids = sorted(int(p) for p in stamm_quelle["police_id"])
         if len(quelle_ids) != len(set(quelle_ids)):
             raise UebernahmeError(
@@ -1224,7 +1315,7 @@ def eingang_anlegen(
         spalten_je_tabelle = {**PFLICHT, **OPTIONAL}
         kandidaten = [f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE)
         for datei in kandidaten:
-            if not (quelle / datei).is_file():
+            if datei not in roh:
                 continue
             if datei in BELEGE:
                 # Belege sprechen die Sprache des FALLS und bleiben bei den
@@ -1232,11 +1323,12 @@ def eingang_anlegen(
                 # getan hat, und seine Freitexte nennen Policen. Ein Beleg, den
                 # der Betrieb umschreibt, bezeugt nicht mehr den Fall. Die
                 # Uebersetzungstabelle ist die Bruecke zwischen beiden Welten.
-                daten = (quelle / datei).read_bytes()
+                daten = roh[datei]
                 (arbeit / datei).write_bytes(daten)
             else:
                 tabelle = read_portfolio(
-                    quelle / datei, expected_columns=spalten_je_tabelle[datei[:-len(".parquet")]])
+                    io.BytesIO(roh[datei]),
+                    expected_columns=spalten_je_tabelle[datei[:-len(".parquet")]])
                 write_portfolio(_umnummeriert(tabelle, abbildung, datei), arbeit / datei)
                 daten = (arbeit / datei).read_bytes()
             if os.name != "nt":

@@ -847,46 +847,18 @@ def _pruefe_g2_snapshot_semantik(
 def _pruefe_snapshot_graph(
     snapshots: Mapping[str, Tuple[Path, dict]],
 ) -> Tuple[List[str], List[str]]:
-    """Check predecessor existence, cycles and the unique current tip."""
-    fehler: List[str] = []
-    for sha, (pfad, daten) in snapshots.items():
-        for vorgaenger in daten["vorgaenger"]:
-            if vorgaenger not in snapshots:
-                fehler.append(
-                    f"{pfad.name}: Vorgaenger {vorgaenger} existiert nicht"
-                )
-            if vorgaenger == sha:
-                fehler.append(f"{pfad.name}: Snapshot referenziert sich selbst")
+    """Check predecessor existence, cycles and the unique current tip.
 
-    zustand: Dict[str, int] = {}
+    Die Regel wohnt in models.snapshot_kette — der Betriebseingang liest
+    dieselbe (T27-05); hier wird nur der Dateiname fuer die Meldungen
+    beigesteuert.
+    """
+    from rechner_pipeline.models.snapshot_kette import pruefe_snapshot_graph
 
-    def _besuche(sha: str) -> None:
-        if zustand.get(sha) == 1:
-            fehler.append(f"Vorgaengerkette enthaelt einen Zyklus bei {sha}")
-            return
-        if zustand.get(sha) == 2:
-            return
-        zustand[sha] = 1
-        for vorgaenger in snapshots[sha][1]["vorgaenger"]:
-            if vorgaenger in snapshots:
-                _besuche(vorgaenger)
-        zustand[sha] = 2
-
-    for sha in snapshots:
-        _besuche(sha)
-
-    referenziert = {
-        vorgaenger
-        for _, daten in snapshots.values()
-        for vorgaenger in daten["vorgaenger"]
-    }
-    spitzen = sorted(set(snapshots) - referenziert)
-    if snapshots and len(spitzen) != 1:
-        fehler.append(
-            "Vorgaengerkette braucht genau eine eindeutige Spitze; "
-            f"gefunden: {spitzen}"
-        )
-    return spitzen, fehler
+    return pruefe_snapshot_graph(
+        {sha: daten for sha, (_pfad, daten) in snapshots.items()},
+        {sha: pfad.name for sha, (pfad, _daten) in snapshots.items()},
+    )
 
 
 def _lade_snapshot_kette(
