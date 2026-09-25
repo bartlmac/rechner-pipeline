@@ -980,11 +980,13 @@ def validate_ledger(
         # Erzeuger buchte sie so, sein eigenes Gate wies den korrekten Lauf
         # ab (Angriffsrunde 2, Fund N15).
         negativ = ((ledger["betrag"] < 0.0) & (ledger["ereignis"] != "MIG")
-                   & (ledger["betrag_art"] != "dDK_absorption"))
+                   & ~ledger["betrag_art"].isin(("dDK_absorption", "RKW_teilkuendigung")))
         if negativ.any():
             errors.append(
                 f"ledger: betrag < 0 (police {_policen(negativ)}) — nur die "
-                "Umbuchungen MIG und dDK_absorption tragen ein Vorzeichen"
+                "Umbuchungen MIG und dDK_absorption sowie die Auszahlung der "
+                "Teilkuendigung (Forderung bei negativer Schicht, Annahme A15) "
+                "tragen ein Vorzeichen"
             )
     if not (ledger["status_date"].dt.day == 1).all():
         errors.append("ledger: status_date nicht auf Monatsersten normalisiert")
@@ -1629,17 +1631,29 @@ def validate_reduktionen(
             historie[historie["status_code"].isin(grenz_status)]
             .groupby("police_id")["status_date"].min()
         )
-        for pid, datum in zip(reduktionen["police_id"],
-                              reduktionen["reduktion_datum"]):
+        # Die Teilkuendigung setzt keinen laufenden Beitrag voraus (Kern
+        # 3.4.0, siehe oben): Ihre Grenze ist der terminale Zustand, nicht
+        # die Beitragsfreistellung (Angriffsrunde 4, Fund: dieselbe Funktion
+        # verneinte 25 Zeilen zuvor, was sie hier verlangte).
+        grenzen_terminal = (
+            historie[historie["status_code"].isin(TERMINALE_STATUS)]
+            .groupby("police_id")["status_date"].min()
+        )
+        for pid, datum, verfahren in zip(reduktionen["police_id"],
+                                         reduktionen["reduktion_datum"],
+                                         reduktionen["verfahren"]):
             pid = int(pid)
-            if pid not in grenzen.index:
+            tk = str(verfahren) == "teilkuendigung"
+            grenze_tabelle = grenzen_terminal if tk else grenzen
+            if pid not in grenze_tabelle.index:
                 continue
-            if datum >= grenzen.loc[pid]:
+            if datum >= grenze_tabelle.loc[pid]:
                 errors.append(
                     f"reduktionen: police {pid}: Herabsetzung am "
                     f"{datum.date()} liegt nicht vor dem Zustandswechsel am "
-                    f"{grenzen.loc[pid].date()} — eine Herabsetzung setzt "
-                    "einen laufenden Beitrag voraus")
+                    f"{grenze_tabelle.loc[pid].date()} — "
+                    + ("nach dem Ende gibt es nichts mehr zu kuendigen" if tk
+                       else "eine Herabsetzung setzt einen laufenden Beitrag voraus"))
     return errors
 
 

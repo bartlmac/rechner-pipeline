@@ -980,8 +980,44 @@ def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any
         raise FalldatenFehler(
             f"{paket}: die Belegdatei 'tagesjournal.parquet' ist nicht das Journal, "
             "auf das die letzte gruene Protokollzeile sich festgelegt hat")
+    _pruefe_abschluesse_gegen_das_protokoll(paket, stand, dateien)
     _pruefe_buchungen_gegen_das_journal(paket, stand)
     _pruefe_felder_gegen_das_protokoll(paket, stand, prov, zeilen, gruene, letzte)
+
+
+def _pruefe_abschluesse_gegen_das_protokoll(
+    paket: Path, stand: Dict[str, Any], dateien: Dict[str, str],
+) -> None:
+    """Die mitgelieferten Monatsabschluesse haengen am Hash, den die
+    Protokollzeile ihres Stichtags nennt — nicht nur an stand.json.
+
+    Bis zur Pruefrunde T27 (Befund 10) wurde jede Abschlussdatei nur gegen
+    ``stand.json["dateien"]`` gehalten, und die schreibt der Erzeuger des
+    Pakets selbst: Ein Abschluss mit 16 Vertraegen liess sich durch eine
+    leere Tabelle ersetzen, der Dateihash nachziehen, und das Paket ging
+    mit "16 Vertraegen neben null Abschlusszeilen" durch. Der Hash, den
+    ``stand.json["abschluesse"][i]["sha256"]`` nennt, stammt dagegen aus
+    der verketteten und extern verankerten Protokollzeile — DAS ist die
+    Bindung, dieselbe Figur wie beim Tagesjournal darueber. Und die
+    Auswahl, die der Export mitliefert (die juengsten Abschluesse), muss
+    vollstaendig da sein: fehlende Abschlussdateien sind keine Auslassung,
+    sondern ein Paket, das seine Vertragszahlen nicht belegt.
+    """
+    from rechner_pipeline.betrieb.seite import PAKET_ABSCHLUESSE_DIR, juengste_abschluesse
+
+    erwartet = juengste_abschluesse(list(stand.get("abschluesse") or []))
+    for a in erwartet:
+        name = f"{PAKET_ABSCHLUESSE_DIR}/{a.get('datei')}"
+        if name not in dateien:
+            raise FalldatenFehler(
+                f"{paket}: der Abschluss {a.get('datei')!r} zum {a.get('stichtag')!r} "
+                "fehlt im Paket — ein Paket ohne seine juengsten Abschluesse belegt "
+                "seine Vertragszahlen nicht")
+        if dateien[name] != a.get("sha256"):
+            raise FalldatenFehler(
+                f"{paket}: die Abschlussdatei {name!r} ist nicht der Abschluss, den die "
+                f"Protokollzeile zum {a.get('stichtag')!r} bezeugt "
+                f"({str(dateien[name])[:16]}… statt {str(a.get('sha256'))[:16]}…)")
 
 
 def _pruefe_felder_gegen_das_protokoll(

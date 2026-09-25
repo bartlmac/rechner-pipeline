@@ -13,6 +13,10 @@ from __future__ import annotations
 import ast
 import datetime as dt
 import fcntl
+import hashlib
+import json
+import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -117,3 +121,57 @@ def test_jeder_csv_unterleser_der_fuehrungsprobe_uebergibt_die_bindung():
     for aufruf in aufrufe:
         assert len(aufruf.args) >= 3 or any(k.arg == "bindung" for k in aufruf.keywords), (
             f"_lies_csv in Zeile {aufruf.lineno} ohne Bindung")
+
+
+# --------------------------------------------------------------------------- #
+# T27-10: die mitgelieferten Abschluesse haengen am verankerten Hash
+# --------------------------------------------------------------------------- #
+
+sys.path.insert(0, str(REPO_ROOT / "werkzeuge"))
+import falldaten as fd  # noqa: E402
+
+
+def _paketkopie(paket: Path, ziel: Path):
+    shutil.copytree(paket, ziel)
+    stand = json.loads((ziel / "stand.json").read_text(encoding="utf-8"))
+    return ziel, stand
+
+
+def _schreibe_stand(kopie: Path, stand: dict) -> None:
+    (kopie / "stand.json").write_text(
+        json.dumps(stand, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def test_eine_getauschte_abschlussdatei_mit_nachgezogenem_hash_wird_abgewiesen(gefuehrt, tmp_path):
+    """Der Gutachter: Abschluss (16 Vertraege) durch eine gueltige leere
+    Tabelle ersetzt, nur stand.json.dateien nachgezogen — das Paket ging
+    durch. Mutationsprobe: _pruefe_abschluesse_gegen_das_protokoll nicht
+    rufen -> rot."""
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+
+    paket = st.stands_paket(gefuehrt, tmp_path / "paket", anker_verzeichnis=tmp_path / "anker")
+    kopie, stand = _paketkopie(paket, tmp_path / "kopie")
+    fd._pruefe_stands_paket(kopie, stand, stand.get("provenienz") or {})   # Positivkontrolle
+    namen = [n for n in stand["dateien"] if n.startswith("abschluesse/")]
+    assert namen, "das Paket liefert keinen Abschluss mit — der Test saehe nichts"
+    name = namen[-1]
+    tabelle = read_portfolio(kopie / name)
+    assert len(tabelle) > 0
+    write_portfolio(tabelle.iloc[0:0], kopie / name)
+    stand["dateien"][name] = hashlib.sha256((kopie / name).read_bytes()).hexdigest()
+    _schreibe_stand(kopie, stand)
+    with pytest.raises(fd.FalldatenFehler, match="Protokollzeile"):
+        fd._pruefe_stands_paket(kopie, stand, stand.get("provenienz") or {})
+
+
+def test_entfernte_abschlussdateien_werden_vermisst(gefuehrt, tmp_path):
+    paket = st.stands_paket(gefuehrt, tmp_path / "paket", anker_verzeichnis=tmp_path / "anker")
+    kopie, stand = _paketkopie(paket, tmp_path / "kopie")
+    namen = [n for n in stand["dateien"] if n.startswith("abschluesse/")]
+    assert namen
+    for name in namen:
+        (kopie / name).unlink()
+        del stand["dateien"][name]
+    _schreibe_stand(kopie, stand)
+    with pytest.raises(fd.FalldatenFehler, match="fehlt im Paket"):
+        fd._pruefe_stands_paket(kopie, stand, stand.get("provenienz") or {})

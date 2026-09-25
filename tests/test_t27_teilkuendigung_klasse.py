@@ -525,3 +525,106 @@ def test_die_teilkuendigung_im_beitragsfreien_nachlauf_ist_im_datenmodell_zulaes
         "anteil": ANTEIL, "verfahren": verfahren}])
     assert validate_reduktionen(stamm2, zeile(TEILKUENDIGUNG), None) == []
     assert any("Beitragszahlungsdauer" in f for f in validate_reduktionen(stamm2, zeile("prospektiv"), None))
+
+
+# --------------------------------------------------------------------------- #
+# Angriffsrunde 4: Auszahlung mit Vorzeichen, PEX-Grenze der TK, P-B1-Wache, Bericht ohne --scheiben
+# --------------------------------------------------------------------------- #
+
+
+def test_die_auszahlung_der_teilkuendigung_wird_auch_bei_negativer_schicht_gebucht():
+    """Runde 4: Die Wache '> 0' unterdrueckte bei negativer Schicht die
+    ganze Zeile — der positive Rueckkaufswert des gekuendigten Anteils
+    verschwand, die Schicht wurde trotzdem ausgebucht, P-B1 teilte die
+    Wache. Jetzt: immer gebucht, mit Vorzeichen; P-B1 verlangt sie immer;
+    das Datenmodell traegt das Vorzeichen (A15)."""
+    from rechner_pipeline.models.bestand import validate_ledger
+
+    config = _config()
+    stamm = _stamm([{"id": p, "beginn": "2015-01-01", "zugang": "2026-01-01"} for p in POLICEN])
+    schichten, verankerung = _tabellen(POLICEN, rho=-0.03)
+    erg = fortschreiben(stamm, config, BIS, schichten=schichten, verankerung=verankerung)
+    red = erg.reduktionen
+    assert len(red) > 0
+    led = erg.ledger
+    zeilen = led[(led["ereignis"] == "RED") & (led["betrag_art"] == "RKW_teilkuendigung")]
+    assert set(int(p) for p in zeilen["police_id"]) == set(int(p) for p in red["police_id"])
+    assert (zeilen["betrag"] < 0).any(), "kein negativer Wert — die Welt bezeugt nichts"
+    assert not any("betrag < 0" in f for f in validate_ledger(stamm, led, erg.historie, erg.scheiben))
+    gen = config.generationen[0]
+    zug = pd.DataFrame([{
+        "police_id": pid, "tarif_generation": gen.name, "ereignis": "ZUG",
+        "vertragsjahr": 11, "status_date": pd.Timestamp("2026-01-01"),
+        "betrag_art": "VS", "betrag": 100_000.0, "betrag_herkunft": "geliefert",
+    } for pid in POLICEN])[[n for n, _ in LEDGER_SPALTEN]].astype(dict(LEDGER_SPALTEN))
+    assert pruefe_ledger_betraege(
+        stamm, pd.concat([zug, led], ignore_index=True), config, scheiben=erg.scheiben,
+        historie=erg.historie, schichten=schichten, verankerung=verankerung,
+        reduktionen=red) == []
+
+
+def test_die_teilkuendigung_darf_nach_einer_beitragsfreistellung_liegen(welt):
+    """Runde 4: validate_reduktionen verlangte auch fuer die Teilkuendigung
+    einen laufenden Beitrag (PEX als Grenze) — mit einer Begruendung, die
+    dieselbe Funktion 25 Zeilen zuvor verneint."""
+    from rechner_pipeline.models.bestand import validate_reduktionen
+
+    config, stamm, schichten, verankerung, erg = welt
+    pid = int(stamm["police_id"].iloc[0])
+    beginn = pd.Timestamp(stamm.loc[stamm["police_id"] == pid, "insurance_start"].iloc[0])
+    historie = pd.DataFrame([{"police_id": pid, "status_id": 2, "status_code": "PEX",
+                              "status_date": beginn + pd.DateOffset(years=12)}])
+    zeile = lambda verfahren: pd.DataFrame([{
+        "police_id": pid, "reduktion_jahr": 14, "reduktion_datum": beginn + pd.DateOffset(years=14),
+        "anteil": ANTEIL, "verfahren": verfahren}])
+    assert validate_reduktionen(stamm, zeile(TEILKUENDIGUNG), historie) == []
+    assert any("Zustandswechsel" in f for f in validate_reduktionen(stamm, zeile("prospektiv"), historie))
+    tod = pd.DataFrame([{"police_id": pid, "status_id": 2, "status_code": "TOD",
+                         "status_date": beginn + pd.DateOffset(years=13)}])
+    assert any("nichts mehr zu kuendigen" in f for f in validate_reduktionen(stamm, zeile(TEILKUENDIGUNG), tod))
+
+
+def test_p_b1_verlangt_die_reduktionstabelle_wenn_der_ledger_red_traegt(tmp_path):
+    """Runde 4: wie ERH -> --scheiben. Ohne die Tabelle ist das ein
+    Bedienfehler (usage), kein Befund gegen den Lauf."""
+    from rechner_pipeline.bestand.manifest import lauf_eingaben, lies_manifest
+    from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
+    from tests.test_herabsetzung_in_fuehrung import _lauf_mit_herabsetzung
+
+    out, cfg = _lauf_mit_herabsetzung(tmp_path)
+    eingaben = dict(lauf_eingaben(out, cfg))
+    eingaben.pop("reduktionen", None)
+    _t, _g, _f, usage = lies_und_pruefe_pb1(eingaben, bis=_dt.date(2046, 1, 1), manifest=None)
+    assert any("--reduktionen" in u.get("message", "") for u in usage), usage
+
+
+def test_der_bestandsbericht_findet_die_reduktionstabelle_neben_dem_ledger(tmp_path, monkeypatch):
+    """Runde 4: Die Nebentabellen wurden nur neben --scheiben gesucht. Liegt
+    die Scheibentabelle anderswo (oder gibt es keine), fand der Bericht
+    reduktionen.parquet nicht und bewertete ungekuerzt. Jetzt: auch neben
+    dem Ledger. Mutationsprobe: die Ledger-Nachbarschaft nicht durchsuchen
+    -> rot."""
+    import shutil
+
+    from rechner_pipeline.bestand import cli_report as cli
+    from tests.test_herabsetzung_in_fuehrung import _lauf_mit_herabsetzung
+
+    out, cfg = _lauf_mit_herabsetzung(tmp_path)
+    anderswo = tmp_path / "anderswo"
+    anderswo.mkdir()
+    shutil.copyfile(out / "scheiben.parquet", anderswo / "scheiben.parquet")
+    gesehen = {}
+    echt = cli.render_html
+
+    def merkend(*a, **kw):
+        gesehen.update(kw)
+        return echt(*a, **kw)
+
+    monkeypatch.setattr(cli, "render_html", merkend)
+    code = cli.main([
+        "--portfolio", str(out / "bestand_gesamt.parquet"), "--historie", str(out / "historie.parquet"),
+        "--ledger", str(out / "ledger.parquet"), "--scheiben", str(anderswo / "scheiben.parquet"),
+        "--bis", "2046-01-01", "--stichtag", "2030-01-01", "--out", str(tmp_path / "bericht.html"),
+    ])
+    assert code == 0
+    assert gesehen.get("reduktionen") is not None and len(gesehen["reduktionen"]) > 0

@@ -371,6 +371,23 @@ def lies_und_pruefe_pb1(
                 "systematisch zu niedrig und die Bewegungs-Identitaet "
                 "falsch-positiv verletzt",
             })
+    if ledger is not None and reduktionen is None:
+        # Dieselbe Wache fuer die Herabsetzung (Angriffsrunde 4 der
+        # Pruefrunde T27): Ohne die Tabelle rechnet P-B1 jeden
+        # herabgesetzten Vertrag ungekuerzt nach und meldet das richtige
+        # Ledger als falsch — ein Bedienfehler, kein Befund (A27-02).
+        try:
+            hat_herabsetzungen = bool((ledger["ereignis"] == "RED").any())
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "ledger", "message": str(exc)})
+            hat_herabsetzungen = False
+        if hat_herabsetzungen:
+            usage_errors.append({
+                "code": "missing_arg",
+                "message": "Ledger enthaelt Herabsetzungen (RED) — "
+                "--reduktionen ist erforderlich, sonst rechnet die Wache "
+                "jeden herabgesetzten Vertrag ungekuerzt nach",
+            })
 
     if (
         portfolio is not None

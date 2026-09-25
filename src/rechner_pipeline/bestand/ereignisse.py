@@ -507,11 +507,18 @@ def _simuliere_vertrag(
                     # Migrationszugang — eine Umbuchung ohne Zahlung).
                     buche("RED", j + 1, "dDK_absorption", absorbiert,
                           status=None)
-                if auszahlung > 0.0:
+                if verfahren == TEILKUENDIGUNG:
                     # Teilkuendigung (Ziffer 6): Der gekuendigte Anteil der
                     # Grundversicherung wird AUSGEZAHLT — Rueckkaufswert
                     # dieses Anteils plus die vollstaendig absorbierte
                     # Korrekturschicht. Eine Zahlung, kein Statuswechsel.
+                    # IMMER gebucht, auch null oder negativ (Angriffsrunde 4
+                    # der Pruefrunde T27): Die Wache "> 0" unterdrueckte bei
+                    # negativer Schicht die GANZE Zeile — der positive
+                    # Rueckkaufswert des gekuendigten Anteils verschwand,
+                    # die Schicht wurde trotzdem ausgebucht, und P-B1 teilte
+                    # die Wache. Ein negativer Wert ist eine Forderung an den
+                    # Kunden, gebucht mit Vorzeichen (Annahme A15).
                     buche("RED", j + 1, "RKW_teilkuendigung", auszahlung,
                           status=None)
                 reduktionen.append({

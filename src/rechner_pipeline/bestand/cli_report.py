@@ -182,6 +182,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             for rolle, pfad in nebentabellen_in(Path(ns.scheiben).parent).items():
                 if rolle != "merkmale":
                     eingaben[rolle] = pfad
+        # Auch ohne --scheiben: Die Nebentabellen des Laufs liegen neben dem
+        # Ledger (Angriffsrunde 4: nur im --scheiben-Zweig erkannt, sonst
+        # jeder herabgesetzte Vertrag ungekuerzt bewertet).
+        for rolle, pfad in nebentabellen_in(Path(ns.ledger).parent).items():
+            if rolle != "merkmale" and rolle not in eingaben:
+                eingaben[rolle] = pfad
 
     merkmale = None
     if ns.merkmale:
