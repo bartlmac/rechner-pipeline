@@ -395,6 +395,8 @@ Was sich von Generation zu Generation ändert (verkaufende Generationen in Verka
 | KLV-2022 → KLV-2025 | zins 0.25% → 1.00% |
 <!-- /erzeugt -->
 
+**TG2015, Teilkündigung und Abschlusskosten.** Bei der Teilkündigung gilt für den noch nicht getilgten Abschlusskostenrest dieselbe Regel wie in Abschnitt 7.1: Der fortgeführte Vertrag $f \cdot S$ trägt den Anteil $f$ des Rests, der Anteil $(1-f)$ geht mit dem gekündigten Teil (im Rückkaufswert der Auszahlung). Festlegung des Projekts, nicht Aussage der Quelle.
+
 Migrierte Generationen kommen erst nach ihrer fachlichen Abnahme
 (A-Q1/A-M1/A-M4) in eine Bestand-Config — dann mit der Knoten-ID ihres
 Migrationsfalls und der durch Gate P-K1 geprüften Parametrierung. Die

@@ -47,6 +47,11 @@ begruendet. In Faehigkeiten gesprochen:
   das dritte Herabsetzungs-Verfahren: der gekuendigte Anteil der
   Grundversicherung verlaesst den Vertrag, der Rest laeuft zustandslos
   weiter; seit 3.4.0 auch im beitragsfreien Nachlauf definiert.
+
+Nicht zu diesem Fall gehoert die Regel zum Abschlusskostenrest nach
+einer Herabsetzung (Kern 3.8.0): Sie behebt einen Fehler im eigenen
+Kern, der vor dem Fall entstand, und bleibt bei einer Wiederholung des
+Falls stehen. Fuer die Teilkuendigung gilt dieselbe Regel (klv.md 13).
 - **Es fehlte** eine saubere Terminalbedingung der Korrekturschicht —
   **jetzt** endet die Amortisation am Ablauf (Zahlungsjahre bis n-1),
   statt in das Ablaufjahr hineinzurechnen.
