@@ -656,3 +656,42 @@ def test_der_bestandsbericht_findet_die_reduktionstabelle_neben_dem_ledger(tmp_p
     ])
     assert code == 0
     assert gesehen.get("reduktionen") is not None and len(gesehen["reduktionen"]) > 0
+
+
+def test_verfahren_und_anteil_der_reduktionstabelle_sind_an_die_config_gebunden(welt):
+    """Angriffsrunde 2026-09-26: Eine Teilkuendigung, in der Tabelle als
+    prospektiv eingetragen (Auszahlungs- und Kappungszeile entfernt),
+    passierte P-B1. Mutationsprobe: die Bindung entfernen -> rot."""
+    erg = welt[4]
+    red = erg.reduktionen.copy()
+    pid = int(red["police_id"].iloc[0])
+    red.loc[red["police_id"] == pid, "verfahren"] = "prospektiv"
+    led = erg.ledger[~((erg.ledger["police_id"] == pid)
+                       & erg.ledger["betrag_art"].isin(["RKW_teilkuendigung", "Kappung_teilkuendigung"]))]
+    assert any("Tarifwerk" in f and str(pid) in f for f in _pb1(welt, led, reduktionen=red))
+    red2 = erg.reduktionen.copy()
+    red2.loc[red2["police_id"] == pid, "anteil"] = 0.3
+    assert any("red_anteil" in f and str(pid) in f for f in _pb1(welt, erg.ledger, reduktionen=red2))
+
+
+def test_p_b1_verlangt_die_schicht_tabelle_wenn_der_ledger_eine_schicht_absorbiert(tmp_path):
+    """Angriffsrunde 2026-09-26: Ohne --schichten meldete P-B1 den korrekten
+    Lauf als falsch gebucht (Exit 20) statt eines Bedienfehlers."""
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
+
+    stamm = _stamm([{"id": p, "beginn": "2015-01-01", "zugang": "2026-01-01"} for p in POLICEN])
+    schichten, verankerung = _tabellen(POLICEN)
+    uebernahme = tmp_path / "zugang"
+    uebernahme.mkdir()
+    write_portfolio(stamm, uebernahme / "bestand.parquet")
+    write_portfolio(schichten, uebernahme / "schichten.parquet")
+    write_portfolio(verankerung, uebernahme / "verankerung.parquet")
+    led_welt = fortschreiben(stamm, _config(), BIS, schichten=schichten, verankerung=verankerung).ledger
+    assert (led_welt["betrag_art"] == "dDK_absorption").any()
+    eingaben = {"portfolio": uebernahme / "bestand.parquet"}
+    ledger_pfad = tmp_path / "ledger.parquet"
+    write_portfolio(led_welt, ledger_pfad)
+    eingaben["ledger"] = ledger_pfad
+    _t, _g, _f, usage = lies_und_pruefe_pb1(eingaben, bis=_dt.date(2046, 1, 1), manifest=None)
+    assert any("--schichten" in u.get("message", "") for u in usage), usage

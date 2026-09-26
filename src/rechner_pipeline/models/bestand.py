@@ -336,11 +336,14 @@ SCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
 #: Beitragsanteil und daneben die dort fixierte beitragsfreie Summe
 #: (``kern.beitragsreduktion.ReduzierterVertrag``, Tarifplan klv.md 7.1).
 #:
-#: Persistiert werden genau die drei Felder, aus denen sich dieser
-#: Vertrag rekonstruieren laesst — ``ReduzierterVertrag.nach(kern, jahr,
-#: anteil, verfahren=...)``. Mehr braucht die Folgebewertung nicht, und
-#: weniger reichte nicht: Ohne das Verfahren waere derselbe Anteil je
-#: nach Bedingungswerk ein anderer Vertrag.
+#: Persistiert werden Jahr, Anteil und Verfahren. Rekonstruiert wird der
+#: Vertrag daraus zusammen mit den Scheiben (auch denen NACH der
+#: Herabsetzung, die als nicht herabgesetzte Bausteine weiterlaufen) und
+#: der Korrekturschicht — ``kern.beitragsreduktion.reduzierte_teile``,
+#: fuer alle drei Verfahren. Verfahren und Anteil muessen dem Tarifwerk
+#: der Generation und den Annahmen entsprechen (P-B1 prueft es): Ohne das
+#: Verfahren waere derselbe Anteil je nach Bedingungswerk ein anderer
+#: Vertrag.
 #:
 #: NEBENTABELLE wie ``scheiben``: Keine Datei heisst, der Bestand hat
 #: keine Herabsetzungen — nicht, dass niemand nachgesehen hat.
@@ -1535,7 +1538,8 @@ def validate_reduktionen(
     """Herabsetzungen gegen den Stamm pruefen (leer = gueltig).
 
     Jede Zeile gehoert zu einem bekannten Vertrag, das Reduktionsjahr
-    liegt in der Beitragszahlungsdauer, und der fortgefuehrte Anteil
+    liegt in der Beitragszahlungsdauer (bei der Teilkuendigung: in der
+    Versicherungsdauer), das Datum ist dessen Jahrestag, und der fortgefuehrte Anteil
     liegt echt zwischen 0 und 1: ``1.0`` ist keine Herabsetzung, ``0.0``
     ist eine Beitragsfreistellung und wird als PEX gefuehrt.
 

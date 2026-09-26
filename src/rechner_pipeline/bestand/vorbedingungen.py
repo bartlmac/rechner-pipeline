@@ -388,6 +388,23 @@ def lies_und_pruefe_pb1(
                 "--reduktionen ist erforderlich, sonst rechnet die Wache "
                 "jeden herabgesetzten Vertrag ungekuerzt nach",
             })
+    if ledger is not None and schichten is None:
+        # Dieselbe Wache fuer die Korrekturschicht (Angriffsrunde
+        # 2026-09-26): Ein Ledger, der eine absorbierte Schicht bucht, ist
+        # ohne Schicht-Tabelle nicht herleitbar — das ist ein Bedienfehler,
+        # kein Befund gegen den Lauf (vorher: Exit 20, "falsch gebucht").
+        try:
+            hat_schicht = bool((ledger["betrag_art"] == "dDK_absorption").any())
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "ledger", "message": str(exc)})
+            hat_schicht = False
+        if hat_schicht:
+            usage_errors.append({
+                "code": "missing_arg",
+                "message": "Ledger enthaelt absorbierte Korrekturschichten "
+                "(dDK_absorption) — --schichten und --verankerung sind "
+                "erforderlich, sonst rechnet die Wache ohne Schicht nach",
+            })
 
     if (
         portfolio is not None

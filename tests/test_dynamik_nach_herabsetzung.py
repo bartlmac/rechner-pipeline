@@ -122,3 +122,111 @@ def test_p_b1_leitet_den_lauf_mit_dynamik_nach_herabsetzung_her(welt):
         stamm, pd.concat([zug, erg.ledger], ignore_index=True), config, scheiben=erg.scheiben,
         historie=erg.historie, schichten=schichten, verankerung=verankerung,
         reduktionen=erg.reduktionen) == []
+
+
+@pytest.fixture(scope="module")
+def grosse_welt():
+    """Mehr Vertraege, damit Herabsetzung und Erhoehung am selben Jahrestag
+    vorkommen (bei 40 Policen der Fixture tun sie es nicht)."""
+    config = _config(True)
+    policen = list(range(900_001, 900_401))
+    stamm = _stamm([{"id": p, "beginn": "2015-01-01", "zugang": "2026-01-01"} for p in policen])
+    schichten, verankerung = _tabellen(policen)
+    erg = fortschreiben(stamm, config, BIS, schichten=schichten, verankerung=verankerung)
+    return config, stamm, schichten, verankerung, erg
+
+
+def test_das_bewegungskonto_fuehrt_die_erhoehung_am_tag_der_herabsetzung(grosse_welt):
+    """Angriffsrunde 2026-09-26: Eine Erhoehung am Tag der Herabsetzung
+    (die Engine bucht RED vor ERH desselben Jahrestags) fiel aus der
+    Kontosumme, dauerhaft; die Identitaet hielt trotzdem, P-B1 blieb gruen.
+    Gemessen gegen die Einzelbewertung an JEDEM Jahresstichtag.
+    Mutationsprobe: 'datum >= ab' zurueck auf 'datum > ab' -> rot."""
+    import datetime as _dt
+
+    from rechner_pipeline.bestand.kennzahlen import bewegungskonto
+
+    config, stamm, schichten, verankerung, erg = grosse_welt
+    red = erg.reduktionen
+    s = erg.scheiben
+    gleichtaegig = s.merge(red, left_on=["police_id", "erhoehung_datum"],
+                           right_on=["police_id", "reduktion_datum"])
+    assert len(gleichtaegig), "keine Erhoehung am Tag einer Herabsetzung — der Test saehe nichts"
+    konto = {z["jahr"]: z for z in bewegungskonto(
+        stamm, erg.historie, erg.ledger, erg.scheiben, bis=_dt.date(2045, 1, 1))}
+    assert len(konto) >= 10
+    for jahr in sorted(konto):
+        stichtag = _dt.date(jahr + 1, 1, 1)
+        einzeln = einzelwerte_am(stamm, erg.historie, config, stichtag, scheiben=erg.scheiben,
+                                 schichten=schichten, verankerung=verankerung, reduktionen=red)
+        soll = sum(z["leistung"] for z in einzeln if z["status"] == "POL")
+        assert konto[jahr]["bpfl"]["ende"]["summe"] == pytest.approx(soll, rel=1e-9), jahr
+
+
+def test_p_b1_prueft_die_hoehe_jeder_gerechneten_erhoehung(welt):
+    """Angriffsrunde 2026-09-26: Eine Erhoehung mit falschem Bezug (5 % der
+    ungekuerzten statt der gefuehrten Summe), in Ledger UND Scheibe
+    konsistent verfaelscht, passierte P-B1. Mutationsprobe: die
+    Herleitung der Erhoehungshoehe entfernen -> rot."""
+    config, stamm, schichten, verankerung, erg = welt
+    pid, (rj, f, verf, spaeter) = next(iter(_nach_red(erg).items()))
+    j = int(spaeter["erhoehung_jahr"].iloc[0])
+    led, sch = erg.ledger.copy(), erg.scheiben.copy()
+    falsch = float(config.annahmen.erh_prozent) * float(stamm.set_index("police_id").loc[pid, "sum_insured"])
+    m_led = (led["police_id"] == pid) & (led["ereignis"] == "ERH") & (led["vertragsjahr"] == j) & (led["betrag_art"] == "VS_erhoehung")
+    m_sch = (sch["police_id"] == pid) & (sch["erhoehung_jahr"] == j)
+    assert m_led.sum() == 1 and m_sch.sum() == 1
+    led.loc[m_led, "betrag"] = falsch
+    sch.loc[m_sch, "sum_insured"] = falsch
+    # Auch den Beitrag der Scheibe passend nachziehen — sonst finge die
+    # (schon vorhandene) Beitragsherleitung den Fehler, nicht die Regel.
+    gen = config.generationen[0]
+    mp = ModelPoint(**model_point_kwargs(stamm.set_index("police_id").loc[pid], gen.generation_fields()))
+    m_bjb = (led["police_id"] == pid) & (led["ereignis"] == "ERH") & (led["vertragsjahr"] == j) & (led["betrag_art"] == "BJB")
+    led.loc[m_bjb, "betrag"] = Rechenkern(erhoehungs_scheibe(mp, j, falsch)).gross_annual_premium()
+    gen = config.generationen[0]
+    zug = pd.DataFrame([{
+        "police_id": p, "tarif_generation": gen.name, "ereignis": "ZUG",
+        "vertragsjahr": 11, "status_date": pd.Timestamp("2026-01-01"),
+        "betrag_art": "VS", "betrag": 100_000.0, "betrag_herkunft": "geliefert",
+    } for p in POLICEN])[[n for n, _ in LEDGER_SPALTEN]].astype(dict(LEDGER_SPALTEN))
+    fehler = pruefe_ledger_betraege(
+        stamm, pd.concat([zug, led], ignore_index=True), config, scheiben=sch,
+        historie=erg.historie, schichten=schichten, verankerung=verankerung,
+        reduktionen=erg.reduktionen)
+    assert any(f"police {pid} ERH Jahr {j}" in f and "Regel" in f for f in fehler), fehler
+
+
+def test_der_bestandsbericht_zeigt_die_gefuehrte_versicherungssumme(welt):
+    """Angriffsrunde 2026-09-26: Tabelle und Grafik 'Versicherungssumme' des
+    Berichts summierten die Stammspalte — herabgesetzte Vertraege standen
+    ungekuerzt da, Erhoehungen fehlten. Jetzt: die bewertete Summe.
+    Mutationsprobe: die Ueberschreibung mit vs_klv entfernen -> rot."""
+    import datetime as _dt
+
+    from rechner_pipeline.bestand import report as rp
+
+    config, stamm, schichten, verankerung, erg = welt
+    stichtage = [_dt.date(2030, 1, 1), _dt.date(2035, 1, 1)]
+    gesehen = {}
+    echt = rp._chart_verlauf_summe
+
+    def merkend(reihe, *a, **k):
+        gesehen["reihe"] = [dict(r) for r in reihe]
+        return echt(reihe, *a, **k)
+
+    import pytest as _pt
+    mp = _pt.MonkeyPatch()
+    mp.setattr(rp, "_chart_verlauf_summe", merkend)
+    try:
+        rp.render_html(stamm, stichtage=stichtage, historie=erg.historie, ledger=erg.ledger,
+                       config=config, scheiben=erg.scheiben, schichten=schichten,
+                       verankerung=verankerung, reduktionen=erg.reduktionen,
+                       bis=BIS, stichtag=None)
+    finally:
+        mp.undo()
+    for zeile, s in zip(gesehen["reihe"], stichtage):
+        soll = sum(z["leistung"] for z in einzelwerte_am(
+            stamm, erg.historie, config, s, scheiben=erg.scheiben, schichten=schichten,
+            verankerung=verankerung, reduktionen=erg.reduktionen) if z["produkt"] == "klv")
+        assert zeile["summe_vs"] == pytest.approx(soll, rel=1e-9), s

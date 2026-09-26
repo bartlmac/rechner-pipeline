@@ -928,6 +928,24 @@ def render_html(
         ))
         for gruppe in produkt_gruppen(df)
     ]
+    # Die bewertete Sicht, einmal gerechnet: Sie traegt die GEFUEHRTE
+    # Versicherungssumme (Herabsetzungen, Erhoehungen). Die Stammspalte,
+    # die verlauf() summiert, kennt beides nicht — Tabelle und Grafik
+    # "Versicherungssumme" wiesen herabgesetzte Vertraege ungekuerzt aus,
+    # waehrend die Nachweisung desselben Berichts die gekuerzte Summe
+    # fuehrte (Angriffsrunde 2026-09-26).
+    reihe_ausw: List[Dict[str, Any]] = []
+    if config is not None:
+        reihe_ausw = auswertungs_verlauf(
+            df, historie, config, stichtage, scheiben=scheiben,
+            merkmale=merkmale, schichten=schichten, verankerung=verankerung,
+            reduktionen=reduktionen,
+        )
+        for v in volumen_reihen:
+            if v["produkt"] != "klv":
+                continue
+            for zeile, ausw in zip(v["reihe"], reihe_ausw):
+                zeile["summe_vs"] = ausw["vs_klv"]
     # Strukturbild am Bestands-Hoechststand (erster Maximums-Stichtag —
     # deterministisch und aussagekraeftiger als der duenne Bestandsauslauf).
     hoechststand = max(reihe, key=lambda r: (r["vertraege"], -reihe.index(r)))
@@ -938,6 +956,24 @@ def render_html(
         hoechststand["stichtag"]
     )
     scheibe = schnitt_am(bestand, struktur_stichtag)
+    if config is not None and "produkt" in scheibe.columns and len(scheibe):
+        # Das Strukturbild der versicherten Leistung zeigt die GEFUEHRTE
+        # Summe je Vertrag, nicht die Stammspalte (siehe oben).
+        from rechner_pipeline.bestand.auswertung import einzelwerte_am
+
+        gefuehrt = {
+            int(z["police_id"]): z["leistung"]
+            for z in einzelwerte_am(
+                df, historie, config, struktur_stichtag, scheiben=scheiben,
+                merkmale=merkmale, schichten=schichten, verankerung=verankerung,
+                reduktionen=reduktionen)
+            if z["produkt"] == "klv"
+        }
+        scheibe = scheibe.copy()
+        klv = scheibe["produkt"] == "klv"
+        scheibe.loc[klv, "sum_insured"] = [
+            gefuehrt.get(int(p), s) for p, s in
+            zip(scheibe.loc[klv, "police_id"], scheibe.loc[klv, "sum_insured"])]
     # Ereignis-Sicht auf dem um die Bestands-Zugaenge ergaenzten Ledger:
     # die Engine bucht ZUG nur fuer Neuzugaenge, die Vertraege des
     # Ausgangsbestands sind zum Simulationsbeginn schon da. Ohne die
@@ -997,13 +1033,7 @@ def render_html(
             svg_ereignisse = _chart_ereignisse_je_jahr(
                 ereignisse_je_jahr(gevo_ledger), stichtag=stichtag
             )
-        reihe_ausw: List[Dict[str, Any]] = []
         if config is not None:
-            reihe_ausw = auswertungs_verlauf(
-                df, historie, config, stichtage, scheiben=scheiben,
-                merkmale=merkmale, schichten=schichten, verankerung=verankerung,
-                reduktionen=reduktionen,
-            )
             svg_dk = _chart_deckungskapital(reihe_ausw, stichtag=stichtag)
             svg_beitrag = _chart_beitraege(
                 [r for r in reihe_ausw if r["vertraege"] > 0],

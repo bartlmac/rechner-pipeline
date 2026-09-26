@@ -257,11 +257,20 @@ def _pruefe_eingaben(
 
 
 def _abzugsfaktor(dk: float, stoab: float, jahr: int) -> float:
-    """Der Anteil der Reserve, der den Stornoabschlag ueberlebt."""
-    if dk <= 0.0:
+    """Der Anteil der Reserve, der den Stornoabschlag ueberlebt.
+
+    Faktor f mit dk * f = dk - StoAb: der Tarifplan (klv.md 7.1) definiert
+    q^mit Abzug = (1-f)(DR - StoAb)/(S V_bfr) auch fuer eine negative
+    Deckungsrueckstellung in fruehen Jahren langer Vertraege — dann ist der
+    umgewandelte Teil negativ und die neue Summe liegt knapp unter f x S.
+    Vorher brach hier der ganze Fortschreibungslauf ab, fuer jede Police
+    (Angriffsrunde 2026-09-26). Nur eine Rueckstellung von exakt null
+    traegt keinen Faktor.
+    """
+    if dk == 0.0:
         raise BeitragsreduktionFehler(
-            f"Vertragsjahr {jahr}: Deckungsrueckstellung ist {dk!r} — ein "
-            "anteiliger Stornoabschlag ist darauf nicht bildbar"
+            f"Vertragsjahr {jahr}: Deckungsrueckstellung ist exakt null — "
+            "der Abzug laesst sich nicht als Anteil der Reserve ausdruecken"
         )
     return 1.0 - stoab / dk
 

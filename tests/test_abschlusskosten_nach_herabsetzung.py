@@ -60,3 +60,19 @@ def test_der_unveraenderte_vertrag_rechnet_wie_bisher():
     for a in range(0, 8):
         pz = verlaufszeile(KLV_DEFAULT, standardpfad(KLV_DEFAULT), kern.basis, a)
         assert pz.vx_mrv == pytest.approx(kern.verlaufszeile(a).vx_mrv, rel=1e-12)
+
+
+def test_mit_abzug_bei_negativer_deckungsrueckstellung_rechnet_nach_tarifplan():
+    """Angriffsrunde 2026-09-26: Bei negativer Deckungsrueckstellung (frueher
+    Jahrestag, lange Laufzeit) brach die Herabsetzung mit Abzug den ganzen
+    Lauf ab. klv.md 7.1 definiert q auch dort. Mutationsprobe: die alte
+    Wache 'dk <= 0' zurueck -> rot."""
+    from rechner_pipeline.kern.beitragsreduktion import reduziere
+
+    mp = dataclasses.replace(KLV_DEFAULT, x=40, n=40, t=40)
+    kern = Rechenkern(mp)
+    z = kern.verlaufszeile(1)
+    assert z.drx_bpfl < 0, "die Welt hat keine negative Rueckstellung"
+    r = reduziere(kern, 1, F, verfahren=MIT_ABZUG)
+    q = (1 - F) * (z.drx_bpfl - z.stoab) / (mp.sum_insured * z.vx_bfr)
+    assert r.vs_neu == pytest.approx(mp.sum_insured * (F + q), rel=1e-12)

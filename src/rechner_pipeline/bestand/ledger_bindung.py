@@ -265,6 +265,25 @@ def pruefe_ledger_betraege(
                 int(z["reduktion_jahr"]), float(z["anteil"]),
                 str(z["verfahren"]))
             reduktion_datum[int(z["police_id"])] = pd.Timestamp(z["reduktion_datum"])
+    # Verfahren und Anteil sind Eigenschaften des Systems, nicht der
+    # Tabelle: das Verfahren steht im Tarifwerk der Generation, der Anteil
+    # einer gerechneten Herabsetzung in den Annahmen (Angriffsrunde
+    # 2026-09-26: eine als prospektiv eingetragene Teilkuendigung liess
+    # Auszahlung und Kappung ohne Befund verschwinden).
+    red_anteil = float(getattr(config.annahmen, "red_anteil", 0.0) or 0.0)
+    for pid, (_jahr, anteil, verfahren) in sorted(reduktion_je_police.items()):
+        if pid not in haupt.index:
+            continue
+        tw = tarifwerk_je_generation.get(str(haupt.loc[pid, "tarif_generation"])) or {}
+        soll_verfahren = tw.get("red_verfahren")
+        if soll_verfahren is not None and verfahren != soll_verfahren:
+            errors.append(
+                f"reduktionen police {pid}: Verfahren {verfahren!r}, das Tarifwerk "
+                f"der Generation sagt {soll_verfahren!r}")
+        if red_anteil and abs(anteil - red_anteil) > 1e-12:
+            errors.append(
+                f"reduktionen police {pid}: Anteil {anteil!r}, die Annahmen sagen "
+                f"red_anteil = {red_anteil!r}")
 
     scheiben_je_police: Dict[int, List[Tuple[int, float]]] = {}
     if scheiben is not None:
@@ -357,6 +376,23 @@ def pruefe_ledger_betraege(
             else:
                 continue
         else:
+            if art == "ERH" and betrag_art == "VS_erhoehung" and str(
+                    getattr(z, "betrag_herkunft", "")) == "gerechnet":
+                # Die HOEHE einer gerechneten Erhoehung folgt aus der Regel
+                # der Annahmen: erh_prozent der gefuehrten Summe davor —
+                # auch nach einer Herabsetzung (dann der Summe danach).
+                # Vorher leitete P-B1 nur den Beitrag der Scheibe her; eine
+                # Erhoehung mit falschem Bezug (5 % der ungekuerzten Summe)
+                # passierte, wenn Ledger und Scheibe zusammen falsch waren.
+                v = _herleitung(pid, h)
+                if v is None:
+                    continue
+                erwartet = float(config.annahmen.erh_prozent) * v.gesamt_vs(jahr)
+                if abs(betrag - erwartet) > TOLERANZ:
+                    abweichungen.append(
+                        f"police {pid} ERH Jahr {jahr}: Ledger {betrag:.2f}, "
+                        f"Regel {erwartet:.2f} (erh_prozent der gefuehrten Summe)")
+                continue
             if art not in HERGELEITET or art == "ERH":
                 continue                     # ERH: nur der Beitrag ist hergeleitet
             if art == "ZUG":

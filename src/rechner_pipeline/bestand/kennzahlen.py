@@ -538,10 +538,26 @@ def bewegungskonto(
             ab, summe = max(gueltig)
         else:
             ab, summe = None, float(stamm_vs.loc[pid])
+        # Die Engine bucht an einem Jahrestag erst die Herabsetzung, dann
+        # die Erhoehung (die Dynamik laeuft nach einer Herabsetzung
+        # weiter). Eine Erhoehung am Tag der geltenden Herabsetzung steckt
+        # also NICHT in deren Betrag und kommt obendrauf (>=); vorher fiel
+        # sie dauerhaft aus der Kontosumme, bei gueltiger Identitaet.
+        # Fuer den Wert unmittelbar VOR einer Herabsetzung zaehlen
+        # Erhoehungen ab ihrem Tag noch nicht mit.
         for datum, betrag in scheiben_je_police.get(int(pid), ()):
-            if datum <= stichtag and (ab is None or datum > ab):
-                summe += betrag
+            if datum > stichtag:
+                continue
+            if ab is not None and datum < ab:
+                continue
+            if ohne_red_ab is not None and datum >= pd.Timestamp(ohne_red_ab):
+                continue
+            summe += betrag
         return summe
+
+    def red_betrag(pid: int, tag: pd.Timestamp) -> float:
+        """Die neue Gesamtsumme, die die Herabsetzung an diesem Tag bucht."""
+        return next(b for d, b in red_je_police[int(pid)] if d == tag)
 
     def stand_am(stichtag: _dt.date) -> Dict[str, Dict[str, float]]:
         ts = pd.Timestamp(stichtag)
@@ -650,7 +666,9 @@ def bewegungskonto(
                 "veraenderung_herabsetzung": {
                     "stueck": 0,
                     "summe": float(sum(
-                        vs_ges(p, pd.Timestamp(d))
+                        # neue Gesamtsumme laut Buchung (vor einer
+                        # Erhoehung desselben Tages) minus die Summe davor
+                        red_betrag(p, pd.Timestamp(d))
                         - vs_ges(p, pd.Timestamp(d), ohne_red_ab=d)
                         for p, d in zip(red["police_id"], red["status_date"])
                     )),

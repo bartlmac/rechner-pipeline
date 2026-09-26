@@ -675,10 +675,15 @@ def auswertungs_verlauf(
             "bjb": 0.0,
             "bzb_jahr": 0.0,
             "bu_beitrag": 0.0,
+            # Die GEFUEHRTE Versicherungssumme (KLV): nach Herabsetzungen
+            # und Erhoehungen, nicht die Stammspalte.
+            "vs_klv": 0.0,
         }
         for z in zeilen:
             agg["deckungskapital"] += z["deckungskapital"]
             agg["korrekturschicht"] += z["korrekturschicht"]
+            if z["produkt"] == "klv":
+                agg["vs_klv"] += z["leistung"]
             if z["produkt"] == "bu":
                 agg["bu_vertraege"] += 1
                 agg["bu_jahresrente"] += z["leistung"]
