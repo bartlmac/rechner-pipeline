@@ -1224,7 +1224,7 @@ def eingang_anlegen(
     # belegte_tabellen die Hashes der Nebentabellen laengst gesammelt
     # hatte; eine getauschte Scheibentabelle ging ungeprueft ein). Eine
     # Nebentabelle, die der Graph NICHT nennt, ist keine Luecke im Sinne
-    # von Annahme 5 (die gilt den drei Pflichttabellen) — Annahme A14.
+    # von Annahme 5 (die gilt den drei Pflichttabellen).
     for datei in (f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)):
         quell_pfad = quelle / datei
         if datei not in roh:

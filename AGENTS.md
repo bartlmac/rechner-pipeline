@@ -204,7 +204,11 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `$entwickle-im-zielsystem` (the architecture rules there are
   non-negotiable); code changes during a running migration additionally
   follow `$integriere-migrationsinkrement` (ADR-007). Quality-assure
-  finished blocks with `$teste-adversarial`; documentation follows
+  finished blocks with `$teste-adversarial`. Every external review round
+  runs its full pattern: calibrate the attacker blind on the pre-fix
+  state, a red test before each fix, a ratchet and a mutation probe per
+  fix, a blind attack on the fixed state; "closed" is said only after a
+  round without a confirmed finding, never under a deadline. Documentation follows
   `$dokumentiere-system`; new toolbox gates follow
   `$author-rechner-toolbox-gate`. Role catalog:
   `docs/architektur/skill-architektur.md`.

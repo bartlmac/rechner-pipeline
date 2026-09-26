@@ -177,7 +177,7 @@ class _Herleitung:
             aus["dDK_absorption"] = absorbiert
         if verfahren == TEILKUENDIGUNG:
             # Immer in der Soll-Menge, auch null oder negativ — dieselbe
-            # Regel wie in der Engine (Angriffsrunde 4, Annahme A15).
+            # Regel wie in der Engine.
             aus["RKW_teilkuendigung"] = (1.0 - anteil) * vertrags_rkw(
                 self.grund, [], jahr,
                 stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),

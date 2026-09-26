@@ -985,7 +985,7 @@ def validate_ledger(
             errors.append(
                 f"ledger: betrag < 0 (police {_policen(negativ)}) — nur die "
                 "Umbuchungen MIG und dDK_absorption sowie die Auszahlung der "
-                "Teilkuendigung (Forderung bei negativer Schicht, Annahme A15) "
+                "Teilkuendigung (Forderung bei negativer Schicht) "
                 "tragen ein Vorzeichen"
             )
     if not (ledger["status_date"].dt.day == 1).all():

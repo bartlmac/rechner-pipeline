@@ -518,7 +518,8 @@ def _simuliere_vertrag(
                     # Rueckkaufswert des gekuendigten Anteils verschwand,
                     # die Schicht wurde trotzdem ausgebucht, und P-B1 teilte
                     # die Wache. Ein negativer Wert ist eine Forderung an den
-                    # Kunden, gebucht mit Vorzeichen (Annahme A15).
+                    # Kunden, gebucht mit Vorzeichen — wie sie behandelt
+                    # wird, entscheidet das Aktuariat (offen).
                     buche("RED", j + 1, "RKW_teilkuendigung", auszahlung,
                           status=None)
                 reduktionen.append({
