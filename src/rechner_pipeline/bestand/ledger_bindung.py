@@ -129,15 +129,21 @@ class _Herleitung:
     def ist_reduziert(self, jahr: int) -> bool:
         return bool(self.reduziert) and jahr >= self.reduktion[0]
 
+    def _reduziert_bis(self, jahr: int):
+        # Wie _bis: STO/PEX/TOD/RED des Jahres stehen VOR der Erhoehung
+        # desselben Jahres — es zaehlen Bausteine mit Erhoehungsjahr < jahr
+        # (die Grundscheibe traegt 0).
+        return [(e, v) for e, v in self.reduziert if e == 0 or e < jahr]
+
     def gesamt_vs(self, jahr: int) -> float:
         if self.ist_reduziert(jahr):
-            return sum(v.reduktion.vs_neu for _, v in self.reduziert)
+            return sum(v.reduktion.vs_neu for _, v in self._reduziert_bis(jahr))
         return self.grund_mp.sum_insured + sum(vs for _, vs, _ in self._bis(jahr))
 
     def rkw(self, jahr: int) -> float:
         if self.ist_reduziert(jahr):
             return vertrags_monatsreserve_reduziert(
-                self.reduziert, 12 * jahr,
+                self._reduziert_bis(jahr), 12 * jahr,
                 stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"])).rkw
         return vertrags_rkw(
             self.grund, [(j, k) for j, _, k in self._bis(jahr)], jahr,
@@ -147,7 +153,7 @@ class _Herleitung:
         if self.ist_reduziert(jahr):
             return sum(
                 v.beitragsfreie_summe(jahr - erh_jahr)
-                for erh_jahr, v in self.reduziert)
+                for erh_jahr, v in self._reduziert_bis(jahr))
         return self.grund.beitragsfreie_summe(jahr) + sum(
             k.beitragsfreie_summe(jahr - j) for j, _, k in self._bis(jahr)
         )

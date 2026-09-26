@@ -125,7 +125,12 @@ from rechner_pipeline.kern.rechenkern import (
 #: Rests (Zahlungspfad, Profil abschlusskosten), die beitragsfreie Summe
 #: rechnet ueber denselben Pfad; Rueckkaufs-Track herabgesetzter
 #: Vertraege in der Zillmerdauer geaendert, sonst unveraendert.
-__version__ = "3.8.0"
+#: 3.9.0 = Dynamik nach einer Herabsetzung: Erhoehungen ab dem
+#: Reduktionsjahr sind gewoehnliche, nicht herabgesetzte Bausteine des
+#: herabgesetzten Vertrags (reduzierte_teile, bestehende_teile); vorher
+#: fielen sie aus der Bewertung. Rechenwerte ohne solche Erhoehungen
+#: unveraendert.
+__version__ = "3.9.0"
 
 __all__ = [
     "ModelPoint",

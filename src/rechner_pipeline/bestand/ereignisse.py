@@ -92,6 +92,7 @@ from rechner_pipeline.kern.beitragsreduktion import (
     TEILKUENDIGUNG,
     ReduzierterVertrag,
     absorbierte_schicht,
+    nachher_zugekommen,
     reduzierte_teile,
     vertrags_monatsreserve_reduziert,
 )
@@ -312,6 +313,10 @@ class _Vertrag:
             gamma1_uebernehmen=bool(self.tarifwerk["scheiben_mit_gamma1"]),
         )
         self.scheiben.append((jahr, vs, Rechenkern(mp)))
+        if self.reduziert:
+            # Nach einer Herabsetzung ist die neue Scheibe ein weiterer,
+            # nicht herabgesetzter Baustein des herabgesetzten Vertrags.
+            self.reduziert.append((jahr, nachher_zugekommen(self.scheiben[-1][2])))
         return mp
 
     def rkw(self, jahr: int) -> float:
@@ -541,8 +546,9 @@ def _simuliere_vertrag(
         if beitragsfrei_ab is None:
             # 5. Dynamische Erhoehung (nur beitragspflichtig, solange
             #    Beitraege laufen): neue Scheibe, kein Statuswechsel.
-            if (j + 1 < t and rng.random() < annahmen.erhoehung(0.0)
-                    and vertrag.reduktion is None):
+            # Auch nach einer Herabsetzung (Entscheid 2026-09-26): die
+            # Erhoehung bezieht sich auf die gefuehrte Summe danach.
+            if j + 1 < t and rng.random() < annahmen.erhoehung(0.0):
                 betrag = annahmen.erh_prozent * vertrag.gesamt_vs()
                 mp_s = vertrag.erhoehe(j + 1, betrag)
                 scheiben.append(

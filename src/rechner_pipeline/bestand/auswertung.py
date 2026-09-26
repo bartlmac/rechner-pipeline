@@ -32,6 +32,7 @@ from rechner_pipeline.bestand.fuehrung import bestand_am, months_between
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.bestand.schichten import schichten_je_police
 from rechner_pipeline.kern.beitragsreduktion import (
+    bestehende_teile,
     reduzierte_teile,
     vertrags_monatsreserve_reduziert,
 )
@@ -257,6 +258,7 @@ def werte_reduziert(
     dort fixierte Summe auf dem beitragsfreien Satz weiterlaufen.
     """
     jahr = int(months_exp) // 12
+    teile = bestehende_teile(teile, 12 * jahr)
     if pex_jahr is None:
         # Dieselbe Stichtagskonvention wie fuer jeden anderen Vertrag
         # (``vertragswerte`` -> ``zustand_am``: die Zeile des angebrochenen
@@ -302,7 +304,7 @@ def beitraege_reduziert(teile: List[Tuple[int, Any]], jahr: int) -> Dict[str, fl
     dieser Summe — kein zweiter Rechenweg.
     """
     aus = {"bjb": 0.0, "bzb_jahr": 0.0}
-    for erh_jahr, v in teile:
+    for erh_jahr, v in bestehende_teile(teile, 12 * jahr):
         anteil = float(v.reduktion.anteil)
         kern = Rechenkern(dataclasses.replace(
             v.kern.mp, sum_insured=anteil * v.kern.mp.sum_insured))
@@ -501,7 +503,8 @@ def einzelwerte_am(
                 stoab_je_baustein=bool(tarifwerk_je_generation[
                     str(generation_je_police.loc[pid])]["stoab_je_baustein"]))
             zeile["leistung"] = sum(
-                v.reduktion.vs_neu for _, v in reduziert)
+                v.reduktion.vs_neu
+                for _, v in bestehende_teile(reduziert, int(months_exp)))
             if pex_jahr is None:
                 bt = beitraege_reduziert(reduziert, int(months_exp) // 12)
                 zeile["jahresbeitrag"] = bt["bjb"]

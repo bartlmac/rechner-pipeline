@@ -493,10 +493,30 @@ def reduzierte_teile(
     teile = reduziere_geschichtet(
         grund, aktive, jahr, anteil, verfahren=verfahren, zusatz_dk=zusatz)
     kerne = [grund] + [k for _, k in aktive]
-    return [
+    aus = [
         (erh_jahr, ReduzierterVertrag(kern=kerne[i], reduktion=red))
         for i, (erh_jahr, red) in enumerate(teile)
     ]
+    # Erhoehungen AB dem Reduktionsjahr: Die Dynamik laeuft nach einer
+    # Herabsetzung weiter, bezogen auf die Summe danach (Entscheid des
+    # Projekts 2026-09-26). Jede spaetere Scheibe ist ein gewoehnlicher,
+    # nicht herabgesetzter Baustein. Vorher liess dieser Pfad sie still
+    # weg — die Bewertung fuehrte eine gebuchte Erhoehung nicht.
+    aus += [(j, nachher_zugekommen(k)) for j, k in scheiben if j >= jahr]
+    return aus
+
+
+def nachher_zugekommen(kern: Rechenkern) -> "ReduzierterVertrag":
+    """Eine Erhoehungsscheibe, die NACH der Herabsetzung entstand: ein
+    gewoehnlicher Baustein in der Form des herabgesetzten Vertrags
+    (Anteil 1, ab seinem eigenen Vertragsjahr 0)."""
+    return ReduzierterVertrag(kern=kern, reduktion=_unveraendert(kern, 0))
+
+
+def bestehende_teile(teile, monate: int):
+    """Die Bausteine, die am Monats-Stichtag schon bestehen — spaetere
+    Erhoehungen gehoeren erst ab ihrem Jahrestag zum Vertrag."""
+    return [(e, v) for e, v in teile if 12 * int(e) <= int(monate)]
 
 
 def absorbierte_schicht(
@@ -551,6 +571,7 @@ def vertrags_monatsreserve_reduziert(
     if not teile:
         raise BeitragsreduktionFehler(
             "keine Schichten — ein Vertrag ohne Grundscheibe ist keiner")
+    teile = bestehende_teile(teile, monate)
     dr = mrv = 0.0
     stuecke: List[Tuple[Any, int, Any]] = []
     for erh_jahr, vertrag in teile:

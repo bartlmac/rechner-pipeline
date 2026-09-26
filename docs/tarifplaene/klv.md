@@ -253,6 +253,12 @@ beitragsfreie Summe des herabgesetzten Vertrags rechnen mit derselben
 Regel; eine Beitragsfreistellung nach der Herabsetzung ist deshalb
 wertstetig.
 
+**Dynamik nach der Herabsetzung.** Die dynamische Erhöhung läuft nach
+einer Herabsetzung weiter und bezieht sich auf die geführte Summe danach
+(den fortgeführten Vertrag samt seiner Erhöhungen). Jede spätere
+Erhöhung ist ein eigener, nicht herabgesetzter Baustein mit vollem
+Beitrag auf ihre Summe.
+
 **Übernommene Generationen mit Abzug je Baustein.** Führt das
 Bedingungswerk einer übernommenen Generation den Stornoabschlag je
 Baustein (`stoab_je_baustein`, Abschnitt 13; Bedingungswerk der zweiten
