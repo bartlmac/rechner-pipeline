@@ -363,10 +363,22 @@ def test_ein_eingang_hinter_einem_fremden_abschluss_bleibt_abgewiesen(eingang, t
     # Ein ZWEITER Fall, zum 1.1. — hinter dem inzwischen festgeschriebenen
     # Februar-Abschluss, und in keinem von beiden enthalten.
     zweiter = _fall(tmp_path / "zweiter", "spaeter-eingang")
-    ueb.eingang_anlegen(stand, zweiter, dt.date(2026, 1, 1))
+    # Seit der Angriffsrunde Betrieb weist schon die Registrierung ab —
+    # ein Eingang, den der Betrieb nie annimmt, entsteht nicht.
+    with pytest.raises(ueb.UebernahmeError, match="festgeschriebenen Monatsabschluss"):
+        ueb.eingang_anlegen(stand, zweiter, dt.date(2026, 1, 1))
+    # Und der Leser haelt die Grenze weiter, fuer einen Eingang, der sie
+    # (etwa aus einer aelteren Fassung) doch passiert hat.
+    import pytest as _pt
+    mp = _pt.MonkeyPatch()
+    mp.setattr(ueb, "_pruefe_stichtag_gegen_ablage", lambda *a, **k: None)
+    try:
+        ueb.eingang_anlegen(stand, zweiter, dt.date(2026, 1, 1))
+    finally:
+        mp.undo()
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
     assert code != EXIT_OK
-    assert "liegt nicht nach dem juengsten festgeschriebenen" in zeile["fehler"]
+    assert "liegt nicht nach dem festgeschriebenen Monatsabschluss" in zeile["fehler"]
 
 
 def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
@@ -1033,6 +1045,8 @@ UEBERSETZUNGSLAGEN = [
     ("gefuehrte Police ohne Quellnummer", {1: 10}, [10, 11], True),
     ("Uebersetzung nennt eine fremde Police", {1: 10, 2: 99}, [10], True),
     ("Zielnummer ausserhalb des Bands", {1: 10, 2: 5000}, [10, 5000], True),
+    # Angriffsrunde (Betrieb): in sich stimmig, aber gegen die Vergaberegel
+    ("vertauschte Zuordnung", {1: 11, 2: 10}, [10, 11], True),
 ]
 
 
@@ -1043,7 +1057,7 @@ def test_die_bruecke_muss_eine_bijektion_sein(was, abbildung, gefuehrt, fehlerha
     wurde — nicht, dass sie stimmt. Beide Richtungen geprueft: Die
     vollstaendige, eindeutige Bruecke MUSS durchgehen."""
     bestand = pd.DataFrame({"police_id": gefuehrt})
-    fehler = ueb.uebersetzung_fehler(abbildung, bestand, {"von": 1, "bis": 1000})
+    fehler = ueb.uebersetzung_fehler(abbildung, bestand, {"von": 10, "bis": 1009})
     assert bool(fehler) is fehlerhaft, (was, fehler)
 
 

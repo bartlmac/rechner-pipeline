@@ -45,7 +45,7 @@ import pandas as pd
 
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
 from rechner_pipeline.models.zeichnung import ZEICHNENDE_KLASSEN
-from rechner_pipeline.models.schemas import p9_semantik_fehler
+from rechner_pipeline.models.schemas import P9Snapshot, p9_semantik_fehler, p9_snapshot_sha256
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
@@ -299,6 +299,19 @@ def uebersetzung_fehler(
         if daneben:
             fehler.append(
                 f"Zielnummern ausserhalb des Bands {von}..{bis}: {daneben[:5]}")
+        # Die Vergaberegel des Schreibers (eingang_anlegen): die i-te
+        # kleinste Quellnummer bekommt von + i. Aus eingang.json ist die
+        # Sollabbildung damit vollstaendig rekonstruierbar; eine
+        # vertauschte oder verschobene Bruecke ist in sich stimmig und
+        # trotzdem falsch (Angriffsrunde Betrieb) — sie beantwortet die
+        # Rueckfrage "was ist aus eurer Police geworden?" falsch.
+        soll = {q: von + i for i, q in enumerate(sorted(abbildung))}
+        abweichend = sorted(q for q in abbildung if abbildung[q] != soll[q])
+        if abweichend:
+            fehler.append(
+                f"Uebersetzung folgt nicht der Vergaberegel des Eingangs "
+                f"(i-te Quellnummer -> {von} + i) fuer Quellpolicen "
+                f"{abweichend[:5]}")
     if len(set(quellen)) != len(quellen):  # pragma: no cover - dict-Schluessel
         fehler.append("Quellnummern sind nicht eindeutig")
     return fehler
@@ -529,7 +542,8 @@ def lies_am4_snapshot(
     # Eine spaetere Ablehnung mit Vorgaengerbezug ueberholt eine alte
     # Annahme — das Gate liest die Kette so (ADR-008, ADR-010), der
     # Eingang liest sie ueber denselben Vertrag (models.snapshot_kette).
-    _pruefe_geltende_spitze(Path(fall) / "entscheide", snapshot_sha256, pfad.name, daten)
+    _pruefe_geltende_spitze(Path(fall) / "entscheide", snapshot_sha256, pfad.name, daten,
+                            fallname=fallname, schluesselring=schluesselring)
     # Der zweite Zeuge: die Freigabesignatur (models.freigabe, dieselbe
     # Pruefung wie im Gate). Ohne Ring bleibt "nicht verifiziert" ein
     # benannter Zustand; mit Ring ist eine falsche Signatur ein Abbruch.
@@ -545,6 +559,8 @@ def lies_am4_snapshot(
 
 def _pruefe_geltende_spitze(
     verzeichnis: Path, snapshot_sha256: str, name: str, daten: Dict[str, Any],
+    *, fallname: Optional[str] = None,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
 ) -> None:
     """Die A-M4-Kette des Falls lesen und verlangen, dass ``snapshot_sha256``
     ihre eindeutige Spitze ist.
@@ -587,6 +603,25 @@ def _pruefe_geltende_spitze(
                 f"{eintrag.name}: Glied der A-M4-Kette ohne gueltige "
                 "Selbstadressierung oder Vorgaengerliste — die geltende Spitze "
                 "ist damit unbekannt")
+        # Dieselbe Aufnahmeregel wie das Gate (_lade_snapshot_kette), nicht
+        # nur dieselbe Graphregel (Angriffsrunde Betrieb: ein ungezeichnetes
+        # oder fallfremdes Glied galt als gueltiger Nachfolger und meldete
+        # "ueberholt", wo das Gate "Kette verletzt" sagt).
+        glied_fehler = list(P9Snapshot.validate_payload(glied))
+        if glied.get("snapshot_sha256") != p9_snapshot_sha256(glied):
+            glied_fehler.append("Selbstadressierung verletzt")
+        if glied.get("gate") != "A-M4":
+            glied_fehler.append(f"Gate {glied.get('gate')!r} statt 'A-M4'")
+        if fallname is not None and glied.get("fall") != fallname:
+            glied_fehler.append(f"Fallbindung {glied.get('fall')!r} statt {fallname!r}")
+        if schluesselring:
+            from rechner_pipeline.models.freigabe import pruefe_freigabe
+            glied_fehler.extend(pruefe_freigabe(glied, schluesselring))
+        if glied_fehler:
+            raise UebernahmeError(
+                f"{eintrag.name}: Glied der A-M4-Kette ist kein gueltiger "
+                "Snapshot — die Kette ist verletzt, die geltende Spitze "
+                "unbekannt: " + "; ".join(glied_fehler[:3]))
         kette[sha] = glied
         namen[sha] = eintrag.name
     spitzen, fehler = pruefe_snapshot_graph(kette, namen)
@@ -1129,6 +1164,35 @@ def lies_uebernahmen(wurzel: Path, config: BestandConfig) -> List[Uebernahme]:
 # --------------------------------------------------------------------------- #
 
 
+def _pruefe_stichtag_gegen_ablage(ablage, stichtag: _dt.date, fallname: str) -> None:
+    """Einen Stichtag, den der Tagesbetrieb nie annehmen wird, nicht erst
+    registrieren (Angriffsrunde Betrieb: ein unwiderruflich registrierter
+    Eingang legte den Betrieb danach still). Die Regeln sind die des
+    Laufs: nicht vor dem Betriebsbeginn, und kein festgeschriebener
+    Abschluss am oder nach dem Stichtag — der kennte den Bestand nie
+    (ADR-011)."""
+    from rechner_pipeline.betrieb.tageslauf import _festgeschriebene_abschluesse
+
+    if ablage.config_pfad.is_file():
+        from rechner_pipeline.bestand.config import load_config
+
+        beginn = load_config(ablage.config_pfad).tagesbetrieb.betriebsbeginn
+        if beginn is not None and stichtag < beginn:
+            raise UebernahmeError(
+                f"{fallname}: Stichtag {stichtag.isoformat()} liegt vor dem "
+                f"Betriebsbeginn {beginn.isoformat()} dieser Ablage — der "
+                "Tagesbetrieb nimmt ihn nie an; die Ablage aus dem Fall neu "
+                "aufsetzen (betrieb.neuaufsetzen)")
+    spaetere = [t for t in _festgeschriebene_abschluesse(ablage) if t >= stichtag]
+    if spaetere:
+        raise UebernahmeError(
+            f"{fallname}: Stichtag {stichtag.isoformat()} liegt nicht nach dem "
+            f"festgeschriebenen Monatsabschluss {spaetere[0].isoformat()} — der "
+            "Abschluss kennt den Bestand nie (ADR-011), der Tagesbetrieb nimmt "
+            "den Eingang nicht an. Den Zugang in die offene Zeit legen oder die "
+            "Ablage aus dem Fall neu aufsetzen (betrieb.neuaufsetzen)")
+
+
 def eingang_anlegen(
     stand: Path,
     fall: Path,
@@ -1266,7 +1330,29 @@ def eingang_anlegen(
     # gelesen, um das naechste Band zu bestimmen, und durch die
     # Publikation fortgeschrieben. Zwei gleichzeitige Registrierungen
     # bekamen sonst dasselbe Band und veroeffentlichten beide.
-    with eingang_sperre(stand):
+    # Dazu die LAUF-Sperre der Ablage (Angriffsrunde Betrieb): Registrierung
+    # und Tageslauf nahmen verschiedene Sperren; ein Lauf, der zwischen
+    # Pruefung und Publikation einen Abschluss schrieb, machte den frisch
+    # registrierten Eingang dauerhaft unannehmbar — beide Kommandos meldeten
+    # Erfolg. Unter der Lauf-Sperre gibt es kein Dazwischen, und die
+    # Registrierung kann pruefen, was der Lauf verlangen wird.
+    from contextlib import ExitStack
+
+    from rechner_pipeline.betrieb.tageslauf import (
+        Ablage,
+        TageslaufError,
+        _festgeschriebene_abschluesse,
+        lauf_sperre,
+    )
+
+    ablage_ziel = Ablage(Path(stand))
+    with ExitStack() as sperren:
+        try:
+            sperren.enter_context(lauf_sperre(ablage_ziel))
+        except TageslaufError as exc:
+            raise UebernahmeError(str(exc)) from exc
+        _pruefe_stichtag_gegen_ablage(ablage_ziel, stichtag, fallname)
+        sperren.enter_context(eingang_sperre(stand))
         # Der Eingang entsteht VOLLSTAENDIG neben seinem Namen und wird dann in
         # einem Zug umbenannt (Review T22-03): Ein halb geschriebener Eingang
         # blockierte sonst dauerhaft, weil das Verzeichnis als "nie

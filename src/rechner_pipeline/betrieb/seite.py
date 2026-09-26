@@ -700,6 +700,17 @@ def ankerziel_fehler(ablage, paket_ziel: Path, anker_verzeichnis: Path) -> Optio
             "gewoehnliche Datei im Ankerverzeichnis sein, sonst schreibt der "
             "Export, wohin der Link zeigt."
         )
+    # Ein HARDLINK hat weder Gestalt noch abweichende Aufloesung — er ist
+    # derselbe Inode unter zweitem Namen (Angriffsrunde: anker.jsonl als
+    # Hardlink auf das Tagesprotokoll; der Export schrieb seinen Satz IN die
+    # Protokollkette und legte den Betrieb still). Eine Ankerdatei mit mehr
+    # als einem Namen ist keine, die nur der Anker beschreibt.
+    if datei.is_file() and datei.stat().st_nlink > 1:
+        return (
+            f"Anker: {datei} hat {datei.stat().st_nlink} Namen (Hardlink) — "
+            "die Ankerdatei darf mit keiner anderen Datei denselben Inhalt "
+            "teilen, sonst schreibt der Export in eine fremde Datei."
+        )
     for was, bereich in (("die Ablage", Path(ablage.wurzel)),
                          ("das Stands-Paket", Path(paket_ziel))):
         for pfad in (anker, datei):
@@ -959,6 +970,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"seite: Stands-Paket -> {paket}", file=sys.stderr)
     except (SeiteError, TageslaufError, ValueError) as exc:
         print(f"seite: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        # Ein Schreibfehler im Export ist ein Fehler mit Meldung, kein
+        # Traceback mit Exit 1 (Angriffsrunde Betrieb).
+        print(f"seite: Ein-/Ausgabefehler: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     return 0
 

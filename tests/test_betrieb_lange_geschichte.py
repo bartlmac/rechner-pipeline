@@ -243,10 +243,11 @@ def test_ein_zugang_vor_dem_juengsten_abschluss_wird_verweigert(tmp_path):
     assert abschluesse[-1] == "abschluss_2026-03-01.parquet"
 
     fall = _fall_mit_nebentabellen(tmp_path)                  # Stichtag 2026-01-01
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
-    code, zeile = tageslauf(ablage, dt.date(2026, 3, 4))
-    assert code != EXIT_OK and zeile["uebernommen"] is False
-    assert "festgeschriebenen Monatsabschluss" in zeile["fehler"]
+    # Seit der Angriffsrunde Betrieb weist schon die Registrierung ab: ein
+    # Eingang, den der Betrieb nie annimmt, entsteht nicht.
+    with pytest.raises(ueb.UebernahmeError, match="festgeschriebenen Monatsabschluss"):
+        ueb.eingang_anlegen(stand, fall, STICHTAG)
+    assert tageslauf(ablage, dt.date(2026, 3, 4))[0] == EXIT_OK
 
 
 def test_ein_zugang_in_der_offenen_zeit_wird_gefuehrt(tmp_path):
@@ -295,10 +296,8 @@ def test_ein_zugang_genau_am_juengsten_abschluss_wird_verweigert(tmp_path):
     assert (ablage.abschluesse / "abschluss_2026-01-01.parquet").is_file()
 
     fall = _fall_mit_nebentabellen(tmp_path)                  # Stichtag 2026-01-01
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
-    code, zeile = tageslauf(ablage, dt.date(2026, 1, 2))
-    assert code != EXIT_OK and zeile["uebernommen"] is False
-    assert "festgeschriebenen Monatsabschluss 2026-01-01" in zeile["fehler"]
+    with pytest.raises(ueb.UebernahmeError, match="festgeschriebenen Monatsabschluss 2026-01-01"):
+        ueb.eingang_anlegen(stand, fall, STICHTAG)
 
 
 def test_eine_bestehende_fall_config_bleibt_lesbar(tmp_path):

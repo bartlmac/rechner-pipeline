@@ -175,3 +175,19 @@ def test_entfernte_abschlussdateien_werden_vermisst(gefuehrt, tmp_path):
     _schreibe_stand(kopie, stand)
     with pytest.raises(fd.FalldatenFehler, match="fehlt im Paket"):
         fd._pruefe_stands_paket(kopie, stand, stand.get("provenienz") or {})
+
+
+def test_ein_hardlink_als_anker_wird_vor_dem_export_abgewiesen(gefuehrt, tmp_path):
+    """Angriffsrunde (Betrieb, dritte Runde): anker.jsonl als Hardlink auf
+    das Tagesprotokoll — der Export schrieb in die Protokollkette.
+    Mutationsprobe: die nlink-Pruefung entfernen -> rot."""
+    import os
+
+    ablage = gefuehrt
+    anker = tmp_path / "anker"
+    anker.mkdir()
+    vorher = ablage.protokoll_pfad.read_bytes()
+    os.link(ablage.protokoll_pfad, anker / ak.ANKER_DATEI)
+    with pytest.raises(st.SeiteError, match="Hardlink"):
+        st.stands_paket(ablage, tmp_path / "paket", anker_verzeichnis=anker)
+    assert ablage.protokoll_pfad.read_bytes() == vorher

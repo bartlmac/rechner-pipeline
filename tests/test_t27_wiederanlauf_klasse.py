@@ -348,3 +348,69 @@ def test_neuaufsetzen_prueft_die_config_die_es_schreibt(tmp_path, monkeypatch):
     assert gelesen, "die Config wurde nie ueber read_bytes gelesen"
     assert Ablage(ablage.wurzel).config_pfad.read_bytes() == original
     assert provenienz["config_sha256"] == ueb.sha256_bytes(original)
+
+
+def test_ein_nachgerechneter_abschluss_wird_belegt_wie_ein_neuer(tmp_path, monkeypatch):
+    """Angriffsrunde (Betrieb): Scheitert ein Lauf nach dem Schreiben der
+    Abschluesse, trug der Retry sie nur als "nachgerechnet" ohne sha256,
+    Monatskennzahlen und Bericht ein — der Beleg war dauerhaft weg. Und
+    ein Abschluss, dessen chmod ausfiel, blieb schreibbar.
+    Mutationsprobe: den Eintrag des nachgerechneten Abschlusses wieder
+    ohne sha256 bauen -> rot."""
+    import stat
+
+    from tests.test_betrieb_seite import _ablage
+
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+
+    def _kein_bericht(*_a, **_k):
+        raise OSError(5, "I/O error")
+
+    monkeypatch.setattr(tl, "_bericht", _kein_bericht)
+    code, _ = tageslauf(ablage, dt.date(2026, 3, 2))
+    monkeypatch.undo()
+    assert code != EXIT_OK
+    feb = tl.abschluss_pfad(ablage.abschluesse, dt.date(2026, 2, 1))
+    assert feb.is_file(), "der gescheiterte Lauf hat keinen Abschluss geschrieben"
+    feb.chmod(0o644)                     # das ausgefallene chmod
+    code, zeile = tageslauf(ablage, dt.date(2026, 3, 2))
+    assert code == EXIT_OK, zeile.get("fehler")
+    eintraege = {a["stichtag"]: a for a in zeile["abschluesse"]}
+    for tag in ("2026-02-01", "2026-03-01"):
+        a = eintraege[tag]
+        assert a.get("sha256") and "in_kraft" in a, a
+    assert eintraege["2026-03-01"].get("bericht"), eintraege["2026-03-01"]
+    assert stat.S_IMODE(feb.stat().st_mode) == 0o444
+
+
+def test_ein_ein_ausgabefehler_im_vorlauf_hat_einen_exit_code_des_vertrags(tmp_path, monkeypatch):
+    """Angriffsrunde (Betrieb): Ein Ausfall in der Ruecknahme (Vorlauf unter
+    der Sperre) endete mit Traceback und Exit 1 — kein Code des Vertrags.
+    Mutationsprobe: den OSError-Fang in main entfernen -> rot."""
+    from tests.test_betrieb_seite import _ablage
+
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+
+    def _kaputt(*_a, **_k):
+        raise OSError(5, "I/O error")
+
+    monkeypatch.setattr(tl, "nimm_publish_zurueck", _kaputt)
+    code = tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-03"])
+    assert code == tl.EXIT_NACHLAUF
+
+
+def test_ein_fehlender_stand_bei_gefuehrtem_protokoll_ist_kein_neuanfang(tmp_path):
+    """Angriffsrunde (Betrieb): Fehlt das Pfadobjekt 'stand', fing der Lauf
+    still von vorn an und zerstoerte die Protokollkette. Mutationsprobe:
+    die Pruefung entfernen -> rot."""
+    from tests.test_betrieb_seite import _ablage
+
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    vorher = ablage.protokoll_pfad.read_bytes()
+    ablage.stand.unlink()
+    with pytest.raises(tl.TageslaufError, match="Stand und Nachweis"):
+        tageslauf(ablage, dt.date(2026, 2, 3))
+    assert ablage.protokoll_pfad.read_bytes() == vorher

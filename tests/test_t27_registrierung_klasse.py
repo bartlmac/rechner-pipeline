@@ -192,3 +192,58 @@ def test_ein_kettenglied_in_rohform_ist_ein_benannter_fehler(tmp_path):
     (fall / "entscheide" / ("A-M4-" + "e" * 64 + ".json")).write_text("[1, 2, 3]", encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="kein Objekt"):
         ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=alt)
+
+
+def test_die_registrierung_nimmt_die_lauf_sperre_der_ablage(tmp_path):
+    """Angriffsrunde (Betrieb): Registrierung und Tageslauf nahmen
+    verschiedene Sperren. Haelt ein Lauf die Ablage, wartet die
+    Registrierung nicht und mischt nichts — sie bricht mit Meldung ab.
+    Mutationsprobe: die Lauf-Sperre in eingang_anlegen entfernen -> rot."""
+    import fcntl
+
+    from rechner_pipeline.betrieb.tageslauf import Ablage
+
+    fall = _fall(tmp_path)
+    stand = tmp_path / "daten"
+    ablage = Ablage(stand)
+    ablage.wurzel.mkdir(parents=True, exist_ok=True)
+    with open(ablage.sperre, "a+") as fremd:
+        fcntl.flock(fremd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(ueb.UebernahmeError, match="Sperre"):
+            ueb.eingang_anlegen(stand, fall, STICHTAG)
+    assert ueb.eingang_anlegen(stand, fall, STICHTAG).is_dir()
+
+
+def test_eine_vertauschte_bruecke_wird_erkannt(tmp_path):
+    """Angriffsrunde (Betrieb): Eine in sich stimmige, aber vertauschte
+    Bruecke (7000001 -> 2, 7000002 -> 1) galt als gueltig. Die
+    Vergaberegel des Schreibers macht die Sollabbildung rekonstruierbar.
+    Mutationsprobe: die Regelpruefung entfernen -> rot."""
+    fall = _fall(tmp_path)
+    stand = tmp_path / "daten"
+    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    pfad = ziel / ueb.POLICENNUMMERN_DATEI
+    pfad.chmod(0o644)
+    b = read_portfolio(pfad)
+    b["ziel_police_id"] = b["ziel_police_id"].replace({1: 2, 2: 1})
+    write_portfolio(b, pfad)
+    manifest = ziel / ueb.EINGANG_DATEI
+    manifest.chmod(0o644)
+    daten = json.loads(manifest.read_text(encoding="utf-8"))
+    daten["dateien"][ueb.POLICENNUMMERN_DATEI] = ueb.sha256_bytes(pfad.read_bytes())
+    manifest.write_text(json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8")
+    with pytest.raises(ueb.UebernahmeError, match="Vergaberegel"):
+        ueb.lies_uebernahmen(stand / ueb.UEBERNAHME_DIR, load_config(PLV))
+
+
+def test_ein_fallfremdes_oder_ungezeichnetes_kettenglied_verletzt_die_kette(tmp_path):
+    """Angriffsrunde (Betrieb): Der Eingang pruefte an fremden Gliedern nur
+    Selbstadressierung und Vorgaenger — ein fallfremdes Glied ueberholte
+    die Annahme. Jetzt dieselbe Aufnahmeregel wie das Gate.
+    Mutationsprobe: die Fallbindung nicht pruefen -> rot."""
+    fall = _fall(tmp_path)
+    alt = _spitze_laut_gate_ledger(fall)
+    _kettenglied(fall, "anderer-fall", entscheid="abgelehnt", vorgaenger=[alt])
+    with pytest.raises(ueb.UebernahmeError, match="Fallbindung"):
+        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=alt)

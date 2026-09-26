@@ -119,7 +119,9 @@ def test_die_sperre_deckt_das_fenster_zwischen_lesen_und_veroeffentlichen(tmp_pa
         ueb.vergebene_baender = echt
 
     assert gesehen.get("n"), "der Zwischenruf ist nie gelaufen — der Test saehe nichts"
-    assert "registriert" in gesehen["zweiter"], gesehen["zweiter"]
+    # Der zweite Schreiber scheitert an einer der beiden Sperren — seit
+    # der Angriffsrunde Betrieb schon an der Lauf-Sperre der Ablage.
+    assert "Sperre" in gesehen["zweiter"] or "registriert" in gesehen["zweiter"], gesehen["zweiter"]
     assert erst.is_dir()
     # Und der zweite ist auch nicht halb entstanden:
     assert not (stand / UEBERNAHME_DIR / "dazwischen").exists()
@@ -166,5 +168,7 @@ def test_der_leser_rechnet_die_baender_nach(tmp_path):
     # faellt schon die Bijektionspruefung des Eingangs (T26-13), und der
     # Test pruefte nicht mehr die Ueberschneidung, sondern sie.
     _ueberschneide(zweit, int(erstes_band["bis"]), int(zweites_band["bis"]))
-    with pytest.raises(UebernahmeError, match="ueberschneiden"):
+    # Ein verschobenes Band verletzt auch die Vergaberegel der Bruecke —
+    # beide Befunde sind wahr, der Leser nennt den ersten.
+    with pytest.raises(UebernahmeError, match="ueberschneiden|Vergaberegel"):
         ueb.lies_uebernahmen(stand / UEBERNAHME_DIR, config)

@@ -586,6 +586,22 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
     beiden zu glauben. Dazu der Nachweisvertrag (:func:`pruefe_nachweis`).
     """
     if not ablage.stand.is_dir():
+        # Kein Stand ist nur dann "noch nie gefuehrt", wenn auch das
+        # Protokoll keinen uebernommenen Lauf kennt. Sonst ist es derselbe
+        # Widerspruch wie ein Stand ohne Protokollzeile — der Lauf fing
+        # still von vorn an und zerstoerte die Protokollkette (Angriffsrunde
+        # Betrieb). Abbrechen und den Ausweg nennen.
+        gruene_ohne_stand = [
+            z for z in lies_protokoll(ablage.protokoll_pfad) if z.get("uebernommen")]
+        if gruene_ohne_stand:
+            letzter = gruene_ohne_stand[-1]
+            raise TageslaufError(
+                f"{ablage.stand} fehlt (oder ist kein Verzeichnis), das Protokoll "
+                f"kennt aber einen gefuehrten Tag ({letzter.get('heute')}, Stand "
+                f"{letzter.get('stand')!r}) — Stand und Nachweis passen nicht "
+                "zusammen. Ausweg: den Symlink 'stand' auf die im Protokoll "
+                "genannte Generation setzen; ein Neuanfang waere ein neuer "
+                "Betrieb (betrieb.neuaufsetzen)")
         return None
     try:
         manifest = lies_manifest(ablage.stand)
@@ -757,8 +773,6 @@ def _stand_bauen(
     # schreibt und danach scheitert, hinterlaesst keine gruene Zeile, und
     # der Stellvertreter "Protokoll" hielt den Eingang dann fuer neu.
     schon_gefuehrt = _bereits_gefuehrte_eingaenge(ablage)
-    abschluesse_bisher = _festgeschriebene_abschluesse(ablage)
-    juengster_abschluss = abschluesse_bisher[-1] if abschluesse_bisher else None
     for ueb in uebernahmen:
         # Ein Zugang gehoert in die GEFUEHRTE ZEIT: nicht vor den ersten Tag,
         # den das Unternehmen fuehrt (davor gibt es keine Buecher, in die er
@@ -786,8 +800,9 @@ def _stand_bauen(
             erster = _erster_abschluss_ab(ablage, ueb.stichtag)
             raise TageslaufError(
                 f"uebernahme {ueb.fall}: Stichtag {ueb.stichtag.isoformat()} "
-                f"liegt nicht nach dem juengsten festgeschriebenen "
-                f"Monatsabschluss {erster.isoformat()} — dieser "
+                f"liegt nicht nach dem festgeschriebenen Monatsabschluss "
+                f"{erster.isoformat()}, in dem er in die Buecher getreten "
+                "waere — dieser "
                 "Abschluss kennt den Bestand nicht und wird nie neu gerechnet "
                 "(ADR-011). Der Zugang gehoert in die noch offene Zeit; soll "
                 "er weiter zurueckreichen, wird die Ablage aus dem Fall neu "
@@ -1565,44 +1580,54 @@ def _tageslauf(
                         verankerung=sicht.get("verankerung"),
                         reduktionen=sicht.get("reduktionen"),
                     )
-                    eintrag_alt: Dict[str, Any] = {
+                    # Ein nachgerechneter Abschluss wird genauso BELEGT wie
+                    # ein neu geschriebener — Datei, sha256, Monatskennzahlen,
+                    # und der juengste bekommt seinen Bericht (Angriffsrunde
+                    # Betrieb: ein Ausfall im Publish-Fenster nahm jedem
+                    # Abschluss dieses Laufs dauerhaft den Beleg). Und der
+                    # Schreibschutz wird nachgezogen, falls der Lauf, der
+                    # ihn schrieb, vor dem chmod endete.
+                    if os.name != "nt":
+                        pfad.chmod(0o444)
+                    geschrieben = pfad
+                    eintrag: Dict[str, Any] = {
                         "stichtag": stichtag.isoformat(), "datei": pfad.name,
-                        "neu": False, "nachgerechnet": True,
+                        "sha256": _datei_hash(pfad), "neu": False,
+                        "nachgerechnet": True,
+                        **monatskennzahlen(read_portfolio(pfad), journal, stichtag),
                     }
                     if befunde:
-                        eintrag_alt["befunde"] = befunde[:20]
-                    abschluesse.append(eintrag_alt)
-                    continue
-                # Buchungsschnitt am Stichtag, nicht am Lauftag (T24-02):
-                # Der Abschluss ist, was am Stichtag GEBUCHT war. Wache und
-                # Tagesseite bleiben auf der Sicht von heute — dort ist sie
-                # richtig, denn sie berichten ueber heute.
-                sicht = _stichtagssicht(tabellen, config, stichtag, betriebsbeginn)
-                # Der Abschluss bekommt dieselben Nebentabellen wie die Wache
-                # und der Bericht — sonst weist er die Korrekturschicht als
-                # null aus, obwohl die Fuehrung sie traegt (N-01).
-                #
-                geschrieben = schreibe_abschluss(
-                    sicht["portfolio"], sicht["historie"], config, stichtag,
-                    ablage.abschluesse, scheiben=sicht["scheiben"],
-                    merkmale=sicht.get("merkmale"),
-                    schichten=sicht.get("schichten"),
-                    verankerung=sicht.get("verankerung"),
-                    reduktionen=sicht.get("reduktionen"),
-                )
-                eintrag: Dict[str, Any] = {
-                    "stichtag": stichtag.isoformat(), "datei": geschrieben.name,
-                    "sha256": _datei_hash(geschrieben), "neu": True,
-                    # Das TAGESJOURNAL, nicht sicht["ledger"]: Nur das
-                    # Journal traegt das Buchungsdatum, und ohne das
-                    # faellt jeder spaet gebuchte Vorfall auf einem
-                    # Stichtag aus der Zaehlung. Den Schnitt auf den
-                    # Stichtag macht die Periode selbst — ein Vorfall,
-                    # der erst heute gebucht wurde, wird erst in seinem
-                    # Monat sichtbar.
-                    **monatskennzahlen(
-                        read_portfolio(geschrieben), journal, stichtag),
-                }
+                        eintrag["befunde"] = befunde[:20]
+                else:
+                    # Buchungsschnitt am Stichtag, nicht am Lauftag (T24-02):
+                    # Der Abschluss ist, was am Stichtag GEBUCHT war. Wache und
+                    # Tagesseite bleiben auf der Sicht von heute — dort ist sie
+                    # richtig, denn sie berichten ueber heute.
+                    sicht = _stichtagssicht(tabellen, config, stichtag, betriebsbeginn)
+                    # Der Abschluss bekommt dieselben Nebentabellen wie die Wache
+                    # und der Bericht — sonst weist er die Korrekturschicht als
+                    # null aus, obwohl die Fuehrung sie traegt (N-01).
+                    geschrieben = schreibe_abschluss(
+                        sicht["portfolio"], sicht["historie"], config, stichtag,
+                        ablage.abschluesse, scheiben=sicht["scheiben"],
+                        merkmale=sicht.get("merkmale"),
+                        schichten=sicht.get("schichten"),
+                        verankerung=sicht.get("verankerung"),
+                        reduktionen=sicht.get("reduktionen"),
+                    )
+                    eintrag = {
+                        "stichtag": stichtag.isoformat(), "datei": geschrieben.name,
+                        "sha256": _datei_hash(geschrieben), "neu": True,
+                        # Das TAGESJOURNAL, nicht sicht["ledger"]: Nur das
+                        # Journal traegt das Buchungsdatum, und ohne das
+                        # faellt jeder spaet gebuchte Vorfall auf einem
+                        # Stichtag aus der Zaehlung. Den Schnitt auf den
+                        # Stichtag macht die Periode selbst — ein Vorfall,
+                        # der erst heute gebucht wurde, wird erst in seinem
+                        # Monat sichtbar.
+                        **monatskennzahlen(
+                            read_portfolio(geschrieben), journal, stichtag),
+                    }
                 if stichtag == stichtage[-1]:
                     # Derselbe Schnitt wie der Abschluss: Der Bericht legt
                     # den Abschluss aus, den er begleitet — auf der Sicht
@@ -1715,6 +1740,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     except TageslaufError as exc:
         print(f"tageslauf: {exc}", file=sys.stderr)
         return EXIT_USAGE
+    except OSError as exc:
+        # Ein Ein-/Ausgabefehler VOR dem eigentlichen Lauf (Ruecknahme,
+        # Teilzeilenschnitt, Aufraeumen unter der Sperre) ist kein
+        # unbekannter Zustand, sondern ein Nachlauf-Fehler — Exit 4 mit
+        # Meldung statt Traceback und Exit 1 (Angriffsrunde Betrieb). Der
+        # naechste Lauf nimmt denselben Vorlauf wieder auf.
+        print(f"tageslauf: Ein-/Ausgabefehler im Vorlauf: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        return EXIT_NACHLAUF
     if zeile.get("bereits_gefuehrt"):
         print(f"tageslauf: {heute.isoformat()} bereits gefuehrt, nichts zu tun",
               file=sys.stderr)
