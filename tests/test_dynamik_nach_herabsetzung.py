@@ -230,3 +230,27 @@ def test_der_bestandsbericht_zeigt_die_gefuehrte_versicherungssumme(welt):
             stamm, erg.historie, config, s, scheiben=erg.scheiben, schichten=schichten,
             verankerung=verankerung, reduktionen=erg.reduktionen) if z["produkt"] == "klv")
         assert zeile["summe_vs"] == pytest.approx(soll, rel=1e-9), s
+
+
+def test_die_nachweisung_zeigt_jede_position_der_identitaet():
+    """Angriffsrunden 2 und 3 der Nacht: Die gedruckte Nachweisung liess die
+    Herabsetzungsspalte weg; die gezeigte Rechnung ging nicht auf, obwohl
+    Konto und P-B1 sie fuehren. Ratsche: jede Position, die das Konto in
+    die Identitaet nimmt, steht als Spalte im Bericht."""
+    import inspect
+
+    from rechner_pipeline.bestand import kennzahlen, report
+
+    quelle = inspect.getsource(kennzahlen.bewegungskonto)
+    klv = next(n for n in report.NACHWEISUNGEN if n["produkt"] == "klv")
+    for track, _titel, positionen in klv["tracks"]:
+        gezeigt = {p for p, _ in positionen}
+        for position in ("zugang_neuzugang", "zugang_erhoehung", "veraenderung_herabsetzung",
+                         "abgang_storno", "abgang_tod", "abgang_ablauf", "umbuchung_beitragsfrei",
+                         "zugang_umbuchung"):
+            if track == "bpfl" and position == "zugang_umbuchung":
+                continue
+            if track == "bfr" and position not in ("zugang_umbuchung", "abgang_tod", "abgang_ablauf"):
+                continue
+            assert f'"{position}"' in quelle
+            assert position in gezeigt, (track, position)

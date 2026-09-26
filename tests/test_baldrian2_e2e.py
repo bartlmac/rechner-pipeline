@@ -995,3 +995,45 @@ def test_die_fuehrungsprobe_sieht_jede_veraenderte_stammspalte(
     assert any(feld in str(b) for b in schlecht["befunde"]), (
         f"{feld} faellt, aber der Befund nennt die Spalte nicht: "
         f"{schlecht['befunde'][:2]}")
+
+
+def test_die_fuehrungsprobe_rechnet_jede_herabsetzungsbuchung_nach(gefahrener_fall: Path):
+    """Angriffsrunde der Nacht: Die Fuehrungsprobe sah keine einzige
+    RED-Buchung an — die Auszahlung der Teilkuendigung, eine echte Zahlung
+    an den Kunden, hatte keinen zweiten Rechenweg. Jetzt rechnet die
+    Probe VS_herabsetzung, dDK_absorption, RKW_teilkuendigung und
+    Kappung nach. Mutationsprobe: RED aus GEPRUEFTE_BUCHUNGEN entfernen
+    -> rot."""
+    import copy
+    import datetime as _dt
+
+    import pandas as pd
+
+    from rechner_pipeline.bestand.config import config_aus_text
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+
+    ueb, _fort, basis = _probe_material(gefahrener_fall)
+    text = (gefahrener_fall / "abgeleitet" / "bestand-config.toml").read_text(encoding="utf-8")
+    anteil = float(RED_ANTEILE[0].split("=")[1])
+    mit_red = config_aus_text(text + (
+        f"\n[annahmen]\nred_anteil = {anteil}\n"
+        "[annahmen.herabsetzung]\na = 0.20\nb = 0.0\n"))
+    assert mit_red.validate() == []
+    erg = fortschreiben(
+        ueb["bestand"], mit_red, _dt.date(2040, 1, 1), merkmale=ueb["merkmale"],
+        scheiben=ueb["scheiben"], schichten=ueb["schichten"], verankerung=ueb["verankerung"])
+    assert len(erg.reduktionen), "keine Herabsetzung in der Welt"
+    fort = {"ledger": erg.ledger,
+            "scheiben": pd.concat([ueb["scheiben"], erg.scheiben], ignore_index=True),
+            "historie": erg.historie, "reduktionen": erg.reduktionen}
+    red_basis = dict(basis, config=mit_red)
+    gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **red_basis)
+    assert gut["bestanden"], gut["befunde"][:3]
+    assert gut["buchungen_geprueft"]["RED"] >= len(erg.reduktionen)
+    kaputt = copy.deepcopy(fort)
+    led = kaputt["ledger"]
+    i = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "RKW_teilkuendigung")][0]
+    led.loc[i, "betrag"] += 1.0
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=kaputt, **red_basis)
+    assert not rot["bestanden"] and any(b["art"] == "buchung" for b in rot["befunde"])

@@ -84,6 +84,8 @@ from rechner_pipeline.kern.beitragsreduktion import (
     TEILKUENDIGUNG,
     ReduzierterVertrag,
     reduziere,
+    reduzierte_teile,
+    vertrags_monatsreserve_reduziert,
 )
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
@@ -756,22 +758,21 @@ def _deckungskapital(
         # mit Auszahlung (Ziffer 6) — die Erhoehungsscheiben sind davon
         # nicht beruehrt und laufen im Nach-Zustand unveraendert weiter
         # (A-M3-Befund des zweiten Laufs: neun dDK-Fehlschlaege, alle
-        # exakt -(1-f) x kVx des Grundbausteins). Fuer die
-        # PLV-Teilungsverfahren ist die Scheiben-Kombination nicht
-        # gebaut — hart statt still ohne Scheibenwert.
-        if scheiben and red_verfahren != TEILKUENDIGUNG:
-            raise AktuartestFehler(
-                f"police {v.police_id}: dDK einer Herabsetzung mit "
-                "Erhoehungsscheiben ist nur im Verfahren "
-                "'teilkuendigung' definiert — die anteilige "
-                "Schichten-Teilung der PLV ist hier nicht gebaut"
-            )
-        nach = reduziere(
-            kern, monate // 12, parameter["anteil"], verfahren=red_verfahren
-        ).dk_nach
-        for erh_jahr, scheibe in scheiben:
-            nach += scheibe.monatsreserve(monate - 12 * erh_jahr).vx_mrv
-        return nach
+        # exakt -(1-f) x kVx des Grundbausteins).
+        #
+        # Der Nach-Zustand ist der Rueckkaufs-Track des herabgesetzten
+        # Vertrags selbst — ueber DIESELBE Rekonstruktion wie Fuehrung,
+        # Bewertung und P-B1 (reduzierte_teile), fuer alle drei Verfahren
+        # und mit Scheiben. Vorher nahm dieser Zweig bei den
+        # PLV-Verfahren reduziere(...).dk_nach, eine Groesse auf der Basis
+        # der gezillmerten Rueckstellung, und verglich sie mit dem
+        # Rueckkaufs-Track davor: Im Zillmerfenster fehlte dem Nach-Wert
+        # der ganze Abschlusskostenrest, und selbst die verlustfreie
+        # Herabsetzung meldete einen Verlust (Angriffsrunde der Nacht).
+        teile = reduzierte_teile(
+            kern, list(scheiben), monate // 12, parameter["anteil"], red_verfahren)
+        return vertrags_monatsreserve_reduziert(
+            teile, monate, stoab_je_baustein=False).vx_mrv
     if zustand == "beitragsfrei":
         # Bei einem PEX-GESCHAEFTSVORFALL ist das Freistellungsjahr der
         # Vorfall selbst — der Vertrag war vorher beitragspflichtig, ein

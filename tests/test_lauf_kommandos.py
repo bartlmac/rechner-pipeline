@@ -458,7 +458,7 @@ def test_anfangszustand_serie_baut_ist_struktur_mit_absetzung():
     zustaende, warnungen = anfangszustaende_je_police(
         _tg_default_spez(), zeilen, vorgeschichte,
         _bestand_mit(7000003), spalten=SPALTEN,
-        red_verfahren="mit_abzug", erhoehungssatz=0.05,
+        red_verfahren="teilkuendigung", erhoehungssatz=0.05,
         red_anteile_je_datum={"7000003": {"01.01.2018": 0.6}})
     assert not warnungen
     z = zustaende["7000003"]
@@ -498,7 +498,7 @@ def test_anfangszustand_serie_bestimmt_offene_anteile_aus_kandidaten():
     zustaende, warnungen = anfangszustaende_je_police(
         _tg_default_spez(), zeilen, vorgeschichte,
         _bestand_mit(7000003), spalten=SPALTEN,
-        red_verfahren="mit_abzug", erhoehungssatz=0.05,
+        red_verfahren="teilkuendigung", erhoehungssatz=0.05,
         red_anteil_kandidaten=(0.50, 0.60, 0.75))
     assert not warnungen
     z = zustaende["7000003"]

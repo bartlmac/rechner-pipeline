@@ -62,6 +62,8 @@ from rechner_pipeline.gates.migrationssuite_lauf import (
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe, vertrags_monatsreserve
 from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.kern.beitragsreduktion import (
+    TEILKUENDIGUNG,
+    absorbierte_schicht,
     reduzierte_teile,
     vertrags_monatsreserve_reduziert,
 )
@@ -102,7 +104,9 @@ SCHEMA_VERSION = 2
 #: falsche Welt liegt Groessenordnungen darueber.
 TOLERANZ = 0.005
 
-GEPRUEFTE_BUCHUNGEN = ("STO", "PEX", "TOD", "ABL")
+#: RED seit der Angriffsrunde der Nacht: Die Auszahlung der Teilkuendigung
+#: ist eine echte Zahlung an den Kunden und hatte keinen zweiten Rechenweg.
+GEPRUEFTE_BUCHUNGEN = ("STO", "PEX", "TOD", "ABL", "RED")
 
 
 def _jahre(beginn: pd.Timestamp, datum: pd.Timestamp) -> int:
@@ -565,7 +569,24 @@ def pruefe_fuehrung(
                                       & (f_ledger["ereignis"] == "PEX")]
                     if len(eigene):
                         pex_f = int(eigene["vertragsjahr"].iloc[0])
-                if art == "STO":
+                if art == "RED":
+                    # Die Buchungen der Herabsetzung selbst, auf dem Weg der
+                    # Pruefstrecke nachgerechnet.
+                    absorbiert = absorbierte_schicht(grund, jahr, schicht_je_police.get(pid))
+                    auszahlung = ((1.0 - red[1]) * vertrags_monatsreserve(
+                        grund, [], 12 * jahr,
+                        stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
+                        + absorbiert) if red[2] == TEILKUENDIGUNG else 0.0
+                    erwartet = {
+                        "VS_herabsetzung": sum(v.reduktion.vs_neu for e, v in teile_red if e < jahr or e == 0),
+                        "dDK_absorption": absorbiert,
+                        "RKW_teilkuendigung": max(0.0, auszahlung),
+                        "Kappung_teilkuendigung": max(0.0, -auszahlung),
+                    }.get(str(z["betrag_art"]))
+                    if erwartet is None:
+                        befund(pid, "buchung", f"RED Jahr {jahr}: unbekannte Betragsart {z['betrag_art']!r}")
+                        continue
+                elif art == "STO":
                     erwartet = vertrags_monatsreserve_reduziert(
                         teile_red, 12 * jahr,
                         stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw

@@ -150,8 +150,15 @@ def lies_und_pruefe_pb1(
     *,
     bis: Optional[_dt.date] = None,
     manifest: Optional[Mapping[str, Any]] = None,
+    ohne_herleitung: bool = False,
 ) -> Tuple[Dict[str, Any], Dict[str, int], List[dict], List[dict]]:
     """Pruefen UND die geprueften Tabellen zurueckgeben.
+
+    ``ohne_herleitung=True`` sagt ausdruecklich, dass der Aufrufer die
+    Betraege nicht herleiten lassen will (der Bestandsbericht: er prueft
+    die Fuehrung, nicht die Buchungshoehen, und ein Bestand ausserhalb der
+    Plausibilitaetsbaender soll sichtbar werden). Ohne diese Erklaerung ist
+    ein Ledger mit Herabsetzungen ohne Config ein Bedienfehler.
 
     Der CLI-Produzent und A-M4 benutzen bewusst dieselbe Funktion. So ist ein
     frei editierbares, passend neu gehashtes P-B1-Ledger keine Selbstaussage:
@@ -387,6 +394,23 @@ def lies_und_pruefe_pb1(
                 "message": "Ledger enthaelt Herabsetzungen (RED) — "
                 "--reduktionen ist erforderlich, sonst rechnet die Wache "
                 "jeden herabgesetzten Vertrag ungekuerzt nach",
+            })
+    if ledger is not None and "config" not in eingaben and not ohne_herleitung:
+        # Ohne Config werden die Betraege nicht hergeleitet — ein Ledger mit
+        # Herabsetzungen ist dann nicht pruefbar, und PASSED waere eine
+        # Behauptung (Angriffsrunde der Nacht: Auszahlung x10, Auszahlung
+        # weg, Summe halbiert — alles PASSED). Wie ERH ohne --scheiben: ein
+        # Bedienfehler.
+        try:
+            red_ohne_config = bool((ledger["ereignis"] == "RED").any())
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "ledger", "message": str(exc)})
+            red_ohne_config = False
+        if red_ohne_config:
+            usage_errors.append({
+                "code": "missing_arg",
+                "message": "Ledger enthaelt Herabsetzungen (RED) — --config ist "
+                "erforderlich, sonst wird keine ihrer Buchungen hergeleitet",
             })
     if ledger is not None and schichten is None:
         # Dieselbe Wache fuer die Korrekturschicht (Angriffsrunde

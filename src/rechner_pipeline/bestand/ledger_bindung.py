@@ -373,6 +373,12 @@ def pruefe_ledger_betraege(
                 # (T21-01): Leistungsbezug -> Rente endet; Anwaerter -> 0.
                 im_bezug = zustand_vor(historie, pid, z.status_date) == "BU"
                 erwartet = rente if im_bezug else 0.0
+            elif art == "RED":
+                # Eine BU kennt keine Herabsetzung — eine RED-Zeile darauf ist
+                # unbelegt, nicht "nicht hergeleitet" (vorher: still
+                # uebersprungen und trotzdem als hergeleitet gezaehlt).
+                unbelegt.append(f"police {pid} RED Jahr {jahr} {betrag_art} (Produkt bu)")
+                continue
             else:
                 continue
         else:

@@ -200,6 +200,7 @@ def _serienzustand(
     red_anteil_kandidaten: Tuple[float, ...] = (),
     scheiben_mit_gamma1: bool = False,
     anker_wert: Optional[Tuple[int, float]] = None,
+    red_verfahren: str = TEILKUENDIGUNG,
 ) -> Dict[str, Any]:
     """Anfangszustand einer Ereignis-SERIE (Lieferung-2-Regelfall).
 
@@ -224,6 +225,17 @@ def _serienzustand(
     )
 
     arten = [a for a, _, _ in folge]
+    if "RED" in arten and red_verfahren != TEILKUENDIGUNG:
+        # Die Serien-Ableitung kennt nur die Teilkuendigung (die
+        # Grundsumme wird mit f skaliert, die Scheiben bleiben). Unter
+        # prospektiv/mit Abzug ist der Vertrag nach der Herabsetzung ein
+        # geteilter — ihn mit Teilkuendigungs-Semantik zu rekonstruieren
+        # hiesse, die Sperre der Uebernahme zu umgehen (Angriffsrunde der
+        # Nacht: Deckungskapital bis -9.039 EUR). Benannt statt falsch.
+        raise MigrationszugangFehler(
+            f"Serie mit Herabsetzung unter Verfahren {red_verfahren!r}: die "
+            "Serien-Ableitung kennt nur die Teilkuendigung — ein geteilter "
+            "Vertrag laesst sich so nicht rekonstruieren")
     if "PEX" in arten:
         if arten.count("PEX") > 1 or arten[-1] != "PEX":
             raise SystemExit(
@@ -410,7 +422,8 @@ def anfangszustaende_je_police(
                     jbrutto=jbrutto,
                     red_anteil_kandidaten=red_anteil_kandidaten,
                     scheiben_mit_gamma1=scheiben_mit_gamma1,
-                    anker_wert=(anker or {}).get(police))
+                    anker_wert=(anker or {}).get(police),
+                    red_verfahren=red_verfahren)
             except MigrationszugangFehler as exc:
                 warnungen.append(f"Police {police} (Serie): {exc}")
             continue

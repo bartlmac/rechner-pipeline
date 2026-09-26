@@ -1604,6 +1604,16 @@ def validate_reduktionen(
         pid, jahr = int(pid), int(jahr)
         if pid not in haupt.index:
             continue
+        if str(haupt.loc[pid].get("produkt", "klv")) != "klv":
+            # Die Herabsetzung ist ein GeVo der Kapitalversicherung (klv.md
+            # 7.1); eine BU fuehrt eine Jahresrente, keine Summe. Vorher
+            # blieb eine RED-Zeile auf einem BU-Vertrag ungeprueft und
+            # zaehlte trotzdem als hergeleitet.
+            errors.append(
+                f"reduktionen: police {pid}: Herabsetzung auf einem Vertrag des "
+                f"Produkts {haupt.loc[pid].get('produkt')!r} — nur die "
+                "Kapitalversicherung kennt sie")
+            continue
         t = int(haupt.loc[pid, "premium_duration"])
         n = int(haupt.loc[pid, "duration"])
         if str(verfahren) == "teilkuendigung":

@@ -695,3 +695,56 @@ def test_p_b1_verlangt_die_schicht_tabelle_wenn_der_ledger_eine_schicht_absorbie
     eingaben["ledger"] = ledger_pfad
     _t, _g, _f, usage = lies_und_pruefe_pb1(eingaben, bis=_dt.date(2046, 1, 1), manifest=None)
     assert any("--schichten" in u.get("message", "") for u in usage), usage
+
+
+def test_p_b1_ohne_config_prueft_keine_herabsetzung_und_sagt_das(tmp_path):
+    """Angriffsrunde der Nacht: Ohne --config meldete P-B1 PASSED fuer
+    beliebig verfaelschte Herabsetzungsbuchungen. Jetzt: Bedienfehler."""
+    from rechner_pipeline.bestand.manifest import lauf_eingaben
+    from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
+    from tests.test_herabsetzung_in_fuehrung import _lauf_mit_herabsetzung
+
+    out, cfg = _lauf_mit_herabsetzung(tmp_path)
+    eingaben = dict(lauf_eingaben(out, cfg))
+    eingaben.pop("config", None)
+    _t, _g, _f, usage = lies_und_pruefe_pb1(eingaben, bis=_dt.date(2046, 1, 1), manifest=None)
+    assert any("--config" in u.get("message", "") for u in usage), usage
+
+
+def test_eine_herabsetzung_auf_einem_bu_vertrag_ist_ein_fehler(welt):
+    """Angriffsrunde der Nacht: RED auf einem BU-Vertrag blieb ungeprueft
+    und zaehlte als hergeleitet."""
+    from rechner_pipeline.models.bestand import validate_reduktionen
+
+    config, stamm, schichten, verankerung, erg = welt
+    stamm2 = stamm.copy()
+    pid = int(erg.reduktionen["police_id"].iloc[0])
+    stamm2.loc[stamm2["police_id"] == pid, "produkt"] = "bu"
+    fehler = validate_reduktionen(stamm2, erg.reduktionen, erg.historie)
+    assert any("Kapitalversicherung" in f and str(pid) in f for f in fehler), fehler
+
+
+def test_der_bestandsbericht_hat_ein_flag_je_rolle_des_erzeugers(tmp_path, monkeypatch):
+    """Angriffsrunde der Nacht: cli_report kannte --reduktionen nicht."""
+    import shutil
+
+    from rechner_pipeline.bestand import cli_report as cli
+    from tests.test_herabsetzung_in_fuehrung import _lauf_mit_herabsetzung
+
+    out, cfg = _lauf_mit_herabsetzung(tmp_path)
+    anderswo = tmp_path / "anderswo"
+    anderswo.mkdir()
+    for datei in ("ledger.parquet", "historie.parquet", "scheiben.parquet", "reduktionen.parquet"):
+        shutil.copyfile(out / datei, anderswo / datei)
+    (anderswo / "reduktionen.parquet").rename(tmp_path / "red.parquet")
+    gesehen = {}
+    echt = cli.render_html
+    monkeypatch.setattr(cli, "render_html", lambda *a, **kw: (gesehen.update(kw), echt(*a, **kw))[1])
+    code = cli.main([
+        "--portfolio", str(out / "bestand_gesamt.parquet"), "--historie", str(anderswo / "historie.parquet"),
+        "--ledger", str(anderswo / "ledger.parquet"), "--scheiben", str(anderswo / "scheiben.parquet"),
+        "--reduktionen", str(tmp_path / "red.parquet"),
+        "--bis", "2046-01-01", "--stichtag", "2030-01-01", "--out", str(tmp_path / "b.html"),
+    ])
+    assert code == 0
+    assert gesehen.get("reduktionen") is not None and len(gesehen["reduktionen"]) > 0

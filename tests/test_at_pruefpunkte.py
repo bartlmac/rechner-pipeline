@@ -557,17 +557,42 @@ def test_teilkuendigung_zahlt_den_gekuendigten_grundanteil_aus():
         erwartet, abs=1e-6)
 
 
-def test_plv_teilung_mit_scheiben_ist_im_gevotest_nicht_gebaut():
-    """Hart statt still ohne Scheibenwert (der alte Pfad verlor die
-    Scheiben im Nach-Zustand — die acht inkonsistenten sys-Werte des
-    A-M3-Befunds)."""
-    from rechner_pipeline.kern.beitragsreduktion import MIT_ABZUG
+@pytest.mark.parametrize("verfahren", ["prospektiv", "mit_abzug"])
+@pytest.mark.parametrize("jahr, scheiben", [
+    (1, ()), (3, ()), (8, ()), (8, ((5, 4000.0),)),
+])
+def test_der_gevotest_misst_die_herabsetzung_auf_dem_rueckkaufs_track(verfahren, jahr, scheiben):
+    """Angriffsrunde der Nacht: Der Nach-Zustand der PLV-Verfahren war
+    reduziere(...).dk_nach (Basis gezillmerte Rueckstellung), der
+    Vor-Zustand der Rueckkaufs-Track — im Zillmerfenster fehlte dem
+    Nach-Wert der ganze Abschlusskostenrest, und die verlustfreie
+    Herabsetzung meldete einen Verlust. Die Scheiben-Kombination war
+    gar nicht gebaut. Soll, unabhaengig: Vor = Rueckkaufs-Track des
+    Vertrags, Nach = derselbe Track, wenn die Grundversicherung f x S
+    traegt und der umgewandelte Teil (1-f) x (Rueckstellung - Abzug) auf
+    den beitragsfreien Satz geht — der Abschlusskostenrest folgt dem
+    Beitrag. Mutationsprobe: den alten Zweig zurueck -> rot."""
+    from rechner_pipeline.kern import ModelPoint, vertrags_monatsreserve
+    from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
+    from rechner_pipeline.qa.aktuarieller_test import _system_werte
 
-    v = _vertrag(
-        Pruefpunkt(12 * 9, {"dDK": -100.0}, "RED", {"anteil": 0.6}),
-        scheiben=((5, 4000.0),))
-    with pytest.raises(AktuartestFehler, match="teilkuendigung"):
-        pruefe_vertrag(v, _profil("A-M3"), red_verfahren=MIT_ABZUG)
+    mp = ModelPoint(**MP)
+    m = 12 * jahr
+    v = _vertrag(Pruefpunkt(m, {"dDK": 0.0}, "RED", {"anteil": 0.6}), scheiben=scheiben)
+    ist = _system_werte(v, mp, v.punkte[0], red_verfahren=verfahren)["dDK"]
+    kerne = [(j, Rechenkern(erhoehungs_scheibe(mp, j, vs))) for j, vs in scheiben]
+    vor = vertrags_monatsreserve(KERN, kerne, m).vx_mrv
+    f = 0.6
+    gesamt = vertrags_monatsreserve(KERN, kerne, m)
+    abzug = 0.0 if verfahren == "prospektiv" else gesamt.stoab
+    nach = 0.0
+    for i, (e, k) in enumerate([(0, KERN)] + [(j, k) for j, k in kerne]):
+        z = k.verlaufszeile(jahr - e)
+        rest = z.vx_mrv - z.drx_bpfl          # Abschlusskostenrest dieses Bausteins
+        anteil_abzug = abzug * z.drx_bpfl / gesamt.drx_bpfl if abzug else 0.0
+        umgewandelt = (1 - f) * (z.drx_bpfl - anteil_abzug)
+        nach += f * z.drx_bpfl + f * rest + umgewandelt
+    assert ist == pytest.approx(nach - vor, rel=1e-9, abs=1e-6)
 
 
 # --------------------------------------------------------------------------- #
@@ -1373,3 +1398,20 @@ def test_auftragsbau_verwirft_plausibilitaet_bei_serien_ist_struktur():
     urteil = pruefe_vertrag(auftraege[0], _profil())
     assert all(p["kriterium"] == KRITERIUM_VERGLEICH
                for p in urteil["pruefungen"])
+
+
+def test_die_serien_ableitung_weist_eine_plv_herabsetzung_ab():
+    """Angriffsrunde der Nacht: Die Serien-Ableitung bekam das Verfahren
+    nicht und rekonstruierte jede Herabsetzung als Teilkuendigung — unter
+    prospektiv/mit Abzug ein falscher Anfangszustand (bis -9.039 EUR
+    Deckungskapital) und die Sperre der Uebernahme umgangen. Jetzt ein
+    benannter Fehler. Mutationsprobe: die Pruefung entfernen -> rot."""
+    from rechner_pipeline.bestand.migrationszugang import MigrationszugangFehler
+    from rechner_pipeline.gates.migrationssuite_lauf import _serienzustand
+
+    folge = [("ERH", 5, "01.01.2020"), ("RED", 10, "01.01.2025")]
+    for verfahren in ("prospektiv", "mit_abzug"):
+        with pytest.raises(MigrationszugangFehler, match="Teilkuendigung"):
+            _serienzustand("P1", folge, dict(MP), erlsumme=79566.02, erhoehungssatz=0.05,
+                           red_anteile={"P1": 0.6}, red_anteile_je_datum={},
+                           red_verfahren=verfahren)

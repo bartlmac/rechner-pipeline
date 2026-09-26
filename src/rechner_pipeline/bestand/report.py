@@ -432,7 +432,9 @@ NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
             "Migrationsstichtag (ADR-014) — und aus dynamischen Erhöhungen (nur "
             "Summe, kein Stück); Abgänge mit den abgehenden "
             "Versicherungssummen einschließlich Erhöhungsscheiben, nicht mit "
-            "den Auszahlungsbeträgen. Die Beitragsfreistellung ist eine "
+            "den Auszahlungsbeträgen. Die Herabsetzung verändert die Summe "
+            "eines Vertrags, der im Bestand bleibt (kein Stück), ausgewiesen "
+            "mit Vorzeichen. Die Beitragsfreistellung ist eine "
             "Umbuchung: der beitragspflichtige Bestand verliert die "
             "Gesamt-Versicherungssumme, der beitragsfreie gewinnt die "
             "beitragsfreie Summe."
@@ -442,6 +444,10 @@ NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
                 ("anfang", "Anfang"),
                 ("zugang_neuzugang", "+ Zugang"),
                 ("zugang_erhoehung", "+ Erhöhung"),
+                # Mit Vorzeichen: die neue Gesamtsumme minus die Summe davor.
+                # Ohne diese Spalte ging die gezeigte Rechnung nicht auf,
+                # obwohl das Konto (und P-B1) sie fuehren.
+                ("veraenderung_herabsetzung", "± Herabsetzung"),
                 ("abgang_storno", "− Storno"),
                 ("abgang_tod", "− Tod"),
                 ("abgang_ablauf", "− Ablauf"),
@@ -1111,9 +1117,9 @@ def render_html(
         "ursprünglichen Versicherungssumme in den Verlauf ein; die bei "
         "Beitragsfreistellung fixierten beitragsfreien Summen (VS_bfr) zeigt "
         f"die Tabelle. Die Spalte \"Σ {leistung_label}\" im Bestandsverlauf "
-        "führt die Grundscheiben-Summen; die durch dynamische Erhöhungen "
-        "hinzugekommenen Summen zeigt die ERH-Zeile der Tabelle, die "
-        "aktuariellen Kennzahlen enthalten die Scheiben vollständig. "
+        "führt die geführte Summe — nach Herabsetzungen und einschließlich "
+        "dynamischer Erhöhungen —, sobald eine Config vorliegt; ohne Config "
+        "die Stammsummen. "
         if leistung == "sum_insured" else ""
     )
     ereignis_html = ""

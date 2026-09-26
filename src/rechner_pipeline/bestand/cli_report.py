@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from rechner_pipeline.bestand.manifest import nebentabellen_in
+from rechner_pipeline.bestand.manifest import NEBENTABELLEN, ROLLEN_DATEIEN, nebentabellen_in
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.bestand.report import render_html
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
@@ -115,6 +115,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Kommagetrennte ISO-Daten; Default: Jahresraster über die Vertragslaufzeiten.",
     )
     parser.add_argument("--titel", default="Bestandsbericht")
+    # Jede Rolle des Erzeugers hat ein Flag, abgeleitet aus der
+    # Rollentabelle wie beim Gate P-B1 — der Bericht fand die
+    # Reduktionstabelle sonst nur ueber die Nachbarschaft einer anderen
+    # Datei (Angriffsrunde der Nacht).
+    vorhanden = {a.dest for a in parser._actions}
+    for rolle, datei in ROLLEN_DATEIEN.items():
+        if rolle not in vorhanden:
+            parser.add_argument(f"--{rolle}", default=None,
+                                help=f"{datei} des Laufs (optional; sonst neben dem Ledger gesucht).")
     ns = parser.parse_args(argv)
 
     portfolio_path = Path(ns.portfolio)
@@ -188,6 +197,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         for rolle, pfad in nebentabellen_in(Path(ns.ledger).parent).items():
             if rolle != "merkmale" and rolle not in eingaben:
                 eingaben[rolle] = pfad
+        # Ausdrueckliche Flags gewinnen gegen die Nachbarschaft.
+        # Merkmale haben ihren eigenen Weg (--merkmale, weiter unten).
+        for rolle in NEBENTABELLEN:
+            wert = getattr(ns, rolle, None)
+            if wert and rolle != "merkmale":
+                if not Path(wert).is_file():
+                    print(f"bestand_report: {rolle} nicht gefunden: {wert}", file=sys.stderr)
+                    return 2
+                eingaben[rolle] = Path(wert)
 
     merkmale = None
     if ns.merkmale:
@@ -229,7 +247,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # baender sind ein Gate-Kriterium, ein Bericht ueber einen Bestand
     # ausserhalb der Baender ist genau das, was man dann sehen will.
     # Was geprueft wurde, wird gerendert (kein zweites Lesen, T18-03).
-    tabellen, _, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=bis)
+    tabellen, _, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=bis, ohne_herleitung=True)
     if fehler or usage:
         for eintrag in (usage + fehler)[:5]:
             print(f"bestand_report: {eintrag['message']}", file=sys.stderr)
