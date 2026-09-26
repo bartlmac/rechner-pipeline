@@ -154,7 +154,11 @@ COMMAND = "abnahmebericht"
 #: Kommando erzeugt und protokolliert dessen Vorlage — der Gate-Name
 #: sagt das, damit ein Ledger-Leser die beiden nie verwechselt.
 GATE = "A-M4.migrationscontrolling"
-GATE_VERSION = "3.0.0"
+#: 4.0.0 (Pruefrunde T27, Befund 06): Die Fuehrungsprobe wird mit ihrem
+#: eigenen Aufruf nachgerechnet und Feld fuer Feld gegen den Beleg
+#: gehalten; die Fortschreibung ist Pflicht. Ein Beleg, der vorher
+#: durchging, kann jetzt fallen — die Akzeptanzmenge ist kleiner.
+GATE_VERSION = "4.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -1467,10 +1471,62 @@ PROBE_PFLICHTFELDER = ("mit_anfangszustand", "scheiben", "beitragsfrei", "schich
 PROBE_BESCHREIBENDE_FELDER = ("stichtag", "generation", "tarifwerk")
 
 
+def _fuehrungsprobe_nachgerechnet(probe: Dict[str, Any], fall: Path, repo_root: Path) -> List[str]:
+    """Die Probe mit dem Aufruf des Belegs neu fahren und Feld fuer Feld
+    gegen den Beleg halten (Pruefrunde T27, Befund 06).
+
+    Die Formpruefung darueber sah nur, ob ein Beleg etwas behauptet —
+    Zaehler positiv, Felder nicht leer. Der Gutachter aenderte allein den
+    Beleg (Stichtag "kein-Datum", erfundene Generation und Tarifwerk,
+    Fortschreibung weg, fortschreibung_geprueft = true), und Bericht wie
+    A-M4 nahmen ihn an. Dieselbe Figur wie bei P-B1 (``_b1_fehler``): Das
+    Urteil wird nicht gelesen, sondern hergeleitet. Weicht ein einziges
+    Feld ab, bezeugt der Beleg nicht die Probe, die er nennt.
+    """
+    import contextlib
+    import io
+
+    from rechner_pipeline.gates import fuehrungsprobe
+
+    provenienz = probe.get("provenienz") if isinstance(probe.get("provenienz"), dict) else {}
+    aufruf = provenienz.get("aufruf")
+    if not isinstance(aufruf, list) or not all(isinstance(a, str) for a in aufruf):
+        return ["Fuehrungsprobe nennt ihren Aufruf nicht — ein Beleg, den "
+                "niemand nachrechnen kann, bezeugt keine Pruefung"]
+    argv = ["--fall", str(fall), "--repo-root", str(repo_root)]
+    for i, wert in enumerate(aufruf):
+        if i and aufruf[i - 1] in fuehrungsprobe.PFAD_OPTIONEN and not Path(wert).is_absolute():
+            wert = str(fall / wert)
+        argv.append(wert)
+    meldungen = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(meldungen), contextlib.redirect_stdout(io.StringIO()):
+            _code, neu = fuehrungsprobe.fuehre_probe(fuehrungsprobe.parser().parse_args(argv))
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 — jede Form zaehlt
+        return [f"Fuehrungsprobe ist mit ihrem eigenen Aufruf nicht nachrechenbar "
+                f"({type(exc).__name__}: {exc}) {meldungen.getvalue()[:200]}".strip()]
+    if neu is None:
+        return ["Fuehrungsprobe ist mit ihrem eigenen Aufruf nicht nachrechenbar: "
+                + meldungen.getvalue()[:300]]
+
+    def norm(wert: Any) -> Any:
+        return json.loads(json.dumps(wert, sort_keys=True, default=str))
+
+    beleg, gerechnet = norm(probe), norm(neu)
+    abweichend = sorted(k for k in set(beleg) | set(gerechnet)
+                        if beleg.get(k) != gerechnet.get(k))
+    if abweichend:
+        return [f"Fuehrungsprobe: der Beleg weicht von der nachgerechneten Probe "
+                f"desselben Aufrufs ab in {abweichend[:8]} — er bezeugt nicht "
+                "die Pruefung, die er nennt"]
+    return []
+
+
 def _fuehrungsprobe_fehler(
     probe: Any,
     *,
     fall: Path,
+    repo_root: Path,
     suite: Dict[str, Any],
     erwartetes_system: Dict[str, str],
 ) -> List[str]:
@@ -1512,8 +1568,13 @@ def _fuehrungsprobe_fehler(
     ueber = str(parameter.get("uebernahme") or "")
     fort = str(parameter.get("fortschreibung") or "")
     pflicht = [f"{ueber}/{n}" for n in PROBE_PFLICHTEINGABEN]
-    if fort:
-        pflicht.append(f"{fort}/ledger.parquet")
+    # Die Fortschreibung ist Pflicht, nicht bedingt (Pruefrunde T27,
+    # Befund 06): Ohne sie entfiel die Pflicht zum Ledger, waehrend der
+    # Beleg fortschreibung_geprueft = true behauptete.
+    if not fort:
+        fehler.append("Fuehrungsprobe nennt keine Fortschreibung — die Buchungen "
+                      "nach dem Stichtag sind ungeprueft")
+    pflicht.append(f"{fort}/ledger.parquet")
     fehlend = [n for n in pflicht if n not in eingaben]
     if not ueber or fehlend:
         fehler.append(
@@ -1613,6 +1674,11 @@ def _fuehrungsprobe_fehler(
             f"gehasht hat: bestand_sha256 der Suite ist "
             f"{str(suite.get('bestand_sha256'))[:16]}…, die Probe las als "
             f"bestand.parquet {str(bestand_gelesen)[:16]}…")
+    # Erst wenn der Beleg in sich die Form hat, wird er nachgerechnet —
+    # die Nachrechnung ist teuer, und ihre Meldung ersetzt die genaueren
+    # Formbefunde darueber nicht.
+    if not fehler:
+        fehler += _fuehrungsprobe_nachgerechnet(probe, fall, Path(repo_root))
     return fehler
 
 
@@ -2293,6 +2359,7 @@ def main(argv: Optional[List[str]] = None):
         probe_fehler = _fuehrungsprobe_fehler(
             _json_beleg_aus(gelesen["fuehrungsprobe"]),
             fall=fall,
+            repo_root=repo_root,
             suite=suite,
             erwartetes_system=gemeinsame_bindung["system"],
         )

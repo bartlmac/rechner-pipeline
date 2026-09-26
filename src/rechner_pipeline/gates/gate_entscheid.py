@@ -1414,6 +1414,7 @@ def _passende_bestandsbelege(
                 abnahmebericht._fuehrungsprobe_fehler(
                     abnahmebericht._json_beleg_aus(gelesen["fuehrungsprobe"]),
                     fall=fall,
+                    repo_root=repo_root,
                     suite=suite,
                     erwartetes_system=dict(system),
                 )

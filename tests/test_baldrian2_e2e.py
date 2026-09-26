@@ -403,6 +403,32 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     return fall
 
 
+def _welt_wie_der_lauf(ueb, ergebnis, **extra):
+    """Eine Fortschreibung so zusammengesetzt wie cli_fortschreibung:
+    Journal und Scheiben der Uebernahme voran, der Endbestand GEFUEHRT
+    (ADR-011). Die fruehere Fassung dieser Tests legte nur die neuen
+    Historienzeilen und keinen Endbestand hin — eine Welt, die kein Lauf
+    erzeugt; seit der Herleitung des Endzustands (Pruefrunde T27, Befund
+    07) sieht die Probe das."""
+    import pandas as pd
+
+    from rechner_pipeline.bestand.ereignisse import mit_zugaengen
+    from rechner_pipeline.bestand.fuehrung import fuehre_fort
+
+    def voran(a, b, sortierung):
+        return pd.concat([a, b], ignore_index=True).sort_values(
+            sortierung, kind="stable").reset_index(drop=True)
+
+    historie = voran(ueb["historie"], ergebnis.historie, ["police_id", "status_id"])
+    return {
+        "ledger": voran(ueb["ledger"], ergebnis.ledger, ["police_id", "status_date"]),
+        "scheiben": voran(ueb["scheiben"], ergebnis.scheiben, ["police_id", "scheiben_id"]),
+        "historie": historie,
+        "bestand": fuehre_fort(mit_zugaengen(ueb["bestand"], ergebnis.zugaenge), historie),
+        **extra,
+    }
+
+
 def _probe_material(gefahrener_fall: Path):
     """Die Tabellen und Parameter des ECHTEN Laufs fuer eine In-memory-Probe.
 
@@ -537,11 +563,7 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
         ueb["bestand"], lebhaft, __import__("datetime").date(2040, 1, 1),
         merkmale=ueb["merkmale"], scheiben=ueb["scheiben"],
         schichten=ueb["schichten"], verankerung=ueb["verankerung"])
-    lebhafte_fort = {
-        "ledger": ergebnis.ledger,
-        "scheiben": pd.concat([ueb["scheiben"], ergebnis.scheiben], ignore_index=True),
-        "historie": ergebnis.historie,
-    }
+    lebhafte_fort = _welt_wie_der_lauf(ueb, ergebnis)
     lebhaft_basis = dict(basis, config=lebhaft)
     gut2 = pruefe_fuehrung(uebernahme=ueb, fortschreibung=lebhafte_fort, **lebhaft_basis)
     assert gut2["bestanden"], gut2["befunde"]
@@ -572,9 +594,7 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
         ueb["bestand"], altes_tarifwerk, __import__("datetime").date(2040, 1, 1),
         merkmale=ueb["merkmale"], scheiben=ueb["scheiben"],
         schichten=ueb["schichten"], verankerung=ueb["verankerung"])
-    alt_fort = {"ledger": alt_ergebnis.ledger,
-                "scheiben": pd.concat([ueb["scheiben"], alt_ergebnis.scheiben], ignore_index=True),
-                "historie": alt_ergebnis.historie}
+    alt_fort = _welt_wie_der_lauf(ueb, alt_ergebnis)
     rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=alt_fort, **lebhaft_basis)
     assert any(b["art"] == "buchung" and b["ereignis"] == "STO" for b in rot["befunde"]), (
         "Storno je Vertrag statt je Baustein muss die Probe rot machen")
@@ -1024,9 +1044,7 @@ def test_die_fuehrungsprobe_rechnet_jede_herabsetzungsbuchung_nach(gefahrener_fa
         ueb["bestand"], mit_red, _dt.date(2040, 1, 1), merkmale=ueb["merkmale"],
         scheiben=ueb["scheiben"], schichten=ueb["schichten"], verankerung=ueb["verankerung"])
     assert len(erg.reduktionen), "keine Herabsetzung in der Welt"
-    fort = {"ledger": erg.ledger,
-            "scheiben": pd.concat([ueb["scheiben"], erg.scheiben], ignore_index=True),
-            "historie": erg.historie, "reduktionen": erg.reduktionen}
+    fort = _welt_wie_der_lauf(ueb, erg, reduktionen=erg.reduktionen)
     red_basis = dict(basis, config=mit_red)
     gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **red_basis)
     assert gut["bestanden"], gut["befunde"][:3]

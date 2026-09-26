@@ -42,9 +42,11 @@ import dataclasses as _dataclasses
 import datetime as dt
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 
 from rechner_pipeline import fall as fall_mod
@@ -74,6 +76,7 @@ from rechner_pipeline.kern.korrekturschicht import (
     zuschlag_bei_pex,
 )
 from rechner_pipeline.models.bestand import (
+    EREIGNIS_ZUSTAND,
     GENERATION_FIELDS,
     LEDGER_NAMES,
     SCHEIBEN_NAMES,
@@ -95,8 +98,16 @@ from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 
 #: Schema des Probe-Belegs. 2 seit Review T25-02/T25-01: Der Beleg fuehrt
 #: ``endbestand_geprueft`` als Zahl, und der Abnahmebericht verlangt einen
-#: Katalog positiver Zaehler statt nur Flags.
-SCHEMA_VERSION = 2
+#: Katalog positiver Zaehler statt nur Flags. 3 seit Pruefrunde T27,
+#: Befund 06: Der Beleg nennt seinen vollstaendigen Aufruf
+#: (``provenienz.aufruf``), damit der Konsument ihn nachrechnen kann,
+#: statt ihm zu glauben.
+SCHEMA_VERSION = 3
+
+#: Die Optionen, deren Wert ein Pfad ist. Im Aufruf des Belegs stehen sie
+#: relativ zum Fall (wo sie darin liegen); der Konsument loest sie gegen
+#: seinen Fall auf. Die uebrigen Werte sind Namen im Fall oder Zahlen.
+PFAD_OPTIONEN = ("--uebernahme", "--fortschreibung", "--config", "--zeilen")
 
 #: Cent-Toleranz wie in der Ledger-Herleitung von P-B1: Fuehrung und
 #: Pruefstrecke rufen dieselben Kern-Funktionen; ein vertragsweiter
@@ -145,6 +156,120 @@ def _schichtwert(wert: Any) -> Any:
     if isinstance(wert, (list, tuple)):
         return [_schichtwert(x) for x in wert]
     return wert
+
+
+def _zeilenmenge(df: Optional[pd.DataFrame], spalten: List[str]) -> Counter:
+    """Zeilen als Multimenge vergleichbarer Tupel (Datum als Timestamp,
+    Zahlen auf sechs Stellen, fehlend als None)."""
+    def wert(v: Any) -> Any:
+        if v is None or (not isinstance(v, str) and pd.isna(v)):
+            return None
+        if isinstance(v, (pd.Timestamp, dt.date, np.datetime64)):
+            return pd.Timestamp(v)
+        if isinstance(v, (float, np.floating)):
+            return round(float(v), 6)
+        if isinstance(v, (int, np.integer)):
+            return int(v)
+        return str(v)
+    if df is None or not len(df):
+        return Counter()
+    return Counter(tuple(wert(z[s]) for s in spalten) for z in df.to_dict("records"))
+
+
+def _beispiele(menge: Counter) -> List[Any]:
+    return [list(k) for k in sorted(menge, key=str)[:3]]
+
+
+def _pruefe_endzustand(
+    befund, *, stamm: pd.DataFrame, historie: pd.DataFrame,
+    scheiben: Optional[pd.DataFrame], f_bestand: Optional[pd.DataFrame],
+    f_historie: Optional[pd.DataFrame], f_ledger: pd.DataFrame,
+    f_scheiben: Optional[pd.DataFrame], stichtag: dt.date,
+) -> None:
+    """Den Endzustand der uebernommenen Vertraege HERLEITEN, nicht auf
+    Form pruefen (Pruefrunde T27, Befund 07).
+
+    Vorher sah die Probe im Endbestand nur die Identitaetsspalten und in
+    der Historie nur die Vokabel. Der Gutachter ersetzte die Endscheiben
+    und die Endhistorie durch leere Tabellen und setzte eine aktive Police
+    auf den Ablaufzustand einer anderen — dreimal bestanden. Was sich
+    bewegen darf, entsteht aus der Uebernahme und den GeVos danach, und
+    genau daraus wird es hier gebildet:
+
+    * Historie: die der Uebernahme, dazu je Zustands-GeVo nach dem
+      Stichtag eine Zeile (``EREIGNIS_ZUSTAND``, dieselbe Tabelle wie die
+      Engine) — als Multimenge, keine Zeile mehr, keine weniger;
+    * Zustand im Stamm: die juengste Zeile dieser Historie (ADR-011),
+      ohne Zeile der uebernommene Zustand;
+    * Scheiben: die der Uebernahme unveraendert, dazu je Erhoehung nach
+      dem Stichtag (``ERH`` mit ``VS_erhoehung``) genau eine Scheibe an
+      ihrem Datum mit ihrer Summe.
+    """
+    uebernommen = set(int(p) for p in stamm["police_id"])
+    st = pd.Timestamp(stichtag)
+    eigen = f_ledger[f_ledger["police_id"].isin(uebernommen)]
+    nach = eigen[pd.to_datetime(eigen["status_date"]) > st]
+
+    # Historie ------------------------------------------------------------
+    h_spalten = ["police_id", "status_code", "status_date"]
+    ueb_hist = historie[historie["police_id"].isin(uebernommen)]
+    soll = _zeilenmenge(ueb_hist, h_spalten)
+    zustands_gevos = {
+        (int(z["police_id"]), EREIGNIS_ZUSTAND[str(z["ereignis"])], pd.Timestamp(z["status_date"]))
+        for z in nach.to_dict("records") if str(z["ereignis"]) in EREIGNIS_ZUSTAND}
+    soll.update(zustands_gevos)
+    ist_hist = (f_historie[f_historie["police_id"].isin(uebernommen)]
+                if f_historie is not None else ueb_hist.iloc[0:0])
+    ist = _zeilenmenge(ist_hist, h_spalten)
+    if soll != ist:
+        befund(None, "endhistorie",
+               f"Endhistorie der uebernommenen Vertraege ist nicht Uebernahme plus "
+               f"GeVos: {sum((soll - ist).values())} Zeile(n) fehlen "
+               f"{_beispiele(soll - ist)}, {sum((ist - soll).values())} ohne GeVo "
+               f"{_beispiele(ist - soll)}")
+
+    # Zustand im Stamm ---------------------------------------------------
+    if f_bestand is not None:
+        juengste: Dict[int, Tuple[Any, ...]] = {}
+        if len(ist_hist):
+            for z in ist_hist.sort_values(["police_id", "status_date", "status_id"],
+                                          kind="stable").to_dict("records"):
+                juengste[int(z["police_id"])] = (
+                    int(z["status_id"]), str(z["status_code"]), pd.Timestamp(z["status_date"]))
+        ursprung = {int(z["police_id"]): (int(z["status_id"]), str(z["status_code"]),
+                                          pd.Timestamp(z["status_date"]))
+                    for z in stamm.to_dict("records")}
+        for z in f_bestand[f_bestand["police_id"].isin(uebernommen)].to_dict("records"):
+            pid = int(z["police_id"])
+            erwartet = juengste.get(pid, ursprung[pid])
+            ist_z = (int(z["status_id"]), str(z["status_code"]), pd.Timestamp(z["status_date"]))
+            if ist_z != erwartet:
+                befund(pid, "endzustand",
+                       f"Zustand im Endbestand {list(ist_z)}, aus Uebernahme und "
+                       f"GeVos folgt {list(erwartet)}")
+
+    # Scheiben -------------------------------------------------------------
+    s_spalten = [c for c in SCHEIBEN_NAMES]
+    ueb_s = scheiben[scheiben["police_id"].isin(uebernommen)] if scheiben is not None else None
+    ist_s = f_scheiben[f_scheiben["police_id"].isin(uebernommen)] if f_scheiben is not None else None
+    ist_alt = ist_s[pd.to_datetime(ist_s["erhoehung_datum"]) <= st] if ist_s is not None else None
+    ist_neu = ist_s[pd.to_datetime(ist_s["erhoehung_datum"]) > st] if ist_s is not None else None
+    soll_alt, ist_alt_m = _zeilenmenge(ueb_s, s_spalten), _zeilenmenge(ist_alt, s_spalten)
+    if soll_alt != ist_alt_m:
+        befund(None, "endscheiben",
+               f"Scheiben der Uebernahme im Endbestand nicht unveraendert: "
+               f"{sum((soll_alt - ist_alt_m).values())} fehlen oder sind veraendert "
+               f"{_beispiele(soll_alt - ist_alt_m)}, {sum((ist_alt_m - soll_alt).values())} "
+               f"unbekannt {_beispiele(ist_alt_m - soll_alt)}")
+    erh = nach[(nach["ereignis"] == "ERH") & (nach["betrag_art"] == "VS_erhoehung")]
+    soll_neu = _zeilenmenge(erh, ["police_id", "status_date", "betrag"])
+    ist_neu_m = _zeilenmenge(ist_neu, ["police_id", "erhoehung_datum", "sum_insured"])
+    if soll_neu != ist_neu_m:
+        befund(None, "endscheiben",
+               f"Erhoehungsscheiben nach dem Stichtag sind nicht die ERH-Buchungen: "
+               f"{sum((soll_neu - ist_neu_m).values())} Buchung(en) ohne Scheibe "
+               f"{_beispiele(soll_neu - ist_neu_m)}, {sum((ist_neu_m - soll_neu).values())} "
+               f"Scheibe(n) ohne Buchung {_beispiele(ist_neu_m - soll_neu)}")
 
 
 def pruefe_fuehrung(
@@ -219,6 +344,17 @@ def pruefe_fuehrung(
                    f"Tarifwerks-Schalter der {quelle} {werte} weichen von "
                    f"denen dieses Laufs {tarifwerk} ab — die Pruefstrecke hat "
                    "mit anderen Schaltern abgenommen als die Fuehrung rechnet")
+
+    # Der Stichtag ist eine Eigenschaft des Bestands, keine Angabe des
+    # Aufrufs (Pruefrunde T27, Befund 06): Jeder uebernommene Vertrag kam
+    # am Migrationsstichtag in die Buecher. Ein Aufruf mit einem anderen
+    # Stichtag prueft eine andere Uebernahme.
+    zugaenge = sorted({pd.Timestamp(z).date().isoformat()
+                       for z in stamm["bestandszugang"].dropna()})
+    if zugaenge != [stichtag.isoformat()]:
+        befund(None, "stichtag",
+               f"Stichtag {stichtag.isoformat()} ist nicht der Bestandszugang "
+               f"des uebernommenen Bestands {zugaenge}")
 
     # 2. Anfangszustand je Vertrag -----------------------------------------
     auspraegungen = auspraegungen_je_police(spez, zeilen) if zeilen else {}
@@ -489,6 +625,10 @@ def pruefe_fuehrung(
                                f"wurde {row[feld]!r} — die Fortschreibung bewegt "
                                "Zustaende, nicht Identitaeten", feld=feld)
                 endbestand_geprueft += 1
+        else:
+            befund(None, "endbestand",
+                   "Fortschreibung ohne Endbestand — ein Endzustand, den niemand "
+                   "vorlegt, ist nicht geprueft")
         f_historie = fortschreibung.get("historie")
         if f_historie is not None and len(f_historie):
             fremd = sorted({str(s) for s in f_historie["status_code"]} - set(STATUS_CODE_VALUES))
@@ -497,6 +637,10 @@ def pruefe_fuehrung(
                        f"Endhistorie der Fortschreibung: unbekannte Zustaende {fremd} — "
                        f"bekannt sind {sorted(STATUS_CODE_VALUES)}")
         f_ledger: pd.DataFrame = fortschreibung["ledger"]
+        _pruefe_endzustand(
+            befund, stamm=stamm, historie=historie, scheiben=scheiben,
+            f_bestand=f_bestand, f_historie=f_historie, f_ledger=f_ledger,
+            f_scheiben=fortschreibung.get("scheiben"), stichtag=stichtag)
         f_scheiben = fortschreibung.get("scheiben")
         neue_je_police: Dict[int, List[Dict[str, Any]]] = {}
         if f_scheiben is not None and len(f_scheiben):
@@ -668,7 +812,9 @@ def pruefe_fuehrung(
     }
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def parser() -> argparse.ArgumentParser:
+    """Die Kommandozeile der Probe — auch fuer den Konsumenten, der den
+    Aufruf eines Belegs nachrechnet."""
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.fuehrungsprobe",
         description="Die Fuehrung gegen die Pruefstrecke halten "
@@ -703,12 +849,65 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--stoab-je-baustein", dest="stoab_je_baustein", action="store_true")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/berichte/fuehrungsprobe.json)")
-    args = p.parse_args(argv)
+    return p
 
+
+def _aufruf(args: argparse.Namespace, ueber: Path, schluessel) -> List[str]:
+    """Der vollstaendige Aufruf, normalisiert: ohne ``--fall``,
+    ``--repo-root`` und ``--out``, Pfade relativ zum Fall."""
+    a = ["--generation", str(args.generation), "--stichtag", str(args.stichtag),
+         "--uebernahme", schluessel(ueber),
+         "--config", schluessel(Path(args.config)),
+         "--zeilen", schluessel(Path(args.zeilen)),
+         "--red-verfahren", str(args.red_verfahren)]
+    if args.fortschreibung:
+        a += ["--fortschreibung", schluessel(Path(args.fortschreibung))]
+    for option, wert in (("--vorgeschichte", args.vorgeschichte), ("--schicht", args.schicht),
+                         ("--red-anteile-datei", args.red_anteile_datei),
+                         ("--anker-erwartungswerte", args.anker_quelle)):
+        if wert is not None:
+            a += [option, str(wert)]
+    if args.erhoehungssatz is not None:
+        a += ["--erhoehungssatz", repr(float(args.erhoehungssatz))]
+    for eintrag in args.red_anteile:
+        a += ["--red-anteil", str(eintrag)]
+    for wert in args.red_anteil_kandidaten:
+        a += ["--red-anteil-kandidat", repr(float(wert))]
+    if args.scheiben_mit_gamma1:
+        a.append("--scheiben-mit-gamma1")
+    if args.stoab_je_baustein:
+        a.append("--stoab-je-baustein")
+    return a
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = parser().parse_args(argv)
+    code, ergebnis = fuehre_probe(args)
+    if ergebnis is None:
+        return code
+    fall = Path(args.fall).resolve()
+    out = Path(args.out) if args.out else fall / "abgeleitet" / "berichte" / "fuehrungsprobe.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(ergebnis, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                   encoding="utf-8")
+    print(f"fuehrungsprobe: {ergebnis['vertraege']} Vertraege, "
+          f"{ergebnis['mit_anfangszustand']} mit Anfangszustand, "
+          f"{sum(ergebnis['buchungen_geprueft'].values())} Buchungen geprueft, "
+          f"{len(ergebnis['befunde'])} Befunde -> {out}")
+    for b in ergebnis["befunde"][:20]:
+        print(f"  BEFUND {b['police_id'] or '-'} {b['art']}: {b['text']}", file=sys.stderr)
+    return code
+
+
+def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]]]:
+    """Die Probe ohne Schreiben: ``(Exit-Code, Beleg)``; bei einem
+    Bedienfehler ``(2, None)`` mit Meldung auf stderr. Der Konsument ruft
+    genau diese Funktion mit dem Aufruf des Belegs (Pruefrunde T27,
+    Befund 06)."""
     fall = Path(args.fall).resolve()
     if not (fall / "fall.json").is_file():
         print(f"Kein Fall-Arbeitsbereich: {fall}", file=sys.stderr)
-        return 2
+        return 2, None
     repo_root = Path(args.repo_root).resolve()
     ueber = Path(args.uebernahme).resolve() if args.uebernahme else fall / "abgeleitet" / "bestand"
     # Jede Eingabe GENAU EINMAL lesen (Review T25-05, dieselbe Klasse wie
@@ -748,13 +947,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         }
     except SystemExit as exc:
         print(str(exc), file=sys.stderr)
-        return 2
+        return 2, None
     beleg_pfad = ueber / "uebernahme.json"
     if not beleg_pfad.is_file():
         print(f"fuehrungsprobe: Uebernahmebeleg fehlt: {beleg_pfad} — der Bestand "
               "hat keinen benannten Anfangszustand (gates.bestand_uebernehmen "
               "schreibt ihn)", file=sys.stderr)
-        return 2
+        return 2, None
     uebernahme["beleg"] = json.loads(binde(beleg_pfad).text())
 
     fortschreibung = None
@@ -777,14 +976,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             }
         except SystemExit as exc:
             print(str(exc), file=sys.stderr)
-            return 2
+            return 2, None
 
     config_pfad = Path(args.config).resolve()
     config = config_aus_text(binde(config_pfad).text())
     fehler = config.validate()
     if fehler:
         print("fuehrungsprobe: Config ungueltig: " + "; ".join(fehler), file=sys.stderr)
-        return 2
+        return 2, None
     # Die Spez war ueberhaupt nicht gebunden (Review T25-05): Die Probe
     # rechnete gegen die Zellen einer Datei, die ihr Beleg nicht nannte.
     spez_datei = spez_pfad(fall, args.generation)
@@ -794,7 +993,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not isinstance(zeilen, list):
         print(f"{args.zeilen}: erwartet wird die Zeilenliste aus "
               "gates.transformation_anwenden --zeilen", file=sys.stderr)
-        return 2
+        return 2, None
     vorgeschichte = []
     if args.vorgeschichte:
         # Durch DIESELBE Bindung lesen, nicht daneben (Pruefrunde T27,
@@ -818,7 +1017,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         police, _, wert = eintrag.partition("=")
         if not police or not wert:
             print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL", file=sys.stderr)
-            return 2
+            return 2, None
         red_anteile[police.strip()] = float(wert)
     anker: Dict[str, Tuple[int, float]] = {}
     if args.anker_quelle is not None:
@@ -875,18 +1074,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             "fortschreibung": (schluessel(Path(args.fortschreibung))
                                if args.fortschreibung else None),
         },
+        # Der vollstaendige Aufruf (Pruefrunde T27, Befund 06): Mit ihm
+        # rechnet der Konsument die Probe nach, statt ihr zu glauben.
+        "aufruf": _aufruf(args, ueber, schluessel),
     }
-    out = Path(args.out) if args.out else fall / "abgeleitet" / "berichte" / "fuehrungsprobe.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(ergebnis, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                   encoding="utf-8")
-    print(f"fuehrungsprobe: {ergebnis['vertraege']} Vertraege, "
-          f"{ergebnis['mit_anfangszustand']} mit Anfangszustand, "
-          f"{sum(ergebnis['buchungen_geprueft'].values())} Buchungen geprueft, "
-          f"{len(ergebnis['befunde'])} Befunde -> {out}")
-    for b in ergebnis["befunde"][:20]:
-        print(f"  BEFUND {b['police_id'] or '-'} {b['art']}: {b['text']}", file=sys.stderr)
-    return 0 if ergebnis["bestanden"] else 1
+    return (0 if ergebnis["bestanden"] else 1), ergebnis
 
 
 if __name__ == "__main__":  # pragma: no cover
