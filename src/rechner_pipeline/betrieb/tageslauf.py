@@ -1159,6 +1159,47 @@ def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
         tmp.unlink()
 
 
+def _vollende_unterbrochenes_neuaufsetzen(wurzel: Path) -> None:
+    """Fehlt die Wurzel, weil ``neuaufsetzen`` zwischen seinen zwei
+    Umbenennungen endete, den Tausch vollenden — statt leer neu anzulegen.
+
+    Angriffsrunde Betrieb: Die alte Ablage lag im Archiv, die neue unter
+    ``<wurzel>.neu-<zeit>``, und der naechste Tageslauf legte eine LEERE
+    Wurzel an und fuehrte von vorn. Die neue Ablage ist die Absicht, wenn
+    sie fertig ist: ihre Provenienzdatei wird als Letztes geschrieben und
+    nennt das Archiv, in das die alte gegangen ist. Genau dann wird sie
+    eingesetzt. Ein Aufbau ohne Provenienz, oder mehr als ein fertiger,
+    ist keine Absicht, die sich lesen laesst — dann wird nichts angelegt.
+    """
+    from rechner_pipeline.betrieb.neuaufsetzen import PROVENIENZ_DATEI
+
+    reste = sorted(p for p in wurzel.parent.glob(f"{wurzel.name}.neu-*") if p.is_dir())
+    if not reste:
+        return
+    fertig = []
+    for rest in reste:
+        try:
+            prov = json.loads((rest / PROVENIENZ_DATEI).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(prov, dict) and prov.get("archiv") and Path(prov["archiv"]).is_dir():
+            fertig.append(rest)
+    if len(fertig) != 1:
+        raise TageslaufError(
+            f"{wurzel} fehlt, daneben liegt ein Aufbau von neuaufsetzen "
+            f"({', '.join(r.name for r in reste)}), "
+            + ("aber keiner ist fertig (ohne Provenienz oder ohne Archiv)"
+               if not fertig else "und mehr als einer ist fertig")
+            + " — keine leere Ablage anlegen; von Hand klaeren, welche "
+            "Ablage gilt, und sie an diese Stelle setzen")
+    try:
+        os.rename(fertig[0], wurzel)
+    except FileNotFoundError:
+        # Ein anderer Prozess (neuaufsetzen selbst) hat den Tausch eben vollendet.
+        if not wurzel.is_dir():
+            raise
+
+
 @contextlib.contextmanager
 def lauf_sperre(ablage: Ablage):
     """Exklusive Prozess-Sperre der Laufzeitumgebung (nicht blockierend).
@@ -1167,6 +1208,8 @@ def lauf_sperre(ablage: Ablage):
     Haengepartie) teilten sich stand.neu, Journal und Protokoll (Review
     T22-03). Der zweite bricht jetzt sofort ab, mit Meldung.
     """
+    if not ablage.wurzel.exists() and not ablage.wurzel.is_symlink():
+        _vollende_unterbrochenes_neuaufsetzen(ablage.wurzel)
     ablage.wurzel.mkdir(parents=True, exist_ok=True)
     datei = open(ablage.sperre, "a+", encoding="utf-8")
     try:
@@ -1417,6 +1460,29 @@ def _tageslauf(
             f"keine Config unter {config_pfad} — die Laufzeitumgebung traegt "
             "die Config der PLV als Kopie unter configs/ (deploy/plv/README.md)"
         )
+    # Genau EINMAL gelesen (Angriffsrunde Betrieb, dieselbe Naht wie N9):
+    # Rechnung, Hash der Protokollzeile, Manifest und P-B1 lasen die Config
+    # je fuer sich von der Platte, und ein Tausch dazwischen gab einen
+    # Stand, der mit der einen Config gerechnet und mit einer anderen
+    # bezeugt war. Alle vier lesen jetzt dieselbe eingefrorene Kopie — mit
+    # demselben Dateinamen, denn das Manifest nennt ihn.
+    with tempfile.TemporaryDirectory(prefix="lauf-config-") as tmp:
+        eingefroren = Path(tmp) / config_pfad.name
+        eingefroren.write_bytes(config_pfad.read_bytes())
+        return _tageslauf_mit_config(
+            ablage, heute, eingefroren, image_digest=image_digest)
+
+
+def _tageslauf_mit_config(
+    ablage: Ablage,
+    heute: _dt.date,
+    config_pfad: Path,
+    *,
+    image_digest: Optional[str],
+) -> Tuple[int, Dict[str, Any]]:
+    """Der Lauf auf der eingefrorenen Config (siehe :func:`_tageslauf`)."""
+    from rechner_pipeline.kern import __version__ as kern_version
+
     config = load_config(config_pfad)
     fehler = config.validate()
     if fehler:

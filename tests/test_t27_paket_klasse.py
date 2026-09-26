@@ -191,3 +191,41 @@ def test_ein_hardlink_als_anker_wird_vor_dem_export_abgewiesen(gefuehrt, tmp_pat
     with pytest.raises(st.SeiteError, match="Hardlink"):
         st.stands_paket(ablage, tmp_path / "paket", anker_verzeichnis=anker)
     assert ablage.protokoll_pfad.read_bytes() == vorher
+
+
+# --------------------------------------------------------------------------- #
+# Angriffsrunde Betrieb: ein abgebrochener Export blockiert sein Ziel nicht
+# --------------------------------------------------------------------------- #
+
+
+def test_ein_abgebrochener_export_laesst_das_alte_paket_stehen_und_blockiert_nichts(
+        gefuehrt, tmp_path, monkeypatch):
+    """Der Export baute IM Ziel: Ein Abbruch nach dem Anlegen liess ein
+    Verzeichnis ohne stand.json zurueck, und jeder weitere Export verwies
+    es als "kein frueheres Stands-Paket" — dauerhaft. Jetzt entsteht das
+    Paket daneben und tritt erst fertig an die Stelle des alten.
+    Mutationsprobe: wieder im Ziel bauen -> rot."""
+    ablage = gefuehrt
+    anker = tmp_path / "anker"
+    paket = st.stands_paket(ablage, tmp_path / "paket", anker_verzeichnis=anker)
+    vorher = {p.relative_to(paket): p.read_bytes() for p in paket.rglob("*") if p.is_file()}
+
+    def abbruch(*args, **kwargs):
+        raise KeyboardInterrupt("Prozessende mitten im Export")
+
+    monkeypatch.setattr(st, "ankersatz", abbruch)
+    with pytest.raises(KeyboardInterrupt):
+        st.stands_paket(ablage, tmp_path / "paket", anker_verzeichnis=anker)
+    monkeypatch.undo()
+    nachher = {p.relative_to(paket): p.read_bytes() for p in paket.rglob("*") if p.is_file()}
+    assert nachher == vorher, "der abgebrochene Export hat das alte Paket angefasst"
+    # Der naechste Export laeuft durch — auch in ein Ziel, das es noch nicht gab.
+    st.stands_paket(ablage, tmp_path / "paket", anker_verzeichnis=anker)
+    monkeypatch.setattr(st, "ankersatz", abbruch)
+    with pytest.raises(KeyboardInterrupt):
+        st.stands_paket(ablage, tmp_path / "neu", anker_verzeichnis=anker)
+    monkeypatch.undo()
+    assert not (tmp_path / "neu").exists()
+    assert (st.stands_paket(ablage, tmp_path / "neu", anker_verzeichnis=anker) / "stand.json").is_file()
+    # Kein Bauverzeichnis bleibt liegen.
+    assert sorted(p.name for p in tmp_path.iterdir() if p.name.startswith(".")) == []

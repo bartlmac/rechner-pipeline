@@ -168,6 +168,31 @@ def _nebentabellen_fehler_im(verzeichnis: Path) -> List[str]:
     )
 
 
+def _eingang_pb1_fehler(verzeichnis: Path, stichtag: _dt.date, config_pfad: Path) -> List[str]:
+    """Die P-B1-Pruefung ueber die Tabellen eines (halb) angelegten Eingangs.
+
+    Dieselbe Funktion wie die Wache des Tageslaufs, mit dem Stichtag als
+    Horizont. Liegt in der Ablage schon eine Config, werden die Betraege
+    auch hergeleitet; ohne sie (Einrichtung, Config folgt) wird die Form
+    geprueft und ausdruecklich nicht hergeleitet.
+    """
+    from rechner_pipeline.bestand.vorbedingungen import PB1_ROLLEN_DATEIEN, lies_und_pruefe_pb1
+
+    # Die Rollen aus der Tabelle der Engine, nicht abgetippt (N-01); der
+    # Eingang fuehrt den Stamm nur unter seinem eigenen Namen.
+    eingaben: Dict[str, Path] = {}
+    for rolle, datei in PB1_ROLLEN_DATEIEN.items():
+        pfad = verzeichnis / ("bestand.parquet" if rolle == "portfolio" else datei)
+        if pfad.is_file():
+            eingaben[rolle] = pfad
+    mit_config = config_pfad.is_file()
+    if mit_config:
+        eingaben["config"] = config_pfad
+    _tab, _geprueft, fehler, usage = lies_und_pruefe_pb1(
+        eingaben, bis=stichtag, ohne_herleitung=not mit_config)
+    return [f"{b.get('code')}: {b.get('message')}" for b in usage + fehler]
+
+
 #: Was ueber die Zeichnung einer A-M4-Annahme NICHT bekannt ist, heisst so —
 #: nicht leer, nicht None. Aeltere Snapshots (Schema 6) fuehren keine
 #: Schluesselklasse; die Seite sagt dann "nicht ausgewiesen", wie die
@@ -1453,6 +1478,18 @@ def eingang_anlegen(
                 f"{quelle}: der Zugangsstand traegt Nebentabellen, die das Gate "
                 "nicht annehmen wuerde — nichts registriert: " + "; ".join(nt_fehler[:5])
             )
+        # Und dieselbe Pruefung, mit der die Wache des Tageslaufs den Stand
+        # abnimmt (Angriffsrunde Betrieb): Ein Zugangsstand, dessen Vertraege
+        # am Stichtag schon abgelaufen sind, wurde registriert, und der
+        # Tagesbetrieb stand danach an jedem Tag still. Der Snapshot bezeugt
+        # die Bytes; ob der Betrieb sie fuehren kann, sagt erst die
+        # Pruefung selbst — sie wird hier nicht geglaubt, sondern gefahren.
+        pb1_fehler = _eingang_pb1_fehler(arbeit, stichtag, ablage_ziel.config_pfad)
+        if pb1_fehler:
+            raise UebernahmeError(
+                f"{quelle}: der Zugangsstand ist nicht, was die Wache des "
+                "Tageslaufs (P-B1) annimmt — nichts registriert: "
+                + "; ".join(pb1_fehler[:5]))
         eingang = {
             "schema_version": EINGANG_SCHEMA_VERSION,
             "fall": fallname,

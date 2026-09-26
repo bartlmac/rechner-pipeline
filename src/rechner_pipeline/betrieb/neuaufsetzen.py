@@ -24,10 +24,11 @@ Was die Routine tut, in dieser Reihenfolge — und was sie NICHT tut:
    nichts). Ehrlich benannt: Zwischen den zwei Umbenennungen gibt es einen
    Moment OHNE Ablage — die Wurzel ist ein echtes Verzeichnis, kein
    Symlink wie ``stand`` (T22-03), ein atomarer Tausch zweier Verzeichnisse
-   ist mit Bordmitteln nicht moeglich. Darum: Timer vorher anhalten. Startet
-   in diesem Moment doch ein Tageslauf, legt er die Wurzel leer neu an, die
-   zweite Umbenennung schlaegt fehl, und die Routine nennt den Ausweg
-   (nichts ist verloren: alte Ablage im Archiv, neue unter ``.neu-<zeit>``).
+   ist mit Bordmitteln nicht moeglich. Endet der Prozess in diesem Moment,
+   vollendet der naechste, der die Ablage oeffnet (``lauf_sperre``), den
+   Tausch: Die neue Ablage ist fertig, sobald ihre Provenienzdatei liegt —
+   sie wird als Letztes geschrieben und nennt das Archiv. Eine leere Wurzel
+   wird neben einem Aufbau nie angelegt.
    Vor dem Tausch liest die Routine den neuen Eingang einmal vollstaendig
    (``lies_uebernahme``): unbekannte Generation, falscher Stichtag, fehlende
    Merkmale oder abweichendes Tarifwerk fallen auf, BEVOR etwas bewegt ist.
@@ -200,6 +201,10 @@ def _neu_aufsetzen_unter_sperre(
     try:
         os.rename(neu_pfad, stand)
     except OSError as exc:
+        if not neu_pfad.exists() and (stand / PROVENIENZ_DATEI).is_file() and json.loads(
+                (stand / PROVENIENZ_DATEI).read_text(encoding="utf-8")) == provenienz:
+            # Ein anderer Prozess hat genau diesen Tausch vollendet (lauf_sperre).
+            return provenienz
         raise NeuaufsetzenError(
             f"zweite Umbenennung fehlgeschlagen ({exc}): {stand} wurde zwischenzeitlich "
             f"neu angelegt (ein Tageslauf gestartet?). Nichts ist verloren — alte Ablage: "

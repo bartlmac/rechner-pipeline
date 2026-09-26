@@ -309,7 +309,14 @@ ERBAUER = {SRC / "bestand" / "manifest.py", SRC / "bestand" / "vorbedingungen.py
 #: waechst, weil es mehr Vertraege gibt oder weil der Detektor zu grob ist
 #: (merge-session, 2026-09-15). Fehlalarme gehoeren in den Detektor.
 GATE_VERTRAEGE = {("abnahmebericht.py", "PB1_VOLLPROFIL"),
-                  ("abnahmebericht.py", "PB1_VOLLPROFIL_SCHICHT")}
+                  ("abnahmebericht.py", "PB1_VOLLPROFIL_SCHICHT"),
+                  # Kein Rollenmapping der Engine, sondern der Tabellenvertrag
+                  # des Eingangs: genau, was gates.bestand_uebernehmen neben
+                  # die Pflichttabellen schreibt. Herabsetzungen VOR dem
+                  # Zugang stehen in der Historie, eine Tabelle dafuer
+                  # erzeugt die Uebernahme nicht. Die Engine-Rollen der
+                  # Registrierung kommen aus PB1_ROLLEN_DATEIEN.
+                  ("uebernahme.py", "OPTIONAL")}
 
 
 def _rollen_literale(quelle: str) -> list:
@@ -363,8 +370,11 @@ def test_kein_aufrufer_der_engine_baut_die_rollen_von_hand():
     # die Ratsche ihn nicht still uebernimmt (Testat 5ca0306: der fuenfte,
     # der Abnahmebericht, fuehrte seine Rollen als SET, das die erste Fassung
     # der Ratsche nicht las).
+    # Der sechste (Angriffsrunde Betrieb): die Registrierung eines
+    # Eingangs faehrt dieselbe Pruefung wie die Wache des Tageslaufs.
     assert {p.name for p in aufrufer} == {
         "tageslauf.py", "cli_abschluss.py", "cli_report.py", "bestand_validate.py", "abnahmebericht.py",
+        "uebernahme.py",
     }
     befunde = {
         str(p.relative_to(REPO_ROOT)): treffer

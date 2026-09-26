@@ -414,3 +414,122 @@ def test_ein_fehlender_stand_bei_gefuehrtem_protokoll_ist_kein_neuanfang(tmp_pat
     with pytest.raises(tl.TageslaufError, match="Stand und Nachweis"):
         tageslauf(ablage, dt.date(2026, 2, 3))
     assert ablage.protokoll_pfad.read_bytes() == vorher
+
+
+# --------------------------------------------------------------------------- #
+# Angriffsrunde Betrieb: Prozessende zwischen den zwei Umbenennungen
+# --------------------------------------------------------------------------- #
+
+
+def test_ein_prozessende_zwischen_den_umbenennungen_laesst_den_betrieb_nicht_ohne_ablage(tmp_path, monkeypatch):
+    """neuaufsetzen archiviert die alte Ablage und setzt die neue mit einer
+    zweiten Umbenennung an ihre Stelle. Endet der Prozess dazwischen, legte
+    der naechste Tageslauf eine LEERE Wurzel an und fuehrte von vorn. Die
+    fertig gebaute neue Ablage (ihre Provenienz ist das Letzte, was
+    geschrieben wird) ist die Absicht — der naechste, der die Ablage
+    oeffnet, vollendet den Tausch. Mutationsprobe: das Vollenden
+    entfernen -> rot."""
+    from rechner_pipeline.betrieb import neuaufsetzen as na
+    from tests.test_betrieb_neuaufsetzen import _fall_mit_nebentabellen
+    from tests.test_betrieb_seite import _ablage
+
+    ablage = _ablage(tmp_path / "daten")
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    fall = _fall_mit_nebentabellen(tmp_path)
+    echtes_rename = os.rename
+    aufrufe: list = []
+
+    def stirbt_beim_zweiten(quelle, ziel, *args, **kwargs):
+        if Path(quelle).name.startswith("daten.neu-") and Path(ziel) == ablage.wurzel:
+            aufrufe.append((quelle, ziel))
+            raise KeyboardInterrupt("Prozessende zwischen den Umbenennungen")
+        return echtes_rename(quelle, ziel, *args, **kwargs)
+
+    monkeypatch.setattr(na.os, "rename", stirbt_beim_zweiten)
+    with pytest.raises(KeyboardInterrupt):
+        na.neu_aufsetzen(ablage.wurzel, fall, STICHTAG,
+                         jetzt=dt.datetime(2026, 9, 8, 6, 0, tzinfo=dt.timezone.utc))
+    monkeypatch.undo()
+    assert not ablage.wurzel.exists(), "die Probe hat den Zwischenzustand nicht erreicht"
+    neu = Ablage(ablage.wurzel)
+    assert tageslauf(neu, dt.date(2026, 2, 3))[0] == EXIT_OK
+    assert (neu.wurzel / na.PROVENIENZ_DATEI).is_file(), "der Tageslauf hat von vorn angefangen"
+    assert (neu.uebernahme / "probe-uebernahme" / "eingang.json").is_file()
+    assert not list(tmp_path.glob("daten.neu-*"))
+
+
+def test_ein_unvollstaendiger_aufbau_wird_nicht_eingesetzt(tmp_path):
+    """Gegenrichtung: Ohne Provenienz (Abbruch VOR ihrem Schreiben) ist die
+    neue Ablage nicht fertig; fehlt dann die Wurzel, wird nichts eingesetzt,
+    sondern der Lauf verweigert mit Namen des Rests."""
+    (tmp_path / "daten.neu-20260908T060000Z" / "configs").mkdir(parents=True)
+    (tmp_path / "daten.archiv-20260908T060000Z").mkdir()
+    with pytest.raises(tl.TageslaufError, match="neu-20260908T060000Z"):
+        tageslauf(Ablage(tmp_path / "daten"), dt.date(2026, 2, 3))
+    assert not (tmp_path / "daten").exists()
+
+
+# --------------------------------------------------------------------------- #
+# Angriffsrunde Betrieb: der Tageslauf liest die Config genau einmal
+# --------------------------------------------------------------------------- #
+
+
+def test_der_tageslauf_rechnet_protokolliert_und_prueft_dieselbe_config(tmp_path, monkeypatch):
+    """Die Config wurde viermal von der Platte gelesen (Rechnung, Hash der
+    Protokollzeile, Manifest, P-B1). Ein Tausch nach dem ersten Lesen gab
+    einen Stand, der mit der einen Config gerechnet und mit einer anderen
+    bezeugt war. Mutationsprobe: wieder vom Ablagepfad lesen -> rot."""
+    from tests.test_betrieb_seite import _ablage
+
+    ablage = _ablage(tmp_path / "daten")
+    original = ablage.config_pfad.read_bytes()
+    echt = tl.load_config
+
+    def tauscht_danach(pfad):
+        cfg = echt(pfad)
+        ablage.config_pfad.write_bytes(original + b"\n# nach dem Lesen getauscht\n")
+        return cfg
+
+    monkeypatch.setattr(tl, "load_config", tauscht_danach)
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    monkeypatch.undo()
+    [zeile] = lies_protokoll(ablage.protokoll_pfad)
+    assert zeile["config_sha256"] == ueb.sha256_bytes(original)
+    manifest = json.loads((ablage.stand / "laufmanifest.json").read_text(encoding="utf-8"))
+    assert manifest["config"]["sha256"] == ueb.sha256_bytes(original)
+
+
+# --------------------------------------------------------------------------- #
+# Angriffsrunde Betrieb: registriert wird nur, was der Tagesbetrieb annimmt
+# --------------------------------------------------------------------------- #
+
+
+def test_ein_zugangsstand_ohne_vertrag_in_kraft_am_stichtag_wird_nicht_registriert(tmp_path, monkeypatch):
+    """Alle Vertraege laufen genau am Zugangsstichtag ab: Die Registrierung
+    nahm den Eingang unwiderruflich an, und der Tagesbetrieb stand danach
+    still (P-B1 rot an jedem folgenden Tag). Registriert wird nur, was
+    die Wache des Tageslaufs annimmt. Mutationsprobe: die Probe in
+    eingang_anlegen entfernen -> rot."""
+    echt = pd.Timestamp
+
+    def ablauf_am_stichtag(x, *a, **k):
+        return echt("2021-01-01") if x == "2021-02-01" else echt(x, *a, **k)
+
+    monkeypatch.setattr(pd, "Timestamp", ablauf_am_stichtag)
+    fall = _kurzer_fall(tmp_path, mit_pex=False)
+    monkeypatch.undo()
+    stamm = read_portfolio(fall / "abgeleitet" / "bestand" / "bestand.parquet")
+    assert (stamm["insurance_end"] == echt(STICHTAG)).all(), "die Probe hat den Ablauf nicht getroffen"
+    stand = tmp_path / "daten"
+    ablage = Ablage(stand)
+    ablage.configs.mkdir(parents=True, exist_ok=True)
+    ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
+    try:
+        ueb.eingang_anlegen(stand, fall, STICHTAG)
+    except ueb.UebernahmeError:
+        assert not (ablage.uebernahme / "kurz-uebernahme").exists()
+        return
+    code, zeile = tageslauf(ablage, dt.date(2026, 1, 5))
+    assert code == EXIT_OK, (
+        "registriert, aber der Tagesbetrieb nimmt den Eingang nicht an: "
+        f"{zeile.get('fehler') or (zeile.get('pb1') or {}).get('befunde')}")

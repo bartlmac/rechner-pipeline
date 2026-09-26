@@ -831,18 +831,18 @@ def _stands_paket_unter_sperre(
     schluessel: Optional[Path], zeichnungsordnung: Optional[Path],
 ) -> Path:
     modell, gelesen = stand_modell_mit_bytes(ablage)
-    if ziel.exists():
-        # Die Wache ist paketziel_fehler (Ablage-Grenze, Symlink, Marker);
-        # entferne_verzeichnis wiederholt Marker- und Symlink-Pruefung und
-        # bindet den Namen: ersetzt wird genau das genannte Paket.
-        try:
-            entferne_verzeichnis(
-                ziel, innerhalb=ziel.parent, name_ok=lambda n: n == ziel.name,
-                marker=PAKET_DATEI, grund="frueheres Stands-Paket",
-            )
-        except LoeschFehler as exc:
-            raise SeiteError(str(exc)) from exc
-    ziel.mkdir(parents=True)
+    # Gebaut wird NEBEN dem Ziel (Angriffsrunde Betrieb): Der Export baute
+    # im Ziel, und ein Abbruch nach dem Anlegen liess ein Verzeichnis ohne
+    # stand.json zurueck, das jeder weitere Export als "kein frueheres
+    # Stands-Paket" verwies — dauerhaft. Jetzt tritt das Paket erst fertig
+    # an die Stelle des alten, und bis dahin bleibt das alte unberuehrt.
+    endziel = ziel
+    bau, alt = _paket_nebenorte(endziel)
+    _raeume_paket_nebenorte(endziel)
+    ziel = bau
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    ziel.mkdir()
+    (ziel / PAKET_BAU_MARKER).write_bytes(b"")
     dateien: Dict[str, str] = {}
     for a in modell["abschluesse"][-1:]:
         for name in [a.get("bericht")] + [t["bericht"] for t in a.get("teilbestaende") or []]:
@@ -919,7 +919,58 @@ def _stands_paket_unter_sperre(
         "zeichnung": satz.get("zeichnung"),
     }
     _schreibe(ziel / PAKET_DATEI, json.dumps(modell, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-    return ziel
+    (ziel / PAKET_BAU_MARKER).unlink()
+    # Der Tausch: altes Paket beiseite, neues an seine Stelle, altes weg.
+    # Endet der Prozess zwischen den zwei Umbenennungen, setzt der naechste
+    # Export das beiseitegelegte Paket zurueck (_raeume_paket_nebenorte).
+    if endziel.exists():
+        os.rename(endziel, alt)
+    os.rename(bau, endziel)
+    if alt.exists():
+        _entferne_paket(alt, PAKET_DATEI, "beiseitegelegtes frueheres Stands-Paket")
+    return endziel
+
+
+#: Markiert ein Bauverzeichnis des Exports, solange es nicht fertig ist.
+PAKET_BAU_MARKER = ".im-bau"
+
+
+def _paket_nebenorte(ziel: Path):
+    """Bauort und Beiseite-Ort eines Pakets: Geschwister des Ziels."""
+    return (ziel.parent / f".{ziel.name}.im-bau", ziel.parent / f".{ziel.name}.alt")
+
+
+def _entferne_paket(pfad: Path, marker: Optional[str], grund: str) -> None:
+    try:
+        entferne_verzeichnis(
+            pfad, innerhalb=pfad.parent, name_ok=lambda n: n == pfad.name,
+            marker=marker, grund=grund,
+        )
+    except LoeschFehler as exc:
+        raise SeiteError(str(exc)) from exc
+
+
+def _raeume_paket_nebenorte(ziel: Path) -> None:
+    """Die Reste eines abgebrochenen Exports aufraeumen, bevor gebaut wird.
+
+    Ein Bauverzeichnis ist ein eigenes Erzeugnis, solange es den
+    Bau-Marker traegt (oder, nach dem letzten Schritt, stand.json) — oder
+    leer ist (Abbruch direkt nach dem Anlegen). Ein beiseitegelegtes Paket
+    ohne Ziel ist ein unterbrochener Tausch: Es kehrt an seinen Platz
+    zurueck; neben einem Ziel ist es ein Rest und geht.
+    """
+    bau, alt = _paket_nebenorte(ziel)
+    if bau.is_dir() and not bau.is_symlink() and not any(bau.iterdir()):
+        _entferne_paket(bau, None, "leeres Bauverzeichnis eines abgebrochenen Exports")
+    elif bau.exists() or bau.is_symlink():
+        marker = PAKET_BAU_MARKER if (bau / PAKET_BAU_MARKER).is_file() else PAKET_DATEI
+        _entferne_paket(bau, marker, "Bauverzeichnis eines abgebrochenen Exports")
+    if alt.exists() or alt.is_symlink():
+        if not ziel.exists() and not ziel.is_symlink() and alt.is_dir() and not alt.is_symlink() \
+                and (alt / PAKET_DATEI).is_file():
+            os.rename(alt, ziel)
+        else:
+            _entferne_paket(alt, PAKET_DATEI, "beiseitegelegtes frueheres Stands-Paket")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
