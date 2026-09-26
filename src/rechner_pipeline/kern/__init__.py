@@ -133,7 +133,10 @@ from rechner_pipeline.kern.rechenkern import (
 #: 3.10.0 = Herabsetzung mit Abzug und Korrekturschicht: die Schicht geht
 #: ungekuerzt in den umgewandelten Teil; der Stornoabzug (1-f) x StoAb
 #: gehoert allein zum Grundvertrag (klv.md 7.1, Grundsatz 9.7).
-__version__ = "3.10.0"
+#: 3.11.0 = Herabsetzung mit Abzug: der Abzug ist hoechstens die
+#: Deckungsrueckstellung, bei nicht positiver entfaellt er — keine
+#: negative umgewandelte Summe mehr (wie RKW = max(0, ...)).
+__version__ = "3.11.0"
 
 __all__ = [
     "ModelPoint",

@@ -42,14 +42,18 @@ cp configs/bestand_gesamt.toml ~/apps/plv/daten/configs/bestand.toml
 heraus; verlangt die Generation des Falls in `bestand.toml` und den
 A-M4-Snapshot des Falls: ohne angenommene Migrationsabnahme gibt es
 keine Uebernahme; der Snapshot wird strukturell geprueft — Schema,
-Selbstadressierung, Gate, Entscheid, Fall —, seine Signatur nicht). Der
+Selbstadressierung, Gate, Entscheid, Fall — und seine Freigabesignatur
+mit dem Freigabeschluessel, der ausserhalb des Falls liegt. Ohne
+Schluessel wird nichts registriert: Der Tagesbetrieb nimmt nur einen
+Eingang mit verifizierter Signatur an). Der
 Eingang kommt von AUSSEN ins Volume: Das Kommando laeuft auf dem
 Betriebsrechner mit Zugriff auf den Fall, nicht im Container — der
 Container hat kein Netz und liest den Eingang nur:
 
 ```
 python -m rechner_pipeline.betrieb.uebernahme --stand ~/apps/plv/daten \
-    --fall faelle/<fall> --stichtag 2026-01-01
+    --fall faelle/<fall> --stichtag 2026-01-01 \
+    --freigabe-schluessel <pfad-zum-freigabeschluessel>
 ```
 
 **Image ziehen und Digest eintragen.** Der Container kennt seinen
@@ -116,7 +120,8 @@ Ankerreihe bezeugt Zeilen eines Protokolls, das jetzt im Archiv liegt.
 ```
 systemctl --user stop tageslauf.timer
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
-    --fall faelle/<fall> --stichtag 2026-01-01
+    --fall faelle/<fall> --stichtag 2026-01-01 \
+    --freigabe-schluessel <pfad-zum-freigabeschluessel>
 cd ~/apps/plv && docker compose run --rm tageslauf
 python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten \
     --paket <paket> --anker faelle/<fall>/abgeleitet/anker

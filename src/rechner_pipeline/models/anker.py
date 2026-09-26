@@ -121,9 +121,12 @@ def jsonl_zeilen(text: str) -> List[str]:
     die ``json.dumps(..., ensure_ascii=False)`` roh in eine Zeile schreibt
     (Angriffsrunde nach T27: ein Fallname mit U+2028 machte das Protokoll
     ab dem zweiten Lauf unlesbar). Schreiber und Leser benutzen dieselbe
-    Zeilengrenze; leere Zeilen zaehlen nicht.
+    Zeilengrenze; leere Zeilen zaehlen nicht. Ein Rest ohne LF am Ende ist
+    nie eine Zeile geworden (der Tageslauf schneidet ihn ab) und zaehlt
+    auch hier nicht (Angriffsrunde nach T27: der Export verankerte ein
+    solches Fragment, und nach dem Schnitt fehlte die verankerte Zeile).
     """
-    return [z for z in text.split("\n") if z.strip()]
+    return [z for z in text[: text.rfind("\n") + 1].split("\n") if z.strip()]
 
 
 def dateien_hash(dateien: Dict[str, Any]) -> str:

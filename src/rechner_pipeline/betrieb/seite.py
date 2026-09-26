@@ -207,7 +207,11 @@ def abschluesse_aus_protokoll(
             continue
         for a in z.get("abschluesse") or []:
             eintrag = abschluesse.setdefault(a["stichtag"], {"stichtag": a["stichtag"]})
-            if a.get("neu"):
+            # Auch ein NACHGERECHNETER Abschluss traegt seinen Beleg
+            # (Angriffsrunde nach T27): Nach einem Ausfall im Publish-
+            # Fenster nannte ihn keine Zeile mehr als neu, und Seite wie
+            # Paket fuehrten ihn dauerhaft ohne Datei und Hash.
+            if a.get("neu") or (a.get("nachgerechnet") and a.get("sha256")):
                 eintrag["datei"] = a["datei"]
                 eintrag["sha256"] = a.get("sha256")
             if a.get("bericht"):
@@ -840,6 +844,22 @@ def _stands_paket_unter_sperre(
     ablage, ziel: Path, *, anker_verzeichnis: Path, art: str,
     schluessel: Optional[Path], zeichnungsordnung: Optional[Path],
 ) -> Path:
+    # Kein Export aus einem unterbrochenen Lauf (Angriffsrunde nach T27):
+    # Ein Publish-Marker oder eine Protokollzeile ohne Zeilenende sind ein
+    # Zustand, den der naechste Tageslauf zuruecknimmt oder abschneidet —
+    # verankert, fehlte die Zeile danach in der Reihe, und jeder weitere
+    # Export scheiterte dauerhaft.
+    if ablage.publish_marker.exists():
+        raise SeiteError(
+            f"{ablage.publish_marker}: ein Lauf ist nicht abgeschlossen — erst den "
+            "Tageslauf fahren (er nimmt den Publish zurueck oder raeumt auf), "
+            "dann exportieren")
+    if ablage.protokoll_pfad.is_file():
+        roh = ablage.protokoll_pfad.read_bytes()
+        if roh and not roh.endswith(b"\n"):
+            raise SeiteError(
+                f"{ablage.protokoll_pfad}: die letzte Zeile ist nicht abgeschlossen — "
+                "erst den Tageslauf fahren, dann exportieren")
     modell, gelesen = stand_modell_mit_bytes(ablage)
     # Gebaut wird NEBEN dem Ziel (Angriffsrunde Betrieb): Der Export baute
     # im Ziel, und ein Abbruch nach dem Anlegen liess ein Verzeichnis ohne
@@ -995,7 +1015,11 @@ def _raeume_paket_nebenorte(ziel: Path) -> None:
     elif bau.exists() or bau.is_symlink():
         marker = PAKET_BAU_MARKER if (bau / PAKET_BAU_MARKER).is_file() else PAKET_DATEI
         _entferne_paket(bau, marker, "Bauverzeichnis eines abgebrochenen Exports")
-    if alt.exists() or alt.is_symlink():
+    if alt.is_dir() and not alt.is_symlink() and not any(alt.iterdir()):
+        # Leer: das Loeschen endete zwischen Marker und rmdir (Angriffsrunde
+        # nach T27) — wie beim Bauort ein eigener Rest, kein fremdes Verzeichnis.
+        _entferne_paket(alt, None, "leerer Beiseite-Ort eines abgebrochenen Exports")
+    elif alt.exists() or alt.is_symlink():
         if not ziel.exists() and not ziel.is_symlink() and alt.is_dir() and not alt.is_symlink() \
                 and (alt / PAKET_DATEI).is_file():
             os.rename(alt, ziel)

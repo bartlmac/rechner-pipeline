@@ -625,6 +625,8 @@ def test_die_verankerung_wandert_in_den_stand_und_wird_als_nicht_angewandt_ausge
                                  "verweildauer_ta": 0, "dk_ta": 10_000.0}])
     verankerung = verankerung[[s for s, _ in VERANKERUNG_SPALTEN]].astype(dict(VERANKERUNG_SPALTEN))
     write_portfolio(verankerung, quelle / "verankerung.parquet")
+    # Erst die Tabelle, dann die Abnahme, die sie bezeugt — wie im echten Fall.
+    _beleg_neu(fall)
     stand = tmp_path / "daten"
     ueb.eingang_anlegen(stand, fall, STICHTAG)
     ablage = Ablage(stand)

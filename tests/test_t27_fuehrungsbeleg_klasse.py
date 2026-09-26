@@ -133,3 +133,96 @@ def test_ein_stimmig_gefaelschter_aufruf_mit_fremdem_stichtag_besteht_nicht(fall
         _code, neu = fuehrungsprobe.fuehre_probe(fuehrungsprobe.parser().parse_args(argv))
     assert neu is not None and not neu["bestanden"]
     assert any(b["art"] == "stichtag" for b in neu["befunde"])
+
+
+# --------------------------------------------------------------------------- #
+# Angriffsrunde nach T27: WORUEBER die Probe urteilt, bestimmt nicht der Beleg
+# --------------------------------------------------------------------------- #
+
+
+def _probe_neu(fall: Path, ersetze: dict) -> None:
+    """Die Probe mit ihrem eigenen Aufruf neu fahren — ehrlich, auf dem,
+    was der Aufruf nennt; ``ersetze`` tauscht Optionswerte."""
+    from rechner_pipeline.gates import fuehrungsprobe
+    from tests.test_pk1_am4_beweisvertrag import REPO_ROOT
+
+    beleg = json.loads(_probe_pfad(fall).read_text(encoding="utf-8"))
+    aufruf = list(beleg["provenienz"]["aufruf"])
+    for option, wert in ersetze.items():
+        aufruf[aufruf.index(option) + 1] = wert
+    argv = ["--fall", str(fall), "--repo-root", str(REPO_ROOT)]
+    for j, wert in enumerate(aufruf):
+        if j and aufruf[j - 1] in fuehrungsprobe.PFAD_OPTIONEN and not Path(wert).is_absolute():
+            wert = str(fall / wert)
+        argv.append(wert)
+    fuehrungsprobe.main(argv)
+
+
+def test_eine_probe_auf_einer_kopie_der_uebernahme_wird_abgewiesen(tmp_path):
+    """Mutationsprobe: die Pruefung des Uebernahme-Verzeichnisses entfernen -> rot."""
+    import shutil
+
+    fall = _bereite_bestandsfall(tmp_path)
+    shutil.copytree(fall / "abgeleitet" / "bestand", fall / "abgeleitet" / "bestand-kopie")
+    _probe_neu(fall, {"--uebernahme": "abgeleitet/bestand-kopie"})
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert "nicht die des Falls" in " ".join(f["message"] for f in bericht.errors)
+
+
+def test_eine_fortschreibung_vor_dem_folgestichtag_wird_abgewiesen(tmp_path):
+    """Mutationsprobe: den Horizontvergleich entfernen -> rot."""
+    from rechner_pipeline.bestand import cli_fortschreibung
+
+    fall = _bereite_bestandsfall(tmp_path)
+    beleg = json.loads(_probe_pfad(fall).read_text(encoding="utf-8"))
+    aufruf = beleg["provenienz"]["aufruf"]
+    config = aufruf[aufruf.index("--config") + 1]
+    kurz = fall / "abgeleitet" / "bestand-kurz"
+    assert cli_fortschreibung.main([
+        "--config", str(fall / config if not Path(config).is_absolute() else config),
+        "--uebernahme", str(fall / "abgeleitet" / "bestand"),
+        "--bis", "2026-01-02", "--out-dir", str(kurz)]) == 0
+    _probe_neu(fall, {"--fortschreibung": "abgeleitet/bestand-kurz"})
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert "Folgestichtag" in " ".join(f["message"] for f in bericht.errors)
+
+
+def test_eine_fortschreibung_die_p_b1_abweist_wird_abgewiesen(tmp_path):
+    """Eine Buchung, die die Probe nicht ansieht (der Zugang am Stichtag),
+    stimmig ins Manifest nachgezogen, die Probe ehrlich neu gefahren —
+    P-B1 leitet sie her und weist ab. Stellvertretend fuer jede Regel, die
+    P-B1 kennt und die Probe nicht nachbaut (RED ausserhalb des
+    Reduktionsjahres, Hoehe der Erhoehungen). Mutationsprobe: P-B1 auf
+    der Fortschreibung nicht fahren -> rot."""
+    import hashlib
+
+    import pandas as pd
+
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+
+    import shutil
+
+    fall = _bereite_bestandsfall(tmp_path)
+    # Eine ZWEITE Fortschreibung neben der, die der P-B1-Beleg bindet: Der
+    # Beleg bleibt gueltig, die Probe wird auf die andere gerichtet.
+    lauf = fall / "abgeleitet" / "bestand-falsch"
+    shutil.copytree(fall / "abgeleitet" / "bestand-nach", lauf)
+    ledger = read_portfolio(lauf / "ledger.parquet")
+    zug = ledger.index[ledger["ereignis"] == "ZUG"]
+    assert len(zug), "die Welt traegt keinen Zugang"
+    neu = ledger.copy()
+    neu.loc[zug[0], "betrag"] = float(neu.loc[zug[0], "betrag"]) + 1000.0
+    (lauf / "ledger.parquet").chmod(0o644)
+    write_portfolio(neu, lauf / "ledger.parquet")
+    manifest = json.loads((lauf / "laufmanifest.json").read_text(encoding="utf-8"))
+    manifest["ausgaben"]["ledger.parquet"] = hashlib.sha256(
+        (lauf / "ledger.parquet").read_bytes()).hexdigest()
+    (lauf / "laufmanifest.json").chmod(0o644)
+    (lauf / "laufmanifest.json").write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
+    _probe_neu(fall, {"--fortschreibung": "abgeleitet/bestand-falsch"})
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert "P-B1 weist die gepruefte Fortschreibung ab" in " ".join(
+        f["message"] for f in bericht.errors)

@@ -203,7 +203,7 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
     assert _o3_tg2012(fall).exit_code == 0
 
-    lauf = fall / "abgeleitet" / "bestand"
+    lauf = fall / "abgeleitet" / "bestand-nach"
     # Der Bestandsfall hat exakt eine Police und die Suite prueft exakt
     # diese eine. Bis Review T22-01 war das ein EIN-ZEILEN-AUSSCHNITT eines
     # groesseren Laufs, ohne Journal und Ledger — und genau so ein
@@ -220,7 +220,7 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
         "sex": "M", "duration": 20, "premium_duration": 15,
         "sum_insured": 100000.0, "zahlweise": 12,
     }]), encoding="utf-8")
-    uebernahme = fall / "abgeleitet" / "uebernahme"
+    uebernahme = fall / "abgeleitet" / "bestand"
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", TARIF_GENERATION, "--stichtag", "2026-01-01",
@@ -548,7 +548,7 @@ def test_ohne_bestandene_fuehrungsprobe_gibt_es_keinen_gruenen_abnahmebericht(
     # Der Uebernahmebeleg ist eine Eingabe, die NUR die Probe bindet (P-B1
     # lief auf der Fortschreibung): ihn nachtraeglich zu aendern, saehe
     # ohne Nachhashen niemand.
-    beleg_pfad = fall / "abgeleitet" / "uebernahme" / "uebernahme.json"
+    beleg_pfad = fall / "abgeleitet" / "bestand" / "uebernahme.json"
     original = beleg_pfad.read_bytes()
     beleg = json.loads(original.decode("utf-8"))
     beleg["anfangszustand"] = "grundvertrag"
@@ -1402,7 +1402,7 @@ def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
     tmp_path: Path,
 ):
     fall = _bereite_bestandsfall(tmp_path)
-    lauf = fall / "abgeleitet" / "bestand"
+    lauf = fall / "abgeleitet" / "bestand-nach"
     # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
     config = fall / "abgeleitet" / "bestand-config.toml"
     config.write_bytes((REPO_ROOT / "configs" / "bestand_klv.toml").read_bytes())

@@ -466,6 +466,7 @@ def test_der_bestandsbericht_bekommt_die_reduktionstabelle(tmp_path, monkeypatch
         "--portfolio", str(out / "bestand_gesamt.parquet"), "--historie", str(out / "historie.parquet"),
         "--ledger", str(out / "ledger.parquet"), "--scheiben", str(out / "scheiben.parquet"),
         "--bis", "2046-01-01", "--stichtag", "2030-01-01", "--out", str(tmp_path / "bericht.html"),
+        "--config", str(cfg),
     ])
     assert code == 0
     assert gesehen.get("reduktionen") is not None and len(gesehen["reduktionen"]) > 0
@@ -653,6 +654,7 @@ def test_der_bestandsbericht_findet_die_reduktionstabelle_neben_dem_ledger(tmp_p
         "--portfolio", str(out / "bestand_gesamt.parquet"), "--historie", str(out / "historie.parquet"),
         "--ledger", str(out / "ledger.parquet"), "--scheiben", str(anderswo / "scheiben.parquet"),
         "--bis", "2046-01-01", "--stichtag", "2030-01-01", "--out", str(tmp_path / "bericht.html"),
+        "--config", str(cfg),
     ])
     assert code == 0
     assert gesehen.get("reduktionen") is not None and len(gesehen["reduktionen"]) > 0
@@ -745,6 +747,7 @@ def test_der_bestandsbericht_hat_ein_flag_je_rolle_des_erzeugers(tmp_path, monke
         "--ledger", str(anderswo / "ledger.parquet"), "--scheiben", str(anderswo / "scheiben.parquet"),
         "--reduktionen", str(tmp_path / "red.parquet"),
         "--bis", "2046-01-01", "--stichtag", "2030-01-01", "--out", str(tmp_path / "b.html"),
+        "--config", str(cfg),
     ])
     assert code == 0
     assert gesehen.get("reduktionen") is not None and len(gesehen["reduktionen"]) > 0

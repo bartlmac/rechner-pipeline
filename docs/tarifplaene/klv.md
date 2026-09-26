@@ -201,8 +201,15 @@ $$
 
 Das prospektive Verfahren wandelt verlustfrei um; das Altverfahren
 behandelt den freiwerdenden Anteil wie eine Teilkündigung und erhebt den
-anteiligen Stornoabschlag, bevor es umwandelt. Bei $f = 0$ sind beide
-die vollständige Beitragsfreistellung, bei $f = 1$ ändert sich nichts.
+anteiligen Stornoabschlag, bevor es umwandelt. Der Abschlag ist
+höchstens die Deckungsrückstellung selbst, bei nicht positiver
+Rückstellung entfällt er — wie beim Rückkaufswert, der nie negativ wird;
+„mit Abzug" liegt damit nie über „prospektiv". Bei $f = 1$ ändert sich
+nichts. Bei $f = 0$ sind beide erst nach dem Ende der Zillmerdauer die
+vollständige Beitragsfreistellung; davor liegen sie um den
+Abschlusskostenrest darunter, denn umgewandelt wird die
+Deckungsrückstellung, und der Rest folgt dem Beitrag (offene Fachfrage,
+Stand 2026-09-26).
 Welches Verfahren gilt, ist eine Eigenschaft des rechnenden **Systems**
 und keine des Vertrags — es steht deshalb im Beleg einer Migration, nicht
 im Modellpunkt.

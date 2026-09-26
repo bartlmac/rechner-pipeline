@@ -114,6 +114,36 @@ def pruefe_pb1_eingaenge(
     return geprueft, fehler, usage
 
 
+def fortschreibung_pruefen(
+    verzeichnis: Path, config: Path,
+) -> Tuple[Optional[_dt.date], List[str]]:
+    """P-B1 auf einem Fortschreibungslauf, wie gates.bestand_validate ihn
+    faehrt: Rollen aus dem Verzeichnis, Horizont aus dem Laufmanifest,
+    jede Datei und die Config an das Manifest gebunden. Rueckgabe
+    (Horizont, Fehler).
+
+    Fuer den A-M4-Konsumenten der Fuehrungsprobe (Angriffsrunde nach T27):
+    Die Probe rechnete die Buchungen der Fortschreibung auf eigenen Wegen
+    nach und liess dabei Nachbarfaelle offen, die P-B1 laengst prueft
+    (RED-Zeilen ausserhalb des Reduktionsjahres, die Hoehe dynamischer
+    Erhoehungen). Und welche Fortschreibung sie pruefte, waehlte der Beleg
+    selbst — auch eine, die am Tag nach dem Stichtag endete.
+    """
+    verzeichnis = Path(verzeichnis)
+    try:
+        manifest = manifest_aus_bytes(lies_manifest_bytes(verzeichnis / MANIFEST_DATEI))
+        horizont = _dt.date.fromisoformat(str(manifest["horizont"]))
+    except (ManifestError, OSError, KeyError, ValueError) as exc:
+        return None, [f"{verzeichnis}: kein lesbares Laufmanifest mit Horizont ({exc}) — "
+                      "die Fortschreibung ist kein belegter Lauf"]
+    eingaben: Dict[str, Path] = {
+        rolle: verzeichnis / datei for rolle, datei in ROLLEN_DATEIEN.items()
+        if (verzeichnis / datei).is_file()}
+    eingaben["config"] = Path(config)
+    _t, _g, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=horizont, manifest=manifest)
+    return horizont, [str(e.get("message")) for e in usage + fehler]
+
+
 def manifest_fuer_nachrechnung(
     portfolio: Path, erwarteter_sha256: Optional[str],
 ) -> Tuple[Optional[Mapping[str, Any]], List[str]]:
@@ -150,16 +180,15 @@ def lies_und_pruefe_pb1(
     *,
     bis: Optional[_dt.date] = None,
     manifest: Optional[Mapping[str, Any]] = None,
-    ohne_herleitung: bool = False,
     ohne_plausibilitaet: bool = False,
 ) -> Tuple[Dict[str, Any], Dict[str, int], List[dict], List[dict]]:
     """Pruefen UND die geprueften Tabellen zurueckgeben.
 
-    ``ohne_herleitung=True`` sagt ausdruecklich, dass der Aufrufer die
-    Betraege nicht herleiten lassen will (der Bestandsbericht: er prueft
-    die Fuehrung, nicht die Buchungshoehen, und ein Bestand ausserhalb der
-    Plausibilitaetsbaender soll sichtbar werden). Ohne diese Erklaerung ist
-    ein Ledger mit Herabsetzungen ohne Config ein Bedienfehler.
+    Ein Ledger mit Herabsetzungen ohne Config ist ein Bedienfehler — fuer
+    jeden Aufrufer. Die fruehere Ausnahme ``ohne_herleitung`` fuer den
+    Bestandsbericht liess ihn verfaelschte Herabsetzungen mit Exit 0
+    rendern, die P-B1 auf denselben Bytes abwies (Angriffsrunde nach T27);
+    sie ist entfallen.
 
     ``ohne_plausibilitaet=True`` laesst mit Config die Plausibilitaets-
     baender weg und NUR sie (der Bestandsbericht, Angriffsrunde nach T27):
@@ -402,7 +431,7 @@ def lies_und_pruefe_pb1(
                 "--reduktionen ist erforderlich, sonst rechnet die Wache "
                 "jeden herabgesetzten Vertrag ungekuerzt nach",
             })
-    if ledger is not None and "config" not in eingaben and not ohne_herleitung:
+    if ledger is not None and "config" not in eingaben:
         # Ohne Config werden die Betraege nicht hergeleitet — ein Ledger mit
         # Herabsetzungen ist dann nicht pruefbar, und PASSED waere eine
         # Behauptung (Angriffsrunde der Nacht: Auszahlung x10, Auszahlung

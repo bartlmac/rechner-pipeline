@@ -214,6 +214,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                   file=sys.stderr)
             return 2
         merkmale = read_portfolio(Path(ns.merkmale))
+        # Auch die Pruefung bekommt sie (Angriffsrunde nach T27): Ohne sie
+        # scheiterte der dokumentierte Berichtsaufruf mit --config an jeder
+        # Zellen-Generation — und der einzige Weg zum Bericht war der ohne
+        # Config, also ohne jede Herleitung.
+        if "ledger" in eingaben:
+            eingaben["merkmale"] = Path(ns.merkmale)
 
     config = None
     if ns.config:
@@ -253,9 +259,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if ns.config and "ledger" in eingaben:
         eingaben["config"] = Path(ns.config)
     tabellen, _, fehler, usage = lies_und_pruefe_pb1(
-        eingaben, bis=bis, ohne_herleitung=True, ohne_plausibilitaet=True)
+        eingaben, bis=bis, ohne_plausibilitaet=True)
     if tabellen.get("config") is not None:
         config = tabellen["config"]
+    if tabellen.get("merkmale") is not None:
+        merkmale = tabellen["merkmale"]
     if fehler or usage:
         for eintrag in (usage + fehler)[:5]:
             print(f"bestand_report: {eintrag['message']}", file=sys.stderr)

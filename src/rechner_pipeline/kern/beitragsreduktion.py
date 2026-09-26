@@ -40,10 +40,13 @@ geschieht.**
     vertretbar — bei einem Teilrueckkauf ist der Abzug ueblich, und
     genau so haben viele Altbestaende die Herabsetzung geführt.
 
-Beide treffen die Randfaelle: Bei ``f = 1`` (keine Reduktion) aendert
-sich nichts, bei ``f = 0`` sind sie die vollstaendige
-Beitragsfreistellung — verlustfrei die eine, mit Abzug die andere.
-Dazwischen weichen sie um den anteiligen Stornoabzug ab.
+Bei ``f = 1`` (keine Reduktion) aendert sich nichts. Bei ``f = 0`` sind
+sie die vollstaendige Beitragsfreistellung erst nach dem Ende der
+Zillmerdauer; davor liegt die prospektive Herabsetzung um den
+Abschlusskostenrest unter ihr, denn umgewandelt wird die
+Deckungsrueckstellung, und der Rest folgt dem Beitrag (gemessen, offene
+Fachfrage). Dazwischen weichen die Verfahren um den anteiligen
+Stornoabzug ab; der Abzug ist hoechstens die Rueckstellung selbst.
 
 Knoten: klv
 """
@@ -267,12 +270,16 @@ def _abzugsfaktor(dk: float, stoab: float, jahr: int) -> float:
     (Angriffsrunde 2026-09-26). Nur eine Rueckstellung von exakt null
     traegt keinen Faktor.
     """
-    if dk == 0.0:
-        raise BeitragsreduktionFehler(
-            f"Vertragsjahr {jahr}: Deckungsrueckstellung ist exakt null — "
-            "der Abzug laesst sich nicht als Anteil der Reserve ausdruecken"
-        )
-    return 1.0 - stoab / dk
+    # Der Abzug ist hoechstens der Wert, von dem er abgezogen wird — wie
+    # beim Rueckkaufswert, RKW = max(0, V^MRV - StoAb) (Angriffsrunde nach
+    # T27: bei kleinen Summen trieb der Mindestabzug die umgewandelte Summe
+    # unter null, und negative Leistungen folgten; das eigene P-B1 wies den
+    # Lauf ab). Bei nicht positiver Rueckstellung gibt es nichts abzuziehen:
+    # Dann rechnet das Verfahren wie das prospektive, und "mit Abzug" liegt
+    # nie ueber "prospektiv".
+    if dk <= 0.0:
+        return 1.0
+    return 1.0 - min(stoab, dk) / dk
 
 
 def _reduziere_eine_schicht(

@@ -580,7 +580,82 @@ def pruefe_nachweis(
                 "nicht den Hash, den die letzte gruene Zeile nennt — das Journal "
                 "wurde veraendert oder gehoert zu einem anderen Stand"
             )
+        if gelesen["manifest"] is not None and isinstance(letzte.get("bestand"), dict):
+            _pruefe_zahlen_der_zeile(ablage, letzte, gelesen["manifest"])
     return gelesen
+
+
+def _pruefe_zahlen_der_zeile(ablage: Ablage, letzte: Dict[str, Any], manifest_roh: bytes) -> None:
+    """Die Bestandszahlen der letzten gruenen Zeile, aus dem Stand nachgerechnet.
+
+    Angriffsrunde nach T27: Die letzte Zeile hat keinen Nachfolger, der sie
+    bindet, und vor ihrer ersten Verankerung auch keinen Anker. Stimmig
+    umgeschrieben (1003 statt 3 Vertraege in Kraft, 5000 Neugeschaeft)
+    verankerte der Export die Faelschung, der Konsument nahm sie an, und
+    der naechste Lauf kettete an. Die Zahlen sind aber keine eigene Aussage
+    der Zeile: Sie folgen aus dem Stand, den ihr Manifest-Hash bindet, und
+    aus den registrierten Eingaengen — und werden hier daraus gerechnet.
+    """
+    import io
+
+    from rechner_pipeline.bestand.fuehrung import bestand_am
+    from rechner_pipeline.betrieb.uebernahme import zielnummern
+
+    ausgaben = (json.loads(manifest_roh.decode("utf-8")).get("ausgaben") or {})
+
+    def lies(name: str) -> pd.DataFrame:
+        roh = (ablage.stand / name).read_bytes()
+        if sha256_bytes(roh) != ausgaben.get(name):
+            raise TageslaufError(
+                f"{ablage.stand / name}: nicht die Datei, die das Manifest des Stands bindet")
+        return read_portfolio(io.BytesIO(roh))
+
+    portfolio = lies("bestand_gesamt.parquet")
+    historie = lies("historie.parquet")
+    basis = lies("bestand.parquet") if "bestand.parquet" in ausgaben else None
+    heute = _dt.date.fromisoformat(str(letzte["heute"]))
+    schnitt = bestand_am(portfolio, historie, heute)
+    uebernommene: set = set()
+    je_eingang: Dict[str, int] = {}
+    from rechner_pipeline.betrieb.uebernahme import UebernahmeError
+
+    for u in letzte.get("uebernahmen") or []:
+        verzeichnis = ablage.uebernahme / str(u.get("fall"))
+        if not verzeichnis.is_dir():
+            raise TageslaufError(
+                f"Eingang {u.get('fall')!r}: gefuehrt und im Protokoll bezeugt, aber "
+                "nicht mehr in der Ablage (entfernt oder umbenannt) — ein Eingang ist "
+                "unantastbar; den urspruenglichen Eingang wiederherstellen")
+        try:
+            ziele = set(int(z) for z in zielnummern(verzeichnis).values())
+        except UebernahmeError as exc:
+            raise TageslaufError(f"Eingang {u.get('fall')!r}: {exc}") from exc
+        je_eingang[str(u.get("fall"))] = len(ziele)
+        uebernommene |= ziele
+    soll = {
+        "in_force": int(len(schnitt)),
+        "je_produkt": {str(k): int(v) for k, v in sorted(schnitt["produkt"].value_counts().items())},
+        "uebernommen_in_force": int(schnitt["police_id"].isin(uebernommene).sum()),
+        "policiert_beginn_folgt": int((portfolio["insurance_start"] > pd.Timestamp(heute)).sum()),
+    }
+    abweichend = [k for k, v in soll.items() if letzte["bestand"].get(k) != v]
+    for u in letzte.get("uebernahmen") or []:
+        if u.get("vertraege") != je_eingang.get(str(u.get("fall"))):
+            abweichend.append(f"uebernahmen[{u.get('fall')}].vertraege")
+    if basis is not None and "basisvertraege" in letzte:
+        # Die Basis des Laufs ist der eigene Anfangsbestand (bestand.parquet)
+        # plus jeder uebernommene Vertrag; alles darueber ist Neugeschaeft.
+        basis_soll = int(len(basis)) + sum(je_eingang.values())
+        if letzte["basisvertraege"] != basis_soll:
+            abweichend.append("basisvertraege")
+        if "neugeschaeft_seit_betriebsbeginn" in letzte and letzte[
+                "neugeschaeft_seit_betriebsbeginn"] != int(len(portfolio)) - basis_soll:
+            abweichend.append("neugeschaeft_seit_betriebsbeginn")
+    if abweichend:
+        raise TageslaufError(
+            f"Protokoll und Stand passen nicht zusammen: die letzte gruene Zeile "
+            f"({letzte.get('heute')}) nennt Zahlen, die nicht aus dem Stand folgen: "
+            f"{abweichend} — die Zeile wurde veraendert oder gehoert zu einem anderen Stand")
 
 
 def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
@@ -701,6 +776,8 @@ def _pruefe_eingaenge_gegen_protokoll(ablage: Ablage, uebernahmen) -> None:
                 f"die Fuehrung trat ({u.eingang_sha256[:16]}… statt {soll[:16]}…) — "
                 "ein Eingang ist unantastbar; den urspruenglichen Eingang "
                 "wiederherstellen")
+    # Dass keiner VERSCHWINDET (umbenannt, entfernt), prueft schon der
+    # Nachweisvertrag vor jedem Lauf (_pruefe_zahlen_der_zeile).
 
 
 def _bereits_gefuehrte_eingaenge(ablage: Ablage) -> set:
@@ -1856,12 +1933,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     except TageslaufError as exc:
         print(f"tageslauf: {exc}", file=sys.stderr)
         return EXIT_USAGE
+    except ValueError as exc:
+        # Eine unlesbare Eingabe (halb kopierte Config: TOML- oder
+        # UTF-8-Fehler) ist ein Eingangsfehler mit Meldung, kein Traceback
+        # mit Exit 1 (Angriffsrunde nach T27).
+        print(f"tageslauf: Eingabe nicht lesbar: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return EXIT_USAGE
     except OSError as exc:
         # Ein Ein-/Ausgabefehler VOR dem eigentlichen Lauf (Ruecknahme,
-        # Teilzeilenschnitt, Aufraeumen unter der Sperre) ist kein
-        # unbekannter Zustand, sondern ein Nachlauf-Fehler — Exit 4 mit
-        # Meldung statt Traceback und Exit 1 (Angriffsrunde Betrieb). Der
-        # naechste Lauf nimmt denselben Vorlauf wieder auf.
+        # Teilzeilenschnitt, Aufraeumen unter der Sperre) ist ein Fehler
+        # vor der Wache — Exit 2 mit Meldung statt Traceback und Exit 1.
+        # Der naechste Lauf nimmt denselben Vorlauf wieder auf.
         print(f"tageslauf: Ein-/Ausgabefehler im Vorlauf: {type(exc).__name__}: {exc}",
               file=sys.stderr)
         return EXIT_USAGE

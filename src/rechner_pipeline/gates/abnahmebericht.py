@@ -93,6 +93,7 @@ from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.vorbedingungen import (
     PB1_ROLLEN_DATEIEN,
     PB1_ROLLEN,
+    fortschreibung_pruefen,
     lies_und_pruefe_pb1,
     manifest_fuer_nachrechnung,
 )
@@ -158,7 +159,10 @@ GATE = "A-M4.migrationscontrolling"
 #: eigenen Aufruf nachgerechnet und Feld fuer Feld gegen den Beleg
 #: gehalten; die Fortschreibung ist Pflicht. Ein Beleg, der vorher
 #: durchging, kann jetzt fallen — die Akzeptanzmenge ist kleiner.
-GATE_VERSION = "4.0.0"
+#: 5.0.0 (Angriffsrunde nach T27): Die Probe muss die Uebernahme des Falls
+#: pruefen, ihre Fortschreibung reicht bis zum Folgestichtag, und P-B1
+#: laeuft auf dieser Fortschreibung vollstaendig.
+GATE_VERSION = "5.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -1679,6 +1683,59 @@ def _fuehrungsprobe_fehler(
     # Formbefunde darueber nicht.
     if not fehler:
         fehler += _fuehrungsprobe_nachgerechnet(probe, fall, Path(repo_root))
+    if not fehler:
+        fehler += _fuehrungsprobe_gegenstand_fehler(probe, fall, suite)
+    return fehler
+
+
+#: Wo der Zugangsstand im Fall liegt — dort schreibt ihn
+#: gates.bestand_uebernehmen, dort liest ihn die Registrierung.
+UEBERNAHME_VERZEICHNIS = "abgeleitet/bestand"
+
+
+def _fuehrungsprobe_gegenstand_fehler(probe: Dict[str, Any], fall: Path,
+                                      suite: Dict[str, Any]) -> List[str]:
+    """WORUEBER die Probe urteilt, bestimmt nicht der Beleg (Angriffsrunde
+    nach T27).
+
+    Der Beleg nannte Uebernahme-Verzeichnis und Fortschreibung selbst: eine
+    Fortschreibung, die am Tag nach dem Stichtag endete, prufte keine
+    einzige Buchung und bestand; eine Kopie des Uebernahme-Verzeichnisses
+    blieb gruen, als das Original spaeter veraendert wurde. Jetzt: die
+    Uebernahme ist die des Falls (die, die registriert wird), die
+    Fortschreibung reicht bis zum Folgestichtag der Suite, und P-B1 laeuft
+    auf ihr vollstaendig — jede Buchungsregel, die P-B1 kennt, gilt damit
+    auch fuer die Fuehrung, statt in der Probe ein zweites Mal
+    nachgebaut und dort luckenhaft zu sein.
+    """
+    parameter = (probe.get("provenienz") or {}).get("parameter") or {}
+    fehler: List[str] = []
+    if str(parameter.get("uebernahme")) != UEBERNAHME_VERZEICHNIS:
+        fehler.append(
+            f"Fuehrungsprobe prueft die Uebernahme {parameter.get('uebernahme')!r}, "
+            f"nicht die des Falls ({UEBERNAHME_VERZEICHNIS}) — die Probe muss den "
+            "Zugangsstand pruefen, der registriert wird")
+    aufruf = list((probe.get("provenienz") or {}).get("aufruf") or [])
+    try:
+        config = aufruf[aufruf.index("--config") + 1]
+    except (ValueError, IndexError):
+        return fehler + ["Fuehrungsprobe nennt keine Config im Aufruf"]
+    fort = Path(str(parameter.get("fortschreibung") or ""))
+    config_pfad = Path(config)
+    horizont, pb1 = fortschreibung_pruefen(
+        fort if fort.is_absolute() else fall / fort,
+        config_pfad if config_pfad.is_absolute() else fall / config_pfad)
+    stichtag_2 = str(suite.get("stichtag_2") or "")
+    if horizont is not None and stichtag_2 and horizont.isoformat() < stichtag_2:
+        fehler.append(
+            f"Fuehrungsprobe: die Fortschreibung endet am {horizont.isoformat()}, "
+            f"die Abnahme reicht bis zum Folgestichtag {stichtag_2} — die "
+            "Buchungen dazwischen hat niemand gegen die Pruefstrecke gehalten")
+    if pb1:
+        fehler.append(
+            f"Fuehrungsprobe: P-B1 weist die gepruefte Fortschreibung ab "
+            f"({len(pb1)} Befund(e), z. B. {pb1[0][:300]}) — die Fuehrung, ueber die "
+            "A-M4 urteilt, ist nicht belegt")
     return fehler
 
 

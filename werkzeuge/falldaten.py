@@ -1014,6 +1014,12 @@ def _pruefe_abschluesse_gegen_das_protokoll(
     """
     from rechner_pipeline.betrieb.seite import PAKET_ABSCHLUESSE_DIR, juengste_abschluesse
 
+    ohne_datei = [a.get("stichtag") for a in (stand.get("abschluesse") or [])
+                  if a.get("in_kraft") is not None and not a.get("datei")]
+    if ohne_datei:
+        raise FalldatenFehler(
+            f"{paket}: Abschluss {ohne_datei[0]!r} nennt eine Vertragszahl ohne "
+            "Abschlussdatei — eine Zahl ohne Beleg wird nicht veroeffentlicht")
     erwartet = juengste_abschluesse(list(stand.get("abschluesse") or []))
     for a in erwartet:
         name = f"{PAKET_ABSCHLUESSE_DIR}/{a.get('datei')}"
@@ -1210,7 +1216,8 @@ def _pruefe_auslieferung(paket: Path, fall: Optional[Path],
 def _pruefe_anker(paket: Path, stand: Dict[str, Any],
                   anker_datei: Optional[Path],
                   fall: Optional[Path] = None,
-                  protokoll_roh: Optional[bytes] = None) -> Dict[str, Any]:
+                  protokoll_roh: Optional[bytes] = None,
+                  ort: Optional[Path] = None) -> Dict[str, Any]:
     """Das Paket gegen einen Anker AUSSERHALB des Pakets halten (T24-04 b).
 
     Das Paket belegt sich bis hierher selbst: Jede Kennzahl ist aus
@@ -1231,7 +1238,10 @@ def _pruefe_anker(paket: Path, stand: Dict[str, Any],
 
     from rechner_pipeline.models.zeichnung import ausserhalb_von
 
-    if anker_datei is not None and not ausserhalb_von(Path(anker_datei), Path(paket)):
+    # ``ort``: das Paket, wie es auf der Platte liegt — geprueft wird aus
+    # einer eingefrorenen Kopie, aber "liegt der Anker im Paket?" fragt
+    # nach dem Original.
+    if anker_datei is not None and not ausserhalb_von(Path(anker_datei), Path(ort or paket)):
         raise FalldatenFehler(
             f"{paket}: der Anker {anker_datei} liegt IM Paket — ein Bezug, der "
             "mit dem Paket kommt, bindet es nicht: Er wird mit ihm geschrieben "
@@ -1300,8 +1310,22 @@ def betrieb(paket: Optional[Path],
             "--paket <ziel> --anker <verzeichnis>"
         )
     prov = stand.get("provenienz") or {}
-    protokoll_roh = _pruefe_stands_paket(paket, stand, prov)
-    verankerung = _pruefe_anker(paket, stand, anker_datei, fall, protokoll_roh)
+    # EINE Lesung je Datei (Angriffsrunde nach T27): Jede Pruefung las ihre
+    # Datei selbst — gehasht wurde das Tagesjournal auf der ersten Lesung,
+    # gezaehlt auf der zweiten, und ein Schreiber dazwischen verdoppelte
+    # die veroeffentlichten Buchungen. Das Paket wird deshalb einmal
+    # gelesen, jede Datei gegen ihren Hash gehalten und in ein privates
+    # Verzeichnis eingefroren; ALLE Pruefungen laufen dort.
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="stands-paket-") as tmp:
+        eingefroren = _friere_paket_ein(paket, stand, Path(tmp))
+        try:
+            protokoll_roh = _pruefe_stands_paket(eingefroren, stand, prov)
+            verankerung = _pruefe_anker(eingefroren, stand, anker_datei, fall, protokoll_roh,
+                                        ort=paket)
+        except FalldatenFehler as exc:
+            raise FalldatenFehler(str(exc).replace(str(eingefroren), str(paket))) from exc
     return {
         "vorhanden": True,
         "stand": stand.get("stand"),
@@ -1321,6 +1345,31 @@ def betrieb(paket: Optional[Path],
         "quelle": str(paket),
         "verankerung": verankerung,
     }
+
+
+def _friere_paket_ein(paket: Path, stand: Dict[str, Any], ziel: Path) -> Path:
+    """Jede in stand.json genannte Datei EINMAL lesen, gegen ihren Hash
+    halten und nach ``ziel`` schreiben; stand.json dazu. Rueckgabe: das
+    eingefrorene Paket."""
+    import hashlib
+
+    eingefroren = ziel / "paket"
+    eingefroren.mkdir()
+    (eingefroren / "stand.json").write_text(
+        json.dumps(stand, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    for name, soll in sorted((stand.get("dateien") or {}).items()):
+        quelle = paket / str(name)
+        if Path(str(name)).is_absolute() or ".." in Path(str(name)).parts:
+            raise FalldatenFehler(f"{paket}: Belegdatei {name!r} liegt nicht im Paket")
+        if not quelle.is_file():
+            raise FalldatenFehler(f"{paket}: Belegdatei {name!r} fehlt")
+        roh = quelle.read_bytes()
+        if hashlib.sha256(roh).hexdigest() != soll:
+            raise FalldatenFehler(f"{paket}: Belegdatei {name!r} hat nicht den Hash aus stand.json")
+        ziel_datei = eingefroren / str(name)
+        ziel_datei.parent.mkdir(parents=True, exist_ok=True)
+        ziel_datei.write_bytes(roh)
+    return eingefroren
 
 
 def sammle(fall: Path, abzuege: List[str],

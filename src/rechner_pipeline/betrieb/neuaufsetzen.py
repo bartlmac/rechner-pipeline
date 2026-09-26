@@ -90,6 +90,15 @@ def neu_aufsetzen(
     """
     stand = Path(stand)
     fall = Path(fall)
+    # Der Schluessel VOR jedem Aufbau (Angriffsrunde nach T27): Die
+    # Registrierung verweigert ohne ihn — erst nach dem Anlegen der neuen
+    # Ablage, und der halbe Aufbau blieb daneben liegen.
+    from rechner_pipeline.betrieb import uebernahme as _ueb
+
+    if not (schluesselring if schluesselring is not None else _ueb._STANDARD_SCHLUESSELRING):
+        raise NeuaufsetzenError(
+            "ohne Freigabeschluessel wird nichts aufgebaut — die Registrierung des "
+            "neuen Eingangs verlangt ihn; --freigabe-schluessel angeben")
     if stand.is_symlink() or not stand.is_dir():
         raise NeuaufsetzenError(
             f"{stand}: keine Ablage (kein echtes Verzeichnis) — fuer die erste "
@@ -226,7 +235,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--archiv", default=None, help="Archivziel der alten Ablage (Standard: <stand>.archiv-<zeit>).")
     parser.add_argument("--freigabe-schluessel", action="append", default=None,
                         help="Pfad eines Freigabeschluessels (mehrfach moeglich), ausserhalb des Falls; "
-                             "prueft die Signatur des A-M4-Snapshots beim Anlegen des Eingangs.")
+                             "prueft die Signatur des A-M4-Snapshots beim Anlegen des Eingangs. "
+                             "Pflicht: ohne ihn wird nichts aufgebaut.")
     ns = parser.parse_args(argv)
     try:
         stichtag = _dt.date.fromisoformat(ns.stichtag)

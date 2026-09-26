@@ -189,7 +189,7 @@ def _eingang_pb1_fehler(verzeichnis: Path, stichtag: _dt.date, config_pfad: Path
     if mit_config:
         eingaben["config"] = config_pfad
     _tab, _geprueft, fehler, usage = lies_und_pruefe_pb1(
-        eingaben, bis=stichtag, ohne_herleitung=not mit_config)
+        eingaben, bis=stichtag)
     return [f"{b.get('code')}: {b.get('message')}" for b in usage + fehler]
 
 
@@ -1348,9 +1348,11 @@ def eingang_anlegen(
     # Schichten, Verankerung und Merkmale (Angriffsrunde 2 Betrieb, Fund
     # N21: die Schleife lief nur ueber die Pflichttabellen, obwohl
     # belegte_tabellen die Hashes der Nebentabellen laengst gesammelt
-    # hatte; eine getauschte Scheibentabelle ging ungeprueft ein). Eine
-    # Nebentabelle, die der Graph NICHT nennt, ist keine Luecke im Sinne
-    # von Annahme 5 (die gilt den drei Pflichttabellen).
+    # hatte; eine getauschte Scheibentabelle ging ungeprueft ein). Und eine
+    # mitgebrachte Nebentabelle, die der Graph NICHT nennt, ist ebenso eine
+    # Luecke wie eine Pflichttabelle (Angriffsrunde nach T27: eine nach der
+    # Abnahme hinzugelegte Korrekturschicht hob den Rueckkaufswert auf das
+    # Zwanzigfache). Die Fuehrungsprobe bindet jede Tabelle, die sie liest.
     for datei in (f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)):
         quell_pfad = quelle / datei
         if datei not in roh:
@@ -1358,8 +1360,10 @@ def eingang_anlegen(
         ist = sha256_bytes(roh[datei])
         soll = bezeugter_hash(belegt, fall, quell_pfad, datei)
         if soll is None:
-            if datei[:-len(".parquet")] in PFLICHT:
-                unbelegt.append(datei)
+            # JEDE mitgebrachte Tabelle, nicht nur die drei Pflichttabellen
+            # (Angriffsrunde nach T27): Eine nach der Abnahme hinzugelegte
+            # Korrekturschicht ging ungeprueft in Storno und Bewertung ein.
+            unbelegt.append(datei)
         elif soll != ist:
             raise UebernahmeError(
                 f"{quell_pfad}: die Tabelle ist nicht die, die der "
@@ -1586,8 +1590,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="Verzeichnis des Zugangsstands (Default: <fall>/abgeleitet/bestand).")
     parser.add_argument("--freigabe-schluessel", action="append", default=None,
                         help="Pfad eines Freigabeschluessels (mehrfach moeglich), ausserhalb des "
-                             "Falls; prueft die Signatur des A-M4-Snapshots. Ohne ihn wird "
-                             "unverifiziert registriert, und der Tageslauf nimmt den Eingang nicht.")
+                             "Falls; prueft die Signatur des A-M4-Snapshots. Pflicht: ohne ihn "
+                             "wird nichts registriert, denn der Tageslauf nimmt nur einen "
+                             "verifizierten Eingang an.")
     parser.add_argument("--snapshot", default=None,
                         help="Snapshot-Hash der A-M4-Annahme (Default: aus dem Gate-Beleg des Falls).")
     ns = parser.parse_args(argv)
@@ -1612,6 +1617,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
     except UebernahmeError as exc:
         print(f"uebernahme: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        # Eine unlesbare Eingabe (etwa eine halb kopierte Config der
+        # Ablage) ist ein Eingangsfehler mit Meldung (Angriffsrunde nach T27).
+        print(f"uebernahme: Eingabe nicht lesbar: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     except OSError as exc:
         # Meldung statt Traceback und Exit 1, wie tageslauf und seite
