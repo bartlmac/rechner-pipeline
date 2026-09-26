@@ -39,7 +39,7 @@ try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
 except ImportError:  # pragma: no cover - fremde Plattform
     fcntl = None  # type: ignore[assignment]
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
 
@@ -706,7 +706,9 @@ def belegte_tabellen(fall: Path, snapshot: Dict[str, Any]) -> Dict[str, str]:
     }
     if not gesucht:
         return {}
-    tabellen = {f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)}
+    # Auch der Uebernahmebeleg (Angriffsrunde nach T27): Er traegt die
+    # Tarifwerk-Schalter der Abnahme; die Fuehrungsprobe bindet ihn.
+    tabellen = {f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)} | set(BELEGE)
     gefunden: Dict[str, str] = {}
     for ort in BELEGORTE:
         wurzel = Path(fall) / ort
@@ -862,6 +864,11 @@ class Uebernahme:
     #: Quellnummer -> Zielnummer. Geprueft gelesen (T26-13), damit eine
     #: Rueckfrage nach der Herkunft einer Police beantwortbar bleibt.
     uebersetzung: Dict[int, int] = dataclasses.field(default_factory=dict)
+    #: SHA-256 der eingang.json, wie sie gelesen wurde. Die Protokollzeile
+    #: nennt ihn; ein spaeterer Lauf haelt den Eingang dagegen (Angriffsrunde
+    #: nach T27: ein nach dem Eintritt stimmig umgeschriebener Eingang
+    #: rechnete die Geschichte seit Betriebsbeginn neu).
+    eingang_sha256: str = ""
 
 
 def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: Dict[str, Any]) -> List[str]:
@@ -870,7 +877,11 @@ def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: 
     (Freischaltung, Schritt 2 und 9). Leer = in Ordnung."""
     soll = beleg.get("tarifwerk")
     if not isinstance(soll, dict):
-        return []
+        # Ein Beleg ohne Tarifwerk ist keine Erlaubnis, sondern eine Luecke
+        # (Angriffsrunde nach T27): Vorher war er "in Ordnung", und ein
+        # entfernter oder geleerter Beleg umging die Pruefung ganz.
+        return ["der Uebernahmebeleg nennt kein Tarifwerk — gegen welche Schalter "
+                "die Abnahmen bestanden wurden, ist nicht ablesbar"]
     fehler: List[str] = []
     for name in sorted(set(generationen)):
         gen = next((g for g in config.generationen if g.name == name), None)
@@ -889,6 +900,11 @@ def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: 
 
 
 def _lies_eingang(verzeichnis: Path) -> Dict[str, Any]:
+    return _lies_eingang_roh(verzeichnis)[0]
+
+
+def _lies_eingang_roh(verzeichnis: Path) -> Tuple[Dict[str, Any], str]:
+    """Die Eingangsdatei EINMAL lesen: Inhalt und Hash derselben Bytes."""
     pfad = verzeichnis / EINGANG_DATEI
     if not pfad.is_file():
         raise UebernahmeError(
@@ -897,13 +913,14 @@ def _lies_eingang(verzeichnis: Path) -> Dict[str, Any]:
             "von Hand kopiert"
         )
     try:
-        daten = json.loads(pfad.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        roh = pfad.read_bytes()
+        daten = json.loads(roh.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise UebernahmeError(f"{pfad}: nicht lesbar: {exc}") from exc
     fehler = validate_eingang(daten)
     if fehler:
         raise UebernahmeError(f"{pfad}: " + "; ".join(fehler))
-    return daten
+    return daten, sha256_bytes(roh)
 
 
 def validate_eingang(daten: Any) -> List[str]:
@@ -1025,7 +1042,7 @@ def _ist_sha256(wert: Any) -> bool:
 def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
     """Einen Eingang lesen — jede Datei gegen ihre registrierte Summe."""
     verzeichnis = Path(verzeichnis)
-    eingang = _lies_eingang(verzeichnis)
+    eingang, eingang_sha256 = _lies_eingang_roh(verzeichnis)
     tabellen: Dict[str, Optional[pd.DataFrame]] = {}
     for name, spalten in {**PFLICHT, **OPTIONAL}.items():
         datei = f"{name}.parquet"
@@ -1157,6 +1174,7 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
         beleg=beleg,
         band={k: int(v) for k, v in (eingang.get("band") or {}).items()},
         uebersetzung=uebersetzung,
+        eingang_sha256=eingang_sha256,
     )
 
 
@@ -1259,6 +1277,15 @@ def eingang_anlegen(
         raise UebernahmeError(f"{fall_json}: nicht lesbar oder ohne name: {exc}") from exc
     if not fallname or "/" in fallname or fallname in (".", ".."):
         raise UebernahmeError(f"{fall_json}: name {fallname!r} taugt nicht als Verzeichnisname")
+    # Kein Steuer-, Format- oder Trennzeichen (Angriffsrunde nach T27): Der
+    # Name steht roh in jeder Protokollzeile; ein U+2028 darin machte das
+    # Protokoll fuer jeden Leser mit anderer Zeilengrenze unlesbar.
+    import unicodedata
+
+    if any(unicodedata.category(z) in ("Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp") for z in fallname):
+        raise UebernahmeError(
+            f"{fall_json}: name {fallname!r} traegt ein Steuer- oder Trennzeichen — "
+            "als Fallname im Protokoll nicht zulaessig")
     quelle = Path(quelle) if quelle is not None else fall / "abgeleitet" / "bestand"
     fehlend = [f"{n}.parquet" for n in PFLICHT if not (quelle / f"{n}.parquet").is_file()]
     if fehlend:
@@ -1276,6 +1303,16 @@ def eingang_anlegen(
     # Der Snapshot ist Pflicht und wird geprueft (T22-06), BEVOR irgendetwas
     # angelegt wird.
     ring = schluesselring if schluesselring is not None else _STANDARD_SCHLUESSELRING
+    if not ring:
+        # Registriert wird nur, was der Tagesbetrieb annimmt (Angriffsrunde
+        # nach T27): Ohne Schluessel entstand ein Eingang mit
+        # signatur_verifiziert = false, den jeder Tageslauf verweigerte —
+        # und neu registrieren ging nicht, weil ein Eingang nie
+        # ueberschrieben wird. Der Betrieb stand.
+        raise UebernahmeError(
+            "ohne Freigabeschluessel wird nichts registriert — der Tagesbetrieb "
+            "nimmt nur einen Eingang mit verifizierter Signatur an; "
+            "--freigabe-schluessel angeben")
     snapshot, snapshot_name, verifiziert = lies_am4_snapshot(
         fall, snapshot_sha256, schluesselring=ring)
     # Zeichnungsschicht zu Ende (Entscheid 2026-09-22): Registriert wird
@@ -1344,6 +1381,25 @@ def eingang_anlegen(
             "Tabelle(n) nicht. Ohne diesen Bezug ist der Eingang eine "
             "Behauptung (Befund T26-03; Annahme 5 streng)"
         )
+    # Der Uebernahmebeleg ist Pflicht und muss der bezeugte sein
+    # (Angriffsrunde nach T27): Er traegt die Tarifwerk-Schalter, gegen die
+    # der Tageslauf die Config haelt. Nur die Tabellen wurden gegen den
+    # Graphen gehalten; ein geaenderter oder entfernter Beleg liess den
+    # Betrieb mit anderen Schaltern fuehren, als abgenommen war.
+    for datei in BELEGE:
+        if datei not in roh:
+            raise UebernahmeError(
+                f"{quelle / datei}: der Uebernahmebeleg fehlt — ohne ihn ist nicht "
+                "ablesbar, unter welchem Tarifwerk die Abnahmen bestanden wurden")
+        soll = bezeugter_hash(belegt, fall, quelle / datei, datei)
+        ist = sha256_bytes(roh[datei])
+        if soll != ist:
+            raise UebernahmeError(
+                f"{quelle / datei}: der Uebernahmebeleg ist nicht der, den der "
+                "A-M4-Snapshot bezeugt"
+                + (" (der Beleggraph nennt ihn nicht)" if soll is None
+                   else f" ({ist[:16]}… statt {soll[:16]}…)")
+                + " — den abgenommenen Beleg uebernehmen oder den Fall neu abnehmen")
     ziel = Path(stand) / UEBERNAHME_DIR / fallname
     if ziel.exists():
         raise UebernahmeError(
@@ -1556,6 +1612,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
     except UebernahmeError as exc:
         print(f"uebernahme: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        # Meldung statt Traceback und Exit 1, wie tageslauf und seite
+        # (Angriffsrunde nach T27).
+        print(f"uebernahme: Ein-/Ausgabefehler: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     print(f"uebernahme: Eingang angelegt -> {ziel}", file=sys.stderr)
     return 0

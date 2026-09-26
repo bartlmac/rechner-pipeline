@@ -80,6 +80,7 @@ from rechner_pipeline.gates._common import (
     lies_gehasht,
     parse_gate_args,
     run_command,
+    schreibe_exklusiv,
     utc_now,
 )
 from rechner_pipeline.gates._fall_scope import (
@@ -2579,8 +2580,7 @@ def main(argv: Optional[List[str]] = None):
         json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     ).encode("utf-8")
     try:
-        with ziel.open("xb") as datei:
-            datei.write(payload)
+        schreibe_exklusiv(ziel, payload)
     except FileExistsError:
         return _usage(f"Snapshot existiert bereits: {ziel} — nie ueberschreiben")
     ergebnis_summary = {

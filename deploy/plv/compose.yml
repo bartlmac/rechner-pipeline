@@ -15,5 +15,14 @@ services:
       PLV_IMAGE_DIGEST: ${IMAGE_DIGEST:-}
       PLV_IMAGE_TAG: ${IMAGE_TAG:-latest}
     volumes:
-      - ./daten:/daten
+      # Kein stilles Anlegen (Angriffsrunde nach T27): Fehlt ./daten — etwa
+      # weil ein Neuaufsetzen zwischen seinen zwei Umbenennungen endete —,
+      # legte Docker ein leeres root-eigenes Verzeichnis an, und die Ablage
+      # war dauerhaft gesperrt. So bricht der Lauf ab, und ein erneutes
+      # neuaufsetzen auf dem Host vollendet den Tausch.
+      - type: bind
+        source: ./daten
+        target: /daten
+        bind:
+          create_host_path: false
     command: ["--stand", "/daten"]

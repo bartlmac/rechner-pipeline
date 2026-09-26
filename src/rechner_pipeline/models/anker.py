@@ -51,7 +51,11 @@ from typing import Any, Dict, List, Optional
 ANKER_DATEI = "anker.jsonl"
 #: Schema 2 (Entscheid des Maintainers 2026-09-16): Der Satz sagt, WAS er
 #: ist und WER ihn gezeichnet hat.
-ANKER_SCHEMA_VERSION = 2
+#: Schema 3 (Angriffsrunde nach T27): Der Satz bindet zusaetzlich die
+#: vollstaendige Dateiliste des Pakets (``dateien_sha256``) — jede
+#: mitgelieferte Datei haengt damit am externen Anker, nicht nur Manifest,
+#: Journal und die letzte Protokollzeile.
+ANKER_SCHEMA_VERSION = 3
 
 #: Ein gewoehnlicher Export: eine Momentaufnahme des Stands. Der
 #: Betriebsagent zeichnet sie — eine Aussage ueber Urheberschaft.
@@ -110,15 +114,37 @@ def zeilen_hash(roh: str) -> str:
     return hashlib.sha256(roh.encode("utf-8")).hexdigest()
 
 
-def _letzte_zeile(protokoll: Path) -> str:
+def jsonl_zeilen(text: str) -> List[str]:
+    """Die Zeilen einer JSONL-Datei — getrennt an LF, genau wie geschrieben.
+
+    ``str.splitlines`` trennt auch an U+2028, U+0085 und anderen Zeichen,
+    die ``json.dumps(..., ensure_ascii=False)`` roh in eine Zeile schreibt
+    (Angriffsrunde nach T27: ein Fallname mit U+2028 machte das Protokoll
+    ab dem zweiten Lauf unlesbar). Schreiber und Leser benutzen dieselbe
+    Zeilengrenze; leere Zeilen zaehlen nicht.
+    """
+    return [z for z in text.split("\n") if z.strip()]
+
+
+def dateien_hash(dateien: Dict[str, Any]) -> str:
+    """Der Hash der Dateiliste eines Pakets (Name -> SHA-256), kanonisch."""
+    return hashlib.sha256(json.dumps(
+        {str(k): str(v) for k, v in dict(dateien).items()},
+        sort_keys=True, ensure_ascii=True).encode("ascii")).hexdigest()
+
+
+def _protokolltext(protokoll: Path) -> str:
+    return Path(protokoll).read_text(encoding="utf-8")
+
+
+def _letzte_zeile(protokoll: Path, *, text: Optional[str] = None) -> str:
     """Der ROHTEXT der letzten Protokollzeile.
 
     Roh, nicht geparst: Gehasht wird, was auf der Platte steht. Eine
     Zeile, die beim Parsen und Wiederausgeben dieselbe Bedeutung, aber
     andere Bytes ergibt, waere sonst derselbe Anker.
     """
-    zeilen = [z for z in protokoll.read_text(encoding="utf-8").splitlines()
-              if z.strip()]
+    zeilen = jsonl_zeilen(text if text is not None else _protokolltext(protokoll))
     if not zeilen:
         raise AnkerFehler(f"{protokoll}: leeres Protokoll — nichts zu verankern")
     return zeilen[-1]
@@ -127,11 +153,16 @@ def _letzte_zeile(protokoll: Path) -> str:
 def ankersatz(
     protokoll: Path, stand: str, manifest_sha256: str, journal_sha256: str,
     *, art: str = ART_MOMENTAUFNAHME, erstellt: Optional[str] = None,
+    dateien: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Der Satz, der ein Paket bindet — ohne ihn irgendwo abzulegen."""
+    """Der Satz, der ein Paket bindet — ohne ihn irgendwo abzulegen.
+
+    ``dateien``: die Dateiliste des Pakets (stand.json["dateien"]); der
+    Satz bindet ihren Hash, damit auch Bericht und Seite am Anker haengen.
+    """
     if art not in ARTEN:
         raise AnkerFehler(f"unbekannte Art {art!r} (bekannt: {list(ARTEN)})")
-    return {
+    satz = {
         "schema_version": ANKER_SCHEMA_VERSION,
         "art": art,
         "stand": str(stand),
@@ -141,6 +172,33 @@ def ankersatz(
         "erstellt": erstellt or _dt.datetime.now(
             _dt.timezone.utc).replace(microsecond=0).isoformat(),
     }
+    if dateien is not None:
+        satz["dateien_sha256"] = dateien_hash(dateien)
+    return satz
+
+
+def pruefe_reihe(saetze: List[Dict[str, Any]], protokoll_text: str, quelle: str) -> None:
+    """Jeder Satz der Ankerdatei bezeugt eine Zeile, die im Protokoll steht.
+
+    Angriffsrunde nach T27: Die Reihe wurde nie als Reihe gelesen. Eine
+    schon verankerte letzte Protokollzeile liess sich in der Ablage
+    umschreiben (in_force 16 -> 1016), neu exportieren und verankern — der
+    frueheren Satz, der die echte Zeile bezeugte, fragte niemand. Das
+    Protokoll ist nur-anfuegbar: Was einmal verankert war, steht in jeder
+    spaeteren Fassung noch da. Fehlt eine bezeugte Zeile, wurde die Kette
+    umgeschrieben — oder die Ankerdatei gehoert zu einer anderen Ablage
+    (nach einem Neuaufsetzen gehoert ein neues Ankerverzeichnis dazu).
+    """
+    vorhanden = {zeilen_hash(z) for z in jsonl_zeilen(protokoll_text)}
+    fehlend = [s for s in saetze if s.get("protokoll_letzte_sha256") not in vorhanden]
+    if fehlend:
+        raise AnkerFehler(
+            f"{quelle}: {len(fehlend)} verankerte Protokollzeile(n) stehen nicht "
+            f"mehr im Protokoll (z. B. Stand {fehlend[0].get('stand')!r}, "
+            f"{str(fehlend[0].get('protokoll_letzte_sha256'))[:16]}…) — die Kette "
+            "wurde nach der Verankerung umgeschrieben, oder die Ankerdatei gehoert "
+            "zu einer anderen Ablage (nach einem Neuaufsetzen ein neues "
+            "Ankerverzeichnis waehlen)")
 
 
 def _nachricht(satz: Dict[str, Any], *, verfahren: str) -> bytes:
@@ -274,9 +332,7 @@ def lies_anker(pfad: Path) -> List[Dict[str, Any]]:
         # _schneide_fragment) — es zaehlt nicht, und es macht die
         # belegten Saetze davor nicht unlesbar.
         text = text[: text.rfind("\n") + 1]
-    for nr, roh in enumerate(text.splitlines(), 1):
-        if not roh.strip():
-            continue
+    for nr, roh in enumerate(jsonl_zeilen(text), 1):
         try:
             satz = json.loads(roh)
         except ValueError as exc:
@@ -291,7 +347,7 @@ def lies_anker(pfad: Path) -> List[Dict[str, Any]]:
 
 def pruefe(
     paket: Path, stand_json: Dict[str, Any], protokoll: Path,
-    saetze: List[Dict[str, Any]],
+    saetze: List[Dict[str, Any]], *, protokoll_text: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Das Paket gegen die Ankersaetze halten; liefert den treffenden Satz.
 
@@ -319,7 +375,12 @@ def pruefe(
             f"{paket}: der Anker bindet den Stand {satz.get('stand')!r}, "
             f"stand.json fuehrt {stand_json.get('stand')!r}"
         )
-    ist = zeilen_hash(_letzte_zeile(protokoll))
+    # EINE Lesung (Angriffsrunde nach T27): Der Konsument prueft Kette und
+    # Felder auf den Bytes, die er gelesen hat; die Ankerpruefung las das
+    # Protokoll ein zweites Mal, und ein Tausch dazwischen liess ein
+    # gefaelschtes Paket durch.
+    text = protokoll_text if protokoll_text is not None else _protokolltext(protokoll)
+    ist = zeilen_hash(_letzte_zeile(protokoll, text=text))
     if satz.get("protokoll_letzte_sha256") != ist:
         raise AnkerFehler(
             f"{paket}: die letzte Protokollzeile des Pakets traegt "
@@ -328,4 +389,12 @@ def pruefe(
             "Zeile schuetzt die Kette nicht, und der Anker sagt, dass sie "
             "sich geaendert hat"
         )
+    pruefe_reihe(saetze, text, str(paket))
+    if int(satz.get("schema_version") or 0) >= 3:
+        soll = satz.get("dateien_sha256")
+        if soll != dateien_hash(stand_json.get("dateien") or {}):
+            raise AnkerFehler(
+                f"{paket}: die Dateiliste von stand.json ist nicht die, die der "
+                "Anker bindet — eine mitgelieferte Datei wurde nach dem Export "
+                "ersetzt")
     return satz

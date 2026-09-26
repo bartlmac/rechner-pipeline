@@ -506,7 +506,7 @@ nachrechenbare Fassung dieser Zuordnung ist `HEILUNG` in
 | Geschäftsvorfall | Schicht | Leistungsseite |
 |---|---|---|
 | Beitragsfreistellung (`PEX`) | konsumiert | wertstetig als Zuschlag auf die beitragsfreie Summe (`VS_bfr`) |
-| Herabsetzung, prospektiv oder mit Abzug (`RED`) | konsumiert | in die beitragsfreie Summe des umgewandelten Teils; Ledger-Zeile `dDK_absorption`, keine Auszahlung |
+| Herabsetzung, prospektiv oder mit Abzug (`RED`) | konsumiert | in die beitragsfreie Summe des umgewandelten Teils; Ledger-Zeile `dDK_absorption`, keine Auszahlung. Mit Abzug trifft der Stornoabzug $(1-f)\cdot$StoAb nur den Grundvertrag, nicht die Schicht (Konvention wie beim Rückkauf). *Präzisierung 2026-09-26.* |
 | Herabsetzung als Teilkündigung (`RED`) | konsumiert | **vollständig in die Auszahlung** des gekündigten Grundanteils: `RKW_teilkuendigung` $= (1-f)\cdot$ Rückkaufswert der Grundversicherung $+$ Schichtwert. Der Stornoabzug trifft nur den Rückkaufswert der Grundversicherung, nicht die Schicht (Konvention wie beim Rückkauf). *Präzisierung 2026-09-22.* |
 | Rückkauf (`STO`) | ausgezahlt | im Rückkaufswert (`RKW`); wertkontinuierlich |
 | Dynamische Erhöhung (`ERH`) | bleibt | nicht rechnend — die Schicht wartet auf den nächsten rechnenden Vorfall |

@@ -151,6 +151,7 @@ def lies_und_pruefe_pb1(
     bis: Optional[_dt.date] = None,
     manifest: Optional[Mapping[str, Any]] = None,
     ohne_herleitung: bool = False,
+    ohne_plausibilitaet: bool = False,
 ) -> Tuple[Dict[str, Any], Dict[str, int], List[dict], List[dict]]:
     """Pruefen UND die geprueften Tabellen zurueckgeben.
 
@@ -159,6 +160,12 @@ def lies_und_pruefe_pb1(
     die Fuehrung, nicht die Buchungshoehen, und ein Bestand ausserhalb der
     Plausibilitaetsbaender soll sichtbar werden). Ohne diese Erklaerung ist
     ein Ledger mit Herabsetzungen ohne Config ein Bedienfehler.
+
+    ``ohne_plausibilitaet=True`` laesst mit Config die Plausibilitaets-
+    baender weg und NUR sie (der Bestandsbericht, Angriffsrunde nach T27):
+    Ein Bericht ueber einen Bestand ausserhalb der Baender ist gewollt;
+    Buchungen, die keine registrierte Herabsetzung erzeugt, oder ein
+    Anteil, den die Config nicht belegt, sind es nicht.
 
     Der CLI-Produzent und A-M4 benutzen bewusst dieselbe Funktion. So ist ein
     frei editierbares, passend neu gehashtes P-B1-Ledger keine Selbstaussage:
@@ -478,9 +485,10 @@ def lies_und_pruefe_pb1(
             try:
                 for meldung in config.validate():
                     errors.append({"code": "config", "message": meldung})
-                for meldung in sanity_check(portfolio, config.plausibilitaet):
-                    errors.append({"code": "sanity", "message": meldung})
-                geprueft["sanity_baender"] = len(config.plausibilitaet)
+                if not ohne_plausibilitaet:
+                    for meldung in sanity_check(portfolio, config.plausibilitaet):
+                        errors.append({"code": "sanity", "message": meldung})
+                    geprueft["sanity_baender"] = len(config.plausibilitaet)
             except Exception as exc:  # noqa: BLE001 — malformed data blockiert
                 errors.append({"code": "sanity", "message": str(exc)})
             # Das gamma1 jeder Scheibe gegen das Tarifwerk ihrer Generation

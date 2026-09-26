@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import dataclasses as _dc
 import datetime as _dt
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import numpy as _np
 
@@ -1948,3 +1948,85 @@ def validate_schichten(stamm: Any, schichten: Any, verankerung: Any) -> List[str
             except (TypeError, ValueError):
                 errors.append(f"{prefix}: {feld} ist kein JSON")
     return errors
+
+
+# --------------------------------------------------------------------------- #
+# Herabsetzung: die Soll-Buchungen und ihre Bindung — EINE Regel fuer P-B1
+# und die Fuehrungsprobe (Angriffsrunde nach T27)
+# --------------------------------------------------------------------------- #
+
+
+def red_sollbuchungen(
+    vs_neu: float, absorbiert: float, auszahlung_rechnerisch: Optional[float],
+) -> Dict[str, float]:
+    """Die Buchungen, die EINE registrierte Herabsetzung im Ledger haben
+    muss — Betragsart -> Betrag. Die eine Regel fuer P-B1 und die
+    Fuehrungsprobe (Angriffsrunde nach T27: die Probe pruefte nur die
+    Zeilen, die da waren; gestrichene Auszahlungen bestanden sie).
+
+    Die neue Gesamtsumme immer; die absorbierte Korrekturschicht, wenn
+    eine traegt; bei der Teilkuendigung (``auszahlung_rechnerisch`` nicht
+    None) die Auszahlung, auf null gekappt, und die Kappung als eigene
+    Zeile, wenn gekappt wurde — dieselbe Regel wie in der Engine.
+    """
+    aus: Dict[str, float] = {"VS_herabsetzung": vs_neu}
+    if absorbiert:
+        aus["dDK_absorption"] = absorbiert
+    if auszahlung_rechnerisch is not None:
+        aus["RKW_teilkuendigung"] = max(0.0, auszahlung_rechnerisch)
+        if auszahlung_rechnerisch < 0.0:
+            aus["Kappung_teilkuendigung"] = -auszahlung_rechnerisch
+    return aus
+
+
+def red_bindung_fehler(
+    pid: int, anteil: float, verfahren: str, soll_verfahren: Optional[str], red_anteil: float,
+) -> List[str]:
+    """Verfahren und Anteil einer registrierten Herabsetzung gegen das
+    System: das Verfahren steht im Tarifwerk der Generation, der Anteil in
+    den Annahmen. Kennen die Annahmen keine Herabsetzung (red_anteil 0),
+    belegen sie keinen Anteil — dann ist die Herabsetzung unbelegt, nicht
+    frei (Angriffsrunde nach T27: jeder Anteil ging durch)."""
+    fehler: List[str] = []
+    if soll_verfahren is not None and verfahren != soll_verfahren:
+        fehler.append(
+            f"reduktionen police {pid}: Verfahren {verfahren!r}, das Tarifwerk "
+            f"der Generation sagt {soll_verfahren!r}")
+    if not red_anteil:
+        fehler.append(
+            f"reduktionen police {pid}: Herabsetzung mit Anteil {anteil!r}, die "
+            "Annahmen kennen keine (red_anteil = 0) — der Anteil ist unbelegt")
+    elif abs(anteil - red_anteil) > 1e-12:
+        fehler.append(
+            f"reduktionen police {pid}: Anteil {anteil!r}, die Annahmen sagen "
+            f"red_anteil = {red_anteil!r}")
+    return fehler
+
+
+def red_vollstaendigkeit_fehler(
+    pid: int, jahr: int, eigene: pd.DataFrame, soll_arten: Iterable[str],
+    wirkungstag: pd.Timestamp, *, fremde_arten: bool = True,
+) -> List[str]:
+    """Die RED-Zeilen einer Police gegen die Soll-Menge: jede Soll-Art
+    genau einmal, am Wirkungstag der Tabelle, und (``fremde_arten``) keine
+    Art, die die Herabsetzung nicht erzeugt — P-B1 meldet diese schon als
+    unbelegte Buchung und schaltet den Teil ab."""
+    import pandas as pd
+
+    fehler: List[str] = []
+    falscher_tag = eigene[eigene["status_date"] != wirkungstag]
+    if len(falscher_tag):
+        fehler.append(
+            f"police {pid} RED Jahr {jahr}: Wirkungstag der Buchung "
+            f"{pd.Timestamp(falscher_tag['status_date'].iloc[0]).date()} "
+            f"ist nicht der der Reduktionstabelle {pd.Timestamp(wirkungstag).date()}")
+    soll_arten = list(soll_arten)
+    for art in soll_arten:
+        n = int((eigene["betrag_art"] == art).sum())
+        if n != 1:
+            fehler.append(f"police {pid} RED Jahr {jahr}: {art} "
+                          + ("fehlt" if n == 0 else f"{n}-mal gebucht"))
+    fremd = sorted(set(str(a) for a in eigene["betrag_art"]) - set(soll_arten))
+    if fremde_arten and fremd:
+        fehler.append(f"police {pid} RED Jahr {jahr}: {fremd} gehoert nicht zu dieser Herabsetzung")
+    return fehler

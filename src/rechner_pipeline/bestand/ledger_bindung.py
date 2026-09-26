@@ -55,7 +55,12 @@ from rechner_pipeline.kern.korrekturschicht import (
     schichtwert_bei,
     zuschlag_bei_pex,
 )
-from rechner_pipeline.models.bestand import model_point_kwargs
+from rechner_pipeline.models.bestand import (
+    model_point_kwargs,
+    red_bindung_fehler,
+    red_sollbuchungen,
+    red_vollstaendigkeit_fehler,
+)
 
 #: Cent-Toleranz: Der Kern schreibt Buchung und Herleitung aus demselben
 #: Wert; eine Lieferung darf auf Cent gerundet haben. Ein vertauschter
@@ -177,21 +182,14 @@ class _Herleitung:
         if self.reduktion is None:
             return {}
         jahr, anteil, verfahren = self.reduktion
-        aus: Dict[str, float] = {"VS_herabsetzung": self.gesamt_vs(jahr)}
         absorbiert = absorbierte_schicht(self.grund, jahr, schicht)
-        if absorbiert:
-            aus["dDK_absorption"] = absorbiert
+        rechnerisch = None
         if verfahren == TEILKUENDIGUNG:
-            # Immer in der Soll-Menge, auf null gekappt; eine Kappung steht
-            # als eigene Zeile daneben — dieselbe Regel wie in der Engine.
             rechnerisch = (1.0 - anteil) * vertrags_rkw(
                 self.grund, [], jahr,
                 stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),
             ) + absorbiert
-            aus["RKW_teilkuendigung"] = max(0.0, rechnerisch)
-            if rechnerisch < 0.0:
-                aus["Kappung_teilkuendigung"] = -rechnerisch
-        return aus
+        return red_sollbuchungen(self.gesamt_vs(jahr), absorbiert, rechnerisch)
 
 
 #: Zustaende, die eine Police beenden — eine Zeile mit diesem Code am
@@ -276,14 +274,7 @@ def pruefe_ledger_betraege(
             continue
         tw = tarifwerk_je_generation.get(str(haupt.loc[pid, "tarif_generation"])) or {}
         soll_verfahren = tw.get("red_verfahren")
-        if soll_verfahren is not None and verfahren != soll_verfahren:
-            errors.append(
-                f"reduktionen police {pid}: Verfahren {verfahren!r}, das Tarifwerk "
-                f"der Generation sagt {soll_verfahren!r}")
-        if red_anteil and abs(anteil - red_anteil) > 1e-12:
-            errors.append(
-                f"reduktionen police {pid}: Anteil {anteil!r}, die Annahmen sagen "
-                f"red_anteil = {red_anteil!r}")
+        errors.extend(red_bindung_fehler(pid, anteil, verfahren, soll_verfahren, red_anteil))
 
     scheiben_je_police: Dict[int, List[Tuple[int, float]]] = {}
     if scheiben is not None:
@@ -483,18 +474,9 @@ def pruefe_ledger_betraege(
                             & (red_zeilen["vertragsjahr"] == jahr)]
         # Der Wirkungstag der Buchung IST der Wirkungstag der Tabelle —
         # sonst bewerten zwei Sichten denselben Bestand verschieden (N16).
-        falscher_tag = eigene[eigene["status_date"] != reduktion_datum[pid]]
-        if len(falscher_tag):
-            fehlend.append(
-                f"police {pid} RED Jahr {jahr}: Wirkungstag der Buchung "
-                f"{pd.Timestamp(falscher_tag['status_date'].iloc[0]).date()} "
-                f"ist nicht der der Reduktionstabelle {reduktion_datum[pid].date()}")
-        for art in v.red_buchungen(schicht_je_police.get(pid)):
-            n = int((eigene["betrag_art"] == art).sum())
-            if n != 1:
-                fehlend.append(
-                    f"police {pid} RED Jahr {jahr}: {art} "
-                    + ("fehlt" if n == 0 else f"{n}-mal gebucht"))
+        fehlend.extend(red_vollstaendigkeit_fehler(
+            pid, jahr, eigene, v.red_buchungen(schicht_je_police.get(pid)),
+            reduktion_datum[pid], fremde_arten=False))
     if fehlend:
         errors.append(
             f"ledger: {len(fehlend)} Buchung(en) registrierter Herabsetzungen "

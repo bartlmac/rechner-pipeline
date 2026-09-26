@@ -586,13 +586,15 @@ def test_die_schicht_traegt_keinen_beitrag():
     assert mit.vs_neu - ohne.vs_neu == pytest.approx(ZUSATZ / vx_bfr, rel=1e-12)
 
 
-def test_beim_verfahren_mit_abzug_traegt_die_schicht_den_abzug_mit():
-    """Sie geht in die Umwandlung ein wie der freiwerdende Teil auch —
-    nicht privilegiert, nicht benachteiligt."""
+def test_beim_verfahren_mit_abzug_traegt_den_abzug_die_grundscheibe():
+    """Der Stornoabzug ist ein Betrag des Grundvertrags, (1-f) x StoAb —
+    die Schicht geht ungekuerzt in die Umwandlung (Konvention wie beim
+    Rueckkauf und der Teilkuendigung, Grundsatz 9.7). Die fruehere Fassung
+    liess die Schicht den Abzug anteilig mittragen; das war nahe DR = 0
+    unbegrenzt und bei DR < 0 ein Geschenk (Angriffsrunde nach T27)."""
     ohne = reduziere(KERN, JAHR, 0.6, verfahren=MIT_ABZUG)
     mit = reduziere(KERN, JAHR, 0.6, verfahren=MIT_ABZUG, zusatz_dk=ZUSATZ)
-    zuwachs = mit.dk_nach - ohne.dk_nach
-    assert 0.0 < zuwachs < ZUSATZ, "mit Abzug bleibt weniger als der Rohwert"
+    assert mit.dk_nach - ohne.dk_nach == pytest.approx(ZUSATZ, rel=1e-12)
 
 
 def test_teilkuendigung_mit_schicht_faellt_hart_aus():

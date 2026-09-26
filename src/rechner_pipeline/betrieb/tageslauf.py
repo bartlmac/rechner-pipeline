@@ -124,6 +124,7 @@ from rechner_pipeline.betrieb.tagesjournal import (
 from rechner_pipeline.betrieb.uebernahme import (
     UEBERNAHME_DIR, UebernahmeError, lies_uebernahmen,
 )
+from rechner_pipeline.models.anker import jsonl_zeilen
 from rechner_pipeline.models.bestand import (
     BASIS_STATUS,
     LEDGER_NAMES,
@@ -167,7 +168,8 @@ PUBLISH_MARKER_DATEI = "publish.json"
 #: Uebergangsname des Symlinks beim atomaren Tausch.
 STAND_LINK_TMP = "stand.link"
 
-#: Exit-Codes: 0 gruen und uebernommen, 2 Aufruf-/Eingangsfehler, 3 Wache rot
+#: Exit-Codes: 0 gruen und uebernommen, 2 Aufruf-, Eingangs- oder Ein-/
+#: Ausgabefehler vor der Wache (Stand nicht uebernommen), 3 Wache rot
 #: (Stand nicht uebernommen), 4 Journal- oder Abschlussfehler nach gruener
 #: Wache (Stand nicht uebernommen).
 EXIT_OK, EXIT_USAGE, EXIT_WACHE_ROT, EXIT_NACHLAUF = 0, 2, 3, 4
@@ -470,11 +472,15 @@ def lies_protokoll(pfad: Path) -> List[Dict[str, Any]]:
     """
     if not Path(pfad).is_file():
         return []
+    return lies_protokoll_text(Path(pfad).read_text(encoding="utf-8"), str(pfad))
+
+
+def lies_protokoll_text(text: str, pfad: str) -> List[Dict[str, Any]]:
+    """Wie :func:`lies_protokoll`, auf schon gelesenen Bytes — fuer einen
+    Konsumenten, der Hash, Kette und Anker auf EINER Lesung prueft."""
     zeilen: List[Dict[str, Any]] = []
     vorgaenger_roh: Optional[str] = None
-    for nummer, roh in enumerate(Path(pfad).read_text(encoding="utf-8").splitlines(), 1):
-        if not roh.strip():
-            continue
+    for nummer, roh in enumerate(jsonl_zeilen(text), 1):
         try:
             zeile = json.loads(roh)
         except json.JSONDecodeError as exc:
@@ -669,6 +675,34 @@ def _festgeschriebene_abschluesse(ablage: Ablage) -> List[_dt.date]:
     return sorted(tage)
 
 
+def _pruefe_eingaenge_gegen_protokoll(ablage: Ablage, uebernahmen) -> None:
+    """Ein Eingang, den eine gruene Protokollzeile schon gefuehrt hat, ist
+    derselbe geblieben (Angriffsrunde nach T27).
+
+    Die Tabellen hingen an den Summen in eingang.json — und eingang.json an
+    nichts. Stimmig umgeschrieben (Tabelle neu, Summe nachgezogen) rechnete
+    der naechste Lauf die Geschichte seit Betriebsbeginn aus dem
+    geaenderten Eingang neu. Die Protokollzeile ist verkettet und extern
+    verankert; sie nennt den Hash der eingang.json, mit dem der Eingang
+    eintrat, und jeder spaetere Lauf haelt ihn dagegen.
+    """
+    bezeugt: Dict[str, str] = {}
+    for zeile in lies_protokoll(ablage.protokoll_pfad):
+        if not zeile.get("uebernommen"):
+            continue
+        for u in zeile.get("uebernahmen") or []:
+            if u.get("eingang_sha256"):
+                bezeugt.setdefault(str(u.get("fall")), str(u["eingang_sha256"]))
+    for u in uebernahmen:
+        soll = bezeugt.get(u.fall)
+        if soll is not None and soll != u.eingang_sha256:
+            raise TageslaufError(
+                f"Eingang {u.fall}: eingang.json ist nicht mehr die, mit der er in "
+                f"die Fuehrung trat ({u.eingang_sha256[:16]}… statt {soll[:16]}…) — "
+                "ein Eingang ist unantastbar; den urspruenglichen Eingang "
+                "wiederherstellen")
+
+
 def _bereits_gefuehrte_eingaenge(ablage: Ablage) -> set:
     """Die Faelle, die der letzte gruene Lauf schon gefuehrt hat."""
     gruene = [z for z in lies_protokoll(ablage.protokoll_pfad) if z.get("uebernommen")]
@@ -754,6 +788,13 @@ def _stand_bauen(
     ausgaben.append(write_portfolio(basis, ablage.arbeit / "bestand.parquet"))
 
     uebernahmen = lies_uebernahmen(ablage.uebernahme, config)
+    _pruefe_eingaenge_gegen_protokoll(ablage, uebernahmen)
+    # Ein vorausdatierter Eingang RUHT bis zu seinem Stichtag (Angriffsrunde
+    # nach T27): Gebucht wird, was geschehen ist. Vorher brach jeder Lauf
+    # davor rot ab, und der ganze Betrieb stand bis zum Stichtag still —
+    # ohne Buchung und ohne fristgerechten Monatsabschluss.
+    wartend = [u for u in uebernahmen if u.stichtag > heute]
+    uebernahmen = [u for u in uebernahmen if u.stichtag <= heute]
     merkmale = None
     verankerung: Optional[pd.DataFrame] = None
     scheiben_ueb: Optional[pd.DataFrame] = None
@@ -784,13 +825,11 @@ def _stand_bauen(
         # Bestandszugang (ereignisse._zugangslage), weil alles davor beim
         # abgebenden Unternehmen geschah — ein Zugang mitten im Betrieb
         # rechnet damit richtig, er war nur verboten.
-        if not betriebsbeginn <= ueb.stichtag <= heute:
+        if ueb.stichtag < betriebsbeginn:
             raise TageslaufError(
                 f"uebernahme {ueb.fall}: Stichtag {ueb.stichtag.isoformat()} "
-                "liegt ausserhalb der gefuehrten Zeit "
-                f"[{betriebsbeginn.isoformat()}, {heute.isoformat()}] — ein "
-                "Bestand tritt in Buecher ein, die es schon gibt, und an "
-                "einem Tag, der geschehen ist"
+                f"liegt vor dem Betriebsbeginn {betriebsbeginn.isoformat()} — "
+                "davor gibt es keine Buecher, in die der Bestand eintreten koennte"
             )
         if (
             ueb.fall not in schon_gefuehrt
@@ -916,10 +955,12 @@ def _stand_bauen(
         },
         # Fall-Bezug jeder Uebernahme (Konzept, Abschnitt 6): Der Zugang
         # ist als datierter Eingang nachweisbar, nicht als anonyme Zeile.
+        "wartende_uebernahmen": [
+            {"fall": u.fall, "stichtag": u.stichtag.isoformat()} for u in wartend],
         "uebernahmen": [
             {"fall": u.fall, "stichtag": u.stichtag.isoformat(),
              "vertraege": int(len(u.bestand)), "snapshot_sha256": u.snapshot_sha256,
-             "zeichnung": dict(u.zeichnung)}
+             "zeichnung": dict(u.zeichnung), "eingang_sha256": u.eingang_sha256}
             for u in uebernahmen
         ],
         "_uebernommene_policen": sorted(
@@ -1397,7 +1438,7 @@ def _anfuegen(pfad: Path, zeile: Dict[str, Any]) -> None:
     pfad.parent.mkdir(parents=True, exist_ok=True)
     vorgaenger = ""
     if pfad.is_file():
-        letzte = [z for z in pfad.read_text(encoding="utf-8").splitlines() if z.strip()]
+        letzte = jsonl_zeilen(pfad.read_text(encoding="utf-8"))
         if letzte:
             vorgaenger = _zeilen_hash(letzte[-1])
     zeile["vorgaenger_sha256"] = vorgaenger
@@ -1466,7 +1507,9 @@ def _tageslauf(
     # Stand, der mit der einen Config gerechnet und mit einer anderen
     # bezeugt war. Alle vier lesen jetzt dieselbe eingefrorene Kopie — mit
     # demselben Dateinamen, denn das Manifest nennt ihn.
-    with tempfile.TemporaryDirectory(prefix="lauf-config-") as tmp:
+    # Ein Fehler beim Aufraeumen der Kopie macht den gefuehrten Tag nicht
+    # ungeschehen (Angriffsrunde nach T27: Exit 4 "im Vorlauf" nach gruenem Tag).
+    with tempfile.TemporaryDirectory(prefix="lauf-config-", ignore_cleanup_errors=True) as tmp:
         eingefroren = Path(tmp) / config_pfad.name
         eingefroren.write_bytes(config_pfad.read_bytes())
         return _tageslauf_mit_config(
@@ -1751,12 +1794,6 @@ def _tageslauf_mit_config(
             zeile["seite"] = f"nicht gerendert: {type(exc).__name__}: {exc}"
     try:
         _anfuegen(ablage.protokoll_pfad, zeile)
-        # NUR wenn der Publish wirklich durch ist: Stand, Journal und
-        # Nachweis sagen dasselbe. Ein ROTER Lauf laesst den Marker
-        # liegen — sonst naehme der naechste Lauf nichts zurueck, und der
-        # halbe Publish bliebe stehen.
-        if zeile.get("uebernommen"):
-            entferne_publish_marker(ablage)
     except OSError as exc:
         # Der Stand ist uebernommen, die Zeile fehlt: Stand und Nachweis
         # sagen ab jetzt Verschiedenes, und der naechste gefuehrter_tag()
@@ -1770,6 +1807,19 @@ def _tageslauf_mit_config(
             f"{ablage.protokoll_pfad} schreibbar machen und den Lauf erneut "
             "starten; der Lauf ist idempotent"
         ) from exc
+    # NUR wenn der Publish wirklich durch ist: Stand, Journal und Nachweis
+    # sagen dasselbe. Ein ROTER Lauf laesst den Marker liegen — sonst naehme
+    # der naechste Lauf nichts zurueck, und der halbe Publish bliebe stehen.
+    # Das Wegraeumen steht NACH der Zeile und ausserhalb ihres Fehlerpfads
+    # (Angriffsrunde nach T27): Scheiterte es, meldete der Lauf "Zeile nicht
+    # geschrieben", obwohl der Tag gruen gefuehrt und belegt war.
+    if zeile.get("uebernommen"):
+        try:
+            entferne_publish_marker(ablage)
+        except OSError as exc:
+            print(f"tageslauf: Warnung: Publish-Marker nicht weggeraeumt "
+                  f"({type(exc).__name__}: {exc}) — der Tag ist gefuehrt und "
+                  "belegt; der naechste Lauf raeumt ihn", file=sys.stderr)
     return exit_code, zeile
 # --------------------------------------------------------------------------- #
 # CLI
@@ -1814,7 +1864,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         # naechste Lauf nimmt denselben Vorlauf wieder auf.
         print(f"tageslauf: Ein-/Ausgabefehler im Vorlauf: {type(exc).__name__}: {exc}",
               file=sys.stderr)
-        return EXIT_NACHLAUF
+        return EXIT_USAGE
     if zeile.get("bereits_gefuehrt"):
         print(f"tageslauf: {heute.isoformat()} bereits gefuehrt, nichts zu tun",
               file=sys.stderr)

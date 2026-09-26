@@ -620,7 +620,7 @@ def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
     dasselbe (leeres Nummernband -> gleiche Zielnummern). Rueckgabe: das
     Eingangsverzeichnis mit den umnummerierten Tabellen des Zielsystems."""
     from rechner_pipeline.betrieb import uebernahme as ueb
-    from tests.test_betrieb_uebernahme import _pb1_ledger, am4_snapshot
+    from tests.test_betrieb_uebernahme import _pb1_ledger, am4_snapshot, fuehrungsbeleg
 
     fall = fall_wurzel / name
     (fall / "abgeleitet" / "diagnostics").mkdir(parents=True)
@@ -629,7 +629,7 @@ def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
         json.dumps({"name": name, "schema_version": 1}), encoding="utf-8")
     _gealterter_zugangsstand(fall / "abgeleitet" / "bestand")
     ledger_sha = _pb1_ledger(fall)
-    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha)
+    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten, ensure_ascii=False), encoding="utf-8")
     (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(

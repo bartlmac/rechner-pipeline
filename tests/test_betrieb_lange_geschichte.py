@@ -99,24 +99,32 @@ def test_ein_zugang_mitten_im_betrieb_wird_gefuehrt(tmp_path):
     assert zeile["uebernahmen"][0]["stichtag"] == STICHTAG.isoformat()
 
 
-@pytest.mark.parametrize("betriebsbeginn, heute", [
-    (dt.date(2026, 6, 1), dt.date(2026, 6, 2)),   # Zugang vor dem ersten gefuehrten Tag
-    (dt.date(2025, 1, 1), dt.date(2025, 6, 1)),   # Zugang nach heute
-])
-def test_ein_zugang_ausserhalb_der_gefuehrten_zeit_wird_verweigert(
-    tmp_path, betriebsbeginn, heute
-):
-    """Vor dem ersten gefuehrten Tag gibt es keine Buecher, in die ein Bestand
-    eintreten koennte; nach heute ist nichts geschehen, was zu buchen waere.
-    Der Lauf bricht ab, ohne einen Stand zu uebernehmen."""
+def test_ein_zugang_vor_dem_ersten_gefuehrten_tag_wird_verweigert(tmp_path):
+    """Vor dem ersten gefuehrten Tag gibt es keine Buecher, in die ein
+    Bestand eintreten koennte. Der Lauf bricht ab, ohne einen Stand zu
+    uebernehmen."""
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
     ueb.eingang_anlegen(stand, fall, STICHTAG)
-    ablage = _ablage_ab(stand, betriebsbeginn)
-    code, zeile = tageslauf(ablage, heute)
+    ablage = _ablage_ab(stand, dt.date(2026, 6, 1))
+    code, zeile = tageslauf(ablage, dt.date(2026, 6, 2))
     assert code != EXIT_OK and zeile["uebernommen"] is False
-    assert "ausserhalb der gefuehrten Zeit" in zeile["fehler"]
+    assert "vor dem Betriebsbeginn" in zeile["fehler"]
     assert not ablage.stand.exists()
+
+
+def test_ein_zugang_nach_heute_ruht_bis_zu_seinem_stichtag(tmp_path):
+    """Nach heute ist nichts geschehen, was zu buchen waere — der Eingang
+    wartet, der eigene Betrieb laeuft (Angriffsrunde nach T27: vorher war
+    jeder Lauf bis zum Stichtag rot)."""
+    fall = _fall_mit_nebentabellen(tmp_path)
+    stand = tmp_path / "daten"
+    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ablage = _ablage_ab(stand, dt.date(2025, 1, 1))
+    code, zeile = tageslauf(ablage, dt.date(2025, 6, 1))
+    assert code == EXIT_OK, zeile.get("fehler")
+    assert zeile["uebernahmen"] == []
+    assert [u["fall"] for u in zeile["wartende_uebernahmen"]] == [fall.name]
 
 
 # --------------------------------------------------------------------------- #

@@ -35,6 +35,8 @@ from rechner_pipeline.models.bestand import (
     STATUS_HISTORIE_SPALTEN,
 )
 from tests.test_betrieb_uebernahme import (
+    fuehrungsbeleg,
+    uebernahmebeleg,
     PLV,
     STICHTAG,
     _fall,
@@ -182,6 +184,7 @@ def _kurzer_zugangsstand(ziel: Path, *, mit_pex: bool) -> None:
     write_portfolio(stamm, ziel / "bestand.parquet")
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(ledger, ziel / "ledger.parquet")
+    uebernahmebeleg(ziel, len(stamm))
 
 
 def _kurzer_fall(wurzel: Path, *, mit_pex: bool, name: str = "kurz-uebernahme") -> Path:
@@ -190,7 +193,7 @@ def _kurzer_fall(wurzel: Path, *, mit_pex: bool, name: str = "kurz-uebernahme") 
     (fall / "entscheide").mkdir()
     (fall / "fall.json").write_text(json.dumps({"name": name, "schema_version": 1}), encoding="utf-8")
     _kurzer_zugangsstand(fall / "abgeleitet" / "bestand", mit_pex=mit_pex)
-    daten = am4_snapshot(name, pb1_ledger_sha=_pb1_ledger(fall))
+    daten = am4_snapshot(name, pb1_ledger_sha=_pb1_ledger(fall), fuehrungsprobe_sha=fuehrungsbeleg(fall))
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten, ensure_ascii=False), encoding="utf-8")
     (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
@@ -398,7 +401,7 @@ def test_ein_ein_ausgabefehler_im_vorlauf_hat_einen_exit_code_des_vertrags(tmp_p
 
     monkeypatch.setattr(tl, "nimm_publish_zurueck", _kaputt)
     code = tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-03"])
-    assert code == tl.EXIT_NACHLAUF
+    assert code == tl.EXIT_USAGE
 
 
 def test_ein_fehlender_stand_bei_gefuehrtem_protokoll_ist_kein_neuanfang(tmp_path):

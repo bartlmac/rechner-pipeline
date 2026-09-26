@@ -46,10 +46,14 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from rechner_pipeline.models.anker import (
+    ANKER_DATEI,
     ART_AUSLIEFERUNG,
     ART_MOMENTAUFNAHME,
+    AnkerFehler,
     ankersatz,
     haenge_an,
+    lies_anker,
+    pruefe_reihe,
     satz_hash,
     zeichne,
 )
@@ -711,8 +715,14 @@ def ankerziel_fehler(ablage, paket_ziel: Path, anker_verzeichnis: Path) -> Optio
             "die Ankerdatei darf mit keiner anderen Datei denselben Inhalt "
             "teilen, sonst schreibt der Export in eine fremde Datei."
         )
+    # Die Nebenorte des Exports gehoeren zu dem, was er anfasst
+    # (Angriffsrunde nach T27): Bau- und Beiseite-Verzeichnis werden
+    # geloescht; ein Anker darin verschwand mit ihnen.
+    bau, beiseite = _paket_nebenorte(Path(paket_ziel))
     for was, bereich in (("die Ablage", Path(ablage.wurzel)),
-                         ("das Stands-Paket", Path(paket_ziel))):
+                         ("das Stands-Paket", Path(paket_ziel)),
+                         ("den Bauort des Exports", bau),
+                         ("den Beiseite-Ort des Exports", beiseite)):
         for pfad in (anker, datei):
             if not ausserhalb_von(pfad, bereich, muss_existieren=False):
                 return (
@@ -904,7 +914,19 @@ def _stands_paket_unter_sperre(
     satz = ankersatz(
         ablage.protokoll_pfad, str(modell.get("stand")),
         dateien[PAKET_MANIFEST], dateien[PAKET_JOURNAL], art=art,
+        dateien=modell["dateien"],
     )
+    # Die Reihe VOR dem Anfuegen (Angriffsrunde nach T27): Jede schon
+    # verankerte Zeile muss noch im Protokoll der Ablage stehen. Sonst
+    # verankerte der Export eine umgeschriebene Kette neu.
+    vorhanden = Path(anker_verzeichnis) / ANKER_DATEI
+    if vorhanden.is_file():
+        try:
+            pruefe_reihe(lies_anker(vorhanden),
+                         ablage.protokoll_pfad.read_text(encoding="utf-8"),
+                         str(ablage.protokoll_pfad))
+        except AnkerFehler as exc:
+            raise SeiteError(str(exc)) from exc
     if schluessel is not None:
         satz["zeichnung"] = _zeichnung_des_exports(
             satz, Path(schluessel), zeichnungsordnung, ablage.wurzel)
@@ -926,8 +948,16 @@ def _stands_paket_unter_sperre(
     if endziel.exists():
         os.rename(endziel, alt)
     os.rename(bau, endziel)
+    # Das neue Paket ist veroeffentlicht. Scheitert das Wegraeumen des alten,
+    # ist das kein Fehler des Exports (Angriffsrunde nach T27: Exit 2,
+    # obwohl der Konsument das neue Paket schon annahm) — der naechste
+    # Export raeumt den Rest (_raeume_paket_nebenorte).
     if alt.exists():
-        _entferne_paket(alt, PAKET_DATEI, "beiseitegelegtes frueheres Stands-Paket")
+        try:
+            _entferne_paket(alt, PAKET_DATEI, "beiseitegelegtes frueheres Stands-Paket")
+        except (OSError, SeiteError) as exc:
+            print(f"seite: Warnung: {alt} nicht weggeraeumt ({type(exc).__name__}: "
+                  f"{exc}) — der naechste Export raeumt ihn", file=sys.stderr)
     return endziel
 
 

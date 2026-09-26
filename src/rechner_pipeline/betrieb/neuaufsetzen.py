@@ -233,6 +233,23 @@ def main(argv: Optional[List[str]] = None) -> int:
     except ValueError as exc:
         print(f"neuaufsetzen: --stichtag: {exc}", file=sys.stderr)
         return 2
+    stand = Path(ns.stand)
+    if not stand.exists() and not stand.is_symlink():
+        # Ein unterbrochenes Neuaufsetzen zuerst vollenden (Angriffsrunde
+        # nach T27): Im Container sieht der Tageslauf die Geschwister der
+        # Ablage nicht; der dokumentierte Weg ist, neuaufsetzen erneut zu
+        # fahren, und das vollendet den Tausch, statt neu zu beginnen.
+        from rechner_pipeline.betrieb.tageslauf import _vollende_unterbrochenes_neuaufsetzen
+
+        try:
+            _vollende_unterbrochenes_neuaufsetzen(stand)
+        except (TageslaufError, OSError) as exc:
+            print(f"neuaufsetzen: {exc}", file=sys.stderr)
+            return 2
+        if stand.is_dir():
+            print(f"neuaufsetzen: unterbrochenen Tausch vollendet -> {stand}; "
+                  "naechster Schritt: der Tageslauf", file=sys.stderr)
+            return 0
     ring: Optional[Mapping[str, bytes]] = None
     if ns.freigabe_schluessel:
         from rechner_pipeline.models.freigabe import lade_schluesselring
@@ -250,6 +267,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
     except (NeuaufsetzenError, UebernahmeError, ValueError) as exc:
         print(f"neuaufsetzen: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        # Meldung statt Traceback und Exit 1, wie tageslauf und seite
+        # (Angriffsrunde nach T27).
+        print(f"neuaufsetzen: Ein-/Ausgabefehler: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     print(f"neuaufsetzen: alte Ablage archiviert -> {provenienz['archiv']}", file=sys.stderr)
     print(f"neuaufsetzen: Eingang angelegt -> {provenienz['eingang']}", file=sys.stderr)

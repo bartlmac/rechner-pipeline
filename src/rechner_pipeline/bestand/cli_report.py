@@ -243,11 +243,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     # 1.075 Stamm/Journal-Widerspruechen passierte ihn mit Exit 0 und
     # einem 977-KB-Bericht (externes Review T18-05). Ein Bericht ist das,
     # was ein Mensch anschaut — er darf nicht still etwas anderes zeigen
-    # als die Fuehrung. Die Config bleibt hier draussen: Plausibilitaets-
-    # baender sind ein Gate-Kriterium, ein Bericht ueber einen Bestand
-    # ausserhalb der Baender ist genau das, was man dann sehen will.
+    # als die Fuehrung. Plausibilitaetsbaender sind ein Gate-Kriterium, ein
+    # Bericht ueber einen Bestand ausserhalb der Baender ist genau das, was
+    # man dann sehen will — sie bleiben draussen, die Config nicht mehr
+    # (Angriffsrunde nach T27): Ohne sie renderte der Bericht verstuemmelte
+    # Herabsetzungen mit Exit 0, deren Kennzahlen den Vertrag ungekuerzt
+    # und deren Nachweisung ihn gekuerzt zeigten.
     # Was geprueft wurde, wird gerendert (kein zweites Lesen, T18-03).
-    tabellen, _, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=bis, ohne_herleitung=True)
+    if ns.config and "ledger" in eingaben:
+        eingaben["config"] = Path(ns.config)
+    tabellen, _, fehler, usage = lies_und_pruefe_pb1(
+        eingaben, bis=bis, ohne_herleitung=True, ohne_plausibilitaet=True)
+    if tabellen.get("config") is not None:
+        config = tabellen["config"]
     if fehler or usage:
         for eintrag in (usage + fehler)[:5]:
             print(f"bestand_report: {eintrag['message']}", file=sys.stderr)

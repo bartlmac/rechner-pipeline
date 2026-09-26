@@ -38,7 +38,9 @@ def test_dockerfile_installiert_wie_die_ci_und_laeuft_unprivilegiert():
 def test_compose_ohne_netz_mit_datenvolume():
     compose = _text("compose.yml")
     assert "network_mode: none" in compose
-    assert "./daten:/daten" in compose
+    assert "source: ./daten" in compose and "target: /daten" in compose
+    # Kein stilles Anlegen einer fehlenden Ablage (Angriffsrunde nach T27).
+    assert "create_host_path: false" in compose
     assert "rechner-pipeline-plv:${IMAGE_TAG" in compose
     assert "PLV_IMAGE_DIGEST" in compose and "PLV_IMAGE_TAG" in compose
     beispiel = _text("env.beispiel")

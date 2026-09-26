@@ -51,6 +51,8 @@ from tests.test_betrieb_uebernahme import (
     _pb1_ledger,
     _zugangsstand,
     am4_snapshot,
+    fuehrungsbeleg,
+    uebernahmebeleg,
 )
 
 
@@ -151,7 +153,7 @@ def test_config_wache_latent_bei_rate_null_und_hart_bei_erreichbarem_pfad(monkey
 
 # --- Instrument 3: die adversariale Probe an der Freischaltung -------------------
 
-def _fall_mit_generation(wurzel: Path, generation: str, name: str) -> Path:
+def _fall_mit_generation(wurzel: Path, generation: str, name: str, *, tarifwerk: "dict | None" = None) -> Path:
     """Ein Fall wie ``_fall``, dessen Zugangsstand die genannte Generation
     traegt — mit echtem P-B1-Ledger und A-M4-Snapshot auf den ENDGUELTIGEN
     Tabellen (erst Tabellen, dann Beleg, dann Snapshot)."""
@@ -165,8 +167,9 @@ def _fall_mit_generation(wurzel: Path, generation: str, name: str) -> Path:
         tab = read_portfolio(ziel / datei, expected_columns=spalten)
         tab["tarif_generation"] = generation
         write_portfolio(tab, ziel / datei)
+    uebernahmebeleg(ziel, 3, generation=generation, tarifwerk=tarifwerk)
     sha = _pb1_ledger(fall)
-    daten = am4_snapshot(name, pb1_ledger_sha=sha)
+    daten = am4_snapshot(name, pb1_ledger_sha=sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten, ensure_ascii=False), encoding="utf-8")
     (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
@@ -183,8 +186,10 @@ def test_die_freischaltung_blockiert_eine_generation_die_der_betrieb_nicht_fuehr
 
     Seit dem Bau der Teilkuendigung gibt es keine echte Luecke mehr; die
     Probe simuliert eine (``mit_abzug`` aus der Deklaration genommen).
-    Dieselbe Lieferung, dieselben Bytes: Nur der Schalter der Generation
-    in der Config der Laufzeit und die Deklaration entscheiden. Testwelt
+    Je Verfahren eine Lieferung, deren Uebernahmebeleg dasselbe Tarifwerk
+    nennt wie die Config der Laufzeit (seit der Beleg Pflicht ist, fiele
+    eine abweichende Config schon an der Tarifwerk-Pruefung) — so
+    entscheidet allein die Deklaration. Testwelt
     ist die kleine Config ohne Tarifzellen (sonst wiese die merkmale-
     Pflicht den Eingang VOR der Ratsche ab — der erste Entwurf dieses
     Tests war so blind); die Vorbedingungen stehen als Zusicherung.
@@ -207,16 +212,22 @@ def test_die_freischaltung_blockiert_eine_generation_die_der_betrieb_nicht_fuehr
     assert tk.annahmen.herabsetzung.a == 0.0, "Fixture: die Luecke muss LATENT sein"
 
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, _fall_mit_generation(tmp_path / "fall", gen.name, "quell-lieferung"), STICHTAG)
-    eingang = stand / "uebernahme" / "quell-lieferung"
+
+    def eingang(config, name):
+        ueb.eingang_anlegen(stand, _fall_mit_generation(
+            tmp_path / name, gen.name, name,
+            tarifwerk=config.generationen[0].tarifwerk()), STICHTAG)
+        return stand / "uebernahme" / name
+
+    e_tk, e_ab, e_pro = eingang(tk, "lief-tk"), eingang(ab, "lief-ab"), eingang(pro, "lief-pro")
     # Positivkontrolle 1: die Teilkuendigung ist gebaut — sie tritt ein.
-    assert len(ueb.lies_uebernahme(eingang, tk).bestand) == 3
+    assert len(ueb.lies_uebernahme(e_tk, tk).bestand) == 3
     # Die simulierte Luecke: mit_abzug gilt als nicht gebaut.
     monkeypatch.setitem(TARIFWERK_AUSFUEHRBAR, "red_verfahren", (PROSPEKTIV, TEILKUENDIGUNG))
     with pytest.raises(ueb.UebernahmeError, match="Migration blockiert.*Bauauftrag.*mit_abzug"):
-        ueb.lies_uebernahme(eingang, ab)
-    # Positivkontrolle 2: dieselben Bytes, ein ausfuehrbares Verfahren -> tritt ein.
-    assert len(ueb.lies_uebernahme(eingang, pro).bestand) == 3
+        ueb.lies_uebernahme(e_ab, ab)
+    # Positivkontrolle 2: ein ausfuehrbares Verfahren -> tritt ein.
+    assert len(ueb.lies_uebernahme(e_pro, pro).bestand) == 3
 
 
 # --- Annahme 5, streng -----------------------------------------------------------

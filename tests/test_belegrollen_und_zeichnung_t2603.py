@@ -29,7 +29,7 @@ from rechner_pipeline.models import freigabe as fg
 from rechner_pipeline.models.schemas import p9_snapshot_sha256
 from rechner_pipeline.models.zeichnung import GATES_MIT_PFLICHTBELEGEN
 from tests.freigabe_testschluessel import FREMDER_SCHLUESSEL, TESTKEY, TESTRING
-from tests.test_betrieb_uebernahme import PLV, STICHTAG, _fall, am4_snapshot
+from tests.test_betrieb_uebernahme import PLV, STICHTAG, _fall, _pb1_ledger, am4_snapshot, fuehrungsbeleg
 
 
 # --- der Vertrag in models ---------------------------------------------------
@@ -84,7 +84,7 @@ def test_ein_snapshot_mit_nur_einer_pflichtrolle_wird_nicht_uebernommen(tmp_path
 def _fall_mit_snapshot(wurzel: Path, name: str, **snapshot_kw) -> Path:
     from tests.test_betrieb_uebernahme import _pb1_ledger
     fall = _fall(wurzel, name=name, snapshot=None)
-    daten = am4_snapshot(name, pb1_ledger_sha=_pb1_ledger(fall), **snapshot_kw)
+    daten = am4_snapshot(name, pb1_ledger_sha=_pb1_ledger(fall), fuehrungsprobe_sha=fuehrungsbeleg(fall), **snapshot_kw)
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten), encoding="utf-8")
     (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
@@ -143,13 +143,24 @@ def test_der_betriebseingang_verifiziert_die_signatur_und_der_tageslauf_verlangt
     with pytest.raises(ueb.UebernahmeError, match="stimmt nicht mit dem Snapshot-Inhalt"):
         ueb.eingang_anlegen(tmp_path / "daten", mani, STICHTAG)
 
-    # Ohne Ring: benannter Zustand, und die Fuehrung verweigert.
+    # Ohne Ring wird nichts registriert (Angriffsrunde nach T27): Vorher
+    # entstand ein Eingang mit signatur_verifiziert = false, den jeder
+    # Tageslauf verweigerte und den niemand ersetzen durfte.
     monkeypatch.setattr(ueb, "_STANDARD_SCHLUESSELRING", None)
     ohne = _fall_mit_snapshot(tmp_path / "d", "ohne")
-    ziel2 = ueb.eingang_anlegen(tmp_path / "daten", ohne, STICHTAG)
-    assert json.loads((ziel2 / "eingang.json").read_text(encoding="utf-8"))["zeichnung"]["signatur_verifiziert"] is False
+    with pytest.raises(ueb.UebernahmeError, match="ohne Freigabeschluessel wird nichts registriert"):
+        ueb.eingang_anlegen(tmp_path / "daten", ohne, STICHTAG)
+    assert not (tmp_path / "daten" / "uebernahme" / "ohne").exists()
+    # Die Fuehrung verlangt die Verifikation weiterhin (zweite Wache): ein
+    # verifizierter Eingang, dessen Flag von Hand gekippt wurde, tritt
+    # nicht ein.
+    kipp = ziel / "eingang.json"
+    kipp.chmod(0o644)
+    d = json.loads(kipp.read_text(encoding="utf-8"))
+    d["zeichnung"]["signatur_verifiziert"] = False
+    kipp.write_text(json.dumps(d), encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="ohne verifizierte Freigabesignatur"):
-        ueb.lies_uebernahme(ziel2, config)
+        ueb.lies_uebernahme(ziel, config)
 
 
 def test_ein_altsnapshot_ohne_schluesselklasse_tritt_nicht_ein(tmp_path):

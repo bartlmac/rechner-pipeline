@@ -314,8 +314,15 @@ def _reduziere_eine_schicht(
     # Als eigener Summand, nicht in den Ausdruck darueber gezogen: Ohne
     # Schicht bleibt die Rechnung bitgleich zu der, die die
     # Charakterisierungswerte des Kerns tragen.
+    #
+    # UNGEKUERZT, auch mit Abzug (Angriffsrunde nach T27): Der Stornoabzug
+    # ist ein Betrag des Grundvertrags, (1-f) x StoAb, und steckt schon im
+    # Summanden darueber (klv.md 7.1; Grundsatz 9.7: den Abzug traegt die
+    # Basisschicht, nicht die Schicht). Mit dem Reservefaktor
+    # (1 - StoAb/DR) multipliziert, zog die Schicht den Abzug ein zweites
+    # Mal an — nahe DR = 0 unbegrenzt, bei DR < 0 als Geschenk.
     if zusatz_dk:
-        umgewandelt += zusatz_dk * nach_abzug
+        umgewandelt += zusatz_dk
 
     if zeile.vx_bfr <= 0.0:
         raise BeitragsreduktionFehler(

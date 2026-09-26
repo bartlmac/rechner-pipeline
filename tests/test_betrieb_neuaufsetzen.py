@@ -76,7 +76,8 @@ def _fall_mit_nebentabellen(tmp_path: Path, *, tarifwerk: dict | None = None) ->
     write_portfolio(_scheiben(7_000_001), quelle / "scheiben.parquet")
     write_portfolio(_schichten(7_000_001), quelle / "schichten.parquet")
     write_portfolio(_verankerung(7_000_001), quelle / "verankerung.parquet")
-    beleg = {"schema_version": 1, "anfangszustand": "materialisieren"}
+    beleg = json.loads((quelle / "uebernahme.json").read_text(encoding="utf-8"))
+    beleg["anfangszustand"] = "materialisieren"
     if tarifwerk is not None:
         beleg["tarifwerk"] = tarifwerk
     (quelle / "uebernahme.json").write_text(json.dumps(beleg), encoding="utf-8")
@@ -119,14 +120,17 @@ def test_eingang_registriert_bausteine_schicht_und_beleg(tmp_path):
 
 
 def test_eingang_ohne_nebentabellen_bleibt_lesbar(tmp_path):
-    """Zugaenge vor der Freischaltung tragen weder Bausteine noch Beleg."""
+    """Zugaenge vor der Freischaltung tragen keine Bausteine. Den Beleg
+    traegt jeder Zugang — er nennt das Tarifwerk der Abnahme (Angriffsrunde
+    nach T27: ein fehlender Beleg umging die Tarifwerk-Pruefung)."""
     fall = _fall(tmp_path)
     stand = tmp_path / "daten"
     ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
     ablage = _ablage(stand)
     from rechner_pipeline.bestand.config import load_config
     u = ueb.lies_uebernahme(ziel, load_config(ablage.config_pfad))
-    assert u.scheiben is None and u.schichten is None and u.beleg == {}
+    assert u.scheiben is None and u.schichten is None
+    assert u.beleg["anfangszustand"] == "ohne_bausteine" and isinstance(u.beleg["tarifwerk"], dict)
 
 
 def test_tarifwerk_der_config_wird_gegen_den_beleg_gehalten(tmp_path):

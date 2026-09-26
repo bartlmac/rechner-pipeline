@@ -105,4 +105,26 @@ def entferne_verzeichnis(
         raise LoeschFehler(
             f"verweigert: {ziel} traegt keine {marker} und ist damit kein Erzeugnis dieses Produzenten — nicht geloescht ({grund})"
         )
-    shutil.rmtree(aufgeloest)
+    _entferne_marker_zuletzt(aufgeloest, marker)
+
+
+def _entferne_marker_zuletzt(wurzel: Path, marker: Optional[str]) -> None:
+    """Den Baum loeschen, den Marker ALS LETZTES (Angriffsrunde nach T27).
+
+    ``shutil.rmtree`` loescht in Verzeichnisreihenfolge, und der Marker
+    kam oft zuerst. Ein Abbruch danach liess ein Verzeichnis ohne Marker
+    zurueck, das die Wache zu Recht nicht mehr als eigenes erkannte — und
+    jeder weitere Lauf blieb daran haengen. Mit dem Marker zuletzt ist ein
+    halb geloeschter Baum weiter als Erzeugnis erkennbar, und der naechste
+    Lauf loescht ihn fertig.
+    """
+    for eintrag in sorted(wurzel.iterdir()):
+        if marker is not None and eintrag.name == marker:
+            continue
+        if eintrag.is_dir() and not eintrag.is_symlink():
+            shutil.rmtree(eintrag)
+        else:
+            eintrag.unlink()
+    if marker is not None:
+        (wurzel / marker).unlink(missing_ok=True)
+    wurzel.rmdir()

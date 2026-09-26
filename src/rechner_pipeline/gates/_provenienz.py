@@ -214,9 +214,10 @@ def schreibe_pk1_beleg(
     payload = (
         json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     ).encode("utf-8")
+    from rechner_pipeline.gates._common import schreibe_exklusiv
+
     try:
-        with ziel.open("xb") as datei:
-            datei.write(payload)
+        schreibe_exklusiv(ziel, payload)
     except FileExistsError:
         if ziel.read_bytes() != payload:
             raise ValueError(

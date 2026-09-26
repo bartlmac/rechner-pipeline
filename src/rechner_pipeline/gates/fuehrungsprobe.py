@@ -87,6 +87,9 @@ from rechner_pipeline.models.bestand import (
     STATUS_HISTORIE_NAMES,
     VERANKERUNG_NAMES,
     model_point_kwargs,
+    red_bindung_fehler,
+    red_sollbuchungen,
+    red_vollstaendigkeit_fehler,
 )
 
 #: Die drei Spalten des Stamms, die die Fortschreibung BEWEGEN darf.
@@ -660,11 +663,22 @@ def pruefe_fuehrung(
         # bezeugte eine Uebereinstimmung, die es nicht gibt.
         f_reduktionen = fortschreibung.get("reduktionen")
         reduktion_je_police: Dict[int, Tuple[int, float, str]] = {}
+        wirkungstag: Dict[int, pd.Timestamp] = {}
         if f_reduktionen is not None and len(f_reduktionen):
             for z in f_reduktionen.to_dict("records"):
                 reduktion_je_police[int(z["police_id"])] = (
                     int(z["reduktion_jahr"]), float(z["anteil"]),
                     str(z["verfahren"]))
+                wirkungstag[int(z["police_id"])] = pd.Timestamp(z["reduktion_datum"])
+        # Verfahren und Anteil gegen das System, dieselbe Regel wie P-B1
+        # (Angriffsrunde nach T27: eine als prospektiv eingetragene
+        # Teilkuendigung und ein falscher Anteil bestanden die Probe).
+        red_anteil = float(getattr(config.annahmen, "red_anteil", 0.0) or 0.0)
+        for pid, (_j, anteil, verfahren) in sorted(reduktion_je_police.items()):
+            if pid in welten:
+                for text in red_bindung_fehler(pid, anteil, verfahren,
+                                               tarifwerk.get("red_verfahren"), red_anteil):
+                    befund(pid, "herabsetzung", text)
         red_jahr = {
             int(z["police_id"]): int(z["vertragsjahr"])
             for z in f_ledger[f_ledger["ereignis"] == "RED"].to_dict("records")
@@ -675,14 +689,7 @@ def pruefe_fuehrung(
                    f"{len(ohne_tabelle)} Police(n) mit RED-Buchung, aber ohne "
                    f"Zeile in reduktionen.parquet (z. B. {ohne_tabelle[:5]}) — "
                    "die Probe kann ihre Folgebuchungen nicht nachrechnen")
-        for z in nach.to_dict("records"):
-            pid, art, jahr = int(z["police_id"]), str(z["ereignis"]), int(z["vertragsjahr"])
-            welt = welten.get(pid)
-            if welt is None:
-                continue
-            if pid in red_jahr and jahr >= red_jahr[pid] \
-                    and pid not in reduktion_je_police:
-                continue                       # oben als Befund gemeldet
+        def teile_bei(pid: int, welt: Dict[str, Any], jahr: int):
             teile = list(welt["teile"])
             for s in neue_je_police.get(pid, []):
                 if int(s["erhoehung_jahr"]) < jahr:
@@ -693,7 +700,47 @@ def pruefe_fuehrung(
                         spez, auspraegungen.get(str(pid), {})).model_point))
                     kw["gamma1"] = float(s["gamma1"])
                     teile.append((int(s["erhoehung_jahr"]), Rechenkern(ModelPoint(**kw))))
-            teile = [(j, k) for j, k in teile if j < jahr]
+            return [(j, k) for j, k in teile if j < jahr]
+
+        def red_soll(pid: int, welt: Dict[str, Any], jahr: int, red) -> Dict[str, float]:
+            """Die Soll-Buchungen der Herabsetzung — die Regel von P-B1
+            (red_sollbuchungen), die Betraege auf dem Weg der Pruefstrecke."""
+            grund = welt["grund"]
+            teile_red = reduzierte_teile(grund, teile_bei(pid, welt, jahr), red[0], red[1], red[2],
+                                         schicht=schicht_je_police.get(pid))
+            absorbiert = absorbierte_schicht(grund, jahr, schicht_je_police.get(pid))
+            auszahlung = ((1.0 - red[1]) * vertrags_monatsreserve(
+                grund, [], 12 * jahr,
+                stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
+                + absorbiert) if red[2] == TEILKUENDIGUNG else None
+            return red_sollbuchungen(
+                sum(v.reduktion.vs_neu for e, v in teile_red if e < jahr or e == 0),
+                absorbiert, auszahlung)
+
+        # Jede registrierte Herabsetzung traegt ihre Soll-Buchungen genau
+        # einmal am Wirkungstag der Tabelle (Angriffsrunde nach T27: die
+        # Probe pruefte nur die Zeilen, die da waren — 43 gestrichene
+        # Auszahlungen bestanden sie; P-B1 hatte die Soll-Menge seit T27-14).
+        red_zeilen = f_ledger[f_ledger["ereignis"] == "RED"]
+        for pid, red in sorted(reduktion_je_police.items()):
+            welt = welten.get(pid)
+            if welt is None:
+                continue
+            eigene = red_zeilen[(red_zeilen["police_id"] == pid)
+                                & (red_zeilen["vertragsjahr"] == red[0])]
+            for text in red_vollstaendigkeit_fehler(
+                    pid, red[0], eigene, red_soll(pid, welt, red[0], red), wirkungstag[pid]):
+                befund(pid, "herabsetzung", text)
+
+        for z in nach.to_dict("records"):
+            pid, art, jahr = int(z["police_id"]), str(z["ereignis"]), int(z["vertragsjahr"])
+            welt = welten.get(pid)
+            if welt is None:
+                continue
+            if pid in red_jahr and jahr >= red_jahr[pid] \
+                    and pid not in reduktion_je_police:
+                continue                       # oben als Befund gemeldet
+            teile = teile_bei(pid, welt, jahr)
             grund, grund_mp = welt["grund"], welt["grund_mp"]
             pex_jahr = welt["pex_jahr"]
             red = reduktion_je_police.get(pid)
@@ -715,20 +762,11 @@ def pruefe_fuehrung(
                         pex_f = int(eigene["vertragsjahr"].iloc[0])
                 if art == "RED":
                     # Die Buchungen der Herabsetzung selbst, auf dem Weg der
-                    # Pruefstrecke nachgerechnet.
-                    absorbiert = absorbierte_schicht(grund, jahr, schicht_je_police.get(pid))
-                    auszahlung = ((1.0 - red[1]) * vertrags_monatsreserve(
-                        grund, [], 12 * jahr,
-                        stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
-                        + absorbiert) if red[2] == TEILKUENDIGUNG else 0.0
-                    erwartet = {
-                        "VS_herabsetzung": sum(v.reduktion.vs_neu for e, v in teile_red if e < jahr or e == 0),
-                        "dDK_absorption": absorbiert,
-                        "RKW_teilkuendigung": max(0.0, auszahlung),
-                        "Kappung_teilkuendigung": max(0.0, -auszahlung),
-                    }.get(str(z["betrag_art"]))
+                    # Pruefstrecke nachgerechnet; eine Art ausserhalb der
+                    # Soll-Menge meldet die Vollstaendigkeit oben.
+                    erwartet = red_soll(pid, welt, jahr, red).get(str(z["betrag_art"]))
                     if erwartet is None:
-                        befund(pid, "buchung", f"RED Jahr {jahr}: unbekannte Betragsart {z['betrag_art']!r}")
+                        buchungen[art] += 1
                         continue
                 elif art == "STO":
                     erwartet = vertrags_monatsreserve_reduziert(

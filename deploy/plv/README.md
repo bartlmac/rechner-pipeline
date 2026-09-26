@@ -106,6 +106,13 @@ das nicht, bricht sie ab und nennt den Config-Abschnitt, der zu
 uebernehmen ist. Timer anhalten, Routine fahren, Erstbefuellung von Hand,
 Timer wieder einschalten:
 
+Endet die Routine zwischen ihren zwei Umbenennungen (Stromausfall,
+Abbruch), fehlt `daten` kurz. Der Container legt es dann NICHT leer an
+(`create_host_path: false`), sondern bricht ab; dieselbe Routine erneut
+gefahren vollendet den Tausch aus dem fertigen Aufbau, statt neu zu
+beginnen. Ein neues Ankerverzeichnis gehoert zur neuen Ablage: Die alte
+Ankerreihe bezeugt Zeilen eines Protokolls, das jetzt im Archiv liegt.
+
 ```
 systemctl --user stop tageslauf.timer
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \

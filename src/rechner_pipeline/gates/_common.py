@@ -184,6 +184,45 @@ HUMAN_REVIEW_EXIT_CODES: Dict[str, int] = {
 REPO_ROOT: Path = Path(__file__).resolve().parents[3]
 
 
+def schreibe_exklusiv(ziel: Path, daten: bytes) -> None:
+    """``daten`` genau einmal unter ``ziel`` veroeffentlichen — ganz oder gar nicht.
+
+    Ein inhaltsadressierter Beleg (P9-Snapshot, P-K1-Beleg) wurde mit
+    exklusivem Oeffnen (Modus xb) direkt unter seinem endgueltigen Namen geschrieben. Ein
+    Abbruch mitten im Schreiben (Prozessende, volle Platte) liess einen
+    Stumpf zurueck, der jeden weiteren Entscheid des Gates und die
+    Registrierung des Falls dauerhaft sperrte — und ``entscheide/`` darf
+    niemand von Hand bereinigen (Angriffsrunde nach T27). Jetzt: daneben
+    vollstaendig schreiben, auf die Platte bringen, dann per ``os.link``
+    exklusiv einhaengen, wie ``schreibe_abschluss``. Existiert das Ziel,
+    wirft das ``FileExistsError``; ein Rest daneben traegt einen
+    Punktnamen, den kein Leser als Beleg aufnimmt.
+    """
+    import secrets
+
+    # Eine je Aufruf eindeutige Datei daneben, Modus nach der umask des
+    # Schreibzeitpunkts (dieselbe Figur wie bestand.parquet_io.neue_datei,
+    # T18-07; nicht importiert — die Kante vom Werkzeug in die Vorzeige
+    # waere eine Architekturentscheidung, ADR-017).
+    for _ in range(100):
+        tmp = ziel.parent / f".{ziel.name}.{secrets.token_hex(8)}.tmp"
+        try:
+            os.close(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666))
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise OSError(f"kein freier temporaerer Dateiname neben {ziel}")
+    try:
+        with open(tmp, "wb") as datei:
+            datei.write(daten)
+            datei.flush()
+            os.fsync(datei.fileno())
+        os.link(tmp, ziel)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def repo_root() -> Path:
     """Return the repository root used as the default ``base`` for hash maps."""
     return REPO_ROOT

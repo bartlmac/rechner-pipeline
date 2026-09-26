@@ -920,7 +920,8 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
     return aus
 
 
-def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any]) -> None:
+def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any],
+                         protokoll_roh: Optional[bytes] = None) -> bytes:
     """Das Paket gegen seine eigenen Belege halten (Review T22-05).
 
     Vorher genuegte der freie String ``pb1 == "gruen"`` in stand.json — ein
@@ -934,8 +935,14 @@ def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any
     """
     import hashlib
 
-    from rechner_pipeline.betrieb.tageslauf import TageslaufError, lies_protokoll
+    from rechner_pipeline.betrieb.tageslauf import TageslaufError, lies_protokoll_text
 
+    # EINE Lesung des Protokolls (Angriffsrunde nach T27): Hash, Kette,
+    # Felder und Anker laufen auf denselben Bytes. Vorher las jede Pruefung
+    # die Datei selbst, und ein Tausch zwischen den Lesungen liess ein
+    # gefaelschtes Paket durch. Rueckgabe: diese Bytes, fuer den Anker.
+    if protokoll_roh is None and (paket / "protokoll.jsonl").is_file():
+        protokoll_roh = (paket / "protokoll.jsonl").read_bytes()
     dateien = stand.get("dateien") or {}
     for name in ("protokoll.jsonl", "laufmanifest.json", "tagesjournal.parquet", "index.html"):
         if name not in dateien:
@@ -944,12 +951,13 @@ def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any
         datei = paket / name
         if not datei.is_file():
             raise FalldatenFehler(f"{paket}: Belegdatei {name!r} fehlt")
-        ist = hashlib.sha256(datei.read_bytes()).hexdigest()
+        roh = protokoll_roh if name == "protokoll.jsonl" and protokoll_roh is not None else datei.read_bytes()
+        ist = hashlib.sha256(roh).hexdigest()
         if ist != soll:
             raise FalldatenFehler(f"{paket}: Belegdatei {name!r} hat nicht den Hash aus stand.json")
     try:
-        zeilen = lies_protokoll(paket / "protokoll.jsonl")
-    except TageslaufError as exc:
+        zeilen = lies_protokoll_text(protokoll_roh.decode("utf-8"), str(paket / "protokoll.jsonl"))
+    except (TageslaufError, UnicodeDecodeError) as exc:
         raise FalldatenFehler(f"{paket}: Protokollkette: {exc}") from exc
     gruene = [z for z in zeilen if z.get("uebernommen")]
     if not gruene:
@@ -983,6 +991,7 @@ def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any
     _pruefe_abschluesse_gegen_das_protokoll(paket, stand, dateien)
     _pruefe_buchungen_gegen_das_journal(paket, stand)
     _pruefe_felder_gegen_das_protokoll(paket, stand, prov, zeilen, gruene, letzte)
+    return protokoll_roh
 
 
 def _pruefe_abschluesse_gegen_das_protokoll(
@@ -1200,7 +1209,8 @@ def _pruefe_auslieferung(paket: Path, fall: Optional[Path],
 
 def _pruefe_anker(paket: Path, stand: Dict[str, Any],
                   anker_datei: Optional[Path],
-                  fall: Optional[Path] = None) -> Dict[str, Any]:
+                  fall: Optional[Path] = None,
+                  protokoll_roh: Optional[bytes] = None) -> Dict[str, Any]:
     """Das Paket gegen einen Anker AUSSERHALB des Pakets halten (T24-04 b).
 
     Das Paket belegt sich bis hierher selbst: Jede Kennzahl ist aus
@@ -1237,7 +1247,9 @@ def _pruefe_anker(paket: Path, stand: Dict[str, Any],
         )
     try:
         satz = pruefe(paket, stand, paket / "protokoll.jsonl",
-                      lies_anker(Path(anker_datei)))
+                      lies_anker(Path(anker_datei)),
+                      protokoll_text=(protokoll_roh.decode("utf-8")
+                                      if protokoll_roh is not None else None))
     except AnkerFehler as exc:
         raise FalldatenFehler(str(exc)) from exc
     art = str(satz.get("art") or "momentaufnahme")
@@ -1288,8 +1300,8 @@ def betrieb(paket: Optional[Path],
             "--paket <ziel> --anker <verzeichnis>"
         )
     prov = stand.get("provenienz") or {}
-    _pruefe_stands_paket(paket, stand, prov)
-    verankerung = _pruefe_anker(paket, stand, anker_datei, fall)
+    protokoll_roh = _pruefe_stands_paket(paket, stand, prov)
+    verankerung = _pruefe_anker(paket, stand, anker_datei, fall, protokoll_roh)
     return {
         "vorhanden": True,
         "stand": stand.get("stand"),

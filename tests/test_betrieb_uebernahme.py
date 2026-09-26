@@ -89,11 +89,46 @@ def _zugangsstand(ziel: Path) -> None:
     write_portfolio(stamm, ziel / "bestand.parquet")
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(ledger, ziel / "ledger.parquet")
+    uebernahmebeleg(ziel, len(stamm))
+
+
+def uebernahmebeleg(ziel: Path, vertraege: int, *, generation: str = "KLV-2017",
+                    tarifwerk: "dict | None" = None) -> None:
+    """Der Uebernahmebeleg, wie gates.bestand_uebernehmen ihn schreibt:
+    Modus und die Tarifwerk-Schalter der Generation (aus der Config der
+    PLV, gegen die der Tageslauf ihn haelt)."""
+    gen = next((g for g in load_config(PLV).generationen if g.name == generation), None)
+    if tarifwerk is None:
+        tarifwerk = gen.tarifwerk() if gen is not None else {
+            "scheiben_mit_gamma1": False, "stoab_je_baustein": False, "red_verfahren": "prospektiv"}
+    (ziel / "uebernahme.json").write_text(json.dumps({
+        "schema_version": 1, "anfangszustand": "ohne_bausteine",
+        "tarifwerk": tarifwerk, "vertraege": int(vertraege),
+    }, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+
+
+def fuehrungsbeleg(fall: Path) -> str:
+    """Ein Beleg der Rolle ``fuehrungsprobe`` ueber den Zugangsstand: Wie
+    der echte Produzent bindet er Tabellen UND uebernahme.json in
+    ``provenienz.eingaben`` — ueber ihn bezeugt die Abnahme den Beleg,
+    den der Betriebseingang registriert."""
+    bestand = fall / "abgeleitet" / "bestand"
+    eingaben = {
+        str(pfad.relative_to(fall)): hashlib.sha256(pfad.read_bytes()).hexdigest()
+        for pfad in sorted(list(bestand.glob("*.parquet")) + list(bestand.glob("uebernahme.json")))
+    }
+    beleg = {"schema_version": 3, "bestanden": True, "provenienz": {"eingaben": eingaben}}
+    pfad = fall / "abgeleitet" / "berichte" / "fuehrungsprobe.json"
+    pfad.parent.mkdir(parents=True, exist_ok=True)
+    roh = json.dumps(beleg, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    pfad.write_bytes(roh)
+    return hashlib.sha256(roh).hexdigest()
 
 
 def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                  entscheid: str = "angenommen",
                  pb1_ledger_sha: str = "ab" * 32,
+                 fuehrungsprobe_sha: "str | None" = None,
                  rollen: "tuple[str, ...] | None" = None,
                  schema: int = 7,
                  schluessel: "bytes | None" = None) -> dict:
@@ -119,6 +154,8 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
     for rolle in alle:
         if rolle == "pb1_ledger":
             pflichtbelege[rolle] = [pb1_ledger_sha]
+        elif rolle == "fuehrungsprobe" and fuehrungsprobe_sha is not None:
+            pflichtbelege[rolle] = [fuehrungsprobe_sha]
         elif rolle == "pk1_belege":
             pflichtbelege[rolle] = [gen_beleg]
         else:
@@ -184,7 +221,7 @@ def _beleg_neu(fall: Path, name: str = "probe-uebernahme") -> None:
     der Eingang keinen Bezug zwischen beidem herstellte (T26-03).
     """
     ledger_sha = _pb1_ledger(fall)
-    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha)
+    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
     for alt in (fall / "entscheide").glob("A-M4-*.json"):
         alt.unlink()
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
@@ -215,7 +252,7 @@ def _fall(wurzel: Path, name: str = "probe-uebernahme", *, snapshot: "dict | Non
     _zugangsstand(fall / "abgeleitet" / "bestand")
     ledger_sha = _pb1_ledger(fall)
     if snapshot is not None:
-        daten = (am4_snapshot(name, pb1_ledger_sha=ledger_sha)
+        daten = (am4_snapshot(name, pb1_ledger_sha=ledger_sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
                  if snapshot == "echt" else snapshot)
         (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
             json.dumps(daten, ensure_ascii=False), encoding="utf-8")
@@ -251,7 +288,8 @@ def test_eingang_wird_registriert_und_ist_unantastbar(eingang):
     # Das Zielsystem vergibt eigene Policennummern, und ohne die Tabelle
     # waere eine Rueckfrage an die Quelle nicht beantwortbar.
     assert set(daten["dateien"]) == {"bestand.parquet", "historie.parquet",
-                                     "ledger.parquet", "policennummern.parquet"}
+                                     "ledger.parquet", "policennummern.parquet",
+                                     "uebernahme.json"}
     # Das Nummernband: erster Eingang, drei Vertraege, auf volle Tausend
     # aufgerundet — 1..1000. Der naechste Fall faengt bei 1001 an.
     assert daten["band"] == {"von": 1, "bis": 1000}
@@ -1090,9 +1128,12 @@ def test_gleichnamige_tabellen_an_zwei_orten_sind_kein_widerspruch(tmp_path):
         "schema_version": 1, "command": "fuehrungsprobe", "gate": "A-M4",
         "status": "passed",
         "provenienz": {"eingaben": {
-            f"abgeleitet/bestand-nach/{d}": hashlib.sha256(
+            **{f"abgeleitet/bestand-nach/{d}": hashlib.sha256(
                 (nach / d).read_bytes()).hexdigest()
-            for d in ("historie.parquet", "bestand.parquet", "ledger.parquet")}},
+               for d in ("historie.parquet", "bestand.parquet", "ledger.parquet")},
+            # Wie der echte Produzent bindet die Probe den Uebernahmebeleg.
+            "abgeleitet/bestand/uebernahme.json": hashlib.sha256(
+                (fall / "abgeleitet" / "bestand" / "uebernahme.json").read_bytes()).hexdigest()}},
     }
     pfad = fall / "abgeleitet" / "diagnostics" / "fuehrungsprobe.gate.json"
     roh = json.dumps(zweiter, ensure_ascii=False, sort_keys=True).encode("utf-8")

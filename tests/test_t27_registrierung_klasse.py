@@ -20,6 +20,7 @@ from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.betrieb import uebernahme as ueb
 from rechner_pipeline.models.snapshot_kette import nachfolger_von, pruefe_snapshot_graph
 from tests.test_betrieb_uebernahme import (
+    fuehrungsbeleg,
     PLV,
     STICHTAG,
     _fall,
@@ -67,7 +68,7 @@ def test_die_registrierung_verwendet_die_bytes_die_sie_geprueft_hat(tmp_path, mo
 
 
 def _kettenglied(fall, name: str, *, entscheid: str, vorgaenger):
-    daten = am4_snapshot(name, pb1_ledger_sha=_pb1_ledger(fall), entscheid=entscheid)
+    daten = am4_snapshot(name, pb1_ledger_sha=_pb1_ledger(fall), fuehrungsprobe_sha=fuehrungsbeleg(fall), entscheid=entscheid)
     daten["vorgaenger"] = list(vorgaenger)
     daten["entschieden_am"] = "2026-01-02T10:00:00+00:00"
     daten["snapshot_sha256"] = ueb_p9_sha(daten)
