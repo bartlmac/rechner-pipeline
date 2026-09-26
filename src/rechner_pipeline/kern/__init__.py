@@ -120,7 +120,12 @@ from rechner_pipeline.kern.rechenkern import (
 #: reduziert) traegt stoab_je_baustein als Pflichtargument ohne Default,
 #: Abzug je Baustein auf der herabgesetzten Summe (Pruefrunde T27,
 #: Befund 12); Rechenwerte der Vorgabe (vertragsweit) unveraendert.
-__version__ = "3.7.0"
+#: 3.8.0 = Abschlusskostenrest nach einer Herabsetzung (prospektiv, mit
+#: Abzug): der fortgefuehrte Vertrag traegt f des noch nicht getilgten
+#: Rests (Zahlungspfad, Profil abschlusskosten), die beitragsfreie Summe
+#: rechnet ueber denselben Pfad; Rueckkaufs-Track herabgesetzter
+#: Vertraege in der Zillmerdauer geaendert, sonst unveraendert.
+__version__ = "3.8.0"
 
 __all__ = [
     "ModelPoint",

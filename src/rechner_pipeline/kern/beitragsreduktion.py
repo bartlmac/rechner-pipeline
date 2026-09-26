@@ -641,6 +641,15 @@ def als_zahlungspfad(red: "Reduktion", mp: ModelPoint) -> "Zahlungspfad":
         beitrag=tuple(1.0 if j < a0 else f for j in range(mp.t)),
         kosten_bpfl=tuple(1.0 if j < a0 else f for j in range(mp.n)),
         kosten_bfr=tuple(0.0 if j < a0 else q for j in range(mp.n)),
+        # Die Abschlusskosten folgen dem Beitrag (klv.md 7.1): Der
+        # fortgefuehrte Vertrag traegt f des noch nicht getilgten Rests,
+        # (1-f) ist mit der Herabsetzung abgeschrieben — ein Verlust des
+        # Unternehmens, beim Verfahren mit Abzug teilweise durch den
+        # Stornoabzug gedeckt. Vorher trug der Pfad den vollen Rest,
+        # waehrend die beitragsfreie Summe f rechnete: Eine
+        # Beitragsfreistellung nach der Herabsetzung sprang in der
+        # Zillmerdauer um bis zu einem Tausender je 100.000 EUR.
+        abschlusskosten=tuple(1.0 if j < a0 else f for j in range(mp.n)),
     )
 
 
@@ -796,8 +805,22 @@ class ReduzierterVertrag:
             )
         if self.ist_teilkuendigung:
             return self.folgekern.beitragsfreie_summe(pex_jahr)
-        return (self.reduktion.anteil * self.kern.beitragsfreie_summe(pex_jahr)
-                + self.bfr_teil)
+        # Ueber DENSELBEN Pfad wie die Reserve — ein Vertrag, ein Weg
+        # (vorher: der skalierte Ursprungsvertrag, der den
+        # Abschlusskostenrest anders las als der Pfad). S_bfr = V_MRV /
+        # V_bfr wie im Tarifplan (klv.md 6); ab Beitragsende die Summe.
+        from rechner_pipeline.kern.zahlungspfad import (
+            verlaufszeile as pfad_verlaufszeile,
+            vertragskonstanten,
+        )
+
+        mp = self.kern.mp
+        if pex_jahr >= mp.t:
+            return self.reduktion.vs_neu
+        zeile = pfad_verlaufszeile(
+            mp, als_zahlungspfad(self.reduktion, mp), self.kern.basis,
+            int(pex_jahr), skalare=vertragskonstanten(mp, self.kern.basis))
+        return zeile.vx_mrv / self.kern.verlaufszeile(int(pex_jahr)).vx_bfr
 
     def reserve_beitragsfrei(self, pex_jahr: int, monate: int) -> float:
         """Reserve nach einer SPAETEREN Beitragsfreistellung des

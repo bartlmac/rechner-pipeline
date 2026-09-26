@@ -242,6 +242,17 @@ Je Schicht gebildet griffen $u_{\min}$ und $u_{\max}$ mehrfach, und ein
 Vertrag mit zwei Erhöhungen verlöre beim Herabsetzen mehr als den
 zugesagten Abschlag.
 
+**Abschlusskosten folgen dem Beitrag.** Der noch nicht getilgte
+Abschlusskostenrest im Rückkaufs-Track (${}_a V^{MRV} - {}_a DR^{bpfl}$,
+Abschnitt 6) wird bei einer Herabsetzung proportional abgeschrieben: Ab
+$a_0$ trägt der fortgeführte Vertrag den Anteil $f$ des Rests, der Anteil
+$(1-f)$ ist ein Verlust des Unternehmens aus der Herabsetzung — beim
+Verfahren mit Abzug teilweise durch den anteiligen Stornoabschlag
+gedeckt, beim prospektiven Verfahren nicht. Reserve, Rückkaufswert und
+beitragsfreie Summe des herabgesetzten Vertrags rechnen mit derselben
+Regel; eine Beitragsfreistellung nach der Herabsetzung ist deshalb
+wertstetig.
+
 **Übernommene Generationen mit Abzug je Baustein.** Führt das
 Bedingungswerk einer übernommenen Generation den Stornoabschlag je
 Baustein (`stoab_je_baustein`, Abschnitt 13; Bedingungswerk der zweiten
