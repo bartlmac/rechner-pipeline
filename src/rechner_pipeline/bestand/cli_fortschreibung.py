@@ -417,6 +417,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"{len(scheiben)} Erhoehungsscheiben -> {out_dir}",
         file=sys.stderr,
     )
+    kappung = ledger[ledger["betrag_art"] == "Kappung_teilkuendigung"]
+    if len(kappung):
+        # Laut, nicht nur im Ledger: Jede Kappung ist ein Betrag, den das
+        # Unternehmen traegt, weil ein Kunde aus einer Migrationsdifferenz
+        # nichts nachzahlt.
+        print(
+            f"bestand_fortschreibung: WARNUNG {len(kappung)} Teilkuendigung(en) "
+            f"auf null gekappt, zusammen {float(kappung['betrag'].sum()):,.2f} EUR "
+            "zulasten des Unternehmens (Ledger: Kappung_teilkuendigung, Policen "
+            f"{sorted(int(p) for p in kappung['police_id'])[:10]})",
+            file=sys.stderr,
+        )
     return 0
 
 

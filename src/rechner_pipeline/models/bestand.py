@@ -284,7 +284,11 @@ BETRAG_ART_JE_EREIGNIS: Dict[str, Tuple[str, ...]] = {
     # Dritte Zeile bei der TEILKUENDIGUNG (Bedingungswerk Ziffer 6,
     # Bauauftrag T26-12): die Auszahlung des gekuendigten Grundanteils —
     # Rueckkaufswert plus absorbierte Schicht. Eine Zahlung, wie RKW.
-    "RED": ("VS_herabsetzung", "dDK_absorption", "RKW_teilkuendigung"),
+    # Vierte Zeile, nur wenn die Auszahlung der Teilkuendigung auf null
+    # gekappt wurde: der gekappte Betrag, positiv, eine Umbuchung zulasten
+    # des Unternehmens — kein Kunde schuldet aus einer Migrationsdifferenz.
+    "RED": ("VS_herabsetzung", "dDK_absorption", "RKW_teilkuendigung",
+            "Kappung_teilkuendigung"),
     "PEX": ("VS_bfr", "VS"),
     "INV": ("BU_Jahresrente",),
     "REA": ("BU_Jahresrente",),
@@ -980,13 +984,11 @@ def validate_ledger(
         # Erzeuger buchte sie so, sein eigenes Gate wies den korrekten Lauf
         # ab (Angriffsrunde 2, Fund N15).
         negativ = ((ledger["betrag"] < 0.0) & (ledger["ereignis"] != "MIG")
-                   & ~ledger["betrag_art"].isin(("dDK_absorption", "RKW_teilkuendigung")))
+                   & (ledger["betrag_art"] != "dDK_absorption"))
         if negativ.any():
             errors.append(
                 f"ledger: betrag < 0 (police {_policen(negativ)}) — nur die "
-                "Umbuchungen MIG und dDK_absorption sowie die Auszahlung der "
-                "Teilkuendigung (Forderung bei negativer Schicht) "
-                "tragen ein Vorzeichen"
+                "Umbuchungen MIG und dDK_absorption tragen ein Vorzeichen"
             )
     if not (ledger["status_date"].dt.day == 1).all():
         errors.append("ledger: status_date nicht auf Monatsersten normalisiert")

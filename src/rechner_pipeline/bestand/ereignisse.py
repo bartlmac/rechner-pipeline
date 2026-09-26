@@ -512,16 +512,25 @@ def _simuliere_vertrag(
                     # Grundversicherung wird AUSGEZAHLT — Rueckkaufswert
                     # dieses Anteils plus die vollstaendig absorbierte
                     # Korrekturschicht. Eine Zahlung, kein Statuswechsel.
-                    # IMMER gebucht, auch null oder negativ (Angriffsrunde 4
-                    # der Pruefrunde T27): Die Wache "> 0" unterdrueckte bei
-                    # negativer Schicht die GANZE Zeile — der positive
-                    # Rueckkaufswert des gekuendigten Anteils verschwand,
-                    # die Schicht wurde trotzdem ausgebucht, und P-B1 teilte
-                    # die Wache. Ein negativer Wert ist eine Forderung an den
-                    # Kunden, gebucht mit Vorzeichen — wie sie behandelt
-                    # wird, entscheidet das Aktuariat (offen).
-                    buche("RED", j + 1, "RKW_teilkuendigung", auszahlung,
-                          status=None)
+                    # IMMER gebucht (Angriffsrunde 4 der Pruefrunde T27):
+                    # Die Wache "> 0" unterdrueckte bei negativer Schicht
+                    # die GANZE Zeile — der Rueckkaufswert des gekuendigten
+                    # Anteils verschwand, die Schicht wurde trotzdem
+                    # ausgebucht.
+                    #
+                    # Faellt die Summe unter null (die Schicht ist negativer
+                    # als der Rueckkaufswert-Anteil positiv), wird auf NULL
+                    # GEKAPPT: Ein Kunde bekommt aus einer Migrations-
+                    # differenz keine Nachzahlungsforderung (Entscheid des
+                    # Maintainers 2026-09-26). Der gekappte Betrag verschwindet
+                    # nicht still, er steht als eigene Zeile im Ledger —
+                    # Kappung_teilkuendigung, eine Umbuchung zulasten des
+                    # Unternehmens — und der Lauf meldet ihn.
+                    buche("RED", j + 1, "RKW_teilkuendigung",
+                          max(0.0, auszahlung), status=None)
+                    if auszahlung < 0.0:
+                        buche("RED", j + 1, "Kappung_teilkuendigung",
+                              -auszahlung, status=None)
                 reduktionen.append({
                     "police_id": police_id,
                     "reduktion_jahr": j + 1,

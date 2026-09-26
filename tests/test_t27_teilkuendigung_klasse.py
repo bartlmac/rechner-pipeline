@@ -532,35 +532,63 @@ def test_die_teilkuendigung_im_beitragsfreien_nachlauf_ist_im_datenmodell_zulaes
 # --------------------------------------------------------------------------- #
 
 
-def test_die_auszahlung_der_teilkuendigung_wird_auch_bei_negativer_schicht_gebucht():
-    """Runde 4: Die Wache '> 0' unterdrueckte bei negativer Schicht die
-    ganze Zeile — der positive Rueckkaufswert des gekuendigten Anteils
-    verschwand, die Schicht wurde trotzdem ausgebucht, P-B1 teilte die
-    Wache. Jetzt: immer gebucht, mit Vorzeichen; P-B1 verlangt sie immer;
-    das Datenmodell traegt das Vorzeichen (A15)."""
+def test_eine_negative_auszahlung_wird_auf_null_gekappt_und_ausgewiesen():
+    """Entscheid 2026-09-26: Faellt die Auszahlung der Teilkuendigung unter
+    null (Schicht negativer als der Rueckkaufswert-Anteil), wird auf null
+    gekappt — kein Kunde bekommt aus einer Migrationsdifferenz eine
+    Nachzahlungsforderung. Der gekappte Betrag steht als eigene Zeile
+    Kappung_teilkuendigung im Ledger, P-B1 leitet beide her, das
+    Datenmodell weist negative Auszahlungen ab. Mutationsprobe: max(0, ...)
+    entfernen -> rot; Kappungszeile nicht buchen -> P-B1 rot."""
+    from rechner_pipeline.bestand.kernlauf import vertrags_rkw
+    from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
     from rechner_pipeline.models.bestand import validate_ledger
 
     config = _config()
+    gen = config.generationen[0]
     stamm = _stamm([{"id": p, "beginn": "2015-01-01", "zugang": "2026-01-01"} for p in POLICEN])
     schichten, verankerung = _tabellen(POLICEN, rho=-0.03)
     erg = fortschreiben(stamm, config, BIS, schichten=schichten, verankerung=verankerung)
-    red = erg.reduktionen
+    red, led = erg.reduktionen, erg.ledger
     assert len(red) > 0
-    led = erg.ledger
-    zeilen = led[(led["ereignis"] == "RED") & (led["betrag_art"] == "RKW_teilkuendigung")]
-    assert set(int(p) for p in zeilen["police_id"]) == set(int(p) for p in red["police_id"])
-    assert (zeilen["betrag"] < 0).any(), "kein negativer Wert — die Welt bezeugt nichts"
+    haupt = stamm.set_index("police_id")
+    gekappt = 0
+    for z in red.to_dict("records"):
+        pid, jahr = int(z["police_id"]), int(z["reduktion_jahr"])
+        mp = ModelPoint(**model_point_kwargs(haupt.loc[pid], gen.generation_fields()))
+        rechnerisch = (1 - ANTEIL) * vertrags_rkw(
+            Rechenkern(mp), [], jahr, stoab_je_baustein=True
+        ) + schichtwert_bei(_parameter(rho=-0.03), MONATE_TA, mp, 12 * jahr)
+        eigene = led[(led["police_id"] == pid) & (led["ereignis"] == "RED")]
+        arten = dict(zip(eigene["betrag_art"], eigene["betrag"]))
+        assert arten["RKW_teilkuendigung"] == pytest.approx(max(0.0, rechnerisch), abs=1e-6)
+        if rechnerisch < 0:
+            gekappt += 1
+            assert arten["Kappung_teilkuendigung"] == pytest.approx(-rechnerisch, rel=1e-9)
+        else:
+            assert "Kappung_teilkuendigung" not in arten
+    assert gekappt > 0, "keine Kappung in der Welt — der Test bezeugt nichts"
     assert not any("betrag < 0" in f for f in validate_ledger(stamm, led, erg.historie, erg.scheiben))
-    gen = config.generationen[0]
+    assert not (led.loc[led["betrag_art"] == "RKW_teilkuendigung", "betrag"] < 0).any()
     zug = pd.DataFrame([{
         "police_id": pid, "tarif_generation": gen.name, "ereignis": "ZUG",
         "vertragsjahr": 11, "status_date": pd.Timestamp("2026-01-01"),
         "betrag_art": "VS", "betrag": 100_000.0, "betrag_herkunft": "geliefert",
     } for pid in POLICEN])[[n for n, _ in LEDGER_SPALTEN]].astype(dict(LEDGER_SPALTEN))
+    voll = pd.concat([zug, led], ignore_index=True)
     assert pruefe_ledger_betraege(
-        stamm, pd.concat([zug, led], ignore_index=True), config, scheiben=erg.scheiben,
-        historie=erg.historie, schichten=schichten, verankerung=verankerung,
-        reduktionen=red) == []
+        stamm, voll, config, scheiben=erg.scheiben, historie=erg.historie,
+        schichten=schichten, verankerung=verankerung, reduktionen=red) == []
+    ohne = voll[voll["betrag_art"] != "Kappung_teilkuendigung"]
+    fehler = pruefe_ledger_betraege(
+        stamm, ohne, config, scheiben=erg.scheiben, historie=erg.historie,
+        schichten=schichten, verankerung=verankerung, reduktionen=red)
+    assert any("Kappung_teilkuendigung" in f for f in fehler), fehler
+    # Eine NEGATIVE Auszahlungszeile ist wieder ein Formfehler.
+    neg = led.copy()
+    i = neg.index[neg["betrag_art"] == "RKW_teilkuendigung"][0]
+    neg.loc[i, "betrag"] = -1.0
+    assert any("betrag < 0" in f for f in validate_ledger(stamm, neg, erg.historie, erg.scheiben))
 
 
 def test_die_teilkuendigung_darf_nach_einer_beitragsfreistellung_liegen(welt):
