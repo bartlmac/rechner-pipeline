@@ -641,14 +641,12 @@ def bewegungskonto(
                 # unmittelbar davor) — mit Vorzeichen, wie der Kern sie
                 # liefert.
                 #
-                # Das Vorzeichen ist bewusst nicht festgelegt: Am
-                # betriebenen Fixture ist es POSITIV (die neue
-                # Gesamtsumme liegt über der alten, weil der umgewandelte
-                # Teil als beitragsfreie Summe zurückkommt). Ob das
-                # fachlich so gewollt ist, ist eine Frage an das
-                # Aktuariat und steht in dev-docs/befundliste-t26.md; die
-                # Nachweisung führt jedenfalls, was der Kern rechnet,
-                # statt die Änderung wegzulassen (Befund T26-11).
+                # Das Vorzeichen ist bewusst nicht festgelegt: Mit einer
+                # realistischen Korrekturschicht senkt jede Herabsetzung
+                # die Summe; ein Fixture mit absichtlich grosser Schicht
+                # hebt sie, weil die Schicht in die Neuberechnung eingeht.
+                # Die Nachweisung führt, was der Kern rechnet, statt die
+                # Änderung wegzulassen (Befund T26-11).
                 "veraenderung_herabsetzung": {
                     "stueck": 0,
                     "summe": float(sum(

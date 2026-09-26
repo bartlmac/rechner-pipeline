@@ -421,10 +421,10 @@ def test_die_herabsetzung_ist_eine_summenbewegung_ohne_stueck(welt):
     assert all(h["stueck"] == 0 for h in herab), (
         "eine Herabsetzung nimmt keinen Vertrag aus dem Bestand")
     # Das VORZEICHEN wird hier bewusst nicht festgeschrieben: Am
-    # Fixture ist es positiv, und ob eine "Herabsetzung" die
-    # Versicherungssumme heben darf, ist eine fachliche Frage (siehe
-    # dev-docs/befundliste-t26.md). Der Test bindet, DASS die Aenderung
-    # gefuehrt wird — nicht, in welche Richtung sie faellt.
+    # Fixture ist es positiv, weil dessen Korrekturschicht absichtlich
+    # gross ist (mit realistischer Schicht senkt die Herabsetzung, siehe
+    # test_herabsetzung_realistisch_t2611). Der Test bindet, DASS die
+    # Aenderung gefuehrt wird — nicht, in welche Richtung sie faellt.
     for zeile in konto:
         for track, oks in zeile["identitaet"].items():
             assert all(oks.values()), (zeile["jahr"], track, oks)
