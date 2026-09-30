@@ -86,6 +86,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as _dt
+import fnmatch
 import hashlib
 import json
 import os
@@ -134,6 +135,7 @@ from rechner_pipeline.betrieb._zeichnung import (
     verlange_betrieb,
 )
 from rechner_pipeline.betrieb.neugeschaeft import NeugeschaeftError, neugeschaeft_zwischen
+from rechner_pipeline.betrieb.seite import SEITE_STAGING_DIR
 from rechner_pipeline.betrieb.tagesjournal import (
     TagesjournalError,
     gebuchte_sicht,
@@ -142,6 +144,7 @@ from rechner_pipeline.betrieb.tagesjournal import (
     validate_tagesjournal,
 )
 from rechner_pipeline.betrieb.uebernahme import (
+    EINGANG_DATEI, STAGING_DIR as UEBERNAHME_STAGING_DIR,
     UEBERNAHME_DIR, UebernahmeError, lies_uebernahmen,
 )
 from rechner_pipeline.models.anker import jsonl_zeilen
@@ -271,6 +274,51 @@ class Ablage:
         return self.journal / PROTOKOLL_DATEI
 
 
+#: Die Schreibziele unter der Ablage: je Ziel das Verzeichnis relativ zur
+#: Wurzel und das Namensmuster (``fnmatch``). Runde E, Klasse D geschlossen.
+#:
+#: WARUM eine Tabelle: Jedes Ziel, das der Tageslauf oder der Render der
+#: Seite atomar schreibt, entsteht daneben als ``.<name>.<zufall>.tmp`` und
+#: wird dann umgehaengt. Ein Prozesstod dazwischen liess die Tempdatei fuer
+#: immer liegen, beim exklusiven Abschluss als Hardlink-Zwilling der
+#: 0444-Datei (Runde D, Fund 6). Der Fix von Runde D zaehlte vier
+#: Namensmuster im Aufraeumen auf — die Schreiber standen woanders, und der
+#: naechste Schreiber waere ohne Aufraeumen geblieben. Jetzt nehmen die
+#: Schreiber ihren Zielpfad durch :func:`schreibziel` (nur, was hier steht),
+#: und :func:`_raeume_schreibreste` raeumt genau diese Tabelle. Ein neues
+#: Ziel ist ein Eintrag; ein Schreiber ohne ``schreibziel`` faellt in der
+#: Ratsche ``tests/test_betrieb_schreibreste_klasse.py``.
+SCHREIBZIELE: Tuple[Tuple[str, str], ...] = (
+    (".", PUBLISH_MARKER_DATEI),
+    (JOURNAL_DIR, TAGESJOURNAL_DATEI),
+    (ABSCHLUSS_DIR, "abschluss_*.parquet"),
+    (BERICHT_DIR, "bestandsbericht_*.html"),
+    (ARBEIT_DIR, "*.parquet"),
+    (ARBEIT_DIR, MANIFEST_DATEI),
+    (SEITE_STAGING_DIR, "index.html"),
+)
+
+
+def schreibziel(ablage: "Ablage", pfad: Path) -> Path:
+    """Den Zielpfad eines atomaren Schreibers unter der Ablage freigeben.
+
+    Runde E, Klasse D geschlossen: Nur ein Ziel aus :data:`SCHREIBZIELE`
+    wird geschrieben — denn nur dessen Schreibreste raeumt der naechste
+    Lauf unter der Sperre (:func:`_raeume_schreibreste`). Ein Ziel ausserhalb
+    der Tabelle ist ein Fehler, bevor die erste Tempdatei entsteht, nicht
+    ein Rest, den nach einem Prozesstod niemand mehr findet.
+    """
+    pfad = Path(pfad)
+    for verzeichnis, muster in SCHREIBZIELE:
+        if (pfad.parent == ablage.wurzel / verzeichnis
+                and fnmatch.fnmatchcase(pfad.name, muster)):
+            return pfad
+    raise TageslaufError(
+        f"{pfad}: kein Schreibziel der Ablage — seine Tempdatei raeumte nach "
+        "einem Prozesstod niemand weg. Ausweg: das Ziel als (Verzeichnis, "
+        "Namensmuster) in tageslauf.SCHREIBZIELE eintragen")
+
+
 def betriebszeichner(
     ablage: "Ablage",
     schluessel: Optional[Path] = None,
@@ -364,7 +412,7 @@ def schreibe_publish_marker(
     if ablage.tagesjournal_pfad.is_file():
         ablage.tagesjournal_vorher_pfad.write_bytes(
             ablage.tagesjournal_pfad.read_bytes())
-    _schreibe_json_atomar(ablage.publish_marker, {
+    _schreibe_json_atomar(schreibziel(ablage, ablage.publish_marker), {
         "schema_version": 1,
         "heute": heute.isoformat(),
         "generation": generation,
@@ -1326,7 +1374,7 @@ def _stand_bauen(
     if ablage.arbeit.exists():
         _entferne_ablageverzeichnis(ablage, ablage.arbeit)
     ablage.arbeit.mkdir(parents=True)
-    ausgaben.append(write_portfolio(basis, ablage.arbeit / "bestand.parquet"))
+    ausgaben.append(write_portfolio(basis, schreibziel(ablage, ablage.arbeit / "bestand.parquet")))
 
     zeilen = _protokoll(ablage, zeichner)
     _pruefe_bezeugte_eingaenge(ablage, zeilen, aufschalten=aufschalten)
@@ -1445,27 +1493,34 @@ def _stand_bauen(
         config, historie, ledger, scheiben_fort, heute, ab_tag=betriebsbeginn)
     gesamt = fuehre_fort(mit_zugaengen(basis, ergebnis.zugaenge), historie)
 
-    ausgaben.append(write_portfolio(historie, ablage.arbeit / "historie.parquet"))
-    ausgaben.append(write_portfolio(ledger, ablage.arbeit / "ledger.parquet"))
-    ausgaben.append(write_portfolio(scheiben, ablage.arbeit / "scheiben.parquet"))
-    ausgaben.append(write_portfolio(ergebnis.zugaenge, ablage.arbeit / "zugaenge.parquet"))
-    ausgaben.append(write_portfolio(gesamt, ablage.arbeit / "bestand_gesamt.parquet"))
+    ausgaben.append(write_portfolio(
+        historie, schreibziel(ablage, ablage.arbeit / "historie.parquet")))
+    ausgaben.append(write_portfolio(
+        ledger, schreibziel(ablage, ablage.arbeit / "ledger.parquet")))
+    ausgaben.append(write_portfolio(
+        scheiben, schreibziel(ablage, ablage.arbeit / "scheiben.parquet")))
+    ausgaben.append(write_portfolio(
+        ergebnis.zugaenge, schreibziel(ablage, ablage.arbeit / "zugaenge.parquet")))
+    ausgaben.append(write_portfolio(
+        gesamt, schreibziel(ablage, ablage.arbeit / "bestand_gesamt.parquet")))
     if merkmale is not None:
         ausgaben.append(write_portfolio(
             merkmale[list(MERKMALE_NAMES)].reset_index(drop=True),
-            ablage.arbeit / "merkmale.parquet"))
+            schreibziel(ablage, ablage.arbeit / "merkmale.parquet")))
     if verankerung is not None:
         ausgaben.append(write_portfolio(
-            verankerung.reset_index(drop=True), ablage.arbeit / "verankerung.parquet"))
+            verankerung.reset_index(drop=True),
+            schreibziel(ablage, ablage.arbeit / "verankerung.parquet")))
     if schichten is not None:
         ausgaben.append(write_portfolio(
-            schichten.reset_index(drop=True), ablage.arbeit / "schichten.parquet"))
+            schichten.reset_index(drop=True),
+            schreibziel(ablage, ablage.arbeit / "schichten.parquet")))
     reduktionen = _gebuchte_reduktionen(ergebnis.reduktionen, ledger)
     if reduktionen is not None and len(reduktionen):
         ausgaben.append(write_portfolio(
-            reduktionen, ablage.arbeit / "reduktionen.parquet"))
+            reduktionen, schreibziel(ablage, ablage.arbeit / "reduktionen.parquet")))
     schreibe_manifest(
-        ablage.arbeit, horizont=heute, neuzugang_ab=None, config_pfad=config_pfad,
+        schreibziel(ablage, ablage.arbeit / MANIFEST_DATEI).parent, horizont=heute, neuzugang_ab=None, config_pfad=config_pfad,
         ausgaben=ausgaben, eingaben=eingaben,
     )
     zahlen = {
@@ -1790,20 +1845,68 @@ def _raeume_schreibreste(ablage: Ablage) -> None:
     Verzeichnissen, nur Dateien und Links, nie Verzeichnisse. Eine fremde
     Punktdatei bleibt. Unter der Sperre schreibt kein anderer Lauf und kein
     Export in diese Verzeichnisse — eine Tempdatei hier ist ein Rest.
+
+    Runde E, Klasse D geschlossen: Die Muster stehen nicht mehr hier,
+    sondern in :data:`SCHREIBZIELE`, durch die jeder Schreiber seinen
+    Zielpfad nimmt (:func:`schreibziel`). Runde D zaehlte vier Muster auf;
+    das Arbeitsverzeichnis, das Manifest und die vorbereitete Seite fehlten.
+
+    Runde E, Nachbesserung: dazu die verwaisten Staging-Verzeichnisse der
+    Registrierung (:func:`_raeume_uebernahme_staging`) — die eine Stelle,
+    an der ein Rest ein ganzes Verzeichnis ist.
     """
-    muster = (
-        (ablage.abschluesse, ".abschluss_*.parquet.*.tmp"),
-        (ablage.berichte, ".bestandsbericht_*.html.*.tmp"),
-        (ablage.journal, f".{TAGESJOURNAL_DATEI}.*.tmp"),
-        (ablage.wurzel, f".{PUBLISH_MARKER_DATEI}.*.tmp"),
-    )
-    for verzeichnis, name in muster:
-        if not verzeichnis.is_dir() or verzeichnis.is_symlink():
+    for relativ, muster in SCHREIBZIELE:
+        verzeichnis = ablage.wurzel / relativ
+        # Ein Unterverzeichnis als Symlink kann aus der Ablage fuehren; die
+        # Wurzel selbst darf einer sein (Einhaengepunkt des Betriebs).
+        if not verzeichnis.is_dir() or (relativ != "." and verzeichnis.is_symlink()):
             continue
-        for rest in verzeichnis.glob(name):
+        for rest in verzeichnis.glob(f".{muster}.*.tmp"):
             if rest.is_dir() and not rest.is_symlink():
                 continue
             rest.unlink(missing_ok=True)
+    _raeume_uebernahme_staging(ablage)
+
+
+def _raeume_uebernahme_staging(ablage: Ablage) -> None:
+    """Verwaiste Staging-Verzeichnisse der Registrierung entfernen
+    (Runde E, Nachbesserung) — nur unter ``uebernahme.neu/``, nie unter
+    ``uebernahme/``.
+
+    WARUM hier: ``uebernahme.eingang_anlegen`` baut einen Eingang
+    vollstaendig unter ``uebernahme.neu/<fall>/`` und haengt ihn in einem
+    Zug nach ``uebernahme/`` um — beides unter der LAUF-Sperre der Ablage
+    (Angriffsrunde Betrieb). Ein Verzeichnis, das der Tageslauf unter
+    derselben Sperre dort vorfindet, gehoert also zu keiner laufenden
+    Registrierung: Es ist der Rest einer abgebrochenen, samt der Tempdatei
+    eines ``write_portfolio``, das mitten im Schreiben starb. Vorher raeumte
+    ihn nur die naechste Registrierung DESSELBEN Falls; kam keine, lag er
+    fuer immer. Kein Leser sieht ihn (T26-15) — aber die Ablage wuchs.
+
+    Geloescht wird nur ein echtes Verzeichnis unmittelbar in einer echten
+    Staging-Wurzel (kein Link, ueber ``entferne_verzeichnis``). Was die
+    Registrierung dort nie anlegt — eine Datei, ein Link —, bleibt stehen.
+    Die zweite Sicherung der Registrierung gilt auch hier (T26-01): Traegt
+    das Verzeichnis eine eingang.json und steht ein Eingang desselben
+    Namens, entscheidet kein Name, was ein Rest ist — benannter Fehler.
+    """
+    staging = ablage.wurzel / UEBERNAHME_STAGING_DIR
+    if not staging.is_dir() or staging.is_symlink():
+        return
+    for arbeit in sorted(staging.iterdir()):
+        if arbeit.is_symlink() or not arbeit.is_dir():
+            continue
+        eingang = ablage.uebernahme / arbeit.name
+        try:
+            entferne_verzeichnis(
+                arbeit, innerhalb=staging,
+                ohne_marker=EINGANG_DATEI if (eingang.exists() or eingang.is_symlink()) else None,
+                grund="verwaistes Staging einer abgebrochenen Registrierung",
+            )
+        except LoeschFehler as exc:
+            raise TageslaufError(
+                f"{exc}. Ausweg: pruefen, ob {eingang} der gueltige Eingang ist; "
+                f"dann {arbeit} von Hand entfernen und den Lauf erneut starten") from exc
 
 
 @contextlib.contextmanager
@@ -2376,7 +2479,7 @@ def _tageslauf_mit_config(
                     # null aus, obwohl die Fuehrung sie traegt (N-01).
                     geschrieben = schreibe_abschluss(
                         sicht["portfolio"], sicht["historie"], config, stichtag,
-                        ablage.abschluesse, scheiben=sicht["scheiben"],
+                        schreibziel(ablage, pfad).parent, scheiben=sicht["scheiben"],
                         merkmale=sicht.get("merkmale"),
                         schichten=sicht.get("schichten"),
                         verankerung=sicht.get("verankerung"),
@@ -2402,7 +2505,8 @@ def _tageslauf_mit_config(
                     # andere Geschichte als die Zahlen daneben.
                     bericht = _bericht(
                         sicht, config, stichtag, heute,
-                        ablage.berichte / f"bestandsbericht_{stichtag.isoformat()}.html",
+                        schreibziel(ablage, ablage.berichte
+                                    / f"bestandsbericht_{stichtag.isoformat()}.html"),
                         tabellen["sha256"]["portfolio"],
                     )
                     eintrag["bericht"] = bericht.name
@@ -2416,8 +2520,9 @@ def _tageslauf_mit_config(
                         for fall, policen in sorted(teilbestaende.items()):
                             teil = _bericht(
                                 _teilbestand(sicht, policen), config, stichtag, heute,
-                                ablage.berichte
-                                / f"bestandsbericht_{stichtag.isoformat()}_teilbestand-{fall}.html",
+                                schreibziel(ablage, ablage.berichte / (
+                                    f"bestandsbericht_{stichtag.isoformat()}"
+                                    f"_teilbestand-{fall}.html")),
                                 tabellen["sha256"]["portfolio"],
                                 titel=f"Teilbestand {fall} (uebernommen) zum {stichtag.isoformat()}",
                             )
@@ -2431,7 +2536,7 @@ def _tageslauf_mit_config(
             # dem naechsten Lauf, dass ein Publish unterwegs war — samt
             # allem, was er braucht, um ihn zurueckzunehmen (Review T24-01,
             # Schritt b).
-            write_portfolio(journal, ablage.tagesjournal_pfad)
+            write_portfolio(journal, schreibziel(ablage, ablage.tagesjournal_pfad))
             zeile["tagesjournal"]["sha256"] = _datei_hash(ablage.tagesjournal_pfad)
             _uebernehmen(ablage, kennung)
             zeile["manifest_sha256"] = manifest_hash

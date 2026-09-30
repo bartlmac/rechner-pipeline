@@ -305,6 +305,420 @@ EREIGNIS_ZUSTAND: Dict[str, str] = {
     "INV": "BU", "REA": "POL",
 }
 
+#: Welche Erfahrungsannahme (``bestand.config.Annahmen``) welches GeVo des
+#: Ledgers zieht: Annahmenfeld -> (Produkt, Ereignis). Runde E, Klasse
+#: geschlossen ("Bindung Ereignisart -> Rate"): Die Bindung der Herabsetzung
+#: an ihre Rate (Runde C, RC05) war der erste Fall einer Regel, die fuer JEDE
+#: Ereignisart gilt — eine Config, deren Annahme ein Ereignis nicht erzeugen
+#: kann, belegt keine gebuchte Zeile dieser Art. Die Menge der Schluessel ist
+#: die Menge der Annahme-Felder der Dataclass; ein Test haelt beide mit ``==``
+#: gleich, damit ein neues Annahmenfeld hier eingeordnet werden MUSS.
+#:
+#: ``aktivensterblichkeit`` und ``invalidensterblichkeit`` ziehen beide ``TOD``
+#: des BU-Produkts; welche gilt, entscheidet der Zustand VOR dem Ereignis
+#: (:data:`BU_TOD_JE_ZUSTAND`).
+ANNAHME_ERZEUGT: Mapping[str, Tuple[str, str]] = {
+    "tod": ("klv", "TOD"),
+    "storno": ("klv", "STO"),
+    "beitragsfreistellung": ("klv", "PEX"),
+    "erhoehung": ("klv", "ERH"),
+    "herabsetzung": ("klv", "RED"),
+    "invalidisierung": ("bu", "INV"),
+    "reaktivierung": ("bu", "REA"),
+    "aktivensterblichkeit": ("bu", "TOD"),
+    "invalidensterblichkeit": ("bu", "TOD"),
+}
+
+#: (Produkt, Ereignis), das von MEHR als einer Annahme gezogen wird — dort
+#: entscheidet der Zustand vor dem Ereignis. Aus :data:`ANNAHME_ERZEUGT`
+#: abgeleitet, nicht abgetippt.
+ZUSTANDSABHAENGIG: frozenset = frozenset(
+    pe for pe in ANNAHME_ERZEUGT.values()
+    if list(ANNAHME_ERZEUGT.values()).count(pe) > 1)
+
+#: BU-Tod: welche Annahme zieht ihn, je nachdem, ob der Vertrag vor dem
+#: Ereignis im Leistungsbezug stand (Schluessel True) oder Anwaerter war.
+BU_TOD_JE_ZUSTAND: Mapping[bool, str] = {
+    False: "aktivensterblichkeit",
+    True: "invalidensterblichkeit",
+}
+
+#: Annahmen mit einer Rechnungsgrundlage erster Ordnung: Die Rate ist
+#: ``a + b * q`` (q die Wahrscheinlichkeit der Tafel), sie ist nur dann
+#: sicher null, wenn ``a`` UND ``b`` null sind. Alle anderen ziehen mit
+#: ``annahme(0.0)`` — dort ist ``b`` ohne Wirkung (TOML-Default b = 1 ist
+#: kein Zeichen einer Rate). Die Engine ruft sie so (``ereignisse``).
+ANNAHME_MIT_ERSTER_ORDNUNG: frozenset = frozenset({
+    "tod", "invalidisierung", "reaktivierung",
+    "aktivensterblichkeit", "invalidensterblichkeit",
+})
+
+#: Ereignisse, die aus KEINER Annahme gezogen werden — je mit Grund. Stehen
+#: nur begruendete Ausnahmen hier; ein Test haelt die Menge zusammen mit
+#: den Zielen von :data:`ANNAHME_ERZEUGT` gleich ``EREIGNIS_VALUES``.
+EREIGNIS_OHNE_ANNAHME: Mapping[str, str] = {
+    "ZUG": "Zugang: Neugeschaeft oder Uebernahme, keine Erfahrungsannahme",
+    "MIG": "Residuum der Uebernahme, eine Rechnung und kein Ereignis",
+    "ABL": "Ablauf folgt aus der Laufzeit des Vertrags, nicht aus einer Rate",
+}
+
+
+class EreignisOhneZuordnung(ValueError):
+    """Ein (Produkt, Ereignis)-Paar ist weder Ziel einer Annahme noch
+    Ausnahme (Runde E, Nachbesserung)."""
+
+
+def ereignis_zuordnungsfehler(produkt: str, ereignis: str) -> Optional[str]:
+    """Der Befundtext, wenn das Paar (Produkt, Ereignis) weder das Ziel einer
+    Annahme (:data:`ANNAHME_ERZEUGT`) noch eine Ausnahme
+    (:data:`EREIGNIS_OHNE_ANNAHME`) ist — sonst None.
+
+    Runde E, Nachbesserung: ``annahme_fuer_ereignis`` gab fuer ein solches
+    Paar still None zurueck, und ``None`` heisst "Ausnahme, keine Annahme".
+    Ein Produkt, das eine neue Ereignisart bucht (oder ein Ledger, das eine
+    Art einem Produkt zuschreibt, das sie nicht kennt, z. B. INV an einer
+    KLV-Police), lief so ohne Bindung an irgendeine Rate durch. Die Menge
+    der Ausnahmen gilt fuer alle Produkte; die Ziele sind je Produkt."""
+    if ereignis in EREIGNIS_OHNE_ANNAHME:
+        return None
+    if any(pe == (produkt, ereignis) for pe in ANNAHME_ERZEUGT.values()):
+        return None
+    return (f"Ereignis {ereignis} fuer Produkt {produkt} ist keiner Annahme und "
+            "keiner Ausnahme zugeordnet — in ANNAHME_ERZEUGT oder "
+            "EREIGNIS_OHNE_ANNAHME eintragen")
+
+
+def annahme_fuer_ereignis(
+    produkt: str, ereignis: str, im_leistungsbezug: bool = False
+) -> Optional[str]:
+    """Das Annahmenfeld, das dieses GeVo des Produkts zieht — oder None,
+    wenn es aus keiner Annahme gezogen wird (:data:`EREIGNIS_OHNE_ANNAHME`).
+    Ein Paar, das weder Ziel noch Ausnahme ist, wirft
+    :class:`EreignisOhneZuordnung` (fail-fast mit Ausweg, der Text kommt aus
+    :func:`ereignis_zuordnungsfehler`) — ``None`` ist nur noch die benannte
+    Ausnahme. Ledgerweit meldet es :func:`unzugeordnete_ereignisse`."""
+    fehler = ereignis_zuordnungsfehler(produkt, ereignis)
+    if fehler is not None:
+        raise EreignisOhneZuordnung(fehler)
+    treffer = [f for f, pe in ANNAHME_ERZEUGT.items() if pe == (produkt, ereignis)]
+    if len(treffer) > 1:
+        return BU_TOD_JE_ZUSTAND[bool(im_leistungsbezug)]
+    return treffer[0] if treffer else None
+
+
+def unzugeordnete_ereignisse(stamm: Any, ledger: Any) -> List[str]:
+    """Befunde zu Ledgerzeilen, deren (Produkt, Ereignis)-Paar weder Ziel einer
+    Annahme noch Ausnahme ist: je Paar ein Text mit Zeilenzahl und Policen.
+
+    Dieselbe Regel fuer P-B1 und die Fuehrungsprobe (Runde E, Nachbesserung).
+    Sie gilt fuer JEDE Zeile, unabhaengig von Raten, Zugang und Horizont —
+    ob eine Art einem Produkt ueberhaupt zugeordnet ist, ist keine Frage des
+    Ortes. Das Produkt einer Police steht im Stamm (``produkt``; ohne die
+    Spalte gilt ``klv``, wie in :func:`unbelegte_ereignisse`); Policen
+    ausserhalb des Stamms pruefen andere Regeln."""
+    if len(ledger) == 0:
+        return []
+    produkt_je = (stamm.set_index("police_id")["produkt"].astype(str).to_dict()
+                  if "produkt" in stamm.columns else {})
+    bekannt = set(int(p) for p in stamm["police_id"])
+    gefunden: Dict[Tuple[str, str], List[int]] = {}
+    zeilen = ledger[["police_id", "ereignis"]].drop_duplicates()
+    anzahl = ledger.groupby(["police_id", "ereignis"]).size().to_dict()
+    for pid, art in zip(zeilen["police_id"], zeilen["ereignis"]):
+        if int(pid) not in bekannt:
+            continue
+        paar = (produkt_je.get(int(pid), "klv"), str(art))
+        if ereignis_zuordnungsfehler(*paar) is not None:
+            gefunden.setdefault(paar, []).extend([int(pid)] * int(anzahl[(pid, art)]))
+    befunde = []
+    for (produkt, art), policen in sorted(gefunden.items()):
+        beispiele = ", ".join(str(p) for p in sorted(set(policen))[:3])
+        befunde.append(
+            f"ledger: {ereignis_zuordnungsfehler(produkt, art)} ({len(policen)} "
+            f"Zeile(n), police {beispiele}{' ...' if len(set(policen)) > 3 else ''})")
+    return befunde
+
+
+def annahme_erzeugt_nicht(annahmen: Any, feld: str) -> bool:
+    """Die Annahme kann ihr Ereignis nicht erzeugen (Rate null)."""
+    annahme = getattr(annahmen, feld)
+    if feld in ANNAHME_MIT_ERSTER_ORDNUNG:
+        return not (float(annahme.a) or float(annahme.b))
+    return not float(annahme(0.0))
+
+
+def unbelegte_ereignisse(
+    stamm: Any,
+    ledger: Any,
+    annahmen: Any,
+    *,
+    leistungsbezug: Optional[Any] = None,
+) -> Dict[str, List[Tuple[int, int]]]:
+    """Gebuchte Fortschreibungszeilen, die ihre Erfahrungsannahme nicht
+    erzeugen kann: Annahmenfeld -> [(Police, Vertragsjahr), ...].
+
+    Runde E, Klasse geschlossen ("Bindung Ereignisart -> Rate"): Die Engine
+    zieht jedes Ereignis aus einer Annahme der Config
+    (:data:`ANNAHME_ERZEUGT`); eine Annahme mit Rate null
+    kann es nicht gezogen haben. Vorher band nur die Herabsetzung ihre Rate
+    (Runde C, RC05) — eine Config ohne Storno-, Beitragsfreistellungs-,
+    Erhoehungs- oder Sterblichkeitsannahme belegte trotzdem jede
+    Storno-, PEX-, ERH- und TOD-Zeile des Ledgers, und der Lauf galt als
+    durch die Config erzeugt, die ihn nicht erzeugt hat.
+
+    Geprueft werden die Buchungen NACH dem Bestandszugang des Vertrags; was
+    am oder vor dem Zugangstag steht, schreibt die Uebernahme und faellt
+    unter die Regel des Buchungsfensters
+    (:func:`buchungsfenster_verstoesse`). Ereignisse ohne
+    Annahme (:data:`EREIGNIS_OHNE_ANNAHME`) sind ausgenommen.
+    Beim BU-Tod entscheidet der Zustand VOR dem Ereignis
+    (``leistungsbezug(police, datum) -> bool``, aus der Statushistorie: P-B1
+    gibt ``ledger_bindung.zustand_vor`` mit), ob die Sterblichkeit des
+    Anwaerters oder des Leistungsbeziehers die Rate ist. Ohne Angabe gilt der
+    Anwaerter — die Fuehrungsprobe ist ein KLV-Werkzeug.
+    """
+    import pandas as pd
+
+    if len(ledger) == 0:
+        return {}
+    null_felder = {f for f in ANNAHME_ERZEUGT if annahme_erzeugt_nicht(annahmen, f)}
+    if not null_felder:
+        return {}
+    arten = {ANNAHME_ERZEUGT[f][1] for f in null_felder}
+    kandidaten = ledger[ledger["ereignis"].isin(arten)]
+    if len(kandidaten) == 0:
+        return {}
+    haupt = stamm.set_index("police_id")
+    produkt_je = haupt["produkt"].astype(str).to_dict() if "produkt" in haupt.columns else {}
+    zugang_je = haupt["bestandszugang"].to_dict()
+    treffer: Dict[str, set] = {}
+    for z in kandidaten.itertuples(index=False):
+        pid = int(z.police_id)
+        if pid not in zugang_je or pd.Timestamp(z.status_date) <= pd.Timestamp(zugang_je[pid]):
+            continue
+        produkt = produkt_je.get(pid, "klv")
+        art = str(z.ereignis)
+        im_bezug = ((produkt, art) in ZUSTANDSABHAENGIG
+                    and leistungsbezug is not None
+                    and bool(leistungsbezug(pid, pd.Timestamp(z.status_date))))
+        if ereignis_zuordnungsfehler(produkt, art) is not None:
+            continue      # ohne Zuordnung: Befund von unzugeordnete_ereignisse
+        feld = annahme_fuer_ereignis(produkt, art, im_bezug)
+        if feld in null_felder:
+            treffer.setdefault(feld, set()).add((pid, int(z.vertragsjahr)))
+    return {f: sorted(v) for f, v in treffer.items()}
+
+
+def unbelegte_ereignisse_text(feld: str, eintraege: List[Tuple[int, int]]) -> str:
+    """Die Meldung zu einem Annahmenfeld — dieselbe fuer P-B1 und die
+    Fuehrungsprobe."""
+    art = ANNAHME_ERZEUGT[feld][1]
+    beispiele = "; ".join(f"police {p} Jahr {j}" for p, j in eintraege[:3])
+    return (
+        f"ledger: {len(eintraege)} {art}-Buchung(en), die die Annahmen nicht "
+        f"erzeugen koennen (annahmen.{feld}: die Rate ist null) — z. B. "
+        f"{beispiele}{' ...' if len(eintraege) > 3 else ''}. Ein Ereignis, "
+        "das die Erfahrungsannahme der Config nicht zieht, ist keine Buchung "
+        "dieses Laufs; Ausweg: die Config angeben, mit der der Lauf entstand, "
+        "oder die Buchung streichen")
+
+
+#: Ereignisse, die AM Zugangstag eines Vertrags stehen duerfen — je mit
+#: Grund. Runde E, Klasse geschlossen ("Buchungsfenster"): Jede
+#: Fortschreibungsbuchung liegt echt NACH dem Bestandszugang; am Zugangstag
+#: selbst stehen nur die Buchungen, die der Zugang schreibt.
+ZUGANGSTAG_EREIGNISSE: Mapping[str, str] = {
+    "ZUG": "die Zugangsbuchung selbst",
+    "MIG": "Residuum der Uebernahme, gebucht zum Zugangsstichtag",
+    "PEX": "Umbuchung eines beitragsfrei uebernommenen Vertrags zum "
+           "Zugangsstichtag (nur bei uebernommenem Vertrag)",
+}
+
+#: Teilmenge von :data:`ZUGANGSTAG_EREIGNISSE`, die nur bei einem
+#: UEBERNOMMENEN Vertrag (Bestandszugang nach Versicherungsbeginn) am
+#: Zugangstag stehen darf: Beim eigenen Geschaeft gibt es am Beginn keine
+#: Umbuchung eines mitgebrachten Zustands.
+ZUGANGSTAG_NUR_UEBERNOMMEN: Tuple[str, ...] = ("PEX",)
+
+#: Die gelieferte Vorgeschichte eines uebernommenen Vertrags steht in der
+#: Statushistorie, NICHT im Ledger (Grundsatzdokumentation 9.14; der
+#: Migrationszugang bucht nur Zugang, Umbuchung und Residuum zum
+#: Stichtag). Eine Ledgerzeile VOR dem Bestandszugang hat deshalb keine
+#: Ausnahme: Was die abgebende Gesellschaft erlebt hat, ist im Journal des
+#: aufnehmenden Unternehmens keine Bewegung.
+
+#: Ereignisse, die HINTER dem Horizont stehen duerfen, wenn sie am Zugangstag
+#: des Vertrags liegen — je mit Grund. Der Horizont des Laufs ist das Datum,
+#: bis zu dem er Jahrestage simuliert hat; ein Neugeschaeft, dessen Beginn
+#: auf den Monatsersten NACH dem Laufdatum faellt (Antrag heute, Beginn
+#: morgen), ist im Bestand und damit im Ledger, ohne dass der Lauf ein
+#: Vertragsjahr gefahren hat (Tageslauf, Erstbefuellung bis 31.1. mit Beginn
+#: 1.2.). Es ist der Zugang selbst; jede andere Buchung dahinter ist
+#: unbelegt.
+#:
+#: Die Ausnahme ist nach oben BEGRENZT (Runde E, Nachbesserung): Ein Vertrag
+#: beginnt am Monatsersten STRENG nach dem Verkaufstag, also hoechstens am
+#: ersten Monatsersten nach dem Horizont (:func:`monatserster_nach`). Ein
+#: Zugang, der weiter dahinter steht, ist kein Neugeschaeft dieses Laufs.
+ZUGANG_HINTER_HORIZONT: Mapping[str, str] = {
+    "ZUG": "Neugeschaeft mit Beginn nach dem Laufdatum — der Zugang, kein "
+           "gefahrenes Vertragsjahr",
+}
+
+
+def monatserster_nach(datum: Any) -> Any:
+    """Der erste Monatserste STRENG nach ``datum`` (auch wenn ``datum`` selbst
+    ein Monatserster ist): der Beginn eines Vertrags, der an diesem Tag
+    verkauft wurde (Tageslauf, ADR-020)."""
+    import pandas as pd
+
+    ts = pd.Timestamp(datum)
+    return (ts.to_period("M") + 1).to_timestamp()
+
+
+def buchungsfenster_verstoesse(
+    ledger: Any, stamm: Any, horizont: Any = None
+) -> Tuple[Any, Any]:
+    """Je Ledgerzeile: liegt sie nicht nach dem Bestandszugang, liegt sie
+    hinter dem belegten Horizont? Rueckgabe: zwei boolesche Felder.
+
+    Die EINE Regel fuer P-B1 (``validate_ledger``) und die Fuehrungsprobe
+    (Runde E, Klasse geschlossen): vorher stand die Wache nur im RED-Block
+    und liess STO, TOD, ABL, ERH und PEX vor dem Zugang und hinter dem
+    Horizont durch. Die Ausnahmen sind benannt
+    (:data:`ZUGANGSTAG_EREIGNISSE`, :data:`ZUGANG_HINTER_HORIZONT`, der
+    Zugang hinter dem Horizont hoechstens am Monatsersten nach ihm);
+    ``horizont`` None heisst: der Lauf belegt keinen, dann gibt es keine
+    obere Grenze. Die Policen der Zeilen muessen im Stamm stehen.
+    """
+    import pandas as pd
+
+    stamm_idx = stamm.set_index("police_id")
+    pids = ledger["police_id"].to_numpy()
+    zugang = stamm_idx.loc[pids, "bestandszugang"].to_numpy()
+    beginn = stamm_idx.loc[pids, "insurance_start"].to_numpy()
+    datum = ledger["status_date"].to_numpy()
+    art = ledger["ereignis"].to_numpy()
+    uebernommen = zugang > beginn
+    am_zugangstag = datum == zugang
+    darf_am_tag = _np.isin(art, list(ZUGANGSTAG_EREIGNISSE)) & (
+        ~_np.isin(art, list(ZUGANGSTAG_NUR_UEBERNOMMEN)) | uebernommen)
+    vor_zugang = (datum < zugang) | (am_zugangstag & ~darf_am_tag)
+    if horizont is None:
+        hinter = _np.zeros(len(ledger), dtype=bool)
+    else:
+        grenze = _np.datetime64(monatserster_nach(horizont))
+        zugang_darf_dahinter = (_np.isin(art, list(ZUGANG_HINTER_HORIZONT))
+                                & am_zugangstag & (datum <= grenze))
+        hinter = (datum > _np.datetime64(pd.Timestamp(horizont))) & ~zugang_darf_dahinter
+    return vor_zugang, hinter
+
+
+#: Der Zeitpunkt, an dem ein Ausnahme-Ereignis (aus keiner Annahme gezogen,
+#: :data:`EREIGNIS_OHNE_ANNAHME`) im Ledger stehen darf. Runde E,
+#: Nachbesserung: ZUG, MIG und ABL waren nach dem Zugang an keinen Zeitpunkt
+#: gebunden — eine Ausnahmemenge ohne Wache fuer ihren Grund ist keine
+#: geschlossene Klasse. Der Grund steht in :data:`EREIGNIS_OHNE_ANNAHME`; hier
+#: steht, was er fuer den Ort der Buchung heisst. Ein Test haelt beide Mengen
+#: mit ``==`` gleich, damit ein neues Ausnahme-Ereignis seine Regel bekommen MUSS.
+ZEITPUNKT_ZUGANGSTAG = "zugangstag"
+ZEITPUNKT_VERTRAGSENDE = "vertragsende"
+AUSNAHME_ZEITPUNKT: Mapping[str, str] = {
+    "ZUG": ZEITPUNKT_ZUGANGSTAG,       # die Zugangsbuchung steht am Zugang
+    "MIG": ZEITPUNKT_ZUGANGSTAG,       # das Residuum der Uebernahme zum Zugangsstichtag
+    "ABL": ZEITPUNKT_VERTRAGSENDE,     # der Ablauf folgt aus der Laufzeit
+}
+
+#: Ausnahme-Ereignisse, die je Police (und Betragsart) genau einmal stehen: ein
+#: Vertrag kommt einmal zu.
+AUSNAHME_EINMAL_JE_POLICE: Tuple[str, ...] = ("ZUG",)
+
+#: Ausnahme-Ereignisse, die es nur bei einem UEBERNOMMENEN Vertrag gibt (Zugang
+#: nach Versicherungsbeginn): Beim eigenen Geschaeft gibt es kein Residuum einer
+#: Uebernahme.
+AUSNAHME_NUR_UEBERNOMMEN: Tuple[str, ...] = ("MIG",)
+
+
+def ausnahme_ereignis_verstoesse(
+    ledger: Any, stamm: Any, schon_gemeldet: Any = None
+) -> Dict[str, Any]:
+    """Je Regel eine boolesche Maske je Ledgerzeile: Regel -> Zeilen, die
+    gegen sie verstossen.
+
+    Die EINE Regel fuer P-B1 (``validate_ledger``) und die Fuehrungsprobe
+    (Runde E, Nachbesserung). ``zeitpunkt``: die Zeile steht nicht an dem
+    Zeitpunkt, den :data:`AUSNAHME_ZEITPUNKT` fuer ihre Art vorsieht
+    (Zugangstag des Vertrags; Vertragsende: ``status_date == insurance_end``
+    und ``vertragsjahr == duration``). ``einmal``: die Zeile ist eine
+    Wiederholung — :data:`AUSNAHME_EINMAL_JE_POLICE` je Police und Betragsart,
+    gezaehlt unter den Zeilen am richtigen Zeitpunkt. ``uebernommen``: die Art
+    steht an einem eigenen Geschaeft, obwohl sie nur bei einem uebernommenen
+    Vertrag vorkommt (:data:`AUSNAHME_NUR_UEBERNOMMEN`).
+
+    ``schon_gemeldet``: Zeilen, die das Buchungsfenster
+    (:func:`buchungsfenster_verstoesse`) bereits beanstandet — ein Fehler, ein
+    Befund; sie scheiden hier aus. Die Policen der Zeilen muessen im Stamm
+    stehen.
+    """
+    import pandas as pd
+
+    stamm_idx = stamm.set_index("police_id")
+    pids = ledger["police_id"].to_numpy()
+    zugang = stamm_idx.loc[pids, "bestandszugang"].to_numpy()
+    beginn = stamm_idx.loc[pids, "insurance_start"].to_numpy()
+    ende = stamm_idx.loc[pids, "insurance_end"].to_numpy()
+    dauer = stamm_idx.loc[pids, "duration"].to_numpy()
+    datum = ledger["status_date"].to_numpy()
+    jahr = ledger["vertragsjahr"].to_numpy()
+    art = ledger["ereignis"].to_numpy()
+    offen = (_np.ones(len(ledger), dtype=bool) if schon_gemeldet is None
+             else ~_np.asarray(schon_gemeldet, dtype=bool))
+
+    hat_regel = _np.isin(art, list(AUSNAHME_ZEITPUNKT))
+    zeitpunkt_der_art = _np.array([AUSNAHME_ZEITPUNKT.get(a, "") for a in art], dtype=object)
+    am_platz = _np.where(zeitpunkt_der_art == ZEITPUNKT_ZUGANGSTAG,
+                         datum == zugang, (datum == ende) & (jahr == dauer))
+    zeitpunkt = hat_regel & ~am_platz & offen
+
+    uebernommen = _np.isin(art, list(AUSNAHME_NUR_UEBERNOMMEN)) & ~(zugang > beginn) & offen
+
+    einmal = _np.zeros(len(ledger), dtype=bool)
+    kandidat = _np.isin(art, list(AUSNAHME_EINMAL_JE_POLICE)) & offen & ~zeitpunkt
+    if kandidat.any():
+        schluessel = pd.DataFrame({
+            "p": pids[kandidat], "e": art[kandidat],
+            "b": ledger["betrag_art"].to_numpy()[kandidat]})
+        einmal[_np.flatnonzero(kandidat)] = schluessel.duplicated(keep="first").to_numpy()
+    return {"zeitpunkt": zeitpunkt, "einmal": einmal, "uebernommen": uebernommen}
+
+
+def ausnahme_ereignis_text(regel: str, art: str, policen: List[int]) -> str:
+    """Die Meldung zu einem Verstoss gegen eine Ausnahmeregel — dieselbe fuer
+    P-B1 (mit dem Praefix ``ledger: ``) und die Fuehrungsprobe. Sie nennt Art,
+    Regel, Policen und den Ausweg, und sie teilt keine Woerter mit dem Text
+    des Buchungsfensters (ein Fehler, ein Befund, unterscheidbar)."""
+    beispiele = ", ".join(str(p) for p in policen[:5])
+    if regel == "zeitpunkt":
+        if AUSNAHME_ZEITPUNKT[art] == ZEITPUNKT_ZUGANGSTAG:
+            was = "steht nicht am Zugangstag des Vertrags"
+            soll = f"{EREIGNIS_OHNE_ANNAHME[art]}; sie wird am Zugangstag gebucht"
+        else:
+            was = ("steht nicht am Vertragsende (status_date gleich insurance_end, "
+                   "vertragsjahr gleich duration)")
+            soll = f"{EREIGNIS_OHNE_ANNAHME[art]}"
+    elif regel == "einmal":
+        was = "steht mehr als einmal je Police und Betragsart"
+        soll = "ein Vertrag kommt einmal zu"
+    elif regel == "uebernommen":
+        was = "steht an einem eigenen Geschaeft"
+        soll = ("es gibt sie nur bei einem uebernommenen Vertrag (Zugang nach "
+                "Versicherungsbeginn)")
+    else:
+        raise KeyError(regel)
+    return (f"{art}-Buchung {was} (police [{beispiele}]) — {soll}. "
+            "Ausweg: die Buchung streichen oder an den Platz legen, den der "
+            "Erzeuger bucht")
+
 #: Erhoehungsscheiben (dynamische Erhoehung): each row is an own layer of a
 #: contract, actuarially an own model point (Schichtungsprinzip). The base
 #: layer (Grundscheibe) is the Stamm row itself; Scheiben start at id 1.
@@ -899,25 +1313,29 @@ def validate_ledger(
       zwei zwischen Policen vertauschte Scheibenbetraege (3.850 gegen
       2.350) mit null Befunden; der Abschluss verschob sich um 63,70 EUR,
       weil die Summen danach auf anderen Vertragsaltern lagen;
-    * ``RED`` liegt NACH dem Bestandszugang des Vertrags und, mit
+    * JEDE Buchung liegt NACH dem Bestandszugang des Vertrags und, mit
       ``horizont`` (dem im Laufmanifest BELEGTEN Horizont, nicht einem
-      Aufrufwert), nicht dahinter (Pruefrunde T27, Runde C, Befund RC02):
-      Die Engine simuliert einen uebernommenen Vertrag erst ab seinem
-      Zugangsjahr und nie ueber den Horizont. Eine Herabsetzung davor ist
-      Vorgeschichte der abgebenden Gesellschaft, eine dahinter ist nicht
-      gefahren — beide sind keine Buchung dieses Laufs und damit unbelegt.
-      Vorher ging eine Teilkuendigung vom 2025-01-01 vor dem Zugang vom
-      2026-01-01 mit null Befunden durch und kuerzte die Summe eines
-      Vertrags am Stichtag von 43.000 auf 25.800 EUR.
-
-    **Das Buchungsfenster (Zugang/Horizont) gilt nur fuer ``RED``.** Die
-    uebrigen Ereignisse (``STO``, ``TOD``, ``ABL``, ``ERH``, ``PEX``)
-    ausserhalb des Fensters — vor dem Bestandszugang oder hinter dem
-    belegten Horizont — sind hier NICHT abgewiesen: Klassen-Kandidat der
-    naechsten Pruefrunde (dieselbe Frage 'kann der Lauf diese Buchung
-    gefahren haben?'), nicht Teil der Runde C. Wer die Wache erweitert,
-    prueft je Ereignis, ob ein Bestand mit Vorgeschichte sie legitim
-    traegt (``MIG``, ``ZUG`` liegen am Zugang selbst).
+      Aufrufwert), nicht dahinter (Pruefrunde T27, Runde C, Befund RC02,
+      Runde E, Klasse geschlossen): Die Engine simuliert einen
+      uebernommenen Vertrag erst ab seinem Zugangsjahr und nie ueber den
+      Horizont. Eine Buchung davor ist Vorgeschichte der abgebenden
+      Gesellschaft, eine dahinter ist nicht gefahren — beide sind keine
+      Buchung dieses Laufs und damit unbelegt. Vorher galt die Wache nur
+      fuer ``RED``: Eine Teilkuendigung vom 2025-01-01 vor dem Zugang vom
+      2026-01-01 ging mit null Befunden durch und kuerzte die Summe eines
+      Vertrags am Stichtag von 43.000 auf 25.800 EUR; ein Storno, Tod, Ablauf,
+      eine Erhoehung oder Beitragsfreistellung am selben Ort ebenso.
+      Die Menge der Ereignisarten ist ``EREIGNIS_VALUES``; ausgenommen sind
+      nur die benannten Zugangsbuchungen am Zugangstag
+      (:data:`ZUGANGSTAG_EREIGNISSE`) und der Zugang eines Neugeschaefts
+      mit Beginn nach dem Laufdatum (:data:`ZUGANG_HINTER_HORIZONT`, hoechstens
+      am Monatsersten nach dem Horizont); die gelieferte Vorgeschichte steht
+      in der Historie, nicht im Ledger. Die Ausnahme-Ereignisse stehen an
+      ihrem Zeitpunkt (:func:`ausnahme_ereignis_verstoesse`: ZUG einmal und am
+      Zugangstag, MIG am Zugangstag eines uebernommenen Vertrags, ABL am
+      Vertragsende).
+      Dieselbe Regel, als :func:`buchungsfenster_verstoesse`, prueft die
+      Fuehrungsprobe.
     """
     errors: List[str] = []
     cols = list(ledger.columns)
@@ -1016,28 +1434,38 @@ def validate_ledger(
     if not (ledger["status_date"].dt.day == 1).all():
         errors.append("ledger: status_date nicht auf Monatsersten normalisiert")
 
-    # RED liegt im Lauf: nach dem Zugang, nicht hinter dem belegten Horizont.
-    rot = (ledger["ereignis"] == "RED").to_numpy()
-    if rot.any():
+    # Jede Buchung liegt im Lauf: echt nach dem Zugang (ausser den benannten
+    # Zugangsbuchungen), nicht hinter dem belegten Horizont — fuer JEDE
+    # Ereignisart (Runde E, Klasse geschlossen), nicht nur fuer RED.
+    vor_zugang, hinter = buchungsfenster_verstoesse(ledger, stamm, horizont)
+    arten = ledger["ereignis"].to_numpy()
+    for art in sorted(set(arten[vor_zugang])):
+        maske = vor_zugang & (arten == art)
+        errors.append(
+            f"ledger: {art}-Buchung nicht nach dem Bestandszugang des Vertrags "
+            f"(police {_policen(maske)}) — Vorgeschichte der abgebenden "
+            "Gesellschaft, keine Buchung dieses Laufs; die Engine simuliert "
+            "einen uebernommenen Vertrag erst ab seinem Zugangsjahr. Am "
+            f"Zugangstag stehen nur {sorted(ZUGANGSTAG_EREIGNISSE)}")
+    if horizont is not None:
         import pandas as pd
 
-        zugang_je_zeile = stamm_idx.loc[
-            ledger["police_id"].to_numpy(), "bestandszugang"].to_numpy()
-        buchung = ledger["status_date"].to_numpy()
-        vor_zugang = rot & (buchung <= zugang_je_zeile)
-        if vor_zugang.any():
+        for art in sorted(set(arten[hinter])):
+            maske = hinter & (arten == art)
             errors.append(
-                "ledger: RED-Buchung nicht nach dem Bestandszugang des Vertrags "
-                f"(police {_policen(vor_zugang)}) — Vorgeschichte der abgebenden "
-                "Gesellschaft, keine Buchung dieses Laufs; die Engine simuliert "
-                "einen uebernommenen Vertrag erst ab seinem Zugangsjahr")
-        if horizont is not None:
-            hinter = rot & (buchung > _np.datetime64(pd.Timestamp(horizont)))
-            if hinter.any():
-                errors.append(
-                    "ledger: RED-Buchung nach dem belegten Horizont "
-                    f"{pd.Timestamp(horizont).date()} (police {_policen(hinter)}) — "
-                    "der Lauf hat sie nicht gefahren, sie ist unbelegt")
+                f"ledger: {art}-Buchung nach dem belegten Horizont "
+                f"{pd.Timestamp(horizont).date()} (police {_policen(maske)}) — "
+                "der Lauf hat sie nicht gefahren, sie ist unbelegt")
+
+    # Die Ausnahme-Ereignisse (ZUG, MIG, ABL) stehen an ihrem Zeitpunkt (Runde E,
+    # Nachbesserung): eine Ausnahmemenge ohne Wache fuer ihren Grund ist keine
+    # geschlossene Klasse. Zeilen, die das Fenster schon beanstandet, scheiden
+    # aus — ein Fehler, ein Befund.
+    for regel, maske in ausnahme_ereignis_verstoesse(
+            ledger, stamm, vor_zugang | hinter).items():
+        for art in sorted(set(arten[maske])):
+            errors.append("ledger: " + ausnahme_ereignis_text(
+                regel, str(art), _policen(maske & (arten == art))))
 
     # Zeilenweise gegen den Stammsatz: Generation, Laufzeit, Vertragsjahr.
     haupt = stamm.set_index("police_id")
@@ -2098,10 +2526,11 @@ def red_bindung_fehler(
     die Rate, sonst faellt eine Wache still aus (wie die Anteilsbindung
     vor der Angriffsrunde).
 
-    Die Bindung Ereignisart -> Rate gilt hier nur fuer die Herabsetzung;
-    fuer Storno, Beitragsfreistellung und Erhoehung ist sie offen
-    (Pruefrunde T27, Runde C, Nachbarfall) und Gegenstand der naechsten
-    Angriffsrunde.
+    Die Bindung Ereignisart -> Rate gilt fuer JEDE Ereignisart (Runde E,
+    Klasse geschlossen): Diese Funktion bindet die REGISTRIERTE Herabsetzung
+    (Tabelle) an ihre Rate; die gebuchten Zeilen aller Ereignisarten bindet
+    ``ledger_bindung.unbelegte_ereignisse`` an ihre Annahme
+    (:data:`ANNAHME_ERZEUGT`).
     """
     fehler: List[str] = []
     if soll_verfahren is not None and verfahren != soll_verfahren:

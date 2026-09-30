@@ -35,11 +35,17 @@ gehalten:
    dem im Laufmanifest belegten Horizont und auf einem beitragspflichtigen
    Vertrag — sonst ist sie keine Buchung dieses Laufs und hat kein Soll.
 
-**Grenzen dieser Wache.** Das Buchungsfenster (nach dem Bestandszugang, vor
-dem belegten Horizont) gilt nur fuer die Herabsetzung (``RED``): ``STO``,
-``TOD``, ``ABL``, ``ERH`` und ``PEX`` ausserhalb des Fensters sind ein
-Klassen-Kandidat der naechsten Pruefrunde, hier wie in
-``models.bestand.validate_ledger`` nicht abgewiesen.
+**Das Buchungsfenster und die Bindung an die Rate** (Runde E, Klasse
+geschlossen) gelten fuer JEDE Ereignisart, nicht nur fuer die Herabsetzung:
+Eine Buchung der uebernommenen Vertraege liegt echt nach dem Bestandszugang
+und nicht hinter dem im Laufmanifest belegten Horizont
+(``models.bestand.buchungsfenster_verstoesse``, dieselbe Regel wie in
+``validate_ledger``), und sie folgt aus einer Erfahrungsannahme der Config,
+deren Rate nicht null ist (``models.bestand.unbelegte_ereignisse``, dieselbe
+Regel wie in P-B1); ein (Produkt, Ereignis)-Paar ohne Annahme und ohne
+benannte Ausnahme ist ein Befund (``unzugeordnete_ereignisse``), und die
+Ausnahme-Ereignisse ZUG, MIG und ABL stehen an ihrem Zeitpunkt
+(``models.bestand.ausnahme_ereignis_verstoesse``).
 
 **Belege vor dieser Aenderung** (Pruefrunde T27, Runde C) sind nicht mehr
 nachrechenbar: Die Probe bindet jetzt die Nebentabellen der
@@ -106,10 +112,16 @@ from rechner_pipeline.models.bestand import (
     STATUS_CODE_VALUES,
     STATUS_HISTORIE_NAMES,
     VERANKERUNG_NAMES,
+    ausnahme_ereignis_verstoesse,
+    ausnahme_ereignis_text,
+    buchungsfenster_verstoesse,
     model_point_kwargs,
     red_bindung_fehler,
     red_sollbuchungen,
     red_vollstaendigkeit_fehler,
+    unbelegte_ereignisse,
+    unbelegte_ereignisse_text,
+    unzugeordnete_ereignisse,
 )
 
 #: Die drei Spalten des Stamms, die die Fortschreibung BEWEGEN darf.
@@ -763,7 +775,7 @@ def pruefe_fuehrung(
                 befund(None, "endhistorie",
                        f"Endhistorie der Fortschreibung: unbekannte Zustaende {fremd} — "
                        f"bekannt sind {sorted(STATUS_CODE_VALUES)}")
-        f_ledger: pd.DataFrame = fortschreibung["ledger"]
+        f_ledger: pd.DataFrame = fortschreibung["ledger"].reset_index(drop=True)
         _pruefe_endzustand(
             befund, stamm=stamm, historie=historie, scheiben=scheiben,
             f_bestand=f_bestand, f_historie=f_historie, f_ledger=f_ledger,
@@ -870,15 +882,60 @@ def pruefe_fuehrung(
                        "die Engine zieht fuer beitragsfreie Vertraege keine "
                        "Herabsetzung und die Bewertung bricht ab; ein Soll wird "
                        "nicht hergeleitet")
-        if horizont is not None:
-            hinter = f_ledger[(f_ledger["ereignis"] == "RED")
-                              & f_ledger["police_id"].isin(set(welten))
-                              & (pd.to_datetime(f_ledger["status_date"]) > pd.Timestamp(horizont))]
-            for pid in sorted(set(int(p) for p in hinter["police_id"])):
+        # Das Buchungsfenster gilt fuer JEDE Ereignisart (Runde E, Klasse
+        # geschlossen): Die Zeilen der uebernommenen Vertraege liegen echt
+        # nach dem Bestandszugang (ausser den benannten Zugangsbuchungen) und
+        # nicht hinter dem belegten Horizont — dieselbe Regel wie in
+        # validate_ledger. Eine Zeile ausserhalb ist keine Buchung dieses
+        # Laufs: Sie wird nicht nachgerechnet und nicht als geprueft gezaehlt.
+        uebernommen_ids = set(int(p) for p in stamm["police_id"])
+        im_lauf = f_ledger[f_ledger["police_id"].isin(uebernommen_ids)]
+        vor_zugang, hinter = buchungsfenster_verstoesse(im_lauf, stamm, horizont)
+        ausserhalb_idx = set()
+        for pos in range(len(im_lauf)):
+            if not (vor_zugang[pos] or hinter[pos]):
+                continue
+            z = im_lauf.iloc[pos]
+            pid, art_z = int(z["police_id"]), str(z["ereignis"])
+            datum_z = pd.Timestamp(z["status_date"])
+            ausserhalb_idx.add(im_lauf.index[pos])
+            if hinter[pos]:
+                ort = (f"nach dem belegten Horizont {pd.Timestamp(horizont).date()} "
+                       f"(am {datum_z.date()})")
+                grund = "der Lauf hat sie nicht gefahren"
+            else:
+                ort = f"nicht nach dem Bestandszugang (am {datum_z.date()})"
+                grund = ("Vorgeschichte der abgebenden Gesellschaft, keine Buchung "
+                         "dieses Laufs")
+            if art_z == "RED":
                 ausgeschlossen.add(pid)
-                befund(pid, "herabsetzung",
-                       f"RED-Buchung nach dem belegten Horizont {pd.Timestamp(horizont).date()} "
-                       "— der Lauf hat sie nicht gefahren")
+            befund(pid, "herabsetzung" if art_z == "RED" else "buchungsfenster",
+                   f"{art_z}-Buchung {ort} — {grund}")
+        # Die Ausnahme-Ereignisse (ZUG, MIG, ABL) stehen an ihrem Zeitpunkt
+        # (Runde E, Nachbesserung): dieselbe Regel wie in validate_ledger;
+        # Zeilen, die das Fenster schon beanstandet, scheiden aus. Eine Zeile
+        # am falschen Platz ist keine Buchung dieses Laufs — sie wird nicht
+        # nachgerechnet und nicht als geprueft gezaehlt.
+        for regel, maske in ausnahme_ereignis_verstoesse(
+                im_lauf, stamm, vor_zugang | hinter).items():
+            for pos in range(len(im_lauf)):
+                if not maske[pos]:
+                    continue
+                z = im_lauf.iloc[pos]
+                ausserhalb_idx.add(im_lauf.index[pos])
+                befund(int(z["police_id"]), "ausnahme_ereignis",
+                       ausnahme_ereignis_text(regel, str(z["ereignis"]), [int(z["police_id"])]))
+        # Die Rate: Jede Buchung nach dem Zugang folgt aus einer Annahme der
+        # Config, die sie erzeugen kann (Runde E, Klasse geschlossen).
+        for feld, eintraege in sorted(unbelegte_ereignisse(
+                stamm, im_lauf, config.annahmen).items()):
+            befund(None, "ratebindung", unbelegte_ereignisse_text(feld, eintraege),
+                   feld=feld)
+        # Und die Art gehoert dem Produkt ueberhaupt zu (Nachbesserung Runde E):
+        # weder Ziel einer Annahme noch Ausnahme ist kein stilles "keine Rate".
+        for text in unzugeordnete_ereignisse(stamm, im_lauf):
+            befund(None, "zuordnung", text)
+        nach = nach.drop(index=list(ausserhalb_idx & set(nach.index)))
 
         def teile_bei(pid: int, welt: Dict[str, Any], jahr: int):
             teile = list(welt["teile"])

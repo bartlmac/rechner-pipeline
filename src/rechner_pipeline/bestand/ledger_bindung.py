@@ -60,6 +60,9 @@ from rechner_pipeline.models.bestand import (
     red_bindung_fehler,
     red_sollbuchungen,
     red_vollstaendigkeit_fehler,
+    unbelegte_ereignisse,
+    unbelegte_ereignisse_text,
+    unzugeordnete_ereignisse,
 )
 
 #: Cent-Toleranz: Der Kern schreibt Buchung und Herleitung aus demselben
@@ -252,6 +255,12 @@ def pruefe_ledger_betraege(
     grundlagen = grundlagen_je_police(config, merkmale)
     tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
     haupt = stamm.set_index("police_id")
+    for feld, eintraege in sorted(unbelegte_ereignisse(
+            stamm, ledger, config.annahmen,
+            leistungsbezug=lambda pid, datum: zustand_vor(historie, pid, datum) == "BU",
+    ).items()):
+        errors.append(unbelegte_ereignisse_text(feld, eintraege))
+    errors.extend(unzugeordnete_ereignisse(stamm, ledger))
     try:
         schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
     except ValueError as exc:

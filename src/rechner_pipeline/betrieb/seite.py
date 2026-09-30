@@ -705,6 +705,8 @@ def bereite_bestand_heute_vor(
     wird nur unter der Lauf-Sperre der Ablage, die Tempdatei eines anderen
     Renderers gibt es dann nicht.
     """
+    from rechner_pipeline.betrieb.tageslauf import schreibziel
+
     modell = stand_modell(ablage, aktuelle_zeile, zeichner)
     ziel = ablage.wurzel / SEITE_DIR / "index.html"
     ziel.parent.mkdir(parents=True, exist_ok=True)
@@ -712,7 +714,9 @@ def bereite_bestand_heute_vor(
     staging.mkdir(parents=True, exist_ok=True)
     for rest in staging.glob(f".{ziel.name}.*.tmp"):
         rest.unlink(missing_ok=True)
-    tmp = neue_datei(staging, ziel.name)
+    # Das vorbereitete Ziel ist ein Schreibziel der Ablage (Runde E,
+    # Klasse D): Seinen Rest raeumt auch der Tageslauf unter der Sperre.
+    tmp = neue_datei(staging, schreibziel(ablage, staging / ziel.name).name)
     try:
         tmp.write_text(rendere_html(modell), encoding="utf-8", newline="\n")
     except BaseException:
@@ -816,6 +820,32 @@ def paketziel_fehler(ablage, ziel: Path) -> Optional[str]:
                 "anderes Ziel waehlen oder das Verzeichnis von Hand entfernen"
             )
     return None
+
+
+def ausserhalb_der_ablage(ablage, pfad: Path) -> Path:
+    """Den Zielpfad eines atomaren Schreibers des Exports freigeben — nur
+    ausserhalb der Ablage (Runde E, Nachbesserung).
+
+    WARUM eine zweite Bindung neben ``tageslauf.schreibziel``: Die Ratsche
+    der Schreibreste nahm die Schreiber des Exports je FUNKTION aus, weil
+    das Stands-Paket nie in der Ablage liegt (:func:`paketziel_fehler`).
+    Ein zweiter Aufruf in derselben Funktion — ``_schreibe(ablage.journal
+    / ...)`` — fiel damit keinem Instrument auf, und seine Tempdatei raeumte
+    nach einem Prozesstod niemand: Der Tageslauf raeumt nur die Ziele aus
+    ``SCHREIBZIELE``. Jetzt nimmt jede Schreibstelle des Exports ihr Ziel
+    hierdurch; ein Ziel in der Ablage ist ein Fehler, bevor die Tempdatei
+    entsteht. Gemessen wird das Verzeichnis, in dem die Tempdatei entsteht,
+    aufgeloest (auch ein Link in die Ablage faellt).
+    """
+    pfad = Path(pfad)
+    if _unter(pfad.parent.resolve(), Path(ablage.wurzel).resolve()):
+        raise SeiteError(
+            f"{pfad}: liegt in der Ablage {ablage.wurzel} — der Export schreibt "
+            "nur ausserhalb; den Rest eines Ziels in der Ablage raeumt nur der "
+            "Tageslauf, und nur fuer seine Schreibziele. Ausweg: ein Ziel "
+            "ausserhalb der Ablage waehlen, oder das Ziel als Schreibziel des "
+            "Tageslaufs fuehren (tageslauf.SCHREIBZIELE, tageslauf.schreibziel)")
+    return pfad
 
 
 def ankerziel_fehler(ablage, paket_ziel: Path, anker_verzeichnis: Path) -> Optional[str]:
@@ -1163,7 +1193,7 @@ def _stands_paket_unter_sperre(
         (ziel / name).write_bytes(roh)
         dateien[name] = sha256_bytes(roh)
     seite = ziel / "index.html"
-    _schreibe(seite, rendere_html(modell))
+    _schreibe(ausserhalb_der_ablage(ablage, seite), rendere_html(modell))
     dateien["index.html"] = sha256_bytes(seite.read_bytes())
     # Belege: Protokoll (mit Kette) und Manifest des Stands (T22-05), dazu
     # das Tagesjournal (T24-04, Teil 1) — der Konsument haelt stand.json
@@ -1228,7 +1258,8 @@ def _stands_paket_unter_sperre(
         # einer Auslieferung zusaetzlich die Abnahme A-B1.
         "zeichnung": satz.get("zeichnung"),
     }
-    _schreibe(ziel / PAKET_DATEI, json.dumps(modell, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    _schreibe(ausserhalb_der_ablage(ablage, ziel / PAKET_DATEI),
+              json.dumps(modell, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     (ziel / PAKET_BAU_MARKER).unlink()
     # Der Tausch: altes Paket beiseite, neues an seine Stelle, altes weg.
     # Endet der Prozess zwischen den zwei Umbenennungen, setzt der naechste

@@ -23,6 +23,12 @@ aus der Config — der Referenzstichtag ist eine Eigenschaft des Bestands,
 das Flag uebersteuert ihn nur. ``--scheiben`` ist Pflicht,
 sobald der Ledger dynamische Erhoehungen enthaelt.
 
+Ohne ``--historie``/``--ledger`` ist der Stamm allein nicht der gefuehrte
+Zustand: Liegt neben ihm irgendeine Nebentabelle des Laufs
+(``bestand.manifest.journal_pflichtige_rollen``) oder wird sie ausdruecklich
+genannt, weist der Bericht den Aufruf ab (Exit 2, mit Ausweg) — er wuerde sie
+ueberlesen und den Zustand ohne sie bewerten.
+
 Knoten: klv, bu
 """
 
@@ -39,6 +45,7 @@ from rechner_pipeline.bestand.manifest import (
     ROLLEN_DATEIEN,
     ManifestError,
     ERZEUGER,
+    journal_pflichtige_rollen,
     ERZEUGER_MIGRATIONSZUGANG,
     lies_manifest,
     manifest_pfad,
@@ -180,23 +187,32 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"bestand_report: Ungueltiges --bis-Datum: {exc}", file=sys.stderr)
             return 2
     eingaben = {"portfolio": portfolio_path}
-    # Herabsetzungen gibt es nur in einem Fortschreibungslauf; wer sie neben
+    # Jede Nebentabelle eines Laufs veraendert den gefuehrten Zustand (Runde E,
+    # Klasse geschlossen; Runde D, Fund 4 war der erste Fall): Wer sie neben
     # dem Stamm findet oder ausdruecklich nennt, hat den gefuehrten Zustand
-    # vor sich, nicht den Stamm allein (Runde D, Fund 4): Ohne Ledger wuerde
-    # der Bericht jeden herabgesetzten Vertrag UNGEKUERZT bewerten (VS
-    # 2.000.000 statt 1.339.863 im Messfall) und mit Exit 0 rendern. Lesen
-    # allein truege die Bewertung nicht — sie braucht die Buchungen, gegen
-    # die P-B1 die Herabsetzung haelt. Deshalb abweisen, mit Ausweg.
+    # vor sich, nicht den Stamm allein. Ohne Ledger wuerde der Bericht jeden
+    # herabgesetzten Vertrag UNGEKUERZT bewerten (VS 2.000.000 statt
+    # 1.339.863 im Messfall), jede Erhoehungsscheibe und Korrekturschicht
+    # ueberlesen, und mit Exit 0 rendern. Lesen allein truege die Bewertung
+    # nicht — sie braucht die Buchungen, gegen die P-B1 die Tabellen haelt.
+    # Deshalb abweisen, mit Ausweg. Die Menge kommt aus ROLLEN_DATEIEN
+    # (``journal_pflichtige_rollen``), fuer jedes Portfolio gleich; Ausnahmen
+    # stehen dort mit Grund.
     if not ns.historie:
-        red_datei = ROLLEN_DATEIEN["reduktionen"]
-        if getattr(ns, "reduktionen", None) or (portfolio_path.parent / red_datei).is_file():
+        rollen = journal_pflichtige_rollen()
+        genannt = [ROLLEN_DATEIEN[r] for r in rollen if getattr(ns, r, None)]
+        daneben = [ROLLEN_DATEIEN[r] for r in rollen
+                   if (portfolio_path.parent / ROLLEN_DATEIEN[r]).is_file()
+                   and ROLLEN_DATEIEN[r] not in genannt]
+        if genannt or daneben:
             print(
-                f"bestand_report: {red_datei} gehoert zu diesem Portfolio — der "
-                "Stamm allein ist nicht der gefuehrte Zustand, der Bericht "
-                "wuerde herabgesetzte Vertraege ungekuerzt bewerten. Ausweg: "
-                "den Lauf angeben (--historie, --ledger, --scheiben, --bis "
-                "auf den Horizont des Laufs); fuer einen Stamm ohne "
-                "Herabsetzungen das Portfolio in ein eigenes Verzeichnis legen",
+                f"bestand_report: {', '.join(genannt + daneben)} gehoert zu diesem "
+                "Portfolio — der Stamm allein ist nicht der gefuehrte Zustand, der "
+                "Bericht wuerde ihn ohne diese Tabellen bewerten (z. B. "
+                "herabgesetzte Vertraege ungekuerzt). Ausweg: den Lauf angeben "
+                "(--historie, --ledger, --scheiben, --bis auf den Horizont des "
+                "Laufs); fuer einen Stamm ohne Nebentabellen das Portfolio in ein "
+                "eigenes Verzeichnis legen",
                 file=sys.stderr,
             )
             return 2

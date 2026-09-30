@@ -539,8 +539,21 @@ die Schritte selbst zu improvisieren:
    (`gates.fuehrungsprobe`) — ihr Beleg ist Pflicht fuer Schritt 4 und
    fuer A-M4.
 4. Bestandsberichte vor/nach mit denselben Parametern (nur so ist der
-   Vergleich fair):
-   `python -m rechner_pipeline.bestand.cli_report --portfolio <bestand>.parquet --stichtage <liste> --out <ziel>.html`
+   Vergleich fair). Der Stamm allein ist nicht der gefuehrte Zustand:
+   Neben `bestand.parquet` der Uebernahme liegen immer Historie, Ledger und
+   Scheiben, und der Bericht weist einen Aufruf ohne den Lauf ab (Exit 2).
+   VOR aus dem Uebernahme-Verzeichnis (NACH: der Aufruf im Absatz "Bericht"
+   mit dem Fortschreibungsverzeichnis und `--bis <stichtag-2>`):
+   ```
+   python -m rechner_pipeline.bestand.cli_report \
+       --portfolio faelle/<fall>/abgeleitet/bestand/bestand.parquet \
+       --historie  faelle/<fall>/abgeleitet/bestand/historie.parquet \
+       --ledger    faelle/<fall>/abgeleitet/bestand/ledger.parquet \
+       --scheiben  faelle/<fall>/abgeleitet/bestand/scheiben.parquet \
+       --merkmale  faelle/<fall>/abgeleitet/bestand/merkmale.parquet \
+       --config <bestand-config>.toml \
+       --bis <stichtag-1> --out <ziel>.html
+   ```
 5. Abnahmebericht als Entscheidungsvorlage (keine Abnahme):
    `python -m rechner_pipeline.gates.abnahmebericht --fall faelle/<fall> --suite <suite>.json --titel "..." --stichtag-1 <iso> --stichtag-2 <iso> --spec <transformation>.spec.json --transformation-ergebnis <ergebnis>.json --bestandsbericht-vor <pfad> --bestandsbericht-nach <pfad>`
    Alle vier nach der Suite genannten Artefakte sind Pflicht. Zeilenverlust,

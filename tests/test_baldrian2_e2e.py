@@ -1055,3 +1055,38 @@ def test_die_fuehrungsprobe_rechnet_jede_herabsetzungsbuchung_nach(gefahrener_fa
     led.loc[i, "betrag"] += 1.0
     rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=kaputt, **red_basis)
     assert not rot["bestanden"] and any(b["art"] == "buchung" for b in rot["befunde"])
+
+
+def test_der_vor_bericht_laeuft_mit_dem_journal_und_der_stamm_allein_ist_abgewiesen(
+    gefahrener_fall: Path, tmp_path, capsys
+):
+    """Runde E, Nachbesserung (Befund 3): Die echte Verzeichnisform der
+    Uebernahme. ``bestand_uebernehmen`` schreibt ``historie.parquet`` und
+    ``ledger.parquet`` immer neben ``bestand.parquet`` — eine Ausnahme fuer
+    'schichten/verankerung ohne Journal' (frueher in
+    ``bestand.manifest``) konnte in dieser Form nie greifen und ist
+    gestrichen. Gemessen: (1) die Nachbarn sind da, (2) der Stamm allein
+    wird mit genau diesen Dateien abgewiesen, (3) der im Skill
+    ``migrationsfall-durchfuehren`` dokumentierte VOR-Bericht — mit
+    ``--historie``, ``--ledger``, ``--scheiben``, ``--merkmale``, ``--config``
+    — rendert. Mutationsprobe:
+    die Abweisung fuer ``bestand.parquet`` wieder aufweichen -> (2) rot."""
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    for rolle in ("historie", "ledger", "scheiben", "merkmale", "schichten", "verankerung"):
+        assert (bestand / f"{rolle}.parquet").is_file(), rolle
+    assert cli_report.main(["--portfolio", str(bestand / "bestand.parquet"),
+                            "--out", str(tmp_path / "allein.html")]) == 2
+    err = capsys.readouterr().err
+    assert all(f"{r}.parquet" in err for r in ("historie", "ledger", "scheiben")), err
+    assert not (tmp_path / "allein.html").exists()
+    assert cli_report.main([
+        "--portfolio", str(bestand / "bestand.parquet"),
+        "--historie", str(bestand / "historie.parquet"),
+        "--ledger", str(bestand / "ledger.parquet"),
+        "--scheiben", str(bestand / "scheiben.parquet"),
+        "--merkmale", str(bestand / "merkmale.parquet"),
+        "--config", str(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
+        "--bis", STICHTAG_1,
+        "--out", str(tmp_path / "vor.html"),
+    ]) == 0
+    assert (tmp_path / "vor.html").is_file()
