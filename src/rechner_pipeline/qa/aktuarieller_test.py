@@ -770,7 +770,8 @@ def _deckungskapital(
         # der ganze Abschlusskostenrest, und selbst die verlustfreie
         # Herabsetzung meldete einen Verlust (Angriffsrunde der Nacht).
         teile = reduzierte_teile(
-            kern, list(scheiben), monate // 12, parameter["anteil"], red_verfahren)
+            kern, list(scheiben), monate // 12, parameter["anteil"], red_verfahren,
+            stoab_je_baustein=v.stoab_je_baustein)
         return vertrags_monatsreserve_reduziert(
             teile, monate, stoab_je_baustein=False).vx_mrv
     if zustand == "beitragsfrei":

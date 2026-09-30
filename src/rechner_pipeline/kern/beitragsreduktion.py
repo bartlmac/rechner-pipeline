@@ -415,6 +415,7 @@ def reduziere_geschichtet(
     *,
     verfahren: str = PROSPEKTIV,
     zusatz_dk: float = 0.0,
+    stoab_je_baustein: bool = False,
 ) -> List[Tuple[int, "Reduktion"]]:
     """Herabsetzung eines Vertrags MIT dynamischen Erhoehungsscheiben.
 
@@ -440,6 +441,19 @@ def reduziere_geschichtet(
     Rueckkaufswert der Schicht verteilt — dem Anteil, aus dem der
     umgewandelte Betrag stammt. Beim verlustfreien Verfahren entfaellt
     die Frage, dort wird kein Abzug erhoben.
+
+    **Je Baustein, wo das Tarifwerk es sagt** (Runde D): Bei
+    ``stoab_je_baustein=True`` (Bedingungswerk Ziffer 4) gilt der Abzug je
+    BAUSTEIN mit eigenen Grenzen, und der Rueckkaufswert des Vertrags ist
+    die Summe der auf null begrenzten Baustein-Rueckkaufswerte. Umgewandelt
+    wird dann (1-f) x dieser RKW — dieselbe Groesse, die ein Storno am
+    selben Tag zahlt (``vertrags_rkw``) und die die Teilkuendigung schon
+    hielt. Der Faktor bleibt einer fuer alle Schichten (RKW / V^MRV der
+    Summe); die vertragsweite Bildung ignorierte den Schalter und wich im
+    Messfall (KLV_DEFAULT, Abzug 0,005 / 50 / 200, Scheiben in Jahr 2 und 3,
+    a0 = 6, f = 0,3) um 92,87 EUR Summe ab (54.578,30 statt 54.485,43).
+    Das Tarifwerk wird nie geraten: Der Aufrufer reicht den Schalter der
+    Generation durch.
 
     **Die Korrekturschicht gehoert zur Grundscheibe.** ``zusatz_dk`` geht
     dort in die Umwandlung ein und nirgends sonst: Die Schicht ist auf den
@@ -497,15 +511,20 @@ def reduziere_geschichtet(
 
     # Die vertragsweiten Groessen am Reduktionsstichtag: Sie entscheiden
     # ueber den Abzug, bevor irgendeine Schicht gerechnet wird.
-    gesamt = vertrags_monatsreserve(grund, list(scheiben), 12 * jahr)
+    gesamt = vertrags_monatsreserve(
+        grund, list(scheiben), 12 * jahr, stoab_je_baustein=stoab_je_baustein)
     # Der Anteil des Rueckkaufswerts, der die Umwandlung ueberlebt.
     # Derselbe Faktor fuer jede Schicht: Der Abzug ist vertragsweit
     # gebildet und wird proportional zum eingebrachten Rueckkaufswert
     # getragen.
-    nach_abzug = (
-        1.0 if verfahren == PROSPEKTIV
-        else _abzugsfaktor(gesamt.vx_mrv, gesamt.stoab)
-    )
+    if verfahren == PROSPEKTIV:
+        nach_abzug = 1.0
+    elif stoab_je_baustein:
+        # rkw ist hier NICHT max(0, vx_mrv - stoab): ein Baustein unter
+        # seinem Mindestabzug klemmt bei null (Kern, vertrags_monatsreserve).
+        nach_abzug = gesamt.rkw / gesamt.vx_mrv if gesamt.vx_mrv > 0.0 else 1.0
+    else:
+        nach_abzug = _abzugsfaktor(gesamt.vx_mrv, gesamt.stoab)
 
     aus: List[Tuple[int, "Reduktion"]] = []
     for i, (erh_jahr, kern) in enumerate(teile):
@@ -528,6 +547,7 @@ def reduzierte_teile(
     verfahren: str,
     *,
     schicht: Optional[Tuple[Any, int]] = None,
+    stoab_je_baustein: bool = False,
 ) -> List[Tuple[int, Any]]:
     """Der herabgesetzte Vertrag, je Schicht — DIE eine Rekonstruktion.
 
@@ -549,7 +569,8 @@ def reduzierte_teile(
         zusatz = schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
     aktive = [(j, k) for j, k in scheiben if j < jahr]
     teile = reduziere_geschichtet(
-        grund, aktive, jahr, anteil, verfahren=verfahren, zusatz_dk=zusatz)
+        grund, aktive, jahr, anteil, verfahren=verfahren, zusatz_dk=zusatz,
+        stoab_je_baustein=stoab_je_baustein)
     kerne = [grund] + [k for _, k in aktive]
     aus = [
         (erh_jahr, ReduzierterVertrag(kern=kerne[i], reduktion=red))

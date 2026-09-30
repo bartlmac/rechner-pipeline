@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as _dt
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import pandas as pd
 
@@ -318,6 +318,7 @@ def _reduzierte_vertraege(
     kerne: Dict[int, Rechenkern],
     scheiben_je_police: Dict[int, List[Dict[str, Any]]],
     schicht_je_police: Dict[int, Any],
+    stoab_je_baustein_je_police: Optional[Mapping[int, bool]] = None,
 ) -> Dict[int, List[Tuple[int, Any]]]:
     """Je herabgesetzter Police ihr geknickter Verlauf, je Schicht.
 
@@ -340,7 +341,8 @@ def _reduzierte_vertraege(
             [(int(sch["erh_jahr"]), sch["kern"])
              for sch in scheiben_je_police.get(pid, ())],
             int(zeile["reduktion_jahr"]), float(zeile["anteil"]),
-            str(zeile["verfahren"]), schicht=schicht_je_police.get(pid))
+            str(zeile["verfahren"]), schicht=schicht_je_police.get(pid),
+            stoab_je_baustein=bool((stoab_je_baustein_je_police or {}).get(pid, False)))
     return aus
 
 
@@ -430,7 +432,13 @@ def einzelwerte_am(
     tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
     schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
     reduziert_je_police = _reduzierte_vertraege(
-        reduktionen, kerne, scheiben_je_police, schicht_je_police)
+        reduktionen, kerne, scheiben_je_police, schicht_je_police,
+        # Der Abzug je Baustein ist Eigenschaft der Generation der Police
+        # (Runde D): dieselbe Regel wie die Engine beim Ziehen.
+        {int(pid): bool(tarifwerk_je_generation[
+            str(generation_je_police.loc[int(pid)])]["stoab_je_baustein"])
+         for pid in (reduktionen["police_id"] if reduktionen is not None else ())
+         if int(pid) in generation_je_police.index})
 
     scheibe = bestand_am(stamm, journal, stichtag)
     zeilen: List[Dict[str, Any]] = []

@@ -898,7 +898,8 @@ def pruefe_fuehrung(
             (red_sollbuchungen), die Betraege auf dem Weg der Pruefstrecke."""
             grund = welt["grund"]
             teile_red = reduzierte_teile(grund, teile_bei(pid, welt, jahr), red[0], red[1], red[2],
-                                         schicht=schicht_je_police.get(pid))
+                                         schicht=schicht_je_police.get(pid),
+                                         stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]))
             absorbiert = absorbierte_schicht(grund, jahr, schicht_je_police.get(pid))
             auszahlung = ((1.0 - red[1]) * vertrags_monatsreserve(
                 grund, [], 12 * jahr,
@@ -931,6 +932,24 @@ def pruefe_fuehrung(
             if pid in red_jahr and jahr >= red_jahr[pid] \
                     and pid not in reduktion_je_police:
                 continue                       # oben als Befund gemeldet
+            if art == "RED":
+                # Jede RED-Zeile gehoert zur registrierten Herabsetzung und
+                # zu ihrem Reduktionsjahr (Runde D, Fund 3): Eine Zeile in
+                # einem anderen Jahr wurde gegen das Soll des BUCHUNGSjahres
+                # bzw. ungekuerzt gehalten und als geprueft gezaehlt, obwohl
+                # sie keine registrierte Herabsetzung erzeugt — P-B1 weist
+                # sie ab. Sie ist unbelegt, wird nicht nachgerechnet und
+                # nicht gezaehlt. Ohne Tabellenzeile steht der Befund oben.
+                red_reg = reduktion_je_police.get(pid)
+                if red_reg is None:
+                    continue
+                if jahr != red_reg[0]:
+                    befund(pid, "herabsetzung",
+                           f"RED-Buchung im Vertragsjahr {jahr} ({z['betrag_art']}), "
+                           f"die registrierte Herabsetzung liegt im Jahr {red_reg[0]} — "
+                           "keine Buchung, die die Tabelle erzeugt; sie wird nicht "
+                           "nachgerechnet und nicht als geprueft gezaehlt")
+                    continue
             teile = teile_bei(pid, welt, jahr)
             grund, grund_mp = welt["grund"], welt["grund_mp"]
             pex_jahr = welt["pex_jahr"]
@@ -944,7 +963,8 @@ def pruefe_fuehrung(
                 # widerlegen (Review T25-06).
                 teile_red = reduzierte_teile(
                     grund, teile, red[0], red[1], red[2],
-                    schicht=schicht_je_police.get(pid))
+                    schicht=schicht_je_police.get(pid),
+                    stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]))
                 pex_f = pex_jahr
                 if pex_f is None:
                     eigene = f_ledger[(f_ledger["police_id"] == pid)

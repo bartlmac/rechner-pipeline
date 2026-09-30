@@ -514,9 +514,12 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     assert [a["stichtag"] for a in abschluesse] == ["2026-01-01", "2026-02-01"]
     assert "bericht" not in abschluesse[0]            # nur der juengste Abschluss wird gerendert
     assert abschluesse[1]["bericht"] == "bestandsbericht_2026-02-01.html"
+    # Runde D, Fund 7: die Zeile bindet den Teilbestandsbericht per Hash.
+    teil_pfad = ablage.berichte / "bestandsbericht_2026-02-01_teilbestand-probe-uebernahme.html"
     assert abschluesse[1]["teilbestaende"] == [
         {"fall": "probe-uebernahme",
-         "bericht": "bestandsbericht_2026-02-01_teilbestand-probe-uebernahme.html"}]
+         "bericht": "bestandsbericht_2026-02-01_teilbestand-probe-uebernahme.html",
+         "bericht_sha256": hashlib.sha256(teil_pfad.read_bytes()).hexdigest()}]
     teil = (ablage.berichte / "bestandsbericht_2026-02-01_teilbestand-probe-uebernahme.html").read_text("utf-8")
     assert "Teilbestand probe-uebernahme (uebernommen) zum 2026-02-01" in teil
     # Die Generationentafel des Berichts zaehlt je Generation: im Teilbestand

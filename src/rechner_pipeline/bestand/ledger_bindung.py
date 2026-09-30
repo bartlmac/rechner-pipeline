@@ -124,7 +124,8 @@ class _Herleitung:
         self.reduktion = (int(jahr), float(anteil), str(verfahren))
         self.reduziert = reduzierte_teile(
             self.grund, [(j, k) for j, _, k in self.scheiben],
-            int(jahr), float(anteil), str(verfahren), schicht=schicht)
+            int(jahr), float(anteil), str(verfahren), schicht=schicht,
+            stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]))
 
     def _bis(self, jahr: int):
         # Die Engine bucht STO/PEX/TOD des Jahres j+1 VOR der Erhoehung

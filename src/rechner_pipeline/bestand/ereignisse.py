@@ -295,7 +295,8 @@ class _Vertrag:
             auszahlung = (1.0 - anteil) * rkw_grund + zusatz
         self.reduziert = reduzierte_teile(
             self.grund, [(j, k) for j, _, k in self.scheiben], jahr, anteil,
-            verfahren, schicht=self.schicht)
+            verfahren, schicht=self.schicht,
+            stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]))
         self.reduktion = (jahr, anteil, verfahren)
         self.schicht = None
         return zusatz, sum(r.reduktion.vs_neu for _, r in self.reduziert), auszahlung

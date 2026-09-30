@@ -38,7 +38,6 @@ import io
 import json
 import os
 import re
-import shutil
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -233,6 +232,12 @@ def abschluesse_aus_protokoll(
                 eintrag["sha256"] = a.get("sha256")
             if a.get("bericht"):
                 eintrag["bericht"] = a["bericht"]
+                # Der Hash gehoert zu DIESER Nennung (Runde D, Fund 7): Eine
+                # spaetere Zeile ohne Hash nimmt ihn zurueck, statt den
+                # einer frueheren Fassung stehen zu lassen.
+                eintrag.pop("bericht_sha256", None)
+                if a.get("bericht_sha256"):
+                    eintrag["bericht_sha256"] = a["bericht_sha256"]
             if a.get("teilbestaende"):
                 eintrag["teilbestaende"] = a["teilbestaende"]
             for feld in KENNZAHL_FELDER:
@@ -1007,6 +1012,56 @@ def stands_paket(
         raise SeiteError(str(exc)) from exc
 
 
+def _bytes_aus_der_ablage(ablage, quelle: Path) -> bytes:
+    """Die Bytes einer Datei, die der Export ins Paket legt — nur, wenn sie
+    wirklich eine Datei der Ablage ist (Runde D, Fund 8).
+
+    Der Export kopierte mit ``shutil.copyfile`` und folgte damit jedem
+    Symlink: Ein Schreiber ohne Schluessel ersetzte den Bestandsbericht
+    durch einen Link auf den Betriebsschluessel, und das Paket trug die
+    Schluesselbytes — verankert und gezeichnet. Ein Hardlink auf dieselbe
+    Datei tut dasselbe ohne Link-Eintrag. Deshalb, vor jedem Kopieren:
+
+    * kein Symlink und eine regulaere Datei (``lstat``, beim Oeffnen
+      ``O_NOFOLLOW`` und ``fstat`` auf denselben Inode — kein Tausch
+      zwischen Pruefung und Lesen),
+    * genau EIN Name (``st_nlink == 1``) — die Ausgaben des Tageslaufs
+      tragen einen; ein zweiter ist ein Link von oder nach draussen,
+    * der aufgeloeste Pfad liegt unter der aufgeloesten Wurzel der Ablage
+      (auch ein Verzeichnis-Symlink wie ``berichte -> /anderswo`` faellt).
+
+    Sonst verweigert der Export mit Ausweg. Die Hashbindung (Fund 7) ist
+    die zweite Schicht; sie allein genuegte nicht: Eine byte-gleiche Datei
+    von draussen bestaende sie, und fuer Ablagen vor Runde D gibt es sie
+    nicht.
+    """
+    import stat as _stat
+
+    quelle = Path(quelle)
+    ausweg = ("Ausweg: an ihre Stelle die Ausgabe des Tageslaufs als gewoehnliche "
+              "Datei legen (kein Link; aus der Sicherung der Ablage) oder sie "
+              "entfernen — ein Paket traegt nur Bytes aus der Ablage")
+    vorher = os.lstat(quelle)
+    if _stat.S_ISLNK(vorher.st_mode):
+        raise SeiteError(f"{quelle}: ist ein Symlink ({os.readlink(quelle)}) — {ausweg}")
+    if not _stat.S_ISREG(vorher.st_mode):
+        raise SeiteError(f"{quelle}: keine regulaere Datei — {ausweg}")
+    if vorher.st_nlink != 1:
+        raise SeiteError(f"{quelle}: traegt {vorher.st_nlink} Namen (Hardlink) — {ausweg}")
+    wurzel = Path(ablage.wurzel).resolve()
+    echt = quelle.resolve()
+    if echt != wurzel and wurzel not in echt.parents:
+        raise SeiteError(f"{quelle}: liegt aufgeloest bei {echt}, ausserhalb der "
+                         f"Ablage {wurzel} — {ausweg}")
+    fd = os.open(quelle, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(fd, "rb") as datei:
+        jetzt = os.fstat(datei.fileno())
+        if (jetzt.st_dev, jetzt.st_ino) != (vorher.st_dev, vorher.st_ino) \
+                or jetzt.st_nlink != 1:
+            raise SeiteError(f"{quelle}: wurde waehrend des Exports getauscht — {ausweg}")
+        return datei.read()
+
+
 def _stands_paket_unter_sperre(
     ablage, ziel: Path, *, anker_verzeichnis: Path, art: str,
     schluessel: Optional[Path], zeichnungsordnung: Optional[Path],
@@ -1057,25 +1112,56 @@ def _stands_paket_unter_sperre(
     (ziel / PAKET_BAU_MARKER).write_bytes(b"")
     dateien: Dict[str, str] = {}
     for a in modell["abschluesse"][-1:]:
-        for name in [a.get("bericht")] + [t["bericht"] for t in a.get("teilbestaende") or []]:
+        for name, soll in [(a.get("bericht"), a.get("bericht_sha256"))] + [
+                (t["bericht"], t.get("bericht_sha256")) for t in a.get("teilbestaende") or []]:
             if not name:
                 continue
             quelle = ablage.berichte / name
-            if quelle.is_file():
-                shutil.copyfile(quelle, ziel / name)
-                dateien[name] = sha256_bytes((ziel / name).read_bytes())
+            if not quelle.exists() and not quelle.is_symlink():
+                continue
+            roh = _bytes_aus_der_ablage(ablage, quelle)
+            # Nur ein BEZEUGTER Bericht reist mit (Runde D, Fund 7). Zeilen vor
+            # Runde D nennen ihn ohne Hash: Er bleibt draussen, und der Export
+            # sagt es — ein Bericht ohne Bindung waere wieder zu glauben, und
+            # der gezeichnete Anker bestaetigte ihn. Der Tag bleibt
+            # exportierbar; der naechste Monatsabschluss bringt einen
+            # bezeugten Bericht.
+            if not soll:
+                print(f"seite: {name} nicht bezeugt (die Protokollzeile nennt keinen "
+                      "bericht_sha256, Ablage vor Runde D) — der Bericht geht nicht "
+                      "ins Paket", file=sys.stderr)
+                continue
+            if sha256_bytes(roh) != soll:
+                raise SeiteError(
+                    f"{quelle}: nicht der Bericht, den das Protokoll zum "
+                    f"{a.get('stichtag')} bezeugt (sha256 {sha256_bytes(roh)[:16]}… "
+                    f"statt {str(soll)[:16]}…) — ein Paket traegt nur bezeugte "
+                    "Bytes. Ausweg: die Datei aus der Sicherung der Ablage "
+                    "zuruecklegen (sha256 wie in der Protokollzeile) oder sie "
+                    "entfernen; ohne sie exportiert das Paket den Stand ohne Bericht")
+            (ziel / name).write_bytes(roh)
+            dateien[name] = sha256_bytes(roh)
     # Die juengsten Monatsabschluesse selbst (Schema 5). stand.json nennt
     # je Abschluss eine Vertragszahl; ohne den Abschluss daneben bliebe
     # sie zu glauben — dieselbe Figur wie in_force vor T24-04. Kopiert
     # wird genau die Auswahl, fuer die auch in_kraft abgeleitet wird.
     for a in juengste_abschluesse(modell["abschluesse"]):
         quelle = ablage.abschluesse / a["datei"]
-        if not quelle.is_file():
+        if not quelle.exists() and not quelle.is_symlink():
             continue
+        roh = _bytes_aus_der_ablage(ablage, quelle)
+        # Dieselben Bytes, die geprueft wurden (Runde D): Die Kennzahlen
+        # pruefte der Hash der Zeile, die Kopie las die Platte ein zweites Mal.
+        if a.get("sha256") and sha256_bytes(roh) != a["sha256"]:
+            raise SeiteError(
+                f"{quelle}: nicht der Abschluss, den das Protokoll zum "
+                f"{a['stichtag']} bezeugt — ein festgeschriebener Abschluss "
+                "wird nie ersetzt (ADR-011). Ausweg: die Datei aus der Sicherung "
+                "der Ablage zuruecklegen")
         name = f"{PAKET_ABSCHLUESSE_DIR}/{a['datei']}"
         (ziel / PAKET_ABSCHLUESSE_DIR).mkdir(exist_ok=True)
-        shutil.copyfile(quelle, ziel / name)
-        dateien[name] = sha256_bytes((ziel / name).read_bytes())
+        (ziel / name).write_bytes(roh)
+        dateien[name] = sha256_bytes(roh)
     seite = ziel / "index.html"
     _schreibe(seite, rendere_html(modell))
     dateien["index.html"] = sha256_bytes(seite.read_bytes())
@@ -1097,9 +1183,9 @@ def _stands_paket_unter_sperre(
     # Tageslauf liegen, und das Paket truege dann Belege einer anderen
     # Generation als die Zahlen daneben. Das Protokoll wird kopiert — es
     # ist nur anfuegbar, und seine Kette prueft der Konsument selbst.
-    shutil.copyfile(ablage.protokoll_pfad, ziel / PAKET_PROTOKOLL)
-    dateien[PAKET_PROTOKOLL] = sha256_bytes(
-        (ziel / PAKET_PROTOKOLL).read_bytes())
+    roh = _bytes_aus_der_ablage(ablage, ablage.protokoll_pfad)
+    (ziel / PAKET_PROTOKOLL).write_bytes(roh)
+    dateien[PAKET_PROTOKOLL] = sha256_bytes(roh)
     for name, roh in ((PAKET_MANIFEST, gelesen.get("manifest")),
                       (PAKET_JOURNAL, gelesen.get("journal"))):
         if roh is None:

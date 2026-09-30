@@ -34,7 +34,17 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from rechner_pipeline.bestand.manifest import NEBENTABELLEN, ROLLEN_DATEIEN, nebentabellen_in
+from rechner_pipeline.bestand.manifest import (
+    NEBENTABELLEN,
+    ROLLEN_DATEIEN,
+    ManifestError,
+    ERZEUGER,
+    ERZEUGER_MIGRATIONSZUGANG,
+    lies_manifest,
+    manifest_pfad,
+    pruefe_erzeuger,
+    nebentabellen_in,
+)
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.bestand.report import render_html
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
@@ -170,6 +180,26 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"bestand_report: Ungueltiges --bis-Datum: {exc}", file=sys.stderr)
             return 2
     eingaben = {"portfolio": portfolio_path}
+    # Herabsetzungen gibt es nur in einem Fortschreibungslauf; wer sie neben
+    # dem Stamm findet oder ausdruecklich nennt, hat den gefuehrten Zustand
+    # vor sich, nicht den Stamm allein (Runde D, Fund 4): Ohne Ledger wuerde
+    # der Bericht jeden herabgesetzten Vertrag UNGEKUERZT bewerten (VS
+    # 2.000.000 statt 1.339.863 im Messfall) und mit Exit 0 rendern. Lesen
+    # allein truege die Bewertung nicht — sie braucht die Buchungen, gegen
+    # die P-B1 die Herabsetzung haelt. Deshalb abweisen, mit Ausweg.
+    if not ns.historie:
+        red_datei = ROLLEN_DATEIEN["reduktionen"]
+        if getattr(ns, "reduktionen", None) or (portfolio_path.parent / red_datei).is_file():
+            print(
+                f"bestand_report: {red_datei} gehoert zu diesem Portfolio — der "
+                "Stamm allein ist nicht der gefuehrte Zustand, der Bericht "
+                "wuerde herabgesetzte Vertraege ungekuerzt bewerten. Ausweg: "
+                "den Lauf angeben (--historie, --ledger, --scheiben, --bis "
+                "auf den Horizont des Laufs); fuer einen Stamm ohne "
+                "Herabsetzungen das Portfolio in ein eigenes Verzeichnis legen",
+                file=sys.stderr,
+            )
+            return 2
     if ns.historie:
         for name, pfad in (("Historie", ns.historie), ("Ledger", ns.ledger)):
             if not Path(pfad).is_file():
@@ -258,8 +288,30 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Was geprueft wurde, wird gerendert (kein zweites Lesen, T18-03).
     if ns.config and "ledger" in eingaben:
         eingaben["config"] = Path(ns.config)
+    # Das Laufmanifest neben dem Ledger (Runde D, Fund 2): Es belegt den
+    # Horizont des Laufs und die Bytes jeder Rolle. Ohne es rendert der
+    # Bericht eine RED hinter dem Laufende, die P-B1 auf denselben Bytes
+    # abweist. Ein Verzeichnis ohne Manifest belegt keinen Horizont und
+    # bleibt renderbar (wie in P-B1); ein unlesbares Manifest ist ein Fehler.
+    manifest = None
+    if "ledger" in eingaben:
+        manifest_datei = manifest_pfad(Path(ns.ledger).parent)
+        if manifest_datei.is_file():
+            try:
+                manifest = lies_manifest(manifest_datei)
+                # Welche Sorte Lauf der Bericht erwartet, sagt die
+                # Portfolio-Rolle: bestand_gesamt.parquet ist der gefuehrte
+                # Gesamtbestand einer Fortschreibung, bestand.parquet die
+                # Quellsicht eines Migrationszugangs. Jeder Leser nennt
+                # seine Erwartung (Ratsche test_laufmanifest_zwei_erzeuger).
+                erwartet = (ERZEUGER if Path(ns.portfolio).name == "bestand_gesamt.parquet"
+                            else ERZEUGER_MIGRATIONSZUGANG)
+                pruefe_erzeuger(manifest, erwartet)
+            except ManifestError as exc:
+                print(f"bestand_report: {exc}", file=sys.stderr)
+                return 2
     tabellen, _, fehler, usage = lies_und_pruefe_pb1(
-        eingaben, bis=bis, ohne_plausibilitaet=True)
+        eingaben, bis=bis, manifest=manifest, ohne_plausibilitaet=True)
     if tabellen.get("config") is not None:
         config = tabellen["config"]
     if tabellen.get("merkmale") is not None:

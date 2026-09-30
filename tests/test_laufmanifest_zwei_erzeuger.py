@@ -166,6 +166,10 @@ LESER_MIT_ERWARTUNG = {
     "betrieb/tageslauf.py",
     "betrieb/seite.py",
     "bestand/cli_abschluss.py",
+    # Seit Runde D (Fund 2): der Bericht liest das Manifest neben dem
+    # Ledger und erwartet je Portfolio-Rolle Fortschreibung oder
+    # Migrationszugang.
+    "bestand/cli_report.py",
 }
 
 

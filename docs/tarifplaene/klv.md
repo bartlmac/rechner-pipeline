@@ -290,6 +290,13 @@ jeder Baustein zahlt den Beitrag seiner fortgeführten Summe $f \cdot
 S_i$ zuzüglich seiner Stückkosten. *Präzisierung 2026-09-24 (Prüfrunde
 T27, Befunde 12 und 13).*
 
+Bei der Herabsetzung mit Abzug einer solchen Generation ist der
+umgewandelte Teil $(1-f)\,\text{RKW}$ mit dem Rückkaufswert nach dem
+Tarifwerk der Generation — der Summe der auf null begrenzten
+Baustein-Rückkaufswerte mit je eigenem Abzug, derselben Größe, die ein
+Storno am selben Tag zahlt — nicht mit einem vertragsweit gebildeten Abzug.
+*Präzisierung 2026-09-30 (Prüfrunde T27, Runde D).*
+
 # 8 Modellpunkt und Tarif-Stellschrauben
 
 Alle Größen sind Felder des Modellpunkts (`ModelPoint`) — eine neue

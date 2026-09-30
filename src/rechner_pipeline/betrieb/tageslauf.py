@@ -1774,6 +1774,38 @@ def _vollende_unterbrochenes_neuaufsetzen(wurzel: Path) -> None:
             raise
 
 
+def _raeume_schreibreste(ablage: Ablage) -> None:
+    """Die Punkt-Tempdateien der EIGENEN Ziele eines Laufs wegraeumen —
+    unter der Sperre, vor dem Lauf (Runde D, Fund 6).
+
+    Jedes Ziel des Tageslaufs wird daneben geschrieben und dann umgehaengt
+    (``neue_datei``: ``.<ziel>.<hex>.tmp``). Ein Prozesstod dazwischen liess
+    die Tempdatei fuer immer liegen; beim Monatsabschluss (``os.link``,
+    dann ``unlink``) war sie ein Hardlink-ZWILLING der 0444-Datei — ein
+    zweiter, beschreibbar benennbarer Name derselben festgeschriebenen
+    Bytes. Kein Leser nimmt einen Punktnamen als Beleg, aber die Ablage
+    wuchs, und der Abschluss trug zwei Namen.
+
+    Bewusst eng: nur die Namensmuster der eigenen Ziele in ihren eigenen
+    Verzeichnissen, nur Dateien und Links, nie Verzeichnisse. Eine fremde
+    Punktdatei bleibt. Unter der Sperre schreibt kein anderer Lauf und kein
+    Export in diese Verzeichnisse — eine Tempdatei hier ist ein Rest.
+    """
+    muster = (
+        (ablage.abschluesse, ".abschluss_*.parquet.*.tmp"),
+        (ablage.berichte, ".bestandsbericht_*.html.*.tmp"),
+        (ablage.journal, f".{TAGESJOURNAL_DATEI}.*.tmp"),
+        (ablage.wurzel, f".{PUBLISH_MARKER_DATEI}.*.tmp"),
+    )
+    for verzeichnis, name in muster:
+        if not verzeichnis.is_dir() or verzeichnis.is_symlink():
+            continue
+        for rest in verzeichnis.glob(name):
+            if rest.is_dir() and not rest.is_symlink():
+                continue
+            rest.unlink(missing_ok=True)
+
+
 @contextlib.contextmanager
 def lauf_sperre(ablage: Ablage):
     """Exklusive Prozess-Sperre der Laufzeitumgebung (nicht blockierend).
@@ -2008,6 +2040,43 @@ def _anfuegen(
         f.write(text)
 
 
+def _zeile_steht(pfad: Path, zeile: Dict[str, Any]) -> bool:
+    """Ob die Zeile, deren Anfuegen gerade einen Ein-/Ausgabefehler meldete,
+    trotzdem vollstaendig am Ende des Protokolls steht (Runde D, Fund 5).
+
+    Verglichen wird BYTEGENAU mit dem, was :func:`_anfuegen` schreiben
+    wollte — die Zeile traegt ihre Zeichnung und den Hash ihrer
+    Vorgaengerin, sie kann also nur diese eine sein. Fehlt nur das
+    Zeilenende (kurzer Schreibvorgang), wird es angefuegt, wie es auch der
+    naechste Lauf taete (:func:`_schneide_teilzeile`); scheitert selbst
+    das, gilt der Tag trotzdem als gefuehrt — der naechste Lauf schliesst
+    die Zeile ab und findet ihn gruen, und genau das soll dieser Lauf
+    melden. Ein Fragment oder eine Zeile ohne Zeichnung ist nicht
+    geschrieben: Rueckgabe False, der Aufrufer meldet den Fehlschlag.
+    """
+    if "zeichnung" not in zeile:
+        return False
+    soll = (json.dumps(zeile, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+    try:
+        roh = Path(pfad).read_bytes()
+    except OSError:
+        return False
+    for ende in (soll, soll[:-1]):
+        vorher = roh[: len(roh) - len(ende)]
+        if roh.endswith(ende) and (not vorher or vorher.endswith(b"\n")):
+            break
+    else:
+        return False
+    if ende is not soll:
+        try:
+            _schneide_teilzeile(Path(pfad))
+        except OSError as exc:
+            print(f"tageslauf: Warnung: Zeilenende nicht angefuegt "
+                  f"({type(exc).__name__}: {exc}) — der naechste Lauf schliesst "
+                  "die Zeile ab", file=sys.stderr)
+    return True
+
+
 def _datei_hash(pfad: Path) -> Optional[str]:
     return sha256_bytes(Path(pfad).read_bytes()) if Path(pfad).is_file() else None
 
@@ -2053,6 +2122,7 @@ def tageslauf(
         # Zwischenzustand — und zwar dauerhaft.
         nimm_publish_zurueck(ablage, zeichner)
         _verwaiste_staende_entfernen(ablage)
+        _raeume_schreibreste(ablage)
         return _tageslauf(ablage, heute, zeichner, image_digest=image_digest,
                           aufschalten=aufschalten)
 
@@ -2336,6 +2406,11 @@ def _tageslauf_mit_config(
                         tabellen["sha256"]["portfolio"],
                     )
                     eintrag["bericht"] = bericht.name
+                    # Der Bericht wird GEBUNDEN, nicht nur genannt (Runde D,
+                    # Fund 7): Der Export kopierte ihn ungeprueft ins Paket,
+                    # und der gezeichnete Anker band dann, was immer in
+                    # berichte/ lag. Die gezeichnete Zeile traegt seinen Hash.
+                    eintrag["bericht_sha256"] = _datei_hash(bericht)
                     if config.tagesbetrieb.teilbestand_getrennt and teilbestaende:
                         eintrag["teilbestaende"] = []
                         for fall, policen in sorted(teilbestaende.items()):
@@ -2346,7 +2421,9 @@ def _tageslauf_mit_config(
                                 tabellen["sha256"]["portfolio"],
                                 titel=f"Teilbestand {fall} (uebernommen) zum {stichtag.isoformat()}",
                             )
-                            eintrag["teilbestaende"].append({"fall": fall, "bericht": teil.name})
+                            eintrag["teilbestaende"].append({
+                                "fall": fall, "bericht": teil.name,
+                                "bericht_sha256": _datei_hash(teil)})
                 abschluesse.append(eintrag)
             zeile["abschluesse"] = abschluesse
             # Ab hier veroeffentlicht der Lauf nach aussen. Der Marker
@@ -2401,16 +2478,27 @@ def _tageslauf_mit_config(
         # sagen ab jetzt Verschiedenes, und der naechste gefuehrter_tag()
         # bricht dauerhaft ab. Vorher lief hier ein roher OSError bis zur
         # CLI durch — ohne Nachweis, ohne Ausweg (Review T24-01).
-        verwirf_seite(seite_tmp)
-        raise TageslaufError(
-            f"Protokollzeile fuer {heute.isoformat()} nicht geschrieben "
-            f"({type(exc).__name__}: {exc}). Der Stand ist "
-            f"{'uebernommen' if zeile.get('uebernommen') else 'nicht uebernommen'}"
-            f" — Stand und Nachweis passen damit nicht mehr zusammen. Ausweg: "
-            f"{ablage.protokoll_pfad} schreibbar machen und den Lauf erneut "
-            "starten; der Lauf ist idempotent; die Seite zeigt weiter den "
-            "letzten gefuehrten Tag"
-        ) from exc
+        #
+        # Aber erst nachsehen (Runde D, Fund 5): Ein Fehler beim Schliessen
+        # oder ein kurzer Schreibvorgang ohne das Zeilenende kommt, NACHDEM
+        # die Zeile auf der Platte steht. Der naechste Lauf fand den Tag
+        # dann gruen vor ("bereits gefuehrt"), dieser meldete Exit 2 und
+        # verwarf die Seite. Steht die eigene, gezeichnete Zeile da, ist der
+        # Tag gefuehrt — und der Lauf sagt es.
+        if not _zeile_steht(ablage.protokoll_pfad, zeile):
+            verwirf_seite(seite_tmp)
+            raise TageslaufError(
+                f"Protokollzeile fuer {heute.isoformat()} nicht geschrieben "
+                f"({type(exc).__name__}: {exc}). Der Stand ist "
+                f"{'uebernommen' if zeile.get('uebernommen') else 'nicht uebernommen'}"
+                f" — Stand und Nachweis passen damit nicht mehr zusammen. Ausweg: "
+                f"{ablage.protokoll_pfad} schreibbar machen und den Lauf erneut "
+                "starten; der Lauf ist idempotent; die Seite zeigt weiter den "
+                "letzten gefuehrten Tag"
+            ) from exc
+        print(f"tageslauf: Warnung: beim Anfuegen der Protokollzeile "
+              f"{type(exc).__name__}: {exc} — die Zeile steht vollstaendig und "
+              "gezeichnet im Protokoll; der Tag ist gefuehrt", file=sys.stderr)
     except BaseException:
         verwirf_seite(seite_tmp)
         raise
