@@ -96,16 +96,9 @@ Ablauf danach in einem frischen Klon nachgefahren.
 
 ## Zwei Policen
 
-7000396 und 7000679 tragen eine Herabsetzung, deren Anteil sich aus der
-Lieferung nicht ableiten lässt. Das abgebende Unternehmen hat ihn in den
-Auskunftsschreiben 2 und 4 genannt (0,60). Im Lauf wurde dieser Anteil
-den Kommandos als Parameter mitgegeben (`--red-anteil`), so steht es im
-Schichtbeleg, und so macht es das Skript. Ohne diese Angabe enden A-M1 und
-A-M2 mit 98/100 und die Suite mit 832/834, jeweils an genau diesen zwei
-Verträgen. Für einen echten Bestand taugt der Parameter nicht; die
-Auskünfte gehören als registrierte Tabelle in den Fall, wie es
-`--red-anteile-datei` für Übernahme und aktuariellen Test schon vorsieht.
-Das ist als Befund festgehalten.
+Für 7000396 und 7000679 hat der Lauf die dokumentierte Arbeits-Lesart 0,60
+des Aktuars verwendet (alle drei Tarifstufen ergeben an den Prüfpunkten
+dasselbe; Abschlussbericht, Abschnitt 5). Das Skript gibt sie mit.
 
 ## Was anders aussieht als am Lauftag
 
