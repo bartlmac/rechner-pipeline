@@ -230,7 +230,10 @@ per source, merge into the A-Box, discrepancies to the human gate A-Q1,
 transformation of the portfolio extract, Spez, acceptance gates, and the
 two-reporting-date migration suite with its HTML acceptance report for
 gate A-M4. The deliveries may contain deliberate errors and source-system
-quirks — finding them IS the demonstration.
+quirks — finding them IS the demonstration. To repeat the second Baldrian
+run (`lieferungen/baldrian-2/`) on the exact commit it was signed on —
+including the receiving company's own portfolio, which is generated, not
+delivered — follow `docs/faelle/baldrian-lauf2-wiederholen.md`.
 
 **Pre-digest a source (gate P-Q1):**
 ```

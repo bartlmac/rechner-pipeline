@@ -229,3 +229,29 @@ auf dem neuen Stand unveraendert bestanden (100/100, 100/100, 166/166,
 den Stand, auf dem ein Vorgaenger gezeichnet wurde, von dem geltenden
 Belegvertrag; Stand f7c545d). Der Tagesbetrieb der PLV wird aus der neuen
 Uebernahme neu aufgesetzt (Betriebsweg, offen).
+
+## Nachtrag 2026-09-30: Systemstand des Laufs und Wiederholung
+
+Der Lauf selbst — Registrierung der Lieferung am 01.09.2026, die vier
+Auskunftsschreiben, die Producer-Kette und alle fuenf Zeichnungen (A-Q1
+fd793260 bis A-M4 32682e95, gezeichnet am 02.09.2026, 00:48 bis 00:49
+Uhr) — fand auf Systemstand `4b1abf04` statt (Kern 3.3.0,
+Quelltext-Pruefsumme `ef1af1a3...`). Abschnitt 1 nennt diese fuenf
+Snapshot-Kennungen und zugleich "Stand f7c545d": Die Kennungen sind die
+des Laufs, der Stand ist der der Neuzeichnung vom 07.09.2026 (Korrekturen
+24 und 25). Beides ist richtig, aber nicht dasselbe. Die fuenf Gates
+wurden am 20.09.2026 ein zweites Mal neu gezeichnet, auf `17091b39`
+(Korrektur 26: PEX-Zuschlag; Korrektur 27: Laufmanifest als Pflichtbeleg
+von A-M4; `dev-docs/annahmen-2026-09-20.md`); das ist die heute geltende
+Spitze der Snapshots.
+
+Wer den Lauf nachstellen will, nimmt `4b1abf04`. Die Anleitung dazu —
+Systemstand, was das Repository traegt, die drei Sorten Schritte, der
+eigene Bestand ohne die Lieferung, die gemessene Kommandofolge und die
+Referenzwerte — steht in `baldrian-lauf2-wiederholen.md`; die Kennzahlen
+sind dort auf zwei Staenden nachgemessen. Nebenbefund derselben Messung:
+Das `bestand/`-Verzeichnis des Lauftags entstand vor der
+A-Q1-Zinsentscheidung, der von A-M4 gebundene P-B1-Beleg liegt damit auf
+einem Ledger mit 1,75 % Rechnungszins, waehrend die gezeichnete Spez
+1,25 % traegt — dieselbe Inkonsistenz wie in der Bestand-Config, die
+Korrektur 24 behoben hat.

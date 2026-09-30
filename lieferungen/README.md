@@ -83,3 +83,16 @@ Abkürzung spart diesen Schritt; sie ändert nichts an den Werten.
 
 **Durchführung:** siehe `ONBOARDING.md`, Abschnitt 3 („Run the
 showcase migration").
+
+## baldrian-2/
+
+Die zweite, umfangreichere Lieferung derselben Gesellschaft für den
+zweiten Migrationslauf (Abschlussbericht `docs/faelle/baldrian-lauf2.md`):
+Tarifrechner, Mitteilung und Bedingungen, Bestandsabzüge zu beiden
+Stichtagen, Vorgeschichts-Metadaten, Geschäftsvorfall-Protokoll, die vier
+Erwartungswert-Dateien und vier Auskunftsschreiben, die erst auf Rückfrage
+entstanden sind — was wozu gehört, sagt `LIEFERSCHEIN.md`. Wie der Lauf
+auf dem Systemstand wiederholt wird, auf dem er gezeichnet wurde —
+einschließlich des eigenen Bestands der übernehmenden Gesellschaft, der
+nicht aus der Lieferung stammt, sondern erzeugt wird:
+`docs/faelle/baldrian-lauf2-wiederholen.md`.
