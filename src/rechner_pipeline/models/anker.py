@@ -12,9 +12,16 @@ Der Anker ist der Ausweg: der Hash der letzten Protokollzeile, abgelegt
 an einem Ort, den der schreibende Prozess nicht anfasst. Der Tagesbetrieb
 schreibt in die Ablage; der Anker liegt im Fall-Datenraum. Ein Wert, den
 der schreibende Prozess selbst aendern kann, ist kein Anker — das ist die
-ganze Idee, und sie ist der Grund, warum die Zeichnung jeder Zeile beim
-Lauf VERWORFEN wurde: Sie haette einen Schluessel in einen
+ganze Idee, und sie war der Grund, warum die Zeichnung jeder Zeile beim
+Lauf zunaechst VERWORFEN wurde: Sie haette einen Schluessel in einen
 unbeaufsichtigten Nachtlauf gelegt.
+
+Nachtrag 2026-09-30 (ADR-018, Schluesselklasse ``betrieb``): Die Runde C
+nach T27 zeigte, dass der Lauf ohne Schluessel nichts bezeugt, was ein
+zweiter Schreiber nicht ebenso bezeugen koennte. Jede Protokollzeile ist
+jetzt mit dem Betriebsschluessel gezeichnet — nach DIESEM Verfahren
+(:func:`zeichne`), ein zweiter Mechanismus waere eine zweite Wahrheit. Der
+Anker bleibt der Bezug nach aussen.
 
 Die Ankerdatei ist NUR ANFUEGBAR (JSON Lines), wie das Protokoll selbst.
 Ein ersetzter Anker waere kein Anker; die Reihe der Anker ist die

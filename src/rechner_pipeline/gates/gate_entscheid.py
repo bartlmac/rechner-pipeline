@@ -77,6 +77,7 @@ from rechner_pipeline.gates._common import (
     begin_gate_ledger_attempt,
     build_result,
     finalize_gate_ledger,
+    ist_schreibrest,
     lies_gehasht,
     parse_gate_args,
     run_command,
@@ -1486,6 +1487,13 @@ def _artefakt_hashes(
                 continue
             if pfad.name.startswith("gate_entscheid"):
                 continue
+            # Der Rest eines hart abgebrochenen atomaren Schreibens (auch der
+            # Hardlink-Zwilling eines eingehaengten Snapshots) ist kein
+            # Artefakt und kein Beleg (Angriffsrunde C, RC07): Mit ihm waere
+            # die Wiederholung desselben Entscheids nicht mehr idempotent,
+            # und jeder weitere Snapshot des Falls nennte ihn.
+            if ist_schreibrest(pfad.name):
+                continue
             kandidaten.append(pfad)
     vorhanden = dict(bekannt or {})
     hashes: Dict[str, str] = {}
@@ -2405,6 +2413,17 @@ def main(argv: Optional[List[str]] = None):
 
     verzeichnis = entscheide_verzeichnis(fall)
     verzeichnis.mkdir(parents=True, exist_ok=True)
+    # Die Reste eines hart abgebrochenen frueheren Laufs dieses Gates
+    # wegraeumen (Angriffsrunde C, RC07) — am Anfang und fuer JEDEN Pfad,
+    # auch 'bereits_vorhanden', der selbst nichts schreibt und dem kein
+    # Schreiber das Aufraeumen abnimmt. Nur das Namensmuster dieses Gates
+    # (.<gate>-*.json.*.tmp); die Reste anderer Gates und fremde
+    # Punktdateien gehoeren anderen Laeufen. Das Ledger-Verzeichnis raeumt
+    # write_gate_ledger fuer sein Ziel. Die Gates eines Falls laufen
+    # nacheinander; ein gleichzeitiger Lauf desselben Gates wuerde hier
+    # dessen Tempdatei treffen.
+    for rest in verzeichnis.glob(f".{args.gate}-*.json.*.tmp"):
+        rest.unlink(missing_ok=True)
     schluessel_fehler = _schluessel_laden()
     if schluessel_fehler:
         return _sperre(

@@ -50,6 +50,37 @@ def test_p_b1_weist_herabsetzungen_ab_die_die_config_nicht_kennt():
     assert any("kennen keine" in f for f in fehler), fehler[:3]
 
 
+def test_p_b1_weist_herabsetzungen_ab_wenn_die_annahmen_keine_rate_haben():
+    """RC05 (Runde C): Eine Config, deren Erfahrungsannahme keine Herabsetzung
+    vorsieht (herabsetzung a = 0 und b = 0), belegt keinen Anteil — auch wenn
+    ein red_anteil stehengeblieben ist. Vorher pruefte red_bindung_fehler nur
+    den Anteil: 151 Herabsetzungen galten als belegt, P-B1 Exit 0.
+    Mutationsprobe: die Rate in red_bindung_fehler nicht auswerten -> rot."""
+    from tests import test_t27_teilkuendigung_klasse as tk
+    from tests.test_t27_teilkuendigung_klasse import _voll
+
+    config = tk._config()
+    stamm = tk._stamm([{"id": p, "beginn": "2015-01-01", "zugang": "2026-01-01"} for p in tk.POLICEN])
+    schichten, verankerung = tk._tabellen(tk.POLICEN)
+    from rechner_pipeline.bestand.config import Annahme
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+
+    erg = fortschreiben(stamm, config, tk.BIS, schichten=schichten, verankerung=verankerung)
+    welt = (config, stamm, schichten, verankerung, erg)
+    assert len(erg.reduktionen)
+    assert config.annahmen.red_anteil > 0.0 and config.annahmen.herabsetzung.a > 0.0
+    assert tk._pb1(welt, erg.ledger) == []                          # Positivkontrolle
+    ohne = copy.deepcopy(config)
+    ohne.annahmen.herabsetzung = Annahme(a=0.0, b=0.0)              # red_anteil bleibt stehen
+    assert ohne.annahmen.red_anteil == config.annahmen.red_anteil
+    assert ohne.validate() == []                                    # die Config selbst ist gueltig
+    fehler = pruefe_ledger_betraege(
+        stamm, _voll(welt, erg.ledger), ohne, scheiben=erg.scheiben, historie=erg.historie,
+        schichten=schichten, verankerung=verankerung, reduktionen=erg.reduktionen)
+    treffer = [f for f in fehler if "kennen keine" in f and "herabsetzung" in f]
+    assert len(treffer) == len(erg.reduktionen), fehler[:3]
+
+
 # --------------------------------------------------------------------------- #
 # Fuehrungsprobe: Soll-Menge und Bindung wie P-B1
 # --------------------------------------------------------------------------- #
@@ -156,6 +187,25 @@ def test_ein_stimmig_fremder_anteil_faellt_an_der_bindung(red_welt):
     assert any("Anteil" in b["text"] for b in urteil["befunde"]), urteil["befunde"][:3]
 
 
+def test_die_probe_belegt_keinen_anteil_ohne_herabsetzungsrate(red_welt):
+    """RC05, Fuehrungsprobe: dieselbe Fortschreibung, aber gegen eine Config,
+    deren Erfahrungsannahme keine Herabsetzung vorsieht (Rate 0, red_anteil
+    bleibt stehen): die Herabsetzungen sind unbelegt. Positivkontrolle: mit
+    der Config des Laufs besteht die Probe (Fixture).
+    Mutationsprobe: die Rate in red_bindung_fehler nicht auswerten -> rot."""
+    from rechner_pipeline.bestand.config import Annahme
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+
+    ueb, fort, basis = red_welt[:3]
+    ohne = copy.deepcopy(basis["config"])
+    ohne.annahmen.herabsetzung = Annahme(a=0.0, b=0.0)
+    assert ohne.annahmen.red_anteil > 0.0
+    urteil = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **dict(basis, config=ohne))
+    assert not urteil["bestanden"]
+    assert any("kennen keine" in b["text"] and "herabsetzung a = 0" in b["text"]
+               for b in urteil["befunde"]), urteil["befunde"][:3]
+
+
 def test_eine_zusaetzliche_kappungszeile_faellt(red_welt):
     _ueb, fort, _b = red_welt[:3]
     led = fort["ledger"]
@@ -197,10 +247,10 @@ def test_der_bericht_rendert_keine_verstuemmelte_herabsetzung(tmp_path):
 
 @pytest.mark.parametrize("a0", [1, 2, 5])
 def test_mit_abzug_geht_die_schicht_ungekuerzt_in_die_umwandlung(a0):
-    """Unabhaengige Sollrechnung (klv.md 7.1): umgewandelt = (1-f)(DR - StoAb) + Z,
+    """Unabhaengige Sollrechnung (klv.md 7.1): umgewandelt = (1-f) RKW + Z, RKW = max(0, V^MRV - StoAb),
     also traegt die Schicht Z genau Z / V_bfr zur neuen Summe bei — auch nahe
-    DR = 0 und bei negativer Rueckstellung. Mutationsprobe: die Schicht
-    wieder mit dem Reservefaktor multiplizieren -> rot."""
+    V^MRV = 0 und bei negativer Rueckstellung. Mutationsprobe: die Schicht
+    wieder mit dem Abzugsfaktor multiplizieren -> rot."""
     from rechner_pipeline.kern import KLV_DEFAULT, Rechenkern
     from rechner_pipeline.kern.beitragsreduktion import MIT_ABZUG, reduziere
 

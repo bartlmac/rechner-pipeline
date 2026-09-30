@@ -167,15 +167,21 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 - Daily operations of the showcase insurer (concept
   `docs/simulation/tagesbetrieb.md`; package `rechner_pipeline.betrieb`,
   layer `betrieb/`): `python -m rechner_pipeline.betrieb.tageslauf --stand
-  <daten> [--heute <ISO>]` runs one day (catch-up of missed days, daily
-  new business, roll-forward, day journal, P-B1 guard via the engine,
-  month-end close, protocol line); `python -m
+  <daten> [--heute <ISO>] --schluessel <key> --zeichnungsordnung <ordnung>`
+  runs one day (catch-up of missed days, daily new business, roll-forward,
+  day journal, P-B1 guard via the engine, month-end close, protocol line
+  signed with the operations key, role `betrieb/tageslauf`, key class
+  `betrieb`, ADR-018 addendum 2026-09-30); `python -m
   rechner_pipeline.betrieb.uebernahme --stand <daten> --fall <faelle/name>
-  --stichtag <ISO>` registers a migrated portfolio as a dated intake;
-  `python -m rechner_pipeline.betrieb.seite --stand <daten> [--paket
-  <dir>]` renders "Bestand heute" and exports the stand package that
-  `werkzeuge/falldaten.py --stands-paket` consumes. Runtime environment
-  and image: `deploy/plv/`.
+  --stichtag <ISO> --freigabe-schluessel <key> --betriebsschluessel <key>
+  --zeichnungsordnung <ordnung>` registers a migrated portfolio as a
+  dated, signed intake; `python -m rechner_pipeline.betrieb.seite --stand
+  <daten> [--paket <dir> --anker <dir> --betriebsschluessel <key>
+  --zeichnungsordnung <ordnung>]` renders "Bestand heute" and exports the
+  stand package that `werkzeuge/falldaten.py --stands-paket` consumes.
+  Tests get the operations key via the session seam
+  `tageslauf._STANDARD_BETRIEBSZEICHNUNG` (tests/conftest.py). Runtime
+  environment and image: `deploy/plv/`.
 - Navigate and scope changes via the ontology index (ADR-005;
   fundstellen are derived, not searched):
   `python -m rechner_pipeline.ontologie.code_index --tests tests`,

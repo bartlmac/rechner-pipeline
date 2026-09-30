@@ -157,11 +157,27 @@ def test_jede_herabsetzung_bucht_summe_und_absorbierte_schicht(welt):
 
 def test_die_bewertung_ist_an_der_naht_wertstetig(welt):
     """Die fachliche Zusage, gegen eine unabhaengige Groesse gemessen:
-    Das Deckungskapital des herabgesetzten Vertrags am Jahrestag ist genau
-    das des ungekuerzten EINSCHLIESSLICH Schicht."""
+    Das Deckungskapital des herabgesetzten Vertrags am Jahrestag ist das des
+    ungekuerzten EINSCHLIESSLICH Schicht — bis auf den Abschlusskostenrest.
+
+    Seit F1 (b) (Entscheid 2026-09-30) wird auf dem Rueckkaufs-Track
+    umgewandelt: Dieser ist an der Naht stetig, die Rueckstellung springt
+    um den Anteil (1-f) des Abschlusskostenrests, der mit der Herabsetzung
+    abgeschrieben wird (klv.md 7.1). Der Rest ist nur bei Bausteinen in der
+    Zillmerdauer von null verschieden — hier die Erhoehungsscheiben der
+    Policen 900005 und 900006. Soll, unabhaengig aus den Verlaufszeilen der
+    Bausteine: Differenz = (1-f) x Summe (V^MRV - V^bpfl).
+    Mutationsprobe: auf V^bpfl umwandeln -> Differenz null, der Test
+    (Positivkontrolle unten) rot."""
+    from rechner_pipeline.bestand.auswertung import _scheiben_kerne
+
     stamm, sch, ver, _ohne, mit = welt
     cfg = _config(True)
+    haupt = stamm.set_index("police_id")
+    felder = cfg.generationen[0].generation_fields()
+    scheiben = _scheiben_kerne(stamm, mit.scheiben, cfg)
     geprueft = 0
+    mit_rest = 0
     for zeile in mit.reduktionen.to_dict("records"):
         pid, jahr = int(zeile["police_id"]), int(zeile["reduktion_jahr"])
         stichtag = _dt.date(2015 + jahr, 1, 1)
@@ -173,8 +189,14 @@ def test_die_bewertung_ist_an_der_naht_wertstetig(welt):
             stamm, mit.historie, cfg, stichtag, **gemeinsam)}[pid]
         if a["status"] != "POL":
             continue
+        bausteine = [(0, Rechenkern(ModelPoint(**model_point_kwargs(haupt.loc[pid], felder))))]
+        bausteine += [(s["erh_jahr"], s["kern"]) for s in scheiben.get(pid, ())
+                      if s["erh_jahr"] < jahr]
+        rest = sum(k.verlaufszeile(jahr - e).vx_mrv - k.verlaufszeile(jahr - e).drx_bpfl
+                   for e, k in bausteine)
         assert a["deckungskapital"] == pytest.approx(
-            b["deckungskapital"], rel=1e-12)
+            b["deckungskapital"] + (1.0 - ANTEIL) * rest, rel=1e-12, abs=1e-6)
+        mit_rest += rest > 1.0
         # Der ungekuerzte Wert ENTHAELT die Schicht; der herabgesetzte
         # weist keine mehr aus — sie ist in seiner Basis aufgegangen.
         assert b["korrekturschicht"] > 0.0
@@ -185,6 +207,9 @@ def test_die_bewertung_ist_an_der_naht_wertstetig(welt):
         assert a["leistung"] > b["leistung"]
         geprueft += 1
     assert geprueft >= 1
+    # Positivkontrolle: ohne einen Baustein in der Zillmerdauer waere der
+    # Rest null und die Regel nicht unterscheidbar.
+    assert mit_rest >= 1
 
 
 def test_ohne_die_tabelle_bewertet_die_fuehrung_den_falschen_vertrag(welt):

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import glob
 import json
 import logging
 import os
@@ -184,6 +185,32 @@ HUMAN_REVIEW_EXIT_CODES: Dict[str, int] = {
 REPO_ROOT: Path = Path(__file__).resolve().parents[3]
 
 
+def ist_schreibrest(name: str) -> bool:
+    """Ist ``name`` der Rest eines abgebrochenen atomaren Schreibens?
+
+    Die atomaren Schreiber dieses Pakets (:func:`schreibe_exklusiv`,
+    ``write_gate_ledger``) legen ihre Daten unter ``.<ziel>.<zufall>.tmp``
+    daneben und haengen sie erst danach ein. Ein hartes Prozessende dazwischen
+    hinterlaesst diese Datei — oder, nach dem Einhaengen per ``os.link``, den
+    Hardlink-Zwilling des Belegs. Sie ist nie ein Beleg (Angriffsrunde C,
+    RC07): Wer Artefakte eines Falls aufzaehlt, ueberspringt sie.
+    """
+    return name.startswith(".") and name.endswith(".tmp")
+
+
+def raeume_schreibreste(ziel: Path) -> None:
+    """Die liegengebliebenen Reste des Schreibens von ``ziel`` entfernen.
+
+    Nur die Reste DIESES Ziels (``.<ziel.name>.*.tmp``); fremde Punktdateien
+    und die Reste anderer Ziele bleiben. Ein Rest ist kein Beleg
+    (:func:`ist_schreibrest`) und darf nicht fuer immer neben ihm liegen —
+    ``entscheide/`` darf niemand von Hand bereinigen.
+    """
+    for rest in ziel.parent.glob(f".{glob.escape(ziel.name)}.*.tmp"):
+        with contextlib.suppress(FileNotFoundError):
+            rest.unlink()
+
+
 def schreibe_exklusiv(ziel: Path, daten: bytes) -> None:
     """``daten`` genau einmal unter ``ziel`` veroeffentlichen — ganz oder gar nicht.
 
@@ -196,10 +223,19 @@ def schreibe_exklusiv(ziel: Path, daten: bytes) -> None:
     vollstaendig schreiben, auf die Platte bringen, dann per ``os.link``
     exklusiv einhaengen, wie ``schreibe_abschluss``. Existiert das Ziel,
     wirft das ``FileExistsError``; ein Rest daneben traegt einen
-    Punktnamen, den kein Leser als Beleg aufnimmt.
+    Punktnamen (:func:`ist_schreibrest`), den kein Leser als Beleg aufnimmt
+    — und der naechste Aufruf fuer dasselbe Ziel raeumt ihn weg
+    (:func:`raeume_schreibreste`). Nicht fuer gleichzeitige Schreiber
+    desselben Ziels gebaut: Ein Aufraeumen wuerde deren Tempdatei treffen;
+    die Gates laufen je Fall nacheinander.
     """
     import secrets
 
+    # Reste eines frueheren, hart abgebrochenen Schreibens dieses Ziels
+    # (Angriffsrunde C, RC07): vor dem eigenen Schreiben, damit auch der
+    # Aufruf, der am Ende FileExistsError meldet, den Hardlink-Zwilling
+    # eines laengst eingehaengten Belegs wegraeumt.
+    raeume_schreibreste(ziel)
     # Eine je Aufruf eindeutige Datei daneben, Modus nach der umask des
     # Schreibzeitpunkts (dieselbe Figur wie bestand.parquet_io.neue_datei,
     # T18-07; nicht importiert — die Kante vom Werkzeug in die Vorzeige
@@ -1256,6 +1292,9 @@ def write_gate_ledger(
     diag_dir.mkdir(parents=True, exist_ok=True)
     out_path = diag_dir / f"{result.command}{GATE_LEDGER_SUFFIX}"
     payload = json.dumps(entry.to_dict(), ensure_ascii=False, indent=2) + "\n"
+    # Reste eines hart abgebrochenen frueheren Schreibens dieses Ledgers
+    # (Angriffsrunde C, RC07): der Punktname nennt genau dieses Ziel.
+    raeume_schreibreste(out_path)
     fd, temp_name = tempfile.mkstemp(
         prefix=f".{out_path.name}.", suffix=".tmp", dir=diag_dir
     )

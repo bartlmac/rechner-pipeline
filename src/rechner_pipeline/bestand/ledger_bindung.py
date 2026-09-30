@@ -269,12 +269,16 @@ def pruefe_ledger_betraege(
     # 2026-09-26: eine als prospektiv eingetragene Teilkuendigung liess
     # Auszahlung und Kappung ohne Befund verschwinden).
     red_anteil = float(getattr(config.annahmen, "red_anteil", 0.0) or 0.0)
+    # Die Rate, mit der die Engine zieht (Runde C RC05): ohne sie belegte ein
+    # stehengebliebener red_anteil jede Herabsetzung.
+    red_rate = float(config.annahmen.herabsetzung(0.0))
     for pid, (_jahr, anteil, verfahren) in sorted(reduktion_je_police.items()):
         if pid not in haupt.index:
             continue
         tw = tarifwerk_je_generation.get(str(haupt.loc[pid, "tarif_generation"])) or {}
         soll_verfahren = tw.get("red_verfahren")
-        errors.extend(red_bindung_fehler(pid, anteil, verfahren, soll_verfahren, red_anteil))
+        errors.extend(red_bindung_fehler(
+            pid, anteil, verfahren, soll_verfahren, red_anteil, red_rate))
 
     scheiben_je_police: Dict[int, List[Tuple[int, float]]] = {}
     if scheiben is not None:
@@ -297,6 +301,29 @@ def pruefe_ledger_betraege(
     for pid, jahr in zip(ledger.loc[ledger["ereignis"] == "PEX", "police_id"],
                          ledger.loc[ledger["ereignis"] == "PEX", "vertragsjahr"]):
         pex_jahr.setdefault(int(pid), int(jahr))
+
+    # Eine Herabsetzung auf einem beitragsfreien Vertrag ist ein Widerspruch,
+    # kein Vertrag, dessen Soll man aus der beitragspflichtigen Fassung
+    # herleitet (Pruefrunde T27, Runde C, Befund RC03): Die Engine zieht fuer
+    # beitragsfreie Vertraege keine Herabsetzung, und die Bewertung bricht
+    # ab. Die Herleitung ignorierte pex_jahr und nahm eine Auszahlung vom
+    # 4,6-fachen der beitragsfreien Reserve als Soll an. Jetzt wird der
+    # Widerspruch gemeldet und fuer diese Police NICHTS hergeleitet, was auf
+    # der Herabsetzung beruht (ab dem Reduktionsjahr ist der Vertrag
+    # undefiniert).
+    widerspruch: Dict[int, int] = {}
+    for pid, (r_jahr, _anteil, verfahren) in sorted(reduktion_je_police.items()):
+        p_jahr = pex_jahr.get(pid)
+        if pid in haupt.index and p_jahr is not None and p_jahr <= r_jahr:
+            widerspruch[pid] = r_jahr
+            errors.append(
+                f"reduktionen police {pid}: "
+                f"{'Teilkuendigung' if verfahren == TEILKUENDIGUNG else 'Herabsetzung'} "
+                f"im Jahr {r_jahr} auf einem beitragsfrei gestellten Vertrag "
+                f"(Beitragsfreistellung im Jahr {p_jahr}) — die Engine zieht fuer "
+                "beitragsfreie Vertraege keine Herabsetzung und die Bewertung bricht "
+                "ab; ein Soll wird nicht hergeleitet. Ausweg: die Herabsetzung vor "
+                "der Beitragsfreistellung registrieren oder die Buchung streichen")
 
     herleitungen: Dict[int, _Herleitung] = {}
     abweichungen: List[str] = []
@@ -331,6 +358,8 @@ def pruefe_ledger_betraege(
         h = haupt.loc[pid]
         produkt = str(h.get("produkt", "klv"))
         jahr = int(z.vertragsjahr)
+        if pid in widerspruch and jahr >= widerspruch[pid]:
+            continue                         # oben als Widerspruch gemeldet
         betrag = float(z.betrag)
         betrag_art = str(z.betrag_art)
         erwartet: Optional[float] = None
@@ -467,6 +496,8 @@ def pruefe_ledger_betraege(
         h = haupt.loc[pid]
         if str(h.get("produkt", "klv")) == "bu":
             continue
+        if pid in widerspruch:
+            continue                         # oben als Widerspruch gemeldet
         v = _herleitung(pid, h)
         if v is None:
             continue

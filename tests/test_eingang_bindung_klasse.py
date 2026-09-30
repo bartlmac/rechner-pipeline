@@ -17,11 +17,14 @@ import json
 
 import pytest
 
+from rechner_pipeline.betrieb import tageslauf as tl
+
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.betrieb import uebernahme as ueb
 from rechner_pipeline.betrieb.tageslauf import EXIT_OK, Ablage, tageslauf
 from rechner_pipeline.bestand.config import config_aus_text
 from tests.test_betrieb_uebernahme import STICHTAG, _fall, _kleine_config
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 
 def test_ein_nach_der_abnahme_geaenderter_uebernahmebeleg_wird_nicht_registriert(tmp_path):
@@ -34,7 +37,7 @@ def test_ein_nach_der_abnahme_geaenderter_uebernahmebeleg_wird_nicht_registriert
     assert d["tarifwerk"] != vorher, "die Probe aendert nichts"
     beleg.write_text(json.dumps(d), encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="nicht der, den der A-M4-Snapshot bezeugt"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
     assert not (tmp_path / "daten" / "uebernahme" / "probe-uebernahme").exists()
 
 
@@ -42,7 +45,7 @@ def test_ein_entfernter_uebernahmebeleg_wird_nicht_registriert(tmp_path):
     fall = _fall(tmp_path)
     (fall / "abgeleitet" / "bestand" / "uebernahme.json").unlink()
     with pytest.raises(ueb.UebernahmeError, match="Uebernahmebeleg fehlt"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
 
 
 def test_ein_beleg_ohne_tarifwerk_ist_eine_luecke():
@@ -54,10 +57,13 @@ def test_ein_nach_dem_eintritt_stimmig_umgeschriebener_eingang_wird_nicht_mehr_g
     """Der Angreifer: Geschlecht einer Police geaendert, Tabelle neu
     geschrieben, Summe in eingang.json nachgezogen — der naechste Lauf
     rechnete die Geschichte aus dem geaenderten Eingang neu, gruen.
-    Mutationsprobe: _pruefe_eingaenge_gegen_protokoll nicht rufen -> rot."""
+    Seit Runde C halten ihn zwei Schichten: der bezeugte Hash jeder gruenen
+    Zeile (_pruefe_bezeugte_eingaenge) und die Nachrechnung der letzten
+    Zeile (eingang_sha256). Der Lauf verweigert, bevor er etwas baut.
+    Mutationsprobe: beide nicht rufen -> rot."""
     fall = _fall(tmp_path)
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = Ablage(stand)
     ablage.configs.mkdir(parents=True, exist_ok=True)
     ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
@@ -74,9 +80,8 @@ def test_ein_nach_dem_eintritt_stimmig_umgeschriebener_eingang_wird_nicht_mehr_g
     d["dateien"]["bestand.parquet"] = hashlib.sha256(tabelle.read_bytes()).hexdigest()
     kopf.write_text(json.dumps(d, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-    code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
-    assert code != EXIT_OK and zeile["uebernommen"] is False
-    assert "eingang.json ist nicht mehr die" in str(zeile.get("fehler"))
+    with pytest.raises(tl.TageslaufError, match="eingang"):
+        tageslauf(ablage, dt.date(2026, 2, 4))
 
 
 # --------------------------------------------------------------------------- #
@@ -100,7 +105,7 @@ def test_ein_fallname_mit_trennzeichen_wird_nicht_registriert(tmp_path):
     kopf = fall / "fall.json"
     kopf.write_text(json.dumps({"name": "probe x", "schema_version": 1}), encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="Trennzeichen"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
 
 
 def test_kein_jsonl_leser_im_betrieb_trennt_mit_splitlines():

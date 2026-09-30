@@ -56,6 +56,18 @@ def abschluss_pfad(ziel_dir: Path, stichtag: _dt.date) -> Path:
     return Path(ziel_dir) / f"abschluss_{stichtag.isoformat()}.parquet"
 
 
+def _stichtag_aus_dateiname(pfad: Path) -> Optional[_dt.date]:
+    """Der Stichtag, den :func:`abschluss_pfad` in den Namen legt (sonst None)."""
+    name = pfad.name
+    if not (name.startswith("abschluss_") and name.endswith(".parquet")):
+        return None
+    try:
+        stichtag = _dt.date.fromisoformat(name[len("abschluss_"):-len(".parquet")])
+    except ValueError:
+        return None
+    return stichtag if abschluss_pfad(pfad.parent, stichtag).name == name else None
+
+
 def _rechne(
     stamm: pd.DataFrame,
     historie: Optional[pd.DataFrame],
@@ -200,7 +212,31 @@ def pruefe_abschluss(
     if list(fest.columns) != list(ABSCHLUSS_NAMES):
         return [f"abschluss: Spalten {list(fest.columns)} != {list(ABSCHLUSS_NAMES)}"]
     if len(fest) == 0:
-        return ["abschluss: leer — kein festgeschriebener Stand"]
+        # Ein leerer Abschluss ist seit ADR-020 eine gueltige leere Bilanz
+        # (siehe _rechne) — kein Befund an sich. Die Datei traegt keine
+        # Zeile und damit keinen Stichtag; ihn nennt allein der Dateiname
+        # (abschluss_pfad), und gegen den wird nachgerechnet: Findet die
+        # Neuberechnung dort Vertraege in Kraft, ist der Abschluss
+        # abgeschnitten und wird ausgewiesen (Angriffsrunde C, RC06: ein
+        # Wiederanlauf schrieb sonst fuer byte-gleiche Bytes einen Befund
+        # in die gruene, verkettete Protokollzeile, den der ungestoerte
+        # Lauf nicht traegt).
+        stichtag_leer = _stichtag_aus_dateiname(Path(pfad))
+        if stichtag_leer is None:
+            return [
+                f"abschluss: leer, und der Dateiname {Path(pfad).name} nennt "
+                "keinen Stichtag (erwartet abschluss_<JJJJ-MM-TT>.parquet) — "
+                "ohne Stichtag laesst sich die leere Bilanz nicht nachrechnen"
+            ]
+        neu_leer = _rechne(stamm, historie, config, stichtag_leer, scheiben,
+                           merkmale, schichten, verankerung, reduktionen)
+        if len(neu_leer):
+            return [
+                f"abschluss: leer, die Neuberechnung zum "
+                f"{stichtag_leer.isoformat()} findet aber {len(neu_leer)} "
+                "Police(n) in Kraft — der Stand ist abgeschnitten"
+            ]
+        return []
     stichtage = fest["stichtag"].unique()
     if len(stichtage) != 1:
         return [f"abschluss: mehrere Stichtage in einer Datei ({len(stichtage)})"]

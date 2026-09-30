@@ -13,7 +13,7 @@ Geschaeftsvorfall (Klasse A, "Herabsetzung").
 
 **Die gemeinsame Konstruktion.** Der Vertrag wird NICHT geteilt. Er
 bekommt ab dem Reduktionsjahr einen geknickten Verlauf: Der Beitrag faellt
-auf den Anteil ``f``, und der freiwerdende Reserveanteil wird in
+auf den Anteil ``f``, und der freiwerdende Anteil des Rueckkaufswerts wird in
 beitragsfreie Summe umgewandelt, die als eigenes Leistungsprofil neben
 dem fortgefuehrten steht (:func:`als_zahlungspfad`). Weil der
 Jahresbeitrag proportional zur Versicherungssumme ist (``BJB = VS *
@@ -24,29 +24,46 @@ Die Rede vom "geteilten Vertrag" stammt aus der Zeit, in der die
 Folgebewertung zwei skalierte Vertraege addierte. Sie hat die Mathematik
 falsch dargestellt: Es gibt einen Vertrag und einen Verlauf.
 
-**Wo sie sich unterscheiden: was mit dem freiwerdenden Reserveanteil
-geschieht.**
+**Wo sie sich unterscheiden: was mit dem freiwerdenden Anteil des
+Rueckkaufswerts geschieht.**
 
 ``prospektiv`` (Zielverfahren)
     Der freiwerdende Anteil wird **verlustfrei** in beitragsfreie
-    Versicherungssumme umgewandelt — mit demselben Satz, den auch die
-    vollstaendige Beitragsfreistellung verwendet. Die Deckungs-
-    rueckstellung bleibt in voller Hoehe im Vertrag.
+    Versicherungssumme umgewandelt — mit demselben Satz UND auf
+    demselben Track, den auch die vollstaendige Beitragsfreistellung
+    verwendet: dem Rueckkaufswert-Track V^MRV, nicht der
+    Deckungsrueckstellung V^bpfl (Entscheid des Maintainers
+    2026-09-30, F1 (b)). Innerhalb der Zillmerdauer liegen beide Tracks
+    um den noch nicht getilgten Abschlusskostenrest auseinander; auf
+    V^bpfl umgewandelt lag die Herabsetzung mit f -> 0 darunter (Messung
+    der Runde C, KLV a0 = 1: Beitragsfreistellung 4.898,47, Herabsetzung
+    mit f = 0 2.356,97), und der Tarifplan widersprach sich selbst.
 
 ``mit_abzug`` (verbreitetes Altverfahren)
     Das System behandelt die Reduktion wie eine **Teilkuendigung**: Auf
     den freiwerdenden Anteil wird der anteilige Stornoabzug erhoben,
-    bevor er in beitragsfreie Summe umgewandelt wird. Auch das ist
+    bevor er in beitragsfreie Summe umgewandelt wird — umgewandelt wird
+    also (1-f) x RKW, RKW = max(0, V^MRV - StoAb), genau die Groesse, die
+    die Quelle bei der Teilkuendigung auszahlt. Auch das ist
     vertretbar — bei einem Teilrueckkauf ist der Abzug ueblich, und
-    genau so haben viele Altbestaende die Herabsetzung geführt.
+    genau so haben viele Altbestaende die Herabsetzung gefuehrt.
 
-Bei ``f = 1`` (keine Reduktion) aendert sich nichts. Bei ``f = 0`` sind
-sie die vollstaendige Beitragsfreistellung erst nach dem Ende der
-Zillmerdauer; davor liegt die prospektive Herabsetzung um den
-Abschlusskostenrest unter ihr, denn umgewandelt wird die
-Deckungsrueckstellung, und der Rest folgt dem Beitrag (gemessen, offene
-Fachfrage). Dazwischen weichen die Verfahren um den anteiligen
-Stornoabzug ab; der Abzug ist hoechstens die Rueckstellung selbst.
+Bei ``f = 1`` (keine Reduktion) aendert sich nichts. Bei ``f = 0`` ist
+die prospektive Herabsetzung die Beitragsfreistellung (gleiche Summe,
+gleicher Pfad, auch innerhalb der Zillmerdauer); die mit Abzug liegt um
+den Stornoabzug darunter. Dazwischen weichen die Verfahren um den
+anteiligen Stornoabzug (1-f) x StoAb ab; der Abzug ist hoechstens der
+Rueckkaufswert selbst.
+
+**Untergrenze.** Der umgewandelte Teil ist nie negativ (wie
+RKW = max(0, ...)): Keine Summe und keine Leistung wird negativ, auch
+nicht bei nicht positiver Rueckstellung im ersten Vertragsjahr (Befund
+RC01 der Runde C). Auf dem Rueckkaufs-Track entsteht dort nach der
+Nachmessung kein negativer Wert mehr; die Untergrenze bleibt als
+Eigenschaft der Regel. Der Floor gilt fuer die Basisschicht; eine
+negative Korrekturschicht (rho < 0) kann den umgewandelten Teil darunter
+druecken — ob der Floor die Schicht einschliesst, entscheidet der
+Maintainer (offen seit 2026-09-30).
 
 Knoten: klv
 """
@@ -202,10 +219,11 @@ def reduziere(
 
     zeile = kern.verlaufszeile(jahr)
     # Der ungeteilte Vertrag traegt seinen eigenen Stornoabschlag; beim
-    # verlustfreien Verfahren wird keiner erhoben.
+    # verlustfreien Verfahren wird keiner erhoben. Der Abzug bezieht sich
+    # auf den Track, der umgewandelt wird: den Rueckkaufswert V^MRV.
     nach_abzug = (
         1.0 if verfahren == PROSPEKTIV
-        else _abzugsfaktor(zeile.drx_bpfl, zeile.stoab, jahr)
+        else _abzugsfaktor(zeile.vx_mrv, zeile.stoab)
     )
     return _reduziere_eine_schicht(
         kern, jahr, anteil, nach_abzug, verfahren, zusatz_dk=zusatz_dk)
@@ -259,27 +277,22 @@ def _pruefe_eingaben(
         )
 
 
-def _abzugsfaktor(dk: float, stoab: float, jahr: int) -> float:
-    """Der Anteil der Reserve, der den Stornoabschlag ueberlebt.
+def _abzugsfaktor(mrv: float, stoab: float) -> float:
+    """Der Anteil des Rueckkaufswerts, der den Stornoabschlag ueberlebt.
 
-    Faktor f mit dk * f = dk - StoAb: der Tarifplan (klv.md 7.1) definiert
-    q^mit Abzug = (1-f)(DR - StoAb)/(S V_bfr) auch fuer eine negative
-    Deckungsrueckstellung in fruehen Jahren langer Vertraege — dann ist der
-    umgewandelte Teil negativ und die neue Summe liegt knapp unter f x S.
-    Vorher brach hier der ganze Fortschreibungslauf ab, fuer jede Police
-    (Angriffsrunde 2026-09-26). Nur eine Rueckstellung von exakt null
-    traegt keinen Faktor.
+    Faktor f mit mrv * f = max(0, mrv - StoAb) = RKW: Umgewandelt wird bei
+    der Herabsetzung mit Abzug der Rueckkaufs-Track (klv.md 7.1, wie bei
+    der Beitragsfreistellung), und der Abzug ist hoechstens der Wert, von
+    dem er abgezogen wird — wie beim Rueckkaufswert selbst
+    (RKW = max(0, V^MRV - StoAb); Angriffsrunde nach T27: bei kleinen
+    Summen trieb der Mindestabzug die umgewandelte Summe unter null, und
+    negative Leistungen folgten). Bei nicht positivem Rueckkaufswert gibt
+    es nichts abzuziehen: Dann rechnet das Verfahren wie das
+    prospektive, und "mit Abzug" liegt nie ueber "prospektiv".
     """
-    # Der Abzug ist hoechstens der Wert, von dem er abgezogen wird — wie
-    # beim Rueckkaufswert, RKW = max(0, V^MRV - StoAb) (Angriffsrunde nach
-    # T27: bei kleinen Summen trieb der Mindestabzug die umgewandelte Summe
-    # unter null, und negative Leistungen folgten; das eigene P-B1 wies den
-    # Lauf ab). Bei nicht positiver Rueckstellung gibt es nichts abzuziehen:
-    # Dann rechnet das Verfahren wie das prospektive, und "mit Abzug" liegt
-    # nie ueber "prospektiv".
-    if dk <= 0.0:
+    if mrv <= 0.0:
         return 1.0
-    return 1.0 - min(stoab, dk) / dk
+    return 1.0 - min(stoab, mrv) / mrv
 
 
 def _reduziere_eine_schicht(
@@ -293,9 +306,9 @@ def _reduziere_eine_schicht(
 ) -> "Reduktion":
     """Die Reduktion EINER Schicht — der gemeinsame Rechenteil.
 
-    ``nach_abzug`` ist der Anteil der Reserve, der die Umwandlung
-    ueberlebt: 1.0 beim verlustfreien Verfahren, sonst der vertragsweit
-    gebildete Faktor. Beim ungeteilten Vertrag ist die Schicht der
+    ``nach_abzug`` ist der Anteil des Rueckkaufswerts (V^MRV), der die
+    Umwandlung ueberlebt: 1.0 beim verlustfreien Verfahren, sonst der
+    vertragsweit gebildete Faktor (RKW / V^MRV). Beim ungeteilten Vertrag ist die Schicht der
     Vertrag, und beide Wege rechnen dieselbe Formel — deshalb steht sie
     hier einmal.
     """
@@ -306,8 +319,25 @@ def _reduziere_eine_schicht(
     bjb_alt = kern.gross_annual_premium()
 
     # Der fortgefuehrte Teil bleibt unveraendert; nur der freiwerdende
-    # Anteil wird umgewandelt.
-    umgewandelt = dk_vor * nach_abzug * (1.0 - anteil)
+    # Anteil wird umgewandelt — auf dem Rueckkaufswert-Track V^MRV, GENAU
+    # wie die Beitragsfreistellung (S_bfr = V^MRV / V^bfr, klv.md 6):
+    # Entscheid des Maintainers 2026-09-30, F1 (b). Auf V^bpfl umgewandelt
+    # lag die Herabsetzung mit f -> 0 innerhalb der Zillmerdauer um den
+    # Abschlusskostenrest unter der Beitragsfreistellung (KLV a0 = 1:
+    # 2.356,97 gegen 4.898,47). Der Anteil (1-f) des Rests folgt dem
+    # Beitrag und ist mit der Herabsetzung abgeschrieben (klv.md 7.1,
+    # "Abschlusskosten folgen dem Beitrag"): ein Verlust des Unternehmens,
+    # beim Verfahren mit Abzug teilweise durch den Stornoabzug gedeckt.
+    #
+    # Untergrenze null (RC01, Runde C): der umgewandelte Teil ist nie
+    # negativ, wie RKW = max(0, ...). Ohne sie ging bei nicht positivem
+    # Wert eine NEGATIVE Summe in den Vertrag, und die Leistungen mit ihr
+    # (-239,41 auf dem Modellpunkt des Angreifers, x=20, n=t=40, f=0,001,
+    # als die Umwandlung noch auf der Rueckstellung lag; auf dem Testpunkt
+    # RC01 auf KLV_DEFAULT -305,02, alt — tests/test_herabsetzung_mrv_track.py).
+    # Der Floor gilt fuer die Basisschicht; die Korrekturschicht kommt
+    # darunter noch hinzu (siehe unten) und wird nicht mehr geklemmt.
+    umgewandelt = max(0.0, zeile.vx_mrv * nach_abzug * (1.0 - anteil))
     # ``zusatz_dk`` ist Deckungskapital OHNE eigene Zusage — die
     # Korrekturschicht eines uebernommenen Vertrags. Sie traegt keinen
     # Beitrag, gehoert also vollstaendig zum umgewandelten Teil, nicht
@@ -325,9 +355,11 @@ def _reduziere_eine_schicht(
     # UNGEKUERZT, auch mit Abzug (Angriffsrunde nach T27): Der Stornoabzug
     # ist ein Betrag des Grundvertrags, (1-f) x StoAb, und steckt schon im
     # Summanden darueber (klv.md 7.1; Grundsatz 9.7: den Abzug traegt die
-    # Basisschicht, nicht die Schicht). Mit dem Reservefaktor
-    # (1 - StoAb/DR) multipliziert, zog die Schicht den Abzug ein zweites
-    # Mal an — nahe DR = 0 unbegrenzt, bei DR < 0 als Geschenk.
+    # Basisschicht, nicht die Schicht). Mit einem Abzugsfaktor
+    # multipliziert (damals auf der Rueckstellung gebildet, 1 - StoAb/DR),
+    # zog die Schicht den Abzug ein zweites Mal an — nahe DR = 0
+    # unbegrenzt, bei DR < 0 als Geschenk; auf V^MRV gebildet bleibt es
+    # dasselbe Doppelzaehlen.
     if zusatz_dk:
         umgewandelt += zusatz_dk
 
@@ -339,8 +371,10 @@ def _reduziere_eine_schicht(
     vs_bfr_teil = umgewandelt / zeile.vx_bfr
     vs_neu = vs_alt * anteil + vs_bfr_teil
 
-    # Das Deckungskapital nach dem Vorfall: der fortgefuehrte Teil traegt
-    # seine anteilige Reserve, der umgewandelte seinen Wert.
+    # Das Deckungskapital nach dem Vorfall (Basis der Rueckstellung, wie
+    # dk_vor): der fortgefuehrte Teil traegt seine anteilige Reserve, der
+    # umgewandelte seinen Wert — dieselbe Groesse, die der Zahlungspfad im
+    # Reduktionsjahr als Rueckstellung ausweist (Test).
     dk_nach = dk_vor * anteil + umgewandelt
 
     return Reduktion(
@@ -403,7 +437,7 @@ def reduziere_geschichtet(
     Schicht gebildet griffen sie mehrfach und der Abzug waere bei einem
     geschichteten Vertrag ein Vielfaches des zugesagten. Er wird deshalb
     EINMAL auf den Gesamtwerten gebildet und dann proportional zur
-    Deckungsrueckstellung der Schicht verteilt — dem Anteil, aus dem der
+    Rueckkaufswert der Schicht verteilt — dem Anteil, aus dem der
     umgewandelte Betrag stammt. Beim verlustfreien Verfahren entfaellt
     die Frage, dort wird kein Abzug erhoben.
 
@@ -464,12 +498,13 @@ def reduziere_geschichtet(
     # Die vertragsweiten Groessen am Reduktionsstichtag: Sie entscheiden
     # ueber den Abzug, bevor irgendeine Schicht gerechnet wird.
     gesamt = vertrags_monatsreserve(grund, list(scheiben), 12 * jahr)
-    # Der Anteil der Reserve, der die Umwandlung ueberlebt. Derselbe
-    # Faktor fuer jede Schicht: Der Abzug ist vertragsweit gebildet und
-    # wird proportional zur eingebrachten Reserve getragen.
+    # Der Anteil des Rueckkaufswerts, der die Umwandlung ueberlebt.
+    # Derselbe Faktor fuer jede Schicht: Der Abzug ist vertragsweit
+    # gebildet und wird proportional zum eingebrachten Rueckkaufswert
+    # getragen.
     nach_abzug = (
         1.0 if verfahren == PROSPEKTIV
-        else _abzugsfaktor(gesamt.drx_bpfl, gesamt.stoab, jahr)
+        else _abzugsfaktor(gesamt.vx_mrv, gesamt.stoab)
     )
 
     aus: List[Tuple[int, "Reduktion"]] = []

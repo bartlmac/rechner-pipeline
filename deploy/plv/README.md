@@ -11,7 +11,7 @@ Laufzeitumgebung selbst ist kein Repo-Inhalt.
 |---|---|
 | `Dockerfile` | das Image: `python:3.11-slim`, Installation exakt wie die CI, kein Entwicklungswerkzeug, unprivilegierter Benutzer |
 | `compose.yml` | ein Dienst `tageslauf`, Volume `daten/`, kein Netz |
-| `env.beispiel` | Vorlage fuer `.env`: Image-Tag, Owner, Digest, Zeitzone; keine Geheimnisse |
+| `env.beispiel` | Vorlage fuer `.env`: Image-Tag, Owner, Digest, Zeitzone, Verzeichnis des Betriebsschluessels; keine Geheimnisse |
 | `tageslauf.service`, `tageslauf.timer` | systemd `--user`: taeglich 23:00, `Persistent=true` |
 | `.github/workflows/plv-image.yml` | baut bei jedem Push auf `main` das Image `ghcr.io/<owner>/rechner-pipeline-plv` mit den Tags `latest` und Commit-Kurzhash |
 
@@ -20,14 +20,14 @@ Laufzeitumgebung selbst ist kein Repo-Inhalt.
 | Verzeichnis | Inhalt | Schutz |
 |---|---|---|
 | `configs/bestand.toml` | die Config der PLV — eine Kopie von `configs/bestand_gesamt.toml`; ihr SHA-256 steht in jedem Protokolleintrag. Nach dem Nachziehen der Kopie aendert sich der Hash im Protokoll, nicht der Bestand: `nummernkreis` traegt die bisherigen Positionen explizit (T22-09) | vom Menschen gepflegt |
-| `uebernahme/<fall>/` | je Migrationsfall ein Zugangsstand mit `eingang.json` (Fallname, Stichtag, Snapshot-Hash, SHA-256 je Datei) | unantastbar wie ein Fall-Eingang; jede Datei wird beim Lesen gegen ihre Summe gehalten |
+| `uebernahme/<fall>/` | je Migrationsfall ein Zugangsstand mit `eingang.json` (Fallname, Stichtag, Snapshot-Hash, SHA-256 je Datei), bei der Registrierung mit dem Betriebsschluessel gezeichnet (Schema 3) | unantastbar wie ein Fall-Eingang; jede Datei wird beim Lesen gegen ihre Summe gehalten |
 | `stand/` | Symlink auf den gefuehrten Stand (`stand-<manifest-kennung>/`; der Pfad `daten/stand/` fuehrt durch den Symlink dorthin): die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` und `verankerung.parquet` der Uebernahmen. Der Stand ist die GEBUCHTE Sicht: Ereignisse mit Buchungstag nach heute (Meldeverzug, Werktagsregel) stehen noch nicht darin und kommen an ihrem Buchungstag, damit Stand, Seite und Journal dasselbe sagen | wechselt nur durch einen gruenen Lauf, in EINEM atomaren Schritt (Symlink-Tausch; es gibt keinen Moment ohne Stand); das alte Verzeichnis wird danach entfernt |
-| `lauf.lock` | Prozess-Sperre: zwei gleichzeitige Laeufe auf derselben Ablage gibt es nicht, der zweite bricht sofort ab | — |
+| `lauf.lock` | Prozess-Sperre: zwei gleichzeitige Laeufe auf derselben Ablage gibt es nicht, der zweite bricht sofort ab; ebenso der `seite`-Befehl (Rendern und Export) neben einem laufenden Tageslauf | — |
 | `journal/tagesjournal.parquet` | die Buchungstage, nur angefuegt | Bijektion zum Ledger wird bei jedem Lauf geprueft |
-| `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf, verkettet (jede Zeile nennt den SHA-256 ihrer Vorgaengerin; eine entfernte, veraenderte oder umsortierte Zeile bricht die Kette, und der naechste Lauf verweigert); die letzte gruene Zeile bindet Manifest- und Journal-Hash des Stands: Tag, nachgeholte Tage, Neugeschaeft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des Baus), Image-Tag und -Digest | nur angefuegt; auch ein roter Lauf steht drin |
+| `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf, verkettet (jede Zeile nennt den SHA-256 ihrer Vorgaengerin; eine entfernte, veraenderte oder umsortierte Zeile bricht die Kette, und der naechste Lauf verweigert) und mit dem Betriebsschluessel gezeichnet (Schema 3; eine veraenderte, herabgestufte oder zweite gruene Zeile fuer denselben Tag haelt den Lauf an). Das Entfernen der LETZTEN Zeile ist ohne Bezug nach aussen nicht erkennbar, wenn sie rot war — eine gruene bindet Manifest und Journal des Stands und faellt beim naechsten Lauf auf; den Bezug nach aussen liefert der Anker beim Export. Eine vollstaendige letzte Zeile ohne Zeilenumbruch wird abgeschlossen, nicht entfernt; geschnitten wird nur ein Fragment, das nie eine Zeile war. Die letzte gruene Zeile bindet Manifest- und Journal-Hash des Stands: Tag, nachgeholte Tage, Neugeschaeft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des Baus), Image-Tag und -Digest | nur angefuegt; auch ein roter Lauf steht drin |
 | `abschluesse/` | `abschluss_<Monatserster>.parquet`, festgeschrieben 0444, genau einmal (ADR-011) | nie ueberschrieben |
 | `berichte/` | `bestandsbericht_<Monatserster>.html` je Monatsabschluss (dazu je Uebernahme ein Teilbestand-Bericht, solange `teilbestand_getrennt` steht) | jederzeit neu renderbar |
-| `seite/index.html` | "Bestand heute": Kennzahlen, Neugeschaeft der Woche, letzte Buchungen, Monatsabschluesse, Uebernahmen mit der Zeichnung ihrer A-M4-Annahme — nach jedem gruenen Lauf aus Protokoll und Journal gerendert, mit Banderole, Stand, Manifest-Hash und Luecken-Block | jederzeit neu renderbar; ein Caddy liefert das Verzeichnis read-only aus |
+| `seite/index.html` | "Bestand heute": Kennzahlen, Neugeschaeft der Woche, letzte Buchungen, Monatsabschluesse, Uebernahmen mit der Zeichnung ihrer A-M4-Annahme — nach jedem gruenen Lauf aus Protokoll und Journal gerendert — erst NACH dem Anfuegen der Protokollzeile ersetzt (vorbereitet wird unter `seite.neu/`, nie in `seite/`): die Seite nennt nie einen Tag, den das Protokoll nicht gruen fuehrt; mit Banderole, Stand, Manifest-Hash und Luecken-Block | jederzeit neu renderbar (unter der Lauf-Sperre; eine aeltere Lesung ersetzt keine juengere Seite); ein Caddy liefert das Verzeichnis read-only aus |
 
 ## Einrichtung (einmalig, Mensch)
 
@@ -37,6 +37,58 @@ cp deploy/plv/compose.yml deploy/plv/env.beispiel ~/apps/plv/
 mv ~/apps/plv/env.beispiel ~/apps/plv/.env      # und ausfuellen
 cp configs/bestand_gesamt.toml ~/apps/plv/daten/configs/bestand.toml
 ```
+
+**Betriebsschluessel** (ADR-018, Nachtrag 2026-09-30). Jede Zeile des
+Tagesprotokolls und jede `eingang.json` ist mit dem Schluessel des
+Betriebs gezeichnet — Rolle `betrieb/tageslauf`, Schluesselklasse
+`betrieb`, leere gates-Liste: Der Betrieb zeichnet Urheberschaft, nie ein
+Gate. Verwahrt wird er wie die Rollenschluessel der Abnahmen: beim
+Menschen, AUSSERHALB von `daten/` (sonst schriebe, wer die Ablage
+beschreiben kann, Zeilen und Zeichnung gleich mit), Modus 0600, genau ein
+Hardlink, 32 bis 4096 Byte. Sein Fingerabdruck steht in einer
+Zeichnungsordnung (Schema 2) daneben:
+
+```
+mkdir -p ~/apps/plv/schluessel && chmod 700 ~/apps/plv/schluessel
+head -c 32 /dev/urandom > ~/apps/plv/schluessel/betrieb.key
+chmod 600 ~/apps/plv/schluessel/betrieb.key
+sha256sum ~/apps/plv/schluessel/betrieb.key   # -> schluessel_sha256
+# ~/apps/plv/schluessel/zeichnungsordnung.json:
+# {"schema_version": 2, "rollen": {"betrieb/tageslauf":
+#   {"schluessel_sha256": "<sha256>", "schluesselklasse": "betrieb", "gates": []}}}
+# in .env: BETRIEBSSCHLUESSEL_DIR=/home/<user>/apps/plv/schluessel
+```
+
+`compose.yml` bindet das Verzeichnis lesend unter `/schluessel` ein.
+Ohne Schluessel laeuft kein Tag (Exit 2 mit Ausweg); ein Menschen- oder
+Agentenschluessel wird abgewiesen.
+
+**Einmaliger Schritt beim ersten Lauf nach dem Umstieg.** Eine Ablage,
+die schon vor dem Betriebsschluessel gefuehrt wurde, traegt ein
+Protokoll ohne gezeichnete Zeile. Darauf verweigern Tageslauf, Export
+und Neuaufsetzen (Exit 2), bis sie EINMAL ausdruecklich AUFGESCHALTET
+ist: Die erste gezeichnete Zeile pinnt dann den ungezeichneten Vorlauf
+(Zahl und Hash der Zeilen), neu aufgesetzt wird nichts. Am ersten noch
+nicht gefuehrten Tag, bei angehaltenem Timer:
+
+```
+systemctl --user stop tageslauf.timer
+cd ~/apps/plv && docker compose run --rm tageslauf --stand /daten \
+    --schluessel /schluessel/betrieb.key \
+    --zeichnungsordnung /schluessel/zeichnungsordnung.json --aufschalten
+systemctl --user start tageslauf.timer
+```
+
+(Angehaengte Argumente ersetzen das `command` aus `compose.yml`, deshalb
+stehen alle da; lokal: `python -m rechner_pipeline.betrieb.tageslauf ...
+--aufschalten`.)
+Der Schalter gehoert NIE in den Timer: Auf ein schon gezeichnetes (oder
+leeres) Protokoll verweigert der Lauf mit ihm. Verweigert ein Lauf
+spaeter mit "keine gezeichnete Zeile", ist das KEIN zweiter
+Aufschaltfall, sondern ein Kettenbruch — jemand hat das gezeichnete
+Protokoll ohne Schluessel herabgestuft. Dann das Protokoll aus der
+Sicherung wiederherstellen, nicht aufschalten; die Ablage allein kann
+beides nicht unterscheiden, der Anker des naechsten Exports schon.
 
 **Uebernahme-Eingang** (je Migrationsfall, aus dem Fall-Arbeitsbereich
 heraus; verlangt die Generation des Falls in `bestand.toml` und den
@@ -53,8 +105,16 @@ Container hat kein Netz und liest den Eingang nur:
 ```
 python -m rechner_pipeline.betrieb.uebernahme --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 \
-    --freigabe-schluessel <pfad-zum-freigabeschluessel>
+    --freigabe-schluessel <pfad-zum-freigabeschluessel> \
+    --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
+    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
 ```
+
+Die Registrierung zeichnet `eingang.json` mit dem Betriebsschluessel —
+ueber alle Felder, auch die gepruefte Freigabesignatur der A-M4-Annahme.
+Sie haelt dazu die Tarifwerk-Schalter der Config gegen den
+Uebernahmebeleg und verweigert bei Abweichung mit dem Config-Abschnitt
+als Ausweg: Registriert wird nur, was der Tageslauf annimmt.
 
 **Image ziehen und Digest eintragen.** Der Container kennt seinen
 Digest zur Laufzeit nicht (kein Netz, kein Docker-Socket); er kommt aus
@@ -121,10 +181,14 @@ Ankerreihe bezeugt Zeilen eines Protokolls, das jetzt im Archiv liegt.
 systemctl --user stop tageslauf.timer
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 \
-    --freigabe-schluessel <pfad-zum-freigabeschluessel>
+    --freigabe-schluessel <pfad-zum-freigabeschluessel> \
+    --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
+    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
 cd ~/apps/plv && docker compose run --rm tageslauf
 python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten \
-    --paket <paket> --anker faelle/<fall>/abgeleitet/anker
+    --paket <paket> --anker faelle/<fall>/abgeleitet/anker \
+    --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
+    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
 systemctl --user start tageslauf.timer
 ```
 
@@ -168,9 +232,18 @@ loginctl enable-linger "$USER"     # der Timer laeuft auch ohne Sitzung
   anfasst) und nennt ihn im Paket; der Auftritt prueft dagegen. Ein
   Export ohne `--anker` wird abgelehnt.
 
+  Vor dem Export prueft er jede Protokollzeile gegen den
+  Betriebsschluessel (`--betriebsschluessel`; ist `--schluessel` selbst
+  der Betriebsschluessel, genuegt er). Ohne ihn gibt es kein Paket. Der
+  Auftritt haelt keinen Schluessel: Er prueft Kette, Schema-Folge, Form
+  der Zeichnung und Vorlauf und weist die Signatur als "nicht pruefbar"
+  aus, statt sie zu behaupten.
+
   ```
   python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten \
-      --paket runs/stands-paket --anker faelle/<fall>/abgeleitet/anker
+      --paket runs/stands-paket --anker faelle/<fall>/abgeleitet/anker \
+      --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
+      --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
   python werkzeuge/auftritt.py --fall faelle/<fall> --name <kurzname> \
       --abzug ... --stands-paket runs/stands-paket \
       --anker faelle/<fall>/abgeleitet/anker/anker.jsonl
@@ -179,5 +252,6 @@ loginctl enable-linger "$USER"     # der Timer laeuft auch ohne Sitzung
 Lokal, ohne Container (Entwicklerrechner), tut dasselbe:
 
 ```
-python -m rechner_pipeline.betrieb.tageslauf --stand <daten> [--heute 2026-09-05]
+python -m rechner_pipeline.betrieb.tageslauf --stand <daten> [--heute 2026-09-05] \
+    --schluessel <betriebsschluessel> --zeichnungsordnung <ordnung>
 ```

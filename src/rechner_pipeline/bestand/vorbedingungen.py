@@ -219,6 +219,14 @@ def lies_und_pruefe_pb1(
     "Teile aus verschiedenen Laeufen" und "behaupteter Horizont" keine
     Frage der Plausibilitaet mehr, sondern der Identitaet.
 
+    Ein Manifest, dessen Horizont fehlt oder kein ISO-Datum ist, ist ein
+    Fehler (``code`` ``manifest``, mit Ausweg) — nie ein Lauf ohne
+    Horizont: Der belegte Horizont haelt Herabsetzungen und RED-Buchungen
+    (``validate_reduktionen``, ``validate_ledger``), und die Wache darf
+    nicht an einem unlesbaren Wert still ausfallen (Nachbesserung der
+    Pruefstrecke T27, Runde C). Erst ein FEHLENDES Manifest belegt keinen
+    Horizont.
+
     Rueckgabe: ``(tabellen, geprueft, contract_fehler, usage_fehler)``.
     ``tabellen`` traegt die Rollen, die gelesen werden konnten, und unter
     ``config`` die geparste Config, wenn eine uebergeben wurde.
@@ -236,19 +244,46 @@ def lies_und_pruefe_pb1(
             "message": f"Unbekannte P-B1-Eingangsrollen: {sorted(rollen - erlaubt)}",
         }], [])
 
-    if manifest is not None and bis is not None:
-        belegt = manifest_horizont(manifest)
-        if belegt != bis:
+    # Der Horizont, gegen den Buchungen und Herabsetzungen gehalten werden,
+    # ist der im Laufmanifest BELEGTE — nicht ``bis``: Der Bestandsbericht
+    # und der Abschluss rufen mit einem Bewertungsdatum, das vor dem Ende
+    # des Laufs liegen darf; ein Lauf ohne Manifest belegt keinen Horizont
+    # (Pruefrunde T27, Runde C, RC02).
+    #
+    # Fail-fast (Nachbesserung der Pruefstrecke): Ein Manifest, das einen
+    # Horizont nicht lesbar belegt, ist ein Fehler, kein Lauf ohne Horizont.
+    # Die Funktion nimmt jede ``Mapping``-Form an — ``manifest_aus_bytes``
+    # prueft den Horizont zwar schon, aber wer ein Mapping selbst baut oder
+    # aendert, laeuft daran vorbei; ein stilles ``horizont = None`` schaltete
+    # dann die Horizontwache an Herabsetzung und RED-Buchung aus, bei gruener
+    # Meldung. Mit ``bis`` fiel der Aufruf vorher als rohe KeyError/ValueError
+    # aus der Funktion statt als Befund.
+    horizont: Optional[_dt.date] = None
+    if manifest is not None:
+        try:
+            horizont = manifest_horizont(manifest)
+        except (KeyError, ValueError, TypeError) as exc:
             errors.append({
                 "code": "manifest",
                 "message": (
-                    f"--bis {bis.isoformat()} widerspricht dem Laufmanifest: "
-                    f"der Lauf wurde bis {belegt.isoformat()} simuliert. "
-                    "Der Horizont ist eine Eigenschaft des Laufs, nicht des "
-                    "Aufrufs — --bis auf den belegten Wert setzen oder den "
-                    "Lauf neu fortschreiben"
+                    f"Laufmanifest ohne lesbaren Horizont ({type(exc).__name__}: {exc}) — "
+                    "ohne den belegten Horizont waeren Herabsetzungen und "
+                    "RED-Buchungen hinter dem Laufende ungeprueft. Ausweg: den "
+                    "Lauf neu fortschreiben (bestand.cli_fortschreibung schreibt "
+                    "das Manifest); nicht von Hand ergaenzen"
                 ),
             })
+    if horizont is not None and bis is not None and horizont != bis:
+        errors.append({
+            "code": "manifest",
+            "message": (
+                f"--bis {bis.isoformat()} widerspricht dem Laufmanifest: "
+                f"der Lauf wurde bis {horizont.isoformat()} simuliert. "
+                "Der Horizont ist eine Eigenschaft des Laufs, nicht des "
+                "Aufrufs — --bis auf den belegten Wert setzen oder den "
+                "Lauf neu fortschreiben"
+            ),
+        })
 
     tabellen: Dict[str, Any] = {}
     # SHA-256 der Bytes, die geparst wurden — fuer Konsumenten, die den
@@ -381,7 +416,7 @@ def lies_und_pruefe_pb1(
         geprueft["reduktionen_zeilen"] = int(len(reduktionen))
         try:
             for meldung in validate_reduktionen(
-                portfolio, reduktionen, historie
+                portfolio, reduktionen, historie, horizont=horizont
             ):
                 errors.append({"code": "reduktionen", "message": meldung})
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
@@ -394,7 +429,8 @@ def lies_und_pruefe_pb1(
         geprueft["ledger_zeilen"] = int(len(ledger))
         try:
             for meldung in validate_ledger(
-                portfolio, ledger, historie=historie, scheiben=scheiben
+                portfolio, ledger, historie=historie, scheiben=scheiben,
+                horizont=horizont,
             ):
                 errors.append({"code": "ledger", "message": meldung})
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert

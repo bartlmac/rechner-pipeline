@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.freigabe_testschluessel import zeichne_neu
+
 from rechner_pipeline.betrieb import seite as st
 from rechner_pipeline.betrieb.tageslauf import EXIT_OK, tageslauf
 from rechner_pipeline.models import anker as ak
@@ -41,12 +43,14 @@ def _schreibe_letzte_zeile_um(protokoll: Path) -> None:
     """Die letzte Zeile umgeschrieben, die Kette bleibt heil (die letzte
     Zeile hat keinen Nachfolger, der sie bindet). Geaendert wird ein Feld,
     das nicht aus dem Stand nachgerechnet wird — so sieht es allein die
-    Reihe der Anker."""
+    Reihe der Anker. Neu gezeichnet mit dem Betriebsschluessel (Runde C):
+    Gegenstand ist die Reihe, nicht die Signatur — der Faelscher hier hat
+    den Schluessel."""
     zeilen = protokoll.read_text(encoding="utf-8").split("\n")
     zeilen = [z for z in zeilen if z.strip()]
     letzte = json.loads(zeilen[-1])
     letzte["image_tag"] = "umgeschrieben"
-    zeilen[-1] = json.dumps(letzte, ensure_ascii=False, sort_keys=True)
+    zeilen[-1] = json.dumps(zeichne_neu(letzte), ensure_ascii=False, sort_keys=True)
     protokoll.chmod(0o644)
     protokoll.write_text("\n".join(zeilen) + "\n", encoding="utf-8")
 

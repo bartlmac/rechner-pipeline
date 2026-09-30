@@ -136,7 +136,17 @@ from rechner_pipeline.kern.rechenkern import (
 #: 3.11.0 = Herabsetzung mit Abzug: der Abzug ist hoechstens die
 #: Deckungsrueckstellung, bei nicht positiver entfaellt er — keine
 #: negative umgewandelte Summe mehr (wie RKW = max(0, ...)).
-__version__ = "3.11.0"
+#: 3.12.0 = Herabsetzung (prospektiv, mit Abzug) wandelt den freiwerdenden
+#: Beitragsanteil auf dem Rueckkaufswert-Track V^MRV um, GENAU wie die
+#: Beitragsfreistellung — nicht auf der Rueckstellung V^bpfl (Entscheid
+#: des Maintainers 2026-09-30, F1 (b)): bei f -> 0 ist sie die
+#: vollstaendige Beitragsfreistellung, auch in der Zillmerdauer; mit Abzug
+#: wird (1-f) x RKW umgewandelt. Der umgewandelte Teil ist nie negativ
+#: (Floor, wie RKW = max(0, ...)). Geaendert nur der Rueckkaufs-Track und
+#: die Summen herabgesetzter Vertraege innerhalb der Zillmerdauer; die
+#: Teilkuendigung, unreduzierte Vertraege und alle Charakterisierungs-
+#: Referenzwerte des Kerns sind unveraendert.
+__version__ = "3.12.0"
 
 __all__ = [
     "ModelPoint",

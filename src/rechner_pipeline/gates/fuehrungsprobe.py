@@ -26,7 +26,27 @@ gehalten:
 3. je Buchung der Fortschreibung nach dem Stichtag (Storno, Umbuchung,
    Tod, Ablauf) den Betrag gegen die Pruefstrecken-Engine am gebuchten
    Vertragsmonat — Kern mit Bausteinen, Stornoabzug je Baustein nach
-   Schalter, Korrekturschicht aus dem Schichtbeleg.
+   Schalter, Korrekturschicht aus dem Schichtbeleg;
+4. die Fortschreibung bewegt nur, was nach dem Stichtag geschieht
+   (Pruefrunde T27, Runde C): das Ledger bis zum Stichtag ist das der
+   Uebernahme, Schichten, Verankerung und Merkmale der Fortschreibung sind
+   die der Uebernahme (feldweise, Schichten zusaetzlich gegen den
+   Schichtbeleg), und eine Herabsetzung liegt nach dem Bestandszugang, vor
+   dem im Laufmanifest belegten Horizont und auf einem beitragspflichtigen
+   Vertrag — sonst ist sie keine Buchung dieses Laufs und hat kein Soll.
+
+**Grenzen dieser Wache.** Das Buchungsfenster (nach dem Bestandszugang, vor
+dem belegten Horizont) gilt nur fuer die Herabsetzung (``RED``): ``STO``,
+``TOD``, ``ABL``, ``ERH`` und ``PEX`` ausserhalb des Fensters sind ein
+Klassen-Kandidat der naechsten Pruefrunde, hier wie in
+``models.bestand.validate_ledger`` nicht abgewiesen.
+
+**Belege vor dieser Aenderung** (Pruefrunde T27, Runde C) sind nicht mehr
+nachrechenbar: Die Probe bindet jetzt die Nebentabellen der
+Fortschreibung (Schichten, Verankerung, Merkmale) und das
+``laufmanifest.json`` als Eingaben; ein aelterer Beleg traegt diese
+Bindung nicht. Sie werden bei der Neuzeichnung des Standes neu gefahren,
+nicht nachgefuehrt.
 
 Was die Probe NICHT ist: keine zweite Abnahme. Sie rechnet mit denselben
 Kern-Funktionen wie die Pruefstrecke und prueft, ob die Fuehrung sie
@@ -161,22 +181,110 @@ def _schichtwert(wert: Any) -> Any:
     return wert
 
 
+def _zellwert(v: Any) -> Any:
+    """Ein Tabellenwert vergleichbar: Datum als Timestamp, Zahlen auf sechs
+    Stellen, fehlend als None."""
+    if v is None or (not isinstance(v, str) and pd.isna(v)):
+        return None
+    if isinstance(v, (pd.Timestamp, dt.date, np.datetime64)):
+        return pd.Timestamp(v)
+    if isinstance(v, (float, np.floating)):
+        return round(float(v), 6)
+    if isinstance(v, (int, np.integer)):
+        return int(v)
+    return str(v)
+
+
 def _zeilenmenge(df: Optional[pd.DataFrame], spalten: List[str]) -> Counter:
     """Zeilen als Multimenge vergleichbarer Tupel (Datum als Timestamp,
     Zahlen auf sechs Stellen, fehlend als None)."""
-    def wert(v: Any) -> Any:
-        if v is None or (not isinstance(v, str) and pd.isna(v)):
-            return None
-        if isinstance(v, (pd.Timestamp, dt.date, np.datetime64)):
-            return pd.Timestamp(v)
-        if isinstance(v, (float, np.floating)):
-            return round(float(v), 6)
-        if isinstance(v, (int, np.integer)):
-            return int(v)
-        return str(v)
     if df is None or not len(df):
         return Counter()
-    return Counter(tuple(wert(z[s]) for s in spalten) for z in df.to_dict("records"))
+    return Counter(tuple(_zellwert(z[s]) for s in spalten) for z in df.to_dict("records"))
+
+
+#: Die Nebentabellen, die die Fortschreibung MITFUEHRT und nicht bewegen
+#: darf: Sie sind Vertragsidentitaet wie die Stammspalten (T26-05, "die
+#: Fortschreibung bewegt Zustaende, nicht Identitaeten"). Rolle -> (Art des
+#: Befunds, Schluesselspalten je Zeile). ``cli_fortschreibung`` reicht sie
+#: unveraendert aus der Uebernahme in den Lauf.
+NEBENTABELLEN_IDENTITAET: Dict[str, Tuple[str, Tuple[str, ...]]] = {
+    "schichten": ("schicht", ("police_id",)),
+    "verankerung": ("verankerung", ("police_id",)),
+    "merkmale": ("merkmale", ("police_id", "dimension")),
+}
+
+
+def _nebentabelle_gleich(befund, rolle: str, art: str, schluessel: Tuple[str, ...],
+                         soll: Optional[pd.DataFrame], ist: Optional[pd.DataFrame]) -> None:
+    """Eine Nebentabelle der Fortschreibung FELDWEISE gegen die der
+    Uebernahme halten (Pruefrunde T27, Runde C, Befund RC04).
+
+    Die Probe las von der Fortschreibung nur Ledger, Scheiben, Historie,
+    Endbestand und Reduktionen. ``schichten.parquet`` und
+    ``merkmale.parquet`` der Fortschreibung — das, worauf ``einzelwerte_am``
+    und der Abschluss bewerten — blieben ungeprueft: Ein rho von 1e-8 auf
+    0,05 verschob das Deckungskapital eines Vertrags am Folgestichtag von
+    23.106,92 auf 35.900,67 EUR (+55 Prozent), ein Merkmal nichtraucher ->
+    raucher um 66,31 EUR, jeweils bei gruener Probe und gruenem
+    A-M4-Konsumenten. Fuer die Tabelle der UEBERNAHME tat die Probe den
+    Feldvergleich laengst; hier dieselbe Regel, je Zeile und Feld, damit
+    die Meldung den Vertrag und das Feld nennt.
+    """
+    def indiziert(df: Optional[pd.DataFrame]):
+        je: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+        doppelt: List[Tuple[Any, ...]] = []
+        if df is None:
+            return je, doppelt
+        for z in df.to_dict("records"):
+            k = tuple(_zellwert(z[c]) for c in schluessel)
+            if k in je:
+                doppelt.append(k)
+            je[k] = z
+        return je, doppelt
+
+    soll_je, _ = indiziert(soll)
+    ist_je, ist_doppelt = indiziert(ist)
+    kopf = f"{rolle}.parquet der Fortschreibung"
+    if ist_doppelt:
+        befund(None, art, f"{kopf}: Schluessel {[list(k) for k in ist_doppelt[:3]]} "
+                          "mehrfach — die Fortschreibung fuehrt die Tabelle der Uebernahme")
+    fehlt = sorted(set(soll_je) - set(ist_je), key=str)
+    if fehlt:
+        befund(None, art, f"{kopf}: {len(fehlt)} Zeile(n) der Uebernahme fehlen "
+                          f"{[list(k) for k in fehlt[:3]]} — die Fortschreibung fuehrt "
+                          "die Tabelle der Uebernahme unveraendert")
+    zuviel = sorted(set(ist_je) - set(soll_je), key=str)
+    if zuviel:
+        befund(None, art, f"{kopf}: {len(zuviel)} Zeile(n) ohne Zeile in der Uebernahme "
+                          f"{[list(k) for k in zuviel[:3]]}")
+    for k in sorted(set(soll_je) & set(ist_je), key=str):
+        for feld in soll_je[k]:
+            if _schichtwert(_zellwert(ist_je[k].get(feld))) != _schichtwert(_zellwert(soll_je[k][feld])):
+                pid = k[0] if schluessel[0] == "police_id" else None
+                befund(pid, art,
+                       f"{feld} {ist_je[k].get(feld)!r} in {kopf}, "
+                       f"{soll_je[k][feld]!r} in der Uebernahme (Schluessel {list(k)}) — "
+                       "die Fortschreibung bewegt Zustaende, nicht Identitaeten",
+                       feld=feld)
+
+
+def _schicht_gegen_beleg(befund, tabelle: pd.DataFrame,
+                         schicht_je_police: Dict[int, Tuple[Schichtparameter, int]],
+                         herkunft: str) -> None:
+    """Jedes Feld jeder Schicht einer Tabelle gegen den Schichtbeleg — fuer
+    die Tabelle der Uebernahme und ebenso fuer die der Fortschreibung
+    (``herkunft`` benennt sie in der Meldung)."""
+    je_police = {int(z["police_id"]): z for z in tabelle.to_dict("records")}
+    for pid, (param, _) in sorted(schicht_je_police.items()):
+        zeile = je_police.get(pid)
+        if zeile is None:
+            continue
+        for feld in SCHICHT_FELDER:
+            if _schichtwert(zeile[feld]) != _schichtwert(getattr(param, feld)):
+                befund(pid, "schicht",
+                       f"{feld} {zeile[feld]!r} in {herkunft}, "
+                       f"{getattr(param, feld)!r} im Schichtbeleg", feld=feld)
 
 
 def _beispiele(menge: Counter) -> List[Any]:
@@ -188,6 +296,7 @@ def _pruefe_endzustand(
     scheiben: Optional[pd.DataFrame], f_bestand: Optional[pd.DataFrame],
     f_historie: Optional[pd.DataFrame], f_ledger: pd.DataFrame,
     f_scheiben: Optional[pd.DataFrame], stichtag: dt.date,
+    u_ledger: Optional[pd.DataFrame] = None,
 ) -> None:
     """Den Endzustand der uebernommenen Vertraege HERLEITEN, nicht auf
     Form pruefen (Pruefrunde T27, Befund 07).
@@ -206,12 +315,35 @@ def _pruefe_endzustand(
       ohne Zeile der uebernommene Zustand;
     * Scheiben: die der Uebernahme unveraendert, dazu je Erhoehung nach
       dem Stichtag (``ERH`` mit ``VS_erhoehung``) genau eine Scheibe an
-      ihrem Datum mit ihrer Summe.
+      ihrem Datum mit ihrer Summe;
+    * Ledger bis zum Stichtag (Runde C, Befund RC02): genau die Buchungen
+      der Uebernahme. Was die Fortschreibung buchen darf, liegt NACH dem
+      Stichtag; der Stichtag ist der Bestandszugang, davor liegt die Zeit
+      der abgebenden Gesellschaft. Die Probe pruefte bisher nur die
+      Buchungen danach (``nach``) und sah eine eingetragene Herabsetzung
+      vom 2025-01-01 nicht, die die Summe eines Vertrags am Stichtag von
+      43.000 auf 25.800 EUR kuerzte. Ohne GeVo nach dem Stichtag bewegt
+      sich an einem uebernommenen Vertrag nichts: Summe und Bewertungs-
+      grundlage am Stichtag bleiben der abgenommene Anfangszustand.
     """
     uebernommen = set(int(p) for p in stamm["police_id"])
     st = pd.Timestamp(stichtag)
     eigen = f_ledger[f_ledger["police_id"].isin(uebernommen)]
     nach = eigen[pd.to_datetime(eigen["status_date"]) > st]
+
+    # Ledger bis zum Stichtag ---------------------------------------------
+    if u_ledger is not None:
+        l_spalten = list(LEDGER_NAMES)
+        soll_l = _zeilenmenge(u_ledger[u_ledger["police_id"].isin(uebernommen)], l_spalten)
+        ist_l = _zeilenmenge(eigen[pd.to_datetime(eigen["status_date"]) <= st], l_spalten)
+        if soll_l != ist_l:
+            befund(None, "endledger",
+                   f"Ledger der Fortschreibung bis zum Stichtag {st.date()} ist nicht die "
+                   f"Uebernahme: {sum((soll_l - ist_l).values())} Buchung(en) der Uebernahme "
+                   f"fehlen oder sind veraendert {_beispiele(soll_l - ist_l)}, "
+                   f"{sum((ist_l - soll_l).values())} Buchung(en) davor ohne Uebernahme "
+                   f"{_beispiele(ist_l - soll_l)} — die Zeit vor dem Bestandszugang gehoert "
+                   "der abgebenden Gesellschaft und ist keine Buchung dieses Laufs")
 
     # Historie ------------------------------------------------------------
     h_spalten = ["police_id", "status_code", "status_date"]
@@ -547,16 +679,8 @@ def pruefe_fuehrung(
                        "eine Korrektur, die die Pruefstrecke nicht kennt")
             # Und JEDES Feld, nicht nur rho: Ein Vergleich, der eine Spalte
             # prueft und elf uebergeht, bezeugt die elf nicht.
-            je_police = {int(z["police_id"]): z for z in tabelle.to_dict("records")}
-            for pid, (param, _) in sorted(schicht_je_police.items()):
-                zeile = je_police.get(pid)
-                if zeile is None:
-                    continue
-                for feld in SCHICHT_FELDER:
-                    if _schichtwert(zeile[feld]) != _schichtwert(getattr(param, feld)):
-                        befund(pid, "schicht",
-                               f"{feld} {zeile[feld]!r} in schichten.parquet, "
-                               f"{getattr(param, feld)!r} im Schichtbeleg", feld=feld)
+            _schicht_gegen_beleg(befund, tabelle, schicht_je_police,
+                                 "schichten.parquet")
 
     # 3b. Die Umbuchung der Uebernahme, MIT Korrekturschicht ----------------
     # Sie stand vorher in Abschnitt 2 und rechnete die beitragsfreie Summe
@@ -643,7 +767,21 @@ def pruefe_fuehrung(
         _pruefe_endzustand(
             befund, stamm=stamm, historie=historie, scheiben=scheiben,
             f_bestand=f_bestand, f_historie=f_historie, f_ledger=f_ledger,
-            f_scheiben=fortschreibung.get("scheiben"), stichtag=stichtag)
+            f_scheiben=fortschreibung.get("scheiben"), stichtag=stichtag,
+            u_ledger=ledger)
+        # Die Nebentabellen, die die Fortschreibung mitfuehrt (RC04): Wer
+        # sie nicht in der Fortschreibung modelliert, laesst den Schluessel
+        # weg (Werkzeug-Aufrufer); ``fuehre_probe`` setzt ihn immer.
+        for rolle, (art_n, schluessel_n) in NEBENTABELLEN_IDENTITAET.items():
+            if rolle not in fortschreibung:
+                continue
+            _nebentabelle_gleich(befund, rolle, art_n, schluessel_n,
+                                 uebernahme.get(rolle), fortschreibung[rolle])
+        if "schichten" in fortschreibung and schichtbeleg:
+            f_tab = fortschreibung["schichten"]
+            if f_tab is not None and len(f_tab):
+                _schicht_gegen_beleg(befund, f_tab, schicht_je_police,
+                                     "schichten.parquet der Fortschreibung")
         f_scheiben = fortschreibung.get("scheiben")
         neue_je_police: Dict[int, List[Dict[str, Any]]] = {}
         if f_scheiben is not None and len(f_scheiben):
@@ -674,10 +812,12 @@ def pruefe_fuehrung(
         # (Angriffsrunde nach T27: eine als prospektiv eingetragene
         # Teilkuendigung und ein falscher Anteil bestanden die Probe).
         red_anteil = float(getattr(config.annahmen, "red_anteil", 0.0) or 0.0)
+        red_rate = float(config.annahmen.herabsetzung(0.0))
         for pid, (_j, anteil, verfahren) in sorted(reduktion_je_police.items()):
             if pid in welten:
                 for text in red_bindung_fehler(pid, anteil, verfahren,
-                                               tarifwerk.get("red_verfahren"), red_anteil):
+                                               tarifwerk.get("red_verfahren"),
+                                               red_anteil, red_rate):
                     befund(pid, "herabsetzung", text)
         red_jahr = {
             int(z["police_id"]): int(z["vertragsjahr"])
@@ -689,6 +829,57 @@ def pruefe_fuehrung(
                    f"{len(ohne_tabelle)} Police(n) mit RED-Buchung, aber ohne "
                    f"Zeile in reduktionen.parquet (z. B. {ohne_tabelle[:5]}) — "
                    "die Probe kann ihre Folgebuchungen nicht nachrechnen")
+        # Die Herabsetzung liegt IM Lauf (RC02) und auf einem beitragspflichtigen
+        # Vertrag (RC03). Davor/dahinter/nach der Beitragsfreistellung ist sie
+        # keine Buchung dieses Laufs: Die Engine simuliert einen uebernommenen
+        # Vertrag erst ab seinem Zugangsjahr, nie ueber den Horizont und zieht
+        # fuer beitragsfreie Vertraege keine Herabsetzung. Ein Soll wird fuer
+        # sie NICHT hergeleitet (es waere das eines Vertrags, den es nicht
+        # gibt) — der Widerspruch ist der Befund.
+        horizont = fortschreibung.get("horizont")
+        ausgeschlossen: set = set()
+        for pid, (r_jahr, _anteil, r_verfahren) in sorted(reduktion_je_police.items()):
+            welt = welten.get(pid)
+            if welt is None:
+                continue
+            name = "Teilkuendigung" if r_verfahren == TEILKUENDIGUNG else "Herabsetzung"
+            datum = wirkungstag[pid]
+            zugang = pd.Timestamp(haupt.loc[pid, "bestandszugang"])
+            if datum <= zugang:
+                ausgeschlossen.add(pid)
+                befund(pid, "herabsetzung",
+                       f"{name} am {datum.date()} liegt nicht nach dem Bestandszugang "
+                       f"{zugang.date()} — Vorgeschichte der abgebenden Gesellschaft, "
+                       "keine Buchung dieses Laufs")
+            if horizont is not None and datum > pd.Timestamp(horizont):
+                ausgeschlossen.add(pid)
+                befund(pid, "herabsetzung",
+                       f"{name} am {datum.date()} liegt nach dem belegten Horizont "
+                       f"{pd.Timestamp(horizont).date()} — der Lauf hat sie nicht gefahren")
+            pex_beitragsfrei = welt["pex_jahr"]
+            if pex_beitragsfrei is None:
+                eigene_pex = f_ledger[(f_ledger["police_id"] == pid)
+                                      & (f_ledger["ereignis"] == "PEX")]
+                if len(eigene_pex):
+                    pex_beitragsfrei = int(eigene_pex["vertragsjahr"].min())
+            if pex_beitragsfrei is not None and int(pex_beitragsfrei) <= r_jahr:
+                ausgeschlossen.add(pid)
+                befund(pid, "herabsetzung",
+                       f"{name} im Jahr {r_jahr} auf einem beitragsfrei gestellten "
+                       f"Vertrag (Beitragsfreistellung im Jahr {int(pex_beitragsfrei)}) — "
+                       "die Engine zieht fuer beitragsfreie Vertraege keine "
+                       "Herabsetzung und die Bewertung bricht ab; ein Soll wird "
+                       "nicht hergeleitet")
+        if horizont is not None:
+            hinter = f_ledger[(f_ledger["ereignis"] == "RED")
+                              & f_ledger["police_id"].isin(set(welten))
+                              & (pd.to_datetime(f_ledger["status_date"]) > pd.Timestamp(horizont))]
+            for pid in sorted(set(int(p) for p in hinter["police_id"])):
+                ausgeschlossen.add(pid)
+                befund(pid, "herabsetzung",
+                       f"RED-Buchung nach dem belegten Horizont {pd.Timestamp(horizont).date()} "
+                       "— der Lauf hat sie nicht gefahren")
+
         def teile_bei(pid: int, welt: Dict[str, Any], jahr: int):
             teile = list(welt["teile"])
             for s in neue_je_police.get(pid, []):
@@ -724,7 +915,7 @@ def pruefe_fuehrung(
         red_zeilen = f_ledger[f_ledger["ereignis"] == "RED"]
         for pid, red in sorted(reduktion_je_police.items()):
             welt = welten.get(pid)
-            if welt is None:
+            if welt is None or pid in ausgeschlossen:
                 continue
             eigene = red_zeilen[(red_zeilen["police_id"] == pid)
                                 & (red_zeilen["vertragsjahr"] == red[0])]
@@ -735,8 +926,8 @@ def pruefe_fuehrung(
         for z in nach.to_dict("records"):
             pid, art, jahr = int(z["police_id"]), str(z["ereignis"]), int(z["vertragsjahr"])
             welt = welten.get(pid)
-            if welt is None:
-                continue
+            if welt is None or pid in ausgeschlossen:
+                continue                       # oben als Befund gemeldet
             if pid in red_jahr and jahr >= red_jahr[pid] \
                     and pid not in reduktion_je_police:
                 continue                       # oben als Befund gemeldet
@@ -1011,10 +1202,30 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
                 "bestand": lies(lauf / "bestand_gesamt.parquet", STAMM_NAMES, False),
                 "reduktionen": lies(
                     lauf / "reduktionen.parquet", REDUKTIONEN_NAMES, False),
+                # Die Nebentabellen, die der Lauf aus der Uebernahme mitfuehrt
+                # (Runde C, Befund RC04): Auf ihnen bewertet der Abschluss.
+                "schichten": lies(lauf / "schichten.parquet", SCHICHTEN_NAMES, False),
+                "verankerung": lies(lauf / "verankerung.parquet", VERANKERUNG_NAMES, False),
+                "merkmale": lies(lauf / "merkmale.parquet", None, False),
             }
         except SystemExit as exc:
             print(str(exc), file=sys.stderr)
             return 2, None
+        # Der belegte Horizont des Laufs (Runde C, Befund RC02): Eine RED-
+        # Buchung dahinter hat der Lauf nicht gefahren. Als Klartext-JSON
+        # gelesen, nicht ueber bestand.manifest — dieselbe Schicht-Kante
+        # wie die uebrigen Eingaben, keine neue. Ohne Manifest gibt es
+        # keinen belegten Horizont; dann prueft ihn P-B1 im Konsumenten.
+        manifest_pfad = lauf / "laufmanifest.json"
+        fortschreibung["horizont"] = None
+        if manifest_pfad.is_file():
+            try:
+                fortschreibung["horizont"] = dt.date.fromisoformat(
+                    str(json.loads(binde(manifest_pfad).text())["horizont"]))
+            except (ValueError, KeyError, TypeError) as exc:
+                print(f"fuehrungsprobe: Laufmanifest {manifest_pfad} ohne lesbaren "
+                      f"Horizont ({type(exc).__name__}: {exc})", file=sys.stderr)
+                return 2, None
 
     config_pfad = Path(args.config).resolve()
     config = config_aus_text(binde(config_pfad).text())

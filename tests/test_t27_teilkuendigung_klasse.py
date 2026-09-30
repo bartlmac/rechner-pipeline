@@ -592,24 +592,35 @@ def test_eine_negative_auszahlung_wird_auf_null_gekappt_und_ausgewiesen():
     assert any("betrag < 0" in f for f in validate_ledger(stamm, neg, erg.historie, erg.scheiben))
 
 
-def test_die_teilkuendigung_darf_nach_einer_beitragsfreistellung_liegen(welt):
-    """Runde 4: validate_reduktionen verlangte auch fuer die Teilkuendigung
-    einen laufenden Beitrag (PEX als Grenze) — mit einer Begruendung, die
-    dieselbe Funktion 25 Zeilen zuvor verneint."""
+def test_die_teilkuendigung_liegt_vor_einer_beitragsfreistellung(welt):
+    """Runde 4 hatte die Teilkuendigung NACH der Beitragsfreistellung
+    zugelassen (Ziffer 6 kuendige nur einen Summenanteil). Runde C,
+    Befund RC03, hat das zurueckgenommen: Die Engine zieht fuer
+    beitragsfreie Vertraege keine Herabsetzung, und die Bewertung bricht
+    ab (``Beitragsfreistellung im Jahr p vor der Reduktion (Jahr r)``) —
+    P-B1 nahm eine Auszahlung vom 4,6-fachen der beitragsfreien Reserve
+    an. Jetzt gilt fuer JEDES Verfahren: Reduktionsjahr < PEX-Jahr.
+    Mutationsprobe: die PEX-Jahr-Regel in validate_reduktionen entfernen
+    -> die ersten beiden Aussagen kippen."""
     from rechner_pipeline.models.bestand import validate_reduktionen
 
     config, stamm, schichten, verankerung, erg = welt
     pid = int(stamm["police_id"].iloc[0])
     beginn = pd.Timestamp(stamm.loc[stamm["police_id"] == pid, "insurance_start"].iloc[0])
     historie = pd.DataFrame([{"police_id": pid, "status_id": 2, "status_code": "PEX",
-                              "status_date": beginn + pd.DateOffset(years=12)}])
-    zeile = lambda verfahren: pd.DataFrame([{
-        "police_id": pid, "reduktion_jahr": 14, "reduktion_datum": beginn + pd.DateOffset(years=14),
+                              "status_date": beginn + pd.DateOffset(years=13)}])
+    zeile = lambda verfahren, jahr=14: pd.DataFrame([{
+        "police_id": pid, "reduktion_jahr": jahr, "reduktion_datum": beginn + pd.DateOffset(years=jahr),
         "anteil": ANTEIL, "verfahren": verfahren}])
-    assert validate_reduktionen(stamm, zeile(TEILKUENDIGUNG), historie) == []
+    fehler = validate_reduktionen(stamm, zeile(TEILKUENDIGUNG), historie)
+    assert any("Zustandswechsel" in f and "Teilkuendigung" in f for f in fehler), fehler
     assert any("Zustandswechsel" in f for f in validate_reduktionen(stamm, zeile("prospektiv"), historie))
+    # Im PEX-Jahr selbst ist der Vertrag schon beitragsfrei (Engine: PEX vor RED).
+    assert validate_reduktionen(stamm, zeile(TEILKUENDIGUNG, 13), historie)
+    # Positivkontrolle: VOR der Beitragsfreistellung bleibt sie zulaessig.
+    assert validate_reduktionen(stamm, zeile(TEILKUENDIGUNG, 12), historie) == []
     tod = pd.DataFrame([{"police_id": pid, "status_id": 2, "status_code": "TOD",
-                         "status_date": beginn + pd.DateOffset(years=13)}])
+                         "status_date": beginn + pd.DateOffset(years=14)}])
     assert any("nichts mehr zu kuendigen" in f for f in validate_reduktionen(stamm, zeile(TEILKUENDIGUNG), tod))
 
 

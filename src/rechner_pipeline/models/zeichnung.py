@@ -34,6 +34,19 @@ eingefuehrt (T20/U1: aus keinem Beleg war ablesbar, ob ein Mensch oder
 eine KI-Session gezeichnet hatte). Die gates-Liste einer Agentenrolle
 bleibt leer — was ein Agent zeichnet, ist kein Gate.
 
+**Nachtrag 2026-09-30 (Entscheid des Maintainers): Schluesselklasse
+``betrieb``.** Der Tagesbetrieb hatte keinen Zeugen ausser sich selbst:
+Wer die Ablage beschreiben konnte, schrieb Protokoll und Eingaenge
+stimmig um, und jede Pruefung las nur, was derselbe Schreiber hinterlassen
+hatte (Pruefrunde nach T27, Runde C). Ein Programm, das Protokollzeilen
+und Eingaenge zeichnet, ist weder ``mensch`` noch ``simulation`` noch
+``agent`` — es handelt nicht fuer eine Person und legt nichts vor, es
+bezeugt, dass es diese Zeile geschrieben hat. Die Rolle heisst
+``betrieb/<name>`` (heute ``betrieb/tageslauf``), ihre Klasse ``betrieb``,
+ihre gates-Liste ist leer wie die eines Agenten: Der Betrieb zeichnet
+Urheberschaft, nie ein Gate. Er steht deshalb NICHT unter den
+zeichnenden Klassen, und kein P9-Snapshot nimmt ihn an.
+
 Der praktische Grund: Bei vielen kleinen Migrationstranchen mit
 taeglichen Exporten kann kein Mensch jeden Export zeichnen. Ein Agent
 kann es, und der Beleg sagt, dass es einer war. Der Mensch zeichnet
@@ -55,12 +68,13 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-#: Die Schluesselklassen (ADR-018).
-SCHLUESSELKLASSEN = ("mensch", "simulation", "agent")
+#: Die Schluesselklassen (ADR-018; ``betrieb`` seit dem Nachtrag 2026-09-30).
+SCHLUESSELKLASSEN = ("mensch", "simulation", "agent", "betrieb")
 #: Klassen, deren Schluessel eine Annahme zeichnen duerfen.
 ZEICHNENDE_KLASSEN = ("mensch", "simulation")
-#: Rollenkennungen tragen die Ebene: mensch/<funktion> oder agent/<name>.
-ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
+#: Rollenkennungen tragen die Ebene: mensch/<funktion>, agent/<name> oder
+#: betrieb/<name> (das Programm des Tagesbetriebs, Nachtrag 2026-09-30).
+ROLLEN_MUSTER = re.compile(r"^(mensch|agent|betrieb)/[a-z][a-z0-9-]*$")
 ORDNUNG_SCHEMA_VERSION = 2
 
 
@@ -327,7 +341,7 @@ def lade_zeichnungsordnung(
         if not gueltige_rollenkennung(name):
             fehler.append(
                 f"Zeichnungsordnung: Rolle {name!r} traegt keine Ebene — "
-                "erwartet mensch/<funktion> oder agent/<name> (ADR-018)"
+                "erwartet mensch/<funktion>, agent/<name> oder betrieb/<name> (ADR-018)"
             )
             continue
         klasse = eintrag.get("schluesselklasse")
@@ -348,6 +362,26 @@ def lade_zeichnungsordnung(
             fehler.append(
                 f"Zeichnungsordnung: menschliche Rolle {name!r} kann nicht "
                 "die Schluesselklasse 'agent' tragen — Agenten zeichnen nicht"
+            )
+            continue
+        # Ebene und Klasse ``betrieb`` gehoeren zusammen (Nachtrag
+        # 2026-09-30): Ein Programm ist keine Person und kein Agent, und
+        # eine Person ist kein Programm. Sonst liesse sich ein
+        # Menschenschluessel als Betriebsschluessel fuehren oder umgekehrt,
+        # und der Beleg sagte nicht mehr, wer geschrieben hat.
+        if (ebene == "betrieb") != (klasse == "betrieb"):
+            fehler.append(
+                f"Zeichnungsordnung: Rolle {name!r} mit Schluesselklasse "
+                f"{klasse!r} — die Ebene betrieb/ und die Klasse 'betrieb' "
+                "gehoeren zusammen (ADR-018, Nachtrag 2026-09-30)"
+            )
+            continue
+        if klasse == "betrieb" and eintrag.get("gates"):
+            fehler.append(
+                f"Zeichnungsordnung: Betriebsrolle {name!r} mit gates "
+                f"{eintrag.get('gates')} — der Betrieb zeichnet Urheberschaft "
+                "(Protokollzeilen, Eingaenge), nie ein Gate; die Liste muss "
+                "leer sein"
             )
             continue
         if klasse == "agent" and eintrag.get("gates"):

@@ -278,6 +278,102 @@ Urheberschaft. Zwei Mechanismen waeren zwei Wahrheiten ueber dasselbe;
 wer prueft, muesste beide kennen und wissen, welcher wo gilt. Dieselbe
 Doppelung hat Review T25-06 in anderer Gestalt gekostet.
 
+## Nachtrag 2026-09-30: Schluesselklasse betrieb
+
+Die Pruefrunde nach T27 (Runde C) fand den Kern der Betriebsbefunde an
+einer Stelle: **Der Tagesbetrieb hatte keinen Zeugen ausser sich selbst.**
+Wer die Ablage beschreiben konnte, schrieb Protokoll und Eingaenge stimmig
+um — eine auf Schema 1 herabgestufte Zeile, eine zweite gruene Zeile fuer
+denselben Tag, Kennzahlen, Herkunft und Uebernahmeangaben der letzten
+Zeile, ein Eingang nach seinem Eintritt. Jede Pruefung las nur, was
+derselbe Schreiber hinterlassen hatte.
+
+Entscheid des Maintainers: Der Betrieb bekommt einen Schluessel **genau
+wie die vorhandenen Rollen** — Schluesseldatei beim Menschen, ausserhalb
+der Ablage (0600, ein Hardlink, 32 bis 4096 Byte); Fingerabdruck in der
+Zeichnungsordnung; HMAC-Zeichnung nach `models.anker` (Verfahren
+`hmac-sha256-v2`). Neu ist nur die Rolle:
+
+* Ebene und Klasse `betrieb` (`betrieb/tageslauf`, Schluesselklasse
+  `betrieb`). Ebene und Klasse gehoeren zusammen; eine Rolle
+  `mensch/...` mit Klasse `betrieb` oder umgekehrt weist die Ordnung ab.
+* Die `gates`-Liste ist leer, wie die eines Agenten. `betrieb` steht NICHT
+  unter den zeichnenden Klassen; kein P9-Snapshot nimmt sie an.
+
+**Der Grund fuer eine eigene Klasse:** Ein Programm, das Protokollzeilen
+und Eingaenge zeichnet, ist weder `mensch` noch `simulation` noch
+`agent`. Es steht fuer niemanden ein und legt nichts vor; es bezeugt,
+dass es diese Zeile geschrieben hat. Es zeichnet Urheberschaft, nie ein
+Gate. Unter einer der vorhandenen Klassen hiesse jede Protokollzeile "ein
+Mensch hat das gezeichnet" oder "ein Agent hat das vorgelegt" — genau die
+Verwechslung, gegen die die Klassen eingefuehrt wurden.
+
+Was gezeichnet wird: jede Zeile des Tagesprotokolls (Schema 3) und jede
+`eingang.json` bei der Registrierung (Schema 3, ueber alle Felder samt
+A-M4-Zeichnungsblock). Ohne Betriebsschluessel laeuft kein Tag, wird
+nichts registriert und nichts exportiert; ein Menschen- oder
+Agentenschluessel wird mit Ausweg abgewiesen. Wer keinen Schluessel haelt
+(der Konsument eines Stands-Pakets), prueft Form, Kette und Vorlauf und
+sagt, dass die Signatur fuer ihn nicht pruefbar ist.
+
+Dies nimmt eine fruehere Abwaegung zurueck: `models.anker` hatte die
+Zeichnung jeder Zeile beim Lauf verworfen, weil sie einen Schluessel in
+einen unbeaufsichtigten Nachtlauf legt. Das bleibt wahr — der Schluessel
+liegt jetzt dort, lesend eingebunden. Die Runde C hat gezeigt, dass der
+Lauf ohne ihn nichts bezeugt, was ein zweiter Schreiber nicht ebenso
+bezeugen koennte. Der Anker bleibt der Bezug nach aussen; die Zeichnung
+bindet jede Zeile, auch die, die noch nie verankert wurde.
+
+Bestehende Ablagen werden **aufgeschaltet**, nicht neu aufgesetzt: Die
+erste gezeichnete Zeile pinnt den ungezeichneten Vorlauf (Zahl und Hash
+der rohen Zeilen). Aufgeschaltet wird nur **ausdruecklich und einmal**
+(`tageslauf --aufschalten`, Bibliothek `aufschalten=True`), beim ersten
+Lauf nach dem Umstieg. Der Grund (Pruefer der Nachbesserung): Ein
+Protokoll ohne gezeichnete Zeile ist aus der Ablage allein nicht von
+einem gezeichneten zu unterscheiden, das ein Schreiber ohne Schluessel
+herabgestuft hat (Zeichnungen und Pin entfernt, Zahlen gefaelscht, Kette
+neu verkettet) — die erste Fassung pinnte eine solche Geschichte still und
+zeichnete sie damit. Deshalb gilt:
+
+* Traegt das Protokoll Zeilen, aber keine gezeichnete, verweigern
+  Tageslauf, Export und Neuaufsetzen (Exit 2) und nennen beide Lesarten:
+  Altbestand -> einmal `--aufschalten`; schon gezeichnet gewesen ->
+  Kettenbruch, das Protokoll aus der Sicherung wiederherstellen.
+  Aufschalten kann nur der Tageslauf (und das Neuaufsetzen, das die alte
+  Ablage archiviert); der Export nie.
+* `--aufschalten` auf ein gezeichnetes oder leeres Protokoll wird
+  **verweigert**, nicht still uebergangen: Ein Schalter, der dauerhaft im
+  Timer stuende, oeffnete die Herabstufung wieder.
+* Ist ein gezeichnetes Protokoll spaeter wieder ohne gezeichnete Zeile,
+  ist das ein Kettenbruch, kein zweiter Aufschaltfall. Die Ablage sieht
+  das nicht; den Bezug nach aussen liefert der Anker: Die Zeile, die der
+  letzte Export verankert hat, steht dann nicht mehr im Protokoll, und der
+  naechste Export verweigert. Zwischen Aufschaltung und erstem Export
+  schuetzt nur die Entscheidung des Menschen.
+
+**Zeugen** eines Eingangs sind nur gebundene Zeilen: eine gezeichnete
+Zeile (Schema 3) oder eine Zeile des gepinnten Vorlaufs. Ein Protokoll
+ohne gezeichnete Zeile bezeugt nichts — ausser im Lauf, der es mit
+`--aufschalten` uebernimmt und dessen erste Zeile genau diesen Vorlauf
+pinnt. Ein ungezeichneter Eingang (Schema 2) tritt nur ein, wenn eine
+gezeichnete Protokollzeile oder der gepinnte Vorlauf ihn bezeugt; neu
+eintreten kann er nicht.
+
+**Offen: Schluesselwechsel.** Der Tageslauf prueft mit einem Ring aus
+genau dem aktuellen Betriebsschluessel. Wird der Schluessel ersetzt, sind
+die alten Zeilen fuer ihn "nicht pruefbar" — im Betrieb ein harter
+Befund, der Tag laeuft nicht. Naechster Schritt, wie bei den
+Freigabeschluesseln: eine Zeichnungsordnung mit abgeloesten Rollen und
+ein Ring aus mehreren Schluesseln, gegen den die alten Zeilen weiter
+geprueft werden, waehrend nur der aktuelle zeichnet. Bis dahin ist der
+Weg bei einem Wechsel das Neuaufsetzen (es rechnet die Signatur der alten
+Ablage nicht nach und archiviert sie).
+
+Zukunft (ausdruecklich nicht Teil dieses Nachtrags): Der Betrieb soll wie
+die Linie eine Agenten- und eine Menschenrolle bekommen, um
+Migrationszugang und Controllingvorgang zu verifizieren, auch im
+Regie-Modus.
+
 ## Bewusst nicht Bestandteil
 
 Die Modellierung simulierter Rueckfragen (naechste Ausbaustufe der

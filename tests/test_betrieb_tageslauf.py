@@ -22,6 +22,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from tests.freigabe_testschluessel import betriebsargs
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
+
 from rechner_pipeline.bestand.manifest import lies_manifest
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.betrieb import tageslauf as tl
@@ -212,12 +215,12 @@ def test_derselbe_tag_noch_einmal_ist_ein_benannter_noop(gefuehrt):
     assert (ablage.stand / "laufmanifest.json").read_bytes() == manifest_vorher
     assert ablage.protokoll_pfad.read_bytes() == protokoll_vorher
     assert gefuehrter_tag(ablage) == dt.date(2026, 2, 4)
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-04"]) == EXIT_OK
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-04", *betriebsargs()]) == EXIT_OK
     assert ablage.protokoll_pfad.read_bytes() == protokoll_vorher
     # Rueckwaerts bleibt ein Fehler (Exit 2 ueber main):
     with pytest.raises(TageslaufError, match="rueckwaerts"):
         tageslauf(ablage, dt.date(2026, 1, 15))
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-15"]) == EXIT_USAGE
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-15", *betriebsargs()]) == EXIT_USAGE
     assert len(lies_protokoll(ablage.protokoll_pfad)) == 3
 
 
@@ -282,18 +285,18 @@ def test_erstbefuellung_verlangt_config_und_betriebsbeginn(tmp_path):
 def test_cli(gefuehrt, tmp_path, capsys):
     ablage = _ablage(tmp_path / "cli")
     assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-06",
-                    "--image-digest", "sha256:abc"]) == EXIT_OK
+                    "--image-digest", "sha256:abc", *betriebsargs()]) == EXIT_OK
     assert "2026-01-06 gefuehrt" in capsys.readouterr().err
     erste = lies_protokoll(ablage.protokoll_pfad)[0]
     assert erste["image_digest"] == "sha256:abc"
     # Was die Umgebung nicht liefert, ist ein benannter Zustand, kein leeres Feld:
     assert erste["image_revision"] == "nicht erfasst" and erste["image_tag"] == "nicht erfasst"
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "kein-datum"]) == EXIT_USAGE
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "kein-datum", *betriebsargs()]) == EXIT_USAGE
     # Derselbe Tag noch einmal: benannter No-op, keine zweite Protokollzeile.
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-06"]) == EXIT_OK
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-06", *betriebsargs()]) == EXIT_OK
     assert "bereits gefuehrt, nichts zu tun" in capsys.readouterr().err
     assert len(lies_protokoll(ablage.protokoll_pfad)) == 1
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-05"]) == EXIT_USAGE
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-05", *betriebsargs()]) == EXIT_USAGE
     assert "rueckwaerts" in capsys.readouterr().err
 
 
@@ -426,7 +429,7 @@ def test_jede_protokollzeile_nennt_den_hash_ihrer_vorgaengerin(gefuehrt):
     ablage, _ = gefuehrt
     roh = [z for z in ablage.protokoll_pfad.read_text(encoding="utf-8").splitlines() if z.strip()]
     zeilen = [json.loads(z) for z in roh]
-    assert zeilen[0]["schema_version"] == 2 and zeilen[0]["vorgaenger_sha256"] == ""
+    assert zeilen[0]["schema_version"] == 3 and zeilen[0]["vorgaenger_sha256"] == ""
     for vorher, jetzt in zip(roh, zeilen[1:]):
         assert jetzt["vorgaenger_sha256"] == tl._zeilen_hash(vorher)
 
@@ -635,7 +638,7 @@ def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
     (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
         json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
         encoding="utf-8")
-    return ueb.eingang_anlegen(ablage.wurzel, fall, BETRIEBSBEGINN)
+    return ueb.eingang_anlegen(_mit_config(ablage.wurzel), fall, BETRIEBSBEGINN)
 
 
 def test_ein_abschluss_ist_dieselbe_datei_ob_am_stichtag_oder_nachgeholt(tmp_path, monkeypatch):
@@ -1055,7 +1058,7 @@ def _injiziere(monkeypatch, naht: str):
 
         monkeypatch.setattr(tl, "_bericht", _kaputt)
     elif naht == "protokoll-teilweise":
-        def _kaputt(pfad, zeile):
+        def _kaputt(pfad, zeile, _zeichner=None, **_k):
             # Der Anfang der Zeile steht, der Rest nicht — der Teilwrite,
             # den ein Absturz hinterlaesst. Ohne Zeilenumbruch: Die Zeile
             # ist nie eine geworden.

@@ -62,19 +62,22 @@ def test_der_unveraenderte_vertrag_rechnet_wie_bisher():
         assert pz.vx_mrv == pytest.approx(kern.verlaufszeile(a).vx_mrv, rel=1e-12)
 
 
-def test_mit_abzug_bei_negativer_deckungsrueckstellung_rechnet_ohne_abzug():
+def test_mit_abzug_bei_negativer_deckungsrueckstellung_bricht_nicht_ab():
     """Angriffsrunde 2026-09-26: Bei negativer Deckungsrueckstellung (frueher
     Jahrestag, lange Laufzeit) brach die Herabsetzung mit Abzug den ganzen
-    Lauf ab. Seit der Runde danach gilt klv.md 7.1 mit der Grenze: Der
-    Abzug ist hoechstens die Rueckstellung; bei nicht positiver gibt es
-    nichts abzuziehen, und "mit Abzug" rechnet wie "prospektiv".
-    Mutationsprobe: die Wache 'dk <= 0' als Abbruch zurueck -> rot."""
+    Lauf ab. Seit F1 (b) (Entscheid 2026-09-30) wird auf dem Rueckkaufs-Track
+    umgewandelt, und der Abzug ist hoechstens der Rueckkaufswert: umgewandelt
+    wird (1-f) x RKW, RKW = max(0, V^MRV - StoAb) — auch wenn die
+    Rueckstellung negativ ist, der Rueckkaufswert aber positiv.
+    Mutationsprobe: die Wache 'mrv <= 0' als Abbruch zurueck oder auf die
+    Rueckstellung umwandeln -> rot."""
     from rechner_pipeline.kern.beitragsreduktion import reduziere
 
     mp = dataclasses.replace(KLV_DEFAULT, x=40, n=40, t=40)
     kern = Rechenkern(mp)
     z = kern.verlaufszeile(1)
     assert z.drx_bpfl < 0, "die Welt hat keine negative Rueckstellung"
+    assert z.rkw > 0, "die Welt hat keinen positiven Rueckkaufswert"
     r = reduziere(kern, 1, F, verfahren=MIT_ABZUG)
-    q = (1 - F) * z.drx_bpfl / (mp.sum_insured * z.vx_bfr)
+    q = (1 - F) * z.rkw / (mp.sum_insured * z.vx_bfr)
     assert r.vs_neu == pytest.approx(mp.sum_insured * (F + q), rel=1e-12)

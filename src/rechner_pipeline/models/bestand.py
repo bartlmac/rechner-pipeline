@@ -863,7 +863,8 @@ def _nichtendlich(reihe: Any) -> bool:
 
 
 def validate_ledger(
-    stamm: Any, ledger: Any, historie: Any = None, scheiben: Any = None
+    stamm: Any, ledger: Any, historie: Any = None, scheiben: Any = None,
+    horizont: Any = None,
 ) -> List[str]:
     """Semantik des Ereignis-Ledgers gegen Stamm, Journal und Scheiben.
 
@@ -897,7 +898,26 @@ def validate_ledger(
       Erhoehungsjahr, und jede Scheibe ihre Buchung. Vorher passierten
       zwei zwischen Policen vertauschte Scheibenbetraege (3.850 gegen
       2.350) mit null Befunden; der Abschluss verschob sich um 63,70 EUR,
-      weil die Summen danach auf anderen Vertragsaltern lagen.
+      weil die Summen danach auf anderen Vertragsaltern lagen;
+    * ``RED`` liegt NACH dem Bestandszugang des Vertrags und, mit
+      ``horizont`` (dem im Laufmanifest BELEGTEN Horizont, nicht einem
+      Aufrufwert), nicht dahinter (Pruefrunde T27, Runde C, Befund RC02):
+      Die Engine simuliert einen uebernommenen Vertrag erst ab seinem
+      Zugangsjahr und nie ueber den Horizont. Eine Herabsetzung davor ist
+      Vorgeschichte der abgebenden Gesellschaft, eine dahinter ist nicht
+      gefahren — beide sind keine Buchung dieses Laufs und damit unbelegt.
+      Vorher ging eine Teilkuendigung vom 2025-01-01 vor dem Zugang vom
+      2026-01-01 mit null Befunden durch und kuerzte die Summe eines
+      Vertrags am Stichtag von 43.000 auf 25.800 EUR.
+
+    **Das Buchungsfenster (Zugang/Horizont) gilt nur fuer ``RED``.** Die
+    uebrigen Ereignisse (``STO``, ``TOD``, ``ABL``, ``ERH``, ``PEX``)
+    ausserhalb des Fensters — vor dem Bestandszugang oder hinter dem
+    belegten Horizont — sind hier NICHT abgewiesen: Klassen-Kandidat der
+    naechsten Pruefrunde (dieselbe Frage 'kann der Lauf diese Buchung
+    gefahren haben?'), nicht Teil der Runde C. Wer die Wache erweitert,
+    prueft je Ereignis, ob ein Bestand mit Vorgeschichte sie legitim
+    traegt (``MIG``, ``ZUG`` liegen am Zugang selbst).
     """
     errors: List[str] = []
     cols = list(ledger.columns)
@@ -995,6 +1015,29 @@ def validate_ledger(
             )
     if not (ledger["status_date"].dt.day == 1).all():
         errors.append("ledger: status_date nicht auf Monatsersten normalisiert")
+
+    # RED liegt im Lauf: nach dem Zugang, nicht hinter dem belegten Horizont.
+    rot = (ledger["ereignis"] == "RED").to_numpy()
+    if rot.any():
+        import pandas as pd
+
+        zugang_je_zeile = stamm_idx.loc[
+            ledger["police_id"].to_numpy(), "bestandszugang"].to_numpy()
+        buchung = ledger["status_date"].to_numpy()
+        vor_zugang = rot & (buchung <= zugang_je_zeile)
+        if vor_zugang.any():
+            errors.append(
+                "ledger: RED-Buchung nicht nach dem Bestandszugang des Vertrags "
+                f"(police {_policen(vor_zugang)}) — Vorgeschichte der abgebenden "
+                "Gesellschaft, keine Buchung dieses Laufs; die Engine simuliert "
+                "einen uebernommenen Vertrag erst ab seinem Zugangsjahr")
+        if horizont is not None:
+            hinter = rot & (buchung > _np.datetime64(pd.Timestamp(horizont)))
+            if hinter.any():
+                errors.append(
+                    "ledger: RED-Buchung nach dem belegten Horizont "
+                    f"{pd.Timestamp(horizont).date()} (police {_policen(hinter)}) — "
+                    "der Lauf hat sie nicht gefahren, sie ist unbelegt")
 
     # Zeilenweise gegen den Stammsatz: Generation, Laufzeit, Vertragsjahr.
     haupt = stamm.set_index("police_id")
@@ -1533,7 +1576,7 @@ def bu_model_point_kwargs(
 
 
 def validate_reduktionen(
-    stamm: Any, reduktionen: Any, historie: Any = None
+    stamm: Any, reduktionen: Any, historie: Any = None, horizont: Any = None
 ) -> List[str]:
     """Herabsetzungen gegen den Stamm pruefen (leer = gueltig).
 
@@ -1552,6 +1595,39 @@ def validate_reduktionen(
     Mit ``historie`` zusaetzlich die Reihenfolge: Eine Herabsetzung setzt
     einen laufenden Beitrag voraus, liegt also echt VOR einer
     Beitragsfreistellung und vor jedem Endzustand.
+
+    **Auch die Teilkuendigung liegt vor der Beitragsfreistellung**
+    (Pruefrunde T27, Runde C, Befund RC03). Bis dahin war sie
+    ausdruecklich nach PEX zugelassen, mit der Begruendung, Ziffer 6
+    kuendige nur einen Summenanteil. Die Engine zieht fuer beitragsfreie
+    Vertraege aber keine Herabsetzung (sie fragt den Draw nur bei
+    laufendem Beitrag), und die Bewertung bricht ab ("Beitragsfreistellung
+    im Jahr 1 vor der Reduktion"): P-B1 nahm eine Auszahlung vom 4,6-fachen
+    der beitragsfreien Reserve an, die nichts bewerten konnte. Ein
+    Vertrag, der beitragsfrei ist (PEX-Jahr <= Reduktionsjahr, auch ein
+    beitragsfrei UEBERNOMMENER), traegt keine Herabsetzung.
+
+    **Ausnahme, bewusst (Fund N6, d2cb348): die Teilkuendigung im
+    beitragsfrei AUSFINANZIERTEN Nachlauf.** Nach dem Ende der
+    Beitragszahlung (``premium_duration`` <= Jahr < ``duration``) ist der
+    Vertrag nicht beitragsfrei GESTELLT (kein PEX): Ziffer 6 kuendigt einen
+    Summenanteil und setzt keinen laufenden Beitrag voraus, der Kern
+    rechnet sie bis zur Versicherungsdauer (Kern 3.4.0), und die Bewertung
+    laeuft durch. Sie bleibt zulaessig; die Herabsetzung auf Beitragsbasis
+    endet dagegen an ``premium_duration``. Die Probe-Invariante (P-B1 und
+    Fuehrungsprobe: 'kein Soll auf einem beitragsfreien Vertrag') haengt
+    deshalb am PEX-Jahr, nicht an ``premium_duration`` — das Soll einer
+    solchen Teilkuendigung wird hergeleitet und gehalten. Die Engine selbst
+    zieht sie nicht (Draw nur bei ``Jahr < premium_duration``): Eine
+    Teilkuendigung jenseits davon ist eine registrierte, keine gefahrene
+    (Pruefer-Befund zu RC03, Nachbesserung der Pruefstrecke).
+
+    **Die Herabsetzung liegt im Lauf** (Runde C, Befund RC02): nach dem
+    Bestandszugang des Vertrags (``bestandszugang``; beim eigenen Geschaeft
+    der Beginn) und, mit ``horizont`` (dem im Laufmanifest belegten, nicht
+    einem Aufrufwert), nicht dahinter. Was davor liegt, ist Vorgeschichte
+    der abgebenden Gesellschaft; was dahinter liegt, hat der Lauf nicht
+    gefahren. Beides ist keine Buchung dieses Laufs und unbelegt.
     """
     errors: List[str] = []
     cols = list(reduktionen.columns)
@@ -1641,33 +1717,58 @@ def validate_reduktionen(
             errors.append(
                 f"reduktionen: police {pid}: reduktion_datum {pd.Timestamp(datum).date()} "
                 f"ist nicht der Jahrestag {jahrestag.date()} des Reduktionsjahres {jahr}")
+        zugang = haupt.loc[pid, "bestandszugang"]
+        if pd.notna(zugang) and pd.Timestamp(datum) <= pd.Timestamp(zugang):
+            errors.append(
+                f"reduktionen: police {pid}: Herabsetzung am {pd.Timestamp(datum).date()} "
+                f"liegt nicht nach dem Bestandszugang {pd.Timestamp(zugang).date()} — "
+                "Vorgeschichte der abgebenden Gesellschaft, keine Buchung dieses "
+                "Laufs; die Engine simuliert einen uebernommenen Vertrag erst ab "
+                "seinem Zugangsjahr")
+        if horizont is not None and pd.Timestamp(datum) > pd.Timestamp(horizont):
+            errors.append(
+                f"reduktionen: police {pid}: Herabsetzung am {pd.Timestamp(datum).date()} "
+                f"liegt nach dem belegten Horizont {pd.Timestamp(horizont).date()} — "
+                "der Lauf hat sie nicht gefahren, sie ist unbelegt")
     if historie is not None and len(historie):
-        grenz_status = ("PEX",) + TERMINALE_STATUS
-        grenzen = (
-            historie[historie["status_code"].isin(grenz_status)]
+        # Beitragsfrei (PEX-Jahr <= Reduktionsjahr) schliesst JEDE Herabsetzung
+        # aus, auch die Teilkuendigung (RC03); der terminale Zustand die
+        # Teilkuendigung ebenso wie jede andere.
+        pex_ab = (
+            historie[historie["status_code"] == "PEX"]
             .groupby("police_id")["status_date"].min()
         )
-        # Die Teilkuendigung setzt keinen laufenden Beitrag voraus (Kern
-        # 3.4.0, siehe oben): Ihre Grenze ist der terminale Zustand, nicht
-        # die Beitragsfreistellung (Angriffsrunde 4, Fund: dieselbe Funktion
-        # verneinte 25 Zeilen zuvor, was sie hier verlangte).
         grenzen_terminal = (
             historie[historie["status_code"].isin(TERMINALE_STATUS)]
             .groupby("police_id")["status_date"].min()
         )
-        for pid, datum, verfahren in zip(reduktionen["police_id"],
-                                         reduktionen["reduktion_datum"],
-                                         reduktionen["verfahren"]):
-            pid = int(pid)
+        for pid, jahr, datum, verfahren in zip(reduktionen["police_id"],
+                                               reduktionen["reduktion_jahr"],
+                                               reduktionen["reduktion_datum"],
+                                               reduktionen["verfahren"]):
+            pid, jahr = int(pid), int(jahr)
             tk = str(verfahren) == "teilkuendigung"
-            grenze_tabelle = grenzen_terminal if tk else grenzen
-            if pid not in grenze_tabelle.index:
+            if pid in pex_ab.index and pid in haupt.index:
+                beginn = pd.Timestamp(haupt.loc[pid, "insurance_start"])
+                pex = pd.Timestamp(pex_ab.loc[pid])
+                pex_jahr = ((pex.year * 12 + pex.month)
+                            - (beginn.year * 12 + beginn.month)) // 12
+                if pex_jahr <= jahr:
+                    errors.append(
+                        f"reduktionen: police {pid}: "
+                        f"{'Teilkuendigung' if tk else 'Herabsetzung'} im Jahr {jahr} "
+                        f"liegt nicht vor dem Zustandswechsel am {pex.date()} "
+                        f"(Beitragsfreistellung im Jahr {pex_jahr}) — ein "
+                        "beitragsfreier Vertrag traegt keine Herabsetzung: die "
+                        "Engine zieht sie nicht und die Bewertung bricht ab")
+                    continue
+            if pid not in grenzen_terminal.index:
                 continue
-            if datum >= grenze_tabelle.loc[pid]:
+            if datum >= grenzen_terminal.loc[pid]:
                 errors.append(
                     f"reduktionen: police {pid}: Herabsetzung am "
                     f"{datum.date()} liegt nicht vor dem Zustandswechsel am "
-                    f"{grenze_tabelle.loc[pid].date()} — "
+                    f"{grenzen_terminal.loc[pid].date()} — "
                     + ("nach dem Ende gibt es nichts mehr zu kuendigen" if tk
                        else "eine Herabsetzung setzt einen laufenden Beitrag voraus"))
     return errors
@@ -1980,13 +2081,28 @@ def red_sollbuchungen(
 
 
 def red_bindung_fehler(
-    pid: int, anteil: float, verfahren: str, soll_verfahren: Optional[str], red_anteil: float,
+    pid: int, anteil: float, verfahren: str, soll_verfahren: Optional[str],
+    red_anteil: float, rate: float,
 ) -> List[str]:
     """Verfahren und Anteil einer registrierten Herabsetzung gegen das
-    System: das Verfahren steht im Tarifwerk der Generation, der Anteil in
-    den Annahmen. Kennen die Annahmen keine Herabsetzung (red_anteil 0),
+    System: das Verfahren steht im Tarifwerk der Generation, der Anteil
+    und die Rate in den Annahmen. Kennen die Annahmen keine Herabsetzung,
     belegen sie keinen Anteil — dann ist die Herabsetzung unbelegt, nicht
-    frei (Angriffsrunde nach T27: jeder Anteil ging durch)."""
+    frei (Angriffsrunde nach T27: jeder Anteil ging durch).
+
+    ``rate`` ist die Herabsetzungsrate, mit der die Engine zieht
+    (``annahmen.herabsetzung(0.0)``, Runde C RC05): Eine Config mit
+    Rate 0 kann keine Herabsetzung erzeugt haben, auch wenn ein
+    ``red_anteil`` stehengeblieben ist — vorher galten 151 solche
+    Herabsetzungen als belegt. Kein Default: Wer die Regel ruft, sagt
+    die Rate, sonst faellt eine Wache still aus (wie die Anteilsbindung
+    vor der Angriffsrunde).
+
+    Die Bindung Ereignisart -> Rate gilt hier nur fuer die Herabsetzung;
+    fuer Storno, Beitragsfreistellung und Erhoehung ist sie offen
+    (Pruefrunde T27, Runde C, Nachbarfall) und Gegenstand der naechsten
+    Angriffsrunde.
+    """
     fehler: List[str] = []
     if soll_verfahren is not None and verfahren != soll_verfahren:
         fehler.append(
@@ -1996,6 +2112,11 @@ def red_bindung_fehler(
         fehler.append(
             f"reduktionen police {pid}: Herabsetzung mit Anteil {anteil!r}, die "
             "Annahmen kennen keine (red_anteil = 0) — der Anteil ist unbelegt")
+    elif not rate:
+        fehler.append(
+            f"reduktionen police {pid}: Herabsetzung mit Anteil {anteil!r}, die "
+            "Annahmen kennen keine (herabsetzung a = 0, die Rate ist null) — "
+            "der Anteil ist unbelegt; red_anteil allein erzeugt keine Herabsetzung")
     elif abs(anteil - red_anteil) > 1e-12:
         fehler.append(
             f"reduktionen police {pid}: Anteil {anteil!r}, die Annahmen sagen "

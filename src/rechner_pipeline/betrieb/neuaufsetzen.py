@@ -6,7 +6,10 @@ Fall korrigiert (Schritt 8); der Betriebsweg setzt die Laufzeit daraus neu
 auf::
 
     python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \\
-        --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml]
+        --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml] \\
+        --freigabe-schluessel <freigabeschluessel> \\
+        --betriebsschluessel <betriebsschluessel> --zeichnungsordnung <ordnung> \\
+        [--aufschalten]
 
 Was die Routine tut, in dieser Reihenfolge — und was sie NICHT tut:
 
@@ -52,7 +55,9 @@ from typing import Any, Dict, List, Mapping, Optional
 from rechner_pipeline.bestand.config import config_aus_text, load_config
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio
-from rechner_pipeline.betrieb.tageslauf import Ablage, TageslaufError, lauf_sperre
+from rechner_pipeline.betrieb.tageslauf import (
+    Ablage, TageslaufError, aufschaltung_fehler, betriebszeichner, lauf_sperre,
+)
 from rechner_pipeline.betrieb.uebernahme import (
     UEBERNAHME_DIR, UebernahmeError, eingang_anlegen, lies_uebernahme,
     tarifwerk_fehler,
@@ -81,8 +86,21 @@ def neu_aufsetzen(
     archiv: Optional[Path] = None,
     jetzt: Optional[_dt.datetime] = None,
     schluesselring: Optional[Mapping[str, bytes]] = None,
+    betriebsschluessel: Optional[Path] = None,
+    zeichnungsordnung: Optional[Path] = None,
+    aufschalten: bool = False,
 ) -> Dict[str, Any]:
     """Die Laufzeitumgebung ``stand`` aus dem Fall ``fall`` neu aufsetzen.
+
+    ``betriebsschluessel``/``zeichnungsordnung``: der Betriebsschluessel,
+    mit dem der neue Eingang gezeichnet und danach geprueft wird
+    (Aufloesung wie im Tageslauf). Geladen wird er VOR jedem Aufbau.
+
+    ``aufschalten``: Traegt das Protokoll der alten Ablage Zeilen, aber
+    keine gezeichnete, wird nur damit aufgebaut — dieselbe Regel wie im
+    Tageslauf (``tageslauf.aufschaltung_fehler``). Das Archiv ist danach
+    die Geschichte der Ablage; ein ohne Schluessel herabgestuftes Protokoll
+    wuerde sonst still dazu.
 
     Rueckgabe: die Provenienz (auch als ``neuaufsetzen.json`` in der neuen
     Ablage). Wirft NeuaufsetzenError/UebernahmeError, BEVOR etwas bewegt
@@ -99,6 +117,12 @@ def neu_aufsetzen(
         raise NeuaufsetzenError(
             "ohne Freigabeschluessel wird nichts aufgebaut — die Registrierung des "
             "neuen Eingangs verlangt ihn; --freigabe-schluessel angeben")
+    try:
+        zeichner = betriebszeichner(
+            Ablage(stand), betriebsschluessel, zeichnungsordnung,
+            wofuer="das Neuaufsetzen", ohne="kein Aufbau", flag="--betriebsschluessel")
+    except TageslaufError as exc:
+        raise NeuaufsetzenError(str(exc)) from exc
     if stand.is_symlink() or not stand.is_dir():
         raise NeuaufsetzenError(
             f"{stand}: keine Ablage (kein echtes Verzeichnis) — fuer die erste "
@@ -113,13 +137,32 @@ def neu_aufsetzen(
         with lauf_sperre(alt):
             return _neu_aufsetzen_unter_sperre(
                 stand, fall, stichtag, alt, config=config, archiv=archiv, jetzt=jetzt,
-                schluesselring=schluesselring,
+                schluesselring=schluesselring, betriebsschluessel=betriebsschluessel,
+                zeichnungsordnung=zeichnungsordnung, zeichner=zeichner,
+                aufschalten=aufschalten,
             )
     except TageslaufError as exc:
         raise NeuaufsetzenError(
             f"Sperre: {exc} — Timer anhalten, laufenden Prozess enden lassen, dann "
             "neu aufsetzen"
         ) from exc
+
+
+def _protokollzeilen_formlos(pfad: Path) -> List[Dict[str, Any]]:
+    """Die Zeilen des alten Protokolls als Objekte — eine unlesbare Zeile als
+    leeres Objekt (ungezeichnet). Nur fuer die Frage, ob eine gezeichnet ist."""
+    from rechner_pipeline.models.anker import jsonl_zeilen
+
+    if not Path(pfad).is_file():
+        return []
+    zeilen: List[Dict[str, Any]] = []
+    for roh in jsonl_zeilen(Path(pfad).read_text(encoding="utf-8", errors="replace")):
+        try:
+            zeile = json.loads(roh)
+        except ValueError:
+            zeile = {}
+        zeilen.append(zeile if isinstance(zeile, dict) else {})
+    return zeilen
 
 
 def _neu_aufsetzen_unter_sperre(
@@ -132,7 +175,23 @@ def _neu_aufsetzen_unter_sperre(
     archiv: Optional[Path],
     jetzt: Optional[_dt.datetime],
     schluesselring: Optional[Mapping[str, bytes]] = None,
+    betriebsschluessel: Optional[Path] = None,
+    zeichnungsordnung: Optional[Path] = None,
+    zeichner: Any = None,
+    aufschalten: bool = False,
 ) -> Dict[str, Any]:
+    # Das alte Protokoll ohne gezeichnete Zeile nur ausdruecklich
+    # (Nachbesserung Runde C). Gelesen wird nur, WELCHE Zeilen gezeichnet
+    # sind, nicht die Kette: Ob sie haelt, ist Sache des Tageslaufs; das
+    # Archiv bewahrt sie, wie sie ist. Die Signatur wird hier nicht
+    # nachgerechnet — neu aufgesetzt wird auch nach einem Schluesselwechsel.
+    fehler = aufschaltung_fehler(
+        _protokollzeilen_formlos(alt.protokoll_pfad), aufschalten=aufschalten,
+        wer="das Neuaufsetzen")
+    if fehler:
+        raise NeuaufsetzenError(
+            f"{alt.protokoll_pfad}: {fehler} (hier: neuaufsetzen --aufschalten); "
+            "nichts bewegt")
     config_quelle = Path(config) if config is not None else alt.config_pfad
     if not config_quelle.is_file():
         raise NeuaufsetzenError(
@@ -177,11 +236,14 @@ def _neu_aufsetzen_unter_sperre(
     neu = Ablage(neu_pfad)
     neu.configs.mkdir(parents=True)
     neu.config_pfad.write_bytes(config_bytes)
-    eingang = eingang_anlegen(neu_pfad, fall, stichtag, schluesselring=schluesselring)
+    eingang = eingang_anlegen(
+        neu_pfad, fall, stichtag, schluesselring=schluesselring,
+        betriebsschluessel=betriebsschluessel, zeichnungsordnung=zeichnungsordnung)
     # Der neue Eingang muss lesbar sein, BEVOR die alte Ablage bewegt wird:
-    # dieselbe Pruefung, die der Tageslauf bei der Erstbefuellung macht.
+    # dieselbe Pruefung, die der Tageslauf bei der Erstbefuellung macht —
+    # samt der Betriebszeichnung, die er gerade bekommen hat.
     try:
-        lies_uebernahme(eingang, cfg)
+        lies_uebernahme(eingang, cfg, schluesselring=zeichner.ring, ordnung=zeichner.ordnung)
     except UebernahmeError as exc:
         raise NeuaufsetzenError(
             f"Eingang nicht lesbar, nichts bewegt: {exc} — die vorbereitete Ablage "
@@ -197,8 +259,11 @@ def _neu_aufsetzen_unter_sperre(
         "stichtag": stichtag.isoformat(),
         "eingang": str(stand / UEBERNAHME_DIR / eingang.name),
         "naechste_schritte": [
-            f"python -m rechner_pipeline.betrieb.tageslauf --stand {stand}",
-            f"python -m rechner_pipeline.betrieb.seite --stand {stand} --paket <paketverzeichnis>",
+            f"python -m rechner_pipeline.betrieb.tageslauf --stand {stand} "
+            "--schluessel <betriebsschluessel> --zeichnungsordnung <ordnung>",
+            f"python -m rechner_pipeline.betrieb.seite --stand {stand} --paket <paketverzeichnis> "
+            "--anker <ankerverzeichnis> --betriebsschluessel <betriebsschluessel> "
+            "--zeichnungsordnung <ordnung>",
         ],
     }
     (neu_pfad / PROVENIENZ_DATEI).write_text(
@@ -237,6 +302,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="Pfad eines Freigabeschluessels (mehrfach moeglich), ausserhalb des Falls; "
                              "prueft die Signatur des A-M4-Snapshots beim Anlegen des Eingangs. "
                              "Pflicht: ohne ihn wird nichts aufgebaut.")
+    parser.add_argument("--betriebsschluessel", required=True,
+                        help="Betriebsschluessel (Rolle betrieb/<name>, Klasse betrieb), mit dem "
+                             "der neue Eingang gezeichnet wird; ausserhalb der Ablage.")
+    parser.add_argument("--zeichnungsordnung", required=True,
+                        help="Zeichnungsordnung, die dem Betriebsschluessel seine Rolle gibt.")
+    parser.add_argument("--aufschalten", action="store_true",
+                        help="Einmalig: die alte Ablage traegt ein Protokoll ohne gezeichnete "
+                             "Zeile (Altbestand vor dem Betriebsschluessel) und wird trotzdem "
+                             "archiviert (deploy/plv/README.md).")
     ns = parser.parse_args(argv)
     try:
         stichtag = _dt.date.fromisoformat(ns.stichtag)
@@ -273,7 +347,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             Path(ns.stand), Path(ns.fall), stichtag,
             config=Path(ns.config) if ns.config else None,
             archiv=Path(ns.archiv) if ns.archiv else None,
-            schluesselring=ring,
+            schluesselring=ring, betriebsschluessel=Path(ns.betriebsschluessel),
+            zeichnungsordnung=Path(ns.zeichnungsordnung), aufschalten=ns.aufschalten,
         )
     except (NeuaufsetzenError, UebernahmeError, ValueError) as exc:
         print(f"neuaufsetzen: {exc}", file=sys.stderr)

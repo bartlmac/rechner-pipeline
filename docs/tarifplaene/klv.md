@@ -193,23 +193,31 @@ $q$ ist die umgewandelte beitragsfreie Summe relativ zu $S$. Sie ist die
 **einzige** Größe, in der sich die beiden Verfahren unterscheiden:
 
 $$
-q^{\text{prospektiv}} = (1-f)\,\frac{{}_{a_0}V^{bpfl}}{{}_{a_0}V^{bfr}},
+q^{\text{prospektiv}} = (1-f)\,\frac{{}_{a_0}V^{MRV}}{S \cdot {}_{a_0}V^{bfr}},
 \qquad
 q^{\text{mit Abzug}} = (1-f)\,
-\frac{{}_{a_0}DR^{bpfl} - \text{StoAb}_{a_0}}{S \cdot {}_{a_0}V^{bfr}} .
+\frac{\max\bigl(0,\, {}_{a_0}V^{MRV} - \text{StoAb}_{a_0}\bigr)}{S \cdot {}_{a_0}V^{bfr}}
+= (1-f)\,\frac{\text{RKW}_{a_0}}{S \cdot {}_{a_0}V^{bfr}} .
 $$
 
-Das prospektive Verfahren wandelt verlustfrei um; das Altverfahren
-behandelt den freiwerdenden Anteil wie eine Teilkündigung und erhebt den
-anteiligen Stornoabschlag, bevor es umwandelt. Der Abschlag ist
-höchstens die Deckungsrückstellung selbst, bei nicht positiver
-Rückstellung entfällt er — wie beim Rückkaufswert, der nie negativ wird;
-„mit Abzug" liegt damit nie über „prospektiv". Bei $f = 1$ ändert sich
-nichts. Bei $f = 0$ sind beide erst nach dem Ende der Zillmerdauer die
-vollständige Beitragsfreistellung; davor liegen sie um den
-Abschlusskostenrest darunter, denn umgewandelt wird die
-Deckungsrückstellung, und der Rest folgt dem Beitrag (offene Fachfrage,
-Stand 2026-09-26).
+Beide wandeln auf dem **Rückkaufs-Track** ${}_{a_0}V^{MRV}$ um — genau wie
+die Beitragsfreistellung ($S^{bfr}_a = {}_aV^{MRV} / {}_aV^{bfr}$,
+Abschnitt 6), nicht auf der Deckungsrückstellung
+(Entscheid des Maintainers 2026-09-30). Das prospektive Verfahren wandelt
+verlustfrei um; das Altverfahren behandelt den freiwerdenden Anteil wie
+eine Teilkündigung und erhebt den anteiligen Stornoabschlag, bevor es
+umwandelt: umgewandelt wird $(1-f)\,\text{RKW}$. Der Abschlag ist
+höchstens der Rückkaufs-Track selbst, bei nicht positivem Wert entfällt
+er, und der umgewandelte Teil ist nie negativ — wie beim Rückkaufswert;
+keine Summe und keine Leistung wird negativ, auch bei nicht positiver
+Rückstellung im ersten Vertragsjahr (nach Messung entsteht dort auf dem
+Rückkaufs-Track kein negativer Wert; die Untergrenze bleibt Teil der
+Regel). „Mit Abzug" liegt damit nie über „prospektiv". Bei $f = 1$ ändert
+sich nichts. Bei $f = 0$ ist die prospektive Herabsetzung die
+Beitragsfreistellung (gleiche Summe, gleicher Pfad), auch innerhalb der
+Zillmerdauer; die mit Abzug liegt um den Stornoabzug darunter. Der
+Anteil $(1-f)$ des noch nicht getilgten Abschlusskostenrests geht dabei mit in die beitragsfreie Summe (siehe „Abschlusskosten folgen
+dem Beitrag" unten).
 Welches Verfahren gilt, ist eine Eigenschaft des rechnenden **Systems**
 und keine des Vertrags — es steht deshalb im Beleg einer Migration, nicht
 im Modellpunkt.
@@ -236,13 +244,13 @@ $$
 $$
 
 **Der Stornoabschlag bleibt vertragsweit** (Abschnitt 6): einmal auf den
-Gesamtwerten gebildet und dann proportional zur Deckungsrückstellung der
+Gesamtwerten gebildet und dann proportional zum Rückkaufs-Track der
 Schicht getragen —
 
 $$
 q_i^{\text{mit Abzug}} = (1-f)\,
-\Bigl(1 - \frac{\text{StoAb}^{ges}_{a_0}}{DR^{ges}_{a_0}}\Bigr)
-\frac{{}_{a_i}V^{bpfl}}{{}_{a_i}V^{bfr}} .
+\Bigl(1 - \frac{\min(\text{StoAb}^{ges}_{a_0},\, V^{MRV,ges}_{a_0})}{V^{MRV,ges}_{a_0}}\Bigr)
+\frac{{}_{a_i}V^{MRV}}{S_i \cdot {}_{a_i}V^{bfr}} .
 $$
 
 Je Schicht gebildet griffen $u_{\min}$ und $u_{\max}$ mehrfach, und ein

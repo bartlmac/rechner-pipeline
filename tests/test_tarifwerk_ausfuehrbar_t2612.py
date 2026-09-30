@@ -54,6 +54,7 @@ from tests.test_betrieb_uebernahme import (
     fuehrungsbeleg,
     uebernahmebeleg,
 )
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 
 def _kern(generation: str = "KLV-2017") -> Rechenkern:
@@ -212,6 +213,12 @@ def test_die_freischaltung_blockiert_eine_generation_die_der_betrieb_nicht_fuehr
     assert tk.annahmen.herabsetzung.a == 0.0, "Fixture: die Luecke muss LATENT sein"
 
     stand = tmp_path / "daten"
+    # Gegenstand ist der LESER. Drei Lieferungen mit drei Configs liegen in
+    # EINER Ablage, die nur eine Config traegt — die Registrierung, die das
+    # Tarifwerk gegen die Config der Ablage haelt und ohne Config verweigert
+    # (RC16), wird hier ausdruecklich umgangen: Der Leser muss auch einen
+    # Eingang abweisen, der an ihr vorbei entstanden ist.
+    monkeypatch.setattr(ueb, "_pruefe_tarifwerk_gegen_ablage", lambda *a, **k: None)
 
     def eingang(config, name):
         ueb.eingang_anlegen(stand, _fall_mit_generation(
@@ -242,7 +249,7 @@ def test_ein_beleggraph_der_nicht_alle_pflichttabellen_bezeugt_wird_abgewiesen(t
     -> rot. Positivkontrolle: der volle Beleggraph tritt ein.
     """
     fall = _fall(tmp_path / "voll")
-    ueb.eingang_anlegen(tmp_path / "daten-voll", fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(tmp_path / "daten-voll"), fall, STICHTAG)
 
     duenn = _fall(tmp_path / "duenn", name="duenn")
     ledger_pfad = duenn / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
@@ -259,5 +266,5 @@ def test_ein_beleggraph_der_nicht_alle_pflichttabellen_bezeugt_wird_abgewiesen(t
     (duenn / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
         json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}), encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="historie.parquet, ledger.parquet.*Annahme 5 streng"):
-        ueb.eingang_anlegen(tmp_path / "daten-duenn", duenn, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten-duenn"), duenn, STICHTAG)
     assert not (tmp_path / "daten-duenn" / "uebernahme" / "duenn").exists(), "kein halber Eingang"

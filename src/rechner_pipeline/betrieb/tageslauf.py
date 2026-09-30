@@ -2,7 +2,8 @@
 
 Ein Kommando, idempotent und deterministisch::
 
-    python -m rechner_pipeline.betrieb.tageslauf --stand <daten> --heute <datum>
+    python -m rechner_pipeline.betrieb.tageslauf --stand <daten> --heute <datum> \
+        --schluessel <betriebsschluessel> --zeichnungsordnung <ordnung>
 
 ``--stand`` ist das Datenverzeichnis der Laufzeitumgebung
 (``~/apps/plv/daten``, Abschnitt 7 des Konzepts); ``--heute`` der
@@ -45,10 +46,21 @@ Was ein Lauf tut, in dieser Reihenfolge:
    ist der gefuehrte Tag selbst; der Stand des Ersten enthaelt dessen
    Buchungen, deshalb entsteht der Abschluss zum Ersten im Lauf des
    Ersten — der Ultimo-Lauf koennte ihn noch nicht bewerten
-   (``stichtag <= bis``). Ein Monat ohne in-force-Vertrag bekommt keinen
-   Abschluss (ADR-020): Ein Unternehmen beginnt leer, und der erste
-   Versicherungsbeginn liegt am Monatsersten nach dem ersten Verkaufstag.
-7. **Tagesprotokoll**: eine JSON-Zeile je Lauf.
+   (``stichtag <= bis``). Ein Monat ohne in-force-Vertrag bekommt einen
+   LEEREN Abschluss (ADR-020): Ein Unternehmen beginnt leer, der erste
+   Versicherungsbeginn liegt am Monatsersten nach dem ersten Verkaufstag,
+   und die leere Bilanz ist eine gueltige Bilanz. Sie wird geschrieben und
+   belegt wie jede andere; ihre Nachrechnung (Wiederanlauf) weist sie nur
+   aus, wenn die Neuberechnung dort Vertraege findet.
+   Kandidat der naechsten Runde: Ein vorab gepflanzter Abschluss fuer den
+   naechsten Stichtag gilt im nachgerechnet-Zweig mit Exit 0 als
+   festgeschrieben (der Befund steht in der Zeile, blockiert aber nicht).
+7. **Tagesprotokoll**: eine JSON-Zeile je Lauf, gezeichnet mit dem
+   Betriebsschluessel (Rolle ``betrieb/tageslauf``, Schluesselklasse
+   ``betrieb``; ADR-018, Nachtrag 2026-09-30). Schluessel und
+   Zeichnungsordnung liegen ausserhalb der Ablage beim Menschen, wie die
+   Rollenschluessel der Abnahmen: Was der schreibende Prozess selbst
+   umschreiben kann, belegt nichts.
 
 Der Stand wird erst uebernommen, wenn die Wache gruen ist: Der Lauf
 schreibt in ein Arbeitsverzeichnis neben ``stand/``, prueft dort, und
@@ -60,6 +72,7 @@ Ablage unter ``--stand`` (Konzept, Abschnitt 7)::
     stand/          sechs Ausgaben + laufmanifest.json (+ merkmale.parquet)
     journal/        tagesjournal.parquet, protokoll.jsonl (nur-anfuegbar)
     seite/          index.html "Bestand heute" (betrieb.seite), nach jedem gruenen Lauf
+    seite.neu/      Vorbereitung der Seite (nur Tempdatei, Reste raeumt der naechste Render)
     abschluesse/    abschluss_<stichtag>.parquet (0444, genau einmal)
     berichte/       bestandsbericht_<stichtag>.html je Monatsabschluss
     uebernahme/     je Migrationsfall ein Eingang (Block B5)
@@ -113,6 +126,13 @@ from rechner_pipeline.bestand.kennzahlen import monatskennzahlen
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio, write_portfolio
 from rechner_pipeline.bestand.report import render_html
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
+from rechner_pipeline.betrieb._zeichnung import (
+    Zeichner,
+    ZeichnungFehler,
+    betriebszeichnung_fehler,
+    lade_zeichner,
+    verlange_betrieb,
+)
 from rechner_pipeline.betrieb.neugeschaeft import NeugeschaeftError, neugeschaeft_zwischen
 from rechner_pipeline.betrieb.tagesjournal import (
     TagesjournalError,
@@ -139,7 +159,27 @@ from rechner_pipeline.models.bestand import (
 #: SHA-256 der vorangehenden Zeile (Bytes ohne Zeilenende; "" fuer die
 #: erste). Zeilen der Erstfassung (Schema 1) bleiben lesbar; sobald eine
 #: Zeile Schema 2 traegt, ist die Kette ab dort Pflicht.
-PROTOKOLL_SCHEMA_VERSION = 2
+#:
+#: Schema 3 (Pruefrunde nach T27, Runde C; Entscheid des Maintainers
+#: 2026-09-30): jede Zeile ist mit dem Betriebsschluessel GEZEICHNET
+#: (``zeichnung`` nach ``models.anker``, Verfahren hmac-sha256-v2, Klasse
+#: ``betrieb``). Die Kette allein schuetzte nichts gegen einen Schreiber,
+#: der sie mitrechnet: Eine angefuegte zweite gruene Zeile, eine
+#: umgeschriebene letzte Zeile oder eine auf Schema 1 herabgestufte Zeile
+#: gingen durch (RC10, RC11). Das Schema steigt nur: Hinter einer Zeile
+#: mit Schema n steht keine mit einem kleineren — eine Herabstufung ist
+#: ein Kettenbruch. Die erste gezeichnete Zeile einer Ablage mit
+#: ungezeichnetem Vorlauf pinnt ihn (``vorlauf``: Zahl und Hash der rohen
+#: Zeilen) — Aufschaltung ohne Neuaufsetzen.
+PROTOKOLL_SCHEMA_VERSION = 3
+#: Die Naht fuer den Betriebsschluessel, wenn der Aufrufer keinen nennt:
+#: ``(schluessel, zeichnungsordnung)`` als Pfade. Produktiv bleibt sie
+#: None — der Schluessel kommt aus ``--schluessel``/``--zeichnungsordnung``
+#: und ohne ihn laeuft kein Tag. Tests setzen sie sessionweit
+#: (``tests/conftest.py``), wie ``uebernahme._STANDARD_SCHLUESSELRING``;
+#: geladen und geprueft wird auch dann bei jedem Aufruf, mit denselben
+#: Regeln wie ein expliziter Schluessel.
+_STANDARD_BETRIEBSZEICHNUNG: Optional[Tuple[Path, Path]] = None
 #: Benannter Zustand einer Protokollangabe, die die Umgebung nicht liefert.
 NICHT_ERFASST = "nicht erfasst"
 STAND_DIR = "stand"
@@ -229,6 +269,44 @@ class Ablage:
     @property
     def protokoll_pfad(self) -> Path:
         return self.journal / PROTOKOLL_DATEI
+
+
+def betriebszeichner(
+    ablage: "Ablage",
+    schluessel: Optional[Path] = None,
+    zeichnungsordnung: Optional[Path] = None,
+    *,
+    wofuer: str = "der Tageslauf",
+    ohne: str = "kein Tageslauf",
+    flag: str = "--schluessel",
+) -> Zeichner:
+    """Den Betriebsschluessel aufloesen: ausdruecklich > Naht > Fehler.
+
+    Ohne Schluessel gibt es keinen Tag (Entscheid des Maintainers
+    2026-09-30): Eine Protokollzeile, die niemand zeichnet, bezeugt
+    nur, dass jemand Schreibrecht auf die Ablage hatte. Und nur die Klasse
+    ``betrieb`` zeichnet — ein Menschen- oder Agentenschluessel wird mit
+    Ausweg abgewiesen (:func:`betrieb._zeichnung.verlange_betrieb`).
+    """
+    if schluessel is None and zeichnungsordnung is None:
+        if _STANDARD_BETRIEBSZEICHNUNG is None:
+            raise TageslaufError(
+                f"ohne Betriebsschluessel {ohne} — {wofuer} zeichnet bzw. prueft "
+                "Protokollzeilen und Eingaenge mit dem Schluessel des Betriebs. "
+                f"Ausweg: {flag} <betriebsschluessel> --zeichnungsordnung <ordnung> "
+                "(beide ausserhalb der Ablage, deploy/plv/README.md)")
+        schluessel, zeichnungsordnung = _STANDARD_BETRIEBSZEICHNUNG
+    if schluessel is None or zeichnungsordnung is None:
+        raise TageslaufError(
+            f"{flag} und --zeichnungsordnung gehoeren zusammen: Die Rolle "
+            "wird aus dem Schluessel BESTIMMT, und die Ordnung sagt, welche")
+    try:
+        return verlange_betrieb(
+            lade_zeichner(Path(schluessel), Path(zeichnungsordnung),
+                          ausserhalb=ablage.wurzel),
+            wofuer)
+    except ZeichnungFehler as exc:
+        raise TageslaufError(str(exc)) from exc
 
 
 def _schreibe_json_atomar(pfad: Path, daten: Dict[str, Any]) -> None:
@@ -335,6 +413,17 @@ def _schneide_teilzeile(pfad: Path) -> bool:
     der belegte Vortag darin nicht mehr vorkam (Pruefrunde T27, Befund 01).
     Belegte Bytes gehen durch keinen Schreibpfad; scheitert der Schnitt,
     bleibt die Datei, wie sie war, und der naechste Lauf schneidet.
+
+    Geschnitten wird nur ein FRAGMENT — was kein vollstaendiges JSON-Objekt
+    ist. Eine vollstaendige Endzeile ohne Umbruch wird mit ``\n``
+    abgeschlossen, nicht geloescht (Nachbesserung Runde C, Probe des
+    Pruefers Fall C): Die erste Fassung schnitt jede Endzeile ohne Umbruch,
+    und wer ohne Schluessel nur das letzte Byte einer ROTEN, gezeichneten
+    Zeile entfernte, liess das Programm selbst den roten Lauf ungeschehen
+    machen. Ob die abgeschlossene Zeile etwas bezeugt, entscheidet danach
+    der Leser (Kette, Zeichnung) — ein Befund bleibt ein Befund, statt
+    Beweismaterial zu vernichten. Rueckgabe True, wenn die Datei angefasst
+    wurde (geschnitten oder abgeschlossen).
     """
     if not pfad.is_file():
         return False
@@ -342,6 +431,20 @@ def _schneide_teilzeile(pfad: Path) -> bool:
     if not roh or roh.endswith(b"\n"):
         return False
     schnitt = roh.rfind(b"\n") + 1
+    if _ist_vollstaendige_zeile(roh[schnitt:]):
+        # Anfuegen, nie neu schreiben: belegte Bytes gehen durch keinen
+        # Schreibpfad (derselbe Grund wie os.truncate unten).
+        with open(pfad, "ab") as f:
+            f.write(b"\n")
+            f.flush()
+            os.fsync(f.fileno())
+        print(
+            f"tageslauf: {pfad} endete mit einer vollstaendigen Zeile ohne "
+            "Zeilenumbruch — sie wurde abgeschlossen, nicht entfernt; ob sie "
+            "etwas bezeugt, prueft der Leser.",
+            file=sys.stderr,
+        )
+        return True
     os.truncate(pfad, schnitt)
     print(
         f"tageslauf: {pfad} endete mit einer angefangenen Zeile "
@@ -352,7 +455,19 @@ def _schneide_teilzeile(pfad: Path) -> bool:
     return True
 
 
-def nimm_publish_zurueck(ablage: "Ablage") -> Optional[Dict[str, Any]]:
+def _ist_vollstaendige_zeile(rest: bytes) -> bool:
+    """Ob ``rest`` (die Bytes nach dem letzten Umbruch) ein vollstaendiges
+    JSON-Objekt ist — dann ist es eine Zeile, der nur das Zeilenende fehlt.
+    Ein abgebrochenes ``json.dumps`` eines Objekts ist nie gueltiges JSON."""
+    try:
+        return isinstance(json.loads(rest.decode("utf-8")), dict)
+    except (UnicodeDecodeError, ValueError):
+        return False
+
+
+def nimm_publish_zurueck(
+    ablage: "Ablage", zeichner: Optional[Zeichner] = None,
+) -> Optional[Dict[str, Any]]:
     """Einen unterbrochenen Publish zuruecknehmen; liefert den Marker.
 
     Der Lauf ist idempotent und deterministisch — der sauberste Weg aus
@@ -381,8 +496,7 @@ def nimm_publish_zurueck(ablage: "Ablage") -> Optional[Dict[str, Any]]:
     # Erst die angefangene Zeile wegschneiden, dann lesen: Sonst stirbt die
     # Ruecknahme an dem Zustand, den sie zuruecknehmen soll (T26-02).
     _schneide_teilzeile(ablage.protokoll_pfad)
-    gruene = [z for z in lies_protokoll(ablage.protokoll_pfad)
-              if z.get("uebernommen")]
+    gruene = [z for z in _protokoll(ablage, zeichner) if z.get("uebernommen")]
     if gruene and str(gruene[-1].get("heute")) == tag:
         # Der Publish war durch, nur das Aufraeumen fehlte.
         entferne_publish_marker(ablage)
@@ -460,26 +574,130 @@ def _zeilen_hash(roh: str) -> str:
     return hashlib.sha256(roh.encode("utf-8")).hexdigest()
 
 
-def lies_protokoll(pfad: Path) -> List[Dict[str, Any]]:
+def _protokoll(ablage: "Ablage", zeichner: Optional[Zeichner]) -> List[Dict[str, Any]]:
+    """Das Protokoll der Ablage, gegen den Betriebsschluessel geprueft.
+
+    Ohne ausdruecklichen Zeichner gilt die Aufloesung des Tageslaufs
+    (:func:`betriebszeichner`) — im Betrieb wird nie ungeprueft gelesen.
+    """
+    z = zeichner if zeichner is not None else betriebszeichner(ablage)
+    return lies_protokoll(ablage.protokoll_pfad, schluesselring=z.ring, ordnung=z.ordnung)
+
+
+def lies_protokoll(
+    pfad: Path,
+    *,
+    schluesselring: Optional[Dict[str, bytes]] = None,
+    ordnung: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     """Alle Zeilen des Tagesprotokolls (leer, wenn es noch keines gibt) —
-    mit Pruefung der Kette.
+    mit Pruefung der Kette und, mit ``schluesselring``, der Zeichnung.
 
     Review T22-05: Das Protokoll war editierbar, ohne dass es jemand
     merkte — eine entfernte mittlere Zeile liess den letzten Tag weiter
     gelten. Jede Zeile ab Schema 2 nennt den Hash ihrer Vorgaengerin; eine
     Luecke, eine Aenderung oder eine Umsortierung bricht die Kette, und
-    ein gebrochenes Protokoll ist ein Befund, kein Nachweis.
+    ein gebrochenes Protokoll ist ein Befund, kein Nachweis. Seit Schema 3
+    ist jede Zeile gezeichnet (siehe :func:`lies_protokoll_text`).
     """
     if not Path(pfad).is_file():
         return []
-    return lies_protokoll_text(Path(pfad).read_text(encoding="utf-8"), str(pfad))
+    return lies_protokoll_text(
+        Path(pfad).read_text(encoding="utf-8"), str(pfad),
+        schluesselring=schluesselring, ordnung=ordnung)
 
 
-def lies_protokoll_text(text: str, pfad: str) -> List[Dict[str, Any]]:
+def aufschaltung_fehler(
+    zeilen: List[Dict[str, Any]], *, aufschalten: bool = False, wer: str = "der Tageslauf",
+) -> Optional[str]:
+    """Was gegen das Weiterschreiben auf diesem Protokoll spricht (None = nichts).
+
+    Nachbesserung Runde C (Probe des Pruefers, Fall A): Ein Protokoll ohne
+    gezeichnete Zeile sieht in der Ablage genau so aus wie ein Altbestand
+    vor dem Betriebsschluessel — auch dann, wenn ein Schreiber ohne
+    Schluessel ein gezeichnetes Protokoll herabgestuft hat (Zeichnungen und
+    Pin entfernt, Zahlen gefaelscht, Kette neu verkettet). Die erste
+    Fassung pinnte einen solchen Vorlauf stillschweigend und ZEICHNETE ihn
+    damit. Aus der Ablage allein sind beide Lesarten nicht zu
+    unterscheiden; darum entscheidet der Mensch, AUSDRUECKLICH und einmal:
+
+    - Protokoll mit Zeilen, keine gezeichnet: nur mit ``aufschalten``
+      (erster Lauf nach dem Umstieg, deploy/plv/README.md).
+    - Protokoll mit gezeichneter Zeile und ``aufschalten``: verweigert — die
+      Aufschaltung ist geschehen, und ein Schalter, der dauerhaft im Timer
+      stuende, oeffnete die Herabstufung wieder.
+    - Leeres Protokoll (Erstbefuellung): kein Schalter noetig; mit ihm
+      verweigert, denn er ist nie ein stilles No-op.
+
+    Ist ein schon gezeichnetes Protokoll spaeter wieder ohne gezeichnete
+    Zeile, ist das ein Kettenbruch, kein zweiter Aufschaltfall. Die Ablage
+    sieht das nicht; den Bezug nach aussen liefert der Anker: Die Zeile,
+    die der letzte Export verankert hat, steht dann nicht mehr im
+    Protokoll, und der naechste Export verweigert (``models.anker.pruefe_reihe``).
+    """
+    gezeichnet = [i for i, z in enumerate(zeilen, 1) if z.get("schema_version", 1) >= 3]
+    if gezeichnet and aufschalten:
+        return (
+            f"--aufschalten, aber das Protokoll ist schon gezeichnet (Zeile "
+            f"{gezeichnet[0]} ist die erste gezeichnete) — die Aufschaltung ist der "
+            "einmalige Schritt beim ersten Lauf nach dem Umstieg und ist geschehen. "
+            "Ausweg: ohne --aufschalten fahren (und den Schalter aus dem Timer nehmen)")
+    if gezeichnet:
+        return None
+    if not zeilen:
+        if aufschalten:
+            return ("--aufschalten, aber das Protokoll ist leer — nichts aufzuschalten; "
+                    "die Erstbefuellung laeuft ohne den Schalter")
+        return None
+    if aufschalten:
+        return None
+    return (
+        f"das Protokoll traegt {len(zeilen)} Zeile(n), aber keine gezeichnete Zeile — "
+        f"{wer} zeichnet oder veroeffentlicht darauf nichts. Das ist entweder ein "
+        "Altbestand vor dem Betriebsschluessel oder ein ohne Schluessel "
+        "herabgestuftes Protokoll; die Ablage allein unterscheidet das nicht. "
+        "Ausweg: ist es der erste Lauf nach dem Umstieg, den Tageslauf EINMAL mit "
+        "--aufschalten fahren (deploy/plv/README.md; die erste gezeichnete Zeile "
+        "pinnt dann den Vorlauf). War das Protokoll schon gezeichnet, ist es ein "
+        "Kettenbruch: das Protokoll aus der Sicherung wiederherstellen, NICHT "
+        "aufschalten")
+
+
+def _vorlauf_pin(rohe: List[str]) -> Dict[str, Any]:
+    """Zahl und Hash der ungezeichneten Zeilen vor der ersten gezeichneten.
+
+    Gehasht wird, was auf der Platte steht: jede rohe Zeile mit ihrem
+    Zeilenende, in der Reihenfolge der Datei. Die Kette allein deckt den
+    Vorlauf nicht ab — Zeilen nach Schema 1 tragen keinen Vorgaenger-Hash.
+    """
+    return {
+        "zeilen": len(rohe),
+        "sha256": hashlib.sha256("".join(r + "\n" for r in rohe).encode("utf-8")).hexdigest(),
+    }
+
+
+def lies_protokoll_text(
+    text: str,
+    pfad: str,
+    *,
+    schluesselring: Optional[Dict[str, bytes]] = None,
+    ordnung: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     """Wie :func:`lies_protokoll`, auf schon gelesenen Bytes — fuer einen
-    Konsumenten, der Hash, Kette und Anker auf EINER Lesung prueft."""
+    Konsumenten, der Hash, Kette und Anker auf EINER Lesung prueft.
+
+    Geprueft wird je Zeile: JSON-Objekt, Schema bekannt und nicht kleiner
+    als das der Zeilen davor (RC10: eine auf Schema 1 herabgestufte Zeile
+    schaltete Kette und Nachweis ab), die Kette ab Schema 2, ab Schema 3 die
+    Zeichnung (Form immer; Rolle gegen ``ordnung``, Signatur gegen
+    ``schluesselring``, wenn gegeben) und der Vorlauf-Pin der ersten
+    gezeichneten Zeile.
+    """
     zeilen: List[Dict[str, Any]] = []
+    rohe: List[str] = []
     vorgaenger_roh: Optional[str] = None
+    hoechstes = 0
+    gezeichnet = False
     for nummer, roh in enumerate(jsonl_zeilen(text), 1):
         try:
             zeile = json.loads(roh)
@@ -489,7 +707,25 @@ def lies_protokoll_text(text: str, pfad: str) -> List[Dict[str, Any]]:
                 "ist nur-anfuegbar; eine kaputte Zeile ist ein Befund, kein "
                 "Grund zum Ueberschreiben"
             ) from exc
-        if isinstance(zeile, dict) and zeile.get("schema_version", 1) >= 2:
+        if not isinstance(zeile, dict):
+            raise TageslaufError(f"{pfad}: Zeile {nummer} ist kein JSON-Objekt")
+        schema = zeile.get("schema_version", 1)
+        if (isinstance(schema, bool) or not isinstance(schema, int)
+                or not 1 <= schema <= PROTOKOLL_SCHEMA_VERSION):
+            raise TageslaufError(
+                f"{pfad}: Zeile {nummer} traegt schema_version {schema!r} — bekannt "
+                f"sind 1 bis {PROTOKOLL_SCHEMA_VERSION}; ein neueres Protokoll liest "
+                "nur ein neueres Image")
+        if schema < hoechstes:
+            # RC10: Die Kette galt nur fuer Zeilen, die sich selbst Schema 2
+            # zuschrieben. Eine herabgestufte Zeile hinter gezeichneten ist
+            # keine alte Zeile, sondern eine umgeschriebene.
+            raise TageslaufError(
+                f"{pfad}: Zeile {nummer} bricht die Protokollkette — Schema "
+                f"{schema} hinter einer Zeile mit Schema {hoechstes}; das Schema "
+                "steigt nur, eine Herabstufung ist eine umgeschriebene Zeile")
+        hoechstes = schema
+        if schema >= 2:
             erwartet = _zeilen_hash(vorgaenger_roh) if vorgaenger_roh is not None else ""
             if zeile.get("vorgaenger_sha256") != erwartet:
                 raise TageslaufError(
@@ -497,7 +733,25 @@ def lies_protokoll_text(text: str, pfad: str) -> List[Dict[str, Any]]:
                     f"passt nicht zur Zeile davor) — das Protokoll wurde veraendert, "
                     "gekuerzt oder umsortiert; es ist damit kein Nachweis mehr"
                 )
+        if schema >= 3:
+            fehler = betriebszeichnung_fehler(zeile, schluesselring, ordnung)
+            if fehler:
+                raise TageslaufError(f"{pfad}: Zeile {nummer}: {fehler}")
+            if not gezeichnet:
+                soll = _vorlauf_pin(rohe) if rohe else None
+                if zeile.get("vorlauf") != soll:
+                    raise TageslaufError(
+                        f"{pfad}: Zeile {nummer} ist die erste gezeichnete und pinnt "
+                        f"den ungezeichneten Vorlauf nicht ({zeile.get('vorlauf')!r} "
+                        f"statt {soll!r}) — der Vorlauf wurde nach der Aufschaltung "
+                        "veraendert")
+                gezeichnet = True
+            elif "vorlauf" in zeile:
+                raise TageslaufError(
+                    f"{pfad}: Zeile {nummer} pinnt einen Vorlauf, obwohl vor ihr schon "
+                    "gezeichnet wurde — nur die erste gezeichnete Zeile tut das")
         zeilen.append(zeile)
+        rohe.append(roh)
         vorgaenger_roh = roh
     return zeilen
 
@@ -534,10 +788,20 @@ def pruefe_nachweis(
     Wer die geprueften Bytes weiterreicht, schuetzt jeden.
     """
     for vorher, jetzt in zip(gruene, gruene[1:]):
-        if jetzt.get("schema_version", 1) < 2:
-            continue
         tag_vorher = _dt.date.fromisoformat(str(vorher["heute"]))
         tag_jetzt = _dt.date.fromisoformat(str(jetzt["heute"]))
+        if tag_jetzt <= tag_vorher:
+            # RC11: Eine zweite gruene Zeile fuer denselben Tag, kettenrichtig
+            # angefuegt, wurde angenommen — und mit ihr jede Zahl, die nicht
+            # nachgerechnet wird. Je gefuehrtem Tag gibt es genau eine gruene
+            # Zeile: Ein Lauf auf den gefuehrten Tag ist ein No-op ohne Zeile,
+            # und rueckwaerts wird nicht gefuehrt. Das gilt fuer JEDES Schema.
+            raise TageslaufError(
+                f"Protokoll: zwei gruene Zeilen fuer {tag_jetzt.isoformat()} "
+                f"(nach {tag_vorher.isoformat()}) — je gefuehrtem Tag gibt es genau "
+                "eine gruene Zeile; die spaetere wurde angefuegt, nicht gelaufen")
+        if jetzt.get("schema_version", 1) < 2:
+            continue
         if jetzt.get("gefuehrt_vorher") != vorher["heute"]:
             raise TageslaufError(
                 f"Protokoll: der Lauf {tag_jetzt.isoformat()} nennt als vorherigen Tag "
@@ -581,11 +845,113 @@ def pruefe_nachweis(
                 "wurde veraendert oder gehoert zu einem anderen Stand"
             )
         if gelesen["manifest"] is not None and isinstance(letzte.get("bestand"), dict):
-            _pruefe_zahlen_der_zeile(ablage, letzte, gelesen["manifest"])
+            _pruefe_zahlen_der_zeile(ablage, letzte, gelesen["manifest"], gelesen["journal"])
+    _pruefe_festgeschriebene_abschluesse(ablage, gruene)
     return gelesen
 
 
-def _pruefe_zahlen_der_zeile(ablage: Ablage, letzte: Dict[str, Any], manifest_roh: bytes) -> None:
+def _pruefe_festgeschriebene_abschluesse(ablage: Ablage, gruene: List[Dict[str, Any]]) -> None:
+    """Jeder Abschluss, den eine gruene Zeile mit Hash bezeugt, liegt noch so da.
+
+    RC12: Ein festgeschriebener Abschluss wurde nach seinem Lauf nie wieder
+    geprueft. Ersetzt (drei statt sechzehn Vertraege) und in der Zeile
+    nachgezogen, war er dauerhaft als festgeschrieben belegt, und jeder
+    spaetere Lauf nannte ihn wieder. Ein Abschluss wird genau einmal
+    geschrieben (ADR-011); was eine Zeile ueber ihn bezeugt, gilt fuer
+    immer, und jede Zeile muss dasselbe bezeugen.
+    """
+    bezeugt: Dict[str, str] = {}
+    for zeile in gruene:
+        for a in zeile.get("abschluesse") or []:
+            if not (a.get("sha256") and a.get("datei")):
+                continue
+            datei = str(a["datei"])
+            if bezeugt.setdefault(datei, str(a["sha256"])) != str(a["sha256"]):
+                raise TageslaufError(
+                    f"Protokoll: der Abschluss {datei} wird mit zwei verschiedenen "
+                    "Hashes bezeugt — ein festgeschriebener Abschluss aendert sich nie "
+                    "(ADR-011)")
+    for datei, soll in sorted(bezeugt.items()):
+        pfad = ablage.abschluesse / datei
+        if not pfad.is_file():
+            raise TageslaufError(
+                f"{pfad}: der Abschluss ist im Protokoll bezeugt, liegt aber nicht mehr "
+                "in der Ablage — ein festgeschriebener Abschluss wird nie entfernt "
+                "(ADR-011); die Datei aus der Sicherung wiederherstellen")
+        if sha256_bytes(pfad.read_bytes()) != soll:
+            raise TageslaufError(
+                f"{pfad}: nicht der Abschluss, den das Protokoll bezeugt "
+                f"({soll[:16]}…) — ein festgeschriebener Abschluss wird nie "
+                "ueberschrieben (ADR-011); die Datei aus der Sicherung wiederherstellen")
+
+
+def verankerung_angabe(registriert: Optional[int], mit_schicht: bool) -> Dict[str, Any]:
+    """Die Verankerungsangabe einer Protokollzeile — EINE Formulierung.
+
+    Der Lauf schreibt sie, der Nachweis rechnet sie aus dem Stand nach
+    (RC13: ``{angewandt: true, registriert: 999}`` stand frei behauptet in
+    der Zeile und ging veroeffentlicht durch). ``registriert`` None heisst:
+    der Stand traegt keine Verankerung.
+    """
+    return {
+        "registriert": int(registriert or 0),
+        # Seit Schritt 9 gehen Verankerung und Korrekturschicht in die
+        # Fortschreibung ein (Schritte 4 und 5): angewandt heisst, die
+        # Schicht lag vor und wurde der Engine uebergeben.
+        "angewandt": bool(registriert is not None and mit_schicht),
+        "hinweis": (
+            "Verankerung und Korrekturschicht der uebernommenen Vertraege gehen "
+            "in Storno und Bewertung der Fortschreibung ein (Freischaltung, "
+            "Schritte 4/5/9)"
+            if registriert is not None and mit_schicht
+            else "Verankerung registriert, aber ohne Korrekturschicht (schichten.parquet) "
+            "nicht angewandt — der Eingang traegt keinen Schichtbeleg"
+            if registriert is not None
+            else "keine Verankerung uebernommen"
+        ),
+    }
+
+
+def zeile_gegen_manifest(letzte: Dict[str, Any], manifest: Dict[str, Any]) -> List[str]:
+    """Was die letzte gruene Zeile ueber Herkunft und Eingaenge sagt, gegen
+    das Manifest des Stands, das sie ueber ``manifest_sha256`` bindet.
+
+    Ohne Ablage und ohne Schluessel rechenbar — der Konsument eines
+    Stands-Pakets traegt das Manifest mit (RC13, RC14): Config-Hash und
+    Kern-Version schreibt der Lauf aus derselben Config und demselben Code
+    in Zeile und Manifest; die Eingaenge, die der Stand fuehrt, nennt das
+    Manifest mit dem Hash ihrer eingang.json. Eine Zeile, die andere
+    Eingaenge nennt oder keine, spricht von einem anderen Stand.
+    """
+    abweichend: List[str] = []
+    if letzte.get("config_sha256") != (manifest.get("config") or {}).get("sha256"):
+        abweichend.append("config_sha256")
+    if letzte.get("kern_version") != manifest.get("kern_version"):
+        abweichend.append("kern_version")
+    im_manifest = {
+        rolle.split(":", 1)[1]: (eintrag or {}).get("sha256")
+        for rolle, eintrag in (manifest.get("eingaben") or {}).items()
+        if str(rolle).startswith("uebernahme:")
+    }
+    in_zeile = {str(u.get("fall")): u.get("eingang_sha256")
+                for u in letzte.get("uebernahmen") or []}
+    if im_manifest != in_zeile:
+        abweichend.append("uebernahmen (Faelle und eingang_sha256 gegen das Manifest)")
+    ausgaben = manifest.get("ausgaben") or {}
+    verankerung = letzte.get("verankerung")
+    if isinstance(verankerung, dict):
+        if "verankerung.parquet" not in ausgaben and verankerung != verankerung_angabe(None, False):
+            abweichend.append("verankerung")
+        elif "verankerung.parquet" in ausgaben and (
+                bool(verankerung.get("angewandt")) != ("schichten.parquet" in ausgaben)):
+            abweichend.append("verankerung.angewandt")
+    return abweichend
+
+
+def _pruefe_zahlen_der_zeile(
+    ablage: Ablage, letzte: Dict[str, Any], manifest_roh: bytes,
+    journal_roh: Optional[bytes] = None,
+) -> None:
     """Die Bestandszahlen der letzten gruenen Zeile, aus dem Stand nachgerechnet.
 
     Angriffsrunde nach T27: Die letzte Zeile hat keinen Nachfolger, der sie
@@ -595,13 +961,21 @@ def _pruefe_zahlen_der_zeile(ablage: Ablage, letzte: Dict[str, Any], manifest_ro
     der naechste Lauf kettete an. Die Zahlen sind aber keine eigene Aussage
     der Zeile: Sie folgen aus dem Stand, den ihr Manifest-Hash bindet, und
     aus den registrierten Eingaengen — und werden hier daraus gerechnet.
+
+    Pruefrunde nach T27, Runde C: Geprueft waren nur Zaehlungen. Die
+    Monatskennzahlen der Abschluesse (RC12), Stichtag, Snapshot und
+    Zeichnung der Uebernahmen, die Verankerung und die Provenienz (RC13)
+    standen frei behauptet in der Zeile. Jetzt gilt fuer jedes Feld, das
+    aus Stand, Abschlussdatei, Eingang oder Config folgt: gerechnet oder
+    gleich, nie geglaubt.
     """
     import io
 
     from rechner_pipeline.bestand.fuehrung import bestand_am
     from rechner_pipeline.betrieb.uebernahme import zielnummern
 
-    ausgaben = (json.loads(manifest_roh.decode("utf-8")).get("ausgaben") or {})
+    manifest = json.loads(manifest_roh.decode("utf-8"))
+    ausgaben = (manifest.get("ausgaben") or {})
 
     def lies(name: str) -> pd.DataFrame:
         roh = (ablage.stand / name).read_bytes()
@@ -642,6 +1016,48 @@ def _pruefe_zahlen_der_zeile(ablage: Ablage, letzte: Dict[str, Any], manifest_ro
     for u in letzte.get("uebernahmen") or []:
         if u.get("vertraege") != je_eingang.get(str(u.get("fall"))):
             abweichend.append(f"uebernahmen[{u.get('fall')}].vertraege")
+        # RC13: Stichtag, Snapshot und Zeichnung der A-M4-Annahme stehen in
+        # der eingang.json, deren Hash dieselbe Zeile nennt — aus ihr, nicht
+        # aus der Zeile.
+        eingang_pfad = ablage.uebernahme / str(u.get("fall")) / "eingang.json"
+        try:
+            eingang_roh = eingang_pfad.read_bytes()
+            eingang = json.loads(eingang_roh.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise TageslaufError(f"{eingang_pfad}: nicht lesbar ({exc})") from exc
+        if sha256_bytes(eingang_roh) != u.get("eingang_sha256"):
+            abweichend.append(f"uebernahmen[{u.get('fall')}].eingang_sha256")
+        for feld in ("stichtag", "snapshot_sha256", "zeichnung"):
+            if u.get(feld) != eingang.get(feld):
+                abweichend.append(f"uebernahmen[{u.get('fall')}].{feld}")
+    abweichend.extend(zeile_gegen_manifest(letzte, manifest))
+    if "verankerung.parquet" in ausgaben and isinstance(letzte.get("verankerung"), dict):
+        soll_v = verankerung_angabe(
+            int(len(lies("verankerung.parquet"))), "schichten.parquet" in ausgaben)
+        if letzte["verankerung"] != soll_v:
+            abweichend.append("verankerung")
+    # RC12: Die Monatskennzahlen folgen aus der festgeschriebenen
+    # Abschlussdatei (in_kraft) und dem Tagesjournal (zugaenge, leistungen)
+    # — mit derselben Funktion, die der Lauf beim Schreiben ruft.
+    journal = (read_portfolio(io.BytesIO(journal_roh), expected_columns=TAGESJOURNAL_NAMES)
+               if journal_roh is not None else None)
+    for a in letzte.get("abschluesse") or []:
+        if not a.get("datei"):
+            continue
+        pfad = ablage.abschluesse / str(a["datei"])
+        if not pfad.is_file():
+            continue  # _pruefe_festgeschriebene_abschluesse nennt es mit Ausweg
+        roh = pfad.read_bytes()
+        if a.get("sha256") and sha256_bytes(roh) != a["sha256"]:
+            continue  # dort ebenso
+        soll_k = {"in_kraft": int(len(read_portfolio(io.BytesIO(roh))))}
+        if journal is not None:
+            from rechner_pipeline.bestand.kennzahlen import bewegungskennzahlen
+
+            soll_k.update(bewegungskennzahlen(journal, _dt.date.fromisoformat(str(a["stichtag"]))))
+        for feld, wert in soll_k.items():
+            if feld in a and a[feld] != wert:
+                abweichend.append(f"abschluesse[{a.get('stichtag')}].{feld}")
     if basis is not None and "basisvertraege" in letzte:
         # Die Basis des Laufs ist der eigene Anfangsbestand (bestand.parquet)
         # plus jeder uebernommene Vertrag; alles darueber ist Neugeschaeft.
@@ -658,7 +1074,7 @@ def _pruefe_zahlen_der_zeile(ablage: Ablage, letzte: Dict[str, Any], manifest_ro
             f"{abweichend} — die Zeile wurde veraendert oder gehoert zu einem anderen Stand")
 
 
-def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
+def gefuehrter_tag(ablage: Ablage, zeichner: Optional[Zeichner] = None) -> Optional[_dt.date]:
     """Der letzte gruen gefuehrte Tag — aus dem Manifest des Stands.
 
     Das Manifest ist die Aussage des Stands ueber sich selbst (Horizont);
@@ -673,7 +1089,7 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
         # still von vorn an und zerstoerte die Protokollkette (Angriffsrunde
         # Betrieb). Abbrechen und den Ausweg nennen.
         gruene_ohne_stand = [
-            z for z in lies_protokoll(ablage.protokoll_pfad) if z.get("uebernommen")]
+            z for z in _protokoll(ablage, zeichner) if z.get("uebernommen")]
         if gruene_ohne_stand:
             letzter = gruene_ohne_stand[-1]
             raise TageslaufError(
@@ -699,7 +1115,7 @@ def gefuehrter_tag(ablage: Ablage) -> Optional[_dt.date]:
             "die Erstbefuellung wiederholen"
         ) from exc
     tag = _dt.date.fromisoformat(str(manifest["horizont"]))
-    gruene = [z for z in lies_protokoll(ablage.protokoll_pfad) if z.get("uebernommen")]
+    gruene = [z for z in _protokoll(ablage, zeichner) if z.get("uebernommen")]
     if not gruene:
         raise TageslaufError(
             f"{ablage.stand} fuehrt {tag.isoformat()}, aber das Protokoll "
@@ -750,39 +1166,86 @@ def _festgeschriebene_abschluesse(ablage: Ablage) -> List[_dt.date]:
     return sorted(tage)
 
 
-def _pruefe_eingaenge_gegen_protokoll(ablage: Ablage, uebernahmen) -> None:
-    """Ein Eingang, den eine gruene Protokollzeile schon gefuehrt hat, ist
-    derselbe geblieben (Angriffsrunde nach T27).
+def bezeugte_eingaenge(
+    zeilen: List[Dict[str, Any]], *, aufschalten: bool = False,
+) -> Dict[str, str]:
+    """Fall -> Hash der eingang.json, wie ihn die gruenen Zeilen bezeugen.
 
-    Die Tabellen hingen an den Summen in eingang.json — und eingang.json an
-    nichts. Stimmig umgeschrieben (Tabelle neu, Summe nachgezogen) rechnete
-    der naechste Lauf die Geschichte seit Betriebsbeginn aus dem
-    geaenderten Eingang neu. Die Protokollzeile ist verkettet und extern
-    verankert; sie nennt den Hash der eingang.json, mit dem der Eingang
-    eintrat, und jeder spaetere Lauf haelt ihn dagegen.
+    Jede gruene Zeile, die einen Eingang fuehrt, nennt denselben Hash — ein
+    Eingang aendert sich nach dem Eintritt nie. Zwei verschiedene Hashes
+    fuer denselben Fall sind ein Befund, kein Wahlrecht.
+
+    Zeuge ist nur, was gebunden ist (Nachbesserung Runde C): eine
+    GEZEICHNETE Zeile (Schema 3) oder eine Zeile des GEPINNTEN Vorlaufs —
+    die ungezeichneten Zeilen vor der ersten gezeichneten, deren Zahl und
+    Hash diese festhaelt. Ein Protokoll ohne gezeichnete Zeile bezeugt
+    nichts; ausser im Lauf, der es mit ``aufschalten`` ausdruecklich
+    uebernimmt — dessen erste Zeile pinnt genau diesen Vorlauf.
     """
+    gebunden = aufschalten or any(z.get("schema_version", 1) >= 3 for z in zeilen)
     bezeugt: Dict[str, str] = {}
-    for zeile in lies_protokoll(ablage.protokoll_pfad):
+    for zeile in zeilen:
         if not zeile.get("uebernommen"):
             continue
+        if zeile.get("schema_version", 1) < 3 and not gebunden:
+            continue
         for u in zeile.get("uebernahmen") or []:
-            if u.get("eingang_sha256"):
-                bezeugt.setdefault(str(u.get("fall")), str(u["eingang_sha256"]))
-    for u in uebernahmen:
-        soll = bezeugt.get(u.fall)
-        if soll is not None and soll != u.eingang_sha256:
+            if not u.get("eingang_sha256"):
+                continue
+            fall, soll = str(u.get("fall")), str(u["eingang_sha256"])
+            if bezeugt.setdefault(fall, soll) != soll:
+                raise TageslaufError(
+                    f"Protokoll: der Eingang {fall!r} wird mit zwei verschiedenen "
+                    "Hashes bezeugt — ein Eingang aendert sich nach dem Eintritt nie")
+    return bezeugt
+
+
+def _pruefe_bezeugte_eingaenge(
+    ablage: Ablage, zeilen: List[Dict[str, Any]], *, aufschalten: bool = False,
+) -> None:
+    """JEDER Eingang, den irgendeine gruene Zeile bezeugt, liegt unveraendert da.
+
+    Angriffsrunde nach T27 und Runde C (RC14, RC15): Gegen die bezeugten
+    Hashes wurden nur die VORHANDENEN Eingaenge gehalten, und das
+    Verschwinden nur fuer die Eingaenge der letzten Zeile — wer die letzte
+    Zeile leerte, liess einen alten Eingang verschwinden; wer die
+    Eintrittszeile nachzog, schrieb einen Eingang stimmig um
+    (Versicherungssummen mal zehn). Jetzt gilt fuer jeden jemals bezeugten
+    Eingang: Verzeichnis da, eingang.json byte-gleich zum bezeugten Hash,
+    und jede Tabelle traegt den Hash, den eingang.json nennt.
+    """
+    for fall, soll in sorted(bezeugte_eingaenge(zeilen, aufschalten=aufschalten).items()):
+        verzeichnis = ablage.uebernahme / fall
+        ausweg = ("ein Eingang ist unantastbar; den urspruenglichen Eingang aus der "
+                  "Sicherung wiederherstellen — eine neue Lieferung ist ein neuer Eingang")
+        if not verzeichnis.is_dir():
             raise TageslaufError(
-                f"Eingang {u.fall}: eingang.json ist nicht mehr die, mit der er in "
-                f"die Fuehrung trat ({u.eingang_sha256[:16]}… statt {soll[:16]}…) — "
-                "ein Eingang ist unantastbar; den urspruenglichen Eingang "
-                "wiederherstellen")
-    # Dass keiner VERSCHWINDET (umbenannt, entfernt), prueft schon der
-    # Nachweisvertrag vor jedem Lauf (_pruefe_zahlen_der_zeile).
+                f"Eingang {fall!r}: gefuehrt und im Protokoll bezeugt, aber nicht mehr "
+                f"in der Ablage (entfernt oder umbenannt) — {ausweg}")
+        pfad = verzeichnis / "eingang.json"
+        try:
+            roh = pfad.read_bytes()
+        except OSError as exc:
+            raise TageslaufError(f"Eingang {fall!r}: {pfad} nicht lesbar ({exc}) — {ausweg}") from exc
+        if sha256_bytes(roh) != soll:
+            raise TageslaufError(
+                f"Eingang {fall!r}: eingang.json ist nicht mehr die, mit der er in die "
+                f"Fuehrung trat ({sha256_bytes(roh)[:16]}… statt {soll[:16]}…) — {ausweg}")
+        try:
+            dateien = json.loads(roh.decode("utf-8")).get("dateien") or {}
+        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError) as exc:
+            raise TageslaufError(f"Eingang {fall!r}: eingang.json nicht lesbar ({exc})") from exc
+        for datei, summe in sorted(dateien.items()):
+            tabelle = verzeichnis / str(datei)
+            if not tabelle.is_file() or sha256_bytes(tabelle.read_bytes()) != summe:
+                raise TageslaufError(
+                    f"Eingang {fall!r}: {datei} fehlt oder traegt nicht den Hash, den "
+                    f"eingang.json nennt — {ausweg}")
 
 
-def _bereits_gefuehrte_eingaenge(ablage: Ablage) -> set:
+def _bereits_gefuehrte_eingaenge(zeilen: List[Dict[str, Any]]) -> set:
     """Die Faelle, die der letzte gruene Lauf schon gefuehrt hat."""
-    gruene = [z for z in lies_protokoll(ablage.protokoll_pfad) if z.get("uebernommen")]
+    gruene = [z for z in zeilen if z.get("uebernommen")]
     if not gruene:
         return set()
     return {str(u.get("fall")) for u in gruene[-1].get("uebernahmen", [])}
@@ -848,7 +1311,8 @@ def _eingang_eingerechnet(ablage: Ablage, stichtag: _dt.date, police_ids) -> Opt
 
 
 def _stand_bauen(
-    config: BestandConfig, config_pfad: Path, ablage: Ablage, heute: _dt.date
+    config: BestandConfig, config_pfad: Path, ablage: Ablage, heute: _dt.date,
+    zeichner: Zeichner, *, aufschalten: bool = False,
 ) -> Tuple[Path, Dict[str, Any]]:
     """Den Stand fuer ``heute`` im Arbeitsverzeichnis erzeugen (noch nicht uebernommen)."""
     betriebsbeginn = config.tagesbetrieb.betriebsbeginn
@@ -864,8 +1328,12 @@ def _stand_bauen(
     ablage.arbeit.mkdir(parents=True)
     ausgaben.append(write_portfolio(basis, ablage.arbeit / "bestand.parquet"))
 
-    uebernahmen = lies_uebernahmen(ablage.uebernahme, config)
-    _pruefe_eingaenge_gegen_protokoll(ablage, uebernahmen)
+    zeilen = _protokoll(ablage, zeichner)
+    _pruefe_bezeugte_eingaenge(ablage, zeilen, aufschalten=aufschalten)
+    uebernahmen = lies_uebernahmen(
+        ablage.uebernahme, config, schluesselring=zeichner.ring,
+        ordnung=zeichner.ordnung,
+        bezeugt=set(bezeugte_eingaenge(zeilen, aufschalten=aufschalten).values()))
     # Ein vorausdatierter Eingang RUHT bis zu seinem Stichtag (Angriffsrunde
     # nach T27): Gebucht wird, was geschehen ist. Vorher brach jeder Lauf
     # davor rot ab, und der ganze Betrieb stand bis zum Stichtag still —
@@ -890,7 +1358,7 @@ def _stand_bauen(
     # selbst. Die zweite ist die belastbare — ein Lauf, der den Abschluss
     # schreibt und danach scheitert, hinterlaesst keine gruene Zeile, und
     # der Stellvertreter "Protokoll" hielt den Eingang dann fuer neu.
-    schon_gefuehrt = _bereits_gefuehrte_eingaenge(ablage)
+    schon_gefuehrt = _bereits_gefuehrte_eingaenge(zeilen)
     for ueb in uebernahmen:
         # Ein Zugang gehoert in die GEFUEHRTE ZEIT: nicht vor den ersten Tag,
         # den das Unternehmen fuehrt (davor gibt es keine Buecher, in die er
@@ -1012,24 +1480,12 @@ def _stand_bauen(
         "gevos": int(ledger[["police_id", "ereignis", "status_date"]]
                      .drop_duplicates().shape[0]),
         "erhoehungsscheiben": int(len(scheiben)),
-        # Stufe 1 von T22-11: ausgewiesen, nicht angewandt.
-        "verankerung": {
-            "registriert": int(len(verankerung)) if verankerung is not None else 0,
-            # Seit Schritt 9 gehen Verankerung und Korrekturschicht in die
-            # Fortschreibung ein (Schritte 4 und 5): angewandt heisst, die
-            # Schicht lag vor und wurde der Engine uebergeben.
-            "angewandt": bool(verankerung is not None and schichten is not None),
-            "hinweis": (
-                "Verankerung und Korrekturschicht der uebernommenen Vertraege gehen "
-                "in Storno und Bewertung der Fortschreibung ein (Freischaltung, "
-                "Schritte 4/5/9)"
-                if verankerung is not None and schichten is not None
-                else "Verankerung registriert, aber ohne Korrekturschicht (schichten.parquet) "
-                "nicht angewandt — der Eingang traegt keinen Schichtbeleg"
-                if verankerung is not None
-                else "keine Verankerung uebernommen"
-            ),
-        },
+        # Stufe 1 von T22-11: ausgewiesen; seit Schritt 9 angewandt, wenn die
+        # Korrekturschicht vorliegt. Die Formulierung teilt sich der Lauf mit
+        # dem Nachweis, der sie aus dem Stand nachrechnet (RC13).
+        "verankerung": verankerung_angabe(
+            int(len(verankerung)) if verankerung is not None else None,
+            schichten is not None),
         # Fall-Bezug jeder Uebernahme (Konzept, Abschnitt 6): Der Zugang
         # ist als datierter Eingang nachweisbar, nicht als anonyme Zeile.
         "wartende_uebernahmen": [
@@ -1509,16 +1965,44 @@ def _bericht(
     return ziel
 
 
-def _anfuegen(pfad: Path, zeile: Dict[str, Any]) -> None:
+def _anfuegen(
+    pfad: Path, zeile: Dict[str, Any], zeichner: Optional[Zeichner] = None,
+    *, aufschalten: bool = False,
+) -> None:
     """Eine Protokollzeile anfuegen (nur-anfuegbar, sortierte Schluessel),
-    verkettet mit der Zeile davor (T22-05)."""
+    verkettet mit der Zeile davor (T22-05) und GEZEICHNET (Schema 3).
+
+    Vor JEDEM Anfuegen wird die ganze Kette mit Schluessel und Ordnung
+    geprueft: An eine gebrochene oder fremd gezeichnete Kette wird nicht
+    angehaengt — die eigene Zeichnung waere sonst eine Bestaetigung dessen,
+    was davor steht. Traegt die Ablage einen ungezeichneten Vorlauf, pinnt
+    die erste gezeichnete Zeile ihn (Aufschaltung ohne Neuaufsetzen) — aber
+    nur mit ``aufschalten``: Der Schreiber prueft die Regel selbst
+    (:func:`aufschaltung_fehler`), nicht nur sein Aufrufer.
+    """
+    pfad = Path(pfad)
+    if zeichner is None:
+        zeichner = betriebszeichner(Ablage(pfad.parent.parent))
     pfad.parent.mkdir(parents=True, exist_ok=True)
-    vorgaenger = ""
-    if pfad.is_file():
-        letzte = jsonl_zeilen(pfad.read_text(encoding="utf-8"))
-        if letzte:
-            vorgaenger = _zeilen_hash(letzte[-1])
-    zeile["vorgaenger_sha256"] = vorgaenger
+    text = pfad.read_text(encoding="utf-8") if pfad.is_file() else ""
+    zeilen = lies_protokoll_text(
+        text, str(pfad), schluesselring=zeichner.ring, ordnung=zeichner.ordnung)
+    rohe = jsonl_zeilen(text)
+    if rohe and not any(z.get("schema_version", 1) >= 3 for z in zeilen) and not aufschalten:
+        raise TageslaufError(f"{pfad}: {aufschaltung_fehler(zeilen)}")
+    zeile.pop("zeichnung", None)
+    zeile.pop("vorlauf", None)
+    zeile["schema_version"] = PROTOKOLL_SCHEMA_VERSION
+    zeile["vorgaenger_sha256"] = _zeilen_hash(rohe[-1]) if rohe else ""
+    if rohe and not any(z.get("schema_version", 1) >= 3 for z in zeilen):
+        zeile["vorlauf"] = _vorlauf_pin(rohe)
+        print(
+            f"tageslauf: {pfad} traegt {len(rohe)} ungezeichnete Zeile(n) — die "
+            "erste gezeichnete Zeile pinnt sie (Aufschaltung); ab hier ist jede "
+            "Zeile mit dem Betriebsschluessel gezeichnet.",
+            file=sys.stderr,
+        )
+    zeile["zeichnung"] = zeichner.zeichne(zeile)
     text = json.dumps(zeile, ensure_ascii=False, sort_keys=True) + "\n"
     with open(pfad, "a", encoding="utf-8", newline="\n") as f:
         f.write(text)
@@ -1532,31 +2016,54 @@ def tageslauf(
     ablage: Ablage,
     heute: _dt.date,
     *,
+    schluessel: Optional[Path] = None,
+    zeichnungsordnung: Optional[Path] = None,
     image_digest: Optional[str] = None,
+    aufschalten: bool = False,
 ) -> Tuple[int, Dict[str, Any]]:
     """Den Tag ``heute`` fuehren — unter der Prozess-Sperre der Ablage
-    (Review T22-03); siehe :func:`_tageslauf`."""
+    (Review T22-03); siehe :func:`_tageslauf`.
+
+    ``schluessel``/``zeichnungsordnung``: der Betriebsschluessel, mit dem
+    jede Protokollzeile gezeichnet und die Kette geprueft wird
+    (:func:`betriebszeichner`: ausdruecklich > Naht > Fehler). Er wird
+    VOR allem anderen geladen: Ohne ihn fasst der Lauf die Ablage nicht an.
+
+    ``aufschalten``: der einmalige Schritt beim ersten Lauf nach dem
+    Umstieg auf den Betriebsschluessel — nur damit wird ein Protokoll ohne
+    gezeichnete Zeile weitergefuehrt und sein Vorlauf gepinnt
+    (:func:`aufschaltung_fehler`). Geprueft wird unter der Sperre, VOR
+    Ruecknahme und Aufraeumen: Ein verweigerter Lauf fasst die Ablage
+    nicht an.
+    """
+    zeichner = betriebszeichner(ablage, schluessel, zeichnungsordnung)
     with lauf_sperre(ablage):
         # Eine angefangene Protokollzeile ist nie eine Zeile geworden —
         # sie faellt VOR allem anderen, sonst stirbt jeder Leser des
         # Protokolls an ihr (auch ohne Publish-Marker: die Zeile eines
         # roten Laufs).
         _schneide_teilzeile(ablage.protokoll_pfad)
+        fehler = aufschaltung_fehler(_protokoll(ablage, zeichner), aufschalten=aufschalten)
+        if fehler:
+            raise TageslaufError(f"{ablage.protokoll_pfad}: {fehler}")
         # ZUERST einen unterbrochenen Publish zuruecknehmen (Review
         # T24-01, Schritt b): Danach ist die Ablage wieder in einem
         # Zustand, ueber den Nachweisvertrag und Aufraeumung urteilen
         # koennen. Vorher fiel jeder Retry ueber genau diesen
         # Zwischenzustand — und zwar dauerhaft.
-        nimm_publish_zurueck(ablage)
+        nimm_publish_zurueck(ablage, zeichner)
         _verwaiste_staende_entfernen(ablage)
-        return _tageslauf(ablage, heute, image_digest=image_digest)
+        return _tageslauf(ablage, heute, zeichner, image_digest=image_digest,
+                          aufschalten=aufschalten)
 
 
 def _tageslauf(
     ablage: Ablage,
     heute: _dt.date,
+    zeichner: Zeichner,
     *,
     image_digest: Optional[str] = None,
+    aufschalten: bool = False,
 ) -> Tuple[int, Dict[str, Any]]:
     """Den Tag ``heute`` fuehren (Bibliotheksform des Kommandos).
 
@@ -1590,15 +2097,18 @@ def _tageslauf(
         eingefroren = Path(tmp) / config_pfad.name
         eingefroren.write_bytes(config_pfad.read_bytes())
         return _tageslauf_mit_config(
-            ablage, heute, eingefroren, image_digest=image_digest)
+            ablage, heute, eingefroren, zeichner, image_digest=image_digest,
+            aufschalten=aufschalten)
 
 
 def _tageslauf_mit_config(
     ablage: Ablage,
     heute: _dt.date,
     config_pfad: Path,
+    zeichner: Zeichner,
     *,
     image_digest: Optional[str],
+    aufschalten: bool = False,
 ) -> Tuple[int, Dict[str, Any]]:
     """Der Lauf auf der eingefrorenen Config (siehe :func:`_tageslauf`)."""
     from rechner_pipeline.kern import __version__ as kern_version
@@ -1618,7 +2128,7 @@ def _tageslauf_mit_config(
             f"heute {heute.isoformat()} liegt vor dem Betriebsbeginn "
             f"{betriebsbeginn.isoformat()}"
         )
-    letzter = gefuehrter_tag(ablage)
+    letzter = gefuehrter_tag(ablage, zeichner)
     if letzter is not None and heute == letzter:
         return EXIT_OK, {"heute": heute.isoformat(), "bereits_gefuehrt": True}
     if letzter is not None and heute < letzter:
@@ -1659,7 +2169,8 @@ def _tageslauf_mit_config(
     }
     exit_code = EXIT_OK
     try:
-        arbeit, zahlen = _stand_bauen(config, config_pfad, ablage, heute)
+        arbeit, zahlen = _stand_bauen(
+            config, config_pfad, ablage, heute, zeichner, aufschalten=aufschalten)
         zeile.update(zahlen)
         tabellen, geprueft, befunde = _wache(arbeit, config_pfad, heute)
         zeile["pb1"] = {
@@ -1857,33 +2368,65 @@ def _tageslauf_mit_config(
         zeile["fehler"] = f"{type(exc).__name__}: {exc}"
         if exit_code == EXIT_OK:
             exit_code = EXIT_NACHLAUF if "pb1" in zeile else EXIT_USAGE
+    from rechner_pipeline.betrieb.seite import (
+        SeiteError,
+        bereite_bestand_heute_vor,
+        verwirf_seite,
+        veroeffentliche_seite,
+    )
+
+    seite_tmp: Optional[Path] = None
+    seite_ziel: Optional[Path] = None
+    seite_stand: Optional[_dt.date] = None
     if zeile["uebernommen"]:
         # Die interne Sicht (Konzept, Abschnitt 8.3): aus Protokoll und
         # Journal, nach dem uebernommenen Stand und vor der Protokollzeile,
-        # damit die Zeile die Seite nennt. Eine Seite, die nicht gebaut
-        # werden kann, macht den gefuehrten Tag nicht ungeschehen — sie
-        # fehlt, und die Zeile sagt es.
-        from rechner_pipeline.betrieb.seite import SeiteError, rendere_bestand_heute
-
+        # damit die Zeile die Seite nennt. Sie wird aber nur NEBEN sich
+        # gerendert und erst nach dem Anfuegen der Zeile ersetzt (unten;
+        # Angriffsrunde C, RC08): Aus einem unterbrochenen Lauf wird nichts
+        # nach aussen sichtbar, die Seite nennt nur einen Tag, den das
+        # Protokoll gruen fuehrt. Eine Seite, die nicht gebaut werden kann,
+        # macht den gefuehrten Tag nicht ungeschehen — sie fehlt, und die
+        # Zeile sagt es.
         try:
-            zeile["seite"] = rendere_bestand_heute(ablage, aktuelle_zeile=zeile).name
+            seite_tmp, seite_ziel, seite_stand = bereite_bestand_heute_vor(
+                ablage, aktuelle_zeile=zeile, zeichner=zeichner)
+            zeile["seite"] = seite_ziel.name
         except (SeiteError, OSError, ValueError) as exc:
             zeile["seite"] = f"nicht gerendert: {type(exc).__name__}: {exc}"
     try:
-        _anfuegen(ablage.protokoll_pfad, zeile)
+        _anfuegen(ablage.protokoll_pfad, zeile, zeichner, aufschalten=aufschalten)
     except OSError as exc:
         # Der Stand ist uebernommen, die Zeile fehlt: Stand und Nachweis
         # sagen ab jetzt Verschiedenes, und der naechste gefuehrter_tag()
         # bricht dauerhaft ab. Vorher lief hier ein roher OSError bis zur
         # CLI durch — ohne Nachweis, ohne Ausweg (Review T24-01).
+        verwirf_seite(seite_tmp)
         raise TageslaufError(
             f"Protokollzeile fuer {heute.isoformat()} nicht geschrieben "
             f"({type(exc).__name__}: {exc}). Der Stand ist "
             f"{'uebernommen' if zeile.get('uebernommen') else 'nicht uebernommen'}"
             f" — Stand und Nachweis passen damit nicht mehr zusammen. Ausweg: "
             f"{ablage.protokoll_pfad} schreibbar machen und den Lauf erneut "
-            "starten; der Lauf ist idempotent"
+            "starten; der Lauf ist idempotent; die Seite zeigt weiter den "
+            "letzten gefuehrten Tag"
         ) from exc
+    except BaseException:
+        verwirf_seite(seite_tmp)
+        raise
+    if seite_tmp is not None:
+        # Die Zeile steht: jetzt darf die Seite nach aussen. Die Sperre haelt
+        # dieser Lauf; er fuehrt den Stand, auch rueckwaerts (siehe
+        # veroeffentliche_seite). Scheitert der Tausch, ist der Tag trotzdem
+        # gefuehrt und belegt — die seite-CLI rendert die Seite neu.
+        try:
+            veroeffentliche_seite(seite_tmp, seite_ziel, seite_stand,
+                                  juengere_seite_schuetzen=False)
+        except OSError as exc:
+            print(f"tageslauf: Warnung: Seite nicht veroeffentlicht "
+                  f"({type(exc).__name__}: {exc}) — der Tag ist gefuehrt und "
+                  "belegt; Ausweg: python -m rechner_pipeline.betrieb.seite "
+                  f"--stand {ablage.wurzel}", file=sys.stderr)
     # NUR wenn der Publish wirklich durch ist: Stand, Journal und Nachweis
     # sagen dasselbe. Ein ROTER Lauf laesst den Marker liegen — sonst naehme
     # der naechste Lauf nichts zurueck, und der halbe Publish bliebe stehen.
@@ -1916,6 +2459,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Der zu fuehrende Kalendertag (ISO); Default: Kalendertag des Aufrufs.",
     )
     parser.add_argument(
+        "--schluessel", required=True,
+        help="Betriebsschluessel (Rolle betrieb/<name>, Schluesselklasse betrieb), "
+        "mit dem jede Protokollzeile gezeichnet und die Kette geprueft wird. Er "
+        "liegt ausserhalb der Ablage beim Menschen (0600, ein Hardlink).")
+    parser.add_argument(
+        "--zeichnungsordnung", required=True,
+        help="Zeichnungsordnung (Schema 2), die dem Schluessel seine Rolle gibt; "
+        "ausserhalb der Ablage.")
+    parser.add_argument(
+        "--aufschalten", action="store_true",
+        help="Einmalig beim ersten Lauf nach dem Umstieg auf den Betriebsschluessel: "
+        "ein Protokoll ohne gezeichnete Zeile (Altbestand) weiterfuehren; die erste "
+        "gezeichnete Zeile pinnt den Vorlauf. Auf ein gezeichnetes oder leeres "
+        "Protokoll verweigert (deploy/plv/README.md).")
+    parser.add_argument(
         "--image-digest", dest="image_digest", default=None,
         help="Digest des Container-Images fuer das Protokoll (Default: "
         "Umgebungsvariable PLV_IMAGE_DIGEST).",
@@ -1929,7 +2487,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     ablage = Ablage(Path(ns.stand))
     digest = ns.image_digest or os.environ.get("PLV_IMAGE_DIGEST") or None
     try:
-        code, zeile = tageslauf(ablage, heute, image_digest=digest)
+        code, zeile = tageslauf(
+            ablage, heute, schluessel=Path(ns.schluessel),
+            zeichnungsordnung=Path(ns.zeichnungsordnung), image_digest=digest,
+            aufschalten=ns.aufschalten)
     except TageslaufError as exc:
         print(f"tageslauf: {exc}", file=sys.stderr)
         return EXIT_USAGE

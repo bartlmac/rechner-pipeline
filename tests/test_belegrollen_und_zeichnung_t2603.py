@@ -30,6 +30,7 @@ from rechner_pipeline.models.schemas import p9_snapshot_sha256
 from rechner_pipeline.models.zeichnung import GATES_MIT_PFLICHTBELEGEN
 from tests.freigabe_testschluessel import FREMDER_SCHLUESSEL, TESTKEY, TESTRING
 from tests.test_betrieb_uebernahme import PLV, STICHTAG, _fall, _pb1_ledger, am4_snapshot, fuehrungsbeleg
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 
 # --- der Vertrag in models ---------------------------------------------------
@@ -64,7 +65,7 @@ def test_ein_snapshot_mit_nur_einer_pflichtrolle_wird_nicht_uebernommen(tmp_path
     Mutationsprobe: ``erwartete_rollen`` in lies_am4_snapshot wieder
     weglassen -> rot."""
     voll = _fall(tmp_path / "voll", name="voll")
-    ueb.eingang_anlegen(tmp_path / "daten", voll, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), voll, STICHTAG)
     duenn = _fall(tmp_path / "duenn", name="duenn", snapshot=None)
     sha = json.loads((duenn / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json").read_bytes())
     from tests.test_betrieb_uebernahme import _pb1_ledger
@@ -75,7 +76,7 @@ def test_ein_snapshot_mit_nur_einer_pflichtrolle_wird_nicht_uebernommen(tmp_path
     (duenn / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
         json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}), encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="nicht exakt die aus dem Scope abgeleiteten Rollen"):
-        ueb.eingang_anlegen(tmp_path / "daten-duenn", duenn, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten-duenn"), duenn, STICHTAG)
     assert not (tmp_path / "daten-duenn" / "uebernahme" / "duenn").exists()
 
 
@@ -120,7 +121,7 @@ def test_der_betriebseingang_verifiziert_die_signatur_und_der_tageslauf_verlangt
     entfernen -> die letzte Zusicherung rot."""
     config = load_config(PLV)
     echt = _fall_mit_snapshot(tmp_path / "a", "echt")
-    ziel = ueb.eingang_anlegen(tmp_path / "daten", echt, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), echt, STICHTAG)
     eingang = json.loads((ziel / "eingang.json").read_text(encoding="utf-8"))
     assert eingang["zeichnung"]["signatur_verifiziert"] is True
     assert eingang["zeichnung"]["schluesselklasse"] == "mensch"
@@ -128,7 +129,7 @@ def test_der_betriebseingang_verifiziert_die_signatur_und_der_tageslauf_verlangt
 
     fremd = _fall_mit_snapshot(tmp_path / "b", "fremd", schluessel=FREMDER_SCHLUESSEL)
     with pytest.raises(ueb.UebernahmeError, match="nicht bereitgestellten Schluessel"):
-        ueb.eingang_anlegen(tmp_path / "daten", fremd, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fremd, STICHTAG)
     assert not (tmp_path / "daten" / "uebernahme" / "fremd").exists(), "kein halber Eingang"
 
     # Manipulation NACH der Signatur: Inhalt geaendert, Selbstadressierung
@@ -141,7 +142,7 @@ def test_der_betriebseingang_verifiziert_die_signatur_und_der_tageslauf_verlangt
     (mani / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
         json.dumps({"summary": {"snapshot_sha256": d["snapshot_sha256"]}}), encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="stimmt nicht mit dem Snapshot-Inhalt"):
-        ueb.eingang_anlegen(tmp_path / "daten", mani, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), mani, STICHTAG)
 
     # Ohne Ring wird nichts registriert (Angriffsrunde nach T27): Vorher
     # entstand ein Eingang mit signatur_verifiziert = false, den jeder
@@ -149,7 +150,7 @@ def test_der_betriebseingang_verifiziert_die_signatur_und_der_tageslauf_verlangt
     monkeypatch.setattr(ueb, "_STANDARD_SCHLUESSELRING", None)
     ohne = _fall_mit_snapshot(tmp_path / "d", "ohne")
     with pytest.raises(ueb.UebernahmeError, match="ohne Freigabeschluessel wird nichts registriert"):
-        ueb.eingang_anlegen(tmp_path / "daten", ohne, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), ohne, STICHTAG)
     assert not (tmp_path / "daten" / "uebernahme" / "ohne").exists()
     # Die Fuehrung verlangt die Verifikation weiterhin (zweite Wache): ein
     # verifizierter Eingang, dessen Flag von Hand gekippt wurde, tritt
@@ -171,7 +172,7 @@ def test_ein_altsnapshot_ohne_schluesselklasse_tritt_nicht_ein(tmp_path):
     z = ueb.pruefe_am4_snapshot(alt, json.loads((alt / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").read_text())["summary"]["snapshot_sha256"])
     assert z["schema_version"] == 6 and z["schluesselklasse"] == "nicht ausgewiesen"
     with pytest.raises(ueb.UebernahmeError, match="Schema 6.*Schema 7"):
-        ueb.eingang_anlegen(tmp_path / "daten", alt, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), alt, STICHTAG)
 
 
 def test_der_schluesselring_weist_schluessel_im_vertrauensraum_ab(tmp_path):

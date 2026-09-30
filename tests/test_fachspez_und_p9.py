@@ -488,3 +488,164 @@ def test_code_index_des_repos_hat_keinen_drift():
     assert drift_report(index, ["klv", "bu"]) == []
     # Die Ontologie-/Spez-/Gate-Schicht ist annotiert:
     assert len(index["knoten"]["klv"]) >= 8
+
+
+# --------------------------------------------------------------------------- #
+# RC07 (Angriffsrunde C): ein Prozessende hinterlaesst einen Rest, keinen Beleg
+# --------------------------------------------------------------------------- #
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+#: Kindprozess: faehrt gate_entscheid unter run_command und beendet sich an
+#: der benannten Stelle hart (os._exit — kein finally, kein atexit), wie
+#: SIGKILL oder ein Stromausfall. 'link' = nach dem Einhaengen des Snapshots,
+#: vor dem Loeschen der Tempdatei; 'ledger' = beim Ersetzen des End-Ledgers
+#: (das zweite os.replace auf das Ledger dieses Kommandos).
+_KIND = '''
+import os, sys
+from pathlib import Path
+
+stelle = sys.argv[1]
+zaehler = [0]
+_unlink, _replace = Path.unlink, os.replace
+
+
+def unlink(self, *a, **k):
+    if stelle == "link" and self.name.startswith(".A-Q1-") and self.name.endswith(".tmp"):
+        os._exit(137)
+    return _unlink(self, *a, **k)
+
+
+def replace(quelle, ziel, *a, **k):
+    if stelle == "ledger" and Path(ziel).name == "gate_entscheid_aq1.gate.json":
+        zaehler[0] += 1
+        if zaehler[0] == 2:
+            os._exit(137)
+    return _replace(quelle, ziel, *a, **k)
+
+
+Path.unlink, os.replace = unlink, replace
+from rechner_pipeline.gates import gate_entscheid
+from rechner_pipeline.gates._common import run_command
+sys.exit(run_command(gate_entscheid.main, sys.argv[2:]))
+'''
+
+
+def _ablehnung(fall: Path) -> list[str]:
+    return ["--fall", str(fall), "--gate", "A-Q1", "--entscheid", "abgelehnt",
+            "--rolle", VA, "--entscheider", "maintainer",
+            "--begruendung", "Zins offen", "--repo-root", str(REPO_ROOT)]
+
+
+def _hartes_prozessende(tmp_path: Path, fall: Path, stelle: str) -> int:
+    import os
+    import subprocess
+    import sys
+
+    kind = tmp_path / "kind.py"
+    kind.write_text(_KIND, encoding="utf-8")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+    lauf = subprocess.run([sys.executable, str(kind), stelle, *_ablehnung(fall)],
+                          cwd=REPO_ROOT, env=env, capture_output=True, text=True)
+    return lauf.returncode
+
+
+@pytest.mark.parametrize("stelle", ["link", "ledger", "keine"])
+def test_die_wiederholung_nach_hartem_prozessende_meldet_bereits_vorhanden(
+        fall_mit_konflikt, tmp_path, stelle):
+    """Idempotenzvertrag des Gates: derselbe Entscheid auf demselben Stand
+    wird gemeldet, nicht dupliziert. Ein Prozessende zwischen os.link und
+    dem Loeschen der Tempdatei (Hardlink-Zwilling des Snapshots) oder beim
+    Ersetzen des End-Ledgers liess einen Punktnamen-Rest liegen, den
+    _artefakt_hashes als Artefakt aufnahm: ein ZWEITER Snapshot, der den
+    Rest als entscheidungsrelevant nannte — und jeder weitere Snapshot des
+    Falls trug ihn mit. Positivkontrolle ('keine'): dasselbe ohne
+    Prozessende — kein Rest, ein Snapshot, bereits_vorhanden.
+    Mutationsprobe: _artefakt_hashes nimmt Punktreste wieder auf -> rot."""
+    from rechner_pipeline.gates.gate_entscheid import main
+
+    f, *_ = fall_mit_konflikt
+    assert _hartes_prozessende(tmp_path, f, stelle) == (0 if stelle == "keine" else 137)
+    reste = sorted(p.name for p in f.rglob(".*.tmp"))
+    assert bool(reste) == (stelle != "keine"), (
+        "Voraussetzung: das Prozessende hat einen Rest hinterlassen (Kontrolle: keinen)")
+    result = main(_ablehnung(f))
+    assert result.exit_code == 0, result.errors
+    assert result.summary.get("bereits_vorhanden") is True, result.summary
+    assert len(list((f / "entscheide").glob("A-Q1-*.json"))) == 1
+    for snapshot in (f / "entscheide").glob("A-Q1-*.json"):
+        genannt = json.loads(snapshot.read_text(encoding="utf-8"))["artefakt_hashes"]
+        assert [k for k in genannt if Path(k).name.startswith(".")] == []
+    # Nach der Wiederholung liegt nirgends im Fall ein Rest (RC07, Nachbesserung):
+    # weder der Hardlink-Zwilling in entscheide/ noch die Ledger-Tempdatei.
+    assert sorted(p.name for p in f.rglob(".*.tmp")) == []
+
+
+@pytest.mark.parametrize("pfad", ["bereits_vorhanden", "neuer_snapshot"])
+def test_ein_liegengebliebener_rest_wird_vom_naechsten_lauf_des_gates_entfernt(
+        fall_mit_konflikt, pfad):
+    """Ein Rest ist kein Beleg — und er bleibt nicht fuer immer liegen
+    (entscheide/ darf niemand von Hand bereinigen). Der ECHTE Ablauf von
+    gate_entscheid raeumt zu Beginn die Reste seiner Ziele weg — die
+    Snapshots dieses Gates in entscheide/ und sein Ledger im eigenen
+    Verzeichnis —, auch im Pfad 'bereits_vorhanden', der gar nichts
+    schreibt (dort greift kein Schreiber-Aufraeumen). Fremde Punktdateien
+    und die Reste anderer Gates bleiben. Der Test geht durch main() statt
+    durch den Schreiber (blinde Bauform 'Test baut seine Eingaben selbst');
+    die Reste eines echten harten Prozessendes deckt
+    test_die_wiederholung_nach_hartem_prozessende..., dieser hier ergaenzt
+    Kontrollnamen (fremdes Gate, fremde Punktdatei) und den Pfad 'neuer
+    Snapshot'.
+    Mutationsprobe: das Aufraeumen am Laufanfang entfernen -> rot
+    (bereits_vorhanden); das Aufraeumen in write_gate_ledger entfernen ->
+    rot (beide)."""
+    from rechner_pipeline.gates.gate_entscheid import main
+
+    f, *_ = fall_mit_konflikt
+    if pfad == "bereits_vorhanden":
+        assert main(_ablehnung(f)).exit_code == 0
+    entscheide = f / "entscheide"
+    diagnostik = f / "abgeleitet" / "diagnostics"
+    entscheide.mkdir(exist_ok=True)
+    diagnostik.mkdir(parents=True, exist_ok=True)
+    eigene = [
+        entscheide / ".A-Q1-abc.json.0123456789abcdef.tmp",
+        diagnostik / ".gate_entscheid_aq1.gate.json.0123456789abcdef.tmp",
+    ]
+    fremde = [
+        entscheide / ".A-Q2-abc.json.0123456789abcdef.tmp",
+        entscheide / ".fremd.tmp",
+        diagnostik / ".gate_entscheid_aq2.gate.json.0123456789abcdef.tmp",
+    ]
+    for p in eigene + fremde:
+        p.write_bytes(b"halb")
+    result = main(_ablehnung(f))
+    assert result.exit_code == 0, result.errors
+    assert bool(result.summary.get("bereits_vorhanden")) is (pfad == "bereits_vorhanden")
+    assert [p.name for p in eigene if p.exists()] == []
+    assert all(p.exists() for p in fremde)
+
+
+def test_schreibe_exklusiv_raeumt_die_reste_seines_ziels(tmp_path):
+    """Einheitstest der Schreiber-Ebene (den Ablauf deckt der Test davor):
+    Reste dieses Ziels gehen, fremde Punktdateien und Reste anderer Ziele
+    bleiben — auch beim Fehlschlag 'Ziel existiert'. Mutationsprobe: das
+    Aufraeumen in schreibe_exklusiv entfernen -> rot."""
+    from rechner_pipeline.gates import _common
+
+    ziel = tmp_path / "A-Q1-abc.json"
+    rest = tmp_path / ".A-Q1-abc.json.0123456789abcdef.tmp"
+    anderes_ziel = tmp_path / ".A-Q1-xyz.json.0123456789abcdef.tmp"
+    fremd = tmp_path / ".gitkeep"
+    for p in (rest, anderes_ziel, fremd):
+        p.write_bytes(b"halb")
+    _common.schreibe_exklusiv(ziel, b"{}\n")
+    assert ziel.read_bytes() == b"{}\n"
+    assert not rest.exists()
+    assert anderes_ziel.exists() and fremd.exists()
+    zwilling = tmp_path / ".A-Q1-abc.json.fedcba9876543210.tmp"
+    zwilling.write_bytes(b"{}\n")
+    with pytest.raises(FileExistsError):
+        _common.schreibe_exklusiv(ziel, b"[]\n")
+    assert not zwilling.exists() and ziel.read_bytes() == b"{}\n"

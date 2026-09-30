@@ -231,7 +231,10 @@ def test_betriebseingang_behauptet_keine_fremde_klasse_und_keine_simulation_ohne
     sagt nichts mehr ueber Schluesselklassen.
     """
     basis = {"schema_version": ueb.EINGANG_SCHEMA_VERSION, "fall": "f", "stichtag": "2026-01-01",
-             "snapshot_sha256": "a" * 64, "dateien": {"bestand.parquet": "d" * 64}}
+             "snapshot_sha256": "a" * 64, "dateien": {"bestand.parquet": "d" * 64},
+             # Schema 3 traegt die Betriebszeichnung; ihre Form prueft der
+             # Leser (lies_uebernahme), hier geht es nur um die Klasse.
+             "betriebszeichnung": {"verfahren": "hmac-sha256-v2"}}
     abnahme = {"gate": "A-M4", "entscheid": "angenommen"}
     ok = ueb.validate_eingang({**basis, "zeichnung": {
         **abnahme, "schluesselklasse": "simulation", "mandat_sha256": "b" * 64}})

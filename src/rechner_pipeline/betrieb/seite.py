@@ -33,11 +33,11 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
-import hashlib
 import html as _html
 import io
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -107,6 +107,12 @@ PAKET_ABSCHLUESSE_DIR = "abschluesse"
 #: der beiden Ableitungen schluege fehl, obwohl niemand gelogen hat.
 PAKET_ABSCHLUESSE_ANZAHL = 12
 SEITE_DIR = "seite"
+
+#: Wo die Seite vorbereitet wird, bevor sie nach ``seite/`` kommt: neben
+#: ``seite/``, unter derselben Wurzel (also demselben Dateisystem, der
+#: ``os.replace`` bleibt atomar). Das ausgelieferte Verzeichnis enthaelt nie
+#: eine halbe oder unveroeffentlichte Datei (Angriffsrunde C, RC08).
+SEITE_STAGING_DIR = "seite.neu"
 PAKET_DATEI = "stand.json"
 
 EREIGNIS_TITEL = {
@@ -127,7 +133,7 @@ class SeiteError(ValueError):
 
 
 def _gepruefte_zeilen(
-    ablage, aktuelle_zeile: Optional[Dict[str, Any]]
+    ablage, aktuelle_zeile: Optional[Dict[str, Any]], zeichner=None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
     """Die Protokollzeilen und die letzte gruene — NACH dem Nachweisvertrag.
 
@@ -152,12 +158,23 @@ def _gepruefte_zeilen(
     an der Naht dazwischen passt ein ganzer Tageslauf. Die Gegenprobe des
     Gutachters hat genau dort einen zweiten, regulaeren Lauf gestartet —
     die Seite nannte danach den alten Tag und zeigte die neuen Buchungen.
+
+    ``zeichner``: der Betriebsschluessel, gegen den die Zeichnung jeder
+    Protokollzeile geprueft wird (Export, Tageslauf). Ohne ihn werden Kette,
+    Schema-Folge und Vorlauf-Pin geprueft und die Zeichnung NICHT
+    behauptet — die interne Seite ohne Schluessel; ein Export hat ihn immer.
     """
     from rechner_pipeline.betrieb.tageslauf import (
         TageslaufError, lies_protokoll, pruefe_nachweis,
     )
 
-    zeilen = list(lies_protokoll(ablage.protokoll_pfad))
+    try:
+        zeilen = list(lies_protokoll(
+            ablage.protokoll_pfad,
+            schluesselring=zeichner.ring if zeichner is not None else None,
+            ordnung=zeichner.ordnung if zeichner is not None else None))
+    except TageslaufError as exc:
+        raise SeiteError(f"Das Protokoll traegt keinen Nachweis: {exc}") from exc
     if aktuelle_zeile is not None:
         zeilen.append(aktuelle_zeile)
     gruene = [z for z in zeilen if z.get("uebernommen")]
@@ -264,20 +281,46 @@ def _ergaenze_kennzahlen(
     Abschluesse ins Paket, die er selbst hat, also fehlt beiden Seiten
     derselbe. Wer eine Datei nachtraeglich aus dem Paket nimmt, faellt
     eine Stufe frueher auf, weil ``dateien`` sie mit Hash nennt.
+
+    Und was die Zeile schon NENNT, wird ebenso nachgerechnet und muss
+    gleich sein (Pruefrunde nach T27, Runde C, RC12): Vorher wurden nur
+    FEHLENDE Felder ergaenzt, und eine Zeile mit in_kraft 1016, zugaenge
+    5000, leistungen 777 ging neben einer Abschlussdatei mit sechzehn
+    Zeilen veroeffentlicht durch. Gerechnet oder gleich, nie geglaubt.
     """
     if journal is not None:
         for eintrag in liste:
-            if any(f not in eintrag for f in BEWEGUNGS_FELDER):
-                eintrag.update(bewegungskennzahlen(
-                    journal, _dt.date.fromisoformat(eintrag["stichtag"])))
+            soll = bewegungskennzahlen(journal, _dt.date.fromisoformat(eintrag["stichtag"]))
+            _gleich_oder_setzen(eintrag, soll, "dem Tagesjournal")
     if abschluesse_dir is None:
         return
     for eintrag in juengste_abschluesse(liste):
-        if "in_kraft" in eintrag:
-            continue
         pfad = Path(abschluesse_dir) / eintrag["datei"]
-        if pfad.is_file():
-            eintrag["in_kraft"] = int(len(read_portfolio(pfad)))
+        if not pfad.is_file():
+            continue
+        roh = pfad.read_bytes()
+        if eintrag.get("sha256") and sha256_bytes(roh) != eintrag["sha256"]:
+            raise SeiteError(
+                f"{pfad}: nicht der Abschluss, den das Protokoll zum "
+                f"{eintrag['stichtag']} bezeugt — ein festgeschriebener Abschluss "
+                "wird nie ersetzt (ADR-011)")
+        _gleich_oder_setzen(
+            eintrag, {"in_kraft": int(len(read_portfolio(io.BytesIO(roh))))},
+            "der Abschlussdatei")
+
+
+def _gleich_oder_setzen(eintrag: Dict[str, Any], soll: Dict[str, Any], quelle: str) -> None:
+    """Fehlt ein Feld, wird es gesetzt; steht es da, muss es gleich sein."""
+    abweichend = {k: (eintrag[k], v) for k, v in soll.items() if k in eintrag and eintrag[k] != v}
+    if abweichend:
+        raise SeiteError(
+            f"Abschluss {eintrag.get('stichtag')}: das Protokoll nennt "
+            + ", ".join(f"{k} {ist!r}" for k, (ist, _s) in sorted(abweichend.items()))
+            + f", nachgerechnet aus {quelle} ergibt sich "
+            + ", ".join(f"{k} {s!r}" for k, (_i, s) in sorted(abweichend.items()))
+            + " — die Zeile wurde veraendert; veroeffentlicht wird nur, was folgt")
+    for k, v in soll.items():
+        eintrag.setdefault(k, v)
 
 
 def juengste_abschluesse(liste: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -292,14 +335,16 @@ def juengste_abschluesse(liste: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [e for e in liste if e.get("datei")][-PAKET_ABSCHLUESSE_ANZAHL:]
 
 
-def stand_modell(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def stand_modell(
+    ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None, zeichner=None,
+) -> Dict[str, Any]:
     """Datum, Kennzahlen, Neugeschaeft, Buchungen, Abschluesse, Provenienz — aus
     Protokoll, Journal und Manifest des uebernommenen Stands."""
-    return stand_modell_mit_bytes(ablage, aktuelle_zeile)[0]
+    return stand_modell_mit_bytes(ablage, aktuelle_zeile, zeichner)[0]
 
 
 def stand_modell_mit_bytes(
-    ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None
+    ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None, zeichner=None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Wie :func:`stand_modell`, plus die GEPRUEFTEN Bytes von Manifest
     und Journal.
@@ -309,7 +354,7 @@ def stand_modell_mit_bytes(
     von der Platte liest, kann zwischen Pruefung und Kopie ein Tageslauf
     liegen — das Paket truege dann Belege einer anderen Generation als
     die Zahlen daneben."""
-    zeilen, zeile, gelesen = _gepruefte_zeilen(ablage, aktuelle_zeile)
+    zeilen, zeile, gelesen = _gepruefte_zeilen(ablage, aktuelle_zeile, zeichner)
     heute = _dt.date.fromisoformat(str(zeile["heute"]))
     # Die GEPRUEFTEN Bytes, nicht ein zweiter Lesevorgang (Befund
     # T26-10): Zwischen Pruefung und Auswertung passt ein ganzer
@@ -619,10 +664,111 @@ def _schreibe(ziel: Path, text: str) -> Path:
     return ziel
 
 
-def rendere_bestand_heute(ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None) -> Path:
-    """``daten/seite/index.html`` aus dem uebernommenen Stand schreiben."""
-    modell = stand_modell(ablage, aktuelle_zeile)
-    return _schreibe(ablage.wurzel / SEITE_DIR / "index.html", rendere_html(modell))
+#: Der Stand, den eine gerenderte Seite im Titel nennt — daran erkennt
+#: :func:`veroeffentliche_seite`, ob die vorhandene Seite juenger ist.
+_STAND_IM_TITEL = re.compile(r"<title>Bestand heute — Stand (\d{4}-\d{2}-\d{2})</title>")
+
+
+def seiten_stand(pfad: Path) -> Optional[_dt.date]:
+    """Der Stand, den die Seite unter ``pfad`` nennt (None: keine oder nicht lesbar)."""
+    try:
+        treffer = _STAND_IM_TITEL.search(Path(pfad).read_text(encoding="utf-8"))
+        return _dt.date.fromisoformat(treffer.group(1)) if treffer else None
+    except (OSError, ValueError):
+        return None
+
+
+def bereite_bestand_heute_vor(
+    ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None, zeichner=None,
+) -> Tuple[Path, Path, _dt.date]:
+    """``daten/seite/index.html`` NEBEN sich rendern, ohne sie zu ersetzen.
+
+    Vorbereitet wird unter ``daten/seite.neu/`` (:data:`SEITE_STAGING_DIR`),
+    nicht in ``seite/``: ein hartes Prozessende vor der Protokollzeile
+    (kein ``finally``) laesst die Tempdatei dort liegen, und ``seite/`` wird
+    von einem Caddy ausgeliefert.
+
+    Rueckgabe ``(tempdatei, endgueltiger_pfad, stand)``. Die Seite darf nur
+    einen Tag nennen, den das Protokoll gruen fuehrt (Angriffsrunde C,
+    RC08): Der Tageslauf rendert sie deshalb vor der Protokollzeile in die
+    Tempdatei — der endgueltige Name ist deterministisch und steht schon in
+    der Zeile — und ersetzt die Seite erst NACH dem Anfuegen der Zeile
+    (:func:`veroeffentliche_seite`). Scheitert das Anfuegen, bleibt die alte
+    Seite stehen (:func:`verwirf_seite`).
+
+    Raeumt Tempdateien frueherer, hart abgebrochener Laeufe weg; aufgerufen
+    wird nur unter der Lauf-Sperre der Ablage, die Tempdatei eines anderen
+    Renderers gibt es dann nicht.
+    """
+    modell = stand_modell(ablage, aktuelle_zeile, zeichner)
+    ziel = ablage.wurzel / SEITE_DIR / "index.html"
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    staging = ablage.wurzel / SEITE_STAGING_DIR
+    staging.mkdir(parents=True, exist_ok=True)
+    for rest in staging.glob(f".{ziel.name}.*.tmp"):
+        rest.unlink(missing_ok=True)
+    tmp = neue_datei(staging, ziel.name)
+    try:
+        tmp.write_text(rendere_html(modell), encoding="utf-8", newline="\n")
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return tmp, ziel, _dt.date.fromisoformat(modell["stand"])
+
+
+def veroeffentliche_seite(
+    tmp: Path, ziel: Path, stand: _dt.date, *, juengere_seite_schuetzen: bool = True,
+) -> Path:
+    """Die vorbereitete Seite atomar an ihren Platz setzen.
+
+    Mit ``juengere_seite_schuetzen`` (Standard) ersetzt sie nur, wenn der
+    gelesene ``stand`` nicht aelter ist als der, den die vorhandene Seite
+    nennt (Angriffsrunde C, RC09: ein Render mit aelterer Lesung
+    ueberschrieb die frische Seite eines Tageslaufs, ohne jede Meldung).
+    Sonst SeiteError, und die Tempdatei wird verworfen. Der Tageslauf
+    schaltet die Pruefung ab: Er haelt die Lauf-Sperre und ist die
+    Instanz, die den Stand fuehrt — auch rueckwaerts, wenn ein Mensch die
+    Ablage auf einen aelteren Stand zurueckgesetzt hat.
+    """
+    if juengere_seite_schuetzen:
+        vorhanden = seiten_stand(ziel)
+        if vorhanden is not None and vorhanden > stand:
+            verwirf_seite(tmp)
+            raise SeiteError(
+                f"{ziel} nennt den Stand {vorhanden.isoformat()}, die Lesung "
+                f"dieses Renders fuehrt nur {stand.isoformat()} — eine aeltere "
+                "Lesung ersetzt keine juengere Seite. Ein erneuter Start aendert "
+                "daran nichts, solange diese Seite steht. Ausweg: den naechsten "
+                "Tageslauf abwarten oder anstossen (er fuehrt den Stand und "
+                "setzt die Seite), oder die Seite beiseitelegen (umbenennen) — "
+                "dann rendert dieser Befehl sie aus dem gelesenen Stand neu"
+            )
+    try:
+        os.replace(tmp, ziel)
+    except BaseException:
+        verwirf_seite(tmp)
+        raise
+    return ziel
+
+
+def verwirf_seite(tmp: Optional[Path]) -> None:
+    """Die Tempdatei einer nicht veroeffentlichten Seite entfernen."""
+    if tmp is not None:
+        Path(tmp).unlink(missing_ok=True)
+
+
+def rendere_bestand_heute(
+    ablage, aktuelle_zeile: Optional[Dict[str, Any]] = None, zeichner=None,
+) -> Path:
+    """``daten/seite/index.html`` aus dem uebernommenen Stand schreiben.
+
+    Der Aufruf gehoert unter die Lauf-Sperre der Ablage (``seite.main``
+    und der Tageslauf tun das); die Pruefung in
+    :func:`veroeffentliche_seite` faengt die Ueberlappung ab, die trotzdem
+    durchkaeme, statt sie still zu ueberschreiben.
+    """
+    tmp, ziel, stand = bereite_bestand_heute_vor(ablage, aktuelle_zeile, zeichner)
+    return veroeffentliche_seite(tmp, ziel, stand)
 
 
 # --------------------------------------------------------------------------- #
@@ -738,46 +884,61 @@ def ankerziel_fehler(ablage, paket_ziel: Path, anker_verzeichnis: Path) -> Optio
     return None
 
 
+def _zeichner_des_exports(
+    schluessel: Path, ordnung_pfad: Optional[Path], ablage_wurzel: Path,
+):
+    """Rolle und Klasse des Exportschluessels — aus dem SCHLUESSEL bestimmt.
+
+    Wer die Datei besitzt, deren Fingerabdruck die Ordnung einer Rolle
+    zuordnet, handelt als diese Rolle (ADR-018). Eine Zeichnung ohne
+    Ordnung waere eine Rolle, die sich selbst vergibt. Die Regel teilt
+    sich der Export mit Tageslauf und Registrierung
+    (``betrieb._zeichnung.lade_zeichner``); Ordnung und Schluessel
+    duerfen nicht in der ABLAGE liegen.
+    """
+    from rechner_pipeline.betrieb._zeichnung import ZeichnungFehler, lade_zeichner
+
+    try:
+        return lade_zeichner(Path(schluessel), ordnung_pfad, ausserhalb=Path(ablage_wurzel))
+    except ZeichnungFehler as exc:
+        raise SeiteError(str(exc)) from exc
+
+
 def _zeichnung_des_exports(
     satz: Dict[str, Any], schluessel: Path, ordnung_pfad: Optional[Path],
     ablage_wurzel: Path,
 ) -> Dict[str, Any]:
-    """Rolle aus der Ordnung bestimmen und den Ankersatz zeichnen.
+    """Den Ankersatz mit dem Exportschluessel zeichnen (Urheberschaft)."""
+    return _zeichner_des_exports(schluessel, ordnung_pfad, ablage_wurzel).zeichne(satz)
 
-    Die Rolle wird nicht behauptet, sondern aus dem SCHLUESSEL bestimmt:
-    Wer die Datei besitzt, deren Fingerabdruck die Ordnung einer Rolle
-    zuordnet, handelt als diese Rolle (ADR-018). Eine Zeichnung ohne
-    Ordnung waere eine Rolle, die sich selbst vergibt.
+
+def _pruefzeichner(
+    ablage, schluessel: Optional[Path], zeichnungsordnung: Optional[Path],
+    betriebsschluessel: Optional[Path],
+):
+    """Der Betriebsschluessel, gegen den der Export das Protokoll prueft.
+
+    Ausdruecklich ``betriebsschluessel`` > ein Exportschluessel der Klasse
+    ``betrieb`` > die Naht des Tageslaufs > Fehler mit Ausweg. Der Export
+    veroeffentlicht, was die Zeilen sagen; eine Zeile, deren Zeichnung er
+    nicht nachrechnen kann, exportiert er nicht (Runde C: RC10 bis RC13
+    liefen alle ueber einen Export, der der letzten Zeile glaubte).
     """
-    from rechner_pipeline.models.zeichnung import (
-        lade_zeichnungsordnung,
-        schluesselklasse,
-        zeichnungsrolle,
-    )
+    from rechner_pipeline.betrieb.tageslauf import TageslaufError, betriebszeichner
 
-    if ordnung_pfad is None:
-        raise SeiteError(
-            "--schluessel verlangt --zeichnungsordnung: Die Rolle wird aus "
-            "dem Schluessel BESTIMMT, nicht behauptet (ADR-018)")
-    # Die Ordnung darf nicht in der ABLAGE liegen — dieselbe Regel wie
-    # "nicht im Fall": Die Rollenbindung wird nicht dort verwahrt, wo der
-    # Prozess schreibt, der sich auf sie beruft.
-    ordnung, _sha, fehler = lade_zeichnungsordnung(
-        str(ordnung_pfad), Path(ablage_wurzel))
-    if fehler or ordnung is None:
-        raise SeiteError("Zeichnungsordnung: " + "; ".join(fehler[:3]))
     try:
-        roh = Path(schluessel).read_bytes()
-    except OSError as exc:
-        raise SeiteError(f"Schluessel nicht lesbar: {exc}") from exc
-    fingerabdruck = hashlib.sha256(roh).hexdigest()
-    rolle = zeichnungsrolle(ordnung, fingerabdruck)
-    if rolle is None:
-        raise SeiteError(
-            f"Der Schluessel ({fingerabdruck[:16]}…) gehoert zu keiner Rolle "
-            "der Zeichnungsordnung — ohne Rolle keine Zeichnung")
-    return zeichne(satz, roh, rolle=rolle,
-                   klasse=str(schluesselklasse(ordnung, rolle)))
+        if betriebsschluessel is not None:
+            return betriebszeichner(
+                ablage, Path(betriebsschluessel), zeichnungsordnung,
+                wofuer="der Export", ohne="kein Export", flag="--betriebsschluessel")
+        if schluessel is not None and zeichnungsordnung is not None:
+            z = _zeichner_des_exports(Path(schluessel), zeichnungsordnung, ablage.wurzel)
+            if z.klasse == "betrieb":
+                return z
+        return betriebszeichner(
+            ablage, wofuer="der Export", ohne="kein Export", flag="--betriebsschluessel")
+    except TageslaufError as exc:
+        raise SeiteError(str(exc)) from exc
 
 
 def stands_paket(
@@ -785,6 +946,7 @@ def stands_paket(
     art: str = ART_MOMENTAUFNAHME,
     schluessel: Optional[Path] = None,
     zeichnungsordnung: Optional[Path] = None,
+    betriebsschluessel: Optional[Path] = None,
 ) -> Path:
     """Den Stand als Paket exportieren: ``stand.json`` plus die Berichte des
     juengsten Abschlusses und die Seite "Bestand heute".
@@ -812,6 +974,9 @@ def stands_paket(
     eine Momentaufnahme, kein Nachweis; der Nachweis liegt in der Ablage.
     Ersetzt wird aber NUR ein frueheres Paket ausserhalb der Ablage
     (``paketziel_fehler``, Review T24-07).
+
+    Vor dem Export wird jede Protokollzeile gegen den BETRIEBSSCHLUESSEL
+    geprueft (:func:`_pruefzeichner`); ohne ihn gibt es keinen Export.
     """
     ziel = Path(ziel)
     fehler = paketziel_fehler(ablage, ziel)
@@ -822,6 +987,7 @@ def stands_paket(
     fehler = ankerziel_fehler(ablage, ziel, anker_verzeichnis)
     if fehler:
         raise SeiteError(fehler)
+    pruefer = _pruefzeichner(ablage, schluessel, zeichnungsordnung, betriebsschluessel)
     # Unter der Lauf-Sperre (Pruefrunde T27, Befund 11): Der Export las
     # Manifest und Journal aus den geprueften Bytes, das Protokoll und den
     # Anker aber spaeter von der Platte — ein Tageslauf dazwischen lieferte
@@ -835,7 +1001,8 @@ def stands_paket(
         with lauf_sperre(ablage):
             return _stands_paket_unter_sperre(
                 ablage, ziel, anker_verzeichnis=anker_verzeichnis, art=art,
-                schluessel=schluessel, zeichnungsordnung=zeichnungsordnung)
+                schluessel=schluessel, zeichnungsordnung=zeichnungsordnung,
+                pruefer=pruefer)
     except TageslaufError as exc:
         raise SeiteError(str(exc)) from exc
 
@@ -843,6 +1010,7 @@ def stands_paket(
 def _stands_paket_unter_sperre(
     ablage, ziel: Path, *, anker_verzeichnis: Path, art: str,
     schluessel: Optional[Path], zeichnungsordnung: Optional[Path],
+    pruefer=None,
 ) -> Path:
     # Kein Export aus einem unterbrochenen Lauf (Angriffsrunde nach T27):
     # Ein Publish-Marker oder eine Protokollzeile ohne Zeilenende sind ein
@@ -860,7 +1028,21 @@ def _stands_paket_unter_sperre(
             raise SeiteError(
                 f"{ablage.protokoll_pfad}: die letzte Zeile ist nicht abgeschlossen — "
                 "erst den Tageslauf fahren, dann exportieren")
-    modell, gelesen = stand_modell_mit_bytes(ablage)
+    # Kein Export aus einem Protokoll ohne gezeichnete Zeile (Nachbesserung
+    # Runde C, Probe des Pruefers Fall D): Ein ohne Schluessel
+    # herabgestuftes Protokoll ging vorher unverankert durch. Aufschalten
+    # kann nur der Tageslauf, ausdruecklich; der Export nie.
+    from rechner_pipeline.betrieb.tageslauf import aufschaltung_fehler, lies_protokoll
+
+    fehler = aufschaltung_fehler(
+        lies_protokoll(
+            ablage.protokoll_pfad,
+            schluesselring=pruefer.ring if pruefer is not None else None,
+            ordnung=pruefer.ordnung if pruefer is not None else None),
+        wer="der Export")
+    if fehler:
+        raise SeiteError(f"{ablage.protokoll_pfad}: {fehler}")
+    modell, gelesen = stand_modell_mit_bytes(ablage, zeichner=pruefer)
     # Gebaut wird NEBEN dem Ziel (Angriffsrunde Betrieb): Der Export baute
     # im Ziel, und ein Abbruch nach dem Anlegen liess ein Verzeichnis ohne
     # stand.json zurueck, das jeder weitere Export als "kein frueheres
@@ -1048,7 +1230,12 @@ def main(argv: Optional[List[str]] = None) -> int:
              "Schluessel bestimmt, nicht behauptet.")
     parser.add_argument(
         "--zeichnungsordnung", default=None,
-        help="Zeichnungsordnung (Pflicht mit --schluessel).")
+        help="Zeichnungsordnung (Pflicht mit --schluessel und --betriebsschluessel).")
+    parser.add_argument(
+        "--betriebsschluessel", default=None,
+        help="Betriebsschluessel (Klasse betrieb), gegen den der Export jede "
+             "Protokollzeile prueft. Pflicht fuer --paket, ausser --schluessel ist "
+             "selbst der Betriebsschluessel.")
     parser.add_argument(
         "--anker", default=None,
         help="Verzeichnis der Ankerdatei (Pflicht mit --paket). Es gehoert "
@@ -1056,9 +1243,39 @@ def main(argv: Optional[List[str]] = None) -> int:
              "den der Tagesbetrieb nicht anfasst.")
     ns = parser.parse_args(argv)
     ablage = Ablage(Path(ns.stand))
+    # Vor der Sperre (Angriffsrunde C, RC09): lauf_sperre legt die Wurzel und
+    # lauf.lock an — ein Tippfehler im --stand hinterliess so eine halbe
+    # Ablage, die der naechste Tageslauf fuer seine eigene hielt. Der Befehl
+    # rendert nur aus einem gefuehrten Stand; ohne Wurzel und Protokoll gibt
+    # es nichts zu rendern, und er legt nichts an.
+    if not ablage.wurzel.is_dir() or not ablage.protokoll_pfad.is_file():
+        fehlt = ablage.wurzel if not ablage.wurzel.is_dir() else ablage.protokoll_pfad
+        print(f"seite: {fehlt} gibt es nicht — der Befehl rendert nur einen "
+              "gefuehrten Stand (Wurzel und Protokoll); den richtigen --stand "
+              "angeben oder erst einen Tageslauf fahren "
+              "(python -m rechner_pipeline.betrieb.tageslauf)",
+              file=sys.stderr)
+        return 2
     try:
-        seite = rendere_bestand_heute(ablage)
+        zeichner = None
+        if ns.betriebsschluessel:
+            zeichner = _pruefzeichner(ablage, None, (Path(ns.zeichnungsordnung)
+                                      if ns.zeichnungsordnung else None),
+                                      Path(ns.betriebsschluessel))
+        # Unter der Lauf-Sperre (Angriffsrunde C, RC09): Ohne sie liest der
+        # Befehl den Vortag, ein Tageslauf fuehrt den naechsten Tag und
+        # rendert dessen Seite, und der Befehl ersetzt sie durch seine
+        # aeltere Lesung. Belegt die Sperre ein Lauf, bricht der Befehl
+        # mit Meldung ab (TageslaufError, Exit 2).
+        from rechner_pipeline.betrieb.tageslauf import lauf_sperre
+
+        with lauf_sperre(ablage):
+            seite = rendere_bestand_heute(ablage, zeichner=zeichner)
         print(f"seite: {seite}", file=sys.stderr)
+        if zeichner is None:
+            print("seite: Zeichnung der Protokollzeilen nicht pruefbar (ohne "
+                  "--betriebsschluessel) — geprueft sind Kette, Schema-Folge und "
+                  "Vorlauf", file=sys.stderr)
         if ns.paket and not ns.anker:
             print("seite: --paket verlangt --anker — ein Stands-Paket ohne "
                   "Bezug nach aussen belegt nur sich selbst (T24-04)",
@@ -1071,7 +1288,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                      else ART_MOMENTAUFNAHME),
                 schluessel=Path(ns.schluessel) if ns.schluessel else None,
                 zeichnungsordnung=(Path(ns.zeichnungsordnung)
-                                   if ns.zeichnungsordnung else None))
+                                   if ns.zeichnungsordnung else None),
+                betriebsschluessel=(Path(ns.betriebsschluessel)
+                                    if ns.betriebsschluessel else None))
             print(f"seite: Stands-Paket -> {paket}", file=sys.stderr)
     except (SeiteError, TageslaufError, ValueError) as exc:
         print(f"seite: {exc}", file=sys.stderr)

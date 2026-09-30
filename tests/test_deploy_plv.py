@@ -43,8 +43,14 @@ def test_compose_ohne_netz_mit_datenvolume():
     assert "create_host_path: false" in compose
     assert "rechner-pipeline-plv:${IMAGE_TAG" in compose
     assert "PLV_IMAGE_DIGEST" in compose and "PLV_IMAGE_TAG" in compose
+    # Der Betriebsschluessel (Runde C): lesend eingebunden, ausserhalb der
+    # Ablage, und der Lauf bekommt ihn — ohne ihn laeuft kein Tag.
+    assert "target: /schluessel" in compose and "read_only: true" in compose
+    assert '"--schluessel", "/schluessel/betrieb.key"' in compose
+    assert '"--zeichnungsordnung", "/schluessel/zeichnungsordnung.json"' in compose
     beispiel = _text("env.beispiel")
-    for schluessel in ("GHCR_OWNER", "IMAGE_TAG", "IMAGE_DIGEST", "ZEITZONE"):
+    for schluessel in ("GHCR_OWNER", "IMAGE_TAG", "IMAGE_DIGEST", "ZEITZONE",
+                       "BETRIEBSSCHLUESSEL_DIR"):
         assert re.search(rf"^{schluessel}=", beispiel, re.M), schluessel
 
 

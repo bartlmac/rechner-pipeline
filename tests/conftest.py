@@ -167,3 +167,39 @@ def _testschluesselring():
     _ueb._STANDARD_SCHLUESSELRING = TESTRING
     yield
     _ueb._STANDARD_SCHLUESSELRING = vorher
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _testbetriebsschluessel():
+    """Jeder Tageslauf im Testlauf zeichnet und prueft mit dem
+    Test-Betriebsschluessel (tests/freigabe_testschluessel.py) — die Naht
+    ``betrieb.tageslauf._STANDARD_BETRIEBSZEICHNUNG``. Produktiv ist sie
+    None; dort kommen Schluessel und Ordnung aus ``--schluessel`` und
+    ``--zeichnungsordnung``, und ohne sie laeuft kein Tag.
+
+    Schluessel und Ordnung liegen in einem eigenen Temp-Verzeichnis
+    AUSSERHALB des pytest-Basisverzeichnisses: Die Naht wird bei jedem
+    Aufruf mit denselben Regeln geladen wie ein ausdruecklicher Schluessel
+    (nicht in der Ablage, 0600, ein Hardlink), und die Ablagen der Tests
+    liegen unter dem Basisverzeichnis. SESSION-weit aus demselben Grund wie
+    der Freigabe-Testring: Modul-Fixtures fuehren Tage, bevor eine
+    funktionsweite Naht griffe. Tests, die den Zustand ohne Schluessel
+    pruefen, setzen die Naht per monkeypatch auf None."""
+    import json
+    import shutil
+    import tempfile
+
+    from rechner_pipeline.betrieb import tageslauf as _tl
+    from tests.freigabe_testschluessel import BETRIEBSKEY, betriebsordnung
+
+    verzeichnis = Path(tempfile.mkdtemp(prefix="betriebsschluessel-"))
+    schluessel = verzeichnis / "betrieb.key"
+    schluessel.write_bytes(BETRIEBSKEY)
+    schluessel.chmod(0o600)
+    ordnung = verzeichnis / "zeichnungsordnung.json"
+    ordnung.write_text(json.dumps(betriebsordnung(), sort_keys=True), encoding="utf-8")
+    vorher = _tl._STANDARD_BETRIEBSZEICHNUNG
+    _tl._STANDARD_BETRIEBSZEICHNUNG = (schluessel, ordnung)
+    yield schluessel, ordnung
+    _tl._STANDARD_BETRIEBSZEICHNUNG = vorher
+    shutil.rmtree(verzeichnis, ignore_errors=True)

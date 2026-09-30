@@ -569,9 +569,13 @@ def test_der_gevotest_misst_die_herabsetzung_auf_dem_rueckkaufs_track(verfahren,
     Herabsetzung meldete einen Verlust. Die Scheiben-Kombination war
     gar nicht gebaut. Soll, unabhaengig: Vor = Rueckkaufs-Track des
     Vertrags, Nach = derselbe Track, wenn die Grundversicherung f x S
-    traegt und der umgewandelte Teil (1-f) x (Rueckstellung - Abzug) auf
+    traegt und der umgewandelte Teil (1-f) x (Rueckkaufswert - Abzug) auf
     den beitragsfreien Satz geht — der Abschlusskostenrest folgt dem
-    Beitrag. Mutationsprobe: den alten Zweig zurueck -> rot."""
+    Beitrag. Seit F1 (b) (Entscheid 2026-09-30) wird auf dem
+    Rueckkaufs-Track umgewandelt, nicht auf der Rueckstellung: die
+    verlustfreie Herabsetzung ist damit an der Naht wertstetig (dDK = 0),
+    die mit Abzug liegt um (1-f) x Abzug darunter.
+    Mutationsprobe: den alten Zweig zurueck -> rot."""
     from rechner_pipeline.kern import ModelPoint, vertrags_monatsreserve
     from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
     from rechner_pipeline.qa.aktuarieller_test import _system_werte
@@ -589,8 +593,8 @@ def test_der_gevotest_misst_die_herabsetzung_auf_dem_rueckkaufs_track(verfahren,
     for i, (e, k) in enumerate([(0, KERN)] + [(j, k) for j, k in kerne]):
         z = k.verlaufszeile(jahr - e)
         rest = z.vx_mrv - z.drx_bpfl          # Abschlusskostenrest dieses Bausteins
-        anteil_abzug = abzug * z.drx_bpfl / gesamt.drx_bpfl if abzug else 0.0
-        umgewandelt = (1 - f) * (z.drx_bpfl - anteil_abzug)
+        anteil_abzug = abzug * z.vx_mrv / gesamt.vx_mrv if abzug else 0.0
+        umgewandelt = (1 - f) * (z.vx_mrv - anteil_abzug)
         nach += f * z.drx_bpfl + f * rest + umgewandelt
     assert ist == pytest.approx(nach - vor, rel=1e-9, abs=1e-6)
 

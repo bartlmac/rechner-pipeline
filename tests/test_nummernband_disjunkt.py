@@ -31,6 +31,7 @@ from rechner_pipeline.betrieb.uebernahme import (
 )
 
 from tests.test_betrieb_uebernahme import STICHTAG, _fall, _kleine_config
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -79,9 +80,9 @@ def test_ein_zweiter_schreiber_kommt_nicht_dazwischen(tmp_path):
     stand = tmp_path / "daten"
     with eingang_sperre(stand):
         with pytest.raises(UebernahmeError, match="registriert"):
-            ueb.eingang_anlegen(stand, _fall(tmp_path, "waehrenddessen"), STICHTAG)
+            ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "waehrenddessen"), STICHTAG)
     # Danach geht es wieder — sonst waere die Sperre ein Dauerzustand.
-    ziel = ueb.eingang_anlegen(stand, _fall(tmp_path, "danach"), STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "danach"), STICHTAG)
     assert ziel.is_dir()
 
 
@@ -106,7 +107,7 @@ def test_die_sperre_deckt_das_fenster_zwischen_lesen_und_veroeffentlichen(tmp_pa
         if "n" not in gesehen:
             gesehen["n"] = True
             try:
-                ueb.eingang_anlegen(stand, zweiter_fall, STICHTAG)
+                ueb.eingang_anlegen(_mit_config(stand), zweiter_fall, STICHTAG)
                 gesehen["zweiter"] = "durchgekommen"
             except UebernahmeError as exc:
                 gesehen["zweiter"] = str(exc)
@@ -114,7 +115,7 @@ def test_die_sperre_deckt_das_fenster_zwischen_lesen_und_veroeffentlichen(tmp_pa
 
     ueb.vergebene_baender = _dazwischen
     try:
-        erst = ueb.eingang_anlegen(stand, _fall(tmp_path, "erst"), STICHTAG)
+        erst = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "erst"), STICHTAG)
     finally:
         ueb.vergebene_baender = echt
 
@@ -151,8 +152,8 @@ def test_der_leser_rechnet_die_baender_nach(tmp_path):
     from rechner_pipeline.bestand.config import load_config
 
     stand = tmp_path / "daten"
-    erst = ueb.eingang_anlegen(stand, _fall(tmp_path, "erst"), STICHTAG)
-    zweit = ueb.eingang_anlegen(stand, _fall(tmp_path, "zweit"), STICHTAG)
+    erst = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "erst"), STICHTAG)
+    zweit = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "zweit"), STICHTAG)
     cfg_pfad = tmp_path / "bestand.toml"
     cfg_pfad.write_text(_kleine_config(), encoding="utf-8")
     config = load_config(cfg_pfad)

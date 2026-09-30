@@ -981,6 +981,18 @@ def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any
     if str(manifest.get("horizont")) != str(stand.get("stand")):
         raise FalldatenFehler(
             f"{paket}: das Manifest fuehrt {manifest.get('horizont')!r}, stand.json {stand.get('stand')!r}")
+    # Herkunft und Eingaenge der letzten Zeile gegen das mitgelieferte
+    # Manifest (Runde C, RC13/RC14): ohne Schluessel und ohne Ablage
+    # rechenbar. Die Zeichnung der Zeilen kann der Konsument NICHT pruefen —
+    # er haelt keinen Betriebsschluessel und behauptet sie nicht.
+    from rechner_pipeline.betrieb.tageslauf import zeile_gegen_manifest
+
+    abweichend = zeile_gegen_manifest(letzte, manifest)
+    if abweichend:
+        raise FalldatenFehler(
+            f"{paket}: die letzte gruene Protokollzeile sagt ueber {abweichend} "
+            "etwas anderes als das Manifest des Stands, das sie bindet — die Zeile "
+            "wurde veraendert oder gehoert zu einem anderen Stand")
     journal_hash = (letzte.get("tagesjournal") or {}).get("sha256")
     if prov.get("tagesjournal_sha256") != journal_hash:
         raise FalldatenFehler(f"{paket}: Journal-Hash von Protokoll und stand.json stimmen nicht ueberein")
@@ -1069,13 +1081,18 @@ def _pruefe_felder_gegen_das_protokoll(
         read_portfolio(journal_pfad, expected_columns=TAGESJOURNAL_NAMES)
         if journal_pfad.is_file() else None
     )
+    from rechner_pipeline.betrieb.seite import SeiteError
+
+    try:
+        abschluesse = abschluesse_aus_protokoll(
+            zeilen, journal=journal, abschluesse_dir=paket / PAKET_ABSCHLUESSE_DIR)
+    except SeiteError as exc:
+        raise FalldatenFehler(f"{paket}: {exc}") from exc
     erwartet = {
         "bestand": dict(letzte.get("bestand") or {}),
         "uebernahmen": list(letzte.get("uebernahmen") or []),
         "verankerung": dict(letzte.get("verankerung") or {}),
-        "abschluesse": abschluesse_aus_protokoll(
-            zeilen, journal=journal,
-            abschluesse_dir=paket / PAKET_ABSCHLUESSE_DIR),
+        "abschluesse": abschluesse,
         "gefuehrt_seit": (
             gruene[0]["nachgeholt"][0] if gruene[0].get("nachgeholt") else gruene[0]["heute"]
         ),
@@ -1344,6 +1361,15 @@ def betrieb(paket: Optional[Path],
         "luecken": list(stand.get("luecken") or []),
         "quelle": str(paket),
         "verankerung": verankerung,
+        # Ausgewiesen, nicht behauptet (Runde C): Die Protokollzeilen sind mit
+        # dem Betriebsschluessel gezeichnet; wer ihn nicht haelt, kann die
+        # Signatur nicht nachrechnen. Geprueft sind Kette, Schema-Folge,
+        # Form der Zeichnung und Vorlauf-Pin — die Signatur prueft der Export.
+        "protokoll_zeichnung": {
+            "signatur": "nicht pruefbar",
+            "grund": "der Konsument haelt keinen Betriebsschluessel; die Signatur "
+                     "jeder Zeile prueft der Export vor dem Verankern",
+        },
     }
 
 

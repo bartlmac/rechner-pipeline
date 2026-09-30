@@ -268,7 +268,7 @@ ECHTER_SHA = None  # wird je Test aus dem Snapshot gelesen
 def eingang(tmp_path):
     fall = _fall(tmp_path)
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     return stand, fall, ziel
 
 
@@ -293,12 +293,14 @@ def test_eingang_wird_registriert_und_ist_unantastbar(eingang):
     # Das Nummernband: erster Eingang, drei Vertraege, auf volle Tausend
     # aufgerundet — 1..1000. Der naechste Fall faengt bei 1001 an.
     assert daten["band"] == {"von": 1, "bis": 1000}
-    assert daten["schema_version"] == ueb.EINGANG_SCHEMA_VERSION == 2
+    assert daten["schema_version"] == ueb.EINGANG_SCHEMA_VERSION == 3
+    # Seit Runde C gezeichnet (Betriebsschluessel, Klasse betrieb):
+    assert daten["betriebszeichnung"]["schluesselklasse"] == "betrieb"
     if os.name != "nt":
         for datei in ziel.iterdir():
             assert (datei.stat().st_mode & 0o777) == 0o444
     with pytest.raises(ueb.UebernahmeError, match="nie ueberschrieben"):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     config = load_config(PLV)
     gelesen = ueb.lies_uebernahmen(stand / "uebernahme", config)
     assert [u.fall for u in gelesen] == ["probe-uebernahme"]
@@ -324,12 +326,15 @@ def test_eingang_prueft_seine_form(tmp_path):
     assert any("stichtag" in f for f in ueb.validate_eingang({"schema_version": 1, "fall": "x", "stichtag": "gestern", "dateien": {"bestand.parquet": "0" * 64, "historie.parquet": "0" * 64, "ledger.parquet": "0" * 64}}))
     fall = _fall(tmp_path, "fremd")
     with pytest.raises(ueb.UebernahmeError, match="kein Fall-Arbeitsbereich"):
-        ueb.eingang_anlegen(tmp_path / "d", tmp_path / "kein-fall", STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "d"), tmp_path / "kein-fall", STICHTAG)
     with pytest.raises(ueb.UebernahmeError, match="fehlen"):
-        ueb.eingang_anlegen(tmp_path / "d", fall, STICHTAG, quelle=tmp_path / "leer")
-    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "2026-01-01"]) == 0
-    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "2026-01-01"]) == 2
-    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "kein"]) == 2
+        ueb.eingang_anlegen(_mit_config(tmp_path / "d"), fall, STICHTAG, quelle=tmp_path / "leer")
+    from tests.freigabe_testschluessel import betriebsargs
+
+    bs = betriebsargs("--betriebsschluessel")
+    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "2026-01-01", *bs]) == 0
+    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "2026-01-01", *bs]) == 2
+    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "kein", *bs]) == 2
 
 
 def _kleine_config() -> str:
@@ -338,6 +343,23 @@ def _kleine_config() -> str:
     1994, die Testwelt nur ueber die Tage des Tests."""
     text = PLV.read_text(encoding="utf-8")
     return re.sub(r"^betriebsbeginn = .*$", "betriebsbeginn = 2026-01-01", text, flags=re.M)
+
+
+def _mit_config(stand, text: "str | None" = None):
+    """Die Ablage ``stand`` mit Config — Config VOR Eingang.
+
+    Die Registrierung haelt das Tarifwerk der Uebernahme gegen die Config
+    der Ablage und verweigert ohne sie (RC16, Nachbesserung Runde C). Tests,
+    deren Gegenstand nicht die Config ist, legen sie deshalb vorher hin; eine
+    vorhandene Config bleibt unberuehrt."""
+    from rechner_pipeline.betrieb.tageslauf import Ablage as _Ablage
+
+    ablage = _Ablage(Path(stand))
+    ablage.configs.mkdir(parents=True, exist_ok=True)
+    if not ablage.config_pfad.is_file():
+        ablage.config_pfad.write_text(text if text is not None else _kleine_config(),
+                                      encoding="utf-8")
+    return Path(stand)
 
 
 def test_ein_abschluss_der_den_eingang_traegt_macht_ihn_nicht_neu(eingang, monkeypatch):
@@ -404,14 +426,14 @@ def test_ein_eingang_hinter_einem_fremden_abschluss_bleibt_abgewiesen(eingang, t
     # Seit der Angriffsrunde Betrieb weist schon die Registrierung ab —
     # ein Eingang, den der Betrieb nie annimmt, entsteht nicht.
     with pytest.raises(ueb.UebernahmeError, match="festgeschriebenen Monatsabschluss"):
-        ueb.eingang_anlegen(stand, zweiter, dt.date(2026, 1, 1))
+        ueb.eingang_anlegen(_mit_config(stand), zweiter, dt.date(2026, 1, 1))
     # Und der Leser haelt die Grenze weiter, fuer einen Eingang, der sie
     # (etwa aus einer aelteren Fassung) doch passiert hat.
     import pytest as _pt
     mp = _pt.MonkeyPatch()
     mp.setattr(ueb, "_pruefe_stichtag_gegen_ablage", lambda *a, **k: None)
     try:
-        ueb.eingang_anlegen(stand, zweiter, dt.date(2026, 1, 1))
+        ueb.eingang_anlegen(_mit_config(stand), zweiter, dt.date(2026, 1, 1))
     finally:
         mp.undo()
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
@@ -548,7 +570,7 @@ def test_ein_abgebrochenes_anlegen_hinterlaesst_keinen_halben_eingang(tmp_path, 
 
     monkeypatch.setattr(ueb, "write_portfolio", _bricht_beim_zweiten)
     with pytest.raises(OSError):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     monkeypatch.undo()
     ziel = stand / ueb.UEBERNAHME_DIR / "probe-uebernahme"
     rest = stand / ueb.STAGING_DIR / "probe-uebernahme"
@@ -557,7 +579,7 @@ def test_ein_abgebrochenes_anlegen_hinterlaesst_keinen_halben_eingang(tmp_path, 
     # Fallname kann ihn dort nicht mehr treffen (T26-01).
     assert rest.exists()
     # Der zweite Versuch gelingt und raeumt den Rest weg.
-    assert ueb.eingang_anlegen(stand, fall, STICHTAG) == ziel
+    assert ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG) == ziel
     assert ziel.is_dir() and not rest.exists()
 
 
@@ -571,7 +593,7 @@ def test_ohne_am4_snapshot_gibt_es_keine_uebernahme(tmp_path):
     Mutationsprobe: pruefe_am4_snapshot bei None durchwinken -> rot."""
     fall = _fall(tmp_path, snapshot=None)
     with pytest.raises(ueb.UebernahmeError, match="kein A-M4-Snapshot"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
     assert not (tmp_path / "daten" / "uebernahme").exists()
 
 
@@ -583,7 +605,7 @@ def test_ein_erfundener_snapshot_faellt_an_der_selbstadressierung(tmp_path):
     daten["entscheider"] = "jemand anderes"          # Inhalt geaendert, Hash nicht
     fall = _fall(tmp_path, snapshot=daten)
     with pytest.raises(ueb.UebernahmeError, match="Selbstadressierung|snapshot_sha256"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
 
 
 @pytest.mark.parametrize("gate, entscheid, stichwort", [
@@ -595,14 +617,14 @@ def test_nur_eine_angenommene_migrationsabnahme_begruendet_die_uebernahme(tmp_pa
     fall = _fall(tmp_path, snapshot=daten)
     # Die Datei liegt unter dem A-M4-Namen, damit der Weg bis zur Pruefung fuehrt.
     with pytest.raises(ueb.UebernahmeError, match=stichwort):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=daten["snapshot_sha256"])
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG, snapshot_sha256=daten["snapshot_sha256"])
 
 
 def test_der_snapshot_muss_zum_fall_gehoeren(tmp_path):
     daten = am4_snapshot("ein-anderer-fall")
     fall = _fall(tmp_path, snapshot=daten)
     with pytest.raises(ueb.UebernahmeError, match="gehoert zum Fall"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
 
 
 
@@ -628,7 +650,7 @@ def test_die_verankerung_wandert_in_den_stand_und_wird_als_nicht_angewandt_ausge
     # Erst die Tabelle, dann die Abnahme, die sie bezeugt — wie im echten Fall.
     _beleg_neu(fall)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = Ablage(stand)
     ablage.configs.mkdir(parents=True, exist_ok=True)
     ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
@@ -762,7 +784,7 @@ def test_eine_gelieferte_nummer_kollidiert_nie_mit_dem_eigenen_neugeschaeft(tmp_
     assert eigene, "die Testwelt verkauft an diesem Tag nichts — der Test saehe nichts"
 
     fall = _fall_mit_nummern(tmp_path, [eigene[0], eigene[0] + 1, eigene[0] + 2])
-    ueb.eingang_anlegen(ablage.wurzel, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(ablage.wurzel), fall, STICHTAG)
     abbildung = ueb.zielnummern(ablage.uebernahme / "probe-uebernahme")
     assert set(abbildung) == {eigene[0], eigene[0] + 1, eigene[0] + 2}
 
@@ -788,8 +810,8 @@ def test_zwei_faelle_teilen_keine_einzige_nummer(tmp_path):
     """
     stand = tmp_path / "daten"
     # Beide Lieferungen tragen ABSICHTLICH dieselben Quellnummern.
-    ueb.eingang_anlegen(stand, _fall_mit_nummern(tmp_path / "a", [11, 12, 13], "fall-a"), STICHTAG)
-    ueb.eingang_anlegen(stand, _fall_mit_nummern(tmp_path / "b", [11, 12, 13], "fall-b"), STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), _fall_mit_nummern(tmp_path / "a", [11, 12, 13], "fall-a"), STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), _fall_mit_nummern(tmp_path / "b", [11, 12, 13], "fall-b"), STICHTAG)
 
     a = ueb.zielnummern(stand / "uebernahme" / "fall-a")
     b = ueb.zielnummern(stand / "uebernahme" / "fall-b")
@@ -807,7 +829,7 @@ def test_jede_zielnummer_liegt_im_freien_raum(tmp_path):
     unter oder auf zehn Millionen vergeben (Nummernkreis k >= 1), also ist
     genau dieser Raum der Heimatraum uebernommener Bestaende."""
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, _fall(tmp_path), STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path), STICHTAG)
     ziele = ueb.zielnummern(stand / "uebernahme" / "probe-uebernahme").values()
     assert ziele and all(1 <= z <= ueb.NAMENSRAUM_UEBERNAHME_BIS for z in ziele)
 
@@ -991,7 +1013,7 @@ def test_uebernommen_wird_nur_was_die_abnahme_gesehen_hat(
     manipulation(fall)
     stand = tmp_path / "daten"
     with pytest.raises(ueb.UebernahmeError, match=stichwort):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     assert not (stand / ueb.UEBERNAHME_DIR).exists()
     assert not (stand / ueb.STAGING_DIR).exists()
 
@@ -1062,7 +1084,7 @@ def test_eine_verbogene_uebersetzung_faellt_beim_lesen(tmp_path, wie, stichwort)
     from rechner_pipeline.bestand.config import load_config
 
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, _fall(tmp_path), STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path), STICHTAG)
     cfg_pfad = tmp_path / "bestand.toml"
     cfg_pfad.write_text(_kleine_config(), encoding="utf-8")
     config = load_config(cfg_pfad)
@@ -1156,7 +1178,7 @@ def test_gleichnamige_tabellen_an_zwei_orten_sind_kein_widerspruch(tmp_path):
 
     # Beide Belege werden gelesen, beide Orte sind bezeugt — und der
     # Eingang entsteht, gebunden an den Stand SEINES Pfades.
-    ziel = ueb.eingang_anlegen(stand := tmp_path / "daten", fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand := tmp_path / "daten"), fall, STICHTAG)
     assert ziel.is_dir()
     snapshot, _, _verifiziert = ueb.lies_am4_snapshot(fall, _snapshot_sha(fall))
     belegt = ueb.belegte_tabellen(fall, snapshot)

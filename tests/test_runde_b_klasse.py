@@ -22,6 +22,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.freigabe_testschluessel import zeichne_neu
+
+from tests.freigabe_testschluessel import betriebsargs
+
 from rechner_pipeline.betrieb import seite as st
 from rechner_pipeline.betrieb import tageslauf as tl
 from rechner_pipeline.betrieb import uebernahme as ueb
@@ -107,11 +111,11 @@ def test_eine_halbe_config_ist_ein_eingangsfehler(tmp_path, kaputt, capsys):
     ablage = _ablage(tmp_path / "plv")
     ablage.config_pfad.chmod(0o644)
     ablage.config_pfad.write_bytes(kaputt)
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-03"]) == tl.EXIT_USAGE
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-03", *betriebsargs()]) == tl.EXIT_USAGE
     assert "nicht lesbar" in capsys.readouterr().err
     fall = _fall(tmp_path / "f")
     assert ueb.main(["--stand", str(ablage.wurzel), "--fall", str(fall),
-                     "--stichtag", STICHTAG.isoformat()]) == 2
+                     "--stichtag", STICHTAG.isoformat(), *betriebsargs("--betriebsschluessel")]) == 2
 
 
 def test_neuaufsetzen_ohne_schluessel_baut_nichts(tmp_path, monkeypatch):
@@ -139,9 +143,9 @@ def test_eine_nicht_bezeugte_nebentabelle_wird_nicht_registriert(tmp_path):
     verankerung = verankerung[[s for s, _ in VERANKERUNG_SPALTEN]].astype(dict(VERANKERUNG_SPALTEN))
     write_portfolio(verankerung, fall / "abgeleitet" / "bestand" / "verankerung.parquet")
     with pytest.raises(ueb.UebernahmeError, match="verankerung.parquet"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
     _beleg_neu(fall)                                   # Positivkontrolle: bezeugt -> registriert
-    ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
 
 
 def test_die_zahlen_der_letzten_zeile_folgen_aus_dem_stand(gefuehrt, tmp_path):
@@ -149,7 +153,8 @@ def test_die_zahlen_der_letzten_zeile_folgen_aus_dem_stand(gefuehrt, tmp_path):
     zeilen = [z for z in gefuehrt.protokoll_pfad.read_text(encoding="utf-8").split("\n") if z.strip()]
     letzte = json.loads(zeilen[-1])
     letzte["bestand"]["in_force"] = int(letzte["bestand"]["in_force"]) + 1000
-    zeilen[-1] = json.dumps(letzte, ensure_ascii=False, sort_keys=True)
+    # Neu gezeichnet: Gegenstand ist die Nachrechnung, nicht die Signatur.
+    zeilen[-1] = json.dumps(zeichne_neu(letzte), ensure_ascii=False, sort_keys=True)
     gefuehrt.protokoll_pfad.chmod(0o644)
     gefuehrt.protokoll_pfad.write_text("\n".join(zeilen) + "\n", encoding="utf-8")
     with pytest.raises(st.SeiteError, match="nicht aus dem Stand folgen"):
@@ -160,7 +165,7 @@ def test_ein_gefuehrter_eingang_verschwindet_nicht(tmp_path):
     """Mutationsprobe: die Pruefung auf fehlende bezeugte Eingaenge entfernen -> rot."""
     fall = _fall(tmp_path)
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = Ablage(stand)
     ablage.configs.mkdir(parents=True, exist_ok=True)
     ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
@@ -260,3 +265,4 @@ def test_der_dokumentierte_bericht_mit_config_und_merkmalen_laeuft_auf_einer_zel
 
 
 from tests.test_baldrian2_e2e import gefahrener_fall  # noqa: E402,F401
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402

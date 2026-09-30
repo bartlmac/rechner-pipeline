@@ -28,6 +28,7 @@ from tests.test_betrieb_uebernahme import (
     am4_snapshot,
     ueb_p9_sha,
 )
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -53,7 +54,7 @@ def test_die_registrierung_verwendet_die_bytes_die_sie_geprueft_hat(tmp_path, mo
         return echt(stand_)
 
     monkeypatch.setattr(ueb, "eingang_sperre", _tauscht_beim_eintritt)
-    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     monkeypatch.undo()
     assert read_portfolio(quelle)["sum_insured"].tolist() == [120000.0] * 3, "der Tausch hat nicht stattgefunden"
     im_eingang = read_portfolio(ziel / "bestand.parquet")
@@ -89,7 +90,7 @@ def test_eine_ueberholte_annahme_ist_nicht_mehr_registrierbar(tmp_path):
     alt = _spitze_laut_gate_ledger(fall)
     neu = _kettenglied(fall, "probe-uebernahme", entscheid="abgelehnt", vorgaenger=[alt])
     with pytest.raises(ueb.UebernahmeError, match="geltende Spitze") as exc:
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=alt)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG, snapshot_sha256=alt)
     assert neu[:16] in str(exc.value) and "abgelehnt" in str(exc.value)
     assert not (tmp_path / "daten" / ueb.UEBERNAHME_DIR / "probe-uebernahme").exists()
 
@@ -101,8 +102,8 @@ def test_die_neue_annahme_an_der_spitze_ist_registrierbar_die_alte_nicht(tmp_pat
     alt = _spitze_laut_gate_ledger(fall)
     neu = _kettenglied(fall, "probe-uebernahme", entscheid="angenommen", vorgaenger=[alt])
     with pytest.raises(ueb.UebernahmeError, match="geltende Spitze"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=alt)
-    ziel = ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=neu)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG, snapshot_sha256=alt)
+    ziel = ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG, snapshot_sha256=neu)
     assert json.loads((ziel / "eingang.json").read_text(encoding="utf-8"))["snapshot_sha256"] == neu
 
 
@@ -111,7 +112,7 @@ def test_ein_kaputtes_kettenglied_macht_die_spitze_unbekannt(tmp_path):
     alt = _spitze_laut_gate_ledger(fall)
     (fall / "entscheide" / ("A-M4-" + "f" * 64 + ".json")).write_text("{kein json", encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="nicht lesbar"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=alt)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG, snapshot_sha256=alt)
 
 
 def test_der_kettenvertrag_ist_derselbe_fuer_gate_und_eingang():
@@ -142,7 +143,7 @@ def test_eine_widerspruechliche_bruecke_wird_abgewiesen_nicht_wegreduziert(tmp_p
     wird. Mutationsprobe: die Duplikatpruefung entfernen -> rot."""
     fall = _fall(tmp_path)
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     config = load_config(PLV)
     assert len(ueb.lies_uebernahmen(stand / ueb.UEBERNAHME_DIR, config)) == 1
     pfad = ziel / ueb.POLICENNUMMERN_DATEI
@@ -179,10 +180,10 @@ def test_auch_eine_bezeugte_nebentabelle_wird_gegen_den_beleggraphen_gehalten(tm
     tabelle["sum_insured"] = tabelle["sum_insured"] * 2.0
     write_portfolio(tabelle, scheiben)
     with pytest.raises(ueb.UebernahmeError, match="bezeugt"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
     # Positivkontrolle: unveraendert registriert sich der Fall.
     frisch = _fall_mit_nebentabellen(tmp_path / "b")
-    assert ueb.eingang_anlegen(tmp_path / "daten-b", frisch, STICHTAG).is_dir()
+    assert ueb.eingang_anlegen(_mit_config(tmp_path / "daten-b"), frisch, STICHTAG).is_dir()
 
 
 def test_ein_kettenglied_in_rohform_ist_ein_benannter_fehler(tmp_path):
@@ -192,7 +193,7 @@ def test_ein_kettenglied_in_rohform_ist_ein_benannter_fehler(tmp_path):
     alt = _spitze_laut_gate_ledger(fall)
     (fall / "entscheide" / ("A-M4-" + "e" * 64 + ".json")).write_text("[1, 2, 3]", encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="kein Objekt"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=alt)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG, snapshot_sha256=alt)
 
 
 def test_die_registrierung_nimmt_die_lauf_sperre_der_ablage(tmp_path):
@@ -211,8 +212,8 @@ def test_die_registrierung_nimmt_die_lauf_sperre_der_ablage(tmp_path):
     with open(ablage.sperre, "a+") as fremd:
         fcntl.flock(fremd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         with pytest.raises(ueb.UebernahmeError, match="Sperre"):
-            ueb.eingang_anlegen(stand, fall, STICHTAG)
-    assert ueb.eingang_anlegen(stand, fall, STICHTAG).is_dir()
+            ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
+    assert ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG).is_dir()
 
 
 def test_eine_vertauschte_bruecke_wird_erkannt(tmp_path):
@@ -222,7 +223,7 @@ def test_eine_vertauschte_bruecke_wird_erkannt(tmp_path):
     Mutationsprobe: die Regelpruefung entfernen -> rot."""
     fall = _fall(tmp_path)
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     pfad = ziel / ueb.POLICENNUMMERN_DATEI
     pfad.chmod(0o644)
     b = read_portfolio(pfad)
@@ -247,4 +248,4 @@ def test_ein_fallfremdes_oder_ungezeichnetes_kettenglied_verletzt_die_kette(tmp_
     alt = _spitze_laut_gate_ledger(fall)
     _kettenglied(fall, "anderer-fall", entscheid="abgelehnt", vorgaenger=[alt])
     with pytest.raises(ueb.UebernahmeError, match="Fallbindung"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=alt)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG, snapshot_sha256=alt)

@@ -50,6 +50,7 @@ from rechner_pipeline.models.bestand import (
 from tests.test_betrieb_neuaufsetzen import _fall_mit_nebentabellen, _schichten, _verankerung
 from tests.test_betrieb_seite import _ablage
 from tests.test_betrieb_uebernahme import STICHTAG, _beleg_neu, _fall
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src" / "rechner_pipeline"
@@ -61,7 +62,7 @@ def gefuehrt_mit_schicht(tmp_path_factory):
     wurzel = tmp_path_factory.mktemp("n01")
     fall = _fall_mit_nebentabellen(wurzel)
     stand = wurzel / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = _ablage(stand)
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 3))
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
@@ -193,7 +194,7 @@ def test_ein_storno_mit_schicht_laeuft_gruen_durch_die_wache(tmp_path):
     Mutationsprobe: schichten/verankerung aus lauf_eingaben nehmen -> rot."""
     fall = _fall_mit_schicht_auf_allen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = _ablage(stand)
     eingang = next(p for p in ablage.uebernahme.iterdir() if p.is_dir())
     ziele = set(ueb.zielnummern(eingang).values())
@@ -256,7 +257,7 @@ def test_ein_zugangsstand_mit_fremder_vokabel_wird_kein_eingang(tmp_path, tabell
     _beleg_neu(fall)   # bezeugte Bytes, damit die VOKABEL-Wache greift, nicht die Hash-Wache
     stand = tmp_path / "daten"
     with pytest.raises(ueb.UebernahmeError, match="Gate"):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     assert not (stand / "uebernahme" / "probe-uebernahme").exists()
     # Dieselbe Pruefung faengt es auch beim Lesen — ein Eingang, der die
     # Registrierung umgangen hat, kommt nicht in die Fortschreibung.

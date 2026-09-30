@@ -190,12 +190,18 @@ def test_eine_fortschreibung_vor_dem_folgestichtag_wird_abgewiesen(tmp_path):
 
 
 def test_eine_fortschreibung_die_p_b1_abweist_wird_abgewiesen(tmp_path):
-    """Eine Buchung, die die Probe nicht ansieht (der Zugang am Stichtag),
-    stimmig ins Manifest nachgezogen, die Probe ehrlich neu gefahren —
-    P-B1 leitet sie her und weist ab. Stellvertretend fuer jede Regel, die
-    P-B1 kennt und die Probe nicht nachbaut (RED ausserhalb des
-    Reduktionsjahres, Hoehe der Erhoehungen). Mutationsprobe: P-B1 auf
-    der Fortschreibung nicht fahren -> rot."""
+    """Eine Buchung, die die Probe nicht ansieht (der Beitrag einer
+    Erhoehung ohne Scheibe nach dem Stichtag: sie rechnet ERH nur ueber die
+    Erhoehungssumme), stimmig ins Manifest nachgezogen, die Probe ehrlich
+    neu gefahren — P-B1 leitet sie her und weist ab. Stellvertretend fuer
+    jede Regel, die P-B1 kennt und die Probe nicht nachbaut (Hoehe der
+    Erhoehungen). Mutationsprobe: P-B1 auf der Fortschreibung nicht fahren
+    -> rot.
+
+    Der Zugang am Stichtag war hier bis Runde C das Beispiel; seit RC02
+    haelt die Probe das Ledger bis zum Stichtag selbst gegen die Uebernahme
+    (``endledger``) und sieht ihn — das Beispiel musste wandern, die Aussage
+    bleibt."""
     import hashlib
 
     import pandas as pd
@@ -212,8 +218,11 @@ def test_eine_fortschreibung_die_p_b1_abweist_wird_abgewiesen(tmp_path):
     ledger = read_portfolio(lauf / "ledger.parquet")
     zug = ledger.index[ledger["ereignis"] == "ZUG"]
     assert len(zug), "die Welt traegt keinen Zugang"
-    neu = ledger.copy()
-    neu.loc[zug[0], "betrag"] = float(neu.loc[zug[0], "betrag"]) + 1000.0
+    stich = ledger.iloc[[zug[0]]].copy()
+    stich["ereignis"], stich["betrag_art"] = "ERH", "BJB"
+    stich["betrag"], stich["betrag_herkunft"] = 100.0, "gerechnet"
+    stich["vertragsjahr"], stich["status_date"] = 12, pd.Timestamp("2027-01-01")
+    neu = pd.concat([ledger, stich], ignore_index=True).astype(ledger.dtypes.to_dict())
     (lauf / "ledger.parquet").chmod(0o644)
     write_portfolio(neu, lauf / "ledger.parquet")
     manifest = json.loads((lauf / "laufmanifest.json").read_text(encoding="utf-8"))

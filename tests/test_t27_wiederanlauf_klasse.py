@@ -21,6 +21,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from tests.freigabe_testschluessel import betriebsargs
+
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.betrieb import tageslauf as tl
@@ -44,6 +46,7 @@ from tests.test_betrieb_uebernahme import (
     _pb1_ledger,
     am4_snapshot,
 )
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -204,7 +207,7 @@ def _kurzer_fall(wurzel: Path, *, mit_pex: bool, name: str = "kurz-uebernahme") 
 def _betrieb(tmp_path, *, mit_pex: bool):
     fall = _kurzer_fall(tmp_path, mit_pex=mit_pex)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = Ablage(stand)
     ablage.configs.mkdir(parents=True, exist_ok=True)
     ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
@@ -278,7 +281,7 @@ def test_ein_vollstaendiges_staging_ohne_publikation_blockiert_die_wiederholung_
 
     monkeypatch.setattr(os, "rename", _kein_rename)
     with pytest.raises(OSError):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     monkeypatch.undo()
     rest = stand / ueb.STAGING_DIR / "probe-uebernahme"
     ziel = stand / ueb.UEBERNAHME_DIR / "probe-uebernahme"
@@ -286,11 +289,11 @@ def test_ein_vollstaendiges_staging_ohne_publikation_blockiert_die_wiederholung_
     # Der Reader bleibt frei: nichts ist veroeffentlicht.
     assert ueb.lies_uebernahmen(stand / ueb.UEBERNAHME_DIR, load_config(PLV)) == []
     # Die Wiederholung derselben Registrierung gelingt und raeumt den Rest weg.
-    assert ueb.eingang_anlegen(stand, fall, STICHTAG) == ziel
+    assert ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG) == ziel
     assert ziel.is_dir() and not rest.exists()
     # Ein VEROEFFENTLICHTER Eingang wird weiterhin nie ueberschrieben.
     with pytest.raises(ueb.UebernahmeError, match="nie ueberschrieben"):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
 
 
 # --------------------------------------------------------------------------- #
@@ -400,7 +403,7 @@ def test_ein_ein_ausgabefehler_im_vorlauf_hat_einen_exit_code_des_vertrags(tmp_p
         raise OSError(5, "I/O error")
 
     monkeypatch.setattr(tl, "nimm_publish_zurueck", _kaputt)
-    code = tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-03"])
+    code = tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-03", *betriebsargs()])
     assert code == tl.EXIT_USAGE
 
 
@@ -528,7 +531,7 @@ def test_ein_zugangsstand_ohne_vertrag_in_kraft_am_stichtag_wird_nicht_registrie
     ablage.configs.mkdir(parents=True, exist_ok=True)
     ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
     try:
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     except ueb.UebernahmeError:
         assert not (ablage.uebernahme / "kurz-uebernahme").exists()
         return

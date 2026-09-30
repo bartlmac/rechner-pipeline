@@ -470,12 +470,18 @@ def leite_absetzung_ab(
 
     Herleitung: Alle Zielgroessen des Kerns sind je Einheit
     Versicherungssumme formuliert. Mit den Saetzen ``v = kVx_bpfl(j)``,
-    ``vbfr = kVx_bfr(j)`` und der Beitragsrate ``Bxt`` gilt
+    ``m = kVx_MRV(j)``, ``vbfr = kVx_bfr(j)`` und der Beitragsrate ``Bxt``
+    gilt
 
         K := JBRUTTO / Bxt = f * VS                     (fortgefuehrter Teil)
-        S - K = (DR - StoAb) * (1 - f) / vbfr           (umgewandelter Teil)
+        S - K = (V^MRV - StoAb) * (1 - f) / vbfr        (umgewandelter Teil)
 
-    und je Stornoabzugs-Zweig (Regelwerk des Tarifplans) wird die zweite
+    — umgewandelt wird der Rueckkaufs-Track ``V^MRV = m * VS``, wie bei
+    der Beitragsfreistellung (Entscheid 2026-09-30, F1 (b); vorher die
+    Rueckstellung ``v * VS``, und die Umkehrung traf innerhalb der
+    Zillmerdauer die Vorwaertsregel nicht). Der Stornoabzug
+    ``StoAb = s * (VS - v * VS)`` haengt dagegen weiter an der
+    Rueckstellung. Je Stornoabzugs-Zweig (Regelwerk des Tarifplans) wird die zweite
     Gleichung nach VS aufloesbar: im Satz-Zweig und bei StoAb = 0 linear,
     in den geklammerten Zweigen (Unter-/Obergrenze) quadratisch. Der
     Zweig wird nicht geraten: Jeder Kandidat muss das Regelwerk an
@@ -512,6 +518,7 @@ def leite_absetzung_ab(
         )
     zeile = kern_einheit.verlaufszeile(jahr)
     v, vbfr = zeile.vx_bpfl, zeile.vx_bfr
+    m = zeile.vx_mrv                # Rueckkaufs-Track je Einheit (sum_insured = 1)
     bxt = kern_einheit.gross_premium_rate()
     if vbfr <= 0.0 or bxt <= 0.0:
         raise MigrationszugangFehler(
@@ -533,13 +540,13 @@ def leite_absetzung_ab(
 
     kandidaten: List[Tuple[str, float]] = []
     if flex_oder_null:
-        if v <= 0.0:
-            raise MigrationszugangFehler(f"kVx_bpfl({jahr}) = {v!r} <= 0")
+        if m <= 0.0:
+            raise MigrationszugangFehler(f"kVx_MRV({jahr}) = {m!r} <= 0")
         kandidaten.append(
-            ("flex_oder_null", k_teil + (erlsumme - k_teil) * vbfr / v))
+            ("flex_oder_null", k_teil + (erlsumme - k_teil) * vbfr / m))
     else:
         # Satz-Zweig: StoAb = s * VS * (1 - v), linear in VS.
-        nenner = v - s_satz * (1.0 - v)
+        nenner = m - s_satz * (1.0 - v)
         if nenner > 0.0:
             vs = k_teil + (erlsumme - k_teil) * vbfr / nenner
             if einheit.stoab_min <= s_satz * vs * (1.0 - v) <= einheit.stoab_max:
@@ -547,13 +554,13 @@ def leite_absetzung_ab(
         # Geklammerte Zweige: StoAb konstant c, quadratisch in VS.
         for zweig, c in (("min", einheit.stoab_min),
                          ("max", einheit.stoab_max)):
-            # v*VS^2 - (c + K*v + (S-K)*vbfr)*VS + c*K = 0
-            b = c + k_teil * v + (erlsumme - k_teil) * vbfr
-            disk = b * b - 4.0 * v * c * k_teil
-            if disk < 0.0 or v <= 0.0:
+            # m*VS^2 - (c + K*m + (S-K)*vbfr)*VS + c*K = 0
+            b = c + k_teil * m + (erlsumme - k_teil) * vbfr
+            disk = b * b - 4.0 * m * c * k_teil
+            if disk < 0.0 or m <= 0.0:
                 continue
-            for wurzel in ((b + math.sqrt(disk)) / (2.0 * v),
-                           (b - math.sqrt(disk)) / (2.0 * v)):
+            for wurzel in ((b + math.sqrt(disk)) / (2.0 * m),
+                           (b - math.sqrt(disk)) / (2.0 * m)):
                 if wurzel <= k_teil:
                     continue
                 roh = s_satz * wurzel * (1.0 - v)
@@ -762,7 +769,9 @@ def leite_ursprungssumme_ab(
             f"dauer (0 < jahr < t = {einheit.t})"
         )
     zeile = kern_einheit.verlaufszeile(jahr)
-    v, vbfr = zeile.vx_bpfl, zeile.vx_bfr
+    # Umgewandelt wird der Rueckkaufs-Track m (F1 (b), Entscheid
+    # 2026-09-30), der Stornoabzug haengt an der Rueckstellung v.
+    v, m, vbfr = zeile.vx_bpfl, zeile.vx_mrv, zeile.vx_bfr
     if vbfr <= 0.0:
         raise MigrationszugangFehler(f"kVx_bfr({jahr}) = {vbfr!r} <= 0")
     frei = 1.0 - anteil
@@ -775,19 +784,19 @@ def leite_ursprungssumme_ab(
 
     kandidaten: List[Tuple[str, float]] = []
     if flex_oder_null:
-        faktor = anteil + v * frei / vbfr
+        faktor = anteil + m * frei / vbfr
         kandidaten.append(("flex_oder_null", erlsumme / faktor))
     else:
-        # Satz-Zweig: ERLSUMME = VS * (f + (v - s(1-v)) * (1-f) / vbfr)
-        faktor = anteil + (v - s_satz * (1.0 - v)) * frei / vbfr
+        # Satz-Zweig: ERLSUMME = VS * (f + (m - s(1-v)) * (1-f) / vbfr)
+        faktor = anteil + (m - s_satz * (1.0 - v)) * frei / vbfr
         if faktor > 0.0:
             vs = erlsumme / faktor
             if einheit.stoab_min <= s_satz * vs * (1.0 - v) <= einheit.stoab_max:
                 kandidaten.append(("satz", vs))
-        # Klammerzweige: ERLSUMME = VS * (f + v(1-f)/vbfr) - c(1-f)/vbfr
+        # Klammerzweige: ERLSUMME = VS * (f + m(1-f)/vbfr) - c(1-f)/vbfr
         for zweig, c in (("min", einheit.stoab_min),
                          ("max", einheit.stoab_max)):
-            faktor = anteil + v * frei / vbfr
+            faktor = anteil + m * frei / vbfr
             vs = (erlsumme + c * frei / vbfr) / faktor
             roh = s_satz * vs * (1.0 - v)
             passt = (roh <= c) if zweig == "min" else (roh >= c)

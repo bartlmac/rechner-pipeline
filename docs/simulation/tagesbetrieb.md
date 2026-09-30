@@ -240,7 +240,8 @@ der Fall etwas anderes bezeugt.
 ## 7 Der Tageslauf
 
 Ein Kommando, `python -m rechner_pipeline.betrieb.tageslauf --stand
-<daten> --heute <datum>`, idempotent und deterministisch. Ohne `--heute`
+<daten> --heute <datum> --schluessel <betriebsschlüssel>
+--zeichnungsordnung <ordnung>`, idempotent und deterministisch. Ohne `--heute`
 gilt der Kalendertag des Aufrufs; in Tests und beim Nachholen wird er
 gesetzt.
 
@@ -291,6 +292,34 @@ gesetzt.
    Buchungen je Art, Bestandszahlen, P-B1-Urteil, Manifest-Hash,
    Kern-Version, Image-Digest). Das Protokoll ist der Nachweis, dass das
    Unternehmen jeden Tag geführt wurde.
+
+   **Gezeichnete Zeilen (Schema 3, ADR-018 Nachtrag 2026-09-30).** Jede
+   Zeile ist mit dem Betriebsschlüssel gezeichnet (Rolle
+   `betrieb/tageslauf`, Schlüsselklasse `betrieb`, HMAC nach
+   `models.anker`). Schlüssel und Zeichnungsordnung liegen beim Menschen
+   außerhalb der Ablage, wie die Rollenschlüssel der Abnahmen; ohne sie
+   läuft kein Tag. Vor jedem Anfügen, bei jedem Lauf und bei jedem Export
+   wird die ganze Kette geprüft: Verkettung, steigendes Schema (eine
+   herabgestufte Zeile ist ein Kettenbruch), Zeichnung, Rolle gegen die
+   Ordnung. Der Nachweis verlangt genau eine grüne Zeile je geführtem Tag
+   und rechnet die Angaben der letzten grünen Zeile nach, statt ihnen zu
+   glauben: Bestandszahlen aus dem Stand, Monatskennzahlen aus
+   Abschlussdatei und Journal, Übernahmeangaben aus `eingang.json`,
+   Config-Hash, Kern-Version und Eingänge aus dem Manifest. Jeder jemals
+   bezeugte Eingang und jeder bezeugte Abschluss muss unverändert in der
+   Ablage liegen. `eingang.json` selbst zeichnet die Registrierung mit
+   demselben Schlüssel.
+
+   **Aufschaltung.** Eine Ablage, die vor dem Betriebsschlüssel geführt
+   wurde, wird nicht neu aufgesetzt: Beim ersten Lauf nach dem Umstieg
+   schaltet der Mensch sie EINMAL ausdrücklich auf (`--aufschalten`), und
+   die erste gezeichnete Zeile pinnt den ungezeichneten Vorlauf
+   (`vorlauf`: Zahl und SHA-256 der rohen Zeilen); eine spätere Änderung
+   darin bricht den Pin. Ohne den Schalter verweigern Lauf, Export und
+   Neuaufsetzen ein Protokoll ohne gezeichnete Zeile — es könnte ebenso
+   ein ohne Schlüssel herabgestuftes sein; auf ein gezeichnetes Protokoll
+   verweigert der Schalter selbst. Ungezeichnete Eingänge bleiben geführt,
+   solange eine gezeichnete Zeile oder der gepinnte Vorlauf sie bezeugt.
 
 Der Zeitpunkt 23:00 Uhr ist eine Betriebsentscheidung: spät genug, dass
 der Tag vorbei ist, früh genug, dass der Stand vor Mitternacht steht.
@@ -500,7 +529,9 @@ Routine, die nichts löscht:
 
 ```
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
-    --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml]
+    --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml] \
+    --freigabe-schluessel <freigabeschlüssel> \
+    --betriebsschluessel <betriebsschlüssel> --zeichnungsordnung <ordnung>
 ```
 
 Sie prüft, bevor sie etwas bewegt (keine Lauf-Sperre; die Tarifwerk-

@@ -15,3 +15,45 @@ import hashlib
 TESTKEY: bytes = hashlib.sha256(b"rechner-pipeline: testschluessel der freigabe").digest()
 TESTRING: dict = {hashlib.sha256(TESTKEY).hexdigest(): TESTKEY}
 FREMDER_SCHLUESSEL: bytes = hashlib.sha256(b"ein anderer schluessel").digest()
+
+#: Der Test-Betriebsschluessel (Rolle ``betrieb/tageslauf``, Klasse
+#: ``betrieb``; ADR-018, Nachtrag 2026-09-30). ``conftest`` legt ihn als
+#: Datei 0600 in ein Session-Verzeichnis AUSSERHALB jeder Ablage und setzt
+#: die Naht ``tageslauf._STANDARD_BETRIEBSZEICHNUNG`` — damit die vielen
+#: ``tageslauf()``-Aufrufe der Suite unveraendert laufen und trotzdem jede
+#: Zeile gezeichnet und geprueft wird.
+BETRIEBSKEY: bytes = hashlib.sha256(b"rechner-pipeline: testschluessel des betriebs").digest()
+BETRIEBSROLLE = "betrieb/tageslauf"
+
+
+def betriebsordnung(weitere: "dict | None" = None) -> dict:
+    """Die Test-Zeichnungsordnung (Schema 2) mit der Betriebsrolle."""
+    rollen = {BETRIEBSROLLE: {
+        "schluessel_sha256": hashlib.sha256(BETRIEBSKEY).hexdigest(),
+        "schluesselklasse": "betrieb", "gates": []}}
+    rollen.update(weitere or {})
+    return {"schema_version": 2, "rollen": rollen}
+
+
+def betriebsargs(flag: str = "--schluessel") -> list:
+    """``<flag> <schluessel> --zeichnungsordnung <ordnung>`` fuer die
+    Kommandos des Betriebs — der Test-Betriebsschluessel der Session."""
+    from rechner_pipeline.betrieb import tageslauf as tl
+
+    schluessel, ordnung = tl._STANDARD_BETRIEBSZEICHNUNG
+    return [flag, str(schluessel), "--zeichnungsordnung", str(ordnung)]
+
+
+def zeichne_neu(zeile: dict) -> dict:
+    """Eine umgeschriebene Protokollzeile mit dem Test-Betriebsschluessel NEU
+    zeichnen — der Faelscher, der den Schluessel HAT.
+
+    Tests, deren Gegenstand eine zweite Schicht ist (Ankerreihe,
+    Nachrechnung aus dem Stand), zeichnen ihre Faelschung damit neu: Sonst
+    faengt schon die Signatur sie, und der Test sagt nichts mehr ueber die
+    Schicht, fuer die er geschrieben wurde.
+    """
+    from rechner_pipeline.models.anker import zeichne
+
+    rest = {k: v for k, v in zeile.items() if k != "zeichnung"}
+    return {**rest, "zeichnung": zeichne(rest, BETRIEBSKEY, rolle=BETRIEBSROLLE, klasse="betrieb")}

@@ -25,4 +25,16 @@ services:
         target: /daten
         bind:
           create_host_path: false
-    command: ["--stand", "/daten"]
+      # Der Betriebsschluessel und die Zeichnungsordnung (ADR-018, Nachtrag
+      # 2026-09-30): Jede Protokollzeile ist gezeichnet. Sie liegen beim
+      # Menschen AUSSERHALB der Ablage und kommen nur lesend herein; .env
+      # nennt das Verzeichnis, nie den Schluessel selbst.
+      - type: bind
+        source: ${BETRIEBSSCHLUESSEL_DIR:?BETRIEBSSCHLUESSEL_DIR in .env setzen}
+        target: /schluessel
+        read_only: true
+        bind:
+          create_host_path: false
+    command: ["--stand", "/daten",
+              "--schluessel", "/schluessel/betrieb.key",
+              "--zeichnungsordnung", "/schluessel/zeichnungsordnung.json"]

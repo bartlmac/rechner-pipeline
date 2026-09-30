@@ -42,6 +42,7 @@ from rechner_pipeline.betrieb.tageslauf import (
 )
 from tests.test_betrieb_neuaufsetzen import _fall_mit_nebentabellen
 from tests.test_betrieb_uebernahme import STICHTAG, PLV
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -78,7 +79,7 @@ def test_ein_zugang_mitten_im_betrieb_wird_gefuehrt(tmp_path):
     zurueckstellen -> dieser Lauf bricht mit TageslaufError ab."""
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)               # Zugang 2026-01-01
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)               # Zugang 2026-01-01
     ablage = _ablage_ab(stand, dt.date(2025, 1, 1))          # gefuehrt seit 2025
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
@@ -105,7 +106,7 @@ def test_ein_zugang_vor_dem_ersten_gefuehrten_tag_wird_verweigert(tmp_path):
     uebernehmen."""
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = _ablage_ab(stand, dt.date(2026, 6, 1))
     code, zeile = tageslauf(ablage, dt.date(2026, 6, 2))
     assert code != EXIT_OK and zeile["uebernommen"] is False
@@ -119,7 +120,7 @@ def test_ein_zugang_nach_heute_ruht_bis_zu_seinem_stichtag(tmp_path):
     jeder Lauf bis zum Stichtag rot)."""
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = _ablage_ab(stand, dt.date(2025, 1, 1))
     code, zeile = tageslauf(ablage, dt.date(2025, 6, 1))
     assert code == EXIT_OK, zeile.get("fehler")
@@ -254,7 +255,7 @@ def test_ein_zugang_vor_dem_juengsten_abschluss_wird_verweigert(tmp_path):
     # Seit der Angriffsrunde Betrieb weist schon die Registrierung ab: ein
     # Eingang, den der Betrieb nie annimmt, entsteht nicht.
     with pytest.raises(ueb.UebernahmeError, match="festgeschriebenen Monatsabschluss"):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     assert tageslauf(ablage, dt.date(2026, 3, 4))[0] == EXIT_OK
 
 
@@ -268,7 +269,7 @@ def test_ein_zugang_in_der_offenen_zeit_wird_gefuehrt(tmp_path):
     assert juengster == "abschluss_2025-12-01"               # vor dem Zugang
 
     fall = _fall_mit_nebentabellen(tmp_path)                  # Stichtag 2026-01-01
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
     stamm = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
@@ -305,7 +306,7 @@ def test_ein_zugang_genau_am_juengsten_abschluss_wird_verweigert(tmp_path):
 
     fall = _fall_mit_nebentabellen(tmp_path)                  # Stichtag 2026-01-01
     with pytest.raises(ueb.UebernahmeError, match="festgeschriebenen Monatsabschluss 2026-01-01"):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
 
 
 def test_eine_bestehende_fall_config_bleibt_lesbar(tmp_path):
@@ -359,7 +360,7 @@ def test_jede_stichtagssicht_traegt_ein_bewegungskonto(tmp_path):
 
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)                # Zugang 2026-01-01
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)                # Zugang 2026-01-01
     betriebsbeginn = dt.date(2025, 1, 1)
     ablage = _ablage_ab(stand, betriebsbeginn)               # gefuehrt seit 2025
     heute = dt.date(2026, 1, 9)

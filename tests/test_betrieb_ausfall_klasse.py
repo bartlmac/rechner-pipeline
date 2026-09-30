@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.freigabe_testschluessel import betriebsargs
+
 from rechner_pipeline.betrieb import _loeschen
 from rechner_pipeline.betrieb import seite as st
 from rechner_pipeline.betrieb import tageslauf as tl
@@ -25,6 +27,7 @@ from rechner_pipeline.betrieb import uebernahme as ueb
 from rechner_pipeline.betrieb.tageslauf import EXIT_OK, Ablage, lies_protokoll, tageslauf
 from tests.test_betrieb_seite import _ablage
 from tests.test_betrieb_uebernahme import STICHTAG, _fall, _kleine_config
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 
 def test_ein_abbruch_mitten_im_loeschen_laesst_den_marker_stehen(tmp_path, monkeypatch):
@@ -95,7 +98,8 @@ def test_neuaufsetzen_erneut_gefahren_vollendet_den_tausch(tmp_path, monkeypatch
     monkeypatch.undo()
     assert not ablage.wurzel.exists()
     assert na.main(["--stand", str(ablage.wurzel), "--fall", str(fall),
-                    "--stichtag", STICHTAG.isoformat()]) == 0
+                    "--stichtag", STICHTAG.isoformat(),
+                    *betriebsargs("--betriebsschluessel")]) == 0
     assert (ablage.wurzel / na.PROVENIENZ_DATEI).is_file()
     assert not list(tmp_path.glob("daten.neu-*"))
 
@@ -114,7 +118,7 @@ def test_ein_vorausdatierter_eingang_ruht_bis_zu_seinem_stichtag(tmp_path):
     ablage.config_pfad.write_text(re.sub(
         r"^betriebsbeginn = .*$", "betriebsbeginn = 2025-12-01",
         _kleine_config(), flags=re.M), encoding="utf-8")
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     code, zeile = tageslauf(ablage, dt.date(2025, 12, 15))
     assert code == EXIT_OK, zeile.get("fehler")
     assert zeile["wartende_uebernahmen"] == [{"fall": "probe-uebernahme", "stichtag": "2026-01-01"}]
@@ -148,5 +152,75 @@ def test_ein_ausgabefehler_der_registrierung_ist_eine_meldung(tmp_path, monkeypa
 
     monkeypatch.setattr(ueb, "eingang_anlegen", voll)
     code = ueb.main(["--stand", str(tmp_path / "daten"), "--fall", str(fall),
-                     "--stichtag", STICHTAG.isoformat()])
+                     "--stichtag", STICHTAG.isoformat(), *betriebsargs("--betriebsschluessel")])
     assert code == 2 and "Ein-/Ausgabefehler" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# RC06 (Angriffsrunde C): ein leerer Abschluss ist keine Abweichung
+# --------------------------------------------------------------------------- #
+
+
+def test_ein_wiederanlauf_weist_den_leeren_eroeffnungsabschluss_nicht_als_befund_aus(
+        tmp_path, monkeypatch):
+    """Ein Unternehmen beginnt leer (ADR-020): Der Eroeffnungsabschluss ist
+    eine gueltige leere Bilanz, und der ungestoerte Lauf traegt keinen
+    Befund. Nach einem Ausfall im Publish-Fenster rechnete der Wiederanlauf
+    denselben Abschluss nach und schrieb 'abschluss: leer' in die gruene,
+    verkettete Zeile — dieselben Bytes, dauerhaft anderer Befund.
+    Mutationsprobe: pruefe_abschluss gibt fuer eine leere Datei wieder
+    pauschal den Befund 'leer' zurueck -> rot."""
+    ref = _ablage(tmp_path / "ref")
+    assert tageslauf(ref, dt.date(2026, 1, 31))[0] == EXIT_OK
+    a_ref = lies_protokoll(ref.protokoll_pfad)[-1]["abschluesse"][0]
+    assert a_ref["in_kraft"] == 0 and "befunde" not in a_ref, "Voraussetzung: leerer Eroeffnungsabschluss"
+
+    ausfall = _ablage(tmp_path / "ausfall")
+
+    def stirbt_im_publish(*_a, **_k):
+        raise OSError(5, "I/O error im Publish-Fenster")
+
+    monkeypatch.setattr(tl, "_uebernehmen", stirbt_im_publish)
+    code, _ = tageslauf(ausfall, dt.date(2026, 1, 31))
+    monkeypatch.undo()
+    assert code != EXIT_OK
+    assert tl.abschluss_pfad(ausfall.abschluesse, dt.date(2026, 1, 1)).is_file(), (
+        "Voraussetzung: der gescheiterte Lauf hat den Abschluss schon festgeschrieben")
+    code, zeile = tageslauf(ausfall, dt.date(2026, 1, 31))
+    assert code == EXIT_OK, zeile.get("fehler")
+    a_ist = zeile["abschluesse"][0]
+    assert a_ist["nachgerechnet"] is True and a_ist["sha256"] == a_ref["sha256"]
+    assert a_ist.get("befunde") is None, a_ist.get("befunde")
+
+
+def test_ein_leerer_abschluss_ueber_einem_gefuellten_stichtag_bleibt_ein_befund(tmp_path, monkeypatch):
+    """Das Gegenstueck: Die Datei traegt keinen Stichtag, der Dateiname sagt
+    ihn. Ein Abschluss, der leer ist, obwohl die Neuberechnung des
+    benannten Stichtags Vertraege in Kraft findet, ist abgeschnitten und
+    wird ausgewiesen — 'leer ist gueltig' darf nicht zu 'leer ist immer
+    gut' werden. Mutationsprobe: leere Datei -> immer [] -> rot."""
+    import stat
+
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.models.bestand import ABSCHLUSS_NAMES, ABSCHLUSS_SPALTEN
+
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+
+    def _kein_bericht(*_a, **_k):
+        raise OSError(5, "I/O error")
+
+    monkeypatch.setattr(tl, "_bericht", _kein_bericht)
+    assert tageslauf(ablage, dt.date(2026, 3, 2))[0] != EXIT_OK
+    monkeypatch.undo()
+    feb = tl.abschluss_pfad(ablage.abschluesse, dt.date(2026, 2, 1))
+    assert len(tl.read_portfolio(feb)) > 0, "Voraussetzung: der Februar ist gefuellt"
+    feb.chmod(stat.S_IMODE(feb.stat().st_mode) | 0o200)
+    import pandas as pd
+    write_portfolio(pd.DataFrame(
+        {n: pd.Series(dtype=d) for n, d in ABSCHLUSS_SPALTEN})[list(ABSCHLUSS_NAMES)], feb)
+    code, zeile = tageslauf(ablage, dt.date(2026, 3, 2))
+    assert code == EXIT_OK, zeile.get("fehler")
+    eintrag = {a["stichtag"]: a for a in zeile["abschluesse"]}["2026-02-01"]
+    assert eintrag["nachgerechnet"] is True
+    assert any("leer" in b and "2026-02-01" in b for b in eintrag.get("befunde", [])), eintrag
