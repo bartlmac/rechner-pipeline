@@ -43,4 +43,10 @@ Thumbs.db
 docs/**/*.pdf
 quellsystem/*.pdf
 docs/**/*.typ
+quellsystem/*.typ
 docs/**/*_files/
+
+# Kurzlebige Arbeitsverzeichnisse der Suite im Repo-Baum. Ein Test, der den
+# Baum waehrend des Laufs sichtbar veraendert, kippt den Systemstand
+# (dirty) unter parallel laufenden Fixtures.
+.todo-*/
