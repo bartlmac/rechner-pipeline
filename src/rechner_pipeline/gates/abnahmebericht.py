@@ -179,7 +179,12 @@ GATE = "A-M4.migrationscontrolling"
 #: fuer ihn fuehrt (``models.fuehrungswert``); eine Suite ohne ihn, mit
 #: einem Vertrag ohne Wert am Zugangsstichtag oder auf einem anderen
 #: Bestand wird nicht abgenommen.
-GATE_VERSION = "8.0.0"
+#: 9.0.0 (ADR-024, Nachtrag, 2026-10-01): Die Fuehrungsprobe traegt
+#: Fassung 5 — ihre Tarifregeln kommen aus der Spez, ihr Aufruf nennt keine
+#: Tarifschalter mehr. Ein Beleg der Fassung 4 war gueltig und wird jetzt
+#: abgewiesen (sein Aufruf ist mit den verweigerten Schaltern nicht
+#: nachrechenbar).
+GATE_VERSION = "9.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,

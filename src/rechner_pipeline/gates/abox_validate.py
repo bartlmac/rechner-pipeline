@@ -31,6 +31,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.ontologie.abox import abox_pfad, lade_aus_bytes, validate_abox
 from rechner_pipeline.ontologie.coverage import coverage_bericht
 from rechner_pipeline.gates._common import (
@@ -49,7 +50,10 @@ from rechner_pipeline.gates._common import (
 )
 
 GATE = "P-Q3.fachliche-pruefung"
-GATE_VERSION = "1.0.0"
+#: 2.0.0 (ADR-024, Nachtrag): Im Scope ``bestand`` verlangt P-Q3 die
+#: Tarifregeln der migrierten Generation belegt — eine vorher gruene A-Box
+#: ohne Tarifwerk wird rot (Major, ADR-012).
+GATE_VERSION = "2.0.0"
 CLI_CONTRACT = GateCliContract(
     command="abox_validate",
     gate=GATE,
@@ -241,6 +245,46 @@ def main(argv: Optional[List[str]] = None):
                 + (f" (+{len(fehlende) - 20} weitere)" if len(fehlende) > 20 else "")
             ),
         })
+    # Die Tarifregeln einer BESTANDSMIGRATION (ADR-024, Nachtrag): Tarifwerk
+    # und Quellverfahren der migrierten Generation stehen belegt in der
+    # A-Box, oder P-Q3 verweigert. Vorher waren die Bloecke optional, und
+    # die Bestandsstrecke rechnete eine fehlende Regel still mit der Vorgabe
+    # des eigenen Geschaefts (im zweiten Lauf fiel die Regel des
+    # uebernommenen Tarifs erst in A-M3 auf). Im Scope ``tarif`` gilt die
+    # Pflicht nicht: Ein Tariffall fuehrt keinen Bestand, keine seiner
+    # Rechnungen liest die Bloecke, und eine Tarifmeldung ohne Bedingungswerk
+    # waere sonst rot, ohne dass etwas falsch gerechnet wuerde. Der Scope
+    # kommt aus dem Manifest des Falls; sein Hash steht im Summary — die
+    # ``input_hashes`` binden exakt Eingang und A-Box (A-Q1 haelt das mit
+    # ``==``, ``gates.gate_entscheid``).
+    try:
+        scope, scope_sha = fall_mod.lade_scope_gehasht(fall)
+    except (fall_mod.FallFehler, OSError, ValueError) as exc:
+        # Ohne lesbaren Scope weiss das Gate nicht, ob die Tarifregeln
+        # Pflicht sind — das ist ein Befund, kein Durchlass.
+        scope, scope_sha = None, None
+        errors.append({"code": "scope", "message": (
+            f"Fall-Scope nicht lesbar ({exc}) — ohne ihn ist nicht "
+            "entscheidbar, ob die Tarifregeln einer Bestandsmigration Pflicht "
+            "sind; fall.json pruefen")})
+    if scope == "bestand":
+        for gen_bericht in bericht["generationen"]:
+            luecken = gen_bericht["tarifregeln_bestand"]["luecken"]
+            if luecken:
+                errors.append({
+                    "code": "tarifregeln",
+                    "message": (
+                        f"{gen_bericht['generation']}: Tarifregeln der "
+                        "Bestandsmigration unvollstaendig — "
+                        + "; ".join(luecken)
+                        + ". Die Bestandsstrecke rechnet nur mit den belegten "
+                        "Regeln des uebernommenen Tarifs; keine Vorgabe des "
+                        "eigenen Geschaefts ersetzt sie. Ausweg: Tarifwerk und "
+                        "Quellverfahren aus Bedingungswerk und Tarifmeldung "
+                        "erheben (Skill extrahiere-quellfragment, Felder "
+                        "tarifwerk/quellverfahren), A-Box neu mergen."
+                    ),
+                })
     if bericht["diskrepanzen_offen"]:
         offene = [d.id for d in abox.diskrepanzen if d.status == "offen"]
         errors.append({
@@ -331,6 +375,12 @@ def main(argv: Optional[List[str]] = None):
             })
 
     summary: Dict[str, object] = {
+        "scope": scope,
+        "fall_json_sha256": scope_sha,
+        "tarifregeln_bestand": {
+            g["generation"]: g["tarifregeln_bestand"]["vollstaendig"]
+            for g in bericht["generationen"]
+        },
         "kette": kette_status,
         "formel_checks": formel_checks,
         "generationen": [g.id for g in abox.generationen],

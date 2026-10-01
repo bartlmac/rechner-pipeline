@@ -1,0 +1,16 @@
+{
+  "anmerkung": "Die im ersten Baldrian-Lauf festgestellten Tarifregeln der Generation TG2015 (erste Lieferung). Bis zum Nachtrag zu ADR-024 standen das Verfahren und der Dynamiksatz als Schalter in den Testaufrufen, die uebrigen Merkmale galten still als Vorgabe des eigenen Geschaefts; ueber spez.validierung.ergaenze_tarifregeln gehen sie in die eingefrorene Spez dieses Fixtures (tests/test_tarifregeln_aus_spez.py haelt die Bytes gleich). ENTSCHEIDUNG DER FIXTURE: Das Tarifwerk der Fuehrung ist das Verfahren der Quelle (mit Abzug, Aktuarielle Notiz); die Uebernahme fuehrte vorher still prospektiv. Der Lauf ist nicht freigeschaltet (Grundvertrag), die Fuehrung rechnet ihn nicht.",
+  "generation": "klv/tg2015",
+  "quellverfahren": {
+    "dk_stichtag": {"fundstelle": "Erste Lieferung: Deckungskapital kalendertaeglich auf den Abzugsstichtag interpoliert", "wert": "kalendertag"},
+    "erhoehungssatz": {"fundstelle": "Auskunft der abgebenden Gesellschaft: Dynamiksatz 5 Prozent der Vorjahressumme", "wert": 0.05},
+    "formfunktion": {"fundstelle": "Ausgestaltung der Korrekturschicht (Grundsatzdokumentation 9.9, Vorgabe des Tarifplans)", "wert": "proportional_zur_basis"},
+    "red_verfahren": {"fundstelle": "Aktuarielle Notiz Stornoabzug (2026/04): Absetzung als Teilkuendigung mit anteiligem Stornoabschlag", "wert": "mit_abzug"}
+  },
+  "tarifwerk": {
+    "red_verfahren": {"fundstelle": "Aktuarielle Notiz Stornoabzug (2026/04): Herabsetzung mit Abzug", "wert": "mit_abzug"},
+    "scheiben_mit_gamma1": {"fundstelle": "Erste Lieferung: Erhoehung nach der Regel der Grundversicherung, ohne gamma1", "wert": false},
+    "stoab_je_baustein": {"fundstelle": "Erste Lieferung: Stornoabzug je Vertrag", "wert": false},
+    "tku_umfang": {"fundstelle": "Bedingungswerk der ersten Lieferung: Teilkuendigung ueber alle Bausteine", "wert": "alle_bausteine"}
+  }
+}

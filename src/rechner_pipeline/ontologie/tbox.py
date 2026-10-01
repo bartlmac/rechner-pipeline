@@ -23,9 +23,12 @@ hat:
 
 * das TARIFWERK je Generation (Erhoehungsscheiben mit gamma1, Stornoabzug
   je Baustein, Verfahren der Herabsetzung) und das QUELLVERFAHREN (wie
-  die abgebende Gesellschaft eine gelieferte Absetzung gemeint hat) —
-  beides als belegte Aussagen der A-Box, nicht mehr als Schalter am
-  Aufruf eines Pruefkommandos;
+  die abgebende Gesellschaft eine gelieferte Absetzung gemeint hat, samt
+  Dynamiksatz, Stichtag des gelieferten Deckungskapitals und Ausgestaltung
+  der Korrekturschicht) — beides als belegte Aussagen der A-Box, nicht
+  mehr als Schalter am Aufruf eines Pruefkommandos. Fuer eine
+  Bestandsmigration Pflicht (:data:`BESTAND_PFLICHT`, P-Q3 im Scope
+  ``bestand``); die Kommandos der Bestandsstrecke lesen sie aus der Spez;
 * den Katalog der Geschaeftsvorfaelle mit Betragsarten, Zustandswirkung
   und Produktbindung, einschliesslich der Teilkuendigung als eigenem
   Vorgang (ADR-023);
@@ -225,14 +228,79 @@ QUELL_ABSETZUNGSCODE = "RED"
 #: und vor einer Beitragsfreistellung eine Herabsetzung, danach eine
 #: Teilkuendigung (A2, Annahme B5). Die Regel selbst fuehrt das Datenmodell
 #: an einer Stelle (``models.bestand.alt_absetzung_ist_teilkuendigung``).
-QUELLVERFAHREN_WERTE: Dict[str, Tuple[Any, ...]] = {
+#:
+#: Neben der Lesart der Absetzung fuehrt der Block, was jede Rechnung der
+#: Bestandsstrecke bestimmt und vorher als Schalter am Aufruf stand
+#: (ADR-024, Nachtrag "die Kommandos lesen die Spez"):
+#:
+#: * ``erhoehungssatz`` — der Dynamiksatz der Quelle (S' = e * S^ges), aus
+#:   dem die Alt-Erhoehungen einer Serie zerlegt werden. Optional: Ein Tarif
+#:   ohne planmaessige Erhoehung hat keinen; dann zerlegt die Strecke je
+#:   Vertrag aus dem Jahresbeitrag. ERHOBEN muss er sein (belegt oder
+#:   ausdruecklich nicht belegt), sonst ist "trifft nicht zu" nicht von
+#:   "vergessen" zu unterscheiden.
+#: * ``dk_stichtag`` — zu welchem Zeitpunkt die Lieferung ihr
+#:   Deckungskapital fuehrt (``kalendertag``: auf den Abzugsstichtag
+#:   interpoliert; ``jahrestag``: zum letzten Vertragsjahrestag davor). Auf
+#:   dem falschen Zeitpunkt misst das Controlling Reservezuwachs als Residuum.
+#: * ``formfunktion`` und ``fenster`` — die Ausgestaltung der
+#:   Korrekturschicht, die der Tarifplan eines migrierten Produkts festlegt
+#:   (Grundsatzdokumentation 10 Nr. 9 und 9.9). Keine Eigenschaft der Quelle
+#:   im engen Sinn, sondern der Migration dieser Generation; sie steht hier,
+#:   weil sie wie das Verfahren der Quelle je Generation einmal entschieden
+#:   und von Uebernahme und Verankerung gleich gelesen werden muss. Ein
+#:   Fenster gibt es genau zur Formfunktion ``konstantes_fenster``.
+QUELLVERFAHREN_WERTE: Dict[str, Any] = {}   # gefuellt unten (Zahlbereich)
+
+#: Zu welchem Zeitpunkt eine Lieferung ihr Deckungskapital fuehrt.
+DK_STICHTAGE: Tuple[str, ...] = ("kalendertag", "jahrestag")
+#: Formfunktionen der Korrekturschicht (Grundsatzdokumentation 9.9).
+FORMFUNKTIONEN: Tuple[str, ...] = ("proportional_zur_basis", "konstantes_fenster")
+KONSTANTES_FENSTER = "konstantes_fenster"
+
+
+class Zahlbereich(BaseModel):
+    """Ein Wertebereich fuer eine ZAHL — wo eine Aufzaehlung nicht passt
+    (Dynamiksatz, Fenster). Typstreng wie die Aufzaehlungen: ``True`` ist
+    keine Zahl, ``1`` kein Satz."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    typ: Literal["float", "int"]
+    #: Untergrenze (ausschliesslich bei ``float``, einschliesslich bei ``int``).
+    untergrenze: float
+    #: Obergrenze (ausschliesslich); None = offen.
+    obergrenze: Optional[float] = None
+
+    def enthaelt(self, wert: Any) -> bool:
+        if isinstance(wert, bool):
+            return False
+        if self.typ == "int":
+            if type(wert) is not int or wert < self.untergrenze:
+                return False
+        else:
+            if type(wert) is not float or not wert > self.untergrenze:
+                return False
+        return self.obergrenze is None or wert < self.obergrenze
+
+    def text(self) -> str:
+        links = "[" if self.typ == "int" else "("
+        rechts = "unbegrenzt)" if self.obergrenze is None else f"{self.obergrenze})"
+        return f"{self.typ} {links}{self.untergrenze}, {rechts}"
+
+
+QUELLVERFAHREN_WERTE.update({
     "red_verfahren": HERABSETZUNGSVERFAHREN,
-}
+    "erhoehungssatz": Zahlbereich(typ="float", untergrenze=0.0, obergrenze=1.0),
+    "dk_stichtag": DK_STICHTAGE,
+    "formfunktion": FORMFUNKTIONEN,
+    "fenster": Zahlbereich(typ="int", untergrenze=1),
+})
 
 #: Die Bloecke generationsweiter Aussagen der A-Box (neben den Zellen):
 #: Blockname -> Merkmal -> Wertebereich. Ein Widerspruch in einem Block
 #: wird Diskrepanz am Knoten ``<generation>/<block>``.
-GENERATIONS_BLOECKE: Dict[str, Dict[str, Tuple[Any, ...]]] = {
+GENERATIONS_BLOECKE: Dict[str, Dict[str, Any]] = {
     "tarifwerk": TARIFWERK_WERTE,
     "quellverfahren": QUELLVERFAHREN_WERTE,
 }
@@ -241,10 +309,86 @@ BLOCK_TITEL: Dict[str, str] = {
     "quellverfahren": "Quellverfahren",
 }
 
+#: Was eine BESTANDSMIGRATION je Generation belegt fuehren muss (Fall-Scope
+#: ``bestand``; ADR-024, Nachtrag): das ganze Tarifwerk, die Lesart der
+#: Absetzung, der Zeitpunkt des gelieferten Deckungskapitals und die
+#: Formfunktion. Jedes dieser Merkmale bestimmt eine Rechnung der
+#: Bestandsstrecke, und keines hat eine Vorgabe — die des eigenen Geschaefts
+#: (:data:`TARIFWERK_EIGENES_GESCHAEFT`) ist fuer einen uebernommenen Tarif
+#: keine Aussage. Im Scope ``tarif`` gilt die Pflicht nicht: Ein Tariffall
+#: fuehrt keinen Bestand, und keine seiner Rechnungen liest die Bloecke.
+BESTAND_PFLICHT: Dict[str, Tuple[str, ...]] = {
+    "tarifwerk": TARIFWERK_MERKMALE,
+    "quellverfahren": ("red_verfahren", "dk_stichtag", "formfunktion"),
+}
+#: Merkmale, die eine Bestandsmigration ERHEBEN muss, ohne dass sie belegt
+#: sein muessen (belegt oder ausdruecklich ``nicht_belegt``). Das Fenster
+#: folgt der Formfunktion (:func:`tarifregeln_luecken`).
+BESTAND_ERHOBEN: Dict[str, Tuple[str, ...]] = {
+    "quellverfahren": ("erhoehungssatz",),
+}
 
-def wert_im_bereich(wert: Any, bereich: Tuple[Any, ...]) -> bool:
+
+def wert_im_bereich(wert: Any, bereich: Any) -> bool:
     """Typstreng: ``1`` ist nicht ``True`` und ``"true"`` kein Schalter."""
+    if isinstance(bereich, Zahlbereich):
+        return bereich.enthaelt(wert)
     return any(type(wert) is type(w) and wert == w for w in bereich)
+
+
+def bereich_text(bereich: Any) -> str:
+    """Der Wertebereich lesbar, fuer Meldungen."""
+    if isinstance(bereich, Zahlbereich):
+        return bereich.text()
+    return repr(list(bereich))
+
+
+def _bereich_vokabular(bereich: Any) -> Any:
+    if isinstance(bereich, Zahlbereich):
+        return bereich.model_dump(mode="json")
+    return list(bereich)
+
+
+def tarifregeln_luecken(
+    belegt: Dict[str, Dict[str, Any]],
+    erhoben: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    """Was einer Bestandsmigration an Tarifregeln fehlt — leer = vollstaendig.
+
+    ``belegt``: Block -> Merkmal -> belegter Wert (genau das, was die Spez
+    traegt). ``erhoben``: Block -> Menge der Merkmale, zu denen die A-Box
+    ueberhaupt eine Aussage fuehrt (auch ``nicht_belegt``); None, wo nur die
+    Spez vorliegt — die fuehrt nur Belegtes, und ob ein optionales Merkmal
+    erhoben wurde, hat P-Q3 vorher entschieden.
+
+    EINE Regel fuer P-Q3 (auf der A-Box) und fuer jedes Kommando der
+    Bestandsstrecke (auf der Spez, ``spez.tarifregeln``): Was die Quelle
+    pruefung durchlaesst, rechnet die Strecke, und umgekehrt.
+    """
+    luecken: List[str] = []
+    for block, merkmale in BESTAND_PFLICHT.items():
+        for merkmal in merkmale:
+            if merkmal not in belegt.get(block, {}):
+                luecken.append(f"{block}.{merkmal} nicht belegt")
+    if erhoben is not None:
+        for block, merkmale in BESTAND_ERHOBEN.items():
+            for merkmal in merkmale:
+                if merkmal not in erhoben.get(block, ()):
+                    luecken.append(
+                        f"{block}.{merkmal} nicht erhoben (belegt oder "
+                        "ausdruecklich nicht_belegt)")
+    quell = belegt.get("quellverfahren", {})
+    if "formfunktion" in quell:
+        if quell["formfunktion"] == KONSTANTES_FENSTER and "fenster" not in quell:
+            luecken.append(
+                "quellverfahren.fenster nicht belegt (Pflicht zur Formfunktion "
+                f"{KONSTANTES_FENSTER})")
+        if quell["formfunktion"] != KONSTANTES_FENSTER and "fenster" in quell:
+            luecken.append(
+                f"quellverfahren.fenster belegt ({quell['fenster']!r}), die "
+                f"Formfunktion {quell['formfunktion']!r} kennt kein Fenster — "
+                "widerspruechlich")
+    return luecken
 
 
 # --------------------------------------------------------------------------- #
@@ -390,9 +534,6 @@ ZUSTAENDE_TA: Tuple[str, ...] = ("beitragspflichtig", "beitragsfrei")
 #: modells (Beitragsfreiheit ist keiner, sondern eine Eigenschaft des
 #: Modellpunkts).
 VERANKERUNGSZUSTAENDE: Tuple[str, ...] = ("aktiv", "bu")
-#: Formfunktionen der Korrekturschicht (Grundsatzdokumentation 9.9).
-FORMFUNKTIONEN: Tuple[str, ...] = ("proportional_zur_basis", "konstantes_fenster")
-
 QUELLE_ARTEN = ("tarifmeldung", "tarifrechner", "bestand")
 
 
@@ -616,10 +757,12 @@ def vokabular() -> Dict[str, Any]:
             "eigenes_geschaeft": dict(TARIFWERK_EIGENES_GESCHAEFT),
         },
         "quellverfahren": {
-            "werte": {k: list(v) for k, v in QUELLVERFAHREN_WERTE.items()},
+            "werte": {k: _bereich_vokabular(v) for k, v in QUELLVERFAHREN_WERTE.items()},
             "absetzungscode": QUELL_ABSETZUNGSCODE,
             "teilkuendigung": TEILKUENDIGUNG_VERFAHREN,
         },
+        "bestand_pflicht": {k: list(v) for k, v in BESTAND_PFLICHT.items()},
+        "bestand_erhoben": {k: list(v) for k, v in BESTAND_ERHOBEN.items()},
         "geschaeftsvorfaelle": {
             "katalog": [g.model_dump(mode="json") for g in GESCHAEFTSVORFAELLE.values()],
             "absetzung": list(ABSETZUNG_VORGAENGE),

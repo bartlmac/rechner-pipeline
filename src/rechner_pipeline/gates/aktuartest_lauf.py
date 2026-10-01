@@ -56,8 +56,6 @@ from rechner_pipeline.bestand.parquet_io import (
 from rechner_pipeline.gates._common import Eingangsbindung, lies_gehasht
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import model_point_kwargs
-from rechner_pipeline.gates.migrationssuite_lauf import TKU_UMFAENGE
-from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.qa.aktuarieller_test import (
     Pruefpunkt,
     Vertragspruefung,
@@ -69,6 +67,11 @@ from rechner_pipeline.kern.korrekturschicht import (
 )
 from rechner_pipeline.qa.stichprobe import Stichprobe
 from rechner_pipeline.qa.testprofil import vorlage
+from rechner_pipeline.spez.tarifregeln import (
+    TarifregelnFehler,
+    tarifregeln_der_spez,
+    verweigere_entfallene_schalter,
+)
 from rechner_pipeline.spez.validierung import (
     lade_spez,
     lade_spez_aus_bytes,
@@ -133,11 +136,18 @@ def baue_auftraege(
     plausibilitaet: Optional[Dict[str, Dict[str, str]]] = None,
     scheiben_mit_gamma1: bool = False,
     stoab_je_baustein: bool = False,
+    tku_umfang: Optional[str] = None,
     red_anteil_kandidaten: Tuple[float, ...] = (),
     summen_je_police: Optional[Dict[str, float]] = None,
     unbestimmt: Any = (),
 ) -> Tuple[List[Vertragspruefung], List[str], List[str]]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag.
+
+    ``tku_umfang`` ist der Umfang der Teilkuendigung aus dem Tarifwerk der
+    Spez und geht in jeden Auftrag. Vorher kam er hier nie an: Die Engine
+    leitete ihn je Vertrag aus dem Verfahren ab, und ``--tku-umfang`` wirkte
+    nur auf den Anfangszustand, nicht auf die Teilkuendigung im
+    Pruefzeitraum (gefunden beim Nachzug ADR-024).
 
     ``summen_je_police`` (police -> gelieferte Versicherungssumme aus den
     transformierten Zeilen) ist die Grundlage des Modellpunkts, wo kein
@@ -261,6 +271,7 @@ def baue_auftraege(
             plausibilitaet=gewaehrt,
             scheiben_mit_gamma1=scheiben_mit_gamma1,
             stoab_je_baustein=stoab_je_baustein,
+            tku_umfang=tku_umfang,
             **_schicht_felder(_schicht_fuer(
                 police, zustand, (schichten or {}).get(police),
                 gewaehrt, schicht_ausgelassen)),
@@ -684,45 +695,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
                    action="append", type=float, default=[],
                    metavar="ANTEIL",
-                   help="BELEGTER Tarif-Kandidat des Herabsetzungsanteils "
-                        "(wiederholbar), wenn der exakte Anteil bei der "
-                        "Quelle endgueltig nicht feststellbar ist. Die "
-                        "Plausibilitaetsregeln rechnen dann den Korridor "
-                        "ueber die Kandidatenmenge statt um einen "
+                   help="ARBEITSANNAHME des Laufs: Kandidat des "
+                        "Herabsetzungsanteils (wiederholbar), wenn der exakte "
+                        "Anteil bei der Quelle endgueltig nicht feststellbar "
+                        "ist. Die Plausibilitaetsregeln rechnen dann den "
+                        "Korridor ueber die Kandidatenmenge statt um einen "
                         "Punktwert; gilt fuer alle Vertraege mit "
-                        "Herabsetzungs-Anfangszustand.")
-    p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
-                   default=None, metavar="SATZ",
-                   help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
-                        "S' = e * S^ges); ohne ihn wird je Vertrag aus dem "
-                        "Jahresbeitrag zerlegt")
-    p.add_argument(
-        "--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
-        action="store_true",
-        help="Erhoehungsscheiben rechnen die VOLLE Beitragsformel "
-             "(mit gamma1) — Tarifwerks-Eigenschaft der Lieferung laut "
-             "ihren Dokumenten (Lieferung 2: eigenstaendiger Baustein "
-             "mit eigener Wertermittlung); ohne Flag gilt die "
-             "GrundVS-Regel der ersten Lieferung.")
-    p.add_argument(
-        "--stoab-je-baustein", dest="stoab_je_baustein",
-        action="store_true",
-        help="Stornoabschlag-Grenzen greifen JE BAUSTEIN (Grund und "
-             "jede Erhoehungsscheibe einzeln, RKW = Summe der "
-             "Baustein-Rueckkaufswerte) — Tarifwerks-Eigenschaft der "
-             "Lieferung laut Bedingungswerk Ziffer 4; ohne Flag gelten "
-             "die Grenzen je Vertrag (PLV-Regel, Tarifplan 6).")
-    p.add_argument("--red-verfahren", dest="red_verfahren",
-                   default=PROSPEKTIV, choices=sorted(VERFAHREN),
-                   help="Verfahren der Beitragsherabsetzung (Eigenschaft "
-                        "des Migrationsfalls; Vorgabe: Zielverfahren "
-                        "prospektiv)")
-    p.add_argument("--tku-umfang", dest="tku_umfang", default=None,
-                   choices=sorted(TKU_UMFAENGE),
-                   help="Umfang der Teilkuendigung des Tarifs (alle_bausteine "
-                        "oder grundversicherung; Vorgabe: der des "
-                        "Bedingungswerks, das --red-verfahren nennt, Annahme "
-                        "B1) — Tarifwerks-Eigenschaft, siehe bestand_uebernehmen")
+                        "Herabsetzungs-Anfangszustand. Die Regeln des Tarifs "
+                        "(Tarifwerk, Quellverfahren, Dynamiksatz) stehen in "
+                        "der Spez, nicht hier.")
     p.add_argument(
         "--schicht", dest="schicht", default=None,
         help="REGISTRIERTE Quelle mit der Korrekturschicht je Police "
@@ -734,6 +715,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--repo-root", dest="repo_root", default=".")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/berichte/...)")
+    verweigere_entfallene_schalter(p)
     args = p.parse_args(argv)
 
     fall = Path(args.fall).resolve()
@@ -750,6 +732,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     beleg = _lies_registriert(fall, args.stichprobe, bindung)
     spez = lade_spez_aus_bytes(
         bindung.binde(spez_pfad(fall, args.generation)).roh)
+    # Die Tarifregeln der Generation aus der Spez — dieselbe Fassung, mit
+    # der Uebernahme, Verankerung, Suite und Fuehrungsprobe rechnen.
+    try:
+        regeln = tarifregeln_der_spez(spez)
+    except TarifregelnFehler as exc:
+        print(f"aktuartest_lauf: {exc}", file=sys.stderr)
+        return 2
     bestand = read_portfolio_aus_bytes(bindung.binde(Path(args.bestand)).roh)
 
     gemeldet = lieferung.get("test")
@@ -844,14 +833,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         anfangszustaende, zustandswarnungen = anfangszustaende_je_police(
             spez, zeilen if args.zeilen is not None else [],
             vorgeschichte, bestand, spalten=dict(VORGABE),
-            red_verfahren=args.red_verfahren, red_anteile=red_anteile,
+            red_verfahren=regeln.quell_red_verfahren, red_anteile=red_anteile,
             red_anteile_je_datum=red_anteile_je_datum,
             auspraegungen=auspraegungen,
-            erhoehungssatz=args.erhoehungssatz, anker=anker,
+            erhoehungssatz=regeln.erhoehungssatz, anker=anker,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
-            tku_umfang=args.tku_umfang,
-            stoab_je_baustein=args.stoab_je_baustein)
+            scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+            tku_umfang=regeln.tku_umfang,
+            stoab_je_baustein=regeln.stoab_je_baustein)
 
     # Ersetzter Wertvergleich: NUR aus einer registrierten Quelle. Ein
     # Kommandozeilen-Text waere fuer die Zeichnung nicht bindbar — die
@@ -906,8 +895,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
         anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet,
         schichten=schichten,
-        scheiben_mit_gamma1=args.scheiben_mit_gamma1,
-        stoab_je_baustein=args.stoab_je_baustein,
+        scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+        stoab_je_baustein=regeln.stoab_je_baustein,
+        tku_umfang=regeln.tku_umfang,
         red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
         summen_je_police=summen_je_police)
     for police in schicht_ausgelassen:
@@ -933,10 +923,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         auftraege, stichprobe, profil,
         transportsicherung={"lieferung": args.erwartungswerte},
         system=systemstand(Path(args.repo_root).resolve()),
-        red_verfahren=args.red_verfahren,
+        red_verfahren=regeln.quell_red_verfahren,
     )
-    # Der Beleg nennt, worueber geurteilt wurde.
+    # Der Beleg nennt, worueber geurteilt wurde — und mit welchen Regeln.
     ergebnis["eingaben"] = bindung.als_beleg()
+    ergebnis["tarifregeln"] = regeln.als_beleg()
     # Block F, Nachbesserung: die Auskunft, auf deren Anfangslage gerechnet
     # wurde, mit Name, SHA-256 und Bezug je Police (``null``, wenn keine).
     ergebnis["red_anteile_datei"] = auskunft_beleg

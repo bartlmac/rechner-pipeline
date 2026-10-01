@@ -213,6 +213,24 @@ Bestand-Config, die Führung liest sie dort, und die Freischaltung
 eines Migrationsfalls überträgt sie aus den bestandenen Abnahmen
 (`dev-docs/freischaltung-uebernommener-bestand.md`).
 
+Für eine übernommene Generation sind die vier Merkmale **Regeln ihres
+Bedingungswerks, keine Einstellungen**: Sie stehen einmal, belegt, in der
+A-Box des Migrationsfalls (Tarifwerk, je Merkmal mit Fundstelle) und daraus
+in der Spez der Generation; ebenso, wie die abgebende Gesellschaft eine
+gelieferte Absetzung gemeint hat, welchen Dynamiksatz sie anlegte, zu
+welchem Zeitpunkt ihr Deckungskapital steht und wie die Korrekturschicht
+ausgestaltet ist (Quellverfahren; Grundsatzdokumentation 10 Nr. 9). Im
+Bestands-Scope verlangt die Quellenprüfung P-Q3 sie belegt; Übernahme,
+Verankerung, aktuarieller Test, Migrationscontrolling und Führungsprobe
+rechnen mit genau dieser Fassung, und die Config der Führung muss dasselbe
+Tarifwerk tragen (ADR-024, Nachtrag). Die Werte des eigenen Geschäfts
+oben gelten für eine übernommene Generation nicht als Vorgabe: Ein nicht
+belegtes Merkmal ist eine offene Frage an die Quelle. Verworfen wurden
+Schalter am Aufruf der Prüfkommandos — dieselbe Tatsache musste dort an
+fünf Stellen gleich eingetippt werden, und ein vergessener Schalter
+rechnete still die Regel des eigenen Geschäfts (im zweiten Baldrian-Lauf
+fiel die Regel des übernommenen Tarifs erst in A-M3 auf).
+
 ## 7.1 Beitragsherabsetzung: Zahlungsprofil und Geltungsbereich
 
 Der herabgesetzte Vertrag ist **ein** Vertrag mit geknicktem Verlauf,

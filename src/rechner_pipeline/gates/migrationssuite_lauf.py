@@ -17,8 +17,9 @@ Systemeigenschaft zu machen.
 
 **Was der Lauf NICHT tut: er glaettet nichts.** Eine Herabsetzung mit
 geliefertem Anteil wird seit Kern 3.1.0 als geteilter Vertrag
-fortgeschrieben (``--red-verfahren`` ist die dokumentierte Eigenschaft
-des Quellsystems, Vorgabe: Zielverfahren prospektiv); OHNE Anteil
+fortgeschrieben (das Verfahren ist die belegte Eigenschaft des
+Quellsystems, ``quellverfahren.red_verfahren`` der Spez — ohne Vorgabe,
+ADR-024, Nachtrag); OHNE Anteil
 bleibt der Folgestichtag eine ausgewiesene Pruefluecke, und der
 Bestands-Scope von A-M4 duldet keine — der Lauf endet dann mit einem
 Befund statt mit einer Zahl, die aussieht wie geprueft.
@@ -47,20 +48,20 @@ from rechner_pipeline.bestand.parquet_io import (
 )
 from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.gates._provenienz import systemstand
-from rechner_pipeline.bestand.migrationszugang import TKU_UMFAENGE
 from rechner_pipeline.models.bestand import (
     alt_absetzung_ist_teilkuendigung,
     model_point_kwargs,
 )
-from rechner_pipeline.kern.beitragsreduktion import (
-    PROSPEKTIV,
-    TEILKUENDIGUNG,
-    VERFAHREN,
-)
+from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
 from rechner_pipeline.qa.migrationssuite import (
     GeVoErwartung,
     VertragsPruefung,
     pruefe_bestand,
+)
+from rechner_pipeline.spez.tarifregeln import (
+    TarifregelnFehler,
+    tarifregeln_der_spez,
+    verweigere_entfallene_schalter,
 )
 from rechner_pipeline.spez.validierung import (
     lade_spez,
@@ -858,12 +859,17 @@ def baue_auftraege(
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     scheiben_mit_gamma1: bool = False,
     stoab_je_baustein: bool = False,
+    tku_umfang: Optional[str] = None,
     schichten: Optional[Dict[str, Any]] = None,
     monate_ta_je_police: Optional[Dict[str, int]] = None,
     dk_am_jahrestag: bool = False,
     summen: Optional[Dict[str, float]] = None,
 ) -> List[VertragsPruefung]:
     """Je Vertrag genau einen Pruefauftrag.
+
+    ``tku_umfang`` (Tarifwerk der Spez) geht in jeden Auftrag; vorher leitete
+    die Engine ihn aus dem Verfahren ab, und ``--tku-umfang`` wirkte nur auf
+    den Anfangszustand (gefunden beim Nachzug ADR-024).
 
     ``summen`` (police -> gelieferte Versicherungssumme aus den
     transformierten Zeilen) ist die Grundlage des Modellpunkts, wo kein
@@ -943,6 +949,7 @@ def baue_auftraege(
             scheiben=tuple(zustand.get("scheiben", ())),
             scheiben_mit_gamma1=scheiben_mit_gamma1,
             stoab_je_baustein=stoab_je_baustein,
+            tku_umfang=tku_umfang,
             reduktion=zustand.get("reduktion"),
             quell_komponenten=zustand.get("quell_komponenten"),
             dk_am_jahrestag=dk_am_jahrestag,
@@ -1003,34 +1010,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
                    action="append", type=float, default=[],
                    metavar="ANTEIL",
-                   help="BELEGTER Tarif-Kandidat des Herabsetzungsanteils "
-                        "(wiederholbar); offene Anteile in Ereignis-Serien "
-                        "werden dann ueber die Beitragsgleichung bestimmt "
-                        "(eindeutiger Treffer oder benannter Fehler) — "
-                        "siehe aktuartest_lauf.")
-    p.add_argument(
-        "--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
-        action="store_true",
-        help="Erhoehungsscheiben mit voller Beitragsformel (gamma1) — "
-             "Tarifwerks-Eigenschaft der Lieferung, siehe "
-             "aktuartest_lauf.")
-    p.add_argument(
-        "--stoab-je-baustein", dest="stoab_je_baustein",
-        action="store_true",
-        help="Stornoabschlag-Grenzen je Baustein statt je Vertrag — "
-             "Tarifwerks-Eigenschaft der Lieferung, siehe "
-             "aktuartest_lauf.")
-    p.add_argument(
-        "--dk-stichtag", dest="dk_stichtag", default="kalendertag",
-        choices=("kalendertag", "jahrestag"),
-        help="Buchungszeitpunkt der gelieferten DECKKAP-Spalte — "
-             "Lieferungseigenschaft (registrierte Auskunft): die erste "
-             "Lieferung interpolierte kalendertaeglich, das "
-             "Kommutations-Quellsystem der zweiten fuehrt das "
-             "Deckungskapital zum letzten VERTRAGSJAHRESTAG vor dem "
-             "Abzugsstichtag. Auf dem falschen Zeitpunkt misst der "
-             "Vergleich bis zu elf Monate Reservezuwachs als "
-             "Phantom-Residuum.")
+                   help="ARBEITSANNAHME des Laufs: Kandidat des "
+                        "Herabsetzungsanteils (wiederholbar); offene Anteile "
+                        "in Ereignis-Serien werden dann ueber die "
+                        "Beitragsgleichung bestimmt (eindeutiger Treffer oder "
+                        "benannter Fehler) — siehe aktuartest_lauf.")
     p.add_argument(
         "--schicht", dest="schicht", default=None,
         metavar="SCHICHTBELEG",
@@ -1040,28 +1024,15 @@ def main(argv: Optional[List[str]] = None) -> int:
              "Ohne ihn bleibt der rohe Wertvergleich: gueltig, solange "
              "der Fall keine Schichten fuehrt; sonst zeigt jeder "
              "Vertrag sein unabsorbiertes Verankerungs-Residuum.")
-    p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
-                   default=None, metavar="SATZ",
-                   help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
-                        "S' = e * S^ges); ohne ihn wird je Vertrag aus dem "
-                        "Jahresbeitrag zerlegt")
-    p.add_argument("--red-verfahren", dest="red_verfahren",
-                   default=PROSPEKTIV, choices=sorted(VERFAHREN),
-                   help="Verfahren der Beitragsherabsetzung (Eigenschaft "
-                        "des Migrationsfalls; Vorgabe: Zielverfahren "
-                        "prospektiv)")
-    p.add_argument("--tku-umfang", dest="tku_umfang", default=None,
-                   choices=sorted(TKU_UMFAENGE),
-                   help="Umfang der Teilkuendigung des Tarifs (alle_bausteine "
-                        "oder grundversicherung; Vorgabe: der des "
-                        "Bedingungswerks, das --red-verfahren nennt, Annahme "
-                        "B1) — Tarifwerks-Eigenschaft, siehe bestand_uebernehmen")
     p.add_argument("--repo-root", dest="repo_root", default=".")
     p.add_argument("--out", default=None)
     for name, vorgabe in VORGABE.items():
         p.add_argument(f"--spalte-{name}", dest=f"spalte_{name}",
                        default=vorgabe,
                        help=f"Spaltenname der Lieferung (Vorgabe: {vorgabe})")
+    # Tarifwerk, Verfahren der Quelle, Dynamiksatz und Stichtag des
+    # gelieferten Deckungskapitals stehen in der Spez (ADR-024, Nachtrag).
+    verweigere_entfallene_schalter(p)
     args = p.parse_args(argv)
 
     fall = Path(args.fall).resolve()
@@ -1082,6 +1053,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
     spez = lade_spez_aus_bytes(
         bindung.binde(spez_pfad(fall, args.generation)).roh)
+    try:
+        regeln = tarifregeln_der_spez(spez)
+    except TarifregelnFehler as exc:
+        print(f"migrationssuite_lauf: {exc}", file=sys.stderr)
+        return 2
     abzug_1 = _lies_csv(fall, args.abzug_1, bindung)
 
     auspraegungen = None
@@ -1136,14 +1112,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         anfangszustaende, zustandswarnungen = anfangszustaende_je_police(
             spez, zeilen if args.zeilen is not None else [],
             vorgeschichte, bestand, spalten=spalten,
-            red_verfahren=args.red_verfahren, red_anteile=red_anteile,
+            red_verfahren=regeln.quell_red_verfahren, red_anteile=red_anteile,
             auspraegungen=auspraegungen,
-            erhoehungssatz=args.erhoehungssatz, anker=anker,
+            erhoehungssatz=regeln.erhoehungssatz, anker=anker,
             red_anteile_je_datum=red_anteile_je_datum,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
-            tku_umfang=args.tku_umfang,
-            stoab_je_baustein=args.stoab_je_baustein)
+            scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+            tku_umfang=regeln.tku_umfang,
+            stoab_je_baustein=regeln.stoab_je_baustein)
 
     schichten: Optional[Dict[str, Any]] = None
     monate_ta_je_police: Optional[Dict[str, int]] = None
@@ -1177,11 +1153,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         auspraegungen=auspraegungen,
         beitragsfrei_seit=beitragsfrei_seit,
         anfangszustaende=anfangszustaende,
-        scheiben_mit_gamma1=args.scheiben_mit_gamma1,
-        stoab_je_baustein=args.stoab_je_baustein,
+        scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+        stoab_je_baustein=regeln.stoab_je_baustein,
+        tku_umfang=regeln.tku_umfang,
         schichten=schichten,
         monate_ta_je_police=monate_ta_je_police,
-        dk_am_jahrestag=(args.dk_stichtag == "jahrestag"),
+        dk_am_jahrestag=(regeln.dk_stichtag == "jahrestag"),
         summen=summen,
     )
 
@@ -1215,7 +1192,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             {"stichtag_1": _parse(args.stichtag_1), "stichtag_2": _parse(args.stichtag_2)},
             scheiben=_neben("scheiben.parquet"), merkmale=_neben("merkmale.parquet"),
             schichten=_neben("schichten.parquet"), verankerung=_neben("verankerung.parquet"),
-            reduktionen=_neben("reduktionen.parquet"))
+            reduktionen=_neben("reduktionen.parquet"),
+            # Der Fuehrungswert rechnet mit dem Tarifwerk der CONFIG; es muss
+            # das der Spez sein, mit dem diese Suite prueft (ADR-024,
+            # Nachtrag) — sonst stuende im selben Beleg ein Wert nach einer
+            # anderen Regel.
+            tarifwerk_der_spez={args.generation: regeln.tarifwerk})
     except (MigrationszugangFehler, ValueError) as exc:
         print(f"Fuehrungswert nicht rechenbar: {exc}", file=sys.stderr)
         return 2
@@ -1227,7 +1209,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ergebnis = pruefe_bestand(
         auftraege,
         erwartete_anzahl=len(abzug_1),
-        red_verfahren=args.red_verfahren,
+        red_verfahren=regeln.quell_red_verfahren,
         stichtag_1=_parse(args.stichtag_1).isoformat(),
         stichtag_2=_parse(args.stichtag_2).isoformat(),
         bestand_sha256=bestand_gelesen.sha256,
@@ -1241,8 +1223,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                                config_sha256=config_gelesen.sha256),
         fuehrungswerte=fw_werte,
     )
-    # Der Beleg nennt, worueber geurteilt wurde — nicht nur den Bestand.
+    # Der Beleg nennt, worueber geurteilt wurde — nicht nur den Bestand —
+    # und mit welchen Regeln.
     ergebnis["eingaben"] = bindung.als_beleg()
+    ergebnis["tarifregeln"] = regeln.als_beleg()
 
     ziel = Path(args.out) if args.out else (
         fall / "abgeleitet" / "berichte" / "migrationssuite.json")

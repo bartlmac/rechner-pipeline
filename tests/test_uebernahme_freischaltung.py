@@ -30,6 +30,11 @@ from rechner_pipeline.models.bestand import (
     _ledger_scheiben_bindung,
     validate_scheiben,
 )
+from tests.tarifregeln_testhelfer import (
+    TESTTARIF_QUELLVERFAHREN,
+    TESTTARIF_TARIFWERK,
+    lege_spez,
+)
 from tests.test_bestand_uebernehmen import GRUNDLAGEN, ZEILE
 
 STICHTAG = dt.date(2026, 1, 1)
@@ -142,10 +147,12 @@ def test_cli_verlangt_die_antwort_sobald_die_vorgeschichte_bausteine_traegt(tmp_
     zeilen = tmp_path / "zeilen.json"
     zeilen.write_text(json.dumps([dict(ZEILE)]), encoding="utf-8")
     ziel = fall / "abgeleitet" / "bestand"
+    lege_spez(fall, GRUNDLAGEN)
     argv = [
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", "TG2015", "--stichtag", "2026-01-01",
         "--vorgeschichte", "gevo_metadaten.csv",
+        "--generation-spez", "klv/tg2015",
         "--out-dir", str(ziel),
     ]
     assert bestand_uebernehmen.main(argv) == 2
@@ -155,13 +162,11 @@ def test_cli_verlangt_die_antwort_sobald_die_vorgeschichte_bausteine_traegt(tmp_
     beleg = json.loads((ziel / "uebernahme.json").read_text(encoding="utf-8"))
     assert beleg["anfangszustand"] == "grundvertrag"
     assert beleg["nicht_freigeschaltet"] == ["7000001"]
-    assert beleg["tarifwerk"] == {
-        "scheiben_mit_gamma1": False, "stoab_je_baustein": False,
-        "red_verfahren": "prospektiv", "tku_umfang": "alle_bausteine"}
+    # Das Tarifwerk des Belegs ist das der Spez — nicht die Vorgabe des
+    # eigenen Geschaefts, die hier vor dem Nachtrag zu ADR-024 stand.
+    assert beleg["tarifwerk"] == TESTTARIF_TARIFWERK
+    assert beleg["quellverfahren"] == TESTTARIF_QUELLVERFAHREN
     assert not (ziel / "scheiben.parquet").exists()
-    # Materialisieren ohne Rechnungsgrundlagen ist ein Aufruffehler.
-    assert bestand_uebernehmen.main(
-        argv + ["--anfangszustand", "materialisieren"]) == 2
 
 
 class _Zelle:

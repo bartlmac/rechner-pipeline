@@ -112,22 +112,26 @@ ABNAHMEN = (
 
 
 def _lieferungs_flags() -> list[str]:
-    flags = [
-        "--erhoehungssatz", ERHOEHUNGSSATZ,
-        "--red-verfahren", RED_VERFAHREN,
-        "--scheiben-mit-gamma1",
-    ]
+    """Was der Lauf am Aufruf traegt: die Arbeitsannahme (Kandidaten) und
+    die registrierte Auskunft. Die Tarifregeln (Verfahren, Dynamiksatz,
+    gamma1, Abzug je Baustein, Stichtag des Deckungskapitals) stehen seit
+    dem Nachtrag zu ADR-024 in der Spez der Fixture (``tarifregeln.json``)."""
+    flags = []
     for k in KANDIDATEN:
         flags += ["--red-anteil-kandidat", k]
     flags += ["--red-anteile-datei", AUSKUNFT]
     return flags
 
 
+#: Fixture-Dateien, die keine Lieferung sind: die eingefrorene Spez, ihre
+#: festgestellten Tarifregeln, Mapping und Policenliste des Schnitts.
+NICHT_LIEFERUNG = ("policen.json", "transformation.spec.json",
+                   "klv-tg2015.spez.json", "tarifregeln.json")
+
+
 def _registriere_alles(fall: Path) -> None:
     for pfad in sorted(FIXTURE.glob("*")):
-        if pfad.suffix in (".csv", ".json") and pfad.name not in (
-                "policen.json", "transformation.spec.json",
-                "klv-tg2015.spez.json"):
+        if pfad.suffix in (".csv", ".json") and pfad.name not in NICHT_LIEFERUNG:
             registrieren(fall, pfad)
 
 
@@ -168,7 +172,6 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--generation-spez", GENERATION,
         "--anfangszustand", "materialisieren",
         "--anker-erwartungswerte", ANKER,
-        "--stoab-je-baustein",
         "--out-dir", str(bestand),
     ] + _lieferungs_flags()) == 0, "Uebernahme in das Zielmodell"
 
@@ -199,7 +202,6 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     assert verankerung_belegen.main([
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
         "--generation", GENERATION,
-        "--formfunktion", "proportional_zur_basis",
         "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
         "--anker-erwartungswerte", ANKER,
         # Weg D (Entscheid des Maintainers 2026-09-20): Dieser Lauf
@@ -258,7 +260,6 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             "--erwartungswerte", erwartung, "--stichprobe", STICHPROBE,
             "--bestand", str(bestand / "bestand.parquet"),
             "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
-            "--stoab-je-baustein",
             # Dieselbe Ankerquelle wie Uebernahme und Suite: sonst kann A-M2
             # (nur Verlaufspunkte) den Zustand von 7000586 nicht ableiten und
             # verweigert (Pruefer-Befund B1).
@@ -325,8 +326,6 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
             "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
             "--anker-erwartungswerte", ANKER,
-            "--stoab-je-baustein",
-            "--dk-stichtag", "jahrestag",
             "--schicht", str(schichten),
             "--repo-root", str(REPO_ROOT),
         ] + _lieferungs_flags())
@@ -397,7 +396,6 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--vorgeschichte", METADATEN, "--stichtag", STICHTAG_1,
         "--anker-erwartungswerte", ANKER,
         "--schicht", str(schichten),
-        "--stoab-je-baustein",
     ] + _lieferungs_flags()) == 0, "Fuehrungsprobe"
 
     # Und zuletzt die Migrationsabnahme selbst. Dass sie hier fehlte, ist
@@ -507,13 +505,19 @@ def _probe_material(gefahrener_fall: Path):
                   and "kVx_MRV" in (x.get("erwartet") or {})), None)
         if e:
             anker[str(v["police_id"])] = (int(e["monate"]), float(e["erwartet"]["kVx_MRV"]))
+    from rechner_pipeline.spez.tarifregeln import tarifregeln_der_spez
+
+    spez = lade_spez(gefahrener_fall, GENERATION)
+    # Die Regeln wie der Lauf: aus der Spez (ADR-024, Nachtrag).
+    regeln = tarifregeln_der_spez(spez)
+    assert regeln.quell_red_verfahren == RED_VERFAHREN
+    assert regeln.erhoehungssatz == float(ERHOEHUNGSSATZ)
     basis = dict(
         config=load_config(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
-        spez=lade_spez(gefahrener_fall, GENERATION), zeilen=zeilen,
+        spez=spez, zeilen=zeilen,
         vorgeschichte=_lies_csv(gefahrener_fall, METADATEN),
-        tarifwerk={"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
-                   "red_verfahren": RED_VERFAHREN},
-        erhoehungssatz=float(ERHOEHUNGSSATZ),
+        tarifwerk=dict(regeln.tarifwerk), quellverfahren=dict(regeln.quellverfahren),
+        erhoehungssatz=regeln.erhoehungssatz,
         red_anteile={a.split("=")[0]: float(a.split("=")[1]) for a in RED_ANTEILE},
         red_anteile_je_datum={}, red_anteil_kandidaten=tuple(float(k) for k in KANDIDATEN),
         anker=anker, schichtbeleg=schichtbeleg,
@@ -990,7 +994,6 @@ def test_ein_roter_verankerungslauf_hinterlaesst_keine_schichttabelle(
     code = verankerung_belegen.main([
         "--fall", str(kopie), "--repo-root", str(REPO_ROOT),
         "--generation", GENERATION,
-        "--formfunktion", "proportional_zur_basis",
         "--zeilen", str(kopie / "abgeleitet" / "transformation" / "zeilen.json"),
         "--vorgeschichte", METADATEN,
         "--anker-erwartungswerte", ANKER,

@@ -1,0 +1,16 @@
+{
+  "anmerkung": "Die im zweiten Baldrian-Lauf festgestellten und mit A-Q1 gezeichneten Tarifregeln der Generation TG2015. Bis zum Nachtrag zu ADR-024 standen sie als Schalter in den Testaufrufen; ueber spez.validierung.ergaenze_tarifregeln gehen sie in die eingefrorene Spez dieses Fixtures (tests/test_tarifregeln_aus_spez.py haelt die Bytes gleich). Kein Beleg aus einer A-Box: Die Fixture fuehrt keine.",
+  "generation": "klv/tg2015",
+  "quellverfahren": {
+    "dk_stichtag": {"fundstelle": "Mitteilung 143, Abschnitt 6: Deckungskapital zum letzten Vertragsjahrestag vor dem Abzugsstichtag", "wert": "jahrestag"},
+    "erhoehungssatz": {"fundstelle": "Auskunft 1 der abgebenden Gesellschaft: Dynamiksatz 5 Prozent der Vorjahressumme", "wert": 0.05},
+    "formfunktion": {"fundstelle": "Ausgestaltung der Korrekturschicht im Fall (Grundsatzdokumentation 9.9, Vorgabe des Tarifplans)", "wert": "proportional_zur_basis"},
+    "red_verfahren": {"fundstelle": "Bedingungswerk Ziffer 6: keine Beitragsherabsetzung, jede Absetzung ist eine Teilkuendigung", "wert": "teilkuendigung"}
+  },
+  "tarifwerk": {
+    "red_verfahren": {"fundstelle": "Bedingungswerk Ziffer 6: der Tarif kennt keine Beitragsherabsetzung", "wert": "teilkuendigung"},
+    "scheiben_mit_gamma1": {"fundstelle": "Bedingungswerk Ziffer 3: Erhoehung als eigenstaendiger Baustein mit voller Beitragsformel", "wert": true},
+    "stoab_je_baustein": {"fundstelle": "Bedingungswerk Ziffer 4: Stornoabzug je Baustein", "wert": true},
+    "tku_umfang": {"fundstelle": "Bedingungswerk Ziffer 6, Entscheid B1 vom 2026-10-01: die Teilkuendigung kuerzt die Grundversicherung", "wert": "grundversicherung"}
+  }
+}

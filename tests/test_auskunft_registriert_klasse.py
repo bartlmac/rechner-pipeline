@@ -776,9 +776,9 @@ def test_eine_auskunft_nur_im_dateisystem_wird_mit_dem_ausweg_verweigert(tmp_pat
 
 
 def _lieferung() -> List[str]:
-    """Die Schalter der Lieferung OHNE die Auskunft (die setzt der Test)."""
-    flags = ["--erhoehungssatz", ERHOEHUNGSSATZ, "--red-verfahren",
-             RED_VERFAHREN, "--scheiben-mit-gamma1"]
+    """Die Arbeitsannahme des Laufs OHNE die Auskunft (die setzt der Test);
+    die Tarifregeln traegt die Spez des Falls (ADR-024, Nachtrag)."""
+    flags: List[str] = []
     for k in KANDIDATEN:
         flags += ["--red-anteil-kandidat", k]
     return flags
@@ -808,13 +808,11 @@ def _aufruf(kommando: str, fall: Path, datei_args: List[str],
             "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
             "--vorgeschichte", METADATEN, "--generation-spez", GENERATION,
             "--anfangszustand", "materialisieren",
-            "--anker-erwartungswerte", ANKER, "--stoab-je-baustein",
-            "--out-dir", str(ziel / "uebernahme"),
+            "--anker-erwartungswerte", ANKER, "--out-dir", str(ziel / "uebernahme"),
         ] + _lieferung() + datei_args
     if kommando == "verankerung_belegen":
         return wurzel + [
             "--repo-root", str(REPO_ROOT), "--generation", GENERATION,
-            "--formfunktion", "proportional_zur_basis",
             "--zeilen", str(p["zeilen"]), "--vorgeschichte", METADATEN,
             "--anker-erwartungswerte", ANKER,
             "--out", str(ziel / "verankerung_schichten.json"),
@@ -826,7 +824,7 @@ def _aufruf(kommando: str, fall: Path, datei_args: List[str],
             "--erwartungswerte", erwartung, "--stichprobe", STICHPROBE,
             "--bestand", str(p["bestand"] / "bestand.parquet"),
             "--zeilen", str(p["zeilen"]), "--vorgeschichte", METADATEN,
-            "--stoab-je-baustein", "--schicht", str(p["schichten"]),
+            "--schicht", str(p["schichten"]),
             "--repo-root", str(REPO_ROOT), "--out", str(ziel / "at.json"),
         ] + _lieferung() + datei_args
     if kommando == "migrationssuite_lauf":
@@ -836,8 +834,7 @@ def _aufruf(kommando: str, fall: Path, datei_args: List[str],
             "--bestand", str(p["bestand"] / "bestand.parquet"),
             "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
             "--zeilen", str(p["zeilen"]), "--vorgeschichte", METADATEN,
-            "--anker-erwartungswerte", ANKER, "--stoab-je-baustein",
-            "--dk-stichtag", "jahrestag", "--schicht", str(p["schichten"]),
+            "--anker-erwartungswerte", ANKER, "--schicht", str(p["schichten"]),
             "--config", str(p["config"]),
             "--repo-root", str(REPO_ROOT), "--out", str(ziel / "suite.json"),
         ] + _lieferung() + datei_args
@@ -848,7 +845,7 @@ def _aufruf(kommando: str, fall: Path, datei_args: List[str],
         "--config", str(p["config"]), "--zeilen", str(p["zeilen"]),
         "--vorgeschichte", METADATEN, "--stichtag", STICHTAG_1,
         "--anker-erwartungswerte", ANKER, "--schicht", str(p["schichten"]),
-        "--stoab-je-baustein", "--out", str(ziel / "probe.json"),
+        "--out", str(ziel / "probe.json"),
     ] + _lieferung() + datei_args
 
 
@@ -1403,10 +1400,11 @@ def test_die_version_des_abnahmeberichts_nennt_den_grund():
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     zeile = next(z for z in readme.splitlines()
                  if z.startswith("| G2-Vorlage (Version `"))
-    # 7.0.0 (Pruefer-Befund B1, 2026-10-01) und 8.0.0 (Fuehrungswert,
-    # 2026-10-01) erweitern dieselbe Zeile; der Grund fuer 6.0.0 steht
-    # weiter darin.
-    assert abnahmebericht.GATE_VERSION == "8.0.0"
+    # 7.0.0 (Pruefer-Befund B1, 2026-10-01), 8.0.0 (Fuehrungswert,
+    # 2026-10-01) und 9.0.0 (Tarifregeln aus der Spez, ADR-024 Nachtrag)
+    # erweitern dieselbe Zeile; der Grund fuer 6.0.0 steht weiter darin.
+    assert abnahmebericht.GATE_VERSION == "9.0.0"
+    assert "`9.0.0`" in zeile and "Spez" in zeile
     assert "`6.0.0`" in zeile and "red_anteile_datei" in zeile
     assert "`7.0.0`" in zeile and "pflichtschicht" in zeile
     assert "`8.0.0`" in zeile and "fuehrungswert" in zeile

@@ -87,7 +87,9 @@ INVENTAR = {
     "gates/verankerung_belegen.py": (1, 1, 0),
     "quellen/tafel_import.py": (1, 0, 0),
     "spez/erzeugen.py": (0, 0, 1),
-    "spez/validierung.py": (2, 4, 1),
+    # 3: ``ergaenze_tarifregeln`` (ADR-024, Nachtrag) prueft ihr Ergebnis
+    # mit dem Lader, wie die Hebung.
+    "spez/validierung.py": (3, 4, 1),
 }
 #: Module, die eine Spez-Datei beruehren, OHNE auf ihr zu rechnen — je mit
 #: Grund. Alle anderen mit Zugriff muessen den Lader rufen.
@@ -140,25 +142,58 @@ def _fixture(name: str) -> Path:
 
 
 def _alte_gestalt(roh: bytes) -> bytes:
-    """Die Bytes vor der Hebung: Die Hebung 0.1.0 -> 0.2.0 aendert genau die
-    Versionszeile; sie zurueckzusetzen ergibt die eingefrorene Datei."""
-    alt = roh.replace(b'"tbox_version": "0.2.0"', b'"tbox_version": "0.1.0"')
-    assert alt.count(b'"tbox_version": "0.1.0"') == 1
-    return alt
+    """Die Bytes vor der Hebung und vor den Tarifregeln: Die Hebung
+    0.1.0 -> 0.2.0 aendert genau die Version, der Weg der Tarifregeln
+    (``ergaenze_tarifregeln``, ADR-024, Nachtrag) fuegt genau die Bloecke
+    ``tarifwerk`` und ``quellverfahren`` hinzu; beides zurueckgenommen
+    ergibt die eingefrorene Datei."""
+    daten = json.loads(roh)
+    assert daten.pop("tarifwerk") and daten.pop("quellverfahren")
+    assert daten["tbox_version"] == "0.2.0"
+    return sv.spez_bytes({**daten, "tbox_version": "0.1.0"})
+
+
+def _regeln(name: str) -> dict:
+    return json.loads((_fixture(name).parent / "tarifregeln.json").read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize("name", sorted(FIXTURES))
 def test_die_eingefrorenen_spez_sind_in_alter_gestalt_verweigert_und_gehoben(name):
     """Der Beleg fuer den blinden Fleck: genau diese Bytes (SHA-256 vor dem
     Nachzug) liefen durch die Bestandsstrecke. Jetzt verweigert der Lader
-    sie; der benannte Weg hebt sie byte-genau zur heutigen Fixture."""
+    sie; die benannten Wege — Hebung, dann die im Lauf festgestellten
+    Tarifregeln (``tarifregeln.json`` der Fixture) — ergeben byte-genau die
+    heutige Fixture. Kein Byte der Fixture ist von Hand gesetzt."""
     heute = _fixture(name).read_bytes()
     alt = _alte_gestalt(heute)
     assert hashlib.sha256(alt).hexdigest() == FIXTURES[name]
     with pytest.raises(sv.SpezVersionFehler, match="0.1.0"):
         sv.lade_spez_aus_bytes(alt)
-    assert sv.hebe_spez_auf_geltende_version(alt) == heute
+    gehoben = sv.hebe_spez_auf_geltende_version(alt)
+    assert sv.ergaenze_tarifregeln(gehoben, _regeln(name)) == heute
     assert sv.lade_spez_aus_bytes(heute).tbox_version == tbox.TBOX_VERSION
+
+
+def test_der_weg_der_tarifregeln_ueberschreibt_nicht_und_verlangt_den_beleg():
+    """Der Weg fuer eingefrorene Spez traegt Regeln EIN, er aendert keine: Eine
+    Spez mit Regeln wird verweigert (eine andere Regel ist eine neue
+    Feststellung, A-Box), ein Merkmal ohne Fundstelle ebenso, und ein
+    unvollstaendiger Satz besteht die Pflicht der Bestandsmigration nicht."""
+    from rechner_pipeline.spez.tarifregeln import TarifregelnFehler
+
+    heute = _fixture("baldrian2_e2e").read_bytes()
+    regeln = _regeln("baldrian2_e2e")
+    with pytest.raises(ValueError, match="bereits Tarifregeln"):
+        sv.ergaenze_tarifregeln(heute, regeln)
+    gehoben = sv.hebe_spez_auf_geltende_version(_alte_gestalt(heute))
+    ohne_fundstelle = json.loads(json.dumps(regeln))
+    ohne_fundstelle["tarifwerk"]["stoab_je_baustein"]["fundstelle"] = " "
+    with pytest.raises(ValueError, match="Fundstelle"):
+        sv.ergaenze_tarifregeln(gehoben, ohne_fundstelle)
+    unvollstaendig = json.loads(json.dumps(regeln))
+    del unvollstaendig["quellverfahren"]["dk_stichtag"]
+    with pytest.raises(TarifregelnFehler, match="quellverfahren.dk_stichtag"):
+        sv.ergaenze_tarifregeln(gehoben, unvollstaendig)
 
 
 @pytest.mark.parametrize("feld, wert", [
@@ -269,7 +304,7 @@ def test_die_uebernahme_verweigert_eine_spez_fremder_version(kopie_mit_alter_spe
         "--tarif-generation", e2e.TARIF_GENERATION, "--stichtag", e2e.STICHTAG_1,
         "--vorgeschichte", e2e.METADATEN, "--generation-spez", e2e.GENERATION,
         "--anfangszustand", "materialisieren", "--anker-erwartungswerte", e2e.ANKER,
-        "--stoab-je-baustein", "--out-dir", str(fall / "abgeleitet" / "bestand-probe"),
+        "--out-dir", str(fall / "abgeleitet" / "bestand-probe"),
     ] + e2e._lieferungs_flags()), capsys)
     assert "geltend sind" in meldung, meldung
 
@@ -280,7 +315,6 @@ def test_die_verankerung_verweigert_eine_spez_fremder_version(kopie_mit_alter_sp
     e2e, fall = _e2e(), kopie_mit_alter_spez
     meldung = _verweigert(lambda: verankerung_belegen.main([
         "--fall", str(fall), "--repo-root", str(REPO), "--generation", e2e.GENERATION,
-        "--formfunktion", "proportional_zur_basis",
         "--zeilen", str(fall / "abgeleitet" / "transformation" / "zeilen.json"),
         "--vorgeschichte", e2e.METADATEN, "--anker-erwartungswerte", e2e.ANKER,
         "--config", str(fall / "abgeleitet" / "bestand-config.toml"),
@@ -300,8 +334,7 @@ def test_der_aktuarielle_test_verweigert_eine_spez_fremder_version(kopie_mit_alt
         "--erwartungswerte", erwartung, "--stichprobe", e2e.STICHPROBE,
         "--bestand", str(bestand / "bestand.parquet"),
         "--zeilen", str(fall / "abgeleitet" / "transformation" / "zeilen.json"),
-        "--vorgeschichte", e2e.METADATEN, "--stoab-je-baustein",
-        "--anker-erwartungswerte", e2e.ANKER,
+        "--vorgeschichte", e2e.METADATEN, "--anker-erwartungswerte", e2e.ANKER,
         "--schicht", str(fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"),
         "--repo-root", str(REPO),
     ] + e2e._lieferungs_flags()), capsys)
@@ -321,7 +354,6 @@ def test_das_migrationscontrolling_verweigert_eine_spez_fremder_version(kopie_mi
         "--stichtag-1", e2e.STICHTAG_1, "--stichtag-2", e2e.STICHTAG_2,
         "--zeilen", str(fall / "abgeleitet" / "transformation" / "zeilen.json"),
         "--vorgeschichte", e2e.METADATEN, "--anker-erwartungswerte", e2e.ANKER,
-        "--stoab-je-baustein", "--dk-stichtag", "jahrestag",
         "--schicht", str(fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"),
         "--repo-root", str(REPO),
     ] + e2e._lieferungs_flags()), capsys)
@@ -341,7 +373,6 @@ def test_die_fuehrungsprobe_verweigert_eine_spez_fremder_version(kopie_mit_alter
         "--vorgeschichte", e2e.METADATEN, "--stichtag", e2e.STICHTAG_1,
         "--anker-erwartungswerte", e2e.ANKER,
         "--schicht", str(fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"),
-        "--stoab-je-baustein",
     ] + e2e._lieferungs_flags()), capsys)
     assert "geltend sind" in meldung, meldung
 

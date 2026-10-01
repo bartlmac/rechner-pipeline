@@ -1967,8 +1967,15 @@ def fuehrungswerte(
     schichten: Optional[pd.DataFrame] = None,
     verankerung: Optional[pd.DataFrame] = None,
     reduktionen: Optional[pd.DataFrame] = None,
+    tarifwerk_der_spez: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> Tuple[str, Dict[str, Dict[str, Optional[Dict[str, Any]]]]]:
     """Der Fuehrungswert des Zugangs: was der Abschluss fuer jeden Vertrag fuehrt.
+
+    ``tarifwerk_der_spez`` (Knoten der Generation -> Tarifwerk der Spez,
+    ADR-024, Nachtrag): Die Config muss fuer diese Generation GENAU dieses
+    Tarifwerk fuehren, sonst stuende im Beleg der Suite ein Fuehrungswert
+    nach einer anderen Regel als die Pruefstrecke — verweigert, nicht
+    gerechnet. Die Pruefstrecke uebergibt es immer.
 
     Entscheid des Maintainers (2026-10-01): Die Migrationsabnahme weist den
     Wert aus, den die Bestandsfuehrung fuehrt — gerechnet ueber DIESELBE
@@ -2002,6 +2009,16 @@ def fuehrungswerte(
     if fehler:
         raise MigrationszugangFehler(
             "Fuehrungswert: die Config der Fuehrung ist ungueltig — " + "; ".join(fehler[:3]))
+    for knoten, soll in (tarifwerk_der_spez or {}).items():
+        ist = [g.tarifwerk() for g in config.generationen if g.knoten == knoten]
+        if ist != [dict(soll)]:
+            raise MigrationszugangFehler(
+                f"Config der Fuehrung: das Tarifwerk der Generation {knoten} "
+                f"{ist or 'fehlt'} ist nicht das der Spez {dict(soll)} — der "
+                "Fuehrungswert rechnete nach einer anderen Regel als die "
+                "Pruefstrecke. Ausweg: den Generationsblock aus "
+                "generation-zellen.toml der Uebernahme uebernehmen (er traegt "
+                "das Tarifwerk der Spez).")
     policen = [str(p) for p in stamm["police_id"]]
     werte: Dict[str, Dict[str, Optional[Dict[str, Any]]]] = {
         p: {name: None for name in stichtage} for p in policen}

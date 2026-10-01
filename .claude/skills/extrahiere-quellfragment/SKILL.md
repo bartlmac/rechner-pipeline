@@ -32,8 +32,8 @@ Das Schema ist die Wahrheit — nicht diese Datei. Felder in Kurzform:
 `generation` (z. B. "tg2015"), `quelle_datei` (Name im Eingang des
 Falls), `quelle_art` (tarifmeldung|tarifrechner|bestand),
 `dimensionen`, `zellen` (auspraegungen + parameter je Feld:
-wert/fundstelle/konfidenz), `unisex`, `quellnamen`, `nicht_belegt`,
-`anmerkungen`.
+wert/fundstelle/konfidenz), `unisex`, `tarifwerk`, `quellverfahren`,
+`quellnamen`, `nicht_belegt`, `anmerkungen`.
 
 ## Pflicht-Parameterfelder
 
@@ -44,6 +44,57 @@ zins, tafel (bei Raucher-Differenzierung MIT Suffix je Zelle, z. B.
 DAV2008_T_NR), alpha, beta1, gamma1, gamma2, gamma3, policy_fee
 (oft "k"), stoab_satz (oft "StoAb_rel"), stoab_min, stoab_max,
 min_alter_flex, min_rlz_flex. Optional: zillmer_dauer, ratzu_zw2/4/12.
+
+## Tarifwerk und Quellverfahren (Pflicht fuer eine Bestandsmigration)
+
+Neben den Zellen fuehrt die Generation zwei Bloecke generationsweiter
+Regeln (T-Box 0.2.0, `tbox.GENERATIONS_BLOECKE`; Wertebereiche dort). Im
+Fall-Scope `bestand` verlangt Gate P-Q3 sie belegt, und jedes Kommando
+der Bestandsstrecke rechnet mit genau ihnen — es gibt KEINEN Schalter am
+Aufruf und KEINE Vorgabe, die eine fehlende Regel ersetzt (ADR-024,
+Nachtrag). Was du hier nicht erhebst, rechnet niemand; was du falsch
+erhebst, rechnet alles falsch.
+
+Erhebe sie aus dem Bedingungswerk bzw. der Tarifmeldung, soweit DEINE
+Quelle sie traegt — je Merkmal mit Fundstelle (Ziffer, Abschnitt,
+Tabellenpfad), sonst `nicht_belegt` mit Blockpraefix
+(`tarifwerk.stoab_je_baustein`, `quellverfahren.erhoehungssatz`):
+
+`tarifwerk` — wie das Ziel den Vertrag nach SEINEM Bedingungswerk fuehrt:
+- `scheiben_mit_gamma1` (true/false): rechnet eine Erhoehung als
+  eigenstaendiger Baustein mit voller Beitragsformel einschliesslich
+  gamma1?
+- `stoab_je_baustein` (true/false): greifen die Grenzen des Stornoabzugs
+  je Baustein (Grund und jede Erhoehung einzeln) oder je Vertrag?
+- `red_verfahren` (prospektiv | mit_abzug | teilkuendigung): wie der
+  Tarif eine Beitragsherabsetzung rechnet; `teilkuendigung` heisst "der
+  Tarif kennt keine Herabsetzung, nur die Teilkuendigung".
+- `tku_umfang` (alle_bausteine | grundversicherung): welche Bausteine
+  eine Teilkuendigung kuerzt.
+
+`quellverfahren` — wie die abgebende Gesellschaft verfuhr und was die
+Migration dieser Generation festlegt:
+- `red_verfahren`: wie eine GELIEFERTE Absetzung gemeint war (meist wie
+  das Tarifwerk; verschieden, wenn die Quelle anders verfuhr, als ihr
+  Bedingungswerk sagt — dann beide getrennt belegen).
+- `erhoehungssatz` (Zahl, 0 < e < 1): der Dynamiksatz der planmaessigen
+  Erhoehung (5 % => 0.05). Kennt der Tarif keine, `nicht_belegt` mit
+  Anmerkung — erhoben muss er sein.
+- `dk_stichtag` (kalendertag | jahrestag): zu welchem Zeitpunkt die
+  Lieferung ihr Deckungskapital fuehrt (auf den Abzugsstichtag
+  interpoliert oder zum letzten Vertragsjahrestag davor).
+- `formfunktion` (proportional_zur_basis | konstantes_fenster) und, nur
+  zu `konstantes_fenster`, `fenster` (ganze Jahre): Ausgestaltung der
+  Korrekturschicht. Sie steht nicht im Bedingungswerk, sondern im
+  Tarifplan der Migration (Grundsatzdokumentation 10 Nr. 9); erheben
+  kannst du sie nur aus einer registrierten Festlegung des Falls. Sonst
+  `nicht_belegt` — die Entscheidung trifft der Mensch (A-Q1), nicht du.
+
+Eine Quelle, die eine Regel nur NAHELEGT (ein Beispielwert im Rechner,
+ein Satz ohne Bezug auf diese Generation), belegt sie nicht: niedrige
+Konfidenz mit Anmerkung oder `nicht_belegt`. Widersprechen zwei Quellen
+einander, entsteht im Merge eine Diskrepanz am Knoten
+`<generation>/<block>` — nicht deine Entscheidung.
 
 ## Regeln (nicht verhandelbar)
 

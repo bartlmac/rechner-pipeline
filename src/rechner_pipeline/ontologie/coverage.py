@@ -22,6 +22,7 @@ from rechner_pipeline.ontologie.tbox import (
     GENERATIONS_BLOECKE,
     PFLICHT_PARAMETER,
     Tarifgeneration,
+    tarifregeln_luecken,
 )
 
 
@@ -77,11 +78,18 @@ def coverage_generation(gen: Tarifgeneration) -> Dict[str, Any]:
     }
     # Generationsweite Bloecke (T-Box 0.2.0): je Merkmal der Zustand, und
     # "fehlt_in_extraktion", wenn keine Quelle das Merkmal auch nur nannte.
-    # AUSGEWIESEN, nicht blockierend — ``vollstaendig`` bleibt der
-    # Pflichtumfang der Parameter. Ein nicht erhobenes Tarifwerk ist damit
-    # sichtbar statt still durch die Vorgabe des eigenen Geschaefts ersetzt;
-    # ob es fuer einen Bestandsfall Pflicht wird, ist die naechste Stufe.
+    # AUSGEWIESEN; ``vollstaendig`` bleibt der Pflichtumfang der Parameter.
+    # Fuer eine Bestandsmigration sind die Bloecke Pflicht — das Urteil steht
+    # unter ``tarifregeln_bestand`` und blockiert P-Q3 im Scope ``bestand``
+    # (die Coverage kennt den Scope nicht, das Gate schon). Ein nicht
+    # erhobenes Tarifwerk ist damit sichtbar statt still durch die Vorgabe
+    # des eigenen Geschaefts ersetzt.
+    belegt: Dict[str, Dict[str, Any]] = {}
+    erhoben: Dict[str, Any] = {}
     for block, bereiche in GENERATIONS_BLOECKE.items():
+        belegt[block] = {m: a.wert for m, a in gen.block(block).items()
+                         if a.zustand is Zustand.BELEGT}
+        erhoben[block] = set(gen.block(block))
         aussagen = gen.block(block)
         eintraege = {}
         for merkmal in bereiche:
@@ -95,6 +103,9 @@ def coverage_generation(gen: Tarifgeneration) -> Dict[str, Any]:
         bericht[block] = eintraege
         bericht[f"{block}_vollstaendig"] = all(
             e["zustand"] == Zustand.BELEGT.value for e in eintraege.values())
+    luecken = tarifregeln_luecken(belegt, erhoben)
+    bericht["tarifregeln_bestand"] = {
+        "vollstaendig": not luecken, "luecken": luecken}
     return bericht
 
 
@@ -112,4 +123,6 @@ def coverage_bericht(abox: ABox) -> Dict[str, Any]:
             f"{block}_vollstaendig": all(b[f"{block}_vollstaendig"] for b in berichte)
             for block in GENERATIONS_BLOECKE
         },
+        "tarifregeln_bestand_vollstaendig": all(
+            b["tarifregeln_bestand"]["vollstaendig"] for b in berichte),
     }

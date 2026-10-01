@@ -68,8 +68,15 @@ AKTEUR = "test/extrahiere-quellfragment@abc1234"
 #: 2026-10-01): das Tarifwerk-Merkmal ``tku_umfang`` (Entscheid B1). Der
 #: Abdruck des Entwurfs war 6c22a4ab...; kein Fall hat auf ihm gezeichnet,
 #: deshalb keine neue Version.
+#:
+#: Zweite Ergaenzung vor der ersten Zeichnung (ADR-024, zweiter Nachtrag
+#: 2026-10-01, "die Kommandos lesen die Spez"): das Quellverfahren fuehrt
+#: ``erhoehungssatz``, ``dk_stichtag``, ``formfunktion``, ``fenster``; die
+#: Pflicht einer Bestandsmigration (``BESTAND_PFLICHT``, ``BESTAND_ERHOBEN``)
+#: steht im Vokabular. Abdruck davor: df39a4c6...; gezeichnet hat darauf
+#: niemand, deshalb wieder keine neue Version.
 VOKABULAR_ABDRUCK = {
-    "0.2.0": "df39a4c626ba30c7fd7813af02a45303656781c45b0e737c294e1c9c39b3819f",
+    "0.2.0": "77030f79940e8c7c80806b2d7ffc457cc3c59c55468bfaa71fd679f84f2e1dfc",
 }
 
 

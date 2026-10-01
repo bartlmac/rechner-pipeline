@@ -108,3 +108,95 @@ Befuellung, Spez-Projektion, Coverage und Fachspezifikation (Abschnitt 12)
 lesen die Merkmale aus `GENERATIONS_BLOECKE` und tragen das neue Merkmal
 ohne eigene Aenderung. Wer auf dem Entwurfsabdruck gezeichnet haette, muesste
 neu zeichnen — es hat niemand.
+
+## Nachtrag 2026-10-01 (zweiter): die naechste Stufe ist gebaut — die Kommandos lesen die Spez
+
+**Entscheid des Maintainers** zum Vorschlag "Die Tarifregeln eines
+uebernommenen Tarifs muessen bei einer Bestandsmigration in der A-Box
+stehen, belegt aus dem Bedingungswerk; die fuenf Kommandos lesen sie von
+dort statt aus Schaltern": angenommen, mit dem Zusatz, auch die uebrigen
+Regeln nachzuziehen ("kein Schalter von Hand, sondern Tabelle"); vor dem
+Merge.
+
+**Invariante.** Die Regeln eines Tarifs stehen EINMAL, belegt (A-Box ->
+Spez), und jedes Kommando der Bestandsstrecke rechnet mit genau dieser
+Fassung. Kein Kommando rechnet mit einer Vorgabe, die niemand belegt hat.
+
+**Gebaut.**
+
+1. *Pflicht im Scope bestand.* `tbox.BESTAND_PFLICHT` (das ganze Tarifwerk;
+   im Quellverfahren `red_verfahren`, `dk_stichtag`, `formfunktion`) und
+   `tbox.BESTAND_ERHOBEN` (`erhoehungssatz`: belegt oder ausdruecklich
+   `nicht_belegt`); das Fenster folgt der Formfunktion. EINE Regel,
+   `tbox.tarifregeln_luecken`, fuer P-Q3 und die Kommandos. P-Q3 (2.0.0)
+   verweigert im Scope `bestand` mit Code `tarifregeln` und Ausweg; die
+   Coverage weist das Urteil je Generation aus (`tarifregeln_bestand`),
+   unabhaengig vom Scope.
+2. *Die Grenze.* Im Scope `tarif` bleibt der Block ausgewiesen, nicht
+   blockierend: Ein Tariffall fuehrt keinen Bestand, keine seiner
+   Rechnungen liest die Bloecke, und eine Tarifmeldung ohne Bedingungswerk
+   waere sonst rot, ohne dass etwas falsch gerechnet wuerde. Die Pflicht
+   gehoert dorthin, wo die Regel rechnet.
+3. *Quellverfahren erweitert* (vor der ersten Zeichnung von 0.2.0, ohne
+   neue Version; Abdruck neu gesetzt): `erhoehungssatz` (Zahl, 0 < e < 1),
+   `dk_stichtag` (`kalendertag`, `jahrestag`), `formfunktion`
+   (`tbox.FORMFUNKTIONEN`), `fenster` (ganze Zahl >= 1). Zahlbereiche als
+   `tbox.Zahlbereich`, typstreng wie die Aufzaehlungen.
+4. *Eine Tuer.* `spez.tarifregeln.tarifregeln_der_spez` liefert die Regeln
+   aus der ueber den einen Lader gelesenen Spez oder verweigert
+   (`TarifregelnFehler`, mit Ausweg). Uebernahme, Verankerung,
+   aktuarieller Test, Migrationscontrolling und Fuehrungsprobe beziehen
+   sie dort; `--generation-spez` ist an der Uebernahme Pflicht.
+5. *Die Schalter entfallen.* `--red-verfahren`, `--stoab-je-baustein`,
+   `--scheiben-mit-gamma1`, `--tku-umfang`, `--erhoehungssatz`,
+   `--dk-stichtag`, `--formfunktion`, `--fenster` werden an allen fuenf
+   Kommandos sprechend verweigert (Exit 2, mit dem Abschnitt der Spez).
+   Entschieden gegen den nackten argparse-Fehler: Die Schalter stehen in
+   Laufnotizen, Skills und Aufrufen frueherer Belege; wer einen davon
+   tippt, erfaehrt, wo die Regel jetzt steht und wie man sie aendert.
+6. *Abgegrenzt.* Tarifwerk = Regel des Tarifs (Fuehrung). Quellverfahren =
+   Eigenschaft der Quelle bzw. der Migration (Lesart der Lieferung,
+   Dynamiksatz, Stichtag des gelieferten Deckungskapitals, Ausgestaltung der
+   Korrekturschicht nach Grundsatzdokumentation 10 Nr. 9). Arbeitsannahme
+   des Laufs und deshalb Schalter: `--red-anteil-kandidat`. Registrierte
+   Eingaben bleiben Schalter mit Dateinamen (`--red-anteile-datei`,
+   `--anker-erwartungswerte`, `--plausibilitaet-*`).
+7. *Gefunden beim Bau.* Der Umfang der Teilkuendigung erreichte die
+   Pruefauftraege von aktuariellem Test und Migrationscontrolling nie
+   (`--tku-umfang` wirkte nur auf den Anfangszustand); jetzt geht er in
+   jeden Auftrag. Der Fuehrungswert der Suite rechnet mit dem Tarifwerk
+   der Config; das Migrationscontrolling verweigert eine Config, deren
+   Tarifwerk nicht das der Spez ist (`bestand.migrationszugang.fuehrungswerte`).
+8. *Belege.* Uebernahmebeleg, Schichtbeleg, aktuarieller Test, Suite und
+   Fuehrungsprobe nennen die Regeln, mit denen sie gerechnet haben
+   (`tarifregeln` bzw. `tarifwerk`/`quellverfahren`). Die Fuehrungsprobe
+   traegt Fassung 5 (Aufruf ohne Tarifschalter); A-M4 (`gates.abnahmebericht`
+   9.0.0) nimmt Fassung 4 nicht mehr an.
+
+**Verworfene Alternativen.**
+
+* *Schalter als Uebersteuerung* (Spez als Vorgabe, Schalter gewinnt): Ein
+  Schalter, der die belegte Regel ueberstimmen kann, ist wieder Zweitwissen
+  — dieselbe Tatsache an zwei Orten, und der Aufruf haette das letzte Wort
+  ueber einen Beleg.
+* *Vorgabe "PLV-Regel, wenn nichts belegt ist"*: der stille Default, genau
+  der Fund des zweiten Laufs, in dem die Regel des uebernommenen Tarifs
+  erst in A-M3 auffiel.
+* *Formfunktion und Fenster in einem eigenen Block `migration`*: semantisch
+  sauberer (sie sind keine Eigenschaft der Quelle), kostet aber ein
+  weiteres Feld in vier Modellen (A-Box, Fragment, Spez, Befuellung) fuer
+  zwei Merkmale, die wie das Verfahren der Quelle je Generation einmal
+  entschieden werden. Naheliegende Einordnung gebaut (Quellverfahren); der
+  eigene Block bleibt die Alternative, wenn die Ausgestaltung der
+  Korrekturschicht mehr Merkmale bekommt (Floors, Ankerliste).
+* *`--red-anteil-kandidat` in die Spez*: Die Kandidatenmenge ist eine
+  Arbeitsannahme des Laufs, wo der exakte Anteil bei der Quelle nicht
+  feststellbar ist, keine Regel des Tarifs. Waere sie eine (die zulaessigen
+  Herabsetzungsstufen des Tarifs), gehoerte sie als Merkmal ins Tarifwerk.
+
+**Fixtures.** Die eingefrorenen Spez der Baldrian-Laeufe haben keine A-Box;
+ihre Regeln kommen ueber `spez.validierung.ergaenze_tarifregeln` aus dem
+Dokument der Feststellung (`tests/fixtures/<lauf>/tarifregeln.json`, je
+Merkmal mit Fundstelle) — der Test haelt die Bytes gegen den Weg
+Hebung + Ergaenzung. Die P-K1-/A-M4-Fixture liefert die Regeln im Scope
+`bestand` ueber ihren Produzenten (`tests/e2e_fixture.py`).

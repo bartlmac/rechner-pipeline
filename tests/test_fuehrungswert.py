@@ -181,7 +181,9 @@ def test_a_m4_nimmt_im_bestands_scope_keine_suite_ohne_fuehrungswert_ab():
     kw = dict(stichtag_1=S1.isoformat(), stichtag_2=S2.isoformat(), erwartetes_system=system)
     assert not [f for f in abnahmebericht._bestands_suite_fehler(mit, **kw) if "uehrungswert" in f]
     assert any("Fuehrungswert" in f for f in abnahmebericht._bestands_suite_fehler(ohne, **kw))
-    assert abnahmebericht.GATE_VERSION == "8.0.0"
+    # Eingefuehrt mit 8.0.0; spaetere Majors (9.0.0: Tarifregeln aus der
+    # Spez) tragen die Pruefung weiter.
+    assert int(abnahmebericht.GATE_VERSION.split(".")[0]) >= 8
 
 
 def test_migrationssuite_lauf_verlangt_die_config_der_fuehrung():

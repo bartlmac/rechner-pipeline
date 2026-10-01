@@ -47,6 +47,10 @@ Zielrechenkern und Migrationssystem laufen in einer gemeinsamen Hülle, sind abe
 
 ⟨TODO: Quellsystembeschreibung; frühere Migrationen des Quellsystems (geerbte Residuen — Grundsatzdokumentation 9.3); Bestandsgruppen und Tarifplan-Zuordnung; Tarifpläne ohne freigegebene Ausgestaltung → nicht migrationsfähig (Grundsatzdokumentation Abschnitt 10 Nr. 9); Ausschlüsse und Sonderbestände⟩
 
+Die Regeln jeder migrierten Tarifgeneration stehen belegt in der A-Box des Falls, nicht in Aufrufen (ADR-024, Nachtrag): das Tarifwerk aus dem Bedingungswerk (Erhöhung mit $\gamma_1$, Stornoabzug je Baustein, Verfahren der Herabsetzung, Umfang der Teilkündigung) und das Verfahren der Quelle (Lesart einer gelieferten Absetzung, Dynamiksatz, Stichtag des gelieferten Deckungskapitals, Formfunktion und Fenster der Korrekturschicht). Die Quellenprüfung P-Q3 verlangt sie im Bestands-Scope; eine Generation, deren Regeln nicht belegt sind, ist nicht migrationsfähig — die Regel des eigenen Geschäfts ist keine Vorgabe dafür.
+
+⟨TODO: je Generation die Regeln mit Fundstelle, oder die offene Frage an die Quelle⟩
+
 ## 4 Datenliefervertrag und Ableitungsregeln
 
 Struktur gemäß Grundsatzdokumentation 9.12 (drei Lieferobjekte). Je Lieferobjekt: Feldliste mit Quellsystem-Mapping, Ableitungsort (quellseitig vs. ETL im MIG) und Validierungsregel.

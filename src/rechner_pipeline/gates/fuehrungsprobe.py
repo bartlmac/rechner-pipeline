@@ -5,8 +5,9 @@ einen JSON-Beleg, den der Abnahmebericht im Bestands-Scope bindet und
 A-M4 als Pflichtbelegrolle ``fuehrungsprobe`` verlangt.
 
 **Die Frage, die er beantwortet.** Die Abnahmen A-M1 bis A-M4 rechnen
-jeden uebernommenen Vertrag auf seinem Anfangszustand mit den Schaltern
-der Lieferung und der Korrekturschicht. Ob der gefuehrte Bestand diese
+jeden uebernommenen Vertrag auf seinem Anfangszustand mit den Tarifregeln
+der Spez (Tarifwerk und Quellverfahren, ADR-024, Nachtrag — vorher
+Schalter der Lieferung) und der Korrekturschicht. Ob der gefuehrte Bestand diese
 Welt auch benutzt, sah bis zur Freischaltung niemand: Kein Gate stellte
 das Ledger der Fuehrung neben die Werte der Pruefstrecke — im zweiten
 Baldrian-Fall lagen 550 von 834 Stammsummen in der falschen Welt
@@ -16,8 +17,8 @@ das die Fortschreibung darauf gebucht hat, gegen die Pruefstrecken-Welt
 gehalten:
 
 1. der Uebernahmebeleg (``uebernahme.json``): materialisierter
-   Anfangszustand, Tarifwerks-Schalter gleich denen der Config der
-   Generation und denen dieses Laufs;
+   Anfangszustand, Tarifwerk gleich dem der Config der Generation und
+   dem der Spez, Quellverfahren gleich dem der Spez;
 2. je Vertrag: Stammsumme, Bausteine (Scheiben mit ihrem gamma1),
    Beitragsfreistellung, Zugang und Umbuchung gegen den Anfangszustand,
    den DIESELBE Ableitung wie in den Abnahmen liefert
@@ -26,7 +27,7 @@ gehalten:
 3. je Buchung der Fortschreibung nach dem Stichtag (Storno, Umbuchung,
    Tod, Ablauf) den Betrag gegen die Pruefstrecken-Engine am gebuchten
    Vertragsmonat — Kern mit Bausteinen, Stornoabzug je Baustein nach
-   Schalter, Korrekturschicht aus dem Schichtbeleg;
+   Tarifwerk, Korrekturschicht aus dem Schichtbeleg;
 4. die Fortschreibung bewegt nur, was nach dem Stichtag geschieht
    (Pruefrunde T27, Runde C): das Ledger bis zum Stichtag ist das der
    Uebernahme, Schichten, Verankerung und Merkmale der Fortschreibung sind
@@ -114,15 +115,18 @@ from rechner_pipeline.gates.migrationssuite_lauf import (
     lies_auskuenfte,
 )
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe, vertrags_monatsreserve
-from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
 from rechner_pipeline.kern import (
-    TKU_UMFAENGE,
     VORGANG_RANG as RANG,
     Vertragsstand,
     Vorgangsfolge,
-    tku_umfang_fuer,
     vorgang,
+)
+from rechner_pipeline.ontologie.tbox import TARIFWERK_MERKMALE
+from rechner_pipeline.spez.tarifregeln import (
+    TarifregelnFehler,
+    tarifregeln_der_spez,
+    verweigere_entfallene_schalter,
 )
 
 #: Die Codes der Reihenfolge eines Jahrestags (kern.vorgangsfolge.RANG).
@@ -182,7 +186,12 @@ from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 #: (2026-10-01): Der Beleg fuehrt ``gedeckt`` (die Policen, deren
 #: Anfangszustand die Auskunft traegt) und befundet jeden Vertrag ohne
 #: ableitbaren Anfangszustand, statt nur die Gleichheit der Listen zu pruefen.
-SCHEMA_VERSION = 4
+#: 5 seit ADR-024, Nachtrag (2026-10-01): Die Tarifregeln kommen aus der
+#: Spez; der Aufruf traegt keine Tarifschalter mehr, die Parameter nennen
+#: ``tarifregeln``, und der Beleg prueft das Quellverfahren des
+#: Uebernahmebelegs. Ein Beleg der Fassung 4 ist mit seinem Aufruf nicht
+#: mehr nachrechenbar (seine Schalter werden verweigert).
+SCHEMA_VERSION = 5
 
 #: Die Optionen, deren Wert ein Pfad ist. Im Aufruf des Belegs stehen sie
 #: relativ zum Fall (wo sie darin liegen); der Konsument loest sie gegen
@@ -473,6 +482,7 @@ def pruefe_fuehrung(
     zeilen: List[Dict[str, Any]],
     vorgeschichte: List[Dict[str, str]],
     tarifwerk: Dict[str, Any],
+    quellverfahren: Dict[str, Any],
     erhoehungssatz: Optional[float],
     red_anteile: Dict[str, float],
     red_anteile_je_datum: Dict[str, Dict[str, float]],
@@ -490,12 +500,20 @@ def pruefe_fuehrung(
     oder None. ``schichtbeleg``: ``schichten`` des Schichtbelegs
     (police -> {"hist": Parameter}) oder None. Rueckgabe: der Beleg ohne
     ``system``/``provenienz`` (die setzt ``main``).
+
+    ``tarifwerk`` (alle vier Merkmale) und ``quellverfahren`` sind die
+    Tarifregeln der Spez (``spez.tarifregeln``); ``main`` liest sie dort.
+    Ein unvollstaendiges Tarifwerk wird nicht ergaenzt — vorher fuellte
+    die Probe einen fehlenden Umfang der Teilkuendigung aus dem Verfahren
+    und ein fehlendes Verfahren mit der PLV-Vorgabe ``prospektiv``.
     """
     befunde: List[Dict[str, Any]] = []
-    # Der Umfang der Teilkuendigung gehoert zum Tarifwerk (Entscheid B1 vom 2026-10-01); ohne
-    # Angabe der des Bedingungswerks, das das Verfahren nennt.
-    tarifwerk = {**tarifwerk, "tku_umfang": tku_umfang_fuer(
-        str(tarifwerk.get("red_verfahren", PROSPEKTIV)), tarifwerk.get("tku_umfang"))}
+    if set(tarifwerk) != set(TARIFWERK_MERKMALE) or "red_verfahren" not in quellverfahren:
+        raise ValueError(
+            f"Fuehrungsprobe: Tarifwerk {sorted(tarifwerk)} / Quellverfahren "
+            f"{sorted(quellverfahren)} unvollstaendig — die Regeln kommen ganz "
+            "aus der Spez (spez.tarifregeln), keine Vorgabe ergaenzt sie")
+    tarifwerk = dict(tarifwerk)
     stamm: pd.DataFrame = uebernahme["bestand"]
     historie: pd.DataFrame = uebernahme["historie"]
     ledger: pd.DataFrame = uebernahme["ledger"]
@@ -508,7 +526,7 @@ def pruefe_fuehrung(
         befunde.append({"police_id": None if police is None else str(police),
                         "art": art, "text": text, **rest})
 
-    # 1. Beleg und Schalter -------------------------------------------------
+    # 1. Beleg und Tarifregeln ---------------------------------------------
     modus = beleg.get("anfangszustand")
     if modus == GRUNDVERTRAG:
         befund(None, "nicht_freigeschaltet",
@@ -532,19 +550,23 @@ def pruefe_fuehrung(
         tw_config: Dict[str, Any] = {}
     else:
         tw_config = gen.tarifwerk()
+    # Ein Beleg ohne vollstaendiges Tarifwerk (vor dem Merkmal tku_umfang
+    # oder vor ADR-024, Nachtrag) wird nicht ergaenzt: Er weicht ab und ist
+    # ein Befund — der Bestand wird auf dem neuen Stand neu uebernommen.
     tw_beleg = dict(beleg.get("tarifwerk") or {})
-    if tw_beleg and "tku_umfang" not in tw_beleg:
-        # Ein Beleg vor dem Merkmal (2026-10-01) hat mit dem Umfang des
-        # Bedingungswerks abgenommen, das sein Verfahren nennt (Entscheid B1 vom 2026-10-01).
-        tw_beleg["tku_umfang"] = tku_umfang_fuer(
-            str(tw_beleg.get("red_verfahren", PROSPEKTIV)))
     for name, quelle, werte in (("config", "Config der Generation", tw_config),
                                 ("beleg", "Uebernahmebeleg", tw_beleg)):
         if werte != tarifwerk:
             befund(None, "tarifwerk",
-                   f"Tarifwerks-Schalter der {quelle} {werte} weichen von "
-                   f"denen dieses Laufs {tarifwerk} ab — die Pruefstrecke hat "
-                   "mit anderen Schaltern abgenommen als die Fuehrung rechnet")
+                   f"Tarifwerk der {quelle} {werte} weicht vom belegten der "
+                   f"Spez {tarifwerk} ab — die Pruefstrecke hat mit anderen "
+                   "Regeln abgenommen als die Fuehrung rechnet")
+    qv_beleg = beleg.get("quellverfahren")
+    if qv_beleg is not None and qv_beleg != dict(quellverfahren):
+        befund(None, "quellverfahren",
+               f"Quellverfahren des Uebernahmebelegs {qv_beleg} weicht vom "
+               f"belegten der Spez {dict(quellverfahren)} ab — die Uebernahme "
+               "hat die Lieferung anders gelesen als die Pruefstrecke")
 
     # Der Stichtag ist eine Eigenschaft des Bestands, keine Angabe des
     # Aufrufs (Pruefrunde T27, Befund 06): Jeder uebernommene Vertrag kam
@@ -562,7 +584,9 @@ def pruefe_fuehrung(
     if vorgeschichte:
         zustaende, warnungen = anfangszustaende_je_police(
             spez, zeilen, vorgeschichte, stamm, spalten=dict(VORGABE),
-            red_verfahren=tarifwerk["red_verfahren"], red_anteile=red_anteile,
+            # Die Vorgeschichte liest die Probe wie die Pruefstrecke: in der
+            # Lesart der QUELLE, nicht nach dem Tarifwerk der Fuehrung.
+            red_verfahren=str(quellverfahren["red_verfahren"]), red_anteile=red_anteile,
             auspraegungen=auspraegungen, erhoehungssatz=erhoehungssatz,
             anker=anker, red_anteile_je_datum=red_anteile_je_datum,
             red_anteil_kandidaten=red_anteil_kandidaten,
@@ -1340,24 +1364,20 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--stichtag", required=True, help="Migrationsstichtag (ISO)")
     p.add_argument("--schicht", default=None,
                    help="ABGELEITETER Schichtbeleg (gates.verankerung_belegen)")
-    p.add_argument("--erhoehungssatz", type=float, default=None)
-    p.add_argument("--red-verfahren", dest="red_verfahren", default=PROSPEKTIV,
-                   choices=sorted(VERFAHREN))
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
-                   action="append", type=float, default=[])
+                   action="append", type=float, default=[],
+                   help="Arbeitsannahme des Laufs (siehe aktuartest_lauf)")
     p.add_argument("--red-anteile-datei", dest="red_anteile_datei", default=None,
                    help="REGISTRIERTE Auskunft der Quelle zu den fortgefuehrten "
                         "Beitragsanteilen (POLNR;GEVO;DATUM;ANTEIL, optional "
                         "BEZUG) — der einzige Weg, sie zu nennen")
     p.add_argument("--anker-erwartungswerte", dest="anker_quelle", default=None)
-    p.add_argument("--scheiben-mit-gamma1", dest="scheiben_mit_gamma1", action="store_true")
-    p.add_argument("--stoab-je-baustein", dest="stoab_je_baustein", action="store_true")
-    p.add_argument("--tku-umfang", dest="tku_umfang", default=None,
-                   choices=sorted(TKU_UMFAENGE),
-                   help="Umfang der Teilkuendigung des Tarifs (Vorgabe: der des "
-                        "Bedingungswerks, das --red-verfahren nennt)")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/berichte/fuehrungsprobe.json)")
+    # Die Tarifregeln stehen in der Spez (ADR-024, Nachtrag). Auch der
+    # Konsument, der den Aufruf eines Belegs nachrechnet, geht durch diesen
+    # Parser: Ein alter Aufruf mit Schaltern wird sprechend verweigert.
+    verweigere_entfallene_schalter(p)
     return p
 
 
@@ -1367,8 +1387,7 @@ def _aufruf(args: argparse.Namespace, ueber: Path, schluessel) -> List[str]:
     a = ["--generation", str(args.generation), "--stichtag", str(args.stichtag),
          "--uebernahme", schluessel(ueber),
          "--config", schluessel(Path(args.config)),
-         "--zeilen", schluessel(Path(args.zeilen)),
-         "--red-verfahren", str(args.red_verfahren)]
+         "--zeilen", schluessel(Path(args.zeilen))]
     if args.fortschreibung:
         a += ["--fortschreibung", schluessel(Path(args.fortschreibung))]
     for option, wert in (("--vorgeschichte", args.vorgeschichte), ("--schicht", args.schicht),
@@ -1376,16 +1395,8 @@ def _aufruf(args: argparse.Namespace, ueber: Path, schluessel) -> List[str]:
                          ("--anker-erwartungswerte", args.anker_quelle)):
         if wert is not None:
             a += [option, str(wert)]
-    if args.erhoehungssatz is not None:
-        a += ["--erhoehungssatz", repr(float(args.erhoehungssatz))]
     for wert in args.red_anteil_kandidaten:
         a += ["--red-anteil-kandidat", repr(float(wert))]
-    if args.scheiben_mit_gamma1:
-        a.append("--scheiben-mit-gamma1")
-    if args.stoab_je_baustein:
-        a.append("--stoab-je-baustein")
-    if getattr(args, "tku_umfang", None) is not None:
-        a += ["--tku-umfang", str(args.tku_umfang)]
     return a
 
 
@@ -1517,6 +1528,11 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
     # rechnete gegen die Zellen einer Datei, die ihr Beleg nicht nannte.
     spez_datei = spez_pfad(fall, args.generation)
     spez = lade_spez_aus_bytes(binde(spez_datei).roh)
+    try:
+        regeln = tarifregeln_der_spez(spez)
+    except TarifregelnFehler as exc:
+        print(f"fuehrungsprobe: {exc}", file=sys.stderr)
+        return 2, None
     zeilen_pfad = Path(args.zeilen).resolve()
     zeilen = json.loads(binde(zeilen_pfad).text())
     if not isinstance(zeilen, list):
@@ -1581,18 +1597,13 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
         # Kein zweiter Lesevorgang mehr: _schichten hat ueber dieselbe
         # Bindung gelesen und dabei registriert.
 
-    tarifwerk = {
-        "scheiben_mit_gamma1": bool(args.scheiben_mit_gamma1),
-        "stoab_je_baustein": bool(args.stoab_je_baustein),
-        "red_verfahren": str(args.red_verfahren),
-        # Umfang der Teilkuendigung (Entscheid B1 vom 2026-10-01): angegeben oder der des
-        # Bedingungswerks, das das Verfahren nennt (bestand.config).
-        "tku_umfang": tku_umfang_fuer(args.red_verfahren, args.tku_umfang),
-    }
+    # Tarifwerk und Quellverfahren: die belegten der Spez — dieselbe Fassung,
+    # mit der Uebernahme und Pruefstrecke gerechnet haben (ADR-024, Nachtrag).
     ergebnis = pruefe_fuehrung(
         uebernahme=uebernahme, fortschreibung=fortschreibung, config=config,
         spez=spez, zeilen=zeilen, vorgeschichte=vorgeschichte,
-        tarifwerk=tarifwerk, erhoehungssatz=args.erhoehungssatz,
+        tarifwerk=dict(regeln.tarifwerk), quellverfahren=dict(regeln.quellverfahren),
+        erhoehungssatz=regeln.erhoehungssatz,
         red_anteile=red_anteile, red_anteile_je_datum=red_anteile_je_datum,
         red_anteil_kandidaten=tuple(args.red_anteil_kandidaten), anker=anker,
         schichtbeleg=schichtbeleg, stichtag=dt.date.fromisoformat(args.stichtag),
@@ -1601,7 +1612,7 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
     ergebnis["provenienz"] = {
         "eingaben": bindung.als_beleg(),
         "parameter": {
-            "generation": args.generation, "erhoehungssatz": args.erhoehungssatz,
+            "generation": args.generation, "tarifregeln": regeln.als_beleg(),
             "red_anteile_datei": red_anteile_datei,
             "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
             "anker_erwartungswerte": args.anker_quelle,

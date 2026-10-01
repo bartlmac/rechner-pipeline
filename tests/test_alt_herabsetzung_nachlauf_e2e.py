@@ -82,11 +82,11 @@ from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
 from rechner_pipeline.models.bestand import model_point_kwargs
 from rechner_pipeline.spez.validierung import lade_spez_aus_bytes
 from tests.e2e_fixture import zellen_config
+from tests.tarifregeln_testhelfer import spez_variante
 from tests.test_baldrian2_e2e import (
     ABZUG_1,
     ABZUG_2,
     ANKER,
-    ERHOEHUNGSSATZ,
     FIXTURE,
     GENERATION,
     KANDIDATEN,
@@ -235,12 +235,13 @@ def baue_lieferung(ziel: Path, vorgeschichte=VORGESCHICHTE_NEU,
 
 
 def _flags(verfahren: str, kandidaten: bool = True) -> list:
-    # Die Tarifzelle ist die des uebernommenen Tarifs: Seine Teilkuendigung
-    # kuendigt nur die Grundversicherung (Entscheid B1 vom 2026-10-01) — ein
-    # Merkmal des Tarifwerks, in jeder der drei Generationen benannt.
-    flags = ["--erhoehungssatz", ERHOEHUNGSSATZ, "--red-verfahren", verfahren,
-             "--tku-umfang", "grundversicherung",
-             "--scheiben-mit-gamma1", "--red-anteile-datei", AUSKUNFT]
+    # Das Verfahren ist eine Regel des Tarifs und der Quelle und steht seit
+    # dem Nachtrag zu ADR-024 in der Spez (``fahre_kette`` legt die Variante
+    # je Verfahren); am Aufruf bleiben Auskunft und Arbeitsannahme. Die
+    # Tarifzelle ist die des uebernommenen Tarifs: Seine Teilkuendigung
+    # kuendigt nur die Grundversicherung (Entscheid B1 vom 2026-10-01) — so
+    # traegt es die Spez der Fixture.
+    flags = ["--red-anteile-datei", AUSKUNFT]
     for k in (KANDIDATEN if kandidaten else ()):
         flags += ["--red-anteil-kandidat", k]
     return flags
@@ -257,8 +258,12 @@ def fahre_kette(basis: Path, verfahren: str, *, bis_uebernahme: bool = False,
         registrieren(fall, pfad)
 
     ab = fall / "abgeleitet"
-    (ab / "spez").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(FIXTURE / "klv-tg2015.spez.json", ab / "spez" / "klv-tg2015.spez.json")
+    # Die Spez der Fixture, mit dem Verfahren dieser Kette als belegte Regel
+    # des Tarifs UND Lesart der Quelle (vorher: --red-verfahren an jedem
+    # Kommando).
+    spez_variante(FIXTURE / "klv-tg2015.spez.json", fall, GENERATION,
+                  tarifwerk={"red_verfahren": verfahren},
+                  quellverfahren={"red_verfahren": verfahren})
     spec = ab / "transformation" / "abzug.spec.json"
     spec.parent.mkdir(parents=True, exist_ok=True)
     # Dieselbe Feldabbildung, gebunden an DIESEN Abzug (die Spec bindet die
@@ -284,7 +289,7 @@ def fahre_kette(basis: Path, verfahren: str, *, bis_uebernahme: bool = False,
         "--tarif-generation", TARIF_GENERATION, "--stichtag", STICHTAG_1,
         "--vorgeschichte", METADATEN, "--generation-spez", GENERATION,
         "--anfangszustand", "materialisieren", "--anker-erwartungswerte", ANKER,
-        "--stoab-je-baustein", "--out-dir", str(bestand)] + _flags(verfahren, kandidaten))
+        "--out-dir", str(bestand)] + _flags(verfahren, kandidaten))
     if bis_uebernahme:
         return {"codes": codes, "fall": fall, "bestand": bestand}
     codes["transformation_ziel"] = transformation_anwenden.main([
@@ -295,7 +300,7 @@ def fahre_kette(basis: Path, verfahren: str, *, bis_uebernahme: bool = False,
         name=TARIF_GENERATION, knoten=GENERATION), encoding="utf-8")
     codes["verankerung"] = verankerung_belegen.main([
         "--fall", str(fall), "--repo-root", str(REPO_ROOT), "--generation", GENERATION,
-        "--formfunktion", "proportional_zur_basis", "--zeilen", str(zeilen),
+        "--zeilen", str(zeilen),
         "--vorgeschichte", METADATEN, "--anker-erwartungswerte", ANKER,
         "--config", str(config_pfad), "--stichtag", STICHTAG_1] + _flags(verfahren))
 
@@ -323,16 +328,14 @@ def fahre_kette(basis: Path, verfahren: str, *, bis_uebernahme: bool = False,
             "--fall", str(fall), "--abnahme", abnahme, "--generation", GENERATION,
             "--erwartungswerte", erwartung, "--stichprobe", STICHPROBE,
             "--bestand", str(bestand / "bestand.parquet"), "--zeilen", str(zeilen),
-            "--vorgeschichte", METADATEN, "--stoab-je-baustein",
-            "--schicht", str(schichten), "--repo-root", str(REPO_ROOT)] + _flags(verfahren))
+            "--vorgeschichte", METADATEN, "--schicht", str(schichten), "--repo-root", str(REPO_ROOT)] + _flags(verfahren))
     codes["migrationssuite"] = migrationssuite_lauf.main([
         "--fall", str(fall), "--generation", GENERATION,
         "--abzug-1", ABZUG_1, "--abzug-2", ABZUG_2, "--gevo-protokoll", PROTOKOLL,
         "--bestand", str(bestand / "bestand.parquet"),
         "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
         "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
-        "--anker-erwartungswerte", ANKER, "--stoab-je-baustein",
-        "--dk-stichtag", "jahrestag", "--schicht", str(schichten),
+        "--anker-erwartungswerte", ANKER, "--schicht", str(schichten),
         "--config", str(config_pfad),
         "--repo-root", str(REPO_ROOT)] + _flags(verfahren))
     codes["fortschreibung"] = cli_fortschreibung.main([
@@ -345,7 +348,7 @@ def fahre_kette(basis: Path, verfahren: str, *, bis_uebernahme: bool = False,
         "--uebernahme", str(bestand), "--config", str(config_pfad),
         "--zeilen", str(zeilen), "--vorgeschichte", METADATEN, "--stichtag", STICHTAG_1,
         "--anker-erwartungswerte", ANKER, "--schicht", str(schichten),
-        "--stoab-je-baustein"] + _flags(verfahren)
+    ] + _flags(verfahren)
     codes["fuehrungsprobe"] = fuehrungsprobe.main(["--fortschreibung", str(nach)] + probe_argv)
     for name, lauf, portfolio, bis in (
             ("bestandsbericht-vor.html", bestand, "bestand.parquet", STICHTAG_1),

@@ -18,7 +18,12 @@ Zielsystems:
 * ``historie.parquet`` — je Vertrag die erste Statuszeile
 * ``ledger.parquet`` — die Zugangsbuchung je Vertrag
 * ``scheiben.parquet`` — die Alt-Erhoehungen als Bausteine (Freischaltung)
-* ``uebernahme.json`` — der Beleg: Modus, Schalter, Ausnahmen
+* ``uebernahme.json`` — der Beleg: Modus, Tarifregeln der Spez, Ausnahmen
+
+**Die Tarifregeln kommen aus der Spez** (ADR-024, Nachtrag): Tarifwerk,
+Verfahren der Quelle, Dynamiksatz und die Ausgestaltung der Korrekturschicht
+liest das Kommando ueber ``spez.tarifregeln.tarifregeln_der_spez`` — keine
+Schalter, keine Vorgabe; fehlt eine Regel, verweigert es.
 
 **Der Anfangszustand ist der der Pruefstrecke** (Freischaltung,
 dev-docs/freischaltung-uebernommener-bestand.md, Schritt 3). Die
@@ -82,9 +87,12 @@ from rechner_pipeline.bestand.migrationszugang import (
 from rechner_pipeline.bestand.parquet_io import write_portfolio
 from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
+from rechner_pipeline.spez.tarifregeln import (
+    TarifregelnFehler,
+    tarifregeln_der_spez,
+    verweigere_entfallene_schalter,
+)
 from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
-from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
-from rechner_pipeline.kern import TKU_UMFAENGE, tku_umfang_fuer
 from rechner_pipeline.models.bestand import (
     GENERATION_FIELDS,
     MERKMALE_SPALTEN,
@@ -145,8 +153,8 @@ def _zellen_toml(spez, generation: str,
     if tarifwerk:
         tarifwerk_zeilen = [
             "",
-            "# Tarifwerks-Eigenschaften der Fuehrung (Freischaltung): mit",
-            "# diesen Schaltern hat die Pruefstrecke des Falls abgenommen.",
+            "# Tarifwerk der Fuehrung (Freischaltung): das belegte der Spez,",
+            "# mit dem die Pruefstrecke des Falls abgenommen hat.",
         ] + [
             f"{name} = {_wert(tarifwerk[name])}"
             for name in ("scheiben_mit_gamma1", "stoab_je_baustein",
@@ -896,8 +904,9 @@ def materialisiere_anfangszustand(
             f"Zustand (z. B. {gesperrt[:5]}): Die Fuehrung kann einen "
             "geteilten Vertrag (Verfahren prospektiv/mit_abzug) nicht "
             "tragen — nicht freigeschaltet. Nur die Teilkuendigung fuehrt "
-            "zustandslos weiter (--red-verfahren teilkuendigung, wenn das "
-            "Bedingungswerk der Quelle sie vorsieht)."
+            "zustandslos weiter (quellverfahren.red_verfahren = "
+            "teilkuendigung in der Spez, wenn das Bedingungswerk der Quelle "
+            "sie vorsieht)."
         )
     scheiben_df = (
         pd.DataFrame(rows, columns=list(SCHEIBEN_NAMES))
@@ -935,11 +944,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--vorgeschichte", default=None,
                    help="REGISTRIERTE Metadatenliste der Geschaeftsvorfaelle "
                         "vor dem Stichtag (POLNR;GEVO;DATUM)")
-    p.add_argument("--generation-spez", dest="generation_spez", default=None,
+    p.add_argument("--generation-spez", dest="generation_spez", required=True,
                    help="Knoten-Id der Tarif-Spez des Falls (z. B. "
-                        "klv/tg2015). Mit ihr rechnet die Uebernahme die "
-                        "beitragsfreie Summe mitgebrachter PEX-Zustaende — "
-                        "ohne sie fehlt der Bewegungsrechnung ihre Buchung.")
+                        "klv/tg2015). Pflicht: Aus ihr kommen die "
+                        "Rechnungsgrundlagen UND die Tarifregeln der "
+                        "Generation (Tarifwerk, Quellverfahren) — ohne sie "
+                        "fuehrte die Uebernahme ein Tarifwerk, das niemand "
+                        "belegt hat (ADR-024, Nachtrag).")
     p.add_argument(
         "--anfangszustand", dest="anfangszustand", default=None,
         choices=(MATERIALISIEREN, GRUNDVERTRAG),
@@ -950,19 +961,13 @@ def main(argv: Optional[List[str]] = None) -> int:
              f"'{GRUNDVERTRAG}' fuehrt die Vertraege ausdruecklich als "
              "Grundvertrag mit der gelieferten Summe (nicht "
              "freigeschaltet; im Beleg ausgewiesen).")
-    p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
-                   default=None, metavar="SATZ",
-                   help="BELEGTER Dynamiksatz der Alt-Erhoehungen — wie in "
-                        "aktuartest_lauf/migrationssuite_lauf")
-    p.add_argument("--red-verfahren", dest="red_verfahren",
-                   default=PROSPEKTIV, choices=sorted(VERFAHREN),
-                   help="Verfahren der Beitragsherabsetzung der Quelle — "
-                        "wie in der Pruefstrecke; nur 'teilkuendigung' "
-                        "ist in der Fuehrung freigeschaltet")
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
                    action="append", type=float, default=[], metavar="ANTEIL",
-                   help="BELEGTER Tarif-Kandidat des Herabsetzungsanteils "
-                        "(wiederholbar) — wie in der Pruefstrecke")
+                   help="ARBEITSANNAHME des Laufs: Kandidat des "
+                        "Herabsetzungsanteils (wiederholbar), wo der exakte "
+                        "Anteil bei der Quelle nicht feststellbar ist — wie in "
+                        "der Pruefstrecke. Keine Regel des Tarifs; die stehen "
+                        "in der Spez.")
     p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
                    default=None, metavar="REGISTRIERTE_DATEI",
                    help="REGISTRIERTE Auskunft der Quelle zu den fortgefuehrten "
@@ -974,37 +979,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="REGISTRIERTE Erwartungswerte am Verankerungs"
                         "zeitpunkt (Ankerwerte fuer die Kalibrierung "
                         "offener Anteile) — wie in der Pruefstrecke")
-    p.add_argument("--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
-                   action="store_true",
-                   help="Erhoehungsscheiben mit voller Beitragsformel "
-                        "(gamma1) — Tarifwerks-Eigenschaft der Lieferung; "
-                        "wird Eigenschaft der Generation in der Config")
-    p.add_argument("--stoab-je-baustein", dest="stoab_je_baustein",
-                   action="store_true",
-                   help="Stornoabschlag-Grenzen je Baustein — "
-                        "Tarifwerks-Eigenschaft der Lieferung; wird "
-                        "Eigenschaft der Generation in der Config")
-    p.add_argument("--tku-umfang", dest="tku_umfang", default=None,
-                   choices=sorted(TKU_UMFAENGE),
-                   help="Umfang der Teilkuendigung des Tarifs (alle_bausteine "
-                        "oder grundversicherung; Vorgabe: der des "
-                        "Bedingungswerks, das --red-verfahren nennt, Annahme "
-                        "B1) — wird Eigenschaft der Generation in der Config")
-    # Die AUSGESTALTUNG der Korrekturschicht ist eine Entscheidung des
-    # Operators, kein abgeleiteter Wert (gates.verankerung_belegen). Seit
-    # die PEX-Buchung die Schicht traegt, braucht die Uebernahme sie
-    # auch — und sie muss DIESELBE sein, die der Schichtbeleg spaeter
-    # bekommt. Der Beleg schreibt sie mit, damit der Abgleich nicht auf
-    # Erinnerung beruht.
-    p.add_argument("--formfunktion", dest="formfunktion",
-                   default="proportional_zur_basis",
-                   help="Formfunktion der Korrekturschicht — MUSS mit der "
-                        "von gates.verankerung_belegen uebereinstimmen")
-    p.add_argument("--fenster", dest="fenster", type=int, default=None,
-                   help="Amortisationsfenster der Korrekturschicht "
-                        "(optional; wie in gates.verankerung_belegen)")
     p.add_argument("--out-dir", dest="out_dir", required=True,
                    help="Zielverzeichnis im Fall")
+    # Die Tarifregeln (Tarifwerk, Verfahren der Quelle, Dynamiksatz,
+    # Ausgestaltung der Korrekturschicht) stehen in der Spez der Generation,
+    # nicht am Aufruf (ADR-024, Nachtrag); die frueheren Schalter melden das.
+    verweigere_entfallene_schalter(p)
     args = p.parse_args(argv)
 
     fall = Path(args.fall).resolve()
@@ -1026,19 +1006,22 @@ def main(argv: Optional[List[str]] = None) -> int:
     # entstanden ist, bindet die Uebernahme an nichts.
     bindung = Eingangsbindung(fall)
     generationsfelder = None
-    if args.generation_spez:
-        spez = lade_spez_aus_bytes(
-            bindung.binde(spez_pfad(fall, args.generation_spez)).roh)
-        if len(spez.zellen) != 1:
-            # Mehrzellige Spez: die Zellwahl je Vertrag traegt die
-            # transformierte Zeile; hier genuegt die Zelle, deren
-            # Auspraegungen die Zeile nennt.
-            generationsfelder = None
-        else:
-            generationsfelder = dict(spez.zellen[0].model_point)
+    spez = lade_spez_aus_bytes(
+        bindung.binde(spez_pfad(fall, args.generation_spez)).roh)
+    # Die Tarifregeln der Generation — aus der Spez, EINE Tuer fuer alle
+    # Kommandos der Bestandsstrecke; ohne sie keine Uebernahme.
+    try:
+        regeln = tarifregeln_der_spez(spez)
+    except TarifregelnFehler as exc:
+        print(f"bestand_uebernehmen: {exc}", file=sys.stderr)
+        return 2
+    if len(spez.zellen) == 1:
+        # Mehrzellige Spez: die Zellwahl je Vertrag traegt die
+        # transformierte Zeile (unten).
+        generationsfelder = dict(spez.zellen[0].model_point)
 
     zeilen = _lies_zeilen(Path(args.zeilen), bindung)
-    if args.generation_spez and generationsfelder is None:
+    if generationsfelder is None:
         zellen = {tuple(sorted(z.auspraegungen.items())): dict(z.model_point)
                   for z in spez.zellen}
         dimensionen = sorted({k for z in spez.zellen for k in z.auspraegungen})
@@ -1066,10 +1049,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             "(nicht freigeschaltet). Ohne Angabe wird nichts geschrieben.",
             file=sys.stderr)
         return 2
-    if args.anfangszustand == MATERIALISIEREN and not args.generation_spez:
-        print(f"--anfangszustand {MATERIALISIEREN} braucht --generation-spez "
-              "(Rechnungsgrundlagen der Bausteine)", file=sys.stderr)
-        return 2
     if (args.red_anteile_datei is not None
             and args.anfangszustand != MATERIALISIEREN):
         print(f"--red-anteile-datei wirkt nur mit --anfangszustand "
@@ -1077,12 +1056,9 @@ def main(argv: Optional[List[str]] = None) -> int:
               "Herabsetzungen) — ohne ihn wuerde die Auskunft weder gelesen "
               "noch gebunden", file=sys.stderr)
         return 2
-    tarifwerk = {
-        "scheiben_mit_gamma1": bool(args.scheiben_mit_gamma1),
-        "stoab_je_baustein": bool(args.stoab_je_baustein),
-        "red_verfahren": str(args.red_verfahren),
-        "tku_umfang": tku_umfang_fuer(args.red_verfahren, args.tku_umfang),
-    }
+    # Das Tarifwerk der FUEHRUNG ist das belegte der Generation — es geht in
+    # Beleg und Config-Abschnitt, und die Fuehrungsprobe haelt beide dagegen.
+    tarifwerk = dict(regeln.tarifwerk)
 
     zustaende: Optional[Dict[str, Dict[str, Any]]] = None
     summen: Optional[Dict[str, float]] = None
@@ -1099,7 +1075,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         "schema_version": BELEG_SCHEMA_VERSION,
         "anfangszustand": args.anfangszustand or "ohne_bausteine",
         "tarifwerk": tarifwerk,
-        "erhoehungssatz": args.erhoehungssatz,
+        # Mit welchen Regeln uebernommen wurde: die der Spez, nicht die
+        # eines Aufrufs (ADR-024, Nachtrag).
+        "quellverfahren": dict(regeln.quellverfahren),
+        "erhoehungssatz": regeln.erhoehungssatz,
         "red_anteile_datei": None,
         "gedeckt": {},
         "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
@@ -1158,14 +1137,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         summen = {str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
         zustaende, warnungen = anfangszustaende_je_police(
             spez, zeilen, rohe_vorgeschichte, stamm, spalten=dict(VORGABE),
-            red_verfahren=args.red_verfahren, red_anteile=red_anteile,
+            red_verfahren=regeln.quell_red_verfahren, red_anteile=red_anteile,
             auspraegungen=auspraegungen,
-            erhoehungssatz=args.erhoehungssatz, anker=anker,
+            erhoehungssatz=regeln.erhoehungssatz, anker=anker,
             red_anteile_je_datum=red_anteile_je_datum,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
-            tku_umfang=args.tku_umfang,
-            stoab_je_baustein=args.stoab_je_baustein)
+            scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+            tku_umfang=regeln.tku_umfang,
+            stoab_je_baustein=regeln.stoab_je_baustein)
         # Pruefer-Befund B1 zur Alt-Absetzung: Ein Vertrag ohne ableitbaren
         # Anfangszustand wird NICHT still als Grundvertrag mit der
         # gelieferten Summe uebernommen (vorher: Warnung, Eintrag in
@@ -1175,7 +1154,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         verweigere_unbestimmte(warnungen)
         scheiben, zahlen = materialisiere_anfangszustand(
             stamm, ledger, zustaende, generationsfelder,
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
+            scheiben_mit_gamma1=regeln.scheiben_mit_gamma1)
         beleg.update(zahlen)
         # Wodurch die Policen gedeckt sind, deren Struktur die Auskunft
         # traegt — die Pflichtschicht der Abnahmen (A-M4 haelt die Gleichheit).
@@ -1200,30 +1179,31 @@ def main(argv: Optional[List[str]] = None) -> int:
     #
     # Geloescht wird nicht — ein Produzent raeumt nicht weg, was er nicht
     # erzeugt hat. Er verweigert die Arbeit und nennt den Ausweg.
-    merkmale = _merkmalstabelle(zeilen, spez) if args.generation_spez else None
+    merkmale = _merkmalstabelle(zeilen, spez)
     verankerung = _verankerungstabelle(
         zeilen, _vorgeschichte(fall, args.vorgeschichte))
     # Die PEX-Buchung traegt die Korrekturschicht (Entscheid des
     # Maintainers 2026-09-20). Hier und nicht in baue(): Der Zuschlag
-    # braucht die Verankerung, und die steht erst jetzt.
-    beleg["formfunktion"] = str(args.formfunktion)
-    beleg["fenster"] = args.fenster
+    # braucht die Verankerung, und die steht erst jetzt. Ihre Ausgestaltung
+    # ist die der Spez — dieselbe, die verankerung_belegen liest; vorher
+    # musste sie an beiden Kommandos gleich eingetippt werden.
+    beleg["formfunktion"] = regeln.formfunktion
+    beleg["fenster"] = regeln.fenster
     beleg["pex_zuschlaege"] = pex_zuschlag_nachtragen(
         stamm, historie, ledger, verankerung, merkmale, spez,
         generationsfelder=generationsfelder,
-        formfunktion=args.formfunktion, fenster=args.fenster,
+        formfunktion=regeln.formfunktion, fenster=regeln.fenster,
         anfangszustaende=zustaende,
-        scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+        scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
         summen=summen,
-    ) if args.generation_spez else []
+    )
     if beleg["pex_zuschlaege"]:
         summe = sum(e["zuschlag"] for e in beleg["pex_zuschlaege"])
         print(f"  Korrekturschicht in {len(beleg['pex_zuschlaege'])} "
               f"PEX-Buchung(en) nachgetragen (Summe {summe:.2f}) — die "
               "beitragsfreie Summe des Zielsystems liegt um diesen Betrag "
               "ueber der gelieferten", file=sys.stderr)
-    zellen_abschnitt = (_zellen_toml(spez, args.generation, tarifwerk)
-                        if args.generation_spez else "")
+    zellen_abschnitt = _zellen_toml(spez, args.generation, tarifwerk)
     nicht_erzeugt = {
         "scheiben.parquet": scheiben is not None and len(scheiben) > 0,
         "merkmale.parquet": merkmale is not None and len(merkmale) > 0,
@@ -1261,7 +1241,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         write_portfolio(scheiben, ziel / "scheiben.parquet")
         print(f"  scheiben.parquet  {len(scheiben)} Alt-Erhoehungen "
               f"({beleg['mit_scheiben']} Vertraege; gamma1 "
-              f"{'uebernommen' if args.scheiben_mit_gamma1 else '0'})")
+              f"{'uebernommen' if regeln.scheiben_mit_gamma1 else '0'})")
 
     # Die Merkmalsauspraegungen als NEBENTABELLE, wie Scheiben und
     # Historie: Sie entsteht nur, wenn die Tarifgeneration Dimensionen
@@ -1272,16 +1252,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         write_portfolio(merkmale, ziel / "merkmale.parquet")
         print(f"  merkmale.parquet: {len(merkmale)} Zeilen "
               f"({merkmale['dimension'].nunique()} Dimensionen)")
-    if args.generation_spez:
-        # Die Grundlagen der Generation (und ihrer Zellen) samt Tarifwerk
-        # als Config-Abschnitt -- sonst laege die Zuordnung vor, aber
-        # nichts, worauf sie zeigt; und die Fuehrung rechnete mit einer
-        # Config, die niemand aus der abgenommenen Spez abgeleitet hat.
-        if zellen_abschnitt:
-            pfad = ziel / "generation-zellen.toml"
-            pfad.write_text(zellen_abschnitt, encoding="utf-8")
-            print(f"  generation-zellen.toml: {len(spez.zellen)} Zelle(n) "
-                  "(in die Bestand-Config uebernehmen)")
+    # Die Grundlagen der Generation (und ihrer Zellen) samt Tarifwerk
+    # als Config-Abschnitt -- sonst laege die Zuordnung vor, aber
+    # nichts, worauf sie zeigt; und die Fuehrung rechnete mit einer
+    # Config, die niemand aus der abgenommenen Spez abgeleitet hat.
+    if zellen_abschnitt:
+        pfad = ziel / "generation-zellen.toml"
+        pfad.write_text(zellen_abschnitt, encoding="utf-8")
+        print(f"  generation-zellen.toml: {len(spez.zellen)} Zelle(n) "
+              "(in die Bestand-Config uebernehmen)")
 
     # Verankerungsattribute als NEBENTABELLE (K3): Bisher lebten t_a und
     # der dort gelieferte Wert nur im Pruefauftrag, je Lauf aus den
@@ -1309,7 +1288,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"  quellarchiv/{quelle.name}: GeVo-Metadatenliste archiviert "
               "(E1: Archiv der PLV)")
 
-    # Der Beleg der Uebernahme: Modus, Schalter, Zaehler, die namentlich
+    # Der Beleg der Uebernahme: Modus, Tarifregeln, Zaehler, die namentlich
     # ausgewiesenen Ausnahmen. Die Fuehrungsprobe liest ihn; ein Bestand
     # ohne Beleg hat keinen benannten Anfangszustand.
     # Nicht nur die NAMEN der Eingaben, sondern ihre Bytes: Der Beleg

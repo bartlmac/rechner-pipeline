@@ -153,7 +153,6 @@ VORZEIGE_NACH_WERKZEUG_ERLAUBT: Set[tuple] = {
 TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/gates/abnahmebericht.py", "rechner_pipeline/bestand/vorbedingungen.py"),
     ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
-    ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/kern/beitragsreduktion.py"),
     ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/kern/korrekturschicht.py"),
     # Freischaltung (dev-docs/freischaltung-uebernommener-bestand.md,
     # Schritt 3; ADR-017 Nachtrag 2026-09-07): Die Uebernahme ruft
@@ -164,7 +163,6 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/bestand/migrationszugang.py"),
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/__init__.py"),
-    ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/beitragsreduktion.py"),
     # Zuschlag der Korrekturschicht bei Beitragsfreistellung (ADR-017
     # Nachtrag 2026-09-20, Entscheid des Maintainers): Die Uebernahme
     # bucht die PEX-Umbuchung uebernommener Vertraege mit demselben
@@ -201,7 +199,6 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/migrationszugang.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/__init__.py"),
-    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/beitragsreduktion.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/rechenkern.py"),
     ("rechner_pipeline/models/bestand.py", "rechner_pipeline/kern/model_point.py"),
     ("rechner_pipeline/ontologie/code_index.py", "rechner_pipeline/kern/produkte/__init__.py"),

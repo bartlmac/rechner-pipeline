@@ -33,6 +33,7 @@ from rechner_pipeline.ontologie.tbox import (
     PFLICHT_PARAMETER,
     TBOX_VERSION,
     TBOX_VERSIONEN,
+    bereich_text,
     block_knoten,
     wert_im_bereich,
 )
@@ -186,7 +187,7 @@ def validate_abox(
                     fehler.append(
                         f"{gen.id}: {BLOCK_TITEL[block]} {block}.{merkmal} = "
                         f"{aussage.wert!r} liegt nicht im Wertebereich "
-                        f"{list(bereiche[merkmal])}"
+                        f"{bereich_text(bereiche[merkmal])}"
                     )
 
     # Fachliche Wertebereiche (P5-Minimum; Systempruefung Befund 19).

@@ -271,21 +271,32 @@ python -m rechner_pipeline.gates.bestand_uebernehmen \
     --vorgeschichte <registrierte-gevo-metadaten>.csv \
     --generation-spez klv/tg2015 \
     --anfangszustand materialisieren \
-    --erhoehungssatz <satz> --red-verfahren <verfahren> \
-    [--tku-umfang grundversicherung|alle_bausteine] \
     [--red-anteile-datei <registrierte-auskunft>.csv] \
     [--red-anteil-kandidat <anteil> ...] \
     [--anker-erwartungswerte <registriert>.json] \
-    [--scheiben-mit-gamma1] [--stoab-je-baustein] \
     --out-dir faelle/<fall>/abgeleitet/bestand
 ```
 
 `--tarif-generation` ist der NAME der Generation in der Bestand-Config
-(Stammspalte `tarif_generation`), nicht der Knoten. Die Lieferungs-
-Schalter sind DIESELBEN wie in `aktuartest_lauf`, `verankerung_belegen`
-und `migrationssuite_lauf`: Die Uebernahme rechnet den Anfangszustand
-mit derselben Ableitung wie die Abnahmen und schreibt ihn in die
-Tabellen (Freischaltung, dev-docs/freischaltung-uebernommener-bestand.md).
+(Stammspalte `tarif_generation`), nicht der Knoten. `--generation-spez` ist
+Pflicht: **Die Tarifregeln stehen in der Spez, nicht am Aufruf** (ADR-024,
+Nachtrag). Tarifwerk (`scheiben_mit_gamma1`, `stoab_je_baustein`,
+`red_verfahren`, `tku_umfang`) und Quellverfahren (`red_verfahren` als
+Lesart der Lieferung, `erhoehungssatz`, `dk_stichtag`, `formfunktion`,
+`fenster`) erhebst du in Stufe 1 aus Bedingungswerk und Tarifmeldung
+(Skill `extrahiere-quellfragment`), P-Q3 verlangt sie im Scope `bestand`,
+und alle fuenf Kommandos der Bestandsstrecke (Uebernahme, Verankerung,
+aktuarieller Test, Migrationscontrolling, Fuehrungsprobe) lesen sie aus
+derselben Spez. Die frueheren Schalter (`--red-verfahren`,
+`--stoab-je-baustein`, `--scheiben-mit-gamma1`, `--tku-umfang`,
+`--erhoehungssatz`, `--dk-stichtag`, `--formfunktion`, `--fenster`) werden
+verweigert und nennen den Abschnitt der Spez; eine andere Regel heisst:
+in der A-Box belegen, P-Q3, Spez neu erzeugen — nie am Aufruf ueberstimmen.
+Am Aufruf bleiben nur Eingaben (registrierte Auskunft, Ankerquelle) und
+die Arbeitsannahme des Laufs (`--red-anteil-kandidat`). Die Uebernahme
+rechnet den Anfangszustand mit derselben Ableitung wie die Abnahmen und
+schreibt ihn in die Tabellen (Freischaltung,
+dev-docs/freischaltung-uebernommener-bestand.md).
 `--anfangszustand` ist Pflicht, sobald die Vorgeschichte Erhoehungen
 oder Herabsetzungen traegt: `materialisieren` (Grundsumme im Stamm,
 Alt-Erhoehungen als `scheiben.parquet`, Ursprungssumme beitragsfreier
@@ -295,17 +306,16 @@ dann besteht die Fuehrungsprobe nicht, und A-M4 ist im Bestands-Scope
 unmoeglich). Ab der Migration gilt das Vokabular des Zielsystems
 (Grundsatzdokumentation 7.1): Welcher Vorgang eine gelieferte Absetzung
 (`RED` der Quelle, Provenienzname) war, sagt EINE Regel — im
-uebernommenen Tarif TG2015 (`--red-verfahren teilkuendigung`) immer die
+uebernommenen Tarif TG2015 (Quellverfahren `teilkuendigung`) immer die
 Teilkuendigung; bei einer Quelle mit echter Herabsetzung vor dem
 Beitragsende und vor einer Beitragsfreistellung die Herabsetzung, danach
 die Teilkuendigung (Tarifplan KLV 7.2, Annahme B5; A2 bestaetigt).
 Herabsetzung und Teilkuendigung sind zwei Geschaeftsvorfaelle (ADR-023,
 Nachtrag 2026-10-01), beliebig viele je Vertrag in jeder Reihenfolge
-(Tarifplan KLV 7.3). `--tku-umfang` nennt, welche Bausteine die
+(Tarifplan KLV 7.3). `tarifwerk.tku_umfang` nennt, welche Bausteine die
 Teilkuendigung des Tarifs kuerzt (TG2015: `grundversicherung`, Entscheid
-des Maintainers; ohne Angabe der Umfang des Bedingungswerks, das
-`--red-verfahren` nennt) — in JEDEM Kommando der Pruefstrecke derselbe
-Wert. Eine Vorgeschichte aus Teilkuendigungen (auch mehreren, auch nach
+des Maintainers) — belegt, ohne Vorgabe, und weil es in der Spez steht, in
+jedem Kommando der Pruefstrecke derselbe Wert. Eine Vorgeschichte aus Teilkuendigungen (auch mehreren, auch nach
 Erhoehungen oder nach der Beitragsfreistellung) fuehrt zustandslos mit der
 gelieferten Summe weiter; eine echte Herabsetzung der Vorgeschichte
 hinterlaesst einen GETEILTEN Vertrag, den die Pruefstrecke rechnet, die
@@ -439,11 +449,12 @@ bestanden haben, MUSS der gefuehrte Bestand rechnen — die Abnahmen sind
 die Entwicklungsroutine, die Freischaltung der Moment, in dem der Stand
 zur Eigenschaft des Bestands wird. Vier Handgriffe, alle Systemkommandos:
 
-1. Die Lieferungs-Schalter, mit denen die Abnahmen bestanden haben,
-   stehen in der Bestand-Config der Generation (`scheiben_mit_gamma1`,
-   `stoab_je_baustein`, `red_verfahren`); der erzeugte Abschnitt
-   `generation-zellen.toml` der Uebernahme traegt sie bereits — er wird
-   in die Config uebernommen, nicht abgetippt.
+1. Das Tarifwerk der Spez, mit dem die Abnahmen bestanden haben, steht in
+   der Bestand-Config der Generation (`scheiben_mit_gamma1`,
+   `stoab_je_baustein`, `red_verfahren`, `tku_umfang`); der erzeugte
+   Abschnitt `generation-zellen.toml` der Uebernahme traegt es bereits —
+   er wird in die Config uebernommen, nicht abgetippt. Migrationscontrolling
+   und Fuehrungsprobe verweigern eine Config mit einem anderen Tarifwerk.
 2. Der Schichtbeleg (`verankerung_belegen`, unten) schreibt
    `schichten.parquet` in das Uebernahme-Verzeichnis: Die Korrekturschicht
    ist Vertragsattribut, Storno zahlt Basiswert plus Schicht, der
@@ -462,11 +473,12 @@ python -m rechner_pipeline.gates.fuehrungsprobe \
     --config <bestand-config>.toml --zeilen <zeilen>.json \
     --vorgeschichte <registrierte-gevo-metadaten>.csv --stichtag <iso> \
     --schicht abgeleitet/schichten/verankerung_schichten.json \
-    <dieselben Lieferungs-Schalter wie in der Pruefstrecke>
+    [--red-anteile-datei <registrierte-auskunft>.csv] \
+    [--red-anteil-kandidat <anteil> ...]
 ```
 
-Sie prueft den Uebernahmebeleg (Modus, Schalter gleich Config gleich
-Lauf), je Vertrag Stammsumme, Bausteine, Beitragsfreistellung, Zugang
+Sie prueft den Uebernahmebeleg (Modus, Tarifwerk gleich Config gleich
+Spez, Quellverfahren gleich Spez), je Vertrag Stammsumme, Bausteine, Beitragsfreistellung, Zugang
 und Umbuchung gegen den Anfangszustand der Abnahmen, die Grundlagen der
 Config gegen die Spez-Zelle, die Schicht, und jede Buchung nach dem
 Stichtag gegen die Pruefstrecken-Engine. Der Beleg
@@ -731,12 +743,14 @@ nachzubessern (`deploy/plv/README.md`).
 
 ```
 python -m rechner_pipeline.gates.verankerung_belegen \
-    --fall faelle/<fall> --repo-root . --generation <gen> \
-    --formfunktion <deine Ausgestaltungs-Entscheidung> \
-    [--fenster <n>]
+    --fall faelle/<fall> --repo-root . --generation <gen>
 ```
 
-aus `verankerung.parquet`, Stamm, Merkmalen und der Fall-Spez — mit
+aus `verankerung.parquet`, Stamm, Merkmalen und der Fall-Spez — die
+Formfunktion (und ggf. das Fenster) der Korrekturschicht ist Inhalt des
+Tarifplans der Migration (Grundsatzdokumentation 10 Nr. 9) und steht
+belegt in der Spez (`quellverfahren.formfunktion`, `.fenster`), dieselbe
+Fassung, mit der die Uebernahme die PEX-Buchung rechnet — mit
 Provenienzblock (Eingabe-Hashes + Systemstand), den der Testlauf
 NACHRECHNET — und schreibt die Schicht zugleich als `schichten.parquet`
 in das Uebernahme-Verzeichnis, wo die Fuehrung sie liest (Freischaltung). Kein Fall-Skript, keine Registrierung von

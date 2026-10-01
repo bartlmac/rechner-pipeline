@@ -22,9 +22,11 @@ Nachrechenbarkeit; Test und Beleg duerfen dann sogar vom selben
 Operator gefahren werden, weil keiner von beiden einen freien Wert
 setzen kann.
 
-Die AUSGESTALTUNG (Formfunktion, ggf. Fenster) ist eine Entscheidung
-des Operators (Skill-Pflichtschritt Tarifplan-Ausgestaltung) und wird
-als Parameter im Beleg dokumentiert — der Producer trifft sie nicht.
+Die AUSGESTALTUNG (Formfunktion, ggf. Fenster) ist Inhalt des
+Tarifplans der Migration (Grundsatzdokumentation 10 Nr. 9) und steht
+belegt in der Spez der Generation (``quellverfahren.formfunktion``,
+``.fenster``; ADR-024, Nachtrag); der Beleg dokumentiert sie — der
+Producer trifft sie nicht, und kein Aufruf setzt sie.
 
 Producer, kein Gate: Exit 0 nur, wenn JEDE Police getragen ist; sonst
 Exit 1 mit Befundliste im Beleg — eine halbe Schichttabelle liesse die
@@ -44,14 +46,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline.bestand.migrationszugang import (
-    FORMEN,
     MigrationszugangFehler,
     Uebernahme,
     uebernehmen,
 )
-from rechner_pipeline.kern import TKU_UMFAENGE
-from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
 from rechner_pipeline.gates._provenienz import systemstand
+from rechner_pipeline.spez.tarifregeln import (
+    TarifregelnFehler,
+    tarifregeln_der_spez,
+    verweigere_entfallene_schalter,
+)
 from rechner_pipeline.models.bestand import ZUSTAENDE_TA, model_point_kwargs
 
 #: Zustandsuebersetzung Verankerungstabelle -> Uebernahme-Zustand.
@@ -128,12 +132,16 @@ def _zustands_dk_prosp(
         # Herabsetzung immer prospektiv, gleich welches Verfahren der Fall
         # fuehrte. Das Verfahren ist Eigenschaft des Falls — ohne Tarifwerk
         # wird nicht geraten.
-        from rechner_pipeline.kern import Vorgangsfolge, tku_umfang_fuer, vorgang
+        from rechner_pipeline.kern import Vorgangsfolge, vorgang
 
-        if tarifwerk is None or tarifwerk.get("red_verfahren") is None:
+        if tarifwerk is None or any(
+                tarifwerk.get(k) is None
+                for k in ("red_verfahren", "stoab_je_baustein", "tku_umfang")):
             raise MigrationszugangFehler(
-                "Verankerung eines geteilten Vertrags ohne Verfahren der "
-                "Herabsetzung — --red-verfahren angeben")
+                "Verankerung eines geteilten Vertrags ohne Verfahren, Abzug "
+                "oder Umfang der Teilkuendigung — sie stehen in der Spez "
+                "(quellverfahren.red_verfahren, tarifwerk.stoab_je_baustein, "
+                "tarifwerk.tku_umfang); keine Vorgabe ergaenzt sie")
         verfahren = str(tarifwerk["red_verfahren"])
         folge_vorgaenge = [vorgang(int(j), float(a), str(v)) for j, a, v in vorgaenge]
         if reduktion is not None:
@@ -146,8 +154,8 @@ def _zustands_dk_prosp(
         ]
         stand = Vorgangsfolge(
             kern, kerne, folge_vorgaenge, pex_jahr=pex,
-            stoab_je_baustein=bool(tarifwerk.get("stoab_je_baustein", False)),
-            tku_umfang=tku_umfang_fuer(verfahren, tarifwerk.get("tku_umfang")),
+            stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]),
+            tku_umfang=str(tarifwerk["tku_umfang"]),
         ).stand_am(monate_ta)
         w = stand.werte(monate_ta)
         return w["deckungskapital"] if w["status"] == "PEX" else w["vx_mrv"]
@@ -281,12 +289,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--uebernahme", default=None,
                    help="Uebernahme-Verzeichnis (Vorgabe: "
                         "<fall>/abgeleitet/bestand)")
-    p.add_argument("--formfunktion", required=True, choices=sorted(FORMEN),
-                   help="Ausgestaltungs-Entscheidung des Operators "
-                        "(Skill-Pflichtschritt) — wird im Beleg "
-                        "dokumentiert")
-    p.add_argument("--fenster", type=int, default=None,
-                   help="Amortisationsfenster (nur konstantes_fenster)")
     p.add_argument("--zeilen", default=None,
                    help="transformierte Zeilen (fuer den Zustandsbau; "
                         "Pflicht bei mehrzelliger Spez mit Vorgeschichte)")
@@ -296,23 +298,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "ZUSTANDS-Welt (Scheiben, Beitragsfreistellung, "
                         "Herabsetzung) — ohne sie traegt die Schicht die "
                         "Weltendifferenz als Phantom-Residuum.")
-    p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
-                   default=None, metavar="SATZ",
-                   help="belegter Dynamiksatz (siehe aktuartest_lauf)")
-    p.add_argument("--red-verfahren", dest="red_verfahren",
-                   default=None,
-                   help="Verfahren der Beitragsherabsetzung (siehe "
-                        "aktuartest_lauf); Vorgabe: Zielverfahren")
-    p.add_argument("--tku-umfang", dest="tku_umfang", default=None,
-                   choices=sorted(TKU_UMFAENGE),
-                   help="Umfang der Teilkuendigung des Tarifs (siehe "
-                        "bestand_uebernehmen); Vorgabe: der des "
-                        "Bedingungswerks, das --red-verfahren nennt")
-    p.add_argument("--stoab-je-baustein", dest="stoab_je_baustein",
-                   action="store_true",
-                   help="Stornoabschlag-Grenzen je Baustein (siehe "
-                        "aktuartest_lauf) — traegt die Ableitung einer "
-                        "Serie mit Herabsetzung mit Abzug")
     p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
                    default=None, metavar="REGISTRIERTE_DATEI",
                    help="REGISTRIERTE Auskunft der Quelle zu den "
@@ -323,11 +308,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
                    action="append", type=float, default=[],
                    metavar="ANTEIL",
-                   help="belegter Tarif-Kandidat (wiederholbar, siehe "
-                        "aktuartest_lauf)")
-    p.add_argument("--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
-                   action="store_true",
-                   help="volle Beitragsformel der Scheiben (siehe "
+                   help="Arbeitsannahme des Laufs: Kandidat des "
+                        "Herabsetzungsanteils (wiederholbar, siehe "
                         "aktuartest_lauf)")
     p.add_argument("--anker-erwartungswerte", dest="anker_quelle",
                    default=None, metavar="REGISTRIERTE_DATEI",
@@ -349,6 +331,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/schichten/"
                         "verankerung_schichten.json)")
+    # Formfunktion und Fenster der Korrekturschicht (Ausgestaltung des
+    # Tarifplans der Migration, Grundsatzdokumentation 10 Nr. 9), Tarifwerk,
+    # Verfahren der Quelle und Dynamiksatz stehen in der Spez — dieselbe
+    # Fassung, mit der die Uebernahme die PEX-Buchung rechnet (ADR-024,
+    # Nachtrag). Vorher war die Formfunktion hier Pflichtschalter und dort
+    # ein Schalter mit Vorgabe; die Gleichheit beider hing an Erinnerung.
+    verweigere_entfallene_schalter(p)
     args = p.parse_args(argv)
 
     import io
@@ -390,6 +379,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     spez_gelesen = bindung.binde(spez_pfad(fall, args.generation))
     spez = lade_spez_aus_bytes(spez_gelesen.roh)
+    try:
+        regeln = tarifregeln_der_spez(spez)
+    except TarifregelnFehler as exc:
+        print(f"verankerung_belegen: {exc}", file=sys.stderr)
+        return 2
     bestand_gelesen = bindung.binde(pfade["bestand"])
     bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
     verankerung_gelesen = bindung.binde(pfade["verankerung"])
@@ -464,15 +458,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                         float(erster["erwartet"]["kVx_MRV"]))
         anfangszustaende, warnungen = anfangszustaende_je_police(
             spez, zeilen, vorgeschichte, bestand, spalten=dict(VORGABE),
-            red_verfahren=args.red_verfahren or PROSPEKTIV,
+            red_verfahren=regeln.quell_red_verfahren,
             red_anteile=red_anteile,
             red_anteile_je_datum=red_anteile_je_datum,
             auspraegungen=auspraegungen,
-            erhoehungssatz=args.erhoehungssatz, anker=anker,
+            erhoehungssatz=regeln.erhoehungssatz, anker=anker,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
-            tku_umfang=args.tku_umfang,
-            stoab_je_baustein=args.stoab_je_baustein)
+            scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+            tku_umfang=regeln.tku_umfang,
+            stoab_je_baustein=regeln.stoab_je_baustein)
         verweigere_unbestimmte(warnungen)
 
     try:
@@ -481,14 +475,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             bestand,
             merkmale,
             spez,
-            formfunktion=args.formfunktion,
-            fenster=args.fenster,
+            formfunktion=regeln.formfunktion,
+            fenster=regeln.fenster,
             anfangszustaende=anfangszustaende,
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+            scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
             summen=summen,
-            tarifwerk={"red_verfahren": args.red_verfahren or PROSPEKTIV,
-                       "stoab_je_baustein": args.stoab_je_baustein,
-                       "tku_umfang": args.tku_umfang},
+            # Die Herabsetzung der Vorgeschichte liest die Verankerung in
+            # der Lesart der QUELLE (wie die Pruefstrecke); Abzug und Umfang
+            # sind Tarifwerk.
+            tarifwerk={"red_verfahren": regeln.quell_red_verfahren,
+                       "stoab_je_baustein": regeln.stoab_je_baustein,
+                       "tku_umfang": regeln.tku_umfang},
         )
     except MigrationszugangFehler as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
@@ -585,17 +582,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         "eingaben": eingaben,
         "parameter": {
             "generation": args.generation,
-            "formfunktion": args.formfunktion,
-            "fenster": args.fenster,
+            "formfunktion": regeln.formfunktion,
+            "fenster": regeln.fenster,
             "vorgeschichte": args.vorgeschichte,
-            "erhoehungssatz": args.erhoehungssatz,
-            "red_verfahren": args.red_verfahren,
-            "tku_umfang": args.tku_umfang,
-            "stoab_je_baustein": args.stoab_je_baustein,
             "red_anteile_datei": red_anteile_datei,
             "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
-            "scheiben_mit_gamma1": args.scheiben_mit_gamma1,
             "anker_erwartungswerte": args.anker_quelle,
+            # Die Regeln, mit denen verankert wurde — aus der Spez, deren
+            # Bytes unter ``eingaben`` gebunden sind.
+            "tarifregeln": regeln.als_beleg(),
         },
     }
 

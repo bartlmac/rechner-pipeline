@@ -715,7 +715,7 @@ def _probe_datei(welt, lauf: Path) -> tuple:
         "--vorgeschichte", METADATEN, "--stichtag", STICHTAG_1,
         "--anker-erwartungswerte", ANKER,
         "--schicht", str(fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"),
-        "--stoab-je-baustein", "--out", str(out),
+        "--out", str(out),
     ] + _lieferungs_flags())
     return code, json.loads(out.read_text(encoding="utf-8"))
 

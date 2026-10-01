@@ -146,6 +146,48 @@ def hebe_spez_auf_geltende_version(roh: bytes) -> bytes:
     return neu
 
 
+def ergaenze_tarifregeln(roh: bytes, regeln: dict) -> bytes:
+    """Die Tarifregeln eines abgenommenen Laufs in eine eingefrorene Spez
+    OHNE A-Box eintragen — der benannte Weg fuer die Testfixtures der
+    Baldrian-Laeufe (ADR-024, Nachtrag), neben :func:`hebe_spez_auf_geltende_version`.
+
+    Eine Spez MIT A-Box bekommt ihre Regeln nur ueber die A-Box (P-Q3,
+    ``spez.erzeugen``; P-K1 haelt beide Richtungen). Die eingefrorenen Spez
+    haben keine; ihre Regeln standen bis hierher als Schalter in den
+    Testaufrufen und sind die im Lauf festgestellten (A-Q1). ``regeln`` ist
+    das Dokument dieser Feststellung: je Block und Merkmal ``wert`` und
+    ``fundstelle`` (ohne Fundstelle kein Beleg). Verweigert, wenn die Spez
+    schon Regeln traegt (kein Ueberschreiben), nicht die geltende T-Box
+    spricht oder das Ergebnis die Tarifregeln einer Bestandsmigration nicht
+    vollstaendig traegt. Schreibt nichts.
+    """
+    from rechner_pipeline.spez.tarifregeln import tarifregeln_der_spez
+
+    daten = json.loads(roh)
+    if not isinstance(daten, dict) or daten.get("tbox_version") != TBOX_VERSION:
+        raise ValueError(
+            "Spez spricht nicht die geltende T-Box — erst heben "
+            "(hebe_spez_auf_geltende_version)")
+    if any(daten.get(block) for block in GENERATIONS_BLOECKE):
+        raise ValueError(
+            "Spez traegt bereits Tarifregeln — nicht ueberschreiben; eine andere "
+            "Regel ist eine neue Feststellung (A-Box, spez.erzeugen)")
+    if regeln.get("generation") != daten.get("generation"):
+        raise ValueError(
+            f"Regeln fuer {regeln.get('generation')!r}, Spez ist "
+            f"{daten.get('generation')!r}")
+    for block in GENERATIONS_BLOECKE:
+        werte = {}
+        for merkmal, eintrag in sorted((regeln.get(block) or {}).items()):
+            if not isinstance(eintrag, dict) or not str(eintrag.get("fundstelle") or "").strip():
+                raise ValueError(f"{block}.{merkmal}: ohne Fundstelle kein Beleg")
+            werte[merkmal] = eintrag["wert"]
+        daten[block] = werte
+    neu = spez_bytes(daten)
+    tarifregeln_der_spez(lade_spez_aus_bytes(neu))   # Lader und Pflicht
+    return neu
+
+
 def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
     fehler: List[str] = []
     # Die Spez-Datei muss das geltende Spez-Schema tragen (Review T23-02:
