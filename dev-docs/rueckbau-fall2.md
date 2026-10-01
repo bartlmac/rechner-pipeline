@@ -7,6 +7,17 @@ Rueckbau ist EIN Commit auf dem heutigen Stand, kein Zuruecksetzen der
 Historie: Alles, was seit dem Lauf vom September gebaut und repariert wurde,
 bleibt. Auftrag und Zuschnitt: Maintainer, 2026-10-01.
 
+## Dieser Zweig wird nie nach main gemergt
+
+Er ist der Vorher-Zustand einer Uebernahme; ihr Nachher ist der Hauptzweig.
+Der Hauptzweig ist das Zielsystem, das die Uebernahme durchgefuehrt HAT — dort
+die Faehigkeiten zu entfernen, hiesse eine geleistete Migration zu vergessen.
+Der Zweig ist deshalb keine Altlast, die auf ihren Merge wartet, sondern ein
+Pruefstein: Fuehrt Fall 3 dieselbe Lieferung auf diesem Stand richtig durch,
+einschliesslich der Kern-Erweiterung unter A-K2, dann ist sein Endzustand am
+Hauptzweig zu messen (Kern, Tafeln, Config, die wieder laufenden Tests). Ob
+er ihn trifft, ist nicht vorab gemessen; es ist das, was Fall 3 zeigt.
+
 ## Was zurueckgebaut ist
 
 | Gegenstand | vorher | auf diesem Stand |
