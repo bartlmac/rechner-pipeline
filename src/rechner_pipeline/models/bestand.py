@@ -344,18 +344,6 @@ ANNAHME_ERZEUGT: Mapping[str, Tuple[str, str]] = {
     "invalidensterblichkeit": ("bu", "TOD"),
 }
 
-#: Annahmen, die ihr Ereignis NUR in einer bestimmten Generation zusaetzlich
-#: zu einem zweiten Ereignis ziehen: Annahmenfeld -> (Produkt, Ereignis).
-#: Annahme A1 (klv.md 7.2): Eine Generation mit ``red_verfahren =
-#: teilkuendigung`` kennt keine Beitragsherabsetzung ohne Auszahlung und
-#: fuehrt den Herabsetzungswunsch als Teilkuendigung aus — dort belegt die
-#: Rate ``herabsetzung`` auch eine ``TKU``. Ob die Generation einer Police so
-#: eine ist, sagt der Aufrufer (:func:`unbelegte_ereignisse`, Parameter
-#: ``auch_erzeugt``); die Regel selbst nennt kein Feld und keine Art.
-ANNAHME_AUCH_ERZEUGT: Mapping[str, Tuple[str, str]] = {
-    "herabsetzung": ("klv", "TKU"),
-}
-
 #: (Produkt, Ereignis), das von MEHR als einer Annahme gezogen wird — dort
 #: entscheidet der Zustand vor dem Ereignis. Aus :data:`ANNAHME_ERZEUGT`
 #: abgeleitet, nicht abgetippt.
@@ -480,7 +468,6 @@ def unbelegte_ereignisse(
     annahmen: Any,
     *,
     leistungsbezug: Optional[Any] = None,
-    auch_erzeugt: Optional[Any] = None,
 ) -> Dict[str, List[Tuple[int, int]]]:
     """Gebuchte Fortschreibungszeilen, die ihre Erfahrungsannahme nicht
     erzeugen kann: Annahmenfeld -> [(Police, Vertragsjahr), ...].
@@ -505,10 +492,9 @@ def unbelegte_ereignisse(
     Anwaerters oder des Leistungsbeziehers die Rate ist. Ohne Angabe gilt der
     Anwaerter — die Fuehrungsprobe ist ein KLV-Werkzeug.
 
-    ``auch_erzeugt(police) -> bool`` (Annahme A1, klv.md 7.2): Gilt fuer die
-    Generation der Police :data:`ANNAHME_AUCH_ERZEUGT` (der Herabsetzungs-
-    wunsch wird als Teilkuendigung ausgefuehrt), belegt auch dieses Feld die
-    Zeile. Ohne Angabe gilt allein :data:`ANNAHME_ERZEUGT`.
+    Jede Art hat genau EINE erzeugende Annahme je Zustand. Der fruehere
+    zweite Weg der Teilkuendigung (Herabsetzungswunsch des uebernommenen
+    Tarifs, Annahme A1) ist mit dem Entscheid vom 2026-10-01 entfallen.
     """
     import pandas as pd
 
@@ -537,11 +523,6 @@ def unbelegte_ereignisse(
         if ereignis_zuordnungsfehler(produkt, art) is not None:
             continue      # ohne Zuordnung: Befund von unzugeordnete_ereignisse
         feld = annahme_fuer_ereignis(produkt, art, im_bezug)
-        if (feld in null_felder and auch_erzeugt is not None
-                and any(f not in null_felder and pe == (produkt, art)
-                        for f, pe in ANNAHME_AUCH_ERZEUGT.items())
-                and auch_erzeugt(pid)):
-            continue      # A1: von einem zweiten Feld belegt
         if feld in null_felder:
             treffer.setdefault(feld, set()).add((pid, int(z.vertragsjahr)))
     return {f: sorted(v) for f, v in treffer.items()}
@@ -1016,14 +997,16 @@ SCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
 #: Beitragsanteil und daneben die dort fixierte beitragsfreie Summe
 #: (``kern.beitragsreduktion.ReduzierterVertrag``, Tarifplan klv.md 7.1).
 #:
-#: Persistiert werden Jahr, Anteil und Verfahren. Rekonstruiert wird der
-#: Vertrag daraus zusammen mit den Scheiben (auch denen NACH der
-#: Herabsetzung, die als nicht herabgesetzte Bausteine weiterlaufen) und
-#: der Korrekturschicht — ``kern.beitragsreduktion.reduzierte_teile``,
-#: fuer alle drei Verfahren. Verfahren und Anteil muessen dem Tarifwerk
-#: der Generation und den Annahmen entsprechen (P-B1 prueft es): Ohne das
-#: Verfahren waere derselbe Anteil je nach Bedingungswerk ein anderer
-#: Vertrag.
+#: Persistiert werden Jahr, Anteil und Verfahren — je VORGANG eine Zeile:
+#: Die Tabelle fuehrt die FOLGE der Beitragsherabsetzungen (``RED``) und
+#: Teilkuendigungen (``TKU``) einer Police, beliebig viele, in jeder
+#: Reihenfolge (Entscheid des Maintainers 2026-10-01). Rekonstruiert wird
+#: der Vertrag daraus zusammen mit den Scheiben, der Beitragsfreistellung
+#: der Statushistorie und der Korrekturschicht —
+#: ``kern.vorgangsfolge.Vorgangsfolge``, EINE Darstellung fuer alle Leser.
+#: Verfahren und Anteil muessen dem Tarifwerk der Generation und den
+#: Annahmen entsprechen (P-B1 prueft es): Ohne das Verfahren waere derselbe
+#: Anteil je nach Bedingungswerk ein anderer Vertrag.
 #:
 #: NEBENTABELLE wie ``scheiben``: Keine Datei heisst, der Bestand hat
 #: keine Herabsetzungen — nicht, dass niemand nachgesehen hat.
@@ -1277,22 +1260,58 @@ def reduktion_ereignis(verfahren: str) -> str:
 
 
 def alt_absetzung_ist_teilkuendigung(
-    quell_verfahren: str, jahr: int, beitragsdauer: int
+    quell_verfahren: str, jahr: int, beitragsdauer: int, *,
+    beitragsfrei_ab: Optional[int],
 ) -> bool:
-    """Welcher Vorgang eine GELIEFERTE Alt-Absetzung der Vorgeschichte war
-    (Annahme A2, klv.md 7.2; ADR-023).
+    """Welcher Vorgang des Zielsystems eine GELIEFERTE Absetzung der Quelle
+    war — die EINE Uebersetzungsregel vom Vokabular der Quelle in das des
+    Zielsystems (Grundsatzdokumentation 7.1; Tarifplan KLV 7.2, Annahmen A2
+    und B5; ADR-023, Nachtrag 2026-10-01).
 
-    Vor dem Beitragsende sagt es das Verfahren des QUELLsystems (Beleg der
-    Migration, ``--red-verfahren``): ``teilkuendigung`` heisst, die Quelle
-    hat einen Herabsetzungswunsch als Teilkuendigung ausgefuehrt. Nach dem
-    Beitragsende (``jahr >= t``) war sie immer eine Teilkuendigung — es gab
-    keinen Beitrag, den eine Herabsetzung haette senken koennen.
+    Die Quelle bucht ihre Absetzungen mit EINEM Code (``RED``, so bleibt er
+    als Provenienzname stehen). Das Zielsystem kennt zwei Vorgaenge mit
+    eigenem Code; welcher es war, sagt diese Regel, und zwar in dieser
+    Reihenfolge:
 
-    Das ist KEINE Umdeutung eines Vorgangs des Zielsystems: Das Zielsystem
-    bucht zwei Geschaeftsvorfaelle mit eigenem Code. Diese Regel liest nur,
-    was eine Lieferung mit dem einen Code ``RED`` meint, die die
-    Unterscheidung nicht traegt."""
-    return str(quell_verfahren) == TEILKUENDIGUNG_VERFAHREN or int(jahr) >= int(beitragsdauer)
+    * Rechnet die Quelle eine Absetzung als Teilkuendigung (Verfahren der
+      Quelle ``teilkuendigung``, Beleg der Migration ``--red-verfahren``),
+      war JEDE ihrer Absetzungen eine Teilkuendigung — vor und nach dem
+      Beitragsende, vor und nach einer Beitragsfreistellung. So der
+      uebernommene Tarif der zweiten Lieferung (Bedingungswerk Ziffer 6).
+    * Kennt die Quelle eine echte Beitragsherabsetzung (Annahme B5), war eine
+      Absetzung VOR dem Beitragsende und vor einer Beitragsfreistellung eine
+      Herabsetzung; ab dem Beitragsende (``jahr >= beitragsdauer``) oder ab
+      der Beitragsfreistellung (``jahr >= beitragsfrei_ab``) eine
+      Teilkuendigung — es gab keinen Beitrag mehr, den eine Herabsetzung
+      haette senken koennen.
+
+    ``beitragsfrei_ab`` hat keinen Default: Wer die Regel fragt, sagt, ob
+    der Vertrag beitragsfrei gestellt war (``None``: nicht).
+
+    Das ist KEINE Umdeutung eines Vorgangs des Zielsystems; die Regel liest
+    nur, was eine Lieferung mit dem einen Code meint."""
+    if str(quell_verfahren) == TEILKUENDIGUNG_VERFAHREN:
+        return True
+    if int(jahr) >= int(beitragsdauer):
+        return True
+    return beitragsfrei_ab is not None and int(jahr) >= int(beitragsfrei_ab)
+
+
+def zielverfahren(
+    quell_verfahren: str, jahr: int, beitragsdauer: int, *,
+    beitragsfrei_ab: Optional[int],
+) -> str:
+    """Das Verfahren des Zielvorgangs einer gelieferten Absetzung —
+    ``teilkuendigung`` oder das Herabsetzungsverfahren der Quelle; dieselbe
+    Regel wie :func:`alt_absetzung_ist_teilkuendigung`, in der Form, in der
+    eine Zeile der Nebentabelle ``reduktionen`` sie traegt (der Code folgt
+    daraus, :func:`reduktion_ereignis`)."""
+    if alt_absetzung_ist_teilkuendigung(
+            quell_verfahren, jahr, beitragsdauer, beitragsfrei_ab=beitragsfrei_ab):
+        return TEILKUENDIGUNG_VERFAHREN
+    return str(quell_verfahren)
+
+
 #: ``verankerungszustand`` (schichten.parquet): der Startzustand der
 #: Korrekturschicht — ein ERLEBENSzustand des Zustandsmodells, mit dem sie
 #: bewertet wird ("aktiv" fuer Kapitalversicherungen, "aktiv"/"bu" fuer die
@@ -2499,35 +2518,34 @@ def validate_reduktionen(
     zwischen 0 und 1: ``1.0`` ist kein Vorgang, ``0.0`` ist eine
     Beitragsfreistellung bzw. ein Rueckkauf.
 
-    **Hoechstens EIN Vorgang je Police** (Annahme A4, klv.md 7.2). Der Kern traegt den
-    herabgesetzten Vertrag als EINEN Vertrag mit geknicktem Verlauf
-    (``kern.beitragsreduktion.ReduzierterVertrag``); eine zweite
-    Herabsetzung darauf ist nicht definiert. Lieber ein benannter Fehler
-    als eine Zahl, die niemand herleiten kann.
+    **Beliebig viele Vorgaenge je Police, in jeder Reihenfolge** (Entscheid
+    des Maintainers 2026-10-01; klv.md 7.3). Die Tabelle fuehrt die FOLGE:
+    je Police so viele Zeilen wie Vorgaenge. Der Kern faltet sie in Zustaende
+    (``kern.vorgangsfolge.Vorgangsfolge``); am selben Jahrestag gilt die
+    Reihenfolge der Engine (Herabsetzung vor Teilkuendigung). Eindeutig ist
+    deshalb (Police, Jahr, Vorgang): Zwei gleiche Vorgaenge am selben
+    Jahrestag haetten keine bestimmte Reihenfolge — ein benannter Fehler
+    statt einer Zahl, die niemand herleiten kann. (Bis 2026-10-01: hoechstens
+    ein Vorgang je Police, Annahme A4 — ersetzt.)
 
-    Mit ``historie`` zusaetzlich die Reihenfolge: Eine Herabsetzung setzt
-    einen laufenden Beitrag voraus, liegt also echt VOR einer
-    Beitragsfreistellung und vor jedem Endzustand.
-
-    **Auch die Teilkuendigung liegt vor der Beitragsfreistellung**
-    (Pruefrunde T27, Runde C, Befund RC03). Bis dahin war sie
-    ausdruecklich nach PEX zugelassen, mit der Begruendung, Ziffer 6
-    kuendige nur einen Summenanteil. Die Engine zieht fuer beitragsfreie
-    Vertraege aber keine Herabsetzung (sie fragt den Draw nur bei
-    laufendem Beitrag), und die Bewertung bricht ab ("Beitragsfreistellung
-    im Jahr 1 vor der Reduktion"): P-B1 nahm eine Auszahlung vom 4,6-fachen
-    der beitragsfreien Reserve an, die nichts bewerten konnte. Ein
-    Vertrag, der beitragsfrei ist (PEX-Jahr <= Reduktionsjahr, auch ein
-    beitragsfrei UEBERNOMMENER), traegt keine Herabsetzung.
+    Mit ``historie`` zusaetzlich die Reihenfolge gegen die Zustaende: Eine
+    BEITRAGSHERABSETZUNG setzt einen laufenden Beitrag voraus, liegt also
+    echt VOR einer Beitragsfreistellung (PEX-Jahr > Jahr; eine Herabsetzung
+    nach der Beitragsfreistellung gibt es in der Welt der PLV nicht, Ausweg
+    die Teilkuendigung). Die TEILKUENDIGUNG ist auch NACH einer
+    Beitragsfreistellung moeglich, auch im Jahr der Freistellung selbst (sie
+    folgt ihr am selben Jahrestag) — sie kuendigt einen Anteil der
+    beitragsfreien Summe (klv.md 7.2). Beide liegen vor jedem Endzustand.
+    (Bis 2026-10-01 schloss die Beitragsfreistellung auch die
+    Teilkuendigung aus, Pruefrunde T27, Befund RC03 — der Kern hatte fuer sie
+    keine Regel; die hat er jetzt, Entscheid B3 vom 2026-10-01.)
 
     **Der beitragsfrei AUSFINANZIERTE Nachlauf ist kein PEX.** Nach dem
     Ende der Beitragszahlung (``premium_duration`` <= Jahr < ``duration``)
     ist der Vertrag nicht beitragsfrei GESTELLT: Dort gibt es die
     Teilkuendigung, die einen Summenanteil kuendigt und keinen laufenden
     Beitrag voraussetzt (Entscheid des Maintainers 2026-10-01, klv.md 7.2);
-    Kern, Engine und Bewertung tragen sie bis zur Versicherungsdauer. Die Probe-Invariante (P-B1 und Fuehrungsprobe:
-    'kein Soll auf einem beitragsfreien Vertrag') haengt deshalb am
-    PEX-Jahr, nicht an ``premium_duration``.
+    Kern, Engine und Bewertung tragen sie bis zur Versicherungsdauer.
 
     **Die Herabsetzung liegt im Lauf** (Runde C, Befund RC02): nach dem
     Bestandszugang des Vertrags (``bestandszugang``; beim eigenen Geschaeft
@@ -2555,15 +2573,21 @@ def validate_reduktionen(
         errors.append(
             f"reduktionen: police_ids ausserhalb des Bestands: "
             f"{sorted(unbekannt)[:5]}")
-    if reduktionen["police_id"].duplicated().any():
-        doppelt = sorted(
-            reduktionen.loc[reduktionen["police_id"].duplicated(), "police_id"]
-        )[:5]
+    import pandas as pd
+
+    vorgang_je_zeile = reduktionen["verfahren"].map(reduktion_ereignis)
+    schluessel = pd.DataFrame({"police_id": reduktionen["police_id"],
+                               "reduktion_jahr": reduktionen["reduktion_jahr"],
+                               "vorgang": vorgang_je_zeile})
+    if schluessel.duplicated().any():
+        doppelt = schluessel[schluessel.duplicated()].head(5)
         errors.append(
-            f"reduktionen: mehrere Herabsetzungen je Police: {doppelt} — der "
-            "Kern fuehrt den herabgesetzten Vertrag als EINEN Vertrag mit "
-            "geknicktem Verlauf; eine zweite Reduktion darauf ist nicht "
-            "definiert")
+            "reduktionen: zwei gleiche Vorgaenge am selben Jahrestag: "
+            + ", ".join(f"police {int(p)} {v} Jahr {int(j)}" for p, j, v in zip(
+                doppelt["police_id"], doppelt["reduktion_jahr"], doppelt["vorgang"]))
+            + " — je Jahrestag hoechstens eine Herabsetzung und eine "
+            "Teilkuendigung, sonst ist ihre Reihenfolge nicht bestimmt; Ausweg: "
+            "die Anteile zu einem Vorgang zusammenfassen (f = f1 x f2)")
     ausser = [
         float(a) for a in reduktionen["anteil"] if not 0.0 < float(a) < 1.0]
     if ausser:
@@ -2637,9 +2661,10 @@ def validate_reduktionen(
                 f"liegt nach dem belegten Horizont {pd.Timestamp(horizont).date()} — "
                 "der Lauf hat sie nicht gefahren, sie ist unbelegt")
     if historie is not None and len(historie):
-        # Beitragsfrei (PEX-Jahr <= Reduktionsjahr) schliesst JEDE Herabsetzung
-        # aus, auch die Teilkuendigung (RC03); der terminale Zustand die
-        # Teilkuendigung ebenso wie jede andere.
+        # Beitragsfrei (PEX-Jahr <= Jahr) schliesst die BEITRAGSHERABSETZUNG
+        # aus — es gibt keinen Beitrag mehr (klv.md 7.1; Ausweg TKU). Die
+        # Teilkuendigung kuendigt dann einen Anteil der beitragsfreien Summe
+        # (klv.md 7.2, Entscheid B3 vom 2026-10-01). Der terminale Zustand schliesst beide aus.
         pex_ab = (
             historie[historie["status_code"] == "PEX"]
             .groupby("police_id")["status_date"].min()
@@ -2654,19 +2679,20 @@ def validate_reduktionen(
                                                reduktionen["verfahren"]):
             pid, jahr = int(pid), int(jahr)
             tk = str(verfahren) == "teilkuendigung"
-            if pid in pex_ab.index and pid in haupt.index:
+            if not tk and pid in pex_ab.index and pid in haupt.index:
                 beginn = pd.Timestamp(haupt.loc[pid, "insurance_start"])
                 pex = pd.Timestamp(pex_ab.loc[pid])
                 pex_jahr = ((pex.year * 12 + pex.month)
                             - (beginn.year * 12 + beginn.month)) // 12
                 if pex_jahr <= jahr:
                     errors.append(
-                        f"reduktionen: police {pid}: "
-                        f"{'Teilkuendigung' if tk else 'Herabsetzung'} im Jahr {jahr} "
-                        f"liegt nicht vor dem Zustandswechsel am {pex.date()} "
+                        f"reduktionen: police {pid}: Beitragsherabsetzung im Jahr "
+                        f"{jahr} liegt nicht vor dem Zustandswechsel am {pex.date()} "
                         f"(Beitragsfreistellung im Jahr {pex_jahr}) — ein "
-                        "beitragsfreier Vertrag traegt keine Herabsetzung: die "
-                        "Engine zieht sie nicht und die Bewertung bricht ab")
+                        "beitragsfreier Vertrag hat keinen Beitrag, den eine "
+                        "Herabsetzung senken koennte; Ausweg: die Teilkuendigung "
+                        "(Verfahren teilkuendigung, Ledger TKU), die einen Anteil der "
+                        "beitragsfreien Summe kuendigt")
                     continue
             if pid not in grenzen_terminal.index:
                 continue
@@ -3001,16 +3027,17 @@ def red_bindung_fehler(
     **Beitragsherabsetzung** (``RED``, Verfahren prospektiv/mit_abzug): Das
     Verfahren ist das der Generation (Tarifwerk ``red_verfahren``), das Jahr
     liegt in der Beitragszahlungsdauer, Rate ``annahmen.herabsetzung`` und
-    Anteil ``annahmen.red_anteil`` belegen sie. Eine Generation mit
-    ``red_verfahren = teilkuendigung`` kennt keine Herabsetzung ohne
-    Auszahlung (Annahme A1) — eine ``RED`` dort ist ein Befund.
+    Anteil ``annahmen.red_anteil`` belegen sie. Der uebernommene Tarif
+    (``red_verfahren = teilkuendigung``) kennt keine Beitragsherabsetzung —
+    sein einziger Vorgang ist die Teilkuendigung (Entscheid des Maintainers
+    2026-10-01); eine ``RED`` dort ist ein Befund.
 
-    **Teilkuendigung** (``TKU``): moeglich in jeder Generation; belegt durch
-    die Rate ``annahmen.teilkuendigung`` mit dem Anteil ``tk_anteil`` — oder,
-    in einer Generation mit ``red_verfahren = teilkuendigung``, durch einen
-    Herabsetzungswunsch (Rate ``herabsetzung``, Anteil ``red_anteil``, nur
-    solange ein Beitrag laeuft), den diese Generation als Teilkuendigung
-    ausfuehrt (A1).
+    **Teilkuendigung** (``TKU``): moeglich in jeder Generation; belegt allein
+    durch die Rate ``annahmen.teilkuendigung`` mit dem Anteil ``tk_anteil``.
+    Der fruehere zweite Weg (Herabsetzungswunsch des uebernommenen Tarifs als
+    Teilkuendigung ausgefuehrt, Annahme A1) ist mit dem Entscheid vom
+    2026-10-01 entfallen: Dieser Tarif zieht nur aus dem Strom der
+    Teilkuendigung.
 
     Kennen die Annahmen den Vorgang nicht (Rate oder Anteil null), ist die
     Zeile unbelegt, nicht frei (Runde C RC05, Angriffsrunde nach T27). Kein
@@ -3022,36 +3049,24 @@ def red_bindung_fehler(
     tk_rate = float(annahmen.teilkuendigung(0.0))
     tk_anteil = float(getattr(annahmen, "tk_anteil", 0.0) or 0.0)
     if reduktion_ereignis(verfahren) == "TKU":
-        quellen = []
-        if tk_rate and tk_anteil:
-            quellen.append(("tk_anteil", tk_anteil))
-        if (generation_verfahren == TEILKUENDIGUNG_VERFAHREN and red_rate
-                and red_anteil and int(jahr) < int(beitragsdauer)):
-            quellen.append(("red_anteil", red_anteil))
-        if not quellen:
-            a1 = (f"; die Generation fuehrt den Herabsetzungswunsch als "
-                  f"Teilkuendigung aus, aber herabsetzung a = {red_rate!r}, "
-                  f"red_anteil = {red_anteil!r}"
-                  + ("" if int(jahr) < int(beitragsdauer)
-                     else " und das Jahr liegt nach dem Beitragsende")
-                  if generation_verfahren == TEILKUENDIGUNG_VERFAHREN else "")
+        if not (tk_rate and tk_anteil):
             fehler.append(
                 f"reduktionen police {pid}: Teilkuendigung mit Anteil {anteil!r}, die "
                 f"Annahmen kennen keine (teilkuendigung a = {tk_rate!r}, tk_anteil = "
-                f"{tk_anteil!r}{a1}) — der Anteil ist unbelegt")
-        elif not any(abs(anteil - a) <= 1e-12 for _, a in quellen):
+                f"{tk_anteil!r}) — der Anteil ist unbelegt")
+        elif abs(anteil - tk_anteil) > 1e-12:
             fehler.append(
                 f"reduktionen police {pid}: Anteil {anteil!r} der Teilkuendigung, "
-                "die Annahmen sagen "
-                + " oder ".join(f"{q} = {a!r}" for q, a in quellen))
+                f"die Annahmen sagen tk_anteil = {tk_anteil!r}")
         return fehler
     if generation_verfahren is not None and verfahren != generation_verfahren:
         if generation_verfahren == TEILKUENDIGUNG_VERFAHREN:
             fehler.append(
                 f"reduktionen police {pid}: Beitragsherabsetzung mit Verfahren {verfahren!r} in "
-                "einer Generation, die keine Herabsetzung ohne Auszahlung kennt "
-                "(Tarifwerk: red_verfahren = teilkuendigung) — sie fuehrt den Wunsch als "
-                "Teilkuendigung aus (TKU)")
+                "einem Tarif, der keine Beitragsherabsetzung kennt (Tarifwerk: "
+                "red_verfahren = teilkuendigung, der uebernommene Tarif) — sein "
+                "einziger Vorgang ist die Teilkuendigung (TKU); was die Quelle "
+                "'Herabsetzung' nennt, ist im Vokabular der PLV die Teilkuendigung")
         else:
             fehler.append(
                 f"reduktionen police {pid}: Verfahren {verfahren!r}, das Tarifwerk "

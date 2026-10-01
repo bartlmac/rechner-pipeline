@@ -382,7 +382,11 @@ def test_engine_mit_abzug_liegt_nie_ueber_prospektiv_und_p_b1_nimmt_den_lauf_ab(
     pro = engine_welten[(zillmer, "prospektiv")]
     abz = engine_welten[(zillmer, "mit_abzug")]
     assert pro["pb1"] == [] and abz["pb1"] == []
-    led = lambda w: w["ledger"][w["ledger"].ereignis == "RED"].set_index("police_id").betrag
+    # Die ERSTE Herabsetzung je Police (beliebig viele seit 2026-10-01): beide
+    # Welten ziehen dieselben Vorgaenge, nur die Betraege unterscheiden sich.
+    led = lambda w: w["ledger"][(w["ledger"].ereignis == "RED")
+                                & (w["ledger"].betrag_art == "VS_herabsetzung")
+                                ].groupby("police_id").betrag.first()
     vp, va = led(pro), led(abz)
     gemeinsam = sorted(set(vp.index) & set(va.index))
     assert len(gemeinsam) >= 10, "Welt ohne Herabsetzungen waere blind"
@@ -489,11 +493,19 @@ def test_die_summe_nach_spaeterer_beitragsfreistellung_ist_nie_negativ():
 _PAKET = Path(_br.__file__).resolve().parent.parent       # src/rechner_pipeline
 #: Die Stellen, die eine Summe der Basisschicht bilden — GENAU diese rufen
 #: ``untergrenze_basissumme`` ab (Pfad im Paket, qualifizierter Funktionsname).
+#: Seit der Vorgangsfolge (2026-10-01) zwei weitere: die beitragsfreie Summe
+#: eines Bausteins in seinem Zustand und der umgewandelte Teil jeder
+#: Herabsetzung der Folge.
 _RATSCHE_STELLEN = {
     ("kern/produkte/klv.py", "KLV.beitragsfreie_summe"),
     ("kern/beitragsreduktion.py", "_reduziere_eine_schicht"),
     ("kern/beitragsreduktion.py", "ReduzierterVertrag.beitragsfreie_summe"),
+    ("kern/vorgangsfolge.py", "Baustein.beitragsfreie_summe_bei"),
+    ("kern/vorgangsfolge.py", "Vertragsstand._herabsetzen"),
 }
+#: Aufrufe der Regel je Datei (fuer die Positivkontrolle der Abschrift).
+_AUFRUFE_JE_DATEI = {"kern/produkte/klv.py": 1, "kern/beitragsreduktion.py": 2,
+                     "kern/vorgangsfolge.py": 2}
 _REGEL = "untergrenze_basissumme"
 
 
@@ -534,7 +546,7 @@ class _Sammler(ast.NodeVisitor):
 
 
 def _ratsche_befunde(quellen: dict) -> list:
-    """Die Ratsche ueber den Quelltext (Pfad im Paket -> Text): genau drei
+    """Die Ratsche ueber den Quelltext (Pfad im Paket -> Text): genau die
     Aufrufstellen der Regel, in den benannten Funktionen (``==``, nicht
     ``>=``), kein Alias, und dort KEINE Abschrift (``max(0, ...)``)."""
     befunde, aufrufe = [], []
@@ -575,10 +587,12 @@ def _abschrift_statt_aufruf(text: str, nr: int) -> str:
 
 def test_die_untergrenze_der_basissumme_ist_eine_regel_an_einem_ort():
     """Echte Ratsche (AST ueber das ganze Paket, Nachbesserung 4): Die Regel
-    ``konventionen.untergrenze_basissumme`` wird an GENAU drei Stellen
-    abgerufen — ``KLV.beitragsfreie_summe``, ``_reduziere_eine_schicht``,
-    ``ReduzierterVertrag.beitragsfreie_summe`` (``==``) —, und in diesen drei
-    Funktionen steht keine ``max(0, ...)``-Abschrift. Vorher pruefte der Test
+    ``konventionen.untergrenze_basissumme`` wird an GENAU den Stellen von
+    ``_RATSCHE_STELLEN`` abgerufen — ``KLV.beitragsfreie_summe``,
+    ``_reduziere_eine_schicht``, ``ReduzierterVertrag.beitragsfreie_summe`` und
+    seit der Vorgangsfolge ``Baustein.beitragsfreie_summe_bei`` und
+    ``Vertragsstand._herabsetzen`` (``==``) —, und in diesen Funktionen steht
+    keine ``max(0, ...)``-Abschrift. Vorher pruefte der Test
     nur, dass der importierte Name dieselbe Funktion ist; eine Abschrift an der
     Aufrufstelle liess er durch. Mutationsprobe M4 des Pruefers: an einer Stelle
     ``max(0.0, ...)`` statt des Aufrufs -> rot."""
@@ -592,6 +606,8 @@ def test_die_untergrenze_der_basissumme_ist_eine_regel_an_einem_ort():
     ("kern/produkte/klv.py", "KLV.beitragsfreie_summe", 0),
     ("kern/beitragsreduktion.py", "_reduziere_eine_schicht", 0),
     ("kern/beitragsreduktion.py", "ReduzierterVertrag.beitragsfreie_summe", 1),
+    ("kern/vorgangsfolge.py", "Baustein.beitragsfreie_summe_bei", 0),
+    ("kern/vorgangsfolge.py", "Vertragsstand._herabsetzen", 1),
 ])
 def test_die_ratsche_findet_die_eingesetzte_abschrift(pfad, stelle, nr):
     """Positivkontrolle der Ratsche: Wird an einer der drei Stellen der Aufruf
@@ -601,7 +617,7 @@ def test_die_ratsche_findet_die_eingesetzte_abschrift(pfad, stelle, nr):
     quellen = _paket_quellen()
     assert _ratsche_befunde(quellen) == []
     mutiert, anzahl = _abschrift_statt_aufruf(quellen[pfad], nr)
-    assert anzahl == (2 if pfad.endswith("beitragsreduktion.py") else 1)
+    assert anzahl == _AUFRUFE_JE_DATEI[pfad]
     befunde = _ratsche_befunde({**quellen, pfad: mutiert})
     assert f"{pfad}: Abschrift max(0, ...) in {stelle}" in befunde
     assert any(b.startswith("Aufrufstellen") for b in befunde)

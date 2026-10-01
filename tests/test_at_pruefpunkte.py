@@ -658,34 +658,52 @@ def test_ddk_der_beitragsfreistellung_eines_reduzierten_vertrags():
     assert urteil["bestanden"], urteil["befunde"]
 
 
-def test_reduktion_mit_scheiben_oder_pex_zustand_faellt_hart():
-    with pytest.raises(AktuartestFehler, match="Kombination"):
-        pruefe_vertrag(_vertrag(
-            Pruefpunkt(monate=120, erwartet={"kVx_MRV": 1.0},
-                       anlass="uebernahme"),
-            reduktion=(8, 0.6), scheiben=((9, 5000.0),),
-        ), _profil())
-    with pytest.raises(AktuartestFehler, match="Kombination"):
-        pruefe_vertrag(_vertrag(
-            Pruefpunkt(monate=120, erwartet={"kVx_MRV": 1.0},
-                       anlass="uebernahme"),
-            reduktion=(8, 0.6), beitragsfrei_seit_jahr=9,
-        ), _profil())
+def test_reduktion_mit_scheiben_oder_pex_zustand_wird_als_folge_gerechnet():
+    """Vorher "Kombination nicht definiert"; die Vorgangsfolge traegt beide
+    (Entscheid des Maintainers 2026-10-01). Kontrollen UNABHAENGIG von ihr:
+    der geteilte Vertrag (``ReduzierterVertrag``) plus die spaeter
+    entstandene Scheibe an ihrem versetzten Stichtag; nach einer spaeteren
+    Freistellung die beitragsfreie Reserve des geteilten Vertrags."""
+    from rechner_pipeline.kern import erhoehungs_scheibe
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
+
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 9, 5000.0))
+    soll = rv.monatsreserve(120).vx_mrv + scheibe.monatsreserve(120 - 108).vx_mrv
+    urteil = pruefe_vertrag(_vertrag(
+        Pruefpunkt(monate=120, erwartet={"kVx_MRV": round(soll, 2)}, anlass="uebernahme"),
+        reduktion=(8, 0.6), scheiben=((9, 5000.0),),
+    ), _profil())
+    assert urteil["bestanden"], urteil["befunde"]
+    soll_bfr = rv.reserve_beitragsfrei(9, 120)
+    urteil = pruefe_vertrag(_vertrag(
+        Pruefpunkt(monate=120, erwartet={"kVx_MRV": round(soll_bfr, 2)}, anlass="uebernahme"),
+        reduktion=(8, 0.6), beitragsfrei_seit_jahr=9,
+    ), _profil())
+    assert urteil["bestanden"], urteil["befunde"]
 
 
-def test_reduktion_mit_schicht_faellt_hart_statt_die_schicht_zu_verlieren():
-    """Beide Schicht-Varianten: _system_werte wendet bei Herabsetzung nie
-    eine Schicht an — ohne Waechter fiele eine registrierte Schicht STILL
-    aus dem Ergebnis (Review-Befund B2)."""
+def test_reduktion_mit_schicht_rechnet_die_schicht_mit():
+    """Vorher ein Waechter ("die Schicht fiele still aus dem Ergebnis",
+    Review-Befund B2); die Vorgangsfolge traegt die Schicht als Teil des
+    Zustands. Hier liegt die Verankerung (Jahr 9) NACH der Herabsetzung
+    (Jahr 8): die Schicht laeuft als eigene Position. Kontrolle: geteilter
+    Vertrag plus Schichtwert, beide aus ihren eigenen Funktionen. Die
+    Konventionsschicht bleibt benannt verweigert."""
     import dataclasses
 
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
+    from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
+
     e, _, ta = _uebernommen()
-    with pytest.raises(AktuartestFehler, match="Korrekturschicht"):
-        pruefe_vertrag(_vertrag(
-            Pruefpunkt(monate=120, erwartet={"kVx_MRV": 1.0},
-                       anlass="uebernahme"),
-            reduktion=(8, 0.6), schicht=e.parameter, monate_ta=ta,
-        ), _profil())
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    soll = rv.monatsreserve(120).vx_mrv + schichtwert_bei(e.parameter, ta, KLV_DEFAULT, 120)
+    urteil = pruefe_vertrag(_vertrag(
+        Pruefpunkt(monate=120, erwartet={"kVx_MRV": round(soll, 2)},
+                   anlass="uebernahme"),
+        reduktion=(8, 0.6), schicht=e.parameter, monate_ta=ta,
+    ), _profil())
+    assert urteil["bestanden"], urteil["befunde"]
     conv = dataclasses.replace(e.parameter, schichttyp="conv")
     with pytest.raises(AktuartestFehler, match="Konventionsschicht"):
         pruefe_vertrag(_vertrag(
@@ -1413,18 +1431,21 @@ def test_auftragsbau_verwirft_plausibilitaet_bei_serien_ist_struktur():
                for p in urteil["pruefungen"])
 
 
-def test_die_serien_ableitung_weist_eine_plv_herabsetzung_ab():
+def test_die_serien_ableitung_rechnet_eine_plv_herabsetzung_als_geteilten_vertrag():
     """Angriffsrunde der Nacht: Die Serien-Ableitung bekam das Verfahren
     nicht und rekonstruierte jede Herabsetzung als Teilkuendigung — unter
     prospektiv/mit Abzug ein falscher Anfangszustand (bis -9.039 EUR
-    Deckungskapital) und die Sperre der Uebernahme umgangen. Jetzt ein
-    benannter Fehler. Mutationsprobe: die Pruefung entfernen -> rot."""
-    from rechner_pipeline.bestand.migrationszugang import MigrationszugangFehler
+    Deckungskapital). Danach ein benannter Fehler; seit der Vorgangsfolge
+    (Annahme B5) der GETEILTE Vertrag: Ursprungssummen plus Vorgang, nicht
+    die Teilkuendigungs-Struktur. Die Uebernahme sperrt ihn weiter benannt
+    (``materialisiere_anfangszustand``). Mutationsprobe: die Serie wieder
+    geschlossen ableiten -> keine Vorgaenge -> rot."""
     from rechner_pipeline.gates.migrationssuite_lauf import _serienzustand
 
     folge = [("ERH", 5, "01.01.2020"), ("RED", 10, "01.01.2025")]
     for verfahren in ("prospektiv", "mit_abzug"):
-        with pytest.raises(MigrationszugangFehler, match="Teilkuendigung"):
-            _serienzustand("P1", folge, dict(MP), erlsumme=79566.02, erhoehungssatz=0.05,
-                           red_anteile={"P1": 0.6}, red_anteile_je_datum={},
-                           red_verfahren=verfahren)
+        zustand = _serienzustand("P1", folge, dict(MP), erlsumme=79566.02, erhoehungssatz=0.05,
+                                 red_anteile={"P1": 0.6}, red_anteile_je_datum={},
+                                 red_verfahren=verfahren)
+        assert zustand["vorgaenge"] == ((10, 0.6, verfahren),)
+        assert "alt_absetzungen" not in zustand

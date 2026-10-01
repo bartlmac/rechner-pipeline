@@ -78,14 +78,17 @@ ADR-023; klv.md 7.1 und 7.2). Die BEITRAGSHERABSETZUNG (``RED``) senkt den
 Beitrag auf f und wandelt den freiwerdenden Teil in beitragsfreie Summe um
 (``prospektiv`` oder ``mit_abzug``); es fliesst kein Geld, und sie setzt
 einen laufenden Beitrag voraus (``0 < jahr < t``). Die TEILKUENDIGUNG
-(``TKU``) kuendigt einen Summenanteil (1-f) der Grundversicherung und zahlt
-dessen Rueckkaufswert nach Tarif aus; sie ist in jeder Generation
-beitragspflichtig wie ausfinanziert moeglich (``0 < jahr < n``). Hier
-rechnet ``verfahren=TEILKUENDIGUNG`` diesen Vorgang. Verworfen wurde EIN
-Vorgang mit Verfahrensschalter, der eine Herabsetzung nach t still als
-Teilkuendigung rechnet: Es sind zwei Vorgaenge mit verschiedener Wirkung,
-und das Ledger muss sagen, was geschah. Eine Herabsetzung nach t
-verweigert der Kern deshalb benannt, mit dem Ausweg Teilkuendigung.
+(``TKU``) kuendigt einen Summenanteil (1-f) und zahlt dessen
+Rueckkaufswert nach Tarif aus; sie ist in jeder Generation beitragspflichtig,
+ausfinanziert und nach einer Beitragsfreistellung moeglich
+(``0 < jahr < n``). Hier rechnet ``verfahren=TEILKUENDIGUNG`` diesen Vorgang
+fuer EINEN Vorgang je Vertrag; beliebig viele Vorgaenge in jeder Reihenfolge
+rechnet :mod:`rechner_pipeline.kern.vorgangsfolge`, und fuer einen einzelnen
+Vorgang bitgleich zu dieser Klasse. Verworfen wurde EIN Vorgang mit
+Verfahrensschalter, der eine Herabsetzung nach t still als Teilkuendigung
+rechnet: Es sind zwei Vorgaenge mit verschiedener Wirkung, und das Ledger
+muss sagen, was geschah. Eine Herabsetzung nach t verweigert der Kern
+deshalb benannt, mit dem Ausweg Teilkuendigung.
 
 Knoten: klv
 """
@@ -117,9 +120,12 @@ PROSPEKTIV = "prospektiv"
 MIT_ABZUG = "mit_abzug"
 #: Die Teilkuendigung — seit dem Entscheid 2026-10-01 ein EIGENER
 #: Geschaeftsvorfall (``TKU``) jeder Generation; als ``red_verfahren`` einer
-#: Generation heisst der Wert: Diese Generation kennt keine Herabsetzung ohne
-#: Auszahlung, ein Herabsetzungswunsch wird als Teilkuendigung ausgefuehrt
-#: (Annahme A1, klv.md 7.2). Herkunft: Quell-Verfahren der
+#: Generation heisst der Wert: Dieser Tarif kennt keine Beitragsherabsetzung
+#: (Entscheid des Maintainers 2026-10-01: der uebernommene Tarif kennt nur die
+#: Teilkuendigung; sie kommt aus ihrer eigenen Rate, nicht aus einem
+#: Herabsetzungswunsch — die fruehere Annahme A1 ist ersetzt). Ob sie nur die
+#: Grundversicherung oder alle Bausteine kuerzt, sagt das Merkmal
+#: ``tku_umfang`` (Entscheid B1, klv.md 7.2). Herkunft: Quell-Verfahren der
 #: Baldrian-Uebernahme (Bedingungswerk Ziffer 6, A-M3-Befund des zweiten
 #: Laufs): Der Anteil (1-f) der
 #: GRUNDVERSICHERUNG wird GEKUENDIGT und sein Rueckkaufswert

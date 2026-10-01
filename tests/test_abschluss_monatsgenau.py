@@ -343,8 +343,19 @@ def test_die_alt_gestalt_ist_eine_echte_datei_des_alten_schreibers():
 def test_ein_alter_abschluss_wird_in_seiner_konvention_nachgerechnet_und_ist_deckungsgleich():
     """Nicht an der Spaltengestalt abgewiesen, nicht pauschal als Abweichung
     gegen die heutige Konvention gemeldet: deckungsgleich mit der
-    Jahreszeile, in der er geschrieben wurde."""
-    assert _alt_pruefen(ALT_DATEI) == []
+    Jahreszeile, in der er geschrieben wurde.
+
+    Die Fixture ist unter Kern 3.16.0 festgeschrieben. Ein spaeterer
+    Kernstand (3.17.0: die Vorgangsfolge) meldet den Versionssprung als
+    EIGENE Zeile (ADR-011: der Abschluss bleibt stehen) — und sonst nichts:
+    Die Neuberechnung ist deckungsgleich, auch fuer die Vertraege mit
+    Herabsetzung der Fixture (ein Vorgang je Vertrag rechnet bitgleich)."""
+    from rechner_pipeline.kern import __version__ as kern_version
+
+    befunde = _alt_pruefen(ALT_DATEI)
+    sprung = [b for b in befunde if "festgeschrieben unter Kern ['3.16.0']" in b]
+    assert len(sprung) == (kern_version != "3.16.0")
+    assert [b for b in befunde if b not in sprung] == []
 
 
 def test_der_alte_abschluss_waere_in_der_heutigen_konvention_eine_abweichung(tmp_path):

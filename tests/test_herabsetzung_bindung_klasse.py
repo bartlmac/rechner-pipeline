@@ -28,8 +28,9 @@ from rechner_pipeline.bestand.ledger_bindung import pruefe_ledger_betraege
 
 
 def test_p_b1_weist_herabsetzungen_ab_die_die_config_nicht_kennt():
-    """Mutationsprobe: den Zweig red_anteil == 0 in red_bindung_fehler
-    entfernen -> rot."""
+    """Die Welt des uebernommenen Tarifs: Teilkuendigungen aus ihrer eigenen
+    Rate. Ohne Anteil kennt die Config sie nicht. Mutationsprobe: den Zweig
+    tk_anteil == 0 in red_bindung_fehler entfernen -> rot."""
     from tests.test_t27_teilkuendigung_klasse import _voll
     from tests import test_t27_teilkuendigung_klasse as tk
 
@@ -43,7 +44,7 @@ def test_p_b1_weist_herabsetzungen_ab_die_die_config_nicht_kennt():
     assert len(erg.reduktionen)
     assert tk._pb1(welt, erg.ledger) == []                          # Positivkontrolle
     ohne = copy.deepcopy(config)
-    ohne.annahmen.red_anteil = 0.0
+    ohne.annahmen.tk_anteil = 0.0
     fehler = pruefe_ledger_betraege(
         stamm, _voll(welt, erg.ledger), ohne, scheiben=erg.scheiben, historie=erg.historie,
         schichten=schichten, verankerung=verankerung, reduktionen=erg.reduktionen)
@@ -51,9 +52,9 @@ def test_p_b1_weist_herabsetzungen_ab_die_die_config_nicht_kennt():
 
 
 def test_p_b1_weist_herabsetzungen_ab_wenn_die_annahmen_keine_rate_haben():
-    """RC05 (Runde C): Eine Config, deren Erfahrungsannahme keine Herabsetzung
-    vorsieht (herabsetzung a = 0 und b = 0), belegt keinen Anteil — auch wenn
-    ein red_anteil stehengeblieben ist. Vorher pruefte red_bindung_fehler nur
+    """RC05 (Runde C): Eine Config, deren Erfahrungsannahme keinen Vorgang
+    vorsieht (teilkuendigung a = 0 und b = 0), belegt keinen Anteil — auch wenn
+    ein tk_anteil stehengeblieben ist. Vorher pruefte red_bindung_fehler nur
     den Anteil: 151 Herabsetzungen galten als belegt, P-B1 Exit 0.
     Mutationsprobe: die Rate in red_bindung_fehler nicht auswerten -> rot."""
     from tests import test_t27_teilkuendigung_klasse as tk
@@ -68,16 +69,16 @@ def test_p_b1_weist_herabsetzungen_ab_wenn_die_annahmen_keine_rate_haben():
     erg = fortschreiben(stamm, config, tk.BIS, schichten=schichten, verankerung=verankerung)
     welt = (config, stamm, schichten, verankerung, erg)
     assert len(erg.reduktionen)
-    assert config.annahmen.red_anteil > 0.0 and config.annahmen.herabsetzung.a > 0.0
+    assert config.annahmen.tk_anteil > 0.0 and config.annahmen.teilkuendigung.a > 0.0
     assert tk._pb1(welt, erg.ledger) == []                          # Positivkontrolle
     ohne = copy.deepcopy(config)
-    ohne.annahmen.herabsetzung = Annahme(a=0.0, b=0.0)              # red_anteil bleibt stehen
-    assert ohne.annahmen.red_anteil == config.annahmen.red_anteil
+    ohne.annahmen.teilkuendigung = Annahme(a=0.0, b=0.0)            # tk_anteil bleibt stehen
+    assert ohne.annahmen.tk_anteil == config.annahmen.tk_anteil
     assert ohne.validate() == []                                    # die Config selbst ist gueltig
     fehler = pruefe_ledger_betraege(
         stamm, _voll(welt, erg.ledger), ohne, scheiben=erg.scheiben, historie=erg.historie,
         schichten=schichten, verankerung=verankerung, reduktionen=erg.reduktionen)
-    treffer = [f for f in fehler if "kennen keine" in f and "herabsetzung" in f]
+    treffer = [f for f in fehler if "kennen keine" in f and "teilkuendigung a = 0" in f]
     assert len(treffer) == len(erg.reduktionen), fehler[:3]
 
 
@@ -96,9 +97,11 @@ def red_welt(gefahrener_fall):
     ueb, _fort, basis = _probe_material(gefahrener_fall)
     text = (gefahrener_fall / "abgeleitet" / "bestand-config.toml").read_text(encoding="utf-8")
     anteil = float(RED_ANTEILE[0].split("=")[1])
+    # Der uebernommene Tarif kennt nur die Teilkuendigung, aus ihrer eigenen
+    # Rate (Entscheid des Maintainers 2026-10-01).
     mit_red = config_aus_text(text + (
-        f"\n[annahmen]\nred_anteil = {anteil}\n"
-        "[annahmen.herabsetzung]\na = 0.20\nb = 0.0\n"))
+        f"\n[annahmen]\ntk_anteil = {anteil}\n"
+        "[annahmen.teilkuendigung]\na = 0.20\nb = 0.0\n"))
     erg = fortschreiben(
         ueb["bestand"], mit_red, _dt.date(2040, 1, 1), merkmale=ueb["merkmale"],
         scheiben=ueb["scheiben"], schichten=ueb["schichten"], verankerung=ueb["verankerung"])
@@ -113,8 +116,9 @@ def red_welt(gefahrener_fall):
         nur nicht zum System. Allein die Bindung kann das sehen."""
         assert ersetze_text in text
         anders = config_aus_text(text.replace(ersetze_text, durch) + (
-            f"\n[annahmen]\nred_anteil = {anteil_neu}\n"
-            "[annahmen.herabsetzung]\na = 0.20\nb = 0.0\n"))
+            f"\n[annahmen]\nred_anteil = {anteil_neu}\ntk_anteil = {anteil_neu}\n"
+            "[annahmen.herabsetzung]\na = 0.20\nb = 0.0\n"
+            "[annahmen.teilkuendigung]\na = 0.20\nb = 0.0\n"))
         e2 = fortschreiben(
             ueb["bestand"], anders, _dt.date(2040, 1, 1), merkmale=ueb["merkmale"],
             scheiben=ueb["scheiben"], schichten=ueb["schichten"], verankerung=ueb["verankerung"])
@@ -136,8 +140,8 @@ def _urteil(red_welt, **ersetzt):
 
 def _red(fort, art):
     led = fort["ledger"]
-    # Die Generation des Falls (TG2015) fuehrt den Herabsetzungswunsch als
-    # Teilkuendigung aus (Annahme A1, ADR-023): gebucht wird TKU.
+    # Der uebernommene Tarif (TG2015) kennt nur die Teilkuendigung: gebucht
+    # wird TKU.
     return led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == art)]
 
 
@@ -191,8 +195,8 @@ def test_ein_stimmig_fremder_anteil_faellt_an_der_bindung(red_welt):
 
 def test_die_probe_belegt_keinen_anteil_ohne_herabsetzungsrate(red_welt):
     """RC05, Fuehrungsprobe: dieselbe Fortschreibung, aber gegen eine Config,
-    deren Erfahrungsannahme keine Herabsetzung vorsieht (Rate 0, red_anteil
-    bleibt stehen): die Herabsetzungen sind unbelegt. Positivkontrolle: mit
+    deren Erfahrungsannahme keine Teilkuendigung vorsieht (Rate 0, tk_anteil
+    bleibt stehen): die Vorgaenge sind unbelegt. Positivkontrolle: mit
     der Config des Laufs besteht die Probe (Fixture).
     Mutationsprobe: die Rate in red_bindung_fehler nicht auswerten -> rot."""
     from rechner_pipeline.bestand.config import Annahme
@@ -200,11 +204,11 @@ def test_die_probe_belegt_keinen_anteil_ohne_herabsetzungsrate(red_welt):
 
     ueb, fort, basis = red_welt[:3]
     ohne = copy.deepcopy(basis["config"])
-    ohne.annahmen.herabsetzung = Annahme(a=0.0, b=0.0)
-    assert ohne.annahmen.red_anteil > 0.0
+    ohne.annahmen.teilkuendigung = Annahme(a=0.0, b=0.0)
+    assert ohne.annahmen.tk_anteil > 0.0
     urteil = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **dict(basis, config=ohne))
     assert not urteil["bestanden"]
-    assert any("kennen keine" in b["text"] and "herabsetzung a = 0" in b["text"]
+    assert any("kennen keine" in b["text"] and "teilkuendigung a = 0" in b["text"]
                for b in urteil["befunde"]), urteil["befunde"][:3]
 
 

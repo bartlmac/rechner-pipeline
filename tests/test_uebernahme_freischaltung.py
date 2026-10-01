@@ -157,7 +157,7 @@ def test_cli_verlangt_die_antwort_sobald_die_vorgeschichte_bausteine_traegt(tmp_
     assert beleg["nicht_freigeschaltet"] == ["7000001"]
     assert beleg["tarifwerk"] == {
         "scheiben_mit_gamma1": False, "stoab_je_baustein": False,
-        "red_verfahren": "prospektiv"}
+        "red_verfahren": "prospektiv", "tku_umfang": "alle_bausteine"}
     assert not (ziel / "scheiben.parquet").exists()
     # Materialisieren ohne Rechnungsgrundlagen ist ein Aufruffehler.
     assert bestand_uebernehmen.main(

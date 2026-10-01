@@ -56,6 +56,7 @@ from rechner_pipeline.bestand.parquet_io import (
 from rechner_pipeline.gates._common import Eingangsbindung, lies_gehasht
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import model_point_kwargs
+from rechner_pipeline.gates.migrationssuite_lauf import TKU_UMFAENGE
 from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.qa.aktuarieller_test import (
     Pruefpunkt,
@@ -716,6 +717,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Verfahren der Beitragsherabsetzung (Eigenschaft "
                         "des Migrationsfalls; Vorgabe: Zielverfahren "
                         "prospektiv)")
+    p.add_argument("--tku-umfang", dest="tku_umfang", default=None,
+                   choices=sorted(TKU_UMFAENGE),
+                   help="Umfang der Teilkuendigung des Tarifs (alle_bausteine "
+                        "oder grundversicherung; Vorgabe: der des "
+                        "Bedingungswerks, das --red-verfahren nennt, Annahme "
+                        "B1) — Tarifwerks-Eigenschaft, siehe bestand_uebernehmen")
     p.add_argument(
         "--schicht", dest="schicht", default=None,
         help="REGISTRIERTE Quelle mit der Korrekturschicht je Police "
@@ -842,7 +849,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             auspraegungen=auspraegungen,
             erhoehungssatz=args.erhoehungssatz, anker=anker,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
+            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+            tku_umfang=args.tku_umfang,
+            stoab_je_baustein=args.stoab_je_baustein)
 
     # Ersetzter Wertvergleich: NUR aus einer registrierten Quelle. Ein
     # Kommandozeilen-Text waere fuer die Zeichnung nicht bindbar — die

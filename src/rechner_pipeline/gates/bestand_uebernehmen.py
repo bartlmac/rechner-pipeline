@@ -84,6 +84,7 @@ from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
+from rechner_pipeline.kern import TKU_UMFAENGE, tku_umfang_fuer
 from rechner_pipeline.models.bestand import (
     GENERATION_FIELDS,
     MERKMALE_SPALTEN,
@@ -149,7 +150,8 @@ def _zellen_toml(spez, generation: str,
         ] + [
             f"{name} = {_wert(tarifwerk[name])}"
             for name in ("scheiben_mit_gamma1", "stoab_je_baustein",
-                         "red_verfahren")
+                         "red_verfahren", "tku_umfang")
+            if name in tarifwerk
         ]
     if not zellen:
         if not tarifwerk_zeilen:
@@ -838,7 +840,9 @@ def materialisiere_anfangszustand(
                 f"Police {police}: Anfangszustand fuer eine Police, die "
                 "nicht im Stamm steht — Zeilen und Vorgeschichte gehoeren "
                 "zur selben Lieferung")
-        if z.get("reduktion") is not None:
+        if z.get("reduktion") is not None or z.get("vorgaenge"):
+            # Ein GETEILTER Vertrag (Herabsetzung der Vorgeschichte, einzeln
+            # oder in einer Folge): siehe unten.
             gesperrt.append(police)
             continue
         zahlen["mit_anfangszustand"] += 1
@@ -980,6 +984,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Stornoabschlag-Grenzen je Baustein — "
                         "Tarifwerks-Eigenschaft der Lieferung; wird "
                         "Eigenschaft der Generation in der Config")
+    p.add_argument("--tku-umfang", dest="tku_umfang", default=None,
+                   choices=sorted(TKU_UMFAENGE),
+                   help="Umfang der Teilkuendigung des Tarifs (alle_bausteine "
+                        "oder grundversicherung; Vorgabe: der des "
+                        "Bedingungswerks, das --red-verfahren nennt, Annahme "
+                        "B1) — wird Eigenschaft der Generation in der Config")
     # Die AUSGESTALTUNG der Korrekturschicht ist eine Entscheidung des
     # Operators, kein abgeleiteter Wert (gates.verankerung_belegen). Seit
     # die PEX-Buchung die Schicht traegt, braucht die Uebernahme sie
@@ -1071,6 +1081,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "scheiben_mit_gamma1": bool(args.scheiben_mit_gamma1),
         "stoab_je_baustein": bool(args.stoab_je_baustein),
         "red_verfahren": str(args.red_verfahren),
+        "tku_umfang": tku_umfang_fuer(args.red_verfahren, args.tku_umfang),
     }
 
     zustaende: Optional[Dict[str, Dict[str, Any]]] = None
@@ -1152,7 +1163,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             erhoehungssatz=args.erhoehungssatz, anker=anker,
             red_anteile_je_datum=red_anteile_je_datum,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
+            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+            tku_umfang=args.tku_umfang,
+            stoab_je_baustein=args.stoab_je_baustein)
         # Pruefer-Befund B1 zur Alt-Absetzung: Ein Vertrag ohne ableitbaren
         # Anfangszustand wird NICHT still als Grundvertrag mit der
         # gelieferten Summe uebernommen (vorher: Warnung, Eintrag in

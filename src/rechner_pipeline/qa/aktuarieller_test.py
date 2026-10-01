@@ -74,19 +74,22 @@ Knoten: klv
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from rechner_pipeline.kern import ModelPoint
-from rechner_pipeline.models.bestand import alt_absetzung_ist_teilkuendigung
+from rechner_pipeline.kern import (
+    VORGANG_RANG,
+    ModelPoint,
+    Vorgangsfolge,
+    VorgangsfolgeFehler,
+    tku_umfang_fuer,
+    vorgang,
+)
+from rechner_pipeline.models.bestand import zielverfahren
 from rechner_pipeline.kern.beitragsreduktion import (
     PROSPEKTIV,
     TEILKUENDIGUNG,
-    ReduzierterVertrag,
-    reduziere,
-    reduzierte_teile,
-    vertrags_monatsreserve_reduziert,
 )
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
@@ -137,7 +140,7 @@ def _kandidaten_rechnung(
     feststellbar ist, das Tarifwerk aber nur endlich viele Stufen kennt
     (belegte Auskunft), ist der zulaessige Bereich einer Groesse das
     Intervall ueber die Kandidaten-Ergebnisse: dieselbe
-    ReduzierterVertrag-Rechnung wie im Wertvergleich, nur je Kandidat
+    Vorgangsfolge-Rechnung wie im Wertvergleich, nur je Kandidat
     statt mit einem Punktwert — keine generische Schranke, sondern die
     Tarifformel selbst, dreifach gerechnet (Aktuars-Massgabe des
     zweiten Baldrian-Laufs, 2026-09-01).
@@ -145,13 +148,12 @@ def _kandidaten_rechnung(
     jahr = v.reduktion[0]
     aus = []
     for anteil in v.reduktion_kandidaten:
-        rv = ReduzierterVertrag.nach(
-            Rechenkern(mp), jahr, anteil, verfahren=red_verfahren)
-        if groesse == "BJB":
-            aus.append(rv.bjb(p.monate))
-        else:
-            m = rv.monatsreserve(p.monate)
-            aus.append(m.vx_mrv if groesse == "kVx_MRV" else m.rkw)
+        # Derselbe Leser wie der Wertvergleich (die Vorgangsfolge des
+        # Kerns), nur mit dem Kandidaten als Anteil.
+        kandidat = replace(v, reduktion=(jahr, anteil))
+        aus.append(_system_werte_folge(
+            kandidat, mp, replace(p, erwartet={groesse: 0.0}),
+            red_verfahren=red_verfahren)[groesse])
     return (min(aus), max(aus))
 
 
@@ -227,6 +229,9 @@ STICHTAGS_ANLAESSE = (ANLASS_UEBERNAHME, ANLASS_FORTSCHREIBUNG)
 #: Die Geschaeftsvorfaelle des Bewegungsjournals (A-M3). Die Kennungen sind
 #: dieselben wie im Ledger der Bestandsfuehrung.
 GEVO_ARTEN = ("STO", "PEX", "ABL", "TOD", "INV", "REA", "ERH", "RED", "TKU")
+#: Die Anlaesse, die ein Vorgang der Vorgangsfolge sind (Herabsetzung,
+#: Teilkuendigung) — die eine Stelle dieser Frage im Test.
+VORGANG_ANLAESSE = ("RED", "TKU")
 
 ALLE_ANLAESSE = STICHTAGS_ANLAESSE + (ANLASS_VERLAUF,) + GEVO_ARTEN
 
@@ -382,11 +387,20 @@ class Vertragspruefung:
     plausibilitaet: Mapping[str, str] = field(default_factory=dict)
     #: ANFANGSZUSTAND einer Herabsetzung VOR dem Migrationsstichtag:
     #: ``(vertragsjahr, fortgefuehrter_anteil)``. Der Vertrag wird dann als
-    #: geteilter Vertrag bewertet (Kern 3.1.0,
-    #: :class:`~rechner_pipeline.kern.beitragsreduktion.ReduzierterVertrag`,
-    #: Zielverfahren prospektiv). Eine Herabsetzung ZWISCHEN den
+    #: geteilter Vertrag bewertet (Vorgangsfolge des Kerns,
+    #: :class:`~rechner_pipeline.kern.Vorgangsfolge`; das Verfahren sagt
+    #: die Uebersetzungsregel). Eine Herabsetzung ZWISCHEN den
     #: Pruefpunkten ist kein Anfangszustand, sondern ein RED-Pruefpunkt.
     reduktion: Optional[Tuple[int, float]] = None
+    #: Die Vorgaenge der Vorgeschichte im Vokabular des Zielsystems
+    #: (Vertragsjahr, fortgefuehrter Anteil, Verfahren) — Anfangszustand
+    #: eines geteilten Vertrags mit mehreren Vorgaengen. ``reduktion`` ist
+    #: der Sonderfall einer Herabsetzung; beide faltet die Vorgangsfolge des
+    #: Kerns (:func:`_system_werte_folge`).
+    vorgaenge: Tuple[Tuple[int, float, str], ...] = field(default_factory=tuple)
+    #: Umfang der Teilkuendigung des Tarifs; ``None``: der des
+    #: Bedingungswerks, das das Verfahren nennt (Entscheid B1 vom 2026-10-01).
+    tku_umfang: Optional[str] = None
     #: Komponentenzahl der QUELL-Buchfuehrung, wenn der Ziel-Rechenweg
     #: sie kollabiert: Die Ein-Punkt-Inversion beitragsfrei
     #: uebernommener Serien (Faktorgleichheit) ist WERT-aequivalent,
@@ -498,12 +512,13 @@ def _pruefe_punkt(v: Vertragspruefung, p: Pruefpunkt, mp: ModelPoint) -> None:
             "Engine nur kVx_MRV, RKW, BJB und dDK vertragsweit — andere "
             "Groessen sind nicht definiert statt still falsch"
         )
-    if v.beitragsfrei_seit_jahr is not None and "RKW" in p.erwartet:
-        raise AktuartestFehler(
-            f"police {v.police_id}: RKW im beitragsfreien Zustand ist nicht "
-            "definiert — Groesse weglassen oder Engine erweitern"
-        )
-    if v.beitragsfrei_seit_jahr is None and "VS_bfr" in p.erwartet:
+    # RKW im beitragsfreien Zustand: seit B3 (Entscheid des Maintainers
+    # 2026-10-01) definiert — die Rueckstellung abzueglich des Stornoabzugs
+    # nach derselben Tarifregel auf der beitragsfreien Summe; gerechnet ueber
+    # die Vorgangsfolge (:func:`_mit_folge`).
+    pex_punkt = any(q.anlass == "PEX" and q.monate < p.monate for q in v.punkte)
+    if (v.beitragsfrei_seit_jahr is None and not pex_punkt
+            and "VS_bfr" in p.erwartet):
         raise AktuartestFehler(
             f"police {v.police_id}: VS_bfr ist nur im beitragsfreien "
             "Zustand eine Testgroesse — die beitragsfreie Summe existiert "
@@ -540,12 +555,11 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
         )
     if v.reduktion is not None:
         jahr, anteil = v.reduktion
+        # Scheiben, Beitragsfreistellung und Korrekturschicht traegt die
+        # Vorgangsfolge des Kerns (Entscheid des Maintainers 2026-10-01:
+        # beliebige Folgen); offen bleibt die Konventionsschicht.
         unvertraeglich = [
             name for name, gesetzt in (
-                ("Erhoehungsscheiben", bool(v.scheiben)),
-                ("Beitragsfreistellung als Anfangszustand",
-                 v.beitragsfrei_seit_jahr is not None),
-                ("Korrekturschicht", v.schicht is not None),
                 ("Konventionsschicht", v.schicht_conv is not None),
             ) if gesetzt
         ]
@@ -730,63 +744,14 @@ def _deckungskapital(
 
     ``bestand`` ist der gefuehrte Wert, ``beendet`` ist null (der Vertrag
     existiert nach dem Vorfall nicht mehr), ``beitragspflichtig`` und
-    ``beitragsfrei`` sind die beiden Seiten der Umwandlung.
-    ``herabgesetzt`` ist der geteilte Vertrag nach einer Beitragsreduktion.
+    ``beitragsfrei`` sind die beiden Seiten der Umwandlung. Einen Vertrag
+    mit Vorgang rechnet :func:`_system_werte_folge`.
     """
     if zustand == "beendet":
         return 0.0
-    if v.reduktion is not None:
-        # Anfangszustand Herabsetzung: der geteilte Vertrag (Kern 3.1.0).
-        rv = ReduzierterVertrag.nach(
-            kern, v.reduktion[0], v.reduktion[1], verfahren=red_verfahren)
-        if zustand == "herabgesetzt":
-            raise AktuartestFehler(
-                f"police {v.police_id}: zweite Herabsetzung eines bereits "
-                "herabgesetzten Vertrags ist nicht abgebildet"
-            )
-        if zustand == "beitragsfrei":
-            if monate % 12:
-                raise AktuartestFehler(
-                    f"police {v.police_id}: Beitragsfreistellung eines "
-                    "herabgesetzten Vertrags unterjaehrig ist nicht "
-                    "abgebildet — sie wirkt am Vertragsjahrestag"
-                )
-            return rv.reserve_beitragsfrei(
-                pex_jahr if pex_jahr is not None else monate // 12, monate)
-        # "bestand" und "beitragspflichtig": der gefuehrte Wert des
-        # geteilten Vertrags.
-        return rv.monatsreserve(monate).vx_mrv
-    if zustand in ("herabgesetzt", "teilgekuendigt"):
-        # Welcher Vorgang: ``teilgekuendigt`` ist die Teilkuendigung (TKU);
-        # ein geliefertes RED liest Annahme A2 (vor t das Verfahren der
-        # Quelle, nach t immer die Teilkuendigung).
-        jahr_v = monate // 12
-        verfahren_v = (TEILKUENDIGUNG if zustand == "teilgekuendigt"
-                       or alt_absetzung_ist_teilkuendigung(red_verfahren, jahr_v, mp.t)
-                       else red_verfahren)
-        # Das Verfahren ist dokumentierte Fall-Eigenschaft (klv.md 7.1):
-        # Die PLV-Verfahren teilen den Vertrag (prospektiv verlustfrei
-        # bzw. mit Abzug), die TEILKUENDIGUNG der zweiten
-        # Baldrian-Lieferung kuendigt den Anteil der GRUNDVERSICHERUNG
-        # mit Auszahlung (Ziffer 6) — die Erhoehungsscheiben sind davon
-        # nicht beruehrt und laufen im Nach-Zustand unveraendert weiter
-        # (A-M3-Befund des zweiten Laufs: neun dDK-Fehlschlaege, alle
-        # exakt -(1-f) x kVx des Grundbausteins).
-        #
-        # Der Nach-Zustand ist der Rueckkaufs-Track des herabgesetzten
-        # Vertrags selbst — ueber DIESELBE Rekonstruktion wie Fuehrung,
-        # Bewertung und P-B1 (reduzierte_teile), fuer alle drei Verfahren
-        # und mit Scheiben. Vorher nahm dieser Zweig bei den
-        # PLV-Verfahren reduziere(...).dk_nach, eine Groesse auf der Basis
-        # der gezillmerten Rueckstellung, und verglich sie mit dem
-        # Rueckkaufs-Track davor: Im Zillmerfenster fehlte dem Nach-Wert
-        # der ganze Abschlusskostenrest, und selbst die verlustfreie
-        # Herabsetzung meldete einen Verlust (Angriffsrunde der Nacht).
-        teile = reduzierte_teile(
-            kern, list(scheiben), jahr_v, parameter["anteil"], verfahren_v,
-            stoab_je_baustein=v.stoab_je_baustein)
-        return vertrags_monatsreserve_reduziert(
-            teile, monate, stoab_je_baustein=False).vx_mrv
+    # Herabsetzung und Teilkuendigung (als Anfangszustand oder Vorfall)
+    # rechnet :func:`_system_werte_folge` ueber die Vorgangsfolge des Kerns;
+    # hier kommt nur ein Vertrag ohne Vorgang an.
     if zustand == "beitragsfrei":
         # Bei einem PEX-GESCHAEFTSVORFALL ist das Freistellungsjahr der
         # Vorfall selbst — der Vertrag war vorher beitragspflichtig, ein
@@ -860,11 +825,155 @@ def schichtwert_bei(
     return _schichtwert_bei_kern(parameter, monate_anker, mp, monate)
 
 
+def _mit_folge(v: Vertragspruefung) -> bool:
+    """Ob der Vertrag ueber die Vorgangsfolge des Kerns gerechnet wird: mit
+    einem Vorgang (Herabsetzung, Teilkuendigung) als Anfangszustand oder als
+    Pruefpunkt, oder mit einem Rueckkaufswert im beitragsfreien Zustand (B3).
+    Ohne das bleibt der Weg unten unveraendert."""
+    if v.reduktion is not None or v.vorgaenge:
+        return True
+    if any(q.anlass in VORGANG_ANLAESSE for q in v.punkte):
+        return True
+    pex_ab = ([12 * v.beitragsfrei_seit_jahr] if v.beitragsfrei_seit_jahr is not None
+              else []) + [q.monate for q in v.punkte if q.anlass == "PEX"]
+    return bool(pex_ab) and any(
+        "RKW" in q.erwartet and q.monate >= min(pex_ab)
+        and not (q.anlass == "PEX" and q.monate == min(pex_ab))
+        for q in v.punkte)
+
+
+def _folge_des_auftrags(
+    v: Vertragspruefung, mp: ModelPoint, red_verfahren: str,
+) -> Vorgangsfolge:
+    """Die Vorgangsfolge eines Pruefauftrags: Anfangszustand (Scheiben,
+    Vorgaenge der Vorgeschichte, Beitragsfreistellung) plus jeder
+    Pruefpunkt, der selbst ein Vorgang ist (PEX, RED, TKU mit Anteil) —
+    jeder Punkt sieht den Vertrag in dem Zustand, den die Vorfaelle davor
+    hinterlassen haben (vorher rechnete jeder Punkt vom Anfangszustand aus
+    und ignorierte die Vorfaelle des Pruefzeitraums).
+
+    Welcher Vorgang ein gelieferter RED-Punkt war, sagt die EINE
+    Uebersetzungsregel (``models.bestand.zielverfahren``, Annahme B5)."""
+    if v.schicht_conv is not None:
+        raise AktuartestFehler(
+            f"police {v.police_id}: Konventionsschicht zusammen mit Herabsetzung "
+            "oder Teilkuendigung ist nicht definiert — wie ein Vorgang die am "
+            "Migrationsstichtag verankerte zweite Schicht aufnimmt, legt der "
+            "Tarifplan nicht fest")
+    kern, scheiben = _kerne(v, mp)
+    pex_punkte = sorted(q.monate // 12 for q in v.punkte if q.anlass == "PEX")
+    pex_jahr = (v.beitragsfrei_seit_jahr if v.beitragsfrei_seit_jahr is not None
+                else (pex_punkte[0] if pex_punkte else None))
+
+    def verfahren_fuer(jahr: int, geliefert_tku: bool) -> str:
+        # Ein gelieferter TKU-Punkt ist die Teilkuendigung; ein RED-Punkt
+        # liest die Uebersetzungsregel.
+        return zielverfahren(TEILKUENDIGUNG if geliefert_tku else red_verfahren,
+                             jahr, mp.t, beitragsfrei_ab=pex_jahr)
+
+    vorgaenge = []
+    if v.reduktion is not None:
+        vorgaenge.append(vorgang(int(v.reduktion[0]), float(v.reduktion[1]),
+                                 verfahren_fuer(int(v.reduktion[0]), False)))
+    for jahr_r, anteil_r, verfahren_r in v.vorgaenge:
+        vorgaenge.append(vorgang(int(jahr_r), float(anteil_r), str(verfahren_r)))
+    for q in sorted(v.punkte, key=lambda q: q.monate):
+        if q.anlass not in VORGANG_ANLAESSE:
+            continue
+        anteil = q.parameter.get("anteil")
+        if anteil is None:
+            spaeter = [r.monate for r in v.punkte if r.monate > q.monate]
+            if spaeter:
+                raise AktuartestFehler(
+                    f"police {v.police_id}: {q.anlass} bei Monat {q.monate} ohne "
+                    "parameter['anteil'] — der Zustand danach ist nicht bestimmt, "
+                    f"die Pruefpunkte {spaeter[:3]} haetten keinen Vertrag")
+            continue
+        vorgaenge.append(vorgang(q.jahr, float(anteil), verfahren_fuer(
+            q.jahr, q.anlass == "TKU")))
+    schicht = None if v.schicht is None else (v.schicht, int(v.monate_ta))
+    try:
+        return Vorgangsfolge(
+            kern, scheiben, vorgaenge, pex_jahr=pex_jahr, schicht=schicht,
+            stoab_je_baustein=v.stoab_je_baustein,
+            tku_umfang=tku_umfang_fuer(red_verfahren, v.tku_umfang))
+    except VorgangsfolgeFehler as exc:
+        raise AktuartestFehler(f"police {v.police_id}: {exc}") from exc
+
+
+#: Die Reihenfolge der Vorgaenge an einem Jahrestag (kern.Vorgangsfolge):
+#: der Vorgang des naechsten Rangs — den Zustand unmittelbar NACH einem
+#: Vorgang liest man als den vor dem naechsten.
+_NACH_RANG = {rang: art for art, rang in VORGANG_RANG.items()}
+
+
+def _system_werte_folge(
+    v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt, *, red_verfahren: str,
+) -> Dict[str, float]:
+    """Die Groessen am Pruefpunkt aus dem Zustand der Vorgangsfolge.
+
+    Am Punkt eines Vorfalls gilt der Zustand UNMITTELBAR DAVOR (wie im Weg
+    ohne Vorgang: die Werte eines PEX-Punkts sind die des beitragspflichtigen
+    Vertrags); ``dDK`` ist das Deckungskapital danach minus davor, fuer
+    Rueckkauf, Tod und Ablauf null danach. Das Deckungskapital ist der
+    Rueckkaufs-Track (beitragsfrei: die beitragsfreie Rueckstellung)
+    einschliesslich der Korrekturschicht, die der Zustand traegt oder
+    aufgenommen hat — die Schicht steckt im Zustand, ``_mit_schicht``
+    entfaellt hier."""
+    folge = _folge_des_auftrags(v, mp, red_verfahren)
+    art = p.anlass
+    if art in VORGANG_ANLAESSE and folge.ergebnis(p.jahr, art) is None:
+        # Ein gelieferter RED-Punkt, den die Uebersetzungsregel als
+        # Teilkuendigung liest, steht in der Folge unter dem anderen Code.
+        art = next((a for a in VORGANG_ANLAESSE if folge.ergebnis(p.jahr, a) is not None), art)
+    if p.ist_gevo and art in VORGANG_RANG and not p.unterjaehrig:
+        vor = folge.stand_vor(p.jahr, art)
+    elif p.ist_gevo and not p.unterjaehrig:
+        vor = folge.stand_vor(p.jahr, "PEX")
+    else:
+        vor = folge.stand_am(p.monate)
+
+    def dk(stand) -> float:
+        w = stand.werte(p.monate)
+        if w["status"] == "PEX":
+            return w["deckungskapital"]
+        return w["vx_mrv"] + w["korrekturschicht"]
+
+    gefragt = set(p.erwartet)
+    werte: Dict[str, float] = {}
+    if "dDK" in gefragt:
+        _, nach_zustand = GEVO_WIRKUNG[p.anlass]
+        if nach_zustand == "beendet":
+            nach_wert = 0.0
+        elif VORGANG_RANG.get(art, -1) + 1 in _NACH_RANG:
+            nach_wert = dk(folge.stand_vor(p.jahr, _NACH_RANG[VORGANG_RANG[art] + 1]))
+        else:
+            nach_wert = dk(vor)
+        werte["dDK"] = nach_wert - dk(vor)
+    w = vor.werte(p.monate)
+    if "kVx_MRV" in gefragt:
+        werte["kVx_MRV"] = dk(vor)
+    if "RKW" in gefragt:
+        werte["RKW"] = w["rueckkaufswert"]
+    if "BJB" in gefragt:
+        werte["BJB"] = sum(
+            k.gross_annual_premium() for erh_jahr, k in vor.beitragskerne(p.monate)
+            if p.monate - 12 * erh_jahr < 12 * k.mp.t)
+    if "VS_bfr" in gefragt:
+        # Gegen die GELIEFERTE Summe: ohne den Zuschlag, mit dem das
+        # Zielsystem eine Schicht bei der Freistellung ueberfuehrt (siehe
+        # SCHICHT_GROESSEN).
+        werte["VS_bfr"] = vor.vs_bfr() - sum(b.zuschlag for b in vor.bausteine)
+    return werte
+
+
 def _system_werte(
     v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt,
     red_verfahren: str = PROSPEKTIV,
 ) -> Dict[str, float]:
     """Die angeforderten Groessen am Pruefpunkt — ohne Interpolation."""
+    if _mit_folge(v):
+        return _system_werte_folge(v, mp, p, red_verfahren=red_verfahren)
     kern, scheiben = _kerne(v, mp)
     werte: Dict[str, float] = {}
     gefragt = set(p.erwartet)
@@ -880,23 +989,6 @@ def _system_werte(
             v, mp, kern, scheiben, p.monate, nach, p.parameter,
             red_verfahren=red_verfahren, pex_jahr=pex_jahr)
         werte["dDK"] = dk_nach - dk_vor
-
-    if v.reduktion is not None:
-        # Der geteilte Vertrag (Anfangszustand Herabsetzung): Reserven und
-        # Rueckkaufswert vertragsweit ueber beide Teile, der Beitrag ist
-        # der fortgefuehrte Anteil. Keine Schicht dazu — die Kombination
-        # weist _pruefe_auftrag zurueck.
-        rv = ReduzierterVertrag.nach(
-            kern, v.reduktion[0], v.reduktion[1], verfahren=red_verfahren)
-        if gefragt & {"kVx_MRV", "RKW"}:
-            m = rv.monatsreserve(p.monate)
-            if "kVx_MRV" in gefragt:
-                werte["kVx_MRV"] = m.vx_mrv
-            if "RKW" in gefragt:
-                werte["RKW"] = m.rkw
-        if "BJB" in gefragt:
-            werte["BJB"] = rv.bjb(p.monate)
-        return werte
 
     if scheiben:
         if gefragt & {"kVx_MRV", "RKW"}:
@@ -1158,6 +1250,7 @@ def pruefe_vertrag(
             "beitragsfrei_seit_jahr": v.beitragsfrei_seit_jahr,
             "quell_komponenten": v.quell_komponenten,
             "reduktion": list(v.reduktion) if v.reduktion else None,
+            "vorgaenge": [list(x) for x in v.vorgaenge],
             "monate_ta": v.monate_ta,
             "monate_t0": v.monate_t0,
             "schicht": v.schicht.als_beleg() if v.schicht else None,

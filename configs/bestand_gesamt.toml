@@ -1001,6 +1001,11 @@ zillmer_dauer = 5
 scheiben_mit_gamma1 = true
 stoab_je_baustein = true
 red_verfahren = "teilkuendigung"
+# Der uebernommene Tarif kuendigt bei seiner "Herabsetzung" (= Teilkuendigung
+# der PLV) nur den Anteil der Grundversicherung; die Erhoehungsscheiben
+# bleiben (Bedingungswerk Ziffer 6; Entscheid des Maintainers 2026-10-01,
+# Tarifplan KLV 7.2). EIN Wert stellt die Regel um ("alle_bausteine").
+tku_umfang = "grundversicherung"
 
 # Grundlagen und Tarifwerk dieser Generation sind der Config-Abschnitt,
 # den die Uebernahme aus der abgenommenen Spez des Falls schreibt

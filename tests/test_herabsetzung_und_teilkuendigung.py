@@ -10,18 +10,19 @@ geschah (``RED`` bzw. ``TKU``), eine Teilkuendigung ist nie als RED gebucht.
 * Beitragsherabsetzung (``RED``): Beitrag auf f, freiwerdender Teil in
   beitragsfreie Summe umgewandelt, keine Zahlung; nur ``0 < Jahr < t`` und
   ohne PEX — danach verweigert mit dem Ausweg Teilkuendigung.
-* Teilkuendigung (``TKU``): Summenanteil (1-f) der Grundversicherung
-  gekuendigt, Rueckkaufswert nach Tarif (mit Stornoabzug) ausgezahlt; in
-  jeder Generation fuer ``0 < Jahr < n``; eigene Rate
+* Teilkuendigung (``TKU``): Summenanteil (1-f) gekuendigt, Rueckkaufswert
+  nach Tarif (mit Stornoabzug) ausgezahlt; in jeder Generation fuer
+  ``0 < Jahr < n``, auch nach der Beitragsfreistellung; eigene Rate
   (``annahmen.teilkuendigung``), eigener Anteil (``tk_anteil``), eigener
-  Zufallsstrom.
+  Zufallsstrom. Sie trifft in den eigenen Tarifen JEDEN Baustein
+  proportional, im uebernommenen Tarif die Grundversicherung (Entscheid B1 vom 2026-10-01).
 
-Annahmen (klv.md 7.2, je einzeln gekennzeichnet): A1 eine Generation mit
-``red_verfahren = teilkuendigung`` fuehrt den Herabsetzungswunsch als
-Teilkuendigung aus; A2 eine gelieferte Alt-Absetzung ist vor t, was das
-Verfahren der Quelle sagt, nach t eine Teilkuendigung; A3 die
-Teilkuendigung trifft nur die Grundversicherung; A4 hoechstens ein Vorgang
-je Vertrag in der Fuehrung.
+Die Entscheide des Maintainers vom 2026-10-01 (Nachtrag) ersetzen die
+Annahmen A1, A3 und A4 (klv.md 7.2): Der uebernommene Tarif kennt EINEN
+Vorgang — die Teilkuendigung, aus ihrer eigenen Rate (kein zweiter Weg
+ueber den Herabsetzungswunsch); die Teilkuendigung trifft alle Bausteine;
+beliebig viele Vorgaenge je Vertrag, in jeder Reihenfolge. A2 (welcher
+Vorgang eine gelieferte Absetzung war) ist bestaetigt.
 
 Knoten: klv
 """
@@ -48,7 +49,7 @@ from rechner_pipeline.bestand.ereignisse import (
 )
 from rechner_pipeline.bestand.kennzahlen import bewegungskonto
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
-from rechner_pipeline.kern import KLV_DEFAULT, ModelPoint, Rechenkern
+from rechner_pipeline.kern import KLV_DEFAULT, ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.kern.beitragsreduktion import (
     MIT_ABZUG,
     PROSPEKTIV,
@@ -212,12 +213,13 @@ def _t(stamm):
 @pytest.mark.parametrize("verfahren", VERFAHREN)
 def test_zaehltest_beide_vorgaenge_vor_und_nach_t_in_jeder_generation(welten, verfahren):
     """Je Generation: Herabsetzungen (RED) nur vor t, ohne Zahlungszeile;
-    Teilkuendigungen (TKU) vor UND nach t, je mit Summe und Auszahlung. Die
-    Generation mit ``teilkuendigung`` bucht keine RED (A1: der
-    Herabsetzungswunsch wird als TKU ausgefuehrt). Registriert ist je
-    Vorgang das passende Verfahren. Mutationsproben: die RED-Bedingung auf
-    ``j + 1 < n`` -> Abbruch im Kern -> rot; die TKU-Bedingung auf
-    ``j + 1 < t`` -> keine TKU nach t -> rot."""
+    Teilkuendigungen (TKU) vor UND nach t, je mit Summe und Auszahlung. Der
+    uebernommene Tarif (``teilkuendigung``) bucht keine RED — er kennt keine
+    Beitragsherabsetzung. Registriert ist je Vorgang das passende Verfahren;
+    je Police beliebig viele (Entscheid 2026-10-01). Mutationsproben: die
+    RED-Bedingung auf ``j + 1 < n`` -> Abbruch im Kern -> rot; die
+    TKU-Bedingung auf ``j + 1 < t`` -> keine TKU nach t -> rot; nach dem
+    ersten Vorgang nicht mehr ausfuehren -> keine Police mit zweien -> rot."""
     config, stamm, schichten, verankerung, erg = welten[verfahren]
     led, red = erg.ledger, erg.reduktionen
     t = _t(stamm)
@@ -234,12 +236,13 @@ def test_zaehltest_beide_vorgaenge_vor_und_nach_t_in_jeder_generation(welten, ve
     assert ab_t.any() and (~ab_t).any(), "Teilkuendigung vor UND nach t"
     for (pid, jahr), eigene in tku_zeilen.groupby(["police_id", "vertragsjahr"]):
         assert {"VS_teilkuendigung", "RKW_teilkuendigung"} <= set(eigene["betrag_art"]), (pid, jahr)
-    soll = {(int(p), int(j)): ("TKU" if v == TEILKUENDIGUNG else "RED")
+    soll = {(int(p), int(j), "TKU" if v == TEILKUENDIGUNG else "RED")
             for p, j, v in zip(red["police_id"], red["reduktion_jahr"], red["verfahren"])}
-    gebucht = {(int(p), int(j)): str(e) for p, j, e in zip(
+    gebucht = {(int(p), int(j), str(e)) for p, j, e in zip(
         led["police_id"], led["vertragsjahr"], led["ereignis"]) if e in ("RED", "TKU")}
     assert gebucht == soll
-    assert red["police_id"].is_unique                       # A4: ein Vorgang je Vertrag
+    # A4 ist ersetzt: Policen mit mehr als einem Vorgang (Positivkontrolle).
+    assert red["police_id"].duplicated().any()
 
 
 @pytest.mark.parametrize("verfahren", VERFAHREN)
@@ -258,10 +261,16 @@ def test_jeder_leser_sieht_jede_buchung(welten, verfahren):
     gen = config.generationen[0]
     haupt = stamm.set_index("police_id")
     geprueft = 0
-    for z in erg.reduktionen.to_dict("records"):
+    red = erg.reduktionen
+    # Die Teilkuendigung als ERSTER Vorgang einer Police, Stichtag vor dem
+    # naechsten (Folgen: tests/test_vorgangsfolge_leser.py).
+    for i, z in red.groupby("police_id").head(1).iterrows():
         if z["verfahren"] != TEILKUENDIGUNG:
             continue
         pid, jahr = int(z["police_id"]), int(z["reduktion_jahr"])
+        if ((red["police_id"] == pid) & (red["reduktion_jahr"] > jahr)
+                & (red["reduktion_jahr"] <= jahr + 1)).any():
+            continue
         beginn = pd.Timestamp(haupt.loc[pid, "insurance_start"])
         stichtag = (beginn + pd.DateOffset(years=jahr + 1)).date()
         h = erg.historie
@@ -284,23 +293,44 @@ def test_jeder_leser_sieht_jede_buchung(welten, verfahren):
 
 @pytest.mark.parametrize("verfahren", [PROSPEKTIV, MIT_ABZUG])
 def test_auszahlung_der_teilkuendigung_folgt_der_unabhaengigen_zusage(welten, verfahren):
-    """Auch in einer Generation mit prospektiv: Auszahlung (1-f) x RKW der
-    Grundscheibe MIT Stornoabzug nach dem Tarifwerk plus absorbierte Schicht
-    (verworfen: Auszahlung ohne Abzug, klv.md 7.2)."""
+    """In den eigenen Tarifen trifft die Teilkuendigung JEDEN Baustein
+    (Entscheid des Maintainers 2026-10-01): Auszahlung (1-f) x RKW des
+    Vertrags — Grundscheibe UND Erhoehungsscheiben, MIT Stornoabzug nach dem
+    Tarifwerk — plus absorbierte Schicht (verworfen: Auszahlung ohne Abzug,
+    klv.md 7.2). Soll aus dem Kern-Primitiv ``vertrags_rkw`` ueber die
+    Bausteine, gebaut aus Stamm und Scheiben, fuer die Teilkuendigung als
+    ersten Vorgang einer Police. Positivkontrolle: Faelle mit Scheiben.
+    Mutationsprobe: Umfang Grundversicherung -> rot (Faelle mit Scheiben)."""
+    from rechner_pipeline.kern import erhoehungs_scheibe
+
     config, stamm, schichten, verankerung, erg = welten[verfahren]
     gen = config.generationen[0]
     haupt = stamm.set_index("police_id")
     led = erg.ledger
-    geprueft = 0
-    for (pid, jahr), eigene in led[led["ereignis"] == "TKU"].groupby(["police_id", "vertragsjahr"]):
+    pex = erg.historie[erg.historie["status_code"] == "PEX"].set_index("police_id")["status_date"]
+    geprueft = mit_scheiben = 0
+    for z in erg.reduktionen.groupby("police_id").head(1).to_dict("records"):
+        if z["verfahren"] != TEILKUENDIGUNG:
+            continue
+        pid, jahr = int(z["police_id"]), int(z["reduktion_jahr"])
+        if pid in pex.index and pex.loc[pid] <= z["reduktion_datum"]:
+            continue
         mp = ModelPoint(**model_point_kwargs(haupt.loc[pid], gen.generation_fields()))
+        s = erg.scheiben[(erg.scheiben["police_id"] == pid) & (erg.scheiben["erhoehung_jahr"] < jahr)]
+        kerne = [(int(e), Rechenkern(erhoehungs_scheibe(mp, int(e), float(v))))
+                 for e, v in zip(s["erhoehung_jahr"], s["sum_insured"])]
+        eigene = led[(led["police_id"] == pid) & (led["ereignis"] == "TKU")
+                     & (led["vertragsjahr"] == jahr)]
         arten = dict(zip(eigene["betrag_art"], eigene["betrag"]))
         rechnerisch = (1 - ANTEIL) * vertrags_rkw(
-            Rechenkern(mp), [], int(jahr), stoab_je_baustein=True
-        ) + schichtwert_bei(_parameter(), MONATE_TA, mp, 12 * int(jahr))
+            Rechenkern(mp), kerne, jahr, stoab_je_baustein=True
+        ) + schichtwert_bei(_parameter(), MONATE_TA, mp, 12 * jahr)
         assert arten["RKW_teilkuendigung"] == pytest.approx(max(0.0, rechnerisch), abs=1e-6)
+        assert arten["VS_teilkuendigung"] == pytest.approx(
+            ANTEIL * (mp.sum_insured + float(s["sum_insured"].sum())), rel=1e-12)
         geprueft += 1
-    assert geprueft >= 3
+        mit_scheiben += bool(kerne)
+    assert geprueft >= 3 and mit_scheiben >= 1, (geprueft, mit_scheiben)
 
 
 # --------------------------------------------------------------------------- #
@@ -404,27 +434,37 @@ def test_das_stromregister_ist_eindeutig_und_vollstaendig():
 # --------------------------------------------------------------------------- #
 
 
-def test_a1_der_herabsetzungswunsch_der_teilkuendigungs_generation_ist_belegt():
-    """A1: In der Generation mit ``red_verfahren = teilkuendigung`` belegt die
-    Rate ``herabsetzung`` eine TKU vor t; ohne beide Raten ist sie unbelegt;
-    eine RED dort ist ein Befund."""
+def test_der_uebernommene_tarif_kennt_nur_die_teilkuendigung():
+    """Entscheid des Maintainers 2026-10-01 (A1 ersetzt): Der uebernommene
+    Tarif (``red_verfahren = teilkuendigung``) kennt EINEN Vorgang — die
+    Teilkuendigung, aus ihrer eigenen Rate. Die Herabsetzungsrate zieht dort
+    nichts (keine doppelte Rate); eine TKU ohne Teilkuendigungsrate ist
+    unbelegt, auch wenn eine Herabsetzungsrate steht; eine RED dort ist ein
+    Befund. Mutationsproben: den Herabsetzungsstrom fuer diesen Tarif wieder
+    als TKU ausfuehren -> rot (erste Aussage); ``auch_erzeugt`` zurueck -> rot
+    (dritte Aussage)."""
     welt = _welt(TEILKUENDIGUNG, tk_rate=0.0)
     config, stamm, schichten, verankerung, erg = welt
-    assert (erg.ledger["ereignis"] == "TKU").any() and not (erg.ledger["ereignis"] == "RED").any()
-    assert _pb1(welt, erg.ledger) == []
-    beide_null = copy.deepcopy(config)
-    beide_null.annahmen.herabsetzung = Annahme(a=0.0, b=0.0)
+    assert config.annahmen.herabsetzung(0.0) > 0.0
+    assert not erg.ledger["ereignis"].isin(["RED", "TKU"]).any() and len(erg.reduktionen) == 0
+    mit_tk = _welt(TEILKUENDIGUNG)
+    assert (mit_tk[4].ledger["ereignis"] == "TKU").any()
+    assert _pb1(mit_tk, mit_tk[4].ledger) == []
+    nur_red_rate = copy.deepcopy(mit_tk[0])
+    nur_red_rate.annahmen.teilkuendigung = Annahme(a=0.0, b=0.0)
     from rechner_pipeline.bestand.ledger_bindung import pruefe_ledger_betraege
     from tests.test_herabsetzung_ausfinanziert import _voll
 
+    m = mit_tk
     fehler = pruefe_ledger_betraege(
-        stamm, _voll(welt, erg.ledger), beide_null, scheiben=erg.scheiben,
-        historie=erg.historie, schichten=schichten, verankerung=verankerung,
-        reduktionen=erg.reduktionen)
+        m[1], _voll(m, m[4].ledger), nur_red_rate, scheiben=m[4].scheiben,
+        historie=m[4].historie, schichten=m[2], verankerung=m[3],
+        reduktionen=m[4].reduktionen)
     assert any("annahmen.teilkuendigung" in f for f in fehler), fehler[:3]
     an = copy.deepcopy(config.annahmen)
-    assert red_bindung_fehler(1, 5, ANTEIL, PROSPEKTIV, beitragsdauer=12,
-                              generation_verfahren=TEILKUENDIGUNG, annahmen=an)
+    assert any("keine Beitragsherabsetzung kennt" in f for f in red_bindung_fehler(
+        1, 5, ANTEIL, PROSPEKTIV, beitragsdauer=12,
+        generation_verfahren=TEILKUENDIGUNG, annahmen=an))
 
 
 @pytest.mark.parametrize("jahr,soll", [(11, []), (12, ["nach dem Beitragsende"])])
@@ -440,14 +480,31 @@ def test_die_bindung_haelt_die_herabsetzung_an_der_grenze_t(jahr, soll):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("quelle,jahr,tk", [
-    (PROSPEKTIV, T - 1, False), (PROSPEKTIV, T, True), (MIT_ABZUG, N_K - 1, True),
-    (TEILKUENDIGUNG, 1, True), (TEILKUENDIGUNG, T - 1, True),
+@pytest.mark.parametrize("quelle,jahr,pex,tk", [
+    (PROSPEKTIV, T - 1, None, False), (PROSPEKTIV, T, None, True),
+    (MIT_ABZUG, N_K - 1, None, True),
+    (TEILKUENDIGUNG, 1, None, True), (TEILKUENDIGUNG, T - 1, None, True),
+    # B5: nach der Beitragsfreistellung immer die Teilkuendigung — beide Grenzen.
+    (PROSPEKTIV, T - 4, T - 4, True), (PROSPEKTIV, T - 5, T - 4, False),
+    (MIT_ABZUG, T - 2, T - 4, True), (TEILKUENDIGUNG, 1, 5, True),
 ])
-def test_a2_welcher_vorgang_eine_alt_absetzung_war(quelle, jahr, tk):
-    """Vor t das Verfahren der Quelle, nach t immer die Teilkuendigung —
-    beide Grenzen. Mutationsprobe: ``jahr >= t`` -> ``jahr > t`` -> rot."""
-    assert alt_absetzung_ist_teilkuendigung(quelle, jahr, T) is tk
+def test_a2_welcher_vorgang_eine_alt_absetzung_war(quelle, jahr, pex, tk):
+    """Die EINE Uebersetzungsregel (A2, B5): Kennt die Quelle nur die
+    Teilkuendigung, war jede Absetzung eine; sonst vor dem Beitragsende und
+    vor der Beitragsfreistellung eine Herabsetzung, danach eine
+    Teilkuendigung. Mutationsproben: ``jahr >= t`` -> ``jahr > t`` -> rot;
+    ``jahr >= beitragsfrei_ab`` -> ``>`` -> rot."""
+    from rechner_pipeline.models.bestand import zielverfahren
+
+    assert alt_absetzung_ist_teilkuendigung(quelle, jahr, T, beitragsfrei_ab=pex) is tk
+    assert zielverfahren(quelle, jahr, T, beitragsfrei_ab=pex) == (TEILKUENDIGUNG if tk else quelle)
+
+
+def test_die_uebersetzungsregel_hat_keinen_default_fuer_die_freistellung():
+    """Wer die Regel fragt, sagt, ob der Vertrag beitragsfrei war — ein
+    vergessenes Argument faellt, statt still "nicht beitragsfrei" zu lesen."""
+    with pytest.raises(TypeError):
+        alt_absetzung_ist_teilkuendigung(PROSPEKTIV, T - 1, T)  # type: ignore[call-arg]
 
 
 @pytest.mark.parametrize("verfahren", VERFAHREN)
@@ -495,40 +552,89 @@ def test_vor_t_bleibt_die_ableitung_der_herabsetzung_unveraendert():
     assert ab.vs_alt == pytest.approx(60_000.0, abs=0.5)
 
 
-def _serie(verfahren, *, mit_auskunft=True, red_jahr=T + 2):
+def _serie(verfahren, *, mit_auskunft=True, red_jahr=T + 2, tku_umfang=None, folge=None):
     from rechner_pipeline.gates.migrationssuite_lauf import _serienzustand
 
-    folge = [("ERH", 3, "01.01.2003"), ("ERH", 5, "01.01.2005"),
-             ("RED", red_jahr, "01.01.2022")]
-    je_datum = {"P1": {"01.01.2022": 0.6}} if mit_auskunft else {}
+    folge = folge or [("ERH", 3, "01.01.2003"), ("ERH", 5, "01.01.2005"),
+                      ("RED", red_jahr, "01.01.2022")]
+    je_datum = {"P1": {"01.01.2022": 0.6, "01.01.2004": 0.8}} if mit_auskunft else {}
     return _serienzustand(
         "P1", folge, dict(FELDER), erlsumme=70_000.0, erhoehungssatz=0.05,
-        red_anteile={}, red_anteile_je_datum=je_datum, red_verfahren=verfahren)
+        red_anteile={}, red_anteile_je_datum=je_datum, red_verfahren=verfahren,
+        tku_umfang=tku_umfang)
 
 
 @pytest.mark.parametrize("verfahren", VERFAHREN)
 def test_eine_serie_mit_alt_herabsetzung_nach_t_ist_in_jeder_generation_ableitbar(verfahren):
-    """A2: nach t eine Teilkuendigung — Grund mit f, Scheiben unveraendert
-    (A3); der Anteil kommt aus der Auskunft und DECKT die Struktur
-    (``gedeckt_durch``, Pflichtschicht der Abnahmen). Ohne Auskunft:
-    verweigert mit dem Ausweg."""
+    """A2: nach t eine Teilkuendigung; der Anteil kommt aus der Auskunft und
+    DECKT die Struktur (``gedeckt_durch``, Pflichtschicht der Abnahmen). Ohne
+    Auskunft: verweigert mit dem Ausweg.
+
+    Welche Bausteine sie kuerzt, sagt das Tarifwerk (Entscheid B1 vom
+    2026-10-01): Der uebernommene Tarif kuendigt nur die Grundversicherung
+    (Grund mit f, Scheiben unveraendert) — mit dem Merkmal benannt in jeder
+    Generation dasselbe; die eigenen Tarife der PLV kuerzen alle Bausteine.
+    Kontrollen geschlossen gerechnet, ohne die Ableitung."""
     from rechner_pipeline.bestand.migrationszugang import MigrationszugangFehler
 
-    zustand = _serie(verfahren)
-    assert zustand == _serie(TEILKUENDIGUNG)
-    assert zustand["gedeckt_durch"] == "auskunft"
+    grund_umfang = _serie(verfahren, tku_umfang="grundversicherung")
+    assert grund_umfang == _serie(TEILKUENDIGUNG)
+    assert grund_umfang["gedeckt_durch"] == "auskunft"
     g = 70_000.0 / (0.6 + 0.05 + 0.05 * 1.05)
-    assert dict(zustand["scheiben"])[3] == pytest.approx(0.05 * g, abs=0.01)
+    assert dict(grund_umfang["scheiben"])[3] == pytest.approx(0.05 * g, abs=0.01)
+    assert grund_umfang["sum_insured"] == pytest.approx(0.6 * g, abs=0.02)
+
+    alle = _serie(verfahren, tku_umfang="alle_bausteine")
+    g_alle = 70_000.0 / (0.6 * (1.0 + 0.05 + 0.05 * 1.05))
+    assert "vorgaenge" not in alle                       # zustandslos in IST-Summen
+    assert alle["gedeckt_durch"] == "auskunft"
+    assert dict(alle["scheiben"])[3] == pytest.approx(0.6 * 0.05 * g_alle, abs=0.01)
+    assert dict(alle["scheiben"])[5] == pytest.approx(0.6 * 0.05 * 1.05 * g_alle, abs=0.01)
+    assert alle["sum_insured"] == pytest.approx(0.6 * g_alle, abs=0.02)
+    assert alle["sum_insured"] + sum(dict(alle["scheiben"]).values()) == pytest.approx(
+        70_000.0, abs=0.005)
+    if verfahren != TEILKUENDIGUNG:
+        assert _serie(verfahren) == alle                 # Vorgabe der PLV-Verfahren
     with pytest.raises(MigrationszugangFehler, match="--red-anteile-datei"):
         _serie(verfahren, mit_auskunft=False)
 
 
 @pytest.mark.parametrize("verfahren", [PROSPEKTIV, MIT_ABZUG])
-def test_eine_serie_mit_herabsetzung_vor_t_bleibt_benannt_gesperrt(verfahren):
-    from rechner_pipeline.bestand.migrationszugang import MigrationszugangFehler
+def test_eine_serie_mit_herabsetzung_vor_t_wird_als_geteilter_vertrag_abgeleitet(verfahren):
+    """B5: Kennt die Quelle eine echte Herabsetzung, ist der Vertrag nach
+    einer Absetzung vor t GETEILT. Vorher verweigert ("die Serien-Ableitung
+    kennt nur die Teilkuendigung"); jetzt traegt der Zustand Ursprungssummen
+    und Vorgaenge. Kontrolle UNABHAENGIG von der Vorgangsfolge: der
+    Rechenweg vor ihr (``reduzierte_teile``, eine Herabsetzung ueber Grund
+    und Scheiben) muss mit dieser Struktur die gelieferte Summe treffen."""
+    from rechner_pipeline.kern.beitragsreduktion import reduzierte_teile
 
-    with pytest.raises(MigrationszugangFehler, match="vor dem Beitragsende"):
-        _serie(verfahren, red_jahr=T - 1)
+    zustand = _serie(verfahren, red_jahr=T - 1)
+    assert zustand["vorgaenge"] == ((T - 1, 0.6, verfahren),)
+    assert zustand["gedeckt_durch"] == "auskunft"
+    grund = Rechenkern(dataclasses.replace(MP, sum_insured=zustand["sum_insured"]))
+    scheiben = [(j, Rechenkern(erhoehungs_scheibe(MP, j, vs))) for j, vs in zustand["scheiben"]]
+    teile = reduzierte_teile(grund, scheiben, T - 1, 0.6, verfahren)
+    assert sum(t.reduktion.vs_neu for _, t in teile) == pytest.approx(70_000.0, abs=0.02)
+    # Die Erhoehungen folgen der Regel der Engine: Satz x gefuehrte Summe davor.
+    assert dict(zustand["scheiben"])[3] == pytest.approx(0.05 * zustand["sum_insured"], abs=0.01)
+
+
+def test_eine_serie_mit_teilkuendigung_nach_pex_bleibt_die_ein_punkt_inversion():
+    """B5: nach der Beitragsfreistellung war jede gelieferte Absetzung eine
+    Teilkuendigung der beitragsfreien Summe. Vorher fiel die Serie hart ("PEX
+    nicht terminal"); jetzt bestimmt die gelieferte (gekuerzte) Summe die
+    Aequivalenzsumme wie bei terminaler Freistellung."""
+    from rechner_pipeline.bestand.migrationszugang import leite_pex_ursprungssumme_ab
+
+    folge = [("ERH", 3, "01.01.2003"), ("PEX", 6, "01.01.2006"), ("RED", 9, "01.01.2009")]
+    zustand = _serie(PROSPEKTIV, folge=folge)
+    assert zustand["beitragsfrei_seit_jahr"] == 6
+    assert zustand["sum_insured"] == leite_pex_ursprungssumme_ab(
+        dict(FELDER), pex_jahr=6, vs_bfr=70_000.0)
+    assert zustand["quell_komponenten"] == 2
+    with pytest.raises(SystemExit, match="nichts mehr um"):
+        _serie(PROSPEKTIV, folge=[("PEX", 6, "01.01.2006"), ("ERH", 7, "01.01.2007")])
 
 
 @pytest.mark.parametrize("art,jahr,datum,teil", [
@@ -628,17 +734,28 @@ ARTEN = {"VS_herabsetzung", "VS_teilkuendigung", "dDK_absorption",
 #: zwei Codes), der Verzweigungen nach ``"RED"``/``"TKU"`` und der
 #: Betragsart-Literale der beiden Vorgaenge. Vorher (ca61419) siehe die
 #: Rueckgabe des Baus. ``==``: ein neuer Aufzaehler ist ein Befund.
+#:
+#: Nachgemessen mit der Vorgangsfolge (Entscheid 2026-10-01), je Aenderung
+#: begruendet: migrationszugang +2 Verzweigungen nach dem QUELLcode ``RED``
+#: (Provenienzname der Lieferung: welche Ereignisse die Serie ueber die
+#: Vorgangsfolge ableitet); fuehrungsprobe -1 (der Vergleich laeuft ueber
+#: ``PEX_CODE``/``RED_CODE`` an einer Stelle); aktuarieller_test +1
+#: Aufzaehlung (``VORGANG_ANLAESSE``, die eine Stelle der Frage "ist dieser
+#: Punkt ein Vorgang?") und +1 Verzweigung (ein gelieferter TKU-Punkt ist die
+#: Teilkuendigung); migrationssuite +1 Aufzaehlung (``VORGANG_ARTEN``, dieselbe
+#: Frage fuer die GeVos), die Verzweigungen nach "zweite Herabsetzung" und
+#: "Folge-GeVo" sind entfallen.
 INVENTAR = {
     "bestand/cli_fortschreibung.py": (0, 0, 1),
     "bestand/ereignisse.py": (0, 2, 5),
     "bestand/kennzahlen.py": (4, 4, 4),
     "bestand/ledger_bindung.py": (7, 1, 0),
-    "bestand/migrationszugang.py": (1, 3, 0),
+    "bestand/migrationszugang.py": (1, 5, 0),
     "bestand/report.py": (1, 0, 0),
     "bestand/vorbedingungen.py": (1, 0, 1),
     "betrieb/seite.py": (1, 0, 0),
     "gates/bestand_uebernehmen.py": (4, 0, 0),
-    "gates/fuehrungsprobe.py": (1, 1, 0),
+    "gates/fuehrungsprobe.py": (1, 0, 0),
     "gates/migrationssuite_lauf.py": (1, 7, 0),
     "kern/korrekturschicht.py": (1, 0, 0),
     "models/bestand.py": (12, 2, 14),
@@ -646,8 +763,8 @@ INVENTAR = {
     # die Vertrags-/Migrationsvokabeln SPIEGELN die Mengen des Datenmodells;
     # ``tests/test_tbox_erweiterung_020.py`` haelt jede Spiegelung mit ``==``.
     "ontologie/tbox.py": (4, 0, 6),
-    "qa/aktuarieller_test.py": (2, 0, 0),
-    "qa/migrationssuite.py": (4, 1, 0),
+    "qa/aktuarieller_test.py": (3, 1, 0),
+    "qa/migrationssuite.py": (5, 1, 0),
 }
 #: Die VOLLSTAENDIGEN Aufzaehlungen (alle Codes): Hier faellt der naechste
 #: neue Code an EINER Stelle auf — dieser Test nennt jede, die ihn nicht kennt.
@@ -715,26 +832,38 @@ def test_jede_vollstaendige_aufzaehlung_kennt_jeden_code():
 
 
 #: Pruefer-Befund B3: die Ratsche zaehlt je AUFRUFSTELLE, nicht je Modul.
-#: Jede Stelle der Frage "war die Alt-Absetzung eine Teilkuendigung?" hat
-#: einen Verhaltenstest, der rot wird, wenn genau diese Stelle die alte
-#: Frage stellt (nur das Verfahren der Quelle, ohne das Jahr):
-#: migrationszugang 3 (Ableitung ohne Auskunft, Kalibrierung —
-#: ``test_ohne_auskunft_verweigert...``; Ursprungssumme mit Auskunft —
-#: ``test_mit_auskunft...``), migrationssuite_lauf 2 (Serie —
-#: ``test_eine_serie...``; Einzelfall der Uebernahme — die e2e-Kette),
+#: Jede Stelle der Frage "welcher Vorgang war die gelieferte Absetzung?"
+#: (die EINE Uebersetzungsregel, A2/B5; ``zielverfahren`` ist dieselbe Regel
+#: in der Form des Verfahrens) hat einen Verhaltenstest, der rot wird, wenn
+#: genau diese Stelle die alte Frage stellt (nur das Verfahren der Quelle,
+#: ohne Jahr oder Freistellung): migrationszugang 3 + 2 (Ableitung ohne
+#: Auskunft, Kalibrierung — ``test_ohne_auskunft_verweigert...``;
+#: Ursprungssumme mit Auskunft — ``test_mit_auskunft...``; Serie ueber die
+#: Folge — ``test_eine_serie...``), migrationssuite_lauf 1 (Einzelfall der
+#: Uebernahme — die e2e-Kette), models/bestand 1 (``zielverfahren`` selbst),
 #: qa/migrationssuite 1 (``test_migrationssuite_rechnet...``),
 #: qa/aktuarieller_test 1 (``test_a_m3...``).
+#: ``reduktion_ereignis`` (Code aus dem Verfahren): nachgemessen mit der
+#: Vorgangsfolge — die Leser fragen den Code je Zeile der Folge, nicht mehr je
+#: Police; migrationszugang 1 (Serie ueber die Folge), tageslauf 1 (Schnitt
+#: je Police, Datum und Code).
 AUFRUFSTELLEN = {
     "alt_absetzung_ist_teilkuendigung": {
         "bestand/migrationszugang.py": 3,
-        "gates/migrationssuite_lauf.py": 2,
+        "gates/migrationssuite_lauf.py": 1,
+        "models/bestand.py": 1,
+    },
+    "zielverfahren": {
+        "bestand/migrationszugang.py": 2,
         "qa/migrationssuite.py": 1,
         "qa/aktuarieller_test.py": 1,
     },
     "reduktion_ereignis": {
         "bestand/ereignisse.py": 1,
-        "bestand/ledger_bindung.py": 3,
-        "gates/fuehrungsprobe.py": 4,
+        "bestand/ledger_bindung.py": 2,
+        "bestand/migrationszugang.py": 1,
+        "betrieb/tageslauf.py": 1,
+        "gates/fuehrungsprobe.py": 2,
         "models/bestand.py": 2,
     },
 }

@@ -258,16 +258,24 @@ def test_statushistorie_validiert_gegen_stamm(portfolio, config):
 
 def test_tod_nach_pex_zahlt_beitragsfreie_summe(portfolio, config):
     """Statistische Abdeckung im Beispielbestand: jeder Tod nach PEX zahlt
-    exakt die bei PEX fixierte beitragsfreie Summe."""
+    exakt die bei PEX fixierte beitragsfreie Summe — oder, wenn danach eine
+    Teilkuendigung die beitragsfreie Summe gekuerzt hat (klv.md 7.2, seit
+    2026-10-01), die zuletzt gebuchte beitragsfreie Summe."""
     _, ledger, *_ = fortschreiben(portfolio, config, dt.date(2045, 1, 1))
-    pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")["betrag"]
+    pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")
+    tku = ledger[(ledger["ereignis"] == "TKU") & (ledger["betrag_art"] == "VS_teilkuendigung")]
     tod_nach_pex = ledger[
         (ledger["ereignis"].isin(["TOD", "ABL"]))
         & (ledger["police_id"].isin(pex.index))
     ]
     assert len(tod_nach_pex) > 0  # der Beispielbestand deckt den Pfad ab
     for _, zeile in tod_nach_pex.iterrows():
-        assert zeile["betrag"] == pex.loc[zeile["police_id"]]
+        pid = zeile["police_id"]
+        danach = tku[(tku["police_id"] == pid)
+                     & (tku["status_date"] >= pex.loc[pid, "status_date"])
+                     & (tku["status_date"] < zeile["status_date"])]
+        soll = danach["betrag"].iloc[-1] if len(danach) else pex.loc[pid, "betrag"]
+        assert zeile["betrag"] == soll
 
 
 def test_zeitscheibe_laesst_terminale_vertraege_fallen(config):

@@ -278,5 +278,5 @@ def test_die_probe_meldet_ein_nan_der_soll_buchung_einer_herabsetzung(welt, monk
     assert len(red) >= 2
     assert len(_befunde(urteil, "buchung")) == len(red), [
         (b["art"], b["text"][:80]) for b in urteil["befunde"]]
-    assert all("herabgesetzter Vertrag nan" in b["text"] for b in _befunde(urteil, "buchung"))
+    assert all("Vertrag nach Vorgaengen nan" in b["text"] for b in _befunde(urteil, "buchung"))
     assert not urteil["bestanden"]

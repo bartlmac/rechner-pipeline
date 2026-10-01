@@ -272,6 +272,7 @@ python -m rechner_pipeline.gates.bestand_uebernehmen \
     --generation-spez klv/tg2015 \
     --anfangszustand materialisieren \
     --erhoehungssatz <satz> --red-verfahren <verfahren> \
+    [--tku-umfang grundversicherung|alle_bausteine] \
     [--red-anteile-datei <registrierte-auskunft>.csv] \
     [--red-anteil-kandidat <anteil> ...] \
     [--anker-erwartungswerte <registriert>.json] \
@@ -291,15 +292,25 @@ Alt-Erhoehungen als `scheiben.parquet`, Ursprungssumme beitragsfreier
 Vertraege, Zugang ueber die Gesamtsumme) oder `grundvertrag` (nicht
 freigeschaltet, im Beleg `uebernahme.json` namentlich ausgewiesen —
 dann besteht die Fuehrungsprobe nicht, und A-M4 ist im Bestands-Scope
-unmoeglich). Eine Herabsetzung nach den PLV-Verfahren
-(prospektiv/mit_abzug) VOR dem Beitragsende kann die Fuehrung nicht
-tragen und haelt an; die Teilkuendigung der Quelle fuehrt zustandslos
-weiter. Herabsetzung und Teilkuendigung sind zwei Geschaeftsvorfaelle
-(ADR-023, Tarifplan KLV 7.1/7.2; Entscheid des Maintainers 2026-10-01):
-Eine gelieferte Absetzung NACH dem Beitragsende (`t <= Jahr < n`) war in
-jeder Generation eine Teilkuendigung (Annahme A2): Der Vertrag laeuft
-zustandslos mit der gelieferten Summe weiter, ohne Anfangszustand und
-ohne Halt. Folgt eine solche Absetzung dynamischen Erhoehungen (Serie),
+unmoeglich). Ab der Migration gilt das Vokabular des Zielsystems
+(Grundsatzdokumentation 7.1): Welcher Vorgang eine gelieferte Absetzung
+(`RED` der Quelle, Provenienzname) war, sagt EINE Regel — im
+uebernommenen Tarif TG2015 (`--red-verfahren teilkuendigung`) immer die
+Teilkuendigung; bei einer Quelle mit echter Herabsetzung vor dem
+Beitragsende und vor einer Beitragsfreistellung die Herabsetzung, danach
+die Teilkuendigung (Tarifplan KLV 7.2, Annahme B5; A2 bestaetigt).
+Herabsetzung und Teilkuendigung sind zwei Geschaeftsvorfaelle (ADR-023,
+Nachtrag 2026-10-01), beliebig viele je Vertrag in jeder Reihenfolge
+(Tarifplan KLV 7.3). `--tku-umfang` nennt, welche Bausteine die
+Teilkuendigung des Tarifs kuerzt (TG2015: `grundversicherung`, Entscheid
+des Maintainers; ohne Angabe der Umfang des Bedingungswerks, das
+`--red-verfahren` nennt) — in JEDEM Kommando der Pruefstrecke derselbe
+Wert. Eine Vorgeschichte aus Teilkuendigungen (auch mehreren, auch nach
+Erhoehungen oder nach der Beitragsfreistellung) fuehrt zustandslos mit der
+gelieferten Summe weiter; eine echte Herabsetzung der Vorgeschichte
+hinterlaesst einen GETEILTEN Vertrag, den die Pruefstrecke rechnet, die
+Fuehrung aber noch nicht traegt — die Uebernahme haelt dort benannt an.
+Folgt eine Absetzung dynamischen Erhoehungen (Serie),
 braucht die Ableitung den fortgefuehrten Anteil als Auskunft (unten);
 ohne sie verweigert die Uebernahme und nennt `--red-anteile-datei`. Ein
 Vertrag ohne ableitbaren Anfangszustand haelt den Lauf an (kein stiller

@@ -37,6 +37,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from rechner_pipeline.kern.beitragsreduktion import (
     PRODUKTIV_AUSFUEHRBAR, PROSPEKTIV, VERFAHREN,
 )
+from rechner_pipeline.kern.vorgangsfolge import TKU_UMFAENGE, tku_umfang_fuer
 from rechner_pipeline.models.bestand import (
     BU_GENERATION_FIELDS,
     GENERATION_FIELD_DEFAULTS,
@@ -257,6 +258,16 @@ class TarifGeneration:
     scheiben_mit_gamma1: bool = False
     stoab_je_baustein: bool = False
     red_verfahren: str = PROSPEKTIV
+    #: Umfang der Teilkuendigung (Tarifplan KLV 7.2, Entscheid B1 vom 2026-10-01): ob sie
+    #: jeden Baustein proportional kuendigt (``alle_bausteine``, die eigenen
+    #: Tarife der PLV, Entscheid des Maintainers 2026-10-01) oder nur die
+    #: Grundversicherung (``grundversicherung``, Bedingungswerk des
+    #: uebernommenen Tarifs, Ziffer 6). None heisst: ohne Angabe gilt das
+    #: Bedingungswerk, das ``red_verfahren`` nennt — ein Tarif, der keine
+    #: Beitragsherabsetzung kennt (``teilkuendigung``, der uebernommene
+    #: Tarif), kuendigt nur die Grundversicherung, jeder andere alle
+    #: Bausteine. Ein Umstellen ist EIN Wert im Generationsblock.
+    tku_umfang: Optional[str] = None
     #: Nummernkreis der Generation (Review T22-09): Die Police-Nummern
     #: beider Erzeuger (Jahresneuzugang, Tagesneugeschaeft) und
     #: ihre Seeds hingen an der POSITION der Generation in der Config —
@@ -309,13 +320,14 @@ class TarifGeneration:
         """Die Tarifwerks-Eigenschaften der Fuehrung — ein Satz, ein Name.
 
         Jeder Konsument (Uebernahme, Ereignis-Engine, Bewertung,
-        Ledger-Herleitung, Fuehrungsprobe) liest die drei Schalter ueber
+        Ledger-Herleitung, Fuehrungsprobe) liest die vier Merkmale ueber
         diese eine Methode, damit keiner einen davon still vergisst.
         """
         return {
             "scheiben_mit_gamma1": bool(self.scheiben_mit_gamma1),
             "stoab_je_baustein": bool(self.stoab_je_baustein),
             "red_verfahren": str(self.red_verfahren),
+            "tku_umfang": tku_umfang_fuer(self.red_verfahren, self.tku_umfang),
         }
 
     def jahresziel(self, jahr: int) -> float:
@@ -439,6 +451,11 @@ class TarifGeneration:
             errors.append(
                 f"{prefix}: red_verfahren {self.red_verfahren!r} unbekannt "
                 f"(bekannt: {list(VERFAHREN)})"
+            )
+        if self.tku_umfang is not None and self.tku_umfang not in TKU_UMFAENGE:
+            errors.append(
+                f"{prefix}: tku_umfang {self.tku_umfang!r} unbekannt "
+                f"(bekannt: {list(TKU_UMFAENGE)})"
             )
         # Der Trend ist ein Faktor je Jahr: -1 waere ab dem zweiten Jahr
         # kein Verkauf mehr (und darunter ein negatives Ziel), ueber +1
@@ -1245,6 +1262,8 @@ def config_aus_text(text: str) -> BestandConfig:
                 scheiben_mit_gamma1=g.get("scheiben_mit_gamma1", False),
                 stoab_je_baustein=g.get("stoab_je_baustein", False),
                 red_verfahren=str(g.get("red_verfahren", PROSPEKTIV)),
+                tku_umfang=(str(g["tku_umfang"]) if g.get("tku_umfang") is not None
+                            else None),
                 nummernkreis=(int(g["nummernkreis"]) if g.get("nummernkreis") is not None else None),
                 zins=float(g.get("zins", 0.0)),
                 tafel=str(g.get("tafel", "")),
@@ -1364,7 +1383,9 @@ TARIFWERK_AUSFUEHRBAR: Dict[str, Tuple[Any, ...]] = {
     "scheiben_mit_gamma1": (False, True),
     "stoab_je_baustein": (False, True),
     "red_verfahren": tuple(PRODUKTIV_AUSFUEHRBAR),
+    "tku_umfang": tuple(TKU_UMFAENGE),
 }
+
 
 
 def tarifwerk_luecken(generationen) -> List[Tuple[str, str, Any]]:

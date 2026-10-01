@@ -63,8 +63,13 @@ AKTEUR = "test/extrahiere-quellfragment@abc1234"
 #: aendert, hebt die Version (Linie anhaengen, nie umschreiben) und traegt
 #: hier den neuen Abdruck ein — beides im selben Diff, damit der Mensch, der
 #: A-O1 zeichnet, sieht, dass sich das Vokabular bewegt hat.
+#:
+#: 0.2.0 wurde VOR seiner ersten Zeichnung ergaenzt (ADR-024, Nachtrag
+#: 2026-10-01): das Tarifwerk-Merkmal ``tku_umfang`` (Entscheid B1). Der
+#: Abdruck des Entwurfs war 6c22a4ab...; kein Fall hat auf ihm gezeichnet,
+#: deshalb keine neue Version.
 VOKABULAR_ABDRUCK = {
-    "0.2.0": "6c22a4abb75b2dcff3e8475f70f231c0598cb2301873b9d95994be6140ea5268",
+    "0.2.0": "df39a4c626ba30c7fd7813af02a45303656781c45b0e737c294e1c9c39b3819f",
 }
 
 
@@ -132,6 +137,10 @@ def test_tarifwerk_spiegelt_die_fuehrung():
     assert tbox.TARIFWERK_WERTE["red_verfahren"] == VERFAHREN
     for schalter in ("scheiben_mit_gamma1", "stoab_je_baustein"):
         assert tbox.TARIFWERK_WERTE[schalter] == (False, True)
+    from rechner_pipeline.kern import TKU_UMFAENGE
+
+    assert tbox.TKU_UMFAENGE == TKU_UMFAENGE
+    assert tbox.TARIFWERK_WERTE["tku_umfang"] == TKU_UMFAENGE
     # Die Vorgabe des eigenen Geschaefts (Tarifplan KLV) ist die der Config.
     assert tbox.TARIFWERK_EIGENES_GESCHAEFT == gen.tarifwerk()
 
@@ -220,10 +229,14 @@ def test_die_lesart_einer_gelieferten_absetzung_spiegelt_den_zugang():
     assert tbox.TEILKUENDIGUNG_VERFAHREN == TEILKUENDIGUNG_VERFAHREN
     assert {reduktion_ereignis(v) for v in tbox.HERABSETZUNGSVERFAHREN} == set(
         tbox.ABSETZUNG_VORGAENGE)
-    # Vor dem Beitragsende entscheidet allein das Quellverfahren.
+    # Vor dem Beitragsende und ohne Beitragsfreistellung entscheidet allein
+    # das Quellverfahren; danach war jede Absetzung eine Teilkuendigung (A2,
+    # B5 — ADR-023, Nachtrag 2026-10-01).
     for verfahren in tbox.HERABSETZUNGSVERFAHREN:
-        assert alt_absetzung_ist_teilkuendigung(verfahren, 3, 10) is (
+        assert alt_absetzung_ist_teilkuendigung(verfahren, 3, 10, beitragsfrei_ab=None) is (
             verfahren == tbox.TEILKUENDIGUNG_VERFAHREN)
+        assert alt_absetzung_ist_teilkuendigung(verfahren, 3, 10, beitragsfrei_ab=2) is True
+        assert alt_absetzung_ist_teilkuendigung(verfahren, 10, 10, beitragsfrei_ab=None) is True
 
 
 def test_vertragsvokabular_der_transformation_ist_das_der_tbox():

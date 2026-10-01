@@ -44,7 +44,13 @@ beide Vorgänge des Tarifplans KLV (7.1, 7.2), für alle Generationen gleich
 | `herabsetzung` | `{ a = 0.008, b = 0.0 }` | 0,8 % je Jahr eines beitragspflichtigen Vertrags |
 | `red_anteil` | `0.6` | **fortgeführter** Beitragsanteil (Beitrag auf 60 % gesenkt) |
 | `teilkuendigung` | `{ a = 0.005, b = 0.0 }` | 0,5 % je Jahr eines Vertrags vor dem Ablauf |
-| `tk_anteil` | `0.7` | **fortgeführter** Summenanteil der Grundversicherung (30 % gekündigt und ausgezahlt) |
+| `tk_anteil` | `0.7` | **fortgeführter** Summenanteil der betroffenen Bausteine (30 % gekündigt und ausgezahlt) |
+
+Welche Bausteine eine Teilkündigung kürzt, ist ein Merkmal des Tarifwerks
+je Generation, `tku_umfang` (Tarifplan KLV 7.2): `alle_bausteine` für die
+eigenen Tarife (Vorgabe, wo `red_verfahren` ein Herabsetzungsverfahren
+nennt), `grundversicherung` für den übernommenen Tarif TG2015 — in
+`bestand_gesamt.toml` ausdrücklich gesetzt, ein Wert stellt die Regel um.
 
 Es sind Annahmen der Vorführung, keine Tarifgrößen und keine Schätzung
 realer Erfahrung. `bestand_bu.toml` führt keine Rate: Die BU kennt

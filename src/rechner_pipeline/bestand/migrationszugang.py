@@ -62,7 +62,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from rechner_pipeline.kern import ModelPoint
+from rechner_pipeline.kern import TKU_UMFAENGE, UMFANG_GRUND, ModelPoint, tku_umfang_fuer
 from rechner_pipeline.kern.korrekturschicht import (
     Formfunktion,
     Korrekturschicht,
@@ -584,7 +584,7 @@ def leite_absetzung_ab(
             f"{list(VERFAHREN)}"
         )
     t_vertrag = int(dict(modellpunkt_felder)["t"])
-    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, t_vertrag):
+    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, t_vertrag, beitragsfrei_ab=None):
         # Unter der Teilkuendigung (Annahme A2: nach dem Beitragsende jede
         # gelieferte Absetzung)
         # tragen ERLSUMME = f x VS und JBRUTTO = f x Beitrag(VS) nur das
@@ -815,7 +815,7 @@ def kalibriere_absetzung_aus_dk(
     )
 
     t_vertrag = int(dict(modellpunkt_felder)["t"])
-    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, t_vertrag):
+    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, t_vertrag, beitragsfrei_ab=None):
         raise MigrationszugangFehler(
             "Kalibrierung nicht durchfuehrbar: "
             + auskunft_meldung(jahr, t_vertrag)
@@ -913,7 +913,7 @@ def leite_ursprungssumme_ab(
             f"dauer (0 < jahr < n = {einheit.n})"
         )
     kandidaten: List[Tuple[str, float]] = []
-    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, einheit.t):
+    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, einheit.t, beitragsfrei_ab=None):
         # Teilkuendigung (Annahme A2: nach dem Beitragsende ist jede
         # gelieferte Absetzung eine; davor, wenn die Quelle so rechnet):
         # Der Anteil (1-f) der Grundversicherung ist gekuendigt und
@@ -1329,6 +1329,222 @@ def leite_serie_aus_satz_ab(
         scheiben=scheiben,
         absetzungen=tuple(absetzungen),
     )
+
+
+def serie_braucht_folge(
+    ereignisse: Sequence[Tuple[str, int, Optional[float]]],
+    *,
+    red_verfahren: str,
+    tku_umfang: Optional[str],
+    beitragsdauer: int,
+) -> Tuple[bool, str]:
+    """Ob eine Serie (ohne Beitragsfreistellung) die Vorgangsfolge braucht,
+    und der Umfang der Teilkuendigung des Tarifs.
+
+    Die geschlossene Ableitung (:func:`leite_serie_aus_satz_ab`) traegt nur
+    Teilkuendigungen der GRUNDVERSICHERUNG (Entscheid B1 vom 2026-10-01: der
+    uebernommene Tarif). Ist eine gelieferte Absetzung nach der
+    Uebersetzungsregel eine echte Herabsetzung (Annahme B5) oder kuendigt
+    die Teilkuendigung des Tarifs alle Bausteine (eigene Tarife der PLV),
+    rechnet :func:`leite_serie_ueber_folge_ab`. ``TKU_UMFAENGE`` steht hier
+    fuer die Kommandos der Pruefstrecke (eine Kante in den Kern weniger)."""
+    from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+    from rechner_pipeline.models.bestand import zielverfahren
+
+    umfang = tku_umfang_fuer(red_verfahren, tku_umfang)
+    mit_folge = any(
+        art == "RED" and (
+            zielverfahren(red_verfahren, int(jahr), int(beitragsdauer),
+                          beitragsfrei_ab=None) != TEILKUENDIGUNG
+            or umfang != UMFANG_GRUND)
+        for art, jahr, _ in ereignisse)
+    return mit_folge, umfang
+
+
+@dataclass(frozen=True)
+class SerieMitVorgaengen:
+    """Die IST-Struktur einer Serie, die einen GETEILTEN Vertrag hinterlaesst.
+
+    ``grundsumme`` ist die Ursprungssumme der Grundversicherung,
+    ``scheiben`` die Erhoehungen (Vertragsjahr, Summe), ``vorgaenge`` die
+    Vorgaenge der Vorgeschichte im Vokabular des Zielsystems als
+    (Vertragsjahr, fortgefuehrter Anteil, Verfahren) — dieselbe Form wie eine
+    Zeile der Nebentabelle ``reduktionen``. Wer den Zustand liest, faltet
+    sie mit :class:`rechner_pipeline.kern.Vorgangsfolge`; ``grundsumme`` und
+    ``scheiben`` sind dann die URSPRUNGSsummen. Ohne Herabsetzung (nur
+    Teilkuendigungen) ist die Struktur zustandslos in IST-Summen und
+    ``vorgaenge`` leer."""
+
+    grundsumme: float
+    scheiben: Tuple[Tuple[int, float], ...]
+    vorgaenge: Tuple[Tuple[int, float, str], ...]
+    #: Nur Teilkuendigungen: die Struktur ist zustandslos (IST-Summen),
+    #: ``vorgaenge`` leer, die Teilkuendigungen (Jahr, Anteil) stehen hier
+    #: als Beleg.
+    teilkuendigungen: Tuple[Tuple[int, float], ...] = ()
+
+    def als_beleg(self) -> Dict[str, Any]:
+        return {"grundsumme": self.grundsumme,
+                "scheiben": [list(s) for s in self.scheiben],
+                "vorgaenge": [list(v) for v in self.vorgaenge]}
+
+
+def _serie_vorwaerts(
+    kern_felder: Mapping[str, Any],
+    grundsumme: float,
+    ereignisse: Sequence[Tuple[str, int, float, str]],
+    *,
+    satz: float,
+    tku_umfang: str,
+    stoab_je_baustein: bool,
+    scheiben_mit_gamma1: bool,
+    runden: bool,
+) -> Tuple[float, List[Tuple[int, float]], Any]:
+    """Die Serie vorwaerts ueber die Vorgangsfolge des Kerns: Erhoehung =
+    Satz x gefuehrte Summe des Zustands davor (dieselbe Regel wie die
+    Ereignis-Engine), jeder andere Vorgang auf dem Zustand, den der Vertrag
+    gerade hat. Rueckgabe: die gefuehrte Summe danach, die Scheiben und der
+    Zustand."""
+    from rechner_pipeline.kern import Vertragsstand, vorgang
+    from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
+
+    grund_mp = ModelPoint(**{**dict(kern_felder), "sum_insured": float(grundsumme)})
+    stand = Vertragsstand.anfang(Rechenkern(grund_mp), (),
+                                 stoab_je_baustein=stoab_je_baustein,
+                                 tku_umfang=tku_umfang)
+    scheiben: List[Tuple[int, float]] = []
+    for art, jahr, anteil, verfahren in ereignisse:
+        if art == "ERH":
+            summe = satz * stand.gesamt_vs()
+            if runden:
+                summe = round(summe, 2)
+            scheiben.append((int(jahr), summe))
+            stand = stand.nach_erhoehung(int(jahr), Rechenkern(erhoehungs_scheibe(
+                grund_mp, int(jahr), summe, gamma1_uebernehmen=scheiben_mit_gamma1)))
+        else:
+            stand, _ = stand.nach_vorgang(vorgang(int(jahr), float(anteil), verfahren))
+    return stand.gesamt_vs(), scheiben, stand
+
+
+def leite_serie_ueber_folge_ab(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    ereignisse: Sequence[Tuple[str, int, Optional[float]]],
+    erlsumme: float,
+    satz: float,
+    red_verfahren: str,
+    tku_umfang: str,
+    stoab_je_baustein: bool,
+    scheiben_mit_gamma1: bool,
+) -> SerieMitVorgaengen:
+    """IST-Struktur einer Serie mit Vorgaengen, die die geschlossene Form
+    nicht traegt (Annahme B5, Tarifplan KLV 7.2).
+
+    Die geschlossene Serien-Ableitung (:func:`leite_serie_aus_satz_ab`) gilt
+    fuer eine Quelle, die jede Absetzung als Teilkuendigung NUR der
+    Grundversicherung rechnet: Dann ist jede Folge linear in der
+    Ursprungssumme. Kennt die Quelle eine echte Beitragsherabsetzung, ist der
+    Vertrag nach ihr GETEILT (fortgefuehrter Teil und fixierte beitragsfreie
+    Summe), und eine Teilkuendigung mit Umfang ``alle_bausteine`` trifft auch
+    die Scheiben. Beides rechnet die Vorgangsfolge des Kerns; diese Funktion
+    sucht die Ursprungssumme, mit der die Folge die gelieferte Summe ERLSUMME
+    trifft (die gefuehrte Summe ist streng monoton in ihr), und prueft
+    vorwaerts.
+
+    Welcher Vorgang eine gelieferte Absetzung war, sagt die EINE
+    Uebersetzungsregel (``models.bestand.zielverfahren``; vor dem Beitragsende
+    eine Herabsetzung nach dem Verfahren der Quelle, danach eine
+    Teilkuendigung). Jede Absetzung braucht ihren Anteil als registrierte
+    Auskunft — der geteilte Vertrag ist ohne ihn nicht bestimmt, und
+    Kandidaten raet diese Funktion nicht. Scheiben werden centgerundet
+    gebucht (so bucht die Quelle), die Ursprungssumme auf ganze Euro, wenn
+    die Vorwaertsprobe es traegt.
+    """
+    from rechner_pipeline.models.bestand import reduktion_ereignis, zielverfahren
+    from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+
+    if not 0.0 < satz < 1.0:
+        raise MigrationszugangFehler(f"Erhoehungssatz {satz!r} liegt nicht in (0, 1)")
+    if erlsumme <= 0.0:
+        raise MigrationszugangFehler(f"ERLSUMME {erlsumme!r} unplausibel")
+    kern_felder = {k: v for k, v in dict(modellpunkt_felder).items()
+                   if not k.startswith("_")}
+    t_vertrag = int(kern_felder["t"])
+    uebersetzt: List[Tuple[str, int, float, str]] = []
+    vorgaenge: List[Tuple[int, float, str]] = []
+    for art, jahr, anteil in ereignisse:
+        if art == "ERH":
+            uebersetzt.append(("ERH", int(jahr), 1.0, ""))
+            continue
+        if art != "RED":
+            raise MigrationszugangFehler(
+                f"Ereignisart {art!r} gehoert nicht in die Serie (ERH/RED; PEX "
+                "laeuft ueber die Gesamtsummen-Inversion)")
+        if anteil is None or not 0.0 < anteil < 1.0:
+            raise MigrationszugangFehler(
+                f"Absetzung im Jahr {jahr} ohne gueltigen fortgefuehrten Anteil "
+                f"({anteil!r}) — der geteilte Vertrag ist ohne ihn nicht bestimmt; "
+                "je Ereignis als registrierte Auskunft nachliefern lassen "
+                "(--red-anteile-datei, POLNR;GEVO;DATUM;ANTEIL[;BEZUG])")
+        verfahren = zielverfahren(red_verfahren, int(jahr), t_vertrag, beitragsfrei_ab=None)
+        uebersetzt.append((reduktion_ereignis(verfahren), int(jahr), float(anteil), verfahren))
+        vorgaenge.append((int(jahr), float(anteil), verfahren))
+
+    def summe_bei(s0: float, runden: bool = False) -> float:
+        return _serie_vorwaerts(
+            kern_felder, s0, uebersetzt, satz=satz, tku_umfang=tku_umfang,
+            stoab_je_baustein=stoab_je_baustein,
+            scheiben_mit_gamma1=scheiben_mit_gamma1, runden=runden)[0]
+
+    # Klammer: die gefuehrte Summe waechst streng mit der Ursprungssumme.
+    unten, oben = 0.0, float(erlsumme)
+    while summe_bei(oben) < erlsumme:
+        oben *= 2.0
+        if oben > 1e4 * erlsumme:
+            raise MigrationszugangFehler(
+                "keine Ursprungssumme reproduziert die gelieferte Summe — "
+                "Satz oder Anteile klaeren")
+    for _ in range(200):
+        mitte = 0.5 * (unten + oben)
+        if summe_bei(mitte) < erlsumme:
+            unten = mitte
+        else:
+            oben = mitte
+        if oben - unten <= 1e-9 * max(1.0, oben):
+            break
+    s0 = 0.5 * (unten + oben)
+    glatt = float(round(s0))
+    anzahl = 1 + sum(1 for e in uebersetzt if e[0] == "ERH")
+    tol = 0.01 * anzahl
+    if glatt > 0 and abs(summe_bei(glatt, runden=True) - erlsumme) <= tol:
+        s0 = glatt
+    gesamt, scheiben, stand = _serie_vorwaerts(
+        kern_felder, s0, uebersetzt, satz=satz, tku_umfang=tku_umfang,
+        stoab_je_baustein=stoab_je_baustein,
+        scheiben_mit_gamma1=scheiben_mit_gamma1, runden=True)
+    if abs(gesamt - erlsumme) > tol:
+        raise MigrationszugangFehler(
+            f"Vorwaertsprobe reisst: die Folge mit Ursprungssumme {s0:.2f} fuehrt "
+            f"{gesamt:.2f}, geliefert sind {erlsumme:.2f} — Satz oder Anteile "
+            "klaeren, nicht glaetten")
+    if all(verfahren == TEILKUENDIGUNG for _, _, verfahren in vorgaenge):
+        # Nur Teilkuendigungen: Der Vertrag ist danach der GEWOEHNLICHE mit
+        # kleineren Summen (der Kern ist summenhomogen; jede Teilkuendigung
+        # skaliert die Bausteine, die sie trifft). Die IST-Struktur ist dann
+        # zustandslos — dieselbe Darstellung wie die geschlossene Ableitung,
+        # die Uebernahme und Fuehrung tragen: Scheiben centgerundet, die
+        # Grundsumme als Rest zur gelieferten Summe.
+        ist_scheiben = tuple((int(b.erh_jahr), round(b.vs, 2)) for b in stand.bausteine[1:])
+        ist_grund = round(erlsumme - sum(v for _, v in ist_scheiben), 2)
+        if abs(ist_grund - stand.bausteine[0].vs) > tol:
+            raise MigrationszugangFehler(
+                f"Rekompositions-Probe reisst: Grundsumme aus der Folge "
+                f"{stand.bausteine[0].vs:.2f} gegen Rest zur Lieferung {ist_grund:.2f}")
+        return SerieMitVorgaengen(grundsumme=ist_grund, scheiben=ist_scheiben,
+                                  vorgaenge=(), teilkuendigungen=tuple(
+                                      (j, f) for j, f, _ in vorgaenge))
+    return SerieMitVorgaengen(grundsumme=s0, scheiben=tuple(scheiben),
+                              vorgaenge=tuple(vorgaenge))
 
 
 def bestimme_serie_mit_kandidaten(

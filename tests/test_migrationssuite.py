@@ -948,28 +948,48 @@ def test_red_folgestichtag_folgt_der_jahrestags_konvention() -> None:
     assert not dk2["ok"]
 
 
-def test_gevo_nach_red_im_pruefzeitraum_ist_ein_befund() -> None:
-    """Folge-GeVos eines frisch herabgesetzten Vertrags sind noch nicht
-    abgebildet — ein Befund, kein stiller falscher Wert."""
-    urteil = pruefe_vertrag(_pruefung(gevos=(
+def test_red_und_pex_am_selben_jahrestag_rechnet_die_folge() -> None:
+    """Folge-GeVos werden gerechnet (Entscheid des Maintainers 2026-10-01:
+    beliebig viele Vorgaenge in jeder Reihenfolge); vorher ein Befund "noch
+    nicht abgebildet". Am selben Jahrestag gilt die Reihenfolge der Engine:
+    erst die Beitragsfreistellung, dann die Absetzung — und eine gelieferte
+    Absetzung nach der Freistellung ist eine Teilkuendigung der
+    beitragsfreien Summe (Annahme B5). Kontrolle aus Kern-Primitiven:
+    PEX-Betrag = beitragsfreie Summe des Kerns, Folgewert = f x beitragsfreie
+    Reserve."""
+    summe = KERN.beitragsfreie_summe(10)
+    dk2 = 0.6 * KERN.monatsreserve_beitragsfrei(10, S2)
+    urteil = pruefe_vertrag(_pruefung(dk2=round(dk2, 2), gevos=(
         GeVoErwartung("RED", 12 * 10, None, anteil=0.6),
-        GeVoErwartung("PEX", 12 * 10, 50000.0),
+        GeVoErwartung("PEX", 12 * 10, round(summe, 2)),
     )))
+    assert urteil["bestanden"], urteil["befunde"]
+    assert {p["groesse"] for p in urteil["pruefungen"]} >= {"gevo_pex_monat_120", "dk_stichtag_2"}
+    # Mutationsfaenger: der ungekuerzte beitragsfreie Wert besteht NICHT.
+    falsch = pruefe_vertrag(_pruefung(
+        dk2=round(KERN.monatsreserve_beitragsfrei(10, S2), 2), gevos=(
+            GeVoErwartung("RED", 12 * 10, None, anteil=0.6),
+            GeVoErwartung("PEX", 12 * 10, round(summe, 2)))))
+    assert not falsch["bestanden"]
 
-    assert not urteil["bestanden"]
-    assert any("nach Herabsetzung" in b for b in urteil["befunde"]), urteil
 
+def test_red_und_erh_am_selben_jahrestag_rechnet_die_folge() -> None:
+    """Herabsetzung und Erhoehung am selben Jahrestag: erst die Herabsetzung,
+    dann die neue, ungekuerzte Scheibe (Reihenfolge der Engine). Vorher ein
+    Befund "Ausgestaltung offen". Kontrolle UNABHAENGIG von der
+    Vorgangsfolge: der geteilte Vertrag (``ReduzierterVertrag``) plus die
+    Scheibe an ihrem versetzten Stichtag."""
+    from rechner_pipeline.kern import erhoehungs_scheibe
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-def test_red_nach_erhoehungsscheibe_ist_ein_befund() -> None:
-    """Herabsetzung eines Vertrags mit Scheiben: Ausgestaltung offen."""
-    urteil = pruefe_vertrag(_pruefung(gevos=(
+    rv = ReduzierterVertrag.nach(KERN, 10, 0.6)
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, 5000.0))
+    dk2 = rv.monatsreserve(S2).vx_mrv + scheibe.monatsreserve(S2 - 120).vx_mrv
+    urteil = pruefe_vertrag(_pruefung(dk2=round(dk2, 2), gevos=(
         GeVoErwartung("ERH", 12 * 10, 5000.0),
         GeVoErwartung("RED", 12 * 10, None, anteil=0.6),
     )))
-
-    assert not urteil["bestanden"]
-    assert any("Erhöhungsscheiben" in b or "Erhoehungsscheiben" in b
-               for b in urteil["befunde"]), urteil
+    assert urteil["bestanden"], urteil["befunde"]
 
 
 def test_red_am_ersten_stichtag_wird_weiter_geprueft() -> None:
@@ -986,13 +1006,19 @@ def test_red_unterjaehrig_ist_ein_befund() -> None:
     assert any("Vertragsjahrestag" in b for b in urteil["befunde"]), urteil
 
 
-def test_red_nach_beitragsfreistellung_ist_ein_befund() -> None:
-    """Ein beitragsfreier Vertrag hat keinen Beitrag, den man senken kann."""
-    pex = GeVoErwartung("PEX", 12 * 10, round(KERN.beitragsfreie_summe(10), 2))
-    urteil = _red_urteil(monate=12 * 10, vorher=(pex,))
-
-    assert not urteil["bestanden"]
-    assert any("beitragsfrei" in b for b in urteil["befunde"]), urteil
+def test_red_nach_beitragsfreistellung_ist_eine_teilkuendigung() -> None:
+    """Ein beitragsfreier Vertrag hat keinen Beitrag, den man senken kann —
+    eine gelieferte Absetzung danach war eine Teilkuendigung (Annahme B5,
+    die EINE Uebersetzungsregel). Vorher ein Befund. Mit der Freistellung als
+    Anfangszustand: Folgewert f x beitragsfreie Reserve; eine echte
+    Herabsetzung danach verweigert der Kern benannt (Ausweg TKU)."""
+    dk1 = KERN.monatsreserve_beitragsfrei(8, S1)
+    dk2 = 0.6 * KERN.monatsreserve_beitragsfrei(8, S2)
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(dk1, 2), dk_erwartet_2=round(dk2, 2),
+        beitragsfrei_seit_jahr=8,
+        gevos=(GeVoErwartung("RED", 12 * 10, None, anteil=0.6),)))
+    assert urteil["bestanden"], urteil["befunde"]
 
 
 def test_red_ohne_anteil_ist_eine_luecke_kein_befund() -> None:
@@ -1008,7 +1034,7 @@ def test_red_mit_unmoeglichem_anteil_ist_ein_befund(anteil: float) -> None:
     urteil = _red_urteil(anteil=anteil)
 
     assert not urteil["bestanden"]
-    assert any("[0, 1]" in b for b in urteil["befunde"]), urteil
+    assert any("(0, 1]" in b for b in urteil["befunde"]), urteil
 
 
 def test_red_beendet_den_vertrag_nicht() -> None:
@@ -1125,21 +1151,52 @@ def test_erh_auf_alt_reduktion_traegt_die_scheibe_neben_der_teilung():
     assert urteil["bestanden"], urteil["befunde"]
 
 
-def test_mehrere_anfangszustaende_zugleich_fallen_hart():
+def test_mehrere_anfangszustaende_ohne_vorgang_fallen_hart():
+    """Ohne Vorgang bleibt die Exklusivitaet (beitragsfrei UND Scheiben ist
+    der Ein-Punkt-Weg, kein Baustein-Zustand)."""
     with pytest.raises(ValueError, match="mehrere Anfangszustaende"):
         pruefe_vertrag(_pruefung_mit(
-            reduktion=(8, 0.6), beitragsfrei_seit_jahr=7,
+            scheiben=((5, 4000.0),), beitragsfrei_seit_jahr=7,
         ))
 
 
-def test_zweite_herabsetzung_auf_alt_reduktion_ist_ein_befund():
+def test_alt_reduktion_nach_der_freistellung_ist_eine_teilkuendigung():
+    """Herabsetzung UND Freistellung als Anfangszustand: vorher "mehrere
+    Anfangszustaende", jetzt die Folge. Die Absetzung im Jahr 8 liegt nach der
+    Freistellung im Jahr 7 und war damit eine Teilkuendigung (B5).
+    Kontrolle: f x beitragsfreie Reserve aus dem Kern."""
     urteil = pruefe_vertrag(_pruefung_mit(
-        dk_erwartet_1=0.0, dk_erwartet_2=0.0,
-        reduktion=(8, 0.6),
-        gevos=(GeVoErwartung("RED", 12 * 10, None, anteil=0.5),),
+        dk_erwartet_1=round(0.6 * KERN.monatsreserve_beitragsfrei(7, S1), 2),
+        dk_erwartet_2=round(0.6 * KERN.monatsreserve_beitragsfrei(7, S2), 2),
+        reduktion=(8, 0.6), beitragsfrei_seit_jahr=7,
     ))
-    assert not urteil["bestanden"]
-    assert any("zweite Herabsetzung" in b for b in urteil["befunde"]), urteil
+    assert urteil["bestanden"], urteil["befunde"]
+
+
+def test_zweite_herabsetzung_auf_alt_reduktion_wird_gerechnet():
+    """Vorher ein Befund "zweite Herabsetzung ... nicht abgebildet". Der
+    Stichtagswert vor dem zweiten Vorgang kommt aus dem geteilten Vertrag
+    (``ReduzierterVertrag``, unabhaengig von der Folge), der Folgewert aus
+    der Vorgangsfolge des Kerns — derselbe Zustand, den Fuehrung und
+    Bewertung lesen (die Suite ist ein eigener Leser mit eigener Schleife).
+    Mutationsfaenger: der Folgewert NUR der ersten Herabsetzung besteht
+    nicht."""
+    from rechner_pipeline.kern import Vorgangsfolge, vorgang
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
+
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    folge = Vorgangsfolge(KERN, [], [vorgang(8, 0.6, "prospektiv"), vorgang(10, 0.5, "prospektiv")],
+                          stoab_je_baustein=False, tku_umfang="alle_bausteine")
+    dk2 = folge.stand_am(S2).werte(S2)["vx_mrv"]
+    gevos = (GeVoErwartung("RED", 12 * 10, None, anteil=0.5),)
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(rv.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(dk2, 2), reduktion=(8, 0.6), gevos=gevos))
+    assert urteil["bestanden"], urteil["befunde"]
+    nur_erste = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(rv.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(rv.monatsreserve(S2).vx_mrv, 2), reduktion=(8, 0.6), gevos=gevos))
+    assert not nur_erste["bestanden"]
 
 
 def test_alt_reduktion_folgt_dem_verfahren_des_falls():

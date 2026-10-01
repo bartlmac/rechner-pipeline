@@ -194,21 +194,21 @@ Abschnitt 7. Jeder Betrag kommt aus dem Kern.
 | **ZUG** Zugang | POL-Basiszeile ab Versicherungsbeginn | $S$ (Bestandsvolumen) |
 | **ERH** dynamische Erhöhung | neue Scheibe: eigener Modellpunkt mit $x' = x{+}a$, $n' = n{-}a$, $t' = t{-}a$, $S' = e \cdot S^{ges}$ (Zinseszins), ohne $\gamma_1$ (Bezugsgröße GrundVS); kein Statuswechsel | $S'$ |
 | **PEX** Beitragsfreistellung | Statuswechsel; fixiert $\sum_{\text{Scheiben}} S^{bfr}_a$; danach beitragsfreier Track | $\sum S^{bfr}_a$ |
-| **RED** Beitragsherabsetzung | Beitrag sinkt am Jahrestag $a_0$ auf den Anteil $f$ (7.1); nur während der Beitragszahlung ($0 < a_0 < t$) und ohne PEX — danach verweigert, Ausweg ist die Teilkündigung. Verfahren je Generation: prospektiv und mit Abzug wandeln den freiwerdenden Anteil in eine beitragsfreie Summe um (geknicktes Zahlungsprofil, der Vertrag wird nicht geteilt), es fließt kein Geld; eine Generation mit `teilkuendigung` führt den Wunsch als Teilkündigung aus (Annahme A1, 7.2). Kein Statuswechsel; Abschlusskosten folgen dem Beitrag; die Dynamik läuft weiter; eine spätere PEX fixiert die Gesamtsumme | neue Gesamtsumme (`VS_herabsetzung`); absorbierte Korrekturschicht (`dDK_absorption`) |
-| **TKU** Teilkündigung | Anteil $(1-f)$ der Grundversicherungssumme gekündigt und mit dem Rückkaufswert nach Tarifwerk (Stornoabzug) ausgezahlt; in jeder Generation, beitragspflichtig wie ausfinanziert ($0 < a_0 < n$), ohne PEX; der Vertrag läuft zustandslos mit $f \cdot S$, die Scheiben unverändert (7.2). Kein Statuswechsel | neue Gesamtsumme (`VS_teilkuendigung`); absorbierte Korrekturschicht (`dDK_absorption`); Auszahlung $(1-f)\,\text{RKW}^{Grund}_{a_0}$ + Schicht (`RKW_teilkuendigung`), auf null gekappt, ein gekappter Betrag als `Kappung_teilkuendigung` |
-| **STO** Rückkauf | terminal; nur beitragspflichtig, $a < n$ | $\text{RKW}_a$ (vertragsweiter StoAb) |
+| **RED** Beitragsherabsetzung | Beitrag sinkt am Jahrestag $a_0$ auf den Anteil $f$ (7.1); nur während der Beitragszahlung ($0 < a_0 < t$) und ohne PEX — danach verweigert, Ausweg ist die Teilkündigung. Verfahren je Generation: prospektiv und mit Abzug wandeln den freiwerdenden Anteil in eine beitragsfreie Summe um (geknicktes Zahlungsprofil, der Vertrag wird nicht geteilt), es fließt kein Geld; ein Tarif mit `teilkuendigung` kennt keine Herabsetzung (7.2). Beliebig viele je Vertrag, jede auf dem Zustand davor (7.3). Kein Statuswechsel; Abschlusskosten folgen dem Beitrag; die Dynamik läuft weiter; eine spätere PEX fixiert die Gesamtsumme | neue Gesamtsumme (`VS_herabsetzung`); absorbierte Korrekturschicht (`dDK_absorption`) |
+| **TKU** Teilkündigung | Anteil $(1-f)$ der betroffenen Bausteine gekündigt (Merkmal `tku_umfang`: alle Bausteine oder nur die Grundversicherung) und mit dem Rückkaufswert nach Tarifwerk (Stornoabzug) ausgezahlt; in jeder Generation, beitragspflichtig, ausfinanziert und nach PEX ($0 < a_0 < n$; nach PEX der Rückkaufswert des beitragsfreien Vertrags, B3); beliebig viele je Vertrag (7.2, 7.3). Kein Statuswechsel | neue Gesamtsumme (`VS_teilkuendigung`, nach PEX die beitragsfreie); absorbierte Korrekturschicht (`dDK_absorption`); Auszahlung $(1-f)\,\text{RKW}^{\text{betroffen}}_{a_0}$ + Schicht (`RKW_teilkuendigung`), auf null gekappt, ein gekappter Betrag als `Kappung_teilkuendigung` |
+| **STO** Rückkauf | terminal, $a < n$; die Engine zieht ihn nur beitragspflichtig, geliefert nach PEX misst ihn die Prüfstrecke mit dem Rückkaufswert des beitragsfreien Vertrags (B3, 7.2) | $\text{RKW}_a$ (vertragsweiter StoAb) |
 | **TOD** Tod | terminal | $S^{ges}$ bzw. nach PEX $\sum S^{bfr}$ |
 | **ABL** Ablauf | terminal bei $a = n$ | $S^{ges}$ bzw. $\sum S^{bfr}$ |
 
-Drei Einträge dieser Tabelle sind Tarifwerks-Eigenschaften, die eine
+Vier Einträge dieser Tabelle sind Tarifwerks-Eigenschaften, die eine
 übernommene Generation anders tragen kann als das eigene Geschäft:
 ob eine Erhöhungsscheibe $\gamma_1$ trägt (`scheiben_mit_gamma1`; die
 zweite Baldrian-Lieferung rechnet jeden Baustein mit voller
 Beitragsformel), ob der Stornoabzug je Baustein greift
-(`stoab_je_baustein`, Abschnitt 6) und nach welchem Verfahren eine
-Herabsetzung rechnet (`red_verfahren`, Abschnitt 7.1; eine Generation
-mit `teilkuendigung` kennt keine Herabsetzung ohne Auszahlung und führt den
-Wunsch als Teilkündigung aus, Abschnitt 7.2, Annahme A1). Alle drei stehen je Generation in der
+(`stoab_je_baustein`, Abschnitt 6), nach welchem Verfahren eine
+Herabsetzung rechnet (`red_verfahren`, Abschnitt 7.1; ein Tarif mit
+`teilkuendigung` kennt keine Herabsetzung, Abschnitt 7.2) und welche
+Bausteine eine Teilkündigung kürzt (`tku_umfang`, Abschnitt 7.2). Alle vier stehen je Generation in der
 Bestand-Config, die Führung liest sie dort, und die Freischaltung
 eines Migrationsfalls überträgt sie aus den bestandenen Abnahmen
 (`dev-docs/freischaltung-uebernommener-bestand.md`).
@@ -355,10 +355,14 @@ gekappte Betrag ausgewiesen (`Kappung_teilkuendigung`, Entscheid
 Vertrag (Vertragsjahr $t \leq a_0 < n$, nicht beitragsfrei gestellt) hat
 keinen Beitrag, den ein Anteil $f$ fortführen könnte; Kern, Datenmodell und
 Bindung verweigern sie benannt und nennen den Ausweg: die Teilkündigung
-(7.2), die es in jeder Generation auch nach $t$ gibt. Ein übernommener
+(7.2), die es in jeder Generation auch nach $t$ gibt. Dasselbe gilt **nach
+einer Beitragsfreistellung**: kein Beitrag, keine Herabsetzung — die
+Teilkündigung kündigt dann einen Anteil der beitragsfreien Summe (7.2, B3).
+Ein übernommener
 Vertrag mit einer Absetzung nach $t$ in seiner Vorgeschichte wird in den
-Bestand integriert — als Teilkündigung (7.2, Annahme A2; *Entscheid des
-Maintainers 2026-10-01*: „ein Problem des Ziels, nicht der Migration“).
+Bestand integriert — als Teilkündigung (7.2, Annahme A2, vom Maintainer
+bestätigt; *Entscheid des Maintainers 2026-10-01*: „ein Problem des Ziels,
+nicht der Migration“).
 Verworfen wurde, die Herabsetzung nach $t$ als Teilkündigung zu rechnen und
 als Herabsetzung zu buchen (ADR-023): Das Ledger muss sagen, was geschah.
 
@@ -441,7 +445,8 @@ Bedingungswerk einer übernommenen Generation den Stornoabschlag je
 Baustein (`stoab_je_baustein`, Abschnitt 13; Bedingungswerk der zweiten
 Baldrian-Lieferung, Ziffer 4), so gilt das auch **nach** einer
 Herabsetzung: jeder Baustein trägt seinen Abzug mit eigenen Grenzen,
-bezogen auf seine herabgesetzte Summe. Die Teilkündigung (Ziffer 6)
+bezogen auf seine herabgesetzte Summe. Die Teilkündigung dieses Tarifs
+(Ziffer 6, `tku_umfang = grundversicherung`, 7.2)
 lässt die Erhöhungsscheiben unverändert; der fortgeführte Vertrag ist
 die Grundversicherung mit $f \cdot S$ plus diese Scheiben, unter dem
 vollständigen Tarifwerk der Generation, und sein Beitrag rechnet
@@ -472,30 +477,71 @@ ausfinanziert) gemacht werden, hat aber eine andere Wirkung — Teil des
 Deckungskapitals wird ausgezahlt. Das sind im Grunde zwei verschiedene
 Vorgänge und betreffen alle PLV-Tarife gleich.“
 
-Die Teilkündigung (`TKU`) kündigt den Anteil $(1-f)$ der
-**Grundversicherungssumme** und zahlt seinen Rückkaufswert nach dem
-Tarifwerk der Generation aus, mit deren Stornoabzug (je Vertrag oder je
-Baustein, Abschnitt 6); der Vertrag läuft danach zustandslos mit
-$f \cdot S$ weiter, die Erhöhungsscheiben unverändert:
+Die Teilkündigung (`TKU`) kündigt den Anteil $(1-f)$ der Summe der
+**betroffenen Bausteine** und zahlt ihren Rückkaufswert nach dem Tarifwerk
+der Generation aus, mit deren Stornoabzug (je Vertrag oder je Baustein,
+Abschnitt 6). Jeder Bestandteil eines betroffenen Bausteins — fortgeführter
+Teil, fixierte beitragsfreie Teilsummen, Zillmer-Rückstand — trägt danach
+den Faktor $f$; der Baustein ist der gewöhnliche Baustein mit kleinerer
+Summe (Homogenität, 7.3):
 
 $$
-S_{\text{danach}} = f \cdot S + \sum_i S_i, \qquad
-\text{Auszahlung} = \max\left(0,\; (1-f)\,\text{RKW}^{Grund}_{a_0} + \text{Schicht}_{a_0}\right),
+S^{\text{danach}}_i = f \cdot S_i \;(i \text{ betroffen}), \qquad
+\text{Auszahlung} = \max\left(0,\; (1-f)\,\text{RKW}^{\text{betroffen}}_{a_0} + \text{Schicht}_{a_0}\right),
 $$
 
 eine gekappte negative Summe wird als `Kappung_teilkuendigung` ausgewiesen.
 Sie setzt keinen laufenden Beitrag voraus und ist in **jeder** Generation
-beitragspflichtig wie ausfinanziert möglich, für $0 < a_0 < n$ — vor $t$
-zahlt der Vertrag danach den Beitrag seiner fortgeführten Summe. Gebucht
-wird sie unter dem eigenen Code `TKU` (`VS_teilkuendigung`,
-`dDK_absorption`, `RKW_teilkuendigung`, `Kappung_teilkuendigung`), nie als
-`RED`; das Bewegungskonto führt sie als eigene Position „Teilkündigung“.
-Die Ereignis-Engine zieht sie mit einer eigenen Rate
-`annahmen.teilkuendigung` (Vorgabe 0) und einem eigenen Anteil
-`annahmen.tk_anteil` aus einem eigenen Zufallsstrom; ohne Rate rechnet
-jede Generation bitgleich wie vor dem Entscheid.
+beitragspflichtig, ausfinanziert und nach einer Beitragsfreistellung
+möglich, für $0 < a_0 < n$ — vor $t$ zahlt der Vertrag danach den Beitrag
+seiner fortgeführten Summe. Gebucht wird sie unter dem eigenen Code `TKU`
+(`VS_teilkuendigung`, `dDK_absorption`, `RKW_teilkuendigung`,
+`Kappung_teilkuendigung`), nie als `RED`; das Bewegungskonto führt sie als
+eigene Position „Teilkündigung“, auf dem beitragsfreien Track ebenso. Die
+Ereignis-Engine zieht sie mit einer eigenen Rate `annahmen.teilkuendigung`
+(Vorgabe 0) und einem eigenen Anteil `annahmen.tk_anteil` aus einem eigenen
+Zufallsstrom; ohne Rate rechnet jede Generation bitgleich wie vor dem
+Entscheid.
 
-Verworfen wurden:
+**Welche Bausteine betroffen sind** (B1), ist ein Merkmal des Tarifwerks,
+`tku_umfang`, ein Wert je Generation der Bestand-Config:
+
+* `alle_bausteine` — die eigenen Tarife der PLV: Grundversicherung und jede
+  bestehende Erhöhungsscheibe mit demselben Anteil $f$ (*Entscheid des
+  Maintainers 2026-10-01*);
+* `grundversicherung` — der übernommene Tarif TG2015: nur die
+  Grundversicherung, die Erhöhungsscheiben laufen unverändert (Bedingungswerk
+  Ziffer 6). *Entscheid des Maintainers 2026-10-01 (B1)*, verworfen: auch
+  der übernommene Tarif kürzt anteilig über alle Bausteine — die Regel gehört
+  zu den Vertragsbedingungen des übernommenen Tarifs, und die gelieferten
+  Werte der Vorgeschichte sind nur mit ihr nachrechenbar (A-M3-Befund des
+  zweiten Laufs: dDK $= -(1-f)\cdot V^{MRV}$ des Grundbausteins).
+
+Ohne Angabe gilt der Umfang des Bedingungswerks, das `red_verfahren` nennt
+(`teilkuendigung` → `grundversicherung`, sonst `alle_bausteine`); die
+Generation TG2015 der Config schreibt ihn ausdrücklich hin.
+
+**Nach der Beitragsfreistellung** (B3) kündigt die Teilkündigung den Anteil
+$(1-f)$ der beitragsfreien Summe jedes betroffenen Bausteins, und die
+beitragsfreie Gesamtsumme sinkt genau proportional. Ausgezahlt wird
+$(1-f)$ mal der **Rückkaufswert des beitragsfreien Vertrags**: seine
+Deckungsrückstellung abzüglich des Stornoabzugs nach derselben Tarifregel
+wie beim beitragspflichtigen Vertrag, angewandt auf die beitragsfreie Summe
+und ihre Rückstellung — Satz mal (Summe minus Rückstellung), begrenzt auf
+Mindest- und Höchstbetrag, je Vertrag oder je Baustein nach dem Tarifwerk,
+null in der flexiblen Phase, nie negativ. Derselbe Rückkaufswert gilt für
+den Rückkauf eines beitragsfreien Vertrags; die Führungsprobe und P-B1 lesen
+ihn an derselben Stelle. Die Regel sitzt am **Ereignis-Anschluss**: Die
+Spalten `RKW` und `VS_bfr` der Verlaufszeile bleiben die rohe Tarifformel
+und unverändert (Charakterisierung). *Entscheid des Maintainers 2026-10-01
+(B3)*, verworfen: die Rückstellung ohne Abzug auszuzahlen (ein beitragsfreier
+Vertrag stünde beim Teilrückkauf besser als der beitragspflichtige), und
+wie bisher keinen Rückkaufswert für beitragsfreie Verträge zu kennen (die
+Teilkündigung nach PEX wäre unbezahlbar). Die Ereignis-Engine zieht einen
+Rückkauf nach der Beitragsfreistellung weiterhin nicht (Erfahrungsannahme);
+wo er geliefert wird, misst ihn die Prüfstrecke mit dieser Regel.
+
+Verworfen wurden außerdem:
 
 * **ein** Vorgang mit Verfahrensschalter und stiller Umdeutung (die
   zunächst gebaute „Regel A“: nach $t$ rechnet jede Herabsetzung als
@@ -505,44 +551,53 @@ Verworfen wurden:
   sie ergäbe $q = (1-f)$ und damit die volle Summe: keine Absetzung;
 * die Auszahlung ohne Stornoabzug in einer Generation mit `prospektiv` —
   gekündigt wird ein Summenanteil, und der Tarif sieht für den Rückkauf den
-  Abzug vor;
-* eine anteilige Kündigung aller Bausteine bei dynamisierten Verträgen —
-  „anteilig über alle Schichten“ begründet die Verteilung des freiwerdenden
-  **Beitrags** einer Herabsetzung (7.1), nicht die Kündigung eines
-  Summenanteils; die Teilkündigung des Bedingungswerks lässt die Erhöhungen
-  unberührt.
+  Abzug vor.
+
+**Der übernommene Tarif TG2015 im Vokabular des Zielsystems.** Ab der
+Migration gilt das Vokabular des Zielsystems (Grundsatzdokumentation 7.1).
+Für TG2015 heißt das konkret:
+
+* Der Tarif kennt **einen** Vorgang: Was die Quelle „Herabsetzung“ nennt
+  (Code `RED` der Lieferung, Verfahren `teilkuendigung`), ist die
+  Teilkündigung der PLV. Die Führung zieht ihn allein aus dem Strom der
+  Teilkündigung; der Herabsetzungsstrom wird für diesen Tarif nicht gezogen,
+  und das Datenmodell lehnt eine `RED`-Zeile für ihn ab („ein Tarif, der
+  keine Beitragsherabsetzung kennt“). *Entscheid des Maintainers
+  2026-10-01* — er ersetzt die frühere Annahme A1 (Herabsetzungswunsch als
+  Teilkündigung ausgeführt); eine doppelte Rate gibt es nicht mehr.
+* Der Code `RED` bleibt als Provenienzname in Lieferung und Belegen stehen.
+  Die Übersetzung in den Zielvorgang ist die Regel des Grundsatzes, für
+  diesen Tarif: **immer** Teilkündigung — vor und nach $t$, vor und nach
+  einer Beitragsfreistellung.
+* Kennt eine Quelle dagegen eine echte Beitragsherabsetzung (Verfahren
+  `prospektiv` oder `mit_abzug`), war eine gelieferte Absetzung vor dem
+  Beitragsende und vor einer Beitragsfreistellung eine Herabsetzung, danach
+  eine Teilkündigung (*Annahme B5*, nicht vom Maintainer entschieden; die
+  Fortsetzung von A2, die der Maintainer bestätigt hat: nach $t$ immer eine
+  Teilkündigung).
 
 **Annahmen** (im Auftrag gesetzt, nicht vom Maintainer entschieden; je
 einzeln prüfbar):
 
-* *A1 — die Generation TG2015.* Eine Generation mit
-  `red_verfahren = teilkuendigung` kennt keine Herabsetzung ohne Auszahlung:
-  Sie führt den Herabsetzungswunsch (`annahmen.herabsetzung`, vor $t$) als
-  Teilkündigung aus und bucht `TKU`. Eigene Generationen bleiben
-  `prospektiv` (Vorgabe). Ein Schalter, validiert; kein zweites Wissen.
-* *A2 — die Vorgeschichte.* Eine gelieferte Absetzung ist vor $t$, was das
-  Verfahren der Quelle sagt, nach $t$ immer eine Teilkündigung
-  (`alt_absetzung_ist_teilkuendigung`).
-* *A3 — nur die Grundversicherung.* Die Teilkündigung trifft die
-  Grundversicherung; die Erhöhungsscheiben laufen unverändert.
-* *A4 — ein Vorgang je Vertrag.* Die Führung trägt höchstens eine
-  Herabsetzung oder Teilkündigung je Vertrag; gebaut ist nur, was der Kern
-  ohne neue Regel trägt.
+* *B2 — proportional auf dem Zustand.* Jeder Vorgang wirkt mit seinem
+  Anteil auf den Zustand, den der Vertrag gerade hat (7.3). Die Verteilung
+  einer Herabsetzung auf die Bausteine folgt 7.1 (jeder Baustein mit
+  demselben Faktor auf seinem fortgeführten Rückkaufs-Track).
+* *B4 — Homogenität, je Größe geprüft.* Homogen in der Summe sind der
+  Bruttobeitrag (Satz mal Summe), der Satzteil des Stornoabzugs und der
+  Zillmer-Rückstand; die Teilkündigung skaliert sie. Nicht homogen sind die
+  Stückkosten (im Zahlbeitrag, je Baustein fix), Mindest- und Höchstbetrag
+  des Stornoabzugs (Pauschalbeträge des Tarifs) und die Korrekturschicht
+  (ein Betrag, den der erste Vorgang vollständig aufnimmt); sie werden nie
+  skaliert, sondern auf dem Zustand gebildet. Einen weiteren Pauschalabzug
+  kennt das Tarifwerk nicht. Jede Größe hat ihre eigene Kontrolle
+  (`tests/test_vorgangsfolge.py`, Abschnitt B4).
+* *B5 — Quelle mit echter Herabsetzung*, siehe oben.
 
-**Verweigert, mit der fehlenden Regel:**
-
-| Kombination | Was fehlt |
-|---|---|
-| Herabsetzung ab $t$ | Ein Beitrag, den sie senken könnte — Ausweg ist die Teilkündigung. |
-| Teilkündigung oder Herabsetzung nach einer Beitragsfreistellung | Eine Regel, welchen Anteil der beitragsfreien Summe eine Kündigung trifft und mit welchem Abzug; die Engine zieht für beitragsfrei gestellte Verträge nicht, das Datenmodell lehnt die Zeile ab. |
-| Teilkündigung nach einer Herabsetzung | Eine Regel, wie ein Summenanteil eines geknickten Verlaufs (Beitragsteil plus umgewandelte Summe) gekündigt wird. |
-| Herabsetzung nach einer Teilkündigung | Eine Regel für den zweiten Knick auf dem Folgevertrag, den der Kern als einen Verlauf mit **einem** Knick führt. |
-| zweite Herabsetzung oder zweite Teilkündigung in der Führung | Die Verkettung zweier Vorgänge im Kern (`reduktionen` trägt eine Zeile je Vertrag). |
-
-Eine Teilkündigung in der **Vorgeschichte** eines übernommenen Vertrags
-zählt dabei nicht mit: Sie hinterlässt den zustandslosen Vertrag mit
-$f \cdot S$ (Einzelfall) bzw. Grund $f \cdot G$ plus Scheiben (Serie), auch
-mehrere hintereinander.
+A2 (eine gelieferte Absetzung nach $t$ war eine Teilkündigung) hat der
+Maintainer bestätigt; A1, A3 (nur die Grundversicherung — jetzt das Merkmal
+`tku_umfang`, B1) und A4 (ein Vorgang je Vertrag) sind durch die Entscheide
+vom 2026-10-01 ersetzt.
 
 **Ableitung im Migrationszugang.** Geliefert ist die heutige Summe
 (`ERLSUMME`). Nach einer Teilkündigung gilt $\text{ERLSUMME} = f \cdot S$:
@@ -553,7 +608,23 @@ zustandslose Vertrag mit der gelieferten Summe und wird ohne Anfangszustand
 späteren Absetzung verteilt er die gelieferte Summe auf Grund und
 Erhöhungen —, kommt er als registrierte Auskunft der abgebenden
 Gesellschaft (`--red-anteile-datei`, `POLNR;GEVO;DATUM;ANTEIL`); mit ihm ist
-$S = \text{ERLSUMME} / f$ bestimmt.
+$S = \text{ERLSUMME} / f$ bestimmt. Eine Vorgeschichte mit **mehreren**
+Absetzungen, verschränkt mit Erhöhungen und einer Beitragsfreistellung,
+leitet der Zugang so ab:
+
+* mit Beitragsfreistellung: über die beitragsfreie Gesamtsumme
+  (Ein-Punkt-Inversion) — auch mit Teilkündigungen danach und
+  Herabsetzungen davor, denn jede erreichbare Größe ist homogen in der
+  beitragsfreien Gesamtsumme;
+* Teilkündigungen nur der Grundversicherung: geschlossen aus dem belegten
+  Dynamiksatz (jede Folge ist linear in der Ursprungssumme);
+* sonst — eine echte Herabsetzung (B5) oder Teilkündigungen über alle
+  Bausteine — über die Vorgangsfolge (7.3): die Ursprungssumme, mit der die
+  Folge die gelieferte Summe trifft, mit Vorwärtsprobe. Nur
+  Teilkündigungen hinterlassen den zustandslosen Vertrag in IST-Summen; ein
+  durch eine Herabsetzung **geteilter** Vertrag trägt seine Vorgänge, und
+  die Übernahme schaltet ihn benannt nicht frei (die Führung trägt
+  Vorgänge der Vorgeschichte vor dem Zugang noch nicht).
 
 Ohne Auskunft **verweigert** die Übernahme und nennt den Ausweg; ein
 Vertrag, dessen Anfangszustand nicht ableitbar ist, wird nicht mehr still
@@ -574,6 +645,76 @@ Wertprüfung. Eine Strukturprüfung bräuchte einen Wert, der von der
 Zerlegung abhängt (etwa den Rückkaufswert je Baustein der Quelle) — die
 Lieferung trägt keinen. Die Verantwortung liegt bei dem, der die Auskunft
 registriert.
+
+## 7.3 Folgen von Vorgängen
+
+*Entscheid des Maintainers 2026-10-01:* Ein Vertrag trägt beliebig viele
+Herabsetzungen und Teilkündigungen, in jeder Reihenfolge, verschränkt mit
+Erhöhungen und der Beitragsfreistellung (Grundsatzdokumentation 7.2). Der
+Zustand des Vertrags ist die Folge seiner Vorgänge; jeder Leser rechnet sie
+über `kern/vorgangsfolge.py`.
+
+**Darstellung.** Jeder Baustein (Grundversicherung, jede Erhöhungsscheibe)
+trägt seinen wirksamen Modellpunkt (die Summe nach allen Teilkündigungen),
+seinen Verlauf relativ zu diesem Modellpunkt — Abschnitte $(a, c, q)$ mit
+fortgeführtem Beitragsfaktor $c$ und fixierter beitragsfreier Teilsumme $q$,
+gerechnet als Zahlungspfad wie in 7.1 — und nach einer
+Beitragsfreistellung seine beitragsfreie Summe.
+
+**Regeln der Verkettung** (B2):
+
+| Vorgang | Wirkung auf den Zustand |
+|---|---|
+| Herabsetzung mit Anteil $f$ (7.1) | $c \to c\,f$ je Baustein; der freiwerdende Anteil $(1-f)$ des **fortgeführten** Rückkaufs-Tracks $c\,V^{MRV}$ wird nach dem Verfahren umgewandelt und als weitere Teilsumme $q$ fixiert; schon fixierte Teile bleiben. |
+| Teilkündigung mit Anteil $f$ (7.2) | jeder betroffene Baustein mit allen Bestandteilen mal $f$ (Summe, $q$, beitragsfreie Summe); Auszahlung $(1-f)$ mal Rückkaufswert des betroffenen Teils unmittelbar davor. |
+| Erhöhung | ein neuer, gewöhnlicher Baustein auf $e \cdot S^{ges}$ der geführten Summe davor. |
+| Beitragsfreistellung | jeder Baustein fixiert seine beitragsfreie Summe auf seinem aktuellen Verlauf. |
+
+Am selben Jahrestag gilt die Reihenfolge Beitragsfreistellung,
+Herabsetzung, Teilkündigung, Erhöhung; zwei gleiche Vorgänge an einem
+Jahrestag werden benannt verweigert (Ausweg: die Anteile zu einem Vorgang
+mit $f = f_1 f_2$ zusammenfassen). Ein Vertrag mit **einem** Vorgang rechnet
+bitgleich wie zuvor; ein Vertrag ohne Vorgang wird nicht über die Folge
+gerechnet.
+
+**Die Menge der zulässigen Folgen.** Zulässig ist jede endliche Folge aus
+Herabsetzungen (RED), Teilkündigungen (TKU), Erhöhungen (ERH) und höchstens
+einer Beitragsfreistellung (PEX), geordnet nach Jahrestag und Rang des
+Tages, mit jedem Vorgang im Vertragsjahr $0 < a < n$, in der
+
+* keine Herabsetzung ab dem Beitragsende ($a \ge t$) oder ab der
+  Beitragsfreistellung steht (Ausweg: Teilkündigung),
+* keine Erhöhung nach der Beitragsfreistellung steht,
+* keine Herabsetzung in einem Tarif steht, der sie nicht kennt (TG2015),
+* an keinem Jahrestag zwei Vorgänge derselben Art stehen.
+
+Jede Folge außerhalb dieser Menge wird benannt verweigert, mit dem Ausweg.
+Die folgende Tabelle ist eine **Auswahl** daraus — die Folgen mit eigener
+Kontrollrechnung; die Menge selbst prüfen Eigenschaftstests über erzeugte
+Folgen (`tests/test_vorgangsfolge_eigenschaften.py`: nichts unter null, jede
+ausgeschlossene Folge benannt verweigert, der Zustand nach jedem Vorgang ist
+der, den die Bewertung liest, Teilkündigungen vertauschbar und gleich dem
+Produkt der Anteile, Teilkündigung nach PEX proportional, Anteil 1 ändert
+nichts) und der Zähltest durch alle Leser (`tests/test_vorgangsfolge_leser.py`,
+jede zulässige geordnete Zweierfolge aus RED, TKU, PEX und ERH, Dreierfolgen,
+Folgen mit Scheiben).
+
+| Folge | Ergebnis | Kontrolle |
+|---|---|---|
+| RED, RED | gerechnet: die zweite wandelt $(1-f_2)$ des fortgeführten Tracks um | Verlaufszeilen: $c\,V(a) + (q_1+q_2)\,V^{bfr}(a)$ |
+| TKU, TKU | gerechnet: der Vertrag mit $f_1 f_2 S$, vertauschbar | gewöhnlicher Kern mit kleinerer Summe |
+| RED, TKU | gerechnet: die Herabsetzung des gekürzten Vertrags | `ReduzierterVertrag` auf $f S$ |
+| TKU, RED | gerechnet: die Herabsetzung des gekürzten Vertrags (nicht vertauschbar mit RED, TKU in anderen Jahren) | Eigenschaftstest |
+| ERH, TKU, alle Bausteine | gerechnet: Grund und Scheibe mit $f$ | Kern je Baustein mit $f S_i$ |
+| ERH, TKU, nur Grundversicherung | gerechnet: nur der Grund mit $f$ | Kern mit $f S$ plus unveränderte Scheibe |
+| RED, ERH | gerechnet: die Scheibe auf $e \cdot S^{ges}$ nach der Herabsetzung, ungekürzt | Ledger-Regel `erh_prozent` |
+| RED, PEX / TKU, PEX | gerechnet: Freistellung auf dem geknickten bzw. gekürzten Verlauf | Einzelreduktion des Kerns (Weg vor der Folge) |
+| PEX, TKU | gerechnet: beitragsfreie Summe mal $f$, Auszahlung $(1-f)$ RKW beitragsfrei (B3) | Tarifregel des Stornoabzugs |
+| PEX, RED | verweigert: kein Beitrag, den sie senken könnte | Ausweg TKU |
+| RED ab $t$ | verweigert | Ausweg TKU |
+| PEX, ERH | verweigert: keine Dynamik nach der Freistellung | — |
+| RED, RED am selben Jahrestag | verweigert | Ausweg $f = f_1 f_2$ |
+| RED im Tarif TG2015 | verweigert: der Tarif kennt keine Herabsetzung | Ausweg TKU |
 
 # 8 Modellpunkt und Tarif-Stellschrauben
 

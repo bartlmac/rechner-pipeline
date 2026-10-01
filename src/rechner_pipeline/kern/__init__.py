@@ -74,6 +74,17 @@ from rechner_pipeline.kern.rechenkern import (
     erhoehungs_scheibe,
     vertrags_monatsreserve,
 )
+from rechner_pipeline.kern.vorgangsfolge import (
+    RANG as VORGANG_RANG,
+    TKU_UMFAENGE,
+    UMFANG_ALLE,
+    UMFANG_GRUND,
+    Vertragsstand,
+    Vorgangsfolge,
+    VorgangsfolgeFehler,
+    tku_umfang_fuer,
+    vorgang,
+)
 
 #: Kern-Version (Abnahme-Referenz, siehe Docstring).
 #: 1.x/2.x = Migrations- und Backbone-Aera (Historie in Git).
@@ -176,7 +187,26 @@ from rechner_pipeline.kern.rechenkern import (
 #: Verweigerung einer Herabsetzung nach t nennt den Ausweg Teilkuendigung.
 #: Keine Formel und kein gerechneter Wert aendert sich; alle
 #: Charakterisierungs-Referenzwerte des Kerns sind unveraendert.
-__version__ = "3.16.0"
+#: 3.17.0 = Die Vorgangsfolge (kern.vorgangsfolge, Entscheid des Maintainers
+#: 2026-10-01, klv.md 7.1 bis 7.3): beliebig viele Herabsetzungen und
+#: Teilkuendigungen je Vertrag, in jeder Reihenfolge, verschraenkt mit
+#: Erhoehungen und der Beitragsfreistellung; jeder Vorgang wirkt auf den
+#: Zustand, den der Vertrag gerade hat (B2). Neu gerechnet werden: der zweite
+#: und jeder weitere Vorgang (vorher verweigert oder verworfen), die
+#: Teilkuendigung ueber alle Bausteine in den eigenen Tarifen (Entscheid B1;
+#: der uebernommene Tarif kuendigt nur die Grundversicherung,
+#: Tarifwerk-Merkmal tku_umfang), die Teilkuendigung nach der
+#: Beitragsfreistellung mit dem Rueckkaufswert des beitragsfreien Vertrags
+#: (Entscheid B3: Rueckstellung abzueglich Stornoabzug nach derselben
+#: Tarifregel auf der beitragsfreien Summe, stornoabzug_auf — am
+#: Ereignis-Anschluss; die Spalten RKW und VS_bfr der Verlaufszeile sind
+#: unveraendert). Ein Vertrag mit EINER Herabsetzung oder EINER
+#: Teilkuendigung rechnet bitgleich wie ueber ReduzierterVertrag; ein Vertrag
+#: OHNE Vorgang wird nicht ueber die Folge gerechnet — seine Werte aendern
+#: sich nicht. Die Referenzpunkte sind Vertraege OHNE Vorgang; ihr Pfad ist
+#: unberuehrt — die Charakterisierung tastet RKW und den beitragsfreien
+#: Zweig ab und ist gruen.
+__version__ = "3.17.0"
 
 __all__ = [
     "ModelPoint",
@@ -190,6 +220,15 @@ __all__ = [
     "Monatsreserve",
     "erhoehungs_scheibe",
     "vertrags_monatsreserve",
+    "Vorgangsfolge",
+    "Vertragsstand",
+    "VorgangsfolgeFehler",
+    "VORGANG_RANG",
+    "TKU_UMFAENGE",
+    "UMFANG_ALLE",
+    "UMFANG_GRUND",
+    "tku_umfang_fuer",
+    "vorgang",
     "Tafelbasis",
     "MissingMortalityTableError",
     "TafelBereichError",

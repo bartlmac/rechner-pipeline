@@ -75,7 +75,7 @@ def _vertrag(je_baustein: bool) -> _Vertrag:
 def test_die_herabsetzung_mit_abzug_folgt_dem_tarifwerk_der_generation(je_baustein, soll):
     """Runde D, Fund 1. Mutationsprobe: ``stoab_je_baustein`` in
     ``reduziere_geschichtet`` ignorieren -> der Fall je Baustein ist rot."""
-    _, vs_neu, _ = _vertrag(je_baustein).herabsetzen(_A0, _F, MIT_ABZUG)
+    vs_neu = _vertrag(je_baustein).vorgang(_A0, _F, MIT_ABZUG, None).vs_neu
     assert vs_neu == pytest.approx(soll, abs=0.01)
 
 
@@ -87,8 +87,8 @@ def test_umgewandelt_wird_ein_minus_f_mal_der_rueckkaufswert_des_storno(je_baust
     (``_Vertrag.rkw``, vor der Herabsetzung gelesen)."""
     v = _vertrag(je_baustein)
     rkw_storno = v.rkw(_A0)
-    v.herabsetzen(_A0, _F, MIT_ABZUG)
-    umgewandelt = sum(r.reduktion.dk_nach - _F * r.reduktion.dk_vor for _, r in v.reduziert)
+    erg = v.vorgang(_A0, _F, MIT_ABZUG, None)
+    umgewandelt = sum(r.dk_nach - _F * r.dk_vor for _, r in erg.reduktionen)
     assert umgewandelt == pytest.approx((1.0 - _F) * rkw_storno, rel=1e-9)
 
 
@@ -115,8 +115,8 @@ def test_ein_klemmender_baustein_subventioniert_die_anderen_nicht():
     assert rkw_storno > sum(b.vx_mrv for b in bausteine) - sum(
         min(_MP.stoab_max, max(_MP.stoab_min, _MP.stoab_satz * (m.sum_insured - b.drx_bpfl)))
         for b, (_e, m) in zip(bausteine, [(0, _MP)] + scheiben)) + 1e-6
-    v.herabsetzen(_A0, _F, MIT_ABZUG)
-    umgewandelt = sum(r.reduktion.dk_nach - _F * r.reduktion.dk_vor for _, r in v.reduziert)
+    erg = v.vorgang(_A0, _F, MIT_ABZUG, None)
+    umgewandelt = sum(r.dk_nach - _F * r.dk_vor for _, r in erg.reduktionen)
     assert umgewandelt == pytest.approx((1.0 - _F) * rkw_storno, rel=1e-9)
 
 
@@ -148,7 +148,7 @@ def test_p_b1_herleitung_rekonstruiert_denselben_herabgesetzten_vertrag():
     """Der Schalter muss an JEDER Stelle der einen Rekonstruktion ankommen
     (Klasse 'Vertrag verschaerft, Produzent vergessen'): die Herleitung von
     P-B1 haelt die Buchung gegen die Engine. Mutationsprobe: den Schalter in
-    ``_Herleitung.setze_reduktion`` weglassen -> rot."""
+    ``_Herleitung.setze_vorgaenge`` weglassen -> rot."""
     from rechner_pipeline.bestand.ledger_bindung import _Herleitung
 
     row = {"entry_age": _MP.x, "sex": _MP.sex, "duration": _MP.n,
@@ -157,10 +157,12 @@ def test_p_b1_herleitung_rekonstruiert_denselben_herabgesetzten_vertrag():
     felder = {n: getattr(_MP, n) for n in (
         "zins", "tafel", "alpha", "beta1", "gamma1", "gamma2", "gamma3", "policy_fee",
         "min_alter_flex", "min_rlz_flex", "stoab_satz", "stoab_min", "stoab_max")}
-    tarifwerk = {"scheiben_mit_gamma1": False, "stoab_je_baustein": True}
+    tarifwerk = {"scheiben_mit_gamma1": False, "stoab_je_baustein": True,
+                 "red_verfahren": MIT_ABZUG, "tku_umfang": "alle_bausteine"}
     h = _Herleitung(row, felder, [(2, 0.05 * _S), (3, 0.05 * 1.05 * _S)], tarifwerk)
-    h.setze_reduktion(_A0, _F, MIT_ABZUG, None)
-    assert h.gesamt_vs(_A0) == pytest.approx(_VS_SOLL_JE_BAUSTEIN, abs=0.01)
+    h.setze_vorgaenge([(_A0, _F, MIT_ABZUG)], None, None)
+    # Die Summe NACH dem Vorgang (vor einer Erhoehung desselben Jahrestags).
+    assert h.gesamt_vs(_A0, "ERH") == pytest.approx(_VS_SOLL_JE_BAUSTEIN, abs=0.01)
 
 
 # --------------------------------------------------------------------------- #
@@ -245,14 +247,14 @@ def _red_einfuegen(out: Path, cfg: Path, datum: str) -> int:
     felder = grundlagen_je_police(config, None)(pid, str(zeile["tarif_generation"]))
     h = _Herleitung(zeile.to_dict() | {"police_id": pid}, felder, [],
                     config.generationen[0].tarifwerk())
-    h.setze_reduktion(jahr, 0.6, "prospektiv", None)
+    h.setze_vorgaenge([(jahr, 0.6, "prospektiv")], None, None)
     neu_red = pd.DataFrame([{"police_id": pid, "reduktion_jahr": jahr,
                              "reduktion_datum": datum_ts, "anteil": 0.6,
                              "verfahren": "prospektiv"}]).astype(red.dtypes.to_dict())
     zeilen = [{"police_id": pid, "tarif_generation": zeile["tarif_generation"],
                "ereignis": "RED", "vertragsjahr": jahr, "status_date": datum_ts,
                "betrag_art": art, "betrag": b, "betrag_herkunft": "gerechnet"}
-              for art, b in h.red_buchungen(None).items()]
+              for art, b in h.vorgang_buchungen(jahr, "RED").items()]
     red = pd.concat([red, neu_red]).sort_values("police_id").reset_index(drop=True)
     le = pd.concat([le, pd.DataFrame(zeilen).astype(le.dtypes.to_dict())]).sort_values(
         ["police_id", "status_date"], kind="stable").reset_index(drop=True)
@@ -483,18 +485,19 @@ def test_p_b1_weist_dieselbe_fremdjahr_zeile_ab(welt):
 
 
 def test_die_bewertung_reicht_den_schalter_je_police_an_die_rekonstruktion():
-    """Fund 1 an der Naht der Bewertung (``_reduzierte_vertraege``): dieselbe
+    """Fund 1 an der Naht der Bewertung (``_vorgangsfolgen``): dieselbe
     Summe wie die Engine, je nach Schalter der Generation der Police.
-    Mutationsprobe: den Schalter in ``_reduzierte_vertraege`` nicht
+    Mutationsprobe: den Schalter in ``_vorgangsfolgen`` nicht
     weiterreichen -> rot."""
-    from rechner_pipeline.bestand.auswertung import _reduzierte_vertraege
+    from rechner_pipeline.bestand.auswertung import _vorgangsfolgen
 
     red = pd.DataFrame([{"police_id": 1, "reduktion_jahr": _A0, "anteil": _F,
                          "verfahren": MIT_ABZUG}])
     scheiben = {1: [{"erh_jahr": e, "kern": Rechenkern(m)} for e, m in _SCHEIBEN]}
     for je_baustein, soll in ((True, _VS_SOLL_JE_BAUSTEIN), (False, _VS_SOLL_VERTRAGSWEIT)):
-        teile = _reduzierte_vertraege(red, {1: Rechenkern(_MP)}, scheiben, {}, {1: je_baustein})
-        assert sum(v.reduktion.vs_neu for _, v in teile[1]) == pytest.approx(soll, abs=0.01)
+        folgen = _vorgangsfolgen(red, {1: Rechenkern(_MP)}, scheiben, {}, {1: {
+            "stoab_je_baustein": je_baustein, "tku_umfang": "alle_bausteine"}})
+        assert folgen[1].stand_am(12 * _A0).gesamt_vs() == pytest.approx(soll, abs=0.01)
 
 
 def test_eine_red_zeile_ohne_registrierte_herabsetzung_wird_nicht_gezaehlt(welt):

@@ -235,7 +235,11 @@ def baue_lieferung(ziel: Path, vorgeschichte=VORGESCHICHTE_NEU,
 
 
 def _flags(verfahren: str, kandidaten: bool = True) -> list:
+    # Die Tarifzelle ist die des uebernommenen Tarifs: Seine Teilkuendigung
+    # kuendigt nur die Grundversicherung (Entscheid B1 vom 2026-10-01) — ein
+    # Merkmal des Tarifwerks, in jeder der drei Generationen benannt.
     flags = ["--erhoehungssatz", ERHOEHUNGSSATZ, "--red-verfahren", verfahren,
+             "--tku-umfang", "grundversicherung",
              "--scheiben-mit-gamma1", "--red-anteile-datei", AUSKUNFT]
     for k in (KANDIDATEN if kandidaten else ()):
         flags += ["--red-anteil-kandidat", k]

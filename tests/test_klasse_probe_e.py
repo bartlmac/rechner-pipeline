@@ -199,19 +199,10 @@ def test_die_probe_meldet_jede_buchung_ohne_rate_genau_fuer_ihr_feld(welt, feld)
     assert _ratebefunde(gut) == [], gut["befunde"][:4]
     schlecht = pruefe_fuehrung(uebernahme=welt["ueb"], fortschreibung=tab, **_mit_raten(welt, feld))
     befunde = _ratebefunde(schlecht)
-    if feld == "teilkuendigung":
-        # Annahme A1 (ADR-023): Die Generation dieses Falls (TG2015,
-        # red_verfahren = teilkuendigung) fuehrt den Herabsetzungswunsch vor
-        # dem Beitragsende als Teilkuendigung aus — die TKU im Jahr 12 belegt
-        # hier auch die Rate ``herabsetzung``. Ohne beide Raten ist sie
-        # unbelegt (zweite Probe); den Fall ohne A1 zaehlt
-        # tests/test_klasse_ereignis_rate_e.py an einer prospektiven Generation.
-        assert befunde == [], schlecht["befunde"][:4]
-        cfg = copy.deepcopy(_mit_raten(welt, feld)["config"])
-        cfg.annahmen.herabsetzung = NULL
-        schlecht = pruefe_fuehrung(uebernahme=welt["ueb"], fortschreibung=tab,
-                                   **dict(welt["basis"], config=cfg))
-        befunde = [b for b in _ratebefunde(schlecht) if b["feld"] == feld]
+    # Die Generation dieses Falls (TG2015, der uebernommene Tarif) kennt nur
+    # die Teilkuendigung; sie belegt allein ihre eigene Rate. Der fruehere
+    # zweite Weg ueber den Herabsetzungswunsch (Annahme A1) ist mit dem
+    # Entscheid des Maintainers 2026-10-01 entfallen.
     assert [b["feld"] for b in befunde] == [feld], schlecht["befunde"][:4]
     assert f"annahmen.{feld}:" in befunde[0]["text"]
     assert not schlecht["bestanden"]

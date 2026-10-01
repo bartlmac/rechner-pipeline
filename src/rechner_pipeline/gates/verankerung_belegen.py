@@ -49,6 +49,8 @@ from rechner_pipeline.bestand.migrationszugang import (
     Uebernahme,
     uebernehmen,
 )
+from rechner_pipeline.kern import TKU_UMFAENGE
+from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import ZUSTAENDE_TA, model_point_kwargs
 
@@ -90,6 +92,7 @@ def _zustands_dk_prosp(
     monate_ta: int,
     *,
     scheiben_mit_gamma1: bool,
+    tarifwerk: Optional[Dict[str, Any]] = None,
 ) -> Optional[float]:
     """Prospektiver Wert am t_a auf der ZUSTANDS-Welt (None = Stamm).
 
@@ -107,7 +110,8 @@ def _zustands_dk_prosp(
     scheiben = tuple(zustand.get("scheiben", ()))
     pex = zustand.get("beitragsfrei_seit_jahr")
     reduktion = zustand.get("reduktion")
-    if not scheiben and pex is None and reduktion is None:
+    vorgaenge = tuple(zustand.get("vorgaenge", ()))
+    if not scheiben and pex is None and reduktion is None and not vorgaenge:
         return None
     from rechner_pipeline.kern import ModelPoint, Rechenkern
     from rechner_pipeline.kern.rechenkern import (
@@ -117,17 +121,36 @@ def _zustands_dk_prosp(
 
     grund_mp = ModelPoint(**mp_kwargs)
     kern = Rechenkern(grund_mp)
-    if reduktion is not None:
-        # Nur die PLV-Teilungsverfahren liefern diesen Zustand; unter
-        # der Teilkuendigungs-Semantik fuehrt der Zustandsbau die
-        # Police zustandslos (Ausweitung 16/17).
-        from rechner_pipeline.kern.beitragsreduktion import (
-            ReduzierterVertrag,
-        )
+    if reduktion is not None or vorgaenge:
+        # Ein GETEILTER Vertrag (Herabsetzung der Vorgeschichte, einzeln oder
+        # in einer Folge): die Vorgangsfolge des Kerns, dieselbe wie in den
+        # Pruefstrecken und der Fuehrung. Vorher rechnete dieser Zweig EINE
+        # Herabsetzung immer prospektiv, gleich welches Verfahren der Fall
+        # fuehrte. Das Verfahren ist Eigenschaft des Falls — ohne Tarifwerk
+        # wird nicht geraten.
+        from rechner_pipeline.kern import Vorgangsfolge, tku_umfang_fuer, vorgang
 
-        rv = ReduzierterVertrag.nach(
-            kern, int(reduktion[0]), float(reduktion[1]))
-        return rv.monatsreserve(monate_ta).vx_mrv
+        if tarifwerk is None or tarifwerk.get("red_verfahren") is None:
+            raise MigrationszugangFehler(
+                "Verankerung eines geteilten Vertrags ohne Verfahren der "
+                "Herabsetzung — --red-verfahren angeben")
+        verfahren = str(tarifwerk["red_verfahren"])
+        folge_vorgaenge = [vorgang(int(j), float(a), str(v)) for j, a, v in vorgaenge]
+        if reduktion is not None:
+            folge_vorgaenge.append(vorgang(int(reduktion[0]), float(reduktion[1]), verfahren))
+        kerne = [
+            (int(j), Rechenkern(erhoehungs_scheibe(
+                grund_mp, int(j), float(s),
+                gamma1_uebernehmen=scheiben_mit_gamma1)))
+            for j, s in scheiben
+        ]
+        stand = Vorgangsfolge(
+            kern, kerne, folge_vorgaenge, pex_jahr=pex,
+            stoab_je_baustein=bool(tarifwerk.get("stoab_je_baustein", False)),
+            tku_umfang=tku_umfang_fuer(verfahren, tarifwerk.get("tku_umfang")),
+        ).stand_am(monate_ta)
+        w = stand.werte(monate_ta)
+        return w["deckungskapital"] if w["status"] == "PEX" else w["vx_mrv"]
     if pex is not None:
         # Die beitragsfreie Reserve kennt im Kern nur einen Begriff.
         return kern.monatsreserve_beitragsfrei(int(pex), monate_ta)
@@ -151,6 +174,7 @@ def baue_schichtbeleg(
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     scheiben_mit_gamma1: bool = False,
     summen: Optional[Dict[str, float]] = None,
+    tarifwerk: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Schichtparameter je Police — der rechnende Kern des Producers.
 
@@ -217,7 +241,7 @@ def baue_schichtbeleg(
             # Phantom-Residuum (zweiter Baldrian-Lauf, rho bis 0,04).
             dk_prosp_extern=_zustands_dk_prosp(
                 mp, anfangszustand, int(zeile["monate_ta"]),
-                scheiben_mit_gamma1=scheiben_mit_gamma1),
+                scheiben_mit_gamma1=scheiben_mit_gamma1, tarifwerk=tarifwerk),
         ))
 
     ergebnisse = uebernehmen(
@@ -279,6 +303,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                    default=None,
                    help="Verfahren der Beitragsherabsetzung (siehe "
                         "aktuartest_lauf); Vorgabe: Zielverfahren")
+    p.add_argument("--tku-umfang", dest="tku_umfang", default=None,
+                   choices=sorted(TKU_UMFAENGE),
+                   help="Umfang der Teilkuendigung des Tarifs (siehe "
+                        "bestand_uebernehmen); Vorgabe: der des "
+                        "Bedingungswerks, das --red-verfahren nennt")
+    p.add_argument("--stoab-je-baustein", dest="stoab_je_baustein",
+                   action="store_true",
+                   help="Stornoabschlag-Grenzen je Baustein (siehe "
+                        "aktuartest_lauf) — traegt die Ableitung einer "
+                        "Serie mit Herabsetzung mit Abzug")
     p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
                    default=None, metavar="REGISTRIERTE_DATEI",
                    help="REGISTRIERTE Auskunft der Quelle zu den "
@@ -385,7 +419,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             auspraegungen_je_police,
             lies_auskuenfte,
         )
-        from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
+
 
         if args.zeilen is not None:
             zeilen = bindung.binde(Path(args.zeilen)).json()
@@ -436,7 +470,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             auspraegungen=auspraegungen,
             erhoehungssatz=args.erhoehungssatz, anker=anker,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
+            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+            tku_umfang=args.tku_umfang,
+            stoab_je_baustein=args.stoab_je_baustein)
         verweigere_unbestimmte(warnungen)
 
     try:
@@ -450,6 +486,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             anfangszustaende=anfangszustaende,
             scheiben_mit_gamma1=args.scheiben_mit_gamma1,
             summen=summen,
+            tarifwerk={"red_verfahren": args.red_verfahren or PROSPEKTIV,
+                       "stoab_je_baustein": args.stoab_je_baustein,
+                       "tku_umfang": args.tku_umfang},
         )
     except MigrationszugangFehler as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
@@ -551,6 +590,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             "vorgeschichte": args.vorgeschichte,
             "erhoehungssatz": args.erhoehungssatz,
             "red_verfahren": args.red_verfahren,
+            "tku_umfang": args.tku_umfang,
+            "stoab_je_baustein": args.stoab_je_baustein,
             "red_anteile_datei": red_anteile_datei,
             "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
             "scheiben_mit_gamma1": args.scheiben_mit_gamma1,

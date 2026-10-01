@@ -88,7 +88,7 @@ Hauptpfad: `angeliefert → validiert → verankert → nachgefahren → abgegli
 | 3 | Zustandsextrakt | MIG | Historienabgeleitete Attribute bereitstellen bzw. per Ableitungsregel (Kap. 4) berechnen: $s_0$, $d_0$, Options-/Rechtszustände, Dynamikzähler, Restzillmerstand, Steueraggregate. GV-Liste verbleibt im MIG (Grenzregel Kap. 2) | klärung(Ableitung) |
 | 4 | Initialanlage | RK | Vertragsanlage mit Ursprungsparametern und mitwandernden Rechnungsgrundlagen (Grundsatzdokumentation 9.1 Schritt 1) über die reguläre Anlage-API | klärung(Tarifabbildung) |
 | 5 | Verankerung | RK | Zustand $(s_0, d_0)$ setzen; $V^{\mathrm{prosp}}$ rechnen; $R_{\mathrm{hist}} = V^{\mathrm{ist}} - V^{\mathrm{prosp}}$; Guardrails gemäß Grundsatzdokumentation 9.10 (pfadweise Floors, Degenerationsschwelle, Vorzeichen/Kappung); $\mathcal{A}(t_a, s_0, d_0, R_{\mathrm{hist}})$; Persistenz des Parametertupels (Grundsatzdokumentation 9.11) | Kappungsfall → Fehlerprozess (Kap. 8); Degeneration → Ausbuchungsweg (Grundsatzdokumentation 9.16) |
-| 6 | Nachfahren $[t_a, t_0]$ | MIG → RK | Bewegungsdaten (Lieferobjekt 3) als reguläre RK-Geschäftsvorfälle; Klasse-A-GV im Nachfahrzeitraum: Absorption gemäß Grundsatzdokumentation 9.7 | klärung(GV-Inventur) |
+| 6 | Nachfahren $[t_a, t_0]$ | MIG → RK | Bewegungsdaten (Lieferobjekt 3) als reguläre RK-Geschäftsvorfälle — im Vokabular des Zielsystems, übersetzt nach der einen Regel des Tarifplans (Grundsatzdokumentation 7.1), in beliebiger Folge (Grundsatzdokumentation 7.2); Klasse-A-GV im Nachfahrzeitraum: Absorption gemäß Grundsatzdokumentation 9.7 | klärung(GV-Inventur) |
 | 7 | $t_0$-Abgleich | MIG | Nachgefahrener Wert vs. gelieferter $t_0$-Altwert; Klassifikation systematisch (Konventionsdifferenz je Cluster) vs. unsystematisch (Befund) gemäß Grundsatzdokumentation 9.12; optionale Zweitverankerung $R_{\mathrm{conv}}$ (Grundsatzdokumentation 9.13) nur falls E2 aktiviert (Kap. 11) | klärung(Befund) |
 | 8 | Vertragsprüfung | MIG | Anker-Nachweis innerhalb der Toleranzen der Ausgestaltung; Reporting-Positionen belegt ($R_{\mathrm{hist}}$ / ggf. $R_{\mathrm{conv}}$ getrennt, Grundsatzdokumentation 9.11) | klärung(Prüfung) |
 | 9 | Abschluss und Protokoll | MIG | Status `migriert`; Migrationsprotokoll gemäß 5.6 | — |
@@ -137,7 +137,12 @@ Je Vertrag des Bestands:
    versetztes Eintrittsalter verschiebt die Reserve oft nur um
    Bruchteile eines Cents, den Beitrag dagegen deutlich.
 3. **Die Beträge der Geschäftsvorfälle** zwischen den Stichtagen
-   (Storno, Tod, Ablauf, Beitragsfreistellung, dynamische Erhöhung).
+   (Storno, Tod, Ablauf, Beitragsfreistellung, dynamische Erhöhung) und
+   die Wirkung von Herabsetzung und Teilkündigung — beliebig viele, in
+   jeder Folge, jeder Vorfall auf dem Zustand, den die Vorfälle davor
+   hinterlassen haben (Grundsatzdokumentation 7.2). Ein gelieferter Vorfall
+   wird im Vokabular des Zielsystems geprüft (Grundsatzdokumentation 7.1);
+   der Code der Quelle bleibt Provenienzname.
 4. **Deckungskapital am Folgestichtag** auf dem Track, den die
    Geschäftsvorfälle bestimmen.
 

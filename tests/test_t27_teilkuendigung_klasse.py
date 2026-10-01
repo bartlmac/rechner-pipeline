@@ -28,7 +28,7 @@ import inspect
 import pandas as pd
 import pytest
 
-from rechner_pipeline.bestand.auswertung import beitraege, einzelwerte_am, werte_reduziert
+from rechner_pipeline.bestand.auswertung import beitraege, einzelwerte_am, werte_nach_vorgaengen
 from rechner_pipeline.bestand.config import config_aus_text
 from rechner_pipeline.bestand.ereignisse import _Vertrag, fortschreiben
 from rechner_pipeline.bestand.kennzahlen import bewegungskennzahlen
@@ -42,6 +42,7 @@ from rechner_pipeline.kern.beitragsreduktion import (
     vertrags_monatsreserve_reduziert,
 )
 from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
+from rechner_pipeline.kern.vorgangsfolge import Vertragsstand, Vorgangsfolge, vorgang
 from rechner_pipeline.models.bestand import (
     LEDGER_SPALTEN,
     TAGESJOURNAL_SPALTEN,
@@ -53,16 +54,24 @@ from tests.test_schicht_in_fuehrung import MONATE_TA, _parameter, _tabellen
 
 
 def _config(verfahren: str = TEILKUENDIGUNG, je_baustein: bool = True):
+    """Eine Generation mit dem Tarifwerk der Uebernahme. Der uebernommene
+    Tarif (``teilkuendigung``) kennt nur die Teilkuendigung — sie kommt aus
+    ihrer eigenen Rate (Entscheid des Maintainers 2026-10-01; der fruehere
+    Weg ueber den Herabsetzungswunsch, Annahme A1, ist entfallen)."""
     anker = '[[generation]]\nname = "klv/zellen"\n'
     assert anker in _CONFIG_TOML
+    if verfahren == TEILKUENDIGUNG:
+        annahmen, rate = f"tk_anteil = {ANTEIL}", "\n[annahmen.teilkuendigung]\na = 0.08\nb = 0.0\n"
+    else:
+        annahmen, rate = f"red_anteil = {ANTEIL}", "\n[annahmen.herabsetzung]\na = 0.08\nb = 0.0\n"
     toml = _CONFIG_TOML.replace(
         anker,
         anker + f'red_verfahren = "{verfahren}"\n'
         f'stoab_je_baustein = {"true" if je_baustein else "false"}\n', 1,
     ).replace(
         "[annahmen]\nerh_prozent = 0.05",
-        f"[annahmen]\nerh_prozent = 0.05\nred_anteil = {ANTEIL}",
-    ) + "\n[annahmen.herabsetzung]\na = 0.08\nb = 0.0\n"
+        f"[annahmen]\nerh_prozent = 0.05\n{annahmen}",
+    ) + rate
     config = config_aus_text(toml)
     assert config.validate() == []
     return config
@@ -81,10 +90,15 @@ def welt():
 
 
 def _reduktionen(erg) -> pd.DataFrame:
+    """Die Teilkuendigungen der Policen mit GENAU EINEM Vorgang — die
+    Zusagen dieser Datei sind die des ersten Vorgangs (f x S); Folgen mehrerer
+    Vorgaenge haelt ``tests/test_vorgangsfolge_leser.py``."""
     red = erg.reduktionen
     assert len(red) > 0, "Fixture ohne Teilkuendigung bezeugt nichts"
     assert set(red["verfahren"]) == {TEILKUENDIGUNG}
-    return red
+    einzeln = red[~red["police_id"].duplicated(keep=False)]
+    assert len(einzeln) > 0, "keine Police mit genau einer Teilkuendigung"
+    return einzeln
 
 
 def _scheiben_vor(erg, pid: int, jahr: int):
@@ -136,7 +150,7 @@ def test_die_engine_rechnet_den_folgevertrag_mit_dem_tarifwerk_der_generation(we
         kerne = _scheiben_kerne(mp, config, scheiben)
         v = _Vertrag(mp, tarifwerk=gen.tarifwerk(), mitgebracht=kerne,
                      schicht=(_parameter(), MONATE_TA))
-        v.herabsetzen(jahr, ANTEIL, TEILKUENDIGUNG)
+        v.vorgang(jahr, ANTEIL, TEILKUENDIGUNG, None)
         for j in range(jahr + 1, mp.n):
             assert v.rkw(j) == pytest.approx(_soll_rkw(grund_neu, kerne, j), rel=1e-9), (pid, j)
         mit_scheibe += 1
@@ -159,7 +173,7 @@ def test_p_b1_leitet_den_folgevertrag_mit_dem_tarifwerk_her(welt):
         kerne = _scheiben_kerne(mp, config, scheiben)
         h = _Herleitung(haupt.loc[pid].to_dict() | {"police_id": pid},
                         gen.generation_fields(), scheiben, gen.tarifwerk())
-        h.setze_reduktion(jahr, ANTEIL, TEILKUENDIGUNG, (_parameter(), MONATE_TA))
+        h.setze_vorgaenge([(jahr, ANTEIL, TEILKUENDIGUNG)], (_parameter(), MONATE_TA), None)
         for j in range(jahr + 1, mp.n):
             assert h.rkw(j) == pytest.approx(_soll_rkw(grund_neu, kerne, j), rel=1e-9), (pid, j)
         geprueft += 1
@@ -167,13 +181,23 @@ def test_p_b1_leitet_den_folgevertrag_mit_dem_tarifwerk_her(welt):
 
 
 def _stichtag_nach(erg, pid: int, jahre: int = 1, monate: int = 0):
+    """Ein Stichtag nach der Teilkuendigung, an dem der Vertrag noch
+    beitragspflichtig in Kraft ist (die Zusagen hier sind die des
+    beitragspflichtigen Folgevertrags)."""
     red = erg.reduktionen
     datum = pd.Timestamp(red.loc[red["police_id"] == pid, "reduktion_datum"].iloc[0])
     stichtag = (datum + pd.DateOffset(years=jahre, months=monate)).date()
     h = erg.historie
-    terminal = h[(h["police_id"] == pid) & (h["status_code"].isin(["STO", "TOD", "ABL"]))
+    terminal = h[(h["police_id"] == pid) & (h["status_code"].isin(["STO", "TOD", "ABL", "PEX"]))
                  & (h["status_date"] <= pd.Timestamp(stichtag))]
     return None if len(terminal) or stichtag > BIS else stichtag
+
+
+def _scheiben_bis(erg, pid: int, jahr: int):
+    """Alle Bausteine, die im Vertragsjahr ``jahr`` bestehen — vor der
+    Teilkuendigung (der uebernommene Tarif laesst sie unberuehrt) und danach
+    zugekommen (gewoehnliche Bausteine)."""
+    return _scheiben_vor(erg, pid, jahr + 1)
 
 
 def _bewertung(welt, pid: int, stichtag):
@@ -194,7 +218,7 @@ def test_die_bewertung_weist_den_rueckkaufswert_des_folgevertrags_aus(welt):
         if not scheiben or stichtag is None:
             continue
         mp, grund_neu = _folgevertrag(config, stamm, pid, jahr)
-        kerne = _scheiben_kerne(mp, config, scheiben)
+        kerne = _scheiben_kerne(mp, config, _scheiben_bis(erg, pid, jahr + 1))
         zeile = _bewertung(welt, pid, stichtag)
         assert zeile["rueckkaufswert"] == pytest.approx(
             _soll_rkw(grund_neu, kerne, jahr + 1), rel=1e-9), pid
@@ -210,8 +234,8 @@ def test_die_bewertung_am_unterjaehrigen_stichtag_mischt_wie_jeder_andere_vertra
     (Entscheid des Maintainers, ADR-011 Nachtrag) ist das fuer alle die
     monatsgenaue Mischung. Kontrolle: der teilgekuendigte Vertrag als
     gewoehnlicher Kern mit f x S und Scheiben (``vertrags_monatsreserve``)
-    am selben Monat. Mutationsprobe: ``monat`` in werte_reduziert auf den
-    Jahrestag -> rot."""
+    am selben Monat. Mutationsprobe: ``monat`` in werte_nach_vorgaengen auf
+    den Jahrestag -> rot."""
     config, stamm, schichten, verankerung, erg = welt
     geprueft = 0
     for z in _reduktionen(erg).to_dict("records"):
@@ -219,7 +243,7 @@ def test_die_bewertung_am_unterjaehrigen_stichtag_mischt_wie_jeder_andere_vertra
         stichtag = _stichtag_nach(erg, pid, jahre=1, monate=7)
         if stichtag is None:
             continue
-        scheiben = _scheiben_vor(erg, pid, jahr)
+        scheiben = _scheiben_bis(erg, pid, jahr + 1)
         mp, grund_neu = _folgevertrag(config, stamm, pid, jahr)
         kerne = _scheiben_kerne(mp, config, scheiben)
         soll = vertrags_monatsreserve(
@@ -250,7 +274,7 @@ def test_der_beitragsausweis_rechnet_den_folgevertrag_komponentenweise(welt):
             continue
         scheiben = _scheiben_vor(erg, pid, jahr)
         mp, grund_neu = _folgevertrag(config, stamm, pid, jahr)
-        kerne = _scheiben_kerne(mp, config, scheiben)
+        kerne = _scheiben_kerne(mp, config, _scheiben_bis(erg, pid, jahr + 1))
         j = jahr + 1
         if j >= mp.t:
             continue
@@ -393,11 +417,15 @@ def test_jede_rolle_des_erzeugers_hat_ein_flag_und_einen_request_schluessel():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("funktion", [vertrags_monatsreserve_reduziert, werte_reduziert])
-def test_das_tarifwerk_hat_im_reduzierten_pfad_keinen_default(funktion):
-    p = inspect.signature(funktion).parameters["stoab_je_baustein"]
+@pytest.mark.parametrize("funktion,parameter", [
+    (vertrags_monatsreserve_reduziert, "stoab_je_baustein"),
+    (Vorgangsfolge, "stoab_je_baustein"), (Vorgangsfolge, "tku_umfang"),
+    (Vertragsstand.anfang, "stoab_je_baustein"), (Vertragsstand.anfang, "tku_umfang"),
+])
+def test_das_tarifwerk_hat_im_reduzierten_pfad_keinen_default(funktion, parameter):
+    p = inspect.signature(funktion).parameters[parameter]
     assert p.kind is inspect.Parameter.KEYWORD_ONLY
-    assert p.default is inspect.Parameter.empty, funktion.__name__
+    assert p.default is inspect.Parameter.empty, (funktion.__name__, parameter)
 
 
 # --------------------------------------------------------------------------- #
@@ -435,20 +463,20 @@ def test_der_folgevertrag_traegt_nur_seinen_zillmer_rest():
 
 
 def test_die_bewertung_nach_beitragsfreistellung_folgt_derselben_konvention():
-    """N11: der PEX-Zweig von werte_reduziert rechnete anders als der
+    """N11: der PEX-Zweig der Bewertung nach Vorgaengen rechnete anders als der
     beitragspflichtige Zweig daneben. Die Invariante: beide Zweige in
     DERSELBEN Konvention — monatsgenau die Mischung der Jahrestage (seit
     2026-10-01), in der Jahreszeile (Nachrechnung alter Abschluesse) der
     Wert des Jahrestags. Mutationsprobe: im PEX-Zweig den Monat auf den
     Jahrestag setzen -> rot."""
     from rechner_pipeline.kern import KLV_DEFAULT
-    from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, reduzierte_teile
+    from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
 
-    teile = reduzierte_teile(Rechenkern(KLV_DEFAULT), [], 8, 0.6, PROSPEKTIV)
+    folge = Vorgangsfolge(Rechenkern(KLV_DEFAULT), [], [vorgang(8, 0.6, PROSPEKTIV)],
+                          pex_jahr=12, stoab_je_baustein=False, tku_umfang="alle_bausteine")
 
     def dk(monate, monatsgenau):
-        return werte_reduziert(teile, monate, 12, stoab_je_baustein=False,
-                               monatsgenau=monatsgenau)["deckungskapital"]
+        return werte_nach_vorgaengen(folge, monate, monatsgenau=monatsgenau)["deckungskapital"]
 
     am_jahrestag, naechster = dk(168, True), dk(180, True)
     assert naechster != pytest.approx(am_jahrestag, rel=1e-6)
@@ -566,13 +594,21 @@ def test_eine_negative_auszahlung_wird_auf_null_gekappt_und_ausgewiesen():
     assert len(red) > 0
     haupt = stamm.set_index("police_id")
     gekappt = 0
-    for z in red.to_dict("records"):
+    # Die Schicht absorbiert der ERSTE Vorgang jeder Police; nur dort kann die
+    # Auszahlung durch sie negativ werden (jeder weitere zahlt (1-f) x RKW).
+    # Nach einer Beitragsfreistellung zahlt sie den Rueckkaufswert des
+    # beitragsfreien Vertrags (B3) — hier geht es um den beitragspflichtigen.
+    pex = erg.historie[erg.historie["status_code"] == "PEX"].set_index("police_id")["status_date"]
+    for z in red.groupby("police_id", sort=False).head(1).to_dict("records"):
         pid, jahr = int(z["police_id"]), int(z["reduktion_jahr"])
+        if pid in pex.index and pex.loc[pid] <= z["reduktion_datum"]:
+            continue
         mp = ModelPoint(**model_point_kwargs(haupt.loc[pid], gen.generation_fields()))
         rechnerisch = (1 - ANTEIL) * vertrags_rkw(
             Rechenkern(mp), [], jahr, stoab_je_baustein=True
         ) + schichtwert_bei(_parameter(rho=-0.03), MONATE_TA, mp, 12 * jahr)
-        eigene = led[(led["police_id"] == pid) & (led["ereignis"] == "TKU")]
+        eigene = led[(led["police_id"] == pid) & (led["ereignis"] == "TKU")
+                     & (led["vertragsjahr"] == jahr)]
         arten = dict(zip(eigene["betrag_art"], eigene["betrag"]))
         assert arten["RKW_teilkuendigung"] == pytest.approx(max(0.0, rechnerisch), abs=1e-6)
         if rechnerisch < 0:
@@ -604,16 +640,16 @@ def test_eine_negative_auszahlung_wird_auf_null_gekappt_und_ausgewiesen():
     assert any("betrag < 0" in f for f in validate_ledger(stamm, neg, erg.historie, erg.scheiben))
 
 
-def test_die_teilkuendigung_liegt_vor_einer_beitragsfreistellung(welt):
+def test_die_teilkuendigung_nach_einer_beitragsfreistellung_ist_zulaessig(welt):
     """Runde 4 hatte die Teilkuendigung NACH der Beitragsfreistellung
-    zugelassen (Ziffer 6 kuendige nur einen Summenanteil). Runde C,
-    Befund RC03, hat das zurueckgenommen: Die Engine zieht fuer
-    beitragsfreie Vertraege keine Herabsetzung, und die Bewertung bricht
-    ab (``Beitragsfreistellung im Jahr p vor der Reduktion (Jahr r)``) —
-    P-B1 nahm eine Auszahlung vom 4,6-fachen der beitragsfreien Reserve
-    an. Jetzt gilt fuer JEDES Verfahren: Reduktionsjahr < PEX-Jahr.
+    zugelassen, Runde C (RC03) zurueckgenommen, weil der Kern keine Regel fuer
+    sie hatte. Seit dem Entscheid des Maintainers 2026-10-01 hat er sie
+    (klv.md 7.2, Entscheid B3 vom 2026-10-01): Die Teilkuendigung kuendigt einen Anteil der
+    beitragsfreien Summe, auch im Jahr der Freistellung (sie folgt ihr am
+    Jahrestag). Die BEITRAGSHERABSETZUNG bleibt vor der Freistellung.
     Mutationsprobe: die PEX-Jahr-Regel in validate_reduktionen entfernen
-    -> die ersten beiden Aussagen kippen."""
+    -> die Aussage zur Herabsetzung kippt; sie auch fuer die Teilkuendigung
+    ausloesen -> die Positivkontrollen kippen."""
     from rechner_pipeline.models.bestand import validate_reduktionen
 
     config, stamm, schichten, verankerung, erg = welt
@@ -624,13 +660,14 @@ def test_die_teilkuendigung_liegt_vor_einer_beitragsfreistellung(welt):
     zeile = lambda verfahren, jahr=14: pd.DataFrame([{
         "police_id": pid, "reduktion_jahr": jahr, "reduktion_datum": beginn + pd.DateOffset(years=jahr),
         "anteil": ANTEIL, "verfahren": verfahren}])
-    fehler = validate_reduktionen(stamm, zeile(TEILKUENDIGUNG), historie)
-    assert any("Zustandswechsel" in f and "Teilkuendigung" in f for f in fehler), fehler
-    assert any("Zustandswechsel" in f for f in validate_reduktionen(stamm, zeile("prospektiv"), historie))
-    # Im PEX-Jahr selbst ist der Vertrag schon beitragsfrei (Engine: PEX vor RED).
-    assert validate_reduktionen(stamm, zeile(TEILKUENDIGUNG, 13), historie)
-    # Positivkontrolle: VOR der Beitragsfreistellung bleibt sie zulaessig.
+    assert validate_reduktionen(stamm, zeile(TEILKUENDIGUNG), historie) == []
+    assert validate_reduktionen(stamm, zeile(TEILKUENDIGUNG, 13), historie) == []
     assert validate_reduktionen(stamm, zeile(TEILKUENDIGUNG, 12), historie) == []
+    fehler = validate_reduktionen(stamm, zeile("prospektiv"), historie)
+    assert any("Zustandswechsel" in f and "Beitragsherabsetzung" in f for f in fehler), fehler
+    # Im PEX-Jahr selbst ist der Vertrag schon beitragsfrei (Engine: PEX vor RED).
+    assert validate_reduktionen(stamm, zeile("prospektiv", 13), historie)
+    assert validate_reduktionen(stamm, zeile("prospektiv", 12), historie) == []
     tod = pd.DataFrame([{"police_id": pid, "status_id": 2, "status_code": "TOD",
                          "status_date": beginn + pd.DateOffset(years=14)}])
     assert any("nichts mehr zu kuendigen" in f for f in validate_reduktionen(stamm, zeile(TEILKUENDIGUNG), tod))
@@ -696,7 +733,7 @@ def test_verfahren_und_anteil_der_reduktionstabelle_sind_an_die_config_gebunden(
     assert any("Tarifwerk" in f and str(pid) in f for f in _pb1(welt, led, reduktionen=red))
     red2 = erg.reduktionen.copy()
     red2.loc[red2["police_id"] == pid, "anteil"] = 0.3
-    assert any("red_anteil" in f and str(pid) in f for f in _pb1(welt, erg.ledger, reduktionen=red2))
+    assert any("tk_anteil" in f and str(pid) in f for f in _pb1(welt, erg.ledger, reduktionen=red2))
 
 
 def test_p_b1_verlangt_die_schicht_tabelle_wenn_der_ledger_eine_schicht_absorbiert(tmp_path):

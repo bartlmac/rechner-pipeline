@@ -476,11 +476,18 @@ bindbar. Die Belege nennen die Datei mit ihrem SHA-256; ein Lauf mit
 erzeugt wurde als der, die er selbst liest.
 
 Beitragsherabsetzung (`RED`) und Teilkündigung (`TKU`) sind zwei
-Geschäftsvorfälle (ADR-023; Tarifplan KLV, Abschnitte 7.1 und 7.2): Die
+Geschäftsvorfälle (ADR-023; Tarifplan KLV, Abschnitte 7.1 bis 7.3): Die
 Herabsetzung senkt den Beitrag und gibt es nur, solange er gezahlt wird; die
 Teilkündigung zahlt einen Summenanteil aus und ist in jeder Generation auch
-nach dem Beitragsende möglich. Eine gelieferte Absetzung **nach dem
-Beitragsende** war eine Teilkündigung: Der gelieferte Vertrag ist der
+nach dem Beitragsende und nach der Beitragsfreistellung möglich. Ein Vertrag
+trägt beliebig viele davon in jeder Reihenfolge (`kern.Vorgangsfolge`).
+Welche Bausteine eine Teilkündigung kürzt, sagt das Tarifwerk
+(`tku_umfang`; in den Kommandos der Prüfstrecke `--tku-umfang`, Vorgabe: der
+Umfang des Bedingungswerks, das `--red-verfahren` nennt). Ab der Migration
+gilt das Vokabular des Zielsystems (Grundsatzdokumentation 7.1): Eine
+gelieferte Absetzung **nach dem Beitragsende** oder nach einer
+Beitragsfreistellung war eine Teilkündigung, im übernommenen Tarif TG2015
+jede. Nach dem Beitragsende ist der gelieferte Vertrag der
 zustandslose Vertrag mit der gelieferten Summe und braucht für sich keine
 Auskunft. Wo der Anteil wirkt — eine solche Absetzung nach dynamischen
 Erhöhungen verteilt die gelieferte Summe auf Grund und Erhöhungen —, kommt

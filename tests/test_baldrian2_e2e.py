@@ -568,6 +568,8 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
     assert beleg["tarifwerk"] == {
         "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
         "red_verfahren": RED_VERFAHREN,
+        # Der Umfang der Teilkuendigung des uebernommenen Tarifs (Annahme B1).
+        "tku_umfang": "grundversicherung",
     }
     # Der Bestand, den die Suite gehasht hat, ist eine Eingabe der Probe.
     suite = _bericht(gefahrener_fall, "migrationssuite.json")
@@ -822,6 +824,8 @@ def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
     assert beleg["tarifwerk"] == {
         "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
         "red_verfahren": RED_VERFAHREN,
+        # Der Umfang der Teilkuendigung des uebernommenen Tarifs (Annahme B1).
+        "tku_umfang": "grundversicherung",
     }
     assert beleg["mit_scheiben"] == len(mit_scheiben)
     assert beleg["scheiben"] == len(scheiben)
@@ -830,7 +834,8 @@ def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
     # Und der Config-Abschnitt traegt die Schalter, die die Fuehrung liest.
     abschnitt = (bestand / "generation-zellen.toml").read_text(encoding="utf-8")
     for zeile in ("scheiben_mit_gamma1 = true", "stoab_je_baustein = true",
-                  f'red_verfahren = "{RED_VERFAHREN}"'):
+                  f'red_verfahren = "{RED_VERFAHREN}"',
+                  'tku_umfang = "grundversicherung"'):
         assert zeile in abschnitt, zeile
 
 
@@ -1073,9 +1078,11 @@ def test_die_fuehrungsprobe_rechnet_jede_herabsetzungsbuchung_nach(gefahrener_fa
     ueb, _fort, basis = _probe_material(gefahrener_fall)
     text = (gefahrener_fall / "abgeleitet" / "bestand-config.toml").read_text(encoding="utf-8")
     anteil = float(RED_ANTEILE[0].split("=")[1])
+    # Der uebernommene Tarif kennt nur die Teilkuendigung, aus ihrer eigenen
+    # Rate (Entscheid des Maintainers 2026-10-01).
     mit_red = config_aus_text(text + (
-        f"\n[annahmen]\nred_anteil = {anteil}\n"
-        "[annahmen.herabsetzung]\na = 0.20\nb = 0.0\n"))
+        f"\n[annahmen]\ntk_anteil = {anteil}\n"
+        "[annahmen.teilkuendigung]\na = 0.20\nb = 0.0\n"))
     assert mit_red.validate() == []
     erg = fortschreiben(
         ueb["bestand"], mit_red, _dt.date(2040, 1, 1), merkmale=ueb["merkmale"],
@@ -1092,6 +1099,61 @@ def test_die_fuehrungsprobe_rechnet_jede_herabsetzungsbuchung_nach(gefahrener_fa
     led.loc[i, "betrag"] += 1.0
     rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=kaputt, **red_basis)
     assert not rot["bestanden"] and any(b["art"] == "buchung" for b in rot["befunde"])
+
+
+def test_die_fuehrungsprobe_traegt_jede_zweierfolge_des_uebernommenen_tarifs(
+    gefahrener_fall: Path,
+):
+    """Zaehltest in der Welt des Falls (Entscheid des Maintainers
+    2026-10-01: beliebig viele Vorgaenge in jeder Reihenfolge). Der
+    uebernommene Tarif kennt nur die Teilkuendigung (Umfang
+    Grundversicherung, Entscheid B1); mit hohen Raten fuer Teilkuendigung,
+    Beitragsfreistellung und Erhoehung zieht die Engine jede geordnete
+    Zweierfolge aus TKU, PEX und ERH, die das Tarifwerk zulaesst — auch die
+    Teilkuendigung NACH der Freistellung —, und die Fuehrungsprobe rechnet
+    jede Buchung nach. Mutationsproben: die Teilkuendigung nach PEX nicht
+    ziehen -> (PEX, TKU) fehlt -> rot; die Probe auf den ersten Vorgang
+    beschraenken -> Befunde -> rot."""
+    import datetime as _dt
+    from collections import Counter
+
+    from rechner_pipeline.bestand.config import config_aus_text
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+
+    ueb, _fort, basis = _probe_material(gefahrener_fall)
+    text = (gefahrener_fall / "abgeleitet" / "bestand-config.toml").read_text(encoding="utf-8")
+    lebhaft = config_aus_text(text + (
+        "\n[annahmen]\ntk_anteil = 0.8\nerh_prozent = 0.05\n"
+        "[annahmen.teilkuendigung]\na = 0.5\nb = 0.0\n"
+        "[annahmen.beitragsfreistellung]\na = 0.3\nb = 0.0\n"
+        "[annahmen.erhoehung]\na = 0.3\nb = 0.0\n"))
+    assert lebhaft.validate() == []
+    assert lebhaft.generationen[0].tarifwerk()["tku_umfang"] == "grundversicherung"
+    erg = fortschreiben(
+        ueb["bestand"], lebhaft, _dt.date(2040, 1, 1), merkmale=ueb["merkmale"],
+        scheiben=ueb["scheiben"], schichten=ueb["schichten"], verankerung=ueb["verankerung"])
+    assert set(erg.reduktionen["verfahren"]) == {"teilkuendigung"}
+    led = erg.ledger
+    zeilen = led[((led["ereignis"] == "TKU") & (led["betrag_art"] == "VS_teilkuendigung"))
+                 | (led["ereignis"] == "PEX")
+                 | ((led["ereignis"] == "ERH") & (led["betrag_art"] == "VS_erhoehung"))]
+    rang = {"PEX": 0, "TKU": 2, "ERH": 3}
+    paare = Counter()
+    for _pid, eigene in zeilen.groupby("police_id"):
+        codes = [e for _, e in sorted(zip(eigene["status_date"], eigene["ereignis"]),
+                                      key=lambda z: (z[0], rang[z[1]]))]
+        paare.update(zip(codes, codes[1:]))
+    # Jede Zweierfolge MIT einer Teilkuendigung (die ohne sind nicht Gegenstand;
+    # der kleine Bestand des Falls zieht sie nicht verlaesslich).
+    soll = {("TKU", "TKU"), ("TKU", "PEX"), ("PEX", "TKU"), ("ERH", "TKU"),
+            ("TKU", "ERH")}
+    assert soll <= set(paare), (sorted(soll - set(paare)), paare)
+    assert not {("PEX", "ERH"), ("PEX", "PEX")} & set(paare)
+    fort = _welt_wie_der_lauf(ueb, erg, reduktionen=erg.reduktionen)
+    gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **dict(basis, config=lebhaft))
+    assert gut["bestanden"], gut["befunde"][:3]
+    assert gut["buchungen_geprueft"]["TKU"] >= len(erg.reduktionen)
 
 
 def test_der_vor_bericht_laeuft_mit_dem_journal_und_der_stamm_allein_ist_abgewiesen(

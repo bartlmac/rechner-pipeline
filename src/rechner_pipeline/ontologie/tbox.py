@@ -174,9 +174,15 @@ LEISTUNGSGROESSE_JE_FAMILIE: Dict[str, str] = {
 #: ``prospektiv`` und ``mit_abzug`` wandeln den freiwerdenden Beitrag in
 #: beitragsfreie Summe um (Geschaeftsvorfall ``RED``); ``teilkuendigung``
 #: kuendigt einen Summenanteil und zahlt ihn aus (``TKU``). Als Tarifwerk
-#: einer Generation heisst ``teilkuendigung``: Diese Generation kennt keine
-#: Herabsetzung ohne Auszahlung (Annahme A1, Tarifplan KLV 7.2).
+#: einer Generation heisst ``teilkuendigung``: Dieser Tarif kennt keine
+#: Beitragsherabsetzung, nur die Teilkuendigung (Entscheid des Maintainers
+#: 2026-10-01, Tarifplan KLV 7.2; ersetzt die fruehere Annahme A1).
 HERABSETZUNGSVERFAHREN: Tuple[str, ...] = ("prospektiv", "mit_abzug", "teilkuendigung")
+#: Der Umfang der Teilkuendigung (Tarifplan KLV 7.2, Entscheid B1 vom
+#: 2026-10-01; Spiegel von ``kern.vorgangsfolge.TKU_UMFAENGE``): alle
+#: Bausteine (eigene Tarife der PLV) oder nur die Grundversicherung (der
+#: uebernommene Tarif TG2015, Bedingungswerk Ziffer 6).
+TKU_UMFAENGE: Tuple[str, ...] = ("alle_bausteine", "grundversicherung")
 TEILKUENDIGUNG_VERFAHREN = "teilkuendigung"
 
 #: Die Tarifwerks-Merkmale einer Generation (Grundsatzdokumentation 10
@@ -184,15 +190,17 @@ TEILKUENDIGUNG_VERFAHREN = "teilkuendigung"
 #: tarifwerk()``). Namen wie in der Bestand-Config — die Projektion ist ein
 #: Mapping. Je Merkmal der zulaessige Wertebereich.
 TARIFWERK_MERKMALE: Tuple[str, ...] = (
-    "scheiben_mit_gamma1", "stoab_je_baustein", "red_verfahren",
+    "scheiben_mit_gamma1", "stoab_je_baustein", "red_verfahren", "tku_umfang",
 )
 TARIFWERK_WERTE: Dict[str, Tuple[Any, ...]] = {
     "scheiben_mit_gamma1": (False, True),
     "stoab_je_baustein": (False, True),
     "red_verfahren": HERABSETZUNGSVERFAHREN,
+    "tku_umfang": TKU_UMFAENGE,
 }
 #: Das Tarifwerk des EIGENEN Geschaefts (Tarifplan KLV, Abschnitte 6 und 7):
-#: Scheiben ohne gamma1, Stornoabzug je Vertrag, Herabsetzung prospektiv.
+#: Scheiben ohne gamma1, Stornoabzug je Vertrag, Herabsetzung prospektiv,
+#: Teilkuendigung ueber alle Bausteine.
 #: Fuer eine uebernommene Generation ist das KEINE Vorgabe — ihre Vertraege
 #: tragen ihr Bedingungswerk, und ein nicht erhobenes Merkmal bleibt in der
 #: Coverage sichtbar, statt still mit diesem Satz gefuellt zu werden.
@@ -200,6 +208,7 @@ TARIFWERK_EIGENES_GESCHAEFT: Dict[str, Any] = {
     "scheiben_mit_gamma1": False,
     "stoab_je_baustein": False,
     "red_verfahren": "prospektiv",
+    "tku_umfang": "alle_bausteine",
 }
 
 #: Der eine Code, mit dem eine Lieferung beide Absetzungen fuehrt: Die
@@ -209,11 +218,13 @@ QUELL_ABSETZUNGSCODE = "RED"
 #: Absetzung gemeint hat — eine Eigenschaft der Lieferung je Generation,
 #: nicht das Tarifwerk, nach dem das Ziel kuenftig fuehrt (meist gleich,
 #: weil die Vertraege ihr Bedingungswerk behalten; verschieden, wenn die
-#: Quelle anders verfuhr, als ihr Bedingungswerk sagt). Lesart (ADR-023,
-#: Annahme A2): vor dem Beitragsende ist eine gelieferte Absetzung eine
-#: Teilkuendigung genau dann, wenn das Quellverfahren ``teilkuendigung``
-#: ist; nach dem Beitragsende immer. Die Regel selbst fuehrt das
-#: Datenmodell (``models.bestand.alt_absetzung_ist_teilkuendigung``).
+#: Quelle anders verfuhr, als ihr Bedingungswerk sagt). Lesart (ADR-023 mit
+#: Nachtrag 2026-10-01; Grundsatzdokumentation 7.1: ab der Migration gilt das
+#: Vokabular des Zielsystems): Ist das Quellverfahren ``teilkuendigung``, war
+#: JEDE gelieferte Absetzung eine Teilkuendigung; sonst vor dem Beitragsende
+#: und vor einer Beitragsfreistellung eine Herabsetzung, danach eine
+#: Teilkuendigung (A2, Annahme B5). Die Regel selbst fuehrt das Datenmodell
+#: an einer Stelle (``models.bestand.alt_absetzung_ist_teilkuendigung``).
 QUELLVERFAHREN_WERTE: Dict[str, Tuple[Any, ...]] = {
     "red_verfahren": HERABSETZUNGSVERFAHREN,
 }

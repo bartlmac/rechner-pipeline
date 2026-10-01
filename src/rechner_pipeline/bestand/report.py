@@ -459,6 +459,9 @@ NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
             ("bfr", "Beitragsfreier Bestand", (
                 ("anfang", "Anfang"),
                 ("zugang_umbuchung", "+ beitragsfrei gestellt"),
+                # Teilkuendigung nach der Beitragsfreistellung (klv.md 7.2):
+                # die neue beitragsfreie Summe minus die davor.
+                ("veraenderung_teilkuendigung", "± Teilkündigung"),
                 ("abgang_tod", "− Tod"),
                 ("abgang_ablauf", "− Ablauf"),
                 ("ende", "Ende"),

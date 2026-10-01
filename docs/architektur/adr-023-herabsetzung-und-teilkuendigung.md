@@ -41,7 +41,7 @@ um). Der Maintainer hat das am selben Tag ersetzt:
    eigener Zufallsstrom (`bestand.zufallsstroeme`, `teilkuendigung`).
 3. **Das Ledger sagt, was geschah.** Eine Teilkuendigung ist nie als `RED`
    gebucht. Beide Vorgaenge stehen in derselben Tabelle `reduktionen`
-   (eine Zeile je Vertrag); ihr Verfahren bestimmt den Code
+   (seit dem Nachtrag beliebig viele Zeilen je Vertrag); ihr Verfahren bestimmt den Code
    (`models.bestand.reduktion_ereignis`).
 
 Die Annahmen, unter denen gebaut ist (A1 bis A4), und die verweigerten
@@ -77,3 +77,69 @@ Leser, der `RED` sieht, darf keine Auszahlung vermuten muessen.
   Pflichtziehung der Abnahmen (ADR-002, Nachtrag 2026-10-01).
 * Versionen: Kern `3.16.0`, Abnahmebericht `GATE_VERSION 7.0.0`,
   Fuehrungsprobe `SCHEMA_VERSION 4`.
+
+
+## Nachtrag 2026-10-01: Folgen von Vorgaengen, ein Vokabular
+
+**Entscheide des Maintainers (2026-10-01).** Sie ersetzen die Annahmen A1,
+A3 und A4 und die Verweigerungen der ersten Fassung:
+
+* Ein Vertrag traegt **beliebig viele** Herabsetzungen und Teilkuendigungen,
+  in **jeder Reihenfolge**, verschraenkt mit Erhoehungen und der
+  Beitragsfreistellung; jeder Vorgang wirkt auf den Zustand, den der Vertrag
+  gerade hat. Der Zustand ist die Folge seiner Vorgaenge (Grundsatzdokumentation
+  7.2), und es gibt **eine** Darstellung davon im Kern
+  (`kern/vorgangsfolge.py`), die jeder Leser rechnet — Ereignis-Engine,
+  Bewertung und Abschluss, Ledger-Herleitung (P-B1), Bewegungskonto,
+  Fuehrungsprobe, Migrationssuite samt Fuehrungswert, aktuarieller Test,
+  Verankerung. Die Tabelle `reduktionen` traegt beliebig viele Zeilen je
+  Vertrag (eindeutig je Police, Jahr und Vorgang).
+* Die Herabsetzung gilt nur, solange Beitrag gezahlt wird — nicht ab dem
+  Beitragsende, nicht nach der Beitragsfreistellung (verweigert, Ausweg
+  Teilkuendigung). Die Teilkuendigung gilt bis zum Ablauf, auch nach der
+  Beitragsfreistellung; dort zahlt sie den Rueckkaufswert des beitragsfreien
+  Vertrags aus (B3: Rueckstellung abzueglich des Stornoabzugs nach derselben
+  Tarifregel auf der beitragsfreien Summe).
+* Die Teilkuendigung der eigenen Tarife kuerzt **alle Bausteine**
+  anteilig; der uebernommene Tarif TG2015 kuendigt nur die Grundversicherung
+  (B1). Beides ist **ein** Merkmal des Tarifwerks je Generation,
+  `tku_umfang`.
+* Der uebernommene Tarif kennt **einen** Vorgang: Seine "Herabsetzung" ist
+  die Teilkuendigung der PLV und kommt allein aus deren Rate (die fruehere
+  Annahme A1 und ihre zweite Rate entfallen). Der Code `RED` der Quelle
+  bleibt Provenienzname; ab der Migration gilt das Vokabular des
+  Zielsystems (Grundsatzdokumentation 7.1), die Uebersetzung ist eine
+  benannte Regel an einer Stelle (`models.bestand.alt_absetzung_ist_teilkuendigung`,
+  in der Form des Verfahrens `zielverfahren`), fuer diesen Tarif immer
+  Teilkuendigung. A2 ist bestaetigt.
+
+Als Annahmen gebaut und im Tarifplan KLV (Abschnitte 7.2 und 7.3) mit der
+verworfenen Alternative benannt: B2 (jeder Vorgang proportional auf dem
+Zustand), B4 (Homogenitaet, je Groesse geprueft: Stueckkosten, Grenzen des
+Stornoabzugs und Korrekturschicht werden nie skaliert) und B5 (eine Quelle
+mit echter Herabsetzung: vor dem Beitragsende Herabsetzung, danach und nach
+der Beitragsfreistellung Teilkuendigung). Die Tabelle der Kombinationen im
+Tarifplan ist eine Auswahl; die Menge der zulaessigen Folgen beschreibt eine
+Regel dort, und Eigenschaftstests ueber erzeugte Folgen halten sie.
+
+**Verworfene Alternative.** Die Verkettung je Leser nachzubauen (jeder Leser
+erweitert seinen Einzelvorgang-Weg um "zweiter Vorgang"). Verworfen, weil
+genau das die Klasse war, die die erste Fassung verweigern liess: Jeder Leser
+hatte seine eigene Rekonstruktion, und eine Regel, die nur in einem Leser
+steht, laeuft den anderen davon. Eine Ratsche
+(`tests/test_vorgangsfolge_ratsche.py`) haelt fest, dass kein Leser mehr einen
+einzelnen Vorgang annimmt.
+
+**Folgen.**
+
+* Vertraege ohne Vorgang rechnen unveraendert (sie laufen nicht ueber die
+  Folge); Vertraege mit genau einem Vorgang bitgleich wie zuvor. Es bewegen
+  sich: Vertraege mit mehr als einem Vorgang, Teilkuendigungen eigener Tarife
+  mit Erhoehungsscheiben (jetzt anteilig ueber alle Bausteine) und
+  Teilkuendigungen nach der Beitragsfreistellung (jetzt gezogen).
+* Die Pruefstrecke rechnet Folge-Geschaeftsvorfaelle, statt sie als "nicht
+  abgebildet" zu melden; ein Rueckkauf nach der Beitragsfreistellung wird
+  gemessen statt als "nicht definiert" gemeldet. Die Uebernahme fuehrt eine
+  Vorgeschichte mit mehreren Absetzungen; einen durch eine Herabsetzung der
+  Vorgeschichte geteilten Vertrag schaltet sie weiter benannt nicht frei.
+* Versionen: Kern `3.17.0`.

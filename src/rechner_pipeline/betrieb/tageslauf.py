@@ -160,6 +160,7 @@ from rechner_pipeline.betrieb.uebernahme import (
 from rechner_pipeline.models.anker import jsonl_zeilen
 from rechner_pipeline.models.bestand import (
     REDUKTION_EREIGNISSE,
+    reduktion_ereignis,
     BASIS_STATUS,
     LEDGER_NAMES,
     MERKMALE_NAMES,
@@ -2292,10 +2293,20 @@ def _gebuchte_reduktionen(reduktionen, ledger):
     """
     if reduktionen is None or not len(reduktionen):
         return reduktionen
-    # RED und TKU: beide registriert die Tabelle (ADR-023).
-    gebucht = set(ledger.loc[ledger["ereignis"].isin(REDUKTION_EREIGNISSE), "police_id"])
-    return reduktionen[
-        reduktionen["police_id"].isin(gebucht)].reset_index(drop=True)
+    # RED und TKU: beide registriert die Tabelle (ADR-023), je VORGANG eine
+    # Zeile (beliebig viele je Police, Entscheid 2026-10-01). Der Schnitt geht
+    # deshalb je Vorgang — Police, Wirkungstag und Code —, nicht je Police:
+    # Eine zweite Teilkuendigung mit Buchungstag nach heute gehoert noch
+    # nicht in den Stand, auch wenn die erste darin steht.
+    zeilen = ledger[ledger["ereignis"].isin(REDUKTION_EREIGNISSE)]
+    gebucht = set(zip(zeilen["police_id"].astype("int64"),
+                      pd.to_datetime(zeilen["status_date"]),
+                      zeilen["ereignis"].astype(str)))
+    behalten = [
+        (int(p), pd.Timestamp(d), reduktion_ereignis(str(v))) in gebucht
+        for p, d, v in zip(reduktionen["police_id"], reduktionen["reduktion_datum"],
+                           reduktionen["verfahren"])]
+    return reduktionen[behalten].reset_index(drop=True)
 
 
 def _stichtagssicht(

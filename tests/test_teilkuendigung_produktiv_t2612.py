@@ -110,10 +110,12 @@ def test_der_geschichtete_zweig_kuendigt_nur_den_grund():
 def _welt():
     anker = '[[generation]]\nname = "klv/zellen"\n'
     assert anker in _CONFIG_TOML
+    # Der uebernommene Tarif kennt nur die Teilkuendigung, aus ihrer eigenen
+    # Rate (Entscheid des Maintainers 2026-10-01; Annahme A1 entfallen).
     toml = _CONFIG_TOML.replace(anker, anker + 'red_verfahren = "teilkuendigung"\n', 1).replace(
         "[annahmen]\nerh_prozent = 0.05",
-        f"[annahmen]\nerh_prozent = 0.05\nred_anteil = {ANTEIL}",
-    ) + "\n[annahmen.herabsetzung]\na = 0.08\nb = 0.0\n"
+        f"[annahmen]\nerh_prozent = 0.05\ntk_anteil = {ANTEIL}",
+    ) + "\n[annahmen.teilkuendigung]\na = 0.08\nb = 0.0\n"
     config = config_aus_text(toml)
     assert config.validate() == [], "die Teilkuendigung ist gebaut — die Config ist gueltig"
     stamm = _stamm([{"id": p, "beginn": "2015-01-01", "zugang": "2026-01-01"} for p in POLICEN])
@@ -142,10 +144,16 @@ def test_die_engine_bucht_summe_schicht_und_auszahlung_und_pb1_leitet_sie_her():
     led = ergebnis.ledger
     red = led[led["ereignis"] == "TKU"]
     assert len(red) > 0, "Fixture ohne Teilkuendigung bezeugt nichts"
+    # Die Zusage dieses Tests ist die des ERSTEN Vorgangs einer Police auf dem
+    # beitragspflichtigen Vertrag (Folgen haelt tests/test_vorgangsfolge_leser.py).
+    pex = ergebnis.historie[ergebnis.historie["status_code"] == "PEX"].set_index("police_id")
     mit_scheibe = 0
     for pid, zeilen in red.groupby("police_id"):
         pid = int(pid)
         jahr = int(zeilen["vertragsjahr"].iloc[0])
+        zeilen = zeilen[zeilen["vertragsjahr"] == jahr]
+        if pid in pex.index and pex.loc[pid, "status_date"] <= zeilen["status_date"].iloc[0]:
+            continue
         arten = dict(zip(zeilen["betrag_art"], zeilen["betrag"]))
         assert set(arten) == {"VS_teilkuendigung", "dDK_absorption", "RKW_teilkuendigung"}, arten
         mp = ModelPoint(**model_point_kwargs(haupt.loc[pid], felder))
@@ -188,7 +196,11 @@ def test_die_teilkuendigung_senkt_immer():
     led = ergebnis.ledger
     red = led[(led["ereignis"] == "TKU") & (led["betrag_art"] == "VS_teilkuendigung")]
     assert len(red) > 0
-    for z in red.to_dict("records"):
+    pex = set(ergebnis.historie.loc[ergebnis.historie["status_code"] == "PEX", "police_id"])
+    # Der erste Vorgang je Police auf dem beitragspflichtigen Vertrag.
+    for z in red.groupby("police_id").head(1).to_dict("records"):
+        if int(z["police_id"]) in pex:
+            continue
         pid, jahr = int(z["police_id"]), int(z["vertragsjahr"])
         erh = led[(led["police_id"] == pid) & (led["ereignis"] == "ERH")
                   & (led["betrag_art"] == "VS_erhoehung") & (led["vertragsjahr"] < jahr)]

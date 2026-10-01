@@ -206,7 +206,8 @@ def test_vorgabe_laesst_das_eigene_geschaeft_unveraendert():
     config = _config(freigeschaltet=False)
     assert all(g.tarifwerk() == {"scheiben_mit_gamma1": False,
                                  "stoab_je_baustein": False,
-                                 "red_verfahren": "prospektiv"}
+                                 "red_verfahren": "prospektiv",
+                                 "tku_umfang": "alle_bausteine"}
                for g in config.generationen)
     stamm = _stamm([{"id": pid, "beginn": "2015-01-01"} for pid in range(1, 21)])
     ergebnis = fortschreiben(stamm, config, BIS)

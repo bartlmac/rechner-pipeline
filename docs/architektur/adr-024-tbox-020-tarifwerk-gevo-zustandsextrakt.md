@@ -82,3 +82,29 @@ Version.
 * Das Extraktionsschema (`QuellFragment`) hat die Felder `tarifwerk` und
   `quellverfahren`; `nicht_belegt` nennt Blockmerkmale qualifiziert
   (`tarifwerk.red_verfahren`).
+
+## Nachtrag 2026-10-01: vor der ersten Zeichnung ergaenzt
+
+Am selben Tag haben die Entscheide zur Folge von Vorgaengen (ADR-023,
+Nachtrag 2026-10-01) das Tarifwerk um ein Merkmal erweitert. Weil noch kein
+Fall auf 0.2.0 gezeichnet hat (A-O1 steht aus, siehe Status), ist 0.2.0
+**vor seiner ersten Zeichnung ergaenzt** worden, ohne neue Version; der
+Abdruck des Vokabulars ist fuer 0.2.0 neu gesetzt
+(`tests/test_tbox_erweiterung_020.py`). Ergaenzt:
+
+* Tarifwerk-Merkmal `tku_umfang` mit dem Wertebereich `TKU_UMFAENGE` =
+  (`alle_bausteine`, `grundversicherung`) — welche Bausteine eine
+  Teilkuendigung kuerzt (Tarifplan KLV 7.2, Entscheid B1); Spiegel von
+  `kern.vorgangsfolge.TKU_UMFAENGE` und der Schluessel von
+  `bestand.config.TarifGeneration.tarifwerk()`.
+* Vorgabe des eigenen Geschaefts: `tku_umfang = alle_bausteine`.
+* Lesart des Quellverfahrens (Beschreibung, nicht Vokabular): ab der
+  Migration gilt das Vokabular des Zielsystems (Grundsatzdokumentation
+  7.1); `teilkuendigung` heisst "der Tarif kennt keine Beitragsherabsetzung",
+  eine gelieferte Absetzung danach und nach einer Beitragsfreistellung war
+  eine Teilkuendigung (A2, Annahme B5).
+
+Befuellung, Spez-Projektion, Coverage und Fachspezifikation (Abschnitt 12)
+lesen die Merkmale aus `GENERATIONS_BLOECKE` und tragen das neue Merkmal
+ohne eigene Aenderung. Wer auf dem Entwurfsabdruck gezeichnet haette, muesste
+neu zeichnen — es hat niemand.

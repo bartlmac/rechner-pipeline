@@ -46,6 +46,7 @@ from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.bestand.schichten import schichten_je_police
 from rechner_pipeline.gates import bestand_validate, fuehrungsprobe
 from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+from rechner_pipeline.kern.vorgangsfolge import VorgangsfolgeFehler
 from rechner_pipeline.models.bestand import (
     reduktion_ereignis,
     LEDGER_NAMES,
@@ -159,26 +160,36 @@ def test_eine_red_buchung_nach_dem_horizont_weist_validate_ledger_ab():
 
 
 def test_eine_herabsetzung_auf_beitragsfreiem_vertrag_weist_validate_reduktionen_ab():
-    """RC03: Die Teilkuendigung ist nicht mehr 'ausdruecklich nach PEX
-    zugelassen'. Mutationsprobe: die PEX-Jahr-Regel entfernen -> rot."""
+    """RC03, seit dem Entscheid des Maintainers 2026-10-01 fuer die
+    BEITRAGSHERABSETZUNG allein: Ein beitragsfreier Vertrag hat keinen
+    Beitrag, den sie senken koennte (klv.md 7.1). Die Teilkuendigung nach der
+    Beitragsfreistellung ist dagegen ein Vorgang (klv.md 7.2) — zulaessig,
+    auch im Jahr der Freistellung selbst (sie folgt ihr am Jahrestag).
+    Mutationsproben: die PEX-Jahr-Regel entfernen -> rot; sie auch fuer die
+    Teilkuendigung ausloesen -> rot."""
     stamm = _stamm_eigen()
     historie = pd.DataFrame([{
         "police_id": 900_001, "status_id": 2, "status_code": "PEX",
         "status_date": pd.Timestamp("2016-01-01"),           # Jahr 1
     }])
     fehler = validate_reduktionen(
-        stamm, _red_zeile(jahr=12, verfahren="teilkuendigung"), historie=historie)
-    assert any("Teilkuendigung" in f and "Beitragsfreistellung im Jahr 1" in f for f in fehler), fehler
+        stamm, _red_zeile(jahr=12, verfahren="prospektiv"), historie=historie)
+    assert any("Beitragsherabsetzung" in f and "Beitragsfreistellung im Jahr 1" in f
+               and "Ausweg" in f for f in fehler), fehler
     # Die Grenze ist scharf: im PEX-Jahr selbst ist der Vertrag schon
     # beitragsfrei (die Engine bucht PEX vor der Herabsetzung desselben Jahres).
     im_pex_jahr = historie.assign(status_date=pd.Timestamp("2027-01-01"))   # PEX im Jahr 12
     assert validate_reduktionen(
-        stamm, _red_zeile(jahr=12, verfahren="teilkuendigung"), historie=im_pex_jahr)
-    # Positivkontrolle: VOR der Beitragsfreistellung bleibt sie zulaessig.
+        stamm, _red_zeile(jahr=12, verfahren="prospektiv"), historie=im_pex_jahr)
+    # Positivkontrolle: VOR der Beitragsfreistellung bleibt sie zulaessig ...
     assert validate_reduktionen(
-        stamm, _red_zeile(jahr=8, verfahren="teilkuendigung"), historie=im_pex_jahr) == []
+        stamm, _red_zeile(jahr=8, verfahren="prospektiv"), historie=im_pex_jahr) == []
     assert validate_reduktionen(
-        stamm, _red_zeile(jahr=11, verfahren="teilkuendigung"), historie=im_pex_jahr) == []
+        stamm, _red_zeile(jahr=11, verfahren="prospektiv"), historie=im_pex_jahr) == []
+    # ... und die Teilkuendigung danach und im Jahr der Freistellung ist zulaessig.
+    for h, jahr in ((historie, 12), (im_pex_jahr, 12), (im_pex_jahr, 14)):
+        assert validate_reduktionen(
+            stamm, _red_zeile(jahr=jahr, verfahren="teilkuendigung"), historie=h) == []
 
 
 # --------------------------------------------------------------------------- #
@@ -250,10 +261,21 @@ def _mit_red(welt, pid: int, jahr: int, *, verfahren: str = "teilkuendigung",
     scheiben = [(int(j), float(v)) for j, v in zip(
         ueb["scheiben"][ueb["scheiben"]["police_id"] == pid]["erhoehung_jahr"],
         ueb["scheiben"][ueb["scheiben"]["police_id"] == pid]["sum_insured"])]
-    h = _Herleitung(row, grundlagen_je_police(config, ueb["merkmale"])(pid, row["tarif_generation"]),
-                    scheiben, {g.name: g.tarifwerk() for g in config.generationen}[row["tarif_generation"]])
-    h.setze_reduktion(jahr, anteil, verfahren, schicht.get(pid))
-    soll = h.red_buchungen(schicht.get(pid))
+    def herleitung(pex_jahr):
+        h = _Herleitung(row, grundlagen_je_police(config, ueb["merkmale"])(pid, row["tarif_generation"]),
+                        scheiben, {g.name: g.tarifwerk() for g in config.generationen}[row["tarif_generation"]])
+        h.setze_vorgaenge([(jahr, anteil, verfahren)], schicht.get(pid), pex_jahr)
+        return h
+
+    # Die Beitragsfreistellung der Uebernahme gehoert zur Folge (eine
+    # Teilkuendigung danach kuendigt die beitragsfreie Summe, klv.md 7.2).
+    # Eine Herabsetzung danach gibt es nicht — fuer sie stehen hier die Betraege
+    # des beitragspflichtigen Vertrags: Nur der ORT ist der Fehler.
+    try:
+        h = herleitung(_pex_jahr(welt, pid))
+    except VorgangsfolgeFehler:
+        h = herleitung(None)
+    soll = h.vorgang_buchungen(jahr, reduktion_ereignis(verfahren))
     neu_red = pd.DataFrame([{
         "police_id": pid, "reduktion_jahr": jahr, "reduktion_datum": datum,
         "anteil": anteil, "verfahren": verfahren}])[list(REDUKTIONEN_NAMES)].astype(
@@ -270,6 +292,17 @@ def _mit_red(welt, pid: int, jahr: int, *, verfahren: str = "teilkuendigung",
     tab["ledger"] = pd.concat([tab["ledger"], zeilen], ignore_index=True).sort_values(
         ["police_id", "status_date"], kind="stable").reset_index(drop=True)
     return tab
+
+
+def _pex_jahr(welt, pid: int) -> Optional[int]:
+    """Das Jahr einer Beitragsfreistellung der Uebernahme (Vorgeschichte)."""
+    h = welt["ueb"]["historie"]
+    pex = h[(h["police_id"] == pid) & (h["status_code"] == "PEX")]
+    if not len(pex):
+        return None
+    beginn = pd.Timestamp(_zeile(welt, pid)["insurance_start"])
+    datum = pd.Timestamp(pex["status_date"].min())
+    return ((datum.year * 12 + datum.month) - (beginn.year * 12 + beginn.month)) // 12
 
 
 def _urteil(welt, tab):
@@ -381,21 +414,28 @@ def _mit_eigener_pex(tab: Dict[str, Any], pid: int, jahr: int, gebucht_am: str) 
 
 def test_eine_eigene_beitragsfreistellung_derselben_oder_frueherer_jahre_schliesst_die_herabsetzung_aus(welt):
     """RC03 fuer den Vertrag, der in der FORTSCHREIBUNG beitragsfrei wird
-    (nicht schon uebernommen beitragsfrei): PEX im Jahr 12, Herabsetzung im
-    Jahr 12 (die Engine bucht PEX vor der Herabsetzung desselben Jahres,
-    also ist der Vertrag beitragsfrei) und im Jahr 13. Im Jahr 12 vor einer
-    PEX im Jahr 13 bleibt sie zulaessig. Mutationsproben: ``<=`` zu ``<``
-    in der Probe -> rot; den Rueckgriff auf die eigene PEX-Buchung
-    entfernen -> rot."""
-    same = _mit_eigener_pex(_mit_red(welt, POL, ZUGANGSJAHR + 1), POL, ZUGANGSJAHR + 1, "2027-01-01")
+    (nicht schon uebernommen beitragsfrei): PEX im Jahr 12, Beitrags-
+    herabsetzung im Jahr 12 (die Engine bucht PEX vor der Herabsetzung
+    desselben Jahres, also ist der Vertrag beitragsfrei) und im Jahr 13. Im
+    Jahr 12 vor einer PEX im Jahr 13 bleibt sie zulaessig. Die
+    Teilkuendigung im Jahr der Freistellung ist kein Widerspruch (klv.md
+    7.2). Mutationsproben: ``<=`` zu ``<`` in der Probe -> rot; den
+    Rueckgriff auf die eigene PEX-Buchung entfernen -> rot; den Widerspruch
+    auch fuer die Teilkuendigung melden -> rot."""
+    same = _mit_eigener_pex(_mit_red(welt, POL, ZUGANGSJAHR + 1, verfahren="prospektiv"),
+                            POL, ZUGANGSJAHR + 1, "2027-01-01")
     assert any("beitragsfrei gestellten Vertrag" in t and "Jahr 12" in t
                for t in _texte(_urteil(welt, same), "herabsetzung"))
-    spaeter = _mit_eigener_pex(_mit_red(welt, POL, ZUGANGSJAHR + 2), POL, ZUGANGSJAHR + 1, "2027-01-01")
+    spaeter = _mit_eigener_pex(_mit_red(welt, POL, ZUGANGSJAHR + 2, verfahren="prospektiv"),
+                               POL, ZUGANGSJAHR + 1, "2027-01-01")
     assert any("beitragsfrei gestellten Vertrag" in t
                for t in _texte(_urteil(welt, spaeter), "herabsetzung"))
-    davor = _mit_eigener_pex(_mit_red(welt, POL, ZUGANGSJAHR + 1), POL, ZUGANGSJAHR + 2, "2028-01-01")
+    davor = _mit_eigener_pex(_mit_red(welt, POL, ZUGANGSJAHR + 1, verfahren="prospektiv"),
+                             POL, ZUGANGSJAHR + 2, "2028-01-01")
     assert not any("beitragsfrei gestellten Vertrag" in t
                    for t in _texte(_urteil(welt, dict(davor, horizont=_dt.date(2028, 1, 1)))))
+    tku = _mit_eigener_pex(_mit_red(welt, POL, ZUGANGSJAHR + 1), POL, ZUGANGSJAHR + 1, "2027-01-01")
+    assert not any("beitragsfrei gestellten Vertrag" in t for t in _texte(_urteil(welt, tku)))
 
 
 # --------------------------------------------------------------------------- #
@@ -411,85 +451,113 @@ def _pex_vertrag_und_jahr(welt):
     return ab_jahr + 1
 
 
-def test_die_probe_leitet_fuer_einen_beitragsfreien_vertrag_kein_soll_her(welt):
-    """RC03, Fall 7000047: PEX im Vertragsjahr 1, Teilkuendigung danach.
-    Ledger und Tabelle tragen genau die Betraege, die aus dem
-    beitragspflichtigen Vertrag folgen — vorher 'bestanden'. Jetzt der
-    Widerspruch. Mutationsprobe: die PEX-Pruefung in pruefe_fuehrung
-    entfernen -> rot (das Soll des beitragspflichtigen Vertrags passt zu
-    den Zeilen)."""
+def test_die_probe_rechnet_die_teilkuendigung_nach_der_beitragsfreistellung_nach(welt):
+    """Fall 7000047 (beitragsfrei uebernommen, PEX im Vertragsjahr 1),
+    Teilkuendigung ein Jahr nach dem Zugang. Bis zum Entscheid des
+    Maintainers 2026-10-01 war das der RC03-Widerspruch; jetzt ist es ein
+    Vorgang: Die Teilkuendigung kuendigt den Anteil (1-f) der beitragsfreien
+    Summe und zahlt (1-f) x RKW des beitragsfreien Vertrags aus (klv.md 7.2,
+    Entscheid B3 vom 2026-10-01). Die Probe leitet das Soll her (Positivkontrolle) und haelt
+    es: verschobene Summe und gestrichene Auszahlung fallen als Betrags- bzw.
+    Vollstaendigkeitsbefund, nicht als Widerspruch. Mutationsprobe: das Soll
+    wieder aus dem beitragspflichtigen Vertrag herleiten -> rot."""
     jahr = _pex_vertrag_und_jahr(welt)
     urteil = _urteil(welt, _mit_red(welt, PEX_POLICE, jahr))
+    assert urteil["bestanden"], urteil["befunde"][:4]
+    assert urteil["buchungen_geprueft"]["TKU"] >= 2
+    for verstuemmelt in _verstuemmelt(_mit_red(welt, PEX_POLICE, jahr)):
+        befunde = _urteil(welt, verstuemmelt)["befunde"]
+        assert befunde, "verfaelschte Buchung unentdeckt"
+        assert not any("beitragsfrei gestellten Vertrag" in b["text"] for b in befunde), befunde[:3]
+
+
+def test_die_probe_leitet_fuer_eine_herabsetzung_auf_beitragsfreiem_vertrag_kein_soll_her(welt):
+    """RC03 fuer die BEITRAGSHERABSETZUNG (klv.md 7.1: kein Beitrag, nichts
+    herabzusetzen). Ledger und Tabelle tragen die Betraege des
+    beitragspflichtigen Vertrags; der Befund ist der Widerspruch, kein
+    Betrag daneben. Mutationsprobe: die PEX-Pruefung in pruefe_fuehrung
+    entfernen -> rot."""
+    jahr = _pex_vertrag_und_jahr(welt)
+    urteil = _urteil(welt, _mit_red(welt, PEX_POLICE, jahr, verfahren="prospektiv"))
     assert not urteil["bestanden"]
     assert any("beitragsfrei gestellten Vertrag" in t for t in _texte(urteil, "herabsetzung")), \
         urteil["befunde"][:4]
     # Kein Betrags-Befund daneben: Es gibt kein Soll, gegen das ein Betrag falsch waere.
     assert not [b for b in urteil["befunde"] if b["art"] == "buchung"]
-    # ... und keine Vollstaendigkeit: Summe verschoben oder Auszahlung gestrichen
-    # aendert an der Meldung nichts. Mutationsproben: den Skip in der
-    # Vollstaendigkeits- bzw. der Zeilenschleife der Probe entfernen -> rot.
-    for verstuemmelt in _verstuemmelt(_mit_red(welt, PEX_POLICE, jahr)):
-        nur = [b for b in _urteil(welt, verstuemmelt)["befunde"] if b["art"] in ("buchung", "herabsetzung")]
-        assert len(nur) == 1 and "beitragsfrei gestellten Vertrag" in nur[0]["text"], nur
+    for verstuemmelt in _verstuemmelt(_mit_red(welt, PEX_POLICE, jahr, verfahren="prospektiv")):
+        befunde = _urteil(welt, verstuemmelt)["befunde"]
+        assert not [b for b in befunde if b["art"] == "buchung"], befunde[:4]
+        assert sum("beitragsfrei gestellten Vertrag" in b["text"] for b in befunde) == 1, befunde[:4]
 
 
-def test_p_b1_leitet_fuer_einen_beitragsfreien_vertrag_kein_soll_her(welt):
-    """RC03 in ``pruefe_ledger_betraege``: Widerspruch statt Betragsherleitung.
-    Mutationsprobe: den Widerspruch in ledger_bindung entfernen -> []."""
+def test_p_b1_rechnet_die_teilkuendigung_nach_der_beitragsfreistellung_nach(welt):
+    """Dieselbe Teilkuendigung in ``pruefe_ledger_betraege``: hergeleitet und
+    gruen; verschoben oder gestrichen ein Betrags- bzw.
+    Vollstaendigkeitsbefund."""
     tab = _mit_red(welt, PEX_POLICE, _pex_vertrag_und_jahr(welt))
-    fehler = pruefe_ledger_betraege(
-        tab["bestand"], tab["ledger"], welt["config"], scheiben=tab["scheiben"],
-        historie=tab["historie"], merkmale=tab["merkmale"], schichten=tab["schichten"],
-        verankerung=tab["verankerung"], reduktionen=tab["reduktionen"])
+    assert _p_b1_betraege(welt, tab) == []
+    assert validate_reduktionen(tab["bestand"], tab["reduktionen"], tab["historie"]) == []
+    for verstuemmelt in _verstuemmelt(tab):
+        fehler = _p_b1_betraege(welt, verstuemmelt)
+        assert fehler and not any("beitragsfrei gestellten Vertrag" in f for f in fehler), fehler
+
+
+def test_p_b1_leitet_fuer_eine_herabsetzung_auf_beitragsfreiem_vertrag_kein_soll_her(welt):
+    """RC03 in ``pruefe_ledger_betraege``: Widerspruch statt Betragsherleitung.
+    Mutationsprobe: den Widerspruch in ledger_bindung entfernen -> rot."""
+    tab = _mit_red(welt, PEX_POLICE, _pex_vertrag_und_jahr(welt), verfahren="prospektiv")
+    fehler = _p_b1_betraege(welt, tab)
     assert any("beitragsfrei gestellten Vertrag" in f for f in fehler), fehler
     assert not any("Ledger" in f and "Kern" in f for f in fehler), fehler
-    # Positivkontrolle: dieselbe Herabsetzung auf dem beitragspflichtigen Vertrag: keine Befunde.
-    gut = _mit_red(welt, POL, ZUGANGSJAHR + 1)
-    assert pruefe_ledger_betraege(
-        gut["bestand"], gut["ledger"], welt["config"], scheiben=gut["scheiben"],
-        historie=gut["historie"], merkmale=gut["merkmale"], schichten=gut["schichten"],
-        verankerung=gut["verankerung"], reduktionen=gut["reduktionen"]) == []
+    # Positivkontrolle: die Teilkuendigung auf dem beitragspflichtigen Vertrag: keine Befunde.
+    assert _p_b1_betraege(welt, _mit_red(welt, POL, ZUGANGSJAHR + 1)) == []
 
 
 def test_p_b1_weist_die_herabsetzung_auf_dem_beitragsfreien_vertrag_ueber_die_tabelle_ab(welt):
     """Dieselbe Regel im Datenvertrag (Tabelle gegen Historie)."""
-    tab = _mit_red(welt, PEX_POLICE, _pex_vertrag_und_jahr(welt))
+    tab = _mit_red(welt, PEX_POLICE, _pex_vertrag_und_jahr(welt), verfahren="prospektiv")
     fehler = validate_reduktionen(tab["bestand"], tab["reduktionen"], tab["historie"])
     assert any("beitragsfrei" in f.lower() and "Zustandswechsel" in f for f in fehler), fehler
 
 
 def _verstuemmelt(tab: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Dieselbe Welt mit (a) um 1 EUR verschobener Summe und (b) gestrichener
-    Auszahlung: Gegen ein hergeleitetes Soll waeren beide Befunde."""
+    """Dieselbe Welt mit (a) um 1 EUR verschobener Summe und (b) — bei der
+    Teilkuendigung — gestrichener Auszahlung: Gegen ein hergeleitetes Soll
+    waeren beide Befunde."""
     led = tab["ledger"]
-    summe = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "VS_teilkuendigung")]
+    summe = led.index[led["betrag_art"].isin(["VS_teilkuendigung", "VS_herabsetzung"])
+                      & led["ereignis"].isin(["TKU", "RED"])]
     zahl = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "RKW_teilkuendigung")]
-    assert len(summe) and len(zahl)
+    assert len(summe)
     plus = led.copy()
     plus.loc[summe[0], "betrag"] += 1.0
-    return [dict(tab, ledger=plus), dict(tab, ledger=led.drop(index=zahl[0]))]
+    aus = [dict(tab, ledger=plus)]
+    if len(zahl):
+        aus.append(dict(tab, ledger=led.drop(index=zahl[0])))
+    return aus
 
 
 def test_p_b1_meldet_nur_den_widerspruch_und_leitet_kein_soll_her(welt):
     """Fuer eine Herabsetzung auf einem beitragsfreien Vertrag gibt es kein
     Soll — weder Betrag noch Vollstaendigkeit. Die Meldung ist der
     Widerspruch, nichts daneben (kein 'Ledger x, Kern y' gegen einen Kern,
-    den es nicht gibt). Mutationsproben: den Zeilen-Skip bzw. den
+    den es nicht gibt). Die Bindung an das Tarifwerk meldet daneben, dass der
+    uebernommene Tarif keine Herabsetzung kennt — eine zweite, eigene
+    Aussage. Mutationsproben: den Zeilen-Skip bzw. den
     Vollstaendigkeits-Skip in ledger_bindung entfernen -> rot."""
-    basis = _mit_red(welt, PEX_POLICE, _pex_vertrag_und_jahr(welt))
+    basis = _mit_red(welt, PEX_POLICE, _pex_vertrag_und_jahr(welt), verfahren="prospektiv")
     for tab in _verstuemmelt(basis):
-        fehler = pruefe_ledger_betraege(
-            tab["bestand"], tab["ledger"], welt["config"], scheiben=tab["scheiben"],
-            historie=tab["historie"], merkmale=tab["merkmale"], schichten=tab["schichten"],
-            verankerung=tab["verankerung"], reduktionen=tab["reduktionen"])
-        assert len(fehler) == 1 and "beitragsfrei gestellten Vertrag" in fehler[0], fehler
+        fehler = _p_b1_betraege(welt, tab)
+        assert sum("beitragsfrei gestellten Vertrag" in f for f in fehler) == 1, fehler
+        assert not any(("Ledger" in f and "Kern" in f) or "fehlen oder sind mehrfach" in f
+                       for f in fehler), fehler
 
 
 def test_p_b1_widerspruch_ist_am_pex_jahr_scharf(welt):
-    """Beitragsfrei ab dem Reduktionsjahr (PEX-Jahr == Reduktionsjahr) ist
+    """Beitragsfrei ab dem Jahr der Herabsetzung (PEX-Jahr == Jahr) ist
     schon ein Widerspruch, ein PEX ein Jahr SPAETER nicht. Mutationsprobe:
     ``<=`` zu ``<`` in ledger_bindung -> rot."""
-    tab = _mit_red(welt, POL, ZUGANGSJAHR + 1)
+    tab = _mit_red(welt, POL, ZUGANGSJAHR + 1, verfahren="prospektiv")
     beginn = pd.Timestamp(_zeile(welt, POL)["insurance_start"])
 
     def fehler(pex_jahr: int):
@@ -691,16 +759,28 @@ def test_datei_herabsetzung_nach_dem_horizont_gibt_p_b1_exit_20_und_probe_befund
     assert code == 1 and any("belegten Horizont" in b["text"] for b in beleg["befunde"]), beleg["befunde"][:3]
 
 
-def test_datei_teilkuendigung_auf_beitragsfreiem_vertrag_wird_abgewiesen(welt):
-    """RC03, End-zu-Ende (Police 7000047, Teilkuendigung im Jahr nach dem
-    Zugang, Betraege des beitragspflichtigen Vertrags)."""
+def test_datei_herabsetzung_auf_beitragsfreiem_vertrag_wird_abgewiesen(welt):
+    """RC03, End-zu-Ende (Police 7000047, Beitragsherabsetzung im Jahr nach
+    dem Zugang, Betraege des beitragspflichtigen Vertrags)."""
     lauf = _lauf_kopie(welt)
-    _schreibe_lauf(welt, lauf, _mit_red(welt, PEX_POLICE, _pex_vertrag_und_jahr(welt)))
+    _schreibe_lauf(welt, lauf, _mit_red(welt, PEX_POLICE, _pex_vertrag_und_jahr(welt),
+                                        verfahren="prospektiv"))
     pb1 = _pb1(welt, lauf)
     assert pb1.exit_code == 20, (pb1.exit_code, pb1.errors)
     assert any("beitragsfrei" in e["message"] for e in pb1.errors), pb1.errors
     code, beleg = _probe_datei(welt, lauf)
     assert code == 1 and any("beitragsfrei gestellten Vertrag" in b["text"] for b in beleg["befunde"])
+
+
+def test_datei_teilkuendigung_auf_beitragsfreiem_vertrag_wird_nachgerechnet(welt):
+    """Dieselbe Stelle als Teilkuendigung (klv.md 7.2, Entscheid B3 vom 2026-10-01),
+    End-zu-Ende: P-B1 Exit 0, Probe Exit 0."""
+    lauf = _lauf_kopie(welt)
+    _schreibe_lauf(welt, lauf, _mit_red(welt, PEX_POLICE, _pex_vertrag_und_jahr(welt)))
+    pb1 = _pb1(welt, lauf)
+    assert pb1.exit_code == 0, (pb1.exit_code, pb1.errors)
+    code, beleg = _probe_datei(welt, lauf)
+    assert code == 0 and beleg["befunde"] == [], beleg["befunde"][:3]
 
 
 def test_datei_nebentabellen_der_fortschreibung_werden_von_der_probe_gelesen(welt):

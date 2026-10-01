@@ -136,23 +136,33 @@ def test_die_tabelle_haelt_ihren_eigenen_vertrag_ein(welt):
 
 
 def test_jede_herabsetzung_bucht_summe_und_absorbierte_schicht(welt):
-    """Zwei Zeilen je Vorfall: die neue Gesamtsumme und der Schichtbetrag,
-    der in die Neuberechnung eingegangen ist. Ohne die zweite faellt die
-    Spalte korrekturschicht des Abschlusses ab hier auf null, und niemand
-    saehe, wohin der Betrag ging."""
+    """Zwei Zeilen beim ERSTEN Vorgang einer Police: die neue Gesamtsumme und
+    der Schichtbetrag, der in die Neuberechnung eingegangen ist. Ohne die
+    zweite faellt die Spalte korrekturschicht des Abschlusses ab hier auf
+    null, und niemand saehe, wohin der Betrag ging. Jeder weitere Vorgang
+    (beliebig viele seit 2026-10-01) bucht nur die Summe — die Schicht ist
+    aufgegangen. Mutationsprobe: die Schicht beim zweiten Vorgang noch einmal
+    aufnehmen -> rot."""
     stamm, _s, _v, _ohne, mit = welt
     felder = _config(True).generationen[0].generation_fields()
     haupt = stamm.set_index("police_id")
     red = mit.ledger[mit.ledger["ereignis"] == "RED"]
-    for zeile in mit.reduktionen.to_dict("records"):
+    erste = mit.reduktionen.groupby("police_id", sort=False).head(1).index
+    weitere = 0
+    for i, zeile in mit.reduktionen.iterrows():
         pid, jahr = int(zeile["police_id"]), int(zeile["reduktion_jahr"])
         zeilen = red[(red["police_id"] == pid) & (red["vertragsjahr"] == jahr)]
         arten = dict(zip(zeilen["betrag_art"], zeilen["betrag"]))
+        if i not in erste:
+            assert set(arten) == {"VS_herabsetzung"}, (pid, jahr, arten)
+            weitere += 1
+            continue
         assert set(arten) == {"VS_herabsetzung", "dDK_absorption"}
         mp = ModelPoint(**model_point_kwargs(haupt.loc[pid], felder))
         erwartet = schichtwert_bei(_parameter(), MONATE_TA, mp, 12 * jahr)
         assert erwartet > 0.0
         assert arten["dDK_absorption"] == pytest.approx(erwartet, rel=1e-12)
+    assert weitere > 0, "keine Police mit zweitem Vorgang — die Aussage bliebe ungesehen"
 
 
 def test_die_bewertung_ist_an_der_naht_wertstetig(welt):
@@ -178,7 +188,8 @@ def test_die_bewertung_ist_an_der_naht_wertstetig(welt):
     scheiben = _scheiben_kerne(stamm, mit.scheiben, cfg)
     geprueft = 0
     mit_rest = 0
-    for zeile in mit.reduktionen.to_dict("records"):
+    # Die Naht zum ungekuerzten Vertrag ist der ERSTE Vorgang je Police.
+    for zeile in mit.reduktionen.groupby("police_id", sort=False).head(1).to_dict("records"):
         pid, jahr = int(zeile["police_id"]), int(zeile["reduktion_jahr"])
         stichtag = _dt.date(2015 + jahr, 1, 1)
         gemeinsam = dict(scheiben=mit.scheiben, schichten=sch, verankerung=ver)
@@ -366,24 +377,29 @@ def test_jede_erzeugerrolle_braucht_einen_spaltenvertrag(monkeypatch, tmp_path):
 
 
 def test_in_den_stand_kommt_nur_eine_gebuchte_herabsetzung():
-    """Der Tagesbetrieb schneidet auf den Buchungsstand. Eine Herabsetzung
-    gehoert in den Stand, wenn ihre RED-Zeile darin steht — abgeleitet aus
-    dem Ledger, nicht als zweite Regel auf dem Reduktionsdatum."""
+    """Der Tagesbetrieb schneidet auf den Buchungsstand. Ein Vorgang gehoert
+    in den Stand, wenn SEINE Zeile darin steht (Police, Wirkungstag, Code) —
+    abgeleitet aus dem Ledger, nicht als zweite Regel auf dem
+    Reduktionsdatum. Seit es beliebig viele Vorgaenge je Police gibt, je
+    Vorgang, nicht je Police: Die zweite Herabsetzung der Police 1, noch nicht
+    gebucht, bleibt draussen. Mutationsprobe: wieder je Police schneiden ->
+    rot."""
     from rechner_pipeline.betrieb.tageslauf import _gebuchte_reduktionen
 
     reduktionen = pd.DataFrame({
-        "police_id": [1, 2],
-        "reduktion_jahr": [5, 6],
-        "reduktion_datum": [pd.Timestamp("2020-01-01"),
+        "police_id": [1, 1, 2],
+        "reduktion_jahr": [5, 7, 6],
+        "reduktion_datum": [pd.Timestamp("2020-01-01"), pd.Timestamp("2022-01-01"),
                             pd.Timestamp("2021-01-01")],
-        "anteil": [0.6, 0.6],
-        "verfahren": ["prospektiv", "prospektiv"],
+        "anteil": [0.6, 0.6, 0.6],
+        "verfahren": ["prospektiv", "prospektiv", "prospektiv"],
     })
     ledger = pd.DataFrame({
         "police_id": [1, 2], "ereignis": ["RED", "STO"],
+        "status_date": [pd.Timestamp("2020-01-01"), pd.Timestamp("2021-01-01")],
     })
     gebucht = _gebuchte_reduktionen(reduktionen, ledger)
-    assert list(gebucht["police_id"]) == [1]
+    assert list(zip(gebucht["police_id"], gebucht["reduktion_jahr"])) == [(1, 5)]
     # Ohne Tabelle bleibt es dabei.
     assert _gebuchte_reduktionen(None, ledger) is None
 

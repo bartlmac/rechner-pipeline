@@ -42,8 +42,11 @@ def welt():
 
 
 def _nach_red(erg):
-    """Je Police mit Herabsetzung die Erhoehungen DANACH."""
-    red = erg.reduktionen.set_index("police_id")
+    """Je Police mit GENAU EINER Herabsetzung die Erhoehungen DANACH (die
+    Zusage dieses Moduls ist die des einen Vorgangs; Folgen mehrerer Vorgaenge
+    haelt tests/test_vorgangsfolge_leser.py)."""
+    red = erg.reduktionen
+    red = red[~red["police_id"].duplicated(keep=False)].set_index("police_id")
     s = erg.scheiben
     aus = {}
     for pid, zeile in red.iterrows():

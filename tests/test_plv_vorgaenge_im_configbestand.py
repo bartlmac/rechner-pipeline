@@ -163,8 +163,19 @@ def test_ohne_vorgang_bitgleich_mit_vorgang_nur_ab_dem_vorgang_verschieden(welte
         verschieden = a["betrag"].to_numpy() != b["betrag"].to_numpy()
         assert not (verschieden & (a["vertragsjahr"].to_numpy() < j0)).any(), pid
         geaendert.update(a["ereignis"].to_numpy()[verschieden])
-    assert len(betroffen) == 275
-    assert dict(geaendert) == {"ERH": 1198, "STO": 52, "PEX": 13, "ABL": 102, "TOD": 11}
+    # Gemessen auf dem Stand des Entscheids vom 2026-10-01 (beliebig viele
+    # Vorgaenge, Teilkuendigung nach der Beitragsfreistellung): 283 Policen mit
+    # Vorgang (275 auf 6046922 — dazu 7 mit Teilkuendigung allein nach der
+    # Beitragsfreistellung und 1 mit erstem Vorgang erst nach einem vorher
+    # verworfenen); bewegt sind nur Betraege ab dem ersten Vorgang.
+    assert len(betroffen) == ANZAHL_BETROFFEN
+    assert dict(geaendert) == GEAENDERT
+
+
+#: Policen mit Vorgang und die Betragsaenderungen ab dem Vorgang in der Welt
+#: MIT Raten (Stand 2026-10-01, Vorgangsfolge; siehe Test oben).
+ANZAHL_BETROFFEN = 283
+GEAENDERT = {"ERH": 1198, "STO": 52, "PEX": 13, "ABL": 107, "TOD": 11}
 
 
 #: Fingerabdruck der Welt OHNE die beiden Raten, gemessen auf dem Stand
@@ -219,27 +230,23 @@ def _jahr_ab(start: pd.Timestamp, jahre: int) -> dt.date:
 
 def test_die_ziehungen_folgen_den_grenzen_des_tarifplans(welten):
     """Je Vertrag die beiden Stroeme aus dem Register, chronologisch, mit
-    den Grenzen aus Tarifplan KLV 7.2 — ohne die Engine:
+    den Grenzen aus Tarifplan KLV 7.1 bis 7.3 — ohne die Engine:
 
-    * Herabsetzung nur fuer ``0 < Jahr < t``, Teilkuendigung fuer
-      ``0 < Jahr < n``, beide nur ohne Beitragsfreistellung;
-    * hoechstens ein Vorgang je Vertrag: Danach zieht der Strom weiter
-      (gezogen, verworfen), es wird nichts gebucht;
-    * nach einer Beitragsfreistellung wird nicht mehr gezogen.
+    * Herabsetzung fuer ``0 < Jahr < t`` eines beitragspflichtigen Vertrags
+      (nicht im Jahr der Beitragsfreistellung und nicht danach);
+    * Teilkuendigung fuer ``0 < Jahr < n``, auch nach der
+      Beitragsfreistellung (im Jahr der Freistellung nach ihr);
+    * beliebig viele Vorgaenge je Vertrag (Entscheid 2026-10-01): JEDER
+      gezogene wird gebucht.
 
     Abgang (Tod, Storno) und Beitragsfreistellung kommen aus dem
     Hauptstrom der Welt OHNE Raten — sie haengen nicht von den neuen
     Stroemen ab (Zeuge oben).
 
-    "Gezogen, verworfen" und "nicht gezogen" sind nach einem Vorgang
-    gleichwertig: Jeder Strom dient nur seiner Familie, und nach dem ersten
-    Vorgang bucht keine mehr — die Pruefung ``vertrag.reduktion is None``
-    vor die Ziehung zu stellen ist eine Mutation ohne Wirkung (gemessen,
-    bleibt gruen). Bitstabil ist beides; die Zaehler oben sind Messung.
-
-    Mutationsprobe: die Teilkuendigung nur vor dem Beitragsende ziehen
-    (``j + 1 < t`` statt ``j + 1 < n``) -> die neun Teilkuendigungen nach
-    dem Beitragsende fehlen, rot."""
+    Mutationsproben: die Teilkuendigung nur vor dem Beitragsende ziehen
+    (``j + 1 < t`` statt ``j + 1 < n``) -> die Teilkuendigungen nach dem
+    Beitragsende fehlen, rot; nach der Beitragsfreistellung nicht mehr
+    ziehen -> rot; nach dem ersten Vorgang verwerfen -> rot."""
     config, mit, ohne = welten
     seed = config.seed
     stamm = mit.zugaenge.set_index("police_id")
@@ -247,7 +254,7 @@ def test_die_ziehungen_folgen_den_grenzen_des_tarifplans(welten):
     tod_sto = led[led["ereignis"].isin(["TOD", "STO"])].groupby("police_id")["vertragsjahr"].min()
     pex = led[led["ereignis"] == "PEX"].groupby("police_id")["vertragsjahr"].min()
 
-    erwartet = {}
+    erwartet = set()
     zaehler = Counter()
     for pid, row in stamm.iterrows():
         if row["produkt"] != "klv":
@@ -263,33 +270,34 @@ def test_die_ziehungen_folgen_den_grenzen_des_tarifplans(welten):
                 break
             if pid in tod_sto.index and tod_sto[pid] <= jahr:
                 break
-            if pid in pex.index and pex[pid] <= jahr:
-                zaehler["nach PEX nicht gezogen"] += 1
-                continue
-            for code, strom, grenze, rate in (("RED", rr, t, RED_RATE),
-                                               ("TKU", rt, n, TK_RATE)):
-                if jahr < grenze and strom.random() < rate:
-                    if pid in erwartet:
-                        zaehler[f"{code} gezogen, verworfen"] += 1
-                    else:
-                        erwartet[pid] = (code, jahr)
+            beitragsfrei = pid in pex.index and pex[pid] <= jahr
+            if not beitragsfrei and jahr < t and rr.random() < RED_RATE:
+                erwartet.add((int(pid), "RED", jahr))
+            if jahr < n and rt.random() < TK_RATE:
+                erwartet.add((int(pid), "TKU", jahr))
+                zaehler["TKU nach PEX" if beitragsfrei else
+                        "TKU nach t" if jahr >= t else "TKU vor t"] += 1
 
     v = _vorgaenge(mit.ledger)
-    ist = {int(p): (str(e), int(j)) for p, e, j in
+    ist = {(int(p), str(e), int(j)) for p, e, j in
            zip(v["police_id"], v["ereignis"], v["vertragsjahr"])}
     assert ist == erwartet
-    assert v["police_id"].is_unique                      # A4: ein Vorgang je Vertrag
+    je_police = Counter(p for p, _, _ in ist)
+    zaehler["Policen mit mehreren Vorgaengen"] = sum(1 for k in je_police.values() if k > 1)
+    zaehler["RED"] = sum(1 for _, e, _ in ist if e == "RED")
     # Die Grenzen werden im Config-Bestand tatsaechlich getroffen — sonst
-    # pruefte dieser Test sie nicht (Positivkontrolle).
-    assert dict(zaehler) == {"RED gezogen, verworfen": 10, "TKU gezogen, verworfen": 10,
-                             "nach PEX nicht gezogen": 2471}
+    # pruefte dieser Test sie nicht (Positivkontrolle). Gemessen 2026-10-01.
+    assert dict(zaehler) == ZIEHUNGEN, dict(zaehler)
     t_je = v["police_id"].map(stamm["premium_duration"])
-    red, tku = v[v["ereignis"] == "RED"], v[v["ereignis"] == "TKU"]
+    red = v[v["ereignis"] == "RED"]
     assert (red["vertragsjahr"] < t_je[red.index]).all()
-    assert (len(red), int((tku["vertragsjahr"] < t_je[tku.index]).sum()),
-            int((tku["vertragsjahr"] >= t_je[tku.index]).sum())) == (168, 98, 9)
     # Die BU zieht keinen der beiden Vorgaenge.
-    assert set(stamm.loc[list(ist), "produkt"]) == {"klv"}
+    assert set(stamm.loc[sorted({p for p, _, _ in ist}), "produkt"]) == {"klv"}
+
+
+#: Die Zaehler der Ziehungen in der Welt mit Raten (Stand 2026-10-01).
+ZIEHUNGEN = {"TKU vor t": 108, "TKU nach t": 9, "TKU nach PEX": 9,
+             "Policen mit mehreren Vorgaengen": 19, "RED": 178}
 
 
 def test_vorgaenge_je_kalenderjahr_im_verhaeltnis_zum_bestand(welten):
@@ -331,11 +339,13 @@ def test_vorgaenge_je_kalenderjahr_im_verhaeltnis_zum_bestand(welten):
 # --------------------------------------------------------------------------- #
 
 def test_bewegungskonto_fuehrt_beide_vorgaenge_mit_geschlossener_identitaet(welten):
-    """Die Teilkuendigung senkt die Summe um den gekuendigten Anteil der
-    GRUNDversicherung (Tarifplan KLV 7.2, A3: Erhoehungsscheiben bleiben) —
-    die Kontrollrechnung je Jahr ist deshalb ``-(1 - tk_anteil) * S`` aus dem
-    Stamm, ohne Kern. Die Herabsetzung bewegt die Summe nach dem Kern; hier
-    zaehlt nur, dass sie ausgewiesen ist und die Identitaet schliesst.
+    """Die Teilkuendigung kuerzt in den eigenen Tarifen JEDEN Baustein
+    proportional (Tarifplan KLV 7.2, Entscheid 2026-10-01): Die Summe danach
+    ist f mal die Summe davor — die Kontrollrechnung je Vorgang ist deshalb
+    ``-(1 - f) / f`` mal der gebuchten neuen Summe, ohne Kern und ohne das
+    Konto selbst; nach der Beitragsfreistellung im beitragsfreien Bestand. Die
+    Herabsetzung bewegt die Summe nach dem Kern; hier zaehlt nur, dass sie
+    ausgewiesen ist und die Identitaet schliesst.
 
     Mutationsprobe: in ``kennzahlen.bewegungskonto`` die Position
     ``veraenderung_teilkuendigung`` aus der Identitaet nehmen -> rot."""
@@ -346,17 +356,21 @@ def test_bewegungskonto_fuehrt_beide_vorgaenge_mit_geschlossener_identitaet(welt
                          and z["identitaet"]["bfr"] == {"stueck": True, "summe": True}
                          for z in konto)
     v = _vorgaenge(mit.ledger)
-    s = bestand.set_index("police_id")["sum_insured"]
-    tku = v[v["ereignis"] == "TKU"]
+    pex = mit.ledger[mit.ledger["ereignis"] == "PEX"].set_index("police_id")["status_date"]
+    tku = v[v["ereignis"] == "TKU"].copy()
+    tku["bfr"] = [int(p) in pex.index and d >= pex.loc[int(p)]
+                  for p, d in zip(tku["police_id"], tku["status_date"])]
+    assert tku["bfr"].any(), "keine Teilkuendigung nach der Beitragsfreistellung"
     jahre_mit = 0
     for zeile in konto:
         jahr = zeile["jahr"]
         im_jahr = tku[(tku["status_date"] > pd.Timestamp(jahr, 1, 1))
                       & (tku["status_date"] <= pd.Timestamp(jahr + 1, 1, 1))]
-        soll = -(1.0 - TK_ANTEIL) * float(s[im_jahr["police_id"]].sum())
-        ist = zeile["bpfl"]["veraenderung_teilkuendigung"]
-        assert ist["stueck"] == 0
-        assert ist["summe"] == pytest.approx(soll, rel=1e-9, abs=1e-6), jahr
+        for track, teil in (("bpfl", im_jahr[~im_jahr["bfr"]]), ("bfr", im_jahr[im_jahr["bfr"]])):
+            soll = -(1.0 - TK_ANTEIL) / TK_ANTEIL * float(teil["betrag"].sum())
+            ist = zeile[track]["veraenderung_teilkuendigung"]
+            assert ist["stueck"] == 0
+            assert ist["summe"] == pytest.approx(soll, rel=1e-9, abs=1e-6), (jahr, track)
         red = zeile["bpfl"]["veraenderung_herabsetzung"]["summe"]
         if len(im_jahr):
             jahre_mit += 1

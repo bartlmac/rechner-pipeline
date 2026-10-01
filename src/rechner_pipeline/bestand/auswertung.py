@@ -31,10 +31,10 @@ from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.fuehrung import bestand_am, months_between
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.bestand.schichten import schichten_je_police
-from rechner_pipeline.kern.beitragsreduktion import (
-    bestehende_teile,
-    reduzierte_teile,
-    vertrags_monatsreserve_reduziert,
+from rechner_pipeline.kern.vorgangsfolge import (
+    Vertragsstand,
+    Vorgangsfolge,
+    vorgang,
 )
 from rechner_pipeline.kern.korrekturschicht import (
     ab_verankerung,
@@ -282,105 +282,119 @@ def _scheiben_kerne(
     return je_police
 
 
-def werte_reduziert(
-    teile: List[Tuple[int, Any]], months_exp: int, pex_jahr: Optional[int],
-    *, stoab_je_baustein: bool, monatsgenau: bool,
+def werte_nach_vorgaengen(
+    folge: Vorgangsfolge, months_exp: int, *, monatsgenau: bool,
 ) -> Dict[str, Any]:
-    """Aktuarielle Werte eines HERABGESETZTEN Vertrags am Stichtag.
+    """Aktuarielle Werte eines Vertrags MIT Vorgaengen am Stichtag.
 
-    Spiegel von :func:`vertragswerte`. Der herabgesetzte Vertrag rechnet
-    ueber seinen geknickten Verlauf, nicht ueber zwei skalierte
-    Vertraege; WO der Stornoabschlag greift, sagt das Tarifwerk der
-    Generation — auch nach der Herabsetzung (T27-12), deshalb ohne
-    Default. Eine Beitragsfreistellung NACH der Herabsetzung laesst die
-    dort fixierte Summe auf dem beitragsfreien Satz weiterlaufen.
+    Spiegel von :func:`vertragswerte`: der Zustand der Vorgangsfolge am
+    Bewertungsmonat (``kern.vorgangsfolge`` — dieselbe Folge, die Engine,
+    P-B1 und Fuehrungsprobe lesen). WO der Stornoabschlag greift, sagt das
+    Tarifwerk der Generation (T27-12), und ob die Teilkuendigung jeden
+    Baustein trifft, ebenso; beides traegt die Folge.
 
     Dieselbe Stichtagskonvention wie fuer jeden anderen Vertrag
-    (Kalibrierungsfund N5 und Fund N11 der Pruefrunde T27: hier rechnete
-    einmal als einziger Zweig monatsgenau, waehrend der Nachbar die
-    Jahreszeile nahm). Der Bewertungsmonat ist unter ``monatsgenau`` der
-    Stichtag selbst, sonst der letzte Vertragsjahrestag — beide Zweige
-    lesen danach dieselben Kern-Funktionen, die zwischen den Jahrestagen
-    linear mischen und auf ihnen die Jahreszeile treffen.
+    (Kalibrierungsfund N5 und Fund N11 der Pruefrunde T27). Der
+    Bewertungsmonat ist unter ``monatsgenau`` der Stichtag selbst, sonst der
+    letzte Vertragsjahrestag — beide lesen dieselben Kern-Funktionen, die
+    zwischen den Jahrestagen linear mischen und auf ihnen die Jahreszeile
+    treffen. Der Rueckkaufswert eines beitragsfreien Vertrags steht hier wie
+    fuer jeden beitragsfreien Vertrag mit null im Ausweis (Stufe 1); die
+    Teilkuendigung rechnet ihn (Entscheid B3 vom 2026-10-01).
     """
     jahr = int(months_exp) // 12
     monat = int(months_exp) if monatsgenau else 12 * jahr
-    teile = bestehende_teile(teile, monat)
-    if pex_jahr is None:
-        reserve = vertrags_monatsreserve_reduziert(
-            teile, monat, stoab_je_baustein=stoab_je_baustein)
-        return {
-            "jahr": jahr, "status": "POL",
-            "deckungskapital": reserve.drx_bpfl,
-            "rueckkaufswert": reserve.rkw,
-            "vs_bfr": 0.0,
-        }
+    stand = folge.stand_am(monat)
+    werte = stand.werte(monat)
+    beitragsfrei = werte["status"] == "PEX"
     return {
-        "jahr": jahr, "status": "PEX",
-        "deckungskapital": sum(
-            v.reserve_beitragsfrei(
-                int(pex_jahr) - erh_jahr, monat - 12 * erh_jahr)
-            for erh_jahr, v in teile),
-        "rueckkaufswert": 0.0,
-        "vs_bfr": sum(
-            v.beitragsfreie_summe(int(pex_jahr) - erh_jahr)
-            for erh_jahr, v in teile),
+        "jahr": jahr, "status": werte["status"],
+        "deckungskapital": werte["deckungskapital"],
+        "rueckkaufswert": 0.0 if beitragsfrei else werte["rueckkaufswert"],
+        "korrekturschicht": werte["korrekturschicht"],
+        "vs_bfr": werte["vs_bfr"] if beitragsfrei else 0.0,
+        "leistung": werte["leistung"],
+        "stand": stand,
     }
 
 
-def beitraege_reduziert(teile: List[Tuple[int, Any]], jahr: int) -> Dict[str, float]:
-    """Beitraege eines herabgesetzten Vertrags — KOMPONENTENWEISE.
+def beitraege_nach_vorgaengen(stand: Vertragsstand, jahr: int) -> Dict[str, float]:
+    """Beitraege eines Vertrags mit Vorgaengen — KOMPONENTENWEISE.
 
-    Jeder Baustein zahlt den Beitrag seiner fortgefuehrten Summe
-    (``anteil x S_i``): Bei der Teilkuendigung tragen die Scheiben den
-    Anteil 1 und bleiben unveraendert, bei den PLV-Verfahren tragen alle
-    Bausteine denselben Faktor (klv.md 7.1). Die Stueckkosten sind je
-    Baustein fix und werden NICHT mit der Summe skaliert — die Summe
-    ueber alle Bausteine mal Anteil hatte beides falsch (Pruefrunde T27,
-    Befund 13: Scheiben und Stueckkosten mitreduziert). Der Beitrag der
-    fortgefuehrten Summe ist der Beitrag eines gewoehnlichen Kerns mit
-    dieser Summe — kein zweiter Rechenweg.
+    Jeder Baustein zahlt den Beitrag seines fortgefuehrten Teils (Summe
+    ``c x S_i`` des Zustands, ``Baustein.beitragskern``): Herabsetzungen
+    senken den Faktor c, Teilkuendigungen die wirksame Summe. Die
+    Stueckkosten sind je Baustein fix und werden NICHT mit der Summe
+    skaliert (Pruefrunde T27, Befund 13; Annahme B4). Der Beitrag ist der
+    eines gewoehnlichen Kerns mit dieser Summe — kein zweiter Rechenweg.
+    Nach der Beitragsfreistellung zahlt der Vertrag nichts.
     """
     aus = {"bjb": 0.0, "bzb_jahr": 0.0}
-    for erh_jahr, v in bestehende_teile(teile, 12 * jahr):
-        anteil = float(v.reduktion.anteil)
-        kern = Rechenkern(dataclasses.replace(
-            v.kern.mp, sum_insured=anteil * v.kern.mp.sum_insured))
-        bt = beitraege(kern, jahr - int(erh_jahr))
+    for erh_jahr, kern in stand.beitragskerne(12 * int(jahr)):
+        bt = beitraege(kern, int(jahr) - int(erh_jahr))
         aus = {n: aus[n] + bt[n] for n in aus}
     return aus
 
 
-def _reduzierte_vertraege(
+def pex_jahr_je_police(stamm: pd.DataFrame, historie: Optional[pd.DataFrame]) -> Dict[int, int]:
+    """Das Vertragsjahr der Beitragsfreistellung je Police — aus der
+    Statushistorie (erste PEX-Zeile), wie die Bewertung es am Stichtag aus
+    der Zustandszeile liest."""
+    if historie is None or len(historie) == 0:
+        return {}
+    pex = historie[historie["status_code"] == "PEX"]
+    if len(pex) == 0:
+        return {}
+    beginn = stamm.set_index("police_id")["insurance_start"]
+    aus: Dict[int, int] = {}
+    for pid, datum in zip(pex["police_id"], pex["status_date"]):
+        pid = int(pid)
+        if pid not in beginn.index:
+            continue
+        j = months_between(pd.Timestamp(beginn.loc[pid]).date(),
+                           pd.Timestamp(datum).date()) // 12
+        aus[pid] = min(j, aus.get(pid, j))
+    return aus
+
+
+def _vorgangsfolgen(
     reduktionen: Optional[pd.DataFrame],
     kerne: Dict[int, Rechenkern],
     scheiben_je_police: Dict[int, List[Dict[str, Any]]],
     schicht_je_police: Dict[int, Any],
-    stoab_je_baustein_je_police: Optional[Mapping[int, bool]] = None,
-) -> Dict[int, List[Tuple[int, Any]]]:
-    """Je herabgesetzter Police ihr geknickter Verlauf, je Schicht.
+    tarifwerk_je_police: Mapping[int, Mapping[str, Any]],
+    pex_je_police: Optional[Mapping[int, int]] = None,
+) -> Dict[int, Vorgangsfolge]:
+    """Je Police mit Vorgaengen ihre Vorgangsfolge.
 
-    Der Kern rekonstruiert den herabgesetzten Vertrag aus Jahr, Anteil
-    und Verfahren; mehr traegt die Tabelle nicht, und mehr braucht es
-    nicht. Die Korrekturschicht geht dabei in die Grundscheibe ein —
-    dieselbe Rechnung wie in der Ereignis-Engine, denn es ist dieselbe
-    Funktion (``reduziere_geschichtet``). Zwei Rechenwege waeren zwei
-    Ergebnisse.
+    Der Kern rekonstruiert den Vertrag aus der FOLGE der Zeilen (Jahr,
+    Anteil, Verfahren), den Scheiben, der Beitragsfreistellung und der
+    Korrekturschicht — dieselbe Klasse wie in der Ereignis-Engine
+    (``kern.vorgangsfolge``). Zwei Rechenwege waeren zwei Ergebnisse. Das
+    Tarifwerk (Abzug je Baustein, Umfang der Teilkuendigung) ist das der
+    Generation der Police, ohne Default (Runde D).
     """
     if reduktionen is None or len(reduktionen) == 0:
         return {}
-    aus: Dict[int, List[Tuple[int, Any]]] = {}
+    je_police: Dict[int, List[Any]] = {}
     for zeile in reduktionen.to_dict("records"):
-        pid = int(zeile["police_id"])
+        je_police.setdefault(int(zeile["police_id"]), []).append(vorgang(
+            int(zeile["reduktion_jahr"]), float(zeile["anteil"]),
+            str(zeile["verfahren"])))
+    aus: Dict[int, Vorgangsfolge] = {}
+    for pid, vorgaenge in sorted(je_police.items()):
         if pid not in kerne:
             continue
-        aus[pid] = reduzierte_teile(
+        tw = tarifwerk_je_police[pid]
+        aus[pid] = Vorgangsfolge(
             kerne[pid],
             [(int(sch["erh_jahr"]), sch["kern"])
              for sch in scheiben_je_police.get(pid, ())],
-            int(zeile["reduktion_jahr"]), float(zeile["anteil"]),
-            str(zeile["verfahren"]), schicht=schicht_je_police.get(pid),
-            stoab_je_baustein=bool((stoab_je_baustein_je_police or {}).get(pid, False)))
+            vorgaenge,
+            pex_jahr=(pex_je_police or {}).get(pid),
+            schicht=(schicht_je_police[pid][:2] if pid in schicht_je_police else None),
+            stoab_je_baustein=bool(tw["stoab_je_baustein"]),
+            tku_umfang=str(tw["tku_umfang"]))
     return aus
 
 
@@ -567,14 +581,14 @@ def einzelwerte_am(
     generation_je_police = stamm.set_index("police_id")["tarif_generation"]
     tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
     schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
-    reduziert_je_police = _reduzierte_vertraege(
+    folge_je_police = _vorgangsfolgen(
         reduktionen, kerne, scheiben_je_police, schicht_je_police,
-        # Der Abzug je Baustein ist Eigenschaft der Generation der Police
-        # (Runde D): dieselbe Regel wie die Engine beim Ziehen.
-        {int(pid): bool(tarifwerk_je_generation[
-            str(generation_je_police.loc[int(pid)])]["stoab_je_baustein"])
+        # Das Tarifwerk ist Eigenschaft der Generation der Police (Runde D):
+        # dieselbe Regel wie die Engine beim Ziehen.
+        {int(pid): tarifwerk_je_generation[str(generation_je_police.loc[int(pid)])]
          for pid in (reduktionen["police_id"] if reduktionen is not None else ())
-         if int(pid) in generation_je_police.index})
+         if int(pid) in generation_je_police.index},
+        pex_jahr_je_police(stamm, journal))
 
     scheibe = bestand_am(stamm, journal, stichtag)
     zeilen: List[Dict[str, Any]] = []
@@ -628,37 +642,36 @@ def einzelwerte_am(
         if status == "PEX":
             # Das PEX-Jahr ist Zustand: Vertragsjahr des Statusbeginns.
             pex_jahr = months_between(beginn.date(), status_seit.date()) // 12
-        # Ein herabgesetzter Vertrag rechnet ueber seinen geknickten
-        # Verlauf: EIN Vertrag, alle Schichten darin, Stornoabschlag
-        # einmal vertragsweit. Deshalb ein eigener Zweig statt eines
-        # Zuschlags auf die ungekuerzte Rechnung — und deshalb weder
-        # Scheiben-Schleife noch Schicht-Position darunter: Beides steckt
-        # schon im reduzierten Verlauf.
-        reduziert = reduziert_je_police.get(pid)
-        if (reduziert is not None
-                and int(months_exp) < 12 * reduziert[0][1].reduktion.jahr):
-            # Vor ihrem Jahrestag gilt der ungekuerzte Vertrag. Die
-            # Tabelle steht je POLICE, die Herabsetzung wirkt ab ihrem
-            # DATUM — ein Stichtag davor rechnet den alten Verlauf.
-            reduziert = None
-        if reduziert is not None:
-            werte = werte_reduziert(
-                reduziert, int(months_exp), pex_jahr,
-                stoab_je_baustein=bool(tarifwerk_je_generation[
-                    str(generation_je_police.loc[pid])]["stoab_je_baustein"]),
-                monatsgenau=klv_monatsgenau)
-            zeile["leistung"] = sum(
-                v.reduktion.vs_neu
-                for _, v in bestehende_teile(reduziert, int(months_exp)))
+        # Ein Vertrag mit Herabsetzungen oder Teilkuendigungen rechnet ueber
+        # seine Vorgangsfolge: EIN Vertrag, alle Bausteine darin, der Zustand
+        # nach allen Vorgaengen bis zum Stichtag. Deshalb ein eigener Zweig
+        # statt eines Zuschlags auf die ungekuerzte Rechnung — und deshalb
+        # weder Scheiben-Schleife noch Schicht-Position darunter: Beides
+        # steckt schon im Zustand.
+        folge = folge_je_police.get(pid)
+        if folge is not None and int(months_exp) < 12 * folge.erstes_jahr:
+            # Vor dem Jahrestag des ersten Vorgangs gilt der ungekuerzte
+            # Vertrag — ein Stichtag davor rechnet den alten Verlauf.
+            folge = None
+        if folge is not None:
+            werte = werte_nach_vorgaengen(
+                folge, int(months_exp), monatsgenau=klv_monatsgenau)
+            if (werte["status"] == "PEX") != (pex_jahr is not None):
+                raise ValueError(
+                    f"police {pid}: die Zustandszeile am {stichtag} sagt "
+                    f"{status!r}, die Vorgangsfolge "
+                    f"{werte['status']!r} — Statushistorie und Folge erzaehlen "
+                    "verschiedene Geschichten")
+            zeile["leistung"] = werte["leistung"]
             if pex_jahr is None:
-                bt = beitraege_reduziert(reduziert, int(months_exp) // 12)
+                bt = beitraege_nach_vorgaengen(werte["stand"], int(months_exp) // 12)
                 zeile["jahresbeitrag"] = bt["bjb"]
                 zeile["bzb_jahr"] = bt["bzb_jahr"]
             zeile["status"] = werte["status"]
             zeile["deckungskapital"] = werte["deckungskapital"]
-            zeile["rueckkaufswert"] = (
-                0.0 if werte["status"] == "PEX" else werte["rueckkaufswert"])
-            zeile["vs_bfr"] = werte["vs_bfr"] if werte["status"] == "PEX" else 0.0
+            zeile["rueckkaufswert"] = werte["rueckkaufswert"]
+            zeile["korrekturschicht"] = werte["korrekturschicht"]
+            zeile["vs_bfr"] = werte["vs_bfr"]
             zeilen.append(zeile)
             continue
         stoab_je_baustein = bool(tarifwerk_je_generation[

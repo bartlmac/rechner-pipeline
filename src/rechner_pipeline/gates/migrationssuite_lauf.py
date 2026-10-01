@@ -47,6 +47,7 @@ from rechner_pipeline.bestand.parquet_io import (
 )
 from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.gates._provenienz import systemstand
+from rechner_pipeline.bestand.migrationszugang import TKU_UMFAENGE
 from rechner_pipeline.models.bestand import (
     alt_absetzung_ist_teilkuendigung,
     model_point_kwargs,
@@ -357,6 +358,8 @@ def _serienzustand(
     scheiben_mit_gamma1: bool = False,
     anker_wert: Optional[Tuple[int, float]] = None,
     red_verfahren: str = TEILKUENDIGUNG,
+    tku_umfang: Optional[str] = None,
+    stoab_je_baustein: bool = False,
 ) -> Dict[str, Any]:
     """Anfangszustand einer Ereignis-SERIE (Lieferung-2-Regelfall).
 
@@ -378,36 +381,30 @@ def _serienzustand(
         bestimme_serie_mit_kandidaten,
         leite_pex_ursprungssumme_ab,
         leite_serie_aus_satz_ab,
+        leite_serie_ueber_folge_ab,
+        serie_braucht_folge,
     )
 
     arten = [a for a, _, _ in folge]
-    # Welcher Vorgang eine gelieferte Absetzung war (Annahme A2, klv.md
-    # 7.2): nach dem Beitragsende eine Teilkuendigung, gleich welches
-    # Verfahren die Quelle sonst fuehrt; davor sagt es das Verfahren.
-    geteilt = [
-        jahr for art, jahr, _ in folge
-        if art == "RED" and not alt_absetzung_ist_teilkuendigung(
-            red_verfahren, jahr, int(mp_felder["t"]))]
-    if geteilt:
-        # Die Serien-Ableitung kennt nur die Teilkuendigung (die
-        # Grundsumme wird mit f skaliert, die Scheiben bleiben). Unter
-        # prospektiv/mit Abzug ist der Vertrag nach einer Herabsetzung VOR
-        # dem Beitragsende ein geteilter — ihn mit Teilkuendigungs-Semantik
-        # zu rekonstruieren hiesse, die Sperre der Uebernahme zu umgehen
-        # (Angriffsrunde der Nacht: Deckungskapital bis -9.039 EUR). Benannt
-        # statt falsch.
-        raise MigrationszugangFehler(
-            f"Serie mit Herabsetzung unter Verfahren {red_verfahren!r} vor dem "
-            f"Beitragsende (Jahr {geteilt}): die Serien-Ableitung kennt nur "
-            "die Teilkuendigung — ein geteilter Vertrag laesst sich so nicht "
-            "rekonstruieren")
     if "PEX" in arten:
-        if arten.count("PEX") > 1 or arten[-1] != "PEX":
+        # Nach der Beitragsfreistellung stellt die Quelle nichts mehr um —
+        # ausser Absetzungen: Jede gelieferte Absetzung danach war eine
+        # Teilkuendigung der beitragsfreien Summe (Uebersetzungsregel
+        # ``zielverfahren``, Annahme B5; Entscheid des Maintainers 2026-10-01:
+        # TKU auch nach PEX).
+        pex_pos = arten.index("PEX")
+        nach_pex = arten[pex_pos + 1:]
+        if arten.count("PEX") > 1 or any(a != "RED" for a in nach_pex):
             raise SystemExit(
-                f"Police {police}: Beitragsfreistellung ist in der "
-                f"Vorgeschichte nicht terminal ({arten}) — die Quelle "
-                "stellt danach nichts mehr um; Lieferung klaeren")
-        pex_jahr = folge[-1][1]
+                f"Police {police}: nach der Beitragsfreistellung folgt in der "
+                f"Vorgeschichte etwas anderes als Teilkuendigungen ({arten}) — "
+                "die Quelle stellt danach nichts mehr um; Lieferung klaeren")
+        pex_jahr = folge[pex_pos][1]
+        # Ein-Punkt-Inversion auch mit Teilkuendigungen nach der
+        # Freistellung und Herabsetzungen davor: Jeder Vorgang nach PEX
+        # kuerzt beitragsfreie Summen, und Bausteine desselben Ablauftermins
+        # tragen je Einheit beitragsfreier Summe denselben Reservesatz — die
+        # gelieferte (gekuerzte) Gesamtsumme bleibt die bestimmende Groesse.
         return {
             "beitragsfrei_seit_jahr": pex_jahr,
             "sum_insured": leite_pex_ursprungssumme_ab(
@@ -438,6 +435,37 @@ def _serienzustand(
             anteil = red_anteile_je_datum.get(police, {}).get(
                 datum, red_anteile.get(police))
         ereignisse.append((art, jahr, anteil))
+    # Die geschlossene Serien-Ableitung traegt nur die Teilkuendigung der
+    # Grundversicherung (jede Folge linear in der Ursprungssumme). Ist eine
+    # gelieferte Absetzung nach der Uebersetzungsregel eine echte
+    # Herabsetzung (Annahme B5: Quelle mit Herabsetzung, vor dem
+    # Beitragsende) oder trifft die Teilkuendigung nach dem Tarifwerk alle
+    # Bausteine (Entscheid B1 vom 2026-10-01), rechnet die Vorgangsfolge des Kerns den
+    # Zustand — der Vertrag ist dann geteilt und traegt seine Vorgaenge.
+    mit_folge, umfang = serie_braucht_folge(
+        ereignisse, red_verfahren=red_verfahren, tku_umfang=tku_umfang,
+        beitragsdauer=int(mp_felder["t"]))
+    if mit_folge:
+        serie_f = leite_serie_ueber_folge_ab(
+            mp_felder, ereignisse=ereignisse, erlsumme=erlsumme,
+            satz=erhoehungssatz, red_verfahren=red_verfahren, tku_umfang=umfang,
+            stoab_je_baustein=stoab_je_baustein,
+            scheiben_mit_gamma1=scheiben_mit_gamma1)
+        zustand_f: Dict[str, Any] = {
+            "sum_insured": serie_f.grundsumme,
+            "scheiben": serie_f.scheiben,
+            # Jeder Anteil ist registrierte Auskunft (ohne sie verweigert die
+            # Ableitung): Pflichtziehung der Abnahmen.
+            "gedeckt_durch": GEDECKT_AUSKUNFT,
+        }
+        if serie_f.vorgaenge:
+            # Ein GETEILTER Vertrag: Ursprungssummen plus Vorgaenge.
+            zustand_f["vorgaenge"] = serie_f.vorgaenge
+        else:
+            # Nur Teilkuendigungen: zustandslos in IST-Summen; die
+            # Teilkuendigungen stehen als Beleg wie in der geschlossenen Form.
+            zustand_f["alt_absetzungen"] = serie_f.teilkuendigungen
+        return zustand_f
     offene_red = any(
         art == "RED" and anteil is None for art, _, anteil in ereignisse)
     if offene_red and red_anteil_kandidaten:
@@ -583,6 +611,8 @@ def anfangszustaende_je_police(
     red_anteile_je_datum: Optional[Dict[str, Dict[str, float]]] = None,
     red_anteil_kandidaten: Tuple[float, ...] = (),
     scheiben_mit_gamma1: bool = False,
+    tku_umfang: Optional[str] = None,
+    stoab_je_baustein: bool = False,
 ) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
     """Vorgeschichts-Welten je Police ableiten — auch SERIEN.
 
@@ -702,7 +732,8 @@ def anfangszustaende_je_police(
                     red_anteil_kandidaten=red_anteil_kandidaten,
                     scheiben_mit_gamma1=scheiben_mit_gamma1,
                     anker_wert=(anker or {}).get(police),
-                    red_verfahren=red_verfahren)
+                    red_verfahren=red_verfahren, tku_umfang=tku_umfang,
+                    stoab_je_baustein=stoab_je_baustein)
             except MigrationszugangFehler as exc:
                 warnungen.append(f"Police {police} (Serie): {exc}")
             continue
@@ -711,7 +742,7 @@ def anfangszustaende_je_police(
         jahr = folge[0][1]
 
         if art == "RED" and alt_absetzung_ist_teilkuendigung(
-                red_verfahren, jahr, int(mp_felder["t"])):
+                red_verfahren, jahr, int(mp_felder["t"]), beitragsfrei_ab=None):
             # Unter der Teilkuendigungs-Semantik (Bedingungswerk
             # Ziffer 6, Ausweitung 16) fuehrt die Quelle nach der
             # Herabsetzung ZUSTANDSLOS mit der kleineren Grundsumme
@@ -1019,6 +1050,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Verfahren der Beitragsherabsetzung (Eigenschaft "
                         "des Migrationsfalls; Vorgabe: Zielverfahren "
                         "prospektiv)")
+    p.add_argument("--tku-umfang", dest="tku_umfang", default=None,
+                   choices=sorted(TKU_UMFAENGE),
+                   help="Umfang der Teilkuendigung des Tarifs (alle_bausteine "
+                        "oder grundversicherung; Vorgabe: der des "
+                        "Bedingungswerks, das --red-verfahren nennt, Annahme "
+                        "B1) — Tarifwerks-Eigenschaft, siehe bestand_uebernehmen")
     p.add_argument("--repo-root", dest="repo_root", default=".")
     p.add_argument("--out", default=None)
     for name, vorgabe in VORGABE.items():
@@ -1104,7 +1141,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             erhoehungssatz=args.erhoehungssatz, anker=anker,
             red_anteile_je_datum=red_anteile_je_datum,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
+            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+            tku_umfang=args.tku_umfang,
+            stoab_je_baustein=args.stoab_je_baustein)
 
     schichten: Optional[Dict[str, Any]] = None
     monate_ta_je_police: Optional[Dict[str, int]] = None

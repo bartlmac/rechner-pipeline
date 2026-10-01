@@ -587,7 +587,7 @@ def test_anfangszustand_serie_ohne_satz_und_pex_nicht_terminal_fallen_hart():
         {"POLNR": "7000005", "GEVO": "PEX", "DATUM": "01.01.2017"},
         {"POLNR": "7000005", "GEVO": "ERH", "DATUM": "01.01.2019"},
     ]
-    with pytest.raises(SystemExit, match="terminal"):
+    with pytest.raises(SystemExit, match="nach der Beitragsfreistellung folgt"):
         anfangszustaende_je_police(
             _tg_default_spez(), zeilen, nicht_terminal,
             _bestand_mit(7000005), spalten=SPALTEN,

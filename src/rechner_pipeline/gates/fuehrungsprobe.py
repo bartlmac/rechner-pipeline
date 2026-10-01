@@ -115,12 +115,19 @@ from rechner_pipeline.gates.migrationssuite_lauf import (
 )
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe, vertrags_monatsreserve
 from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
-from rechner_pipeline.kern.beitragsreduktion import (
-    TEILKUENDIGUNG,
-    absorbierte_schicht,
-    reduzierte_teile,
-    vertrags_monatsreserve_reduziert,
+from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+from rechner_pipeline.kern import (
+    TKU_UMFAENGE,
+    VORGANG_RANG as RANG,
+    Vertragsstand,
+    Vorgangsfolge,
+    tku_umfang_fuer,
+    vorgang,
 )
+
+#: Die Codes der Reihenfolge eines Jahrestags (kern.vorgangsfolge.RANG).
+PEX_CODE = "PEX"
+RED_CODE = "RED"
 from rechner_pipeline.kern.korrekturschicht import (
     Schichtparameter,
     schicht_traegt,
@@ -485,6 +492,10 @@ def pruefe_fuehrung(
     ``system``/``provenienz`` (die setzt ``main``).
     """
     befunde: List[Dict[str, Any]] = []
+    # Der Umfang der Teilkuendigung gehoert zum Tarifwerk (Entscheid B1 vom 2026-10-01); ohne
+    # Angabe der des Bedingungswerks, das das Verfahren nennt.
+    tarifwerk = {**tarifwerk, "tku_umfang": tku_umfang_fuer(
+        str(tarifwerk.get("red_verfahren", PROSPEKTIV)), tarifwerk.get("tku_umfang"))}
     stamm: pd.DataFrame = uebernahme["bestand"]
     historie: pd.DataFrame = uebernahme["historie"]
     ledger: pd.DataFrame = uebernahme["ledger"]
@@ -522,6 +533,11 @@ def pruefe_fuehrung(
     else:
         tw_config = gen.tarifwerk()
     tw_beleg = dict(beleg.get("tarifwerk") or {})
+    if tw_beleg and "tku_umfang" not in tw_beleg:
+        # Ein Beleg vor dem Merkmal (2026-10-01) hat mit dem Umfang des
+        # Bedingungswerks abgenommen, das sein Verfahren nennt (Entscheid B1 vom 2026-10-01).
+        tw_beleg["tku_umfang"] = tku_umfang_fuer(
+            str(tw_beleg.get("red_verfahren", PROSPEKTIV)))
     for name, quelle, werte in (("config", "Config der Generation", tw_config),
                                 ("beleg", "Uebernahmebeleg", tw_beleg)):
         if werte != tarifwerk:
@@ -550,7 +566,9 @@ def pruefe_fuehrung(
             auspraegungen=auspraegungen, erhoehungssatz=erhoehungssatz,
             anker=anker, red_anteile_je_datum=red_anteile_je_datum,
             red_anteil_kandidaten=red_anteil_kandidaten,
-            scheiben_mit_gamma1=bool(tarifwerk["scheiben_mit_gamma1"]))
+            scheiben_mit_gamma1=bool(tarifwerk["scheiben_mit_gamma1"]),
+            tku_umfang=str(tarifwerk["tku_umfang"]),
+            stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]))
     else:
         zustaende, warnungen = {}, []
     ohne_zustand = set()
@@ -875,84 +893,91 @@ def pruefe_fuehrung(
             & (pd.to_datetime(f_ledger["status_date"]) > pd.Timestamp(stichtag))
             & f_ledger["ereignis"].isin(GEPRUEFTE_BUCHUNGEN)
         ]
-        # Herabgesetzte Policen: Ihre Folgebuchungen rechnen auf dem
-        # GEKNICKTEN Verlauf. Anteil und Verfahren stehen in
-        # reduktionen.parquet — ohne die Tabelle kann die Probe diese
-        # Buchungen NICHT nachrechnen, und sie gegen den ungekuerzten
-        # Vertrag zu halten waere schlechter als gar nichts: Das Urteil
-        # bezeugte eine Uebereinstimmung, die es nicht gibt.
+        # Policen mit Herabsetzungen und Teilkuendigungen: Ihre Folgebuchungen
+        # rechnen auf der VORGANGSFOLGE (beliebig viele je Vertrag, Entscheid
+        # des Maintainers 2026-10-01). Anteil und Verfahren stehen in
+        # reduktionen.parquet — ohne die Tabelle kann die Probe diese Buchungen
+        # NICHT nachrechnen, und sie gegen den ungekuerzten Vertrag zu halten
+        # waere schlechter als gar nichts: Das Urteil bezeugte eine
+        # Uebereinstimmung, die es nicht gibt.
         f_reduktionen = fortschreibung.get("reduktionen")
-        reduktion_je_police: Dict[int, Tuple[int, float, str]] = {}
-        wirkungstag: Dict[int, pd.Timestamp] = {}
+        vorgaenge_je_police: Dict[int, List[Tuple[int, float, str, pd.Timestamp]]] = {}
         if f_reduktionen is not None and len(f_reduktionen):
             for z in f_reduktionen.to_dict("records"):
-                reduktion_je_police[int(z["police_id"])] = (
-                    int(z["reduktion_jahr"]), float(z["anteil"]),
-                    str(z["verfahren"]))
-                wirkungstag[int(z["police_id"])] = pd.Timestamp(z["reduktion_datum"])
+                vorgaenge_je_police.setdefault(int(z["police_id"]), []).append((
+                    int(z["reduktion_jahr"]), float(z["anteil"]), str(z["verfahren"]),
+                    pd.Timestamp(z["reduktion_datum"])))
         # Verfahren und Anteil gegen das System, dieselbe Regel wie P-B1
         # (Angriffsrunde nach T27: eine als prospektiv eingetragene
         # Teilkuendigung und ein falscher Anteil bestanden die Probe).
-        for pid, (r_j, anteil, verfahren) in sorted(reduktion_je_police.items()):
+        for pid, vorgaenge in sorted(vorgaenge_je_police.items()):
             if pid in welten:
-                # Vorgang, Verfahren und Anteil: dieselbe Regel wie P-B1.
-                for text in red_bindung_fehler(
-                        pid, r_j, anteil, verfahren,
-                        beitragsdauer=int(haupt.loc[pid, "premium_duration"]),
-                        generation_verfahren=tarifwerk.get("red_verfahren"),
-                        annahmen=config.annahmen):
-                    befund(pid, "herabsetzung", text)
-        red_jahr = {
-            int(z["police_id"]): int(z["vertragsjahr"])
-            for z in f_ledger[f_ledger["ereignis"].isin(REDUKTION_EREIGNISSE)].to_dict("records")
-        }
-        ohne_tabelle = sorted(set(red_jahr) - set(reduktion_je_police))
+                for r_j, anteil, verfahren, _tag in vorgaenge:
+                    # Vorgang, Verfahren und Anteil: dieselbe Regel wie P-B1.
+                    for text in red_bindung_fehler(
+                            pid, r_j, anteil, verfahren,
+                            beitragsdauer=int(haupt.loc[pid, "premium_duration"]),
+                            generation_verfahren=tarifwerk.get("red_verfahren"),
+                            annahmen=config.annahmen):
+                        befund(pid, "herabsetzung", text)
+        red_jahr: Dict[int, set] = {}
+        for z in f_ledger[f_ledger["ereignis"].isin(REDUKTION_EREIGNISSE)].to_dict("records"):
+            red_jahr.setdefault(int(z["police_id"]), set()).add(int(z["vertragsjahr"]))
+        ohne_tabelle = sorted(set(red_jahr) - set(vorgaenge_je_police))
         if ohne_tabelle:
             befund(None, "herabsetzung",
                    f"{len(ohne_tabelle)} Police(n) mit RED- oder TKU-Buchung, aber ohne "
                    f"Zeile in reduktionen.parquet (z. B. {ohne_tabelle[:5]}) — "
                    "die Probe kann ihre Folgebuchungen nicht nachrechnen")
-        # Die Herabsetzung liegt IM Lauf (RC02) und auf einem beitragspflichtigen
-        # Vertrag (RC03). Davor/dahinter/nach der Beitragsfreistellung ist sie
-        # keine Buchung dieses Laufs: Die Engine simuliert einen uebernommenen
-        # Vertrag erst ab seinem Zugangsjahr, nie ueber den Horizont und zieht
-        # fuer beitragsfreie Vertraege keine Herabsetzung. Ein Soll wird fuer
-        # sie NICHT hergeleitet (es waere das eines Vertrags, den es nicht
-        # gibt) — der Widerspruch ist der Befund.
+        # Jeder Vorgang liegt IM Lauf (RC02); eine BEITRAGSHERABSETZUNG liegt auf
+        # einem beitragspflichtigen Vertrag (RC03; klv.md 7.1). Davor, dahinter
+        # oder (Herabsetzung) nach der Beitragsfreistellung ist er keine Buchung
+        # dieses Laufs: Die Engine simuliert einen uebernommenen Vertrag erst ab
+        # seinem Zugangsjahr, nie ueber den Horizont und zieht fuer
+        # beitragsfreie Vertraege keine Herabsetzung. Ein Soll wird fuer die
+        # Police NICHT hergeleitet (es waere das eines Vertrags, den es nicht
+        # gibt) — der Widerspruch ist der Befund. Die Teilkuendigung nach der
+        # Beitragsfreistellung ist dagegen ein Vorgang (klv.md 7.2, B3).
         horizont = fortschreibung.get("horizont")
         ausgeschlossen: set = set()
-        for pid, (r_jahr, _anteil, r_verfahren) in sorted(reduktion_je_police.items()):
-            welt = welten.get(pid)
-            if welt is None:
-                continue
-            name = "Teilkuendigung" if r_verfahren == TEILKUENDIGUNG else "Herabsetzung"
-            datum = wirkungstag[pid]
-            zugang = pd.Timestamp(haupt.loc[pid, "bestandszugang"])
-            if datum <= zugang:
-                ausgeschlossen.add(pid)
-                befund(pid, "herabsetzung",
-                       f"{name} am {datum.date()} liegt nicht nach dem Bestandszugang "
-                       f"{zugang.date()} — Vorgeschichte der abgebenden Gesellschaft, "
-                       "keine Buchung dieses Laufs")
-            if horizont is not None and datum > pd.Timestamp(horizont):
-                ausgeschlossen.add(pid)
-                befund(pid, "herabsetzung",
-                       f"{name} am {datum.date()} liegt nach dem belegten Horizont "
-                       f"{pd.Timestamp(horizont).date()} — der Lauf hat sie nicht gefahren")
+        pex_je_police: Dict[int, Optional[int]] = {}
+        for pid, welt in welten.items():
             pex_beitragsfrei = welt["pex_jahr"]
             if pex_beitragsfrei is None:
                 eigene_pex = f_ledger[(f_ledger["police_id"] == pid)
                                       & (f_ledger["ereignis"] == "PEX")]
                 if len(eigene_pex):
                     pex_beitragsfrei = int(eigene_pex["vertragsjahr"].min())
-            if pex_beitragsfrei is not None and int(pex_beitragsfrei) <= r_jahr:
-                ausgeschlossen.add(pid)
-                befund(pid, "herabsetzung",
-                       f"{name} im Jahr {r_jahr} auf einem beitragsfrei gestellten "
-                       f"Vertrag (Beitragsfreistellung im Jahr {int(pex_beitragsfrei)}) — "
-                       "die Engine zieht fuer beitragsfreie Vertraege keine "
-                       "Herabsetzung und die Bewertung bricht ab; ein Soll wird "
-                       "nicht hergeleitet")
+            pex_je_police[pid] = (None if pex_beitragsfrei is None
+                                  else int(pex_beitragsfrei))
+        for pid, vorgaenge in sorted(vorgaenge_je_police.items()):
+            welt = welten.get(pid)
+            if welt is None:
+                continue
+            for r_jahr, _anteil, r_verfahren, datum in vorgaenge:
+                name = "Teilkuendigung" if r_verfahren == TEILKUENDIGUNG else "Herabsetzung"
+                zugang = pd.Timestamp(haupt.loc[pid, "bestandszugang"])
+                if datum <= zugang:
+                    ausgeschlossen.add(pid)
+                    befund(pid, "herabsetzung",
+                           f"{name} am {datum.date()} liegt nicht nach dem Bestandszugang "
+                           f"{zugang.date()} — Vorgeschichte der abgebenden Gesellschaft, "
+                           "keine Buchung dieses Laufs")
+                if horizont is not None and datum > pd.Timestamp(horizont):
+                    ausgeschlossen.add(pid)
+                    befund(pid, "herabsetzung",
+                           f"{name} am {datum.date()} liegt nach dem belegten Horizont "
+                           f"{pd.Timestamp(horizont).date()} — der Lauf hat sie nicht gefahren")
+                pex_beitragsfrei = pex_je_police.get(pid)
+                if (r_verfahren != TEILKUENDIGUNG and pex_beitragsfrei is not None
+                        and pex_beitragsfrei <= r_jahr):
+                    ausgeschlossen.add(pid)
+                    befund(pid, "herabsetzung",
+                           f"Beitragsherabsetzung im Jahr {r_jahr} auf einem beitragsfrei "
+                           f"gestellten Vertrag (Beitragsfreistellung im Jahr "
+                           f"{pex_beitragsfrei}) — ein beitragsfreier Vertrag hat keinen "
+                           "Beitrag, den eine Herabsetzung senken koennte (Ausweg: die "
+                           "Teilkuendigung); ein Soll wird nicht hergeleitet")
         # Das Buchungsfenster gilt fuer JEDE Ereignisart (Runde E, Klasse
         # geschlossen): Die Zeilen der uebernommenen Vertraege liegen echt
         # nach dem Bestandszugang (ausser den benannten Zugangsbuchungen) und
@@ -1057,22 +1082,21 @@ def pruefe_fuehrung(
                    f"steht nicht am Jahrestag {jahrestag.date()} ihres Vertragsjahres "
                    f"{int(z['vertragsjahr'])} — die Engine bucht zum Jahreswechsel; die "
                    "Zeile wird nicht nachgerechnet und nicht als geprueft gezaehlt")
-        for pid, (r_jahr, _anteil, r_verfahren) in sorted(reduktion_je_police.items()):
+        for pid, vorgaenge in sorted(vorgaenge_je_police.items()):
             if pid not in haupt.index:
                 continue
-            jahrestag = reduktion_jahrestag(haupt.loc[pid, "insurance_start"], r_jahr)
-            if wirkungstag[pid] != jahrestag:
-                befund(pid, "herabsetzung",
-                       f"{'Teilkuendigung' if r_verfahren == TEILKUENDIGUNG else 'Herabsetzung'}: "
-                       f"Wirkungstag {wirkungstag[pid].date()} ist nicht der Jahrestag "
-                       f"{jahrestag.date()} des Reduktionsjahres {r_jahr} — Tabelle und "
-                       "Ledger duerfen ihn nicht frei setzen")
+            for r_jahr, _anteil, r_verfahren, tag in vorgaenge:
+                jahrestag = reduktion_jahrestag(haupt.loc[pid, "insurance_start"], r_jahr)
+                if tag != jahrestag:
+                    befund(pid, "herabsetzung",
+                           f"{'Teilkuendigung' if r_verfahren == TEILKUENDIGUNG else 'Herabsetzung'}: "
+                           f"Wirkungstag {tag.date()} ist nicht der Jahrestag "
+                           f"{jahrestag.date()} des Reduktionsjahres {r_jahr} — Tabelle und "
+                           "Ledger duerfen ihn nicht frei setzen")
         # Die Rate: Jede Buchung nach dem Zugang folgt aus einer Annahme der
         # Config, die sie erzeugen kann (Runde E, Klasse geschlossen).
         for feld, eintraege in sorted(unbelegte_ereignisse(
-                stamm, im_lauf, config.annahmen,
-                auch_erzeugt=lambda _pid: (
-                    tarifwerk.get("red_verfahren") == TEILKUENDIGUNG)).items()):
+                stamm, im_lauf, config.annahmen).items()):
             befund(None, "ratebindung", unbelegte_ereignisse_text(feld, eintraege),
                    feld=feld)
         # Und die Art gehoert dem Produkt ueberhaupt zu (Nachbesserung Runde E):
@@ -1094,117 +1118,141 @@ def pruefe_fuehrung(
                     teile.append((int(s["erhoehung_jahr"]), Rechenkern(ModelPoint(**kw))))
             return [(j, k) for j, k in teile if j < jahr]
 
-        def red_soll(pid: int, welt: Dict[str, Any], jahr: int, red) -> Dict[str, float]:
-            """Die Soll-Buchungen der Herabsetzung — die Regel von P-B1
-            (red_sollbuchungen), die Betraege auf dem Weg der Pruefstrecke."""
-            grund = welt["grund"]
-            teile_red = reduzierte_teile(grund, teile_bei(pid, welt, jahr), red[0], red[1], red[2],
-                                         schicht=schicht_je_police.get(pid),
-                                         stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]))
-            absorbiert = absorbierte_schicht(grund, jahr, schicht_je_police.get(pid))
-            auszahlung = ((1.0 - red[1]) * vertrags_monatsreserve(
-                grund, [], 12 * jahr,
-                stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
-                + absorbiert) if reduktion_ereignis(red[2]) == "TKU" else None
-            return red_sollbuchungen(
-                sum(v.reduktion.vs_neu for e, v in teile_red if e < jahr or e == 0),
-                absorbiert, auszahlung)
+        def red_soll(pid: int, welt: Dict[str, Any], jahr: int, code: str) -> Dict[str, float]:
+            """Die Soll-Buchungen des Vorgangs ``code`` am Jahrestag ``jahr`` —
+            die Regel von P-B1 (red_sollbuchungen), die Betraege aus DERSELBEN
+            Vorgangsfolge auf den Grundlagen der Pruefstrecke."""
+            folge = folge_fuer(pid, welt)
+            ergebnis = None if folge is None else folge.ergebnis(jahr, code)
+            if ergebnis is None:
+                return {}
+            return red_sollbuchungen(ergebnis.vs_neu, ergebnis.absorbiert,
+                                     ergebnis.auszahlung)
 
-        # Jede registrierte Herabsetzung traegt ihre Soll-Buchungen genau
-        # einmal am Wirkungstag der Tabelle (Angriffsrunde nach T27: die
-        # Probe pruefte nur die Zeilen, die da waren — 43 gestrichene
-        # Auszahlungen bestanden sie; P-B1 hatte die Soll-Menge seit T27-14).
+        folgen: Dict[int, Optional[Vorgangsfolge]] = {}
+
+        def folge_fuer(pid: int, welt: Dict[str, Any]) -> Optional[Vorgangsfolge]:
+            """Die Vorgangsfolge der Police auf dem Weg der Pruefstrecke: Grund
+            und Bausteine der Pruefstrecke, die neuen Scheiben der Fuehrung, die
+            registrierten Vorgaenge, die Beitragsfreistellung, die Schicht — und
+            DIESELBE Klasse wie Engine, Bewertung und P-B1 (kern.vorgangsfolge).
+            Eine eigene Formel hier waere die vierte Abschrift — und genau die
+            hat bei der Beitragsfreistellung den Fehler bestaetigt, statt ihn zu
+            widerlegen (Review T25-06)."""
+            if pid not in folgen:
+                vorgaenge = vorgaenge_je_police.get(pid)
+                if not vorgaenge:
+                    folgen[pid] = None
+                else:
+                    try:
+                        folgen[pid] = Vorgangsfolge(
+                            welt["grund"], teile_bei(pid, welt, 10 ** 6),
+                            [vorgang(j, a, v) for j, a, v, _ in vorgaenge],
+                            pex_jahr=pex_je_police.get(pid),
+                            schicht=schicht_je_police.get(pid),
+                            stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]),
+                            tku_umfang=str(tarifwerk["tku_umfang"]))
+                    except ValueError as exc:
+                        befund(pid, "herabsetzung",
+                               f"Vorgangsfolge nicht rechenbar: {exc}")
+                        folgen[pid] = None
+            return folgen[pid]
+
+        def nach_vorgang(pid: int, jahr: int, art: str) -> bool:
+            """Ob vor einer Buchung ``art`` am Jahrestag ``jahr`` schon ein
+            registrierter Vorgang liegt (Reihenfolge des Tages)."""
+            grenze = (int(jahr), RANG[art if art in RANG else PEX_CODE])
+            return any(vorgang(j, a, v).schluessel < grenze
+                       for j, a, v, _ in vorgaenge_je_police.get(pid, ()))
+
+        # Jeder registrierte Vorgang traegt seine Soll-Buchungen genau einmal am
+        # Wirkungstag der Tabelle (Angriffsrunde nach T27: die Probe pruefte nur
+        # die Zeilen, die da waren — 43 gestrichene Auszahlungen bestanden sie;
+        # P-B1 hatte die Soll-Menge seit T27-14).
         red_zeilen = f_ledger[f_ledger["ereignis"].isin(REDUKTION_EREIGNISSE)
                               & ~f_ledger.index.isin(list(doppelt_idx))]
-        for pid, red in sorted(reduktion_je_police.items()):
+        for pid, vorgaenge in sorted(vorgaenge_je_police.items()):
             welt = welten.get(pid)
             if welt is None or pid in ausgeschlossen:
                 continue
-            code = reduktion_ereignis(red[2])
-            eigene = red_zeilen[(red_zeilen["police_id"] == pid)
-                                & (red_zeilen["vertragsjahr"] == red[0])
-                                & (red_zeilen["ereignis"] == code)]
-            for text in red_vollstaendigkeit_fehler(
-                    pid, red[0], eigene, red_soll(pid, welt, red[0], red), wirkungstag[pid],
-                    ereignis=code):
-                befund(pid, "herabsetzung", text)
+            for r_jahr, _anteil, r_verfahren, tag in vorgaenge:
+                code = reduktion_ereignis(r_verfahren)
+                eigene = red_zeilen[(red_zeilen["police_id"] == pid)
+                                    & (red_zeilen["vertragsjahr"] == r_jahr)
+                                    & (red_zeilen["ereignis"] == code)]
+                for text in red_vollstaendigkeit_fehler(
+                        pid, r_jahr, eigene, red_soll(pid, welt, r_jahr, code), tag,
+                        ereignis=code):
+                    befund(pid, "herabsetzung", text)
 
         for z in nach.to_dict("records"):
             pid, art, jahr = int(z["police_id"]), str(z["ereignis"]), int(z["vertragsjahr"])
             welt = welten.get(pid)
             if welt is None or pid in ausgeschlossen:
                 continue                       # oben als Befund gemeldet
-            if pid in red_jahr and jahr >= red_jahr[pid] \
-                    and pid not in reduktion_je_police:
+            if pid in red_jahr and pid not in vorgaenge_je_police \
+                    and jahr >= min(red_jahr[pid]):
                 continue                       # oben als Befund gemeldet
             if art in REDUKTION_EREIGNISSE:
-                # Jede RED-/TKU-Zeile gehoert zur registrierten Herabsetzung und
-                # zu ihrem Reduktionsjahr (Runde D, Fund 3): Eine Zeile in
-                # einem anderen Jahr wurde gegen das Soll des BUCHUNGSjahres
-                # bzw. ungekuerzt gehalten und als geprueft gezaehlt, obwohl
-                # sie keine registrierte Herabsetzung erzeugt — P-B1 weist
-                # sie ab. Sie ist unbelegt, wird nicht nachgerechnet und
-                # nicht gezaehlt. Ohne Tabellenzeile steht der Befund oben.
-                red_reg = reduktion_je_police.get(pid)
-                if red_reg is None:
+                # Jede RED-/TKU-Zeile gehoert zu einem registrierten Vorgang
+                # desselben Jahres und derselben Art (Runde D, Fund 3): Eine
+                # Zeile, die kein registrierter Vorgang erzeugt, ist unbelegt,
+                # wird nicht nachgerechnet und nicht gezaehlt. Ohne
+                # Tabellenzeile steht der Befund oben.
+                if pid not in vorgaenge_je_police:
                     continue
-                if jahr != red_reg[0] or art != reduktion_ereignis(red_reg[2]):
+                registriert = [(j, reduktion_ereignis(v)) for j, _, v, _ in
+                               vorgaenge_je_police[pid]]
+                if (jahr, art) not in registriert:
                     befund(pid, "herabsetzung",
                            f"{art}-Buchung im Vertragsjahr {jahr} ({z['betrag_art']}), "
-                           f"die registrierte {reduktion_ereignis(red_reg[2])} liegt im Jahr {red_reg[0]} — "
-                           "keine Buchung, die die Tabelle erzeugt; sie wird nicht "
+                           "registriert sind "
+                           + ", ".join(f"{a} im Jahr {j}" for j, a in sorted(registriert))
+                           + " — keine Buchung, die die Tabelle erzeugt; sie wird nicht "
                            "nachgerechnet und nicht als geprueft gezaehlt")
                     continue
             teile = teile_bei(pid, welt, jahr)
             grund, grund_mp = welt["grund"], welt["grund_mp"]
             pex_jahr = welt["pex_jahr"]
-            red = reduktion_je_police.get(pid)
-            if red is not None and jahr >= red[0]:
-                # Der herabgesetzte Vertrag, ueber DIESELBE Rekonstruktion
-                # wie Engine, Bewertung und Ledger-Herleitung
-                # (kernlauf.reduzierte_teile). Eine eigene Formel hier
-                # waere die vierte Abschrift — und genau die hat bei der
-                # Beitragsfreistellung den Fehler bestaetigt, statt ihn zu
-                # widerlegen (Review T25-06).
-                teile_red = reduzierte_teile(
-                    grund, teile, red[0], red[1], red[2],
-                    schicht=schicht_je_police.get(pid),
-                    stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]))
-                pex_f = pex_jahr
-                if pex_f is None:
-                    eigene = f_ledger[(f_ledger["police_id"] == pid)
-                                      & (f_ledger["ereignis"] == "PEX")]
-                    if len(eigene):
-                        pex_f = int(eigene["vertragsjahr"].iloc[0])
+            folge = folge_fuer(pid, welt) if pid in vorgaenge_je_police else None
+            if folge is not None and (art in REDUKTION_EREIGNISSE
+                                      or nach_vorgang(pid, jahr, art)):
+                # Der Vertrag nach Vorgaengen, ueber DIESELBE Folge wie Engine,
+                # Bewertung und Ledger-Herleitung (kern.vorgangsfolge).
                 if art in REDUKTION_EREIGNISSE:
-                    # Die Buchungen der Herabsetzung selbst, auf dem Weg der
+                    # Die Buchungen des Vorgangs selbst, auf dem Weg der
                     # Pruefstrecke nachgerechnet; eine Art ausserhalb der
                     # Soll-Menge meldet die Vollstaendigkeit oben.
-                    erwartet = red_soll(pid, welt, jahr, red).get(str(z["betrag_art"]))
+                    erwartet = red_soll(pid, welt, jahr, art).get(str(z["betrag_art"]))
                     if erwartet is None:
                         buchungen[art] += 1
                         continue
                 elif art == "STO":
-                    erwartet = vertrags_monatsreserve_reduziert(
-                        teile_red, 12 * jahr,
-                        stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
+                    erwartet = folge.stand_vor(jahr, PEX_CODE).rkw(jahr)
                 elif art == "PEX":
-                    erwartet = sum(
-                        v.beitragsfreie_summe(jahr - e) for e, v in teile_red)
-                elif pex_f is not None and pex_f <= jahr:
-                    erwartet = sum(
-                        v.beitragsfreie_summe(int(pex_f) - e)
-                        for e, v in teile_red)
+                    # Unmittelbar nach der Freistellung, vor einer
+                    # Teilkuendigung desselben Tages.
+                    erwartet = folge.stand_vor(jahr, RED_CODE).vs_bfr()
                 else:
-                    erwartet = sum(v.reduktion.vs_neu for _, v in teile_red)
+                    erwartet = folge.stand_vor(jahr, PEX_CODE).leistung()
                 buchungen[art] += 1
                 if weicht_ab(z["betrag"], erwartet, TOLERANZ):
                     abweichungen += 1
                     befund(pid, "buchung",
                            f"{art} Jahr {jahr}: Ledger {float(z['betrag']):.2f}, "
-                           f"herabgesetzter Vertrag {erwartet:.2f}")
+                           f"Vertrag nach Vorgaengen {erwartet:.2f}")
                 continue
-            if art == "STO":
+            if art == "STO" and pex_je_police.get(pid) is not None \
+                    and pex_je_police[pid] <= jahr:
+                # Storno eines beitragsfreien Vertrags: DERSELBE Rueckkaufswert
+                # wie bei der Teilkuendigung nach der Beitragsfreistellung
+                # (Entscheid B3 vom 2026-10-01; ein Rueckkaufswert, zwei Leser — P-B1 ebenso).
+                erwartet = Vertragsstand.anfang(
+                    grund, teile, stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]),
+                    tku_umfang=str(tarifwerk["tku_umfang"]),
+                    schicht=schicht_je_police.get(pid),
+                ).nach_pex(pex_je_police[pid]).rkw(jahr)
+            elif art == "STO":
                 erwartet = vertrags_monatsreserve(
                     grund, teile, 12 * jahr,
                     stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
@@ -1304,6 +1352,10 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--anker-erwartungswerte", dest="anker_quelle", default=None)
     p.add_argument("--scheiben-mit-gamma1", dest="scheiben_mit_gamma1", action="store_true")
     p.add_argument("--stoab-je-baustein", dest="stoab_je_baustein", action="store_true")
+    p.add_argument("--tku-umfang", dest="tku_umfang", default=None,
+                   choices=sorted(TKU_UMFAENGE),
+                   help="Umfang der Teilkuendigung des Tarifs (Vorgabe: der des "
+                        "Bedingungswerks, das --red-verfahren nennt)")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/berichte/fuehrungsprobe.json)")
     return p
@@ -1332,6 +1384,8 @@ def _aufruf(args: argparse.Namespace, ueber: Path, schluessel) -> List[str]:
         a.append("--scheiben-mit-gamma1")
     if args.stoab_je_baustein:
         a.append("--stoab-je-baustein")
+    if getattr(args, "tku_umfang", None) is not None:
+        a += ["--tku-umfang", str(args.tku_umfang)]
     return a
 
 
@@ -1531,6 +1585,9 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
         "scheiben_mit_gamma1": bool(args.scheiben_mit_gamma1),
         "stoab_je_baustein": bool(args.stoab_je_baustein),
         "red_verfahren": str(args.red_verfahren),
+        # Umfang der Teilkuendigung (Entscheid B1 vom 2026-10-01): angegeben oder der des
+        # Bedingungswerks, das das Verfahren nennt (bestand.config).
+        "tku_umfang": tku_umfang_fuer(args.red_verfahren, args.tku_umfang),
     }
     ergebnis = pruefe_fuehrung(
         uebernahme=uebernahme, fortschreibung=fortschreibung, config=config,
