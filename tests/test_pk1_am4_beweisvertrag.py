@@ -267,6 +267,19 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
 
     kern = Rechenkern(KLV_DEFAULT)
     s1, s2 = 12 * 9 + 5, 12 * 10 + 5
+    # Der Fuehrungswert (abnahmebericht 8.0.0): was der Abschluss fuer den
+    # Vertrag fuehrt, ueber die Strecke des Abschlusses aus dem Bestand, den
+    # die Suite bindet, mit der Config der Fuehrung.
+    import datetime as _dt
+
+    from rechner_pipeline.bestand.migrationszugang import fuehrungswerte
+    from rechner_pipeline.models.fuehrungswert import kopf
+
+    fw_konvention, fw_werte = fuehrungswerte(
+        read_portfolio(ziel), read_portfolio(lauf / "historie.parquet"),
+        Path(config).read_text(encoding="utf-8"),
+        {"stichtag_1": _dt.date(2026, 1, 1), "stichtag_2": _dt.date(2027, 1, 1)},
+        scheiben=read_portfolio(lauf / "scheiben.parquet"))
     suite = pruefe_bestand(
         [VertragsPruefung(
             police_id="7000001",
@@ -282,6 +295,9 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
         stichtag_2="2027-01-01",
         bestand_sha256=ziel_hash,
         system=gate_entscheid.systemstand(REPO_ROOT),
+        fuehrungswert=kopf(fw_konvention, bestand_sha256=ziel_hash,
+                           config_sha256=sha256(Path(config).read_bytes()).hexdigest()),
+        fuehrungswerte=fw_werte,
     )
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite_pfad.write_text(json.dumps(suite, sort_keys=True), encoding="utf-8")
@@ -1418,6 +1434,9 @@ def test_abnahmebericht_verwechselt_portfolio_rolle_nicht_mit_pb1_nebeneingang(
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
     suite["bestand_sha256"] = config_hash
+    # Der Fuehrungswert-Kopf bindet denselben Bestand (abnahmebericht 8.0.0);
+    # stimmig mitgezogen, damit die Pruefung bis zur P-B1-Bindung kommt.
+    suite["fuehrungswert"]["bestand_sha256"] = suite["bestand_sha256"]
     suite_pfad.write_text(json.dumps(suite, sort_keys=True), encoding="utf-8")
 
     bericht = _abnahmebericht(fall)
@@ -1468,6 +1487,9 @@ def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
     suite["bestand_sha256"] = sha256(portfolio.read_bytes()).hexdigest()
+    # Der Fuehrungswert-Kopf bindet denselben Bestand (abnahmebericht 8.0.0);
+    # stimmig mitgezogen, damit die Pruefung bis zur P-B1-Bindung kommt.
+    suite["fuehrungswert"]["bestand_sha256"] = suite["bestand_sha256"]
     suite_pfad.write_text(json.dumps(suite, sort_keys=True), encoding="utf-8")
 
     bericht = _abnahmebericht(fall)

@@ -57,6 +57,7 @@ from rechner_pipeline.models.anker import (
     zeichne,
 )
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
+from rechner_pipeline.bestand.abschluss import lies_abschluss
 from rechner_pipeline.bestand.kennzahlen import bewegungskennzahlen
 from rechner_pipeline.bestand.manifest import (
     ERZEUGER,
@@ -313,8 +314,11 @@ def _ergaenze_kennzahlen(
                 f"{pfad}: nicht der Abschluss, den das Protokoll zum "
                 f"{eintrag['stichtag']} bezeugt — ein festgeschriebener Abschluss "
                 "wird nie ersetzt (ADR-011)")
+        # Die Stueckzahl haengt nicht an der Bewertungskonvention; gelesen
+        # wird ueber den einen Leseweg. Die Dateien selbst gehen ins Paket —
+        # wer sie dort als Reihe zeigt, fragt je Datei abschluss_konvention.
         _gleich_oder_setzen(
-            eintrag, {"in_kraft": int(len(read_portfolio(io.BytesIO(roh))))},
+            eintrag, {"in_kraft": int(len(lies_abschluss(roh)[0]))},
             "der Abschlussdatei")
 
 

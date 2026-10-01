@@ -124,9 +124,19 @@ def test_die_angefangene_zeile_eines_roten_laufs_sperrt_die_ablage_nicht(tmp_pat
 
 
 def _abschluss(ablage: Ablage, tag: dt.date, police_ids) -> None:
+    """Ein Abschluss in voller Gestalt (seit 2026-10-01 liest jeder Leser ihn
+    ueber lies_abschluss, und eine Tabelle nur mit police_id ist keiner)."""
+    from rechner_pipeline.models.bestand import ABSCHLUSS_SPALTEN
+
     ablage.abschluesse.mkdir(parents=True, exist_ok=True)
-    write_portfolio(pd.DataFrame({"police_id": pd.Series(list(police_ids), dtype="int64")}),
-                    tl.abschluss_pfad(ablage.abschluesse, tag))
+    zeilen = [{"police_id": int(p), "stichtag": pd.Timestamp(tag), "produkt": "klv",
+               "tarif_generation": "KLV-2017", "status_code": "POL", "leistung": 1.0,
+               "deckungskapital": 1.0, "rueckkaufswert": 1.0, "korrekturschicht": 0.0,
+               "vs_bfr": 0.0, "jahresbeitrag": 1.0, "kern_version": "x",
+               "bewertungskonvention": "monatsgenau"} for p in police_ids]
+    tabelle = pd.DataFrame(zeilen, columns=[n for n, _ in ABSCHLUSS_SPALTEN]).astype(
+        dict(ABSCHLUSS_SPALTEN))
+    write_portfolio(tabelle, tl.abschluss_pfad(ablage.abschluesse, tag))
 
 
 def test_der_abschluss_des_zugangsstichtags_entscheidet_nicht_der_juengste(tmp_path):

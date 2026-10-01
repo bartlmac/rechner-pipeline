@@ -26,6 +26,7 @@ import pyarrow.parquet as pq
 
 from rechner_pipeline.models.bestand import (
     ABSCHLUSS_NAMES,
+    ABSCHLUSS_NAMES_VOR_UMSTELLUNG,
     ABSCHLUSS_SPALTEN,
     LEDGER_NAMES,
     LEDGER_SPALTEN,
@@ -200,6 +201,10 @@ def write_portfolio(
 #: ist eine neue Familie ein Eintrag.
 FAMILIEN: Tuple[Tuple[str, ...], ...] = (
     ABSCHLUSS_NAMES,
+    # Die Gestalt vor der Umstellung (ohne Konventionsspalte): ohne diesen
+    # Eintrag fiele eine alte Abschlussdatei in den Stamm-Rueckfall und kaeme
+    # als Teilmenge ohne Bewertungsspalten zurueck.
+    ABSCHLUSS_NAMES_VOR_UMSTELLUNG,
     LEDGER_NAMES,
     SCHEIBEN_NAMES,
     REDUKTIONEN_NAMES,

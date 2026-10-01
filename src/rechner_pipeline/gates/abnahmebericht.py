@@ -173,7 +173,13 @@ GATE = "A-M4.migrationscontrolling"
 #: dieselbe Menge (``pflichtschicht``), und jeder vorliegende Beleg des
 #: aktuariellen Tests (A-M1 bis A-M3) traegt sie ohne Fehlstelle. Vorher lag
 #: eine solche Police in keiner Stichprobe, und der Beleg war gueltig.
-GATE_VERSION = "7.0.0"
+#: 8.0.0 (Entscheid des Maintainers 2026-10-01, Fuehrungswert): Im
+#: Bestands-Scope traegt die Migrationssuite in Fassung 2 je Vertrag den
+#: Fuehrungswert — was der Monatsabschluss am Zugangs- und am Folgestichtag
+#: fuer ihn fuehrt (``models.fuehrungswert``); eine Suite ohne ihn, mit
+#: einem Vertrag ohne Wert am Zugangsstichtag oder auf einem anderen
+#: Bestand wird nicht abgenommen.
+GATE_VERSION = "8.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -1362,6 +1368,11 @@ def _bestands_suite_fehler(
         fehler.append("'bestand_sha256' muss einen SHA-256 binden")
     if suite.get("system") != erwartetes_system:
         fehler.append("Migrationssuite bindet nicht den aktuellen Systemstand")
+    # Der Fuehrungswert (8.0.0): Pflicht im Bestands-Scope — A-M4 weist aus,
+    # was die Bestandsfuehrung fuer den Zugang fuehrt.
+    from rechner_pipeline.models.fuehrungswert import fuehrungswert_fehler
+
+    fehler.extend(fuehrungswert_fehler(suite))
     return fehler
 
 

@@ -53,7 +53,11 @@ def lauf_klv(_config):
     basis = bestand_aus_zugangsstrom(_config)
     ergebnis = fortschreiben(basis, _config, HORIZONT)
     stamm = fuehre_fort(mit_zugaengen(basis, ergebnis.zugaenge), ergebnis.historie)
-    return stamm, ergebnis.historie, ergebnis.scheiben, _config
+    from tests.nebentabellen import aus_fortschreibung, mit_neben
+
+    # Mit ALLEN Nebentabellen des Laufs (Reduktionen eingeschlossen).
+    return mit_neben((stamm, ergebnis.historie, ergebnis.scheiben, _config),
+                     aus_fortschreibung(ergebnis))
 
 
 # --------------------------------------------------------------------------- #
@@ -83,7 +87,7 @@ def test_kontrolle_deckt_keinen_unendlichen_abschluss(tmp_path, lauf_klv) -> Non
     stamm, historie, scheiben, config = lauf_klv
     ziel = tmp_path / "abschluesse"
     pfad = schreibe_abschluss(stamm, historie, config, STICHTAG, ziel,
-                              scheiben=scheiben)
+                              **lauf_klv.neben)
 
     fest = read_portfolio(pfad)
     fest.loc[fest.index[0], "deckungskapital"] = float("inf")
@@ -94,7 +98,7 @@ def test_kontrolle_deckt_keinen_unendlichen_abschluss(tmp_path, lauf_klv) -> Non
     # per isclose deckungsgleich gewesen.
     assert math.isclose(float("inf"), float("inf"), rel_tol=0.0, abs_tol=0.0)
 
-    befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
+    befunde = pruefe_abschluss(pfad, stamm, historie, config, **lauf_klv.neben)
     assert any("nichtendlich" in b for b in befunde), befunde
 
 
@@ -126,7 +130,7 @@ def test_genau_ein_schreiber_gewinnt(tmp_path, lauf_klv) -> None:
         def _lauf():
             try:
                 schreibe_abschluss(stamm, historie, config, STICHTAG, ziel,
-                                   scheiben=scheiben)
+                                   **lauf_klv.neben)
                 ergebnis.append("ok")
             except AbschlussError:
                 ergebnis.append("abgewiesen")

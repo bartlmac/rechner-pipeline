@@ -329,6 +329,7 @@ def fahre_kette(basis: Path, verfahren: str, *, bis_uebernahme: bool = False,
         "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
         "--anker-erwartungswerte", ANKER, "--stoab-je-baustein",
         "--dk-stichtag", "jahrestag", "--schicht", str(schichten),
+        "--config", str(config_pfad),
         "--repo-root", str(REPO_ROOT)] + _flags(verfahren))
     codes["fortschreibung"] = cli_fortschreibung.main([
         "--config", str(config_pfad), "--bis", STICHTAG_2,

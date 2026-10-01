@@ -39,9 +39,15 @@ des Fensters ist; die Zugaenge gegen die Zahl der uebernommenen Vertraege,
 ihre Buchungen bis zum Stichtag gegen den Ledger der Uebernahme, das
 Bewegungskonto der Differenz je Periode, und alles, was nicht den Zugang
 betrifft, gegen Gleichheit. Summen UND Einzelvertraege: Zwei gegenlaeufige
-Fehler heben sich in einer Summe auf, in der Einzelliste nicht. Das
-Deckungskapital steht bis zum Entscheid seiner Konvention mit Grund im
-Beleg, nicht verglichen (``models.zugangsprobe.NICHT_VERGLICHEN``).
+Fehler heben sich in einer Summe auf, in der Einzelliste nicht.
+Deckungskapital, Rueckkaufswert und Korrekturschicht gegen den
+FUEHRUNGSWERT der gepinnten Migrationssuite (``models.fuehrungswert``,
+Entscheid des Maintainers 2026-10-01): was die Fuehrung in der Welt der
+Abnahme fuer den Vertrag fuehrt, in der Konvention des Abschlusses, am
+Zugangsstichtag und am Folgestichtag — dort ohne die Vertraege mit einem
+gebuchten Vorfall im Fenster, namentlich ausgenommen. Bis 2026-10-01 stand
+das Deckungskapital "nicht vergleichbar" im Beleg (Abschluss in der
+Jahreszeile, Abnahme monatsgenau).
 
 **Woher das Soll kommt** (Block F, Nachbesserung): aus den Bytes, die die
 geltenden Abnahmen pinnen — ``aktuartest.json`` ueber A-M1,
@@ -82,7 +88,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import pandas as pd
 
-from rechner_pipeline.bestand.abschluss import abschluss_pfad
+from rechner_pipeline.bestand.abschluss import abschluss_pfad, lies_abschluss
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.betrieb import tageslauf as tl
@@ -111,24 +117,28 @@ KOPIE_MIT = "mit"
 class Soll:
     """Was die Abnahmen des Falls ueber den Zugang sagen — in Zielnummern.
 
-    ``jb`` und ``dk`` je Vertrag des GANZEN Zugangs aus der Migrationssuite
-    (``bjb_stichtag_1``, ``dk_stichtag_1``), ``vs`` aus der Uebernahme;
-    ``dk`` und ``dk_folge`` verglichen erst nach dem Entscheid der
-    DK-Konvention (``models.zugangsprobe.NICHT_VERGLICHEN``). ``abnahmen``
-    ist die Soll-Bindung des Belegs: je Rolle Datei, Hash der gelesenen
-    Bytes und der Snapshot, der sie pinnt.
+    ``jb`` je Vertrag des GANZEN Zugangs aus der Migrationssuite
+    (``bjb_stichtag_1``), ``vs`` aus der Uebernahme. ``fw`` und ``fw_folge``
+    sind der FUEHRUNGSWERT der Suite (``models.fuehrungswert``) je Groesse
+    (Deckungskapital, Rueckkaufswert, Korrekturschicht) und Vertrag, am
+    Zugangsstichtag und — fuer die Vertraege, die dann laut Bestand des Falls
+    noch in Kraft sind — am Folgestichtag; ``konvention`` die
+    Bewertungskonvention, in der er gerechnet ist. ``abnahmen`` ist die
+    Soll-Bindung des Belegs: je Rolle Datei, Hash der gelesenen Bytes und
+    der Snapshot, der sie pinnt.
     """
 
     anzahl: int
     uebersetzung: Dict[int, int]
     vs: Dict[int, float]
-    dk: Dict[int, float]
     jb: Dict[int, float]
     ledger: pd.DataFrame
     folgetermin: Optional[_dt.date]
-    dk_folge: Dict[int, float]
     in_kraft_folge: Optional[int]
     eingaben: Dict[str, str]
+    fw: Dict[str, Dict[int, float]] = dataclasses.field(default_factory=dict)
+    fw_folge: Dict[str, Dict[int, float]] = dataclasses.field(default_factory=dict)
+    konvention: Optional[str] = None
     abnahmen: Dict[str, Dict[str, str]] = dataclasses.field(default_factory=dict)
 
 
@@ -265,7 +275,28 @@ def lies_soll(
             folgetermin = _dt.date.fromisoformat(str(suite["stichtag_2"]))
         except ValueError as exc:
             raise ZugangsprobeError(f"migrationssuite.json: stichtag_2 unlesbar: {exc}") from exc
-    dk: Dict[int, float] = {}
+    # Der Fuehrungswert (Entscheid 2026-10-01): Ohne ihn hat die Probe fuer
+    # Deckungskapital, Rueckkaufswert und Korrekturschicht kein Soll — eine
+    # Suite der Fassung 1 ist kein Soll dieser Probe, sondern ein Grund, die
+    # Abnahme auf dem heutigen Stand zu wiederholen.
+    from rechner_pipeline.models import fuehrungswert as fwv
+
+    fw_fehler = fwv.fuehrungswert_fehler(suite)
+    if fw_fehler:
+        raise ZugangsprobeError(
+            "die Migrationssuite, die A-M4 pinnt, traegt keinen gueltigen Fuehrungswert — "
+            + "; ".join(fw_fehler[:3])
+            + ". Ausweg: die Suite mit gates.migrationssuite_lauf --config <bestand-config> "
+            "neu fahren und A-M4 auf ihr neu entscheiden, dann die Probe")
+    fw: Dict[str, Dict[int, float]] = {g: {} for g in fwv.GROESSEN}
+    fw_folge: Dict[str, Dict[int, float]] = {g: {} for g in fwv.GROESSEN}
+    for termin_name, ablage_fw in (("stichtag_1", fw), ("stichtag_2", fw_folge)):
+        for police, eintrag in fwv.je_police(suite, termin_name).items():
+            if eintrag is None:
+                continue
+            ziel = _ziel(uebersetzung, police, "migrationssuite.json (Fuehrungswert)")
+            for g in fwv.GROESSEN:
+                ablage_fw[g][ziel] = float(eintrag[g])
     jb: Dict[int, float] = {}
     dk_folge: Dict[int, float] = {}
     lebend_ungeprueft = 0
@@ -273,8 +304,7 @@ def lies_soll(
     for vertrag in suite.get("vertraege") or []:
         ziel = _ziel(uebersetzung, vertrag.get("police_id"), "migrationssuite.json")
         pruefungen = vertrag.get("pruefungen") or []
-        for groesse, ablage in (("dk_stichtag_1", dk), ("bjb_stichtag_1", jb),
-                                ("dk_stichtag_2", dk_folge)):
+        for groesse, ablage in (("bjb_stichtag_1", jb), ("dk_stichtag_2", dk_folge)):
             treffer = [p for p in pruefungen if p.get("groesse") == groesse]
             if len(treffer) > 1:
                 raise ZugangsprobeError(
@@ -296,9 +326,10 @@ def lies_soll(
     # bekannt ist, ob er lebt.
     in_kraft_folge = None if abgebrochen else len(dk_folge) + lebend_ungeprueft
     return Soll(
-        anzahl=int(len(bestand)), uebersetzung=dict(uebersetzung), vs=vs, dk=dk, jb=jb,
-        ledger=ledger, folgetermin=folgetermin, dk_folge=dk_folge,
+        anzahl=int(len(bestand)), uebersetzung=dict(uebersetzung), vs=vs, jb=jb,
+        ledger=ledger, folgetermin=folgetermin,
         in_kraft_folge=in_kraft_folge, eingaben=dict(sorted(eingaben.items())),
+        fw=fw, fw_folge=fw_folge, konvention=str(suite["fuehrungswert"]["konvention"]),
         abnahmen=abnahmen)
 
 
@@ -333,6 +364,38 @@ def _je_vertrag(
     return abweichend
 
 
+def fuehrungswert_vergleiche(
+    diff: Mapping[int, Mapping[str, Any]], soll_fw: Mapping[str, Mapping[int, float]],
+    termin: str, iso: str, *, vorfaelle: Optional[Mapping[int, List[str]]] = None,
+) -> List[Dict[str, Any]]:
+    """Deckungskapital, Rueckkaufswert und Korrekturschicht gegen den Fuehrungswert.
+
+    ``diff`` sind die Abschlusszeilen, die nur der Lauf "mit" traegt, je
+    Zielnummer; ``soll_fw`` der Fuehrungswert der Suite je Groesse und
+    Zielnummer. Je Vertrag ueber den ganzen Zugang: ein Vertrag, der auf einer
+    Seite fehlt, ist abweichend; eine Summe ueber nichts gegen eine Summe ueber
+    etwas ist 0 gegen etwas, nicht "nicht belegt". ``vorfaelle``: Vertraege mit
+    einem gebuchten Geschaeftsvorfall im Fenster (nur am Folgetermin) — fuer
+    sie gilt der Fuehrungswert nicht; sie stehen als ``ausgenommen`` im
+    Vergleich.
+
+    Eine eigene Funktion, damit ein Test den Vergleich in einer Kopie des
+    Codes ausbauen und zeigen kann, dass der Zaehltest das bemerkt.
+    """
+    vorfaelle = dict(vorfaelle or {})
+    ausgenommen = [{"police_id": p, "grund": "Geschaeftsvorfall im Fenster: " + ", ".join(e)}
+                   for p, e in sorted(vorfaelle.items())]
+    aus: List[Dict[str, Any]] = []
+    for g in zp.FUEHRUNGSWERT_VERGLICHEN:
+        soll_g = {p: float(v) for p, v in (soll_fw.get(g) or {}).items() if p not in vorfaelle}
+        ist_g = {p: float(z[g]) for p, z in diff.items() if p not in vorfaelle}
+        aus.append(zp.vergleich(
+            g, termin, iso, sum(soll_g.values()) if (soll_g or ist_g) else None,
+            sum(ist_g.values()), umfang=len(soll_g), abweichend=_je_vertrag(ist_g, soll_g),
+            ausgenommen=ausgenommen))
+    return aus
+
+
 def _vorfaelle(zeilen: pd.DataFrame) -> pd.DataFrame:
     return zeilen[["police_id", "ereignis", "status_date"]].drop_duplicates()
 
@@ -365,9 +428,8 @@ def vergleiche(
     # nichts ist 0, ihr Ist auch — der Vergleich waere gruen, ohne etwas
     # geprueft zu haben (Detektor ohne Treffer). Dann ist die Groesse "nicht
     # belegt", und die Probe besteht nicht.
-    pflicht = [("Jahresbeitrag (bjb_stichtag_1)", soll.jb)]
-    if "deckungskapital" not in zp.NICHT_VERGLICHEN:
-        pflicht.append(("Deckungskapital (dk_stichtag_1)", soll.dk))
+    pflicht = [("Jahresbeitrag (bjb_stichtag_1)", soll.jb),
+               ("Deckungskapital (Fuehrungswert)", soll.fw.get("deckungskapital") or {})]
     for name, werte in pflicht:
         if not werte:
             befunde.append(
@@ -381,10 +443,24 @@ def vergleiche(
         befunde.append(
             f"kein Abschluss am Zugangsstichtag {stichtag.isoformat()} — die Differenz "
             "ist dort nicht gegen die Uebernahme zu halten")
+    # Die Vorfaelle der Vertraege des Eingangs nach dem Zugangsstichtag: Fuer
+    # sie gilt der Fuehrungswert am Folgestichtag nicht (er rechnet den
+    # Bestand des Falls ohne Geschaeftsvorfall fort).
+    journal_mit = read_portfolio(a_mit.tagesjournal_pfad, expected_columns=TAGESJOURNAL_NAMES)
+    nach_stichtag = journal_mit[
+        journal_mit["police_id"].isin(p_liste)
+        & (journal_mit["status_date"] > pd.Timestamp(stichtag))]
     diff_anzahl: Dict[_dt.date, int] = {}
     for s in sorted(set(stichtage_ohne) & set(stichtage_mit)):
-        ao = read_portfolio(stichtage_ohne[s])
-        am = read_portfolio(stichtage_mit[s])
+        ao, k_ohne = lies_abschluss(stichtage_ohne[s])
+        am, k_mit = lies_abschluss(stichtage_mit[s])
+        if s >= stichtag and k_mit.name is not None and k_mit.name != soll.konvention:
+            # Benannt verweigert: Abschluss und Fuehrungswert in verschiedenen
+            # Konventionen sind verschiedene Groessen (ADR-011 Nachtrag).
+            befunde.append(
+                f"der Abschluss {s.isoformat()} steht in der Konvention {k_mit.name!r} "
+                f"({k_mit.herkunft}), der Fuehrungswert der Abnahme in {soll.konvention!r} — "
+                "verschiedene Groessen werden nicht verglichen")
         zo, zm = _zeilen_je_police(ao), _zeilen_je_police(am)
         for pid in sorted(set(zo) - set(zm)):
             ausserhalb.append({"stichtag": s.isoformat(), "police_id": pid,
@@ -409,22 +485,8 @@ def vergleiche(
                                "art": "nur mit dem Eingang, aber kein Vertrag des Eingangs"})
         diff_anzahl[s] = len(diff)
         leistung = {pid: float(z["leistung"]) for pid, z in diff.items()}
-        dk = {pid: float(z["deckungskapital"]) for pid, z in diff.items()}
         jb = {pid: float(z["jahresbeitrag"]) for pid, z in diff.items()}
         iso = s.isoformat()
-
-        def deckungskapital(termin: str, soll_dk: Mapping[int, float]) -> Dict[str, Any]:
-            # Die vorbereitete Stelle (Pruefer-Befund 3): Bis der Maintainer
-            # die Konvention entscheidet, steht das Deckungskapital mit
-            # seinem Grund im Beleg und wird NICHT verglichen — kein
-            # stiller Verzicht, kein gruener Vergleich ungleicher Groessen.
-            # Danach je Vertrag ueber den ganzen Zugang.
-            if "deckungskapital" in zp.NICHT_VERGLICHEN:
-                return zp.vergleich("deckungskapital", termin, iso, None, sum(dk.values()),
-                                    umfang=len(diff), grund=zp.NICHT_VERGLICHEN["deckungskapital"])
-            return zp.vergleich("deckungskapital", termin, iso,
-                                sum(soll_dk.values()) if soll_dk else None, sum(dk.values()),
-                                umfang=len(soll_dk), abweichend=_je_vertrag(dk, soll_dk))
 
         if s == stichtag:
             ids_soll = {pid: 1.0 for pid in p_ids}
@@ -435,7 +497,9 @@ def vergleiche(
                 zp.vergleich("versicherungssumme", "zugangsstichtag", iso,
                              sum(soll.vs.values()), sum(leistung.values()),
                              umfang=len(soll.vs), abweichend=_je_vertrag(leistung, soll.vs)),
-                deckungskapital("zugangsstichtag", soll.dk),
+                # Deckungskapital, Rueckkaufswert, Korrekturschicht gegen den
+                # Fuehrungswert der Abnahme, je Vertrag ueber den ganzen Zugang.
+                *fuehrungswert_vergleiche(diff, soll.fw, "zugangsstichtag", iso),
                 # Je Vertrag ueber den GANZEN Zugang (Pruefer-Befund 4): die
                 # Migrationssuite belegt jeden Vertrag, der aktuarielle
                 # Test nur seine Stichprobe.
@@ -445,11 +509,18 @@ def vergleiche(
             ]
         elif s == soll.folgetermin:
             ohne_soll = ("nicht belegt: die Migrationssuite belegt am Folgestichtag nur "
-                         "Deckungskapital und Bestand")
+                         "Bestand und Fuehrungswert")
+            # Ein Vertrag mit einem gebuchten Vorfall im Fenster wird am
+            # Folgestichtag nicht gegen den Fuehrungswert gehalten (der rechnet
+            # den Bestand des Falls ohne Vorfall fort) — namentlich, mit Grund.
+            im_fenster = nach_stichtag[nach_stichtag["status_date"] <= pd.Timestamp(s)]
+            vorfaelle = {int(p): sorted({str(e) for e in grp["ereignis"]})
+                         for p, grp in im_fenster.groupby("police_id")}
             vergleiche_ += [
                 zp.vergleich("in_kraft", "folgetermin", iso, soll.in_kraft_folge, len(diff),
                              umfang=len(diff)),
-                deckungskapital("folgetermin", soll.dk_folge),
+                *fuehrungswert_vergleiche(diff, soll.fw_folge, "folgetermin", iso,
+                                          vorfaelle=vorfaelle),
                 zp.vergleich("versicherungssumme", "folgetermin", iso, None,
                              sum(leistung.values()), umfang=len(diff), grund=ohne_soll),
                 zp.vergleich("jahresbeitrag", "folgetermin", iso, None,
@@ -460,10 +531,9 @@ def vergleiche(
                 zp.vergleich(g, "zwischen", iso, None, wert, umfang=len(diff))
                 for g, wert in (("in_kraft", len(diff)),
                                 ("versicherungssumme", sum(leistung.values())),
+                                *((g2, sum(float(z[g2]) for z in diff.values()))
+                                  for g2 in zp.FUEHRUNGSWERT_VERGLICHEN),
                                 ("jahresbeitrag", sum(jb.values())))]
-            vergleiche_.append(deckungskapital("zwischen", {}) if "deckungskapital" in zp.NICHT_VERGLICHEN
-                               else zp.vergleich("deckungskapital", "zwischen", iso, None,
-                                                 sum(dk.values()), umfang=len(diff)))
 
     # Die Buchungen: Tagesjournale beider Laeufe.
     jo = read_portfolio(a_ohne.tagesjournal_pfad, expected_columns=TAGESJOURNAL_NAMES)
@@ -786,7 +856,9 @@ def zugangsprobe(
             # Was je Abschlussspalte gehalten wird, und was mit welchem
             # Grund nicht (Pruefer-Befunde 3 und 8).
             "abdeckung": zp.abdeckung(),
-            "nicht_verglichen": dict(zp.NICHT_VERGLICHEN),
+            # Die Bewertungskonvention, in der Abschluss und Fuehrungswert
+            # verglichen wurden (ADR-011 Nachtrag 2026-10-01).
+            "konvention": soll.konvention,
             "folgetermin": {
                 "stichtag": folgetermin.isoformat() if folgetermin else None,
                 "gedeckt": bool(folgetermin and stichtag < folgetermin <= bis

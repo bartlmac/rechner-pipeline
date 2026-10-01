@@ -51,12 +51,15 @@ def lauf_klv(lauf_klv_ursprung):
     from rechner_pipeline.bestand.ereignisse import fortschreiben, mit_zugaengen
     from rechner_pipeline.bestand.fuehrung import fuehre_fort
 
+    from tests.nebentabellen import aus_fortschreibung, mit_neben
+
     basis, config = lauf_klv_ursprung
-    historie, _ledger, scheiben, zugaenge = fortschreiben(
-        basis, config, _dt.date(2035, 1, 1)
-    )[:4]
+    ergebnis = fortschreiben(basis, config, _dt.date(2035, 1, 1))
+    historie, _ledger, scheiben, zugaenge = ergebnis[:4]
     gesamt = mit_zugaengen(basis, zugaenge)
-    return fuehre_fort(gesamt, historie), historie, scheiben, config
+    # Mit ALLEN Nebentabellen des Laufs (Reduktionen eingeschlossen).
+    return mit_neben((fuehre_fort(gesamt, historie), historie, scheiben, config),
+                     aus_fortschreibung(ergebnis))
 
 
 @pytest.fixture(scope="module")
@@ -183,7 +186,7 @@ def test_bewertung_verlangt_das_journal_zum_gefuehrten_stamm(lauf_klv) -> None:
         einzelwerte_am(stamm, None, config, STICHTAG)
 
     # Mit Journal laeuft dieselbe Bewertung.
-    zeilen = einzelwerte_am(stamm, historie, config, STICHTAG, scheiben=scheiben)
+    zeilen = einzelwerte_am(stamm, historie, config, STICHTAG, **lauf_klv.neben)
     assert zeilen
 
 
@@ -247,12 +250,12 @@ def test_abschluss_unter_falschem_dateinamen_ist_ein_befund(
     """
     stamm, historie, scheiben, config = lauf_klv
     ziel = tmp_path / "abschluesse"
-    echt = schreibe_abschluss(stamm, historie, config, STICHTAG, ziel, scheiben=scheiben)
-    assert pruefe_abschluss(echt, stamm, historie, config, scheiben=scheiben) == []
+    echt = schreibe_abschluss(stamm, historie, config, STICHTAG, ziel, **lauf_klv.neben)
+    assert pruefe_abschluss(echt, stamm, historie, config, **lauf_klv.neben) == []
 
     falsch = ziel / abschluss_pfad(ziel, _dt.date(2099, 1, 1)).name
     falsch.write_bytes(echt.read_bytes())
-    befunde = pruefe_abschluss(falsch, stamm, historie, config, scheiben=scheiben)
+    befunde = pruefe_abschluss(falsch, stamm, historie, config, **lauf_klv.neben)
     assert befunde and "enthaelt aber den Stichtag" in befunde[0]
 
 
@@ -262,12 +265,12 @@ def test_abschluss_vergleicht_auch_produkt_und_generation(
     """Beide werden aus dem Stamm neu abgeleitet — also auch verglichen."""
     stamm, historie, scheiben, config = lauf_klv
     ziel = tmp_path / "abschluesse"
-    pfad = schreibe_abschluss(stamm, historie, config, STICHTAG, ziel, scheiben=scheiben)
+    pfad = schreibe_abschluss(stamm, historie, config, STICHTAG, ziel, **lauf_klv.neben)
 
     fest = read_portfolio(pfad)
     fest.loc[fest.index[0], "tarif_generation"] = "MANIPULIERT"
     write_portfolio(fest, pfad)
-    befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
+    befunde = pruefe_abschluss(pfad, stamm, historie, config, **lauf_klv.neben)
     assert any("tarif_generation" in b for b in befunde)
 
     # Und produkt ebenso: der Testname behauptete beide, mutierte aber nur
@@ -276,7 +279,7 @@ def test_abschluss_vergleicht_auch_produkt_und_generation(
     fest = read_portfolio(pfad)
     fest.loc[fest.index[0], "produkt"] = "bu"
     write_portfolio(fest, pfad)
-    befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
+    befunde = pruefe_abschluss(pfad, stamm, historie, config, **lauf_klv.neben)
     assert any("produkt" in b for b in befunde)
 
 

@@ -838,6 +838,7 @@ def _aufruf(kommando: str, fall: Path, datei_args: List[str],
             "--zeilen", str(p["zeilen"]), "--vorgeschichte", METADATEN,
             "--anker-erwartungswerte", ANKER, "--stoab-je-baustein",
             "--dk-stichtag", "jahrestag", "--schicht", str(p["schichten"]),
+            "--config", str(p["config"]),
             "--repo-root", str(REPO_ROOT), "--out", str(ziel / "suite.json"),
         ] + _lieferung() + datei_args
     assert kommando == "fuehrungsprobe", kommando
@@ -1402,8 +1403,10 @@ def test_die_version_des_abnahmeberichts_nennt_den_grund():
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     zeile = next(z for z in readme.splitlines()
                  if z.startswith("| G2-Vorlage (Version `"))
-    # 7.0.0 (Pruefer-Befund B1, 2026-10-01) erweitert dieselbe Zeile; der
-    # Grund fuer 6.0.0 steht weiter darin.
-    assert abnahmebericht.GATE_VERSION == "7.0.0"
+    # 7.0.0 (Pruefer-Befund B1, 2026-10-01) und 8.0.0 (Fuehrungswert,
+    # 2026-10-01) erweitern dieselbe Zeile; der Grund fuer 6.0.0 steht
+    # weiter darin.
+    assert abnahmebericht.GATE_VERSION == "8.0.0"
     assert "`6.0.0`" in zeile and "red_anteile_datei" in zeile
     assert "`7.0.0`" in zeile and "pflichtschicht" in zeile
+    assert "`8.0.0`" in zeile and "fuehrungswert" in zeile

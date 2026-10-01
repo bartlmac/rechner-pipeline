@@ -321,6 +321,7 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             "--abzug-1", ABZUG_1, "--abzug-2", ABZUG_2,
             "--gevo-protokoll", PROTOKOLL,
             "--bestand", str(bestand / "bestand.parquet"),
+            "--config", str(config_pfad),
             "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
             "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
             "--anker-erwartungswerte", ANKER,
@@ -344,6 +345,14 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     bestand_schluessel = next(
         k for k in ms_eingaben if k.endswith("bestand.parquet"))
     assert ms_beleg["bestand_sha256"] == ms_eingaben[bestand_schluessel]
+    # Der Fuehrungswert (Entscheid 2026-10-01): die Produzentin liefert ihn
+    # fuer jeden Vertrag, gebunden an Bestand und Config dieses Laufs.
+    from rechner_pipeline.models.fuehrungswert import fuehrungswert_fehler
+
+    assert fuehrungswert_fehler(ms_beleg) == []
+    assert ms_beleg["fuehrungswert"]["konvention"] == "monatsgenau"
+    assert ms_beleg["fuehrungswert"]["config_sha256"] == hashlib.sha256(
+        Path(config_pfad).read_bytes()).hexdigest()
     for name in (ABZUG_1, ABZUG_2, PROTOKOLL, METADATEN, ANKER):
         assert any(k.endswith(Path(name).name) for k in ms_eingaben), name
     for rel, summe in ms_eingaben.items():

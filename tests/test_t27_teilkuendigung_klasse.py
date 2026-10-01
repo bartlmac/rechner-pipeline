@@ -202,12 +202,16 @@ def test_die_bewertung_weist_den_rueckkaufswert_des_folgevertrags_aus(welt):
     assert geprueft > 0
 
 
-def test_die_bewertung_am_unterjaehrigen_stichtag_nimmt_die_jahreszeile(welt):
+def test_die_bewertung_am_unterjaehrigen_stichtag_mischt_wie_jeder_andere_vertrag(welt):
     """Kalibrierungsfund N5: Der reduzierte Verlauf interpolierte innerhalb
-    des Vertragsjahres, jeder gewoehnliche Vertrag rechnet die Zeile des
-    angebrochenen Jahres. Am 1.12. lag das Deckungskapital um 11/12 des
-    Jahreszuwachses zu hoch. Mutationsprobe: ``12 * jahr`` zurueck auf
-    ``months_exp`` -> rot."""
+    des Vertragsjahres, waehrend jeder gewoehnliche Vertrag die Zeile des
+    angebrochenen Jahres rechnete — zwei Konventionen nebeneinander. Die
+    Invariante ist dieselbe Konvention wie der Nachbar; seit 2026-10-01
+    (Entscheid des Maintainers, ADR-011 Nachtrag) ist das fuer alle die
+    monatsgenaue Mischung. Kontrolle: der teilgekuendigte Vertrag als
+    gewoehnlicher Kern mit f x S und Scheiben (``vertrags_monatsreserve``)
+    am selben Monat. Mutationsprobe: ``monat`` in werte_reduziert auf den
+    Jahrestag -> rot."""
     config, stamm, schichten, verankerung, erg = welt
     geprueft = 0
     for z in _reduktionen(erg).to_dict("records"):
@@ -219,7 +223,7 @@ def test_die_bewertung_am_unterjaehrigen_stichtag_nimmt_die_jahreszeile(welt):
         mp, grund_neu = _folgevertrag(config, stamm, pid, jahr)
         kerne = _scheiben_kerne(mp, config, scheiben)
         soll = vertrags_monatsreserve(
-            grund_neu, [(j, k) for j, _, k in kerne], 12 * (jahr + 1), stoab_je_baustein=True)
+            grund_neu, [(j, k) for j, _, k in kerne], 12 * (jahr + 1) + 7, stoab_je_baustein=True)
         zeile = _bewertung(welt, pid, stichtag)
         assert zeile["deckungskapital"] == pytest.approx(soll.drx_bpfl, rel=1e-9), pid
         assert zeile["rueckkaufswert"] == pytest.approx(soll.rkw, rel=1e-9), pid
@@ -430,19 +434,27 @@ def test_der_folgevertrag_traegt_nur_seinen_zillmer_rest():
         soll_kern.monatsreserve_beitragsfrei(3, 12 * 5), rel=1e-12)
 
 
-def test_die_bewertung_nach_beitragsfreistellung_nimmt_die_jahreszeile():
-    """N11: der PEX-Zweig von werte_reduziert interpolierte monatsgenau —
-    Saegezahn auf einer Bilanzzahl. Mutationsprobe: months_exp statt
-    12 * jahr im PEX-Zweig -> rot."""
+def test_die_bewertung_nach_beitragsfreistellung_folgt_derselben_konvention():
+    """N11: der PEX-Zweig von werte_reduziert rechnete anders als der
+    beitragspflichtige Zweig daneben. Die Invariante: beide Zweige in
+    DERSELBEN Konvention — monatsgenau die Mischung der Jahrestage (seit
+    2026-10-01), in der Jahreszeile (Nachrechnung alter Abschluesse) der
+    Wert des Jahrestags. Mutationsprobe: im PEX-Zweig den Monat auf den
+    Jahrestag setzen -> rot."""
     from rechner_pipeline.kern import KLV_DEFAULT
     from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, reduzierte_teile
 
     teile = reduzierte_teile(Rechenkern(KLV_DEFAULT), [], 8, 0.6, PROSPEKTIV)
-    am_jahrestag = werte_reduziert(teile, 168, 12, stoab_je_baustein=False)["deckungskapital"]
-    mitten_im_jahr = werte_reduziert(teile, 174, 12, stoab_je_baustein=False)["deckungskapital"]
-    naechster = werte_reduziert(teile, 180, 12, stoab_je_baustein=False)["deckungskapital"]
-    assert mitten_im_jahr == pytest.approx(am_jahrestag, rel=1e-12)
+
+    def dk(monate, monatsgenau):
+        return werte_reduziert(teile, monate, 12, stoab_je_baustein=False,
+                               monatsgenau=monatsgenau)["deckungskapital"]
+
+    am_jahrestag, naechster = dk(168, True), dk(180, True)
     assert naechster != pytest.approx(am_jahrestag, rel=1e-6)
+    assert dk(174, True) == pytest.approx(0.5 * am_jahrestag + 0.5 * naechster, rel=1e-12)
+    assert dk(174, False) == pytest.approx(am_jahrestag, rel=1e-12)
+    assert dk(168, False) == dk(168, True) and dk(180, False) == dk(180, True)
 
 
 def test_der_bestandsbericht_bekommt_die_reduktionstabelle(tmp_path, monkeypatch):

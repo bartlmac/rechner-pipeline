@@ -192,6 +192,7 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--abzug-1", ABZUG_1, "--abzug-2", ABZUG_2,
         "--gevo-protokoll", PROTOKOLL,
         "--bestand", str(bestand / "bestand.parquet"),
+        "--config", str(config_pfad),
         "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
         "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
         "--erhoehungssatz", ERHOEHUNGSSATZ,

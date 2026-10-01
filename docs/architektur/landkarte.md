@@ -34,21 +34,21 @@ flowchart TD
     gates["gates<br/>20 Module"]
     kern["kern<br/>12 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
-    models["models<br/>13 Module"]
+    models["models<br/>14 Module"]
     ontologie["ontologie<br/>16 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>5 Module"]
     bestand -- 24 --> kern
-    bestand -- 17 --> models
+    bestand -- 18 --> models
     bestand -- 1 --> qa
-    betrieb -- 27 --> bestand
+    betrieb -- 28 --> bestand
     betrieb -- 2 --> kern
-    betrieb -- 25 --> models
+    betrieb -- 26 --> models
     gates -- 14 --> bestand
     gates -- 9 --> fall
     gates -- 13 --> kern
-    gates -- 24 --> models
+    gates -- 26 --> models
     gates -- 12 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
@@ -59,7 +59,7 @@ flowchart TD
     ontologie -- 1 --> kern
     ontologie -- 6 --> models
     qa -- 8 --> kern
-    qa -- 3 --> models
+    qa -- 4 --> models
     quellen -- 1 --> kern
     quellen -- 7 --> models
     quellen -- 4 --> ontologie
@@ -82,19 +82,19 @@ flowchart TD
     klv["klv<br/>90 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
-    system_entscheid["system/entscheid<br/>9 Module"]
+    system_entscheid["system/entscheid<br/>10 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 3 --> system_assurance
-    bu -- 13 --> system_entscheid
+    bu -- 14 --> system_entscheid
     klv -- 9 --> system_assurance
-    klv -- 27 --> system_entscheid
+    klv -- 32 --> system_entscheid
     klv -- 9 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
     system_assurance -- 2 --> system_entscheid
     system_assurance -- 1 --> system_fall
-    system_entscheid -- 1 --> bu
-    system_entscheid -- 5 --> klv
+    system_entscheid -- 3 --> bu
+    system_entscheid -- 7 --> klv
     system_entscheid -- 5 --> system_assurance
 ```
 

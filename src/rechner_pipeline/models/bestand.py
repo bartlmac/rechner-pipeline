@@ -1126,7 +1126,48 @@ ABSCHLUSS_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("vs_bfr", "float64"),
     ("jahresbeitrag", "float64"),
     ("kern_version", "object"),
+    # Die Bewertungskonvention, in der die Zahlen dieser Datei stehen
+    # (BEWERTUNGSKONVENTIONEN; gelesen wird sie nur ueber
+    # abschluss_konvention). Seit 2026-10-01 — aeltere Abschluesse tragen
+    # die Spalte nicht, und gerade das Fehlen ist ihre Aussage.
+    ("bewertungskonvention", "object"),
 )
+
+#: Die Bewertungskonventionen eines Abschlusses (Entscheid des Maintainers
+#: 2026-10-01, ADR-011 Nachtrag): WIE die Fuehrung das Deckungskapital, den
+#: Rueckkaufswert und die Korrekturschicht eines Vertrags am Bewertungs-
+#: stichtag aus dem Kern liest.
+#:
+#: * ``jahreszeile`` — der Wert zum letzten Vertragsjahrestag (die Zeile des
+#:   angebrochenen Vertragsjahres). So fuehrte der Abschluss bis 2026-10-01;
+#:   unterjaehrig wies er bis zu 11/12 des Jahreszuwachses zu wenig aus. Die
+#:   Korrekturschicht einer nicht beitragsfreien Police stand schon damals
+#:   monatsgenau darin — die Konvention ist die des damaligen Schreibers,
+#:   nicht eine bereinigte.
+#: * ``monatsgenau`` — die unterjaehrige Mischung des Kerns: linear zwischen
+#:   den beiden Vertragsjahrestagen, die den Bewertungsstichtag einschliessen
+#:   (``Rechenkern.monatsreserve`` und Geschwister), ohne Beitragsuebertrag
+#:   (zurueckgestellt, dev-docs/offene-punkte.md).
+KONVENTION_JAHRESZEILE = "jahreszeile"
+KONVENTION_MONATSGENAU = "monatsgenau"
+BEWERTUNGSKONVENTIONEN: Tuple[str, ...] = (KONVENTION_JAHRESZEILE, KONVENTION_MONATSGENAU)
+#: Die Konvention, in der die Fuehrung heute festschreibt.
+FUEHRUNGSKONVENTION = KONVENTION_MONATSGENAU
+#: Wie eine Konvention je PRODUKT rechnet. Die BU bleibt auch unter
+#: ``monatsgenau`` bei der Jahreszeile: Der Kern fuehrt fuer sie keine
+#: unterjaehrige Reserve (``kern.produkte.bu`` kennt nur Vertragsjahre),
+#: und eine Mischung in der Bestandsschicht waere eine Formel ausserhalb
+#: des Kerns. Benannt statt still gemischt.
+KONVENTION_JE_PRODUKT: Dict[str, Dict[str, str]] = {
+    KONVENTION_JAHRESZEILE: {"klv": KONVENTION_JAHRESZEILE, "bu": KONVENTION_JAHRESZEILE},
+    KONVENTION_MONATSGENAU: {"klv": KONVENTION_MONATSGENAU, "bu": KONVENTION_JAHRESZEILE},
+}
+#: Die Herkunft der Konvention eines gelesenen Abschlusses.
+HERKUNFT_SPALTE = "spalte"
+HERKUNFT_VOR_UMSTELLUNG = (
+    "Jahreszeile, vor der Umstellung geschrieben (die Datei traegt keine Spalte "
+    "bewertungskonvention)")
+HERKUNFT_LEER = "leer: ein Abschluss ohne Zeile traegt keine Bewertung"
 
 #: Tagesjournal des Tagesbetriebs (Fachkonzept docs/simulation/tagesbetrieb.md,
 #: Abschnitt 3): je Zeile ein Verweis auf genau eine Ledger-Zeile (Police,
@@ -1156,6 +1197,12 @@ STATUS_HISTORIE_NAMES: Tuple[str, ...] = tuple(n for n, _ in STATUS_HISTORIE_SPA
 LEDGER_NAMES: Tuple[str, ...] = tuple(n for n, _ in LEDGER_SPALTEN)
 SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
 ABSCHLUSS_NAMES: Tuple[str, ...] = tuple(n for n, _ in ABSCHLUSS_SPALTEN)
+#: Die Gestalt eines Abschlusses VOR der Umstellung (bis 2026-10-01): dieselben
+#: Spalten ohne ``bewertungskonvention``. In der Laufzeit liegen solche Dateien
+#: festgeschrieben (ADR-011); sie werden gelesen und nachgerechnet, nie
+#: umgeschrieben.
+ABSCHLUSS_NAMES_VOR_UMSTELLUNG: Tuple[str, ...] = tuple(
+    n for n in ABSCHLUSS_NAMES if n != "bewertungskonvention")
 
 #: Die BEWERTUNGSGROESSEN des Abschlusses — jede Zahl, die ein Bilanzwert
 #: ist, abgeleitet statt aufgezaehlt (Review T25-09).
@@ -2159,8 +2206,17 @@ def validate_abschluss(df: Any) -> List[str]:
     """
     errors: List[str] = []
     cols = list(df.columns)
-    if cols != list(ABSCHLUSS_NAMES):
-        return [f"abschluss: Spalten {cols} != erwartet {list(ABSCHLUSS_NAMES)}"]
+    # Zwei Gestalten sind gueltig: die heutige und die vor der Umstellung
+    # (ohne bewertungskonvention). Eine dritte ist keine.
+    if cols not in (list(ABSCHLUSS_NAMES), list(ABSCHLUSS_NAMES_VOR_UMSTELLUNG)):
+        return [f"abschluss: Spalten {cols} != erwartet {list(ABSCHLUSS_NAMES)} "
+                f"(oder vor der Umstellung {list(ABSCHLUSS_NAMES_VOR_UMSTELLUNG)})"]
+    if "bewertungskonvention" in cols and len(df):
+        werte = sorted({str(v) for v in df["bewertungskonvention"]})
+        if len(werte) != 1 or werte[0] not in BEWERTUNGSKONVENTIONEN:
+            errors.append(
+                f"abschluss: bewertungskonvention {werte} — erwartet genau eine aus "
+                f"{list(BEWERTUNGSKONVENTIONEN)} je Datei")
     if len(df) == 0:
         # Leer ist seit ADR-020 eine gueltige Eroeffnungsbilanz (der Vertrag
         # der DATEI ist mit null Zeilen erfuellt); ob er an DIESEM Stichtag
@@ -2183,6 +2239,79 @@ def validate_abschluss(df: Any) -> List[str]:
             "Bilanzwert ist endlich"
         )
     return errors
+
+
+class AbschlussKonventionFehler(ValueError):
+    """Die Konvention eines gelesenen Abschlusses ist nicht zu bestimmen."""
+
+
+@_dc.dataclass(frozen=True)
+class AbschlussKonvention:
+    """Die Bewertungskonvention eines gelesenen Abschlusses.
+
+    ``name`` ist die Konvention, in der die Zahlen der Datei stehen und in
+    der sie nachgerechnet werden (``None`` nur fuer einen leeren Abschluss:
+    ohne Zeile gibt es keine Bewertung); ``herkunft`` sagt, woher die
+    Aussage stammt — aus der Spalte, oder aus ihrem Fehlen.
+    """
+
+    name: Optional[str]
+    herkunft: str
+
+    @property
+    def vor_umstellung(self) -> bool:
+        return self.herkunft == HERKUNFT_VOR_UMSTELLUNG
+
+
+def abschluss_konvention(df: Any) -> AbschlussKonvention:
+    """Die Konvention eines gelesenen Abschlusses — die EINE Stelle, die sie sagt.
+
+    Jeder Leser einer Abschlussdatei fragt hier (ueber
+    ``bestand.abschluss.lies_abschluss``), keiner liest die Spalte selbst:
+    Seit der Umstellung (2026-10-01) gibt es zwei Gestalten, und eine
+    Reihe aus beiden ist an der Naht nicht vergleichbar.
+
+    * Spalte vorhanden: ihr Wert — genau einer je Datei, aus
+      :data:`BEWERTUNGSKONVENTIONEN`; sonst ein harter Fehler.
+    * Spalte FEHLT (Gestalt :data:`ABSCHLUSS_NAMES_VOR_UMSTELLUNG`): die
+      Jahreszeile, benannt als vor der Umstellung geschrieben. Das Fehlen
+      ist eine Aussage ueber den Schreiber, kein Default.
+    * Jede andere Spaltenmenge: harter Fehler — das ist kein Abschluss.
+    """
+    cols = list(df.columns)
+    if cols == list(ABSCHLUSS_NAMES_VOR_UMSTELLUNG):
+        if len(df) == 0:
+            return AbschlussKonvention(None, HERKUNFT_LEER)
+        return AbschlussKonvention(KONVENTION_JAHRESZEILE, HERKUNFT_VOR_UMSTELLUNG)
+    if cols != list(ABSCHLUSS_NAMES):
+        raise AbschlussKonventionFehler(
+            f"abschluss: Spalten {cols} sind weder die heutige Gestalt noch die vor "
+            "der Umstellung — die Bewertungskonvention ist nicht zu bestimmen")
+    if len(df) == 0:
+        return AbschlussKonvention(None, HERKUNFT_LEER)
+    werte = sorted({str(v) for v in df["bewertungskonvention"]})
+    if len(werte) != 1 or werte[0] not in BEWERTUNGSKONVENTIONEN:
+        raise AbschlussKonventionFehler(
+            f"abschluss: bewertungskonvention {werte} — erwartet genau eine aus "
+            f"{list(BEWERTUNGSKONVENTIONEN)}; eine Datei in zwei Konventionen ist "
+            "keine Bilanz")
+    return AbschlussKonvention(werte[0], HERKUNFT_SPALTE)
+
+
+def konventionsbruch(konventionen: Iterable[AbschlussKonvention]) -> Optional[str]:
+    """Der Bruch einer Reihe von Abschluessen (None: eine Konvention).
+
+    Wer Abschluesse verschiedener Stichtage in eine Reihe legt, fragt hier:
+    Leere Abschluesse tragen keine Bewertung und brechen nichts; zwei
+    verschiedene Konventionen sind ein Bruch, den der Leser kennzeichnet
+    oder mit diesem Text verweigert.
+    """
+    namen = sorted({k.name for k in konventionen if k.name is not None})
+    if len(namen) <= 1:
+        return None
+    return (f"Konventionsbruch: die Reihe mischt Abschluesse in {namen} — an der Naht "
+            "springt das Deckungskapital ohne Geschaeftsvorfall (Umstellung "
+            "2026-10-01, ADR-011 Nachtrag)")
 
 
 def validate_scheiben(stamm: Any, scheiben: Any, historie: Any = None) -> List[str]:

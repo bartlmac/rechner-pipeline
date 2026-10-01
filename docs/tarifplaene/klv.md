@@ -146,6 +146,42 @@ die Führung rechnet so (Kern: `vertrags_monatsreserve`). Die Vorgabe
 ist die Regel dieses Abschnitts. Welche übernommene Generation welche
 Eigenschaft trägt, zeigt Abschnitt 13.
 
+**Bewertung am Monatsstichtag.** Die Formeln oben gelten an den
+Vertragsjahrestagen. Zwischen zwei Jahrestagen, nach $m = 12a + r$
+vollen Vertragsmonaten ($0 \le r < 12$, $u = r/12$), werden die
+Beträge linear gemischt:
+
+$$
+DR(m) = (1-u)\,{}_a DR^{bpfl} + u\,{}_{a+1} DR^{bpfl}, \qquad
+V^{MRV}(m) = (1-u)\,{}_a V^{MRV} + u\,{}_{a+1} V^{MRV},
+$$
+
+nach einer Beitragsfreistellung im Jahr $a_0$ ebenso der beitragsfreie
+Reservesatz: $S^{bfr}_{a_0} \bigl((1-u)\,{}_a V^{bfr} + u\,{}_{a+1} V^{bfr}\bigr)$.
+Stornoabzug und Rückkaufswert werden aus den gemischten Beträgen neu
+gerechnet, mit den Regeln des angebrochenen Jahres $a$ (flexible Phase,
+Ablauf); am Jahrestag ($r = 0$) ist das genau die Jahreszeile. Bei
+Erhöhungsscheiben mischt jede Scheibe an ihrem versetzten Stichtag, der
+herabgesetzte Vertrag auf seinem geknickten Verlauf (7.1), die
+Korrekturschicht auf ihrem eigenen Jahresgitter
+([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md), 9.6).
+Ein Vorgang, der am Jahrestag wirkt (Erhöhung, Freistellung,
+Herabsetzung, Teilkündigung), gilt ab diesem Tag; im Jahr davor mischt
+der Vertrag, wie er war.
+
+So rechnen die Abnahmen (A-M1, Migrationscontrolling) und seit
+2026-10-01 auch die Führung: Der Monatsabschluss weist Deckungskapital,
+Rückkaufswert und Korrekturschicht in dieser Mischung aus (Kern:
+`monatsreserve`, `monatsreserve_beitragsfrei`, `vertrags_monatsreserve`,
+`vertrags_monatsreserve_reduziert`). Ein Beitragsübertrag für den bereits
+gezahlten, noch nicht verdienten Beitrag ist darin **nicht** enthalten;
+er ist fachlich noch nicht erarbeitet und als offener Punkt
+zurückgestellt (`dev-docs/offene-punkte.md`, Fachlich). Verworfen wurde
+die Treppe, nach der die Führung bis dahin den Wert des letzten
+Jahrestags auswies: Sie lag unterjährig um bis zu 11/12 des
+Jahreszuwachses unter der Reserve, und sie war nie eine fachliche
+Entscheidung, sondern ein Erbe der jährlichen Fortschreibung.
+
 # 7 Geschäftsvorfälle (GeVo-Katalog)
 
 Buchungskonvention und die Einordnung der

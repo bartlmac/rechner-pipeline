@@ -83,9 +83,9 @@ def probenbeleg(
 
     eingang = json.loads(eingang_roh.decode("utf-8"))
     tag = stichtag or str(eingang.get("stichtag"))
+    from rechner_pipeline.models.bestand import FUEHRUNGSKONVENTION
+
     vergleiche = [
-        zp.vergleich(g, "zugangsstichtag", tag, None, 1.0, umfang=1, grund=zp.NICHT_VERGLICHEN[g])
-        if g in zp.NICHT_VERGLICHEN else
         zp.vergleich(g, "zugangsstichtag" if g in zp.PFLICHT_AM_STICHTAG else "fenster",
                      tag, 1.0, 1.0, umfang=1)
         for g in zp.GROESSEN
@@ -102,7 +102,7 @@ def probenbeleg(
         "system": tl.code_stand(None),
         "eingaben": {b["datei"]: b["sha256"] for b in abnahmen.values()},
         "abnahmen": {k: dict(v) for k, v in abnahmen.items()},
-        "abdeckung": zp.abdeckung(), "nicht_verglichen": dict(zp.NICHT_VERGLICHEN),
+        "abdeckung": zp.abdeckung(), "konvention": FUEHRUNGSKONVENTION,
         "folgetermin": {"stichtag": None, "gedeckt": False, "grund": "Testhelfer"},
         "groessen": list(zp.GROESSEN), "vergleiche": vergleiche, "befunde": [],
         "bestanden": zp.bestanden_aus(vergleiche, []),

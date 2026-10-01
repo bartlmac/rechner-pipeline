@@ -114,6 +114,7 @@ from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichni
 from rechner_pipeline.bestand.abschluss import (
     AbschlussError,
     abschluss_pfad,
+    lies_abschluss,
     pruefe_abschluss,
     schreibe_abschluss,
 )
@@ -1239,7 +1240,9 @@ def _pruefe_zahlen_der_zeile(
         roh = pfad.read_bytes()
         if a.get("sha256") and sha256_bytes(roh) != a["sha256"]:
             continue  # dort ebenso
-        soll_k = {"in_kraft": int(len(read_portfolio(io.BytesIO(roh))))}
+        # Die Stueckzahl haengt nicht an der Bewertungskonvention; gelesen
+        # wird trotzdem ueber den einen Leseweg (lies_abschluss).
+        soll_k = {"in_kraft": int(len(lies_abschluss(roh)[0]))}
         if journal is not None:
             from rechner_pipeline.bestand.kennzahlen import bewegungskennzahlen
 
@@ -1551,7 +1554,7 @@ def _abschluss_kennt_eingang(ablage: Ablage, stichtag: _dt.date, police_ids) -> 
     pfad = abschluss_pfad(ablage.abschluesse, stichtag)
     if not pfad.is_file():
         return False
-    tabelle = read_portfolio(pfad)
+    tabelle, _konvention = lies_abschluss(pfad)  # Policen: konventionsfrei
     return bool(set(int(p) for p in tabelle["police_id"]) & {int(p) for p in police_ids})
 
 
@@ -2865,7 +2868,7 @@ def _tageslauf_mit_config(
                         "stichtag": stichtag.isoformat(), "datei": pfad.name,
                         "sha256": _datei_hash(pfad), "neu": False,
                         "nachgerechnet": True,
-                        **monatskennzahlen(read_portfolio(pfad), journal, stichtag),
+                        **monatskennzahlen(lies_abschluss(pfad)[0], journal, stichtag),
                     }
                     if befunde:
                         eintrag["befunde"] = befunde[:20]
@@ -2897,7 +2900,7 @@ def _tageslauf_mit_config(
                         # der erst heute gebucht wurde, wird erst in seinem
                         # Monat sichtbar.
                         **monatskennzahlen(
-                            read_portfolio(geschrieben), journal, stichtag),
+                            lies_abschluss(geschrieben)[0], journal, stichtag),
                     }
                 if stichtag == stichtage[-1]:
                     # Derselbe Schnitt wie der Abschluss: Der Bericht legt

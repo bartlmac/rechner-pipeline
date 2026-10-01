@@ -937,7 +937,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--gevo-protokoll", dest="protokoll", required=True,
                    help="REGISTRIERTES Geschaeftsvorfall-Protokoll")
     p.add_argument("--bestand", required=True,
-                   help="transformierter Bestand (Parquet), von P-B1 geprueft")
+                   help="transformierter Bestand (Parquet), von P-B1 geprueft; sein "
+                        "Verzeichnis ist das der Uebernahme (historie.parquet und die "
+                        "Nebentabellen daneben tragen den Fuehrungswert)")
+    p.add_argument("--config", required=True,
+                   help="Bestand-Config der Fuehrung (TOML) — mit ihr rechnet der "
+                        "Fuehrungswert, was der Monatsabschluss fuer jeden Vertrag "
+                        "fuehrt (Entscheid 2026-10-01)")
     p.add_argument("--stichtag-1", dest="stichtag_1", required=True)
     p.add_argument("--stichtag-2", dest="stichtag_2", required=True)
     p.add_argument("--zeilen", default=None,
@@ -1140,6 +1146,41 @@ def main(argv: Optional[List[str]] = None) -> int:
         summen=summen,
     )
 
+    # Der Fuehrungswert (Entscheid 2026-10-01): was der Monatsabschluss fuer
+    # jeden Vertrag des Zugangs fuehren wird — ueber die Bewertungsstrecke
+    # des Abschlusses, aus dem Bestand der Uebernahme und der Config der
+    # Fuehrung, alles gebunden. Gerechnet in der Bestandsschicht
+    # (bestand.migrationszugang, eine gemessene Kante), nicht hier.
+    from rechner_pipeline.bestand.migrationszugang import (
+        MigrationszugangFehler,
+        fuehrungswerte as _fuehrungswerte,
+    )
+    from rechner_pipeline.models.fuehrungswert import kopf as _fw_kopf
+
+    uebernahme_dir = bestand_pfad.resolve().parent
+
+    def _neben(name: str, pflicht: bool = False):
+        pfad = uebernahme_dir / name
+        if not pfad.is_file():
+            if pflicht:
+                raise SystemExit(
+                    f"{pfad}: fehlt — ohne die Historie der Uebernahme ist der "
+                    "Fuehrungswert nicht zu rechnen (beitragsfreie Vertraege)")
+            return None
+        return read_portfolio_aus_bytes(bindung.binde(pfad).roh)
+
+    config_gelesen = bindung.binde(Path(args.config))
+    try:
+        fw_konvention, fw_werte = _fuehrungswerte(
+            bestand, _neben("historie.parquet", pflicht=True), config_gelesen.text(),
+            {"stichtag_1": _parse(args.stichtag_1), "stichtag_2": _parse(args.stichtag_2)},
+            scheiben=_neben("scheiben.parquet"), merkmale=_neben("merkmale.parquet"),
+            schichten=_neben("schichten.parquet"), verankerung=_neben("verankerung.parquet"),
+            reduktionen=_neben("reduktionen.parquet"))
+    except (MigrationszugangFehler, ValueError) as exc:
+        print(f"Fuehrungswert nicht rechenbar: {exc}", file=sys.stderr)
+        return 2
+
     # Die Pruefmenge wird an der LIEFERUNG gemessen, nicht an sich
     # selbst: erwartete Anzahl ist die Zeilenzahl des Abzugs zum
     # Migrationsstichtag. Scope-Bindung (Stichtage, Bestand-Hash,
@@ -1157,6 +1198,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Anfangszustand die Auskunft traegt — A-M4 haelt die Menge gegen die
         # der Uebernahme und der Abnahmen.
         pflichtschicht=deckungsbeleg(anfangszustaende or {}, auskunft_beleg),
+        fuehrungswert=_fw_kopf(fw_konvention, bestand_sha256=bestand_gelesen.sha256,
+                               config_sha256=config_gelesen.sha256),
+        fuehrungswerte=fw_werte,
     )
     # Der Beleg nennt, worueber geurteilt wurde — nicht nur den Bestand.
     ergebnis["eingaben"] = bindung.als_beleg()

@@ -27,10 +27,17 @@ Die drei Instrumente (Skill ``teste-adversarial``):
 
 Block F, Nachbesserung (Pruefer-Befunde 1-9): Soll-Bindung an die
 geltenden Abnahmen, der tatsaechliche Eintritt eines vorausdatierten
-Eingangs, das Deckungskapital benannt statt verglichen (Entscheid offen,
-vorbereiteter Test xfail), Jahresbeitrag ueber den ganzen Zugang, je
-Abwehrstelle ein Angreifer ohne Schluessel, der Code-Stand der Probe, die
-Rolle der A-B2-Freigabe.
+Eingangs, Jahresbeitrag ueber den ganzen Zugang, je Abwehrstelle ein
+Angreifer ohne Schluessel, der Code-Stand der Probe, die Rolle der
+A-B2-Freigabe.
+
+Seit 2026-10-01 (Entscheid des Maintainers: Abschluss monatsgenau,
+Fuehrungswert in A-M4) vergleicht die Probe Deckungskapital,
+Rueckkaufswert und Korrekturschicht gegen den Fuehrungswert der Suite; die
+vorher erwartet roten DK-Tests (xfail, strict) sind echte Tests mit
+Rueckrichtung (Vergleich ausgebaut -> unbemerkt) und Positivkontrolle
+(Toleranz unendlich -> unbemerkt), dazu Angriffe auf die Ablagekopie je
+Angriffsart und die maximale Manipulation.
 
 Knoten: system/betrieb
 """
@@ -90,15 +97,22 @@ def _monate(beginn: str, tag: dt.date) -> int:
 
 
 def _dk(police: int, tag: dt.date) -> float:
-    """Deckungskapital aus den Kern-Primitiven — der Wert zum letzten
-    Vertragsjahrestag (die Konvention des Abschlusses), beitragsfrei ueber
-    die beitragsfreie Reserve. Kein Aufruf der Bewertungsstrecke des
-    Betriebs."""
+    """Deckungskapital aus den Kern-Primitiven — monatsgenau (die Konvention
+    des Abschlusses seit 2026-10-01): beitragspflichtig die Deckungs-
+    rueckstellung der Monatsreserve, beitragsfrei die beitragsfreie
+    Monatsreserve. Kein Aufruf der Bewertungsstrecke des Betriebs."""
     beginn, pex = VERTRAEGE[police]
     kern, monate = _kern(beginn), _monate(beginn, tag)
     if pex is not None:
-        return float(kern.reserve_beitragsfrei(pex, monate // 12))
-    return float(kern.zustand_am(monate).drx_bpfl)
+        return float(kern.monatsreserve_beitragsfrei(pex, monate))
+    return float(kern.monatsreserve(monate).drx_bpfl)
+
+
+def _rkw(police: int, tag: dt.date) -> float:
+    """Rueckkaufswert aus der Monatsreserve (beitragsfrei: keiner)."""
+    beginn, pex = VERTRAEGE[police]
+    return 0.0 if pex is not None else float(
+        _kern(beginn).monatsreserve(_monate(beginn, tag)).rkw)
 
 
 def _jb(police: int) -> float:
@@ -152,6 +166,17 @@ def _producer_belege(fall: Path) -> None:
     aktuartest = at.pruefe_stichprobe(
         auftraege, stichprobe, vorlage("A-M1", weite="je Historientyp ein Vertrag"))
     bestand = fall / "abgeleitet" / "bestand" / "bestand.parquet"
+    # Der Fuehrungswert, wie gates.migrationssuite_lauf ihn liefert: ueber die
+    # Bewertungsstrecke des Abschlusses, aus dem Bestand des Falls, mit der
+    # Config der Fuehrung (Entscheid 2026-10-01).
+    from rechner_pipeline.bestand.migrationszugang import fuehrungswerte
+    from rechner_pipeline.models.fuehrungswert import kopf
+
+    tabellen = fall / "abgeleitet" / "bestand"
+    config_text = PLV.read_text(encoding="utf-8")
+    konvention, fw = fuehrungswerte(
+        read_portfolio(bestand), read_portfolio(tabellen / "historie.parquet"), config_text,
+        {"stichtag_1": STICHTAG, "stichtag_2": FOLGETERMIN})
     suite = ms.pruefe_bestand([
         ms.VertragsPruefung(
             police_id=str(p), model_point=dict(mp),
@@ -163,7 +188,10 @@ def _producer_belege(fall: Path) -> None:
         for p, (beginn, pex) in VERTRAEGE.items()],
         erwartete_anzahl=len(VERTRAEGE), stichtag_1=STICHTAG.isoformat(),
         stichtag_2=FOLGETERMIN.isoformat(),
-        bestand_sha256=hashlib.sha256(bestand.read_bytes()).hexdigest())
+        bestand_sha256=hashlib.sha256(bestand.read_bytes()).hexdigest(),
+        fuehrungswert=kopf(konvention, bestand_sha256=hashlib.sha256(bestand.read_bytes()).hexdigest(),
+                           config_sha256=hashlib.sha256(config_text.encode("utf-8")).hexdigest()),
+        fuehrungswerte=fw)
     berichte = fall / "abgeleitet" / "berichte"
     berichte.mkdir(parents=True, exist_ok=True)
     (berichte / "aktuartest.json").write_text(json.dumps(aktuartest, sort_keys=True), encoding="utf-8")
@@ -258,6 +286,14 @@ def test_die_probe_besteht_auf_echter_ablage_und_echtem_fall(probe):
     assert am_stichtag["versicherungssumme"]["ist"] == pytest.approx(180000.0)
     assert am_stichtag["deckungskapital"]["ist"] == pytest.approx(
         sum(_dk(p, STICHTAG) for p in VERTRAEGE), abs=1e-6)
+    # Der Abschluss fuehrt monatsgenau — und die Abnahme weist genau das aus.
+    assert am_stichtag["deckungskapital"]["soll"] == pytest.approx(
+        sum(_dk(p, STICHTAG) for p in VERTRAEGE), abs=1e-6)
+    assert am_stichtag["rueckkaufswert"]["ist"] == pytest.approx(
+        sum(_rkw(p, STICHTAG) for p in VERTRAEGE), abs=1e-6)
+    for g in zp.FUEHRUNGSWERT_VERGLICHEN:
+        assert am_stichtag[g]["ok"] is True and am_stichtag[g]["umfang"] == len(VERTRAEGE), g
+    assert beleg["konvention"] == "monatsgenau"
     assert am_stichtag["jahresbeitrag"]["ist"] == pytest.approx(
         sum(_jb(p) for p in VERTRAEGE), abs=1e-6)
     # Jahresbeitrag je Vertrag ueber den GANZEN Zugang (Migrationssuite),
@@ -266,6 +302,9 @@ def test_die_probe_besteht_auf_echter_ablage_und_echtem_fall(probe):
     assert am_stichtag["jahresbeitrag"]["umfang"] == len(VERTRAEGE)
     folge = {v["groesse"]: v for v in beleg["vergleiche"] if v["termin"] == "folgetermin"}
     assert folge["in_kraft"]["ok"] is True
+    assert folge["deckungskapital"]["ok"] is True and folge["deckungskapital"]["ausgenommen"] == []
+    assert folge["deckungskapital"]["ist"] == pytest.approx(
+        sum(_dk(p, FOLGETERMIN) for p in VERTRAEGE), abs=1e-6)
     assert beleg["folgetermin"]["gedeckt"] is True
     # Das Soll ist an die Abnahmen gebunden: die Bytes, die A-M1 und A-M4 pinnen.
     for rolle, (_, datei) in zp.SOLL_BELEGE.items():
@@ -309,11 +348,11 @@ def test_ratsche_die_verglichenen_groessen_sind_die_des_belegs(probe):
     assert beleg["groessen"] == list(zp.GROESSEN)
     assert {v["groesse"] for v in beleg["vergleiche"]} == set(zp.GROESSEN)
     gegen_soll = {v["groesse"] for v in beleg["vergleiche"] if v["soll"] is not None}
-    assert gegen_soll == set(zp.GROESSEN) - set(zp.NICHT_VERGLICHEN)
-    # Was nicht verglichen wird, steht mit SEINEM Grund da — an jedem Termin.
-    for g, grund in zp.NICHT_VERGLICHEN.items():
-        benannt = [v for v in beleg["vergleiche"] if v["groesse"] == g]
-        assert benannt and all(v["soll"] is None and v["grund"] == grund for v in benannt), g
+    assert gegen_soll == set(zp.GROESSEN)
+    # Keine Groesse steht mehr "nicht vergleichbar" im Beleg (bis 2026-10-01
+    # das Deckungskapital).
+    assert "nicht_verglichen" not in beleg
+    assert not any("nicht vergleichbar" in str(v.get("grund")) for v in beleg["vergleiche"])
     assert set(zp.PFLICHT_AM_STICHTAG) <= {
         v["groesse"] for v in beleg["vergleiche"] if v["termin"] == "zugangsstichtag"}
 
@@ -504,28 +543,45 @@ def _zeile_vor_dem_stichtag(arbeit):
     write_portfolio(pd.concat([tabelle, zeile], ignore_index=True), pfad)
 
 
-#: Das Deckungskapital wird verglichen, sobald der Maintainer die
-#: Konvention entscheidet (Pruefer-Befund 3) — bis dahin sind die
-#: DK-Mutationen erwartet gruen, und der Test sagt warum.
-_DK_OFFEN = pytest.mark.xfail(
-    not zp.DK_KONVENTION_ENTSCHIEDEN, strict=True, reason=zp.DK_NICHT_VERGLEICHBAR)
+def _rkw_cent(arbeit):
+    _cent(_abschluss(arbeit, STICHTAG), "rueckkaufswert", _ziel_von(arbeit, 7_000_002))
 
 
-@pytest.mark.parametrize("mutation,rot", [
-    pytest.param(_dk_cent, {"deckungskapital"}, marks=_DK_OFFEN),
+def _schicht_cent(arbeit):
+    """Ein Cent Korrekturschicht, wo keine ist — der Vergleich gegen null ist
+    kein Detektor ohne Treffer."""
+    _cent(_abschluss(arbeit, STICHTAG), "korrekturschicht", _ziel_von(arbeit, 7_000_001))
+
+
+#: Die Mutationen an Deckungskapital, Rueckkaufswert und Korrekturschicht —
+#: bis 2026-10-01 waren die DK-Mutationen erwartet gruen (xfail, strict),
+#: weil die Probe das Deckungskapital nicht verglich.
+DK_MUTATIONEN = [
+    (_dk_cent, {"deckungskapital"}),
+    (_dk_gegenlaeufig, {"deckungskapital"}),
+    (_dk_folge_cent, {"deckungskapital"}),
+    (_rkw_cent, {"rueckkaufswert"}),
+    (_schicht_cent, {"korrekturschicht"}),
+]
+
+
+@pytest.mark.parametrize("mutation,rot", DK_MUTATIONEN + [
     (_vs_cent, {"versicherungssumme"}),
     (_jb_cent, {"jahresbeitrag"}),
     (_jb_ausserhalb_der_stichprobe, {"jahresbeitrag"}),
     (_jb_gegenlaeufig, {"jahresbeitrag"}),
-    pytest.param(_dk_gegenlaeufig, {"deckungskapital"}, marks=_DK_OFFEN),
-    pytest.param(_dk_folge_cent, {"deckungskapital"}, marks=_DK_OFFEN),
     # Die Stueckgroessen haben das Bewegungskonto als zweiten Zeugen, und ein
-    # fehlender Vertrag fehlt auch in jeder Summe:
-    (_vertrag_weniger, {"in_kraft", "versicherungssumme", "jahresbeitrag", "bewegungskonto"}),
+    # fehlender Vertrag fehlt auch in jeder Summe — seit dem Fuehrungswert
+    # auch in Deckungskapital, Rueckkaufswert und Korrekturschicht (dort ist
+    # die Summe gleich, null gegen null, aber der Vertrag fehlt einzeln):
+    (_vertrag_weniger, {"in_kraft", "versicherungssumme", "deckungskapital",
+                        "rueckkaufswert", "korrekturschicht", "jahresbeitrag",
+                        "bewegungskonto"}),
     # Ein Vertrag ohne Betraege aendert keine Summe — aber Uebernahme und
-    # Migrationssuite nennen JEDEN Vertrag, also fehlt ihm das Soll seiner
-    # Versicherungssumme und seines Beitrags:
-    (_vertrag_mehr, {"in_kraft", "versicherungssumme", "jahresbeitrag", "bewegungskonto",
+    # Migrationssuite nennen JEDEN Vertrag, also fehlt ihm das Soll jeder
+    # Groesse, die je Vertrag verglichen wird:
+    (_vertrag_mehr, {"in_kraft", "versicherungssumme", "deckungskapital", "rueckkaufswert",
+                     "korrekturschicht", "jahresbeitrag", "bewegungskonto",
                      "ausserhalb_des_zugangs"}),
     (_zugang_mehr, {"zugang", "bewegungskonto"}),
     (_buchung_cent, {"zugangsbuchungen"}),
@@ -568,15 +624,175 @@ def test_ein_soll_ohne_werte_ist_kein_gruener_vergleich(probe, tmp_path):
     arbeit = tmp_path / "arbeit"
     shutil.copytree(wurzel / "arbeit", arbeit, symlinks=True)
     soll = _soll(fall, arbeit)
-    leer = dataclasses.replace(soll, dk={}, jb={}, ledger=soll.ledger.iloc[0:0])
+    leer = dataclasses.replace(soll, fw={g: {} for g in zp.FUEHRUNGSWERT_VERGLICHEN}, jb={},
+                               ledger=soll.ledger.iloc[0:0])
     vergleiche, befunde = zpb.vergleiche(arbeit / zpb.KOPIE_OHNE, arbeit / zpb.KOPIE_MIT, leer,
                                          stichtag=STICHTAG)
     am_stichtag = {v["groesse"]: v for v in vergleiche if v["termin"] == "zugangsstichtag"}
     assert am_stichtag["jahresbeitrag"]["ok"] is None
     assert am_stichtag["zugangsbuchungen"]["ok"] is None
+    # Ein Fuehrungswert ueber nichts gegen drei Abschlusszeilen ist kein
+    # "nicht belegt", sondern drei Vertraege ohne Soll: rot, je Vertrag.
+    for g in zp.FUEHRUNGSWERT_VERGLICHEN:
+        assert am_stichtag[g]["ok"] is False and am_stichtag[g]["abweichend_anzahl"] == 3, g
     assert any("kein Jahresbeitrag" in b for b in befunde)
+    assert any("kein Deckungskapital (Fuehrungswert)" in b for b in befunde)
     assert any("Ledger der Uebernahme ist leer" in b for b in befunde)
     assert zp.bestanden_aus(vergleiche, []) is False
+
+
+# --------------------------------------------------------------------------- #
+# Angriffe auf die Ablagekopie: die Fuehrung fuehrt einen anderen Vertrag
+# --------------------------------------------------------------------------- #
+#
+# Der Zaehltest oben verfaelscht die ABSCHLUSSSPALTE. Hier wird die Ablage
+# selbst verstuemmelt — der Vertrag, den die Fuehrung fuehrt, ist ein anderer
+# als der abgenommene —, und der Abschluss der Kopie "mit" wird daraus ueber
+# die Bewertungsstrecke NEU geschrieben, in sich stimmig. Gegen sich selbst
+# nachgerechnet ist er deckungsgleich; die Probe muss trotzdem rot werden,
+# weil ihr Soll aus der gepinnten Abnahme kommt (Beleg, der nur sich selbst
+# bezeugt).
+
+
+def _stand_tabellen(arbeit: Path) -> dict:
+    stand = Ablage(arbeit / zpb.KOPIE_MIT).stand
+    return {n: (read_portfolio(stand / f"{n}.parquet") if (stand / f"{n}.parquet").is_file()
+                else None)
+            for n in ("bestand_gesamt", "historie", "scheiben", "merkmale", "schichten",
+                      "verankerung", "reduktionen")}
+
+
+def _abschluss_aus(arbeit: Path, t: dict, config) -> None:
+    """Den Abschluss am Stichtag der Kopie "mit" aus den Tabellen ``t`` neu
+    schreiben — die Zeilen der Vertraege des Eingangs, ueber die
+    Bewertungsstrecke des Abschlusses (``schreibe_abschluss``)."""
+    import tempfile
+
+    from rechner_pipeline.bestand.abschluss import lies_abschluss, schreibe_abschluss
+
+    with tempfile.TemporaryDirectory() as d:
+        neu, _ = lies_abschluss(schreibe_abschluss(
+            t["bestand_gesamt"], t["historie"], config, STICHTAG, Path(d),
+            scheiben=t["scheiben"], merkmale=t["merkmale"], schichten=t["schichten"],
+            verankerung=t["verankerung"], reduktionen=t["reduktionen"]))
+    p_ids = set(ueb.zielnummern(arbeit / zpb.KOPIE_MIT / "uebernahme" / "probe-uebernahme").values())
+    pfad = _abschluss(arbeit, STICHTAG)
+    alt, _ = lies_abschluss(pfad)
+    tabelle = pd.concat([alt[~alt["police_id"].isin(sorted(p_ids))],
+                         neu[neu["police_id"].isin(sorted(p_ids))]], ignore_index=True)
+    tabelle = tabelle.sort_values("police_id", kind="stable").reset_index(drop=True)
+    pfad.chmod(0o644)
+    write_portfolio(tabelle, pfad)
+
+
+def _tarifparameter(t, ziel):
+    """Das Eintrittsalter des Vertrags um ein Jahr verschoben (die Lesart
+    der Quelle gegen die des Ziels — der Klassiker der Parametrierung)."""
+    s = t["bestand_gesamt"]
+    s.loc[s["police_id"] == ziel, "entry_age"] += 1
+    s.loc[s["police_id"] == ziel, "date_of_birth"] -= pd.DateOffset(years=1)
+
+
+def _erhoehungsscheibe(t, ziel):
+    """Eine Erhoehungsscheibe, die der abgenommene Vertrag nicht hat."""
+    from rechner_pipeline.models.bestand import SCHEIBEN_NAMES, SCHEIBEN_SPALTEN
+
+    zeile = pd.DataFrame([{
+        "police_id": ziel, "scheiben_id": 1, "erhoehung_jahr": 7,
+        "erhoehung_datum": pd.Timestamp("2025-03-01"), "entry_age": 42, "duration": 18,
+        "premium_duration": 13, "sum_insured": 5000.0, "gamma1": 0.0,
+    }])[list(SCHEIBEN_NAMES)].astype(dict(SCHEIBEN_SPALTEN))
+    alt = t["scheiben"]
+    t["scheiben"] = zeile if alt is None or not len(alt) else pd.concat([alt, zeile], ignore_index=True)
+
+
+def _korrekturschicht(t, ziel):
+    """Eine Korrekturschicht, die der abgenommene Vertrag nicht traegt."""
+    from rechner_pipeline.models.bestand import (
+        SCHICHTEN_NAMES, SCHICHTEN_SPALTEN, VERANKERUNG_SPALTEN, schichten_zeile)
+    from tests.test_schicht_in_fuehrung import _parameter
+
+    schicht = pd.DataFrame([schichten_zeile(ziel, _parameter(0.01).als_beleg())],
+                           columns=list(SCHICHTEN_NAMES)).astype(dict(SCHICHTEN_SPALTEN))
+    anker = pd.DataFrame([{"police_id": ziel, "monate_ta": 84, "zustand_ta": "beitragspflichtig",
+                           "verweildauer_ta": 7, "dk_ta": 1.0}])[
+        [n for n, _ in VERANKERUNG_SPALTEN]].astype(dict(VERANKERUNG_SPALTEN))
+    for name, neu in (("schichten", schicht), ("verankerung", anker)):
+        alt = t[name]
+        t[name] = neu if alt is None or not len(alt) else pd.concat([alt, neu], ignore_index=True)
+
+
+def _vertragsbeginn(t, ziel):
+    """Der Vertragsbeginn ein Jahr frueher — Dauern und Alter stimmen, der
+    Vertrag ist am Stichtag ein Jahr aelter."""
+    s = t["bestand_gesamt"]
+    for spalte in ("insurance_start", "insurance_end", "payment_end", "date_of_birth"):
+        s.loc[s["police_id"] == ziel, spalte] -= pd.DateOffset(years=1)
+
+
+ANGRIFFE = [_tarifparameter, _erhoehungsscheibe, _korrekturschicht, _vertragsbeginn]
+
+
+def _angegriffen(probe, tmp_path: Path, angriffe) -> tuple:
+    wurzel, fall, _, _ = probe
+    arbeit = tmp_path / "arbeit"
+    shutil.copytree(wurzel / "arbeit", arbeit, symlinks=True)
+    soll = _soll(fall, arbeit)
+    t = _stand_tabellen(arbeit)
+    config = load_config(Ablage(arbeit / zpb.KOPIE_MIT).config_pfad)
+    for angriff in angriffe:
+        angriff(t, _ziel_von(arbeit, 7_000_001))
+    _abschluss_aus(arbeit, t, config)
+    vergleiche, befunde = zpb.vergleiche(arbeit / zpb.KOPIE_OHNE, arbeit / zpb.KOPIE_MIT, soll,
+                                         stichtag=STICHTAG)
+    return arbeit, t, config, {v["groesse"] for v in vergleiche if v["ok"] is False}, befunde
+
+
+def test_angriff_positivkontrolle_der_neu_geschriebene_abschluss_ist_gruen(probe, tmp_path):
+    """Ohne Verstuemmelung schreibt der Nachbau des Abschlusses dieselben
+    Zeilen — sonst waeren die roten Befunde unten Artefakte des Nachbaus."""
+    _, _, _, rot, befunde = _angegriffen(probe, tmp_path, [])
+    assert rot == set() and befunde == []
+
+
+@pytest.mark.parametrize("angriff,rot", [
+    (_tarifparameter, {"deckungskapital", "rueckkaufswert", "jahresbeitrag"}),
+    (_erhoehungsscheibe, {"deckungskapital", "rueckkaufswert", "jahresbeitrag",
+                          "versicherungssumme"}),
+    # Diese beiden bewegen weder Summe noch Beitrag: Bis 2026-10-01, als die
+    # Probe das Deckungskapital nicht verglich, blieben sie gruen.
+    (_korrekturschicht, {"deckungskapital", "rueckkaufswert", "korrekturschicht"}),
+    (_vertragsbeginn, {"deckungskapital", "rueckkaufswert"}),
+], ids=lambda x: getattr(x, "__name__", ""))
+def test_zaehltest_je_angriffsart_auf_die_ablage_rot_am_deckungskapital(
+        probe, tmp_path, angriff, rot):
+    """Tarifparameter, Erhoehungsscheibe, Korrekturschicht, Vertragsbeginn
+    eines Vertrags verstuemmelt: Die Fuehrung fuehrt einen anderen Vertrag
+    als den abgenommenen, und die Probe sieht es am Deckungskapital — in
+    genau den Groessen, die der Angriff bewegt (``==``)."""
+    _, _, _, ist, befunde = _angegriffen(probe, tmp_path, [angriff])
+    assert ist == rot and befunde == []
+
+
+def test_maximale_manipulation_ablage_und_abschluss_konsistent_verfaelscht(probe, tmp_path):
+    """Alle vier Angriffe zugleich, der Abschluss daraus stimmig neu
+    geschrieben: Gegen die verfaelschte Ablage nachgerechnet ist er
+    deckungsgleich (``pruefe_abschluss`` ohne Befund) — er bezeugt nur sich
+    selbst. Die Probe haelt ihn gegen den Fuehrungswert der gepinnten
+    Abnahme und wird rot, an Deckungskapital, Rueckkaufswert und Schicht."""
+    from rechner_pipeline.bestand.abschluss import pruefe_abschluss
+
+    arbeit, t, config, rot, _ = _angegriffen(probe, tmp_path, ANGRIFFE)
+    p_ids = set(ueb.zielnummern(arbeit / zpb.KOPIE_MIT / "uebernahme" / "probe-uebernahme").values())
+    nur_zugang = {k: (v[v["police_id"].isin(sorted(p_ids))] if v is not None else None)
+                  for k, v in t.items()}
+    gegen_sich = pruefe_abschluss(
+        _abschluss(arbeit, STICHTAG), nur_zugang["bestand_gesamt"], nur_zugang["historie"],
+        config, scheiben=nur_zugang["scheiben"], merkmale=nur_zugang["merkmale"],
+        schichten=nur_zugang["schichten"], verankerung=nur_zugang["verankerung"],
+        reduktionen=nur_zugang["reduktionen"])
+    assert not [b for b in gegen_sich if f"police {_ziel_von(arbeit, 7_000_001)}:" in b], gegen_sich
+    assert {"deckungskapital", "rueckkaufswert", "korrekturschicht"} <= rot, rot
 
 
 # --------------------------------------------------------------------------- #
@@ -1127,54 +1343,79 @@ def test_die_registrierung_haelt_das_soll_gegen_die_geltenden_abnahmen(tmp_path,
 # --------------------------------------------------------------------------- #
 
 
-def test_das_deckungskapital_steht_benannt_im_beleg_nicht_still_und_nicht_gruen(probe):
-    """Pruefer-Befund 3: Bis der Maintainer die Konvention entscheidet
-    (Jahreswert des Abschlusses gegen Monatsreserve der Abnahmen), fuehrt
-    der Beleg das Deckungskapital an jedem Termin mit dem Grund — und ein
-    Beleg, der es trotzdem GRUEN verglichen fuehrt, besteht nicht und
-    verletzt seinen Vertrag (ein Vergleich ungleicher Groessen).
+def test_kein_beleg_fuehrt_das_deckungskapital_mehr_nicht_vergleichbar(probe):
+    """Bis 2026-10-01 stand das Deckungskapital mit dem Grund "nicht
+    vergleichbar" im Beleg (Pruefer-Befund 3, Entscheid offen). Der Entscheid
+    ist gefallen; ein Beleg, der es noch so fuehrt — als Fassung-1-Feld
+    ``nicht_verglichen`` oder als Vergleich ohne Soll am Zugangsstichtag —,
+    verletzt den Vertrag und besteht nicht.
 
-    Mutationsprobe: in bestanden_aus die Sonderregel fuer NICHT_VERGLICHEN
-    entfernen -> der gruen verglichene Beleg besteht -> rot."""
+    Mutationsprobe: die Pflicht der drei Groessen aus PFLICHT_AM_STICHTAG
+    nehmen -> der Vergleich ohne Soll geht durch -> rot."""
     _, _, _, beleg = probe
-    assert beleg["nicht_verglichen"] == zp.NICHT_VERGLICHEN
-    if zp.DK_KONVENTION_ENTSCHIEDEN:
-        pytest.skip("die DK-Konvention ist entschieden — das Deckungskapital wird verglichen")
-    dk = [v for v in beleg["vergleiche"] if v["groesse"] == "deckungskapital"]
-    assert {v["termin"] for v in dk} >= {"zugangsstichtag", "folgetermin"}
-    assert all(v["ok"] is None and v["grund"] == zp.DK_NICHT_VERGLEICHBAR for v in dk)
-    assert zp.DK_NICHT_VERGLEICHBAR.startswith(
-        "nicht vergleichbar: Konvention Jahreswert vs. Monatsreserve, Entscheid offen")
-    gruen = json.loads(json.dumps(beleg))
-    for v in gruen["vergleiche"]:
-        if v["groesse"] == "deckungskapital":
-            v.update(soll=v["ist"], differenz=0.0, ok=True, grund=None)
-    assert zp.bestanden_aus(gruen["vergleiche"], []) is False
-    assert any("verglichen, obwohl" in f for f in zp.beleg_fehler(gruen))
-    still = json.loads(json.dumps(beleg))
-    still["vergleiche"] = [v for v in still["vergleiche"] if v["groesse"] != "deckungskapital"]
-    assert zp.bestanden_aus(still["vergleiche"], []) is False
-    # Der Grund am Stichtag steht, aber DANEBEN ist das Deckungskapital
-    # gruen verglichen (etwa am Folgetermin) — auch das ist kein Bestehen.
-    daneben = json.loads(json.dumps(beleg))
-    folge = next(v for v in daneben["vergleiche"]
-                 if v["groesse"] == "deckungskapital" and v["termin"] == "folgetermin")
-    folge.update(soll=folge["ist"], differenz=0.0, ok=True, grund=None)
-    assert zp.bestanden_aus(daneben["vergleiche"], []) is False
+    alt = json.loads(json.dumps(beleg))
+    alt["nicht_verglichen"] = {"deckungskapital": "nicht vergleichbar: Konvention offen"}
+    assert any("Fassung 1" in f for f in zp.beleg_fehler(alt))
+    for g in zp.FUEHRUNGSWERT_VERGLICHEN:
+        ohne = json.loads(json.dumps(beleg))
+        for v in ohne["vergleiche"]:
+            if v["groesse"] == g and v["termin"] == "zugangsstichtag":
+                v.update(soll=None, differenz=None, ok=None, grund="nicht vergleichbar")
+        assert any("ohne Soll" in f for f in zp.beleg_fehler(ohne)), g
+        assert zp.bestanden_aus([v for v in ohne["vergleiche"] if v["groesse"] != g], []) is False
 
 
-@pytest.mark.xfail(not zp.DK_KONVENTION_ENTSCHIEDEN, strict=True, reason=zp.DK_NICHT_VERGLEICHBAR)
-def test_das_deckungskapital_wird_verglichen_sobald_die_konvention_entschieden_ist(probe):
-    """Die vorbereitete Stelle: Nach dem Entscheid des Maintainers
-    (``models.zugangsprobe.DK_KONVENTION_ENTSCHIEDEN``) vergleicht die Probe
-    das Deckungskapital je Vertrag ueber den ganzen Zugang gegen die
-    Migrationssuite — und in der Positivkontrolle gruen, sobald Abschluss
-    und Abnahme dieselbe Konvention rechnen. Bis dahin erwartet rot (xfail,
-    strict: Wird er gruen, faellt die Markierung auf)."""
+def test_deckungskapital_rueckkaufswert_und_schicht_werden_je_vertrag_verglichen(probe):
+    """Was bis 2026-10-01 erwartet rot war (xfail, strict): Die Probe
+    vergleicht Deckungskapital, Rueckkaufswert und Korrekturschicht je
+    Vertrag ueber den ganzen Zugang gegen den Fuehrungswert der Suite — und
+    in der Positivkontrolle gruen, weil Abschluss und Abnahme dieselbe
+    Konvention rechnen."""
     _, _, _, beleg = probe
     am = {v["groesse"]: v for v in beleg["vergleiche"] if v["termin"] == "zugangsstichtag"}
-    assert am["deckungskapital"]["ok"] is True
-    assert am["deckungskapital"]["umfang"] == len(VERTRAEGE)
+    for g in zp.FUEHRUNGSWERT_VERGLICHEN:
+        assert am[g]["ok"] is True and am[g]["umfang"] == len(VERTRAEGE), g
+        assert am[g]["soll"] is not None and am[g]["grund"] is None, g
+
+
+def _rot_nach(probe, tmp_path: Path, mutation) -> set:
+    """Die roten Groessen nach einer Mutation an der Kopie "mit"."""
+    wurzel, fall, _, _ = probe
+    arbeit = tmp_path / "arbeit"
+    shutil.copytree(wurzel / "arbeit", arbeit, symlinks=True)
+    soll = _soll(fall, arbeit)
+    mutation(arbeit)
+    nachher, _ = zpb.vergleiche(arbeit / zpb.KOPIE_OHNE, arbeit / zpb.KOPIE_MIT, soll,
+                                stichtag=STICHTAG)
+    return {v["groesse"] for v in nachher if v["ok"] is False}
+
+
+@pytest.mark.parametrize("mutation,rot", DK_MUTATIONEN, ids=lambda x: getattr(x, "__name__", ""))
+def test_rueckrichtung_ohne_den_vergleich_bliebe_jede_dk_mutation_unbemerkt(
+        probe, tmp_path, monkeypatch, mutation, rot):
+    """Rueckrichtung des Zaehltests: In einer Kopie des Codes, in der der
+    Vergleich gegen den Fuehrungswert ausgebaut ist (dieselben Vergleiche,
+    aber ohne Soll — so stand das Deckungskapital bis 2026-10-01 im Beleg),
+    wird die Mutation NICHT rot. Der Zaehltest oben haengt also an genau
+    diesem Vergleich, nicht an einem Nebeneffekt."""
+    echt = zpb.fuehrungswert_vergleiche
+
+    def ausgebaut(diff, soll_fw, termin, iso, *, vorfaelle=None):
+        return [dict(v, soll=None, differenz=None, ok=None)
+                for v in echt(diff, soll_fw, termin, iso, vorfaelle=vorfaelle)]
+
+    monkeypatch.setattr(zpb, "fuehrungswert_vergleiche", ausgebaut)
+    assert not _rot_nach(probe, tmp_path, mutation) & rot
+
+
+@pytest.mark.parametrize("mutation,rot", DK_MUTATIONEN, ids=lambda x: getattr(x, "__name__", ""))
+def test_positivkontrolle_toleranz_unendlich_laesst_jede_dk_mutation_durch(
+        probe, tmp_path, monkeypatch, mutation, rot):
+    """Positivkontrolle: Mit unendlicher Toleranz faellt keine der
+    Mutationen auf — der Zaehltest misst also die Toleranz von einem halben
+    Cent und ist nicht aus einem anderen Grund rot."""
+    monkeypatch.setattr(zp, "TOLERANZ", float("inf"))
+    assert not _rot_nach(probe, tmp_path, mutation) & rot
 
 
 def test_ratsche_jede_bewertungsgroesse_des_abschlusses_ist_verglichen_oder_benannt(probe):
@@ -1199,10 +1440,7 @@ def test_ratsche_jede_bewertungsgroesse_des_abschlusses_ist_verglichen_oder_bena
     assert beleg["abdeckung"] == zp.abdeckung()
     am = {v["groesse"]: v for v in beleg["vergleiche"] if v["termin"] == "zugangsstichtag"}
     for groesse in zp.ABSCHLUSS_VERGLICHEN.values():
-        if groesse in zp.NICHT_VERGLICHEN:
-            assert am[groesse]["ok"] is None and am[groesse]["grund"] == zp.NICHT_VERGLICHEN[groesse]
-        else:
-            assert am[groesse]["ok"] is True, groesse
+        assert am[groesse]["ok"] is True, groesse
 
 
 # --------------------------------------------------------------------------- #

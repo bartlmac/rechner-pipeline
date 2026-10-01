@@ -928,8 +928,20 @@ def pruefe_bestand(
     system: Optional[Dict[str, str]] = None,
     red_anteile_datei: Optional[Dict[str, Any]] = None,
     pflichtschicht: Optional[Mapping[str, Any]] = None,
+    fuehrungswert: Optional[Mapping[str, Any]] = None,
+    fuehrungswerte: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Suite über den ganzen Bestand: Urteile + Zusammenfassung.
+
+    FÜHRUNGSWERT (Entscheid des Maintainers 2026-10-01): ``fuehrungswert``
+    ist der Kopf (``models.fuehrungswert.kopf``), ``fuehrungswerte`` je
+    Police die Termine — was der Monatsabschluss für den Vertrag führt,
+    gerechnet in der Bestandsschicht über die Strecke des Abschlusses
+    (``bestand.migrationszugang.fuehrungswerte``). Die Suite rechnet ihn
+    nicht und vergleicht ihn nicht; sie trägt ihn je Vertrag neben ihrem
+    Urteil (Fassung ``models.fuehrungswert.SUITE_SCHEMA_VERSION``), damit
+    A-M4 ihn mit abnimmt und die Zugangsprobe ihn gegen den Betrieb hält.
+    Beide zusammen oder keiner; ihre Policen sind die der Prüfmenge.
 
     PFLICHTSCHICHT (Prüfer-Befund B1 zur Alt-Absetzung, 2026-10-01): die Verträge,
     deren Anfangszustand die registrierte Auskunft trägt, mit dem, wodurch
@@ -1101,4 +1113,22 @@ def pruefe_bestand(
         })
     if system is not None:
         ergebnis["system"] = dict(system)
+    if (fuehrungswert is None) != (fuehrungswerte is None):
+        raise ValueError("Fuehrungswert: Kopf und Werte je Police gehoeren zusammen")
+    if fuehrungswert is not None:
+        from rechner_pipeline.models.fuehrungswert import SUITE_SCHEMA_VERSION, TERMINE
+
+        policen = {str(u["police_id"]) for u in urteile}
+        if set(fuehrungswerte) != policen:
+            raise ValueError(
+                "Fuehrungswert: gerechnet fuer andere Policen als die Pruefmenge "
+                f"(nur dort: {sorted(set(fuehrungswerte) - policen)[:5]}, "
+                f"fehlt: {sorted(policen - set(fuehrungswerte))[:5]}) — beide muessen aus "
+                "demselben Bestand stammen")
+        ergebnis["schema_version"] = SUITE_SCHEMA_VERSION
+        ergebnis["fuehrungswert"] = dict(fuehrungswert)
+        for u in urteile:
+            eintrag = fuehrungswerte[str(u["police_id"])]
+            u["fuehrungswert"] = {t: (None if eintrag.get(t) is None else dict(eintrag[t]))
+                                  for t in TERMINE}
     return ergebnis

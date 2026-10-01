@@ -1738,3 +1738,61 @@ def pruefe_metadatenliste(vorgeschichte: Sequence[Vorgang]) -> List[str]:
                     "die Vorgeschichte liefert Zeitpunkte, keine Werte (9.14)"
                 )
     return befunde
+
+
+def fuehrungswerte(
+    stamm: pd.DataFrame,
+    historie: Optional[pd.DataFrame],
+    config_text: str,
+    stichtage: Mapping[str, _dt.date],
+    *,
+    scheiben: Optional[pd.DataFrame] = None,
+    merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
+) -> Tuple[str, Dict[str, Dict[str, Optional[Dict[str, Any]]]]]:
+    """Der Fuehrungswert des Zugangs: was der Abschluss fuer jeden Vertrag fuehrt.
+
+    Entscheid des Maintainers (2026-10-01): Die Migrationsabnahme weist den
+    Wert aus, den die Bestandsfuehrung fuehrt — gerechnet ueber DIESELBE
+    Bewertungsstrecke wie der Monatsabschluss
+    (:func:`rechner_pipeline.bestand.auswertung.einzelwerte_am`, in der
+    Fuehrungskonvention), aus dem Bestand des Falls, den die Uebernahme
+    geschrieben hat, mit der Config der Fuehrung. Keine Formel hier: Die
+    Strecke ist die des Abschlusses, also sagt ein Unterschied zwischen
+    Fuehrungswert und Abschluss, dass Betrieb und Abnahme verschiedene
+    Vertraege oder Grundlagen haben — nicht verschiedene Rechenwege.
+
+    Hier und nicht in ``gates``: Die Pruefschicht darf die Bestandsschicht
+    nur ueber die gemessene Schnittstelle rufen (ADR-017,
+    ``ontologie.code_karte.TOOL_NACH_VORZEIGE_ERLAUBT``), und
+    ``migrationssuite_lauf -> bestand.migrationszugang`` ist eine ihrer
+    Kanten. Die Config kommt als TEXT (die gebundenen Bytes des Laufs).
+
+    ``stichtage``: Termin -> Stichtag (``stichtag_1``, ``stichtag_2`` der
+    Suite). Rueckgabe: die Konvention und je Police (als Text, wie die
+    Suite sie fuehrt) je Termin der Eintrag aus
+    ``models.fuehrungswert.termin`` — ``None``, wo der Vertrag am Termin
+    nicht in Kraft ist (ohne Geschaeftsvorfall dazwischen: abgelaufen).
+    """
+    from rechner_pipeline.bestand.auswertung import einzelwerte_am
+    from rechner_pipeline.bestand.config import config_aus_text
+    from rechner_pipeline.models.bestand import FUEHRUNGSKONVENTION
+    from rechner_pipeline.models.fuehrungswert import termin
+
+    config = config_aus_text(config_text)
+    fehler = config.validate()
+    if fehler:
+        raise MigrationszugangFehler(
+            "Fuehrungswert: die Config der Fuehrung ist ungueltig — " + "; ".join(fehler[:3]))
+    policen = [str(p) for p in stamm["police_id"]]
+    werte: Dict[str, Dict[str, Optional[Dict[str, Any]]]] = {
+        p: {name: None for name in stichtage} for p in policen}
+    for name, stichtag in stichtage.items():
+        for zeile in einzelwerte_am(
+                stamm, historie, config, stichtag, scheiben=scheiben, merkmale=merkmale,
+                schichten=schichten, verankerung=verankerung, reduktionen=reduktionen,
+                konvention=FUEHRUNGSKONVENTION):
+            werte[str(zeile["police_id"])][name] = termin(stichtag.isoformat(), zeile)
+    return FUEHRUNGSKONVENTION, werte

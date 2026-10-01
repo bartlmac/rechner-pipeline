@@ -637,10 +637,11 @@ def test_der_abschluss_schreibt_sich_schreibgeschuetzt(lauf, tmp_path):
     config = load_config(EXAMPLE)
     stamm = read_portfolio(lauf / "bestand_gesamt.parquet")
     historie = read_portfolio(lauf / "historie.parquet")
-    scheiben = read_portfolio(lauf / "scheiben.parquet")
+    from tests.nebentabellen import aus_lauf
+
     pfad = schreibe_abschluss(
         stamm, historie, config, _dt.date(2016, 1, 1),
-        tmp_path / "abschluesse", scheiben=scheiben,
+        tmp_path / "abschluesse", **aus_lauf(lauf),
     )
     modus = stat.S_IMODE(Path(pfad).stat().st_mode)
     assert modus & 0o222 == 0, f"Abschluss ist beschreibbar (0o{modus:o})"

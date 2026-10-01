@@ -255,9 +255,16 @@ schon fest (ADR-022). Seitdem hat der Zugang drei Schritte:
    ganzen Zugang, am Folgetermin die Anzahl in Kraft; dazu die Zugänge,
    die Zugangsbuchungen gegen den Ledger der Übernahme, das Bewegungskonto
    der Differenz und die Gleichheit von allem, was nicht den Zugang
-   betrifft. Das Deckungskapital wird bis zum Entscheid über seine
-   Konvention (Jahreswert des Abschlusses gegen Monatsreserve der
-   Abnahmen) nicht verglichen, sondern mit diesem Grund im Beleg genannt.
+   betrifft. Deckungskapital, Rückkaufswert und Korrekturschicht werden
+   seit 2026-10-01 je Vertrag gegen den **Führungswert** der
+   Migrationssuite gehalten: den Wert, den der Monatsabschluss in der Welt
+   der Abnahme für den Vertrag führen wird, über dieselbe
+   Bewertungsstrecke gerechnet und von A-M4 mit abgenommen — am
+   Zugangsstichtag und am Folgestichtag (dort ohne Verträge mit einem
+   gebuchten Vorfall im Fenster, die namentlich ausgenommen sind). Vorher
+   stand das Deckungskapital „nicht vergleichbar" im Beleg, weil der
+   Abschluss den Wert des letzten Jahrestags führte und die Abnahmen die
+   Monatsreserve rechneten (ADR-022, Nachtrag 2026-10-01).
    Das Soll stammt nur aus den Bytes, die die geltenden Abnahmen A-M1 und
    A-M4 pinnen; der Code-Stand der Probe (Image, Paket-Hash, Kern) wird
    gegen die letzte grüne Protokollzeile gehalten. Der Beleg trägt die
@@ -341,6 +348,27 @@ gesetzt.
 
    Für die Wache P-B1 und die Tagesseite gilt das Gegenteil: Sie berichten
    über *heute* und arbeiten deshalb auf der heute gebuchten Sicht.
+
+   **Bewertung zum Monatsersten heißt auch: monatsgenau** (Entscheid des
+   Maintainers 2026-10-01, ADR-011 Nachtrag). Deckungskapital,
+   Rückkaufswert und Korrekturschicht stehen im Abschluss mit dem Wert am
+   Bewertungsstichtag, nicht mit dem des letzten Vertragsjahrestags:
+   Zwischen zwei Jahrestagen mischt die Bewertung linear, wie der Kern es
+   kann (Tarifplan KLV, Abschnitt 6, „Bewertung am Monatsstichtag"), für
+   jeden Vertragstyp gleich. Ein Beitragsübertrag ist nicht enthalten; er
+   ist zurückgestellt (`dev-docs/offene-punkte.md`). Die BU bleibt bei der
+   Jahreszeile, weil der Kern für sie keine unterjährige Reserve führt.
+   Jeder Abschluss nennt seine Konvention (Spalte `bewertungskonvention`);
+   die vor der Umstellung festgeschriebenen tragen die Spalte nicht, gelten
+   als „Jahreszeile, vor der Umstellung geschrieben" und werden in dieser
+   Konvention nachgerechnet, nie umgeschrieben. Wer Abschlüsse über die
+   Umstellung hinweg in eine Reihe legt, kennzeichnet den Bruch.
+
+   Verworfen wurde, die Treppe zu behalten: Der Abschluss zum 1.12. wies
+   bis zu 11/12 des Jahreszuwachses zu wenig aus, und die Konvention war
+   nie entschieden, sondern ein Erbe der jährlichen Fortschreibung. Ebenso
+   verworfen, die Zugangsprobe den Abnahmewert in die Treppe umrechnen zu
+   lassen — das hätte die falsche Konvention zementiert.
 7. **Tagesprotokoll**: eine JSON-Zeile je Lauf (Datum, Neugeschäft,
    Buchungen je Art, Bestandszahlen, P-B1-Urteil, Manifest-Hash,
    Kern-Version, Image-Digest). Das Protokoll ist der Nachweis, dass das
@@ -698,7 +726,9 @@ in die Ebenen der Schichtenkarte, und die blieb konfliktfrei.
   Tage, 95 Prozent unter 60 Tagen).
 - Bewertungsstichtag des Monatsabschlusses: Erster des Folgemonats
   (Konvention Monatserster) oder Monatsultimo als Datum der Datei; das
-  Konzept nimmt den Ersten des Folgemonats.
+  Konzept nimmt den Ersten des Folgemonats. Die Bewertung an diesem
+  Stichtag ist seit 2026-10-01 entschieden: monatsgenau, ohne
+  Beitragsübertrag (Abschnitt 7, Punkt 6).
 - Getrennter Ausweis des übernommenen Teilbestands: dauerhaft oder bis
   zum ersten Jahresabschluss nach der Übernahme.
 - Ob die öffentliche Seite Monatsstände oder auch Tagesstände zeigt.

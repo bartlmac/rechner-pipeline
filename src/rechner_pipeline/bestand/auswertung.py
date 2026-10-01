@@ -37,12 +37,17 @@ from rechner_pipeline.kern.beitragsreduktion import (
     vertrags_monatsreserve_reduziert,
 )
 from rechner_pipeline.kern.korrekturschicht import (
+    ab_verankerung,
     absorbierter_wert,
+    schicht_traegt,
     schichtwert_bei,
     zuschlag_bei_pex,
 )
-from rechner_pipeline.kern import ModelPoint, Rechenkern
+from rechner_pipeline.kern import ModelPoint, Rechenkern, vertrags_monatsreserve
 from rechner_pipeline.models.bestand import (
+    FUEHRUNGSKONVENTION,
+    KONVENTION_JE_PRODUKT,
+    KONVENTION_MONATSGENAU,
     STATUS_HISTORIE_SPALTEN,
     bu_model_point_kwargs,
     model_point_kwargs,
@@ -54,17 +59,48 @@ def monate_ta_von(schicht: Tuple[Any, int, str]) -> int:
     return int(schicht[1])
 
 
+def monatsgenau_fuer(konvention: str, produkt: str) -> bool:
+    """Ob die Konvention fuer dieses Produkt unterjaehrig mischt.
+
+    Die Regel steht je Produkt in ``models.bestand.KONVENTION_JE_PRODUKT``;
+    eine unbekannte Konvention ist ein Aufruffehler, kein Rueckfall.
+    """
+    regel = KONVENTION_JE_PRODUKT.get(konvention)
+    if regel is None:
+        raise ValueError(
+            f"Bewertungskonvention {konvention!r} unbekannt (bekannt: "
+            f"{sorted(KONVENTION_JE_PRODUKT)})")
+    return regel[produkt] == KONVENTION_MONATSGENAU
+
+
 def vertragswerte(
-    kern: Rechenkern, months_exp: int, pex_jahr: Optional[int] = None
+    kern: Rechenkern, months_exp: int, pex_jahr: Optional[int] = None,
+    *, monatsgenau: bool,
 ) -> Dict[str, Any]:
     """Aktuarielle Werte eines Vertrags am Stichtag (``months_exp`` volle Monate).
 
     ``pex_jahr`` ist das Vertragsjahr der Beitragsfreistellung (None =
     beitragspflichtig). Rueckkaufswert nur auf dem beitragspflichtigen Track;
     fuer beitragsfreie Vertraege ist er 0.0 (im Blatt nicht definiert).
+
+    ``monatsgenau`` (seit 2026-10-01 die Fuehrungskonvention): die
+    unterjaehrige Mischung des Kerns (``monatsreserve`` bzw.
+    ``monatsreserve_beitragsfrei``); sonst die Zeile des angebrochenen
+    Vertragsjahres, wie der Abschluss vor der Umstellung rechnete — dieser
+    Zweig bleibt wortgleich, damit alte Abschluesse in ihrer Konvention
+    bit-genau nachgerechnet werden.
     """
     jahr = int(months_exp) // 12
     if pex_jahr is None:
+        if monatsgenau:
+            reserve = kern.monatsreserve(int(months_exp))
+            return {
+                "jahr": jahr,
+                "status": "POL",
+                "deckungskapital": reserve.drx_bpfl,
+                "rueckkaufswert": reserve.rkw,
+                "vs_bfr": 0.0,
+            }
         zeile = kern.zustand_am(months_exp)
         return {
             "jahr": zeile.jahr,
@@ -76,7 +112,9 @@ def vertragswerte(
     return {
         "jahr": jahr,
         "status": "PEX",
-        "deckungskapital": kern.reserve_beitragsfrei(pex_jahr, jahr),
+        "deckungskapital": (
+            kern.monatsreserve_beitragsfrei(pex_jahr, int(months_exp)) if monatsgenau
+            else kern.reserve_beitragsfrei(pex_jahr, jahr)),
         "rueckkaufswert": 0.0,
         "vs_bfr": kern.beitragsfreie_summe(pex_jahr),
     }
@@ -246,7 +284,7 @@ def _scheiben_kerne(
 
 def werte_reduziert(
     teile: List[Tuple[int, Any]], months_exp: int, pex_jahr: Optional[int],
-    *, stoab_je_baustein: bool,
+    *, stoab_je_baustein: bool, monatsgenau: bool,
 ) -> Dict[str, Any]:
     """Aktuarielle Werte eines HERABGESETZTEN Vertrags am Stichtag.
 
@@ -256,32 +294,32 @@ def werte_reduziert(
     Generation — auch nach der Herabsetzung (T27-12), deshalb ohne
     Default. Eine Beitragsfreistellung NACH der Herabsetzung laesst die
     dort fixierte Summe auf dem beitragsfreien Satz weiterlaufen.
+
+    Dieselbe Stichtagskonvention wie fuer jeden anderen Vertrag
+    (Kalibrierungsfund N5 und Fund N11 der Pruefrunde T27: hier rechnete
+    einmal als einziger Zweig monatsgenau, waehrend der Nachbar die
+    Jahreszeile nahm). Der Bewertungsmonat ist unter ``monatsgenau`` der
+    Stichtag selbst, sonst der letzte Vertragsjahrestag — beide Zweige
+    lesen danach dieselben Kern-Funktionen, die zwischen den Jahrestagen
+    linear mischen und auf ihnen die Jahreszeile treffen.
     """
     jahr = int(months_exp) // 12
-    teile = bestehende_teile(teile, 12 * jahr)
+    monat = int(months_exp) if monatsgenau else 12 * jahr
+    teile = bestehende_teile(teile, monat)
     if pex_jahr is None:
-        # Dieselbe Stichtagskonvention wie fuer jeden anderen Vertrag
-        # (``vertragswerte`` -> ``zustand_am``: die Zeile des angebrochenen
-        # Vertragsjahres). Der reduzierte Verlauf kann monatsgenau
-        # interpolieren; hier taete er es als einziger und wiese am 1.12.
-        # ein um 11/12 des Jahreszuwachses hoeheres Deckungskapital aus als
-        # der gewoehnliche Vertrag daneben (Kalibrierungsfund N5 der
-        # Pruefrunde T27, bis +3.370 EUR je Vertrag).
         reserve = vertrags_monatsreserve_reduziert(
-            teile, 12 * jahr, stoab_je_baustein=stoab_je_baustein)
+            teile, monat, stoab_je_baustein=stoab_je_baustein)
         return {
             "jahr": jahr, "status": "POL",
             "deckungskapital": reserve.drx_bpfl,
             "rueckkaufswert": reserve.rkw,
             "vs_bfr": 0.0,
         }
-    # Auch nach einer Beitragsfreistellung die Jahreszeile (Angriffsrunde 2,
-    # Fund N11): der PEX-Zweig interpolierte als einziger monatsgenau.
     return {
         "jahr": jahr, "status": "PEX",
         "deckungskapital": sum(
             v.reserve_beitragsfrei(
-                int(pex_jahr) - erh_jahr, 12 * jahr - 12 * erh_jahr)
+                int(pex_jahr) - erh_jahr, monat - 12 * erh_jahr)
             for erh_jahr, v in teile),
         "rueckkaufswert": 0.0,
         "vs_bfr": sum(
@@ -346,6 +384,86 @@ def _reduzierte_vertraege(
     return aus
 
 
+def _absorbiert_monatsgenau(
+    schicht: Tuple[Any, int, str], grund: Rechenkern, pex_jahr: int, monate: int,
+) -> float:
+    """Der in die beitragsfreie Summe ueberfuehrte Schichtwert am Monatsstichtag.
+
+    Der Kern fuehrt ihn je Vertragsjahr (``absorbierter_wert``): proportional
+    zur beitragsfreien Reserve. Unterjaehrig gilt dieselbe Mischung wie fuer
+    die Reserve selbst — linear zwischen den beiden Jahrestagen; weil der Wert
+    linear in der Reserve ist, ist das genau der Anteil an
+    ``monatsreserve_beitragsfrei`` (Kontrollrechnung im Test). Keine eigene
+    Formel: zwei Kernwerte, mit dem Monatsanteil des Kerns gemischt.
+    """
+    parameter, monate_ta = schicht[0], int(schicht[1])
+    jahr, rest = divmod(int(monate), 12)
+    wert = absorbierter_wert(parameter, monate_ta, grund, pex_jahr, jahr)
+    if not rest:
+        return wert
+    u = rest / 12.0
+    return (1.0 - u) * wert + u * absorbierter_wert(
+        parameter, monate_ta, grund, pex_jahr, jahr + 1)
+
+
+def _klv_monatsgenau(
+    grund: Rechenkern,
+    aktive: List[Dict[str, Any]],
+    monate: int,
+    pex_jahr: Optional[int],
+    schicht: Optional[Tuple[Any, int, str]],
+    *,
+    stoab_je_baustein: bool,
+) -> Dict[str, Any]:
+    """Bewertungsgroessen eines nicht herabgesetzten KLV-Vertrags, monatsgenau.
+
+    EIN Weg fuer den gewoehnlichen Vertrag, den mit Erhoehungsscheiben und
+    den beitragsfreien: die vertragsweite Monatsreserve des Kerns
+    (``vertrags_monatsreserve`` — ohne Scheiben identisch zu
+    ``Rechenkern.monatsreserve``; Stornoabschlag je Vertrag oder je Baustein
+    nach dem Tarifwerk der Generation), nach einer Beitragsfreistellung die
+    beitragsfreie Monatsreserve je Baustein. Die Korrekturschicht mischt der
+    Kern ohnehin monatsgenau (``schichtwert_bei``); ihr ueberfuehrter Wert
+    nach einer Freistellung folgt derselben Mischung
+    (:func:`_absorbiert_monatsgenau`). Die Regeln, WANN die Schicht traegt und
+    ob eine Freistellung sie ueberfuehrt, sind die der Jahreszeile darunter.
+    """
+    scheiben = [(int(s["erh_jahr"]), s["kern"]) for s in aktive]
+    korr = 0.0
+    traegt = schicht_traegt(schicht, int(monate))
+    if pex_jahr is None:
+        reserve = vertrags_monatsreserve(
+            grund, scheiben, int(monate), stoab_je_baustein=stoab_je_baustein)
+        dk, rkw = reserve.drx_bpfl, reserve.rkw
+        if traegt:
+            korr = schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, int(monate))
+            dk += korr
+            rkw += korr
+        return {"status": "POL", "deckungskapital": dk, "rueckkaufswert": rkw,
+                "korrekturschicht": korr, "vs_bfr": 0.0}
+    dk = grund.monatsreserve_beitragsfrei(pex_jahr, int(monate))
+    vs_bfr = grund.beitragsfreie_summe(pex_jahr)
+    for erh_jahr, kern in scheiben:
+        pex_s = pex_jahr - erh_jahr
+        if pex_s <= 0:
+            raise ValueError(
+                f"Scheibe aus Vertragsjahr {erh_jahr} liegt nicht vor der "
+                f"Beitragsfreistellung (Jahr {pex_jahr})")
+        dk += kern.monatsreserve_beitragsfrei(pex_s, int(monate) - 12 * erh_jahr)
+        vs_bfr += kern.beitragsfreie_summe(pex_s)
+    if traegt:
+        if ab_verankerung(int(schicht[1]), 12 * int(pex_jahr)):
+            # Freistellung am oder nach dem Verankerungspunkt: wertstetig in
+            # die beitragsfreie Summe ueberfuehrt (Entscheid 2026-09-15).
+            vs_bfr += zuschlag_bei_pex(schicht, grund, pex_jahr)
+            korr = _absorbiert_monatsgenau(schicht, grund, pex_jahr, int(monate))
+        else:
+            korr = schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, int(monate))
+        dk += korr
+    return {"status": "PEX", "deckungskapital": dk, "rueckkaufswert": 0.0,
+            "korrekturschicht": korr, "vs_bfr": vs_bfr}
+
+
 def einzelwerte_am(
     stamm: pd.DataFrame,
     historie: Optional[pd.DataFrame],
@@ -356,8 +474,21 @@ def einzelwerte_am(
     schichten: Optional[pd.DataFrame] = None,
     verankerung: Optional[pd.DataFrame] = None,
     reduktionen: Optional[pd.DataFrame] = None,
+    *,
+    konvention: str = FUEHRUNGSKONVENTION,
 ) -> List[Dict[str, Any]]:
     """Einzelvertragliche Bewertung des in-force-Bestands am Stichtag.
+
+    ``konvention`` (``models.bestand.BEWERTUNGSKONVENTIONEN``) sagt, wie
+    Deckungskapital, Rueckkaufswert und Korrekturschicht am Stichtag aus dem
+    Kern gelesen werden. Die Fuehrung bewertet seit 2026-10-01 monatsgenau
+    (Entscheid des Maintainers): linear zwischen den beiden Vertragsjahres-
+    tagen, die den Stichtag einschliessen, fuer JEDEN Vertragstyp gleich —
+    gewoehnlich, mit Scheiben, beitragsfrei, herabgesetzt, teilgekuendigt,
+    mit Korrekturschicht. Die BU bleibt benannt bei der Jahreszeile
+    (``KONVENTION_JE_PRODUKT``: der Kern fuehrt fuer sie keine unterjaehrige
+    Reserve). ``jahreszeile`` rechnet wortgleich wie vor der Umstellung —
+    nur, um einen alten Abschluss in SEINER Konvention nachzurechnen.
 
     ``schichten``/``verankerung`` (Freischaltung, Schritt 5): die
     Korrekturschicht uebernommener Vertraege geht als eigene Position
@@ -391,6 +522,11 @@ def einzelwerte_am(
     BU-Leistungsbezug), ``bzb_jahr`` (gezahltes Jahresvolumen, KLV) und
     ``bu_leistungsbezug`` (bool).
     """
+    klv_monatsgenau = monatsgenau_fuer(konvention, "klv")
+    if monatsgenau_fuer(konvention, "bu"):  # pragma: no cover - Vertrag in models
+        raise ValueError(
+            f"Konvention {konvention!r} verlangt eine unterjaehrige BU-Reserve — der Kern "
+            "fuehrt keine (kern.produkte.bu kennt nur Vertragsjahre)")
     if historie is None or len(historie) == 0:
         # Eine LEERE Historie ist keine Historie: sie ist ein DataFrame und
         # passierte den Wachposten, der nur auf None sah — derselbe Verlust
@@ -509,7 +645,8 @@ def einzelwerte_am(
             werte = werte_reduziert(
                 reduziert, int(months_exp), pex_jahr,
                 stoab_je_baustein=bool(tarifwerk_je_generation[
-                    str(generation_je_police.loc[pid])]["stoab_je_baustein"]))
+                    str(generation_je_police.loc[pid])]["stoab_je_baustein"]),
+                monatsgenau=klv_monatsgenau)
             zeile["leistung"] = sum(
                 v.reduktion.vs_neu
                 for _, v in bestehende_teile(reduziert, int(months_exp)))
@@ -524,13 +661,35 @@ def einzelwerte_am(
             zeile["vs_bfr"] = werte["vs_bfr"] if werte["status"] == "PEX" else 0.0
             zeilen.append(zeile)
             continue
-        werte = vertragswerte(kerne[pid], int(months_exp), pex_jahr)
+        stoab_je_baustein = bool(tarifwerk_je_generation[
+            str(generation_je_police.loc[pid])]["stoab_je_baustein"])
         # Erhoehungsscheiben des Vertrags, die am Stichtag existieren —
         # jede mit ihrem Jahresversatz (PEX-Jahr entsprechend versetzt).
         aktive = [
             s for s in scheiben_je_police.get(pid, ())
             if s["erh_datum"].date() <= stichtag
         ]
+        if klv_monatsgenau:
+            zeile.update(_klv_monatsgenau(
+                kerne[pid], aktive, int(months_exp), pex_jahr,
+                schicht_je_police.get(pid), stoab_je_baustein=stoab_je_baustein))
+            # Beitraege und Leistung haengen nicht an der Konvention: derselbe
+            # Weg in derselben Reihenfolge wie unten.
+            jahr = int(months_exp) // 12
+            if pex_jahr is None:
+                bt = beitraege(kerne[pid], jahr)
+                zeile["jahresbeitrag"] += bt["bjb"]
+                zeile["bzb_jahr"] += bt["bzb_jahr"]
+            for s in aktive:
+                if pex_jahr is None:
+                    bt = beitraege(s["kern"], jahr - s["erh_jahr"])
+                    zeile["jahresbeitrag"] += bt["bjb"]
+                    zeile["bzb_jahr"] += bt["bzb_jahr"]
+                zeile["leistung"] += float(s["kern"].mp.sum_insured)
+            zeilen.append(zeile)
+            continue
+        # --- Jahreszeile: wortgleich wie vor der Umstellung (2026-10-01) ---
+        werte = vertragswerte(kerne[pid], int(months_exp), pex_jahr, monatsgenau=False)
         if pex_jahr is None:
             # Jede Erhoehungsscheibe ist ein eigener Modellpunkt mit
             # eigenem Beitrag — ohne sie waere das Beitragsvolumen so

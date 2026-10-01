@@ -265,10 +265,11 @@ def test_annahme_mit_nan_ist_ungueltig():
     assert any("nicht endlich" in f for f in Annahme(a=float("nan"), b=1.0).validate("storno"))
 
 
-def test_nichtendlicher_abschluss_wird_nicht_festgeschrieben(tabellen, tmp_path, monkeypatch):
+def test_nichtendlicher_abschluss_wird_nicht_festgeschrieben(tabellen, lauf, tmp_path, monkeypatch):
     """Am Ausgang: Was der Kern nicht endlich rechnet, darf nicht
     unumkehrbar auf die Platte."""
     from rechner_pipeline.bestand import abschluss as modul
+    from tests.nebentabellen import aus_lauf
 
     config = load_config(CONFIG)
     echt = modul.einzelwerte_am
@@ -281,7 +282,7 @@ def test_nichtendlicher_abschluss_wird_nicht_festgeschrieben(tabellen, tmp_path,
     monkeypatch.setattr(modul, "einzelwerte_am", _mit_inf)
     with pytest.raises(AbschlussError, match="nichtendliche Werte"):
         schreibe_abschluss(tabellen["bestand_gesamt"], tabellen["historie"], config,
-                           STICHTAG, tmp_path / "ab", scheiben=tabellen["scheiben"])
+                           STICHTAG, tmp_path / "ab", **aus_lauf(lauf))
     assert not (tmp_path / "ab").exists() or not list((tmp_path / "ab").iterdir())
 
 
@@ -291,6 +292,7 @@ def test_validate_abschluss_prueft_den_stand_als_ganzes():
         "tarif_generation": "klv/x", "status_code": "POL", "leistung": 1.0,
         "deckungskapital": 1.0, "rueckkaufswert": 1.0, "korrekturschicht": 0.0,
         "vs_bfr": 1.0, "jahresbeitrag": 1.0, "kern_version": "3.5.0",
+        "bewertungskonvention": "monatsgenau",
     }])[list(ABSCHLUSS_NAMES)]
     assert validate_abschluss(df) == []
     kaputt = pd.concat([df, df], ignore_index=True)

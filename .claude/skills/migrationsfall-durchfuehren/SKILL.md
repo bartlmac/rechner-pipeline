@@ -625,7 +625,11 @@ die Schritte selbst zu improvisieren:
    Bestandsabzug vor und wird durchgereicht, sonst weist der Bericht
    Pruefluecken aus und blockiert. Bibliotheks-Modul ohne CLI: die
    `VertragsPruefung`-Auftraege baut das Kommando
-   `python -m rechner_pipeline.gates.migrationssuite_lauf --fall faelle/<fall> --generation klv/tg2015 --abzug-1 <registriert>.csv --abzug-2 <registriert>.csv --gevo-protokoll <registriert>.csv --bestand <bestand>.parquet --stichtag-1 <iso> --stichtag-2 <iso>`
+   `python -m rechner_pipeline.gates.migrationssuite_lauf --fall faelle/<fall> --generation klv/tg2015 --abzug-1 <registriert>.csv --abzug-2 <registriert>.csv --gevo-protokoll <registriert>.csv --bestand <bestand>.parquet --config <bestand-config>.toml --stichtag-1 <iso> --stichtag-2 <iso>`
+   (`--config` ist die Bestand-Config der Fuehrung: Mit ihr rechnet die Suite je
+   Vertrag den Fuehrungswert — was der Monatsabschluss am Zugangs- und am
+   Folgestichtag fuer den Vertrag fuehrt —, aus dem Bestand der Uebernahme
+   neben `--bestand`; A-M4 nimmt im Bestands-Scope keine Suite ohne ihn ab)
    aus den Fall-Artefakten; die Spaltennamen der Lieferung sind
    Parameter (`--spalte-*`), keine Systemeigenschaft. Toleranzen kommen
    aus `qa` und werden NIE aufgeweicht. Das persistierte Suite-JSON bindet zusaetzlich

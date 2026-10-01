@@ -36,8 +36,11 @@ import math
 import re
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-#: Schema des Belegs.
-SCHEMA_VERSION = 1
+#: Schema des Belegs. 2 (2026-10-01): Deckungskapital, Rueckkaufswert und
+#: Korrekturschicht werden je Vertrag gegen den Fuehrungswert der
+#: Migrationssuite verglichen (``models.fuehrungswert``); Fassung 1 fuehrte
+#: das Deckungskapital "nicht vergleichbar" und ist keine Zugangsprobe mehr.
+SCHEMA_VERSION = 2
 #: Die Art des Belegs — steht im Beleg, damit ein fremder JSON-Beleg an
 #: seinem Ort nicht als Zugangsprobe durchgeht.
 ART = "zugangsprobe"
@@ -49,12 +52,15 @@ BELEG_RELATIV = "abgeleitet/berichte/zugangsprobe.json"
 #: Die verglichenen Groessen, in der Reihenfolge des Berichts.
 #:
 #: * ``in_kraft``, ``versicherungssumme``, ``deckungskapital``,
-#:   ``jahresbeitrag`` — je Monatsabschluss die Differenz der Abschluesse
-#:   "mit" minus "ohne" (Zeilen, die nur "mit" traegt), am Zugangsstichtag
-#:   gegen die Uebernahme und die Migrationssuite (je Vertrag des ganzen
-#:   Zugangs), am Folgetermin gegen die Migrationssuite, soweit der Termin
-#:   gedeckt ist; das Deckungskapital erst nach dem Entscheid seiner
-#:   Konvention (:data:`NICHT_VERGLICHEN`);
+#:   ``rueckkaufswert``, ``korrekturschicht``, ``jahresbeitrag`` — je
+#:   Monatsabschluss die Differenz der Abschluesse "mit" minus "ohne"
+#:   (Zeilen, die nur "mit" traegt), am Zugangsstichtag gegen die Uebernahme
+#:   und die Migrationssuite (je Vertrag des ganzen Zugangs), am Folgetermin
+#:   gegen die Migrationssuite, soweit der Termin gedeckt ist. Deckungs-
+#:   kapital, Rueckkaufswert und Korrekturschicht gegen den FUEHRUNGSWERT
+#:   der Suite (``models.fuehrungswert``): was die Bestandsfuehrung in der
+#:   Welt der Abnahme fuer den Vertrag fuehrt, in der Konvention des
+#:   Abschlusses (Entscheid des Maintainers 2026-10-01);
 #: * ``zugang`` — die Zugaenge der uebernommenen Vertraege im Fenster gegen
 #:   ihre Anzahl;
 #: * ``zugangsbuchungen`` — die Buchungen der uebernommenen Vertraege bis
@@ -65,38 +71,25 @@ BELEG_RELATIV = "abgeleitet/berichte/zugangsprobe.json"
 #:   (Abschlusszeilen fremder Vertraege, Abschluesse vor dem Stichtag,
 #:   Journalzeilen fremder Vertraege), ist in beiden Laeufen gleich.
 GROESSEN = (
-    "in_kraft", "versicherungssumme", "deckungskapital", "jahresbeitrag",
+    "in_kraft", "versicherungssumme", "deckungskapital", "rueckkaufswert",
+    "korrekturschicht", "jahresbeitrag",
     "zugang", "zugangsbuchungen", "bewegungskonto", "ausserhalb_des_zugangs",
 )
 
-#: Ob die Konvention des Deckungskapitals entschieden ist (Block F,
-#: Nachbesserung, Pruefer-Befund 3 — Entscheid des Maintainers OFFEN).
+#: Die Groessen, die gegen den Fuehrungswert der Suite gehalten werden.
 #:
-#: Das Deckungskapital eines Monatsabschlusses ist der Jahreswert zum
-#: letzten Vertragsjahrestag (``zustand_am``); der Systemwert, den A-M1 und
-#: die Migrationssuite am Stichtag rechnen, ist die Monatsreserve plus
-#: Korrekturschicht. Zwei verschiedene Groessen. Ein gruener Vergleich
-#: zwischen ihnen waere keine Aussage, ein roter keine Abweichung des
-#: Zugangs — also wird bis zum Entscheid NICHT verglichen, sondern der
-#: Grund im Beleg genannt (kein stiller Verzicht). Die Stelle, an der
-#: danach verglichen wird, steht in ``betrieb.zugangsprobe.vergleiche``;
-#: der Test dafuer ist vorbereitet (xfail, strict).
-DK_KONVENTION_ENTSCHIEDEN = False
-#: Der Grund, mit dem das Deckungskapital bis dahin im Beleg steht.
-DK_NICHT_VERGLEICHBAR = (
-    "nicht vergleichbar: Konvention Jahreswert vs. Monatsreserve, Entscheid offen — "
-    "der Monatsabschluss fuehrt das Deckungskapital zum letzten Vertragsjahrestag, "
-    "A-M1 und Migrationssuite rechnen am Stichtag die Monatsreserve plus Schicht")
-#: Groessen, die die Probe benennt, aber (noch) nicht gegen ein Soll haelt —
-#: mit ihrem Grund. Ein Beleg, der eine davon gruen verglichen fuehrt,
-#: besteht nicht: Das waere ein Vergleich ungleicher Groessen.
-NICHT_VERGLICHEN: Dict[str, str] = (
-    {} if DK_KONVENTION_ENTSCHIEDEN else {"deckungskapital": DK_NICHT_VERGLEICHBAR})
+#: Bis 2026-10-01 stand das Deckungskapital hier "nicht vergleichbar": Der
+#: Abschluss fuehrte die Jahreszeile, A-M1 und die Suite rechneten die
+#: Monatsreserve — zwei verschiedene Groessen. Entschieden ist seitdem
+#: zweierlei: Der Abschluss rechnet monatsgenau (ADR-011 Nachtrag), und
+#: die Abnahme weist den Wert aus, den die Fuehrung fuehrt (A-M4,
+#: Fuehrungswert). Verglichen wird damit dieselbe Groesse in derselben
+#: Konvention, je Vertrag ueber den ganzen Zugang.
+FUEHRUNGSWERT_VERGLICHEN = ("deckungskapital", "rueckkaufswert", "korrekturschicht")
 #: Groessen, die am Zugangsstichtag ein Soll haben MUESSEN — ohne sie ist
 #: die Differenz nicht gegen die Abnahme gehalten, sondern nur berichtet.
-PFLICHT_AM_STICHTAG = tuple(
-    g for g in ("in_kraft", "versicherungssumme", "deckungskapital", "jahresbeitrag")
-    if g not in NICHT_VERGLICHEN)
+PFLICHT_AM_STICHTAG = ("in_kraft", "versicherungssumme", "deckungskapital",
+                       "rueckkaufswert", "korrekturschicht", "jahresbeitrag")
 
 #: Jede Bewertungsgroesse des Abschlusses (``models.bestand.ABSCHLUSS_ZAHLEN``,
 #: aus dem Spaltentyp hergeleitet) ist entweder einer verglichenen Groesse
@@ -107,15 +100,11 @@ PFLICHT_AM_STICHTAG = tuple(
 ABSCHLUSS_VERGLICHEN: Dict[str, str] = {
     "leistung": "versicherungssumme",
     "deckungskapital": "deckungskapital",
+    "rueckkaufswert": "rueckkaufswert",
+    "korrekturschicht": "korrekturschicht",
     "jahresbeitrag": "jahresbeitrag",
 }
 ABSCHLUSS_NICHT_BELEGT: Dict[str, str] = {
-    "rueckkaufswert": (
-        "nicht belegt: keine Abnahme belegt den Rueckkaufswert am Zugangsstichtag "
-        "(A-M3 und die Migrationssuite pruefen ihn nur am Geschaeftsvorfall)"),
-    "korrekturschicht": (
-        "nicht belegt: die Schicht ist Teil des Deckungskapitals und wird mit ihm "
-        "verglichen, sobald dessen Konvention entschieden ist"),
     "vs_bfr": (
         "nicht belegt als Abschlussspalte: die beitragsfreie Summe haelt die Probe "
         "ueber die PEX-Umbuchung der Uebernahme (zugangsbuchungen)"),
@@ -245,16 +234,18 @@ def stand_sha256(inhalt: Mapping[str, Any]) -> str:
 def vergleich(
     groesse: str, termin: str, stichtag: Optional[str], soll: Optional[float],
     ist: float, *, umfang: int, abweichend: Sequence[Mapping[str, Any]] = (),
-    grund: Optional[str] = None,
+    grund: Optional[str] = None, ausgenommen: Sequence[Mapping[str, Any]] = (),
 ) -> Dict[str, Any]:
     """Ein Vergleich Soll gegen Ist — das Urteil folgt aus den Zahlen.
 
     ``soll`` None ist ein benannter Zustand ("nicht belegt"): Die Groesse
     wird berichtet, aber nicht gegen eine Abnahme gehalten; ``grund``
-    sagt, warum (Pflicht fuer die Groessen in :data:`NICHT_VERGLICHEN`).
-    ``abweichend`` sind die Vertraege (oder Zeilen), die einzeln nicht
-    stimmen — eine Summe kann zwei gegenlaeufige Fehler verdecken, die
-    Einzelliste nicht.
+    sagt, warum. ``abweichend`` sind die Vertraege (oder Zeilen), die
+    einzeln nicht stimmen — eine Summe kann zwei gegenlaeufige Fehler
+    verdecken, die Einzelliste nicht. ``ausgenommen`` sind Vertraege, fuer
+    die das Soll nicht gilt, je mit Grund (am Folgetermin: ein gebuchter
+    Geschaeftsvorfall im Fenster — der Fuehrungswert gilt ohne ihn); sie
+    stehen namentlich im Beleg, nicht still ausserhalb.
     """
     differenz = None if soll is None else float(ist) - float(soll)
     return {
@@ -267,6 +258,7 @@ def vergleich(
         "umfang": int(umfang),
         "abweichend_anzahl": len(abweichend),
         "abweichend": [dict(a) for a in list(abweichend)[:NENNUNGEN]],
+        "ausgenommen": [dict(a) for a in ausgenommen],
         "ok": _urteil(soll, differenz, len(abweichend)),
         "grund": grund,
     }
@@ -283,23 +275,15 @@ def bestanden_aus(vergleiche: Sequence[Mapping[str, Any]], befunde: Sequence[str
 
     Bestanden heisst: kein Befund, kein roter Vergleich, jede Groesse
     mindestens einmal gegen ein Soll gehalten, und die Abschlussgroessen
-    am Zugangsstichtag gegen die Abnahme gruen. Eine Groesse aus
-    :data:`NICHT_VERGLICHEN` steht am Zugangsstichtag mit IHREM Grund im
-    Beleg und nirgends mit einem Urteil — ein gruener Vergleich ungleicher
-    Groessen ist kein Bestehen, ein fehlender Grund ein stiller Verzicht.
+    am Zugangsstichtag gegen die Abnahme gruen — das Deckungskapital, der
+    Rueckkaufswert und die Korrekturschicht eingeschlossen (bis 2026-10-01
+    standen sie "nicht vergleichbar" bzw. "nicht belegt" im Beleg).
     """
     if befunde:
         return False
     if any(v.get("ok") is False for v in vergleiche):
         return False
     for g in GROESSEN:
-        if g in NICHT_VERGLICHEN:
-            if any(v.get("groesse") == g and v.get("ok") is not None for v in vergleiche):
-                return False
-            if not any(v.get("groesse") == g and v.get("termin") == "zugangsstichtag"
-                       and v.get("grund") == NICHT_VERGLICHEN[g] for v in vergleiche):
-                return False
-            continue
         if not any(v.get("groesse") == g and v.get("ok") is True for v in vergleiche):
             return False
     for g in PFLICHT_AM_STICHTAG:
@@ -411,10 +395,16 @@ def beleg_fehler(
                           "als der Beleg")
     if beleg.get("abdeckung") != abdeckung():
         fehler.append("abdeckung: nicht die Abdeckung der Abschlussspalten dieses Vertrags")
-    if beleg.get("nicht_verglichen") != NICHT_VERGLICHEN:
+    if "nicht_verglichen" in beleg:
         fehler.append(
-            f"nicht_verglichen {beleg.get('nicht_verglichen')!r} ist nicht {NICHT_VERGLICHEN!r} — "
-            "ein Beleg nennt, was er nicht vergleicht, mit dem Grund des Vertrags")
+            "nicht_verglichen: ein Beleg der Fassung 1 — Deckungskapital, Rueckkaufswert und "
+            "Korrekturschicht werden seit 2026-10-01 verglichen, keine Groesse steht mehr "
+            "'nicht vergleichbar' im Beleg")
+    from rechner_pipeline.models.bestand import BEWERTUNGSKONVENTIONEN
+
+    if beleg.get("konvention") not in BEWERTUNGSKONVENTIONEN:
+        fehler.append("konvention: der Beleg nennt nicht, in welcher Bewertungskonvention "
+                      "Abschluss und Fuehrungswert verglichen wurden")
     if beleg.get("groessen") != list(GROESSEN):
         fehler.append(
             f"groessen {beleg.get('groessen')!r} sind nicht die verglichenen Groessen "
@@ -441,11 +431,11 @@ def beleg_fehler(
                 isinstance(v.get("abweichend_anzahl"), int)
                 and v["abweichend_anzahl"] > NENNUNGEN):
             fehler.append(f"vergleiche[{i}] ({v['groesse']}): abweichend_anzahl passt nicht zur Liste")
-        if v["groesse"] in NICHT_VERGLICHEN and (
-                soll is not None or v.get("grund") != NICHT_VERGLICHEN[v["groesse"]]):
+        if (v["groesse"] in PFLICHT_AM_STICHTAG and v["termin"] == "zugangsstichtag"
+                and soll is None):
             fehler.append(
-                f"vergleiche[{i}] ({v['groesse']}): verglichen, obwohl die Groesse "
-                f"{NICHT_VERGLICHEN[v['groesse']][:40]}… ist")
+                f"vergleiche[{i}] ({v['groesse']}): am Zugangsstichtag ohne Soll — die "
+                "Groesse wird gegen die Abnahme gehalten, nicht nur berichtet")
         if v.get("ok") != _urteil(soll, differenz, int(v.get("abweichend_anzahl") or 0)):
             fehler.append(
                 f"vergleiche[{i}] ({v['groesse']}): das Urteil ok={v.get('ok')!r} folgt "

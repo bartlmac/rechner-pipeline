@@ -226,7 +226,10 @@ kein Nachweis. Die Stelle, an der danach je Vertrag ueber den ganzen
 Zugang verglichen wird, ist vorbereitet
 (``DK_KONVENTION_ENTSCHIEDEN``), der Test dafuer ebenso (xfail, strict).
 Ob Abschluss oder Abnahme die Konvention wechselt, entscheidet das
-Aktuariat, nicht die Probe.
+Aktuariat, nicht die Probe. *(Entschieden am 2026-10-01: der Abschluss
+wechselt, die Abnahme weist den Fuehrungswert aus — Nachtrag "die Probe
+vergleicht das Deckungskapital" unten; die Konstanten oben sind
+entfallen.)*
 
 ## Nachtrag 2026-10-01: eine Rollenregel fuer jede Abnahme, auf der etwas gruendet
 
@@ -378,3 +381,58 @@ Erwaehnung von ``entscheide`` im Betrieb und die Test-Ordnungen (kein
 Schluessel fuer Fall- und Betriebsabnahmen zugleich, kein neuer ``'*'``),
 je mit Positivkontrolle; je Verweigerungsursache des Neuaufsetzens ein
 Zaehltest der Reste (``==``); Mutationsproben je Regelstelle.
+
+## Nachtrag 2026-10-01: die Probe vergleicht das Deckungskapital
+
+Bis hierher stand das Deckungskapital im Beleg der Probe "nicht
+vergleichbar": Der Monatsabschluss fuehrte den Wert des letzten
+Vertragsjahrestags, A-M1 und die Migrationssuite rechneten am Stichtag
+die Monatsreserve — zwei verschiedene Groessen. Der Entscheid des
+Maintainers hat beide Seiten auf dieselbe gebracht: "Abschluss umbauen,
+UND die neue Bezugsgroesse in den Controlling-Test nehmen."
+
+* Der Abschluss bewertet monatsgenau (ADR-011, Nachtrag 2026-10-01) und
+  nennt seine Konvention.
+* Die Migrationssuite (Beleg von A-M4, Fassung 2) traegt je Vertrag des
+  Zugangs den **Fuehrungswert**: Deckungsrueckstellung, Rueckkaufswert
+  und Korrekturschicht, die der Abschluss am Zugangsstichtag und am
+  Folgestichtag fuer den Vertrag fuehren wird — gerechnet ueber die
+  Bewertungsstrecke des Abschlusses, aus dem Bestand der Uebernahme und
+  der Config der Fuehrung (`bestand.migrationszugang.fuehrungswerte`,
+  ueber die bestehende Kante `gates.migrationssuite_lauf ->
+  bestand.migrationszugang`; keine neue Kante). Er ist ein Systemwert,
+  kein Vergleich mit der Lieferung, und haengt an demselben
+  Vertragszustand, den der Vergleich mit der Lieferung bestaetigt. A-M4
+  (`abnahmebericht` 8.0.0) nimmt im Bestands-Scope keine Suite ohne ihn
+  ab.
+* Die Probe (Beleg Fassung 2) haelt Deckungskapital, Rueckkaufswert und
+  Korrekturschicht der Abschlusszeilen des Zugangs je Vertrag ueber den
+  ganzen Zugang gegen den Fuehrungswert der gepinnten Suite, am
+  Zugangsstichtag und am Folgestichtag; dort ohne die Vertraege mit einem
+  gebuchten Vorfall im Fenster, die namentlich als ausgenommen im
+  Vergleich stehen. Stehen Abschluss und Fuehrungswert in verschiedenen
+  Konventionen, verweigert sie den Vergleich benannt. Kein Beleg fuehrt
+  mehr eine Groesse "nicht vergleichbar"; ein Beleg der Fassung 1 ist
+  keiner.
+
+Was die Probe damit sieht, was sie vorher nicht sah: eine Fuehrung, die
+einen anderen Vertrag fuehrt als den abgenommenen, ohne dass Summe oder
+Beitrag sich bewegen — eine Korrekturschicht, die die Abnahme nicht
+kennt, oder ein verschobener Vertragsbeginn. Auch wenn Ablage und
+Abschluss in sich stimmig verfaelscht sind (die Nachrechnung des
+Abschlusses gegen die Ablage ist deckungsgleich), kommt das Soll aus der
+gepinnten Abnahme und nicht aus der Ablage.
+
+Verworfen: die Probe rechnet den Abnahmewert selbst in die Konvention des
+Abschlusses um. Sie haette die Treppe zementiert und ein zweites
+Rechenwissen neben der Strecke aufgebaut — genau die Drift, die ADR-011
+beseitigt.
+
+Instrumente (``tests/test_zugangsabnahme_ab2.py``): je Mutation an
+Deckungskapital, Rueckkaufswert und Schicht die Probe rot (vorher
+erwartet rot, xfail), in Rueckrichtung unbemerkt, sobald der Vergleich in
+einer Kopie des Codes ausgebaut ist, und unbemerkt mit unendlicher
+Toleranz (Positivkontrolle); je Angriffsart auf die Ablagekopie
+(Tarifparameter, Erhoehungsscheibe, Korrekturschicht, Vertragsbeginn) ein
+Zaehltest mit ``==`` ueber die roten Groessen; die maximale Manipulation
+(alle vier, Abschluss stimmig neu geschrieben).
