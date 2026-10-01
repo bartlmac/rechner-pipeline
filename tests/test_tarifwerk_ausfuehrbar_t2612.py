@@ -134,17 +134,18 @@ def test_config_wache_latent_bei_rate_null_und_hart_bei_erreichbarem_pfad(monkey
     Fall wird rot; den Aufruf der Ratsche in ``validate`` entfernen -> der
     harte Fall wird rot.
     """
+    # Seit 2026-10-01 traegt die echte Config selbst eine Herabsetzungsrate
+    # (Annahme der Vorfuehrung); der Pfad ist damit in ihr ERREICHBAR. Die
+    # latente Welt ist dieselbe Config mit Rate null.
+    mit_rate = PLV.read_text(encoding="utf-8")
+    assert "herabsetzung = { a = 0.008, b = 0.0 }" in mit_rate
+    ohne_rate = mit_rate.replace("herabsetzung = { a = 0.008, b = 0.0 }",
+                                 "herabsetzung = { a = 0.0, b = 0.0 }", 1)
     assert load_config(PLV).validate() == []
-    # Rate UND Anteil: die Annahmen-Validierung verlangt zu einer
-    # Herabsetzungsrate den fortgefuehrten Anteil (wie das T26-11-Fixture).
-    mit_rate = PLV.read_text(encoding="utf-8").replace(
-        "[annahmen]\n", "[annahmen]\nred_anteil = 0.6\n", 1
-    ) + "\n[annahmen.herabsetzung]\na = 0.08\nb = 0.0\n"
-    assert "red_anteil = 0.6" in mit_rate
-    assert config_aus_text(mit_rate).validate() == []
+    assert config_aus_text(ohne_rate).validate() == []
     from rechner_pipeline.kern.beitragsreduktion import MIT_ABZUG, PROSPEKTIV
     monkeypatch.setitem(TARIFWERK_AUSFUEHRBAR, "red_verfahren", (PROSPEKTIV, MIT_ABZUG))
-    assert load_config(PLV).validate() == [], "Rate 0: die Luecke bleibt latent"
+    assert config_aus_text(ohne_rate).validate() == [], "Rate 0: die Luecke bleibt latent"
     fehler = config_aus_text(mit_rate).validate()
     treffer = [f for f in fehler if "TG2015" in f and TEILKUENDIGUNG in f]
     assert len(treffer) == 1, fehler

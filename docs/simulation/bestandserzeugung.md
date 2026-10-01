@@ -64,7 +64,7 @@ gefunden":
 
 | Datei | Wann |
 |---|---|
-| `reduktionen.parquet` | wenn der Lauf Herabsetzungen gebucht hat |
+| `reduktionen.parquet` | wenn der Lauf Beitragsherabsetzungen oder Teilkündigungen gebucht hat — mit den Konfigurationen der PLV praktisch immer ([Erfahrungsannahmen](erfahrungsannahmen.md), Abschnitt 4) |
 | `merkmale.parquet`, `schichten.parquet`, `verankerung.parquet` | mit `--uebernahme`, wenn der übernommene Bestand sie trägt (Tarifzellen, Korrekturschicht, Verankerung) |
 
 Und zuletzt, kein Parquet: `laufmanifest.json` — der Lieferschein

@@ -47,9 +47,11 @@ from tests.test_klasse_probe_betrag_wirkungstag_f import JAHRESTAG, _mit_zeile
 from tests.test_t27_pruefstrecke_runde_c import POL, PEX_POLICE, _mit_red, _urteil, welt  # noqa: F401
 
 #: Die Arten, die der echte Lauf (``eigen``) bucht; die Zaehltests an den
-#: Konsumenten laufen ueber sie. MIG, RED, INV und REA stehen nur in der Regel
-#: selbst (Zaehltest ueber das ganze Vokabular) bzw. in eigenen Faellen.
-ARTEN_IM_ECHTEN_LAUF = ["ZUG", "ERH", "PEX", "STO", "TOD", "ABL"]
+#: Konsumenten laufen ueber sie. MIG, INV und REA stehen nur in der Regel
+#: selbst (Zaehltest ueber das ganze Vokabular) bzw. in eigenen Faellen. RED
+#: und TKU bucht der echte Lauf, seit die Config der PLV Herabsetzung und
+#: Teilkuendigung erzeugt (2026-10-01).
+ARTEN_IM_ECHTEN_LAUF = ["ZUG", "ERH", "RED", "TKU", "PEX", "STO", "TOD", "ABL"]
 POL_ABL = 7000023     # bucht im gefahrenen Baldrian-Lauf eine echte ABL am 2027-01-01
 
 

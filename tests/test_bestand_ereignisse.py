@@ -391,10 +391,14 @@ def test_abgangsbetraege_summieren_ueber_scheiben(portfolio, config, beispiel_la
         return grund, s_kerne
 
     mit_scheiben = set(scheiben["police_id"])
+    # Die Kontrollrechnung gilt dem nicht herabgesetzten Vertrag: Nach einer
+    # Herabsetzung oder Teilkuendigung (die Config erzeugt beide seit
+    # 2026-10-01) rechnet der Vertrag ueber seinen geknickten Verlauf.
+    reduziert = set(ledger.loc[ledger["ereignis"].isin(["RED", "TKU"]), "police_id"])
     geprueft = {"STO": 0, "PEX": 0}
     for zeile in ledger[ledger["ereignis"].isin(["STO", "PEX"])].to_dict("records"):
         pid = int(zeile["police_id"])
-        if pid not in mit_scheiben or geprueft[zeile["ereignis"]] >= 3:
+        if pid not in mit_scheiben or pid in reduziert or geprueft[zeile["ereignis"]] >= 3:
             continue
         a = int(zeile["vertragsjahr"])
         grund, s_kerne = kerne(pid)

@@ -82,6 +82,11 @@ def bundle(tmp_path_factory, lauf, _fortschreibung):
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(scheiben, ziel / "scheiben.parquet")
     write_portfolio(ergebnis.ledger, ziel / "ledger.parquet")
+    # Bedingte Ausgabe wie in cli_fortschreibung: nur wenn der Lauf
+    # Herabsetzungen oder Teilkuendigungen gebucht hat — mit der Config der
+    # PLV seit 2026-10-01 der Fall.
+    if len(ergebnis.reduktionen):
+        write_portfolio(ergebnis.reduktionen, ziel / "reduktionen.parquet")
     _manifest(ziel)
     return ziel
 

@@ -57,9 +57,13 @@ def _stamm_pfad(lauf: Path) -> Path:
 
 def test_fortschreibung_cli_schreibt_alle_tabellen(lauf):
     dateien = {p.name for p in lauf.glob("*.parquet")}
+    # reduktionen.parquet ist eine bedingte Ausgabe; seit die Config
+    # Herabsetzung und Teilkuendigung erzeugt (2026-10-01), traegt sie jeder
+    # Lauf ueber mehr als ein Vertragsjahr.
     assert dateien == {
         "bestand.parquet", "historie.parquet", "ledger.parquet",
         "scheiben.parquet", "zugaenge.parquet", "bestand_gesamt.parquet",
+        "reduktionen.parquet",
     }
     # ADR-020: Der Lauf beginnt leer — bestand.parquet ist die (leere)
     # Basis, jeder Vertrag steht in zugaenge.parquet und damit im Journal.
@@ -130,6 +134,8 @@ def test_gate_pb1_prueft_die_bu_nachweisung(lauf_gemischt, tmp_path, capsys):
         "--portfolio", str(lauf_gemischt / "bestand_gesamt.parquet"),
         "--historie", str(lauf_gemischt / "historie.parquet"),
         "--scheiben", str(lauf_gemischt / "scheiben.parquet"),
+        "--reduktionen", str(lauf_gemischt / "reduktionen.parquet"),
+        "--config", str(GEMISCHT),
         "--diagnostics-dir", str(tmp_path / "diag_gemischt"),
     ]
     code = run_command(gate_cli.main, basis + [
@@ -297,6 +303,8 @@ def test_gate_pb1_bewegungsidentitaet(lauf, tmp_path, capsys):
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
         "--historie", str(lauf / "historie.parquet"),
         "--scheiben", str(lauf / "scheiben.parquet"),
+        "--reduktionen", str(lauf / "reduktionen.parquet"),
+        "--config", str(EXAMPLE),
         "--diagnostics-dir", str(tmp_path / "diag"),
     ]
     code = run_command(gate_cli.main, basis + [
@@ -571,6 +579,7 @@ def test_kein_beginn_liegt_nach_dem_horizont(lauf, tmp_path, capsys):
         "--historie", str(lauf / "historie.parquet"),
         "--scheiben", str(lauf / "scheiben.parquet"),
         "--ledger", str(lauf / "ledger.parquet"),
+        "--reduktionen", str(lauf / "reduktionen.parquet"),
         "--bis", horizont.isoformat(),
         "--config", str(EXAMPLE),
         "--diagnostics-dir", str(tmp_path / "diag"),

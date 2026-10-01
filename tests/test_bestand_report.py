@@ -312,6 +312,9 @@ def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
     h = write_portfolio(historie, tmp_path / "h.parquet")
     l = write_portfolio(ledger, tmp_path / "l.parquet")
     s = write_portfolio(scheiben, tmp_path / "s.parquet")
+    # Die Reduktionen des Laufs (Herabsetzung, Teilkuendigung; die Config
+    # erzeugt beide seit 2026-10-01) unter ihrem Namen neben dem Ledger.
+    write_portfolio(fortschreibung.reduktionen, tmp_path / "reduktionen.parquet")
     out = tmp_path / "bericht.html"
     code = cli.main(
         ["--portfolio", str(parquet), "--out", str(out),
@@ -337,13 +340,17 @@ def test_cli_mit_historie_und_ledger(portfolio, fortschreibung, tmp_path):
     assert cli.main(
         ["--portfolio", str(parquet), "--historie", str(h), "--ledger", str(l)]
     ) == 2
-    # Scheiben ohne Config sind gueltig (Bewegungs-Summen brauchen sie):
+    # Ohne Config: Ein Ledger mit Herabsetzungen oder Teilkuendigungen (die
+    # Config der PLV erzeugt beide seit 2026-10-01) verlangt sie — ohne
+    # Herleitung zeigte der Bericht den Vertrag in den Kennzahlen ungekuerzt
+    # und in der Nachweisung gekuerzt (Angriffsrunde nach T27). Bis dahin
+    # stand hier "Scheiben ohne Config sind gueltig" und Exit 0.
     ohne_config = tmp_path / "ohne_config.html"
     assert cli.main(
         ["--portfolio", str(parquet), "--historie", str(h), "--ledger", str(l),
          "--scheiben", str(s), "--bis", "2035-01-01", "--out", str(ohne_config)]
-    ) == 0
-    assert "Bestandsbewegung" in ohne_config.read_text(encoding="utf-8")
+    ) == 2
+    assert not ohne_config.exists()
     # --bis nur mit --historie/--ledger; ungueltiges Datum ist ein Fehler:
     assert cli.main(
         ["--portfolio", str(parquet), "--bis", "2035-01-01"]
@@ -453,11 +460,12 @@ def test_cli_stichtag(portfolio, fortschreibung, tmp_path):
     h = write_portfolio(historie, tmp_path / "h.parquet")
     l = write_portfolio(ledger, tmp_path / "l.parquet")
     s = write_portfolio(scheiben, tmp_path / "s.parquet")
+    write_portfolio(fortschreibung.reduktionen, tmp_path / "reduktionen.parquet")
     out = tmp_path / "b.html"
     assert cli.main([
         "--portfolio", str(parquet), "--historie", str(h), "--ledger", str(l),
         "--scheiben", str(s), "--bis", "2035-01-01", "--stichtag", "2026-01-01",
-        "--out", str(out),
+        "--config", str(EXAMPLE), "--out", str(out),
     ]) == 0
     text = out.read_text(encoding="utf-8")
     assert "ab hier Prognose" in text

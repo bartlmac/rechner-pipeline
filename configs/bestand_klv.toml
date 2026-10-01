@@ -675,9 +675,24 @@ sum_insured = [1000, 2000000]
 #     Sicherheitsmarge heraus. Bei Todesfallleistung ist die erste Ordnung
 #     vorsichtig hoch, also b < 1.
 #   * Ereignisse OHNE Rechnungsgrundlage (Storno, Beitragsfreistellung,
-#     dynamische Erhoehung): b = 0, die Rate steht in a.
+#     dynamische Erhoehung, Beitragsherabsetzung, Teilkuendigung): b = 0,
+#     die Rate steht in a.
 # Die BEWERTUNG bleibt unberuehrt — Beitraege und Reserven rechnet der Kern
 # auf erster Ordnung.
+#
+# Beitragsherabsetzung und Teilkuendigung (Tarifplan KLV 7.1/7.2): Annahmen
+# der Vorfuehrung, keine Tarifgroessen — damit der Bestand die Vorgaenge
+# enthaelt, die eine Migration antrifft (Auftrag des Maintainers
+# 2026-10-01; docs/simulation/bestandserzeugung.md). Fuer alle Generationen
+# gleich.
+#   herabsetzung: 0,8 Prozent je Jahr eines beitragspflichtigen Vertrags
+#     (gezogen nur vor dem Beitragsende und ohne Beitragsfreistellung);
+#     red_anteil ist der FORTGEFUEHRTE Beitragsanteil: 0.6 = Beitrag auf
+#     60 Prozent gesenkt.
+#   teilkuendigung: 0,5 Prozent je Jahr eines Vertrags vor dem Ablauf (ohne
+#     Beitragsfreistellung); tk_anteil ist der FORTGEFUEHRTE Summenanteil
+#     der Grundversicherung: 0.7 = 30 Prozent gekuendigt und ausgezahlt.
+#   Hoechstens ein Vorgang je Vertrag (Annahme A4).
 # --------------------------------------------------------------------------
 [annahmen]
 tod = { a = 0.0, b = 0.8 }
@@ -685,3 +700,7 @@ storno = { a = 0.03, b = 0.0 }
 beitragsfreistellung = { a = 0.01, b = 0.0 }
 erhoehung = { a = 0.30, b = 0.0 }
 erh_prozent = 0.05
+herabsetzung = { a = 0.008, b = 0.0 }
+red_anteil = 0.6
+teilkuendigung = { a = 0.005, b = 0.0 }
+tk_anteil = 0.7

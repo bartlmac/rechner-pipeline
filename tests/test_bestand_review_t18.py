@@ -87,6 +87,10 @@ def _gate(lauf_dir: Path, tmp_path: Path, **rollen: Path):
             "--historie", str(lauf_dir / "historie.parquet"),
             "--ledger", str(lauf_dir / "ledger.parquet"),
             "--scheiben", str(lauf_dir / "scheiben.parquet"),
+            # bedingte Ausgabe; die Config erzeugt seit 2026-10-01
+            # Herabsetzungen und Teilkuendigungen
+            "--reduktionen", str(lauf_dir / "reduktionen.parquet"),
+            "--config", str(CONFIG),
             "--bis", HORIZONT.isoformat(),
             "--diagnostics-dir", str(tmp_path / "diag")]
     for rolle, pfad in rollen.items():

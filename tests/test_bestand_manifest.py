@@ -90,6 +90,9 @@ def test_der_lauf_schreibt_sein_manifest_ueber_die_geschriebenen_bytes(lauf):
     assert set(erwartet) == {
         "bestand.parquet", "bestand_gesamt.parquet", "historie.parquet",
         "ledger.parquet", "scheiben.parquet", "zugaenge.parquet",
+        # bedingt: seit die Config Herabsetzung und Teilkuendigung erzeugt
+        # (2026-10-01), traegt der Lauf sie
+        "reduktionen.parquet",
     }
 
 
@@ -190,12 +193,14 @@ def test_engine_haelt_jede_rolle_und_die_config_gegen_das_manifest(lauf, tmp_pat
         "historie": lauf_dir / "historie.parquet",
         "ledger": lauf_dir / "ledger.parquet",
         "scheiben": lauf_dir / "scheiben.parquet",
+        "reduktionen": lauf_dir / "reduktionen.parquet",
         "config": CONFIG,
     }
     tabellen, geprueft, fehler, usage = lies_und_pruefe_pb1(
         eingaben, bis=HORIZONT, manifest=manifest)
     assert fehler == [] and usage == []
-    assert geprueft["manifest_gebunden"] == 5
+    # sechs Rollen: die fuenf bisherigen plus die Reduktionen (2026-10-01)
+    assert geprueft["manifest_gebunden"] == 6
     assert "config" in tabellen, "die geparste Config kommt aus der Pruefung"
 
     # Ein Byte anders in der Historie — gleicher Inhalt waere moeglich,
@@ -227,6 +232,9 @@ def _gate_argv(lauf: Path, tmp_path: Path, bis: _dt.date, *extra: str) -> list:
         "--historie", str(lauf / "historie.parquet"),
         "--ledger", str(lauf / "ledger.parquet"),
         "--scheiben", str(lauf / "scheiben.parquet"),
+        "--reduktionen", str(lauf / "reduktionen.parquet"),
+        # Mit Herabsetzungen im Ledger verlangt das Gate die Config.
+        "--config", str(CONFIG),
         "--bis", bis.isoformat(),
         "--diagnostics-dir", str(tmp_path / "diag"),
         *extra,
@@ -242,7 +250,9 @@ def test_gate_bindet_manifest_und_traegt_es_im_ledger(lauf, tmp_path):
         "sha256": _sha(lauf / MANIFEST_DATEI),
         "horizont": HORIZONT.isoformat(),
     }
-    assert ergebnis.summary["manifest_gebunden"] == 4
+    # sechs: Portfolio, Historie, Ledger, Scheiben und (seit 2026-10-01,
+    # mit Herabsetzungen im Ledger) Reduktionen und Config
+    assert ergebnis.summary["manifest_gebunden"] == 6
     # Der Beleg auf der Platte traegt dieselbe Bindung.
     ledger = json.loads(
         (tmp_path / "diag" / "bestand_validate.gate.json").read_text(encoding="utf-8"))

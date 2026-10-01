@@ -19,7 +19,7 @@ Laufzeitumgebung selbst ist kein Repo-Inhalt.
 
 | Verzeichnis | Inhalt | Schutz |
 |---|---|---|
-| `configs/bestand.toml` | die Config der PLV — eine Kopie von `configs/bestand_gesamt.toml`; ihr SHA-256 steht in jedem Protokolleintrag. Nach dem Nachziehen der Kopie aendert sich der Hash im Protokoll, nicht der Bestand: `nummernkreis` traegt die bisherigen Positionen explizit (T22-09) | vom Menschen gepflegt |
+| `configs/bestand.toml` | die Config der PLV — eine Kopie von `configs/bestand_gesamt.toml`; ihr SHA-256 steht in jedem Protokolleintrag. Eine Aenderung im Repository beruehrt sie nicht; eine geaenderte Kopie haelt den Tageslauf an (Exit 2), bis die Ablage neu aufgesetzt ist (siehe "Config nachziehen") | vom Menschen gepflegt, nur ueber das Neuaufsetzen |
 | `uebernahme/<fall>/` | je Migrationsfall ein Zugangsstand mit `eingang.json` (Fallname, Stichtag, Snapshot-Hash, SHA-256 je Datei), bei der Registrierung mit dem Betriebsschluessel gezeichnet (Schema 3), daneben `zugangsabnahme.json` (die gepruefte Zugangsabnahme A-B2, ADR-022) | unantastbar wie ein Fall-Eingang; jede Datei wird beim Lesen gegen ihre Summe gehalten |
 | `stand/` | Symlink auf den gefuehrten Stand (`stand-<manifest-kennung>/`; der Pfad `daten/stand/` fuehrt durch den Symlink dorthin): die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` und `verankerung.parquet` der Uebernahmen. Der Stand ist die GEBUCHTE Sicht: Ereignisse mit Buchungstag nach heute (Meldeverzug, Werktagsregel) stehen noch nicht darin und kommen an ihrem Buchungstag, damit Stand, Seite und Journal dasselbe sagen | wechselt nur durch einen gruenen Lauf, in EINEM atomaren Schritt (Symlink-Tausch; es gibt keinen Moment ohne Stand); das alte Verzeichnis wird danach entfernt |
 | `lauf.lock` | Prozess-Sperre: zwei gleichzeitige Laeufe auf derselben Ablage gibt es nicht, der zweite bricht sofort ab; ebenso der `seite`-Befehl (Rendern und Export) neben einem laufenden Tageslauf | — |
@@ -313,6 +313,32 @@ python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten \
 systemctl --user start tageslauf.timer
 ```
 
+**Config nachziehen** (etwa die Annahmen fuer Beitragsherabsetzung und
+Teilkuendigung vom 2026-10-01, `docs/simulation/erfahrungsannahmen.md`
+Abschnitt 4). Die Ablage fuehrt ihre eigene Kopie; das Repository
+aendert sie nicht. Eine neue Config gilt von Beginn der Simulation an:
+Jeder Lauf rechnet die Geschichte ab 1994 neu, die neuen Raten treffen
+also auch Jahre, deren Monatsabschluesse festgeschrieben sind und deren
+Buchungen im Journal stehen — eine bestehende Ablage reproduziert danach
+nicht mehr. Der Tageslauf haelt deshalb an, sobald die Kopie nicht mehr
+die ist, mit der der letzte gruene Tag gerechnet wurde (Config-Hash der
+Protokollzeile; Exit 2, Stand und Journal bleiben, eine rote Protokollzeile nennt beide Hashes),
+auch bei einer Aenderung ohne Wirkung. Die Ablage wird neu aufgesetzt,
+nicht nachtraeglich umgerechnet:
+
+1. Zugangsprobe auf einem leeren Verzeichnis, das nur die NEUE Config als
+   `configs/bestand.toml` traegt, und A-B2 darauf zeichnen (wie oben).
+2. Mit angehaltenem Timer `neuaufsetzen ... --config <neue bestand.toml>
+   --zugangsabnahme <sha256>` (Kommando oben), dann Erstbefuellung (rund
+   eine Viertelstunde) und Export mit einem NEUEN Ankerverzeichnis.
+
+Folgen: Die alte Ablage liegt mit Journal, Protokollkette, Abschluessen
+und Berichten unter `daten.archiv-<Zeit>`; die neue Protokollkette
+beginnt neu; jeder Monatsabschluss seit 1994 wird mit der neuen Config
+neu festgeschrieben, und die Vorzeigeseite zeigt ab dem naechsten Paket
+die neuen Zahlen. Wer beim alten Stand bleiben will, setzt die Kopie auf
+die Config zurueck, mit der das Protokoll gerechnet hat.
+
 **Timer:**
 
 ```
@@ -329,7 +355,9 @@ loginctl enable-linger "$USER"     # der Timer laeuft auch ohne Sitzung
   Naechte holt der naechste Lauf nach (`nachgeholt` im Protokoll).
 * **Rot heisst: nicht uebernommen.** Faellt die Wache P-B1, bleibt der
   gestrige Stand der gefuehrte, der Befund steht im Protokoll, Exit 3.
-  Ursache beheben (meist die Config), denselben Tag erneut fahren.
+  Ursache beheben, denselben Tag erneut fahren. Eine geaenderte Config
+  ist kein solcher Fall: Sie haelt den Lauf schon vor der Fortschreibung an
+  (Exit 2, siehe "Config nachziehen").
 * **Update** = neuer `IMAGE_TAG` in `.env`, `docker compose pull`, Digest
   eintragen. Der erste Lauf mit neuem Image protokolliert den Wechsel.
   Wechselt die Kern-Version, weisen die Abschluss-Kontrollen

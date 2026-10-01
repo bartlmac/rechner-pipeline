@@ -224,16 +224,27 @@ def test_derselbe_tag_noch_einmal_ist_ein_benannter_noop(gefuehrt):
     assert len(lies_protokoll(ablage.protokoll_pfad)) == 3
 
 
-def test_rote_wache_uebernimmt_den_stand_nicht(gefuehrt, tmp_path):
+def test_rote_wache_uebernimmt_den_stand_nicht(gefuehrt, tmp_path, monkeypatch):
     """Mutationsprobe: Wache entfernt oder Stand vor der Wache uebernommen
     — dann fuehrte der Stand den 5.2. mit einem Bestand ausserhalb der
-    Plausibilitaetsbaender, und der Exit waere 0."""
+    Plausibilitaetsbaender, und der Exit waere 0.
+
+    Bis 2026-10-01 kam der rote Befund aus einer verengten Config. Eine
+    geaenderte Config erreicht die Wache seitdem nicht mehr (der Lauf haelt
+    vorher an, ``test_betrieb_plv_vorgaenge``); der Befund kommt deshalb an
+    der Naht der Wache dazu — die echte P-B1-Engine laeuft trotzdem, und
+    Gegenstand ist, was der Lauf mit einem roten Urteil tut."""
     quelle, _ = gefuehrt
     ablage = Ablage(tmp_path / "rot")
     shutil.copytree(quelle.wurzel, ablage.wurzel)
-    text = ablage.config_pfad.read_text(encoding="utf-8")
-    text = text.replace("entry_age = [18, 64]", "entry_age = [18, 19]", 1)
-    ablage.config_pfad.write_text(text, encoding="utf-8")
+    echte_wache = tl._wache
+
+    def rote_wache(arbeit, config_pfad, heute):
+        tabellen, geprueft, befunde = echte_wache(arbeit, config_pfad, heute)
+        return tabellen, geprueft, befunde + [
+            {"code": "sanity", "message": "entry_age ausserhalb des Bandes [18, 19]"}]
+
+    monkeypatch.setattr(tl, "_wache", rote_wache)
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 5))
     assert code == EXIT_WACHE_ROT
     assert zeile["uebernommen"] is False and zeile["pb1"]["urteil"] == "rot"
@@ -246,7 +257,7 @@ def test_rote_wache_uebernimmt_den_stand_nicht(gefuehrt, tmp_path):
     pd.testing.assert_frame_equal(
         read_portfolio(ablage.tagesjournal_pfad), read_portfolio(quelle.tagesjournal_pfad))
     # Nach der Korrektur laeuft derselbe Tag gruen durch:
-    ablage.config_pfad.write_text(quelle.config_pfad.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(tl, "_wache", echte_wache)
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 5))
     assert code == EXIT_OK and zeile["gefuehrt_vorher"] == "2026-02-04"
     assert gefuehrter_tag(ablage) == dt.date(2026, 2, 5)

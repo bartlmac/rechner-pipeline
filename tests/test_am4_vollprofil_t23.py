@@ -269,9 +269,11 @@ def test_ein_beleg_mit_schicht_und_verankerung_ist_kein_ungueltiger_rollenblock(
     # traegt den Schichtwert, und seit dem PEX-Zuschlag (ADR zu Review
     # T25-06) traegt ihn auch die Beitragsfreistellung — beide Arten also
     # ausschliessen, sonst prueft der Test eine echte Betragsabweichung
-    # statt der Rollenliste.
+    # statt der Rollenliste. Herabsetzung und Teilkuendigung absorbieren die
+    # Schicht (dDK_absorption) — seit die Config beide erzeugt (2026-10-01),
+    # gehoeren auch sie dazu.
     schicht_beruehrt = set(
-        ledger.loc[ledger["ereignis"].isin(["STO", "PEX"]), "police_id"])
+        ledger.loc[ledger["ereignis"].isin(["STO", "PEX", "RED", "TKU"]), "police_id"])
     kandidaten = stamm[(stamm["duration"] >= 10) & ~stamm["police_id"].isin(schicht_beruehrt)]
     police = int(kandidaten["police_id"].iloc[0])
     _mit_schicht(lauf, police)

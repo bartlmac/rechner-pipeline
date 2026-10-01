@@ -33,6 +33,28 @@ Prüfstrecke des Migrationsfalls 2220, und alle Gates blieben ohne sie
 grün (ADR-020). Eine Config, die den Schlüssel noch trägt, wird
 abgewiesen, nicht still anders gelesen.
 
+## `[annahmen]`: Beitragsherabsetzung und Teilkündigung
+
+Seit dem 2026-10-01 erzeugen `bestand_klv.toml` und `bestand_gesamt.toml`
+beide Vorgänge des Tarifplans KLV (7.1, 7.2), für alle Generationen gleich
+— damit der Bestand die Vorgänge enthält, die eine Migration antrifft:
+
+| Schlüssel | Wert | Bedeutung |
+|---|---|---|
+| `herabsetzung` | `{ a = 0.008, b = 0.0 }` | 0,8 % je Jahr eines beitragspflichtigen Vertrags |
+| `red_anteil` | `0.6` | **fortgeführter** Beitragsanteil (Beitrag auf 60 % gesenkt) |
+| `teilkuendigung` | `{ a = 0.005, b = 0.0 }` | 0,5 % je Jahr eines Vertrags vor dem Ablauf |
+| `tk_anteil` | `0.7` | **fortgeführter** Summenanteil der Grundversicherung (30 % gekündigt und ausgezahlt) |
+
+Es sind Annahmen der Vorführung, keine Tarifgrößen und keine Schätzung
+realer Erfahrung. `bestand_bu.toml` führt keine Rate: Die BU kennt
+keinen der beiden Vorgänge. Bedeutung, Grenzen der Ziehung, gemessene
+Wirkung und die Sonderrolle der übernommenen TG2015:
+`docs/simulation/erfahrungsannahmen.md`, Abschnitt 4. Eine geänderte
+Annahme gilt vom Beginn der Simulation an; die Laufzeitumgebung der
+Vorzeige führt eine eigene Kopie und wird dafür neu aufgesetzt
+(`docs/simulation/tagesbetrieb.md`, Abschnitt 8.6).
+
 ## `[tagesbetrieb]`: die PLV als laufendes Unternehmen
 
 Fachkonzept `docs/simulation/tagesbetrieb.md`. Der Abschnitt trägt den

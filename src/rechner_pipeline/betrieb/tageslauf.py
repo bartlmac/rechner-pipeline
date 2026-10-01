@@ -78,6 +78,12 @@ Ablage unter ``--stand`` (Konzept, Abschnitt 7)::
     uebernahme/     je Migrationsfall ein Eingang (Block B5)
     configs/        die Config der PLV (Kopie; Hash im Protokoll)
 
+Die Config einer gefuehrten Ablage wechselt nicht: Jeder Lauf rechnet die
+Geschichte vom Betriebsbeginn an neu, eine andere Config gaelte deshalb
+von Beginn der Simulation an. Ist sie nicht die der letzten gruenen
+Zeile, haelt der Lauf vor der Fortschreibung an (Exit 2, rote Protokollzeile) und nennt das
+Neuaufsetzen als Ausweg (:func:`_pruefe_config_unveraendert`).
+
 Knoten: klv, bu
 """
 
@@ -1750,6 +1756,12 @@ def _stand_bauen(
         pruefe_eintritt(ueb, config_sha256=_datei_hash(config_pfad),
                         kern_version=kern_version, code=code or {},
                         schluesselring=zeichner.ring, ordnung=zeichner.ordnung)
+    # Die Config der gefuehrten Ablage ist die der letzten gruenen Zeile —
+    # sonst gaelte eine neue von Beginn der Simulation an (Messung beim
+    # Einfuehren der Raten fuer Herabsetzung und Teilkuendigung, 2026-10-01).
+    # Nach dem Eintritt gefragt: Dessen Meldung ist fuer einen wartenden
+    # Eingang die genauere.
+    _pruefe_config_unveraendert(ablage, zeilen, config_pfad)
 
     zugaenge = neugeschaeft_zwischen(config, betriebsbeginn, heute)
     ergebnis = fortschreiben(
@@ -2618,6 +2630,50 @@ def _tageslauf(
         return _tageslauf_mit_config(
             ablage, heute, eingefroren, zeichner, image_digest=image_digest,
             aufschalten=aufschalten, zugangsprobe_fall=zugangsprobe_fall)
+
+
+def _pruefe_config_unveraendert(
+    ablage: Ablage, zeilen: List[Dict[str, Any]], config_pfad: Path,
+) -> None:
+    """Die Config einer gefuehrten Ablage wechselt nicht still.
+
+    Jeder Lauf rechnet die Geschichte vom Betriebsbeginn an neu (Tagesstrom
+    und Fortschreibung). Eine geaenderte Config — eine neue Annahme, eine
+    Rate, ein Verteilungsparameter — gilt damit von Beginn der Simulation
+    an, und die festgeschriebenen Abschluesse und das Journal der Ablage
+    reproduzieren nicht mehr. Bis 2026-10-01 rechnete der Lauf trotzdem
+    weiter: still und gruen, solange die Aenderung zufaellig keine gebuchte
+    Vergangenheit traf, sonst brach er an einem Betragsunterschied im
+    Journal ab, ohne die Ursache zu nennen (Messung beim Einfuehren der
+    Raten fuer Herabsetzung und Teilkuendigung).
+
+    Verglichen wird der Hash, nicht die Wirkung: Ob eine Aenderung wirkt,
+    wuesste der Lauf erst, nachdem er gerechnet hat, und auch eine Aenderung
+    ohne Wirkung waere eine Geschichte, die mit zwei Configs bezeugt ist.
+    Der Ausweg ist das Neuaufsetzen (die alte Ablage geht vollstaendig ins
+    Archiv), nicht das Umrechnen. Der Lauf verweigert mit Protokollzeile
+    (Exit 2, nicht uebernommen) — der Versuch ist Teil des Nachweises.
+    """
+    gruene = [z for z in zeilen if z.get("uebernommen")]
+    if not gruene:
+        return
+    vorher = gruene[-1].get("config_sha256")
+    jetzt = _datei_hash(config_pfad)
+    if vorher == jetzt:
+        return
+    raise TageslaufError(
+        f"{ablage.config_pfad}: die Config ist nicht die, mit der der gefuehrte "
+        f"Tag {gruene[-1].get('heute')} gerechnet wurde (Protokoll "
+        f"{str(vorher)[:16]}…, jetzt {jetzt[:16]}…). Jeder Lauf rechnet vom "
+        "Betriebsbeginn an neu — mit dieser Config gaelte sie von Beginn der "
+        "Simulation an, und die festgeschriebenen Abschluesse und das Journal "
+        "der Ablage reproduzierten nicht mehr. Nichts bewegt. Ausweg: die "
+        "Ablage mit der neuen Config neu aufsetzen (python -m "
+        "rechner_pipeline.betrieb.neuaufsetzen --stand <daten> --fall <fall> "
+        "--stichtag <zugang> --config <neue config> ..., davor Zugangsprobe und "
+        "A-B2 auf einer leeren Ablage mit dieser Config; deploy/plv/README.md) "
+        "— die alte Ablage geht vollstaendig ins Archiv —, oder die Config "
+        "zuruecksetzen, mit der das Protokoll gerechnet hat")
 
 
 def _tageslauf_mit_config(

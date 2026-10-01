@@ -76,6 +76,10 @@ LANGSAM: frozenset = frozenset({
     "test_migrationssuite.py",
     "test_pk1_fixture_e2e.py",
     "test_at_pruefpunkte.py",
+    # 2026-10-01 gemessen: zwei Fortschreibungen der PLV seit 1994 (je rund
+    # 35 s) bzw. ein Tageslauf ueber 21 Monate mit zehnfachem Neugeschaeft.
+    "test_plv_vorgaenge_im_configbestand.py",
+    "test_betrieb_plv_vorgaenge.py",
 })
 
 #: Die Annotation steht irgendwo im Modul-Docstring — auch direkt hinter

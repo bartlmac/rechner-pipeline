@@ -628,6 +628,34 @@ Der Übernahme-Eingang trägt seit dieser Routine auch die Bausteine
 Fortschreibung, die damit nach dem Tarifwerk der Generation rechnet,
 dieselbe Welt wie die Führungsprobe vor A-M4.
 
+### 8.6 Eine neue Config gilt von Beginn der Simulation an
+
+Die Laufzeitumgebung führt eine **eigene Kopie** der Config
+(`daten/configs/bestand.toml`); eine Änderung im Repository berührt sie
+nicht. Wird die Kopie nachgezogen — etwa mit den Annahmen für
+Beitragsherabsetzung und Teilkündigung vom 2026-10-01
+([Erfahrungsannahmen](erfahrungsannahmen.md), Abschnitt 4) —, gilt das
+für die ganze Geschichte: Jeder Tageslauf rechnet den Stand vom
+Betriebsbeginn an neu, die neuen Raten wirken also ab 1994, und die
+Vorgänge fallen auch in Jahre, deren Monatsabschlüsse schon
+festgeschrieben sind und deren Buchungen im Journal stehen. Eine
+bestehende Ablage reproduziert danach nicht mehr.
+
+Deshalb hält der Tageslauf an, sobald die Config einer geführten Ablage
+eine andere ist als die, mit der der letzte grüne Tag gerechnet wurde
+(Config-Hash der Protokollzeile): Exit 2, Stand und Journal bleiben, eine rote Protokollzeile nennt
+beide Hashes und den Ausweg. Das gilt für jede Änderung, auch eine ohne
+Wirkung — ob sie wirkt, wüsste der Lauf erst nach dem Rechnen. Die
+Ablage wird **neu aufgesetzt**, nicht nachträglich umgerechnet
+(Abschnitt 8.5, mit `--config <neue Config>`): Zugangsprobe und A-B2 auf
+einer leeren Ablage mit der neuen Config, Neuaufsetzen, Erstbefüllung,
+Stands-Paket neu exportieren. Die Folgen: Die alte Ablage mit Journal,
+Protokollkette, Abschlüssen und Berichten liegt vollständig im Archiv;
+die neue Protokollkette beginnt neu, ein neues Ankerverzeichnis gehört
+dazu, und die Zahlen der Vorzeigeseite ändern sich mit dem nächsten
+Paket. Wer stattdessen beim alten Stand bleiben will, setzt die Kopie auf
+die Config zurück, mit der das Protokoll gerechnet hat.
+
 ## 9 Umsetzung in Blöcken
 
 Jeder Block ist ein Commit mit Tests und Mutationsprobe; die volle Suite

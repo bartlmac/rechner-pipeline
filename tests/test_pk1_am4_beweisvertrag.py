@@ -195,8 +195,13 @@ def einpolicen_config(tmp_path: Path, *, uebernahme: Optional[Path] = None) -> P
 
 
 def pb1_vollprofil_argv(lauf: Path, config: Path, bis: str = "2020-01-01") -> list:
-    """Das P-B1-Vollprofil eines Fortschreibungslaufs (T22-01)."""
-    return [
+    """Das P-B1-Vollprofil eines Fortschreibungslaufs (T22-01).
+
+    ``reduktionen.parquet`` ist eine BEDINGTE Ausgabe des Laufs (nur wenn er
+    Herabsetzungen oder Teilkuendigungen gebucht hat) und gehoert dann zum
+    Profil; seit die Configs der PLV beide Vorgaenge erzeugen (2026-10-01),
+    traegt jeder Lauf auf ihnen sie."""
+    argv = [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
         "--historie", str(lauf / "historie.parquet"),
         "--ledger", str(lauf / "ledger.parquet"),
@@ -205,6 +210,9 @@ def pb1_vollprofil_argv(lauf: Path, config: Path, bis: str = "2020-01-01") -> li
         "--bis", bis,
         "--manifest", str(lauf / "laufmanifest.json"),
     ]
+    if (lauf / "reduktionen.parquet").is_file():
+        argv += ["--reduktionen", str(lauf / "reduktionen.parquet")]
+    return argv
 
 
 def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
