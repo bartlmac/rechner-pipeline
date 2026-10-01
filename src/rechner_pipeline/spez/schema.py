@@ -55,6 +55,11 @@ class StrukturUrteil(BaseModel):
     #: Anforderungen, die das Rueckgrat heute NICHT erfuellt — jede
     #: erzeugt eine Erweiterungsstelle.
     formel_erweiterungen: List[str] = Field(default_factory=list)
+    #: Tarifwerks-Merkmale, in denen die Generation von der Referenz
+    #: abweicht (beide belegt, Werte verschieden) — Parametrierung des
+    #: Rueckgrats, keine Formelaenderung, solange der produktive Pfad das
+    #: Merkmal ausfuehrt.
+    geaenderte_tarifwerksmerkmale: List[str] = Field(default_factory=list)
     begruendung: List[str] = Field(min_length=1)
 
 
@@ -110,6 +115,13 @@ class TarifSpez(BaseModel):
     urteil: StrukturUrteil
     #: Unisex-Kalkulationsvorgabe der Generation (z. B. "U70").
     unisex: Optional[str] = None
+    #: Tarifwerk der Generation (T-Box 0.2.0): genau die BELEGTEN Merkmale
+    #: der A-Box, Namen wie in der Bestand-Config (``tarifwerk()``). Ein
+    #: fehlendes Merkmal ist nicht erhoben — die Vorgabe des eigenen
+    #: Geschaefts gilt dafuer NICHT stillschweigend.
+    tarifwerk: Dict[str, Wert] = Field(default_factory=dict)
+    #: Verfahren der Quelle (T-Box 0.2.0), ebenso nur die belegten.
+    quellverfahren: Dict[str, Wert] = Field(default_factory=dict)
     zellen: List[ZellSpez] = Field(min_length=1)
     #: Tafeln (xml-Ebene, mit _M/_F), die der Kern noch nicht fuehrt.
     tafel_importe: List[str] = Field(default_factory=list)

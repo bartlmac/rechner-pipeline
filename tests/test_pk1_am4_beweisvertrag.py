@@ -61,7 +61,13 @@ from tests.e2e_fixture import (
     lade_pk1_fixture,
     zellen_config,
 )
-from tests.zeichnung_fixture import VA, annahme_args, zeichne_kernstand
+from tests.zeichnung_fixture import (
+    VA,
+    annahme_args,
+    zeichne_kernstand,
+    zeichne_stand,
+    zeichne_tboxstand,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 #: Name der uebernommenen Generation in der Config (Stammspalte tarif_generation).
@@ -87,11 +93,13 @@ def _bereite_fall(
     *,
     scope: str = "tarif",
     mit_kernstand: bool = True,
+    mit_tboxstand: bool = True,
 ) -> Path:
     """Echten TG2012-Input vorbereiten; weitere Generationen teilen die Werte.
 
-    ``mit_kernstand=False`` laesst die A-K2-Annahme weg — fuer die Tests,
-    deren Gegenstand genau sie ist."""
+    ``mit_kernstand=False`` laesst die A-K2-Annahme weg, ``mit_tboxstand=False``
+    die A-O1-Annahme des T-Box-Uebergangs — fuer die Tests, deren Gegenstand
+    genau sie ist."""
     fall = bereite_pk1_fall(tmp_path, generationen, scope=scope)
     if scope == "bestand":
         bestandsquelle = tmp_path / "synthetischer-bestand.csv"
@@ -111,6 +119,11 @@ def _bereite_fall(
     # Der Kernstand, auf dem der Fall rechnet (Entscheid 2026-10-01): A-M4
     # verlangt die A-K2-Annahme in jedem Scope; gezeichnet von
     # mensch/rechenkern mit eigenem Schluessel.
+    # Der T-Box-Stand (A-O1, mensch/architektur): Seit die Versionslinie
+    # einen Uebergang hat (T-Box 0.2.0), traegt jeder Fall sein A-O1 — oder
+    # einen Verweis; der Helfer tut nichts, solange die Linie ein Element hat.
+    if mit_tboxstand:
+        zeichne_tboxstand(fall, REPO_ROOT)
     if mit_kernstand:
         zeichne_kernstand(fall, REPO_ROOT)
     if scope == "tarif":
@@ -1639,7 +1652,7 @@ def test_am4_verlangt_geltendes_am1_vor_sich(tmp_path: Path):
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
     ]).exit_code == 0
     assert _p9_annahme(fall, "A-Q1", "A-Box fachlich geprueft").exit_code == 0
-    zeichne_kernstand(fall, REPO_ROOT)
+    zeichne_stand(fall, REPO_ROOT)
     assert _o3_tg2012(fall).exit_code == 0
 
     vorzeitig = _p9_annahme(fall, "A-M4", "vor der aktuariellen Abnahme")

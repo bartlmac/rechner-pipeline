@@ -101,6 +101,7 @@ Stufe 3  Abnahme
 | `Aussage` | Wert, Zustand (belegt / nicht_belegt / mehrdeutig / widerspruechlich), Konfidenz, Provenienz je Beleg (Quelle+SHA-256, Fundstelle, Akteur, Zeit); unveraenderlich nach Konstruktion | P1, P3 |
 | `Diskrepanz` | beide Lesarten mit Belegen; Aufloesung nur als expliziter Vorgang (Entscheider, Begruendung, ggf. `vorlaeufig`) | P2 |
 | `Parametrierungszelle` | eine Merkmalskombination; Felder = exakt die Kern-ModelPoint-Stellschrauben; Zellen decken den Merkmalsraum EXAKT | P5, P6 |
+| `Tarifgeneration.tarifwerk` / `.quellverfahren` (T-Box 0.2.0, ADR-024) | generationsweite Aussagen: wie die Generation erhoeht, zurueckkauft, herabsetzt (Namen der Bestand-Config), und wie die Quelle eine gelieferte Absetzung gemeint hat; Widerspruch = Diskrepanz am Knoten `<generation>/<block>`; in der Coverage ausgewiesen, nicht blockierend | P1, P2, P6 |
 | `TarifSpez` | Parametrierung des Rueckgrats + StrukturUrteil + Tafel-Importe/-Ableitungen + benannte Erweiterungsstellen; validierbar als Projektion der A-Box (beide Richtungen) | D2 (SDD, gebunden) |
 | P9-Snapshot | Schema, Gate/Command/Version, Entscheid, Entscheider, Begruendung, SHA-256 aller Fall-Artefakte, Git-Stand und Vorgaenger; A-M1 und A-M4 pinnen zusaetzlich Scope und rollenbezogene Pflichtbelege je Gate; vollstaendig inhaltsadressiert, nie ueberschrieben; eine Annahme traegt eine HMAC-Freigabe aus einem extern verwahrten Schluessel | P9, P1 |
 
@@ -171,6 +172,15 @@ noch den O-/P9-Weg auf dem stabilen Zielkern.
   Bestandsabzug/CSV gibt es inzwischen als eigenen Vorverdichter
   (`quellen/bestand_profil.py`), auf dem der Skill
   `transformiere-quellbestand` arbeitet.
+  T-Box 0.2.0 (ADR-024): Die BU steht als
+  VOKABULAR in der T-Box (Zustaende, Leistungsgroesse,
+  Rechnungsgrundlagen, ihre Geschaeftsvorfaelle), instanziierbar bleibt
+  in der A-Box nur die KLV (`ABOX_FAMILIEN`) — Extraktion, Spez und P-K1
+  fuer das Zustandsmodell kommen mit dem ersten BU-Fall. Neu sind
+  Tarifwerk und Quellverfahren je Generation als belegte Aussagen, der
+  Katalog der Geschaeftsvorfaelle, das Vertragsvokabular einer Lieferung
+  und der Zustandsextrakt der Migration; jede dieser Mengen ist ein
+  test-gebundener Spiegel des Codes, nicht eine zweite Wahrheit.
 * Fall-Artefakte (A-Box, Spez, Entscheide) liegen im gitignorierten
   Fall-Arbeitsbereich — die Versionierung echter Faelle ausserhalb des
   Repos ist ADR-002-Zielbild, in v0.1 nicht ausgebaut. Die

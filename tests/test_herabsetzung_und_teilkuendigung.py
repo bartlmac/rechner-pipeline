@@ -642,6 +642,10 @@ INVENTAR = {
     "gates/migrationssuite_lauf.py": (1, 7, 0),
     "kern/korrekturschicht.py": (1, 0, 0),
     "models/bestand.py": (12, 2, 14),
+    # T-Box 0.2.0 (Entwurf, ADR-024): der Katalog der Geschaeftsvorfaelle und
+    # die Vertrags-/Migrationsvokabeln SPIEGELN die Mengen des Datenmodells;
+    # ``tests/test_tbox_erweiterung_020.py`` haelt jede Spiegelung mit ``==``.
+    "ontologie/tbox.py": (4, 0, 6),
     "qa/aktuarieller_test.py": (2, 0, 0),
     "qa/migrationssuite.py": (4, 1, 0),
 }
@@ -658,6 +662,7 @@ VOLLSTAENDIG = (
     ("rechner_pipeline.bestand.report", "_EREIGNIS_FARBEN", set()),
     ("rechner_pipeline.betrieb.seite", "EREIGNIS_TITEL", set()),
     ("rechner_pipeline.kern.korrekturschicht", "HEILUNG", {"ZUG"}),
+    ("rechner_pipeline.ontologie.tbox", "GESCHAEFTSVORFAELLE", set()),
 )
 
 

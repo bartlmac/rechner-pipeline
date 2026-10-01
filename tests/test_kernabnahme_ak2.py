@@ -143,9 +143,17 @@ def test_a_m4_ohne_a_k2_wird_verweigert_und_mit_a_k2_angenommen(tmp_path):
     assert eintrag["anzeige"] == (sa.anzeige_im_fall("A-K2", ak2.summary["snapshot_sha256"])
                                   + "; " + ka.ANZEIGE_REGRESSION)
     assert mit.summary["standabnahmen"] == am4["standabnahmen"]
-    # Die T-Box liegt heute auf ihrer Basislinie (eine Version, kein Uebergang).
-    assert am4["standabnahmen"]["tboxstand"]["weg"] == sa.BASISLINIE
-    assert am4["pflichtbelege"]["tboxstand"] == [stand_belegen.tbox_modul_sha256()]
+    # Der T-Box-Stand: auf der Basislinie (eine Version, kein Uebergang) der
+    # Modul-Hash; seit T-Box 0.2.0 (Linie mit Uebergang) die A-O1-Annahme,
+    # die die Fall-Fixture zeichnet (zeichne_tboxstand).
+    if stand_belegen.basislinie_gilt():
+        assert am4["standabnahmen"]["tboxstand"]["weg"] == sa.BASISLINIE
+        assert am4["pflichtbelege"]["tboxstand"] == [stand_belegen.tbox_modul_sha256()]
+    else:
+        (ao1,) = list((fall / "entscheide").glob("A-O1-*.json"))
+        ao1_sha = json.loads(ao1.read_text(encoding="utf-8"))["snapshot_sha256"]
+        assert am4["standabnahmen"]["tboxstand"]["weg"] == sa.ABNAHME_IM_FALL
+        assert am4["pflichtbelege"]["tboxstand"] == [ao1_sha]
 
 
 def test_die_pflichtrolle_steht_in_beiden_scopes():
@@ -591,9 +599,13 @@ def test_die_darstellung_zeigt_den_stand_des_falls(tmp_path):
     stand = falldaten.standabnahmen(fall)
     assert [s["gate"] for s in stand] == ["A-K2", "A-O1"]
     assert stand[0]["anzeige"].endswith(ka.ANZEIGE_REGRESSION)
-    assert stand[1]["anzeige"].startswith("keine Aenderung: die Versionslinie der T-Box")
+    from rechner_pipeline.gates import stand_belegen as _sb
+
+    erwartet = ("keine Aenderung: die Versionslinie der T-Box" if _sb.basislinie_gilt()
+                else "abgenommen im Fall (A-O1-Snapshot ")
+    assert stand[1]["anzeige"].startswith(erwartet)
     html = fallbericht._fach({"abnahmen": {"aktuariell": [], "standabnahmen": stand}}, {})
-    assert "A-O1" in html and "keine Aenderung" in html and ka.ANZEIGE_REGRESSION in html
+    assert "A-O1" in html and erwartet in html and ka.ANZEIGE_REGRESSION in html
 
 
 def test_die_darstellung_fuehrt_die_ausnahme_woertlich(tmp_path):

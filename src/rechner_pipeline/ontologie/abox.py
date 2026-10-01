@@ -25,7 +25,17 @@ from typing import List, Optional
 
 from rechner_pipeline.models.zeichnung import validiere_zeichnung
 from rechner_pipeline.ontologie.aussage import Zustand
-from rechner_pipeline.ontologie.tbox import ABOX_SCHEMA_VERSION, ABox, PFLICHT_PARAMETER, TBOX_VERSION
+from rechner_pipeline.ontologie.tbox import (
+    ABOX_SCHEMA_VERSION,
+    ABox,
+    BLOCK_TITEL,
+    GENERATIONS_BLOECKE,
+    PFLICHT_PARAMETER,
+    TBOX_VERSION,
+    TBOX_VERSIONEN,
+    block_knoten,
+    wert_im_bereich,
+)
 
 ABOX_DATEI = "abox.json"
 
@@ -164,6 +174,20 @@ def validate_abox(
                     fehler.append(
                         f"{gen.id}: unisex {wert!r} ist kein 'U<0..100>'"
                     )
+        # Generationsweite Bloecke (Tarifwerk, Quellverfahren; T-Box 0.2.0):
+        # Widersprueche tragen ihre Diskrepanz wie jedes Zellfeld, und ein
+        # belegter Wert liegt im Wertebereich der T-Box — typstreng, denn
+        # ``1`` ist kein Schalter und ``"ja"`` kein Verfahren.
+        for block, bereiche in GENERATIONS_BLOECKE.items():
+            for merkmal, aussage in gen.block(block).items():
+                _pruefe_widerspruch(block_knoten(gen.id, block), merkmal, aussage)
+                if (aussage.zustand is Zustand.BELEGT
+                        and not wert_im_bereich(aussage.wert, bereiche[merkmal])):
+                    fehler.append(
+                        f"{gen.id}: {BLOCK_TITEL[block]} {block}.{merkmal} = "
+                        f"{aussage.wert!r} liegt nicht im Wertebereich "
+                        f"{list(bereiche[merkmal])}"
+                    )
 
     # Fachliche Wertebereiche (P5-Minimum; Systempruefung Befund 19).
     # Grobe Plausibilitaet, kein Tarifwissen: Verletzungen sind fast
@@ -229,6 +253,61 @@ def validate_abox(
                         f"{registriert[quelle.datei][:12]}…"
                     )
     return fehler
+
+
+def _hebe_0_1_0_auf_0_2_0(abox: ABox) -> ABox:
+    """0.1.0 -> 0.2.0 ist rein ADDITIV: Tarifwerk und Quellverfahren kommen
+    als leere Bloecke hinzu (nicht erhoben, die Coverage zeigt es), kein
+    vorhandener Begriff aendert Namen, Typ oder Wertebereich. Der Inhalt
+    bleibt deshalb byte-gleich; nur die Version wandert."""
+    return abox.model_copy(update={"tbox_version": "0.2.0"})
+
+
+#: Die Hebungsregeln der Versionslinie: (von, nach) -> Regel. Jeder Schritt
+#: von ``TBOX_VERSIONEN`` hat genau eine (Test). Eine Hebung ist der Weg fuer
+#: eine A-Box, die ENTSCHEIDUNGEN traegt (aufgeloeste Diskrepanzen, A-Q1):
+#: Der Neu-Merge aus den Fragmenten (``gates.abox_merge``) verwirft sie und
+#: verweigert deshalb ohne ``--ueberschreiben``. Eine Regel, die einen Begriff
+#: umdeutet statt ergaenzt, gehoert nicht hierher — dann ist der Neu-Merge
+#: mit neuer A-Q1-Entscheidung der Weg.
+HEBUNGEN = {
+    ("0.1.0", "0.2.0"): _hebe_0_1_0_auf_0_2_0,
+}
+
+
+def hebe_auf_geltende_version(abox: ABox) -> ABox:
+    """Eine A-Box der Vorversion(en) Schritt fuer Schritt auf die geltende
+    T-Box heben — nur ueber deklarierte Uebergaenge der Linie.
+
+    Schreibt nichts; der Aufrufer legt die gehobene A-Box ab und faehrt die
+    Pruef-Gates auf dem neuen Stand neu (P-Q3, P-K1, ...). Die Zeichnungen
+    des Falls, die die alte A-Box pinnen, gelten fuer den neuen Stand nicht
+    — Neuzeichnung wie nach jeder Code-Aenderung.
+    """
+    if abox.tbox_version == TBOX_VERSION:
+        raise ValueError(
+            f"A-Box spricht bereits die geltende T-Box {TBOX_VERSION!r} — "
+            "nichts zu heben")
+    linie = tuple(TBOX_VERSIONEN)
+    if abox.tbox_version not in linie:
+        raise ValueError(
+            f"A-Box traegt {abox.tbox_version!r}; die Versionslinie {linie!r} "
+            "kennt keinen Uebergang von dort — aus den Fragmenten neu "
+            "erzeugen (gates.abox_merge)")
+    stand = abox
+    for von, nach in zip(linie[linie.index(abox.tbox_version):],
+                         linie[linie.index(abox.tbox_version) + 1:]):
+        regel = HEBUNGEN.get((von, nach))
+        if regel is None:
+            raise ValueError(
+                f"kein deklarierter Uebergang {von} -> {nach} (HEBUNGEN)")
+        stand = regel(stand)
+        if stand.tbox_version != nach:
+            raise ValueError(
+                f"Hebungsregel {von} -> {nach} liefert {stand.tbox_version!r}")
+    # Die gehobene A-Box muss sich unter dem geltenden Vokabular auslegen
+    # lassen — dieselbe Pydantic-Pruefung wie beim Laden.
+    return ABox.model_validate(stand.model_dump(mode="json", exclude_none=True))
 
 
 def roundtrip_stabil(abox: ABox) -> bool:

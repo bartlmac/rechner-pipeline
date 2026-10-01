@@ -17,7 +17,9 @@ Jede Standardordnung fuehrt diese Rolle mit; :func:`annahme_args` legt
 beide Schluessel in den Ring — A-M4 prueft die Signatur der A-K2-Annahme,
 auf der es gruendet —, und :func:`zeichne_kernstand` legt den Kernstand
 eines Falls vor und zeichnet ihn (Entscheid des Maintainers 2026-10-01:
-jeder Fall traegt sein A-K2).
+jeder Fall traegt sein A-K2). :func:`zeichne_tboxstand` tut dasselbe fuer
+den T-Box-Stand (A-O1, mensch/architektur), sobald die Versionslinie der
+T-Box einen Uebergang hat; :func:`zeichne_stand` zeichnet beides.
 
 Knoten: system/entscheid
 """
@@ -165,3 +167,56 @@ def zeichne_kernstand(fall: Path, repo_root: Path, *, von: str = "HEAD", **kw):
         "--repo-root", str(repo_root), *annahme_args(fall, fuer="A-K2", **kw)])
     assert ergebnis.exit_code == 0, ergebnis.errors
     return ergebnis
+
+
+def zeichne_tboxstand(fall: Path, repo_root: Path, **kw):
+    """Den T-Box-Stand eines Falls vorlegen und als mensch/architektur zeichnen.
+
+    Das Gegenstueck zu :func:`zeichne_kernstand` fuer den zweiten Gegenstand
+    der Standabnahme (``models.standabnahme``): Hat die Versionslinie der
+    T-Box einen Uebergang (seit 0.2.0), verlangt A-M4 je Fall ein A-O1 —
+    der Beleg kommt vom Produzenten (``gates.stand_belegen tbox``), die
+    Stellungnahme legt (simuliert) das Aktuariat. Alles wird LEBEND
+    gerechnet: Modul-Hash, Versionen, Artefakt-Hash; ein Vermerk im Fall
+    dient als Artefakt, damit keine Datei des Repos festgeschrieben ist.
+    Solange die Linie ein Element hat (Weg c, Basislinie), tut der Helfer
+    nichts und gibt None zurueck.
+    """
+    import json
+
+    from rechner_pipeline.gates import gate_entscheid, stand_belegen
+    from rechner_pipeline.ontologie import tbox
+
+    if stand_belegen.basislinie_gilt():
+        return None
+    vermerk = fall / "abgeleitet" / "tbox" / "vermerk-suite.md"
+    vermerk.parent.mkdir(parents=True, exist_ok=True)
+    vermerk.write_text(
+        f"Aenderungsvermerk der Suite: T-Box {tbox.TBOX_VERSIONEN[-2]} -> "
+        f"{tbox.TBOX_VERSION}.\n", encoding="utf-8")
+    beleg = stand_belegen.main([
+        "tbox", "--fall", str(fall), "--repo-root", str(repo_root),
+        "--artefakt", "abgeleitet/tbox/vermerk-suite.md",
+        "--begruendung", "T-Box-Stand des Falls (Suite)"])
+    assert beleg.exit_code == 0, beleg.errors
+    (fall / stand_belegen.TBOX_STELLUNGNAHME_RELATIV).write_text(json.dumps({
+        "schema_version": 1, "nach_version": tbox.TBOX_VERSION,
+        "verfasser_rolle": "mensch/aktuariat",
+        "felder": [{"name": "tarifwerk", "wirkung": "bewertungsrelevant",
+                    "begruendung": "Tarifwerk der Generation als belegte Aussage (Suite)"}],
+    }), encoding="utf-8")
+    ergebnis = gate_entscheid.main([
+        "--fall", str(fall), "--gate", "A-O1", "--entscheid", "angenommen",
+        "--entscheider", "it-verantwortung",
+        "--begruendung", "Diffs der T-Box geprueft (Suite)",
+        "--repo-root", str(repo_root), *annahme_args(fall, fuer="A-O1", **kw)])
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    return ergebnis
+
+
+def zeichne_stand(fall: Path, repo_root: Path, **kw):
+    """Den ganzen Stand eines Falls zeichnen: T-Box-Stand (A-O1, falls die
+    Linie einen Uebergang hat) und Kernstand (A-K2). Der gemeinsame Weg fuer
+    jeden Test, der A-M4 zeichnet."""
+    zeichne_tboxstand(fall, repo_root, **kw)
+    return zeichne_kernstand(fall, repo_root, **kw)

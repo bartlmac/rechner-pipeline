@@ -24,7 +24,7 @@ from tests.zeichnung_fixture import (
     VA,
     mandat_datei,
     standard_ordnung,
-    zeichne_kernstand,
+    zeichne_stand,
 )
 from rechner_pipeline.gates import gate_entscheid
 from rechner_pipeline.gates._provenienz import (
@@ -151,8 +151,9 @@ def _bereit_fuer_g2(tmp_path: Path) -> tuple[Path, Path, Path]:
     # A-M1 geht A-M4 voraus (ADR-010); der Manipulationsschutz-Fall ist
     # tarif-Scope, dort traegt A-M1 keine eigenen Belegrollen.
     assert _p9(fall, key, "A-M1").exit_code == 0
-    # Der Kernstand des Falls (A-K2, Entscheid 2026-10-01) geht A-M4 voraus.
-    zeichne_kernstand(fall, REPO_ROOT)
+    # Der Stand des Falls (A-O1 bei T-Box-Uebergang, A-K2; Entscheid
+    # 2026-10-01) geht A-M4 voraus.
+    zeichne_stand(fall, REPO_ROOT)
     _o3_beleg(fall)
     return fall, key, Path(aq1.paths["snapshot"])
 

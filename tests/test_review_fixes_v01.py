@@ -301,8 +301,14 @@ def test_importiere_fuer_spez_p1_und_kreuzprobe(tmp_path: Path):
 
     spez_dir = fall / "abgeleitet" / "spez"
     spez_dir.mkdir(parents=True)
+    from rechner_pipeline.ontologie.tbox import TBOX_VERSION
+    from rechner_pipeline.spez.schema import SPEZ_VERSION
+
     spez = {
-        "spez_version": "0.1.0", "tbox_version": "0.1.0",
+        # Die geltenden Versionen, nicht abgetippt: Seit der Spez-Lader die
+        # Version prueft (T-Box 0.2.0), waere ein Literal eine Spez der
+        # Vorversion und wuerde verweigert.
+        "spez_version": SPEZ_VERSION, "tbox_version": TBOX_VERSION,
         "generation": "klv/tgx", "familie": "klv",
         "backbone": "kern.klv/kommutation+zustandsmodell",
         "urteil": {"ergebnis": "parametrierung", "begruendung": ["test"]},

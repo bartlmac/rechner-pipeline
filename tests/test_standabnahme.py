@@ -8,9 +8,13 @@ abgenommen ist: (a) im Fall gezeichnet, (b) "keine Aenderung" ueber einen
 Verweis auf einen frueher angenommenen Snapshot, (c) nur T-Box: die
 Versionslinie hat ein Element.
 
-Heute laeuft jeder Fall auf T-Box 0.1.0 und faellt unter (c). Die Proben
-fuer (a) und (b) der T-Box verlaengern die Versionslinie KUENSTLICH im Test
-(monkeypatch) — das Modul ``ontologie/tbox.py`` bleibt unberuehrt.
+Seit T-Box 0.2.0 (Entwurf, ADR-024) hat die ECHTE Versionslinie einen
+Uebergang (0.1.0 -> 0.2.0): Jeder Fall auf dem neuen Stand braucht (a) oder
+(b), die Proben dafuer laufen auf der echten Linie. Weg (c) gibt es nur noch
+mit einer KUENSTLICH einelementigen Linie im Test (monkeypatch) — sonst
+pruefte die Basislinien-Probe nichts mehr. Solange die echte Linie noch ein
+Element hatte, war es umgekehrt (kuenstlich verlaengert); ``LINIE_MIT_UEBERGANG``
+nimmt die echte Linie, sobald sie einen Uebergang traegt.
 
 Mutationsproben (Bauprotokoll): (b) ohne Gleichheitspruefung des Stands;
 (b) mit dem Snapshot einer unberechtigten Rolle; (c) bei zwei Elementen in
@@ -36,14 +40,19 @@ from rechner_pipeline.ontologie import tbox
 from tests.zeichnung_fixture import ARCHITEKTUR, annahme_args, zeichne_kernstand
 
 REPO = Path(__file__).resolve().parents[1]
-LINIE_MIT_UEBERGANG = ("0.0.9", tbox.TBOX_VERSION)
+LINIE_MIT_UEBERGANG = (tuple(tbox.TBOX_VERSIONEN) if len(tbox.TBOX_VERSIONEN) > 1
+                       else ("0.0.9", tbox.TBOX_VERSION))
+#: Die Basislinie (Weg c) — kuenstlich: ein Element.
+LINIE_OHNE_UEBERGANG = (tbox.TBOX_VERSION,)
 
 
-def _fall(wurzel: Path, *, mit_kernstand: bool = True) -> Path:
+def _fall(wurzel: Path, *, mit_kernstand: bool = True,
+          mit_tboxstand: bool = True) -> Path:
     from tests.test_pk1_am4_beweisvertrag import _bereite_fall, _o3_tg2012
 
     wurzel.mkdir(parents=True, exist_ok=True)
-    fall = _bereite_fall(wurzel, ("klv/tg2012",), mit_kernstand=mit_kernstand)
+    fall = _bereite_fall(wurzel, ("klv/tg2012",), mit_kernstand=mit_kernstand,
+                         mit_tboxstand=mit_tboxstand)
     assert _o3_tg2012(fall).exit_code == 0
     return fall
 
@@ -100,10 +109,13 @@ def test_die_gegenstaende_sind_eine_menge_an_jeder_stelle():
     assert [g.gate for g in sa.GEGENSTAENDE if g.basislinie] == ["A-O1"]
 
 
-def test_heute_liegt_die_t_box_auf_der_basislinie():
-    """Messung: Die Linie hat ein Element — jeder bestehende Weg zu A-M4
-    faellt fuer die T-Box unter (c)."""
-    assert tuple(tbox.TBOX_VERSIONEN) == (tbox.TBOX_VERSION,)
+def test_die_echte_linie_hat_einen_uebergang_die_basislinie_nur_kuenstlich(monkeypatch):
+    """Messung: Seit 0.2.0 hat die Linie zwei Elemente — kein Fall faellt
+    fuer die T-Box mehr unter (c). Mit kuenstlich einelementiger Linie gilt
+    (c) weiter (Positivkontrolle der Basislinien-Probe)."""
+    assert tuple(tbox.TBOX_VERSIONEN) == ("0.1.0", "0.2.0")
+    assert not stand_belegen.basislinie_gilt()
+    monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_OHNE_UEBERGANG)
     assert stand_belegen.basislinie_gilt()
 
 
@@ -214,8 +226,8 @@ def test_t_box_mit_uebergang_braucht_eine_abnahme(tmp_path, monkeypatch):
     traegt nicht mehr. Ohne A-O1 und ohne Verweis verweigert A-M4.
 
     Mutationsprobe: basislinie_gilt auch bei zwei Elementen -> rot."""
-    fall = _fall(tmp_path)
     monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_MIT_UEBERGANG)
+    fall = _fall(tmp_path, mit_tboxstand=False)
     am4 = _am4(fall)
     assert am4.exit_code != 0
     meldung = am4.errors[0]["message"]
@@ -223,8 +235,8 @@ def test_t_box_mit_uebergang_braucht_eine_abnahme(tmp_path, monkeypatch):
 
 
 def test_t_box_abnahme_im_fall(tmp_path, monkeypatch):
-    fall = _fall(tmp_path)
     monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_MIT_UEBERGANG)
+    fall = _fall(tmp_path, mit_tboxstand=False)
     ao1 = _zeichne_tboxstand(fall)
     assert ao1.exit_code == 0, ao1.errors
     snap = json.loads(Path(ao1.paths["snapshot"]).read_text(encoding="utf-8"))
@@ -238,8 +250,8 @@ def test_t_box_abnahme_im_fall(tmp_path, monkeypatch):
 
 
 def test_a_o1_zeichnet_nur_mensch_architektur(tmp_path, monkeypatch):
-    fall = _fall(tmp_path)
     monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_MIT_UEBERGANG)
+    fall = _fall(tmp_path, mit_tboxstand=False)
     falsch = _zeichne_tboxstand(fall, *annahme_args(fall))
     assert falsch.exit_code != 0 and "A-O1" in falsch.errors[0]["message"], falsch.errors
 
@@ -251,8 +263,8 @@ def test_a_m4_verweigert_ein_a_o1_dessen_rollenfeld_nicht_die_rolle_des_schluess
     Mutationsprobe: die Rollenregel fuer den Snapshot im Fall aussetzen -> rot."""
     from tests.test_abnahme_rolle_klasse import _behauptet, _neu_signiert
 
-    fall = _fall(tmp_path)
     monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_MIT_UEBERGANG)
+    fall = _fall(tmp_path, mit_tboxstand=False)
     assert _zeichne_tboxstand(fall).exit_code == 0
     pfad = _snapshot(fall, "A-O1")
     daten = json.loads(pfad.read_text(encoding="utf-8"))
@@ -269,9 +281,9 @@ def test_a_m4_verweigert_ein_a_o1_dessen_rollenfeld_nicht_die_rolle_des_schluess
 
 def test_t_box_keine_aenderung_ueber_den_verweis(tmp_path, monkeypatch):
     monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_MIT_UEBERGANG)
-    frueher = _fall(tmp_path / "a")
+    frueher = _fall(tmp_path / "a", mit_tboxstand=False)
     assert _zeichne_tboxstand(frueher).exit_code == 0
-    neu = _fall(tmp_path / "b")
+    neu = _fall(tmp_path / "b", mit_tboxstand=False)
     assert _am4(neu).exit_code != 0
     assert _verweisen(neu, "A-O1", _snapshot(frueher, "A-O1")).exit_code == 0
     am4 = _am4(neu)
@@ -283,8 +295,10 @@ def test_t_box_keine_aenderung_ueber_den_verweis(tmp_path, monkeypatch):
     assert eintrag["anzeige"].startswith("keine Aenderung seit Abnahme ")
 
 
-def test_die_basislinie_steht_woertlich_im_a_m4_snapshot(tmp_path):
-    fall = _fall(tmp_path)
+def test_die_basislinie_steht_woertlich_im_a_m4_snapshot(tmp_path, monkeypatch):
+    """Weg (c) gibt es nur bei einelementiger Linie — seit 0.2.0 kuenstlich."""
+    monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_OHNE_UEBERGANG)
+    fall = _fall(tmp_path, mit_tboxstand=False)
     am4 = _am4(fall)
     assert am4.exit_code == 0, am4.errors
     snapshot = json.loads(Path(am4.paths["snapshot"]).read_text(encoding="utf-8"))

@@ -44,11 +44,13 @@ from rechner_pipeline.ontologie.ids import knoten_id, zellen_segment
 from rechner_pipeline.ontologie.merge import merge_felder, werte_gleich
 from rechner_pipeline.ontologie.tbox import (
     ABox,
+    GENERATIONS_BLOECKE,
     Merkmalsdimension,
     PFLICHT_PARAMETER,
     Parametrierungszelle,
     Quelle,
     Tarifgeneration,
+    block_knoten,
 )
 
 
@@ -87,10 +89,20 @@ class QuellFragment(BaseModel):
     dimensionen: List[Merkmalsdimension] = Field(default_factory=list)
     zellen: List[FragmentZelle] = Field(min_length=1)
     unisex: Optional[FragmentWert] = None
+    #: Tarifwerk der Generation, wie die Quelle es belegt (T-Box 0.2.0,
+    #: ``tbox.TARIFWERK_MERKMALE`` mit ihren Wertebereichen) — typisch aus
+    #: dem Bedingungswerk, je Merkmal mit Fundstelle.
+    tarifwerk: Dict[str, FragmentWert] = Field(default_factory=dict)
+    #: Verfahren der Quelle (``tbox.QUELLVERFAHREN_WERTE``): wie die
+    #: abgebende Gesellschaft gelieferte Vorgaenge gemeint hat.
+    quellverfahren: Dict[str, FragmentWert] = Field(default_factory=dict)
     #: Quellname -> Zielfeld (fremde Benennungslogik erfassen).
     quellnamen: Dict[str, str] = Field(default_factory=dict)
     #: Pflichtfelder, die der Agent GESUCHT und in der Quelle NICHT
     #: gefunden hat ("gesucht, nicht da" — unterscheidbar von Schweigen).
+    #: Merkmale eines generationsweiten Blocks tragen den Blocknamen davor
+    #: (``tarifwerk.red_verfahren``, ``quellverfahren.red_verfahren``) —
+    #: derselbe Merkmalsname kommt in beiden Bloecken vor.
     nicht_belegt: List[str] = Field(default_factory=list)
     #: Freitext-Beobachtungen (kein Ersatz fuer strukturierte Felder).
     anmerkungen: List[str] = Field(default_factory=list)
@@ -222,7 +234,8 @@ def baue_generation(
                 for feld, fw in zelle.parameter.items()
             }
             for feld in fragment.nicht_belegt:
-                felder.setdefault(feld, nicht_belegt())
+                if _block_merkmal(feld) is None:
+                    felder.setdefault(feld, nicht_belegt())
             je_zelle.setdefault(zid, []).append(felder)
 
     zellen: List[Parametrierungszelle] = []
@@ -253,6 +266,32 @@ def baue_generation(
         gemergt, konflikte = merge_felder(gen_id, unisex_fragmente)
         diskrepanzen.extend(konflikte)
         unisex = gemergt["unisex"]
+
+    # Generationsweite Bloecke (Tarifwerk, Quellverfahren) ueber die Quellen
+    # mergen — dieselbe P2-Maschinerie wie fuer Zellfelder: Widerspruch =>
+    # Diskrepanz am Knoten ``<generation>/<block>``, gesucht-nicht-gefunden
+    # => nicht_belegt.
+    bloecke: Dict[str, Dict[str, Aussage]] = {}
+    for block in GENERATIONS_BLOECKE:
+        je_quelle: List[Dict[str, Aussage]] = []
+        for i, fragment in enumerate(fragmente):
+            felder = {
+                merkmal: belegt(fw.wert, [fabriken[i](fw.fundstelle)],
+                                konfidenz=fw.konfidenz)
+                for merkmal, fw in getattr(fragment, block).items()
+            }
+            for eintrag in fragment.nicht_belegt:
+                ziel = _block_merkmal(eintrag)
+                if ziel is not None and ziel[0] == block:
+                    felder.setdefault(ziel[1], nicht_belegt())
+            if felder:
+                je_quelle.append(felder)
+        if je_quelle:
+            gemergt, konflikte = merge_felder(block_knoten(gen_id, block), je_quelle)
+            diskrepanzen.extend(konflikte)
+            bloecke[block] = gemergt
+        else:
+            bloecke[block] = {}
 
     # Quellnamen-Mapping vereinen. Das ist Dokumentation der fremden
     # Benennungslogik, kein Fachwert: abweichende Formulierungen werden
@@ -293,10 +332,27 @@ def baue_generation(
         dimensionen=dimensionen,
         zellen=zellen,
         unisex=unisex,
+        tarifwerk=bloecke["tarifwerk"],
+        quellverfahren=bloecke["quellverfahren"],
         quellnamen=quellnamen,
         anmerkungen=anmerkungen,
     )
     return generation, diskrepanzen
+
+
+def _block_merkmal(eintrag: str) -> Optional[Tuple[str, str]]:
+    """``"tarifwerk.red_verfahren"`` -> ``("tarifwerk", "red_verfahren")``;
+    None fuer ein Zellfeld. Ein unbekannter Block ist ein Fehler, kein
+    Zellfeld mit Punkt im Namen."""
+    if "." not in eintrag:
+        return None
+    block, merkmal = eintrag.split(".", 1)
+    if block not in GENERATIONS_BLOECKE:
+        raise BefuellungsFehler(
+            f"nicht_belegt {eintrag!r}: unbekannter Block {block!r} "
+            f"(bekannt: {sorted(GENERATIONS_BLOECKE)})"
+        )
+    return block, merkmal
 
 
 def baue_abox(
@@ -393,6 +449,13 @@ def loese_diskrepanz_auf(
             or (gen.id == diskrepanz.knoten and diskrepanz.feld == "unisex")
         ):
             unisex_ziele.append(gen)
+        for block in GENERATIONS_BLOECKE:
+            for merkmal, aussage in gen.block(block).items():
+                if aussage.diskrepanz_id == diskrepanz_id or (
+                    block_knoten(gen.id, block) == diskrepanz.knoten
+                    and merkmal == diskrepanz.feld
+                ):
+                    ziele.append((gen.block(block), merkmal))
     if not ziele and not unisex_ziele:
         raise BefuellungsFehler(
             f"{diskrepanz_id}: keine Aussage referenziert die Diskrepanz "

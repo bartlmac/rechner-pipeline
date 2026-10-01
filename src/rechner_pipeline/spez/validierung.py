@@ -19,7 +19,12 @@ from typing import List, Set
 
 from rechner_pipeline.ontologie.aussage import Zustand
 from rechner_pipeline.ontologie.merge import werte_gleich
-from rechner_pipeline.ontologie.tbox import TBOX_VERSION, ABox, PFLICHT_PARAMETER
+from rechner_pipeline.ontologie.tbox import (
+    GENERATIONS_BLOECKE,
+    PFLICHT_PARAMETER,
+    TBOX_VERSION,
+    ABox,
+)
 from rechner_pipeline.spez.schema import SPEZ_VERSION, TarifSpez
 
 SPEZ_DATEI = "spez.json"
@@ -60,11 +65,85 @@ def lade_spez_aus_bytes(roh: bytes) -> TarifSpez:
             "A-Box neu erzeugen (spez.erzeugen), nicht still als aktuell "
             "einstufen"
         )
+    # NICHTS RECHNET AUF EINER SPEZ, DEREN VOKABULAR ES NICHT KENNT. Dieser
+    # Lader ist die eine Tuer jedes Lesers (Ratsche:
+    # tests/test_spez_lader_klasse.py) — die Bestandsstrecke las die Spez
+    # bis T-Box 0.2.0 ohne jede Versionspruefung, und eingefrorene Spez
+    # einer frueheren T-Box liefen dort gruen durch. Ein Mismatch ist ein
+    # Fehler, keine Warnung (wie P-Q3 und P-K1), mit dem Ausweg.
+    if daten["spez_version"] != SPEZ_VERSION or daten["tbox_version"] != TBOX_VERSION:
+        raise SpezVersionFehler(
+            f"Spez spricht T-Box {daten['tbox_version']!r} / Spez-Schema "
+            f"{daten['spez_version']!r}, geltend sind {TBOX_VERSION!r} / "
+            f"{SPEZ_VERSION!r} — verweigert. Ausweg: aus der A-Box neu "
+            "erzeugen (spez.erzeugen) oder ueber einen deklarierten Uebergang "
+            "heben (spez.validierung.hebe_spez_auf_geltende_version)"
+        )
     return TarifSpez.model_validate_json(roh)
+
+
+class SpezVersionFehler(ValueError):
+    """Die Spez spricht ein anderes Vokabular als der Code."""
 
 
 def lade_spez(fall: Path, generation: str) -> TarifSpez:
     return lade_spez_aus_bytes(spez_pfad(fall, generation).read_bytes())
+
+
+def _hebe_spez_0_1_0_auf_0_2_0(daten: dict) -> dict:
+    """T-Box 0.1.0 -> 0.2.0 ist fuer die Spez additiv: ``tarifwerk``,
+    ``quellverfahren`` und ``urteil.geaenderte_tarifwerksmerkmale`` sind
+    optional und bleiben leer (nicht erhoben — wie bei der gehobenen A-Box).
+    Nur die Version wandert; das Spez-Schema bleibt."""
+    return {**daten, "tbox_version": "0.2.0"}
+
+
+#: Hebungsregeln der Spez je Schritt der T-Box-Versionslinie — dieselbe
+#: Linie wie ``ontologie.abox.HEBUNGEN`` (Test: jeder Schritt hat eine).
+SPEZ_HEBUNGEN = {
+    ("0.1.0", "0.2.0"): _hebe_spez_0_1_0_auf_0_2_0,
+}
+
+
+def spez_bytes(daten: dict) -> bytes:
+    """Die kanonische Form einer Spez-Datei (wie :func:`speichere_spez`)."""
+    return (json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True)
+            + "\n").encode("utf-8")
+
+
+def hebe_spez_auf_geltende_version(roh: bytes) -> bytes:
+    """Die Bytes einer Spez der Vorversion(en) auf die geltende T-Box heben —
+    nur ueber deklarierte Uebergaenge, nur fuer das geltende Spez-Schema.
+
+    Der benannte Weg fuer eine Spez, zu der keine A-Box vorliegt (etwa die
+    eingefrorenen Spez der Baldrian-Laeufe); eine Spez MIT A-Box wird neu
+    erzeugt. Das Ergebnis besteht den Lader; schreibt nichts.
+    """
+    from rechner_pipeline.ontologie.tbox import TBOX_VERSIONEN
+
+    daten = json.loads(roh)
+    if not isinstance(daten, dict) or "tbox_version" not in daten:
+        raise ValueError("Spez ohne Versionsdeklaration — nicht hebbar, neu erzeugen")
+    if daten.get("spez_version") != SPEZ_VERSION:
+        raise ValueError(
+            f"Spez-Schema {daten.get('spez_version')!r} ist nicht das geltende "
+            f"{SPEZ_VERSION!r} — keine Hebung deklariert, neu erzeugen")
+    linie = tuple(TBOX_VERSIONEN)
+    von = daten["tbox_version"]
+    if von == TBOX_VERSION:
+        raise ValueError(f"Spez spricht bereits die geltende T-Box {TBOX_VERSION!r}")
+    if von not in linie:
+        raise ValueError(
+            f"Spez traegt T-Box {von!r}; die Versionslinie {linie!r} kennt keinen "
+            "Uebergang von dort — neu erzeugen")
+    for schritt in zip(linie[linie.index(von):], linie[linie.index(von) + 1:]):
+        regel = SPEZ_HEBUNGEN.get(schritt)
+        if regel is None:
+            raise ValueError(f"kein deklarierter Uebergang {schritt[0]} -> {schritt[1]}")
+        daten = regel(daten)
+    neu = spez_bytes(daten)
+    lade_spez_aus_bytes(neu)        # muss den Lader bestehen
+    return neu
 
 
 def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
@@ -100,6 +179,33 @@ def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
         fehler.append(
             f"unisex: Spez sagt {spez.unisex!r}, A-Box {unisex_abox!r}"
         )
+
+    # Tarifwerk und Quellverfahren (T-Box 0.2.0), beide Richtungen: Jeder
+    # Wert der Spez ist in der A-Box belegt und gleich; jedes belegte
+    # Merkmal der A-Box steht in der Spez — fehlt es, rechnete die Fuehrung
+    # still mit der Vorgabe des eigenen Geschaefts.
+    for block in GENERATIONS_BLOECKE:
+        abox_block = {
+            m: a.wert for m, a in gen.block(block).items()
+            if a.zustand is Zustand.BELEGT
+        }
+        spez_block = getattr(spez, block)
+        for merkmal in sorted(set(abox_block) | set(spez_block)):
+            if merkmal not in abox_block:
+                fehler.append(
+                    f"{gen.id}/{block}.{merkmal}: in der Spez gesetzt "
+                    f"({spez_block[merkmal]!r}), in der A-Box nicht belegt — "
+                    "die Spez hat eine eigene Wahrheit")
+            elif merkmal not in spez_block:
+                fehler.append(
+                    f"{gen.id}/{block}.{merkmal}: in der A-Box belegt "
+                    f"({abox_block[merkmal]!r}), fehlt in der Spez — die "
+                    "Fuehrung rechnete sonst still mit der Vorgabe")
+            elif not (type(spez_block[merkmal]) is type(abox_block[merkmal])
+                      and werte_gleich(spez_block[merkmal], abox_block[merkmal])):
+                fehler.append(
+                    f"{gen.id}/{block}.{merkmal}: Spez "
+                    f"{spez_block[merkmal]!r} != A-Box {abox_block[merkmal]!r}")
 
     abox_zellen = {z.id: z for z in gen.zellen}
     spez_zellen = {s.knoten.rsplit("/", 1)[-1]: s for s in spez.zellen}
