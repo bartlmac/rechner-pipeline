@@ -430,6 +430,49 @@ def _pruefe_wirksame_absetzung(vs_alt: float, anteil: float) -> None:
         )
 
 
+#: Meldung, wenn der Stornoabzug den Rueckkaufs-Track aufzehrt (Klemmrand).
+KLEMMRAND_MELDUNG = (
+    "am Klemmrand nicht bestimmbar: Stornoabzug zehrt den Rueckkaufs-Track "
+    "auf — Anteil als Auskunft registrieren"
+)
+
+
+def _klemmrand_aufloesung(bxt: float) -> float:
+    """Kleinster umgewandelter Teil (in Einheiten Versicherungssumme), den die
+    Lieferung ueber ihre Rundung hinaus zeigt (Runde F, Nachbesserung).
+
+    Beide Lieferfelder sind centgerundet und gehen in die Differenz
+    ERLSUMME - JBRUTTO/Bxt ein: ERLSUMME direkt (Toleranz der Vorwaertsprobe),
+    der fortgefuehrte Teil ueber den Beitragssatz (Toleranz / Bxt). Was darunter
+    liegt, ist von "nichts umgewandelt" nicht zu unterscheiden.
+    """
+    return ABLEITUNG_SELBSTCHECK_TOL * (1.0 + 1.0 / bxt)
+
+
+def _am_klemmrand(
+    m: float, vs: float, c: float, k_teil: float, vbfr: float, aufloesung: float,
+) -> bool:
+    """Waechter der Klammerzweige: liegt die LOESUNG ``vs`` am Klemmrand?
+
+    Der Klemmrand ist der eigene Zweig des Kern-Regelwerks, in dem der
+    Stornoabzug den Rueckkaufs-Track aufzehrt (StoAb >= V^MRV, RKW 0,
+    nichts umgewandelt, ERLSUMME = f x VS). Die Klammerzweige (StoAb = c)
+    setzen RKW = m x VS - c > 0 voraus, und der umgewandelte Teil
+    (m x VS - c)(1-f)/vbfr, den die Loesung behauptet, muss die
+    Aufloesung der Lieferung uebersteigen. Am Klemmrand zerfaellt die
+    quadratische Gleichung: Die Wurzel VS = c/m besteht die Vorwaertsprobe
+    (dort ist RKW 0 und f x VS = ERLSUMME), obwohl (VS, f) aus den beiden
+    Feldern gar nicht bestimmbar sind — jedes VS mit m x VS <= c und
+    f = K/VS liefert dieselbe Lieferung. Messfall (Runde F, Pruefer):
+    gelieferte VS 20.000 / f 0,8, Pauschalabzug 8.000 -> still
+    VS 114.398 / f 0,14 zurueckgegeben.
+    """
+    rkw = m * vs - c
+    if rkw <= 0.0:
+        return True
+    return rkw * (1.0 - k_teil / vs) / vbfr <= aufloesung
+
+
 @dataclass(frozen=True)
 class AbgeleiteteAbsetzung:
     """Die aus dem Abzug zurueckgerechnete Alt-Absetzung eines Vertrags.
@@ -495,13 +538,28 @@ def leite_absetzung_ab(
     der Beitragsfreistellung (Entscheid 2026-09-30, F1 (b); vorher die
     Rueckstellung ``v * VS``, und die Umkehrung traf innerhalb der
     Zillmerdauer die Vorwaertsregel nicht). Der Stornoabzug
-    ``StoAb = s * (VS - v * VS)`` haengt dagegen weiter an der
-    Rueckstellung. Je Stornoabzugs-Zweig (Regelwerk des Tarifplans) wird die zweite
-    Gleichung nach VS aufloesbar: im Satz-Zweig und bei StoAb = 0 linear,
-    in den geklammerten Zweigen (Unter-/Obergrenze) quadratisch. Der
+    ``StoAb = min(umax, max(umin, s * (VS - v * VS)))`` haengt dagegen
+    weiter an der Rueckstellung. Je Stornoabzugs-Zweig (Regelwerk des
+    Tarifplans: Satz, null, min, max) wird die zweite Gleichung nach VS
+    aufloesbar: im Satz-Zweig und bei StoAb = 0 linear, in den
+    geklammerten Zweigen (Unter-/Obergrenze, auch der Pauschalabzug mit
+    Satz 0) quadratisch. Der
     Zweig wird nicht geraten: Jeder Kandidat muss das Regelwerk an
     seiner eigenen Loesung erfuellen, und die Vorwaertsprobe ueber
     :func:`reduziere` muss die gelieferten Felder treffen.
+
+    **Der Klemmrand ist ein eigener Zweig** (Runde F, Nachbesserung):
+    Zehrt der Stornoabzug den Rueckkaufs-Track auf (StoAb >= V^MRV, RKW 0),
+    wird nichts umgewandelt und die Lieferung ist ERLSUMME = f x VS,
+    JBRUTTO = f x Beitrag — jedes VS mit m x VS <= StoAb erzeugt dieselben
+    Felder, (VS, f) sind nicht bestimmbar. Die Klammerzweige pruefen deshalb
+    an der eigenen Loesung, dass RKW > 0 ist und der umgewandelte Teil die
+    Rundung der Lieferfelder uebersteigt (:func:`_am_klemmrand`); sonst
+    verweigert die Ableitung mit :data:`KLEMMRAND_MELDUNG` und dem Ausweg,
+    den Anteil als Auskunft zu registrieren (dann greift
+    :func:`leite_ursprungssumme_ab`, wo der Klemmrand bestimmt ist). Vorher
+    gab die Wurzel VS = c/m die Vorwaertsprobe frei und die Funktion still
+    ein erfundenes (VS, f) zurueck.
     """
     from rechner_pipeline.kern.beitragsreduktion import (
         VERFAHREN,
@@ -540,20 +598,31 @@ def leite_absetzung_ab(
             f"Saetze unplausibel (kVx_bfr={vbfr!r}, Bxt={bxt!r})"
         )
     k_teil = jbrutto / bxt
+    s_satz = einheit.stoab_satz
+    # Kein Abzug gibt es nur beim prospektiven Verfahren und in der flexiblen
+    # Phase (Kern: ``stornoabzug`` = 0). Ein Satz von null heisst NICHT
+    # StoAb = 0 (Runde F, F3): Der Kern rechnet StoAb = min(umax, max(umin,
+    # satz x ...)), und beim Pauschalabzug (satz 0, umin > 0) ist das
+    # umin. Damals fiel ``s_satz <= 0`` in den Zweig ohne Abzug, die Zweige
+    # min/max wurden nie versucht, und 18 von 18 ableitbaren Faellen wurden
+    # verweigert (stoab 0 / 50 / 150, mit Abzug).
+    flex_oder_null = (
+        verfahren == "prospektiv"
+        or kern_einheit.produkt.ist_flex_phase(jahr)
+    )
+    aufloesung = _klemmrand_aufloesung(bxt)
     if erlsumme <= k_teil:
+        if not flex_oder_null and k_teil - erlsumme <= aufloesung:
+            # Nichts umgewandelt, innerhalb der Rundung der Lieferfelder:
+            # der Klemmrand (siehe ``_am_klemmrand``), kein Widerspruch.
+            raise MigrationszugangFehler(KLEMMRAND_MELDUNG)
         raise MigrationszugangFehler(
             f"ERLSUMME {erlsumme} liegt nicht ueber dem fortgefuehrten "
             f"Teil {k_teil:.2f} — keine Absetzung ableitbar"
         )
 
-    s_satz = einheit.stoab_satz
-    flex_oder_null = (
-        verfahren == "prospektiv"
-        or kern_einheit.produkt.ist_flex_phase(jahr)
-        or s_satz <= 0.0
-    )
-
     kandidaten: List[Tuple[str, float]] = []
+    klemmrand = False
     if flex_oder_null:
         if m <= 0.0:
             raise MigrationszugangFehler(f"kVx_MRV({jahr}) = {m!r} <= 0")
@@ -561,11 +630,16 @@ def leite_absetzung_ab(
             ("flex_oder_null", k_teil + (erlsumme - k_teil) * vbfr / m))
     else:
         # Satz-Zweig: StoAb = s * VS * (1 - v), linear in VS.
+        # Bei Satz 0 ist das der Zweig "null" (StoAb = 0, wenn auch umin = 0).
         nenner = m - s_satz * (1.0 - v)
         if nenner > 0.0:
             vs = k_teil + (erlsumme - k_teil) * vbfr / nenner
             if einheit.stoab_min <= s_satz * vs * (1.0 - v) <= einheit.stoab_max:
-                kandidaten.append(("satz", vs))
+                kandidaten.append(("satz" if s_satz > 0.0 else "null", vs))
+        # Ist nenner <= 0 (der Abzug s x (1-v) x VS ist nicht kleiner als der
+        # Rueckkaufs-Track m x VS), klemmt der Satz-Zweig fuer jedes VS und hat
+        # keine Loesung; die Klemmrand-Meldung kommt dann aus dem Waechter der
+        # Klammerzweige (gemessen: Satz 10 %, keine Obergrenze).
         # Geklammerte Zweige: StoAb konstant c, quadratisch in VS.
         for zweig, c in (("min", einheit.stoab_min),
                          ("max", einheit.stoab_max)):
@@ -580,8 +654,15 @@ def leite_absetzung_ab(
                     continue
                 roh = s_satz * wurzel * (1.0 - v)
                 passt = (roh <= c) if zweig == "min" else (roh >= c)
-                if passt:
-                    kandidaten.append((zweig, wurzel))
+                if not passt:
+                    continue
+                # Waechter (Runde F, Nachbesserung): die Loesung muss das
+                # Regelwerk an sich selbst erfuellen — RKW > 0, sonst ist sie
+                # keine Loesung dieses Zweigs, sondern der Klemmrand.
+                if _am_klemmrand(m, wurzel, c, k_teil, vbfr, aufloesung):
+                    klemmrand = True
+                    continue
+                kandidaten.append((zweig, wurzel))
 
     fehler: List[str] = []
     for zweig, vs_alt in kandidaten:
@@ -614,6 +695,13 @@ def leite_absetzung_ab(
             f"{zweig}: Vorwaertsprobe daneben (vs_neu {probe.vs_neu:.4f} "
             f"vs. {erlsumme}, bjb_neu {probe.bjb_neu:.4f} vs. {jbrutto})")
 
+    if klemmrand:
+        # Kein Zweig mit wirksamem Abzug traegt die Lieferung, und der
+        # Klemmrand hat eine Lieferung, die jedes VS mit m x VS <= StoAb
+        # und f = K/VS erzeugt: nicht bestimmbar, nicht raten.
+        raise MigrationszugangFehler(
+            KLEMMRAND_MELDUNG
+            + (" (" + "; ".join(fehler) + ")" if fehler else ""))
     raise MigrationszugangFehler(
         "Alt-Absetzung nicht ableitbar — kein Stornoabzugs-Zweig "
         "reproduziert die gelieferten Felder ("
@@ -756,6 +844,12 @@ def leite_ursprungssumme_ab(
     Ursprungssumme; der Zweig wird wie in :func:`leite_absetzung_ab`
     am eigenen Kandidaten geprueft und die Vorwaertsprobe muss die
     gelieferte Summe auf die Centrundung treffen.
+
+    Der Klemmrand (StoAb >= V^MRV, RKW 0, nichts umgewandelt) ist ein
+    eigener Zweig (Runde F, Nachbesserung): ERLSUMME = f x VS, mit bekanntem
+    Anteil also VS = ERLSUMME / f — bestimmt, anders als in
+    :func:`leite_absetzung_ab`. Die Klammerzweige setzen RKW = m x VS - c > 0
+    voraus (Waechter) und liefern am Klemmrand sonst keine Loesung.
     """
     from rechner_pipeline.kern.beitragsreduktion import (
         VERFAHREN,
@@ -791,10 +885,11 @@ def leite_ursprungssumme_ab(
         raise MigrationszugangFehler(f"kVx_bfr({jahr}) = {vbfr!r} <= 0")
     frei = 1.0 - anteil
     s_satz = einheit.stoab_satz
+    # Satz 0 heisst nicht StoAb = 0 (Runde F, F3; siehe leite_absetzung_ab):
+    # der Pauschalabzug lebt im Zweig min/max.
     flex_oder_null = (
         verfahren == "prospektiv"
         or kern_einheit.produkt.ist_flex_phase(jahr)
-        or s_satz <= 0.0
     )
 
     kandidaten: List[Tuple[str, float]] = []
@@ -807,7 +902,7 @@ def leite_ursprungssumme_ab(
         if faktor > 0.0:
             vs = erlsumme / faktor
             if einheit.stoab_min <= s_satz * vs * (1.0 - v) <= einheit.stoab_max:
-                kandidaten.append(("satz", vs))
+                kandidaten.append(("satz" if s_satz > 0.0 else "null", vs))
         # Klammerzweige: ERLSUMME = VS * (f + m(1-f)/vbfr) - c(1-f)/vbfr
         for zweig, c in (("min", einheit.stoab_min),
                          ("max", einheit.stoab_max)):
@@ -815,8 +910,19 @@ def leite_ursprungssumme_ab(
             vs = (erlsumme + c * frei / vbfr) / faktor
             roh = s_satz * vs * (1.0 - v)
             passt = (roh <= c) if zweig == "min" else (roh >= c)
-            if passt:
+            # Waechter (Runde F, Nachbesserung): die Formel setzt RKW =
+            # m x VS - c > 0 voraus; am Klemmrand ist sie keine Loesung.
+            if passt and m * vs > c:
                 kandidaten.append((zweig, vs))
+        # Klemmrand: der Stornoabzug zehrt den Rueckkaufs-Track auf
+        # (StoAb >= m x VS), nichts wird umgewandelt, ERLSUMME = f x VS.
+        # Mit BEKANNTEM Anteil ist das bestimmt: VS = ERLSUMME / f — anders
+        # als in :func:`leite_absetzung_ab`, wo f unbekannt ist.
+        vs = erlsumme / anteil
+        stoab = min(einheit.stoab_max,
+                    max(einheit.stoab_min, s_satz * vs * (1.0 - v)))
+        if stoab >= m * vs:
+            kandidaten.append(("klemmrand", vs))
 
     fehler: List[str] = []
     for zweig, vs_alt in kandidaten:

@@ -48,6 +48,9 @@ from rechner_pipeline.models.bestand import (
     AUSNAHME_EINMAL_JE_POLICE,
     AUSNAHME_NUR_UEBERNOMMEN,
     AUSNAHME_ZEITPUNKT,
+    BEITRAG_BETRAG_ART,
+    BEITRAGSEREIGNISSE,
+    BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN,
     BETRAG_ART_JE_EREIGNIS,
     EREIGNIS_OHNE_ANNAHME,
     EREIGNIS_VALUES,
@@ -93,6 +96,20 @@ def _zeile(art: str, datum: pd.Timestamp, *, uebernommen: bool = True) -> pd.Dat
     }])[list(LEDGER_NAMES)].astype(dict(LEDGER_SPALTEN))
 
 
+def _vorfall(art: str, datum: pd.Timestamp, *, uebernommen: bool = True) -> pd.DataFrame:
+    """Der VOLLSTAENDIGE Vorfall der Art: ``_zeile`` und, wo die Engine ein Paar
+    bucht (Runde F, Paarbuchung: ``BEITRAGSEREIGNISSE``), die Beitragszeile
+    desselben Tags — ausser beim Zugang eines uebernommenen Vertrags. Das
+    Fenster ist der Gegenstand dieser Tests, nicht die Paarung; ein
+    unvollstaendiger Vorfall waere ein zweiter Fehler in derselben Zeile."""
+    zeile = _zeile(art, datum, uebernommen=uebernommen)
+    if art not in BEITRAGSEREIGNISSE or (
+            uebernommen and art in BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN):
+        return zeile
+    bjb = zeile.assign(betrag_art=BEITRAG_BETRAG_ART)
+    return pd.concat([zeile, bjb], ignore_index=True)
+
+
 def _fall_am(art: str, datum: pd.Timestamp):
     """(Stamm, Buchung): Die Art steht am ``datum`` an IHREM Platz — Runde E,
     Nachbesserung. ZUG und MIG stehen am Zugangstag (der Stamm bekommt ihn),
@@ -106,7 +123,7 @@ def _fall_am(art: str, datum: pd.Timestamp):
         stamm["insurance_end"] = datum
         stamm["duration"] = jahre
         stamm["premium_duration"] = min(int(stamm["premium_duration"].iloc[0]), jahre)
-    return stamm, _zeile(art, datum)
+    return stamm, _vorfall(art, datum)
 
 
 def _fenster(fehler):
@@ -274,7 +291,7 @@ def test_der_pex_umbuchung_am_zugangstag_braucht_einen_uebernommenen_vertrag():
     zeile_pex = _zeile("PEX", BEGINN, uebernommen=False)
     fehler = validate_ledger(eigen, zeile_pex)
     assert any("PEX-Buchung nicht nach dem Bestandszugang" in f for f in fehler), fehler
-    assert validate_ledger(eigen, _zeile("ZUG", BEGINN, uebernommen=False)) == []
+    assert validate_ledger(eigen, _vorfall("ZUG", BEGINN, uebernommen=False)) == []
 
 
 def test_die_regel_selbst_liefert_zwei_masken_je_zeile():
@@ -364,8 +381,13 @@ def _faelle(welt, art):
     if art == "ZUG":
         zug = ledger[(ledger["ereignis"] == "ZUG") & (ledger["betrag_art"] == "VS")]
         i = zug["status_date"].idxmin()        # der fruehste Zugang: ein Monat spaeter liegt im Lauf
+        # Der ganze Vorfall wandert (Summen- und Beitragszeile): Wanderte nur
+        # die Summenzeile, brache zugleich die Paarung (Runde F).
+        vorfall = ((ledger["police_id"] == ledger.loc[i, "police_id"])
+                   & (ledger["ereignis"] == "ZUG")
+                   & (ledger["status_date"] == ledger.loc[i, "status_date"]))
         verschoben = ledger.copy()
-        verschoben.loc[i, "status_date"] = ledger.loc[i, "status_date"] + pd.DateOffset(months=1)
+        verschoben.loc[vorfall, "status_date"] = ledger.loc[i, "status_date"] + pd.DateOffset(months=1)
         return horizont, {
             "gruen": (stamm, ledger),
             "verschoben": (stamm, verschoben),

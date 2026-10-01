@@ -85,6 +85,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import dataclasses
 import datetime as _dt
 import fnmatch
 import functools
@@ -262,6 +263,19 @@ STAND_LINK_TMP = "stand.link"
 #: ohne. Beide Richtungen: Der Timer faehrt nie eine Probenkopie, und die
 #: Probe laesst nie einen Eingang ohne A-B2 in eine echte Ablage eintreten.
 ZUGANGSPROBE_KOPIE_DATEI = "zugangsprobe-kopie.json"
+#: Feld einer Protokollzeile, die ein PROBELAUF geschrieben hat (Runde F,
+#: F9): Fall, Kennung und Kopie der Probe, Zeitpunkt — im gezeichneten
+#: Inhalt. Das Kennzeichen oben ist eine ungezeichnete Datei; wer es ohne
+#: Schluessel loeschte und die Kopie "mit" an die Stelle der Ablage setzte,
+#: hatte einen Eingang, der ohne A-B2 eingetreten war, in Zeilen, die der
+#: produktive Betriebsschluessel gezeichnet hatte. Die Probezeile bleibt:
+#: Entfernt man das Feld, bricht die Signatur. Und jeder Leser ausser der
+#: Probe selbst (:func:`lies_protokoll_text`) verweigert eine Kette, die
+#: eine Probezeile traegt — Tageslauf, Export, Konsument; Registrierung,
+#: Neuaufsetzen und die Probe selbst fragen :func:`probenkopie_fehler`.
+ZUGANGSPROBE_FELD = "zugangsprobe"
+#: Die Angaben einer Probezeile.
+ZUGANGSPROBE_ANGABEN = ("fall", "kennung", "kopie", "zeitpunkt")
 
 #: Exit-Codes: 0 gruen und uebernommen, 2 Aufruf-, Eingangs- oder Ein-/
 #: Ausgabefehler vor der Wache (Stand nicht uebernommen), 3 Wache rot
@@ -681,7 +695,8 @@ def _protokoll(ablage: "Ablage", zeichner: Optional[Zeichner]) -> List[Dict[str,
     (:func:`betriebszeichner`) — im Betrieb wird nie ungeprueft gelesen.
     """
     z = zeichner if zeichner is not None else betriebszeichner(ablage)
-    return lies_protokoll(ablage.protokoll_pfad, schluesselring=z.ring, ordnung=z.ordnung)
+    return lies_protokoll(ablage.protokoll_pfad, schluesselring=z.ring, ordnung=z.ordnung,
+                          zugangsprobe=z.zugangsprobe is not None)
 
 
 def lies_protokoll(
@@ -689,6 +704,7 @@ def lies_protokoll(
     *,
     schluesselring: Optional[Dict[str, bytes]] = None,
     ordnung: Optional[Dict[str, Any]] = None,
+    zugangsprobe: bool = False,
 ) -> List[Dict[str, Any]]:
     """Alle Zeilen des Tagesprotokolls (leer, wenn es noch keines gibt) —
     mit Pruefung der Kette und, mit ``schluesselring``, der Zeichnung.
@@ -704,7 +720,7 @@ def lies_protokoll(
         return []
     return lies_protokoll_text(
         Path(pfad).read_text(encoding="utf-8"), str(pfad),
-        schluesselring=schluesselring, ordnung=ordnung)
+        schluesselring=schluesselring, ordnung=ordnung, zugangsprobe=zugangsprobe)
 
 
 def aufschaltung_fehler(
@@ -782,9 +798,17 @@ def lies_protokoll_text(
     *,
     schluesselring: Optional[Dict[str, bytes]] = None,
     ordnung: Optional[Dict[str, Any]] = None,
+    zugangsprobe: bool = False,
 ) -> List[Dict[str, Any]]:
     """Wie :func:`lies_protokoll`, auf schon gelesenen Bytes — fuer einen
     Konsumenten, der Hash, Kette und Anker auf EINER Lesung prueft.
+
+    ``zugangsprobe``: NUR der Zeichner eines Probelaufs liest eine Kette mit
+    Probezeilen (:data:`ZUGANGSPROBE_FELD`). Fuer jeden anderen Leser ist
+    eine Probezeile ein Kettenbruch — die Ablage ist eine Probenkopie, egal
+    ob ihr Kennzeichen noch daliegt (Runde F, F9). Der Standardwert ist die
+    Verweigerung: Ein Leser, der nicht weiss, dass er eine Probe liest,
+    verweigert.
 
     Geprueft wird je Zeile: JSON-Objekt, Schema bekannt und nicht kleiner
     als das der Zeilen davor (RC10: eine auf Schema 1 herabgestufte Zeile
@@ -850,10 +874,68 @@ def lies_protokoll_text(
                 raise TageslaufError(
                     f"{pfad}: Zeile {nummer} pinnt einen Vorlauf, obwohl vor ihr schon "
                     "gezeichnet wurde — nur die erste gezeichnete Zeile tut das")
+        if ZUGANGSPROBE_FELD in zeile:
+            fehler = probezeile_fehler(zeile, zugangsprobe=zugangsprobe)
+            if fehler:
+                raise TageslaufError(f"{pfad}: Zeile {nummer} bricht die Kette: {fehler}")
         zeilen.append(zeile)
         rohe.append(roh)
         vorgaenger_roh = roh
     return zeilen
+
+
+def probezeile_fehler(zeile: Dict[str, Any], *, zugangsprobe: bool = False) -> Optional[str]:
+    """Was gegen eine Zeile mit :data:`ZUGANGSPROBE_FELD` spricht (None = nichts).
+
+    Ausserhalb einer Probe alles: Eine Probezeile in der Kette heisst, die
+    Ablage ist die Kopie einer Zugangsprobe (Runde F, F9). In der Probe die
+    Form — vier Angaben als Text, ein Feld ohne sie bezeugt keine Probe.
+    """
+    probe = zeile.get(ZUGANGSPROBE_FELD)
+    angaben = probe if isinstance(probe, dict) else {}
+    if not zugangsprobe:
+        return (
+            f"sie ist eine Probezeile der Zugangsprobe (Fall {angaben.get('fall')!r}, "
+            f"Kopie {angaben.get('kopie')!r}, Kennung {str(angaben.get('kennung'))[:16]}, "
+            f"{angaben.get('zeitpunkt')}) — die Ablage ist eine Probenkopie; auf ihr "
+            "laeuft kein Betrieb, kein Export, keine Registrierung und kein "
+            "Neuaufsetzen, und ein Eingang, der in ihr eingetreten ist, ist nicht "
+            "durch A-B2 gegangen. Ausweg: die produktive Ablage aus der Sicherung "
+            "wiederherstellen; die Kopie gehoert der Probe (ADR-022)")
+    if not isinstance(probe, dict) or set(probe) != set(ZUGANGSPROBE_ANGABEN) or not all(
+            isinstance(probe[k], str) and probe[k] for k in ZUGANGSPROBE_ANGABEN):
+        return (f"das Feld {ZUGANGSPROBE_FELD!r} traegt nicht die Angaben "
+                f"{list(ZUGANGSPROBE_ANGABEN)} — es bezeugt keine Probe")
+    return None
+
+
+def probenkopie_fehler(ablage: "Ablage") -> Optional[str]:
+    """Ob eine Ablage die Kopie einer Zugangsprobe ist (None = nein).
+
+    Fuer die Wege, die das Protokoll nicht als Kette lesen (Registrierung,
+    Neuaufsetzen, die Probe auf ihrem Original): das Kennzeichen ODER eine
+    Probezeile im Protokoll, formlos gelesen. Formlos genuegt: Wer ohne
+    Schluessel das Feld entfernt, bricht die Signatur, und der naechste
+    Tageslauf verweigert an ihr; wer es ohne Schluessel hinzufuegt, sperrt
+    nur, was er ohnehin beschreiben kann.
+    """
+    from rechner_pipeline.models.anker import jsonl_zeilen as _jsonl
+
+    kennzeichen = ablage.wurzel / ZUGANGSPROBE_KOPIE_DATEI
+    if kennzeichen.exists() or kennzeichen.is_symlink():
+        return (f"{ablage.wurzel}: die Ablage ist eine Probenkopie (Kennzeichen "
+                f"{kennzeichen.name}) — die Kopie gehoert der Probe (ADR-022)")
+    if not ablage.protokoll_pfad.is_file():
+        return None
+    text = ablage.protokoll_pfad.read_text(encoding="utf-8", errors="replace")
+    for nummer, roh in enumerate(_jsonl(text), 1):
+        try:
+            zeile = json.loads(roh)
+        except ValueError:
+            continue
+        if isinstance(zeile, dict) and ZUGANGSPROBE_FELD in zeile:
+            return f"{ablage.protokoll_pfad}: Zeile {nummer}: {probezeile_fehler(zeile)}"
+    return None
 
 
 def pruefe_nachweis(
@@ -1517,6 +1599,11 @@ def _stand_bauen(
     """
     betriebsbeginn = config.tagesbetrieb.betriebsbeginn
     assert betriebsbeginn is not None
+    # Der Eintritt ohne A-B2 gilt nur fuer eine Zeile, die als Probezeile
+    # gezeichnet wird (Runde F, F9): Die Ausnahme haengt am ZEICHNER, nicht
+    # am Parameter — ohne Probe-Zeichner schriebe der Lauf eine gewoehnliche
+    # Zeile ueber einen Eingang, den niemand abgenommen hat.
+    zugangsprobe_fall = (zeichner.zugangsprobe or {}).get("fall")
     # Kein gezogener Anfangsbestand mehr (ADR-020): Der Stand beginnt leer,
     # das eigene Geschaeft entsteht Werktag fuer Werktag ab dem
     # Betriebsbeginn — jeder Vertrag mit seinem Zugang im Journal.
@@ -2316,12 +2403,19 @@ def _anfuegen(
     pfad.parent.mkdir(parents=True, exist_ok=True)
     text = pfad.read_text(encoding="utf-8") if pfad.is_file() else ""
     zeilen = lies_protokoll_text(
-        text, str(pfad), schluesselring=zeichner.ring, ordnung=zeichner.ordnung)
+        text, str(pfad), schluesselring=zeichner.ring, ordnung=zeichner.ordnung,
+        zugangsprobe=zeichner.zugangsprobe is not None)
     rohe = jsonl_zeilen(text)
     if rohe and not any(z.get("schema_version", 1) >= 3 for z in zeilen) and not aufschalten:
         raise TageslaufError(f"{pfad}: {aufschaltung_fehler(zeilen)}")
     zeile.pop("zeichnung", None)
     zeile.pop("vorlauf", None)
+    # Die Probezeile entsteht nur aus dem Zeichner, nie aus der Zeile
+    # (Runde F, F9): Ein Probelauf schreibt jede seiner Zeilen als
+    # Probezeile, ein echter Lauf keine.
+    zeile.pop(ZUGANGSPROBE_FELD, None)
+    if zeichner.zugangsprobe is not None:
+        zeile[ZUGANGSPROBE_FELD] = dict(zeichner.zugangsprobe)
     zeile["schema_version"] = PROTOKOLL_SCHEMA_VERSION
     zeile["vorgaenger_sha256"] = _zeilen_hash(rohe[-1]) if rohe else ""
     if rohe and not any(z.get("schema_version", 1) >= 3 for z in zeilen):
@@ -2422,6 +2516,9 @@ def tageslauf(
             f"{ablage.wurzel}: ein Probelauf ohne Zugangsabnahme nur auf der "
             f"gekennzeichneten Kopie einer Zugangsprobe ({kopie.name} fehlt) — auf "
             "einer echten Ablage tritt kein Eingang ohne A-B2 ein (ADR-022)")
+    if zugangsprobe_fall is not None:
+        zeichner = dataclasses.replace(
+            zeichner, zugangsprobe=_probe_angaben(kopie, zugangsprobe_fall))
     with lauf_sperre(ablage):
         # Eine angefangene Protokollzeile ist nie eine Zeile geworden —
         # sie faellt VOR allem anderen, sonst stirbt jeder Leser des
@@ -2441,6 +2538,31 @@ def tageslauf(
         _raeume_schreibreste(ablage)
         return _tageslauf(ablage, heute, zeichner, image_digest=image_digest,
                           aufschalten=aufschalten, zugangsprobe_fall=zugangsprobe_fall)
+
+
+def _probe_angaben(kennzeichen: Path, fall: str) -> Dict[str, str]:
+    """Die Angaben der Probezeile aus dem Kennzeichen der Kopie.
+
+    Kennung, Kopie und Zeitpunkt setzt die Probe beim Kopieren
+    (``betrieb.zugangsprobe``) — der Lauf zieht keine Uhr; er traegt sie
+    gezeichnet in jede Zeile, die er auf der Kopie schreibt (Runde F, F9).
+    """
+    try:
+        daten = json.loads(kennzeichen.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise TageslaufError(
+            f"{kennzeichen}: das Kennzeichen der Probenkopie ist nicht lesbar ({exc}) — "
+            "ohne seine Angaben gibt es keine Probezeile. Ausweg: die Probe neu fahren") from exc
+    angaben = {"fall": fall, **{k: (daten.get(k) if isinstance(daten, dict) else None)
+                                for k in ZUGANGSPROBE_ANGABEN if k != "fall"}}
+    if isinstance(daten, dict) and daten.get("fall") not in (None, fall):
+        raise TageslaufError(
+            f"{kennzeichen}: die Kopie gehoert der Probe des Falls {daten.get('fall')!r}, "
+            f"nicht {fall!r}")
+    fehler = probezeile_fehler({ZUGANGSPROBE_FELD: angaben}, zugangsprobe=True)
+    if fehler:
+        raise TageslaufError(f"{kennzeichen}: {fehler}. Ausweg: die Probe neu fahren")
+    return angaben
 
 
 def _tageslauf(
@@ -2466,6 +2588,14 @@ def _tageslauf(
     """
     from rechner_pipeline.kern import __version__ as kern_version
 
+    # Ein Probelauf schreibt Probezeilen, ein echter keine (Runde F, F9):
+    # Parameter und Zeichner sagen dasselbe, oder der Lauf faengt nicht an.
+    if zugangsprobe_fall != (zeichner.zugangsprobe or {}).get("fall"):
+        raise TageslaufError(
+            f"Probelauf fuer {zugangsprobe_fall!r}, aber der Zeichner schreibt "
+            f"{'keine Probezeile' if zeichner.zugangsprobe is None else 'die Probezeile eines anderen Falls'}"
+            " — ein Eingang tritt ohne A-B2 nur in einer Zeile ein, die als Probezeile "
+            "gezeichnet ist (ADR-022)")
     config_pfad = ablage.config_pfad
     if not config_pfad.is_file():
         raise TageslaufError(

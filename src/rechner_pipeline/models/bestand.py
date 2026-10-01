@@ -719,6 +719,234 @@ def ausnahme_ereignis_text(regel: str, art: str, policen: List[int]) -> str:
             "Ausweg: die Buchung streichen oder an den Platz legen, den der "
             "Erzeuger bucht")
 
+#: Betragsart des gebuchten Bruttojahresbeitrags (Zugang und Erhoehung).
+BEITRAG_BETRAG_ART = "BJB"
+
+#: Die Ereignisarten, deren Vorfall einen Beitrag bewegt: HERGELEITET aus dem
+#: Vokabular der Betragsarten, nicht abgetippt (Runde F, Klasse "Paarbuchung").
+#: Die Engine bucht je solchem Vorfall ein PAAR: die Summenzeile und die
+#: Beitragszeile (``BJB``), beide fuer dieselbe Police am selben Tag. Ein Test
+#: haelt diese Menge mit ``==`` gegen die Stellen, an denen die Engine
+#: (``bestand.ereignisse``) die Beitragszeile bucht — ein neues Beitragsereignis
+#: muss hier, im Vokabular und in der Engine zugleich auftauchen.
+BEITRAGSEREIGNISSE: Tuple[str, ...] = tuple(
+    e for e, arten in BETRAG_ART_JE_EREIGNIS.items() if BEITRAG_BETRAG_ART in arten)
+
+#: Beitragsereignisse, die bei einem UEBERNOMMENEN Vertrag (Bestandszugang nach
+#: Versicherungsbeginn) KEINE Beitragszeile buchen — je mit Grund. Der Zugang
+#: eines uebernommenen Vertrags bucht nur die gelieferte Summe; sein
+#: Jahresbeitrag steht in der Lieferung und laeuft im aktuariellen Test mit
+#: (``gates.bestand_uebernehmen``), nicht im Ledger des aufnehmenden
+#: Unternehmens. Eine Beitragszeile dort ist keine Buchung des Erzeugers.
+BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN: Mapping[str, str] = {
+    "ZUG": "der Zugang eines uebernommenen Vertrags bucht nur die gelieferte "
+           "Summe; sein Jahresbeitrag steht in der Lieferung",
+}
+
+#: Die Verstoesse gegen die Paarbuchung, je Vorfall (Police, Wirkungstag, Art).
+PAAR_BJB_ZUVIEL = "bjb_zuviel"
+PAAR_BJB_FEHLT = "bjb_fehlt"
+PAAR_SUMME_ZUVIEL = "summe_zuviel"
+PAAR_SUMME_FEHLT = "summe_fehlt"
+PAAR_TAG_VERSCHOBEN = "tag_verschoben"
+
+
+def beitragspaar_verstoesse(
+    ledger: Any, stamm: Any, schon_gemeldet: Any = None
+) -> Dict[Tuple[str, str], List[int]]:
+    """Je (Ereignisart, Verstoss) die Policen, deren Vorfall die Paarbuchung
+    verletzt — Runde F, Klasse "Paarbuchung".
+
+    Die Engine bucht je Vorfall einer Art aus :data:`BEITRAGSEREIGNISSE`
+    GENAU eine Summenzeile und GENAU eine Beitragszeile ``BJB`` am selben Tag
+    fuer dieselbe Police (bei einem uebernommenen Vertrag fuer die Arten aus
+    :data:`BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN` keine Beitragszeile). Vorher
+    pruefte P-B1 den BETRAG vorhandener Beitragszeilen und band nur die
+    Summenzeile der Erhoehung an ihre Scheibe: Eine verdoppelte oder gestrichene
+    Beitragszeile einer Erhoehung (und eine fehlende des Zugangs) bemerkten
+    weder P-B1 noch die Fuehrungsprobe, noch der Bericht. Gezaehlt wird je
+    Vorfall (Police, Art, Vertragsjahr); die Kennzahlen zaehlen Vorfaelle je
+    (Police, Wirkungstag, Art) — beide Einheiten fallen zusammen, solange das
+    Paar am selben Tag steht (sonst meldet ``tag_verschoben``).
+
+    Verstoesse: ``bjb_zuviel`` (mehr Beitragszeilen als erlaubt), ``bjb_fehlt``,
+    ``summe_zuviel`` (mehr als eine Summenzeile), ``summe_fehlt`` (Beitragszeile
+    ohne Summenzeile), ``tag_verschoben`` (Summen- und Beitragszeile desselben
+    Vorfalls stehen auf verschiedenen Tagen).
+    ``schon_gemeldet``: Zeilen, die eine andere Regel schon beanstandet
+    (Buchungsfenster, Ausnahme-Ereignisse, Wirkungstag) — ein Fehler, ein
+    Befund; eine gemeldete Zeile nimmt ihren GANZEN Vorfall (Police, Art,
+    Vertragsjahr) aus, die Partnerzeile bringt keinen zusaetzlichen Befund.
+    Ein in der Zeit getrenntes Paar (Teilverschiebung) ist EIN Befund fuer den
+    Vorfall (``tag_verschoben``), nicht 'Beitragszeile fehlt' und 'Summenzeile
+    fehlt' zugleich; ein Paar in zwei Vertragsjahren sind zwei unvollstaendige
+    Vorfaelle. Die Policen der Zeilen muessen im Stamm stehen.
+    """
+    import pandas as pd
+
+    art = ledger["ereignis"].to_numpy()
+    beitrag = _np.isin(art, list(BEITRAGSEREIGNISSE))
+    if not beitrag.any():
+        return {}
+    gemeldet = (_np.zeros(len(ledger), dtype=bool) if schon_gemeldet is None
+                else _np.asarray(schon_gemeldet, dtype=bool))
+    alle = pd.DataFrame({
+        "police": ledger["police_id"].to_numpy()[beitrag].astype("int64"),
+        "art": art[beitrag],
+        "jahr": ledger["vertragsjahr"].to_numpy()[beitrag].astype("int64"),
+        "tag": ledger["status_date"].to_numpy()[beitrag],
+        "bjb": (ledger["betrag_art"].to_numpy()[beitrag] == BEITRAG_BETRAG_ART),
+        "gemeldet": gemeldet[beitrag],
+    })
+    # Der Vorfall ist (Police, Art, Vertragsjahr): Die Engine bucht je Vertragsjahr
+    # EIN Paar. Meldet eine andere Regel EINE Zeile des Vorfalls, scheidet der
+    # ganze Vorfall hier aus — die Partnerzeile bringt keinen zusaetzlichen
+    # Befund (Runde F, Nachbesserung: ein Vorfall, ein Befund).
+    schluessel = ["police", "art", "jahr"]
+    zeilen = alle[~alle.groupby(schluessel)["gemeldet"].transform("any")]
+    if zeilen.empty:
+        return {}
+    je_vorfall = zeilen.groupby(schluessel, sort=True).agg(
+        n_bjb=("bjb", "sum"), n=("bjb", "size"), n_tage=("tag", "nunique")).reset_index()
+    je_vorfall["n_summe"] = je_vorfall["n"] - je_vorfall["n_bjb"]
+    # Summen- und Beitragszeile eines Vorfalls auf verschiedenen Tagen: EIN
+    # Befund fuer den ganzen Vorfall, die Anzahlregeln gelten dort nicht.
+    getrennt = je_vorfall["n_tage"].to_numpy() > 1
+    stamm_idx = stamm.set_index("police_id")
+    uebernommen = (
+        stamm_idx.loc[je_vorfall["police"].to_numpy(), "bestandszugang"].to_numpy()
+        > stamm_idx.loc[je_vorfall["police"].to_numpy(), "insurance_start"].to_numpy())
+    ohne_bjb = uebernommen & je_vorfall["art"].isin(
+        list(BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN)).to_numpy()
+    soll_bjb = _np.where(ohne_bjb, 0, 1)
+    ist_bjb = je_vorfall["n_bjb"].to_numpy()
+    ist_summe = je_vorfall["n_summe"].to_numpy()
+    faelle = {
+        PAAR_BJB_ZUVIEL: (ist_bjb > soll_bjb) & ~getrennt,
+        PAAR_BJB_FEHLT: (ist_bjb < soll_bjb) & ~getrennt,
+        PAAR_SUMME_ZUVIEL: (ist_summe > 1) & ~getrennt,
+        PAAR_SUMME_FEHLT: (ist_summe < 1) & ~getrennt,
+        PAAR_TAG_VERSCHOBEN: getrennt,
+    }
+    aus: Dict[Tuple[str, str], List[int]] = {}
+    for verstoss, maske in faelle.items():
+        for a in sorted(set(je_vorfall.loc[maske, "art"])):
+            zeile = maske & (je_vorfall["art"] == a).to_numpy()
+            aus[(str(a), verstoss)] = sorted(set(
+                int(p) for p in je_vorfall.loc[zeile, "police"]))
+    return aus
+
+
+def beitragspaar_text(art: str, verstoss: str, policen: List[int]) -> str:
+    """Die Meldung zu einem Verstoss gegen die Paarbuchung — dieselbe fuer
+    P-B1 (mit dem Praefix ``ledger: ``) und die Fuehrungsprobe."""
+    beispiele = ", ".join(str(p) for p in policen[:5])
+    was = {
+        PAAR_BJB_ZUVIEL: "mehr Beitragszeilen (BJB) als der Vorfall bucht",
+        PAAR_BJB_FEHLT: "ohne die Beitragszeile (BJB) des Vorfalls",
+        PAAR_SUMME_ZUVIEL: "mit mehr als einer Summenzeile",
+        PAAR_SUMME_FEHLT: "mit Beitragszeile (BJB) ohne Summenzeile",
+        PAAR_TAG_VERSCHOBEN: "mit Summen- und Beitragszeile auf verschiedenen Tagen",
+    }[verstoss]
+    if art in BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN and verstoss == PAAR_BJB_ZUVIEL:
+        grund = " (bei einem uebernommenen Vertrag: " + (
+            BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN[art] + ")")
+    else:
+        grund = ""
+    return (f"{art}-Buchung {was}{grund} (police [{beispiele}]) — die Engine "
+            "bucht je Vorfall ein Paar aus Summenzeile und Beitragszeile am "
+            "selben Tag. Ausweg: die Zeile streichen bzw. nachtragen, die der "
+            "Erzeuger bucht")
+
+
+#: Der Schluessel einer Buchung: je Schluessel steht GENAU eine Zeile im Ledger.
+BUCHUNG_SCHLUESSEL: Tuple[str, ...] = ("police_id", "ereignis", "status_date", "betrag_art")
+
+
+def doppelte_buchungen(
+    ledger: Any, schon_gemeldet: Any = None,
+    ohne_arten: Iterable[str] = BEITRAGSEREIGNISSE,
+) -> Any:
+    """Je Ledgerzeile: ist sie die ueberzaehlige Wiederholung einer Buchung?
+    Boolesches Feld — Runde F, Nachbesserung, Klasse "Eindeutigkeit je Buchung".
+
+    Die Engine bucht je (Police, Ereignis, Wirkungstag, Betragsart)
+    (:data:`BUCHUNG_SCHLUESSEL`) GENAU eine Zeile. Die Paarregel
+    (:func:`beitragspaar_verstoesse`) zaehlte das nur fuer ZUG und ERH; eine
+    verdoppelte Zeile jeder anderen Art — ein zweiter Storno, Tod, Ablauf, eine
+    zweite Beitragsfreistellung oder Herabsetzungszeile — bemerkten weder P-B1
+    noch die Fuehrungsprobe noch der Bericht, und die Probe rechnete die Zeile
+    zweimal nach und zaehlte sie zweimal als geprueft. Gemeldet wird die
+    ZWEITE und jede weitere Zeile eines Schluessels; die erste bleibt die
+    Buchung (die Probe rechnet sie nach, genau einmal).
+
+    ``ohne_arten``: Arten, deren Verdopplung eine andere Regel meldet — im
+    Standard :data:`BEITRAGSEREIGNISSE` (die Paarregel meldet deren ``zuviel``
+    mit eigenem Text; ein Fehler, ein Befund). Der Ledger der Uebernahme, den
+    die Paarregel nicht ansieht, ruft mit ``ohne_arten=()``.
+    ``schon_gemeldet``: Zeilen, die eine Regel oben schon beanstandet
+    (Buchungsfenster, Ausnahme-Ereignisse) — sie scheiden aus. Die Regel nennt
+    keine Ereignisart im Klartext; sie gilt fuer jede.
+    """
+    n = len(ledger)
+    offen = _np.ones(n, dtype=bool) if schon_gemeldet is None \
+        else ~_np.asarray(schon_gemeldet, dtype=bool)
+    offen &= ~_np.isin(ledger["ereignis"].to_numpy(), list(ohne_arten))
+    pos = _np.flatnonzero(offen)
+    mehrfach = _np.zeros(n, dtype=bool)
+    if len(pos):
+        wiederholt = ledger.iloc[pos].duplicated(
+            subset=list(BUCHUNG_SCHLUESSEL), keep="first").to_numpy()
+        mehrfach[pos[wiederholt]] = True
+    return mehrfach
+
+
+def doppelte_buchung_text(art: str, policen: List[int]) -> str:
+    """Die Meldung zur Eindeutigkeitsregel — dieselbe fuer P-B1 (mit dem
+    Praefix ``ledger: ``) und die Fuehrungsprobe."""
+    beispiele = ", ".join(str(p) for p in policen[:5])
+    return (f"{art}-Buchung mehrfach gebucht (police [{beispiele}]) — je Police, "
+            "Ereignis, Wirkungstag und Betragsart steht genau eine Zeile; die "
+            "Wiederholung ist keine zweite Buchung. Ausweg: die doppelte Zeile "
+            "streichen")
+
+
+def reduktion_jahrestag(beginn: Any, jahr: Any) -> Any:
+    """Der Jahrestag des Vertragsjahres ``jahr`` — der EINE Wirkungstag einer
+    Herabsetzung und jeder Buchung, die die Engine zum Jahreswechsel zieht.
+    Dieselbe Regel in ``validate_reduktionen`` (Fund N16) und in der
+    Fuehrungsprobe (Runde F)."""
+    import pandas as pd
+
+    return pd.Timestamp(beginn) + pd.DateOffset(years=int(jahr))
+
+
+def jahrestag_verstoesse(ledger: Any, stamm: Any) -> Any:
+    """Je Ledgerzeile: steht sie NICHT am Jahrestag ihres Vertragsjahres
+    (``insurance_start`` plus ``vertragsjahr`` Jahre)? Boolesches Feld.
+
+    Runde F: Die Engine bucht jedes GeVo am Jahrestag; ``validate_ledger``
+    prueft nur, dass ``vertragsjahr`` die Zahl der vollendeten Jahre ist, und
+    der Monatserste genuegt — ein Wirkungstag zwei Monate neben dem Jahrestag
+    ging durch. Ausgenommen sind die Zugangsbuchungen am Zugangstag
+    (:data:`ZUGANGSTAG_EREIGNISSE`): Ein uebernommener Vertrag kommt am
+    Stichtag zu, der kein Jahrestag sein muss. Die Policen der Zeilen muessen
+    im Stamm stehen.
+    """
+    stamm_idx = stamm.set_index("police_id")
+    pids = ledger["police_id"].to_numpy()
+    beginn = stamm_idx.loc[pids, "insurance_start"].to_numpy()
+    zugang = stamm_idx.loc[pids, "bestandszugang"].to_numpy()
+    datum = ledger["status_date"].to_numpy()
+    jahr = ledger["vertragsjahr"].to_numpy()
+    art = ledger["ereignis"].to_numpy()
+    soll = _np.array([
+        _np.datetime64(reduktion_jahrestag(b, j)) for b, j in zip(beginn, jahr)],
+        dtype="datetime64[ns]")
+    am_zugang = _np.isin(art, list(ZUGANGSTAG_EREIGNISSE)) & (datum == zugang)
+    return (datum != soll) & ~am_zugang
+
+
 #: Erhoehungsscheiben (dynamische Erhoehung): each row is an own layer of a
 #: contract, actuarially an own model point (Schichtungsprinzip). The base
 #: layer (Grundscheibe) is the Stamm row itself; Scheiben start at id 1.
@@ -1276,6 +1504,30 @@ def _nichtendlich(reihe: Any) -> bool:
     return bool((~_np.isfinite(werte)).any())
 
 
+def weicht_ab(ist: Any, soll: Any, toleranz: float) -> bool:
+    """Weichen Ist- und Soll-Wert um mehr als ``toleranz`` voneinander ab?
+
+    Runde F, Nachbesserung (Befund F5 als Klasse): ``abs(ist - soll) > toleranz``
+    ist bei NaN auf EINER der beiden Seiten immer falsch — der Wert galt als
+    uebereinstimmend, und ``abs(inf - inf)`` ist NaN statt null. Die Regel:
+    Ein nicht endlicher Wert (NaN, +/-inf, ein fehlender oder nicht
+    umwandelbarer Wert) auf der Ist- ODER der Soll-Seite ist eine Abweichung,
+    nie eine Uebereinstimmung. Die Fuehrungsprobe vergleicht Betraege NUR
+    durch diese Funktion (statische Ratsche in
+    ``tests/test_klasse_probe_abweichung_f.py``); wer eine weitere
+    Vergleichsstelle baut, ruft sie, statt ``abs(...) > TOLERANZ`` zu schreiben.
+    Ausweg fuer einen Wert, der legitim fehlen darf: vor dem Vergleich
+    entscheiden und nicht vergleichen — nie ein NaN mit Absicht durchreichen.
+    """
+    try:
+        ist, soll = float(ist), float(soll)
+    except (TypeError, ValueError):
+        return True
+    if not (_np.isfinite(ist) and _np.isfinite(soll)):
+        return True
+    return bool(abs(ist - soll) > toleranz)
+
+
 def validate_ledger(
     stamm: Any, ledger: Any, historie: Any = None, scheiben: Any = None,
     horizont: Any = None,
@@ -1335,7 +1587,19 @@ def validate_ledger(
       Zugangstag, MIG am Zugangstag eines uebernommenen Vertrags, ABL am
       Vertragsende).
       Dieselbe Regel, als :func:`buchungsfenster_verstoesse`, prueft die
-      Fuehrungsprobe.
+      Fuehrungsprobe;
+    * Paarbuchung (Runde F, Klasse): je Vorfall einer Ereignisart mit
+      Beitragswirkung (:data:`BEITRAGSEREIGNISSE`, aus dem Vokabular
+      hergeleitet) genau eine Summenzeile und genau eine Beitragszeile
+      ``BJB`` — der Zugang eines uebernommenen Vertrags bucht nur die Summe
+      (:data:`BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN`). Vorher bemerkte keine
+      Wache eine verdoppelte oder gestrichene Beitragszeile einer Erhoehung
+      (:func:`beitragspaar_verstoesse`, ebenfalls in der Fuehrungsprobe);
+    * Eindeutigkeit (Runde F, Nachbesserung): je (Police, Ereignis,
+      Wirkungstag, Betragsart) genau eine Zeile, fuer jede Ereignisart
+      (:func:`doppelte_buchungen`; die Beitragsereignisse zaehlt die
+      Paarregel). Vorher bemerkte keine Wache eine verdoppelte Storno-, Tod-,
+      Ablauf- oder Freistellungszeile.
     """
     errors: List[str] = []
     cols = list(ledger.columns)
@@ -1461,11 +1725,29 @@ def validate_ledger(
     # Nachbesserung): eine Ausnahmemenge ohne Wache fuer ihren Grund ist keine
     # geschlossene Klasse. Zeilen, die das Fenster schon beanstandet, scheiden
     # aus — ein Fehler, ein Befund.
-    for regel, maske in ausnahme_ereignis_verstoesse(
-            ledger, stamm, vor_zugang | hinter).items():
+    ausnahmen = ausnahme_ereignis_verstoesse(ledger, stamm, vor_zugang | hinter)
+    gemeldet = vor_zugang | hinter
+    for regel, maske in ausnahmen.items():
+        gemeldet = gemeldet | maske
         for art in sorted(set(arten[maske])):
             errors.append("ledger: " + ausnahme_ereignis_text(
                 regel, str(art), _policen(maske & (arten == art))))
+
+    # Die Paarbuchung (Runde F, Klasse): je Vorfall mit Beitragswirkung genau
+    # eine Summenzeile und eine Beitragszeile. Zeilen, die eine Regel oben
+    # schon beanstandet, scheiden aus — ein Fehler, ein Befund.
+    for (art, verstoss), policen in sorted(
+            beitragspaar_verstoesse(ledger, stamm, gemeldet).items()):
+        errors.append("ledger: " + beitragspaar_text(art, verstoss, policen))
+
+    # Die Eindeutigkeit (Runde F, Nachbesserung, Klasse): je Schluessel (Police,
+    # Ereignis, Wirkungstag, Betragsart) genau eine Zeile, fuer JEDE Ereignisart.
+    # Die Verdopplung der Beitragsereignisse meldet die Paarregel oben; Zeilen,
+    # die eine Regel oben beanstandet, scheiden aus — ein Fehler, ein Befund.
+    doppelt = doppelte_buchungen(ledger, gemeldet)
+    for art in sorted(set(arten[doppelt])):
+        errors.append("ledger: " + doppelte_buchung_text(
+            art, _policen(doppelt & (arten == art))))
 
     # Zeilenweise gegen den Stammsatz: Generation, Laufzeit, Vertragsjahr.
     haupt = stamm.set_index("police_id")
@@ -2139,8 +2421,7 @@ def validate_reduktionen(
         # anderem haengt die Bewertung (Angriffsrunde 2, Fund N16: zwei
         # Sichten desselben Bestands zum selben Stichtag wichen um 20.880 EUR
         # ab, bei gruenem P-B1, weil das Datum frei war).
-        beginn = pd.Timestamp(haupt.loc[pid, "insurance_start"])
-        jahrestag = beginn + pd.DateOffset(years=jahr)
+        jahrestag = reduktion_jahrestag(haupt.loc[pid, "insurance_start"], jahr)
         if pd.Timestamp(datum) != jahrestag:
             errors.append(
                 f"reduktionen: police {pid}: reduktion_datum {pd.Timestamp(datum).date()} "

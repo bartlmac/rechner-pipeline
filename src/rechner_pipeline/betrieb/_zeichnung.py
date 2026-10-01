@@ -52,6 +52,14 @@ class Zeichner:
     klasse: str
     ordnung: Dict[str, Any] = dataclasses.field(repr=False)
     ordnung_sha256: str
+    #: Nur der Zeichner eines Probelaufs (``betrieb.zugangsprobe``, Runde F,
+    #: F9): Fall, Kennung und Kopie der Probe und ihr Zeitpunkt. Wer ihn
+    #: haelt, schreibt jede Protokollzeile als PROBEZEILE (Feld
+    #: ``zugangsprobe`` im gezeichneten Inhalt) und liest eine Kette, die
+    #: solche Zeilen traegt; jeder andere Zeichner verweigert sie. Das
+    #: Kennzeichen der Kopie ist eine ungezeichnete Datei und verschwindet
+    #: ohne Schluessel — die Probezeile nicht, ohne die Signatur zu brechen.
+    zugangsprobe: Optional[Dict[str, str]] = None
 
     @property
     def schluessel_sha256(self) -> str:

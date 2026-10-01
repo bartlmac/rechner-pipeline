@@ -124,7 +124,12 @@ ein Eingang ohne sie tritt nicht ein.
    sonst verweigert sie. Der Beleg `abgeleitet/berichte/zugangsprobe.json`
    traegt die Betriebszeichnung und bindet den gefuehrten Stand der Ablage,
    den Eingang und die Abnahmen (Exit 0 bestanden, 1 nicht bestanden, 2
-   Bedienfehler). Der Zugangsstichtag ist ein Monatserster. Die Probe
+   Bedienfehler oder Ein-/Ausgabefehler, auch beim Schreiben des Belegs —
+   der feste Ort behaelt dann, was vorher dort lag). Die Kopien unter
+   `--arbeit` sind und bleiben Probenkopien: Jede Protokollzeile, die die
+   Probe dort schreibt, ist als Probezeile gezeichnet, und kein Tageslauf,
+   Export, Neuaufsetzen oder Registrieren nimmt eine solche Ablage an —
+   auch nicht ohne ihr Kennzeichen. Der Zugangsstichtag ist ein Monatserster. Die Probe
    haelt ihren Code-Stand gegen die letzte gruene Protokollzeile: Image-
    Digest und Revision (soweit dort erfasst) und den Hash des Pakets —
    also im produktiven Image fahren bzw. `--image-digest` wie im

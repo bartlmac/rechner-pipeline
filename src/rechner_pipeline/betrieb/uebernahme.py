@@ -1785,6 +1785,14 @@ def eingang_anlegen(
         raise UebernahmeError(
             f"{stand}: die Ablage ist die Kopie einer Zugangsprobe ({kennzeichen.name}) — "
             "registriert wird in die produktive Ablage")
+    if not probe_kopie:
+        # Auch ohne Kennzeichen (Runde F, F9): Eine Probezeile im Protokoll
+        # macht die Ablage zur Probenkopie — das Kennzeichen ist ungezeichnet.
+        from rechner_pipeline.betrieb.tageslauf import probenkopie_fehler
+
+        fehler = probenkopie_fehler(_Ablage(Path(stand)))
+        if fehler:
+            raise UebernahmeError(f"{fehler} — registriert wird in die produktive Ablage")
     # Der Betriebsschluessel VOR jedem Seiteneffekt: Ohne ihn entstuende ein
     # Eingang, den der Tageslauf nie annimmt.
     try:

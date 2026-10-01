@@ -19,6 +19,11 @@ gebuchten Vertragsjahr, ueber Grundscheibe und die bis dahin bestehenden
 Erhoehungsscheiben. Ein Betrag, der zu einer anderen Police gehoert,
 faellt daran — unabhaengig davon, ob die Jahressumme aufgeht.
 
+Die PAARUNG der Beitragszeile mit der Summenzeile ihres Vorfalls (eine, nicht
+zwei, nicht keine) haelt nicht diese Herleitung, sondern ``validate_ledger``
+(``models.bestand.beitragspaar_verstoesse``, Runde F): Hier wird der Betrag
+einer vorhandenen Zeile gebunden, dort ihre Anzahl.
+
 Bewusste Grenzen: ``MIG`` (Residuum der Uebernahme) und ``RED``
 (Herabsetzung, von der Engine nicht erzeugt) werden nicht hergeleitet;
 ``ERH`` ist ueber die Scheiben gebunden. Beim BU-Beispielprodukt folgt der
@@ -56,6 +61,7 @@ from rechner_pipeline.kern.korrekturschicht import (
     zuschlag_bei_pex,
 )
 from rechner_pipeline.models.bestand import (
+    doppelte_buchungen,
     model_point_kwargs,
     red_bindung_fehler,
     red_sollbuchungen,
@@ -498,7 +504,10 @@ def pruefe_ledger_betraege(
     # Buchungen — GENAU EINMAL. Die Soll-Menge ist dieselbe, aus der oben
     # die Betraege kommen; fehlt eine Zeile, fehlt sie hier.
     fehlend: List[str] = []
-    red_zeilen = ledger[ledger["ereignis"] == "RED"]
+    # Die Wiederholung einer Zeile meldet die Eindeutigkeitsregel von
+    # validate_ledger (Runde F, Nachbesserung); hier zaehlt die erste Zeile
+    # (ein Fehler, ein Befund).
+    red_zeilen = ledger[(ledger["ereignis"] == "RED") & ~doppelte_buchungen(ledger)]
     for pid, (jahr, _anteil, _verfahren) in sorted(reduktion_je_police.items()):
         if pid not in haupt.index:
             errors.append(f"reduktionen police {pid}: nicht im Stamm")

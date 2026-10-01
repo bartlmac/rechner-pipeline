@@ -47,6 +47,31 @@ benannte Ausnahme ist ein Befund (``unzugeordnete_ereignisse``), und die
 Ausnahme-Ereignisse ZUG, MIG und ABL stehen an ihrem Zeitpunkt
 (``models.bestand.ausnahme_ereignis_verstoesse``).
 
+**Paarbuchung, endlicher Betrag, Wirkungstag** (Runde F): Je Vorfall mit
+Beitragswirkung steht genau ein Paar aus Summen- und Beitragszeile
+(``models.bestand.beitragspaar_verstoesse``, dieselbe Regel wie in
+``validate_ledger``); jede Zeile der uebernommenen Vertraege traegt einen
+endlichen Betrag (``abs(betrag - erwartet) > TOLERANZ`` ist bei NaN immer
+falsch — ein NaN galt als geprueft und uebereinstimmend); die Probe vergleicht
+Betraege an ALLEN Stellen nur noch durch ``models.bestand.weicht_ab``, die
+nicht endliche Werte auf Ist- wie Soll-Seite als Abweichung meldet (Runde F,
+Nachbesserung: Stammsumme, Bausteine, Zugang, PEX-Umbuchung, nachgerechnete
+Buchungen); und jede Buchung nach
+dem Stichtag steht am Jahrestag ihres Vertragsjahres, der Wirkungstag einer
+Herabsetzung am Jahrestag ihres Reduktionsjahres (``reduktion_jahrestag``, die
+Regel von ``validate_reduktionen``). Eine solche Zeile wird nicht
+nachgerechnet und nicht als geprueft gezaehlt.
+
+**Eindeutigkeit und Vorfall** (Runde F, Nachbesserung): Je (Police, Ereignis,
+Wirkungstag, Betragsart) steht genau eine Zeile, fuer JEDE Ereignisart
+(``models.bestand.doppelte_buchungen``, dieselbe Regel wie in
+``validate_ledger``; sie gilt auch fuer den Ledger der Uebernahme); die
+ueberzaehlige Zeile wird nicht nachgerechnet und nicht als geprueft gezaehlt.
+Eine Zeile, die eine andere Regel (Fenster, Ausnahme-Ereignis, Wirkungstag)
+schon beanstandet, nimmt ihren ganzen Vorfall aus der Paarregel — ein Fehler,
+ein Befund —, und ein in der Zeit getrenntes Paar ist ein Befund
+(``tag_verschoben``).
+
 **Belege vor dieser Aenderung** (Pruefrunde T27, Runde C) sind nicht mehr
 nachrechenbar: Die Probe bindet jetzt die Nebentabellen der
 Fortschreibung (Schichten, Verankerung, Merkmale) und das
@@ -115,14 +140,21 @@ from rechner_pipeline.models.bestand import (
     VERANKERUNG_NAMES,
     ausnahme_ereignis_verstoesse,
     ausnahme_ereignis_text,
+    beitragspaar_text,
+    beitragspaar_verstoesse,
     buchungsfenster_verstoesse,
+    doppelte_buchung_text,
+    doppelte_buchungen,
+    jahrestag_verstoesse,
     model_point_kwargs,
     red_bindung_fehler,
     red_sollbuchungen,
     red_vollstaendigkeit_fehler,
+    reduktion_jahrestag,
     unbelegte_ereignisse,
     unbelegte_ereignisse_text,
     unzugeordnete_ereignisse,
+    weicht_ab,
 )
 
 #: Die drei Spalten des Stamms, die die Fortschreibung BEWEGEN darf.
@@ -529,8 +561,22 @@ def pruefe_fuehrung(
 
     geliefert = {str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
     haupt = stamm.set_index("police_id")
-    ledger_zug = ledger[ledger["ereignis"] == "ZUG"].set_index("police_id")["betrag"]
-    ledger_pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")["betrag"]
+    # Eindeutigkeit im Ledger der Uebernahme (Runde F, Nachbesserung): Eine
+    # verdoppelte Zugangs- oder Umbuchungszeile war eine Reihe mit zwei
+    # Eintraegen, die der Vergleich nicht in eine Zahl wandeln konnte. Der
+    # Vergleich laeuft gegen die erste Zeile; die Wiederholung ist ein Befund.
+    # Die Paarregel sieht diesen Ledger nicht an: keine Art ist ausgenommen.
+    ueb_doppelt = doppelte_buchungen(ledger, ohne_arten=())
+    for art_d in sorted(set(ledger["ereignis"].to_numpy()[ueb_doppelt])):
+        policen_d = sorted(set(int(p) for p in ledger["police_id"].to_numpy()[
+            ueb_doppelt & (ledger["ereignis"].to_numpy() == art_d)]))
+        befund(None, "doppelte_buchung", doppelte_buchung_text(art_d, policen_d),
+               ereignis=art_d, policen=policen_d)
+    ledger_eindeutig = ledger[~ueb_doppelt]
+    ledger_zug = ledger_eindeutig[ledger_eindeutig["ereignis"] == "ZUG"].set_index(
+        "police_id")["betrag"]
+    ledger_pex = ledger_eindeutig[ledger_eindeutig["ereignis"] == "PEX"].set_index(
+        "police_id")["betrag"]
     pex_historie: Dict[int, pd.Timestamp] = {}
     if len(historie):
         for pid, datum in historie[historie["status_code"] == "PEX"][
@@ -573,7 +619,7 @@ def pruefe_fuehrung(
         if erwartete_summe is None:
             befund(pid, "zeilen", "keine transformierte Zeile — Summe nicht pruefbar")
             erwartete_summe = float(row["sum_insured"])
-        if abs(float(row["sum_insured"]) - erwartete_summe) > TOLERANZ:
+        if weicht_ab(row["sum_insured"], erwartete_summe, TOLERANZ):
             befund(pid, "stammsumme",
                    f"Stammsumme {float(row['sum_insured']):.2f} statt "
                    f"{erwartete_summe:.2f} (Grund-/Ursprungssumme der Pruefstrecke)")
@@ -586,7 +632,7 @@ def pruefe_fuehrung(
             (int(s["erhoehung_jahr"]), float(s["sum_insured"]))
             for s in scheiben_je_police.get(pid, []))
         if len(erwartet_scheiben) != len(vorhanden) or any(
-                a[0] != b[0] or abs(a[1] - b[1]) > TOLERANZ
+                a[0] != b[0] or weicht_ab(a[1], b[1], TOLERANZ)
                 for a, b in zip(erwartet_scheiben, vorhanden)):
             befund(pid, "scheiben",
                    f"Bausteine der Fuehrung {vorhanden} statt "
@@ -630,7 +676,7 @@ def pruefe_fuehrung(
         gesamt = grund_mp.sum_insured + sum(k.mp.sum_insured for _, k in teile)
         if pid not in ledger_zug.index:
             befund(pid, "zugang", "keine Zugangsbuchung im Uebernahme-Ledger")
-        elif abs(float(ledger_zug.loc[pid]) - gesamt) > TOLERANZ:
+        elif weicht_ab(ledger_zug.loc[pid], gesamt, TOLERANZ):
             befund(pid, "zugang",
                    f"Zugang {float(ledger_zug.loc[pid]):.2f} statt {gesamt:.2f} "
                    "(Gesamtsumme der Bausteine)")
@@ -712,7 +758,7 @@ def pruefe_fuehrung(
             + sum(k.beitragsfreie_summe(int(pex_jahr) - j) for j, k in teile)
             + zuschlag_bei_pex(schicht_je_police.get(pid), grund, int(pex_jahr))
         )
-        if abs(float(ledger_pex.loc[pid]) - vs_bfr) > TOLERANZ:
+        if weicht_ab(ledger_pex.loc[pid], vs_bfr, TOLERANZ):
             befund(pid, "umbuchung",
                    f"Umbuchung {float(ledger_pex.loc[pid]):.2f} statt "
                    f"{vs_bfr:.2f} (beitragsfreie Summe der Pruefstrecke "
@@ -917,8 +963,10 @@ def pruefe_fuehrung(
         # Zeilen, die das Fenster schon beanstandet, scheiden aus. Eine Zeile
         # am falschen Platz ist keine Buchung dieses Laufs — sie wird nicht
         # nachgerechnet und nicht als geprueft gezaehlt.
+        gemeldet = vor_zugang | hinter
         for regel, maske in ausnahme_ereignis_verstoesse(
                 im_lauf, stamm, vor_zugang | hinter).items():
+            gemeldet = gemeldet | maske
             for pos in range(len(im_lauf)):
                 if not maske[pos]:
                     continue
@@ -926,6 +974,75 @@ def pruefe_fuehrung(
                 ausserhalb_idx.add(im_lauf.index[pos])
                 befund(int(z["police_id"]), "ausnahme_ereignis",
                        ausnahme_ereignis_text(regel, str(z["ereignis"]), [int(z["police_id"])]))
+        # Die Eindeutigkeit (Runde F, Nachbesserung, Klasse): je (Police,
+        # Ereignis, Wirkungstag, Betragsart) genau eine Zeile, fuer JEDE Art —
+        # dieselbe Regel wie in validate_ledger; die Verdopplung der
+        # Beitragsereignisse meldet die Paarregel oben. Die ueberzaehlige Zeile
+        # wird nicht nachgerechnet und nicht als geprueft gezaehlt (die erste
+        # bleibt die Buchung); die Herabsetzung sieht sie ebenfalls nicht mehr
+        # (``doppelt_idx``) — ein Fehler, ein Befund.
+        ueberzaehlig = doppelte_buchungen(im_lauf, gemeldet)
+        doppelt_idx = set(im_lauf.index[ueberzaehlig])
+        for art_d in sorted(set(im_lauf["ereignis"].to_numpy()[ueberzaehlig])):
+            policen_d = sorted(set(int(p) for p in im_lauf["police_id"].to_numpy()[
+                ueberzaehlig & (im_lauf["ereignis"].to_numpy() == art_d)]))
+            befund(None, "doppelte_buchung", doppelte_buchung_text(art_d, policen_d),
+                   ereignis=art_d, policen=policen_d)
+        ausserhalb_idx |= doppelt_idx
+        gemeldet = gemeldet | ueberzaehlig
+        # Der Wirkungstag ist der Jahrestag des Vertragsjahres (Runde F, Regel
+        # aus validate_reduktionen): Tabelle und Ledger gleich verschoben, und
+        # die Probe sah keinen Unterschied. Die RED-Zeilen bindet die Tabelle
+        # (unten); jede andere Zeile steht selbst am Jahrestag. Die Maske steht
+        # VOR der Paarregel (Nachbesserung): Eine Zeile am falschen Tag meldet
+        # der Wirkungstag-Befund unten, die Paarregel nimmt den ganzen Vorfall aus.
+        falscher_tag = jahrestag_verstoesse(im_lauf, stamm) & ~gemeldet \
+            & (im_lauf["ereignis"].to_numpy() != "RED")
+        # Die Paarbuchung (Runde F, Klasse): je Vorfall mit Beitragswirkung
+        # genau eine Summenzeile und eine Beitragszeile — dieselbe Regel wie in
+        # validate_ledger. Eine Zeile, die eine Regel oben beanstandet, nimmt
+        # ihren GANZEN Vorfall aus (Nachbesserung): die Partnerzeile bringt keinen
+        # zusaetzlichen Befund, ein Vorfall ist ein Fehler.
+        for (art_p, verstoss), policen_p in sorted(
+                beitragspaar_verstoesse(im_lauf, stamm, gemeldet | falscher_tag).items()):
+            befund(None, "beitragspaar", beitragspaar_text(art_p, verstoss, policen_p),
+                   ereignis=art_p, verstoss=verstoss, policen=policen_p)
+        # Ein Betrag ist eine endliche Zahl (Runde F): ``abs(betrag - erwartet) >
+        # TOLERANZ`` ist bei NaN immer falsch, und ein NaN-Betrag galt als
+        # geprueft und uebereinstimmend. Fuer JEDE Ereignisart, nicht nur die
+        # nachgerechneten; P-B1 meldet dasselbe als 'fehlende Werte (NaN) in
+        # betrag'. Die Zeile wird nicht nachgerechnet und nicht gezaehlt.
+        betraege = pd.to_numeric(im_lauf["betrag"], errors="coerce").to_numpy(dtype="float64")
+        for pos in np.flatnonzero(~np.isfinite(betraege)):
+            z = im_lauf.iloc[int(pos)]
+            ausserhalb_idx.add(im_lauf.index[int(pos)])
+            befund(int(z["police_id"]), "betrag_nicht_endlich",
+                   f"{z['ereignis']}-Buchung {z['betrag_art']} am "
+                   f"{pd.Timestamp(z['status_date']).date()}: Betrag {z['betrag']!r} ist "
+                   "keine endliche Zahl — ein Buchungsbetrag ist endlich; die Zeile wird "
+                   "nicht nachgerechnet und nicht als geprueft gezaehlt")
+        # Der Wirkungstag (Maske oben): eine Zeile am falschen Tag wird nicht
+        # nachgerechnet und nicht als geprueft gezaehlt.
+        for pos in np.flatnonzero(falscher_tag):
+            z = im_lauf.iloc[int(pos)]
+            jahrestag = reduktion_jahrestag(
+                haupt.loc[int(z["police_id"]), "insurance_start"], z["vertragsjahr"])
+            ausserhalb_idx.add(im_lauf.index[int(pos)])
+            befund(int(z["police_id"]), "wirkungstag",
+                   f"{z['ereignis']}-Buchung am {pd.Timestamp(z['status_date']).date()} "
+                   f"steht nicht am Jahrestag {jahrestag.date()} ihres Vertragsjahres "
+                   f"{int(z['vertragsjahr'])} — die Engine bucht zum Jahreswechsel; die "
+                   "Zeile wird nicht nachgerechnet und nicht als geprueft gezaehlt")
+        for pid, (r_jahr, _anteil, r_verfahren) in sorted(reduktion_je_police.items()):
+            if pid not in haupt.index:
+                continue
+            jahrestag = reduktion_jahrestag(haupt.loc[pid, "insurance_start"], r_jahr)
+            if wirkungstag[pid] != jahrestag:
+                befund(pid, "herabsetzung",
+                       f"{'Teilkuendigung' if r_verfahren == TEILKUENDIGUNG else 'Herabsetzung'}: "
+                       f"Wirkungstag {wirkungstag[pid].date()} ist nicht der Jahrestag "
+                       f"{jahrestag.date()} des Reduktionsjahres {r_jahr} — Tabelle und "
+                       "Ledger duerfen ihn nicht frei setzen")
         # Die Rate: Jede Buchung nach dem Zugang folgt aus einer Annahme der
         # Config, die sie erzeugen kann (Runde E, Klasse geschlossen).
         for feld, eintraege in sorted(unbelegte_ereignisse(
@@ -971,7 +1088,8 @@ def pruefe_fuehrung(
         # einmal am Wirkungstag der Tabelle (Angriffsrunde nach T27: die
         # Probe pruefte nur die Zeilen, die da waren — 43 gestrichene
         # Auszahlungen bestanden sie; P-B1 hatte die Soll-Menge seit T27-14).
-        red_zeilen = f_ledger[f_ledger["ereignis"] == "RED"]
+        red_zeilen = f_ledger[(f_ledger["ereignis"] == "RED")
+                              & ~f_ledger.index.isin(list(doppelt_idx))]
         for pid, red in sorted(reduktion_je_police.items()):
             welt = welten.get(pid)
             if welt is None or pid in ausgeschlossen:
@@ -1051,7 +1169,7 @@ def pruefe_fuehrung(
                 else:
                     erwartet = sum(v.reduktion.vs_neu for _, v in teile_red)
                 buchungen[art] += 1
-                if abs(float(z["betrag"]) - erwartet) > TOLERANZ:
+                if weicht_ab(z["betrag"], erwartet, TOLERANZ):
                     abweichungen += 1
                     befund(pid, "buchung",
                            f"{art} Jahr {jahr}: Ledger {float(z['betrag']):.2f}, "
@@ -1092,7 +1210,7 @@ def pruefe_fuehrung(
                 else:
                     erwartet = grund_mp.sum_insured + sum(k.mp.sum_insured for _, k in teile)
             buchungen[art] += 1
-            if abs(float(z["betrag"]) - erwartet) > TOLERANZ:
+            if weicht_ab(z["betrag"], erwartet, TOLERANZ):
                 abweichungen += 1
                 befund(pid, "buchung",
                        f"{art} im Vertragsjahr {jahr}: Fuehrung {float(z['betrag']):.2f}, "

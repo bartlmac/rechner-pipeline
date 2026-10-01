@@ -183,7 +183,17 @@ offenliess und hier festgelegt wurde — jeweils mit Grund:
 7. **Die Kopie ist gekennzeichnet** (``zugangsprobe-kopie.json``): Nur auf
    ihr registriert die Probe ohne Abnahme und laesst ihren Eingang ohne
    Abnahme eintreten; auf einer echten Ablage verweigern beide Wege, und
-   auf der Kopie verweigert jeder echte Lauf.
+   auf der Kopie verweigert jeder echte Lauf. Das Kennzeichen entsteht vor
+   dem ersten kopierten Byte (Runde F, F6). Weil es eine ungezeichnete
+   Datei ist, traegt zusaetzlich jede Protokollzeile eines Probelaufs
+   gezeichnet das Feld ``zugangsprobe`` (Fall, Kennung, Kopie, Zeitpunkt;
+   Runde F, F9): Tageslauf, Export, Tagesseite und Konsument verweigern
+   eine Kette mit einer Probezeile als Kettenbruch ("Probenkopie"),
+   Registrierung, Neuaufsetzen und die Probe selbst verweigern Kennzeichen
+   oder Probezeile. Entfernt jemand das Feld ohne Schluessel, bricht die
+   Signatur. Die Ausnahme vom A-B2 haengt am Zeichner des Probelaufs, nicht
+   an einem Parameter: Ein Eingang tritt ohne Abnahme nur in einer Zeile
+   ein, die als Probezeile gezeichnet ist.
 8. **Neuaufsetzen**: Der Eingang der neuen Ablage braucht seine eigene
    A-B2, gerechnet auf einer leeren Ablage mit der neuen Config (deren
    gefuehrter Stand ist genau das), uebergeben mit ``--zugangsabnahme``.

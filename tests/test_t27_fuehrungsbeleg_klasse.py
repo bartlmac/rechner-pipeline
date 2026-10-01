@@ -190,18 +190,18 @@ def test_eine_fortschreibung_vor_dem_folgestichtag_wird_abgewiesen(tmp_path):
 
 
 def test_eine_fortschreibung_die_p_b1_abweist_wird_abgewiesen(tmp_path):
-    """Eine Buchung, die die Probe nicht ansieht (der Beitrag einer
-    Erhoehung ohne Scheibe nach dem Stichtag: sie rechnet ERH nur ueber die
-    Erhoehungssumme), stimmig ins Manifest nachgezogen, die Probe ehrlich
-    neu gefahren — P-B1 leitet sie her und weist ab. Stellvertretend fuer
-    jede Regel, die P-B1 kennt und die Probe nicht nachbaut (Hoehe der
-    Erhoehungen). Mutationsprobe: P-B1 auf der Fortschreibung nicht fahren
-    -> rot.
+    """Eine Buchung, die die Probe nicht nachrechnet (der BETRAG des Beitrags
+    einer Erhoehung nach dem Stichtag: die Probe zaehlt das Paar und bindet die
+    Scheibe, rechnet aber den Beitrag nicht), stimmig ins Manifest
+    nachgezogen, die Probe ehrlich neu gefahren — P-B1 leitet ihn her und weist
+    ab. Stellvertretend fuer jede Regel, die P-B1 kennt und die Probe nicht
+    nachbaut. Mutationsprobe: P-B1 auf der Fortschreibung nicht fahren -> rot.
 
-    Der Zugang am Stichtag war hier bis Runde C das Beispiel; seit RC02
-    haelt die Probe das Ledger bis zum Stichtag selbst gegen die Uebernahme
-    (``endledger``) und sieht ihn — das Beispiel musste wandern, die Aussage
-    bleibt."""
+    Der Zugang am Stichtag war hier bis Runde C das Beispiel, danach der
+    fehlende Scheibenbezug einer Beitragszeile; seit Runde F (Paarbuchung) sieht
+    die Probe beides. Das Beispiel musste wandern, die Aussage bleibt: eine
+    vollstaendige Erhoehung (Summenzeile, Beitragszeile, Scheibe) mit einem
+    Beitrag, der nicht aus dem Kern dieser Police folgt."""
     import hashlib
 
     import pandas as pd
@@ -216,16 +216,29 @@ def test_eine_fortschreibung_die_p_b1_abweist_wird_abgewiesen(tmp_path):
     lauf = fall / "abgeleitet" / "bestand-falsch"
     shutil.copytree(fall / "abgeleitet" / "bestand-nach", lauf)
     ledger = read_portfolio(lauf / "ledger.parquet")
+    scheiben = read_portfolio(lauf / "scheiben.parquet")
     zug = ledger.index[ledger["ereignis"] == "ZUG"]
     assert len(zug), "die Welt traegt keinen Zugang"
-    stich = ledger.iloc[[zug[0]]].copy()
-    stich["ereignis"], stich["betrag_art"] = "ERH", "BJB"
-    stich["betrag"], stich["betrag_herkunft"] = 100.0, "gerechnet"
-    stich["vertragsjahr"], stich["status_date"] = 12, pd.Timestamp("2027-01-01")
-    neu = pd.concat([ledger, stich], ignore_index=True).astype(ledger.dtypes.to_dict())
+    datum = pd.Timestamp("2027-01-01")          # Jahrestag des Jahres 12 (Beginn 2015-01-01)
+    paar = pd.concat([ledger.iloc[[zug[0]]]] * 2, ignore_index=True)
+    paar["ereignis"], paar["betrag_herkunft"] = "ERH", "gerechnet"
+    paar["vertragsjahr"], paar["status_date"] = 12, datum
+    paar["betrag_art"] = ["VS_erhoehung", "BJB"]
+    paar["betrag"] = [5000.0, 100.0]            # 100 EUR sind nicht VS x Bxt dieser Scheibe
+    neu = pd.concat([ledger, paar], ignore_index=True).astype(ledger.dtypes.to_dict())
+    scheibe = pd.DataFrame([{
+        "police_id": int(paar["police_id"].iloc[0]), "scheiben_id": 1,
+        "erhoehung_jahr": 12, "erhoehung_datum": datum, "entry_age": 35 + 12,
+        "duration": 20 - 12, "premium_duration": 15 - 12, "sum_insured": 5000.0,
+        "gamma1": 0.0}])
+    neu_s = pd.concat([scheiben, scheibe], ignore_index=True).astype(scheiben.dtypes.to_dict())
+    (lauf / "scheiben.parquet").chmod(0o644)
+    write_portfolio(neu_s, lauf / "scheiben.parquet")
     (lauf / "ledger.parquet").chmod(0o644)
     write_portfolio(neu, lauf / "ledger.parquet")
     manifest = json.loads((lauf / "laufmanifest.json").read_text(encoding="utf-8"))
+    manifest["ausgaben"]["scheiben.parquet"] = hashlib.sha256(
+        (lauf / "scheiben.parquet").read_bytes()).hexdigest()
     manifest["ausgaben"]["ledger.parquet"] = hashlib.sha256(
         (lauf / "ledger.parquet").read_bytes()).hexdigest()
     (lauf / "laufmanifest.json").chmod(0o644)

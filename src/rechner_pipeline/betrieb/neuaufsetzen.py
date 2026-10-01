@@ -206,6 +206,15 @@ def _neu_aufsetzen_unter_sperre(
     # sind, nicht die Kette: Ob sie haelt, ist Sache des Tageslaufs; das
     # Archiv bewahrt sie, wie sie ist. Die Signatur wird hier nicht
     # nachgerechnet — neu aufgesetzt wird auch nach einem Schluesselwechsel.
+    # Eine Probenkopie wird nicht neu aufgesetzt (Runde F, F9): Sie gehoert
+    # der Probe, und ihr Archiv waere die Geschichte einer Ablage, die es nie
+    # gab. Gefragt wird VOR jedem Aufbau, mit Kennzeichen ODER Probezeile.
+    from rechner_pipeline.betrieb.tageslauf import probenkopie_fehler
+
+    fehler = probenkopie_fehler(alt)
+    if fehler:
+        raise NeuaufsetzenError(
+            f"{fehler} — neu aufgesetzt wird die produktive Ablage; nichts bewegt")
     fehler = aufschaltung_fehler(
         _protokollzeilen_formlos(alt.protokoll_pfad), aufschalten=aufschalten,
         wer="das Neuaufsetzen")

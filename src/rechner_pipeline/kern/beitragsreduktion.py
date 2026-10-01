@@ -90,6 +90,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 if TYPE_CHECKING:  # pragma: no cover
     from rechner_pipeline.kern.produkte.klv import Monatsreserve
 
+from rechner_pipeline.kern.konventionen import untergrenze_basissumme
 from rechner_pipeline.kern.korrekturschicht import (
     schicht_traegt,
     schichtwert_bei,
@@ -361,7 +362,8 @@ def _reduziere_eine_schicht(
     # RC01 auf KLV_DEFAULT -305,02, alt — tests/test_herabsetzung_mrv_track.py).
     # Der Floor gilt fuer die Basisschicht; die Korrekturschicht kommt
     # darunter noch hinzu (siehe unten) und wird nicht mehr geklemmt.
-    umgewandelt = max(0.0, zeile.vx_mrv * nach_abzug * (1.0 - anteil))
+    umgewandelt = untergrenze_basissumme(
+        zeile.vx_mrv * nach_abzug * (1.0 - anteil))
     # ``zusatz_dk`` ist Deckungskapital OHNE eigene Zusage — die
     # Korrekturschicht eines uebernommenen Vertrags. Sie traegt keinen
     # Beitrag, gehoert also vollstaendig zum umgewandelten Teil, nicht
@@ -537,18 +539,55 @@ def reduziere_geschichtet(
     # ueber den Abzug, bevor irgendeine Schicht gerechnet wird.
     gesamt = vertrags_monatsreserve(
         grund, list(scheiben), 12 * jahr, stoab_je_baustein=stoab_je_baustein)
-    # Der Anteil des Rueckkaufswerts, der die Umwandlung ueberlebt.
-    # Derselbe Faktor fuer jede Schicht: Der Abzug ist vertragsweit
-    # gebildet und wird proportional zum eingebrachten Rueckkaufswert
-    # getragen.
+    # Der Anteil des Rueckkaufswerts, der die Umwandlung ueberlebt, JE SCHICHT.
     if verfahren == PROSPEKTIV:
-        nach_abzug = 1.0
+        nach_abzug = [1.0] * len(teile)
     elif stoab_je_baustein:
-        # rkw ist hier NICHT max(0, vx_mrv - stoab): ein Baustein unter
-        # seinem Mindestabzug klemmt bei null (Kern, vertrags_monatsreserve).
-        nach_abzug = gesamt.rkw / gesamt.vx_mrv if gesamt.vx_mrv > 0.0 else 1.0
+        # Abzug je Baustein (Bedingungswerk Ziffer 4): Jeder Baustein traegt
+        # seinen eigenen Abzug und wandelt genau SEINEN Rueckkaufswert um,
+        # ``max(0, V^MRV_i - StoAb_i)`` — dieselbe Groesse, die sein Storno am
+        # selben Tag zahlt, und dieselbe Bildung wie beim ungeteilten Vertrag
+        # (``reduziere``: ``_abzugsfaktor``). Die Summe ist (1-f) x
+        # ``gesamt.rkw`` (die Summe der auf null begrenzten Baustein-Werte),
+        # und ein Baustein mit negativem Rueckkaufs-Track wandelt nichts um
+        # (Floor je Schicht). Runde F, Nachbesserung 2: Vorher bekam jede
+        # Schicht denselben Faktor ``gesamt.rkw / sum max(0, V^MRV_i)`` — die
+        # Summe stimmte, die Werte je Schicht nicht: Der Baustein mit dem
+        # kleineren Abzug wandelte mehr um als seinen eigenen Rueckkaufswert,
+        # der mit dem groesseren weniger (Messfall: Abzug 0,005 / 50 / 200,
+        # Zillmerdauer 5, f = 0,5, Herabsetzung Jahr 2, V^MRV Grund 2.605,86 /
+        # Scheibe 275,25, Abzug 200,00 / 101,41: umgewandelt Grund 1.166,62
+        # statt 1.202,93, Scheibe 123,23 statt 86,92 — Summe 1.289,85 gleich).
+        # Der Auftrag sagt "verteilt nach dem geklemmten
+        # Baustein-RKW"; der gemeinsame Faktor tat es nur ohne verschiedene
+        # Abzuege (Tarifplan klv.md 7.1 steht nicht dagegen).
+        nach_abzug = [
+            _abzugsfaktor(k.verlaufszeile(jahr - e).vx_mrv,
+                          k.verlaufszeile(jahr - e).stoab)
+            for e, k in teile]
     else:
-        nach_abzug = _abzugsfaktor(gesamt.vx_mrv, gesamt.stoab)
+        # Abzug je Vertrag (Tarifplan 6): einmal auf den Gesamtwerten
+        # gebildet, ``gesamt.rkw`` = max(0, sum V^MRV - StoAb). Umgewandelt wird
+        # (1-f) x dieser RKW — genau so viel, auch wenn ein Baustein einen
+        # negativen Rueckkaufs-Track hat (Runde F, F1) —, verteilt nach dem auf
+        # null begrenzten Rueckkaufs-Track der Schicht (die Baustein-Groesse,
+        # auf der der vertragsweite Abzug aufsitzt; ein Baustein-RKW mit eigenem
+        # Abzug gibt es hier nicht). Der Faktor ist RKW geteilt durch die Summe
+        # der auf null begrenzten V^MRV, denn nur diese Summe geht in die
+        # Umwandlung ein (``_reduziere_eine_schicht``: je Schicht max(0, ...)).
+        # Geteilt durch die UNBEGRENZTE Summe (``gesamt.vx_mrv``) wurde der
+        # Faktor groesser als eins, sobald eine junge Scheibe in der
+        # Zillmerdauer negativ war: Messfall KLV x=18, n=t=40, alpha 0,04,
+        # zillmer_dauer 1, Scheibe 20.000 aus Jahr 1, Herabsetzung Jahr 2,
+        # f = 0,5: Ist 334,40, Soll 114,88 (V^MRV Grund 429,77, Scheibe
+        # -282,12); ohne Abzug 625,47 statt 214,88 — "mit Abzug" lag UEBER
+        # "prospektiv". Mit Abzug 0 und f -> 0 lag es bei 1.250,94 statt beim
+        # Storno-RKW 429,77.
+        positiv = sum(
+            max(0.0, kern.verlaufszeile(jahr - erh_jahr).vx_mrv)
+            for erh_jahr, kern in teile)
+        faktor = min(1.0, gesamt.rkw / positiv) if positiv > 0.0 else 1.0
+        nach_abzug = [faktor] * len(teile)
 
     aus: List[Tuple[int, "Reduktion"]] = []
     for i, (erh_jahr, kern) in enumerate(teile):
@@ -558,7 +597,7 @@ def reduziere_geschichtet(
         # die Korrekturschicht nur bei der Grundscheibe (teile[0]): Sie
         # ist auf DEREN Modellpunkt kalibriert.
         aus.append((erh_jahr, _reduziere_eine_schicht(
-            kern, jahr - erh_jahr, anteil, nach_abzug, verfahren,
+            kern, jahr - erh_jahr, anteil, nach_abzug[i], verfahren,
             zusatz_dk=zusatz_dk if i == 0 else 0.0)))
     return aus
 
@@ -944,7 +983,8 @@ class ReduzierterVertrag:
         zeile = pfad_verlaufszeile(
             mp, als_zahlungspfad(self.reduktion, mp), self.kern.basis,
             int(pex_jahr), skalare=vertragskonstanten(mp, self.kern.basis))
-        return zeile.vx_mrv / self.kern.verlaufszeile(int(pex_jahr)).vx_bfr
+        return untergrenze_basissumme(
+            zeile.vx_mrv / self.kern.verlaufszeile(int(pex_jahr)).vx_bfr)
 
     def reserve_beitragsfrei(self, pex_jahr: int, monate: int) -> float:
         """Reserve nach einer SPAETEREN Beitragsfreistellung des

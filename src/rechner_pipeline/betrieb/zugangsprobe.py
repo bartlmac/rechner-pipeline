@@ -559,10 +559,23 @@ def _lauf_beleg(ablage: tl.Ablage, code: int, zeile: Mapping[str, Any]) -> Dict[
 
 
 def _kopiere(stand: Path, ziel: Path, kennzeichen: Dict[str, Any]) -> tl.Ablage:
-    shutil.copytree(stand, ziel, symlinks=True)
+    """Eine Kopie der Ablage — gekennzeichnet VOR dem ersten kopierten Byte.
+
+    Runde F, F6: Erst kopieren, dann kennzeichnen liess bei einem
+    Prozessende dazwischen eine ungekennzeichnete Vollkopie zurueck, auf der
+    der Tageslauf gruen fuhr. Jetzt entsteht das Zielverzeichnis leer, das
+    Kennzeichen hinein, dann die Ablage dazu: Jeder Zwischenstand traegt das
+    Kennzeichen (auch ein halb geschriebenes verweigert, denn gefragt wird,
+    ob die Datei DA ist). Das Original traegt nie eines
+    (:func:`tl.probenkopie_fehler` vorher), also ueberschreibt die Kopie es
+    nicht.
+    """
+    ziel.mkdir(parents=True)
     (ziel / tl.ZUGANGSPROBE_KOPIE_DATEI).write_text(
-        json.dumps(kennzeichen, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        json.dumps({**kennzeichen, "kopie": ziel.name}, ensure_ascii=False, indent=2,
+                   sort_keys=True) + "\n",
         encoding="utf-8")
+    shutil.copytree(stand, ziel, symlinks=True, dirs_exist_ok=True)
     return tl.Ablage(ziel)
 
 
@@ -579,6 +592,7 @@ def zugangsprobe(
     snapshot_sha256: Optional[str] = None,
     quelle: Optional[Path] = None,
     image_digest: Optional[str] = None,
+    jetzt: Optional[_dt.datetime] = None,
 ) -> Dict[str, Any]:
     """Die Probe fahren und den gezeichneten Beleg liefern (geschrieben wird er
     von :func:`main`; das Original wird nie beschrieben).
@@ -589,6 +603,11 @@ def zugangsprobe(
     Verzeichnis, das danach entfernt wird. Schluessel, Ordnung und
     Freigabe-Schluesselring wie bei ``betrieb.uebernahme``: Die Probe
     registriert in ihrer Kopie genau so, wie die Registrierung es spaeter tut.
+
+    ``jetzt``: der Zeitpunkt der Probe (Default: jetzt, UTC). Er steht mit
+    der Kennung der Probe im Kennzeichen jeder Kopie und gezeichnet in jeder
+    Protokollzeile, die die Probe auf ihr schreibt (Runde F, F9) — der
+    Tageslauf zieht dafuer keine Uhr.
     """
     from rechner_pipeline.kern import __version__ as kern_version
     from rechner_pipeline.models.zeichnung import ausserhalb_von
@@ -597,6 +616,12 @@ def zugangsprobe(
     original = tl.Ablage(stand)
     if not stand.is_dir():
         raise ZugangsprobeError(f"{stand}: keine Ablage")
+    # Keine Probe auf einer Probenkopie (Runde F, F6/F9): Ihre Kopie truege
+    # das Kennzeichen des Originals mit, und ihre Zeilen sind Probezeilen.
+    kopie_fehler = tl.probenkopie_fehler(original)
+    if kopie_fehler:
+        raise ZugangsprobeError(
+            f"{kopie_fehler} — die Probe laeuft auf der produktiven Ablage")
     if stichtag.day != 1:
         raise ZugangsprobeError(
             f"Zugangsstichtag {stichtag.isoformat()} ist kein Monatserster — nur an einem "
@@ -640,8 +665,14 @@ def zugangsprobe(
             with tl.lauf_sperre(original):
                 gefuehrt = tl.gefuehrter_tag(original, zeichner)
                 stand_inhalt = tl.ablage_stand(original)
+                zeitpunkt = (jetzt or _dt.datetime.now(_dt.timezone.utc)).isoformat()
                 kennzeichen = {"fall": fallname, "original": str(stand),
-                               "ablage_stand_sha256": zp.stand_sha256(stand_inhalt)}
+                               "ablage_stand_sha256": zp.stand_sha256(stand_inhalt),
+                               "zeitpunkt": zeitpunkt}
+                # Die Kennung der Probe: beide Kopien tragen dieselbe, jede
+                # Probezeile nennt sie (Runde F, F9).
+                kennzeichen["kennung"] = sha256_bytes(json.dumps(
+                    kennzeichen, ensure_ascii=False, sort_keys=True).encode("utf-8"))
                 ohne = _kopiere(stand, arbeit / KOPIE_OHNE, kennzeichen)
                 mit = _kopiere(stand, arbeit / KOPIE_MIT, kennzeichen)
                 if tl.ablage_stand(original) != stand_inhalt:  # pragma: no cover - Sperre haelt
@@ -798,6 +829,30 @@ def _letzte_gruene_zeile(ablage: tl.Ablage) -> Optional[Dict[str, Any]]:
     return letzte
 
 
+def _schreibe_beleg(out: Path, beleg: Mapping[str, Any]) -> None:
+    """Den Beleg vollstaendig daneben schreiben, dann in einem Zug an ``out``.
+
+    Die Tempdatei entsteht mit den Rechten, die der Beleg vorher hatte
+    (0666 vor der umask, wie ``write_text``) — der Beleg liegt im Fall und
+    wird von anderen gelesen; ein mkstemp gaebe ihm still 0600.
+    """
+    inhalt = (json.dumps(beleg, ensure_ascii=False, indent=2, sort_keys=True)
+              + "\n").encode("utf-8")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    temp = out.with_name(f".{out.name}.{os.getpid()}.tmp")
+    try:
+        temp.unlink(missing_ok=True)
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        with os.fdopen(fd, "wb") as datei:
+            datei.write(inhalt)
+            datei.flush()
+            os.fsync(datei.fileno())
+        os.replace(temp, out)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.betrieb.zugangsprobe",
@@ -860,9 +915,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"zugangsprobe: Ein-/Ausgabefehler: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     out = Path(ns.out) if ns.out else Path(ns.fall) / zp.BELEG_RELATIV
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(beleg, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                   encoding="utf-8", newline="\n")
+    # Der Beleg vollstaendig daneben, dann in einem Zug an den festen Ort
+    # (Runde F, F7): Ein Fehler beim Schreiben stand hinter dem try-Block und
+    # endete als Traceback mit Exit 1 — fuer einen Aufrufer "nicht
+    # bestanden" — und liess einen abgeschnittenen Beleg dort, wo A-B2 ihn
+    # liest. Jetzt Exit 2 mit Meldung, und am festen Ort liegt unveraendert,
+    # was vorher dort lag.
+    try:
+        _schreibe_beleg(out, beleg)
+    except OSError as exc:
+        print(f"zugangsprobe: Ein-/Ausgabefehler beim Beleg {out}: {type(exc).__name__}: "
+              f"{exc} — die Probe ist gelaufen, ihr Beleg nicht geschrieben; am festen Ort "
+              "liegt unveraendert, was vorher dort lag. Ausweg: Platz bzw. Rechte am Ort "
+              "des Belegs herstellen und die Probe erneut fahren", file=sys.stderr)
+        return 2
     rot = [v for v in beleg["vergleiche"] if v.get("ok") is False]
     print(f"zugangsprobe: {'BESTANDEN' if beleg['bestanden'] else 'NICHT BESTANDEN'} — "
           f"{len(beleg['vergleiche'])} Vergleiche, {len(rot)} rot, {len(beleg['befunde'])} "

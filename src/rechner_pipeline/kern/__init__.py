@@ -146,7 +146,28 @@ from rechner_pipeline.kern.rechenkern import (
 #: die Summen herabgesetzter Vertraege innerhalb der Zillmerdauer; die
 #: Teilkuendigung, unreduzierte Vertraege und alle Charakterisierungs-
 #: Referenzwerte des Kerns sind unveraendert.
-__version__ = "3.12.0"
+#: 3.13.0 = Herabsetzung mit Abzug (reduziere_geschichtet): umgewandelt
+#: wird genau (1-f) x RKW des Storno am selben Tag, auch wenn ein Baustein
+#: einen negativen Rueckkaufs-Track hat (Runde F, F1) — der Faktor ist RKW
+#: geteilt durch die Summe der auf null begrenzten V^MRV, nicht durch die
+#: unbegrenzte Summe; vorher lag "mit Abzug" dort ueber "prospektiv". Ohne
+#: negativen Baustein bit-nah unveraendert (Rundung im letzten Bit).
+#: 3.14.0 = Keine Summe der Basisschicht wird negativ (Entscheid des
+#: Maintainers 2026-09-30, Runde F, F2): die beitragsfreie Summe der
+#: Beitragsfreistellung (KLV ``beitragsfreie_summe``, spaetere PEX nach einer
+#: Herabsetzung) ist ``max(0, V^MRV / V^bfr)`` — dieselbe Regel, dieselbe
+#: Funktion (``konventionen.untergrenze_basissumme``) wie beim umgewandelten
+#: Teil der Herabsetzung, damit f = 0 die Beitragsfreistellung bleibt. Nur
+#: dort geaendert, wo V^MRV in der Zillmerdauer negativ ist (zulaessige
+#: Parameter, z. B. alpha 0,06 / zillmer_dauer 2); die Verlaufswerte-Spalte
+#: ``VS_bfr`` und alle Charakterisierungs-Referenzwerte sind unveraendert.
+#: 3.15.0 = Herabsetzung mit Abzug je Baustein (stoab_je_baustein): jeder
+#: Baustein wandelt seinen EIGENEN Rueckkaufswert (1-f) x RKW_i um, nicht
+#: einen gemeinsamen Anteil der Summe (Runde F, Nachbesserung 2: Auftrag
+#: "verteilt nach dem geklemmten Baustein-RKW"). Die Summe ist unveraendert;
+#: die Werte je Schicht aendern sich nur bei verschiedenen Abzuegen der
+#: Bausteine. Vertragsweiter Abzug und prospektiv unveraendert.
+__version__ = "3.15.0"
 
 __all__ = [
     "ModelPoint",

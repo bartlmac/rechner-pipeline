@@ -126,7 +126,7 @@ $$
 \text{RKW}_a = \max\bigl(0,\, \textstyle\sum_{\text{Scheiben}}
 {}_a V^{MRV} - \text{StoAb}_a \bigr), \qquad
 S^{bfr}_a = \begin{cases}
-{}_a V^{MRV} / {}_a V^{bfr} & a < t \\
+\max\bigl(0,\, {}_a V^{MRV} / {}_a V^{bfr}\bigr) & a < t \\
 S & t \le a \le n \\
 0 & a > n .
 \end{cases}
@@ -210,17 +210,76 @@ umwandelt: umgewandelt wird $(1-f)\,\text{RKW}$. Der Abschlag ist
 höchstens der Rückkaufs-Track selbst, bei nicht positivem Wert entfällt
 er, und der umgewandelte Teil ist nie negativ — wie beim Rückkaufswert;
 keine Summe und keine Leistung wird negativ, auch bei nicht positiver
-Rückstellung im ersten Vertragsjahr (nach Messung entsteht dort auf dem
-Rückkaufs-Track kein negativer Wert; die Untergrenze bleibt Teil der
-Regel; ihre Grenze steht unten). „Mit Abzug" liegt damit nie über „prospektiv". Bei $f = 1$ ändert
+Rückstellung im ersten Vertragsjahr (die Untergrenze ist Teil der Regel,
+sie greift an einer echten Eingabe: V^MRV ist innerhalb der Zillmerdauer
+nicht für alle zulässigen Parameter positiv, siehe „Grenze der Untergrenze"
+unten). „Mit Abzug" liegt damit nie über „prospektiv". Bei $f = 1$ ändert
 sich nichts. Bei $f = 0$ ist die prospektive Herabsetzung die
 Beitragsfreistellung (gleiche Summe, gleicher Pfad), auch innerhalb der
-Zillmerdauer; die mit Abzug liegt um den Stornoabzug darunter. Der
+Zillmerdauer; die mit Abzug liegt um den Stornoabzug darunter (mit einem
+Baustein mit negativem Rückkaufs-Track beim vertragsweiten Tarifwerk um
+Abzug plus Saldo, siehe „Saldierung beim vertragsweiten Tarifwerk“ unten). Der
 Anteil $(1-f)$ des noch nicht getilgten Abschlusskostenrests geht dabei mit in die beitragsfreie Summe (siehe „Abschlusskosten folgen
 dem Beitrag" unten).
 Welches Verfahren gilt, ist eine Eigenschaft des rechnenden **Systems**
 und keine des Vertrags — es steht deshalb im Beleg einer Migration, nicht
 im Modellpunkt.
+
+**Grenze der Untergrenze (Runde F).** Die frühere Aussage „nach Messung
+entsteht auf dem Rückkaufs-Track kein negativer Wert" stimmt nicht für alle
+zulässigen Parameter: Die Config verlangt nur `zillmer_dauer > 0`, und
+${}_aV^{MRV}$ ist innerhalb der Zillmerdauer negativ, wenn der noch nicht
+getilgte Abschlusskostenrest die Rückstellung unterschreitet (gemessen für
+Eintrittsalter 18 bis 60, Zins 0 bis 4 %, DAV2008_T, je Paar
+($\alpha$, `zillmer_dauer`) 54 Vertragspunkte, Vertragsjahre $1 \le a < t$: `zillmer_dauer = 1` schon bei
+$\alpha = 0{,}025$ — 9 von 54 —, bei $\alpha = 0{,}06$ noch mit
+`zillmer_dauer` 2 und 3; mit `zillmer_dauer = 5` in dieser Suche nie). Die
+Regel dazu ist **eine**: keine Summe der Basisschicht wird negativ
+(*Entscheid des Maintainers 2026-09-30*). Sie gilt für die Beitragsfreistellung
+und die Herabsetzung gleich — $S^{bfr}_a = \max(0, {}_aV^{MRV}/{}_aV^{bfr})$ für
+$a < t$ (Abschnitt 6), der umgewandelte Teil $\max(0, \ldots)$ — damit
+bleibt bei $f \to 0$ die prospektive Herabsetzung die Beitragsfreistellung
+(gleiche Summe null) und die Ereignis-Engine bucht nie eine negative
+`VS_bfr`. Eine Beitragsfreistellung in einem solchen Vertragsjahr
+ist also zulässig und führt zur beitragsfreien Summe null; das ist die
+Folge der Parameter, kein Fehler des Kerns. Die Spalte `VS_bfr` der
+Verlaufswerte bleibt die rohe Tarifformel (Blatt-View); die Ereignisse lesen
+die Summe mit Untergrenze. *Annahme, vom Maintainer zu entscheiden:* ob die
+Config eine Generation, deren Parameter diese Lage zulassen, bei der
+Validierung benennen soll (heute nicht; die Validierung kennt keine
+Eintrittsalter).
+
+**Saldierung beim vertragsweiten Tarifwerk (Runde F, Nachbesserung).** Der
+Satz „die mit Abzug liegt um den Stornoabzug darunter“ gilt, solange kein
+Baustein einen negativen Rückkaufs-Track hat, und beim Abzug je Baustein
+auch dann. Beim **vertragsweiten** Tarifwerk (Abschnitt 6: Grenzen je
+Vertrag) saldiert der Storno-Rückkaufswert die Bausteine,
+$\text{RKW}^{ges} = \max(0,\, \sum_i {}_aV^{MRV}_i - \text{StoAb})$, während
+die Beitragsfreistellung und die prospektive Herabsetzung **je Baustein** auf
+null klemmen, $\sum_i \max(0,\, {}_aV^{MRV}_i)$. Ist ein Baustein negativ (eine
+junge Scheibe innerhalb der Zillmerdauer), liegt die Herabsetzung mit Abzug
+unter der prospektiven um **Abzug plus Saldo**,
+
+$$
+(1-f)\Bigl(\text{StoAb} + \sum_i \max(0,\, -{}_aV^{MRV}_i)\Bigr),
+$$
+
+solange $\text{RKW}^{ges} > 0$ ist (sonst um die ganze Summe
+$(1-f)\sum_i \max(0,\, {}_aV^{MRV}_i)$). Beim Abzug je Baustein klemmt auch der
+Storno-Rückkaufswert je Baustein, ein negativer Baustein trägt nichts bei, und
+der Abstand ist $(1-f)\sum_i \min\bigl(\text{StoAb}_i,\, \max(0,\,
+{}_aV^{MRV}_i)\bigr)$. Verteilt wird der umgewandelte Teil auf die Schichten
+nach dem auf null begrenzten Baustein-Rückkaufswert: beim Abzug je Baustein
+wandelt jeder Baustein seinen **eigenen** $\text{RKW}_i$ um, beim
+vertragsweiten Abzug (der keinen Baustein-$\text{RKW}$ kennt) der Vertrags-RKW
+nach dem auf null begrenzten Track der Schicht. *Annahme, vom Maintainer zu
+entscheiden:* (a) dass die Herabsetzung mit Abzug dem saldierten Storno-RKW
+folgt (also bei $f \to 0$ unter der Beitragsfreistellung liegt, obwohl dort
+jeder Baustein einzeln klemmt) und nicht dem ungesaldierten Wert; (b) dass der
+vertragsweite Abzug nach dem auf null begrenzten Track statt nach einer
+anderen Größe auf die Bausteine fällt — die Summe ist davon unabhängig, nur die
+Werte je Schicht (und damit die spätere Beitragsfreistellung je Baustein) sind
+es nicht.
 
 **Grenze des Floors.** Der Floor auf null gilt für den umgewandelten Teil
 der **Basisschicht**, nicht für die Korrekturschicht: Eine negative
@@ -284,9 +343,23 @@ Schicht getragen —
 
 $$
 q_i^{\text{mit Abzug}} = (1-f)\,
-\Bigl(1 - \frac{\min(\text{StoAb}^{ges}_{a_0},\, V^{MRV,ges}_{a_0})}{V^{MRV,ges}_{a_0}}\Bigr)
-\frac{{}_{a_i}V^{MRV}}{S_i \cdot {}_{a_i}V^{bfr}} .
+\frac{\text{RKW}^{ges}_{a_0}}{\sum_j \max(0,\, {}_{a_j}V^{MRV})}
+\cdot\frac{\max(0,\, {}_{a_i}V^{MRV})}{S_i \cdot {}_{a_i}V^{bfr}} ,
+\qquad
+\sum_i S_i\,q_i^{\text{mit Abzug}}\,{}_{a_i}V^{bfr} = (1-f)\,\text{RKW}^{ges}_{a_0} .
 $$
+
+$\text{RKW}^{ges}_{a_0}$ ist der Rückkaufswert, den ein Storno am selben
+Tag zahlt — nach dem Tarifwerk der Generation (Abschnitt 6: Grenzen je
+Vertrag, oder je Baustein mit der Summe der auf null begrenzten
+Baustein-Werte). Der Nenner ist die Summe der auf null begrenzten
+Rückkaufs-Tracks, denn nur diese Summe geht in die Umwandlung ein (je
+Schicht $\max(0, \ldots)$); durch die unbegrenzte Summe geteilt, wäre der
+Faktor größer als eins, sobald eine junge Scheibe in der Zillmerdauer
+negativ ist, und „mit Abzug" läge über „prospektiv" (Runde F, F1: Ist
+334,40 statt 114,88 bei $V^{MRV}$ Grund 429,77, Scheibe −282,12). Mit
+Abzug wird also nie mehr umgewandelt als $(1-f)\,\text{RKW}$, und nie mehr
+als prospektiv.
 
 Je Schicht gebildet griffen $u_{\min}$ und $u_{\max}$ mehrfach, und ein
 Vertrag mit zwei Erhöhungen verlöre beim Herabsetzen mehr als den
@@ -330,7 +403,11 @@ umgewandelte Teil $(1-f)\,\text{RKW}$ mit dem Rückkaufswert nach dem
 Tarifwerk der Generation — der Summe der auf null begrenzten
 Baustein-Rückkaufswerte mit je eigenem Abzug, derselben Größe, die ein
 Storno am selben Tag zahlt — nicht mit einem vertragsweit gebildeten Abzug.
-*Präzisierung 2026-09-30 (Prüfrunde T27, Runde D).*
+*Präzisierung 2026-09-30 (Prüfrunde T27, Runde D).* Auf die Schichten fällt er
+je Baustein: Jeder Baustein wandelt seinen eigenen
+$\text{RKW}_i = \max(0,\, {}_{a_i}V^{MRV} - \text{StoAb}_i)$ um, $(1-f)\,\text{RKW}_i$,
+nicht einen gemeinsamen Anteil der Summe (Runde F, Nachbesserung 2; die Summe
+ist dieselbe, die Werte je Schicht sind es nicht).
 
 # 8 Modellpunkt und Tarif-Stellschrauben
 

@@ -168,10 +168,13 @@ def _gepruefte_zeilen(
     )
 
     try:
+        # Die Tagesseite eines Probelaufs liest die Kette seiner Kopie; jeder
+        # andere Leser verweigert eine Probezeile (Runde F, F9).
         zeilen = list(lies_protokoll(
             ablage.protokoll_pfad,
             schluesselring=zeichner.ring if zeichner is not None else None,
-            ordnung=zeichner.ordnung if zeichner is not None else None))
+            ordnung=zeichner.ordnung if zeichner is not None else None,
+            zugangsprobe=getattr(zeichner, "zugangsprobe", None) is not None))
     except TageslaufError as exc:
         raise SeiteError(f"Das Protokoll traegt keinen Nachweis: {exc}") from exc
     if aktuelle_zeile is not None:
@@ -1248,9 +1251,9 @@ def _stands_paket_unter_sperre(
     if schluessel is not None:
         satz["zeichnung"] = _zeichnung_des_exports(
             satz, Path(schluessel), zeichnungsordnung, ablage.wurzel)
-    pfad = haenge_an(Path(anker_verzeichnis), satz)
+    anker_pfad = Path(anker_verzeichnis) / ANKER_DATEI
     modell["anker"] = {
-        "datei": str(pfad),
+        "datei": str(anker_pfad),
         "sha256": satz_hash(satz),
         "stand": satz["stand"],
         "art": satz["art"],
@@ -1263,10 +1266,27 @@ def _stands_paket_unter_sperre(
     (ziel / PAKET_BAU_MARKER).unlink()
     # Der Tausch: altes Paket beiseite, neues an seine Stelle, altes weg.
     # Endet der Prozess zwischen den zwei Umbenennungen, setzt der naechste
-    # Export das beiseitegelegte Paket zurueck (_raeume_paket_nebenorte).
+    # Export das beiseitegelegte Paket zurueck (_raeume_paket_nebenorte);
+    # scheitert die zweite, kehrt das alte sofort zurueck.
     if endziel.exists():
         os.rename(endziel, alt)
-    os.rename(bau, endziel)
+    try:
+        os.rename(bau, endziel)
+    except BaseException:
+        if alt.exists() and not endziel.exists() and not endziel.is_symlink():
+            os.rename(alt, endziel)
+        raise
+    # Der Anker ZULETZT (Runde F, F8): Er stand vor stand.json, dem Marker
+    # und dem Tausch, und ein Abbruch danach liess einen Satz fuer ein Paket
+    # zurueck, das nie an seinen Ort kam — der Konsument wies dann das
+    # unveraenderte, gueltige alte Paket als "umgeschrieben" ab. Jetzt
+    # steht das Paket, bevor der Satz kommt. Endet der Prozess dazwischen,
+    # sagt der Konsument ehrlich, dass der genannte Satz fehlt; der naechste
+    # Export heilt es.
+    try:
+        haenge_an(Path(anker_verzeichnis), satz)
+    except Exception as exc:
+        _anker_gescheitert(endziel, bau, alt, anker_pfad, satz, exc)
     # Das neue Paket ist veroeffentlicht. Scheitert das Wegraeumen des alten,
     # ist das kein Fehler des Exports (Angriffsrunde nach T27: Exit 2,
     # obwohl der Konsument das neue Paket schon annahm) — der naechste
@@ -1278,6 +1298,49 @@ def _stands_paket_unter_sperre(
             print(f"seite: Warnung: {alt} nicht weggeraeumt ({type(exc).__name__}: "
                   f"{exc}) — der naechste Export raeumt ihn", file=sys.stderr)
     return endziel
+
+
+def _satz_steht(anker_pfad: Path, satz: Dict[str, Any]) -> bool:
+    """Ob der Satz vollstaendig in der Ankerdatei steht (Fehler: nein)."""
+    try:
+        return any(satz_hash(s) == satz_hash(satz) for s in lies_anker(anker_pfad))
+    except (AnkerFehler, OSError, ValueError):
+        return False
+
+
+def _anker_gescheitert(endziel: Path, bau: Path, alt: Path, anker_pfad: Path,
+                       satz: Dict[str, Any], exc: Exception) -> None:
+    """Das Anhaengen des Ankersatzes ist gescheitert, das neue Paket steht.
+
+    Steht der Satz trotzdem vollstaendig in der Ankerdatei (der Fehler kam
+    nach dem Schreiben, etwa beim Schliessen), ist der Export geschehen:
+    Paket und Anker passen zueinander — nur eine Warnung. Sonst wird das
+    neue Paket beiseitegelegt und das vorige kehrt zurueck: Der extern
+    gepruefte Zustand ist dann der von vorher (Runde F, F8). Ein Fragment
+    am Ende der Ankerdatei zaehlt nicht (``models.anker.lies_anker``) und
+    faellt beim naechsten Anfuegen.
+    """
+    if _satz_steht(anker_pfad, satz):
+        print(f"seite: Warnung: Fehler nach dem Anfuegen des Ankersatzes "
+              f"({type(exc).__name__}: {exc}) — der Satz steht vollstaendig in "
+              f"{anker_pfad}, das Paket ist verankert", file=sys.stderr)
+        return
+    try:
+        os.rename(endziel, bau)
+        if alt.exists():
+            os.rename(alt, endziel)
+    except OSError as zweiter:
+        raise SeiteError(
+            f"{anker_pfad}: der Ankersatz liess sich nicht anfuegen ({type(exc).__name__}: "
+            f"{exc}), und das neue Paket liess sich nicht beiseitelegen "
+            f"({type(zweiter).__name__}: {zweiter}) — {endziel} ist NICHT verankert; der "
+            "Konsument weist es ab. Ausweg: die Ankerdatei schreibbar machen und erneut "
+            "exportieren") from exc
+    raise SeiteError(
+        f"{anker_pfad}: der Ankersatz liess sich nicht anfuegen ({type(exc).__name__}: "
+        f"{exc}) — das neue Paket ist beiseitegelegt, an {endziel} steht wieder, was "
+        "vorher dort stand (das vorige Paket mit seinem Anker). Ausweg: die Ankerdatei schreibbar machen (Platz, "
+        "Rechte) und erneut exportieren") from exc
 
 
 #: Markiert ein Bauverzeichnis des Exports, solange es nicht fertig ist.
