@@ -595,6 +595,37 @@ def monatserster_nach(datum: Any) -> Any:
     return (ts.to_period("M") + 1).to_timestamp()
 
 
+def zugangsbuchungen(ledger: Any, stamm: Any) -> Any:
+    """Je Ledgerzeile: ist sie eine Buchung, die der ZUGANG schreibt? Boolesches
+    Feld — die EINE Definition (Pruefrunde I, Fund I10).
+
+    Eine Zugangsbuchung steht am Zugangstag des Vertrags (``status_date`` gleich
+    ``bestandszugang``) und ist eine Art aus :data:`ZUGANGSTAG_EREIGNISSE`; die
+    Arten aus :data:`ZUGANGSTAG_NUR_UEBERNOMMEN` nur bei einem uebernommenen
+    Vertrag (Bestandszugang nach Versicherungsbeginn). Das Merkmal setzt der
+    Produzent selbst: ``gates.bestand_uebernehmen`` bucht Zugang und Umbuchung
+    zum Zugangsstichtag, die Fortschreibung bucht jeden Vorgang echt NACH dem
+    Bestandszugang (:func:`buchungsfenster_verstoesse`).
+
+    Eine solche Zeile uebernimmt einen bestehenden Zustand in die Fuehrung des
+    Zielsystems; sie ist kein Vorgang im Zugangsjahr. Ihr ``vertragsjahr`` ist
+    das des Zugangs, nicht das des Vorgangs — das Jahr einer mitgebrachten
+    Beitragsfreistellung steht in der Statushistorie (``validate_ledger``
+    verlangt dort eine Freistellung am oder vor der Umbuchung). Die Policen der
+    Zeilen muessen im Stamm stehen.
+    """
+    stamm_idx = stamm.set_index("police_id")
+    pids = ledger["police_id"].to_numpy()
+    zugang = stamm_idx.loc[pids, "bestandszugang"].to_numpy()
+    beginn = stamm_idx.loc[pids, "insurance_start"].to_numpy()
+    datum = ledger["status_date"].to_numpy()
+    art = ledger["ereignis"].to_numpy()
+    uebernommen = zugang > beginn
+    darf_am_tag = _np.isin(art, list(ZUGANGSTAG_EREIGNISSE)) & (
+        ~_np.isin(art, list(ZUGANGSTAG_NUR_UEBERNOMMEN)) | uebernommen)
+    return (datum == zugang) & darf_am_tag
+
+
 def buchungsfenster_verstoesse(
     ledger: Any, stamm: Any, horizont: Any = None
 ) -> Tuple[Any, Any]:
@@ -615,14 +646,10 @@ def buchungsfenster_verstoesse(
     stamm_idx = stamm.set_index("police_id")
     pids = ledger["police_id"].to_numpy()
     zugang = stamm_idx.loc[pids, "bestandszugang"].to_numpy()
-    beginn = stamm_idx.loc[pids, "insurance_start"].to_numpy()
     datum = ledger["status_date"].to_numpy()
     art = ledger["ereignis"].to_numpy()
-    uebernommen = zugang > beginn
     am_zugangstag = datum == zugang
-    darf_am_tag = _np.isin(art, list(ZUGANGSTAG_EREIGNISSE)) & (
-        ~_np.isin(art, list(ZUGANGSTAG_NUR_UEBERNOMMEN)) | uebernommen)
-    vor_zugang = (datum < zugang) | (am_zugangstag & ~darf_am_tag)
+    vor_zugang = (datum < zugang) | (am_zugangstag & ~zugangsbuchungen(ledger, stamm))
     if horizont is None:
         hinter = _np.zeros(len(ledger), dtype=bool)
     else:

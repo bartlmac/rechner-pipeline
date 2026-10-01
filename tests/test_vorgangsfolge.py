@@ -67,8 +67,8 @@ from rechner_pipeline.kern.vorgangsfolge import (
 #: nicht homogene Groesse, an der eine Skalierung scheitern wuerde).
 MP = dataclasses.replace(KLV_DEFAULT, stoab_min=50.0, stoab_max=200.0, stoab_satz=0.005)
 GRUND = Rechenkern(MP)
-SCHEIBEN = [(2, Rechenkern(erhoehungs_scheibe(MP, 2, 5000.0))),
-            (3, Rechenkern(erhoehungs_scheibe(MP, 3, 5250.0)))]
+SCHEIBEN = [(2, Rechenkern(erhoehungs_scheibe(MP, 2, 5000.0, gamma1_uebernehmen=False))),
+            (3, Rechenkern(erhoehungs_scheibe(MP, 3, 5250.0, gamma1_uebernehmen=False)))]
 
 
 def _folge(vorgaenge, scheiben=(), *, pex=None, je_baustein=False, umfang=UMFANG_ALLE):
@@ -154,7 +154,7 @@ def test_teilkuendigung_nach_herabsetzung_ist_die_herabsetzung_des_gekuerzten_ve
     f1, f2 = 0.6, 0.8
     folge = _folge([vorgang(3, f1, PROSPEKTIV), vorgang(6, f2, TEILKUENDIGUNG)])
     kontrolle = ReduzierterVertrag.nach(
-        Rechenkern(dataclasses.replace(MP, sum_insured=f2 * MP.sum_insured)), 3, f1)
+        Rechenkern(dataclasses.replace(MP, sum_insured=f2 * MP.sum_insured)), 3, f1, verfahren="prospektiv")
     for monate in range(72, 12 * MP.n + 1, 13):
         ist = folge.stand_am(monate).reserve(monate)
         soll = kontrolle.monatsreserve(monate)
@@ -429,7 +429,7 @@ def test_b4_die_korrekturschicht_nimmt_der_erste_vorgang_ganz_auf():
 
     prosp = GRUND.verlaufszeile(2).drx_bpfl
     eintrag, = uebernehmen([Uebernahme(police_id=1, model_point=dataclasses.asdict(MP),
-                                       monate_ta=24, dk_ist=prosp - 400.0)])
+                                       monate_ta=24, dk_ist=prosp - 400.0)], formfunktion="proportional_zur_basis")
     schicht = (eintrag.parameter, 24)
     f1, f2 = 0.8, 0.5
     stand = Vertragsstand.anfang(GRUND, stoab_je_baustein=False, tku_umfang=UMFANG_ALLE,

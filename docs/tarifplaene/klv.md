@@ -274,6 +274,23 @@ fünf Stellen gleich eingetippt werden, und ein vergessener Schalter
 rechnete still die Regel des eigenen Geschäfts (im zweiten Baldrian-Lauf
 fiel die Regel des übernommenen Tarifs erst in A-M3 auf).
 
+*Prüfrunde I, Fund I14 (Kern 3.20.0):* Dasselbe gilt eine Ebene tiefer. Im
+Kern und in der Bestandsschicht hat keine Funktion, deren Aufrufer die Regel
+kennen, eine Vorgabe für eines der Merkmale (Scheibe mit γ₁, Verfahren der
+Herabsetzung, Stornoabzug je Baustein, das Tarifwerk als Ganzes); wer rechnet,
+nennt die Regel aus dem Tarifwerk, das er ohnehin hält. Anlass: Die
+Migrationssuite rechnete die Scheibe einer Erhöhung **zwischen** den Stichtagen
+über die Vorgabe des Kerns immer ohne γ₁, gleich was die Spez belegte; eine
+Lieferung nach der belegten Regel fiel mit einem Residuum von 0,23 EUR auf
+5.000 EUR Scheibe durch, eine nach der Regel des eigenen Geschäfts bestand.
+Belassen sind, mit Grund: die Merkmale der Generation in der Bestand-Config
+(die Config ist die Quelle des Tarifwerks der Führung), der Umfang der
+Teilkündigung ohne Angabe (die Ableitung aus dem Bedingungswerk, 7.2) und der
+Stornoabzug der vertragsweiten Reserve, solange ein Aufrufer, der nur ihre
+Rückstellung liest, ihn nicht nennt. Verworfen: die Vorgaben stehen zu lassen
+und jede Aufrufstelle ausdrücklich setzen zu lassen — genau das war die
+benannte Grenze, und eine vergessene Stelle rechnete still weiter.
+
 ## 7.1 Beitragsherabsetzung: Zahlungsprofil und Geltungsbereich
 
 Der herabgesetzte Vertrag ist **ein** Vertrag mit geknicktem Verlauf,
@@ -808,6 +825,62 @@ zum Ablauf zuzulassen. Sie ändert die Summe dort nicht (die beitragsfreie
 Summe ist die geführte), schaltet aber den Status und damit die
 Rückkaufswertregel des beitragsfreien Vertrags um, ohne dass ein Beitrag
 wegfällt.
+
+*Prüfrunde I, Fund I10:* Geprüft wird das Jahr des **Vorgangs**, nie das einer
+Buchung, die einen bestehenden Zustand in die Führung des Zielsystems
+übernimmt. Ein beitragsfrei übernommener Vertrag trägt die Freistellung der
+Quelle in der Historie, mit ihrem Jahr, und die Umbuchung zum Zugangsstichtag
+im Ledger, mit dem Vertragsjahr des Zugangs. Die Grenze der Prüfrunde H las
+auf dem Ledger-Weg dieses Zugangsjahr: Jeder beitragsfrei übernommene Vertrag
+mit Zugangsjahr $\ge t$ fiel durch P-B1, Abschluss und Registrierung, obwohl
+seine Freistellung vor dem Beitragsende lag (gemessen über die Übernahme mit
+$t$ = 5, 12 und 20, Zugang vor, am und nach $t$, Freistellung im Jahr 1 und
+$t-1$: 11 von 14 zulässigen Fällen verweigert; die Baldrian-Lieferungen
+trafen den Fall nur zufällig nicht). Das Merkmal setzt der Produzent selbst:
+Eine Zugangsbuchung steht am Zugangstag und ist der Zugang, das Residuum oder
+— nur beim übernommenen Vertrag — die Umbuchung in den beitragsfreien Bestand
+(dieselbe Definition, mit der das Buchungsfenster diese Buchungen am
+Zugangstag zulässt). Auf dem Ledger-Weg zählen nur Vorgänge; das Jahr der
+mitgebrachten Freistellung prüft der Historie-Weg, und die Bindung verlangt
+zu jeder Umbuchung eine Freistellung in der Historie. Verworfen: (a) der
+Ledgerzeile ein Freistellungsjahr mitzugeben — ein zweites Feld für eine
+Aussage, die die Historie schon trägt; (b) den Ledger-Weg für die
+Freistellung ganz zu streichen — er prüft die Freistellungen der
+Fortschreibung, die keine Umbuchungen sind; (c) eine Unterscheidung über
+Betrag oder Herkunft der Buchung — das wäre eine Heuristik, kein Merkmal.
+
+*Prüfrunde I, Fund I12 (Kern 3.20.0):* Die Jahresgrenze der Erhöhung gilt an
+**jedem** Eingang des Kerns, der Erhöhungsscheiben entgegennimmt —
+vertragsweite Reserve, Anfangsstand der Folge, Herabsetzung und Teilkündigung
+geschichteter Verträge, Bau einer Scheibe —, und die Bewertung hält jede
+Zeile der Scheibentabelle an dieselbe Stelle, bevor sie sie in einen Kern
+übersetzt (auch in der Jahreszeile eines beitragsfrei gestellten Vertrags).
+Vorher prüfte nur die Folge: Ein beitragspflichtiger Vertrag ohne weiteren
+Vorgang wurde mit einer Scheibe im Vertragsjahr 0 bewertet, auch im
+Führungswert, den die Migrationsabnahme nachrechnet. Gemessen: Die
+Scheibentabelle lässt nur $0 < j < t$ mit $t' = t - j$ zu, und jeder Produzent
+(Engine, Übernahme) baut seine Scheiben über den Kern; das Jahr $t$ entsteht
+nur mit inkonsistenter Restdauer, und mit der konsistenten Restdauer null
+brach die Bewertung vorher ohne Namen ab (Division durch null). Verworfen:
+eine Wache in der Bewertung neben dem Kern wie für die Freistellung — ein
+Aufrufer des Kerns ginge daran vorbei.
+
+*Prüfrunde I, Fund I13:* Kein Produzent schreibt einen Lauf, den die
+Bestandswache auf denselben Bytes verweigert. Die Fortschreibung hält ihren
+Übernahme-Eingang vor dem Lauf gegen dieselbe Regel der Jahresgrenzen — mit
+dem Zustand des Stamms, aus dem die Engine das Freistellungsjahr liest, und
+den mitgebrachten Scheiben; vorher schrieb sie Lauf und Manifest auf einer
+Freistellung im Jahr $\ge t$. Grenze: Vor dem Lauf geprüft werden die
+Jahresgrenzen, nicht die ganze Prüfung P-B1 (Beträge, Form); die fährt P-B1
+auf dem Lauf.
+
+*Prüfrunde I, Fund I11:* Ein leerer Ledger trägt nicht mehr Buchungen als ein
+fehlender. Die Bindung der Reduktionstabelle an Tarifwerk und Annahmen hängt
+an der Tabelle, nicht am Ledger, und die Vollständigkeit — jeder registrierte
+Vorgang hat seine Buchungen — gilt für jeden vorhandenen Ledger, auch den
+leeren. Vorher endete die Herleitung bei null Zeilen sofort; eine Tabelle mit
+falschem Verfahren und Anteil ging mit leerem Ledger durch P-B1, und der
+Abschluss wurde mit der falschen Regel festgeschrieben.
 Die folgende Tabelle ist eine **Auswahl** daraus — die Folgen mit eigener
 Kontrollrechnung; die Menge selbst prüfen Eigenschaftstests über erzeugte
 Folgen (`tests/test_vorgangsfolge_eigenschaften.py`: nichts unter null, jede

@@ -117,15 +117,17 @@ class _Herleitung:
 
     def __init__(self, row: Dict[str, Any], felder: Dict[str, Any],
                  scheiben: List[Tuple[int, float]],
-                 tarifwerk: Optional[Dict[str, Any]] = None) -> None:
+                 tarifwerk: Dict[str, Any]) -> None:
         self.grund_mp = ModelPoint(**model_point_kwargs(row, felder))
         self.grund = Rechenkern(self.grund_mp)
-        self.tarifwerk = dict(tarifwerk or {
-            "scheiben_mit_gamma1": False, "stoab_je_baustein": False})
+        # Das Tarifwerk der Generation hat keine Vorgabe (Pruefrunde I, I14):
+        # Die Herleitung soll die Buchung widerlegen, nicht mit der Regel des
+        # eigenen Geschaefts nachrechnen.
+        self.tarifwerk = dict(tarifwerk)
         # Ohne Angabe der Umfang des Bedingungswerks, das das Verfahren nennt
         # (Entscheid B1 vom 2026-10-01; dieselbe Regel wie ``TarifGeneration.tarifwerk``).
         self.tarifwerk.setdefault("tku_umfang", tku_umfang_fuer(
-            str(self.tarifwerk.get("red_verfahren", "prospektiv"))))
+            str(self.tarifwerk["red_verfahren"])))
         # Dieselbe Scheiben-Regel wie die Engine (erhoehungs_scheibe): Die
         # Scheibe ist aus Grundscheibe, Erhoehungsjahr und Summe
         # reproduzierbar; ob sie gamma1 traegt, sagt das Tarifwerk der
@@ -312,10 +314,15 @@ def pruefe_ledger_betraege(
     Voraussetzung ist ein formal gueltiger Ledger (``validate_ledger``);
     unbekannte Policen oder Generationen werden als Fehler gemeldet, nicht
     als Ausnahme.
+
+    Auch ein LEERER Ledger geht ganz hindurch (Pruefrunde I, I11): Er traegt
+    nicht mehr Buchungen als ein fehlender — die Bindung der
+    Reduktionstabelle an Tarifwerk und Annahmen haengt an der Tabelle, und die
+    Vollstaendigkeit (jeder registrierte Vorgang hat seine Buchungen) gilt fuer
+    jeden vorhandenen Ledger. Vorher kehrte die Funktion bei null Zeilen sofort
+    zurueck, und P-B1 nahm eine verstuemmelte Tabelle mit leerem Ledger an.
     """
     errors: List[str] = []
-    if len(ledger) == 0:
-        return errors
     grundlagen = grundlagen_je_police(config, merkmale)
     tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
     haupt = stamm.set_index("police_id")
@@ -401,7 +408,7 @@ def pruefe_ledger_betraege(
                 herleitungen[pid] = _Herleitung(
                     h.to_dict() | {"police_id": pid}, felder,
                     scheiben_je_police.get(pid, []),
-                    tarifwerk_je_generation.get(str(h["tarif_generation"])))
+                    tarifwerk_je_generation[str(h["tarif_generation"])])
                 if pid in vorgaenge_je_police:
                     grenze = widerspruch.get(pid)
                     herleitungen[pid].setze_vorgaenge(

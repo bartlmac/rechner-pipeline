@@ -59,20 +59,20 @@ def test_das_zielsystem_rechnet_selbst_statt_den_wert_zu_uebernehmen():
     gelieferten Staenden bekommen denselben prospektiven Wert. Nur das
     Residuum unterscheidet sie.
     """
-    a, b = uebernehmen([_uebernahme(1, -850.0), _uebernahme(2, +420.0)])
+    a, b = uebernehmen([_uebernahme(1, -850.0), _uebernahme(2, +420.0)], formfunktion="proportional_zur_basis")
     assert a.dk_prosp == b.dk_prosp == pytest.approx(PROSP)
     assert a.residuum == pytest.approx(-850.0)
     assert b.residuum == pytest.approx(+420.0)
 
 
 def test_residuum_ist_geliefert_minus_prospektiv():
-    e, = uebernehmen([_uebernahme(delta=-333.33)])
+    e, = uebernehmen([_uebernahme(delta=-333.33)], formfunktion="proportional_zur_basis")
     assert e.residuum == pytest.approx(e.dk_ist - e.dk_prosp, rel=1e-12)
 
 
 def test_ohne_differenz_bleibt_die_schicht_leer():
     """Ein Vertrag, den beide Systeme gleich sehen, traegt keine Schicht."""
-    e, = uebernehmen([_uebernahme(delta=0.0)])
+    e, = uebernehmen([_uebernahme(delta=0.0)], formfunktion="proportional_zur_basis")
     assert e.getragen
     assert e.parameter.rho == 0.0
 
@@ -89,7 +89,7 @@ def test_die_schicht_traegt_das_residuum_exakt(delta: float):
         form_proportional_zur_basis,
     )
 
-    e, = uebernehmen([_uebernahme(delta=delta)])
+    e, = uebernehmen([_uebernahme(delta=delta)], formfunktion="proportional_zur_basis")
     # Zahlungsjahre TA_JAHR .. n-1: das Ablaufjahr traegt keine
     # Amortisations-Zahlung (Terminalbedingung, A-M2-Befund Lauf 2).
     basis = [KERN.verlaufszeile(a).drx_bpfl for a in range(TA_JAHR, KLV_DEFAULT.n)]
@@ -108,7 +108,7 @@ def test_die_schicht_traegt_das_residuum_exakt(delta: float):
 
 def test_zugangsjournal_traegt_das_residuum_als_betrag():
     """MIG ist kein ZUG: Der Betrag ist die Veraenderung des Deckungskapitals."""
-    erg = uebernehmen([_uebernahme(1, -850.0), _uebernahme(2, +420.0)])
+    erg = uebernehmen([_uebernahme(1, -850.0), _uebernahme(2, +420.0)], formfunktion="proportional_zur_basis")
     j = zugangsjournal(erg, STICHTAG, "KLV-1994")
 
     assert list(j.columns) == list(LEDGER_NAMES)
@@ -122,7 +122,7 @@ def test_journalzeilen_haben_die_dtypes_des_ledgers():
     """Sonst faellt der Zugang erst beim Schreiben auf."""
     from rechner_pipeline.models.bestand import LEDGER_SPALTEN
 
-    j = zugangsjournal(uebernehmen([_uebernahme()]), STICHTAG, "KLV-1994")
+    j = zugangsjournal(uebernehmen([_uebernahme()], formfunktion="proportional_zur_basis"), STICHTAG, "KLV-1994")
     for name, dtype in LEDGER_SPALTEN:
         assert str(j[name].dtype) == dtype, name
 
@@ -151,7 +151,7 @@ def test_nicht_verankerbarer_vertrag_traegt_einen_befund():
             police_id=9, model_point=MP, monate_ta=12 * letztes_jahr,
             dk_ist=KERN.verlaufszeile(letztes_jahr).drx_bpfl - 500.0,
         )
-    ])
+    ], formfunktion="proportional_zur_basis")
     assert not e.getragen
     assert e.befund
     assert e.residuum == pytest.approx(-500.0)
@@ -164,7 +164,7 @@ def test_vertrag_mit_befund_kommt_nicht_ins_journal():
         _uebernahme(1, -850.0),
         Uebernahme(police_id=2, model_point=MP, monate_ta=12 * letztes_jahr,
                    dk_ist=KERN.verlaufszeile(letztes_jahr).drx_bpfl - 500.0),
-    ])
+    ], formfunktion="proportional_zur_basis")
     j = zugangsjournal(erg, STICHTAG, "KLV-1994")
     assert list(j["police_id"]) == [1]
     bericht = zugangsbericht(erg)
@@ -201,7 +201,7 @@ def test_unterjaehrige_verankerung_traegt_das_rumpfjahr_pro_rata():
     e, = uebernehmen([
         Uebernahme(police_id=1, model_point=MP, monate_ta=monate_ta,
                    dk_ist=prospektiv + delta)
-    ])
+    ], formfunktion="proportional_zur_basis")
     assert e.befund is None
     assert e.parameter is not None
     assert e.parameter.rumpfmonate == rumpf
@@ -228,7 +228,7 @@ def test_unterjaehrige_verankerung_traegt_das_rumpfjahr_pro_rata():
     glatt, = uebernehmen([
         Uebernahme(police_id=1, model_point=MP, monate_ta=TA,
                    dk_ist=basis0 + delta)
-    ])
+    ], formfunktion="proportional_zur_basis")
     assert glatt.parameter.rumpfmonate == 0
 
 
@@ -314,12 +314,12 @@ def test_vorgang_vor_vertragsbeginn_faellt_hart_aus():
 
 def test_doppelte_police_faellt_hart_aus():
     with pytest.raises(MigrationszugangFehler, match="doppelte police_id"):
-        uebernehmen([_uebernahme(1), _uebernahme(1)])
+        uebernehmen([_uebernahme(1), _uebernahme(1)], formfunktion="proportional_zur_basis")
 
 
 def test_leere_uebernahme_ist_ein_aufruffehler():
     with pytest.raises(MigrationszugangFehler, match="leere Uebernahme"):
-        uebernehmen([])
+        uebernehmen([], formfunktion="proportional_zur_basis")
 
 
 def test_verankerung_hinter_dem_vertragsende_faellt_hart_aus():
@@ -327,7 +327,7 @@ def test_verankerung_hinter_dem_vertragsende_faellt_hart_aus():
         uebernehmen([
             Uebernahme(police_id=1, model_point=MP,
                        monate_ta=12 * (KLV_DEFAULT.n + 1), dk_ist=1.0)
-        ])
+        ], formfunktion="proportional_zur_basis")
 
 
 # --------------------------------------------------------------------------- #
@@ -341,7 +341,7 @@ def test_bericht_weist_verteilung_und_bilanzgroesse_getrennt_aus():
     Anders als im aktuariellen Test, wo Summen verboten sind: Was die
     Korrekturschicht insgesamt traegt, gehoert in die Ueberleitung.
     """
-    erg = uebernehmen([_uebernahme(1, -850.0), _uebernahme(2, +420.0)])
+    erg = uebernehmen([_uebernahme(1, -850.0), _uebernahme(2, +420.0)], formfunktion="proportional_zur_basis")
     b = zugangsbericht(erg)
     assert b["summe_residuum"] == pytest.approx(-430.0)
     assert b["max_abs_residuum"] == pytest.approx(850.0)
@@ -352,7 +352,7 @@ def test_ergebnis_ist_als_beleg_serialisierbar():
     """Der Zugang muss in einen Fall geschrieben werden koennen."""
     import json
 
-    e, = uebernehmen([_uebernahme()])
+    e, = uebernehmen([_uebernahme()], formfunktion="proportional_zur_basis")
     beleg = e.als_beleg()
     json.dumps(beleg)  # wirft, wenn etwas nicht serialisierbar ist
     assert beleg["schicht"]["formfunktion"] == "proportional_zur_basis"
@@ -361,7 +361,7 @@ def test_ergebnis_ist_als_beleg_serialisierbar():
 
 def test_fallback_kohorte_wird_durchgereicht():
     """9.12: Wer nur den Stand am Migrationsstichtag hat, ist eigene Kohorte."""
-    e, = uebernehmen([_uebernahme(kohorte="t_0-fallback")])
+    e, = uebernehmen([_uebernahme(kohorte="t_0-fallback")], formfunktion="proportional_zur_basis")
     assert e.parameter.kohorte == "t_0-fallback"
 
 
@@ -517,13 +517,13 @@ def test_erhoehungszerlegung_trifft_die_wahren_summen():
     s_grund, s_scheibe, jahr = 80000.0, 12000.0, 6
     felder = _mp_felder(sum_insured=s_grund)
     grund = _Rechenkern(type(_KLV_DEFAULT)(**felder))
-    scheibe = _Rechenkern(_erhoehungs_scheibe(grund.mp, jahr, s_scheibe))
+    scheibe = _Rechenkern(_erhoehungs_scheibe(grund.mp, jahr, s_scheibe, gamma1_uebernehmen=False))
     erlsumme = round(s_grund + s_scheibe, 2)
     jbrutto = round(grund.gross_annual_premium()
                     + scheibe.gross_annual_premium(), 2)
 
     ergebnis = leite_erhoehung_ab(
-        felder, jahr=jahr, erlsumme=erlsumme, jbrutto=jbrutto)
+        felder, jahr=jahr, erlsumme=erlsumme, jbrutto=jbrutto, scheiben_mit_gamma1=False)
     assert ergebnis.grundsumme == _pytest.approx(s_grund, rel=5e-5)
     assert ergebnis.erhoehungssumme == _pytest.approx(s_scheibe, rel=5e-5)
 
@@ -532,10 +532,10 @@ def test_erhoehungszerlegung_ohne_rundung_ist_exakt():
     s_grund, s_scheibe, jahr = 80000.0, 12000.0, 6
     felder = _mp_felder(sum_insured=s_grund)
     grund = _Rechenkern(type(_KLV_DEFAULT)(**felder))
-    scheibe = _Rechenkern(_erhoehungs_scheibe(grund.mp, jahr, s_scheibe))
+    scheibe = _Rechenkern(_erhoehungs_scheibe(grund.mp, jahr, s_scheibe, gamma1_uebernehmen=False))
     ergebnis = leite_erhoehung_ab(
         felder, jahr=jahr, erlsumme=s_grund + s_scheibe,
-        jbrutto=grund.gross_annual_premium() + scheibe.gross_annual_premium())
+        jbrutto=grund.gross_annual_premium() + scheibe.gross_annual_premium(), scheiben_mit_gamma1=False)
     assert ergebnis.grundsumme == _pytest.approx(s_grund, rel=1e-9)
     assert ergebnis.erhoehungssumme == _pytest.approx(s_scheibe, rel=1e-9)
 
@@ -561,7 +561,7 @@ def test_erhoehungszerlegung_folgt_der_gamma1_regel_der_lieferung():
     assert mit.erhoehungssumme == _pytest.approx(s_scheibe, rel=1e-9)
 
     ohne = leite_erhoehung_ab(
-        felder, jahr=jahr, erlsumme=erlsumme, jbrutto=jbrutto)
+        felder, jahr=jahr, erlsumme=erlsumme, jbrutto=jbrutto, scheiben_mit_gamma1=False)
     assert abs(ohne.grundsumme - s_grund) > 10.0, (
         "Mutationsfaenger: die falsche Formel-Regel muss die Zerlegung "
         "sichtbar verfehlen")
@@ -569,7 +569,7 @@ def test_erhoehungszerlegung_folgt_der_gamma1_regel_der_lieferung():
 
 def test_erhoehungszerlegung_ohne_beitrag_ist_unterbestimmt():
     with _pytest.raises(_MZFehler, match="NICHT bestimmbar"):
-        leite_erhoehung_ab(_mp_felder(), jahr=6, erlsumme=92000.0, jbrutto=0.0)
+        leite_erhoehung_ab(_mp_felder(), jahr=6, erlsumme=92000.0, jbrutto=0.0, scheiben_mit_gamma1=False)
 
 
 def test_erhoehungszerlegung_weist_unplausible_lieferung_zurueck():
@@ -580,7 +580,7 @@ def test_erhoehungszerlegung_weist_unplausible_lieferung_zurueck():
     with _pytest.raises(_MZFehler, match="Zerlegung unplausibel"):
         leite_erhoehung_ab(
             felder, jahr=6, erlsumme=92000.0,
-            jbrutto=round(nur_grund.gross_annual_premium(), 2))
+            jbrutto=round(nur_grund.gross_annual_premium(), 2), scheiben_mit_gamma1=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -696,20 +696,20 @@ def test_satzpruefung_belegt_den_richtigen_und_verwirft_die_anderen():
     grundsumme = 100000.0
     felder = _mp_felder(sum_insured=grundsumme)
     grund = _Rechenkern(type(_KLV_DEFAULT)(**felder))
-    scheibe = _Rechenkern(_es(grund.mp, jahr, grundsumme * satz_wahr))
+    scheibe = _Rechenkern(_es(grund.mp, jahr, grundsumme * satz_wahr, gamma1_uebernehmen=False))
     beleg = (felder, jahr, grundsumme * (1 + satz_wahr),
              round(grund.gross_annual_premium()
                    + scheibe.gross_annual_premium(), 2))
 
-    richtig = pruefe_erhoehungssatz(satz_wahr, [beleg])
+    richtig = pruefe_erhoehungssatz(satz_wahr, [beleg], scheiben_mit_gamma1=False)
     assert richtig["passt"] and richtig["geprueft"] == 1
     for falsch in (0.03, 0.07):
-        assert not pruefe_erhoehungssatz(falsch, [beleg])["passt"]
+        assert not pruefe_erhoehungssatz(falsch, [beleg], scheiben_mit_gamma1=False)["passt"]
 
 
 def test_satzpruefung_ignoriert_belege_ohne_beitrag():
     """Ohne Beitrag gibt es nichts zu pruefen — und kein stilles Bestehen."""
-    ergebnis = pruefe_erhoehungssatz(0.05, [(_mp_felder(), 6, 105000.0, 0.0)])
+    ergebnis = pruefe_erhoehungssatz(0.05, [(_mp_felder(), 6, 105000.0, 0.0)], scheiben_mit_gamma1=False)
     assert ergebnis["geprueft"] == 0 and not ergebnis["passt"]
 
 
@@ -867,7 +867,7 @@ class TestSerienKandidatenBestimmung:
             _mp_felder(), ereignisse=self.EREIGNISSE,
             erlsumme=self.ERLSUMME, satz=self.SATZ,
             jbrutto=self._jbrutto_der_wahren_welt(False),
-            kandidaten=self.KANDIDATEN)
+            kandidaten=self.KANDIDATEN, scheiben_mit_gamma1=False)
         assert serie.absetzungen == ((8, 0.6),)
         assert serie.grundsumme == pytest.approx(48000.0, abs=0.01)
         assert [s for _, s in serie.scheiben] == pytest.approx(
@@ -888,7 +888,7 @@ class TestSerienKandidatenBestimmung:
                 _mp_felder(), ereignisse=self.EREIGNISSE,
                 erlsumme=self.ERLSUMME, satz=self.SATZ,
                 jbrutto=self._jbrutto_der_wahren_welt(False),
-                kandidaten=(0.50, 0.75))
+                kandidaten=(0.50, 0.75), scheiben_mit_gamma1=False)
 
     def test_gamma1_regel_der_lieferung_diskriminiert_mit(self):
         """Die Beitragsprobe muss mit der Tarifwerks-Regel der
@@ -929,14 +929,14 @@ class TestSerienKandidatenBestimmung:
         jbrutto = _Rechenkern(grund_mp).gross_annual_premium()
         for jahr, summe in ((3, 4000.0), (5, 4200.0)):
             jbrutto += _Rechenkern(erhoehungs_scheibe(
-                grund_mp, jahr, summe)).gross_annual_premium()
+                grund_mp, jahr, summe, gamma1_uebernehmen=False)).gross_annual_premium()
 
         serie = bestimme_serie_mit_kandidaten(
             _mp_felder(),
             ereignisse=[("RED", 1, None), ("ERH", 3, None),
                         ("ERH", 5, None), ("RED", 8, None)],
             erlsumme=48200.0, satz=self.SATZ,
-            jbrutto=round(jbrutto, 2), kandidaten=self.KANDIDATEN)
+            jbrutto=round(jbrutto, 2), kandidaten=self.KANDIDATEN, scheiben_mit_gamma1=False)
 
         assert serie.anteil_unbestimmt == (1,)
         assert serie.absetzungen == ((8, 0.5),)
@@ -955,13 +955,13 @@ class TestSerienKandidatenBestimmung:
             bestimme_serie_mit_kandidaten(
                 _mp_felder(), ereignisse=self.EREIGNISSE,
                 erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=0.0,
-                kandidaten=self.KANDIDATEN)
+                kandidaten=self.KANDIDATEN, scheiben_mit_gamma1=False)
         with pytest.raises(MigrationszugangFehler,
                            match="unter zwei verschiedenen"):
             bestimme_serie_mit_kandidaten(
                 _mp_felder(), ereignisse=self.EREIGNISSE,
                 erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=1000.0,
-                kandidaten=(0.6, 0.6))
+                kandidaten=(0.6, 0.6), scheiben_mit_gamma1=False)
         viele = [("ERH", 1, None)] + [
             ("RED", j, None) for j in (2, 4, 6, 8)]
         with pytest.raises(MigrationszugangFehler,
@@ -969,7 +969,7 @@ class TestSerienKandidatenBestimmung:
             bestimme_serie_mit_kandidaten(
                 _mp_felder(), ereignisse=viele,
                 erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=1000.0,
-                kandidaten=self.KANDIDATEN)
+                kandidaten=self.KANDIDATEN, scheiben_mit_gamma1=False)
 
     def test_ankerwert_diskriminiert_wenn_der_beitrag_entfaellt(self):
         """Die drei beitragslosen Serien-Policen des zweiten Laufs
@@ -991,14 +991,14 @@ class TestSerienKandidatenBestimmung:
         grund_mp = type(_KLV_DEFAULT)(**_mp_felder(sum_insured=48000.0))
         dk_wahr = vertrags_monatsreserve(
             _Rechenkern(grund_mp),
-            [(jahr, _Rechenkern(erhoehungs_scheibe(grund_mp, jahr, s)))
+            [(jahr, _Rechenkern(erhoehungs_scheibe(grund_mp, jahr, s, gamma1_uebernehmen=False)))
              for jahr, s in ((3, 4000.0), (5, 4200.0))],
             monate).vx_mrv
         serie = bestimme_serie_mit_kandidaten(
             _mp_felder(), ereignisse=self.EREIGNISSE,
             erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=0.0,
             kandidaten=self.KANDIDATEN,
-            anker=(monate, round(dk_wahr, 2)))
+            anker=(monate, round(dk_wahr, 2)), scheiben_mit_gamma1=False)
         assert serie.absetzungen == ((8, 0.6),)
         assert serie.grundsumme == pytest.approx(48000.0, abs=0.01)
         # Zonen-Beleg: ohne den wahren Kandidaten faellt die Wahl.
@@ -1008,7 +1008,7 @@ class TestSerienKandidatenBestimmung:
                 _mp_felder(), ereignisse=self.EREIGNISSE,
                 erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=0.0,
                 kandidaten=(0.50, 0.75),
-                anker=(monate, round(dk_wahr, 2)))
+                anker=(monate, round(dk_wahr, 2)), scheiben_mit_gamma1=False)
 
     def test_herabsetzung_vor_erster_erhoehung_ist_anteil_invariant(self):
         """Police 7000569 des zweiten Laufs: Liegt die Herabsetzung vor
@@ -1025,15 +1025,15 @@ class TestSerienKandidatenBestimmung:
         jbrutto = round(
             _Rechenkern(grund_mp).gross_annual_premium()
             + _Rechenkern(erhoehungs_scheibe(
-                grund_mp, 3, 500.0)).gross_annual_premium()
+                grund_mp, 3, 500.0, gamma1_uebernehmen=False)).gross_annual_premium()
             + _Rechenkern(erhoehungs_scheibe(
-                grund_mp, 4, 525.0)).gross_annual_premium(), 2)
+                grund_mp, 4, 525.0, gamma1_uebernehmen=False)).gross_annual_premium(), 2)
         serie = bestimme_serie_mit_kandidaten(
             _mp_felder(),
             ereignisse=[("RED", 1, None), ("ERH", 3, None),
                         ("ERH", 4, None)],
             erlsumme=11025.0, satz=self.SATZ, jbrutto=jbrutto,
-            kandidaten=self.KANDIDATEN)
+            kandidaten=self.KANDIDATEN, scheiben_mit_gamma1=False)
         assert serie.grundsumme == pytest.approx(10000.0, abs=0.01)
         assert [s for _, s in serie.scheiben] == pytest.approx(
             [500.0, 525.0], abs=0.01)
@@ -1072,7 +1072,7 @@ class TestSerienKandidatenBestimmung:
                                        "sum_insured": s.grundsumme})
             return vertrags_monatsreserve(
                 _Rechenkern(gm),
-                [(j, _Rechenkern(erhoehungs_scheibe(gm, j, su)))
+                [(j, _Rechenkern(erhoehungs_scheibe(gm, j, su, gamma1_uebernehmen=False)))
                  for j, su in s.scheiben],
                 monate).vx_mrv
 
@@ -1084,7 +1084,7 @@ class TestSerienKandidatenBestimmung:
             bestimme_serie_mit_kandidaten(
                 felder, ereignisse=ereignisse, erlsumme=erlsumme,
                 satz=0.05, jbrutto=0.0, kandidaten=self.KANDIDATEN,
-                anker=(monate, round(dk(0.60), 2)))
+                anker=(monate, round(dk(0.60), 2)), scheiben_mit_gamma1=False)
 
     def test_geschlossene_serie_braucht_keine_probe(self):
         """Alle Anteile gesetzt: reine Delegation an die Ableitung —
@@ -1101,7 +1101,7 @@ class TestSerienKandidatenBestimmung:
         via = bestimme_serie_mit_kandidaten(
             _mp_felder(), ereignisse=ereignisse,
             erlsumme=self.ERLSUMME, satz=self.SATZ, jbrutto=0.0,
-            kandidaten=self.KANDIDATEN)
+            kandidaten=self.KANDIDATEN, scheiben_mit_gamma1=False)
         assert via == direkt
 
 
@@ -1116,7 +1116,7 @@ def test_ablauf_verankerung_nutzt_den_extern_gerechneten_wert():
     e, = uebernehmen([
         Uebernahme(police_id=1, model_point=MP, monate_ta=12 * n,
                    dk_ist=extern + 500.0, dk_prosp_extern=extern)
-    ])
+    ], formfunktion="proportional_zur_basis")
     assert e.befund is not None and "Ablauf" in e.befund
     assert e.dk_prosp == pytest.approx(extern)
     assert e.residuum == pytest.approx(500.0)
@@ -1125,7 +1125,7 @@ def test_ablauf_verankerung_nutzt_den_extern_gerechneten_wert():
     stamm, = uebernehmen([
         Uebernahme(police_id=1, model_point=MP, monate_ta=12 * n,
                    dk_ist=1000.0)
-    ])
+    ], formfunktion="proportional_zur_basis")
     ablauf = KERN.verlaufszeile(n).drx_bpfl
     assert stamm.dk_prosp == pytest.approx(ablauf)
 
@@ -1139,7 +1139,7 @@ def test_extern_gerechneter_prospektivwert_bestimmt_das_residuum():
     e, = uebernehmen([
         Uebernahme(police_id=1, model_point=MP, monate_ta=ta,
                    dk_ist=extern + 500.0, dk_prosp_extern=extern)
-    ])
+    ], formfunktion="proportional_zur_basis")
     assert e.dk_prosp == pytest.approx(extern)
     assert e.residuum == pytest.approx(500.0)
     assert e.parameter is not None

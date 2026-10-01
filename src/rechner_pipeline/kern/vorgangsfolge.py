@@ -421,6 +421,11 @@ class Vertragsstand:
         if tku_umfang not in TKU_UMFAENGE:
             raise VorgangsfolgeFehler(
                 f"tku_umfang {tku_umfang!r} unbekannt (bekannt: {list(TKU_UMFAENGE)})")
+        # Die schon bestehenden Scheiben sind Erhoehungen wie die der Folge:
+        # dieselbe Jahresgrenze (Pruefrunde I, I12), sonst naehme der
+        # Anfangsstand still, was nach_erhoehung verweigert.
+        for e, _k in scheiben:
+            _jahr_der_folge(grund.mp, int(e), ERH)
         bausteine = (Baustein.aus_kern(0, grund),) + tuple(
             Baustein.aus_kern(int(e), k) for e, k in sorted(scheiben, key=lambda s: s[0]))
         return cls(grund_mp=grund.mp, bausteine=bausteine,

@@ -193,7 +193,7 @@ def test_beitragsfrei_grenzen(kern: Rechenkern) -> None:
 
 
 def test_erhoehungs_scheibe_traegt_kein_gamma1() -> None:
-    scheibe = erhoehungs_scheibe(KLV_DEFAULT, 8, 5000.0)
+    scheibe = erhoehungs_scheibe(KLV_DEFAULT, 8, 5000.0, gamma1_uebernehmen=False)
     assert (scheibe.x, scheibe.n, scheibe.t) == (53, 22, 12)
     assert scheibe.sum_insured == 5000.0 and scheibe.gamma1 == 0.0
     # gamma1-Bezugsgroesse GrundVS: die Scheibe ist billiger als ein
@@ -201,10 +201,12 @@ def test_erhoehungs_scheibe_traegt_kein_gamma1() -> None:
     mit_gamma1 = dataclasses.replace(scheibe, gamma1=KLV_DEFAULT.gamma1)
     assert Rechenkern(scheibe).gross_annual_premium() < \
         Rechenkern(mit_gamma1).gross_annual_premium()
-    with pytest.raises(ValueError, match="beitragspflichtigen"):
-        erhoehungs_scheibe(KLV_DEFAULT, KLV_DEFAULT.t, 5000.0)
-    with pytest.raises(ValueError, match="beitragspflichtigen"):
-        erhoehungs_scheibe(KLV_DEFAULT, 0, 5000.0)
+    # Die Grenze ist die EINE des Kerns (pruefe_vorgangsjahr, Pruefrunde I,
+    # I12) — mit deren Meldungen, nicht mehr einer eigenen Abschrift.
+    with pytest.raises(ValueError, match="Erhoehung nach dem Beitragsende"):
+        erhoehungs_scheibe(KLV_DEFAULT, KLV_DEFAULT.t, 5000.0, gamma1_uebernehmen=False)
+    with pytest.raises(ValueError, match="fruehestens am ersten Jahrestag"):
+        erhoehungs_scheibe(KLV_DEFAULT, 0, 5000.0, gamma1_uebernehmen=False)
 
 
 def test_vertragsreserve_ohne_scheiben_identisch(kern: Rechenkern) -> None:
@@ -226,7 +228,7 @@ def test_vertragsreserve_summiert_scheiben_stoab_in_der_kappung(
     ``test_vertragsreserve_stoab_je_vertrag_in_der_sensitiven_zone``.
     """
     a, s_neu = 8, 20000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a, s_neu))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a, s_neu, gamma1_uebernehmen=False))
     monate = 12 * 12 + 5
     vertrag = vertrags_monatsreserve(kern, [(a, scheibe)], monate)
     r_grund = kern.monatsreserve(monate)
@@ -258,7 +260,7 @@ def test_vertragsreserve_stoab_je_vertrag_in_der_sensitiven_zone(
     """
     mp = KLV_DEFAULT
     a, s_neu, monate = 8, 5000.0, 12 * 22 + 5
-    scheibe = Rechenkern(erhoehungs_scheibe(mp, a, s_neu))
+    scheibe = Rechenkern(erhoehungs_scheibe(mp, a, s_neu, gamma1_uebernehmen=False))
     vertrag = vertrags_monatsreserve(kern, [(a, scheibe)], monate)
 
     roh_vertrag = mp.stoab_satz * (mp.sum_insured + s_neu - vertrag.drx_bpfl)
@@ -278,7 +280,7 @@ def test_vertragsreserve_stoab_je_vertrag_in_der_sensitiven_zone(
 
 
 def test_vertragsreserve_scheibe_vor_entstehung(kern: Rechenkern) -> None:
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, 5000.0))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, 5000.0, gamma1_uebernehmen=False))
     with pytest.raises(ValueError, match="existiert"):
         vertrags_monatsreserve(kern, [(10, scheibe)], 12 * 10 - 1)
 
@@ -302,7 +304,7 @@ class TestStoabJeBaustein:
         falsche."""
         mp = KLV_DEFAULT
         a, s_neu, monate = 8, 5000.0, 12 * 22 + 5
-        scheibe = Rechenkern(erhoehungs_scheibe(mp, a, s_neu))
+        scheibe = Rechenkern(erhoehungs_scheibe(mp, a, s_neu, gamma1_uebernehmen=False))
         r_grund = kern.monatsreserve(monate)
         r_scheibe = scheibe.monatsreserve(monate - 12 * a)
         # Zonen-Beleg: die kleine Scheibe klemmt am Mindestabzug, der
@@ -335,7 +337,7 @@ class TestStoabJeBaustein:
         naheliegenden Mutation (Formel beibehalten)."""
         mp = KLV_DEFAULT
         a, s_neu, monate = 8, 500.0, 12 * 9 + 5
-        scheibe = Rechenkern(erhoehungs_scheibe(mp, a, s_neu))
+        scheibe = Rechenkern(erhoehungs_scheibe(mp, a, s_neu, gamma1_uebernehmen=False))
         r_grund = kern.monatsreserve(monate)
         r_scheibe = scheibe.monatsreserve(monate - 12 * a)
         # Zonen-Beleg: Reserve der Scheibe unter dem Mindestabzug.
@@ -354,7 +356,7 @@ class TestStoabJeBaustein:
         des Vertrags ist auch jede Scheibe in ihrer flexiblen Phase —
         der Abzug ist null, der RKW die volle Reserve."""
         a, monate = 8, 12 * 26 + 3
-        scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a, 5000.0))
+        scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a, 5000.0, gamma1_uebernehmen=False))
         vertrag = vertrags_monatsreserve(
             kern, [(a, scheibe)], monate, stoab_je_baustein=True)
         assert vertrag.stoab == 0.0

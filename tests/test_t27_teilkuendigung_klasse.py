@@ -446,7 +446,7 @@ def test_der_folgevertrag_traegt_nur_seinen_zillmer_rest():
 
     grund = Rechenkern(KLV_DEFAULT)
     f = 0.6
-    teile = reduzierte_teile(grund, [], 1, f, TEILKUENDIGUNG)
+    teile = reduzierte_teile(grund, [], 1, f, TEILKUENDIGUNG, stoab_je_baustein=False)
     soll_kern = Rechenkern(dataclasses.replace(KLV_DEFAULT, sum_insured=f * KLV_DEFAULT.sum_insured))
     for j in range(1, 8):
         ist = vertrags_monatsreserve_reduziert(teile, 12 * j, stoab_je_baustein=False)

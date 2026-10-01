@@ -110,6 +110,7 @@ from rechner_pipeline.kern.korrekturschicht import (
 )
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
+    pruefe_scheibenjahre,
     vertrags_monatsreserve,
 )
 
@@ -185,7 +186,7 @@ class Reduktion:
 
 
 def reduziere(
-    kern: Rechenkern, jahr: int, anteil: float, *, verfahren: str = PROSPEKTIV,
+    kern: Rechenkern, jahr: int, anteil: float, *, verfahren: str,
     zusatz_dk: float = 0.0,
 ) -> Reduktion:
     """Den Beitrag im Vertragsjahr ``jahr`` auf ``anteil`` senken.
@@ -396,7 +397,7 @@ def _reduziere_eine_schicht(
     jahr: int,
     anteil: float,
     nach_abzug: float,
-    verfahren: str = PROSPEKTIV,
+    verfahren: str,
     *,
     zusatz_dk: float = 0.0,
 ) -> "Reduktion":
@@ -510,9 +511,9 @@ def reduziere_geschichtet(
     jahr: int,
     anteil: float,
     *,
-    verfahren: str = PROSPEKTIV,
+    verfahren: str,
     zusatz_dk: float = 0.0,
-    stoab_je_baustein: bool = False,
+    stoab_je_baustein: bool,
 ) -> List[Tuple[int, "Reduktion"]]:
     """Herabsetzung eines Vertrags MIT dynamischen Erhoehungsscheiben.
 
@@ -561,6 +562,7 @@ def reduziere_geschichtet(
     Rueckgabe: je Schicht ihr Erhoehungsjahr und ihre Reduktion, in der
     Reihenfolge (Grundscheibe zuerst) von ``vertrags_monatsreserve``.
     """
+    pruefe_scheibenjahre(grund.mp, scheiben)
     if verfahren == TEILKUENDIGUNG:
         # Teilkuendigung (Bedingungswerk Ziffer 6) trifft NUR die
         # Grundversicherung: Ihr Anteil (1-f) wird gekuendigt und
@@ -681,7 +683,7 @@ def reduzierte_teile(
     verfahren: str,
     *,
     schicht: Optional[Tuple[Any, int]] = None,
-    stoab_je_baustein: bool = False,
+    stoab_je_baustein: bool,
 ) -> List[Tuple[int, Any]]:
     """Der herabgesetzte Vertrag, je Schicht — DIE eine Rekonstruktion.
 
@@ -698,6 +700,7 @@ def reduzierte_teile(
     (Entscheid des Maintainers 2026-09-15) — danach traegt der Vertrag
     keine Schicht mehr.
     """
+    pruefe_scheibenjahre(grund.mp, scheiben)
     zusatz = 0.0
     if schicht_traegt(schicht, 12 * jahr):
         zusatz = schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
@@ -784,6 +787,9 @@ def vertrags_monatsreserve_reduziert(
     if not teile:
         raise BeitragsreduktionFehler(
             "keine Schichten — ein Vertrag ohne Grundscheibe ist keiner")
+    # Die Grundscheibe steht zuerst (Erhoehungsjahr 0); jede weitere ist eine
+    # Erhoehung und geht durch die Jahresgrenze des Kerns.
+    pruefe_scheibenjahre(teile[0][1].kern.mp, teile[1:])
     teile = bestehende_teile(teile, monate)
     dr = mrv = 0.0
     stuecke: List[Tuple[Any, int, Any]] = []
@@ -916,7 +922,7 @@ class ReduzierterVertrag:
     @classmethod
     def nach(
         cls, kern: Rechenkern, jahr: int, anteil: float,
-        *, verfahren: str = PROSPEKTIV, zusatz_dk: float = 0.0,
+        *, verfahren: str, zusatz_dk: float = 0.0,
     ) -> "ReduzierterVertrag":
         if verfahren == TEILKUENDIGUNG:
             raise BeitragsreduktionFehler(

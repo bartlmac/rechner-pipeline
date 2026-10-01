@@ -101,9 +101,8 @@ from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.bestand.schichten import schichten_je_police
-from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, TEILKUENDIGUNG
+from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
 from rechner_pipeline.kern.vorgangsfolge import (
-    UMFANG_ALLE,
     Vertragsstand,
     Vorgangsergebnis,
     tku_umfang_fuer,
@@ -237,12 +236,6 @@ def _leerer_frame(spalten) -> pd.DataFrame:
     return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in spalten})
 
 
-#: Tarifwerk des eigenen Geschaefts (Tarifplan KLV): die Vorgabe, wenn
-#: kein Generations-Tarifwerk uebergeben wird.
-TARIFWERK_VORGABE = {"scheiben_mit_gamma1": False, "stoab_je_baustein": False,
-                     "red_verfahren": PROSPEKTIV, "tku_umfang": UMFANG_ALLE}
-
-
 class _Vertrag:
     """Grundscheibe + Erhoehungsscheiben eines Vertrags (Schichtungsprinzip).
 
@@ -258,18 +251,21 @@ class _Vertrag:
         self,
         mp: ModelPoint,
         *,
-        tarifwerk: Mapping[str, Any] | None = None,
+        tarifwerk: Mapping[str, Any],
         mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
         schicht: Tuple[Any, int] | None = None,
     ) -> None:
         self.grund_mp = mp
         self.grund = Rechenkern(mp)
-        self.tarifwerk = dict(tarifwerk or TARIFWERK_VORGABE)
+        # Das Tarifwerk der Generation hat keine Vorgabe (Pruefrunde I, I14):
+        # Wer den Vertrag fuehrt, nennt es — vorher galt ohne Angabe still das
+        # des eigenen Geschaefts.
+        self.tarifwerk = dict(tarifwerk)
         # Der Umfang der Teilkuendigung ist der des Bedingungswerks, das das
         # Verfahren nennt, wenn ihn das Tarifwerk nicht ausdrueckt (Entscheid
         # B1 vom 2026-10-01; dieselbe Regel wie ``TarifGeneration.tarifwerk``).
         self.tarifwerk.setdefault("tku_umfang", tku_umfang_fuer(
-            str(self.tarifwerk.get("red_verfahren", PROSPEKTIV))))
+            str(self.tarifwerk["red_verfahren"])))
         self.scheiben: List[Tuple[int, float, Rechenkern]] = [
             (int(jahr), float(vs), kern) for jahr, vs, kern in mitgebracht
         ]  # (jahr, vs, kern)
@@ -292,7 +288,7 @@ class _Vertrag:
         Tarif (``red_verfahren = teilkuendigung``) kennt nur EINEN Vorgang —
         bei der Quelle "Herabsetzung" genannt, im Vokabular der PLV die
         Teilkuendigung (Entscheid des Maintainers 2026-10-01)."""
-        return str(self.tarifwerk.get("red_verfahren", PROSPEKTIV)) != TEILKUENDIGUNG
+        return str(self.tarifwerk["red_verfahren"]) != TEILKUENDIGUNG
 
     def _stand(self, beitragsfrei_ab: int | None) -> Vertragsstand:
         if self.stand is None:
@@ -431,7 +427,7 @@ def _simuliere_vertrag(
     ab_jahr: int = 0,
     pex_jahr: int | None = None,
     *,
-    tarifwerk: Mapping[str, Any] | None = None,
+    tarifwerk: Mapping[str, Any],
     mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
     schicht: Tuple[Any, int] | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:

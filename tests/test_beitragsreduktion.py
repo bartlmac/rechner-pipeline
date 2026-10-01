@@ -125,7 +125,7 @@ def test_beide_verfahren_senken_den_beitrag_gleich():
 @pytest.mark.parametrize("anteil", [-0.1, 1.5, float("nan")])
 def test_anteil_ausserhalb_null_bis_eins_faellt_hart_aus(anteil: float):
     with pytest.raises(BeitragsreduktionFehler, match=r"nicht in \[0, 1\]"):
-        reduziere(KERN, JAHR, anteil)
+        reduziere(KERN, JAHR, anteil, verfahren="prospektiv")
 
 
 def test_unbekanntes_verfahren_faellt_hart_aus():
@@ -136,12 +136,12 @@ def test_unbekanntes_verfahren_faellt_hart_aus():
 def test_nach_beitragsende_gibt_es_nichts_zu_reduzieren():
     """Ein beitragsfreier Vertrag kann seinen Beitrag nicht senken."""
     with pytest.raises(BeitragsreduktionFehler, match="Beitragszahlungsdauer"):
-        reduziere(KERN, KLV_DEFAULT.t, 0.5)
+        reduziere(KERN, KLV_DEFAULT.t, 0.5, verfahren="prospektiv")
 
 
 def test_jahr_ausserhalb_der_laufzeit_faellt_hart_aus():
     with pytest.raises(BeitragsreduktionFehler, match="ausserhalb der Laufzeit"):
-        reduziere(KERN, KLV_DEFAULT.n + 1, 0.5)
+        reduziere(KERN, KLV_DEFAULT.n + 1, 0.5, verfahren="prospektiv")
 
 
 # --------------------------------------------------------------------------- #
@@ -174,14 +174,14 @@ from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag  # noqa: 
 
 def test_folgebewertung_setzt_stetig_an_der_reduktion_auf():
     """Am Reduktions-Jahrestag muss die DR exakt dk_nach sein."""
-    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6, verfahren="prospektiv")
     mr = rv.monatsreserve(12 * JAHR)
     assert mr.drx_bpfl == pytest.approx(rv.reduktion.dk_nach, rel=1e-12)
 
 
 def test_anteil_eins_ist_der_unreduzierte_vertrag():
     """f=1 laesst alles unveraendert — bis in den Rueckkaufswert."""
-    rv = ReduzierterVertrag.nach(KERN, JAHR, 1.0)
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 1.0, verfahren="prospektiv")
     for monate in (12 * JAHR, 12 * JAHR + 7, 12 * (JAHR + 5)):
         a, b = rv.monatsreserve(monate), KERN.monatsreserve(monate)
         assert a.vx_mrv == pytest.approx(b.vx_mrv, rel=1e-12)
@@ -190,7 +190,7 @@ def test_anteil_eins_ist_der_unreduzierte_vertrag():
 
 def test_anteil_null_prospektiv_ist_die_volle_beitragsfreistellung():
     """f=0 muss der beitragsfreien Fortfuehrung des Kerns entsprechen."""
-    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.0)
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.0, verfahren="prospektiv")
     for monate in (12 * JAHR + 6, 12 * (JAHR + 3)):
         assert rv.monatsreserve(monate).vx_mrv == pytest.approx(
             KERN.monatsreserve_beitragsfrei(JAHR, monate), rel=1e-12)
@@ -200,7 +200,7 @@ def test_anteil_null_prospektiv_ist_die_volle_beitragsfreistellung():
 def test_am_ablauf_steht_die_neue_gesamtsumme():
     """Unabhaengige Kontrolle ueber die Produktlogik: die Reserve laeuft
     auf die Ablaufleistung zu, und die ist nach der Teilung vs_neu."""
-    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6, verfahren="prospektiv")
     n = KERN.mp.n
     assert rv.monatsreserve(12 * n).vx_mrv == pytest.approx(
         rv.reduktion.vs_neu, rel=1e-9)
@@ -208,7 +208,7 @@ def test_am_ablauf_steht_die_neue_gesamtsumme():
 
 
 def test_spaetere_beitragsfreistellung_fixiert_beide_teile():
-    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6, verfahren="prospektiv")
     pex = JAHR + 4
     erwartet = 0.6 * KERN.beitragsfreie_summe(pex) + rv.bfr_teil
     assert rv.beitragsfreie_summe(pex) == pytest.approx(erwartet, rel=1e-12)
@@ -218,7 +218,7 @@ def test_spaetere_beitragsfreistellung_fixiert_beide_teile():
 
 
 def test_beitrag_nach_reduktion_und_nach_beitragsende():
-    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6, verfahren="prospektiv")
     assert rv.bjb(12 * JAHR) == pytest.approx(
         0.6 * KERN.gross_annual_premium(), rel=1e-12)
     assert rv.bjb(12 * KERN.mp.t) == 0.0
@@ -228,7 +228,7 @@ def test_beitrag_nach_reduktion_und_nach_beitragsende():
 
 def test_stornoabzug_gilt_vertragsweit_auf_der_neuen_gesamtsumme():
     """Unabhaengige Nachrechnung der Klammer min(max(...)) am Monatswert."""
-    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6, verfahren="prospektiv")
     monate = 12 * JAHR + 5
     mr = rv.monatsreserve(monate)
     mp = KERN.mp
@@ -240,7 +240,7 @@ def test_stornoabzug_gilt_vertragsweit_auf_der_neuen_gesamtsumme():
 
 
 def test_monat_vor_der_reduktion_faellt_hart():
-    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, JAHR, 0.6, verfahren="prospektiv")
     with pytest.raises(BeitragsreduktionFehler, match="vor der Reduktion"):
         rv.monatsreserve(12 * JAHR - 1)
 
@@ -255,7 +255,7 @@ def _geschichtet(jahre=(4, 8), vs=15_000.0):
     from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
 
     return [
-        (j, Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, j, vs))) for j in jahre
+        (j, Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, j, vs, gamma1_uebernehmen=False))) for j in jahre
     ]
 
 
@@ -271,7 +271,7 @@ def test_anteilig_trifft_den_zielbeitrag_ueber_alle_schichten():
     grund = Rechenkern(KLV_DEFAULT)
     scheiben = _geschichtet()
     f = 0.6
-    teile = reduziere_geschichtet(grund, scheiben, 10, f)
+    teile = reduziere_geschichtet(grund, scheiben, 10, f, stoab_je_baustein=False, verfahren="prospektiv")
 
     alt = sum(r.bjb_alt for _, r in teile)
     neu = sum(r.bjb_neu for _, r in teile)
@@ -294,7 +294,7 @@ def test_ohne_scheiben_ist_die_verallgemeinerung_der_sonderfall(verfahren):
     grund = Rechenkern(KLV_DEFAULT)
     einzeln = reduziere(grund, 10, 0.6, verfahren=verfahren)
     [(erh_jahr, geschichtet)] = reduziere_geschichtet(
-        grund, [], 10, 0.6, verfahren=verfahren)
+        grund, [], 10, 0.6, verfahren=verfahren, stoab_je_baustein=False)
 
     assert erh_jahr == 0
     assert geschichtet == einzeln
@@ -321,12 +321,12 @@ def test_der_stornoabschlag_wird_nicht_je_schicht_erhoben():
 
     gesamt = vertrags_monatsreserve(grund, scheiben, 12 * jahr)
     teile = reduziere_geschichtet(grund, scheiben, jahr, f,
-                                  verfahren=MIT_ABZUG)
+                                  verfahren=MIT_ABZUG, stoab_je_baustein=False)
 
     # Der insgesamt einbehaltene Abzug ist der VERTRAGSWEITE, anteilig
     # auf den freiwerdenden Teil: nicht die Summe je Schicht gebildeter.
     verlustfrei = reduziere_geschichtet(grund, scheiben, jahr, f,
-                                        verfahren=PROSPEKTIV)
+                                        verfahren=PROSPEKTIV, stoab_je_baustein=False)
     einbehalten = sum(a.dk_nach for _, a in verlustfrei) - sum(
         b.dk_nach for _, b in teile)
     assert einbehalten == pytest.approx(gesamt.stoab * (1.0 - f), rel=1e-9)
@@ -347,7 +347,7 @@ def test_voller_beitrag_laesst_den_geschichteten_vertrag_unveraendert(verfahren)
     grund = Rechenkern(KLV_DEFAULT)
     scheiben = _geschichtet()
     for _, r in reduziere_geschichtet(grund, scheiben, 10, 1.0,
-                                      verfahren=verfahren):
+                                      verfahren=verfahren, stoab_je_baustein=False):
         assert r.vs_neu == pytest.approx(r.vs_alt, rel=1e-12)
         assert r.bjb_neu == pytest.approx(r.bjb_alt, rel=1e-12)
         assert r.dk_nach == pytest.approx(r.dk_vor, rel=1e-12)
@@ -363,7 +363,7 @@ def test_eine_noch_nicht_existierende_schicht_ist_ein_fehler():
 
     grund = Rechenkern(KLV_DEFAULT)
     with pytest.raises(BeitragsreduktionFehler) as exc:
-        reduziere_geschichtet(grund, _geschichtet(jahre=(8,)), 3, 0.6)
+        reduziere_geschichtet(grund, _geschichtet(jahre=(8,)), 3, 0.6, stoab_je_baustein=False, verfahren="prospektiv")
     assert "existiert im Vertragsjahr 3 noch nicht" in str(exc.value)
 
 
@@ -383,7 +383,7 @@ def test_die_folgebewertung_bildet_den_abschlag_einmal():
     grund = Rechenkern(KLV_DEFAULT)
     scheiben = _geschichtet()
     jahr = 10
-    teile = reduziere_geschichtet(grund, scheiben, jahr, 0.6)
+    teile = reduziere_geschichtet(grund, scheiben, jahr, 0.6, stoab_je_baustein=False, verfahren="prospektiv")
     kerne = dict([(0, grund)] + scheiben)
     vertraege = [
         (j, ReduzierterVertrag(kern=kerne[j], reduktion=r)) for j, r in teile
@@ -431,9 +431,9 @@ def test_beide_wege_weisen_dieselben_eingaben_ab(jahr, anteil, was):
 
     grund = Rechenkern(KLV_DEFAULT)
     with pytest.raises(BeitragsreduktionFehler):
-        reduziere(grund, jahr, anteil)
+        reduziere(grund, jahr, anteil, verfahren="prospektiv")
     with pytest.raises(BeitragsreduktionFehler):
-        reduziere_geschichtet(grund, _geschichtet(jahre=(4,)), jahr, anteil)
+        reduziere_geschichtet(grund, _geschichtet(jahre=(4,)), jahr, anteil, stoab_je_baustein=False, verfahren="prospektiv")
 
 
 class TestTeilkuendigung:
@@ -489,7 +489,7 @@ class TestTeilkuendigung:
         # Die beitragssenkenden Verfahren behalten ihre Wache.
         with pytest.raises(BeitragsreduktionFehler,
                            match="Beitragszahlungsdauer"):
-            reduziere(kern, 25, 0.6)
+            reduziere(kern, 25, 0.6, verfahren="prospektiv")
 
     def test_wachen_fail_fast(self):
         from rechner_pipeline.kern.beitragsreduktion import (
@@ -509,7 +509,7 @@ class TestTeilkuendigung:
         # wird gekuendigt, die Scheibe laeuft unveraendert — derselbe dDK
         # wie ohne Scheibe (A-M3-Befund des zweiten Laufs).
         teile = reduziere_geschichtet(kern, _geschichtet(jahre=(4,)), 10, 0.6,
-                                      verfahren=TEILKUENDIGUNG)
+                                      verfahren=TEILKUENDIGUNG, stoab_je_baustein=False)
         (e0, grund_red), (e1, scheibe_red) = teile
         assert (e0, e1) == (0, 4)
         assert grund_red.vs_neu == pytest.approx(0.6 * KLV_DEFAULT.sum_insured)
@@ -609,7 +609,7 @@ def test_teilkuendigung_mit_schicht_faellt_hart_aus():
 @pytest.mark.parametrize("wert", [-1.0, float("nan"), float("inf")])
 def test_unsinniger_zusatz_faellt_hart_aus(wert: float):
     with pytest.raises(BeitragsreduktionFehler, match="zusatz_dk"):
-        reduziere(KERN, JAHR, 0.6, zusatz_dk=wert)
+        reduziere(KERN, JAHR, 0.6, zusatz_dk=wert, verfahren="prospektiv")
 
 
 def test_die_folgebewertung_traegt_die_absorbierte_schicht_weiter():

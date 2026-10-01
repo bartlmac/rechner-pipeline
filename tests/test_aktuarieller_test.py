@@ -163,7 +163,7 @@ def test_beitragsfreier_vertrag_am_rechenpunkt():
 
 def test_scheiben_werden_vertragsweit_am_rechenpunkt_gerechnet():
     jahr, vs = 5, 10_000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, jahr, vs))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, jahr, vs, gamma1_uebernehmen=False))
     m = vertrags_monatsreserve(KERN, [(jahr, scheibe)], TA)
     ergebnis = pruefe_verankerung(
         _auftrag(

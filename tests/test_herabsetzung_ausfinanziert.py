@@ -679,9 +679,9 @@ def test_der_floor_deckt_die_basisschicht_und_nicht_die_korrekturschicht(verfahr
                        else max(0.0, zeile.vx_mrv - zeile.stoab))
     assert basis > 0.0 and schicht < -basis, (basis, schicht)   # der Fall traegt die Aussage
 
-    ohne = reduzierte_teile(grund, [], jahr, f, verfahren)[0][1].reduktion
+    ohne = reduzierte_teile(grund, [], jahr, f, verfahren, stoab_je_baustein=False)[0][1].reduktion
     mit = reduzierte_teile(grund, [], jahr, f, verfahren,
-                           schicht=(parameter, MONATE_TA))[0][1].reduktion
+                           schicht=(parameter, MONATE_TA), stoab_je_baustein=False)[0][1].reduktion
     bfr_ohne = ohne.vs_neu - f * KLV_DEFAULT.sum_insured
     bfr_mit = mit.vs_neu - f * KLV_DEFAULT.sum_insured
     assert bfr_ohne == pytest.approx(basis / zeile.vx_bfr, rel=1e-12) and bfr_ohne > 0.0

@@ -317,7 +317,7 @@ def test_auszahlung_der_teilkuendigung_folgt_der_unabhaengigen_zusage(welten, ve
             continue
         mp = ModelPoint(**model_point_kwargs(haupt.loc[pid], gen.generation_fields()))
         s = erg.scheiben[(erg.scheiben["police_id"] == pid) & (erg.scheiben["erhoehung_jahr"] < jahr)]
-        kerne = [(int(e), Rechenkern(erhoehungs_scheibe(mp, int(e), float(v))))
+        kerne = [(int(e), Rechenkern(erhoehungs_scheibe(mp, int(e), float(v), gamma1_uebernehmen=False)))
                  for e, v in zip(s["erhoehung_jahr"], s["sum_insured"])]
         eigene = led[(led["police_id"] == pid) & (led["ereignis"] == "TKU")
                      & (led["vertragsjahr"] == jahr)]
@@ -613,8 +613,8 @@ def test_eine_serie_mit_herabsetzung_vor_t_wird_als_geteilter_vertrag_abgeleitet
     assert zustand["vorgaenge"] == ((T - 1, 0.6, verfahren),)
     assert zustand["gedeckt_durch"] == "auskunft"
     grund = Rechenkern(dataclasses.replace(MP, sum_insured=zustand["sum_insured"]))
-    scheiben = [(j, Rechenkern(erhoehungs_scheibe(MP, j, vs))) for j, vs in zustand["scheiben"]]
-    teile = reduzierte_teile(grund, scheiben, T - 1, 0.6, verfahren)
+    scheiben = [(j, Rechenkern(erhoehungs_scheibe(MP, j, vs, gamma1_uebernehmen=False))) for j, vs in zustand["scheiben"]]
+    teile = reduzierte_teile(grund, scheiben, T - 1, 0.6, verfahren, stoab_je_baustein=False)
     assert sum(t.reduktion.vs_neu for _, t in teile) == pytest.approx(70_000.0, abs=0.02)
     # Die Erhoehungen folgen der Regel der Engine: Satz x gefuehrte Summe davor.
     assert dict(zustand["scheiben"])[3] == pytest.approx(0.05 * zustand["sum_insured"], abs=0.01)

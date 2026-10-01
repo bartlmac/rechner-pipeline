@@ -83,7 +83,7 @@ def _welt(zillmer: int, regime: str):
         KLV_DEFAULT, x=18, n=40, t=40, sum_insured=100000.0, zins=0.0125,
         tafel="DAV2008_T", alpha=0.04, zillmer_dauer=zillmer,
         stoab_satz=satz, stoab_min=umin, stoab_max=umax)
-    scheibe = erhoehungs_scheibe(mp, _E, 20000.0)
+    scheibe = erhoehungs_scheibe(mp, _E, 20000.0, gamma1_uebernehmen=False)
     return Rechenkern(mp), Rechenkern(scheibe)
 
 
@@ -365,7 +365,7 @@ def _bausteine(welt: dict, pid: int, a0: int):
     mp = ModelPoint(**model_point_kwargs(zeile, gen))
     sch = welt["scheiben"]
     sch = sch[(sch.police_id == pid) & (sch.erhoehung_jahr < a0)]
-    return mp, [(int(e), Rechenkern(erhoehungs_scheibe(mp, int(e), float(v))))
+    return mp, [(int(e), Rechenkern(erhoehungs_scheibe(mp, int(e), float(v), gamma1_uebernehmen=False)))
                 for e, v in zip(sch.erhoehung_jahr, sch.sum_insured)]
 
 

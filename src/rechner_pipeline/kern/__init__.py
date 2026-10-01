@@ -238,7 +238,26 @@ from rechner_pipeline.kern.vorgangsfolge import (
 #: ``monatsgenau`` den Rueckkaufswert beitragsfreier Vertraege mit 0,00 fuehrt
 #: (``pruefe_abschluss`` meldet den Versionssprung als eigene Zeile); die
 #: Konvention ``jahreszeile`` fuehrt ihn weiter mit 0,00.
-__version__ = "3.19.0"
+#: 3.20.0 = Pruefrunde I, zwei Funde (Tarifplan KLV 7.3, ADR-024 fuenfter
+#: Nachtrag Punkt 3). (1) I12: Die Jahresgrenze der Erhoehung (0 < jahr < t)
+#: gilt an JEDEM Eingang des Kerns, der Erhoehungsscheiben entgegennimmt
+#: (``rechenkern.pruefe_scheibenjahre`` ruft ``beitragsreduktion.
+#: pruefe_vorgangsjahr``): ``vertrags_monatsreserve``, ``Vertragsstand.anfang``,
+#: ``reduziere_geschichtet``, ``reduzierte_teile``,
+#: ``vertrags_monatsreserve_reduziert`` und ``erhoehungs_scheibe`` (dort ersetzt
+#: sie die eigene Abschrift der Grenze). Vorher rechnete die vertragsweite
+#: Reserve eine Scheibe im Vertragsjahr 0 still; ein Aufruf, der vorher gruen
+#: war, ist damit rot — gemessen erzeugt ihn kein Produzent (Engine und
+#: Uebernahme bauen Scheiben ueber ``erhoehungs_scheibe``, die Scheibentabelle
+#: laesst nur 0 < j < t zu). (2) I14: Keine Tarifregel hat im Kern eine
+#: Vorgabe mehr, deren Aufrufer sie kennen: ``erhoehungs_scheibe``
+#: (``gamma1_uebernehmen``), ``reduziere``, ``ReduzierterVertrag.nach`` und die
+#: Schicht-Rechnung (``verfahren``), ``reduziere_geschichtet`` (``verfahren``,
+#: ``stoab_je_baustein``), ``reduzierte_teile`` (``stoab_je_baustein``); ein
+#: Aufruf ohne die Regel ist ein TypeError statt der Regel des eigenen
+#: Geschaefts. Keine Formel und kein Wert aendert sich; alle
+#: Charakterisierungs-Referenzwerte des Kerns sind unveraendert.
+__version__ = "3.20.0"
 
 __all__ = [
     "ModelPoint",

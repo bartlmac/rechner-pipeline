@@ -132,7 +132,40 @@ def _lies_uebernahme(verzeichnis: Path) -> dict:
         tabellen[rolle] = (
             read_portfolio(pfad, expected_columns=spalten) if pfad.is_file() else None
         )
+    _pruefe_vorgangsjahre(verzeichnis, tabellen)
     return tabellen
+
+
+def _pruefe_vorgangsjahre(verzeichnis: Path, tabellen: dict) -> None:
+    """Die Jahresgrenzen der mitgebrachten Vorgaenge, VOR dem Lauf — dieselbe
+    Regel wie P-B1 (``bestand.vorbedingungen.vorgangsjahr_fehler``, die den
+    Kern fragt), keine zweite Fassung.
+
+    Pruefrunde I, I13: Das Kommando nahm eine Beitragsfreistellung im
+    Vertragsjahr >= t an, rechnete darauf und schrieb Lauf und Manifest
+    (Exit 0), die P-B1 auf denselben Bytes verweigerte. Kein Produzent
+    schreibt einen Lauf, den die Bestandswache verweigert. Geprueft wird, was
+    die Engine liest: die Historie UND der Zustand des Stamms (sein
+    ``status_date`` ist das Freistellungsjahr, mit dem die Engine rechnet),
+    die Umbuchungen des Ledgers und die mitgebrachten Scheiben.
+    """
+    import pandas as pd
+
+    from rechner_pipeline.bestand.vorbedingungen import vorgangsjahr_fehler
+
+    stamm, historie = tabellen["bestand"], tabellen["historie"]
+    spalten = ["police_id", "status_code", "status_date"]
+    zustaende = pd.concat([historie[spalten], stamm[spalten]], ignore_index=True
+                          ).drop_duplicates(ignore_index=True)
+    fehler = vorgangsjahr_fehler(stamm, historie=zustaende, ledger=tabellen["ledger"],
+                                 scheiben=tabellen["scheiben"])
+    if fehler:
+        raise ValueError(
+            f"Uebernahme {verzeichnis}: {len(fehler)} Vorgang/Vorgaenge ausserhalb der "
+            f"Jahresgrenzen des Kerns — z. B. {fehler[0]}. Ein Lauf darauf waere einer, "
+            "den P-B1 verweigert; es wird nichts geschrieben. Ausweg: die Uebernahme "
+            "mit gates.bestand_uebernehmen erzeugen (er verweigert solche Vorgaenge "
+            "selbst) oder die Vorgeschichte klaeren")
 
 
 def _mit_uebernahme(eigen, uebernommen):

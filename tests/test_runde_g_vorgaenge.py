@@ -68,7 +68,7 @@ from rechner_pipeline.kern.vorgangsfolge import (
 
 GRUND_MP = dataclasses.replace(KLV_DEFAULT, x=34, n=20, t=20, sum_insured=83000.0)
 SCHEIBE_JAHR = 17
-SCHEIBE_MP = erhoehungs_scheibe(GRUND_MP, SCHEIBE_JAHR, 4000.0)
+SCHEIBE_MP = erhoehungs_scheibe(GRUND_MP, SCHEIBE_JAHR, 4000.0, gamma1_uebernehmen=False)
 
 
 def test_die_welt_traegt_den_fall():
@@ -213,7 +213,7 @@ def _erh(jahr):
     stand = Vertragsstand.anfang(GRUND, stoab_je_baustein=False, tku_umfang=UMFANG_ALLE)
     # Der Scheibenkern ist im Jahr 1 gebaut: Die Grenze, die hier gilt, ist die
     # der Folge, nicht die des Scheibenbaus.
-    return stand.nach_erhoehung(jahr, Rechenkern(erhoehungs_scheibe(MP, 1, 1000.0)))
+    return stand.nach_erhoehung(jahr, Rechenkern(erhoehungs_scheibe(MP, 1, 1000.0, gamma1_uebernehmen=False)))
 
 
 #: Je Vorgangsart: (Bauweg, letzter ungueltiger unten, erster gueltiger, letzter

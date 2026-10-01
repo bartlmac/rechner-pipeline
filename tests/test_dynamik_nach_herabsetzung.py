@@ -93,13 +93,13 @@ def test_die_bewertung_fuehrt_die_scheibe_nach_der_herabsetzung(welt):
         mp = ModelPoint(**model_point_kwargs(haupt.loc[pid], gen.generation_fields()))
         grund = Rechenkern(mp)
         s = erg.scheiben[erg.scheiben["police_id"] == pid]
-        vor = [(int(j), Rechenkern(erhoehungs_scheibe(mp, int(j), float(vs))))
+        vor = [(int(j), Rechenkern(erhoehungs_scheibe(mp, int(j), float(vs), gamma1_uebernehmen=False)))
                for j, vs in zip(s["erhoehung_jahr"], s["sum_insured"]) if int(j) < rj]
-        nach = [(int(j), Rechenkern(erhoehungs_scheibe(mp, int(j), float(vs))))
+        nach = [(int(j), Rechenkern(erhoehungs_scheibe(mp, int(j), float(vs), gamma1_uebernehmen=False)))
                 for j, vs in zip(s["erhoehung_jahr"], s["sum_insured"]) if int(j) >= rj]
         # Mit der Korrekturschicht des uebernommenen Vertrags — sie geht in
         # die Neuberechnung der Herabsetzung ein.
-        ohne = reduzierte_teile(grund, vor, rj, f, verf, schicht=(_parameter(), MONATE_TA))
+        ohne = reduzierte_teile(grund, vor, rj, f, verf, schicht=(_parameter(), MONATE_TA), stoab_je_baustein=False)
         m = 12 * letzte
         dk_soll = (vertrags_monatsreserve_reduziert(ohne, m, stoab_je_baustein=False).drx_bpfl
                    + sum(k.monatsreserve(m - 12 * j).drx_bpfl for j, k in nach))
@@ -186,7 +186,7 @@ def test_p_b1_prueft_die_hoehe_jeder_gerechneten_erhoehung(welt):
     gen = config.generationen[0]
     mp = ModelPoint(**model_point_kwargs(stamm.set_index("police_id").loc[pid], gen.generation_fields()))
     m_bjb = (led["police_id"] == pid) & (led["ereignis"] == "ERH") & (led["vertragsjahr"] == j) & (led["betrag_art"] == "BJB")
-    led.loc[m_bjb, "betrag"] = Rechenkern(erhoehungs_scheibe(mp, j, falsch)).gross_annual_premium()
+    led.loc[m_bjb, "betrag"] = Rechenkern(erhoehungs_scheibe(mp, j, falsch, gamma1_uebernehmen=False)).gross_annual_premium()
     gen = config.generationen[0]
     zug = pd.DataFrame([{
         "police_id": p, "tarif_generation": gen.name, "ereignis": "ZUG",

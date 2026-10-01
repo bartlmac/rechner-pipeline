@@ -569,7 +569,12 @@ def _pruefe_ueber_vorgangsfolge(
                     "Lieferung unvollständig")
                 continue
             try:
-                scheibe = Rechenkern(erhoehungs_scheibe(grund_mp, jahr, g.betrag_erwartet))
+                # Die Scheibe der Erhoehung zwischen den Stichtagen nach der
+                # belegten Regel des Auftrags — wie die Alt-Scheiben (Pruefrunde
+                # I, I14; vorher immer die Regel des eigenen Geschaefts).
+                scheibe = Rechenkern(erhoehungs_scheibe(
+                    grund_mp, jahr, g.betrag_erwartet,
+                    gamma1_uebernehmen=v.scheiben_mit_gamma1))
                 stand = stand.nach_erhoehung(jahr, scheibe)
             except ValueError as exc:
                 befunde.append(f"ERH bei Monat {g.monate}: {exc}")
@@ -797,7 +802,8 @@ def pruefe_vertrag(
     if pex_jahr is not None:
         dk_1 = kern.monatsreserve_beitragsfrei(pex_jahr, dk_monat_1)
     elif scheiben:
-        dk_1 = vertrags_monatsreserve(kern, scheiben, dk_monat_1).vx_mrv
+        dk_1 = vertrags_monatsreserve(
+            kern, scheiben, dk_monat_1, stoab_je_baustein=v.stoab_je_baustein).vx_mrv
     else:
         dk_1 = kern.monatsreserve(dk_monat_1).vx_mrv
     # Die Korrekturschicht traegt das Verankerungs-Residuum — der
@@ -865,7 +871,8 @@ def pruefe_vertrag(
                 continue
             try:
                 scheiben_mp = erhoehungs_scheibe(
-                    grund_mp, g.monate // 12, g.betrag_erwartet)
+                    grund_mp, g.monate // 12, g.betrag_erwartet,
+                    gamma1_uebernehmen=v.scheiben_mit_gamma1)
             except ValueError as exc:
                 befunde.append(f"ERH bei Monat {g.monate}: {exc}")
                 continue
@@ -959,7 +966,8 @@ def pruefe_vertrag(
                 for erh_jahr, k in scheiben)
         else:
             dk2 = vertrags_monatsreserve(
-                kern, scheiben, dk_monat_2).vx_mrv
+                kern, scheiben, dk_monat_2,
+                stoab_je_baustein=v.stoab_je_baustein).vx_mrv
         dk2 += _schichtsumme(v, grund_mp, dk_monat_2)
         pruefungen.append(_vergleich(
             "dk_stichtag_2", dk2, v.dk_erwartet_2,

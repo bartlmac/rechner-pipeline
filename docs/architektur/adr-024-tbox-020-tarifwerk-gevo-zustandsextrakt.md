@@ -455,6 +455,24 @@ Benannte Grenze: Weitere Funktionen mit einer Vorgabe fuer eine Tarifregel
 stehen ausserhalb der beiden Engines (gemessen: 6 in `gates/`, 8 in
 `bestand/`, 5 in `kern/`); jede Aufrufstelle in den Kommandos setzt die
 Regel ausdruecklich.
+*Pruefrunde I, Fund I14:* Die Grenze wirkte — die Migrationssuite rief den
+Kern fuer die Scheibe einer Erhoehung zwischen den Stichtagen ohne die Regel
+und rechnete still ohne gamma1. In `kern/` und `bestand/` hat jetzt keine
+Funktion eine Vorgabe fuer eine Tarifregel, deren Aufrufer sie kennen (Kern
+3.20.0; dazu `verfahren` der Herabsetzung, `gamma1_uebernehmen` und das
+`tarifwerk` als Ganzes, gemessen mit AST: 14 Stellen mit Vorgabe geschlossen,
+dazu `migrationszugang.pruefe_erhoehungssatz`, die die Regel gar nicht
+entgegennahm und immer die des eigenen Geschaefts rechnete). Belassen,
+mit Grund und als Ratsche mit `==` (`tests/test_runde_i_tarifregeln.py`):
+die vier Merkmale der Generation in der Bestand-Config (die Config IST die
+Quelle des Tarifwerks der Fuehrung), `tku_umfang_fuer` ohne Umfang (die
+Ableitung aus dem Bedingungswerk, Tarifplan KLV 7.2), das Fenster der
+Korrekturschicht (`None` heisst "keins"; die Form, die eines braucht,
+verweigert benannt) und `stoab_je_baustein` der vertragsweiten Reserve
+(`kern.vertrags_monatsreserve`): zwei Aufrufer nennen es nicht, beide lesen
+nur die Rueckstellung, die davon nicht abhaengt — einer davon in
+`gates/verankerung_belegen.py`, ausserhalb dieser Fix-Runde. Die 6 Stellen in
+`gates/` sind nicht nachgemessen.
 
 Instrumente: `tests/test_spez_hebung_und_regelwerte.py`,
 `tests/test_engine_tarifregel_ohne_vorgabe.py`,

@@ -357,7 +357,7 @@ def _uebernommen(delta: float = -850.0, ta_jahr: int = 9):
     e, = uebernehmen([
         Uebernahme(police_id=1, model_point=dict(MP),
                    monate_ta=12 * ta_jahr, dk_ist=prosp + delta)
-    ])
+    ], formfunktion="proportional_zur_basis")
     return e, prosp + delta, 12 * ta_jahr
 
 
@@ -595,7 +595,7 @@ def test_der_gevotest_misst_die_herabsetzung_auf_dem_rueckkaufs_track(verfahren,
     m = 12 * jahr
     v = _vertrag(Pruefpunkt(m, {"dDK": 0.0}, "RED", {"anteil": 0.6}), scheiben=scheiben)
     ist = _system_werte(v, mp, v.punkte[0], red_verfahren=verfahren)["dDK"]
-    kerne = [(j, Rechenkern(erhoehungs_scheibe(mp, j, vs))) for j, vs in scheiben]
+    kerne = [(j, Rechenkern(erhoehungs_scheibe(mp, j, vs, gamma1_uebernehmen=False))) for j, vs in scheiben]
     vor = vertrags_monatsreserve(KERN, kerne, m).vx_mrv
     f = 0.6
     gesamt = vertrags_monatsreserve(KERN, kerne, m)
@@ -619,7 +619,7 @@ def _zweiteilung(monate: int, jahr: int = 8, anteil: float = 0.6):
     """Unabhaengige Nachrechnung aus Kern-Primitiven (ohne ReduzierterVertrag)."""
     from rechner_pipeline.kern.beitragsreduktion import reduziere
 
-    r = reduziere(KERN, jahr, anteil)
+    r = reduziere(KERN, jahr, anteil, verfahren="prospektiv")
     bfr_teil = r.vs_neu - anteil * r.vs_alt
     a, rest = divmod(monate, 12)
     satz = KERN.verlaufszeile(a).vx_bfr
@@ -678,8 +678,8 @@ def test_reduktion_mit_scheiben_oder_pex_zustand_wird_als_folge_gerechnet():
     from rechner_pipeline.kern import erhoehungs_scheibe
     from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 9, 5000.0))
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="prospektiv")
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 9, 5000.0, gamma1_uebernehmen=False))
     soll = rv.monatsreserve(120).vx_mrv + scheibe.monatsreserve(120 - 108).vx_mrv
     urteil = pruefe_vertrag(_vertrag(
         Pruefpunkt(monate=120, erwartet={"kVx_MRV": round(soll, 2)}, anlass="uebernahme"),
@@ -707,7 +707,7 @@ def test_reduktion_mit_schicht_rechnet_die_schicht_mit():
     from rechner_pipeline.kern.korrekturschicht import schichtwert_bei
 
     e, _, ta = _uebernommen()
-    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="prospektiv")
     soll = rv.monatsreserve(120).vx_mrv + schichtwert_bei(e.parameter, ta, KLV_DEFAULT, 120)
     urteil = pruefe_vertrag(_vertrag(
         Pruefpunkt(monate=120, erwartet={"kVx_MRV": round(soll, 2)},
@@ -740,7 +740,7 @@ def test_scheiben_vertrag_traegt_den_beitrag_beider_teile():
     from rechner_pipeline.kern import erhoehungs_scheibe
 
     erh_jahr, erh_summe = 6, 20000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, erh_summe))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, erh_summe, gamma1_uebernehmen=False))
     erwartet = KERN.gross_annual_premium() + scheibe.gross_annual_premium()
     monate = 12 * 9
     v = _vertrag(
@@ -961,7 +961,7 @@ class TestKandidatenKorridor:
 
         aus = []
         for f in self.KANDIDATEN:
-            rv = ReduzierterVertrag.nach(KERN, self.JAHR, f)
+            rv = ReduzierterVertrag.nach(KERN, self.JAHR, f, verfahren="prospektiv")
             if groesse == "BJB":
                 aus.append(rv.bjb(self.MONATE))
             else:
@@ -1072,7 +1072,7 @@ def test_die_zweitverankerung_traegt_das_konventionsresiduum_getrennt():
         Uebernahme(police_id=1, model_point=dict(MP),
                    monate_ta=t0,
                    dk_ist=KERN.verlaufszeile(t0 // 12).drx_bpfl + delta_conv)
-    ])
+    ], formfunktion="proportional_zur_basis")
     import dataclasses
 
     conv = dataclasses.replace(e_conv.parameter, schichttyp="conv")
@@ -1187,7 +1187,7 @@ class TestScheibenGamma1Regel:
             erhoehungs_scheibe,
         )
 
-        alt = erhoehungs_scheibe(KLV_DEFAULT, 5, 4000.0)
+        alt = erhoehungs_scheibe(KLV_DEFAULT, 5, 4000.0, gamma1_uebernehmen=False)
         voll = erhoehungs_scheibe(KLV_DEFAULT, 5, 4000.0,
                                   gamma1_uebernehmen=True)
         assert alt.gamma1 == 0.0
@@ -1289,7 +1289,7 @@ class TestStoabJeBausteinRegel:
 
         grund = Rechenkern(mp).monatsreserve(monate)
         scheibe = Rechenkern(
-            erhoehungs_scheibe(mp, 8, 5000.0)).monatsreserve(monate - 12 * 8)
+            erhoehungs_scheibe(mp, 8, 5000.0, gamma1_uebernehmen=False)).monatsreserve(monate - 12 * 8)
         assert je_baustein["RKW"] == pytest.approx(grund.rkw + scheibe.rkw)
         assert je_baustein["RKW"] != pytest.approx(
             je_vertrag["RKW"], rel=1e-6)

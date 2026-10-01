@@ -122,7 +122,10 @@ def vorgangsjahr_fehler(
 
     Das Vertragsjahr einer Zeile: Historie aus ``status_date`` (vollendete
     Monate seit Versicherungsbeginn durch 12, wie die Bewertung das PEX-Jahr
-    liest), Ledger ``vertragsjahr``, Reduktionstabelle ``reduktion_jahr``
+    liest), Ledger ``vertragsjahr`` — ohne die Buchungen, die der Zugang
+    schreibt (``models.bestand.zugangsbuchungen``: die Umbuchung eines
+    beitragsfrei uebernommenen Vertrags traegt das Zugangsjahr, ihr Vorgang
+    steht in der Historie; Pruefrunde I, I10) —, Reduktionstabelle ``reduktion_jahr``
     (die Art sagt das Verfahren), Scheiben ``erhoehung_jahr``. Nur die
     Kapitalversicherung kennt diese Vorgaenge; die Form der Zeilen pruefen
     die Vertraege in ``models.bestand``.
@@ -134,7 +137,7 @@ def vorgangsjahr_fehler(
         BeitragsreduktionFehler,
         pruefe_vorgangsjahr,
     )
-    from rechner_pipeline.models.bestand import reduktion_ereignis
+    from rechner_pipeline.models.bestand import reduktion_ereignis, zugangsbuchungen
 
     vertraege: Dict[int, Tuple[_Dauern, Any]] = {}
     for pid, produkt, n, t, beginn in zip(
@@ -152,9 +155,16 @@ def vorgangsjahr_fehler(
                 jahr = months_between(vertraege[pid][1], pd.Timestamp(datum).date()) // 12
                 zeilen.append(("historie", pid, str(code), jahr))
     if ledger is not None:
-        for pid, ereignis, jahr in zip(ledger["police_id"], ledger["ereignis"],
-                                       ledger["vertragsjahr"]):
-            if str(ereignis) in VORGANGSJAHR_WEGE:
+        # Geprueft wird das Jahr des VORGANGS, nie das einer Buchung, die einen
+        # bestehenden Zustand in die Fuehrung uebernimmt (Pruefrunde I, I10):
+        # Die Umbuchung eines beitragsfrei uebernommenen Vertrags steht am
+        # Zugangstag und traegt das Vertragsjahr des Zugangs; das Jahr der
+        # Freistellung steht in der Historie und wird dort geprueft.
+        bekannt = ledger[[int(p) in vertraege for p in ledger["police_id"]]]
+        vorgang = ~zugangsbuchungen(bekannt, portfolio) if len(bekannt) else []
+        for pid, ereignis, jahr, ist_vorgang in zip(
+                bekannt["police_id"], bekannt["ereignis"], bekannt["vertragsjahr"], vorgang):
+            if str(ereignis) in VORGANGSJAHR_WEGE and ist_vorgang:
                 zeilen.append(("ledger", int(pid), str(ereignis), int(jahr)))
     if reduktionen is not None:
         for pid, jahr, verfahren in zip(reduktionen["police_id"],
@@ -713,11 +723,17 @@ def lies_und_pruefe_pb1(
             # Betragsidentitaet je Buchung (T20-04): erst mit den
             # Rechnungsgrundlagen der Config ist der Kern herleitbar. Nur
             # auf formal gueltigen Zeilen — sonst meldete jede
-            # Formverletzung zusaetzlich einen Herleitungsfehler.
+            # Formverletzung zusaetzlich einen Herleitungsfehler. Auch auf
+            # einem LEEREN Ledger (Pruefrunde I, I11): Er traegt nicht mehr
+            # Buchungen als ein fehlender; die Herleitung haelt dann die
+            # Tabelle gegen Tarifwerk und Annahmen und meldet jeden
+            # registrierten Vorgang ohne Buchung.
+            hergeleitet = False
             if (
                 ledger is not None
                 and not any(e["code"] in ("ledger", "portfolio", "config") for e in errors)
             ):
+                hergeleitet = True
                 try:
                     for meldung in pruefe_ledger_betraege(
                         portfolio, ledger, config, scheiben=scheiben,
@@ -736,13 +752,16 @@ def lies_und_pruefe_pb1(
                             set(HERGELEITET) | {"INV", "REA"}).sum())
                 except Exception as exc:  # noqa: BLE001 — malformed data blockiert
                     errors.append({"code": "ledger", "message": str(exc)})
-            # Ohne Ledger (Pruefrunde H, H03/H05): Die Tabelle registrierter
-            # Vorgaenge wird trotzdem gegen Tarifwerk und Annahmen gehalten —
-            # ueber DIESELBE Funktion wie auf dem Ledger-Weg (dort ruft sie
-            # pruefe_ledger_betraege). Was ohne Ledger ungeprueft bleibt, sind
-            # die Buchungen selbst (Betraege, Vollstaendigkeit); die Summary
-            # nennt ihre Zahl, statt "all_passed" darueber zu stellen.
-            if ledger is None and reduktionen is not None and len(reduktionen) > 0:
+            # Ohne Herleitung (Pruefrunde H, H03/H05; Pruefrunde I, I11): Die
+            # Tabelle registrierter Vorgaenge wird trotzdem gegen Tarifwerk und
+            # Annahmen gehalten — ueber DIESELBE Funktion wie auf dem
+            # Ledger-Weg (dort ruft sie pruefe_ledger_betraege). Die Bindung
+            # haengt an der TABELLE, nicht am Ledger: Sie laeuft hier, wann
+            # immer die Herleitung nicht lief — ohne Ledger, und auch bei einem
+            # Ledger mit Formfehlern. Was dann ungeprueft bleibt, sind die
+            # Buchungen selbst (Betraege, Vollstaendigkeit); die Summary nennt
+            # ihre Zahl, statt "all_passed" darueber zu stellen.
+            if not hergeleitet and reduktionen is not None and len(reduktionen) > 0:
                 geprueft["reduktionen_buchungen_ungeprueft"] = int(len(reduktionen))
                 if not any(e["code"] in ("reduktionen", "portfolio", "config")
                            for e in errors):

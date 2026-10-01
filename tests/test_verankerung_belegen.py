@@ -249,7 +249,7 @@ def test_zustands_vertraege_verankern_auf_ihrer_welt():
     grund, erh_jahr, summe = 90000.0, 8, 4500.0
     grund_mp = dataclasses.replace(KLV_DEFAULT, sum_insured=grund)
     kerne = [(erh_jahr, Rechenkern(erhoehungs_scheibe(
-        grund_mp, erh_jahr, summe)))]
+        grund_mp, erh_jahr, summe, gamma1_uebernehmen=False)))]
     welt = vertrags_monatsreserve(Rechenkern(grund_mp), kerne, 120)
     # Zonen-Beleg: die Scheiben-Welt trennt gefuehrten Wert und
     # Deckungsrueckstellung — genau die Differenz, die auf der

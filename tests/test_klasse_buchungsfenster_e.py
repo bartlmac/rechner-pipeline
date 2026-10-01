@@ -406,7 +406,7 @@ def _faelle(welt, art):
         from rechner_pipeline.bestand.migrationszugang import uebernehmen, zugangsjournal
         from tests.test_migrationszugang import _uebernahme
 
-        erg = uebernehmen([_uebernahme(900_001)])
+        erg = uebernehmen([_uebernahme(900_001)], formfunktion="proportional_zur_basis")
         ueb = _uebernommen()
         eigen = _stamm_eigen()
         mig = zugangsjournal(erg, ZUGANG.date(), "TG2015")

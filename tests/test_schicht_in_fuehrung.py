@@ -121,7 +121,7 @@ def test_storno_zahlt_basiswert_plus_schicht_und_p_b1_leitet_es_her():
                    "sum_insured": s["sum_insured"], "zahlweise": h["zahlweise"]}
             kw = model_point_kwargs(row, felder); kw["gamma1"] = float(s["gamma1"])
             teile.append((int(s["erhoehung_jahr"]), Rechenkern(ModelPoint(**kw))))
-        basis = vertrags_rkw(Rechenkern(grund_mp), teile, jahr)
+        basis = vertrags_rkw(Rechenkern(grund_mp), teile, jahr, stoab_je_baustein=False)
         schicht = schichtwert_bei(_parameter(), MONATE_TA, grund_mp, 12 * jahr)
         assert schicht != 0.0
         assert z["betrag"] == basis + schicht, (pid, jahr)

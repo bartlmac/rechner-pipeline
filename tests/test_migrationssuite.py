@@ -123,7 +123,7 @@ def test_pex_unterjaehrig_ist_befund() -> None:
 
 def test_erh_wird_vertragsweit_geprueft() -> None:
     a, s_neu = 10, 5000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a, s_neu))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a, s_neu, gamma1_uebernehmen=False))
     dk2 = round(vertrags_monatsreserve(KERN, [(a, scheibe)], S2).vx_mrv, 2)
     gevos = (GeVoErwartung("ERH", 12 * a, s_neu),)
     urteil = pruefe_vertrag(_pruefung(dk2=dk2, gevos=gevos), red_verfahren="prospektiv")
@@ -571,7 +571,7 @@ def test_tod_nach_erh_und_pex_summiert_die_beitragsfreien_summen() -> None:
     """
     a_erh, a_pex, s_neu = 8, 10, 5000.0
     m1, m2 = 12 * 7 + 5, 12 * 11 + 5
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a_erh, s_neu))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a_erh, s_neu, gamma1_uebernehmen=False))
     s_bfr = round(KERN.beitragsfreie_summe(a_pex)
                   + scheibe.beitragsfreie_summe(a_pex - a_erh), 2)
     gevos = (GeVoErwartung("ERH", 12 * a_erh, s_neu),
@@ -720,7 +720,7 @@ def test_pex_nach_erhoehung_versetzt_den_jahrestag_der_scheibe() -> None:
     a_erh, a_pex, s_neu = 8, 10, 5000.0
     # Beide Jahrestage muessen zwischen die Stichtage passen:
     m1, m2 = 12 * 7 + 5, 12 * 11 + 5
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a_erh, s_neu))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a_erh, s_neu, gamma1_uebernehmen=False))
     s_bfr = round(KERN.beitragsfreie_summe(a_pex)
                   + scheibe.beitragsfreie_summe(a_pex - a_erh), 2)
     gevos = (GeVoErwartung("ERH", 12 * a_erh, s_neu),
@@ -886,7 +886,7 @@ def _zweiteilung_dk2(anteil: float, red_jahr: int, monate: int = S2) -> float:
     """
     from rechner_pipeline.kern.beitragsreduktion import reduziere
 
-    r = reduziere(KERN, red_jahr, anteil)
+    r = reduziere(KERN, red_jahr, anteil, verfahren="prospektiv")
     bfr_teil = r.vs_neu - anteil * r.vs_alt
     a, rest = divmod(monate, 12)
     satz = KERN.verlaufszeile(a).vx_bfr
@@ -1000,8 +1000,8 @@ def test_red_und_erh_am_selben_jahrestag_rechnet_die_folge() -> None:
     from rechner_pipeline.kern import erhoehungs_scheibe
     from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-    rv = ReduzierterVertrag.nach(KERN, 10, 0.6)
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, 5000.0))
+    rv = ReduzierterVertrag.nach(KERN, 10, 0.6, verfahren="prospektiv")
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, 5000.0, gamma1_uebernehmen=False))
     dk2 = rv.monatsreserve(S2).vx_mrv + scheibe.monatsreserve(S2 - 120).vx_mrv
     urteil = pruefe_vertrag(_pruefung(dk2=round(dk2, 2), gevos=(
         GeVoErwartung("ERH", 12 * 10, 5000.0),
@@ -1087,7 +1087,7 @@ def test_alt_scheiben_gehen_in_beide_stichtage_und_den_beitrag_ein():
     from rechner_pipeline.kern import erhoehungs_scheibe
 
     erh_jahr, erh_summe = 6, 20000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, erh_summe))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, erh_summe, gamma1_uebernehmen=False))
     dk1 = KERN.monatsreserve(S1).vx_mrv + scheibe.monatsreserve(
         S1 - 12 * erh_jahr).vx_mrv
     dk2 = KERN.monatsreserve(S2).vx_mrv + scheibe.monatsreserve(
@@ -1116,7 +1116,7 @@ def test_alt_reduktion_bewertet_den_geteilten_vertrag():
     """dk an beiden Stichtagen und der Beitrag folgen der Zweiteilung."""
     from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="prospektiv")
     urteil = pruefe_vertrag(_pruefung_mit(
         dk_erwartet_1=round(rv.monatsreserve(S1).vx_mrv, 2),
         dk_erwartet_2=round(_zweiteilung_dk2(0.6, 8), 2),
@@ -1139,7 +1139,7 @@ def test_pex_auf_alt_reduktion_fixiert_beide_teile():
     """Der gelieferte Fall (PEX auf Alt-RED): Betrag und Folgewert."""
     from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="prospektiv")
     pex_monat = 12 * 10
     summe = rv.beitragsfreie_summe(10)
     dk2 = rv.reserve_beitragsfrei(10, S2)
@@ -1158,9 +1158,9 @@ def test_erh_auf_alt_reduktion_traegt_die_scheibe_neben_der_teilung():
     from rechner_pipeline.kern import erhoehungs_scheibe
     from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="prospektiv")
     erh_monat, erh_summe = 12 * 10, 15000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, erh_summe))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, erh_summe, gamma1_uebernehmen=False))
     dk2 = rv.monatsreserve(S2).vx_mrv + scheibe.monatsreserve(
         S2 - erh_monat).vx_mrv
     urteil = pruefe_vertrag(_pruefung_mit(
@@ -1205,7 +1205,7 @@ def test_zweite_herabsetzung_auf_alt_reduktion_wird_gerechnet():
     from rechner_pipeline.kern import Vorgangsfolge, vorgang
     from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="prospektiv")
     folge = Vorgangsfolge(KERN, [], [vorgang(8, 0.6, "prospektiv"), vorgang(10, 0.5, "prospektiv")],
                           stoab_je_baustein=False, tku_umfang="alle_bausteine")
     dk2 = folge.stand_am(S2).werte(S2)["vx_mrv"]
@@ -1292,7 +1292,7 @@ def _mit_schicht(delta: float = -850.0):
     e, = uebernehmen([
         Uebernahme(police_id=1, model_point=dict(MP),
                    monate_ta=ta, dk_ist=prosp + delta)
-    ])
+    ], formfunktion="proportional_zur_basis")
     return e.parameter, ta, delta
 
 
@@ -1423,7 +1423,7 @@ def test_teilkuendigung_gevo_fuehrt_zustandslos_fort() -> None:
     from rechner_pipeline.kern import erhoehungs_scheibe
 
     erh_jahr, summe = 5, 4000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, summe))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, summe, gamma1_uebernehmen=False))
     dk1 = round(KERN.monatsreserve(S1).vx_mrv
                 + scheibe.monatsreserve(S1 - 12 * erh_jahr).vx_mrv, 2)
     dk2 = round(Rechenkern(klein).monatsreserve(S2).vx_mrv

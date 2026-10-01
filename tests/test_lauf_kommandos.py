@@ -213,7 +213,7 @@ def test_anfangszustand_erh_leitet_scheibe_und_grundsumme_ab():
     s_grund, s_scheibe, jahr = 80000.0, 12000.0, 6
     grund = Rechenkern(type(KLV_DEFAULT)(**{
         **KLV_DEFAULT.__dict__, "sum_insured": s_grund}))
-    scheibe = Rechenkern(erhoehungs_scheibe(grund.mp, jahr, s_scheibe))
+    scheibe = Rechenkern(erhoehungs_scheibe(grund.mp, jahr, s_scheibe, gamma1_uebernehmen=False))
     zeilen = [{"police_id": "7000001",
                "sum_insured": round(s_grund + s_scheibe, 2),
                "brutto_jahresbeitrag": round(
@@ -485,9 +485,9 @@ def test_anfangszustand_serie_bestimmt_offene_anteile_aus_kandidaten():
     jbrutto = round(
         Rechenkern(grund_mp).gross_annual_premium()
         + Rechenkern(erhoehungs_scheibe(
-            grund_mp, 1, 500.0)).gross_annual_premium()
+            grund_mp, 1, 500.0, gamma1_uebernehmen=False)).gross_annual_premium()
         + Rechenkern(erhoehungs_scheibe(
-            grund_mp, 3, 325.0)).gross_annual_premium(), 2)
+            grund_mp, 3, 325.0, gamma1_uebernehmen=False)).gross_annual_premium(), 2)
     zeilen = [{"police_id": "7000003", "sum_insured": 6825.00,
                "brutto_jahresbeitrag": jbrutto}]
     vorgeschichte = [
@@ -527,7 +527,7 @@ def test_anfangszustand_serie_mit_terminalem_pex_ist_einpunkt():
     from rechner_pipeline.kern import erhoehungs_scheibe
 
     grund = Rechenkern(_dc.replace(KLV_DEFAULT, sum_insured=10000.0))
-    scheibe = Rechenkern(erhoehungs_scheibe(grund.mp, 3, 500.0))
+    scheibe = Rechenkern(erhoehungs_scheibe(grund.mp, 3, 500.0, gamma1_uebernehmen=False))
     f_g = Rechenkern(_dc.replace(grund.mp, sum_insured=1.0)
                      ).beitragsfreie_summe(8)
     f_s = Rechenkern(_dc.replace(scheibe.mp, sum_insured=1.0)

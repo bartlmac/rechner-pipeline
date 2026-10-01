@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as _dt
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import pandas as pd
@@ -303,7 +304,15 @@ def _scheiben_kerne(
     config: BestandConfig,
     merkmale: Optional[pd.DataFrame] = None,
 ) -> Dict[int, List[Dict[str, Any]]]:
-    """police_id -> Erhoehungsscheiben mit eigenem Rechenkern (Schichtungsprinzip)."""
+    """police_id -> Erhoehungsscheiben mit eigenem Rechenkern (Schichtungsprinzip).
+
+    Jede Zeile geht durch die Jahresgrenze der Erhoehung des Kerns
+    (``kern.rechenkern.pruefe_scheibenjahre``; Pruefrunde I, I12): Hier laufen
+    alle Wege der Bewertung zusammen — auch die Jahreszeile eines beitragsfrei
+    gestellten Vertrags, die keinen Kern-Eingang fuer Scheibenlisten ruft.
+    """
+    from rechner_pipeline.kern.rechenkern import pruefe_scheibenjahre  # noqa: PLC0415
+
     grundlagen = grundlagen_je_police(config, merkmale)
     haupt = stamm.set_index("police_id")
     je_police: Dict[int, List[Dict[str, Any]]] = {}
@@ -337,6 +346,10 @@ def _scheiben_kerne(
         # der Generation rekonstruieren — genau das hatte die Tarifwerk-Regel
         # (gamma1-Bezugsgroesse GrundVS => Scheibe 0) verloren.
         kwargs["gamma1"] = float(s["gamma1"])
+        # Die Grenze liest nur die Dauern der Grundversicherung (n, t).
+        pruefe_scheibenjahre(
+            SimpleNamespace(n=int(h["duration"]), t=int(h["premium_duration"])),
+            ((int(s["erhoehung_jahr"]), None),))
         kern = Rechenkern(ModelPoint(**kwargs))
         je_police.setdefault(pid, []).append(
             {

@@ -786,7 +786,8 @@ def _deckungskapital(
     # "bestand" und "beitragspflichtig" sind derselbe gefuehrte Wert; die
     # Unterscheidung benennt nur, worauf sich der Vergleich bezieht.
     if scheiben:
-        return vertrags_monatsreserve(kern, scheiben, monate).vx_mrv
+        return vertrags_monatsreserve(
+            kern, scheiben, monate, stoab_je_baustein=v.stoab_je_baustein).vx_mrv
     if monate % 12:
         return kern.monatsreserve(monate).vx_mrv
     return kern.zustand_am(monate).vx_mrv

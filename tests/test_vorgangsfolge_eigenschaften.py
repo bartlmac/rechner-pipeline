@@ -72,7 +72,7 @@ def folgen(draw):
     obergrenze = min(pex - 1, MP.t - 1) if pex is not None else MP.t - 1
     jahre = draw(st.lists(st.integers(1, max(1, obergrenze)), max_size=2, unique=True)) \
         if obergrenze >= 1 else []
-    scheiben = [(j, Rechenkern(erhoehungs_scheibe(MP, j, 4000.0 + 500.0 * j)))
+    scheiben = [(j, Rechenkern(erhoehungs_scheibe(MP, j, 4000.0 + 500.0 * j, gamma1_uebernehmen=False)))
                 for j in sorted(jahre)]
     vorgaenge = draw(st.lists(st.tuples(
         st.sampled_from([PROSPEKTIV, MIT_ABZUG, TEILKUENDIGUNG]),

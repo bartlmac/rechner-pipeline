@@ -181,7 +181,7 @@ def test_eine_teilkuendigungskette_ist_der_vertrag_mit_dem_produkt(welt, bewerte
                 if 12 * int(e) > monate:
                     continue
                 k_e = sum(1 for j in tku if int(e) < j and 12 * j <= monate)
-                scheibe = erhoehungs_scheibe(mp, int(e), float(vs))
+                scheibe = erhoehungs_scheibe(mp, int(e), float(vs), gamma1_uebernehmen=False)
                 kerne.append((int(e), Rechenkern(dataclasses.replace(
                     scheibe, sum_insured=scheibe.sum_insured * TK_ANTEIL ** k_e))))
             soll = vertrags_monatsreserve(grund, kerne, monate)

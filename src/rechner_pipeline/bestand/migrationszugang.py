@@ -209,7 +209,7 @@ def _forme(kennung: str, basis: Sequence[float], fenster: Optional[int]) -> Form
 def uebernehmen(
     vertraege: Sequence[Uebernahme],
     *,
-    formfunktion: str = "proportional_zur_basis",
+    formfunktion: str,
     fenster: Optional[int] = None,
     vererbend: Optional[Tuple[Tuple[str, str], ...]] = None,
     ausbuchungsgrenze: Optional[float] = None,
@@ -1563,7 +1563,7 @@ def bestimme_serie_mit_kandidaten(
     satz: float,
     jbrutto: float,
     kandidaten: Sequence[float],
-    scheiben_mit_gamma1: bool = False,
+    scheiben_mit_gamma1: bool,
     anker: Optional[Tuple[int, float]] = None,
     abs_tol: float = ABLEITUNG_SELBSTCHECK_TOL,
 ) -> AbgeleiteteSerie:
@@ -1730,9 +1730,15 @@ def pruefe_erhoehungssatz(
     kandidat: float,
     belege: Sequence[Tuple[Mapping[str, Any], int, float, float]],
     *,
+    scheiben_mit_gamma1: bool,
     abs_tol: float = 0.011,
 ) -> Dict[str, Any]:
     """Einen Dynamiksatz gegen die gelieferten Jahresbeitraege pruefen.
+
+    ``scheiben_mit_gamma1`` (ohne Vorgabe, Pruefrunde I, I14): ob die Scheibe
+    gamma1 traegt, ist Tarifwerk der Generation; der Beitrag der Scheibe haengt
+    daran. Vorher rechnete die Funktion immer nach der Regel des eigenen
+    Geschaefts.
 
     Je Beleg ``(modellpunkt_felder, jahr, erlsumme, jbrutto)`` wird die
     Zerlegung AUS DEM SATZ gebildet und der daraus folgende
@@ -1764,7 +1770,8 @@ def pruefe_erhoehungssatz(
                                  "sum_insured": zerlegung.grundsumme})
         grund = Rechenkern(grund_mp)
         scheibe = Rechenkern(erhoehungs_scheibe(
-            grund_mp, jahr, zerlegung.erhoehungssumme))
+            grund_mp, jahr, zerlegung.erhoehungssumme,
+            gamma1_uebernehmen=scheiben_mit_gamma1))
         system = 0.0
         if grund_mp.t > 0:
             system += grund.gross_annual_premium()
@@ -1794,7 +1801,7 @@ def leite_erhoehung_ab(
     jahr: int,
     erlsumme: float,
     jbrutto: float,
-    scheiben_mit_gamma1: bool = False,
+    scheiben_mit_gamma1: bool,
 ) -> AbgeleiteteErhoehung:
     """Grund- und Erhoehungssumme einer Alt-Dynamik ableiten.
 

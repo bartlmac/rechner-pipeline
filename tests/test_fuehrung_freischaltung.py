@@ -70,11 +70,11 @@ def test_vertrags_rkw_folgt_dem_schalter_der_generation():
     je Baustein; ohne Scheiben sind beide die Kern-Verlaufszeile."""
     grund = Rechenkern(KLV_DEFAULT)
     scheiben = [
-        (3, Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 3, 5000.0))),
-        (5, Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 5, 6000.0))),
+        (3, Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 3, 5000.0, gamma1_uebernehmen=False))),
+        (5, Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 5, 6000.0, gamma1_uebernehmen=False))),
     ]
     jahr = 10
-    vertragsweit = vertrags_rkw(grund, scheiben, jahr)
+    vertragsweit = vertrags_rkw(grund, scheiben, jahr, stoab_je_baustein=False)
     je_baustein = vertrags_rkw(grund, scheiben, jahr, stoab_je_baustein=True)
     assert je_baustein == vertrags_monatsreserve(
         grund, scheiben, 12 * jahr, stoab_je_baustein=True).rkw
@@ -83,7 +83,7 @@ def test_vertrags_rkw_folgt_dem_schalter_der_generation():
     # Drei Mindestabzuege statt einem: je Baustein zieht mehr ab.
     assert je_baustein < vertragsweit
     ohne = grund.verlaufszeile(jahr).rkw
-    assert vertrags_rkw(grund, [], jahr) == ohne
+    assert vertrags_rkw(grund, [], jahr, stoab_je_baustein=False) == ohne
     assert vertrags_rkw(grund, [], jahr, stoab_je_baustein=True) == ohne
 
 
@@ -142,7 +142,7 @@ def test_engine_rechnet_auf_mitgebrachten_bausteinen(freigeschaltet: bool):
                                     stoab_je_baustein=tw["stoab_je_baustein"])
             assert z["betrag"] == erwartet, (pid, jahr)
             # Der mitgebrachte Baustein ist drin: ohne ihn ein anderer Wert.
-            assert z["betrag"] != vertrags_rkw(grund, [], jahr)
+            assert z["betrag"] != vertrags_rkw(grund, [], jahr, stoab_je_baustein=False)
         elif art == "PEX":
             erwartet = grund.beitragsfreie_summe(jahr) + sum(
                 k.beitragsfreie_summe(jahr - j) for j, k in teile)

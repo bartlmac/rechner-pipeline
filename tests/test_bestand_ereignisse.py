@@ -416,7 +416,7 @@ def test_abgangsbetraege_summieren_ueber_scheiben(portfolio, config, beispiel_la
         if zeile["ereignis"] == "STO":
             from rechner_pipeline.bestand.ereignisse import vertrags_rkw
 
-            erwartet = vertrags_rkw(grund, relevante, a)
+            erwartet = vertrags_rkw(grund, relevante, a, stoab_je_baustein=False)
         else:
             erwartet = grund.beitragsfreie_summe(a) + sum(
                 k.beitragsfreie_summe(a - j) for j, k in relevante

@@ -133,7 +133,7 @@ def test_prospektiv_kennt_keinen_abzug_und_der_schalter_aendert_nichts():
     a = reduzierte_teile(Rechenkern(_MP), [(e, Rechenkern(m)) for e, m in _SCHEIBEN],
                          _A0, _F, PROSPEKTIV, stoab_je_baustein=True)
     b = reduzierte_teile(Rechenkern(_MP), [(e, Rechenkern(m)) for e, m in _SCHEIBEN],
-                         _A0, _F, PROSPEKTIV)
+                         _A0, _F, PROSPEKTIV, stoab_je_baustein=False)
     assert [r.reduktion.vs_neu for _, r in a] == [r.reduktion.vs_neu for _, r in b]
 
 

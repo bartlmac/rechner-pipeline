@@ -89,7 +89,7 @@ def test_der_geschichtete_zweig_kuendigt_nur_den_grund():
     gerechnet."""
     grund, f, jahr = _kern(), 0.6, 8
     scheibe = _kern(4000.0)
-    teile = reduziere_geschichtet(grund, [(5, scheibe)], jahr, f, verfahren=TEILKUENDIGUNG)
+    teile = reduziere_geschichtet(grund, [(5, scheibe)], jahr, f, verfahren=TEILKUENDIGUNG, stoab_je_baustein=False)
     (e0, g), (e1, sch) = teile
     assert (e0, e1) == (0, 5)
     assert g.vs_neu == pytest.approx(f * grund.mp.sum_insured)

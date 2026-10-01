@@ -78,11 +78,11 @@ def test_die_deklaration_stimmt_mit_dem_produktiven_pfad_ueberein():
     kern = _kern()
     for verfahren in VERFAHREN:
         if verfahren in PRODUKTIV_AUSFUEHRBAR:
-            ergebnis = reduziere_geschichtet(kern, [], 5, 0.6, verfahren=verfahren)
+            ergebnis = reduziere_geschichtet(kern, [], 5, 0.6, verfahren=verfahren, stoab_je_baustein=False)
             assert ergebnis and ergebnis[0][1].verfahren == verfahren, verfahren
         else:
             with pytest.raises(BeitragsreduktionFehler):
-                reduziere_geschichtet(kern, [], 5, 0.6, verfahren=verfahren)
+                reduziere_geschichtet(kern, [], 5, 0.6, verfahren=verfahren, stoab_je_baustein=False)
     # Exakt: seit dem Bauauftrag T26-12 (2026-09-22) ist jedes bekannte
     # Verfahren ausfuehrbar — die Menge der Luecken ist LEER, nicht >= 0.
     assert set(VERFAHREN) == set(PRODUKTIV_AUSFUEHRBAR)
