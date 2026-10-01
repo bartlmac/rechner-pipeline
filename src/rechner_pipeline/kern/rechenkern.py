@@ -154,10 +154,28 @@ def erhoehungs_scheibe(
     des Kerns (:func:`pruefe_scheibenjahre`).
     """
     pruefe_scheibenjahre(mp, ((jahr, None),))
+    if gamma1_uebernehmen:
+        raise faehigkeit_fehlt("scheiben_mit_gamma1", True)
     return dataclasses.replace(
         mp, x=mp.x + jahr, n=mp.n - jahr, t=mp.t - jahr,
-        sum_insured=vs, gamma1=mp.gamma1 if gamma1_uebernehmen else 0.0,
+        sum_insured=vs, gamma1=0.0,
     )
+
+
+class KernFaehigkeitFehlt(ValueError):
+    """Eine Tarifregel verlangt eine Ausgestaltung, die der Kern nicht rechnet."""
+
+
+def faehigkeit_fehlt(regel: str, wert: object) -> KernFaehigkeitFehlt:
+    """Die EINE Verweigerung fuer eine Tarifregel, deren Wert der Kern nicht
+    rechnet (Rueckbau des zweiten Baldrian-Laufs, Version 3.21.0): Die Regel
+    kommt aus der Spez, der Kern rechnet aber nur, was eine Tarifgeneration
+    des Zielsystems fuehrt. Benannt, mit dem Ausweg — nie eine stille Rechnung
+    nach der Regel des eigenen Geschaefts."""
+    return KernFaehigkeitFehlt(
+        f"Tarifregel {regel} = {wert!r}: Der Kern rechnet diese Ausgestaltung nicht — "
+        "keine Tarifgeneration des Zielsystems fuehrt sie. Ausweg: eine Kern-Erweiterung "
+        "mit Entwicklermandat, abgenommen unter A-K2 (mensch/rechenkern)")
 
 
 def pruefe_scheibenjahre(grund_mp: ModelPoint, scheiben: Sequence[Tuple[int, object]]) -> None:
@@ -231,29 +249,15 @@ def vertrags_monatsreserve(
         stuecke.append((kern, versetzt, reserve))
     a = monate // 12
     if stoab_je_baustein:
-        stoab = rkw = 0.0
-        for kern, versetzt, reserve in stuecke:
-            mp_k = kern.mp
-            a_k = versetzt // 12
-            if a_k > mp_k.n or kern.produkt.ist_flex_phase(a_k):
-                teil_stoab = 0.0
-            else:
-                teil_stoab = min(
-                    mp_k.stoab_max,
-                    max(mp_k.stoab_min,
-                        mp_k.stoab_satz
-                        * (mp_k.sum_insured - reserve.drx_bpfl)))
-            stoab += teil_stoab
-            rkw += max(0.0, reserve.vx_mrv - teil_stoab)
+        raise faehigkeit_fehlt("stoab_je_baustein", True)
+    mp = grund.mp
+    if a > mp.n or grund.produkt.ist_flex_phase(a):
+        stoab = 0.0
     else:
-        mp = grund.mp
-        if a > mp.n or grund.produkt.ist_flex_phase(a):
-            stoab = 0.0
-        else:
-            vs = sum(kern.mp.sum_insured for _, kern in teile)
-            stoab = min(mp.stoab_max,
-                        max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
-        rkw = max(0.0, mrv - stoab)
+        vs = sum(kern.mp.sum_insured for _, kern in teile)
+        stoab = min(mp.stoab_max,
+                    max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+    rkw = max(0.0, mrv - stoab)
     return Monatsreserve(
         monate=monate, jahr=a, monatsanteil=(monate % 12) / 12.0,
         drx_bpfl=dr, vx_mrv=mrv, stoab=stoab, rkw=rkw,

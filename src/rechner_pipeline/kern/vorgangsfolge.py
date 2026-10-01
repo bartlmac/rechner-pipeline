@@ -108,7 +108,7 @@ from rechner_pipeline.kern.korrekturschicht import (
 )
 from rechner_pipeline.kern.model_point import ModelPoint
 from rechner_pipeline.kern.produkte.klv import Monatsreserve
-from rechner_pipeline.kern.rechenkern import Rechenkern
+from rechner_pipeline.kern.rechenkern import Rechenkern, faehigkeit_fehlt
 
 #: Die Codes der Vorgaenge, die die Folge ordnet. ``RED`` und ``TKU`` sind
 #: die Vorgaenge der Nebentabelle ``reduktionen``; ``PEX`` und ``ERH`` gehen
@@ -517,27 +517,14 @@ class Vertragsstand:
         mp = grund.mp
         a = int(monate) // 12
         if self.stoab_je_baustein:
-            stoab = rkw = 0.0
-            for b, versetzt, reserve in stuecke:
-                mp_k = b.kern.mp
-                a_k = versetzt // 12
-                if a_k > mp_k.n or b.kern.produkt.ist_flex_phase(a_k):
-                    teil_stoab = 0.0
-                else:
-                    teil_stoab = min(
-                        mp_k.stoab_max,
-                        max(mp_k.stoab_min,
-                            mp_k.stoab_satz * (b.vs - reserve.drx_bpfl)))
-                stoab += teil_stoab
-                rkw += max(0.0, reserve.vx_mrv - teil_stoab)
+            raise faehigkeit_fehlt("stoab_je_baustein", True)
+        if a > mp.n or grund.produkt.ist_flex_phase(a):
+            stoab = 0.0
         else:
-            if a > mp.n or grund.produkt.ist_flex_phase(a):
-                stoab = 0.0
-            else:
-                vs = sum(b.vs for b in teile)
-                stoab = min(mp.stoab_max,
-                            max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
-            rkw = max(0.0, mrv - stoab)
+            vs = sum(b.vs for b in teile)
+            stoab = min(mp.stoab_max,
+                        max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+        rkw = max(0.0, mrv - stoab)
         return Monatsreserve(
             monate=int(monate), jahr=a, monatsanteil=(int(monate) % 12) / 12.0,
             drx_bpfl=dr, vx_mrv=mrv, stoab=stoab, rkw=rkw,
@@ -554,9 +541,9 @@ class Vertragsstand:
         flexiblen Phase, nie negativ. Die wertstetig ueberfuehrte Schicht ist
         Teil der garantierten Summe und zaehlt mit; ausgewiesen wird sie
         trotzdem als ``korrekturschicht`` (Grundsatzdokumentation 9.11)."""
+        if self.stoab_je_baustein:
+            raise faehigkeit_fehlt("stoab_je_baustein", True)
         dk = korr = summe = 0.0
-        rkw_je = 0.0
-        stoab_je = 0.0
         stuecke = []
         for b in teile:
             lokal = int(monate) - 12 * b.erh_jahr
@@ -568,16 +555,9 @@ class Vertragsstand:
             s = b.s_bfr + b.zuschlag
             summe += s
             stuecke.append((b, lokal, s, basis + zusatz))
-            if self.stoab_je_baustein:
-                teil = stornoabzug_auf(b.kern, lokal // 12, s, basis + zusatz)
-                stoab_je += teil
-                rkw_je += max(0.0, basis + zusatz - teil)
-        if self.stoab_je_baustein:
-            stoab, rkw = stoab_je, rkw_je
-        else:
-            grund = teile[0].kern
-            stoab = stornoabzug_auf(grund, int(monate) // 12, summe, dk + korr)
-            rkw = max(0.0, dk + korr - stoab)
+        grund = teile[0].kern
+        stoab = stornoabzug_auf(grund, int(monate) // 12, summe, dk + korr)
+        rkw = max(0.0, dk + korr - stoab)
         return {"dk": dk, "korr": korr, "stoab": stoab, "rkw": rkw,
                 "vs_bfr": summe}
 
@@ -657,7 +637,7 @@ class Vertragsstand:
         danach); bei der Teilkuendigung mit Umfang ``grundversicherung`` nur
         die Grundversicherung."""
         if art == TKU and self.tku_umfang == UMFANG_GRUND:
-            return [0]
+            raise faehigkeit_fehlt("tku_umfang", UMFANG_GRUND)
         return [i for i, b in enumerate(self.bausteine)
                 if i == 0 or b.erh_jahr < int(jahr)]
 
@@ -720,12 +700,7 @@ class Vertragsstand:
         if v.verfahren == PROSPEKTIV:
             nach_abzug = [1.0] * len(teile)
         elif self.stoab_je_baustein:
-            # Je Baustein sein eigener Rueckkaufswert (Bedingungswerk Ziffer
-            # 4; Runde F, Nachbesserung 2) — auf dem Zustand des Bausteins.
-            nach_abzug = [
-                _abzugsfaktor(r.vx_mrv, stornoabzug_auf(
-                    b.kern, jahr - b.erh_jahr, b.vs, r.drx_bpfl))
-                for b, r in zip(teile, vorher)]
+            raise faehigkeit_fehlt("stoab_je_baustein", True)
         else:
             # Je Vertrag (Tarifplan 6): (1-f) x RKW des Vertrags, verteilt nach
             # dem auf null begrenzten Rueckkaufs-Track der Bausteine (Runde F, F1).

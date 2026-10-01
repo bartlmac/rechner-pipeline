@@ -257,7 +257,27 @@ from rechner_pipeline.kern.vorgangsfolge import (
 #: Aufruf ohne die Regel ist ein TypeError statt der Regel des eigenen
 #: Geschaefts. Keine Formel und kein Wert aendert sich; alle
 #: Charakterisierungs-Referenzwerte des Kerns sind unveraendert.
-__version__ = "3.20.0"
+#: 3.21.0 = Rueckbau des zweiten Baldrian-Laufs (Auftrag des Maintainers,
+#: 2026-10-01; vor Fall 3, der Neufassung der Uebernahme). Der Kern rechnet
+#: die Ausgestaltungen nicht mehr, die allein der uebernommene Tarif TG2015
+#: brauchte: die volle Beitragsformel je Erhoehungsbaustein (gamma1 der
+#: Scheibe, 3.2.0), den Stornoabzug je Baustein (3.3.0 und seine Folgen in
+#: Vorgangsfolge und Herabsetzung) und die Teilkuendigung nur der
+#: Grundversicherung (``tku_umfang = grundversicherung``, 3.17.0). Die Regeln
+#: bleiben im Vokabular und in den Signaturen — eine Spez darf sie belegen —,
+#: der Kern VERWEIGERT den Wert benannt (``rechenkern.faehigkeit_fehlt``:
+#: Kern-Erweiterung mit Entwicklermandat, abgenommen unter A-K2), statt nach
+#: der Regel des eigenen Geschaefts zu rechnen. Entfernt sind auch die sechs
+#: Tafeln aus dem Tarifrechner der Quelle (``DAV2008_T_NR_*``, ``DAV2008_T_R_*``)
+#: und die Generation TG2015 der Config. Es BLEIBEN: die Teilkuendigung als
+#: Vorgang des eigenen Geschaefts (alle Bausteine), die Korrekturschicht, die
+#: Verankerung und alles, was die Migration am Werkzeug gelehrt hat. Fuer die
+#: 13 eigenen Generationen aendert sich kein Wert; alle
+#: Charakterisierungs-Referenzwerte des Kerns sind unveraendert. Die Tests der
+#: zurueckgebauten Faehigkeiten sind ausgesetzt, nicht geloescht
+#: (``tests/rueckbau_fall2_ausgesetzt.txt``); die Umkehrung dieses Standes ist
+#: die Kern-Aenderung von Fall 3.
+__version__ = "3.21.0"
 
 __all__ = [
     "ModelPoint",
