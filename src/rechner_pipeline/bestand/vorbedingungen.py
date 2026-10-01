@@ -474,16 +474,32 @@ def lies_und_pruefe_pb1(
         # Behauptung (Angriffsrunde der Nacht: Auszahlung x10, Auszahlung
         # weg, Summe halbiert — alles PASSED). Wie ERH ohne --scheiben: ein
         # Bedienfehler.
+        #
+        # Registriert ist ein Vorgang im Ledger ODER in der Reduktionstabelle
+        # (Pruefrunde G, Fund G05): Die Wache sah nur den Ledger, und ein Lauf,
+        # dessen Tabelle 270 Vorgaenge registriert, deren Buchungen im Ledger
+        # alle fehlen, ging ohne Config gruen durch P-B1 und den Bericht -
+        # dieselben Bytes, die beide mit Config verweigern. Die
+        # Vollstaendigkeit (jeder registrierte Vorgang hat seine Buchungen)
+        # prueft nur die Herleitung, und die braucht die Config.
         try:
             red_ohne_config = bool(ledger["ereignis"].isin(REDUKTION_EREIGNISSE).any())
-        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+        except Exception as exc:  # noqa: BLE001 - malformed data blockiert
             errors.append({"code": "ledger", "message": str(exc)})
             red_ohne_config = False
-        if red_ohne_config:
+        registriert = reduktionen is not None and len(reduktionen) > 0
+        if red_ohne_config or registriert:
+            traeger = []
+            if red_ohne_config:
+                traeger.append("Ledger (RED/TKU)")
+            if registriert:
+                traeger.append(f"Reduktionstabelle ({len(reduktionen)} Zeilen)")
             usage_errors.append({
                 "code": "missing_arg",
-                "message": "Ledger enthaelt Herabsetzungen oder Teilkuendigungen (RED/TKU) — --config ist "
-                "erforderlich, sonst wird keine ihrer Buchungen hergeleitet",
+                "message": f"{' und '.join(traeger)} enthaelt Herabsetzungen oder "
+                "Teilkuendigungen (RED/TKU) - --config ist erforderlich, sonst wird "
+                "keine ihrer Buchungen hergeleitet und nicht geprueft, ob jeder "
+                "registrierte Vorgang gebucht ist",
             })
     if ledger is not None and schichten is None:
         # Dieselbe Wache fuer die Korrekturschicht (Angriffsrunde

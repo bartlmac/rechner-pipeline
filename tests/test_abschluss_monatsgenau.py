@@ -492,9 +492,13 @@ def _quellen() -> Dict[str, str]:
 
 
 #: Die Leser einer Abschlussdatei — jeder ueber ``lies_abschluss``.
+#: ``_fremde_abschluesse`` (Pruefrunde G, Fund G06): der Tageslauf fragt die
+#: Konvention eines vorgefundenen Abschlusses fuer einen erstmals gefuehrten
+#: Stichtag, bevor er nachrechnet.
 LESER = {
     "bestand/abschluss.py::pruefe_abschluss",
     "betrieb/seite.py::_ergaenze_kennzahlen",
+    "betrieb/tageslauf.py::_fremde_abschluesse",
     "betrieb/tageslauf.py::_pruefe_zahlen_der_zeile",
     "betrieb/tageslauf.py::_abschluss_kennt_eingang",
     "betrieb/tageslauf.py::_tageslauf_mit_config",

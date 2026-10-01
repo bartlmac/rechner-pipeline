@@ -205,11 +205,18 @@ def test_eine_geaenderte_config_haelt_den_lauf_an_und_nennt_den_ausweg(tmp_path)
     assert lies_protokoll(ablage.protokoll_pfad)[-1]["heute"] == "2026-02-03"
 
 
-def test_der_bereits_gefuehrte_tag_bleibt_ein_no_op(tmp_path):
-    """Die Pruefung gilt dem Rechnen. Der bereits gefuehrte Tag rechnet
-    nicht (benannter No-op) — dort aendert sie nichts."""
+def test_der_bereits_gefuehrte_tag_ist_ein_no_op_nur_mit_derselben_config(tmp_path):
+    """Der bereits gefuehrte Tag rechnet nicht (benannter No-op) — aber nur
+    mit der Config, mit der er gerechnet wurde. Bis zur Pruefrunde G stand
+    hier das Gegenteil ("dort aendert sie nichts", Exit 0 mit getauschter
+    Config); deploy/plv/README.md sagte an einer Stelle "haelt an, sobald die
+    Kopie nicht mehr die ist", an einer anderen "selber Tag ist No-op".
+    Entscheid: Die Wache laeuft vor dem No-op (Fund G07; ausfuehrlich in
+    ``tests/test_runde_g_tageslauf.py``)."""
     ablage = _kleine_ablage(tmp_path / "plv")
     assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
-    ablage.config_pfad.write_bytes(ablage.config_pfad.read_bytes() + b"# x\n")
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 31))
     assert code == EXIT_OK and zeile.get("bereits_gefuehrt") is True
+    ablage.config_pfad.write_bytes(ablage.config_pfad.read_bytes() + b"# x\n")
+    code, zeile = tageslauf(ablage, dt.date(2026, 1, 31))
+    assert code == EXIT_USAGE and zeile["uebernommen"] is False

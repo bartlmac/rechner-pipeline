@@ -288,23 +288,70 @@ def _pruefe_eingaben(
             f"Anteil {anteil!r} liegt nicht in [0, 1] — er ist der "
             "fortgefuehrte Bruchteil des Beitrags"
         )
-    if jahr < 0 or jahr > mp.n:
+    pruefe_vorgangsjahr(mp, jahr, "TKU" if verfahren == TEILKUENDIGUNG else "RED")
+
+
+#: Obere Grenze des Vertragsjahres je Vorgangsart (Tarifplan KLV 7 und 7.3):
+#: ``t`` — nur waehrend der Beitragszahlung (Herabsetzung, Erhoehung,
+#: Beitragsfreistellung: nach dem Beitragsende ist der Vertrag ausfinanziert,
+#: nicht beitragsfrei gestellt); ``n`` — bis vor den Ablauf (Teilkuendigung). Die
+#: untere Grenze ist fuer jede Art dieselbe: ``0 < jahr``. Die Schluessel sind
+#: die Vorgangscodes der Folge (``kern.vorgangsfolge.RANG``); ein Test haelt
+#: beide Mengen mit ``==`` gleich.
+VORGANGSJAHR_OBERGRENZE: Dict[str, str] = {"RED": "t", "TKU": "n", "PEX": "t", "ERH": "t"}
+
+
+def pruefe_vorgangsjahr(mp: Any, jahr: int, art: str) -> None:
+    """Die Jahresgrenzen der zulaessigen Folgen — die EINE Stelle.
+
+    Tarifplan KLV 7.3: zulaessig ist eine Folge mit jedem Vorgang im
+    Vertragsjahr ``0 < a < n``; Herabsetzung, Erhoehung und
+    Beitragsfreistellung nur waehrend der Beitragszahlung, ``0 < a < t``
+    (Entscheid 2026-10-01: eine Beitragsfreistellung gibt es nur, solange
+    Beitraege laufen; GeVo-Katalog der T-Box). Jede Folge ausserhalb wird
+    benannt verweigert, mit dem Ausweg. Durch diese Funktion gehen die
+    Einzelreduktion (:func:`reduziere`, :func:`reduziere_geschichtet`) und
+    jeder Vorgang der Folge (Herabsetzung, Teilkuendigung,
+    Beitragsfreistellung, Erhoehung; ``kern.vorgangsfolge``).
+
+    Bis Kern 3.17.0 fehlte die untere Grenze: Herabsetzung und Teilkuendigung
+    im Vertragsjahr 0 und eine Beitragsfreistellung im Jahr 0 oder ab dem
+    Beitragsende rechnete der Kern still (Pruefrunde G, Fund G02). Am Jahrestag 0
+    ist der Vertrag gerade erst entstanden — es gibt keinen Stand, den ein
+    Vorgang aendern koennte; was dort gewollt ist, ist ein anderer Vertrag.
+    """
+    if art not in VORGANGSJAHR_OBERGRENZE:
         raise BeitragsreduktionFehler(
-            f"Vertragsjahr {jahr} ausserhalb der Laufzeit (n={mp.n})"
+            f"unbekannte Vorgangsart {art!r} (bekannt: {sorted(VORGANGSJAHR_OBERGRENZE)})")
+    jahr = int(jahr)
+    if jahr <= 0:
+        raise BeitragsreduktionFehler(
+            f"Vertragsjahr {jahr}: ein Vorgang ({art}) wirkt fruehestens am ersten "
+            "Jahrestag nach dem Versicherungsbeginn (0 < jahr, Tarifplan KLV 7.3) — "
+            "am Beginn gibt es keinen Vertragsstand, den er aendern koennte. "
+            "Ausweg: den Vertrag mit Summe und Beitrag nach dem Vorgang beginnen "
+            "lassen (Zugang mit diesen Werten) oder den Vorgang am ersten Jahrestag "
+            "(Vertragsjahr 1) buchen")
+    if jahr > mp.n:
+        raise BeitragsreduktionFehler(
+            f"Vertragsjahr {jahr} ausserhalb der Laufzeit (n={mp.n}) — Ausweg: "
+            "das Vertragsjahr der Grundversicherung angeben, in dem der Vorgang wirkt"
         )
-    if verfahren == TEILKUENDIGUNG:
-        # Die Teilkuendigung (Bedingungswerk Ziffer 6) kuendigt einen
-        # Anteil der GRUNDVERSICHERUNGSSUMME mit Auszahlung — sie setzt
-        # keinen laufenden Beitrag voraus und ist darum auch im
-        # beitragsfreien Nachlauf (t <= jahr < n) definiert. Ihre
-        # Grenze ist der Ablauf, nicht das Beitragsende.
-        if jahr >= mp.n:
+    if VORGANGSJAHR_OBERGRENZE[art] == "t" and jahr >= mp.t:
+        if art == "PEX":
             raise BeitragsreduktionFehler(
-                f"Vertragsjahr {jahr}: der Vertrag laeuft bei n={mp.n} "
-                "ab — am oder nach dem Ablauf gibt es nichts mehr zu "
-                "kuendigen"
-            )
-    elif jahr >= mp.t:
+                f"Vertragsjahr {jahr}: Beitragsfreistellung nach dem Beitragsende "
+                f"(t={mp.t}) — der Vertrag ist ausfinanziert, nicht beitragsfrei "
+                "gestellt; eine Beitragsfreistellung gibt es nur, solange Beitraege "
+                "laufen (Tarifplan KLV 7.3). Ausweg: keiner noetig, der Vertrag laeuft "
+                "beitragsfrei bis zum Ablauf; eine Teilkuendigung (TKU) bleibt bis "
+                "zum Ablauf moeglich")
+        if art == "ERH":
+            raise BeitragsreduktionFehler(
+                f"Vertragsjahr {jahr}: Erhoehung nach dem Beitragsende (t={mp.t}) — "
+                "die Dynamik laeuft nur auf dem beitragspflichtigen Track. Ausweg: "
+                "keiner noetig, ohne Beitrag gibt es keine Erhoehung; die Summe "
+                "bleibt, wie sie ist")
         raise BeitragsreduktionFehler(
             f"Vertragsjahr {jahr}: die Beitragszahlungsdauer ist beendet "
             f"(t={mp.t}) — es gibt keinen Beitrag zu reduzieren. Eine "
@@ -312,6 +359,17 @@ def _pruefe_eingaben(
             "Ausweg: die Teilkuendigung (eigener Geschaeftsvorfall TKU, "
             "verfahren='teilkuendigung'), die einen Summenanteil kuendigt "
             "und auszahlt"
+        )
+    if VORGANGSJAHR_OBERGRENZE[art] == "n" and jahr >= mp.n:
+        # Die Teilkuendigung (Bedingungswerk Ziffer 6) kuendigt einen
+        # Summenanteil mit Auszahlung — sie setzt keinen laufenden Beitrag
+        # voraus und ist darum auch im beitragsfreien Nachlauf (t <= jahr < n)
+        # definiert. Ihre Grenze ist der Ablauf, nicht das Beitragsende.
+        raise BeitragsreduktionFehler(
+            f"Vertragsjahr {jahr}: der Vertrag laeuft bei n={mp.n} "
+            f"ab — am oder nach dem Ablauf gibt es nichts mehr zu kuendigen. "
+            "Ausweg: der Ablauf (ABL) zahlt die Leistung; vor dem Ablauf "
+            "der Vorgang in einem Vertragsjahr unter n"
         )
 
 

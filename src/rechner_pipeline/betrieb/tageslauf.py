@@ -159,7 +159,12 @@ from rechner_pipeline.betrieb.uebernahme import (
 )
 from rechner_pipeline.models.anker import jsonl_zeilen
 from rechner_pipeline.models.bestand import (
+    FUEHRUNGSKONVENTION,
+    HERKUNFT_SPALTE,
     REDUKTION_EREIGNISSE,
+    AbschlussKonvention,
+    AbschlussKonventionFehler,
+    konventionsbruch,
     reduktion_ereignis,
     BASIS_STATUS,
     LEDGER_NAMES,
@@ -2669,7 +2674,10 @@ def _tageslauf(
     Rueckgabe ``(EXIT_OK, {"heute": ..., "bereits_gefuehrt": True})``, ohne
     Protokollzeile, Stand unveraendert. Der Lauf ist idempotent; eine
     Erstbefuellung am Tag des ersten Timers darf die erste Nacht nicht rot
-    faerben. Rueckwaerts (``heute`` vor dem gefuehrten Tag) bleibt ein Fehler.
+    faerben. Das gilt nur mit der Config, mit der der Tag gerechnet wurde:
+    Ist sie getauscht, haelt auch dieser Lauf an (Exit 2, rote
+    Protokollzeile, Stand unveraendert; Pruefrunde G, Fund G07).
+    Rueckwaerts (``heute`` vor dem gefuehrten Tag) bleibt ein Fehler.
     """
     from rechner_pipeline.kern import __version__ as kern_version
 
@@ -2747,6 +2755,72 @@ def _pruefe_config_unveraendert(
         "zuruecksetzen, mit der das Protokoll gerechnet hat")
 
 
+def _fremde_abschluesse(ablage: Ablage, stichtage: List[_dt.date]) -> List[str]:
+    """Vorgefundene Abschluesse fuer Stichtage, die diese Ablage ERSTMALS
+    fuehrt, in einer anderen Konvention als der, in der sie schreibt.
+
+    ``stichtage`` sind die Monatsersten nach dem letzten gruen gefuehrten Tag:
+    Keiner davon ist im Protokoll bezeugt. Liegt fuer einen schon eine Datei,
+    stammt sie aus einem gescheiterten Lauf dieser Ablage (T24-01; dann steht
+    sie in der Fuehrungskonvention und wird unten nachgerechnet) oder von
+    aussen. Die Nachrechnung prueft in der Konvention DER DATEI
+    (``pruefe_abschluss``) und machte damit jede in sich stimmige
+    Jahreszeilen-Datei deckungsgleich — eine Naht in der Monatsreihe, die
+    nirgends stand (Pruefrunde G, Fund G06). Die Reihe dieser Ablage steht ab
+    hier in :data:`FUEHRUNGSKONVENTION`; eine Datei, die sie bricht
+    (:func:`konventionsbruch`), oder deren Konvention nicht zu bestimmen ist
+    (fehlende Gestalt, unbekannter Wert, zwei Werte in einer Datei), ist ein
+    Befund. Ein leerer Abschluss traegt keine Bewertung und bricht nichts.
+    Aeltere, im Protokoll bezeugte Abschluesse beruehrt das nicht: Sie
+    bleiben in der Konvention, in der sie geschrieben wurden (ADR-011).
+    """
+    reihe = AbschlussKonvention(FUEHRUNGSKONVENTION, HERKUNFT_SPALTE)
+    befunde: List[str] = []
+    for stichtag in stichtage:
+        pfad = abschluss_pfad(ablage.abschluesse, stichtag)
+        if not pfad.exists():
+            continue
+        try:
+            _, konvention = lies_abschluss(pfad)
+        except AbschlussKonventionFehler as exc:
+            grund = f"Konvention nicht zu bestimmen ({exc})"
+        else:
+            bruch = konventionsbruch([reihe, konvention])
+            if bruch is None:
+                continue
+            grund = f"Konvention {konvention.name!r} ({konvention.herkunft}); {bruch}"
+        befunde.append(
+            f"{pfad.name}: vorgefundener Abschluss zum {stichtag.isoformat()}, einem "
+            f"Stichtag, den diese Ablage erstmals fuehrt — sie schreibt "
+            f"{FUEHRUNGSKONVENTION!r}, die Datei: {grund}. Nichts uebernommen. "
+            f"Ausweg: die Datei gehoert nicht in die Monatsreihe dieser Ablage — aus "
+            f"{ablage.abschluesse} entfernen (archivieren, nicht ueberschreiben) und "
+            "den Lauf erneut fahren; er schreibt den Abschluss dann selbst")
+    return befunde
+
+
+def _zeilenkopf(
+    heute: _dt.date, letzter: Optional[_dt.date], nachgeholt: List[str],
+    config_pfad: Path, kern_version: str, image_digest: Optional[str],
+) -> Dict[str, Any]:
+    """Der Kopf jeder Protokollzeile eines Laufs, der rechnet oder an der
+    Config-Wache anhaelt — noch nicht uebernommen."""
+    return {
+        "schema_version": PROTOKOLL_SCHEMA_VERSION,
+        "heute": heute.isoformat(),
+        "gefuehrt_vorher": letzter.isoformat() if letzter else None,
+        "nachgeholt": nachgeholt,
+        "config_sha256": _datei_hash(config_pfad),
+        "kern_version": kern_version,
+        # Image-Angaben und Hash des Pakets (code_stand, Block F,
+        # Nachbesserung): Die Zugangsprobe haelt ihren eigenen Code-Stand
+        # gegen die letzte gruene Zeile, der Eintritt eines Eingangs den
+        # des Laufs gegen die Zugangsabnahme.
+        **code_stand(image_digest),
+        "uebernommen": False,
+    }
+
+
 def _tageslauf_mit_config(
     ablage: Ablage,
     heute: _dt.date,
@@ -2777,6 +2851,23 @@ def _tageslauf_mit_config(
         )
     letzter = gefuehrter_tag(ablage, zeichner)
     if letzter is not None and heute == letzter:
+        # Die Config-Wache laeuft VOR dem No-op (Pruefrunde G, Fund G07): Wer
+        # nach dem Tausch der Config den gefuehrten Tag zur Kontrolle noch
+        # einmal faehrt, bekam Exit 0 "bereits gefuehrt" — erst der naechste
+        # Kalendertag hielt an. Mit unveraenderter Config bleibt der Tag ein
+        # benannter No-op ohne Zeile; mit geaenderter haelt der Lauf an wie an
+        # jedem anderen Tag: Exit 2 und eine rote Protokollzeile, die beide
+        # Hashes nennt. Eine rote Zeile fuer den gefuehrten Tag beruehrt die
+        # Kette nicht, die nur gruene Zeilen verkettet.
+        try:
+            _pruefe_config_unveraendert(ablage, _protokoll(ablage, zeichner), config_pfad)
+        except TageslaufError as exc:
+            zeile = {
+                **_zeilenkopf(heute, letzter, [], config_pfad, kern_version, image_digest),
+                "fehler": f"{type(exc).__name__}: {exc}",
+            }
+            _anfuegen(ablage.protokoll_pfad, zeile, zeichner, aufschalten=aufschalten)
+            return EXIT_USAGE, zeile
         return EXIT_OK, {"heute": heute.isoformat(), "bereits_gefuehrt": True}
     if letzter is not None and heute < letzter:
         raise TageslaufError(
@@ -2796,20 +2887,8 @@ def _tageslauf_mit_config(
             nachgeholt.append(tag.isoformat())
             tag += _dt.timedelta(days=1)
 
-    zeile: Dict[str, Any] = {
-        "schema_version": PROTOKOLL_SCHEMA_VERSION,
-        "heute": heute.isoformat(),
-        "gefuehrt_vorher": letzter.isoformat() if letzter else None,
-        "nachgeholt": nachgeholt,
-        "config_sha256": _datei_hash(config_pfad),
-        "kern_version": kern_version,
-        # Image-Angaben und Hash des Pakets (code_stand, Block F,
-        # Nachbesserung): Die Zugangsprobe haelt ihren eigenen Code-Stand
-        # gegen die letzte gruene Zeile, der Eintritt eines Eingangs den
-        # des Laufs gegen die Zugangsabnahme.
-        **code_stand(image_digest),
-        "uebernommen": False,
-    }
+    zeile: Dict[str, Any] = _zeilenkopf(
+        heute, letzter, nachgeholt, config_pfad, kern_version, image_digest)
     code = {f: zeile[f] for f in ("image_digest", "image_revision", "quellcode_sha256")}
     exit_code = EXIT_OK
     try:
@@ -2892,11 +2971,17 @@ def _tageslauf_mit_config(
             # Abschluss OHNE Marker, und dem naechsten Lauf fehlte jeder
             # Hinweis, dass ein Publish unterwegs war (Befund T26-02,
             # Szenario 4).
+            stichtage = monatserste_in(
+                letzter or (betriebsbeginn - _dt.timedelta(days=1)), heute)
+            # Vorgefundene Abschluesse fuer Stichtage, die diese Ablage
+            # erstmals fuehrt, stehen in ihrer Konvention — sonst ein Befund,
+            # VOR dem ersten irreversiblen Schritt (Pruefrunde G, Fund G06).
+            fremd = _fremde_abschluesse(ablage, stichtage)
+            if fremd:
+                raise AbschlussError("; ".join(fremd))
             schreibe_publish_marker(ablage, heute, f"{STAND_DIR}-{kennung}")
             teilbestaende: Dict[str, List[int]] = zeile.pop("_teilbestaende")
             abschluesse: List[Dict[str, Any]] = []
-            stichtage = monatserste_in(
-                letzter or (betriebsbeginn - _dt.timedelta(days=1)), heute)
             for stichtag in stichtage:
                 pfad = abschluss_pfad(ablage.abschluesse, stichtag)
                 if pfad.exists():

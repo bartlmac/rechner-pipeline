@@ -204,7 +204,20 @@ class Barwertpaesse:
     ak: Tuple[float, ...] = ()
 
     def abschlusskostenfaktor(self, a: int) -> float:
-        return self.ak[a] if 0 <= a < len(self.ak) else 1.0
+        """Faktor auf den Abschlusskostenrest am Jahrestag ``a``.
+
+        Das Profil traegt die Vertragsjahre ``0..n-1``; am Jahrestag ``n``
+        (und danach) gilt der Faktor des letzten Vertragsjahres weiter — der
+        Abschnitt, in dem der Vertrag ablaeuft, endet nicht vor dem Ablauf.
+        Bis Kern 3.17.0 fiel er dort auf 1.0 zurueck: Ein herabgesetzter
+        Baustein, der kuerzer laeuft als die Zillmerdauer, trug am Jahrestag
+        ``n`` den Rest ungekuerzt, und der Rueckkaufswert des letzten
+        Vertragsjahres lag zu hoch (Pruefrunde G, Fund G01; Tarifplan KLV 7.1:
+        der fortgefuehrte Teil traegt ``c`` des Rests an JEDEM Jahrestag).
+        Ein leeres Profil ist der unveraenderte Vertrag (Faktor 1.0)."""
+        if not self.ak or a < 0:
+            return 1.0
+        return self.ak[min(a, len(self.ak) - 1)]
 
     def kostenrente_bpfl(self, a: int) -> float:
         return self._wert(self.axn_bpfl or self.axn, a)

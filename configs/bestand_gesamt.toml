@@ -1192,16 +1192,22 @@ bu_rente = [1200, 200000]
 # 2026-10-01; docs/simulation/bestandserzeugung.md). Fuer alle
 # KLV-Generationen gleich; die BU kennt keinen der beiden Vorgaenge.
 #   herabsetzung: 0,8 Prozent je Jahr eines beitragspflichtigen Vertrags
-#     (gezogen nur vor dem Beitragsende und ohne Beitragsfreistellung);
+#     (gezogen nur vor dem Beitragsende, nie nach einer
+#     Beitragsfreistellung, und nur in einem Tarif, der sie kennt);
 #     red_anteil ist der FORTGEFUEHRTE Beitragsanteil: 0.6 = Beitrag auf
 #     60 Prozent gesenkt.
-#   teilkuendigung: 0,5 Prozent je Jahr eines Vertrags vor dem Ablauf (ohne
-#     Beitragsfreistellung); tk_anteil ist der FORTGEFUEHRTE Summenanteil
-#     der Grundversicherung: 0.7 = 30 Prozent gekuendigt und ausgezahlt.
-#   Hoechstens ein Vorgang je Vertrag (Annahme A4). TG2015
-#     (red_verfahren = teilkuendigung) fuehrt den Herabsetzungswunsch als
-#     Teilkuendigung mit red_anteil aus (Annahme A1): Dort gibt es vor dem
-#     Beitragsende zwei Wege in eine Teilkuendigung.
+#   teilkuendigung: 0,5 Prozent je Jahr eines Vertrags vor dem Ablauf —
+#     beitragspflichtig, ausfinanziert und auch nach einer
+#     Beitragsfreistellung; tk_anteil ist der FORTGEFUEHRTE Summenanteil der
+#     betroffenen Bausteine (tku_umfang der Generation): 0.7 = 30 Prozent
+#     gekuendigt und ausgezahlt.
+#   Beliebig viele Vorgaenge je Vertrag, in jeder Reihenfolge, jeder auf dem
+#     Zustand davor (Tarifplan KLV 7.3; die fruehere Annahme A4, hoechstens
+#     ein Vorgang, ist ersetzt). TG2015 (red_verfahren = teilkuendigung)
+#     kennt keine Beitragsherabsetzung: Die Rate herabsetzung zieht dort
+#     nichts, die Teilkuendigung kommt allein aus ihrer eigenen Rate und
+#     kuerzt nur die Grundversicherung (tku_umfang; die fruehere Annahme A1,
+#     der Herabsetzungswunsch als Teilkuendigung, ist ersetzt).
 # --------------------------------------------------------------------------
 [annahmen]
 # Kapitallebensversicherung

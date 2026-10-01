@@ -193,7 +193,7 @@ Abschnitt 7. Jeder Betrag kommt aus dem Kern.
 |---|---|---|
 | **ZUG** Zugang | POL-Basiszeile ab Versicherungsbeginn | $S$ (Bestandsvolumen) |
 | **ERH** dynamische Erhöhung | neue Scheibe: eigener Modellpunkt mit $x' = x{+}a$, $n' = n{-}a$, $t' = t{-}a$, $S' = e \cdot S^{ges}$ (Zinseszins), ohne $\gamma_1$ (Bezugsgröße GrundVS); kein Statuswechsel | $S'$ |
-| **PEX** Beitragsfreistellung | Statuswechsel; fixiert $\sum_{\text{Scheiben}} S^{bfr}_a$; danach beitragsfreier Track | $\sum S^{bfr}_a$ |
+| **PEX** Beitragsfreistellung | Statuswechsel, nur solange Beiträge laufen ($0 < a_0 < t$, 7.3; danach ist der Vertrag ausfinanziert, nicht beitragsfrei gestellt); fixiert $\sum_{\text{Scheiben}} S^{bfr}_a$; danach beitragsfreier Track | $\sum S^{bfr}_a$ |
 | **RED** Beitragsherabsetzung | Beitrag sinkt am Jahrestag $a_0$ auf den Anteil $f$ (7.1); nur während der Beitragszahlung ($0 < a_0 < t$) und ohne PEX — danach verweigert, Ausweg ist die Teilkündigung. Verfahren je Generation: prospektiv und mit Abzug wandeln den freiwerdenden Anteil in eine beitragsfreie Summe um (geknicktes Zahlungsprofil, der Vertrag wird nicht geteilt), es fließt kein Geld; ein Tarif mit `teilkuendigung` kennt keine Herabsetzung (7.2). Beliebig viele je Vertrag, jede auf dem Zustand davor (7.3). Kein Statuswechsel; Abschlusskosten folgen dem Beitrag; die Dynamik läuft weiter; eine spätere PEX fixiert die Gesamtsumme | neue Gesamtsumme (`VS_herabsetzung`); absorbierte Korrekturschicht (`dDK_absorption`) |
 | **TKU** Teilkündigung | Anteil $(1-f)$ der betroffenen Bausteine gekündigt (Merkmal `tku_umfang`: alle Bausteine oder nur die Grundversicherung) und mit dem Rückkaufswert nach Tarifwerk (Stornoabzug) ausgezahlt; in jeder Generation, beitragspflichtig, ausfinanziert und nach PEX ($0 < a_0 < n$; nach PEX der Rückkaufswert des beitragsfreien Vertrags, B3); beliebig viele je Vertrag (7.2, 7.3). Kein Statuswechsel | neue Gesamtsumme (`VS_teilkuendigung`, nach PEX die beitragsfreie); absorbierte Korrekturschicht (`dDK_absorption`); Auszahlung $(1-f)\,\text{RKW}^{\text{betroffen}}_{a_0}$ + Schicht (`RKW_teilkuendigung`), auf null gekappt, ein gekappter Betrag als `Kappung_teilkuendigung` |
 | **STO** Rückkauf | terminal, $a < n$; die Engine zieht ihn nur beitragspflichtig, geliefert nach PEX misst ihn die Prüfstrecke mit dem Rückkaufswert des beitragsfreien Vertrags (B3, 7.2) | $\text{RKW}_a$ (vertragsweiter StoAb) |
@@ -452,6 +452,18 @@ beitragsfreie Summe des herabgesetzten Vertrags rechnen mit derselben
 Regel; eine Beitragsfreistellung nach der Herabsetzung ist deshalb
 wertstetig.
 
+Der Anteil gilt an **jedem** Jahrestag von $a_0$ bis zum Ablauf, auch am
+Jahrestag $n$ selbst. Dort ist der Rest gewöhnlich null; nicht null ist er
+bei einem Baustein, der kürzer läuft als die Zillmerdauer (eine späte
+Erhöhungsscheibe, $n' = n - e < z$), und die Monatsmischung des letzten
+Vertragsjahres liest ihn (*Prüfrunde G, Fund G01; Kern 3.18.0*). Bis dahin
+trug der Zahlungspfad am Jahrestag $n$ den Rest ungekürzt, und der
+Rückkaufswert des letzten Vertragsjahres lag um $(1-c)$ mal Rest mal
+Monatsanteil zu hoch (gemessen bis rund 20 EUR je Vertrag); das
+Deckungskapital war gleich. Verworfen: den Rest am Ablauf auf null zu
+setzen — das wäre eine zweite Tilgungsregel neben der des Kerns, und der
+unveränderte Baustein trägt ihn dort.
+
 **Dynamik nach der Herabsetzung.** Die dynamische Erhöhung läuft nach
 einer Herabsetzung weiter und bezieht sich auf die geführte Summe danach
 (den fortgeführten Vertrag samt seiner Erhöhungen). Jede spätere
@@ -702,11 +714,38 @@ Tages, mit jedem Vorgang im Vertragsjahr $0 < a < n$, in der
 
 * keine Herabsetzung ab dem Beitragsende ($a \ge t$) oder ab der
   Beitragsfreistellung steht (Ausweg: Teilkündigung),
+* keine Beitragsfreistellung ab dem Beitragsende ($a \ge t$) steht (der
+  Vertrag ist dann ausfinanziert; eine Teilkündigung bleibt bis zum Ablauf
+  möglich),
 * keine Erhöhung nach der Beitragsfreistellung steht,
 * keine Herabsetzung in einem Tarif steht, der sie nicht kennt (TG2015),
 * an keinem Jahrestag zwei Vorgänge derselben Art stehen.
 
 Jede Folge außerhalb dieser Menge wird benannt verweigert, mit dem Ausweg.
+Die Jahresgrenzen gelten für **jeden** Vorgang, auch für die
+Beitragsfreistellung: kein Vorgang im Vertragsjahr 0 (am Versicherungsbeginn
+gibt es keinen Vertragsstand, den er ändern könnte — was dort gewollt ist,
+ist ein anderer Vertrag; Ausweg: der Zugang mit den Werten nach dem Vorgang
+oder der Vorgang am ersten Jahrestag), keine Beitragsfreistellung ab dem
+Beitragsende. Sie stehen im Kern an einer Stelle
+(`beitragsreduktion.pruefe_vorgangsjahr`), durch die Einzelreduktion und
+jeder Vorgang der Folge gehen. *Prüfrunde G, Fund G02; Kern 3.18.0:* Bis
+dahin rechnete der Kern Herabsetzung und Teilkündigung im Jahr 0 und eine
+Beitragsfreistellung im Jahr 0 oder ab dem Beitragsende still; gemessen lieferte
+kein Produzent solche Folgen (Engine, Übernahme, Prüfstrecke, die
+Baldrian-Ketten). Verworfen: die Grenzen je Leser zu prüfen — die Leser
+delegieren sie an den Kern, und eine Wache an einem von zwei Eingängen ist
+keine.
+
+*Entscheid 2026-10-01:* Eine Beitragsfreistellung gibt es nur, solange
+Beiträge laufen ($0 < a < t$; GeVo-Katalog der T-Box) — dieselbe Regel wie
+für die Herabsetzung, die nur Beiträge betrifft und nur Sinn ergibt, solange
+ein Beitrag bezahlt wird. Nach dem Beitragsende ist der Vertrag
+ausfinanziert, nicht beitragsfrei gestellt. Verworfen: die Freistellung bis
+zum Ablauf zuzulassen. Sie ändert die Summe dort nicht (die beitragsfreie
+Summe ist die geführte), schaltet aber den Status und damit die
+Rückkaufswertregel des beitragsfreien Vertrags um, ohne dass ein Beitrag
+wegfällt.
 Die folgende Tabelle ist eine **Auswahl** daraus — die Folgen mit eigener
 Kontrollrechnung; die Menge selbst prüfen Eigenschaftstests über erzeugte
 Folgen (`tests/test_vorgangsfolge_eigenschaften.py`: nichts unter null, jede
@@ -733,6 +772,8 @@ Folgen mit Scheiben).
 | PEX, ERH | verweigert: keine Dynamik nach der Freistellung | — |
 | RED, RED am selben Jahrestag | verweigert | Ausweg $f = f_1 f_2$ |
 | RED im Tarif TG2015 | verweigert: der Tarif kennt keine Herabsetzung | Ausweg TKU |
+| ein Vorgang (RED, TKU, PEX, ERH) im Vertragsjahr 0 | verweigert | Ausweg: Zugang mit den Werten nach dem Vorgang, oder Vertragsjahr 1 |
+| PEX ab dem Beitragsende ($a \ge t$) | verweigert: der Vertrag ist ausfinanziert | Teilkündigung bleibt bis zum Ablauf möglich |
 
 # 8 Modellpunkt und Tarif-Stellschrauben
 

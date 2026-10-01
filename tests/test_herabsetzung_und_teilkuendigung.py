@@ -745,6 +745,11 @@ ARTEN = {"VS_herabsetzung", "VS_teilkuendigung", "dDK_absorption",
 #: Teilkuendigung); migrationssuite +1 Aufzaehlung (``VORGANG_ARTEN``, dieselbe
 #: Frage fuer die GeVos), die Verzweigungen nach "zweite Herabsetzung" und
 #: "Folge-GeVo" sind entfallen.
+#:
+#: Pruefrunde G (Fund G02): beitragsreduktion +1 Aufzaehlung
+#: (``VORGANGSJAHR_OBERGRENZE``, die eine Stelle der Jahresgrenzen aller
+#: Vorgangsarten; ``tests/test_runde_g_vorgaenge.py`` haelt sie mit ``==``
+#: gegen ``vorgangsfolge.RANG``); keine Verzweigung nach RED/TKU.
 INVENTAR = {
     "bestand/cli_fortschreibung.py": (0, 0, 1),
     "bestand/ereignisse.py": (0, 2, 5),
@@ -757,6 +762,7 @@ INVENTAR = {
     "gates/bestand_uebernehmen.py": (4, 0, 0),
     "gates/fuehrungsprobe.py": (1, 0, 0),
     "gates/migrationssuite_lauf.py": (1, 7, 0),
+    "kern/beitragsreduktion.py": (1, 0, 0),
     "kern/korrekturschicht.py": (1, 0, 0),
     "models/bestand.py": (12, 2, 14),
     # T-Box 0.2.0 (Entwurf, ADR-024): der Katalog der Geschaeftsvorfaelle und

@@ -93,6 +93,7 @@ from rechner_pipeline.kern.beitragsreduktion import (
     Reduktion,
     _abzugsfaktor,
     _pruefe_eingaben,
+    pruefe_vorgangsjahr,
 )
 from rechner_pipeline.kern.konventionen import untergrenze_basissumme
 from rechner_pipeline.kern.korrekturschicht import (
@@ -153,6 +154,15 @@ _GEWOEHNLICH: Tuple[Tuple[int, float, float], ...] = ((0, 1.0, 0.0),)
 
 class VorgangsfolgeFehler(BeitragsreduktionFehler):
     """Eine Folge, die der Kern nicht rechnet — benannt, mit Ausweg."""
+
+
+def _jahr_der_folge(mp: ModelPoint, jahr: int, art: str) -> None:
+    """Die Jahresgrenzen der Folge (``beitragsreduktion.pruefe_vorgangsjahr``,
+    die eine Stelle), benannt als Fehler der Folge."""
+    try:
+        pruefe_vorgangsjahr(mp, jahr, art)
+    except BeitragsreduktionFehler as exc:
+        raise VorgangsfolgeFehler(str(exc)) from exc
 
 
 @dataclass(frozen=True)
@@ -431,6 +441,7 @@ class Vertragsstand:
     def nach_erhoehung(self, jahr: int, kern: Rechenkern) -> "Vertragsstand":
         """Eine dynamische Erhoehung: ein neuer, gewoehnlicher Baustein — auch
         nach Herabsetzungen und Teilkuendigungen (Entscheid 2026-09-26)."""
+        _jahr_der_folge(self.grund_mp, jahr, ERH)
         if self.beitragsfrei:
             raise VorgangsfolgeFehler(
                 f"Erhoehung im Vertragsjahr {jahr} nach der Beitragsfreistellung "
@@ -447,6 +458,7 @@ class Vertragsstand:
         2026-09-15); liegt die Freistellung davor, laeuft sie als eigene
         Position weiter."""
         jahr = int(jahr)
+        _jahr_der_folge(self.grund_mp, jahr, PEX)
         if self.beitragsfrei:
             raise VorgangsfolgeFehler(
                 f"zweite Beitragsfreistellung im Jahr {jahr} (die erste im Jahr "
@@ -818,10 +830,13 @@ class Vorgangsfolge:
     uebernommenen Vertrags. Das Tarifwerk (Stornoabzug je Baustein,
     Umfang der Teilkuendigung) hat keinen Default.
 
-    Verweigert (benannt, mit Ausweg) wird, was der Tarifplan ausschliesst:
-    eine Beitragsherabsetzung ab dem Beitragsende oder nach der
-    Beitragsfreistellung, eine Teilkuendigung am oder nach dem Ablauf, zwei
-    gleiche Vorgaenge am selben Jahrestag, eine Erhoehung nach der
+    Verweigert (benannt, mit Ausweg) wird, was der Tarifplan ausschliesst
+    (KLV 7.3): ein Vorgang ausserhalb der Vertragsjahre ``0 < a < n`` (auch
+    im Jahr 0; die Grenzen stehen an einer Stelle,
+    ``beitragsreduktion.pruefe_vorgangsjahr``), eine Beitragsherabsetzung,
+    Erhoehung oder Beitragsfreistellung ab dem Beitragsende, eine
+    Beitragsherabsetzung nach der Beitragsfreistellung, zwei gleiche
+    Vorgaenge am selben Jahrestag, eine Erhoehung nach der
     Beitragsfreistellung.
     """
 

@@ -686,13 +686,17 @@ sum_insured = [1000, 2000000]
 # 2026-10-01; docs/simulation/bestandserzeugung.md). Fuer alle Generationen
 # gleich.
 #   herabsetzung: 0,8 Prozent je Jahr eines beitragspflichtigen Vertrags
-#     (gezogen nur vor dem Beitragsende und ohne Beitragsfreistellung);
-#     red_anteil ist der FORTGEFUEHRTE Beitragsanteil: 0.6 = Beitrag auf
-#     60 Prozent gesenkt.
-#   teilkuendigung: 0,5 Prozent je Jahr eines Vertrags vor dem Ablauf (ohne
-#     Beitragsfreistellung); tk_anteil ist der FORTGEFUEHRTE Summenanteil
-#     der Grundversicherung: 0.7 = 30 Prozent gekuendigt und ausgezahlt.
-#   Hoechstens ein Vorgang je Vertrag (Annahme A4).
+#     (gezogen nur vor dem Beitragsende und nie nach einer
+#     Beitragsfreistellung); red_anteil ist der FORTGEFUEHRTE
+#     Beitragsanteil: 0.6 = Beitrag auf 60 Prozent gesenkt.
+#   teilkuendigung: 0,5 Prozent je Jahr eines Vertrags vor dem Ablauf —
+#     beitragspflichtig, ausfinanziert und auch nach einer
+#     Beitragsfreistellung; tk_anteil ist der FORTGEFUEHRTE Summenanteil der
+#     betroffenen Bausteine (tku_umfang der Generation): 0.7 = 30 Prozent
+#     gekuendigt und ausgezahlt.
+#   Beliebig viele Vorgaenge je Vertrag, in jeder Reihenfolge, jeder auf dem
+#     Zustand davor (Tarifplan KLV 7.3; die fruehere Annahme A4, hoechstens
+#     ein Vorgang, ist ersetzt).
 # --------------------------------------------------------------------------
 [annahmen]
 tod = { a = 0.0, b = 0.8 }

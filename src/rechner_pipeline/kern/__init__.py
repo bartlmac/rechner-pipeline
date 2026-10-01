@@ -206,7 +206,25 @@ from rechner_pipeline.kern.vorgangsfolge import (
 #: sich nicht. Die Referenzpunkte sind Vertraege OHNE Vorgang; ihr Pfad ist
 #: unberuehrt — die Charakterisierung tastet RKW und den beitragsfreien
 #: Zweig ab und ist gruen.
-__version__ = "3.17.0"
+#: 3.18.0 = Pruefrunde G, zwei Funde der unabhaengigen Sollrechnung (Tarifplan
+#: KLV 7.1 und 7.3). (1) Der Abschlusskostenrest eines herabgesetzten
+#: Bausteins traegt den Faktor c an JEDEM Jahrestag 0..n
+#: (``Barwertpaesse.abschlusskostenfaktor``): Das Profil hat n Eintraege, am
+#: Jahrestag n fiel der Faktor bisher auf 1.0 zurueck. Bewegt sind nur
+#: herabgesetzte Bausteine, die kuerzer laufen als die Zillmerdauer (spaete
+#: Erhoehungsscheibe, kurze Laufzeit), im letzten Vertragsjahr: der
+#: Rueckkaufs-Track und damit der Rueckkaufswert, um (1-c) x Rest x u (im
+#: Fund bis 15,61 EUR je Vertrag, in der Welt der Pruefer hoechstens 20,55
+#: EUR); das Deckungskapital ist unveraendert. (2) Die Jahresgrenzen der
+#: zulaessigen Folgen stehen an einer Stelle (``beitragsreduktion.
+#: pruefe_vorgangsjahr``): ein Vorgang im Vertragsjahr 0 (Herabsetzung,
+#: Teilkuendigung, Beitragsfreistellung, Erhoehung) und eine
+#: Beitragsfreistellung ab dem Beitragsende (Entscheid 2026-10-01: nur
+#: solange Beitraege laufen; danach ist der Vertrag ausfinanziert) werden
+#: benannt verweigert, statt still gerechnet. Kein Vertrag ohne Vorgang ist beruehrt: Sein Profil
+#: ist leer bzw. ueberall 1.0; alle Charakterisierungs-Referenzwerte des Kerns
+#: sind unveraendert.
+__version__ = "3.18.0"
 
 __all__ = [
     "ModelPoint",

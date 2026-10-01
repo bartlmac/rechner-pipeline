@@ -9,8 +9,10 @@ mit und ohne Abzug je Baustein und beiden Umfaengen der Teilkuendigung, und
 haelt jede gegen Invarianten:
 
 * Nichts unter null: keine Summe, kein Rueckkaufswert, keine Auszahlung.
-* Was die PLV-Welt ausschliesst — Herabsetzung ab dem Beitragsende oder nach
-  der Beitragsfreistellung, zwei gleiche Vorgaenge an einem Jahrestag —, wird
+* Was die PLV-Welt ausschliesst — ein Vorgang ausserhalb ``0 < a < n``,
+  Herabsetzung oder Beitragsfreistellung ab dem Beitragsende, Herabsetzung
+  nach der Beitragsfreistellung, zwei
+  gleiche Vorgaenge an einem Jahrestag —, wird
   in JEDER Folge benannt verweigert (``VorgangsfolgeFehler`` mit Ausweg), nie
   still gerechnet.
 * Nach jedem Vorgang ist der Zustand der, den jeder Leser rechnet: das
@@ -62,15 +64,19 @@ _ANTEIL = st.sampled_from([0.3, 0.55, 0.8, 0.95])
 def folgen(draw):
     """Eine Folge: Scheiben (0 bis 2), eine Beitragsfreistellung oder keine,
     1 bis 4 Vorgaenge, Tarifwerk."""
-    pex = draw(st.one_of(st.none(), st.integers(2, MP.t - 1)))
-    obergrenze = (pex - 1) if pex is not None else MP.t - 1
+    # Die Grenzen der Menge gehoeren in die Erzeugung (Pruefrunde G, Fund
+    # G02): Jahr 0 und der Ablauf fuer jede Art, die Freistellung bis zum
+    # Ablauf (verweigert ab dem Beitragsende). Vorher zog die Erzeugung nur aus dem Inneren der
+    # Menge, und die Verweigerung am Rand war ungeprueft.
+    pex = draw(st.one_of(st.none(), st.integers(0, MP.n)))
+    obergrenze = min(pex - 1, MP.t - 1) if pex is not None else MP.t - 1
     jahre = draw(st.lists(st.integers(1, max(1, obergrenze)), max_size=2, unique=True)) \
         if obergrenze >= 1 else []
     scheiben = [(j, Rechenkern(erhoehungs_scheibe(MP, j, 4000.0 + 500.0 * j)))
                 for j in sorted(jahre)]
     vorgaenge = draw(st.lists(st.tuples(
         st.sampled_from([PROSPEKTIV, MIT_ABZUG, TEILKUENDIGUNG]),
-        st.integers(1, MP.n - 1), _ANTEIL), min_size=1, max_size=4))
+        st.integers(0, MP.n), _ANTEIL), min_size=1, max_size=4))
     return {
         "scheiben": scheiben, "pex": pex,
         "vorgaenge": [vorgang(j, a, v) for v, j, a in vorgaenge],
@@ -84,7 +90,11 @@ def _ausgeschlossen(f) -> bool:
     schluessel = [(v.jahr, v.art) for v in f["vorgaenge"]]
     if len(schluessel) != len(set(schluessel)):
         return True
+    if f["pex"] is not None and not 0 < f["pex"] < MP.t:
+        return True
     for v in f["vorgaenge"]:
+        if not 0 < v.jahr < MP.n:
+            return True
         if v.art == RED and (v.jahr >= MP.t or (f["pex"] is not None and v.jahr >= f["pex"])):
             return True
     return False

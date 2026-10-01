@@ -307,7 +307,10 @@ tail -n 1 daten/journal/protokoll.jsonl
 Faehrt der Timer am selben Tag noch einmal (Erstbefuellung am Tag des
 ersten Timers, ein Neustart), ist das kein Fehler: Der bereits gefuehrte
 Tag ist ein benannter No-op — Exit 0, `tageslauf: <Tag> bereits gefuehrt,
-nichts zu tun`, keine Protokollzeile, Stand unveraendert. Nur ein Tag VOR
+nichts zu tun`, keine Protokollzeile, Stand unveraendert. Das gilt nur mit
+der Config, mit der der Tag gerechnet wurde: Ist die Kopie inzwischen eine
+andere, haelt auch dieser Lauf an wie jeder andere (Exit 2, rote
+Protokollzeile, Stand unveraendert; "Config nachziehen" unten). Ein Tag VOR
 dem gefuehrten (rueckwaerts) bricht mit Exit 2 ab.
 
 **Abnahme des Anfangsbestands A-B3** (ADR-025). Der erste Lauf einer
@@ -426,7 +429,10 @@ Buchungen im Journal stehen — eine bestehende Ablage reproduziert danach
 nicht mehr. Der Tageslauf haelt deshalb an, sobald die Kopie nicht mehr
 die ist, mit der der letzte gruene Tag gerechnet wurde (Config-Hash der
 Protokollzeile; Exit 2, Stand und Journal bleiben, eine rote Protokollzeile nennt beide Hashes),
-auch bei einer Aenderung ohne Wirkung. Die Ablage wird neu aufgesetzt,
+auch bei einer Aenderung ohne Wirkung — und auch, wenn der bereits
+gefuehrte Tag zur Kontrolle noch einmal gefahren wird (jeder solche Lauf
+schreibt seine rote Zeile; mit der zurueckgesetzten Config ist derselbe Tag
+wieder ein No-op ohne Zeile). Die Ablage wird neu aufgesetzt,
 nicht nachtraeglich umgerechnet:
 
 1. Zugangsprobe auf einem leeren Verzeichnis, das nur die NEUE Config als
